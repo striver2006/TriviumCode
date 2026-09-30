@@ -715,19 +715,44 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals): boolean {
   }
 }
 
+/**
+ * 一次「已退出吗」的判定：`true` 已退出、`false` 未退出，`'unverifiable'` = 这一次判不了（EV-176）。
+ * 只有按 pid + 启动时刻判的调用方会给 `'unverifiable'`（活着而取不到启动时刻，`RecordMatch.identity`）；
+ * 按子进程句柄判的调用方与 `terminateRecordedCliGroups` 只给布尔。
+ */
+export type GoneJudgment = boolean | 'unverifiable';
+
 export interface TerminateOptions {
-  /** 「确认已退出」的判据，由调用方给（父进程用子进程句柄；别的进程用 pid + 启动时刻） */
-  isGone: () => boolean | Promise<boolean>;
+  /**
+   * 「确认已退出」的判据，由调用方给（父进程用子进程句柄；别的进程用 pid + 启动时刻）。
+   * 返回 `'unverifiable'` 时不算已退出，且在它是发信号之前的最后一次判定时**不发**那个信号（见 `terminateProcessGroup`）。
+   */
+  isGone: () => GoneJudgment | Promise<GoneJudgment>;
   /** SIGTERM 之后至多等多久再升级 SIGKILL */
   graceMs: number;
   /** SIGKILL 之后至多等多久确认退出；0 = 不等 */
   killWaitMs: number;
   /** 轮询间隔，缺省 250 ms */
   pollMs?: number;
+  /** 发 SIGTERM 之前回调一次（`cancelRun` 用它按事实播报「发送 SIGTERM」，EV-176）；判定为已退出或判不了而不发时不调 */
+  onTerm?: () => void;
   /** 升级到 SIGKILL 之前回调一次（`cancelRun` 用它打那行 warn） */
   onEscalate?: () => void;
   /** 发信号的实现，缺省 `killProcessTree`；只为单测计数而开 */
   signal?: (pid: number, sig: NodeJS.Signals) => boolean;
+}
+
+export interface TerminateResult {
+  gone: boolean;
+  escalated: boolean;
+  /** 实际发过的信号（按发出顺序） */
+  signals: NodeJS.Signals[];
+  /**
+   * 未确认退出、且**最后一次判定**是「判不了」（EV-176）：只在 `gone` 为假时出现。
+   * `signals` 为空 ⇒ 首检即判不了、一个信号都没发；只有 SIGTERM ⇒ 宽限期满仍判不了、没升级 SIGKILL；
+   * 有 SIGKILL ⇒ SIGKILL 之后的等待窗里最后仍判不了。布尔判据的调用方永远拿不到它。
+   */
+  unverifiable?: true;
 }
 
 /**
@@ -738,6 +763,13 @@ export interface TerminateOptions {
  *
  * **每次发信号之前先问 `isGone()`**：已退出就不再发。对按句柄判的调用方，这保证不会向一个已被回收、
  * 可能已被复用的号发组信号。
+ *
+ * **「判不了」（`isGone` 返回 `'unverifiable'`，EV-176，取消宽限期判不了仍放锁计划 r2 D1）不算已退出**，也不算「仍是它」：
+ * - 首检判不了 ⇒ 一个信号都不发，返回 `{ gone: false, unverifiable: true }`；
+ * - 宽限期内判不了 ⇒ 继续轮询；期满时最后一次仍判不了 ⇒ **不升级 SIGKILL**（不向身份判不了的进程发 SIGKILL），
+ *   返回 `{ gone: false, escalated: false, unverifiable: true }`；
+ * - SIGKILL 之后的等待窗里判不了 ⇒ 继续等；期满仍判不了 ⇒ `{ gone: false, unverifiable: true }`。
+ * 只看每一步的最后一次判定：期中判不了、之后恢复（`ps` 好转）不影响。布尔判据的调用方永远不会走进这几支，行为逐字不变。
  *
  * 只管这一个进程组：适配器以 `killTree` 拉起的厂商 CLI 自成一组，按 worker 的组发够不到它们——由 worker 的
  * SIGTERM 处理器经 `shutdownTrackedTrees` 转发；升级到 SIGKILL 时处理器跑不到，由 `--cancel` 按记录另行结束
@@ -751,10 +783,7 @@ export interface TerminateOptions {
  * 这种调用方式下不再需要「再数一次组成员」才能如实报告，因为「组员还在」本身已经是 `isGone` 判据的一部分
  * （代码双审 r1 GLM-01≡AGY-02 核出本段旧文案对新调用方已经失实，改准）。
  */
-export async function terminateProcessGroup(
-  pid: number,
-  o: TerminateOptions,
-): Promise<{ gone: boolean; escalated: boolean; signals: NodeJS.Signals[] }> {
+export async function terminateProcessGroup(pid: number, o: TerminateOptions): Promise<TerminateResult> {
   // 实际发过的信号（按发出顺序）：调用方的播报要按事实说——一个都没发、发了却没确认退出，都不能说成「已终止」
   // （EV-150 代码双审 r1 CODEX-01 ≡ GLM-01）
   const signals: NodeJS.Signals[] = [];
@@ -763,23 +792,38 @@ export async function terminateProcessGroup(
     (o.signal ?? killProcessTree)(p, sig);
   };
   const pollMs = o.pollMs ?? 250;
+  /**
+   * 最近一次判定（EV-176）：发信号前与返回时都按它分支，`'unverifiable'` 不算已退出。
+   * 经对象持有、经函数读：闭包里的赋值不会撤销 TS 的收窄，直接比较会在第二处被判恒假（已知坑）
+   */
+  const st: { last: GoneJudgment } = { last: false };
+  const judge = async (): Promise<GoneJudgment> => (st.last = await o.isGone());
+  const lastUnverifiable = (): boolean => st.last === 'unverifiable';
   const waitGone = async (ms: number): Promise<boolean> => {
     const deadline = Date.now() + ms;
     while (Date.now() < deadline) {
-      if (await o.isGone()) return true;
+      if ((await judge()) === true) return true;
       await new Promise((r) => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
     }
-    return o.isGone();
+    return (await judge()) === true;
   };
+  /** 未确认退出时的返回：最后一次判不了才带 `unverifiable` */
+  const unconfirmed = (escalated: boolean): TerminateResult =>
+    lastUnverifiable() ? { gone: false, escalated, signals, unverifiable: true } : { gone: false, escalated, signals };
 
-  if (await o.isGone()) return { gone: true, escalated: false, signals };
+  if ((await judge()) === true) return { gone: true, escalated: false, signals };
+  // 首检判不了：一个信号都不发（EV-176 零信号格）
+  if (lastUnverifiable()) return unconfirmed(false);
+  o.onTerm?.();
   send(pid, 'SIGTERM');
   if (await waitGone(o.graceMs)) return { gone: true, escalated: false, signals };
+  // 宽限期满最后一次仍判不了：不升级 SIGKILL（不向身份判不了的进程发，EV-176）
+  if (lastUnverifiable()) return unconfirmed(false);
 
   o.onEscalate?.();
   send(pid, 'SIGKILL');
-  if (o.killWaitMs <= 0) return { gone: await o.isGone(), escalated: true, signals };
-  return { gone: await waitGone(o.killWaitMs), escalated: true, signals };
+  if (o.killWaitMs <= 0) return (await judge()) === true ? { gone: true, escalated: true, signals } : unconfirmed(true);
+  return (await waitGone(o.killWaitMs)) ? { gone: true, escalated: true, signals } : unconfirmed(true);
 }
 
 export interface TreeShutdownOptions {

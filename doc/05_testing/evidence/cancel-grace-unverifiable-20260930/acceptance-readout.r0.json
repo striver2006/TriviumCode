@@ -1,0 +1,410 @@
+{
+  "base_root": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/base-d1e6408",
+  "node": "v25.2.1",
+  "platform": "darwin",
+  "at": "2026-09-30T15:19:22.047Z",
+  "bundles": {
+    "new": "82e25fbd6ebfb188e9d7fa8d40bfac108bd7e9e87e2201ac409d05f2ef87850f",
+    "old": "a8ccae262fa7fa8675895920eac3c50ad9391a4492ac77a2af9c463cd7c09c17"
+  },
+  "new": {
+    "build": "new",
+    "XZ": {
+      "steady": true,
+      "worker_preload": [],
+      "code": 69,
+      "ms": 126,
+      "preload": {
+        "pid": 82489,
+        "argv": [
+          "review",
+          "--cancel",
+          "20260930T151922Z"
+        ],
+        "armed": true,
+        "allowed": 1,
+        "blocked": 1,
+        "signals": []
+      },
+      "stdout": "",
+      "stderr": "✗ 取不到工作进程 82434 的启动时刻（ps 未返回），判不了它是不是 status.json 记录的那个工作进程：本次不取消——未发信号，status.json、主题锁、闸门、归档与凭据副本都没动。请稍后重试 trivium review --cancel 20260930T151922Z。一直取不到时：先在终端确认 82434 的命令行含 review --worker 20260930T151922Z（ps -p 82434 -o command=），确认是它、要结束这一轮，就在终端按组结束它（kill -TERM -82434），之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI",
+      "at_return": {
+        "worker_alive": true,
+        "phase": "running",
+        "lock_same": true,
+        "lock_present": true,
+        "gate": "running"
+      },
+      "next_start": {
+        "code": 70,
+        "stderr_head": "✗ 主题「验收Znew」已被占用：run_id 20260930T151922Z（pid 82434，自 2026-09-30T15:19:22.214Z 起）。\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。",
+        "second_run": null
+      },
+      "after": {
+        "code": 0,
+        "worker_gone": true,
+        "lock_present": false,
+        "gate": "idle",
+        "phase": "cancelled",
+        "stdout_tail": "运行 20260930T151922Z 已取消"
+      }
+    },
+    "XG": {
+      "steady": true,
+      "worker_preload": [
+        {
+          "pid": 83099,
+          "delay": 8000,
+          "argv": [
+            "review",
+            "--worker",
+            "20260930T151924Z"
+          ]
+        }
+      ],
+      "code": 69,
+      "ms": 5183,
+      "preload": {
+        "pid": 83154,
+        "argv": [
+          "review",
+          "--cancel",
+          "20260930T151924Z"
+        ],
+        "armed": true,
+        "allowed": 2,
+        "blocked": 21,
+        "signals": [
+          "SIGTERM"
+        ]
+      },
+      "stdout": "",
+      "stderr": "· 向工作进程组 83099 发送 SIGTERM\n⚠️  宽限 5 s 期满时仍取不到工作进程 83099 的启动时刻，判不了它是否已退出：不升级 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI\n· 按记录结束审查员 CLI：gemini 侧进程组 83148（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 83150（SIGTERM）\n✗ 已向工作进程组 83099 发送 SIGTERM，宽限 5 s 期满时仍取不到它的启动时刻，判不了它是否已退出；不升级 SIGKILL（不向身份判不了的进程发）：本次不收尾——status.json、主题锁、闸门、归档与凭据副本都没动；按记录结束的审查员 CLI 见上方输出。请稍后重试 trivium review --cancel 20260930T151924Z。一直取不到时：先在终端确认 83099 的命令行含 review --worker 20260930T151924Z（ps -p 83099 -o command=），确认是它、要结束这一轮，就在终端按组结束它（kill -TERM -83099），之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI",
+      "at_return": {
+        "worker_alive": true,
+        "phase": "running",
+        "lock_same": true,
+        "lock_present": true,
+        "gate": "running"
+      },
+      "next_start": {
+        "code": 0,
+        "stderr_head": "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\n  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}",
+        "second_run": "20260930T151930Z",
+        "second_run_wait_code": 0
+      },
+      "after": {
+        "code": 0,
+        "worker_gone": true,
+        "lock_present": false,
+        "gate": "review_done_awaiting_disposition",
+        "phase": "failed",
+        "stdout_tail": "  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。"
+      }
+    },
+    "XK": {
+      "steady": true,
+      "worker_preload": [
+        {
+          "pid": 84463,
+          "delay": 2147483647,
+          "argv": [
+            "review",
+            "--worker",
+            "20260930T151933Z"
+          ]
+        }
+      ],
+      "code": 69,
+      "ms": 10218,
+      "preload": {
+        "pid": 84611,
+        "argv": [
+          "review",
+          "--cancel",
+          "20260930T151933Z"
+        ],
+        "armed": false,
+        "allowed": 0,
+        "blocked": 0,
+        "signals": [
+          "SIGTERM",
+          "SIGKILL"
+        ]
+      },
+      "stdout": "",
+      "stderr": "· 向工作进程组 84463 发送 SIGTERM\n⚠️  工作进程组 84463 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI\n· 按记录结束审查员 CLI：gemini 侧进程组 84605（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 84607（SIGTERM）\n✗ 已向工作进程组 84463 发送 SIGTERM、SIGKILL，SIGKILL 之后等 5 s 仍是同一进程，未确认退出：本次不收尾——status.json、主题锁、闸门、归档与凭据副本都没动；按记录结束的审查员 CLI 见上方输出。请稍后重试 trivium review --cancel 20260930T151933Z。仍不退出时请在终端核对它的状态（ps -p 84463 -o stat=,command=）",
+      "at_return": {
+        "worker_alive": true,
+        "phase": "running",
+        "lock_same": true,
+        "lock_present": true,
+        "gate": "running"
+      }
+    },
+    "XN": {
+      "steady": true,
+      "worker_preload": [],
+      "code": 0,
+      "ms": 423,
+      "preload": {
+        "pid": 85442,
+        "argv": [
+          "review",
+          "--cancel",
+          "20260930T151944Z"
+        ],
+        "armed": false,
+        "allowed": 0,
+        "blocked": 0,
+        "signals": [
+          "SIGTERM"
+        ]
+      },
+      "stdout": "已回收主题「验收Nnew」的锁\n运行 20260930T151944Z 已取消",
+      "stderr": "· 向工作进程组 85387 发送 SIGTERM\n· 已把归档里的 run-20260930T151944Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled",
+      "at_return": {
+        "worker_alive": false,
+        "phase": "cancelled",
+        "lock_same": false,
+        "lock_present": false,
+        "gate": "idle"
+      }
+    }
+  },
+  "old": {
+    "build": "old",
+    "XZ": {
+      "steady": true,
+      "worker_preload": [],
+      "code": 0,
+      "ms": 141,
+      "preload": {
+        "pid": 85904,
+        "argv": [
+          "review",
+          "--cancel",
+          "20260930T151944Z"
+        ],
+        "armed": true,
+        "allowed": 1,
+        "blocked": 2,
+        "signals": []
+      },
+      "stdout": "已回收主题「验收Zold」的锁\n运行 20260930T151944Z 已取消",
+      "stderr": "· 向工作进程组 85849 发送 SIGTERM\n⚠️  凭据副本未抹：工作进程 85849 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n· 归档 run-20260930T151944Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记",
+      "at_return": {
+        "worker_alive": true,
+        "phase": "cancelled",
+        "lock_same": false,
+        "lock_present": false,
+        "gate": "idle"
+      },
+      "next_start": {
+        "code": 0,
+        "stderr_head": "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\n  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}",
+        "second_run": "20260930T151945Z",
+        "second_run_wait_code": 0
+      },
+      "after": {
+        "code": 0,
+        "worker_gone": false,
+        "lock_present": false,
+        "gate": "review_done_awaiting_disposition",
+        "phase": "cancelled",
+        "stdout_tail": "  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。"
+      }
+    },
+    "XG": {
+      "steady": true,
+      "worker_preload": [
+        {
+          "pid": 86903,
+          "delay": 8000,
+          "argv": [
+            "review",
+            "--worker",
+            "20260930T151959Z"
+          ]
+        }
+      ],
+      "code": 0,
+      "ms": 149,
+      "preload": {
+        "pid": 86958,
+        "argv": [
+          "review",
+          "--cancel",
+          "20260930T151959Z"
+        ],
+        "armed": true,
+        "allowed": 2,
+        "blocked": 2,
+        "signals": [
+          "SIGTERM"
+        ]
+      },
+      "stdout": "已回收主题「验收Gold」的锁\n运行 20260930T151959Z 已取消",
+      "stderr": "· 向工作进程组 86903 发送 SIGTERM\n⚠️  凭据副本未抹：工作进程 86903 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n· 归档 run-20260930T151959Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记",
+      "at_return": {
+        "worker_alive": true,
+        "phase": "cancelled",
+        "lock_same": false,
+        "lock_present": false,
+        "gate": "idle"
+      },
+      "next_start": {
+        "code": 0,
+        "stderr_head": "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\n  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}",
+        "second_run": "20260930T151959Z",
+        "second_run_wait_code": 0
+      },
+      "after": {
+        "code": 0,
+        "worker_gone": true,
+        "lock_present": false,
+        "gate": "review_done_awaiting_disposition",
+        "phase": "success",
+        "stdout_tail": "  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。"
+      }
+    },
+    "XK": {
+      "steady": true,
+      "worker_preload": [
+        {
+          "pid": 88086,
+          "delay": 2147483647,
+          "argv": [
+            "review",
+            "--worker",
+            "20260930T152008Z"
+          ]
+        }
+      ],
+      "code": 0,
+      "ms": 5230,
+      "preload": {
+        "pid": 88141,
+        "argv": [
+          "review",
+          "--cancel",
+          "20260930T152008Z"
+        ],
+        "armed": false,
+        "allowed": 0,
+        "blocked": 0,
+        "signals": [
+          "SIGTERM",
+          "SIGKILL"
+        ]
+      },
+      "stdout": "已回收主题「验收Kold」的锁\n运行 20260930T152008Z 已取消",
+      "stderr": "· 向工作进程组 88086 发送 SIGTERM\n⚠️  工作进程组 88086 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI\n· 按记录结束审查员 CLI：gemini 侧进程组 88135（SIGTERM）\n· 按记录结束审查员 CLI：glm 侧进程组 88137（SIGTERM）\n⚠️  凭据副本未抹：工作进程 88086 仍在——留给会话启动清扫\n· 归档 run-20260930T152008Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记",
+      "at_return": {
+        "worker_alive": true,
+        "phase": "cancelled",
+        "lock_same": false,
+        "lock_present": false,
+        "gate": "idle"
+      }
+    },
+    "XN": {
+      "steady": true,
+      "worker_preload": [],
+      "code": 0,
+      "ms": 433,
+      "preload": {
+        "pid": 88827,
+        "argv": [
+          "review",
+          "--cancel",
+          "20260930T152013Z"
+        ],
+        "armed": false,
+        "allowed": 0,
+        "blocked": 0,
+        "signals": [
+          "SIGTERM"
+        ]
+      },
+      "stdout": "已回收主题「验收Nold」的锁\n运行 20260930T152013Z 已取消",
+      "stderr": "· 向工作进程组 88772 发送 SIGTERM\n· 已把归档里的 run-20260930T152013Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled",
+      "at_return": {
+        "worker_alive": false,
+        "phase": "cancelled",
+        "lock_same": false,
+        "lock_present": false,
+        "gate": "idle"
+      }
+    }
+  },
+  "checks": [
+    {
+      "id": "B0 两份 bundle 不同",
+      "ok": true,
+      "detail": "new 82e25fbd6ebfb188 / old a8ccae262fa7fa86"
+    },
+    {
+      "id": "new 稳态与预载自证",
+      "ok": true,
+      "detail": "{\"XZ\":{\"steady\":true,\"preload\":{\"pid\":82489,\"argv\":[\"review\",\"--cancel\",\"20260930T151922Z\"],\"armed\":true,\"allowed\":1,\"blocked\":1,\"signals\":[]},\"worker_preload\":0},\"XG\":{\"steady\":true,\"preload\":{\"pid\":83154,\"argv\":[\"review\",\"--cancel\",\"20260930T151924Z\"],\"armed\":true,\"allowed\":2,\"blocked\":21,\"signals\":[\"SIGTERM\"]},\"worker_preload\":1},\"XK\":{\"steady\":true,\"preload\":{\"pid\":84611,\"argv\":[\"review\",\"--cancel\",\"20260930T151933Z\"],\"armed\":false,\"allowed\":0,\"blocked\":0,\"signals\":[\"SIGTERM\",\"SIGKILL\"]},\"worker_preload\":1},\"XN\":{\"steady\":true,\"preload\":{\"pid\":85442,\"argv\":[\"review\",\"--cancel\",\"20260930T151944Z\"],\"armed\":false,\"allowed\":0,\"blocked\":0,\"signals\":[\"SIGTERM\"]},\"worker_preload\":0}}"
+    },
+    {
+      "id": "old 稳态与预载自证",
+      "ok": true,
+      "detail": "{\"XZ\":{\"steady\":true,\"preload\":{\"pid\":85904,\"argv\":[\"review\",\"--cancel\",\"20260930T151944Z\"],\"armed\":true,\"allowed\":1,\"blocked\":2,\"signals\":[]},\"worker_preload\":0},\"XG\":{\"steady\":true,\"preload\":{\"pid\":86958,\"argv\":[\"review\",\"--cancel\",\"20260930T151959Z\"],\"armed\":true,\"allowed\":2,\"blocked\":2,\"signals\":[\"SIGTERM\"]},\"worker_preload\":1},\"XK\":{\"steady\":true,\"preload\":{\"pid\":88141,\"argv\":[\"review\",\"--cancel\",\"20260930T152008Z\"],\"armed\":false,\"allowed\":0,\"blocked\":0,\"signals\":[\"SIGTERM\",\"SIGKILL\"]},\"worker_preload\":1},\"XN\":{\"steady\":true,\"preload\":{\"pid\":88827,\"argv\":[\"review\",\"--cancel\",\"20260930T152013Z\"],\"armed\":false,\"allowed\":0,\"blocked\":0,\"signals\":[\"SIGTERM\"]},\"worker_preload\":0}}"
+    },
+    {
+      "id": "X-Z 改前：退 0、未发信号却播报「发送 SIGTERM」、锁没了、闸门 idle、返回时工作进程活",
+      "ok": true,
+      "detail": "{\"steady\":true,\"code\":0,\"ms\":141,\"preload\":{\"pid\":85904,\"argv\":[\"review\",\"--cancel\",\"20260930T151944Z\"],\"armed\":true,\"allowed\":1,\"blocked\":2,\"signals\":[]},\"at_return\":{\"worker_alive\":true,\"phase\":\"cancelled\",\"lock_same\":false,\"lock_present\":false,\"gate\":\"idle\"},\"next_start\":{\"code\":0,\"stderr_head\":\"⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\\n  注入配置：{\\\"gemini\\\":{\\\"mode\\\":\\\"ok\\\"},\\\"glm\\\":{\\\"mode\\\":\\\"ok\\\"}}\",\"second_run\":\"20260930T151945Z\",\"second_run_wait_code\":0},\"after\":{\"code\":0,\"worker_gone\":false,\"lock_present\":false,\"gate\":\"review_done_awaiting_disposition\",\"phase\":\"cancelled\",\"stdout_tail\":\"  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。\"}}"
+    },
+    {
+      "id": "X-Z 改后：退 69、零信号、不播报发送、stdout 空、锁原样、闸门 running、status running、工作进程活",
+      "ok": true,
+      "detail": "{\"steady\":true,\"code\":69,\"ms\":126,\"preload\":{\"pid\":82489,\"argv\":[\"review\",\"--cancel\",\"20260930T151922Z\"],\"armed\":true,\"allowed\":1,\"blocked\":1,\"signals\":[]},\"at_return\":{\"worker_alive\":true,\"phase\":\"running\",\"lock_same\":true,\"lock_present\":true,\"gate\":\"running\"},\"next_start\":{\"code\":70,\"stderr_head\":\"✗ 主题「验收Znew」已被占用：run_id 20260930T151922Z（pid 82434，自 2026-09-30T15:19:22.214Z 起）。\\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。\",\"second_run\":null},\"after\":{\"code\":0,\"worker_gone\":true,\"lock_present\":false,\"gate\":\"idle\",\"phase\":\"cancelled\",\"stdout_tail\":\"运行 20260930T151922Z 已取消\"}}"
+    },
+    {
+      "id": "X-Z 之后同主题 --start：改前 0（双跑）、改后 70",
+      "ok": true,
+      "detail": "{\"old\":{\"code\":0,\"stderr_head\":\"⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\\n  注入配置：{\\\"gemini\\\":{\\\"mode\\\":\\\"ok\\\"},\\\"glm\\\":{\\\"mode\\\":\\\"ok\\\"}}\",\"second_run\":\"20260930T151945Z\",\"second_run_wait_code\":0},\"new\":{\"code\":70,\"stderr_head\":\"✗ 主题「验收Znew」已被占用：run_id 20260930T151922Z（pid 82434，自 2026-09-30T15:19:22.214Z 起）。\\n  若确认该运行已卡死，可用 `trivium review --cancel <run_id>` 取消。\",\"second_run\":null}}"
+    },
+    {
+      "id": "X-G 改前：退 0、只发 SIGTERM、锁没了、返回时工作进程活",
+      "ok": true,
+      "detail": "{\"steady\":true,\"code\":0,\"ms\":149,\"preload\":{\"pid\":86958,\"argv\":[\"review\",\"--cancel\",\"20260930T151959Z\"],\"armed\":true,\"allowed\":2,\"blocked\":2,\"signals\":[\"SIGTERM\"]},\"at_return\":{\"worker_alive\":true,\"phase\":\"cancelled\",\"lock_same\":false,\"lock_present\":false,\"gate\":\"idle\"},\"next_start\":{\"code\":0,\"stderr_head\":\"⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\\n  注入配置：{\\\"gemini\\\":{\\\"mode\\\":\\\"ok\\\"},\\\"glm\\\":{\\\"mode\\\":\\\"ok\\\"}}\",\"second_run\":\"20260930T151959Z\",\"second_run_wait_code\":0},\"after\":{\"code\":0,\"worker_gone\":true,\"lock_present\":false,\"gate\":\"review_done_awaiting_disposition\",\"phase\":\"success\",\"stdout_tail\":\"  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。\"}}"
+    },
+    {
+      "id": "X-G 改后：约 5 s 后退 69、只发 SIGTERM、正文判不了、锁原样、闸门 running、工作进程活",
+      "ok": true,
+      "detail": "{\"steady\":true,\"code\":69,\"ms\":5183,\"preload\":{\"pid\":83154,\"argv\":[\"review\",\"--cancel\",\"20260930T151924Z\"],\"armed\":true,\"allowed\":2,\"blocked\":21,\"signals\":[\"SIGTERM\"]},\"at_return\":{\"worker_alive\":true,\"phase\":\"running\",\"lock_same\":true,\"lock_present\":true,\"gate\":\"running\"},\"next_start\":{\"code\":0,\"stderr_head\":\"⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\\n  注入配置：{\\\"gemini\\\":{\\\"mode\\\":\\\"ok\\\"},\\\"glm\\\":{\\\"mode\\\":\\\"ok\\\"}}\",\"second_run\":\"20260930T151930Z\",\"second_run_wait_code\":0},\"after\":{\"code\":0,\"worker_gone\":true,\"lock_present\":false,\"gate\":\"review_done_awaiting_disposition\",\"phase\":\"failed\",\"stdout_tail\":\"  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。\"}}"
+    },
+    {
+      "id": "X-G 之后同主题 --start：改前 0（双跑）、改后 70",
+      "ok": false,
+      "detail": "{\"old\":{\"code\":0,\"stderr_head\":\"⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\\n  注入配置：{\\\"gemini\\\":{\\\"mode\\\":\\\"ok\\\"},\\\"glm\\\":{\\\"mode\\\":\\\"ok\\\"}}\",\"second_run\":\"20260930T151959Z\",\"second_run_wait_code\":0},\"new\":{\"code\":0,\"stderr_head\":\"⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。\\n  注入配置：{\\\"gemini\\\":{\\\"mode\\\":\\\"ok\\\"},\\\"glm\\\":{\\\"mode\\\":\\\"ok\\\"}}\",\"second_run\":\"20260930T151930Z\",\"second_run_wait_code\":0}}"
+    },
+    {
+      "id": "X-G 改后：工作进程自己退出后撤桩 --cancel 退 0、锁回收、闸门 idle、status cancelled",
+      "ok": false,
+      "detail": "{\"code\":0,\"worker_gone\":true,\"lock_present\":false,\"gate\":\"review_done_awaiting_disposition\",\"phase\":\"failed\",\"stdout_tail\":\"  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。\"}"
+    },
+    {
+      "id": "X-K 改前：退 0、SIGTERM + SIGKILL（被扣）、status cancelled、锁没了、返回时工作进程活",
+      "ok": true,
+      "detail": "{\"steady\":true,\"code\":0,\"ms\":5230,\"preload\":{\"pid\":88141,\"argv\":[\"review\",\"--cancel\",\"20260930T152008Z\"],\"armed\":false,\"allowed\":0,\"blocked\":0,\"signals\":[\"SIGTERM\",\"SIGKILL\"]},\"at_return\":{\"worker_alive\":true,\"phase\":\"cancelled\",\"lock_same\":false,\"lock_present\":false,\"gate\":\"idle\"}}"
+    },
+    {
+      "id": "X-K 改后：退 69、SIGTERM + SIGKILL、正文「仍是同一进程」、stdout 空、返回时 status 不是 cancelled、锁仍在",
+      "ok": true,
+      "detail": "{\"steady\":true,\"code\":69,\"ms\":10218,\"preload\":{\"pid\":84611,\"argv\":[\"review\",\"--cancel\",\"20260930T151933Z\"],\"armed\":false,\"allowed\":0,\"blocked\":0,\"signals\":[\"SIGTERM\",\"SIGKILL\"]},\"at_return\":{\"worker_alive\":true,\"phase\":\"running\",\"lock_same\":true,\"lock_present\":true,\"gate\":\"running\"}}"
+    },
+    {
+      "id": "X-N 两边：不拦 ⇒ 退 0、锁回收、闸门 idle、status cancelled",
+      "ok": true,
+      "detail": "{\"new\":\"{\\\"steady\\\":true,\\\"code\\\":0,\\\"ms\\\":423,\\\"preload\\\":{\\\"pid\\\":85442,\\\"argv\\\":[\\\"review\\\",\\\"--cancel\\\",\\\"20260930T151944Z\\\"],\\\"armed\\\":false,\\\"allowed\\\":0,\\\"blocked\\\":0,\\\"signals\\\":[\\\"SIGTERM\\\"]},\\\"at_return\\\":{\\\"worker_alive\\\":false,\\\"phase\\\":\\\"cancelled\\\",\\\"lock_same\\\":false,\\\"lock_present\\\":false,\\\"gate\\\":\\\"idle\\\"}}\",\"old\":\"{\\\"steady\\\":true,\\\"code\\\":0,\\\"ms\\\":433,\\\"preload\\\":{\\\"pid\\\":88827,\\\"argv\\\":[\\\"review\\\",\\\"--cancel\\\",\\\"20260930T152013Z\\\"],\\\"armed\\\":false,\\\"allowed\\\":0,\\\"blocked\\\":0,\\\"signals\\\":[\\\"SIGTERM\\\"]},\\\"at_return\\\":{\\\"worker_alive\\\":false,\\\"phase\\\":\\\"cancelled\\\",\\\"lock_same\\\":false,\\\"lock_present\\\":false,\\\"gate\\\":\\\"idle\\\"}}\"}"
+    }
+  ],
+  "pass": 11,
+  "total": 13
+}

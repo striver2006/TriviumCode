@@ -1,0 +1,115 @@
+{
+  "targets": [
+    "src/trivium/util/exec.ts",
+    "src/trivium/run-protocol.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "首检把判不了当已退出 ⇒ T1、K-Z1",
+      "file": "src/trivium/util/exec.ts",
+      "find": "  if ((await judge()) === true) return { gone: true, escalated: false, signals };\n",
+      "replace": "  if ((await judge()) !== false) return { gone: true, escalated: false, signals };\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "首检忽略判不了、照发 SIGTERM ⇒ T1、K-Z1",
+      "file": "src/trivium/util/exec.ts",
+      "find": "  // 首检判不了：一个信号都不发（EV-176 零信号格）\n  if (lastUnverifiable()) return unconfirmed(false);\n",
+      "replace": "  // 首检判不了：一个信号都不发（EV-176 零信号格）\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "宽限期轮询把判不了当已退出 ⇒ T2、T3、K-G1、K-G2、K-G3",
+      "file": "src/trivium/util/exec.ts",
+      "find": "      if ((await judge()) === true) return true;\n",
+      "replace": "      if ((await judge()) !== false) return true;\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "宽限期满判不了仍升级 SIGKILL ⇒ T3、K-G2",
+      "file": "src/trivium/util/exec.ts",
+      "find": "  // 宽限期满最后一次仍判不了：不升级 SIGKILL（不向身份判不了的进程发，EV-176）\n  if (lastUnverifiable()) return unconfirmed(false);\n",
+      "replace": "  // 宽限期满最后一次仍判不了：不升级 SIGKILL（不向身份判不了的进程发，EV-176）\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "主路径 SIGKILL 之后改回不等（killWaitMs 0）⇒ K-K3",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        killWaitMs: ORPHAN_KILL_CONFIRM_MS,\n",
+      "replace": "        killWaitMs: 0,\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "删掉「未确认 ⇒ 不收尾」⇒ K-G2、K-K1、K-K4",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      if (!t.gone) throw envError(unconfirmedCancelMessage(pid, runId, t));\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "未确认时退 1 而不是 69 ⇒ K-G2、K-K1、K-K4",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      if (!t.gone) throw envError(unconfirmedCancelMessage(pid, runId, t));\n",
+      "replace": "      if (!t.gone) throw new TriviumError(EXIT.FAIL, unconfirmedCancelMessage(pid, runId, t));\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "workerGoneForCancel 不读 identity ⇒ W1、K-Z1、K-G2",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  if (p.identity === 'unverifiable') return 'unverifiable';\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "「发送 SIGTERM」播报挪回调用之前 ⇒ K-Z1",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      const t = await terminateProcessGroup(pid, {\n        isGone: () => workerGoneForCancel(pid, rec),\n        graceMs: WORKER_TERM_GRACE_MS,\n        killWaitMs: ORPHAN_KILL_CONFIRM_MS,\n        pollMs: 250,\n        onTerm: () => step(`向工作进程组 ${pid} 发送 SIGTERM`),\n",
+      "replace": "      step(`向工作进程组 ${pid} 发送 SIGTERM`);\n      const t = await terminateProcessGroup(pid, {\n        isGone: () => workerGoneForCancel(pid, rec),\n        graceMs: WORKER_TERM_GRACE_MS,\n        killWaitMs: ORPHAN_KILL_CONFIRM_MS,\n        pollMs: 250,\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "升级 SIGKILL 而未确认时跳过按记录结束 CLI ⇒ K-K1",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      if (t.escalated || t.unverifiable) {\n",
+      "replace": "      if ((t.escalated && t.gone) || (t.unverifiable && !t.escalated)) {\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "未确认时不置 unverifiable ⇒ T1、T3、T5、K-G2、K-K4",
+      "file": "src/trivium/util/exec.ts",
+      "find": "    lastUnverifiable() ? { gone: false, escalated, signals, unverifiable: true } : { gone: false, escalated, signals };\n",
+      "replace": "    ({ gone: false, escalated, signals });\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "扣下 SIGKILL 时跳过按记录结束 CLI ⇒ K-G2",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      if (t.escalated || t.unverifiable) {\n",
+      "replace": "      if (t.escalated) {\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "零信号格不按入口格处置（落到发过信号的正文）⇒ K-Z1",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      if (!t.gone && t.signals.length === 0) throw envError(unverifiableCancelMessage(pid, runId));\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    }
+  ]
+}

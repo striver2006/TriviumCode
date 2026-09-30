@@ -15,6 +15,12 @@
  * **按 pid 过滤**（EV-175，取不到启动时刻当不在计划 r2 §5.1）：给了 `pids` 就只拦 `-p` 参数在其中的调用，别的 pid 与
  * `ps -axo`（进程组成员数）照常。审查员 CLI 进程组的判定（`judgeCliGroup`）也调规范化形态的 `ps`，不过滤就会让 CLI 记录
  * 一律判不了、「信号发没发」失去分辨力。不给 `pids` 即此前的行为（EV-153 的用例不动）。
+ *
+ * **何时开始拦**（EV-176，取消宽限期判不了仍放锁计划 r2 §5.1）：`allowFirst: N` 先放过前 N 次本该拦的调用（`--cancel` 入口那次
+ * 判定放过、之后才拦 = 零信号形态）；`startArmed: false` 先一律放过、调 `arm()` 之后才拦（用例在包装的 `process.kill` 里
+ * 观察到 SIGTERM / SIGKILL 时调 = 宽限期 / SIGKILL 之后形态）。两者都不给即此前的行为（装上即拦，EV-153 / EV-175 的用例不动）。
+ * 放过的调用计入 `allowed`，自证靠 `allowed` / `blocked` 两个计数（这两种形态下不能用 `psStubWorks`：它自己的那次取值会
+ * 吃掉放行名额或被放过）。
  */
 import cp from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
@@ -33,6 +39,10 @@ export function psFormsIndistinguishable(): boolean {
 export interface PsStub {
   /** 被拦下的 `ps` 次数 */
   readonly blocked: number;
+  /** 本该拦、但因 `allowFirst` 或尚未 `arm()` 而放过的次数（EV-176） */
+  readonly allowed: number;
+  /** 开始拦（`startArmed: false` 时用）；可重复调用 */
+  arm: () => void;
   /** 复原原 `spawn` 并重新同步具名绑定；可重复调用 */
   restore: () => void;
 }
@@ -44,16 +54,24 @@ function targetsBlockedPid(args: readonly string[] | undefined, pids: ReadonlySe
   return i >= 0 && pids.has(Number(args![i + 1]));
 }
 
-export function stubPsFailure(which: PsForm, o: { pids?: readonly number[] } = {}): PsStub {
+export function stubPsFailure(
+  which: PsForm,
+  o: { pids?: readonly number[]; allowFirst?: number; startArmed?: boolean } = {},
+): PsStub {
   const orig = cp.spawn;
-  const state = { blocked: 0, restored: false };
+  const state = { blocked: 0, allowed: 0, restored: false, armed: o.startArmed ?? true, skipLeft: o.allowFirst ?? 0 };
   const pids = o.pids ? new Set(o.pids) : null;
   const stub = function (this: unknown, bin: string, args?: readonly string[], opts?: cp.SpawnOptions) {
     if (bin === '/bin/ps' && targetsBlockedPid(args, pids)) {
       const canonical = isCanonicalEnv(opts?.env as NodeJS.ProcessEnv | undefined);
       if (which === 'both' || (which === 'canonical') === canonical) {
-        state.blocked++;
-        return orig.call(this, '/nonexistent/trivium-test-ps', args ?? [], opts ?? {});
+        if (!state.armed || state.skipLeft > 0) {
+          if (state.armed) state.skipLeft--;
+          state.allowed++;
+        } else {
+          state.blocked++;
+          return orig.call(this, '/nonexistent/trivium-test-ps', args ?? [], opts ?? {});
+        }
       }
     }
     return (orig as (...a: unknown[]) => cp.ChildProcess).call(this, bin, args, opts);
@@ -63,6 +81,12 @@ export function stubPsFailure(which: PsForm, o: { pids?: readonly number[] } = {
   return {
     get blocked() {
       return state.blocked;
+    },
+    get allowed() {
+      return state.allowed;
+    },
+    arm: () => {
+      state.armed = true;
     },
     restore: () => {
       if (state.restored) return;

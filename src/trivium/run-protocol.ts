@@ -40,7 +40,7 @@ import { ensureDir, exists } from './util/fsx.js';
 import {
   canonicalStartOf, processAlive, processGroupMemberCount, processMatchesRecord, processStartTime, processStartTimes,
   shutdownTrackedTrees, spawnDetached, terminateProcessGroup, trackedTrees, watchTrackedTrees, type DetachedChildWatch,
-  type RecordedStart,
+  type GoneJudgment, type RecordedStart, type TerminateResult,
 } from './util/exec.js';
 import { fail, say, step, warn } from './util/log.js';
 import { checkHeartbeatThreshold, checkModelOverrideSource, collectWarnings, type PreflightWarning } from './preflight.js';
@@ -55,11 +55,12 @@ export const WORKER_TREE_GRACE_MS = 2000;
 /** 对 CLI 进程组发 SIGKILL 之后至多再等多久（EV-152） */
 export const WORKER_TREE_KILL_WAIT_MS = 1000;
 /**
- * 对工作进程组发 SIGKILL 之后至多再等多久确认退出。两个使用方：`--start` 派生后失败的收尾（EV-150 起就是 5 s，EV-152
- * 代码双审 r1 CODEX-06 起具名）与失联后取消挂住的 worker（`cancelLostWorker`，EV-146）——两处之后的步骤都以
- * 「确认退出」为前提，确认就在这里做。与 `WORKER_TERM_GRACE_MS` 数值相同、语义无关——那个是 SIGTERM 之后的宽限。
+ * 对工作进程组发 SIGKILL 之后至多再等多久确认退出。三个使用方：`--start` 派生后失败的收尾（EV-150 起就是 5 s，EV-152
+ * 代码双审 r1 CODEX-06 起具名）、失联后取消挂住的 worker（`cancelLostWorker`，EV-146）与 `--cancel` 主路径（EV-176 起；
+ * 此前 EV-150 定为 SIGKILL 之后不等、收尾照做，未确认也回收锁与闸门）——三处之后的步骤都以「确认退出」为前提，
+ * 确认就在这里做，等不到即按未确认处置（主路径以 69 退出、什么收尾都不做）。
+ * 与 `WORKER_TERM_GRACE_MS` 数值相同、语义无关——那个是 SIGTERM 之后的宽限。
  * 设计 7.5 `review --start` 行「失败路径最长约 20 s」= 宽限 5 s + 本常量 5 s + 取启动时刻的 `ps` 至多 10 s。
- * `--cancel` 主路径 SIGKILL 之后刻意不等（`killWaitMs: 0`，见 `cancelRun`），之后另由 `workerConfirmedGone` 复判。
  */
 export const ORPHAN_KILL_CONFIRM_MS = 5000;
 
@@ -751,18 +752,20 @@ export async function settleOrphanedStart(i: OrphanedStartInput): Promise<void> 
 }
 
 /**
- * `--cancel` 宽限期内「工作进程已退出」的判据：不存活，**或不是同一进程**（EV-150，计划双审 r1 AGY-04，用户审批并入）。
+ * `--cancel` 主路径「工作进程已退出」的判据（`terminateProcessGroup` 的 `isGone`）：不存活，**或不是同一进程**
+ * （EV-150，计划双审 r1 AGY-04，用户审批并入）；**活着而取不到启动时刻 ⇒ `'unverifiable'`**（EV-176，取消宽限期判不了仍放锁
+ * 计划 r2 D2）。
  *
- * 此前只看存活：宽限期内 PID 若被复用，会把复用者当成 worker、升级 SIGKILL；而 `kill(-pid)` 在复用者不是组长时
- * ESRCH、退回 `kill(pid)`，信号就打到了无关进程。`judgeStale`（EV-153）与 `workerConfirmedGone`、主路径入口（EV-175）对
- * 「取不到启动时刻」都判「判不了」，**本函数有意不读 `RecordMatch.identity`**：它只在主路径已判同一进程、发过 SIGTERM 之后的
- * 宽限期里轮询，取不到就按已退出＝停止升级，不向身份判不了的进程发 SIGKILL（保守方向）。其后的收尾经 `scrubAdmission`
- * 判不了即不抹、不补收 run.json；status.json、锁与闸门仍照常回收——工作进程若还没响应 SIGTERM 就是一把活锁被释放，
- * 登记 BACKLOG EV-176（取不到启动时刻当不在计划 r2 §4 R1，暂缓）。
+ * 只看存活的话，宽限期内 PID 若被复用，会把复用者当成 worker、升级 SIGKILL；而 `kill(-pid)` 在复用者不是组长时
+ * ESRCH、退回 `kill(pid)`，信号就打到了无关进程。「判不了」此前并入「不是同一进程」算已退出：发 SIGTERM 之前的首检取不到
+ * 就一个信号都不发、宽限期里取不到就停止升级，而收尾照样写 cancelled、回收锁与闸门——活 worker 脱锁（EV-176 探针 Z1 / G1 / G2）。
+ * 现在三态分开：`same` ⇒ false、`different`（不在，或取到了且不符）⇒ true，与此前逐字相同；`unverifiable` 交给
+ * `terminateProcessGroup` 按「不算已退出、也不对它发下一个信号」处置，`cancelRun` 见 `!t.gone` 即不收尾、以 69 退出。
  * 身份按 status.json 的记录比（`processMatchesRecord`，EV-158）：有规范化启动时刻只按它比，与主路径判存活那一处同一份记录。
  */
-export async function workerGoneForCancel(pid: number, rec: RecordedStart): Promise<boolean> {
+export async function workerGoneForCancel(pid: number, rec: RecordedStart): Promise<GoneJudgment> {
   const p = await processMatchesRecord(pid, rec);
+  if (p.identity === 'unverifiable') return 'unverifiable';
   return !p.alive || !p.sameProcess;
 }
 
@@ -1493,8 +1496,10 @@ export async function classifyLostCancel(s: RunStatus): Promise<LostCancelCell> 
  * 进程不存在 ⇒ 已退出；存在且取到的启动时刻与记录不同 ⇒ 已退出（pid 已被别的进程占用）；
  * 存在而**启动时刻取不到**（`ps` 瞬时失败）⇒ **未退出**。
  *
- * 共享的 `workerGoneForCancel` 把「取不到」并入「不是同一进程」算已退出；本格随后要补收 run.json、回收锁，
- * 那样会在 worker 其实还活着时破坏 EV-142「没有另一个写者」的前提，所以另立严格判据（共享判据不改，改动面更大）。
+ * 立本判据时（EV-146），共享的 `workerGoneForCancel` 把「取不到」并入「不是同一进程」算已退出，而本格随后要补收 run.json、
+ * 回收锁，那样会在 worker 其实还活着时破坏 EV-142「没有另一个写者」的前提，所以另立了严格判据。EV-176 起共享判据已三态化，
+ * 对判不了返回 `'unverifiable'`、不算已退出；本格仍保留自己的判据（布尔，判不了即「仍在」）——两者对「判不了算不算已退出」
+ * 已一致，差别只在宽限期满判不了时是否升级 SIGKILL 与未确认时的退出码，登记在 BACKLOG EV-177（代码双审 r1 CODEX-03）。
  * 与 EV-154 代码双审 r1 GLM-01 对 CLI 那一侧的收紧同一取向：轮询中判不了不算已不在。
  */
 export function lostWorkerGoneFrom(p: { alive: boolean; startedAt: string | null }, expectedStartedAt: string): boolean {
@@ -1517,9 +1522,13 @@ export async function lostWorkerGone(
   return lostWorkerGoneFrom(m, m.expected);
 }
 
-/** `cancelRun` 的可选参数：只给单测替换「结束工作进程」这一步（与 `settleOrphanedStart` 的 `terminate` 注入同形） */
+/** `cancelRun` 的可选参数：只给单测替换个别步骤 */
 export interface CancelOptions {
-  terminateWorker?: (pid: number, rec: RecordedStart) => Promise<{ gone: boolean; escalated: boolean; signals: NodeJS.Signals[] }>;
+  /**
+   * 替换**失联后取消那一格**（`cancelLostWorker`）「结束工作进程」这一步（与 `settleOrphanedStart` 的 `terminate` 注入同形）。
+   * 只作用于那一格：主路径不经它（EV-176 起如实写明范围）。
+   */
+  terminateWorker?: (pid: number, rec: RecordedStart) => Promise<TerminateResult>;
   /**
    * 主路径 b / c 格按记录结束 CLI 的实现，缺省 `terminateRecordedCliGroups`。只为单测造「发了信号而未确认退出、组仍活着」
    * ——真实进程在 SIGKILL 之下必死，零配额造不出（取消与失联的凭据准入核CLI计划 r2 §3.8 D6）
@@ -1600,7 +1609,8 @@ async function finalizeGoneWorker(ctx: Ctx, runId: string, s: RunStatus, cell: {
  *   5. 确认退出后按 run_id + pid 复核回收主题锁（D10）。
  * **不做**：status.json 一个字节都不写（phase / message 不改写、CLI 记录也不清——终态分支不追溯改写，也让本格可重入：
  * 未确认退出后再跑一次仍入本格）；闸门不动（`--wait` 判失联时已回收）；凭据副本不抹（留给会话启动清扫，EV-157 范围不动）。
- * 退出码两种结局都是 0（与主路径同口径，D6），结局写在 stdout 的结论句里。
+ * 退出码两种结局都是 0（与 EV-146 当时的主路径同口径，D6），结局写在 stdout 的结论句里。EV-176 起主路径未确认退出以 69 退出、
+ * 不收尾；本格仍退 0（宽限期满判不了时仍升级 SIGKILL 也与主路径不同），两处口径差登记 BACKLOG EV-177，暂缓。
  */
 async function cancelLostWorker(
   ctx: Ctx,
@@ -1681,6 +1691,63 @@ async function cancelLostWorker(
   );
   say('  status.json 的 phase 与 message 保持失联判定时的样子（不追溯改写）；归档 run.json 与运行登记见上方输出。');
   return EXIT.OK;
+}
+
+/** `ps` 持续取不到时的手工出路（EV-175 入口格与 EV-176 未确认格共用一句，计划 r2 D3） */
+function manualCancelWayOut(pid: number, runId: string): string {
+  return (
+    `一直取不到时：先在终端确认 ${pid} 的命令行含 review --worker ${runId}` +
+    `（ps -p ${pid} -o command=），确认是它、要结束这一轮，就在终端按组结束它（kill -TERM -${pid}），` +
+    '之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI'
+  );
+}
+
+/**
+ * 判不了、一个信号都没发时的 69 正文：主路径入口判不了（EV-175）与入口之后首检才判不了的零信号格（EV-176）同一句，
+ * 两处共用这一份，不出现两份字面量（计划 r2 D3 第 4 点）。
+ */
+function unverifiableCancelMessage(pid: number, runId: string): string {
+  return (
+    `取不到工作进程 ${pid} 的启动时刻（ps 未返回），判不了它是不是 status.json 记录的那个工作进程：本次不取消——` +
+    '未发信号，status.json、主题锁、闸门、归档与凭据副本都没动。请稍后重试 ' +
+    `trivium review --cancel ${runId}。${manualCancelWayOut(pid, runId)}`
+  );
+}
+
+/**
+ * 发过信号而未确认工作进程退出时的 69 正文（EV-176，计划 r2 D3 第 4 点）：按最后一次判定分两种——判不了（宽限期满、
+ * 或 SIGKILL 之后的等待窗里）与仍是同一进程（SIGKILL 之后等满仍在）。按实际发出的信号序列说，公共尾句相同。
+ */
+/**
+ * 发过信号之后判不了时的手工出路（EV-176 代码双审 r1 CODEX-01 ≡ GLM-01）：SIGTERM 已经按组发过而它没在宽限内退出，
+ * 再发 SIGTERM 多半无效，所以终端里按组 SIGKILL。入口格与零信号格没发过信号，仍用 `manualCancelWayOut`（逐字不变）。
+ */
+function manualKillWayOut(pid: number, runId: string): string {
+  return (
+    `一直取不到时：先在终端确认 ${pid} 的命令行含 review --worker ${runId}` +
+    `（ps -p ${pid} -o command=），确认是它、要结束这一轮——SIGTERM 已经发过而它没有退出，就在终端按组强制结束它` +
+    `（kill -KILL -${pid}），之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI`
+  );
+}
+
+function unconfirmedCancelMessage(pid: number, runId: string, t: TerminateResult): string {
+  const escalated = t.signals.includes('SIGKILL');
+  const what = t.unverifiable
+    ? escalated
+      ? `SIGKILL 之后等 ${ORPHAN_KILL_CONFIRM_MS / 1000} s 仍取不到它的启动时刻，判不了它是否已退出`
+      : `宽限 ${WORKER_TERM_GRACE_MS / 1000} s 期满时仍取不到它的启动时刻，判不了它是否已退出；不升级 SIGKILL（不向身份判不了的进程发）`
+    : `SIGKILL 之后等 ${ORPHAN_KILL_CONFIRM_MS / 1000} s 仍是同一进程，未确认退出`;
+  const next = t.unverifiable
+    ? manualKillWayOut(pid, runId)
+    : `仍不退出时请在终端核对它的状态（ps -p ${pid} -o stat=,command=）`;
+  // 「没动」限定为本命令的动作（代码双审 r1 CODEX-01）：这几格都按记录结束了 CLI，工作进程若仍在，看到它们退出后
+  // 可能自己收尾（写 failed、放锁）——跨进程验收里实测过
+  return (
+    `已向工作进程组 ${pid} 发送 ${t.signals.join('、')}，${what}：本次不收尾——` +
+    '本命令没有动 status.json、主题锁、闸门、归档与凭据副本；按记录结束的审查员 CLI 见上方输出' +
+    '（工作进程若仍在，看到它们退出后可能自己收尾：写 failed、放锁——那是它自己的收尾）。请稍后重试 ' +
+    `trivium review --cancel ${runId}。${next}`
+  );
 }
 
 export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}): Promise<number> {
@@ -1787,39 +1854,48 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
      * 工作进程被人结束后 kill(0) 即失败、identity 为 different，再跑一次就走下面「已不存在」那一格收尾。
      * s 为 null 时记录无期望值，只看存活，落不进这一格。
      */
-    if (live.identity === 'unverifiable') {
-      throw envError(
-        `取不到工作进程 ${pid} 的启动时刻（ps 未返回），判不了它是不是 status.json 记录的那个工作进程：本次不取消——` +
-          '未发信号，status.json、主题锁、闸门、归档与凭据副本都没动。请稍后重试 ' +
-          `trivium review --cancel ${runId}。一直取不到时：先在终端确认 ${pid} 的命令行含 review --worker ${runId}` +
-          `（ps -p ${pid} -o command=），确认是它、要结束这一轮，就在终端按组结束它（kill -TERM -${pid}），` +
-          '之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI',
-      );
-    }
+    if (live.identity === 'unverifiable') throw envError(unverifiableCancelMessage(pid, runId));
     if (live.alive && live.sameProcess) {
       /*
        * 按**进程组**发：只杀 worker 会把与它同组的子进程遗弃给 init。适配器以 `killTree` 拉起的厂商 CLI
        * 自成一组，按组发到不了它们——由 worker 的 SIGTERM 处理器转发（`installWorkerSigtermForwarding`，EV-152）；
        * 升级到 SIGKILL 时处理器跑不到，随后按 status.json 的逐侧记录结束（EV-154）。
-       * SIGTERM → 宽限 5 s（每 250 ms 看一次）→ SIGKILL、之后不等：与 `--start` 派生后失败的收尾共用
-       * `terminateProcessGroup`（EV-150）。宽限期判据是「不存活或不是同一进程」——此前只看存活，
+       * SIGTERM → 宽限 5 s（每 250 ms 看一次）→ SIGKILL → 至多再等 5 s 确认退出（`ORPHAN_KILL_CONFIRM_MS`）：与 `--start`
+       * 派生后失败的收尾共用 `terminateProcessGroup`（EV-150）。宽限期判据是「不存活或不是同一进程」——此前只看存活，
        * PID 被复用时会把 SIGKILL 打到无关进程（计划双审 r1 AGY-04，用户审批并入）。
+       *
+       * EV-176（取消宽限期判不了仍放锁计划 r2 D3）：入口判过同一进程之后身份仍可能转为「判不了」（`workerGoneForCancel`
+       * 返回 `'unverifiable'`）。此前它并入「已退出」、SIGKILL 之后也不等（EV-150 定的形态），收尾照写 cancelled、回收锁与闸门，
+       * 工作进程若还活着就脱了锁（探针 Z1 / G1 / G2 / K1）。现在：
+       * - 「发送 SIGTERM」只在确实要发时播报（`onTerm`）；首检即判不了 ⇒ 一个信号都没发，与入口判不了同处置（69、什么都不动）；
+       * - 宽限期满仍判不了 ⇒ 不升级 SIGKILL；升级过 SIGKILL 或扣下了 SIGKILL，都按记录结束 CLI——判不了的两种真相
+       *   （仍是它 / 它已退出而 pid 被占）下结束它名下的 CLI 都符合取消意图，CLI 组各自核身份（计划双审 r1 CODEX-02）；
+       * - **未确认退出（仍是同一进程或判不了）⇒ 69、不收尾**：不抹、不补收归档、不写 status.json、不回收锁与闸门。
+       *   退出码与入口判不了同码（计划 r2 D4）：「这次没做收尾、状态原样、可重试」对两者都成立，形态差异写在正文里。
        */
-      step(`向工作进程组 ${pid} 发送 SIGTERM`);
       const t = await terminateProcessGroup(pid, {
         isGone: () => workerGoneForCancel(pid, rec),
         graceMs: WORKER_TERM_GRACE_MS,
-        // SIGKILL 之后刻意不等（EV-150 起如此）：随后由 workerConfirmedGone 判是否已退出，没确认就不抹、不收尾
-        killWaitMs: 0,
+        killWaitMs: ORPHAN_KILL_CONFIRM_MS,
         pollMs: 250,
+        onTerm: () => step(`向工作进程组 ${pid} 发送 SIGTERM`),
         onEscalate: () =>
           warn(`工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI`),
       });
-      if (t.escalated) {
-        // b 格（EV-154）：worker 的处理器没跑成，记录是它最后写下的样子
+      // 零信号格：首检即判不了（不可能是别的——首检判已退出时 gone 为真）
+      if (!t.gone && t.signals.length === 0) throw envError(unverifiableCancelMessage(pid, runId));
+      if (t.unverifiable && !t.escalated) {
+        warn(
+          `宽限 ${WORKER_TERM_GRACE_MS / 1000} s 期满时仍取不到工作进程 ${pid} 的启动时刻，判不了它是否已退出：不升级 SIGKILL` +
+            '——随后按 status.json 的记录结束它拉起的审查员 CLI',
+        );
+      }
+      if (t.escalated || t.unverifiable) {
+        // b 格（EV-154）：worker 的处理器没跑成（或判不了它跑没跑成，EV-176），记录是它最后写下的样子
         cliOutcome = await (o.terminateCli ?? terminateRecordedCliGroups)(await readStatus(runDir));
         reportRecordedCliGroups(cliOutcome, false, runDir);
       }
+      if (!t.gone) throw envError(unconfirmedCancelMessage(pid, runId, t));
     } else {
       step(`工作进程 ${pid} 已不存在，仅做状态与锁的清理`);
       // c 格（EV-154）：worker 在本次取消之前已退出（被强杀、崩溃）

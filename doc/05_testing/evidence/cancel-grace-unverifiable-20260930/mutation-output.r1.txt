@@ -1,0 +1,98 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=8）
+  M4 ✓ 咬住（fail=2）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=3）
+  M7 ✓ 咬住（fail=3）
+  M8 ✓ 咬住（fail=6）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=5）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=1）
+{
+  "总数": 13,
+  "咬住": 13,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "首检把判不了当已退出 ⇒ T1、K-Z1",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "首检忽略判不了、照发 SIGTERM ⇒ T1、K-Z1",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "宽限期轮询把判不了当已退出 ⇒ T2、T3、K-G1、K-G2、K-G3",
+      "verdict": "✓ 咬住（fail=8）",
+      "fail": 8
+    },
+    {
+      "id": "M4",
+      "desc": "宽限期满判不了仍升级 SIGKILL ⇒ T3、K-G2",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M5",
+      "desc": "主路径 SIGKILL 之后改回不等（killWaitMs 0）⇒ K-K3",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "删掉「未确认 ⇒ 不收尾」⇒ K-G2、K-K1、K-K4",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M7",
+      "desc": "未确认时退 1 而不是 69 ⇒ K-G2、K-K1、K-K4",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M8",
+      "desc": "workerGoneForCancel 不读 identity ⇒ W1、K-Z1、K-G2",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M9",
+      "desc": "「发送 SIGTERM」播报挪回调用之前 ⇒ K-Z1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "升级 SIGKILL 而未确认时跳过按记录结束 CLI ⇒ K-K1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "未确认时不置 unverifiable ⇒ T1、T3、T5、K-G2、K-K4",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M12",
+      "desc": "扣下 SIGKILL 时跳过按记录结束 CLI ⇒ K-G2",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "零信号格不按入口格处置（落到发过信号的正文）⇒ K-Z1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

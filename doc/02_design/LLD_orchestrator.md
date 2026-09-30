@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.24
+> - **当前版本**：v1.1.25
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.25（2026-09-30）随设计 v1.3.67（取消宽限期判不了仍放锁，EV-176）同步：4.2「`cancelRun` 主路径判不了身份」引述块末段改为入口之后才判不了的处置（`terminateProcessGroup` 三态 `isGone`、首检判不了零信号、期满判不了不升级、SIGKILL 后等确认、未确认 69 不收尾）；「按记录结束审查员 CLI」引述块的触发格补「扣下 SIGKILL」；已知缺口表「`--cancel` 发过 SIGTERM 之后、宽限期里 `ps` 转坏仍回收锁」一行改为已解决，新增「失联后取消与主路径的两处不同口径」一行（EV-177，暂缓）；2.7 表 `util/exec.ts`、`run-protocol.ts` 行数与职责。
 > - **变更说明**：v1.1.24（2026-09-30）随设计 v1.3.66（取不到启动时刻当不在，EV-175）同步：4.2 新增「`cancelRun` 主路径判不了身份」引述块（`RecordMatch.identity` 三态、五处处置、69 与手工出路）；已知缺口表「其余身份消费方把『活着而取不到启动时刻』当『不在』」一行改为已解决，新增「SIGTERM 之后宽限期里 `ps` 转坏仍回收锁」一行（EV-176，暂缓）；2.7 表 `util/exec.ts`、`lock.ts` 行数与职责。
 > - **变更说明**：v1.1.23（2026-09-30）随设计 v1.3.65（并发写闸门偶发红，EV-153）同步：4.3 判据表 `pid_reused` 一行改为「取到了启动时刻且不符」并写明取不到时的去向（终态与年龄判据、耗满预算即 70）；已知缺口表新增「其余身份消费方把『活着而取不到启动时刻』当『不在』」一行（EV-175，暂缓）；2.7 表 `lock.ts` 行数。
 > - **变更说明**：v1.1.22（2026-09-30）随设计 v1.3.64（锁回收误判已删锁文件，EV-173 / EV-149）同步：4.3 判据表 `unparsable` 一行改为「文件**存在**而内容读不出」并补「撞 EEXIST 后文件已不存在 ⇒ 立刻重试」；回收一段改写为「预检 → 按身份认领 → 复查 → rename → 复验 → 删除、放回用 link、告警在真回收之后」，写明身份三元组与适用面；2.7 表 `lock.ts` 行数与职责；已知缺口表新增「遗留锁回收仍可能挪走活锁的剩余格」一行（EV-174，暂缓）。
@@ -90,7 +91,7 @@ graph TD
 | 模块 | 行数 | 职责 | 关键导出 |
 | :--- | ---: | :--- | :--- |
 | `review.ts` | 1060 | 一次运行的准备与执行 | `prepareRun()` `executeRun()` `runReview()` |
-| `run-protocol.ts` | 771 | 长时调用协议：`--start` / `--worker` / `--wait` / `--status` / `--cancel` | `startRun()` `workerMain()` `waitRun()` `cancelRun()` |
+| `run-protocol.ts` | 2004 | 长时调用协议：`--start` / `--worker` / `--wait` / `--status` / `--cancel` | `startRun()` `workerMain()` `waitRun()` `cancelRun()` |
 | `runner.ts` | 246 | 两侧真并行、瞬时重试、降级模式决策 | `runBothSides()` `decideMode()` `isTransientFailure()` |
 | `code-stage.ts` | 261 | code 阶段的补丁头部构造与解析 | `buildDiffHeader()` `parseFrozenDiff()` |
 
@@ -171,7 +172,7 @@ graph TD
 | `secrets.ts` | 140 | 落盘前的密钥扫描（10 条规则 + 熵判定） |
 | `types.ts` | 518 | 全部类型定义与编译期契约 |
 | `exit-codes.ts` | 67 | 九个退出码 |
-| `util/exec.ts` | 850 | 子进程执行、进程树杀灭、PID 复用识别（`processMatchesRecord` 给出三态身份结论 `identity`：同一 / 不是 / 判不了，v1.1.24） |
+| `util/exec.ts` | 894 | 子进程执行、进程树杀灭、PID 复用识别（`processMatchesRecord` 给出三态身份结论 `identity`：同一 / 不是 / 判不了，v1.1.24；`terminateProcessGroup` 的 `isGone` 可给「判不了」，不算已退出、也不对它发下一个信号，v1.1.25） |
 | `util/git.ts` | 447 | 工作树哈希、补丁生成、变更列举；审批时摘要用的严格助手 `treeExists()` / `diffTreesNameStatus()`（失败即抛，与失败返回空的 `diffTrees()` 分开） |
 | `util/fsx.ts` `util/log.ts` | 119 / 39 | 文件系统与日志 |
 
@@ -490,6 +491,7 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
 
 > **`cancelRun` 按记录结束审查员 CLI（v1.1.11 起，EV-154）。**
 > worker 跑不到自己的 SIGTERM 处理器的那几格，`cancelRun` 调 `terminateRecordedCliGroups(读到的 status)`：①worker 活着、`terminateProcessGroup` 返回 `escalated`（宽限 5 s 后升级 SIGKILL）；②worker 此前已不在（「已不存在」分支）；③**终态早退分支里 `workerConfirmedGone(s, worker.pid)` 为真且有记录**（worker 被强杀后 `--wait` 判 `pid_gone` 先把 status 写成 failed 的常见序列）——这一处只结束进程，status.json、归档、锁与闸门都不写，没有记录时不出声。
+> v1.1.25 起（EV-176）第①格扩为「升级 SIGKILL，或宽限期满判不了而扣下 SIGKILL」（`t.escalated || t.unverifiable`；零信号格不结束 CLI，与入口判不了同处置）。
 > 结束函数只对判 `alive`（组长活着且规范化启动时刻相符）的组走 `terminateProcessGroup`（`WORKER_TREE_GRACE_MS` → SIGKILL → `WORKER_TREE_KILL_WAIT_MS`，`isGone` 每次复核、只认 `gone` 与 `reused`——轮询中 `ps` 瞬时失败判 `unverifiable` 不算已不在，代码双审 r1 GLM-01），各组并行；`isGone` 按组长判，所以收尾后按 `ps -axo pgid=,stat=` 数一次非僵尸成员（`processGroupMemberCount`），非零如实告警、不再发信号。`reused` 只报一行、`unverifiable` 与形状坏的告警（后者带 status.json 路径与原始值，代码双审 r1 CODEX-04）、都不发信号；一条记录都没有时告警「没有在跑的审查员 CLI 记录」。主路径写 `cancelled` 的那次 `patchStatus` 把已确认结束（判 `gone`，或发过信号、组长确认退出且没有遗留成员）的侧记录清成 null，其余保留给清扫准入。
 > `cancelRun` 自己的凭据准入 v1.1.16 起（EV-157）经 `scrubAdmission`，判在上面按记录结束 CLI **之后**：已结束的组判 `gone` 放行；判不了、读不懂（没发信号）与发了信号而未确认退出的组挡住——告警「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧〉——留给会话启动清扫」，这些组不在 `settledCliSides` 里，收尾那次 `patchStatus` 不清、原样留给会话启动清扫。`CancelOptions.terminateCli` 只为单测造「未确认退出」而开（缺省 `terminateRecordedCliGroups`）。**准入与 `settledCliSides` 已收口**（v1.1.18 起，EV-165；此前有意分叉，代码双审 r1 CODEX-01）：`judgeCliGroup` 现在同时判组长与非僵尸成员数，`orphaned` 组（组长已退、组员仍在）与准入侧同一判据——阻挡准入，`--cancel` 也会对它按组发信号；结束后 `membersLeft === 0` 才清记录，与放行抹除凭据的判据不再分叉。
 
@@ -498,10 +500,11 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
 > `cancelRun` 的终态分支先调 `classifyLostCancel(s)`：`none`（不是 failed + heartbeat_stale）/ `no_identity`（`worker_pid` 不是 > 1 的整数，或 `worker_pid` 合法但两种启动时刻都缺失且进程还在）/ `gone`（进程不存在，含「pid 合法但两种启动时刻都缺失、进程也不在」，v1.1.14 起收窄进本格，EV-159）/ `mismatch`（活着而不是同一进程；v1.1.13 起身份经 `processMatchesRecord`——有规范化启动时刻只比它，没有退回缺省比较；`mismatch` 带 `basis`，告警据它分写；类型守卫放宽为两种形态有其一）/ `alive`。`alive` 与 `gone` 都会补收归档，共用 `finalizeLostAndReclaimLock(ctx, runId, s, pid)`（v1.1.14 起抽出，EV-159）：确认退出后 `finalizeFailedRunMeta({ workerGone: true, termination: { by: worker_lost, reason: heartbeat_stale } })`，播报经 `reportFinalizeStep` 的第四参数换成「可以再跑一次 --cancel 重试」的措辞；随后 `inspectLock` 的 `run_id` 与 `pid` 都相符才 `reclaimStaleLock`；返回两步的 `FinalizeStep`，调用方结论句一律不复述（只说「见上方输出」，代码双审 r1 CODEX-01 ≡ AGY-01 ≡ GLM-02）。`alive` 交给 `cancelLostWorker`：①开场列事实；②`terminateProcessGroup(pid, { isGone: lostWorkerGone, graceMs: WORKER_TERM_GRACE_MS, killWaitMs: ORPHAN_KILL_CONFIRM_MS })`——`lostWorkerGone` 是严格判据（纯函数核 `lostWorkerGoneFrom`：进程不存在或取到的启动时刻不同才算已退出，`ps` 取不到不算；共享的 `workerGoneForCancel` 不改，代码双审 r1 GLM-01），播报按「零信号已不在 / 宽限内响应 / 升级」三态分（CODEX-01）（单测经 `cancelRun` 第三参数 `o.terminateWorker` 替换）；③`terminateRecordedCliGroups`（没确认退出也照做）；④⑤即 `finalizeLostAndReclaimLock`。`gone` 交给 `finalizeGoneWorker`：CLI 结束在调用方已做过（`workerConfirmedGone` 判据覆盖 `gone` 格），本函数只调 `finalizeLostAndReclaimLock`、不发信号（本来就没有活进程可杀）。status.json 不写、闸门不动、不抹凭据；两格结局都退 0。`mismatch` 格跳过 EV-154 终态分支的按记录结束 CLI（一个信号都不发，代码双审 r1 CODEX-02）；`no_identity` 格照走那一支自己的判断（`workerConfirmedGone` 判已不在才结束 CLI，GLM-02）；两格之后都打如实结论（不再打「无需取消」）；`none` 输出与 v1.1.11 相同。
 
 > **`cancelRun` 主路径判不了身份（v1.1.24 起，EV-175）。**
-> `processMatchesRecord` 的三个出口都经 `withIdentity` 补上可选字段 `identity`（纯函数 `recordIdentityOf`：`sameProcess` ⇒ `same`；活着、记录有期望值、而启动时刻取不到 ⇒ `unverifiable`；其余 ⇒ `different`），原五个字段与 `sameProcess` 的含义逐字不变——`judgeStale`、`workerGoneForCancel`、`classifyLostCancel`、`lostWorkerGone` 只读原字段，行为不变。
+> `processMatchesRecord` 的三个出口都经 `withIdentity` 补上可选字段 `identity`（纯函数 `recordIdentityOf`：`sameProcess` ⇒ `same`；活着、记录有期望值、而启动时刻取不到 ⇒ `unverifiable`；其余 ⇒ `different`），原五个字段与 `sameProcess` 的含义逐字不变——`judgeStale`、`workerGoneForCancel`、`classifyLostCancel`、`lostWorkerGone` 当时只读原字段，行为不变（`workerGoneForCancel` 自 v1.1.25 起三态化，见下方「入口之后才判不了」）。
 > 主路径在判「同一进程」之前先看 `identity === 'unverifiable'`：成立就 `throw envError(…)`（69）——不发信号（worker 与按记录的 CLI 都不）、不写 status.json、不回收锁与闸门、不走挂载点 ③、不补收 run.json；正文写明「本次不取消，稍后重试」，并给 `ps` 持续取不到时的手工出路（核命令行含 `review --worker 〈run_id〉` → 终端按组结束 → 再 `--cancel` 即走「已不存在」格）。`s` 为 null 时记录无期望值，只看存活，落不进这一格。
 > 其余四处同一口径：`interpretStatus` 情形 A 与活着同处置、情形 C 不判 `pid_gone` 而按心跳判；`workerConfirmedGone` 返回 `gone: false`（why「工作进程 N 仍在，但取不到它的启动时刻：判不了……」），因而 `scrubAdmission`、`waitRun` 的 `goneForArchive`、终态分支 ③ 的 CLI 结束都不放行；`retention.ts` `workerStillAlive` 当仍在（显式正向判定，`identity` 缺失即旧口径）。
-> 宽限期轮询 `workerGoneForCancel` **有意不读** `identity`：已判同一进程、发过 SIGTERM 之后取不到按已退出＝停止升级（不向身份判不了的进程发 SIGKILL）；其后收尾不抹不补收，但 status、锁与闸门照常回收——残余见第七章 EV-176。
+> **入口之后才判不了（v1.1.25 起，EV-176）**：`workerGoneForCancel` 三态——`identity === 'unverifiable'` ⇒ `'unverifiable'`，其余与此前逐字相同。`terminateProcessGroup` 的 `isGone` 类型放宽为 `GoneJudgment`（`boolean | 'unverifiable'`），经对象持有的「最近一次判定」分支：首检判不了 ⇒ 一个信号都不发、返回 `{ gone: false, unverifiable: true }`；宽限期内判不了不算已退出、继续轮询，期满最后一次仍判不了 ⇒ 不升级 SIGKILL；SIGKILL 之后判不了继续等，期满仍判不了 ⇒ `unverifiable`。新增 `onTerm`（发 SIGTERM 之前回调）。布尔判据的调用方永远走不进这几支。
+> 主路径：「发送 SIGTERM」经 `onTerm` 播报；`killWaitMs` 由 0 改为 `ORPHAN_KILL_CONFIRM_MS`（撤回 EV-150 的不等确认）；`!t.gone && signals` 为空（零信号格）⇒ 与入口格同一句 69（`unverifiableCancelMessage`，两处共用）；`t.escalated || t.unverifiable` ⇒ 按记录结束 CLI（扣下 SIGKILL 的格也结束——判不了的两种真相下都符合取消意图，CLI 组各自核身份）；`!t.gone` ⇒ `unconfirmedCancelMessage` 按最后一次判定分写（宽限期满判不了 / SIGKILL 之后判不了 / SIGKILL 之后仍是同一进程），以 69 退出、在凭据准入之前——不抹、不补收、不写 status.json、不回收锁与闸门；判不了的两格手工出路给按组 SIGKILL（`manualKillWayOut`，SIGTERM 已发过而无效），「没动」限定为本命令的动作（已按记录结束 CLI，活着的工作进程随后可能自己收尾，代码双审 r1 CODEX-01 ≡ GLM-01）。
 
 ### 4.3 锁的生命周期
 
@@ -635,7 +638,8 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 | ~~**短临界区锁的持有超时借用 `heartbeat_stale_s`**~~ | ~~`lock.ts` `judgeStale` 对 `critical` 锁按 `now − acquired_at > heartbeatStaleMs` 判 `heartbeat_dead`；临界区不写心跳，危险临界值是最长临界区的持续时间（毫秒到数十毫秒），与 30 s 心跳间隔无关~~ | **已解决（2026-09-29，EV-161）**：年龄判据改比 `criticalHoldTimeoutMs(阈值)` = `max(阈值, WORKER_HEARTBEAT_MS)`，亚秒阈值下活着的临界区 30 s 内不再被回收；阈值 ≥ 30 s 时判定不变，worker 失联判定不取下限（临界区锁超时下限计划 r2） |
 | **遗留锁回收仍可能挪走活锁的剩余格** | v1.1.22 起回收者之间按遗留锁身份认领互斥，回收者对回收者的竞争已关死（实施期 e149 形状压测 1200 轮 0 双持有）。剩下三格：①认领之后、rename 之前被**非回收者**删掉并重建（被误判遗留的活持有者自己 release——只在 `heartbeat_dead` / `runTerminal` 下可达）；②`fstat` 失败取不到身份，无法认领，退回只靠预检；③认领者中途崩溃、认领残留 10 s 以上时，两个回收者同时按年龄清理认领的竞争。另有④崩溃残件（`.reclaim-*` / `.stale-*` / `.tmp-*`）没有通用清扫，只在同身份后来者撞上时机会性清理，残件不会被 `hooks.ts` 的锁目录枚举误读成锁（按 `.lock` 后缀过滤），只是垃圾文件。同族：`release()` 的「读 → 比 → 删」在「活持有者被判遗留、锁被回收并由别人重建」时会删掉别人的锁 | 命中时两个持有者并存；复验不符后的 `link` 放回会失败并告警「挪走了一把新建的锁且放不回」，不再静默。三格都要求罕见前提（误判活持有者、stat 失败、回收中途崩溃），暂缓（EV-174；读数见锁回收误判已删锁文件实施报告） |
 | ~~**其余身份消费方把「活着而取不到启动时刻」当「不在」**~~ | ~~`processMatchesRecord` 在进程活着而 `ps` 取不到启动时刻时返回 `sameProcess: false`，「确认不符」与「判不了」压成一个布尔；`interpretStatus` 情形 C、`workerConfirmedGone`、`workerStillAlive`、`cancelRun` 主路径按「不在 / 失联」处置~~ | **已解决（2026-09-30，EV-175，v1.1.24）**：`RecordMatch` 加可选三态字段 `identity`，五处只在 `unverifiable` 时走新分支（情形 A 同活着、情形 C 按心跳、`workerConfirmedGone` 不算已不在、`workerStillAlive` 当仍在、`cancelRun` 主路径什么都不动并以 69 退出），见 4.2「`cancelRun` 主路径判不了身份」。改前构建上 14 格零配额读数（`--wait` 写 failed 并抹凭据、到期整删活 worker 的目录、`--cancel` 只清不杀后同主题双跑）改后逐格等于不拦时的结局；情形 A 生产形状本就不受影响。残余：`ps` 持续取不到时工具自己结束不了这一轮（`--cancel` 每次 69，出路是正文里的手工结束），见下一行与 BACKLOG EV-176 |
-| **`--cancel` 发过 SIGTERM 之后、宽限期里 `ps` 转坏仍回收锁** | 主路径已判同一进程、发了 SIGTERM；宽限期轮询 `workerGoneForCancel` 有意不读 `identity`，取不到即按已退出停止升级；收尾经 `scrubAdmission` 不抹、不补收 run.json，但 status.json 写 cancelled、锁与闸门照常回收 | 工作进程若还没来得及响应 SIGTERM，就是一把活锁被释放、同主题可再 `--start`。触发要 `ps` 在 5 s 宽限里由好转坏且 worker 没在毫秒级响应 SIGTERM。修法要论证「退出未确认时锁留不留」，会改 EV-150 定下的「SIGKILL 之后不等确认就回收」语义，暂缓（EV-176） |
+| ~~**`--cancel` 发过 SIGTERM 之后、宽限期里 `ps` 转坏仍回收锁**~~ | ~~主路径已判同一进程、发了 SIGTERM；宽限期轮询 `workerGoneForCancel` 有意不读 `identity`，取不到即按已退出停止升级；收尾经 `scrubAdmission` 不抹、不补收 run.json，但 status.json 写 cancelled、锁与闸门照常回收~~ | **已解决（v1.1.25，EV-176）**：`workerGoneForCancel` 三态、`terminateProcessGroup` 认得判不了（首检判不了零信号、期满判不了不升级、SIGKILL 后等确认），主路径未确认退出（仍是同一进程或判不了）⇒ 69、不收尾；零信号形态（入口之后首检才取不到）一并修掉，「发送 SIGTERM」只在确实要发时播报 |
+| **失联后取消与主路径的两处不同口径** | `cancelLostWorker` 的 `isGone` 是 `lostWorkerGone`（布尔，取不到即「仍在」），宽限期满最后一次判不了照样升级 SIGKILL；未确认退出退 0（EV-146 D6「与主路径同口径」的前提已不成立） | 归档与锁都以确认退出为前提，不会放出活锁；误伤要 5 s 内 pid 被复用且取不到新进程的启动时刻，极罕见。改①要另配三态判据（`lostWorkerGone` 不改）、改②要动 EV-146 的退出码与用例，暂缓（EV-177） |
 | **取消落在收尾段时归档可能不是 `cancelled`** | 两侧 CLI 已结束、worker 在解析与归档时，信号到达与 SIGTERM 处理器执行之间至多一次事件循环迭代，其间已就绪的回调可先行（没有处理器时这段窗口为零）；按代码论证，造不出确定时序 | 最坏：worker 把 run.json 与 status.json 都写成终态 ⇒ `--cancel` 终态早退，归档记 `success` / `failed`；只写了 run.json ⇒ status.json 被写成 `cancelled`，两边劈叉。如实保留（取消够不到审查员CLI计划 r2 §4.4 a″） |
 | **协议片段无升级路径** | `appendSnippet`（`init.ts:63-66`）见标记即跳过，与 hooks 的「按名替换」不一致 | 已初始化项目的协议片段永不更新。实测某项目落后 18 行 |
 | **人工审批无机械边界** | `recordApproval`（`approval.ts:54-86`）无任何调用者身份校验；skill 的 `allowed-tools` 预批准了 `Bash(.trivium/bin/trivium:*)` | Driver 自己一条命令就能关掉等人工审批的闸门。曾加过一次性确认码，因明文经 stdout 由 Driver 转述、构不成边界而**主动移除**——「虚假的安全感比没有护栏更糟」。真解需要宿主提供不经过模型的带外通道 |

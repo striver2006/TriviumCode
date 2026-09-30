@@ -1,0 +1,39 @@
+{
+  "agreed": [
+    "`terminateProcessGroup` 支持三态判据（`GoneJudgment = boolean | 'unverifiable'`），`isGone` 返回 `'unverifiable'` 时不算已退出，首检判不了零信号返回，宽限期满最后一次仍判不了不升级 SIGKILL，SIGKILL 之后判不了继续等待，精确解决了判不了导致活 worker 脱锁的问题。",
+    "`cancelRun` 主路径与 `terminateProcessGroup` 深度配合，将「发送 SIGTERM」播报移入 `onTerm` 回调，彻底解决了首检判不了时「零信号却播报发送 SIGTERM」的失实问题。",
+    "扣下 SIGKILL 或宽限期满判不了的格统一执行 `terminateRecordedCliGroups`，兼顾了 worker 异常挂起时其拉起的审查员 CLI 组的可靠收尾，且 CLI 组各自独立校验身份，避免误伤。",
+    "未确认退出时统一抛出 `envError`（退出码 69），在凭据副本准入与归档收尾之前截断，严格保证 status.json、主题锁、闸门、归档 run.json 及凭据副本原样保留，重试语义清晰，杜绝同主题并发双跑。",
+    "四类外部调用方（`settleOrphanedStart`、`terminateRecordedCliGroups`、`cancelLostWorker`、`shutdownTrackedTrees`）传入布尔判据时逐字保持既有行为，跨文件调用链兼容性严密。",
+    "新增测试集 `test/integration/cancel-grace-unverifiable.test.ts`（T 系列与 K 系列）覆盖全面，通过 `ps-stub.ts` 扩展与信号包装，对零信号、宽限期延迟退出、宽限期忽略、SIGKILL 扣下等关键场景均建立了确定性的断言。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/取消宽限期判不了仍放锁/plan/2026-09-30-取消宽限期判不了仍放锁-revised-claude.md",
+    ".reviews/取消宽限期判不了仍放锁/plan/2026-09-30-取消宽限期判不了仍放锁-r2-claude.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-09-30_cancel_grace_unverifiable.md",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/util/exec.ts",
+    "test/helpers/ps-stub.ts",
+    "test/integration/cancel-grace-unverifiable.test.ts"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未在 macOS 以外的操作系统上运行验证（根据设计规范，macOS 为一级支持平台）。",
+    "未消耗真实大模型厂商 API 配额进行端到端双审实跑（通过 ps 故障桩与包装测试覆盖全量异常逻辑）。",
+    "未对失联后取消 `cancelLostWorker` 的不同口径做改动（已显式登入 BACKLOG EV-177 暂缓）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "审查结论：approve（通过）。\n本次代码变更完整落实了已批准的计划 r2（EV-176），成功修复了 `--cancel` 主路径在工作进程身份转为「判不了」或 SIGKILL 之后未确认退出时仍释放锁与闸门导致活 worker 脱锁的隐患。\n`terminateProcessGroup` 支持三态 `GoneJudgment`，首检判不了不发信号、期满判不了不升级 SIGKILL，未确认退出一律退 69 且不收尾；四处既有布尔判据调用方保持零漂移；文档与测试齐备，实现严谨无瑕疵。",
+  "verdict": "approve"
+}

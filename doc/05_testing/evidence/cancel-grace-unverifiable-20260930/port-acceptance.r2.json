@@ -1,0 +1,146 @@
+{
+  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408",
+  "node": "v25.2.1",
+  "at": "2026-09-30T16:35:16.379Z",
+  "ported": [
+    {
+      "file": "test/integration/cancel-grace-unverifiable.test.ts",
+      "repo_sha": "f930dcc8dcb084a1c64df80517e4873311582966755b674c18c5afa07d59d67c",
+      "tree_before": "48f340a620c7e1d681e3e24a1c7a5d4405cdf229eef8e3ab77274b9f88ee9dbd",
+      "tree_after": "f930dcc8dcb084a1c64df80517e4873311582966755b674c18c5afa07d59d67c"
+    },
+    {
+      "file": "test/helpers/ps-stub.ts",
+      "repo_sha": "daa3f68a314e4154bf900b8a3a1d50869f41c1201664cfeb9095a8219fa108df",
+      "tree_before": "daa3f68a314e4154bf900b8a3a1d50869f41c1201664cfeb9095a8219fa108df",
+      "tree_after": "daa3f68a314e4154bf900b8a3a1d50869f41c1201664cfeb9095a8219fa108df"
+    }
+  ],
+  "pre_counts": [
+    16,
+    3,
+    13
+  ],
+  "post_counts": [
+    16,
+    16,
+    0
+  ],
+  "cells": [
+    {
+      "case": "EV-176 T1：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 T2：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 T3：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 T4：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 T5：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 T6（回归）",
+      "pre_expected": "pass",
+      "pre_got": "pass",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 W1：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 K-Z1：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 K-G1：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 K-G2：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 K-G3：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 K-K1：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 K-K3：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 K-K4：",
+      "pre_expected": "fail",
+      "pre_got": "fail",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 K-C0（回归）",
+      "pre_expected": "pass",
+      "pre_got": "pass",
+      "post_got": "pass",
+      "ok": true
+    },
+    {
+      "case": "EV-176 K-E1（回归）",
+      "pre_expected": "pass",
+      "pre_got": "pass",
+      "post_got": "pass",
+      "ok": true
+    }
+  ],
+  "pass": 16,
+  "total": 16,
+  "pre_fail_block": "✖ failing tests:\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:67:1\n✖ EV-176 T1：首检判不了 ⇒ 一个信号都不发、onTerm 不调、gone 为假且 unverifiable (1.374875ms)\n  AssertionError [ERR_ASSERTION]: 判不了不算已退出\n  \n  true !== false\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:73:10)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: true,\n    expected: false,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:77:1\n✖ EV-176 T2：宽限期里判不了 ⇒ 继续轮询，之后判已退出即返回（只发 SIGTERM） (0.11325ms)\n  AssertionError [ERR_ASSERTION]: 判不了之后应继续轮询到判已退出（问了 2 次）\n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:81:10)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: false,\n    expected: true,\n    operator: '==',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:87:1\n✖ EV-176 T3：宽限期满仍判不了 ⇒ 不升级 SIGKILL、onEscalate 不调、unverifiable、等满宽限 (0.110958ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  true !== false\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:94:10)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',\n    actual: true,\n    expected: false,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:99:1\n✖ EV-176 T4：期中判不了、期满恢复为同一进程 ⇒ 照常升级 SIGKILL (0.510709ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n  + actual - expected\n  \n    [\n      'SIGTERM',\n  -   'SIGKILL'\n    ]\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:103:10)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',\n    actual: [ 'SIGTERM' ],\n    expected: [ 'SIGTERM', 'SIGKILL' ],\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:109:1\n✖ EV-176 T5：SIGKILL 之后的等待窗里判不了 ⇒ escalated、gone 为假、unverifiable (151.43125ms)\n  AssertionError [ERR_ASSERTION]: SIGKILL 之后判不了不算已退出\n  \n  true !== false\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:123:10)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: true,\n    expected: false,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:361:1\n✖ EV-176 W1：workerGoneForCancel——取不到 ⇒ unverifiable；同一进程 ⇒ false；不在 ⇒ true (162.527791ms)\n  AssertionError [ERR_ASSERTION]: 活着而取不到启动时刻应判不了，而不是已退出\n  + actual - expected\n  \n  + true\n  - 'unverifiable'\n  \n      at TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:370:14)\n      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: true,\n    expected: 'unverifiable',\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:405:1\n✖ EV-176 K-Z1：入口判同一进程之后首检即判不了 ⇒ 零信号、69、不播报「发送 SIGTERM」、什么都不动 (211.322791ms)\n  AssertionError [ERR_ASSERTION]: 应抛出而不是返回 0；stdout=已回收主题「取消宽限期用例」的锁\n  运行 R-EV176-Z1 已取消\n   stderr=· 向工作进程组 51783 发送 SIGTERM\n  ⚠️  凭据副本未抹：工作进程 51783 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n  · 归档 run-R-EV176-Z1.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  · task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n  \n      at assertUntouched (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:334:10)\n      at file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:412:11\n      at kCell (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:397:11)\n      at async TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:406:3)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: true,\n    operator: '==',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:418:1\n✖ EV-176 K-G1：宽限期里判不了、工作进程 3 s 后才退出 ⇒ 继续等到它真退出，收尾完整（凭据已抹、归档 cancelled） (3179.322333ms)\n  AssertionError [ERR_ASSERTION]: 确认退出后收尾完整（凭据已抹、归档与登记 cancelled）；stderr=· 向工作进程组 51793 发送 SIGTERM\n  ⚠️  凭据副本未抹：工作进程 51793 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n  · 归档 run-R-EV176-G1.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  · task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n  \n  + actual - expected\n  \n    {\n  +   archive: 'running',\n  +   carrier: true,\n  -   archive: 'cancelled',\n  -   carrier: false,\n      gate: 'idle',\n      lock: false,\n      phase: 'cancelled',\n  +   task: 'running'\n  -   task: 'cancelled'\n    }\n  \n      at assertFinalized (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:352:10)\n      at async file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:427:5\n      at async kCell (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:397:5)\n      at async TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:419:3)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: { phase: 'cancelled', lock: false, gate: 'idle', carrier: true, archive: 'running', task: 'running' },\n    expected: { phase: 'cancelled', lock: false, gate: 'idle', carrier: false, archive: 'cancelled', task: 'cancelled' },\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:430:1\n✖ EV-176 K-G2：宽限期满仍判不了（忽略 SIGTERM）⇒ 不升级 SIGKILL、按记录结束 CLI、69、其余什么都不动 (331.577416ms)\n  AssertionError [ERR_ASSERTION]: 应抛出而不是返回 0；stdout=已回收主题「取消宽限期用例」的锁\n  运行 R-EV176-G2 已取消\n   stderr=· 向工作进程组 51803 发送 SIGTERM\n  ⚠️  凭据副本未抹：工作进程 51803 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n  · 归档 run-R-EV176-G2.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  · task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n  \n      at assertUntouched (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:334:10)\n      at file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:438:23\n      at kCell (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:397:11)\n      at async TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:431:3)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: true,\n    operator: '==',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:446:1\n✖ EV-176 K-G3：宽限期里判不了、工作进程收 SIGTERM 300 ms 后退出 ⇒ 轮询到它不在，收尾完整 (482.694083ms)\n  AssertionError [ERR_ASSERTION]: 确认退出后收尾完整（凭据已抹、归档与登记 cancelled）；stderr=· 向工作进程组 51815 发送 SIGTERM\n  ⚠️  凭据副本未抹：工作进程 51815 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n  · 归档 run-R-EV176-G3.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  · task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n  \n  + actual - expected\n  \n    {\n  +   archive: 'running',\n  +   carrier: true,\n  -   archive: 'cancelled',\n  -   carrier: false,\n      gate: 'idle',\n      lock: false,\n      phase: 'cancelled',\n  +   task: 'running'\n  -   task: 'cancelled'\n    }\n  \n      at assertFinalized (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:352:10)\n      at async file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:454:5\n      at async kCell (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:397:5)\n      at async TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:447:3)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: { phase: 'cancelled', lock: false, gate: 'idle', carrier: true, archive: 'running', task: 'running' },\n    expected: { phase: 'cancelled', lock: false, gate: 'idle', carrier: false, archive: 'cancelled', task: 'cancelled' },\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:457:1\n✖ EV-176 K-K1：SIGKILL 扣下、等满仍是同一进程 ⇒ 按记录结束 CLI、69、其余什么都不动 (5669.316708ms)\n  AssertionError [ERR_ASSERTION]: 应抛出而不是返回 0；stdout=已回收主题「取消宽限期用例」的锁\n  运行 R-EV176-K1 已取消\n   stderr=· 向工作进程组 51825 发送 SIGTERM\n  ⚠️  工作进程组 51825 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI\n  · 按记录结束审查员 CLI：glm 侧进程组 51826（SIGTERM）\n  ⚠️  凭据副本未抹：工作进程 51825 仍在——留给会话启动清扫\n  · 归档 run-R-EV176-K1.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  · task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n  \n      at assertUntouched (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:334:10)\n      at file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:463:23\n      at kCell (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:397:11)\n      at async TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:458:3)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: true,\n    operator: '==',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:470:1\n✖ EV-176 K-K3：SIGKILL 延迟 300 ms 才生效（不带 CLI 记录）⇒ 等到确认退出，收尾完整 (5488.237958ms)\n  AssertionError [ERR_ASSERTION]: 确认退出后收尾完整（凭据已抹、归档与登记 cancelled）；stderr=· 向工作进程组 51866 发送 SIGTERM\n  ⚠️  工作进程组 51866 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI\n  ⚠️  status.json 里没有在跑的审查员 CLI 记录——CLI 已先结束，或派生后来不及记下；后者本命令够不到，请用 ps 核对 ppid 为 1 的 CLI 进程（设计 7.5「审查员 CLI 进程组记录」的如实保留清单）\n  ⚠️  凭据副本未抹：工作进程 51866 仍在——留给会话启动清扫\n  · 归档 run-R-EV176-K3.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  · task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n  \n  + actual - expected\n  \n    {\n  +   archive: 'running',\n  +   carrier: true,\n  -   archive: 'cancelled',\n  -   carrier: false,\n      gate: 'idle',\n      lock: false,\n      phase: 'cancelled',\n  +   task: 'running'\n  -   task: 'cancelled'\n    }\n  \n      at assertFinalized (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:352:10)\n      at async file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:477:5\n      at async kCell (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:397:5)\n      at async TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:471:3)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: { phase: 'cancelled', lock: false, gate: 'idle', carrier: true, archive: 'running', task: 'running' },\n    expected: { phase: 'cancelled', lock: false, gate: 'idle', carrier: false, archive: 'cancelled', task: 'cancelled' },\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/integration/cancel-grace-unverifiable.test.js:480:1\n✖ EV-176 K-K4：SIGKILL 扣下、之后才取不到启动时刻 ⇒ 69、正文说 SIGKILL 之后判不了、什么都不动 (5198.091833ms)\n  AssertionError [ERR_ASSERTION]: 应抛出而不是返回 0；stdout=已回收主题「取消宽限期用例」的锁\n  运行 R-EV176-K4 已取消\n   stderr=· 向工作进程组 51900 发送 SIGTERM\n  ⚠️  工作进程组 51900 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI\n  ⚠️  status.json 里没有在跑的审查员 CLI 记录——CLI 已先结束，或派生后来不及记下；后者本命令够不到，请用 ps 核对 ppid 为 1 的 CLI 进程（设计 7.5「审查员 CLI 进程组记录」的如实保留清单）\n  ⚠️  凭据副本未抹：工作进程 51900 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n  · 归档 run-R-EV176-K4.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n  · task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n  \n      at assertUntouched (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:334:10)\n      at file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:487:23\n      at kCell (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:397:11)\n      at async TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/port-d1e6408/dist/test/test/integration/cancel-grace-unverifiable.test.js:481:3)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: undefined,\n    expected: true,\n    operator: '==',\n    diff: 'simple'\n  }\n"
+}

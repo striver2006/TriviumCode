@@ -1,0 +1,396 @@
+{
+  "root": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/base-d1e6408",
+  "node": "v25.2.1",
+  "platform": "darwin",
+  "at": "2026-09-30T15:16:55.859Z",
+  "exec_js_sha16": "0368371ce88e404c",
+  "run_protocol_js_sha16": "98ad96a80048d133",
+  "status_js_sha16": "96beffd7e525b792",
+  "results": [
+    {
+      "id": "Z1",
+      "desc": "零信号形态：入口判同一进程之后 ps 即拦（放过第 1 次），工作进程对 SIGTERM 缺省即死",
+      "ps_block_form": "fail",
+      "recorded": {
+        "legacy": true,
+        "canonical": true,
+        "cli_started_at": null
+      },
+      "ms": 9,
+      "ps": {
+        "allowed": 1,
+        "blocked": 2
+      },
+      "signals": [],
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 20260930T150100Z 已取消\n",
+        "err": "· 向工作进程组 79778 发送 SIGTERM\n⚠️  凭据副本未抹：工作进程 79778 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n· 归档 run-20260930T150100Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n"
+      },
+      "worker_alive_at_return": true,
+      "cli_alive_at_return": null,
+      "worker_alive_late": null,
+      "after": {
+        "status_phase": "cancelled",
+        "status_message": "被 --cancel 取消",
+        "carrier_present": true,
+        "lock_present": false,
+        "gate": "idle",
+        "archive_run_status": "running",
+        "task_entry_status": "running"
+      },
+      "next_acquire": "acquired",
+      "cleaned": true
+    },
+    {
+      "id": "G1",
+      "desc": "宽限期形态：SIGTERM 发出之后 ps 开始拦，工作进程收到 SIGTERM 延迟 3 s 才退出",
+      "ps_block_form": "fail",
+      "recorded": {
+        "legacy": true,
+        "canonical": true,
+        "cli_started_at": null
+      },
+      "ms": 9,
+      "ps": {
+        "allowed": 2,
+        "blocked": 2
+      },
+      "signals": [
+        "SIGTERM→组"
+      ],
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 20260930T150200Z 已取消\n",
+        "err": "· 向工作进程组 79790 发送 SIGTERM\n⚠️  凭据副本未抹：工作进程 79790 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n· 归档 run-20260930T150200Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n"
+      },
+      "worker_alive_at_return": true,
+      "cli_alive_at_return": null,
+      "worker_alive_late": {
+        "at_ms": 4001,
+        "alive": false
+      },
+      "after": {
+        "status_phase": "cancelled",
+        "status_message": "被 --cancel 取消",
+        "carrier_present": true,
+        "lock_present": false,
+        "gate": "idle",
+        "archive_run_status": "running",
+        "task_entry_status": "running"
+      },
+      "next_acquire": "acquired",
+      "cleaned": true
+    },
+    {
+      "id": "G2",
+      "desc": "宽限期形态：SIGTERM 发出之后 ps 开始拦，工作进程忽略 SIGTERM；带一条活 CLI 组记录",
+      "ps_block_form": "fail",
+      "recorded": {
+        "legacy": true,
+        "canonical": true,
+        "cli_started_at": true
+      },
+      "ms": 10,
+      "ps": {
+        "allowed": 2,
+        "blocked": 2
+      },
+      "signals": [
+        "SIGTERM→组"
+      ],
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 20260930T150300Z 已取消\n",
+        "err": "· 向工作进程组 79811 发送 SIGTERM\n⚠️  凭据副本未抹：工作进程 79811 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n· 归档 run-20260930T150300Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n"
+      },
+      "worker_alive_at_return": true,
+      "cli_alive_at_return": true,
+      "worker_alive_late": null,
+      "after": {
+        "status_phase": "cancelled",
+        "status_message": "被 --cancel 取消",
+        "carrier_present": true,
+        "lock_present": false,
+        "gate": "idle",
+        "archive_run_status": "running",
+        "task_entry_status": "running"
+      },
+      "next_acquire": "acquired",
+      "cleaned": true
+    },
+    {
+      "id": "G2-timeout",
+      "desc": "同 G2，被拦的 ps 挂到 10 s 超时",
+      "ps_block_form": "timeout",
+      "recorded": {
+        "legacy": true,
+        "canonical": true,
+        "cli_started_at": true
+      },
+      "ms": 20057,
+      "ps": {
+        "allowed": 2,
+        "blocked": 2
+      },
+      "signals": [
+        "SIGTERM→组"
+      ],
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 20260930T150400Z 已取消\n",
+        "err": "· 向工作进程组 79826 发送 SIGTERM\n⚠️  凭据副本未抹：工作进程 79826 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n· 归档 run-20260930T150400Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n"
+      },
+      "worker_alive_at_return": true,
+      "cli_alive_at_return": true,
+      "worker_alive_late": null,
+      "after": {
+        "status_phase": "cancelled",
+        "status_message": "被 --cancel 取消",
+        "carrier_present": true,
+        "lock_present": false,
+        "gate": "idle",
+        "archive_run_status": "running",
+        "task_entry_status": "running"
+      },
+      "next_acquire": "acquired",
+      "cleaned": true
+    },
+    {
+      "id": "G3",
+      "desc": "宽限期形态：SIGTERM 发出之后 ps 开始拦，工作进程收到 SIGTERM 即死",
+      "ps_block_form": "fail",
+      "recorded": {
+        "legacy": true,
+        "canonical": true,
+        "cli_started_at": null
+      },
+      "ms": 54,
+      "ps": {
+        "allowed": 2,
+        "blocked": 1
+      },
+      "signals": [
+        "SIGTERM→组"
+      ],
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 20260930T150500Z 已取消\n",
+        "err": "· 向工作进程组 79934 发送 SIGTERM\n· 已把归档里的 run-20260930T150500Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+      },
+      "worker_alive_at_return": false,
+      "cli_alive_at_return": null,
+      "worker_alive_late": null,
+      "after": {
+        "status_phase": "cancelled",
+        "status_message": "被 --cancel 取消",
+        "carrier_present": false,
+        "lock_present": false,
+        "gate": "idle",
+        "archive_run_status": "cancelled",
+        "task_entry_status": "cancelled"
+      },
+      "next_acquire": "acquired",
+      "cleaned": true
+    },
+    {
+      "id": "K1",
+      "desc": "SIGKILL 不等确认形态：工作进程忽略 SIGTERM，SIGKILL 记下而不投递（模拟 SIGKILL 之后未确认退出），ps 不拦；带一条活 CLI 组记录",
+      "ps_block_form": null,
+      "recorded": {
+        "legacy": true,
+        "canonical": true,
+        "cli_started_at": true
+      },
+      "ms": 5195,
+      "ps": {
+        "allowed": 0,
+        "blocked": 0
+      },
+      "signals": [
+        "SIGTERM→组",
+        "SIGKILL→组"
+      ],
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 20260930T150600Z 已取消\n",
+        "err": "· 向工作进程组 79947 发送 SIGTERM\n⚠️  工作进程组 79947 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI\n· 按记录结束审查员 CLI：glm 侧进程组 79949（SIGTERM）\n⚠️  凭据副本未抹：工作进程 79947 仍在——留给会话启动清扫\n· 归档 run-20260930T150600Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n"
+      },
+      "worker_alive_at_return": true,
+      "cli_alive_at_return": false,
+      "worker_alive_late": null,
+      "after": {
+        "status_phase": "cancelled",
+        "status_message": "被 --cancel 取消",
+        "carrier_present": true,
+        "lock_present": false,
+        "gate": "idle",
+        "archive_run_status": "running",
+        "task_entry_status": "running"
+      },
+      "next_acquire": "acquired",
+      "cleaned": true
+    },
+    {
+      "id": "K4",
+      "desc": "SIGKILL 之后判不了形态：工作进程忽略 SIGTERM，SIGKILL 记下而不投递，SIGKILL 之后 ps 开始拦；带一条活 CLI 组记录",
+      "ps_block_form": "fail",
+      "recorded": {
+        "legacy": true,
+        "canonical": true,
+        "cli_started_at": true
+      },
+      "ms": 5156,
+      "ps": {
+        "allowed": 23,
+        "blocked": 2
+      },
+      "signals": [
+        "SIGTERM→组",
+        "SIGKILL→组"
+      ],
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 20260930T150700Z 已取消\n",
+        "err": "· 向工作进程组 80063 发送 SIGTERM\n⚠️  工作进程组 80063 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI\n· 按记录结束审查员 CLI：glm 侧进程组 80065（SIGTERM）\n⚠️  凭据副本未抹：工作进程 80063 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n· 归档 run-20260930T150700Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n"
+      },
+      "worker_alive_at_return": true,
+      "cli_alive_at_return": false,
+      "worker_alive_late": null,
+      "after": {
+        "status_phase": "cancelled",
+        "status_message": "被 --cancel 取消",
+        "carrier_present": true,
+        "lock_present": false,
+        "gate": "idle",
+        "archive_run_status": "running",
+        "task_entry_status": "running"
+      },
+      "next_acquire": "acquired",
+      "cleaned": true
+    },
+    {
+      "id": "K4-timeout",
+      "desc": "同 K4，被拦的 ps 挂到 10 s 超时",
+      "ps_block_form": "timeout",
+      "recorded": {
+        "legacy": true,
+        "canonical": true,
+        "cli_started_at": true
+      },
+      "ms": 25122,
+      "ps": {
+        "allowed": 23,
+        "blocked": 2
+      },
+      "signals": [
+        "SIGTERM→组",
+        "SIGKILL→组"
+      ],
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 20260930T150800Z 已取消\n",
+        "err": "· 向工作进程组 80112 发送 SIGTERM\n⚠️  工作进程组 80112 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI\n· 按记录结束审查员 CLI：glm 侧进程组 80114（SIGTERM）\n⚠️  凭据副本未抹：工作进程 80112 仍在，但取不到它的启动时刻：判不了是不是 status.json 记录的那个进程——留给会话启动清扫\n· 归档 run-20260930T150800Z.json 未回写：工作进程未确认退出，不写归档 run.json（可能还有写者，两边会互相覆盖）\n· task.json 的运行登记未改：归档 run.json 不是 cancelled（running），不改登记\n"
+      },
+      "worker_alive_at_return": true,
+      "cli_alive_at_return": false,
+      "worker_alive_late": null,
+      "after": {
+        "status_phase": "cancelled",
+        "status_message": "被 --cancel 取消",
+        "carrier_present": true,
+        "lock_present": false,
+        "gate": "idle",
+        "archive_run_status": "running",
+        "task_entry_status": "running"
+      },
+      "next_acquire": "acquired",
+      "cleaned": true
+    },
+    {
+      "id": "K2",
+      "desc": "SIGKILL 形态（对照）：工作进程忽略 SIGTERM，SIGKILL 照常投递，ps 不拦",
+      "ps_block_form": null,
+      "recorded": {
+        "legacy": true,
+        "canonical": true,
+        "cli_started_at": null
+      },
+      "ms": 5061,
+      "ps": {
+        "allowed": 0,
+        "blocked": 0
+      },
+      "signals": [
+        "SIGTERM→组",
+        "SIGKILL→组"
+      ],
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 20260930T150900Z 已取消\n",
+        "err": "· 向工作进程组 80327 发送 SIGTERM\n⚠️  工作进程组 80327 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI\n⚠️  status.json 里没有在跑的审查员 CLI 记录——CLI 已先结束，或派生后来不及记下；后者本命令够不到，请用 ps 核对 ppid 为 1 的 CLI 进程（设计 7.5「审查员 CLI 进程组记录」的如实保留清单）\n· 已把归档里的 run-20260930T150900Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+      },
+      "worker_alive_at_return": false,
+      "cli_alive_at_return": null,
+      "worker_alive_late": null,
+      "after": {
+        "status_phase": "cancelled",
+        "status_message": "被 --cancel 取消",
+        "carrier_present": false,
+        "lock_present": false,
+        "gate": "idle",
+        "archive_run_status": "cancelled",
+        "task_entry_status": "cancelled"
+      },
+      "next_acquire": "acquired",
+      "cleaned": true
+    },
+    {
+      "id": "C0",
+      "desc": "对照：工作进程收到 SIGTERM 即死，不拦",
+      "ps_block_form": null,
+      "recorded": {
+        "legacy": true,
+        "canonical": true,
+        "cli_started_at": null
+      },
+      "ms": 134,
+      "ps": {
+        "allowed": 0,
+        "blocked": 0
+      },
+      "signals": [
+        "SIGTERM→组"
+      ],
+      "io": {
+        "ok": true,
+        "exitCode": 0,
+        "out": "已回收主题「探针」的锁\n运行 20260930T151000Z 已取消\n",
+        "err": "· 向工作进程组 80390 发送 SIGTERM\n· 已把归档里的 run-20260930T151000Z.json 收尾为 cancelled\n· 已把 task.json 的运行登记同步为 cancelled\n"
+      },
+      "worker_alive_at_return": false,
+      "cli_alive_at_return": null,
+      "worker_alive_late": null,
+      "after": {
+        "status_phase": "cancelled",
+        "status_message": "被 --cancel 取消",
+        "carrier_present": false,
+        "lock_present": false,
+        "gate": "idle",
+        "archive_run_status": "cancelled",
+        "task_entry_status": "cancelled"
+      },
+      "next_acquire": "acquired",
+      "cleaned": true
+    }
+  ]
+}

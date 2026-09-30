@@ -1,0 +1,66 @@
+{
+  "at": "2026-09-30T15:18:49.154Z",
+  "pre": {
+    "root": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b02bcc42-150c-4484-83b3-3134bc8eb9a4/scratchpad/base-d1e6408",
+    "sha": "98ad96a80048d133",
+    "exec": "0368371ce88e404c"
+  },
+  "post": {
+    "root": "/Users/chenzhenbo/Work/TriviumCode",
+    "sha": "03a857ce824373e8",
+    "exec": "435f76db9de20dcb"
+  },
+  "hard_assertions_failed": [],
+  "table": [
+    {
+      "id": "Z1",
+      "pre": "0 ｜ 无 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI — ｜ 9 ms ｜ 再拿锁 拿到",
+      "post": "69 ｜ 无 ｜ running ｜ 锁在 ｜ running ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI — ｜ 9 ms ｜ 再拿锁 抛 70"
+    },
+    {
+      "id": "G1",
+      "pre": "0 ｜ SIGTERM→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI — ｜ 9 ms ｜ 再拿锁 拿到",
+      "post": "0 ｜ SIGTERM→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体不在 ｜ cancelled/cancelled ｜ worker 不在 ｜ CLI — ｜ 3098 ms ｜ 再拿锁 拿到"
+    },
+    {
+      "id": "G2",
+      "pre": "0 ｜ SIGTERM→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI 在 ｜ 10 ms ｜ 再拿锁 拿到",
+      "post": "69 ｜ SIGTERM→组 ｜ running ｜ 锁在 ｜ running ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI 不在 ｜ 5154 ms ｜ 再拿锁 抛 70"
+    },
+    {
+      "id": "G2-timeout",
+      "pre": "0 ｜ SIGTERM→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI 在 ｜ 20057 ms ｜ 再拿锁 拿到",
+      "post": "69 ｜ SIGTERM→组 ｜ running ｜ 锁在 ｜ running ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI 不在 ｜ 20112 ms ｜ 再拿锁 抛 70"
+    },
+    {
+      "id": "G3",
+      "pre": "0 ｜ SIGTERM→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体不在 ｜ cancelled/cancelled ｜ worker 不在 ｜ CLI — ｜ 54 ms ｜ 再拿锁 拿到",
+      "post": "0 ｜ SIGTERM→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体不在 ｜ cancelled/cancelled ｜ worker 不在 ｜ CLI — ｜ 291 ms ｜ 再拿锁 拿到"
+    },
+    {
+      "id": "K1",
+      "pre": "0 ｜ SIGTERM→组、SIGKILL→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI 不在 ｜ 5195 ms ｜ 再拿锁 拿到",
+      "post": "69 ｜ SIGTERM→组、SIGKILL→组 ｜ running ｜ 锁在 ｜ running ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI 不在 ｜ 10362 ms ｜ 再拿锁 抛 70"
+    },
+    {
+      "id": "K4",
+      "pre": "0 ｜ SIGTERM→组、SIGKILL→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI 不在 ｜ 5156 ms ｜ 再拿锁 拿到",
+      "post": "69 ｜ SIGTERM→组、SIGKILL→组 ｜ running ｜ 锁在 ｜ running ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI 不在 ｜ 10075 ms ｜ 再拿锁 抛 70"
+    },
+    {
+      "id": "K4-timeout",
+      "pre": "0 ｜ SIGTERM→组、SIGKILL→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI 不在 ｜ 25122 ms ｜ 再拿锁 拿到",
+      "post": "69 ｜ SIGTERM→组、SIGKILL→组 ｜ running ｜ 锁在 ｜ running ｜ 载体在 ｜ running/running ｜ worker 在 ｜ CLI 不在 ｜ 25086 ms ｜ 再拿锁 抛 70"
+    },
+    {
+      "id": "K2",
+      "pre": "0 ｜ SIGTERM→组、SIGKILL→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体不在 ｜ cancelled/cancelled ｜ worker 不在 ｜ CLI — ｜ 5061 ms ｜ 再拿锁 拿到",
+      "post": "0 ｜ SIGTERM→组、SIGKILL→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体不在 ｜ cancelled/cancelled ｜ worker 不在 ｜ CLI — ｜ 5294 ms ｜ 再拿锁 拿到"
+    },
+    {
+      "id": "C0",
+      "pre": "0 ｜ SIGTERM→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体不在 ｜ cancelled/cancelled ｜ worker 不在 ｜ CLI — ｜ 134 ms ｜ 再拿锁 拿到",
+      "post": "0 ｜ SIGTERM→组 ｜ cancelled ｜ 锁不在 ｜ idle ｜ 载体不在 ｜ cancelled/cancelled ｜ worker 不在 ｜ CLI — ｜ 286 ms ｜ 再拿锁 拿到"
+    }
+  ]
+}
