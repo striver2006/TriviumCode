@@ -1,0 +1,73 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "D1 修法方向正确且证据链扎实：judgeStale 把「活着而取不到启动时刻」从「判复用」改为「判不了」（`!live.sameProcess && live.startedAt !== null`），我沿 processMatchesRecord / processAlive 两条分支核过 startedAt 的取值形状（不在、期望为假值、canonical/legacy 两形态），fall-through 语义在各格都成立，真复用（U1e）与年龄/终态判据（U1c/d）不放过；跨进程 70 的出口与 fail-open 侧（EV-175）的分工是显式登记过的。三条意见都在我镜头内：①ps-stub 以合并后的子进程 env.TZ==='UTC0' 区分形态，宿主恰以 TZ=UTC0 运行测试时 U1b 会以「桩未生效」的误导文案假红；②满载 ps 坏掉时 70 把人导向 --cancel，而同一 ps 条件下 --cancel 主路径恰好落入「已不存在、只清锁不发信号」的 fail-open 格——按出口操作会放出一个脱锁活 worker 并允许同主题再 --start 双跑，这层连锁 EV-175 的正文没有写全；③U2 超时后 8 个后台写者的告警可能污染后续用例的 stderr 收集。均 minor/nit，不阻塞。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "test/helpers/ps-stub.ts:26-35（stubPsFailure 的形态判别）",
+      "problem": "桩用 `opts?.env?.TZ === 'UTC0'` 区分规范化/缺省形态，但 `run()` 恒以 `childEnv = { ...process.env }` 合并后传给 spawn（exec.ts 的 run 在 ~194-202 行），桩看到的是**生效环境**而不是「processStartTime 显式传入的那一份 env」。测试进程若恰好运行在 TZ=UTC0（服务器上常见的时区写法），缺省形态的 ps 调用会被误判成规范化形态：`stubPsFailure('legacy')` 拦不住缺省取值，U1b 的桩自证 `psStubWorks('legacy')` 返回「桩未生效：Node … 未把 spawn 的改动同步进具名导入」——这是一条**失实的诊断**（桩没坏，是判别式与宿主时区撞车），会把后来的人引向排查 syncBuiltinESMExports 的歧路；`stubPsFailure('canonical')` 一侧则会把 U2 里 acquireLock 每次尝试的缺省自取值一并拦掉，锁记录的 `pid_started_at` 意外变 null，用例语义漂移。",
+      "evidence": "读了 test/helpers/ps-stub.ts（判别式与 psStubWorks 文案）、src/trivium/util/exec.ts 的 run()（childEnv 合并 process.env 后恒传入 spawnOpts）与 processStartTime（缺省形态不传 env、规范化形态传 {LC_ALL:'C',TZ:'UTC0'}）、test/unit/lock.test.ts U1b/U2。机制推断明确；node18/22.txt 读数是在本机时区下取得的，覆盖不到 TZ=UTC0 形态。",
+      "suggestion": "给桩补一道环境前提：判别前先看 `process.env.TZ === 'UTC0'`，命中时让用例以明确文案判红（或跳过并说明成因），而不是复用「未同步具名导入」的诊断；或让 processStartTime 以显式 opts 的一个非 env 标记（如传给桩可识别的第三参数形态）区分取法。方向即可，不必动盘上契约。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/lock.ts:400-410（acquireLock 抛 70 的正文）与 doc/08_project/BACKLOG.md EV-175 行",
+      "problem": "EV-153 把等待者一侧改 fail-closed 后，「持有者活着但 ps 取不到启动时刻」的**唯一出口**变成 70 正文指向的 `trivium review --cancel`。但在同一 ps 故障条件下，`cancelRun` 主路径（run-protocol.ts:1776 起）用 `live.alive && live.sameProcess` 准入发信号，取不到 ⇒ sameProcess false ⇒ 走 :1802「工作进程已不存在，仅做状态与锁的清理」——不杀 worker、却把运行锁清掉：活 worker 脱锁继续跑，同主题的下一次 `--start` 此刻能拿到锁，**双流水线并发**由此打开。这正是 EV-153 要关死的「双持有丢更新」的跨进程放大版，只是入口从 acquireLock 换到了 --cancel。EV-175 登记了「--cancel 只清不杀」，但没写这步清理会释放活锁、进而允许再 --start 双跑的连锁；而 70 的正文把人精确地导向这一格。",
+      "evidence": "读了 src/trivium/lock.ts 的 acquireLock（70 正文「若确认该运行已卡死，可用 --cancel 取消」）、src/trivium/run-protocol.ts:1770-1802（cancelRun 主路径的 `alive && sameProcess` 准入与「已不存在，仅做状态与锁的清理」分支）、BACKLOG 与新 LLD 的 EV-175 行、设计 v1.3.65 变更记录（「耗满预算即 70」）。",
+      "suggestion": "两个轻量方向任选其一（不要求本版实施）：①在 EV-175 的影响列补一句「满载 ps 坏时它是 70 出口指向的路径，命中即活 worker 脱锁、同主题可双跑」，把连锁写进登记面；②当 judgeStale 因「判不了」耗满预算抛 70 时，正文注明「本次取不到持有者启动时刻，持有者可能仍活着——请先用 ps 核对再 --cancel」，避免把人导向只清不杀的分支。①只动文档，代价最小。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/lock.test.ts（U2 的 within(60s) 与 finally 复原顺序）",
+      "problem": "U2 的 `within` 超时只判红、不中止底层的 8 个 `setGate`；finally 里 restoreFs/stub.restore 之后，这些后台写者仍可能继续运行若干秒，其间经 acquireLock 打的「回收主题…」告警写进的是**复原后的真 stderr**。同文件后续用例（尤其 U3）用 withStderr 收集告警并断言「不得打回收告警」，一旦 U2 先超时，U3 可能跟着假红，把一次故障级联成两次、且文案指向错误的用例。",
+      "evidence": "读了 test/unit/lock.test.ts 的 within/U2/U3 与 withStderr 实现、src/trivium/util/log.ts 的 warn（直接写 process.stderr）。仅在 U2 已经失败时可达，概率低，但级联误诊会浪费下一次排障。",
+      "suggestion": "让 within 超时路径能把「泄漏的后台写者」告知后续（如超时后在 U2 内 await 到 allSettled 全部落定再复原，或复原前等一小段静默期），或至少接受现状并在 U3 的告警断言里排除来自已失败用例的串扰。纯改进项。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "D1 判据本身正确：`live.startedAt !== null` 在 canonical 分支（processMatchesRecord 取不到给 null）与 legacy 分支（processAlive 取不到给 null、期望假值时 sameProcess 恒真不误伤）两侧语义都对得上，fall-through 后的终态/年龄判据次序与设计 §12.6 新条目逐句一致；U1a-U1e、U2、U3 把这些格都钉住了。",
+    "证据链是我近期见过的读数里较完整的一档：①②③④四种可能逐条判清、新旧构建对照、变异 M1 红集含 5 条新用例、跨 Node 18/22/25 读数、跨进程 50/50、trees.md 给出可复现构建树与哈希。",
+    "「诚实保留」做得干净：workerGoneForCancel 只改注释写明与 judgeStale 的分叉方向；同根 fail-open 集中登 EV-175 并在 LLD 已知缺口表、设计 :1485 段三处交叉引用，没有装作问题已全关。",
+    "文档同步核对无误：LLD 行数 522 与 `wc -l src/trivium/lock.ts` 实值一致；退出码 70、锁文件格式、判据面确实未扩改。"
+  ],
+  "not_covered": [
+    "未重跑 `npm run check` 与变异套件（沙箱只读），check-1/2、mutation-output、node18/22 读数按盘上文件采信。",
+    "未逐一复核 EV-175 消费方清单的完备性（status.ts 的 interpretStatus 情形 C、retention.ts 的整删准入只经 grep 见到调用行，未读全函数体推演各格的「判不了」处置）。",
+    "证据目录下 20 余份 load-*/smoke-*/acceptance-* JSON 只抽查了 trees.md、check-1/2、node18/22、doctor-selftest 与文末片段，未逐份与报告 §3 数字对账。",
+    "真实厂商 CLI 与 Linux 平台形态未覆盖（项目仅 macOS；processStartTime 的 lstart 形态差异不在本次变更面内）。",
+    "未读计划 r2 原文与另两侧审查产出（禁读清单），对「偏离 r2 与否」的判断仅基于 diff 内文档自述。"
+  ],
+  "consulted": [
+    "AGENTS.md",
+    ".reviews/并发写闸门偶发红/code/_meta/changes-20260930T092340Z.diff",
+    "src/trivium/lock.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/util/log.ts",
+    "test/unit/lock.test.ts",
+    "test/unit/state.test.ts",
+    "test/helpers/ps-stub.ts",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-09-30_concurrent_setgate_flake.md",
+    "doc/05_testing/evidence/concurrent-setgate-flake-20260930/check-1.txt",
+    "doc/05_testing/evidence/concurrent-setgate-flake-20260930/check-2.txt",
+    "doc/05_testing/evidence/concurrent-setgate-flake-20260930/node18.txt",
+    "doc/05_testing/evidence/concurrent-setgate-flake-20260930/node22.txt",
+    "doc/05_testing/evidence/concurrent-setgate-flake-20260930/trees.md",
+    "doc/05_testing/evidence/concurrent-setgate-flake-20260930/doctor-selftest.txt"
+  ]
+}

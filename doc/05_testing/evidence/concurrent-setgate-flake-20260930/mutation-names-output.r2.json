@@ -1,0 +1,54 @@
+[
+  {
+    "id": "M1",
+    "desc": "D1 撤销：取不到启动时刻也判 pid_reused ⇒ U1a / U1b / U1c·d / U2 / U3",
+    "suite": "dist/test/test/unit/lock.test.js",
+    "fail": 5,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-153 U1a：活着的本进程锁（带规范化启动时刻），规范化 ps 取不到 ⇒ 不判 pid_reused（判不了不是不符）",
+      "EV-153 U1b：旧版记录（只有 pid_started_at）走缺省形态，缺省 ps 取不到 ⇒ 不判 pid_reused",
+      "EV-153 U1c / U1d：取不到启动时刻时其余判据照常——持有超时的短临界区锁与运行已终态仍判 heartbeat_dead",
+      "EV-153 U2：同进程并发 8 个 setGate，规范化 ps 全部取不到、临界区放慢——不回收彼此的活锁、8 条全保留",
+      "EV-153 U3：跨进程——活着的别的进程持运行锁，规范化 ps 取不到 ⇒ 不回收、抛 70、锁文件原样"
+    ],
+    "firstLines": [],
+    "elapsed_s": 8
+  },
+  {
+    "id": "M2",
+    "desc": "D1 条件取反：只有取不到才判复用 ⇒ U1a / U1b / U1c·d / U2 / U3（取不到即回收）与 U1e、判据 2（真复用不再判）",
+    "suite": "dist/test/test/unit/lock.test.js",
+    "fail": 8,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "判据 2：PID 存在但启动时刻不符 → pid_reused（治 macOS PID 复用）",
+      "EV-161 U5：小阈值下其余判据不变（pid_gone / pid_reused / runTerminal / unparsable）",
+      "EV-153 U1a：活着的本进程锁（带规范化启动时刻），规范化 ps 取不到 ⇒ 不判 pid_reused（判不了不是不符）",
+      "EV-153 U1b：旧版记录（只有 pid_started_at）走缺省形态，缺省 ps 取不到 ⇒ 不判 pid_reused",
+      "EV-153 U1c / U1d：取不到启动时刻时其余判据照常——持有超时的短临界区锁与运行已终态仍判 heartbeat_dead",
+      "EV-153 U1e：ps 正常而规范化启动时刻不符 ⇒ 仍判 pid_reused（D1 不放过真复用）",
+      "EV-153 U2：同进程并发 8 个 setGate，规范化 ps 全部取不到、临界区放慢——不回收彼此的活锁、8 条全保留",
+      "EV-153 U3：跨进程——活着的别的进程持运行锁，规范化 ps 取不到 ⇒ 不回收、抛 70、锁文件原样"
+    ],
+    "firstLines": [],
+    "elapsed_s": 8
+  },
+  {
+    "id": "M3",
+    "desc": "pid_reused 判据整行删掉 ⇒ U1e、判据 2、EV-161 U5、EV-158 相关格",
+    "suite": "dist/test/test/unit/lock.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "判据 2：PID 存在但启动时刻不符 → pid_reused（治 macOS PID 复用）",
+      "EV-161 U5：小阈值下其余判据不变（pid_gone / pid_reused / runTerminal / unparsable）",
+      "EV-153 U1e：ps 正常而规范化启动时刻不符 ⇒ 仍判 pid_reused（D1 不放过真复用）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 8
+  }
+]

@@ -11,6 +11,9 @@ import {
 import { WORKER_HEARTBEAT_MS } from '../../src/trivium/status.js';
 import { processStartTime } from '../../src/trivium/util/exec.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
+import { spawn } from 'node:child_process';
+import { readState, setGate } from '../../src/trivium/state.js';
+import { psStubWorks, stubPsFailure } from '../helpers/ps-stub.js';
 
 async function tmpTrivium(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'trivium-lock-'));
@@ -972,4 +975,177 @@ test('阻断计数并发自增不丢计数', async () => {
   await Promise.all(Array.from({ length: 8 }, () => bumpStopBlockCount(dir, TOPIC, 'bug', 100)));
   const final = await bumpStopBlockCount(dir, TOPIC, 'bug', 100);
   assert.equal(final.count, 9, `8 次并发 + 1 次应为 9，实际 ${final.count}`);
+});
+
+// ── 并发写闸门偶发红（EV-153，计划 r2 §3 D3）：持有者活着而取不到它的启动时刻，不判 pid_reused ──
+//
+// `ps` 派生失败由 test/helpers/ps-stub.ts 的桩制造（具名导入经 syncBuiltinESMExports 同步，还原时再同步一次）。
+// 每格装桩后先自证桩已生效（取到启动时刻即判红），末尾再断言确有调用被拦——桩失效时这些用例是红，不是空转绿。
+
+/** 带超时等待：变异让等待的事发生不了时用例要红而不是挂死（变异装置不给套件加超时） */
+async function within<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label}：${ms} ms 内未完成`)), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 本进程的一把锁记录，两种启动时刻都是装桩前真实取到的 */
+async function selfLock(over: Partial<LockContent> = {}): Promise<LockContent> {
+  return {
+    topic: TOPIC, stage: 'plan', run_id: 'R-SELF', pid: process.pid,
+    pid_started_at: await processStartTime(process.pid),
+    pid_started_at_canonical: await processStartTime(process.pid, { canonical: true }),
+    acquired_at: new Date().toISOString(), kind: 'run',
+    ...over,
+  };
+}
+
+test('EV-153 U1a：活着的本进程锁（带规范化启动时刻），规范化 ps 取不到 ⇒ 不判 pid_reused（判不了不是不符）', async () => {
+  const lock = await selfLock();
+  assert.ok(lock.pid_started_at_canonical, '前提：装桩前取到了规范化启动时刻');
+  const stub = stubPsFailure('canonical');
+  try {
+    const broken = await psStubWorks('canonical');
+    assert.equal(broken, null, broken ?? '');
+    assert.equal(await judgeStale(lock, { heartbeatStaleMs: STALE_MS }), null);
+    assert.ok(stub.blocked > 1, `判定时的规范化 ps 应被拦下，实际拦下 ${stub.blocked} 次`);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('EV-153 U1b：旧版记录（只有 pid_started_at）走缺省形态，缺省 ps 取不到 ⇒ 不判 pid_reused', async () => {
+  const { pid_started_at_canonical: _c, ...legacy } = await selfLock();
+  void _c;
+  assert.ok(legacy.pid_started_at, '前提：装桩前取到了缺省形态启动时刻（期望值非空，才走「比对」而不是「期望为空即相符」）');
+  const stub = stubPsFailure('legacy');
+  try {
+    const broken = await psStubWorks('legacy');
+    assert.equal(broken, null, broken ?? '');
+    assert.equal(await judgeStale(legacy as LockContent, { heartbeatStaleMs: STALE_MS }), null);
+    assert.ok(stub.blocked > 1, `判定时的缺省形态 ps 应被拦下，实际拦下 ${stub.blocked} 次`);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('EV-153 U1c / U1d：取不到启动时刻时其余判据照常——持有超时的短临界区锁与运行已终态仍判 heartbeat_dead', async () => {
+  const hold = criticalHoldTimeoutMs(STALE_MS);
+  const old = await selfLock({ kind: 'critical', acquired_at: new Date(Date.now() - hold - 5_000).toISOString() });
+  const fresh = await selfLock();
+  const stub = stubPsFailure('canonical');
+  try {
+    const broken = await psStubWorks('canonical');
+    assert.equal(broken, null, broken ?? '');
+    assert.equal(await judgeStale(old, { heartbeatStaleMs: STALE_MS }), 'heartbeat_dead', 'U1c：年龄判据不因 ps 坏掉而失效');
+    assert.equal(await judgeStale(fresh, { heartbeatStaleMs: STALE_MS, runTerminal: true }), 'heartbeat_dead', 'U1d：终态判据照常');
+  } finally {
+    stub.restore();
+  }
+});
+
+test('EV-153 U1e：ps 正常而规范化启动时刻不符 ⇒ 仍判 pid_reused（D1 不放过真复用）', async () => {
+  const lock = await selfLock({ pid_started_at_canonical: 'Thu Jan  1 00:00:00 1970' });
+  assert.equal(await judgeStale(lock, { heartbeatStaleMs: STALE_MS }), 'pid_reused');
+});
+
+test('EV-153 U2：同进程并发 8 个 setGate，规范化 ps 全部取不到、临界区放慢——不回收彼此的活锁、8 条全保留', async () => {
+  const d = await tmpTrivium();
+  // 先正常写一次：把本进程的规范化启动时刻缓存暖好，锁记录里就带着它（判定时只有规范化那一次取值失败——④的最小前提）
+  await setGate({ triviumDir: d, topic: 'WARM', stage: 'plan', state: 'awaiting_approval', heartbeatStaleMs: STALE_MS });
+  const gatesFile = path.join(d, 'state.json');
+  // 临界区放慢：读完状态文件后等 30 ms，持有者慢过等待者的判定，回收才会落在活锁上（与探针 --hold-ms 同法）
+  const restoreFs = stubFs('readFile', (orig) => async (...a) => {
+    const r = await orig(...a);
+    if (a[0] === gatesFile) await new Promise((res) => setTimeout(res, 30));
+    return r;
+  });
+  const stub = stubPsFailure('canonical');
+  try {
+    const broken = await psStubWorks('canonical');
+    assert.equal(broken, null, broken ?? '');
+    const r = await withStderr(async () => {
+      const all = Promise.allSettled(
+        Array.from({ length: 8 }, (_, i) =>
+          setGate({ triviumDir: d, topic: `T${i}`, stage: 'plan', state: 'awaiting_approval', heartbeatStaleMs: STALE_MS }),
+        ),
+      );
+      try {
+        return await within(all, 60_000, '8 个并发 setGate');
+      } finally {
+        // 超时判红之后写者仍在跑：等它们落定再让 withStderr 复原 stderr、再复原两套桩，免得告警串进后续用例（代码双审 CODEX-03）。
+        // setGate 受重试预算约束必然结束，上界只防万一
+        await within(all, 120_000, '后台写者落定').catch(() => undefined);
+      }
+    });
+    assert.equal(r.error, undefined, String(r.error));
+    const rejected = (r.value ?? []).flatMap((x, i) =>
+      x.status === 'rejected' ? [`T${i}：${String((x.reason as Error)?.message ?? x.reason)}`] : [],
+    );
+    const keys = Object.keys((await readState(d)).gates).sort();
+    const reclaims = r.err.split('\n').filter((l) => l.includes('回收主题'));
+    const detail = `\n拒绝：${rejected.join(' / ') || '（无）'}\n闸门（${keys.length}）：${keys.join('、')}\n回收告警：${reclaims.join(' / ') || '（无）'}`;
+    assert.equal(reclaims.length, 0, `取不到启动时刻不得把本进程的活锁当遗留锁回收${detail}`);
+    assert.equal(rejected.length, 0, `全部写者应兑现${detail}`);
+    assert.equal(keys.length, 9, `预热 1 条 + 并发 8 条应全部保留${detail}`);
+    assert.ok(stub.blocked > 1, `等待者判定时的规范化 ps 应被拦下，实际拦下 ${stub.blocked} 次`);
+  } finally {
+    restoreFs();
+    stub.restore();
+  }
+});
+
+test('EV-153 U3：跨进程——活着的别的进程持运行锁，规范化 ps 取不到 ⇒ 不回收、抛 70、锁文件原样', async () => {
+  const dir = await tmpTrivium();
+  // 常驻子进程自成一组（argv 带标记），收尾按进程组结束
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1e6)', 'trivium-ev153-u3-holder'], {
+    detached: true, stdio: 'ignore',
+  });
+  const pid = child.pid!;
+  const exited = new Promise((res) => child.once('exit', res));
+  const stub: { s: ReturnType<typeof stubPsFailure> | null } = { s: null };
+  try {
+    const legacy = await processStartTime(pid);
+    const canonical = await processStartTime(pid, { canonical: true });
+    assert.ok(legacy && canonical, '前提：装桩前取到了子进程的两种启动时刻');
+    const content: LockContent = {
+      topic: TOPIC, stage: 'code', run_id: 'R-U3-LIVE', pid,
+      pid_started_at: legacy, pid_started_at_canonical: canonical,
+      acquired_at: new Date().toISOString(), kind: 'run',
+    };
+    const p = lockFile(dir);
+    await fs.mkdir(path.dirname(p), { recursive: true });
+    await fs.writeFile(p, JSON.stringify(content, null, 2) + '\n');
+    const before = { text: await fs.readFile(p, 'utf8'), id: await identityOf(p) };
+
+    stub.s = stubPsFailure('canonical');
+    const broken = await psStubWorks('canonical');
+    assert.equal(broken, null, broken ?? '');
+    const r = await withStderr(() =>
+      within(acquireLock({ triviumDir: dir, topic: TOPIC, kind: 'run', heartbeatStaleMs: STALE_MS, retries: 0 }), 30_000, 'acquireLock'),
+    );
+    if (r.value) await r.value.release();
+    assert.equal(r.value, undefined, `不得拿到别人的活锁（回收告警：${r.err.trim() || '无'}）`);
+    assert.equal((r.error as { code?: unknown })?.code, EXIT.LOCKED, `应抛 70，实际 ${String(r.error)}`);
+    assert.doesNotMatch(r.err, /回收主题/, '不得打回收告警');
+    assert.equal(await fs.readFile(p, 'utf8'), before.text, '锁文件内容原样');
+    assert.equal(await identityOf(p), before.id, '锁文件身份原样（没被挪走再放回）');
+    assert.ok(stub.s.blocked > 1, `判定时的规范化 ps 应被拦下，实际拦下 ${stub.s.blocked} 次`);
+  } finally {
+    stub.s?.restore();
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {
+      // 已不在
+    }
+    await within(exited, 10_000, '子进程退出').catch(() => undefined);
+  }
 });

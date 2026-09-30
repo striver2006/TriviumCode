@@ -158,6 +158,12 @@ export function criticalHoldTimeoutMs(heartbeatStaleMs: number): number {
 /**
  * 判定既有锁是否为遗留锁。三条判据**取任一**成立即可回收。
  *
+ * `pid_reused` 只在**取到了**持有者的启动时刻且与记录不符时成立（EV-153，并发写闸门偶发红计划 r2 D1）。持有者活着而 `ps` 取不到
+ * 它的启动时刻（满载下派生失败、10 s 超时）是「判不了」：原先读成「不是同一进程」，会把一把活锁当遗留锁回收——同进程的两个
+ * `setGate` 由此同时读改写 `state.json` 而丢更新，跨进程则是 `--start` 回收活 worker 的运行锁。现在往下走终态与年龄判据：
+ * 短临界区锁持有超时后仍判 `heartbeat_dead`；其余不回收，等待者按原预算重试，耗满即 70（本次调用等不到年龄兜底）。
+ * `processMatchesRecord` 的其余消费方对「取不到」的处置不变（同根的 fail-open 登记 BACKLOG EV-175）。
+ *
  * @param heartbeatStaleMs 调用方传入的 `heartbeat_stale_s × 1000`；对 `critical` 锁的年龄判据经 `criticalHoldTimeoutMs`
  *                         取 30 s 下限（EV-161），`run` 锁不走年龄判据。
  * @param runTerminal 该 `run_id` 是否已被标为终态（由调用方查 `run.json` 得出）。
@@ -176,8 +182,9 @@ export async function judgeStale(
     legacy: lock.pid_started_at,
   });
   if (!live.alive) return 'pid_gone';
-  // PID 存在但启动时刻不符 → 是被复用的无关进程，不是原持有者
-  if (!live.sameProcess) return 'pid_reused';
+  // PID 存在、**取到了**启动时刻且不符 → 是被复用的无关进程，不是原持有者。
+  // 取不到（`ps` 派生失败或超时，startedAt 为 null）是「判不了」，不是「不符」：往下走终态与年龄判据（EV-153 D1）
+  if (!live.sameProcess && live.startedAt !== null) return 'pid_reused';
 
   // 进程确实还活着：只有在「运行已终态」时才认为锁该收
   if (opts.runTerminal === true) return 'heartbeat_dead';

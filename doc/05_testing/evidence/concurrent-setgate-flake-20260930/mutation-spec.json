@@ -1,0 +1,34 @@
+{
+  "targets": [
+    "src/trivium/lock.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/lock.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "D1 撤销：取不到启动时刻也判 pid_reused ⇒ U1a / U1b / U1c·d / U2 / U3",
+      "file": "src/trivium/lock.ts",
+      "find": "  if (!live.sameProcess && live.startedAt !== null) return 'pid_reused';\n",
+      "replace": "  if (!live.sameProcess) return 'pid_reused';\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "D1 条件取反：只有取不到才判复用 ⇒ U1a / U1b / U1c·d / U2 / U3（取不到即回收）与 U1e、判据 2（真复用不再判）",
+      "file": "src/trivium/lock.ts",
+      "find": "  if (!live.sameProcess && live.startedAt !== null) return 'pid_reused';\n",
+      "replace": "  if (!live.sameProcess && live.startedAt === null) return 'pid_reused';\n",
+      "expect": "dist/test/test/unit/lock.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "pid_reused 判据整行删掉 ⇒ U1e、判据 2、EV-161 U5、EV-158 相关格",
+      "file": "src/trivium/lock.ts",
+      "find": "  if (!live.sameProcess && live.startedAt !== null) return 'pid_reused';\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/lock.test.js"
+    }
+  ]
+}

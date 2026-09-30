@@ -1,0 +1,13 @@
+--- pre-7c6959e/src/trivium/lock.ts
++++ proto-f2/src/trivium/lock.ts
+@@ -176,8 +176,8 @@
+     legacy: lock.pid_started_at,
+   });
+   if (!live.alive) return 'pid_gone';
+-  // PID 存在但启动时刻不符 → 是被复用的无关进程，不是原持有者
+-  if (!live.sameProcess) return 'pid_reused';
++  // PID 存在但启动时刻不符 → 是被复用的无关进程，不是原持有者。取不到启动时刻（ps 失败）不算不符（原型）
++  if (!live.sameProcess && live.startedAt !== null) return 'pid_reused';
+ 
+   // 进程确实还活着：只有在「运行已终态」时才认为锁该收
+   if (opts.runTerminal === true) return 'heartbeat_dead';

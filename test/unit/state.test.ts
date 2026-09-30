@@ -93,16 +93,56 @@ test('state.json 存在但坏了 → 抛 StateCorruptError（退出码 2），�
 
 test('并发 setGate 不丢更新（经短临界区串行化，GLM-08）', async () => {
   const d = await tmp();
-  await Promise.all(
-    Array.from({ length: 8 }, (_, i) =>
-      setGate({
-        triviumDir: d, topic: `T${i}`, stage: 'plan',
-        state: 'awaiting_approval', heartbeatStaleMs: STALE,
-      }),
-    ),
-  );
-  const s = await readState(d);
-  assert.equal(Object.keys(s.gates).length, 8, `8 个并发写入应全部保留，实际 ${Object.keys(s.gates).length}`);
+  const N = 8;
+  const t0 = Date.now();
+  /*
+   * EV-153（并发写闸门偶发红计划 r2 §3 D2）：失败文案带上每个写者的结局、最终闸门集合与回收告警。
+   * 同进程的持有者永远是活着的本进程、内容完整：pid_reused / unparsable / pid_gone 回收告警任何一条都说明判定出错
+   * （EV-173 的同进程形态，或取不到启动时刻被判复用）——它们正是两个写者同时读改写的入口。年龄回收（heartbeat_dead）
+   * 在休眠唤醒等情形下是允许的，不进断言，只在文案里单列。
+   */
+  const reclaims: string[] = [];
+  const origWrite = process.stderr.write.bind(process.stderr);
+  process.stderr.write = ((chunk: string | Uint8Array, ...rest: unknown[]) => {
+    const s = typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+    for (const line of s.split('\n')) if (line.includes('回收主题')) reclaims.push(line.trim());
+    return (origWrite as (...a: unknown[]) => boolean)(chunk, ...rest);
+  }) as typeof process.stderr.write;
+  let settled: PromiseSettledResult<number>[];
+  try {
+    settled = await Promise.allSettled(
+      Array.from({ length: N }, (_, i) =>
+        setGate({
+          triviumDir: d, topic: `T${i}`, stage: 'plan',
+          state: 'awaiting_approval', heartbeatStaleMs: STALE,
+        }).then(() => Date.now() - t0),
+      ),
+    );
+  } finally {
+    process.stderr.write = origWrite;
+  }
+  const keys = Object.keys((await readState(d)).gates).sort();
+  const expected = Array.from({ length: N }, (_, i) => `T${i}/plan`).sort();
+  const reasonOf = (line: string): string => line.match(/原因 (\w+)/)?.[1] ?? '其他';
+  const misjudged = reclaims.filter((l) => ['pid_reused', 'unparsable', 'pid_gone'].includes(reasonOf(l)));
+  const aged = reclaims.filter((l) => reasonOf(l) === 'heartbeat_dead');
+  const detail =
+    '\n写者结局：\n' +
+    settled
+      .map((r, i) => {
+        if (r.status === 'fulfilled') return `  T${i}：兑现（${r.value} ms）`;
+        const e = r.reason as { code?: unknown; message?: unknown };
+        return `  T${i}：拒绝（code ${String(e?.code ?? '?')}）${String(e?.message ?? r.reason)}`;
+      })
+      .join('\n') +
+    `\n最终闸门（${keys.length}）：${keys.join('、') || '（空）'}` +
+    `\n判定出错的回收告警（${misjudged.length}）：${misjudged.join(' / ') || '（无）'}` +
+    `\n年龄回收告警（${aged.length}，允许）：${aged.join(' / ') || '（无）'}` +
+    `\n其余回收告警：${reclaims.filter((l) => !misjudged.includes(l) && !aged.includes(l)).join(' / ') || '（无）'}` +
+    `\n总用时 ${Date.now() - t0} ms`;
+  assert.ok(settled.every((r) => r.status === 'fulfilled'), `有写者失败${detail}`);
+  assert.deepEqual(keys, expected, `${N} 个并发写入应全部保留，实际 ${keys.length}${detail}`);
+  assert.equal(misjudged.length, 0, `同进程写者不得把彼此的活锁当遗留锁回收${detail}`);
 });
 
 // ── shouldLockWrites：设计 §8.4 第 3 层 / 审核意见 RV-05 ──

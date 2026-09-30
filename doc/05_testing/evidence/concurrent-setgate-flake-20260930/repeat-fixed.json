@@ -1,0 +1,148 @@
+{
+  "root": "/Users/chenzhenbo/Work/TriviumCode",
+  "file": "dist/test/test/unit/state.test.js",
+  "node": "v25.2.1",
+  "at": "2026-09-30T09:09:29.543Z",
+  "parallel": 8,
+  "runs_per_lane": 30,
+  "with_suite": true,
+  "total_runs": 240,
+  "red_runs": 0,
+  "elapsed_s": 37,
+  "suite_runs": [
+    {
+      "code": 0,
+      "s": 268,
+      "tests": "2331",
+      "fail": "0"
+    }
+  ],
+  "per_test": {
+    "设置与读取闸门": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 145
+    },
+    "会话 id 一旦记下不因后续状态变化而丢（写锁作用域判定要用它）": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 117
+    },
+    "不同主题与阶段互不干扰": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 78
+    },
+    "listOpenGates 只列未关闭的闸门": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 148
+    },
+    "state.json 不存在 → 空状态（还没跑过，正常）": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 8
+    },
+    "state.json 存在但坏了 → 抛 StateCorruptError（退出码 2），不得静默当成空": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 21
+    },
+    "并发 setGate 不丢更新（经短临界区串行化，GLM-08）": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 891
+    },
+    "本会话的 awaiting_approval 闸门 → 加锁": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 1
+    },
+    "运行中的闸门也加锁（就地模式下审查员正在读真实工作树）": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 0
+    },
+    "EV-129：加锁的两支 reason 只陈述状态，不带「不得……」后果句（后果由调用方拼）": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 1
+    },
+    "其它会话的闸门 → 只提醒不加锁（RV-05：不锁死开发者的其它编辑）": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 0
+    },
+    "scope=global 时不论会话都加锁": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 0
+    },
+    "超过 TTL 的闸门 → 不加锁": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 1
+    },
+    "已审批/已拒绝/已放弃的闸门 → 不加锁（三种结论均解除写锁）": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 0
+    },
+    "review_done_awaiting_disposition 不加写锁（那是 hook-stop 的职责）": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 0
+    },
+    "闸门未记录会话 id 时按本会话处理，照样加锁": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 0
+    },
+    "hook 自己也拿不到会话 id（两边都是 null）时同样加锁": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 0
+    },
+    "无闸门 → 不加锁": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 0
+    },
+    "闸门时间戳损坏 → 不加锁（宁可放过也不误伤）": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 0
+    },
+    "expect.state 不匹配时不写入，并说明原因": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 46
+    },
+    "expect.runId 不匹配时不写入——新一轮的护栏不该被旧 run 清掉": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 54
+    },
+    "expect 匹配时正常写入": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 75
+    },
+    "闸门不存在时默认放行——首次置 running 的槽位本来就是空的": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 40
+    },
+    "比较与写入在同一把锁内：并发的条件迁移只会成功一个": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 151
+    },
+    "U1 releaseRunningGateEntry：只回收仍记着本 runId 且仍是 running 的闸门，槽位不存在时不造条目，自身不抛": {
+      "pass": 240,
+      "fail": 0,
+      "max_ms": 184
+    }
+  },
+  "failures": []
+}

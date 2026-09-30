@@ -754,7 +754,8 @@ export async function settleOrphanedStart(i: OrphanedStartInput): Promise<void> 
  * `--cancel` 宽限期内「工作进程已退出」的判据：不存活，**或不是同一进程**（EV-150，计划双审 r1 AGY-04，用户审批并入）。
  *
  * 此前只看存活：宽限期内 PID 若被复用，会把复用者当成 worker、升级 SIGKILL；而 `kill(-pid)` 在复用者不是组长时
- * ESRCH、退回 `kill(pid)`，信号就打到了无关进程。与 `workerConfirmedGone`、`judgeStale` 同一口径。
+ * ESRCH、退回 `kill(pid)`，信号就打到了无关进程。与 `workerConfirmedGone` 同一口径；`judgeStale` 自 EV-153 起对「取不到启动时刻」
+ * 不判不是同一进程（那里判错会删活锁），这里仍判已退出——宽限期内那是停止升级的保守方向（同根的 fail-open 登记 EV-175）。
  * 身份按 status.json 的记录比（`processMatchesRecord`，EV-158）：有规范化启动时刻只按它比，与主路径判存活那一处同一份记录。
  */
 export async function workerGoneForCancel(pid: number, rec: RecordedStart): Promise<boolean> {
