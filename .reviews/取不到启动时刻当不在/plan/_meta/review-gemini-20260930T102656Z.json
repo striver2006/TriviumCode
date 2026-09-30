@@ -1,0 +1,53 @@
+{
+  "agreed": [
+    "范围边界清晰：严格遵守不做盘上契约改动、不修改 sameProcess 既有含义、不并发并入外部事项的约束，专注解决 EV-175。",
+    "现状剖析深刻且实证充分：通过改前探针完整验证了 13 个调用点及间接连带面，彻底查清了 cancelRun 主路径活进程脱锁导致同主题双跑（K-main）的严重安全隐患，并准确认定 :524 情形 A 在生产形态下不传期望值的零影响事实。",
+    "D1 三态扩展方案契合向后兼容要求：采用可选字段 identity 承接三态，纯函数 recordIdentityOf 逻辑自洽，原五个字段逐字不变，确保 judgeStale 与 lostWorkerGone 等未修改模块行为零漂移。",
+    "D6 对 --cancel 退出码选用 69（EXIT.ENV）论证严密：清晰排除了 70（死循环）、73（wait 专属）、1（无区分度）等码，并配套规划了 PROTOCOL 退出码表与处理指引的同步。",
+    "验证与防退化方案极为扎实：覆盖纯函数真值表、8 组集成用例、跨进程验收夹具（X1~X4 完整咬住脱锁双跑反例）以及 8 个源码变异算子，可观测性和拦截力完备。"
+  ],
+  "consulted": [
+    ".reviews/取不到启动时刻当不在/plan/2026-09-30-取不到启动时刻当不在-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/evidence/unverifiable-start-20260930/probe-unverifiable.mjs",
+    "doc/05_testing/evidence/unverifiable-start-20260930/probe-pre-c4d082e.json",
+    "doc/05_testing/evidence/concurrent-setgate-flake-20260930/acceptance-xproc-psfail.mjs",
+    "src/trivium/util/exec.ts",
+    "src/trivium/status.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/util/log.ts",
+    "test/helpers/ps-stub.ts",
+    "test/unit/start-canonical.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "检查 plan §3 D5，拟定 workerStillAlive 改为「return a.identity !== 'different'」。同时查阅 plan §3 D1 与 src/trivium/retention.ts:102-104，RecordMatch 的 identity 被定义为可选属性（identity?: RecordIdentity）。若调用方传入未显式给出 identity 的桩或构造对象，当 a.alive 为 false 时，表达式 undefined !== 'different' 将意外求值为 true，导致死进程被当成「仍在」而跳过清理。",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §3 D5 (src/trivium/retention.ts:102)",
+      "problem": "workerStillAlive 的修法使用弱反向判断「!== 'different'」，在 identity 字段为可选的情况下存在防御性漏洞，未填 identity 的非存活对象会被意外判定为仍在。",
+      "severity": "nit",
+      "suggestion": "建议改为显式正向判定「a.identity === 'same' || a.identity === 'unverifiable'」，或者补充存活条件守卫「a.alive && a.identity !== 'different'」，保证在 identity 缺失时行为安全收敛。"
+    }
+  ],
+  "not_covered": [
+    "未在真实极端高负载环境（如系统进程表大量派生锁死）下实测 /bin/ps 瞬时派生失败的真实概率与超时表现。",
+    "未对计划 §4 R1（已发 SIGTERM 后的宽限期内 ps 损坏）展开更细粒度的并发竞态实验，遵循用户决策登记暂缓。",
+    "未在非 bash/zsh 的特殊 shell 环境下实测退出码 69 的外部脚本捕获与重试循环表现。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "实施计划针对 EV-175 识别出最危险的隐患——工作进程活着且 ps 取不到时刻时 cancelRun 将其误判为不存在、进而清空锁与状态引发同主题双跑（K-main）——给出了精准的 69 快速阻断与保护策略。三态方案在保证盘上契约与原字段逐字不变的前提下实现了各消费方的安全收敛，探针实证与验收设计极为扎实。仅有一处关于可选字段防御性判定的实现细节建议完善，整体准予通过。",
+  "verdict": "approve-with-nits"
+}

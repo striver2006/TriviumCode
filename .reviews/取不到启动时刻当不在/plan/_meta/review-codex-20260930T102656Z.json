@@ -1,0 +1,94 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "计划的事实基础扎实：我逐条核对了 §1.1/§1.2/§1.3 引用的 exec.ts、status.ts、retention.ts、run-protocol.ts、lock/cli/exit-codes 行号与语义，全部与 c4d082e 工作树一致；探针证据 JSON（14 格×双模式，selfCheck 全过）与文档引用（设计 :1485、LLD :630、MANUAL :615/:663、PROTOCOL 69 行、BACKLOG EV-175/EV-153）均属实。D1 三态的不变量（identity 'same' ⇔ sameProcess）经逐格推演确不改变 judgeStale / workerGoneForCancel / classifyLostCancel / lostWorkerGone 的输入。最值钱的提示：计划把「ps 瞬时失败」处置论证得很全，但对「ps 持续性故障」（沙箱/安全软件/长期满载）没有决策出口——改后 --cancel 会陷入 69「稍后重试」↔ --start 70 的闭环，唯一出路（终端确认活 worker、手工 kill 后再 --cancel 走 gone 格收尾）在计划与拟改的 MANUAL 文案里都没写。其余为探针形态覆盖、计数笔误一类的小项。整体方向、范围纪律与成本结构（全程零配额）我认可。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3 D6（69 的文案与论证）与 §6 MANUAL 行",
+      "problem": "D6 论证只覆盖了「瞬时取不到、稍后可恢复」的格：69 的出路是「稍后重试；一直取不到时先在终端核对 ps -p 〈pid〉 -o lstart=」。但 BACKLOG/设计登记的触发因（满载派生失败、10 s 超时）都可以是**持续性的**（受限 shell、安全软件拦派生、长期资源耗尽）。那种环境下改后序列是：--wait 耗满预算抛 70 → 70 正文指向 --cancel → --cancel 永远抛 69「稍后重试」→ 闭环。计划以「70 的正文指向 --cancel、再取 70 是闭环」为由否掉了 70，但 69+重试在持续故障下是同形闭环，且计划没有决策「环境不恢复时用户怎么办」——实际上存在一条手工出路（终端核对 worker 确在、手工 kill -TERM -〈pgid〉，再跑 --cancel 即走 alive=false 的 different/gone 格完成收尾），但这句话既不在 69 文案里，也不在 §6 拟改的 MANUAL 场景 4 里。",
+      "evidence": "读 doc/08_project/BACKLOG.md :273（EV-175：触发因含「满载下派生失败、10 s 超时」，且本机自然负载 0/24.5 万次说明命中即环境性持续状态）；src/trivium/lock.ts :415（70 的正文「可用 trivium review --cancel」）；src/trivium/run-protocol.ts :1683-1776（cancelRun 在 pid 判格之前无任何写副作用，改后从这里 throw 69 后确实无任何清理入口）；被审计划 §3 D6 的报错文案原文只给「核对」不给「处置」。",
+      "suggestion": "在 D6 或 §6 文档行加一个决策：69 文案（或 MANUAL 场景 4 的 69 说明）补一句持续取不到时的手工出路——终端确认该 pid 是仍活的工作进程后在终端结束它（按组），再跑 --cancel 即按「已不在」完成状态、锁与闸门的收尾；若不愿扩文案，就在 §4 把它作为已知残余登记一行。不改退出码、不改 70，范围不扩。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §2（探针机制）与 §5.2（X 格夹具）",
+      "problem": "两条真实触发通道中只实证了一条：ps-stub 与探针都模拟「改派生不存在的可执行文件 ⇒ 即刻 code≠0 ⇒ startedAt null」；BACKLOG 登记的第二通道「10 s 超时」没有任何格。结局形状确实同构（r.code !== 0 → null），但代价形状不同：超时通道下每个身份判定要停满 10 秒（processStartTime timeoutMs: 10_000，一次 --cancel/--wait 序列里有多次串行 ps 调用），满载环境里「重试稍后再失败」的用户体验是每轮 10～30 s 阻塞，这正是 §5.2 X 格想覆盖的真实环境形态，而 NODE_OPTIONS 预载桩同样只模拟派生失败。计划没有写明「超时形态与派生失败形态同结局、不单独实测」这一决策，报告里也没有预定的说明位。",
+      "evidence": "src/trivium/util/exec.ts :542-543（processStartTime 用 timeoutMs: 10_000，run 超时/派生失败都归 code≠0 → startedAt null）；test/helpers/ps-stub.ts 文件头注释（桩的机制=改派生 /nonexistent，模拟的是 EAGAIN 类派生失败）；doc/08_project/BACKLOG.md :273（登记的两个触发因）；被审计划 §2 探针机制描述。",
+      "suggestion": "二选一并写进计划/报告：在 §2 或 §5.4 补一句「超时通道与派生失败通道结局同形，实测只注入派生失败，超时通道的 10 s 延迟成本如实记」；或给探针加一格把桩换成让 /bin/ps 睡过 timeout 的形态，读数里并列两通道的耗时。方向即可，不必新夹具。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2 正文第一段（「13 格自证全过」）",
+      "problem": "计数与事实差一格：§2 的表列 14 格（A-prod…K-main），证据 JSON 也是 14 格且 psfail 模式下每格 selfCheck.ok=true。「13 格自证全过」要么是笔误，要么暗示曾有一格不自证——改后对照阶段若照 13 计数核对，可能出现一格静默漏核。",
+      "evidence": "doc/05_testing/evidence/unverifiable-start-20260930/probe-pre-c4d082e.json（node 解析：results 去重后 14 个 id，psfail 模式 14 格 selfCheck.ok 全为 true，含 worker:[null,null] 与 self:[true,true]）；被审计划 §2 表格行数与「13 格自证全过」句。",
+      "suggestion": "把「13」改成「14」（或按证据重述）；§5.2 改后重跑的核对项按「格数=14、每格自证必过、对照全绿」写成硬断言，防改后重跑漏格。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §6 MANUAL 行（「:663 失联段不改」的论据）",
+      "problem": "「:663 失联段不改」的论据是「mismatch 格原句已含『这一次取不到』」——但那句在 run-protocol 的 mismatch 结论文案里，不在 MANUAL :663 段。MANUAL :663 段本身是无条件承诺：「确认它卡死、要结束这一轮，就照报错里的出口再跑 --cancel：它会结束那个工作进程与它拉起的审查员 CLI、补收 run.json、回收主题锁」。改后在「--wait 写 failed+heartbeat_stale、随后 ps 仍取不到」的组合下，classifyLostCancel 落 mismatch 格，上述每一个动词都不发生。手册那段因此有了已知失真。",
+      "evidence": "doc/07_manuals/MANUAL_user.md :661-665（无条件句原文）；src/trivium/run-protocol.ts :1482-1486（classifyLostCancel：!alive 判 gone，!sameProcess 判 mismatch——unverifiable 亦落 mismatch，不发信号不补收）；被审计划 §1.3 与 §6 表格 MANUAL 行。",
+      "suggestion": "既然场景 4 一段本就要为 69 补句，顺手在同一处给 :663 段加半句降级说明（取不到启动时刻时 --cancel 判「不符/判不了」，只告警、不结束不补收，与 mismatch 格文案呼应），成本一行、免留手册失真。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "计划的全部代码引用经我逐条核对属实：exec.ts :518-524/:610-613/:615-627（三分支返回形状与「startedAt 为 null 只来自取不到」的推导成立）、status.ts :212/:524/:539、retention.ts :102、run-protocol.ts :762/:1482/:1512/:1776、cli.ts :243/:2002-2004（TriviumError → fail + err.code 出口形态与 D6 的 69 主张一致）、exit-codes.ts（69=ENV、70=LOCKED、73 仅 --wait 的语义论证无误）。",
+    "D1 的不变量「identity 'same' ⇔ sameProcess、原五字段逐字不变」我按 D2/D3/D4/D5 的每个判格推演过，judgeStale、workerGoneForCancel、classifyLostCancel、lostWorkerGone 四处「只核不改」的输入确实不变；D5 的 `identity !== 'different'` 与旧式 `alive && sameProcess` 在除目标格外的所有格等价。",
+    "「不做取不到后复检存活」的取舍论证充分（会把改动泄进 judgeStale/lostWorkerGone 的输入面），R3 如实登记了 kill(0)–ps 竞态窗口的保守代价。",
+    "先实证后改码成立：探针证据 JSON（含 exec/status/retention/run-protocol 的 sha16 指纹）已在盘，A-prod 不命中的要点 1 修正了 BACKLOG 的登记口径，K-main 与 G-cancel-terminal 两格实证了「双跑前提」与「活 worker 名下 CLI 被杀」的真实危害。",
+    "成本与配额结构合格：全程桩审核者/桩 CLI、零厂商调用；改前/改后对照、移植验收（改前树整文件红计单列）、变异预跑+正式跑、双 Node 版本的做法与 lost-worker-cancel、scrub-help 两主题的既定实践一致，没有更便宜且不损失分辨力的替代路径（§5.1 的按 pid 过滤桩保住了「信号发没发」的分辨力，理由成立）。",
+    "回滚成本极低：identity 是纯内存加法字段、盘上契约与退出码枚举不动，回滚即代码 revert；PROTOCOL :228 已有 69 行可挂新出处；我核过 skills-src 的入口契约与 src 内所有 --cancel 引用，没有任何调用方按 --cancel 的退出码分支，D6 引入新非零码的兼容主张成立。",
+    "§1.2 全调用点表把 13 处逐一列出并注明读哪些字段，「五处之外没有新增同形消费方」的收敛经我抽查 agree（judgeCliGroup 的 unverifiable 先例引用准确）。"
+  ],
+  "not_covered": [
+    "未重跑探针/测试（只读审查），改后重跑的读数一致性无从核验；只核对了改前证据 JSON 的完整性与自证字段。",
+    "凭据抹除的安全权衡（D4/D5「判不了不抹」导致受限环境下凭据副本滞留的时长与风险）属另一侧镜头，我只核了机制通路，未评估安全档位。",
+    "run() 在超时与派生失败两种收场的 code/stderr 细节未逐行读实现，等价性判断基于 processStartTime 对 r.code!==0 的统一处理与 EV-153 桩文档。",
+    "设计 :1485 段与 LLD/MANUAL/PROTOCOL 我只读了被审计划引用到的行附近，未做全文口径核对（版本升级的其它联动段落是否还要动，留给另一侧与 Driver）。",
+    "未复审 EV-176（R1）暂缓决策本身的正确性——它属于用户已拍板的范围决定，我只确认其触发条件描述与代码形状相符。"
+  ],
+  "consulted": [
+    ".reviews/取不到启动时刻当不在/plan/2026-09-30-取不到启动时刻当不在-claude.md",
+    "src/trivium/util/exec.ts",
+    "src/trivium/status.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/exit-codes.ts",
+    "test/helpers/ps-stub.ts",
+    "scripts/mutation-check.mjs",
+    "skills/dual-critic/scripts/trivium.cjs",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/05_testing/evidence/unverifiable-start-20260930/probe-pre-c4d082e.json",
+    "doc/05_testing/REPORT_2026-09-28_lost_worker_cancel.md",
+    "doc/05_testing/REPORT_2026-09-29_scrub_help_main_clause.md",
+    "skills-src/partials/review/body.md",
+    "skills-src/commands/status.contract.md",
+    "skills-src/commands/abandon.contract.md",
+    "README.md",
+    "CLAUDE.md",
+    "doc/README.md",
+    "doc/02_design/README.md"
+  ]
+}
