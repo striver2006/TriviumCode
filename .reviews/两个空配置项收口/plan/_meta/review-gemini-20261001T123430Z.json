@@ -1,0 +1,78 @@
+{
+  "agreed": [
+    "两个零消费方配置项收口方案（EV-30 ① + EV-15）边界清晰，用户决策一～六落实到位。",
+    "schema 采用保持原有类型约束、去掉 required、追加 deprecated: true 的方式，既保证升级平滑向后兼容，又避免放宽校验引入脏数据。",
+    "深入核验 codex 0.159.2 的 execpolicy 机制，通过前缀匹配实测证明其无法提供白名单能力，结论严密，不盲目接线并新登 EV-184 处置合理。",
+    "流程文档与入口命令中将对配置项的假承诺统一修订为「最多 3 次、超限停下交由用户」的流程规范，并在 run.contract.md 的 S4 与 S8 间对齐口径。",
+    "验证方案详尽，涵盖兼容性矩阵、单测 U1～U8、变异测试 M1～M7 以及真实配置读数取证，防护网完备。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/ADR_002_multicritic_isolation.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/init.ts",
+    "src/trivium/util/log.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/base.ts",
+    "skills-src/partials/review/body.md",
+    "skills-src/commands/run.contract.md",
+    "skills/dual-critic/SKILL.md",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/agents/trivium-critic.md",
+    "test/unit/config-consumers.test.ts",
+    "test/unit/config-schema.test.ts",
+    "test/unit/config-migrate.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/peer-leak-command.test.ts",
+    "test/contract/entry-render-parity.test.ts",
+    ".trivium/config.yaml",
+    ".reviews/两个空配置项收口/plan/2026-10-01-两个空配置项收口-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "读 skills-src/partials/review/body.md:171-173 与 skills-src/commands/run.contract.md:121-141，源文件命名形态为 *.md 与 *.contract.md，该目录下不存在任何 SKILL.md 后缀文件；若回归锁实现时仅以 name.endsWith('SKILL.md') 递归扫描 skills-src/，源文件将被全部跳过，失去防写回承诺的守卫能力。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": ".reviews/两个空配置项收口/plan/2026-10-01-两个空配置项收口-claude.md:§3.4",
+      "problem": "U8 流程文档回归锁的扫描范围若仅按「SKILL.md」过滤，会导致 skills-src/ 下的源文档被静默漏测",
+      "severity": "minor",
+      "suggestion": "在 §3.4 与 §3.6 U8 中明确文件匹配策略：对 skills-src/ 扫描全部 Markdown 文件（*.md / *.contract.md），对 skills/ 扫描全部 SKILL.md。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读 src/trivium/util/log.ts:24-26，warn(msg) 实现固定写入 ⚠️  ${msg}\\n；读 src/trivium/doctor.ts:702，人读告警直接执行 for (const w of report.warnings) warn(w)；读 src/trivium/doctor.ts:233-246 与 :575-590，现有进入 warnings 数组的文案均不带 ⚠️ 前缀。若计划 §3.3 拟定的正文以 ⚠️ 起头直接推入 warnings，doctor 输出时将出现 ⚠️  ⚠️ 配置里有已废弃的键... 的重复符号。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/两个空配置项收口/plan/2026-10-01-两个空配置项收口-claude.md:§3.3",
+      "problem": "deprecatedConfigNotice 返回文案自带 ⚠️ 前缀，在 doctor 人读端会造成双重 emoji 重复渲染",
+      "severity": "nit",
+      "suggestion": "将 deprecatedConfigNotice 设计为返回无 ⚠️ 前缀的纯文案；在 preflight 侧装配 CheckResult.detail 时视既有格式决定是否补 ⚠️，使 doctor 侧 warnings 输出保持规范一致。"
+    }
+  ],
+  "not_covered": [
+    "本次审查未执行真实的厂商 CLI 调用（受任务书零配额约束），依赖本地代码与契约分析。",
+    "未覆盖 Claude 作为审核者时的命令沙箱执行面（按任务范围只针对现役三家）。",
+    "未对 EV-30 ②～⑦ 的其余 6 个存量死配置项进行接线或删除分析（按任务范围不做）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "实施计划整体质量高、逻辑缜密，向后兼容方案与不可逆决策清晰，Codex 零配额实测结论严谨。主要发现 2 点需完善的细节：\n1. 计划 §3.4 / §3.6 的 U8 流程文档回归锁限定扫描「skills-src/ 与 skills/ 下全部 SKILL.md」，而 skills-src/ 源目录并无 SKILL.md 后缀文件，按此过滤会导致源文件完全漏检；\n2. 计划 §3.3 拟定的已废弃键正文自带 ⚠️ 前缀，在进入 doctor.ts 经由自带 emoji 前缀的 warn() 输出时会造成双重 ⚠️  ⚠️ 重复渲染。\n整体方案可行，建议在修订计划中修正上述细节后批准推进。",
+  "verdict": "approve-with-nits"
+}

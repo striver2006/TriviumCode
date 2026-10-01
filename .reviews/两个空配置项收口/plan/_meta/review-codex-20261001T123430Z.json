@@ -1,0 +1,103 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按「外部依赖与环境假设 / 成本与配额 / 回滚与迁移成本」镜头审查了这份计划，并逐项到仓库核实：HEAD 9cc9249 上 config.ts 两处默认值（321-324、417 行）、types.ts 两字段、config.v2.json 的 required 与 additionalProperties:false 形状、schemas.ts 的 Ajv2020 strict:false（deprecated 标注确实无害）、preflight ④‴失联阈值→⑤模型slug 的插入位、doctor 环境段恒跑、init.ts 的 defaultConfig 落盘与 rewriteConfigToV2、run.contract S4「最多 3 次」与 S8 无上限、body.md 171-173 的假承诺、agy 工具面确无命令工具、base.ts/guard.ts/types.ts 的注释位置、12 份渲染产物清单、MANUAL 462/499 行、设计文档 v1.3.71 与 §4 引用的全部行号、BACKLOG 最大编号 EV-183（EV-184 未占用）。codex-cli 0.159.2 与 execpolicy check 子命令在本机存在，--ignore-rules 帮助文本与 §2.1 一致。事实层面这份计划异常扎实，没查出方向性错误；意见集中在执行成本与表述口径：兼容验收的「旧构建」取得路径未写（git archive 导不出可运行产物，装好的全局旧副本是更便宜的等价路径）、写进设计文档的 codex 实测结论未钉版本、废弃提示正文的静态列举与逐格判定的衔接未写死、重试计数的起算口径三处该统一、schema 变异拷贝会被 pretest 重建冲掉的操作约束没写。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "§6 验证 · 兼容验收（最后一项）",
+      "problem": "「git archive 9cc9249 导出旧构建」这条路实际导不出可运行的旧构建：skills/dual-critic/scripts/trivium.cjs 与 dist/ 都是不进 Git 的生成物（git ls-files 该目录为空），archive 只有源码，还要在新检出里装 devDependencies（esbuild/tsc，要网络）并完整构建才能得到「旧 ×」列的读数。计划没写旧构建的确切获取路径，执行到这一步会现场绕行。",
+      "evidence": "git ls-files skills/dual-critic/scripts/ 为空；AGENTS.md「已知坑」写明该产物不进 Git；scripts/build.mjs 77-90 行显示 bundle 由构建生成；计划 R2 自己已陈述 .trivium/bin/trivium 指向的全局安装副本是旧构建。",
+      "suggestion": "兼容验收的「旧构建」直接改用已安装的全局副本（~/.claude/skills/…/trivium.cjs，其同目录 schema 拷贝也是旧形状，零构建成本）——兼容判定只需要「默认值与 schema required 仍含两键」这一性质，R2 已确认安装副本满足；若坚持 archive 路线，则在 §6 写明需在新检出跑 npm install + npm run build 及其网络/时间成本。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "§4 设计 10.3 表下补段、18.1 #11 注；§5.1 EV-15 结案",
+      "problem": "将「codex execpolicy 只能按前缀禁止、空模式不合法、bash -lc/绝对路径不匹配」写成设计文档（唯一实现依据）里的长期事实，但全部论据来自本机 codex-cli 0.159.2 的单次实测。§5.3 的 EV-184 文案钉了版本，§4 各行的落文档措辞没有要求带版本与日期；别家版本的 codex 若行为不同，设计文档就固化了过期事实——这正是本仓纪律 1「凡实测才知道的值不硬编码」针对的形状。",
+      "evidence": "本机 codex --version 输出 codex-cli 0.159.2，execpolicy check 子命令存在；BACKLOG 已登记 EV-179（codex CLI 升级触发复核）；仓内同类事实的写法惯例是带版本（如 config.ts 注释「agy 1.2.0 会报冲突，坑 P-16」）。",
+      "suggestion": "§4 各行落文档措辞统一带「2026-10-01 实测 codex-cli 0.159.2」限定，并加「版本变化按 EV-179/EV-184 复核」交叉引用；EV-15 结案文案同形。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "§3.3 正文（拟）与 §3.6 U4/U6",
+      "problem": "提示正文拟稿把两键静态写死在同一句里，而判定按「合并结果里实际出现」逐键产出（U4 明确测「只带 gate / 只带 agents」两格）。若正文不随 deprecatedConfigKeysIn 的输出动态列举，只带一键的用户会被告知配置里有一个自己没写的键；反过来「两家 antigravity 条目」时输出两条 agents.<id>.readonly_commands，静态正文也只写了一条。计划没钉死正文由动态列表拼装，U6 也只断言了「带两键」一格。",
+      "evidence": "计划 §3.3 正文拟稿原文枚举两键；同节又规定「'* 只展开 agents 下实际存在的键，按键名排序」；§3.6 U4 五格用例与 U6 只覆盖两键齐全的情形。",
+      "suggestion": "在 §3.3 写明正文按键路径列表动态拼装（键名来自 deprecatedConfigKeysIn），U6 补「只带一键 ⇒ 正文只列该键」用例；多份 antigravity 条目并存时的展示形态也一并定死。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "§3.4 body.md 新措辞、run.contract S4/S8 修订",
+      "problem": "「最多重跑 3 次 / 最多 3 次」没有说是否把首次执行计入。删掉配置项后这个数字成了纯流程约定，三处（review 正文、S4、S8）若口径不一，同一个 gate --check 在不同载体下的停止时点会差一轮，恰好违背本条改动「三处同口径」的初衷。",
+      "evidence": "skills-src/commands/run.contract.md:121 现文「有缺口则回到 S3 补齐，最多 3 次」与 skills-src/partials/review/body.md:171-173 现文「最多重试 max_check_retries（默认 3）次」的计数起点都未写明；计划 §3.4 的新措辞沿用了同样的歧义。",
+      "suggestion": "新措辞里加半句消歧，例如「首次校验失败后再补跑，最多 3 次；仍不通过则停下交给用户」，三处同一句。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "§6 schema 契约变异（S1～S5）",
+      "problem": "schema 变异改的是 dist/test 下的 config.v2.json 拷贝，而 pretest（build.mjs --with-tests）每次都会从 skills/dual-critic/schema/ 重新拷贝覆盖该文件；S1～S5 的执行窗口约束（build 之后、任何 npm test/npm run check 之前直接 node --test dist/test/…）计划里没写。窗口被覆盖时变异「红在假象上或根本没跑」，正是本仓反复登记过的「守卫被守着也不等于守对了东西」形状。",
+      "evidence": "scripts/build.mjs:113-116 构建时 cp schemaSrc → dist/test/skills/dual-critic/schema；package.json:15 pretest 挂 build.mjs --with-tests；计划 §6 只说「另写脚本，改 dist/test 拷贝」。",
+      "suggestion": "§6 写明变异脚本必须先构建、只经 node --test 直接跑 dist/test 目标文件、并在每次读数前校验拷贝内容确为变异后文本（如 grep 断言），跑完全量后重跑一次确认未残留变异拷贝。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "schema 收口方案（required 去掉、属性保留且类型不放宽、deprecated 标注配合 Ajv2020 strict:false）经核实成立，「不让升级前合法的配置失败」与「垃圾值照旧拒绝」的边界划得对；",
+    "§1.3 三条推论与代码实况相符：loadCtx 先 deepMerge 各源再对合并结果校验，默认值删键后「合并结果含键 ⇔ 磁盘源写过」的判定确实不需要回溯源文件；",
+    "§3.7 双向兼容论证成立：旧构建读删键配置由旧默认值补齐照常通过，新构建读未删配置按已废弃接受——本仓配置先取证后删键的顺序也合理，Hook 误拦时的退路（交用户在终端删）符合 AGENTS.md 的出口纪律；",
+    "codex 白名单核查的零配额方案（exec --help + execpolicy check 本地评估，不发起模型调用）便宜且够用，本机核实 execpolicy check 确为本地子命令；「有机制但不是白名单」的结论与帮助文本自洽，不收窄、登 EV-184 等触发的成本决策正确（接线的配额成本与升级复核负担都写明了）；",
+    "EV-184 编号未占用（BACKLOG 现最大 EV-183）；不做清单对冻结文档、config.v1.json、rewriteConfigToV2 的三处「不夹带删除」的克制都站得住；",
+    "U8 回归锁限定 SKILL.md 而非整个 skills/ 目录，与 config.v2.json 里刻意保留的两键不冲突；",
+    "§8 R2 关于本主题期间 verify 跑旧安装的构建的坦白，和「提交后重建并请用户重装」的收尾，是零配额约束下正确的成本分配。",
+    "团队共享 config.yaml 的迁移成本已由用户决策二钉死为「提示而非失败」，跨仓库的清键属各仓自发动作，不属本计划遗漏。"
+  ],
+  "not_covered": [
+    "gate/hook/disposition 的实现正确性与 EV-30 其余条目的内部一致性——按任务书归另一侧镜头；",
+    "codex 运行期 execpolicy 对 bash -lc 包装与绝对路径的实际匹配行为（计划与我都只能核到 check 子命令层面，运行期需花配额）；",
+    "entry-render 四家载体的渲染细节与 carriers/*.yaml 差异；",
+    "已安装全局副本的确切构建版本（我只按计划 R2 的陈述采信它是旧构建，未逐一比对安装副本哈希）；",
+    " Driver 未来实施时对 §4 各文档行的具体落笔质量。"
+  ],
+  "consulted": [
+    ".reviews/两个空配置项收口/plan/2026-10-01-两个空配置项收口-claude.md",
+    "src/trivium/config.ts",
+    "src/trivium/types.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/init.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/agents/trivium-critic.md",
+    "skills-src/partials/review/body.md",
+    "skills-src/commands/run.contract.md",
+    "test/unit/config-consumers.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "AGENTS.md",
+    "package.json",
+    "scripts/build.mjs"
+  ]
+}
