@@ -119,7 +119,8 @@ TV preflight --stage all --driver {{DRIVER}} --critics <critics> [--profile <名
 后缀与 front-matter 的 `role` 都填**你自己的 Agent id**，不是固定的 `claude`。
 
 ### S4 裁决校验
-`TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐，最多 3 次。
+`TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐后重跑本步；
+重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
 
 {{> run/claim-code}}
 
@@ -138,7 +139,8 @@ TV preflight --stage all --driver {{DRIVER}} --critics <critics> [--profile <名
 逐条「接受/驳回/暂缓 + 理由 + 修改计划」。
 
 ### S8 裁决校验
-`TV gate --stage code --topic <主题> --check --json`。有缺口回到 S7。
+`TV gate --stage code --topic <主题> --check --json`。有缺口则回到 S7 补齐后重跑本步；
+重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
 
 ### S9 按已接受项改代码
 **只改已接受的项。** 驳回与暂缓的不要动。

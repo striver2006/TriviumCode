@@ -140,7 +140,6 @@ gate:
   approval_lock_ttl_h: 24
   block_commit: true
   stop_hook_max_blocks: 2
-  max_check_retries: 3
   reason_policy: warn
   joint_blocker_policy: warn
 preflight:
@@ -163,20 +162,6 @@ agents:
       plan: high
       code: high
       bug: high
-    readonly_commands:
-      - git log
-      - git blame
-      - git diff
-      - git show
-      - git status
-      - ls
-      - cat
-      - head
-      - tail
-      - grep
-      - rg
-      - find
-      - wc
   glm:
     vendor: zcode
     entry: null

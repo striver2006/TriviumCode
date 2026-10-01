@@ -1,0 +1,87 @@
+{
+  "base": "9cc9249",
+  "bundles": {
+    "old": {
+      "commit": "9cc9249",
+      "sha256": "ead6bcb6254a2162d7bf9d432fb7d3a0d02fb716f1b617fe2f94110c1cb2a298"
+    },
+    "new": {
+      "commit": "working-tree",
+      "sha256": "31391baaeecabcc85602f4f8f793fcb4f3edf050ea851e55d9ff50a24d1658d0"
+    }
+  },
+  "cells": [
+    {
+      "bundle": "old",
+      "config": "with",
+      "exit": 0,
+      "checks": {
+        "exit0": true,
+        "json_ok": true,
+        "no_invalid": true,
+        "notice": true
+      },
+      "ok": true,
+      "notices": [],
+      "stderr_tail": [
+        "· 探测运行环境…",
+        ""
+      ]
+    },
+    {
+      "bundle": "old",
+      "config": "without",
+      "exit": 0,
+      "checks": {
+        "exit0": true,
+        "json_ok": true,
+        "no_invalid": true,
+        "notice": true
+      },
+      "ok": true,
+      "notices": [],
+      "stderr_tail": [
+        "· 探测运行环境…",
+        ""
+      ]
+    },
+    {
+      "bundle": "new",
+      "config": "with",
+      "exit": 0,
+      "checks": {
+        "exit0": true,
+        "json_ok": true,
+        "no_invalid": true,
+        "notice": true
+      },
+      "ok": true,
+      "notices": [
+        "配置里有已废弃的键：gate.max_check_retries、agents.gemini.readonly_commands。它们从未生效（没有任何代码读取），现已删除；schema 仍接受只为旧配置照常通过校验。可从 .trivium/config.yaml（或 config.local.yaml）里去掉，去掉不改变任何行为。"
+      ],
+      "stderr_tail": [
+        "· 探测运行环境…",
+        ""
+      ]
+    },
+    {
+      "bundle": "new",
+      "config": "without",
+      "exit": 0,
+      "checks": {
+        "exit0": true,
+        "json_ok": true,
+        "no_invalid": true,
+        "notice": true
+      },
+      "ok": true,
+      "notices": [],
+      "stderr_tail": [
+        "· 探测运行环境…",
+        ""
+      ]
+    }
+  ],
+  "pass": 4,
+  "total": 4
+}

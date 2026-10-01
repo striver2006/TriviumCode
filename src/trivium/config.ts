@@ -318,10 +318,7 @@ export function defaultConfig(): Config {
         // （agy 1.2.0 会报冲突，坑 P-16）。当前两档 slug 全是 -high，此处三项均随之写 high，
         // 否则归档 front-matter 会记下一个从未生效的 effort 值。
         effort: { plan: 'high', code: 'high', bug: 'high' },
-        readonly_commands: [
-          'git log', 'git blame', 'git diff', 'git show', 'git status',
-          'ls', 'cat', 'head', 'tail', 'grep', 'rg', 'find', 'wc',
-        ],
+        // readonly_commands 已删除（EV-15）：见 DEPRECATED_CONFIG_KEYS
       },
       glm: { vendor: 'zcode', entry: null, max_turns: 40, unsupported_override: 'reject' },
       /*
@@ -414,7 +411,7 @@ export function defaultConfig(): Config {
       approval_lock_ttl_h: 24,
       block_commit: true,
       stop_hook_max_blocks: 2,
-      max_check_retries: 3,
+      // max_check_retries 已删除（EV-30 ①）：见 DEPRECATED_CONFIG_KEYS
       reason_policy: 'warn',
       joint_blocker_policy: 'warn',
     },
@@ -424,6 +421,61 @@ export function defaultConfig(): Config {
     probe: defaultProbe(),
     probe_ttl_days: 7,
   };
+}
+
+/**
+ * 已废弃、但 schema 仍接受的配置键（2026-10-01，EV-30 ① / EV-15）。
+ *
+ * 两键都是「类型 + 默认值 + 文档承诺」齐全而**从未被任何代码读取**，删了类型与默认值；
+ * schema 里保留属性（标 `deprecated`、去掉 `required`），只为带着它们的旧配置升级后照常通过校验——
+ * gate 段与 antigravity 分支都是 `additionalProperties: false`，直接删属性会让那些配置退 69。
+ *
+ * 出现时**只在 doctor 与 preflight 提示一条**（`deprecatedConfigNotice`），`loadCtx` 与其余命令不打任何东西。
+ *
+ * 判定看**合并结果**就够：默认值不再带这两键，合并结果里出现 ⇔ 某个磁盘源写了它。
+ * 代价是分不出是 `config.yaml` 还是 `config.local.yaml`，所以正文两个文件都点名。
+ *
+ * 路径里的 `'*'` 匹配 `agents` 下任一 Agent id（不写死 id：Agent 身份的唯一来源是注册表）。
+ * 出处写在注释里而不是字段里：没有代码读的字段，正是这一族要清掉的东西。
+ */
+export const DEPRECATED_CONFIG_KEYS: readonly { path: readonly string[] }[] = [
+  { path: ['gate', 'max_check_retries'] }, // EV-30 ①
+  { path: ['agents', '*', 'readonly_commands'] }, // EV-15
+];
+
+/** 合并后的配置里实际出现的已废弃键（点分路径；按表序，同一条里 `'*'` 展开的按键名排序） */
+export function deprecatedConfigKeysIn(cfg: Config): string[] {
+  const found: string[] = [];
+  const walk = (node: unknown, rest: readonly string[], trail: string[]): void => {
+    if (node === null || typeof node !== 'object' || Array.isArray(node)) return;
+    const obj = node as Record<string, unknown>;
+    const [head, ...tail] = rest;
+    if (head === undefined) return;
+    const keys = head === '*' ? Object.keys(obj).sort() : [head];
+    for (const k of keys) {
+      if (!Object.prototype.hasOwnProperty.call(obj, k) || obj[k] === undefined) continue;
+      if (tail.length === 0) found.push([...trail, k].join('.'));
+      else walk(obj[k], tail, [...trail, k]);
+    }
+  };
+  for (const { path: p } of DEPRECATED_CONFIG_KEYS) walk(cfg, p, []);
+  return found;
+}
+
+/**
+ * 已废弃键的提示正文；没有时返回 null。
+ *
+ * **只列实际出现的键**（由 `deprecatedConfigKeysIn` 动态拼装），只写了一个的用户不会被告知另一个。
+ * **不带 ⚠️**：doctor 人读出口 `warn()` 自带，preflight 的 `detail` 按该文件惯例自己补。
+ */
+export function deprecatedConfigNotice(cfg: Config): string | null {
+  const keys = deprecatedConfigKeysIn(cfg);
+  if (keys.length === 0) return null;
+  return (
+    `配置里有已废弃的键：${keys.join('、')}。` +
+    '它们从未生效（没有任何代码读取），现已删除；schema 仍接受只为旧配置照常通过校验。' +
+    `可从 ${TRIVIUM_DIR}/config.yaml（或 config.local.yaml）里去掉，去掉不改变任何行为。`
+  );
 }
 
 /** 深合并：对象递归合并，数组与标量整体替换（数组语义是「覆盖」而非「追加」） */

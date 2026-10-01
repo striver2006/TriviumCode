@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.25
+> - **当前版本**：v1.0.26
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -459,7 +459,6 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | :--- | :--- | :--- |
 | `agents.gemini.agent` | `trivium-critic` | 只读 Agent 定义名。**工具白名单不含任何写工具** |
 | `agents.gemini.effort` | plan high / code high / bug high | 思考档位。**模型 slug 自带档位时不传**，否则 agy 会直接拒绝 |
-| `agents.gemini.readonly_commands` | `git log`, `ls`, `cat`, `grep` 等 | 允许的只读命令 |
 | `agents.glm.max_turns` | 40 | ZCode 的最大轮数 |
 | `agents.glm.unsupported_override` | `reject` | 模型覆盖落到全局档时拒绝还是标注 |
 | `active_profile` | `default` | 当前档位 |
@@ -496,7 +495,6 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `gate.approval_lock_ttl_h` | 24 | 写锁过期时间；也是死 running 闸门的回收阈值 |
 | `gate.block_commit` | `true` | 裁决未齐时拦 `git commit` |
 | `gate.stop_hook_max_blocks` | 2 | 拦几次收工后放行（防死循环）。配 0 会被 schema 拒绝 |
-| `gate.max_check_retries` | 3 | — |
 | `gate.reason_policy` | `warn` | 理由空洞时告警还是硬失败 |
 | `gate.joint_blocker_policy` | `warn` | 双方共同 blocker 被驳回时告警还是硬失败 |
 
@@ -507,6 +505,17 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `preflight.auth_cache_ttl_h` | 1 | 认证探活缓存 |
 | `probe_ttl_days` | **7** | 探针保质期。**过期即预检硬失败，不是降级** |
 | `verify.build` / `verify.test` | `[]` | 必须手工配 |
+
+#### 已废弃的键
+
+v1.0.26 起（设计 v1.3.72），下面两个键**删除**了：它们写在配置里、文档里，却从来没有任何代码读过——改了不会有任何效果。
+
+| 字段 | 原来写的 | 实际情况 |
+| :--- | :--- | :--- |
+| `gate.max_check_retries` | 「`gate --check` 最多重试几次」 | 重试几次是入口命令里的流程约定（补齐后重跑，重跑最多 3 次（首次校验不计），仍不通过就停下交给你），不是配置项 |
+| `agents.gemini.readonly_commands` | 「允许的只读命令」 | Antigravity 侧的审查员根本没有命令工具，跑不了任何命令；ZCode 侧整个 `Bash` 禁用；Codex 侧能跑 shell、靠只读沙箱挡写，没有命令白名单 |
+
+旧配置里留着它们**不会报错**，升级后照常能跑。配置里出现时，`trivium doctor` 与预检各提示一条「已废弃、从未生效，可从配置里去掉」，其余命令不提示。从 `.trivium/config.yaml`（或 `config.local.yaml`）里删掉这两行即可，删了不改变任何行为。新 `trivium init` 出来的配置不再带它们。
 
 ---
 

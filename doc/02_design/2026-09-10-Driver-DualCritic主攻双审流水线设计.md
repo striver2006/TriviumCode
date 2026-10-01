@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.71
+> - **当前版本**：v1.3.72
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -1465,8 +1465,8 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
    退出码 `0` 表示两份审查文档与元数据已落盘；其它退出码按原样转述并停止。循环次数上限由输出中的 `max_waits` 给出（7.5）。
 4. 用 Read **完整读取**两份审查文档（禁止只读摘要段）。
 5. 依据 `trivium.disposition.v1` 写出修订计划 `…-revised-claude.md`：逐条列出每个意见编号的裁决与理由，接受项写明落点。
-6. 运行 `TV gate --stage plan --check --json`；若返回缺失编号，补齐后重跑本步；最多重试 `max_check_retries`（默认 3）次，
-   仍不通过则向用户说明缺口并停止求助。
+6. 运行 `TV gate --stage plan --check --json`；若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+   仍不通过则向用户说明缺口并停下，交给用户处理。（v1.3.72 起是流程约定，不是配置项：原 `gate.max_check_retries` 从未被读取，已删除，EV-30 ①）
 7. 运行 `TV gate --stage plan --await-approval`，向用户输出停点说明与三份文档路径，然后**停止**，
    不得开始编写或修改任何业务代码。
 ```
@@ -1886,7 +1886,8 @@ Hook 行为约定：
                      放回 idle 等于把停点丢掉，闸门写锁与 hook-stop 都不再守得住）
      entry = A 或无 entry → 回 idle（命令 A 不设人工闸门）
    失败 → 返回 2，stdout 输出结构化缺口清单（供 Driver 直接修补）；
-   命令模板最多重试 gate.max_check_retries（默认 3）次，超限停下求助人工（7.4 步骤 6）
+   命令模板重跑最多 3 次（首次校验不计；流程约定，不是配置项——v1.3.72 删去从未被读取的
+   gate.max_check_retries），超限停下交给用户（7.4 步骤 6）
 ```
 
 **【待实施 · M7b】裁决完整性校验的 N 方化**：上述算法中「两侧意见的并集」与
@@ -2226,6 +2227,7 @@ Hook 行为约定：
   > 另注：下一条把 `readonly_commands` 称作「既有旋钮」，而它**目前没有任何消费方**
   > （BACKLOG **EV-15**）——那个旋钮现在拧不动。本决策使它短期内也不需要拧，
   > 但「设计把不存在的机制当既有前提」这个缺陷独立存在，不因不用它而消解。
+  > **2026-10-01 注**：该键已删除（v1.3.72，EV-15 结案），现役三家的命令执行面见 10.3。
 
   **B-2 对现役两家不是活风险**：agy 的 `trivium-critic` 工具面里没有任何命令工具
   （`run_command` 一出现即判失守），zcode 的只读组合全禁 `Bash`。
@@ -2263,6 +2265,8 @@ Hook 行为约定：
   >
   > 这句死论证我删过**四次**才删干净（§18.1 #21、`guard.ts` 注释、本处，
   > 每次都以为「全仓 grep 过了」）——r4 双审 AGY-03 逮到最后一处。
+  >
+  > **2026-10-01 注**：该键本身也已删除（v1.3.72，EV-15 结案），现役三家的命令执行面见 10.3。
 
 隔离视图：
 
@@ -2293,9 +2297,11 @@ flowchart LR
 
 | 层 | Antigravity 侧 | ZCode 侧 |
 | :--- | :--- | :--- |
-| **工具层** | 自定义 Agent `trivium-critic` 的 `tools:` 白名单只含只读工具（查看文件、检索、列目录）与**只读命令白名单**（`readonly_commands`，默认 `git log/blame/diff/show`、`ls`、`cat`、`grep`、`rg`、`find`；一期不含测试/构建命令——就地模式下依赖在场、技术上可行，但测试命令常有副作用，是否放开见 18.1），不含写文件与其它命令；`commandExecutionPolicy` 设为沙箱/受限；配合 `permissions.deny` 兜底写类工具 | `--mode plan` + `--disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash,…"`（以 `probe.zcode.readonly_flags` 实测组合为准；ZCode 侧若无法做命令级白名单，则整个 `Bash` 禁用，`run_command` 计数恒为 0） |
-| **文件系统层** | **无**。就地模式不能把项目根整树 `chmod a-w`（会阻断 Driver 与开发者）；`.git` 在场，因此工具层必须禁掉 `git commit/checkout/reset/stash` 等写命令（只读命令白名单之外一律拒绝） | 同左 |
+| **工具层** | 自定义 Agent `trivium-critic` 的 `tools:` 白名单只含五个只读工具（`view_file` 查看文件、`grep_search` 检索、`find_by_name` 按名查找、`list_dir` 列目录、`finish` 交结论），**没有任何命令工具**——审查员不跑命令（测试/构建命令同样不跑，取舍见 18.1 #11）；`run_command` 一旦出现在轨迹里即判 `readonly_breach`（`adapters/agy-events.ts`）。（v1.3.72 改准：原写「只读命令白名单 `readonly_commands`」「`commandExecutionPolicy` 设为沙箱/受限」「配合 `permissions.deny` 兜底写类工具」，三句都不是现状——`readonly_commands` 从未接线、已删除，EV-15） | `--mode plan` + `--disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash,…"`（以 `probe.zcode.readonly_flags` 实测组合为准；ZCode 侧若无法做命令级白名单，则整个 `Bash` 禁用，`run_command` 计数恒为 0） |
+| **文件系统层** | **无**。就地模式不能把项目根整树 `chmod a-w`（会阻断 Driver 与开发者）；`.git` 在场，因此 `git commit/checkout/reset/stash` 等写命令必须在工具层就够不着：本侧没有命令工具，根本跑不了命令（v1.3.72 改准：原写「只读命令白名单之外一律拒绝」，那份白名单从未存在） | 同左（本侧整个 `Bash` 禁用） |
 | **事后核验层** | 跑前/跑后比对 `tree_hash` + `git status --porcelain -uall` 指纹（排除 `probe.*.scratch_paths` 白名单）+ 工具轨迹中的写工具/写命令事件扫描；任一命中即 `readonly_breach: true`；与开发者手改的区分见 9.2 第 4 步 | 同左 |
+
+**表外的 codex 侧**（本表成形于两家时期，只有两列；v1.3.72 补）：codex 读文件就是跑 shell，**能跑命令**；挡写靠 `-s read-only` 沙箱（由探针负对照实测得出，落在 `probe.cli.codex.readonly_flags`；实测为空即该侧判不可用），**没有命令级白名单**——编排器不限制它能跑哪些命令，只靠沙箱挡写、靠措施 b 扫命令原文。codex 自带的 execpolicy 规则（2026-10-01 本机 codex-cli 0.159.2 实测）只能**按命令前缀**给 `allow` / `prompt` / `forbidden`，空模式不合法、写不出「默认拒绝」，包一层 `bash -lc` 或写绝对路径时 `execpolicy check` 不匹配；它能表达「禁止某些前缀」而表达不了白名单，本版不接线，机制与代价登 BACKLOG EV-184（codex 升级后按该条复核）。
 
 `readonly_breach` 的处理：告警 + 该侧审查不得标为干净完成 + 主仓库若被写入则中止流程并要求人工处置（**编排器不自动 `git checkout` 回滚**，避免误删用户未保存的工作；仅打印受影响文件清单与建议命令）。轨迹中有写事件的判为审查员失守；只有指纹变化而轨迹无写事件的，按漂移（开发者手改）处理但仍列出文件由人确认。
 
@@ -2905,8 +2911,6 @@ critics:
     bin: /Users/<you>/.local/bin/agy          # 绝对路径（GUI 进程不读 .zshrc）
     agent: trivium-critic
     effort: {plan: high, code: medium, bug: high}
-    readonly_commands: ["git log", "git blame", "git diff", "git show", "git status",
-                        "ls", "cat", "head", "tail", "grep", "rg", "find", "wc"]
   glm:
     vendor: zcode
     entry: /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs   # node 取 runtime.node
@@ -2924,7 +2928,6 @@ gate:
   approval_lock_ttl_h: 24
   block_commit: true
   stop_hook_max_blocks: 2
-  max_check_retries: 3
   reason_policy: warn                 # warn | hard（6.6 规则 5）
   joint_blocker_policy: warn          # warn | hard（6.6 规则 7）
 
@@ -2993,6 +2996,15 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 > **告警不得走 stdout**：`cli.ts` 在 `--json` 模式下向 stdout 写单个 JSON，
 > `util/log.ts` 的铁律是「机读模式 stdout 只允许出现一个 JSON、`warn` 恒走 stderr」。
 > 迁移告警若写 stdout 会破坏 Hook 读取 CLI 输出的协议。
+
+**已废弃键**【已实现 · v1.3.72，EV-30 ① / EV-15】：`gate.max_check_retries` 与 `agents.<id>.readonly_commands`（只在 antigravity 一支）
+都是类型、默认值、文档承诺齐全而**从未被任何代码读取**，删了类型与默认值，`init` 因此不再写它们。
+schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束不放宽——gate 段与 antigravity 分支都是
+`additionalProperties: false`，直接删属性会让带着它们的旧配置升级后退 69。判定看合并结果（默认值不再带，
+出现即某个磁盘源写了它），清单与正文的唯一来源是 `config.ts` 的 `DEPRECATED_CONFIG_KEYS` / `deprecatedConfigNotice`：
+**只在 `doctor`（告警段，不影响退出码）与 `preflight`（④⁗ 只警告项）提示一条**，只列实际出现的键、
+两个配置文件都点名（合并结果分不出来源）；`loadCtx` 与其余命令不打任何东西。`init` 的 v1 → v2 改写不删它们
+（迁移不夹带内容删除）。「`gate --check` 最多重跑几次」改为入口命令正文里的流程约定（7.4 步骤 6）。
 
 ### 13.2 可观测（NFR-05 / FR-24）
 
@@ -3395,7 +3407,7 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 | 8 | ~~闸门期业务写锁的作用域~~ **已拍板（2026-09-11）**：保持同会话 + 24h TTL | `session` | 决策者 Chen Zhenbo。`global` 会锁死完全无关的编辑（在另一个窗口改另一个模块也被拦），代价大于收益 |
 | 9 | ~~命令载体~~ **已拍板**：用户级 skills，脚本随核心 skill 分发（AD-13，2026-09-11） | `~/.claude/skills/` | plugin 形态列为二期备选 |
 | 10 | ZCode 覆盖落到 `global` 档时的策略 | `reject` | `annotate`：放行并标注，更宽松但 FR-06 P0 实质打折 |
-| 11 | 审查员只读命令白名单 | 允许 `git log/blame/diff` 等只读命令，不含测试/构建 | 完全禁止命令：更简单，但 `bug` 阶段镜头能力下降；允许测试命令：就地模式下依赖在场、技术上已可行，但测试可能有副作用（写缓存、起服务），需逐项目白名单并纳入指纹白名单，建议二期 |
+| 11 | 审查员只读命令白名单 | 允许 `git log/blame/diff` 等只读命令，不含测试/构建 | 完全禁止命令：更简单，但 `bug` 阶段镜头能力下降；允许测试命令：就地模式下依赖在场、技术上已可行，但测试可能有副作用（写缓存、起服务），需逐项目白名单并纳入指纹白名单，建议二期。<br>**2026-10-01 注**：`readonly_commands` 从未接线、已删除（v1.3.72，EV-15）；现役三家的命令执行面见 10.3（agy 无命令工具、zcode 禁 `Bash`、codex 能跑 shell 而无命令级白名单） |
 | 12 | 路径级 deny 不可用时的降级 | 继续运行，`peer_deny_applied: false`，仅靠禁读清单 + 轨迹核验 | 备选：视为预检失败拒绝启动。更硬，但会让一侧 CLI 的能力缺口阻断整个流水线 |
 | 13 | ~~漂移策略默认值~~ **已拍板（2026-09-11）**：保持「无关 `warn` / 相关 `fail` / 被审对象 `fail`」 | 同左 | 决策者 Chen Zhenbo。自举期间多轮真实审查中该判定零误报；全部 `fail` 会让开发者在 2～20 分钟的审查窗口内完全不能动仓库 |
 
@@ -3539,6 +3551,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.72** | 2026-10-01 | **两个空配置项收口（EV-30 ①、EV-15）。** 计划 `.reviews/两个空配置项收口/plan/` r2（计划双审第 1 轮 run `20261001T123430Z`：codex / gemini `approve-with-nits`、glm 解析降级（原文自报 `approve-with-nits`），实质意见 10 条全接受）。`gate.max_check_retries` 与 `agents.<id>.readonly_commands` 类型、默认值、文档承诺齐全而从未被读取：**删除，不接线**——前者是 Driver 侧流程纪律，工具拦不住会话再跑一次 `--check`；后者在现役三家里没有可执行的落点（agy 无命令工具、zcode 禁 `Bash`；codex 的 execpolicy 只能按前缀禁止、写不出白名单，2026-10-01 本机 codex-cli 0.159.2 实测，登 EV-184 不接线）。schema 保留两属性、标 `deprecated`、移出 `required`、类型约束不放宽，旧配置升级后照常通过；出现时只在 doctor 与 preflight（④⁗）提示一条（13.1.1「已废弃键」）。7.4 步骤 6 / 8.6 步骤 6 改为不引配置的流程约定「重跑最多 3 次（首次校验不计），超限停下交给用户」，`/dual-run` 的 S4、S8 同句（S8 原无上限）。10.3 表工具层、文件系统层两格按实改写并补表外 codex 侧一段；13.1 示例删两键；§10.1 两处注记与 18.1 #11 加注；演进设计 §8.3 与 ADR_002 更正块各加一条带日期注记（代码双审 r1 CODEX-01，冻结正文不改）。本仓 `.trivium/config.yaml` 的两键已删（该文件不进送审面，取证见报告 §4.5）。代码双审 r1（run `20261001T131816Z`：gemini `approve`、codex / glm `approve-with-nits`，6 条全接受）另补「重跑最多 3 次」一句的跨文件一致性契约（U9）。读数见 `doc/05_testing/REPORT_2026-10-01_config_dead_keys.md` |
 | **v1.3.71** | 2026-10-01 | **留痕读不出的出口（EV-148 文案部分）。** 计划 `.reviews/留痕读不出的出口/plan/` r2（计划双审第 1 轮 run `20261001T092816Z`：三侧 `request-changes`，14 条全接受——C 格构建对改用 `termination.by = sync_exception` 的真实读侧落差、共用段自带绝对路径、三档判别改按「与提交版本是否不同」、approve 先恢复后 abandon、提交锚文案退出范围登记 EV-182）。**只改文案与注释，判定与退出码零改动**：运行留痕读不出时的七处拒绝（Driver 判定四个消费点、`gate` 一份都读不出、`--await-approval` 与 `approve` 复核）此前都给「重跑一次该阶段双审，新运行会先落一份可读的留痕」，而重跑在 `review --start` 入口就被同一个 `corrupt` 判定拒绝；现在一律以 `meta.ts` 的共用出口段 `unreadableRunMetaExit` 收尾（逐行列出绝对路径 + 三档成因：① 版本落后 → MANUAL §3.6 升级重装；② 已提交而工作树被改坏 → 用户在终端 `git restore`；③ 其余 → 工具内没有出口），`--await-approval` 与 `approve` 的出口抽成 `gate.ts` 的 `awaitApprovalRecovery` / `approveForkRecovery`（approve 先恢复后重新 approve、恢复不了才 abandon；缺 run_id 那条不拼三档）。8.4 新增「留痕读不出：成因与出口」，7.1 与 8.4 结局③、approve 前置复核同步。代码双审 r1（run `20261001T103637Z`：gemini `approve`、codex / glm `approve-with-nits`，8 条全接受）：补第八处 `gate --run-id` 钉住读不出；单入口 `unreadableRunMetaExitAt`（空列表即程序缺陷，approve / `--await-approval` 无 run_id 时不拼共用段）；清单至多 5 份；加读取方构建标识一行供判别 ①；② 档给 `core.quotePath=false` 的判别命令、restore 路径加引号；删除句补「登记过的运行」前提（未登记骨架删掉无痕，新登 EV-183）。零配额验收（改前 `14c188b` / 改后 / 落后版本 `a89a46f` 三份构建）、变异与全量读数见 `doc/05_testing/REPORT_2026-10-01_unreadable_run_exit.md`。新登 EV-181（读不出不报原因）、EV-182（提交锚同类文案）、EV-183（未登记骨架删除无痕） |
 | **v1.3.70** | 2026-10-01 | **漂移比不了不放行（EV-139）。** 计划 `.reviews/漂移比不了不放行/plan/` r2（计划双审第 1 轮 run `20261001T070329Z`：codex `request-changes`、gemini / glm `approve-with-nits`，14 条全接受）。跑后漂移复算第 3.a 步原用失败返回空列表的 `diffTrees`，送审快照的 tree（`write-tree` 写出的不可达对象）在审查期间被立即清理、或 git 出错 / 超时，就落进「列表空 ⇒ 无漂移」——护栏判不了就放行；改前构建（`9db67ca`）零配额验收实证：清理之后改了 `src/b.ts`，跑后 tree 确含改动，run.json 仍记 `changed: false`、退 0。本版 9.2 加第 3.a′ 步：两棵 tree 先过对象名形状闸，再用失败即抛的 `diffTreesNameStatus`（`-z`，与审批时的工作树摘要同一份）；比不了判新结论 `unknown`，原因 `object_gone` / `git_error` / `timeout` 进人读告警（含出口：核对后重跑、改 `warn` 的连带影响）、审查文档旗标、report 旗标与 `summarizeRun`，处置按 `on_drift_related`（缺省 fail，用户决策：比不了就排除不了相关文件被改）。6.7.1 加可选字段 `snapshot.drift.unknown_reason`（只取加法，既有三字段含义不变，旧版本读新留痕照过）。顺带：`-z` 让含制表符、引号的路径原样参与白名单与「相关」匹配。git 缺省清理不删两周内的不可达对象（git 2.54 实测），触发面窄；降低成因登 EV-180 暂缓。8.5 摘要注记与 12 章异常表漂移行同批改。LLD v1.1.27、MANUAL v1.0.25、PROTOCOL、BACKLOG 同步；PRD 核后不改。读数见 `doc/05_testing/REPORT_2026-10-01_drift_uncomparable.md` |
 | **v1.3.69** | 2026-10-01 | **测试报告索引补齐（EV-172）。** 计划 `.reviews/测试报告索引补齐/plan/` r2（计划双审第 1 轮 run `20260930T231629Z`：gemini `approve`、codex / glm `approve-with-nits`，8 条接受 6、驳回 1、暂缓 1）。`doc/05_testing/README.md` 的「当前已归档文件」一节靠记性维护、各主题只补自己那一行，到 `466bb59` 时漏登 19 份报告（EV-172 登记时写的「补齐 15 条」之后又新落 5 份、自补 3 份，另有登记时漏算的 09-23、09-24 两份）；本版补齐并按文件名日期重排（非报告文件在前、同日按文件名）。新增 `test/contract/doc-archive-index.test.ts`（判定在 `test/helpers/doc-archive-index.ts`，不依赖 `src/`）：论域为 `doc/` 下带该节的 README（按规则求，六个目录作下限），目录的每个顶层文件（含非 `.md`，隐藏项与子目录除外）恰有一条条目、条目指向存在的文件、行内链接不悬空、组内非报告文件在前且含日期条目按（日期, 文件名）升序；缺登、悬空、重复、逆序都红并点名文件。05_testing README 规范段补一句，AGENTS.md 改动同步清单加一行。代码双审第 1 轮 run `20260930T235225Z`：gemini / glm `approve`、codex `approve-with-nits`，9 条接受 8、驳回 1（断链软链改为计入覆盖、日期段锚定文件名起头并校验月日、证据脚本补超时与前提）。本文正文无相关段落，只加本行。`src/` 零改动。读数见 `doc/05_testing/REPORT_2026-10-01_doc_archive_index.md` |

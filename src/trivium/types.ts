@@ -921,7 +921,11 @@ export interface GeminiCriticConfig {
   bin: string | null;
   agent: string;
   effort: Record<Stage, 'low' | 'medium' | 'high'>;
-  readonly_commands: string[];
+  /*
+   * 原有 `readonly_commands`，2026-10-01 删除（BACKLOG EV-15）：从未接线，agy 侧工具面里
+   * 根本没有命令工具。schema 仍接受它（标 deprecated），出现时只由 doctor / preflight 提示，
+   * 见 `config.ts` 的 `DEPRECATED_CONFIG_KEYS`。不要加回来。
+   */
 }
 
 /**
@@ -963,8 +967,8 @@ export interface GlmCriticConfig {
  * claude 侧没有这个消费方：适配器的 `run` 与 `authProbe` 都从
  * `probe.cli.claude.entrypoint` 取入口，`doctor.ts` 调 `probeClaude` 时第一个参数
  * 逐字传 `null`。**入口由探针独占。** 加一个 `bin` 就是加一个死字段——
- * 本仓已有两条「登记而无消费方」的未结 BACKLOG（EV-06 的 `instructionFiles`、
- * EV-15 的 `readonly_commands`），它们的危害正是**让后来者以为那个字段已经生效**。
+ * 本仓有过两条「登记而无消费方」的 BACKLOG（EV-06 的 `instructionFiles`，后来接上了；
+ * EV-15 的 `readonly_commands`，2026-10-01 删除），它们的危害正是**让后来者以为那个字段已经生效**。
  *
  * **不要为了「补齐」把 `bin` 加回来。** 真需要本机入口覆盖时，
  * 再放宽这一支的 schema 是向后兼容的；反过来删一个已经进过用户配置的字段则不是。
@@ -1019,7 +1023,11 @@ export interface GateConfig {
   approval_lock_ttl_h: number;
   block_commit: boolean;
   stop_hook_max_blocks: number;
-  max_check_retries: number;
+  /*
+   * 原有 `max_check_retries`，2026-10-01 删除（BACKLOG EV-30 ①）：从未被读取。
+   * 「gate --check 最多重跑几次」是 Driver 侧的流程约定，写在入口命令正文里，工具拦不住会话再跑一次。
+   * schema 仍接受它（标 deprecated），见 `config.ts` 的 `DEPRECATED_CONFIG_KEYS`。
+   */
   reason_policy: 'warn' | 'hard';
   joint_blocker_policy: 'warn' | 'hard';
 }

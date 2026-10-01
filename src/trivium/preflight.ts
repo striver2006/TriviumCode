@@ -17,7 +17,13 @@ import { promises as fs, constants as fsConstants } from 'node:fs';
 import type { AuthCacheEntry, CommonProbe, Config, CriticId, Ctx, Stage } from './types.js';
 import { DEFAULT_CRITICS, STAGES } from './types.js';
 import { EXIT, TriviumError } from './exit-codes.js';
-import { DEFAULT_HEARTBEAT_STALE_S, patchProbe, probeIsFresh, staleCliProbes } from './config.js';
+import {
+  DEFAULT_HEARTBEAT_STALE_S,
+  deprecatedConfigNotice,
+  patchProbe,
+  probeIsFresh,
+  staleCliProbes,
+} from './config.js';
 import { WORKER_HEARTBEAT_MS, staleThresholdWithinHeartbeat } from './status.js';
 import { ALL_CLI_NAMES, DEFAULT_DRIVER, agentById, agentByCliName, type AgentId } from './agents/registry.js';
 import { realAdapters } from './adapters/index.js';
@@ -628,6 +634,24 @@ export function checkHeartbeatThreshold(cfg: Config): CheckResult | null {
   };
 }
 
+/**
+ * 配置里出现已废弃的键时给警告（EV-30 ① / EV-15，两个空配置项收口计划 r2 §3.3）。**只警告、不拒跑**。
+ *
+ * 正文与判定的唯一来源是 `config.ts` 的 `deprecatedConfigNotice`（doctor 用同一个）；正文不带 ⚠️，
+ * 这里按本文件其它 warn 项的惯例补上。只读配置，不花配额、不读盘。
+ *
+ * **只在预检与 doctor 出**：`review --start` 不复用它——那里复用的两项（副本源、失联阈值）都有运行期后果，
+ * 这一条没有；其余命令也不打，避免每条命令都刷一遍（用户决策 二）。
+ *
+ * **预检前面有失败项时不出**（与 ④′～④‴ 同一短路，有意为之，代码双审 r1 GLM-02）：那时用户要先处理失败项，
+ * 多念一条「可以删两行配置」只会稀释注意力。兜底出口是 doctor——它在环境段无条件提示，与 `--only` 无关。
+ */
+export function checkDeprecatedConfigKeys(cfg: Config): CheckResult | null {
+  const notice = deprecatedConfigNotice(cfg);
+  if (notice === null) return null;
+  return { name: '已废弃配置键', ok: true, warn: true, detail: `⚠️ ${notice}` };
+}
+
 /** `warn` 项的汇总：预检与 `--start` 同形（EV-123） */
 export function collectWarnings(checks: readonly CheckResult[]): PreflightWarning[] {
   return checks.filter((c) => c.warn).map((c) => ({ name: c.name, detail: c.detail }));
@@ -779,6 +803,11 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
   if (checks.every((c) => c.ok)) {
     const h = checkHeartbeatThreshold(cfg);
     if (h) checks.push(h);
+  }
+  // ④⁗ 已废弃配置键（EV-30 ① / EV-15）：只警告、不拒跑；只读配置。前面失败时不出，以 doctor 为兜底
+  if (checks.every((c) => c.ok)) {
+    const d = checkDeprecatedConfigKeys(cfg);
+    if (d) checks.push(d);
   }
   // ⑤ 模型 slug（按本次实际生效值）
   if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected));

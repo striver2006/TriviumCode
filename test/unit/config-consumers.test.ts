@@ -7,6 +7,8 @@
  * **全仓零消费方**——它进了每个项目 `init` 出来的配置文件，用户改它不会有任何效果。
  * 这不是孤例：`instructionFiles`（EV-06）与 `readonly_commands`（EV-15）同形，
  * 后者还顶着设计两处「把不存在的机制当前提」的论证。
+ * （后续：EV-06 走了「接上」；`readonly_commands` 与 `max_check_retries` 于 2026-10-01 删除，
+ * schema 仍按已废弃接受，见下方「两个空配置项收口」一组用例。）
  *
  * 存量逐条裁另立主题。本条只做**防新增**：新加的配置项若没有任何代码读它，
  * 必须显式进 `KNOWN_DEAD` 并写明理由与去向，否则当场红。
@@ -15,7 +17,7 @@
  *
  * 判据是**属性访问形态**：`src/` 下除定义处以外出现过 `.<键名>`。
  * 取这个形态而不是裸键名，是因为裸键名会把**注释**算成消费方——
- * 三处注释提到 `readonly_commands`（都在说它没有消费方），裸匹配会让它被判成「活的」。
+ * 当年三处注释提到 `readonly_commands`（都在说它没有消费方），裸匹配会让它被判成「活的」。
  *
  * 已知边界，两个方向都有：
  *   - **漏报**（判成活的、其实是死的）：注释里若写 `cfg.某键` 会命中。
@@ -29,13 +31,19 @@
  * **这条测试的目标是「防新增」，不是「完备地找出所有死配置」**——
  * 而它第一次运行就抓出了**七个**此前无人登记的存量（见 `KNOWN_DEAD` 里标 EV-30 的那些），
  * 是原先已知的两个（`block_severities`、`readonly_commands`）的三倍多。
+ * （其中 `max_check_retries` 与 `readonly_commands` 于 2026-10-01 删除，EV-30 ① / EV-15。）
  * 这个强度对目标绰绰有余，也说明这一类缺陷的真实规模比任何人估计的都大。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { defaultConfig } from '../../src/trivium/config.js';
+import {
+  defaultConfig,
+  deprecatedConfigKeysIn,
+  deprecatedConfigNotice,
+} from '../../src/trivium/config.js';
+import type { Config } from '../../src/trivium/types.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 
 /**
@@ -45,14 +53,12 @@ import { REPO_ROOT } from '../helpers/fixture.js';
  * 新增配置项时若想加进来，先回答：为什么现在不接线、什么时候接、不接的话为什么不删。
  */
 const KNOWN_DEAD: { key: string; why: string }[] = [
-  {
-    key: 'readonly_commands',
-    why:
-      'BACKLOG EV-15：零消费方，且设计 §10.1 与 §18.1 #21 两处把它当已存在的机制来论证。' +
-      '删它要连带改写那两处设计措辞，已判定不在本批范围内（另立主题逐条裁）',
-  },
   /*
-   * 以下七条是本条测试**第一次运行时抓出来的**，此前没有任何登记。
+   * 原有第一条 `readonly_commands`（EV-15）与下面的 `max_check_retries`（EV-30 ①）
+   * 已于 2026-10-01 删除（两个空配置项收口），不再是「死配置」而是「已废弃键」，
+   * 由文件末尾的回归锁守着不许加回默认值。
+   *
+   * 以下是本条测试**第一次运行时抓出来的**七条中余下的六条，此前没有任何登记。
    * 它们与被删的 `block_severities` 同形：类型定义与默认值齐全、`src/` 下零消费方。
    * 本批只做防新增，存量逐条裁另立主题（BACKLOG EV-30）。
    */
@@ -68,13 +74,6 @@ const KNOWN_DEAD: { key: string; why: string }[] = [
     why:
       'EV-30：本该用于主题名字符校验，而校验实际走 topic.ts 的独立实现。' +
       '两处规则若不一致，用户改配置不会有效果——与 max_len 同段而后者有消费方，容易误以为都生效',
-  },
-  {
-    key: 'max_check_retries',
-    why:
-      'EV-30：**七条里最该优先处理的**——skill 文档正拿它当真实行为向 Driver 承诺' +
-      '（「最多重试 max_check_retries（默认 3）次」），而代码里没有任何重试计数。' +
-      '这不只是死配置，是一句写在流程文档里的假承诺',
   },
   {
     key: 'parallel',
@@ -232,4 +231,143 @@ test('回归锁：被删掉的那个死配置不得再出现在默认配置或 s
   const review = schema.properties.review;
   assert.ok(!('block_severities' in review.properties), 'config.v2 的 properties 里不该再有它');
   assert.ok(!review.required.includes('block_severities'), 'config.v2 的 required 里不该再有它');
+});
+
+// ── 两个空配置项收口（2026-10-01，EV-30 ① / EV-15；计划 r2 §3.4 / §3.6） ──
+
+const DELETED_KEYS = ['max_check_retries', 'readonly_commands'] as const;
+
+test('回归锁：已删除的 max_check_retries / readonly_commands 不得再出现在默认配置或 schema 的 required 里', async () => {
+  const keys = configKeys(defaultConfig() as unknown);
+  for (const k of DELETED_KEYS) {
+    assert.ok(!keys.has(k), `默认配置里又出现了 ${k}——它已于 2026-10-01 删除（零消费方），不要加回来`);
+  }
+  const schemaText = await fs.readFile(
+    path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'),
+    'utf8',
+  );
+  const requiredLists: string[][] = [];
+  const collect = (n: unknown): void => {
+    if (Array.isArray(n)) return n.forEach(collect);
+    if (n === null || typeof n !== 'object') return;
+    for (const [k, v] of Object.entries(n as Record<string, unknown>)) {
+      if (k === 'required' && Array.isArray(v)) requiredLists.push(v as string[]);
+      else collect(v);
+    }
+  };
+  collect(JSON.parse(schemaText));
+  for (const k of DELETED_KEYS) {
+    assert.ok(
+      requiredLists.every((r) => !r.includes(k)),
+      `config.v2 的某个 required 里又出现了 ${k}——不带它的配置会因此校验失败`,
+    );
+  }
+});
+
+/** 默认配置叠上给定的已废弃键；`agyIds` 里的每个 id 都放一个 antigravity 条目并带 readonly_commands */
+function cfgWith(opts: { gate?: boolean; agyIds?: string[] }): Config {
+  const cfg = structuredClone(defaultConfig()) as unknown as {
+    gate: Record<string, unknown>;
+    agents: Record<string, Record<string, unknown>>;
+  };
+  if (opts.gate) cfg.gate['max_check_retries'] = 3;
+  for (const id of opts.agyIds ?? []) {
+    cfg.agents[id] = { ...(cfg.agents['gemini'] ?? {}), readonly_commands: ['git log'] };
+  }
+  return cfg as unknown as Config;
+}
+
+test('U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null', () => {
+  const cases: { name: string; cfg: Config; want: string[] }[] = [
+    { name: '都不带', cfg: cfgWith({}), want: [] },
+    { name: '只带 gate', cfg: cfgWith({ gate: true }), want: ['gate.max_check_retries'] },
+    { name: '只带 agents', cfg: cfgWith({ agyIds: ['gemini'] }), want: ['agents.gemini.readonly_commands'] },
+    {
+      name: '两个都带',
+      cfg: cfgWith({ gate: true, agyIds: ['gemini'] }),
+      want: ['gate.max_check_retries', 'agents.gemini.readonly_commands'],
+    },
+    {
+      // 第二个键名排在 gemini 前面，验证 '*' 展开按键名排序、各列一条
+      name: '两家 antigravity 条目',
+      cfg: cfgWith({ agyIds: ['gemini', 'aaa-agy'] }),
+      want: ['agents.aaa-agy.readonly_commands', 'agents.gemini.readonly_commands'],
+    },
+  ];
+  for (const c of cases) {
+    assert.deepEqual(deprecatedConfigKeysIn(c.cfg), c.want, c.name);
+    const notice = deprecatedConfigNotice(c.cfg);
+    if (c.want.length === 0) {
+      assert.equal(notice, null, `${c.name}：无已废弃键时不出正文`);
+      continue;
+    }
+    assert.ok(notice !== null, c.name);
+    assert.ok(!notice.includes('⚠'), `${c.name}：正文不带 ⚠️（doctor 的 warn() 自带）`);
+    assert.ok(notice.includes(`已废弃的键：${c.want.join('、')}。`), `${c.name}：正文应恰好列出 ${c.want.join('、')}——${notice}`);
+    for (const k of ['gate.max_check_retries', 'readonly_commands']) {
+      if (!c.want.some((w) => w.endsWith(k))) {
+        assert.ok(!notice.includes(k), `${c.name}：没写的键 ${k} 不得出现在正文里——${notice}`);
+      }
+    }
+    assert.match(notice, /从未生效/);
+    assert.match(notice, /config\.yaml/);
+  }
+});
+
+test('U8 流程文档回归锁：skills-src/ 全部文件与 skills/ 下全部 SKILL.md 不得再提已删除的两个配置键', async () => {
+  /*
+   * 防有人把「按配置重试 N 次」这类承诺写回流程文档——那正是 EV-30 ① 的起因。
+   * 源目录里没有叫 SKILL.md 的文件（契约是 *.contract.md、片段是 *.md、载体是 *.yaml），
+   * 所以对 skills-src/ 扫全部文件，对 skills/ 只扫渲染产物 SKILL.md（含 entry/ 副本）——
+   * skills/ 下的 schema 刻意保留着两键（标 deprecated），不在扫描面里（计划 r2 §3.4，AGY-01）。
+   */
+  const walk = async (dir: string, keep: (name: string) => boolean, out: string[] = []): Promise<string[]> => {
+    for (const e of await fs.readdir(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) await walk(p, keep, out);
+      else if (keep(e.name)) out.push(p);
+    }
+    return out;
+  };
+  const files = [
+    ...(await walk(path.join(REPO_ROOT, 'skills-src'), () => true)),
+    ...(await walk(path.join(REPO_ROOT, 'skills'), (n) => n === 'SKILL.md')),
+  ];
+  assert.ok(files.length > 20, `扫描面太小，路径可能写错了：${files.length}`);
+  const hits: string[] = [];
+  for (const f of files) {
+    const text = await fs.readFile(f, 'utf8');
+    for (const k of DELETED_KEYS) if (text.includes(k)) hits.push(`${path.relative(REPO_ROOT, f)}：${k}`);
+  }
+  assert.deepEqual(hits, [], '流程文档里又出现了已删除的配置键：\n  ' + hits.join('\n  '));
+});
+
+test('U9「gate --check 重跑几次」的流程约定在各处源文件里是同一句、处数不缺（代码双审 r1 CODEX-02）', async () => {
+  /*
+   * `max_check_retries` 删掉后，这个数从配置降为散文，落在下表这些源文件里。
+   * 本条守的是「同一句、一处不少」：将来改数字时改一处漏一处，这里会红——
+   * `/dual-run` 的 S8 原本就漏写过上限，正是同族的形状。
+   * 渲染产物（`skills/**\/SKILL.md`）不在这里：它们由 `entry-render-parity` 守住与源一致。
+   * 主设计只数 §21 变更记录之前的正文（变更记录会引用这句，且只追加）。
+   */
+  const PHRASE = '重跑最多 3 次（首次校验不计';
+  const DESIGN = 'doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md';
+  const expected: { file: string; count: number; where: string; cut?: string }[] = [
+    { file: 'skills-src/partials/review/body.md', count: 1, where: '第 6 步「校验裁决完整性」' },
+    { file: 'skills-src/commands/run.contract.md', count: 2, where: 'S4 与 S8' },
+    { file: DESIGN, count: 2, where: '7.4 步骤 6 与 8.6 步骤 6', cut: '\n## 21. 变更记录' },
+    { file: 'doc/07_manuals/MANUAL_user.md', count: 1, where: '「已废弃的键」表' },
+  ];
+  const wrong: string[] = [];
+  for (const e of expected) {
+    let text = await fs.readFile(path.join(REPO_ROOT, e.file), 'utf8');
+    if (e.cut !== undefined) {
+      const i = text.indexOf(e.cut);
+      assert.ok(i > 0, `${e.file} 里找不到切分锚点「${e.cut.trim()}」`);
+      text = text.slice(0, i);
+    }
+    const n = text.split(PHRASE).length - 1;
+    if (n !== e.count) wrong.push(`${e.file}（${e.where}）：期望 ${e.count} 处，实有 ${n} 处`);
+  }
+  assert.deepEqual(wrong, [], `「${PHRASE}…」这句不一致：\n  ` + wrong.join('\n  '));
 });

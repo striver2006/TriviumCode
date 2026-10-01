@@ -1,0 +1,29 @@
+## --rules a.rules :: git show HEAD
+{"matchedRules":[{"prefixRuleMatch":{"matchedPrefix":["git","show"],"decision":"forbidden","justification":"t"}}],"decision":"forbidden"}
+(codex exit=0)
+## --rules a.rules :: cat x
+{"matchedRules":[{"prefixRuleMatch":{"matchedPrefix":["cat"],"decision":"allow"}}],"decision":"allow"}
+(codex exit=0)
+## --rules a.rules :: ls
+{"matchedRules":[]}
+(codex exit=0)
+## --rules a.rules :: rm -rf x
+{"matchedRules":[]}
+(codex exit=0)
+## --rules a.rules :: /usr/bin/git show HEAD
+{"matchedRules":[]}
+(codex exit=0)
+## --rules c.rules :: git show
+{"matchedRules":[{"prefixRuleMatch":{"matchedPrefix":["git","show"],"decision":"forbidden"}}],"decision":"forbidden"}
+(codex exit=0)
+## --rules c.rules :: ls show
+{"matchedRules":[{"prefixRuleMatch":{"matchedPrefix":["ls","show"],"decision":"forbidden"}}],"decision":"forbidden"}
+(codex exit=0)
+## --rules b.rules :: ls
+Error: failed to parse policy at b.rules
+
+Caused by:
+(codex exit=1)
+## --rules a.rules :: bash -lc 'git show HEAD'
+{"matchedRules":[]}
+(codex exit=0)

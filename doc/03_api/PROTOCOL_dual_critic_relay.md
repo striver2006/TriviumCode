@@ -85,6 +85,11 @@ YAML 往返会丢注释，原注释保留在备份中）。三条跨字段规则
 `agents` 的键必须是已登记 Agent（**不要求 `criticEnabled`**——Driver 自身也需要配置容身之处）、
 `agents.<id>.vendor` 必须与注册表相符、`default_critics` 每项必须是可用审核者且在 `agents` 中有配置段。
 
+**已废弃键**（设计 v1.3.72，EV-30 ① / EV-15）：`gate.max_check_retries` 与 `agents.<id>.readonly_commands`（antigravity 一支）
+从未被读取，已删类型与默认值；schema 仍接受（标 `deprecated`、不在 `required`、类型约束照旧），
+带着它们的旧配置升级后照常通过。出现时只有 `doctor`（`warnings`，不影响退出码）与 `preflight`
+（名为「已废弃配置键」的只警告项，进 `warnings`）各提示一条，其余命令不打任何东西。
+
 ### `trivium.review.v1` 的硬约束
 
 - **意见编号前缀逐侧固定，但不由 schema 枚举**：Antigravity 为 `AGY-`、ZCode 为 `GLM-`，各侧不冲突；

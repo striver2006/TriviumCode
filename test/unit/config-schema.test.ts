@@ -318,3 +318,73 @@ test('探针段的合法键集恒等于注册表 cliName 全集', async () => {
     );
   }
 });
+
+// ── 两个空配置项收口（EV-30 ① / EV-15）：删了类型与默认值，schema 仍接受旧键（计划 r2 §3.2 / §3.6） ──
+
+/** 默认配置叠上两个已废弃键——即「升级前合法、带着它们的旧配置」合并后的形状 */
+function withDeprecatedKeys(over: { gate?: unknown; readonly?: unknown } = {}): unknown {
+  const cfg = structuredClone(defaultConfig()) as unknown as {
+    gate: Record<string, unknown>;
+    agents: Record<string, Record<string, unknown>>;
+  };
+  cfg.gate['max_check_retries'] = 'gate' in over ? over.gate : 3;
+  cfg.agents['gemini']!['readonly_commands'] = 'readonly' in over ? over.readonly : ['git log', 'ls'];
+  return cfg;
+}
+
+test('U1 两个空配置项：带着已废弃键的配置仍通过校验；不带时同样通过', () => {
+  assert.deepEqual(validateConfig(withDeprecatedKeys()), [], '带两键的旧配置升级后不得校验失败');
+  const bare = defaultConfig() as unknown as { gate: object; agents: { gemini: object } };
+  assert.ok(!('max_check_retries' in bare.gate), '默认值里不该再有 max_check_retries');
+  assert.ok(!('readonly_commands' in bare.agents.gemini), '默认值里不该再有 readonly_commands');
+  assert.deepEqual(validateConfig(bare), [], '不带两键的配置必须通过——schema 不得再要求它们');
+});
+
+test('U2 两个空配置项：类型约束没有放宽——升级前就不合法的值升级后照旧被拒', () => {
+  const gateBad = validateConfig(withDeprecatedKeys({ gate: -1 }));
+  assert.equal(gateBad.length, 1, gateBad.join('\n'));
+  assert.match(gateBad[0]!, /max_check_retries/);
+  const roBad = validateConfig(withDeprecatedKeys({ readonly: 'git log' }));
+  assert.ok(roBad.length >= 1, '字符串数组写成字符串必须报');
+  assert.ok(roBad.some((p) => /readonly_commands|gemini/.test(p)), roBad.join('\n'));
+});
+
+test('U3 两个空配置项：schema 把两键标为 deprecated，且不在 required 里', async () => {
+  const schema = JSON.parse(
+    await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'), 'utf8'),
+  ) as {
+    properties: {
+      gate: { required: string[]; properties: Record<string, { deprecated?: boolean }> };
+      agents: { additionalProperties: { oneOf: { required: string[]; properties: Record<string, { const?: string; deprecated?: boolean }> }[] } };
+    };
+  };
+  const gate = schema.properties.gate;
+  assert.equal(gate.properties['max_check_retries']?.deprecated, true);
+  assert.ok(!gate.required.includes('max_check_retries'));
+  const agy = schema.properties.agents.additionalProperties.oneOf.find(
+    (b) => b.properties['vendor']?.const === 'antigravity',
+  );
+  assert.ok(agy, 'antigravity 分支应在');
+  assert.equal(agy.properties['readonly_commands']?.deprecated, true);
+  assert.ok(!agy.required.includes('readonly_commands'));
+});
+
+test('U7 两个空配置项：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里', async () => {
+  const root = await projectWith([
+    'schema: trivium.config.v2',
+    'gate:',
+    '  max_check_retries: 3',
+    'agents:',
+    '  gemini:',
+    '    vendor: antigravity',
+    '    bin: null',
+    '    agent: trivium-critic',
+    '    effort: { plan: high, code: high, bug: high }',
+    '    readonly_commands: [git log, ls]',
+    '',
+  ].join('\n'));
+  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
+  const merged = ctx.config as unknown as { gate: Record<string, unknown>; agents: Record<string, Record<string, unknown>> };
+  assert.equal(merged.gate['max_check_retries'], 3);
+  assert.deepEqual(merged.agents['gemini']!['readonly_commands'], ['git log', 'ls']);
+});

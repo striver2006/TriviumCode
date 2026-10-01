@@ -1,0 +1,143 @@
+{
+  "targets_sha256": {
+    "src/trivium/config.ts": "74d547332b25507a980672939dca1f56b172f4990a193c529f8074c6b90458c5",
+    "src/trivium/preflight.ts": "9043c87a663d040e788002e802fd7b8441b140061f379c96744d103610fb1afa",
+    "src/trivium/doctor.ts": "271f0c25aa2ab17373170ff1a82a49d1ce5de0889ac29e277cbb37e4cd32e7df"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "deprecatedConfigKeysIn 什么都不报（判定失效）",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M2",
+      "desc": "'*' 不展开（agents 一支不判）",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M3",
+      "desc": "preflight 不推「已废弃配置键」",
+      "suite": "dist/test/test/unit/preflight.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U5 预检：带已废弃键 ⇒ 照常通过、退出码不变，「已废弃配置键」进 warnings、以 ⚠️ 起头，排在失联阈值之后与模型 slug 之前"
+      ],
+      "firstLines": [],
+      "elapsed_s": 31
+    },
+    {
+      "id": "M4",
+      "desc": "doctor 不推已废弃键告警",
+      "suite": "dist/test/test/unit/preflight.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U6 doctor：带两键 ⇒ warnings 含正文、阻断不受影响；只带一键 ⇒ 正文只列该键；不带 ⇒ 不含"
+      ],
+      "firstLines": [],
+      "elapsed_s": 32
+    },
+    {
+      "id": "M5",
+      "desc": "preflight 该项去掉 warn（不进 warnings）",
+      "suite": "dist/test/test/unit/preflight.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U5 预检：带已废弃键 ⇒ 照常通过、退出码不变，「已废弃配置键」进 warnings、以 ⚠️ 起头，排在失联阈值之后与模型 slug 之前"
+      ],
+      "firstLines": [],
+      "elapsed_s": 33
+    },
+    {
+      "id": "M6",
+      "desc": "defaultConfig 加回 max_check_retries",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "配置项对账：每个配置键都要有消费方，否则必须具名登记为已知死配置",
+        "回归锁：已删除的 max_check_retries / readonly_commands 不得再出现在默认配置或 schema 的 required 里",
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M7",
+      "desc": "defaultConfig 加回 readonly_commands",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "配置项对账：每个配置键都要有消费方，否则必须具名登记为已知死配置",
+        "回归锁：已删除的 max_check_retries / readonly_commands 不得再出现在默认配置或 schema 的 required 里",
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M8",
+      "desc": "正文改回静态列举两键",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M9",
+      "desc": "'*' 展开不排序",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M10",
+      "desc": "正文自带 ⚠️（doctor 人读会双重渲染）",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    }
+  ]
+}

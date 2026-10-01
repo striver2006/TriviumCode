@@ -6,7 +6,7 @@ import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import {
   parsePreflightScope, checkModelSlugs, runPreflight, commitAuthCache, renderPreflight, checkZcodeRuntimeSelection,
-  checkHeartbeatThreshold, type PreflightResult } from '../../src/trivium/preflight.js';
+  checkHeartbeatThreshold, checkDeprecatedConfigKeys, type PreflightResult } from '../../src/trivium/preflight.js';
 import type { CriticAdapter } from '../../src/trivium/adapters/base.js';
 import { DEFAULT_HEARTBEAT_STALE_S, TRIVIUM_DIR, defaultConfig, patchProbe } from '../../src/trivium/config.js';
 import { runDoctor } from '../../src/trivium/doctor.js';
@@ -1025,4 +1025,71 @@ test('EV-160 P4：前面有失败项（探针缺失）时不出——与 ④′ 
   const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {} });
   assert.equal(r.ok, false, '前提：探针缺失即失败');
   assert.equal(r.checks.some((c) => c.name === '失联阈值'), false, '失败之后不再出只警告项');
+});
+
+// ── 两个空配置项收口（EV-30 ① / EV-15）：已废弃键只在预检与 doctor 提示一条（计划 r2 §3.3 / §3.6 U5、U6） ──
+
+/** 往合并后的配置里放已废弃键（模拟磁盘源写了它们） */
+const withDeprecated = (opts: { gate?: boolean; agents?: boolean }) => (c: Config): void => {
+  const raw = c as unknown as { gate: Record<string, unknown>; agents: Record<string, Record<string, unknown>> };
+  if (opts.gate) raw.gate['max_check_retries'] = 3;
+  if (opts.agents) raw.agents['gemini']!['readonly_commands'] = ['git log', 'ls'];
+};
+
+test('U5 预检：带已废弃键 ⇒ 照常通过、退出码不变，「已废弃配置键」进 warnings、以 ⚠️ 起头，排在失联阈值之后与模型 slug 之前', async () => {
+  const ctx = await fakeCtx((c) => {
+    withStale(2)(c);
+    withDeprecated({ gate: true, agents: true })(c);
+  });
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {} });
+  assert.equal(r.ok, true, '只警告、不拒跑');
+  assert.equal(r.exitCode, EXIT.OK);
+  const w = r.warnings.find((x) => x.name === '已废弃配置键');
+  assert.ok(w, r.warnings.map((x) => x.name).join('、'));
+  assert.ok(w.detail.startsWith('⚠️ '), w.detail);
+  assert.ok(w.detail.includes('gate.max_check_retries、agents.gemini.readonly_commands'), w.detail);
+  const idx = (name: string) => r.checks.findIndex((c) => c.name === name);
+  assert.ok(idx('失联阈值') >= 0 && idx('失联阈值') < idx('已废弃配置键'), '排在失联阈值之后');
+  assert.ok(idx('已废弃配置键') < idx('模型 slug 合法'), '排在模型 slug 之前');
+  assertWarnInvariant(r);
+});
+
+test('U5′ 预检：不带已废弃键 ⇒ 不出该项；checkDeprecatedConfigKeys 对缺省配置返回 null', async () => {
+  assert.equal(checkDeprecatedConfigKeys(defaultConfig()), null);
+  // 前提与 EV-160 P2 相同：探针齐备、阈值缺省，预检能走到 ④⁗
+  const ctx = await fakeCtx(withStale(120));
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {} });
+  assert.equal(r.ok, true);
+  assert.equal(r.checks.some((c) => c.name === '已废弃配置键'), false);
+  assertWarnInvariant(r);
+});
+
+/** doctor 只跑环境段：不碰任何审查员 CLI，也不花配额 */
+async function doctorEnvOnly(cfg: Config): Promise<Awaited<ReturnType<typeof runDoctor>>> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-dep-'));
+  const triviumDir = path.join(root, TRIVIUM_DIR);
+  await fs.mkdir(triviumDir, { recursive: true });
+  return runDoctor({ config: cfg, projectRoot: root, triviumDir, only: 'env', skipModelCalls: true });
+}
+
+test('U6 doctor：带两键 ⇒ warnings 含正文、阻断不受影响；只带一键 ⇒ 正文只列该键；不带 ⇒ 不含', async () => {
+  const base = await doctorEnvOnly(defaultConfig());
+  assert.equal(base.warnings.some((w) => w.includes('已废弃的键')), false, '不带两键不该提示');
+
+  const both = defaultConfig();
+  withDeprecated({ gate: true, agents: true })(both);
+  const r2 = await doctorEnvOnly(both);
+  const n2 = r2.warnings.filter((w) => w.includes('已废弃的键'));
+  assert.equal(n2.length, 1, '只提示一条');
+  assert.ok(n2[0]!.includes('gate.max_check_retries、agents.gemini.readonly_commands'), n2[0]);
+  assert.ok(!n2[0]!.startsWith('⚠'), '正文不带 ⚠️——人读出口 warn() 自带');
+  assert.deepEqual(r2.blockers, base.blockers, '提示不得改变阻断项');
+
+  const one = defaultConfig();
+  withDeprecated({ gate: true })(one);
+  const r1 = await doctorEnvOnly(one);
+  const n1 = r1.warnings.find((w) => w.includes('已废弃的键'));
+  assert.ok(n1, '只带一键也要提示');
+  assert.ok(n1.includes('已废弃的键：gate.max_check_retries。'), n1);
+  assert.ok(!n1.includes('readonly_commands'), `没写的键不得出现：${n1}`);
 });

@@ -1,0 +1,93 @@
+{
+  "targets": [
+    "src/trivium/config.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/doctor.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/config-consumers.test.js",
+    "dist/test/test/unit/preflight.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "deprecatedConfigKeysIn 什么都不报（判定失效）",
+      "file": "src/trivium/config.ts",
+      "find": "      if (tail.length === 0) found.push([...trail, k].join('.'));\n",
+      "replace": "      if (tail.length === 0) void 0;\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "'*' 不展开（agents 一支不判）",
+      "file": "src/trivium/config.ts",
+      "find": "    const keys = head === '*' ? Object.keys(obj).sort() : [head];\n",
+      "replace": "    const keys = [head];\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "preflight 不推「已废弃配置键」",
+      "file": "src/trivium/preflight.ts",
+      "find": "    if (d) checks.push(d);\n",
+      "replace": "    void d;\n",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "doctor 不推已废弃键告警",
+      "file": "src/trivium/doctor.ts",
+      "find": "  if (deprecatedNotice !== null) warnings.push(deprecatedNotice);\n",
+      "replace": "  if (deprecatedNotice !== null) void 0;\n",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "preflight 该项去掉 warn（不进 warnings）",
+      "file": "src/trivium/preflight.ts",
+      "find": "  return { name: '已废弃配置键', ok: true, warn: true, detail: `⚠️ ${notice}` };\n",
+      "replace": "  return { name: '已废弃配置键', ok: true, detail: `⚠️ ${notice}` };\n",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "defaultConfig 加回 max_check_retries",
+      "file": "src/trivium/config.ts",
+      "find": "      // max_check_retries 已删除（EV-30 ①）：见 DEPRECATED_CONFIG_KEYS\n",
+      "replace": "      max_check_retries: 3,\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "defaultConfig 加回 readonly_commands",
+      "file": "src/trivium/config.ts",
+      "find": "        // readonly_commands 已删除（EV-15）：见 DEPRECATED_CONFIG_KEYS\n",
+      "replace": "        readonly_commands: ['git log'],\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "正文改回静态列举两键",
+      "file": "src/trivium/config.ts",
+      "find": "    `配置里有已废弃的键：${keys.join('、')}。` +\n",
+      "replace": "    `配置里有已废弃的键：gate.max_check_retries、agents.gemini.readonly_commands。` +\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "'*' 展开不排序",
+      "file": "src/trivium/config.ts",
+      "find": "    const keys = head === '*' ? Object.keys(obj).sort() : [head];\n",
+      "replace": "    const keys = head === '*' ? Object.keys(obj) : [head];\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "正文自带 ⚠️（doctor 人读会双重渲染）",
+      "file": "src/trivium/config.ts",
+      "find": "    `配置里有已废弃的键：${keys.join('、')}。` +\n",
+      "replace": "    `⚠️ 配置里有已废弃的键：${keys.join('、')}。` +\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    }
+  ]
+}

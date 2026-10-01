@@ -1,0 +1,44 @@
+# codex 版本
+codex-cli 0.159.2
+
+# codex exec --help（摘 sandbox / rules 相关）
+53:  -s, --sandbox <SANDBOX_MODE>
+54-          Select the sandbox policy to use when executing model-generated shell commands
+55-          
+56-          [possible values: read-only, workspace-write, danger-full-access]
+--
+90:      --ignore-rules
+91-          Do not load user or project execpolicy `.rules` files
+92-
+93-      --output-schema <FILE>
+
+# codex execpolicy check --help
+Check execpolicy files against a command
+
+Usage: codex execpolicy check [OPTIONS] --rules <PATH> <COMMAND>...
+
+Arguments:
+  <COMMAND>...
+          Command tokens to check against the policy
+
+Options:
+          
+
+  -r, --rules <PATH>
+          Paths to execpolicy rule files to evaluate (repeatable)
+
+      --enable <FEATURE>
+          Enable a feature (repeatable). Equivalent to `-c features.<name>=true`
+
+      --pretty
+          Pretty-print the JSON output
+
+      --disable <FEATURE>
+          Disable a feature (repeatable). Equivalent to `-c features.<name>=false`
+
+      --resolve-host-executables
+          Resolve absolute program paths against basename rules, gated by any `host_executable()`
+          definitions in the loaded policy files
+
+  -h, --help
+          Print help (see a summary with '-h')

@@ -215,8 +215,8 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 ### 6. 校验裁决完整性
 
 运行 `TV gate --stage plan --topic <主题> --check --json`。
-若返回缺失编号，补齐后重跑本步；最多重试 `max_check_retries`（默认 3）次，
-仍不通过则向用户说明缺口并停止求助。
+若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+仍不通过则向用户说明缺口并停下，交给用户处理。
 
 ### 7. 停点
 

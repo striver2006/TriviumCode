@@ -10,7 +10,7 @@
  */
 import path from 'node:path';
 import YAML from 'yaml';
-import { agentConfigOf, defaultProbe, patchProbe, resolveAssetRoot } from './config.js';
+import { agentConfigOf, defaultProbe, deprecatedConfigNotice, patchProbe, resolveAssetRoot } from './config.js';
 import { EXIT } from './exit-codes.js';
 import { probeEnv } from './probes/env.js';
 import { probeVerifyCommands } from './probes/verify-commands.js';
@@ -440,6 +440,12 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   } catch (e) {
     notes.push(`编排器构建标识：读取失败（${(e as Error).message}）`);
   }
+  /*
+   * 已废弃配置键（EV-30 ① / EV-15）：只告警、不影响退出码。放在环境段，与 `--only` 无关——
+   * 它说的是配置本身，哪一段都该看见。正文与判定和预检同源（`deprecatedConfigNotice`），不带 ⚠️（`warn()` 自带）。
+   */
+  const deprecatedNotice = deprecatedConfigNotice(opts.config);
+  if (deprecatedNotice !== null) warnings.push(deprecatedNotice);
   if (!env.nodeOk) blockers.push('Node.js 不可用或版本低于 18');
   if (!env.gitOk) blockers.push('git 不可用或版本过低');
   // wrapper 自身在、里面写死的 node / bundle 却没了：每次 Hook 都会报 127

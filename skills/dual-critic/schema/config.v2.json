@@ -294,8 +294,7 @@
               "vendor",
               "bin",
               "agent",
-              "effort",
-              "readonly_commands"
+              "effort"
             ],
             "properties": {
               "vendor": {
@@ -347,7 +346,9 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "deprecated": true,
+                "description": "已废弃（2026-10-01，EV-15）：从未被读取，agy 侧工具面里没有命令工具。保留属性只为带着它的旧配置照常通过校验；出现时 doctor / preflight 提示一条，可从配置里去掉。"
               }
             }
           },
@@ -504,7 +505,6 @@
         "approval_lock_ttl_h",
         "block_commit",
         "stop_hook_max_blocks",
-        "max_check_retries",
         "reason_policy",
         "joint_blocker_policy"
       ],
@@ -538,7 +538,9 @@
         },
         "max_check_retries": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "deprecated": true,
+          "description": "已废弃（2026-10-01，EV-30 ①）：从未被读取——gate --check 重跑几次是入口命令正文里的流程约定，不是配置项。保留属性只为带着它的旧配置照常通过校验；出现时 doctor / preflight 提示一条，可从配置里去掉。"
         },
         "reason_policy": {
           "enum": [

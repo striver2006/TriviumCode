@@ -1,0 +1,87 @@
+{
+  "label": "after",
+  "bundle_sha256": "91e6c9eed4f60ebbd673c4fcee0799160ac4d72ca39e9a93ce18da9aafcbc9e1",
+  "config_sha256": {
+    "config.yaml": "b3c5872a60e69b25beb8c3ebd04e377d5b31e234a55079cc20723f13a83b884b",
+    "config.local.yaml": "9ceaf0a56b04d49e887fb54985dd1bc606d66d4df4cd96d81b5e8ae92f37cbeb"
+  },
+  "doctor": {
+    "exit": 0,
+    "ok": true,
+    "warnings": [],
+    "blockers": []
+  },
+  "preflight": {
+    "exit": 0,
+    "ok": true,
+    "checks": [
+      {
+        "name": "当轮 Driver",
+        "ok": true,
+        "warn": true
+      },
+      {
+        "name": "探针结论新鲜",
+        "ok": true,
+        "warn": false
+      },
+      {
+        "name": "Claude Code 可调用",
+        "ok": true,
+        "warn": false
+      },
+      {
+        "name": "Codex 可调用",
+        "ok": true,
+        "warn": false
+      },
+      {
+        "name": "Antigravity 可调用",
+        "ok": true,
+        "warn": false
+      },
+      {
+        "name": "ZCode 可调用",
+        "ok": true,
+        "warn": false
+      },
+      {
+        "name": "只读能力可用",
+        "ok": true,
+        "warn": false
+      },
+      {
+        "name": "模型 slug 合法",
+        "ok": true,
+        "warn": false
+      },
+      {
+        "name": "归档与 git 可用",
+        "ok": true,
+        "warn": false
+      },
+      {
+        "name": "编译测试命令已配置",
+        "ok": true,
+        "warn": false
+      },
+      {
+        "name": "探活",
+        "ok": true,
+        "warn": true
+      }
+    ],
+    "warnings": [
+      {
+        "name": "当轮 Driver",
+        "detail": "⚠️ claude · 护栏 L2（登记 L1，但 .claude/settings.json 里的 TriviumCode Hook 不在场，本次按 L2 计：写入没有事前拦截，审查中的越界由跑后复算发现；闸门期改业务文件不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要；审查工件由审批前复核核本轮；修复：trivium init 或 trivium hooks --agent claude）"
+      },
+      {
+        "name": "探活",
+        "detail": "⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。"
+      }
+    ]
+  },
+  "config_yaml_deprecated_lines": [],
+  "build_stamp": "编排器构建标识：9cc9249（构建时作用面有未提交改动），inputs d899b202632b，构建于 2026-10-01T13:36:44.238Z；当前项目不是编排器本仓，只记不比"
+}

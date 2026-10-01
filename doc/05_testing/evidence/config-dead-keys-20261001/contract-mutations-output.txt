@@ -1,0 +1,10 @@
+✓ 基线全绿（dist/test/test/unit/config-schema.test.js、dist/test/test/unit/config-consumers.test.js）
+✓ 咬住 K1（gate 的 required 加回 max_check_retries，改 dist/test/skills/dual-critic/schema/config.v2.json）：期望红 U1 两个空配置项；实际红 4 条：内置默认配置本身合法 ｜ 合法的覆盖（本项目自己的 config.yaml 形状）照常通过 ｜ 可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家 ｜ U1 两个空配置项：带着已废弃键的配置仍通过校验；不带时同样通过
+✓ 咬住 K2（gate 删掉 max_check_retries 属性（带它的旧配置变成未知字段），改 dist/test/skills/dual-critic/schema/config.v2.json）：期望红 U1 两个空配置项；实际红 2 条：U1 两个空配置项：带着已废弃键的配置仍通过校验；不带时同样通过 ｜ U7 两个空配置项：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里
+✓ 咬住 K3（antigravity 分支的 required 加回 readonly_commands，改 dist/test/skills/dual-critic/schema/config.v2.json）：期望红 U1 两个空配置项；实际红 4 条：内置默认配置本身合法 ｜ 合法的覆盖（本项目自己的 config.yaml 形状）照常通过 ｜ 可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家 ｜ U1 两个空配置项：带着已废弃键的配置仍通过校验；不带时同样通过
+✓ 咬住 K4（antigravity 分支删掉 readonly_commands 属性，改 dist/test/skills/dual-critic/schema/config.v2.json）：期望红 U1 两个空配置项；实际红 3 条：U1 两个空配置项：带着已废弃键的配置仍通过校验；不带时同样通过 ｜ U2 两个空配置项：类型约束没有放宽——升级前就不合法的值升级后照旧被拒 ｜ U7 两个空配置项：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里
+✓ 咬住 K5（max_check_retries 的类型约束放宽（去掉 minimum），改 dist/test/skills/dual-critic/schema/config.v2.json）：期望红 U2 两个空配置项；实际红 1 条：U2 两个空配置项：类型约束没有放宽——升级前就不合法的值升级后照旧被拒
+✓ 咬住 K6（源 schema 去掉 max_check_retries 的 deprecated 标注，改 skills/dual-critic/schema/config.v2.json）：期望红 U3 两个空配置项；实际红 1 条：U3 两个空配置项：schema 把两键标为 deprecated，且不在 required 里
+✓ 咬住 K7（源 schema 的 gate required 加回 max_check_retries，改 skills/dual-critic/schema/config.v2.json）：期望红 U3 两个空配置项 + 回归锁：已删除的 max_check_retries；实际红 2 条：回归锁：已删除的 max_check_retries / readonly_commands 不得再出现在默认配置或 schema 的 required 里 ｜ U3 两个空配置项：schema 把两键标为 deprecated，且不在 required 里
+收尾：dist 拷贝与源 schema 逐字节相同
+结果：7/7 咬住；工作树已恢复
