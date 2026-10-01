@@ -1,0 +1,65 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最重一条是文档同步漏项：§2.5 把 prepare 期剔除告警并进同步路径的 warnings，而设计 :1586 与 PROTOCOL :402 对同步 warnings「运行期告警」的定性句未列入 §2.6 改动面，改完即失实（GLM-01）。另一条是 contains 方向缺具名放行豁免、与第 8 段渲染口径不对称（GLM-02，触发罕见）。设计本体未发现会导致返工的问题：判定口径（normalizeAbs 两参、isUnder 含相等、不 realpath）与 checkPeerLeak / guard.ts 的机器处置逐点对上；零工件由既有结构保证（首写盘是 setGateChecked，运行目录 ensureDir 在 prepareRun 之后）；§1 现状描述与源码高度吻合，§1.5/§1.6 对任务目标的两处修正我独立复核后均成立；验收方案可测且改前改后对照能证明旧行为确实自相矛盾。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §2.5 / §2.6（设计 :1586、PROTOCOL :402）",
+      "problem": "§2.5 给同步路径 runReviewLocked 把 mustReadPruned 的 detail 串并进 ReviewOutcome.warnings，但 §2.6 的文档改动只覆盖 --start 侧：设计 :1586 写「同步 review --stage……它的 --json 另有既有的 warnings: string[]（guard 告警等运行期告警）」，PROTOCOL :402 同一句的括注是「（运行期告警）」。剔除告警是 prepare 期产物，并进之后这两句定性就失实——而「凡断言该语义的文案都要一并过一遍」正是 review.ts:651 注释自己记过的教训（单侧播报降级文案漏改那格）。",
+      "evidence": "实读 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md :1584-1587（「当前唯一来源是 checkModelOverrideSource」与同步路径定性句同处一段）、doc/03_api/PROTOCOL_dual_critic_relay.md :402（--start 行内含「同步 review --stage 不做这项复查……（运行期告警）」）、src/trivium/run-protocol.ts :349-368 与 :404-408（跳过分支与 warnings 汇总点）、src/trivium/cli.ts :704-712（同步 --json 的 warnings 键）；对照计划 §2.5 第三条与 §2.6 表 PROTOCOL 行只写「--start 的 warnings 来源补一项」。",
+      "suggestion": "§2.6 的设计行与 PROTOCOL 行把同步路径那半句一并列入：同步 warnings 的定性从「运行期告警」改为「运行期告警 + prepare 期必读剔除告警」一类的实写；A4 用例已断言同步 warnings 含该条，文档跟着实测口径走即可。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.1 第 3 条（contains 分支）",
+      "problem": "under 分支对条目做 isOrchestratorReadable 跳过，contains 分支对禁读条目 d 只跳过 own-run-material、不做具名放行检查。而 sensitive_globs 的扫描不跳 .trivium（freeze.ts:369 只跳 .git / node_modules），配置了较宽的 glob（如 **/*.yaml）时 .trivium/config.yaml 会作为独立 deny 条目存在：第 8 段渲染会滤掉它（brief.ts:318-319），机器侧读它也整个不算命中（guard.ts:291），64 文案的 contains 行却会照列——同一份禁读集在两段与机器三处口径不一。",
+      "evidence": "实读 src/trivium/freeze.ts :360-379（walkSensitive 仅跳 .git / node_modules）、:356（.trivium 只加整棵一条）、src/trivium/brief.ts :316-322（渲染前滤 isOrchestratorReadable）、src/trivium/guard.ts :290-295（机器处置：isOrchestratorReadable 命中即整个不算）；对照计划 §2.1 第 3 条只写「own-run-material ⇒ 跳过（防御性）」。",
+      "suggestion": "contains 分支对 d 也过一遍 isOrchestratorReadable，跳过与 under 分支及第 8 段渲染同口径；§3.1 反例矩阵可补一条「宽 glob 命中具名放行文件」的格。触发条件罕见（需用户 glob 恰好命中 config.yaml 或 bin 子树），不拦实施。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§1 现状描述逐点与源码一致：buildMustReadList 三类来源、存在性用 path.join 导致绝对路径与 ~ 写法静默丢弃（brief.ts:381-383、:417）、listOwnHistory 写死 claude 后缀（review.ts:1901）、enumerateDenyPaths 四部分构成与 .trivium 整棵 / 运行根绝对形态（freeze.ts:356-357）、prepareRun 逐侧循环结构与首写盘是 setGateChecked（review.ts:785-873、:906-926）、startRun 抛错放锁后原样抛（run-protocol.ts:331-339）、--context 两处解析均不过滤（cli.ts:638、topic-args.ts:621-624）。",
+    "§1.5 交集口子表按源码独立复核成立：关键词匹配确实只取 doc/01_requirements 与 doc/02_design 顶层 .md（brief.ts:395-414），archive_root 配到 doc 下撞不上审查件——对任务目标「现状五」的修正是对的；建议核实一行的正则字符类不收汉字、ASCII 主题前提也对（brief.ts:424）。",
+    "§1.6 对 EV-02 原话「无论读不读都会被判违规」的纠正正确：BACKLOG.md:101 原文如此，而 consulted 与 min_project_reads 确实只核数量不核必读。",
+    "§2.1 判定口径与机器侧同构：normalizeAbs 两参（base.ts:1748）、isUnder 含相等（base.ts:1754-1757）、不 realpath 与 checkPeerLeak 同口径（base.ts:1114-1143）；命中点分类后 isOrchestratorReadable 与 own-run-material 跳过，正对应 guard.ts:290-295 的 dispose 语义——「提示语与机器同档」的原则贯彻到位。",
+    "§2.3 判 --context 原始写法而非 buildMustReadList 产物的理由成立（产物静默丢绝对路径/~、按字符串并条，均已在 brief.ts 核实）；校验点在冻结之后、置闸门之前，零工件由既有结构保证——运行目录 ensureDir 也在 prepareRun 之后（run-protocol.ts:409），no-artifacts.test.ts 对 --start 与同步两路都守着同类出口（64/65/69/70/2）。",
+    "§2.6 的文档落点全部实存：设计 §9.4 第 4 条（:2014）、§10.1.1（:2076，「分档的粒度是命中，不是禁读条目」原话在 :2097）、§21（:3550）；设计 :1584-1586「唯一来源」确实已失实（PROTOCOL :402 早已写入 v1.3.57 的失联阈值来源）；MANUAL :449 那格原文与计划引述一致且代码确无对应剔除；MANUAL 现版本 v1.0.26，升 v1.0.27 正确；EV-185/EV-186 编号空闲（现最大为 EV-184）；LLD 的「startRun 第 4 条」与「prepareRun 零工件不变式」段都在。",
+    "§3 验收可测且方法对：C1 的逐字节一致 + 闸门未置可直接断言；改前改后双构建对照先证明旧行为确实自相矛盾再证明新行为收口；变异 12 条与 C1-C5/A1-A4 用例一一有对应；buildMustReadList 唯一调用点 review.ts:772、测试无直接调用，已核。",
+    "§4 风险清单把不 realpath、大小写、空清单兜底句、冻结后新文件、通配符、64/69 先后都如实写了，其中软链那条「机器同样按词法认、两段矛盾因此不存在」的论证我认可。"
+  ],
+  "not_covered": [
+    "静态审查：未运行任何构建、测试或 doctor --selftest，所有结论基于读码与读文档；零配额验收（§3.4/§3.5）的实际可行性未验证。",
+    "未读 skills/ 的 skill-warnings-relay 契约测试本体，只依据 §2.6 的声明接受「skills-src 不改」的判断。",
+    "未读 scripts/mutation-check.mjs，变异流程的锚点生成机制按计划描述接受。",
+    "task.json 的 goal 字段被截断，用户决策一~六的原始措辞无法从仓库核实，按计划转述接受；若决策原文与转述有出入，以原文为准。",
+    "未验证 §2.4 拒跑文案与 §2.5 告警文案在真实三侧注册表下的最终排版（纯设计文本，落地形态待代码审核）。",
+    "worker 从交接文件重建 RunContext 的构造点未逐行核（计划声明 mustReadPruned 给 []，与 request.json / run.v2 无形状耦合，风险低）。"
+  ],
+  "consulted": [
+    ".reviews/必读与禁读交集校验/plan/2026-10-01-必读与禁读交集校验-claude.md",
+    ".reviews/必读与禁读交集校验/task.json",
+    "src/trivium/brief.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/guard.ts",
+    "test/integration/no-artifacts.test.ts",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md"
+  ]
+}
