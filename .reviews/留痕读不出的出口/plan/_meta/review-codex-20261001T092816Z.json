@@ -1,0 +1,128 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "按「外部依赖与环境假设 / 成本与配额 / 回滚与迁移成本」这条镜头，独立读了被审计划以外的 20 多个项目文件并把 §1.2、§1.4、§2.1、§4 的事实断言逐条对账。核过并且成立的：七处的位置与退出码（`cli.ts:565/869/1147-1155/1255`、`topic-args.ts:515`、`hooks.ts:636`）逐字与计划摘要一致；`resolveStageDriver` 的三级判定与「meta 非空或 scanned 大于 0 即 corrupt」的口径（`driver-claim.ts:110-140`）与 §1.1 一致；第 6 处只在竞态可达的推断成立（`--await-approval` 的 runId 取自可读份，`--run-id` 在 `cli.ts:1101` 先硬失败）；「骨架可读、D 不进本状态」有 `fsx.ts:26-31` 的 rename 语义与 `meta.ts:512` 的文件名正则支撑；§4 引用的设计第 1309 行、第 1717 行结局③、PROTOCOL 第 401 行 approve 一格、RUNBOOK 第 308 行都实际存在且就是计划说的那句；EV-181 未被占用（BACKLOG 现最大 180）、设计 v1.3.71 是下一版（当前 v1.3.70）。要返工的三件事集中在：C 格「真实旧构建」的版本对是错的（照 §5.4 跑出来的证据证不到 ① 档）；② 档出口在七处中的第 5、6 处根本给不出 restore 的路径参数（计划刻意的「零参数」在这一点上把循环换成了断头路）；§3 要删的那行内联警示有一条现存单测钉着、第 5 节没把它列进改动清单。另有三档分流的判据漏态、① 的「重装」无可执行对象、验证侧构建次数与依赖获取未核算三条。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "§1.4 成因表的 C 行 + §5.4 的 C 格构造（`doc/05_testing/` 验收探针那一节）",
+      "problem": "C 格（本工具版本落后于写入方）的构造依据是错的，照 §5.4 执行会得到一份「看着通过、实际什么也没证」的证据。计划写「`status: cancelled` 由 `9003a0e` 加进 run.v2 枚举，取其父 `9cee216` 作落后版本」，两条都不成立：`9003a0e` 的父提交是 `661be7b4`（相差两个提交），而 `cancelled` 早在 `5b83e4b2`（run.v2 schema 落地那次）就已经在枚举里，`9cee216` 的 schema 里 `cancelled` 原样在场。也就是说用 `9cee216` 构建的「旧版本」完全读得懂 `review --cancel` 写出的那份留痕，C 格撞不到 corrupt，① 档文案的属实性因此没有任何证据支撑；计划给这条留的退路「换相邻的一对提交」也救不回来，因为相邻两提交同样不含这个差。",
+      "evidence": "`git show -s --format='%h %ad %s' 9003a0e`（commit 9003a0e2，2026-09-26 23:46，正文写的是新增 `finalizeCancelledRunMeta`，即写侧）、`git rev-parse --short 9003a0e^` = `661be7b4`、`git rev-list --count 9cee216..9003a0e` = 2、`git show 9cee216:skills/dual-critic/schema/run.v2.json` 的 status 枚举含 running / success / failed / cancelled、`git log -S` 在 `skills/dual-critic/schema/run.v2.json` 上只命中 `5b83e4b2`（2026-09-14 run.v2 落地）；另读 `skills/dual-critic/schema/run.v2.json` 第 492-501 行确认 `cancelled` 与 `termination.by` 的现况与「只增不减：旧 bundle 读不懂新取值」的自述。",
+      "suggestion": "版本对不要靠记忆选：先做零成本、零构建的机器验证再定——断言候选旧提交的 run.v2 枚举**不含**目标取值、且当前构建会写出该取值，然后取「加入该取值那次提交」的父提交。现成的更贴合的差是 `termination.by` 的新增值（schema 自己的描述就写明旧 bundle 读不懂新取值）。同时在计划里明确这条探针的前置（见 CODEX-06）与「若拿不到可信版本对，退到哪条更便宜的等价路径、那条路径能证到哪一步」，别让 C 格在没有证据的情况下按「预期同 A」写进文案依据。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "§2.1 共用文本草案 ② 那一行 + §2.2 表格第 5、6 行",
+      "problem": "② 档把用户推向一条需要路径参数的命令（终端执行 `git restore` 后跟「该 run-*.json 的路径」），而 §2.1 同时决定共用文本一个参数都不带，两处叠加后在第 5、6 处给不出这个路径：第 6 处（`gate.ts:1108-1123` 的抛错）正文只有阶段、run_id 与来源，没有主题、没有归档根、更没有文件路径；第 5 处（`cli.ts:1147-1155`）同样只有阶段、份数与 run_id 列表。`main` 的 catch 只 `fail(err.message)`，不会替它补上下文。归档根又不由常量决定（`config.ts:257` 的缺省值 `.reviews`、`config.ts:778` 按 `archive_root` 解析），读者无法从阶段加 run_id 拼出可复制的目标。结果是本主题的靶心——「出口必须走得通」——在这两处只是把「指回自己的循环」换成了「缺参数的断头路」。",
+      "evidence": "`src/trivium/gate.ts:1036-1037` 与 :1108-1123 的抛错正文；`src/trivium/cli.ts:1147-1155`（第 5 处消息）、`src/trivium/cli.ts:1103` 与 `src/trivium/exit-codes.ts:53`（`missingArtifact` 只包一层错误码、不补主题或路径）；`src/trivium/cli.ts` 末尾 `main(...).catch` 分支只打印 `err.message`；`src/trivium/config.ts:257/778` 证归档根可配。反例先例：`src/trivium/hooks.ts:1370-1378` 的 `manifest_unreadable` 打印 `t.relPath`、`src/trivium/report.ts:480` 打印「阶段/_meta/文件名」的相对路径。",
+      "suggestion": "二选一并写进计划：① 共用文本改成接收「该份文件的相对路径」的函数，固定段保持不变以支持按子串逐字断言（路径是拼接进去的尾部，不影响 U1/U2 的判据）；② 维持零参数常量，但强制七处的前半句各自打印 `<archive_root 相对路径>/<主题>/<阶段>/_meta/run-<id>.json` 的确切一行，其中第 6 处现在连主题都没有，必须先补。无论哪种，②档那句要能被读者原样复制执行，否则这条出口和被判失实的循环句是同一类问题。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "§2.2 第 6 行「删内联『不要删除』行」+ §3 改动清单 `gate.ts` 行 + §5.1/§5.2 用例清单",
+      "problem": "计划要删掉 `gate.ts` 读不出抛错里内联的那行「不要删除或改写这份运行元数据」，而这条抛错正被一条现存单测钉着：`test/unit/gate.test.ts` 里「runId 非空但本轮运行元数据读不出」那条用例断言消息匹配「不要删除或改写」。§5 的测试改动清单只列了 `topic-claim.test.ts`、`hooks.test.ts`、`gate-loop.test.ts`，漏了 `gate.test.ts`，按现计划执行 `npm run check` 会直接红、返工点在开工之后。另外 §5.1 U3 让测试用 `awaitApprovalRecovery()` / `approveForkRecovery()` 当 recovery，而同文件已有的 `RECOVERY` 夹具是一对占位串并断言「出口由调用方给、原样带出」——两条口径并存时，谁替换谁、原有用例是否保留，计划没说。",
+      "evidence": "`test/unit/gate.test.ts:921`（`const RECOVERY = { missingRunId: '【出口-缺 run_id】', unreadableRunMeta: '【出口-元数据读不出】' }`）、同文件第 946-960 行那条用例（断言 `APPROVAL_CHECK_META_UNREADABLE`、run_id 点名、`RECOVERY.unreadableRunMeta` 与「不要删除或改写」）、同文件第 962-965 行「两句判别文字互不包含」的用例；被断言的原文在 `src/trivium/gate.ts:1116-1120`。",
+      "suggestion": "把 `test/unit/gate.test.ts` 列进 §5 的改动清单，并明确这条断言的去向（改成断言共用文本、还是把「不要删除或改写」视为共用文本的一部分仍匹配）；同时交代 U3 与既有 `RECOVERY` 夹具的关系。顺带在计划里确认：删内联行之后，「别动锚」这句是否仍在第 6/7 处的消息里可达，别让安全性提醒在合并文案时丢失。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "§2.1 共用文本 ②/③ 两行的判据 + §1.4 末段「出口按成因只有三档」",
+      "problem": "三档的**判别动作**建立在 `git status` 的两种形态上（②要「显示被修改或删除」、③要「显示未跟踪」），漏掉第三种真实可达的形态：这份 run.json 已提交、工作树干净、内容本身就读不出。此时 restore 取回的是同一份坏内容（②的处方失效且仍然成环），③的前件又不成立，用户被文案的判据推到三档之外。这一态并不稀奇：C 格的常态就是「已提交且干净」；本仓护栏按载体分四级，没有 Hook 的载体（或 Hook 停用）下坏内容能被提交进去，§4 的「工具自己写不出读不出的 run.json」只排除写侧、不排除提交侧。",
+      "evidence": "`src/trivium/hooks.ts:1364-1379` 的 `checkRunManifests` 报 `manifest_unreadable`（提交锚只在装有 Hook 的载体上生效，AGENTS.md「护栏因载体而异」段与 `hooks.ts:622-641` 的 Hook 侧判定同源）；`src/trivium/meta.ts:504-525` 的 `readRunMeta` 对「不合契约」也返回 null（旧 schema 或未知枚举值即 C 格）；`skills/dual-critic/schema/run.v2.json` 第 501 行自述「只增不减：旧 bundle 读不懂新取值」。",
+      "suggestion": "把 ②/③ 的判据从「工作树状态」换成「这份文件在 git 里有没有版本」（一条 `git log -- <路径>` 就能分开两档），并明确写出第四格：有版本且工作树干净却读不出 → 只可能是 ① 或提交前就已坏，工具内同样没有出口。这与「不编造出口」这条用户决策一致，也免得 §5.4 的 C 格实测走的是「已提交且干净」却没有对应文案。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "§2.1 共用文本 ① 那一行「更新并重装本工具后重试」",
+      "problem": "① 档的处方「更新并重装」在本仓没有唯一可执行对象，因而对各载体是半条出口：生效要 `npm run build` 与安装器两步都做（只构建不安装仍验的是旧产物），而安装器自 M10b 起是多目标、四家的 skill 根各不相同；共用文本刻意不带载体参数，就没有任何一处能把「重装」落成具体命令。§1.4 的 C 格结论「换用不旧于写入方的构建（重装）后恢复」也依赖同一个模糊动作。",
+      "evidence": "`src/install.ts` 头注释第 4-32 行（多目标、拍平、`--uninstall`、`TRIVIUM_ASSET_ROOT` 目标的路径由环境变量决定且源即目标时安装器拒绝写）；`doc/06_deployment/RUNBOOK_pipeline_ops.md:359` 已有「改完 TriviumCode 自身的代码必须重装，否则你验的是旧产物」的成文提醒；AGENTS.md「已知坑」第一条同口径。",
+      "suggestion": "① 那一行要么直接给出两步命令、要么指名 RUNBOOK 的具体小节号作为落点；如果坚持零参数共用文本，就在 §2.2 里规定各处前半句按注册表的载体写法补一句载体相关的安装指引，并在 §5.1 U1 断言里把「①档必须有可执行落点」钉成一条判据，别让它退化成口号。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "performance",
+      "location": "§5.3 变异表 M1～M11 与 §5.4 零配额验收（含 §5.5 全量）",
+      "problem": "验证侧只承诺「零配额」，没有核算时间与前置，两处会在开工时卡住或成倍膨胀：① §5.4 要用 `git archive` 从两个提交各建一份 bundle，而 `git archive` 不带 `node_modules`，esbuild 依赖怎么取（复制、软链工作树那份，还是重装）计划没写，取不到就只能联网装——本仓的探针与验收都是离线跑的，这一步应当先写死取依赖的方式；② 变异装置每跑一条都要全量重建（基线、每条变异、收尾各调一次带测试的构建），11 条再加计划自己要求的「逐条预跑」，等于二十多次全量构建，再叠 §5.5 两次 `npm run check` 与 Node 18/22 双跑。§5.3 也没说明 M4～M8 这五条集成变异是否把每条的期望套件收窄到单个文件（装置支持按 case 指定期望目标），不写就会默认跑整套。",
+      "evidence": "`scripts/mutation-check.mjs:168-171`（`build()` 调 `scripts/build.mjs --with-tests`）、同文件 :321（基线全绿前构建）、:344（变异后为验产物哈希而重建）、:393（收尾重建）、:357（`runSuites(c.expect ? [c.expect] : spec.suites)`——每条可只跑指定套件，不写就跑全部）；`scripts/build.mjs:17/31`（带测试的构建逐文件转译 src 与 test）；AGENTS.md 常用命令段与「已知坑」段证实构建与测试都是打包产物级、非增量。",
+      "suggestion": "在 §5 加一段「预计耗时与前置」：写清旧 bundle 的依赖取法（明确复用工作树 `node_modules`，不联网）、M4～M8 一律指定单个期望套件文件、以及整体验证一次的上界；对 §5.4 的格子按「失败时烧多少」排个序（A/B/E 是纯文本夹具、先跑；C 依赖旧构建、失败就按 CODEX-01 的等价路径降级）。这些不影响判定，但决定这次能不能一天内跑完，也决定 evidence 缺格时是不是只能记「未做」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "§2.1 共用文本全文（单数陈述）+ §2.2 表格第 1～5 行",
+      "problem": "七处里多数一次报的是**一组** run_id（各消息都把 `unreadable` 用顿号拼出来），而三档文案通篇按「这一份文件」单数陈述、模板也是单数路径。同一阶段同时存在 ② 与 ③ 形态的份是常见的（一批已提交、一批未跟踪），文案没提示「逐份分别判因」，读者容易拿第一份的档去处置全部，或反过来以为三档矛盾。",
+      "evidence": "`src/trivium/cli.ts:563/867` 与 `src/trivium/topic-args.ts:513`、`src/trivium/hooks.ts:634`、`src/trivium/cli.ts:1149-1150` 都打印 `unreadable.join('、')`；`src/trivium/meta.ts:493-501` 的 `unreadable` 是按倒序的数组而非单值。",
+      "suggestion": "共用文本开头加一句「下列按份分别判断（每份的成因可能不同）」，或各处前半句改为逐份列出「run_id + 成因候选」；与 CODEX-02 的路径落点可以一并处理。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "「只改文案与注释、判定与退出码零改动」并额外自证 `git diff` 里不出现任何条件变化，是这次最省审查成本的边界；§3 的这句话可以直接当代码双审的核对项。",
+    "§1.1 对判定链的描述与代码一致：`latestRunMeta` 命中首个可读项即返回、被跳过的较新项进 `unreadable`（`meta.ts:479-502`），`resolveStageDriver` 在 `meta` 非空或 `scanned > 0` 时一律判 corrupt、绝不降级到声明（`driver-claim.ts:110-140`），`cmdGate` 只在「扫到大于 0 且一份都读不出」硬失败（`cli.ts:1126`）——EV-73 那一格确实不进本文案，计划的「不碰」划得准。",
+    "§1.2 关于第 6 处只在竞态可达的论证成立（`--await-approval` 的 runId 取自可读的 `latest.run_id`、`--run-id` 在 `cli.ts:1101` 先失败、全坏先撞第 5 处），并诚实承认 CLI 层没有端到端用例、只能靠直接调用守住。",
+    "把第 6、7 处的 recovery 抽成 `gate.ts` 的两个导出函数而不是继续在 `cli.ts` 里内联，理由（`cli.ts` 末尾直接 `main(process.argv...)` 导不进来）属实，且是唯一能让这两处被测试咬住的做法。",
+    "§1.4 用写入路径与 `writeAtomic` 的 rename 语义论证「打断不会留下半截文件、D 不进本状态」，与 `meta.ts:373-388`、`util/fsx.ts:26-31`、`meta.ts:512` 的文件名正则对得上；「没有工具内出口的格如实写没有出口」这条纪律值得保留。",
+    "§4 的文档同步面基本完整：设计第 1309 行「后者硬失败并指引重跑该阶段」、第 1717 行结局③、PROTOCOL 第 401 行 approve 一格、RUNBOOK 第 308 行「尚未提交过的或已丢失的」都逐条核实存在且就是计划要改的那句；版本号 v1.3.71 是设计的下一版（当前 v1.3.70）、EV-181 未被占用（BACKLOG 现最大编号 180）、测试报告同批进 doc/05_testing/README.md 索引也对上了归档对账测试。"
+  ],
+  "not_covered": [
+    "没审「第 8 处该不该纳入本次范围」这条范围纪律本身（是否算 scope drift、该不该整条并入 EV-181）——只按用户列的七处评估其文案与测试口径，第 8 处的必要性留给另一侧与用户裁。",
+    "没审共用文本的中文措辞质量、长度对 Hook deny 理由进入 Driver 上下文后的实际影响，以及它与 `--json` 输出的耦合（§7 自己列的取舍我未复核）。",
+    "没执行任何构建或测试（沙箱只读，无法给 §5 的耗时估算提供实测数字，CODEX-06 只从装置代码推得），也没跑 §5.4 的任一成因格来独立复现 A/B/E 的实测结论。",
+    "没读 `.reviews/` 下任何历史审查件与本主题另一侧的产出（背靠背约束），因此计划里自称「逐字核过」的前几轮结论我未做历史对账，只与当前工作树源码对账。"
+  ],
+  "consulted": [
+    "AGENTS.md",
+    "src/trivium/meta.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/report.ts",
+    "src/trivium/config.ts",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/util/fsx.ts",
+    "src/install.ts",
+    "scripts/mutation-check.mjs",
+    "scripts/build.mjs",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/gate.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/driver-claim.test.ts",
+    "test/unit/report.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/topic-claim.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    ".reviews/留痕读不出的出口/plan/2026-10-01-留痕读不出的出口-claude.md"
+  ]
+}

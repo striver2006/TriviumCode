@@ -1,0 +1,84 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "计划的主体经逐项对源码核实成立：七处出口的枚举、位置与退出码（2/2/2/deny/65/65/65）全部对上，grep 证明 src/ 内再无第八处同句；「重跑不是出口」的定性成立（review --start 在 cli.ts:552-567 于 prepareRun 之前即被 corrupt 判定拒绝）；判定链、写路径（writeRunMeta 写前校验、writeAtomic tmp+rename、tmp 文件不匹配 latestRunMeta 正则）、第 6 处仅竞态可达、第 8 处（提交锚 + RUNBOOK:308 对运行清单类教的 abandon 重跑走不通）的论证均属实；共用文本②「会话里的恢复命令会被 Hook 拦下」与 hookPreBash 规则①（hooks.ts:1016-1043，git restore 在写形态正则且 _meta 无条件命中）一致；文档落点（设计:1309、PROTOCOL:401、RUNBOOK:301-308、BACKLOG:246/295）与测试锚点（topic-claim:424-447、gate-loop T-12:1720、A4/A4′、test/unit/hooks.test.ts 两条 corrupt 用例、verifyRoundForApproval 已导出）全部存在且如所述；U2 的 CIRCULAR 零命中在现 src 上可达。但 §5.4 C 格（版本落后）探针的历史前提失实：status: cancelled 早在 5b83e4b2（M7b，run.v2 落地）就进了枚举，9003a0e 只给 status 加了 description、其 EV-128 改动是让 --cancel 回写 run.json；9cee216 的枚举里已有 cancelled，照计划构造「新构建写 cancelled、9cee216 读之判 corrupt」不会出现 corrupt——用户决策明列「每格零配额实测」，这一格的实测设计执行不出来，需重选真实存在读侧落差的构建对或改写口径。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §5.4（C 格验收）与 §1.4 表 C 行；涉及 skills/dual-critic/schema/run.v2.json 的历史、src/trivium/meta.ts 的 readRunMeta",
+      "problem": "C 格（本工具版本落后）探针的构造前提是错的：计划写「status: cancelled 由 9003a0e 加进 run.v2 枚举，取其父 9cee216 作落后版本，旧构建读之判 corrupt」。我用 git 实测核对：git show 9cee216:skills/dual-critic/schema/run.v2.json 的 status 枚举是 [running, success, failed, cancelled]——cancelled 早已在列；git log -S '\"cancelled\"' 指到 5b83e4b2（M7b run.v2 落地）才引入该枚举值；9003a0e 对 run.v2.json 的 diff 只给 status 加了一段 description，其 EV-128 实际改动是让 review --cancel 经 finalizeCancelledRunMeta 回写 run.json（写行为，不是枚举）。因此按 §5.4 构造：新构建写一份 cancelled 的 run.json，9cee216 构建读它会正常通过校验、不判 corrupt，「换回新构建即恢复」的对照也随之落空——C 格零配额实测做不出来。计划里的兜底句「若 9cee216 在这份夹具上另有不兼容，换相邻的一对提交」预设的失败方向是「另有多余不兼容」（噪声），没覆盖「该机制根本不存在」这一种。另核实 9cee216 的 additionalProperties:false 只落在 guard 子树（peer_leak_via_command / verification_degraded / joint_check 等），其后新增的顶层字段（如 bcb454e5 的 termination）旧构建会忽略、不会拒，相邻提交对未必存在现成的读侧落差，实施时大概率要临场重新考证甚至降级 C 格口径，与用户决策「每格零配额实测」冲突。",
+      "evidence": "git show 9cee216:skills/dual-critic/schema/run.v2.json（status 枚举含 cancelled）；git show 9003a0e -- skills/dual-critic/schema/run.v2.json（仅加 description）；git log -S '\"cancelled\"' -- skills/dual-critic/schema/run.v2.json（唯一下钻点 5b83e4b2）；src/trivium/meta.ts:504-525（readRunMeta 按 run.v2 校验、不合即 null）；src/trivium/exit-codes.ts；skills/dual-critic/schema/run.v2.json 在 9cee216 与 HEAD 的 additionalProperties 作用域比对（10 处 vs 14 处，均在子树内）。",
+      "suggestion": "重选构建对：判据应是「新构建会写出旧构建 schema 拒绝的内容」——新枚举值落在旧枚举之外、或新字段落在旧的 additionalProperties:false 子树内（如 14c188b8 的 drift cause/detail、466bb594 的 parse 降级枚举，需确认其宿主子树与可由桩触发的写入路径）；若考证后发现没有低成本的可构造对，在计划里如实写明 C 格的替代口径（例如承认无法用真实构建对构造、以何种降级证据结案），不要把结论留给实施时临场发挥。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §5.2 第 2 条「hooks.test.ts 两条 corrupt 用例」",
+      "problem": "§5.2 小节标题是「集成（经打包 CLI 跨进程，改现有用例）」，但所列的两条 corrupt 用例（全损、较新一份损）实际在 test/unit/hooks.test.ts：795-805（「留痕坏了就判不出当轮 Driver」）与 847-864（「较新留痕损坏：不退回上一轮 Driver」），它们直接调 hookPreWrite、不经打包 CLI。断言升级本身可行（deny 输出的 JSON 文本里含共用文本即可断言），但归类写错会让实施者去集成套件里找不存在的用例（test/integration/ 下没有 hooks.test.ts，只有 hooks-command.test.ts）。",
+      "evidence": "test/unit/hooks.test.ts:795-805 与 847-864（直接 await hookPreWrite(ctx, writeInput(f))，无子进程）；Glob test/**/*hook*.ts 的结果（集成侧仅 hooks-command.test.ts）；计划 §5.2 小节标题。",
+      "suggestion": "把该条改指 test/unit/hooks.test.ts，或移出「集成」小节单列；断言形态按 r.json 的 deny 文本含共用文本、不含 CIRCULAR 写。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §2.2 表第 4 行（Hook 处的拼接说明）",
+      "problem": "「保留前四行，删出口行与『不要删除』『先重装』两行」自相矛盾：现 deny 文案（hooks.ts:630-639）共六行，第 4 行正是要删的出口行（「出口是**重跑一次……判定随即恢复」），按字面「保留前四行且删出口行」执行不了，应为「保留前三行」。",
+      "evidence": "src/trivium/hooks.ts:630-639（六行 deny 文本的逐行结构：无法判定／只能由编排器落盘／不按缺省也不退回更旧／出口是重跑／不要删除／先重装）。",
+      "suggestion": "把该格改为「保留前三行，删出口行与『不要删除』『先重装』两行（后两者并入共用文本）」。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "七处出口的枚举、位置与退出码全部核实无误（cli.ts:559-566、864-870、1147-1154、1253-1256、1642-1653；topic-args.ts:509-516；hooks.ts:630-639；gate.ts:1116-1122），且 grep 证明「重跑……落一份可读／随即恢复」类句子在 src/ 内确无第八处（cli.ts:1286、gate.ts:662/853、types.ts:1510、selftest.ts:410 的「重跑」均为别的语义，不成 CIRCULAR 匹配）。",
+    "「重跑不是出口」的核心定性成立：resolveStageDriver（driver-claim.ts:111-144）在 meta 为 null 且 scanned>0 时判 corrupt，review --start 在 cli.ts:552-567 于 prepareRun/冻结送审包之前即抛 GATE_BLOCK，重跑到不了「先落骨架」那一步；gate.ts:1056-1058、cli.ts:1631-1634、cli.ts:1140-1141 三段失实注释与 gate.ts:1114「给走得通的出口」的指认属实，cli.ts:1158-1165 的 rerun_index 注释确属实、保留正确。",
+    "成因三档的代码层论证属实：writeRunMeta 写前按 run.v2 校验（meta.ts:373-388）、全部写出口都经它（review.ts:1025/1103/1761、事后收尾 meta.ts:699）、writeAtomic tmp+rename（util/fsx.ts:26-31）且 tmp 文件名不匹配 latestRunMeta 的 ^run-(.+).json$ 正则（meta.ts:488-492）——本工具自己写不出读不出的 run.json、D 格（骨架）可读不进本状态，两条都站得住。",
+    "第 6 处仅竞态可达的论证成立：latest 来自 latestRunMeta，全坏先撞第 5 处（cli.ts:1125）、--run-id 坏在 cli.ts:1101 硬失败；改为 U3 直调 verifyRoundForApproval（gate.ts:1091 已导出）是唯一能咬住接线的做法。",
+    "第 8 处（提交锚）纳入的论证成立：checkArchiveIntegrity 的 manifest_missing/manifest_unreadable（hooks.ts:1373-1384）对未提交坏清单同样给「restore／abandon 后重跑」收尾（hooks.ts:1405-1412），而 RUNBOOK:308 对运行清单类明写「出口是 /dual-abandon 作废这一轮后重跑」——abandon 不改清单可读性、最新一份坏时重跑又撞第 1 处，确属同类循环，条件追加 + 鉴别用例的设计合理；计划自带「超范围则退回 EV-181」的出口，裁决弹性恰当。",
+    "共用文本②「会话里的恢复命令会被 Hook 拦下」与实现一致：hookPreBash 规则①（hooks.ts:1016-1043）不依赖闸门期，git restore/checkout 在写形态正则（hooks.ts:764）且 _meta 路径命中 MENTIONS_OWNED 即拦，与既有 checkArchiveIntegrity 文案（hooks.ts:1406-1408）同口径。",
+    "文档同步落点全部存在且如所述：设计:1309「后者硬失败并指引重跑该阶段」、PROTOCOL:401「（出口是 abandon 后重跑）」、RUNBOOK:301-308「提交被拦下」节、BACKLOG:246（EV-148）与 :295（排序快照）。",
+    "测试锚点存在且现状描述准确：topic-claim.test.ts:424-447 现仅断言非 0 与 /读不出来/；gate-loop.test.ts T-12 现断言 /重跑/（:1720）、A4/A4′ 与 walkAbandonExit（:1883-1921）在位；probe-corrupt-rerun.mjs 在 doc/05_testing/evidence/gate-block-no-skeleton-20260927/ 存在，review --cancel 入口在位（cli.ts:243、493）；EXIT 常量（GATE_BLOCK=2、MISSING_ARTIFACT=65）与计划表的退出码一致。"
+  ],
+  "not_covered": [
+    "预探针 A/B/D/E1/E2 的实测结论只做了源码层一致性核对（判定分支、退出码、提交锚的 manifest 两条路径），未独立复现——审查为只读，未跑任何测试或探针。",
+    "D 格「杀 worker 没找到 pid」的成因未深入（计划已声明正式探针要修步骤，可信）。",
+    "§4 文档改动只核了计划所引行号处的内容与描述相符（设计:1309/1719、PROTOCOL:401、RUNBOOK:301-308、BACKLOG:246/295），未逐字审改后措辞的完整性；LLD 第 257 行附近一节未逐字读。",
+    "未扫 skills-src/ 与 skills/ 渲染产物、QUICKSTART/MANUAL 是否也含同类「重跑即恢复」循环出口文案（七处枚举只覆盖 src/trivium；计划称 MANUAL 已 grep 无「读不出」段，未复核）。",
+    "scripts/mutation-check.mjs 与 gen-mutation-spec.mjs 只核了存在性与 evidence 目录惯例，未读内部机制评估 M1-M11 的可达性。",
+    "共用文本中文措辞的优劣未评（计划明言草案、定稿以代码为准，测试锚定常量本身）。"
+  ],
+  "consulted": [
+    "src/trivium/driver-claim.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/schemas.ts",
+    "test/unit/hooks.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/topic-claim.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/evidence/gate-block-no-skeleton-20260927/probe-corrupt-rerun.mjs（存在性）",
+    "skills/dual-critic/schema/run.v2.json（经 9cee216/9003a0e/HEAD 三时点 git show 比对）",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md"
+  ]
+}
