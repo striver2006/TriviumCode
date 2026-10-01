@@ -1,0 +1,37 @@
+✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (1.260042ms)
+▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标
+  ✔ doc/02_design/README.md (0.461708ms)
+  ✔ doc/03_api/README.md (0.100333ms)
+  ✔ doc/04_development/README.md (0.091333ms)
+  ✔ doc/05_testing/README.md (0.661208ms)
+  ✔ doc/06_deployment/README.md (0.14225ms)
+  ✔ doc/07_manuals/README.md (0.103458ms)
+✔ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (1.830042ms)
+▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序
+  ✔ doc/02_design/README.md (0.244292ms)
+  ✔ doc/03_api/README.md (0.102833ms)
+  ✔ doc/04_development/README.md (0.065709ms)
+  ✔ doc/05_testing/README.md (0.271542ms)
+  ✔ doc/06_deployment/README.md (0.067ms)
+  ✔ doc/07_manuals/README.md (0.049958ms)
+✔ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (0.997083ms)
+✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.197875ms)
+✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.192625ms)
+✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.251875ms)
+✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.140291ms)
+✔ B5 同一文件两条条目 ⇒ duplicate (0.076625ms)
+✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.158458ms)
+✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.062625ms)
+✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.119541ms)
+✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.091583ms)
+✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.047ms)
+✔ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02） (0.102209ms)
+✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.048333ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 82.848042

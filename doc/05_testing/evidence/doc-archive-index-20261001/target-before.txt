@@ -1,0 +1,230 @@
+✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (1.217333ms)
+▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标
+  ✔ doc/02_design/README.md (0.438917ms)
+  ✔ doc/03_api/README.md (0.090084ms)
+  ✔ doc/04_development/README.md (0.081708ms)
+  ✖ doc/05_testing/README.md (1.780166ms)
+  ✔ doc/06_deployment/README.md (0.09675ms)
+  ✔ doc/07_manuals/README.md (0.078833ms)
+✖ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (2.7925ms)
+▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序
+  ✔ doc/02_design/README.md (0.203458ms)
+  ✔ doc/03_api/README.md (0.080916ms)
+  ✔ doc/04_development/README.md (0.063417ms)
+  ✖ doc/05_testing/README.md (0.307875ms)
+  ✔ doc/06_deployment/README.md (0.0715ms)
+  ✔ doc/07_manuals/README.md (0.058167ms)
+✖ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (0.968417ms)
+✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.185834ms)
+✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.178833ms)
+✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.25175ms)
+✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.381917ms)
+✔ B5 同一文件两条条目 ⇒ duplicate (0.081833ms)
+✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.161417ms)
+✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.070167ms)
+✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.111917ms)
+✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.0985ms)
+✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.038292ms)
+✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.0435ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 22
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 93.04975
+
+✖ failing tests:
+
+test at dist/test/test/contract/doc-archive-index.test.js:29:13
+✖ doc/05_testing/README.md (1.780166ms)
+  AssertionError [ERR_ASSERTION]: 索引与目录不一致（新文档要同批进本节；条目要指向存在的文件）：
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-23_ev74_structured_arm_acceptance.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-27_gate_block_no_skeleton.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-27_orphan_worker.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-27_residual_finalize.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-27_unfinished_runs.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-28_cancel_cli_reach.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-28_cli_pgroup_record.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-28_lost_worker_cancel.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-28_lost_worker_gone_finalize.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-28_worker_start_canonical.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-29_cancel_wait_cli_admission.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-29_critical_lock_floor.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-29_heartbeat_threshold_warning.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-29_orphan_cli_admission.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-29_scrub_help_main_clause.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-29_scrub_output_text.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-30_concurrent_setgate_flake.md 没有进「## 当前已归档文件」一节
+    [missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-30_lock_reclaim_enoent.md 没有进「## 当前已归档文件」一节
+  + actual - expected
+  
+  + [
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-23_ev74_structured_arm_acceptance.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-27_gate_block_no_skeleton.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-27_orphan_worker.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-27_residual_finalize.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-27_unfinished_runs.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-28_cancel_cli_reach.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-28_cli_pgroup_record.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-28_lost_worker_cancel.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-28_lost_worker_gone_finalize.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-28_worker_start_canonical.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-29_cancel_wait_cli_admission.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-29_critical_lock_floor.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-29_heartbeat_threshold_warning.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-29_orphan_cli_admission.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-29_scrub_help_main_clause.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-29_scrub_output_text.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-30_concurrent_setgate_flake.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'doc/05_testing/REPORT_2026-09-30_lock_reclaim_enoent.md 没有进「## 当前已归档文件」一节',
+  +     kind: 'missing',
+  +     readme: 'doc/05_testing/README.md'
+  +   }
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/doc-archive-index.test.js:31:14)
+      at Test.runInAsyncScope (node:async_hooks:213:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.start (node:internal/test_runner/test:1003:17)
+      at TestContext.test (node:internal/test_runner/test:378:20)
+      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/doc-archive-index.test.js:29:13)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-23_ev74_structured_arm_acceptance.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-24_ev82_review_arm.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-27_gate_block_no_skeleton.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-27_orphan_worker.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-27_residual_finalize.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-27_unfinished_runs.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-28_cancel_cli_reach.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-28_cli_pgroup_record.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-28_lost_worker_cancel.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-28_lost_worker_gone_finalize.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-28_worker_start_canonical.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-29_cancel_wait_cli_admission.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-29_critical_lock_floor.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-29_heartbeat_threshold_warning.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-29_orphan_cli_admission.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-29_scrub_help_main_clause.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-29_scrub_output_text.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-30_concurrent_setgate_flake.md 没有进「## 当前已归档文件」一节' }, { kind: 'missing', readme: 'doc/05_testing/README.md', detail: 'doc/05_testing/REPORT_2026-09-30_lock_reclaim_enoent.md 没有进「## 当前已归档文件」一节' } ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/contract/doc-archive-index.test.js:38:13
+✖ doc/05_testing/README.md (0.307875ms)
+  AssertionError [ERR_ASSERTION]: 索引节顺序不对：
+    [order] doc/05_testing/README.md:28 REPORT_2026-09-11_m0_probe.md 应排在 REPORT_2026-09-11_manual_acceptance.md（第 27 行）之前——按（日期, 文件名）升序
+    [order] doc/05_testing/README.md:30 REPORT_2026-09-14_m6_claude_probe.md 应排在 REPORT_2026-09-14_m6_codex_probe.md（第 29 行）之前——按（日期, 文件名）升序
+    [order] doc/05_testing/README.md:52 REPORT_2026-09-30_cancel_grace_unverifiable.md 应排在 REPORT_2026-09-30_unverifiable_start.md（第 51 行）之前——按（日期, 文件名）升序
+    [order] doc/05_testing/README.md:54 REPORT_2026-09-16_m8_ac20_acceptance.md 应排在 REPORT_2026-10-01_parse_degrade.md（第 53 行）之前——按（日期, 文件名）升序
+  + actual - expected
+  
+  + [
+  +   {
+  +     detail: 'REPORT_2026-09-11_m0_probe.md 应排在 REPORT_2026-09-11_manual_acceptance.md（第 27 行）之前——按（日期, 文件名）升序',
+  +     kind: 'order',
+  +     line: 28,
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'REPORT_2026-09-14_m6_claude_probe.md 应排在 REPORT_2026-09-14_m6_codex_probe.md（第 29 行）之前——按（日期, 文件名）升序',
+  +     kind: 'order',
+  +     line: 30,
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'REPORT_2026-09-30_cancel_grace_unverifiable.md 应排在 REPORT_2026-09-30_unverifiable_start.md（第 51 行）之前——按（日期, 文件名）升序',
+  +     kind: 'order',
+  +     line: 52,
+  +     readme: 'doc/05_testing/README.md'
+  +   },
+  +   {
+  +     detail: 'REPORT_2026-09-16_m8_ac20_acceptance.md 应排在 REPORT_2026-10-01_parse_degrade.md（第 53 行）之前——按（日期, 文件名）升序',
+  +     kind: 'order',
+  +     line: 54,
+  +     readme: 'doc/05_testing/README.md'
+  +   }
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/doc-archive-index.test.js:40:14)
+      at Test.runInAsyncScope (node:async_hooks:213:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.start (node:internal/test_runner/test:1003:17)
+      at TestContext.test (node:internal/test_runner/test:378:20)
+      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/doc-archive-index.test.js:38:13)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ { kind: 'order', readme: 'doc/05_testing/README.md', line: 28, detail: 'REPORT_2026-09-11_m0_probe.md 应排在 REPORT_2026-09-11_manual_acceptance.md（第 27 行）之前——按（日期, 文件名）升序' }, { kind: 'order', readme: 'doc/05_testing/README.md', line: 30, detail: 'REPORT_2026-09-14_m6_claude_probe.md 应排在 REPORT_2026-09-14_m6_codex_probe.md（第 29 行）之前——按（日期, 文件名）升序' }, { kind: 'order', readme: 'doc/05_testing/README.md', line: 52, detail: 'REPORT_2026-09-30_cancel_grace_unverifiable.md 应排在 REPORT_2026-09-30_unverifiable_start.md（第 51 行）之前——按（日期, 文件名）升序' }, { kind: 'order', readme: 'doc/05_testing/README.md', line: 54, detail: 'REPORT_2026-09-16_m8_ac20_acceptance.md 应排在 REPORT_2026-10-01_parse_degrade.md（第 53 行）之前——按（日期, 文件名）升序' } ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

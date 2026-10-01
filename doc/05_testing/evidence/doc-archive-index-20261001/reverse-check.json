@@ -1,0 +1,539 @@
+{
+  "generated_at": "2026-10-01T00:07:59.811Z",
+  "head": "466bb594",
+  "node": "v25.2.1",
+  "worktree_untouched": true,
+  "summary": "18/18 符合期望（对照 1 + 文档形态 8 + 判定弱化 9）",
+  "results": [
+    {
+      "id": "C0",
+      "what": "对照：未施加变异",
+      "ok": true,
+      "exit": 0,
+      "pass": 27,
+      "fail": 0,
+      "failing": [],
+      "expect": [],
+      "problem_lines": [],
+      "mirror": {
+        "build_ms": 39,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 140
+    },
+    {
+      "id": "D1",
+      "what": "删一条索引条目（lock_reclaim_enoent）",
+      "ok": true,
+      "exit": 1,
+      "pass": 25,
+      "fail": 2,
+      "failing": [
+        "✖ doc/05_testing/README.md",
+        "✖ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标"
+      ],
+      "expect": [
+        {
+          "needle": "[missing]",
+          "found": true
+        },
+        {
+          "needle": "REPORT_2026-09-30_lock_reclaim_enoent.md 没有进",
+          "found": true
+        }
+      ],
+      "problem_lines": [
+        "[missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-09-30_lock_reclaim_enoent.md 没有进「## 当前已归档文件」一节"
+      ],
+      "mirror": {
+        "build_ms": 25,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 131
+    },
+    {
+      "id": "D2",
+      "what": "加一条指向不存在文件的条目",
+      "ok": true,
+      "exit": 1,
+      "pass": 25,
+      "fail": 2,
+      "failing": [
+        "✖ doc/05_testing/README.md",
+        "✖ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标"
+      ],
+      "expect": [
+        {
+          "needle": "[dangling]",
+          "found": true
+        },
+        {
+          "needle": "REPORT_2026-10-02_nonexistent.md",
+          "found": true
+        }
+      ],
+      "problem_lines": [
+        "[dangling] doc/05_testing/README.md:76 条目目标不是存在的文件：./REPORT_2026-10-02_nonexistent.md"
+      ],
+      "mirror": {
+        "build_ms": 25,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 134
+    },
+    {
+      "id": "D3",
+      "what": "目录里放一份不进索引的 .md",
+      "ok": true,
+      "exit": 1,
+      "pass": 25,
+      "fail": 2,
+      "failing": [
+        "✖ doc/05_testing/README.md",
+        "✖ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标"
+      ],
+      "expect": [
+        {
+          "needle": "[missing]",
+          "found": true
+        },
+        {
+          "needle": "REPORT_2026-10-02_unindexed.md 没有进",
+          "found": true
+        }
+      ],
+      "problem_lines": [
+        "[missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-10-02_unindexed.md 没有进「## 当前已归档文件」一节"
+      ],
+      "mirror": {
+        "build_ms": 28,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 134
+    },
+    {
+      "id": "D3'",
+      "what": "目录里放一份不进索引的非 .md",
+      "ok": true,
+      "exit": 1,
+      "pass": 25,
+      "fail": 2,
+      "failing": [
+        "✖ doc/05_testing/README.md",
+        "✖ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标"
+      ],
+      "expect": [
+        {
+          "needle": "[missing]",
+          "found": true
+        },
+        {
+          "needle": "REPORT_2026-10-02_table.csv 没有进",
+          "found": true
+        }
+      ],
+      "problem_lines": [
+        "[missing] doc/05_testing/README.md doc/05_testing/REPORT_2026-10-02_table.csv 没有进「## 当前已归档文件」一节"
+      ],
+      "mirror": {
+        "build_ms": 32,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 135
+    },
+    {
+      "id": "D4",
+      "what": "交换两条相邻的含日期条目（09-27 gate_block_no_skeleton 与 orphan_worker）",
+      "ok": true,
+      "exit": 1,
+      "pass": 25,
+      "fail": 2,
+      "failing": [
+        "✖ doc/05_testing/README.md",
+        "✖ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序"
+      ],
+      "expect": [
+        {
+          "needle": "[order]",
+          "found": true
+        },
+        {
+          "needle": "REPORT_2026-09-27_gate_block_no_skeleton.md 应排在 REPORT_2026-09-27_orphan_worker.md",
+          "found": true
+        }
+      ],
+      "problem_lines": [
+        "[order] doc/05_testing/README.md:55 REPORT_2026-09-27_gate_block_no_skeleton.md 应排在 REPORT_2026-09-27_orphan_worker.md（第 54 行）之前——按（日期, 文件名）升序"
+      ],
+      "mirror": {
+        "build_ms": 26,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 131
+    },
+    {
+      "id": "D5",
+      "what": "06_deployment 的节标题改一个字",
+      "ok": true,
+      "exit": 1,
+      "pass": 24,
+      "fail": 1,
+      "failing": [
+        "✖ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次"
+      ],
+      "expect": [
+        {
+          "needle": "[not_in_domain]",
+          "found": true
+        },
+        {
+          "needle": "doc/06_deployment/README.md",
+          "found": true
+        }
+      ],
+      "problem_lines": [
+        "[not_in_domain] doc/06_deployment/README.md 该 README 不在论域内（没有「## 当前已归档文件」一节，或节标题被改了）"
+      ],
+      "mirror": {
+        "build_ms": 24,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 133
+    },
+    {
+      "id": "D6",
+      "what": "一条条目重复（CASE_manual_acceptance 抄一行）",
+      "ok": true,
+      "exit": 1,
+      "pass": 25,
+      "fail": 2,
+      "failing": [
+        "✖ doc/05_testing/README.md",
+        "✖ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标"
+      ],
+      "expect": [
+        {
+          "needle": "[duplicate]",
+          "found": true
+        },
+        {
+          "needle": "CASE_manual_acceptance.md 有 2 条条目",
+          "found": true
+        }
+      ],
+      "problem_lines": [
+        "[duplicate] doc/05_testing/README.md:28 CASE_manual_acceptance.md 有 2 条条目（第 28、29 行）"
+      ],
+      "mirror": {
+        "build_ms": 23,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 131
+    },
+    {
+      "id": "D7",
+      "what": "行内链接指向不存在的证据目录",
+      "ok": true,
+      "exit": 1,
+      "pass": 25,
+      "fail": 2,
+      "failing": [
+        "✖ doc/05_testing/README.md",
+        "✖ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标"
+      ],
+      "expect": [
+        {
+          "needle": "[inline_dangling]",
+          "found": true
+        },
+        {
+          "needle": "./evidence/m10b-step2-nonexistent/",
+          "found": true
+        }
+      ],
+      "problem_lines": [
+        "[inline_dangling] doc/05_testing/README.md:47 行内链接目标不存在：./evidence/m10b-step2-nonexistent/"
+      ],
+      "mirror": {
+        "build_ms": 25,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 133
+    },
+    {
+      "id": "W1",
+      "what": "判定弱化：去掉覆盖检查",
+      "ok": true,
+      "exit": 1,
+      "pass": 23,
+      "fail": 4,
+      "failing": [
+        "✖ B2 删一条条目 ⇒ missing，文案点名该文件",
+        "✖ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing",
+        "✖ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing",
+        "✖ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02）"
+      ],
+      "expect": [
+        {
+          "needle": "✖ B2",
+          "found": true
+        }
+      ],
+      "problem_lines": [],
+      "mirror": {
+        "build_ms": 26,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 133
+    },
+    {
+      "id": "W2",
+      "what": "判定弱化：去掉悬空检查（目标不存在或非文件也放过）",
+      "ok": true,
+      "exit": 1,
+      "pass": 25,
+      "fail": 2,
+      "failing": [
+        "✖ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling",
+        "✖ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02）"
+      ],
+      "expect": [
+        {
+          "needle": "✖ B3",
+          "found": true
+        }
+      ],
+      "problem_lines": [],
+      "mirror": {
+        "build_ms": 24,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 137
+    },
+    {
+      "id": "W3",
+      "what": "判定弱化：去掉含日期条目的顺序检查",
+      "ok": true,
+      "exit": 1,
+      "pass": 26,
+      "fail": 1,
+      "failing": [
+        "✖ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条"
+      ],
+      "expect": [
+        {
+          "needle": "✖ B6",
+          "found": true
+        }
+      ],
+      "problem_lines": [],
+      "mirror": {
+        "build_ms": 25,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 132
+    },
+    {
+      "id": "W4",
+      "what": "判定弱化：去掉「无日期排在含日期之后」检查",
+      "ok": true,
+      "exit": 1,
+      "pass": 25,
+      "fail": 2,
+      "failing": [
+        "✖ B5 同一文件两条条目 ⇒ duplicate",
+        "✖ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条"
+      ],
+      "expect": [
+        {
+          "needle": "✖ B6",
+          "found": true
+        }
+      ],
+      "problem_lines": [],
+      "mirror": {
+        "build_ms": 27,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 133
+    },
+    {
+      "id": "W5",
+      "what": "判定弱化：不再排除隐藏项（镜像的 05_testing 顶层另放一个 .DS_Store）",
+      "ok": true,
+      "exit": 1,
+      "pass": 17,
+      "fail": 10,
+      "failing": [
+        "✖ doc/05_testing/README.md",
+        "✖ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标",
+        "✖ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报",
+        "✖ B2 删一条条目 ⇒ missing，文案点名该文件",
+        "✖ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling",
+        "✖ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing",
+        "✖ B5 同一文件两条条目 ⇒ duplicate",
+        "✖ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析",
+        "✖ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing",
+        "✖ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02）"
+      ],
+      "expect": [
+        {
+          "needle": "✖ B1",
+          "found": true
+        },
+        {
+          "needle": ".DS_Store 没有进",
+          "found": true
+        }
+      ],
+      "problem_lines": [
+        "[missing] doc/05_testing/README.md doc/05_testing/.DS_Store 没有进「## 当前已归档文件」一节"
+      ],
+      "mirror": {
+        "build_ms": 27,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 135
+    },
+    {
+      "id": "W6",
+      "what": "判定弱化：条目识别放宽到任意链接",
+      "ok": true,
+      "exit": 1,
+      "pass": 17,
+      "fail": 10,
+      "failing": [
+        "✖ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报",
+        "✖ B2 删一条条目 ⇒ missing，文案点名该文件",
+        "✖ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling",
+        "✖ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing",
+        "✖ B5 同一文件两条条目 ⇒ duplicate",
+        "✖ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条",
+        "✖ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析",
+        "✖ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing",
+        "✖ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02）",
+        "✖ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组"
+      ],
+      "expect": [
+        {
+          "needle": "✖ B9",
+          "found": true
+        }
+      ],
+      "problem_lines": [
+        "[duplicate] doc/05_testing/README.md:13 REPORT_2026-09-11_b.md 有 2 条条目（第 13、17 行）",
+        "[order] doc/05_testing/README.md:17 REPORT_2026-09-11_b.md 应排在 REPORT_2026-09-12_d e.md（第 15 行）之前——按（日期, 文件名）升序"
+      ],
+      "mirror": {
+        "build_ms": 24,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 138
+    },
+    {
+      "id": "W7",
+      "what": "判定弱化：去掉尾斜杠归一",
+      "ok": true,
+      "exit": 1,
+      "pass": 19,
+      "fail": 8,
+      "failing": [
+        "✖ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报",
+        "✖ B2 删一条条目 ⇒ missing，文案点名该文件",
+        "✖ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling",
+        "✖ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing",
+        "✖ B5 同一文件两条条目 ⇒ duplicate",
+        "✖ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing",
+        "✖ B10 目标解析：片段、百分号编码、尾斜杠、上级目录",
+        "✖ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02）"
+      ],
+      "expect": [
+        {
+          "needle": "✖ B10",
+          "found": true
+        }
+      ],
+      "problem_lines": [],
+      "mirror": {
+        "build_ms": 25,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 133
+    },
+    {
+      "id": "W8",
+      "what": "判定弱化：不认围栏（围栏里的假条目与假节标题被当真）",
+      "ok": true,
+      "exit": 1,
+      "pass": 17,
+      "fail": 10,
+      "failing": [
+        "✖ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报",
+        "✖ B2 删一条条目 ⇒ missing，文案点名该文件",
+        "✖ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling",
+        "✖ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing",
+        "✖ B5 同一文件两条条目 ⇒ duplicate",
+        "✖ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条",
+        "✖ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析",
+        "✖ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing",
+        "✖ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02）",
+        "✖ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组"
+      ],
+      "expect": [
+        {
+          "needle": "✖ B1",
+          "found": true
+        }
+      ],
+      "problem_lines": [
+        "[section_ambiguous] doc/05_testing/README.md 「## 当前已归档文件」出现 2 次"
+      ],
+      "mirror": {
+        "build_ms": 26,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 133
+    },
+    {
+      "id": "W9",
+      "what": "判定弱化：断链软链不计入覆盖（代码双审 CODEX-02）",
+      "ok": true,
+      "exit": 1,
+      "pass": 26,
+      "fail": 1,
+      "failing": [
+        "✖ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02）"
+      ],
+      "expect": [
+        {
+          "needle": "✖ B12",
+          "found": true
+        }
+      ],
+      "problem_lines": [],
+      "mirror": {
+        "build_ms": 26,
+        "copied_files": 76,
+        "symlinked_dirs": 2
+      },
+      "test_ms": 133
+    }
+  ]
+}
