@@ -1,0 +1,6 @@
+✓ 基线全绿（dist/test/test/unit/run-meta-strict.test.js）
+  K1 ✓ 咬住：cause 枚举放宽（加 pruned） ⇒ 红：EV-139 C2：unknown_reason 合法形状通过；表外原因、缺 detail、多出键、detail 非字符串都判错；缺席（旧形）照样通过
+  K2 ✓ 咬住：unknown_reason 去掉 additionalProperties: false ⇒ 红：EV-139 C2：unknown_reason 合法形状通过；表外原因、缺 detail、多出键、detail 非字符串都判错；缺席（旧形）照样通过
+  K3 ✓ 咬住：unknown_reason 的 required 去掉 detail ⇒ 红：EV-139 C2：unknown_reason 合法形状通过；表外原因、缺 detail、多出键、detail 非字符串都判错；缺席（旧形）照样通过
+  K4 ✓ 咬住：源 schema 的 cause 枚举少一项（与 DRIFT_UNKNOWN_CAUSES 不再相等） ⇒ 红：EV-139 C1：schema 里 unknown_reason.cause 的枚举与 types.ts 的 DRIFT_UNKNOWN_CAUSES 逐项相等（单一来源）
+4/4 咬住

@@ -1,0 +1,148 @@
+{
+  "targets": [
+    "src/trivium/freeze.ts",
+    "src/trivium/review.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/report.ts",
+    "src/trivium/render.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/meta.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/freeze-drift.test.js",
+    "dist/test/test/integration/fault-injection.test.js",
+    "dist/test/test/unit/drift-unknown.test.js",
+    "dist/test/test/unit/report.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "3.a 换回失败返回 [] 的 diffTrees",
+      "file": "src/trivium/freeze.ts",
+      "find": "    entries = await diffTreesNameStatus(projectRoot, before.treeHash, afterTreeHash);\n",
+      "replace": "entries = (await (await import('./util/git.js')).diffTrees(projectRoot, before.treeHash, afterTreeHash)).map((p) => ({ status: 'M', path: p }));\n",
+      "expect": "dist/test/test/unit/freeze-drift.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "比对失败时返回 none",
+      "file": "src/trivium/freeze.ts",
+      "find": "    return { kind: 'unknown', ...(await classifyCompareFailure(projectRoot, before.treeHash, afterTreeHash, e)) };\n",
+      "replace": "    void e; return { kind: 'none' };\n",
+      "expect": "dist/test/test/unit/freeze-drift.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "driftAction 的 unknown 改跟 on_drift",
+      "file": "src/trivium/freeze.ts",
+      "find": "    // 比不了 ⇒ 排除不了被审范围内的文件被改，按相关漂移那一档（EV-139，用户决策）\n    case 'unknown':\n      return cfg.review.on_drift_related === 'fail' ? 'fail' : 'warn';\n",
+      "replace": "    // 比不了 ⇒ 排除不了被审范围内的文件被改，按相关漂移那一档（EV-139，用户决策）\n    case 'unknown':\n      return cfg.review.on_drift === 'fail' ? 'fail' : 'warn';\n",
+      "expect": "dist/test/test/unit/freeze-drift.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "driftAction 的 unknown 恒 warn",
+      "file": "src/trivium/freeze.ts",
+      "find": "    // 比不了 ⇒ 排除不了被审范围内的文件被改，按相关漂移那一档（EV-139，用户决策）\n    case 'unknown':\n      return cfg.review.on_drift_related === 'fail' ? 'fail' : 'warn';\n",
+      "replace": "    // 比不了 ⇒ 排除不了被审范围内的文件被改，按相关漂移那一档（EV-139，用户决策）\n    case 'unknown':\n      return 'warn';\n",
+      "expect": "dist/test/test/unit/freeze-drift.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "分原因去掉超时分支",
+      "file": "src/trivium/freeze.ts",
+      "find": "  if (err instanceof GitTimeoutError) return timedOut(err, GIT_DEFAULT_TIMEOUT_MS);\n",
+      "replace": "// 变异 M5：去掉超时分支\n",
+      "expect": "dist/test/test/unit/freeze-drift.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "分原因不用 treeExists 的结果（object_gone 判据去掉）",
+      "file": "src/trivium/freeze.ts",
+      "find": "    if (!present) return { cause: 'object_gone', detail: goneDetail };\n",
+      "replace": "    void present; void goneDetail;\n",
+      "expect": "dist/test/test/unit/freeze-drift.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "run.json 的 policy 条件不含 unknown",
+      "file": "src/trivium/review.ts",
+      "find": "      verdict.drift.kind === 'related' || verdict.drift.kind === 'unknown'\n",
+      "replace": "      verdict.drift.kind === 'related'\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "run.json 不写 unknown_reason",
+      "file": "src/trivium/review.ts",
+      "find": "      ? { unknown_reason: { cause: verdict.drift.cause, detail: verdict.drift.detail } }\n",
+      "replace": "      ? {}\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "人读告警的 unknown 分支直接 break",
+      "file": "src/trivium/guard.ts",
+      "find": "    case 'unknown':\n",
+      "replace": "    case 'unknown': break;\n",
+      "expect": "dist/test/test/unit/drift-unknown.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "report 不推「漂移无法判定」旗标",
+      "file": "src/trivium/report.ts",
+      "find": "    base.guardFlags.push(`漂移无法判定（${describeDriftUnknown(driftUnknown)}，${meta.snapshot.drift.policy}）`);\n",
+      "replace": "    void driftUnknown;\n",
+      "expect": "dist/test/test/unit/report.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "审查文档不换旗标",
+      "file": "src/trivium/render.ts",
+      "find": "  if (input.driftUnknown) {\n",
+      "replace": "  if (false) {\n",
+      "expect": "dist/test/test/unit/drift-unknown.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "严格比对去掉 -z",
+      "file": "src/trivium/util/git.ts",
+      "find": "    ['diff-tree', '-r', '--name-status', '--no-renames', '-z', '--no-commit-id', treeA, treeB],\n",
+      "replace": "    ['diff-tree', '-r', '--name-status', '--no-renames', '--no-commit-id', treeA, treeB],\n",
+      "expect": "dist/test/test/unit/freeze-drift.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "去掉 tree 值的形状闸",
+      "file": "src/trivium/freeze.ts",
+      "find": "  if (!OBJECT_NAME_RE.test(before.treeHash) || !OBJECT_NAME_RE.test(afterTreeHash)) {\n",
+      "replace": "  if (false) {\n",
+      "expect": "dist/test/test/unit/freeze-drift.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "去掉 prune_objects 桩的临时夹具自缚",
+      "file": "src/trivium/adapters/stub.ts",
+      "find": "          if (!inTmp) {\n",
+      "replace": "          if (false) {\n",
+      "expect": "dist/test/test/unit/drift-unknown.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "summarizeRun 不打「漂移无法判定」",
+      "file": "src/trivium/meta.ts",
+      "find": "  if (unknownReason) {\n",
+      "replace": "  if (false) {\n",
+      "expect": "dist/test/test/unit/drift-unknown.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "核对对象不传共享预算（回到各走缺省 120 s）",
+      "file": "src/trivium/freeze.ts",
+      "find": "      present = await exists(projectRoot, tree, { timeoutMs: remaining() });\n",
+      "replace": "      present = await exists(projectRoot, tree);\n",
+      "expect": "dist/test/test/unit/freeze-drift.test.js"
+    }
+  ]
+}

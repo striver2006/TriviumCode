@@ -10,6 +10,7 @@ import { promises as fs } from 'node:fs';
 import type {
   AgentId, CriticId, LegacyReviewMode, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
 } from './types.js';
+import { describeDriftUnknown } from './types.js';
 import type { BuildStamp } from './build-stamp.js';
 import { writeAtomic } from './util/fsx.js';
 import { topicDir, type ArchiveLayout } from './archive.js';
@@ -787,7 +788,11 @@ export function summarizeRun(meta: RunMeta): string {
         ` ｜ 工具 ${JSON.stringify(m.tool_calls)}`,
     );
   }
-  if (meta.snapshot.drift.changed) {
+  const unknownReason = meta.snapshot.drift.unknown_reason;
+  if (unknownReason) {
+    // 比不了（EV-139）：「0 个文件」会读成「没改什么」，换成说明原因的一行
+    lines.push(`  ⚠️ 漂移无法判定：${describeDriftUnknown(unknownReason)}（策略 ${meta.snapshot.drift.policy}）`);
+  } else if (meta.snapshot.drift.changed) {
     lines.push(`  ⚠️ 漂移：${meta.snapshot.drift.files.length} 个文件（策略 ${meta.snapshot.drift.policy}）`);
   }
   if (meta.guard.readonly_breach) lines.push('  ⚠️ 只读失守');

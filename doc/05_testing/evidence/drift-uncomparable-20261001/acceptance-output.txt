@@ -1,0 +1,17 @@
+✓ 构建不同：old ac20127b2a82 / new 5fe73c51ef08
+✓ 构建内容：改前 bundle 含 unknown_reason=false，改后=true
+✓ A old：changed=false、退 0、status success、partial
+✓ A new：changed=false、退 0、status success、partial
+✓ A 新旧退出码相同：old 0 / new 0
+✓ B old 窗口命中：跑后 tree 含改后的 src/b.ts（第 1 次）；清理后 cat-file 退 1（旁证）
+✓ B old 静默放行（bug 复现）：changed=false、files=[]、退 0、status success
+✓ B new 窗口命中：第 1 次
+✓ B new 判比不了并按 fail 处置：unknown_reason={"cause":"object_gone","detail":"送审快照的 tree da123cc4bf11 在审查期间被清理"}、policy fail、退 1、status failed
+✓ B new 告警：终态 message 含告警与策略
+✓ C new 按 warn 处置：policy warn、退 0、status success
+✓ V0 缺省清理不删：gc 缺省后 cat-file 退 0、maintenance 后退 0
+✓ V0 立即清理即删：--prune=now 后 cat-file 退 1、diff-tree 退 128
+✓ V0 同集：2192 个文件，两种输出同集；diffTrees 14 ms、diffTreesNameStatus 9 ms
+✓ V0 耗时：本仓 workTreeHash 932 ms（与 diff-tree 同一 120 s 缺省超时）
+
+15/15 通过

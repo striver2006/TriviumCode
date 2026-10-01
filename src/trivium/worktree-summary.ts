@@ -25,7 +25,7 @@
  */
 import { entryCommandOf } from './agents/registry.js';
 import { diffExcludePrefixes } from './code-stage.js';
-import { diffTreesNameStatus, treeExists, workTreeHash } from './util/git.js';
+import { OBJECT_NAME_RE, diffTreesNameStatus, treeExists, workTreeHash } from './util/git.js';
 
 /** 摘要总预算（计划双审 CODEX-02）：超出即落原因 4，审批照常 */
 export const SUMMARY_BUDGET_MS = 20_000;
@@ -67,8 +67,10 @@ export function budgetOverrideNote(ms: number): string {
  * 基线取自 run.json，而审批前复核只核 `artifacts[]`、不核 run.json 本身。不设这道闸时，
  * 一个含 `;` `$(` 的合法 git 引用名能过 `cat-file -e` 与 `diff-tree`，再被拼进给人复制执行的照抄命令；
  * 以 `-` 开头的值还会被 git 当成选项。不合形状即不做任何 git 调用。
+ *
+ * 定义已挪到 `util/git.ts`（漂移判定同用，EV-139 计划 r2 §2.2），这里原样再导出。
  */
-export const OBJECT_NAME_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+export { OBJECT_NAME_RE };
 
 /** 不可用原因（计划 r2 §2.5），逐字区分，都不与「无改动」同形 */
 export const REASON_NO_BASELINE = '本轮没有审查收尾时的工作树基线，无法比对。';

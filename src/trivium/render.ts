@@ -7,9 +7,10 @@
  */
 import YAML from 'yaml';
 import type {
-  CriticId, CriticResult, DegradedFinding, DenyCategory, FallbackCause, ParseRepairs, Review, Severity, Stage, Vendor,
+  CriticId, CriticResult, DegradedFinding, DenyCategory, DriftUnknownReason, FallbackCause, ParseRepairs, Review,
+  Severity, Stage, Vendor,
 } from './types.js';
-import { CRITIC_VENDOR } from './types.js';
+import { CRITIC_VENDOR, describeDriftUnknown } from './types.js';
 import { agentById } from './agents/registry.js';
 import { FINDING_FIELDS, VENDOR_NOISE_KEYS } from './parse.js';
 
@@ -69,6 +70,11 @@ export interface RenderInput {
   selectedCritics: readonly CriticId[];
   degraded: boolean;
   drift: boolean;
+  /**
+   * 跑后复算比不了改了哪些文件（EV-139）：给了就把正文旗标换成「漂移无法判定」并带原因。
+   * 只影响正文，front-matter 仍只写 `drift`，不加新键（回显键表与渲染绑定不动）。
+   */
+  driftUnknown?: DriftUnknownReason;
   /** 路径级 deny 是否实际生效（§10.2 要求逐侧标注） */
   peerDeny: boolean;
   consultedUnverified: boolean;
@@ -311,7 +317,14 @@ export function renderReviewDoc(input: RenderInput): string {
     flags.push(`**解析前做了无损修复**：${parts.join('；')}（详见 front-matter 的 \`parse_repairs\`）。`);
   }
   if (!input.evidenceOk) flags.push('**Agent 执行证据不足**：本侧不得计为合格双审的一半。');
-  if (input.drift) flags.push('**审查期间工作树发生漂移**：本结论对应送审时刻的快照，与当前工作树可能已不一致。');
+  if (input.driftUnknown) {
+    flags.push(
+      `**审查期间的工作树漂移无法判定**（${describeDriftUnknown(input.driftUnknown)}）：` +
+        '比不了改了哪些文件，按 on_drift_related 处置。本结论对应送审时刻的快照。',
+    );
+  } else if (input.drift) {
+    flags.push('**审查期间工作树发生漂移**：本结论对应送审时刻的快照，与当前工作树可能已不一致。');
+  }
   if (!input.peerDeny) {
     flags.push(
       '**路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，' +

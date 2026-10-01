@@ -66,6 +66,8 @@ async function seedRound(
     glmFailed?: boolean;
     usage?: Record<string, unknown>;
     drift?: boolean;
+    /** 跑后复算比不了（EV-139）：changed 真、files 空、带 unknown_reason */
+    driftUnknown?: boolean;
     guardLevel?: 'L1' | 'L2';
     /** 手工置 true：生产代码从不写 true，只用来钉「report 不据它打旗标」（EV-137） */
     forgedRoleFile?: boolean;
@@ -79,6 +81,12 @@ async function seedRound(
     ...(opts.guardLevel ? { driverGuardLevel: opts.guardLevel } : {}),
   });
   if (opts.drift) meta.snapshot.drift = { changed: true, files: ['x.ts'], policy: 'warn' };
+  if (opts.driftUnknown) {
+    meta.snapshot.drift = {
+      changed: true, files: [], policy: 'fail',
+      unknown_reason: { cause: 'object_gone', detail: '送审快照的 tree 0123456789ab 在审查期间被清理' },
+    };
+  }
   if (opts.forgedRoleFile) meta.guard.forged_role_file = true;
 
   for (const [c, rv] of [['gemini', opts.gemini], ['glm', opts.glm]] as const) {
@@ -284,6 +292,19 @@ test('漂移与路径 deny 降级进告警清单', async () => {
   const r = await buildTopicReport(l);
   assert.ok(r.rounds[0]!.guardFlags.some((g) => /漂移 1 个文件/.test(g)));
   assert.match(renderTopicReport(r), /漂移 1 个文件/);
+});
+
+test('EV-139：比不了进告警清单，不因两个桶都空而一声不吭', async () => {
+  const l = await archive();
+  await seedRound(l, { rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM'), driftUnknown: true });
+  const r = await buildTopicReport(l);
+  const flags = r.rounds[0]!.guardFlags;
+  assert.ok(
+    flags.includes('漂移无法判定（对象已不在：送审快照的 tree 0123456789ab 在审查期间被清理，fail）'),
+    `guardFlags=${JSON.stringify(flags)}`,
+  );
+  assert.ok(!flags.some((g) => /漂移 \d+ 个文件/.test(g)), '比不了不能写成「漂移 N 个文件」');
+  assert.match(renderTopicReport(r), /漂移无法判定/);
 });
 
 /*

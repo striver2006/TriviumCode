@@ -1357,6 +1357,10 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       // 用真实判定，不再从 mode 反推——mode 只说完成度，不说参与者基数（runner.ts ModeDecision）
       degraded: mode.degraded,
       drift: verdict.drift.kind !== 'none',
+      // 比不了（EV-139）：旗标换成「漂移无法判定」，front-matter 仍只写 drift: true
+      ...(verdict.drift.kind === 'unknown'
+        ? { driftUnknown: { cause: verdict.drift.cause, detail: verdict.drift.detail } }
+        : {}),
       peerDeny: r.peer_deny_applied,
       /*
        * 禁读核验结论——与上面的 `peerDeny` **正交**，两者都要传。
@@ -1441,10 +1445,20 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   meta.finished_at = finishedAt;
   meta.review_mode = mode.mode;
   meta.degraded_reason = mode.degradedReason;
+  /*
+   * `policy` = 本轮实际适用的那个配置键的值。比不了（`unknown`，EV-139）按 `on_drift_related` 处置，
+   * 这里同口径；`unknown_reason` 只取加法、只在比不了时写，既有三个字段的含义不变。
+   */
   meta.snapshot.drift = {
     changed: verdict.drift.kind !== 'none',
     files: verdict.fingerprintChangedFiles,
-    policy: verdict.drift.kind === 'related' ? cfg.review.on_drift_related : cfg.review.on_drift,
+    policy:
+      verdict.drift.kind === 'related' || verdict.drift.kind === 'unknown'
+        ? cfg.review.on_drift_related
+        : cfg.review.on_drift,
+    ...(verdict.drift.kind === 'unknown'
+      ? { unknown_reason: { cause: verdict.drift.cause, detail: verdict.drift.detail } }
+      : {}),
   };
   /*
    * 收尾复算的 tree 落盘，只供审批时的工作树改动摘要作基线（审批前工作树摘要计划 r2 §2.3）。

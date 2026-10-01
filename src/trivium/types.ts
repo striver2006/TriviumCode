@@ -1258,12 +1258,61 @@ export interface CriticRunMeta {
   deny_bytes?: number;
 }
 
+/**
+ * 跑后漂移复算「比不了」的原因（EV-139，计划 r2 §2.1）。**本数组是唯一来源**：
+ * `freeze.ts` 的 `DriftVerdict` 与标签表、`run.v2.json` 的 `unknown_reason.cause` 枚举都对齐它
+ * （schema 侧由 `run-meta-strict.test.ts` 逐项比对守住）。
+ *
+ * - `object_gone`：送审快照或跑后复算的 tree 对象已不在对象库（审查期间被立即清理）；
+ * - `git_error`：其余 git 失败，含 tree 值不是合法对象名；
+ * - `timeout`：比对或核对对象的 git 调用超时。
+ */
+export const DRIFT_UNKNOWN_CAUSES = ['object_gone', 'git_error', 'timeout'] as const;
+export type DriftUnknownCause = (typeof DRIFT_UNKNOWN_CAUSES)[number];
+
+/** 「比不了」的原因与单行事实；`detail` 只写具体事实，类别标签由 {@link DRIFT_UNKNOWN_LABEL} 给 */
+export interface DriftUnknownReason {
+  cause: DriftUnknownCause;
+  detail: string;
+}
+
+/**
+ * 「比不了」的类别标签。只写类别，具体事实在 `detail` 里，两者不重复（计划双审 AGY-03）。
+ *
+ * 与原因枚举放在一起而不放 `freeze.ts`：四个人读面（guard 告警、审查文档旗标、report 旗标、
+ * summarizeRun）里 `render.ts` 已被 `freeze.ts` 引用，从 `freeze.ts` 取会成环。
+ */
+export const DRIFT_UNKNOWN_LABEL: Readonly<Record<DriftUnknownCause, string>> = {
+  object_gone: '对象已不在',
+  git_error: 'git 出错',
+  timeout: 'git 超时',
+};
+
+/**
+ * 「〈标签〉：〈detail〉」——「比不了」在全部人读面上的唯一排版。
+ *
+ * `detail` 只取首行：写侧本就只写一行，但 run.json 进版本库、可能被人工改过，读侧同口径再守一次
+ * 单行排版契约，多行不会让告警与旗标版式错位（代码双审 CODEX-03）。
+ */
+export function describeDriftUnknown(u: DriftUnknownReason): string {
+  return `${DRIFT_UNKNOWN_LABEL[u.cause]}：${u.detail.split('\n')[0] ?? ''}`;
+}
+
 export interface SnapshotMeta {
   git_head: string | null;
   tree_hash: string;
   dirty: boolean;
   subject_sha256: string;
-  drift: { changed: boolean; files: string[]; policy: 'warn' | 'fail' };
+  drift: {
+    changed: boolean;
+    files: string[];
+    policy: 'warn' | 'fail';
+    /**
+     * 跑后复算比不了改了哪些文件时才写（EV-139）：此时 `changed` 为 true、`files` 为空、
+     * `policy` 取 `on_drift_related`。缺席 = 比对成功，或本字段之前的旧留痕。
+     */
+    unknown_reason?: DriftUnknownReason;
+  };
   /**
    * 运行中的编排器自带的构建标识（EV-82 小主题第一段）。`git_head` 是**被审项目**的 HEAD，
    * 这一项才是编排器本体是哪一版构建出来的；非本仓项目只作自述指纹，不与 `git_head` 比。

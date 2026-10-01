@@ -1,0 +1,231 @@
+{
+  "old_commit": "9db67ca",
+  "window_s": 60,
+  "builds": {
+    "old": {
+      "bundle_sha256": "ac20127b2a82a94b8a82c79deda9385e274d9e0c2f81917395a3ec3d6bc8d8cf"
+    },
+    "new": {
+      "bundle_sha256": "5fe73c51ef08ad274f4234181c47c7ed1bafc823bea5fc7f36967b2426d28dc3"
+    }
+  },
+  "cells": {
+    "A-old": {
+      "build": "old",
+      "run_id": "20261001T073817Z",
+      "tree_hash": "a2b94cbb75dfdeba53d7300c74fee45f3ea3c0f3",
+      "pruned": false,
+      "exit_code": 0,
+      "elapsed_ms": 60715,
+      "status": "success",
+      "review_mode": "partial",
+      "degraded_reason": "glm: timeout（桩 CLI 挂起未被取消（code=0 signal=null））",
+      "drift": {
+        "changed": false,
+        "files": [],
+        "policy": "warn"
+      },
+      "after_tree_hash": "29acac915ad5d1148fcd19002f6097113ad312a2",
+      "message": "gemini 侧 consulted 无法与工具轨迹交叉核对",
+      "message_normalized": "gemini 侧 consulted 无法与工具轨迹交叉核对"
+    },
+    "A-new": {
+      "build": "new",
+      "run_id": "20261001T073918Z",
+      "tree_hash": "49dd2e7530923b128e3b2e4fdc321325dd974669",
+      "pruned": false,
+      "exit_code": 0,
+      "elapsed_ms": 60773,
+      "status": "success",
+      "review_mode": "partial",
+      "degraded_reason": "glm: timeout（桩 CLI 挂起未被取消（code=0 signal=null））",
+      "drift": {
+        "changed": false,
+        "files": [],
+        "policy": "warn"
+      },
+      "after_tree_hash": "56b54a87594be99ca58a96500618a41c265d24fb",
+      "message": "gemini 侧 consulted 无法与工具轨迹交叉核对",
+      "message_normalized": "gemini 侧 consulted 无法与工具轨迹交叉核对"
+    },
+    "B-old": {
+      "build": "old",
+      "run_id": "20261001T074019Z",
+      "tree_hash": "c77cdc1e7944e6d0fea08deaaacad5721e243db3",
+      "pruned": true,
+      "prune_code": 0,
+      "prune_at_ms": 276,
+      "cat_file_after_prune": 1,
+      "mutated_at_ms": 285,
+      "exit_code": 0,
+      "elapsed_ms": 60705,
+      "status": "success",
+      "review_mode": "partial",
+      "degraded_reason": "glm: timeout（桩 CLI 挂起未被取消（code=0 signal=null））",
+      "drift": {
+        "changed": false,
+        "files": [],
+        "policy": "warn"
+      },
+      "after_tree_hash": "ae65fbc8b84e37cd2cd4a08558f030e3908fb87c",
+      "message": "gemini 侧 consulted 无法与工具轨迹交叉核对",
+      "message_normalized": "gemini 侧 consulted 无法与工具轨迹交叉核对",
+      "after_tree_has_mutation": true,
+      "attempt": 1
+    },
+    "B-new": {
+      "build": "new",
+      "run_id": "20261001T074120Z",
+      "tree_hash": "da123cc4bf1106b0a4b1e41fff82dc166afec01c",
+      "pruned": true,
+      "prune_code": 0,
+      "prune_at_ms": 432,
+      "cat_file_after_prune": 1,
+      "mutated_at_ms": 444,
+      "exit_code": 1,
+      "elapsed_ms": 60937,
+      "status": "failed",
+      "review_mode": "partial",
+      "degraded_reason": "glm: timeout（桩 CLI 挂起未被取消（code=0 signal=null））",
+      "drift": {
+        "changed": true,
+        "files": [],
+        "policy": "fail",
+        "unknown_reason": {
+          "cause": "object_gone",
+          "detail": "送审快照的 tree da123cc4bf11 在审查期间被清理"
+        }
+      },
+      "after_tree_hash": "61158238b4ccead38c1cf9778f813caf1aafcf5e",
+      "message": "审查期间工作树有变动，但比不了改了哪些文件（对象已不在：送审快照的 tree da123cc4bf11 在审查期间被清理）——\n无法排除被审范围内的文件被改，按 on_drift_related 处置（策略 fail）。\n  审查结论已落盘，但本轮不能当作有效审查。处置：用 git status / git diff 核对审查期间是否动过工作树，\n  确认后重跑本阶段审查；审查进行中不要执行会立即清理不可达对象的 git 命令（如 git prune、git gc --prune=now）。\n  若只想告警，可把 review.on_drift_related 设为 warn——它会同时放宽真实的相关漂移。 ｜ gemini 侧 consulted 无法与工具轨迹交叉核对",
+      "message_normalized": "审查期间工作树有变动，但比不了改了哪些文件（对象已不在：送审快照的 tree 〈短对象名〉 在审查期间被清理）——\n无法排除被审范围内的文件被改，按 on_drift_related 处置（策略 fail）。\n  审查结论已落盘，但本轮不能当作有效审查。处置：用 git status / git diff 核对审查期间是否动过工作树，\n  确认后重跑本阶段审查；审查进行中不要执行会立即清理不可达对象的 git 命令（如 git prune、git gc --prune=now）。\n  若只想告警，可把 review.on_drift_related 设为 warn——它会同时放宽真实的相关漂移。 ｜ gemini 侧 consulted 无法与工具轨迹交叉核对",
+      "after_tree_has_mutation": true,
+      "attempt": 1
+    },
+    "C-new": {
+      "build": "new",
+      "run_id": "20261001T074221Z",
+      "tree_hash": "b0ecb9793996cc0a4b68d320d9f90659ff5c6558",
+      "pruned": true,
+      "prune_code": 0,
+      "prune_at_ms": 273,
+      "cat_file_after_prune": 1,
+      "mutated_at_ms": 282,
+      "exit_code": 0,
+      "elapsed_ms": 60729,
+      "status": "success",
+      "review_mode": "partial",
+      "degraded_reason": "glm: timeout（桩 CLI 挂起未被取消（code=0 signal=null））",
+      "drift": {
+        "changed": true,
+        "files": [],
+        "policy": "warn",
+        "unknown_reason": {
+          "cause": "object_gone",
+          "detail": "送审快照的 tree b0ecb9793996 在审查期间被清理"
+        }
+      },
+      "after_tree_hash": "0a4fe3d40728c3e7dfeb3128766533ab4c4c99c7",
+      "message": "审查期间工作树有变动，但比不了改了哪些文件（对象已不在：送审快照的 tree b0ecb9793996 在审查期间被清理）——\n无法排除被审范围内的文件被改，按 on_drift_related 处置（策略 warn）。\n  本轮照常结束，但漂移是否涉及被审范围无从判断，请人工核对：git status / git diff ｜ gemini 侧 consulted 无法与工具轨迹交叉核对",
+      "message_normalized": "审查期间工作树有变动，但比不了改了哪些文件（对象已不在：送审快照的 tree 〈短对象名〉 在审查期间被清理）——\n无法排除被审范围内的文件被改，按 on_drift_related 处置（策略 warn）。\n  本轮照常结束，但漂移是否涉及被审范围无从判断，请人工核对：git status / git diff ｜ gemini 侧 consulted 无法与工具轨迹交叉核对",
+      "after_tree_has_mutation": true,
+      "attempt": 1
+    }
+  },
+  "v0": {
+    "after_gc_default": 0,
+    "after_maintenance_loose_objects": 0,
+    "after_gc_prune_now": 1,
+    "diff_tree_after_prune": {
+      "code": 128,
+      "stderr": "fatal: bad object 3683f870be446c7cc05ffaef9fa06415276e1828"
+    },
+    "git_version": "git version 2.54.0 (Apple Git-157)",
+    "same_set": {
+      "from": "9db67ca~100^{tree}",
+      "to": "9db67ca^{tree}",
+      "files": 2192,
+      "same": true,
+      "lenient_ms": 14,
+      "strict_ms": 9
+    },
+    "work_tree_hash_ms": 932
+  },
+  "results": [
+    {
+      "id": "构建不同",
+      "ok": true,
+      "detail": "old ac20127b2a82 / new 5fe73c51ef08"
+    },
+    {
+      "id": "构建内容",
+      "ok": true,
+      "detail": "改前 bundle 含 unknown_reason=false，改后=true"
+    },
+    {
+      "id": "A old",
+      "ok": true,
+      "detail": "changed=false、退 0、status success、partial"
+    },
+    {
+      "id": "A new",
+      "ok": true,
+      "detail": "changed=false、退 0、status success、partial"
+    },
+    {
+      "id": "A 新旧退出码相同",
+      "ok": true,
+      "detail": "old 0 / new 0"
+    },
+    {
+      "id": "B old 窗口命中",
+      "ok": true,
+      "detail": "跑后 tree 含改后的 src/b.ts（第 1 次）；清理后 cat-file 退 1（旁证）"
+    },
+    {
+      "id": "B old 静默放行（bug 复现）",
+      "ok": true,
+      "detail": "changed=false、files=[]、退 0、status success"
+    },
+    {
+      "id": "B new 窗口命中",
+      "ok": true,
+      "detail": "第 1 次"
+    },
+    {
+      "id": "B new 判比不了并按 fail 处置",
+      "ok": true,
+      "detail": "unknown_reason={\"cause\":\"object_gone\",\"detail\":\"送审快照的 tree da123cc4bf11 在审查期间被清理\"}、policy fail、退 1、status failed"
+    },
+    {
+      "id": "B new 告警",
+      "ok": true,
+      "detail": "终态 message 含告警与策略"
+    },
+    {
+      "id": "C new 按 warn 处置",
+      "ok": true,
+      "detail": "policy warn、退 0、status success"
+    },
+    {
+      "id": "V0 缺省清理不删",
+      "ok": true,
+      "detail": "gc 缺省后 cat-file 退 0、maintenance 后退 0"
+    },
+    {
+      "id": "V0 立即清理即删",
+      "ok": true,
+      "detail": "--prune=now 后 cat-file 退 1、diff-tree 退 128"
+    },
+    {
+      "id": "V0 同集",
+      "ok": true,
+      "detail": "2192 个文件，两种输出同集；diffTrees 14 ms、diffTreesNameStatus 9 ms"
+    },
+    {
+      "id": "V0 耗时",
+      "ok": true,
+      "detail": "本仓 workTreeHash 932 ms（与 diff-tree 同一 120 s 缺省超时）"
+    }
+  ]
+}

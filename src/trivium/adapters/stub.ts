@@ -20,6 +20,7 @@
  * 生产路径若检测到这个变量会打**醒目告警**——它能伪造「审查通过」，
  * 绝不能在真实审查里生效而无人知晓。
  */
+import os from 'node:os';
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { agentById, DEFAULT_DRIVER } from '../agents/registry.js';
@@ -35,6 +36,20 @@ import { warn } from '../util/log.js';
 import { run } from '../util/exec.js';
 
 export const STUB_ENV_VAR = 'TRIVIUM_STUB_CRITIC';
+
+/**
+ * 路径是否落在系统临时目录之下（两边都取 realpath：macOS 的 `os.tmpdir()` 在 `/var` 软链之下）。
+ * 取不到 realpath（路径不存在等）一律判否。只给不可逆的桩形态作自缚用（`prune_objects`）。
+ */
+async function isUnderTmpdir(p: string): Promise<boolean> {
+  try {
+    const [root, real] = await Promise.all([fsp.realpath(os.tmpdir()), fsp.realpath(p)]);
+    const rel = path.relative(root, real);
+    return rel.length > 0 && !rel.startsWith('..') && !path.isAbsolute(rel);
+  } catch {
+    return false;
+  }
+}
 
 /** 可注入的故障形态，对应 §17.2 的必测用例 */
 export type StubMode =
@@ -78,6 +93,12 @@ export type StubMode =
    * 用来验证跑后复算的漂移判定（设计 §9.2）。
    */
   | 'mutate_file'
+  /**
+   * 在项目根执行 `git prune --expire=now`，再往 `note` 指的文件（缺省 `src/b.ts`）追加一行，
+   * 然后按 `ok` 返回——对应「审查期间送审快照的 tree 被立即清理」（EV-139）：跑后复算比不了，
+   * 漂移判定应给 `unknown` 而不是 `none`。**只在系统临时目录之下执行**，否则该侧按失败返回。
+   */
+  | 'prune_objects'
   /**
    * 产出**前缀不属于本侧**的结论（`note` = 要冒用的前缀，缺省为「另一侧的前缀」）。
    *
@@ -568,6 +589,35 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
           const target = nodePath.join(req.project_root, spec.note ?? 'src/mutated-by-stub.ts');
           await fsp.mkdir(nodePath.dirname(target), { recursive: true });
           await fsp.appendFile(target, `// mutated during review by stub ${critic}\n`, 'utf8');
+          return baseResult(critic, req, spec);
+        }
+        case 'prune_objects': {
+          /*
+           * 审查期间立即清理不可达对象，再改一个文件（EV-139）：送审快照的 tree 是 `write-tree` 写出的
+           * 不可达对象，这一步之后跑后复算比不了。worker 是独立进程，靠外部对时删对象会抖，所以做成桩形态。
+           *
+           * **自缚到临时夹具**（计划双审 CODEX-04）：`git prune --expire=now` 不可逆，而本桩在生产路径
+           * 只告警、不拒绝。项目根不在系统临时目录之下就不动手，该侧按失败返回并写明原因。
+           */
+          const inTmp = await isUnderTmpdir(req.project_root);
+          if (!inTmp) {
+            return failedResult(critic, {
+              status: 'failed',
+              reason: `prune_objects 只在临时夹具内执行（项目根不在系统临时目录之下：${req.project_root}）`,
+              exitCode: 1,
+            });
+          }
+          const pr = await run('git', ['prune', '--expire=now'], { cwd: req.project_root, timeoutMs: 60_000 });
+          if (pr.code !== 0) {
+            return failedResult(critic, {
+              status: 'failed',
+              reason: `prune_objects：git prune 失败（退出码 ${pr.code}）：${pr.stderr.trim().split('\n')[0] ?? ''}`,
+              exitCode: 1,
+            });
+          }
+          const target = path.join(req.project_root, spec.note ?? 'src/b.ts');
+          await fsp.mkdir(path.dirname(target), { recursive: true });
+          await fsp.appendFile(target, `// mutated after prune by stub ${critic}\n`, 'utf8');
           return baseResult(critic, req, spec);
         }
         case 'wrong_prefix': {

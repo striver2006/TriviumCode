@@ -385,6 +385,59 @@ test('审查期间 --context 涉及的文件被改 → related，默认 fail', {
   assert.deepEqual(meta.snapshot.drift.files, ['src/a.ts']);
 });
 
+/*
+ * EV-139：审查期间送审快照的 tree 被立即清理 ⇒ 比不了 ⇒ unknown，按 on_drift_related 处置。
+ *
+ * seed 加一个未跟踪文件：夹具初始化时全部提交，干净工作树的 tree 就是 HEAD 的 tree（可达、清理不掉），
+ * 那样 prune 之后照样比得了、判成 unrelated，这条用例就测不到「比不了」。
+ */
+const seedUntracked = async (root: string): Promise<void> => {
+  await fs.writeFile(path.join(root, 'src/untracked-seed.ts'), 'export const seed = 1;\n', 'utf8');
+};
+
+/**
+ * 终态的护栏告警：worker 把它写进 status.json 的 message，`--wait --json` 原样带出（人读 `--wait` 只打进度）。
+ * 运行已到终态，这一次 `--wait` 立即返回。
+ */
+async function terminalMessage(root: string, runId: string, stub: StubConfig): Promise<string> {
+  const w = await cli(root, ['review', '--wait', runId, '--timeout', '5', '--json'], stub, 60_000);
+  const c = extractJsonCandidate(w.stdout);
+  assert.ok(c, `--wait --json 未产出可解析的 JSON：\n${w.stdout}`);
+  return (JSON.parse(c.json) as { message: string | null }).message ?? '';
+}
+
+test('EV-139 I1：审查期间送审快照被清理 → 比不了，缺省按 on_drift_related=fail 判失败并留痕原因', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const stub: StubConfig = { gemini: { mode: 'prune_objects' }, glm: { mode: 'ok' } };
+  const { root, exitCode, meta, stageDir } = await runInjected(stub, [], [], seedUntracked);
+  assert.equal(meta.critics.gemini?.cli_version, 'stub/0.0.0', '桩指纹：worker 真的用了桩');
+  assert.equal(meta.critics.gemini?.status, 'ok', `桩在夹具内应执行成功：${meta.critics.gemini?.fail_reason ?? ''}`);
+  assert.equal(exitCode, EXIT.FAIL, '比不了按 on_drift_related（缺省 fail）判失败');
+  assert.equal(meta.status, 'failed');
+  assert.equal(meta.snapshot.drift.changed, true);
+  assert.deepEqual(meta.snapshot.drift.files, []);
+  assert.equal(meta.snapshot.drift.policy, 'fail', 'policy 取本轮实际适用的 on_drift_related');
+  assert.equal(meta.snapshot.drift.unknown_reason?.cause, 'object_gone');
+  assert.match(meta.snapshot.drift.unknown_reason?.detail ?? '', /送审快照的 tree [0-9a-f]{12} 在审查期间被清理/);
+  const message = await terminalMessage(root, meta.run_id, stub);
+  assert.match(message, /审查期间工作树有变动，但比不了改了哪些文件/, '告警要随 --wait --json 的终态 message 透出');
+  assert.match(message, /按 on_drift_related 处置（策略 fail）/);
+  assert.match(message, /对象已不在：送审快照的 tree [0-9a-f]{12} 在审查期间被清理/);
+
+  const doc = (await listFiles(stageDir)).find((f) => f.endsWith('-gemini.md'));
+  assert.ok(doc, 'gemini 审查文档应已落盘');
+  assert.match(await fs.readFile(path.join(stageDir, doc!), 'utf8'), /审查期间的工作树漂移无法判定/);
+});
+
+test('EV-139 I2：on_drift_related=warn 时比不了只告警，运行成功、原因照样留痕', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const stub: StubConfig = { gemini: { mode: 'prune_objects' }, glm: { mode: 'ok' } };
+  const { root, exitCode, meta, waitOut } = await runInjected(stub, [], ['on_drift_related: warn'], seedUntracked);
+  assert.equal(exitCode, EXIT.OK, `比不了在 warn 档只告警：\n${waitOut}`);
+  assert.equal(meta.status, 'success');
+  assert.equal(meta.snapshot.drift.policy, 'warn');
+  assert.equal(meta.snapshot.drift.unknown_reason?.cause, 'object_gone');
+  assert.match(await terminalMessage(root, meta.run_id, stub), /本轮照常结束，但漂移是否涉及被审范围无从判断/);
+});
+
 test('审查中写项目文件 → readonly_breach，且 gate --check 判失败（接线端到端）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const { root, stageDir, meta } = await runInjected({ gemini: { mode: 'write_breach' }, glm: { mode: 'ok' } });
   assert.equal(meta.guard.readonly_breach, true, '审查员写文件必须被判只读违规');

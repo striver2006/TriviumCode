@@ -3,9 +3,15 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { judgeDrift, driftAction, enumerateDenyPaths, type Snapshot } from '../../src/trivium/freeze.js';
+import {
+  judgeDrift, driftAction, enumerateDenyPaths, classifyCompareFailure, DRIFT_PROBE_BUDGET_MS,
+  type DriftVerdict, type Snapshot,
+} from '../../src/trivium/freeze.js';
 import { defaultConfig } from '../../src/trivium/config.js';
-import { initFixtureRepo, workTreeHash } from '../../src/trivium/util/git.js';
+import {
+  GIT_DEFAULT_TIMEOUT_MS, GitTimeoutError, initFixtureRepo, treeExists, workTreeHash,
+} from '../../src/trivium/util/git.js';
+import { run } from '../../src/trivium/util/exec.js';
 
 async function repo(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-drift-'));
@@ -167,4 +173,160 @@ test('漂移策略可配：on_drift=fail 时无关文件也判失败', async () 
   assert.equal(driftAction(cfg, { kind: 'unrelated', files: ['x'] }), 'fail');
   cfg.review.on_drift_related = 'warn';
   assert.equal(driftAction(cfg, { kind: 'related', files: ['y'] }), 'warn');
+});
+
+// ── EV-139：比不了 ⇒ unknown，不是 none（漂移比不了不放行计划 r2 §5.1）──
+
+/** 立即清理全部不可达对象：送审快照的 tree 是 write-tree 写出的不可达对象，这一步之后它就不在了 */
+async function pruneNow(dir: string): Promise<void> {
+  const r = await run('git', ['prune', '--expire=now'], { cwd: dir, timeoutMs: 30_000 });
+  assert.equal(r.code, 0, `前提：git prune 成功（${r.stderr}）`);
+}
+
+/**
+ * 造一棵**不可达**的送审 tree：夹具刚初始化时工作树等于 HEAD，`workTreeHash` 得到的是 HEAD 的 tree（可达，
+ * 清理不掉），所以先加一个未跟踪文件再取。随后改一个文件得跑后 tree，再清理——两棵都不可达、都被删。
+ */
+async function prunedPair(dir: string, mutate = 'src/b.ts'): Promise<{ before: string; after: string }> {
+  await fs.writeFile(path.join(dir, 'src/untracked-before.ts'), 'export const u = 1;\n');
+  const before = await workTreeHash(dir);
+  await fs.writeFile(path.join(dir, mutate), 'export const changed = true;\n');
+  const after = await workTreeHash(dir);
+  assert.notEqual(before, after, '前提：两棵 tree 不同');
+  await pruneNow(dir);
+  assert.equal(await treeExists(dir, before), false, '前提：送审快照的 tree 已被清理');
+  return { before, after };
+}
+
+function asUnknown(v: DriftVerdict): Extract<DriftVerdict, { kind: 'unknown' }> {
+  assert.equal(v.kind, 'unknown', `应判比不了，实际 ${JSON.stringify(v)}`);
+  return v as Extract<DriftVerdict, { kind: 'unknown' }>;
+}
+
+test('EV-139 U1：送审快照的 tree 在审查期间被清理 ⇒ unknown / object_gone，不再判 none', async () => {
+  const dir = await repo();
+  const { before, after } = await prunedPair(dir);
+  const v = asUnknown(await judgeDrift({
+    ...BASE, projectRoot: dir, before: snap(before), afterTreeHash: after, afterSubjectSha256: 'SUBJ',
+  }));
+  assert.equal(v.cause, 'object_gone');
+  assert.match(v.detail, new RegExp(`送审快照的 tree ${before.slice(0, 12)} 在审查期间被清理`));
+});
+
+test('EV-139 U1′：只有跑后复算的 tree 不在 ⇒ 同样 object_gone，detail 指明是跑后那棵', async () => {
+  const dir = await repo();
+  // 送审快照取 HEAD 的 tree（可达、清理不掉），跑后那棵不可达、被清理
+  const before = await workTreeHash(dir);
+  await fs.writeFile(path.join(dir, 'src/b.ts'), 'export const changed = true;\n');
+  const after = await workTreeHash(dir);
+  await pruneNow(dir);
+  assert.equal(await treeExists(dir, before), true, '前提：送审 tree 可达、仍在');
+  assert.equal(await treeExists(dir, after), false, '前提：跑后 tree 已被清理');
+  const v = asUnknown(await judgeDrift({
+    ...BASE, projectRoot: dir, before: snap(before), afterTreeHash: after, afterSubjectSha256: 'SUBJ',
+  }));
+  assert.equal(v.cause, 'object_gone');
+  assert.match(v.detail, new RegExp(`跑后复算的 tree ${after.slice(0, 12)} 已被清理`));
+});
+
+test('EV-139 U2：比不了时不看 relatedPaths——覆盖与不覆盖被改文件都判 unknown', async () => {
+  for (const relatedPaths of [['src'], ['doc']]) {
+    const dir = await repo();
+    const { before, after } = await prunedPair(dir, 'src/a.ts');
+    const v = await judgeDrift({
+      ...BASE, projectRoot: dir, before: snap(before), afterTreeHash: after, afterSubjectSha256: 'SUBJ', relatedPaths,
+    });
+    assert.equal(v.kind, 'unknown', `relatedPaths=${JSON.stringify(relatedPaths)} 时应判比不了`);
+  }
+});
+
+test('EV-139 U3：unknown 按 on_drift_related 处置，与 on_drift 无关', () => {
+  const v: DriftVerdict = { kind: 'unknown', cause: 'object_gone', detail: 'x' };
+  assert.equal(driftAction(defaultConfig(), v), 'fail', '缺省 on_drift_related=fail');
+
+  const relatedWarn = defaultConfig();
+  relatedWarn.review.on_drift_related = 'warn';
+  assert.equal(driftAction(relatedWarn, v), 'warn');
+
+  // 反过来配：on_drift=fail、on_drift_related=warn ⇒ 跟 related 走，是 warn
+  const crossed = defaultConfig();
+  crossed.review.on_drift = 'fail';
+  crossed.review.on_drift_related = 'warn';
+  assert.equal(driftAction(crossed, v), 'warn', 'unknown 不能跟 on_drift 走');
+});
+
+test('EV-139 U4：送审快照名指向一个 blob（对象在、不是 tree）⇒ git_error，detail 带 diff-tree 报错首行', async () => {
+  const dir = await repo();
+  const blob = (await run('git', ['hash-object', '-w', 'src/a.ts'], { cwd: dir })).stdout.trim();
+  await fs.writeFile(path.join(dir, 'src/b.ts'), 'export const changed = true;\n');
+  const after = await workTreeHash(dir);
+  const v = asUnknown(await judgeDrift({
+    ...BASE, projectRoot: dir, before: snap(blob), afterTreeHash: after, afterSubjectSha256: 'SUBJ',
+  }));
+  assert.equal(v.cause, 'git_error');
+  assert.match(v.detail, /git diff-tree 失败（退出码 \d+）/);
+});
+
+test('EV-139 U5：比对超时 ⇒ timeout，且不再查对象（项目根不存在也照样返回）', async () => {
+  const u = await classifyCompareFailure(
+    path.join(os.tmpdir(), 'trivium-no-such-dir-ev139'), 'a'.repeat(40), 'b'.repeat(40), new GitTimeoutError('diff-tree'),
+  );
+  // 时长与子命令名从结构化来源推出（代码双审 CODEX-02 ≡ GLM-02），不锁字面串
+  assert.deepEqual(u, { cause: 'timeout', detail: `git diff-tree 未在 ${GIT_DEFAULT_TIMEOUT_MS / 1000} s 内结束` });
+  assert.equal(DRIFT_PROBE_BUDGET_MS, GIT_DEFAULT_TIMEOUT_MS, '核对段的总预算与单次缺省同值');
+});
+
+test('EV-139 U5′：比对快速失败之后核对对象共用一份有界预算（逐次显式传剩余毫秒）', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-drift-budget-'));
+  const seen: Array<number | undefined> = [];
+  // 只记录传给 treeExists 的超时，不改它的行为：非 git 目录让核对当场出错，走 git_error
+  const u = await classifyCompareFailure(dir, 'a'.repeat(40), 'b'.repeat(40), new Error('boom'), {
+    treeExists: async (cwd, tree, opts) => { seen.push(opts?.timeoutMs); return treeExists(cwd, tree, opts); },
+  });
+  assert.equal(u.cause, 'git_error');
+  assert.equal(seen.length, 1, '第一次核对出错即返回');
+  assert.ok(typeof seen[0] === 'number' && seen[0] > 0 && seen[0] <= DRIFT_PROBE_BUDGET_MS, `应显式传剩余预算，实际 ${String(seen[0])}`);
+});
+
+test('EV-139 U6：核对对象时 git 也出错（非 git 目录）⇒ git_error，两段首行都在', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-drift-nogit-'));
+  const u = await classifyCompareFailure(dir, 'a'.repeat(40), 'b'.repeat(40), new Error('比对炸了\n第二行不要'));
+  assert.equal(u.cause, 'git_error');
+  assert.match(u.detail, /^比对炸了；核对对象时：git cat-file 失败（退出码 \d+）/);
+  assert.doesNotMatch(u.detail, /第二行不要/);
+});
+
+test('EV-139 U7：文件名含制表符的文件被改 ⇒ related（严格比对走 -z，路径原样；旧调用带引号、误落 unrelated）', async () => {
+  const dir = await repo();
+  const odd = 'src/a\tb.ts';
+  const before = await workTreeHash(dir);
+  await fs.writeFile(path.join(dir, odd), 'export const t = 1;\n');
+  const after = await workTreeHash(dir);
+  const v = await judgeDrift({
+    ...BASE, projectRoot: dir, before: snap(before), afterTreeHash: after, afterSubjectSha256: 'SUBJ',
+    relatedPaths: [odd],
+  });
+  assert.equal(v.kind, 'related', `含制表符的路径应原样匹配上 relatedPaths，实际 ${JSON.stringify(v)}`);
+  assert.deepEqual(v.kind === 'related' ? v.files : [], [odd]);
+});
+
+test('EV-139 U9：tree 值不合形状 ⇒ git_error，不调 git、不回显该值（以 - 开头的值会被 git 当成选项）', async () => {
+  const dir = await repo();
+  await fs.writeFile(path.join(dir, 'src/b.ts'), 'export const changed = true;\n');
+  const after = await workTreeHash(dir);
+  const pwned = path.join(dir, 'pwned-by-option.txt');
+  const cases: Array<{ before: string; afterTree: string; which: string }> = [
+    { before: `--output=${pwned}`, afterTree: after, which: '送审快照的 tree' },
+    { before: 'a'.repeat(39), afterTree: after, which: '送审快照的 tree' },
+    { before: after, afterTree: `--output=${pwned}`, which: '跑后复算的 tree' },
+  ];
+  for (const c of cases) {
+    const v = asUnknown(await judgeDrift({
+      ...BASE, projectRoot: dir, before: snap(c.before), afterTreeHash: c.afterTree, afterSubjectSha256: 'SUBJ',
+    }));
+    assert.equal(v.cause, 'git_error');
+    assert.equal(v.detail, `${c.which} 值不是合法的 git 对象名（不回显该值）`);
+    assert.ok(!v.detail.includes('--output'), 'detail 不得回显该值');
+  }
+  await assert.rejects(fs.stat(pwned), '形状闸在任何 git 调用之前：选项形态的值不得让 git 写出文件');
 });

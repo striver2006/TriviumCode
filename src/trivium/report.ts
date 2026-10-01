@@ -24,7 +24,7 @@ import { loadRoundReviews } from './gate.js';
 import { parseDisposition } from './disposition.js';
 import { measureAllPairs, type DivergenceReport } from './divergence.js';
 import { summarizeVerify, type VerifyRecord } from './verify.js';
-import { CRITICS, DEFAULT_CRITICS, STAGES, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';
+import { CRITICS, DEFAULT_CRITICS, STAGES, describeDriftUnknown, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';
 
 const SEVERITIES: readonly Severity[] = ['blocker', 'major', 'minor', 'nit'];
 const DISPOSALS: readonly Disposal[] = ['接受', '驳回', '暂缓'];
@@ -290,7 +290,14 @@ async function buildRound(
    * 据它打「角色后缀伪造」旗标，这一格永远不会亮，却让读报告的人以为检测过。
    * 这件事实际由写入前 Hook、`gate --check-artifacts` 的未登记审查件判据与提交锚承担。
    */
-  if (meta.snapshot.drift.changed) {
+  const driftUnknown = meta.snapshot.drift.unknown_reason;
+  if (driftUnknown) {
+    /*
+     * 比不了（EV-139）：两个桶恒空，走下面那一支会因 `shown === 0` 一声不吭——
+     * 正是本主题要修的「判不了就说没漂移」在报告层的同形。单独推一条说明原因的旗标。
+     */
+    base.guardFlags.push(`漂移无法判定（${describeDriftUnknown(driftUnknown)}，${meta.snapshot.drift.policy}）`);
+  } else if (meta.snapshot.drift.changed) {
     /*
      * 两个桶合并展示。归因分流激活时 `drift.files` 恒空（**扣除确诊失守后的余批**
      * 移进了 `unattributed_drift_files`），单看这一行会打出「漂移 0 个文件」，

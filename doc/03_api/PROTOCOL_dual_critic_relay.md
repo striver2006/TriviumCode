@@ -59,6 +59,8 @@
 
 **`run.v2` 的可选字段 `termination`**（设计 v1.3.48，EV-142；v1.3.50 扩值，EV-145；v1.3.51 扩值，EV-150）：`{ by, exit_code }`（`by` ∈ `worker_exception` / `prepare_exception` / `sync_exception` / `post_spawn_exception`）或 `{ by: "worker_lost", reason }`（`reason` ∈ `no_status_file` / `heartbeat_stale` / `pid_gone`），记这一次 `failed` 由哪条事后收尾写：worker 异常分支自己写、`--wait` 判 `worker_lost` 且工作进程确认已退出时写（或 `--cancel` 在 `--wait` 判 `heartbeat_stale` 之后结束仍挂着的工作进程并确认退出时照写同一取值，设计 v1.3.54，EV-146）、准备阶段写完骨架之后失败（含 `--start` 在子进程诞生之前失败）或同步路径异常时由本进程写、`--start` 在子进程诞生之后失败时终止工作进程并确认退出之后由本进程写（`post_spawn_exception`）；都只在 run.json 仍为 `running` 时写。**只增不减**：旧版本读不懂新取值，回滚代码时保留取值面（schema、`EXCEPTION_TERMINATION_BY`、`report` 的说明与对应用例），只回退行为代码。只存结构化字段、不存异常原文。缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕，规范见设计 6.7 注记与 6.7.1。
 
+**`run.v2` 的可选字段 `snapshot.drift.unknown_reason`**（设计 v1.3.70，EV-139）：`{ cause, detail }`，`cause` ∈ `object_gone` / `git_error` / `timeout`，对象不收额外键。只在跑后复算**比不了**改了哪些文件时写（第四节 3.a′）：此时 `changed: true`、`files: []`、`policy` 为本轮的 `on_drift_related`，既有三字段含义不变。`detail` 是单行事实（报错首行，截 300 字符；tree 值不合形状时不回显该值）。**只取加法**：`drift` 子对象本身不禁额外键，旧版本读新留痕照过（只看到「changed 真、0 个文件」）；缺席 = 比对成功或本字段之前的留痕。规范见设计 9.2 与 6.7.1。
+
 ### `trivium.run.v2` 的读侧分发（按阶段，设计 6.7.1）
 
 审查阶段（`plan` / `code` / `bug`）只认 `run.v1`（迁移为内存 v2）与 `run.v2`，
@@ -233,6 +235,9 @@ deny 核验完全由措施 b 承担。这一降级逐侧记于 `guard.verificati
   1. 重算 tree_hash' 与 subject_sha256'
   2. subject_sha256' ≠ subject_sha256 → FAIL(subject_drift)，整次运行作废
   3. tree_hash' ≠ tree_hash：
+     a′. 比不了（tree 值不合对象名形状 / diff-tree 失败：送审快照的 tree 已被清理、git 出错、超时）
+         → unknown，按 review.on_drift_related（默认 fail）处置，
+           run.json 记 snapshot.drift.unknown_reason（设计 9.2 / 6.7.1，v1.3.70，EV-139）
      a. diff-tree 列出变更文件 F，剔除 probe.*.scratch_paths 白名单与归档根
      b. F 为空 → 无漂移（只有 Agent 临时文件）
      c. F 与 --context / diff 涉及文件相交 → review.on_drift_related（默认 fail）

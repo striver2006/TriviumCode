@@ -24,7 +24,7 @@ import { promises as fs } from 'node:fs';
 import { validateRunMeta } from '../../src/trivium/schemas.js';
 import { newRunMeta } from '../../src/trivium/meta.js';
 import { WORKER_LOST_REASONS } from '../../src/trivium/status.js';
-import { EXCEPTION_TERMINATION_BY } from '../../src/trivium/types.js';
+import { DRIFT_UNKNOWN_CAUSES, EXCEPTION_TERMINATION_BY } from '../../src/trivium/types.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 
 /** 递归找出归档里的全部运行记录 */
@@ -191,4 +191,41 @@ test('EV-145 S3：schema 里 termination.by 的取值集合与 types.ts 的 EXCE
     [...EXCEPTION_TERMINATION_BY, 'worker_lost'].sort(),
     '给 termination.by 加了取值却只改了一边：写出的 run.json 会不合契约、被读成 null（事后收尾余项计划 r2 §3.1）',
   );
+});
+
+// ── EV-139：snapshot.drift.unknown_reason（漂移比不了不放行计划 r2 §5.1 C1、C2）──
+
+test('EV-139 C1：schema 里 unknown_reason.cause 的枚举与 types.ts 的 DRIFT_UNKNOWN_CAUSES 逐项相等（单一来源）', async () => {
+  const schema = JSON.parse(
+    await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/run.v2.json'), 'utf8'),
+  ) as { properties: { snapshot: { properties: { drift: { properties: { unknown_reason?: { properties: { cause: { enum: string[] } } } } } } } } };
+  const node = schema.properties.snapshot.properties.drift.properties.unknown_reason;
+  assert.ok(node, 'schema 里没找到 snapshot.drift.unknown_reason');
+  assert.deepEqual(
+    [...node.properties.cause.enum].sort(),
+    [...DRIFT_UNKNOWN_CAUSES].sort(),
+    '给 judgeDrift 加了「比不了」的原因却没同步 run.v2 schema：写出的 run.json 会不合契约、被读成 null',
+  );
+});
+
+test('EV-139 C2：unknown_reason 合法形状通过；表外原因、缺 detail、多出键、detail 非字符串都判错；缺席（旧形）照样通过', () => {
+  const base = terminationSample() as { snapshot: { drift: Record<string, unknown> } } & Record<string, unknown>;
+  const withDrift = (drift: Record<string, unknown>): Record<string, unknown> => ({
+    ...base, snapshot: { ...(base.snapshot as Record<string, unknown>), drift },
+  });
+  const ok = { changed: true, files: [], policy: 'fail' };
+  assert.deepEqual(validateRunMeta(withDrift(ok)), [], '缺席：比对成功或旧留痕');
+  for (const cause of DRIFT_UNKNOWN_CAUSES) {
+    assert.deepEqual(validateRunMeta(withDrift({ ...ok, unknown_reason: { cause, detail: 'x' } })), [], `${cause} 应通过`);
+  }
+  const bad: unknown[] = [
+    { cause: 'pruned', detail: 'x' },
+    { cause: 'object_gone' },
+    { cause: 'object_gone', detail: 'x', stderr: 'fatal: …' },
+    { cause: 'object_gone', detail: 1 },
+    'object_gone',
+  ];
+  for (const u of bad) {
+    assert.ok(validateRunMeta(withDrift({ ...ok, unknown_reason: u })).length > 0, `应判错：${JSON.stringify(u)}`);
+  }
 });

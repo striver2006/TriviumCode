@@ -174,6 +174,27 @@
                 "warn",
                 "fail"
               ]
+            },
+            "unknown_reason": {
+              "description": "跑后复算比不了改了哪些文件时才写（EV-139）：两棵 tree 不同，而 diff-tree 失败或 tree 值不合形状。此时 changed 为 true、files 为空、policy 取 on_drift_related（比不了就排除不了被审范围内的文件被改）。cause：object_gone = 送审快照或跑后复算的 tree 已不在对象库；git_error = 其余 git 失败（含 tree 值不是合法对象名）；timeout = git 调用超时。枚举与 types.ts 的 DRIFT_UNKNOWN_CAUSES 逐项相等（run-meta-strict.test.ts 守）。缺席 = 比对成功，或本字段之前的旧留痕",
+              "type": "object",
+              "required": [
+                "cause",
+                "detail"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "cause": {
+                  "enum": [
+                    "object_gone",
+                    "git_error",
+                    "timeout"
+                  ]
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
             }
           }
         }

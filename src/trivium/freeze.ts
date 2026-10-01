@@ -11,11 +11,21 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, isAgentId, type AgentId } from './agents/registry.js';
-import type { Config, CriticId, DenyCategory, Stage } from './types.js';
+import type { Config, CriticId, DenyCategory, DriftUnknownReason, Stage } from './types.js';
 import { VOIDING_DENY_CATEGORIES } from './types.js';
 import { parseArtifactName, type DispositionKind, type Role } from './naming.js';
 import { parseFrontMatter } from './render.js';
-import { diffTrees, headSha, statusPorcelain, workTreeHash, diffAgainst } from './util/git.js';
+import {
+  GIT_DEFAULT_TIMEOUT_MS,
+  GitTimeoutError,
+  OBJECT_NAME_RE,
+  diffAgainst,
+  diffTreesNameStatus,
+  headSha,
+  statusPorcelain,
+  treeExists,
+  workTreeHash,
+} from './util/git.js';
 import { expandHome, matchesAnyGlob, sha256, sha256File } from './util/fsx.js';
 import { diffExcludePrefixes } from './code-stage.js';
 import { normalizeAbs, isUnder } from './adapters/base.js';
@@ -472,11 +482,73 @@ export async function freeze(input: FreezeInput): Promise<Snapshot> {
   };
 }
 
+/**
+ * 漂移结论。`unknown` = 两棵 tree 不同、却比不了改了哪些文件（EV-139）：不知道改了什么，
+ * 就排除不了被审范围内的文件被改，处置按 `on_drift_related`（见 {@link driftAction}）。
+ * 加新的一种时，`driftAction` 与 `guard.ts` 的 `renderGuardWarnings` 都会在编译期报漏写。
+ */
 export type DriftVerdict =
   | { kind: 'none' }
   | { kind: 'subject_drift' }
   | { kind: 'related'; files: string[] }
-  | { kind: 'unrelated'; files: string[] };
+  | { kind: 'unrelated'; files: string[] }
+  | ({ kind: 'unknown' } & DriftUnknownReason);
+
+/** 比对失败之后两次核对对象（`cat-file -e`）合用的总预算，与单次 git 缺省超时同值 */
+export const DRIFT_PROBE_BUDGET_MS = GIT_DEFAULT_TIMEOUT_MS;
+
+/** 报错首行，截到 300 字符——它进 run.json 的 `unknown_reason.detail`（随归档进版本库），只留够判断成因的一行 */
+function firstLineOf(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  return (msg.trim().split('\n')[0] ?? '').slice(0, 300);
+}
+
+/**
+ * 严格比对失败之后分原因（EV-139 计划 r2 §2.2）。导出供单测直接喂超时与非 git 目录。
+ *
+ * 次序：比对本身超时 ⇒ `timeout`，**不再查对象**（坏仓库里不叠加第二次超时）；否则逐棵 `treeExists`，
+ * 任一不在 ⇒ `object_gone`；核对对象时超时 ⇒ `timeout`、出别的错 ⇒ `git_error`（两段首行都带）；
+ * 两棵都在 ⇒ `git_error`（比对报错首行）。两棵 tree 对称判：跑后那棵刚写出、几乎不会被删，
+ * 但不能让它掉进 `git_error`。
+ *
+ * **两次核对共用一份预算**（代码双审 CODEX-01 ≡ GLM-03）：比对本身走缺省 {@link GIT_DEFAULT_TIMEOUT_MS}，
+ * 快速失败之后的两次 `cat-file -e` 合计不超过 {@link DRIFT_PROBE_BUDGET_MS}（逐次传剩余毫秒，显式传值即按进程组收尾）。
+ * 于是比不了那一格最坏比改前多等一个预算：比对 120 s + 核对至多 120 s。
+ */
+export async function classifyCompareFailure(
+  projectRoot: string,
+  beforeTree: string,
+  afterTree: string,
+  err: unknown,
+  /** 测试注入：只为让单测看到传给核对的预算；生产不传 */
+  deps: { treeExists?: typeof treeExists } = {},
+): Promise<DriftUnknownReason> {
+  const exists = deps.treeExists ?? treeExists;
+  // 时长与子命令名都取结构化来源（代码双审 CODEX-02 ≡ GLM-02）：不复制字面量、不裁剪 message
+  const timedOut = (e: GitTimeoutError, budgetMs: number): DriftUnknownReason => ({
+    cause: 'timeout',
+    detail: `git ${e.what} 未在 ${Math.round(budgetMs / 1000)} s 内结束`,
+  });
+  if (err instanceof GitTimeoutError) return timedOut(err, GIT_DEFAULT_TIMEOUT_MS);
+  const compareLine = firstLineOf(err);
+  const trees: Array<[string, string]> = [
+    [beforeTree, `送审快照的 tree ${beforeTree.slice(0, 12)} 在审查期间被清理`],
+    [afterTree, `跑后复算的 tree ${afterTree.slice(0, 12)} 已被清理`],
+  ];
+  const started = Date.now();
+  const remaining = (): number => Math.max(1, DRIFT_PROBE_BUDGET_MS - (Date.now() - started));
+  for (const [tree, goneDetail] of trees) {
+    let present: boolean;
+    try {
+      present = await exists(projectRoot, tree, { timeoutMs: remaining() });
+    } catch (probeErr) {
+      if (probeErr instanceof GitTimeoutError) return timedOut(probeErr, DRIFT_PROBE_BUDGET_MS);
+      return { cause: 'git_error', detail: `${compareLine}；核对对象时：${firstLineOf(probeErr)}` };
+    }
+    if (!present) return { cause: 'object_gone', detail: goneDetail };
+  }
+  return { cause: 'git_error', detail: compareLine };
+}
 
 export interface DriftInput {
   cfg: Config;
@@ -513,6 +585,10 @@ export interface DriftInput {
  *
  * 顺序有讲究：被审对象漂移优先级最高（整次运行作废），
  * 因为此时结论对应的已经不是送审的那份东西了。
+ *
+ * **比不了 ⇒ `unknown`，不是 `none`**（EV-139）：两棵 tree 不同、而 3.a 列不出变更（tree 值不合形状、
+ * 送审快照的 tree 在审查期间被清理、git 出错或超时）时，不知道改了什么，护栏不能说「无漂移」。
+ * 3.a 因此用失败即抛的 `diffTreesNameStatus`，不用失败返回 `[]` 的 `diffTrees`。
  */
 export async function judgeDrift(input: DriftInput): Promise<DriftVerdict> {
   const { cfg, projectRoot, before, afterTreeHash, afterSubjectSha256, relatedPaths, scratchGlobs } = input;
@@ -528,10 +604,25 @@ export async function judgeDrift(input: DriftInput): Promise<DriftVerdict> {
   // 第 3 步：工作树无变化 → 无漂移
   if (afterTreeHash === before.treeHash) return { kind: 'none' };
 
-  // 3.a 列出变更文件，剔除 scratch 白名单、归档根与 .trivium/
-  const changed = (await diffTrees(projectRoot, before.treeHash, afterTreeHash)).filter(
-    (f) => !matchesAnyGlob(f, scratchGlobs) && !isOwn(f),
-  );
+  /*
+   * 3.a′ 形状闸：两棵 tree 的值都从留痕读回（worker 的送审快照取自运行目录的 request.json），
+   * 任何 git 调用之前先核形状——以 `-` 开头的值会被 git 当成选项。不合即比不了，不回显该值。
+   */
+  if (!OBJECT_NAME_RE.test(before.treeHash) || !OBJECT_NAME_RE.test(afterTreeHash)) {
+    const which = OBJECT_NAME_RE.test(before.treeHash) ? '跑后复算的 tree' : '送审快照的 tree';
+    return { kind: 'unknown', cause: 'git_error', detail: `${which} 值不是合法的 git 对象名（不回显该值）` };
+  }
+
+  // 3.a 列出变更文件（失败即抛 ⇒ 比不了），剔除 scratch 白名单、归档根与 .trivium/
+  let entries: Array<{ status: string; path: string }>;
+  try {
+    entries = await diffTreesNameStatus(projectRoot, before.treeHash, afterTreeHash);
+  } catch (e) {
+    return { kind: 'unknown', ...(await classifyCompareFailure(projectRoot, before.treeHash, afterTreeHash, e)) };
+  }
+  const changed = entries
+    .map((c) => c.path)
+    .filter((f) => !matchesAnyGlob(f, scratchGlobs) && !isOwn(f));
   // 3.b 全是 Agent 临时文件 → 无漂移
   if (changed.length === 0) return { kind: 'none' };
 
@@ -559,6 +650,9 @@ export function driftAction(cfg: Config, v: DriftVerdict): 'ok' | 'warn' | 'fail
     case 'subject_drift':
       return 'fail';
     case 'related':
+      return cfg.review.on_drift_related === 'fail' ? 'fail' : 'warn';
+    // 比不了 ⇒ 排除不了被审范围内的文件被改，按相关漂移那一档（EV-139，用户决策）
+    case 'unknown':
       return cfg.review.on_drift_related === 'fail' ? 'fail' : 'warn';
     case 'unrelated':
       return cfg.review.on_drift === 'fail' ? 'fail' : 'warn';

@@ -1,0 +1,214 @@
+[
+  {
+    "id": "M1",
+    "desc": "3.a 换回失败返回 [] 的 diffTrees",
+    "suite": "dist/test/test/unit/freeze-drift.test.js",
+    "fail": 5,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 U1：送审快照的 tree 在审查期间被清理 ⇒ unknown / object_gone，不再判 none",
+      "EV-139 U1′：只有跑后复算的 tree 不在 ⇒ 同样 object_gone，detail 指明是跑后那棵",
+      "EV-139 U2：比不了时不看 relatedPaths——覆盖与不覆盖被改文件都判 unknown",
+      "EV-139 U4：送审快照名指向一个 blob（对象在、不是 tree）⇒ git_error，detail 带 diff-tree 报错首行",
+      "EV-139 U7：文件名含制表符的文件被改 ⇒ related（严格比对走 -z，路径原样；旧调用带引号、误落 unrelated）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 2
+  },
+  {
+    "id": "M2",
+    "desc": "比对失败时返回 none",
+    "suite": "dist/test/test/unit/freeze-drift.test.js",
+    "fail": 4,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 U1：送审快照的 tree 在审查期间被清理 ⇒ unknown / object_gone，不再判 none",
+      "EV-139 U1′：只有跑后复算的 tree 不在 ⇒ 同样 object_gone，detail 指明是跑后那棵",
+      "EV-139 U2：比不了时不看 relatedPaths——覆盖与不覆盖被改文件都判 unknown",
+      "EV-139 U4：送审快照名指向一个 blob（对象在、不是 tree）⇒ git_error，detail 带 diff-tree 报错首行"
+    ],
+    "firstLines": [],
+    "elapsed_s": 2
+  },
+  {
+    "id": "M3",
+    "desc": "driftAction 的 unknown 改跟 on_drift",
+    "suite": "dist/test/test/unit/freeze-drift.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 U3：unknown 按 on_drift_related 处置，与 on_drift 无关"
+    ],
+    "firstLines": [],
+    "elapsed_s": 2
+  },
+  {
+    "id": "M4",
+    "desc": "driftAction 的 unknown 恒 warn",
+    "suite": "dist/test/test/unit/freeze-drift.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 U3：unknown 按 on_drift_related 处置，与 on_drift 无关"
+    ],
+    "firstLines": [],
+    "elapsed_s": 2
+  },
+  {
+    "id": "M5",
+    "desc": "分原因去掉超时分支",
+    "suite": "dist/test/test/unit/freeze-drift.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 U5：比对超时 ⇒ timeout，且不再查对象（项目根不存在也照样返回）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 2
+  },
+  {
+    "id": "M6",
+    "desc": "分原因不用 treeExists 的结果（object_gone 判据去掉）",
+    "suite": "dist/test/test/unit/freeze-drift.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 U1：送审快照的 tree 在审查期间被清理 ⇒ unknown / object_gone，不再判 none",
+      "EV-139 U1′：只有跑后复算的 tree 不在 ⇒ 同样 object_gone，detail 指明是跑后那棵"
+    ],
+    "firstLines": [],
+    "elapsed_s": 2
+  },
+  {
+    "id": "M7",
+    "desc": "run.json 的 policy 条件不含 unknown",
+    "suite": "dist/test/test/integration/fault-injection.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 I1：审查期间送审快照被清理 → 比不了，缺省按 on_drift_related=fail 判失败并留痕原因"
+    ],
+    "firstLines": [],
+    "elapsed_s": 82
+  },
+  {
+    "id": "M8",
+    "desc": "run.json 不写 unknown_reason",
+    "suite": "dist/test/test/integration/fault-injection.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 I1：审查期间送审快照被清理 → 比不了，缺省按 on_drift_related=fail 判失败并留痕原因",
+      "EV-139 I2：on_drift_related=warn 时比不了只告警，运行成功、原因照样留痕"
+    ],
+    "firstLines": [],
+    "elapsed_s": 82
+  },
+  {
+    "id": "M9",
+    "desc": "人读告警的 unknown 分支直接 break",
+    "suite": "dist/test/test/unit/drift-unknown.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 G1：比不了 + fail ⇒ 告警说清原因、策略与出口（含改 warn 的连带影响），不冒充相关或无关漂移",
+      "EV-139 G2：比不了 + warn ⇒ 照常结束但请人工核对，不说「不能当作有效审查」",
+      "EV-139 G3：三种原因的标签各不相同、来自同一张表；排版里同一短语不出现两次"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M10",
+    "desc": "report 不推「漂移无法判定」旗标",
+    "suite": "dist/test/test/unit/report.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139：比不了进告警清单，不因两个桶都空而一声不吭"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M11",
+    "desc": "审查文档不换旗标",
+    "suite": "dist/test/test/unit/drift-unknown.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 R1：审查文档旗标换成「漂移无法判定」并带原因；front-matter 仍只写 drift: true、不加新键"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M12",
+    "desc": "严格比对去掉 -z",
+    "suite": "dist/test/test/unit/freeze-drift.test.js",
+    "fail": 7,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "回归：编排器自己往归档写入不算漂移（实跑时误报过 4 个文件）",
+      "回归：编排器往 .trivium/ 写 state.json 与锁文件不算漂移（不依赖用户的 .gitignore）",
+      "无关业务文件被改 → unrelated，默认 warn",
+      "--context 涉及的文件被改 → related，默认 fail",
+      "Agent 的 scratch 白名单文件被排除，不算漂移",
+      "回归：含中文的路径在漂移报告里可读，不是八进制转义",
+      "EV-139 U7：文件名含制表符的文件被改 ⇒ related（严格比对走 -z，路径原样；旧调用带引号、误落 unrelated）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 2
+  },
+  {
+    "id": "M13",
+    "desc": "去掉 tree 值的形状闸",
+    "suite": "dist/test/test/unit/freeze-drift.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 U9：tree 值不合形状 ⇒ git_error，不调 git、不回显该值（以 - 开头的值会被 git 当成选项）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 2
+  },
+  {
+    "id": "M14",
+    "desc": "去掉 prune_objects 桩的临时夹具自缚",
+    "suite": "dist/test/test/unit/drift-unknown.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 S1：prune_objects 桩自缚——项目根不在系统临时目录之下就不动手，按失败返回并写明原因"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M15",
+    "desc": "summarizeRun 不打「漂移无法判定」",
+    "suite": "dist/test/test/unit/drift-unknown.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-139 R2：summarizeRun 对比不了打「漂移无法判定」，不打「漂移：0 个文件」"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  }
+]

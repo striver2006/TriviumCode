@@ -1,0 +1,863 @@
+# v22.23.3（/Users/chenzhenbo/.npm/_npx/52027bd8fc0022aa/node_modules/.bin/node）
+TAP version 13
+# Subtest: 桩经环境变量跨进程注入，worker 真的用了桩（AGY-05）
+ok 1 - 桩经环境变量跨进程注入，worker 真的用了桩（AGY-05）
+  ---
+  duration_ms: 2502.428375
+  type: 'test'
+  ...
+# Subtest: plan 原稿在成功收尾后进 meta.artifacts（M10a 第 2 步 EV-55 §3.1.1）
+ok 2 - plan 原稿在成功收尾后进 meta.artifacts（M10a 第 2 步 EV-55 §3.1.1）
+  ---
+  duration_ms: 2471.836416
+  type: 'test'
+  ...
+# Subtest: 作废轮（subject_drift）不登记原稿，之后原地改稿不触发锚②（EV-55 §3.1.1 时点）
+ok 3 - 作废轮（subject_drift）不登记原稿，之后原地改稿不触发锚②（EV-55 §3.1.1 时点）
+  ---
+  duration_ms: 2413.254917
+  type: 'test'
+  ...
+# Subtest: 归档外被审对象（--plan-file doc/…）不登记，run.json 与 gate --check 都有标注（EV-55 §3.1.1 域）
+ok 4 - 归档外被审对象（--plan-file doc/…）不登记，run.json 与 gate --check 都有标注（EV-55 §3.1.1 域）
+  ---
+  duration_ms: 2671.185375
+  type: 'test'
+  ...
+# Subtest: 未设注入变量时，绝不会用到桩
+ok 5 - 未设注入变量时，绝不会用到桩
+  ---
+  duration_ms: 157.848333
+  type: 'test'
+  ...
+# Subtest: 生产路径检出注入变量会打醒目告警
+ok 6 - 生产路径检出注入变量会打醒目告警
+  ---
+  duration_ms: 151.353167
+  type: 'test'
+  ...
+# Subtest: 一侧超时 → 降级单审，失败侧留 .failed.json 而非消失（AC-06）
+ok 7 - 一侧超时 → 降级单审，失败侧留 .failed.json 而非消失（AC-06）
+  ---
+  duration_ms: 2362.656125
+  type: 'test'
+  ...
+# Subtest: 两侧返回非 JSON → 双双 parse_fallback，仍落盘
+ok 8 - 两侧返回非 JSON → 双双 parse_fallback，仍落盘
+  ---
+  duration_ms: 2421.595625
+  type: 'test'
+  ...
+# Subtest: exit 0 但零工具调用 → 证据不足
+ok 9 - exit 0 但零工具调用 → 证据不足
+  ---
+  duration_ms: 2420.5695
+  type: 'test'
+  ...
+# Subtest: 只读了送审材料自己 → 判 no_project_context
+ok 10 - 只读了送审材料自己 → 判 no_project_context
+  ---
+  duration_ms: 2428.163416
+  type: 'test'
+  ...
+# Subtest: 审查期间无关业务文件被改 → unrelated，默认 warn，运行仍成功
+ok 11 - 审查期间无关业务文件被改 → unrelated，默认 warn，运行仍成功
+  ---
+  duration_ms: 2399.034541
+  type: 'test'
+  ...
+# Subtest: 审查期间 --context 涉及的文件被改 → related，默认 fail
+ok 12 - 审查期间 --context 涉及的文件被改 → related，默认 fail
+  ---
+  duration_ms: 2367.342708
+  type: 'test'
+  ...
+# Subtest: EV-139 I1：审查期间送审快照被清理 → 比不了，缺省按 on_drift_related=fail 判失败并留痕原因
+ok 13 - EV-139 I1：审查期间送审快照被清理 → 比不了，缺省按 on_drift_related=fail 判失败并留痕原因
+  ---
+  duration_ms: 2512.500542
+  type: 'test'
+  ...
+# Subtest: EV-139 I2：on_drift_related=warn 时比不了只告警，运行成功、原因照样留痕
+ok 14 - EV-139 I2：on_drift_related=warn 时比不了只告警，运行成功、原因照样留痕
+  ---
+  duration_ms: 2568.676667
+  type: 'test'
+  ...
+# Subtest: 审查中写项目文件 → readonly_breach，且 gate --check 判失败（接线端到端）
+ok 15 - 审查中写项目文件 → readonly_breach，且 gate --check 判失败（接线端到端）
+  ---
+  duration_ms: 2501.285666
+  type: 'test'
+  ...
+# Subtest: 读到凭据文件 → 记一笔，但**不判作废**（分档：安全告警线）
+ok 16 - 读到凭据文件 → 记一笔，但**不判作废**（分档：安全告警线）
+  ---
+  duration_ms: 2394.760208
+  type: 'test'
+  ...
+# Subtest: 读到对端审查产出 → 判作废（分档：会作废的那一档）
+ok 17 - 读到对端审查产出 → 判作废（分档：会作废的那一档）
+  ---
+  duration_ms: 2452.675166
+  type: 'test'
+  ...
+# Subtest: 读自己那一侧的运行材料 → 完全不算命中（分档：②′ 己方材料）
+ok 18 - 读自己那一侧的运行材料 → 完全不算命中（分档：②′ 己方材料）
+  ---
+  duration_ms: 2415.9655
+  type: 'test'
+  ...
+# Subtest: 读对端那一侧的运行输出 → 判作废（分档：② 对端输出）
+ok 19 - 读对端那一侧的运行输出 → 判作废（分档：② 对端输出）
+  ---
+  duration_ms: 2422.838
+  type: 'test'
+  ...
+# Subtest: 命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01）
+ok 20 - 命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01）
+  ---
+  duration_ms: 2417.122208
+  type: 'test'
+  ...
+# Subtest: 命令里提到的是**自己那一侧**的运行材料 → 不作废（两条通道同一个谓词）
+ok 21 - 命令里提到的是**自己那一侧**的运行材料 → 不作废（两条通道同一个谓词）
+  ---
+  duration_ms: 2399.025666
+  type: 'test'
+  ...
+# Subtest: 回读到的生效模型与请求不符时如实记录（AC-13）
+ok 22 - 回读到的生效模型与请求不符时如实记录（AC-13）
+  ---
+  duration_ms: 2434.3965
+  type: 'test'
+  ...
+# Subtest: 默认 strict：一侧失败即整次中止（退 75）
+ok 23 - 默认 strict：一侧失败即整次中止（退 75）
+  ---
+  duration_ms: 2427.958875
+  type: 'test'
+  ...
+# Subtest: --allow-single：一侧失败不中止，产出单审并标降级
+ok 24 - --allow-single：一侧失败不中止，产出单审并标降级
+  ---
+  duration_ms: 2433.414583
+  type: 'test'
+  ...
+# Subtest: 配置关掉 allow_single_flag 时，命令行也开不回来
+ok 25 - 配置关掉 allow_single_flag 时，命令行也开不回来
+  ---
+  duration_ms: 2447.663417
+  type: 'test'
+  ...
+# Subtest: 两侧都失败：无论什么策略都中止
+ok 26 - 两侧都失败：无论什么策略都中止
+  ---
+  duration_ms: 2442.964833
+  type: 'test'
+  ...
+# Subtest: --critics 单侧：真的只跑那一侧，且不记降级（AC-22 的核心断言）
+ok 27 - --critics 单侧：真的只跑那一侧，且不记降级（AC-22 的核心断言）
+  ---
+  duration_ms: 2390.220458
+  type: 'test'
+  ...
+# Subtest: 停点话术：调用写法与「不得修改业务文件」都按当轮 Driver（非缺省、无 Hook、非斜杠写法）
+ok 28 - 停点话术：调用写法与「不得修改业务文件」都按当轮 Driver（非缺省、无 Hook、非斜杠写法）
+  ---
+  duration_ms: 2836.365458
+  type: 'test'
+  ...
+# Subtest: 缺省（不给 --critics）：仍按 default_critics 跑满两侧
+ok 29 - 缺省（不给 --critics）：仍按 default_critics 跑满两侧
+  ---
+  duration_ms: 2423.267875
+  type: 'test'
+  ...
+# Subtest: 跨命令：resolve(--critics) 的输出照抄进 --start 能启动
+ok 30 - 跨命令：resolve(--critics) 的输出照抄进 --start 能启动
+  ---
+  duration_ms: 390.843041
+  type: 'test'
+  ...
+# Subtest: 跨命令：resolve(--only) 的输出照抄进 --start 也能启动（旧别名不得必败）
+ok 31 - 跨命令：resolve(--only) 的输出照抄进 --start 也能启动（旧别名不得必败）
+  ---
+  duration_ms: 338.089416
+  type: 'test'
+  ...
+# Subtest: --critics 拼错：退 64 且不产生任何工件
+ok 32 - --critics 拼错：退 64 且不产生任何工件
+  ---
+  duration_ms: 161.025917
+  type: 'test'
+  ...
+# Subtest: 冒用对侧前缀 → 该侧转 parse_fallback，不得作为结构化结论落盘
+ok 33 - 冒用对侧前缀 → 该侧转 parse_fallback，不得作为结构化结论落盘
+  ---
+  duration_ms: 2371.42725
+  type: 'test'
+  ...
+# Subtest: 自造未登记前缀 → 同样转 parse_fallback，且重编号用本侧合法前缀
+ok 34 - 自造未登记前缀 → 同样转 parse_fallback，且重编号用本侧合法前缀
+  ---
+  duration_ms: 2468.258167
+  type: 'test'
+  ...
+# Subtest: I1 部分意见不合 schema → 该侧仍 ok，只把那几条逐条降级，gate 按原编号要求裁决
+ok 35 - I1 部分意见不合 schema → 该侧仍 ok，只把那几条逐条降级，gate 按原编号要求裁决
+  ---
+  duration_ms: 2700.81675
+  type: 'test'
+  ...
+# Subtest: I2 全部意见都降级的一侧不是空结论（empty_review: false），整份回退的一侧记成因
+ok 36 - I2 全部意见都降级的一侧不是空结论（empty_review: false），整份回退的一侧记成因
+  ---
+  duration_ms: 2417.187375
+  type: 'test'
+  ...
+# Subtest: 构建标识告警经收尾接线落进 run.json 的 gate.warnings，gate --check 转述为 run_warning（r2 CODEX-06）
+ok 37 - 构建标识告警经收尾接线落进 run.json 的 gate.warnings，gate --check 转述为 run_warning（r2 CODEX-06）
+  ---
+  duration_ms: 2592.711791
+  type: 'test'
+  ...
+# Subtest: EV-139 G1：比不了 + fail ⇒ 告警说清原因、策略与出口（含改 warn 的连带影响），不冒充相关或无关漂移
+ok 38 - EV-139 G1：比不了 + fail ⇒ 告警说清原因、策略与出口（含改 warn 的连带影响），不冒充相关或无关漂移
+  ---
+  duration_ms: 0.772042
+  type: 'test'
+  ...
+# Subtest: EV-139 G2：比不了 + warn ⇒ 照常结束但请人工核对，不说「不能当作有效审查」
+ok 39 - EV-139 G2：比不了 + warn ⇒ 照常结束但请人工核对，不说「不能当作有效审查」
+  ---
+  duration_ms: 0.097208
+  type: 'test'
+  ...
+# Subtest: EV-139 G3：三种原因的标签各不相同、来自同一张表；排版里同一短语不出现两次
+ok 40 - EV-139 G3：三种原因的标签各不相同、来自同一张表；排版里同一短语不出现两次
+  ---
+  duration_ms: 0.088917
+  type: 'test'
+  ...
+# Subtest: EV-139 R1：审查文档旗标换成「漂移无法判定」并带原因；front-matter 仍只写 drift: true、不加新键
+ok 41 - EV-139 R1：审查文档旗标换成「漂移无法判定」并带原因；front-matter 仍只写 drift: true、不加新键
+  ---
+  duration_ms: 10.512333
+  type: 'test'
+  ...
+# Subtest: EV-139 R2：summarizeRun 对比不了打「漂移无法判定」，不打「漂移：0 个文件」
+ok 42 - EV-139 R2：summarizeRun 对比不了打「漂移无法判定」，不打「漂移：0 个文件」
+  ---
+  duration_ms: 0.763792
+  type: 'test'
+  ...
+# Subtest: EV-139 S1：prune_objects 桩自缚——项目根不在系统临时目录之下就不动手，按失败返回并写明原因
+ok 43 - EV-139 S1：prune_objects 桩自缚——项目根不在系统临时目录之下就不动手，按失败返回并写明原因
+  ---
+  duration_ms: 2.450333
+  type: 'test'
+  ...
+# Subtest: 禁读清单：子目录里的 .env.production 也在内（默认 sensitive_globs 补了 **/.env*）
+ok 44 - 禁读清单：子目录里的 .env.production 也在内（默认 sensitive_globs 补了 **/.env*）
+  ---
+  duration_ms: 115.8055
+  type: 'test'
+  ...
+# Subtest: 工作树未变 → 无漂移
+ok 45 - 工作树未变 → 无漂移
+  ---
+  duration_ms: 158.1595
+  type: 'test'
+  ...
+# Subtest: 被审对象被改 → subject_drift，优先级最高（整次作废）
+ok 46 - 被审对象被改 → subject_drift，优先级最高（整次作废）
+  ---
+  duration_ms: 131.395084
+  type: 'test'
+  ...
+# Subtest: 回归：编排器自己往归档写入不算漂移（实跑时误报过 4 个文件）
+ok 47 - 回归：编排器自己往归档写入不算漂移（实跑时误报过 4 个文件）
+  ---
+  duration_ms: 140.170083
+  type: 'test'
+  ...
+# Subtest: 回归：编排器往 .trivium/ 写 state.json 与锁文件不算漂移（不依赖用户的 .gitignore）
+ok 48 - 回归：编排器往 .trivium/ 写 state.json 与锁文件不算漂移（不依赖用户的 .gitignore）
+  ---
+  duration_ms: 118.395
+  type: 'test'
+  ...
+# Subtest: 无关业务文件被改 → unrelated，默认 warn
+ok 49 - 无关业务文件被改 → unrelated，默认 warn
+  ---
+  duration_ms: 116.700292
+  type: 'test'
+  ...
+# Subtest: --context 涉及的文件被改 → related，默认 fail
+ok 50 - --context 涉及的文件被改 → related，默认 fail
+  ---
+  duration_ms: 114.0305
+  type: 'test'
+  ...
+# Subtest: Agent 的 scratch 白名单文件被排除，不算漂移
+ok 51 - Agent 的 scratch 白名单文件被排除，不算漂移
+  ---
+  duration_ms: 129.751958
+  type: 'test'
+  ...
+# Subtest: 回归：含中文的路径在漂移报告里可读，不是八进制转义
+ok 52 - 回归：含中文的路径在漂移报告里可读，不是八进制转义
+  ---
+  duration_ms: 111.981417
+  type: 'test'
+  ...
+# Subtest: 漂移策略可配：on_drift=fail 时无关文件也判失败
+ok 53 - 漂移策略可配：on_drift=fail 时无关文件也判失败
+  ---
+  duration_ms: 0.331541
+  type: 'test'
+  ...
+# Subtest: EV-139 U1：送审快照的 tree 在审查期间被清理 ⇒ unknown / object_gone，不再判 none
+ok 54 - EV-139 U1：送审快照的 tree 在审查期间被清理 ⇒ unknown / object_gone，不再判 none
+  ---
+  duration_ms: 147.114375
+  type: 'test'
+  ...
+# Subtest: EV-139 U1′：只有跑后复算的 tree 不在 ⇒ 同样 object_gone，detail 指明是跑后那棵
+ok 55 - EV-139 U1′：只有跑后复算的 tree 不在 ⇒ 同样 object_gone，detail 指明是跑后那棵
+  ---
+  duration_ms: 169.110125
+  type: 'test'
+  ...
+# Subtest: EV-139 U2：比不了时不看 relatedPaths——覆盖与不覆盖被改文件都判 unknown
+ok 56 - EV-139 U2：比不了时不看 relatedPaths——覆盖与不覆盖被改文件都判 unknown
+  ---
+  duration_ms: 319.441959
+  type: 'test'
+  ...
+# Subtest: EV-139 U3：unknown 按 on_drift_related 处置，与 on_drift 无关
+ok 57 - EV-139 U3：unknown 按 on_drift_related 处置，与 on_drift 无关
+  ---
+  duration_ms: 0.191708
+  type: 'test'
+  ...
+# Subtest: EV-139 U4：送审快照名指向一个 blob（对象在、不是 tree）⇒ git_error，detail 带 diff-tree 报错首行
+ok 58 - EV-139 U4：送审快照名指向一个 blob（对象在、不是 tree）⇒ git_error，detail 带 diff-tree 报错首行
+  ---
+  duration_ms: 133.212208
+  type: 'test'
+  ...
+# Subtest: EV-139 U5：比对超时 ⇒ timeout，且不再查对象（项目根不存在也照样返回）
+ok 59 - EV-139 U5：比对超时 ⇒ timeout，且不再查对象（项目根不存在也照样返回）
+  ---
+  duration_ms: 0.171042
+  type: 'test'
+  ...
+# Subtest: EV-139 U5′：比对快速失败之后核对对象共用一份有界预算（逐次显式传剩余毫秒）
+ok 60 - EV-139 U5′：比对快速失败之后核对对象共用一份有界预算（逐次显式传剩余毫秒）
+  ---
+  duration_ms: 7.767875
+  type: 'test'
+  ...
+# Subtest: EV-139 U6：核对对象时 git 也出错（非 git 目录）⇒ git_error，两段首行都在
+ok 61 - EV-139 U6：核对对象时 git 也出错（非 git 目录）⇒ git_error，两段首行都在
+  ---
+  duration_ms: 9.234959
+  type: 'test'
+  ...
+# Subtest: EV-139 U7：文件名含制表符的文件被改 ⇒ related（严格比对走 -z，路径原样；旧调用带引号、误落 unrelated）
+ok 62 - EV-139 U7：文件名含制表符的文件被改 ⇒ related（严格比对走 -z，路径原样；旧调用带引号、误落 unrelated）
+  ---
+  duration_ms: 132.183875
+  type: 'test'
+  ...
+# Subtest: EV-139 U9：tree 值不合形状 ⇒ git_error，不调 git、不回显该值（以 - 开头的值会被 git 当成选项）
+ok 63 - EV-139 U9：tree 值不合形状 ⇒ git_error，不调 git、不回显该值（以 - 开头的值会被 git 当成选项）
+  ---
+  duration_ms: 89.921708
+  type: 'test'
+  ...
+# Subtest: front-matter 可被 YAML 解析，且关键机读字段齐备
+ok 64 - front-matter 可被 YAML 解析，且关键机读字段齐备
+  ---
+  duration_ms: 10.189375
+  type: 'test'
+  ...
+# Subtest: 生效模型来源被记录，不采信 Agent 自述（AC-13）
+ok 65 - 生效模型来源被记录，不采信 Agent 自述（AC-13）
+  ---
+  duration_ms: 1.953667
+  type: 'test'
+  ...
+# Subtest: project_reads 进 tool_calls（AC-11 的机读落点）
+ok 66 - project_reads 进 tool_calls（AC-11 的机读落点）
+  ---
+  duration_ms: 1.283417
+  type: 'test'
+  ...
+# Subtest: 意见按严重度排序，blocker 排在最前
+ok 67 - 意见按严重度排序，blocker 排在最前
+  ---
+  duration_ms: 0.271042
+  type: 'test'
+  ...
+# Subtest: 降级标记出现在正文顶部而非只在 front-matter（不可伪装）
+ok 68 - 降级标记出现在正文顶部而非只在 front-matter（不可伪装）
+  ---
+  duration_ms: 2.492125
+  type: 'test'
+  ...
+# Subtest: 入选一侧并成功：渲染参与者事实，但不打降级横幅
+ok 69 - 入选一侧并成功：渲染参与者事实，但不打降级横幅
+  ---
+  duration_ms: 2.326958
+  type: 'test'
+  ...
+# Subtest: 参与者事实在降级轮次里照样渲染，两个标记并存不互相顶替
+ok 70 - 参与者事实在降级轮次里照样渲染，两个标记并存不互相顶替
+  ---
+  duration_ms: 0.650792
+  type: 'test'
+  ...
+# Subtest: 降级文案不得再出现「另一侧」这种只对两侧成立的指代
+ok 71 - 降级文案不得再出现「另一侧」这种只对两侧成立的指代
+  ---
+  duration_ms: 0.235208
+  type: 'test'
+  ...
+# Subtest: 证据不足会显式标注该侧不算合格双审的一半
+ok 72 - 证据不足会显式标注该侧不算合格双审的一半
+  ---
+  duration_ms: 1.318208
+  type: 'test'
+  ...
+# Subtest: 路径级 deny 未生效时如实标注诚实边界（§10.2）
+ok 73 - 路径级 deny 未生效时如实标注诚实边界（§10.2）
+  ---
+  duration_ms: 3.4315
+  type: 'test'
+  ...
+# Subtest: 漂移会标注「结论对应送审时刻快照」
+ok 74 - 漂移会标注「结论对应送审时刻快照」
+  ---
+  duration_ms: 0.985375
+  type: 'test'
+  ...
+# Subtest: 与主脑同源时醒目告警并记录覆盖理由（AC-18）
+ok 75 - 与主脑同源时醒目告警并记录覆盖理由（AC-18）
+  ---
+  duration_ms: 0.69775
+  type: 'test'
+  ...
+# Subtest: 同源旗标不写死 Claude 系（EV-62）
+ok 76 - 同源旗标不写死 Claude 系（EV-62）
+  ---
+  duration_ms: 0.213625
+  type: 'test'
+  ...
+# Subtest: 零意见时文件照常渲染，并提示这不等于没审（FR-13）
+ok 77 - 零意见时文件照常渲染，并提示这不等于没审（FR-13）
+  ---
+  duration_ms: 0.639959
+  type: 'test'
+  ...
+# Subtest: 解析降级时保留原文并标注不参与阻断判定（AD-08）
+ok 78 - 解析降级时保留原文并标注不参与阻断判定（AD-08）
+  ---
+  duration_ms: 1.637958
+  type: 'test'
+  ...
+# Subtest: consulted 未填时明确说明无法交叉核对
+ok 79 - consulted 未填时明确说明无法交叉核对
+  ---
+  duration_ms: 0.2155
+  type: 'test'
+  ...
+# Subtest: consulted 未通过核验时打 consulted_unverified 标记
+ok 80 - consulted 未通过核验时打 consulted_unverified 标记
+  ---
+  duration_ms: 0.583125
+  type: 'test'
+  ...
+# Subtest: 重跑轮次在标题与 front-matter 中都可见
+ok 81 - 重跑轮次在标题与 front-matter 中都可见
+  ---
+  duration_ms: 0.727209
+  type: 'test'
+  ...
+# Subtest: 两侧 vendor 与 agent_cli 正确区分
+ok 82 - 两侧 vendor 与 agent_cli 正确区分
+  ---
+  duration_ms: 0.573416
+  type: 'test'
+  ...
+# Subtest: countSeverities 对 null 安全
+ok 83 - countSeverities 对 null 安全
+  ---
+  duration_ms: 0.034583
+  type: 'test'
+  ...
+# Subtest: parseFrontMatter 对无 front-matter 的文件返回 null
+ok 84 - parseFrontMatter 对无 front-matter 的文件返回 null
+  ---
+  duration_ms: 0.022792
+  type: 'test'
+  ...
+# Subtest: 回归：超时的一侧不产生证据不足告警，避免把真正原因埋在噪音里
+ok 85 - 回归：超时的一侧不产生证据不足告警，避免把真正原因埋在噪音里
+  ---
+  duration_ms: 140.992375
+  type: 'test'
+  ...
+# Subtest: 只读失守的告警包含可执行的人工核对命令，且明确不自动回滚
+ok 86 - 只读失守的告警包含可执行的人工核对命令，且明确不自动回滚
+  ---
+  duration_ms: 0.3295
+  type: 'test'
+  ...
+# Subtest: 空主题：如实说「没有轮次」，不渲染成一份看起来干净的报告
+ok 87 - 空主题：如实说「没有轮次」，不渲染成一份看起来干净的报告
+  ---
+  duration_ms: 10.133
+  type: 'test'
+  ...
+# Subtest: 一轮双审：时间线、意见数、严重度分布、生效模型齐备
+ok 88 - 一轮双审：时间线、意见数、严重度分布、生效模型齐备
+  ---
+  duration_ms: 59.600541
+  type: 'test'
+  ...
+# Subtest: 时间线带「Driver（护栏）」列：留痕有等级就写等级，旧留痕没有就写「—」，不补成 L1（B1）
+ok 89 - 时间线带「Driver（护栏）」列：留痕有等级就写等级，旧留痕没有就写「—」，不补成 L1（B1）
+  ---
+  duration_ms: 32.111084
+  type: 'test'
+  ...
+# Subtest: 归一化后的重合度进表，且未归一化值一并给出
+ok 90 - 归一化后的重合度进表，且未归一化值一并给出
+  ---
+  duration_ms: 12.828167
+  type: 'test'
+  ...
+# Subtest: 单侧超时：显示状态而非 0，并进降级清单
+ok 91 - 单侧超时：显示状态而非 0，并进降级清单
+  ---
+  duration_ms: 13.751583
+  type: 'test'
+  ...
+# Subtest: 审查完成但无裁决件 → 明确点出，采纳率不按 0 算
+ok 92 - 审查完成但无裁决件 → 明确点出，采纳率不按 0 算
+  ---
+  duration_ms: 10.235334
+  type: 'test'
+  ...
+# Subtest: 裁决件被解析：采纳率与被驳回项带理由
+ok 93 - 裁决件被解析：采纳率与被驳回项带理由
+  ---
+  duration_ms: 11.732333
+  type: 'test'
+  ...
+# Subtest: token 逐侧列出，字符串字段被丢弃而不是累加成垃圾
+ok 94 - token 逐侧列出，字符串字段被丢弃而不是累加成垃圾
+  ---
+  duration_ms: 24.329375
+  type: 'test'
+  ...
+# Subtest: 漂移与路径 deny 降级进告警清单
+ok 95 - 漂移与路径 deny 降级进告警清单
+  ---
+  duration_ms: 10.224042
+  type: 'test'
+  ...
+# Subtest: EV-139：比不了进告警清单，不因两个桶都空而一声不吭
+ok 96 - EV-139：比不了进告警清单，不因两个桶都空而一声不吭
+  ---
+  duration_ms: 10.153917
+  type: 'test'
+  ...
+# Subtest: EV-137 G1：forged_role_file 即使为 true 也不打「角色后缀伪造」旗标（保留字段，不代表检测过）
+ok 97 - EV-137 G1：forged_role_file 即使为 true 也不打「角色后缀伪造」旗标（保留字段，不代表检测过）
+  ---
+  duration_ms: 9.518417
+  type: 'test'
+  ...
+# Subtest: 多轮按轮次升序，采纳率跨轮累计
+ok 98 - 多轮按轮次升序，采纳率跨轮累计
+  ---
+  duration_ms: 49.293833
+  type: 'test'
+  ...
+# Subtest: 缺 run.json 的轮次照样出现在报告里，并说明元数据缺失
+ok 99 - 缺 run.json 的轮次照样出现在报告里，并说明元数据缺失
+  ---
+  duration_ms: 2.241
+  type: 'test'
+  ...
+# Subtest: task.json 的降级与争议项被带进报告
+ok 100 - task.json 的降级与争议项被带进报告
+  ---
+  duration_ms: 10.026125
+  type: 'test'
+  ...
+# Subtest: verify 记录损坏 → 如实说损坏，不伪装成「从未验证」
+ok 101 - verify 记录损坏 → 如实说损坏，不伪装成「从未验证」
+  ---
+  duration_ms: 9.920333
+  type: 'test'
+  ...
+# Subtest: 裁决件读不到不让整份复盘崩溃
+ok 102 - 裁决件读不到不让整份复盘崩溃
+  ---
+  duration_ms: 8.026125
+  type: 'test'
+  ...
+# Subtest: EV-144 V1：只有一份被取消的运行 ⇒ 轮次 0，另列一条「被 review --cancel 取消」，头部注明另有 1 次
+ok 103 - EV-144 V1：只有一份被取消的运行 ⇒ 轮次 0，另列一条「被 review --cancel 取消」，头部注明另有 1 次
+  ---
+  duration_ms: 1.886208
+  type: 'test'
+  ...
+# Subtest: EV-144 V2：入选侧全部失败 + 同轮次号的成功重跑 ⇒ 时间线只列重跑，失败那次进下表且预定轮次同为 r1
+ok 104 - EV-144 V2：入选侧全部失败 + 同轮次号的成功重跑 ⇒ 时间线只列重跑，失败那次进下表且预定轮次同为 r1
+  ---
+  duration_ms: 9.854291
+  type: 'test'
+  ...
+# Subtest: EV-144 V3：停在 running 的运行 ⇒ 说明「进行中，或没走到收尾」（report 只读归档，分不出这两种）
+ok 105 - EV-144 V3：停在 running 的运行 ⇒ 说明「进行中，或没走到收尾」（report 只读归档，分不出这两种）
+  ---
+  duration_ms: 2.049333
+  type: 'test'
+  ...
+# Subtest: EV-144 V4：两条事后收尾写成的 failed ⇒ 说明分别带退出码与失联原因
+ok 106 - EV-144 V4：两条事后收尾写成的 failed ⇒ 说明分别带退出码与失联原因
+  ---
+  duration_ms: 2.55575
+  type: 'test'
+  ...
+# Subtest: EV-144 V5：纯文档跳过（success、skipped_doc_only）⇒ 说明「纯文档跳过（FR-23）」
+ok 107 - EV-144 V5：纯文档跳过（success、skipped_doc_only）⇒ 说明「纯文档跳过（FR-23）」
+  ---
+  duration_ms: 1.552542
+  type: 'test'
+  ...
+# Subtest: EV-144 V6：读不出来的 run.json 不进下表，进 notes（此前被静默跳过）
+ok 108 - EV-144 V6：读不出来的 run.json 不进下表，进 notes（此前被静默跳过）
+  ---
+  duration_ms: 1.298125
+  type: 'test'
+  ...
+# Subtest: EV-144 V7：所有运行都进了时间线 ⇒ 不渲染下表，头部也没有「另有」半句（防噪声）
+ok 109 - EV-144 V7：所有运行都进了时间线 ⇒ 不渲染下表，头部也没有「另有」半句（防噪声）
+  ---
+  duration_ms: 7.140083
+  type: 'test'
+  ...
+# Subtest: EV-145 V8：prepare_exception / sync_exception 写成的 failed ⇒ 说明分别写清「未拉起审查员」与「同步路径异常」并带退出码
+ok 110 - EV-145 V8：prepare_exception / sync_exception 写成的 failed ⇒ 说明分别写清「未拉起审查员」与「同步路径异常」并带退出码
+  ---
+  duration_ms: 2.099375
+  type: 'test'
+  ...
+# Subtest: EV-150 V8′：post_spawn_exception 写成的 failed ⇒ 说明写清「派生工作进程之后启动未完成，工作进程已终止」并带退出码
+ok 111 - EV-150 V8′：post_spawn_exception 写成的 failed ⇒ 说明写清「派生工作进程之后启动未完成，工作进程已终止」并带退出码
+  ---
+  duration_ms: 2.315208
+  type: 'test'
+  ...
+# Subtest: EV-145 V9：termination.by 的每一个取值都有专门的说明，不落进兜底「failed（gate.state=…）」
+ok 112 - EV-145 V9：termination.by 的每一个取值都有专门的说明，不落进兜底「failed（gate.state=…）」
+  ---
+  duration_ms: 4.362875
+  type: 'test'
+  ...
+# Subtest: 收严回归锁：本仓库全部 v2 留痕仍能通过校验
+ok 113 - 收严回归锁：本仓库全部 v2 留痕仍能通过校验
+  ---
+  duration_ms: 205.608792
+  type: 'test'
+  ...
+# Subtest: 收严生效：guard 里出现未声明的键必须判错，而不是静默通过
+ok 114 - 收严生效：guard 里出现未声明的键必须判错，而不是静默通过
+  ---
+  duration_ms: 65.492208
+  type: 'test'
+  ...
+# Subtest: EV-142 S1：termination 两种形状通过；多键、by 取别的值、reason 越出枚举都判错；缺席照样通过
+ok 115 - EV-142 S1：termination 两种形状通过；多键、by 取别的值、reason 越出枚举都判错；缺席照样通过
+  ---
+  duration_ms: 1.050667
+  type: 'test'
+  ...
+# Subtest: EV-142 S2：schema 里 termination.reason 的枚举与 status.ts 的 WORKER_LOST_REASONS 逐项相等（单一来源）
+ok 116 - EV-142 S2：schema 里 termination.reason 的枚举与 status.ts 的 WORKER_LOST_REASONS 逐项相等（单一来源）
+  ---
+  duration_ms: 1.267542
+  type: 'test'
+  ...
+# Subtest: EV-145 S1′：prepare_exception / sync_exception 与 worker_exception 同形——带整数退出码通过；缺退出码、串形状、带自由文本都判错
+ok 117 - EV-145 S1′：prepare_exception / sync_exception 与 worker_exception 同形——带整数退出码通过；缺退出码、串形状、带自由文本都判错
+  ---
+  duration_ms: 0.205791
+  type: 'test'
+  ...
+# Subtest: EV-150 S1″：post_spawn_exception 与另三个异常取值同形——带整数退出码通过；缺退出码、串形状、带自由文本都判错
+ok 118 - EV-150 S1″：post_spawn_exception 与另三个异常取值同形——带整数退出码通过；缺退出码、串形状、带自由文本都判错
+  ---
+  duration_ms: 0.066458
+  type: 'test'
+  ...
+# Subtest: EV-145 S3：schema 里 termination.by 的取值集合与 types.ts 的 EXCEPTION_TERMINATION_BY + worker_lost 逐项相等（单一来源）
+ok 119 - EV-145 S3：schema 里 termination.by 的取值集合与 types.ts 的 EXCEPTION_TERMINATION_BY + worker_lost 逐项相等（单一来源）
+  ---
+  duration_ms: 0.6645
+  type: 'test'
+  ...
+# Subtest: EV-139 C1：schema 里 unknown_reason.cause 的枚举与 types.ts 的 DRIFT_UNKNOWN_CAUSES 逐项相等（单一来源）
+ok 120 - EV-139 C1：schema 里 unknown_reason.cause 的枚举与 types.ts 的 DRIFT_UNKNOWN_CAUSES 逐项相等（单一来源）
+  ---
+  duration_ms: 0.486916
+  type: 'test'
+  ...
+# Subtest: EV-139 C2：unknown_reason 合法形状通过；表外原因、缺 detail、多出键、detail 非字符串都判错；缺席（旧形）照样通过
+ok 121 - EV-139 C2：unknown_reason 合法形状通过；表外原因、缺 detail、多出键、detail 非字符串都判错；缺席（旧形）照样通过
+  ---
+  duration_ms: 0.26225
+  type: 'test'
+  ...
+# Subtest: 1：基线之后没有改动 ⇒ available、total 0，渲染出「无改动」一行
+ok 122 - 1：基线之后没有改动 ⇒ available、total 0，渲染出「无改动」一行
+  ---
+  duration_ms: 224.920167
+  type: 'test'
+  ...
+# Subtest: 2：修改 / 新建未跟踪 / 删除 ⇒ M / A / D 三行，按路径排序
+ok 123 - 2：修改 / 新建未跟踪 / 删除 ⇒ M / A / D 三行，按路径排序
+  ---
+  duration_ms: 200.67475
+  type: 'test'
+  ...
+# Subtest: 3：被 .gitignore 忽略的文件、归档根、.trivium/ 下的改动都不出现
+ok 124 - 3：被 .gitignore 忽略的文件、归档根、.trivium/ 下的改动都不出现
+  ---
+  duration_ms: 146.486625
+  type: 'test'
+  ...
+# Subtest: 4：闸门期提交过的改动同样列出——基线与当前都按工作树内容算，不相对 HEAD
+ok 125 - 4：闸门期提交过的改动同样列出——基线与当前都按工作树内容算，不相对 HEAD
+  ---
+  duration_ms: 157.346
+  type: 'test'
+  ...
+# Subtest: 5：路径含空格、双引号、中文 ⇒ 原样（-z 成对解析，不加引号）
+ok 126 - 5：路径含空格、双引号、中文 ⇒ 原样（-z 成对解析，不加引号）
+  ---
+  duration_ms: 120.217959
+  type: 'test'
+  ...
+# Subtest: 6：人读上限 20 条、超出给同口径的照抄命令；JSON 上限 200 条，带 total 与 truncated
+ok 127 - 6：人读上限 20 条、超出给同口径的照抄命令；JSON 上限 200 条，带 total 与 truncated
+  ---
+  duration_ms: 255.368708
+  type: 'test'
+  ...
+# Subtest: 照抄命令真能跑，且列出的条数与摘要 total 相同
+ok 128 - 照抄命令真能跑，且列出的条数与摘要 total 相同
+  ---
+  duration_ms: 128.808292
+  type: 'test'
+  ...
+# Subtest: 7：基线缺席 ⇒ available false，原因为中性句（不断言「早于此功能」，计划双审 CODEX-05）
+ok 129 - 7：基线缺席 ⇒ available false，原因为中性句（不断言「早于此功能」，计划双审 CODEX-05）
+  ---
+  duration_ms: 54.751458
+  type: 'test'
+  ...
+# Subtest: 8：基线对象被 git 清理 ⇒ 原因 2，绝不是「无改动」（夹具先把基线造成不可达对象，计划双审 GLM-03）
+ok 130 - 8：基线对象被 git 清理 ⇒ 原因 2，绝不是「无改动」（夹具先把基线造成不可达对象，计划双审 GLM-03）
+  ---
+  duration_ms: 172.693417
+  type: 'test'
+  ...
+# Subtest: 9：非 git 目录 ⇒ 原因 3，不抛
+ok 131 - 9：非 git 目录 ⇒ 原因 3，不抛
+  ---
+  duration_ms: 8.584667
+  type: 'test'
+  ...
+# Subtest: 10：严格助手失败即抛；-z 输出段数为奇数即抛（计划双审 AGY-04）
+ok 132 - 10：严格助手失败即抛；-z 输出段数为奇数即抛（计划双审 AGY-04）
+  ---
+  duration_ms: 95.20175
+  type: 'test'
+  ...
+# Subtest: 11：预算耗尽 ⇒ 原因 4（超时），不与 git 失败同形（计划双审 CODEX-02）
+ok 133 - 11：预算耗尽 ⇒ 原因 4（超时），不与 git 失败同形（计划双审 CODEX-02）
+  ---
+  duration_ms: 92.337167
+  type: 'test'
+  ...
+# Subtest: 12：两种出口的末句——approval 给按 Driver 派生的 abandon 写法，hold 说审批时会再列出（计划双审 AGY-01）
+ok 134 - 12：两种出口的末句——approval 给按 Driver 派生的 abandon 写法，hold 说审批时会再列出（计划双审 AGY-01）
+  ---
+  duration_ms: 137.678375
+  type: 'test'
+  ...
+# Subtest: 13：workTreeHash 不传 timeoutMs 时与传了同值（送审冻结与漂移复算的行为不变）
+ok 135 - 13：workTreeHash 不传 timeoutMs 时与传了同值（送审冻结与漂移复算的行为不变）
+  ---
+  duration_ms: 123.710542
+  type: 'test'
+  ...
+# Subtest: 预算环境变量：只认正整数，否则回缺省；生效时带来源标记
+ok 136 - 预算环境变量：只认正整数，否则回缺省；生效时带来源标记
+  ---
+  duration_ms: 0.21125
+  type: 'test'
+  ...
+# Subtest: r1 CODEX-01 ≡ GLM-01：基线是含 shell 元字符的合法引用名 ⇒ 形状闸拦下，不调 git、不回显
+ok 137 - r1 CODEX-01 ≡ GLM-01：基线是含 shell 元字符的合法引用名 ⇒ 形状闸拦下，不调 git、不回显
+  ---
+  duration_ms: 81.208625
+  type: 'test'
+  ...
+# Subtest: r1 CODEX-01：以 - 开头的基线同样拦下；非 git 目录里也是形状闸先报（证明闸在任何 git 调用之前）
+ok 138 - r1 CODEX-01：以 - 开头的基线同样拦下；非 git 目录里也是形状闸先报（证明闸在任何 git 调用之前）
+  ---
+  duration_ms: 17.495458
+  type: 'test'
+  ...
+# Subtest: r1 CODEX-01：照抄命令两个 tree 值也加引号；路径含单引号时照抄命令仍能跑、条数与 total 相同
+ok 139 - r1 CODEX-01：照抄命令两个 tree 值也加引号；路径含单引号时照抄命令仍能跑、条数与 total 相同
+  ---
+  duration_ms: 143.604625
+  type: 'test'
+  ...
+# Subtest: r1 AGY-01：原因 3 末尾补句号，与「这不影响」不黏连
+ok 140 - r1 AGY-01：原因 3 末尾补句号，与「这不影响」不黏连
+  ---
+  duration_ms: 0.134958
+  type: 'test'
+  ...
+# Subtest: r1 CODEX-02：预算被环境变量覆盖时，超时原因与人读输出都写明，JSON 带 budget_overridden
+ok 141 - r1 CODEX-02：预算被环境变量覆盖时，超时原因与人读输出都写明，JSON 带 budget_overridden
+  ---
+  duration_ms: 179.634083
+  type: 'test'
+  ...
+# Subtest: r1 CODEX-03：总预算是真上界，被杀的 git 按进程组收尾（慢清理过滤器夹具）
+ok 142 - r1 CODEX-03：总预算是真上界，被杀的 git 按进程组收尾（慢清理过滤器夹具）
+  ---
+  duration_ms: 2463.753708
+  type: 'test'
+  ...
+1..142
+# tests 142
+# suites 0
+# pass 142
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 80256.369584

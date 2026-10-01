@@ -1,0 +1,119 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  M1 ✓ 咬住（fail=5）
+  M2 ✓ 咬住（fail=4）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=2）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=3）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=7）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=1）
+  M16 ✓ 咬住（fail=1）
+{
+  "总数": 16,
+  "咬住": 16,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "3.a 换回失败返回 [] 的 diffTrees",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M2",
+      "desc": "比对失败时返回 none",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M3",
+      "desc": "driftAction 的 unknown 改跟 on_drift",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "driftAction 的 unknown 恒 warn",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "分原因去掉超时分支",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "分原因不用 treeExists 的结果（object_gone 判据去掉）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M7",
+      "desc": "run.json 的 policy 条件不含 unknown",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "run.json 不写 unknown_reason",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "人读告警的 unknown 分支直接 break",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M10",
+      "desc": "report 不推「漂移无法判定」旗标",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "审查文档不换旗标",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "严格比对去掉 -z",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M13",
+      "desc": "去掉 tree 值的形状闸",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "去掉 prune_objects 桩的临时夹具自缚",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "summarizeRun 不打「漂移无法判定」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M16",
+      "desc": "核对对象不传共享预算（回到各走缺省 120 s）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

@@ -9,6 +9,7 @@ import { promises as fs } from 'node:fs';
 import type { Config, CriticId, CriticRequest, CriticResult, DegradedFinding, DenyCategory, Review,
   SuspectedWrite,
 } from './types.js';
+import { describeDriftUnknown } from './types.js';
 import {
   checkEvidence,
   checkPeerLeak,
@@ -827,8 +828,28 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
           v.drift.files.map((f) => `    ${f}`).join('\n'),
       );
       break;
+    case 'unknown':
+      /*
+       * 比不了（EV-139）：不知道改了什么，就排除不了被审范围内的文件被改，按 on_drift_related 处置。
+       * 出口要写全：核对后重跑；改 warn 会连带放宽真实的相关漂移，不是专关这一格的开关（计划 r2 §2.4）。
+       */
+      out.push(
+        `审查期间工作树有变动，但比不了改了哪些文件（${describeDriftUnknown(v.drift)}）——\n` +
+          `无法排除被审范围内的文件被改，按 on_drift_related 处置（策略 ${v.driftAction}）。\n` +
+          (v.driftAction === 'fail'
+            ? '  审查结论已落盘，但本轮不能当作有效审查。处置：用 git status / git diff 核对审查期间是否动过工作树，\n' +
+              '  确认后重跑本阶段审查；审查进行中不要执行会立即清理不可达对象的 git 命令（如 git prune、git gc --prune=now）。\n' +
+              '  若只想告警，可把 review.on_drift_related 设为 warn——它会同时放宽真实的相关漂移。'
+            : '  本轮照常结束，但漂移是否涉及被审范围无从判断，请人工核对：git status / git diff'),
+      );
+      break;
     case 'none':
       break;
+    default: {
+      // 穷尽性断言（计划双审 GLM-03）：再加一种漂移结论而漏写分支，编译期即报错，不会静默不播
+      const exhaustive: never = v.drift;
+      void exhaustive;
+    }
   }
   if (v.unattributedDriftFiles.length > 0) {
     out.push(

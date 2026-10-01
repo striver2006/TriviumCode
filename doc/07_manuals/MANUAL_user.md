@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.24
+> - **当前版本**：v1.0.25
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -431,11 +431,16 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 | 字段 | 默认 | 管什么 |
 | :--- | :--- | :--- |
-| `review.on_drift_related` | `fail` | 审查期间被改的文件**落在 `--context` 或 diff 涉及范围内** |
+| `review.on_drift_related` | `fail` | 审查期间被改的文件**落在 `--context` 或 diff 涉及范围内**；也管**比不了改了哪些文件**那一格（见下） |
 | `review.on_drift` | `warn` | 审查期间**别处**文件被改 |
 | （不可配） | 恒 `fail` | 被审对象本身的哈希变了 → 整次运行作废 |
 
 默认组合的语义：动了被审范围内的东西 → 这次结论作废；动了不相干的东西 → 只告警。
+
+**比不了改了哪些文件**（v1.0.25 起，设计 v1.3.70，EV-139）：跑后复算要拿送审时的工作树快照（一个不可达的 git 对象）与当前比。git 缺省的清理不会删两周内的这类对象，所以平时比得了；但审查期间若有人执行了**立即清理不可达对象**的命令（`git prune`、`git gc --prune=now`），或 git 出错、超时，就比不了。比不了就排除不了被审范围内的文件被改，所以按 `on_drift_related` 处置——缺省判失败，命令输出与 `run.json` 的 `snapshot.drift.unknown_reason` 写明原因（对象已不在 / git 出错 / git 超时）。出口：
+
+- 用 `git status` / `git diff` 核对审查期间是否动过工作树，确认后**重跑本阶段审查**（会再花一轮配额）；审查进行中别执行上面那类清理命令；
+- 只想告警时可把 `review.on_drift_related` 设为 `warn`——它**同时放宽真实的相关漂移**，不是专门关这一格的开关。
 
 #### 敏感文件与跳过
 

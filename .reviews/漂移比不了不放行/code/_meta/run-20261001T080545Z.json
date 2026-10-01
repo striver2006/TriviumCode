@@ -1,0 +1,305 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261001T080545Z",
+  "topic": "漂移比不了不放行",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「漂移比不了不放行」：解决跑后漂移复算在「比不了」时静默判「无漂移」的问题——util/git.ts 的 diffTrees 在 diff-tree 非零退出时返回空数组，freeze.ts 的 judgeDrift 第 3.a 步拿它列变更文件，空即判 none。工作树确实变了（跑后 tree 哈希与送审快照不同），却因为比不了而被当成没变，这是护栏判不了就放行，违背本仓「判不了不放行」的一…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "40ca5348ea0bae8f3e99577b654aed8998be6649",
+    "tree_hash": "ac7bfd19ccd7025497af8c8612f0a69b185735e3",
+    "dirty": true,
+    "subject_sha256": "d55e859f5aa3b187264ae3244e49b0891b4aefe1f077c9fe42d7f5608b4d95f2",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "d2b015ab65eb12fed3149ff994971ace754533ba",
+      "dirty": false,
+      "inputs_sha256": "6ccb5d0e6959ba302b2960cbc2f5bea8346d4d267a015cdd171a79da475ac4ae",
+      "built_at": "2026-10-01T01:41:51.710Z"
+    },
+    "after_tree_hash": "b987cc0143e832420a44bb05495f85fbaa7e496b"
+  },
+  "started_at": "2026-10-01T08:05:47.687Z",
+  "finished_at": "2026-10-01T08:14:38.540Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.159.2",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 530.56,
+      "tool_calls": {
+        "run_command": 27,
+        "project_reads": 13
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a0f67f-8832-7ce3-88fa-f0125a8cf257",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.14",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 393.932,
+      "tool_calls": {
+        "read": 53,
+        "grep": 18,
+        "glob": 5,
+        "run_command": 0,
+        "project_reads": 36
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 521418,
+        "output_tokens": 34311,
+        "thinking_tokens": 26510,
+        "cache_read_tokens": 8723970,
+        "total_tokens": 555729
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "6713fbce-fbc7-475c-959b-44c1462284ff",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 512.46,
+      "tool_calls": {
+        "read": 23,
+        "grep": 14,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 19
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 39,
+        "inputTokens": 3834723,
+        "outputTokens": 23722,
+        "totalTokens": 3858445,
+        "cacheReadTokens": 3711936,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_d8b4a26a-c5b2-4210-a35a-4a0b16bdf4ae",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/漂移比不了不放行/plan/2026-10-01-漂移比不了不放行-gemini.md",
+    ".reviews/漂移比不了不放行/plan/2026-10-01-漂移比不了不放行-glm.md",
+    ".reviews/漂移比不了不放行/plan/_meta/review-gemini-20261001T070329Z.json",
+    ".reviews/漂移比不了不放行/plan/_meta/review-glm-20261001T070329Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "漂移比不了不放行/code/_meta/changes-20261001T080545Z.diff",
+      "sha256": "d55e859f5aa3b187264ae3244e49b0891b4aefe1f077c9fe42d7f5608b4d95f2"
+    },
+    {
+      "path": "漂移比不了不放行/code/_meta/brief-codex-20261001T080545Z.md",
+      "sha256": "8d8772f4e443524ef0cf32b3ed1e3bc5279840a7ce9ddb8857f44de718015be6"
+    },
+    {
+      "path": "漂移比不了不放行/code/_meta/brief-gemini-20261001T080545Z.md",
+      "sha256": "0c65aa92e55927ff5e02dc8d86d5f92db5867d13365545a1eec1cd087d565ed6"
+    },
+    {
+      "path": "漂移比不了不放行/code/_meta/brief-glm-20261001T080545Z.md",
+      "sha256": "8c77fe680a4a93220356673e0b0a3740842ca7b3b75b3603a04812b4a5ab2269"
+    },
+    {
+      "path": "漂移比不了不放行/code/_meta/review-codex-20261001T080545Z.json",
+      "sha256": "bfbd2fa7db31b9653797ec406d80f5fefbe8dce5d5df14fc82c8fbbd0724d6de"
+    },
+    {
+      "path": "漂移比不了不放行/code/_meta/review-gemini-20261001T080545Z.json",
+      "sha256": "01a612dd87aa9bbc9f8e3d7fd25942208e62104a3444bb6cbb5745e4b44d0f6d"
+    },
+    {
+      "path": "漂移比不了不放行/code/_meta/review-glm-20261001T080545Z.json",
+      "sha256": "b66bb3435e2a42c0f52a8f59fa0d1852c3a0216aabb5f7c3e0e557c876f66813"
+    },
+    {
+      "path": "漂移比不了不放行/code/2026-10-01-漂移比不了不放行-codex.md",
+      "sha256": "b5197f2b4c03c8afe2540073bc3d0c254d074bf7788b3c7716094097303c2f9e"
+    },
+    {
+      "path": "漂移比不了不放行/code/2026-10-01-漂移比不了不放行-gemini.md",
+      "sha256": "bebf0a9bfc16ca7a15bf38c7ed9418ab2f0a153e7b3f34e8e6e49b66d92cb30a"
+    },
+    {
+      "path": "漂移比不了不放行/code/2026-10-01-漂移比不了不放行-glm.md",
+      "sha256": "9958934557a8c55114c83c78e80946708681600180d91e46f67bd53e417031c2"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装",
+      "安装副本与仓库 HEAD 不同版（构建于 d2b015a，仓库 HEAD 40ca534）"
+    ]
+  },
+  "status": "success"
+}

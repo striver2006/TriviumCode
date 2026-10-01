@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.26
+> - **当前版本**：v1.1.27
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.27（2026-10-01）随设计 v1.3.70（漂移比不了不放行，EV-139）同步：3.3「`executeRun()` 的漂移复算」补比不了的那一格（形状闸、严格比对、分原因、`unknown` 的处置与四个人读面、`prune_objects` 桩）；退出码判定优先级补 `unknown` 落进 `driftAction==='fail'`
 > - **变更说明**：v1.1.26（2026-10-01）随设计 v1.3.68（解析回退逐条降级，EV-10 / EV-56 / EV-105 / EV-113 / EV-124）同步：3.4 的「`parse_fallback`：有原文、没结构」一段改写为两档（逐条降级 / 整份回退），补两类无损修复、覆盖才替换、成因、留痕面与 gate 重试三分；2.5 表 `parse.ts` 行数与职责。代码双审 r1 修订：完整性校验第三参改为降级意见本身（evidence 核对并入）、`judgeSide` / `judgeRun` 字段改名 `degraded`；F 单元在对象拿得到时按意见逐条出。
 > - **变更说明**：v1.1.25（2026-09-30）随设计 v1.3.67（取消宽限期判不了仍放锁，EV-176）同步：4.2「`cancelRun` 主路径判不了身份」引述块末段改为入口之后才判不了的处置（`terminateProcessGroup` 三态 `isGone`、首检判不了零信号、期满判不了不升级、SIGKILL 后等确认、未确认 69 不收尾）；「按记录结束审查员 CLI」引述块的触发格补「扣下 SIGKILL」；已知缺口表「`--cancel` 发过 SIGTERM 之后、宽限期里 `ps` 转坏仍回收锁」一行改为已解决，新增「失联后取消与主路径的两处不同口径」一行（EV-177，暂缓）；2.7 表 `util/exec.ts`、`run-protocol.ts` 行数与职责。
 > - **变更说明**：v1.1.24（2026-09-30）随设计 v1.3.66（取不到启动时刻当不在，EV-175）同步：4.2 新增「`cancelRun` 主路径判不了身份」引述块（`RecordMatch.identity` 三态、五处处置、69 与手工出路）；已知缺口表「其余身份消费方把『活着而取不到启动时刻』当『不在』」一行改为已解决，新增「SIGTERM 之后宽限期里 `ps` 转坏仍回收锁」一行（EV-176，暂缓）；2.7 表 `util/exec.ts`、`lock.ts` 行数与职责。
@@ -287,6 +288,8 @@ sequenceDiagram
 
 被审对象**必须重新取一次**，不能重读冻结件——code 阶段是取出冻结头部逐字复用 + **此刻重新 `git diff <base>`** 的正文再算哈希。注释明说：重读冻结件永远等于自己，导致 `subject_drift` 在 code 阶段从未触发过。
 
+**比不了的那一格**（v1.1.27，EV-139）：`freeze.ts` 的 `judgeDrift` 在两棵 tree 不同之后先过 `OBJECT_NAME_RE` 形状闸（定义在 `util/git.ts`，审批时的工作树摘要同用；worker 的送审快照从运行目录的 `request.json` 读回，以 `-` 开头的值会被 git 当成选项），再用失败即抛的 `diffTreesNameStatus`（`-z`）列变更。不合形状或比对抛错 ⇒ 结论 `{ kind: 'unknown', cause, detail }`，不再落进「列表空 ⇒ `none`」。抛错后由导出的 `classifyCompareFailure` 分原因：`GitTimeoutError` ⇒ `timeout`、不再查对象；否则逐棵 `treeExists`，任一不在 ⇒ `object_gone`，核对时超时 ⇒ `timeout`、出错 ⇒ `git_error`（两段首行），都在 ⇒ `git_error`。两次核对共用 `DRIFT_PROBE_BUDGET_MS`（= `util/git.ts` 导出的 `GIT_DEFAULT_TIMEOUT_MS`，120 s；逐次显式传剩余毫秒，按进程组收尾），所以比不了那一格最坏耗时是比对 120 s + 核对至多 120 s，期间 worker 心跳照跳、不会被判失联；超时文案的子命令名取 `GitTimeoutError.what`、时长取同一常量（代码双审 CODEX-01/02 ≡ GLM-02/03）。快乐路径仍是一次 `diff-tree`。原因枚举 `DRIFT_UNKNOWN_CAUSES`、标签表 `DRIFT_UNKNOWN_LABEL` 与排版 `describeDriftUnknown` 在 `types.ts`（`render.ts` 被 `freeze.ts` 引用，从 `freeze.ts` 取会成环）。`driftAction` 对 `unknown` 按 `on_drift_related`；`guard.ts` `renderGuardWarnings` 新增一格并以 `never` 穷尽性断言收尾；`review.ts` 写 `snapshot.drift`（`policy` 取 `on_drift_related`、另写 `unknown_reason`）并给审查文档传 `driftUnknown`；`report.ts` 推「漂移无法判定」旗标、`meta.ts` `summarizeRun` 打同名一行，都不再落到「0 个文件」。测试桩 `prune_objects`（`adapters/stub.ts`）在项目根执行 `git prune --expire=now` 再改一个文件，只在系统临时目录之下动手。
+
 #### `--wait` 的轮询协议（[run-protocol.ts:527](../../src/trivium/run-protocol.ts#L527)）
 
 每 2000ms 调 `interpretStatus()`，四种读数：`terminal` / `worker_lost` / `running` / `inconclusive`。窗口用尽返回 **`EXIT.STILL_RUNNING`(73)** —— 这是**预期**返回，不是失败。
@@ -484,7 +487,7 @@ running ──┬─ success   （正常收尾 / 纯文档跳过）
           └─ failed    （subject_drift | driftAction='fail' | strict 下一侧失败）
 ```
 
-退出码判定优先级（`review.ts:894-908`）：`subject_drift` → exit 1；`driftAction==='fail'` → exit 1；`mode.abort` → exit 75；否则 exit 0。
+退出码判定优先级（`review.ts` `executeRun` 收尾段）：`subject_drift` → exit 1；`driftAction==='fail'` → exit 1；`mode.abort` → exit 75；否则 exit 0。`driftAction==='fail'` 自 v1.1.27 也包括比不了（`unknown`）且 `on_drift_related: fail`（缺省）的那一格。
 
 > **`cancelRun` 回写 `run.json`（v1.1.5 起，EV-128；此前是已知缺口）。**
 > `cancelRun()`（`run-protocol.ts`）在凭据准入复核（v1.1.16 起经 `scrubAdmission`，归档收尾只取其工作进程一半 `adm.worker`）与抹凭据副本之后、`patchStatus` 之前调 `meta.ts` 的 `finalizeCancelledRunMeta`：

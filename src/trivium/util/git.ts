@@ -18,6 +18,12 @@ export interface GitStatusEntry {
   path: string;
 }
 
+/**
+ * 不传 `timeoutMs` 时单次 git 调用的缺省超时（120 s）。导出供「比不了」的原因文案排版用
+ * （EV-139 代码双审 CODEX-02 ≡ GLM-02）：文案里的时长从这里取，不复制字面量。
+ */
+export const GIT_DEFAULT_TIMEOUT_MS = 120_000;
+
 async function git(
   cwd: string,
   args: string[],
@@ -38,7 +44,7 @@ async function git(
   return run('git', ['-c', 'core.quotePath=false', ...args], {
     cwd,
     env,
-    timeoutMs: timeoutMs ?? 120_000,
+    timeoutMs: timeoutMs ?? GIT_DEFAULT_TIMEOUT_MS,
     ...(explicit ? { killTree: true, killGraceMs: 500 } : {}),
   });
 }
@@ -49,9 +55,12 @@ async function git(
  */
 export class GitTimeoutError extends Error {
   readonly timedOut = true;
+  /** 超时的子命令名（如 `diff-tree`）：调用方排版用它，不去裁剪 `message`（EV-139 代码双审 CODEX-02） */
+  readonly what: string;
   constructor(what: string) {
     super(`git ${what} 超时`);
     this.name = 'GitTimeoutError';
+    this.what = what;
   }
 }
 
@@ -235,7 +244,25 @@ export async function statusPorcelain(cwd: string): Promise<GitStatusEntry[]> {
     });
 }
 
-/** 比较两棵 tree，返回变更文件的相对路径 */
+/**
+ * git 对象名的形状闸：只收 sha1（40 位）或 sha256（64 位）小写十六进制。
+ *
+ * 从留痕读回的对象名（run.json 的 `after_tree_hash`、运行目录 `request.json` 里的送审快照 `tree_hash`）
+ * 在任何 git 调用之前过这道闸：以 `-` 开头的值会被 git 当成选项（如 `--output=〈路径〉` 让 git 往那里写文件），
+ * 含 `;` `$(` 的合法引用名能过 `cat-file -e` 与 `diff-tree`。审批前工作树摘要与漂移判定（EV-139）共用。
+ */
+export const OBJECT_NAME_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+/**
+ * 比较两棵 tree，返回变更文件的相对路径。
+ *
+ * **失败返回 `[]`**——「比不了」与「没变化」同形，**只能用在失败方向保守的地方**：当前只有
+ * agy / zcode 探针的 `probeScratchPaths`（少认几个临时路径 ⇒ 之后多报漂移）。判定类调用一律用
+ * {@link diffTreesNameStatus}（失败即抛）；跑后漂移判定 `judgeDrift` 已于 EV-139 改用它——它曾依赖
+ * 本函数，送审快照的 tree 被清理时把「比不了」判成了「无漂移」。
+ *
+ * 不带 `-z`：含制表符、换行、双引号、反斜杠的路径会带 C 风格引号原样返回（不过 `unquoteGitPath`）。
+ */
 export async function diffTrees(cwd: string, treeA: string, treeB: string): Promise<string[]> {
   const r = await git(cwd, ['diff-tree', '-r', '--name-only', '--no-commit-id', treeA, treeB]);
   if (r.code !== 0) return [];
@@ -263,8 +290,9 @@ export async function treeExists(cwd: string, tree: string, opts: GitCallOptions
  * 两棵 tree 之间逐文件的变更状态（`diff-tree -r --name-status --no-renames -z`）。
  *
  * **非零退出即抛**——这是与 {@link diffTrees} 的唯一区别，也是它存在的理由：
- * `diffTrees` 失败时返回 `[]`，基线对象被清理时它说「无变化」而不是「比不了」；
- * 那条语义是 `judgeDrift` 的依赖，这里不去改它（审批前工作树摘要计划 r2 §2.2 / §6.3）。
+ * `diffTrees` 失败时返回 `[]`，基线对象被清理时它说「无变化」而不是「比不了」。
+ * 为审批前工作树摘要而设（审批前工作树摘要计划 r2 §2.2 / §6.3）；跑后漂移判定 `judgeDrift`
+ * 于 EV-139 也改用它，失败即判「比不了」（`freeze.ts` 的 `unknown` 结论）。
  *
  * 解析协议（计划双审 AGY-04）：`-z` 下输出为 `状态\0路径\0` 成对出现；按 `\0` 切分、
  * 丢弃末尾空段，段数为奇数即抛。`--no-renames` 保证不出现三段式；路径不加引号，不走 `unquoteGitPath`。
