@@ -212,7 +212,8 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                   与 --focus 是两回事，不可互相顶替。省略时回退 task.json / plan 原稿
       --entry A|B|C|D  发起本次运行的斜杠命令，记入 run.json 留痕。
                   只有 A（全流程）的焦点是可选补充；手工调用可省略，按 B/C/D 规则校验
-      --context   被审对象涉及的代码路径与相关文档，逗号分隔；并入必读清单
+      --context   被审对象涉及的代码路径与相关文档，逗号分隔；并入必读清单，
+                  与本轮禁读集相交则拒跑（退 64）
       --plan-file / --rca-file  显式指定被审对象
       --base <ref>  仅 code 阶段：diff 比较基线，默认 HEAD
       ${CRITIC_AGENT_IDS.map((id) => `--model-${id}`).join(' / ')} <模型>

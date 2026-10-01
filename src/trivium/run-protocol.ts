@@ -256,6 +256,8 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
      */
     pendingDiff: null,
     skipVerdict: null,
+    // 任务书已在 --start 时渲染进交接文件、剔除告警已随 --start 返回；这里给空，--wait 终态里不重复（EV-02）
+    mustReadPruned: [],
   };
 }
 
@@ -295,7 +297,8 @@ export interface StartOutcome {
   /** finishedInline 时的人读说明 */
   inlineNotice?: string;
   /**
-   * 拉起前按**当轮入选侧**复查出的只警告项（EV-123），**恒存在**。
+   * 拉起前按**当轮入选侧**复查出的只警告项（EV-123），**恒存在**；
+   * 末尾另追加准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02，`RunContext.mustReadPruned`）。
    * 在派生**之后**才随返回值交到调用方——拦不住拉起，价值是开场播报时就能看到、可以立即 `--cancel`。
    * `finishedInline` 时不计算（没有审查员会被拉起），为 `[]`。
    */
@@ -402,10 +405,14 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
   let workerStartedAtCanonical: string | null = null;
   try {
     const heartbeatWarn = checkHeartbeatThreshold(cfg);
-    warnings = collectWarnings([
-      ...(await checkModelOverrideSource(rc.sides, rc.adapters)),
-      ...(heartbeatWarn ? [heartbeatWarn] : []),
-    ]);
+    warnings = [
+      ...collectWarnings([
+        ...(await checkModelOverrideSource(rc.sides, rc.adapters)),
+        ...(heartbeatWarn ? [heartbeatWarn] : []),
+      ]),
+      // 准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02），追加在后、既有两项顺序不变
+      ...rc.mustReadPruned,
+    ];
     await ensureDir(rc.runDirBase);
     await writeHandoff(rc);
 

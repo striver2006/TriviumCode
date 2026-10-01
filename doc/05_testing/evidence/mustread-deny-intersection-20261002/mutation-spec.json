@@ -1,0 +1,189 @@
+{
+  "targets": [
+    "src/trivium/brief.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/mustread-deny.test.js",
+    "dist/test/test/integration/mustread-deny.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "去掉 contains 方向（目录罩住禁读条目不算）",
+      "file": "src/trivium/brief.ts",
+      "find": "    } else if (isUnder(denyAbs, entryAbs)) {\n",
+      "replace": "    } else if (false) {\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "under 方向不跳具名放行",
+      "file": "src/trivium/brief.ts",
+      "find": "    if (readable(hitPoint)) continue;\n",
+      "replace": "    if (direction === 'contains' && readable(hitPoint)) continue;\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "不跳己方运行材料",
+      "file": "src/trivium/brief.ts",
+      "find": "    if (category === 'own-run-material') continue;\n",
+      "replace": "    void 0;\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "条目不展开 ~",
+      "file": "src/trivium/brief.ts",
+      "find": "  const entryAbs = normalizeAbs(expandHomeSpellings(entry), ctx.projectRoot);\n",
+      "replace": "  const entryAbs = normalizeAbs(entry, ctx.projectRoot);\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "条目不归一（裸字符串比较）",
+      "file": "src/trivium/brief.ts",
+      "find": "  const entryAbs = normalizeAbs(expandHomeSpellings(entry), ctx.projectRoot);\n",
+      "replace": "  const entryAbs = expandHomeSpellings(entry);\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "--context 撞上不拒跑",
+      "file": "src/trivium/review.ts",
+      "find": "  if (contextConflicts.some((s) => s.conflicts.length > 0)) {\n",
+      "replace": "  if (false) {\n",
+      "expect": "dist/test/test/integration/mustread-deny.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "渲染段不剔除自动条目",
+      "file": "src/trivium/review.ts",
+      "find": "        if (conflicts.length === 0) return true;\n",
+      "replace": "        if (true) return true;\n",
+      "expect": "dist/test/test/integration/mustread-deny.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "剔除不按侧（任一侧撞上就从全部侧剔）",
+      "file": "src/trivium/review.ts",
+      "find": "        const conflicts = findDenyConflicts(pathOf(it), snap.denyPaths, denyCtx);\n",
+      "replace": "        const conflicts = sides.flatMap((c) => findDenyConflicts(pathOf(it), snapshots[c]!.denyPaths, denyContextFor(cfg, ctx.projectRoot, c)));\n",
+      "expect": "dist/test/test/integration/mustread-deny.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "startRun 不追加 mustReadPruned",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      ...rc.mustReadPruned,\n",
+      "replace": "      // 变异：不追加\n",
+      "expect": "dist/test/test/integration/mustread-deny.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "executeRun 不并入（同步路径看不到）",
+      "file": "src/trivium/review.ts",
+      "find": "  const warnings = [...rc.mustReadPruned.map((w) => plainWarningText(w.detail)), ...renderGuardWarnings(verdict)];\n",
+      "replace": "  const warnings = [...renderGuardWarnings(verdict)];\n",
+      "expect": "dist/test/test/integration/mustread-deny.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "64 文案只写第一侧",
+      "file": "src/trivium/brief.ts",
+      "find": "      lines.push(`    ${where} · ${DENY_CATEGORY_LABEL[g.conflict.category]} · 涉及 ${g.critics.join('、')} 侧`);\n",
+      "replace": "      lines.push(`    ${where} · ${DENY_CATEGORY_LABEL[g.conflict.category]} · 涉及 ${g.critics[0]} 侧`);\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "判必读清单的产物而不是 --context 原始写法",
+      "file": "src/trivium/review.ts",
+      "find": "    return { critic, conflicts: opts.contextPaths.flatMap((c) => findDenyConflicts(c, denyPaths, denyCtx)) };\n",
+      "replace": "    return { critic, conflicts: mustRead.filter((e) => e.source === 'context').map((e) => e.path).flatMap((c) => findDenyConflicts(c, denyPaths, denyCtx)) };\n",
+      "expect": "dist/test/test/integration/mustread-deny.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "辅助函数喂原始写法而不是展开归一后的路径",
+      "file": "src/trivium/brief.ts",
+      "find": "      hitPoint = entryAbs;\n",
+      "replace": "      hitPoint = entry;\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "contains 方向不跳具名放行",
+      "file": "src/trivium/brief.ts",
+      "find": "    if (readable(hitPoint)) continue;\n",
+      "replace": "    if (direction === 'under' && readable(hitPoint)) continue;\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "骨架不写 gate.warnings",
+      "file": "src/trivium/review.ts",
+      "find": "      meta.gate.warnings = [...(meta.gate.warnings ?? []), ...mustReadPrunedAll.map((w) => plainWarningText(w.detail))];\n",
+      "replace": "      void 0;\n",
+      "expect": "dist/test/test/integration/mustread-deny.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "剔全部入选侧时仍写「照常列出」",
+      "file": "src/trivium/brief.ts",
+      "find": "    const body = rest.length === 0\n",
+      "replace": "    const body = false\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "字符串通道不去 ⚠️ 前缀",
+      "file": "src/trivium/brief.ts",
+      "find": "  return detail.startsWith(WARNING_MARK) ? detail.slice(WARNING_MARK.length) : detail;\n",
+      "replace": "  return detail;\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M18",
+      "desc": "跳过轮不写 gate.warnings（CODEX-03 之前的口径）",
+      "file": "src/trivium/review.ts",
+      "find": "    if (mustReadPrunedAll.length > 0) {\n",
+      "replace": "    if (mustReadPrunedAll.length > 0 && !skipVerdict?.skipped) {\n",
+      "expect": "dist/test/test/integration/mustread-deny.test.js"
+    },
+    {
+      "id": "M19",
+      "desc": "finished_inline 分支播报剔除告警（GLM-01）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        warnings: [],\n",
+      "replace": "        warnings: rc.mustReadPruned,\n",
+      "expect": "dist/test/test/integration/mustread-deny.test.js"
+    },
+    {
+      "id": "M20",
+      "desc": "$HOME / ${HOME} 写法不展开（CODEX-02）",
+      "file": "src/trivium/brief.ts",
+      "find": "  const entryAbs = normalizeAbs(expandHomeSpellings(entry), ctx.projectRoot);\n",
+      "replace": "  const entryAbs = normalizeAbs((entry.charCodeAt(0) === 36 ? entry : expandHomeSpellings(entry)), ctx.projectRoot);\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M21",
+      "desc": "播报不封顶（CODEX-06）",
+      "file": "src/trivium/brief.ts",
+      "find": "  if (max !== undefined && groups.length > max) {\n",
+      "replace": "  if (false) {\n",
+      "expect": "dist/test/test/unit/mustread-deny.test.js"
+    },
+    {
+      "id": "M22",
+      "desc": "run.json 写封顶版而不是全量（CODEX-06）",
+      "file": "src/trivium/review.ts",
+      "find": "      meta.gate.warnings = [...(meta.gate.warnings ?? []), ...mustReadPrunedAll.map((w) => plainWarningText(w.detail))];\n",
+      "replace": "      meta.gate.warnings = [...(meta.gate.warnings ?? []), ...mustReadPruned.map((w) => plainWarningText(w.detail))];\n",
+      "expect": "dist/test/test/integration/mustread-deny.test.js"
+    }
+  ]
+}

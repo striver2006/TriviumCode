@@ -1,0 +1,22 @@
+M1：fail=3 cancelled=0 0s ⇒ under · $HOME 与 ${HOME} 写法同样展开（与措施 a / 措施 b 同宽，代码双审 CODEX-02） ｜ contains：条目是目录、其下有禁读条目——按罩住的那条判类别 ｜ contains · 具名放行不算（计划双审 r1 GLM-02）：宽 glob 把 .trivium/config.yaml 收成独立条目时
+M2：fail=1 cancelled=0 0s ⇒ under · 具名放行不算：项目配置与 wrapper（含子路径与 ~ 写法）
+M3：fail=3 cancelled=0 0s ⇒ under · 运行根：对端子树判 peer-run-output，己方子树与运行目录那一层的运行时文件不算 ｜ under · ~ 写法展开后再判：对端子树命中、己方子树放过 ｜ under · $HOME 与 ${HOME} 写法同样展开（与措施 a / 措施 b 同宽，代码双审 CODEX-02）
+M4：fail=4 cancelled=0 0s ⇒ under · 具名放行不算：项目配置与 wrapper（含子路径与 ~ 写法） ｜ under · ~ 写法展开后再判：对端子树命中、己方子树放过 ｜ under · $HOME 与 ${HOME} 写法同样展开（与措施 a / 措施 b 同宽，代码双审 CODEX-02） ｜ contains：条目是目录、其下有禁读条目——按罩住的那条判类别
+M5：fail=5 cancelled=0 0s ⇒ under · 作废类：对端审查件按五种写法都判命中，类别 peer-artifact ｜ under · 只记一笔类：凭据文件判 sensitive，编排器状态目录及其子路径判 orchestrator-state ｜ contains：条目是目录、其下有禁读条目——按罩住的那条判类别 ｜ contains · 具名放行不算（计划双审 r1 GLM-02）：宽 glob 把 .trivium/config.yaml 收成独立条目时 ｜ 己方历史：非 claude Driver 下 claude 的旧裁决件在禁读集里，交集判定认得出
+M6：fail=4 cancelled=0 15s ⇒ C1 · --context 指向对端审查件 ⇒ 退 64、零工件，只点名把它当禁读的那一侧 ｜ C4 · 同一路径写成绝对路径、./ 与 .. 形态都拦（判原始写法，不判必读清单的产物） ｜ C2 · --context 指向凭据类文件（只记一笔类）⇒ 同样退 64，两侧都点名；同步 review --stage 也拦 ｜ C3 · --context 是罩住禁读条目的目录（项目根）⇒ 退 64，按「含禁读条目」逐条点名
+M7：fail=6 cancelled=0 15s ⇒ A1 · 建议核实撞上对端审查件 ⇒ 只从 gemini 侧第 4 段剔除；warnings、run.json 与 gate --check 都有这一笔 ｜ A2 · 公约文档被 sensitive_globs 罩住 ⇒ 两侧都剔、8.2 列出，告警写「各侧」 ｜ A3 · 关键词匹配到的设计文档被 sensitive_globs 罩住 ⇒ 剔除并告警（来源：与主题相关的需求与设计文档） ｜ A5 · 纯文档跳过轮（代码双审 CODEX-03 / GLM-01）：不播报（finished_inline 的 warnings 为 []），run.json 的 gate.warnings 仍记剔除 ｜ A6 · 剔除超过 5 条（代码双审 CODEX-06）：--start 的 warnings 封顶 5 条（末条是汇总），run.json 存全量 ｜ A4 · 同步 review --stage：人读模式 stderr 打出剔除告警（只一个 ⚠️），--json 的 warnings 含同一句
+M8：fail=3 cancelled=0 15s ⇒ A1 · 建议核实撞上对端审查件 ⇒ 只从 gemini 侧第 4 段剔除；warnings、run.json 与 gate --check 都有这一笔 ｜ A5 · 纯文档跳过轮（代码双审 CODEX-03 / GLM-01）：不播报（finished_inline 的 warnings 为 []），run.json 的 gate.warnings 仍记剔除 ｜ A6 · 剔除超过 5 条（代码双审 CODEX-06）：--start 的 warnings 封顶 5 条（末条是汇总），run.json 存全量
+M9：fail=4 cancelled=0 15s ⇒ A1 · 建议核实撞上对端审查件 ⇒ 只从 gemini 侧第 4 段剔除；warnings、run.json 与 gate --check 都有这一笔 ｜ A2 · 公约文档被 sensitive_globs 罩住 ⇒ 两侧都剔、8.2 列出，告警写「各侧」 ｜ A3 · 关键词匹配到的设计文档被 sensitive_globs 罩住 ⇒ 剔除并告警（来源：与主题相关的需求与设计文档） ｜ A6 · 剔除超过 5 条（代码双审 CODEX-06）：--start 的 warnings 封顶 5 条（末条是汇总），run.json 存全量
+M10：fail=1 cancelled=0 15s ⇒ A4 · 同步 review --stage：人读模式 stderr 打出剔除告警（只一个 ⚠️），--json 的 warnings 含同一句
+M11：fail=2 cancelled=0 0s ⇒ 拒跑文案：按 --context 条目分组，组内逐条点名禁读条目、类别与涉及哪几侧 ｜ 拒跑文案：同一路径对不同侧类别不同时分行写（运行目录下某侧子树对该侧是己方材料）
+M12：fail=1 cancelled=0 15s ⇒ C4 · 同一路径写成绝对路径、./ 与 .. 形态都拦（判原始写法，不判必读清单的产物）
+M13：fail=3 cancelled=0 0s ⇒ under · 具名放行不算：项目配置与 wrapper（含子路径与 ~ 写法） ｜ under · ~ 写法展开后再判：对端子树命中、己方子树放过 ｜ under · $HOME 与 ${HOME} 写法同样展开（与措施 a / 措施 b 同宽，代码双审 CODEX-02）
+M14：fail=1 cancelled=0 0s ⇒ contains · 具名放行不算（计划双审 r1 GLM-02）：宽 glob 把 .trivium/config.yaml 收成独立条目时
+M15：fail=3 cancelled=0 15s ⇒ A1 · 建议核实撞上对端审查件 ⇒ 只从 gemini 侧第 4 段剔除；warnings、run.json 与 gate --check 都有这一笔 ｜ A5 · 纯文档跳过轮（代码双审 CODEX-03 / GLM-01）：不播报（finished_inline 的 warnings 为 []），run.json 的 gate.warnings 仍记剔除 ｜ A6 · 剔除超过 5 条（代码双审 CODEX-06）：--start 的 warnings 封顶 5 条（末条是汇总），run.json 存全量
+M16：fail=1 cancelled=0 0s ⇒ 剔除告警（计划双审 r1 AGY-02）：覆盖全部入选侧时写「各侧」，不写「照常列出」；单审核者写「本侧」
+M17：fail=1 cancelled=0 0s ⇒ 字符串通道去掉 ⚠️ 前缀：warn() 打印时自带一个，run.json gate.warnings 的既有条目都不带
+M18：fail=1 cancelled=0 15s ⇒ A5 · 纯文档跳过轮（代码双审 CODEX-03 / GLM-01）：不播报（finished_inline 的 warnings 为 []），run.json 的 gate.warnings 仍记剔除
+M19：fail=1 cancelled=0 15s ⇒ A5 · 纯文档跳过轮（代码双审 CODEX-03 / GLM-01）：不播报（finished_inline 的 warnings 为 []），run.json 的 gate.warnings 仍记剔除
+M20：fail=1 cancelled=0 0s ⇒ under · $HOME 与 ${HOME} 写法同样展开（与措施 a / 措施 b 同宽，代码双审 CODEX-02）
+M21：fail=1 cancelled=0 0s ⇒ 剔除告警封顶（代码双审 CODEX-06）：给了上限时前 max-1 条照旧、其余并成一条点名汇总；不给上限时全量
+M22：fail=1 cancelled=0 15s ⇒ A6 · 剔除超过 5 条（代码双审 CODEX-06）：--start 的 warnings 封顶 5 条（末条是汇总），run.json 存全量

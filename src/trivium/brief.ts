@@ -15,15 +15,15 @@ import YAML from 'yaml';
 import type { Config, CriticId, DenyCategory, Stage } from './types.js';
 import { CRITIC_PREFIX, CRITIC_VENDOR } from './types.js';
 import reviewSchema from '../../skills/dual-critic/schema/review.v1.json' with { type: 'json' };
-import { exists, expandHome } from './util/fsx.js';
+import { exists } from './util/fsx.js';
 import {
   classifyDenyPath,
   isVoidingCategory,
   isOrchestratorReadable,
   type Snapshot,
 } from './freeze.js';
-import { TRIVIUM_DIR } from './config.js';
-import { normalizeAbs, isUnder } from './adapters/base.js';
+import { TRIVIUM_DIR, runRoot } from './config.js';
+import { expandHomeSpellings, normalizeAbs, isUnder } from './adapters/base.js';
 import { RUN_DIR_FILE_NAMES } from './run-files.js';
 
 /**
@@ -306,13 +306,7 @@ ${lens.trim()}
    * 以为自己毁了整轮审查（实际什么也没发生，四次实测命中全是这一类，
    * 其中两次审查员还专门写了披露）。
    */
-  const denyCtx = {
-    projectRoot,
-    triviumDir: path.join(projectRoot, TRIVIUM_DIR),
-    runRoot: expandHome(cfg.runtime.run_root),
-    critic,
-    sensitiveGlobs: cfg.review.sensitive_globs,
-  };
+  const denyCtx = denyContextFor(cfg, projectRoot, critic);
   const classify = (p: string): DenyCategory => classifyDenyPath(p, denyCtx);
   // 具名放行的条目根本不该出现在清单里——两条通道都不看它们
   const denyEntries = snapshot.denyPaths.filter(
@@ -366,25 +360,50 @@ ${noted.length > 0 ? fmt(noted) : '（本次无此类条目）'}
 }
 
 /**
+ * 第 4 段条目的来源（必读交集校验计划 r2 §2.2，EV-02）。
+ *
+ * 来源决定交集命中时的处置（设计 §10.1.1）：`context` 是用户写的，命中即拒跑、出口是改它；
+ * 其余四类由编排器生成、用户改不了，命中只从该侧剔除并告警——拒跑等于没有出口。
+ */
+export type MustReadSource = 'convention' | 'keyword' | 'context' | 'suggested' | 'own-history';
+
+/** 告警里的来源标签。`Record` 由编译期守穷尽；`context` 一格不会出现在告警里（命中即拒跑） */
+export const MUST_READ_SOURCE_LABEL: Record<MustReadSource, string> = {
+  convention: '项目公约与文档入口',
+  keyword: '与主题相关的需求与设计文档',
+  context: '--context',
+  suggested: '建议核实',
+  'own-history': '己方历史产出与裁决',
+};
+
+export interface MustReadEntry {
+  path: string;
+  source: MustReadSource;
+}
+
+/**
  * 生成必读清单（§9.4 第 4 段）。
  *
  * 按优先级：项目公约与文档入口 → 与主题相关的需求/设计文档 → Driver 指定的 --context。
  * 数量受 `isolation.context_max_docs` 限制，避免把整个 doc/ 塞进 BRIEF。
+ *
+ * 每条带来源（EV-02）；排序、按字符串去重、存在性判定与上限都与此前相同——
+ * `--context` 与公约条目重名时保留先进来的公约来源。
  */
 export async function buildMustReadList(
   cfg: Config,
   projectRoot: string,
   topic: string,
   contextPaths: readonly string[],
-): Promise<string[]> {
-  const out: string[] = [];
-  const push = async (rel: string) => {
-    if (out.includes(rel)) return;
-    if (await exists(path.join(projectRoot, rel))) out.push(rel);
+): Promise<MustReadEntry[]> {
+  const out: MustReadEntry[] = [];
+  const push = async (rel: string, source: MustReadSource) => {
+    if (out.some((e) => e.path === rel)) return;
+    if (await exists(path.join(projectRoot, rel))) out.push({ path: rel, source });
   };
 
   // 1) 项目公约与文档入口
-  for (const f of ['CLAUDE.md', 'AGENTS.md', 'README.md', 'doc/README.md']) await push(f);
+  for (const f of ['CLAUDE.md', 'AGENTS.md', 'README.md', 'doc/README.md']) await push(f, 'convention');
 
   // 2) 与主题相关的需求与设计文档（按主题关键词匹配）
   const keywords = topic
@@ -408,14 +427,256 @@ export async function buildMustReadList(
     // 主题无匹配时至少给出目录入口 README，让审查员知道从哪找
     const take = matched.length > 0 ? matched : entries.filter((e) => e === 'README.md');
     for (const m of take.slice(0, cfg.isolation.context_max_docs)) {
-      await push(path.join(dir, m));
+      await push(path.join(dir, m), 'keyword');
       if (out.length >= cfg.isolation.context_max_docs + 4) break;
     }
   }
 
   // 3) Driver 通过 --context 指明的路径（优先级最高，但排在公约之后以保证阅读顺序）
-  for (const c of contextPaths) await push(c);
+  for (const c of contextPaths) await push(c, 'context');
 
+  return out;
+}
+
+// ─────────────── 第 4 段与第 8 段的交集校验（设计 §10.1.1，EV-02） ───────────────
+
+/** 禁读判定的上下文：第 8 段渲染与交集校验共用这一份，不再各拼一份 */
+export interface DenyContext {
+  projectRoot: string;
+  triviumDir: string;
+  runRoot: string;
+  critic: CriticId;
+  sensitiveGlobs: readonly string[];
+}
+
+export function denyContextFor(cfg: Config, projectRoot: string, critic: CriticId): DenyContext {
+  return {
+    projectRoot,
+    triviumDir: path.join(projectRoot, TRIVIUM_DIR),
+    runRoot: runRoot(cfg),
+    critic,
+    sensitiveGlobs: cfg.review.sensitive_globs,
+  };
+}
+
+/**
+ * `under`：条目落在禁读条目之内（含相等）；`contains`：条目是目录，其下有禁读条目。
+ */
+export type DenyConflictDirection = 'under' | 'contains';
+
+export interface DenyConflict {
+  /** 第 4 段条目，原样（报错与告警按用户写法点名） */
+  entry: string;
+  /** 撞上的禁读条目，原样 */
+  denyEntry: string;
+  /** 命中点的类别：`under` 取条目自身，`contains` 取那条禁读条目 */
+  category: DenyCategory;
+  direction: DenyConflictDirection;
+}
+
+/**
+ * 第 4 段的一条与本侧禁读集的交集（必读交集校验计划 r2 §2.1）。
+ *
+ * **口径与机器判定同一套**：`normalizeAbs`（`path.resolve` + 抹 `/private`）+ `isUnder`，不 realpath——
+ * 交集校验若比 `checkPeerLeak` 更严或更宽，两段之间又会出现一处提示语与机器不同档的错位。
+ * 只多展开家目录（`~`、`$HOME`、`${HOME}` 三种写法，与 `adapters/base.ts` 的措施 a / 措施 b 同宽——代码双审 CODEX-02）：
+ * `--context` 是人手写的；禁读条目里的运行根已经展开过。
+ *
+ * **命中点**与 §10.1.1「分档的粒度是命中，不是禁读条目」一致：条目落进整棵运行根时，
+ * 按条目自己的位置判己方还是对端；条目是目录时，按它罩住的那条禁读条目判。
+ * 具名放行与己方运行材料**两个方向都跳过**——第 8 段渲染与机器侧都不把它们当命中。
+ *
+ * 两个辅助函数一律喂**已展开、已归一**的绝对路径（计划双审 r1 AGY-03）：
+ * `classifyDenyPath` / `isOrchestratorReadable` 只做 `normalizeAbs`，不展开 `~`，
+ * 喂原始的 `~/…` 会被拼到项目根下，放行与分类都判错。
+ */
+export function findDenyConflicts(
+  entry: string,
+  denyPaths: readonly string[],
+  ctx: DenyContext,
+): DenyConflict[] {
+  const entryAbs = normalizeAbs(expandHomeSpellings(entry), ctx.projectRoot);
+  const readable = (p: string): boolean =>
+    isOrchestratorReadable(p, { projectRoot: ctx.projectRoot, triviumDir: ctx.triviumDir });
+  const out: DenyConflict[] = [];
+  for (const denyEntry of denyPaths) {
+    const denyAbs = normalizeAbs(denyEntry, ctx.projectRoot);
+    let hitPoint: string;
+    let direction: DenyConflictDirection;
+    if (isUnder(entryAbs, denyAbs)) {
+      hitPoint = entryAbs;
+      direction = 'under';
+    } else if (isUnder(denyAbs, entryAbs)) {
+      /*
+       * 罩住的禁读条目若是具名放行（计划双审 r1 GLM-02）：`sensitive_globs` 的扫描不跳 `.trivium`，
+       * 宽 glob 能让 `.trivium/config.yaml` 成为独立条目；第 8 段与机器侧都滤掉它，这里同口径。
+       */
+      hitPoint = denyAbs;
+      direction = 'contains';
+    } else {
+      continue;
+    }
+    if (readable(hitPoint)) continue;
+    const category = classifyDenyPath(hitPoint, ctx);
+    if (category === 'own-run-material') continue;
+    out.push({ entry, denyEntry, category, direction });
+  }
+  return out;
+}
+
+/** 类别的人读标签：拒跑文案与剔除告警共用。`own-run-material` 不会出现在文案里（两个方向都跳过），留着是为了穷尽 */
+export const DENY_CATEGORY_LABEL: Record<DenyCategory, string> = {
+  'peer-artifact': '对端审查件，读了该侧作废',
+  'peer-run-output': '运行目录里对端的本轮输出，读了该侧作废',
+  'own-run-material': '己方运行材料，不算命中',
+  'orchestrator-state': '编排器状态目录，读了记一条告警',
+  sensitive: '凭据类文件，读了记一条告警',
+};
+
+/** 每个 `--context` 条目在拒跑文案里最多列几行，其余写「另有 N 条」（写 `.` 时禁读集可能上百条） */
+export const CONTEXT_CONFLICT_MAX_LINES = 10;
+
+export interface SideConflicts {
+  critic: CriticId;
+  conflicts: readonly DenyConflict[];
+}
+
+/** 按（禁读条目, 类别, 方向）聚合出侧列表，保留首次出现的次序 */
+function groupBySides(
+  items: ReadonlyArray<{ critic: CriticId; conflict: DenyConflict }>,
+): Array<{ conflict: DenyConflict; critics: CriticId[] }> {
+  const groups = new Map<string, { conflict: DenyConflict; critics: CriticId[] }>();
+  for (const { critic, conflict } of items) {
+    const key = `${conflict.denyEntry}\0${conflict.category}\0${conflict.direction}`;
+    const g = groups.get(key) ?? { conflict, critics: [] };
+    if (!g.critics.includes(critic)) g.critics.push(critic);
+    groups.set(key, g);
+  }
+  return [...groups.values()];
+}
+
+/**
+ * `--context` 撞上禁读集时的拒跑文案（退 64，必读交集校验计划 r2 §2.4）。
+ *
+ * 按 `--context` 条目分组，组内逐条（禁读条目、类别、涉及哪几侧）——同一路径对不同侧
+ * 类别可能不同（对端审查件只对非所有者侧是禁读；运行目录下某侧子树对该侧是己方材料），
+ * 所以侧列表按组算，不按条目一刀切。
+ */
+export function renderContextConflicts(
+  contextPaths: readonly string[],
+  perSide: readonly SideConflicts[],
+): string {
+  const lines: string[] = [
+    '--context 里有路径落在本轮的禁读集里：任务书会一面把它列进必读，一面说读了会作废（或被记告警）。',
+  ];
+  for (const entry of [...new Set(contextPaths)]) {
+    const items = perSide.flatMap((s) =>
+      s.conflicts.filter((c) => c.entry === entry).map((conflict) => ({ critic: s.critic, conflict })),
+    );
+    if (items.length === 0) continue;
+    lines.push(`  「${entry}」`);
+    const groups = groupBySides(items);
+    for (const g of groups.slice(0, CONTEXT_CONFLICT_MAX_LINES)) {
+      const where = g.conflict.direction === 'under'
+        ? `落在禁读范围「${g.conflict.denyEntry}」内`
+        : `含禁读条目「${g.conflict.denyEntry}」`;
+      lines.push(`    ${where} · ${DENY_CATEGORY_LABEL[g.conflict.category]} · 涉及 ${g.critics.join('、')} 侧`);
+    }
+    if (groups.length > CONTEXT_CONFLICT_MAX_LINES) {
+      lines.push(`    …另有 ${groups.length - CONTEXT_CONFLICT_MAX_LINES} 条`);
+    }
+  }
+  lines.push('  出口：从 --context 里去掉这些路径，或改指它们之外的具体文件后重跑。本次没有写任何工件。');
+  return lines.join('\n');
+}
+
+/** 渲染段从某一侧第 4 段剔除的一条 */
+export interface PrunedEntry {
+  critic: CriticId;
+  source: MustReadSource;
+  entry: string;
+  conflicts: readonly DenyConflict[];
+}
+
+/** 剔除告警的 `name`（与预检、`--start` 的只警告项同形） */
+export const MUST_READ_PRUNED_WARNING = '必读清单剔除';
+
+/** 播报通道（`--start` 的 `warnings` 与同步路径）的剔除告警封顶条数（代码双审 CODEX-06）；run.json 存全量 */
+export const MUST_READ_PRUNED_DISPLAY_MAX = 5;
+
+/** 封顶后那一条汇总里最多点名几个条目 */
+const PRUNED_SUMMARY_MAX_NAMES = 10;
+
+/**
+ * 只警告项 `detail` 的前缀：`--start` 的 `warnings` 按惯例自带它（与预检同形）。
+ * 字符串通道（同步路径的 `ReviewOutcome.warnings`、run.json 的 `gate.warnings`）要去掉——
+ * 前者经 `warn()` 打印时已自带一个，后者的既有条目都不带。去前缀用 {@link plainWarningText}。
+ */
+export const WARNING_MARK = '⚠️ ';
+
+export function plainWarningText(detail: string): string {
+  return detail.startsWith(WARNING_MARK) ? detail.slice(WARNING_MARK.length) : detail;
+}
+
+/**
+ * 自动条目被剔除时的告警（必读交集校验计划 r2 §2.5）。按（来源, 条目）聚合，一条目一条。
+ *
+ * 剔除侧覆盖本轮全部入选侧时说「各侧」，否则点名剔除了哪几侧、哪几侧照常列出
+ * （计划双审 r1 AGY-02：三侧全剔时写「其余侧照常列出」是失实）。
+ * 同一条目在不同侧撞上的类别或禁读条目不同时，逐组写明是哪几侧。
+ */
+export function renderPrunedWarnings(
+  pruned: readonly PrunedEntry[],
+  sides: readonly CriticId[],
+  /** 给了就封顶（播报通道用）：超过时前 `max - 1` 条照旧、其余并成一条；不给则全量（run.json 用） */
+  max?: number,
+): Array<{ name: string; detail: string }> {
+  const byEntry = new Map<string, PrunedEntry[]>();
+  for (const p of pruned) {
+    const key = `${p.source}\0${p.entry}`;
+    byEntry.set(key, [...(byEntry.get(key) ?? []), p]);
+  }
+  const groups = [...byEntry.values()];
+  /*
+   * 封顶（代码双审 CODEX-06）：拒跑文案有 10 行上限，告警这侧原先没有。EV-186 那一格（非 claude Driver、
+   * 同主题多轮）会让己方历史整批命中、每份一条，开场播报要逐条念。run.json 的 `gate.warnings` 仍存全量供对账。
+   */
+  if (max !== undefined && groups.length > max) {
+    const shown = renderPrunedWarnings(groups.slice(0, max - 1).flat(), sides);
+    const rest = groups.slice(max - 1).map((g) => g[0]!.entry);
+    const names = rest.slice(0, PRUNED_SUMMARY_MAX_NAMES).map((e) => `「${e}」`).join('');
+    const more = rest.length > PRUNED_SUMMARY_MAX_NAMES ? `等` : '';
+    shown.push({
+      name: MUST_READ_PRUNED_WARNING,
+      detail:
+        `${WARNING_MARK}另有 ${rest.length} 条任务书第 4 段的条目落在禁读集里、已按侧剔除：${names}${more}` +
+        '（逐条见本次 run.json 的 gate.warnings）。这些由编排器自动生成，无需处理。',
+    });
+    return shown;
+  }
+  const out: Array<{ name: string; detail: string }> = [];
+  for (const group of groups) {
+    const { entry, source } = group[0]!;
+    const hit = sides.filter((c) => group.some((p) => p.critic === c));
+    const rest = sides.filter((c) => !hit.includes(c));
+    const kinds = groupBySides(group.flatMap((p) => p.conflicts.map((conflict) => ({ critic: p.critic, conflict }))));
+    const why = kinds.length === 1
+      ? `${DENY_CATEGORY_LABEL[kinds[0]!.conflict.category]}；禁读条目「${kinds[0]!.conflict.denyEntry}」`
+      : kinds
+          .map((k) => `${k.critics.join('、')} 侧：${DENY_CATEGORY_LABEL[k.conflict.category]}，禁读条目「${k.conflict.denyEntry}」`)
+          .join('；');
+    const all = sides.length === 1 ? '本侧' : '各侧';
+    const head = `${WARNING_MARK}任务书第 4 段的「${entry}」（来源：${MUST_READ_SOURCE_LABEL[source]}）`;
+    const body = rest.length === 0
+      ? `落在${all}的禁读集里（${why}），已从${all}任务书的第 4 段剔除。`
+      : `落在 ${hit.join('、')} 侧的禁读集里（${why}），已从${hit.length === 1 ? '该侧' : '这几侧'}任务书的第 4 段剔除，` +
+        `${rest.join('、')} 侧照常列出。`;
+    /*
+     * 计划 r2 拟稿里还有一句「若确实需要审查员看到其中内容，请把它写进被审对象本身」——编码时删掉：
+     * 对凭据类文件，这句等于建议把凭据抄进送审材料。
+     */
+    out.push({ name: MUST_READ_PRUNED_WARNING, detail: `${head}${body}这一条由编排器自动生成，无需处理。` });
+  }
   return out;
 }
 

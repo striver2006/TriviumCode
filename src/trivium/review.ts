@@ -28,11 +28,20 @@ import { realAdapters } from './adapters/index.js';
 import { freeze } from './freeze.js';
 import {
   buildMustReadList,
+  denyContextFor,
   excerptSubject,
   extractPathReferences,
+  findDenyConflicts,
   loadLenses,
   loadStagePrompt,
+  MUST_READ_PRUNED_DISPLAY_MAX,
+  plainWarningText,
   renderBrief,
+  renderContextConflicts,
+  renderPrunedWarnings,
+  type MustReadSource,
+  type PrunedEntry,
+  type SideConflicts,
 } from './brief.js';
 import { parseReview, checkReviewIntegrity, enumerateFallbackFindings } from './parse.js';
 import { decideMode, runBothSides, type SideProgress } from './runner.js';
@@ -491,6 +500,15 @@ export interface RunContext {
   /** code 阶段：FR-23 的跳过判定 */
   skipVerdict: SkipVerdict | null;
   /**
+   * 准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02，必读交集校验计划 r2 §2.5），按条目聚合的只警告项，
+   * 播报用的封顶版（`MUST_READ_PRUNED_DISPLAY_MAX`，代码双审 CODEX-06；run.json 写的是全量，不经这里）。
+   *
+   * 两个播报出口：`--start` 的 `warnings`（`startRun` 追加）、同步路径（`executeRun` 并入）；
+   * 第三个出口 run.json 的 `gate.warnings` 由 `prepareRun` 写骨架时直接写全量。工作进程从交接文件重建时给 `[]`：
+   * 任务书已在 `--start` 时渲染好、告警已随 `--start` 返回，`--wait` 终态里不重复。
+   */
+  mustReadPruned: Array<{ name: string; detail: string }>;
+  /**
    * 单侧进展回调，由工作进程注入以把状态刷进 `status.json`（审查意见 AGY-01）。
    * 同步路径（手工调试）不注入——那条路上没有人在 `--wait`，写了也没人看。
    */
@@ -782,6 +800,13 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   /** 两侧的 brief 先攒在这里，全部算完才落盘（GLM-04） */
   const pendingBriefs: { fileName: string; text: string }[] = [];
 
+  /*
+   * ── 三段：冻结 → `--context` 交集校验 → 渲染（EV-02，必读交集校验计划 r2 §2.3）──
+   *
+   * 校验要等**全部**侧的禁读集都算出来，才能一次点名所有撞上的侧；又必须在置闸门与任何落盘之前，
+   * 拒跑才是零工件。于是原先「冻结 → 路由 → 渲染」的单个循环拆成两段，中间夹校验。
+   * 次序上的代价：第二侧 `routeModel` 的 69 原先可能先于这里的 64，现在 64 在前——两者都在零工件区。
+   */
   for (const critic of sides) {
     const snap = await freeze({
       cfg,
@@ -825,6 +850,43 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     // code 阶段 freeze 只能给出占位路径，真实路径在 _meta/ 下，这里回填
     if (stage === 'code') snap.subjectPath = subjectPath;
     snapshots[critic] = snap;
+  }
+
+  /*
+   * ── `--context` 与禁读集相交 ⇒ 拒跑（退 64）──
+   *
+   * 判的是用户的**原始写法**，不是 `buildMustReadList` 的产物：后者会静默丢掉绝对路径与 `~/…`（EV-185），
+   * 也会按字符串把 `--context CLAUDE.md` 并进公约条目。用户写了它就是要审查员读——丢不丢、并不并，
+   * 都不改变「这个请求一面要读、一面禁读」。也不看存在性：指向一个尚不存在的对端审查件路径，同样是写错了。
+   */
+  const contextConflicts: SideConflicts[] = sides.map((critic) => {
+    const denyCtx = denyContextFor(cfg, ctx.projectRoot, critic);
+    const denyPaths = snapshots[critic]!.denyPaths;
+    return { critic, conflicts: opts.contextPaths.flatMap((c) => findDenyConflicts(c, denyPaths, denyCtx)) };
+  });
+  if (contextConflicts.some((s) => s.conflicts.length > 0)) {
+    throw usageError(renderContextConflicts(opts.contextPaths, contextConflicts));
+  }
+
+  /** 从各侧第 4 段剔除的自动条目（这里不可能有 `--context` 的——上一段已经拦下） */
+  const pruned: PrunedEntry[] = [];
+
+  for (const critic of sides) {
+    const snap = snapshots[critic]!;
+    const denyCtx = denyContextFor(cfg, ctx.projectRoot, critic);
+    /*
+     * 自动条目（公约、关键词、建议核实、己方历史）撞上本侧禁读集 ⇒ 只从**本侧**第 4 段剔除，不拒跑：
+     * 用户改不了它们，拒跑等于没有出口。剔除原因不进第 4 段（决策四），进告警与 run.json。
+     */
+    const keep = <T>(items: readonly T[], pathOf: (t: T) => string, sourceOf: (t: T) => MustReadSource): T[] =>
+      items.filter((it) => {
+        const conflicts = findDenyConflicts(pathOf(it), snap.denyPaths, denyCtx);
+        if (conflicts.length === 0) return true;
+        pruned.push({ critic, source: sourceOf(it), entry: pathOf(it), conflicts });
+        return false;
+      });
+    const sideMustRead = keep(mustRead, (e) => e.path, (e) => e.source).map((e) => e.path);
+    const sideSuggested = keep(suggestedRead, (p) => p, () => 'suggested');
 
     const routed = routeModel(cfg, critic, stage, { cli: opts.modelOverrides[critic] ?? null });
     if (!routed.model) {
@@ -834,7 +896,12 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       );
     }
 
-    const ownHistory = await listOwnHistory(ref.stageDirAbs, ctx.projectRoot, critic);
+    // 己方历史同在第 4 段：非 claude Driver 下它会收进禁读集里的旧裁决件（EV-186），同样过剔除
+    const ownHistory = keep(
+      await listOwnHistory(ref.stageDirAbs, ctx.projectRoot, critic),
+      (p) => p,
+      () => 'own-history',
+    );
 
     const briefText = renderBrief({
       cfg, critic, stage, topic: ref.topic, runId,
@@ -842,7 +909,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       snapshot: snap,
       promptHint: opts.promptHint,
       subjectExcerpt: excerpt,
-      mustRead, suggestedRead, ownHistory,
+      mustRead: sideMustRead, suggestedRead: sideSuggested, ownHistory,
       schemaPath, lenses, stagePrompt,
       taskGoal,
       minToolCalls: cfg.review.min_tool_calls[stage],
@@ -873,6 +940,9 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   }
 
   const primarySnap = snapshots[sides[0]!]!;
+  /** 全量进 run.json；播报通道（`--start` / 同步路径）用封顶后的那份（代码双审 CODEX-06） */
+  const mustReadPrunedAll = renderPrunedWarnings(pruned, sides);
+  const mustReadPruned = renderPrunedWarnings(pruned, sides, MUST_READ_PRUNED_DISPLAY_MAX);
 
   /*
    * ── 闸门在第一次落盘之前置 running（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §3.1）──
@@ -1022,6 +1092,18 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       meta.skipped = true;
       meta.skip_reason = skipVerdict.reasons.join('；');
     }
+    if (mustReadPrunedAll.length > 0) {
+      /*
+       * 剔除要留痕（EV-02，计划双审 r1 CODEX-01）：`_meta/brief-*.md` 落盘的是剔除**后**的版本，
+       * 不记这一笔，事后看不出第 4 段少过什么。`gate.warnings` 是现成字段，`gate --check` 回灌为
+       * `run_warning`——只告警、不阻断。存全量（播报通道才封顶，见 `capPrunedWarnings`）。
+       *
+       * **跳过轮同样记**（代码双审 CODEX-03）：落盘段对 brief 是无条件写的，跳过轮的归档里同样有一份
+       * 剔除后的任务书；「没有审查员会被拉起」只解释得了不播报（`--start` 的 `finished_inline` 与
+       * 同步路径的跳过分支都不带它），解释不了不留痕。
+       */
+      meta.gate.warnings = [...(meta.gate.warnings ?? []), ...mustReadPrunedAll.map((w) => plainWarningText(w.detail))];
+    }
     await writeRunMeta(ref.layout, stage, meta);
     skeletonWritten = true;
     await registerRun(ref.layout, meta, taskLock);
@@ -1047,7 +1129,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       opts, cfg, ctx, stage, ref, adapterCtx, adapters, sides,
       runId, rerunIndex, subjectPath, runDirBase,
       requests, snapshots, primarySnap, metaPaths, meta,
-      pendingDiff, skipVerdict,
+      pendingDiff, skipVerdict, mustReadPruned,
     };
   } catch (e) {
     // 比较-交换起的任何失败：闸门由本函数回收（只回收仍记着本 runId 且仍是 running 的——被拦时槽位是别的 run，不动）
@@ -1273,7 +1355,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   const effectivePolicy: 'strict' | 'degrade' =
     opts.allowSingle && cfg.review.allow_partial_flag ? 'degrade' : cfg.review.failure_policy;
   const mode = decideMode(results, effectivePolicy, sides);
-  const warnings = renderGuardWarnings(verdict);
+  /*
+   * 准备阶段的必读剔除告警排在 guard 告警之前（EV-02，计划双审 r1 AGY-01）：同步路径的人读输出
+   * 只靠本函数末尾的 `warn` 循环，CLI 人读模式不打印 `ReviewOutcome.warnings`——并入晚了就没人看见。
+   * 工作进程重建的上下文里它是 `[]`（已随 `--start` 返回），这里不会重复。
+   */
+  const warnings = [...rc.mustReadPruned.map((w) => plainWarningText(w.detail)), ...renderGuardWarnings(verdict)];
   /*
    * 凭据副本抹除失败要进 warnings（EV-20）：它随 `ReviewOutcome.warnings` 落进
    * `status.json.message`，`--wait` 的终态返回会原样透出——哨兵在无人读的目录里，

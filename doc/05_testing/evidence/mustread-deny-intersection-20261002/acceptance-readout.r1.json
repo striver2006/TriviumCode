@@ -1,0 +1,128 @@
+{
+  "base": "a9e7cdc",
+  "bundles": {
+    "old": {
+      "commit": "a9e7cdc",
+      "sha256": "8b2053d76a78034e1f828aa4288b9b011980e821a81b0d327599619716246323"
+    },
+    "new": {
+      "commit": "working-tree",
+      "sha256": "779486d56523f3a19da0c9ae9a48a3ba2ff4d8cc6b9a5e38cd9969286d6561b4"
+    }
+  },
+  "cells": [
+    {
+      "scenario": "X",
+      "build": "old",
+      "exit": 0,
+      "stdout_tail": [
+        "  \"wait_timeout_s\": 30,",
+        "  \"bash_timeout_ms\": 90000,",
+        "  \"stage_timeout_s\": 120,",
+        "  \"models\": {",
+        "    \"gemini\": \"gemini-3.8-flash-high\",",
+        "    \"glm\": \"GLM-5.3\"",
+        "  },",
+        "  \"worker_pid\": 54313,",
+        "  \"run_dir\": \"<PROJ>-runs/trivium-acc-x-old-TSGRld-30af0ffb/<RUN>\",",
+        "  \"warnings\": []",
+        "}",
+        ""
+      ],
+      "stderr_tail": [
+        "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。",
+        "  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}",
+        "  这只应出现在测试里。若这是真实审查，请立即清除该环境变量并重跑。",
+        "· 主题 acc-ctx ｜ 阶段 plan ｜ 第 2 轮 ｜ run <RUN>",
+        "· 被审对象 .reviews/acc-ctx/plan/2026-10-02-acc-ctx-claude.md",
+        ""
+      ],
+      "checks": {
+        "exit0": true,
+        "same_path_in_s4": true,
+        "same_path_in_s81": true,
+        "finished": true
+      },
+      "ok": true
+    },
+    {
+      "scenario": "X",
+      "build": "new",
+      "exit": 64,
+      "stdout_tail": [
+        ""
+      ],
+      "stderr_tail": [
+        "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。",
+        "  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}",
+        "  这只应出现在测试里。若这是真实审查，请立即清除该环境变量并重跑。",
+        "· 主题 acc-ctx ｜ 阶段 plan ｜ 第 2 轮 ｜ run <RUN>",
+        "· 被审对象 .reviews/acc-ctx/plan/2026-10-02-acc-ctx-claude.md",
+        "✗ --context 里有路径落在本轮的禁读集里：任务书会一面把它列进必读，一面说读了会作废（或被记告警）。",
+        "  「.reviews/acc-ctx/plan/2026-10-02-acc-ctx-glm.md」",
+        "    落在禁读范围「.reviews/acc-ctx/plan/2026-10-02-acc-ctx-glm.md」内 · 对端审查件，读了该侧作废 · 涉及 gemini 侧",
+        "  出口：从 --context 里去掉这些路径，或改指它们之外的具体文件后重跑。本次没有写任何工件。",
+        ""
+      ],
+      "checks": {
+        "exit64": true,
+        "names_path": true,
+        "names_side": true,
+        "zero_artifacts": true,
+        "no_lock_left": true
+      },
+      "ok": true
+    },
+    {
+      "scenario": "Y",
+      "build": "old",
+      "exit": 0,
+      "warnings": [],
+      "stderr_tail": [
+        "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。",
+        "  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}",
+        "  这只应出现在测试里。若这是真实审查，请立即清除该环境变量并重跑。",
+        "· 主题 acc-sugg ｜ 阶段 plan ｜ 第 2 轮 ｜ run <RUN>",
+        "· 被审对象 doc/reviews/acc-sugg/plan/2026-10-02-acc-sugg-claude.md",
+        ""
+      ],
+      "checks": {
+        "exit0": true,
+        "same_path_in_s4": true,
+        "same_path_in_s81": true,
+        "finished": true
+      },
+      "ok": true
+    },
+    {
+      "scenario": "Y",
+      "build": "new",
+      "exit": 0,
+      "warnings": [
+        {
+          "name": "必读清单剔除",
+          "detail": "⚠️ 任务书第 4 段的「doc/reviews/acc-sugg/plan/2026-10-02-acc-sugg-glm.md」（来源：建议核实）落在 gemini 侧的禁读集里（对端审查件，读了该侧作废；禁读条目「doc/reviews/acc-sugg/plan/2026-10-02-acc-sugg-glm.md」），已从该侧任务书的第 4 段剔除，glm 侧照常列出。这一条由编排器自动生成，无需处理。"
+        }
+      ],
+      "stderr_tail": [
+        "⚠️  ⚠️ 检测到 TRIVIUM_STUB_CRITIC：正在使用**桩适配器**，产出的不是真实审查结论。",
+        "  注入配置：{\"gemini\":{\"mode\":\"ok\"},\"glm\":{\"mode\":\"ok\"}}",
+        "  这只应出现在测试里。若这是真实审查，请立即清除该环境变量并重跑。",
+        "· 主题 acc-sugg ｜ 阶段 plan ｜ 第 2 轮 ｜ run <RUN>",
+        "· 被审对象 doc/reviews/acc-sugg/plan/2026-10-02-acc-sugg-claude.md",
+        ""
+      ],
+      "checks": {
+        "exit0": true,
+        "gemini_s4_pruned": true,
+        "gemini_s81_kept": true,
+        "glm_s4_kept": true,
+        "one_warning": true,
+        "finished": true
+      },
+      "ok": true
+    }
+  ],
+  "pass": 4,
+  "total": 4
+}

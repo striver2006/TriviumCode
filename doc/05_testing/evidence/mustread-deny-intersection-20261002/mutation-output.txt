@@ -1,0 +1,161 @@
+✓ 工作树干净、基线全绿（2 个套件）
+  M1 ✓ 咬住（fail=3）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=3）
+  M4 ✓ 咬住（fail=4）
+  M5 ✓ 咬住（fail=5）
+  M6 ✓ 咬住（fail=4）
+  M7 ✓ 咬住（fail=6）
+  M8 ✓ 咬住（fail=3）
+  M9 ✓ 咬住（fail=4）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=2）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=3）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=3）
+  M16 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=1）
+  M18 ✓ 咬住（fail=1）
+  M19 ✓ 咬住（fail=1）
+  M20 ✓ 咬住（fail=1）
+  M21 ✓ 咬住（fail=1）
+  M22 ✓ 咬住（fail=1）
+{
+  "总数": 22,
+  "咬住": 22,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "去掉 contains 方向（目录罩住禁读条目不算）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M2",
+      "desc": "under 方向不跳具名放行",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "不跳己方运行材料",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M4",
+      "desc": "条目不展开 ~",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M5",
+      "desc": "条目不归一（裸字符串比较）",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M6",
+      "desc": "--context 撞上不拒跑",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M7",
+      "desc": "渲染段不剔除自动条目",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M8",
+      "desc": "剔除不按侧（任一侧撞上就从全部侧剔）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M9",
+      "desc": "startRun 不追加 mustReadPruned",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M10",
+      "desc": "executeRun 不并入（同步路径看不到）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "64 文案只写第一侧",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M12",
+      "desc": "判必读清单的产物而不是 --context 原始写法",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "辅助函数喂原始写法而不是展开归一后的路径",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M14",
+      "desc": "contains 方向不跳具名放行",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "骨架不写 gate.warnings",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M16",
+      "desc": "剔全部入选侧时仍写「照常列出」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "字符串通道不去 ⚠️ 前缀",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M18",
+      "desc": "跳过轮不写 gate.warnings（CODEX-03 之前的口径）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M19",
+      "desc": "finished_inline 分支播报剔除告警（GLM-01）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M20",
+      "desc": "$HOME / ${HOME} 写法不展开（CODEX-02）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M21",
+      "desc": "播报不封顶（CODEX-06）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M22",
+      "desc": "run.json 写封顶版而不是全量（CODEX-06）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

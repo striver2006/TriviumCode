@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.28
+> - **当前版本**：v1.1.29
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.29（2026-10-02）随设计 v1.3.73（必读与禁读交集校验，EV-02）同步：`startRun` 第 4 条补第三个只警告项来源（`rc.mustReadPruned`，追加在 `collectWarnings` 结果之后）；`prepareRun()` 零工件段补「逐侧冻结之后、`--context` 交集校验（撞上即退 64）、再逐侧剔除自动条目与渲染」的三段次序；代码双审后补全量 / 封顶两份告警与跳过轮留痕。
 > - **变更说明**：v1.1.28（2026-10-01）随设计 v1.3.71（留痕读不出的出口，EV-148 文案部分）同步：3.5 `hook-pre-write` 第 2 条补「该阶段留痕读不出 ⇒ deny、出口用共用段」一句（此前只写了判定来源）。本文其余各节核过不讲这几处的出口文案（`gate` 读不出与 `approve` 通过前复核在本文没有展开，4.1 只画闸门迁移），不改。
 > - **变更说明**：v1.1.27（2026-10-01）随设计 v1.3.70（漂移比不了不放行，EV-139）同步：3.3「`executeRun()` 的漂移复算」补比不了的那一格（形状闸、严格比对、分原因、`unknown` 的处置与四个人读面、`prune_objects` 桩）；退出码判定优先级补 `unknown` 落进 `driftAction==='fail'`
 > - **变更说明**：v1.1.26（2026-10-01）随设计 v1.3.68（解析回退逐条降级，EV-10 / EV-56 / EV-105 / EV-113 / EV-124）同步：3.4 的「`parse_fallback`：有原文、没结构」一段改写为两档（逐条降级 / 整份回退），补两类无损修复、覆盖才替换、成因、留痕面与 gate 重试三分；2.5 表 `parse.ts` 行数与职责。代码双审 r1 修订：完整性校验第三参改为降级意见本身（evidence 核对并入）、`judgeSide` / `judgeRun` 字段改名 `degraded`；F 单元在对象拿得到时按意见逐条出。
@@ -252,14 +253,15 @@ sequenceDiagram
 1. **先占主题锁再 prepare**（`run-protocol.ts:297-310`，`startRun` 开头的 `acquireLock`）——否则两个并发 `--start` 会各自冻结一份快照后才发现冲突。
 2. `prepareRun()`，失败则释放锁后抛。闸门不用这里管：被拦时没置上，置上之后的失败 `prepareRun` 自己回收（v1.1.7）。
 3. **纯文档跳过必须在派生前收口**（`run-protocol.ts:330-349`，`if (rc.skipVerdict?.skipped)` 分支）：直接同步 `executeRun`，返回 `finishedInline: true`。
-4. **派生前的只警告项复查**（主 `try` 之内、第 3 步跳过分支之后）：按当轮入选侧调 `checkModelOverrideSource`（EV-123），再调 `checkHeartbeatThreshold(cfg)`（v1.1.15，EV-160：`heartbeat_stale_s` 不大于心跳间隔 30 s 时出「失联阈值」），两者同一次 `collectWarnings`、顺序与预检相同，随返回值的 `warnings` 交给 skill；纯文档跳过分支返回 `[]`。随后写 `request.json`（交接文件）与 `status.json`。
+4. **派生前的只警告项复查**（主 `try` 之内、第 3 步跳过分支之后）：按当轮入选侧调 `checkModelOverrideSource`（EV-123），再调 `checkHeartbeatThreshold(cfg)`（v1.1.15，EV-160：`heartbeat_stale_s` 不大于心跳间隔 30 s 时出「失联阈值」），两者同一次 `collectWarnings`、顺序与预检相同，其后追加 `prepareRun` 算好的 `rc.mustReadPruned`（「必读清单剔除」，v1.1.29，EV-02），随返回值的 `warnings` 交给 skill；纯文档跳过分支返回 `[]`。随后写 `request.json`（交接文件）与 `status.json`。
 5. **派生工作进程**：`spawnDetached` 用 `detached: true` + `stdio: ['ignore', fd, fd]` + `unref()`，**绝不继承父进程管道**——继承会让 worker 在父进程退出后死于 SIGPIPE。detached 即 setsid，worker 自成进程组，`--cancel` 按进程组发信号，能连带 worker 以不带 `killTree` 的 `run()` 拉起的同组子进程；审查员适配器以 `killTree: true` 拉起的厂商 CLI 自成一组，按组发**够不到**（零配额实测，v1.1.9），由 worker 的 SIGTERM 处理器先按组终止它们再退出（v1.1.10，EV-152，见下文 worker 主体）；worker 被 SIGKILL、崩溃或事件循环堵住时处理器跑不到，由 `--cancel` 按 status.json 的 CLI 进程组记录另行结束（v1.1.11，EV-154，见下文「CLI 进程组记录」）。可选回调 `onSpawned(pid, watch)` 在拿到 pid 之后、函数返回与 `finally` 关日志句柄之前调用（v1.1.8）：建日志目录、开日志文件、`spawn` 没拿到 pid 都在它之前失败，而 `finally` 在子进程已起之后仍可能抛，所以「子进程有没有诞生」以回调为准。第二个参数 `watch`（v1.1.9，EV-150）是父进程对子进程的退出观察：`hasExited()` 为假即子进程尚未被回收，其 pid 与同号进程组不会被复用——`--start` 派生后失败时据此终止并确认退出，不依赖可能取不到的启动时刻。`'error'` 监听挂在 pid 检查之前——此前挂在检查之后，二进制不存在时进程因未处理的 error 事件崩溃（v1.1.8 实测修正）；监听还留住错误对象，pid 缺失时等它到达（至多 1 秒）再抛，报错正文与 `worker.log` 都带上可执行文件路径与错误码（代码双审 r1 CODEX-01），成因不进归档。
 6. **锁的所有权移交**（`run-protocol.ts:413-423`，「锁改记工作进程的 pid」一段）：`--start` 拿到锁后不 release，而是把锁文件内容改写成 worker 的 `pid` 与 `pid_started_at`。自 v1.1.13（EV-158）起两种启动时刻经 `processStartTimes` 同一次取，锁与 status.json 各多写一个规范化字段（`pid_started_at_canonical` / `worker_started_at_canonical`）；锁的改写经纯函数 `workerLockContent`，显式覆盖 `run_id` / `pid` / 两种启动时刻——`lock.content` 带着 `--start` 自己的规范化启动时刻，不能随 spread 带到 worker 的 pid 上。
 7. 立即返回。若第 4~6 步失败，`releaseRunningGate` + 释放锁；子进程诞生之前（`onSpawned` 未调用）失败的，回收闸门之后先把 run.json 骨架收尾为 `failed`（`termination.by = prepare_exception`）再放锁；（v1.1.8，EV-145）。诞生之后才失败的（关日志句柄、写 `worker.pid`、改写锁、记 `worker_pid`）交给 `settleOrphanedStart`（v1.1.9，EV-150）：①`terminateProcessGroup` 按进程组终止 worker，以 `watch.hasExited` 确认退出（SIGTERM → 5 s → SIGKILL → 至多再等 5 s）；②确认不了退出时闸门与 run.json 不动，只尽力补记 `worker_pid` / `worker_started_at`、把仍是本进程内容的锁改记到 worker 名下，报错给出 `--cancel` 出路，不放锁；③回收闸门（排在终止之后）；④`finalizeFailedRunMeta`（`post_spawn_exception`），run.json 已被 worker 写成终态的只指路；⑤status.json 已终态不动、属本进程收尾的落 `failed`、worker 已写 run.json 终态的与回读 run.json 读不出的只补 pid；⑥`lock.release()`，锁已改写成本轮 worker 的按 run_id + pid 复核后 `reclaimStaleLock`。各步吞错打 warn，调用方随后抛原错误；播报按事实分句（`terminateProcessGroup` 返回实际发过的 `signals`），D5 末句按改写锁的结果说（代码双审 r1）。这条失败路径最长约 20 s 才返回。
 
 #### `prepareRun()` 的「零工件」不变式（[review.ts:542](../../src/trivium/review.ts#L542)）
 
-第 11 步之前**一个文件都没写**（`review.ts:928`，段注释「到这里为止不写任何审查工件与留痕」）。校验、定位被审对象、冻结、渲染 BRIEF 全在内存里完成，确认全部成功后才统一落盘。这是审查意见 GLM-04 的修复——原先 `locateSubject` 抛 65 或第二侧 `routeModel` 抛 69 时，会留下「目录 + 单侧 brief」的半套工件。
+第 11 步之前**一个文件都没写**（`review.ts:928`，段注释「到这里为止不写任何审查工件与留痕」）。校验、定位被审对象、冻结、渲染 BRIEF 全在内存里完成，确认全部成功后才统一落盘。
+冻结与渲染之间夹一段必读交集校验（v1.1.29，设计 v1.3.73 / EV-02）：先逐侧 `freeze()` 算出禁读集，再对 `--context` 的原始写法逐侧跑 `brief.ts` 的 `findDenyConflicts`，撞上任一侧即 `usageError`（退 64，仍在零工件区、排在逐侧 `routeModel` 的 69 之前）；随后逐侧把第 4 段的自动条目（公约、关键词、建议核实、己方历史）过同一判定、撞上的只从该侧剔除，攒成两份告警：全量那份写骨架时并进 `gate.warnings`（纯文档跳过轮同样写，代码双审 CODEX-03），封顶 5 条那份（`MUST_READ_PRUNED_DISPLAY_MAX`，CODEX-06）存进 `RunContext.mustReadPruned` 供两个播报通道用——`startRun` 追加、`executeRun` 汇总告警时排在 guard 告警之前；工作进程重建上下文时给 `[]`。拒跑发生在逐侧冻结之后，冻结写进对象库的松散对象与正常运行同形（CODEX-04，不改次序的理由见设计 10.1.1 末节）。这是审查意见 GLM-04 的修复——原先 `locateSubject` 抛 65 或第二侧 `routeModel` 抛 69 时，会留下「目录 + 单侧 brief」的半套工件。
 
 **置闸门是落盘之前的最后一步**（v1.1.7，EV-109 / EV-145 ①）：`setGateChecked(running)` 排在计算段之后、第一次落盘之前，被拦（上一轮未裁决，退 2）时零工件；此前它排在落盘段之后，被拦那次已写下 brief、便利副本 `changes.diff`、run.json 骨架、task.json 登记与运行目录。置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 经 `state.ts` 的 `releaseRunningGateEntry` 回收闸门；写完骨架之后才失败（登记、任务目标落盘）时，回收闸门之后再把骨架收尾为 `failed`（`prepare_exception`，v1.1.8，EV-145；v1.1.7 时骨架留 `running`）；骨架之前的失败不进收尾。
 

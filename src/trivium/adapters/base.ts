@@ -1736,6 +1736,13 @@ function expandHome(p: string): string {
   return p;
 }
 
+/**
+ * 同一份家目录展开口径的导出名：第 4 段与第 8 段的交集校验（`brief.ts` 的 `findDenyConflicts`）用它，
+ * 与本文件的措施 a / 措施 b 同宽（EV-02 代码双审 CODEX-02——`util/fsx.ts` 那份只认 `~`，窄一格）。
+ * 另起名字是为了不与 `fsx.expandHome` 同名混用。
+ */
+export const expandHomeSpellings = expandHome;
+
 /** 归一成绝对路径：解析 `./`、`..`，并抹平 macOS 的 /private 前缀 */
 /**
  * 归一成绝对路径，并抹平 macOS 的 `/private` 前缀双形态。

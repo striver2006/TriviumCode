@@ -1,0 +1,248 @@
+{
+  "targets_sha256": {
+    "src/trivium/brief.ts": "31fc5296cc1ff438adaab85366a3807b49a502fd4a4d52eeaf4fa612a016d498",
+    "src/trivium/review.ts": "13c4bfbf60f1b43fc85d85723a587267ecb1760a1524a9d9cd1013ca402a8397",
+    "src/trivium/run-protocol.ts": "01155dbbc8187cc39e8d5a592eb2fff62702b6bfdb2909c144a281f1ec56f978"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "去掉 contains 方向（目录罩住禁读条目不算）",
+      "suite": "dist/test/test/unit/mustread-deny.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "contains：条目是目录、其下有禁读条目——按罩住的那条判类别",
+        "contains · 具名放行不算（计划双审 r1 GLM-02）：宽 glob 把 .trivium/config.yaml 收成独立条目时"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M2",
+      "desc": "under 方向不跳具名放行",
+      "suite": "dist/test/test/unit/mustread-deny.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "under · 具名放行不算：项目配置与 wrapper（含子路径与 ~ 写法）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M3",
+      "desc": "不跳己方运行材料",
+      "suite": "dist/test/test/unit/mustread-deny.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "under · 运行根：对端子树判 peer-run-output，己方子树与运行目录那一层的运行时文件不算",
+        "under · ~ 写法展开后再判：对端子树命中、己方子树放过"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M4",
+      "desc": "条目不展开 ~",
+      "suite": "dist/test/test/unit/mustread-deny.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "under · 具名放行不算：项目配置与 wrapper（含子路径与 ~ 写法）",
+        "under · ~ 写法展开后再判：对端子树命中、己方子树放过",
+        "contains：条目是目录、其下有禁读条目——按罩住的那条判类别"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M5",
+      "desc": "条目不归一（裸字符串比较）",
+      "suite": "dist/test/test/unit/mustread-deny.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "under · 作废类：对端审查件按五种写法都判命中，类别 peer-artifact",
+        "under · 只记一笔类：凭据文件判 sensitive，编排器状态目录及其子路径判 orchestrator-state",
+        "contains：条目是目录、其下有禁读条目——按罩住的那条判类别",
+        "contains · 具名放行不算（计划双审 r1 GLM-02）：宽 glob 把 .trivium/config.yaml 收成独立条目时",
+        "己方历史：非 claude Driver 下 claude 的旧裁决件在禁读集里，交集判定认得出"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M6",
+      "desc": "--context 撞上不拒跑",
+      "suite": "dist/test/test/integration/mustread-deny.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C1 · --context 指向对端审查件 ⇒ 退 64、零工件，只点名把它当禁读的那一侧",
+        "C4 · 同一路径写成绝对路径、./ 与 .. 形态都拦（判原始写法，不判必读清单的产物）",
+        "C2 · --context 指向凭据类文件（只记一笔类）⇒ 同样退 64，两侧都点名；同步 review --stage 也拦",
+        "C3 · --context 是罩住禁读条目的目录（项目根）⇒ 退 64，按「含禁读条目」逐条点名"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12
+    },
+    {
+      "id": "M7",
+      "desc": "渲染段不剔除自动条目",
+      "suite": "dist/test/test/integration/mustread-deny.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 · 建议核实撞上对端审查件 ⇒ 只从 gemini 侧第 4 段剔除；warnings、run.json 与 gate --check 都有这一笔",
+        "A2 · 公约文档被 sensitive_globs 罩住 ⇒ 两侧都剔、8.2 列出，告警写「各侧」",
+        "A3 · 关键词匹配到的设计文档被 sensitive_globs 罩住 ⇒ 剔除并告警（来源：与主题相关的需求与设计文档）",
+        "A4 · 同步 review --stage：人读模式 stderr 打出剔除告警（只一个 ⚠️），--json 的 warnings 含同一句"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12
+    },
+    {
+      "id": "M8",
+      "desc": "剔除不按侧（任一侧撞上就从全部侧剔）",
+      "suite": "dist/test/test/integration/mustread-deny.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 · 建议核实撞上对端审查件 ⇒ 只从 gemini 侧第 4 段剔除；warnings、run.json 与 gate --check 都有这一笔"
+      ],
+      "firstLines": [],
+      "elapsed_s": 14
+    },
+    {
+      "id": "M9",
+      "desc": "startRun 不追加 mustReadPruned",
+      "suite": "dist/test/test/integration/mustread-deny.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 · 建议核实撞上对端审查件 ⇒ 只从 gemini 侧第 4 段剔除；warnings、run.json 与 gate --check 都有这一笔",
+        "A2 · 公约文档被 sensitive_globs 罩住 ⇒ 两侧都剔、8.2 列出，告警写「各侧」",
+        "A3 · 关键词匹配到的设计文档被 sensitive_globs 罩住 ⇒ 剔除并告警（来源：与主题相关的需求与设计文档）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12
+    },
+    {
+      "id": "M10",
+      "desc": "executeRun 不并入（同步路径看不到）",
+      "suite": "dist/test/test/integration/mustread-deny.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A4 · 同步 review --stage：人读模式 stderr 打出剔除告警（只一个 ⚠️），--json 的 warnings 含同一句"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12
+    },
+    {
+      "id": "M11",
+      "desc": "64 文案只写第一侧",
+      "suite": "dist/test/test/unit/mustread-deny.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "拒跑文案：按 --context 条目分组，组内逐条点名禁读条目、类别与涉及哪几侧",
+        "拒跑文案：同一路径对不同侧类别不同时分行写（运行目录下某侧子树对该侧是己方材料）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M12",
+      "desc": "判必读清单的产物而不是 --context 原始写法",
+      "suite": "dist/test/test/integration/mustread-deny.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C4 · 同一路径写成绝对路径、./ 与 .. 形态都拦（判原始写法，不判必读清单的产物）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12
+    },
+    {
+      "id": "M13",
+      "desc": "辅助函数喂原始写法而不是展开归一后的路径",
+      "suite": "dist/test/test/unit/mustread-deny.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "under · 具名放行不算：项目配置与 wrapper（含子路径与 ~ 写法）",
+        "under · ~ 写法展开后再判：对端子树命中、己方子树放过"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M14",
+      "desc": "contains 方向不跳具名放行",
+      "suite": "dist/test/test/unit/mustread-deny.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "contains · 具名放行不算（计划双审 r1 GLM-02）：宽 glob 把 .trivium/config.yaml 收成独立条目时"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M15",
+      "desc": "骨架不写 gate.warnings",
+      "suite": "dist/test/test/integration/mustread-deny.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 · 建议核实撞上对端审查件 ⇒ 只从 gemini 侧第 4 段剔除；warnings、run.json 与 gate --check 都有这一笔"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12
+    },
+    {
+      "id": "M16",
+      "desc": "剔全部入选侧时仍写「照常列出」",
+      "suite": "dist/test/test/unit/mustread-deny.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "剔除告警（计划双审 r1 AGY-02）：覆盖全部入选侧时写「各侧」，不写「照常列出」；单审核者写「本侧」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M17",
+      "desc": "字符串通道不去 ⚠️ 前缀",
+      "suite": "dist/test/test/unit/mustread-deny.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "字符串通道去掉 ⚠️ 前缀：warn() 打印时自带一个，run.json gate.warnings 的既有条目都不带"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    }
+  ]
+}

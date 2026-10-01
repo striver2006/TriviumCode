@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.26
+> - **当前版本**：v1.0.27
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -302,6 +302,14 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 换了 `--focus` 必定触发重审——它是审查焦点，不是描述。
 
+`--context <路径,…>` 把你指定的路径加进第 4 段的必读清单。**它不能指向本轮的禁读范围**：对端的审查件或它们所在的目录、
+运行目录、`.trivium/`（项目配置与 `bin/` 除外）、`sensitive_globs` 命中的凭据类文件，或罩住这些的目录（如 `.`）。
+写到了，`review --start` 在冻结送审包之后、写任何东西之前退 64，逐条列出是哪个路径、撞上了哪类禁读条目、涉及哪几侧——
+否则任务书会一面要求审查员读它、一面说读了作废。改掉 `--context` 重跑即可，这次没有留下任何工件（v1.0.27 起，设计 v1.3.73）。
+`/dual-review-*` 里你没写 `--context` 时，Driver 会自己补一份；那份撞上了，它会去掉点名的条目后重跑，并在开场播报里告诉你去掉了哪几条。
+编排器自己生成的必读条目（项目公约、主题相关文档、「建议核实」、己方历史）撞上时不拒跑，只从那几侧的清单里去掉，
+开场播报的警告里会念到「必读清单剔除」，你不用处理。
+
 ### 4.6 自由文本里含 `--` 时不必加引号
 
 提示语正文里出现以 `--` 开头的词，**不需要你加引号**：Driver 构造命令时会把正文整段放进一个
@@ -446,7 +454,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 | 字段 | 默认 | 说明 |
 | :--- | :--- | :--- |
-| `review.sensitive_globs` | `.env*`, `**/.env*`, `**/*.pem`, `**/*.key`, `**/id_rsa*` | 三处生效：进禁读清单、**从补丁里剔除**、主题参数解析时剔除 |
+| `review.sensitive_globs` | `.env*`, `**/.env*`, `**/*.pem`, `**/*.key`, `**/id_rsa*` | 三处生效：进禁读清单、**从补丁里剔除**、`--context` 写到它们时拒跑（v1.0.27 起，见 4.5 末段；此前这一格写的「主题参数解析时剔除」没有对应实现） |
 | `review.skip_doc_only_review` | `false` | 改 `true` 则纯文档变更跳过 code 审 |
 | `review.skip_globs` | `**/*.md`, `docs/**`, `**/*.txt` | 算「纯文档」的模式 |
 | `review.never_skip_globs` | `package.json`, `Dockerfile`, `.github/**`, `.claude/**`, `.trivium/**` 等 | 这些即便是配置文件也绝不跳过 |

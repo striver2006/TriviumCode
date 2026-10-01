@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "必读与禁读交集校验",
+  "goal": "主题「必读与禁读交集校验」：EV-02——送审任务书第 4 段的必读清单与第 8 段的禁读清单各自生成、互不核对，同一个路径可以同时出现在两边：任务书一面要求审查员读它，一面说读了即作废。审查员照必读去读，整侧被判泄漏作废，配额白花，而 Driver 从任务书里看不出矛盾。一次补上交集校验。 开工前先读：记忆 pipeline-known-pitfalls.md、reply-in-chinese.…",
+  "created_at": "2026-10-01T15:47:14.503Z",
+  "updated_at": "2026-10-01T22:12:02.851Z",
+  "runs": [
+    {
+      "run_id": "20261001T155413Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-01T15:54:14.830Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261001T163431Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-01T16:34:34.115Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261001T172543Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-01T17:30:22.998Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-01T15:47:14.503Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-01T16:07:19.578Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261001T163431Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-01T22:12:02.709Z"
+    },
+    {
+      "run_id": "20261001T155413Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-01T22:12:02.851Z"
+    }
+  ]
+}
