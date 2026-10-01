@@ -19,6 +19,7 @@ import { bundleMissing, bundleSkipReason, cli, makeFixture, today } from '../hel
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import type { TaskMeta } from '../../src/trivium/meta.js';
+import { assertUnreadableExit } from '../helpers/unreadable-exit.js';
 
 const TOPIC = '按阶段认领';
 
@@ -443,8 +444,13 @@ test(
       ['topic', 'claim', '--topic', TOPIC, '--stage', 'plan', '--driver', 'codex'],
     ]) {
       const r = await cli(root, argv);
-      assert.notEqual(r.code, EXIT.OK, `${argv[0]} ${argv[1]} 在留痕损坏时不得照常继续`);
+      // 退出码收紧为 2（现状就是 2，原用例只断言非 0）——本主题只改文案，退出码不许跟着动
+      assert.equal(r.code, EXIT.GATE_BLOCK, `${argv[0]} ${argv[1]} 在留痕损坏时不得照常继续：\n${r.stderr}`);
       assert.match(r.stderr, /读不出来/, `${argv[0]} ${argv[1]} 要点名是留痕坏了`);
+      // 出口：共用出口段 + 那一份的绝对路径，不再给「重跑」（留痕读不出的出口计划 r2 §5.2）
+      assertUnreadableExit(
+        r.stderr, [path.join(await fs.realpath(metaDir), 'run-RBAD.json')], `${argv[0]} ${argv[1]}`,
+      );
     }
   },
 );

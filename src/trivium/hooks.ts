@@ -621,21 +621,21 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
       const res = await resolveRoundDriver(ctx, loc.topic, loc.stage);
       if (res.kind === 'corrupt') {
         /*
-         * 出口句与 `cmdGate` 同状态的文案**语义同源**（第 2 轮代码双审 GLM-02 ≡ CODEX-01）。
-         * 上一版写的是「请先修复或清理该阶段 _meta/ 下的运行清单」——那是 cmdGate 被
-         * 纠正**之前**的形态，而且对受话人是死路：Driver 对 `_meta/` 的任何写都会被
-         * 本 Hook 自己拒绝，已登记的 run 清单又被提交锚判为不可变，照做会把提交永久拦下。
-         * 两处同状态给相反出口，正是本仓最忌的「两条规范并行」。
+         * 出口与其余七处同状态的拒绝**共用一段**（`meta.ts` 的 `unreadableRunMetaExitAt`，
+         * 留痕读不出的出口计划 r2 §2.2）。
+         * 更早一版写的是「请先修复或清理该阶段 _meta/ 下的运行清单」——对受话人是死路：
+         * Driver 对 `_meta/` 的任何写都会被本 Hook 自己拒绝，已登记的 run 清单又被提交锚判为不可变
+         * （第 2 轮代码双审 GLM-02 ≡ CODEX-01）。之后改成的「重跑该阶段双审」同样走不通：
+         * `review --start` 在冻结送审包之前就按同一个 `corrupt` 判定拒绝。共用段按成因给出口。
          */
+        const { unreadableRunMetaExitAt } = await import('./meta.js');
         return deny(
           `无法判定当轮 Driver：${loc.topic} / ${loc.stage} 的运行留痕读不出来` +
             `（${res.unreadable.join('、')}）——文件损坏、schema 不识，或不合 run.v1/v2 契约。\n` +
             '  「审查文档只能由编排器落盘」这条判定要先知道本轮执笔者是谁，留痕坏了就判不了。\n' +
             '  这里**不**按缺省 Driver 继续，**也不**退回更旧的那一份——前者把「留痕坏了」\n' +
             '  判成「按缺省算」，后者判成「按上一轮的执笔者算」，两条都会让判定悄悄用错身份。\n' +
-            `  出口是**重跑一次 ${loc.stage} 阶段双审**：新运行会先落一份可读的运行留痕，判定随即恢复。\n` +
-            '  不要删除或改写这些 run-*.json——它们是提交时留痕核对的锚，动了会让 git commit 被拦下。\n' +
-            '  若是本工具版本落后于留痕的 schema（装好的副本比工作树旧），先重装再试。',
+            unreadableRunMetaExitAt({ archiveRoot: ctx.archiveRoot, topic: loc.topic }, loc.stage, res.unreadable),
         );
       }
       driver = res.driver;

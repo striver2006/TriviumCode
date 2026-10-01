@@ -506,13 +506,15 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     for (const stage of stages) {
       const resolution = await resolveStageDriver(layout, stage);
       if (resolution.kind === 'corrupt') {
+        // 出口用共用段：重跑同样会被这条判定拒绝（留痕读不出的出口计划 r2 §2.2）
+        const { unreadableRunMetaExitAt } = await import('./meta.js');
         throw new TriviumError(
           EXIT.GATE_BLOCK,
           `无法判定当轮 Driver：${topic} / ${stage} 的运行留痕读不出来` +
             `（${resolution.unreadable.join('、')}）。\n` +
             '  这里**不**按缺省 Driver 继续，**也不**退回声明——留痕坏了就判不了身份，\n' +
             '  而退到被保护方自己写的声明是把权威排序倒过来用。\n' +
-            `  出口是重跑一次 ${stage} 阶段双审：新运行会先落一份可读的留痕。`,
+            unreadableRunMetaExitAt(layout, stage, resolution.unreadable),
         );
       }
       if (task === undefined) task = await readTask(layout);

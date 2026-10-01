@@ -107,6 +107,9 @@ export type StageDriverResolution =
  *
  * 所以判定收成这一个函数，`corrupt` 一档由调用方各自决定怎么拒（Hook 拦写、入口拒启动），
  * **但没有谁可以把它降级成第 2 级**。
+ *
+ * 拒绝时的出口四处统一拼 `meta.ts` 的 `unreadableRunMetaExitAt`（按成因分三档）。**重跑不是出口**：
+ * 四个消费点里就有 `review --start`，它在冻结送审包之前就停在这一档（留痕读不出的出口计划 r2，EV-148）。
  */
 export async function resolveStageDriver(
   layout: ArchiveLayout,

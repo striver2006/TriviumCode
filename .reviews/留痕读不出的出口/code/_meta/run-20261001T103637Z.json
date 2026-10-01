@@ -1,0 +1,310 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261001T103637Z",
+  "topic": "留痕读不出的出口",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「留痕读不出的出口」：解决阶段运行留痕读不出时，提示给的出口「重跑一次该阶段双审，新运行会先落一份可读的留痕」走不通的问题——review --start 在冻结送审包之前就按 resolveStageDriver 的 corrupt 判定拒绝启动，重跑到不了「先落一份可读骨架」那一步，出口指回自己。覆盖 BACKLOG EV-148 的文案部分。 开工前先读：记忆 pipeline-know…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "14c188b8e4beaef5cc5224899a213bd795d7427a",
+    "tree_hash": "69dbdbb96dfc6823de6b42a3ae18f50b5b1b68e6",
+    "dirty": true,
+    "subject_sha256": "4869b32f6c49ecb4bcc44337b74fe1d8a86ad144de31578641c1e7b54e52a1f8",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "14c188b8e4beaef5cc5224899a213bd795d7427a",
+      "dirty": false,
+      "inputs_sha256": "afedb88cfdd735bdb295378c5984cb6b8189a55e2a35e050da1eab05aa5ba2ab",
+      "built_at": "2026-10-01T09:01:16.085Z"
+    },
+    "after_tree_hash": "6004c3738b1c901d39a7e81c557c404d7fcd7143"
+  },
+  "started_at": "2026-10-01T10:36:39.132Z",
+  "finished_at": "2026-10-01T10:47:51.906Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.159.2",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 672.549,
+      "tool_calls": {
+        "run_command": 55,
+        "project_reads": 46
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [
+        "CODEX-02"
+      ],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a0f709-a506-7ce1-8235-a50a4fd56b32",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.14",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 243.142,
+      "tool_calls": {
+        "read": 27,
+        "grep": 7,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 18
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 728125,
+        "output_tokens": 24373,
+        "thinking_tokens": 20201,
+        "cache_read_tokens": 3633288,
+        "total_tokens": 752498
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "7ec38d4e-22ec-426c-93a2-f42145caa33e",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 579.971,
+      "tool_calls": {
+        "read": 14,
+        "grep": 12,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 11
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 17,
+        "inputTokens": 2335574,
+        "outputTokens": 25269,
+        "totalTokens": 2360843,
+        "cacheReadTokens": 2041280,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_d160c64c-5ea5-41b9-b52f-f7d1004aa945",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/留痕读不出的出口/plan/2026-10-01-留痕读不出的出口-gemini.md",
+    ".reviews/留痕读不出的出口/plan/2026-10-01-留痕读不出的出口-glm.md",
+    ".reviews/留痕读不出的出口/plan/_meta/review-gemini-20261001T092816Z.json",
+    ".reviews/留痕读不出的出口/plan/_meta/review-glm-20261001T092816Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "留痕读不出的出口/code/_meta/changes-20261001T103637Z.diff",
+      "sha256": "4869b32f6c49ecb4bcc44337b74fe1d8a86ad144de31578641c1e7b54e52a1f8"
+    },
+    {
+      "path": "留痕读不出的出口/code/_meta/brief-codex-20261001T103637Z.md",
+      "sha256": "ae794d723fdb0002a909aecc48f142d238ceb019120f87c8e05578cfbaa52d4b"
+    },
+    {
+      "path": "留痕读不出的出口/code/_meta/brief-gemini-20261001T103637Z.md",
+      "sha256": "34dbf6f284cd80fcfb0891dfc1576d966e0ca48434c96f433305b49ab0b81b1c"
+    },
+    {
+      "path": "留痕读不出的出口/code/_meta/brief-glm-20261001T103637Z.md",
+      "sha256": "b58fc6d538f3c4d2b25dd911e16dee16204dd71bfbe6141c4ae9704f3fc7aee9"
+    },
+    {
+      "path": "留痕读不出的出口/code/_meta/review-codex-20261001T103637Z.json",
+      "sha256": "a7eb6631849756f085431c34463df209441df414107707eb06aef812e5bd5577"
+    },
+    {
+      "path": "留痕读不出的出口/code/_meta/review-codex-20261001T103637Z.degraded.json",
+      "sha256": "4e83cd46285608850305480b4aef1433ccfb7d91db5aaed9bf2245b9accb25eb"
+    },
+    {
+      "path": "留痕读不出的出口/code/_meta/review-gemini-20261001T103637Z.json",
+      "sha256": "8c8120b4bc5c45d010eda8d45a7c4871de15d4ae89945fa5735e70a0dc333491"
+    },
+    {
+      "path": "留痕读不出的出口/code/_meta/review-glm-20261001T103637Z.json",
+      "sha256": "5ccc6b993c78a879d504e24cdd26b95eeb1c61e03b63f6b28216ecaf440711f1"
+    },
+    {
+      "path": "留痕读不出的出口/code/2026-10-01-留痕读不出的出口-codex.md",
+      "sha256": "b5af3451366c5dcdb75e69a20e7251ecdd45274f7b097807b45794bc6a3b8af9"
+    },
+    {
+      "path": "留痕读不出的出口/code/2026-10-01-留痕读不出的出口-gemini.md",
+      "sha256": "563fb2ef18a044a7284bfa471f2f1021efc45a93f1218703ed27b50a04e88d82"
+    },
+    {
+      "path": "留痕读不出的出口/code/2026-10-01-留痕读不出的出口-glm.md",
+      "sha256": "f85780030bb5218e558bd2024a3d515de222342da835d1127cc533a64bbedc63"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装"
+    ]
+  },
+  "status": "success"
+}

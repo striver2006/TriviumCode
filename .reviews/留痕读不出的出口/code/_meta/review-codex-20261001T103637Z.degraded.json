@@ -1,0 +1,29 @@
+{
+  "critic": "codex",
+  "run_id": "20261001T103637Z",
+  "findings": [
+    {
+      "index": 1,
+      "id": "CODEX-02",
+      "problems": [
+        {
+          "field": "evidence_note",
+          "kind": "extra",
+          "message": "(根对象) must NOT have additional properties {\"additionalProperty\":\"evidence_note\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-02",
+        "severity": "minor",
+        "layer": "code",
+        "kind": "maintainability",
+        "location": "src/trivium/meta.ts 的 UNREADABLE_RUN_META_EXIT_BODY ① 与 ③ 两档",
+        "problem": "① 档的判别动作只有「git status 往往是干净的」，而 ③ 档（已提交的版本本身就读不出）的 git status 同样是干净的——两档在文案给的判据下不可分。走错的代价不对称：① 走成 ③ 只是白等人一次，③ 走成 ① 会让用户去升级重装、装回来还是读不出，而 ③ 的落点本来是「停下、保留文件、人工判断」。EV-181 登记的是「readRunMeta 不报原因」，但 ① 这一格不需要等那个改动就能改善：读取方自己的构建标识是现成可得的。",
+        "evidence": "src/trivium/meta.ts 的 ①/③ 两档原文；src/trivium/build-stamp.ts 文件头「写入：scripts/build.mjs 经 esbuild define 注入常量；读出：embeddedBuildStamp()；比对：buildStampWarnings 只在本仓模式下比」；src/trivium/review.ts:54 与 :1015 已在用 embeddedBuildStamp 并把它记进 snapshot.build；doc/08_project/BACKLOG.md EV-181（暂缓项只覆盖「不报读不出的原因」）",
+        "evidence_note": "",
+        "suggestion": "在 ① 行尾带上读取方自己的构建指纹（embeddedBuildStamp() 的 git_head 短码与 built_at 各一个即可），让「本工具落后于写入方」至少有一侧可比；顺带说明同一主题里可读的那几份 run.json 的 snapshot.build 是哪一版，比人猜「装好的副本比写入方旧」更可核。",
+        "confidence": "medium"
+      }
+    }
+  ]
+}

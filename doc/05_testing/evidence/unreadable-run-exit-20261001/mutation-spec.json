@@ -1,0 +1,129 @@
+{
+  "targets": [
+    "src/trivium/meta.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/gate.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/unreadable-run-exit.test.js",
+    "dist/test/test/integration/topic-claim.test.js",
+    "dist/test/test/unit/hooks.test.js",
+    "dist/test/test/integration/gate-loop.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "共用段首句换回循环出口",
+      "file": "src/trivium/meta.ts",
+      "find": "  '  重跑该阶段双审不是出口：review --start 在冻结送审包之前就按同一判定拒绝，新运行落不下来。按成因处置：\\n' +\n",
+      "replace": "  '  出口是重跑一次该阶段双审：新运行会先落一份可读的留痕，判定随即恢复。\\n' +\n",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "共用段 ② 删掉「只能在终端做」一句",
+      "file": "src/trivium/meta.ts",
+      "find": "  '这一步只能由用户在终端做——会话里的恢复命令会被 Hook 拦下，换写法绕过属于违规。\\n' +\n",
+      "replace": "  '\\n' +\n",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "共用段 ③ 删掉「工具内没有出口」",
+      "file": "src/trivium/meta.ts",
+      "find": "  '工具内没有出口。没有可恢复的副本，也没有跳过这条判定的入口（BACKLOG EV-148 的剩余项）；' +\n",
+      "replace": "  '没有可恢复的副本，也没有跳过这条判定的入口（BACKLOG EV-148 的剩余项）；' +\n",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "共用段 ① 删掉 MANUAL 落点",
+      "file": "src/trivium/meta.ts",
+      "find": "  '此时 git status 往往是干净的）：按 MANUAL §3.6「升级」更新并重装本工具后重试。\\n' +\n",
+      "replace": "  '此时 git status 往往是干净的）：更新并重装本工具后重试。\\n' +\n",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "unreadableRunMetaExit 不列文件",
+      "file": "src/trivium/meta.ts",
+      "find": "    files.map((f) => `    · ${f}\\n`).join('') +\n",
+      "replace": "    '' +\n",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "第 1 处 review --start 去掉共用出口",
+      "file": "src/trivium/cli.ts",
+      "find": "        unreadableRunMetaExit(runMetaPaths(layout, stage, resolution.unreadable)),\n",
+      "replace": "        '',\n",
+      "expect": "dist/test/test/integration/topic-claim.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "第 2 处 topic claim 去掉共用出口",
+      "file": "src/trivium/cli.ts",
+      "find": "        unreadableRunMetaExit(runMetaPaths(ref.layout, stage, resolution.unreadable)),\n",
+      "replace": "        '',\n",
+      "expect": "dist/test/test/integration/topic-claim.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "第 3 处 topic resolve 去掉共用出口",
+      "file": "src/trivium/topic-args.ts",
+      "find": "            unreadableRunMetaExit(runMetaPaths(layout, stage, resolution.unreadable)),\n",
+      "replace": "            '',\n",
+      "expect": "dist/test/test/integration/topic-claim.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "第 4 处 Hook 去掉共用出口",
+      "file": "src/trivium/hooks.ts",
+      "find": "            unreadableRunMetaExit(\n",
+      "replace": "            String(\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "第 5 处 gate 一份都读不出去掉共用出口",
+      "file": "src/trivium/cli.ts",
+      "find": "        unreadableRunMetaExit(runMetaPaths(ref.layout, stage, scan.unreadable)),\n",
+      "replace": "        '',\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "awaitApprovalRecovery 读不出不带共用出口",
+      "file": "src/trivium/gate.ts",
+      "find": "    unreadableRunMeta: unreadableRunMetaExit(runId ? runMetaPaths(layout, stage, [runId]) : []),\n",
+      "replace": "    unreadableRunMeta: '',\n",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "approveForkRecovery 读不出不带共用出口",
+      "file": "src/trivium/gate.ts",
+      "find": "      unreadableRunMetaExit(i.runId ? runMetaPaths(i.layout, i.stage, [i.runId]) : []),\n",
+      "replace": "      '',\n",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "approveForkRecovery 缺 run_id 也拼共用出口",
+      "file": "src/trivium/gate.ts",
+      "find": "      '  这会留下一条 run_id 为空的放弃记录，请在 reason 里写明缘由。',\n",
+      "replace": "      '  这会留下一条 run_id 为空的放弃记录，请在 reason 里写明缘由。\\n' + unreadableRunMetaExit([]),\n",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "approve 出口 abandon 排到恢复之前",
+      "file": "src/trivium/gate.ts",
+      "find": "      '  先把它恢复成可读，恢复后直接重新 approve——复核没过时闸门仍在等待审批，这一轮的审查结论照样有效：' +\n      '文件在而读不出，按下列成因处置；文件不在而 git status 显示 deleted，由用户在终端 git restore 后重新 approve。\\n' +\n      `  确认恢复不了（或文件从未有过，即本机闸门与归档分叉），才用 ${abandon} 作废这道闸门：` +\n      '它不读这份留痕，总走得通，会留下一条 run_id 为那个读不出的值的放弃记录；' +\n      '作废之后能否重跑取决于该阶段最新一份留痕可不可读——读不出的若正是它，重跑同样会被拒绝。\\n' +\n",
+      "replace": "      `  确认恢复不了（或文件从未有过，即本机闸门与归档分叉），才用 ${abandon} 作废这道闸门：` +\n      '它不读这份留痕，总走得通，会留下一条 run_id 为那个读不出的值的放弃记录；' +\n      '作废之后能否重跑取决于该阶段最新一份留痕可不可读——读不出的若正是它，重跑同样会被拒绝。\\n' +\n      '  先把它恢复成可读，恢复后直接重新 approve——复核没过时闸门仍在等待审批，这一轮的审查结论照样有效：' +\n      '文件在而读不出，按下列成因处置；文件不在而 git status 显示 deleted，由用户在终端 git restore 后重新 approve。\\n' +\n",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    }
+  ]
+}

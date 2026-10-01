@@ -1053,12 +1053,83 @@ export interface ApprovalCheckInput {
   /**
    * 两个抛错分支的出口文案，**由调用方给**（计划 r3 §3.2，计划双审 r1 CODEX-02）。
    *
-   * 判定只有一份，出口却因调用点而异：`--await-approval` 可以「用 --run-id 指定或重跑」，
-   * approve 那一格这两条都走不通（approve 没有 `--run-id`；`review --start` 不抢占
-   * awaiting_approval 的槽位），只剩 abandon 后重跑。照搬一份文案就会给出走不通的出口。
+   * 判定只有一份，出口却因调用点而异：`--await-approval` 缺 run_id 时可以「用 --run-id 指定」，
+   * approve 没有 `--run-id`、`review --start` 也不抢占 awaiting_approval 的槽位。照搬一份文案
+   * 就会给出走不通的出口。两个调用点的出口由下面的 `awaitApprovalRecovery` / `approveForkRecovery`
+   * 构造（留痕读不出的出口计划 r2 §2.2）；读不出那一条都以 `meta.ts` 的共用出口段收尾。
    * 它只进报错文字，**不参与判定**。
+   *
+   * 排版：`missingRunId` 是首行不缩进的一段（本函数在前面补两格）；`unreadableRunMeta` 是
+   * 每行自带缩进的整段（本函数原样接在后面）——共用出口段本身就是逐行缩进的。
    */
   recovery: { missingRunId: string; unreadableRunMeta: string };
+}
+
+/**
+ * `gate --await-approval` 的两条出口（留痕读不出的出口计划 r2 §2.2）。
+ *
+ * 抽到这里而不是留在 `cli.ts`：`cli.ts` 末尾直接执行 `main`，测试导不进来；而读不出那一条
+ * 只在竞态下可达（runId 取自 `latestRunMeta` 读得出的那份；`--run-id` 读不出在更早处硬失败；
+ * 一份都读不出先撞 `cmdGate` 自己那一格），不抽出来就没有用例能咬住它的接线。
+ * 上一版读不出这一条写的是「重跑一次该阶段双审」——重跑在 `review --start` 入口就被同一个
+ * `corrupt` 判定拒绝，所以改成共用出口段。
+ */
+export async function awaitApprovalRecovery(
+  layout: ArchiveLayout,
+  stage: Stage,
+  runId: string | null,
+): Promise<ApprovalCheckInput['recovery']> {
+  const { unreadableRunMetaExitAt } = await import('./meta.js');
+  return {
+    missingRunId: '用 --run-id <id> 显式指定，或先跑一次双审。',
+    unreadableRunMeta: runId ? unreadableRunMetaExitAt(layout, stage, [runId]) : NO_RUN_ID_NO_FILE,
+  };
+}
+
+/**
+ * runId 为 null 时读不出那一条的占位（代码双审 r1 GLM-03）：今天被 `verifyRoundForApproval` 第 1 步先挡住、不可达，
+ * 但不能拼共用出口段——没有文件可判成因，② 档「restore 上面列出的路径」会指向一份不存在的清单。
+ */
+const NO_RUN_ID_NO_FILE = '  没有 run_id，定位不到运行留痕文件，无从按成因处置。';
+
+/**
+ * `approve` 通过前复核的两条出口：本机闸门项与归档分叉的那一格（计划 r3 §3.2；
+ * 留痕读不出的出口计划 r2 §2.2，计划双审 AGY-01 / AGY-04）。
+ *
+ * **两条分开写**：闸门项没有 run_id 时没有任何文件可判成因，拼三档成因文不对题（AGY-04），
+ * 维持「abandon 后重跑」；闸门项的 run_id 读不出时，**先恢复、恢复后直接重新 approve**——
+ * 复核没过时闸门保持等待审批，① 升级重装、② 终端 restore 之后这一轮的审查结论照样有效；
+ * 上一版先给 abandon，会作废一轮有效的结论（AGY-01）。恢复不了才 abandon：它以闸门自己的
+ * run_id 做比较-交换、不读这份留痕，总走得通；但 abandon 之后能不能重跑取决于该阶段最新一份
+ * 留痕可不可读——读不出的若正是它，重跑同样撞 `review --start` 的 `corrupt` 判定。
+ */
+export async function approveForkRecovery(i: {
+  layout: ArchiveLayout;
+  topic: string;
+  stage: Stage;
+  /** 按闸门项记下的 Driver 选的 abandon 调用写法（`entryCommandOf`） */
+  abandonCmd: string;
+  runId: string | null;
+}): Promise<ApprovalCheckInput['recovery']> {
+  const { unreadableRunMetaExitAt } = await import('./meta.js');
+  const abandon = `${i.abandonCmd} --topic ${i.topic} --stage ${i.stage} --reason '<说明分叉>'`;
+  return {
+    missingRunId:
+      '本机闸门项没有记下 run_id：归档是正本、本机闸门是副本，两者已经分叉。\n' +
+      '  approve 不接受 --run-id；--check 与 --await-approval 不会改写属于别的运行的闸门项。\n' +
+      `  出口：${abandon}，然后重跑该阶段双审。\n` +
+      '  这会留下一条 run_id 为空的放弃记录，请在 reason 里写明缘由。',
+    unreadableRunMeta:
+      '  本机闸门项指向的这一轮运行留痕读不出（归档是正本、本机闸门是副本）。' +
+      'approve 不接受 --run-id；--check 与 --await-approval 不会改写属于别的运行的闸门项。\n' +
+      '  先把它恢复成可读，恢复后直接重新 approve——复核没过时闸门仍在等待审批，这一轮的审查结论照样有效：' +
+      "文件在而读不出，按下列成因处置；文件不在而 git -c core.quotePath=false status --porcelain -- '<路径>' 显示 D，" +
+      "由用户在终端 git restore -- '<路径>' 后重新 approve。\n" +
+      `  确认恢复不了（或文件从未有过，即本机闸门与归档分叉），才用 ${abandon} 作废这道闸门：` +
+      '它不读这份留痕，总走得通，会留下一条 run_id 为那个读不出的值的放弃记录；' +
+      '作废之后能否重跑取决于该阶段最新一份留痕可不可读——读不出的若正是它，重跑同样会被拒绝。\n' +
+      (i.runId ? unreadableRunMetaExitAt(i.layout, i.stage, [i.runId]) : NO_RUN_ID_NO_FILE),
+  };
 }
 
 export interface ApprovalCheckResult {
@@ -1111,14 +1182,14 @@ export async function verifyRoundForApproval(i: ApprovalCheckInput): Promise<App
     /*
      * 比 `loadRoundReviews` 的宽松口径严（计划 r3 §5 偏差 5）：那里 run.json 读不到时
      * 交给 `missingSides` 判，这里连 driver 与轮次都拿不到，审批停点不该按猜测放行。
-     * 文案与 `cmdGate` 的「留痕读不出」分档同源：点名、警示别动锚、给走得通的出口。
+     * 本函数只点名；出口（含「别动锚」那一句）由调用方给，两个调用点都以 `meta.ts` 的共用出口段收尾
+     * ——上一版这里内联的「不要删除或改写」已并进共用段（留痕读不出的出口计划 r2 §2.2，计划双审 CODEX-03）。
      */
     throw new TriviumError(
       EXIT.MISSING_ARTIFACT,
       `${stage} 阶段 run ${runId}（来源：${i.runIdSource}）：${APPROVAL_CHECK_META_UNREADABLE}` +
         '（文件缺失、内容损坏，或不合 run.v1/v2 契约）。\n' +
-        '  不要删除或改写这份运行元数据——它是提交时留痕核对的锚，动了会让 git commit 被拦下。\n' +
-        `  ${i.recovery.unreadableRunMeta}`,
+        i.recovery.unreadableRunMeta,
     );
   }
 

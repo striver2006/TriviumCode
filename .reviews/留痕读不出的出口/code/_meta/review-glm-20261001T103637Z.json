@@ -1,0 +1,68 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "被审对象是「留痕读不出」七处拒绝文案的收口（EV-148 文案部分），声称判定与退出码零改动、只改文案。我按此核验：逐一读了七处落点（cli.ts 的 review --start / topic claim / gate 两处、topic-args.ts、hooks.ts 的 hook-pre-write、gate.ts 的两个出口构造函数）与它们在 verifyRoundForApproval 中的消费，确认 throw 语句只换了文案拼接、退出码常量未动；七处传给 runMetaPaths 的 layout 与各自判定实际读取的 layout 同源（hooks 侧同为 ctx.archiveRoot），路径不可穿越（run id 来自文件名、不含分隔符）；unReadable 列表从新到旧的顺序与 latestRunMeta 的实现一致；「重跑不是出口」的核心论证成立——review --start 的 resolveStageDriver 确在冻结之前（cli.ts:553）。全量检查 2474/2472/0 失败/2 跳过（check-1.txt 直接核对）、变异 14/14、C 格用真实构建对（a89a46f 读不懂 termination.by=sync_exception）实证「版本落后」成因，证据链扎实。发现 1 条 minor（同一状态其实有第八处拒绝——gate --run-id 钉住读不出的分支没接共用出口，且 gate.ts:227 等文案会主动把用户引向 --run-id）与 2 条 nit（7 处重复解构配对的可用性、runId 为 null 时 unreadableRunMetaExit([]) 生成的标题空列表死值）。均不阻断。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/cli.ts:1106-1113",
+      "problem": "「运行留痕读不出」的拒绝存在第八处：`gate --check / --await-approval --run-id <id>` 显式钉住的 run_id 读不出时（pinned 分支），文案只有「请确认该 run_id 属于主题…的…阶段」，不以 meta.ts 的共用出口段收尾。该分支与七处同状态（同一份文件、同样的三档成因），而且本仓自己的文案会主动把用户引向 --run-id：gate.ts:227 的 missing_disposition 提示「可用 --run-id <id> 指回更早的完整轮次」、cli.ts:1360 的无运行元数据提示「或用 --run-id 指定」。用户钉中的恰是坏文件时，按提示确认归属无误后即落在没有任何出口指引的死路上——正是本主题要消灭的形态。本次改动与 EV-181/EV-182 的登记均未覆盖这一格。",
+      "evidence": "src/trivium/cli.ts:1106-1113（pinned 分支原文，无共用段、无绝对路径）；src/trivium/meta.ts:535-569（共用出口段契约：逐行列绝对路径 + 三档成因）；src/trivium/gate.ts:227（引导用户用 --run-id 的提示原文）；doc/05_testing/REPORT_2026-10-01_unreadable_run_exit.md §7（暂缓清单未列此格）",
+      "suggestion": "二选一：把该分支也拼上 unreadableRunMetaExit(runMetaPaths(ref.layout, stage, [pinnedId]))，「请确认归属」的前半句保留；或按本仓惯例在 BACKLOG 登一条 EV，写明这一格为何不进七处（例如：钉错 run_id 是该分支的主成因、三档成因文不对题）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/meta.ts:555-569 与七个调用点",
+      "problem": "「await import('./meta.js') 解构 runMetaPaths + unreadableRunMetaExit 再配对调用」的两步写法在 7 处逐字重复（cli.ts 三处、topic-args.ts、hooks.ts、gate.ts 两处）。两个导出总是一起用；未来新增站点若漏掉 runMetaPaths、把 run id 数组直接当 files 传入，unreadableRunMetaExit 照常工作、只是列出行变成裸 id——类型系统不拦。目前 5 处有集成断言咬绝对路径，防线是测试而非结构。",
+      "evidence": "src/trivium/meta.ts:555-569（两个函数定义）；src/trivium/cli.ts:563、:1159；src/trivium/gate.ts:1082、:1108（各处同构的解构与配对调用，均直接读过）",
+      "suggestion": "在 meta.ts 收一个单入口 helper（形如 unreadableRunMetaExitAt(layout, stage, runIds)），内部完成路径拼接与拼段；底层两个导出保留给单测。不急，可随下一主题顺带。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/gate.ts:1085、:1124",
+      "problem": "runId 为 null 时两个出口构造函数仍会求值 unreadableRunMetaExit([])——输出是「涉及的运行留痕（逐份判断成因，每份可能不同）：」标题后紧跟零行文件、再接三档正文，而正文 ② 档让用户「git restore <上面列出的路径>」，届时上面并没有路径。今天不可达（verifyRoundForApproval 对 null runId 先抛 NO_RUN_ID，gate.ts:1163-1170），但这是一个静默的坏形状：未来调用方若绕过该守卫直接取用 recovery.unreadableRunMeta，就会打印出自指文案且无任何报警。",
+      "evidence": "src/trivium/gate.ts:1077-1126（两处 runId ? runMetaPaths(...) : [] 的三元）；src/trivium/meta.ts:563-569（空数组时只剩标题行 + 固定段）；src/trivium/gate.ts:1163-1170（当前唯一守卫）",
+      "suggestion": "null 档改给一个不拼固定段的普通句子（与 missingRunId 同型），或让 unreadableRunMetaExit 对空数组抛错。可与 GLM-02 的 helper 一并处理。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "共用出口段的设计与内容：逐行列绝对路径（归档根可配、② 档要原样复制给 git restore）+ 三档成因（版本落后⇒升级重装 / 已提交被改坏⇒终端 restore / 其余⇒工具内没有出口），以及「重跑不是出口」「删除只是把拒绝挪到提交时」两条反向事实，与我在 meta.ts 读到的实现和 acceptance B 格实测（删后 topic resolve 退 0、提交锚改报「运行清单已丢失」）互相印证",
+    "approve 读不出那一格改为「先按成因恢复、恢复后直接重新 approve、恢复不了才 abandon」的次序合理（复核没过时闸门仍在等待审批，先 abandon 会作废一轮有效结论），gate.ts 的实现与 A4″/A4‴ 集成用例、E2/E3 验收读数一致",
+    "「判定与退出码零改动」的声称核实成立：七处 throw 只改了文案拼接，EXIT.GATE_BLOCK / MISSING_ARTIFACT 常量与抛错条件未动；--await-approval 的 recovery 从内联字面量抽成 gate.ts 的构造函数属于纯接线重构，不参与判定",
+    "C 格用真实构建对（新构建写 termination.by=sync_exception、a89a46f 构建读之退 2/65、换回即退 0）实证「版本落后」这一格，比构造性 schema 验证可信；「run.v2 顶层宽松、落差在 additionalProperties: false 子树」的结论与读到的 readRunMeta 精确分发实现一致",
+    "U2 源码契约（src/ 全目录逐行扫循环出口句式）加 14 条变异把「循环出口不许回潮」守在机制层，M6-M10 逐站点咬住、M14 咬住次序，变异装置有逐条预跑记录",
+    "第 6 处（--await-approval 复核读不出）只在竞态下可达，抽到 gate.ts 由 U3 直接调用咬住接线，并在报告 §7 如实登记——取舍诚实",
+    "EV-181（不报原因）、EV-182（提交锚文案）与 EV-148 剩余项（人工确认出口）的暂缓登记如实、边界清楚；RUNBOOK §六把运行清单从「abandon 后重跑」里拆出来按三档改写，与实现口径一致"
+  ],
+  "not_covered": [
+    "未实跑任何命令（只读审查）：75 格零配额验收、14 条变异、三份 Node 版本读数均以 evidence 文件与报告自述为准，未复跑核对；acceptance.mjs 与 mutation 系列脚本的断言逻辑未逐行审读",
+    "EV-182 登记的提交锚 checkArchiveIntegrity 在 manifest_unreadable / manifest_missing 时的现文案未深入核对（明确退出本次范围）",
+    "skills-src/ 渲染产物与四家入口 SKILL.md 是否残留旧出口措辞未核对（本主题未改 skills-src，按改动同步清单不涉及，U2 也只扫 src/）",
+    "报告 §6「代码双审与修订」为〈待填〉占位，属流程性未完成项，非代码问题，未计入 findings",
+    "hook-pre-bash 对「git restore <路径>」的拦截声称（② 档「只能在终端做」）未做独立实测，采信既有 hook-guard 契约测试与报告读数"
+  ],
+  "consulted": [
+    ".reviews/留痕读不出的出口/code/_meta/changes-20261001T103637Z.diff",
+    "src/trivium/meta.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/exit-codes.ts",
+    "test/integration/topic-claim.test.ts",
+    "doc/05_testing/REPORT_2026-10-01_unreadable_run_exit.md",
+    "doc/05_testing/evidence/unreadable-run-exit-20261001/check-1.txt"
+  ]
+}

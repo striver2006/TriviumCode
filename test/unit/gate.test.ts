@@ -953,7 +953,11 @@ test('审批前复核：runId 非空但本轮运行元数据读不出 ⇒ 第 2 
       assert.ok(e.message.includes(APPROVAL_CHECK_META_UNREADABLE), `缺第 2 步的判别文字：${e.message}`);
       assert.ok(e.message.includes('20990101T000000Z'), '要点名是哪一轮');
       assert.ok(e.message.includes(RECOVERY.unreadableRunMeta));
-      assert.match(e.message, /不要删除或改写/, '要警示别去动提交锚');
+      /*
+       * 「不要删除或改写」那一句不再内联在本函数里：它并进了两个调用点共用的出口段
+       * （`meta.ts` 的 `UNREADABLE_RUN_META_EXIT_BODY`，留痕读不出的出口计划 r2 §2.2，计划双审 CODEX-03），
+       * 由 `unreadable-run-exit.test.ts` 的 U3 用真实的两个出口构造函数断言它仍然可达。
+       */
       assert.ok(!e.message.includes(APPROVAL_CHECK_NO_RUN_ID));
       return true;
     },

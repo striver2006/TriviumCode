@@ -11,9 +11,9 @@ import type {
   AgentId, CriticId, LegacyReviewMode, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
 } from './types.js';
 import { describeDriftUnknown } from './types.js';
-import type { BuildStamp } from './build-stamp.js';
+import { embeddedBuildStamp, type BuildStamp } from './build-stamp.js';
 import { writeAtomic } from './util/fsx.js';
-import { topicDir, type ArchiveLayout } from './archive.js';
+import { metaDir as metaDirOf, topicDir, type ArchiveLayout } from './archive.js';
 import { withTopicLock } from './lock.js';
 import { validateRunMeta, validateRunMetaV1 } from './schemas.js';
 import { DEFAULT_DRIVER, type GuardLevel } from './agents/registry.js';
@@ -499,6 +499,107 @@ export async function latestRunMeta(l: ArchiveLayout, stage: Stage): Promise<Lat
     warn(`运行元数据 ${id}（${stage} 阶段）读不出来，已跳过——留痕可能被改坏或不合契约`);
   }
   return { meta: null, scanned: ids.length, unreadable };
+}
+
+// ─────────────────────── 运行留痕读不出时的出口（EV-148 文案部分） ───────────────────────
+
+/**
+ * 运行留痕读不出时，七处拒绝文案**共用的出口段**（留痕读不出的出口计划 r2 §2.1）。
+ *
+ * 七处是：Driver 判定的四个消费点（`review --start`、`topic claim`、`topic resolve`、`hook-pre-write`，
+ * 都撞 `resolveStageDriver` 的 `corrupt`），`gate` 扫到的运行元数据一份都读不出，以及
+ * `verifyRoundForApproval` 读不出本轮运行元数据时 `--await-approval` 与 `approve` 各自的出口。
+ * 各处只写自己的前半句（什么判不了、为什么不按缺省），出口一律以本段收尾——
+ * 上一版七处各写一句，全都写成「重跑一次该阶段双审」，而那条路在 `review --start` 入口就被
+ * 同一个 `corrupt` 判定拒绝（重跑到不了先落骨架那一步），出口指回自己。
+ *
+ * ## 成因只有三档（计划 r2 §1.4，逐格零配额实测）
+ *
+ * - **① 版本落后**：写入方比读取方新，留痕里有读取方不认的取值。run.v2 顶层允许未知字段，
+ *   真正的落差在 `additionalProperties: false` 的子树里（实测例：`termination.by = sync_exception`，
+ *   `e49279a` 之前的构建读不懂）。这一格的 `git status` 往往是干净的。
+ * - **② 已提交、工作树里被改坏**：由用户在终端 `git restore`。只能在终端——恢复命令的参数正是
+ *   `_meta/` 下的受保护路径，会话里会被 `hook-pre-bash` 拦下。
+ * - **③ 其余**（从未提交，或已提交的版本本身就读不出）：工具内没有出口。本工具自己写不出
+ *   读不出的 run.json——所有写入都经 `writeRunMeta` 写前校验、`writeAtomic` 原子落盘——所以这一格
+ *   只可能来自工具之外的改动。真正的解法（人工确认出口）留在 EV-148。
+ *
+ * **运行中途被打断不在其列**：rename 之前被打断只留 `run-<id>.json.tmp-…`，`latestRunMeta` 的
+ * 文件名正则不认它；rename 之后就是完整、可读的骨架。按「打断 = 读不出」去处置是找错了方向。
+ *
+ * **删除不是出口**：删掉之后 `latestRunMeta` 扫不到它、判定放行。`task.json.runs[]` 登记过它的，
+ * 提交锚以「运行清单已丢失」拦下 git commit——只是把拒绝挪到提交时（计划 r2 §1.4 B 格实测）；
+ * **没登记的**（`writeRunMeta` 写完骨架、`registerRun` 之前失败留下的那一种）删掉之后**没有任何锚会拦**，
+ * 判定悄悄降级成「取更旧的可读份」或「按声明 / 缺省」——正是 `corrupt` 一档要挡的两种降级
+ * （代码双审 r1 CODEX-01；这一格的缺口登记 EV-183）。所以两种都不要删。
+ *
+ * 固定段不带参数，测试按子串逐字断言；文件列表与本工具的构建标识由 `unreadableRunMetaExit` 拼在前面。
+ */
+export const UNREADABLE_RUN_META_EXIT_BODY =
+  '  重跑该阶段双审不是出口：review --start 在冻结送审包之前就按同一判定拒绝，新运行落不下来。按成因处置：\n' +
+  '  ① 本工具版本落后于写下它的版本（它含本工具不认的 schema 或取值；常见于装好的副本比写入方旧，' +
+  '此时 git status 往往是干净的，判别见上面那行构建标识）：按 MANUAL §3.6「升级」更新并重装本工具后重试。\n' +
+  "  ② 它已提交过，工作树里的这一份与提交的版本不同（git -c core.quotePath=false status --porcelain -- '<路径>' 显示 M）：" +
+  "由用户在终端执行 git restore -- '<上面列出的路径>' 恢复后重试。" +
+  '这一步只能由用户在终端做——会话里的恢复命令会被 Hook 拦下，换写法绕过属于违规。\n' +
+  '  ③ 其余情形——从未提交（同一条命令显示 ??），或已提交的版本本身就读不出——且排除了①：' +
+  '工具内没有出口。没有可恢复的副本，也没有跳过这条判定的入口（BACKLOG EV-148 的剩余项）；' +
+  '本工具写入前会按契约校验，这一格只可能来自工具之外的改动。请停下，保留文件，交由用户人工判断。\n' +
+  '  无论哪种成因，都不要删除或改写这些 run-*.json：删掉后这条判定会放行——' +
+  '登记过的运行，提交时的留痕核对会以「运行清单已丢失」拦下 git commit；没登记的删掉则无从追查、判定悄悄降级；' +
+  '改写同样会被拦。';
+
+/**
+ * 读不出的那几份运行留痕的**绝对路径**——`unreadableRunMetaExit` 的输入。
+ *
+ * 用绝对路径而不是相对项目根（计划 r2 §2.1，计划双审 CODEX-02）：七处都拿得到 `ArchiveLayout`
+ * （其 `archiveRoot` 是绝对路径），而 `gate.ts` 那两处拿不到项目根；归档根又可配，读者拼不出来。
+ * ② 档要用户原样复制给 `git restore`，路径必须现成。
+ */
+export function runMetaPaths(l: ArchiveLayout, stage: Stage, runIds: readonly string[]): string[] {
+  return runIds.map((id) => path.join(metaDirOf(l, stage), runMetaFileName(id)));
+}
+
+/** 共用出口里至多列出几份文件；① 是整批读不出，清单不封顶会反复进 Hook 的 deny 理由（代码双审 r1 CODEX-03） */
+export const UNREADABLE_RUN_META_LIST_LIMIT = 5;
+
+/**
+ * 共用出口：先列出涉及的文件（一次常报多份，成因可能各不相同——计划双审 CODEX-07；至多
+ * `UNREADABLE_RUN_META_LIST_LIMIT` 份，其余报数），再给读取方自己的构建标识（判别 ① 用——
+ * 代码双审 r1 CODEX-02：① 与「已提交的版本本身就读不出」的 `git status` 都是干净的，按工作树状态分不开，
+ * 而写入方的构建记在 run.json 的 `snapshot.build`），最后接固定段 `UNREADABLE_RUN_META_EXIT_BODY`。
+ *
+ * `build` 缺省取本进程内嵌的构建标识；单测可传入固定值。各处请用 `unreadableRunMetaExitAt`。
+ */
+export function unreadableRunMetaExit(
+  files: readonly string[],
+  build: BuildStamp | null = embeddedBuildStamp(),
+): string {
+  const shown = files.slice(0, UNREADABLE_RUN_META_LIST_LIMIT);
+  const rest = files.length - shown.length;
+  return (
+    '  涉及的运行留痕（逐份判断成因，每份可能不同）：\n' +
+    shown.map((f) => `    · ${f}\n`).join('') +
+    (rest > 0 ? `    · 另有 ${rest} 份同状态未列出（同在该阶段 _meta/ 下）\n` : '') +
+    (build
+      ? `  判别 ①：本工具的构建是 ${build.git_head.slice(0, 7)}（${build.built_at}）；` +
+        '能以 JSON 打开的 run.json 看它的 snapshot.build.git_head——比本工具新即属 ①。\n'
+      : '  判别 ①：本工具的构建标识缺失（构建时取不到 git），只能对照 run.json 的 snapshot.build 与安装来源自行判断。\n') +
+    UNREADABLE_RUN_META_EXIT_BODY
+  );
+}
+
+/**
+ * 七处（连同 `gate --run-id` 钉住读不出那一格）的**单入口**：按布局与 run_id 拼出绝对路径再给共用出口
+ * （代码双审 r1 GLM-02：两步配对重复多处，把 id 数组直接当路径传入类型系统不拦）。
+ *
+ * 空列表是程序缺陷：没有文件可判成因时不该给这一段（GLM-03）——调用方自己给普通说明。
+ */
+export function unreadableRunMetaExitAt(l: ArchiveLayout, stage: Stage, runIds: readonly string[]): string {
+  if (runIds.length === 0) {
+    throw new Error('unreadableRunMetaExitAt：没有读不出的 run_id——这一段只给有文件可判成因的拒绝');
+  }
+  return unreadableRunMetaExit(runMetaPaths(l, stage, runIds));
 }
 
 export async function readRunMeta(

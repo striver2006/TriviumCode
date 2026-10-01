@@ -13,6 +13,7 @@ import { EXIT } from '../../src/trivium/exit-codes.js';
 import { APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID } from '../../src/trivium/gate.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import type { StubConfig } from '../../src/trivium/adapters/stub.js';
+import { assertUnreadableExit } from '../helpers/unreadable-exit.js';
 
 /**
  * 闸门闭环（AC-01 / AC-02 / AC-12 / 设计 §8.5）：
@@ -1716,12 +1717,17 @@ test(
       '文案又在建议 --run-id 了：这一格里它读的是同一批文件，必然也读不出——' +
         '把排障的人推去试一条按构造必败的路',
     );
+    /*
+     * 出口（留痕读不出的出口计划 r2 §5.2，EV-148）：上一版这里断言的是「给了重跑」——
+     * 而重跑在 `review --start` 入口就被同一个 `corrupt` 判定拒绝，那条出口指回自己。
+     * 现在要求：以共用出口段收尾（按成因三档，含「别动那几份运行清单」），逐行列出两份的绝对路径，
+     * 不出现循环出口。
+     */
+    const realDir = await fs.realpath(dir);
+    const files = ['run-20260102T000000Z.json', 'run-20260101T000000Z.json'].map((f) => path.join(realDir, f));
+    assertUnreadableExit(out, files, 'gate --check');
     assert.match(
-      out, /重跑/,
-      '没给出走得通的出口：新运行会落一份可读的运行元数据（prepareRun 先写骨架），闸门随即恢复',
-    );
-    assert.match(
-      out, /不要删除或改写|提交/,
+      out, /不要删除或改写/,
       '没提醒「别动那几份运行清单」：它们是提交时留痕核对的锚，删改会让 git commit 被拦下',
     );
 
@@ -1731,6 +1737,7 @@ test(
       const o2 = r2.stdout + r2.stderr;
       assert.equal(r2.code, EXIT.MISSING_ARTIFACT, `${sub} 没有同款硬失败：${o2}`);
       assert.match(o2, /一份都读不出来/, `${sub} 的文案与 --check 不同口径`);
+      assertUnreadableExit(o2, files, `gate ${sub}`);
     }
 
     /*
@@ -1747,6 +1754,9 @@ test(
       pinned.stdout + pinned.stderr, /读不出来/,
       '--run-id 这条路的失败理由也要说清，不能静默按缺省继续',
     );
+    // 归属无误时它与另外七处同状态：同样以共用出口段收尾，只列钉住的那一份（代码双审 r1 GLM-01）
+    assertUnreadableExit(pinned.stdout + pinned.stderr, [files[1]!], 'gate --check --run-id（钉住读不出）');
+    assert.ok(!(pinned.stdout + pinned.stderr).includes(files[0]!), '只列钉住的那一份');
   },
 );
 
@@ -1917,8 +1927,77 @@ test('A4′：闸门项指向不存在的运行 ⇒ approve 退 65（第 2 步�
   assert.ok(!out.includes(APPROVAL_CHECK_NO_RUN_ID));
   assert.match(out, /20990101T000000Z/);
   assert.match(out, /dual-abandon/);
+  // 读不出那一条先给恢复、再给 abandon，并以共用出口段收尾（留痕读不出的出口计划 r2 §2.2，AGY-01）
+  assertApproveForkExit(out, path.join(fx.stageDir, '_meta', 'run-20990101T000000Z.json'));
   await assertNotApproved(fx);
   await walkAbandonExit(fx);
+});
+
+/** approve 读不出那一条的出口形态：恢复在前、abandon 在后、条件句在、以共用出口段收尾 */
+function assertApproveForkExit(out: string, file: string) {
+  const restore = out.indexOf('恢复后直接重新 approve');
+  const abandon = out.indexOf('dual-abandon');
+  assert.ok(restore >= 0, `没给「先恢复、恢复后直接重新 approve」：\n${out}`);
+  assert.ok(abandon > restore, `abandon 排在了恢复之前——会作废一轮有效的审查结论（AGY-01）：\n${out}`);
+  assert.match(out, /重跑同样会被拒绝/, 'abandon 之后的重跑是有条件的，要说清');
+  assertUnreadableExit(out, [file], 'approve（闸门项的 run_id 读不出）');
+}
+
+/*
+ * A4″（E2）：闸门项指向的正是该阶段**最新且读不出**的那一份（留痕读不出的出口计划 r2 §1.4 E2 / §5.2）。
+ * 上一版出口是「abandon 后重跑」：abandon 走得通，重跑却撞 `review --start` 的 `corrupt` 判定退 2——
+ * **按出口走一遍**，走到的应当是共用出口段说的那一步，而不是又一次「重跑」。
+ */
+test('A4″：闸门项指向最新且读不出的运行 ⇒ approve 退 65；abandon 走得通，重跑仍被拒且给同一段出口', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await toAwaitingApproval(fx);
+  const file = path.join(fx.stageDir, '_meta', `run-${runId}.json`);
+  await fs.writeFile(file, '{}\n', 'utf8');
+
+  const r = await approveNow(fx.root);
+  const out = r.stdout + r.stderr;
+  assert.equal(r.code, EXIT.MISSING_ARTIFACT, `运行元数据读不出仍放行或退错码：\n${out}`);
+  assert.ok(out.includes(APPROVAL_CHECK_META_UNREADABLE), out);
+  assertApproveForkExit(out, file);
+  await assertNotApproved(fx);
+
+  const ab = await cli(fx.root, ['abandon', '--topic', TOPIC, '--stage', 'plan', '--reason', '留痕读不出']);
+  assert.equal(ab.code, EXIT.OK, `abandon 应当总走得通（它不读这份留痕）：\n${ab.stdout}${ab.stderr}`);
+  const rerun = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--entry', 'C', '--session-id', SESSION, '--json'],
+    STUB,
+  );
+  assert.equal(rerun.code, EXIT.GATE_BLOCK, `读不出的正是最新一份，重跑应被 corrupt 判定拒绝：\n${rerun.stdout}${rerun.stderr}`);
+  assertUnreadableExit(rerun.stderr, [file], 'review --start（abandon 之后重跑）');
+});
+
+/*
+ * A4‴（E3，计划双审 AGY-01）：同 E2，但这份留痕已提交过——② 档的出口是用户在终端 `git restore`，
+ * 恢复之后**直接重新 approve**：复核没过时闸门保持等待审批，这一轮的审查结论照样有效，不必 abandon 重跑。
+ * 夹具里由用例代为执行 restore（真实场景是用户在终端里做，会话里会被 Hook 拦下）。
+ */
+test('A4‴：已提交的运行留痕在工作树里被改坏 ⇒ approve 退 65；restore 之后直接重新 approve 即通过', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await toAwaitingApproval(fx);
+  const { run } = await import('../../src/trivium/util/exec.js');
+  const git = (args: string[]) => run('git', ['-c', 'user.email=a@a', '-c', 'user.name=a', ...args], { cwd: fx.root, timeoutMs: 30_000 });
+  assert.equal((await git(['add', '-A'])).code, 0);
+  assert.equal((await git(['commit', '-q', '--no-verify', '-m', '归档'])).code, 0);
+
+  const file = path.join(fx.stageDir, '_meta', `run-${runId}.json`);
+  await fs.writeFile(file, '{}\n', 'utf8');
+  const r = await approveNow(fx.root);
+  const out = r.stdout + r.stderr;
+  assert.equal(r.code, EXIT.MISSING_ARTIFACT, out);
+  assertApproveForkExit(out, file);
+  await assertNotApproved(fx);
+
+  const restored = await git(['restore', file]);
+  assert.equal(restored.code, 0, `${restored.stdout}${restored.stderr}`);
+  const again = await approveNow(fx.root);
+  assert.equal(again.code, EXIT.OK, `恢复后重新 approve 应当通过：\n${again.stdout}${again.stderr}`);
+  assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'approved');
 });
 
 test('拒绝与放弃不复核：停点之后裁决件被删，reject 照常生效', { skip: bundleMissing && bundleSkipReason }, async () => {

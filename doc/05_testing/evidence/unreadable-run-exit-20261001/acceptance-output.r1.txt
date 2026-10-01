@@ -1,0 +1,77 @@
+✓ 构建不同：before c16ea6f8e980 / after ba3fd194501a / lagging df1b1c129213
+✓ 构建内容：改后 bundle 含共用出口段=true，改前=false
+✓ A/before/reviewStart 退出码：退 2（应 2）
+✓ A/before/reviewStart 复现循环出口：改前文案含循环出口=true
+✓ A/before/topicClaim 退出码：退 2（应 2）
+✓ A/before/topicClaim 复现循环出口：改前文案含循环出口=true
+✓ A/before/topicResolve 退出码：退 2（应 2）
+✓ A/before/topicResolve 复现循环出口：改前文案含循环出口=true
+✓ A/before/hookPreWrite 退出码：退 2（应 2）
+✓ A/before/hookPreWrite 复现循环出口：改前文案含循环出口=true
+✓ A/before/gateCheck 退出码：退 65（应 65）
+✓ A/before/gateCheck 复现循环出口：改前文案含循环出口=true
+✓ A/before 出口走通：restore 0 → topic resolve 0 → 重跑 0
+✓ B/before/reviewStart 退出码：退 2（应 2）
+✓ B/before/reviewStart 复现循环出口：改前文案含循环出口=true
+✓ B/before/topicClaim 退出码：退 2（应 2）
+✓ B/before/topicClaim 复现循环出口：改前文案含循环出口=true
+✓ B/before/topicResolve 退出码：退 2（应 2）
+✓ B/before/topicResolve 复现循环出口：改前文案含循环出口=true
+✓ B/before/hookPreWrite 退出码：退 2（应 2）
+✓ B/before/hookPreWrite 复现循环出口：改前文案含循环出口=true
+✓ B/before/gateCheck 退出码：退 65（应 65）
+✓ B/before/gateCheck 复现循环出口：改前文案含循环出口=true
+✓ B/before 工具内没有出口：restore 退 1（应非 0）、重跑退 2（应 2）、提交锚退 2（应 2）
+✓ B/before 删除只把拒绝挪到提交时：删后 topic resolve 退 0、提交锚退 2、含「运行清单已丢失」=true
+✓ C/before 构造：写入方退 1、termination.by=sync_exception、git status 干净=true
+✓ C/before 落后版本判读不出：落后版本 topic resolve 退 2、gate --check 退 65
+✓ C/before 换回不旧于写入方的版本即恢复：topic resolve 退 0
+✓ D/before 骨架可读、不进本状态：骨架 status=running、按组结束 worker=true、打断后 topic resolve 退 0、--wait 收尾后（status=failed，termination={"by":"worker_lost","reason":"pid_gone"}）退 0
+✓ E1/before approve 退 65：退 65
+✓ E1/before abandon 后重跑走通：abandon 0 → 重跑 0
+✓ E2/before approve 退 65：退 65
+✓ E2/before abandon 走通、重跑仍被拒：abandon 0 → 重跑 2
+✓ E2/before 重跑被拒时复现循环出口：含循环出口=true
+✓ E3/before approve 退 65：退 65
+✓ E3/before 恢复后直接重新 approve：restore 退 0 → 重新 approve 退 0
+✓ F/before Driver 侧判读不出：topic resolve 退 2；gate --check 退 2（EV-73：采信较旧一份，只记录）
+✓ A/after/reviewStart 退出码：退 2（应 2）
+✓ A/after/reviewStart 出口：共用段=true、列出文件=true、循环出口=false
+✓ A/after/topicClaim 退出码：退 2（应 2）
+✓ A/after/topicClaim 出口：共用段=true、列出文件=true、循环出口=false
+✓ A/after/topicResolve 退出码：退 2（应 2）
+✓ A/after/topicResolve 出口：共用段=true、列出文件=true、循环出口=false
+✓ A/after/hookPreWrite 退出码：退 2（应 2）
+✓ A/after/hookPreWrite 出口：共用段=true、列出文件=true、循环出口=false
+✓ A/after/gateCheck 退出码：退 65（应 65）
+✓ A/after/gateCheck 出口：共用段=true、列出文件=true、循环出口=false
+✓ A/after 出口走通：restore 0 → topic resolve 0 → 重跑 0
+✓ B/after/reviewStart 退出码：退 2（应 2）
+✓ B/after/reviewStart 出口：共用段=true、列出文件=true、循环出口=false
+✓ B/after/topicClaim 退出码：退 2（应 2）
+✓ B/after/topicClaim 出口：共用段=true、列出文件=true、循环出口=false
+✓ B/after/topicResolve 退出码：退 2（应 2）
+✓ B/after/topicResolve 出口：共用段=true、列出文件=true、循环出口=false
+✓ B/after/hookPreWrite 退出码：退 2（应 2）
+✓ B/after/hookPreWrite 出口：共用段=true、列出文件=true、循环出口=false
+✓ B/after/gateCheck 退出码：退 65（应 65）
+✓ B/after/gateCheck 出口：共用段=true、列出文件=true、循环出口=false
+✓ B/after 工具内没有出口：restore 退 1（应非 0）、重跑退 2（应 2）、提交锚退 2（应 2）
+✓ B/after 删除只把拒绝挪到提交时：删后 topic resolve 退 0、提交锚退 2、含「运行清单已丢失」=true
+✓ C/after 构造：写入方退 1、termination.by=sync_exception、git status 干净=true
+✓ C/after 落后版本判读不出：落后版本 topic resolve 退 2、gate --check 退 65
+✓ C/after 换回不旧于写入方的版本即恢复：topic resolve 退 0
+✓ D/after 骨架可读、不进本状态：骨架 status=running、按组结束 worker=true、打断后 topic resolve 退 0、--wait 收尾后（status=failed，termination={"by":"worker_lost","reason":"pid_gone"}）退 0
+✓ E1/after approve 退 65：退 65
+✓ E1/after approve 出口：先恢复、恢复不了才 abandon 两句都在
+✓ E1/after abandon 后重跑走通：abandon 0 → 重跑 0
+✓ E2/after approve 退 65：退 65
+✓ E2/after approve 出口：共用段=true、列出文件=true、恢复先于 abandon=true
+✓ E2/after abandon 走通、重跑仍被拒：abandon 0 → 重跑 2
+✓ E2/after 重跑被拒时给同一段出口：共用段=true、列出文件=true
+✓ E3/after approve 退 65：退 65
+✓ E3/after approve 出口：共用段=true、列出文件=true、恢复先于 abandon=true
+✓ E3/after 恢复后直接重新 approve：restore 退 0 → 重新 approve 退 0
+✓ F/after Driver 侧判读不出：topic resolve 退 2；gate --check 退 2（EV-73：采信较旧一份，只记录）
+
+合计 75/75

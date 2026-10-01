@@ -1,0 +1,1479 @@
+# v18.20.8（/Users/chenzhenbo/.npm/_npx/83786caec519d9fd/node_modules/.bin/node）
+TAP version 13
+# Subtest: 双方共同 blocker 被驳回 → task.json 记 disputed，status 显示争议（§6.6 规则 7）
+ok 1 - 双方共同 blocker 被驳回 → task.json 记 disputed，status 显示争议（§6.6 规则 7）
+  ---
+  duration_ms: 2900.52275
+  ...
+# Subtest: 无共同驳回 → 三态落 checked-none；run.json 那一侧只到 pending
+ok 2 - 无共同驳回 → 三态落 checked-none；run.json 那一侧只到 pending
+  ---
+  duration_ms: 2634.300583
+  ...
+# Subtest: review 必须把闸门写进 state.json，否则四个 Hook 全都无事可判
+ok 3 - review 必须把闸门写进 state.json，否则四个 Hook 全都无事可判
+  ---
+  duration_ms: 2438.819541
+  ...
+# Subtest: 裁决未齐备 → hook-pre-commit 退 2 并点名主题（AC-12）
+ok 4 - 裁决未齐备 → hook-pre-commit 退 2 并点名主题（AC-12）
+  ---
+  duration_ms: 2576.342791
+  ...
+# Subtest: 裁决未齐备 → hook-stop 阻止收工（AC-02）
+ok 5 - 裁决未齐备 → hook-stop 阻止收工（AC-02）
+  ---
+  duration_ms: 2518.069
+  ...
+# Subtest: 裁决齐备并通过校验 → 闸门回 idle，两个 Hook 一起放行
+ok 6 - 裁决齐备并通过校验 → 闸门回 idle，两个 Hook 一起放行
+  ---
+  duration_ms: 2908.243084
+  ...
+# Subtest: EV-133：--check 通过、--await-approval、approve 三步之后 run.json 都逐字节不变（不回写 adjudication_complete）
+ok 7 - EV-133：--check 通过、--await-approval、approve 三步之后 run.json 都逐字节不变（不回写 adjudication_complete）
+  ---
+  duration_ms: 2987.953834
+  ...
+# Subtest: AGY-02：命令 B/C/D 的 check 通过后闸门立起来，省略 --await-approval 也旁路不了
+ok 8 - AGY-02：命令 B/C/D 的 check 通过后闸门立起来，省略 --await-approval 也旁路不了
+  ---
+  duration_ms: 3085.244666
+  ...
+# Subtest: AGY-05：通过审批必须显式指定 --stage，不能批量放行
+ok 9 - AGY-05：通过审批必须显式指定 --stage，不能批量放行
+  ---
+  duration_ms: 2853.167792
+  ...
+# Subtest: EV-24：多余位置参数 / --reject 带值 → 退 64 并指向 --reason；附言经 --reason 落盘
+ok 10 - EV-24：多余位置参数 / --reject 带值 → 退 64 并指向 --reason；附言经 --reason 落盘
+  ---
+  duration_ms: 3169.435625
+  ...
+# Subtest: EV-24：--reason=<值> 是那条报错给的出口，必须真能用且原样落盘（CODEX-03）
+ok 11 - EV-24：--reason=<值> 是那条报错给的出口，必须真能用且原样落盘（CODEX-03）
+  ---
+  duration_ms: 2799.476583
+  ...
+# Subtest: EV-24：help / version 豁免上限表；topic 与 gate 各接受恰好一个位置参数（CODEX-11）
+ok 12 - EV-24：help / version 豁免上限表；topic 与 gate 各接受恰好一个位置参数（CODEX-11）
+  ---
+  duration_ms: 292.941125
+  ...
+# Subtest: 裁决件不完整 → 校验不放行，闸门保持拦截
+ok 13 - 裁决件不完整 → 校验不放行，闸门保持拦截
+  ---
+  duration_ms: 2630.096917
+  ...
+# Subtest: 审查进行中禁写业务文件，但归档内的裁决件不拦（§8.5）
+ok 14 - 审查进行中禁写业务文件，但归档内的裁决件不拦（§8.5）
+  ---
+  duration_ms: 512.501416
+  ...
+# Subtest: 当轮 Driver 按真实留痕判定：非缺省 Driver 交得了卷，审核者产出仍受保护
+ok 15 - 当轮 Driver 按真实留痕判定：非缺省 Driver 交得了卷，审核者产出仍受保护
+  ---
+  duration_ms: 300.508
+  ...
+# Subtest: 伪造角色后缀文件一律拦下，与闸门状态无关（AC-07）
+ok 16 - 伪造角色后缀文件一律拦下，与闸门状态无关（AC-07）
+  ---
+  duration_ms: 275.936917
+  ...
+# Subtest: 删掉一份审查文档后提交被拦（§17.3 剧本 5）
+ok 17 - 删掉一份审查文档后提交被拦（§17.3 剧本 5）
+  ---
+  duration_ms: 2959.705959
+  ...
+# Subtest: 改动已落盘的审查文档后提交同样被拦
+ok 18 - 改动已落盘的审查文档后提交同样被拦
+  ---
+  duration_ms: 2822.070458
+  ...
+# Subtest: 重跑抬升的新工件不会被误判——旧工件仍在即放行
+ok 19 - 重跑抬升的新工件不会被误判——旧工件仍在即放行
+  ---
+  duration_ms: 5331.119333
+  ...
+# Subtest: 尚未落盘的工件不算「丢失」——只拦记录在案的
+ok 20 - 尚未落盘的工件不算「丢失」——只拦记录在案的
+  ---
+  duration_ms: 176.470541
+  ...
+# Subtest: gate.block_commit 为 false 时完全不拦（用户显式关掉的开关要生效）
+ok 21 - gate.block_commit 为 false 时完全不拦（用户显式关掉的开关要生效）
+  ---
+  duration_ms: 2776.729792
+  ...
+# Subtest: 旧轮未裁决就重跑 → 拒绝启动，并指出两条正当出路
+ok 22 - 旧轮未裁决就重跑 → 拒绝启动，并指出两条正当出路
+  ---
+  duration_ms: 2782.436666
+  ...
+# Subtest: 显式 abandon 之后可以重跑
+ok 23 - 显式 abandon 之后可以重跑
+  ---
+  duration_ms: 4899.74475
+  ...
+# Subtest: gate --check 放行只动本轮闸门，不清掉已接管的新一轮
+ok 24 - gate --check 放行只动本轮闸门，不清掉已接管的新一轮
+  ---
+  duration_ms: 2608.256416
+  ...
+# Subtest: --cancel 旧 run 不清掉新一轮的闸门
+ok 25 - --cancel 旧 run 不清掉新一轮的闸门
+  ---
+  duration_ms: 784.474834
+  ...
+# Subtest: EV-128 E4：running 的 run.json 已入库、--cancel 回写后提交锚放行；入库的 cancelled 版本再改被拦
+ok 26 - EV-128 E4：running 的 run.json 已入库、--cancel 回写后提交锚放行；入库的 cancelled 版本再改被拦
+  ---
+  duration_ms: 1181.784667
+  ...
+# Subtest: EV-128 E5：取消轮回写为 cancelled 后，gate 仍把它当最新一轮（run_id / 轮次不变）
+ok 27 - EV-128 E5：取消轮回写为 cancelled 后，gate 仍把它当最新一轮（run_id / 轮次不变）
+  ---
+  duration_ms: 1185.121667
+  ...
+# Subtest: EV-142 W1 / W2：worker 写审查文档时抛异常 ⇒ 归档 run.json 收尾为 failed、带 termination，且先于 status.json 写
+ok 28 - EV-142 W1 / W2：worker 写审查文档时抛异常 ⇒ 归档 run.json 收尾为 failed、带 termination，且先于 status.json 写
+  ---
+  duration_ms: 2637.527042
+  ...
+# Subtest: EV-142 X1：running 的 run.json 已入库、worker 被杀后 --wait 收尾为 failed ⇒ 提交锚放行；随后 --cancel 终态早退、run.json 不动
+ok 29 - EV-142 X1：running 的 run.json 已入库、worker 被杀后 --wait 收尾为 failed ⇒ 提交锚放行；随后 --cancel 终态早退、run.json 不动
+  ---
+  duration_ms: 1377.624083
+  ...
+# Subtest: EV-142 X2：先 --cancel 后 --wait ⇒ --wait 按终态返回、不进失联分支，run.json 仍是 cancelled 且逐字节不变
+ok 30 - EV-142 X2：先 --cancel 后 --wait ⇒ --wait 按终态返回、不进失联分支，run.json 仍是 cancelled 且逐字节不变
+  ---
+  duration_ms: 869.714291
+  ...
+# Subtest: 心跳过期但进程仍在的 worker_lost：不做不可逆抹除，留给会话启动清扫（代码双审 r1 CODEX-01）
+ok 31 - 心跳过期但进程仍在的 worker_lost：不做不可逆抹除，留给会话启动清扫（代码双审 r1 CODEX-01）
+  ---
+  duration_ms: 2984.117875
+  ...
+# Subtest: worker 被杀后 --wait 判 worker_lost，并回收 running 闸门
+ok 32 - worker 被杀后 --wait 判 worker_lost，并回收 running 闸门
+  ---
+  duration_ms: 1161.811417
+  ...
+# Subtest: 裁决未齐备时 --await-approval 被拒，堵死「跳过裁决直接审批」
+ok 33 - 裁决未齐备时 --await-approval 被拒，堵死「跳过裁决直接审批」
+  ---
+  duration_ms: 2664.758542
+  ...
+# Subtest: 裁决齐备后 --await-approval 正常置闸门
+ok 34 - 裁决齐备后 --await-approval 正常置闸门
+  ---
+  duration_ms: 2717.460334
+  ...
+# Subtest: 删掉 run.json 本身也拦——清单不能是被核对对象自己
+ok 35 - 删掉 run.json 本身也拦——清单不能是被核对对象自己
+  ---
+  duration_ms: 3135.018708
+  ...
+# Subtest: 把 run.json 搅坏也拦，而不是静默跳过
+ok 36 - 把 run.json 搅坏也拦，而不是静默跳过
+  ---
+  duration_ms: 3132.768917
+  ...
+# Subtest: 被审补丁与送审包也在保护集内（审查意见 GLM-r2-05）
+ok 37 - 被审补丁与送审包也在保护集内（审查意见 GLM-r2-05）
+  ---
+  duration_ms: 3292.360042
+  ...
+# Subtest: 已提交的归档文件被删 → git 锚捕获（整目录删除/改名的情形）
+ok 38 - 已提交的归档文件被删 → git 锚捕获（整目录删除/改名的情形）
+  ---
+  duration_ms: 3373.616042
+  ...
+# Subtest: verify 记录也受保护（审查意见 GLM-r2-08）
+ok 39 - verify 记录也受保护（审查意见 GLM-r2-08）
+  ---
+  duration_ms: 3357.231166
+  ...
+# Subtest: 改审查文档并同步改写 run.json 的 sha → git 锚拦下（锚与被核对对象同域）
+ok 40 - 改审查文档并同步改写 run.json 的 sha → git 锚拦下（锚与被核对对象同域）
+  ---
+  duration_ms: 3352.2475
+  ...
+# Subtest: 结构化结论 review-*.json 在保护集内：改成空意见即拦，删掉则 gate --check 失败
+ok 41 - 结构化结论 review-*.json 在保护集内：改成空意见即拦，删掉则 gate --check 失败
+  ---
+  duration_ms: 3757.699541
+  ...
+# Subtest: 首次提交之前删掉整个主题目录 → state.json 锚拦下
+ok 42 - 首次提交之前删掉整个主题目录 → state.json 锚拦下
+  ---
+  duration_ms: 3730.251791
+  ...
+# Subtest: hook-pre-write 拒绝 Driver 写 _meta/ 与 task.json（真实 CLI）
+ok 43 - hook-pre-write 拒绝 Driver 写 _meta/ 与 task.json（真实 CLI）
+  ---
+  duration_ms: 3965.968084
+  ...
+# Subtest: git 锚：task.json 与裁决件的正常改动不得误伤，不可变工件的改动才拦
+ok 44 - git 锚：task.json 与裁决件的正常改动不得误伤，不可变工件的改动才拦
+  ---
+  duration_ms: 3718.036333
+  ...
+# Subtest: 搅坏 task.json → 按违例拦截，而不是静默当成空
+ok 45 - 搅坏 task.json → 按违例拦截，而不是静默当成空
+  ---
+  duration_ms: 3634.493084
+  ...
+# Subtest: task.json 不存在是正常的，不拦
+ok 46 - task.json 不存在是正常的，不拦
+  ---
+  duration_ms: 471.384917
+  ...
+# Subtest: 把 run.json 挪到别的阶段目录也拦（审查意见 GLM-08）
+ok 47 - 把 run.json 挪到别的阶段目录也拦（审查意见 GLM-08）
+  ---
+  duration_ms: 3740.504792
+  ...
+# Subtest: 推断不出 runId 时 --await-approval 拒绝，而不是跳过校验
+ok 48 - 推断不出 runId 时 --await-approval 拒绝，而不是跳过校验
+  ---
+  duration_ms: 250.584209
+  ...
+# Subtest: --cancel 已终态的运行：不改写历史、不动闸门（审查意见 GLM-04）
+ok 49 - --cancel 已终态的运行：不改写历史、不动闸门（审查意见 GLM-04）
+  ---
+  duration_ms: 2820.280583
+  ...
+# Subtest: hook-session-start 回收「worker 已死但闸门还挂着」的遗留状态（GLM-06）
+ok 50 - hook-session-start 回收「worker 已死但闸门还挂着」的遗留状态（GLM-06）
+  ---
+  duration_ms: 1102.962708
+  ...
+# Subtest: worker 还活着时 hook-session-start 绝不回收
+ok 51 - worker 还活着时 hook-session-start 绝不回收
+  ---
+  duration_ms: 506.506125
+  ...
+# Subtest: T-11：非缺省 Driver 下 gate --check 找的是 -revised-<真Driver>.md，不是缺省的
+ok 52 - T-11：非缺省 Driver 下 gate --check 找的是 -revised-<真Driver>.md，不是缺省的
+  ---
+  duration_ms: 3051.876042
+  ...
+# Subtest: T-12：留痕全部读不出时，硬失败的文案必须给出走得通的出口
+ok 53 - T-12：留痕全部读不出时，硬失败的文案必须给出走得通的出口
+  ---
+  duration_ms: 520.228958
+  ...
+# Subtest: A1：停点之后裁决件少了一条 ⇒ approve 退 2，闸门保持等待
+ok 54 - A1：停点之后裁决件少了一条 ⇒ approve 退 2，闸门保持等待
+  ---
+  duration_ms: 2766.262791
+  ...
+# Subtest: A2：--await-approval 通过后删掉裁决件 ⇒ approve 仍退 2
+ok 55 - A2：--await-approval 通过后删掉裁决件 ⇒ approve 仍退 2
+  ---
+  duration_ms: 3066.513916
+  ...
+# Subtest: A3：--await-approval 通过后改了渲染出的审查文档 ⇒ approve 退 2，点名该文件
+ok 56 - A3：--await-approval 通过后改了渲染出的审查文档 ⇒ approve 退 2，点名该文件
+  ---
+  duration_ms: 2949.753208
+  ...
+# Subtest: A3′：--await-approval 之前审查文档已被改 ⇒ --await-approval 退 2（抽核两处都补了）
+ok 57 - A3′：--await-approval 之前审查文档已被改 ⇒ --await-approval 退 2（抽核两处都补了）
+  ---
+  duration_ms: 2829.528334
+  ...
+# Subtest: A4：闸门项没有 run_id ⇒ approve 退 65（第 1 步拒绝、不跳过复核），出口 abandon 后重跑走得通
+ok 58 - A4：闸门项没有 run_id ⇒ approve 退 65（第 1 步拒绝、不跳过复核），出口 abandon 后重跑走得通
+  ---
+  duration_ms: 5465.468083
+  ...
+# Subtest: A4′：闸门项指向不存在的运行 ⇒ approve 退 65（第 2 步拒绝），出口同样走得通
+ok 59 - A4′：闸门项指向不存在的运行 ⇒ approve 退 65（第 2 步拒绝），出口同样走得通
+  ---
+  duration_ms: 5424.653458
+  ...
+# Subtest: A4″：闸门项指向最新且读不出的运行 ⇒ approve 退 65；abandon 走得通，重跑仍被拒且给同一段出口
+ok 60 - A4″：闸门项指向最新且读不出的运行 ⇒ approve 退 65；abandon 走得通，重跑仍被拒且给同一段出口
+  ---
+  duration_ms: 4244.034791
+  ...
+# Subtest: A4‴：已提交的运行留痕在工作树里被改坏 ⇒ approve 退 65；restore 之后直接重新 approve 即通过
+ok 61 - A4‴：已提交的运行留痕在工作树里被改坏 ⇒ approve 退 65；restore 之后直接重新 approve 即通过
+  ---
+  duration_ms: 4248.971333
+  ...
+# Subtest: 拒绝与放弃不复核：停点之后裁决件被删，reject 照常生效
+ok 62 - 拒绝与放弃不复核：停点之后裁决件被删，reject 照常生效
+  ---
+  duration_ms: 3303.531916
+  ...
+# Subtest: W1：闸门期新建 NOTES.md ⇒ approve 仍退 0、照常落审批，输出里列出 NOTES.md
+ok 63 - W1：闸门期新建 NOTES.md ⇒ approve 仍退 0、照常落审批，输出里列出 NOTES.md
+  ---
+  duration_ms: 3032.467625
+  ...
+# Subtest: W2：闸门期没有改动 ⇒ approve 退 0，输出「无改动」一行
+ok 64 - W2：闸门期没有改动 ⇒ approve 退 0，输出「无改动」一行
+  ---
+  duration_ms: 2833.001333
+  ...
+# Subtest: W3：approve --json 带 worktree_summary（按阶段），含 total 与 truncated
+ok 65 - W3：approve --json 带 worktree_summary（按阶段），含 total 与 truncated
+  ---
+  duration_ms: 2911.025791
+  ...
+# Subtest: W4：停点出口也打印摘要——--check 自动立停点与 --await-approval 都列出改动
+ok 66 - W4：停点出口也打印摘要——--check 自动立停点与 --await-approval 都列出改动
+  ---
+  duration_ms: 3178.849209
+  ...
+# Subtest: W5：基线被 git 清理 ⇒ approve 仍退 0、照常落审批，报「取不到」而不是「无改动」
+ok 67 - W5：基线被 git 清理 ⇒ approve 仍退 0、照常落审批，报「取不到」而不是「无改动」
+  ---
+  duration_ms: 2869.413583
+  ...
+# Subtest: W6：审查收尾把 after_tree_hash 落进 run.json，且过 run.v2 schema
+ok 68 - W6：审查收尾把 after_tree_hash 落进 run.json，且过 run.v2 schema
+  ---
+  duration_ms: 2478.607292
+  ...
+# Subtest: W7：摘要超时 ⇒ approve 退 0、照常落审批，报超时（先打印再落审批不让摘要挡住审批）
+ok 69 - W7：摘要超时 ⇒ approve 退 0、照常落审批，报超时（先打印再落审批不让摘要挡住审批）
+  ---
+  duration_ms: 2755.499042
+  ...
+# Subtest: W8：同阶段重跑一轮后审批 ⇒ 摘要的 run id 与基线都取自闸门项指向的新一轮（计划双审 CODEX-09）
+ok 70 - W8：同阶段重跑一轮后审批 ⇒ 摘要的 run id 与基线都取自闸门项指向的新一轮（计划双审 CODEX-09）
+  ---
+  duration_ms: 5558.033667
+  ...
+# Subtest: 事后收尾余项 P1（原闸门拦截不留骨架 B5）：置闸门之后登记失败 ⇒ 闸门回收为 idle、锁已放、骨架收尾为 failed（prepare_exception）；重跑前不带 --run-id 的 gate 仍指向它
+ok 71 - 事后收尾余项 P1（原闸门拦截不留骨架 B5）：置闸门之后登记失败 ⇒ 闸门回收为 idle、锁已放、骨架收尾为 failed（prepare_exception）；重跑前不带 --run-id 的 gate 仍指向它
+  ---
+  duration_ms: 565.921084
+  ...
+# Subtest: 闸门拦截不留骨架 B6：上一轮已审批（槽位 approved）时置闸门之后失败 ⇒ 回收为 idle，不恢复成 approved（D2 (a)）
+ok 72 - 闸门拦截不留骨架 B6：上一轮已审批（槽位 approved）时置闸门之后失败 ⇒ 回收为 idle，不恢复成 approved（D2 (a)）
+  ---
+  duration_ms: 4557.765833
+  ...
+# Subtest: 闸门拦截不留骨架 B7：置闸门之后重置收工阻断计数失败 ⇒ 同样回收闸门、锁已放、零工件
+ok 73 - 闸门拦截不留骨架 B7：置闸门之后重置收工阻断计数失败 ⇒ 同样回收闸门、锁已放、零工件
+  ---
+  duration_ms: 288.985084
+  ...
+# Subtest: 事后收尾余项 P2：第 1 轮已审批后第 2 轮登记失败 ⇒ 第 2 轮骨架收尾为 prepare_exception；主题任务文件与第 1 轮 run.json 逐字节不变
+ok 74 - 事后收尾余项 P2：第 1 轮已审批后第 2 轮登记失败 ⇒ 第 2 轮骨架收尾为 prepare_exception；主题任务文件与第 1 轮 run.json 逐字节不变
+  ---
+  duration_ms: 4272.686625
+  ...
+# Subtest: 事后收尾余项 P3：startRun 派生前失败（写交接文件 EACCES）⇒ 骨架与登记收尾为 failed（prepare_exception），闸门 idle、锁已放
+ok 75 - 事后收尾余项 P3：startRun 派生前失败（写交接文件 EACCES）⇒ 骨架与登记收尾为 failed（prepare_exception），闸门 idle、锁已放
+  ---
+  duration_ms: 310.024833
+  ...
+# Subtest: 事后收尾余项 P3b：spawnDetached 内部、子进程诞生之前失败（开日志文件 EISDIR）⇒ 同样收尾为 prepare_exception，且没有 worker
+ok 76 - 事后收尾余项 P3b：spawnDetached 内部、子进程诞生之前失败（开日志文件 EISDIR）⇒ 同样收尾为 prepare_exception，且没有 worker
+  ---
+  duration_ms: 339.442875
+  ...
+# Subtest: 派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker
+ok 77 - 派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker
+  ---
+  duration_ms: 829.261083
+  ...
+# Subtest: 派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）
+ok 78 - 派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）
+  ---
+  duration_ms: 3658.603458
+  ...
+# Subtest: 派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）
+ok 79 - 派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）
+  ---
+  duration_ms: 2488.814459
+  ...
+# Subtest: 事后收尾余项 P5：同步路径 executeRun 抛错（写审查文档 EACCES）⇒ 骨架与登记收尾为 failed（sync_exception），闸门 idle
+ok 80 - 事后收尾余项 P5：同步路径 executeRun 抛错（写审查文档 EACCES）⇒ 骨架与登记收尾为 failed（sync_exception），闸门 idle
+  ---
+  duration_ms: 466.627708
+  ...
+# Subtest: 事后收尾余项 P6：同步路径在准备阶段就失败（登记写不进）⇒ 只由 prepareRun 收尾一次（prepare_exception），同步路径的 catch 不再收
+ok 81 - 事后收尾余项 P6：同步路径在准备阶段就失败（登记写不进）⇒ 只由 prepareRun 收尾一次（prepare_exception），同步路径的 catch 不再收
+  ---
+  duration_ms: 283.293334
+  ...
+# Subtest: EV-152 I1：--cancel 结束 worker 以 killTree 拉起的两侧审查员 CLI（整组），归档仍由 cancelRun 收尾为 cancelled
+ok 82 - EV-152 I1：--cancel 结束 worker 以 killTree 拉起的两侧审查员 CLI（整组），归档仍由 cancelRun 收尾为 cancelled
+  ---
+  duration_ms: 1108.2595
+  ...
+# Subtest: EV-152 I2：一侧 CLI 忽略 SIGTERM——worker 在宽限内升级 SIGKILL 结束它，--cancel 不被升级
+ok 83 - EV-152 I2：一侧 CLI 忽略 SIGTERM——worker 在宽限内升级 SIGKILL 结束它，--cancel 不被升级
+  ---
+  duration_ms: 3177.599042
+  ...
+# Subtest: EV-154 I3：worker 先被强杀，再 --cancel ⇒ 按记录逐组结束两侧 CLI（忽略 SIGTERM 的那组升级 SIGKILL），收尾 cancelled 并清掉已结束的记录
+ok 84 - EV-154 I3：worker 先被强杀，再 --cancel ⇒ 按记录逐组结束两侧 CLI（忽略 SIGTERM 的那组升级 SIGKILL），收尾 cancelled 并清掉已结束的记录
+  ---
+  duration_ms: 3046.211959
+  ...
+# Subtest: EV-154 I4：worker 的事件循环被堵住 ⇒ --cancel 升级 SIGKILL，随后按记录结束两侧 CLI
+ok 85 - EV-154 I4：worker 的事件循环被堵住 ⇒ --cancel 升级 SIGKILL，随后按记录结束两侧 CLI
+  ---
+  duration_ms: 7204.167042
+  ...
+# Subtest: EV-154 I5：worker 被强杀后 --wait 先判失联（不结束进程），之后 --cancel 在终态早退分支里按记录结束 CLI、不改 status.json
+ok 86 - EV-154 I5：worker 被强杀后 --wait 先判失联（不结束进程），之后 --cancel 在终态早退分支里按记录结束 CLI、不改 status.json
+  ---
+  duration_ms: 1147.932417
+  ...
+# Subtest: EV-154 I6：worker 已死而 CLI 还活着 ⇒ 会话启动清扫不结束进程、也不抹凭据副本（EV-38）；CLI 结束后再清扫即抹
+ok 87 - EV-154 I6：worker 已死而 CLI 还活着 ⇒ 会话启动清扫不结束进程、也不抹凭据副本（EV-38）；CLI 结束后再清扫即抹
+  ---
+  duration_ms: 978.727
+  ...
+# Subtest: EV-154 I7：CLI 自然结束 ⇒ status.json 里该侧的记录清成 null
+ok 88 - EV-154 I7：CLI 自然结束 ⇒ status.json 里该侧的记录清成 null
+  ---
+  duration_ms: 2623.340709
+  ...
+# Subtest: EV-146 J1：worker 事件循环被堵住、--wait 判 heartbeat_stale ⇒ --cancel 升级 SIGKILL 结束它、按记录结束两侧 CLI、补收 run.json 与登记、回收锁；status.json 与闸门不动，之后能重新起跑
+ok 89 - EV-146 J1：worker 事件循环被堵住、--wait 判 heartbeat_stale ⇒ --cancel 升级 SIGKILL 结束它、按记录结束两侧 CLI、补收 run.json 与登记、回收锁；status.json 与闸门不动，之后能重新起跑
+  ---
+  duration_ms: 11834.840542
+  ...
+# Subtest: EV-146 J2：心跳只是慢（事件循环没堵住）也被判 heartbeat_stale ⇒ --cancel 不升级，worker 的处理器自己收拾 CLI 并退出；输出如实说「可能只是心跳慢」
+ok 90 - EV-146 J2：心跳只是慢（事件循环没堵住）也被判 heartbeat_stale ⇒ --cancel 不升级，worker 的处理器自己收拾 CLI 并退出；输出如实说「可能只是心跳慢」
+  ---
+  duration_ms: 4370.881708
+  ...
+# Subtest: EV-146 J3：本格不抹凭据副本（用户决策 7）——--wait 与 --cancel 之后载体仍在；worker 与 CLI 都结束之后，会话启动清扫放行
+ok 91 - EV-146 J3：本格不抹凭据副本（用户决策 7）——--wait 与 --cancel 之后载体仍在；worker 与 CLI 都结束之后，会话启动清扫放行
+  ---
+  duration_ms: 9765.484334
+  ...
+# Subtest: EV-159 G1：worker 被手工结束（未经 --cancel）⇒ --cancel 落 gone 格：按记录结束两侧 CLI、补收 run.json 与登记、回收锁；CLI 结束先于归档补收播报
+ok 92 - EV-159 G1：worker 被手工结束（未经 --cancel）⇒ --cancel 落 gone 格：按记录结束两侧 CLI、补收 run.json 与登记、回收锁；CLI 结束先于归档补收播报
+  ---
+  duration_ms: 4456.621875
+  ...
+# Subtest: EV-159 G2：G1 场景上 --cancel 之后再跑一次 ⇒ 幂等，run.json / task.json / status.json 均逐字节不变，输出不再说「已把归档……收尾为 failed」
+ok 93 - EV-159 G2：G1 场景上 --cancel 之后再跑一次 ⇒ 幂等，run.json / task.json / status.json 均逐字节不变，输出不再说「已把归档……收尾为 failed」
+  ---
+  duration_ms: 4333.091208
+  ...
+# Subtest: EV-158 I1～I5：--start 在 W 下写两种启动时刻；R 下的 --wait、会话启动清扫、trivium scrub、同阶段 --start 都认得活 worker，R 下的 --cancel 对它发 SIGTERM 并收尾
+ok 94 - EV-158 I1～I5：--start 在 W 下写两种启动时刻；R 下的 --wait、会话启动清扫、trivium scrub、同阶段 --start 都认得活 worker，R 下的 --cancel 对它发 SIGTERM 并收尾
+  ---
+  duration_ms: 4575.379667
+  ...
+# Subtest: EV-158 I6（C7 / C8）：--wait 在 W 下判 heartbeat_stale，--cancel 在 R 下 ⇒ 入失联后取消那一格（不再判 mismatch），结束 worker 与两侧 CLI、补收 run.json 为 failed
+ok 95 - EV-158 I6（C7 / C8）：--wait 在 W 下判 heartbeat_stale，--cancel 在 R 下 ⇒ 入失联后取消那一格（不再判 mismatch），结束 worker 与两侧 CLI、补收 run.json 为 failed
+  ---
+  duration_ms: 9246.355583
+  ...
+# Subtest: EV-158 I7（d 格回归）：删掉 status.json 里的规范化字段（模拟旧版写下；--wait 不读锁）⇒ R 下 --wait 仍判失联 pid_gone，与今天相同
+ok 96 - EV-158 I7（d 格回归）：删掉 status.json 里的规范化字段（模拟旧版写下；--wait 不读锁）⇒ R 下 --wait 仍判失联 pid_gone，与今天相同
+  ---
+  duration_ms: 730.661375
+  ...
+# Subtest: EV-157 K1：worker 已死而两侧 CLI 仍活 ⇒ --wait 判失联不抹、正文逐侧带组号、不结束进程、记录留存；会话启动清扫同样挡住；CLI 结束后清扫即抹
+ok 97 - EV-157 K1：worker 已死而两侧 CLI 仍活 ⇒ --wait 判失联不抹、正文逐侧带组号、不结束进程、记录留存；会话启动清扫同样挡住；CLI 结束后清扫即抹
+  ---
+  duration_ms: 1001.407083
+  ...
+# Subtest: EV-157 K2：worker 与两侧 CLI 都已结束 ⇒ --wait 判失联照抹，正文没有「凭据副本未抹」
+ok 98 - EV-157 K2：worker 与两侧 CLI 都已结束 ⇒ --wait 判失联照抹，正文没有「凭据副本未抹」
+  ---
+  duration_ms: 744.3345
+  ...
+# Subtest: EV-157 K3：worker 已死、两侧记录判不了（启动时刻没记下）⇒ --cancel 不发信号也不抹、一行告警逐侧列出、记录留存、归档照收尾；会话启动清扫同样挡住；CLI 结束后即抹
+ok 99 - EV-157 K3：worker 已死、两侧记录判不了（启动时刻没记下）⇒ --cancel 不发信号也不抹、一行告警逐侧列出、记录留存、归档照收尾；会话启动清扫同样挡住；CLI 结束后即抹
+  ---
+  duration_ms: 1020.763
+  ...
+# Subtest: EV-157 K4：worker 已死、两侧 CLI 仍活 ⇒ --cancel 按记录结束两组之后照抹，没有「凭据副本未抹」
+ok 100 - EV-157 K4：worker 已死、两侧 CLI 仍活 ⇒ --cancel 按记录结束两组之后照抹，没有「凭据副本未抹」
+  ---
+  duration_ms: 866.725042
+  ...
+# Subtest: EV-165 K5：worker 已死、glm 侧组长已退但组员仍在（gemini 侧组长仍活）⇒ --wait 判失联两侧都不抹、glm 侧正文带精确成员数、都不结束进程；会话启动清扫同样挡住；组员结束后清扫即抹
+ok 101 - EV-165 K5：worker 已死、glm 侧组长已退但组员仍在（gemini 侧组长仍活）⇒ --wait 判失联两侧都不抹、glm 侧正文带精确成员数、都不结束进程；会话启动清扫同样挡住；组员结束后清扫即抹
+  ---
+  duration_ms: 1142.669416
+  ...
+# Subtest: EV-165 K6：worker 已死、glm 侧组长已退但组员仍在 ⇒ --cancel 按组结束组员（组信号打到 pgid 仍有效）之后照抹；gemini 侧走既有 alive 路径不受影响
+ok 102 - EV-165 K6：worker 已死、glm 侧组长已退但组员仍在 ⇒ --cancel 按组结束组员（组信号打到 pgid 仍有效）之后照抹；gemini 侧走既有 alive 路径不受影响
+  ---
+  duration_ms: 987.4965
+  ...
+# Subtest: 首次认领：落盘 drivers[<阶段>]，--json 形状齐备
+ok 103 - 首次认领：落盘 drivers[<阶段>]，--json 形状齐备
+  ---
+  duration_ms: 260.165709
+  ...
+# Subtest: 幂等：同值再认领退 0，且 claimed_at 不被刷新
+ok 104 - 幂等：同值再认领退 0，且 claimed_at 不被刷新
+  ---
+  duration_ms: 481.851042
+  ...
+# Subtest: --stage 必填：缺它退 64，不默认到 plan
+ok 105 - --stage 必填：缺它退 64，不默认到 plan
+  ---
+  duration_ms: 190.735209
+  ...
+# Subtest: --driver 必填且须是已登记 Agent
+ok 106 - --driver 必填且须是已登记 Agent
+  ---
+  duration_ms: 310.201625
+  ...
+# Subtest: 撤回：零留痕且未用过 ⇒ 改写成功，旧声明进 history
+ok 107 - 撤回：零留痕且未用过 ⇒ 改写成功，旧声明进 history
+  ---
+  duration_ms: 324.206375
+  ...
+# Subtest: 撤回权因「声明已被使用」而消失：退 64 且文案列出那些文件
+ok 108 - 撤回权因「声明已被使用」而消失：退 64 且文案列出那些文件
+  ---
+  duration_ms: 302.572334
+  ...
+# Subtest: 留痕优先：该阶段已有运行留痕时，异声明退 64
+ok 109 - 留痕优先：该阶段已有运行留痕时，异声明退 64
+  ---
+  duration_ms: 327.575208
+  ...
+# Subtest: 交叉校验：review --start 的 --driver 与声明不符时拒绝启动
+ok 110 - 交叉校验：review --start 的 --driver 与声明不符时拒绝启动
+  ---
+  duration_ms: 425.047459
+  ...
+# Subtest: 不变量的出口命令：从报错里抠出来原样执行，必须退 0
+ok 111 - 不变量的出口命令：从报错里抠出来原样执行，必须退 0
+  ---
+  duration_ms: 613.664875
+  ...
+# Subtest: 省略 --driver：按该阶段的声明继承，不退 64
+ok 112 - 省略 --driver：按该阶段的声明继承，不退 64
+  ---
+  duration_ms: 341.821083
+  ...
+# Subtest: 带空格的主题名：声明与校验落在同一个归一化目录
+ok 113 - 带空格的主题名：声明与校验落在同一个归一化目录
+  ---
+  duration_ms: 297.785417
+  ...
+# Subtest: 留痕损坏：入口与 Hook 同口径硬失败，不用声明顶上
+ok 114 - 留痕损坏：入口与 Hook 同口径硬失败，不用声明顶上
+  ---
+  duration_ms: 718.1555
+  ...
+# Subtest: topic 只认 resolve / claim 两个子命令
+ok 115 - topic 只认 resolve / claim 两个子命令
+  ---
+  duration_ms: 217.784583
+  ...
+# Subtest: 分支 1：该阶段已有 run 留痕且不同 ⇒ 拒，且指向留痕
+ok 116 - 分支 1：该阶段已有 run 留痕且不同 ⇒ 拒，且指向留痕
+  ---
+  duration_ms: 6.564834
+  ...
+# Subtest: 分支 2：已声明且相同 ⇒ 幂等，且不刷新 claimed_at
+ok 117 - 分支 2：已声明且相同 ⇒ 幂等，且不刷新 claimed_at
+  ---
+  duration_ms: 1.376375
+  ...
+# Subtest: 分支 3：零 run 留痕、声明未被使用 ⇒ 撤回改写，旧声明整条入 history
+ok 118 - 分支 3：零 run 留痕、声明未被使用 ⇒ 撤回改写，旧声明整条入 history
+  ---
+  duration_ms: 1.600292
+  ...
+# Subtest: 分支 3：镜像死锁序列仍然解得开（分支 3 的原始职责）
+ok 119 - 分支 3：镜像死锁序列仍然解得开（分支 3 的原始职责）
+  ---
+  duration_ms: 1.673916
+  ...
+# Subtest: 分支 3′：声明已被使用（目录有带其后缀的文件）⇒ 撤回权消失
+ok 120 - 分支 3′：声明已被使用（目录有带其后缀的文件）⇒ 撤回权消失
+  ---
+  duration_ms: 1.827958
+  ...
+# Subtest: 分支 4：新阶段首次声明 ⇒ 放行
+ok 121 - 分支 4：新阶段首次声明 ⇒ 放行
+  ---
+  duration_ms: 0.604166
+  ...
+# Subtest: 分支 4：与既有留痕一致的认领 ⇒ 放行（不被分支 1 误伤）
+ok 122 - 分支 4：与既有留痕一致的认领 ⇒ 放行（不被分支 1 误伤）
+  ---
+  duration_ms: 0.780333
+  ...
+# Subtest: 反复翻转：用掉一个后缀之后拿不到第二个
+ok 123 - 反复翻转：用掉一个后缀之后拿不到第二个
+  ---
+  duration_ms: 1.602375
+  ...
+# Subtest: 声明史追加不覆盖：连续两次撤回留下两条
+ok 124 - 声明史追加不覆盖：连续两次撤回留下两条
+  ---
+  duration_ms: 1.123625
+  ...
+# Subtest: 论域含嵌套子目录：写在子目录里的后缀文件照样挡住换手
+ok 125 - 论域含嵌套子目录：写在子目录里的后缀文件照样挡住换手
+  ---
+  duration_ms: 5.484167
+  ...
+# Subtest: 分支 4：首次认领时若已有他家后缀的文件，同样拒绝
+ok 126 - 分支 4：首次认领时若已有他家后缀的文件，同样拒绝
+  ---
+  duration_ms: 1.512542
+  ...
+# Subtest: 分支 4：认领目标自己的后缀不算「他家占用」
+ok 127 - 分支 4：认领目标自己的后缀不算「他家占用」
+  ---
+  duration_ms: 1.594792
+  ...
+# Subtest: 论域 I/O 异常不得 fail-open：目录不存在算空，其余抛出
+ok 128 - 论域 I/O 异常不得 fail-open：目录不存在算空，其余抛出
+  ---
+  duration_ms: 1.917542
+  ...
+# Subtest: filesBearingSuffix：只认该家的后缀，目录不存在返回空
+ok 129 - filesBearingSuffix：只认该家的后缀，目录不存在返回空
+  ---
+  duration_ms: 2.993709
+  ...
+# Subtest: 第 1 级：有留痕时取留痕，声明不参与
+ok 130 - 第 1 级：有留痕时取留痕，声明不参与
+  ---
+  duration_ms: 44.969084
+  ...
+# Subtest: 第 2 级：零留痕时取声明——非缺省 Driver 写得出自己的原稿
+ok 131 - 第 2 级：零留痕时取声明——非缺省 Driver 写得出自己的原稿
+  ---
+  duration_ms: 5.625375
+  ...
+# Subtest: 第 3 级：既无留痕也无声明 ⇒ 缺省 Driver，文案点明
+ok 132 - 第 3 级：既无留痕也无声明 ⇒ 缺省 Driver，文案点明
+  ---
+  duration_ms: 1.178625
+  ...
+# Subtest: 按阶段不按主题：两个阶段各自的声明互不渗透
+ok 133 - 按阶段不按主题：两个阶段各自的声明互不渗透
+  ---
+  duration_ms: 3.738291
+  ...
+# Subtest: 跨阶段合法链路：plan 留痕 claude + code 声明 glm ⇒ 两边各按各的判
+ok 134 - 跨阶段合法链路：plan 留痕 claude + code 声明 glm ⇒ 两边各按各的判
+  ---
+  duration_ms: 3.389542
+  ...
+# ⚠️  运行元数据 RBAD（code 阶段）读不出来，已跳过——留痕可能被改坏或不合契约
+# Subtest: 留痕损坏时不降级到声明，仍硬失败
+ok 135 - 留痕损坏时不降级到声明，仍硬失败
+  ---
+  duration_ms: 2.770875
+  ...
+# Subtest: task.json 损坏时落到第 3 级，不硬失败
+ok 136 - task.json 损坏时落到第 3 级，不硬失败
+  ---
+  duration_ms: 2.115541
+  ...
+# Subtest: 孤儿兜底：旧后缀文件在场时，定位不受影响（存量数据）
+ok 137 - 孤儿兜底：旧后缀文件在场时，定位不受影响（存量数据）
+  ---
+  duration_ms: 3.422958
+  ...
+# Subtest: 交叉校验三档：有留痕比留痕、零留痕比声明、都没有则不校验
+ok 138 - 交叉校验三档：有留痕比留痕、零留痕比声明、都没有则不校验
+  ---
+  duration_ms: 0.1465
+  ...
+# Subtest: 交叉校验：省略旗标（driver=null）一律不比对
+ok 139 - 交叉校验：省略旗标（driver=null）一律不比对
+  ---
+  duration_ms: 0.054708
+  ...
+# Subtest: 不变量：同阶段留痕与声明不一致 ⇒ 报错
+ok 140 - 不变量：同阶段留痕与声明不一致 ⇒ 报错
+  ---
+  duration_ms: 0.041125
+  ...
+# Subtest: 不变量先于交叉校验：真入口报的是「没有合法来源」而不是「传错了」
+ok 141 - 不变量先于交叉校验：真入口报的是「没有合法来源」而不是「传错了」
+  ---
+  duration_ms: 6.165416
+  ...
+# Subtest: 接线：两个选侧入口都要调校验，且不变量在交叉校验之前
+ok 142 - 接线：两个选侧入口都要调校验，且不变量在交叉校验之前
+  ---
+  duration_ms: 181.448416
+  ...
+# Subtest: declaredStageDriver：缺字段即未声明
+ok 143 - declaredStageDriver：缺字段即未声明
+  ---
+  duration_ms: 0.118667
+  ...
+# Subtest: 认领被拒的出口文案：给真实理由，不称孤儿，不把 Bash 守卫写进来
+ok 144 - 认领被拒的出口文案：给真实理由，不称孤儿，不把 Bash 守卫写进来
+  ---
+  duration_ms: 0.146083
+  ...
+# Subtest: 分支 4 的真实路径：首次认领撞上缺省 Driver 先写的原稿，被拒文案不称孤儿（代码双审 r6 CODEX-01）
+ok 145 - 分支 4 的真实路径：首次认领撞上缺省 Driver 先写的原稿，被拒文案不称孤儿（代码双审 r6 CODEX-01）
+  ---
+  duration_ms: 1.773834
+  ...
+# Subtest: 全部裁决齐备 → 通过
+ok 146 - 全部裁决齐备 → 通过
+  ---
+  duration_ms: 38.880208
+  ...
+# Subtest: 缺裁决件 → missing_disposition，并提示即使全驳回也要产出
+ok 147 - 缺裁决件 → missing_disposition，并提示即使全驳回也要产出
+  ---
+  duration_ms: 0.882292
+  ...
+# Subtest: 删掉一条裁决 → missing_findings 并列出编号（AC-12）
+ok 148 - 删掉一条裁决 → missing_findings 并列出编号（AC-12）
+  ---
+  duration_ms: 4.551
+  ...
+# Subtest: 裁决了不存在的编号 → unknown_findings
+ok 149 - 裁决了不存在的编号 → unknown_findings
+  ---
+  duration_ms: 3.143917
+  ...
+# Subtest: AGY-04 的关键点：fallback 虚拟编号不被判「多余 id」
+ok 150 - AGY-04 的关键点：fallback 虚拟编号不被判「多余 id」
+  ---
+  duration_ms: 1.947208
+  ...
+# Subtest: fallback 单元少裁一条 → missing_findings 点名 <前缀>-F<n>
+ok 151 - fallback 单元少裁一条 → missing_findings 点名 <前缀>-F<n>
+  ---
+  duration_ms: 5.850625
+  ...
+# Subtest: 关键用例：两侧都 parse_fallback 时空裁决表不得通过
+ok 152 - 关键用例：两侧都 parse_fallback 时空裁决表不得通过
+  ---
+  duration_ms: 2.871208
+  ...
+# Subtest: 裁了清单之外的 fallback 编号 → unknown_findings
+ok 153 - 裁了清单之外的 fallback 编号 → unknown_findings
+  ---
+  duration_ms: 2.171417
+  ...
+# Subtest: run.json 记录已产出结论、结构化结论却读不到 → missing_review_json
+ok 154 - run.json 记录已产出结论、结构化结论却读不到 → missing_review_json
+  ---
+  duration_ms: 1.8775
+  ...
+# Subtest: run.json 的 gate.warnings 作为 run_warning 透传，缺裁决件的早退路径也带着（代码双审 r2 GLM-04）
+ok 155 - run.json 的 gate.warnings 作为 run_warning 透传，缺裁决件的早退路径也带着（代码双审 r2 GLM-04）
+  ---
+  duration_ms: 2.428708
+  ...
+# Subtest: AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求落点
+ok 156 - AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求落点
+  ---
+  duration_ms: 4.279458
+  ...
+# Subtest: AGY-04 的关键点：findings 为空数组显式合法
+ok 157 - AGY-04 的关键点：findings 为空数组显式合法
+  ---
+  duration_ms: 2.240958
+  ...
+# Subtest: 理由为空 → empty_reason（三种裁决都要理由）
+ok 158 - 理由为空 → empty_reason（三种裁决都要理由）
+  ---
+  duration_ms: 3.98625
+  ...
+# Subtest: 接受但无落点 → missing_action
+ok 159 - 接受但无落点 → missing_action
+  ---
+  duration_ms: 2.402542
+  ...
+# Subtest: 驳回不要求落点
+ok 160 - 驳回不要求落点
+  ---
+  duration_ms: 1.913667
+  ...
+# Subtest: 空洞理由默认只 warn（reason_policy=warn）
+ok 161 - 空洞理由默认只 warn（reason_policy=warn）
+  ---
+  duration_ms: 1.812333
+  ...
+# Subtest: reason_policy=hard 时空洞理由升级为失败
+ok 162 - reason_policy=hard 时空洞理由升级为失败
+  ---
+  duration_ms: 1.620333
+  ...
+# Subtest: allow_defer=false 时「暂缓」被拒
+ok 163 - allow_defer=false 时「暂缓」被拒
+  ---
+  duration_ms: 2.405917
+  ...
+# Subtest: 裁决件的 run_id 与本轮不符 → bad_front_matter（不得复用上一轮的裁决件）
+ok 164 - 裁决件的 run_id 与本轮不符 → bad_front_matter（不得复用上一轮的裁决件）
+  ---
+  duration_ms: 2.078375
+  ...
+# Subtest: front-matter 与本轮不匹配 → bad_front_matter
+ok 165 - front-matter 与本轮不匹配 → bad_front_matter
+  ---
+  duration_ms: 1.991209
+  ...
+# Subtest: N-2：文件名后缀是当轮 Driver、front-matter 的 role 是另一个已登记 id → bad_front_matter
+ok 166 - N-2：文件名后缀是当轮 Driver、front-matter 的 role 是另一个已登记 id → bad_front_matter
+  ---
+  duration_ms: 1.279584
+  ...
+# Subtest: N-2 正例：非缺省 Driver 诚实写自己的 id → 通过（EV-66 的全部目的）
+ok 167 - N-2 正例：非缺省 Driver 诚实写自己的 id → 通过（EV-66 的全部目的）
+  ---
+  duration_ms: 3.313958
+  ...
+# Subtest: N-2 边界：role 是未登记的 id → bad_front_matter（闸门层 fail-closed，不区分是哪道判据拦的）
+ok 168 - N-2 边界：role 是未登记的 id → bad_front_matter（闸门层 fail-closed，不区分是哪道判据拦的）
+  ---
+  duration_ms: 1.53375
+  ...
+# Subtest: 双方共同 blocker 被驳回：默认只 warn，且只用 location 精确相同判定
+ok 169 - 双方共同 blocker 被驳回：默认只 warn，且只用 location 精确相同判定
+  ---
+  duration_ms: 0.102542
+  ...
+# Subtest: 位置不同的 blocker 不算共同（不做文本相似度，避免启发式误判卡死闸门）
+ok 170 - 位置不同的 blocker 不算共同（不做文本相似度，避免启发式误判卡死闸门）
+  ---
+  duration_ms: 0.031375
+  ...
+# Subtest: 作废侧不计入独立来源——否则它反而获得了逼停流水线的否决权
+ok 171 - 作废侧不计入独立来源——否则它反而获得了逼停流水线的否决权
+  ---
+  duration_ms: 0.023584
+  ...
+# Subtest: 三态：两家有效且有共同项 → checked-found
+ok 172 - 三态：两家有效且有共同项 → checked-found
+  ---
+  duration_ms: 0.026666
+  ...
+# Subtest: 三态：两家有效但无共同项 → checked-none（查过、没发现）
+ok 173 - 三态：两家有效但无共同项 → checked-none（查过、没发现）
+  ---
+  duration_ms: 0.024083
+  ...
+# Subtest: 三态：排除作废侧后不足两家 → skipped，与「查过没发现」分得开
+ok 174 - 三态：排除作废侧后不足两家 → skipped，与「查过没发现」分得开
+  ---
+  duration_ms: 0.021125
+  ...
+# Subtest: 三态：阈值不随入选总数上调——三家里的两家仍是两个独立来源
+ok 175 - 三态：阈值不随入选总数上调——三家里的两家仍是两个独立来源
+  ---
+  duration_ms: 0.027167
+  ...
+# Subtest: 共同 blocker 只要有一条被接受就不算「被驳回」
+ok 176 - 共同 blocker 只要有一条被接受就不算「被驳回」
+  ---
+  duration_ms: 0.024542
+  ...
+# Subtest: joint_blocker_policy=hard 时升级为失败
+ok 177 - joint_blocker_policy=hard 时升级为失败
+  ---
+  duration_ms: 2.9815
+  ...
+# Subtest: 空洞词表判定：只有整条理由都是空洞词才算
+ok 178 - 空洞词表判定：只有整条理由都是空洞词才算
+  ---
+  duration_ms: 0.159333
+  ...
+# Subtest: 渲染结果在失败时列出编号，便于 Driver 直接照着补
+ok 179 - 渲染结果在失败时列出编号，便于 Driver 直接照着补
+  ---
+  duration_ms: 1.667292
+  ...
+# Subtest: 降级轮次出 warning 而非 failure：闸门仍放行，但审计面上看得见
+ok 180 - 降级轮次出 warning 而非 failure：闸门仍放行，但审计面上看得见
+  ---
+  duration_ms: 1.929209
+  ...
+# Subtest: 非降级轮次不得凭空冒出 degraded_round 警告
+ok 181 - 非降级轮次不得凭空冒出 degraded_round 警告
+  ---
+  duration_ms: 3.774708
+  ...
+# Subtest: readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-06；M9 第 6 步代码双审 CODEX-02 ≡ AGY-02 ≡ GLM-02）
+ok 182 - readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-06；M9 第 6 步代码双审 CODEX-02 ≡ AGY-02 ≡ GLM-02）
+  ---
+  duration_ms: 30.03225
+  ...
+# Subtest: voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）
+ok 183 - voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）
+  ---
+  duration_ms: 7.739833
+  ...
+# Subtest: loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推
+ok 184 - loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推
+  ---
+  duration_ms: 3.882166
+  ...
+# Subtest: 审批前复核：runId 为 null ⇒ 第 1 步拒绝（退 65），且不是落到第 2 步才被拦下
+ok 185 - 审批前复核：runId 为 null ⇒ 第 1 步拒绝（退 65），且不是落到第 2 步才被拦下
+  ---
+  duration_ms: 0.490292
+  ...
+# Subtest: 审批前复核：runId 非空但本轮运行元数据读不出 ⇒ 第 2 步拒绝（退 65），不回落缺省 Driver
+ok 186 - 审批前复核：runId 非空但本轮运行元数据读不出 ⇒ 第 2 步拒绝（退 65），不回落缺省 Driver
+  ---
+  duration_ms: 0.41525
+  ...
+# Subtest: 审批前复核：两句判别文字互不包含、都是纯文本（不带 Markdown 记号）
+ok 187 - 审批前复核：两句判别文字互不包含、都是纯文本（不带 Markdown 记号）
+  ---
+  duration_ms: 0.096792
+  ...
+# Subtest: 从各种 tool_input 字段名里取出目标路径
+ok 188 - 从各种 tool_input 字段名里取出目标路径
+  ---
+  duration_ms: 1.179333
+  ...
+# Subtest: 纯后缀检查：只问形态，不问位置
+ok 189 - 纯后缀检查：只问形态，不问位置
+  ---
+  duration_ms: 0.12375
+  ...
+# Subtest: 识别集 ⊇ 保护集，差集恰是当轮 Driver
+ok 190 - 识别集 ⊇ 保护集，差集恰是当轮 Driver
+  ---
+  duration_ms: 0.299875
+  ...
+# Subtest: 当轮面按当轮 Driver 翻转：hasProtectedRoleSuffix 的两个方向
+ok 191 - 当轮面按当轮 Driver 翻转：hasProtectedRoleSuffix 的两个方向
+  ---
+  duration_ms: 0.145875
+  ...
+# Subtest: 换当轮 Driver：保护集与差集一起翻转（criticRoleSuffixes 的参数契约）
+ok 192 - 换当轮 Driver：保护集与差集一起翻转（criticRoleSuffixes 的参数契约）
+  ---
+  duration_ms: 0.19125
+  ...
+# Subtest: 识别伪造审查文件：形态像 + 落在归档内
+ok 193 - 识别伪造审查文件：形态像 + 落在归档内
+  ---
+  duration_ms: 0.45175
+  ...
+# Subtest: 判定路径是否在归档根内
+ok 194 - 判定路径是否在归档根内
+  ---
+  duration_ms: 0.252625
+  ...
+# Subtest: 判定归档内哪些文件由编排器独占（_meta/ 与 task.json）
+ok 195 - 判定归档内哪些文件由编排器独占（_meta/ 与 task.json）
+  ---
+  duration_ms: 0.097458
+  ...
+# Subtest: Driver 不得写 _meta/ 与 task.json：它们是留痕核对的锚，与闸门状态无关
+ok 196 - Driver 不得写 _meta/ 与 task.json：它们是留痕核对的锚，与闸门状态无关
+  ---
+  duration_ms: 8.883542
+  ...
+# Subtest: 伪造审查文件一律拒绝，不受会话与 TTL 限制
+ok 197 - 伪造审查文件一律拒绝，不受会话与 TTL 限制
+  ---
+  duration_ms: 1.254958
+  ...
+# Subtest: 本会话未审批闸门期间，写业务文件被拒并给出解除指引
+ok 198 - 本会话未审批闸门期间，写业务文件被拒并给出解除指引
+  ---
+  duration_ms: 10.381875
+  ...
+# Subtest: 闸门期仍允许写归档（裁决件要写进去）
+ok 199 - 闸门期仍允许写归档（裁决件要写进去）
+  ---
+  duration_ms: 6.986459
+  ...
+# Subtest: 其它会话的闸门不拦本会话的业务写入（RV-05）
+ok 200 - 其它会话的闸门不拦本会话的业务写入（RV-05）
+  ---
+  duration_ms: 7.726417
+  ...
+# Subtest: 闸门未记录会话 id（skill 默认路径）时业务写入照样被拦
+ok 201 - 闸门未记录会话 id（skill 默认路径）时业务写入照样被拦
+  ---
+  duration_ms: 7.562792
+  ...
+# Subtest: 双审进行中也拦业务写入（就地模式下审查员在读真实工作树）
+ok 202 - 双审进行中也拦业务写入（就地模式下审查员在读真实工作树）
+  ---
+  duration_ms: 6.3845
+  ...
+# Subtest: EV-129：审查中拦截文案不重复——Write 侧「不得修改业务文件」恰一次，Bash 侧不混入它
+ok 203 - EV-129：审查中拦截文案不重复——Write 侧「不得修改业务文件」恰一次，Bash 侧不混入它
+  ---
+  duration_ms: 8.36525
+  ...
+# Subtest: 配置关闭写锁时不拦
+ok 204 - 配置关闭写锁时不拦
+  ---
+  duration_ms: 6.860125
+  ...
+# Subtest: 拿不到目标路径时放过（宁可放过也不误伤）
+ok 205 - 拿不到目标路径时放过（宁可放过也不误伤）
+  ---
+  duration_ms: 5.358333
+  ...
+# Subtest: 写命令形态识别：重定向 / tee / sed -i / rm / git checkout 算写，只读命令不算
+ok 206 - 写命令形态识别：重定向 / tee / sed -i / rm / git checkout 算写，只读命令不算
+  ---
+  duration_ms: 1.139667
+  ...
+# Subtest: looksLikeWriteCommand 保留剥离语义：heredoc 正文是数据不是命令
+ok 207 - looksLikeWriteCommand 保留剥离语义：heredoc 正文是数据不是命令
+  ---
+  duration_ms: 0.049792
+  ...
+# Subtest: GLM-03：hookPreBash 在未剥离的原文上判，heredoc 里写保护对象必须被拦
+ok 208 - GLM-03：hookPreBash 在未剥离的原文上判，heredoc 里写保护对象必须被拦
+  ---
+  duration_ms: 0.9815
+  ...
+# Subtest: EV-61 ⑥：拒绝文案按真实机制写 bin/ 的后果，不再说「删掉 bin/ 会永真放行」
+ok 209 - EV-61 ⑥：拒绝文案按真实机制写 bin/ 的后果，不再说「删掉 bin/ 会永真放行」
+  ---
+  duration_ms: 0.900791
+  ...
+# Subtest: GLM-03：闸门期不剥 heredoc，正文里的写命令一并拦下
+ok 210 - GLM-03：闸门期不剥 heredoc，正文里的写命令一并拦下
+  ---
+  duration_ms: 5.825875
+  ...
+# Subtest: AGY-01：主题名含 ASCII s 时保护不得失效（原正则蜕化为 [^s]*）
+ok 211 - AGY-01：主题名含 ASCII s 时保护不得失效（原正则蜕化为 [^s]*）
+  ---
+  duration_ms: 2.412083
+  ...
+# Subtest: GLM-04：cd 归一化后的相对路径与不带尾斜杠的 _meta 目录本身都受保护
+ok 212 - GLM-04：cd 归一化后的相对路径与不带尾斜杠的 _meta 目录本身都受保护
+  ---
+  duration_ms: 0.961542
+  ...
+# Subtest: AGY-03：.trivium 与 wrapper 目录受保护（删掉它等于一次性解除全部 Hook）
+ok 213 - AGY-03：.trivium 与 wrapper 目录受保护（删掉它等于一次性解除全部 Hook）
+  ---
+  duration_ms: 1.046375
+  ...
+# Subtest: 闸门期用 Bash 改工作树被拦，并说明这是启发式与解除办法
+ok 214 - 闸门期用 Bash 改工作树被拦，并说明这是启发式与解除办法
+  ---
+  duration_ms: 6.278375
+  ...
+# Subtest: 没有闸门时 Bash 写命令放行；但指向审查文档 / _meta / state.json 的写命令任何时候都拦
+ok 215 - 没有闸门时 Bash 写命令放行；但指向审查文档 / _meta / state.json 的写命令任何时候都拦
+  ---
+  duration_ms: 0.971083
+  ...
+# Subtest: 拿不到命令行或不是 Bash 事件 → 放行
+ok 216 - 拿不到命令行或不是 Bash 事件 → 放行
+  ---
+  duration_ms: 1.167125
+  ...
+# Subtest: RV-B1（已撤回）：借 git commit 夹带的五类形态，任何时候都不得绕过保护集
+ok 217 - RV-B1（已撤回）：借 git commit 夹带的五类形态，任何时候都不得绕过保护集
+  ---
+  duration_ms: 2.157459
+  ...
+# Subtest: Bash 侧不随 Write 侧收窄：命令文本出现角色后缀一律拦
+ok 218 - Bash 侧不随 Write 侧收窄：命令文本出现角色后缀一律拦
+  ---
+  duration_ms: 0.996458
+  ...
+# Subtest: 收窄后：Write 侧对 doc/ 放行、对归档内仍拦
+ok 219 - 收窄后：Write 侧对 doc/ 放行、对归档内仍拦
+  ---
+  duration_ms: 1.301541
+  ...
+# Subtest: 软链：两个方向都拦得住
+ok 220 - 软链：两个方向都拦得住
+  ---
+  duration_ms: 2.780583
+  ...
+# Subtest: 项目根是词法路径、写入目标是 realpath 形态（ZCode 负载的形态）：照样拦
+ok 221 - 项目根是词法路径、写入目标是 realpath 形态（ZCode 负载的形态）：照样拦
+  ---
+  duration_ms: 2.497708
+  ...
+# Subtest: 归档根不可解析时，归档内的后缀写入仍被拦
+ok 222 - 归档根不可解析时，归档内的后缀写入仍被拦
+  ---
+  duration_ms: 5.58475
+  ...
+# Subtest: 悬空软链：指向归档内尚未创建的文件，仍被拦
+ok 223 - 悬空软链：指向归档内尚未创建的文件，仍被拦
+  ---
+  duration_ms: 1.551584
+  ...
+# Subtest: 方向①：非缺省 Driver 写得出自己的裁决件
+ok 224 - 方向①：非缺省 Driver 写得出自己的裁决件
+  ---
+  duration_ms: 42.597792
+  ...
+# Subtest: 方向②：当轮 Driver 不得伪造审核者产出（claude 此轮是审核者）
+ok 225 - 方向②：当轮 Driver 不得伪造审核者产出（claude 此轮是审核者）
+  ---
+  duration_ms: 4.049916
+  ...
+# Subtest: 陈旧闸门项不影响当轮判定：留痕说了算
+ok 226 - 陈旧闸门项不影响当轮判定：留痕说了算
+  ---
+  duration_ms: 6.084708
+  ...
+# Subtest: 归档外软链指向归档内：当轮 Driver 仍按落点所属阶段的留痕判定
+ok 227 - 归档外软链指向归档内：当轮 Driver 仍按落点所属阶段的留痕判定
+  ---
+  duration_ms: 2.041792
+  ...
+# Subtest: 回落·正：该阶段无留痕时，缺省 Driver 的产出放行
+ok 228 - 回落·正：该阶段无留痕时，缺省 Driver 的产出放行
+  ---
+  duration_ms: 1.266541
+  ...
+# Subtest: 回落·负：该阶段无留痕时，非缺省角色的后缀仍被拦
+ok 229 - 回落·负：该阶段无留痕时，非缺省角色的后缀仍被拦
+  ---
+  duration_ms: 1.173417
+  ...
+# ⚠️  运行元数据 R1（code 阶段）读不出来，已跳过——留痕可能被改坏或不合契约
+# Subtest: 留痕损坏：不按缺省 Driver 继续，硬失败
+ok 230 - 留痕损坏：不按缺省 Driver 继续，硬失败
+  ---
+  duration_ms: 2.081875
+  ...
+# Subtest: 非角色工件的写入不触发当轮 Driver 解析，退出码不变
+ok 231 - 非角色工件的写入不触发当轮 Driver 解析，退出码不变
+  ---
+  duration_ms: 1.079292
+  ...
+# ⚠️  运行元数据 R2（code 阶段）读不出来，已跳过——留痕可能被改坏或不合契约
+# Subtest: 较新留痕损坏：不退回上一轮 Driver，硬失败
+ok 232 - 较新留痕损坏：不退回上一轮 Driver，硬失败
+  ---
+  duration_ms: 2.299375
+  ...
+# Subtest: 阶段目录是软链：按落点所在阶段的留痕判定
+ok 233 - 阶段目录是软链：按落点所在阶段的留痕判定
+  ---
+  duration_ms: 2.382959
+  ...
+# Subtest: 文件级软链跨阶段：按 realpath 侧的阶段判定，不按词法侧
+ok 234 - 文件级软链跨阶段：按 realpath 侧的阶段判定，不按词法侧
+  ---
+  duration_ms: 1.905084
+  ...
+# Subtest: 归档内阶段目录软链指向归档外：伪留痕不得被采信
+ok 235 - 归档内阶段目录软链指向归档外：伪留痕不得被采信
+  ---
+  duration_ms: 1.364917
+  ...
+# Subtest: 父目录尚不存在的合法新建不被误杀
+ok 236 - 父目录尚不存在的合法新建不被误杀
+  ---
+  duration_ms: 0.424291
+  ...
+# Subtest: RV-B1 边界：git add 本就不在 WRITE_LIKE 里，与撤回的豁免无关
+ok 237 - RV-B1 边界：git add 本就不在 WRITE_LIKE 里，与撤回的豁免无关
+  ---
+  duration_ms: 0.518084
+  ...
+# Subtest: 无活跃流水线主题时，日常 git commit 放行（AGY-03）
+ok 238 - 无活跃流水线主题时，日常 git commit 放行（AGY-03）
+  ---
+  duration_ms: 11.558125
+  ...
+# Subtest: 本会话有未裁决阶段时拦提交并说明缺什么
+ok 239 - 本会话有未裁决阶段时拦提交并说明缺什么
+  ---
+  duration_ms: 4.687
+  ...
+# Subtest: 未裁决即拦提交，**不分会话**（审查意见 AGY-05）
+ok 240 - 未裁决即拦提交，**不分会话**（审查意见 AGY-05）
+  ---
+  duration_ms: 5.514834
+  ...
+# Subtest: 等待审批的闸门不拦提交（那不是「裁决未完成」）
+ok 241 - 等待审批的闸门不拦提交（那不是「裁决未完成」）
+  ---
+  duration_ms: 13.698042
+  ...
+# Subtest: block_commit=false 时不拦
+ok 242 - block_commit=false 时不拦
+  ---
+  duration_ms: 4.745833
+  ...
+# Subtest: _meta/ 下一种旧枚举不认识的新工件类型：提交后改动即拦（判据从后缀改成位置）
+ok 243 - _meta/ 下一种旧枚举不认识的新工件类型：提交后改动即拦（判据从后缀改成位置）
+  ---
+  duration_ms: 87.265167
+  ...
+# Subtest: changes.diff 便利副本：提交后改动可以提交（每轮覆盖写，位置判据的排除项）
+ok 244 - changes.diff 便利副本：提交后改动可以提交（每轮覆盖写，位置判据的排除项）
+  ---
+  duration_ms: 103.965584
+  ...
+# Subtest: run-*.json：running 态收尾回写可以提交，success 态原地改动被拦（两条例外求值顺序）
+ok 245 - run-*.json：running 态收尾回写可以提交，success 态原地改动被拦（两条例外求值顺序）
+  ---
+  duration_ms: 320.57525
+  ...
+# Subtest: running 态运行清单：收尾只许追加登记，删改已登记条目或改 run_id 即拦（代码双审 r3 CODEX-01 ≡ GLM-01）
+ok 246 - running 态运行清单：收尾只许追加登记，删改已登记条目或改 run_id 即拦（代码双审 r3 CODEX-01 ≡ GLM-01）
+  ---
+  duration_ms: 0.141125
+  ...
+# Subtest: running 窗口的篡改链：中途提交后同步改审查文档与登记 sha，提交锚必须拦（代码双审 r3 CODEX-01）
+ok 247 - running 窗口的篡改链：中途提交后同步改审查文档与登记 sha，提交锚必须拦（代码双审 r3 CODEX-01）
+  ---
+  duration_ms: 116.215125
+  ...
+# Subtest: git --shallow-file 同样是取值分离的全局选项（代码双审 r3 GLM-05）
+ok 248 - git --shallow-file 同样是取值分离的全局选项（代码双审 r3 GLM-05）
+  ---
+  duration_ms: 0.097291
+  ...
+# Subtest: 非缺省 Driver 的原稿与裁决件：提交后原地改可以提交（代码双审 r2 CODEX-03 的鉴别用例）
+ok 249 - 非缺省 Driver 的原稿与裁决件：提交后原地改可以提交（代码双审 r2 CODEX-03 的鉴别用例）
+  ---
+  duration_ms: 108.058791
+  ...
+# Subtest: git 取值型全局选项不能让恢复 / 改写命令绕过写命令判据（代码双审 r2 CODEX-01）
+ok 250 - git 取值型全局选项不能让恢复 / 改写命令绕过写命令判据（代码双审 r2 CODEX-01）
+  ---
+  duration_ms: 0.736416
+  ...
+# Subtest: 裁决未完成时阻止收工，并给出该怎么做
+ok 251 - 裁决未完成时阻止收工，并给出该怎么做
+  ---
+  duration_ms: 3.846083
+  ...
+# Subtest: 闸门未记录会话 id 时收工拦截照样生效
+ok 252 - 闸门未记录会话 id 时收工拦截照样生效
+  ---
+  duration_ms: 3.542458
+  ...
+# Subtest: 明确属于其它会话的待裁决闸门不拦本会话收工（RV-05）
+ok 253 - 明确属于其它会话的待裁决闸门不拦本会话收工（RV-05）
+  ---
+  duration_ms: 3.389
+  ...
+# Subtest: awaiting_approval 是期望的停点，放行收工
+ok 254 - awaiting_approval 是期望的停点，放行收工
+  ---
+  duration_ms: 3.265458
+  ...
+# Subtest: 第一层防死循环：stop_hook_active 时早退
+ok 255 - 第一层防死循环：stop_hook_active 时早退
+  ---
+  duration_ms: 3.263625
+  ...
+# Subtest: 第二层防死循环：超过每阶段阻断上限后放行
+ok 256 - 第二层防死循环：超过每阶段阻断上限后放行
+  ---
+  duration_ms: 4.645458
+  ...
+# Subtest: 无待办时不注入内容
+ok 257 - 无待办时不注入内容
+  ---
+  duration_ms: 17.510667
+  ...
+# Subtest: 有待审批闸门时注入清单与解除指引
+ok 258 - 有待审批闸门时注入清单与解除指引
+  ---
+  duration_ms: 4.078583
+  ...
+# Subtest: 有运行中的双审时提醒先 --wait
+ok 259 - 有运行中的双审时提醒先 --wait
+  ---
+  duration_ms: 0.83725
+  ...
+# Subtest: 状态读不到的运行目录单独成行，不因没抹别的目录而静默（代码双审 r1 CODEX-04 ≡ GLM-02）
+ok 260 - 状态读不到的运行目录单独成行，不因没抹别的目录而静默（代码双审 r1 CODEX-04 ≡ GLM-02）
+  ---
+  duration_ms: 1.075208
+  ...
+# Subtest: config.yaml 缺失 → exit 0（no-op 覆盖「判定不了」）
+ok 261 - config.yaml 缺失 → exit 0（no-op 覆盖「判定不了」）
+  ---
+  duration_ms: 3.493417
+  ...
+# Subtest: loadCtx 抛错（config 损坏或不在 git 仓库）→ exit 0
+ok 262 - loadCtx 抛错（config 损坏或不在 git 仓库）→ exit 0
+  ---
+  duration_ms: 0.118334
+  ...
+# Subtest: 明确判定拦截 → exit 2（唯一返回 2 的路径）
+ok 263 - 明确判定拦截 → exit 2（唯一返回 2 的路径）
+  ---
+  duration_ms: 4.023833
+  ...
+# Subtest: state.json 被搅坏 → 三个拦截型 Hook 一律 exit 2（fail-closed），session-start 只提示
+ok 264 - state.json 被搅坏 → 三个拦截型 Hook 一律 exit 2（fail-closed），session-start 只提示
+  ---
+  duration_ms: 1.21225
+  ...
+# Subtest: Driver 不得用 Write 覆盖 .trivium/state.json 与 lock/（那等于自己解闸）
+ok 265 - Driver 不得用 Write 覆盖 .trivium/state.json 与 lock/（那等于自己解闸）
+  ---
+  duration_ms: 0.431167
+  ...
+# Subtest: hook 内部程序缺陷 → exit 1（非阻断）
+ok 266 - hook 内部程序缺陷 → exit 1（非阻断）
+  ---
+  duration_ms: 0.396875
+  ...
+# Subtest: hook-pre-commit 只拦提交，不拦其它 Bash 命令
+ok 267 - hook-pre-commit 只拦提交，不拦其它 Bash 命令
+  ---
+  duration_ms: 3.753584
+  ...
+# Subtest: GLM-02：引号包裹整段的提交（sh -c 与 bash -lc）不得 fail-open
+ok 268 - GLM-02：引号包裹整段的提交（sh -c 与 bash -lc）不得 fail-open
+  ---
+  duration_ms: 3.431958
+  ...
+# Subtest: 已知过拦：引号里出现 git commit 也会被拦（取保守一侧）
+ok 269 - 已知过拦：引号里出现 git commit 也会被拦（取保守一侧）
+  ---
+  duration_ms: 3.57825
+  ...
+# Subtest: hook-pre-commit 拿不到命令行时按「是提交」处理
+ok 270 - hook-pre-commit 拿不到命令行时按「是提交」处理
+  ---
+  duration_ms: 3.483375
+  ...
+# Subtest: hook-pre-commit 识别复合命令里打在本项目上的提交
+ok 271 - hook-pre-commit 识别复合命令里打在本项目上的提交
+  ---
+  duration_ms: 3.951167
+  ...
+# Subtest: 打在别的仓库上的提交不该被本项目的闸门拦下
+ok 272 - 打在别的仓库上的提交不该被本项目的闸门拦下
+  ---
+  duration_ms: 3.338375
+  ...
+# Subtest: 子命令不是字面量或经 alias 定义：按「是提交」保守处理
+ok 273 - 子命令不是字面量或经 alias 定义：按「是提交」保守处理
+  ---
+  duration_ms: 3.991083
+  ...
+# Subtest: 收工阻断超限放行时，提示走 systemMessage 让用户看得到
+ok 274 - 收工阻断超限放行时，提示走 systemMessage 让用户看得到
+  ---
+  duration_ms: 4.001417
+  ...
+# Subtest: session-start：读不到 status 的 running 闸门，超过 TTL 才回收
+ok 275 - session-start：读不到 status 的 running 闸门，超过 TTL 才回收
+  ---
+  duration_ms: 7.157375
+  ...
+# Subtest: 推断不出目标仓库时一律按项目内处理
+ok 276 - 推断不出目标仓库时一律按项目内处理
+  ---
+  duration_ms: 3.191708
+  ...
+# Subtest: 先去项目外提交、再回项目内提交 → 仍然拦
+ok 277 - 先去项目外提交、再回项目内提交 → 仍然拦
+  ---
+  duration_ms: 3.091833
+  ...
+# Subtest: 带空格的路径也能正确判断在不在项目内
+ok 278 - 带空格的路径也能正确判断在不在项目内
+  ---
+  duration_ms: 3.268333
+  ...
+# Subtest: D3 · B1～B4：提到 -claude.md 的写形态命令一律拦（缺省 Driver 自己的后缀也拦）
+ok 279 - D3 · B1～B4：提到 -claude.md 的写形态命令一律拦（缺省 Driver 自己的后缀也拦）
+  ---
+  duration_ms: 0.564208
+  ...
+# Subtest: D3 · B5：四家后缀逐一都拦（遍历注册表，防第五家登记时漏）
+ok 280 - D3 · B5：四家后缀逐一都拦（遍历注册表，防第五家登记时漏）
+  ---
+  duration_ms: 0.363166
+  ...
+# Subtest: D3 · P1～P3：只读提及、git add、不含写动词的 --start 都放行
+ok 281 - D3 · P1～P3：只读提及、git add、不含写动词的 --start 都放行
+  ---
+  duration_ms: 0.586959
+  ...
+# Subtest: D3 · M1：拦截文案列出的后缀与判据同源（全集四家，含缺省 Driver）
+ok 282 - D3 · M1：拦截文案列出的后缀与判据同源（全集四家，含缺省 Driver）
+  ---
+  duration_ms: 0.543125
+  ...
+# Subtest: U1：共用出口段按成因给三档出口，每档都有可执行的落点
+ok 283 - U1：共用出口段按成因给三档出口，每档都有可执行的落点
+  ---
+  duration_ms: 1.775833
+  ...
+# Subtest: U1：unreadableRunMetaExit 逐行列出每一份（绝对路径），再接固定段
+ok 284 - U1：unreadableRunMetaExit 逐行列出每一份（绝对路径），再接固定段
+  ---
+  duration_ms: 0.352125
+  ...
+# Subtest: U1：清单至多列 UNREADABLE_RUN_META_LIST_LIMIT 份，其余报数（代码双审 r1 CODEX-03）
+ok 285 - U1：清单至多列 UNREADABLE_RUN_META_LIST_LIMIT 份，其余报数（代码双审 r1 CODEX-03）
+  ---
+  duration_ms: 0.1355
+  ...
+# Subtest: U1：判别 ① 那一行给出本工具的构建标识；取不到时如实说缺失（代码双审 r1 CODEX-02）
+ok 286 - U1：判别 ① 那一行给出本工具的构建标识；取不到时如实说缺失（代码双审 r1 CODEX-02）
+  ---
+  duration_ms: 0.133666
+  ...
+# Subtest: U1：unreadableRunMetaExitAt 拼绝对路径；空列表是程序缺陷（代码双审 r1 GLM-02 / GLM-03）
+ok 287 - U1：unreadableRunMetaExitAt 拼绝对路径；空列表是程序缺陷（代码双审 r1 GLM-02 / GLM-03）
+  ---
+  duration_ms: 0.31875
+  ...
+# Subtest: U1：runMetaPaths 给出 _meta 下 run-<id>.json 的绝对路径
+ok 288 - U1：runMetaPaths 给出 _meta 下 run-<id>.json 的绝对路径
+  ---
+  duration_ms: 0.313292
+  ...
+# Subtest: U2：src/ 里（含注释）没有「重跑……会落一份可读 / 随即恢复」这类循环出口
+ok 289 - U2：src/ 里（含注释）没有「重跑……会落一份可读 / 随即恢复」这类循环出口
+  ---
+  duration_ms: 48.236583
+  ...
+# Subtest: U3：--await-approval 读不出本轮运行元数据 ⇒ 以共用出口段收尾，列出那一份
+ok 290 - U3：--await-approval 读不出本轮运行元数据 ⇒ 以共用出口段收尾，列出那一份
+  ---
+  duration_ms: 4.009458
+  ...
+# Subtest: U3：--await-approval 缺 run_id ⇒ 出口仍是「用 --run-id 指定」，不拼三档成因
+ok 291 - U3：--await-approval 缺 run_id ⇒ 出口仍是「用 --run-id 指定」，不拼三档成因
+  ---
+  duration_ms: 0.988667
+  ...
+# Subtest: U3：approve 闸门项的 run_id 读不出 ⇒ 先恢复后重新 approve，恢复不了才 abandon，以共用出口段收尾
+ok 292 - U3：approve 闸门项的 run_id 读不出 ⇒ 先恢复后重新 approve，恢复不了才 abandon，以共用出口段收尾
+  ---
+  duration_ms: 1.8815
+  ...
+# Subtest: U3：approve 闸门项没有 run_id ⇒ 维持 abandon 后重跑，不拼三档成因（计划双审 AGY-04）
+ok 293 - U3：approve 闸门项没有 run_id ⇒ 维持 abandon 后重跑，不拼三档成因（计划双审 AGY-04）
+  ---
+  duration_ms: 1.292417
+  ...
+1..293
+# tests 293
+# suites 0
+# pass 293
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 280235.84575

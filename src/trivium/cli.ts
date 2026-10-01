@@ -26,7 +26,8 @@ import { collectCommands, runVerify, summarizeVerify } from './verify.js';
 import { buildTopicReport, renderTopicReport } from './report.js';
 import { cancelRun, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
 import {
-  checkAdjudication, loadRoundReviews, renderGateResult, renderTamperedArtifacts, verifyRoundForApproval,
+  approveForkRecovery, awaitApprovalRecovery, checkAdjudication, loadRoundReviews, renderGateResult,
+  renderTamperedArtifacts, verifyRoundForApproval,
 } from './gate.js';
 import { checkStageArtifacts, listRecordedRuns, resolveRerunIndex } from './archive.js';
 import { readHookInput, runHook, type HookName } from './hooks.js';
@@ -555,14 +556,18 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
      * **不降级到声明**：`corrupt` 的含义是「锚本身坏了」，而本入口会冻结送审包
      * 并写下**新一份留痕**。此时退到一个由被保护方自己写的声明值，
      * 正好是把权威排序倒过来用——那也是 Hook 侧同状态的结论（同一个判定函数）。
+     *
+     * 出口用共用段（`meta.ts` 的 `unreadableRunMetaExitAt`）：重跑**不是**出口——本入口就是重跑的入口，
+     * 它在冻结送审包之前就停在这里（留痕读不出的出口计划 r2 §2.2）。
      */
+    const { unreadableRunMetaExitAt } = await import('./meta.js');
     throw new TriviumError(
       EXIT.GATE_BLOCK,
       `无法判定当轮 Driver：${layout.topic} / ${stage} 的运行留痕读不出来` +
         `（${resolution.unreadable.join('、')}）。\n` +
         '  这里**不**按缺省 Driver 继续，**也不**退回声明——前者把「留痕坏了」判成「按缺省算」，\n' +
         '  后者让被保护方自己的声明在锚损坏时反超留痕。\n' +
-        `  出口是**重跑一次 ${stage} 阶段双审**：新运行会先落一份可读的留痕，判定随即恢复。`,
+        unreadableRunMetaExitAt(layout, stage, resolution.unreadable),
     );
   }
 
@@ -861,12 +866,14 @@ async function cmdTopicClaim(args: ParsedArgs): Promise<number> {
 
   const resolution = await resolveStageDriver(ref.layout, stage);
   if (resolution.kind === 'corrupt') {
+    // 出口用共用段：重跑同样会被这条判定拒绝（留痕读不出的出口计划 r2 §2.2）
+    const { unreadableRunMetaExitAt } = await import('./meta.js');
     throw new TriviumError(
       EXIT.GATE_BLOCK,
       `无法判定 ${ref.topic} / ${stage} 的当轮 Driver：运行留痕读不出来` +
         `（${resolution.unreadable.join('、')}）。\n` +
         '  留痕坏了就判不了「这一阶段归谁」，此时接受任何认领都是让声明在锚损坏时反超留痕。\n' +
-        `  出口是重跑一次 ${stage} 阶段双审：新运行会先落一份可读的留痕。`,
+        unreadableRunMetaExitAt(ref.layout, stage, resolution.unreadable),
     );
   }
   const runDriver = resolution.source === 'run' ? resolution.driver : null;
@@ -1099,10 +1106,17 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   const pinnedId = flagString(args, 'run-id');
   const pinned = pinnedId ? await readRunMeta(ref.layout, stage, pinnedId) : null;
   if (pinnedId && !pinned) {
-    // 不静默回落：--run-id 是用户显式指定的，读不出来要说清是哪一种，别按缺省继续
+    /*
+     * 不静默回落：--run-id 是用户显式指定的，读不出来要说清是哪一种，别按缺省继续。
+     * 归属无误时这一格与另外七处同状态（同一份文件、同样的三档成因），而 `missing_disposition` 的提示与
+     * 「没有任何运行元数据」的警告都会主动把人引向 --run-id——只给「请确认归属」等于把人领到死路上，
+     * 所以同样以共用出口段收尾（代码双审 r1 GLM-01）。
+     */
+    const { unreadableRunMetaExitAt } = await import('./meta.js');
     throw missingArtifactError(
       `--run-id ${pinnedId} 的运行元数据读不出来（文件缺失、内容损坏，或 schema 不识）。\n` +
-        `  请确认该 run_id 属于主题「${topic}」的 ${stage} 阶段。`,
+        `  请确认该 run_id 属于主题「${topic}」的 ${stage} 阶段；归属无误、文件在而读不出时，按下列成因处置。\n` +
+        unreadableRunMetaExitAt(ref.layout, stage, [pinnedId]),
     );
   }
   const scan = pinned
@@ -1137,20 +1151,25 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
      *      （`hooks.ts` 的 `immutableChangeReason`：「运行清单是留痕核对的锚，
      *      改锚即可整枝绕过」）。照做会把提交永久拦下。
      *
-     * 真正可用的那条是**重跑该阶段**：`prepareRun` 会先落一份 status: running 的
-     * 骨架，其 run_id 最新，`latestRunMeta` 取首个可读项即返回它，闸门当场恢复。
+     *   3. 重跑该阶段**同样不成立**（留痕读不出的出口计划 r2 §1.2，EV-148）：`review --start`
+     *      在冻结送审包、落下新一份骨架之前，就按 `resolveStageDriver` 判当轮 Driver，而本状态
+     *      （扫到 > 0 份、一份都读不出）在那里必然是 `corrupt`，入口拒绝启动——新运行落不下来。
+     *      上一版这里给的正是重跑这条路（理由是新运行会先落骨架），出口指回了自己。
+     *
+     * 真正的出口按成因分三档（版本落后 → 升级重装；已提交而工作树被改坏 → 用户在终端 restore；
+     * 其余 → 工具内没有出口），与另外七处同状态的拒绝共用 `meta.ts` 的 `unreadableRunMetaExitAt`。
      *
      * `cmdGate` 依然**不加** `--driver` / `--force` 覆盖旗标（第 2 轮 AGY-01 的建议
      * 未采纳）：允许人工声明一个与留痕不符的 Driver，闸门就失去了它唯一的事实锚，
      * 那正是本批改动要消灭的形态。与下面「事实来源是 critics_selected 不是键集」同源。
      */
+    const { unreadableRunMetaExitAt } = await import('./meta.js');
     throw missingArtifactError(
       `${stage} 阶段扫到 ${scan.scanned} 份运行元数据，但**一份都读不出来**` +
         `（文件损坏、schema 不识，或不合 run.v1/v2 契约）：${scan.unreadable.join('、')}\n` +
         '  无法确定当轮 Driver 与轮次，不能按缺省 Driver 继续——那会把「留痕坏了」判成「按 claude 判」。\n' +
-        `  出口是**重跑一次 ${stage} 阶段双审**：新运行会落一份可读的运行元数据，闸门随即恢复。\n` +
-        '  不要删除或改写这些 run-*.json——它们是提交时留痕核对的锚，动了会让 git commit 被拦下。\n' +
-        '  （--run-id 在这一格没有用：它读的是同一批文件，同样读不出来。）',
+        '  （--run-id 在这一格没有用：它读的是同一批文件，同样读不出来。）\n' +
+        unreadableRunMetaExitAt(ref.layout, stage, scan.unreadable),
     );
   }
 
@@ -1250,10 +1269,8 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       runId: latest?.run_id ?? null,
       runIdPinned: Boolean(pinnedId),
       runIdSource: pinnedId ? '--run-id' : '最新一次运行',
-      recovery: {
-        missingRunId: '用 --run-id <id> 显式指定，或先跑一次双审。',
-        unreadableRunMeta: `出口是重跑一次 ${stage} 阶段双审：新运行会落一份可读的运行元数据。`,
-      },
+      // 出口由 gate.ts 构造：读不出那一条只在竞态下可达，抽出去才有用例咬得住（留痕读不出的出口计划 r2 §2.2）
+      recovery: await awaitApprovalRecovery(ref.layout, stage, latest?.run_id ?? null),
     });
     const runId = v.runId;
     if (!v.ok) {
@@ -1631,7 +1648,10 @@ async function cmdApproval(
        * 出口单独写，不沿用 `--await-approval` 那两条（计划 r3 §3.2，计划双审 r1 CODEX-02）：
        * approve 没有 `--run-id`；`review --start` 抢占时不接受 awaiting_approval 的槽位；
        * `--check` / `--await-approval` 带 expect.runId、不改写属于别的运行的闸门项。
-       * 走得通的只有 abandon（它以闸门自己的 run_id 做比较-交换）之后重跑。两个分支同一段文案。
+       * 两个分支**分开写**（留痕读不出的出口计划 r2 §2.2，计划双审 AGY-01 / AGY-04）：闸门项没有 run_id
+       * 时只剩 abandon（它以闸门自己的 run_id 做比较-交换）之后重跑；run_id 读不出时先按成因恢复、
+       * 恢复后直接重新 approve，恢复不了才 abandon——而 abandon 之后的重跑有条件：读不出的若正是该阶段
+       * 最新一份，重跑同样被 `review --start` 的 `corrupt` 判定拒绝。文案在 `gate.ts` 的 `approveForkRecovery`。
        */
       /*
        * 调用写法按闸门项记下的 Driver（代码双审 r3 GLM-03）。闸门项的 `driver` 不作当轮**身份**来源（EV-68：
@@ -1639,17 +1659,14 @@ async function cmdApproval(
        * 拿不到更可信的来源。最坏情况是给出上一轮 Driver 的写法。
        */
       const abandonCmd = entryCommandOf(gate.driver, 'dual-abandon');
-      const exit =
-        '本机闸门项没有指向一份可读的运行留痕：归档是正本、本机闸门是副本，两者已经分叉。\n' +
-        '  approve 不接受 --run-id；--check 与 --await-approval 不会改写属于别的运行的闸门项。\n' +
-        `  出口：${abandonCmd} --topic ${topic} --stage ${stage} --reason '<说明分叉>'，然后重跑该阶段双审。\n` +
-        '  这会留下一条 run_id 为空（或为那个读不出的值）的放弃记录，请在 reason 里写明缘由。';
       const v = await verifyRoundForApproval({
         cfg: ctx.config, layout: ref.layout, stage,
         runId: gate.run_id ?? null,
         runIdPinned: true,
         runIdSource: '本机闸门记录',
-        recovery: { missingRunId: exit, unreadableRunMeta: exit },
+        recovery: await approveForkRecovery({
+          layout: ref.layout, topic, stage, abandonCmd, runId: gate.run_id ?? null,
+        }),
       });
       if (!v.ok) {
         if (!v.result.ok) say(renderGateResult(v.result));

@@ -1,0 +1,200 @@
+{
+  "targets_sha256": {
+    "src/trivium/meta.ts": "3c13055cb6b7f77793911855f0b7bba5f2875a174ce84023c8d1dfb3956bee5a",
+    "src/trivium/cli.ts": "27576079be977909582b140bd460df72ef25482705f3da4e98bb08ded166dd44",
+    "src/trivium/topic-args.ts": "58736e0e2db09c252e6d5543c9fa95bb728ba4145e15fe4248b62415029f2731",
+    "src/trivium/hooks.ts": "886010e0b13966b1358974ed0ce6bda59948a64e6c0a13e6ad168fb44dd985f4",
+    "src/trivium/gate.ts": "e9729781b66b5c13c07f2e9a2636768a5ef76f06e918cebbb48150a3a7452178"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "共用段首句换回循环出口",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U1：共用出口段按成因给三档出口，每档都有可执行的落点",
+        "U1：unreadableRunMetaExit 逐行列出每一份（绝对路径），再接固定段",
+        "U2：src/ 里（含注释）没有「重跑……会落一份可读 / 随即恢复」这类循环出口",
+        "U3：--await-approval 读不出本轮运行元数据 ⇒ 以共用出口段收尾，列出那一份",
+        "U3：approve 闸门项的 run_id 读不出 ⇒ 先恢复后重新 approve，恢复不了才 abandon，以共用出口段收尾"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M2",
+      "desc": "共用段 ② 删掉「只能在终端做」一句",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U1：共用出口段按成因给三档出口，每档都有可执行的落点"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M3",
+      "desc": "共用段 ③ 删掉「工具内没有出口」",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U1：共用出口段按成因给三档出口，每档都有可执行的落点"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M4",
+      "desc": "共用段 ① 删掉 MANUAL 落点",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U1：共用出口段按成因给三档出口，每档都有可执行的落点"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M5",
+      "desc": "unreadableRunMetaExit 不列文件",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U1：unreadableRunMetaExit 逐行列出每一份（绝对路径），再接固定段",
+        "U3：--await-approval 读不出本轮运行元数据 ⇒ 以共用出口段收尾，列出那一份",
+        "U3：approve 闸门项的 run_id 读不出 ⇒ 先恢复后重新 approve，恢复不了才 abandon，以共用出口段收尾"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M6",
+      "desc": "第 1 处 review --start 去掉共用出口",
+      "suite": "dist/test/test/integration/topic-claim.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "留痕损坏：入口与 Hook 同口径硬失败，不用声明顶上"
+      ],
+      "firstLines": [],
+      "elapsed_s": 4
+    },
+    {
+      "id": "M7",
+      "desc": "第 2 处 topic claim 去掉共用出口",
+      "suite": "dist/test/test/integration/topic-claim.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "留痕损坏：入口与 Hook 同口径硬失败，不用声明顶上"
+      ],
+      "firstLines": [],
+      "elapsed_s": 4
+    },
+    {
+      "id": "M8",
+      "desc": "第 3 处 topic resolve 去掉共用出口",
+      "suite": "dist/test/test/integration/topic-claim.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "留痕损坏：入口与 Hook 同口径硬失败，不用声明顶上"
+      ],
+      "firstLines": [],
+      "elapsed_s": 4
+    },
+    {
+      "id": "M9",
+      "desc": "第 4 处 Hook 去掉共用出口",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "留痕损坏：不按缺省 Driver 继续，硬失败",
+        "较新留痕损坏：不退回上一轮 Driver，硬失败"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M10",
+      "desc": "第 5 处 gate 一份都读不出去掉共用出口",
+      "suite": "dist/test/test/integration/gate-loop.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T-12：留痕全部读不出时，硬失败的文案必须给出走得通的出口"
+      ],
+      "firstLines": [],
+      "elapsed_s": 267
+    },
+    {
+      "id": "M11",
+      "desc": "awaitApprovalRecovery 读不出不带共用出口",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U3：--await-approval 读不出本轮运行元数据 ⇒ 以共用出口段收尾，列出那一份"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M12",
+      "desc": "approveForkRecovery 读不出不带共用出口",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U3：approve 闸门项的 run_id 读不出 ⇒ 先恢复后重新 approve，恢复不了才 abandon，以共用出口段收尾"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M13",
+      "desc": "approveForkRecovery 缺 run_id 也拼共用出口",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U3：approve 闸门项没有 run_id ⇒ 维持 abandon 后重跑，不拼三档成因（计划双审 AGY-04）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M14",
+      "desc": "approve 出口 abandon 排到恢复之前",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U3：approve 闸门项的 run_id 读不出 ⇒ 先恢复后重新 approve，恢复不了才 abandon，以共用出口段收尾"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    }
+  ]
+}

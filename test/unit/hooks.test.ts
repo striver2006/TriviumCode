@@ -19,6 +19,14 @@ import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { Ctx } from '../../src/trivium/types.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { run } from '../../src/trivium/util/exec.js';
+import { assertUnreadableExit } from '../helpers/unreadable-exit.js';
+
+/** deny 的理由正文（`hookSpecificOutput.permissionDecisionReason`）；不是 deny 时为空串 */
+function denyReason(r: { json?: unknown }): string {
+  const o = r.json as { hookSpecificOutput?: { permissionDecisionReason?: unknown } } | undefined;
+  const v = o?.hookSpecificOutput?.permissionDecisionReason;
+  return typeof v === 'string' ? v : '';
+}
 
 const SESSION = 'S-CURRENT';
 const STALE = 120_000;
@@ -802,6 +810,8 @@ test('留痕损坏：不按缺省 Driver 继续，硬失败', async () => {
     JSON.stringify(r.json), /读不出来/,
     '文案要说清是留痕坏了，而不是让人以为自己写错了文件名',
   );
+  // 出口：共用出口段、列出那一份的绝对路径、不再给「重跑」这条指回自己的路（留痕读不出的出口计划 r2 §5.1）
+  assertUnreadableExit(denyReason(r), [path.join(dir, 'run-R1.json')], 'hook-pre-write（全损）');
 });
 
 /*
@@ -861,6 +871,10 @@ test('较新留痕损坏：不退回上一轮 Driver，硬失败', async () => {
   const r = await hookPreWrite(ctx, writeInput(f));
   assert.equal(r.exitCode, EXIT.GATE_BLOCK, '最新一份读不出来就判不了当轮身份，不能退回上一轮');
   assert.match(JSON.stringify(r.json), /R2/, '文案要点名是哪几份读不出来');
+  // 只列读不出的那一份；可读的 R1 不进列表
+  const reason = denyReason(r);
+  assertUnreadableExit(reason, [path.join(ctx.archiveRoot, 't/code/_meta', 'run-R2.json')], 'hook-pre-write（较新一份损）');
+  assert.ok(!reason.includes('run-R1.json'), `可读的那一份不该被列成要处置的对象：\n${reason}`);
 });
 
 /*

@@ -1,0 +1,14 @@
+M1：fail=5 cancelled=0 0s ⇒ U1：共用出口段按成因给三档出口，每档都有可执行的落点 ｜ U1：unreadableRunMetaExit 逐行列出每一份（绝对路径），再接固定段 ｜ U2：src/ 里（含注释）没有「重跑……会落一份可读 / 随即恢复」这类循环出口 ｜ U3：--await-approval 读不出本轮运行元数据 ⇒ 以共用出口段收尾，列出那一份 ｜ U3：approve 闸门项的 run_id 读不出 ⇒ 先恢复后重新 approve，恢复不了才 abandon，以共用出口段收尾
+M2：fail=1 cancelled=0 0s ⇒ U1：共用出口段按成因给三档出口，每档都有可执行的落点
+M3：fail=1 cancelled=0 0s ⇒ U1：共用出口段按成因给三档出口，每档都有可执行的落点
+M4：fail=1 cancelled=0 0s ⇒ U1：共用出口段按成因给三档出口，每档都有可执行的落点
+M5：fail=3 cancelled=0 0s ⇒ U1：unreadableRunMetaExit 逐行列出每一份（绝对路径），再接固定段 ｜ U3：--await-approval 读不出本轮运行元数据 ⇒ 以共用出口段收尾，列出那一份 ｜ U3：approve 闸门项的 run_id 读不出 ⇒ 先恢复后重新 approve，恢复不了才 abandon，以共用出口段收尾
+M6：fail=1 cancelled=0 4s ⇒ 留痕损坏：入口与 Hook 同口径硬失败，不用声明顶上
+M7：fail=1 cancelled=0 4s ⇒ 留痕损坏：入口与 Hook 同口径硬失败，不用声明顶上
+M8：fail=1 cancelled=0 4s ⇒ 留痕损坏：入口与 Hook 同口径硬失败，不用声明顶上
+M9：fail=2 cancelled=0 1s ⇒ 留痕损坏：不按缺省 Driver 继续，硬失败 ｜ 较新留痕损坏：不退回上一轮 Driver，硬失败
+M10：fail=1 cancelled=0 267s ⇒ T-12：留痕全部读不出时，硬失败的文案必须给出走得通的出口
+M11：fail=1 cancelled=0 0s ⇒ U3：--await-approval 读不出本轮运行元数据 ⇒ 以共用出口段收尾，列出那一份
+M12：fail=1 cancelled=0 0s ⇒ U3：approve 闸门项的 run_id 读不出 ⇒ 先恢复后重新 approve，恢复不了才 abandon，以共用出口段收尾
+M13：fail=1 cancelled=0 0s ⇒ U3：approve 闸门项没有 run_id ⇒ 维持 abandon 后重跑，不拼三档成因（计划双审 AGY-04）
+M14：fail=1 cancelled=0 0s ⇒ U3：approve 闸门项的 run_id 读不出 ⇒ 先恢复后重新 approve，恢复不了才 abandon，以共用出口段收尾
