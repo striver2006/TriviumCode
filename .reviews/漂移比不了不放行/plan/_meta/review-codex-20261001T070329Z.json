@@ -1,0 +1,114 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "按「外部依赖与环境假设 / 成本与配额 / 回滚与迁移成本」三个镜头审了这份 r1 计划，并结合真实代码核实。方向我认可：judgeDrift 的 3.a 换用失败即抛的 diffTreesNameStatus、新增 unknown 结论、按 on_drift_related 处置、run.json 只取加法、快乐路径 git 调用次数不变——这些我在 util/git.ts、freeze.ts、guard.ts、review.ts、run.v2.json、schemas.ts 上逐条对过，计划的行号与现状描述基本准确（含 9db67ca 与 40ca534 只差 BACKLOG.md 一条，我实测 git diff --stat 核过）。§2.2 关于 --name-only 不带 -z 会把含制表符/引号的路径带引号返回、从而把 related 放松成 unrelated 的论证我核了 diffTrees 的实现（只做 split('\\n')，不过 unquoteGitPath），成立；顺带核了 --no-renames 的等价性：本机 git 2.54 下三个含改名的提交上 --name-only 加不加 --no-renames 输出集逐字相同、status 里零条 R，计划「底层命令不做改名检测」的假设在这台机器上成立。要求改的不是方向，是两处会造成返工的东西：一是 §5.4 的验收自证判据不足以证明「旧构建真的复现了 bug」——按现在的写法，窗口没命中时旧构建照样输出 changed: false，读数会通过而复现其实没发生，这种假阳性直接进验收报告；二是 §6 的暂缓论证只评了 ref 与 .keep 包两种做法，漏掉了最便宜、也最不动用户仓库的那一档（冻结时落文件清单），而 EV-180 的触发条件被写成「出现失败轮才做」，等于每一次 occurrence 都要先付一整轮双侧配额。另有一批口径/登记类的小项（形状闸与姊妹实现不一致、桩形态首次引入不可逆 git 操作、§5.1 既有用例条数与实际不符、§4 漏了设计文档另两处与 schema 同步清单的三个落点、超时由放行改为一轮失败的代价没进风险表）。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "§6 暂缓（EV-180）与 §2.4「代价与出口文案」第 1、3 条",
+      "problem": "暂缓只做在 ref / .keep 包两档之间，漏掉了第三档、也是最便宜的等价路径：冻结时用一次 git ls-tree -r（或同法）把 before tree 的「路径 + blob」清单落在编排器自己的归档件里，跑后即便 before tree 对象被清理，仍可用这份清单与跑后那棵 tree 的清单在内存里比出变更集。这一档不碰用户的 ref 命名空间（§6 理由 2 不成立）、不新增收尾面（理由 3 不成立：清单件与送审包同一条写入路径、同一套保护），只在冻结时多一次 ls-tree 与一份可能不小的清单件——大仓的归档体积是唯一真实代价，而计划没有把它列进比较，也就没写为什么不取。结果是：本主题的默认处置是「比不了 ⇒ 整轮 failed ⇒ 重跑」，而重跑是双侧真实厂商 CLI 的配额，§2.4 只算了「重跑花一轮配额」这一句，没有算 occurrence 的单价，更没有算「一次便宜的事前落盘」能不能免掉它；EV-180 的触发条件又写成「实测或用户反馈中出现失败轮才做」，等于每一次都要先把一轮配额和一轮裁决烧掉才允许启动缓解。",
+      "evidence": "计划 §2.2（快乐路径仍是一次 diff-tree）、§2.4 代价段、§6 全文；src/trivium/util/git.ts:272-288（diffTreesNameStatus 只依赖两棵 tree 对象）、src/trivium/freeze.ts:517-552（3.a 只要一张路径清单）；src/trivium/review.ts:1444-1448 与 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1757（EV-132 注记已确认「基线是不可达对象、可能被清理」是已知代价，且明确记了「每轮扫两到三次工作树」这类成本核算口径）",
+      "suggestion": "不必在本主题实现，但 §6 的暂缓条目要把这一档写进去并给出被否理由（大仓清单件的体积/是否可只存 name 不存 blob / 放 _meta 还是 run.json），或明确「本主题后仍按 occurrence 付费、可接受」；同时把一次失败轮的配额单价写进 §2.4 的代价段，触发条件改成「出现一次即评估」而非「出现失败轮才做」。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "§5.4「审查期间删对象」段与「格」段（A/B/C 三格、V0 之外）",
+      "problem": "旧构建那一侧的窗口命中判据不足，且与断言之间留了一条假阳性通道。计划给的自证是「复算时 cat-file -e 该 tree 退 1 记进读数」，但那是脚本在 prune 之后当场跑的，不是复算那一刻的观测；而 B 格对旧构建的断言只有 changed: false 与退 0。若 prune 与改文件都落在跑后复算**之后**，旧构建同样写 changed: false、退 0（那一刻确实无漂移），断言照样通过，而 bug 根本没被复现——验收报告会把这一格写成「旧构建静默放行」的实证。计划没有用现成的确定性判据：EV-132 起两份构建都把复算的 tree 写进 snapshot.after_tree_hash，after_tree_hash ≠ tree_hash 且 changed: false 才是「工作树确实变了、比对却没列出来」的充要签名。另外「一侧 ok、另一侧 hang_cli 给小 sleepS 留出时间窗」这句自身矛盾：hang_cli 的 sleepS 就是窗口的长度，给小值恰恰把窗口收窄到秒级（桩那一侧自然结束后没有有效结论，还得靠 --allow-single 降级，这才是 --allow-single 的真正用途，计划把它写成「让单侧超时不致整轮中止」与实际机制不符），窗口大小与轮询间隔、与 review.timeout_s.plan（缺省 900 s）的关系都没给数。还有一个保真度问题：这一手法让每个清理格跑的都是单审降级轮，而新构建的确定性双审形状只在 I1（prune_objects 桩）里有，计划没在 §5.4 里说明这一差异。",
+      "evidence": "计划 §5.4；src/trivium/review.ts:1444-1451 与 src/trivium/types.ts:1266-1277（after_tree_hash 恒写、不参与判定）；src/trivium/adapters/stub.ts:121-129 与 165-174（sleepS 语义＝CLI 自然结束的睡眠秒数、blockAfterMs 才是堵事件循环那格）；src/trivium/review.ts:662-675（--allow-single 与一侧失败的降级关系，以及 allow_partial_flag 为 false 时被忽略）；src/trivium/config.ts:288 与 301-302（timeout_s.plan 缺省 900、on_drift 缺省 warn）；doc/05_testing/evidence/unverifiable-start-20260930/acceptance.mjs 与同目录 mutation-names.mjs（计划引用的骨架确实存在，可照它的读数结构补判据）",
+      "suggestion": "把 B/C 两格的通过判据改成「after_tree_hash ≠ tree_hash ∧ 旧构建 changed: false ∧ 新构建 unknown_reason.cause 为 object_gone」，外部 cat-file 读数只作旁证；窗口长度按「数倍于轮询间隔、远小于 timeout_s.plan」给具体秒数并写进脚本，配一个有界重试而不是「一次不中就出读数」；同时在 §5.4 写明旧构建那几格是单审降级轮、双审形状由 I1 承担，读数里记 review_mode/degraded 供归一化与报告口径。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "§2.1 原因三档表与 §2.2 classifyCompareFailure 的次序段",
+      "problem": "与同一对严格助手的另一位调用方口径不一致：worktree-summary 在任何 git 调用**之前**对基线做 40/64 位十六进制形状闸，并单独报「基线不是合法的对象名」这一因，理由写得很硬（基线取自留痕，而审批前复核不核 run.json）。本主题的 before.treeHash 同样不是本进程算出来的——worker 路径下整个 RunContext（含 snapshots/primarySnap）是从磁盘上的 request.json 读回重建的，属于同一类「留痕来源」。计划既不接形状闸，也没有像它对 PRD、gate.ts 那样写一句「核过：不适用，理由是……」，而原因分档只有三格，形状不对会被 treeExists 的 128 抛错并进 git_error，detail 还会把那段非法值的前 12 位原样回显进人读告警与 run.json。",
+      "evidence": "src/trivium/worktree-summary.ts:153-156（OBJECT_NAME_RE 在任何 git 调用之前）与设计文档 :1757 的「形状闸」条目；src/trivium/run-protocol.ts:196-260（rebuildContext 从 request.json 读 h.snapshots/primarySnap，worker 不重复冻结）；src/trivium/util/git.ts:244-260（treeExists 对非 git/非法名退 128 抛错、缺失退 1）",
+      "suggestion": "要么复用同一道形状闸并把「基线不合形状」单独成档（与姊妹实现的四因对齐），要么在 §2.2 明确写出为什么这里不需要（例如值来自同一编排器写的交接件、且有别的核验），并说明 detail 只回显前 12 位是否足以挡住把非法字符打进终端告警的那一格。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "security",
+      "location": "§5.2 桩新形态 prune_objects 的定义段；§3 改动清单 src/trivium/adapters/stub.ts 行",
+      "problem": "这是本仓第一个执行**不可逆破坏性** git 操作的桩形态（现有最重的形态只写一个文件：mutate_file 在 project_root 下落一个 src/mutated-by-stub.ts）。而 stub.ts 对 req.project_root 没有任何夹具约束，TRIVIUM_STUB_CRITIC 在生产路径只打醒目告警、不拒绝执行；一旦有人拿着这份注入能力指向真实仓库排查问题，git prune --expire=now 会真的把该仓库里所有不可达对象清掉（未提交的暂存内容之外的那些工作正在 git 眼里就是不可达对象），这个损失桩本身不承担、也没有恢复路径。",
+      "evidence": "src/trivium/adapters/stub.ts:1-22（安全边界一节：只说生产路径打告警，没有拒绝）与 :565-575（mutate_file 只写文件）；grep 全仓 prune 在 src 下没有先例；计划 §5.2 对该形态的约束只写了「在项目根执行 git prune --expire=now」",
+      "suggestion": "给这一形态加一条最便宜的自缚：只在 project_root 落在临时夹具根之下时才动手，否则不执行并把原因写进该侧结果；同时把这条约束写进 §3 与 §5.2，别让它只活在代码注释里。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "§5.1 U8 行（「既有六条」）",
+      "problem": "对既有被保对象的清点与实际不符，而少列的三条正好落在本次改动的输出解析路径上。test/unit/freeze-drift.test.ts 共 10 个 test，其中走 judgeDrift 判定的是 9 条，不是 6 条：除了 none / subject_drift / unrelated / related / scratch / 策略映射，还有「编排器自己往归档写入不算漂移」「往 .trivium 写 state.json 与锁文件不算漂移」「含中文的路径在漂移报告里可读，不是八进制转义」这三条——前两条靠 3.a 输出的自有前缀剔除，第三条正是 core.quotePath 与引号形态那格（§2.2 承认旧调用不过 unquoteGitPath、新调用走 -z 原样路径）。U8 写成「六条原样保留」，这三条就没被钉住；一旦 -z 换形把中文路径或自有前缀的匹配改掉，计划自己列的回归保护里找不到它。",
+      "evidence": "test/unit/freeze-drift.test.ts:45-175（十个 test 的标题逐条可见，其中 :68 归档写入、:85 .trivium、:150 中文路径三条）；src/trivium/freeze.ts:520-534（isOwn 与 scratchGlobs 都在 3.a 的输出上筛）；src/trivium/util/git.ts:229-243（quotePath=false、diffTrees 不过 unquoteGitPath）",
+      "suggestion": "U8 改成逐条点名九条（或按 kind 分组列全），并在 §2.2 的「顺带变化」里把中文路径那格与自有前缀那格明确列为需要重钉的对象。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "§4 文档同步表",
+      "problem": "同步清单不完整，两处会造成「设计文档自相矛盾」的落点没在表里。其一：设计文档里除了 §9.2 的伪代码，:2774 的异常处置表那一行逐档写明了「被审对象 → 整次作废；相关文件 → on_drift_related；无关文件 → on_drift」，:1757 的 EV-132 注记又写了「比对用失败即抛的 diffTreesNameStatus，不用失败返回空的 diffTrees」——本主题正是去改这两处所描述的判定，只改 §9.2 会让设计文档内部三处口径不一致，而 AGENTS.md 写的是「与设计文档不一致的行为先回补设计、它是唯一实现依据」。其二：本仓「改动同步清单」里 JSON Schema 那一行要求的落点是 parse/gate/meta 校验、PROTOCOL、skills/dual-critic/SKILL.md、AGENTS.md 的契约面描述、registry-parity 的 schema 扫描盯防点五处，计划 §4 只写了 PROTOCOL，其余三处既没写改也没写「核过不改」；同表对 PRD 就写了核过不改，口径应当一致。",
+      "evidence": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2774 与 :1757；AGENTS.md「改动同步清单」表（JSON Schema 行的五个落点）；skills/dual-critic/SKILL.md:19（只列 schema 清单、不含 drift 字段面，大概率不改，但需要写明）；test/unit/registry-parity.test.ts:753-776（盯防点是显式身份路径清单，新增的 cause 枚举不在其论域，这条也应写明）",
+      "suggestion": "§4 补两行：设计 :2774 的异常表与 :1757 的 EV-132 注记同批改；schema 同步清单里 SKILL.md / AGENTS.md 契约面 / registry-parity 三处各写一句核过结论（改或为何不改）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "§7 风险表第二行（失败后多出的 cat-file 等待）；§2.2 不传 timeoutMs 那一条",
+      "problem": "风险表只算了「比不了之后多等两次超时」，没算方向反转的那一半：比对**本身**超时的这一格，旧行为是返回空 ⇒ 判 none ⇒ 放行，新行为是 unknown ⇒ 缺省 fail ⇒ 整轮作废。也就是说这次改动把一个「慢仓库里没人察觉的 120 s」换成了「一轮配额」。而且这个超时预算既不按阶段配、也没有像审批前摘要那样按剩余预算传值并按进程组收尾，用户在告警里看到的出口只有「核对后重跑」和「把 on_drift_related 改成 warn（同时放宽真实相关漂移）」，对超时这一因没有专属开关。§1.2 的触发面论证（缺省 gc/maintenance 不删两周内的不可达对象）只测了 object_gone 一因，git_error 与 timeout 两因没有测量。",
+      "evidence": "src/trivium/util/git.ts:19-40（不显式传 timeoutMs 即缺省 120 s、不按进程组收尾）与 :272-288；src/trivium/freeze.ts:517-566（旧：[] ⇒ none；新按 §2.3 走 on_drift_related）；src/trivium/worktree-summary.ts:159-163（姊妹实现的做法是每步按剩余预算传值、20 s 整体截止）；计划 §1.2 只记录了对象清理一项实测",
+      "suggestion": "在 §7 里补一行「比对超时由放行变为一轮失败」并写明接受理由或给它一个显式预算口径；§5.4 V0 顺手记一次大仓（本仓即可）diff-tree -r 的耗时进读数，把 timeout 这一因的触发面也变成实测而不是推断。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-08",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "§5 全节（尤其 §5.3 与 §5.5）",
+      "problem": "验证清单只有「零配额」这一条预算，没有任何墙钟口径：两次全量 npm run check、Node 18/22 各一轮目标套件、12 条变异（装置每条都要重建产物再跑套件）、双构建对照加 A/B/C 三格外部时序赛跑。缺这一行的后果不是风格问题——09-30 已经撞过「变异装置被无超时等待挂死」，而计划对它的对策是「逐条预跑」，那本身就是一笔要估的时间；没有预算就没有「先跑哪几条、挂了就砍哪几条」的次序。",
+      "evidence": "计划 §5.3（明确引用 doc/05_testing/evidence/unverifiable-start-20260930/gen-mutation-spec.mjs 与 lock-reclaim-enoent-20260930/mutation-names.mjs，两个脚本我都核过存在）与 §5.5；scripts/mutation-check.mjs:168-171（每条变异都走一次带 --with-tests 的重建）",
+      "suggestion": "§5 末尾加一行成本核算：预计串/并行安排、变异按目标套件跑而不是全量（哪些必须全量）、挂死时砍哪几条变异并登记到 BACKLOG，别让它变成「跑不完就整包延后」。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "把 3.a 从「失败返回空」换成失败即抛的现成严格助手、而不是另写第三份比对，符合本仓「同一件事只留一个实现」的取向；§1.5 把全仓 diffTrees 调用方逐处列出并判明方向（freeze 放行、两处 probeScratchPaths 保守）我按 grep 复核过，确实只剩那三处，改后判定类调用不再依赖失败返回空的语义。",
+    "新结论走 on_drift_related 而非 on_drift 的论证成立且诚实：比不了就排除不了范围内文件被改，按 on_drift（缺省 warn）处置等于假设改动都在范围外，那正是同一类放行的换形；用户决策与 BACKLOG 原文的偏离被明确要求写进结案，这一点做得对。",
+    "snapshot.drift 只取加法、drift 子对象不加 additionalProperties: false、并双向核了旧读新与新读旧——这让本主题的**回滚成本很低**：代码回退后带 unknown_reason 的历史留痕仍能被旧 schema 读回、旧 report 走 shown 为 0 那一支不出错。我没有把它当成问题，这是这一版设计里最值钱的一段。",
+    "run.json 三个既有字段的含义保持不变（changed 仍是「结论不是 none」、unknown 与 subject_drift 同形）比再造一套语义好，且 §2.6 核过 gate.ts :353-372 那句「drift 为 false 只排除了……」在改后论断更准，这种反向核验是计划该有的自觉。",
+    "把「比不了」写成人读告警时明确写「审查结论已落盘但本轮不能当作有效审查」，并写明改 warn 的连带影响，不给「专门关这一格的开关」留错觉；DRIFT_UNKNOWN_LABEL 集中一张表由四个消费方取，符合纪律 10。",
+    "§0「不做」清单把 workTreeHash、statusPorcelain、subject_drift 优先级、scratch 白名单逐条圈在外面，§1.4 又核了相邻的「比不了」形态不是放行（失败即抛、走 worker_exception 收尾），范围控制干净。",
+    "§2.2 主动写出严格助手带来的顺带变化（特殊字符路径由 related 误落成 unrelated 那一格方向是放松）并给它配 U7 与 M12 两把锁，这种「改 A 顺手把 B 也改对了」的如实交代是高价值段落。",
+    "§2.2 用 instanceof GitTimeoutError 而不导出姊妹文件私有的鸭子判型 isTimeout，并说明二者等价，判据选择合理；§2.3 靠无 default 的 switch 让编译期守住新增格（我核过 driftAction 现有写法确实无 default）也是省钱的做法。"
+  ],
+  "not_covered": [
+    "只审了计划文本与其对 40ca534 现状的描述，没有审查任何尚未写出的实现代码。",
+    "镜头分工：外部依赖与环境假设、成本与配额、回滚与迁移成本是我这一侧；判定语义本身的完备性（unknown 是否应再细分、与 unattributedDriftFiles 的归因关系是否够、归因分流在 unknown 下会不会给出错误的「无写事件」暗示）、以及并发/进程治理层面（worker 猝死、失联收尾与本轮 fail 的交叉）我只做了必要核对，没当主论域审。",
+    "--no-renames 与旧 --name-only 输出等价的假设我只在本机 git 2.54（Apple Git-157）与三个含改名提交上验，未覆盖其它 git 版本；不过新调用显式带 --no-renames、比旧调用更不受 diff.renames 配置影响，方向保守。",
+    "§5.4 之外没有逐行读过两份历史 evidence 脚本的实现细节（acceptance.mjs、gen-mutation-spec.mjs、mutation-names.mjs 只确认存在与骨架引用不悬空），因此「照它的骨架」能否覆盖新格所需的归一化项没有逐条核对。",
+    "未审查 skills-src 与入口资产：grep 到 l2-notice.md 与 run-enforce.* 两处提到「越界由跑后漂移复算发现」，改后这句话仍然成立，我没有把它列成意见，但如果要把「审查期间不要执行会立即清理不可达对象的命令」前置给执笔者，那是入口资产的改动、要动 driver.snippet 档位指纹与 render 重出，成本明显高于 §2.4 的事后告警，这一取舍我没替 Driver 判断。",
+    "PRD 与 config 层面（on_drift_related 的取值域、是否该为 unknown 增设独立配置键）没有独立评审：用户决策已定，我只在 CODEX-01/04 与 §2.4 的出口讨论里附带涉及。",
+    "未执行任何写操作，也未调用任何真实审查员 CLI；为核实 --no-renames 与对象清理形态，只在本仓库对象库上跑了只读的 git diff-tree / git log / git config 查询。"
+  ]
+}
