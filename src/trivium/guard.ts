@@ -6,15 +6,16 @@
  */
 import nodePath from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { Config, CriticId, CriticRequest, CriticResult, DegradedFinding, DenyCategory, Review,
+import type { Config, CriticId, CriticRequest, CriticResult, DegradedFinding, DenyCategory, EvidenceUntrusted, Review,
   SuspectedWrite,
 } from './types.js';
-import { describeDriftUnknown } from './types.js';
+import { describeDriftUnknown, EVIDENCE_UNTRUSTED_CAUSE_TEXT } from './types.js';
 import {
   checkEvidence,
   checkPeerLeak,
   checkPeerLeakViaCommand,
   effectiveReadPaths,
+  MCP_WRITE_EVENT_PREFIX,
   toProjectRelative,
   TOOL_TRACE_CAPABILITY,
   type TraceCapability,
@@ -179,6 +180,15 @@ export interface SideVerification {
   pathCause?: 'command-trace' | 'no-counts' | 'no-path-bearing-calls';
   /** 本次生效的项目读取下限（`command-trace` 族折减后的值） */
   evidenceThreshold: number;
+  /**
+   * 证据不可信（EV-188）：本侧有经编排器看不见的通道完成的调用（今天只有名单外的 MCP 调用，`cause: 'mcp-call'`）。
+   * **只在成立时出现**（结构上缺席，不是 `undefined` 值）。
+   *
+   * 结论保留、不作废、不判失守——与 `readonlyBreach`（确诊）正交。它修饰的是**阴性结论**：「措施 a / b 没命中」
+   * 「轨迹无写事件」在本侧不再足以说明没读禁读面、没写、没出网。所以它与 `readonly: 'unavailable'` 一样参与漂移归因
+   * 分流（`judgeRun`，计划双审 AGY-01），并走降级档位的五面留痕；不进闸门、不升格、不塌缩成无事。
+   */
+  untrusted?: EvidenceUntrusted;
 }
 
 /**
@@ -485,11 +495,13 @@ export function judgeSide(
     suspectedWrites: [...(result.suspected_write_events ?? [])],
     verification: (() => {
       const pv = pathVerificationTier(result, cap);
+      const untrustedTools = [...new Set(result.mcp_untrusted_tools ?? [])].sort();
       return {
         readonly: cap.rejectionRecorded ? 'ok' : 'unavailable',
         path: pv.tier,
         ...(pv.cause ? { pathCause: pv.cause } : {}),
         evidenceThreshold: ev.minProjectReads,
+        ...(untrustedTools.length > 0 ? { untrusted: { cause: 'mcp-call' as const, tools: untrustedTools } } : {}),
       };
     })(),
     // 字段缺席（本次无覆盖尝试）与三态一并原样透传，本层不做归一（EV-82）
@@ -586,6 +598,12 @@ export interface RunVerdict {
    * 把不可归因的混进去，等于用一个更强的断言掩盖证据的缺口。
    */
   unattributedDriftFiles: string[];
+  /**
+   * 本轮「无法归因」的成因（EV-188 计划双审 AGY-01）：能力恒态（有侧 `rejectionRecorded === false`）、证据不可信
+   * （有判过的侧 `verification.untrusted`）、MCP 执行型调用（有判过的侧写事件含 `MCP:` 条目），可同时成立。
+   * 只在 `unattributedDriftFiles` 非空时出现，只供告警按成因分句；可选是为了不动既有的字面构造，缺席按第一种说。
+   */
+  unattributedCauses?: ('readonly-unavailable' | 'evidence-untrusted' | 'mcp-exec')[];
   readonlyBreach: boolean;
   breachedFiles: string[];
   peerArtifactRead: boolean;
@@ -723,6 +741,21 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
   const anyReadonlyUnavailable = Object.values(input.capabilities ?? {}).some(
     (c) => c?.rejectionRecorded === false,
   );
+  /*
+   * 另外两种成因同样让「无写事件 ⇒ 开发者手改」的前提不成立（EV-188）：
+   * - 证据不可信（计划双审 AGY-01）：有侧调了名单外的 MCP 工具，经它的写入不在轨迹里；
+   * - MCP 执行型调用（已判失守）：它能写任意文件，而写事件里只有代码摘要、没有路径，扣不出是哪些文件——
+   *   不并进来的话，同轮的工作树变动会被记成开发者手改（计划 r2 只写了前一种，这一种是编码时补的同族格，报告记偏离）。
+   * 这两种是**运行期事实**，只能取判过的侧（`sides`）；失败 / 超时的侧轨迹没解析、调没调过无从得知，与既有「失败侧不评判证据」同口径。
+   */
+  const anyEvidenceUntrusted = Object.values(sides).some((s) => s?.verification.untrusted !== undefined);
+  const anyMcpExec = Object.values(sides).some((s) => s?.breachEvidence.some((e) => e.startsWith(MCP_WRITE_EVENT_PREFIX)));
+  const unattributedCauses: NonNullable<RunVerdict['unattributedCauses']> = [
+    ...(anyReadonlyUnavailable ? (['readonly-unavailable'] as const) : []),
+    ...(anyEvidenceUntrusted ? (['evidence-untrusted'] as const) : []),
+    ...(anyMcpExec ? (['mcp-exec'] as const) : []),
+  ];
+  const cannotAttribute = unattributedCauses.length > 0;
 
   /*
    * 已确诊失守的文件不进「无法归因」桶：那批有**正向证据**，
@@ -750,6 +783,8 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
    */
   const breachedAbs = new Set(
     [...new Set(breachedFiles)].flatMap((ev) => {
+      // MCP 执行型条目（EV-188）括号里是代码摘要不是路径，不参与扣除——将来摘要形态变了、恰好像个路径时也不会错扣
+      if (ev.startsWith(MCP_WRITE_EVENT_PREFIX)) return [];
       // `toolName(<path>)`：取最后一对括号内的内容，避免路径自身含括号时被切断
       const open = ev.indexOf('(');
       const close = ev.lastIndexOf(')');
@@ -762,14 +797,15 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
   const attributedToBreach = (f: string): boolean =>
     breachedAbs.has(nodePath.resolve(input.projectRoot, f));
 
-  const unattributed = anyReadonlyUnavailable ? changed.filter((f) => !attributedToBreach(f)) : [];
+  const unattributed = cannotAttribute ? changed.filter((f) => !attributedToBreach(f)) : [];
 
   return {
     sides,
     drift,
     driftAction: driftAction(cfg, drift),
-    fingerprintChangedFiles: anyReadonlyUnavailable ? [] : changed,
+    fingerprintChangedFiles: cannotAttribute ? [] : changed,
     unattributedDriftFiles: unattributed,
+    ...(unattributed.length > 0 ? { unattributedCauses } : {}),
     readonlyBreach: Object.values(sides).some((s) => s?.readonlyBreach === true),
     breachedFiles: [...new Set(breachedFiles)],
     peerArtifactRead: Object.values(sides).some((s) => s?.peerArtifactRead === true),
@@ -789,6 +825,16 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
         '    git diff\n' +
         '  确认无误后再决定是否 `git checkout --` 相关文件。',
     );
+    /*
+     * MCP 通道的补句（EV-188 决策五）：`MCP:` 条目括号里是代码摘要不是文件路径——它能写任意文件，
+     * 上面的「受影响的调用」列不出写了哪些，核对时不能只看这几行。
+     */
+    if (v.breachedFiles.some((f) => f.startsWith(MCP_WRITE_EVENT_PREFIX))) {
+      out.push(
+        '  其中 `MCP:` 开头的是 MCP 执行型工具调用：它能执行任意代码，读写与出网都不在核验面，按只读失守处置；' +
+          '括号里是代码摘要（已脱敏、截断）不是文件路径，它写了哪些文件从轨迹里列不出来，以工作区核对为准。',
+      );
+    }
   }
 
   if (v.peerArtifactRead) {
@@ -853,12 +899,30 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
     }
   }
   if (v.unattributedDriftFiles.length > 0) {
-    out.push(
-      '审查期间有文件变更，但本轮有侧的只读核验不可用，**无法归因**：\n' +
-        v.unattributedDriftFiles.map((f) => `    ${f}`).join('\n') +
-        '\n  既不能判为审查员失守（无正向证据），也不能判为开发者手改' +
-        '（该侧被拒的写不留痕，无写事件排除不了审查员写过）。请人工核对。',
-    );
+    const causes = v.unattributedCauses ?? ['readonly-unavailable'];
+    if (causes.length === 1 && causes[0] === 'readonly-unavailable') {
+      // 只有能力恒态这一种成因：文案与 EV-188 之前逐字相同
+      out.push(
+        '审查期间有文件变更，但本轮有侧的只读核验不可用，**无法归因**：\n' +
+          v.unattributedDriftFiles.map((f) => `    ${f}`).join('\n') +
+          '\n  既不能判为审查员失守（无正向证据），也不能判为开发者手改' +
+          '（该侧被拒的写不留痕，无写事件排除不了审查员写过）。请人工核对。',
+      );
+    } else {
+      /* 按成因分句（EV-188 计划双审 AGY-01）：三种成因让「无写事件 ⇒ 开发者手改」失效的方式不同，压成一句就说不清该查什么 */
+      const why = causes.map((c) =>
+        c === 'readonly-unavailable'
+          ? '有侧的只读核验不可用（被拒的写不留痕）'
+          : c === 'evidence-untrusted'
+            ? '有侧证据不可信（调了名单外的 MCP 工具，经它的写入不在轨迹里）'
+            : '有侧调用了 MCP 执行型工具（已判只读失守；它能写任意文件，写事件里没有路径）',
+      );
+      out.push(
+        `审查期间有文件变更，但本轮${why.join('；')}，**无法归因**：\n` +
+          v.unattributedDriftFiles.map((f) => `    ${f}`).join('\n') +
+          '\n  不能判为开发者手改：无写事件排除不了审查员写过。请人工核对。',
+      );
+    }
   }
 
   for (const s of Object.values(v.sides)) {
@@ -878,6 +942,19 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
       out.push(
         `${s.critic} 侧只读核验不可用：该侧被拒的写操作不进轨迹，` +
           '「未检出写事件」不足以排除失守（只读保障从三重降到两重，指纹比对仍有效）',
+      );
+    }
+    /*
+     * 证据不可信的人读出口（EV-188，五面留痕的运行时那一面）。**不判失守、不作废、不阻断**，但必须当场看得见：
+     * 跑的人据此知道这一侧「没命中禁读面」「没有写事件」两条阴性结论打了折。
+     */
+    if (s.verification.untrusted) {
+      // 文案按成因取（代码双审 CODEX-F01 原文 CODEX-02）：cause 加值而文案表不跟，编译即失败
+      const ut = EVIDENCE_UNTRUSTED_CAUSE_TEXT[s.verification.untrusted.cause];
+      out.push(
+        `${s.critic} 侧证据不可信（${ut.label}）：${ut.what} ${s.verification.untrusted.tools.join('、')}——` +
+          `${ut.blind}，该侧「没命中禁读面」「没有写事件」两条阴性结论打折。` +
+          `结论保留、不作废，意见照常逐条裁决；明细见该侧 trace.json 的 ${ut.where}`,
       );
     }
     /*

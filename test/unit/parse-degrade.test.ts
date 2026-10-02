@@ -181,7 +181,7 @@ test('P9 回显清单 = 全开分支 renderFrontMatter 的键集 − review.v1 �
     modelRequested: 'm', effort: 'high', snapshotHash: 'sha256:x', startedAt: 'a', finishedAt: 'b',
     evidenceOk: true, projectReads: 1, selectedCritics: CRITICS, degraded: false, drift: false, peerDeny: false,
     consultedUnverified: true,
-    verification: { readonly: 'unavailable', path: 'unavailable' },
+    verification: { readonly: 'unavailable', path: 'unavailable', untrusted: { cause: 'mcp-call', tools: ['mcp__zread__read_file'] } },
     peerLeak: { hit: true, via: 'both', category: 'peer_artifact' as never, voiding: true, paths: ['x'], commands: ['y'] },
     jointCheck: { state: 'skipped-insufficient-sides', effective_sides: 1 },
     heterogeneous: false, overrideReason: 'r',

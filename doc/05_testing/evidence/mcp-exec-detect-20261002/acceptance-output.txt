@@ -1,0 +1,12 @@
+✔ 旧树与工作树的 package.json / package-lock.json 逐字节相同
+✔ 两份 bundle 的 sha256 不同
+✔ 改前 exec：放行（不失守、无不可信、无 mcp 键）
+✔ 改前 untrusted：放行（不失守、无不可信、无 mcp 键）
+✔ 改后 exec：判只读失守、写事件点名 mcp__node_repl__js、mcp=1
+✔ 改后 exec：告警有失守段与 MCP 补句
+✔ 改后 untrusted：记证据不可信并点名、不失守、mcp=1
+✔ 改后 untrusted：告警一行点名工具
+✔ 无 MCP 样本：改前改后 tool_calls / write_events / 告警逐字相同
+✔ 回放：改前 MCP 写事件 0 条
+✔ 回放：改后 MCP 写事件 7 条、计数 7
+11/11

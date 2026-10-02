@@ -33,7 +33,9 @@ import {
   parseZcodeEnvelope,
   parseZcodeRollout,
   parseZcodeTrace,
+  summarizeZcodeMcp,
   type ZcodeEnvelope,
+  type ZcodeRolloutToolCall,
 } from './zcode-trace.js';
 import {
   failedResult,
@@ -1293,6 +1295,10 @@ export const zcodeAdapter: CriticAdapter = {
     let toolCalls: CriticResult['tool_calls'] = {};
     let writeEvents: string[] = [];
     let modelFromLog: string | null = null;
+    /** MCP 调用的两份来源（EV-188）：`null` = 该来源没读到，与「读到了、0 次」区分 */
+    let mcpFromLog: Record<string, number> | null = null;
+    let mcpIdsFromLog: Record<string, string> | null = null;
+    let mcpFromRollout: ZcodeRolloutToolCall[] | null = null;
     /*
      * 日志：工具名、状态、model。仍按 sessionId 过滤。
      * 读日志目录下**全部** `.jsonl`（按文件名即日期排序后拼接），与落点自检同一个文件集合（代码双审 r1 CODEX-02）：
@@ -1308,6 +1314,8 @@ export const zcodeAdapter: CriticAdapter = {
         toolCalls = t.toolCalls;
         writeEvents = t.writeEvents;
         modelFromLog = t.modelEffective;
+        mcpFromLog = t.mcpCalls;
+        mcpIdsFromLog = t.mcpCallIds;
       }
     } catch {
       /* 日志不可读不致命，交给 guard 按证据不足处置 */
@@ -1330,8 +1338,20 @@ export const zcodeAdapter: CriticAdapter = {
         coverage = ro.pathCoverage;
         modelFromRollout = ro.modelEffective;
         writeEvents = [...new Set([...writeEvents, ...ro.writeEvents])];
+        mcpFromRollout = ro.toolCalls;
         await fs.copyFile(rolloutFile, path.join(req.out_dir, 'rollout.jsonl'));
       }
+    }
+
+    /*
+     * MCP 调用（EV-188，计划 r2 §2.2–§2.3）：只检测、不关通道。执行型（`ZCODE_MCP_EXEC_PREFIXES`）进写事件、判只读失守；
+     * 名单外的进 `mcp_untrusted_tools`、由 guard 记证据不可信。`mcp` 计数键与 trace.json 的 `mcpCalls` **只在 ≥ 1 次时写**：
+     * 无 MCP 调用的运行与改前逐字相同；「没读到」由路径档位 `no-counts` 与落点自检另说。
+     */
+    const mcp = summarizeZcodeMcp(mcpFromRollout, mcpFromLog, mcpIdsFromLog);
+    if (mcp.total > 0) {
+      toolCalls = { ...toolCalls, mcp: mcp.total };
+      writeEvents = [...new Set([...writeEvents, ...mcp.execEvents])];
     }
 
     const modelEffective = modelFromLog ?? modelFromRollout;
@@ -1389,6 +1409,8 @@ export const zcodeAdapter: CriticAdapter = {
             ...(selectionNote ? { note: selectionNote } : {}),
           },
           ...(carriersLanded ? { carriersLanded } : {}),
+          // 按工具名的 MCP 调用明细（EV-188 决策三），供排查；与 tool_calls.mcp 同口径，0 次不写
+          ...(mcp.total > 0 ? { mcpCalls: { total: mcp.total, byTool: mcp.byTool, sources: mcp.sources } } : {}),
         },
         null,
         2,
@@ -1451,6 +1473,8 @@ export const zcodeAdapter: CriticAdapter = {
       path_bearing_reads: coverage ? coverage.total : null,
       path_bearing_reads_with_path: coverage ? coverage.withPath : null,
       write_events: writeEvents,
+      // 名单外的 MCP 调用（EV-188）：只在非空时产出，guard 据此记证据不可信
+      ...(mcp.untrustedTools.length > 0 ? { mcp_untrusted_tools: mcp.untrustedTools } : {}),
       /*
        * zcode 侧**恒为空数组**，而这是能说明理由的空：只读组合里 `Bash` 被整个禁掉
        * （M0 的 C-10：`--mode plan` 单独不够，denylist 必须含 `Bash`），

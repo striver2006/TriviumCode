@@ -1,0 +1,25 @@
+M1：fail=7 cancelled=0 1s ⇒ U1 名单判别：只认 mcp__ 前缀；执行型按 server 前缀，首批只有 node_repl ｜ U2 执行型：两边都记 2 次 ⇒ 计 2、写事件 2 条带参数摘要、无不可信 ｜ U5 rollout 没读到、日志记 2 次执行型 ⇒ 计 2、补一条「另记 2 次」 ｜ U6 rollout 丢行：rollout 1 次、日志 3 次 ⇒ 计 3、一条带参数 + 一条「另记 2 次」 ｜ U13 写事件带调用 id：参数前缀相同的多次调用不被去重成一条 ｜ U14 rollout 条目缺 id、日志带同批 id ⇒ 该名退回按名取大，不翻倍、不多造「另记」（代码双审 GLM-01） ｜ U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）
+M2：fail=3 cancelled=0 1s ⇒ U1 名单判别：只认 mcp__ 前缀；执行型按 server 前缀，首批只有 node_repl ｜ U2 执行型：两边都记 2 次 ⇒ 计 2、写事件 2 条带参数摘要、无不可信 ｜ U4 无 MCP 调用：合并结果为零；既有解析输出与改前同形
+M3：fail=6 cancelled=0 1s ⇒ U5 rollout 没读到、日志记 2 次执行型 ⇒ 计 2、补一条「另记 2 次」 ｜ U6 rollout 丢行：rollout 1 次、日志 3 次 ⇒ 计 3、一条带参数 + 一条「另记 2 次」 ｜ U10 rollout 没读到、日志只有名单外 MCP ⇒ 点名、计数，不进写事件（AGY-02） ｜ U11 两边各有一个名单外工具 ⇒ 两个都点名（AGY-02） ｜ U14 rollout 条目缺 id、日志带同批 id ⇒ 该名退回按名取大，不翻倍、不多造「另记」（代码双审 GLM-01） ｜ U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）
+M4：fail=7 cancelled=0 1s ⇒ U2 执行型：两边都记 2 次 ⇒ 计 2、写事件 2 条带参数摘要、无不可信 ｜ U5 rollout 没读到、日志记 2 次执行型 ⇒ 计 2、补一条「另记 2 次」 ｜ U6 rollout 丢行：rollout 1 次、日志 3 次 ⇒ 计 3、一条带参数 + 一条「另记 2 次」 ｜ U10 rollout 没读到、日志只有名单外 MCP ⇒ 点名、计数，不进写事件（AGY-02） ｜ U11 两边各有一个名单外工具 ⇒ 两个都点名（AGY-02） ｜ U14 rollout 条目缺 id、日志带同批 id ⇒ 该名退回按名取大，不翻倍、不多造「另记」（代码双审 GLM-01） ｜ U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）
+M5：fail=3 cancelled=0 1s ⇒ U5 rollout 没读到、日志记 2 次执行型 ⇒ 计 2、补一条「另记 2 次」 ｜ U6 rollout 丢行：rollout 1 次、日志 3 次 ⇒ 计 3、一条带参数 + 一条「另记 2 次」 ｜ U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）
+M6：fail=1 cancelled=0 1s ⇒ U8 参数摘要：先脱敏再截断、折叠空白、不超长
+M7：fail=1 cancelled=0 1s ⇒ A1 执行型样本：计数、写事件点名 node_repl、判只读失守、trace.json 有明细
+M8：fail=1 cancelled=0 1s ⇒ A3 无 MCP 样本：tool_calls / write_events / trace.json 与改前同形，判定无事
+M9：fail=8 cancelled=0 1s ⇒ G1 执行型写事件 ⇒ 只读失守；告警有失守段与 MCP 补句 ｜ G2 名单外 ⇒ 证据不可信：不失守、不动禁读与证据判定，告警点名 ｜ G3 两档同时成立、互不覆盖 ｜ G4 都没有 ⇒ verification 上没有 untrusted 这个键（结构上缺席） ｜ G6 证据不可信参与归因：漂移落进「无法归因」、不记开发者手改（AGY-01） ｜ G7 无不可信侧、能力都可用 ⇒ 归因与改前相同（开发者手改） ｜ G8 MCP 执行型调用参与归因：写事件里没有路径，漂移不得记成开发者手改（计划 r2 §7 偏离 2） ｜ G9 只有能力恒态这一种成因时，「无法归因」文案与改前逐字相同
+M10：fail=1 cancelled=0 1s ⇒ G5 MCP: 条目不参与归因扣除：括号里恰好是漂移文件的路径也不扣（GLM-01 的可杀构造）
+M11：fail=1 cancelled=0 1s ⇒ G1 执行型写事件 ⇒ 只读失守；告警有失守段与 MCP 补句
+M12：fail=1 cancelled=0 6s ⇒ 名单外 MCP 调用 ⇒ 证据不可信走五面、不失守、不进闸门（EV-188 I1）
+M13：fail=1 cancelled=0 6s ⇒ 名单外 MCP 调用 ⇒ 证据不可信走五面、不失守、不进闸门（EV-188 I1）
+M14：fail=1 cancelled=0 6s ⇒ 名单外 MCP 调用 ⇒ 证据不可信走五面、不失守、不进闸门（EV-188 I1）
+M15：fail=1 cancelled=0 6s ⇒ 名单外 MCP 调用 ⇒ 证据不可信走五面、不失守、不进闸门（EV-188 I1）
+M16：fail=3 cancelled=0 1s ⇒ U5 rollout 没读到、日志记 2 次执行型 ⇒ 计 2、补一条「另记 2 次」 ｜ U10 rollout 没读到、日志只有名单外 MCP ⇒ 点名、计数，不进写事件（AGY-02） ｜ U11 两边各有一个名单外工具 ⇒ 两个都点名（AGY-02）
+M17：fail=1 cancelled=0 1s ⇒ G6 证据不可信参与归因：漂移落进「无法归因」、不记开发者手改（AGY-01）
+M18：fail=1 cancelled=0 1s ⇒ G8 MCP 执行型调用参与归因：写事件里没有路径，漂移不得记成开发者手改（计划 r2 §7 偏离 2）
+M19：fail=1 cancelled=0 1s ⇒ U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）
+M20：fail=1 cancelled=0 1s ⇒ U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）
+M21：fail=1 cancelled=0 1s ⇒ G2 名单外 ⇒ 证据不可信：不失守、不动禁读与证据判定，告警点名
+M22：fail=2 cancelled=0 1s ⇒ A1 执行型样本：计数、写事件点名 node_repl、判只读失守、trace.json 有明细 ｜ A2 名单外样本：计数、点名、记证据不可信、不失守
+M23：fail=1 cancelled=0 1s ⇒ A2 名单外样本：计数、点名、记证据不可信、不失守
+M24：fail=1 cancelled=0 6s ⇒ 名单外 MCP 调用 ⇒ 证据不可信走五面、不失守、不进闸门（EV-188 I1）
+M25：fail=1 cancelled=0 1s ⇒ U14 rollout 条目缺 id、日志带同批 id ⇒ 该名退回按名取大，不翻倍、不多造「另记」（代码双审 GLM-01）

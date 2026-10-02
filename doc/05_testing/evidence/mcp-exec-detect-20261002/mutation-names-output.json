@@ -1,0 +1,368 @@
+{
+  "targets_sha256": {
+    "src/trivium/adapters/zcode-trace.ts": "6692f4e371d1f4da94c7a5cc483fa91ad136fde9072d83b1dab759e065968057",
+    "src/trivium/adapters/zcode.ts": "93f6c836ead1c479fd1b09569ff1bef8cd1506d8b6fcc621b5f8db8d8602b066",
+    "src/trivium/guard.ts": "5ae53f45ca8d4b62fe12c18589b4917f078a86a1310f461ad2e8c302b3a4013c",
+    "src/trivium/render.ts": "9a82ba837b88221f536eb3cae172221aa2c90fccf505ad4d4f521a8f3dc9e67f",
+    "src/trivium/report.ts": "6b8abd0a0e35a99687ffb40aa3a2d903ae07e9e23697ab55386f6366f296d03a",
+    "src/trivium/review.ts": "16abfd29b8ec151d1e6b67dbae1dab2307d6b72069d2c3c6804eafcedf7a9dd0"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "执行型名单改空",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 7,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U1 名单判别：只认 mcp__ 前缀；执行型按 server 前缀，首批只有 node_repl",
+        "U2 执行型：两边都记 2 次 ⇒ 计 2、写事件 2 条带参数摘要、无不可信",
+        "U5 rollout 没读到、日志记 2 次执行型 ⇒ 计 2、补一条「另记 2 次」",
+        "U6 rollout 丢行：rollout 1 次、日志 3 次 ⇒ 计 3、一条带参数 + 一条「另记 2 次」",
+        "U13 写事件带调用 id：参数前缀相同的多次调用不被去重成一条",
+        "U14 rollout 条目缺 id、日志带同批 id ⇒ 该名退回按名取大，不翻倍、不多造「另记」（代码双审 GLM-01）",
+        "U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M2",
+      "desc": "「是 MCP」不看前缀",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U1 名单判别：只认 mcp__ 前缀；执行型按 server 前缀，首批只有 node_repl",
+        "U2 执行型：两边都记 2 次 ⇒ 计 2、写事件 2 条带参数摘要、无不可信",
+        "U4 无 MCP 调用：合并结果为零；既有解析输出与改前同形"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M3",
+      "desc": "计数只取 rollout",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U5 rollout 没读到、日志记 2 次执行型 ⇒ 计 2、补一条「另记 2 次」",
+        "U6 rollout 丢行：rollout 1 次、日志 3 次 ⇒ 计 3、一条带参数 + 一条「另记 2 次」",
+        "U10 rollout 没读到、日志只有名单外 MCP ⇒ 点名、计数，不进写事件（AGY-02）",
+        "U11 两边各有一个名单外工具 ⇒ 两个都点名（AGY-02）",
+        "U14 rollout 条目缺 id、日志带同批 id ⇒ 该名退回按名取大，不翻倍、不多造「另记」（代码双审 GLM-01）",
+        "U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M4",
+      "desc": "两份来源相加而不是去重",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 7,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U2 执行型：两边都记 2 次 ⇒ 计 2、写事件 2 条带参数摘要、无不可信",
+        "U5 rollout 没读到、日志记 2 次执行型 ⇒ 计 2、补一条「另记 2 次」",
+        "U6 rollout 丢行：rollout 1 次、日志 3 次 ⇒ 计 3、一条带参数 + 一条「另记 2 次」",
+        "U10 rollout 没读到、日志只有名单外 MCP ⇒ 点名、计数，不进写事件（AGY-02）",
+        "U11 两边各有一个名单外工具 ⇒ 两个都点名（AGY-02）",
+        "U14 rollout 条目缺 id、日志带同批 id ⇒ 该名退回按名取大，不翻倍、不多造「另记」（代码双审 GLM-01）",
+        "U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M5",
+      "desc": "「会话日志另记 k 次」那支删掉",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U5 rollout 没读到、日志记 2 次执行型 ⇒ 计 2、补一条「另记 2 次」",
+        "U6 rollout 丢行：rollout 1 次、日志 3 次 ⇒ 计 3、一条带参数 + 一条「另记 2 次」",
+        "U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M6",
+      "desc": "参数摘要不脱敏",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U8 参数摘要：先脱敏再截断、折叠空白、不超长"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M7",
+      "desc": "执行型调用不进 write_events",
+      "suite": "dist/test/test/unit/zcode-mcp-adapter.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 执行型样本：计数、写事件点名 node_repl、判只读失守、trace.json 有明细"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M8",
+      "desc": "mcp 计数键无条件写",
+      "suite": "dist/test/test/unit/zcode-mcp-adapter.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A3 无 MCP 样本：tool_calls / write_events / trace.json 与改前同形，判定无事"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M9",
+      "desc": "证据不可信的条件展开反转",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 8,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G1 执行型写事件 ⇒ 只读失守；告警有失守段与 MCP 补句",
+        "G2 名单外 ⇒ 证据不可信：不失守、不动禁读与证据判定，告警点名",
+        "G3 两档同时成立、互不覆盖",
+        "G4 都没有 ⇒ verification 上没有 untrusted 这个键（结构上缺席）",
+        "G6 证据不可信参与归因：漂移落进「无法归因」、不记开发者手改（AGY-01）",
+        "G7 无不可信侧、能力都可用 ⇒ 归因与改前相同（开发者手改）",
+        "G8 MCP 执行型调用参与归因：写事件里没有路径，漂移不得记成开发者手改（计划 r2 §7 偏离 2）",
+        "G9 只有能力恒态这一种成因时，「无法归因」文案与改前逐字相同"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M10",
+      "desc": "breachedAbs 不跳过 MCP: 条目",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G5 MCP: 条目不参与归因扣除：括号里恰好是漂移文件的路径也不扣（GLM-01 的可杀构造）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M11",
+      "desc": "失守告警的 MCP 补句删掉",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G1 执行型写事件 ⇒ 只读失守；告警有失守段与 MCP 补句"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M12",
+      "desc": "front-matter 不渲染 evidence_untrusted",
+      "suite": "dist/test/test/integration/mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "名单外 MCP 调用 ⇒ 证据不可信走五面、不失守、不进闸门（EV-188 I1）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 6
+    },
+    {
+      "id": "M13",
+      "desc": "报告不推证据不可信旗标",
+      "suite": "dist/test/test/integration/mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "名单外 MCP 调用 ⇒ 证据不可信走五面、不失守、不进闸门（EV-188 I1）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 6
+    },
+    {
+      "id": "M14",
+      "desc": "文档横幅不出证据不可信那句",
+      "suite": "dist/test/test/integration/mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "名单外 MCP 调用 ⇒ 证据不可信走五面、不失守、不进闸门（EV-188 I1）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 6
+    },
+    {
+      "id": "M15",
+      "desc": "run.json 不写 evidence_untrusted",
+      "suite": "dist/test/test/integration/mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "名单外 MCP 调用 ⇒ 证据不可信走五面、不失守、不进闸门（EV-188 I1）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 6
+    },
+    {
+      "id": "M16",
+      "desc": "工具名全集只取 rollout（AGY-02）",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U5 rollout 没读到、日志记 2 次执行型 ⇒ 计 2、补一条「另记 2 次」",
+        "U10 rollout 没读到、日志只有名单外 MCP ⇒ 点名、计数，不进写事件（AGY-02）",
+        "U11 两边各有一个名单外工具 ⇒ 两个都点名（AGY-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M17",
+      "desc": "归因分流去掉证据不可信（AGY-01）",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G6 证据不可信参与归因：漂移落进「无法归因」、不记开发者手改（AGY-01）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M18",
+      "desc": "归因分流去掉 MCP 执行型（r2 §7 偏离 2）",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G8 MCP 执行型调用参与归因：写事件里没有路径，漂移不得记成开发者手改（计划 r2 §7 偏离 2）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M19",
+      "desc": "按 id 并集退回按名取大（r2 §7 更正 1）",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M20",
+      "desc": "日志侧不记调用 id",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U12 按调用 id 求并集：两边各丢不同的调用也不少计（计划 r2 §7 更正）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M21",
+      "desc": "运行时告警不出证据不可信那行",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G2 名单外 ⇒ 证据不可信：不失守、不动禁读与证据判定，告警点名"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M22",
+      "desc": "trace.json 不写 mcpCalls 明细",
+      "suite": "dist/test/test/unit/zcode-mcp-adapter.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 执行型样本：计数、写事件点名 node_repl、判只读失守、trace.json 有明细",
+        "A2 名单外样本：计数、点名、记证据不可信、不失守"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M23",
+      "desc": "适配器不产出 mcp_untrusted_tools",
+      "suite": "dist/test/test/unit/zcode-mcp-adapter.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A2 名单外样本：计数、点名、记证据不可信、不失守"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M24",
+      "desc": "渲染输入不带 untrusted（横幅与 front-matter 同断）",
+      "suite": "dist/test/test/integration/mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "名单外 MCP 调用 ⇒ 证据不可信走五面、不失守、不进闸门（EV-188 I1）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 6
+    },
+    {
+      "id": "M25",
+      "desc": "rollout 条目缺 id 时不退回按名取大",
+      "suite": "dist/test/test/unit/zcode-mcp-detect.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U14 rollout 条目缺 id、日志带同批 id ⇒ 该名退回按名取大，不翻倍、不多造「另记」（代码双审 GLM-01）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    }
+  ]
+}

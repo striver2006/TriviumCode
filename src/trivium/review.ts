@@ -1467,6 +1467,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
               readonly: side.verification.readonly,
               path: side.verification.path,
               ...(side.verification.pathCause ? { pathCause: side.verification.pathCause } : {}),
+              ...(side.verification.untrusted ? { untrusted: side.verification.untrusted } : {}),
             },
           }
         : {}),
@@ -1667,6 +1668,10 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
             ? { path_cause: verdict.sides[c]!.verification.pathCause }
             : {}),
           evidence_threshold: verdict.sides[c]!.verification.evidenceThreshold,
+          // 证据不可信（EV-188）：只在成立时写，常态 run.json 逐字不变；schema 逐侧加的是可选属性
+          ...(verdict.sides[c]!.verification.untrusted
+            ? { evidence_untrusted: verdict.sides[c]!.verification.untrusted }
+            : {}),
         }]),
     ),
     ...(verdict.unattributedDriftFiles.length > 0

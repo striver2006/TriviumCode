@@ -185,7 +185,7 @@ export const ECHOED_ORCHESTRATOR_KEYS: readonly string[] = [
   'effort', 'model_route', 'run_id', 'rerun_index', 'snapshot_hash', 'blind', 'started_at', 'finished_at',
   'duration_s', 'tool_calls', 'evidence_ok', 'findings_count', 'findings_degraded', 'degraded', 'parse_fallback',
   'parse_fallback_cause', 'parse_repairs', 'peer_deny', 'drift', 'consulted_unverified', 'readonly_verification',
-  'path_verification', 'peer_leak', 'joint_check', 'heterogeneous', 'override_reason', 'session_id',
+  'path_verification', 'evidence_untrusted', 'peer_leak', 'joint_check', 'heterogeneous', 'override_reason', 'session_id',
 ];
 
 /** 剥掉厂商注入与编排器回显的根字段。返回剥到的键（厂商在前，各按清单顺序） */

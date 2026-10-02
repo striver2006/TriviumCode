@@ -1190,9 +1190,42 @@ export interface ToolCallCounts {
   grep?: number;
   glob?: number;
   run_command?: number;
+  /**
+   * 本轮 MCP 调用总次数（EV-188，目前只有 zcode 侧采集）。**只在 ≥ 1 时出现**：无 MCP 调用的运行与改前逐字相同。
+   * 缺席 = 该侧没有 MCP 这个概念、或本轮 0 次、或 rollout 与日志都没读到——最后一种另有档位说（路径档位 `no-counts`、
+   * `carriers_landed`）。**不进证据下限的合计**：MCP 调用不是结构化读取证据。按工具名的明细在该侧 `trace.json` 的 `mcpCalls`。
+   */
+  mcp?: number;
   /** 被审对象与送审包之外的项目文件读取次数（§11.4 的 AC-11 落点） */
   project_reads?: number;
 }
+
+/**
+ * 证据不可信的成因与点名（EV-188）。`cause` 留成枚举：子代理会话、非 MCP 表外工具若将来也走这一档，各加一个值，
+ * 横幅与告警按成因分句，免得下一种成因被塞进一句与自己无关的解释（与 `path_cause` 同一手法）。
+ */
+export interface EvidenceUntrusted {
+  cause: 'mcp-call';
+  /** 点名的工具（去重、排序），至少一个 */
+  tools: string[];
+}
+
+/**
+ * 证据不可信各成因的人读文案（EV-188 代码双审 CODEX-F01 原文 CODEX-02）。运行时告警、文档横幅、复盘报告三处都从这里取，
+ * 按 `cause` 键控：`cause` 加一个值而这里不跟，编译即失败——免得新成因被说成「MCP 调用」。
+ * - `label`：括号里的短名；`what`：该侧做了什么（后接工具名）；`blind`：为什么阴性结论打折；`where`：明细在哪（trace.json 的键）。
+ */
+export const EVIDENCE_UNTRUSTED_CAUSE_TEXT: Record<
+  EvidenceUntrusted['cause'],
+  { label: string; what: string; blind: string; where: string }
+> = {
+  'mcp-call': {
+    label: 'MCP 调用',
+    what: '调用了编排器核验不到的 MCP 工具',
+    blind: '经它完成的读取不进读取路径、命令原文不进命令文本扫描、写入与出网不在轨迹里',
+    where: 'mcpCalls',
+  },
+};
 
 export interface CriticRunMeta {
   vendor: Vendor;
@@ -1561,14 +1594,21 @@ export interface RunMeta {
            */
           path_cause?: 'command-trace' | 'no-counts' | 'no-path-bearing-calls';
           evidence_threshold: number;
+          /**
+           * 证据不可信（EV-188，2026-10-02 新增）：该侧有经编排器看不见的通道完成的调用，`tools` 点名。
+           * 结论保留、不作废、不判失守；修饰的是阴性结论（「没命中禁读面」「没有写事件」在该侧打折）。
+           * 只在成立时出现——缺失 = 不成立，或那次运行早于本字段。
+           */
+          evidence_untrusted?: EvidenceUntrusted;
         }
       >
     >;
     /**
      * 指纹变化但无法归因的文件（§9.2 + §11.1）。
      *
-     * 只在本轮有侧的 `readonly` 档位为 `unavailable` 时出现：那种情形下
-     * 「无写事件 ⇒ 开发者手改」的推理前提不成立，既不能判失守也不能判手改。
+     * 只在本轮有以下三种情形之一时出现：有侧的 `readonly` 档位为 `unavailable`；有侧证据不可信（`evidence_untrusted`，EV-188）；
+     * 有侧调用了 MCP 执行型工具（`breached_files` 里 `MCP:` 开头的条目——它能写任意文件，写事件里只有代码摘要、扣不出文件，EV-188）。
+     * 这三种情形下「无写事件 ⇒ 开发者手改」的推理前提都不成立，变更文件既不能记到开发者头上。成因见运行时告警的分句（`RunVerdict.unattributedCauses`）。
      * 与 `breached_files` 分开记——后者是有正向证据的失守。
      */
     unattributed_drift_files?: string[];
@@ -1868,8 +1908,16 @@ export interface CriticResult {
    */
   path_bearing_reads?: number | null;
   path_bearing_reads_with_path?: number | null;
-  /** 轨迹中出现过的写工具/写命令事件，非空即 readonly_breach */
+  /**
+   * 轨迹中出现过的写工具/写命令事件，非空即 readonly_breach。
+   * zcode 侧的 MCP 执行型工具调用也在这里，条目以 `MCP:` 开头（EV-188，`MCP_WRITE_EVENT_PREFIX`）。
+   */
   write_events: string[];
+  /**
+   * 名单之外的 MCP 工具调用（EV-188）：点名工具，`guard` 据此记该侧「证据不可信」——结论保留、不作废、不判失守。
+   * 与 `write_events` 同性质：适配器分类、`guard` 判定。**只在非空时出现**；其余三家与桩（未注入时）恒缺席。
+   */
+  mcp_untrusted_tools?: string[];
   /**
    * **疑似**写入：命中写形态但判不实的命令（M8 第 3 步）。
    *

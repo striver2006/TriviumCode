@@ -1,0 +1,6 @@
+K1 ✓ 咬住（删掉 evidence_untrusted 属性（带该键的 run.json 变成未知字段））⇒ S1 带 evidence_untrusted 的 run.json 合法；不带也合法（常态与旧留痕）
+K2 ✓ 咬住（tools 去掉 minItems）⇒ S2 tools 为空数组不合法：证据不可信必须点名
+K3 ✓ 咬住（cause 的枚举放宽成任意字符串）⇒ S3 cause 只认 mcp-call、tools 必填
+K4 ✓ 咬住（required 去掉 tools）⇒ S3 cause 只认 mcp-call、tools 必填
+K5 ✓ 咬住（evidence_untrusted 允许多余字段）⇒ S4 evidence_untrusted 里不许多余字段；逐侧对象仍不许未知键
+5/5 咬住；dist 拷贝已恢复且与源 schema 逐字节相同

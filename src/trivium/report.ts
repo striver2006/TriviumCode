@@ -24,7 +24,7 @@ import { loadRoundReviews } from './gate.js';
 import { parseDisposition } from './disposition.js';
 import { measureAllPairs, type DivergenceReport } from './divergence.js';
 import { summarizeVerify, type VerifyRecord } from './verify.js';
-import { CRITICS, DEFAULT_CRITICS, STAGES, describeDriftUnknown, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';
+import { CRITICS, DEFAULT_CRITICS, STAGES, describeDriftUnknown, EVIDENCE_UNTRUSTED_CAUSE_TEXT, type CriticId, type Disposal, type RunMeta, type Severity, type Stage } from './types.js';
 
 const SEVERITIES: readonly Severity[] = ['blocker', 'major', 'minor', 'nit'];
 const DISPOSALS: readonly Disposal[] = ['接受', '驳回', '暂缓'];
@@ -377,6 +377,12 @@ async function buildRound(
       base.guardFlags.push(
         `${c} 侧路径提取不完整（「必带路径」的读调用里有一部分提不出路径，` +
           '通常是厂商改了参数名而提取器没跟上：该侧禁读核验不完整，没命中不等于没读过)',
+      );
+    }
+    // 证据不可信（EV-188）：复盘面那一句；不进闸门，但报告里要看得见是哪几个工具
+    if (d.evidence_untrusted) {
+      base.guardFlags.push(
+        `${c} 侧证据不可信（${EVIDENCE_UNTRUSTED_CAUSE_TEXT[d.evidence_untrusted.cause].label}：${d.evidence_untrusted.tools.join('、')}；结论保留，「没命中禁读面」「没有写事件」两条阴性结论打折）`,
       );
     }
   }

@@ -366,13 +366,37 @@
               "evidence_threshold": {
                 "type": "integer",
                 "minimum": 0
+              },
+              "evidence_untrusted": {
+                "type": "object",
+                "description": "证据不可信（2026-10-02 新增，EV-188）：该侧有经编排器看不见的通道完成的调用，tools 点名。今天唯一的成因是 mcp-call（zcode 侧调用了执行型名单之外的 MCP 工具；执行型的直接进 write_events、判 readonly_breach）。结论保留、不作废、不判失守——修饰的是阴性结论：「没命中禁读面」「没有写事件」在该侧打折，所以它也让本轮漂移落进 unattributed_drift_files。只在成立时出现；缺失=不成立，或那次运行早于本字段。旧构建读带本键的 run.json 会被本对象的 additionalProperties:false 拒掉，走「留痕读不出」出口（版本落后 ⇒ 升级）。",
+                "required": [
+                  "cause",
+                  "tools"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "cause": {
+                    "enum": [
+                      "mcp-call"
+                    ]
+                  },
+                  "tools": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
               }
             }
           }
         },
         "unattributed_drift_files": {
           "type": "array",
-          "description": "指纹变化但**无法归因**的文件（§9.2 第 4 步 + §11.1）。【已实现 · M8 第 2 步】只在本轮有侧的 readonly 档位为 unavailable 时出现：「指纹变了但轨迹无写事件 ⇒ 开发者手改」这条推理的前提是轨迹能证明审查员没写，而该侧被拒的写不留痕，无写事件排除不了审查员写过。既不判失守（无正向证据）也不判开发者手改（阴性证据不可信），与 fingerprint 的已归因结论分开记——混进去等于用更强的断言掩盖证据缺口。字段缺失或空数组 = 无此情形",
+          "description": "指纹变化但**无法归因**的文件（§9.2 第 4 步 + §11.1）。【已实现 · M8 第 2 步】只在本轮有侧的 readonly 档位为 unavailable 时出现：「指纹变了但轨迹无写事件 ⇒ 开发者手改」这条推理的前提是轨迹能证明审查员没写，而该侧被拒的写不留痕，无写事件排除不了审查员写过。2026-10-02 起（EV-188）另有两种成因同样落进这里：有侧证据不可信（verification_degraded 的 evidence_untrusted），或有侧调用了 MCP 执行型工具（breached_files 里 MCP: 开头的条目——它能写任意文件而写事件里没有路径）。既不判失守（无正向证据）也不判开发者手改（阴性证据不可信），与 fingerprint 的已归因结论分开记——混进去等于用更强的断言掩盖证据缺口。字段缺失或空数组 = 无此情形",
           "items": {
             "type": "string"
           }

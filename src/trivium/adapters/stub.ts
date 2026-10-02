@@ -27,6 +27,7 @@ import { agentById, DEFAULT_DRIVER } from '../agents/registry.js';
 import { CRITICS, type CriticId, type CriticRequest, type CriticResult } from '../types.js';
 import {
   failedResult,
+  MCP_WRITE_EVENT_PREFIX,
   TOOL_TRACE_CAPABILITY,
   type AdapterContext,
   type AdapterTable,
@@ -202,6 +203,21 @@ export interface StubSpec {
    * 能在集成测试里走到——证明任务书第 7 节跟的是本字段而不是轨迹形状，只有这一个机器判据。
    */
   commandExecution?: CommandExecution;
+  /**
+   * 模拟 MCP 执行型工具调用（EV-188）：给 n 就产出 n 条 `MCP:mcp__node_repl__js(…)` 写事件与 `tool_calls.mcp`。
+   * 只为集成用例走完整 `review` 链路，咬住只读失守那几面（run.json、告警的 MCP 补句、报告、闸门）。
+   */
+  mcpExecCalls?: number;
+  /**
+   * 模拟名单外的 MCP 调用（EV-188）：给了就原样产出 `mcp_untrusted_tools`（每个名字计 1 次进 `tool_calls.mcp`），
+   * 只为集成用例咬住证据不可信的五面留痕。
+   */
+  mcpUntrustedTools?: string[];
+}
+
+/** 桩注入的 MCP 调用总次数：执行型 n 次 + 名单外每个名字 1 次 */
+function stubMcpTotal(spec: StubSpec): number {
+  return (spec.mcpExecCalls ?? 0) + (spec.mcpUntrustedTools?.length ?? 0);
 }
 
 export type StubConfig = Partial<Record<CriticId, StubSpec>>;
@@ -311,7 +327,11 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
     // 桩不模拟厂商事实：这两个字段的真实形态只有真适配器才产得出（AC-24 的证明边界）
     model_provider: null,
     profile_requested: null,
-    tool_calls: { read: 6, grep: 2, glob: 1, run_command: 0 },
+    // MCP 调用注入（EV-188）：两项都不给时与之前逐字相同（不出现 mcp 键）
+    tool_calls: {
+      read: 6, grep: 2, glob: 1, run_command: 0,
+      ...(stubMcpTotal(spec) > 0 ? { mcp: stubMcpTotal(spec) } : {}),
+    },
     // 桩不产真实工具输出：搜索命中这种事实不存在，null（与 model_provider 同款）
     search_hit_paths: null,
     // 4 条项目内读取：min_project_reads 默认下限是 3，留一点余量
@@ -333,7 +353,11 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
      */
     path_bearing_reads: 4,
     path_bearing_reads_with_path: 4,
-    write_events: [],
+    write_events: Array.from(
+      { length: spec.mcpExecCalls ?? 0 },
+      (_, i) => `${MCP_WRITE_EVENT_PREFIX}mcp__node_repl__js({"code":"stub ${i + 1}"})`,
+    ),
+    ...(spec.mcpUntrustedTools && spec.mcpUntrustedTools.length > 0 ? { mcp_untrusted_tools: [...spec.mcpUntrustedTools] } : {}),
     command_texts: [],
     evidence_ok: false, // 由 guard 判定
     fail_reason: null,

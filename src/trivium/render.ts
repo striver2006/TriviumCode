@@ -7,10 +7,10 @@
  */
 import YAML from 'yaml';
 import type {
-  CriticId, CriticResult, DegradedFinding, DenyCategory, DriftUnknownReason, FallbackCause, ParseRepairs, Review,
-  Severity, Stage, Vendor,
+  CriticId, CriticResult, DegradedFinding, DenyCategory, DriftUnknownReason, EvidenceUntrusted, FallbackCause, ParseRepairs,
+  Review, Severity, Stage, Vendor,
 } from './types.js';
-import { CRITIC_VENDOR, describeDriftUnknown } from './types.js';
+import { CRITIC_VENDOR, describeDriftUnknown, EVIDENCE_UNTRUSTED_CAUSE_TEXT } from './types.js';
 import { agentById } from './agents/registry.js';
 import { FINDING_FIELDS, VENDOR_NOISE_KEYS } from './parse.js';
 
@@ -87,6 +87,8 @@ export interface RenderInput {
     path: 'ok' | 'partial' | 'unavailable';
     /** `unavailable` 的成因——三种成因的横幅文案各不相同，见下方渲染处 */
     pathCause?: 'command-trace' | 'no-counts' | 'no-path-bearing-calls';
+    /** 证据不可信（EV-188）：只在成立时给，front-matter 条件键与横幅各一处 */
+    untrusted?: EvidenceUntrusted;
   };
   /**
    * 禁读核验的结论（设计 §10.1.1）。
@@ -208,6 +210,8 @@ export function renderFrontMatter(input: RenderInput): string {
     ...(input.verification?.readonly === 'unavailable' ? { readonly_verification: 'unavailable' } : {}),
     ...(input.verification?.path === 'unavailable' ? { path_verification: 'unavailable' } : {}),
     ...(input.verification?.path === 'partial' ? { path_verification: 'partial' } : {}),
+    // 证据不可信（EV-188，设计 §6.5 登记）：同款条件展开，同批进 parse.ts 的 ECHOED_ORCHESTRATOR_KEYS
+    ...(input.verification?.untrusted ? { evidence_untrusted: { cause: input.verification.untrusted.cause, tools: input.verification.untrusted.tools } } : {}),
     /*
      * 禁读核验结论（设计 §6.5 / §10.1.1）。与 `peer_deny` **正交**——
      * 后者只说「路径级 deny 有没有生效」，不说「有没有泄漏」；
@@ -385,6 +389,19 @@ export function renderReviewDoc(input: RenderInput): string {
             '措施 a 没有可核验的对象。**这不是缺陷**——但也不能算核验通过：没测到不等于测出来没有。'
           : '**路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，' +
             '禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。',
+    );
+  }
+  if (input.verification?.untrusted) {
+    /*
+     * 证据不可信（EV-188）：不作废、不判失守，但裁决者读的是这份单侧文档——两条阴性结论打了折这件事要在文档上看得见，
+     * 不能只躺在 run.json 里。
+     */
+    // 文案按成因取（代码双审 CODEX-F01 原文 CODEX-02）
+    const ut = EVIDENCE_UNTRUSTED_CAUSE_TEXT[input.verification.untrusted.cause];
+    flags.push(
+      `**证据不可信（${ut.label}）**：本侧${ut.what} ${input.verification.untrusted.tools.map((t) => `\`${t}\``).join('、')}。` +
+        `${ut.blind}——` +
+        `本侧「没命中禁读面」「没有写事件」两条阴性结论打折。结论保留、不作废，意见照常逐条裁决；明细见该侧 trace.json 的 \`${ut.where}\`。`,
     );
   }
   if (input.verification?.path === 'partial') {

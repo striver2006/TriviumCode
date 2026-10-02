@@ -30,3 +30,11 @@ addresses:
 ## 2. 修改范围
 
 只改已接受的项：`test/unit/command-execution-parity.test.ts`（CODEX-01 / CODEX-02 / AGY-01）、变异规格生成脚本追加两条并重跑装置、设计 11.1 两处、BACKLOG EV-188、实施报告 §6。`src/` 不改；第 7 节措辞不改。
+
+## 3. 更正（2026-10-02，EV-188 主题追加；上文不改）
+
+上文 GLM-01 行写「编排器轨迹计数……不分类 MCP 调用，**有没有被调用判不出来**」，说过头了。
+
+- **正确说法**：编排器的轨迹计数看不出调没调 MCP；但原始 rollout 每行的 `response.toolCalls` 记下了模型发起的每一次调用（名字与参数），查得到。本主题计划双审（run `20261002T012129Z`）与代码双审（run `20261002T023804Z`）两轮 glm 侧实际调用只有 Read / Grep / Glob，`node_repl` 均为 0 次。
+- **另一面**：更早的轮次里它被调用过——截至 2026-10-02 本主题计划双审之后扫描，本仓保留的 214 份 glm 侧 rollout 里 38 份、共 95 次。
+- **出处**：主题「MCP执行工具调用检测」计划 r2 §1.5 与 §1.6、`doc/05_testing/evidence/mcp-exec-detect-20261002/history-scan-output.json`；BACKLOG EV-188 行已于 `6aee012` 先行更正，本主题的实施报告 `doc/05_testing/REPORT_2026-10-02_critic_exec_wording.md` §6.1 同句已直接改准。

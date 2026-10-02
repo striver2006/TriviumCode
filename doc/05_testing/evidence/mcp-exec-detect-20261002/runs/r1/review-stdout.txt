@@ -1,0 +1,42 @@
+{
+  "ok": true,
+  "run_id": "20261002T080254Z",
+  "rerun_index": 1,
+  "artifacts": [
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev188-r1-628HNL/.reviews/mcp-exec-effect/plan/2026-10-02-mcp-exec-effect-glm.md"
+  ],
+  "meta": [
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev188-r1-628HNL/.reviews/mcp-exec-effect/plan/_meta/brief-glm-20261002T080254Z.md",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev188-r1-628HNL/.reviews/mcp-exec-effect/plan/_meta/review-glm-20261002T080254Z.json"
+  ],
+  "warnings": [
+    "只读失守：审查员的工具轨迹中出现了写事件。受影响的调用：\n    MCP:mcp__node_repl__js(call_2f0cb19dea9743e496f5a496 {\"code\":\"nodeRepl.write(String(17 * 23));\",\"title\":\"计算 17 乘 23\"})\n  编排器**不会**自动回滚。建议人工核对：\n    git status --porcelain -uall\n    git diff\n  确认无误后再决定是否 `git checkout --` 相关文件。",
+    "  其中 `MCP:` 开头的是 MCP 执行型工具调用：它能执行任意代码，读写与出网都不在核验面，按只读失守处置；括号里是代码摘要（已脱敏、截断）不是文件路径，它写了哪些文件从轨迹里列不出来，以工作区核对为准。"
+  ]
+}
+
+--- stderr ---
+⚠️  同步模式：一次运行墙钟可达 30~40 分钟，会超出 Driver 的 Bash 工具超时。从 skill 调用请改用 --start / --wait。
+⚠️  本轮只跑 glm 一侧：结论没有交叉验证，不构成多审。这是配置意图而非降级，留痕里不会有降级标记——参与者事实见审查文档抬头与 run 元数据的 critics_selected。
+· 主题 mcp-exec-effect ｜ 阶段 plan ｜ 第 1 轮 ｜ run 20261002T080254Z
+· 被审对象 .reviews/mcp-exec-effect/plan/2026-10-02-mcp-exec-effect-claude.md
+开始双审：glm(GLM-5.3)，单侧上限 2700s
+· [glm] 第 1 次尝试，模型 GLM-5.3，上限 2700s
+
+主题 mcp-exec-effect ｜ 阶段 plan ｜ 第 1 轮 ｜ 运行 20261002T080254Z
+状态 success ｜ 完成度 full
+本轮审核者：glm ｜ 发起方 claude
+  glm: ok ｜ 模型 bigmodel-coding-plan/GLM-5.3（请求 GLM-5.3，来源 trace） ｜ 239s ｜ 证据 ok ｜ 工具 {"read":4,"grep":0,"glob":2,"run_command":0,"mcp":1,"project_reads":3}
+  ⚠️ 只读失守
+
+⚠️  只读失守：审查员的工具轨迹中出现了写事件。受影响的调用：
+    MCP:mcp__node_repl__js(call_2f0cb19dea9743e496f5a496 {"code":"nodeRepl.write(String(17 * 23));","title":"计算 17 乘 23"})
+  编排器**不会**自动回滚。建议人工核对：
+    git status --porcelain -uall
+    git diff
+  确认无误后再决定是否 `git checkout --` 相关文件。
+⚠️    其中 `MCP:` 开头的是 MCP 执行型工具调用：它能执行任意代码，读写与出网都不在核验面，按只读失守处置；括号里是代码摘要（已脱敏、截断）不是文件路径，它写了哪些文件从轨迹里列不出来，以工作区核对为准。
+
+已落盘：
+  .reviews/mcp-exec-effect/plan/2026-10-02-mcp-exec-effect-glm.md
+  .reviews/mcp-exec-effect/plan/_meta/ （2 份审计材料）

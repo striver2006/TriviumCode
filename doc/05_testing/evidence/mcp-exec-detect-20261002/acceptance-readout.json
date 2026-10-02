@@ -1,0 +1,198 @@
+{
+  "base": "6aee012",
+  "sha256": {
+    "old": "e3dd3ecad3b89c68a90d4ac9c8d6285b7f8f310c26e95d6ccbbd083da0ba66f5",
+    "new": "2b37b21c7a0f2742def4ac132d6672fd436a988d1d160b45247bdc0db2ddde0a"
+  },
+  "results": {
+    "old": {
+      "exec": {
+        "status": "ok",
+        "tool_calls": {
+          "read": 3,
+          "grep": 0,
+          "glob": 0,
+          "run_command": 0
+        },
+        "write_events": [],
+        "mcp_untrusted_tools": null,
+        "readonlyBreach": false,
+        "untrusted": null,
+        "warnings": []
+      },
+      "untrusted": {
+        "status": "ok",
+        "tool_calls": {
+          "read": 3,
+          "grep": 0,
+          "glob": 0,
+          "run_command": 0
+        },
+        "write_events": [],
+        "mcp_untrusted_tools": null,
+        "readonlyBreach": false,
+        "untrusted": null,
+        "warnings": []
+      },
+      "none": {
+        "status": "ok",
+        "tool_calls": {
+          "read": 3,
+          "grep": 0,
+          "glob": 0,
+          "run_command": 0
+        },
+        "write_events": [],
+        "mcp_untrusted_tools": null,
+        "readonlyBreach": false,
+        "untrusted": null,
+        "warnings": []
+      }
+    },
+    "new": {
+      "exec": {
+        "status": "ok",
+        "tool_calls": {
+          "read": 3,
+          "grep": 0,
+          "glob": 0,
+          "run_command": 0,
+          "mcp": 1
+        },
+        "write_events": [
+          "MCP:mcp__node_repl__js(call_m1 {\"code\":\"const r = 17 * 23;\\nr\",\"timeout_ms\":60000,\"title\":\"核对\"})"
+        ],
+        "mcp_untrusted_tools": null,
+        "readonlyBreach": true,
+        "untrusted": null,
+        "warnings": [
+          "只读失守：审查员的工具轨迹中出现了写事件。受影响的调用：\n    MCP:mcp__node_repl__js(call_m1 {\"code\":\"const r = 17 * 23;\\nr\",\"timeout_ms\":60000,\"title\":\"核对\"})\n  编排器**不会**自动回滚。建议人工核对：\n    git status --porcelain -uall\n    git diff\n  确认无误后再决定是否 `git checkout --` 相关文件。",
+          "  其中 `MCP:` 开头的是 MCP 执行型工具调用：它能执行任意代码，读写与出网都不在核验面，按只读失守处置；括号里是代码摘要（已脱敏、截断）不是文件路径，它写了哪些文件从轨迹里列不出来，以工作区核对为准。"
+        ]
+      },
+      "untrusted": {
+        "status": "ok",
+        "tool_calls": {
+          "read": 3,
+          "grep": 0,
+          "glob": 0,
+          "run_command": 0,
+          "mcp": 1
+        },
+        "write_events": [],
+        "mcp_untrusted_tools": [
+          "mcp__zread__read_file"
+        ],
+        "readonlyBreach": false,
+        "untrusted": {
+          "cause": "mcp-call",
+          "tools": [
+            "mcp__zread__read_file"
+          ]
+        },
+        "warnings": [
+          "glm 侧证据不可信（MCP 调用）：调用了编排器核验不到的 MCP 工具 mcp__zread__read_file——经它完成的读取不进读取路径、命令原文不进命令文本扫描、写入与出网不在轨迹里，该侧「没命中禁读面」「没有写事件」两条阴性结论打折。结论保留、不作废，意见照常逐条裁决；明细见该侧 trace.json 的 mcpCalls"
+        ]
+      },
+      "none": {
+        "status": "ok",
+        "tool_calls": {
+          "read": 3,
+          "grep": 0,
+          "glob": 0,
+          "run_command": 0
+        },
+        "write_events": [],
+        "mcp_untrusted_tools": null,
+        "readonlyBreach": false,
+        "untrusted": null,
+        "warnings": []
+      }
+    }
+  },
+  "replay": {
+    "run": "/Users/chenzhenbo/.trivium/runs/TriviumCode-2217d505/20261001T092816Z/glm",
+    "old": {
+      "writeEvents": 0,
+      "mcpWriteEvents": 0,
+      "toolNames": [],
+      "mcp": null
+    },
+    "new": {
+      "writeEvents": 7,
+      "mcpWriteEvents": 7,
+      "toolNames": [
+        "MCP:mcp__node_repl__js"
+      ],
+      "mcp": {
+        "total": 7,
+        "byTool": {
+          "mcp__node_repl__js": 7
+        },
+        "sources": {
+          "rollout": 7,
+          "log": 7
+        },
+        "untrustedTools": []
+      }
+    }
+  },
+  "passed": 11,
+  "total": 11,
+  "checks": [
+    {
+      "name": "旧树与工作树的 package.json / package-lock.json 逐字节相同",
+      "ok": true
+    },
+    {
+      "name": "两份 bundle 的 sha256 不同",
+      "ok": true,
+      "detail": "e3dd3ecad3b89c68a90d4ac9c8d6285b7f8f310c26e95d6ccbbd083da0ba66f5 / 2b37b21c7a0f2742def4ac132d6672fd436a988d1d160b45247bdc0db2ddde0a"
+    },
+    {
+      "name": "改前 exec：放行（不失守、无不可信、无 mcp 键）",
+      "ok": true,
+      "detail": "{\"status\":\"ok\",\"tool_calls\":{\"read\":3,\"grep\":0,\"glob\":0,\"run_command\":0},\"write_events\":[],\"mcp_untrusted_tools\":null,\"readonlyBreach\":false,\"untrusted\":null,\"warnings\":[]}"
+    },
+    {
+      "name": "改前 untrusted：放行（不失守、无不可信、无 mcp 键）",
+      "ok": true,
+      "detail": "{\"status\":\"ok\",\"tool_calls\":{\"read\":3,\"grep\":0,\"glob\":0,\"run_command\":0},\"write_events\":[],\"mcp_untrusted_tools\":null,\"readonlyBreach\":false,\"untrusted\":null,\"warnings\":[]}"
+    },
+    {
+      "name": "改后 exec：判只读失守、写事件点名 mcp__node_repl__js、mcp=1",
+      "ok": true,
+      "detail": "{\"status\":\"ok\",\"tool_calls\":{\"read\":3,\"grep\":0,\"glob\":0,\"run_command\":0,\"mcp\":1},\"write_events\":[\"MCP:mcp__node_repl__js(call_m1 {\\\"code\\\":\\\"const r = 17 * 23;\\\\nr\\\",\\\"timeout_ms\\\":60000,\\\"title\\\":\\\"核对\\\"})\"],\"mcp_untrusted_tools\":null,\"readonlyBreach\":true,\"untrusted\":null,\"warnings\":[\"只读失守：审查员的工具轨迹中出现了写事件。受影响的调用：\\n    MCP:mcp__node_repl__js(call_m1 {\\\"code\\\":\\\"const r = 17 * 23;\\\\nr\\\",\\\"timeout_ms\\\":60000,\\\"title\\\":\\\"核对\\\"})\\n  编排器**不会**自动回滚。建议人工核对：\\n    git status --porcelain -uall\\n    git diff\\n  确认无误后再决定是否 `git checkout --` 相关文件。\",\"  其中 `MCP:` 开头的是 MCP 执行型工具调用：它能执行任意代码，读写与出网都不在核验面，按只读失守处置；括号里是代码摘要（已脱敏、截断）不是文件路径，它写了哪些文件从轨迹里列不出来，以工作区核对为准。\"]}"
+    },
+    {
+      "name": "改后 exec：告警有失守段与 MCP 补句",
+      "ok": true,
+      "detail": "[\"只读失守：审查员的工具轨迹中出现了写事件。受影响的调用：\\n    MCP:mcp__node_repl__js(call_m1 {\\\"code\\\":\\\"const r = 17 * 23;\\\\nr\\\",\\\"timeout_ms\\\":60000,\\\"title\\\":\\\"核对\\\"})\\n  编排器**不会**自动回滚。建议人工核对：\\n    git status --porcelain -uall\\n    git diff\\n  确认无误后再决定是否 `git checkout --` 相关文件。\",\"  其中 `MCP:` 开头的是 MCP 执行型工具调用：它能执行任意代码，读写与出网都不在核验面，按只读失守处置；括号里是代码摘要（已脱敏、截断）不是文件路径，它写了哪些文件从轨迹里列不出来，以工作区核对为准。\"]"
+    },
+    {
+      "name": "改后 untrusted：记证据不可信并点名、不失守、mcp=1",
+      "ok": true,
+      "detail": "{\"status\":\"ok\",\"tool_calls\":{\"read\":3,\"grep\":0,\"glob\":0,\"run_command\":0,\"mcp\":1},\"write_events\":[],\"mcp_untrusted_tools\":[\"mcp__zread__read_file\"],\"readonlyBreach\":false,\"untrusted\":{\"cause\":\"mcp-call\",\"tools\":[\"mcp__zread__read_file\"]},\"warnings\":[\"glm 侧证据不可信（MCP 调用）：调用了编排器核验不到的 MCP 工具 mcp__zread__read_file——经它完成的读取不进读取路径、命令原文不进命令文本扫描、写入与出网不在轨迹里，该侧「没命中禁读面」「没有写事件」两条阴性结论打折。结论保留、不作废，意见照常逐条裁决；明细见该侧 trace.json 的 mcpCalls\"]}"
+    },
+    {
+      "name": "改后 untrusted：告警一行点名工具",
+      "ok": true,
+      "detail": "[\"glm 侧证据不可信（MCP 调用）：调用了编排器核验不到的 MCP 工具 mcp__zread__read_file——经它完成的读取不进读取路径、命令原文不进命令文本扫描、写入与出网不在轨迹里，该侧「没命中禁读面」「没有写事件」两条阴性结论打折。结论保留、不作废，意见照常逐条裁决；明细见该侧 trace.json 的 mcpCalls\"]"
+    },
+    {
+      "name": "无 MCP 样本：改前改后 tool_calls / write_events / 告警逐字相同",
+      "ok": true,
+      "detail": "{\"old\":{\"status\":\"ok\",\"tool_calls\":{\"read\":3,\"grep\":0,\"glob\":0,\"run_command\":0},\"write_events\":[],\"mcp_untrusted_tools\":null,\"readonlyBreach\":false,\"untrusted\":null,\"warnings\":[]},\"new\":{\"status\":\"ok\",\"tool_calls\":{\"read\":3,\"grep\":0,\"glob\":0,\"run_command\":0},\"write_events\":[],\"mcp_untrusted_tools\":null,\"readonlyBreach\":false,\"untrusted\":null,\"warnings\":[]}}"
+    },
+    {
+      "name": "回放：改前 MCP 写事件 0 条",
+      "ok": true,
+      "detail": "{\"writeEvents\":0,\"mcpWriteEvents\":0,\"toolNames\":[],\"mcp\":null}"
+    },
+    {
+      "name": "回放：改后 MCP 写事件 7 条、计数 7",
+      "ok": true,
+      "detail": "{\"writeEvents\":7,\"mcpWriteEvents\":7,\"toolNames\":[\"MCP:mcp__node_repl__js\"],\"mcp\":{\"total\":7,\"byTool\":{\"mcp__node_repl__js\":7},\"sources\":{\"rollout\":7,\"log\":7},\"untrustedTools\":[]}}"
+    }
+  ]
+}

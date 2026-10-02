@@ -231,6 +231,14 @@ export const TOOL_TRACE_CAPABILITY: TraceCapability = {
 };
 
 /**
+ * MCP 执行型工具调用进 `write_events` 时的条目前缀（EV-188）：条目形如 `MCP:mcp__node_repl__js(〈参数摘要〉)`。
+ *
+ * 两个用处：读留痕的人一眼看出这条失守走的是 MCP 通道；`guard.judgeRun` 的 `breachedAbs` 认这个前缀跳过——
+ * 括号里是代码摘要不是路径，不能拿来从「无法归因」桶里扣文件。放在这里而不是 zcode 侧，是因为 `guard` 只从本模块取跨族词汇。
+ */
+export const MCP_WRITE_EVENT_PREFIX = 'MCP:';
+
+/**
  * Agent id → 适配器的查表结构。
  *
  * **是 `Partial`，而且必须是。** `CriticId` 在 M7b 第 6 步放开成注册表全集之后，

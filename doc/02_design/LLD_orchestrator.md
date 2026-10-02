@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.30
+> - **当前版本**：v1.1.31
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.31（2026-10-02）随设计 v1.3.75（MCP执行工具调用检测，EV-188）同步：2.5 表 `guard.ts`、`adapters/zcode-trace.ts` 两行的行数与职责（证据不可信档位与归因分流；MCP 调用的计数、两档分类与按调用 id 合并）。两行的旧行数（225 / 300）早已失实，本次按现行源码改准；同表其余各行未逐一核。
 > - **变更说明**：v1.1.30（2026-10-02）随设计 v1.3.74（审查侧实测措辞约束，EV-95 前半）同步：2.6 `adapters/base.ts` 行补「命令执行能力声明（`CommandExecution`，挂 `CriticAdapter.commandExecution`）」；3.3「`prepareRun()` 的『零工件』不变式」段末补一句渲染接线（`renderBrief` 的必填入参 `commandExecution` 取入选侧适配器的声明，第 7 节据此二选一）。本文其余各节不涉及任务书各段的正文，不改。
 > - **变更说明**：v1.1.29（2026-10-02）随设计 v1.3.73（必读与禁读交集校验，EV-02）同步：`startRun` 第 4 条补第三个只警告项来源（`rc.mustReadPruned`，追加在 `collectWarnings` 结果之后）；`prepareRun()` 零工件段补「逐侧冻结之后、`--context` 交集校验（撞上即退 64）、再逐侧剔除自动条目与渲染」的三段次序；代码双审后补全量 / 封顶两份告警与跳过轮留痕。
 > - **变更说明**：v1.1.28（2026-10-01）随设计 v1.3.71（留痕读不出的出口，EV-148 文案部分）同步：3.5 `hook-pre-write` 第 2 条补「该阶段留痕读不出 ⇒ deny、出口用共用段」一句（此前只写了判定来源）。本文其余各节核过不讲这几处的出口文案（`gate` 读不出与 `approve` 通过前复核在本文没有展开，4.1 只画闸门迁移），不改。
@@ -110,7 +111,7 @@ graph TD
 | `gate.ts` | 476 | 裁决完整性硬校验（11 个失败码）、共同 blocker 判定 | `checkAdjudication()` `findJointRejectedBlockers()` |
 | `approval.ts` | 138 | 人工审批的状态迁移与留痕 | `recordApproval()` |
 | `worktree-summary.ts` | 290 | 审批时的工作树改动摘要（EV-132 候选 ② 折中版）：以 `snapshot.after_tree_hash` 为基线比当前工作树，**只告知、不进任何判定、不抛错**（失败转原因之一），基线先过对象名形状闸，20 秒整体截止 | `summarizeWorkTree()` `renderWorkTreeSummary()` |
-| `guard.ts` | 225 | 只读失守 / 证据下限 / 泄漏 / 漂移的**判定**（不做处置） | `judgeRun()` `judgeSide()` |
+| `guard.ts` | 1080 | 只读失守 / 证据下限 / 泄漏 / 漂移的**判定**（不做处置）；核验档位含证据不可信（`SideVerification.untrusted`，v1.1.31），它与 MCP 执行型写事件一起参与漂移归因分流（`RunVerdict.unattributedCauses`） | `judgeRun()` `judgeSide()` |
 | `state.ts` | 300 | 闸门状态机、`state.json` 的读改写 | `setGateChecked()` `listOpenGates()` `shouldLockWrites()` |
 
 `guard.ts` 只判定不处置，处置交给 `gate` 与失败策略——这条分工写在文件头注释里。
@@ -143,7 +144,7 @@ graph TD
 | `adapters/agy.ts` | 314 | Antigravity CLI 的 argv 构造与结果解析 |
 | `adapters/zcode.ts` | 331 | ZCode CLI 同上，外加 `HOME` 副本的模型覆盖与 0.16.9 provider 配置环境变量注入（P-28，存在性门控） |
 | `adapters/agy-events.ts` | 176 | agy 的 `stream-json` 事件流解析（工具轨迹来源） |
-| `adapters/zcode-trace.ts` | 300 | ZCode 的会话日志 + rollout 双文件轨迹解析 |
+| `adapters/zcode-trace.ts` | 474 | ZCode 的会话日志 + rollout 双文件轨迹解析；MCP 调用的计数与两档分类（v1.1.31，设计 v1.3.75 / EV-188：执行型名单 `ZCODE_MCP_EXEC_PREFIXES`、日志侧 `mcpCalls` / `mcpCallIds`、两边按调用 id 合并的 `summarizeZcodeMcp`） |
 | `adapters/stub.ts` | 228 | 桩适配器，经环境变量跨进程注入，`--selftest` 与集成测试用 |
 | `probes/agy.ts` `probes/zcode.ts` | 348 / 420 | 本机能力实测 |
 | `probes/verify-commands.ts` | 411 | 编译测试命令候选推断 |

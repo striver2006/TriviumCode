@@ -1,0 +1,217 @@
+{
+  "targets": [
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/render.ts",
+    "src/trivium/report.ts",
+    "src/trivium/review.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/zcode-mcp-detect.test.js",
+    "dist/test/test/unit/zcode-mcp-adapter.test.js",
+    "dist/test/test/integration/mcp-detect.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "执行型名单改空",
+      "file": "src/trivium/adapters/zcode-trace.ts",
+      "find": "export const ZCODE_MCP_EXEC_PREFIXES: readonly string[] = ['mcp__node_repl__'];\n",
+      "replace": "export const ZCODE_MCP_EXEC_PREFIXES: readonly string[] = [];\n",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "「是 MCP」不看前缀",
+      "file": "src/trivium/adapters/zcode-trace.ts",
+      "find": "  return name.startsWith(ZCODE_MCP_PREFIX);\n",
+      "replace": "  return name.length > 0;\n",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "计数只取 rollout",
+      "file": "src/trivium/adapters/zcode-trace.ts",
+      "find": "    byTool[n] = Math.max(ro.length + (unionable ? (logOnly.get(n) ?? 0) : 0), logCounts?.[n] ?? 0);\n",
+      "replace": "    byTool[n] = ro.length;\n",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "两份来源相加而不是去重",
+      "file": "src/trivium/adapters/zcode-trace.ts",
+      "find": "    byTool[n] = Math.max(ro.length + (unionable ? (logOnly.get(n) ?? 0) : 0), logCounts?.[n] ?? 0);\n",
+      "replace": "    byTool[n] = ro.length + (logOnly.get(n) ?? 0) + (logCounts?.[n] ?? 0);\n",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "「会话日志另记 k 次」那支删掉",
+      "file": "src/trivium/adapters/zcode-trace.ts",
+      "find": "      if (extra > 0) execEvents.push(`${MCP_WRITE_EVENT_PREFIX}${n}(会话日志另记 ${extra} 次，参数不可得)`);\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "参数摘要不脱敏",
+      "file": "src/trivium/adapters/zcode-trace.ts",
+      "find": "  return redactSecrets(JSON.stringify(input)).content.replace(/\\s+/g, ' ').slice(0, ZCODE_MCP_SUMMARY_MAX);\n",
+      "replace": "  return JSON.stringify(input).replace(/\\s+/g, ' ').slice(0, ZCODE_MCP_SUMMARY_MAX);\n",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "执行型调用不进 write_events",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "      writeEvents = [...new Set([...writeEvents, ...mcp.execEvents])];\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-mcp-adapter.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "mcp 计数键无条件写",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    if (mcp.total > 0) {\n",
+      "replace": "    if (true) {\n",
+      "expect": "dist/test/test/unit/zcode-mcp-adapter.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "证据不可信的条件展开反转",
+      "file": "src/trivium/guard.ts",
+      "find": "        ...(untrustedTools.length > 0 ? { untrusted: { cause: 'mcp-call' as const, tools: untrustedTools } } : {}),\n",
+      "replace": "        ...(untrustedTools.length === 0 ? { untrusted: { cause: 'mcp-call' as const, tools: untrustedTools } } : {}),\n",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "breachedAbs 不跳过 MCP: 条目",
+      "file": "src/trivium/guard.ts",
+      "find": "      if (ev.startsWith(MCP_WRITE_EVENT_PREFIX)) return [];\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "失守告警的 MCP 补句删掉",
+      "file": "src/trivium/guard.ts",
+      "find": "    if (v.breachedFiles.some((f) => f.startsWith(MCP_WRITE_EVENT_PREFIX))) {\n",
+      "replace": "    if (false) {\n",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "front-matter 不渲染 evidence_untrusted",
+      "file": "src/trivium/render.ts",
+      "find": "    ...(input.verification?.untrusted ? { evidence_untrusted: { cause: input.verification.untrusted.cause, tools: input.verification.untrusted.tools } } : {}),\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/mcp-detect.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "报告不推证据不可信旗标",
+      "file": "src/trivium/report.ts",
+      "find": "    if (d.evidence_untrusted) {\n",
+      "replace": "    if (false) {\n",
+      "expect": "dist/test/test/integration/mcp-detect.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "文档横幅不出证据不可信那句",
+      "file": "src/trivium/render.ts",
+      "find": "  if (input.verification?.untrusted) {\n",
+      "replace": "  if (false) {\n",
+      "expect": "dist/test/test/integration/mcp-detect.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "run.json 不写 evidence_untrusted",
+      "file": "src/trivium/review.ts",
+      "find": "          ...(verdict.sides[c]!.verification.untrusted\n",
+      "replace": "          ...(false\n",
+      "expect": "dist/test/test/integration/mcp-detect.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "工具名全集只取 rollout（AGY-02）",
+      "file": "src/trivium/adapters/zcode-trace.ts",
+      "find": "    ...new Set([...fromRollout.keys(), ...logOnly.keys(), ...Object.keys(logCounts ?? {}).filter(isZcodeMcp)]),\n",
+      "replace": "    ...new Set([...fromRollout.keys()]),\n",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "归因分流去掉证据不可信（AGY-01）",
+      "file": "src/trivium/guard.ts",
+      "find": "    ...(anyEvidenceUntrusted ? (['evidence-untrusted'] as const) : []),\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M18",
+      "desc": "归因分流去掉 MCP 执行型（r2 §7 偏离 2）",
+      "file": "src/trivium/guard.ts",
+      "find": "    ...(anyMcpExec ? (['mcp-exec'] as const) : []),\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M19",
+      "desc": "按 id 并集退回按名取大（r2 §7 更正 1）",
+      "file": "src/trivium/adapters/zcode-trace.ts",
+      "find": "    byTool[n] = Math.max(ro.length + (unionable ? (logOnly.get(n) ?? 0) : 0), logCounts?.[n] ?? 0);\n",
+      "replace": "    byTool[n] = Math.max(ro.length, logCounts?.[n] ?? 0);\n",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M20",
+      "desc": "日志侧不记调用 id",
+      "file": "src/trivium/adapters/zcode-trace.ts",
+      "find": "    if (callId && toolName && isZcodeMcp(toolName) && event.startsWith('tool.call.')) mcpCallIds[callId] = toolName;\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M21",
+      "desc": "运行时告警不出证据不可信那行",
+      "file": "src/trivium/guard.ts",
+      "find": "    if (s.verification.untrusted) {\n",
+      "replace": "    if (false) {\n",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    },
+    {
+      "id": "M22",
+      "desc": "trace.json 不写 mcpCalls 明细",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "          ...(mcp.total > 0 ? { mcpCalls: { total: mcp.total, byTool: mcp.byTool, sources: mcp.sources } } : {}),\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-mcp-adapter.test.js"
+    },
+    {
+      "id": "M23",
+      "desc": "适配器不产出 mcp_untrusted_tools",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "      ...(mcp.untrustedTools.length > 0 ? { mcp_untrusted_tools: mcp.untrustedTools } : {}),\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-mcp-adapter.test.js"
+    },
+    {
+      "id": "M24",
+      "desc": "渲染输入不带 untrusted（横幅与 front-matter 同断）",
+      "file": "src/trivium/review.ts",
+      "find": "              ...(side.verification.untrusted ? { untrusted: side.verification.untrusted } : {}),\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/mcp-detect.test.js"
+    },
+    {
+      "id": "M25",
+      "desc": "rollout 条目缺 id 时不退回按名取大",
+      "file": "src/trivium/adapters/zcode-trace.ts",
+      "find": "    const unionable = ro.every((c) => c.id.length > 0);\n",
+      "replace": "    const unionable = true;\n",
+      "expect": "dist/test/test/unit/zcode-mcp-detect.test.js"
+    }
+  ]
+}
