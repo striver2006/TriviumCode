@@ -1,0 +1,73 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按镜头（跨平台/环境耦合、资源与生命周期、运行环境与依赖版本兼容）核过本补丁。实际读过完整 diff（16942 行、sha256 与任务书一致，工作树 HEAD a03a056 对上基线）、被改的 src/trivium/adapters/{base,agy,claude,codex,zcode,stub}.ts、brief.ts、review.ts 的 prepareRun 全上下文、两份新单测与新集成测、test/helpers/fixture.ts、probes/{claude,codex}.ts、skills/dual-critic/agents/trivium-critic.md、实施报告与两轮 A/B 人工核定件，并在 dist 构建上真跑了 command-execution-parity 与 brief-command-execution 两个单测文件（13/13 绿）。机制面核实的点：CommandExecution 必填无缺省、四家声明与各自工具面事实源逐一对上（claude --tools Read,Grep,Glob / codex -s read-only / zcode denylist 含 Bash / agy tools 无 run_command，均为我实读源文件核对）；prepareRun 是 renderBrief 在生产代码里的唯一调用点（grep 全仓核实，worker 不重渲染任务书的声明属实）；第 7 节插入不破坏八段结构与既有五条逐字顺序（单测锁住）；桩缺省按 mode、显式覆盖优先，解耦两格有集成测守；REPO_ROOT 向上找 package.json 在 dist 布局下能正确落到仓库根（dist/ 无 package.json，实查）。报告如实记录了 check-0 的 stub-agent-kit 真实缺口与处置、A/B 中基线未复现冒充实测但推错值、codex r1 整份解析回退——诚实度高。EV-187 对 agy 安装副本漂移的登记方向正确。提两条：claude 侧对账的事实源比「不能执行命令」这个断言的实际成立条件窄（minor），以及仓库根定位逻辑的第 N 份复制（nit）。无阻断项。",
+  "agreed": [
+    "必填无缺省的取舍对：缺省值本身就是一次推导，漏声明应当编不过——tsc 与 check-0 的 kit 事故恰好互相印证（模板漏声明同时打红 tsc 与集成，说明必填是真的在起作用）",
+    "不并进 TraceCapability 的理由成立：三家共用 TOOL_TRACE_CAPABILITY 一个对象，往常量里加字段就是按轨迹形状批发能力；解耦两格的桩覆盖与 M6/M7 变异把「跟声明不跟形状」钉成了机器判据",
+    "取值不留「可写 shell」：合法取值集合与只读保障的契约面一致，不给出表达违约状态的合法值",
+    "对账用例三格负例全在内存构造、不临时改仓库文件——正是计划双审接受 CODEX-03 后的正确落地，agyToolsFromDefinition 做成纯函数是对的",
+    "EVIDENCE_NATURE_LINES 用 Record<CommandExecution, …> 全键映射：将来加第三个取值而漏对应说法会编不过，闭集扩展安全",
+    "none 第二条「照常交付、不要停下来等放行」与第 6 节 EV-113 的 ExitPlanMode 约束构成「诱因+形态」两句互补，报告 §4.3 观察 2 显示三轮 glm 被拒后均照常交付、未再零产出，效果层证据与机制自洽",
+    "「第 2 节」而非「第 2 段」的称呼更正有单测锁（断言不含「第 2 段」），且 brief.ts 实际标题确为「## 2. 本次审查焦点」（实读核对）"
+  ],
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/unit/command-execution-parity.test.ts 的 FACTS.claude.fact（第 91 行附近的 --tools 取值检查）",
+      "problem": "claude 侧对账只判 READONLY_INVARIANTS 里 --tools 那一项的白名单值，而「claude 侧不能执行命令」这个断言的实际成立条件不止那一项：probes/claude.ts 自己的注释写着 --restricted「移除执行命令/代码的内建工具与 WebFetch」、--strict-mcp-config「漏掉时 MCP 的写操作工具会混进来」。若有人把这两个旗标从 READONLY_INVARIANTS 删掉而 --tools 不动，本用例照样推出 none、任务书仍对 claude 说「你这一侧没有执行命令的能力」，而它其实可能有——这正是 EV-187 给 agy 登记的那类「声明与工具面不符」，但 claude 这格连登记都没有。对照 codex 侧是对整个数组 deepEqual 钉死恰好的组合，claude 侧的钉法窄了一截。我核过 claude-adapter.test.ts 的 expected 也从同一常量自推（删项不红），未找到逐字钉住这两个旗标在位的用例，但没把全部 contract 用例扫完，可能有余。",
+      "evidence": "实读 test/unit/command-execution-parity.test.ts 第 88-95 行（只取 READONLY_INVARIANTS[indexOf('--tools')+1]）；src/trivium/probes/claude.ts 第 16、186-217 行（两旗标的失守后果注释与 READONLY_INVARIANTS 定义）；test/unit/claude-adapter.test.ts 第 72 行（expected = [...READONLY_INVARIANTS]，自推不防删项）。",
+      "suggestion": "把 claude 的 fact 改成与 codex 同形：对整个 READONLY_INVARIANTS 做恰好组合的断言（或在 --tools 检查之外具名要求两个安全旗标在位），一边删项另一边即红；若判断其它用例已钉住、这里刻意只盯 --tools，则在用例头注或设计 11.1 表该行补一句「另两旗标由 X 守」，把这格的论域写尽。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "nit",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "test/unit/command-execution-parity.test.ts 第 28-37 行（REPO_ROOT 内联副本）与第 78 行（=path.join 缺空格）",
+      "problem": "「向上找 package.json 定位仓库根」这段逻辑现在是仓库里的第三、四份副本（test/helpers/fixture.ts 有 findRepoRoot 并导出 REPO_ROOT，brief.test.ts 第 58-64 行有一份同款，parse-degrade.test.ts 还有一份加了额外判据的变体）。新副本比 fixture 版少了 up===dir 的到达文件系统根时的终止检查，且失败时报「未能定位仓库根」不带起点路径，排查性比原版差。单元测不想引 fixture 的重量级导入（yaml、exec、git）可以理解，但出口应当是把这段纯逻辑抽成零依赖的小 helper 三处共用，而不是继续增副本。另 78 行 AGY_DEFINITION_PATH =path.join 缺一个空格。",
+      "evidence": "实读 test/unit/command-execution-parity.test.ts 第 28-37、78 行；test/helpers/fixture.ts 第 19-32 行（findRepoRoot 与导出的 REPO_ROOT，含 up===dir 检查与带路径的报错）；test/unit/brief.test.ts 第 58-64 行（第二份同款副本）。",
+      "suggestion": "方向：把仓库根定位收敛成一处（如 test/helpers 下一个只 import node:path/fs/url 的轻模块），新用例引用它；顺手补 =path.join 的空格。不改行为、不改判据。",
+      "confidence": "high"
+    }
+  ],
+  "not_covered": [
+    "未跑集成测 brief-command-execution.test.ts（只读沙箱下夹具需写临时目录），只实跑了两个新单测文件（13/13 绿）；其结果以报告 §2「集成两格真跑、未跳过」与 check-1/check-2 全量读数为准，我未独立复现",
+    "变异 17/17、改前改后对照 2/2、A/B 三轮效果层读数未独立复跑（要烧构建与配额），只核对了 mutation-spec、verdict.md 与报告数字的内部一致性；效果层判定本身按计划决策也不在本审论域",
+    "未逐条扫完全部 contract 测试来排除 CODEX-01 提到的「另两旗标已被别处钉住」的可能，故该条标 medium 并给了「或补一句论域」的两个出口",
+    "zcode CLI 若升级后 denylist 之外冒出新的可执行命令工具，本对账（只看名单含不含 Bash）判不出来——这是黑名单方向对账的固有论域，白名单侧有「未分类即红」而黑名单侧没有对称机制；我认为 EV-187 的触发条件句（「某侧任务书第 7 节说的能力与它实际的工具面不符」）已足以涵盖该形态，故未单列意见",
+    "skills-src 契约与入口 SKILL.md 渲染产物（本次未涉及四家载体入口措辞，diff 也不含它们）未核",
+    "未复核设计文档 9.4/11.1 新段与 LLD/PROTOCOL 各处措辞的每一句是否与实现零出入——抽查了 9.4 第 7 条、11.1 表五行与 §5.1.1 ② 行与 brief.ts/适配器注释/对账用例的对应，均一致；其余文档段落按 diff 通读一遍"
+  ],
+  "consulted": [
+    ".reviews/审查侧实测措辞约束/code/_meta/changes-20261002T023804Z.diff",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/review.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/codex.ts",
+    "test/unit/command-execution-parity.test.ts",
+    "test/unit/brief-command-execution.test.ts",
+    "test/unit/brief.test.ts",
+    "test/unit/brief-output-contract.test.ts",
+    "test/integration/brief-command-execution.test.ts",
+    "test/helpers/fixture.ts",
+    "test/unit/claude-adapter.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt",
+    "skills/dual-critic/agents/trivium-critic.md",
+    "doc/05_testing/REPORT_2026-10-02_critic_exec_wording.md",
+    "doc/05_testing/evidence/critic-exec-wording-20261002/ab/new-r1/verdict.md",
+    "doc/05_testing/evidence/critic-exec-wording-20261002/ab/new-r2/verdict.md"
+  ]
+}

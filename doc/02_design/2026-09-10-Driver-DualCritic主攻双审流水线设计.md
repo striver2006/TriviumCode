@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.73
+> - **当前版本**：v1.3.74
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -668,7 +668,7 @@ R-5 / FR-31 的承诺是「新增一家 Agent 只需一份套件，核心流程�
 | # | 件 | 落点 | 漏了它的症状 |
 | :--- | :--- | :--- | :--- |
 | ① | 注册项 | `agents/registry.ts` 加一条 | 该 Agent 在系统里不存在 |
-| ② | 适配器 | `adapters/<id>.ts` 本体 + `adapters/index.ts` 接线一行 | `realAdapters()` 在取表时响亮失败（不是跑到一半 undefined） |
+| ② | 适配器 | `adapters/<id>.ts` 本体 + `adapters/index.ts` 接线一行；本体含两项必填能力声明 `capability` 与 `commandExecution`（v1.3.74 起，后者的工具面事实源要登记进 `command-execution-parity` 用例） | `realAdapters()` 在取表时响亮失败（不是跑到一半 undefined）；漏声明 `commandExecution` 时 `tsc --noEmit` 红，事实源没登记时对账用例红 |
 | ③ | 探针 | `probes/<id>.ts` | 可用性与版本无从判定 |
 | ④ | 镜头 | `lenses.yaml` 加一个键 | 该侧按通用标准审（缺件不致命，`Lenses` 是 `Partial`） |
 | ⑤ | 入口资产 | 该 Agent 读的协议片段 | **当前无任何消费方**，见下方「已知缺口」 |
@@ -2028,6 +2028,10 @@ Hook 行为约定：
 5. **本侧镜头**：来自 9.3。
 6. **输出契约**：严格输出 `trivium.review.v1` JSON，结论是**一个裸 JSON 对象**（不要代码围栏与前后说明）、不加 schema 之外的字段；编号前缀（本侧注册表前缀）；每条意见九个字段必填，四个枚举字段逐一列出合法取值——取值从 `review.v1.json` 读、不抄第二份；允许 `findings: []` 但需说明检查了什么；`consulted` 必填；zcode 侧末尾固定「不要调用 ExitPlanMode」（EV-113）。v1.3.68 起（6.5.1）；此前只写「七个字段必填，另需 layer 与 kind」、一个枚举值都没列。
 7. **反谄媚约束**：不要为了显得有用而编造问题；对不确定的判断标 `confidence: low`；必须填写 `not_covered`。
+   证据性质一条按该侧适配器声明的命令执行能力（`commandExecution`，见 11.1「命令执行能力」）二选一渲染（v1.3.74 起，EV-95）：
+   不能执行命令的一侧——不得用「实测」「复测」「直调」「跑了」「执行结果」一类说法描述自己的判断，需要运行才能确认的写明是推理并进 `not_covered`，
+   焦点要求实测或复测而做不到时如实说明后照常交付、不停下来等放行；能执行只读命令的一侧——写「实测」「复测」的判断要在 `evidence` 里给出本轮实际执行的命令，没执行的写明是推理。
+   插在 `not_covered` 那条之后、不另起一段；此前靠 Driver 每轮在焦点里手写一句。
 8. **禁读与禁止事项**：编排器**逐个列出**的对方历史审查文件路径（如 `.reviews/登录重构/plan/2026-09-10-登录重构-glm.md`）——「另一位审查员的文件，读取即本次审查作废」；`.trivium/`、`~/.trivium/`、`review.sensitive_globs` 匹配的敏感文件；不得给出大段可粘贴补丁（避免变成第二作者）；不得引用或猜测另一位审查员的结论。逐个列出而不是给 glob，是为了让轨迹核验与提示语之间可逐条对账。
 
 > **绝不**在提示词中出现「另一位评审认为……」或对方文档的任何摘录（FR-10 / 第 7 章第 4 条）。禁读清单只含**路径**，不含内容。
@@ -2454,6 +2458,35 @@ zcode 侧只有 `Read` 如此。统一成一份会让其中一家凭空多出稳
 **虚报比漏报重**：漏报只是少算一条证据，虚报是**造出一条根本没发生的读取**，
 会让 AC-11 对该族的实际约束比设计口径松。承诺是「已知形态可提、已知虚报源已排除」，
 不是完备。
+
+#### 命令执行能力（v1.3.74 · EV-95）
+
+`CriticAdapter` 上与 `capability` 并列的第二项能力声明，**消费方是任务书**而不是判定层：
+
+```ts
+type CommandExecution = 'none' | 'readonly-shell';
+interface CriticAdapter { readonly capability: TraceCapability; readonly commandExecution: CommandExecution; … }
+```
+
+任务书第 7 节按它二选一渲染证据性质那一条（9.4 第 7 条）。**必填、无缺省**：缺省值本身就是一次推导，漏声明应当编不过。
+取值不留「可写 shell」——任何一家能写都已违反只读保障，不该有一个合法取值来表达它。
+
+**不并进 `TraceCapability`**：那一项回答「轨迹长什么样、判定层怎么分档」（六个消费点全在 `guard`），这一项回答「审查员能做什么」。
+今天四家碰巧 `command-trace` ⇔ `readonly-shell`，但将来某家的结构化工具面里带命令工具，两者就对不上；
+而三家共用 `TOOL_TRACE_CAPABILITY` 一个对象，往常量里加这一项就是**按轨迹形状批发**能力。每个适配器各自声明：
+
+| 侧 | 声明 | 工具面事实源 |
+| :--- | :--- | :--- |
+| codex | `readonly-shell` | `probes/codex.ts` `CODEX_READONLY_INVARIANTS` = `-s read-only`（沙箱让 shell 跑、写在系统调用层失败） |
+| gemini（agy） | `none` | `skills/dual-critic/agents/trivium-critic.md` 的 `tools:` 不含 `run_command` |
+| glm（zcode） | `none` | `adapters/zcode.ts` `ZCODE_READONLY_DENYLIST` 含 `Bash`（`--mode plan` 本身挡不住命令执行） |
+| claude | `none` | `probes/claude.ts` `READONLY_INVARIANTS`：`--restricted`（移除执行命令 / 代码的内建工具）、`--strict-mcp-config`（挡住 MCP 工具混入）两个旗标在位，且 `--tools` 白名单是 `Read,Grep,Glob`——三件合取（代码双审 CODEX-01） |
+| 桩 | 缺省按 `mode`（`command_trace` ⇒ `readonly-shell`，其余 ⇒ `none`），`StubSpec.commandExecution` 可显式覆盖 | 桩自己的约定；覆盖让「`tool-trace` + `readonly-shell`」「`command-trace` + `none`」两种今天没有真实侧的组合能在集成测试里走到 |
+
+**对账**：`test/unit/command-execution-parity.test.ts` 从四家事实源推出能力、与声明比对，一边改了另一边不跟就红；
+claude 与 agy 的工具名过已分类表，出现未分类的名字即红（逼加工具的人回来判它能不能执行命令）；接线表里多出一家没登记事实源也红。
+**边界**：agy 侧对账的是仓库那份定义，运行期生效的是安装器拷进 `~/.gemini/config/agents/trivium-critic/agent.md` 的副本，两者漂移不在守备范围（EV-187）。
+zcode 侧的事实源只管内置工具名：MCP / 插件工具面不在 `ZCODE_READONLY_DENYLIST` 与对账用例的论域。本主题代码双审（GLM-01）核实，经插件缓存带进副本 HOME 的 `mcp__node_repl__js`（JS 执行）出现在 glm 侧每一次请求的工具清单里，而轨迹计数不分类 MCP 调用——`none` 只对内置工具面成立，这首先是只读保障的缺口，登记 **EV-188**。
 
 #### 旗标归属判据（M9 工前并入 · §11.1 的 B-契约部分）
 
@@ -3595,6 +3628,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.74** | 2026-10-02 | **审查侧实测措辞约束（EV-95 前半）。** 计划 `.reviews/审查侧实测措辞约束/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261002T012129Z`：codex `request-changes`、gemini / glm `approve-with-nits`，11 条接受 10、驳回 1——改前改后对照与 A/B 钉死各构建自己的资产根（CODEX-01）、agy 事实源改纯函数 + 内存负例不临时改仓库文件（CODEX-03）、安装副本漂移登 EV-187（CODEX-02）、A/B 补零配额预检与判据 5 成因分档（CODEX-05 / CODEX-07）；驳回 CODEX-04「拿掉基线轮」，基线是用户决策明定）。`CriticAdapter` 新增与 `capability` 并列的必填声明 `commandExecution`（`none` / `readonly-shell`），11.1 新增「命令执行能力」小节（字段、不并进 `TraceCapability` 的理由、五处声明、对账用例与边界）；9.4 第 7 条补按能力二选一的证据性质约束。落点：`adapters/base.ts`、四个适配器与桩、`brief.ts` 第 7 节、`review.ts` 的 `prepareRun` 接线。读数见 `doc/05_testing/REPORT_2026-10-02_critic_exec_wording.md`（机制层单测 / 对账 / 集成、变异 19/19、改前改后对照 2/2；效果层新构建两轮均达标）。全量第一次红在接入套件（模板漏声明 `commandExecution`），5.1.1 第 ② 件补两项必填声明与对账用例。代码双审第 1 轮 run `20261002T023804Z`（三侧 `approve-with-nits`）4 条全接受：claude 侧对账改三件合取（`--restricted`、`--strict-mcp-config`、`--tools` 白名单，CODEX-01）；新用例改用共享 `REPO_ROOT`（CODEX-02 ≡ AGY-01）；zcode 侧工具清单里实见 MCP 的 JS 执行工具 `mcp__node_repl__js`，只读名单与对账都管不到（GLM-01）——11.1 边界句补一句，登 **EV-188**（安全面），第 7 节措辞不变。另登 EV-187、EV-188。 |
 | **v1.3.73** | 2026-10-02 | **必读与禁读交集校验（EV-02）。** 计划 `.reviews/必读与禁读交集校验/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261001T155413Z`：codex / glm `approve-with-nits`、gemini `request-changes`，9 条全接受——同步路径的告警原计划在 `executeRun` 返回后才并入、人读模式看不到（AGY-01），改由 `executeRun` 汇总时并入；剔除事实补进 run.json `gate.warnings`（CODEX-01）；辅助函数喂展开归一后的路径（AGY-03）；`contains` 方向同样跳具名放行（GLM-02）；告警措辞按是否覆盖全部入选侧分支（AGY-02）；USAGE 与本节同步路径那半句改实（CODEX-03、GLM-01））。任务书第 4 段（必读、建议核实、己方历史）与第 8 段（逐侧禁读集）之间补交集校验：§9.4 第 4 条补一句、10.1.1 末节新增「第 4 段与第 8 段的交集校验」（判定口径、两个方向、命中点、按来源分开处置、三个告警出口、现实触发面）；7.5.1 里「`--start` 的 warnings」一段原写「当前唯一来源是 `checkModelOverrideSource`」自 v1.3.57 起已失实，改为列三个来源，同步路径那半句补必读剔除告警。落点：`brief.ts` 的 `findDenyConflicts` / `denyContextFor` / `renderContextConflicts` / `renderPrunedWarnings`，`buildMustReadList` 带来源；`review.ts` 的 `prepareRun` 拆成冻结 → `--context` 校验 → 渲染三段、`RunContext.mustReadPruned`、`executeRun` 并入；`run-protocol.ts` 的 `startRun` 追加。代码双审第 1 轮 run `20261001T163431Z`（codex `approve-with-nits`、gemini `approve`、glm `approve-with-nits`）8 条全接受：命令契约第 2 步补自动补 `--context` 的禁区与撞上 64 的分来源处置（CODEX-01 / CODEX-07，7.4 同句）；家目录展开与措施 a / 措施 b 同宽（`expandHomeSpellings`，CODEX-02）；跳过轮同样留 run.json 一笔（CODEX-03 / GLM-01）；拒跑发生在冻结之后的代价写明、不改次序（CODEX-04）；本主题新增的那处改用 `runRoot(cfg)`（CODEX-05；另两处换掉会让 `config-consumers` 对账把 `run_root` 判成无消费方，保持原样）；播报通道封顶 5 条、run.json 存全量（CODEX-06）。读数见 `doc/05_testing/REPORT_2026-10-02_mustread_deny_intersection.md`。另登 EV-185、EV-186。 |
 | **v1.3.72** | 2026-10-01 | **两个空配置项收口（EV-30 ①、EV-15）。** 计划 `.reviews/两个空配置项收口/plan/` r2（计划双审第 1 轮 run `20261001T123430Z`：codex / gemini `approve-with-nits`、glm 解析降级（原文自报 `approve-with-nits`），实质意见 10 条全接受）。`gate.max_check_retries` 与 `agents.<id>.readonly_commands` 类型、默认值、文档承诺齐全而从未被读取：**删除，不接线**——前者是 Driver 侧流程纪律，工具拦不住会话再跑一次 `--check`；后者在现役三家里没有可执行的落点（agy 无命令工具、zcode 禁 `Bash`；codex 的 execpolicy 只能按前缀禁止、写不出白名单，2026-10-01 本机 codex-cli 0.159.2 实测，登 EV-184 不接线）。schema 保留两属性、标 `deprecated`、移出 `required`、类型约束不放宽，旧配置升级后照常通过；出现时只在 doctor 与 preflight（④⁗）提示一条（13.1.1「已废弃键」）。7.4 步骤 6 / 8.6 步骤 6 改为不引配置的流程约定「重跑最多 3 次（首次校验不计），超限停下交给用户」，`/dual-run` 的 S4、S8 同句（S8 原无上限）。10.3 表工具层、文件系统层两格按实改写并补表外 codex 侧一段；13.1 示例删两键；§10.1 两处注记与 18.1 #11 加注；演进设计 §8.3 与 ADR_002 更正块各加一条带日期注记（代码双审 r1 CODEX-01，冻结正文不改）。本仓 `.trivium/config.yaml` 的两键已删（该文件不进送审面，取证见报告 §4.5）。代码双审 r1（run `20261001T131816Z`：gemini `approve`、codex / glm `approve-with-nits`，6 条全接受）另补「重跑最多 3 次」一句的跨文件一致性契约（U9）。读数见 `doc/05_testing/REPORT_2026-10-01_config_dead_keys.md` |
 | **v1.3.71** | 2026-10-01 | **留痕读不出的出口（EV-148 文案部分）。** 计划 `.reviews/留痕读不出的出口/plan/` r2（计划双审第 1 轮 run `20261001T092816Z`：三侧 `request-changes`，14 条全接受——C 格构建对改用 `termination.by = sync_exception` 的真实读侧落差、共用段自带绝对路径、三档判别改按「与提交版本是否不同」、approve 先恢复后 abandon、提交锚文案退出范围登记 EV-182）。**只改文案与注释，判定与退出码零改动**：运行留痕读不出时的七处拒绝（Driver 判定四个消费点、`gate` 一份都读不出、`--await-approval` 与 `approve` 复核）此前都给「重跑一次该阶段双审，新运行会先落一份可读的留痕」，而重跑在 `review --start` 入口就被同一个 `corrupt` 判定拒绝；现在一律以 `meta.ts` 的共用出口段 `unreadableRunMetaExit` 收尾（逐行列出绝对路径 + 三档成因：① 版本落后 → MANUAL §3.6 升级重装；② 已提交而工作树被改坏 → 用户在终端 `git restore`；③ 其余 → 工具内没有出口），`--await-approval` 与 `approve` 的出口抽成 `gate.ts` 的 `awaitApprovalRecovery` / `approveForkRecovery`（approve 先恢复后重新 approve、恢复不了才 abandon；缺 run_id 那条不拼三档）。8.4 新增「留痕读不出：成因与出口」，7.1 与 8.4 结局③、approve 前置复核同步。代码双审 r1（run `20261001T103637Z`：gemini `approve`、codex / glm `approve-with-nits`，8 条全接受）：补第八处 `gate --run-id` 钉住读不出；单入口 `unreadableRunMetaExitAt`（空列表即程序缺陷，approve / `--await-approval` 无 run_id 时不拼共用段）；清单至多 5 份；加读取方构建标识一行供判别 ①；② 档给 `core.quotePath=false` 的判别命令、restore 路径加引号；删除句补「登记过的运行」前提（未登记骨架删掉无痕，新登 EV-183）。零配额验收（改前 `14c188b` / 改后 / 落后版本 `a89a46f` 三份构建）、变异与全量读数见 `doc/05_testing/REPORT_2026-10-01_unreadable_run_exit.md`。新登 EV-181（读不出不报原因）、EV-182（提交锚同类文案）、EV-183（未登记骨架删除无痕） |

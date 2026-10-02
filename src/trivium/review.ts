@@ -914,6 +914,11 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       taskGoal,
       minToolCalls: cfg.review.min_tool_calls[stage],
       minProjectReads: cfg.review.min_project_reads[stage],
+      /*
+       * 第 7 节按该侧能力二选一（EV-95）。取适配器的声明，不按侧名查表、不从 `capability.traceShape` 推导；
+       * 入选各侧的适配器在上方可用性检查里已逐个判过非空，`!` 有前置保证。
+       */
+      commandExecution: adapters[critic]!.commandExecution,
     });
 
     // 先不落盘：brief 暂存内存，等两侧都算完再统一写（GLM-04）

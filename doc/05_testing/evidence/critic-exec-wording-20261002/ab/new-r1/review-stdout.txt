@@ -1,0 +1,51 @@
+{
+  "ok": true,
+  "run_id": "20261002T015419Z",
+  "rerun_index": 1,
+  "artifacts": [
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ab-new-r1-npDJkU/.reviews/exec-wording-ab/plan/2026-10-02-exec-wording-ab-codex.md",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ab-new-r1-npDJkU/.reviews/exec-wording-ab/plan/2026-10-02-exec-wording-ab-gemini.md",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ab-new-r1-npDJkU/.reviews/exec-wording-ab/plan/2026-10-02-exec-wording-ab-glm.md"
+  ],
+  "meta": [
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ab-new-r1-npDJkU/.reviews/exec-wording-ab/plan/_meta/brief-codex-20261002T015419Z.md",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ab-new-r1-npDJkU/.reviews/exec-wording-ab/plan/_meta/brief-gemini-20261002T015419Z.md",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ab-new-r1-npDJkU/.reviews/exec-wording-ab/plan/_meta/brief-glm-20261002T015419Z.md",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ab-new-r1-npDJkU/.reviews/exec-wording-ab/plan/_meta/review-codex-20261002T015419Z.json",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ab-new-r1-npDJkU/.reviews/exec-wording-ab/plan/_meta/review-codex-20261002T015419Z.fallback-items.md",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ab-new-r1-npDJkU/.reviews/exec-wording-ab/plan/_meta/review-gemini-20261002T015419Z.json",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ab-new-r1-npDJkU/.reviews/exec-wording-ab/plan/_meta/review-glm-20261002T015419Z.json"
+  ],
+  "warnings": [
+    "codex 侧只读核验不可用：该侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守（只读保障从三重降到两重，指纹比对仍有效）",
+    "codex 侧路径核验无结构化输入：该侧读取路径只存在于命令文本里，措施 a 无通道可扫，deny 核验完全由措施 b 承担（已知形态必检，非完备）"
+  ]
+}
+
+--- stderr ---
+⚠️  同步模式：一次运行墙钟可达 30~40 分钟，会超出 Driver 的 Bash 工具超时。从 skill 调用请改用 --start / --wait。
+· 主题 exec-wording-ab ｜ 阶段 plan ｜ 第 1 轮 ｜ run 20261002T015419Z
+· 被审对象 .reviews/exec-wording-ab/plan/2026-10-02-exec-wording-ab-claude.md
+开始双审：codex(qwen3.8-flash) ‖ gemini(gemini-3.8-flash-high) ‖ glm(GLM-5.3)，单侧上限 2700s
+· [codex] 第 1 次尝试，模型 qwen3.8-flash，上限 2700s
+· [gemini] 第 1 次尝试，模型 gemini-3.8-flash-high，上限 2700s
+· [glm] 第 1 次尝试，模型 GLM-5.3，上限 2700s
+⚠️  codex 侧输出未能结构化解析，转 parse_fallback（JSON 根对象不符合 trivium.review.v1（缺必填字段、取值不合，或带了不属于结论的字段））：JSON 根对象不符合 trivium.review.v1：(根对象) must NOT have additional properties {"additionalProperty":"verdict_note_fields"}
+
+主题 exec-wording-ab ｜ 阶段 plan ｜ 第 1 轮 ｜ 运行 20261002T015419Z
+状态 success ｜ 完成度 full
+本轮审核者：codex、gemini、glm ｜ 发起方 claude
+  codex: parse_fallback ｜ 模型 qwen3.8-flash（请求 qwen3.8-flash，来源 trace） ｜ 111s ｜ 证据 ok ｜ 工具 {"run_command":6,"project_reads":2}
+  gemini: ok ｜ 模型 gemini-3.8-flash-high（请求 gemini-3.8-flash-high，来源 envelope） ｜ 145s ｜ 证据 ok ｜ 工具 {"read":15,"grep":9,"glob":2,"run_command":0,"project_reads":5}
+  glm: ok ｜ 模型 bigmodel-coding-plan/GLM-5.3（请求 GLM-5.3，来源 trace） ｜ 810s ｜ 证据 ok ｜ 工具 {"read":4,"grep":0,"glob":1,"run_command":0,"project_reads":4}
+镜头重合度 Jaccard = 0.50（未归一化 0.00，阈值 0.8）
+  gemini × glm：共同覆盖 2 处 ｜ 仅 gemini 0 处 ｜ 仅 glm 2 处
+
+⚠️  codex 侧只读核验不可用：该侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守（只读保障从三重降到两重，指纹比对仍有效）
+⚠️  codex 侧路径核验无结构化输入：该侧读取路径只存在于命令文本里，措施 a 无通道可扫，deny 核验完全由措施 b 承担（已知形态必检，非完备）
+
+已落盘：
+  .reviews/exec-wording-ab/plan/2026-10-02-exec-wording-ab-codex.md
+  .reviews/exec-wording-ab/plan/2026-10-02-exec-wording-ab-gemini.md
+  .reviews/exec-wording-ab/plan/2026-10-02-exec-wording-ab-glm.md
+  .reviews/exec-wording-ab/plan/_meta/ （7 份审计材料）

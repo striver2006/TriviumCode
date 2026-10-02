@@ -176,7 +176,7 @@ test('scanAndRemoveSecrets：超过上限的文件只记告警不记错误（COD
 function stubAdapter(over: Partial<CriticAdapter> = {}): CriticAdapter {
   return {
     critic: 'glm',
-    capability: TOOL_TRACE_CAPABILITY,
+    capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none',
     availability: () => ({ ok: true }),
     async run() { return failedResult('glm', { status: 'failed', reason: 'unused' }); },
     ...over,

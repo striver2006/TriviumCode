@@ -50,6 +50,7 @@ function input(over: Partial<BriefInput> = {}): BriefInput {
     taskGoal: '把登录改造为 OIDC',
     minToolCalls: 5,
     minProjectReads: 3,
+    commandExecution: 'none',
     ...over,
   };
 }

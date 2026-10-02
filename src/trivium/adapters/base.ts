@@ -65,6 +65,24 @@ export interface TraceCapability {
 }
 
 /**
+ * 该侧审查员能否执行命令（EV-95，审查侧实测措辞约束计划 r2 §2.1）。
+ *
+ * 消费方是任务书第 7 节：按取值二选一渲染一条证据性质的措辞约束（设计 §9.4 第 7 条）——
+ * 不能执行命令的一侧不得把推理说成「实测」，能执行的一侧写「实测」时要在 `evidence` 里给出命令。
+ *
+ * ## 为什么不并进 `TraceCapability`
+ *
+ * 那一项回答「轨迹长什么样、判定层怎么分档」，这一项回答「审查员能做什么」，消费方不同。
+ * 今天四家碰巧 `command-trace` ⇔ `readonly-shell`，但将来某家的结构化工具面里带命令工具，
+ * 两者就对不上。更直接的理由：三家共用 `TOOL_TRACE_CAPABILITY` 一个对象，往常量里加这一项
+ * 就是**按轨迹形状批发**能力——每个适配器必须自己声明，不从轨迹形状推导。
+ *
+ * 取值不留「可写 shell」：任何一家能写都已违反只读保障，不该有一个合法取值来表达它。
+ * 各家声明与它们的工具面事实源由 `test/unit/command-execution-parity.test.ts` 对账。
+ */
+export type CommandExecution = 'none' | 'readonly-shell';
+
+/**
  * 探活能力（M8 第 3 步，收敛 `preflight` 的按厂商分派）。
  *
  * ## 切分口径
@@ -90,6 +108,11 @@ export interface CriticAdapter {
   readonly critic: CriticId;
   /** 该侧轨迹的证据形状——判定层据此分档，不按 Agent id 分叉（§11.1） */
   readonly capability: TraceCapability;
+  /**
+   * 该侧能否执行命令——任务书第 7 节据此二选一（§9.4 第 7 条）。**必填、不给缺省**：
+   * 缺省值本身就是一次推导，漏声明应当编不过。与工具面事实源的对账见 `command-execution-parity` 用例
+   */
+  readonly commandExecution: CommandExecution;
   /** 该侧是否可用（探针结论决定）。不可用时给出人读原因 */
   availability(ctx: AdapterContext): { ok: boolean; reason?: string };
   /**

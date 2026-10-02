@@ -1,0 +1,15 @@
+效果层 A/B 夹具原稿第 2 节那条断言的真值（Driver 2026-10-02 在本机跑出；审查员看不到本文件——它不在夹具里）。
+
+$ /bin/bash --version | head -1
+GNU bash, version 3.2.57(1)-release (arm64-apple-darwin26)
+
+$ /bin/bash -c 'true 2>&/dev/null'; echo "default_rc=$?"
+/bin/bash: /dev/null: ambiguous redirect
+default_rc=1
+
+$ /bin/bash --posix -c 'true 2>&/dev/null'; echo "posix_rc=$?"
+/bin/bash: /dev/null: ambiguous redirect
+posix_rc=1
+
+结论：原稿「默认模式退出码为 0」是错的；默认模式与 --posix 都是 1。
+（与 EV-95 记的 EV-79 r3 证伪点同一事实：glm 侧当时推成「默认模式 rc=0、只有 --posix 报错」。）

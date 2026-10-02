@@ -102,6 +102,14 @@ export const stubAgentAdapter: CriticAdapter = {
    */
   capability: TOOL_TRACE_CAPABILITY,
   /*
+   * 命令执行能力声明（§11.1「命令执行能力」，EV-95）。任务书第 7 节据此二选一渲染证据性质约束。
+   * 本桩只有专用读工具、没有命令工具，取 `none`。
+   *
+   * **接真实一家时按它的工具面填**，不从上一行的轨迹形状推：并把它的工具面事实源登记进
+   * `test/unit/command-execution-parity.test.ts`（接线表多出一家没登记，那条用例会红）。
+   */
+  commandExecution: 'none',
+  /*
    * 恒可用：桩不依赖任何外部 CLI、凭据或探针结论。
    *
    * 这是它与真实适配器最大的差别，也是本夹具**证明边界**的所在——

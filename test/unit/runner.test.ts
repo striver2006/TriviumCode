@@ -40,7 +40,7 @@ function stub(critic: CriticId, script: CriticResult[]): CriticAdapter & { brief
   let i = 0;
   return {
     critic, briefs,
-    capability: TOOL_TRACE_CAPABILITY,
+    capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none',
     availability: () => ({ ok: true }),
     async run(_ctx, r) {
       briefs.push(r.brief_text);
@@ -117,7 +117,7 @@ test('两侧真并行，一侧抛异常不连带丢掉另一侧（AC-06）', asy
   const good = stub('gemini', [okResult('gemini')]);
   const throwing: CriticAdapter = {
     critic: 'glm',
-    capability: TOOL_TRACE_CAPABILITY,
+    capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none',
     availability: () => ({ ok: true }),
     async run() { throw new Error('适配器内部炸了'); },
   };
@@ -352,7 +352,7 @@ test('兜底：适配器抛异常时，请求值仍如实入档（不得压成 n
    */
   const throwing = {
     critic: 'gemini' as const,
-    capability: TOOL_TRACE_CAPABILITY,
+    capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none',
     availability: () => ({ ok: true }),
     run: async () => {
       throw new Error('boom');

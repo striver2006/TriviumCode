@@ -220,7 +220,7 @@ test('抹除失败进 scrubFailed 并带原因；dryRun 与不传 adapters 都�
   const { cfg, projectRoot, b } = await bucket();
   const { d, carrier } = await runDirWith(b, 'R-fail', 'success');
   const throwing: CriticAdapter = {
-    critic: 'glm', capability: TOOL_TRACE_CAPABILITY, availability: () => ({ ok: true }),
+    critic: 'glm', capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none', availability: () => ({ ok: true }),
     async run() { return failedResult('glm', { status: 'failed', reason: 'unused' }); },
     async scrubRunDir() { throw new Error('EPERM 模拟'); },
   };

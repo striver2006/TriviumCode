@@ -655,6 +655,9 @@ export const claudeAdapter: CriticAdapter = {
    */
   capability: TOOL_TRACE_CAPABILITY,
 
+  /* 不能执行命令：`probes/claude.ts` 的 `READONLY_INVARIANTS` 里 `--tools` 白名单是 `Read,Grep,Glob`（EV-95） */
+  commandExecution: 'none',
+
   availability(ctx: AdapterContext) {
     // 两态判据同另三家：以 probed_at 区分「没探过」与「探过没找到」
     const p = ctx.cfg.probe.cli.claude;

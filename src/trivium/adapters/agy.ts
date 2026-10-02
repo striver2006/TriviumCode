@@ -184,6 +184,12 @@ export const agyAdapter: CriticAdapter = {
    */
   capability: TOOL_TRACE_CAPABILITY,
 
+  /*
+   * 不能执行命令：`--agent trivium-critic` 的工具白名单（`skills/dual-critic/agents/trivium-critic.md`
+   * 的 `tools:`）不含 `run_command`（EV-95）。对账的是仓库那份；运行期生效的是安装副本，漂移见 EV-187。
+   */
+  commandExecution: 'none',
+
   /**
    * 探活（M8 第 3 步从 `preflight` 搬来）。
    *

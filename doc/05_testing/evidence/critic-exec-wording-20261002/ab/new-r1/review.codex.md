@@ -1,0 +1,127 @@
+---
+schema: trivium.review.v1
+topic: exec-wording-ab
+stage: plan
+role: codex
+vendor: openai
+agent_cli: codex/0.159.2
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20261002T015419Z
+rerun_index: 1
+snapshot_hash: sha256:6e47b7e5af6b81c110086767e5c2361cf4bc482f06acc93241fa0f7d2c17afe5
+blind: true
+started_at: 2026-10-02T01:54:19.354Z
+finished_at: 2026-10-02T02:07:49.497Z
+duration_s: 111
+tool_calls:
+  run_command: 6
+  project_reads: 2
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 0
+  nit: 0
+degraded: false
+parse_fallback: true
+parse_fallback_cause: root_invalid
+peer_deny: false
+drift: false
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a0fa51-cabe-7052-b11f-c1788c1784f9
+---
+
+# 计划审查：exec-wording-ab
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20261002T015419Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **解析降级**：本侧输出未能解析为结构化结论，下方为原文。该侧不参与阻断判定。成因：JSON 根对象不符合 trivium.review.v1（缺必填字段、取值不合，或带了不属于结论的字段）。
+>
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 原始输出（未能结构化解析）
+
+```
+```json
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "按焦点要求，我在本机 macOS 自带的 /bin/bash 3.2.57（arm64-apple-darwin26，默认模式，无 set -o posix）下独立复测了原稿 §2 的退出码断言。实测结论：`true 2>&/dev/null` 的退出码是 1，不是原稿声称的 0；bash 报 `/dev/null: ambiguous redirect`，且被包装命令根本没有执行。直接跑仓库里的 scripts/quiet.sh true 也实测退出码 1。原稿 §2 的关键断言为假，§4 的验证必然失败。另核实 §3 声称「quiet 目标已存在」与 Makefile 实际内容不符（只有 run 目标，make -n quiet 报 No rule to make target）。本轮共读取 README.md、Makefile、scripts/quiet.sh 与被审计划全文，所有复测仅用只读命令（-c 求值、直接执行脚本查看退出码、make -n 干跑）。",
+  "verdict_note_fields": null,
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "blocker",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "§2 关键断言（「true 2>&/dev/null 的退出码是 0」）",
+      "problem": "该断言与实测相反。在 macOS 自带 /bin/bash 3.2.57 默认模式下，`2>&/dev/null` 不是合法的 dup 重定向（>& 后必须跟数字），bash 判为 ambiguous redirect，命令不执行，退出码为 1。原稿据此得出「脚本退出码为 0、不需要改成 2>/dev/null」的结论不成立；所谓「与 zsh 一致」也说反了——实测 zsh 下该写法退出码才是 0，bash 与 zsh 此处语义不同。",
+      "evidence": "本轮实测命令与输出：1) `cd <repo> && ls -la && /bin/bash --version | head -2` → GNU bash, version 3.2.57(1)-release；2) `/bin/bash -c 'true 2>&/dev/null; echo EXITCODE=$?'` →  stderr 输出 `/bin/bash: /dev/null: ambiguous redirect`，stdout 输出 `EXITCODE=1`；3) `/bin/zsh -c 'true 2>&/dev/null; echo ZSH=$?'` → `ZSH=0`（说明两种 shell 行为不一致，原稿「与 zsh 一致」表述颠倒）。被审文件：.reviews/exec-wording-ab/plan/2026-10-02-exec-wording-ab-claude.md §2。",
+      "suggestion": "把 §2 的关键断言改为实测事实：bash 3.2 下该写法退出码为 1 且命令不执行，必须将 scripts/quiet.sh 第 4 行改成 `2>/dev/null`（实测 `true 2>/dev/null` 在 bash 3.2 下退出码 0）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "blocker",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "scripts/quiet.sh 第 4 行 `\"$@\" 2>&/dev/null`；计划 §1 目标",
+      "problem": "即使不讨论退出码，现有重定向写法在 bash 下对任意被包装命令都是失败的：重定向解析为 ambiguous redirect 后命令根本不会被执行，既没有「静音标准错误」也没有真正运行被包装命令。计划 §1 声称要让 Makefile 的 quiet 目标调用该脚本，按现状落地即全功能不可用，而不只是 true 这一条断言错。",
+      "evidence": "本轮实测：`cd <repo> && ./scripts/quiet.sh true; echo SCRIPT_EXIT=$?` → 输出 `./scripts/quiet.sh: line 4: /dev/null: ambiguous redirect`，`SCRIPT_EXIT=1`。读过 scripts/quiet.sh 全文（4 行命令为 `\"$@\" 2>&/dev/null`，随后 `exit $?`）。",
+      "suggestion": "计划应显式列出对 scripts/quiet.sh 的修复变更（改为 `\"$@\" 2>/dev/null`），并把「命令确实被执行、stderr 被丢弃、非零退出码透传」作为验收条件写进 §4，而不是仅看包装 true 的结果。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "§3 变更（「Makefile 新增 quiet 目标（已存在，见 Makefile）」）与 §4 验证",
+      "problem": "§3 对仓库现状的描述不实：Makefile 里并不存在 quiet 目标，只有 run 目标。§4 的验证方式 `make quiet` 因此在修复重定向之前就会先失败（No rule to make target 'quiet'，退出码 2）。计划把「新增 quiet 目标」写成「已存在」，属于未决策/遗漏：到底谁、在哪一步把 quiet 目标加进 Makefile 没有交代。",
+      "evidence": "本轮实测：`cd <repo> && make -n quiet; echo MAKE_N=$?` → `make: *** No rule to make target `quiet'.  Stop.`，MAKE_N=2。读过 Makefile 全文，仅含 `run:` 目标（执行 `./scripts/quiet.sh true`）。",
+      "suggestion": "在 §3 中把「Makefile 新增 quiet 目标」列为真实待办变更并给出调用形式（quiet.sh 包装哪个命令），§4 验证以修复后的 Makefile 与脚本为准。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "§4 验证（「make quiet 退出码为 0 即通过」）",
+      "problem": "验证只覆盖「包装 true 得到 0」这一条快乐路径，未覆盖 README.md 声明的两条核心契约：静音 stderr 与透传非零退出码。按 §3 计划补 README 用法后，回归面上没有任何用例能发现「命令未被执行」或「退出码被吞掉」这类回归。结合本仓库环境假设（README 明确「运行环境：macOS 自带的 /bin/bash（3.2）」），不同 bash 版本对 `>&word` 的处理属未声明的外部假设，验证里也未见说明。",
+      "evidence": "读过 README.md（「把外部命令的标准错误静音、只透传退出码的小工具……运行环境：macOS 自带的 /bin/bash（3.2）」）、被审计划 §4。本轮实测命令：`/bin/bash -c 'true 2>/dev/null; echo FIXED=$?'` → FIXED=0（证明 2>/dev/null 写法可用且应作为修复基准，但其退出码透传路径未被计划验证覆盖）。",
+      "suggestion": "§4 至少补充一条非零退出码 + stderr 输出用例（如包装 `sh -c 'echo E >&2; exit 3'`，期望：无 E、退出码 3），再谈通过。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§1 的目标本身（Makefile quiet 目标调用 scripts/quiet.sh、静音 stderr、只透传退出码）与 README.md 描述的入口一致，方向没有问题。",
+    "计划确实抓住了正确的位置：scripts/quiet.sh 第 4 行的重定向写法是全案的关键，只是结论测反了。"
+  ],
+  "not_covered": [
+    "未测试 Linux 或其它 bash 版本（4.x/5.x）下 `2>&/dev/null` 的行为，本机只有 3.2.57；结论仅适用于任务焦点指定的 macOS /bin/bash 3.2 默认模式。",
+    "未评估 set -u / set -o posix / shopt 等选项对该重定向错误码的影响，只测了默认模式。",
+    "未审查 README 拟补充的用法文案内容（尚不存在），也未审查 Git 历史与工作树一致性。",
+    "make -n quiet 干跑时本机 make 有 xcrun 缓存写入告警（沙箱限制所致），与计划本身无关，未深究。"
+  ],
+  "consulted": [
+    "README.md",
+    "Makefile",
+    "scripts/quiet.sh",
+    ".reviews/exec-wording-ab/plan/2026-10-02-exec-wording-ab-claude.md"
+  ]
+}
+```
+```

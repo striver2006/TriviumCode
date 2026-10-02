@@ -1,0 +1,172 @@
+{
+  "targets": [
+    "src/trivium/brief.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/codex.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/brief-command-execution.test.js",
+    "dist/test/test/integration/brief-command-execution.test.js",
+    "dist/test/test/unit/command-execution-parity.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "第 7 节恒取不能执行命令的说法",
+      "file": "src/trivium/brief.ts",
+      "find": "  const evidenceNature = EVIDENCE_NATURE_LINES[commandExecution].map((l) => `- ${l}`).join('\\n');\n",
+      "replace": "  const evidenceNature = EVIDENCE_NATURE_LINES['none'].map((l) => `- ${l}`).join('\\n');\n",
+      "expect": "dist/test/test/unit/brief-command-execution.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "第 7 节恒取只读 shell 的说法",
+      "file": "src/trivium/brief.ts",
+      "find": "  const evidenceNature = EVIDENCE_NATURE_LINES[commandExecution].map((l) => `- ${l}`).join('\\n');\n",
+      "replace": "  const evidenceNature = EVIDENCE_NATURE_LINES['readonly-shell'].map((l) => `- ${l}`).join('\\n');\n",
+      "expect": "dist/test/test/unit/brief-command-execution.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "不能执行命令的说法少了「不要停下来等放行」那一条",
+      "file": "src/trivium/brief.ts",
+      "find": "    '第 2 节的焦点若要求实测或复测而你做不到，如实说明后照常交付结论，**不要停下来等放行**。',\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/brief-command-execution.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "只读 shell 的说法不要求写出本轮实际执行的命令",
+      "file": "src/trivium/brief.ts",
+      "find": "    '你这一侧可以执行只读命令。凡写「实测」「复测」的判断，`evidence` 里写出你本轮实际执行的命令；没执行、靠推理得出的写明是推理。',\n",
+      "replace": "    '你这一侧可以执行只读命令。凡写「实测」「复测」的判断，`evidence` 里写出依据；没执行、靠推理得出的写明是推理。',\n",
+      "expect": "dist/test/test/unit/brief-command-execution.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "第 7 节不渲染证据性质那一条",
+      "file": "src/trivium/brief.ts",
+      "find": "${evidenceNature}\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/brief-command-execution.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "接线改按轨迹形状推导",
+      "file": "src/trivium/review.ts",
+      "find": "      commandExecution: adapters[critic]!.commandExecution,\n",
+      "replace": "      commandExecution: (adapters[critic]!.capability.traceShape === 'command-trace' ? 'readonly-shell' : 'none'),\n",
+      "expect": "dist/test/test/integration/brief-command-execution.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "接线硬编码不能执行命令",
+      "file": "src/trivium/review.ts",
+      "find": "      commandExecution: adapters[critic]!.commandExecution,\n",
+      "replace": "      commandExecution: 'none',\n",
+      "expect": "dist/test/test/integration/brief-command-execution.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "agy 声明翻成只读 shell",
+      "file": "src/trivium/adapters/agy.ts",
+      "find": "  commandExecution: 'none',\n",
+      "replace": "  commandExecution: 'readonly-shell',\n",
+      "expect": "dist/test/test/unit/command-execution-parity.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "zcode 声明翻成只读 shell",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  commandExecution: 'none',\n",
+      "replace": "  commandExecution: 'readonly-shell',\n",
+      "expect": "dist/test/test/unit/command-execution-parity.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "claude 声明翻成只读 shell",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "  commandExecution: 'none',\n",
+      "replace": "  commandExecution: 'readonly-shell',\n",
+      "expect": "dist/test/test/unit/command-execution-parity.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "codex 声明翻成不能执行命令",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "  commandExecution: 'readonly-shell',\n",
+      "replace": "  commandExecution: 'none',\n",
+      "expect": "dist/test/test/unit/command-execution-parity.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "桩缺省不看 mode（恒为不能执行命令）",
+      "file": "src/trivium/adapters/stub.ts",
+      "find": "    commandExecution: spec.commandExecution ?? (spec.mode === 'command_trace' ? 'readonly-shell' : 'none'),\n",
+      "replace": "    commandExecution: spec.commandExecution ?? 'none',\n",
+      "expect": "dist/test/test/unit/brief-command-execution.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "桩忽略显式覆盖",
+      "file": "src/trivium/adapters/stub.ts",
+      "find": "    commandExecution: spec.commandExecution ?? (spec.mode === 'command_trace' ? 'readonly-shell' : 'none'),\n",
+      "replace": "    commandExecution: (spec.mode === 'command_trace' ? 'readonly-shell' : 'none'),\n",
+      "expect": "dist/test/test/unit/brief-command-execution.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "zcode 禁用名单去掉 Bash（声明不跟）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "export const ZCODE_READONLY_DENYLIST = 'Write,Edit,MultiEdit,ApplyPatch,NotebookEdit,Bash,WebFetch,WebSearch';\n",
+      "replace": "export const ZCODE_READONLY_DENYLIST = 'Write,Edit,MultiEdit,ApplyPatch,NotebookEdit,WebFetch,WebSearch';\n",
+      "expect": "dist/test/test/unit/command-execution-parity.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "claude 工具白名单加上 Bash（声明不跟）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "const READONLY_TOOLS = 'Read,Grep,Glob';\n",
+      "replace": "const READONLY_TOOLS = 'Read,Grep,Glob,Bash';\n",
+      "expect": "dist/test/test/unit/command-execution-parity.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "claude 工具白名单加一个未分类的工具",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "const READONLY_TOOLS = 'Read,Grep,Glob';\n",
+      "replace": "const READONLY_TOOLS = 'Read,Grep,Glob,LS';\n",
+      "expect": "dist/test/test/unit/command-execution-parity.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "codex 沙箱参数改成 workspace-write（声明不跟）",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "export const CODEX_READONLY_INVARIANTS: readonly string[] = ['-s', 'read-only'];\n",
+      "replace": "export const CODEX_READONLY_INVARIANTS: readonly string[] = ['-s', 'workspace-write'];\n",
+      "expect": "dist/test/test/unit/command-execution-parity.test.js"
+    },
+    {
+      "id": "M18",
+      "desc": "claude 不变量删掉 --restricted（白名单不动）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  RESTRICTED_FLAG,\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/command-execution-parity.test.js"
+    },
+    {
+      "id": "M19",
+      "desc": "claude 不变量删掉 --strict-mcp-config（白名单不动）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  STRICT_MCP_CONFIG_FLAG,\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/command-execution-parity.test.js"
+    }
+  ]
+}

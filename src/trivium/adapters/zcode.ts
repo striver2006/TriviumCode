@@ -979,6 +979,9 @@ export const zcodeAdapter: CriticAdapter = {
    */
   capability: TOOL_TRACE_CAPABILITY,
 
+  /* 不能执行命令：`Bash` 在 `ZCODE_READONLY_DENYLIST` 里（EV-95）；`--mode plan` 本身挡不住命令执行 */
+  commandExecution: 'none',
+
   /**
    * 目录比对前的 slug 归一（M8 第 3 步）。
    *

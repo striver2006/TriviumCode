@@ -30,6 +30,7 @@ import {
   TOOL_TRACE_CAPABILITY,
   type AdapterContext,
   type AdapterTable,
+  type CommandExecution,
   type CriticAdapter,
 } from './base.js';
 import { warn } from '../util/log.js';
@@ -194,6 +195,13 @@ export interface StubSpec {
    */
   blockAfterMs?: number;
   note?: string;
+  /**
+   * 显式覆盖该侧的命令执行能力（EV-95，审查侧实测措辞约束计划 r2 §2.2）。不给 ⇒ 按 `mode` 取缺省
+   * （`command_trace` 模拟 codex 取 `readonly-shell`，其余模拟 agy / zcode 取 `none`）。
+   * 存在的理由是让「`tool-trace` + `readonly-shell`」「`command-trace` + `none`」这两种今天没有真实侧的组合
+   * 能在集成测试里走到——证明任务书第 7 节跟的是本字段而不是轨迹形状，只有这一个机器判据。
+   */
+  commandExecution?: CommandExecution;
 }
 
 export type StubConfig = Partial<Record<CriticId, StubSpec>>;
@@ -359,6 +367,11 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
       spec.mode === 'command_trace'
         ? { traceShape: 'command-trace', rejectionRecorded: false }
         : TOOL_TRACE_CAPABILITY,
+    /*
+     * 缺省按 `mode` 取是**桩自己**的约定（让既有桩配置不用改），不是对真实适配器的推导；
+     * 显式覆盖优先，解耦的那两格靠它走到。
+     */
+    commandExecution: spec.commandExecution ?? (spec.mode === 'command_trace' ? 'readonly-shell' : 'none'),
     availability: () => ({ ok: true }),
     ...(spec.modelOverrideSource !== undefined
       ? { modelOverrideSource: () => spec.modelOverrideSource as string }

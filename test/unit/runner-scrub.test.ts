@@ -45,7 +45,7 @@ function preparing(script: (CriticResult | Error)[], opts: { scrubThrows?: boole
   const state = { prepared: 0, scrubbed: 0, sentinelSeenAtRun: [] as boolean[] };
   const adapter: CriticAdapter = {
     critic: 'glm',
-    capability: TOOL_TRACE_CAPABILITY,
+    capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none',
     availability: () => ({ ok: true }),
     async run(_ctx, r) {
       // 每次 run 开始时旧哨兵必须已被 runner 删掉：否则 worker 在本轮准备之后、finally 之前被杀，
@@ -137,7 +137,7 @@ test('抹除失败：审查结论不变，scrub.ok=false，进度回调收到 no
 
 test('侧目录不存在（假路径）：不抛、不写、scrub 记 skipped', async () => {
   const adapter: CriticAdapter = {
-    critic: 'glm', capability: TOOL_TRACE_CAPABILITY, availability: () => ({ ok: true }),
+    critic: 'glm', capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none', availability: () => ({ ok: true }),
     async run() { return ok(); },
   };
   const out = await runBothSides({

@@ -23,6 +23,7 @@ function brief(critic: CriticId): string {
     cfg: defaultConfig(), critic, stage: 'plan', topic: 'T', runId: 'R', projectRoot: '/proj', snapshot: SNAP,
     promptHint: null, subjectExcerpt: '# 计划', mustRead: [], suggestedRead: [], ownHistory: [],
     schemaPath: '/s/review.v1.json', lenses: {}, taskGoal: null, minToolCalls: 5, minProjectReads: 3,
+    commandExecution: 'none',
   };
   return renderBrief(input);
 }

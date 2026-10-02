@@ -1,0 +1,290 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261002T014420Z",
+  "topic": "exec-wording-ab",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --stage plan",
+  "prompt_hint": "请独立复测原稿第 2 节那条退出码断言：在 macOS 自带的 /bin/bash 3.2 默认模式下，true 加上原稿那种标准错误重定向写法，退出码到底是多少；给出你得到的退出码。复测只用只读命令。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "a3a6303de2969b3a99fb7239d6cfec9360c7b0bc",
+    "tree_hash": "9ccf6866d7e0fc39e56f6d64c07622f232e7965a",
+    "dirty": true,
+    "subject_sha256": "6e47b7e5af6b81c110086767e5c2361cf4bc482f06acc93241fa0f7d2c17afe5",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": null,
+    "after_tree_hash": "afa5f3d09862976ece38cc5835b8ea971423f9df"
+  },
+  "started_at": "2026-10-02T01:44:20.787Z",
+  "finished_at": "2026-10-02T01:54:18.026Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.159.2",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 166.613,
+      "tool_calls": {
+        "run_command": 7,
+        "project_reads": 2
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a0fa48-a8fd-74c1-a964-4436dd94142e",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.14",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 64.209,
+      "tool_calls": {
+        "read": 5,
+        "grep": 0,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 5
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 52937,
+        "output_tokens": 13190,
+        "thinking_tokens": 11273,
+        "cache_read_tokens": 146807,
+        "total_tokens": 66127
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "d0800623-db37-4325-b3fb-ff0a7fd15423",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 597.143,
+      "tool_calls": {
+        "read": 14,
+        "grep": 0,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 3
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 11,
+        "inputTokens": 492753,
+        "outputTokens": 37669,
+        "totalTokens": 530422,
+        "cacheReadTokens": 451840,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_6e256308-a4d7-471b-acb2-7cb1533a8c0c",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "exec-wording-ab/plan/_meta/brief-codex-20261002T014420Z.md",
+      "sha256": "633a4902f3bbf05cf70c85849a22f29d496df1ee3b7a6436fe44b0af939add8c"
+    },
+    {
+      "path": "exec-wording-ab/plan/_meta/brief-gemini-20261002T014420Z.md",
+      "sha256": "8463269729118dd64feb71beb84d8434b8624219a8d1b4b4380f79bb912f1d68"
+    },
+    {
+      "path": "exec-wording-ab/plan/_meta/brief-glm-20261002T014420Z.md",
+      "sha256": "063ab1e89860dfcf9f6720d8fa67051c3bb0be5dd9a954813a032d991b754d4f"
+    },
+    {
+      "path": "exec-wording-ab/plan/_meta/review-codex-20261002T014420Z.json",
+      "sha256": "7a26a8b3f9a16c2d9a0f80eeb28c152bf862eb6a34d89b6a63a1390a5162021d"
+    },
+    {
+      "path": "exec-wording-ab/plan/_meta/review-gemini-20261002T014420Z.json",
+      "sha256": "076c242f3a77203ab9e39dd19219a16759a72ac4bb5a4b07d9f760314e62e15f"
+    },
+    {
+      "path": "exec-wording-ab/plan/_meta/review-glm-20261002T014420Z.json",
+      "sha256": "700d2f20ce37d63d77b85a587e92a8b15aa8430e60f5aaeb61722067c65f9dab"
+    },
+    {
+      "path": "exec-wording-ab/plan/2026-10-02-exec-wording-ab-codex.md",
+      "sha256": "510d63542ba6c7c201d44e760ce3d91462da4ee59c1d922d613e4e91f6951422"
+    },
+    {
+      "path": "exec-wording-ab/plan/2026-10-02-exec-wording-ab-gemini.md",
+      "sha256": "731aa80263a1828881636fa2bcdb53497cd779af3227a9d74aad8db2da58fa12"
+    },
+    {
+      "path": "exec-wording-ab/plan/2026-10-02-exec-wording-ab-glm.md",
+      "sha256": "a11f212c47b71891014fa08dff5dc6789c531019c7bb365e6422015a513bec84"
+    },
+    {
+      "path": "exec-wording-ab/plan/2026-10-02-exec-wording-ab-claude.md",
+      "sha256": "6e47b7e5af6b81c110086767e5c2361cf4bc482f06acc93241fa0f7d2c17afe5"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.29
+> - **当前版本**：v1.1.30
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.30（2026-10-02）随设计 v1.3.74（审查侧实测措辞约束，EV-95 前半）同步：2.6 `adapters/base.ts` 行补「命令执行能力声明（`CommandExecution`，挂 `CriticAdapter.commandExecution`）」；3.3「`prepareRun()` 的『零工件』不变式」段末补一句渲染接线（`renderBrief` 的必填入参 `commandExecution` 取入选侧适配器的声明，第 7 节据此二选一）。本文其余各节不涉及任务书各段的正文，不改。
 > - **变更说明**：v1.1.29（2026-10-02）随设计 v1.3.73（必读与禁读交集校验，EV-02）同步：`startRun` 第 4 条补第三个只警告项来源（`rc.mustReadPruned`，追加在 `collectWarnings` 结果之后）；`prepareRun()` 零工件段补「逐侧冻结之后、`--context` 交集校验（撞上即退 64）、再逐侧剔除自动条目与渲染」的三段次序；代码双审后补全量 / 封顶两份告警与跳过轮留痕。
 > - **变更说明**：v1.1.28（2026-10-01）随设计 v1.3.71（留痕读不出的出口，EV-148 文案部分）同步：3.5 `hook-pre-write` 第 2 条补「该阶段留痕读不出 ⇒ deny、出口用共用段」一句（此前只写了判定来源）。本文其余各节核过不讲这几处的出口文案（`gate` 读不出与 `approve` 通过前复核在本文没有展开，4.1 只画闸门迁移），不改。
 > - **变更说明**：v1.1.27（2026-10-01）随设计 v1.3.70（漂移比不了不放行，EV-139）同步：3.3「`executeRun()` 的漂移复算」补比不了的那一格（形状闸、严格比对、分原因、`unknown` 的处置与四个人读面、`prune_objects` 桩）；退出码判定优先级补 `unknown` 落进 `driftAction==='fail'`
@@ -138,7 +139,7 @@ graph TD
 | 模块 | 行数 | 职责 |
 | :--- | ---: | :--- |
 | **`agents/registry.ts`** | — | **全部 Agent 差异的唯一登记处**（M7a 引入，`039bdc9`）。`AgentDescriptor` 登记四家（`claude` / `codex` / `gemini` / `glm`）的 id、显示名、vendor、归档后缀、意见前缀、`criticEnabled` / `driverEnabled`、护栏等级与协议片段落点；归档后缀、意见前缀、配置键、探针段、镜头键、**禁读矩阵**、Hook 字面集一律由它派生。`test/unit/registry-parity.test.ts` 以 grep 级对账守着「除本文件与各适配器外，任何模块不得出现具体 Agent id / 后缀 / 前缀字面量」 |
-| `adapters/base.ts` | 164 | 适配器契约、证据下限判定、泄漏判定 |
+| `adapters/base.ts` | 164 | 适配器契约（含轨迹能力 `TraceCapability` 与命令执行能力 `CommandExecution` 两项声明）、证据下限判定、泄漏判定 |
 | `adapters/agy.ts` | 314 | Antigravity CLI 的 argv 构造与结果解析 |
 | `adapters/zcode.ts` | 331 | ZCode CLI 同上，外加 `HOME` 副本的模型覆盖与 0.16.9 provider 配置环境变量注入（P-28，存在性门控） |
 | `adapters/agy-events.ts` | 176 | agy 的 `stream-json` 事件流解析（工具轨迹来源） |
@@ -262,6 +263,7 @@ sequenceDiagram
 
 第 11 步之前**一个文件都没写**（`review.ts:928`，段注释「到这里为止不写任何审查工件与留痕」）。校验、定位被审对象、冻结、渲染 BRIEF 全在内存里完成，确认全部成功后才统一落盘。
 冻结与渲染之间夹一段必读交集校验（v1.1.29，设计 v1.3.73 / EV-02）：先逐侧 `freeze()` 算出禁读集，再对 `--context` 的原始写法逐侧跑 `brief.ts` 的 `findDenyConflicts`，撞上任一侧即 `usageError`（退 64，仍在零工件区、排在逐侧 `routeModel` 的 69 之前）；随后逐侧把第 4 段的自动条目（公约、关键词、建议核实、己方历史）过同一判定、撞上的只从该侧剔除，攒成两份告警：全量那份写骨架时并进 `gate.warnings`（纯文档跳过轮同样写，代码双审 CODEX-03），封顶 5 条那份（`MUST_READ_PRUNED_DISPLAY_MAX`，CODEX-06）存进 `RunContext.mustReadPruned` 供两个播报通道用——`startRun` 追加、`executeRun` 汇总告警时排在 guard 告警之前；工作进程重建上下文时给 `[]`。拒跑发生在逐侧冻结之后，冻结写进对象库的松散对象与正常运行同形（CODEX-04，不改次序的理由见设计 10.1.1 末节）。这是审查意见 GLM-04 的修复——原先 `locateSubject` 抛 65 或第二侧 `routeModel` 抛 69 时，会留下「目录 + 单侧 brief」的半套工件。
+渲染 BRIEF 时的必填入参 `commandExecution`（v1.1.30，设计 v1.3.74 / EV-95）取入选侧适配器的声明 `adapters[critic].commandExecution`——可用性检查已逐侧判过适配器非空；不按侧名查表、不从 `capability.traceShape` 推导。第 7 节据此二选一渲染证据性质那一条（设计 9.4 第 7 条、11.1「命令执行能力」）。工作进程不重新渲染任务书，这是唯一调用点。
 
 **置闸门是落盘之前的最后一步**（v1.1.7，EV-109 / EV-145 ①）：`setGateChecked(running)` 排在计算段之后、第一次落盘之前，被拦（上一轮未裁决，退 2）时零工件；此前它排在落盘段之后，被拦那次已写下 brief、便利副本 `changes.diff`、run.json 骨架、task.json 登记与运行目录。置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 经 `state.ts` 的 `releaseRunningGateEntry` 回收闸门；写完骨架之后才失败（登记、任务目标落盘）时，回收闸门之后再把骨架收尾为 `failed`（`prepare_exception`，v1.1.8，EV-145；v1.1.7 时骨架留 `running`）；骨架之前的失败不进收尾。
 

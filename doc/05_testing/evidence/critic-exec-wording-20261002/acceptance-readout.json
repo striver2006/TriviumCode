@@ -1,0 +1,50 @@
+{
+  "base": "a03a056",
+  "bundles": {
+    "old": {
+      "commit": "a03a056",
+      "sha256": "750f88f76c7eb31531f4ad4e39117378b01b0ba2ff67160d2097371b7d7d0be6"
+    },
+    "new": {
+      "commit": "working-tree",
+      "sha256": "8e713f8fd348cec20cd9fb8ca048351678746b30e51b87c64504915a43f9af29"
+    }
+  },
+  "asset_roots": {
+    "old": "<旧树>/skills/dual-critic",
+    "new": "<本仓工作树>/skills/dual-critic"
+  },
+  "preconditions": {
+    "deps_same": true,
+    "bundles_differ": true
+  },
+  "sides": {
+    "gemini": {
+      "checks": {
+        "outside_s7_identical": true,
+        "old_s7_preserved_in_order": true,
+        "added_exactly_expected": true,
+        "other_variant_absent": true
+      },
+      "added": [
+        "- 你这一侧可以执行只读命令。凡写「实测」「复测」的判断，`evidence` 里写出你本轮实际执行的命令；没执行、靠推理得出的写明是推理。"
+      ],
+      "ok": true
+    },
+    "glm": {
+      "checks": {
+        "outside_s7_identical": true,
+        "old_s7_preserved_in_order": true,
+        "added_exactly_expected": true,
+        "other_variant_absent": true
+      },
+      "added": [
+        "- **你这一侧没有执行命令的能力**，只能读文件与检索。不要用「实测」「复测」「直调」「跑了」「执行结果」一类说法描述你的判断；需要运行才能确认的结论写明是推理，并在 `not_covered` 里列出没能验证的部分。",
+        "- 第 2 节的焦点若要求实测或复测而你做不到，如实说明后照常交付结论，**不要停下来等放行**。"
+      ],
+      "ok": true
+    }
+  },
+  "pass": 2,
+  "total": 2
+}

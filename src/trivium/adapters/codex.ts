@@ -278,6 +278,12 @@ export const codexAdapter: CriticAdapter = {
    */
   capability: COMMAND_TRACE_CAPABILITY,
 
+  /*
+   * 能执行只读命令：`CODEX_READONLY_INVARIANTS` = `-s read-only`，沙箱让 shell 跑、写在系统调用层失败（EV-95）。
+   * 与上一行的 `command-trace` 是两件事：那一项说轨迹形状，这一项说审查员能做什么。
+   */
+  commandExecution: 'readonly-shell',
+
   /**
    * 探活。
    *
