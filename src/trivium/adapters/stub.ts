@@ -204,6 +204,11 @@ export interface StubSpec {
    */
   commandExecution?: CommandExecution;
   /**
+   * 显式声明该侧的执行型 MCP 前缀（EV-191，任务书点名禁用MCP执行工具计划 r2 §2.2）。**不给 ⇒ 不声明**（适配器上没有这个键），
+   * 与三家真实适配器同；给了才挂上。存在的理由是让集成用例守住 `prepareRun` 的接线——真实 zcode 适配器进不了零配额的桩运行。
+   */
+  mcpExecPrefixes?: string[];
+  /**
    * 模拟 MCP 执行型工具调用（EV-188）：给 n 就产出 n 条 `MCP:mcp__node_repl__js(…)` 写事件与 `tool_calls.mcp`。
    * 只为集成用例走完整 `review` 链路，咬住只读失守那几面（run.json、告警的 MCP 补句、报告、闸门）。
    */
@@ -396,6 +401,7 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
      * 显式覆盖优先，解耦的那两格靠它走到。
      */
     commandExecution: spec.commandExecution ?? (spec.mode === 'command_trace' ? 'readonly-shell' : 'none'),
+    ...(spec.mcpExecPrefixes !== undefined ? { mcpExecPrefixes: spec.mcpExecPrefixes } : {}),
     availability: () => ({ ok: true }),
     ...(spec.modelOverrideSource !== undefined
       ? { modelOverrideSource: () => spec.modelOverrideSource as string }

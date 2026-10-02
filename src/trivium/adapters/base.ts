@@ -113,6 +113,17 @@ export interface CriticAdapter {
    * 缺省值本身就是一次推导，漏声明应当编不过。与工具面事实源的对账见 `command-execution-parity` 用例
    */
   readonly commandExecution: CommandExecution;
+  /**
+   * 该侧工具清单里**有、但一被调用即判只读失守**的执行型 MCP 工具名前缀（EV-191，任务书点名禁用MCP执行工具计划 r2 §2.1）。
+   * 消费方是任务书第 7 节：非空才在证据性质那一条之后多渲染一条点名的禁令；不声明 / 空数组 ⇒ 第 7 节与改前逐字相同。
+   *
+   * **可选**：今天只有 zcode 有这一面（经插件带进副本 HOME 的 MCP 工具）。codex 的 MCP 由 `codex-home.ts` 裁剪、
+   * claude 有 `--strict-mcp-config`、agy 的工具面是 `tools:` 白名单——它们没有这一面，不声明。
+   * **必须引用判失守的那份事实源**（zcode：`ZCODE_MCP_EXEC_PREFIXES`，同一个数组对象），不得另抄一份；
+   * 同一引用由 `brief-mcp-exec` 单测断言，替代可选字段失去的「漏声明编不过」。
+   * 不并进 `commandExecution`（那是能力枚举、有对账用例）也不并进 `capability`（判定层不读它）。
+   */
+  readonly mcpExecPrefixes?: readonly string[];
   /** 该侧是否可用（探针结论决定）。不可用时给出人读原因 */
   availability(ctx: AdapterContext): { ok: boolean; reason?: string };
   /**

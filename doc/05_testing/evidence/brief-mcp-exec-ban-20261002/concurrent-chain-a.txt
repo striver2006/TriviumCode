@@ -1,0 +1,28 @@
+✖ EV-154 I6：worker 已死而 CLI 还活着 ⇒ 会话启动清扫不结束进程、也不抹凭据副本（EV-38）；CLI 结束后再清扫即抹 (560.69375ms)
+ℹ tests 2577
+ℹ pass 2574
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 2
+✖ failing tests:
+✖ EV-154 I6：worker 已死而 CLI 还活着 ⇒ 会话启动清扫不结束进程、也不抹凭据副本（EV-38）；CLI 结束后再清扫即抹 (560.69375ms)
+✖ EV-176 K-K4：SIGKILL 扣下、之后才取不到启动时刻 ⇒ 69、正文说 SIGKILL 之后判不了、什么都不动 (804.045792ms)
+✖ 派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker (919.435916ms)
+✖ EV-146 J3：本格不抹凭据副本（用户决策 7）——--wait 与 --cancel 之后载体仍在；worker 与 CLI 都结束之后，会话启动清扫放行 (3762.759792ms)
+✖ EV-159 G1：worker 被手工结束（未经 --cancel）⇒ --cancel 落 gone 格：按记录结束两侧 CLI、补收 run.json 与登记、回收锁；CLI 结束先于归档补收播报 (3687.391041ms)
+✖ EV-159 G2：G1 场景上 --cancel 之后再跑一次 ⇒ 幂等，run.json / task.json / status.json 均逐字节不变，输出不再说「已把归档……收尾为 failed」 (3695.516458ms)
+ℹ tests 2577
+ℹ pass 2570
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 2
+✖ failing tests:
+✖ EV-176 K-K4：SIGKILL 扣下、之后才取不到启动时刻 ⇒ 69、正文说 SIGKILL 之后判不了、什么都不动 (804.045792ms)
+✖ 派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker (919.435916ms)
+✖ EV-146 J3：本格不抹凭据副本（用户决策 7）——--wait 与 --cancel 之后载体仍在；worker 与 CLI 都结束之后，会话启动清扫放行 (3762.759792ms)
+✖ EV-159 G1：worker 被手工结束（未经 --cancel）⇒ --cancel 落 gone 格：按记录结束两侧 CLI、补收 run.json 与登记、回收锁；CLI 结束先于归档补收播报 (3687.391041ms)
+✖ EV-159 G2：G1 场景上 --cancel 之后再跑一次 ⇒ 幂等，run.json / task.json / status.json 均逐字节不变，输出不再说「已把归档……收尾为 failed」 (3695.516458ms)
+自检：在临时夹具仓库里真跑一遍整条流水线（各入选侧走桩适配器，不消耗厂商配额）
+自检：✅ 通过（14/14 步）
+
+[exited with code 0]

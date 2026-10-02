@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.75
+> - **当前版本**：v1.3.76
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -668,7 +668,7 @@ R-5 / FR-31 的承诺是「新增一家 Agent 只需一份套件，核心流程�
 | # | 件 | 落点 | 漏了它的症状 |
 | :--- | :--- | :--- | :--- |
 | ① | 注册项 | `agents/registry.ts` 加一条 | 该 Agent 在系统里不存在 |
-| ② | 适配器 | `adapters/<id>.ts` 本体 + `adapters/index.ts` 接线一行；本体含两项必填能力声明 `capability` 与 `commandExecution`（v1.3.74 起，后者的工具面事实源要登记进 `command-execution-parity` 用例） | `realAdapters()` 在取表时响亮失败（不是跑到一半 undefined）；漏声明 `commandExecution` 时 `tsc --noEmit` 红，事实源没登记时对账用例红 |
+| ② | 适配器 | `adapters/<id>.ts` 本体 + `adapters/index.ts` 接线一行；本体含两项必填能力声明 `capability` 与 `commandExecution`（v1.3.74 起，后者的工具面事实源要登记进 `command-execution-parity` 用例）；另有可选声明 `mcpExecPrefixes`（v1.3.76 起，工具清单里有不得调用的执行型 MCP 工具时声明，必须引用判失守的同一份名单，见 11.1「命令执行能力」末尾） | `realAdapters()` 在取表时响亮失败（不是跑到一半 undefined）；漏声明 `commandExecution` 时 `tsc --noEmit` 红，事实源没登记时对账用例红 |
 | ③ | 探针 | `probes/<id>.ts` | 可用性与版本无从判定 |
 | ④ | 镜头 | `lenses.yaml` 加一个键 | 该侧按通用标准审（缺件不致命，`Lenses` 是 `Partial`） |
 | ⑤ | 入口资产 | 该 Agent 读的协议片段 | **当前无任何消费方**，见下方「已知缺口」 |
@@ -2034,6 +2034,9 @@ Hook 行为约定：
    不能执行命令的一侧——不得用「实测」「复测」「直调」「跑了」「执行结果」一类说法描述自己的判断，需要运行才能确认的写明是推理并进 `not_covered`，
    焦点要求实测或复测而做不到时如实说明后照常交付、不停下来等放行；能执行只读命令的一侧——写「实测」「复测」的判断要在 `evidence` 里给出本轮实际执行的命令，没执行的写明是推理。
    插在 `not_covered` 那条之后、不另起一段；此前靠 Driver 每轮在焦点里手写一句。
+   适配器声明了执行型 MCP 前缀（`mcpExecPrefixes`，见 11.1「命令执行能力」末尾）的一侧——今天只有 zcode——证据性质那条之后紧跟一条点名禁令（v1.3.76 起，EV-191）：
+   工具清单里另有能执行代码的 MCP 工具（逐个点名前缀），不要调用、焦点要求也不行，一被调用即判只读失守、本轮该侧结论作废、整轮在闸门被挡下重跑，需要运行才能确认的内容按上一条处理；
+   没有声明的侧第 7 节与改前逐字相同。只看适配器声明，不按侧名分叉。
 8. **禁读与禁止事项**：编排器**逐个列出**的对方历史审查文件路径（如 `.reviews/登录重构/plan/2026-09-10-登录重构-glm.md`）——「另一位审查员的文件，读取即本次审查作废」；`.trivium/`、`~/.trivium/`、`review.sensitive_globs` 匹配的敏感文件；不得给出大段可粘贴补丁（避免变成第二作者）；不得引用或猜测另一位审查员的结论。逐个列出而不是给 glob，是为了让轨迹核验与提示语之间可逐条对账。
 
 > **绝不**在提示词中出现「另一位评审认为……」或对方文档的任何摘录（FR-10 / 第 7 章第 4 条）。禁读清单只含**路径**，不含内容。
@@ -2447,6 +2450,7 @@ interface TraceCapability {
 变更文件落 `unattributed_drift_files`，告警按成因分句（`readonly-unavailable` / `evidence-untrusted` / `mcp-exec`）。
 这两种是运行期事实，只看判过的侧；失败 / 超时的一侧轨迹没解析，调没调过 MCP 无从得知（与「失败侧不评判证据」同口径）。
 `cause` 留成枚举：子代理会话、非 MCP 表外工具（BACKLOG EV-189 / EV-190）若将来也走这一档，各加一个值。
+任务书不点名这一档的工具（v1.3.76，EV-191 只点名执行型）：点名就要说清「可以调用但结论打折」，等于给它开一条合法路径；要不要提、怎么提登记为 BACKLOG EV-192 待议。
 
 **适配器须恒写覆盖率两项，算不出写 `null`**：字段**缺失**在契约上的含义是
 「该族没有这个概念，或留痕早于本字段」，而「本族有、这次没采到」（如 zcode
@@ -2503,6 +2507,14 @@ zcode 侧的事实源只管内置工具名：MCP / 插件工具面不在 `ZCODE_
 **名单外**的 `mcp__` 调用记证据不可信（见上「证据不可信」，结论保留）。所以 zcode 格的声明**不改**、仍是 `none`：它仍只对内置工具面成立，
 而执行型工具一被调用就判失守——「能执行」的状态不会被当作合法结论采信，任务书第 7 节对该侧的说法也就不会被一份照常放行的结论反证。
 副本 HOME 与拉起参数不动，通道仍开着；历史上它被调用过（截至 2026-10-02 本主题计划双审之后扫描：本仓保留的 214 份 glm 侧 rollout 里 38 份、共 95 次，见报告证据 `history-scan-output.json`），落地后这类轮次会在闸门被挡下重跑（BACKLOG EV-191）。
+**v1.3.76 起任务书点名（EV-191 缓解①，仍不关通道）**：`CriticAdapter` 新增**可选**声明 `mcpExecPrefixes?: readonly string[]`——该侧工具清单里有、但一被调用即判失守的执行型 MCP 工具名前缀。
+zcode 适配器声明为 `ZCODE_MCP_EXEC_PREFIXES` **本身**（同一个数组对象，判定层与任务书读同一份名单，由单测的同一引用断言守），其余三家与桩缺省不声明（桩可经 `StubSpec.mcpExecPrefixes` 显式覆盖，只为集成用例守接线）；
+`prepareRun` 以 `adapters[critic].mcpExecPrefixes ?? []` 递给 `renderBrief` 的必填入参，非空时第 7 节在证据性质那条之后多一条点名禁令（9.4 第 7 条）。
+可选而不是必填：codex 的 MCP 由 `codex-home.ts` 裁剪、claude 有 `--strict-mcp-config`、agy 是 `tools:` 白名单，三家没有这一面；不并进 `commandExecution`（能力枚举、有对账用例）也不并进 `capability`（判定层不读它）。
+`commandExecution` 的取值与 `command-execution-parity` 对账都不变。
+**两条边界（本主题代码双审 CODEX-01 / CODEX-02）**：其一，禁令说的「一被调用即判只读失守」以**主会话**轨迹可见为界——zcode 侧工具清单里有 `Agent`，子代理会话的 MCP 调用既不进写事件也不记证据不可信（EV-189）；
+焦点仍要求调用时，「委派给子代理」是既满足焦点又不碰主会话禁令的路径，这一组合已并进 EV-189 的触发条件，任务书本身不写检测边界（写了等于告诉模型绕法）。
+其二，「另有」是对当轮工具清单的存在断言，前提是插件缓存随副本 HOME 带入该工具，渲染期不核验；工具从清单消失时这句失实但没有失守后果，名单按「实见才增」同样不会自动减项。
 
 #### 旗标归属判据（M9 工前并入 · §11.1 的 B-契约部分）
 
@@ -3644,6 +3656,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.76** | 2026-10-02 | **任务书点名禁用MCP执行工具（EV-191 缓解①，仍不关通道）。** 计划 `.reviews/任务书点名禁用MCP执行工具/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261002T103422Z`：codex / glm `approve-with-nits`、gemini `request-changes`，11 条全接受——禁令句尾改为回指上一条，不在句内复述「写明是推理并进 not_covered」（AGY-01：复述在 `none` 下三行内复读、在 `readonly-shell` 下压掉只读命令）、多前缀用「或」连接（AGY-04）、5.1.1 第 ② 件补可选声明（AGY-02）、未声明各侧改负断言与「不带该键」断言（GLM-01 / AGY-03）、`readonly-shell` + 有声明一格（CODEX-02）、对照脚本依赖一致前置（CODEX-04）、效果层判据分主次并加工具清单前置（GLM-02 / CODEX-01）、判据键位改为 `guard.readonly_breach`（GLM-03）、拒绝原因原文摘录（CODEX-03））。`CriticAdapter` 新增可选声明 `mcpExecPrefixes`，zcode 适配器声明为 `ZCODE_MCP_EXEC_PREFIXES` 本身（同一数组对象），其余三家与桩缺省不声明（`StubSpec.mcpExecPrefixes` 显式覆盖只为集成用例守接线）；`BriefInput.mcpExecPrefixes` 必填，`prepareRun` 传 `adapters[critic].mcpExecPrefixes ?? []`；非空时第 7 节在证据性质那条之后多一条点名禁令，没有声明的侧逐字不变。9.4 第 7 条、11.1「命令执行能力」末尾与「证据不可信」末尾、5.1.1 第 ② 件同步。落点：`adapters/base.ts`、`adapters/zcode.ts`、`adapters/stub.ts`、`brief.ts`、`review.ts`。代码双审第 1 轮 run `20261002T110839Z`（gemini `approve`、codex / glm `approve-with-nits`）4 条全接受，均不改 `src/` 与措辞：11.1 v1.3.76 段补两条边界——禁令的「一被调用即判」以主会话轨迹可见为界、委派给子代理的组合并进 EV-189 触发条件（CODEX-01），「另有」的存在断言渲染期不核验（CODEX-02）；单测的单前缀格改用桩（CODEX-03）、新增对全部真实适配器声明的前缀形状对账（GLM-01）。读数见 `doc/05_testing/REPORT_2026-10-02_brief_mcp_exec_ban.md`。另登 EV-192（名单外 MCP 工具的任务书措辞，待议）、EV-193（集成用例 `EV-154 I6` 偶发红）。 |
 | **v1.3.75** | 2026-10-02 | **MCP执行工具调用检测（EV-188，只检测、未关通道）。** 计划 `.reviews/MCP执行工具调用检测/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261002T072209Z`：codex / glm `approve-with-nits`、gemini `request-changes`，9 条全接受——证据不可信参与漂移归因（AGY-01）、两档工具名取两来源并集（AGY-02）、`breachedAbs` 跳过 `MCP:` 的用例改可杀构造（GLM-01 ≡ CODEX-02）、同轮同构建边界（CODEX-01）、历史回放参数化与软跳过（CODEX-03）、夹具配置与焦点自检脚本（CODEX-04 / CODEX-05）、PROTOCOL 具名同步（AGY-03））。zcode 侧轨迹解析补 MCP 调用计数（`tool_calls.mcp`，只在 ≥ 1 时出现；明细在该侧 `trace.json` 的 `mcpCalls`）与两档判定：执行型（`ZCODE_MCP_EXEC_PREFIXES`，首批 `mcp__node_repl__`）以 `MCP:` 前缀进写事件、判只读失守；名单外记 `SideVerification.untrusted`（证据不可信，结论保留，五面留痕，run.json 键 `evidence_untrusted`，run.v2 逐侧对象加可选属性），并与 MCP 执行型一起让漂移落「无法归因」。编码时更正计划 §1.4：日志行顶层的 `toolCallId` 与 rollout 调用 id 同值，两边按 id 求并集（不是按名取大）；写事件条目带调用 id，免得同前缀的多次调用被去重成一条。10.3 ZCode 列、11.1「证据不可信」与「命令执行能力」末尾两档检测、11.3 要点 5、6.5 front-matter 契约同步。落点：`adapters/zcode-trace.ts`、`adapters/zcode.ts`、`adapters/base.ts`（`MCP_WRITE_EVENT_PREFIX`）、`guard.ts`、`review.ts`、`render.ts`、`report.ts`、`parse.ts`、`types.ts`、桩。代码双审第 1 轮 run `20261002T081745Z`（gemini `approve`、glm `approve-with-nits`、codex 解析回退、原文自报 `approve-with-nits`）6 条全接受：rollout 条目缺 id 时该名退回按名取大，免得同一次调用算两遍（GLM-01）；证据不可信的人读文案改由 `types.ts` 的 `EVIDENCE_UNTRUSTED_CAUSE_TEXT` 按 `cause` 键控（成因加值而文案不跟即编译失败）、`unattributed_drift_files` 注释补第三种成因、历史计数统一为证据文件读数并注明扫描时点、PROTOCOL 键路径补侧段（CODEX-F01 原文四条 ≡ GLM-02）。读数见 `doc/05_testing/REPORT_2026-10-02_mcp_exec_detect.md`。另登 EV-189（子代理会话不在核验面）、EV-190（非 MCP 表外内置工具）、EV-191（失守轮次的重跑成本）。 |
 | **v1.3.74** | 2026-10-02 | **审查侧实测措辞约束（EV-95 前半）。** 计划 `.reviews/审查侧实测措辞约束/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261002T012129Z`：codex `request-changes`、gemini / glm `approve-with-nits`，11 条接受 10、驳回 1——改前改后对照与 A/B 钉死各构建自己的资产根（CODEX-01）、agy 事实源改纯函数 + 内存负例不临时改仓库文件（CODEX-03）、安装副本漂移登 EV-187（CODEX-02）、A/B 补零配额预检与判据 5 成因分档（CODEX-05 / CODEX-07）；驳回 CODEX-04「拿掉基线轮」，基线是用户决策明定）。`CriticAdapter` 新增与 `capability` 并列的必填声明 `commandExecution`（`none` / `readonly-shell`），11.1 新增「命令执行能力」小节（字段、不并进 `TraceCapability` 的理由、五处声明、对账用例与边界）；9.4 第 7 条补按能力二选一的证据性质约束。落点：`adapters/base.ts`、四个适配器与桩、`brief.ts` 第 7 节、`review.ts` 的 `prepareRun` 接线。读数见 `doc/05_testing/REPORT_2026-10-02_critic_exec_wording.md`（机制层单测 / 对账 / 集成、变异 19/19、改前改后对照 2/2；效果层新构建两轮均达标）。全量第一次红在接入套件（模板漏声明 `commandExecution`），5.1.1 第 ② 件补两项必填声明与对账用例。代码双审第 1 轮 run `20261002T023804Z`（三侧 `approve-with-nits`）4 条全接受：claude 侧对账改三件合取（`--restricted`、`--strict-mcp-config`、`--tools` 白名单，CODEX-01）；新用例改用共享 `REPO_ROOT`（CODEX-02 ≡ AGY-01）；zcode 侧工具清单里实见 MCP 的 JS 执行工具 `mcp__node_repl__js`，只读名单与对账都管不到（GLM-01）——11.1 边界句补一句，登 **EV-188**（安全面），第 7 节措辞不变。另登 EV-187、EV-188。 |
 | **v1.3.73** | 2026-10-02 | **必读与禁读交集校验（EV-02）。** 计划 `.reviews/必读与禁读交集校验/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261001T155413Z`：codex / glm `approve-with-nits`、gemini `request-changes`，9 条全接受——同步路径的告警原计划在 `executeRun` 返回后才并入、人读模式看不到（AGY-01），改由 `executeRun` 汇总时并入；剔除事实补进 run.json `gate.warnings`（CODEX-01）；辅助函数喂展开归一后的路径（AGY-03）；`contains` 方向同样跳具名放行（GLM-02）；告警措辞按是否覆盖全部入选侧分支（AGY-02）；USAGE 与本节同步路径那半句改实（CODEX-03、GLM-01））。任务书第 4 段（必读、建议核实、己方历史）与第 8 段（逐侧禁读集）之间补交集校验：§9.4 第 4 条补一句、10.1.1 末节新增「第 4 段与第 8 段的交集校验」（判定口径、两个方向、命中点、按来源分开处置、三个告警出口、现实触发面）；7.5.1 里「`--start` 的 warnings」一段原写「当前唯一来源是 `checkModelOverrideSource`」自 v1.3.57 起已失实，改为列三个来源，同步路径那半句补必读剔除告警。落点：`brief.ts` 的 `findDenyConflicts` / `denyContextFor` / `renderContextConflicts` / `renderPrunedWarnings`，`buildMustReadList` 带来源；`review.ts` 的 `prepareRun` 拆成冻结 → `--context` 校验 → 渲染三段、`RunContext.mustReadPruned`、`executeRun` 并入；`run-protocol.ts` 的 `startRun` 追加。代码双审第 1 轮 run `20261001T163431Z`（codex `approve-with-nits`、gemini `approve`、glm `approve-with-nits`）8 条全接受：命令契约第 2 步补自动补 `--context` 的禁区与撞上 64 的分来源处置（CODEX-01 / CODEX-07，7.4 同句）；家目录展开与措施 a / 措施 b 同宽（`expandHomeSpellings`，CODEX-02）；跳过轮同样留 run.json 一笔（CODEX-03 / GLM-01）；拒跑发生在冻结之后的代价写明、不改次序（CODEX-04）；本主题新增的那处改用 `runRoot(cfg)`（CODEX-05；另两处换掉会让 `config-consumers` 对账把 `run_root` 判成无消费方，保持原样）；播报通道封顶 5 条、run.json 存全量（CODEX-06）。读数见 `doc/05_testing/REPORT_2026-10-02_mustread_deny_intersection.md`。另登 EV-185、EV-186。 |

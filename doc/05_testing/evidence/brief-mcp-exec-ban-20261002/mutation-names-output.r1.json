@@ -1,0 +1,207 @@
+{
+  "targets_sha256": {
+    "src/trivium/brief.ts": "afb3f1adcf4a8179a7e4dd1c9f7b039a7063fa8b5720c2555f3d3f4ef01ba4ef",
+    "src/trivium/review.ts": "059334a21adc1a21d4b93fad90e88d64bd27d4671a1951f758d019ce6aa21e99",
+    "src/trivium/adapters/zcode.ts": "c230cf8a04eb1167854bb40d90f6a738274b6a0478ec3448eea178433cd7ebf8",
+    "src/trivium/adapters/stub.ts": "fc2a81d60351fa946e3c4c25dea069a946f7fafff1022a696c1d4d6258e228a3"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "渲染恒不出点名禁令",
+      "suite": "dist/test/test/unit/brief-mcp-exec.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "zcode：声明引用判失守的同一份名单，第 7 节点名每个前缀",
+        "zcode：三个阶段都只多出点名禁令那一行，其余逐字不变；八个标题仍是八个",
+        "只读 shell + 有声明：点名禁令照常渲染、紧跟只读 shell 那条（桩覆盖在非缺省 mode 下也生效）",
+        "多前缀：两项用「或」，三项及以上前面用顿号、最后一项前用「或」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M2",
+      "desc": "空数组也渲染",
+      "suite": "dist/test/test/unit/brief-mcp-exec.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "zcode：三个阶段都只多出点名禁令那一行，其余逐字不变；八个标题仍是八个",
+        "其余三家真实适配器与两种缺省桩：不声明，第 7 节与改前相同",
+        "显式给空数组：与不声明同样不渲染"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M3",
+      "desc": "禁令去掉「焦点要求也不行」",
+      "suite": "dist/test/test/unit/brief-mcp-exec.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "zcode：声明引用判失守的同一份名单，第 7 节点名每个前缀",
+        "只读 shell + 有声明：点名禁令照常渲染、紧跟只读 shell 那条（桩覆盖在非缺省 mode 下也生效）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M4",
+      "desc": "前缀写死成字面而不取入参",
+      "suite": "dist/test/test/unit/brief-mcp-exec.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "只读 shell + 有声明：点名禁令照常渲染、紧跟只读 shell 那条（桩覆盖在非缺省 mode 下也生效）",
+        "多前缀：两项用「或」，三项及以上前面用顿号、最后一项前用「或」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M5",
+      "desc": "禁令插到证据性质条目之前",
+      "suite": "dist/test/test/unit/brief-mcp-exec.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "zcode：声明引用判失守的同一份名单，第 7 节点名每个前缀",
+        "只读 shell + 有声明：点名禁令照常渲染、紧跟只读 shell 那条（桩覆盖在非缺省 mode 下也生效）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M6",
+      "desc": "review.ts 接线恒传空",
+      "suite": "dist/test/test/integration/brief-mcp-exec.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "声明了执行型 MCP 前缀的一侧拿到点名禁令，另一侧没有",
+        "两侧互换：禁令跟着声明走，不跟侧名"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M7",
+      "desc": "review.ts 接线恒传 zcode 名单",
+      "suite": "dist/test/test/integration/brief-mcp-exec.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "声明了执行型 MCP 前缀的一侧拿到点名禁令，另一侧没有",
+        "两侧互换：禁令跟着声明走，不跟侧名"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M8",
+      "desc": "zcode 声明删掉",
+      "suite": "dist/test/test/unit/brief-mcp-exec.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "zcode：声明引用判失守的同一份名单，第 7 节点名每个前缀",
+        "zcode：三个阶段都只多出点名禁令那一行，其余逐字不变；八个标题仍是八个",
+        "多前缀：两项用「或」，三项及以上前面用顿号、最后一项前用「或」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M9",
+      "desc": "zcode 声明改成复制的字面数组",
+      "suite": "dist/test/test/unit/brief-mcp-exec.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "zcode：声明引用判失守的同一份名单，第 7 节点名每个前缀"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M10",
+      "desc": "桩忽略显式覆盖（单测层）",
+      "suite": "dist/test/test/unit/brief-mcp-exec.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "只读 shell + 有声明：点名禁令照常渲染、紧跟只读 shell 那条（桩覆盖在非缺省 mode 下也生效）",
+        "多前缀：两项用「或」，三项及以上前面用顿号、最后一项前用「或」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M11",
+      "desc": "桩缺省就声明",
+      "suite": "dist/test/test/unit/brief-mcp-exec.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "其余三家真实适配器与两种缺省桩：不声明，第 7 节与改前相同"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M12",
+      "desc": "多前缀连接词改回顿号",
+      "suite": "dist/test/test/unit/brief-mcp-exec.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "多前缀：两项用「或」，三项及以上前面用顿号、最后一项前用「或」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M13",
+      "desc": "桩忽略显式覆盖（集成层）",
+      "suite": "dist/test/test/integration/brief-mcp-exec.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "声明了执行型 MCP 前缀的一侧拿到点名禁令，另一侧没有",
+        "两侧互换：禁令跟着声明走，不跟侧名"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M14",
+      "desc": "禁令句尾去掉「按上一条的要求处理」",
+      "suite": "dist/test/test/unit/brief-mcp-exec.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "zcode：声明引用判失守的同一份名单，第 7 节点名每个前缀",
+        "只读 shell + 有声明：点名禁令照常渲染、紧跟只读 shell 那条（桩覆盖在非缺省 mode 下也生效）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    }
+  ]
+}

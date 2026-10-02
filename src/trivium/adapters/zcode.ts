@@ -34,6 +34,7 @@ import {
   parseZcodeRollout,
   parseZcodeTrace,
   summarizeZcodeMcp,
+  ZCODE_MCP_EXEC_PREFIXES,
   type ZcodeEnvelope,
   type ZcodeRolloutToolCall,
 } from './zcode-trace.js';
@@ -983,6 +984,12 @@ export const zcodeAdapter: CriticAdapter = {
 
   /* 不能执行命令：`Bash` 在 `ZCODE_READONLY_DENYLIST` 里（EV-95）；`--mode plan` 本身挡不住命令执行 */
   commandExecution: 'none',
+
+  /*
+   * 工具清单里经插件带进来的执行型 MCP 工具：任务书第 7 节据此点名「不要调用」（EV-191）。
+   * 引用判失守的同一份名单，不另抄——通道仍开着，这里只管把后果提前告诉审查员
+   */
+  mcpExecPrefixes: ZCODE_MCP_EXEC_PREFIXES,
 
   /**
    * 目录比对前的 slug 归一（M8 第 3 步）。

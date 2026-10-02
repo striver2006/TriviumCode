@@ -1,0 +1,126 @@
+{
+  "targets": [
+    "src/trivium/brief.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/stub.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/brief-mcp-exec.test.js",
+    "dist/test/test/integration/brief-mcp-exec.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "渲染恒不出点名禁令",
+      "file": "src/trivium/brief.ts",
+      "find": "  const mcpBan = mcpExecBanLine(mcpExecPrefixes);\n",
+      "replace": "  const mcpBan = (null as string | null);\n",
+      "expect": "dist/test/test/unit/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "空数组也渲染",
+      "file": "src/trivium/brief.ts",
+      "find": "  if (prefixes.length === 0) return null;\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "禁令去掉「焦点要求也不行」",
+      "file": "src/trivium/brief.ts",
+      "find": "    '**不要调用它们，焦点要求也不行**：一被调用即判只读失守，本轮该侧结论作废、整轮在闸门被挡下重跑。' +\n",
+      "replace": "    '**不要调用它们**：一被调用即判只读失守，本轮该侧结论作废、整轮在闸门被挡下重跑。' +\n",
+      "expect": "dist/test/test/unit/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "前缀写死成字面而不取入参",
+      "file": "src/trivium/brief.ts",
+      "find": "  const names = prefixes.map((p) => `\\`${p}\\``);\n",
+      "replace": "  const names = ['`mcp__node_repl__`'];\n",
+      "expect": "dist/test/test/unit/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "禁令插到证据性质条目之前",
+      "file": "src/trivium/brief.ts",
+      "find": "  const evidenceNature = [...EVIDENCE_NATURE_LINES[commandExecution], ...(mcpBan !== null ? [mcpBan] : [])]\n",
+      "replace": "  const evidenceNature = [...(mcpBan !== null ? [mcpBan] : []), ...EVIDENCE_NATURE_LINES[commandExecution]]\n",
+      "expect": "dist/test/test/unit/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "review.ts 接线恒传空",
+      "file": "src/trivium/review.ts",
+      "find": "      mcpExecPrefixes: adapters[critic]!.mcpExecPrefixes ?? [],\n",
+      "replace": "      mcpExecPrefixes: [],\n",
+      "expect": "dist/test/test/integration/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "review.ts 接线恒传 zcode 名单",
+      "file": "src/trivium/review.ts",
+      "find": "      mcpExecPrefixes: adapters[critic]!.mcpExecPrefixes ?? [],\n",
+      "replace": "      mcpExecPrefixes: ['mcp__node_repl__'],\n",
+      "expect": "dist/test/test/integration/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "zcode 声明删掉",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  mcpExecPrefixes: ZCODE_MCP_EXEC_PREFIXES,\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "zcode 声明改成复制的字面数组",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  mcpExecPrefixes: ZCODE_MCP_EXEC_PREFIXES,\n",
+      "replace": "  mcpExecPrefixes: ['mcp__node_repl__'],\n",
+      "expect": "dist/test/test/unit/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "桩忽略显式覆盖（单测层）",
+      "file": "src/trivium/adapters/stub.ts",
+      "find": "    ...(spec.mcpExecPrefixes !== undefined ? { mcpExecPrefixes: spec.mcpExecPrefixes } : {}),\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "桩缺省就声明",
+      "file": "src/trivium/adapters/stub.ts",
+      "find": "    ...(spec.mcpExecPrefixes !== undefined ? { mcpExecPrefixes: spec.mcpExecPrefixes } : {}),\n",
+      "replace": "    mcpExecPrefixes: spec.mcpExecPrefixes ?? ['mcp__node_repl__'],\n",
+      "expect": "dist/test/test/unit/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "多前缀连接词改回顿号",
+      "file": "src/trivium/brief.ts",
+      "find": "    : `${names.slice(0, -1).join('、')} 或 ${names[names.length - 1]!}`;\n",
+      "replace": "    : `${names.slice(0, -1).join('、')}、${names[names.length - 1]!}`;\n",
+      "expect": "dist/test/test/unit/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "桩忽略显式覆盖（集成层）",
+      "file": "src/trivium/adapters/stub.ts",
+      "find": "    ...(spec.mcpExecPrefixes !== undefined ? { mcpExecPrefixes: spec.mcpExecPrefixes } : {}),\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/brief-mcp-exec.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "禁令句尾去掉「按上一条的要求处理」",
+      "file": "src/trivium/brief.ts",
+      "find": "    '需要运行才能确认的内容，按上一条的要求处理。';\n",
+      "replace": "    '';\n",
+      "expect": "dist/test/test/unit/brief-mcp-exec.test.js"
+    }
+  ]
+}

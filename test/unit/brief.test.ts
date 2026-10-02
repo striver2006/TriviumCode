@@ -51,6 +51,7 @@ function input(over: Partial<BriefInput> = {}): BriefInput {
     minToolCalls: 5,
     minProjectReads: 3,
     commandExecution: 'none',
+    mcpExecPrefixes: [],
     ...over,
   };
 }

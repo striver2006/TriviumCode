@@ -1,0 +1,304 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261002T110839Z",
+  "topic": "任务书点名禁用MCP执行工具",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「任务书点名禁用MCP执行工具」：EV-191 缓解①——EV-188 落地后，glm 侧一调用 mcp__node_repl__ 开头的 MCP 执行工具就判只读失守、该轮在闸门被挡下重跑；历史上本仓 214 份 glm 侧 rollout 里 38 份调过（共 95 次），约每 5～6 轮 1 轮。本主题在任务书第 7 节对能用这类工具的一侧点名：不要调用，调用即判只读失守。不关通道。 开…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "6699eab0f5c356d5933cec90b303f9b9c5aaf5f1",
+    "tree_hash": "c89441be231d2b6217beb929b33073663d8b2473",
+    "dirty": true,
+    "subject_sha256": "b9511154a943ae51b62a25534575622511a91b83264452cce53a39fdcdafa4cd",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "6699eab0f5c356d5933cec90b303f9b9c5aaf5f1",
+      "dirty": false,
+      "inputs_sha256": "0a116891b4864909aff25bf8bca9adac5dc9f00e5acb152438395bdbf2cb8a61",
+      "built_at": "2026-10-02T10:17:50.307Z"
+    },
+    "after_tree_hash": "61f4da2747239548244945be81c3e08bc89f85be"
+  },
+  "started_at": "2026-10-02T11:08:42.318Z",
+  "finished_at": "2026-10-02T11:16:07.020Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.0",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 444.481,
+      "tool_calls": {
+        "run_command": 24,
+        "project_reads": 29
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a0fc4d-5994-7c91-ae13-306295ee714f",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.14",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 149.849,
+      "tool_calls": {
+        "read": 23,
+        "grep": 4,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 205459,
+        "output_tokens": 18825,
+        "thinking_tokens": 15153,
+        "cache_read_tokens": 2693146,
+        "total_tokens": 224284
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "069ad90f-07b7-4dd4-8d8d-bec380270743",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 289.555,
+      "tool_calls": {
+        "read": 13,
+        "grep": 4,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 8
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 11,
+        "inputTokens": 758938,
+        "outputTokens": 18613,
+        "totalTokens": 777551,
+        "cacheReadTokens": 681792,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_dde4212b-0db7-4cbb-9372-65aac7500285",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/任务书点名禁用MCP执行工具/plan/2026-10-02-任务书点名禁用MCP执行工具-gemini.md",
+    ".reviews/任务书点名禁用MCP执行工具/plan/2026-10-02-任务书点名禁用MCP执行工具-glm.md",
+    ".reviews/任务书点名禁用MCP执行工具/plan/_meta/review-gemini-20261002T103422Z.json",
+    ".reviews/任务书点名禁用MCP执行工具/plan/_meta/review-glm-20261002T103422Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "任务书点名禁用MCP执行工具/code/_meta/changes-20261002T110839Z.diff",
+      "sha256": "b9511154a943ae51b62a25534575622511a91b83264452cce53a39fdcdafa4cd"
+    },
+    {
+      "path": "任务书点名禁用MCP执行工具/code/_meta/brief-codex-20261002T110839Z.md",
+      "sha256": "902a82909e3bef8081366e8ce9523e3b7dee81f38e5ea29478fa9d512fdf3dcc"
+    },
+    {
+      "path": "任务书点名禁用MCP执行工具/code/_meta/brief-gemini-20261002T110839Z.md",
+      "sha256": "43fab2cb0a70d27a7807f660ee1f43487ecce84be987a38b4177ef0fd415fc4c"
+    },
+    {
+      "path": "任务书点名禁用MCP执行工具/code/_meta/brief-glm-20261002T110839Z.md",
+      "sha256": "9a7f7f10dd6de6921fc5860c2a2582cf26fe5965a024fe74f44ecd0e8b1471fb"
+    },
+    {
+      "path": "任务书点名禁用MCP执行工具/code/_meta/review-codex-20261002T110839Z.json",
+      "sha256": "e8724cecfc825773d243044035d2036411889eafb191da68bc4e24b0d5c6f64d"
+    },
+    {
+      "path": "任务书点名禁用MCP执行工具/code/_meta/review-gemini-20261002T110839Z.json",
+      "sha256": "a2af364c1848ffb5a5c7a940ae21b8600ab41c7dd76decc6969fb162a866611c"
+    },
+    {
+      "path": "任务书点名禁用MCP执行工具/code/_meta/review-glm-20261002T110839Z.json",
+      "sha256": "ec815cfdb4371f8620eb0090f72cfa89edd4b2396caa0ae3449435463e35a76b"
+    },
+    {
+      "path": "任务书点名禁用MCP执行工具/code/2026-10-02-任务书点名禁用MCP执行工具-codex.md",
+      "sha256": "4b7d2faf739fe06056c6093b39d9df6c9ea8c16d6be3b32ded76089422eb98a1"
+    },
+    {
+      "path": "任务书点名禁用MCP执行工具/code/2026-10-02-任务书点名禁用MCP执行工具-gemini.md",
+      "sha256": "87b1096457f85d289e370b906957d8d1b5156b4760d7df73196dcc82cb434e47"
+    },
+    {
+      "path": "任务书点名禁用MCP执行工具/code/2026-10-02-任务书点名禁用MCP执行工具-glm.md",
+      "sha256": "d4458e22634b1f9e4f439dd570119954d1c46ea71954873c168fb6cb05a10282"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装"
+    ]
+  },
+  "status": "success"
+}

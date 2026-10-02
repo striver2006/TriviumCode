@@ -919,6 +919,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
        * 入选各侧的适配器在上方可用性检查里已逐个判过非空，`!` 有前置保证。
        */
       commandExecution: adapters[critic]!.commandExecution,
+      // 第 7 节点名禁用执行型 MCP 工具（EV-191）：同样取适配器的声明；不声明的侧传空，第 7 节逐字不变
+      mcpExecPrefixes: adapters[critic]!.mcpExecPrefixes ?? [],
     });
 
     // 先不落盘：brief 暂存内存，等两侧都算完再统一写（GLM-04）
