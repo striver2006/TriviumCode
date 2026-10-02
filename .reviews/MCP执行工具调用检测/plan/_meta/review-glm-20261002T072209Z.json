@@ -1,0 +1,69 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "计划质量高：§1 现状引用的十余处代码位置我逐一核对全部准确（含 zcode-trace.ts:92-94/180-197、guard.ts:434/486-494/751-763、base.ts:367-368、run.v2.json:332-371、parse.ts:183-189、meta.ts「留痕读不出」出口、config.ts runRoot），两处待更正引文（REPORT:102、response:28）逐字属实，schema 兼容性判断与五面留痕接线核实无误。两档判定（失守/证据不可信）挂 SideVerification 复用既有五面、不进闸门，与决策四/五吻合且不会塌缩成无事。唯一意见：变异清单第 10 条「预期 G5 红」与 §2.2 自述「不跳过时结果不变」矛盾——按适配器自然产出的事件形态该变异体等价、杀不掉，G5 需特制路径形态的 MCP 写事件才能挂住（GLM-01）。§1.4/§1.5 的运行根实测统计在禁读清单内，无法独立复核，按计划引文采信。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §3.1 G5 行与变异清单第 10 条；对照 §2.2「前缀 MCP:」段",
+      "problem": "变异 10 预期「G5 红」与 §2.2 自己的论断「不跳过时只会解析出一个不存在的路径、扣不掉任何文件，结果不变」互相矛盾。breachedAbs（guard.ts:751-763）取写事件串首 '(' 到末 ')' 之间的内容、resolve 后与漂移文件做相等比对；适配器产出的 MCP 写事件括号里是 JSON.stringify 的参数摘要（必然以 { 开头），resolve 出的路径永远不等于任何真实漂移文件——把跳过分支删掉后，G5 按自然形态构造（JSON 摘要事件）时断言「不因 MCP: 条目扣除文件」照样成立，变异体行为等价、挂不住。编码阶段照清单逐条预跑时这条会以「挂不住」收场，与计划写死的预期不符，还可能诱导实现者误判 G5 写错了去改用例。",
+      "evidence": "已读 guard.ts:751-763：breachedAbs 仅做「剥括号→nodePath.resolve(projectRoot, inner)→入 Set」且只被 attributedToBreach 的相等比对消费，无其它可观测出口；已读 zcode-trace.ts:315 与计划 §2.2：MCP 条目括号内容为 redactSecrets(JSON.stringify(input)) 截前 120 字，必为 JSON 文本而非路径；计划 §3.1 变异清单第 10 条原文「breachedAbs 不跳过 MCP:（预期 G5 红）」与 §2.2「结果不变，但那是巧合不是判据」并存。",
+      "suggestion": "把 G5 的构造写死成可杀变异的形态：在 judgeRun 层直接喂一条合成写事件「MCP:mcp__node_repl__js(〈本轮某漂移文件的相对路径〉）」（括号内容恰为真实漂移文件路径、不经适配器），断言该文件仍留在无法归因桶——原实现（跳过）通过、删掉跳过则红。若不做此构造，就把变异 10 改记为「预期等价变异、如实登记」，删去「预期 G5 红」的措辞，两处择一，消除清单与设计段的矛盾。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§1 现状全部引用逐处核实无误：ZCODE_WRITE_TOOLS（zcode-trace.ts:92-94）不含任何 mcp__ 名、四类计数只看 completed（:180-192）、写事件扫全部 tool.call.* 含 started（:193-197）、组装 union（zcode.ts:1332）、readonlyBreach 判据（guard.ts:434）、证据下限只合计 read/grep/glob（base.ts:367-368）——MCP 调用今天确实不进计数、不进写事件、不进任何档位，缺口成立。",
+    "两档判定挂 SideVerification（§2.4）并复用五面接线的设计正确：run.json verification_degraded（review.ts:1655-1671，逐侧枚举式组装、加条件键顺路）、front-matter 条件键（render.ts:208-210 同款模式）、横幅（render.ts:363-395）、运行时告警（guard.ts:864 逐侧循环）、报告旗标（report.ts:349-385）五处均已核实存在且形态相符；不进闸门与降级档位既有设计一致（gate.ts 里失守是 failure、degraded_round 是 warning，证据不可信非判决，五面已保证不塌缩成无事——对 §6 问 3 的回答：不必加 gate warning，加了也不反对）。",
+    "mcp 键为 0 不写（§2.3，问 1）：决策八「逐字相同」强制此形态；「没读到 rollout」由 carriers_landed 与路径档位 no-counts 另担（zcode.ts:1434、guard.ts pathVerificationTier 现状核实），口径自洽，与 path_bearing_reads 恒写 null 的先例（zcode.ts:1444-1452）不冲突——那处的问题是「本族有此概念、这次没采到」需要成因，这里的缺席有三重既有通道兜底。",
+    "按名取大（§2.2，问 2）：两边无公共 id 时取大确实是唯一不多计的做法；「只计尝试不计成功」与写事件扫全部 tool.call.* 同口径（zcode-trace.ts:193-197 核实写事件含 started）；少计仅剩「两边同时丢同一次调用」一种情形，可接受。",
+    "先 redactSecrets 后截断的顺序（§2.2）正确且必要：secrets.ts:283 签名相符，且写事件会进 git 归档的 _meta/run 元数据与 breached_files，脱敏在前是凭据不落盘的判据。",
+    "schema 兼容性（§2.6，问 4）核实无误：run.v2.json:335-371 逐侧对象 additionalProperties:false、加可选属性后旧 run.json 照常通过；旧构建读含新键的 run.json 会被拒并走 meta.ts:620→「留痕读不出」共用出口（cli.ts:562、gate.ts 多处），该出口真实存在；tool_calls 段 additionalProperties:integer 使 mcp 键天然兼容，落点留在 verification_degraded 与另两档同处是对的。",
+    "执行型按 server 前缀（§2.1，问 5）与名单不进配置的理由同意：控制面工具与执行内核同档是保守方向，配置化等于给绕过检测开合法路径。",
+    "EV-95 更正（§1.5/§4，问 6）该做且只追加的处置对：两处被更正引文逐字核实存在（REPORT_2026-10-02_critic_exec_wording.md:102、response-claude.md:28），BACKLOG EV-95 条目现状与计划描述相符（含 EV-79 r3「本轮双 shell 实测」样本句），§1.5 的 rollout 统计虽无法独立复核（禁读），但点名了具体 run 与次数、证据目录留档，可事后对账。",
+    "效果层可测性与预算：三条判据均可机械核验；夹具独立运行根由 runtime.run_root（config.ts:837）自配可行，「不在本仓归档与闸门留痕」可达成；真实运行计数 3～4 ≤ 6 与决策八一致；「不调用则改措辞再跑、仍不调用如实报告以机制层为准」的失败路径诚实。",
+    "变异清单第 1～9、11～15 条各自挂着可红的用例；改前改后对照含「两份构建 sha256 不同、package 清单逐字节相同」防伪断言与真实历史样本回放（scripts/build.mjs:31 核实 --with-tests 存在），验证设计扎实。"
+  ],
+  "not_covered": [
+    "§1.4 会话日志事件形态与 §1.5 历史 rollout 统计：原始材料在 /Users/chenzhenbo/.trivium/runs（禁读清单），未独立复核，按计划引文与点名 run 采信；编码阶段的证据目录落盘后可对账。",
+    "zcode CLI 0.16.9 行为链（tool.call.started/completed/failed 是否齐备、mcp.tool.call 的不完整性、副本 HOME 是否带入 node_repl）未实测，采信计划实见。",
+    "效果层真实触发的可达性（模型是否照焦点调用 mcp__node_repl__js、是否经子代理绕开主会话 rollout——后者按 S1 仍不可见）无法预判，只能靠计划的两轮措辞与如实报告出口兜底。",
+    "设计文档 §10.3/§11.3/§6.5 与 LLD 2.5 的逐句落点未逐字核对（只核了 §11.1 边界句现状存在且内容与计划描述相符、BACKLOG EV-188/EV-95 条目存在）。",
+    "test/fixtures/stub-agent-kit/pieces/stub-agent.ts.txt 模板与 StubSpec 新增字段的兼容性未逐行核对（读了 StubSpec 现状，计划自己也标了「编码时照坑清单核一次」）。",
+    "集成/变异/对照各装置的实际通过性：本侧无执行能力，全部结论基于读码推演，未运行任何构建或测试。"
+  ],
+  "consulted": [
+    ".reviews/MCP执行工具调用检测/plan/2026-10-02-MCP执行工具调用检测-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-10-02_critic_exec_wording.md",
+    ".reviews/审查侧实测措辞约束/code/2026-10-02-审查侧实测措辞约束-response-claude.md",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/review.ts",
+    "src/trivium/render.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/report.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/types.ts",
+    "src/trivium/secrets.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/config.ts",
+    "src/trivium/cli.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/review.v1.json",
+    "scripts/build.mjs"
+  ]
+}

@@ -1,0 +1,297 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261002T072209Z",
+  "topic": "MCP执行工具调用检测",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「MCP执行工具调用检测」：EV-188——zcode（glm）侧审查员的工具清单里有一个 MCP 的 JS 执行工具 mcp__node_repl__js，只读名单管不到它，而编排器的轨迹计数不统计 MCP 调用：一旦被调用，背靠背隔离、只读保障与禁止出网三条都可能被绕过，结论照常放行。本主题只做检测：轨迹解析补上 MCP 调用计数，具名的执行型工具一被调用就判只读失守，其余 MCP 调用记…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "6aee0128b8b83bc8e921fbb6e1931dd84a36ecb0",
+    "tree_hash": "1fea19a6e6fa179561d886210f5c6c7967571ead",
+    "dirty": true,
+    "subject_sha256": "940dc443d86fe78c3e1398a36999f85e140a19eb62dbae8133a9206293e2dc0a",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "904f52c698ab405be359d2ece0743b202ccbf27d",
+      "dirty": false,
+      "inputs_sha256": "8681340dbb65f3f5f019641f60afedcde77c62539f99390463537d1ea769bfd8",
+      "built_at": "2026-10-02T03:27:55.208Z"
+    },
+    "after_tree_hash": "816b75b8521d49dfa8b3efcc5b25065a2a69f6a1"
+  },
+  "started_at": "2026-10-02T07:22:11.608Z",
+  "finished_at": "2026-10-02T07:33:09.189Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.159.2",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 487.442,
+      "tool_calls": {
+        "run_command": 28,
+        "project_reads": 34
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a0fb7d-f8df-74b1-97be-d44cfa1e1f48",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.14",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 387.486,
+      "tool_calls": {
+        "read": 36,
+        "grep": 17,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 20
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 277292,
+        "output_tokens": 33280,
+        "thinking_tokens": 27085,
+        "cache_read_tokens": 4734016,
+        "total_tokens": 310572
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "e7ad3ad3-5052-4584-82da-781978e36a5b",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 657.23,
+      "tool_calls": {
+        "read": 26,
+        "grep": 8,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 26
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 16,
+        "inputTokens": 1650430,
+        "outputTokens": 35140,
+        "totalTokens": 1685570,
+        "cacheReadTokens": 1531840,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_af190186-499a-45cd-8cab-42bc329fd2a7",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "MCP执行工具调用检测/plan/_meta/brief-codex-20261002T072209Z.md",
+      "sha256": "7c607896fa55a366c220576780e3df22e1d2c1e99566a6f2be714cf2747df1f7"
+    },
+    {
+      "path": "MCP执行工具调用检测/plan/_meta/brief-gemini-20261002T072209Z.md",
+      "sha256": "a4857691cbb8a2f66e7eb8ad454c925e317a153b6dc3ce742dcc993187d00cf9"
+    },
+    {
+      "path": "MCP执行工具调用检测/plan/_meta/brief-glm-20261002T072209Z.md",
+      "sha256": "ac8c4a2e33c0e1cce60e924ddfbb94d18a6e9189d99ab7a390fccea06c1ed772"
+    },
+    {
+      "path": "MCP执行工具调用检测/plan/_meta/review-codex-20261002T072209Z.json",
+      "sha256": "afb79ef801bda82052487f5956201ae9950190895ad796097284671194bd26c1"
+    },
+    {
+      "path": "MCP执行工具调用检测/plan/_meta/review-gemini-20261002T072209Z.json",
+      "sha256": "4495fd7b35cf938e677ae07652c42777b5b348c8dc202f32c7d63960ec84b1c8"
+    },
+    {
+      "path": "MCP执行工具调用检测/plan/_meta/review-glm-20261002T072209Z.json",
+      "sha256": "f9e81ec91e9fc5921c3e7a46f5d1160e48039935929b6923cf4220f3f51818f0"
+    },
+    {
+      "path": "MCP执行工具调用检测/plan/2026-10-02-MCP执行工具调用检测-codex.md",
+      "sha256": "02439c461a442d4abaa583980d4bb3e763962ca3433ca0b1783abae5a27f4c7e"
+    },
+    {
+      "path": "MCP执行工具调用检测/plan/2026-10-02-MCP执行工具调用检测-gemini.md",
+      "sha256": "f2bca65aea63a16630e49a4851a01f5be2d948386acb100a20520b9100690464"
+    },
+    {
+      "path": "MCP执行工具调用检测/plan/2026-10-02-MCP执行工具调用检测-glm.md",
+      "sha256": "e68efedeb713efa05bc7e9f1a611f0c91cf107bcba3d08ff560b4ac1e34eaa26"
+    },
+    {
+      "path": "MCP执行工具调用检测/plan/2026-10-02-MCP执行工具调用检测-claude.md",
+      "sha256": "940dc443d86fe78c3e1398a36999f85e140a19eb62dbae8133a9206293e2dc0a"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
