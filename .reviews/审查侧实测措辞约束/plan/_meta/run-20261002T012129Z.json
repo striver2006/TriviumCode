@@ -1,0 +1,297 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261002T012129Z",
+  "topic": "审查侧实测措辞约束",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「审查侧实测措辞约束」：EV-95 前半——没有命令执行能力的审查侧在结论里写「实测」「复测」，Driver 分不清哪些真跑过、哪些是推理，会把推理当实测采信（EV-79 里有一处已被证伪）。把措辞约束写进任务书模板，按该侧实际能力分两种说法，不再靠 Driver 每轮在焦点里手写。 开工前先读：记忆 pipeline-known-pitfalls.md、reply-in-chinese.md…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "a03a0561a19850444743e14942cb092b2de8fa49",
+    "tree_hash": "d9560e9bf240a007868c15ff90d3a1f9b585773b",
+    "dirty": true,
+    "subject_sha256": "5c099efb9c0bb4921e6ff74591ca9593b55463c7d02249e186923cb69d61766e",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "d5e19f09d8a29e7e17025fc538c9832343192f30",
+      "dirty": false,
+      "inputs_sha256": "322f53cb611c032215f765b7fd1444d59cbf871fee4352495acd492921a203e2",
+      "built_at": "2026-10-01T22:15:10.685Z"
+    },
+    "after_tree_hash": "4635392c6e668aa054e031dda059d13e3f6aa92b"
+  },
+  "started_at": "2026-10-02T01:21:31.488Z",
+  "finished_at": "2026-10-02T01:31:34.925Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.159.2",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 603.238,
+      "tool_calls": {
+        "run_command": 33,
+        "project_reads": 41
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a0fa33-c45e-7511-8143-57aaef15be7e",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.14",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 219.626,
+      "tool_calls": {
+        "read": 36,
+        "grep": 9,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 28
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 447125,
+        "output_tokens": 25961,
+        "thinking_tokens": 20706,
+        "cache_read_tokens": 3108190,
+        "total_tokens": 473086
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "ad358ebc-206d-4c38-94cc-2298ff4efe32",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 449.346,
+      "tool_calls": {
+        "read": 40,
+        "grep": 7,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 31
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 11,
+        "inputTokens": 1078082,
+        "outputTokens": 32291,
+        "totalTokens": 1110373,
+        "cacheReadTokens": 955136,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_d3dcbba7-b6bb-43b3-b12c-3f1b831c4d76",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "审查侧实测措辞约束/plan/_meta/brief-codex-20261002T012129Z.md",
+      "sha256": "207300e2270a0f765e31150161b81cd39692b868c147c155199ea588f4fc6e68"
+    },
+    {
+      "path": "审查侧实测措辞约束/plan/_meta/brief-gemini-20261002T012129Z.md",
+      "sha256": "26c4041b65e1b8d2900036a84cc7f863b712be2a6f05d0863ce322aebc04f0e0"
+    },
+    {
+      "path": "审查侧实测措辞约束/plan/_meta/brief-glm-20261002T012129Z.md",
+      "sha256": "d0f679020ccce4275dbd1260be097ad32847e8ec4ac2fb3866f8e80b8f843ffe"
+    },
+    {
+      "path": "审查侧实测措辞约束/plan/_meta/review-codex-20261002T012129Z.json",
+      "sha256": "2bb38a1b5e203554ad15d91208dcfb4a4e3f67ef5692861bd8c91ab81e2b7d55"
+    },
+    {
+      "path": "审查侧实测措辞约束/plan/_meta/review-gemini-20261002T012129Z.json",
+      "sha256": "a36468af0df709255ef2e524e6b6a0fc1e6c91b9401f77b1c26608ccc315a5d7"
+    },
+    {
+      "path": "审查侧实测措辞约束/plan/_meta/review-glm-20261002T012129Z.json",
+      "sha256": "35918f1118dcb4ceb29c9542800574965831d034d0a3d818be9a55bcb792b7a4"
+    },
+    {
+      "path": "审查侧实测措辞约束/plan/2026-10-02-审查侧实测措辞约束-codex.md",
+      "sha256": "b01d37a32d1a985a05000bb133971d8628835b05f3439a92e77927e5cf668a7f"
+    },
+    {
+      "path": "审查侧实测措辞约束/plan/2026-10-02-审查侧实测措辞约束-gemini.md",
+      "sha256": "150f757629e5da25ff71619c07227b8cb8fa4064837d965b65015393a10cc6f5"
+    },
+    {
+      "path": "审查侧实测措辞约束/plan/2026-10-02-审查侧实测措辞约束-glm.md",
+      "sha256": "9107857870b30de6c34930bab8bc65e776e9dae66036fb0235e6a0dcc130afa3"
+    },
+    {
+      "path": "审查侧实测措辞约束/plan/2026-10-02-审查侧实测措辞约束-claude.md",
+      "sha256": "5c099efb9c0bb4921e6ff74591ca9593b55463c7d02249e186923cb69d61766e"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

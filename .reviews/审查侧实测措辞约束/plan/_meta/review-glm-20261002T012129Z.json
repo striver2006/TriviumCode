@@ -1,0 +1,79 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "我对计划 §1 的现状描述做了逐锚点核实（base.ts 的 TraceCapability 与两个常量、四家适配器声明行、probes 两份事实源、brief.ts 第 1/6/7 节、review.ts 的 prepareRun 与唯一 renderBrief 调用点、run-protocol.ts:336、doctor.ts:182、trivium-critic.md 的 tools 清单、BACKLOG 三条目、设计文档 :2030/:2380 两个锚点、两份 brief 测试的断言面、设计 v1.3.73 与 LLD v1.1.29 的版本序列），全部与代码相符，没有发现一处失实。渲染接线、测试波及面（BriefInput 恰两处测试构造、无既有用例断言第 7 节内容）、桩设计、对账用例取向、效果层判据与预算均成立且可测。仅有两条不阻断的 nit：PROTOCOL 的 BRIEF 八段表对第 7 节的描述改后会少一块（是否同步可循 EV-113 的先例裁量），以及 BACKLOG 引用路径缺目录段。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "doc/03_api/PROTOCOL_dual_critic_relay.md:157-166（§二 BRIEF 八段表第 7 行）；计划 §4 文档清单",
+      "problem": "PROTOCOL 的 BRIEF 八段表第 7 行现在枚举第 7 节内容为五条（不编造问题、confidence: low、not_covered、agreed、不给大段补丁）。本计划给第 7 节增加按侧二选一的证据性质条目后，该行描述不再完整，而计划 §4 的同步清单（设计 §9.4/§11.1、LLD、BACKLOG、实施报告）没有列 PROTOCOL。需注意先例：EV-113 给第 6 节加 zcode 专属行时 PROTOCOL 的第 6 行也没同步（设计 §9.4 第 6 条有、PROTOCOL 没有），说明该表按摘要粒度维护、按侧条件句可以不进——但这次的条目作用于全部四侧（每侧都多一条或两条），与那句单侧尾注的分量不同，是否同步值得 Driver 明确裁一次而不是默认沿用。",
+      "evidence": "doc/03_api/PROTOCOL_dual_critic_relay.md:152-166 实读：§二开头写明「段数与顺序是契约」，第 165 行第 7 行枚举五条；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2029 第 6 条含「zcode 侧末尾固定不要调用 ExitPlanMode」而 PROTOCOL 第 164 行无此内容，构成先例；计划 §4 文档清单无 PROTOCOL 项。",
+      "suggestion": "在计划 §4 补一行决策（同步或明确不同步皆可）：若同步，PROTOCOL §二 第 7 行加「按侧 commandExecution 二选一的证据性质措辞约束」一语；若不同步，写明沿用 EV-113 的摘要粒度先例。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": ".reviews/审查侧实测措辞约束/plan/2026-10-02-审查侧实测措辞约束-claude.md §1.5、§4（BACKLOG.md:193 / BACKLOG.md:211 两处引用）",
+      "problem": "计划把 EV-95/EV-113 的出处写成仓库根的 BACKLOG.md，实际文件在 doc/08_project/BACKLOG.md。行号本身核对无误（EV-95 恰在 193 行、EV-113 恰在 211 行），内容引用也与原文一致，只是路径缺目录段——按本仓对行号引用的严格口径，宜写全。",
+      "evidence": "Glob 全仓仅命中 doc/08_project/BACKLOG.md；实读其 193 行为 EV-95（todo 待计划双审，内容与计划 §1.5 引用一致）、211 行为 EV-113（done，含第 6 节 ExitPlanMode 行与 no_json_object 回退成因）。",
+      "suggestion": "两处引用改为 doc/08_project/BACKLOG.md:193 与 :211。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "现状描述逐点属实：§1.1-§1.4 引用的 25 处以上行号锚点我逐一核对，包括 base.ts:48-66 的 TraceCapability、base.ts:205-208/756-759 两个常量、agy.ts:185 / zcode.ts:980 / claude.ts:656 共用 TOOL_TRACE_CAPABILITY 与 codex.ts:279 的 COMMAND_TRACE_CAPABILITY、stub.ts:358-361 按 spec.mode 二选一、probes/codex.ts:54 与 probes/claude.ts:85/212-217 的工具面事实源、brief.ts:290-297 第 7 节五条与 219-225 第 1 节、brief.ts:65-68 第 6 节按 CRITIC_VENDOR 渲染的先例，无一失实。",
+    "commandExecution 与 TraceCapability 并列而不并入的三条理由成立且经我核实：三家确实共用同一个常量对象；doctor.capabilityParity 的入参类型确为 TraceCapability（doctor.ts:182-186）；必填 readonly 字段漏声明会被 tsc --noEmit 拦下。未发现并入的实质好处。",
+    "渲染接线的事实基础无误：renderBrief 生产调用点确为 review.ts:906 唯一（grep 全 src 验证），同步 --stage（review.ts:1934-1935）与 --start（run-protocol.ts:334-336）都过 prepareRun，:646-662 已对每个入选侧判过适配器非空、缺接线即抛，adapters[critic] 的非空断言有真实前置保证。",
+    "测试波及面估计准确：BriefInput 在测试里的构造恰为两处（brief.test.ts:34 的 input() 与 brief-output-contract.test.ts:21-28 的 brief()），两份测试都不断言第 7 节内容（后者只切第 6 节断言、前者八段测试只查标题顺序），只补夹具即可，计划 §3.1① 最后一条与代码现状一致。",
+    "第 7 节插入位置（not_covered 条之后，因 none 说法要引用它）与「第 2 段」改「第 2 节」的称呼统一都合适：brief.ts:232 正文自证全篇自称「节」；与第 6 节 ExitPlanMode 行互补不重复（一个管收尾形态、一个管诱因）的判断成立。",
+    "对账用例「已分类工具表 + 未分类即红」的取向正确：READONLY_INVARIANTS 的导出形状（RESTRICTED、STRICT_MCP_CONFIG、'--tools'、'Read,Grep,Glob'）支撑「'--tools' 后一项切逗号」的解析；CODEX_READONLY_INVARIANTS 恰等 ['-s','read-only'] 的钉法与 agy 读 front-matter 的钉法都落得住；误红即出口是登记一行，与本仓 fail-closed 的既有纪律同向。问题 3 的初答我同意。",
+    "桩的缺省按 mode 推导不与决策一冲突（问题 2 的初答我同意）：决策一约束真实适配器；渲染跟随 commandExecution 而非 traceShape 或厂商这一不变量，由显式覆盖的交叉组合（command-trace 加 none、tool-trace 加 readonly-shell）在单测与集成第二次运行里机器守着——厂商分叉与按 traceShape 推导都会在这些交叉格里红。StubSpec 已有一串可选覆盖字段（modelOverrideApplied 等），新增可选 commandExecution 贴合既有形态。",
+    "效果层设计可测且预算自洽：五条判据均可机筛加人工核定；判据 2 的三分类标注（自述判断/引用/说明做不到）加原句进证据目录是可行的去主观化方式（问题 5 的初答可行）；真值预跑进证据、基线不复现问题不影响新构建判定、12 轮上限与预算分解（5 加 4 加 1 加 1 等于 11 不超 12）都对得上；夹具建在 scratchpad 避开本仓归档、直跑 bundle 避开安装副本坑、配置只复制不打印，符合本仓纪律。",
+    "版本号与文档锚点核对无误：设计文档当前 v1.3.73（文档头第 6 行），计划的 v1.3.74 恰为下一版；LLD 当前 v1.1.29，计划的 v1.1.30 恰为下一版；设计 :2030 确为 §9.4 第 7 条、:2380 确为 §11.1「轨迹能力与判定分档」小节。",
+    "范围与不做清单和用户决策一至六对得上：EV-95 原文的两条出路、另一半零产出缺陷已由 EV-113（done）兜住、EV-98 点名不碰，均与 doc/08_project/BACKLOG.md 原文一致；registry-parity 对 brief.ts 的 Agent id 字面量扫描约束存在，按取值渲染不受影响。"
+  ],
+  "not_covered": [
+    "效果层 A/B 只审了设计的可测性与预算，无法预跑：措辞约束对真实审查员行为的实际效果以实跑为准，本审查不构成对判据必然达标的预测。",
+    "变异清单是「拟定（编码时按实际代码定稿）」，具体替换锚点的唯一性与可替换性未逐条核对，只核了 scripts/mutation-check.mjs 装置确有七道闸（含锚点唯一性闸 7）支撑计划描述的用法。",
+    "guard.ts 的六个 TraceCapability 消费点未逐一数过，采信设计 §11.1 的消费点表与计划 §2.1 的引用；doctor.capabilityParity 的调用面只读了函数本体未追调用方。",
+    "装到用户 HOME 的 trivium-critic.md 副本与仓内副本的漂移不在对账用例论域内（预存在的安装同步问题，非本计划缺陷，但意味着对账只钉仓内一致性）。",
+    "LLD 2.6 与 3.3 的段落内容未逐字读（只核了版本序列正确）；集成测试 command-trace.test.ts 只确认存在，未逐个确认既有桩配置在新缺省下不改即成立——该断言依赖编码时实跑。"
+  ],
+  "consulted": [
+    ".reviews/审查侧实测措辞约束/plan/2026-10-02-审查侧实测措辞约束-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/brief.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/claude.ts",
+    "skills/dual-critic/agents/trivium-critic.md",
+    "skills/dual-critic/lenses.yaml",
+    "test/unit/brief.test.ts",
+    "test/unit/brief-output-contract.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "scripts/mutation-check.mjs"
+  ]
+}
