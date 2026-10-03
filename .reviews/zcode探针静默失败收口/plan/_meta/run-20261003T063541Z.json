@@ -1,0 +1,297 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261003T063541Z",
+  "topic": "zcode探针静默失败收口",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「zcode探针静默失败收口」：EV-196 + EV-197，上一题 EV-194 双审核出的两个同族缺口，一起收。 EV-196：doctor 的 zcode 探针进了真实调用段、却没刷新 response_field 时，doctor 不拦也不警告，只多一条 note。probe 从既有结论克隆，response_field 保留旧值，doctor 那条 headless 未跑通的 bl…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "ee4ac5b91ce71aae531691040d3019e3e05d6f3a",
+    "tree_hash": "ef76d4765d588fd82b52f303dfca33d0988f0fb6",
+    "dirty": true,
+    "subject_sha256": "faaa365cdaa631c3d11fbbf127a48c1a444520971a55a79afb5234814a29274a",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "ee4ac5b91ce71aae531691040d3019e3e05d6f3a",
+      "dirty": false,
+      "inputs_sha256": "256f8f3aee8e7a96fa6bb318ed6066a11d0a589dc183fc573b5ab176eaca6215",
+      "built_at": "2026-10-03T05:42:25.342Z"
+    },
+    "after_tree_hash": "967101738bb32473aa57d8700983580d15cdc407"
+  },
+  "started_at": "2026-10-03T06:35:43.314Z",
+  "finished_at": "2026-10-03T06:44:40.041Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.0",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 250.118,
+      "tool_calls": {
+        "run_command": 11,
+        "project_reads": 10
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a10079-c924-78b0-8bfd-743bf805d3b9",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.16",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 459.722,
+      "tool_calls": {
+        "read": 50,
+        "grep": 32,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 30
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 972462,
+        "output_tokens": 64049,
+        "thinking_tokens": 56288,
+        "cache_read_tokens": 9272878,
+        "total_tokens": 1036511
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "66cd213e-5152-4a41-ad77-2dc1db45d49f",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 536.418,
+      "tool_calls": {
+        "read": 12,
+        "grep": 13,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 18
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 18,
+        "inputTokens": 1350166,
+        "outputTokens": 30423,
+        "totalTokens": 1380589,
+        "cacheReadTokens": 1259328,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_73324b7c-c153-4652-a68b-1ad8c8a9662d",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "zcode探针静默失败收口/plan/_meta/brief-codex-20261003T063541Z.md",
+      "sha256": "822c6de4d8f9adbb068b0c42e0ca1e2ff704d8e96829850e556c4b2a42eae57e"
+    },
+    {
+      "path": "zcode探针静默失败收口/plan/_meta/brief-gemini-20261003T063541Z.md",
+      "sha256": "5009daded5b99323f11716b80842203edc165b07cc1c93189277625c11d504f0"
+    },
+    {
+      "path": "zcode探针静默失败收口/plan/_meta/brief-glm-20261003T063541Z.md",
+      "sha256": "86dfeb3a4398340275b01739dfc3204ed2baeb394f320aca01491c91a6e5f1cf"
+    },
+    {
+      "path": "zcode探针静默失败收口/plan/_meta/review-codex-20261003T063541Z.json",
+      "sha256": "f750b4b397d7f8e3d226bf16d9b4bac5f397d65f85969e36df784b23d8979f5c"
+    },
+    {
+      "path": "zcode探针静默失败收口/plan/_meta/review-gemini-20261003T063541Z.json",
+      "sha256": "70276e9463c6ace5702f1f77178fe90985b7b3c6d9c7989188bf31eb07ec1715"
+    },
+    {
+      "path": "zcode探针静默失败收口/plan/_meta/review-glm-20261003T063541Z.json",
+      "sha256": "b98a01a3d41be8e4e9dd3256d70ac3b005e4786b708a3f01a06904ba02b43fcf"
+    },
+    {
+      "path": "zcode探针静默失败收口/plan/2026-10-03-zcode探针静默失败收口-codex.md",
+      "sha256": "98465369e71113b66f50a49d0e8e45acb81b632af82062e70da683e3027eb75b"
+    },
+    {
+      "path": "zcode探针静默失败收口/plan/2026-10-03-zcode探针静默失败收口-gemini.md",
+      "sha256": "aba383b600aff96032f102a441a3bcfb793e804dd0f40d834505b3734ac285ba"
+    },
+    {
+      "path": "zcode探针静默失败收口/plan/2026-10-03-zcode探针静默失败收口-glm.md",
+      "sha256": "122071b52da41e5c84a514983517415fef779b5d5d5b70348a269fc89abccae7"
+    },
+    {
+      "path": "zcode探针静默失败收口/plan/2026-10-03-zcode探针静默失败收口-claude.md",
+      "sha256": "faaa365cdaa631c3d11fbbf127a48c1a444520971a55a79afb5234814a29274a"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
