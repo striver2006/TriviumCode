@@ -1,0 +1,173 @@
+{
+  "targets": [
+    "src/trivium/hooks.ts",
+    "src/trivium/gate.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/hooks.test.js",
+    "dist/test/test/integration/gate-loop.test.js",
+    "dist/test/test/unit/gate.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "判据放宽为「不是 false 就算失守」（读不出也算）",
+      "file": "src/trivium/hooks.ts",
+      "find": "  return meta?.guard.readonly_breach === true ? { g, meta } : null;\n",
+      "replace": "  return meta?.guard.readonly_breach !== false ? { g, meta } : null;\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "改用 latestRunMeta 取最新而不按闸门项 run_id 直读",
+      "file": "src/trivium/hooks.ts",
+      "find": "  const { readRunMeta } = await import('./meta.js');\n  const meta = await readRunMeta({ archiveRoot: ctx.archiveRoot, topic: g.topic }, g.stage, g.run_id);\n",
+      "replace": "  const { latestRunMeta } = await import('./meta.js');\n  const meta = (await latestRunMeta({ archiveRoot: ctx.archiveRoot, topic: g.topic }, g.stage)).meta;\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "收工拦截忽略失守（恒走原文案）",
+      "file": "src/trivium/hooks.ts",
+      "find": "  if (breached.length > 0) {\n",
+      "replace": "  if (false) {\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "提交 Hook 忽略失守（恒走原文案）",
+      "file": "src/trivium/hooks.ts",
+      "find": "    if (breached.length === 0) {\n      // 未见失守：与改前逐字相同（计划 r2 §2.2）\n",
+      "replace": "    if (true) {\n      // 未见失守：与改前逐字相同（计划 r2 §2.2）\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "阻断上限忽略失守（恒走原两句）",
+      "file": "src/trivium/hooks.ts",
+      "find": "    let msg: string;\n    if (breached.length === 0) {\n",
+      "replace": "    let msg: string;\n    if (true) {\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "混合时原句列全部待裁决项",
+      "file": "src/trivium/hooks.ts",
+      "find": "      const nList = normal.map(gateLabel).join('、');\n",
+      "replace": "      const nList = pending.map(gateLabel).join('、');\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "调用记录截断改 9 条",
+      "file": "src/trivium/gate.ts",
+      "find": "  return files.length > 0 ? files.slice(0, 8).join('、') + (files.length > 8 ? '…' : '') : '（run 元数据未记录）';\n",
+      "replace": "  return files.length > 0 ? files.slice(0, 9).join('、') + (files.length > 8 ? '…' : '') : '（run 元数据未记录）';\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "逐项段漏作废命令",
+      "file": "src/trivium/hooks.ts",
+      "find": "      `${indent}  出口：由用户决定用 ${entryCommandOf(meta.driver, 'dual-abandon')} ` +\n        `--topic ${g.topic} --stage ${g.stage} 作废这一轮（保留工件、只解闸门）。`,\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "提交失守段漏关闭方式",
+      "file": "src/trivium/hooks.ts",
+      "find": "      ...(await breachLines(breached, '  ')),\n      `  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。`,\n",
+      "replace": "      ...(await breachLines(breached, '  ')),\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "提交 Hook 失守时退出码改 0",
+      "file": "src/trivium/hooks.ts",
+      "find": "    return { exitCode: EXIT.GATE_BLOCK, stderr: lines.join('\\n') };\n",
+      "replace": "    return { exitCode: EXIT.OK, stderr: lines.join('\\n') };\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "阻断上限混合时丢掉未裁决项",
+      "file": "src/trivium/hooks.ts",
+      "find": "        ...(normal.length > 0 ? [`  ${normal.map(gateLabel).join('、')} 的裁决仍未齐备，请手工处理。`] : []),\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "混合时 stderr 只取原首句",
+      "file": "src/trivium/hooks.ts",
+      "find": "      stderr.push(`还有未逐条裁决的审查意见：${nList}`, `另有阶段本轮审查记录到只读失守：${bList}`);\n",
+      "replace": "      stderr.push(`还有未逐条裁决的审查意见：${nList}`);\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "作废命令写死斜杠写法",
+      "file": "src/trivium/hooks.ts",
+      "find": "      `${indent}  出口：由用户决定用 ${entryCommandOf(meta.driver, 'dual-abandon')} ` +\n        `--topic ${g.topic} --stage ${g.stage} 作废这一轮（保留工件、只解闸门）。`,\n",
+      "replace": "      `${indent}  出口：由用户决定用 /dual-abandon ` +\n        `--topic ${g.topic} --stage ${g.stage} 作废这一轮（保留工件、只解闸门）。`,\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "快照漂移恒写「未检出」",
+      "file": "src/trivium/hooks.ts",
+      "find": "  if (!d.changed) return '未检出（snapshot.drift.changed 为 false——这不足以判定误报，见下方处置）';\n",
+      "replace": "  if (true) return '未检出（snapshot.drift.changed 为 false——这不足以判定误报，见下方处置）';\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "混合时指引句漏「只针对上列阶段」补句",
+      "file": "src/trivium/hooks.ts",
+      "find": "          `（只针对上列阶段；下列只读失守的阶段另行处置，它们的 gate --check 不会通过）。`,\n",
+      "replace": "          `。`,\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "闸门项一律判未失守（接线断）——集成层",
+      "file": "src/trivium/hooks.ts",
+      "find": "  if (!g.run_id) return null;\n",
+      "replace": "  return null;\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "共用处置句措辞漂移（gate 输出改变）",
+      "file": "src/trivium/gate.ts",
+      "find": "  '还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。';\n",
+      "replace": "  '还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再登记重跑。';\n",
+      "expect": "dist/test/test/unit/gate.test.js"
+    },
+    {
+      "id": "M18",
+      "desc": "漏「重跑须先作废」那一行（计划 r2 §7）",
+      "file": "src/trivium/hooks.ts",
+      "find": "    `${indent}不论确有改动要清理后重跑，还是核实为误报想重跑，都须先作废这一轮：` +\n      '闸门停在待裁决时 review --start 拒绝重跑，而这一轮的 gate --check 不会通过。',\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M19",
+      "desc": "快照漂移文件截断改 9 个（GLM-01）",
+      "file": "src/trivium/hooks.ts",
+      "find": "    d.files.slice(0, 8).join('、') +\n",
+      "replace": "    d.files.slice(0, 9).join('、') +\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M20",
+      "desc": "无 run_id 守卫只判 null（CODEX-02）",
+      "file": "src/trivium/hooks.ts",
+      "find": "  if (!g.run_id) return null;\n",
+      "replace": "  if (g.run_id === null) return null;\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    }
+  ]
+}

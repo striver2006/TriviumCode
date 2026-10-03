@@ -28,11 +28,11 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
-import { type Ctx, type Stage, STAGES } from './types.js';
+import { type Ctx, type RunMeta, type Stage, STAGES, describeDriftUnknown } from './types.js';
 import { looksLikeRoleArtifact } from './naming.js';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, entryCommandOf, type AgentId } from './agents/registry.js';
 import { EXIT } from './exit-codes.js';
-import { listOpenGates, readState, shouldLockWrites, StateCorruptError } from './state.js';
+import { listOpenGates, readState, shouldLockWrites, StateCorruptError, type GateEntry } from './state.js';
 import { bumpStopBlockCount } from './lock.js';
 import { exists } from './util/fsx.js';
 
@@ -1262,6 +1262,114 @@ function looksLikeCommit(input: HookInput, projectRoot: string): boolean {
   return commitTargetsProject(cmd, projectRoot);
 }
 
+// ─────────────── 待裁决闸门的只读失守文案（EV-98 文案部分） ───────────────
+
+/*
+ * 只读失守时 `gate --check` 必败（`gate.ts` 的 `readonly_breach` failure），闸门停在
+ * `review_done_awaiting_disposition`，两处 Hook 照旧拦——但原文案一律说「未逐条裁决」，
+ * 把 Driver 引去补裁决件，而补多少都解不开（EV-79 代码双审 r2：22 条裁决齐备、最终 abandon）。
+ *
+ * 这里只换给人看的文字：退出码、是否拦、阻断计数都在读留痕之前定好，读取结果只选文案。
+ * 所以不需要 `resolveRoundDriver` 那套 realpath / 软链守卫——伪造一份失守留痕的最坏后果
+ * 是把「未裁决」说成「失守」，拦截照旧（计划 r2 §4 R1）。
+ */
+
+/** 本轮失守的一个闸门项与它那一轮的运行留痕 */
+interface BreachedGate {
+  g: GateEntry;
+  meta: RunMeta;
+}
+
+/**
+ * 该闸门项**这一轮**是否记录了只读失守。
+ *
+ * 按闸门项的 `run_id` 直读那一份（`readRunMeta`），**不用 `latestRunMeta`**（计划 r2 §2.1）：
+ * 后者遇读不出的留痕会 `warn` 到进程 stderr，「读不出时文案逐字不变」当场不成立；
+ * 而闸门项的 `run_id` 就是置这一格的那次运行，直读天然是「这一轮」。
+ *
+ * 已知边界（计划 r2 §4 R4）：这一轮读不出、更旧一轮记着失守时，这里判「未见失守」出原文案，
+ * 而不带 `--run-id` 的 `gate --check` 会退回更旧一轮报失守。不改——那一格本身是留痕坏了。
+ */
+async function roundBreach(ctx: Ctx, g: GateEntry): Promise<BreachedGate | null> {
+  // `readState` 不校验条目形状：被手改或旧版写出的 state.json 缺键时是 undefined，与 null 同按「没有留痕可读」（代码双审 CODEX-02）
+  if (!g.run_id) return null;
+  const { readRunMeta } = await import('./meta.js');
+  const meta = await readRunMeta({ archiveRoot: ctx.archiveRoot, topic: g.topic }, g.stage, g.run_id);
+  return meta?.guard.readonly_breach === true ? { g, meta } : null;
+}
+
+/** 把待裁决闸门按「本轮失守 B / 未见失守 N」拆开，保持原顺序 */
+async function splitByBreach(
+  ctx: Ctx,
+  pending: GateEntry[],
+): Promise<{ normal: GateEntry[]; breached: BreachedGate[] }> {
+  const normal: GateEntry[] = [];
+  const breached: BreachedGate[] = [];
+  for (const g of pending) {
+    const b = await roundBreach(ctx, g);
+    if (b) breached.push(b);
+    else normal.push(g);
+  }
+  return { normal, breached };
+}
+
+const gateLabel = (g: GateEntry): string => `${g.topic}/${g.stage}`;
+
+/*
+ * 「gate --check 对只读失守一律判失败」陈述的是 `checkAdjudication` 对 `readonlyBreach.hit`
+ * 无条件推 failure 这件事（`gate.ts` 的 `READONLY_BREACH_TRIAGE` 旁有互指注释）。
+ * 将来若给失守加豁免出口，这句要同改；`gate-loop` 集成用例（齐裁决件仍失败 + Hook 说失守）会先红。
+ */
+const BREACH_UNFIXABLE =
+  '这道闸门靠补裁决件解不开——gate --check 对只读失守一律判失败，裁决件写得再齐也不放行';
+
+/** 快照漂移的实际取值，按 Hook 已读到的那份留痕直接写出（计划双审 CODEX-08） */
+function driftText(meta: RunMeta): string {
+  const d = meta.snapshot.drift;
+  if (!d.changed) return '未检出（snapshot.drift.changed 为 false——这不足以判定误报，见下方处置）';
+  if (d.files.length === 0) {
+    // 「比不了」走全部人读面共用的排版（EV-139）
+    return `比对未完成（${d.unknown_reason ? describeDriftUnknown(d.unknown_reason) : '原因未记录'}），按有改动对待`;
+  }
+  return (
+    `检出 ${d.files.length} 个文件改动：` +
+    d.files.slice(0, 8).join('、') +
+    (d.files.length > 8 ? '…' : '')
+  );
+}
+
+/**
+ * 失守段的逐项段 + 共用处置段（计划 r2 §2.3）。首句由调用方各写各的。
+ *
+ * 处置判据句取 `gate.ts` 的 `READONLY_BREACH_TRIAGE`，与 `gate --check` 只有一份来源（CODEX-01）；
+ * 作废命令按该轮 run.json 的 `driver` 取写法（CODEX-04），每个失守项各给一条（AGY-01）。
+ */
+async function breachLines(items: BreachedGate[], indent: string): Promise<string[]> {
+  const { READONLY_BREACH_TRIAGE, breachRecordsText } = await import('./gate.js');
+  const lines: string[] = [];
+  for (const { g, meta } of items) {
+    lines.push(
+      `${indent}· ${gateLabel(g)}（run ${meta.run_id}）`,
+      `${indent}  调用记录（非文件路径）：${breachRecordsText(meta.guard.breached_files ?? [])}`,
+      `${indent}  快照漂移：${driftText(meta)}`,
+      `${indent}  出口：由用户决定用 ${entryCommandOf(meta.driver, 'dual-abandon')} ` +
+        `--topic ${g.topic} --stage ${g.stage} 作废这一轮（保留工件、只解闸门）。`,
+    );
+  }
+  lines.push(
+    `${indent}${READONLY_BREACH_TRIAGE}`,
+    `${indent}（与 gate --check 的 readonly_breach 一条同一判据；裁决件尚未落盘时 gate --check 会先报缺件、看不到那一条。）`,
+    /*
+     * 「重跑」不是独立出口（实施期核实，计划 r2 §7）：闸门停在待裁决时 `review --start` 的比较-交换
+     * 拒绝启动（`review.ts` 的「尚未裁决，不能直接重跑」），而失守轮的 `gate --check` 又必败——
+     * 不论确有改动要清理后重跑，还是核实为误报想重跑，都要先作废这一轮。
+     */
+    `${indent}不论确有改动要清理后重跑，还是核实为误报想重跑，都须先作废这一轮：` +
+      '闸门停在待裁决时 review --start 拒绝重跑，而这一轮的 gate --check 不会通过。',
+  );
+  return lines;
+}
+
 export async function hookPreCommit(ctx: Ctx, input: HookInput): Promise<HookOutput> {
   if (!ctx.config.gate.block_commit) return ALLOW;
   if (input.tool_name === 'Bash' && !looksLikeCommit(input, ctx.projectRoot)) return ALLOW;
@@ -1277,14 +1385,33 @@ export async function hookPreCommit(ctx: Ctx, input: HookInput): Promise<HookOut
    */
   const pending = open.filter((g) => g.state === 'review_done_awaiting_disposition');
   if (pending.length > 0) {
-    const list = pending.map((g) => `${g.topic}/${g.stage}`).join('、');
-    return {
-      exitCode: EXIT.GATE_BLOCK,
-      stderr:
-        `以下阶段的审查意见尚未逐条裁决，提交被拦下：${list}\n` +
-        `  请先补齐裁决件并通过 \`trivium gate --stage <阶段> --check\`。\n` +
-        `  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。`,
-    };
+    const { normal, breached } = await splitByBreach(ctx, pending);
+    if (breached.length === 0) {
+      // 未见失守：与改前逐字相同（计划 r2 §2.2）
+      const list = pending.map((g) => `${g.topic}/${g.stage}`).join('、');
+      return {
+        exitCode: EXIT.GATE_BLOCK,
+        stderr:
+          `以下阶段的审查意见尚未逐条裁决，提交被拦下：${list}\n` +
+          `  请先补齐裁决件并通过 \`trivium gate --stage <阶段> --check\`。\n` +
+          `  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。`,
+      };
+    }
+    // 有失守：未见失守的项照原文案前两行，失守段在后，关闭方式恒为最后一行、只出一次（GLM-03）
+    const lines: string[] = [];
+    if (normal.length > 0) {
+      lines.push(
+        `以下阶段的审查意见尚未逐条裁决，提交被拦下：${normal.map(gateLabel).join('、')}`,
+        `  请先补齐裁决件并通过 \`trivium gate --stage <阶段> --check\`。`,
+      );
+    }
+    lines.push(
+      `以下阶段的审查记录到只读失守，提交被拦下：${breached.map((b) => gateLabel(b.g)).join('、')}`,
+      `  ${BREACH_UNFIXABLE}。`,
+      ...(await breachLines(breached, '  ')),
+      `  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。`,
+    );
+    return { exitCode: EXIT.GATE_BLOCK, stderr: lines.join('\n') };
   }
 
   /*
@@ -1420,6 +1547,9 @@ async function checkArchiveIntegrity(ctx: Ctx): Promise<HookOutput> {
  *
  * 只拦「审查已落盘但裁决未完成」；`awaiting_approval` 是**期望的**停点，放行。
  * 三层防死循环：`stop_hook_active` 早退、每阶段阻断上限、Claude Code 自身 8 次硬上限。
+ *
+ * 该闸门这一轮记录了只读失守时，拦截与计数不变，只把文案换成真因与出口（EV-98 文案部分，
+ * 见 `splitByBreach`）；未见失守时文案与改前逐字相同。
  */
 export async function hookStop(ctx: Ctx, input: HookInput): Promise<HookOutput> {
   // 第一层：Claude Code 已在因 Stop hook 而继续，别再叠加
@@ -1443,12 +1573,54 @@ export async function hookStop(ctx: Ctx, input: HookInput): Promise<HookOutput> 
     g.stage,
     ctx.config.gate.stop_hook_max_blocks,
   );
+  // 退出码与计数已在上面定好；下面只按本轮是否失守选文案（计划 r2 §2.2）
+  const { normal, breached } = await splitByBreach(ctx, pending);
+
   if (exceeded) {
-    const msg =
-      `已连续 ${count - 1} 次阻断收工仍未完成裁决，本次放行以避免死循环。\n` +
-      `  ${g.topic}/${g.stage} 的裁决仍未齐备，请手工处理。`;
+    let msg: string;
+    if (breached.length === 0) {
+      msg =
+        `已连续 ${count - 1} 次阻断收工仍未完成裁决，本次放行以避免死循环。\n` +
+        `  ${g.topic}/${g.stage} 的裁决仍未齐备，请手工处理。`;
+    } else {
+      // 有失守就 N 与 B 都点名：Hook 已放行，这句话是人唯一的提示（CODEX-02）
+      msg = [
+        `已连续 ${count - 1} 次阻断收工，本次放行以避免死循环。`,
+        ...(normal.length > 0 ? [`  ${normal.map(gateLabel).join('、')} 的裁决仍未齐备，请手工处理。`] : []),
+        `  ${breached.map((b) => gateLabel(b.g)).join('、')} 本轮记录到只读失守，补裁决件解不开这道闸门，请手工处理：`,
+        ...(await breachLines(breached, '  ')),
+      ].join('\n');
+    }
     // exit 0 的 stderr 不会展示给用户；systemMessage 才会——这条提示恰恰是给人看的
     return { exitCode: EXIT.OK, json: { systemMessage: msg }, stderr: msg };
+  }
+
+  if (breached.length > 0) {
+    const bList = breached.map((b) => gateLabel(b.g)).join('、');
+    const head: string[] = [];
+    const stderr: string[] = [];
+    if (normal.length > 0) {
+      // 混合：原两句只列未见失守的项，指引句末说明只针对这几项（CODEX-03）
+      const nList = normal.map(gateLabel).join('、');
+      head.push(
+        `还有未逐条裁决的审查意见：${nList}。`,
+        `请读完两份审查文档全文，按 trivium.disposition.v1 写出裁决件` +
+          `（每个意见编号都要有裁决与理由，接受项要写落点），再运行 ` +
+          `\`trivium gate --stage ${normal[0]!.stage} --check\`` +
+          `（只针对上列阶段；下列只读失守的阶段另行处置，它们的 gate --check 不会通过）。`,
+        `另有阶段本轮审查记录到只读失守：${bList}。${BREACH_UNFIXABLE}，不要再为解闸门去补裁决件。`,
+      );
+      // 两个真因都进 stderr，失守不在 stderr 面隐形（AGY-02 ≡ GLM-04）
+      stderr.push(`还有未逐条裁决的审查意见：${nList}`, `另有阶段本轮审查记录到只读失守：${bList}`);
+    } else {
+      head.push(`本轮审查记录到只读失守：${bList}。${BREACH_UNFIXABLE}，不要再为解闸门去补裁决件。`);
+      stderr.push(`本轮审查记录到只读失守：${bList}`);
+    }
+    return {
+      exitCode: EXIT.GATE_BLOCK,
+      json: { decision: 'block', reason: [...head, ...(await breachLines(breached, ''))].join('\n') },
+      stderr: stderr.join('\n'),
+    };
   }
 
   const list = pending.map((x) => `${x.topic}/${x.stage}`).join('、');

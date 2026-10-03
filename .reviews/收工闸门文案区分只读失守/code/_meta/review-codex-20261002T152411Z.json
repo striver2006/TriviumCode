@@ -1,0 +1,83 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "本轮按「跨平台与环境耦合 / 资源与生命周期 / 运行环境与依赖版本兼容」镜头审了这份补丁。核对面上做了：读工作树 src/trivium/hooks.ts 的新增段（roundBreach / splitByBreach / driftText / breachLines / hookPreCommit / hookStop 全函数上下文）、src/trivium/gate.ts 的 READONLY_BREACH_TRIAGE 与 breachRecordsText 抽取、上下游 src/trivium/meta.ts 的 readRunMeta / migrateRunMetaV1 / validateRunMeta、src/trivium/types.ts 的 RunMeta 与 SnapshotMeta.drift、src/trivium/state.ts 的 GateEntry 与 upsert / readState、src/trivium/schemas.ts 的注册表身份两段式校验、src/trivium/naming.ts 的 validateTopic、skills/dual-critic/schema/run.v1.json 与 run.v2.json 的 required 集、skills-src/commands/abandon.contract.md 与 skills/dual-abandon/SKILL.md 的参数面、test/unit/hooks.test.ts（U1～U16）、test/unit/gate.test.ts（U15）与 test/integration/gate-loop.test.ts 的新用例、桩 write_breach 模式与 bundleMissing 跳过约定、以及 evidence 目录的 acceptance.mjs / mutation-spec / check-1.txt / doctor-selftest.txt。实测方式：本轮在只读沙箱里执行的命令均为 grep / sed / tail / python3 读 schema（无写操作）；未重跑测试套件与变异装置，相关读数取自留痕文件。核心结论：抽取常量后 gate --check 输出逐字节不变（U15 用取自基线的字面量锁住）；按闸门项 run_id 直读而非 latestRunMeta 的取舍正确——migrateRunMetaV1 与 v1 schema 都保证 snapshot.drift 必填、readRunMeta 全程不抛，失守文案不会把 Hook 打成 exit 1 而静默放行；driver 取 run.json 而非 state.json 的 gate.driver，符合 EV-68 的既有纪律；未知/更潮的 driver 会被两段式身份校验判读不出、回落原文案，版本偏斜降级正确；acceptance.mjs 的依赖区逐字相同前置与 mkdtemp+try/finally 清理在生命周期上是干净的。余下三条都是小问题（一条 minor、两条 nit），不拦。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/hooks.ts 的 breachLines 逐项段「出口」一行（第 1354～1355 行附近：插值 --topic ${g.topic} --stage ${g.stage}）",
+      "problem": "失守文案把主题名不加引号地插进一条「由用户决定复制执行」的作废命令行。validateTopic（src/trivium/naming.ts）的注释声称「允许中英文、数字、-、_、.」，但实现是黑名单：只禁路径分隔符、..、前导 .、控制字符与保留后缀，含分号、与号、美元符、反引号这类 shell/参数元字符的主题名照样合法。主题一旦被拼进 $ARGUMENTS 替换的入口命令文本，粘贴执行的形态对这些字符没有任何防护。本仓库同类写法已存在（cli.ts 第 1345 行、worktree-summary.ts 第 287 行、hooks.ts 第 703/1059 行），本补丁又新增一处——暴露面在扩大，且新增的测试用例断言的正是无引号形态（U2/U13 断言 /dual-abandon --topic t --stage code），会把无引号写法固化成期望。",
+      "evidence": "读过 src/trivium/naming.ts 第 23～80 行（validateTopic 黑名单实现与「允许…」注释）、src/trivium/hooks.ts 的 breachLines 全文、grep -rn dual-abandon src/ 命中的四处既有同式、test/unit/hooks.test.ts U2/U13/U16 与 test/integration/gate-loop.test.ts 的断言字符串。",
+      "suggestion": "二选一：在文案里给主题参数加双引号（同步改三处断言与集成用例）；或不动本主题措辞、另登一条 EV 把 validateTopic 收紧为注释宣称的白名单（那才是根治，且会同时管住既有四处）。至少在 BACKLOG 里把「建议命令未加引号」登记为已知边界。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/hooks.ts 的 roundBreach 第一行 if (g.run_id === null) return null;",
+      "problem": "闸门项的 run_id 用严格 === null 判「没有留痕可读」。state.ts 的 upsert 现码确实恒写 null（第 237 行 run_id: i.runId ?? prev?.run_id ?? null），但 readState（第 112～130 行）对每个 gate 条目零形状校验——被搅旧或被手改的 state.json 里缺 run_id 键时运行时是 undefined，绕过这条守卫、去拼 run-undefined.json 做一轮无谓的存在性读与 JSON 解析。后果仍安全（读不出静默回落原文案），但「无 run_id」与「留痕读不出」两格在这里被混成了后者，U4 用例只测了 null 一格。",
+      "evidence": "读过 src/trivium/state.ts 的 GateEntry 定义、upsert 第 225～250 行、readState 第 112～130 行（确认不校条目形状）；src/trivium/hooks.ts 的 roundBreach；test/unit/hooks.test.ts U4（只传 runId 为 null，未传键缺席）。本条是读码事实，非运行时实测。",
+      "suggestion": "守卫改成 if (!g.run_id) return null;（或补一个键缺席格用例，把 undefined 也钉进「文案逐字不变」的断言面）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/hooks.ts 的 breachLines / splitByBreach（失守段逐项展开处）与 hookStop、hookPreCommit 的失守分支",
+      "problem": "失守项在 Hook 的拦截理由里逐项目由展开（每项四行加共用处置段三行），条数不设上限；而 meta.ts 的 unreadableRunMetaExit 对同类人读清单明确设了 5 条封顶，注释理由是「那一处常进 Hook 的 deny 理由、不封顶会反复出现在拦截文本里」。同一个消费面（deny reason 每回合重放给模型/人）两套口径。hookStop 的待裁决项按会话过滤但跨主题，多主题并存且多轮失守时这条 block reason 会明显变长。实际触发概率低（同会话待裁决闸门通常个位数），故仅登记为口径一致性问题。",
+      "evidence": "读过 src/trivium/hooks.ts 的 breachLines 与 hookStop / hookPreCommit 失守分支全文、src/trivium/meta.ts 第 563～588 行（UNREADABLE_RUN_META_LIST_LIMIT 及其注释理由）、src/trivium/state.ts 的 listOpenGates 与 hookStop 的会话过滤逻辑。",
+      "suggestion": "若要收口，就给失守项也设一个封顶常量（超出折叠为「另有 N 项同状态」），并在报告 §4 或 BACKLOG 说明；判断是否值得做留给 Driver，本条不构成拦截理由。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "READONLY_BREACH_TRIAGE 与 breachRecordsText 抽成 gate.ts 导出常量、Hook 侧经动态 import 共用单一来源，方向正确；U15 与 acceptance 的失守格「归一化后逐字相同」双重锁住了 gate --check 输出不变。",
+    "按闸门项 run_id 用 readRunMeta 直读、不用 latestRunMeta，理由（后者读不出会 warn 到进程 stderr、破坏逐字不变）成立，且 U3/U11/U14 用 captureStderr 断言进程级 stderr 零输出，是真断言不是空断言。",
+    "失守判定只做文案选择、退出码与阻断计数在读留痕之前定死，读取失败一律回落原文案——降级方向安全；readRunMeta 对不存在/坏 JSON/不合契约的形状一律返回 null 且不抛（readFile/parse 全捕获、validateRunMeta 返回字符串数组），不存在新代码抛错把 Hook 打成 exit 1 静默放行的路径。",
+    "migrateRunMetaV1 与 run.v1.json 都保证 snapshot.drift 必填（changed/files/policy），driftText 对「changed 真而 files 空」的比不了形态走 describeDriftUnknown 共用排版并容 unknown_reason 缺席，形状面上无 undefined 解引用风险。",
+    "作废命令的 driver 取该轮 run.json 的 driver 经 entryCommandOf 派生，未采信 state.json 的 gate.driver，与 EV-68 的「Hook 权威来源是 run.json.driver」纪律一致；U16 用 codex 的 $ 写法与缺省不同做了鉴别力前置断言。",
+    "未知/更潮 driver 的 run.json 会被 checkAgentIdentities 两段式身份校验判读不出、回落原文案——新旧构建版本偏斜下的降级路径正确；acceptance.mjs 把新旧两份构建的 package.json 依赖区与 package-lock.json 字节一致性做成前置且中途失败也在 finally 里清理 mkdtemp，跨进程对照的绑定（各构建用自己的 fixture 助手与 bundle）干净。",
+    "集成用例 M16 变异（闸门项一律判未失守）由 gate-loop 套件咬住，守住了「单测手工落留痕」盖不住的接线段；不作废重跑被拒、作废后放行与重跑成功都实跑了完整生命周期。",
+    "重跑不是独立出口的更正（待裁决时 review --start 拒绝、失守轮 gate --check 必败）由集成用例锁住，文案与 BACKLOG EV-98 的「同族未改三处」如实登记，范围收口清晰。"
+  ],
+  "not_covered": [
+    "未在本轮重跑 npm run check、变异装置或 acceptance 脚本（只读沙箱，无写权限），2597/2595/0/2、18/18、15/15、14/14 的读数取自 evidence 留痕文件本身，未独立复算。",
+    "未审 hooks-pre-bash / pre-write 与本次文案的交互（本补丁未触及其判据），也未审会话开始 Hook 的待办句——BACKLOG 已声明同族未改三处在本主题外。",
+    "「判据部分」（解释器内联脚本误报失守）不在本补丁论域，未评估。",
+    "未逐字节核对 doc/05_testing/README.md 归档索引的排序规范句原文，仅按同日期条目文件名字典序目测一致（breach 排在 brief 前）；以 doc-archive-index 契约测试为准。",
+    "设计 §8.5 职责表两行新增段落的完整上下文（该表其余行与 §21/§24 台账）未通读，仅核对了与 hooks.ts/gate.ts 实现相符的关键句。",
+    "LLD_orchestrator.md 声明「行数列未重核」，其余 2.x 表的行数与职责描述未逐一核对。"
+  ],
+  "consulted": [
+    "src/trivium/hooks.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/types.ts",
+    "src/trivium/state.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/agents/registry.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/gate.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "src/trivium/adapters/stub.ts",
+    "skills-src/commands/abandon.contract.md",
+    "skills/dual-abandon/SKILL.md",
+    "skills/dual-critic/schema/run.v1.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "doc/05_testing/evidence/breach-gate-wording-20261002/acceptance.mjs",
+    "doc/05_testing/evidence/breach-gate-wording-20261002/gen-mutation-spec.mjs",
+    "doc/05_testing/evidence/breach-gate-wording-20261002/mutation-output.txt",
+    "doc/05_testing/evidence/breach-gate-wording-20261002/mutation-names-log.txt",
+    "doc/05_testing/evidence/breach-gate-wording-20261002/check-1.txt",
+    "doc/05_testing/evidence/breach-gate-wording-20261002/doctor-selftest.txt",
+    "doc/05_testing/REPORT_2026-10-02_breach_gate_wording.md"
+  ]
+}

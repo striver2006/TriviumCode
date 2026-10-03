@@ -57,7 +57,7 @@ const writeEvent = (p: string) => ({
   tool_input: { file_path: p },
 });
 
-async function runPlan(root: string, entry?: 'A' | 'B' | 'C' | 'D') {
+async function runPlan(root: string, entry?: 'A' | 'B' | 'C' | 'D', stub: StubConfig = STUB) {
   const started = await cli(
     root,
     [
@@ -65,13 +65,13 @@ async function runPlan(root: string, entry?: 'A' | 'B' | 'C' | 'D') {
       ...(entry ? ['--entry', entry] : []),
       '--session-id', SESSION, '--json',
     ],
-    STUB,
+    stub,
   );
   assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
   const js = JSON.parse(extractJsonCandidate(started.stdout)!.json) as { run_id: string };
   let code: number = EXIT.STILL_RUNNING;
   for (let i = 0; i < 12 && code === EXIT.STILL_RUNNING; i++) {
-    const w = await cli(root, ['review', '--wait', js.run_id, '--timeout', '20'], STUB, 60_000);
+    const w = await cli(root, ['review', '--wait', js.run_id, '--timeout', '20'], stub, 60_000);
     code = w.code ?? EXIT.FAIL;
   }
   assert.equal(code, EXIT.OK);
@@ -700,6 +700,76 @@ test('显式 abandon 之后可以重跑', { skip: bundleMissing && bundleSkipRea
   const docs = await fs.readdir(fx.stageDir);
   assert.ok(docs.some((f) => f.endsWith('-gemini.md') && !f.includes('-r2-')));
   assert.ok(docs.some((f) => f.includes('-r2-')));
+});
+
+/*
+ * ── 只读失守时两个 Hook 说出真因与出口（EV-98 文案部分，收工闸门文案区分只读失守计划 r2 §3.2）──
+ *
+ * 单测直调 hookXxx 并手工落留痕；这里走真实 CLI 与打包产物：review 的收尾把失守记进 run.json、
+ * 闸门项的 run_id 指向它，Hook 按那个 run_id 直读——接线断在任何一处，这里都说回「未逐条裁决」。
+ */
+const BREACH_STUB: StubConfig = { gemini: { mode: 'write_breach' }, glm: { mode: 'ok' } };
+
+test('只读失守且裁决件齐备 → gate --check 仍失败，两个 Hook 说失守与出口；不作废不能重跑，作废后放行', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root, 'A', BREACH_STUB);
+  await writeDisposition(fx.stageDir, runId);
+
+  const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json', '--session-id', SESSION]);
+  assert.notEqual(check.code, EXIT.OK, `失守轮裁决齐备也不得放行：\n${check.stdout}${check.stderr}`);
+  const cj = JSON.parse(extractJsonCandidate(check.stdout)!.json) as { failures: { code: string }[] };
+  assert.deepEqual(cj.failures.map((x) => x.code), ['readonly_breach'], '失败只来自失守，裁决件本身齐备');
+  const st = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium/state.json'), 'utf8')) as {
+    gates: Record<string, { state: string; run_id: string }>;
+  };
+  assert.equal(st.gates[`${TOPIC}/plan`]?.state, 'review_done_awaiting_disposition', '闸门停在原地');
+  assert.equal(st.gates[`${TOPIC}/plan`]?.run_id, runId);
+
+  const stop = await hook(fx.root, 'hook-stop', { session_id: SESSION, hook_event_name: 'Stop' });
+  assert.equal(stop.code, EXIT.GATE_BLOCK, '拦截行为不变');
+  const out = JSON.parse(stop.stdout.trim().split('\n')[0]!) as { decision: string; reason: string };
+  assert.equal(out.decision, 'block');
+  assert.match(out.reason, new RegExp(`^本轮审查记录到只读失守：${TOPIC}/plan。`));
+  assert.ok(out.reason.includes('write_to_file('), out.reason);
+  assert.ok(out.reason.includes(`/dual-abandon --topic ${TOPIC} --stage plan`), out.reason);
+  assert.doesNotMatch(out.reason, /未逐条裁决/);
+
+  const commit = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.equal(commit.code, EXIT.GATE_BLOCK);
+  assert.match(commit.stderr, new RegExp(`以下阶段的审查记录到只读失守，提交被拦下：${TOPIC}/plan`));
+  assert.ok(commit.stderr.includes('write_to_file('), commit.stderr);
+  assert.doesNotMatch(commit.stderr, /尚未逐条裁决/);
+
+  // 文案说「重跑也须先作废」：不作废直接重跑确实被拒（计划 r2 §7）
+  const again = await cli(
+    fx.root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION],
+    STUB,
+  );
+  assert.equal(again.code, EXIT.GATE_BLOCK, `待裁决的失守轮不作废不能重跑：\n${again.stdout}${again.stderr}`);
+
+  // 出口：作废后两个 Hook 放行，之后可以重跑
+  const ab = await cli(fx.root, ['abandon', '--topic', TOPIC, '--stage', 'plan', '--reason', '失守轮作废']);
+  assert.equal(ab.code, EXIT.OK, `${ab.stdout}${ab.stderr}`);
+  assert.equal((await hook(fx.root, 'hook-stop', { session_id: SESSION, hook_event_name: 'Stop' })).code, EXIT.OK);
+  assert.equal((await hook(fx.root, 'hook-pre-commit', commitEvent)).code, EXIT.OK);
+  assert.ok(await runPlan(fx.root, 'A'), '作废之后应能重跑');
+});
+
+test('只读失守而裁决件还没写 → 两个 Hook 同样说失守（gate --check 此时先报缺件、看不到失守）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  await runPlan(fx.root, 'A', BREACH_STUB);
+
+  const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
+  const cj = JSON.parse(extractJsonCandidate(check.stdout)!.json) as { failures: { code: string }[] };
+  assert.deepEqual(cj.failures.map((x) => x.code), ['missing_disposition'], '前提：缺件早退，gate --check 看不到失守（计划 r2 §1.3）');
+
+  const stop = await hook(fx.root, 'hook-stop', { session_id: SESSION, hook_event_name: 'Stop' });
+  const out = JSON.parse(stop.stdout.trim().split('\n')[0]!) as { reason: string };
+  assert.match(out.reason, /只读失守/);
+  assert.ok(out.reason.includes('write_to_file('), 'Hook 自己列调用记录，不依赖 gate --check');
+  const commit = await hook(fx.root, 'hook-pre-commit', commitEvent);
+  assert.match(commit.stderr, /只读失守/);
 });
 
 test('gate --check 放行只动本轮闸门，不清掉已接管的新一轮', { skip: bundleMissing && bundleSkipReason }, async () => {

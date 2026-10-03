@@ -1,0 +1,16 @@
+✔ 前置：旧树与工作树的依赖区逐字相同、package-lock.json 字节相同
+✔ 两份 bundle 的 sha256 不同
+✔ 两份构建的夹具助手各绑自己的 bundle
+✔ 失守格：两份构建的留痕都记 readonly_breach: true
+✔ 失守格：两份构建 gate --check 都退非零、失败只有 readonly_breach
+✔ 失守格：readonly_breach 的 message 归一化后改前改后逐字相同（抽常量不改 gate 输出）
+✔ 失守格：两个 Hook 的退出码改前改后相同（都拦）
+✔ 失守格·旧构建：收工 Hook 说「未逐条裁决」、不提失守
+✔ 失守格·新构建：收工 Hook 说「只读失守」、列调用记录与作废出口、不再说未裁决
+✔ 失守格·旧构建：提交 Hook 说「尚未逐条裁决」
+✔ 失守格·新构建：提交 Hook 说「只读失守」、不再说尚未逐条裁决
+✔ 未裁决格：两份构建的留痕都记 readonly_breach: false
+✔ 未裁决格：收工 Hook 的退出码、stdout、stderr 归一化后改前改后逐字相同
+✔ 未裁决格：提交 Hook 的退出码、stdout、stderr 归一化后改前改后逐字相同
+✔ 未裁决格：确实是拦截态（不是两边都放行而相同）
+15/15

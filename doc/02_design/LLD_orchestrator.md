@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.32
+> - **当前版本**：v1.1.33
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.33（2026-10-02）随设计 v1.3.77（收工闸门文案区分只读失守，EV-98 文案部分）同步：3.x「`hook-stop` 的三层防死循环」之后新增「待裁决闸门的只读失守文案」一小节（`splitByBreach` / `breachLines`、按闸门项 `run_id` 直读、处置句与 `gate --check` 共用 `READONLY_BREACH_TRIAGE`）。行数列未重核。
 > - **变更说明**：v1.1.32（2026-10-02）随设计 v1.3.76（任务书点名禁用MCP执行工具，EV-191 缓解①）同步：2.6 `adapters/base.ts` 行补可选声明 `mcpExecPrefixes`；3.3 渲染接线句补第二个必填入参 `mcpExecPrefixes`（取 `adapters[critic].mcpExecPrefixes ?? []`，非空时第 7 节多一条点名禁令）。行数列未重核。
 > - **变更说明**：v1.1.31（2026-10-02）随设计 v1.3.75（MCP执行工具调用检测，EV-188）同步：2.5 表 `guard.ts`、`adapters/zcode-trace.ts` 两行的行数与职责（证据不可信档位与归因分流；MCP 调用的计数、两档分类与按调用 id 合并）。两行的旧行数（225 / 300）早已失实，本次按现行源码改准；同表其余各行未逐一核。
 > - **变更说明**：v1.1.30（2026-10-02）随设计 v1.3.74（审查侧实测措辞约束，EV-95 前半）同步：2.6 `adapters/base.ts` 行补「命令执行能力声明（`CommandExecution`，挂 `CriticAdapter.commandExecution`）」；3.3「`prepareRun()` 的『零工件』不变式」段末补一句渲染接线（`renderBrief` 的必填入参 `commandExecution` 取入选侧适配器的声明，第 7 节据此二选一）。本文其余各节不涉及任务书各段的正文，不改。
@@ -435,6 +436,10 @@ bashTimeoutFor  = min(600_000, waitTimeoutS × 1000 + 60_000)
 `stop_hook_active` 立即放行 → 阻断计数超 `stop_hook_max_blocks`（默认 2）则 exit 0 + `systemMessage` → Claude Code 自身的 8 次硬上限。
 
 计数用**免锁自增**（`lock.ts:305-319`）：每次自增就用 `O_EXCL` 建一个唯一命名的空文件，计数 = 目录条目数。不能用「读→加一→写回」，那不是原子操作，两个并发 hook 会都读到 N 再都写 N+1。
+
+#### 待裁决闸门的只读失守文案（v1.1.33，设计 v1.3.77 / EV-98 文案部分）
+
+`hook-stop` 与 `hook-pre-commit` 在拦截与计数定好之后，经 `splitByBreach()` 把待裁决闸门拆成「本轮失守 / 未见失守」两组：对每个闸门项按它的 `run_id` 用 `readRunMeta()` 直读那一份（不用 `latestRunMeta()`——后者读不出时向进程 stderr 告警，会破坏「未见失守时逐字不变」），`guard.readonly_breach === true` 即归失守组。失守组为空走原文案；非空时由 `breachLines()` 生成逐项段（调用记录、快照漂移实际取值、按该轮 `driver` 经 `entryCommandOf()` 给出的作废命令）与共用处置段（`gate.ts` 的 `READONLY_BREACH_TRIAGE`，与 `gate --check` 同一来源）。读取只选文案、不影响判定，故不套 `resolveRoundDriver` 的软链守卫。
 
 #### `hook-session-start`（永不阻断）
 

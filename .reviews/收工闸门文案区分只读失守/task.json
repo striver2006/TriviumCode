@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "收工闸门文案区分只读失守",
+  "goal": "主题「收工闸门文案区分只读失守」：EV-98 文案部分——本轮因只读失守而 gate --check 不通过时，收工 Hook 与提交 Hook 仍一律说「还有未逐条裁决的审查意见」，把 Driver 引向补裁决件这个错误方向；裁决其实早已齐备，补多少都解不开。EV-79 代码双审第 2 轮就这样卡死过：22 条裁决齐备、闸门解不开，最终由用户走 abandon 作废那一轮。本主题只改文案，让两处…",
+  "created_at": "2026-10-02T14:30:23.495Z",
+  "updated_at": "2026-10-02T15:59:51.376Z",
+  "runs": [
+    {
+      "run_id": "20261002T143500Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-02T14:35:02.011Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261002T152411Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-02T15:24:13.467Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261002T155512Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-02T15:59:51.376Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-02T14:30:23.495Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-02T14:46:34.742Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261002T143500Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-02T14:46:32.195Z"
+    },
+    {
+      "run_id": "20261002T152411Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-02T15:49:39.276Z"
+    }
+  ]
+}

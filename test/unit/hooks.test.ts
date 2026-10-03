@@ -10,13 +10,13 @@ import {
   type HookInput,
 } from '../../src/trivium/hooks.js';
 import { looksLikeRoleArtifact } from '../../src/trivium/naming.js';
-import { ALL_AGENT_IDS, DEFAULT_DRIVER, type AgentId } from '../../src/trivium/agents/registry.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER, entryCommandOf, type AgentId } from '../../src/trivium/agents/registry.js';
 import { newRunMeta } from '../../src/trivium/meta.js';
 import { exists } from '../../src/trivium/util/fsx.js';
 import { setGate } from '../../src/trivium/state.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
-import type { Ctx } from '../../src/trivium/types.js';
+import type { Ctx, RunMeta } from '../../src/trivium/types.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { run } from '../../src/trivium/util/exec.js';
 import { assertUnreadableExit } from '../helpers/unreadable-exit.js';
@@ -679,6 +679,8 @@ test('悬空软链：指向归档内尚未创建的文件，仍被拦', async ()
  */
 async function seedRunMeta(
   ctx: Ctx, topic: string, stage: 'plan' | 'code' | 'bug', runId: string, driver: AgentId,
+  /** 落盘前改写（如置 `guard.readonly_breach`）；改出来的形状仍须合 run.v2，否则读取方判读不出 */
+  mutate?: (meta: RunMeta) => void,
 ): Promise<void> {
   const dir = path.join(ctx.archiveRoot, topic, stage, '_meta');
   await fs.mkdir(dir, { recursive: true });
@@ -688,6 +690,7 @@ async function seedRunMeta(
     treeHash: 'h', gitHead: null, dirty: false, subjectSha256: 's',
     denyPaths: [], driftPolicy: 'warn', driver,
   });
+  mutate?.(meta);
   await fs.writeFile(path.join(dir, `run-${runId}.json`), JSON.stringify(meta));
 }
 
@@ -1288,6 +1291,319 @@ test('第二层防死循环：超过每阶段阻断上限后放行', async () =>
   const third = await hookStop(ctx, { session_id: SESSION });
   assert.equal(third.exitCode, EXIT.OK, '第 3 次应放行以避免死循环');
   assert.match(third.stderr ?? '', /避免死循环/);
+});
+
+// ── 收工 / 提交 Hook 的只读失守文案（EV-98 文案部分，收工闸门文案区分只读失守计划 r2 §3.1）──
+
+/*
+ * 改前文案写成字面常量、不从源码引用：改坏原文案也要红（计划 r2 §3.1 末段）。
+ * 三条都取自 `364ef0f` 的 hooks.ts。
+ */
+const OLD_STOP_REASON = (list: string, stage: string): string =>
+  `还有未逐条裁决的审查意见：${list}。\n` +
+  '请读完两份审查文档全文，按 trivium.disposition.v1 写出裁决件' +
+  '（每个意见编号都要有裁决与理由，接受项要写落点），再运行 ' +
+  `\`trivium gate --stage ${stage} --check\`。`;
+const OLD_STOP_STDERR = (list: string): string => `还有未逐条裁决的审查意见：${list}`;
+const OLD_STOP_EXCEEDED = (n: number, label: string): string =>
+  `已连续 ${n} 次阻断收工仍未完成裁决，本次放行以避免死循环。\n` +
+  `  ${label} 的裁决仍未齐备，请手工处理。`;
+const OLD_COMMIT = (list: string): string =>
+  `以下阶段的审查意见尚未逐条裁决，提交被拦下：${list}\n` +
+  '  请先补齐裁决件并通过 `trivium gate --stage <阶段> --check`。\n' +
+  '  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。';
+
+/** 待裁决闸门指向 runId；runId 为 null 时不记 */
+async function pendingGate(ctx: Ctx, topic: string, stage: 'plan' | 'code', runId: string | null): Promise<void> {
+  await setGate({
+    triviumDir: ctx.triviumDir, topic, stage, runId,
+    state: 'review_done_awaiting_disposition', sessionId: SESSION, heartbeatStaleMs: STALE,
+  });
+}
+
+/** 落一份记着只读失守的留痕 */
+async function seedBreach(
+  ctx: Ctx, topic: string, stage: 'plan' | 'code', runId: string,
+  over: { records?: string[]; driver?: AgentId; drift?: RunMeta['snapshot']['drift'] } = {},
+): Promise<void> {
+  await seedRunMeta(ctx, topic, stage, runId, over.driver ?? DEFAULT_DRIVER, (m) => {
+    m.guard.readonly_breach = true;
+    m.guard.breached_files = over.records ?? ['write_to_file(/p/src/injected.ts)', 'MCP:mcp__node_repl__js(c1 1+1)'];
+    if (over.drift) m.snapshot.drift = over.drift;
+  });
+}
+
+/**
+ * 收集进程级 stderr（GLM-01）：`latestRunMeta` 的告警经 `util/log.ts` 直写 `process.stderr`，
+ * 不进 Hook 返回体——只比返回体的「无额外输出」是空断言。
+ */
+async function captureStderr<T>(fn: () => Promise<T>): Promise<{ value: T; err: string }> {
+  const orig = process.stderr.write;
+  let err = '';
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    err += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    const value = await fn();
+    return { value, err };
+  } finally {
+    process.stderr.write = orig;
+  }
+}
+
+const reasonOf = (r: { json?: Record<string, unknown> }): string => String(r.json?.['reason'] ?? '');
+const sysMsgOf = (r: { json?: Record<string, unknown> }): string => String(r.json?.['systemMessage'] ?? '');
+
+test('U1 收工·未见失守：文案与改前逐字相同', async () => {
+  const ctx = await fakeCtx();
+  await seedRunMeta(ctx, 't', 'code', 'R1', DEFAULT_DRIVER);
+  await pendingGate(ctx, 't', 'code', 'R1');
+  const r = await hookStop(ctx, { session_id: SESSION });
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
+  assert.equal(r.json?.['decision'], 'block');
+  assert.equal(reasonOf(r), OLD_STOP_REASON('t/code', 'code'));
+  assert.equal(r.stderr, OLD_STOP_STDERR('t/code'));
+});
+
+test('U2 收工·只读失守：说真因、列调用记录与漂移、给作废出口，不再说未裁决', async () => {
+  const ctx = await fakeCtx();
+  await seedBreach(ctx, 't', 'code', 'R1');
+  await pendingGate(ctx, 't', 'code', 'R1');
+  const r = await hookStop(ctx, { session_id: SESSION });
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK, '拦截行为不变');
+  assert.equal(r.json?.['decision'], 'block');
+  const reason = reasonOf(r);
+  assert.match(reason, /^本轮审查记录到只读失守：t\/code。这道闸门靠补裁决件解不开/);
+  assert.ok(reason.includes('· t/code（run R1）'), reason);
+  assert.ok(reason.includes('write_to_file(/p/src/injected.ts)、MCP:mcp__node_repl__js(c1 1+1)'), reason);
+  assert.ok(reason.includes('快照漂移：未检出（snapshot.drift.changed 为 false'), reason);
+  assert.ok(reason.includes('出口：由用户决定用 /dual-abandon --topic t --stage code 作废这一轮（保留工件、只解闸门）。'), reason);
+  // 重跑不是独立出口：待裁决时 review --start 拒绝重跑（计划 r2 §7），文案不得把它说成并列的另一条路
+  assert.ok(reason.includes('都须先作废这一轮：闸门停在待裁决时 review --start 拒绝重跑'), reason);
+  assert.ok(!reason.includes('或重跑该阶段审查'), reason);
+  assert.ok(reason.includes('drift 为 false 只排除了'), '处置判据句来自 gate.ts 的共用常量');
+  assert.ok(!reason.includes('未逐条裁决'), reason);
+  assert.equal(r.stderr, '本轮审查记录到只读失守：t/code');
+});
+
+test('U3 收工·留痕读不出：文案逐字不变，进程级 stderr 零输出', async () => {
+  const ctx = await fakeCtx();
+  const dir = path.join(ctx.archiveRoot, 't', 'code', '_meta');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'run-R1.json'), '{}');
+  await pendingGate(ctx, 't', 'code', 'R1');
+  const { value: r, err } = await captureStderr(() => hookStop(ctx, { session_id: SESSION }));
+  assert.equal(reasonOf(r), OLD_STOP_REASON('t/code', 'code'));
+  assert.equal(r.stderr, OLD_STOP_STDERR('t/code'));
+  assert.equal(err, '', `不得有额外的进程级输出，实得：${err}`);
+});
+
+test('U4 收工·闸门项没有 run_id：文案逐字不变', async () => {
+  const ctx = await fakeCtx();
+  await seedBreach(ctx, 't', 'code', 'R1');
+  await pendingGate(ctx, 't', 'code', null);
+  const r = await hookStop(ctx, { session_id: SESSION });
+  assert.equal(reasonOf(r), OLD_STOP_REASON('t/code', 'code'));
+});
+
+test('U4b 收工·state.json 里闸门项缺 run_id 键（手改或旧版写出）：文案逐字不变（代码双审 CODEX-02）', async () => {
+  const ctx = await fakeCtx();
+  await pendingGate(ctx, 't', 'code', 'R1');
+  const p = path.join(ctx.triviumDir, 'state.json');
+  const st = JSON.parse(await fs.readFile(p, 'utf8')) as { gates: Record<string, Record<string, unknown>> };
+  delete st.gates['t/code']!['run_id'];
+  await fs.writeFile(p, JSON.stringify(st));
+  // 若守卫只判 null，会去读 run-undefined.json：在那里放一份失守留痕，让这一格有鉴别力
+  await seedBreach(ctx, 't', 'code', 'undefined');
+  const r = await hookStop(ctx, { session_id: SESSION });
+  assert.equal(reasonOf(r), OLD_STOP_REASON('t/code', 'code'));
+});
+
+test('U5 收工·失守的不是这一轮（更新的 R2 失守、闸门指向未失守的 R1）：原文案', async () => {
+  const ctx = await fakeCtx();
+  await seedRunMeta(ctx, 't', 'code', 'R1', DEFAULT_DRIVER);
+  await seedBreach(ctx, 't', 'code', 'R2');
+  await pendingGate(ctx, 't', 'code', 'R1');
+  const { value: r, err } = await captureStderr(() => hookStop(ctx, { session_id: SESSION }));
+  assert.equal(reasonOf(r), OLD_STOP_REASON('t/code', 'code'), '按闸门项的 run_id 直读，不取最新一份');
+  assert.equal(err, '');
+});
+
+test('U6 收工·混合：原句只列未失守项并说明只针对它们，失守段只列失守项，stderr 两个真因都在', async () => {
+  const ctx = await fakeCtx();
+  await seedRunMeta(ctx, 'a', 'plan', 'R1', DEFAULT_DRIVER);
+  await pendingGate(ctx, 'a', 'plan', 'R1');
+  await seedBreach(ctx, 'b', 'code', 'R9');
+  await pendingGate(ctx, 'b', 'code', 'R9');
+  const r = await hookStop(ctx, { session_id: SESSION });
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
+  const lines = reasonOf(r).split('\n');
+  assert.equal(lines[0], '还有未逐条裁决的审查意见：a/plan。');
+  assert.ok(lines[1]!.endsWith('`trivium gate --stage plan --check`（只针对上列阶段；下列只读失守的阶段另行处置，它们的 gate --check 不会通过）。'), lines[1]);
+  assert.match(lines[2]!, /^另有阶段本轮审查记录到只读失守：b\/code。这道闸门靠补裁决件解不开/);
+  assert.ok(!lines[0]!.includes('b/code'));
+  assert.equal(r.stderr, '还有未逐条裁决的审查意见：a/plan\n另有阶段本轮审查记录到只读失守：b/code');
+});
+
+test('U7 阻断上限·未见失守：放行文案与改前逐字相同', async () => {
+  const ctx = await fakeCtx();
+  ctx.config.gate.stop_hook_max_blocks = 2;
+  await seedRunMeta(ctx, 't', 'plan', 'R1', DEFAULT_DRIVER);
+  await pendingGate(ctx, 't', 'plan', 'R1');
+  await hookStop(ctx, { session_id: SESSION });
+  await hookStop(ctx, { session_id: SESSION });
+  const third = await hookStop(ctx, { session_id: SESSION });
+  assert.equal(third.exitCode, EXIT.OK);
+  assert.equal(sysMsgOf(third), OLD_STOP_EXCEEDED(2, 't/plan'));
+  assert.equal(third.stderr, OLD_STOP_EXCEEDED(2, 't/plan'));
+});
+
+test('U8 阻断上限·失守：放行文案说失守与出口，不再说仍未完成裁决', async () => {
+  const ctx = await fakeCtx();
+  ctx.config.gate.stop_hook_max_blocks = 2;
+  await seedBreach(ctx, 't', 'plan', 'R1');
+  await pendingGate(ctx, 't', 'plan', 'R1');
+  assert.equal((await hookStop(ctx, { session_id: SESSION })).exitCode, EXIT.GATE_BLOCK);
+  assert.equal((await hookStop(ctx, { session_id: SESSION })).exitCode, EXIT.GATE_BLOCK);
+  const third = await hookStop(ctx, { session_id: SESSION });
+  assert.equal(third.exitCode, EXIT.OK, '阻断上限照旧放行');
+  const msg = sysMsgOf(third);
+  assert.match(msg, /^已连续 2 次阻断收工，本次放行以避免死循环。\n/);
+  assert.ok(msg.includes('t/plan 本轮记录到只读失守，补裁决件解不开这道闸门，请手工处理：'), msg);
+  assert.ok(msg.includes('/dual-abandon --topic t --stage plan'), msg);
+  assert.ok(!msg.includes('仍未完成裁决') && !msg.includes('裁决仍未齐备'), msg);
+  assert.equal(third.stderr, msg);
+});
+
+test('U8b 阻断上限·混合：失守项与未裁决项都点名', async () => {
+  const ctx = await fakeCtx();
+  ctx.config.gate.stop_hook_max_blocks = 1;
+  // 槽位按插入顺序：b/code 先进 ⇒ pending[0] 是失守项
+  await seedBreach(ctx, 'b', 'code', 'R9');
+  await pendingGate(ctx, 'b', 'code', 'R9');
+  await seedRunMeta(ctx, 'a', 'plan', 'R1', DEFAULT_DRIVER);
+  await pendingGate(ctx, 'a', 'plan', 'R1');
+  await hookStop(ctx, { session_id: SESSION });
+  const second = await hookStop(ctx, { session_id: SESSION });
+  assert.equal(second.exitCode, EXIT.OK);
+  const msg = sysMsgOf(second);
+  assert.ok(msg.includes('  a/plan 的裁决仍未齐备，请手工处理。'), msg);
+  assert.ok(msg.includes('  b/code 本轮记录到只读失守'), msg);
+});
+
+test('U9 提交·未见失守：文案与改前逐字相同', async () => {
+  const ctx = await fakeCtx();
+  await seedRunMeta(ctx, '登录重构', 'code', 'R1', DEFAULT_DRIVER);
+  await pendingGate(ctx, '登录重构', 'code', 'R1');
+  const r = await hookPreCommit(ctx, { session_id: SESSION });
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
+  assert.equal(r.stderr, OLD_COMMIT('登录重构/code'));
+});
+
+test('U10 提交·只读失守：说真因与出口，关闭方式恰一次且在最后', async () => {
+  const ctx = await fakeCtx();
+  await seedBreach(ctx, 't', 'code', 'R1');
+  await pendingGate(ctx, 't', 'code', 'R1');
+  const r = await hookPreCommit(ctx, { session_id: SESSION });
+  assert.equal(r.exitCode, EXIT.GATE_BLOCK);
+  const s = r.stderr ?? '';
+  const lines = s.split('\n');
+  assert.equal(lines[0], '以下阶段的审查记录到只读失守，提交被拦下：t/code');
+  assert.match(lines[1]!, /^ {2}这道闸门靠补裁决件解不开/);
+  assert.ok(s.includes('write_to_file(/p/src/injected.ts)'), s);
+  assert.ok(s.includes('/dual-abandon --topic t --stage code'), s);
+  assert.ok(!s.includes('尚未逐条裁决'), s);
+  assert.equal(s.split('gate.block_commit: false').length - 1, 1, '关闭方式只出一次');
+  assert.equal(lines[lines.length - 1], '  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。');
+});
+
+test('U10b 提交·混合：未失守两行在前、失守段在后、关闭方式恰一次且在最后', async () => {
+  const ctx = await fakeCtx();
+  await seedRunMeta(ctx, 'a', 'plan', 'R1', DEFAULT_DRIVER);
+  await pendingGate(ctx, 'a', 'plan', 'R1');
+  await seedBreach(ctx, 'b', 'code', 'R9');
+  await pendingGate(ctx, 'b', 'code', 'R9');
+  const s = (await hookPreCommit(ctx, { session_id: SESSION })).stderr ?? '';
+  const lines = s.split('\n');
+  assert.equal(lines[0], '以下阶段的审查意见尚未逐条裁决，提交被拦下：a/plan');
+  assert.equal(lines[1], '  请先补齐裁决件并通过 `trivium gate --stage <阶段> --check`。');
+  assert.equal(lines[2], '以下阶段的审查记录到只读失守，提交被拦下：b/code');
+  assert.equal(s.split('gate.block_commit: false').length - 1, 1);
+  assert.match(lines[lines.length - 1]!, /gate\.block_commit: false。$/);
+});
+
+test('U11 提交·留痕读不出：文案逐字不变，进程级 stderr 零输出', async () => {
+  const ctx = await fakeCtx();
+  const dir = path.join(ctx.archiveRoot, 't', 'code', '_meta');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'run-R1.json'), 'not json');
+  await pendingGate(ctx, 't', 'code', 'R1');
+  const { value: r, err } = await captureStderr(() => hookPreCommit(ctx, { session_id: SESSION }));
+  assert.equal(r.stderr, OLD_COMMIT('t/code'));
+  assert.equal(err, '');
+});
+
+test('U12 调用记录截断与漂移三种形态', async () => {
+  const nine = Array.from({ length: 9 }, (_, i) => `w${i + 1}(x)`);
+  const cases: { records: string[]; drift: RunMeta['snapshot']['drift']; want: string[] }[] = [
+    {
+      records: nine,
+      drift: { changed: true, files: ['src/a.ts', 'src/b.ts'], policy: 'warn' },
+      want: ['调用记录（非文件路径）：w1(x)、w2(x)、w3(x)、w4(x)、w5(x)、w6(x)、w7(x)、w8(x)…', '快照漂移：检出 2 个文件改动：src/a.ts、src/b.ts'],
+    },
+    {
+      records: [],
+      drift: { changed: true, files: [], policy: 'warn', unknown_reason: { cause: 'timeout', detail: 'diff-tree 超时' } },
+      want: ['调用记录（非文件路径）：（run 元数据未记录）', '快照漂移：比对未完成（git 超时：diff-tree 超时），按有改动对待'],
+    },
+    {
+      // 文件侧截断与调用记录截断对偶（代码双审 GLM-01）
+      records: ['w1(x)'],
+      drift: { changed: true, files: Array.from({ length: 9 }, (_, i) => `f${i + 1}.ts`), policy: 'warn' },
+      want: ['快照漂移：检出 9 个文件改动：f1.ts、f2.ts、f3.ts、f4.ts、f5.ts、f6.ts、f7.ts、f8.ts…'],
+    },
+  ];
+  for (const c of cases) {
+    const ctx = await fakeCtx();
+    await seedBreach(ctx, 't', 'code', 'R1', { records: c.records, drift: c.drift });
+    await pendingGate(ctx, 't', 'code', 'R1');
+    const reason = reasonOf(await hookStop(ctx, { session_id: SESSION }));
+    for (const w of c.want) assert.ok(reason.includes(w), `缺「${w}」：\n${reason}`);
+    assert.ok(!reason.includes('w9(x)'), '至多 8 条');
+  }
+});
+
+test('U13 多个失守项：每项各给自己的作废命令', async () => {
+  const ctx = await fakeCtx();
+  await seedBreach(ctx, 'a', 'plan', 'R1');
+  await pendingGate(ctx, 'a', 'plan', 'R1');
+  await seedBreach(ctx, 'b', 'code', 'R2');
+  await pendingGate(ctx, 'b', 'code', 'R2');
+  const reason = reasonOf(await hookStop(ctx, { session_id: SESSION }));
+  assert.ok(reason.includes('/dual-abandon --topic a --stage plan'), reason);
+  assert.ok(reason.includes('/dual-abandon --topic b --stage code'), reason);
+  assert.equal(reason.split('处置：先核对').length - 1, 1, '共用处置段只出一次');
+});
+
+test('U14 已知边界：这一轮读不出、更旧一轮失守 ⇒ 原文案、无额外输出（计划 r2 §4 R4）', async () => {
+  const ctx = await fakeCtx();
+  await seedBreach(ctx, 't', 'code', 'R1');
+  await fs.writeFile(path.join(ctx.archiveRoot, 't', 'code', '_meta', 'run-R2.json'), '{}');
+  await pendingGate(ctx, 't', 'code', 'R2');
+  const { value: r, err } = await captureStderr(() => hookStop(ctx, { session_id: SESSION }));
+  assert.equal(reasonOf(r), OLD_STOP_REASON('t/code', 'code'));
+  assert.equal(err, '');
+});
+
+test('U16 作废命令按该轮 run.json 的 driver 取写法', async () => {
+  const ctx = await fakeCtx();
+  await seedBreach(ctx, 't', 'code', 'R1', { driver: 'codex' });
+  await pendingGate(ctx, 't', 'code', 'R1');
+  const reason = reasonOf(await hookStop(ctx, { session_id: SESSION }));
+  const cmd = entryCommandOf('codex', 'dual-abandon');
+  assert.notEqual(cmd, '/dual-abandon', '前提：codex 的写法与缺省不同，否则本例无鉴别力');
+  assert.ok(reason.includes(`${cmd} --topic t --stage code`), reason);
 });
 
 // ── hook-session-start ──

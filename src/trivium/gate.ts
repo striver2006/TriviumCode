@@ -16,6 +16,30 @@ import { dispositionKindForStage, parseArtifactName } from './naming.js';
 import { checkReviewIntegrity, parseReview } from './parse.js';
 import { validateDispositionFrontMatter } from './schemas.js';
 
+// ─────────────────────── 只读失守的处置句（单一来源） ───────────────────────
+
+/**
+ * `readonly_breach` 那条 failure 的处置判据句，**`gate --check` 与两处 Hook 共用这一份**
+ * （收工闸门文案区分只读失守计划 r2 §2.3，计划双审 CODEX-01）。
+ *
+ * 这句话的上下文与历次更正记在 `checkAdjudication` 推这条 failure 的地方；它被单点改过四次，
+ * 让 Hook 另抄一份就会在无人察觉时分叉。改它即同时改了 `gate --check` 的输出与
+ * `hook-stop` / `hook-pre-commit` 的失守段——这正是要的。
+ *
+ * 两处 Hook 失守段里「gate --check 对只读失守一律判失败」那半句，陈述的是 `checkAdjudication`
+ * 对 `readonlyBreach.hit` 无条件推 failure 这件事；将来若加豁免出口，那半句要同改
+ * （`hooks.ts` 的 `BREACH_UNFIXABLE` 旁有互指注释，`gate-loop` 集成用例会先红）。
+ */
+export const READONLY_BREACH_TRIAGE =
+  '处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。' +
+  'drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，' +
+  '还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。';
+
+/** 失守调用记录的展示：至多 8 条、超出加「…」，为空写「（run 元数据未记录）」。与 Hook 失守段同一口径 */
+export function breachRecordsText(files: readonly string[]): string {
+  return files.length > 0 ? files.slice(0, 8).join('、') + (files.length > 8 ? '…' : '') : '（run 元数据未记录）';
+}
+
 // ─────────────────────── 校验结果 ───────────────────────
 
 export type GateFailureCode =
@@ -368,11 +392,9 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
       code: 'readonly_breach',
       message:
         '本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），裁决不得进入审批。' +
-        '处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。' +
-        'drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，' +
-        '还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。' +
+        READONLY_BREACH_TRIAGE +
         '调用记录（非文件路径）：' +
-        (files.length > 0 ? files.slice(0, 8).join('、') + (files.length > 8 ? '…' : '') : '（run 元数据未记录）'),
+        breachRecordsText(files),
     });
   }
 

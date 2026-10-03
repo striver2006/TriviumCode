@@ -835,6 +835,36 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
   assert.equal(r3.ok, true);
 });
 
+/*
+ * 处置句抽成 `READONLY_BREACH_TRIAGE` 供两处 Hook 共用（收工闸门文案区分只读失守计划 r2 §2.3，
+ * 计划双审 CODEX-01）。抽常量只是搬位置：`gate --check` 的 message 必须与改前**逐字节**相同。
+ * 期望串取自 `364ef0f` 的 gate.ts、写成字面量，不从源码引用。
+ */
+test('U15 readonly_breach 的 message 抽常量后与改前逐字相同（截断与空记录两格）', async () => {
+  const OLD = (records: string): string =>
+    '本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），裁决不得进入审批。' +
+    '处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。' +
+    'drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，' +
+    '还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。' +
+    '调用记录（非文件路径）：' + records;
+  const nine = Array.from({ length: 9 }, (_, i) => `W${i + 1}(x)`);
+  const l = await layout();
+  await putDisposition(l, `${HEAD}
+| AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
+  for (const [files, want] of [
+    [nine, nine.slice(0, 8).join('、') + '…'],
+    [[] as string[], '（run 元数据未记录）'],
+  ] as const) {
+    const r = await checkAdjudication({
+      expectedDegradedIds: [], reviewDocs: null,
+      cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
+      reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
+      readonlyBreach: { hit: true, files: [...files] },
+    });
+    assert.equal(r.failures.find((x) => x.code === 'readonly_breach')?.message, OLD(want));
+  }
+});
+
 test('voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）', async () => {
   const base = {
     topic: TOPIC, stage: 'plan' as const, rerunIndex: 1, command: 'x',

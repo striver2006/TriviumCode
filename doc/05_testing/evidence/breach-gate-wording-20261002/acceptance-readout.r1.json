@@ -1,0 +1,105 @@
+{
+  "base": "364ef0f",
+  "sha256": {
+    "old": "5f82017f4bdeac6272cb00e722fccb716646ccec5a1aab1d93d55b82bf9e1968",
+    "new": "ad5b7e112f491806fe6d3320ca76f62838d7237a1ec41bb7141ff4680239101a"
+  },
+  "samples": {
+    "breach": {
+      "old": {
+        "stopReason": "还有未逐条裁决的审查意见：失守文案对照/plan。\n请读完两份审查文档全文，按 trivium.disposition.v1 写出裁决件（每个意见编号都要有裁决与理由，接受项要写落点），再运行 `trivium gate --stage plan --check`。",
+        "commitStderr": "以下阶段的审查意见尚未逐条裁决，提交被拦下：失守文案对照/plan\n  请先补齐裁决件并通过 `trivium gate --stage <阶段> --check`。\n  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。\n"
+      },
+      "new": {
+        "stopReason": "本轮审查记录到只读失守：失守文案对照/plan。这道闸门靠补裁决件解不开——gate --check 对只读失守一律判失败，裁决件写得再齐也不放行，不要再为解闸门去补裁决件。\n· 失守文案对照/plan（run 〈RUN〉）\n  调用记录（非文件路径）：write_to_file(〈ROOT〉/src/injected.ts)\n  快照漂移：未检出（snapshot.drift.changed 为 false——这不足以判定误报，见下方处置）\n  出口：由用户决定用 /dual-abandon --topic 失守文案对照 --stage plan 作废这一轮（保留工件、只解闸门）。\n处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。\n（与 gate --check 的 readonly_breach 一条同一判据；裁决件尚未落盘时 gate --check 会先报缺件、看不到那一条。）\n不论确有改动要清理后重跑，还是核实为误报想重跑，都须先作废这一轮：闸门停在待裁决时 review --start 拒绝重跑，而这一轮的 gate --check 不会通过。",
+        "commitStderr": "以下阶段的审查记录到只读失守，提交被拦下：失守文案对照/plan\n  这道闸门靠补裁决件解不开——gate --check 对只读失守一律判失败，裁决件写得再齐也不放行。\n  · 失守文案对照/plan（run 〈RUN〉）\n    调用记录（非文件路径）：write_to_file(〈ROOT〉/src/injected.ts)\n    快照漂移：未检出（snapshot.drift.changed 为 false——这不足以判定误报，见下方处置）\n    出口：由用户决定用 /dual-abandon --topic 失守文案对照 --stage plan 作废这一轮（保留工件、只解闸门）。\n  处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。\n  （与 gate --check 的 readonly_breach 一条同一判据；裁决件尚未落盘时 gate --check 会先报缺件、看不到那一条。）\n  不论确有改动要清理后重跑，还是核实为误报想重跑，都须先作废这一轮：闸门停在待裁决时 review --start 拒绝重跑，而这一轮的 gate --check 不会通过。\n  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。\n"
+      }
+    },
+    "pending": {
+      "stop": {
+        "code": 2,
+        "stdout": "{\"decision\":\"block\",\"reason\":\"还有未逐条裁决的审查意见：失守文案对照/plan。\\n请读完两份审查文档全文，按 trivium.disposition.v1 写出裁决件（每个意见编号都要有裁决与理由，接受项要写落点），再运行 `trivium gate --stage plan --check`。\"}\n",
+        "stderr": "还有未逐条裁决的审查意见：失守文案对照/plan\n"
+      },
+      "commit": {
+        "code": 2,
+        "stdout": "",
+        "stderr": "以下阶段的审查意见尚未逐条裁决，提交被拦下：失守文案对照/plan\n  请先补齐裁决件并通过 `trivium gate --stage <阶段> --check`。\n  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。\n"
+      }
+    }
+  },
+  "passed": 15,
+  "total": 15,
+  "checks": [
+    {
+      "name": "前置：旧树与工作树的依赖区逐字相同、package-lock.json 字节相同",
+      "ok": true
+    },
+    {
+      "name": "两份 bundle 的 sha256 不同",
+      "ok": true,
+      "detail": "5f82017f4bdeac6272cb00e722fccb716646ccec5a1aab1d93d55b82bf9e1968 / ad5b7e112f491806fe6d3320ca76f62838d7237a1ec41bb7141ff4680239101a"
+    },
+    {
+      "name": "两份构建的夹具助手各绑自己的 bundle",
+      "ok": true
+    },
+    {
+      "name": "失守格：两份构建的留痕都记 readonly_breach: true",
+      "ok": true
+    },
+    {
+      "name": "失守格：两份构建 gate --check 都退非零、失败只有 readonly_breach",
+      "ok": true,
+      "detail": "[{\"code\":2,\"codes\":[\"readonly_breach\"],\"breachMsg\":\"本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），裁决不得进入审批。处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。调用记录（非文件路径）：write_to_file(〈ROOT〉/src/injected.ts)\"},{\"code\":2,\"codes\":[\"readonly_breach\"],\"breachMsg\":\"本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），裁决不得进入审批。处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。调用记录（非文件路径）：write_to_file(〈ROOT〉/src/injected.ts)\"}]"
+    },
+    {
+      "name": "失守格：readonly_breach 的 message 归一化后改前改后逐字相同（抽常量不改 gate 输出）",
+      "ok": true,
+      "detail": "本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），裁决不得进入审批。处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。调用记录（非文件路径）：write_to_file(〈ROOT〉/src/injected.ts)\n----\n本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），裁决不得进入审批。处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。调用记录（非文件路径）：write_to_file(〈ROOT〉/src/injected.ts)"
+    },
+    {
+      "name": "失守格：两个 Hook 的退出码改前改后相同（都拦）",
+      "ok": true,
+      "detail": "[2,2,2,2]"
+    },
+    {
+      "name": "失守格·旧构建：收工 Hook 说「未逐条裁决」、不提失守",
+      "ok": true,
+      "detail": "还有未逐条裁决的审查意见：失守文案对照/plan。\n请读完两份审查文档全文，按 trivium.disposition.v1 写出裁决件（每个意见编号都要有裁决与理由，接受项要写落点），再运行 `trivium gate --stage plan --check`。"
+    },
+    {
+      "name": "失守格·新构建：收工 Hook 说「只读失守」、列调用记录与作废出口、不再说未裁决",
+      "ok": true,
+      "detail": "本轮审查记录到只读失守：失守文案对照/plan。这道闸门靠补裁决件解不开——gate --check 对只读失守一律判失败，裁决件写得再齐也不放行，不要再为解闸门去补裁决件。\n· 失守文案对照/plan（run 〈RUN〉）\n  调用记录（非文件路径）：write_to_file(〈ROOT〉/src/injected.ts)\n  快照漂移：未检出（snapshot.drift.changed 为 false——这不足以判定误报，见下方处置）\n  出口：由用户决定用 /dual-abandon --topic 失守文案对照 --stage plan 作废这一轮（保留工件、只解闸门）。\n处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。\n（与 gate --check 的 readonly_breach 一条同一判据；裁决件尚未落盘时 gate --check 会先报缺件、看不到那一条。）\n不论确有改动要清理后重跑，还是核实为误报想重跑，都须先作废这一轮：闸门停在待裁决时 review --start 拒绝重跑，而这一轮的 gate --check 不会通过。"
+    },
+    {
+      "name": "失守格·旧构建：提交 Hook 说「尚未逐条裁决」",
+      "ok": true,
+      "detail": "以下阶段的审查意见尚未逐条裁决，提交被拦下：失守文案对照/plan\n  请先补齐裁决件并通过 `trivium gate --stage <阶段> --check`。\n  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。\n"
+    },
+    {
+      "name": "失守格·新构建：提交 Hook 说「只读失守」、不再说尚未逐条裁决",
+      "ok": true,
+      "detail": "以下阶段的审查记录到只读失守，提交被拦下：失守文案对照/plan\n  这道闸门靠补裁决件解不开——gate --check 对只读失守一律判失败，裁决件写得再齐也不放行。\n  · 失守文案对照/plan（run 〈RUN〉）\n    调用记录（非文件路径）：write_to_file(〈ROOT〉/src/injected.ts)\n    快照漂移：未检出（snapshot.drift.changed 为 false——这不足以判定误报，见下方处置）\n    出口：由用户决定用 /dual-abandon --topic 失守文案对照 --stage plan 作废这一轮（保留工件、只解闸门）。\n  处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。\n  （与 gate --check 的 readonly_breach 一条同一判据；裁决件尚未落盘时 gate --check 会先报缺件、看不到那一条。）\n  不论确有改动要清理后重跑，还是核实为误报想重跑，都须先作废这一轮：闸门停在待裁决时 review --start 拒绝重跑，而这一轮的 gate --check 不会通过。\n  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。\n"
+    },
+    {
+      "name": "未裁决格：两份构建的留痕都记 readonly_breach: false",
+      "ok": true
+    },
+    {
+      "name": "未裁决格：收工 Hook 的退出码、stdout、stderr 归一化后改前改后逐字相同",
+      "ok": true,
+      "detail": "[{\"code\":2,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"还有未逐条裁决的审查意见：失守文案对照/plan。\\\\n请读完两份审查文档全文，按 trivium.disposition.v1 写出裁决件（每个意见编号都要有裁决与理由，接受项要写落点），再运行 `trivium gate --stage plan --check`。\\\"}\\n\",\"stderr\":\"还有未逐条裁决的审查意见：失守文案对照/plan\\n\"},{\"code\":2,\"stdout\":\"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"还有未逐条裁决的审查意见：失守文案对照/plan。\\\\n请读完两份审查文档全文，按 trivium.disposition.v1 写出裁决件（每个意见编号都要有裁决与理由，接受项要写落点），再运行 `trivium gate --stage plan --check`。\\\"}\\n\",\"stderr\":\"还有未逐条裁决的审查意见：失守文案对照/plan\\n\"}]"
+    },
+    {
+      "name": "未裁决格：提交 Hook 的退出码、stdout、stderr 归一化后改前改后逐字相同",
+      "ok": true,
+      "detail": "[{\"code\":2,\"stdout\":\"\",\"stderr\":\"以下阶段的审查意见尚未逐条裁决，提交被拦下：失守文案对照/plan\\n  请先补齐裁决件并通过 `trivium gate --stage <阶段> --check`。\\n  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。\\n\"},{\"code\":2,\"stdout\":\"\",\"stderr\":\"以下阶段的审查意见尚未逐条裁决，提交被拦下：失守文案对照/plan\\n  请先补齐裁决件并通过 `trivium gate --stage <阶段> --check`。\\n  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。\\n\"}]"
+    },
+    {
+      "name": "未裁决格：确实是拦截态（不是两边都放行而相同）",
+      "ok": true
+    }
+  ]
+}

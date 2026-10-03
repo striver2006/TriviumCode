@@ -1,0 +1,285 @@
+{
+  "targets_sha256": {
+    "src/trivium/hooks.ts": "29f31eee05ad84d659e2021114e6dd2db423276debe503ef54fde82acc9e8146",
+    "src/trivium/gate.ts": "1a1480980184ad84c11c64c3f8dc04aedba6f68ceb05248808647720aa83e12d"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "判据放宽为「不是 false 就算失守」（读不出也算）",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U3 收工·留痕读不出：文案逐字不变，进程级 stderr 零输出",
+        "U11 提交·留痕读不出：文案逐字不变，进程级 stderr 零输出",
+        "U14 已知边界：这一轮读不出、更旧一轮失守 ⇒ 原文案、无额外输出（计划 r2 §4 R4）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M2",
+      "desc": "改用 latestRunMeta 取最新而不按闸门项 run_id 直读",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U3 收工·留痕读不出：文案逐字不变，进程级 stderr 零输出",
+        "U5 收工·失守的不是这一轮（更新的 R2 失守、闸门指向未失守的 R1）：原文案",
+        "U11 提交·留痕读不出：文案逐字不变，进程级 stderr 零输出",
+        "U14 已知边界：这一轮读不出、更旧一轮失守 ⇒ 原文案、无额外输出（计划 r2 §4 R4）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M3",
+      "desc": "收工拦截忽略失守（恒走原文案）",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U2 收工·只读失守：说真因、列调用记录与漂移、给作废出口，不再说未裁决",
+        "U6 收工·混合：原句只列未失守项并说明只针对它们，失守段只列失守项，stderr 两个真因都在",
+        "U12 调用记录截断与漂移三种形态",
+        "U13 多个失守项：每项各给自己的作废命令",
+        "U16 作废命令按该轮 run.json 的 driver 取写法"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M4",
+      "desc": "提交 Hook 忽略失守（恒走原文案）",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U10 提交·只读失守：说真因与出口，关闭方式恰一次且在最后",
+        "U10b 提交·混合：未失守两行在前、失守段在后、关闭方式恰一次且在最后"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M5",
+      "desc": "阻断上限忽略失守（恒走原两句）",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U8 阻断上限·失守：放行文案说失守与出口，不再说仍未完成裁决",
+        "U8b 阻断上限·混合：失守项与未裁决项都点名"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M6",
+      "desc": "混合时原句列全部待裁决项",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U6 收工·混合：原句只列未失守项并说明只针对它们，失守段只列失守项，stderr 两个真因都在"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M7",
+      "desc": "调用记录截断改 9 条",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U12 调用记录截断与漂移三种形态"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M8",
+      "desc": "逐项段漏作废命令",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U2 收工·只读失守：说真因、列调用记录与漂移、给作废出口，不再说未裁决",
+        "U8 阻断上限·失守：放行文案说失守与出口，不再说仍未完成裁决",
+        "U10 提交·只读失守：说真因与出口，关闭方式恰一次且在最后",
+        "U13 多个失守项：每项各给自己的作废命令",
+        "U16 作废命令按该轮 run.json 的 driver 取写法"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M9",
+      "desc": "提交失守段漏关闭方式",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U10 提交·只读失守：说真因与出口，关闭方式恰一次且在最后",
+        "U10b 提交·混合：未失守两行在前、失守段在后、关闭方式恰一次且在最后"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M10",
+      "desc": "提交 Hook 失守时退出码改 0",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U10 提交·只读失守：说真因与出口，关闭方式恰一次且在最后"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M11",
+      "desc": "阻断上限混合时丢掉未裁决项",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U8b 阻断上限·混合：失守项与未裁决项都点名"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M12",
+      "desc": "混合时 stderr 只取原首句",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U6 收工·混合：原句只列未失守项并说明只针对它们，失守段只列失守项，stderr 两个真因都在"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M13",
+      "desc": "作废命令写死斜杠写法",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U16 作废命令按该轮 run.json 的 driver 取写法"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M14",
+      "desc": "快照漂移恒写「未检出」",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U12 调用记录截断与漂移三种形态"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M15",
+      "desc": "混合时指引句漏「只针对上列阶段」补句",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U6 收工·混合：原句只列未失守项并说明只针对它们，失守段只列失守项，stderr 两个真因都在"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M16",
+      "desc": "闸门项一律判未失守（接线断）——集成层",
+      "suite": "dist/test/test/integration/gate-loop.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "只读失守且裁决件齐备 → gate --check 仍失败，两个 Hook 说失守与出口；不作废不能重跑，作废后放行",
+        "只读失守而裁决件还没写 → 两个 Hook 同样说失守（gate --check 此时先报缺件、看不到失守）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 266
+    },
+    {
+      "id": "M17",
+      "desc": "共用处置句措辞漂移（gate 输出改变）",
+      "suite": "dist/test/test/unit/gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U15 readonly_breach 的 message 抽常量后与改前逐字相同（截断与空记录两格）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M18",
+      "desc": "漏「重跑须先作废」那一行（计划 r2 §7）",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U2 收工·只读失守：说真因、列调用记录与漂移、给作废出口，不再说未裁决"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M19",
+      "desc": "快照漂移文件截断改 9 个（GLM-01）",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U12 调用记录截断与漂移三种形态"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M20",
+      "desc": "无 run_id 守卫只判 null（CODEX-02）",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4b 收工·state.json 里闸门项缺 run_id 键（手改或旧版写出）：文案逐字不变（代码双审 CODEX-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    }
+  ]
+}
