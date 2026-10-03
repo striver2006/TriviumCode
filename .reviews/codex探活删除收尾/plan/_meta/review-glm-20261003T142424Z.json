@@ -1,0 +1,101 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "计划与 9ce191f 现状的核对逐点属实：我抽查的全部行号与事实（codex.ts 的 probe 331-363 裸删、run 547-560 兜底、fingerprint 307-330 无兜底；preflight.ts:723/730 两处 await 无 try、832-836 Promise.all；exec.ts:304-307 spawn 错误不 reject；codex-home.ts 的 prepareCodexHome 274-335 写入面与 isCredentialCarrier 93-94；zcode.ts 的 removeZcodeTempDir 954-972、tildeHome 896-899、probe 拆法 1165-1189）均与仓库一致。设计可行且以 zcode 侧已验收的同形实现为范本：薄包装的语义等价成立（remaining 非空 ⇔ 现状「stat 成功或非 ENOENT 判有副本」）；exec 的 env 是 {...process.env} 再覆盖，假入口能看到 FAKE_LOCK/TMPDIR；假事件流形状与 parseCodexEvents/traceCompleted 吻合；缺省 profile qwen 与 config.ts:333 一致；os.homedir() 跟随 HOME、CODEX_HOME 经 codexHomeOf() 生效，合成源装置成立。文档锚点（设计 §10.5 凭据行、§11.3 第 7 条、RUNBOOK:279、BACKLOG EV-200、版本 v1.3.80→v1.3.81）全部核实存在。发现两条 minor（fingerprint 崩预检路径未安排登记、C6 成功支等式断言与时长变量冲突）与三条 nit，均可在修订时低成本吸收，不构成方向问题。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §5.4（对应 src/trivium/preflight.ts:723、src/trivium/adapters/codex.ts:307-330）",
+      "problem": "计划自己核出了 codex fingerprint() 的同类穿透——exists 之后 sha256File/readFile 抛错（权限、EISDIR 等）同样穿过无兜底的 probeAuth 把预检崩成内部错误——但把它留给审查员判断是否登记，§0 与 §4 的文档步骤里都没有「登记 BACKLOG」这一动作。这是本题修的同一症状（探活侧异常崩预检）在一行之隔处的孪生路径：zcode 侧同类已在 EV-136 r1 CODEX-01 改成返回 null，codex 侧留痕后才有触发条件可依。项目对「核出、不在本题」的既有处置就是登记（EV-196/197/198/199/200 全是这么来的），不登记等于把缺口压在归档计划的散文里。",
+      "evidence": "src/trivium/preflight.ts:723「const fp = await auth.fingerprint();」无 try（:730 的 probe() 同形，计划 §1.2 已认定任一抛出即整个预检崩）；src/trivium/adapters/codex.ts:307-330 fingerprint 内 sha256File（fsx.ts:51-53 直接 readFile）与 fs.readFile(base) 均无兜底；zcode 侧对照 zcode.ts:1152-1163 已是 try/catch 返回 null；doc/08_project/BACKLOG.md:296-298 显示 EV-198/199/200 均为双审核出后登记的先例。",
+      "suggestion": "在 §4 文档步骤补一条：为该路径登记一条 BACKLOG（或并入 EV-200 结案记录的残余段，写明触发条件与 zcode 侧 EV-136 r1 CODEX-01 的处置先例），不必改代码。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §3.1 C6（对应 src/trivium/adapters/codex.ts:355-358）",
+      "problem": "C6 要求删除成功时详情「分别**等于**改动前的两句」，括注只解决了失败句的变量（profile 与错误消息写死）；成功句是 拓活通过（Ns），N 来自 Math.round(durationMs/1000)，测试写不出预知值。按字面实现要么写死 0s（假入口通常几十毫秒，但全量高负载下可能过 1s——EV-201 正是这种负载期时序偶发红），要么无法落笔。",
+      "evidence": "src/trivium/adapters/codex.ts:356「`拓活通过（${Math.round(out.durationMs / 1000)}s）`」；doc/08_project/BACKLOG.md:299（EV-201）记录 2026-10-03 全量负载均值约 10 时信号时序断言两次偶发红，属同负载环境的先例。",
+      "suggestion": "C6 成功支明确为对时长容错的比对（如断言匹配 ^拓活通过（\\d+s）$ 且无残留后缀），失败支保持逐字等式；在计划里写明 N 是唯一变量，避免实现时自行猜。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §3.1 C3/C3b 与摆锁守则段（先例 test/unit/zcode-auth-probe.test.ts:33-46）",
+      "problem": "C3/C3b 的摆法写作「另摆一个只读子目录（目录删不掉）」，但空的只读目录在 POSIX 上可以直接 rmdir（删除目录项看父目录写权限，不看目标自身权限），锁不住递归删除。zcode 装置的 sibling 锁之所以摆得出删不掉，是因为在只读目录里放了文件 f 再 chmod 0o500（unlink 该文件需要目录写权限）。按计划字面摆一个空只读目录，rm 会成功、没有残留，C3/C3b 断言落空（会响亮地红，但属可避免的返工）。这是「没有凭据副本」档与 M4/M5 变异的唯一载体格。",
+      "evidence": "test/unit/zcode-auth-probe.test.ts:42-45「const locked = …; fs.mkdirSync(locked); fs.writeFileSync(path.join(locked, 'f'), 'x'); fs.chmodSync(locked, 0o500);」——EV-197 定型的 sibling 摆法内含文件；计划 §3.1 C3 只写「只读子目录」，摆锁守则段引 EV-197 教训时也只讲锁哪个目录、未讲内含文件。",
+      "suggestion": "C3/C3b 摆法补一句「只读子目录里放一个文件（照 zcode 装置 sibling 形态）」，把锁得住的条件写进计划本身，不依赖实现者去翻 EV-197 的测试。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §2.1（对照 src/trivium/probes/zcode.ts:935-937）",
+      "problem": "新 fsx 导出命名 removeTempDir(dir, copies: readonly string[])，而 probes/zcode.ts 已有同名注入选项 opts.removeTempDir（类型 typeof removeZcodeTempDir，签名是 (runDir, who, copy) 单副本对象）。二者无编译冲突（属性访问与模块绑定不同名空间、本题不改 probes/zcode.ts），但同名异义：一个返回残留结构、一个返回整句提示，未来读者极易把 zcode 探针臂的测试缝当成 fsx 通用函数的等价物。",
+      "evidence": "src/trivium/probes/zcode.ts:937「removeTempDir?: typeof removeZcodeTempDir;」、:994「await (opts.removeTempDir ?? removeZcodeTempDir)(root, '探针', {…})」；计划 §2.1 的 fsx 签名是 (dir: string, copies: readonly string[]) => Promise<TempDirLeftover | null>。",
+      "suggestion": "不改名也可，但在 fsx 导出与 probes/zcode.ts 该选项的文档块里互相点名一句（「与探针臂注入选项 removeTempDir 同名不同约」），把区别写进两处的既有注释即可。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §5（对照 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md §11.3 第 7 条 v1.3.79 段末句）",
+      "problem": "§5 风险与残余列了缓存可见性、mkdtemp 抛错、步骤属性丢失、fingerprint 四条，但没列 zcode 侧已明文记档的对称残余「attempt 抛错且删不掉时残留提示随异常丢失」。设计 §11.3 第 7 条 v1.3.79 段以「（两侧同形）」记了 zcode 的 doctor/探活两侧；本题把 codex 接进同一条共用句后，若 §4 补句与 §5 残余都不带这条，三个载体对同一残余的记录不闭合。codex 侧 attempt 改后抛出面近于空（prep 已兜、invokeCodex 不 reject、parseCodexEvents 逐行 try/catch），故仅为记录对称问题。",
+      "evidence": "设计 §11.3 第 7 条（2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2819）v1.3.79 段末「残余：……拉起本身抛错且删不掉时提示随异常丢失（两侧同形）」；src/trivium/adapters/codex-trace.ts:62-70 逐行 try/catch、exec.ts:304-307 spawn 错误按 finish 收尾不 reject。",
+      "suggestion": "§4 给 §11.3 补句或 §5 残余清单带上这一条（一句话），与 zcode 侧记录口径对齐。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "范围与六项用户决策的对应关系清楚：不改 probeAuth/指纹/缓存、EV-199 与 run() 清扫不在题、maxRetries 只对瞬时错误重试，均有代码事实支撑（preflight.ts:699-740 无兜底、codex.ts:547-560 已有 run() 兜底、EV-199 条目在 BACKLOG.md:297）。",
+    "§1 现状核对全部抽查相符：codex.ts:331-363 探活形态、:360-362 finally 裸删、preflight.ts:723/730 两处穿透点、exec.ts:304-307 拉起失败不 reject、codex-home.ts:274-335 三类凭据载体与 isCredentialCarrier(:93-94)、zcode.ts:954-972/928-937/896-899 的被抽取对象。",
+    "薄包装的语义等价性成立：removeTempDir 失败后对 copies 逐个 stat、ENOENT 判不在，remaining.length > 0 恰等于现状「stat 成功或非 ENOENT 判有副本」，zcode 侧输出逐字不变由既有 A1~A4/R7/D10 系列守住（test/unit/zcode-auth-probe.test.ts:272-328 即其形态）。",
+    "两档措辞、无哨兵档的理由成立：写入面就是三份真实凭据载体（config.toml、<profile>.config.toml、auth.json），名字口径与 scrubCodexHome/isCredentialCarrier 同源，CLI 若在 CODEX_HOME 里刷新 auth.json 也落在名内、仍取「含真实凭据」档。",
+    "codexCredentialCopies 的单一定义与 C7 钉法合理：prepareCodexHome 只拷基底与本次 profile 两份 toml 加 auth.json（codex-home.ts:289-324），rewriteHomePaths 拷入的引用文件不在凭据载体名内，与 scrubCodexHome 口径一致。",
+    "测试装置可行：exec.run 的 env 是 {...process.env} 再覆盖（exec.ts:194-198），假入口可达 FAKE_LOCK/TMPDIR/FAKE_OBSERVE；假事件流（thread.started、item.completed 的 agent_message、顶层 error）与 parseCodexEvents/traceCompleted 的判据吻合（codex-trace.ts:71-99、120-122）；缺省 profile qwen 与 config.ts:333 一致；HOME 钉住后 os.homedir() 跟随、CODEX_HOME 经 codexHomeOf() 与 rewriteHomePaths 生效；observe 先写再上锁的顺序与 zcode 装置相同。",
+    "文档锚点全部存在且准确：设计 §10.5「凭据」行（:2371）、§11.3 第 7 条（:2819）、RUNBOOK:279 的 zcode 残留处置行、BACKLOG EV-200（:298）及其「可抽成跨载体共用（util/fsx.ts 一类）」的修法方向、设计当前版本 v1.3.80（升 v1.3.81 顺序正确）。",
+    "变异表与用例格的对应自洽（M1~M14 各有可咬的格，M7/M8/M13 的跨套件「亦红」在预跑记录），零配额主张成立（假入口、不触发 120s 超时、doctor --selftest 走桩）。"
+  ],
+  "not_covered": [
+    "只读审查、未运行任何命令：GLM-03 的 POSIX rmdir 语义与 Node fs.rm 行为是代码与文档推理，未实测；GLM-02 的负载下时长分布亦为推理（引 EV-201 记录佐证）。",
+    "变异表点名的 zcode 既有用例（D10~D10d、R1~R6、A1~A4）只读了 zcode-auth-probe.test.ts 本体，doctor 侧测试文件未逐一核对内容，M7/M8/M13 的「亦红」按计划自报采信。",
+    "EV-199 的 probeCodexIsolation 裸删未读其代码本体（用户决策四排除在题外）；fingerprint() 崩预检的触发概率（exists 之后读盘失败的现实频率）未评估，只核了路径存在。",
+    "计划引用的 doc/05_testing/REPORT_2026-10-03_codex_probe_cleanup.md 与证据目录系拟新增产物，尚不存在，无从核对。",
+    "另一位审查员的视角按背靠背约束未覆盖。"
+  ],
+  "consulted": [
+    ".reviews/codex探活删除收尾/plan/2026-10-03-codex探活删除收尾-claude.md",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/codex-trace.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/config.ts",
+    "src/trivium/probes/zcode.ts",
+    "test/unit/zcode-auth-probe.test.ts",
+    "test/unit/codex-adapter.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md"
+  ]
+}

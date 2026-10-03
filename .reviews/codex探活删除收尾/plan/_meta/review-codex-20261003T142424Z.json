@@ -1,0 +1,36 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "计划整体与 EV-197/198 先例同形，我逐项对账了现状：codex probe() 的 finally 裸删形态（codex.ts:331-363）、probeAuth 无 try 的穿透路径（preflight.ts:699-740）、prepareCodexHome 的三类凭据载体写入面（codex-home.ts:274-335）、removeZcodeTempDir 的现场查语义（zcode.ts:954-972）——§1 现状核对与 §2 设计的等价性表述都属实；零配额路径成立、回滚面干净。主要问题在 §3.1 的测试摆法：C3b「留一份凭据副本 + 锁兄弟目录」与计划书自己的摆锁守则段（以及 EV-197 的教训）直接矛盾——副本所在目录全程可写，删除是否先吃掉残留副本取决于未保证的递归删除顺序，该格的期望档位和 M4/M5 两条变异的期望都吊在这个不确定性上。另有三件次要项：摆「只读子目录」须含子文件才拦得住递归删除（zcode 假入口已有先例，计划未写）；§3.3 两次全量对同期登记的 EV-201 偶发红没有预案；§5.4 主动留给审查员的问题（fingerprint 无兜底要不要登记）计划自己的落点清单里没有接住。修一处摆法、补三处说明即可放行，方向性骨架不需要动。",
+  "findings": [],
+  "agreed": [
+    "三段拆法与 zcode EV-197 完全同形：结果在 attempt 拼完、外层 finally 删除失败不抛、残留接在详情末尾且 ok 不变——对照 codex.ts:331-363 现状与 zcode.ts:1165-1189 先例逐句核实，表述属实，方向正确。",
+    "removeTempDir 抽到 util/fsx.ts、zcode 改薄包装且输出逐字不变的等价性成立：我核对了现有 removeZcodeTempDir（zcode.ts:954-972）的四个语义点——copies 为空不 stat、查不了按在说、ENOENT 判不在、code 回落 message——§2.1/§2.2 的写法逐一保得住，含 copy 为 null 直说「没有」的退路支。",
+    "tildeHome 挪 fsx 再导出，避免 adapters/codex.ts 引 adapters/zcode.ts 的载体互依赖，且 probes/zcode.ts 与测试引用点不动——必要且代价近零。",
+    "codexCredentialCopies 作凭据位置单一定义、放 isCredentialCarrier 旁、由 C7 钉「写入面=查询面」，与 scrubCodexHome 的三类载体口径一致（codex-home.ts:274-335 的写入面确实恰是这三类），残留两档不设哨兵档的取舍与事实相符。",
+    "零配额路径成立：假入口（shebang 用 process.execPath，与 zcode-auth-probe.test.ts:27 先例同法）+ 钉 HOME/CODEX_HOME/TMPDIR 到本格私有根 + doctor --selftest 桩；「摆不出就退非 0、不静默通过」的守则延续既有纪律；root 下权限格跳过（C5a 的 EISDIR 例外成立）判断正确。",
+    "决策边界与先例一致、回滚成本为零：probeAuth、拉起参数、判据、指纹、缓存不动，EV-199 与 mkdtemp 本身失败不在本题，均是 EV-197/198 已定形态；改动全部是代码内重构+加固，真退回去就是一次 git revert，无数据迁移面。",
+    "§5.3 对「步骤属性挂原错误对象、被再包一层会丢、C5a 会红」的残余披露诚实，M10/M11 对该路径有咬合。",
+    "文档同步清单齐备：§10.5（设计 :2367）与 §11.3 第 7 条（:2819，现文即「认证探活与 doctor 探针的临时目录删除共用 removeZcodeTempDir」）定位属实，RUNBOOK 临时目录行（doc/06_deployment/RUNBOOK_pipeline_ops.md 附近表格行存在），版本号 v1.3.81 接当前 v1.3.80 正确，报告登记 doc/05_testing/README.md 符合 AGENTS.md 同步清单。"
+  ],
+  "not_covered": [
+    "变异装置的逐条预跑与「装置每轮只收一个套件」的机制细节未逐行核对（不在本侧镜头内），只核对了 M1–M14 期望的语义指向是否自洽（M4/M5 的可用性以 CODEX-01 修好后为准）。",
+    "未实跑 npm run check / node --test（只读镜头），验证成本仅按计划文本与 EV-201 登记判断。",
+    "claude 侧裁决口径、其余审核者的镜头范围不涉及；设计文档回补句的具体措辞未代拟。",
+    "zcode 回归套件 A1–A4、R7、D10–D10d、R1、R2–R6 只确认存在与命名，未逐用例读断言。",
+    "codex CLI 真实版本行为（本次被假入口完全替身）不构成本题风险，故未做厂商侧核对。"
+  ],
+  "consulted": [
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/util/exec.ts",
+    "test/unit/zcode-auth-probe.test.ts",
+    "test/unit/zcode-doctor-probe-home.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md"
+  ]
+}
