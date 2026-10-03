@@ -1,0 +1,90 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "方案方向正确、事实层扎实：计划现状节的全部行号与行为引用我逐一比对无误（hookPreCommit :1265/:1278/:1284-1286、hookStop :1424-1465、review.ts:1858/:1872、cli.ts:1510/:1546-1575、meta.ts:479/:500/:605、state.ts:52、gate.ts:215/:347/:393）；§2.1 对决策二的收窄（D1，改用 readRunMeta 按闸门项 run_id 直读）三点理由均经代码证实；§1.3 对 missing_disposition 早退先于 readonly_breach 判定的识别及「让 Hook 自己列调用记录」的对策是本题最关键的正确性判断，顺序属实。问题集中在验证面：变异 M2（防「退回 latestRunMeta」，正是 D1 要防的方向）的两个期望红例一个构造方向天然免疫（U5）、另一个依赖未写明捕获层级的 stderr 断言（U3），若按现有单测形态实现该断言会空转，M2 将无任何单测咬住，§3.3「每条至少一例红」落空；另有提交 Hook 混合形态行序描述自相矛盾、收工混合形态 stderr 取句未定义两处未决策。均不阻断方案方向。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": ".reviews/收工闸门文案区分只读失守/plan/2026-10-02-收工闸门文案区分只读失守-claude.md §3.1 U3 与 §3.3 M2",
+      "problem": "U3 的「与 U1 逐字相等，且无额外 stderr」没有写明按哪一层捕获 stderr。latestRunMeta 读不出留痕时的 warn 经 util/log.ts 直写 process.stderr，不经过 hookStop 返回体的 stderr 字段——若按 hooks.test.ts 现有 hookStop 用例的形态（直调函数、只比对返回体）实现，「无额外 stderr」就是空断言。叠加 U5 对 M2 不敏感（见 GLM-02），M2 唯一可能的牙就是 U3 的进程级 stderr 断言；它一旦空转，M2（防「退回 latestRunMeta」，恰是 D1 明确要防的方向）将没有任何单测咬住，§3.3「期望每条至少一例红」对 M2 落空。",
+      "evidence": "src/trivium/meta.ts:493-501（latestRunMeta 读不出时逐份 warn）；src/trivium/util/log.ts:24-26（warn 即 process.stderr.write，与返回体无关）；src/trivium/meta.ts:605-626（readRunMeta 静默返回 null，正确实现下无输出）；test/unit/hooks.test.ts:1236-1287（现有 hookStop 用例均为直调函数、断言返回体字段，无进程 stderr 捕获先例）；被审计划 §3.1 U3 断言原文。",
+      "suggestion": "在 U3 写明「无额外 stderr」的捕获层级：stub process.stderr.write（或重定向 fd 2）断言零输出，并同时断言返回体的 stderr 字段与改前逐字相同；M2 的期望说明相应改为只依赖 U3（或补一条专门捕获进程 stderr 的断言），避免 Driver 按自然读法实现后 M2 无牙、变异验证阶段才发现。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": ".reviews/收工闸门文案区分只读失守/plan/2026-10-02-收工闸门文案区分只读失守-claude.md §3.1 U5 与 §3.3 M2",
+      "problem": "M2 括号「U5 / U3 应红」中 U5 那半不成立。U5 的构造是「_meta 有失守的 R1，闸门 run_id 为 R2 且 R2 未失守」——R2 字典序更新，变异成 latestRunMeta 后（meta.ts 按文件名 sort 后 reverse 取最新可读）同样读到 R2、读到未失守、走原文案，与正确实现行为完全一致，U5 不会红。也就是说 U5 现在的构造方向对 M2 天然免疫，同时也没有任何用例锁「latest 会读到失守份、而闸门钉住的那份未失守 ⇒ 仍走原文案」这一方向。",
+      "evidence": "src/trivium/meta.ts:488-496（ids 排序 sort().reverse() 后从新到旧取第一份可读）；被审计划 §3.1 U5 的构造描述（失守的是 R1、闸门指向 R2）与 §3.3 M2 的期望括号。",
+      "suggestion": "把 U5 的夹具方向倒转：失守的那份是字典序最新的 run、闸门 run_id 指向更旧且未失守的那份（手工 setGate 构造，自然流水里造不出这种形态），使 latestRunMeta 会读到失守份而直读不会；或从 M2 的期望里去掉 U5，如实写「M2 由 U3 咬住」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/收工闸门文案区分只读失守/plan/2026-10-02-收工闸门文案区分只读失守-claude.md §2.2 与 §2.3 末段（提交 Hook 混合形态）",
+      "problem": "N、B 都非空时提交 Hook 的行序描述自相矛盾：「N 非空时原三行在前、失守段在后，『如需关闭』那行只出一次（放最后）」——原文案三行（hooks.ts:1284-1286）的第三行就是「如需关闭」，它既随「原三行」在前、又「放最后」，两种读法产出两种不同输出，属于未决策而非措辞。且 U9（未失守）与 U10（失守）之间没有提交侧混合用例，行序无论怎么实现都无断言锁定，M4/M9 也覆盖不到混合形态。",
+      "evidence": "src/trivium/hooks.ts:1284-1286（原文三行，第三行即关闭方式行）；被审计划 §2.3 细节末条原文与 §3.1 U9/U10/U11 的用例清单。",
+      "suggestion": "明确混合形态下「如需关闭」行只出现一次且在失守段之后（即原文案段此时只出前两行），或明确原三行完整在前、失守段不重复该行；并给 U6 补一个提交侧姊妹用例（或把 U10 直接造成混合形态）锁定所选行序。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": ".reviews/收工闸门文案区分只读失守/plan/2026-10-02-收工闸门文案区分只读失守-claude.md §2.2 与 §3.1 U6",
+      "problem": "收工 Hook 混合形态（N、B 都非空）的 stderr 取句未定义：现状 stderr 固定为首句「还有未逐条裁决的审查意见：〈列表〉」（hooks.ts:1465），计划只写了纯失守时「stderr 为首句」的同构；混合时 stderr 取原首句（列表只列 N）还是失守段首句没有写，U6 的断言也不含 stderr，实现取哪句都不会红。",
+      "evidence": "src/trivium/hooks.ts:1454-1465（reason 与 stderr 的构造）；被审计划 §2.2 第三条与 §3.1 U6 的断言描述。",
+      "suggestion": "在 §2.2 写明混合形态下 stderr 的取句（二选一均可，取原首句与「原文案在前」的组织更一致），并给 U6 补上 stderr 断言。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§2.1（D1）用 readRunMeta 按闸门项 run_id 直读代替决策二的 latestRunMeta：三点理由全部经代码证实——latestRunMeta 读不出时逐份 warn 经 util/log.ts:24 直写 process.stderr，会打破「读不出时逐字不变」；它取「最新可读」需再与 g.run_id 比对才知道是不是这一轮；gate.ts:1014 本就按 run meta 判 guard.readonly_breach === true，事实源一致、判定同构。",
+    "§1.3 识别出 checkAdjudication 在裁决件缺失时以 missing_disposition 早退（gate.ts:215）、走不到 readonly_breach（:347），因此让 Hook 自己列出调用记录、gate --check 只作处置判据的权威出处引用——已核实顺序属实，这是本题最容易被漏的正确性判断。",
+    "「这条读取只影响文字、不影响判定」的分离设计：退出码、拦截、阻断计数在读取之前确定，因此不需要 resolveRoundDriver 那套守卫，R1 对伪造失守留痕不加守卫的评估（_meta 为编排器独占面、伪造只误导文案不改变拦截）成立。",
+    "失守段出口写 /dual-abandon --topic <主题> --stage <阶段> 合法且前提成立：abandon.contract.md:4 的 argument-hint 明确接受 --stage plan|code|bug；QUICKSTART §5.2 证实带 Hook 的载体只有 Claude Code（L1）与 ZCode（L2 尽力拦截），两者的入口调用写法均为 /名字，Codex 与 Antigravity 无 Hook，不会看到这两处文案。",
+    "调用记录至多 8 条超出加「…」、空时写「（run 元数据未记录）」与 gate.ts:375 同口径；breached_files 在 types.ts:1488 为可选字段，guard.breached_files ?? [] 的兜底必要。",
+    "U7「第 3 次退 0」与 bumpStopBlockCount 的 exceeded = count > max（lock.ts:514）、缺省 stop_hook_max_blocks: 2（config.ts:413）及设计 §8.5「每阶段最多 2 次阻断上限」三处一致。",
+    "BACKLOG EV-98 改「部分结案」是既有状态用法（EV-95、EV-191 同款），排序快照确有「EV-98 文案」一行（BACKLOG.md:313）；「保留工件、只解闸门」的承诺与设计 §8.5/§5.4 及 PRD 第 10 章口径一致。",
+    "§3.2 的集成构造可行：write_breach 桩已有先例（fault-injection.test.ts:442 同为 gemini: write_breach + glm: ok），gate-loop.test.ts 的 runPlan/hook/writeDisposition 框架与「写齐裁决件后 gate --check 退非零且 failures 含 readonly_breach、裁决件未写时同样说失守」两格的断言链吻合；seedRunMeta 用 newRunMeta 构造（hooks.test.ts:680-692），扩可选 guard 覆盖可行。",
+    "现状节的全部源码行号引用逐条比对无误；「改前期望串写成字面常量」是好实践，改坏原文案也会红。"
+  ],
+  "not_covered": [
+    "任务书给出的任务目标文本被截断，「决策一～五」的原文未能见到，本审只能核对计划转述的内部自洽性与代码事实，无法对「是否忠实于用户决策」下结论。",
+    "本侧无执行能力，全程未运行任何命令：U7 的计数行为、latestRunMeta 的 stderr 实际表现、M2 下 U5 不红等均为静态读码推演（推演链已写入各条 evidence），未经变异装置或测试实跑验证。",
+    "必读清单中的 CLAUDE.md、README.md、doc/README.md、doc/01_requirements/README.md、doc/02_design/README.md 未逐字通读；已读 AGENTS.md 全文、设计文档与 QUICKSTART 的相关节选、BACKLOG 相关条目。",
+    "「建议核实」清单中的 scripts/build.mjs、src/injected.ts、test/integration/mcp-detect.test.ts:50 的注释引用未直接读（fault-injection.test.ts:442 的 write_breach 桩用法已核实）。",
+    "§3.4 改前改后对照脚本与 §3.5 收尾流程的可运行性未验证；D2（hookSessionStart 那句要不要顺手改或登记）本审不表态，交由裁决。"
+  ],
+  "consulted": [
+    "src/trivium/hooks.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/state.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/config.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/util/log.ts",
+    "src/trivium/types.ts",
+    "test/unit/hooks.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "doc/07_manuals/QUICKSTART.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "skills-src/commands/abandon.contract.md",
+    "scripts/mutation-check.mjs",
+    ".reviews/收工闸门文案区分只读失守/plan/2026-10-02-收工闸门文案区分只读失守-claude.md"
+  ]
+}

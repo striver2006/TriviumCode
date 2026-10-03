@@ -1,0 +1,307 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261002T143500Z",
+  "topic": "收工闸门文案区分只读失守",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「收工闸门文案区分只读失守」：EV-98 文案部分——本轮因只读失守而 gate --check 不通过时，收工 Hook 与提交 Hook 仍一律说「还有未逐条裁决的审查意见」，把 Driver 引向补裁决件这个错误方向；裁决其实早已齐备，补多少都解不开。EV-79 代码双审第 2 轮就这样卡死过：22 条裁决齐备、闸门解不开，最终由用户走 abandon 作废那一轮。本主题只改文案，让两处…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "364ef0f33d3bebfebb75b1d6e0db76b98a15bf7f",
+    "tree_hash": "a88e000ecf07d6230c3a2473ed9ae68b398f83eb",
+    "dirty": true,
+    "subject_sha256": "b82f3ec81cad0e6e5fb2f7f97e634b38557741955f47cdbb2aaf249721b662aa",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "35253aaf9198471f5c744048db7c6c3006f80f0d",
+      "dirty": false,
+      "inputs_sha256": "2077e46b80c3329936e01dedf8bb11645e02d487fa9802e616b41cf8767e23a6",
+      "built_at": "2026-10-02T12:03:25.571Z"
+    },
+    "after_tree_hash": "f181a90e07d6f70993bb454f0704a8eb2f6683ca"
+  },
+  "started_at": "2026-10-02T14:35:02.011Z",
+  "finished_at": "2026-10-02T14:43:21.081Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.0",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 498.879,
+      "tool_calls": {
+        "run_command": 35,
+        "project_reads": 31
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [
+        "CODEX-01",
+        "CODEX-02",
+        "CODEX-03",
+        "CODEX-04",
+        "CODEX-05",
+        "CODEX-06",
+        "CODEX-07",
+        "CODEX-08"
+      ],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a0fd0a-3f6c-7a92-b53e-16088c4cccae",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.14",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 248.444,
+      "tool_calls": {
+        "read": 28,
+        "grep": 13,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 234454,
+        "output_tokens": 28215,
+        "thinking_tokens": 20849,
+        "cache_read_tokens": 2791762,
+        "total_tokens": 262669
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "2ee9ed50-61ed-4cec-8d88-ee2f27d818e8",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 453.946,
+      "tool_calls": {
+        "read": 11,
+        "grep": 12,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 10,
+        "inputTokens": 665140,
+        "outputTokens": 31562,
+        "totalTokens": 696702,
+        "cacheReadTokens": 570368,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_1adde0d4-d8f7-4c73-b4c1-b0d69bf269f4",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "收工闸门文案区分只读失守/plan/_meta/brief-codex-20261002T143500Z.md",
+      "sha256": "ce26af91c618bd3096b57f746b1082e4dba0d6f5218b332bec90e3e26147b8c3"
+    },
+    {
+      "path": "收工闸门文案区分只读失守/plan/_meta/brief-gemini-20261002T143500Z.md",
+      "sha256": "87be9da9b28add8a17324b9d7f17950862402e907b68722e28c8733fb2f62861"
+    },
+    {
+      "path": "收工闸门文案区分只读失守/plan/_meta/brief-glm-20261002T143500Z.md",
+      "sha256": "9985406c07cef014c5403a8fa2a42e03f3cd83d826946a68696d4094e1a09845"
+    },
+    {
+      "path": "收工闸门文案区分只读失守/plan/_meta/review-codex-20261002T143500Z.json",
+      "sha256": "8ff2b532e3649bc6ffc2e95f17184fc56220cbca1d3d22330835f7be43fd45d6"
+    },
+    {
+      "path": "收工闸门文案区分只读失守/plan/_meta/review-codex-20261002T143500Z.degraded.json",
+      "sha256": "aac8fc54eee4ab782ce8461375c911246a363bcad99e3f37b14dd93e11038bd8"
+    },
+    {
+      "path": "收工闸门文案区分只读失守/plan/_meta/review-gemini-20261002T143500Z.json",
+      "sha256": "312f4b9912c8ad43a7a4b70b1961fda37edf478095b761de0c238b4b31ae0a24"
+    },
+    {
+      "path": "收工闸门文案区分只读失守/plan/_meta/review-glm-20261002T143500Z.json",
+      "sha256": "4b7ed34e233e8badda7ee318e86f351769256371166a8f0ce4fccd82cd10b6c3"
+    },
+    {
+      "path": "收工闸门文案区分只读失守/plan/2026-10-02-收工闸门文案区分只读失守-codex.md",
+      "sha256": "44d11c6e99fba28d980c51471de87501e2ddf2acaba5f36ec9cb29056eada8ee"
+    },
+    {
+      "path": "收工闸门文案区分只读失守/plan/2026-10-02-收工闸门文案区分只读失守-gemini.md",
+      "sha256": "2cd06c12e41025ef975c78c8d54b81c4d83001a8b895fdc3e5d0dd47cfd5cf4e"
+    },
+    {
+      "path": "收工闸门文案区分只读失守/plan/2026-10-02-收工闸门文案区分只读失守-glm.md",
+      "sha256": "37c200981e2b6092266502b7edb29832381bbbcf0e63a19138d8caa73536910a"
+    },
+    {
+      "path": "收工闸门文案区分只读失守/plan/2026-10-02-收工闸门文案区分只读失守-claude.md",
+      "sha256": "b82f3ec81cad0e6e5fb2f7f97e634b38557741955f47cdbb2aaf249721b662aa"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

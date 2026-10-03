@@ -1,0 +1,174 @@
+{
+  "critic": "codex",
+  "run_id": "20261002T143500Z",
+  "findings": [
+    {
+      "index": 0,
+      "id": "CODEX-01",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-01",
+        "severity": "major",
+        "layer": "plan",
+        "kind": "contract",
+        "location": "§2.3 共用函数 breachGuidance 的「处置」两句；§4 R3",
+        "problem": "失守处置的判据句（drift 单向可用、不足判误报、须核调用记录/目标/是否被 ignore）在 gate.ts:358～371 已经有一份，计划把它抄进 hooks.ts 作第二份，同步手段是 R3 说的「两处各留一行注释指向 gate.ts 那一条」——靠记性的纪律，不是机制。gate.ts 那段措辞历史上已改过多次（注释里自己列了第 2 轮 CODEX-F01-①、r2 CODEX-09/r3 CODEX-r3-01、留痕文案小修 CODEX-01≡AGY-01 四次更正），每次改都是单点改；抄第二份之后，Hook 版会在无人察觉的情况下与闸门权威版分叉，而本题的全部价值就在于这句话是给人做判断用的。",
+        "evidence": "实读 src/trivium/gate.ts:347～376（failure readonly_breach 的 message 全文与其上的四次更正记录）；src/trivium/meta.ts:499～560 的 unreadableRunMetaExitAt 说明块：上一版「七处各写一句」被改成单一共用出口段；AGENTS.md 纪律 12「靠记性的纪律要换成不依赖记性的机制」；被审计划 §2.3、§4 R3。",
+        "suggestion": "二选一并写进计划：把 gate.ts 的处置判据抽成单一来源（与 unreadableRunMetaExit 同一形态，gate --check 与两处 Hook 共用），或者保留两份但加一条对账用例断言两处处置段的核心句字面相等（改一漏二当场红）。注释指向不算对策。"
+      }
+    },
+    {
+      "index": 1,
+      "id": "CODEX-02",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-02",
+        "severity": "major",
+        "layer": "plan",
+        "kind": "correctness",
+        "location": "§2.2 末段「阻断上限分支按 pending[0] 判：它在 B 里 ⇒ 用失守版两句」＋§2.3 上限样例",
+        "problem": "上限分支的失守版两句只点名 pending[0] 那一个失守项，混合场景（B 非空且 N 非空、pending[0] 恰在 B 里）下，真缺裁决件的那些项从 systemMessage 里整体消失。这是收工 Hook 主动退让（exit 0 放行）的那一刻，人拿到的最后一句提示会变成「这一轮失守，手工处理」，看不到 t2/plan 还差裁决件、下一步照常要补。现有代码的原句至少用「${g.topic}/${g.stage} 的裁决仍未齐备」点名同一项，计划换成失守版后连这点也没了。§3.1 的用例矩阵 U7/U8 只测单一失守项，混合＋超限这一格没有任何用例。",
+        "evidence": "实读 src/trivium/hooks.ts:1438～1451（计数对象取 pending[0]、原两句形态）；被审计划 §2.2、§2.3「收工 Hook 阻断上限放行」样例、§3.1 表 U7/U8；test/unit/hooks.test.ts:1573～1580 现有用例只断言含「避免死循环」。",
+        "suggestion": "在上限分支保留对 N 的点名（失守句与未裁决句并存，或先列 N 再附失守段），并在 §3.1 补一格「混合＋超限」的用例与期望串。"
+      }
+    },
+    {
+      "index": 2,
+      "id": "CODEX-03",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-03",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "correctness",
+        "location": "§2.2「B、N 都非空 ⇒ 先出原文案（指引里的阶段取 N 的第一项），再接失守段」",
+        "problem": "混合时原文案的末句是「再运行 trivium gate --stage <N[0].stage> --check」，它只指向未裁决那一项。Driver 照做会拿到一次通过，容易读成「闸门过了、可以收工」，而拦着收工的是另一项的失守。计划把失守段接在后面，但没规定这两段之间的指代关系（那一句跑完是否还要跑失守那一项的 --check）。",
+        "evidence": "实读 src/trivium/hooks.ts:1455～1465（reason 末句按 g.stage 单点给指引）；被审计划 §2.2、§2.3 收工拦截样例。",
+        "suggestion": "混合时把指引句的阶段来源说清楚（逐项给，或在末句加「失守那一项另行处置，见下」），避免「跑一次就绿」的误读。"
+      }
+    },
+    {
+      "index": 3,
+      "id": "CODEX-04",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-04",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "contract",
+        "location": "§2.3「出口写法用 /dual-abandon：会跑到这两个 Hook 的只有带 Hook 的载体，它们的调用写法今天都是 /名字」",
+        "problem": "把某家载体的入口写法字面写进 hooks.ts。同文件既有做法是 entryCommandOf(driver, 'dual-abandon')（:701～703、:1058～1059、:1608），闸门项与 run.json 里都带着 driver；计划引的先例 hooks.ts:1409～1411 那条注释自己写明「第三家带 Hook 的载体用别的写法时要改这里」——那是提交 Hook 拿不到当轮 Driver 才留下的债务，本题两处 Hook 手上正有 g.run_id 那份 run.json（§2.1 已要读它），没必要再欠一笔。",
+        "evidence": "实读 src/trivium/hooks.ts:1407～1412（被引注释全文）、:699～703、:1605～1610（entryCommandOf 用法）；src/trivium/agents/registry.ts:501～506 与四家 entryInvocation（claude `/`、glm `/`、codex `$`）；src/trivium/state.ts:52～80 关于 g.driver「只用来选写法、不作身份来源」的说明；skills-src/commands/abandon.contract.md:4（--topic/--stage 参数形态与计划样例一致）。",
+        "suggestion": "改用 entryCommandOf（driver 取 §2.1 已读到的那份 run.json 的 driver，取不到按缺省），把「第三家带 Hook 的载体换写法」这件事重新收回注册表单点。"
+      }
+    },
+    {
+      "index": 4,
+      "id": "CODEX-05",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-05",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "contract",
+        "location": "§3.4「证据进 doc/05_testing/evidence/」与 §2.4 文档一节",
+        "problem": "交付清单里没有验证报告这一项。同类文案主题都留了一份 REPORT 并在 BACKLOG 条目里引用「报告 + 证据目录」（EV-98 的部分结案要对标的正是这个形态），而计划只说证据进 evidence/、BACKLOG 只写「本主题、run 与落点」。若补报告，AGENTS.md 同步清单第 6 行还要求同批进 doc/05_testing/README.md 的「当前已归档文件」一节，顺序与缺登由契约测试当场判红；这层计划里没提，属于实施时才发现的返工点。",
+        "evidence": "实读 doc/08_project/BACKLOG.md:196（EV-98 条目）与 :193（EV-95 部分结案条目的引用形态：设计小版本号 + REPORT + evidence 目录）；doc/05_testing/README.md:16 与 :26 起的索引节；test/helpers/doc-archive-index.ts 头部口径（顶层文件双向对账、evidence/ 目录本身不计入覆盖）；AGENTS.md「改动同步清单」。",
+        "suggestion": "明确「出 REPORT_2026-10-02_*.md + evidence 目录，同批补 README 索引条目」或「刻意不出报告」并写一句理由；不要把报告留成实施时的临时决定。"
+      }
+    },
+    {
+      "index": 5,
+      "id": "CODEX-06",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-06",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "correctness",
+        "location": "§3.5 收尾",
+        "problem": "收尾只有 npm run check 两遍 + doctor selftest，没有「重装」这一步。本仓已知坑第 1 条：真实会话里的 Hook 走的是已安装副本 .trivium/bin/trivium → ~/.claude/skills/.../trivium.cjs，不在仓库构建后跑 node dist/install.cjs，新文案在用户和 Driver 的实际会话里根本不会出现——而 EV-98 文案的收益面恰恰只在真实会话里兑现，夹具与临时树里的构建证明不了它。",
+        "evidence": "实读 AGENTS.md「已知坑」首条；被审计划 §3.4/§3.5（新旧对照在临时树自建 bundle，不经安装位）。",
+        "suggestion": "收尾加一步「npm run build && node dist/install.cjs 后在本仓复现一次失守格与未失守格的人读输出」，或写明不在真实会话自证的取舍（并提示安装前取消 TRIVIUM_ASSET_ROOT）。"
+      }
+    },
+    {
+      "index": 6,
+      "id": "CODEX-07",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-07",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "correctness",
+        "location": "§2.1 其余情形归入「未见失守 ⇒ 原文案」；§4 R1 前后",
+        "problem": "直读 g.run_id 与 gate --check 的轮次选择不同源，留下一格真因不说：闸门项 run_id=R2 的 run.json 读不出（被搅坏/版本落后），而更旧的 R1 可读且记录着失守时，gate --check 走 latestRunMeta 会退回 R1 报 readonly_breach，Hook 却按「未见失守」出原文案（引向补裁决件）。这正是本题要修的误导形态，只是发生在少见的留痕损坏场景，计划把「读不出」一律归到原文案时没有登记这一格。",
+        "evidence": "实读 src/trivium/cli.ts:1119～1126（不带 --run-id 时取 latestRunMeta）与 src/trivium/meta.ts:486～503（最新读不出会逐份回退、只对读不出的 warn）；src/trivium/gate.ts:1013～1015（readonlyBreach 取自那份 runMeta）；被审计划 §2.1、§3.1 U3/U4/U11。",
+        "suggestion": "在 §4 补一条风险登记这一格（Hook 与 gate --check 的轮次来源不同），并在 U3/U11 之外加一格「直读失败 + 存在可读的更旧失守留痕」的期望说明；是否据此改文案可暂缓，但别让它成为未登记的沉默分支。"
+      }
+    },
+    {
+      "index": 7,
+      "id": "CODEX-08",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-08",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "correctness",
+        "location": "§2.3 失守段的「处置」首句 + §2.1 已读到的那份 run.json",
+        "problem": "处置句要求人「先核对该轮 run 元数据的 snapshot.drift 与工作区」，而 Hook 此刻已经把那份 run.json 读进内存了（§2.1）。让 Driver/用户再去开文件读一个字段，多一次人肉核对；判据模糊时更常见的走向是直接重跑整轮双审——那是本题里唯一真正消耗厂商配额的出口（历史实测单侧一轮约 420s/$1.25～1.58，多侧按入选数放大）。",
+        "evidence": "实读 src/trivium/types.ts:1455～1490 的 RunMeta.guard 与 snapshot 字段（drift 结论就在同一份文件里）、src/trivium/gate.ts:347～376（同口径判据已在闸门侧给出）；doc/05_testing/README.md:37～38 两条 M9 验收条目记录的真实成本；被审计划 §2.1、§2.3、§3.2。",
+        "suggestion": "失守段把 snapshot.drift 的实际取值直接写出来（例如 drift=false 时点明「只排除了未被 ignore 的改动，仍须核调用记录」），把「先核对」从动作降级为确认，减少误重跑；同时保留 gate --check 作为权威出处。"
+      }
+    }
+  ]
+}
