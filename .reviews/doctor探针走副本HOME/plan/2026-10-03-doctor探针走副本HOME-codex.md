@@ -1,0 +1,218 @@
+---
+schema: trivium.review.v1
+topic: doctor探针走副本HOME
+stage: plan
+role: codex
+vendor: openai
+agent_cli: codex/0.160.0
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20261003T042353Z
+rerun_index: 1
+snapshot_hash: sha256:ba0474d11da298e0858bc2a71413008ef0c1219f4b542c16602b08155f8ffe8b
+blind: true
+started_at: 2026-10-03T04:23:55.593Z
+finished_at: 2026-10-03T04:31:36.369Z
+duration_s: 461
+tool_calls:
+  run_command: 27
+  project_reads: 28
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 2
+  minor: 4
+  nit: 2
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a10001-1ee2-7eb3-b798-e0319f9368ef
+---
+
+# 计划审查：doctor探针走副本HOME
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20261003T042353Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+我按「外部依赖与环境假设 / 成本与配额 / 回滚迁移成本」这一侧读了被审计划，并逐条回核了它引用的源码与文档事实：`src/trivium/probes/zcode.ts`（:263-330 readRollout/probeTraceSource、:1035-1050 readTrace、:1066-1105 probePathDeny、:1179-1203 门控与 beta note、:1376-1481 落点/旗标/真实调用段与失败即返回）、`src/trivium/adapters/zcode.ts`（:376-430 落点键与 storageRedirectRoot 注释、:909-995 prepareZcodeHome、:1041-1135 authProbe、:1231-1366 run() 的 landingRoot 与回读、:533-604 zcodeHomeUnder/scrub）、`src/trivium/doctor.ts`（:48 DoctorOptions.zcodeProbe 的 Pick、:403-560 runDoctor 每次真实重探、无 TTL 跳过）、`src/trivium/cli.ts:740-772`、`src/trivium/util/fsx.ts:11-18,117-119`、`doc/02_design/2026-09-10-…设计.md`（文档头 v1.3.77、§11.3 第 7 条 EV-136 段）、`doc/08_project/BACKLOG.md`（EV-87/EV-90/EV-93/EV-112/EV-136/EV-194）、`doc/06_deployment/RUNBOOK_pipeline_ops.md:260-275`、`doc/07_manuals/QUICKSTART.md`、`doc/05_testing/README.md`、`test/unit/zcode-auth-probe.test.ts`（确为 10 条）、`scripts/`（build.mjs/mutation-check.mjs 在位）。总体判断：技术形态照 EV-136 复刻是对的，行号引用与「同一组三个键/同一个式子」「PROTOCOL 无 zcode 探针段可补」这些事实我独立复核成立，风险面 R1-R6 也基本诚实。需要改的主要落在验收与数据面：验证 3 的主判据把「请求值」当「生效值」（当前档位 GLM-5.3 恰是副本首位模型，RUNBOOK 自己写着这一格验不出差别），且整套判据绑在 2026-10-02 那台机器的临时个人配置状态上、没有写前提不复现时的处置；副本支与退路支写出的 `model_id_form` 无来源标记，事后补格要走 schema 同步五处。另有落点布局二次实现、跨午夜回读、文档同步面漏三处（含会被 `doc-archive-index` 契约测试当场打红的 README 归档条目）、D5/D6 用全局 tmpdir 列举判删除、变异残留临时目录的口径未记。这些都不是措辞问题，按现计划做完会有返工或留下不可判伪的验收件。
+
+**结论**：`request-changes`
+
+## 审查意见（共 8 条：重要 2 ｜ 次要 4 ｜ 吹毛求疵 2）
+
+### CODEX-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `计划 §2.3 步骤 4/6、§2.4、§7 R3；`src/trivium/probes/zcode.ts:1437-1456`` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：改动后探针结论里没有任何一格说明 `model_id_form`（以及 `response_field`）是从哪条路径读出来的：副本支与退路支都往同一个字段写，而退路支下个人配置的默认也可能是 `<providerKey>/<modelId>` 形态（坑 P-31 记着两种 providerId 形态并存）。于是「这条结论出自副本路径」这件事只有人眼从 note 里读，机器面上不可判；R3 关于「新形态与目录同源、只会更准」的论证也只在个人缺省恰为 UUID 形态的机器上成立。计划把「不改探针结论的缓存与 TTL」列为不做，却没决定要不要给这一格加来源标记——而这是事后最难补的一类改动。
+
+**依据**：读 `src/trivium/probes/zcode.ts:1437-1456`（`probe.model_id_form` 由 trace 或 rollout 回读写入，不记来源）与 `:1408-1421`（现状恒走真实 HOME）；`src/trivium/adapters/zcode.ts:909-995` 的 `prepareZcodeHome` 返回 `cause: 'source_missing' | 'no_model' | 'qualify_failed' | null`，探针侧计划只把它用于 note 文字，不入结论；AGENTS.md「改动同步清单」明写改 JSON Schema 须同步 parse/gate/meta、PROTOCOL、`skills/dual-critic/SKILL.md`、本文件契约面与 `registry-parity` 的盯防点（`ls test/contract/` 见相关对账测试）；`doc/08_project/BACKLOG.md` EV-93 行也记着 `model_id_form` 的形态由 CLI 决定、两种 providerId 并存。
+
+**建议**：在计划里显式决策一次：要么给 zcode 探针结论补一格来源（例如把 `prep.cause`/副本与否并入现有段或新增一字段，同步走 schema 对账），要么写明「不补，来源只由 note 文字承载、事后不据 `model_id_form` 形态做判定」并把这一取舍登进 BACKLOG/残余。不要留成「等真需要时再加字段」——那一次的同步面正是清单里最贵的那一档。
+
+### CODEX-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `计划 §6 验证 3 判据「改后 headless 通过、headless 那行详情写的是档位模型（`bigmodel-coding-plan/GLM-5.3`）」；§2.1` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：这条主判据不可判伪。`describeZcodeProbedPath` 的「模型 X」取自 `prep.qualified`，也就是**请求**的模型，不是回读的生效模型；置首未生效那一档的措辞里同样带着模型名（只多一句「实际生效模型未核」）。更要紧的是本机当前档位 `GLM-5.3` 恰是副本源的首位模型，回落也落到它——RUNBOOK 自己就写着这一格「验不出差别」。于是按这条判据收工，验收件证明不了「探的是审查那条选模路径」。
+
+**依据**：读 `src/trivium/adapters/zcode.ts:1109-1116`（`probed` 三元式各档都由 `prep.qualified`/`prep.reason` 拼出，非生效值）、`:1283-1296` 与 EV-82 的注释「回读值取自日志的 `context.model`、形态由 CLI 决定」；`doc/06_deployment/RUNBOOK_pipeline_ops.md:274` 末句明写「端到端验证请用非首位模型（`--model-glm GLM-5.3-Flash`），默认档 `GLM-5.3` 恰是首位模型，回落也得到它，验不出差别」；本轮 `grep -n "GLM-5.3" doc/06_deployment/RUNBOOK_pipeline_ops.md` 实际执行有命中。
+
+**建议**：把主判据挪到回读侧：以 `model_id_form`（日志/rollout 回读的生效模型）为达标判据，note 那行只作辅助读数；并在临时副本项目的 config 里把档位模型换成副本源的非首位模型跑一次，让「请求生效」这一格真的可判伪（覆盖走副本项目 config，不去动真实用户配置，符合纪律 9）。同时把判据里写死的 `bigmodel-coding-plan/GLM-5.3` 改成「按当轮 doctor note 抄录」，避免配置一变判据即失效。
+
+### CODEX-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `计划 §6 验证 3（配额授权上限四次、判据「改前 headless 报 `Model creation failed`」）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：验证 3 的前一半绑在一个会自己漂移的外部状态上：个人 provider 配置会被桌面端随手改写（EV-87 实证过一次 3870→3926 B 的重写、`enabled` 翻 false），Driver 也在 2026-10-02 按备份逐字节恢复过。开工日（10-03）改前那一格若不复现，对照即失去意义，而计划没写处置：是否仍烧改后的两次、四次授权怎么计、要不要另找可复现手段、报告里怎么记「不可测」。失败时的配额去向目前是未决策项。
+
+**依据**：读 `doc/08_project/BACKLOG.md` EV-87 行（2026-09-21 实证：用户 `~/.zcode/v2/provider_config.json` 被重写、CLI 随即 `Model creation failed`，修复后 mtime/大小/键未变，嫌疑落桌面端）与 EV-194 行（2026-10-02 两次尝试改本机缺省仍报 `Select a model`，已按备份逐字节恢复）；被审计划 §6 只写「不达标不调措辞重跑，如实记下停下」，未区分「改前不复现」与「改后不达标」两种停机形态。
+
+**建议**：在 §6.3 里加一句处置：改前那格若不复现，对照判为不可测并停止消耗剩余授权（或明确授权如何用），报告如实写「症状未复现、本次仅记录改后读数」；不要为了凑判据去动真实 `~/.zcode`（纪律 9）。
+
+### CODEX-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `计划 §2.3 步骤 6 与 §2.3 末段「`ZCODE_CLI_SUBDIR` 现为模块私有常量，导出它供探针模块拼路径」` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：落点布局的「根 → `.zcode/cli` → log/rollout」这一串在探针侧被第二次实现，计划只解决了其中一半：导出 `ZCODE_CLI_SUBDIR` 后，探针侧要自己拼 `log`，而 `readRollout` 的 `homeDir` 参数分支里还写着第三处 `'.zcode/cli'` 字面（`readTrace` 的缺省分支、`probeTraceSource`、`:575` 也各有一份）。CLI 换落点布局时，探针回读会静默读到不存在的目录——症状恰好是 `model_id_form` 恒不刷新，与本次要修的形态难以区分。
+
+**依据**：`grep -rn "ZCODE_CLI_SUBDIR|'.zcode/cli'|\"\\.zcode/cli\"" src/trivium/` 实际执行结果：`adapters/zcode.ts:535` 定义，`:943/:1300` 使用；`probes/zcode.ts:263/:293/:311/:575` 四处硬字面；`adapters/zcode.ts:376-388` 的 `zcodeStorageRedirectEnv` 才是 `ZCODE_LOG_DIR` 的取值点，其注释明写「日志工厂直读、两条路径能各自漂移，落点自检因此两项分开核」。
+
+**建议**：方向上把「落点根下的 log/rollout 目录」收敛成适配器导出的两个助手（或直接复用 `zcodeStorageRedirectEnv(root)` 的取值），探针与 `readTrace`/`readRollout` 只调助手、不再各自拼；这比只导出一个子目录常量更省未来的同步面。不必现在给全部四处字面做重构，但新代码不该再加一份。
+
+### CODEX-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `计划 §2.3 步骤 6（回读改从落点根读）；`src/trivium/probes/zcode.ts:1035-1050`` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：回读只统一了**目录**，没统一**文件集合**口径。`readTrace` 取目录里按文件名排序的最后一个 `.jsonl`，而审查运行改成读全部文件拼接，理由写在代码注释里：日志按日期分片，跨午夜时启动事件落在前一天的文件里，「自检说日志在、回读说读不到」。EV-194 之后探针读的是本次独占的落点目录，同一形态照样成立——跨午夜跑 doctor 会得到「未能从会话日志回读生效模型」并退到 rollout 第二来源，正是本次想消灭的「结论不刷新」家族。计划 §6.3 还把这行的判据写成了硬条件。
+
+**依据**：读 `src/trivium/probes/zcode.ts:1044-1045`（`const latest = files.at(-1)`）；对照 `src/trivium/adapters/zcode.ts:1310-1316`（读全部 `.jsonl` 并拼接，注释给出跨午夜理由与「与落点自检同一个文件集合」）；`doc/06_deployment/RUNBOOK_pipeline_ops.md:274` 也记着「日志按日期合并成一个文件」的形态。
+
+**建议**：在 §2.3 里明确回读的集合口径（与 `run()` 同：读目录下全部 `.jsonl` 按名排序拼接），或写明「探针沿用只取最新一片」并把跨午夜这一格列进残余与 §6.3 判据的例外说明；别让验收判据撞在一个未决策的时间边界上。
+
+### CODEX-06 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `计划 §5（文档面）与 §0「不做」` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：文档同步面只列了主设计 §11.3、BACKLOG EV-194/115/93 与一份测试报告，漏了三处：① `doc/05_testing/README.md` 的「当前已归档文件」一节必须与新报告同批加条目（AGENTS.md 同步清单明写，且有契约测试当场红）；② `doc/06_deployment/RUNBOOK_pipeline_ops.md:274-275` 两行把 doctor 的 zcode 侧口径写成「审查运行走副本 / 无副本支仍用真实 HOME 与个人配置」并给出用 doctor 排障的指引，EV-194 后 doctor 两支也走副本、不再在真实 `~/.zcode` 留探针产物，排障文字与「代价」表述会失真；③ BACKLOG EV-136 条目末句「旗标 / 模型探针（`probes/zcode.ts`）仍测真实环境，是有意的，不在本条」正是本条要推翻的那半句。
+
+**依据**：`grep -rn "配额" doc/06_deployment/RUNBOOK_pipeline_ops.md` 与 `sed -n 260,275p` 实际执行，见 :274/:275 两行现文；`grep -rn "EV-115|EV-136|EV-93|EV-194" doc/08_project/BACKLOG.md` 见 EV-136 行末句原文；`grep -c` 与 `sed -n 16,26p doc/05_testing/README.md` 见归档索引规范句，`ls test/contract/` 见 `doc-archive-index.test.ts`。至于计划「PROTOCOL 无 zcode 探针段可补」：我 `grep -rn "headless|path_deny|storageRedirectRoot|存储根" doc/03_api/PROTOCOL_dual_critic_relay.md` 零命中，该判断成立、不改 PROTOCOL 我同意。
+
+**建议**：在 §5 补三行落点（RUNBOOK 两行的随改口径、EV-136 末句改写、`doc/05_testing/README.md` 索引条目与顺序），或在「不做」里显式写明 RUNBOOK 与 EV-136 文字不改的理由。这是计划阶段一句话、实施阶段被契约测试与对账人打回的那类缺口。
+
+### CODEX-07 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `计划 §3 末段（「`runDir` 不在」的判法：D5/D6 前后各列一次 `os.tmpdir()` 下条目）` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：用全局临时目录的列举来判「删干净」是对共享状态的观测：同前缀条目若被另一进程（并发的 `npm test`、变异轮的多次重跑）在同一时刻创建，D6 会假红；反之它也无法区分「本用例留下的」与「别人的」。§3 已经给每条用例钉了临时 HOME，却没有把临时根也钉成用例私有。
+
+**依据**：读 `src/trivium/util/fsx.ts:117-119`（`makeTempDir` 即 `fs.mkdtemp(path.join(os.tmpdir(), prefix + '-'))`，Node 的 `os.tmpdir()` 在 POSIX 下取 `TMPDIR`）；`grep -n "mkdtemp|trivium-" src/trivium/probes/fixture.ts` 见夹具用另一前缀 `trivium-probe`；`doc/08_project/BACKLOG.md` EV-136 行记着变异轮在系统临时目录累积 `trivium-zcode-auth-*` 的先例。
+
+**建议**：把 D5/D6 的删除判据改成用例私有：把 `TMPDIR` 指向该用例自己的 mkdtemp 目录（或给探针加一个只在测试用的临时根注入口），列举只在那里面做，断言确定化。
+
+### CODEX-08 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `计划 §4 变异表 M7/M8；§5 测试报告` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：M7（不删 `runDir`）与 M8（删除挪出 `finally`）会在系统临时目录留下真实的 `trivium-zcode-doctor-*` 残留，计划没写这一残余与清理口径。EV-136 的同类变异就留下过若干目录，BACKLOG 里以「未用通配删除」如实记着。本主题的副本源是合成假凭据，残余不含真凭据——这一差值值得在报告里写清，否则读者会按 EV-136 的形态担心泄露。
+
+**依据**：读 `doc/08_project/BACKLOG.md` EV-136 行「变异 M4 故意不删临时目录，历轮变异在系统临时目录留下若干只含夹具假凭据的 `trivium-zcode-auth-*`，未用通配删除」；被审计划 §3 开头写明用例的 `cliConfigPath` 指「临时目录里的合成 `cli/config.json`」、§4 列出 M7/M8。
+
+**建议**：§5 的报告里加一句变异残留的清点口径（前缀、成因、内容只含合成凭据、不做通配删除），与 EV-136 的记录方式对齐。
+
+## 认为正确的部分
+
+- 方向判断：doctor 的 headless 与 path_deny 该与 `run()`/`authProbe` 同形。我核过 `adapters/zcode.ts:1041-1135` 与 `probes/zcode.ts:1408-1421` 的差别确实只剩这两处，EV-136 的形态可原样复刻，不需要新机制。
+- §1.2 与 §0「不改 headless 失败即提前返回」的理由成立：修完之后失败的含义变了，沿用 `ZCODE_HEADLESS_NOT_OK_HINT` 判据（`doctor.ts:595` 附近）正是想要的。
+- §2.3 步骤 1/3 的删除与三个键的写法照 `authProbe` 逐字对齐（`homeDir`/`omitPersonalProviderConfig: prep.homeDir !== null`/`storageRedirectRoot: zcodeHomeUnder(runDir)`），「删除只认 mkdtemp 返回值」这条事故规矩也被保留；副本源解析失败落成可读 note、不退回真实 HOME，与 §2.4 的退路口径自洽。
+- §2.4 关于「副本源缺失那一格在 doctor 侧不可达」的论证我复核成立：`cliConfigured` 与 `prepareZcodeHome({srcConfig})` 判的是同一个文件（`probes/zcode.ts:1201-1203`），`prepareZcodeHome` 又先查源存在、后查 `!model`（`adapters/zcode.ts:930-941`），所以退路只剩 `no_model`；把任务目标验证 1 的那一格改成断言现有门控行为是诚实的处理。
+- 行号与事实引用经抽核无误：§1.1/§1.3/§1.5/§2.5 提到的 :1412、:1081、:1035-1050、:307-317、:424-428、:1109-1116、:1001-1003、:1300 均对得上；`zcode-auth-probe.test.ts` 确为 10 条；主设计文档头当前 v1.3.77，计划升 v1.3.78 与 §11.3 第 7 条的落点也对。
+- §5「PROTOCOL 不改」的判断成立（该文件确无 zcode 探针段），R1 的可见性取舍、R2 的凭据残余与「不新增形态」、R4/R5 的残余登记我都认为如实。
+
+## 未覆盖范围（本侧盲区）
+
+- 需求层：没有核对 EV-194 与 PRD 的 FR/NFR（尤其 FR-06 模型路由、NFR-06 异构默认）之间的追溯关系，只按任务目标与 BACKLOG 登记读。
+- 实施可行性细节：未编译验证 §2.1 抽函数后 `authProbe` 输出真能逐字节不变（尤其 `tildeHome` 与失败分支的组合顺序），也没验 `tsc --strict + noUncheckedIndexedAccess` 下 `launch` 展开进 `probePathDeny` 第五参的形状。
+- 纪律 7/10/11（注册表唯一来源、禁读矩阵派生、schema 身份两段式）只做了一次字面 grep，没逐条对 `registry-parity` 的判定面做核验；新增导出符号是否触碰镜头键/后缀派生未评估。
+- 其它三家适配器与 claude/gemini 侧探针的连带影响（本次不动，但计划未说明是否有一处「拉起路径」清单需要同步）。
+- 闸门 / state / hooks / 归档命名面完全未审；`skills-src` 入口文字与 `npm run render` 的同步也未审（计划未涉 CLI 旗标）。
+- 变异装置本身（`scripts/mutation-check.mjs` 的锚点生成与超时策略）只确认在位，未读实现，§4 的 M 表可执行性由 Driver 按实核。
+- 真实配额的价格口径（每次完整 turn 的 token/费用量级）无项目内事实源，我没有对「doctor 每次多烧两整次调用」做金额估计，只核了调用次数与超时（`PROBE_TIMEOUT_MS = 300_000`，两支最坏 10 分钟；QUICKSTART §2 现写「约 3 分钟」）。
+
+## 实际查阅的项目文件
+
+- `CLAUDE.md`
+- `AGENTS.md`
+- `doc/README.md`
+- `doc/02_design/README.md`
+- `doc/05_testing/README.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `doc/06_deployment/RUNBOOK_pipeline_ops.md`
+- `doc/07_manuals/QUICKSTART.md`
+- `doc/08_project/BACKLOG.md`
+- `src/trivium/adapters/zcode.ts`
+- `src/trivium/probes/zcode.ts`
+- `src/trivium/probes/fixture.ts`
+- `src/trivium/doctor.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/util/fsx.ts`
+- `test/unit/zcode-auth-probe.test.ts`
+- `test/contract/`
+- `scripts/`
+- `.reviews/doctor探针走副本HOME/plan/2026-10-03-doctor探针走副本HOME-claude.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":27,"project_reads":28}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*
