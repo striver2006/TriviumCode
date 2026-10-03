@@ -52,6 +52,6 @@ run `20261002T152411Z`：gemini `approve`（零意见）、codex / glm `approve-
 
 - **轮次来源不同源**：闸门那一轮的 run.json 读不出、更旧一轮记着失守时，Hook 出原文案，不带 `--run-id` 的 `gate --check` 退回更旧一轮报失守。留痕坏了才可达，Hook 若改扫更旧一份会重新引入 stderr 告警并把上一轮的失守说成这一轮的；不改，U14 锁现行为。
 - **同族未改的三处**：会话开始 Hook 的待办句；`gate.ts` 处置句「确有则清理后重跑审查」未说须先作废（决策不改 gate 输出，Hook 侧已补那一行）；`review.ts` 重跑拒绝文案给的「补齐裁决件并通过 gate --check 后再来」对失守轮走不通。都记在 BACKLOG EV-98。
-- **真实会话自证**：本仓会话的 Hook 走已安装副本，新文案要等提交后用户重装才出现；复核安装副本一致时在安装副本上补跑一次 §3 对照两格。
+- **真实会话自证**：本仓会话的 Hook 走已安装副本，新文案要等提交后用户重装才出现；复核安装副本一致时在安装副本上补跑一次 §3 对照两格。**已兑现（2026-10-03，提交 `505875d` 后用户重装）**：安装副本与仓库逐字节一致（运行时根 22/22、claude / codex / gemini / glm 各 7 个入口 SKILL.md、agy 只读 Agent 定义；内嵌构建标识 `505875d`、dirty false），`doctor` 判「安装副本与当前工作树一致」，安装副本 `doctor --selftest` 14/14；`acceptance-installed.mjs` 在同一夹具里分别经安装副本与仓库 bundle 调两个 Hook，**7/7**——失守格安装副本说「只读失守」并给作废出口，未裁决格仍是原文案，两格两份 bundle 输出逐字相同（`acceptance-installed-output.txt`、`acceptance-installed-readout.json`）。首跑这个脚本时 bundle 比对一条判红：跑脚本前要 `build.mjs --with-tests` 才有测试助手，这一步重写了仓库 bundle 的 `built_at`，两份 bundle 只差这一个字段；比对条件改为「去掉 `built_at` 后逐字相同」后重跑，首跑的读数被覆盖、未留档。
 - **作废命令里的主题名不加引号**（代码双审 CODEX-01）：与仓里既有四处建议命令同式；`validateTopic` 实为黑名单，含 shell 元字符的主题名合法。根治在收紧校验，跨模块、超出本题，登记 EV-195。
 - **判据部分**（解释器内联脚本误报）不在本题，EV-98 判据部分仍 todo、等再次失守。

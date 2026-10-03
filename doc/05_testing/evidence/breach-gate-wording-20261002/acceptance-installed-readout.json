@@ -1,0 +1,41 @@
+{
+  "sha256": {
+    "installed": "d4216880e987838260f48398d1b7dd113efd6c442701e6e9599d89706fa03df1",
+    "repo": "802aab68d0b262cec7a3ec950146e1c603bdc4dfeb94d01a8370e94043968b85"
+  },
+  "passed": 7,
+  "total": 7,
+  "checks": [
+    {
+      "name": "安装副本 bundle 与仓库 bundle 除构建时刻 built_at 外逐字相同",
+      "ok": true,
+      "detail": "d4216880e987838260f48398d1b7dd113efd6c442701e6e9599d89706fa03df1 / 802aab68d0b262cec7a3ec950146e1c603bdc4dfeb94d01a8370e94043968b85"
+    },
+    {
+      "name": "失守格·安装副本：两个 Hook 都拦（退 2）",
+      "ok": true
+    },
+    {
+      "name": "失守格·安装副本：收工 Hook 说只读失守、列调用记录与作废出口、不说未裁决",
+      "ok": true,
+      "detail": "本轮审查记录到只读失守：失守文案安装复核/plan。这道闸门靠补裁决件解不开——gate --check 对只读失守一律判失败，裁决件写得再齐也不放行，不要再为解闸门去补裁决件。\n· 失守文案安装复核/plan（run 20261003T023853Z）\n  调用记录（非文件路径）：write_to_file(/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev98inst-Qb3Vri/trivium-fx-JM49I2/src/injected.ts)\n  快照漂移：未检出（snapshot.drift.changed 为 false——这不足以判定误报，见下方处置）\n  出口：由用户决定用 /dual-abandon --topic 失守文案安装复核 --stage plan 作废这一轮（保留工件、只解闸门）。\n处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。\n（与 gate --check 的 readonly_breach 一条同一判据；裁决件尚未落盘时 gate --check 会先报缺件、看不到那一条。）\n不论确有改动要清理后重跑，还是核实为误报想重跑，都须先作废这一轮：闸门停在待裁决时 review --start 拒绝重跑，而这一轮的 gate --check 不会通过。"
+    },
+    {
+      "name": "失守格·安装副本：提交 Hook 说只读失守、不说尚未逐条裁决",
+      "ok": true,
+      "detail": "以下阶段的审查记录到只读失守，提交被拦下：失守文案安装复核/plan\n  这道闸门靠补裁决件解不开——gate --check 对只读失守一律判失败，裁决件写得再齐也不放行。\n  · 失守文案安装复核/plan（run 20261003T023853Z）\n    调用记录（非文件路径）：write_to_file(/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-ev98inst-Qb3Vri/trivium-fx-JM49I2/src/injected.ts)\n    快照漂移：未检出（snapshot.drift.changed 为 false——这不足以判定误报，见下方处置）\n    出口：由用户决定用 /dual-abandon --topic 失守文案安装复核 --stage plan 作废这一轮（保留工件、只解闸门）。\n  处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。\n  （与 gate --check 的 readonly_breach 一条同一判据；裁决件尚未落盘时 gate --check 会先报缺件、看不到那一条。）\n  不论确有改动要清理后重跑，还是核实为误报想重跑，都须先作废这一轮：闸门停在待裁决时 review --start 拒绝重跑，而这一轮的 gate --check 不会通过。\n  如需关闭该拦截，可在 .trivium/config.yaml 设 gate.block_commit: false。\n"
+    },
+    {
+      "name": "失守格：安装副本与仓库 bundle 输出逐字相同",
+      "ok": true
+    },
+    {
+      "name": "未裁决格·安装副本：两个 Hook 都拦且说未裁决（原文案）",
+      "ok": true
+    },
+    {
+      "name": "未裁决格：安装副本与仓库 bundle 输出逐字相同",
+      "ok": true
+    }
+  ]
+}
