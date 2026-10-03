@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "zcode探针静默失败收口",
+  "goal": "主题「zcode探针静默失败收口」：EV-196 + EV-197，上一题 EV-194 双审核出的两个同族缺口，一起收。 EV-196：doctor 的 zcode 探针进了真实调用段、却没刷新 response_field 时，doctor 不拦也不警告，只多一条 note。probe 从既有结论克隆，response_field 保留旧值，doctor 那条 headless 未跑通的 bl…",
+  "created_at": "2026-10-03T06:31:48.471Z",
+  "updated_at": "2026-10-03T07:40:21.726Z",
+  "runs": [
+    {
+      "run_id": "20261003T063541Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-03T06:35:43.314Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261003T071007Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-03T07:10:09.402Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261003T073526Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-03T07:40:21.726Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-03T06:31:48.471Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-03T06:47:09.657Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261003T063541Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-03T06:47:06.336Z"
+    },
+    {
+      "run_id": "20261003T071007Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-03T07:19:20.327Z"
+    }
+  ]
+}

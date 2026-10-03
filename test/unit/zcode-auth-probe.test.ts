@@ -15,7 +15,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { defaultConfig } from '../../src/trivium/config.js';
-import { ZCODE_PERSONAL_PROVIDER_ENV, zcodeAdapter } from '../../src/trivium/adapters/zcode.js';
+import { ZCODE_PERSONAL_PROVIDER_ENV, zcodeAdapter, zcodeTempDirResidueText } from '../../src/trivium/adapters/zcode.js';
 
 const tmp = (p: string) => fs.mkdtemp(path.join(os.tmpdir(), p));
 
@@ -30,6 +30,21 @@ fs.writeFileSync(env.FAKE_OBSERVE, JSON.stringify({
   storage: env.ZCODE_STORAGE_DIR ?? null,
   modelMain,
 }));
+// 删不掉的临时目录（EV-197）。摆不出就退非 0，让用例红而不是静默通过：
+//   sibling：落点根下一个只读子目录里放一个文件；cli：副本所在的 <落点根>/cli 改只读，副本删不掉
+if (env.FAKE_LOCK) {
+  if (!env.ZCODE_STORAGE_DIR) { process.stderr.write('FAKE_LOCK：拿不到 ZCODE_STORAGE_DIR，摆不出删不掉的临时目录\\n'); process.exit(3); }
+  if (env.FAKE_LOCK === 'cli') {
+    const cli = path.join(env.ZCODE_STORAGE_DIR, 'cli');
+    if (!fs.existsSync(path.join(cli, 'config.json'))) { process.stderr.write('FAKE_LOCK=cli：落点根下没有副本\\n'); process.exit(3); }
+    fs.chmodSync(cli, 0o500);
+  } else {
+    const locked = path.join(env.ZCODE_STORAGE_DIR, 'locked');
+    fs.mkdirSync(locked, { recursive: true });
+    fs.writeFileSync(path.join(locked, 'f'), 'x');
+    fs.chmodSync(locked, 0o500);
+  }
+}
 if (${exitCode} !== 0) { process.stderr.write(${JSON.stringify(stderrLine)} + '\\n'); process.exit(${exitCode}); }
 process.stdout.write(JSON.stringify({ sessionId: 'sess_fake', response: 'OK', usage: {}, eventCount: 1 }) + '\\n');
 process.exit(0);
@@ -218,4 +233,88 @@ test('指纹带上探活模型：换档位模型后缓存失效', async () => {
   const fb = await withEnv(b.home, b.observe, () => zcodeAdapter.authProbe!(ctxOf(b.cfg), b.root).fingerprint());
   assert.ok(fa && fb);
   assert.notEqual(fa, fb);
+});
+
+// ── EV-197：临时目录删不掉时不抛、结论不变、详情末尾说清残留 ─────────────────
+
+/**
+ * 钉住 HOME / TMPDIR / FAKE_LOCK 跑一次探活（计划双审 GLM-03：与 doctor 侧 D10 同法，残留落在本用例私有根里）。
+ * 结束恢复只读子目录的权限、整删私有根；观测文件只用来断言「残留确在」，不承担清理。
+ */
+async function probeLocked(w: Awaited<ReturnType<typeof world>>, lock: 'sibling' | 'cli') {
+  const priv = await tmp('trivium-auth-priv-');
+  const saved = { HOME: process.env['HOME'], FAKE_OBSERVE: process.env['FAKE_OBSERVE'], TMPDIR: process.env['TMPDIR'], FAKE_LOCK: process.env['FAKE_LOCK'] };
+  process.env['HOME'] = w.home;
+  process.env['FAKE_OBSERVE'] = w.observe;
+  process.env['TMPDIR'] = priv;
+  process.env['FAKE_LOCK'] = lock;
+  try {
+    const r = await zcodeAdapter.authProbe!(ctxOf(w.cfg), w.root).probe();
+    const left = (await fs.readdir(priv)).filter((e) => e.startsWith('trivium-zcode-auth-'));
+    // 期望的残留提示在同一环境下算（家目录归一用的是当时的 HOME）
+    const want = (hasCopy: boolean) => zcodeTempDirResidueText('探活', path.join(priv, left[0] ?? '?'), 'EACCES', hasCopy);
+    return { r, left, want };
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    const seen = await fs.readFile(w.observe, 'utf8').then((t) => JSON.parse(t) as Seen, () => null);
+    for (const d of seen?.storage ? [path.join(seen.storage, 'cli'), path.join(seen.storage, 'locked')] : []) {
+      await fs.chmod(d, 0o700).catch(() => {});
+    }
+    await fs.rm(priv, { recursive: true, force: true });
+  }
+}
+
+const ROOT = process.getuid?.() === 0;
+
+test('A1 副本支探活通过 + 副本删不掉：不抛、结论仍通过、详情末尾说清残留与副本凭据', { skip: ROOT }, async () => {
+  const w = await world({ cliConfig: true });
+  const { r, left, want } = await probeLocked(w, 'cli');
+  assert.equal(left.length, 1, '本格就是要摆出删不掉：私有根下应恰有一个残留');
+  assert.equal(r.ok, true, r.detail);
+  assert.ok(r.detail.startsWith('探活通过（'), r.detail);
+  // 字面断言（计划双审 CODEX-03：不只比函数输出）
+  assert.match(r.detail, /；⚠️ 探活临时目录删除失败（EACCES）：.+ 仍在，其中的 cli\/config\.json 副本含真实凭据，请手工删除$/);
+  assert.ok(r.detail.endsWith(`；${want(true)}`), r.detail);
+});
+
+test('A2 副本支探活失败 + 副本删不掉：不抛、结论仍失败、详情末尾同样说清残留', { skip: ROOT }, async () => {
+  const w = await world({ cliConfig: true, exitCode: 1 });
+  const { r, left, want } = await probeLocked(w, 'cli');
+  assert.equal(left.length, 1);
+  assert.equal(r.ok, false);
+  assert.ok(r.detail.startsWith('探活失败（other，'), r.detail);
+  assert.match(r.detail, /含真实凭据，请手工删除$/);
+  assert.ok(r.detail.endsWith(`；${want(true)}`), r.detail);
+});
+
+test('A3 删除失败提示两侧同源：只差主语，有无副本两档措辞各自属实', () => {
+  const dir = '/x/trivium-zcode-x';
+  for (const hasCopy of [true, false]) {
+    const a = zcodeTempDirResidueText('探针', dir, 'EACCES', hasCopy);
+    const b = zcodeTempDirResidueText('探活', dir, 'EACCES', hasCopy);
+    assert.equal(a.replace('探针', '探活'), b);
+  }
+  assert.equal(
+    zcodeTempDirResidueText('探活', dir, 'EBUSY', true),
+    '⚠️ 探活临时目录删除失败（EBUSY）：/x/trivium-zcode-x 仍在，其中的 cli/config.json 副本含真实凭据，请手工删除',
+  );
+  assert.equal(
+    zcodeTempDirResidueText('探活', dir, 'EBUSY', false),
+    '⚠️ 探活临时目录删除失败（EBUSY）：/x/trivium-zcode-x 仍在，其中没有 cli/config.json 副本，是本次探测的 CLI 产物，请手工删除',
+  );
+  assert.equal(zcodeTempDirResidueText('探针', path.join(os.homedir(), 'tmp/d'), 'EACCES', true).includes(`~${path.sep}tmp`), true, '家目录归一成 ~');
+});
+
+test('A4 退路支（档位无模型）+ 删不掉：没有副本就不说「含真实凭据」（计划双审 GLM-02）', { skip: ROOT }, async () => {
+  const w = await world({ cliConfig: true, glmPlanModel: null });
+  const { r, left, want } = await probeLocked(w, 'sibling');
+  assert.equal(left.length, 1, '退路支也设落点根，同样摆得出删不掉');
+  assert.equal(r.ok, true, r.detail);
+  assert.match(r.detail, /真实 HOME 下 ZCode 自选的缺省模型/, '本格摆的是退路支');
+  assert.match(r.detail, /其中没有 cli\/config\.json 副本，是本次探测的 CLI 产物，请手工删除$/);
+  assert.doesNotMatch(r.detail, /含真实凭据/);
+  assert.ok(r.detail.endsWith(`；${want(false)}`), r.detail);
 });

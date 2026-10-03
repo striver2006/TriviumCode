@@ -899,6 +899,46 @@ export function tildeHome(text: string, home: string = os.homedir()): string {
 }
 
 /**
+ * 临时运行目录删不掉时的人读提示（EV-197）：doctor 探针与认证探活同一句，只差主语与「有没有副本」。
+ *
+ * `hasCopy` 说的是**残留目录里此刻还有没有** `cli/config.json` 副本（由 `removeZcodeTempDir` 在删除失败后现场查）。
+ * 退路支（副本源缺失、档位无模型）与副本源解析失败时目录里只有 CLI 产物，说「含真实凭据」不属实
+ * （EV-197 计划双审 GLM-02）。没有副本时也不断言产物里没有敏感内容，只说清没有副本。
+ */
+export function zcodeTempDirResidueText(who: '探针' | '探活', runDir: string, code: string, hasCopy: boolean): string {
+  return (
+    `⚠️ ${who}临时目录删除失败（${code}）：${tildeHome(runDir)} 仍在，` +
+    (hasCopy ? '其中的 cli/config.json 副本含真实凭据，请手工删除' : '其中没有 cli/config.json 副本，是本次探测的 CLI 产物，请手工删除')
+  );
+}
+
+/**
+ * 删 mkdtemp 的返回值：重试三次、失败不抛，返回上面那句提示（删成功返回 null）。
+ *
+ * `force` 只吞 ENOENT，ENOTEMPTY / EBUSY / EACCES 会从 finally 抛出、顶替原结果（EV-194 代码双审 r1 CODEX-01、EV-197）。
+ * 只删传进来的那个路径（2026-09-20 事故后的规矩）：不拼路径、不走别的变量。
+ *
+ * 「还有没有副本」在删除失败之后现场查，不由调用方按写入时的情形推断（EV-197 代码双审 GLM-01 ≡ CODEX-03）：
+ * `prepareZcodeHome` 写盘之后还有 `chmod` 可抛、`writeFile` 也可能半写（副本在而调用方以为没有）；
+ * 递归删除又是删到一半才失败（副本可能已删掉而调用方以为还在）。查的位置就是 `prepareZcodeHome` 写副本的位置，
+ * 只读不删；`ENOENT` 才算没有，查不了（权限等）按有副本说——宁可多提醒，不在可能含凭据的目录上断言「没有」。
+ */
+export async function removeZcodeTempDir(runDir: string, who: '探针' | '探活'): Promise<string | null> {
+  try {
+    await fs.rm(runDir, { recursive: true, force: true, maxRetries: 3 });
+    return null;
+  } catch (e) {
+    const hasCopy = await fs
+      .stat(path.join(zcodeHomeUnder(runDir), ZCODE_CLI_SUBDIR, 'config.json'))
+      .then(
+        () => true,
+        (err: unknown) => (err as NodeJS.ErrnoException).code !== 'ENOENT',
+      );
+    return zcodeTempDirResidueText(who, runDir, (e as NodeJS.ErrnoException).code ?? (e as Error).message, hasCopy);
+  }
+}
+
+/**
  * 探活与 doctor 探针要请求的模型：当前档位 plan 阶段的 glm 模型（EV-136 定、EV-194 起 doctor 共用）。
  *
  * 同一 provider 下各阶段只差模型档，取 plan 作代表；`--model-glm` 与主题级覆盖不进来——两处调用方都拿不到当轮生效模型
@@ -1097,63 +1137,83 @@ export const zcodeAdapter: CriticAdapter = {
          * 删除只认 mkdtemp 的返回值（2026-09-20 事故后的规矩），不拼路径、不走别的变量。
          */
         const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-zcode-auth-'));
-        let out: ZcodeInvokeOutcome;
-        let prep: ZcodeHomePrep;
+        /*
+         * 删除收尾（EV-197）：结果在 `attempt` 里拼完，删除放在它外面的 finally、失败不抛。此前 finally 里裸删、
+         * 结果在删除之后才拼——ENOTEMPTY / EBUSY / EACCES 会顶替探活结果，穿过无兜底的 `probeAuth` 把预检崩成内部错误，
+         * 含凭据的副本留在系统临时目录无人知晓。删不掉时把残留提示接在详情末尾，结论（ok）不因此改变；
+         * 提示用哪一档（还有没有副本）由删除函数在失败后现场查（代码双审 GLM-01 ≡ CODEX-03）。
+         * 已知残余（EV-197 计划 r2 §3.3 / §3.4）：attempt 抛错时提示无人消费，与 doctor 侧同形；
+         * 正结论入缓存后，TTL 期内的预检走缓存命中，提示只在当次可见。
+         */
+        let r: { ok: boolean; detail: string };
+        let residue: string | null = null;
         try {
-          /*
-           * 副本准备会读并解析用户的 `cli/config.json`——改动前的探活不读它的内容（代码双审 r1 CODEX-01 ≡ GLM-04）。
-           * 文件损坏或不可读要落成一条可读的检查项失败，不能抛出去：`probeAuth` 没有兜底。
-           */
-          try {
-            // 副本源走缺省 `zcodeOverrideSourcePath()`——与 doctor 探针门控用的 `ZCODE_CLI_CONFIG` 是同一个文件；
-            // 日后给探活加注入口时须像 doctor 那样显式同传 `srcConfig`，否则两处会各自漂（EV-194 代码双审 r1 CODEX-05）
-            prep = await prepareZcodeHome(runDir, model, { requestedFirst: true });
-          } catch (e) {
-            return {
-              ok: false,
-              detail: `副本源 ~/.zcode/cli/config.json 读取或解析失败：${tildeHome((e as Error).message)}（请检查该文件，或在 ZCode 里重新保存一次模型配置）`,
-            };
-          }
-          out = await invokeZcode({
-            entry,
-            node: ctx.nodePath,
-            cwd: projectRoot,
-            prompt: '只回复 OK 两个字母，不要调用任何工具。',
-            readonlyArgs: readonlyArgsFromProbe(cfg.probe.cli.zcode?.readonly_flags ?? []),
-            homeDir: prep.homeDir,
-            omitPersonalProviderConfig: prep.homeDir !== null,
-            storageRedirectRoot: zcodeHomeUnder(runDir),
-            /*
-             * 180s，与搬家前 `preflight` 里的值一致（r9 双审 GLM-07）。
-             * M8 第 3 步把探活搬进适配器时手抄成了 120s——**一次搬家不该顺带改行为**。
-             * 本侧要起 node 子进程再拉 CLI，比 agy 慢，那 60 秒是当初特意给的。
-             */
-            timeoutMs: 180_000,
-          });
+          r = await attempt(entry, runDir);
         } finally {
-          await fs.rm(runDir, { recursive: true, force: true });
+          residue = await removeZcodeTempDir(runDir, '探活');
         }
-        const ok = out.failureKind === 'none' && !out.timedOut && out.envelope !== null;
-        // 说清探的是哪条路径（四档措辞与 doctor 探针同源，EV-194）
-        const probed = describeZcodeProbedPath(prep);
-        const cliSays = redactSecrets(out.stderr.slice(0, 200)).content;
-        return {
-          ok,
-          detail: ok
-            ? `探活通过（${Math.round(out.durationMs / 1000)}s，${probed}）`
-            : out.failureKind === 'model_config_missing'
-              ? prep.homeDir === null
-                ? `缺 ~/.zcode/cli/config.json（CLI 的模型配置独立于桌面端，「已登录」不等于可用；${probed}）`
-                : // 副本支：文件在（刚对它算过指纹），是内容里没有可用 provider（代码双审 r1 GLM-06）
-                  `副本源 ~/.zcode/cli/config.json 在，但 CLI 报模型配置缺失，provider 段可能不可用（${probed}）：${cliSays}`
-              : // CLI 原话过一遍脱敏再进详情（r5 CODEX-06）：这段文字会进 doctor / preflight 输出，
-                // 而那些输出的实际流转方式是被人抄进 git 里的 evidence 目录，那条路上没有闸门
-                out.failureKind === 'provider_config_unresolved'
-                ? `${ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT}（${probed}）：${cliSays}`
-                : `探活失败（${out.failureKind}，${probed}）：${cliSays}`,
-        };
+        return residue === null ? r : { ok: r.ok, detail: `${r.detail}；${residue}` };
       },
     };
+
+    /** 一次探活的全部工作（EV-197 从 probe() 拆出）：结果在这里拼完，删除留给调用方的 finally */
+    async function attempt(entry: string, runDir: string): Promise<{ ok: boolean; detail: string }> {
+      let prep: ZcodeHomePrep;
+      /*
+       * 副本准备会读并解析用户的 `cli/config.json`——改动前的探活不读它的内容（代码双审 r1 CODEX-01 ≡ GLM-04）。
+       * 文件损坏或不可读要落成一条可读的检查项失败，不能抛出去：`probeAuth` 没有兜底。
+       */
+      try {
+        // 副本源走缺省 `zcodeOverrideSourcePath()`——与 doctor 探针门控用的 `ZCODE_CLI_CONFIG` 是同一个文件；
+        // 日后给探活加注入口时须像 doctor 那样显式同传 `srcConfig`，否则两处会各自漂（EV-194 代码双审 r1 CODEX-05）
+        prep = await prepareZcodeHome(runDir, model, { requestedFirst: true });
+      } catch (e) {
+        /*
+         * 这句措辞独立于 doctor 侧的 `ZCODE_HEADLESS_UNREFRESHED` 表（EV-197 代码双审 CODEX-02）：那张表管的是
+         * 「doctor warning 点名的 note」与 note 本身不各改各的，探活详情不被任何 warning 指向；
+         * 且表在探针模块，`adapters/` 不引用 `probes/`。两处「读取或解析失败」改一处时请顺手对一眼另一处。
+         */
+        return {
+          ok: false,
+          detail: `副本源 ~/.zcode/cli/config.json 读取或解析失败：${tildeHome((e as Error).message)}（请检查该文件，或在 ZCode 里重新保存一次模型配置）`,
+        };
+      }
+      const out = await invokeZcode({
+        entry,
+        node: ctx.nodePath,
+        cwd: projectRoot,
+        prompt: '只回复 OK 两个字母，不要调用任何工具。',
+        readonlyArgs: readonlyArgsFromProbe(cfg.probe.cli.zcode?.readonly_flags ?? []),
+        homeDir: prep.homeDir,
+        omitPersonalProviderConfig: prep.homeDir !== null,
+        storageRedirectRoot: zcodeHomeUnder(runDir),
+        /*
+         * 180s，与搬家前 `preflight` 里的值一致（r9 双审 GLM-07）。
+         * M8 第 3 步把探活搬进适配器时手抄成了 120s——**一次搬家不该顺带改行为**。
+         * 本侧要起 node 子进程再拉 CLI，比 agy 慢，那 60 秒是当初特意给的。
+         */
+        timeoutMs: 180_000,
+      });
+      const ok = out.failureKind === 'none' && !out.timedOut && out.envelope !== null;
+      // 说清探的是哪条路径（四档措辞与 doctor 探针同源，EV-194）
+      const probed = describeZcodeProbedPath(prep);
+      const cliSays = redactSecrets(out.stderr.slice(0, 200)).content;
+      return {
+        ok,
+        detail: ok
+          ? `探活通过（${Math.round(out.durationMs / 1000)}s，${probed}）`
+          : out.failureKind === 'model_config_missing'
+            ? prep.homeDir === null
+              ? `缺 ~/.zcode/cli/config.json（CLI 的模型配置独立于桌面端，「已登录」不等于可用；${probed}）`
+              : // 副本支：文件在（刚对它算过指纹），是内容里没有可用 provider（代码双审 r1 GLM-06）
+                `副本源 ~/.zcode/cli/config.json 在，但 CLI 报模型配置缺失，provider 段可能不可用（${probed}）：${cliSays}`
+            : // CLI 原话过一遍脱敏再进详情（r5 CODEX-06）：这段文字会进 doctor / preflight 输出，
+              // 而那些输出的实际流转方式是被人抄进 git 里的 evidence 目录，那条路上没有闸门
+              out.failureKind === 'provider_config_unresolved'
+              ? `${ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT}（${probed}）：${cliSays}`
+              : `探活失败（${out.failureKind}，${probed}）：${cliSays}`,
+      };
+    }
   },
 
   availability(ctx: AdapterContext) {

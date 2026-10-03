@@ -37,6 +37,7 @@ import {
   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
   zcodeModelTail,
   describeZcodeProbedPath,
+  removeZcodeTempDir,
   tildeHome,
   zcodeHomeUnder,
   zcodeStorageRedirectEnv,
@@ -1126,6 +1127,47 @@ export async function probePathDeny(
   };
 }
 
+/**
+ * 本轮进了真实调用段、`response_field` 却没被刷新的三支（EV-196）。
+ *
+ * 与 `flagsIndeterminate` 同类：是「本次探测过程」的事实，不是被探对象的属性，不落盘（r3「过程状态不落盘」裁决）。
+ * 结论从 `existing` 克隆，这三支只推 note、旧值原样留着——existing 里是 `'response'` 时 doctor 那条 headless blocker
+ * 不触发，全量 doctor 退 0、blockers 与 warnings 都为空。doctor 据此出 warning、不拦（决策一：一次临时失败不该拦下全量 doctor）。
+ */
+export type ZcodeHeadlessUnrefreshedBranch = 'source_unreadable' | 'headless_failed' | 'no_envelope';
+export interface ZcodeHeadlessUnrefreshed {
+  branch: ZcodeHeadlessUnrefreshedBranch;
+  /** 本轮沿用上一次结论的几项（按结论字段名） */
+  carried: readonly string[];
+}
+/**
+ * 三支的人读名、「根因在哪条 note」的定位字面、沿用旧值的几项。探针推 note 与 doctor 出 warning 引同一份，
+ * 免得 warning 指向的 note 字面与 note 本身各改各的。`carried` 是代码结构决定的静态事实：
+ * 前两支在 path_deny 之前就返回，第三支之后 path_deny / scratch_paths 照跑照刷。
+ */
+export const ZCODE_HEADLESS_UNREFRESHED: Readonly<
+  Record<ZcodeHeadlessUnrefreshedBranch, { what: string; noteKey: string; carried: readonly string[] }>
+> = {
+  source_unreadable: {
+    what: '副本源读取或解析失败',
+    noteKey: '读取或解析失败',
+    carried: ['response_field', 'path_deny', 'scratch_paths', 'model_id_form'],
+  },
+  headless_failed: {
+    what: 'headless 调用失败',
+    noteKey: 'ZCode headless 失败',
+    carried: ['response_field', 'path_deny', 'scratch_paths', 'model_id_form'],
+  },
+  no_envelope: {
+    what: 'headless 退 0 但 stdout 里抠不出 JSON envelope',
+    noteKey: 'ZCode stdout 中抠不出 JSON envelope',
+    carried: ['response_field', 'model_id_form'],
+  },
+};
+function headlessUnrefreshed(branch: ZcodeHeadlessUnrefreshedBranch): ZcodeHeadlessUnrefreshed {
+  return { branch, carried: [...ZCODE_HEADLESS_UNREFRESHED[branch].carried] };
+}
+
 /** 编排 ZCode 侧的全部探针 */
 export async function probeZcode(
   configuredEntry: string | null,
@@ -1155,7 +1197,14 @@ export async function probeZcode(
     /** headless 与 path_deny 两次真实调用的测试注入口（EV-194），与 `modelOverrideProbe` 同理 */
     invoke?: typeof invokeZcode;
   } = {},
-): Promise<{ probe: ZcodeProbe; notes: string[]; flagsIndeterminate: string[]; flagsZeroExit: string[] }> {
+): Promise<{
+  probe: ZcodeProbe;
+  notes: string[];
+  flagsIndeterminate: string[];
+  flagsZeroExit: string[];
+  /** 本轮进了真实调用段却没刷新 response_field 时是哪一支（EV-196）；没进真实调用段或已刷新为 null */
+  headlessUnrefreshed: ZcodeHeadlessUnrefreshed | null;
+}> {
   const notes: string[] = [];
   /*
    * 本轮**没能判定**的候选旗标（P-29）。结论文件里没有这一格——它是「本次探测过程」的事实，
@@ -1168,6 +1217,11 @@ export async function probeZcode(
    * 非空即意味着零配额前提被打破：doctor 据此出告警，让烧掉的配额被看见而不是静默。
    */
   const flagsZeroExit: string[] = [];
+  /*
+   * 本轮进了真实调用段、`response_field` 却没被刷新时是哪一支（EV-196）。同上两项，是过程事实、不落盘。
+   * 前两支（副本源失败、headless 失败）当场返回；第三支（有拉起、无 envelope）不返回、path_deny 照跑，记在这里到末尾带出。
+   */
+  let unrefreshed: ZcodeHeadlessUnrefreshed | null = null;
   // 同 probeAgy：以既有结论为起点，跳过的探针保留原值——否则
   // `doctor --no-model-calls` 会把上一次真实探到的 response_field / path_deny /
   // scratch_paths / model_override 覆盖成 null，preflight 随即判该侧不可用。
@@ -1206,7 +1260,7 @@ export async function probeZcode(
   };
   if (!entry) {
     notes.push('未找到 zcode.cjs 入口，ZCode 侧不可用');
-    return { probe, notes, flagsIndeterminate, flagsZeroExit };
+    return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: null };
   }
   // 入口路径命中包内 beta 改写的 argv 判据（EV-112 计划 r3 §8 R7）：只报命中与否，不报路径全文
   if (ZCODE_BETA_ARGV_RE.test(entry)) {
@@ -1433,7 +1487,8 @@ export async function probeZcode(
         '跳过需要真实模型调用的 ZCode 探针（配置缺失或已显式跳过）——' +
           'response_field / path_deny / scratch_paths 保留上一次的结论',
       );
-      return { probe, notes, flagsIndeterminate, flagsZeroExit };
+      // 没进真实调用段，不算「没刷新」（决策一）
+      return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: null };
     }
 
     // 只取实测被接受的只读组合，展开成 argv。
@@ -1464,10 +1519,10 @@ export async function probeZcode(
       } catch (e) {
         // 不退回真实 HOME：审查运行在同一情形下也起不来，退回去探的就又不是那条路径了
         notes.push(
-          `副本源 ${tildeHome(cliConfigPath)} 读取或解析失败：${tildeHome((e as Error).message)}——` +
+          `副本源 ${tildeHome(cliConfigPath)} ${ZCODE_HEADLESS_UNREFRESHED.source_unreadable.noteKey}：${tildeHome((e as Error).message)}——` +
             'response_field / path_deny / scratch_paths / model_id_form 保留上一次的结论（请检查该文件，或在 ZCode 里重新保存一次模型配置）',
         );
-        return { probe, notes, flagsIndeterminate, flagsZeroExit };
+        return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: headlessUnrefreshed('source_unreadable') };
       }
       const landing = zcodeHomeUnder(runDir);
       const launch: ZcodeProbeLaunch = {
@@ -1498,9 +1553,9 @@ export async function probeZcode(
         const failed = await readTrace(out.envelope?.sessionId ?? null, zcodeStorageRedirectEnv(landing)['ZCODE_LOG_DIR']!);
         const cause = failed?.failureCause ? `；日志根因：${redactSecrets(failed.failureCause.slice(0, 200)).content}` : '';
         notes.push(
-          `ZCode headless 失败（${out.failureKind}，${probed}）：${redactSecrets(out.stderr.slice(0, 200)).content}${cause}`,
+          `${ZCODE_HEADLESS_UNREFRESHED.headless_failed.noteKey}（${out.failureKind}，${probed}）：${redactSecrets(out.stderr.slice(0, 200)).content}${cause}`,
         );
-        return { probe, notes, flagsIndeterminate, flagsZeroExit };
+        return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: headlessUnrefreshed('headless_failed') };
       }
       /*
        * headless 通过之后才说「探的是哪条路径」（代码双审 r1 CODEX-06）：此后 path_deny 必跑，这行对两次都成立；
@@ -1556,7 +1611,8 @@ export async function probeZcode(
           );
         }
       } else {
-        notes.push('ZCode stdout 中抠不出 JSON envelope');
+        notes.push(ZCODE_HEADLESS_UNREFRESHED.no_envelope.noteKey);
+        unrefreshed = headlessUnrefreshed('no_envelope');
       }
 
       const deny = await probePathDeny(entry, node, fx, readonly, { launch, invoke });
@@ -1576,15 +1632,12 @@ export async function probeZcode(
       notes.push(`scratch_paths=${JSON.stringify(probe.scratch_paths)}`);
     } finally {
       /*
-       * 删除失败不抛（代码双审 r1 CODEX-01）：`force` 只吞 ENOENT，ENOTEMPTY / EBUSY / EACCES 会从 finally 抛出、
-       * 顶替原异常，doctor 的 checkpoint 就不执行，本轮已探的结论随之丢失。失败时说清残留在哪、里面有副本凭据。
+       * 删除失败不抛（EV-194 代码双审 r1 CODEX-01）：`force` 只吞 ENOENT，ENOTEMPTY / EBUSY / EACCES 会从 finally 抛出、
+       * 顶替原异常，doctor 的 checkpoint 就不执行，本轮已探的结论随之丢失。失败时说清残留在哪、里面还有没有副本凭据
+       * （删除失败后现场查）；删除与措辞与认证探活共用（EV-197）。
        */
-      await fs.rm(runDir, { recursive: true, force: true, maxRetries: 3 }).catch((e: unknown) => {
-        notes.push(
-          `⚠️ 探针临时目录删除失败（${(e as NodeJS.ErrnoException).code ?? (e as Error).message}）：${tildeHome(runDir)} 仍在，` +
-            '其中的 cli/config.json 副本含真实凭据，请手工删除',
-        );
-      });
+      const residue = await removeZcodeTempDir(runDir, '探针');
+      if (residue) notes.push(residue);
     }
 
     // model_override 已由上面的 probeModelOverride 臂实测决定；`env` 档 0.16.5 已证伪（无裸 ZCODE_MODEL）
@@ -1592,5 +1645,5 @@ export async function probeZcode(
     await fx.cleanup();
   }
 
-  return { probe, notes, flagsIndeterminate, flagsZeroExit };
+  return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: unrefreshed };
 }

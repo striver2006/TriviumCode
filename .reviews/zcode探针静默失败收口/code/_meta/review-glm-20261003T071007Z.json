@@ -1,0 +1,58 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "读了补丁全文、四个被改源文件的完整上下文与上下游调用链（probeZcode 唯一调用方是 doctor.ts:573，返回形状加第五项无其他解构方；authProbe 经 preflight.ts 的 probeAuth 消费，detail 只透传展示、缓存条目不含 detail；doctor 退出码只由 blockers 决定，cli.ts:761/771）。实现与已批准计划 r2 逐条一致：三支事实表 ZCODE_HEADLESS_UNREFRESHED 与 warning 措辞、残留提示两档措辞、三条既有 note 改引 noteKey 后拼接结果逐字不变（构造核实）、blocker 判据与结论 schema 未动、删除成功路径逐字节不变；no_envelope 支的可达性也核过——timedOut 时 code 为 null 经 failureKind 'other' 走 headless_failed 支，不会误标成「退 0 无 envelope」。测试与证据自洽：A1～A4/D10b/D11～D16 的字面断言与函数输出比对并存、TMPDIR 钉私有根、root 跳过、FAKE_LOCK 摆不出即红；变异 18/18（含编码时补的 M17/M18）逐条有咬住用例，报告计数与用例清点一致（33/33、全量 +11）。两条意见：一是 hasCopy 的「副本已写下」判定以 prepareZcodeHome 成功返回为准，而副本在函数内 writeFile 之后、return 之前仍有可抛点，catch 支会把残留提示说成「没有副本」；二是「warning 与 headless blocker 不互斥」这条三侧定案的措辞没有用例钉住。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/adapters/zcode.ts:1022-1024（writeFile 与 chmod）；消费点 src/trivium/probes/zcode.ts:1519-1530、src/trivium/adapters/zcode.ts:1156-1167",
+      "problem": "「副本是否写下」由调用方在 prepareZcodeHome 成功返回后置位（seen.hasCopy = prep.homeDir !== null），但副本（含真实凭据的 cli/config.json）在函数内部 writeFile（adapters/zcode.ts:1022）落盘之后、成功 return（:1036）之前仍有一处可抛：紧随的 fs.chmod（:1024）；writeFile 自身部分失败（ENOSPC/EIO）也可能留下含凭据的半份文件。任一发生时，两侧的 catch 都按 source_unreadable 处理、hasCopy 保持 false，若删除同时失败，残留提示会说「其中没有 cli/config.json 副本，是本次探测的 CLI 产物」——与盘上事实相反，且错在「删不掉 + 疑有凭据残留」这一最需要说对的场景。计划 r2 §1.3/§3.1 的论证只覆盖了「解析失败时 writeFile 未到」，没有覆盖这一窗口。需要删除也同时失败才现形，概率很低，故只记 minor。",
+      "evidence": "src/trivium/adapters/zcode.ts:1005-1036（ensureDir → readFile/JSON.parse → 纯计算 → writeFile → chmod → return，writeFile 与 return 之间只有 chmod）；src/trivium/probes/zcode.ts:1516-1530 与 src/trivium/adapters/zcode.ts:1150-1167（两处 catch 均在 prepareZcodeHome 抛出时返回，seen.hasCopy 未置位）；src/trivium/adapters/zcode.ts:898-928（zcodeTempDirResidueText 按 hasCopy 出两档措辞，false 档断言没有副本）。",
+      "suggestion": "不依赖「函数是否成功返回」推断落盘状态：catch 支按现场事实判定（exists(zcodeHomeUnder(runDir) 下的 .zcode/cli/config.json)），或让 prepareZcodeHome 在 writeFile 落盘后即回报「副本已写下」（如经持有对象或返回字段）。方向即可，不必大改。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/zcode-doctor-probe-home.test.ts:565-631（doctorIn 恒摆 response_field: 'response'；D15/D16）",
+      "problem": "「warning 不与 headless blocker 互斥」是计划 r2 §2.2/R1 里三侧一致认可的设计定案（existing 的 response_field 为 null 时 blocker 照出、warning 也出，判据保持单一不加第二条件），但 D15/D16 的既有结论都摆 'response'，只断言了「旧值让 blocker 不触发」这一半。若有人给 doctor.ts:623 的 if 加上 response_field !== null 一类的第二条件（正是 R1 定案不加的形态），现有 18 条变异无一咬住、全部用例照绿，定案 silently 失效。这条测试要怎样才会失败：只有补上「existing 为 null 时 ZCODE_HEADLESS_NOT_OK_HINT 与本题 warning 同出」一格。",
+      "evidence": "src/trivium/doctor.ts:621-624（warning 与 blocker 是两个独立 if）；test/unit/zcode-doctor-probe-home.test.ts:569（cfg.probe.cli.zcode = existingProbe(w.entry, 'response')，两用例均如此）、599-601（只断言 blockers 不含 ZCODE_HEADLESS_NOT_OK_HINT 与 response_field 沿用 'response'）；mutation-names-log.txt M1-M18 无一覆盖该形态。",
+      "suggestion": "D16 的 cases 里加一格（或另立一小格）：doctorIn 改用 existingProbe(w.entry, null)，断言同一轮里 ZCODE_HEADLESS_NOT_OK_HINT 在 blockers、本题 warning 在 warnings，两者同时在场。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "EV-196 的实现与计划 r2 §2 逐条一致：ZCODE_HEADLESS_UNREFRESHED 一张表供探针 note、doctor warning、carried 三处同源；三条既有 note 改引 noteKey 后拼接结果逐字不变（对三条旧文案逐字比对核实）；headlessUnrefreshed 与 flagsIndeterminate 同类、只作过程事实带出，doctor 侧 probe.cli.zcode = r.probe，落盘结论形状未动。",
+    "doctor 段 warning 的位置（旗标 warning 之后、headless blocker 之前）与判据单一（headlessUnrefreshed !== null）符合计划；blocker 判据、退出码（cli.ts:771 只看 blockers）、--no-model-calls 行为均未变，D15 用 blockers 逐项相等锁住。",
+    "no_envelope 支的归类核实无误：invokeZcode 在 code !== 0（含超时被杀 code 为 null）时必给非 'none' 的 failureKind（adapters/zcode.ts:514-521），退 0 + 无 envelope 才进第三支，warning 里「退 0」的措辞属实；该支 carried 恰为 response_field 与 model_id_form，与代码结构（envelope 分支内才刷这两项、path_deny/scratch_paths 其后照跑）一致，D13 有正反两向断言。",
+    "EV-197 的 attempt/finally 重构正确：原异常不再可能被清理异常顶替（拉起抛错路径的语义因此比旧代码更干净）；删不掉时提示接在详情末尾、ok 不变；删除成功路径逐字节不变由既有 10 条探活用例锁住；probeAuth 不改、缓存条目不含 detail（preflight.ts:736-738），RUNBOOK 的新行把这两点都对读者说清了。",
+    "两档残留措辞按「副本是否写下」区分（GLM-02 计划意见落实），A4/D10b 分别钉住退路支不说「含真实凭据」；A1/A2/D10 保留字面断言、叠加以函数输出比对，避免了自我循环；TMPDIR 钉私有根、root 跳过、FAKE_LOCK 摆不出即退非 0 的装置都是对的。",
+    "文档四面同步齐备：设计 v1.3.79（§11.3 第 7 条 + 变更记录）、RUNBOOK 两行（告警读法与残留处置，前缀与措辞和代码一致）、BACKLOG 两条 done 含残余登记、README 索引条目按日期+文件名升序落在正确位置；残余（EV-86 形态当期可见、抛错路径提示丢失、maxRetries 对 EACCES 不重试）如实登记未粉饰。",
+    "变异清单在计划 M1-M16 之上补了 M17/M18（两侧 hasCopy 恒真的对偶变异），报告如实标注「编码时补」；mutation-names-log.txt 每条变异都有具体咬住用例与计数，证据链自洽。"
+  ],
+  "not_covered": [
+    "只读审查、未执行任何命令：全量 2619/0/2、doctor 自检 14/14、变异 18/18 均取自证据文件与报告陈述，未复跑；变异 spec 的 find 串与源码逐字匹配也未机器核验，只抽查了装置与日志的形态。",
+    "check-2.txt、doctor-selftest.txt、gen-mutation-spec.mjs、mutation-spec.json、mutation-names-output.json 未逐行读（只读了 mutation-output.txt、mutation-names-log.txt 及补丁内嵌的 spec 摘录）。",
+    "计划双审三方原始意见与裁决件按禁读清单未读；「7 条全接受」等过程陈述取自 BACKLOG / 设计 v1.3.79 / 报告的自述，未对账。",
+    "GLM-01 的 chmod/半写触发窗口是代码结构推理，未实测；hasCopy=false 档在 source_unreadable 分支「是本次探测的 CLI 产物」一句对空脚手架目录的措辞偏差（方向无害）未单列意见。",
+    "未审查 skills/ 渲染产物、安装副本与 bundle 重建（本题未触及这些面）；预先存在的 D7 两条用例同名、EV-136/EV-194 历史语义等只按注释与用例自述采信。"
+  ],
+  "consulted": [
+    ".reviews/zcode探针静默失败收口/code/_meta/changes-20261003T071007Z.diff",
+    ".reviews/zcode探针静默失败收口/plan/2026-10-03-zcode探针静默失败收口-r2-claude.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/cli.ts",
+    "test/unit/zcode-doctor-probe-home.test.ts",
+    "test/unit/zcode-auth-probe.test.ts",
+    "doc/05_testing/evidence/zcode-probe-silent-fail-20261003/mutation-output.txt",
+    "doc/05_testing/evidence/zcode-probe-silent-fail-20261003/mutation-names-log.txt"
+  ]
+}

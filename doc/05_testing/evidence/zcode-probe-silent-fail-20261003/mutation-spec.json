@@ -1,0 +1,165 @@
+{
+  "targets": [
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/adapters/zcode.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+    "dist/test/test/unit/zcode-auth-probe.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "副本源失败支不带出未刷新",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: headlessUnrefreshed('source_unreadable') };\n",
+      "replace": "        return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: null };\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "headless 失败支不带出未刷新",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: headlessUnrefreshed('headless_failed') };\n",
+      "replace": "        return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: null };\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "无 envelope 支不带出未刷新",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        unrefreshed = headlessUnrefreshed('no_envelope');\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "有 envelope 那一支也置成 no_envelope",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        probe.response_field = out.envelope.keys.includes('response') ? 'response' : null;\n",
+      "replace": "        probe.response_field = out.envelope.keys.includes('response') ? 'response' : null;\n        unrefreshed = headlessUnrefreshed('no_envelope');\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "跳过真实调用那条 return 带上 headless_failed",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      // 没进真实调用段，不算「没刷新」（决策一）\n      return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: null };\n",
+      "replace": "      // 没进真实调用段，不算「没刷新」（决策一）\n      return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: headlessUnrefreshed('headless_failed') };\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "无 envelope 支 carried 取成四项",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    carried: ['response_field', 'model_id_form'],\n",
+      "replace": "    carried: ['response_field', 'path_deny', 'scratch_paths', 'model_id_form'],\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "doctor 不推 warning",
+      "file": "src/trivium/doctor.ts",
+      "find": "      if (r.headlessUnrefreshed) warnings.push(zcodeHeadlessUnrefreshedWarning(r.headlessUnrefreshed));\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "doctor 把它推进 blockers",
+      "file": "src/trivium/doctor.ts",
+      "find": "      if (r.headlessUnrefreshed) warnings.push(zcodeHeadlessUnrefreshedWarning(r.headlessUnrefreshed));\n",
+      "replace": "      if (r.headlessUnrefreshed) blockers.push(zcodeHeadlessUnrefreshedWarning(r.headlessUnrefreshed));\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "headless blocker 判据并上 headlessUnrefreshed（出路二的等价形态）",
+      "file": "src/trivium/doctor.ts",
+      "find": "      if (r.probe.response_field === null && !opts.skipModelCalls) blockers.push(ZCODE_HEADLESS_NOT_OK_HINT);\n",
+      "replace": "      if ((r.probe.response_field === null || r.headlessUnrefreshed) && !opts.skipModelCalls) blockers.push(ZCODE_HEADLESS_NOT_OK_HINT);\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "无 envelope 支的 note 不再引 noteKey（定位字面漂移）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        notes.push(ZCODE_HEADLESS_UNREFRESHED.no_envelope.noteKey);\n",
+      "replace": "        notes.push('ZCode stdout 里没有 JSON envelope');\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "共用删除函数失败照抛（裸删）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    return zcodeTempDirResidueText(who, runDir, (e as NodeJS.ErrnoException).code ?? (e as Error).message, hasCopy);\n",
+      "replace": "    throw e;\n    return zcodeTempDirResidueText(who, runDir, (e as NodeJS.ErrnoException).code ?? (e as Error).message, hasCopy);\n",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "探活不把残留接进详情",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "        return residue === null ? r : { ok: r.ok, detail: `${r.detail}；${residue}` };\n",
+      "replace": "        return true ? r : { ok: r.ok, detail: `${r.detail}；${residue}` };\n",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "探活在删除失败时把 ok 置 false",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "        return residue === null ? r : { ok: r.ok, detail: `${r.detail}；${residue}` };\n",
+      "replace": "        return residue === null ? r : { ok: false, detail: `${r.detail}；${residue}` };\n",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "探活退回旧写法（finally 里裸删）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "          residue = await removeZcodeTempDir(runDir, '探活');\n",
+      "replace": "          await fs.rm(runDir, { recursive: true, force: true });\n",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "共用函数里有副本那档的文案字面改写",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    (hasCopy ? '其中的 cli/config.json 副本含真实凭据，请手工删除' : '其中没有 cli/config.json 副本，是本次探测的 CLI 产物，请手工删除')\n",
+      "replace": "    (hasCopy ? '其中有副本，请删除' : '其中没有 cli/config.json 副本，是本次探测的 CLI 产物，请手工删除')\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "残留里有没有副本恒判「有」（不现场查）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    const hasCopy = await fs\n",
+      "replace": "    const hasCopy = true || await fs\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "残留里有没有副本恒判「没有」",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    const hasCopy = await fs\n",
+      "replace": "    const hasCopy = false && await fs\n",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M18",
+      "desc": "查不了副本在不在时按「没有」说",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "        (err: unknown) => (err as NodeJS.ErrnoException).code !== 'ENOENT',\n",
+      "replace": "        (err: unknown) => false,\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M19",
+      "desc": "warning 判据加第二条件（existing 为 null 时不出，与 blocker 互斥）",
+      "file": "src/trivium/doctor.ts",
+      "find": "      if (r.headlessUnrefreshed) warnings.push(zcodeHeadlessUnrefreshedWarning(r.headlessUnrefreshed));\n",
+      "replace": "      if (r.headlessUnrefreshed && r.probe.response_field !== null) warnings.push(zcodeHeadlessUnrefreshedWarning(r.headlessUnrefreshed));\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    }
+  ]
+}

@@ -21,14 +21,16 @@ import { promises as fs } from 'node:fs';
 import {
   describeZcodeProbedPath,
   zcodeProbeModel,
+  zcodeTempDirResidueText,
+  ZCODE_HEADLESS_NOT_OK_HINT,
   zcodeStorageRedirectEnv,
   ZCODE_BUILTIN_PROVIDER_ENV,
   type ZcodeHomePrep,
   type ZcodeInvokeOptions,
   type ZcodeInvokeOutcome,
 } from '../../src/trivium/adapters/zcode.js';
-import { probeZcode } from '../../src/trivium/probes/zcode.js';
-import { runDoctor } from '../../src/trivium/doctor.js';
+import { probeZcode, ZCODE_HEADLESS_UNREFRESHED, type ZcodeHeadlessUnrefreshedBranch } from '../../src/trivium/probes/zcode.js';
+import { runDoctor, zcodeHeadlessUnrefreshedWarning } from '../../src/trivium/doctor.js';
 import { agentConfigOf, defaultConfig } from '../../src/trivium/config.js';
 import type { ZcodeProbe } from '../../src/trivium/types.js';
 
@@ -63,12 +65,15 @@ const CLI_CONFIG = {
 const REQUESTED = 'GLM-5.3-Flash';
 const LOG_MODEL = 'stub-provider/STUB-MODEL';
 
-/** 既有结论：每格都与本轮会写出的值不同，「保留」与「刷新」才分得开 */
-function existingProbe(entry: string): ZcodeProbe {
+/**
+ * 既有结论：每格都与本轮会写出的值不同，「保留」与「刷新」才分得开。
+ * `responseField` 给 `'response'` 是 EV-196 的形态：旧值让 headless blocker 不触发，失败只能靠 warning 被看见。
+ */
+function existingProbe(entry: string, responseField: 'response' | null = null): ZcodeProbe {
   return {
     entrypoint: entry, version: '0.16.9', version_probe: null, probed_at: '2026-01-01T00:00:00.000Z',
     readonly_flags: [], model_override: 'config_copy',
-    trace_source: null, trace_args_source: null, response_field: null,
+    trace_source: null, trace_args_source: null, response_field: responseField,
     path_deny: { supported: false, rule_syntax: null, method: 'old-method', attempts: [], coverage_complete: null, file_shape_verified: null },
     scratch_paths: ['old.txt'], isolation: 'home_copy', model_id_form: 'old-provider/OLD', models: [],
   };
@@ -124,7 +129,20 @@ interface Call { opts: ZcodeInvokeOptions; modelMain: string | null }
  *   - rollout：存储根下 `cli/rollout/model-io-<sessionId>.jsonl`（CLI 由存储根派生 rollout 目录）。
  * 副本里的 `model.main` 在调用当时读出（探完副本即删）。
  */
-function stubInvoke(calls: Call[], mode: { fail?: boolean; throws?: boolean; midnight?: boolean; brokenShard?: boolean; lockRunDir?: boolean } = {}) {
+function stubInvoke(
+  calls: Call[],
+  mode: {
+    fail?: boolean; throws?: boolean; midnight?: boolean; brokenShard?: boolean; noEnvelope?: boolean;
+    /**
+     * 让临时目录删不掉的三种摆法（EV-197）：
+     *   - `sibling`：落点下一个只读子目录里放一个文件（副本所在的 cli/ 照样删得掉）；
+     *   - `copyGone`：同 sibling，另先把副本删掉——「目录删不掉、副本已不在」，不依赖递归删除的先后顺序；
+     *   - `cli`：副本所在的 `.zcode/cli` 改只读，副本删不掉；
+     *   - `opaque`：`.zcode` 整个不可读，删不进去、也查不了副本在不在（只在第二次调用时锁，免得挡住 path_deny 写日志）。
+     */
+    lock?: 'sibling' | 'copyGone' | 'cli' | 'opaque';
+  } = {},
+) {
   return async (o: ZcodeInvokeOptions): Promise<ZcodeInvokeOutcome> => {
     let modelMain: string | null = null;
     if (o.homeDir) {
@@ -150,6 +168,8 @@ function stubInvoke(calls: Call[], mode: { fail?: boolean; throws?: boolean; mid
       }
       return { ...base, envelope: null, exitCode: 1, stdout: '', stderr: 'Error: Model creation failed (traceId: fake)', failureKind: 'other' };
     }
+    // 退 0 但 stdout 里没有 JSON envelope（EV-196 第三支）：两次调用都这样答，path_deny 照跑
+    if (mode.noEnvelope) return { ...base, envelope: null, exitCode: 0, stdout: 'not json', stderr: '', failureKind: 'none' };
     const sessionId = `sess_stub${calls.length}`;
     if (o.storageRedirectRoot) {
       const env = zcodeStorageRedirectEnv(o.storageRedirectRoot);
@@ -159,12 +179,13 @@ function stubInvoke(calls: Call[], mode: { fail?: boolean; throws?: boolean; mid
       const later = JSON.stringify({ sessionId, event: 'tool.call.completed', context: { toolName: 'Read' } });
       // 读不了的分片：名为 *.jsonl 的子目录，readFile 必失败（代码双审 r1 CODEX-02）
       if (mode.brokenShard) await fs.mkdir(path.join(logDir, 'zcode-2026-10-01.jsonl'), { recursive: true });
-      // 删不掉的临时目录：落点下一个只读子目录里放一个文件（代码双审 r1 CODEX-01）
-      if (mode.lockRunDir) {
+      // 删不掉的临时目录（EV-194 代码双审 r1 CODEX-01；EV-197 代码双审 GLM-01 扩成四种摆法）
+      if (mode.lock === 'sibling' || mode.lock === 'copyGone') {
         const locked = path.join(o.storageRedirectRoot, 'locked');
         await fs.mkdir(locked, { recursive: true });
         await fs.writeFile(path.join(locked, 'f'), 'x');
         await fs.chmod(locked, 0o500);
+        if (mode.lock === 'copyGone' && o.homeDir) await fs.rm(path.join(o.homeDir, '.zcode/cli/config.json'), { force: true });
       }
       if (mode.midnight) {
         await fs.writeFile(path.join(logDir, 'zcode-2026-10-02.jsonl'), start + '\n', 'utf8');
@@ -179,6 +200,9 @@ function stubInvoke(calls: Call[], mode: { fail?: boolean; throws?: boolean; mid
         JSON.stringify({ model: { providerId: 'stub-rollout', modelId: 'ROLL', source: 'stub-source' } }) + '\n',
         'utf8',
       );
+      // 这两种锁要在本次写完日志与 rollout 之后上
+      if (mode.lock === 'cli') await fs.chmod(path.join(o.storageRedirectRoot, '.zcode/cli'), 0o500);
+      if (mode.lock === 'opaque' && calls.length >= 2) await fs.chmod(path.join(o.storageRedirectRoot, '.zcode'), 0o000);
     }
     return {
       ...base,
@@ -188,6 +212,15 @@ function stubInvoke(calls: Call[], mode: { fail?: boolean; throws?: boolean; mid
   };
 }
 
+/** 把桩上的锁全解开（顺序：先 .zcode 再 cli），用例收尾时调；解不开的忽略 */
+async function unlock(calls: Call[]): Promise<void> {
+  const root = calls[0]?.opts.storageRedirectRoot;
+  if (!root) return;
+  for (const d of [path.join(root, '.zcode'), path.join(root, '.zcode/cli'), path.join(root, 'locked')]) {
+    await fs.chmod(d, 0o700).catch(() => {});
+  }
+}
+
 const ARM_STUBS = {
   modelOverrideProbe: async () => ({ override: null, requested: null, observed: null, why: '桩' }),
   modelOverrideFullCopyProbe: async () => ({
@@ -195,10 +228,15 @@ const ARM_STUBS = {
   }),
 };
 
-async function probeIn(w: World, calls: Call[], extra: { launchModel?: string | null; mode?: Parameters<typeof stubInvoke>[1] } = {}) {
+async function probeIn(
+  w: World,
+  calls: Call[],
+  extra: { launchModel?: string | null; mode?: Parameters<typeof stubInvoke>[1]; responseField?: 'response' | null; skipModelCalls?: boolean } = {},
+) {
   return inWorld(w, () =>
     probeZcode(w.entry, process.execPath, {
-      existing: existingProbe(w.entry),
+      existing: existingProbe(w.entry, extra.responseField ?? null),
+      ...(extra.skipModelCalls ? { skipModelCalls: true } : {}),
       cliConfigPath: w.cliConfigPath,
       ...ARM_STUBS,
       ...('launchModel' in extra ? { launchModel: extra.launchModel } : { launchModel: REQUESTED }),
@@ -434,17 +472,236 @@ test('D10 临时目录删除失败：不抛、结论照常刷新，note 说清�
   const w = await world();
   const calls: Call[] = [];
   try {
-    const { probe, notes } = await probeIn(w, calls, { mode: { lockRunDir: true } });
+    // 锁住副本所在的 cli/：副本删不掉，提示才该说「含真实凭据」（EV-197 起按残留目录里还有没有副本判）
+    const { probe, notes } = await probeIn(w, calls, { mode: { lock: 'cli' } });
     assert.equal(probe.response_field, 'response', '删除失败不得把已探的结论一起丢掉');
     assert.equal(probe.model_id_form, LOG_MODEL);
     const line = notes.find((n) => n.startsWith('⚠️ 探针临时目录删除失败'));
     assert.ok(line, notes.join('\n'));
     assert.match(line!, /（EACCES）/);
     assert.match(line!, /含真实凭据，请手工删除/);
-    assert.equal((await leftovers(w)).length, 1, '确有一个残留（本格就是要摆出删不掉）');
+    const left = await leftovers(w);
+    assert.equal(left.length, 1, '确有一个残留（本格就是要摆出删不掉）');
+    // 与认证探活同一函数（EV-197）；上面三段字面断言保留，免得只比函数输出成了自我循环（计划双审 CODEX-03）
+    const want = await inWorld(w, async () => zcodeTempDirResidueText('探针', path.join(w.privTmp, left[0]!), 'EACCES', true));
+    assert.equal(line, want);
   } finally {
-    const root = calls[0]?.opts.storageRedirectRoot;
-    if (root) await fs.chmod(path.join(root, 'locked'), 0o700).catch(() => {});
+    await unlock(calls);
+    await cleanup(w);
+  }
+});
+
+test('D10b 退路支删不掉：没有副本就不说「含真实凭据」（EV-197 计划双审 GLM-02）', { skip: process.getuid?.() === 0 }, async () => {
+  const w = await world();
+  const calls: Call[] = [];
+  try {
+    const { notes } = await probeIn(w, calls, { launchModel: null, mode: { lock: 'sibling' } });
+    assert.equal(calls[0]!.opts.homeDir ?? null, null, '本格摆的是退路支');
+    const line = notes.find((n) => n.startsWith('⚠️ 探针临时目录删除失败'));
+    assert.ok(line, notes.join('\n'));
+    assert.match(line!, /其中没有 cli\/config\.json 副本，是本次探测的 CLI 产物，请手工删除$/);
+    assert.doesNotMatch(line!, /含真实凭据/);
+  } finally {
+    await unlock(calls);
+    await cleanup(w);
+  }
+});
+
+test('D10c 副本支、目录删不掉而副本已不在：按现场说「没有副本」，不按写入时的情形推断（EV-197 代码双审 GLM-01）', { skip: process.getuid?.() === 0 }, async () => {
+  const w = await world();
+  const calls: Call[] = [];
+  try {
+    const { notes } = await probeIn(w, calls, { mode: { lock: 'copyGone' } });
+    assert.ok(calls[0]!.opts.homeDir, '本格摆的是副本支（写入时确有副本）');
+    const line = notes.find((n) => n.startsWith('⚠️ 探针临时目录删除失败'));
+    assert.ok(line, notes.join('\n'));
+    assert.match(line!, /其中没有 cli\/config\.json 副本，是本次探测的 CLI 产物，请手工删除$/);
+    assert.doesNotMatch(line!, /含真实凭据/);
+  } finally {
+    await unlock(calls);
+    await cleanup(w);
+  }
+});
+
+test('D10d .zcode 整个不可读：查不了副本在不在就按有副本说，宁可多提醒（EV-197 代码双审 GLM-01）', { skip: process.getuid?.() === 0 }, async () => {
+  const w = await world();
+  const calls: Call[] = [];
+  try {
+    const { notes } = await probeIn(w, calls, { mode: { lock: 'opaque' } });
+    assert.equal(calls.length, 2);
+    const line = notes.find((n) => n.startsWith('⚠️ 探针临时目录删除失败'));
+    assert.ok(line, notes.join('\n'));
+    assert.match(line!, /其中的 cli\/config\.json 副本含真实凭据，请手工删除$/);
+  } finally {
+    await unlock(calls);
+    await cleanup(w);
+  }
+});
+
+// ── EV-196：进了真实调用段却没刷新 response_field ─────────────────────────
+
+const FOUR = ['response_field', 'path_deny', 'scratch_paths', 'model_id_form'];
+
+test('D11 headless 失败：带出 headless_failed 与沿用的四项，旧 response_field 原样留着', async () => {
+  const w = await world();
+  try {
+    const calls: Call[] = [];
+    const r = await probeIn(w, calls, { mode: { fail: true }, responseField: 'response' });
+    assert.deepEqual(r.headlessUnrefreshed, { branch: 'headless_failed', carried: FOUR });
+    assert.equal(r.probe.response_field, 'response', '旧值留着——正是 blocker 不触发的那一格');
+    assert.ok(r.notes.some((n) => n.startsWith('ZCode headless 失败（')), r.notes.join('\n'));
+  } finally {
+    await cleanup(w);
+  }
+});
+
+test('D12 副本源不是合法 JSON：带出 source_unreadable 与沿用的四项，零次拉起', async () => {
+  const w = await world({ cliConfigRaw: '{not json' });
+  try {
+    const calls: Call[] = [];
+    const r = await probeIn(w, calls, { responseField: 'response' });
+    assert.equal(calls.length, 0);
+    assert.deepEqual(r.headlessUnrefreshed, { branch: 'source_unreadable', carried: FOUR });
+    assert.ok(r.notes.some((n) => n.startsWith('副本源 ') && n.includes('读取或解析失败：')), r.notes.join('\n'));
+  } finally {
+    await cleanup(w);
+  }
+});
+
+test('D13 退 0 却抠不出 envelope：带出 no_envelope，只沿用 response_field 与 model_id_form，path_deny 照跑照刷', async () => {
+  const w = await world();
+  try {
+    const calls: Call[] = [];
+    const r = await probeIn(w, calls, { mode: { noEnvelope: true }, responseField: 'response' });
+    assert.equal(calls.length, 2, '这一支不返回，path_deny 照跑');
+    assert.deepEqual(r.headlessUnrefreshed, { branch: 'no_envelope', carried: ['response_field', 'model_id_form'] });
+    assert.equal(r.probe.response_field, 'response');
+    assert.equal(r.probe.model_id_form, 'old-provider/OLD');
+    assert.notEqual(r.probe.path_deny.method, 'old-method', 'path_deny 被本轮刷新，不在沿用之列');
+    assert.deepEqual(r.probe.scratch_paths, [], 'scratch_paths 被本轮刷新');
+    assert.ok(r.notes.includes('ZCode stdout 中抠不出 JSON envelope'), r.notes.join('\n'));
+  } finally {
+    await cleanup(w);
+  }
+});
+
+test('D14 成功、显式跳过、cli 配置缺失三格：都不带（跳过真实调用不算没刷新）', async () => {
+  const ok = await world();
+  try {
+    const r = await probeIn(ok, [], { responseField: 'response' });
+    assert.equal(r.probe.response_field, 'response');
+    assert.equal(r.headlessUnrefreshed, null, '成功路径不带');
+  } finally {
+    await cleanup(ok);
+  }
+  const skip = await world();
+  try {
+    const calls: Call[] = [];
+    const r = await probeIn(skip, calls, { responseField: 'response', skipModelCalls: true });
+    assert.equal(calls.length, 0);
+    assert.equal(r.headlessUnrefreshed, null, '--no-model-calls 不进真实调用段');
+  } finally {
+    await cleanup(skip);
+  }
+  const noCli = await world({ cliConfigRaw: null });
+  try {
+    const calls: Call[] = [];
+    const r = await probeIn(noCli, calls, { responseField: 'response' });
+    assert.equal(calls.length, 0);
+    assert.equal(r.headlessUnrefreshed, null, 'cli 配置缺失不进真实调用段');
+  } finally {
+    await cleanup(noCli);
+  }
+});
+
+/** doctor 层跑一轮（只探 zcode），既有结论里的 response_field 是 'response' */
+async function doctorIn(w: World, mode: Parameters<typeof stubInvoke>[1]) {
+  const cfg = defaultConfig();
+  agentConfigOf(cfg, 'glm', 'zcode').entry = w.entry;
+  cfg.profiles[cfg.active_profile]!.glm!.plan = REQUESTED;
+  cfg.probe.cli.zcode = existingProbe(w.entry, 'response');
+  const triviumDir = await fs.mkdtemp(path.join(w.base, 'trivium-'));
+  const projectRoot = path.join(w.base, 'proj');
+  await fs.mkdir(projectRoot, { recursive: true });
+  const calls: Call[] = [];
+  return inWorld(w, () =>
+    runDoctor({
+      projectRoot, triviumDir, config: cfg, skipModelCalls: false, only: 'zcode',
+      zcodeProbe: { cliConfigPath: w.cliConfigPath, ...ARM_STUBS, invoke: stubInvoke(calls, mode) },
+    }),
+  );
+}
+const isOurs = (s: string) => s.startsWith('ZCode headless 探针本轮进了真实调用');
+
+test('D15 doctor 层：headless 失败只多一条 warning，blockers 与成功轮逐项相同（不拦、退出语义不变）', async () => {
+  const w = await world();
+  try {
+    const good = await doctorIn(w, {});
+    const bad = await doctorIn(w, { fail: true });
+    assert.deepEqual(good.warnings.filter(isOurs), [], '成功轮不出');
+    const mine = bad.warnings.filter(isOurs);
+    assert.equal(mine.length, 1, bad.warnings.join('\n'));
+    assert.deepEqual(bad.warnings.filter((x) => !isOurs(x)), good.warnings, '其余 warning 不受影响');
+    // 字面断言（不只比函数输出）：哪一支、沿用哪几项、为什么要紧、根因在哪
+    assert.match(mine[0]!, /没刷新 response_field（headless 调用失败）/);
+    assert.match(mine[0]!, /response_field \/ path_deny \/ scratch_paths \/ model_id_form 沿用的是上一次的结论/);
+    assert.match(mine[0]!, /审查运行走同一条选模路径，大概率同样跑不通/);
+    assert.match(mine[0]!, /根因见含「ZCode headless 失败」的那条 \[zcode\] note/);
+    assert.equal(mine[0], zcodeHeadlessUnrefreshedWarning({ branch: 'headless_failed', carried: FOUR }));
+    // 不拦：blockers 与成功轮逐项相同，doctor 的退出码只由 blockers 决定
+    assert.deepEqual(bad.blockers, good.blockers);
+    assert.ok(!bad.blockers.includes(ZCODE_HEADLESS_NOT_OK_HINT), '旧值 response 让既有 blocker 照旧不触发（出路二未取）');
+    assert.equal(bad.probe.cli.zcode?.response_field, 'response', '结论照旧沿用、不置空');
+  } finally {
+    await cleanup(w);
+  }
+});
+
+test('D16 doctor 层三支逐一：warning 点名该支，且它指向的 note 字面确实在该轮 [zcode] note 里', async () => {
+  const cases: Array<{ branch: ZcodeHeadlessUnrefreshedBranch; raw?: string; mode: Parameters<typeof stubInvoke>[1] }> = [
+    { branch: 'source_unreadable', raw: '{not json', mode: {} },
+    { branch: 'headless_failed', mode: { fail: true } },
+    { branch: 'no_envelope', mode: { noEnvelope: true } },
+  ];
+  for (const c of cases) {
+    const w = await world(c.raw === undefined ? {} : { cliConfigRaw: c.raw });
+    try {
+      const rep = await doctorIn(w, c.mode);
+      const t = ZCODE_HEADLESS_UNREFRESHED[c.branch];
+      const mine = rep.warnings.filter(isOurs);
+      assert.equal(mine.length, 1, `${c.branch}：${rep.warnings.join('\n')}`);
+      assert.ok(mine[0]!.includes(`（${t.what}）`), mine[0]);
+      assert.ok(mine[0]!.includes(`${t.carried.join(' / ')} 沿用的是上一次的结论`), mine[0]);
+      assert.ok(
+        rep.notes.some((n) => n.startsWith('[zcode] ') && n.includes(t.noteKey)),
+        `${c.branch}：warning 指向「${t.noteKey}」，该轮 note 里却没有\n${rep.notes.join('\n')}`,
+      );
+      assert.ok(!rep.blockers.includes(ZCODE_HEADLESS_NOT_OK_HINT), c.branch);
+    } finally {
+      await cleanup(w);
+    }
+  }
+});
+
+test('D17 既有结论 response_field 为 null 时 blocker 照出、warning 也出——两者不互斥（计划 r2 §6 R1 定案；代码双审 GLM-02）', async () => {
+  const w = await world();
+  try {
+    const cfg = defaultConfig();
+    agentConfigOf(cfg, 'glm', 'zcode').entry = w.entry;
+    cfg.profiles[cfg.active_profile]!.glm!.plan = REQUESTED;
+    cfg.probe.cli.zcode = existingProbe(w.entry, null);
+    const triviumDir = await fs.mkdtemp(path.join(w.base, 'trivium-'));
+    const projectRoot = path.join(w.base, 'proj');
+    await fs.mkdir(projectRoot, { recursive: true });
+    const rep = await inWorld(w, () =>
+      runDoctor({
+        projectRoot, triviumDir, config: cfg, skipModelCalls: false, only: 'zcode',
+        zcodeProbe: { cliConfigPath: w.cliConfigPath, ...ARM_STUBS, invoke: stubInvoke([], { fail: true }) },
+      }),
+    );
+    assert.ok(rep.blockers.includes(ZCODE_HEADLESS_NOT_OK_HINT), rep.blockers.join('\n'));
+    assert.equal(rep.warnings.filter(isOurs).length, 1, rep.warnings.join('\n'));
+  } finally {
     await cleanup(w);
   }
 });

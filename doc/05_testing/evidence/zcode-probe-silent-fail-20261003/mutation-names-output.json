@@ -1,0 +1,278 @@
+{
+  "targets_sha256": {
+    "src/trivium/probes/zcode.ts": "e8bc64bf7cb2a4eb29c21d35da209993294c50832204f877db4a3bd6701d4d55",
+    "src/trivium/doctor.ts": "21103b55869ca062a76efe9ec657a88da828d01704a44b14b4ff9444bd680abd",
+    "src/trivium/adapters/zcode.ts": "60eadd882832f1e447d135631c5cf6c51a1819390c93a2b9925bd70cb91c7d61"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "副本源失败支不带出未刷新",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D12 副本源不是合法 JSON：带出 source_unreadable 与沿用的四项，零次拉起",
+        "D16 doctor 层三支逐一：warning 点名该支，且它指向的 note 字面确实在该轮 [zcode] note 里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 13
+    },
+    {
+      "id": "M2",
+      "desc": "headless 失败支不带出未刷新",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D11 headless 失败：带出 headless_failed 与沿用的四项，旧 response_field 原样留着",
+        "D15 doctor 层：headless 失败只多一条 warning，blockers 与成功轮逐项相同（不拦、退出语义不变）",
+        "D16 doctor 层三支逐一：warning 点名该支，且它指向的 note 字面确实在该轮 [zcode] note 里",
+        "D17 既有结论 response_field 为 null 时 blocker 照出、warning 也出——两者不互斥（计划 r2 §6 R1 定案；代码双审 GLM-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 17
+    },
+    {
+      "id": "M3",
+      "desc": "无 envelope 支不带出未刷新",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D13 退 0 却抠不出 envelope：带出 no_envelope，只沿用 response_field 与 model_id_form，path_deny 照跑照刷",
+        "D16 doctor 层三支逐一：warning 点名该支，且它指向的 note 字面确实在该轮 [zcode] note 里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 14
+    },
+    {
+      "id": "M4",
+      "desc": "有 envelope 那一支也置成 no_envelope",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D14 成功、显式跳过、cli 配置缺失三格：都不带（跳过真实调用不算没刷新）",
+        "D15 doctor 层：headless 失败只多一条 warning，blockers 与成功轮逐项相同（不拦、退出语义不变）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 13
+    },
+    {
+      "id": "M5",
+      "desc": "跳过真实调用那条 return 带上 headless_failed",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D14 成功、显式跳过、cli 配置缺失三格：都不带（跳过真实调用不算没刷新）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 13
+    },
+    {
+      "id": "M6",
+      "desc": "无 envelope 支 carried 取成四项",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D13 退 0 却抠不出 envelope：带出 no_envelope，只沿用 response_field 与 model_id_form，path_deny 照跑照刷"
+      ],
+      "firstLines": [],
+      "elapsed_s": 13
+    },
+    {
+      "id": "M7",
+      "desc": "doctor 不推 warning",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D15 doctor 层：headless 失败只多一条 warning，blockers 与成功轮逐项相同（不拦、退出语义不变）",
+        "D16 doctor 层三支逐一：warning 点名该支，且它指向的 note 字面确实在该轮 [zcode] note 里",
+        "D17 既有结论 response_field 为 null 时 blocker 照出、warning 也出——两者不互斥（计划 r2 §6 R1 定案；代码双审 GLM-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 13
+    },
+    {
+      "id": "M8",
+      "desc": "doctor 把它推进 blockers",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D15 doctor 层：headless 失败只多一条 warning，blockers 与成功轮逐项相同（不拦、退出语义不变）",
+        "D16 doctor 层三支逐一：warning 点名该支，且它指向的 note 字面确实在该轮 [zcode] note 里",
+        "D17 既有结论 response_field 为 null 时 blocker 照出、warning 也出——两者不互斥（计划 r2 §6 R1 定案；代码双审 GLM-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12
+    },
+    {
+      "id": "M9",
+      "desc": "headless blocker 判据并上 headlessUnrefreshed（出路二的等价形态）",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D15 doctor 层：headless 失败只多一条 warning，blockers 与成功轮逐项相同（不拦、退出语义不变）",
+        "D16 doctor 层三支逐一：warning 点名该支，且它指向的 note 字面确实在该轮 [zcode] note 里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12
+    },
+    {
+      "id": "M10",
+      "desc": "无 envelope 支的 note 不再引 noteKey（定位字面漂移）",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D13 退 0 却抠不出 envelope：带出 no_envelope，只沿用 response_field 与 model_id_form，path_deny 照跑照刷",
+        "D16 doctor 层三支逐一：warning 点名该支，且它指向的 note 字面确实在该轮 [zcode] note 里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 14
+    },
+    {
+      "id": "M11",
+      "desc": "共用删除函数失败照抛（裸删）",
+      "suite": "dist/test/test/unit/zcode-auth-probe.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 副本支探活通过 + 副本删不掉：不抛、结论仍通过、详情末尾说清残留与副本凭据",
+        "A2 副本支探活失败 + 副本删不掉：不抛、结论仍失败、详情末尾同样说清残留",
+        "A4 退路支（档位无模型）+ 删不掉：没有副本就不说「含真实凭据」（计划双审 GLM-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M12",
+      "desc": "探活不把残留接进详情",
+      "suite": "dist/test/test/unit/zcode-auth-probe.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 副本支探活通过 + 副本删不掉：不抛、结论仍通过、详情末尾说清残留与副本凭据",
+        "A2 副本支探活失败 + 副本删不掉：不抛、结论仍失败、详情末尾同样说清残留",
+        "A4 退路支（档位无模型）+ 删不掉：没有副本就不说「含真实凭据」（计划双审 GLM-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M13",
+      "desc": "探活在删除失败时把 ok 置 false",
+      "suite": "dist/test/test/unit/zcode-auth-probe.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 副本支探活通过 + 副本删不掉：不抛、结论仍通过、详情末尾说清残留与副本凭据",
+        "A4 退路支（档位无模型）+ 删不掉：没有副本就不说「含真实凭据」（计划双审 GLM-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M14",
+      "desc": "探活退回旧写法（finally 里裸删）",
+      "suite": "dist/test/test/unit/zcode-auth-probe.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 副本支探活通过 + 副本删不掉：不抛、结论仍通过、详情末尾说清残留与副本凭据",
+        "A2 副本支探活失败 + 副本删不掉：不抛、结论仍失败、详情末尾同样说清残留",
+        "A4 退路支（档位无模型）+ 删不掉：没有副本就不说「含真实凭据」（计划双审 GLM-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M15",
+      "desc": "共用函数里有副本那档的文案字面改写",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D10 临时目录删除失败：不抛、结论照常刷新，note 说清残留在哪（代码双审 r1 CODEX-01）",
+        "D10d .zcode 整个不可读：查不了副本在不在就按有副本说，宁可多提醒（EV-197 代码双审 GLM-01）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 14
+    },
+    {
+      "id": "M16",
+      "desc": "残留里有没有副本恒判「有」（不现场查）",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D10b 退路支删不掉：没有副本就不说「含真实凭据」（EV-197 计划双审 GLM-02）",
+        "D10c 副本支、目录删不掉而副本已不在：按现场说「没有副本」，不按写入时的情形推断（EV-197 代码双审 GLM-01）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 14
+    },
+    {
+      "id": "M17",
+      "desc": "残留里有没有副本恒判「没有」",
+      "suite": "dist/test/test/unit/zcode-auth-probe.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 副本支探活通过 + 副本删不掉：不抛、结论仍通过、详情末尾说清残留与副本凭据",
+        "A2 副本支探活失败 + 副本删不掉：不抛、结论仍失败、详情末尾同样说清残留"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M18",
+      "desc": "查不了副本在不在时按「没有」说",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D10d .zcode 整个不可读：查不了副本在不在就按有副本说，宁可多提醒（EV-197 代码双审 GLM-01）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 14
+    },
+    {
+      "id": "M19",
+      "desc": "warning 判据加第二条件（existing 为 null 时不出，与 blocker 互斥）",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D17 既有结论 response_field 为 null 时 blocker 照出、warning 也出——两者不互斥（计划 r2 §6 R1 定案；代码双审 GLM-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 14
+    }
+  ]
+}

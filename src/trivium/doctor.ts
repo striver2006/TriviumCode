@@ -15,7 +15,7 @@ import { EXIT } from './exit-codes.js';
 import { probeEnv } from './probes/env.js';
 import { probeVerifyCommands } from './probes/verify-commands.js';
 import { probeAgy } from './probes/agy.js';
-import { probeZcode } from './probes/zcode.js';
+import { probeZcode, ZCODE_HEADLESS_UNREFRESHED, type ZcodeHeadlessUnrefreshed } from './probes/zcode.js';
 import { probeCodex } from './probes/codex.js';
 import { probeClaude, type StructuredArmCause } from './probes/claude.js';
 import type { ClaudeProbe, CodexProbe, Config, ProbeSection } from './types.js';
@@ -404,6 +404,23 @@ export function claudeSeverity(
   return [];
 }
 
+/**
+ * doctor 的 zcode headless 探针本轮进了真实调用、却没刷新 response_field 时的 warning（EV-196）。
+ *
+ * 不拦（决策一）：一次临时失败就拦下全量 doctor、并让 `availability()` 判该侧不可用，力度过头。
+ * 也不能只留一条 note——结论从既有值克隆，旧的 `response_field` 让 headless blocker 不触发，此前全量 doctor
+ * 退 0、blockers 与 warnings 都为空。EV-194 起探针与审查运行同一选模路径，这里失败就意味着审查大概率同样跑不通。
+ * 「哪一支、根因在哪条 note、哪几项沿用旧值」都取自探针侧的同一张表，与 note 的字面不会各改各的。
+ */
+export function zcodeHeadlessUnrefreshedWarning(u: ZcodeHeadlessUnrefreshed): string {
+  const b = ZCODE_HEADLESS_UNREFRESHED[u.branch];
+  return (
+    `ZCode headless 探针本轮进了真实调用，但没刷新 response_field（${b.what}）：` +
+    `${u.carried.join(' / ')} 沿用的是上一次的结论（首次探测则为空），不是本轮探到的。` +
+    `审查运行走同一条选模路径，大概率同样跑不通——根因见含「${b.noteKey}」的那条 [zcode] note。`
+  );
+}
+
 export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   // 以**已落盘的探针结论**为基线，只覆盖本次真正探测过的段落。
   // 否则 `--only zcode` 会把上一轮的 agy 结论一并清空（探针结论是增量积累的）。
@@ -601,6 +618,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
             '先核对 ZCode 安装布局与 provider 配置定位，再谈旗标——这不是「探针没探到能力」。',
         );
       }
+      // 本轮进了真实调用段却没刷新 response_field（EV-196）：与旗标未判定同档，出 warning、不拦。
+      // 不与下面那条 blocker 互斥——blocker 说「没跑通」，这条说「哪一支、根因在哪、哪几项是旧的」
+      if (r.headlessUnrefreshed) warnings.push(zcodeHeadlessUnrefreshedWarning(r.headlessUnrefreshed));
       if (r.probe.response_field === null && !opts.skipModelCalls) blockers.push(ZCODE_HEADLESS_NOT_OK_HINT);
     }
   }

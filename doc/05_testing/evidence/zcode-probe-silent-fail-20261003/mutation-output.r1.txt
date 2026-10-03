@@ -1,0 +1,133 @@
+✓ 工作树干净、基线全绿（2 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=3）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=2）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=2）
+  M10 ✓ 咬住（fail=2）
+  M11 ✓ 咬住（fail=3）
+  M12 ✓ 咬住（fail=3）
+  M13 ✓ 咬住（fail=2）
+  M14 ✓ 咬住（fail=3）
+  M15 ✓ 咬住（fail=1）
+  M16 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=1）
+  M18 ✓ 咬住（fail=1）
+{
+  "总数": 18,
+  "咬住": 18,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "副本源失败支不带出未刷新",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "headless 失败支不带出未刷新",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M3",
+      "desc": "无 envelope 支不带出未刷新",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "有 envelope 那一支也置成 no_envelope",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M5",
+      "desc": "跳过真实调用那条 return 带上 headless_failed",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "无 envelope 支 carried 取成四项",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "doctor 不推 warning",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "doctor 把它推进 blockers",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "headless blocker 判据并上 headlessUnrefreshed（出路二的等价形态）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M10",
+      "desc": "无 envelope 支的 note 不再引 noteKey（定位字面漂移）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M11",
+      "desc": "共用删除函数失败照抛（裸删）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M12",
+      "desc": "探活不把残留接进详情",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M13",
+      "desc": "探活在删除失败时把 ok 置 false",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M14",
+      "desc": "探活退回旧写法（finally 里裸删）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M15",
+      "desc": "共用函数里有副本那档的文案字面改写",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M16",
+      "desc": "探活恒传 hasCopy: true",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "doctor 侧恒传 hasCopy: true",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M18",
+      "desc": "探活把「有副本」判成恒真（不看 homeDir）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
