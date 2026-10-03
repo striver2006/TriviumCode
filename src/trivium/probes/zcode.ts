@@ -39,11 +39,13 @@ import {
   describeZcodeProbedPath,
   removeZcodeTempDir,
   tildeHome,
+  zcodeCliCopyPath,
   zcodeHomeUnder,
   zcodeStorageRedirectEnv,
   type VariantOutcome,
   type ZcodeHomePrep,
   type ZcodeInvokeOptions,
+  type ZcodeTempDirCopyKind,
 } from '../adapters/zcode.js';
 import { exists, makeTempDir } from '../util/fsx.js';
 // CLI 原话进 note 之前过一遍脱敏（r5 CODEX-06）
@@ -149,6 +151,8 @@ export async function probeReadonlyFlags(
    * 结论照记接受，但**不能静默**——调用方据此出 note 与告警。
    */
   zeroExit: string[];
+  /** 空 HOME 删不掉时的残留提示（EV-198，`removeZcodeTempDir` 给出）；删成功为 null。不影响上面四项结论 */
+  tempDirResidue: string | null;
 }> {
   const candidates: string[][] = [
     ['--mode', 'plan'],
@@ -190,6 +194,7 @@ export async function probeReadonlyFlags(
     ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
   };
   const emptyHome = await makeTempDir('trivium-flagprobe');
+  let tempDirResidue: string | null = null;
   try {
     for (const flag of candidates) {
       const r = await run(
@@ -250,9 +255,13 @@ export async function probeReadonlyFlags(
       });
     }
   } finally {
-    await fs.rm(emptyHome, { recursive: true, force: true });
+    /*
+     * 删除失败不抛（EV-198）：裸删的 ENOTEMPTY / EBUSY / EACCES 会从这里抛穿 `probeZcode` 与 `runDoctor`，
+     * 本轮已探的结论在 checkpoint 前丢失。空 HOME 从不写副本，传 null——删不掉时说「没有副本」，不去查。
+     */
+    tempDirResidue = await removeZcodeTempDir(emptyHome, '探针', null);
   }
-  return { accepted, rejected, indeterminate, zeroExit };
+  return { accepted, rejected, indeterminate, zeroExit, tempDirResidue };
 }
 
 /**
@@ -437,6 +446,11 @@ export interface ModelOverrideProbe {
    * 可选：桩与本字段之前的调用方不给它。
    */
   runtimeSelected?: RuntimeSelectionReadback;
+  /**
+   * 临时目录删不掉时的残留提示（EV-198，`removeZcodeTempDir` 给出），`probeZcode` 原样推进 notes。
+   * 只在删除失败时出现、不影响上面的结论；可选的理由同 `runtimeSelected`。
+   */
+  tempDirResidue?: string;
 }
 
 /**
@@ -577,12 +591,29 @@ export async function probeModelOverride(
   const q = qualifyAgainstCliConfig(pick, cfg as Parameters<typeof qualifyAgainstCliConfig>[1]);
   if (q.qualified === null) return { override: null, requested: pick, observed: null, why: q.reason, runtimeSelected: notLaunched };
 
+  const qualified = q.qualified;
   const home = await makeTempDir('trivium-modeloverride');
+  // 副本写在临时 HOME 本身之下（不在 `home/` 子层），写盘与删除失败后现场查共用这一个路径（EV-198）
+  const copyPath = zcodeCliCopyPath(home);
+  /*
+   * 删除收尾（EV-198，同认证探活 EV-197 的形态）：结果在 `attempt` 里拼完，删除放在外层 finally、失败不抛。
+   * 此前 finally 里裸删，ENOTEMPTY / EBUSY / EACCES 会顶替结论、抛穿 `probeZcode` 与 `runDoctor`。
+   * 删不掉时提示挂在 `tempDirResidue` 上、结论不变；副本是白名单重建、apiKey 是哨兵，有副本时取哨兵那档。
+   */
+  let result: ModelOverrideProbe;
+  let residue: string | null = null;
   try {
-    const copy = buildProbeCliConfig(cfg, q.qualified);
-    const cliDir = path.join(home, '.zcode/cli');
-    await fs.mkdir(cliDir, { recursive: true });
-    await fs.writeFile(path.join(cliDir, 'config.json'), JSON.stringify(copy, null, 2), { encoding: 'utf8', mode: 0o600 });
+    result = await attempt();
+  } finally {
+    residue = await removeZcodeTempDir(home, '探针', { path: copyPath, kind: 'sentinel' });
+  }
+  return residue === null ? result : { ...result, tempDirResidue: residue };
+
+  /** 一次白名单臂的全部工作（EV-198 从 try 体原样拆出）：结论在这里拼完，删除留给上面的 finally */
+  async function attempt(): Promise<ModelOverrideProbe> {
+    const copy = buildProbeCliConfig(cfg, qualified);
+    await fs.mkdir(path.dirname(copyPath), { recursive: true });
+    await fs.writeFile(copyPath, JSON.stringify(copy, null, 2), { encoding: 'utf8', mode: 0o600 });
 
     const env: Record<string, string | undefined> = {
       ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
@@ -595,9 +626,9 @@ export async function probeModelOverride(
 
     // 运行期读数必须在 finally 整删临时根之前读（r2 §3）
     const runtimeSelected = await readRuntimeSelectedModel(home);
-    const j = judgeOverrideReadback(q.qualified, await readDefaultSelection(home), r);
-    const base = { override: j.override, requested: q.qualified, observed: j.observed, runtimeSelected };
-    const blind = catalogFirstNote(cfg as Parameters<typeof legacyProviderMembers>[0], q.qualified);
+    const j = judgeOverrideReadback(qualified, await readDefaultSelection(home), r);
+    const base = { override: j.override, requested: qualified, observed: j.observed, runtimeSelected };
+    const blind = catalogFirstNote(cfg as Parameters<typeof legacyProviderMembers>[0], qualified);
     const done = (why: string): ModelOverrideProbe => ({ ...base, why: why + blind });
     switch (j.stop) {
       case 'match':
@@ -617,8 +648,6 @@ export async function probeModelOverride(
       case 'unrecognized':
         return done(`未识别的停止形态，本轮未判定${j.tail}`);
     }
-  } finally {
-    await fs.rm(home, { recursive: true, force: true });
   }
 }
 
@@ -843,6 +872,18 @@ export function judgeRuntimeSelection(as: FullCopyOverrideProbe, ro: FullCopyOve
   return { value: null, why: `两支冲突：原样支选中请求 ${as.requested}，置首支却是 ${r.model}——不收录` };
 }
 
+/**
+ * 同形臂临时根删不掉时，残留副本按哪一档说（EV-198；代码双审 r1 CODEX-05 抽成带名字的函数）。两支理由不同：
+ * - `apiKeyOnly` 收窄档：这一档的替换面本身不保证副本干净（见 `replace` 的说明），残余扫描为空也不能断言没有凭据；
+ * - 扫出残余：副本已在盘上（`prepareZcodeHome` 先写盘、本臂再判残余），只是不拉起，里面可能留着疑似凭据。
+ * 两支都取「含真实凭据」，宁可多提醒；其余是凭据已换成哨兵的探针副本。现场查优先：副本不在时删除函数说「没有」。
+ */
+export function fullCopyResidueKind(replace: 'full' | 'apiKeyOnly' | undefined, residue: readonly string[]): ZcodeTempDirCopyKind {
+  if (replace === 'apiKeyOnly') return 'credential';
+  if (residue.length > 0) return 'credential';
+  return 'sentinel';
+}
+
 /** 同形臂的结论：与白名单臂同一形状，外加替换键路径、宿主预置的凭据 env 键与变体结果 */
 export interface FullCopyOverrideProbe extends ModelOverrideProbe {
   replacedPaths: string[];
@@ -889,6 +930,11 @@ export async function probeModelOverrideFullCopy(
      * 缺省仍是 `as-is`，`model_override_full_copy` 与 EV-94 ② 只取原样支。
      */
     variant?: 'as-is' | 'requested-first';
+    /**
+     * 删除临时根的**测试注入口**（EV-198 计划 r2 §3.1 R4）：扫出残余那一支不拉起，子进程摆不了「删不掉」，
+     * 用例要在删除前一刻自己上锁、再调真实的 `removeZcodeTempDir`。缺省就是它。
+     */
+    removeTempDir?: typeof removeZcodeTempDir;
   } = {},
 ): Promise<FullCopyOverrideProbe> {
   const src = opts.cliConfigPath ?? ZCODE_CLI_CONFIG;
@@ -926,9 +972,35 @@ export async function probeModelOverrideFullCopy(
 
   // 前缀不得以 `trivium-modeloverride` 开头：白名单臂的清理用例按那个前缀找残留，并行跑会互相误判
   const root = await makeTempDir('trivium-fullcopyarm');
+  /*
+   * 残余扫描的结果在删除时还要用（EV-198）：`transformCopy` 写盘前赋值，下面的 finally 据它取提示档位。
+   * 它是「盘上副本长什么样」的单一事实源（代码双审 r1 CODEX-05）：日后在 `attempt` 里新增早退分支，
+   * 须保证删除时刻它仍与盘上副本一致——不写副本就返回的分支不要动它，写了副本的分支要先经 `transformCopy`。
+   */
+  let residue: string[] = [];
+  /*
+   * 删除收尾（EV-198，同认证探活 EV-197 的形态）：结果在 `attempt` 里拼完，删除放在外层 finally、失败不抛，
+   * 删不掉时提示挂在 `tempDirResidue` 上、结论不变。副本由 `prepareZcodeHome` 写在 `<临时根>/home` 下。
+   * 档位：凭据写盘前已换哨兵，取哨兵那档；但扫出残余（副本照样已在盘上，只是不拉起）或走 `apiKeyOnly` 收窄档
+   * （残余扫描为空也不保证没有凭据，见上面 `replace` 的说明）时取「含真实凭据」，宁可多提醒。
+   * 按删除那一刻的 `residue` 取档，`prepareZcodeHome` 写盘后抛错的路径也一样；`transformCopy` 没跑到时副本不存在，
+   * 现场查得 ENOENT 就说没有。
+   */
+  let result: FullCopyOverrideProbe;
+  let tempDirResidue: string | null = null;
   try {
+    result = await attempt();
+  } finally {
+    tempDirResidue = await (opts.removeTempDir ?? removeZcodeTempDir)(root, '探针', {
+      path: zcodeCliCopyPath(zcodeHomeUnder(root)),
+      kind: fullCopyResidueKind(opts.replace, residue),
+    });
+  }
+  return tempDirResidue === null ? result : { ...result, tempDirResidue };
+
+  /** 一次同形臂的全部工作（EV-198 从 try 体原样拆出）：结论在这里拼完，删除留给上面的 finally */
+  async function attempt(): Promise<FullCopyOverrideProbe> {
     let replacedPaths: string[] = [];
-    let residue: string[] = [];
     const prep = await prepareZcodeHome(root, requested, {
       srcConfig: src,
       // 置首统一走副本构造函数（r3 §3.3，计划双审 r1 CODEX-03 ≡ GLM-05）：与审查臂同一条路径；
@@ -998,8 +1070,6 @@ export async function probeModelOverrideFullCopy(
       case 'unrecognized':
         return done(`未识别的停止形态，本轮未判定${j.tail}`);
     }
-  } finally {
-    await fs.rm(root, { recursive: true, force: true });
   }
 }
 
@@ -1372,6 +1442,8 @@ export async function probeZcode(
           `拒绝=${JSON.stringify(flags.rejected)}（--help 列出不等于实际接受）`,
       );
     }
+    // 三条探针臂的临时目录删不掉时（EV-198），各自的残留提示紧跟该臂的结论 note 推进来；结论不因此改变
+    if (flags.tempDirResidue) notes.push(flags.tempDirResidue);
 
     /*
      * 模型覆盖档位——**实测**而非写死（EV-82，r3 CODEX-04）。零配额、零真实凭据，
@@ -1392,6 +1464,7 @@ export async function probeZcode(
           '前提：副本 HOME 下不注入个人 provider 配置，CLI 从 cli/config.json 副本 legacy 导入；' +
           '既无模型旗标也无选型环境变量，`--settings` 被拒',
       );
+      if (mo.tempDirResidue) notes.push(mo.tempDirResidue);
       if (mo.override === 'global') {
         notes.push(
           '⚠️ 探针臂判 config_copy 档未生效：若审查运行也如此，模型覆盖会静默落到全局默认（guard 会播报「请求的模型没有生效」）。' +
@@ -1415,6 +1488,7 @@ export async function probeZcode(
           `${describeRuntimeSelection(fc.runtimeSelected)}）。` +
           '配置层结论只判配置读取层；运行期选定取自 CLI 启动事件（与审查臂的生效模型同一字段）。零配额的前提是副本里所有凭据都被换掉，拉起前已做残余扫描',
       );
+      if (fc.tempDirResidue) notes.push(fc.tempDirResidue);
       /*
        * 置首支（EV-82 第三段 r3 §3.3 / §4.2）：审查臂的零配额替身。显式传 variant——同形臂缺省是原样支，
        * `model_override_full_copy` 与 EV-94 ② 只取上面那一支；这一支只给 `runtime_selection` 供数。
@@ -1424,6 +1498,8 @@ export async function probeZcode(
         readonlyArgs: readonlyArgsFromProbe(probe.readonly_flags),
         variant: 'requested-first',
       });
+      // 置首支没有自己的结论 note，只推残留提示
+      if (ro.tempDirResidue) notes.push(ro.tempDirResidue);
       const rsel = judgeRuntimeSelection(fc, ro);
       if (rsel.value !== null) probe.runtime_selection = rsel.value;
       /*
@@ -1636,7 +1712,7 @@ export async function probeZcode(
        * 顶替原异常，doctor 的 checkpoint 就不执行，本轮已探的结论随之丢失。失败时说清残留在哪、里面还有没有副本凭据
        * （删除失败后现场查）；删除与措辞与认证探活共用（EV-197）。
        */
-      const residue = await removeZcodeTempDir(runDir, '探针');
+      const residue = await removeZcodeTempDir(runDir, '探针', { path: zcodeCliCopyPath(zcodeHomeUnder(runDir)), kind: 'credential' });
       if (residue) notes.push(residue);
     }
 

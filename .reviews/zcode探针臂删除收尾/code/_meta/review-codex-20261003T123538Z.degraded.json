@@ -1,0 +1,116 @@
+{
+  "critic": "codex",
+  "run_id": "20261003T123538Z",
+  "findings": [
+    {
+      "index": 0,
+      "id": "CODEX-01",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-01",
+        "severity": "major",
+        "layer": "code",
+        "kind": "security",
+        "location": "doc/08_project/BACKLOG.md 新增的 EV-199 行；未登记的两处：src/trivium/adapters/codex.ts:361（`authProbe.probe` 的 finally）、src/trivium/probes/codex.ts:666（`probeCodexIsolation` 的 finally）",
+        "problem": "本题的主题是「探针臂删除收尾」，EV-199 按人工枚举登记同族裸删（两个 `cleanup` + 五处外层 finally），但同一族的另外两处形态完全相同的点没进清单，于是「同族已数完」这个印象是错的。① `adapters/codex.ts:336` 建 `trivium-codex-auth-` 临时根，`prepareCodexHome`（`adapters/codex-home.ts:315-321`）把用户真实 `auth.json` **原样 copyFile 进去**（只 chmod 0600），finally 是裸 `fs.rm(tmp,{recursive:true,force:true})`——`force` 只吞 ENOENT，ENOTEMPTY/EBUSY/EACCES 抛出顶替 `probe()` 返回值，穿过 `probeAuth`，正是 EV-197 给 zcode 定性的那个「崩成内部错误」；而 zcode 那套三档残留提示与重试是 zcode 专属，codex 这一处删不掉时既没有提示、又把含真实凭据的 auth.json 永久留在系统临时目录。② `probes/codex.ts:1039` 的 `probe.isolation = await probeCodexIsolation(bin)` 在 `probeCodex` 里无兜底，`runDoctor` 的 codex 段（`doctor.ts:628-640`）也没有 try/catch，那里 finally 的裸删抛穿就丢掉本轮 codex 结论、`checkpoint('codex')` 不执行——与 EV-198 给 zcode 三臂定性的后果逐字相同，只是无凭据。",
+        "evidence": "实读 `src/trivium/adapters/codex.ts:331-362`、`src/trivium/adapters/codex-home.ts:313-321`、`src/trivium/probes/codex.ts:626-668` 与 `:1039-1042`、`src/trivium/doctor.ts:628-640`；本轮执行 `grep -rn \"fs\\.rm(\" --include='*.ts' src/trivium | grep -v maxRetries` 与 `grep -rn \"os\\.tmpdir()\" --include='*.ts' src/trivium/probes src/trivium/adapters`，两处都在结果里、都不在 EV-199 的清单里；`grep -n \"authProbe\\|探活\" doc/08_project/BACKLOG.md` 通读未见任何条目覆盖 codex 认证探活的删除失败。",
+        "suggestion": "本题至少把登记面改准：EV-199 的论域不要靠数厂商，写成「按 `grep -rn \"fs\\.rm(\" src/trivium/probes src/trivium/adapters` 排除带 `maxRetries` 的点派生」并把这两处点名（或明写「含 `adapters/codex.ts` authProbe 与 `probes/codex.ts` probeCodexIsolation」）；另为 codex 认证探活单登一条，按 EV-197 同形态修（重试、失败不抛、提示接进 `detail`、含凭据档措辞）。方向上更省的做法是把 `removeZcodeTempDir` 的「重试 + 失败不抛 + 现场查」抽成跨载体共用（`adapters/base.ts` 或 `util/fsx.ts`），别让每个载体各数一遍。是否在本主题动码由 Driver 裁决，但清单不能是数出来的。"
+      }
+    },
+    {
+      "index": 1,
+      "id": "CODEX-02",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-02",
+        "severity": "minor",
+        "layer": "code",
+        "kind": "maintainability",
+        "location": "src/trivium/adapters/zcode.ts:902-909（`zcodeCliCopyPath` 的 docblock）",
+        "problem": "新注释宣称「`.zcode/cli` 这段布局只在 `ZCODE_CLI_SUBDIR` 一处定义」，与代码现况不符：同一份布局仍有 ≥6 处各写各的字面——`adapters/zcode.ts:886` 的副本源 `path.join(os.homedir(), '.zcode/cli/config.json')`（正好是 `zcodeCliCopyPath(os.homedir())`）、`probes/zcode.ts:75` 的 `ZCODE_CLI_DIR`、`:278`/`:308`/`:326` 的 `path.join(homeDir, '.zcode/cli')`、`:489` 的 `path.join(home, '.zcode/cli/log')`。这句话会让下一个读者以为布局已单源、只需改 `zcodeCliCopyPath`，而真正会随 CLI 版本漂移失效的是探针回读点那几处字面（日志/rollout/v2 都靠它定位），改一漏二不报错、只在运行期表现成「读不到」。",
+        "evidence": "实读 `src/trivium/adapters/zcode.ts:536-537`、`:886`、`:902-909`、`:1044-1066` 与 `src/trivium/probes/zcode.ts:74-75`、`:278`、`:308`、`:326`、`:489`、`:663`；本轮执行 `grep -rn \"\\.zcode/cli\\|ZCODE_CLI_SUBDIR\" --include='*.ts' src/trivium` 取得上述点位清单。",
+        "suggestion": "二选一：把 `zcodeCliConfigSource()` 与 `ZCODE_CLI_DIR` 及探针回读点改成经 `ZCODE_CLI_SUBDIR`/`zcodeCliCopyPath` 派生（真正做到单源），或者把这句注释收窄成「副本的写入与删除失败现场查共用这一处定义」，并在 `ZCODE_CLI_DIR` 处留一句「与 `ZCODE_CLI_SUBDIR` 同形、改一处要改两处」的点名。别留一句对不上账的单源声明。"
+      }
+    },
+    {
+      "index": 2,
+      "id": "CODEX-03",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        },
+        {
+          "field": "layer",
+          "kind": "invalid",
+          "message": "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-03",
+        "severity": "minor",
+        "layer": "test",
+        "kind": "test-gap",
+        "location": "test/unit/zcode-full-copy-arm.test.ts:25（`tmp`）、:62-67（`writeSrc`）与本次新增的 R1～R6；doc/05_testing/REPORT_2026-10-03_zcode_probe_arm_cleanup.md §3.1 末段",
+        "problem": "报告自己承认「既有的 `trivium-fullcopy-test-*` 夹具一向不清理，系统临时目录里已积累大量此类目录，非本题引入，未处理」，并把它排除在 EV-199 之外（EV-199 只登记 `src` 侧 fixture 的 cleanup）。本轮实测确认这不是「一些」：我这台机器上已有 6383 个此类目录。本题新增的 9 格每格都要调 `writeSrc()`/`tmp()`，于是每跑一轮全量测试净增数十个——而这一族用例的判据恰恰是「按前缀在临时根里数残留」（R1/R2/R3/R4 的 `left`、D10 的 `leftovers`、probes/zcode.ts:960 那句「前缀不得以 trivium-modeloverride 开头，清理用例按那个前缀找残留，并行跑会互相误判」）。判据依赖的目录被持续污染，将来任何按前缀扫**系统**临时目录的用例或人工排障都会读到历史噪声，`mkdtemp` 与 readdir 也会随目录数增长变慢。",
+        "evidence": "本轮实际执行：`ls -d \"${TMPDIR}trivium-fullcopy-test-\"* | wc -l` → 6383；`ls -d \"${TMPDIR}trivium-flagprobe-\"* \"${TMPDIR}trivium-modeloverride-\"* \"${TMPDIR}trivium-fullcopyarm-\"* → 0`（新用例的私有根收尾确实干净，泄漏只来自旧夹具）；读 `test/unit/zcode-full-copy-arm.test.ts:25,62-67` 与 `armInPrivTmp` 的收尾写法、报告 §3.1 末段与 §5 残余栏。",
+        "suggestion": "不必在本主题重写所有夹具，但请按你们对 EV-199 的同一口径给它一个去处：登一条 BACKLOG（测试夹具的 `tmp()` 无收尾，按前缀扫残留的判据被历史噪声污染），或直接把本题新写的 `armInPrivTmp` 私有根 + finally 整删形态收成一个共用 helper、让 `writeSrc()` 用它。承认而不登记，等于把这条事实留在一份会过期的报告里。"
+      }
+    },
+    {
+      "index": 3,
+      "id": "CODEX-04",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-04",
+        "severity": "nit",
+        "layer": "code",
+        "kind": "maintainability",
+        "location": "src/trivium/probes/zcode.ts:195,594,961（前缀字面）＋ test/unit/zcode-provider-env.test.ts:545,591,628、zcode-doctor-probe-home.test.ts:591、zcode-auth-probe.test.ts:253 ＋ doc/06_deployment/RUNBOOK_pipeline_ops.md:279（EV-198 新写的三个前缀）",
+        "problem": "五个临时目录前缀现在以字面形式散在 21 处（src 3 处 + 测试 6 处 + RUNBOOK 与报告若干）。本题又把 `trivium-flagprobe-`/`trivium-modeloverride-`/`trivium-fullcopyarm-` 三个手抄进 RUNBOOK 的处置行，同时那份文档行只列了 zcode 的五个前缀，而代码里实际还有 `trivium-codex-auth-`、`trivium-codexhome-`、`trivium-probe-`、`trivium-probe-mem-`——「删不掉的临时目录」这件事的完整清单在文档里是靠人数的。改名或再加一条臂时，测试会红（按前缀扫残留）、文档不会（没人对账），最后误导的是照 RUNBOOK 手工删目录的人。",
+        "evidence": "本轮执行 `grep -rn \"trivium-flagprobe\\|trivium-modeloverride\\|trivium-fullcopyarm\\|trivium-zcode-doctor\\|trivium-zcode-auth\" --include='*.ts' src test | wc -l` → 21；`grep -rn \"makeTempDir(\\|fs.mkdtemp\" --include='*.ts' src/trivium/probes src/trivium/adapters` 派生出 8 个前缀，RUNBOOK 那一行列了 5 个；读 `doc/06_deployment/RUNBOOK_pipeline_ops.md:279` 与 `src/trivium/probes/zcode.ts:960` 的并行误判注释。",
+        "suggestion": "两个便宜方向：① 由各 owning 模块导出一份前缀常量（如 `ZCODE_TEMP_DIR_PREFIXES`），测试的 `startsWith` 过滤器与「前缀不得互相包含」那条注释都从它取；② RUNBOOK 那一行不再枚举前缀，只说「提示里给了完整路径（家目录归一 `~`），按那个路径手工删这**一个**目录，不要通配」——路径本来就在提示里，枚举只是多一份会过期的事实。"
+      }
+    },
+    {
+      "index": 4,
+      "id": "CODEX-05",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-05",
+        "severity": "nit",
+        "layer": "plan",
+        "kind": "correctness",
+        "location": "src/trivium/probes/zcode.ts:971-981（同形臂 finally 的取档表达式）",
+        "problem": "取档条件写在一行里、语义靠注释支撑：`opts.replace === 'apiKeyOnly' || residue.length > 0`。两个分支的理由并不相同（前者是「这一档的替换面本身不保证副本干净」，后者是「副本已在盘上且扫出疑似凭据」），而 `residue` 是靠 `transformCopy` 的闭包副作用赋值的——这一点在 EV-198 之前不存在（原声明在 try 体内）。以后有人给这臂加新的早退分支（像 `prep.homeDir === null` 那样不写副本就返回），很容易忘了 `residue` 在删除时刻仍被读、把档取歪，而 M6/M7 只咬现有两个条件、咬不住「新增第三条路时档位选错」。",
+        "evidence": "读 `src/trivium/probes/zcode.ts:961-985` 与 `attempt()` 内 `transformCopy`（`:1000-1007`）、两处不拉起的早退（`:1010-1013`、`:1023-1030`）；对照变异规格 M6/M7（`doc/05_testing/evidence/zcode-probe-arm-cleanup-20261003/mutation-spec.json`）。这是读码推断，未实测。",
+        "suggestion": "不必改行为；把取档抽成一个小函数或带名字的量（例如 `residueCopyKind(opts.replace, residue)`），并在同形臂的 docblock 里明写「`residue` 是副本形状的单一事实源、删除时刻仍要读它」，让下一个加早退分支的人有个地方撞上这句话。"
+      }
+    }
+  ]
+}

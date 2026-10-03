@@ -1,0 +1,174 @@
+{
+  "targets": [
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/adapters/zcode.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/zcode-provider-env.test.js",
+    "dist/test/test/unit/zcode-full-copy-arm.test.js",
+    "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+    "dist/test/test/unit/zcode-auth-probe.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "旗标探针退回裸删",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    tempDirResidue = await removeZcodeTempDir(emptyHome, '探针', null);\n",
+      "replace": "    await fs.rm(emptyHome, { recursive: true, force: true });\n",
+      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "白名单臂退回裸删",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    residue = await removeZcodeTempDir(home, '探针', { path: copyPath, kind: 'sentinel' });\n",
+      "replace": "    await fs.rm(home, { recursive: true, force: true });\n",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "同形臂退回裸删（先裸删再走原调用，删除失败照抛）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    tempDirResidue = await (opts.removeTempDir ?? removeZcodeTempDir)(root, '探针', {\n",
+      "replace": "    await fs.rm(root, { recursive: true, force: true });\n    tempDirResidue = await (opts.removeTempDir ?? removeZcodeTempDir)(root, '探针', {\n",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "白名单臂按 prepareZcodeHome 的布局查副本",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    residue = await removeZcodeTempDir(home, '探针', { path: copyPath, kind: 'sentinel' });\n",
+      "replace": "    residue = await removeZcodeTempDir(home, '探针', { path: zcodeCliCopyPath(zcodeHomeUnder(home)), kind: 'sentinel' });\n",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "白名单臂的档位取成含真实凭据",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    residue = await removeZcodeTempDir(home, '探针', { path: copyPath, kind: 'sentinel' });\n",
+      "replace": "    residue = await removeZcodeTempDir(home, '探针', { path: copyPath, kind: 'credential' });\n",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "同形臂丢掉残余条件",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  if (residue.length > 0) return 'credential';\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "同形臂丢掉 apiKeyOnly 条件",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  if (replace === 'apiKeyOnly') return 'credential';\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "旗标探针传指向临时目录本身的哨兵档",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    tempDirResidue = await removeZcodeTempDir(emptyHome, '探针', null);\n",
+      "replace": "    tempDirResidue = await removeZcodeTempDir(emptyHome, '探针', { path: emptyHome, kind: 'sentinel' });\n",
+      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "副本已不在也按调用方档位说",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "            (err: unknown) => ((err as NodeJS.ErrnoException).code === 'ENOENT' ? null : copy.kind),\n",
+      "replace": "            () => copy.kind,\n",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "不推旗标探针的残留提示",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "    if (flags.tempDirResidue) notes.push(flags.tempDirResidue);\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "不推白名单臂的残留提示",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      if (mo.tempDirResidue) notes.push(mo.tempDirResidue);\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "不推同形臂原样支的残留提示",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      if (fc.tempDirResidue) notes.push(fc.tempDirResidue);\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "不推同形臂置首支的残留提示",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      if (ro.tempDirResidue) notes.push(ro.tempDirResidue);\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "旗标探针不带出提示",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  return { accepted, rejected, indeterminate, zeroExit, tempDirResidue };\n",
+      "replace": "  return { accepted, rejected, indeterminate, zeroExit, tempDirResidue: null };\n",
+      "expect": "dist/test/test/unit/zcode-provider-env.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "白名单臂不带出提示",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  return residue === null ? result : { ...result, tempDirResidue: residue };\n",
+      "replace": "  return result;\n",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "同形臂不带出提示",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  return tempDirResidue === null ? result : { ...result, tempDirResidue };\n",
+      "replace": "  return result;\n",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "第三档措辞改字",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "        ? '其中的 cli/config.json 是探针副本、凭据已换成哨兵，仍请手工删除'\n",
+      "replace": "        ? '其中的 cli/config.json 是探针副本、凭据已换哨兵，请删除'\n",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M18",
+      "desc": "zcodeCliCopyPath 多拼一层 cli",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  return path.join(homeDir, ZCODE_CLI_SUBDIR, 'config.json');\n",
+      "replace": "  return path.join(homeDir, ZCODE_CLI_SUBDIR, 'cli', 'config.json');\n",
+      "expect": "dist/test/test/unit/zcode-full-copy-arm.test.js"
+    },
+    {
+      "id": "M19",
+      "desc": "认证探活的档位改成哨兵档",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "          residue = await removeZcodeTempDir(runDir, '探活', { path: zcodeCliCopyPath(zcodeHomeUnder(runDir)), kind: 'credential' });\n",
+      "replace": "          residue = await removeZcodeTempDir(runDir, '探活', { path: zcodeCliCopyPath(zcodeHomeUnder(runDir)), kind: 'sentinel' });\n",
+      "expect": "dist/test/test/unit/zcode-auth-probe.test.js"
+    },
+    {
+      "id": "M20",
+      "desc": "doctor headless 段的档位改成哨兵档",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      const residue = await removeZcodeTempDir(runDir, '探针', { path: zcodeCliCopyPath(zcodeHomeUnder(runDir)), kind: 'credential' });\n",
+      "replace": "      const residue = await removeZcodeTempDir(runDir, '探针', { path: zcodeCliCopyPath(zcodeHomeUnder(runDir)), kind: 'sentinel' });\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    }
+  ]
+}

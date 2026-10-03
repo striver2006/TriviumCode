@@ -5,12 +5,12 @@
  *
  * 全部用**临时目录里的合成配置**与假入口，不碰真实 `~/.zcode/**`、不拉起真实 CLI、零配额。
  */
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { prepareZcodeHome, zcodeHomeUnder } from '../../src/trivium/adapters/zcode.js';
+import { prepareZcodeHome, removeZcodeTempDir, tildeHome, zcodeCliCopyPath, zcodeHomeUnder, type ZcodeTempDirCopyKind } from '../../src/trivium/adapters/zcode.js';
 import {
   findCredentialResidue,
   forceProviderApiKeySentinel,
@@ -22,7 +22,19 @@ import {
   ZCODE_PROBE_SENTINEL_KEY,
 } from '../../src/trivium/probes/zcode.js';
 
-const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'trivium-fullcopy-test-'));
+/*
+ * 本文件建的临时目录全部记下、文件跑完整删（EV-198 代码双审 r1 CODEX-03）：此前从不清理，系统临时目录里
+ * `trivium-fullcopy-test-*` 越积越多。`force` 且不抛——收尾失败不该把已跑完的用例变红。
+ */
+const madeDirs: string[] = [];
+const tmp = async () => {
+  const d = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-fullcopy-test-'));
+  madeDirs.push(d);
+  return d;
+};
+after(async () => {
+  for (const d of madeDirs) await fs.rm(d, { recursive: true, force: true }).catch(() => {});
+});
 const API_KEY_FIELD = 'apiKey';
 
 // 真实凭据形态的假值：拼出来而不是写成字面，避开 fixture-credentials 扫描器的形态判据
@@ -180,6 +192,12 @@ if (env.FAKE_IGNORE_MAIN) { const [pid, pv] = Object.entries(cfg.provider)[0]; s
 else { const main = cfg.model.main; const i = main.indexOf('/'); sel = { providerId: main.slice(0, i), modelId: main.slice(i + 1) }; }
 fs.mkdirSync(path.join(env.HOME, '.zcode/v2'), { recursive: true });
 fs.writeFileSync(path.join(env.HOME, '.zcode/v2/provider_config.json'), JSON.stringify({ schemaVersion: 1, config: { defaultModelSelection: sel } }));
+if (env.FAKE_LOCK_CLI) {
+  // 删不掉的临时目录（EV-198 R2 / R3 / R5）：副本所在的 $HOME/.zcode/cli 改只读，副本删不掉。摆不出就退 3（摆锁守则）
+  const cli = path.join(env.HOME, '.zcode/cli');
+  if (!fs.existsSync(path.join(cli, 'config.json'))) { process.stderr.write('FAKE_LOCK_CLI：$HOME 下没有副本\\n'); process.exit(3); }
+  fs.chmodSync(cli, 0o500);
+}
 process.stderr.write('Error: Model creation failed (traceId: fake)\\n');
 process.exit(1);
 `;
@@ -405,6 +423,138 @@ test('两臂行为对拍：四种停止形态各钉期望值，再断言两臂�
       for (const k of Object.keys(env)) delete process.env[k];
     }
   }
+});
+
+// ── 临时目录删不掉（EV-198）──
+//
+// 摆锁守则（计划 r2 §3.1）：root 下 chmod 锁不住，一律跳过；摆锁失败必须让用例红——假入口摆不出退 3，
+// 包装侧上锁抛错不吞。锁的是副本所在的 cli/（锁兄弟目录时递归删除并行、顺序不定，副本可能先被删掉）。
+
+const ROOT = process.getuid?.() === 0;
+const SENTINEL_TAIL = '其中的 cli/config.json 是探针副本、凭据已换成哨兵，仍请手工删除';
+const CREDENTIAL_TAIL = '其中的 cli/config.json 副本含真实凭据，请手工删除';
+const NO_COPY_TAIL = '其中没有 cli/config.json 副本，是本次探测的 CLI 产物，请手工删除';
+
+/**
+ * 在私有 TMPDIR 下跑一次臂：夹具与副本源先建在公共 tmpdir，再换私有根，只观察臂自己建的临时根。
+ * 返回结果与私有根下以 `prefix` 开头的残留；收尾把可能上过锁的目录解开、整删私有根。
+ */
+async function armInPrivTmp<T>(prefix: string, flags: Record<string, string>, fn: (L: Awaited<ReturnType<typeof fakeLayout>>) => Promise<T>) {
+  const L = await fakeLayout();
+  const priv = await tmp();
+  const saved = process.env['TMPDIR'];
+  const env = { FAKE_SECRETS: JSON.stringify(KNOWN_SECRETS), ...flags };
+  for (const [k, v] of Object.entries(env)) process.env[k] = v;
+  process.env['TMPDIR'] = priv;
+  try {
+    const r = await fn(L);
+    const left = (await fs.readdir(priv)).filter((e) => e.startsWith(prefix));
+    return { r, left, priv };
+  } finally {
+    for (const k of Object.keys(env)) delete process.env[k];
+    if (saved === undefined) delete process.env['TMPDIR']; else process.env['TMPDIR'] = saved;
+    for (const e of await fs.readdir(priv).catch(() => [] as string[])) {
+      for (const d of ['.zcode', '.zcode/cli', 'home/.zcode', 'home/.zcode/cli']) await fs.chmod(path.join(priv, e, d), 0o700).catch(() => {});
+    }
+    await fs.rm(priv, { recursive: true, force: true });
+  }
+}
+
+const residueLine = (priv: string, left: string, tail: string) =>
+  `⚠️ 探针临时目录删除失败（EACCES）：${tildeHome(path.join(priv, left))} 仍在，${tail}`;
+
+test('R2 白名单臂的副本删不掉：不抛、结论与不锁时相同、提示取「探针副本」档（副本不在 home/ 子层，按调用方给的位置查）', { skip: ROOT }, async () => {
+  const src = await writeSrc();
+  const base = await armInPrivTmp('trivium-modeloverride-', {}, (L) => probeModelOverride(L.entry, process.execPath, L.cwd, { cliConfigPath: src }));
+  assert.equal(base.r.override, 'config_copy', base.r.why);
+  assert.equal(base.r.tempDirResidue, undefined, '删成功时不带提示');
+  assert.deepEqual(base.left, []);
+  const { r, left, priv } = await armInPrivTmp('trivium-modeloverride-', { FAKE_LOCK_CLI: '1' }, (L) =>
+    probeModelOverride(L.entry, process.execPath, L.cwd, { cliConfigPath: src }));
+  assert.equal(left.length, 1, '本格就是要摆出删不掉');
+  const { tempDirResidue, ...rest } = r;
+  const { tempDirResidue: _none, ...baseRest } = base.r;
+  assert.deepEqual(rest, baseRest, '删除失败不改结论');
+  // 删除函数若仍按 prepareZcodeHome 的布局（<临时目录>/home/.zcode/cli）查，会得 ENOENT、说成「没有副本」
+  assert.equal(tempDirResidue, residueLine(priv, left[0]!, SENTINEL_TAIL));
+});
+
+test('R3 同形臂正常支的副本删不掉：不抛、结论与不锁时相同、提示取「探针副本」档', { skip: ROOT }, async () => {
+  const src = await writeSrc();
+  const base = await armInPrivTmp('trivium-fullcopyarm-', {}, (L) => probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: src }));
+  assert.equal(base.r.override, 'config_copy', base.r.why);
+  assert.equal(base.r.tempDirResidue, undefined);
+  const { r, left, priv } = await armInPrivTmp('trivium-fullcopyarm-', { FAKE_LOCK_CLI: '1' }, (L) =>
+    probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: src }));
+  assert.equal(left.length, 1);
+  const { tempDirResidue, ...rest } = r;
+  const { tempDirResidue: _none, ...baseRest } = base.r;
+  assert.deepEqual(rest, baseRest, '删除失败不改结论');
+  assert.equal(tempDirResidue, residueLine(priv, left[0]!, SENTINEL_TAIL));
+});
+
+/**
+ * 删除注入口的包装（R4 / R6）：记下臂给的 `copy`，按 `mode` 上锁，再调真实的 `removeZcodeTempDir`。
+ *   - `cli`：锁副本所在的 cli/，副本删不掉；
+ *   - `copyGone`：先删副本、再锁 .zcode——cli/ 已空但删不掉，「目录删不掉、副本已不在」。
+ * 上锁抛错不吞（摆锁失败必红）。
+ */
+function lockingRemover(seen: Array<{ path: string; kind: ZcodeTempDirCopyKind } | null>, mode: 'cli' | 'copyGone'): typeof removeZcodeTempDir {
+  return async (dir, who, copy) => {
+    seen.push(copy);
+    if (!copy) throw new Error('同形臂必须给出副本位置');
+    const target = mode === 'cli' ? path.dirname(copy.path) : path.dirname(path.dirname(copy.path));
+    if (mode === 'copyGone') await fs.rm(copy.path);
+    await fs.chmod(target, 0o500);
+    try {
+      return await removeZcodeTempDir(dir, who, copy);
+    } finally {
+      await fs.chmod(target, 0o700);
+    }
+  };
+}
+
+/** 扫得出残余的副本源：不带点的长十六进制值、键名无凭据形态（同上面 CODEX-01 那格） */
+async function residueSrc(): Promise<string> {
+  const cfg = fullCopyFixture();
+  const opts = (cfg['provider'] as Record<string, { options: Record<string, unknown> }>)['bigmodel-coding-plan']!.options;
+  opts['opaque'] = 'cd'.repeat(20);
+  return writeSrc(cfg);
+}
+
+test('R4 同形臂扫出残余（不拉起、副本已在盘上）且删不掉：不抛、结论照旧、提示取「含真实凭据」档', { skip: ROOT }, async () => {
+  const src = await residueSrc();
+  const seen: Array<{ path: string; kind: ZcodeTempDirCopyKind } | null> = [];
+  const log = path.join(await tmp(), 'calls.jsonl');
+  const { r, left, priv } = await armInPrivTmp('trivium-fullcopyarm-', { FAKE_ZCODE_LOG: log }, (L) =>
+    probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: src, removeTempDir: lockingRemover(seen, 'cli') }));
+  assert.equal(r.override, null, r.why);
+  assert.match(r.why, /provider\.bigmodel-coding-plan\.options\.opaque/, 'why 照旧列出残余路径');
+  assert.equal(await fs.stat(log).then(() => true, () => false), false, '有残余就不得拉起');
+  assert.equal(left.length, 1);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]!.kind, 'credential');
+  assert.equal(seen[0]!.path, zcodeCliCopyPath(zcodeHomeUnder(path.join(priv, left[0]!))));
+  assert.equal(r.tempDirResidue, residueLine(priv, left[0]!, CREDENTIAL_TAIL));
+});
+
+test('R5 同形臂 apiKeyOnly 收窄档、无残余也删不掉：提示取「含真实凭据」档（这一档不保证副本里没有凭据）', { skip: ROOT }, async () => {
+  const src = await writeSrc(cleanFixture());
+  const { r, left, priv } = await armInPrivTmp('trivium-fullcopyarm-', { FAKE_LOCK_CLI: '1' }, (L) =>
+    probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: src, replace: 'apiKeyOnly' }));
+  assert.equal(r.override, 'config_copy', '无残余、照常拉起');
+  assert.equal(left.length, 1);
+  assert.equal(r.tempDirResidue, residueLine(priv, left[0]!, CREDENTIAL_TAIL));
+});
+
+test('R6 现场查优先于调用方档位：残余支、目录删不掉而副本已不在 ⇒ 说「没有副本」', { skip: ROOT }, async () => {
+  const src = await residueSrc();
+  const seen: Array<{ path: string; kind: ZcodeTempDirCopyKind } | null> = [];
+  const { r, left, priv } = await armInPrivTmp('trivium-fullcopyarm-', {}, (L) =>
+    probeModelOverrideFullCopy(L.entry, process.execPath, L.cwd, { cliConfigPath: src, removeTempDir: lockingRemover(seen, 'copyGone') }));
+  assert.equal(seen[0]!.kind, 'credential', '臂给的档位是「含真实凭据」');
+  assert.equal(left.length, 1);
+  assert.equal(r.tempDirResidue, residueLine(priv, left[0]!, NO_COPY_TAIL));
 });
 
 // ── (D) 隔离腿的只读取证（GLM-02）──

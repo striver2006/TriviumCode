@@ -1,0 +1,49 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "EV-198 代码变更审查通过，未发现值得提的问题。审查路径：通读 diff 全文（src 两个文件与四个测试文件的完整 hunk、五处文档变更），再直读被改文件完整上下文并沿调用链核对——probes/zcode.ts 的三臂重构与 probeZcode 四处推 note、adapters/zcode.ts 的 zcodeTempDirResidueText 三档与 removeZcodeTempDir 新签名、prepareZcodeHome 改用 zcodeCliCopyPath、认证探活与 doctor headless 段两处既有调用；安全面上核了 buildProbeCliConfig（白名单重建，除哨兵 apiKey 外无任何凭据形态可进副本）、同形臂残余扫描与 apiKeyOnly 档取「含真实凭据」档的保守取向、copy.path 只 stat 不删（删除面仍只有 mkdtemp 返回值）；错误处理面上核了三处 finally 不再抛出、stat 拒绝兜底、kind 按删除那一刻取值以覆盖写盘后抛错路径；并与 Driver 计划 r2 逐条对账，实现无偏离。测试质量核过：摆锁用例是真 chmod 场景（root 跳过门、摆锁失败退 3），R4/R6 的 removeTempDir 注入口仍调真实 removeZcodeTempDir 而非替身自证，「输出逐字不变」的承诺由 M19/M20 变异加 A1/A2/D10 字面断言双保险钉住；变异 20/20、两份全量 2633/2631/0 fail、自检 14/14 的证据留痕与报告读数一致。",
+  "agreed": [
+    "removeZcodeTempDir 的三档设计与「查哪里、说哪一档由调用方给」的收口正确：copy.path 只用于 stat，删除面仍只有 runDir，2026-09-20 事故后的规矩未破；白名单臂副本在临时 HOME 本身之下，zcodeCliCopyPath(homeDir) 一处定义消灭了写死 prepareZcodeHome 布局会把有副本说成没有的错位（计划 GLM-04 的落实）。",
+    "白名单臂取哨兵档的事实基础成立：buildProbeCliConfig 按 PROBE_PROVIDER_KEEP 白名单重建，options 只留 baseURL、apiKeyRequired（布尔）与哨兵 apiKey，副本中不可能出现真实凭据，「凭据已换成哨兵」的措辞属实。",
+    "同形臂档位取值方向正确且宁可多提醒：扫出残余（副本已在盘上只是不拉起）或 apiKeyOnly 收窄档（残余扫描为空也不保证无凭据）取「含真实凭据」；kind 在 finally 按删除那一刻的 residue 计算，prepareZcodeHome 写盘后抛错（如 chmod 失败）的路径也按扫描结果取档，transformCopy 没跑到时副本不存在、现场查得 ENOENT 说没有（R6 钉住「现场查优先于调用方档位」）。",
+    "probeZcode 四处推 note 的位置正确：旗标探针跟在旗标结论 note（含未判定支）之后、白名单臂与同形臂原样支各跟自身结论 note、置首支在调用之后 judgeRuntimeSelection 之前，各恰好一条且不给提示时不多出一行（D18 断言前驱 note 与顺序）。",
+    "既有两处调用输出逐字不变有硬保证：认证探活与 doctor headless 段传的 path 与原写死布局逐字节同值、kind 'credential' 对应原 hasCopy:true 措辞，M19/M20 变异咬住加 A1/A2/D10 系列字面断言，不是函数自比。",
+    "三处 finally 均不再抛出，EV-198 登记的「删不掉会把 doctor 崩成内部错误、结论在 checkpoint 前丢失」的缺口按计划收口；「拉起或副本准备本身抛错时提示随异常丢失」如实保留为 EV-197 残余 ① 同形并写进报告 §5，不算静默。",
+    "测试与变异装置可信：摆锁守则三件套（root 跳过、假入口摆不出退 3、锁副本所在的 cli/ 目录）都落实；20 条变异各映射到具体咬住用例且与 mutation-names-log 逐条对得上；两份全量检查均为 typecheck+build+test 串行全绿（2633/2631/0 fail/2 skipped），doctor 自检 14/14。",
+    "文档同步面完整且诚实：EV-198 结案时把登记里「三处都没有真实凭据」的失实改准、EV-86 触发条件按条目原意收窄（只动删除收尾不触发）、探针夹具同族裸删按决策另登 EV-199 不越范围；设计 v1.3.80、RUNBOOK 三前缀与第三档处置、05_testing README 登记条目（日期加文件名升序插在 silent_fail 之前）均与实现一致。"
+  ],
+  "not_covered": [
+    "本侧只读未执行任何命令：全量检查、变异、自检的读数均取自 evidence 留痕，未复跑；被审 diff 的 sha256 内容哈希未复核。",
+    "旗标探针 copy:null 档的措辞前提（空 HOME 下 CLI 从不写 .zcode/cli/config.json，计划 r2 已按 CODEX-02 裁定）与同形臂拉起期间 CLI 是否可能改写副本内容，均属需实测的厂商行为，本侧无法验证；两者只影响提示的描述性半句，不影响「请手工删除」的处置。",
+    "evidence 里 gen-mutation-spec.mjs、mutation-names.mjs、mutation-names-output.json 只核对了目的与结果，未逐行审装置实现；check-1/check-2 只读了头部（typecheck+build 段）与尾部（汇总段），中段逐条用例输出未全读；报告里「六个 zcode 相关文件合跑 190/190」的独立计数未复核（全量绿已覆盖）。",
+    "probes/fixture.ts 的 createFixture/cleanup 裸删属 EV-199 论域，本题明确不改，本侧未深审其实现细节。"
+  ],
+  "consulted": [
+    ".reviews/zcode探针臂删除收尾/code/_meta/changes-20261003T123538Z.diff",
+    ".reviews/zcode探针臂删除收尾/plan/2026-10-03-zcode探针臂删除收尾-r2-claude.md",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/adapters/zcode.ts",
+    "test/unit/zcode-auth-probe.test.ts",
+    "test/unit/zcode-doctor-probe-home.test.ts",
+    "test/unit/zcode-full-copy-arm.test.ts",
+    "test/unit/zcode-provider-env.test.ts",
+    "doc/05_testing/REPORT_2026-10-03_zcode_probe_arm_cleanup.md",
+    "doc/05_testing/README.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/evidence/zcode-probe-arm-cleanup-20261003/mutation-output.txt",
+    "doc/05_testing/evidence/zcode-probe-arm-cleanup-20261003/mutation-names-log.txt",
+    "doc/05_testing/evidence/zcode-probe-arm-cleanup-20261003/mutation-spec.json",
+    "doc/05_testing/evidence/zcode-probe-arm-cleanup-20261003/check-1.txt",
+    "doc/05_testing/evidence/zcode-probe-arm-cleanup-20261003/check-2.txt",
+    "doc/05_testing/evidence/zcode-probe-arm-cleanup-20261003/doctor-selftest.txt",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md"
+  ],
+  "findings": []
+}

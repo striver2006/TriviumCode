@@ -15,7 +15,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { defaultConfig } from '../../src/trivium/config.js';
-import { ZCODE_PERSONAL_PROVIDER_ENV, zcodeAdapter, zcodeTempDirResidueText } from '../../src/trivium/adapters/zcode.js';
+import { ZCODE_PERSONAL_PROVIDER_ENV, zcodeAdapter, zcodeTempDirResidueText, type ZcodeTempDirCopyKind } from '../../src/trivium/adapters/zcode.js';
 
 const tmp = (p: string) => fs.mkdtemp(path.join(os.tmpdir(), p));
 
@@ -252,7 +252,7 @@ async function probeLocked(w: Awaited<ReturnType<typeof world>>, lock: 'sibling'
     const r = await zcodeAdapter.authProbe!(ctxOf(w.cfg), w.root).probe();
     const left = (await fs.readdir(priv)).filter((e) => e.startsWith('trivium-zcode-auth-'));
     // 期望的残留提示在同一环境下算（家目录归一用的是当时的 HOME）
-    const want = (hasCopy: boolean) => zcodeTempDirResidueText('探活', path.join(priv, left[0] ?? '?'), 'EACCES', hasCopy);
+    const want = (copy: ZcodeTempDirCopyKind | null) => zcodeTempDirResidueText('探活', path.join(priv, left[0] ?? '?'), 'EACCES', copy);
     return { r, left, want };
   } finally {
     for (const [k, v] of Object.entries(saved)) {
@@ -277,7 +277,7 @@ test('A1 副本支探活通过 + 副本删不掉：不抛、结论仍通过、�
   assert.ok(r.detail.startsWith('探活通过（'), r.detail);
   // 字面断言（计划双审 CODEX-03：不只比函数输出）
   assert.match(r.detail, /；⚠️ 探活临时目录删除失败（EACCES）：.+ 仍在，其中的 cli\/config\.json 副本含真实凭据，请手工删除$/);
-  assert.ok(r.detail.endsWith(`；${want(true)}`), r.detail);
+  assert.ok(r.detail.endsWith(`；${want('credential')}`), r.detail);
 });
 
 test('A2 副本支探活失败 + 副本删不掉：不抛、结论仍失败、详情末尾同样说清残留', { skip: ROOT }, async () => {
@@ -287,25 +287,33 @@ test('A2 副本支探活失败 + 副本删不掉：不抛、结论仍失败、�
   assert.equal(r.ok, false);
   assert.ok(r.detail.startsWith('探活失败（other，'), r.detail);
   assert.match(r.detail, /含真实凭据，请手工删除$/);
-  assert.ok(r.detail.endsWith(`；${want(true)}`), r.detail);
+  assert.ok(r.detail.endsWith(`；${want('credential')}`), r.detail);
 });
 
-test('A3 删除失败提示两侧同源：只差主语，有无副本两档措辞各自属实', () => {
+test('A3 删除失败提示两侧同源：只差主语，三档措辞各自属实', () => {
   const dir = '/x/trivium-zcode-x';
-  for (const hasCopy of [true, false]) {
-    const a = zcodeTempDirResidueText('探针', dir, 'EACCES', hasCopy);
-    const b = zcodeTempDirResidueText('探活', dir, 'EACCES', hasCopy);
+  for (const copy of ['credential', 'sentinel', null] as const) {
+    const a = zcodeTempDirResidueText('探针', dir, 'EACCES', copy);
+    const b = zcodeTempDirResidueText('探活', dir, 'EACCES', copy);
     assert.equal(a.replace('探针', '探活'), b);
   }
+  // credential 与 null 两档与 EV-197 时的 true / false 逐字相同（EV-198 计划 r2 §2.1）：字面写死，不由函数自比
   assert.equal(
-    zcodeTempDirResidueText('探活', dir, 'EBUSY', true),
+    zcodeTempDirResidueText('探活', dir, 'EBUSY', 'credential'),
     '⚠️ 探活临时目录删除失败（EBUSY）：/x/trivium-zcode-x 仍在，其中的 cli/config.json 副本含真实凭据，请手工删除',
   );
   assert.equal(
-    zcodeTempDirResidueText('探活', dir, 'EBUSY', false),
+    zcodeTempDirResidueText('探活', dir, 'EBUSY', null),
     '⚠️ 探活临时目录删除失败（EBUSY）：/x/trivium-zcode-x 仍在，其中没有 cli/config.json 副本，是本次探测的 CLI 产物，请手工删除',
   );
-  assert.equal(zcodeTempDirResidueText('探针', path.join(os.homedir(), 'tmp/d'), 'EACCES', true).includes(`~${path.sep}tmp`), true, '家目录归一成 ~');
+  assert.equal(zcodeTempDirResidueText('探针', path.join(os.homedir(), 'tmp/d'), 'EACCES', 'credential').includes(`~${path.sep}tmp`), true, '家目录归一成 ~');
+});
+
+test('R7 第三档「探针副本、凭据已换成哨兵」逐字（EV-198 计划 r2 §2.1）', () => {
+  assert.equal(
+    zcodeTempDirResidueText('探针', '/x/trivium-modeloverride-x', 'EACCES', 'sentinel'),
+    '⚠️ 探针临时目录删除失败（EACCES）：/x/trivium-modeloverride-x 仍在，其中的 cli/config.json 是探针副本、凭据已换成哨兵，仍请手工删除',
+  );
 });
 
 test('A4 退路支（档位无模型）+ 删不掉：没有副本就不说「含真实凭据」（计划双审 GLM-02）', { skip: ROOT }, async () => {
@@ -316,5 +324,5 @@ test('A4 退路支（档位无模型）+ 删不掉：没有副本就不说「含
   assert.match(r.detail, /真实 HOME 下 ZCode 自选的缺省模型/, '本格摆的是退路支');
   assert.match(r.detail, /其中没有 cli\/config\.json 副本，是本次探测的 CLI 产物，请手工删除$/);
   assert.doesNotMatch(r.detail, /含真实凭据/);
-  assert.ok(r.detail.endsWith(`；${want(false)}`), r.detail);
+  assert.ok(r.detail.endsWith(`；${want(null)}`), r.detail);
 });

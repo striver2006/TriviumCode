@@ -44,6 +44,14 @@ const env = process.env;
 const argv = process.argv.slice(2);
 if (argv[0] === 'version') { process.stdout.write('zcode 0.16.9\\n'); process.exit(0); }
 if (!env.${ZCODE_BUILTIN_PROVIDER_ENV}) { process.stderr.write('无法定位 CLI ZCode Built-in Provider Config：/x\\n'); process.exit(1); }
+if (env.FAKE_LOCK_HOME) {
+  // 旗标探针的空 HOME 删不掉（EV-198 D18）：HOME 下只读子目录里放一个文件，七次拉起幂等；摆不出退 3
+  const fs = require('node:fs');
+  const locked = env.HOME + '/locked';
+  try {
+    if (!fs.existsSync(locked)) { fs.mkdirSync(locked); fs.writeFileSync(locked + '/f', 'x'); fs.chmodSync(locked, 0o500); }
+  } catch (e) { process.stderr.write('FAKE_LOCK_HOME：' + e.message + '\\n'); process.exit(3); }
+}
 for (const rejected of ['--max-turns', '--settings']) {
   if (argv.includes(rejected)) { process.stderr.write("Unknown option '" + rejected + "'.\\n"); process.exit(1); }
 }
@@ -483,7 +491,7 @@ test('D10 临时目录删除失败：不抛、结论照常刷新，note 说清�
     const left = await leftovers(w);
     assert.equal(left.length, 1, '确有一个残留（本格就是要摆出删不掉）');
     // 与认证探活同一函数（EV-197）；上面三段字面断言保留，免得只比函数输出成了自我循环（计划双审 CODEX-03）
-    const want = await inWorld(w, async () => zcodeTempDirResidueText('探针', path.join(w.privTmp, left[0]!), 'EACCES', true));
+    const want = await inWorld(w, async () => zcodeTempDirResidueText('探针', path.join(w.privTmp, left[0]!), 'EACCES', 'credential'));
     assert.equal(line, want);
   } finally {
     await unlock(calls);
@@ -534,6 +542,67 @@ test('D10d .zcode 整个不可读：查不了副本在不在就按有副本说�
     assert.match(line!, /其中的 cli\/config\.json 副本含真实凭据，请手工删除$/);
   } finally {
     await unlock(calls);
+    await cleanup(w);
+  }
+});
+
+// ── EV-198：三条探针臂的临时目录删不掉 ──────────────────────────────────
+
+test('D18 三条探针臂的残留提示：各紧跟该臂的结论 note 推一次，结论照常写入；不给提示时不多出任何一行（EV-198）', { skip: process.getuid?.() === 0 }, async () => {
+  const w = await world();
+  const stubs = (withResidue: boolean) => ({
+    modelOverrideProbe: async () => ({
+      override: 'global' as const, requested: null, observed: null, why: '桩',
+      ...(withResidue ? { tempDirResidue: 'RES-白名单臂' } : {}),
+    }),
+    modelOverrideFullCopyProbe: async (_e: string, _n: string, _c: string, o: { variant?: 'as-is' | 'requested-first' } = {}) => ({
+      override: 'global' as const, requested: null, observed: null, why: '桩', replacedPaths: [], hostCredentialEnv: [],
+      ...(withResidue ? { tempDirResidue: o.variant === 'requested-first' ? 'RES-同形臂置首支' : 'RES-同形臂原样支' } : {}),
+    }),
+  });
+  const run = (withResidue: boolean) =>
+    inWorld(w, () =>
+      probeZcode(w.entry, process.execPath, {
+        existing: existingProbe(w.entry), skipModelCalls: true, cliConfigPath: w.cliConfigPath, ...stubs(withResidue),
+      }),
+    );
+  try {
+    const base = await run(false);
+    assert.equal(base.notes.some((n) => n.includes('临时目录删除失败') || n.startsWith('RES-')), false, base.notes.join('\n'));
+
+    process.env['FAKE_LOCK_HOME'] = '1';
+    let r: Awaited<ReturnType<typeof run>>;
+    try {
+      r = await run(true);
+    } finally {
+      delete process.env['FAKE_LOCK_HOME'];
+    }
+    const { probe, notes } = r;
+    assert.deepEqual(probe.readonly_flags, base.probe.readonly_flags, '旗标结论照常写入、与不锁时相同');
+    assert.ok(probe.readonly_flags.includes('--mode plan'));
+    assert.equal(probe.model_override, 'global');
+    assert.equal(probe.model_override_full_copy, 'global');
+
+    const at = (pred: (n: string) => boolean, what: string) => {
+      const hits = notes.flatMap((n, i) => (pred(n) ? [i] : []));
+      assert.equal(hits.length, 1, `${what} 应恰好一条：\n${notes.join('\n')}`);
+      return hits[0]!;
+    };
+    const flagRes = at((n) => n.startsWith('⚠️ 探针临时目录删除失败（EACCES）') && n.includes('trivium-flagprobe-'), '旗标探针的残留提示');
+    assert.match(notes[flagRes]!, /其中没有 cli\/config\.json 副本/);
+    const moRes = at((n) => n === 'RES-白名单臂', '白名单臂的残留提示');
+    const fcRes = at((n) => n === 'RES-同形臂原样支', '同形臂原样支的残留提示');
+    const roRes = at((n) => n === 'RES-同形臂置首支', '同形臂置首支的残留提示');
+    // 紧跟各臂的结论 note（计划 r2 §2.4）
+    assert.ok(notes[flagRes - 1]!.startsWith('readonly_flags 接受='), notes[flagRes - 1]);
+    assert.ok(notes[moRes - 1]!.startsWith('model_override=global'), notes[moRes - 1]);
+    assert.ok(notes[fcRes - 1]!.startsWith('model_override_full_copy=global'), notes[fcRes - 1]);
+    assert.ok(fcRes < roRes, '置首支在原样支之后');
+    assert.ok(roRes < at((n) => n.startsWith('runtime_selection='), 'runtime_selection note'), '置首支的提示在 runtime_selection 判定之前推');
+  } finally {
+    for (const e of await fs.readdir(w.privTmp).catch(() => [] as string[])) {
+      await fs.chmod(path.join(w.privTmp, e, 'locked'), 0o700).catch(() => {});
+    }
     await cleanup(w);
   }
 });

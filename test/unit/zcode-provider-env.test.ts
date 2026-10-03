@@ -19,6 +19,7 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   invokeZcode,
+  tildeHome,
   zcodeProviderConfigPaths,
   zcodeProviderEnv,
   zcodeStorageRedirectEnv,
@@ -72,6 +73,15 @@ if (argv[0] === 'version') {
 if (!env.${ZCODE_BUILTIN_PROVIDER_ENV}) {
   process.stderr.write('无法定位 CLI ZCode Built-in Provider Config：/x/provider/zcode-builtin.json, /config/provider/zcode-builtin.json\\n');
   process.exit(1);
+}
+if (env.FAKE_LOCK_HOME) {
+  // 删不掉的临时 HOME（EV-198 R1 / D19）：HOME 下一个只读子目录里放一个文件，七次拉起幂等。
+  // 摆不出就退 3（计划 r2 §3.1 摆锁守则）：候选落成 indeterminate、删除照常成功，用例的提示断言随之红
+  const locked = env.HOME + '/locked';
+  try {
+    if (!fs.existsSync(locked)) { fs.mkdirSync(locked); fs.writeFileSync(locked + '/f', 'x'); fs.chmodSync(locked, 0o500); }
+  } catch (e) { process.stderr.write('FAKE_LOCK_HOME：摆不出删不掉的 HOME：' + e.message + '\\n'); process.exit(3); }
+  if (!fs.existsSync(locked + '/f')) { process.stderr.write('FAKE_LOCK_HOME：锁目录里没有文件\\n'); process.exit(3); }
 }
 if (env.FAKE_ZCODE_FLAG_ZERO_EXIT) {
   // 旗标探针路径上退 0：零配额前提被打破的形态（本该停在模型层）
@@ -506,6 +516,47 @@ test('未识别的失败形态 → 全部 indeterminate，一条都不回落成�
   }
 });
 
+// ── 临时 HOME 删不掉（EV-198）──
+
+const ROOT = process.getuid?.() === 0;
+
+/** 把私有临时根下各探针目录里的 `locked` 解锁（用例收尾时调；解不开的忽略） */
+async function unlockUnder(priv: string): Promise<void> {
+  for (const e of await fs.readdir(priv).catch(() => [] as string[])) {
+    await fs.chmod(path.join(priv, e, 'locked'), 0o700).catch(() => {});
+  }
+}
+
+test('R1 旗标探针的空 HOME 删不掉：不抛、结论与不锁时相同、提示取「没有副本」档（EV-198）', { skip: ROOT }, async () => {
+  const L = await layout({ withBuiltin: true, withPersonal: false });
+  const priv = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-r1-priv-'));
+  const saved = process.env['TMPDIR'];
+  try {
+    const base = await probeReadonlyFlags(L.entry, process.execPath, L.cwd);
+    assert.equal(base.tempDirResidue, null, '删成功时不带提示');
+    process.env['TMPDIR'] = priv;
+    process.env['FAKE_LOCK_HOME'] = '1';
+    const r = await probeReadonlyFlags(L.entry, process.execPath, L.cwd);
+    assert.deepEqual(
+      { accepted: r.accepted, rejected: r.rejected, indeterminate: r.indeterminate, zeroExit: r.zeroExit },
+      { accepted: base.accepted, rejected: base.rejected, indeterminate: base.indeterminate, zeroExit: base.zeroExit },
+      '删除失败不改结论',
+    );
+    const left = (await fs.readdir(priv)).filter((e) => e.startsWith('trivium-flagprobe-'));
+    assert.equal(left.length, 1, '本格就是要摆出删不掉：私有根下应恰有一个残留');
+    assert.equal(
+      r.tempDirResidue,
+      `⚠️ 探针临时目录删除失败（EACCES）：${tildeHome(path.join(priv, left[0]!))} 仍在，其中没有 cli/config.json 副本，是本次探测的 CLI 产物，请手工删除`,
+    );
+  } finally {
+    delete process.env['FAKE_LOCK_HOME'];
+    if (saved === undefined) delete process.env['TMPDIR']; else process.env['TMPDIR'] = saved;
+    await unlockUnder(priv);
+    await fs.rm(priv, { recursive: true, force: true });
+    await L.cleanup();
+  }
+});
+
 // ── doctor 的 warnings 档（r4 CODEX-03）──
 //
 // 放在本文件而不是新开一个：这两条要用上面的 layout() 与假入口摆形态，
@@ -536,6 +587,54 @@ async function doctorOnZcode(entry: string, projectRoot: string) {
     await fs.rm(triviumDir, { recursive: true, force: true });
   }
 }
+
+test('D19 旗标探针的空 HOME 删不掉：doctor 不崩、阻断与告警与不锁时相同、结论照常落盘，note 带残留提示（EV-198）', { skip: ROOT }, async () => {
+  const L = await layout({ withBuiltin: true, withPersonal: false });
+  const priv = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-d19-priv-'));
+  const saved = process.env['TMPDIR'];
+  const run = async () => {
+    const cfg = defaultConfig();
+    agentConfigOf(cfg, 'glm', 'zcode').entry = L.entry;
+    const triviumDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-doctor-'));
+    const cliConfigPath = path.join(triviumDir, 'cli-config.json');
+    await fs.writeFile(cliConfigPath, '{"provider":{},"model":{}}', 'utf8');
+    const rep = await runDoctor({
+      projectRoot: L.cwd, triviumDir, config: cfg, skipModelCalls: true, only: 'zcode',
+      zcodeProbe: {
+        cliConfigPath,
+        modelOverrideProbe: async () => ({ override: null, requested: null, observed: null, why: '桩：本轮未判定' }),
+        modelOverrideFullCopyProbe: async () => ({
+          override: null, requested: null, observed: null, why: '桩：本轮未判定', replacedPaths: [], hostCredentialEnv: [],
+        }),
+      },
+    });
+    const persisted = await fs.readFile(path.join(triviumDir, 'config.local.yaml'), 'utf8');
+    await fs.rm(triviumDir, { recursive: true, force: true });
+    return { rep, persisted };
+  };
+  try {
+    const base = await run();
+    process.env['TMPDIR'] = priv;
+    process.env['FAKE_LOCK_HOME'] = '1';
+    const { rep, persisted } = await run();
+    assert.deepEqual(rep.blockers, base.rep.blockers);
+    assert.deepEqual(rep.warnings, base.rep.warnings);
+    assert.deepEqual(rep.probe.cli.zcode!.readonly_flags, base.rep.probe.cli.zcode!.readonly_flags);
+    assert.ok(rep.probe.cli.zcode!.readonly_flags.includes('--mode plan'), '本轮旗标结论照常写入');
+    assert.match(persisted, /--mode plan/, '结论照常落盘（checkpoint 没被删除失败截断）');
+    // doctor 的 notes 按侧加了「[zcode] 」前缀
+    const lines = rep.notes.filter((n) => n.startsWith('[zcode] ⚠️ 探针临时目录删除失败'));
+    assert.equal(lines.length, 1, rep.notes.join('\n'));
+    assert.match(lines[0]!, /trivium-flagprobe-.+ 仍在，其中没有 cli\/config\.json 副本/);
+    assert.equal(base.rep.notes.some((n) => n.includes('临时目录删除失败')), false, '不锁时不出这一行');
+  } finally {
+    delete process.env['FAKE_LOCK_HOME'];
+    if (saved === undefined) delete process.env['TMPDIR']; else process.env['TMPDIR'] = saved;
+    await unlockUnder(priv);
+    await fs.rm(priv, { recursive: true, force: true });
+    await L.cleanup();
+  }
+});
 
 test('旗标本轮未判定 → 出 warnings，而不是拦人', async () => {
   const L = await layout({ withBuiltin: true, withPersonal: false });

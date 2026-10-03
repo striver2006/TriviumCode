@@ -899,16 +899,40 @@ export function tildeHome(text: string, home: string = os.homedir()): string {
 }
 
 /**
- * 临时运行目录删不掉时的人读提示（EV-197）：doctor 探针与认证探活同一句，只差主语与「有没有副本」。
+ * 某个 HOME 下 `cli/config.json` 副本的位置（EV-198 计划双审 GLM-04）：副本的写入（`prepareZcodeHome`、白名单探针臂）
+ * 与删除失败后的现场查共用这一处定义。
  *
- * `hasCopy` 说的是**残留目录里此刻还有没有** `cli/config.json` 副本（由 `removeZcodeTempDir` 在删除失败后现场查）。
+ * 只管副本这一处，不是 `.zcode/cli` 布局的单一来源（代码双审 r1 CODEX-02）：副本源 `zcodeOverrideSourcePath`、
+ * 探针模块的 `ZCODE_CLI_DIR` 与日志 / rollout / 模型清单的回读点仍各写各的字面，改布局时要逐处改。
+ * 传的是**那个 HOME**，
+ * 不是运行目录：`prepareZcodeHome` 的 HOME 在运行目录下的 `home/`（`zcodeHomeUnder`），白名单臂的 HOME 就是它的临时目录本身。
+ */
+export function zcodeCliCopyPath(homeDir: string): string {
+  return path.join(homeDir, ZCODE_CLI_SUBDIR, 'config.json');
+}
+
+/**
+ * 残留目录里那份副本是哪一种（EV-198）：`credential` 可能含真实凭据（`prepareZcodeHome` 的整份拷贝；同形臂扫出残余或
+ * 走 `apiKeyOnly` 收窄档时也按它说）；`sentinel` 是探针副本、凭据已换成哨兵（白名单臂、同形臂正常支）。
+ */
+export type ZcodeTempDirCopyKind = 'credential' | 'sentinel';
+
+/**
+ * 临时运行目录删不掉时的人读提示（EV-197；EV-198 起三档）：doctor 探针与认证探活同一句，只差主语与副本档位。
+ *
+ * `copy` 说的是**残留目录里此刻还有没有、有的是哪一种** `cli/config.json` 副本（由 `removeZcodeTempDir` 在删除失败后现场查）。
  * 退路支（副本源缺失、档位无模型）与副本源解析失败时目录里只有 CLI 产物，说「含真实凭据」不属实
  * （EV-197 计划双审 GLM-02）。没有副本时也不断言产物里没有敏感内容，只说清没有副本。
+ * `credential` 与 null 两档的措辞与 EV-197 时的 `true` / `false` 逐字相同。
  */
-export function zcodeTempDirResidueText(who: '探针' | '探活', runDir: string, code: string, hasCopy: boolean): string {
+export function zcodeTempDirResidueText(who: '探针' | '探活', runDir: string, code: string, copy: ZcodeTempDirCopyKind | null): string {
   return (
     `⚠️ ${who}临时目录删除失败（${code}）：${tildeHome(runDir)} 仍在，` +
-    (hasCopy ? '其中的 cli/config.json 副本含真实凭据，请手工删除' : '其中没有 cli/config.json 副本，是本次探测的 CLI 产物，请手工删除')
+    (copy === 'credential'
+      ? '其中的 cli/config.json 副本含真实凭据，请手工删除'
+      : copy === 'sentinel'
+        ? '其中的 cli/config.json 是探针副本、凭据已换成哨兵，仍请手工删除'
+        : '其中没有 cli/config.json 副本，是本次探测的 CLI 产物，请手工删除')
   );
 }
 
@@ -920,21 +944,30 @@ export function zcodeTempDirResidueText(who: '探针' | '探活', runDir: string
  *
  * 「还有没有副本」在删除失败之后现场查，不由调用方按写入时的情形推断（EV-197 代码双审 GLM-01 ≡ CODEX-03）：
  * `prepareZcodeHome` 写盘之后还有 `chmod` 可抛、`writeFile` 也可能半写（副本在而调用方以为没有）；
- * 递归删除又是删到一半才失败（副本可能已删掉而调用方以为还在）。查的位置就是 `prepareZcodeHome` 写副本的位置，
- * 只读不删；`ENOENT` 才算没有，查不了（权限等）按有副本说——宁可多提醒，不在可能含凭据的目录上断言「没有」。
+ * 递归删除又是删到一半才失败（副本可能已删掉而调用方以为还在）。`ENOENT` 才算没有，查不了（权限等）按有副本说——
+ * 宁可多提醒，不在可能含凭据的目录上断言「没有」。
+ *
+ * **查哪里、有的话说哪一档由调用方给**（EV-198）：此前位置写死成 `prepareZcodeHome` 的布局，白名单探针臂的副本
+ * 不在那儿，套用会把有说成没有。`copy.path` 只用于 stat、不用于删除；`copy.kind` 只决定「有副本时说哪一档」，
+ * 现场查优先。`copy` 为 null 表示这个目录从不写副本（旗标探针），删除失败时不查、直接说没有。
  */
-export async function removeZcodeTempDir(runDir: string, who: '探针' | '探活'): Promise<string | null> {
+export async function removeZcodeTempDir(
+  runDir: string,
+  who: '探针' | '探活',
+  copy: { path: string; kind: ZcodeTempDirCopyKind } | null,
+): Promise<string | null> {
   try {
     await fs.rm(runDir, { recursive: true, force: true, maxRetries: 3 });
     return null;
   } catch (e) {
-    const hasCopy = await fs
-      .stat(path.join(zcodeHomeUnder(runDir), ZCODE_CLI_SUBDIR, 'config.json'))
-      .then(
-        () => true,
-        (err: unknown) => (err as NodeJS.ErrnoException).code !== 'ENOENT',
-      );
-    return zcodeTempDirResidueText(who, runDir, (e as NodeJS.ErrnoException).code ?? (e as Error).message, hasCopy);
+    const found =
+      copy === null
+        ? null
+        : await fs.stat(copy.path).then(
+            () => copy.kind,
+            (err: unknown) => ((err as NodeJS.ErrnoException).code === 'ENOENT' ? null : copy.kind),
+          );
+    return zcodeTempDirResidueText(who, runDir, (e as NodeJS.ErrnoException).code ?? (e as Error).message, found);
   }
 }
 
@@ -1014,8 +1047,8 @@ export async function prepareZcodeHome(
   if (!model) return { homeDir: null, route: 'global', qualified: null, reason: '本次未指定模型', cause: 'no_model', reorder: null };
 
   const homeDir = zcodeHomeUnder(runDir);
-  const dstDir = path.join(homeDir, ZCODE_CLI_SUBDIR);
-  await ensureDir(dstDir);
+  const copyPath = zcodeCliCopyPath(homeDir);
+  await ensureDir(path.dirname(copyPath));
 
   const cfg = JSON.parse(await fs.readFile(srcConfig, 'utf8')) as ZcodeCliConfigShape;
   const q = qualifyAgainstCliConfig(model, cfg);
@@ -1030,9 +1063,9 @@ export async function prepareZcodeHome(
   }
   const toWrite = opts.transformCopy ? opts.transformCopy(staged) : staged;
 
-  await fs.writeFile(path.join(dstDir, 'config.json'), JSON.stringify(toWrite, null, 2), 'utf8');
+  await fs.writeFile(copyPath, JSON.stringify(toWrite, null, 2), 'utf8');
   // 配置副本含凭据，权限收紧
-  await fs.chmod(path.join(dstDir, 'config.json'), 0o600);
+  await fs.chmod(copyPath, 0o600);
 
   if (q.qualified === null) {
     return {
@@ -1150,7 +1183,7 @@ export const zcodeAdapter: CriticAdapter = {
         try {
           r = await attempt(entry, runDir);
         } finally {
-          residue = await removeZcodeTempDir(runDir, '探活');
+          residue = await removeZcodeTempDir(runDir, '探活', { path: zcodeCliCopyPath(zcodeHomeUnder(runDir)), kind: 'credential' });
         }
         return residue === null ? r : { ok: r.ok, detail: `${r.detail}；${residue}` };
       },

@@ -1,0 +1,291 @@
+{
+  "targets_sha256": {
+    "src/trivium/probes/zcode.ts": "d6a356a578dd9fc86394a548768249db9290da494a10acdc640da3c779bc12c1",
+    "src/trivium/adapters/zcode.ts": "a84eff55662536e0161952abf7a82f01da37a1d5f60e849896d9e0953f48043c"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "旗标探针退回裸删",
+      "suite": "dist/test/test/unit/zcode-provider-env.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R1 旗标探针的空 HOME 删不掉：不抛、结论与不锁时相同、提示取「没有副本」档（EV-198）",
+        "D19 旗标探针的空 HOME 删不掉：doctor 不崩、阻断与告警与不锁时相同、结论照常落盘，note 带残留提示（EV-198）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 17
+    },
+    {
+      "id": "M2",
+      "desc": "白名单臂退回裸删",
+      "suite": "dist/test/test/unit/zcode-full-copy-arm.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R2 白名单臂的副本删不掉：不抛、结论与不锁时相同、提示取「探针副本」档（副本不在 home/ 子层，按调用方给的位置查）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2
+    },
+    {
+      "id": "M3",
+      "desc": "同形臂退回裸删（先裸删再走原调用，删除失败照抛）",
+      "suite": "dist/test/test/unit/zcode-full-copy-arm.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R3 同形臂正常支的副本删不掉：不抛、结论与不锁时相同、提示取「探针副本」档",
+        "R4 同形臂扫出残余（不拉起、副本已在盘上）且删不掉：不抛、结论照旧、提示取「含真实凭据」档",
+        "R5 同形臂 apiKeyOnly 收窄档、无残余也删不掉：提示取「含真实凭据」档（这一档不保证副本里没有凭据）",
+        "R6 现场查优先于调用方档位：残余支、目录删不掉而副本已不在 ⇒ 说「没有副本」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2
+    },
+    {
+      "id": "M4",
+      "desc": "白名单臂按 prepareZcodeHome 的布局查副本",
+      "suite": "dist/test/test/unit/zcode-full-copy-arm.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R2 白名单臂的副本删不掉：不抛、结论与不锁时相同、提示取「探针副本」档（副本不在 home/ 子层，按调用方给的位置查）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2
+    },
+    {
+      "id": "M5",
+      "desc": "白名单臂的档位取成含真实凭据",
+      "suite": "dist/test/test/unit/zcode-full-copy-arm.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R2 白名单臂的副本删不掉：不抛、结论与不锁时相同、提示取「探针副本」档（副本不在 home/ 子层，按调用方给的位置查）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2
+    },
+    {
+      "id": "M6",
+      "desc": "同形臂丢掉残余条件",
+      "suite": "dist/test/test/unit/zcode-full-copy-arm.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R4 同形臂扫出残余（不拉起、副本已在盘上）且删不掉：不抛、结论照旧、提示取「含真实凭据」档",
+        "R6 现场查优先于调用方档位：残余支、目录删不掉而副本已不在 ⇒ 说「没有副本」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2
+    },
+    {
+      "id": "M7",
+      "desc": "同形臂丢掉 apiKeyOnly 条件",
+      "suite": "dist/test/test/unit/zcode-full-copy-arm.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R5 同形臂 apiKeyOnly 收窄档、无残余也删不掉：提示取「含真实凭据」档（这一档不保证副本里没有凭据）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2
+    },
+    {
+      "id": "M8",
+      "desc": "旗标探针传指向临时目录本身的哨兵档",
+      "suite": "dist/test/test/unit/zcode-provider-env.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R1 旗标探针的空 HOME 删不掉：不抛、结论与不锁时相同、提示取「没有副本」档（EV-198）",
+        "D19 旗标探针的空 HOME 删不掉：doctor 不崩、阻断与告警与不锁时相同、结论照常落盘，note 带残留提示（EV-198）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 17
+    },
+    {
+      "id": "M9",
+      "desc": "副本已不在也按调用方档位说",
+      "suite": "dist/test/test/unit/zcode-full-copy-arm.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R6 现场查优先于调用方档位：残余支、目录删不掉而副本已不在 ⇒ 说「没有副本」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2
+    },
+    {
+      "id": "M10",
+      "desc": "不推旗标探针的残留提示",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D18 三条探针臂的残留提示：各紧跟该臂的结论 note 推一次，结论照常写入；不给提示时不多出任何一行（EV-198）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 14
+    },
+    {
+      "id": "M11",
+      "desc": "不推白名单臂的残留提示",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D18 三条探针臂的残留提示：各紧跟该臂的结论 note 推一次，结论照常写入；不给提示时不多出任何一行（EV-198）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 13
+    },
+    {
+      "id": "M12",
+      "desc": "不推同形臂原样支的残留提示",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D18 三条探针臂的残留提示：各紧跟该臂的结论 note 推一次，结论照常写入；不给提示时不多出任何一行（EV-198）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 14
+    },
+    {
+      "id": "M13",
+      "desc": "不推同形臂置首支的残留提示",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D18 三条探针臂的残留提示：各紧跟该臂的结论 note 推一次，结论照常写入；不给提示时不多出任何一行（EV-198）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 14
+    },
+    {
+      "id": "M14",
+      "desc": "旗标探针不带出提示",
+      "suite": "dist/test/test/unit/zcode-provider-env.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R1 旗标探针的空 HOME 删不掉：不抛、结论与不锁时相同、提示取「没有副本」档（EV-198）",
+        "D19 旗标探针的空 HOME 删不掉：doctor 不崩、阻断与告警与不锁时相同、结论照常落盘，note 带残留提示（EV-198）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 17
+    },
+    {
+      "id": "M15",
+      "desc": "白名单臂不带出提示",
+      "suite": "dist/test/test/unit/zcode-full-copy-arm.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R2 白名单臂的副本删不掉：不抛、结论与不锁时相同、提示取「探针副本」档（副本不在 home/ 子层，按调用方给的位置查）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2
+    },
+    {
+      "id": "M16",
+      "desc": "同形臂不带出提示",
+      "suite": "dist/test/test/unit/zcode-full-copy-arm.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R3 同形臂正常支的副本删不掉：不抛、结论与不锁时相同、提示取「探针副本」档",
+        "R4 同形臂扫出残余（不拉起、副本已在盘上）且删不掉：不抛、结论照旧、提示取「含真实凭据」档",
+        "R5 同形臂 apiKeyOnly 收窄档、无残余也删不掉：提示取「含真实凭据」档（这一档不保证副本里没有凭据）",
+        "R6 现场查优先于调用方档位：残余支、目录删不掉而副本已不在 ⇒ 说「没有副本」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2
+    },
+    {
+      "id": "M17",
+      "desc": "第三档措辞改字",
+      "suite": "dist/test/test/unit/zcode-auth-probe.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R7 第三档「探针副本、凭据已换成哨兵」逐字（EV-198 计划 r2 §2.1）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M18",
+      "desc": "zcodeCliCopyPath 多拼一层 cli",
+      "suite": "dist/test/test/unit/zcode-full-copy-arm.test.js",
+      "fail": 12,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "prepareZcodeHome：不传 transformCopy 时，写出的副本与「只改 model」的源逐字相同",
+        "prepareZcodeHome：transformCopy 在写盘之前生效——盘上从未出现原值",
+        "同形臂：CLI 读到副本 model.main（非首位）⇒ config_copy；副本里无真实凭据（假入口见到就退 99）",
+        "同形臂：回落首位 ⇒ global，文案并列 H2 与「替换破坏导入」两种成因（GLM-01 / GLM-07）",
+        "同形臂：跑到模型层却没写 v2 ⇒ global；崩溃 ⇒ null；超时 ⇒ null",
+        "同形臂：临时根跑后被清（只认 makeTempDir 的返回值）",
+        "对照：只换 options.apiKey 与全量替换，同形臂判定相同（CODEX-04 ≡ GLM-02 ①；计划 §4 第二段第一刀的基线）",
+        "收窄档仍换 headers 容器：Authorization 的 Bearer 串不得原样进副本（r2 GLM-01）",
+        "两臂行为对拍：四种停止形态各钉期望值，再断言两臂一致（GLM-02 ② / r2 CODEX-07）",
+        "R2 白名单臂的副本删不掉：不抛、结论与不锁时相同、提示取「探针副本」档（副本不在 home/ 子层，按调用方给的位置查）",
+        "R3 同形臂正常支的副本删不掉：不抛、结论与不锁时相同、提示取「探针副本」档",
+        "R5 同形臂 apiKeyOnly 收窄档、无残余也删不掉：提示取「含真实凭据」档（这一档不保证副本里没有凭据）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M19",
+      "desc": "认证探活的档位改成哨兵档",
+      "suite": "dist/test/test/unit/zcode-auth-probe.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 副本支探活通过 + 副本删不掉：不抛、结论仍通过、详情末尾说清残留与副本凭据",
+        "A2 副本支探活失败 + 副本删不掉：不抛、结论仍失败、详情末尾同样说清残留"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M20",
+      "desc": "doctor headless 段的档位改成哨兵档",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D10 临时目录删除失败：不抛、结论照常刷新，note 说清残留在哪（代码双审 r1 CODEX-01）",
+        "D10d .zcode 整个不可读：查不了副本在不在就按有副本说，宁可多提醒（EV-197 代码双审 GLM-01）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 13
+    }
+  ]
+}
