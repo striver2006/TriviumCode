@@ -1,0 +1,114 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "核心变更成立：doctor 的 headless 与 path_deny 两次真实调用现与 run()/authProbe 同形（同一份 prepareZcodeHome 副本、副本支省略个人配置、两支设落点根、回读从落点根、只删 mkdtemp 返回值），措辞与探活模型抽成单一来源，17 条变异覆盖到了关键判定，读数与文档一致。我这一侧（生命周期/环境耦合）未发现 blocker：四条判据级问题都在「新引入的无兜底清理与无兜底读」上——finally 里的 fs.rm 与 readTrace 的 Promise.all(readFile) 都会把异常抛出探针，绕过 doctor 的分段落盘（GLM-08 的增量落盘契约）、丢掉已烧掉的配额，并可能在系统临时目录留下含真实 apiKey 的副本；副本源解析失败那一支同样是「静默保留旧结论、零 blocker 零 warning」，与已登记的 EV-196 同族但未并进去。另两处是注释/文档随 readTrace 语义变更产生的漂移与一处调用式差异。均不拦，建议按下面逐条处置。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/zcode.ts:1583（finally 的 fs.rm）与 src/trivium/adapters/zcode.ts:1133（authProbe 的同款 finally）",
+      "problem": "新加的唯一收尾动作 fs.rm(runDir, {recursive:true, force:true}) 放在 finally 且无兜底。force 只豁免 ENOENT，不豁免 ENOTEMPTY/EBUSY/EPERM：拉起用的 run() 带 killTree（detached 组长），CLI 自己派生的后台进程（报告 §3.2 实测有每 10 分钟写日志的 ZCode 协议进程）若在本次落点目录下重建文件，rm 会抛。抛出后会顶替原始异常向上传播，probeZcode 的 zcode 段整体不返回，doctor 的 `await checkpoint('zcode')`（doctor.ts:565）就不会执行——本轮已经烧掉配额探到的 readonly_flags / model_override / runtime_selection 全部丢弃（cli.ts 顶层 catch 只把退出码置为 FAIL），同时那份含真实 apiKey 的 config.json 副本留在系统临时目录。这是本次变更新引入的抛出面：改前 headless 段没有临时目录收尾。",
+      "evidence": "读 src/trivium/probes/zcode.ts:1454-1585（mkdtemp → try/finally 与两处提前 return 的相对位置）、src/trivium/doctor.ts:499-565（checkpoint 的增量落盘契约与其在 probeZcode 之后的位置）、src/trivium/cli.ts:2020-2027（顶层 catch 只置 exitCode）、src/trivium/adapters/zcode.ts:1097-1135（authProbe 同形态）。想实测「rm 期间被后台进程重建」这一形态，在 /tmp 用 node -e 起了一个 detached 子进程再 rm -rf：沙箱只读，mkdtemp 直接 EPERM，未跑成，因此「force 不吞 ENOTEMPTY」是按 Node 语义推理，未实测。",
+      "suggestion": "给两处 finally 的删除包一层「失败不顶替原异常」的收尾：失败时把原因 push 进 notes（写明临时目录前缀与残留路径，不含凭据），并可带 maxRetries 重试；同时考虑在 probeZcode 外层对整段做一次「抛错也要 checkpoint 已探到的部分」的保护，别让一次收尾抖动作废已烧的配额。authProbe 那处同形，一并处理才是同源修法。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/zcode.ts:1055-1066（readTrace 的 Promise.all）",
+      "problem": "readTrace 改成读目录下全部 .jsonl 后，只有 readdir 在 try/catch 里，readFile 那一批不在：任何一片在 readdir 与 readFile 之间消失或读失败（ENOENT/EACCES），整个 Promise.all 抛，探针随之抛出，后果与 CODEX-01 同（丢掉本次已探结论）。这次改动把「读旧分片」纳入了论域，而旧分片正是会被 CLI 保留策略清扫的那一批，竞态窗口比改前的「只读最新一片」更大。",
+      "evidence": "读 src/trivium/probes/zcode.ts:1041-1066 与两个调用点 :1500/:1522；竞态不是假想——本主题自己的报告 doc/05_testing/REPORT_2026-10-03_doctor_probe_home_copy.md §3.2 记了「同期最旧的一份 rollout（…e32a8d3b…，00:21）消失了——谁删的未核（推测是 CLI 自身的保留策略）」，即同一次真实对照运行期间确实有旧文件被清掉。",
+      "suggestion": "把逐片读取改成「单片失败就跳过」（allSettled 或逐文件 catch），并在拼接结果为空时返回 null；判不出时沿用现有的「未能从会话日志回读生效模型」那条 note 口径，不要外抛。方向与审查运行 run() 的日志回读保持一致，别只改 doctor 侧。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/probes/zcode.ts:1459-1467 与 src/trivium/doctor.ts:568-608（zcode 段的 blocker/warning）",
+      "problem": "副本源读取或解析失败这一支只 push 一条 note 就返回，response_field / path_deny / scratch_paths / model_id_form 全部保留旧值，全量 doctor 退 0、blockers 与 warnings 皆空——用户只有在主动读 note 时才看得见。EV-194 之后 headless 失败的含义变成「审查那条选模路径不通」，这一支的含义同样是「审查那条路径起不来」，但两者的可见性处置都不拦不警告：新登记 EV-196 只覆盖了 headless 失败那一支，没覆盖新加的副本源解析失败这一支（后者是本次编码时新增的形态，不在计划双审的论域里）。",
+      "evidence": "读 src/trivium/probes/zcode.ts:1456-1467（catch 分支只 note + return）、src/trivium/doctor.ts:568-608（blocker 判据只有布局、旗标、response_field===null 三条）、test/unit/zcode-doctor-probe-home.test.ts 的 D6（只断言 note 文案与旧值保留、leftovers 为空）、doc/08_project/BACKLOG.md 的 EV-196 行（原文只写「headless 失败，doctor 不拦也不警告」）。",
+      "suggestion": "不必在本轮改判据：把 EV-196 的论域显式扩成「doctor 的 zcode 探针本轮没刷新任何结论的两条静默支（headless 失败、副本源解析失败）」，在登记里补这一句与出处，免得将来按 EV-196 只修一支、另一支仍静默。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/probes/zcode.ts:459 与 doc/02_design/2026-09-10-…设计.md §11.3 要点 5",
+      "problem": "readTrace 的「缺省读真实 ~/.zcode/cli/log 的最新一片」这一条既有语义被本次删除后，两处仍在描述它的文字没跟着改：①readRuntimeSelectedModel 的注释写「取法与 readTrace 对齐：日志目录里排序取最新的 .jsonl」，而 readTrace 现在读全部——这句「对齐」已经不成立，后来的人会据此把两条路径又改回同一式子；②§11.3 要点 5 说 trace_source 给的是 `<HOME>/.zcode/cli/log/zcode-<date>.jsonl`，doctor 探针的回读点已挪到临时落点目录（报告 §5 承认 trace_args_source 无消费方，但设计文字仍是旧的）。",
+      "evidence": "读 src/trivium/probes/zcode.ts:455-465（该注释现文）与 :1041-1049（新注释已改口）；读被审 diff 中设计 §11.3 要点 5 的上下文行与本次 v1.3.78 补句；grep 确认 readTrace 全仓只有 probes/zcode.ts:1500/1522 两个调用方，均已改传落点目录。",
+      "suggestion": "①把那句改成「探针臂每次新建单会话 HOME，只取最新一片；审查臂与 doctor 探针读独占落点目录的全部 .jsonl」，让三处取法的差异有据；②设计里给要点 5 补半句「doctor 自 EV-194 起从递给 CLI 的 ZCODE_LOG_DIR 回读」，或明确 trace_source 只描述静态模板位置、不是探针回读点。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/zcode.ts:1111（authProbe 调 prepareZcodeHome 未传 srcConfig）",
+      "problem": "设计与 v1.3.78 变更行都写「副本源与门控同一文件」，doctor 侧确实靠 `srcConfig: cliConfigPath` 做到；认证探活那一支仍走 prepareZcodeHome 的缺省 `zcodeOverrideSourcePath()`。生产路径两者同值，但一旦有人为 authProbe 加注入口子（EV-94 ① 正是要给探针臂加注入口的方向），两处会各自漂，而注释会宣称它们同源。",
+      "evidence": "读 src/trivium/adapters/zcode.ts:1095-1130（authProbe 的调用式）与 src/trivium/probes/zcode.ts:1456（doctor 带 srcConfig 的调用式）、adapters/zcode.ts:947-957（缺省取 zcodeOverrideSourcePath）。",
+      "suggestion": "要么两处都显式传同一个解析结果，要么在 authProbe 那行注一句「缺省源即 doctor 用的 ZCODE_CLI_CONFIG，加注入时须同传」，把口径钉在代码里而不是文档里。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/probes/zcode.ts:1474-1480（『headless / path_deny 探的是：…』那条 note）",
+      "problem": "这条 note 在两次调用之前就 push，但 headless 失败时函数随即 return、path_deny 根本没跑（失败 note 自己也带 probed 文案）。读全量 note 列表的人会把「path_deny 探的是」当成已执行的一步。不是判定错误，是留痕措辞与实际执行面不一致。",
+      "evidence": "读 src/trivium/probes/zcode.ts:1474-1506（push 位置与失败分支的 return）与 test/unit/zcode-doctor-probe-home.test.ts 的 D4（断言失败分支只 calls.length===1，但没管这条前缀行的措辞）。",
+      "suggestion": "把该行前缀改成随执行阶段变化（失败/未跑时写「headless 探的是」），或在 EV-196 的修法里一并处理这两条措辞，二选一即可，不必单独开条目。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "launch 三键的构造与 run()/authProbe 完全同式（storageRedirectRoot 取 zcodeHomeUnder(runDir)，副本支 homeDir 与落点根同值），D1/D2 分别钉住副本支与退路支，退路支也照设落点根，产物不再落真实 HOME——EV-115 的「已消解」结论与代码一致。",
+    "删除只认 mkdtemp 的返回值、不拼路径，且 D4/D5/D6 三条用例都断言 leftovers 为空，M7/M8 两条变异（不删 / 只在成功走完时删）都被咬住——这是本题最容易被写歪的一点，做实了。",
+    "用例把 TMPDIR 钉到用例私有目录、HOME 下恒摆个人配置：前者让 leftovers 断言在并发 npm test 与变异轮下不被污染，后者才使「旧写法注入个人配置」的变异可杀（M1/M2）。这是可移植性上做对的地方。",
+    "readTrace 读全部 .jsonl 按文件名排序拼接、与审查运行同一文件集合口径，跨午夜用 D9 + M15 锁住；parseZcodeTrace 取「第一条带 context.model 的行」，按日期升序拼接后取到的正是启动事件，方向正确。",
+    "回读目录直接取递给 CLI 的 zcodeStorageRedirectEnv(landing)['ZCODE_LOG_DIR']，不在探针里另拼一套落点布局，避免第二份实现漂移（CODEX-04 的取舍我认同）。",
+    "describeZcodeProbedPath 抽成单一来源后探活与探针共用四档措辞、tildeHome 归一家目录（D7 对四档逐字断言，M12 咬住退路措辞漂移）；zcodeProbeModel 让探活与 doctor 共用同一定义，M11/M16 分别咬住「doctor 不传档位模型」与「取错阶段」。",
+    "副本源解析失败不退回真实 HOME（M13 + D6），与「退回就又不是那条路径」的决策二一致。",
+    "EV-93 的「不修」理由补上「副本支下前缀与副本源 provider 键同源、结论里不记来源」，与代码实际一致（normalizeModelForCatalog 只取前缀补短名）。"
+  ],
+  "not_covered": [
+    "审查运行 run() 一侧的落点自检/清扫（scrubZcodeHome、carriers_landed）未复核——本次 diff 未改它，我只读了它与探针的对照面。",
+    "旗标探针与三条模型覆盖探针臂（probeReadonlyFlags / probeModelOverride / probeModelOverrideFullCopy）的零配额前提只确认「未被本 diff 触及」，未重新核 P-30 前提在副本支下是否仍然成立。",
+    "未做真实 CLI 实验：沙箱只读（/tmp 写入被 EPERM 拒），CODEX-01 里「rm 与后台重建的竞态」「force 不吞 ENOTEMPTY」是按 Node 语义与 killTree 实现推理，不是本轮实测；改前/改后真实对照的四条判据我按报告与 evidence 读数复核，未重跑。",
+    "doctor 的其它侧（agy/codex/claude）与 ZCode 无关的段落、gate/hooks/schema/入口资产四家载体面未审。",
+    "ZCode CLI 的保留策略与 rollout 落点是否随版本漂移（0.16.9 之外）未核；本 diff 未声明版本前提变更。",
+    "计划件 .reviews/doctor探针走副本HOME/plan/ 原文未读（本阶段禁读口径与背靠背独立性），「实现是否偏离计划」只按被审文档中的计划摘要与 v1.3.78 变更行对照。"
+  ],
+  "consulted": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".reviews/doctor探针走副本HOME/code/_meta/changes-20261003T050949Z.diff",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/zcode-trace.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/util/exec.ts",
+    "test/unit/zcode-doctor-probe-home.test.ts",
+    "doc/05_testing/REPORT_2026-10-03_doctor_probe_home_copy.md",
+    "doc/05_testing/evidence/doctor-probe-home-20261003/mutation-spec.json",
+    "doc/05_testing/evidence/doctor-probe-home-20261003/mutation-output.txt",
+    "doc/05_testing/evidence/doctor-probe-home-20261003/doctor-new.stdout.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/README.md",
+    "README.md",
+    "doc/README.md",
+    "doc/02_design/README.md"
+  ]
+}

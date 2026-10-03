@@ -1,0 +1,115 @@
+---
+schema: trivium.review.v1
+topic: doctor探针走副本HOME
+stage: code
+role: glm
+vendor: zcode
+agent_cli: zcode/0.16.9
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+model_route: config_copy
+run_id: 20261003T050949Z
+rerun_index: 1
+snapshot_hash: sha256:7b1d53138c5eaa88183c2d98910cf873078f0e4575e2a8cab9479fadb8ebf5d3
+blind: true
+started_at: 2026-10-03T05:09:52.135Z
+finished_at: 2026-10-03T05:18:29.027Z
+duration_s: 369
+tool_calls:
+  read: 20
+  grep: 11
+  glob: 0
+  run_command: 0
+  project_reads: 16
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 0
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: true
+session_id: sess_2894c20a-659c-42f7-b152-1ae96358f3fc
+---
+
+# 代码审查：doctor探针走副本HOME
+
+> Critic-B · 智谱 ZCode ｜ 模型 `bigmodel-coding-plan/GLM-5.3`
+> ｜ 运行 `20261003T050949Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+EV-194 的实现与计划声明一致，调用链各环节我都沿真实源码核过：doctor 把 zcodeProbeModel(config)（与 authProbe 同一定义）传进 probeZcode；headless 与 path_deny 两次真实调用共用一个 mkdtemp 运行目录与一份 prepareZcodeHome 副本，副本支不注入个人配置、两支都设落点根，三键形态与 authProbe / run() 逐字相同；回读只能出自落点根（日志目录直接取递给 CLI 的 ZCODE_LOG_DIR，rollout 走 readRollout 的 landing 参数，无第二份落点布局实现）；成功、失败提前返回、拉起抛错三条路径都删临时目录；readTrace 改读全部日志分片与 run() 的跨午夜口径（EV-116）一致；headless 失败时在删除前从临时日志取 turn.failed 根因、脱敏截断进 note，补回了 RUNBOOK 那一步会失效的诊断能力。我核过 probeZcode 的全部调用方（仅 doctor 一处生产调用）与 readTrace / probePathDeny 的全部引用点，无旧签名残留。测试是真有牙的：D1–D9 各自的断言在对应变异下会红（M1–M17 有 17/17 咬住的留痕），D8 能咬住「doctor 忘传档位模型」这一接线错误。证据诚实：改前对照因失败形态与写死判据不同而如实记「不可对照」，新构建真实 ~/.zcode/cli 文件数不变、当日日志 +1712 字节的 heartbeat 增长逐行核过。已知残余（EV-196 有既有结论时 headless 失败不拦、model_id_form 不记来源、硬杀留凭据副本）均已显式登记，不重复提。仅一条措辞级 nit：退路括注把成因写死成「档位未给模型」，而 homeDir 为 null 在这次调用里有两种成因，副本源在 doctor 运行中途被挪走时该行会自相矛盾。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 1 条：吹毛求疵 1）
+
+### GLM-01 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/zcode.ts:1475-1480（关联 src/trivium/adapters/zcode.ts:963-974、src/trivium/probes/zcode.ts:1233）` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：headless / path_deny 详情 note 的括注在 prep.homeDir === null 时固定写「档位未给模型，退回真实 HOME 与个人配置」，但 prepareZcodeHome 在这次调用里返回 homeDir 为 null 有两种成因：no_model 与 source_missing（adapters/zcode.ts:963-973）。doctor 侧 source_missing 名义上被 cliConfigured 门控挡住（probes/zcode.ts:1233），可那是一次 exists 读，其后还要跑旗标探针与三条模型覆盖臂（数秒到数分钟），prepareZcodeHome 内部再读一次存在性（adapters/zcode.ts:964）——两次读之间副本源被挪走或正在重写（例如 doctor 运行中用户在 ZCode 里重存模型配置），退路支就会以 source_missing 成因触发，note 一行自相矛盾：describeZcodeProbedPath 那半句如实写「真实 HOME 下 ZCode 自选的缺省模型（未找到 ~/.zcode/cli/config.json…）」，括注那半句却断言「档位未给模型」。排障的人会被括注引去查档位配置而不是副本源文件。
+
+**依据**：实读 src/trivium/probes/zcode.ts 1475-1480 行（括注只按 homeDir 分支、不看 prep.cause）、1459 行（prepareZcodeHome 的 srcConfig 就是 cliConfigPath）、1233-1234 行（cliConfigured 单次 exists 门控）、1443-1459 行之间隔着旗标探针与模型覆盖臂（时间窗为真实秒级以上）；src/trivium/adapters/zcode.ts 963-974 行（source_missing 与 no_model 都返回 homeDir: null）；测试 D2 只覆盖 launchModel 为 null 的 no_model 形态、D3 只覆盖门控先拦的形态，均未覆盖这一竞态组合。
+
+**建议**：括注按 prep.cause 分支：no_model 才写「档位未给模型」，source_missing 写「副本源缺失」（或改成不指因的中性表述，把成因完全交给 describeZcodeProbedPath 那半句）。不必为它新增用例——现有 D2 的措辞断言改对措辞后天然锁住。
+
+## 认为正确的部分
+
+- 两次真实调用与 authProbe / run() 同形：共用一个 mkdtemp 与一份 prepareZcodeHome 副本，副本支 omitPersonalProviderConfig 为 true、两支都设 storageRedirectRoot，与 adapters/zcode.ts authProbe（EV-136）逐字同式（probes/zcode.ts:1454-1473 对 adapters/zcode.ts:1123-1125）
+- 回读只能出自落点根：日志目录直接取递给 CLI 的 zcodeStorageRedirectEnv(landing).ZCODE_LOG_DIR，rollout 走 readRollout(sessionId, landing)，没有第二份落点布局实现；变异 M5/M6 证明改回真实目录会被 D1 咬住
+- 临时目录清理覆盖成功、失败提前返回、拉起抛错三条路径（D4/D5 与变异 M7/M8）；副本凭据 0600、mkdtemp 目录 0700，硬杀残留是与 authProbe 同一的已登记残余（报告 §5）
+- readTrace 改为读目录下全部 jsonl 按名排序拼接、仍按 sessionId 过滤，与 run() 的跨午夜口径（EV-116）一致，D9 与 M15 锁住；目录独占所以读全部不混会话
+- headless 失败时在 finally 删除之前从落点日志取 turn.failed 根因（脱敏、截 200 字）接进失败 note（probes/zcode.ts:1494-1505），补回了日志改落临时目录后 RUNBOOK「先取结构化根因」会失效的那一步；M14/M17 咬住
+- doctor 接线用的是与认证探活同一个 zcodeProbeModel 定义（adapters/zcode.ts 导出、doctor.ts:560 与 authProbe 两处消费），D8 能咬住忘传与取错阶段（M11/M16）；authProbe 输出经函数抽取后逐字不变
+- 副本源损坏时不拉起、不退回真实 HOME、保留旧结论并给出可操作的 note（D6、M13）——退回去探的就又不是审查那条路径，这个取舍与 run() 一致
+- 证据诚实：改前对照因失败形态不同如实记「不可对照」并给出日志佐证（llama-stack-thinking 连接错误同样是探错路径的形态）；改后真实 ~/.zcode/cli 文件数不变、当日日志增量逐行核因为后台 heartbeat；变异 17/17 有留痕
+- 已知残余显式登记而非隐匿：EV-196（有既有结论时 headless 失败不拦不警告）、model_id_form 不记来源（EV-93 补记）、EV-115 随本题消解的改判理由清楚
+
+## 未覆盖范围（本侧盲区）
+
+- 本侧只读，未执行任何命令：单测 10 条、变异 17/17、全量 2606 通过的读数全部取自证据文件与实施报告，未独立复跑
+- 未逐行核对 check-1.txt / check-2.txt / doctor-selftest.txt 全文，只读了报告汇总与变异输出文件
+- 未审 acceptance.mjs / gen-mutation-spec.mjs / mutation-names.mjs 三个脚本的实现，只读了它们产出的 spec 与 output（脚本报什么我就信什么）
+- 真实 CLI 对 ZCODE_LOG_DIR / ZCODE_STORAGE_DIR 落点的遵从只能由真实对照佐证——我读到的是证据文件，不是自己的实测；若某版 CLI 不认这些键，doctor 会走「未找到 rollout」一类的 note 而非报错
+- 旗标探针（probeReadonlyFlags）与三条模型覆盖探针臂的既有行为未在本次视野内重查（报告声明不变，我未逐一复核其代码路径）
+- skills/ 渲染产物、入口资产与 PROTOCOL 未审（报告声明本题不涉及，PROTOCOL 无 zcode 探针段）
+
+## 实际查阅的项目文件
+
+- `.reviews/doctor探针走副本HOME/code/_meta/changes-20261003T050949Z.diff`
+- `src/trivium/probes/zcode.ts`
+- `src/trivium/adapters/zcode.ts`
+- `src/trivium/adapters/zcode-trace.ts`
+- `src/trivium/adapters/base.ts`
+- `src/trivium/doctor.ts`
+- `test/unit/zcode-doctor-probe-home.test.ts（经补丁全文读到工作树同内容）`
+- `CLAUDE.md`
+- `README.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `doc/05_testing/REPORT_2026-10-03_doctor_probe_home_copy.md`
+- `doc/05_testing/evidence/doctor-probe-home-20261003/mutation-spec.json`
+- `doc/05_testing/evidence/doctor-probe-home-20261003/acceptance-readout.json`
+- `doc/05_testing/evidence/doctor-probe-home-20261003/mutation-output.txt`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":20,"grep":11,"glob":0,"run_command":0,"project_reads":16}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

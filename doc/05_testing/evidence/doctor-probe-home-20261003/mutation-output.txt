@@ -1,0 +1,140 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  M1 ✓ 咬住（fail=8）
+  M2 ✓ 咬住（fail=3）
+  M3 ✓ 咬住（fail=6）
+  M4 ✓ 咬住（fail=2）
+  M5 ✓ 咬住（fail=5）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=7）
+  M8 ✓ 咬住（fail=3）
+  M9 ✓ 咬住（fail=6）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=2）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=2）
+  M16 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=1）
+  M18 ✓ 咬住（fail=1）
+  M19 ✓ 咬住（fail=1）
+{
+  "总数": 19,
+  "咬住": 19,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "headless 不展开 launch（回到真实 HOME、注入个人配置、不设落点）",
+      "verdict": "✓ 咬住（fail=8）",
+      "fail": 8
+    },
+    {
+      "id": "M2",
+      "desc": "副本支也注入个人配置",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M3",
+      "desc": "不设落点根",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M4",
+      "desc": "path_deny 不传 launch",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M5",
+      "desc": "日志改回真实 ~/.zcode/cli/log",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M6",
+      "desc": "rollout 改回真实目录",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "不删临时运行目录",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M8",
+      "desc": "只在成功走完时删（删除挪出 finally 的等价形态）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M9",
+      "desc": "副本源不传 srcConfig（读缺省的 ~/.zcode/cli/config.json）",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M10",
+      "desc": "不请求置首",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "doctor 不传档位模型",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "退路措辞漂移",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M13",
+      "desc": "副本源解析失败时退回真实 HOME 继续拉起",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "失败 note 去掉探的是哪条路径",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "readTrace 改回只取最新一片",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M16",
+      "desc": "探活模型取错阶段（code）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "失败时不从落点日志取结构化根因",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M18",
+      "desc": "临时目录删除失败照抛（CODEX-01）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M19",
+      "desc": "读日志分片不逐片兜底（CODEX-02）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

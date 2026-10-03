@@ -1,0 +1,140 @@
+{
+  "targets": [
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/adapters/zcode.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "headless 不展开 launch（回到真实 HOME、注入个人配置、不设落点）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        ...launch,\n        cwd: fx.root,\n        readonlyArgs: readonly,\n",
+      "replace": "        cwd: fx.root,\n        readonlyArgs: readonly,\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "副本支也注入个人配置",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        omitPersonalProviderConfig: prep.homeDir !== null,\n        storageRedirectRoot: landing,\n",
+      "replace": "        omitPersonalProviderConfig: false,\n        storageRedirectRoot: landing,\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "不设落点根",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        omitPersonalProviderConfig: prep.homeDir !== null,\n        storageRedirectRoot: landing,\n",
+      "replace": "        omitPersonalProviderConfig: prep.homeDir !== null,\n        storageRedirectRoot: null,\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "path_deny 不传 launch",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      const deny = await probePathDeny(entry, node, fx, readonly, { launch, invoke });\n",
+      "replace": "      const deny = await probePathDeny(entry, node, fx, readonly, { invoke });\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "日志改回真实 ~/.zcode/cli/log",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        const trace = await readTrace(out.envelope.sessionId, zcodeStorageRedirectEnv(landing)['ZCODE_LOG_DIR']!);\n",
+      "replace": "        const trace = await readTrace(out.envelope.sessionId, path.join(ZCODE_CLI_DIR, 'log'));\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "rollout 改回真实目录",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        const rollout = out.envelope.sessionId ? await readRollout(out.envelope.sessionId, landing) : null;\n",
+      "replace": "        const rollout = out.envelope.sessionId ? await readRollout(out.envelope.sessionId) : null;\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "不删临时运行目录",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      await fs.rm(runDir, { recursive: true, force: true });\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "只在成功走完时删（删除挪出 finally 的等价形态）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "      await fs.rm(runDir, { recursive: true, force: true });\n",
+      "replace": "      if (notes.some((n) => n.startsWith('scratch_paths='))) await fs.rm(runDir, { recursive: true, force: true });\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "副本源不传 srcConfig（读缺省的 ~/.zcode/cli/config.json）",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        prep = await prepareZcodeHome(runDir, opts.launchModel ?? null, { srcConfig: cliConfigPath, requestedFirst: true });\n",
+      "replace": "        prep = await prepareZcodeHome(runDir, opts.launchModel ?? null, { requestedFirst: true });\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "不请求置首",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "        prep = await prepareZcodeHome(runDir, opts.launchModel ?? null, { srcConfig: cliConfigPath, requestedFirst: true });\n",
+      "replace": "        prep = await prepareZcodeHome(runDir, opts.launchModel ?? null, { srcConfig: cliConfigPath });\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "doctor 不传档位模型",
+      "file": "src/trivium/doctor.ts",
+      "find": "      launchModel: zcodeProbeModel(opts.config),\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "退路措辞漂移",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    ? `真实 HOME 下 ZCode 自选的缺省模型（${tildeHome(prep.reason ?? '')}）`\n",
+      "replace": "    ? `真实 HOME 下的缺省模型（${tildeHome(prep.reason ?? '')}）`\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "副本源解析失败时退回真实 HOME 继续拉起",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "            'response_field / path_deny / scratch_paths / model_id_form 保留上一次的结论（请检查该文件，或在 ZCode 里重新保存一次模型配置）',\n        );\n        return { probe, notes, flagsIndeterminate, flagsZeroExit };\n",
+      "replace": "            'response_field / path_deny / scratch_paths / model_id_form 保留上一次的结论（请检查该文件，或在 ZCode 里重新保存一次模型配置）',\n        );\n        prep = { homeDir: null, route: 'global', qualified: null, cause: 'no_model', reorder: null };\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "失败 note 去掉探的是哪条路径",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "          `ZCode headless 失败（${out.failureKind}，${probed}）：${redactSecrets(out.stderr.slice(0, 200)).content}`,\n",
+      "replace": "          `ZCode headless 失败（${out.failureKind}）：${redactSecrets(out.stderr.slice(0, 200)).content}`,\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "readTrace 改回只取最新一片",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  const texts = await Promise.all(files.map((f) => fs.readFile(path.join(logDir, f), 'utf8')));\n",
+      "replace": "  const texts = [await fs.readFile(path.join(logDir, files.at(-1)), 'utf8')];\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "探活模型取错阶段（code）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  return routeModel(cfg, 'glm', 'plan').model;\n",
+      "replace": "  return routeModel(cfg, 'glm', 'code').model;\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+    }
+  ]
+}

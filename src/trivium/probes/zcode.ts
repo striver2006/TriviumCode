@@ -36,7 +36,13 @@ import {
   ZCODE_PERSONAL_PROVIDER_ENV,
   ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE,
   zcodeModelTail,
+  describeZcodeProbedPath,
+  tildeHome,
+  zcodeHomeUnder,
+  zcodeStorageRedirectEnv,
   type VariantOutcome,
+  type ZcodeHomePrep,
+  type ZcodeInvokeOptions,
 } from '../adapters/zcode.js';
 import { exists, makeTempDir } from '../util/fsx.js';
 // CLI 原话进 note 之前过一遍脱敏（r5 CODEX-06）
@@ -450,8 +456,9 @@ export const ZCODE_RUNTIME_CONFIG_EVENT = 'bootstrap.app.startup.runtime_config.
 /**
  * 读副本 HOME 下 CLI 日志里的运行期选定（EV-82 第二段 r2 §3）。
  *
- * - **取法**与 `readTrace` 对齐：日志目录里排序取**最新**的 `.jsonl`
- *   （探针 HOME 每次新建、单会话，所以不按 sessionId 过滤）；同一文件多条该事件取**最后一条**。
+ * - **取法**：日志目录里排序取**最新**的 `.jsonl`（探针 HOME 每次新建、单会话，所以不按 sessionId 过滤）；
+ *   同一文件多条该事件取**最后一条**。三处取法各自有据（EV-194 代码双审 r1 CODEX-04）：本函数只取最新一片；
+ *   审查臂与 doctor 的 `readTrace` 读独占落点目录的**全部**分片。
  *   审查臂自 EV-112（代码双审 r1 CODEX-02）起改为读运行目录下**全部**日志文件、按 sessionId 过滤——那个目录也是单次运行独占的，
  *   读全部是为了跨午夜不落空；探针 HOME 在一次探测内建完即删，跨午夜的代价只是本轮判不出，照旧取最新；
  * - 单行 JSON 解析失败跳过（超时被杀时末行可能残缺）；
@@ -1031,22 +1038,37 @@ export async function listPersonalProviderIds(file: string): Promise<{ present: 
   return { present: true, ids: [...ids].sort() };
 }
 
-/** 读取某个 sessionId 的会话日志并解析轨迹 */
+/**
+ * doctor 两次真实调用（headless 与 path_deny 否定对照）共用的拉起形态（EV-194）：与 `authProbe` 同一组三个键。
+ * 副本支：副本 HOME + 不注入个人配置；退路支（档位未给模型）：`homeDir` 为 null、注入个人配置。落点根两支都设。
+ */
+export type ZcodeProbeLaunch = Pick<ZcodeInvokeOptions, 'homeDir' | 'omitPersonalProviderConfig' | 'storageRedirectRoot'>;
+
+/**
+ * 读取某个 sessionId 的会话日志并解析轨迹。
+ *
+ * `logDir` 必填、且应是**本次独占**的落点日志目录（EV-194：doctor 的 headless 探针自此把日志指到临时运行目录）。
+ * 读目录下**全部** `.jsonl`（按文件名即日期排序后拼接），与审查运行的回读（`adapters/zcode.ts` `run()` 的日志段）
+ * 同一文件集合口径：日志按日期分片，只取最新一片的话，跨午夜时启动事件（`context.model`）落在前一天的文件里，
+ * 生效模型回读不到（EV-194 计划双审 CODEX-05）。目录独占，所以读全部不会混进别的会话；仍按 sessionId 过滤。
+ * 此前缺省读真实 `~/.zcode/cli/log` 的最新一片，那条路径随 EV-194 去掉（唯一调用方已改传落点目录）。
+ */
 export async function readTrace(
   sessionId: string | null,
-  logDir?: string,
+  logDir: string,
 ): Promise<ReturnType<typeof parseZcodeTrace> | null> {
-  const dir = logDir ?? path.join(ZCODE_CLI_DIR, 'log');
   let files: string[];
   try {
-    files = (await fs.readdir(dir)).filter((f) => f.endsWith('.jsonl')).sort();
+    files = (await fs.readdir(logDir)).filter((f) => f.endsWith('.jsonl')).sort();
   } catch {
     return null;
   }
-  const latest = files.at(-1);
-  if (!latest) return null;
-  const jsonl = await fs.readFile(path.join(dir, latest), 'utf8');
-  return parseZcodeTrace(jsonl, sessionId);
+  // 逐片兜底（代码双审 r1 CODEX-02）：分片可能在 readdir 之后被清掉或读不了，单片失败跳过，不让整个探针抛出
+  const texts = (
+    await Promise.all(files.map((f) => fs.readFile(path.join(logDir, f), 'utf8').catch(() => null)))
+  ).filter((t): t is string => t !== null);
+  if (texts.length === 0) return null;
+  return parseZcodeTrace(texts.join('\n'), sessionId);
 }
 
 /**
@@ -1062,12 +1084,16 @@ export async function readTrace(
  *
  * 附带确认了一件重要的事：**`--mode plan` 并不阻止命令执行**，
  * 与设计 §11.3 要点 4 引述的社区观察一致，因此完整 denylist 中 `Bash` 是必需项。
+ *
+ * `extra.launch`（EV-194）：与 headless 那次共用的副本 HOME / 不注入个人配置 / 落点根三个键，原样展开进这次拉起，
+ * 让否定对照也跑在审查运行那条路径上；`extra.invoke` 是测试注入口。都不给时与 EV-194 之前相同（只有用例会不给）。
  */
 export async function probePathDeny(
   entry: string,
   node: string,
   fx: Fixture,
   readonlyFlags: string[],
+  extra: { launch?: ZcodeProbeLaunch; invoke?: typeof invokeZcode } = {},
 ): Promise<{ supported: boolean; ruleSyntax: string | null; method: string; attempts: string[] }> {
   const attempts = [
     '--disallowed-tools "Read(<绝对路径>)"：语法被接受，但模型改用 Bash(head -1) 读到了目标文件',
@@ -1078,9 +1104,10 @@ export async function probePathDeny(
       '那样连被审对象也读不了，粒度不可用',
   ];
 
-  const out = await invokeZcode({
+  const out = await (extra.invoke ?? invokeZcode)({
     entry,
     node,
+    ...extra.launch,
     cwd: fx.root,
     readonlyArgs: [...readonlyFlags, '--disallowed-tools', `Read(${fx.peerFile})`],
     timeoutMs: PROBE_TIMEOUT_MS,
@@ -1120,6 +1147,13 @@ export async function probeZcode(
     modelOverrideProbe?: typeof probeModelOverride;
     /** 同形第二臂的注入口，与 `modelOverrideProbe` 同理（EV-82 小主题第一段） */
     modelOverrideFullCopyProbe?: typeof probeModelOverrideFullCopy;
+    /**
+     * headless 与 path_deny 两次真实调用要请求的模型（EV-194）：doctor 传 `zcodeProbeModel(config)`，
+     * 与认证探活同一定义。不传等同 null——档位未给模型，走与审查运行相同的真实 HOME 退路；只有用例会不传。
+     */
+    launchModel?: string | null;
+    /** headless 与 path_deny 两次真实调用的测试注入口（EV-194），与 `modelOverrideProbe` 同理 */
+    invoke?: typeof invokeZcode;
   } = {},
 ): Promise<{ probe: ZcodeProbe; notes: string[]; flagsIndeterminate: string[]; flagsZeroExit: string[] }> {
   const notes: string[] = [];
@@ -1177,8 +1211,8 @@ export async function probeZcode(
   // 入口路径命中包内 beta 改写的 argv 判据（EV-112 计划 r3 §8 R7）：只报命中与否，不报路径全文
   if (ZCODE_BETA_ARGV_RE.test(entry)) {
     notes.push(
-      'ZCode 入口在 beta 渠道路径下：探针与探活的存储根会被 CLI 改写到 ~/.zcode-beta（清环境键挡不住这条 argv 触发）；' +
-        '审查运行设了存储根，不受影响（EV-112）',
+      'ZCode 入口在 beta 渠道路径下：旗标探针与模型覆盖探针臂的存储根会被 CLI 改写到 ~/.zcode-beta（清环境键挡不住这条 argv 触发）；' +
+        '审查运行、认证探活与 doctor 的 headless / path_deny 设了存储根，不受影响（EV-112 / EV-136 / EV-194）',
     );
   }
 
@@ -1376,7 +1410,8 @@ export async function probeZcode(
           `宿主环境预置了 ${hostLandingKeys.join(' / ')}：所有拉起路径都已清掉它们（EV-110 / EV-112）。` +
             '审查运行的 CLI 日志、rollout、会话库与存储根下的 artifacts / sessions / memories / plugins 由编排器指到运行目录' +
             '（跑后只自检日志与 rollout 两类）：log / rollout 就地脱敏，db / plugins 整目录排除，其余过命中即删扫描，' +
-            '幸存内容随运行目录保留期整删；探活与 doctor 自身的探针在真实 HOME 下跑，不含送审内容',
+            '幸存内容随运行目录保留期整删；认证探活与 doctor 的 headless / path_deny 落点同审查运行、产物随临时目录删除（EV-136 / EV-194），' +
+            '旗标探针与模型覆盖探针臂在各自的临时 HOME 下跑，都不含送审内容',
         );
       }
       // 两臂不一致告警（EV-94 ② 触发器）：只比**本轮都产出且都非 null** 的两值，不拿新值比旧值（CODEX-06）
@@ -1409,76 +1444,148 @@ export async function probeZcode(
       .filter((f) => f.startsWith('--mode plan') || f.startsWith('--disallowed-tools'))
       .flatMap((f) => f.split(' '));
 
-    const out = await invokeZcode({
-      entry,
-      node,
-      cwd: fx.root,
-      readonlyArgs: readonly,
-      timeoutMs: PROBE_TIMEOUT_MS,
-      prompt:
-        `项目根目录是 ${fx.root} 。请读取绝对路径 ${fx.openFile} ，` +
-        `并原样回显它的第一行内容。只做这一件事。`,
-    });
+    /*
+     * 两次真实调用走审查运行那条选模路径（EV-194，与 `authProbe` 的 EV-136 同一形态）。
+     *
+     * 此前这里以真实 HOME 拉起、个人 provider 配置被注入，0.16.9 见它存在就用它的 `defaultModelSelection`（P-31）
+     * ——探的是个人缺省模型。2026-10-02 个人缺省指向已停用的 provider，headless 连报 `Model creation failed`、
+     * 失败即返回，其后 response_field / model_id_form / path_deny / scratch_paths 全都不刷新，而审查要用的 GLM 订阅完好；
+     * 反过来个人缺省可用而 GLM 坏了时会误报正常。现在：mkdtemp 临时运行目录 → `prepareZcodeHome`（档位 plan 阶段的
+     * glm 模型、请求置首，副本源与门控判的是同一个文件）→ 副本 HOME + 副本支不注入个人配置 + 两支都设落点根，
+     * headless 与 path_deny 共用这一份；回读从落点根读；探完只删 mkdtemp 的返回值（副本里有真实凭据，
+     * 2026-09-20 事故后的规矩：不拼路径、不走别的变量）。
+     */
+    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-zcode-doctor-'));
+    try {
+      const invoke = opts.invoke ?? invokeZcode;
+      let prep: ZcodeHomePrep;
+      try {
+        prep = await prepareZcodeHome(runDir, opts.launchModel ?? null, { srcConfig: cliConfigPath, requestedFirst: true });
+      } catch (e) {
+        // 不退回真实 HOME：审查运行在同一情形下也起不来，退回去探的就又不是那条路径了
+        notes.push(
+          `副本源 ${tildeHome(cliConfigPath)} 读取或解析失败：${tildeHome((e as Error).message)}——` +
+            'response_field / path_deny / scratch_paths / model_id_form 保留上一次的结论（请检查该文件，或在 ZCode 里重新保存一次模型配置）',
+        );
+        return { probe, notes, flagsIndeterminate, flagsZeroExit };
+      }
+      const landing = zcodeHomeUnder(runDir);
+      const launch: ZcodeProbeLaunch = {
+        homeDir: prep.homeDir,
+        omitPersonalProviderConfig: prep.homeDir !== null,
+        storageRedirectRoot: landing,
+      };
+      const probed = describeZcodeProbedPath(prep);
 
-    if (out.failureKind !== 'none') {
-      notes.push(`ZCode headless 失败（${out.failureKind}）：${redactSecrets(out.stderr.slice(0, 200)).content}`);
-      return { probe, notes, flagsIndeterminate, flagsZeroExit };
-    }
+      const out = await invoke({
+        entry,
+        node,
+        ...launch,
+        cwd: fx.root,
+        readonlyArgs: readonly,
+        timeoutMs: PROBE_TIMEOUT_MS,
+        prompt:
+          `项目根目录是 ${fx.root} 。请读取绝对路径 ${fx.openFile} ，` +
+          `并原样回显它的第一行内容。只做这一件事。`,
+      });
 
-    // 正文字段：设计记载为 .response，实测确认
-    if (out.envelope) {
-      probe.response_field = out.envelope.keys.includes('response') ? 'response' : null;
+      if (out.failureKind !== 'none') {
+        /*
+         * 结构化根因（`turn.failed` 的 `error.cause.message`）只在 CLI 日志里，而日志此刻在临时目录、
+         * 下面 finally 就删（EV-194 编码时补）：不在这里取，RUNBOOK「先取结构化根因」那一步对 doctor 就无从做起。
+         * 目录是本次独占的，sessionId 取不到时按 null 读全部行也不会混进别的会话；同样过一遍脱敏。
+         */
+        const failed = await readTrace(out.envelope?.sessionId ?? null, zcodeStorageRedirectEnv(landing)['ZCODE_LOG_DIR']!);
+        const cause = failed?.failureCause ? `；日志根因：${redactSecrets(failed.failureCause.slice(0, 200)).content}` : '';
+        notes.push(
+          `ZCode headless 失败（${out.failureKind}，${probed}）：${redactSecrets(out.stderr.slice(0, 200)).content}${cause}`,
+        );
+        return { probe, notes, flagsIndeterminate, flagsZeroExit };
+      }
+      /*
+       * headless 通过之后才说「探的是哪条路径」（代码双审 r1 CODEX-06）：此后 path_deny 必跑，这行对两次都成立；
+       * 失败时只有上面那条带 probed 的失败 note。退路括注按成因分（GLM-01）：`homeDir` 为 null 有两种成因，
+       * `source_missing` 只在门控与这里两次存在性读之间副本源被挪走时可达，不能一律说成「档位未给模型」。
+       */
       notes.push(
-        `envelope 字段=${JSON.stringify(out.envelope.keys)}；response_field=${probe.response_field}；` +
-          `哨兵命中=${out.envelope.response.includes(SENTINEL_OPEN)}`,
+        `headless / path_deny 探的是：${probed}` +
+          (prep.homeDir === null
+            ? (prep.cause === 'no_model' ? '（档位未给模型' : '（副本源在探测中途不见了') +
+              '，退回真实 HOME 与个人配置，与审查运行在同一情形下的退路相同；CLI 产物仍落在临时目录、探完即删）'
+            : '（与审查运行同一选模路径；CLI 产物落在临时目录、探完即删）'),
       );
 
-      // envelope 中**没有** model 字段，生效模型只能从日志/rollout 回读（AC-13）
-      const trace = await readTrace(out.envelope.sessionId);
-      if (trace?.modelEffective) {
-        probe.model_id_form = trace.modelEffective;
+      // 正文字段：设计记载为 .response，实测确认
+      if (out.envelope) {
+        probe.response_field = out.envelope.keys.includes('response') ? 'response' : null;
         notes.push(
-          `生效模型回读=${trace.modelEffective}（来源：会话日志 context.model —— ` +
-            `envelope 无 model 字段，这是 AC-13 的取值点之一）`,
+          `envelope 字段=${JSON.stringify(out.envelope.keys)}；response_field=${probe.response_field}；` +
+            `哨兵命中=${out.envelope.response.includes(SENTINEL_OPEN)}`,
         );
-        notes.push(`轨迹工具计数=${JSON.stringify(trace.toolCalls)}（标准日志只有工具名，无路径）`);
+
+        /*
+         * envelope 中**没有** model 字段，生效模型只能从日志/rollout 回读（AC-13）。
+         * 两处都从落点根读（EV-194）：日志目录直接取递给 CLI 的那个 `ZCODE_LOG_DIR`，不在这里另拼，
+         * 免得落点布局有第二份实现（计划双审 CODEX-04）；rollout 走 `readRollout` 现成的 HOME 参数。
+         * 回读到的是这条路径的**生效**模型——详情那行的「模型 X」只是请求值（CODEX-02）。
+         */
+        const trace = await readTrace(out.envelope.sessionId, zcodeStorageRedirectEnv(landing)['ZCODE_LOG_DIR']!);
+        if (trace?.modelEffective) {
+          probe.model_id_form = trace.modelEffective;
+          notes.push(
+            `生效模型回读=${trace.modelEffective}（来源：会话日志 context.model —— ` +
+              `envelope 无 model 字段，这是 AC-13 的取值点之一）`,
+          );
+          notes.push(`轨迹工具计数=${JSON.stringify(trace.toolCalls)}（标准日志只有工具名，无路径）`);
+        } else {
+          notes.push('未能从会话日志回读生效模型——AC-13 的证据链在本机不完整');
+        }
+
+        // 读取路径只能从 rollout 取——标准日志的 tool.call.* 不带任何路径字段
+        const rollout = out.envelope.sessionId ? await readRollout(out.envelope.sessionId, landing) : null;
+        if (rollout) {
+          notes.push(
+            `rollout 工具调用=${rollout.toolCalls.length} 条，可提取读取路径 ${rollout.readPaths.length} 个；` +
+              `model.source=${rollout.modelSource}（印证模型覆盖档位为 config_copy）`,
+          );
+          if (!probe.model_id_form && rollout.modelEffective) probe.model_id_form = rollout.modelEffective;
+        } else {
+          notes.push(
+            '未找到该会话的 rollout 文件——deny_paths 轨迹核验（AC-04）与 consulted ' +
+              '交叉核对（AC-11）在 ZCode 侧将缺少路径证据',
+          );
+        }
       } else {
-        notes.push('未能从会话日志回读生效模型——AC-13 的证据链在本机不完整');
+        notes.push('ZCode stdout 中抠不出 JSON envelope');
       }
 
-      // 读取路径只能从 rollout 取——标准日志的 tool.call.* 不带任何路径字段
-      const rollout = out.envelope.sessionId ? await readRollout(out.envelope.sessionId) : null;
-      if (rollout) {
+      const deny = await probePathDeny(entry, node, fx, readonly, { launch, invoke });
+      probe.path_deny = {
+        supported: deny.supported,
+        rule_syntax: deny.ruleSyntax,
+        method: deny.method,
+        attempts: deny.attempts,
+        // 同 agy：本族 supported 为 false，没有「另测的读工具」可谈，如实记未测
+        coverage_complete: null,
+        // 逐文件形态未验（本族 supported 为 false，这个问题不成立）
+        file_shape_verified: null,
+      };
+      notes.push(`path_deny.supported=${deny.supported}：${deny.method}`);
+
+      probe.scratch_paths = await probeScratchPaths(fx);
+      notes.push(`scratch_paths=${JSON.stringify(probe.scratch_paths)}`);
+    } finally {
+      /*
+       * 删除失败不抛（代码双审 r1 CODEX-01）：`force` 只吞 ENOENT，ENOTEMPTY / EBUSY / EACCES 会从 finally 抛出、
+       * 顶替原异常，doctor 的 checkpoint 就不执行，本轮已探的结论随之丢失。失败时说清残留在哪、里面有副本凭据。
+       */
+      await fs.rm(runDir, { recursive: true, force: true, maxRetries: 3 }).catch((e: unknown) => {
         notes.push(
-          `rollout 工具调用=${rollout.toolCalls.length} 条，可提取读取路径 ${rollout.readPaths.length} 个；` +
-            `model.source=${rollout.modelSource}（印证模型覆盖档位为 config_copy）`,
+          `⚠️ 探针临时目录删除失败（${(e as NodeJS.ErrnoException).code ?? (e as Error).message}）：${tildeHome(runDir)} 仍在，` +
+            '其中的 cli/config.json 副本含真实凭据，请手工删除',
         );
-        if (!probe.model_id_form && rollout.modelEffective) probe.model_id_form = rollout.modelEffective;
-      } else {
-        notes.push(
-          '未找到该会话的 rollout 文件——deny_paths 轨迹核验（AC-04）与 consulted ' +
-            '交叉核对（AC-11）在 ZCode 侧将缺少路径证据',
-        );
-      }
-    } else {
-      notes.push('ZCode stdout 中抠不出 JSON envelope');
+      });
     }
-
-    const deny = await probePathDeny(entry, node, fx, readonly);
-    probe.path_deny = {
-      supported: deny.supported,
-      rule_syntax: deny.ruleSyntax,
-      method: deny.method,
-      attempts: deny.attempts,
-      // 同 agy：本族 supported 为 false，没有「另测的读工具」可谈，如实记未测
-      coverage_complete: null,
-      // 逐文件形态未验（本族 supported 为 false，这个问题不成立）
-      file_shape_verified: null,
-    };
-    notes.push(`path_deny.supported=${deny.supported}：${deny.method}`);
-
-    probe.scratch_paths = await probeScratchPaths(fx);
-    notes.push(`scratch_paths=${JSON.stringify(probe.scratch_paths)}`);
 
     // model_override 已由上面的 probeModelOverride 臂实测决定；`env` 档 0.16.5 已证伪（无裸 ZCODE_MODEL）
   } finally {

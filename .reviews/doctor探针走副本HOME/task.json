@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "doctor探针走副本HOME",
+  "goal": "主题「doctor探针走副本HOME」：EV-194——doctor 的 zcode headless 探针仍用真实 HOME、注入个人 provider 配置，探的是个人缺省模型，不是审查运行那条选模路径。2026-10-02 实遇：个人缺省指向已停用 provider 的 qwen3.8-max，doctor 连续报 Model creation failed（Select a model b…",
+  "created_at": "2026-10-03T03:41:12.300Z",
+  "updated_at": "2026-10-03T05:38:02.954Z",
+  "runs": [
+    {
+      "run_id": "20261003T042353Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-03T04:23:55.441Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261003T050949Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-03T05:09:51.963Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261003T053314Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-03T05:38:02.954Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-03T03:41:12.300Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-03T04:35:29.381Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261003T042353Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-03T04:35:25.715Z"
+    },
+    {
+      "run_id": "20261003T050949Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-03T05:19:40.364Z"
+    }
+  ]
+}

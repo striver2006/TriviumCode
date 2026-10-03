@@ -21,7 +21,7 @@ import { probeClaude, type StructuredArmCause } from './probes/claude.js';
 import type { ClaudeProbe, CodexProbe, Config, ProbeSection } from './types.js';
 import { realAdapters } from './adapters/index.js';
 // 同源文案：blocker 与 `availability()` 对同一现象只能有一种说法（r2 AGY-04）
-import { ZCODE_HEADLESS_NOT_OK_HINT, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT } from './adapters/zcode.js';
+import { ZCODE_HEADLESS_NOT_OK_HINT, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT, zcodeProbeModel } from './adapters/zcode.js';
 import type { TraceCapability } from './adapters/base.js';
 import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
 import { say, step, warn } from './util/log.js';
@@ -44,8 +44,12 @@ export interface DoctorOptions {
    * 透传给 `probeZcode` 的注入口（代码双审 r2 CODEX-03），与 `probeZcode` 自己的注入口同形。
    * 只为可测性：不开这个口子，经 `runDoctor` 走探针的用例在装了 ZCode 的机器上会读真实
    * `~/.zcode/cli/config.json`、真实拉起两条模型覆盖臂。生产路径不传。
+   * `invoke`（EV-194）替换 headless 与 path_deny 两次真实调用，让用例咬住「doctor 把档位模型传进了探针」。
    */
-  zcodeProbe?: Pick<NonNullable<Parameters<typeof probeZcode>[2]>, 'cliConfigPath' | 'modelOverrideProbe' | 'modelOverrideFullCopyProbe'>;
+  zcodeProbe?: Pick<
+    NonNullable<Parameters<typeof probeZcode>[2]>,
+    'cliConfigPath' | 'modelOverrideProbe' | 'modelOverrideFullCopyProbe' | 'invoke'
+  >;
 }
 
 /** `--only` 的合法取值：全部已登记 CLI，外加环境段 */
@@ -552,6 +556,8 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     const r = await probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {
       skipModelCalls: opts.skipModelCalls ?? false,
       existing: probe.cli.zcode,
+      // headless 与 path_deny 请求的模型：与认证探活同一定义（EV-194），探的是审查运行那条选模路径
+      launchModel: zcodeProbeModel(opts.config),
       ...(opts.zcodeProbe ?? {}),
     });
     probe.cli.zcode = r.probe;

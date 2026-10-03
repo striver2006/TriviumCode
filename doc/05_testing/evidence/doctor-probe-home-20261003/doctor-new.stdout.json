@@ -1,0 +1,340 @@
+{
+  "ok": true,
+  "probe": {
+    "generated_at": "2026-10-03T04:56:54.482Z",
+    "verify_suggestion": {
+      "build": [],
+      "test": []
+    },
+    "cli": {
+      "claude": {
+        "entrypoint": "~/.local/bin/claude",
+        "version": "2.1.287",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+)"
+        },
+        "probed_at": "2026-10-03T02:36:37.599Z",
+        "models": [],
+        "path_deny": {
+          "supported": true,
+          "rule_syntax": "Read(./.reviews/probe-topic/plan/**)",
+          "method": "经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的",
+          "attempts": [],
+          "coverage_complete": false,
+          "file_shape_verified": true
+        },
+        "scratch_paths": [],
+        "isolation": "shared",
+        "headless_read_ok": true,
+        "trace_path_structured": true,
+        "denied_tool_in_trace": null,
+        "readonly_breach": false,
+        "tool_surface_checked": true,
+        "readonly_flags": [
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob"
+        ],
+        "model_flag": true,
+        "json_schema_ok": true,
+        "session_id_source": "每条事件的 session_id 字段（--session-id 可由调用方指定）",
+        "trust_prompt_required": false,
+        "stream_json_requires_verbose": true,
+        "strict_mcp_config_applied": true,
+        "project_memory_blocked": true
+      },
+      "codex": {
+        "entrypoint": "/opt/homebrew/bin/codex",
+        "version": "0.160.0",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+)"
+        },
+        "probed_at": "2026-10-03T02:36:11.650Z",
+        "models": [
+          "qwen3.8-max",
+          "qwen3.8-flash",
+          "qwen3.7-max",
+          "qwen3.7-plus",
+          "qwen3.6-flash",
+          "gpt-reserve",
+          "codex-auto-review"
+        ],
+        "path_deny": {
+          "supported": false,
+          "rule_syntax": null,
+          "method": "实跑 codex exec --help 全文扫描 --deny / --disallow / deny_paths / path_deny / denied_paths，零命中（版本见同段的 probe.version，不在此处重复记以免它随版本过期）",
+          "attempts": [
+            "sandbox_permissions：取值为 disk-full-read-access 一类的粗粒度放宽档，方向相反，不能用来收紧"
+          ],
+          "coverage_complete": null,
+          "file_shape_verified": null
+        },
+        "scratch_paths": [],
+        "isolation": "home_copy",
+        "exec_headless_read_ok": true,
+        "json_event_types": [
+          "item.completed",
+          "item.started",
+          "thread.started",
+          "turn.completed",
+          "turn.started"
+        ],
+        "json_item_types": [
+          "agent_message",
+          "command_execution"
+        ],
+        "trace_path_structured": false,
+        "rejected_command_in_trace": true,
+        "readonly_flags": [
+          "-s",
+          "read-only"
+        ],
+        "profile_flag": true,
+        "unknown_profile_rejected": false,
+        "profiles": [
+          "deepseek",
+          "glm",
+          "gpt",
+          "kimi",
+          "qwen"
+        ],
+        "providers": [
+          {
+            "profile": "deepseek",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "credentialed": true,
+            "base_url": "api.deepseek.com"
+          },
+          {
+            "profile": "glm",
+            "provider": "zai",
+            "model": "glm-5.3-flash",
+            "credentialed": true,
+            "base_url": "open.bigmodel.cn"
+          },
+          {
+            "profile": "gpt",
+            "provider": "openai",
+            "model": "gpt-5.6-luna",
+            "credentialed": true,
+            "base_url": null
+          },
+          {
+            "profile": "kimi",
+            "provider": "kimi",
+            "model": "kimi-for-coding",
+            "credentialed": true,
+            "base_url": "api.kimi.com"
+          },
+          {
+            "profile": "qwen",
+            "provider": "qwen",
+            "model": "qwen3.8-flash",
+            "credentialed": true,
+            "base_url": "127.0.0.1:8788"
+          }
+        ],
+        "config_override": true,
+        "effort_validated": false,
+        "model_catalog_path": "~/.codex/models-deepseek.json",
+        "models_by_profile": {
+          "deepseek": [
+            "deepseek-flash",
+            "deepseek-v4-pro"
+          ],
+          "glm": [
+            "glm-5.3",
+            "glm-5.3-flash",
+            "glm-5-turbo"
+          ],
+          "gpt": [
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.5",
+            "gpt-5.4-mini"
+          ],
+          "kimi": [
+            "k3",
+            "k3-256k",
+            "kimi-for-coding",
+            "kimi-for-coding-highspeed"
+          ],
+          "qwen": [
+            "qwen3.8-max",
+            "qwen3.8-flash",
+            "qwen3.7-max",
+            "qwen3.7-plus",
+            "qwen3.6-flash"
+          ]
+        },
+        "models_visible": [
+          "qwen3.8-max",
+          "qwen3.8-flash",
+          "qwen3.7-max",
+          "qwen3.7-plus",
+          "qwen3.6-flash"
+        ],
+        "models_by_profile_errors": {}
+      },
+      "agy": {
+        "entrypoint": "~/.local/bin/agy",
+        "version": "1.2.15",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": null
+        },
+        "probed_at": "2026-10-03T02:58:57.650Z",
+        "models": [
+          "gemini-3.8-flash-high",
+          "gemini-3.8-flash-medium",
+          "gemini-3.8-flash-low",
+          "gemini-3.7-flash-high",
+          "gemini-3.7-flash-medium",
+          "gemini-3.7-flash-low",
+          "gemini-3.6-flash-high",
+          "gemini-3.6-flash-medium",
+          "gemini-3.6-flash-low",
+          "gemini-3.1-pro-high",
+          "gemini-3.1-pro-low",
+          "claude-sonnet-4-6",
+          "claude-opus-4-6-thinking",
+          "gpt-oss-120b-medium"
+        ],
+        "path_deny": {
+          "supported": false,
+          "rule_syntax": null,
+          "method": "否定对照成立：无路径级 deny 机制时，agy 确实读到了对方产出（哨兵命中）",
+          "attempts": [
+            "permissions.deny 的 grant 语法 action(target)：合法 action 为 command/unsandboxed/mcp/url/read；read 属 GitHub 仓库授权（校验消息 \"invalid grant: org and repo are required\"），无文件系统路径档位",
+            "settings.fileAccessPolicy：枚举 AGENT_SETTING_POLICY_{ALLOW,ASK,DENY,UNSPECIFIED}，作用于整个作用域，会连被审对象一起挡掉，粒度不可用",
+            "allowNonWorkspaceAccess / isWorkspaceOnly：工作区边界控制，而 deny_paths 就在项目根内，边界挡不住",
+            "allow_agent_access_gitignore_files：依赖 .gitignore，但对方产出必须进 Git，不可用",
+            "未尝试：plugin 的 hooks.json（PreToolUse 可返回 deny 决定）——需向用户 plugin 集安装 TriviumCode plugin，留作 M3 候选"
+          ],
+          "coverage_complete": null,
+          "file_shape_verified": null
+        },
+        "scratch_paths": [],
+        "isolation": "shared",
+        "headless_read_ok": true,
+        "json_schema_ok": true,
+        "pty_required": false,
+        "read_strategy": "default",
+        "agent": "trivium-critic"
+      },
+      "zcode": {
+        "entrypoint": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "version": "0.16.9",
+        "version_probe": {
+          "runner": "node",
+          "args": [
+            "version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+)"
+        },
+        "probed_at": "2026-10-03T04:56:11.011Z",
+        "models": [
+          "GLM-5.3",
+          "GLM-5.3-Flash",
+          "bigmodel-coding-plan/GLM-5.3",
+          "bigmodel-coding-plan/GLM-5.3-Flash"
+        ],
+        "path_deny": {
+          "supported": false,
+          "rule_syntax": null,
+          "method": "否定对照成立：即使显式 deny 该路径，模型仍换用其它读工具读到了对方产出（哨兵命中）",
+          "attempts": [
+            "--disallowed-tools \"Read(<绝对路径>)\"：语法被接受，但模型改用 Bash(head -1) 读到了目标文件",
+            "--disallowed-tools \"Read(<路径>) Write Edit MultiEdit ApplyPatch Bash\"：模型改用 Grep 读到了目标文件",
+            "--settings <path>：参数被拒绝（Unknown option），无法注入独立权限配置",
+            "--mode plan：实测**不阻止命令执行**，不能作为只读手段单独使用",
+            "结论：要靠 denylist 挡住单个文件需封掉全部读路径（Read/Grep/Glob/ReadSessionContext/Bash），那样连被审对象也读不了，粒度不可用"
+          ],
+          "coverage_complete": null,
+          "file_shape_verified": null
+        },
+        "scratch_paths": [],
+        "isolation": "home_copy",
+        "readonly_flags": [
+          "--mode plan",
+          "--mode yolo",
+          "--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash"
+        ],
+        "model_override": "config_copy",
+        "trace_source": "~/.zcode/cli/log/zcode-{date}.jsonl",
+        "trace_args_source": "~/.zcode/cli/rollout/model-io-{sessionId}.jsonl",
+        "response_field": "response",
+        "model_id_form": "bigmodel-coding-plan/GLM-5.3",
+        "provider_config": {
+          "builtin_file": "/Applications/ZCode.app/Contents/Resources/config/provider/zcode-builtin.json",
+          "personal_file": "~/.zcode/v2/provider_config.json"
+        },
+        "model_override_full_copy": "config_copy",
+        "runtime_selection": "reorder_needed"
+      }
+    },
+    "auth": {
+      "gemini": {
+        "checked_at": "2026-10-03T03:41:06.937Z",
+        "cli_version": "1.2.15",
+        "fingerprint": "5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4",
+        "ok": true
+      },
+      "glm": {
+        "checked_at": "2026-10-03T03:40:43.714Z",
+        "cli_version": "0.16.9",
+        "fingerprint": "5cbbb8505c445a42a0e7a01c5d775ec372cf417396d22467e3d2077410eaab99|model=GLM-5.3",
+        "ok": true
+      },
+      "codex": {
+        "checked_at": "2026-10-03T03:40:41.918Z",
+        "cli_version": "0.160.0",
+        "fingerprint": "3d4a6a64d13e182f17d768303c11c0130c2b363c3e5b0616966c0b39930c7869:75aba49f154725c007d2878ee9c45bd08776508540c8e97aff40323f111e6772:ad208b54ed5d3919660d688667065b2513051f227b448603d5a14f2c8f53ca6a",
+        "ok": true
+      }
+    },
+    "host": {
+      "platform": "darwin 27.0.0",
+      "arch": "arm64",
+      "has_timeout_bin": false,
+      "git_version": "2.54.0 (Apple Git-157)"
+    }
+  },
+  "notes": [
+    "node=/opt/homebrew/opt/node/bin/node v25.2.1",
+    "git=2.54.0 (Apple Git-157)",
+    "编排器构建标识：292fa79（构建时作用面有未提交改动），inputs 05909fb1eee7，构建于 2026-10-03T04:50:57.513Z；当前项目不是编排器本仓，只记不比",
+    "本机无 GNU coreutils 的 timeout/gtimeout —— 编排器的超时全部在 Node 内实现，不依赖外部命令（这是预期行为，非问题）",
+    "编译测试命令候选：build=[] test=[]（仅候选，需人确认后写入 verify 才会执行）",
+    "[zcode] 可用模型 4 个（含短名与全限定形态）：GLM-5.3, GLM-5.3-Flash, bigmodel-coding-plan/GLM-5.3, bigmodel-coding-plan/GLM-5.3-Flash…",
+    "[zcode] trace_source（工具名/模型）=~/.zcode/cli/log/zcode-{date}.jsonl；trace_args_source（工具参数与路径）=~/.zcode/cli/rollout/model-io-{sessionId}.jsonl",
+    "[zcode] provider_config：内置=/Applications/ZCode.app/Contents/Resources/config/provider/zcode-builtin.json；个人=~/.zcode/v2/provider_config.json（个人那份按用户目录 ~ 取）（拉起时经 ZCODE_*_PROVIDER_CONFIG_FILE 注入，0.16.9 起独立拉起必需）",
+    "[zcode] readonly_flags 接受=[\"--mode plan\",\"--mode yolo\",\"--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash\"]；拒绝=[\"--allowed-tools Read,Grep,Glob\",\"--max-turns 40\",\"--permission-mode plan\",\"--settings /nonexistent-probe-settings.json\"]（--help 列出不等于实际接受）",
+    "[zcode] model_override=config_copy / isolation=home_copy：副本 model.main 被 legacy 导入读到并成为 defaultModelSelection（请求 bigmodel-coding-plan/GLM-5.3-Flash，CLI 写出 bigmodel-coding-plan/GLM-5.3-Flash；运行期选定 bigmodel-coding-plan/GLM-5.3）。前提：副本 HOME 下不注入个人 provider 配置，CLI 从 cli/config.json 副本 legacy 导入；既无模型旗标也无选型环境变量，`--settings` 被拒",
+    "[zcode] model_override_full_copy=config_copy（本轮产出）：同形副本（整份拷贝、凭据换哨兵）的 model.main 被 legacy 导入读到（请求 bigmodel-coding-plan/GLM-5.3-Flash，CLI 写出 bigmodel-coding-plan/GLM-5.3-Flash；替换凭据键 1 处，另对每个 provider 的 apiKey 无条件写哨兵；运行期选定 bigmodel-coding-plan/GLM-5.3）。配置层结论只判配置读取层；运行期选定取自 CLI 启动事件（与审查臂的生效模型同一字段）。零配额的前提是副本里所有凭据都被换掉，拉起前已做残余扫描",
+    "[zcode] runtime_selection=reorder_needed：原样支运行期回落到 bigmodel-coding-plan/GLM-5.3，置首支选中请求 bigmodel-coding-plan/GLM-5.3-Flash——当前 CLI 仍需置首，审查臂已置首规避（EV-82 形态）",
+    "[zcode] headless / path_deny 探的是：模型 bigmodel-coding-plan/GLM-5.3（与审查运行同一选模路径；CLI 产物落在临时目录、探完即删）",
+    "[zcode] envelope 字段=[\"sessionId\",\"traceId\",\"turnId\",\"response\",\"usage\",\"eventCount\",\"projection\"]；response_field=response；哨兵命中=true",
+    "[zcode] 生效模型回读=bigmodel-coding-plan/GLM-5.3（来源：会话日志 context.model —— envelope 无 model 字段，这是 AC-13 的取值点之一）",
+    "[zcode] 轨迹工具计数={\"read\":1,\"grep\":0,\"glob\":0,\"run_command\":0}（标准日志只有工具名，无路径）",
+    "[zcode] rollout 工具调用=1 条，可提取读取路径 1 个；model.source=null（印证模型覆盖档位为 config_copy）",
+    "[zcode] path_deny.supported=false：否定对照成立：即使显式 deny 该路径，模型仍换用其它读工具读到了对方产出（哨兵命中）",
+    "[zcode] scratch_paths=[]",
+    "探针结论已写入 /private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/c3e63714-0430-433d-b702-5c90dc66dc36/scratchpad/accept/proj-new/.trivium/config.local.yaml"
+  ],
+  "blockers": [],
+  "warnings": []
+}

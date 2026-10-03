@@ -58,8 +58,9 @@ import { redactSecrets } from '../secrets.js';
  * providerId 从探针回读的 `model_id_form` 取——不硬编码，因为它随用户的 provider 配置而变。
  *
  * **只用于 preflight 的目录比对**（`normalizeModelForCatalog`），**不再用于写副本**：
- * `model_id_form` 记的是上一次真实 HOME 运行回读的生效模型——即个人配置的默认（本机此刻是
- * `<providerUUID>/qwen3.8-max`），与副本源 `cli/config.json` 的 provider 键**异源**；副本里的限定
+ * `model_id_form` 是 doctor 探针回读的生效模型——EV-194 之前探针走真实 HOME，记的是个人配置的默认
+ * （`<providerUUID>/qwen3.8-max` 一类），与副本源 `cli/config.json` 的 provider 键**异源**；EV-194 起探针走副本，
+ * 副本支下前缀取自副本源的 provider 键，退路支（档位未给模型）下仍是个人缺省。不能拿它的形态判来源；副本里的限定
  * 改由 `qualifyAgainstCliConfig` 按副本源自己的键做（计划双审 r3 CODEX-03）。目录比对仍用本函数
  * 是另一条口径问题：目录来自 `cli/config.json` 键形态而前缀来自回读形态，登记 EV-93。
  */
@@ -423,8 +424,9 @@ export interface ZcodeInvokeOptions {
   /**
    * CLI 产物的落点根（EV-112）：给了就在清除面之后**设** `zcodeStorageRedirectEnv(storageRedirectRoot)` 的三个键。
    * 入参是与 HOME 同层的根（`zcodeHomeUnder(sideDir)`），不是 `.zcode`。
-   * 审查运行传（副本 / 无副本两支都传）；认证探活自 EV-136 起同样两支都传（它要探的是审查运行那条路径，
-   * 产物落进它自己的临时目录、随之删除）；旗标 / 模型探针不传——它们要测的是真实环境。
+   * 审查运行传（副本 / 无副本两支都传）；认证探活自 EV-136 起、doctor 的 headless 与 path_deny 自 EV-194 起
+   * 同样两支都传（它们要探的是审查运行那条路径，产物落进各自的临时目录、随之删除）；旗标探针与模型覆盖探针臂不传
+   * ——它们各自在 mkdtemp 的 HOME 下拉起。
    */
   storageRedirectRoot?: string | null;
   timeoutMs: number;
@@ -654,9 +656,10 @@ interface ZcodeCliConfigShape {
  * 把请求模型限定成 `<providerKey>/<modelId>`，**providerKey 只认副本源 `cli/config.json` 自己的键**
  * （计划双审 r3 CODEX-03）。
  *
- * 为什么不再用探针的 `model_id_form` 补前缀：那个值记的是**上一次真实 HOME 运行回读到的生效模型**
- * ——即个人配置的默认（本机此刻是 `<providerUUID>/qwen3.8-max`），而 legacy 导入后注册表里的
- * providerId 是 `cli/config.json` 的 provider **键**（`bigmodel-coding-plan`）。两者异源，拼出来的
+ * 为什么不再用探针的 `model_id_form` 补前缀：那个值当时记的是**上一次真实 HOME 运行回读到的生效模型**
+ * ——即个人配置的默认（当时本机是 `<providerUUID>/qwen3.8-max`），而 legacy 导入后注册表里的
+ * providerId 是 `cli/config.json` 的 provider **键**（`bigmodel-coding-plan`）。EV-194 起 doctor 探针改走副本，
+ * 它在副本支下才与这里同源，退路支下仍不是——限定照旧只认副本源本身。两者异源时，拼出来的
  * `<UUID>/GLM-5.3-Flash` 在注册表里必验不过，CLI 静默回落到第一个模型——恰是 EV-82 的形态。
  * 注册表精确匹配（包内 `isSelectable`），所以限定的来源必须与导入的来源**同一份文件**。
  *
@@ -896,6 +899,37 @@ export function tildeHome(text: string, home: string = os.homedir()): string {
 }
 
 /**
+ * 探活与 doctor 探针要请求的模型：当前档位 plan 阶段的 glm 模型（EV-136 定、EV-194 起 doctor 共用）。
+ *
+ * 同一 provider 下各阶段只差模型档，取 plan 作代表；`--model-glm` 与主题级覆盖不进来——两处调用方都拿不到当轮生效模型
+ * （EV-136 残余 ①②）。认证探活与 doctor 的 headless / path_deny 必须是同一个定义，改一处两处同变。
+ */
+export function zcodeProbeModel(cfg: AdapterContext['cfg']): string | null {
+  return routeModel(cfg, 'glm', 'plan').model;
+}
+
+/**
+ * 说清一次探活 / 探针「探的是哪条路径、请求了哪个模型」（EV-136 定，EV-194 起认证探活与 doctor 探针共用）。
+ *
+ * 免得通过一格被读成「GLM 可用」：
+ *   · 退路支：真实 HOME 下由 ZCode 自选——个人配置在就用它的缺省，不在就 legacy 导入 `cli/config.json`
+ *     （EV-136 代码双审 r1 GLM-05：不能一律说成「个人缺省」）；
+ *   · 限定失败：副本照建、不改 model.main（与 run() 同），CLI 用的是副本源原有的那个，不能报成请求的模型；
+ *   · 置首挪不动：请求模型可能没生效，如实注明（CODEX-03）。
+ * 「模型 X」是**请求**的模型，不是回读的生效模型（EV-194 计划双审 CODEX-02）；生效模型 doctor 另行回读。
+ * reason 里的家目录归一成 `~`（GLM-01）：详情会进预检与 doctor 输出，而那些输出常被抄进 evidence。
+ */
+export function describeZcodeProbedPath(prep: ZcodeHomePrep): string {
+  return prep.homeDir === null
+    ? `真实 HOME 下 ZCode 自选的缺省模型（${tildeHome(prep.reason ?? '')}）`
+    : prep.qualified === null
+      ? `cli/config.json 原有的 model.main（${tildeHome(prep.reason ?? '')}）`
+      : prep.reorder?.kind === 'not_movable'
+        ? `模型 ${prep.qualified}（置首未生效：${prep.reorder.reason ?? '挪不动'}；实际生效模型未核）`
+        : `模型 ${prep.qualified}`;
+}
+
+/**
  * 为一次运行准备独立 HOME 与模型覆盖（`config_copy` 档）。
  *
  * 从用户的 `~/.zcode/cli/config.json` 拷一份到运行目录下的临时 HOME，只改 `model.main` / `model.lite`。
@@ -1040,7 +1074,7 @@ export const zcodeAdapter: CriticAdapter = {
    */
   authProbe(ctx: AdapterContext, projectRoot: string) {
     const cfg = ctx.cfg;
-    const model = routeModel(cfg, 'glm', 'plan').model;
+    const model = zcodeProbeModel(cfg);
     return {
       async fingerprint() {
         const f = zcodeOverrideSourcePath();
@@ -1071,6 +1105,8 @@ export const zcodeAdapter: CriticAdapter = {
            * 文件损坏或不可读要落成一条可读的检查项失败，不能抛出去：`probeAuth` 没有兜底。
            */
           try {
+            // 副本源走缺省 `zcodeOverrideSourcePath()`——与 doctor 探针门控用的 `ZCODE_CLI_CONFIG` 是同一个文件；
+            // 日后给探活加注入口时须像 doctor 那样显式同传 `srcConfig`，否则两处会各自漂（EV-194 代码双审 r1 CODEX-05）
             prep = await prepareZcodeHome(runDir, model, { requestedFirst: true });
           } catch (e) {
             return {
@@ -1098,22 +1134,8 @@ export const zcodeAdapter: CriticAdapter = {
           await fs.rm(runDir, { recursive: true, force: true });
         }
         const ok = out.failureKind === 'none' && !out.timedOut && out.envelope !== null;
-        /*
-         * 说清探的是哪条路径，免得通过一格被读成「GLM 可用」：
-         *   · 退路支：真实 HOME 下由 ZCode 自选——个人配置在就用它的缺省，不在就 legacy 导入 `cli/config.json`
-         *     （代码双审 r1 GLM-05：不能一律说成「个人缺省」）；
-         *   · 限定失败：副本照建、不改 model.main（与 run() 同），CLI 用的是副本源原有的那个，不能报成请求的模型；
-         *   · 置首挪不动：请求模型可能没生效，如实注明（CODEX-03）。
-         * reason 里的家目录归一成 `~`（GLM-01）：详情会进预检输出，而预检输出常被抄进 evidence。
-         */
-        const probed =
-          prep.homeDir === null
-            ? `真实 HOME 下 ZCode 自选的缺省模型（${tildeHome(prep.reason ?? '')}）`
-            : prep.qualified === null
-              ? `cli/config.json 原有的 model.main（${tildeHome(prep.reason ?? '')}）`
-              : prep.reorder?.kind === 'not_movable'
-                ? `模型 ${prep.qualified}（置首未生效：${prep.reorder.reason ?? '挪不动'}；实际生效模型未核）`
-                : `模型 ${prep.qualified}`;
+        // 说清探的是哪条路径（四档措辞与 doctor 探针同源，EV-194）
+        const probed = describeZcodeProbedPath(prep);
         const cliSays = redactSecrets(out.stderr.slice(0, 200)).content;
         return {
           ok,
