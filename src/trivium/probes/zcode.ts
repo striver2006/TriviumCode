@@ -933,6 +933,7 @@ export async function probeModelOverrideFullCopy(
     /**
      * 删除临时根的**测试注入口**（EV-198 计划 r2 §3.1 R4）：扫出残余那一支不拉起，子进程摆不了「删不掉」，
      * 用例要在删除前一刻自己上锁、再调真实的 `removeZcodeTempDir`。缺省就是它。
+     * 与 `util/fsx.ts` 的 `tryRemoveTempDir` 不是一回事（EV-200 计划双审 GLM-04）：这里替的是返回整句提示的 zcode 薄包装。
      */
     removeTempDir?: typeof removeZcodeTempDir;
   } = {},

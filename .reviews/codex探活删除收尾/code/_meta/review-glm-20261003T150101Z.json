@@ -1,0 +1,55 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按安全、错误处理、空值与测试缺口四个镜头审查了 EV-200 补丁并顺调用链核实。核心结论：实现与计划声明一致，质量高。(1) 删除通用部分抽取等价：util/fsx.ts 的 tryRemoveTempDir 与 zcode 旧内联实现逐字同参（fs.rm 参数、maxRetries 3、ENOENT 才算不在、查不了按在说、errno 缺失回退 message），removeZcodeTempDir 薄包装对 copy 为 null、副本在、ENOENT、查不了四种情形的输出与旧实现逐字一致（逐支推演了 copy && remaining.length > 0 ? copy.kind : null 的运算符优先级），probes/zcode.ts 的 import 经原名再导出未动。(2) codex 侧 probe 拆 attempt 加外层 finally 的异常面核实：util/exec.ts 的 run() 构造的 Promise 只 resolve（spawn 失败走 error 事件进 stderr 后 finish），invokeCodex 确不 reject；tryRemoveTempDir 的 catch 分支中 stat 的 rejection handler 为纯表达式不会抛，finally 安全；prepareCodexHome 里除 exists()（内部吞一切错误）外的每个裸 fs 调用都已被 prepStep 包住，步骤名清单与代码一致。(3) codexCredentialCopies 与 codexHomeUnder、prepareCodexHome 写入位置同源，C7 钉住写入面一致性。(4) preflight.ts:723 的 auth.fingerprint() 确无兜底、probeAuth 与 Promise.all 会因单侧 rejection 崩，EV-202 登记属实。(5) 变异矩阵 16 条经 mutation-spec.json 与 mutation-names-output.json 逐条核对，判据与红项对应合理（含 M7/M8/M13 跨侧咬合 zcode 测试）；check-3 全量 2644/2642/0/2 绿、doctor-selftest 14/14；check-1 的真红（fixture-credentials 拦下夹具完整凭据字面量）如实披露并按项目规矩改为运行时拼接。(6) 文档同步齐备：设计 v1.3.81 变更记录与 §10.5/§11.3 补句、doc/05_testing/README.md 索引（组内文件名升序合规）、RUNBOOK 两档措辞与实现字面一致、BACKLOG EV-200 置 done 并登记 EV-202。发现一处 nit：残留提示「没有凭据副本」档固定说是「CLI 产物」，在副本准备失败且删不掉的路径上与事实不符（见 GLM-01）。另注意到报告 §4 如实披露变异轮在系统临时目录留下 10 个仅含夹具假值的 trivium-cauth-priv-* 目录待用户处置，不构成本补丁的问题。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/adapters/codex.ts:146（codexTempDirResidueText 的无副本档）",
+      "problem": "「没有凭据副本」档固定说「是本次探活的 CLI 产物，请手工删除」。但副本准备失败的路径上——attempt 里 prepareCodexHome 抛出（如「建副本目录」一步 EACCES，codex.ts:389-397 的 catch 直接返回、CLI 从未拉起）而外层 finally 又删不掉 tmp——同样接这句尾注。此时残留目录里只有准备到一半的副本骨架（甚至接近全空），没有任何 CLI 产物，前后半句自相矛盾（前半句说准备失败，后半句说是 CLI 产物）；RUNBOOK 据「只是 CLI 产物」引导用户评估残留危害，会低估这条路径。现有用例只覆盖了准备失败且删除成功（C5a/C5b 断言 left.length 0），没有「准备失败 + 删不掉 + 副本全不在」的组合。",
+      "evidence": "src/trivium/adapters/codex.ts:389-397（准备失败 catch 返回，invokeCodex 未执行）、:146（无副本档文案）、:375-378（finally 接提示）；test/unit/codex-auth-probe.test.ts 的 C5a/C5b（均断言删除成功无残留）。",
+      "suggestion": "该档措辞去掉 CLI 限定（如「是本次探活的产物」），与 zcode 侧句式是否同步由 Driver 裁决；或至少在准备失败支不沿用这句尾注。可顺带补一格「准备失败 + 删不掉」的用例。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "tryRemoveTempDir 抽到 util/fsx.ts 与 tildeHome 一并挪移、zcode 侧原名再导出保持引用点不动的迁移方式——两个载体互相依赖的问题（codex.ts 不能引 adapters/zcode.ts）用 util 层解决，正确",
+    "removeZcodeTempDir 薄包装与抽出前输出逐字等价（含 copy 为 null 时三档中的 null 档、查不了按有副本说的保守取向），变异 M13 用 zcode 既有测试咬住",
+    "现场查三份凭据副本而非按写入时情形推断，与 EV-197 代码双审定下的方向一致；C3b 逐份只留一份的摆法钉住了「查的是三个位置」",
+    "prepStep 在原错误对象上挂步骤名、不改消息不换类型（原始值原样重抛不挂），run() 的兜底文案逐字不变，C5b 同时断言家目录归一与不带出绝对路径",
+    "attempt 兜住 prepareCodexHome 后『副本没备好就不拉起 CLI』（C5a 断言 observed 为 false），消掉了拉起前的抛出面",
+    "残留提示只认 mkdtemp 返回值、只删传入路径的 2026-09-20 规矩在新函数文档里保留",
+    "EV-202（指纹读盘无兜底）如实登记：preflight.ts:723 确无兜底，与 probe() 的兜住形成对照，按决策三不在本题改",
+    "check-1 的真红如实披露并按项目规矩修复（凭据键运行时分段拼接），变异残留 10 个目录如实披露待用户定",
+    "文档四处同步（设计 v1.3.81、README 索引、RUNBOOK、BACKLOG）与 AGENTS.md 改动同步清单逐条对上"
+  ],
+  "not_covered": [
+    "未运行任何命令：npm run check、变异装置、doctor --selftest 的读数全部采信 evidence 文件与报告转述，未亲测；BRIEF 的内容哈希亦未验证",
+    "diff 中 evidence 的大段中间内容只抽查了头尾：check-1 中段、check-2.txt、gen-mutation-spec.mjs、mutation-names.mjs、mutation-names-log.txt、mutation-output.txt 未逐行读",
+    "zcode 侧既有测试源文（zcode-doctor-probe-home.test.js、zcode-full-copy-arm.test.js）未读，其对新薄包装的覆盖采信变异输出与报告的 172/172 回归读数",
+    "「parseCodexEvents 逐行兜底、不抛」的说法未亲读 codex-trace.ts 验证；即便失实也落在已声明的残余（attempt 抛错提示随异常丢失）形态内",
+    "未读 .reviews/codex探活删除收尾/plan/ 下的 Driver 计划原稿：实现与计划的一致性判断以设计文档 v1.3.81、报告 §2 与 BACKLOG EV-200 状态行的交叉核对为准",
+    "maxRetries 只对瞬时错误（EBUSY 等）重试、EACCES 不重试——已声明残余 5，未额外核验 Node 语义"
+  ],
+  "consulted": [
+    ".reviews/codex探活删除收尾/code/_meta/changes-20261003T150101Z.diff",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/util/exec.ts",
+    "test/unit/codex-auth-probe.test.ts",
+    "doc/05_testing/REPORT_2026-10-03_codex_probe_cleanup.md",
+    "doc/05_testing/evidence/codex-probe-cleanup-20261003/mutation-spec.json",
+    "doc/05_testing/evidence/codex-probe-cleanup-20261003/mutation-names-output.json",
+    "doc/05_testing/evidence/codex-probe-cleanup-20261003/doctor-selftest.txt",
+    "doc/05_testing/evidence/codex-probe-cleanup-20261003/check-3.txt"
+  ]
+}

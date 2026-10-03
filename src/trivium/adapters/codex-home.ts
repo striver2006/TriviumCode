@@ -89,9 +89,46 @@ const REDACT_AFTER_RUN: readonly string[] = ['sessions'];
  */
 const SKIP_AFTER_RUN: readonly string[] = ['cache', 'plugins', 'skills/.system'];
 
-/** 副本里的凭据载体：`prepareCodexHome` 写进去的那几份，按名认 */
-const isCredentialCarrier = (name: string): boolean =>
+/**
+ * 副本里的凭据载体：`prepareCodexHome` 写进去的那几份，按名认。
+ * 导出给单测作单一口径（EV-200 代码双审 CODEX-01）：`codexCredentialCopies` 的清单与写入面都按它对账。
+ */
+export const isCredentialCarrier = (name: string): boolean =>
   name === 'config.toml' || name.endsWith('.config.toml') || name === 'auth.json';
+
+/**
+ * 某次准备会写下的凭据载体副本位置（EV-200）：基底 `config.toml`、本次 profile 的分层文件、`auth.json`，都在 `codexHome` 下。
+ *
+ * 认证探活的临时目录删不掉时，按这份清单现场查「凭据副本还在不在」。与 `prepareCodexHome` 的写入面一致由单测钉住
+ * （`codex-auth-probe` 的 C7），与上面 `isCredentialCarrier` 同一口径：`rewriteHomePaths` 按幸存键拷进来的文件
+ * （如模型目录）不是凭据载体，不在清单内。
+ */
+export function codexCredentialCopies(codexHome: string, profile: string | null): string[] {
+  return ['config.toml', ...(profile ? [`${profile}.config.toml`] : []), 'auth.json'].map((n) => path.join(codexHome, n));
+}
+
+/**
+ * 给副本准备的一步打上步骤名（EV-200 决策三）：抛出时在**原错误对象**上挂 `codexPrepStep`（已有则不覆盖），
+ * 不改消息、不换类型——`run()` 的兜底文案逐字不变，认证探活据此写明是哪一步失败
+ * （node 的错误消息有时不带路径，如对目录 `readFile` 的 `EISDIR`）。抛的是原始值时原样重抛、不挂（计划双审 AGY-02）。
+ */
+async function prepStep<T>(step: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e !== null && typeof e === 'object' && !('codexPrepStep' in e)) {
+      (e as { codexPrepStep?: string }).codexPrepStep = step;
+    }
+    throw e;
+  }
+}
+
+/** 取 `prepStep` 挂上的步骤名；不是对象或不是字符串就当没有 */
+export function codexPrepStepOf(e: unknown): string | null {
+  if (e === null || typeof e !== 'object') return null;
+  const step = (e as { codexPrepStep?: unknown }).codexPrepStep;
+  return typeof step === 'string' ? step : null;
+}
 
 /*
  * codex 跑起来会在副本根上留下自己的 sqlite 状态库（`goals_*` / `logs_*` / `memories_*` /
@@ -278,8 +315,10 @@ export async function prepareCodexHome(
   const src = opts.sourceHome ?? codexHomeOf();
   const codexHome = codexHomeUnder(runDir);
   const fakeHome = path.join(codexHome, 'fakehome');
-  await ensureDir(codexHome);
-  await ensureDir(fakeHome);
+  await prepStep('建副本目录', async () => {
+    await ensureDir(codexHome);
+    await ensureDir(fakeHome);
+  });
 
   const prep: CodexHomePrep = {
     codexHome, fakeHome, strippedKeys: [], rewrittenPaths: [], copiedFiles: [], warnings: [],
@@ -295,18 +334,20 @@ export async function prepareCodexHome(
       }
       continue;
     }
-    const { kept, stripped } = trimCodexToml(await fs.readFile(from, 'utf8'));
-    const to = path.join(codexHome, name);
-    await fs.writeFile(to, kept, 'utf8');
-    await fs.chmod(to, 0o600);
-    prep.strippedKeys.push(...stripped.map((k) => `${name}:${k}`));
+    await prepStep(`裁剪 ${name}`, async () => {
+      const { kept, stripped } = trimCodexToml(await fs.readFile(from, 'utf8'));
+      const to = path.join(codexHome, name);
+      await fs.writeFile(to, kept, 'utf8');
+      await fs.chmod(to, 0o600);
+      prep.strippedKeys.push(...stripped.map((k) => `${name}:${k}`));
+    });
   }
 
   // ② 重写 + ③ 拷贝（只作用于幸存键）
   for (const name of tomls) {
     const f = path.join(codexHome, name);
     if (!(await exists(f))) continue;
-    const r = await rewriteHomePaths(f, codexHome);
+    const r = await prepStep(`重写 ${name} 里的 ~/ 路径`, () => rewriteHomePaths(f, codexHome));
     prep.rewrittenPaths.push(...r.rewritten);
     prep.copiedFiles.push(...r.copied);
     prep.warnings.push(...r.warnings);
@@ -316,8 +357,10 @@ export async function prepareCodexHome(
   const auth = path.join(src, 'auth.json');
   if (await exists(auth)) {
     const to = path.join(codexHome, 'auth.json');
-    await fs.copyFile(auth, to);
-    await fs.chmod(to, 0o600);
+    await prepStep('拷入 auth.json', async () => {
+      await fs.copyFile(auth, to);
+      await fs.chmod(to, 0o600);
+    });
     prep.copiedFiles.push('auth.json');
   } else {
     prep.warnings.push(`未找到 ${auth}——该侧可能无法通过鉴权`);
@@ -327,7 +370,7 @@ export async function prepareCodexHome(
   const base = path.join(codexHome, 'config.toml');
   if (await exists(base)) {
     const trust = `\n[projects."${opts.projectRoot}"]\ntrust_level = "trusted"\n`;
-    await fs.appendFile(base, trust, 'utf8');
+    await prepStep('写入项目信任记录', () => fs.appendFile(base, trust, 'utf8'));
   }
 
   prep.copiedFiles = [...new Set(prep.copiedFiles)];

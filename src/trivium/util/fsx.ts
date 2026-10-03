@@ -117,3 +117,53 @@ export function matchesAnyGlob(relPath: string, globs: readonly string[]): boole
 export async function makeTempDir(prefix: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
 }
+
+/**
+ * 把文字里的用户家目录绝对路径归一成 `~`（EV-136 代码双审 r1 GLM-01；EV-200 起自 `adapters/zcode.ts` 挪来，codex 探活共用）。
+ *
+ * 探活详情会进 preflight / doctor 输出，而那些输出常被抄进 git 里的 evidence——与 `preflight.ts` 的
+ * `displayHomePath` 同一关切。放在这里而不从 preflight 引：preflight 依赖适配层，反过来会成环。
+ * 家目录取不到或就是 `/` 时原样返回，免得把每个斜杠都换掉。
+ */
+export function tildeHome(text: string, home: string = os.homedir()): string {
+  if (!home || home === path.sep) return text;
+  return text.split(home).join('~');
+}
+
+/** 临时目录删除失败时的现场：错误码，与调用方给的位置里删除失败后仍在（或查不了）的那些 */
+export interface TempDirLeftover {
+  code: string;
+  remaining: string[];
+}
+
+/**
+ * 删 mkdtemp 的返回值：重试三次、失败不抛；删成功返回 null（EV-197 定形，EV-200 起从 zcode 适配器抽来跨载体共用）。
+ *
+ * `force` 只吞 ENOENT，ENOTEMPTY / EBUSY / EACCES 会从 finally 抛出、顶替原结果（EV-194 代码双审 r1 CODEX-01、EV-197）。
+ * 只删传进来的那个路径（2026-09-20 事故后的规矩）：不拼路径、不走别的变量。
+ *
+ * `copies` 是调用方写过凭据副本的位置，只用于删除失败后的现场 stat、不用于删除：递归删除是删到一半才失败，
+ * 按写入时的情形推断两个方向都会说错（EV-197 代码双审 GLM-01 ≡ CODEX-03）。`ENOENT` 才算不在，
+ * 查不了（权限等）按在说——宁可多提醒，不在可能含凭据的目录上断言「没有」。为空时不查。
+ * 措辞由各载体自持（`zcodeTempDirResidueText`、`codexTempDirResidueText`）。
+ *
+ * 与 `probes/zcode.ts` 同形臂的注入选项 `removeTempDir` 不是一回事（EV-200 计划双审 GLM-04）：那个是 zcode 薄包装
+ * `removeZcodeTempDir` 的替身、返回整句提示；本函数返回结构化现场。
+ */
+export async function tryRemoveTempDir(dir: string, copies: readonly string[]): Promise<TempDirLeftover | null> {
+  try {
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 3 });
+    return null;
+  } catch (e) {
+    const remaining: string[] = [];
+    for (const p of copies) {
+      const there = await fs.stat(p).then(
+        () => true,
+        (err: unknown) => (err as NodeJS.ErrnoException).code !== 'ENOENT',
+      );
+      if (there) remaining.push(p);
+    }
+    // 回退到消息时同样归一家目录（代码双审 CODEX-03）：fs 的系统错误恒带 code，这一支近于不可达，但它从此三处共用
+    return { code: (e as NodeJS.ErrnoException).code ?? tildeHome((e as Error).message), remaining };
+  }
+}

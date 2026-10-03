@@ -1,0 +1,299 @@
+{
+  "targets_sha256": {
+    "src/trivium/adapters/codex.ts": "c0fca766b34f719971b2171d3c3e6d75d78b766ae7daeac282222ee26b2c58d0",
+    "src/trivium/adapters/codex-home.ts": "512265ad61b7c156c5b695dc8a017e931b28942c86718757cd58592afb552a1e",
+    "src/trivium/util/fsx.ts": "2c07df9cbe33c8c07e307adb0a1c8a9a2f3e400993a91755f2ef4304d5adedf2",
+    "src/trivium/adapters/zcode.ts": "897fdfb8a50691f988ba4ecaa27a60e55899fac9b39ebc20eb33b9e663d5ebcd"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "codex 探活外层 finally 退回裸删",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C1 探活通过 + 凭据副本删不掉：不抛、结论仍通过、详情末尾说「含真实凭据」",
+        "C2 探活失败 + 凭据副本删不掉：不抛、结论仍失败、详情末尾同样说「含真实凭据」",
+        "C3 目录删不掉而凭据副本已都不在：说「没有凭据副本」，不说「含真实凭据」",
+        "C3b 三份凭据副本只留任何一份：都说「含真实凭据」——现场查的是三个位置",
+        "C4 凭据目录查不了：按在说「含真实凭据」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "不接残留提示",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C1 探活通过 + 凭据副本删不掉：不抛、结论仍通过、详情末尾说「含真实凭据」",
+        "C2 探活失败 + 凭据副本删不掉：不抛、结论仍失败、详情末尾同样说「含真实凭据」",
+        "C3 目录删不掉而凭据副本已都不在：说「没有凭据副本」，不说「含真实凭据」",
+        "C3b 三份凭据副本只留任何一份：都说「含真实凭据」——现场查的是三个位置",
+        "C4 凭据目录查不了：按在说「含真实凭据」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "残留时把 ok 改为 false",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C1 探活通过 + 凭据副本删不掉：不抛、结论仍通过、详情末尾说「含真实凭据」",
+        "C3 目录删不掉而凭据副本已都不在：说「没有凭据副本」，不说「含真实凭据」",
+        "C3b 三份凭据副本只留任何一份：都说「含真实凭据」——现场查的是三个位置",
+        "C4 凭据目录查不了：按在说「含真实凭据」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "codexCredentialCopies 去掉 auth.json",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C3b 三份凭据副本只留任何一份：都说「含真实凭据」——现场查的是三个位置",
+        "C7 codexCredentialCopies 与 prepareCodexHome 的写入面一致"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "codexCredentialCopies 去掉 profile 分层文件",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C3b 三份凭据副本只留任何一份：都说「含真实凭据」——现场查的是三个位置",
+        "C7 codexCredentialCopies 与 prepareCodexHome 的写入面一致"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "codex 措辞档位反向",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C1 探活通过 + 凭据副本删不掉：不抛、结论仍通过、详情末尾说「含真实凭据」",
+        "C2 探活失败 + 凭据副本删不掉：不抛、结论仍失败、详情末尾同样说「含真实凭据」",
+        "C3 目录删不掉而凭据副本已都不在：说「没有凭据副本」，不说「含真实凭据」",
+        "C3b 三份凭据副本只留任何一份：都说「含真实凭据」——现场查的是三个位置",
+        "C4 凭据目录查不了：按在说「含真实凭据」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "tryRemoveTempDir 把 ENOENT 也判在",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C3 目录删不掉而凭据副本已都不在：说「没有凭据副本」，不说「含真实凭据」",
+        "F1 tryRemoveTempDir：删成功返回 null；失败时 ENOENT 不算在、在的算在；不给位置就不查"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": [
+        {
+          "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+          "fail": 2,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "D10b 退路支删不掉：没有副本就不说「含真实凭据」（EV-197 计划双审 GLM-02）",
+            "D10c 副本支、目录删不掉而副本已不在：按现场说「没有副本」，不按写入时的情形推断（EV-197 代码双审 GLM-01）"
+          ],
+          "firstLines": [],
+          "elapsed_s": 13
+        }
+      ]
+    },
+    {
+      "id": "M8",
+      "desc": "tryRemoveTempDir 查不了判不在",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C4 凭据目录查不了：按在说「含真实凭据」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": [
+        {
+          "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "D10d .zcode 整个不可读：查不了副本在不在就按有副本说，宁可多提醒（EV-197 代码双审 GLM-01）"
+          ],
+          "firstLines": [],
+          "elapsed_s": 13
+        }
+      ]
+    },
+    {
+      "id": "M9",
+      "desc": "tryRemoveTempDir 不查（remaining 恒空）",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C1 探活通过 + 凭据副本删不掉：不抛、结论仍通过、详情末尾说「含真实凭据」",
+        "C2 探活失败 + 凭据副本删不掉：不抛、结论仍失败、详情末尾同样说「含真实凭据」",
+        "C3b 三份凭据副本只留任何一份：都说「含真实凭据」——现场查的是三个位置",
+        "C4 凭据目录查不了：按在说「含真实凭据」",
+        "F1 tryRemoveTempDir：删成功返回 null；失败时 ENOENT 不算在、在的算在；不给位置就不查"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M10",
+      "desc": "attempt 不兜副本准备",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C5a 副本准备失败（源 config.toml 是个目录）：落成可读的失败、写明哪一步，不拉起 CLI、不留残留",
+        "C5b 副本准备失败（源 auth.json 读不了）：写明哪一步，家目录归一成 ~"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M11",
+      "desc": "步骤名不挂",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C5a 副本准备失败（源 config.toml 是个目录）：落成可读的失败、写明哪一步，不拉起 CLI、不留残留",
+        "C5b 副本准备失败（源 auth.json 读不了）：写明哪一步，家目录归一成 ~"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M12",
+      "desc": "副本准备失败详情不归一家目录",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C5b 副本准备失败（源 auth.json 读不了）：写明哪一步，家目录归一成 ~"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M13",
+      "desc": "zcode 薄包装忽略现场（恒取调用方档位）",
+      "suite": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D10b 退路支删不掉：没有副本就不说「含真实凭据」（EV-197 计划双审 GLM-02）",
+        "D10c 副本支、目录删不掉而副本已不在：按现场说「没有副本」，不按写入时的情形推断（EV-197 代码双审 GLM-01）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 13,
+      "also": [
+        {
+          "suite": "dist/test/test/unit/zcode-full-copy-arm.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "R6 现场查优先于调用方档位：残余支、目录删不掉而副本已不在 ⇒ 说「没有副本」"
+          ],
+          "firstLines": [],
+          "elapsed_s": 2
+        }
+      ]
+    },
+    {
+      "id": "M14",
+      "desc": "删除成功时也接一个空提示",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C6 删除成功：两句详情与改动前逐字节相同，不接任何提示"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M15",
+      "desc": "残留提示前缀不归一家目录",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C8 残留提示两档字面；两档都把家目录归一成 ~"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M16",
+      "desc": "凭据副本位置少拼一层 codexhome",
+      "suite": "dist/test/test/unit/codex-auth-probe.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C1 探活通过 + 凭据副本删不掉：不抛、结论仍通过、详情末尾说「含真实凭据」",
+        "C2 探活失败 + 凭据副本删不掉：不抛、结论仍失败、详情末尾同样说「含真实凭据」",
+        "C3b 三份凭据副本只留任何一份：都说「含真实凭据」——现场查的是三个位置",
+        "C4 凭据目录查不了：按在说「含真实凭据」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    }
+  ]
+}

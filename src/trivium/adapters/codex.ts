@@ -16,7 +16,7 @@ import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import type { CriticRequest, CriticResult, CodexCriticConfig } from '../types.js';
 import { run } from '../util/exec.js';
-import { ensureDir, exists, sha256File } from '../util/fsx.js';
+import { ensureDir, exists, sha256File, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
 import { agentConfigOf } from '../config.js';
 import {
   parseCodexEvents,
@@ -27,7 +27,8 @@ import {
   type CodexTrace,
 } from './codex-trace.js';
 import {
-  codexHomeOf, codexHomeUnder, prepareCodexHome, scrubCodexHome, type CodexHomePrep,
+  codexCredentialCopies, codexHomeOf, codexHomeUnder, codexPrepStepOf, prepareCodexHome, scrubCodexHome,
+  type CodexHomePrep,
 } from './codex-home.js';
 import {
   classifyWriteCommands,
@@ -127,6 +128,32 @@ export async function invokeCodex(opts: CodexInvokeOptions): Promise<CodexInvoke
     commandLine: r.commandLine,
     durationMs: r.durationMs,
   };
+}
+
+/**
+ * 认证探活临时目录删不掉时的人读提示（EV-200）：与 zcode 的 `zcodeTempDirResidueText` 同句式，主语固定「探活」。
+ *
+ * 只有两档、没有哨兵档：副本里的三份载体（裁剪后的 `config.toml`、profile 分层文件、原样拷入的 `auth.json`）
+ * 都可能含真实凭据——`trimCodexToml` 保留整段 `[model_providers.*]`，里面可以有 `experimental_bearer_token`。
+ * `hasCopies` 是删除失败后现场查的结论（查不了按有说），不是按写入时的情形推断。
+ * 两档共用一个前缀，家目录统一归一成 `~`（计划双审 AGY-01）。
+ *
+ * 「没有」档只说没有凭据副本、不断言剩下的是什么（代码双审 CODEX-02 ≡ GLM-01）：副本准备失败时 CLI 从未拉起，
+ * `rewriteHomePaths` 拷进来的用户文件（如模型目录）也可能比三份载体后删——说成「CLI 产物」都不属实。
+ */
+export function codexTempDirResidueText(runDir: string, code: string, hasCopies: boolean): string {
+  return (
+    `⚠️ 探活临时目录删除失败（${code}）：${tildeHome(runDir)} 仍在，` +
+    (hasCopies
+      ? '其中的 codexhome 凭据副本（auth.json 与 toml）含真实凭据，请手工删除'
+      : '其中没有凭据副本，剩下的是本次探活的临时文件，请手工删除')
+  );
+}
+
+/** 删认证探活的临时目录（只删 mkdtemp 的返回值）：失败不抛，返回上面那句提示；删成功返回 null */
+async function removeCodexAuthTempDir(tmp: string, profile: string | null): Promise<string | null> {
+  const left = await tryRemoveTempDir(tmp, codexCredentialCopies(codexHomeUnder(tmp), profile));
+  return left === null ? null : codexTempDirResidueText(tmp, left.code, left.remaining.length > 0);
 }
 
 /**
@@ -333,35 +360,66 @@ export const codexAdapter: CriticAdapter = {
         const bin = codexConfig(ctx).bin ?? probe?.entrypoint ?? null;
         if (!bin) return { ok: false, detail: 'codex 入口未记录' };
 
+        /*
+         * 临时根下的 `codexhome/` 里是含真实凭据的副本，用完即删；删除只认 mkdtemp 的返回值（2026-09-20 事故后的规矩）。
+         *
+         * 删除收尾（EV-200，照 zcode 探活 EV-197 的形态）：结果在 `attempt` 里拼完，删除放在它外面的 finally、失败不抛。
+         * 此前 finally 里裸删、结果在 try 里直接 return——ENOTEMPTY / EBUSY / EACCES 会顶替探活结果，穿过无兜底的
+         * `probeAuth` 把预检崩成内部错误，含真实凭据的副本留在系统临时目录无人知晓。删不掉时把残留提示接在详情末尾，
+         * 结论（ok）不因此改变；提示用哪一档由删除失败后现场查三份凭据副本决定。
+         * 已知残余：attempt 抛错且删不掉时提示随异常丢失（与 zcode 两侧同形；副本准备已兜住，抛出面近于空）；
+         * 正结论入缓存后，TTL 期内的预检走缓存命中，提示只在当次可见。
+         */
         const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-codex-auth-'));
+        let r: { ok: boolean; detail: string };
+        let residue: string | null = null;
         try {
-          const home = await prepareCodexHome(tmp, { profile, projectRoot });
-          const out = await invokeCodex({
-            bin,
-            cwd: projectRoot,
-            prompt: '只回复 OK 两个字母，不要调用任何工具。',
-            profile,
-            model: null, // 用 profile 的默认模型，探的是凭据不是模型路由
-            effort: null,
-            readonlyArgs: readonlyArgsFromProbe(probe?.readonly_flags ?? []),
-            codexHome: home.codexHome,
-            fakeHome: home.fakeHome,
-            timeoutMs: 120_000,
-          });
-          const trace = parseCodexEvents(out.stdout);
-          const ok = traceCompleted(trace, out.timedOut);
-          return {
-            ok,
-            detail: ok
-              ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
-              : `探活失败：${trace.errors.join('；') || out.stderr.slice(0, 200) || '(无错误消息)'}。\n` +
-                `  请确认 profile「${profile ?? '(未配置)'}」对应的 provider 凭据可用。`,
-          };
+          r = await attempt(bin, tmp, probe?.readonly_flags ?? []);
         } finally {
-          await fs.rm(tmp, { recursive: true, force: true });
+          residue = await removeCodexAuthTempDir(tmp, profile);
         }
+        return residue === null ? r : { ok: r.ok, detail: `${r.detail}；${residue}` };
       },
     };
+
+    /** 一次探活的全部工作（EV-200 从 probe() 拆出）：结果在这里拼完，删除留给调用方的 finally */
+    async function attempt(bin: string, tmp: string, readonlyFlags: readonly string[]): Promise<{ ok: boolean; detail: string }> {
+      let home: CodexHomePrep;
+      /*
+       * 副本准备会读、写、收紧权限，都可能抛（EV-200 决策三）：落成一条可读的检查项失败，不能抛出去——`probeAuth` 没有兜底。
+       * 前缀与 `run()` 的兜底同一句；步骤名由 `prepareCodexHome` 挂在原错误对象上（消息不改，`run()` 的输出因此不变）。
+       */
+      try {
+        home = await prepareCodexHome(tmp, { profile, projectRoot });
+      } catch (e) {
+        const step = codexPrepStepOf(e);
+        return {
+          ok: false,
+          detail: `准备 codex 隔离副本失败${step ? `（${step}）` : ''}：${tildeHome(e instanceof Error ? e.message : String(e))}`,
+        };
+      }
+      const out = await invokeCodex({
+        bin,
+        cwd: projectRoot,
+        prompt: '只回复 OK 两个字母，不要调用任何工具。',
+        profile,
+        model: null, // 用 profile 的默认模型，探的是凭据不是模型路由
+        effort: null,
+        readonlyArgs: readonlyArgsFromProbe(readonlyFlags),
+        codexHome: home.codexHome,
+        fakeHome: home.fakeHome,
+        timeoutMs: 120_000,
+      });
+      const trace = parseCodexEvents(out.stdout);
+      const ok = traceCompleted(trace, out.timedOut);
+      return {
+        ok,
+        detail: ok
+          ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
+          : `探活失败：${trace.errors.join('；') || out.stderr.slice(0, 200) || '(无错误消息)'}。\n` +
+            `  请确认 profile「${profile ?? '(未配置)'}」对应的 provider 凭据可用。`,
+      };
+    }
   },
 
   availability(ctx: AdapterContext) {

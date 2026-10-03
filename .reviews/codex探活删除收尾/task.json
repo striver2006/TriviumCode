@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "codex探活删除收尾",
+  "goal": "主题「codex探活删除收尾」：EV-200，上一题 EV-198 代码双审 r1 CODEX-01 核出、按决策四登记的缺口；与 EV-197（zcode 认证探活）同形，但这一处残留的是真实凭据。 EV-200：codex 认证探活 authProbe.probe()（src/trivium/adapters/codex.ts）用 mkdtemp 建 trivium-codex-auth- 临…",
+  "created_at": "2026-10-03T14:19:39.851Z",
+  "updated_at": "2026-10-03T15:42:02.904Z",
+  "runs": [
+    {
+      "run_id": "20261003T142424Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-03T14:24:26.555Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261003T150101Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-03T15:01:04.131Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261003T152558Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-03T15:31:07.675Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-03T14:19:39.851Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-03T14:35:31.523Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261003T142424Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-03T15:42:02.743Z"
+    },
+    {
+      "run_id": "20261003T150101Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-03T15:42:02.904Z"
+    }
+  ]
+}

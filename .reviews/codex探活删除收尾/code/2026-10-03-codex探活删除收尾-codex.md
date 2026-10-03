@@ -1,0 +1,140 @@
+---
+schema: trivium.review.v1
+topic: codex探活删除收尾
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.160.0
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+model_route: config_copy
+run_id: 20261003T150101Z
+rerun_index: 1
+snapshot_hash: sha256:d48b1d2fe847d05f09ab9a5c35acadb82a3b009189f3073d91799794ae73e119
+blind: true
+started_at: 2026-10-03T15:01:04.306Z
+finished_at: 2026-10-03T15:10:15.030Z
+duration_s: 551
+tool_calls:
+  run_command: 24
+  project_reads: 19
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 1
+  nit: 2
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a10248-71c3-7110-873a-0ef6927f7fd8
+---
+
+# 代码审查：codex探活删除收尾
+
+> Critic-C · OpenAI Codex ｜ 模型 `qwen3.8-flash`
+> ｜ 运行 `20261003T150101Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+从「跨平台与环境耦合 / 资源与生命周期 / 运行环境与依赖兼容」三个镜头审了本补丁。通读了完整 diff 与被改文件的真实工作树上下文：codex 探活 attempt/finally 拆分正确——删除在 finally 且自身无抛出面（tryRemoveTempDir 内部 catch 全部、codexHomeUnder 与措辞函数是纯函数），不会顶替 attempt 的结果；zcode 薄包装与抽出前语义逐字等价（ENOENT 才算不在、查不了按在说、code 取法不变）；「attempt 抛出面近于空」的说法可证实——util/exec.ts 的 run() 只 resolve（child 'error' 事件并进 stderr），parseCodexEvents 对 JSON.parse 逐行兜底。生命周期面：删除只认 mkdtemp 返回值、copies 只 stat 不删，符合 2026-09-20 规矩；副本准备失败落 ok:false 不进缓存、每次重试，正确。兼容性：fs.rm 的 maxRetries 在 Node≥14.14 可用（项目要求 ≥18），假入口 shebang 用 process.execPath、HOME/TMPDIR/CODEX_HOME 钉在 probeIn 内并在 finally 复原，macOS 下成立。归档读数自洽：check-1 的红（contract/fixture-credentials 拦夹具凭据字面量）如实登记并给出修法，check-2/check-3 均 2644/2642/0/2，变异 16/16 与 doctor 自检 14/14 对上。另核出三处小问题：凭据载体口径的字面多处复制（C7 的钉住因此偏弱）、「CLI 产物」一档在角落场景话比事实强、code 回退值未归一家目录。未独立复跑用例（只读沙箱写不了系统临时目录，复跑得到的是环境性 EPERM）。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 3 条：次要 1 ｜ 吹毛求疵 2）
+
+### CODEX-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/codex-home.ts（isCredentialCarrier 与 codexCredentialCopies）、test/unit/codex-auth-probe.test.ts（C7 与假入口 ENTRY）` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：「哪些文件名算凭据载体」这一条口径现在有四处字面：生产的 isCredentialCarrier（scrubCodexHome 第 172 行在用）、codexCredentialCopies 的文件名枚举、C7 里手写的 isCarrier、假入口 ENTRY 脚本里又一份 isCarrier。C7 自称「与 prepareCodexHome 的写入面一致由单测钉住」，但它拿测试自己手抄的谓词过滤写入面、再与枚举对账——若将来给载体新增一个文件名（例如厂商新增凭据文件），改了 isCredentialCarrier 和写入面而漏改 codexCredentialCopies，C7 能否报警取决于测试里那份手抄是否恰好也被同步改动，钉住的强度靠「两处手抄同步」维持，正是本项目纪律反复告诫的「靠记性的对账」。
+
+**依据**：读 src/trivium/adapters/codex-home.ts 第 93、100-105、172 行（grep isCredentialCarrier 全仓仅此文件两处使用）；读 test/unit/codex-auth-probe.test.ts 的 ENTRY 模板（const isCarrier = (n) => n === 'config.toml' || n.endsWith('.config.toml') || n === 'auth.json'）与 C7 的同款手写副本；推理：C7 断言的是「写入面∩手抄谓词 == 枚举」，未引用生产谓词。
+
+**建议**：方向：导出 isCredentialCarrier，让 codexCredentialCopies 与 C7 都从它派生（枚举仍可由「写入面」拼，但过滤口径单源）；假入口那份可经环境变量把载体名列表传入，避免第三份字面。不必本题强求，登记亦可。
+
+### CODEX-02 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/codex.ts（codexTempDirResidueText 的「没有凭据副本」档）` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：「其中没有凭据副本，是本次探活的 CLI 产物」这句在可达的角落场景下话比事实强：rewriteHomePaths 会把幸存键指向的用户家目录文件（如 model_catalog_json 的值）按原名拷进 codexhome/ 并 chmod 0600；递归删除的先后顺序不定（本题测试注释自己写明），完全可能三份载体先被删掉、拷贝的用户文件后删而 rm 失败——此时残留里既无「凭据副本」也非「CLI 产物」，而是用户的文件。查不了时宁可多提醒的偏置只给了三份载体，没覆盖这一族。项目先例 GLM-06「话不能比事实强」正是这个关切。
+
+**依据**：读 src/trivium/adapters/codex-home.ts 第 281-293 行（copied 文件落 destDir=codexHome、chmod 0600）与 KEEP_TOP_KEYS（model_catalog_json 可为 ~/ 标量，HOME_VALUE_RE 对其生效）；读 codexTempDirResidueText 文案与 codexCredentialCopies 仅列三份载体；测试文件头注释「递归删除的先后顺序不定，EV-197 踩过」。实际残留场景未复现（沙箱只读），为推理。
+
+**建议**：两档之一的措辞改成不宣称内容全貌的形态（如「没有凭据载体」而非「没有凭据副本，是本次探活的 CLI 产物」），或把 prep.copiedFiles 一并纳入现场查的位置清单（attempt 成功后把它传出即可，不破坏「只删 mkdtemp 返回值」）。
+
+### CODEX-03 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/util/fsx.ts（tryRemoveTempDir 的 code 取值）→ 经 zcodeTempDirResidueText / codexTempDirResidueText 进探活详情` |
+| 类别 | security ｜ 层次 code |
+| 置信度 | low |
+
+**问题**：残留提示里 runDir 过了 tildeHome，但 code 的回退项 (e as Error).message 没过——若错误无 .code 而消息里带家目录绝对路径，绝对路径会原样进 preflight/doctor 输出，而那些输出常被抄进 git 里的 evidence（tildeHome 挪进 fsx 时文档块里刚重申这条关切）。fs.rm 的系统错误恒带 code，回退支近于不可达，故仅 nit；但这是 zcode 旧形态整体搬进跨载体共用函数、从此三家共享的口径。
+
+**依据**：读 src/trivium/util/fsx.ts tryRemoveTempDir 的 code: (e as NodeJS.ErrnoException).code ?? (e as Error).message；读 src/trivium/adapters/zcode.ts 第 924 行与 codex.ts 第 143 行文案模板（code 未经 tildeHome）；推理：Node fs 错误带 code，实际触发概率极低。
+
+**建议**：在共用函数处对回退值也过一次 tildeHome，或文档块里写明该回退不做归一及其理由；也可只登记，不拦本题。
+
+## 认为正确的部分
+
+- attempt/finally 拆分形态正确：结果在 attempt 里拼完、删除在外层 finally；removeCodexAuthTempDir 自身无抛出面（tryRemoveTempDir 内部 catch 全部、措辞函数是纯函数），finally 不会再顶替结果——与 EV-197 zcode 侧严格同形。
+- zcode 薄包装的语义等价可核：旧「ENOENT→null、其它错误→按有」与新「remaining 非空→copy.kind」逐分支一致；copy===null 时传空数组、remaining 恒空、出「没有副本」档，与旧码逐字同。
+- 删除失败后现场 stat 而非按写入时推断的方向正确（删到一半才失败、写盘后 chmod 可抛两个方向都会说错），C4「查不了按在说」的偏置方向也正确。
+- 副本准备失败落成可读 ok:false 且不进缓存（probeAuth 只在 ok:true 时写缓存），失败每次重试、不会被一次假失败挂住；prepStep 在原错误对象上挂属性、不改消息与类型，run() 文案不变的说法与实现相符。
+- 「attempt 抛出面近于空」有据：invokeCodex→run() 只 resolve（spawn error 并进 stderr）、parseCodexEvents 逐行 try/catch、mkdtemp 前的 bin 判空在临时目录创建之前。
+- 读数诚实：check-1 第一次全量红（fixture-credentials 拦下完整凭据字面量）如实入报告并给出键名分段拼的修法；变异轮留下的 10 个私有根残留在报告里点名待用户定，probeIn 的 finally 也补了重读权限恢复。
+- EV-202（指纹读盘无兜底）作为孪生路径另登、不在本题混改，符合逐题收口的口径。
+
+## 未覆盖范围（本侧盲区）
+
+- 未独立复跑 codex-auth-probe 11 格与全量：只读沙箱禁写系统临时目录，node --test 复跑得到环境性 EPERM（mkdtemp 失败），只能对账已归档的 check-2/check-3（2644/2642/0/2）与报告口径。
+- 未核对计划双审各 12 条意见的逐条裁决（计划审查件在禁读清单）。
+- 未逐条审计 16 条变异的装置内部与源码逐字节恢复，仅抽验 mutation-spec 的 id 集合（M1～M16）、装置输出尾部与报告「M15 改案、M16 编码时补」的出入一致。
+- Linux/Windows 行为不在口径内未评估（0o500/0o000 权限摆法与 tildeHome 依赖 POSIX/macOS 前提，与项目 macOS-only 定位一致）。
+- 未审 zcode 探活之外其它调用 removeZcodeTempDir 的探针臂在薄包装下的行为（输出逐字不变的说法由既有 D10/A 系列用例与全量绿背书，未逐臂复推）。
+
+## 实际查阅的项目文件
+
+- `.reviews/codex探活删除收尾/code/_meta/changes-20261003T150101Z.diff（全文分段读完：源码、测试、报告、README/BRIEF 措辞段）`
+- `src/trivium/adapters/codex.ts（authProbe、attempt、invokeCodex、buildCodexArgs、指纹段实读）`
+- `src/trivium/adapters/codex-home.ts（prepareCodexHome、prepStep、rewriteHomePaths、KEEP_TOP_KEYS、codexHomeOf/Under、isCredentialCarrier 使用点）`
+- `src/trivium/adapters/zcode.ts（tildeHome 再导出、removeZcodeTempDir 现状与 os 依赖）`
+- `src/trivium/util/fsx.ts（tildeHome、tryRemoveTempDir、imports）`
+- `src/trivium/util/exec.ts（run() 的 resolve/reject 面、spawn error、close/exit 兜底）`
+- `src/trivium/preflight.ts（probeAuth 无兜底、缓存仅正结论、fingerprint 调用点）`
+- `src/trivium/adapters/codex-trace.ts（parseCodexEvents 的逐行兜底）`
+- `doc/05_testing/REPORT_2026-10-03_codex_probe_cleanup.md`
+- `doc/05_testing/evidence/codex-probe-cleanup-20261003/check-1.txt、check-2.txt、check-3.txt、mutation-output.txt、mutation-spec.json、doctor-selftest.txt`
+- `test/unit/codex-auth-probe.test.ts（经 diff 全文）`
+- `git log/status（HEAD 9ce191f 与工作树改动清单对账）`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":24,"project_reads":19}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

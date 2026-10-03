@@ -28,7 +28,7 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import type { CriticRequest, CriticResult, ModelUnenforcedCause } from '../types.js';
 import { run } from '../util/exec.js';
-import { ensureDir, exists, sha256File } from '../util/fsx.js';
+import { ensureDir, exists, sha256File, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
 import {
   parseZcodeEnvelope,
   parseZcodeRollout,
@@ -887,16 +887,10 @@ export function zcodeOverrideSourcePath(): string {
 }
 
 /**
- * 把文字里的用户家目录绝对路径归一成 `~`（EV-136 代码双审 r1 GLM-01）。
- *
- * 探活详情会进 preflight / doctor 输出，而那些输出常被抄进 git 里的 evidence——与 `preflight.ts` 的
- * `displayHomePath` 同一关切。这里自持一份而不从 preflight 引：preflight 依赖适配层，反过来会成环。
- * 家目录取不到或就是 `/` 时原样返回，免得把每个斜杠都换掉。
+ * 家目录归一（EV-136 代码双审 r1 GLM-01）。EV-200 起定义挪到 `util/fsx.ts` 与 codex 探活共用，
+ * 这里原名再导出，`probes/zcode.ts` 与测试的引用点不动。
  */
-export function tildeHome(text: string, home: string = os.homedir()): string {
-  if (!home || home === path.sep) return text;
-  return text.split(home).join('~');
-}
+export { tildeHome };
 
 /**
  * 某个 HOME 下 `cli/config.json` 副本的位置（EV-198 计划双审 GLM-04）：副本的写入（`prepareZcodeHome`、白名单探针臂）
@@ -939,13 +933,9 @@ export function zcodeTempDirResidueText(who: '探针' | '探活', runDir: string
 /**
  * 删 mkdtemp 的返回值：重试三次、失败不抛，返回上面那句提示（删成功返回 null）。
  *
- * `force` 只吞 ENOENT，ENOTEMPTY / EBUSY / EACCES 会从 finally 抛出、顶替原结果（EV-194 代码双审 r1 CODEX-01、EV-197）。
- * 只删传进来的那个路径（2026-09-20 事故后的规矩）：不拼路径、不走别的变量。
- *
- * 「还有没有副本」在删除失败之后现场查，不由调用方按写入时的情形推断（EV-197 代码双审 GLM-01 ≡ CODEX-03）：
- * `prepareZcodeHome` 写盘之后还有 `chmod` 可抛、`writeFile` 也可能半写（副本在而调用方以为没有）；
- * 递归删除又是删到一半才失败（副本可能已删掉而调用方以为还在）。`ENOENT` 才算没有，查不了（权限等）按有副本说——
- * 宁可多提醒，不在可能含凭据的目录上断言「没有」。
+ * 删除与「删除失败后现场查」本身在 `util/fsx.ts` 的 `tryRemoveTempDir`（EV-200 起与 codex 认证探活共用），
+ * 这里只把现场翻成 zcode 的措辞，输出与抽出前逐字相同。现场查的理由（递归删除删到一半才失败、
+ * 写盘后 `chmod` 可抛，按写入时的情形推断两个方向都会说错；查不了按有副本说）见那边的文档块。
  *
  * **查哪里、有的话说哪一档由调用方给**（EV-198）：此前位置写死成 `prepareZcodeHome` 的布局，白名单探针臂的副本
  * 不在那儿，套用会把有说成没有。`copy.path` 只用于 stat、不用于删除；`copy.kind` 只决定「有副本时说哪一档」，
@@ -956,19 +946,9 @@ export async function removeZcodeTempDir(
   who: '探针' | '探活',
   copy: { path: string; kind: ZcodeTempDirCopyKind } | null,
 ): Promise<string | null> {
-  try {
-    await fs.rm(runDir, { recursive: true, force: true, maxRetries: 3 });
-    return null;
-  } catch (e) {
-    const found =
-      copy === null
-        ? null
-        : await fs.stat(copy.path).then(
-            () => copy.kind,
-            (err: unknown) => ((err as NodeJS.ErrnoException).code === 'ENOENT' ? null : copy.kind),
-          );
-    return zcodeTempDirResidueText(who, runDir, (e as NodeJS.ErrnoException).code ?? (e as Error).message, found);
-  }
+  const left = await tryRemoveTempDir(runDir, copy ? [copy.path] : []);
+  if (left === null) return null;
+  return zcodeTempDirResidueText(who, runDir, left.code, copy && left.remaining.length > 0 ? copy.kind : null);
 }
 
 /**

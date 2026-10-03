@@ -1,0 +1,151 @@
+{
+  "targets": [
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/adapters/zcode.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/codex-auth-probe.test.js",
+    "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "codex 探活外层 finally 退回裸删",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "          residue = await removeCodexAuthTempDir(tmp, profile);\n",
+      "replace": "          await fs.rm(tmp, { recursive: true, force: true });\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "不接残留提示",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "        return residue === null ? r : { ok: r.ok, detail: `${r.detail}；${residue}` };\n",
+      "replace": "        return r;\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "残留时把 ok 改为 false",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "        return residue === null ? r : { ok: r.ok, detail: `${r.detail}；${residue}` };\n",
+      "replace": "        return residue === null ? r : { ok: false, detail: `${r.detail}；${residue}` };\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "codexCredentialCopies 去掉 auth.json",
+      "file": "src/trivium/adapters/codex-home.ts",
+      "find": "  return ['config.toml', ...(profile ? [`${profile}.config.toml`] : []), 'auth.json'].map((n) => path.join(codexHome, n));\n",
+      "replace": "  return ['config.toml', ...(profile ? [`${profile}.config.toml`] : [])].map((n) => path.join(codexHome, n));\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "codexCredentialCopies 去掉 profile 分层文件",
+      "file": "src/trivium/adapters/codex-home.ts",
+      "find": "  return ['config.toml', ...(profile ? [`${profile}.config.toml`] : []), 'auth.json'].map((n) => path.join(codexHome, n));\n",
+      "replace": "  return ['config.toml', 'auth.json'].map((n) => path.join(codexHome, n));\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "codex 措辞档位反向",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "  return left === null ? null : codexTempDirResidueText(tmp, left.code, left.remaining.length > 0);\n",
+      "replace": "  return left === null ? null : codexTempDirResidueText(tmp, left.code, left.remaining.length === 0);\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "tryRemoveTempDir 把 ENOENT 也判在",
+      "file": "src/trivium/util/fsx.ts",
+      "find": "        (err: unknown) => (err as NodeJS.ErrnoException).code !== 'ENOENT',\n",
+      "replace": "        () => true,\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js",
+      "also": [
+        "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+      ]
+    },
+    {
+      "id": "M8",
+      "desc": "tryRemoveTempDir 查不了判不在",
+      "file": "src/trivium/util/fsx.ts",
+      "find": "        (err: unknown) => (err as NodeJS.ErrnoException).code !== 'ENOENT',\n",
+      "replace": "        () => false,\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js",
+      "also": [
+        "dist/test/test/unit/zcode-doctor-probe-home.test.js"
+      ]
+    },
+    {
+      "id": "M9",
+      "desc": "tryRemoveTempDir 不查（remaining 恒空）",
+      "file": "src/trivium/util/fsx.ts",
+      "find": "      if (there) remaining.push(p);\n",
+      "replace": "      void there;\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "attempt 不兜副本准备",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "        home = await prepareCodexHome(tmp, { profile, projectRoot });\n      } catch (e) {\n",
+      "replace": "        home = await prepareCodexHome(tmp, { profile, projectRoot });\n      } catch (e) {\n        throw e;\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "步骤名不挂",
+      "file": "src/trivium/adapters/codex-home.ts",
+      "find": "      (e as { codexPrepStep?: string }).codexPrepStep = step;\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "副本准备失败详情不归一家目录",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "          detail: `准备 codex 隔离副本失败${step ? `（${step}）` : ''}：${tildeHome(e instanceof Error ? e.message : String(e))}`,\n",
+      "replace": "          detail: `准备 codex 隔离副本失败${step ? `（${step}）` : ''}：${e instanceof Error ? e.message : String(e)}`,\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "zcode 薄包装忽略现场（恒取调用方档位）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  return zcodeTempDirResidueText(who, runDir, left.code, copy && left.remaining.length > 0 ? copy.kind : null);\n",
+      "replace": "  return zcodeTempDirResidueText(who, runDir, left.code, copy ? copy.kind : null);\n",
+      "expect": "dist/test/test/unit/zcode-doctor-probe-home.test.js",
+      "also": [
+        "dist/test/test/unit/zcode-full-copy-arm.test.js"
+      ]
+    },
+    {
+      "id": "M14",
+      "desc": "删除成功时也接一个空提示",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "        return residue === null ? r : { ok: r.ok, detail: `${r.detail}；${residue}` };\n",
+      "replace": "        return { ok: r.ok, detail: `${r.detail}；${residue ?? ''}` };\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "残留提示前缀不归一家目录",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "    `⚠️ 探活临时目录删除失败（${code}）：${tildeHome(runDir)} 仍在，` +\n",
+      "replace": "    `⚠️ 探活临时目录删除失败（${code}）：${runDir} 仍在，` +\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "凭据副本位置少拼一层 codexhome",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "  const left = await tryRemoveTempDir(tmp, codexCredentialCopies(codexHomeUnder(tmp), profile));\n",
+      "replace": "  const left = await tryRemoveTempDir(tmp, codexCredentialCopies(tmp, profile));\n",
+      "expect": "dist/test/test/unit/codex-auth-probe.test.js"
+    }
+  ]
+}
