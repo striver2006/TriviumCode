@@ -1,0 +1,90 @@
+{
+  "critic": "codex",
+  "run_id": "20261003T115927Z",
+  "findings": [
+    {
+      "index": 0,
+      "id": "CODEX-01",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-01",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "correctness",
+        "location": "计划 §3.1 R1～R6 的摆锁方式（「摆『删不掉』的方式沿用 EV-197 的教训」）",
+        "problem": "R 系列依赖 chmod 0o500 使递归删除失败，这在 root 下不成立（root 越过 DAC，rm 照样成功），届时断言「提示以 ⚠️ 开头」会红而非静默通过。仓库既有先例对此有明确处置：EV-197 的 A1/A2 用例带 skip: ROOT 门（process.getuid?.() === 0），driver-claim 测试注释还写明「chmod 造 EACCES 在 root 下不成立」。计划只说「沿用 EV-197 的教训」，未明写这两格新用例要继承 ROOT 跳过门与「摆锁不成功必须让用例红」的守卫，编码时可能漏掉，导致 root 态机器（容器/CI）上整套 R 系列成为红噪声或假绿。",
+        "evidence": "我读了 test/unit/zcode-auth-probe.test.ts:33-47（FAKE_LOCK 摆不出即 process.exit(3)）与 :271-276（const ROOT = process.getuid?.() === 0；A1/A2 带 { skip: ROOT }）；test/unit/driver-claim.test.ts:359 注释「比 chmod 造 EACCES 稳（后者在 root 下不成立）」。本轮我未实际以 root 复跑（无 root 环境，此为读码+推理）。",
+        "suggestion": "在 §3.1 明写：R1～R6 照 A1/A2 形态加 ROOT 跳过门，且假入口侧摆锁不成功必须退非 0 让用例红（FAKE_LOCK 已有此形态，新 FAKE_LOCK 变体要照搬）。"
+      }
+    },
+    {
+      "index": 1,
+      "id": "CODEX-02",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-02",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "test-gap",
+        "location": "计划 §3.2 变异清单第 5 条「旗标探针传非 null 的 copy ⇒ R1 红（档位错）」",
+        "problem": "按 §2.2 自身的机制，copy 非 null 但 stat 得 ENOENT 时同样落「没有副本」档——与传 null 的输出逐字相同。旗标探针的临时 HOME 里按计划只有 FAKE_LOCK 建的只读子目录；若变异把 copy.path 指向 prepareZcodeHome 布局之类的必然不存在位置，R1 断言（取「没有副本」档）照绿，这条变异装置会白跑一轮还给出「已被守住」的假信心。要让 R1 真咬住档位错，变异的 copy.path 必须指向删除时刻实际存在的路径（如 FAKE_LOCK 子目录里那个文件），计划没有把这一步写死。",
+        "evidence": "我读了 src/trivium/adapters/zcode.ts:924-939（现有失败后现场 stat、ENOENT 才算没有、查不了按有说的语义）与计划 §2.2「copy 为 null ⇒ 不查直接 null 档；非 null ⇒ stat，ENOENT ⇒ null 档」——两条并立即推出上述等价形态（推理，未实跑变异装置）。R1 的锁形态（$HOME 下只读子目录+文件）来自计划 §3.1 自身描述。",
+        "suggestion": "把变异 5 的替换串定稿为「copy = { path: <删除时刻必然存在的路径>, kind: 'sentinel' }」（FAKE_LOCK 子目录内的文件即可），或承认这条形态不可咬、从计划里删去并在 §2.2 注释里写明 null 短路只为省一次必然 ENOENT 的 stat。"
+      }
+    },
+    {
+      "index": 2,
+      "id": "CODEX-03",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-03",
+        "severity": "nit",
+        "layer": "plan",
+        "kind": "maintainability",
+        "location": "计划 §2.5 文档清单（决策三、四）",
+        "problem": "§2.5 列了 BACKLOG、设计 §11.3、RUNBOOK、测试报告与证据目录，但漏了 AGENTS.md「改动同步清单」点名的强制同步项：新增 doc/05_testing 下的测试报告必须同批登进 doc/05_testing/README.md 的「当前已归档文件」一节，由 doc-archive-index 契约测试逐条对账（文件没进节、条目指向不存在文件都会红）。虽然 §3.3 的全量检查会把这条拦下、属机械补登，但计划把它当「要同步的文档」列全正是这条清单的意义。",
+        "evidence": "我读了 AGENTS.md 改动同步清单该行；doc/05_testing/README.md:16 的规范句（「新文档与文档本身同批进下方『当前已归档文件』一节……由 test/contract/doc-archive-index.test.ts 对账（EV-172）」）；test/contract/doc-archive-index.test.ts 存在（ls 核过）。",
+        "suggestion": "§2.5 增一行：测试报告同批进 doc/05_testing/README.md「当前已归档文件」一节，条目顺序按该节规范句排。"
+      }
+    },
+    {
+      "index": 3,
+      "id": "CODEX-04",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-04",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "scope-drift",
+        "location": "计划 §0「不做」第三条与 §4.2（探针夹具 createFixture().cleanup 裸删，请审查员判断是否构成新缺口）",
+        "problem": "§4.2 的形态与 EV-198 修的完全同族：fixture.ts:84/:134 的 cleanup 是裸 fs.rm({recursive,force})，force 只吞 ENOENT；它在 probeZcode:1646 的外层 finally 与 agy/claude/codex 三侧探针各一处被调，删除失败同样抛穿 runDoctor、本轮已探结论在 checkpoint 前丢失，残留目录（含哨兵 .env 假凭据，风险低）留在系统临时目录无人知晓。本题以「四侧共用、越出 zcode 三臂」为由不动，范围判断我同意；但按决策四「双审核出新缺口才登」，这正是该登记的时刻——只写在计划正文 §4 里，落库后无人追踪，形态与 EV-197 当时「另登 EV-198」的先例（设计 v1.3.79 版本记录明文：「同族裸删按范围不改、另登 EV-198」）完全对应。",
+        "evidence": "我读了 src/trivium/probes/fixture.ts:84 与 :134（cleanup: () => fs.rm(root, { recursive: true, force: true })，无 maxRetries）；src/trivium/probes/zcode.ts:1645-1647（finally await fx.cleanup()）；doc/02_design 设计 §11.3 v1.3.79 记录行（:3659）里「另登 EV-198」的先例；doc/08_project/BACKLOG.md:296 EV-198 条目原文。",
+        "suggestion": "本计划收尾时（决策四批准新登的唯一入口就在这轮裁决）把夹具裸删登记为一条新 BACKLOG 条目：三载体探针 + zcode 探针共四处调用的 finally 裸删同族收口，触发条件写「下一次动任一 createFixture/cleanup 或实遇一次 doctor 因此崩成内部错误」。"
+      }
+    }
+  ]
+}
