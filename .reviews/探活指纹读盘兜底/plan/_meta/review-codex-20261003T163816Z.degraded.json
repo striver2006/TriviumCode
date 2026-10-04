@@ -1,0 +1,29 @@
+{
+  "critic": "codex",
+  "run_id": "20261003T163816Z",
+  "findings": [
+    {
+      "index": 2,
+      "id": "CODEX-03",
+      "problems": [
+        {
+          "field": "suggestion_confidence_ignored",
+          "kind": "extra",
+          "message": "(根对象) must NOT have additional properties {\"additionalProperty\":\"suggestion_confidence_ignored\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-03",
+        "severity": "nit",
+        "layer": "plan",
+        "kind": "test-gap",
+        "location": "计划 §3 用例表 G2/G3/G4 与 §4 变异表",
+        "problem": "§2.1 要点自述「残留注明与指纹注明可能同时出现（先残留、后指纹）」，但 G 表没有「指纹抛 且 probe 也抛」的组合格：G3 是指纹抛+probe 返回失败，G4 是仅 probe 抛，双串拼接的形状（探活内部失败：…；⚠️ 指纹读不了：…）没有任何用例钉住；M4/M5 各只咬单半，拼接顺序的正确性在组合形态上无变异对应。",
+        "evidence": "被审计划 §3 表与 §4 表的组合枚举（G1～G8、M1～M10 逐格核对）；§2.1 要点「注明接在详情末尾…顺序由拼接决定」。",
+        "suggestion": "要么在 G 表补一格双抛组合，要么在报告里显式接受「组合=两单格的叠加、不单独测」并记为已知取舍，别让这句拼接顺序的断言悬空。",
+        "suggestion_confidence_ignored": null,
+        "confidence": "medium"
+      }
+    }
+  ]
+}

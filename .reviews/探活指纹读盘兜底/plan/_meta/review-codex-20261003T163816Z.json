@@ -1,0 +1,60 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按 d6404d6 工作树逐条核对了计划第 1 节的事实断言与第 3 节测试摆法的可行性：probeAuth 三个裸调用点（preflight.ts:712-730）、runPreflight 的 Promise.all（:831-839）、codex 指纹无 try（codex.ts:334-357）、agy 同形（agy.ts:202-208）、claude 恒 null、zcode 已兜（zcode.ts:1132-1144）、authCacheValid 全等比较（:117-136）、cli.ts 未捕获路径打「内部错误」退 EXIT.FAIL（:2020-2027）、tildeHome 在 util/fsx.ts、BACKLOG EV-202 原文与「照 zcode 折 null」的原修法方向被决策一改写的取舍，均与源码一致。R1～R3 零配额主张我从源头核实成立：prepareCodexHome 的裁剪步骤先 fs.readFile 基底 config.toml（目录⇒EISDIR）、copyFile auth.json（000⇒EACCES），均在拉起 bin 之前落成「准备 codex 隔离副本失败」；codexHomeOf 读 CODEX_HOME、agy 指纹走 os.homedir()（POSIX 读 HOME），与既有 codex-auth-probe.test.ts 的钉锁先例同规。方向、chokepoint 选位、fpError 不折 null、G7 契约格、文档同步清单都无异议。提出的三条均为局部补洞，不影响实施方向。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §2.1「要点」第 1 条与「probe() 抛错兜成 69（决策二的代价）」段，及 §5 RUNBOOK 行",
+      "problem": "诊断指引自相矛盾：§2.1 构造兜底的要点写「用户的处置相同（TRIVIUM_DEBUG 看栈、报缺陷）」，而同节决策二代价段与 §5 RUNBOOK 又写「TRIVIUM_DEBUG 的栈不再打印」「TRIVIUM_DEBUG=1 无效——异常已被兜住」。兜底落在 probeAuth 内部后，cli.ts 末尾 catch 的 TRIVIUM_DEBUG 打印机制（实测 cli.ts:2026 只在未捕获路径生效）对这条路彻底失效，两处口径必有一处进文档后是错的。",
+      "evidence": "src/trivium/cli.ts:2020-2027（.catch 里 if (process.env['TRIVIUM_DEBUG']) console.error(err)，仅对穿透异常生效）；被审计划 §2.1 两段与 §5 的互斥表述。",
+      "suggestion": "二选一并全文统一：要么在 probeAuth 的两个 catch（或 internalFail）里按 TRIVIUM_DEBUG 把原始栈补打到 stderr（一行，代价段口径随之修正）；要么删掉「TRIVIUM_DEBUG 看栈」的说法，统一为「看详情里的原因」。RUNBOOK 行与设计句按最终口径写。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "performance",
+      "location": "计划 §2.1 要点（指纹读不了不写缓存）与 §5 RUNBOOK、§7 风险",
+      "problem": "决策一使「指纹持续读不了」的侧在文件修复之前每次预检都重烧一次厂商真实 CLI 探活（codex 探活经 invokeCodex 真调模型、120s 超时），且因不写缓存、成本每个运行重复；旧行为是崩预检、反而倒逼当场修。计划的成本核算（§7）只列了退出码口径与详情变长，没把这条「每轮重复烧配额、直到修好文件才止烧」写进 RUNBOOK 行或报告成本节。",
+      "evidence": "src/trivium/preflight.ts:831-839（⑧ 注释「最贵的一项」）；src/trivium/adapters/codex.ts:405-412（attempt→invokeCodex 真拉起、timeoutMs: 120_000）；被审计划 §2.1 明确 cache:null 且「不查缓存」、§5/§7 未提重复配额成本。属推理自实测源码，未实跑。",
+      "suggestion": "不改行为（决策一照旧），只在 RUNBOOK 那一行与测试报告成本节把「读不了未修复前每次预检该侧重烧一次真实探活」写为显式后果与止烧方法；BACKLOG EV-202 结案句可顺带一句。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "chokepoint 选在 probeAuth 一处兜三个调用点、不逐家改适配器，与 base.ts 的「厂商知识在适配器、缓存策略在 preflight」分工一致；zcode.ts:1132-1144 既有 try/catch 保留不动是对的。",
+    "fpError 单独变量、不折成 null：我核对 authCacheValid（preflight.ts:117-136）与 base.ts:99-102 契约原文，折 null 会在「上次指纹 null」的侧（claude 恒 null、codex/agy 文件不在时 null）命中缓存跳过探活，§1 第 3 条对 zcode 残余格的推演也与源码形状相符；G7 把契约语义钉成用例是本案最有价值的一格。",
+    "R1～R3 零配额与环境假设成立（实读源码核实）：prepareCodexHome 在裁剪/拷贝步即抛（adapters/codex-home.ts:311-390），不达 invokeCodex；codexHomeOf 认 CODEX_HOME（:69-71）；tildeHome 默认参数取调用时 os.homedir()（util/fsx.ts:128），与钉 HOME 的做法匹配；摆锁守则与 test/unit/codex-auth-probe.test.ts:124-133 既有先例同规；root 跳过权限格、EISDIR 格 root 下同样成立的判断正确。",
+    "§1 现状事实全部对得上 d6404d6（含行号），§5 文档同步清单完整：设计现文 v1.3.81、计划升 v1.3.82 正确，BACKLOG/设计/RUNBOOK/报告+05_testing README 各项都在。",
+    "§2.3 不给 runPreflight 开探活注入口的理由成立：④″ 的 adapters 注释（preflight.ts:104-109）确为防误烧配额而写死 ⑧，再开口子是逆向操作；M9 预计存活如实记录的处理方式诚实。",
+    "决策二的退出码风险表述属实：skills-src 里对退出码的判别只涉 --wait 的 73/0（实测 grep），「内部错误」文案仅在 cli.ts 未捕获兜底出现，仓内无按 1 判别预检的消费方。"
+  ],
+  "not_covered": [
+    "任务书给出的任务目标是截断文本，决策一～六的全文未读，计划各条对决策的忠实度只能按 BRIEF 可见部分核对。",
+    "zcode 侧「读不了⇒null」的残余格属决策四不改，本次未重新论证该决定的对错。",
+    "未执行构建、测试或变异装置（只读审查）；「root 下 EISDIR 仍成立」等少数点为操作系统语义推理，其余均有实测读码支撑。",
+    "entry-render 契约面与四家载体文案未审（本计划不改 skills-src）。",
+    "缓存条目长期陈旧（指纹不可读期间旧条目驻留、文件修复后是否该立即失效）未审——属决策二选一的自然结果，未视为遗漏。"
+  ],
+  "consulted": [
+    ".reviews/探活指纹读盘兜底/plan/2026-10-04-探活指纹读盘兜底-claude.md",
+    "src/trivium/preflight.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/cli.ts",
+    "test/unit/codex-auth-probe.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "skills-src/partials/review/body.md"
+  ]
+}
