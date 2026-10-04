@@ -80,11 +80,12 @@ profiles:
       plan: GLM-5.3
       code: GLM-5.3
       bug: GLM-5.3
-    # 须与 agents.codex.profile 同家族，见该处注释。qwen3.8-flash 是 qwen profile 的缺省模型。
+    # 须与 agents.codex.profile 同家族，见该处注释。kimi profile 的缺省模型是 kimi-for-coding，
+    # 这里显式钉 k3，不靠 profile 缺省兜底。
     codex:
-      plan: qwen3.8-flash
-      code: qwen3.8-flash
-      bug: qwen3.8-flash
+      plan: k3
+      code: k3
+      bug: k3
     # claude 三档 slug 都须回读核实：probe.cli.claude.models 为 []，预检校验不了，猜错也拦不下。
     # 核法：`claude -p --output-format stream-json --model <slug>`，看 system/init.model 与 result。
     # 2026-09-27 已核：opus-5-5（约 $0.13）、sonnet-5（约 $0.20）、fable-5-1（约 $0.83）。
@@ -101,11 +102,11 @@ profiles:
       plan: GLM-5.3-Flash
       code: GLM-5.3-Flash
       bug: GLM-5.3-Flash
-    # 与 default 同值是结果不是漏改：qwen 目录里 3.8-flash 已是现役最低一档。
+    # 取 kimi 目录里比 default（k3）低一档的 kimi-for-coding。
     codex:
-      plan: qwen3.8-flash
-      code: qwen3.8-flash
-      bug: qwen3.8-flash
+      plan: kimi-for-coding
+      code: kimi-for-coding
+      bug: kimi-for-coding
     # 不与 default 同值（计划双审 CODEX-05）：同值会让 flash 在 claude 侧形同虚设。
     claude:
       plan: claude-sonnet-5
@@ -113,7 +114,8 @@ profiles:
       bug: claude-sonnet-5
   # pro 档：按需 `--profile pro` 单次切档。取值原则：只换模型目录里确有比 default 更高档的格。
   # gemini / glm 与 default 同值是结果不是漏改：gemini 目录里的 3.1-pro 比 3.8-flash 旧两代，
-  # GLM-5.3 已是顶档。claude-fable-5-1 单价明显高于 opus-5-5，真审成本相应放大。
+  # GLM-5.3 已是顶档；codex 同理，k3 已是 kimi 目录顶档。
+  # claude-fable-5-1 单价明显高于 opus-5-5，真审成本相应放大。
   pro:
     gemini:
       plan: gemini-3.8-flash-high
@@ -124,9 +126,9 @@ profiles:
       code: GLM-5.3
       bug: GLM-5.3
     codex:
-      plan: qwen3.8-max
-      code: qwen3.8-max
-      bug: qwen3.8-max
+      plan: k3
+      code: k3
+      bug: k3
     claude:
       plan: claude-fable-5-1
       code: claude-fable-5-1
@@ -173,7 +175,7 @@ agents:
     bin: null
     # profile 决定 provider 家族与模型目录（目录随 profile 分层）。**换家族必须与 profiles.*.codex
     # 同批改**：只改一处，要么被端点拒绝，要么预检以「不在该 profile 的模型目录中」退 64（均实测）。
-    profile: qwen
+    profile: kimi
     effort:
       plan: high
       code: high
