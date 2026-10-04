@@ -1,0 +1,80 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261004T164957Z",
+  "topic": "建仓步骤失败显式化",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「建仓步骤失败显式化」：EV-209，夹具运行目录收尾计划双审 GLM-01 附带发现登记。src/trivium/util/git.ts 的 initFixtureRepo 不看 git 的退出码，git 缺失或某一步失败时静默建出没有基线提交、甚至没有仓库的夹具；探针夹具在这之后的工作树哈希处抛出，doctor 崩成内部错误、探针临时目录遗留。",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "3b2626cc500b22aa148f3b64878a61bc3d36f470",
+    "tree_hash": "dfe37207c2acdd86ad9cb7703474a8eec8b87bc6",
+    "dirty": true,
+    "subject_sha256": "90098850b7244b594191876f8bcf7b9b1e2d49d7002d756e15dd251783a62d11",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "3b2626cc500b22aa148f3b64878a61bc3d36f470",
+      "dirty": false,
+      "inputs_sha256": "eada86f10d89b4af0cb902216f97c8076a188d54767a5758783148377c71533e",
+      "built_at": "2026-10-04T15:34:20.822Z"
+    }
+  },
+  "started_at": "2026-10-04T16:49:58.819Z",
+  "finished_at": "2026-10-04T16:50:10.675Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {},
+  "deny_paths": [
+    ".env.example",
+    ".reviews/建仓步骤失败显式化/plan/2026-10-05-建仓步骤失败显式化-gemini.md",
+    ".reviews/建仓步骤失败显式化/plan/2026-10-05-建仓步骤失败显式化-glm.md",
+    ".reviews/建仓步骤失败显式化/plan/_meta/review-gemini-20261004T160118Z.json",
+    ".reviews/建仓步骤失败显式化/plan/_meta/review-glm-20261004T160118Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {},
+    "forged_role_file": false
+  },
+  "artifacts": [
+    {
+      "path": "建仓步骤失败显式化/code/_meta/changes-20261004T164957Z.diff",
+      "sha256": "90098850b7244b594191876f8bcf7b9b1e2d49d7002d756e15dd251783a62d11"
+    },
+    {
+      "path": "建仓步骤失败显式化/code/_meta/brief-codex-20261004T164957Z.md",
+      "sha256": "3b39b64d067223fcb5239e8fda3bcdc17990344c0b8dc900e40d7eca4ec22e30"
+    },
+    {
+      "path": "建仓步骤失败显式化/code/_meta/brief-gemini-20261004T164957Z.md",
+      "sha256": "17730af04e0a2c304cdbb5f398e91855db5c13253455a9cdd2bb98346240df64"
+    },
+    {
+      "path": "建仓步骤失败显式化/code/_meta/brief-glm-20261004T164957Z.md",
+      "sha256": "bd2efbe4a779b0a0c84b29caed1bc687dbd589b6a8a3a724691df748efe410cc"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "cancelled"
+  },
+  "status": "cancelled"
+}

@@ -37,6 +37,7 @@ import { exists, sha256 } from '../util/fsx.js';
 import {
   createFixture,
   createMemoryFixture,
+  ProbeFixtureError,
   SENTINEL_MEMORY,
   SENTINEL_OPEN,
   SENTINEL_PEER,
@@ -1010,7 +1011,16 @@ export type StructuredArmCause = 'carried-over' | 'asset-root-missing' | JsonSch
 export async function probeClaude(
   configuredBin: string | null,
   opts: { skipModelCalls?: boolean; existing?: ClaudeProbe; assetRoot?: string } = {},
-): Promise<{ probe: ClaudeProbe; notes: string[]; structuredArmCause: StructuredArmCause }> {
+): Promise<{
+  probe: ClaudeProbe;
+  notes: string[];
+  structuredArmCause: StructuredArmCause;
+  /**
+   * 记忆夹具没建起来时的原因（EV-209）：只作废项目记忆一格，`project_memory_blocked` 保持原值，
+   * 主夹具各格照常返回——它们已经花过真实配额。doctor 据此出一条 warning（计划双审 AGY-01）。
+   */
+  memoryFixtureFailure: string | null;
+}> {
   const notes: string[] = [];
   // 同另两家：以既有结论为起点，跳过的探针保留原值，
   // 否则 --no-model-calls 会把上一次真实探到的结论覆盖成 null
@@ -1057,7 +1067,7 @@ export async function probeClaude(
   probe.version_probe = { runner: null, args: ['--version'], extract: String.raw`(\d+\.\d+\.\d+)` };
   if (!bin) {
     notes.push('未找到 claude 可执行文件，Claude 侧不可用');
-    return { probe, notes, structuredArmCause: 'carried-over' };
+    return { probe, notes, structuredArmCause: 'carried-over', memoryFixtureFailure: null };
   }
 
   if (opts.skipModelCalls) {
@@ -1067,7 +1077,7 @@ export async function probeClaude(
         'stream_json_requires_verbose / strict_mcp_config_applied / project_memory_blocked ' +
           '保留上一次的结论',
     );
-    return { probe, notes, structuredArmCause: 'carried-over' };
+    return { probe, notes, structuredArmCause: 'carried-over', memoryFixtureFailure: null };
   }
 
   /*
@@ -1477,8 +1487,18 @@ export async function probeClaude(
    *
    * 这一格是 EV-44 结论（第 ⑤ 件显式不做）的**翻转条件载体**：
    * 只有实测 `false` 的那天那条结论才作废。`null` 维持原裁定。
+   *
+   * 记忆夹具建不起来（EV-209）：只接 `ProbeFixtureError`，这一格不赋值即保持原值（`probe` 由 existing 起），
+   * 照常返回主夹具各格已花过配额的结论；别的异常照旧上抛。
    */
-  const memFx = await createMemoryFixture();
+  let memFx: Fixture;
+  try {
+    memFx = await createMemoryFixture();
+  } catch (e) {
+    if (!(e instanceof ProbeFixtureError)) throw e;
+    notes.push(`project_memory_blocked 本轮未刷新：${e.message}`);
+    return { probe, notes, structuredArmCause, memoryFixtureFailure: e.message };
+  }
   try {
     const askMemory =
       '只凭你已有的上下文回答，不要调用任何工具。' +
@@ -1533,5 +1553,5 @@ export async function probeClaude(
     if (fixtureResidue) notes.push(fixtureResidue);
   }
 
-  return { probe, notes, structuredArmCause };
+  return { probe, notes, structuredArmCause, memoryFixtureFailure: null };
 }

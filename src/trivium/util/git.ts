@@ -6,7 +6,7 @@
  * 保证不干扰开发者的暂存区、不制造误提交风险。
  */
 import path from 'node:path';
-import { run } from './exec.js';
+import { run, type RunResult } from './exec.js';
 import { EXIT, TriviumError, swallowedTextHint } from '../exit-codes.js';
 import { makeTempDir, matchesAnyGlob, tildeHome, tryRemoveTempDir } from './fsx.js';
 import { warn } from './log.js';
@@ -454,17 +454,69 @@ export async function diffAgainst(
   return out;
 }
 
-/** 初始化一个干净的夹具仓库（探针用） */
+/** 建夹具仓库每一步 git 调用的超时（EV-209）：原先三条 `config` 不设超时，git 卡住会让调用方永远等下去 */
+export const FIXTURE_GIT_TIMEOUT_MS = 30_000;
+
+/**
+ * 建夹具仓库的六步（EV-209），导出供单测逐步构造失败。
+ *
+ * 基线提交恒带 `--allow-empty`：空目录里没有可提交的内容时 git 退 1，此前被静默吞掉、得到一个没有 HEAD 的仓库。
+ * 甄别下来没有调用方依赖「没有 HEAD」，而区分「空目录不提交」与「有内容却提交失败」要解析随语言环境变化的输出，
+ * 不如让建出来的仓库恒有 HEAD（计划 r2 §2.2）。
+ */
+export const FIXTURE_REPO_STEPS: ReadonlyArray<{ name: string; args: readonly string[] }> = [
+  { name: '初始化仓库', args: ['init', '-q', '-b', 'main'] },
+  { name: '配置提交者邮箱', args: ['config', 'user.email', 'probe@triviumcode.local'] },
+  { name: '配置提交者名称', args: ['config', 'user.name', 'trivium-probe'] },
+  { name: '关闭提交签名', args: ['config', 'commit.gpgsign', 'false'] },
+  { name: '暂存全部文件', args: ['add', '-A'] },
+  { name: '提交基线', args: ['commit', '-q', '-m', 'probe fixture baseline', '--no-verify', '--allow-empty'] },
+];
+
+/** git 输出的头几行：stderr 为空时退回 stdout——`git commit` 无内容可提交时那句话在 stdout（计划 r2 §1.1） */
+function outputHead(r: RunResult): string {
+  const text = r.stderr.trim() ? r.stderr : r.stdout;
+  return text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .slice(0, 3)
+    .map((l) => l.slice(0, 200))
+    .join(' / ');
+}
+
+/**
+ * 某一步失败时的错误文案（EV-209，导出供单测逐字比对与合成直测）。
+ *
+ * 判定顺序写死（计划双审 AGY-03）：超时 → 启动失败 → 信号 → 非零退出。`run` 超时时先置 `timedOut` 再发 SIGTERM，
+ * 那次返回的 `signal` 通常也非空，先判信号会把超时说成「被信号终止」。
+ * 不带路径：探针夹具失败后目录已删，自检的失败步骤只需要原因。
+ */
+export function fixtureRepoStepError(index: number, r: RunResult): string {
+  const step = FIXTURE_REPO_STEPS[index - 1]!;
+  const head = `建仓第 ${index}/${FIXTURE_REPO_STEPS.length} 步「${step.name}」失败：`;
+  if (r.timedOut) return `${head}${FIXTURE_GIT_TIMEOUT_MS / 1000} 秒内未结束，已终止`;
+  if (r.code === null && r.signal === null) {
+    const spawn = /\[spawn error\] (.+)/.exec(r.stderr)?.[1]?.trim();
+    return `${head}git 启动失败（${spawn || '原因不明'}）`;
+  }
+  if (r.signal !== null) return `${head}被信号 ${r.signal} 终止`;
+  const out = outputHead(r);
+  return `${head}退出码 ${r.code}${out ? `：${out}` : ''}`;
+}
+
+/**
+ * 初始化一个干净的夹具仓库（探针、自检与集成测试夹具共用）。
+ *
+ * 逐步查结果（EV-209）：启动失败、非零退出、超时、被信号终止都抛，文案见 {@link fixtureRepoStepError}；
+ * 第一步失败即抛，后面不再跑。此前六步的返回值一个都不看，git 缺失或某一步失败时静默建出残缺的夹具，
+ * 失败推迟到后面的步骤、以晦涩的方式出现。
+ */
 export async function initFixtureRepo(dir: string): Promise<void> {
-  await run('git', ['init', '-q', '-b', 'main'], { cwd: dir, timeoutMs: 30_000 });
-  await run('git', ['config', 'user.email', 'probe@triviumcode.local'], { cwd: dir });
-  await run('git', ['config', 'user.name', 'trivium-probe'], { cwd: dir });
-  await run('git', ['config', 'commit.gpgsign', 'false'], { cwd: dir });
-  await run('git', ['add', '-A'], { cwd: dir, timeoutMs: 30_000 });
-  await run('git', ['commit', '-q', '-m', 'probe fixture baseline', '--no-verify'], {
-    cwd: dir,
-    timeoutMs: 30_000,
-  });
+  for (let i = 0; i < FIXTURE_REPO_STEPS.length; i++) {
+    const r = await run('git', FIXTURE_REPO_STEPS[i]!.args, { cwd: dir, timeoutMs: FIXTURE_GIT_TIMEOUT_MS });
+    if (r.code !== 0 || r.timedOut) throw new Error(fixtureRepoStepError(i + 1, r));
+  }
 }
 
 /**

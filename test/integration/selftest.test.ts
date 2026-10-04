@@ -8,6 +8,7 @@ import { run } from '../../src/trivium/util/exec.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { STUB_ENV_VAR } from '../../src/trivium/adapters/stub.js';
 import { DEFAULT_CRITICS } from '../../src/trivium/types.js';
+import { FAKE_GIT_STDERR, writeFakeGit } from '../helpers/fake-git.js';
 
 /**
  * `doctor --selftest` 本身的回归（交付物 8）。
@@ -237,6 +238,49 @@ test('EV-207 ST2 临时目录删不掉时结论不变、提示给出父目录且
     assert.equal(m[2], `~/tmp/${entries[0]}`, '提示给出的是父目录本身');
     assert.match(m[3]!, /夹具仓库.*运行目录/, '措辞要覆盖夹具仓库与运行目录两者');
     assert.doesNotMatch(out, /夹具已清理/, '没删掉就不能说已清理');
+  } finally {
+    await dropPrivateTmp(w.base);
+  }
+});
+
+/**
+ * EV-209 S1 / S2：建仓失败经既有通道落成「创建夹具仓库」失败步骤，原因是具体的那一步；建到一半的父目录已删。
+ * 此前 `initFixtureRepo` 不看 git 的结果，git 坏时建仓静默通过、失败推迟到后面的步骤以晦涩的方式出现。
+ * S1 用假 git（`test/helpers/fake-git.ts`）让提交基线退 1；S2 让 PATH 里干脆没有 git（打包 CLI 以 node 绝对路径起）。
+ */
+test('EV-209 S1 假 git 让提交基线失败：「创建夹具仓库」失败、原因是第 6 步与 git 的输出，临时目录不留', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const w = await privateTmp('stgit');
+  try {
+    const bin = path.join(w.base, 'bin');
+    await writeFakeGit(bin);
+    const r = await selftest([], {
+      TMPDIR: w.tmp, HOME: w.home, PATH: `${bin}${path.delimiter}${process.env['PATH'] ?? ''}`, FAKE_GIT_FAIL: 'commit',
+    });
+    const out = r.stdout + r.stderr;
+    assert.equal(r.code, EXIT.FAIL, out);
+    assert.match(out, /自检：❌ 未通过（0\/1 步）/);
+    assert.match(out, /✗ 创建夹具仓库/);
+    assert.ok(
+      out.includes(`建仓第 6/6 步「提交基线」失败：退出码 1：${FAKE_GIT_STDERR.slice(0, 3).join(' / ')}`),
+      `原因应是具体的那一步与 git 输出的头三行：\n${out}`,
+    );
+    assert.deepEqual(await selftestEntries(w.tmp), [], '建到一半的父目录应已删');
+  } finally {
+    await dropPrivateTmp(w.base);
+  }
+});
+
+test('EV-209 S2 PATH 里没有 git：「创建夹具仓库」失败、原因是第 1 步启动失败，临时目录不留', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const w = await privateTmp('stnogit');
+  try {
+    const empty = path.join(w.base, 'no-git');
+    await fs.mkdir(empty);
+    const r = await selftest([], { TMPDIR: w.tmp, HOME: w.home, PATH: empty });
+    const out = r.stdout + r.stderr;
+    assert.equal(r.code, EXIT.FAIL, out);
+    assert.match(out, /✗ 创建夹具仓库/);
+    assert.ok(out.includes('建仓第 1/6 步「初始化仓库」失败：git 启动失败（spawn git ENOENT）'), out);
+    assert.deepEqual(await selftestEntries(w.tmp), []);
   } finally {
     await dropPrivateTmp(w.base);
   }

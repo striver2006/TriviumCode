@@ -1,0 +1,119 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  M1 ✓ 咬住（fail=21）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=10）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=5）
+  M7 ✓ 咬住（fail=10）
+  M8 ✓ 咬住（fail=3）
+  M9 ✓ 咬住（fail=2）
+  M10 ✓ 咬住（fail=8）
+  M11 ✓ 咬住（fail=8）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=1）
+{
+  "总数": 16,
+  "咬住": 16,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "步骤结果不看（失败不抛）",
+      "verdict": "✓ 咬住（fail=21）",
+      "fail": 21
+    },
+    {
+      "id": "M2",
+      "desc": "启动失败（code 为 null）不算失败",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "基线提交去掉 --allow-empty",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "文案丢掉步骤名",
+      "verdict": "✓ 咬住（fail=10）",
+      "fail": 10
+    },
+    {
+      "id": "M5",
+      "desc": "stderr 为空时不退回 stdout",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "第一步失败后不停、跑完全部步骤再抛第一个失败",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M7",
+      "desc": "createFixture（main）失败时不删目录",
+      "verdict": "✓ 咬住（fail=10）",
+      "fail": 10
+    },
+    {
+      "id": "M8",
+      "desc": "createMemoryFixture（memory）失败时不删目录",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M9",
+      "desc": "删不掉时不把残留提示接在原因后面",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M10",
+      "desc": "guardFixture 不接、原样重抛",
+      "verdict": "✓ 咬住（fail=8）",
+      "fail": 8
+    },
+    {
+      "id": "M11",
+      "desc": "guardFixture 接住但不推 blocker（也不记失败侧）",
+      "verdict": "✓ 咬住（fail=8）",
+      "fail": 8
+    },
+    {
+      "id": "M12",
+      "desc": "guardFixture 连普通异常也吞",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "「尚无探针实现」那一圈不排除夹具失败侧",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "probeClaude 不在记忆夹具处接住（穿到 doctor 层）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "doctor 不推记忆格 warning",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "判定顺序改为信号先于超时",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

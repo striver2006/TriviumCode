@@ -1,0 +1,363 @@
+{
+  "targets_sha256": {
+    "src/trivium/util/git.ts": "2887e79babc1038a134adb2c52594a7da5465fefaa89cc52c34d4126577e9fb4",
+    "src/trivium/probes/fixture.ts": "2b11cc4ec9917bf4654d1c478c71c58cfd04b59f15ae17e7e5060b9eb9f5304d",
+    "src/trivium/doctor.ts": "a6183944d95a3475c45a376f3050218dbc5d59e64b48ddaf96971d10ee97f572",
+    "src/trivium/probes/claude.ts": "b93db7dfe27f2539133e8d69dd00c5a755c6d11eae35907eea3d3b3a391629cf"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "步骤结果不看（失败不抛）",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 21,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U3 PATH 里没有 git：第 1 步就抛，原因是启动失败（ENOENT）",
+        "U4 假 git 让第 1 步「初始化仓库」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U5 假 git 让第 2 步「配置提交者邮箱」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U6 假 git 让第 3 步「配置提交者名称」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U7 假 git 让第 4 步「关闭提交签名」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U8 假 git 让第 5 步「暂存全部文件」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U9 假 git 让第 6 步「提交基线」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U10 提交基线失败而 stderr 为空：原因取 stdout 那一行（git commit 的「无可提交」写在 stdout）",
+        "P1 createFixture：提交基线失败——抛 ProbeFixtureError、原因带步骤、无残留",
+        "P2 createMemoryFixture：提交基线失败——同上，kind 是 memory",
+        "P3 createFixture：PATH 里没有 git——原因是第 1 步启动失败、无残留",
+        "P5 createFixture：失败且目录删不掉——残留提示整句接在原因后面、residue 等于它",
+        "P6 createMemoryFixture：失败且目录删不掉——残留提示整句接在原因后面、residue 等于它",
+        "D1 doctor --only agy：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D2 doctor --only zcode：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D3 doctor --only codex：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D4 doctor --only claude：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D5 doctor 全段：第一段（agy）夹具没建起来——agy 一条 blocker，后面三侧照常探完、各自刷新",
+        "D6 doctor --only claude：记忆夹具（第 2 次提交）没建起来——一条 warning、不拦，主夹具各格已刷新、记忆格原样",
+        "D7 doctor --only agy、盘上从没有 agy 的结论：一条 blocker，notes 里没有「尚无探针实现」那句",
+        "D9 doctor --only zcode --no-model-calls：zcode 仍建夹具（只读旗标探针在夹具里跑），失败照样一条 blocker、不抛"
+      ],
+      "firstLines": [
+        "✖ P1 createFixture：提交基线失败——抛 ProbeFixtureError、原因带步骤、无残留 (651.547292ms)",
+        "✔ P7 TMPDIR 不存在：建临时目录本身失败也包成 ProbeFixtureError、residue 为 null (1.495417ms)",
+        "✔ D8 guardFixture：只接 ProbeFixtureError；普通异常原样重抛、不记失败 (0.279ms)"
+      ],
+      "elapsed_s": 25,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/selftest.test.js",
+          "fail": 2,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-209 S1 假 git 让提交基线失败：「创建夹具仓库」失败、原因是第 6 步与 git 的输出，临时目录不留",
+            "EV-209 S2 PATH 里没有 git：「创建夹具仓库」失败、原因是第 1 步启动失败，临时目录不留"
+          ],
+          "firstLines": [],
+          "elapsed_s": 34
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "启动失败（code 为 null）不算失败",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U3 PATH 里没有 git：第 1 步就抛，原因是启动失败（ENOENT）",
+        "P3 createFixture：PATH 里没有 git——原因是第 1 步启动失败、无残留"
+      ],
+      "firstLines": [
+        "✔ P7 TMPDIR 不存在：建临时目录本身失败也包成 ProbeFixtureError、residue 为 null (1.229208ms)"
+      ],
+      "elapsed_s": 19,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/selftest.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-209 S2 PATH 里没有 git：「创建夹具仓库」失败、原因是第 1 步启动失败，临时目录不留"
+          ],
+          "firstLines": [],
+          "elapsed_s": 27
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "desc": "基线提交去掉 --allow-empty",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U2 空目录、真 git：照样有 HEAD，树是空树（决策二，--allow-empty）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 18,
+      "also": [
+        {
+          "suite": "dist/test/test/unit/hook-config.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "合并（ZCode）：配置被 .gitignore 忽略时如实说「只对本机生效、不随仓库分发」（代码双审 r3 CODEX-03 ≡ GLM-05）"
+          ],
+          "firstLines": [],
+          "elapsed_s": 0
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "文案丢掉步骤名",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 10,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U3 PATH 里没有 git：第 1 步就抛，原因是启动失败（ENOENT）",
+        "U4 假 git 让第 1 步「初始化仓库」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U5 假 git 让第 2 步「配置提交者邮箱」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U6 假 git 让第 3 步「配置提交者名称」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U7 假 git 让第 4 步「关闭提交签名」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U8 假 git 让第 5 步「暂存全部文件」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U9 假 git 让第 6 步「提交基线」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U10 提交基线失败而 stderr 为空：原因取 stdout 那一行（git commit 的「无可提交」写在 stdout）",
+        "U11 成文函数直测：超时先于信号；信号、启动失败（有无 spawn 消息）各一句",
+        "P3 createFixture：PATH 里没有 git——原因是第 1 步启动失败、无残留"
+      ],
+      "firstLines": [
+        "✔ P1 createFixture：提交基线失败——抛 ProbeFixtureError、原因带步骤、无残留 (503.423375ms)",
+        "✔ P7 TMPDIR 不存在：建临时目录本身失败也包成 ProbeFixtureError、residue 为 null (1.212541ms)"
+      ],
+      "elapsed_s": 18,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "stderr 为空时不退回 stdout",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U10 提交基线失败而 stderr 为空：原因取 stdout 那一行（git commit 的「无可提交」写在 stdout）"
+      ],
+      "firstLines": [
+        "✔ P1 createFixture：提交基线失败——抛 ProbeFixtureError、原因带步骤、无残留 (497.024125ms)"
+      ],
+      "elapsed_s": 18,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "第一步失败后不停、跑完全部步骤再抛第一个失败",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4 假 git 让第 1 步「初始化仓库」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U5 假 git 让第 2 步「配置提交者邮箱」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U6 假 git 让第 3 步「配置提交者名称」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U7 假 git 让第 4 步「关闭提交签名」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调",
+        "U8 假 git 让第 5 步「暂存全部文件」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调"
+      ],
+      "firstLines": [
+        "✔ P1 createFixture：提交基线失败——抛 ProbeFixtureError、原因带步骤、无残留 (489.104709ms)"
+      ],
+      "elapsed_s": 19,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "createFixture（main）失败时不删目录",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 10,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "P1 createFixture：提交基线失败——抛 ProbeFixtureError、原因带步骤、无残留",
+        "P3 createFixture：PATH 里没有 git——原因是第 1 步启动失败、无残留",
+        "P4 createFixture：工作树哈希那次暂存失败——原因是 workTreeHash 的原文，夹具与临时索引都不留",
+        "P5 createFixture：失败且目录删不掉——残留提示整句接在原因后面、residue 等于它",
+        "D1 doctor --only agy：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D2 doctor --only zcode：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D3 doctor --only codex：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D4 doctor --only claude：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D5 doctor 全段：第一段（agy）夹具没建起来——agy 一条 blocker，后面三侧照常探完、各自刷新",
+        "D9 doctor --only zcode --no-model-calls：zcode 仍建夹具（只读旗标探针在夹具里跑），失败照样一条 blocker、不抛"
+      ],
+      "firstLines": [
+        "✔ P7 TMPDIR 不存在：建临时目录本身失败也包成 ProbeFixtureError、residue 为 null (1.299583ms)"
+      ],
+      "elapsed_s": 18,
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "createMemoryFixture（memory）失败时不删目录",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "P2 createMemoryFixture：提交基线失败——同上，kind 是 memory",
+        "P6 createMemoryFixture：失败且目录删不掉——残留提示整句接在原因后面、residue 等于它",
+        "D6 doctor --only claude：记忆夹具（第 2 次提交）没建起来——一条 warning、不拦，主夹具各格已刷新、记忆格原样"
+      ],
+      "firstLines": [
+        "✔ P7 TMPDIR 不存在：建临时目录本身失败也包成 ProbeFixtureError、residue 为 null (1.3885ms)",
+        "✔ D8 guardFixture：只接 ProbeFixtureError；普通异常原样重抛、不记失败 (0.153083ms)"
+      ],
+      "elapsed_s": 19,
+      "also": []
+    },
+    {
+      "id": "M9",
+      "desc": "删不掉时不把残留提示接在原因后面",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "P5 createFixture：失败且目录删不掉——残留提示整句接在原因后面、residue 等于它",
+        "P6 createMemoryFixture：失败且目录删不掉——残留提示整句接在原因后面、residue 等于它"
+      ],
+      "firstLines": [
+        "✔ P7 TMPDIR 不存在：建临时目录本身失败也包成 ProbeFixtureError、residue 为 null (1.243625ms)"
+      ],
+      "elapsed_s": 19,
+      "also": []
+    },
+    {
+      "id": "M10",
+      "desc": "guardFixture 不接、原样重抛",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 8,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D1 doctor --only agy：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D2 doctor --only zcode：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D3 doctor --only codex：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D4 doctor --only claude：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D5 doctor 全段：第一段（agy）夹具没建起来——agy 一条 blocker，后面三侧照常探完、各自刷新",
+        "D7 doctor --only agy、盘上从没有 agy 的结论：一条 blocker，notes 里没有「尚无探针实现」那句",
+        "D8 guardFixture：只接 ProbeFixtureError；普通异常原样重抛、不记失败",
+        "D9 doctor --only zcode --no-model-calls：zcode 仍建夹具（只读旗标探针在夹具里跑），失败照样一条 blocker、不抛"
+      ],
+      "firstLines": [
+        "✖ D8 guardFixture：只接 ProbeFixtureError；普通异常原样重抛、不记失败 (0.219875ms)"
+      ],
+      "elapsed_s": 15,
+      "also": []
+    },
+    {
+      "id": "M11",
+      "desc": "guardFixture 接住但不推 blocker（也不记失败侧）",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 8,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D1 doctor --only agy：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D2 doctor --only zcode：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D3 doctor --only codex：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D4 doctor --only claude：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留",
+        "D5 doctor 全段：第一段（agy）夹具没建起来——agy 一条 blocker，后面三侧照常探完、各自刷新",
+        "D7 doctor --only agy、盘上从没有 agy 的结论：一条 blocker，notes 里没有「尚无探针实现」那句",
+        "D8 guardFixture：只接 ProbeFixtureError；普通异常原样重抛、不记失败",
+        "D9 doctor --only zcode --no-model-calls：zcode 仍建夹具（只读旗标探针在夹具里跑），失败照样一条 blocker、不抛"
+      ],
+      "firstLines": [
+        "✖ D8 guardFixture：只接 ProbeFixtureError；普通异常原样重抛、不记失败 (0.239959ms)"
+      ],
+      "elapsed_s": 19,
+      "also": []
+    },
+    {
+      "id": "M12",
+      "desc": "guardFixture 连普通异常也吞",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D8 guardFixture：只接 ProbeFixtureError；普通异常原样重抛、不记失败"
+      ],
+      "firstLines": [],
+      "elapsed_s": 19,
+      "also": []
+    },
+    {
+      "id": "M13",
+      "desc": "「尚无探针实现」那一圈不排除夹具失败侧",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D7 doctor --only agy、盘上从没有 agy 的结论：一条 blocker，notes 里没有「尚无探针实现」那句"
+      ],
+      "firstLines": [
+        "✔ D8 guardFixture：只接 ProbeFixtureError；普通异常原样重抛、不记失败 (0.305292ms)"
+      ],
+      "elapsed_s": 19,
+      "also": []
+    },
+    {
+      "id": "M14",
+      "desc": "probeClaude 不在记忆夹具处接住（穿到 doctor 层）",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D6 doctor --only claude：记忆夹具（第 2 次提交）没建起来——一条 warning、不拦，主夹具各格已刷新、记忆格原样"
+      ],
+      "firstLines": [
+        "✔ D8 guardFixture：只接 ProbeFixtureError；普通异常原样重抛、不记失败 (0.158292ms)"
+      ],
+      "elapsed_s": 18,
+      "also": []
+    },
+    {
+      "id": "M15",
+      "desc": "doctor 不推记忆格 warning",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D6 doctor --only claude：记忆夹具（第 2 次提交）没建起来——一条 warning、不拦，主夹具各格已刷新、记忆格原样"
+      ],
+      "firstLines": [
+        "✔ D8 guardFixture：只接 ProbeFixtureError；普通异常原样重抛、不记失败 (0.148834ms)"
+      ],
+      "elapsed_s": 18,
+      "also": []
+    },
+    {
+      "id": "M17",
+      "desc": "判定顺序改为信号先于超时",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U11 成文函数直测：超时先于信号；信号、启动失败（有无 spawn 消息）各一句"
+      ],
+      "firstLines": [
+        "✔ P1 createFixture：提交基线失败——抛 ProbeFixtureError、原因带步骤、无残留 (498.167166ms)"
+      ],
+      "elapsed_s": 18,
+      "also": []
+    }
+  ]
+}

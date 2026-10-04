@@ -18,6 +18,7 @@ import { probeAgy } from './probes/agy.js';
 import { probeZcode, ZCODE_HEADLESS_UNREFRESHED, type ZcodeHeadlessUnrefreshed } from './probes/zcode.js';
 import { probeCodex } from './probes/codex.js';
 import { probeClaude, type StructuredArmCause } from './probes/claude.js';
+import { ProbeFixtureError } from './probes/fixture.js';
 import type { ClaudeProbe, CodexProbe, Config, ProbeSection } from './types.js';
 import { realAdapters } from './adapters/index.js';
 // 同源文案：blocker 与 `availability()` 对同一现象只能有一种说法（r2 AGY-04）
@@ -50,6 +51,12 @@ export interface DoctorOptions {
     NonNullable<Parameters<typeof probeZcode>[2]>,
     'cliConfigPath' | 'modelOverrideProbe' | 'modelOverrideFullCopyProbe' | 'invoke'
   >;
+  /**
+   * codex / claude 段的入口路径注入口（EV-209），同 `zcodeProbe` 只为可测性，生产路径不传（即原来写死的 null）。
+   * 两段把入口交给各自的候选表找，而 codex 的候选表里 `/opt/homebrew/bin/codex` 排在家目录之前——
+   * 不开这个口子，经 `runDoctor` 走 codex 段的用例在装了 codex 的机器上会拉起真实 CLI、花配额。
+   */
+  probeBins?: { codex?: string; claude?: string };
 }
 
 /** `--only` 的合法取值：全部已登记 CLI，外加环境段 */
@@ -421,6 +428,60 @@ export function zcodeHeadlessUnrefreshedWarning(u: ZcodeHeadlessUnrefreshed): st
   );
 }
 
+/** 「显示名（cli 名）」：注册表取不到显示名时只用 cli 名 */
+function cliLabel(cli: string): string {
+  const display = agentByCliName(cli)?.display;
+  return display ? `${display}（${cli}）` : cli;
+}
+
+/**
+ * 某侧的探针夹具没建起来时的 blocker（EV-209）。导出供单测逐字比对。
+ *
+ * 不按 `criticEnabled` 分档：建不起夹具是本机环境问题（git 坏、临时目录不可写），与该侧启不启用无关，
+ * 且四侧共用同一个夹具工厂。`err.message` 已以「建探针夹具失败：」开头，原因与残留提示都在里面。
+ * 「从未探过则仍为空」：首次探测时盘上没有该侧结论，「原样保留」要对这种情形也成立（计划双审 GLM-02）。
+ */
+export function probeFixtureBlocker(cli: string, err: ProbeFixtureError): string {
+  return (
+    `${cliLabel(cli)}本轮没有探测成：${err.message}。` +
+    `该侧落盘的探针结论原样保留（从未探过则仍为空），修好后重跑 trivium doctor --only ${cli}`
+  );
+}
+
+/**
+ * claude 的记忆夹具没建起来时的 warning（EV-209）。导出供单测逐字比对。
+ *
+ * 不拦（计划双审 AGY-01）：`project_memory_blocked` 不进 `availability()` 与 preflight，记 blocker 会让 doctor 退非零、
+ * 而紧接着的 preflight 照样放行；主夹具各格已刷新，只有这一格没刷新——与 EV-196「单格本轮未刷新」同档。
+ */
+export function memoryFixtureWarning(msg: string): string {
+  return (
+    `${cliLabel('claude')}项目记忆一格本轮没有探测成：${msg}。` +
+    '其余各格已刷新；project_memory_blocked 沿用的是上一次的结论（从未探过则仍为空），修好后重跑 trivium doctor --only claude'
+  );
+}
+
+/**
+ * 跑一段探针，只接住「夹具没建起来」（EV-209）。导出供单测直测。
+ *
+ * 接住时调 `onFail(blocker)`、返回 null——调用方据此不赋 `probe.cli[name]`、不 checkpoint，该侧落盘结论一个字节不动：
+ * 主夹具失败时探针还没跑任何模型调用，已算出的只有静态结论与提前打的 `probed_at`，落盘会造出「戳是新的、能力是旧的」
+ * 的混合段，而 `probed_at` 按键判 TTL。**别的异常原样重抛**：内部错误照旧是内部错误，不被这里吞掉。
+ */
+export async function guardFixture<T>(
+  cli: string,
+  fn: () => Promise<T>,
+  onFail: (blocker: string) => void,
+): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (!(e instanceof ProbeFixtureError)) throw e;
+    onFail(probeFixtureBlocker(cli, e));
+    return null;
+  }
+}
+
 export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   // 以**已落盘的探针结论**为基线，只覆盖本次真正探测过的段落。
   // 否则 `--only zcode` 会把上一轮的 agy 结论一并清空（探针结论是增量积累的）。
@@ -442,6 +503,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   const blockers: string[] = [];
   const warnings: string[] = [];
   const only = opts.only ?? null;
+  /** 本轮探针夹具没建起来的侧（EV-209）：末尾「尚无探针实现」那一圈要跳过它们，否则 blocker 之外再收一句自相矛盾的 note */
+  const fixtureFailed = new Set<string>();
+  const guard = <T>(cli: string, fn: () => Promise<T>): Promise<T | null> =>
+    guardFixture(cli, fn, (blocker) => {
+      fixtureFailed.add(cli);
+      blockers.push(blocker);
+    });
 
   // ── 环境 ────────────────────────────────────────────────────────────
   step('探测运行环境…');
@@ -551,131 +619,150 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   // ── Antigravity ─────────────────────────────────────────────────────
   if (only === null || only === 'agy') {
     step('探测 Antigravity（agy）…');
-    const r = await probeAgy(agentConfigOf(opts.config, 'gemini', 'antigravity').bin, agentConfigOf(opts.config, 'gemini', 'antigravity').agent, {
-      skipModelCalls: opts.skipModelCalls ?? false,
-      existing: probe.cli.agy,
-    });
-    probe.cli.agy = r.probe;
-    notes.push(...r.notes.map((n) => `[agy] ${n}`));
-    await checkpoint('agy'); // 这一段已经烧过配额，先存下来
-    if (!r.probe.entrypoint) blockers.push('未找到 agy 可执行文件');
-    else if (r.probe.headless_read_ok === false) {
-      blockers.push(
-        'agy headless 无法读取文件（issue #548）。请确认只读审查 Agent 已安装到 ' +
-          '~/.gemini/config/agents/trivium-critic/agent.md',
-      );
+    // 夹具没建起来时 r 为 null（EV-209）：该侧不赋值、不 checkpoint，blocker 已由 guard 推入
+    const r = await guard('agy', () =>
+      probeAgy(agentConfigOf(opts.config, 'gemini', 'antigravity').bin, agentConfigOf(opts.config, 'gemini', 'antigravity').agent, {
+        skipModelCalls: opts.skipModelCalls ?? false,
+        existing: probe.cli.agy,
+      }),
+    );
+    if (r) {
+      probe.cli.agy = r.probe;
+      notes.push(...r.notes.map((n) => `[agy] ${n}`));
+      await checkpoint('agy'); // 这一段已经烧过配额，先存下来
+      if (!r.probe.entrypoint) blockers.push('未找到 agy 可执行文件');
+      else if (r.probe.headless_read_ok === false) {
+        blockers.push(
+          'agy headless 无法读取文件（issue #548）。请确认只读审查 Agent 已安装到 ' +
+            '~/.gemini/config/agents/trivium-critic/agent.md',
+        );
+      }
     }
   }
 
   // ── ZCode ───────────────────────────────────────────────────────────
   if (only === null || only === 'zcode') {
     step('探测 ZCode（zcode.cjs）…');
-    const r = await probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {
-      skipModelCalls: opts.skipModelCalls ?? false,
-      existing: probe.cli.zcode,
-      // headless 与 path_deny 请求的模型：与认证探活同一定义（EV-194），探的是审查运行那条选模路径
-      launchModel: zcodeProbeModel(opts.config),
-      ...(opts.zcodeProbe ?? {}),
-    });
-    probe.cli.zcode = r.probe;
-    notes.push(...r.notes.map((n) => `[zcode] ${n}`));
-    await checkpoint('zcode');
-    if (!r.probe.entrypoint) blockers.push('未找到 zcode.cjs 入口');
-    else {
-      /*
-       * 布局与旗标两条 blocker **不借道 `response_field`**（r2 CODEX-06 ≡ AGY-05）。
-       * 原先只有一支 `response_field === null && !skipModelCalls`，它在最该出现的两条路径上不可达：
-       * ① 回归形态下探针 `failureKind !== 'none'` 时只 push note 就 return，`response_field` 保留旧值，
-       *    全量 doctor 退 0、blockers 为空；② `--no-model-calls` 下整支被跳过，而 RUNBOOK 恰恰
-       *    建议用这条命令排障——内置文件缺失 + 旗标全未判定时，它 0 blocker 通过。
-       * 这两件事都与模型调用无关，判据也就不该挂在模型调用的结论上。
-       */
-      if (r.probe.provider_config?.builtin_file === null) blockers.push(ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT);
-      // 只在**判定完成**时才拦：本轮未判定（P-29）时 readonly_flags 是保留的旧值，
-      // 它为空只说明「没探出来过」，拦它给的是误导性结论（见 probes/zcode.ts 的第三态注释）
-      if (r.flagsIndeterminate.length === 0 && r.probe.readonly_flags.length === 0) {
-        blockers.push(
-          '探针未实测到任何可用的只读参数组合，无法保障审查员只读——请重跑 trivium doctor 或升级 ZCode',
-        );
-      }
-      if (r.flagsZeroExit.length > 0) {
-        // 成本异常要被看见，但不拦：结论本身是对的（退 0 证明 argv 已解析完），
-        // 异常的是这个探针本该零配额（r5 CODEX-02）
-        warnings.push(
-          `ZCode 旗标探针出现 ${r.flagsZeroExit.length} 次退 0——该探针本应零配额` +
-            '（空 HOME 停在模型层，P-30），退 0 意味着真实模型调用已发生。请核对停点形态与配额消耗。',
-        );
-      }
-      if (r.flagsIndeterminate.length > 0) {
+    const r = await guard('zcode', () =>
+      probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {
+        skipModelCalls: opts.skipModelCalls ?? false,
+        existing: probe.cli.zcode,
+        // headless 与 path_deny 请求的模型：与认证探活同一定义（EV-194），探的是审查运行那条选模路径
+        launchModel: zcodeProbeModel(opts.config),
+        ...(opts.zcodeProbe ?? {}),
+      }),
+    );
+    if (r) {
+      probe.cli.zcode = r.probe;
+      notes.push(...r.notes.map((n) => `[zcode] ${n}`));
+      await checkpoint('zcode');
+      if (!r.probe.entrypoint) blockers.push('未找到 zcode.cjs 入口');
+      else {
         /*
-         * 不拦，但也不能只留一条 note（r3 CODEX-F01-03）：落盘的 `readonly_flags` 是**上一轮的**，
-         * 而 preflight 那头一旦读到空集就会报「无可用只读旗标、请升级 ZCode」——
-         * 那是把布局问题报成能力缺失，人会往一个永远查不到的方向走。
+         * 布局与旗标两条 blocker **不借道 `response_field`**（r2 CODEX-06 ≡ AGY-05）。
+         * 原先只有一支 `response_field === null && !skipModelCalls`，它在最该出现的两条路径上不可达：
+         * ① 回归形态下探针 `failureKind !== 'none'` 时只 push note 就 return，`response_field` 保留旧值，
+         *    全量 doctor 退 0、blockers 为空；② `--no-model-calls` 下整支被跳过，而 RUNBOOK 恰恰
+         *    建议用这条命令排障——内置文件缺失 + 旗标全未判定时，它 0 blocker 通过。
+         * 这两件事都与模型调用无关，判据也就不该挂在模型调用的结论上。
          */
-        warnings.push(
-          `ZCode 旗标本轮未判定（${r.flagsIndeterminate.length} 个候选在参数解析前就退出，P-29）：` +
-            `readonly_flags 保留的是上一次的结论 ${JSON.stringify(r.probe.readonly_flags)}。` +
-            '先核对 ZCode 安装布局与 provider 配置定位，再谈旗标——这不是「探针没探到能力」。',
-        );
+        if (r.probe.provider_config?.builtin_file === null) blockers.push(ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT);
+        // 只在**判定完成**时才拦：本轮未判定（P-29）时 readonly_flags 是保留的旧值，
+        // 它为空只说明「没探出来过」，拦它给的是误导性结论（见 probes/zcode.ts 的第三态注释）
+        if (r.flagsIndeterminate.length === 0 && r.probe.readonly_flags.length === 0) {
+          blockers.push(
+            '探针未实测到任何可用的只读参数组合，无法保障审查员只读——请重跑 trivium doctor 或升级 ZCode',
+          );
+        }
+        if (r.flagsZeroExit.length > 0) {
+          // 成本异常要被看见，但不拦：结论本身是对的（退 0 证明 argv 已解析完），
+          // 异常的是这个探针本该零配额（r5 CODEX-02）
+          warnings.push(
+            `ZCode 旗标探针出现 ${r.flagsZeroExit.length} 次退 0——该探针本应零配额` +
+              '（空 HOME 停在模型层，P-30），退 0 意味着真实模型调用已发生。请核对停点形态与配额消耗。',
+          );
+        }
+        if (r.flagsIndeterminate.length > 0) {
+          /*
+           * 不拦，但也不能只留一条 note（r3 CODEX-F01-03）：落盘的 `readonly_flags` 是**上一轮的**，
+           * 而 preflight 那头一旦读到空集就会报「无可用只读旗标、请升级 ZCode」——
+           * 那是把布局问题报成能力缺失，人会往一个永远查不到的方向走。
+           */
+          warnings.push(
+            `ZCode 旗标本轮未判定（${r.flagsIndeterminate.length} 个候选在参数解析前就退出，P-29）：` +
+              `readonly_flags 保留的是上一次的结论 ${JSON.stringify(r.probe.readonly_flags)}。` +
+              '先核对 ZCode 安装布局与 provider 配置定位，再谈旗标——这不是「探针没探到能力」。',
+          );
+        }
+        // 本轮进了真实调用段却没刷新 response_field（EV-196）：与旗标未判定同档，出 warning、不拦。
+        // 不与下面那条 blocker 互斥——blocker 说「没跑通」，这条说「哪一支、根因在哪、哪几项是旧的」
+        if (r.headlessUnrefreshed) warnings.push(zcodeHeadlessUnrefreshedWarning(r.headlessUnrefreshed));
+        if (r.probe.response_field === null && !opts.skipModelCalls) blockers.push(ZCODE_HEADLESS_NOT_OK_HINT);
       }
-      // 本轮进了真实调用段却没刷新 response_field（EV-196）：与旗标未判定同档，出 warning、不拦。
-      // 不与下面那条 blocker 互斥——blocker 说「没跑通」，这条说「哪一支、根因在哪、哪几项是旧的」
-      if (r.headlessUnrefreshed) warnings.push(zcodeHeadlessUnrefreshedWarning(r.headlessUnrefreshed));
-      if (r.probe.response_field === null && !opts.skipModelCalls) blockers.push(ZCODE_HEADLESS_NOT_OK_HINT);
     }
   }
 
   // ── Codex ───────────────────────────────────────────────────────────
   if (only === null || only === 'codex') {
     step('探测 Codex（codex exec）…');
-    const r = await probeCodex(null, {
-      skipModelCalls: opts.skipModelCalls ?? false,
-      existing: probe.cli.codex,
-    });
-    probe.cli.codex = r.probe;
-    notes.push(...r.notes.map((n) => `[codex] ${n}`));
-    await checkpoint('codex');
-    /*
-     * 能力对账（EV-06 的清偿）：只在该侧已接线时做——没有适配器就没有「声明」，
-     * 拿不存在的声明去对账只会产生噪音。
-     */
-    const codexAdapter = realAdapters()[agentByCliName('codex')?.id ?? 'codex'];
-    if (codexAdapter) {
-      for (const line of capabilityParity(r.probe, codexAdapter.capability, 'codex')) {
-        notes.push(`[codex] ${line.message}`);
+    const r = await guard('codex', () =>
+      probeCodex(opts.probeBins?.codex ?? null, {
+        skipModelCalls: opts.skipModelCalls ?? false,
+        existing: probe.cli.codex,
+      }),
+    );
+    if (r) {
+      probe.cli.codex = r.probe;
+      notes.push(...r.notes.map((n) => `[codex] ${n}`));
+      await checkpoint('codex');
+      /*
+       * 能力对账（EV-06 的清偿）：只在该侧已接线时做——没有适配器就没有「声明」，
+       * 拿不存在的声明去对账只会产生噪音。
+       */
+      const codexAdapter = realAdapters()[agentByCliName('codex')?.id ?? 'codex'];
+      if (codexAdapter) {
+        for (const line of capabilityParity(r.probe, codexAdapter.capability, 'codex')) {
+          notes.push(`[codex] ${line.message}`);
+        }
       }
-    }
 
-    for (const line of codexSeverity(r.probe, {
-      enabled: agentByCliName('codex')?.criticEnabled === true,
-      asked: only === 'codex',
-      skipModelCalls: opts.skipModelCalls ?? false,
-    })) {
-      if (line.level === 'blocker') blockers.push(line.message);
-      else notes.push(`[codex] ${line.message}`);
+      for (const line of codexSeverity(r.probe, {
+        enabled: agentByCliName('codex')?.criticEnabled === true,
+        asked: only === 'codex',
+        skipModelCalls: opts.skipModelCalls ?? false,
+      })) {
+        if (line.level === 'blocker') blockers.push(line.message);
+        else notes.push(`[codex] ${line.message}`);
+      }
     }
   }
 
   // ── Claude Code ─────────────────────────────────────────────────────
   if (only === null || only === 'claude') {
     step('探测 Claude Code（claude -p）…');
-    const r = await probeClaude(null, {
-      skipModelCalls: opts.skipModelCalls ?? false,
-      existing: probe.cli.claude,
-      assetRoot: resolveAssetRoot(),
-    });
-    probe.cli.claude = r.probe;
-    notes.push(...r.notes.map((n) => `[claude] ${n}`));
-    await checkpoint('claude');
-    const claudeWarning = claudeStructuredArmWarning(r.structuredArmCause);
-    if (claudeWarning) warnings.push(claudeWarning);
-    for (const line of claudeSeverity(r.probe, {
-      enabled: agentByCliName('claude')?.criticEnabled === true,
-      asked: only === 'claude',
-      skipModelCalls: opts.skipModelCalls ?? false,
-    })) {
-      if (line.level === 'blocker') blockers.push(line.message);
-      else notes.push(`[claude] ${line.message}`);
+    const r = await guard('claude', () =>
+      probeClaude(opts.probeBins?.claude ?? null, {
+        skipModelCalls: opts.skipModelCalls ?? false,
+        existing: probe.cli.claude,
+        assetRoot: resolveAssetRoot(),
+      }),
+    );
+    if (r) {
+      probe.cli.claude = r.probe;
+      notes.push(...r.notes.map((n) => `[claude] ${n}`));
+      await checkpoint('claude');
+      const claudeWarning = claudeStructuredArmWarning(r.structuredArmCause);
+      if (claudeWarning) warnings.push(claudeWarning);
+      // 记忆夹具没建起来（EV-209）：只有这一格没刷新，出 warning、不拦（计划双审 AGY-01）
+      if (r.memoryFixtureFailure) warnings.push(memoryFixtureWarning(r.memoryFixtureFailure));
+      for (const line of claudeSeverity(r.probe, {
+        enabled: agentByCliName('claude')?.criticEnabled === true,
+        asked: only === 'claude',
+        skipModelCalls: opts.skipModelCalls ?? false,
+      })) {
+        if (line.level === 'blocker') blockers.push(line.message);
+        else notes.push(`[claude] ${line.message}`);
+      }
     }
   }
 
@@ -694,6 +781,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
    */
   for (const name of ALL_CLI_NAMES) {
     if (probedSections.has(name)) continue; // 本次刚探过
+    if (fixtureFailed.has(name)) continue; // 本次探了、夹具没建起来：已有 blocker，不是「尚无探针实现」（EV-209）
     if (only !== null && only !== name) continue; // 用户没点名这一侧
     if (probe.cli[name]?.probed_at) continue; // 盘上有旧结论，不是「无实现」
     const agent = agentByCliName(name);

@@ -1,0 +1,150 @@
+{
+  "targets": [
+    "src/trivium/util/git.ts",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/probes/claude.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/fixture-repo-init.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "file": "src/trivium/util/git.ts",
+      "desc": "步骤结果不看（失败不抛）",
+      "find": "    if (r.code !== 0 || r.timedOut) throw new Error(fixtureRepoStepError(i + 1, r));\n",
+      "replace": "    void r;\n",
+      "also": [
+        "dist/test/test/integration/selftest.test.js"
+      ],
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M2",
+      "file": "src/trivium/util/git.ts",
+      "desc": "启动失败（code 为 null）不算失败",
+      "find": "    if (r.code !== 0 || r.timedOut) throw new Error(fixtureRepoStepError(i + 1, r));\n",
+      "replace": "    if ((r.code !== 0 && r.code !== null) || r.timedOut) throw new Error(fixtureRepoStepError(i + 1, r));\n",
+      "also": [
+        "dist/test/test/integration/selftest.test.js"
+      ],
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M3",
+      "file": "src/trivium/util/git.ts",
+      "desc": "基线提交去掉 --allow-empty",
+      "find": "'--no-verify', '--allow-empty'] }",
+      "replace": "'--no-verify'] }",
+      "also": [
+        "dist/test/test/unit/hook-config.test.js"
+      ],
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M4",
+      "file": "src/trivium/util/git.ts",
+      "desc": "文案丢掉步骤名",
+      "find": "  const head = `建仓第 ${index}/${FIXTURE_REPO_STEPS.length} 步「${step.name}」失败：`;\n",
+      "replace": "  const head = `建仓第 ${index}/${FIXTURE_REPO_STEPS.length} 步失败：${step ? '' : ''}`;\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M5",
+      "file": "src/trivium/util/git.ts",
+      "desc": "stderr 为空时不退回 stdout",
+      "find": "  const text = r.stderr.trim() ? r.stderr : r.stdout;\n",
+      "replace": "  const text = r.stderr;\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M6",
+      "file": "src/trivium/util/git.ts",
+      "desc": "第一步失败后不停、跑完全部步骤再抛第一个失败",
+      "find": "  for (let i = 0; i < FIXTURE_REPO_STEPS.length; i++) {\n    const r = await run('git', FIXTURE_REPO_STEPS[i]!.args, { cwd: dir, timeoutMs: FIXTURE_GIT_TIMEOUT_MS });\n    if (r.code !== 0 || r.timedOut) throw new Error(fixtureRepoStepError(i + 1, r));\n  }\n}\n",
+      "replace": "  let failed: Error | null = null;\n  for (let i = 0; i < FIXTURE_REPO_STEPS.length; i++) {\n    const r = await run('git', FIXTURE_REPO_STEPS[i]!.args, { cwd: dir, timeoutMs: FIXTURE_GIT_TIMEOUT_MS });\n    if ((r.code !== 0 || r.timedOut) && !failed) failed = new Error(fixtureRepoStepError(i + 1, r));\n  }\n  if (failed) throw failed;\n}\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M7",
+      "file": "src/trivium/probes/fixture.ts",
+      "desc": "createFixture（main）失败时不删目录",
+      "find": "    const residue = root === null ? null : await removeFixtureRoot(kind, root);\n",
+      "replace": "    const residue = root === null || kind === 'main' ? null : await removeFixtureRoot(kind, root);\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M8",
+      "file": "src/trivium/probes/fixture.ts",
+      "desc": "createMemoryFixture（memory）失败时不删目录",
+      "find": "    const residue = root === null ? null : await removeFixtureRoot(kind, root);\n",
+      "replace": "    const residue = root === null || kind === 'memory' ? null : await removeFixtureRoot(kind, root);\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M9",
+      "file": "src/trivium/probes/fixture.ts",
+      "desc": "删不掉时不把残留提示接在原因后面",
+      "find": "    super(`建探针夹具失败：${why}${residue ? `；${residue}` : ''}`, { cause });\n",
+      "replace": "    super(`建探针夹具失败：${why}`, { cause });\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M10",
+      "file": "src/trivium/doctor.ts",
+      "desc": "guardFixture 不接、原样重抛",
+      "find": "    if (!(e instanceof ProbeFixtureError)) throw e;\n    onFail(probeFixtureBlocker(cli, e));\n",
+      "replace": "    throw e;\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M11",
+      "file": "src/trivium/doctor.ts",
+      "desc": "guardFixture 接住但不推 blocker（也不记失败侧）",
+      "find": "    if (!(e instanceof ProbeFixtureError)) throw e;\n    onFail(probeFixtureBlocker(cli, e));\n",
+      "replace": "    if (!(e instanceof ProbeFixtureError)) throw e;\n    void probeFixtureBlocker(cli, e);\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M12",
+      "file": "src/trivium/doctor.ts",
+      "desc": "guardFixture 连普通异常也吞",
+      "find": "    if (!(e instanceof ProbeFixtureError)) throw e;\n    onFail(probeFixtureBlocker(cli, e));\n",
+      "replace": "    if (!(e instanceof ProbeFixtureError)) return null;\n    onFail(probeFixtureBlocker(cli, e));\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M13",
+      "file": "src/trivium/doctor.ts",
+      "desc": "「尚无探针实现」那一圈不排除夹具失败侧",
+      "find": "    if (fixtureFailed.has(name)) continue; // 本次探了、夹具没建起来：已有 blocker，不是「尚无探针实现」（EV-209）\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M14",
+      "file": "src/trivium/probes/claude.ts",
+      "desc": "probeClaude 不在记忆夹具处接住（穿到 doctor 层）",
+      "find": "    if (!(e instanceof ProbeFixtureError)) throw e;\n    notes.push(`project_memory_blocked 本轮未刷新",
+      "replace": "    throw e;\n    notes.push(`project_memory_blocked 本轮未刷新",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M15",
+      "file": "src/trivium/doctor.ts",
+      "desc": "doctor 不推记忆格 warning",
+      "find": "      if (r.memoryFixtureFailure) warnings.push(memoryFixtureWarning(r.memoryFixtureFailure));\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M17",
+      "file": "src/trivium/util/git.ts",
+      "desc": "判定顺序改为信号先于超时",
+      "find": "  if (r.timedOut) return `${head}${FIXTURE_GIT_TIMEOUT_MS / 1000} 秒内未结束，已终止`;\n",
+      "replace": "  if (r.signal !== null) return `${head}被信号 ${r.signal} 终止`;\n  if (r.timedOut) return `${head}${FIXTURE_GIT_TIMEOUT_MS / 1000} 秒内未结束，已终止`;\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    }
+  ]
+}

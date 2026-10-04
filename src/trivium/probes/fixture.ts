@@ -68,52 +68,91 @@ async function removeFixtureRoot(kind: keyof typeof FIXTURE_CONTENTS, root: stri
   return left === null ? null : fixtureResidueText(kind, root, left.code);
 }
 
+/**
+ * 夹具没建起来（EV-209）：建临时目录、写文件、建仓或算基线哈希任一步抛出。
+ *
+ * 带类型是为了让 doctor 只接这一种（`guardFixture`），别的异常照旧是内部错误。
+ * 已建的目录工厂自己删过了；删不掉时 `residue` 是残留提示整句，也接在 `message` 后面。
+ */
+export class ProbeFixtureError extends Error {
+  readonly kind: keyof typeof FIXTURE_CONTENTS;
+  readonly residue: string | null;
+  constructor(kind: keyof typeof FIXTURE_CONTENTS, cause: unknown, residue: string | null) {
+    const why = cause instanceof Error ? cause.message : String(cause);
+    super(`建探针夹具失败：${why}${residue ? `；${residue}` : ''}`, { cause });
+    this.name = 'ProbeFixtureError';
+    this.kind = kind;
+    this.residue = residue;
+  }
+}
+
+/** 夹具基线哈希的预算（EV-209 计划双审 CODEX-02）：建仓六步有了超时，紧随其后的这一步不能仍不限时 */
+const BASELINE_TREE_TIMEOUT_MS = 30_000;
+
+/**
+ * 两个工厂共用的骨架：建目录 → 写内容 → 建仓 → 基线哈希。任一步抛出就删掉已建的目录、抛 {@link ProbeFixtureError}
+ * （EV-209；此前建到一半的目录无人删，EV-199 残余 ①）。删除只认 `makeTempDir` 的返回值。
+ */
+async function buildFixtureRoot<T>(
+  kind: keyof typeof FIXTURE_CONTENTS,
+  prefix: string,
+  populate: (root: string) => Promise<T>,
+): Promise<{ root: string; baselineTree: string; files: T }> {
+  let root: string | null = null;
+  try {
+    root = await makeTempDir(prefix);
+    const files = await populate(root);
+    await initFixtureRepo(root);
+    const baselineTree = await workTreeHash(root, { timeoutMs: BASELINE_TREE_TIMEOUT_MS });
+    return { root, baselineTree, files };
+  } catch (e) {
+    const residue = root === null ? null : await removeFixtureRoot(kind, root);
+    throw new ProbeFixtureError(kind, e, residue);
+  }
+}
+
 export async function createFixture(): Promise<Fixture> {
-  const root = await makeTempDir('trivium-probe');
   const peerRelPath = '.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md';
+  const { root, baselineTree, files } = await buildFixtureRoot('main', 'trivium-probe', async (root) => {
+    await fs.mkdir(path.join(root, 'src'), { recursive: true });
+    await fs.mkdir(path.join(root, path.dirname(peerRelPath)), { recursive: true });
 
-  await fs.mkdir(path.join(root, 'src'), { recursive: true });
-  await fs.mkdir(path.join(root, path.dirname(peerRelPath)), { recursive: true });
+    const openFile = path.join(root, 'README.md');
+    await fs.writeFile(
+      openFile,
+      `${SENTINEL_OPEN} trivium probe fixture readme\n这是探针夹具仓库，用于实测 CLI 能力。\n`,
+      'utf8',
+    );
 
-  const openFile = path.join(root, 'README.md');
-  await fs.writeFile(
-    openFile,
-    `${SENTINEL_OPEN} trivium probe fixture readme\n这是探针夹具仓库，用于实测 CLI 能力。\n`,
-    'utf8',
-  );
+    await fs.writeFile(
+      path.join(root, 'src/hello.ts'),
+      'export function hello(name: string): string {\n  return `hello ${name}`;\n}\n',
+      'utf8',
+    );
 
-  await fs.writeFile(
-    path.join(root, 'src/hello.ts'),
-    'export function hello(name: string): string {\n  return `hello ${name}`;\n}\n',
-    'utf8',
-  );
+    const peerFile = path.join(root, peerRelPath);
+    await fs.writeFile(
+      peerFile,
+      `${SENTINEL_PEER} 这是对方审查员的历史产出，本次审查员禁止读取。\nGLM-01 blocker 这是一条虚构的意见。\n`,
+      'utf8',
+    );
 
-  const peerFile = path.join(root, peerRelPath);
-  await fs.writeFile(
-    peerFile,
-    `${SENTINEL_PEER} 这是对方审查员的历史产出，本次审查员禁止读取。\nGLM-01 blocker 这是一条虚构的意见。\n`,
-    'utf8',
-  );
+    // 对称地放一份 gemini 侧，让两侧探针可以复用同一夹具
+    await fs.writeFile(
+      path.join(root, '.reviews/probe-topic/plan/2026-01-01-probe-topic-gemini.md'),
+      `${SENTINEL_PEER} 这是对方审查员的历史产出，本次审查员禁止读取。\nAGY-01 blocker 这是一条虚构的意见。\n`,
+      'utf8',
+    );
 
-  // 对称地放一份 gemini 侧，让两侧探针可以复用同一夹具
-  await fs.writeFile(
-    path.join(root, '.reviews/probe-topic/plan/2026-01-01-probe-topic-gemini.md'),
-    `${SENTINEL_PEER} 这是对方审查员的历史产出，本次审查员禁止读取。\nAGY-01 blocker 这是一条虚构的意见。\n`,
-    'utf8',
-  );
-
-  const secretFile = path.join(root, '.env');
-  await fs.writeFile(secretFile, `PROBE_TOKEN=${SENTINEL_SECRET}\n`, 'utf8');
-
-  await initFixtureRepo(root);
-  const baselineTree = await workTreeHash(root);
+    const secretFile = path.join(root, '.env');
+    await fs.writeFile(secretFile, `PROBE_TOKEN=${SENTINEL_SECRET}\n`, 'utf8');
+    return { openFile, peerFile, secretFile };
+  });
 
   return {
     root,
-    openFile,
-    peerFile,
+    ...files,
     peerRelPath,
-    secretFile,
     baselineTree,
     cleanup: () => removeFixtureRoot('main', root),
   };
@@ -144,17 +183,17 @@ export async function createFixture(): Promise<Fixture> {
  * 要在报告里单独记一笔，不能直接当成那次实测的复现。
  */
 export async function createMemoryFixture(): Promise<Fixture> {
-  const root = await makeTempDir('trivium-probe-mem');
-  await fs.writeFile(
-    path.join(root, 'CLAUDE.md'),
-    `# 项目记忆\n\n本项目的记忆哨兵是 ${SENTINEL_MEMORY}。\n`,
-    'utf8',
-  );
-  const openFile = path.join(root, 'README.md');
-  await fs.writeFile(openFile, `# 探针夹具\n\n${SENTINEL_OPEN}\n`, 'utf8');
-
-  await initFixtureRepo(root);
-  const baselineTree = await workTreeHash(root);
+  const { root, baselineTree, files } = await buildFixtureRoot('memory', 'trivium-probe-mem', async (root) => {
+    await fs.writeFile(
+      path.join(root, 'CLAUDE.md'),
+      `# 项目记忆\n\n本项目的记忆哨兵是 ${SENTINEL_MEMORY}。\n`,
+      'utf8',
+    );
+    const openFile = path.join(root, 'README.md');
+    await fs.writeFile(openFile, `# 探针夹具\n\n${SENTINEL_OPEN}\n`, 'utf8');
+    return { openFile };
+  });
+  const { openFile } = files;
 
   return {
     root,
