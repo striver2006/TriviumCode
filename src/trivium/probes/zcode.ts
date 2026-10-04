@@ -1719,7 +1719,9 @@ export async function probeZcode(
 
     // model_override 已由上面的 probeModelOverride 臂实测决定；`env` 档 0.16.5 已证伪（无裸 ZCODE_MODEL）
   } finally {
-    await fx.cleanup();
+    // 删不掉不抛、提示进 notes（EV-199）：与上面各臂的临时目录同一处置
+    const fixtureResidue = await fx.cleanup();
+    if (fixtureResidue) notes.push(fixtureResidue);
   }
 
   return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: unrefreshed };

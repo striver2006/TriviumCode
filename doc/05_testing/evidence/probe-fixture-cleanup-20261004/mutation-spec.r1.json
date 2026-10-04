@@ -1,0 +1,126 @@
+{
+  "targets": [
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/zcode.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/probe-fixture-cleanup.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "file": "src/trivium/probes/fixture.ts",
+      "desc": "主夹具 cleanup 退回裸递归删除",
+      "find": "    cleanup: () => removeFixtureRoot('main', root),\n",
+      "replace": "    cleanup: () => fs.rm(root, { recursive: true, force: true }).then(() => null),\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M2",
+      "file": "src/trivium/probes/fixture.ts",
+      "desc": "记忆夹具 cleanup 退回裸递归删除",
+      "find": "    cleanup: () => removeFixtureRoot('memory', root),\n",
+      "replace": "    cleanup: () => fs.rm(root, { recursive: true, force: true }).then(() => null),\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M3",
+      "file": "src/trivium/probes/fixture.ts",
+      "desc": "fixtureResidueText 去掉家目录归一",
+      "find": "    `⚠️ 探针夹具删除失败（${code}）：${tildeHome(root)} 仍在，` +\n",
+      "replace": "    `⚠️ 探针夹具删除失败（${code}）：${root} 仍在，` +\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M4",
+      "file": "src/trivium/probes/fixture.ts",
+      "desc": "删成功也返回提示",
+      "find": "  return left === null ? null : fixtureResidueText(kind, root, left.code);\n",
+      "replace": "  return fixtureResidueText(kind, root, left === null ? 'OK' : left.code);\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M5",
+      "file": "src/trivium/probes/fixture.ts",
+      "desc": "记忆夹具的提示取主夹具那句",
+      "find": "    cleanup: () => removeFixtureRoot('memory', root),\n",
+      "replace": "    cleanup: () => removeFixtureRoot('main', root),\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M6",
+      "file": "src/trivium/probes/codex.ts",
+      "desc": "隔离探针 finally 退回裸递归删除",
+      "find": "    const left = await tryRemoveTempDir(dir, []);\n    tempDirResidue = left === null ? null : codexIsolationResidueText(dir, left.code);\n",
+      "replace": "    await fs.rm(dir, { recursive: true, force: true });\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M7",
+      "file": "src/trivium/probes/codex.ts",
+      "desc": "删不掉时把结论改成 shared",
+      "find": "  return { isolation, tempDirResidue };\n",
+      "replace": "  return { isolation: tempDirResidue === null ? isolation : 'shared', tempDirResidue };\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M8",
+      "file": "src/trivium/probes/codex.ts",
+      "desc": "probeCodex 不推隔离探针的提示",
+      "find": "    if (iso.tempDirResidue) notes.push(iso.tempDirResidue);\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M9",
+      "file": "src/trivium/probes/agy.ts",
+      "desc": "agy 调用点不推夹具提示",
+      "find": "    const fixtureResidue = await fx.cleanup();\n    if (fixtureResidue) notes.push(fixtureResidue);\n",
+      "replace": "    await fx.cleanup();\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M10",
+      "file": "src/trivium/probes/claude.ts",
+      "desc": "claude 记忆夹具调用点不推提示",
+      "find": "    const fixtureResidue = await memFx.cleanup();\n    if (fixtureResidue) notes.push(fixtureResidue);\n",
+      "replace": "    await memFx.cleanup();\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M11",
+      "file": "src/trivium/probes/zcode.ts",
+      "desc": "zcode 调用点不推夹具提示",
+      "find": "    const fixtureResidue = await fx.cleanup();\n    if (fixtureResidue) notes.push(fixtureResidue);\n",
+      "replace": "    await fx.cleanup();\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M12",
+      "file": "src/trivium/probes/codex.ts",
+      "desc": "codexIsolationResidueText 去掉家目录归一",
+      "find": "    `⚠️ codex 隔离探针临时目录删除失败（${code}）：${tildeHome(dir)} 仍在，` +\n",
+      "replace": "    `⚠️ codex 隔离探针临时目录删除失败（${code}）：${dir} 仍在，` +\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M13",
+      "file": "src/trivium/probes/codex.ts",
+      "desc": "codex 调用点不推夹具提示",
+      "find": "    const fixtureResidue = await fx.cleanup();\n    if (fixtureResidue) notes.push(fixtureResidue);\n",
+      "replace": "    await fx.cleanup();\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M14",
+      "file": "src/trivium/probes/claude.ts",
+      "desc": "claude 主夹具调用点不推提示",
+      "find": "    const fixtureResidue = await fx.cleanup();\n    if (fixtureResidue) notes.push(fixtureResidue);\n",
+      "replace": "    await fx.cleanup();\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    }
+  ]
+}

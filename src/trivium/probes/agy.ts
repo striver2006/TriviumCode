@@ -359,7 +359,9 @@ export async function probeAgy(
         : `scratch_paths=${JSON.stringify(probe.scratch_paths)}`,
     );
   } finally {
-    await fx.cleanup();
+    // 删不掉不抛、提示进 notes（EV-199）：抛出会顶替上面的结论、把 doctor 崩成内部错误
+    const fixtureResidue = await fx.cleanup();
+    if (fixtureResidue) notes.push(fixtureResidue);
   }
 
   return { probe, notes };

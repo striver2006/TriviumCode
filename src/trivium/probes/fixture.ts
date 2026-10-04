@@ -10,7 +10,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { makeTempDir } from '../util/fsx.js';
+import { makeTempDir, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
 import { initFixtureRepo, workTreeHash } from '../util/git.js';
 
 export const SENTINEL_OPEN = 'SENTINEL_OPEN_7f3a2b';
@@ -31,7 +31,41 @@ export interface Fixture {
   secretFile: string;
   /** 建仓后的基线 tree hash */
   baselineTree: string;
-  cleanup: () => Promise<void>;
+  /**
+   * 删夹具根：重试三次、失败不抛；删成功返回 null，删不掉返回一句提示（EV-199）。
+   *
+   * 调用点都在各侧探针函数的外层 finally：抛出会顶替探针返回值、穿过 `runDoctor`，本轮已探的结论在
+   * checkpoint 前丢失。调用方拿到提示就推进该侧 notes（同 EV-198 各臂的 `tempDirResidue`）。
+   */
+  cleanup: () => Promise<string | null>;
+}
+
+/** 两个夹具的内容说明：记忆夹具里没有 `.env`，不能共用一句（EV-199 计划 §2.1） */
+const FIXTURE_CONTENTS = {
+  main: '哨兵、虚构的对方审查件与假 .env',
+  memory: '哨兵与项目记忆 CLAUDE.md',
+} as const;
+
+/**
+ * 夹具删不掉时的提示（EV-199）。家目录归一 `~`：doctor 输出常被抄进 evidence。
+ *
+ * 不说「只有夹具文件」：各侧 CLI 以夹具根为 cwd 运行、会往里落自己的文件（§3.5 的 `scratch_paths` 正为此而设），
+ * 所以补「与本次探测的临时文件」；也不说「里面没有真实凭据」——CLI 落的文件探针没有逐个看过，
+ * 可核的是「探针没有往里放」。不做删除失败后的现场查：探针从不往夹具里写凭据副本，没有可查的位置。
+ * 说「剩下的只会是」而不是「其中是」（代码双审 r1 CODEX-03）：这是上界——递归删除删到一半才失败、
+ * 括号里的文件可能已不在，CLI 也可能没落任何文件，上界在这两种情形下都仍成立。
+ */
+export function fixtureResidueText(kind: keyof typeof FIXTURE_CONTENTS, root: string, code: string): string {
+  return (
+    `⚠️ 探针夹具删除失败（${code}）：${tildeHome(root)} 仍在，` +
+    `其中剩下的只会是探针写的夹具文件（${FIXTURE_CONTENTS[kind]}）与本次探测的临时文件，探针没有往里放真实凭据，请手工删除`
+  );
+}
+
+/** 只删 `makeTempDir` 的返回值（2026-09-20 事故后的规矩，见 `tryRemoveTempDir`） */
+async function removeFixtureRoot(kind: keyof typeof FIXTURE_CONTENTS, root: string): Promise<string | null> {
+  const left = await tryRemoveTempDir(root, []);
+  return left === null ? null : fixtureResidueText(kind, root, left.code);
 }
 
 export async function createFixture(): Promise<Fixture> {
@@ -81,7 +115,7 @@ export async function createFixture(): Promise<Fixture> {
     peerRelPath,
     secretFile,
     baselineTree,
-    cleanup: () => fs.rm(root, { recursive: true, force: true }),
+    cleanup: () => removeFixtureRoot('main', root),
   };
 }
 
@@ -131,6 +165,6 @@ export async function createMemoryFixture(): Promise<Fixture> {
     peerRelPath: '.no-peer-in-memory-fixture',
     secretFile: path.join(root, '.no-secret-in-memory-fixture'),
     baselineTree,
-    cleanup: () => fs.rm(root, { recursive: true, force: true }),
+    cleanup: () => removeFixtureRoot('memory', root),
   };
 }

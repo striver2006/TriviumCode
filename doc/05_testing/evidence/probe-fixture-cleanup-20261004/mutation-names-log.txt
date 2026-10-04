@@ -1,0 +1,14 @@
+M1：fail=7 cancelled=0 8s ⇒ F2 主夹具删不掉：不抛、返回整句提示（家目录归一 ~）、根目录仍在 ｜ F5 删不掉之后恢复权限再 cleanup 一次：返回 null、收干净（幂等） ｜ E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句 ｜ E2 probeAgy：夹具删不掉——不抛，恰一条主夹具提示 ｜ E3 probeZcode：夹具删不掉——不抛，恰一条主夹具提示 ｜ E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy ｜ W3 probes 与 adapters 两目录下没有裸递归删除：删临时目录一律经 tryRemoveTempDir
+M2：fail=3 cancelled=0 8s ⇒ F3 记忆夹具删不掉：内容说明是记忆夹具那一句、不提 .env ｜ E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句 ｜ W3 probes 与 adapters 两目录下没有裸递归删除：删临时目录一律经 tryRemoveTempDir
+M3：fail=2 cancelled=0 8s ⇒ F2 主夹具删不掉：不抛、返回整句提示（家目录归一 ~）、根目录仍在 ｜ F3 记忆夹具删不掉：内容说明是记忆夹具那一句、不提 .env
+M4：fail=7 cancelled=0 8s ⇒ F1 主夹具删成功：cleanup 返回 null、根目录不在 ｜ F4 记忆夹具删成功：cleanup 返回 null、根目录不在 ｜ F5 删不掉之后恢复权限再 cleanup 一次：返回 null、收干净（幂等） ｜ E1b probeClaude 对照：删成功时 notes 里没有删除失败字样、无残留 ｜ E2b probeAgy 对照：删成功时无提示、无残留 ｜ E3b probeZcode 对照：删成功时无提示、无残留 ｜ E4b probeCodex 对照：删成功时无提示、无残留，isolation 照常 home_copy
+M5：fail=2 cancelled=0 7s ⇒ F3 记忆夹具删不掉：内容说明是记忆夹具那一句、不提 .env ｜ E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句
+M6：fail=4 cancelled=0 7s ⇒ I2 对照翻转 + 目录删不掉：不抛、结论仍 home_copy、提示整句（家目录归一 ~） ｜ I3 对照不翻转 + 目录删不掉：结论仍 shared（不因删不掉而改）、提示同 I2 ｜ E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy ｜ W3 probes 与 adapters 两目录下没有裸递归删除：删临时目录一律经 tryRemoveTempDir
+M7：fail=2 cancelled=0 8s ⇒ I2 对照翻转 + 目录删不掉：不抛、结论仍 home_copy、提示整句（家目录归一 ~） ｜ E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy
+M8：fail=2 cancelled=0 8s ⇒ E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy ｜ W2 probeCodex 取隔离探针的结论落盘、提示推进 notes
+M9：fail=2 cancelled=0 8s ⇒ E2 probeAgy：夹具删不掉——不抛，恰一条主夹具提示 ｜ W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生）
+M10：fail=2 cancelled=0 8s ⇒ E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句 ｜ W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生）
+M11：fail=2 cancelled=0 8s ⇒ E3 probeZcode：夹具删不掉——不抛，恰一条主夹具提示 ｜ W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生）
+M12：fail=2 cancelled=0 8s ⇒ I2 对照翻转 + 目录删不掉：不抛、结论仍 home_copy、提示整句（家目录归一 ~） ｜ I3 对照不翻转 + 目录删不掉：结论仍 shared（不因删不掉而改）、提示同 I2
+M13：fail=2 cancelled=0 8s ⇒ E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy ｜ W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生）
+M14：fail=2 cancelled=0 8s ⇒ E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句 ｜ W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生）

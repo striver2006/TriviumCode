@@ -1462,7 +1462,9 @@ export async function probeClaude(
       );
     }
   } finally {
-    await fx.cleanup();
+    // 删不掉不抛、提示进 notes（EV-199）：抛出会顶替上面的结论、把 doctor 崩成内部错误
+    const fixtureResidue = await fx.cleanup();
+    if (fixtureResidue) notes.push(fixtureResidue);
   }
 
   /*
@@ -1527,7 +1529,8 @@ export async function probeClaude(
               '对照臂也没看见——维持 EV-44 原裁定，待复测）'),
     );
   } finally {
-    await memFx.cleanup();
+    const fixtureResidue = await memFx.cleanup();
+    if (fixtureResidue) notes.push(fixtureResidue);
   }
 
   return { probe, notes, structuredArmCause };

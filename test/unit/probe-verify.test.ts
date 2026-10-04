@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
@@ -9,11 +9,28 @@ import {
 } from '../../src/trivium/probes/verify-commands.js';
 
 /**
+ * 本文件建的树根：文件结束时整删，删不掉就打出来、不吞（EV-199 代码双审 r1 CODEX-02）。
+ * 此前从不收尾，每次全量在系统临时目录留下一批。
+ */
+const ROOTS: string[] = [];
+after(async () => {
+  for (const d of ROOTS) {
+    await fs.rm(d, { recursive: true, force: true, maxRetries: 3 }).catch((e: unknown) => {
+      console.warn(`probe-verify：临时树没删掉，请手工删除 ${d}（${(e as NodeJS.ErrnoException).code ?? String(e)}）`);
+    });
+  }
+});
+
+/**
  * 建树：键是相对路径，值是文件内容；以 `/` 结尾表示建空目录。
  * 目录按需自动创建。
+ *
+ * 前缀用 `trivium-pverify-`，不以 `trivium-probe-` 开头（EV-199 代码双审 r1 CODEX-02）：那是 doctor 探针夹具的前缀，
+ * 夹具删不掉时提示会让人去系统临时目录按路径找它，测试借用同一前缀会混淆（`trivium-probe-verify-` 照样撞）。
  */
 async function mkTree(tree: Record<string, string>): Promise<string> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-probe-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-pverify-'));
+  ROOTS.push(root);
   for (const [rel, content] of Object.entries(tree)) {
     const p = path.join(root, rel);
     if (rel.endsWith('/')) {

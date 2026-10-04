@@ -1,0 +1,63 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "没有发现会让线上出错的缺陷：实现与计划 r2 及设计 v1.3.83 一致。五处 cleanup 接线（agy、claude 主夹具与记忆夹具、codex、zcode）、probeCodexIsolation 的判定本体拆分、措辞收敛与四处文档同步均按工作树逐一核实；删除成功时 notes 不多推任何东西，「doctor 输出逐字不变」有结构保证（doctor.ts 只对 notes 做加前缀映射）。测试是行为级的（假入口经 run() 的 env 叠加语义真实走到删除失败的 finally），变异 14 条读数可信。唯一一条意见是 nit 级：W3 清零守卫只认 fs.rm 一种拼写，作为「两目录递归删除清零」的锁强度有限。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/probe-fixture-cleanup.test.ts:544",
+      "problem": "W3 清零守卫的匹配面只认 fs.rm 后紧跟左括号这一种拼写：fs.rmSync(、fs.promises.rm(、从 node:fs 解构导入的 rm( 都不命中；tsFiles 用非递归 readdir，两目录将来出现子目录也会漏扫。照 house style（import promises as fs）写的新代码逃不掉，但换个拼写的裸递归删除会让「两目录清零」的锁保持绿。这与 EV-199 登记口径（grep fs.rm( ）同形，属口径的已知边界而非实现跑偏，设计 §3.5「由单测守着」一句的强度略高于守卫实际能力。",
+      "evidence": "读 test/unit/probe-fixture-cleanup.test.ts:506-579：tsFiles 是 readdir 后过滤 .ts（不递归），countRecursiveRm 的匹配式为 fs.rm 加左括号（rm 后必须是左括号，rmSync 不命中）。另独立 grep src/trivium/probes 与 src/trivium/adapters：当前无 rmSync、rmdir、解构 rm 等其它拼写的 fs 调用（adapters/base.ts 的 rmdir 命中是命令轨迹解析表，不是删除调用），守卫今日零漏报。",
+      "suggestion": "把匹配面放宽到 rm 与 rmSync 两种形态（如 fs.rm 或 fs.rmSync 后跟左括号），或在 W3 的失败消息里写明本守卫只认 fs.rm 字面拼写、其余写法靠「新增删临时目录一律走 tryRemoveTempDir」的约定与评审把守。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "五处调用点接线逐字核实（agy.ts:362、claude.ts:1465 与 1532、codex.ts:1080、zcode.ts:1723），全部是「接住返回值、有提示才推 notes」的同一形态；Fixture.cleanup 返回 Promise<string | null>，删成功返回 null（fixture.ts:40、64-67）。",
+    "probeCodexIsolation 拆分忠实：judgeCodexIsolation 的 try/catch 原样搬来（catch 落 shared），包装函数 finally 里不 return——判定本体将来若会抛、异常照常上抛不被删除收尾吞掉（codex.ts:650-704）；probeCodex 是全仓唯一调用点（grep 核实），isolation 只取判定本体返回值，结论不因删不掉改变。",
+    "tryRemoveTempDir 对本题两个新调用点（copies 传空数组）没有抛出路径：catch 内只做空循环与返回（fsx.ts:153-169），重试语义与 EV-197/200 同源。",
+    "措辞与事实相符：主夹具确有假 .env（哨兵值，fixture.ts:103-104）、记忆夹具确无 .env（其 peerFile/secretFile 指向不存在路径）；「探针没有往里放真实凭据」的收敛表述与「不做删除失败后的现场查」的取舍自洽；路径经 tildeHome 归一。",
+    "测试是行为级的：run() 的 env 是叠加在 process.env 之上（util/exec.ts RunOptions 注释），假入口继承钉住的 TMPDIR/HOME，摆锁法让各侧 finally 真实走到删除失败一格；22 格覆盖四侧接线、对照臂、幂等（F5）、判定语义（I3/I4/I5）与提示顺序（E4 注明 try 先推、finally 后推）。",
+    "报告覆盖边界诚实：EACCES 不触发 maxRetries 重试、E 组只守提示在不在不是整句字面、selftest 不经 fixture.ts 不作本题证据（§3 覆盖边界三条），变异 M3/M12 与计划预期的出入也如实记录（§4 末段）。",
+    "文档同步齐备：设计 §3.5 新段与 §24 v1.3.83 行、doc/05_testing README 新条目、RUNBOOK 行补两句新提示与「不要通配删除」的告诫、BACKLOG EV-199 转 done（含登记时数错已改准）并新登 EV-204；EV-204 所指 util/git.ts:121 的裸递归删除我已独立核实存在。",
+    "既有锚点不受影响：claude-events.test.ts:1047 的 indexOf('await fx.cleanup()') 在新写法（const fixtureResidue = await fx.cleanup()）下仍命中；Fixture 接口变更的调用方全在 probes 目录与测试内，无别处破坏。"
+  ],
+  "not_covered": [
+    "只读审查、未执行任何命令：npm run check、22 格用例、变异 14/14、doctor --selftest 14/14 均为报告与证据文件的读数（check-2.txt 汇总行 tests 2678/pass 2676/fail 0 已核对），未独立复跑。",
+    "真实 CLI 下的端到端未验证：E 组替身的是 CLI 应答、跑的是同段探针代码，报告 §3 自己也如此界定。",
+    "被审 diff 全文约 700KB 未逐行读：所有 src 与 test 改动已按工作树真实文件核对；evidence 目录下 gen-mutation-spec.mjs、mutation-spec.json、mutation-names-* 与 mutation-output.txt、check-1.txt 未读或只读了汇总行。",
+    "RUNBOOK 其余各行、BACKLOG EV-195 以前条目未逐条复核（只读了 EV-196～204 相关行）。",
+    "claude 主夹具残留提示推出后、记忆臂稍后抛出时该提示随异常丢弃的窄路径未深究：与报告 §6 残余 ①/② 同族，且相对改前（整函数直接崩）不是回归。",
+    "EV-204 所列 retention/install/lock 三处未逐一甄别，题目声明只登记不处理。"
+  ],
+  "consulted": [
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/doctor.ts",
+    "test/unit/probe-fixture-cleanup.test.ts",
+    "test/unit/claude-events.test.ts",
+    "test/unit/codex-events.test.ts",
+    "skills/dual-critic/schema/review.v1.json",
+    "doc/05_testing/REPORT_2026-10-04_probe_fixture_cleanup.md",
+    "doc/05_testing/evidence/probe-fixture-cleanup-20261004/check-2.txt",
+    "doc/05_testing/evidence/probe-fixture-cleanup-20261004/doctor-selftest.r1.txt",
+    "doc/05_testing/README.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md"
+  ]
+}

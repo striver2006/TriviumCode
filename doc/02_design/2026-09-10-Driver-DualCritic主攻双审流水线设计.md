@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.82
+> - **当前版本**：v1.3.83
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -300,6 +300,8 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 | `node` | 绝对路径可执行且 ≥ 18（编排器与 ZCode 共用前置；官方建议 22+），写入 `runtime.node` | 预检失败 |
 | `git` | 版本满足下限 | 预检失败 |
 | `verify.commands` | 探测项目编译测试命令来源（见 14.1） | 命令 A 无法收口 |
+
+**探针临时目录的收尾**（v1.3.83，EV-199）：各侧探针共用的夹具（主夹具 `trivium-probe-*`、EV-44 记忆夹具 `trivium-probe-mem-*`）与 codex 的隔离探针目录（`trivium-codexhome-*`）探完即删、只删 mkdtemp 的返回值，删不掉时不抛（重试三次，经 `util/fsx.ts` 的 `tryRemoveTempDir`）——此前会从探针函数的外层 finally 抛出、顶替本轮已探的结论，把 doctor 崩成内部错误。提示（家目录归一 `~`、给出完整路径、说明里面剩下的只会是探针写的文件与本次探测的临时文件、没有凭据——是上界，删掉一部分时仍成立）进该侧 notes，结论不变；夹具的 `cleanup` 返回提示或 null，隔离探针的结果把结论与提示分开带。`src/trivium/probes`、`src/trivium/adapters` 两目录里的递归删除自此全部走 `tryRemoveTempDir`，由单测守着；两目录之外的同族点见 BACKLOG EV-204。
 
 ### 3.6 Codex（QWen / DeepSeek 等多模型家族）—— 【已回填 · M6 第 2 步】
 
@@ -3656,6 +3658,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.83** | 2026-10-04 | **探针夹具删除收尾（EV-199）。** 计划 `.reviews/探针夹具删除收尾/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261004T025901Z`：codex `request-changes`（重要 1，另 5 条逐条降级）、gemini `approve`、glm `approve-with-nits`，7 条全接受）。两个夹具工厂的 `cleanup` 改调 `tryRemoveTempDir`、返回提示或 null，五处调用点（四个探针函数的外层 finally）拿到提示推进该侧 notes；`probeCodexIsolation` 拆出判定本体、返回 `{ isolation, tempDirResidue }`，由 `probeCodex` 推进 notes，结论不因删不掉而改变；措辞新开两句（`fixtureResidueText` 按主夹具 / 记忆夹具分内容说明，`codexIsolationResidueText`），不断言残留全貌、不做现场查；删除成功时 doctor 输出逐字不变。五处接线由四侧假入口行为级用例守（计划双审 CODEX-01 指出 r1「要拉真实 CLI 才走得到 finally」与仓库事实相反），源码结构断言作补充，`probes` / `adapters` 两目录的递归删除清零由括号配平截取的守卫锁住。另登 EV-204（两目录之外的同族裸删，`workTreeHash` 在探针路径上）。代码双审 run `20261004T034428Z`（codex 解析回退、原文自报 `approve-with-nits` 5 条，gemini `approve`，glm `approve-with-nits` 1 条）6 条全接受：措辞改为上界「其中剩下的只会是…」、清零守卫的匹配面放宽到 `rm` / `rmdir` / `rmSync` 任意接收者与速记 `recursive` 并递归扫描、`probe-verify` 用例不再借用夹具前缀且补收尾；`probeCodexHeader` 的轮询计时器在 CLI 不吐 header 时漏清，另登 EV-205。§3.5 补一段。读数见 `doc/05_testing/REPORT_2026-10-04_probe_fixture_cleanup.md`。 |
 | **v1.3.82** | 2026-10-04 | **探活指纹读盘兜底（EV-202）。** 计划 `.reviews/探活指纹读盘兜底/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261003T163816Z`：三侧均 `approve-with-nits`，7 条全接受）。兜底收在 `preflight.ts` 的 `probeAuth` 一处、不逐家改适配器：codex 指纹（三处读盘）与 agy 指纹（`agent.md`，登记时漏写的同形）抛出时**不折成 null**——null 是 `AuthProbe.fingerprint` 契约里的「无从计算」，上次指纹为 null 时会命中缓存——改为不查也不写缓存、照常探活，详情末尾接「⚠️ 指纹读不了：原因，本次未用缓存、也不写缓存」（家目录归一 `~`）；适配器构造或 `probe()` 抛出落成该侧失败（退 69、「探活内部失败：原因」），不再崩整个预检（这条路径原先退 1），`TRIVIUM_DEBUG` 置位时兜住处照打原始异常。⑧ 的 `Promise.all` 原样抽成导出的 `probeAuthAll`，用例传假适配器零配额，不给 `runPreflight` 开探活注入口。zcode 指纹自己吞了读盘异常、不经这一支，档位无模型时的缓存误命中窄格另登 EV-203。§8.1 补一句。读数见 `doc/05_testing/REPORT_2026-10-04_auth_fingerprint_guard.md`。 |
 | **v1.3.81** | 2026-10-03 | **codex 探活删除收尾（EV-200）。** 计划 `.reviews/codex探活删除收尾/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261003T142424Z`：codex `request-changes`（4 条逐条降级，落在测试摆法）、gemini / glm `approve-with-nits`，12 条全接受）。codex 认证探活照 EV-197 拆出内部 `attempt`、外层 finally 删除：重试三次、失败不抛，删不掉时按现场查三份凭据副本（`codexCredentialCopies`）的结果取两档措辞之一接在详情末尾，结论不变，删除成功时输出逐字节不变；删除与现场查的通用部分抽到 `util/fsx.ts` 的 `tryRemoveTempDir`（`tildeHome` 一并挪来），`removeZcodeTempDir` 改为只管措辞的薄包装、zcode 侧输出逐字不变；副本准备失败落成写明哪一步的可读失败（`prepareCodexHome` 在原错误对象上挂步骤名，`run()` 文案不变）。代码双审 run `20261003T150101Z`（codex / glm `approve-with-nits`、gemini `approve`）4 条全接受：`isCredentialCarrier` 导出作单测对账口径、「没有凭据副本」档不再断言剩下的是 CLI 产物（副本准备失败时 CLI 未拉起）、删除失败回退消息也归一家目录。§10.5「凭据」一行与 §11.3 第 7 条各补一句。另登 EV-202（codex 指纹读盘无兜底）。读数见 `doc/05_testing/REPORT_2026-10-03_codex_probe_cleanup.md`。 |
 | **v1.3.80** | 2026-10-03 | **zcode 探针臂删除收尾（EV-198）。** 计划 `.reviews/zcode探针臂删除收尾/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261003T115927Z`：三侧 `approve-with-nits`，10 条全接受）。旗标探针、白名单臂、同形臂三处 finally 的裸删改调 `removeZcodeTempDir`（重试三次、失败不抛），删除失败的提示经返回值带出、`probeZcode` 逐臂推进 notes，判据、拉起方式、doctor 的 blocker 与 warning 不变。`zcodeTempDirResidueText` 加第三档「探针副本、凭据已换成哨兵」；`removeZcodeTempDir` 的副本位置与档位改由调用方传入（原先写死成 `prepareZcodeHome` 的布局，白名单臂的副本不在那儿），副本的写入与现场查共用 `zcodeCliCopyPath(homeDir)`；认证探活与 doctor headless 段输出逐字不变。代码双审 run `20261003T123538Z`（codex `approve-with-nits`，5 条逐条降级、接受 4 驳回 1；gemini、glm `approve`）：同形臂取档抽成 `fullCopyResidueKind`、`zcodeCliCopyPath` 的单源措辞收窄、测试夹具补收尾；另登 EV-200（codex 认证探活删除失败崩预检、残留真实 `auth.json`）；双审后全量实遇 `cancel-grace-unverifiable` 偶发红，经用户定登记 EV-201。§11.3 第 7 条补一句。另登 EV-199（探针夹具 cleanup 同族裸删，四侧共用）。读数见 `doc/05_testing/REPORT_2026-10-03_zcode_probe_arm_cleanup.md`。 |

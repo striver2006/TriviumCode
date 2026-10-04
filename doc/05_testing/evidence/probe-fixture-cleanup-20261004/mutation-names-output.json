@@ -1,0 +1,234 @@
+{
+  "targets_sha256": {
+    "src/trivium/probes/fixture.ts": "e6f55341806296ea311859e010490b8310cbceb2831cb57266a30dafb9b5d382",
+    "src/trivium/probes/codex.ts": "e88afd15d2bf0c32e3ccdf07fcbe3b2a9fa64eb81da81f79f3fd834c77e6c144",
+    "src/trivium/probes/agy.ts": "acf0a9fc01e9a7bc85032d691cdc9c639b9907fb702b6c6feb25d09e02c21bce",
+    "src/trivium/probes/claude.ts": "5f25ac7f95d34b68702b494a7a5f3522b35cecb9098b216aa6066f4c10c6386a",
+    "src/trivium/probes/zcode.ts": "43dff50213bd21d3c0e2779a0ef70ee7d163c3b99c9ce84f2d9a237489e948fa"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "主夹具 cleanup 退回裸递归删除",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 7,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "F2 主夹具删不掉：不抛、返回整句提示（家目录归一 ~）、根目录仍在",
+        "F5 删不掉之后恢复权限再 cleanup 一次：返回 null、收干净（幂等）",
+        "E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句",
+        "E2 probeAgy：夹具删不掉——不抛，恰一条主夹具提示",
+        "E3 probeZcode：夹具删不掉——不抛，恰一条主夹具提示",
+        "E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy",
+        "W3 probes 与 adapters 两目录下没有裸递归删除：删临时目录一律经 tryRemoveTempDir"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "记忆夹具 cleanup 退回裸递归删除",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "F3 记忆夹具删不掉：内容说明是记忆夹具那一句、不提 .env",
+        "E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句",
+        "W3 probes 与 adapters 两目录下没有裸递归删除：删临时目录一律经 tryRemoveTempDir"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "fixtureResidueText 去掉家目录归一",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "F2 主夹具删不掉：不抛、返回整句提示（家目录归一 ~）、根目录仍在",
+        "F3 记忆夹具删不掉：内容说明是记忆夹具那一句、不提 .env"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "删成功也返回提示",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 7,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "F1 主夹具删成功：cleanup 返回 null、根目录不在",
+        "F4 记忆夹具删成功：cleanup 返回 null、根目录不在",
+        "F5 删不掉之后恢复权限再 cleanup 一次：返回 null、收干净（幂等）",
+        "E1b probeClaude 对照：删成功时 notes 里没有删除失败字样、无残留",
+        "E2b probeAgy 对照：删成功时无提示、无残留",
+        "E3b probeZcode 对照：删成功时无提示、无残留",
+        "E4b probeCodex 对照：删成功时无提示、无残留，isolation 照常 home_copy"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "记忆夹具的提示取主夹具那句",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "F3 记忆夹具删不掉：内容说明是记忆夹具那一句、不提 .env",
+        "E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句"
+      ],
+      "firstLines": [],
+      "elapsed_s": 7,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "隔离探针 finally 退回裸递归删除",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "I2 对照翻转 + 目录删不掉：不抛、结论仍 home_copy、提示整句（家目录归一 ~）",
+        "I3 对照不翻转 + 目录删不掉：结论仍 shared（不因删不掉而改）、提示同 I2",
+        "E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy",
+        "W3 probes 与 adapters 两目录下没有裸递归删除：删临时目录一律经 tryRemoveTempDir"
+      ],
+      "firstLines": [],
+      "elapsed_s": 7,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "删不掉时把结论改成 shared",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "I2 对照翻转 + 目录删不掉：不抛、结论仍 home_copy、提示整句（家目录归一 ~）",
+        "E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "probeCodex 不推隔离探针的提示",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy",
+        "W2 probeCodex 取隔离探针的结论落盘、提示推进 notes"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M9",
+      "desc": "agy 调用点不推夹具提示",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "E2 probeAgy：夹具删不掉——不抛，恰一条主夹具提示",
+        "W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M10",
+      "desc": "claude 记忆夹具调用点不推提示",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句",
+        "W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M11",
+      "desc": "zcode 调用点不推夹具提示",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "E3 probeZcode：夹具删不掉——不抛，恰一条主夹具提示",
+        "W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M12",
+      "desc": "codexIsolationResidueText 去掉家目录归一",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "I2 对照翻转 + 目录删不掉：不抛、结论仍 home_copy、提示整句（家目录归一 ~）",
+        "I3 对照不翻转 + 目录删不掉：结论仍 shared（不因删不掉而改）、提示同 I2"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M13",
+      "desc": "codex 调用点不推夹具提示",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy",
+        "W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M14",
+      "desc": "claude 主夹具调用点不推提示",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句",
+        "W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    }
+  ]
+}

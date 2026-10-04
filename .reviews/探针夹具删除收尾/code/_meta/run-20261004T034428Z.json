@@ -1,0 +1,304 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261004T034428Z",
+  "topic": "探针夹具删除收尾",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「探针夹具删除收尾」：EV-199，EV-198 计划双审第 1 轮三侧同指（CODEX-04 ≡ AGY-02 ≡ GLM-02）、代码双审 r1 CODEX-01 补 codex 隔离探针一处。修完之后，探针与适配器里递归删临时目录无兜底的点清零（这一族 EV-194、EV-197、EV-198、EV-200 已收）。 EV-199：探针夹具的 cleanup 与 codex 隔离探针的临…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "02dcab27ed7536846a3d820475699e65bcccbd8c",
+    "tree_hash": "4c42d6717b1f1a7fc72a46691c2414de26ea9b27",
+    "dirty": true,
+    "subject_sha256": "fe2653e5e6a4f9864a28329c57edf40d16c23814e32a7af879d7cefbb66c4c52",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "02dcab27ed7536846a3d820475699e65bcccbd8c",
+      "dirty": false,
+      "inputs_sha256": "02f3bf3fa02343da8cb69b492c0a96b3c5192747f476cb300b48ad203da696df",
+      "built_at": "2026-10-04T00:55:08.898Z"
+    },
+    "after_tree_hash": "8cdcda816351e5c8747b10d1a0253c3a54445ea1"
+  },
+  "started_at": "2026-10-04T03:44:31.799Z",
+  "finished_at": "2026-10-04T03:53:57.327Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.0",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "parse_fallback",
+      "exit_code": 0,
+      "duration_s": 565.24,
+      "tool_calls": {
+        "run_command": 29,
+        "project_reads": 27
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "[json_syntax] JSON 语法错误：Expected ',' or '}' after property value in JSON at position 900 (line 1 column 901)：已按字面还原 1 处非法转义，仍无法解析",
+      "empty_review": false,
+      "parse_fallback": true,
+      "parse_fallback_cause": "json_syntax",
+      "session_id": "01a10503-6a68-7863-8d91-d79127a5e374",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.16",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 166.452,
+      "tool_calls": {
+        "read": 23,
+        "grep": 10,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 22
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 290847,
+        "output_tokens": 23308,
+        "thinking_tokens": 19230,
+        "cache_read_tokens": 3281182,
+        "total_tokens": 314155
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "44b63fd6-e032-4883-84db-752fd9015988",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 426.569,
+      "tool_calls": {
+        "read": 16,
+        "grep": 12,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 11,
+        "inputTokens": 858211,
+        "outputTokens": 30309,
+        "totalTokens": 888520,
+        "cacheReadTokens": 763200,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_2e963f1f-c9da-433f-be1c-5da20d5bf9a6",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/探针夹具删除收尾/plan/2026-10-04-探针夹具删除收尾-gemini.md",
+    ".reviews/探针夹具删除收尾/plan/2026-10-04-探针夹具删除收尾-glm.md",
+    ".reviews/探针夹具删除收尾/plan/_meta/review-gemini-20261004T025901Z.json",
+    ".reviews/探针夹具删除收尾/plan/_meta/review-glm-20261004T025901Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "探针夹具删除收尾/code/_meta/changes-20261004T034428Z.diff",
+      "sha256": "fe2653e5e6a4f9864a28329c57edf40d16c23814e32a7af879d7cefbb66c4c52"
+    },
+    {
+      "path": "探针夹具删除收尾/code/_meta/brief-codex-20261004T034428Z.md",
+      "sha256": "15be494fb437378bda1d41874a72f176f206770ae309afb20e2f59b449a7febc"
+    },
+    {
+      "path": "探针夹具删除收尾/code/_meta/brief-gemini-20261004T034428Z.md",
+      "sha256": "9b830a40dbf3ff7e5fae2dd19bfe98b09714b40e85bb9fd5dfa3414e4600e1e6"
+    },
+    {
+      "path": "探针夹具删除收尾/code/_meta/brief-glm-20261004T034428Z.md",
+      "sha256": "4db4e64dfefbcc14207f845a59a53f0b6ca53523eadd77f28ff480631823fe0f"
+    },
+    {
+      "path": "探针夹具删除收尾/code/_meta/review-codex-20261004T034428Z.json",
+      "sha256": "af3939a0a329a3d0416173e6a2c1abea795cce0fff9eeeec51ea6397053ab6a5"
+    },
+    {
+      "path": "探针夹具删除收尾/code/_meta/review-codex-20261004T034428Z.fallback-items.md",
+      "sha256": "79d9a8631b5c25ac392ba5339c91745507a50800201e594b9ac6b903e4a54c85"
+    },
+    {
+      "path": "探针夹具删除收尾/code/_meta/review-gemini-20261004T034428Z.json",
+      "sha256": "d47d9552d87450c22a8d47f56a7beb3574f850b04f157ff349e3cd266645cfcd"
+    },
+    {
+      "path": "探针夹具删除收尾/code/_meta/review-glm-20261004T034428Z.json",
+      "sha256": "91c1a40f44e98a6d34a0f3fd3b7d02067489317ab23fc4ad17f5e5c476e808ae"
+    },
+    {
+      "path": "探针夹具删除收尾/code/2026-10-04-探针夹具删除收尾-codex.md",
+      "sha256": "95bd915fd9b132b66a14f4e0888ac748ecbf17f5eb9cdbb1fb8a451b0a5c3016"
+    },
+    {
+      "path": "探针夹具删除收尾/code/2026-10-04-探针夹具删除收尾-gemini.md",
+      "sha256": "9b75b1eca73067e9cd63d380218095cb83d94b863dd5000213515aa02497a32a"
+    },
+    {
+      "path": "探针夹具删除收尾/code/2026-10-04-探针夹具删除收尾-glm.md",
+      "sha256": "30e49b93ed46a681fde4030228c7e208c1e958005ef9db046dbe66c13cf0ab7e"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装"
+    ]
+  },
+  "status": "success"
+}

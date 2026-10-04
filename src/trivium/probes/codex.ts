@@ -24,7 +24,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import { run, tryRun } from '../util/exec.js';
-import { exists } from '../util/fsx.js';
+import { exists, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
 import { createFixture, SENTINEL_OPEN, type Fixture } from './fixture.js';
 import { probeScratchPaths } from './agy.js';
 import type { CodexProbe, CodexProviderProbe, PathDenyProbe, ProbeIsolation } from '../types.js';
@@ -613,6 +613,26 @@ export async function probeCodexPathDeny(bin: string): Promise<PathDenyProbe> {
   };
 }
 
+/** codex 隔离探针的结果：结论与删除收尾的提示分开带（EV-199） */
+export interface CodexIsolationResult {
+  isolation: ProbeIsolation;
+  /** 临时目录删不掉时的提示；删成功为 null */
+  tempDirResidue: string | null;
+}
+
+/**
+ * codex 隔离探针临时目录删不掉时的提示（EV-199）。家目录归一 `~`。
+ *
+ * 说「本次探测的临时文件」而不说「CLI 产物」：基线不通时对照那次不跑，目录里只有 `config.toml`
+ * （同 EV-200 代码双审 CODEX-02 的关切：不断言残留内容的全貌）；「剩下的只会是」是上界，删掉一部分时仍成立（代码双审 r1 CODEX-03）。
+ */
+export function codexIsolationResidueText(dir: string, code: string): string {
+  return (
+    `⚠️ codex 隔离探针临时目录删除失败（${code}）：${tildeHome(dir)} 仍在，` +
+    '其中剩下的只会是探针写的 config.toml 与本次探测的临时文件，没有拷入凭据，请手工删除'
+  );
+}
+
 /**
  * 独立 `CODEX_HOME` 能否被采纳 —— **真跑一次**（审查意见 GLM-04）。
  *
@@ -622,9 +642,27 @@ export async function probeCodexPathDeny(bin: string): Promise<PathDenyProbe> {
  * **临时副本不拷 `auth.json`**：凭据不进探针临时目录（设计纪律 9 的同源要求）。
  * 这里只验「独立 HOME 会被采纳」——判据是它能否读到副本里的 `config.toml`，
  * 不需要真的调模型。
+ *
+ * **删除失败不抛**（EV-199）：判定本体在 `judgeCodexIsolation`，这里只管建与删。删不掉时提示经
+ * `tempDirResidue` 带出、由 `probeCodex` 推进 notes（同 EV-198 旗标探针的形态），`isolation` 只取判定本体的返回值，
+ * 结论不因删不掉而改变。目录里没有凭据副本可查，不做删除失败后的现场查。
  */
-export async function probeCodexIsolation(bin: string): Promise<ProbeIsolation> {
+export async function probeCodexIsolation(bin: string): Promise<CodexIsolationResult> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-codexhome-'));
+  let isolation: ProbeIsolation = 'shared';
+  let tempDirResidue: string | null = null;
+  try {
+    isolation = await judgeCodexIsolation(bin, dir);
+  } finally {
+    // finally 里不 return：判定本体将来若改成会抛，异常照常上抛，不被删除收尾吞掉
+    const left = await tryRemoveTempDir(dir, []);
+    tempDirResidue = left === null ? null : codexIsolationResidueText(dir, left.code);
+  }
+  return { isolation, tempDirResidue };
+}
+
+/** 判定本体（原 `probeCodexIsolation` 的 try / catch 原样搬来）：catch 落 `'shared'`，本身不抛 */
+async function judgeCodexIsolation(bin: string, dir: string): Promise<ProbeIsolation> {
   try {
     /*
      * 判据：让副本的 config 指向一个**不存在**的模型目录，看 codex 的报错里
@@ -662,8 +700,6 @@ export async function probeCodexIsolation(bin: string): Promise<ProbeIsolation> 
     return r.code !== 0 ? 'home_copy' : 'shared';
   } catch {
     return 'shared';
-  } finally {
-    await fs.rm(dir, { recursive: true, force: true });
   }
 }
 
@@ -1036,9 +1072,13 @@ export async function probeCodex(
     );
 
     probe.model_catalog_path = await readCatalogPath(probeProfile);
-    probe.isolation = await probeCodexIsolation(bin);
+    const iso = await probeCodexIsolation(bin);
+    probe.isolation = iso.isolation;
+    if (iso.tempDirResidue) notes.push(iso.tempDirResidue);
   } finally {
-    await fx.cleanup();
+    // 删不掉不抛、提示进 notes（EV-199）：抛出会顶替上面的结论、把 doctor 崩成内部错误
+    const fixtureResidue = await fx.cleanup();
+    if (fixtureResidue) notes.push(fixtureResidue);
   }
 
   return { probe, notes };
