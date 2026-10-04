@@ -1,0 +1,297 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261004T160118Z",
+  "topic": "建仓步骤失败显式化",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「建仓步骤失败显式化」：EV-209，夹具运行目录收尾计划双审 GLM-01 附带发现登记。src/trivium/util/git.ts 的 initFixtureRepo 不看 git 的退出码，git 缺失或某一步失败时静默建出没有基线提交、甚至没有仓库的夹具；探针夹具在这之后的工作树哈希处抛出，doctor 崩成内部错误、探针临时目录遗留。 开工前先读：记忆 pipeline-know…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "3b2626cc500b22aa148f3b64878a61bc3d36f470",
+    "tree_hash": "f64570d375187f48f14c54ddd17df2e04a031431",
+    "dirty": true,
+    "subject_sha256": "cbdcba5567c14f310efac7af742c56242f71b02deddbc86672ca6cc13f508fc3",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "3b2626cc500b22aa148f3b64878a61bc3d36f470",
+      "dirty": false,
+      "inputs_sha256": "eada86f10d89b4af0cb902216f97c8076a188d54767a5758783148377c71533e",
+      "built_at": "2026-10-04T15:34:20.822Z"
+    },
+    "after_tree_hash": "29ddbb3df15ad7c9fdc855b75526d871936e7fa9"
+  },
+  "started_at": "2026-10-04T16:01:21.118Z",
+  "finished_at": "2026-10-04T16:12:05.571Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.0",
+      "model_requested": "k3",
+      "model_effective": "k3",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 631.373,
+      "tool_calls": {
+        "run_command": 25,
+        "project_reads": 23
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a107a5-fe82-7952-bb7a-16de2deb9251",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.16",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 329.172,
+      "tool_calls": {
+        "read": 46,
+        "grep": 9,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 23
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 284806,
+        "output_tokens": 36772,
+        "thinking_tokens": 30392,
+        "cache_read_tokens": 4397079,
+        "total_tokens": 321578
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "012af8e5-d052-468c-a881-ff296bc7affd",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 644.045,
+      "tool_calls": {
+        "read": 25,
+        "grep": 17,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 28
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 27,
+        "inputTokens": 2594552,
+        "outputTokens": 36177,
+        "totalTokens": 2630729,
+        "cacheReadTokens": 2463424,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_56e82c90-cd2c-4761-a88b-8354dc4bc831",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "建仓步骤失败显式化/plan/_meta/brief-codex-20261004T160118Z.md",
+      "sha256": "872e2306cbbd7c2cdb267cbeba3b17477f5e9d9c398d315c52481f85a75078e8"
+    },
+    {
+      "path": "建仓步骤失败显式化/plan/_meta/brief-gemini-20261004T160118Z.md",
+      "sha256": "716d91a66c947b851c0288f14eaf446226f9fbc817d9c17add84a0c691bead88"
+    },
+    {
+      "path": "建仓步骤失败显式化/plan/_meta/brief-glm-20261004T160118Z.md",
+      "sha256": "b7674807752d7475c062c470f9ae4066f6c2fa6b3bb24daace842b7b824bde61"
+    },
+    {
+      "path": "建仓步骤失败显式化/plan/_meta/review-codex-20261004T160118Z.json",
+      "sha256": "c9531330d98a0016343c4224f5a24488154ce156bc03ae5c7fccb986d63b99f4"
+    },
+    {
+      "path": "建仓步骤失败显式化/plan/_meta/review-gemini-20261004T160118Z.json",
+      "sha256": "3528ca0fab2e6c33f448128c7ac1c724aad278b9003f758f10b5195949e3e919"
+    },
+    {
+      "path": "建仓步骤失败显式化/plan/_meta/review-glm-20261004T160118Z.json",
+      "sha256": "87b0bcee9834336dd9faf6d3006d0b269bc6cec5ee293b2db89d4a90e9ecc06f"
+    },
+    {
+      "path": "建仓步骤失败显式化/plan/2026-10-05-建仓步骤失败显式化-codex.md",
+      "sha256": "8a3bc79ba6b41871a541aec5616289a54ecdf8ef8afc100c87b36db2b27dfd99"
+    },
+    {
+      "path": "建仓步骤失败显式化/plan/2026-10-05-建仓步骤失败显式化-gemini.md",
+      "sha256": "0d5e7309b800536ee95c0ae394cfeeb7b11ba47e7eda2f09a48204916ed8bfae"
+    },
+    {
+      "path": "建仓步骤失败显式化/plan/2026-10-05-建仓步骤失败显式化-glm.md",
+      "sha256": "db4858da8b9776f9bf0c9796e9de662aa0a3af7604fe200b24a97f868f9350c9"
+    },
+    {
+      "path": "建仓步骤失败显式化/plan/2026-10-04-建仓步骤失败显式化-claude.md",
+      "sha256": "cbdcba5567c14f310efac7af742c56242f71b02deddbc86672ca6cc13f508fc3"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

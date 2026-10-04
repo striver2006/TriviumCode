@@ -1,0 +1,74 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "我对计划做了全文逐条源码核对：§1.1 的代码事实（initFixtureRepo 六步与三条 config 无超时、run 的 [spawn error] 通道与 code 为 null、workTreeHash 对 add 失败抛错、五处建仓调用点均在 try 之外、probed_at 先于建仓打戳、doctor 四段无 try 与末尾循环判据、selftest 既有 catch 通道）全部属实；§1.2 两处甄别我独立复核成立（hooks.test.ts:35 fakeCtx 确先写 .trivium/config.yaml；hook-config.test.ts:193 的 ignored=false 轮确为空目录建仓、断言只看 notes 文案与 HEAD 无关），src 侧 initFixtureRepo 与两个夹具工厂的调用点 grep 无漏网；§2.4 取舍成立（checkpoint 只写探过的段、probe.cli 只在探针返回后赋值，夹具失败侧落盘确一字不动，且 probed_at 按键判 TTL，混合段落会误导新鲜度判定）；§2.5 前提成立（probe 由 existing 起）；D/S 组装置基础核实存在（probe-fixture-cleanup.test.ts 四份替身能跑到外层 finally、zcodeProbe 注入口在 doctor.ts:578、selftest.test.ts 已有打包 CLI 与私有 TMPDIR 跑法）；设计版本 v1.3.86→写 v1.3.87 正确；变异表预期红格自洽。两条意见：一处支撑陈述与 zcode 源码不符（GLM-01），一处导出文案在首测场景失实（GLM-02），均不阻断。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.4 末条「--no-model-calls 下各探针在建夹具之前就返回，本来就不受影响」，对照 src/trivium/probes/zcode.ts:1407 与 :1562",
+      "problem": "该陈述对 zcode 不成立：probeZcode 的 skipModelCalls 判断在 zcode.ts:1562（fixture try 块内），而 createFixture 在 :1407、只读旗标探针在 :1409——--no-model-calls 下 zcode 侧照样建仓，git 坏时该侧会落一条夹具 blocker。agy、codex、claude 三家确如计划所述在建仓前早退，唯独 zcode 不是。设计结论本身不因此动摇（不早退是对的，zcode 落 blocker 与「环境坏了」口径一致），但这句写进了 §2.4 的理由链：实施或验收阶段若按「--no-model-calls 不受影响」建立预期（例如补 --no-model-calls 回归格、或读文档的人排障），对 zcode 的实际行为会得出错误结论。",
+      "evidence": "src/trivium/probes/zcode.ts:1407-1409（createFixture 与 probeReadonlyFlags 先行）、:1562-1568（skipModelCalls 早退在 fixture 块内，是全文件唯一一处判断）；对照 src/trivium/probes/agy.ts:304-310（早退先于 :324 建仓）、src/trivium/probes/codex.ts:824-830（先于 :832）、src/trivium/probes/claude.ts:1063-1071（先于 :1082）",
+      "suggestion": "改准该句：注明 zcode 的旗标探针在 --no-model-calls 下仍需建夹具、建仓失败同样落该侧夹具 blocker（行为符合预期，无需改设计）；若测试侧后续覆盖 --no-model-calls 场景，预期里要包含 zcode 这一支。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.4 probeFixtureBlocker 与 §2.5 memoryFixtureBlocker 的文案",
+      "problem": "两处文案都写「保持上一次不变」，在首次探测（盘上尚无该侧旧结论）的建仓失败场景下失实——这正是计划自己在 D7 构造的场景（only: agy、盘上没有旧结论、仍推 blocker），此时「上一次」不存在。文案将导出并供单测逐字比对，事后改要连动用例与 RUNBOOK 文档，定稿前补两可措辞最便宜。",
+      "evidence": "计划 §3 D7（盘上没有 agy 旧结论、假 git 让提交失败、blocker 一条）；src/trivium/doctor.ts:695-704 证明「登记了但盘上无 probed_at」是真实可达状态",
+      "suggestion": "两处文案改为覆盖两种情形的措辞，例如「该侧落盘的探针结论保持原样（首次探测则该侧尚未落盘任何结论）」，随导出函数一并定稿。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§2.4 落点取 doctor 层统一接住、不进各探针改返回值：核对 doctor.ts:516-549（checkpoint 只写 probedSections、patchProbe 锁内合并）与 :554-568（probe.cli 只在探针返回后赋值），「该侧落盘一字不动」机制上成立；且 probed_at 按键判 TTL（agy.ts:289-290），「新戳+旧能力」的混合段会误导新鲜度判定，丢弃建仓前静态结论换整段诚实是合算的取舍。",
+    "§2.5 记忆夹具在探针内接住、只作废一格：probe 由 existing 起（claude.ts:1015-1018 structuredClone(opts.existing)），不赋值即保持，机制成立；blocker 档位我支持维持 blocker——同一根因（git 坏、临时目录不可写）在主夹具是 blocker，记忆格降 warning 会让同一故障在同一侧出现两种档位，且决策四已定「落成一条失败结论（进 blockers）」。",
+    "§2.2 取 --allow-empty 的依据成立：我独立核了 hook-config.test.ts:193-203（唯一退非零的建仓，断言只看 notes 里「不随仓库分发」与「不用 ZCode 可忽略」，与 HEAD 无关）与 hooks.test.ts:35-49、:1059-1063（fakeCtx 先写 config.yaml，gitCtx 建仓有内容），src 侧调用点无第六处（grep initFixtureRepo / createFixture / createMemoryFixture 全量核对）。",
+    "§1.1 代码事实逐条对上：initFixtureRepo 三条 config 确无 timeoutMs（git.ts:460-462）、run 的 spawn 失败走 stderr 追加 [spawn error] 后 finish(null,null)（exec.ts:304-307）、workTreeHash 对 add 退非零抛原文（git.ts:117-119，P4 前提成立）、selftest 的建仓在 try 里且失败删 made.dir（selftest.ts:253-266）。",
+    "D/S 组装置可行性成立：probe-fixture-cleanup.test.ts 的四份替身（agy/codex/claude 的 Node 脚本 + zcode 经 invoke 注入口）已能端到端跑到外层 finally（E1-E4），doctor 侧 zcodeProbe 注入口存在（doctor.ts:578）；selftest.test.ts 已有打包 CLI + 私有 TMPDIR/HOME 的跑法与 trivium-selftest- 计数断言（:109-124）；scratchDir（EV-208）存在且前缀规约与计划一致。",
+    "变异表自洽：M6 只列 U4～U8（第 6 步无后续步骤，不含 U9）、M7/M8 按 main 与 memory 分列且 D5/D6 各归其位、M16 如实登记不可直接构造并留按源码形态的替身与「构造不出就删」的出口。",
+    "§6 文档面与仓库惯例一致：测试报告同批登记 doc/05_testing/README.md（改动同步清单要求）、设计版本 v1.3.87（当前 v1.3.86 已核）、EV-199 残余①在 BACKLOG 有登记可指。"
+  ],
+  "not_covered": [
+    "只读约束下未复测任何运行行为：git 无内容提交时「nothing to commit 在 stdout」、空目录加 --allow-empty 的退码、§1.2 的 535 次包装读数，均为计划自述的本机实测，我只做了代码层核对与合理性判断，未独立验证。",
+    "未逐一读完全部 17 个引用 initFixtureRepo 的测试文件来独立穷尽「依赖没有 HEAD」的调用方；计划已披露盲区（自改子进程 PATH 的用例记不到），该盲区内的用例我也未独立排查。",
+    "cli.ts 的 doctor --selftest 入口在建仓之前是否还有依赖 git 的步骤（S2 可达性）未逐行核实，计划已留「如实改为只留 S1」的降级出口。",
+    "U11 二选一中「导出常量、用例注入小值」的具体机制（不改签名如何覆盖模块常量）未评估可实施性。",
+    "设计文档 §17.1 相关小节与 RUNBOOK 的 doctor blocker 列表现状未逐一打开核对（仅核了版本号）。",
+    "按背靠背约束，未覆盖另一位审查员的镜头。"
+  ],
+  "consulted": [
+    ".reviews/建仓步骤失败显式化/plan/2026-10-04-建仓步骤失败显式化-claude.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/util/git.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/selftest.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/agents/registry.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/hook-config.test.ts",
+    "test/unit/probe-fixture-cleanup.test.ts",
+    "test/integration/selftest.test.ts",
+    "test/helpers/scratch.ts"
+  ]
+}
