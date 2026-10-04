@@ -1,0 +1,103 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按我的镜头（外部依赖与环境假设、成本与配额、回滚/迁移成本）把计划 §1 的现状核对逐条对到 e00a1e2 源码与本机环境做了实测核验，全部成立：git.ts:121 的 finally 裸删、selftest.ts:198-208 的 `let root=''` 导致 :202 永不执行（任务目标失实、计划已纠正）、`finish` 无 await 的拒绝穿出 runSelftest（selftest.ts:387 一带）、retention.ts:237 抛出后 hooks.ts 只记 retentionError 并中止后续目录、八处 workTreeHash 调用点及只有 worktree-summary 传 timeoutMs、`run()` 的 env 叠在 process.env 之上（exec.ts:194-202）、两目录外恰好八处裸递归删除加 fsx.ts:155 一处（grep -rn 'recursive: true' src 实测计数一致）、install.ts 三处与 lock.ts:522 形态与甄别理由相符、系统临时目录实测 110 个 trivium-index-* 与 616 个 trivium-selftest-*-runs（与 §5 数字逐字一致）、本机 git 2.54.0 (Apple Git-157)。build-stamp 只在「本仓模式」下调 workTreeHash（checkBuildStamp 的 self 门），D1 的「--start 进程只有一次调用」前提间接核过。零配额口径成立（桩适配器 + 本机 git），新增字段不落任何机读 schema，回滚成本低。提出的意见集中在：会话启动待办对『下次会话启动会再试』的承诺在部分删除场景不成立、错误码逐字断言的可移植性、测试装置对 git 较新机制的版本前提、以及提示措辞的全貌断言。均为局部修正方向，不影响方案骨架。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.3(3) 会话启动待办措辞「请人工删除，下次会话启动会再试」",
+      "problem": "该承诺只对「什么都没删掉就失败」的情形成立。递归删除删到一半才失败时，运行目录被删掉的直接子项会刷新目录 mtime，而到期判据取 max(st.mtimeMs, heartbeat_at)——下一次会话启动它已判为「未到期」，不进整删分支，removeFailed 那一行也消失；要再等满 run_dir_days 才会重试（重试本身没问题：status.json 若也被删，readStatus 为 null，cliGroupsConfirmedGone 空记录判 gone=true，实测其判据在 status.ts:255-262/:399-407）。提醒会静默间歇、重试会迟到，措辞与实际行为不符；R1/R3 用例都不鉴别这个 mtime 形态。",
+      "evidence": "src/trivium/retention.ts:208-240（lastActive=st.mtimeMs 取 max、到期判据、fs.rm 在循环内）；src/trivium/status.ts:255-262、:399-407（cliRecordsOf(null) 与空记录判 gone=true）；被审计划 §2.3(2)(3) 自述「递归删除是删到一半才失败」。以上均为本轮实读。",
+      "suggestion": "把待办句改成不承诺时点的措辞（如「到期后会自动再试，建议手工删除」），并在 §2.3 或残余里写明「部分删除会刷新目录 mtime、重试推迟一个保留期、该行提醒非持续显示」；不必改用例，措辞与文档对齐即可。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §2.6 G4 / S1 / R1 / R3 的 'EACCES' 逐字断言",
+      "problem": "多条用例把删除失败的 errno 码硬编码为 EACCES（G4 逐字比对 indexResidueText(dir,'EACCES')、R1 断言 removeFailed 的 code、R3 断言提示含（EACCES）、S1 期望措辞含 EACCES）。chmod 0o500 目录删不动在 APFS + 非 root 下通常是 EACCES，但这不是 Node/macOS 的契约：某些卷（如网络/特殊挂载、特定安全扩展介入）会以 EPERM 呈现，而计划 §1.6 自己写明 EPERM 也在 maxRetries 重试集里、形态与 EACCES 同族。用例一旦在别的机器上拿到 EPERM 会红在环境而非改动上，且计划已为 root 场景做了跳格，却没有为码形 variability 留口径。",
+      "evidence": "src/trivium/util/fsx.ts:153-166（tryRemoveTempDir 返回 e.code，回退链含 tildeHome(message)）；被审计划 §1.6（重试集含 EPERM、EACCES 不重试）与 §2.6 各断言文本。本轮未实测 EPERM 分支，此条为推理。",
+      "suggestion": "断言改从「装置自身的失败基准」取码：先用一次裸删确认该摆锁在本机产出的 code，再拿它拼期望文案与 removeFailed 比对；或把码断言放宽为 {EACCES, EPERM} 的集合，措辞逐字比对仍走同一 code 变量。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §1.8 / §2.6 摆锁法（clean 过滤器 + GIT_CONFIG_GLOBAL + required）",
+      "problem": "整套锁注入依赖三项 git 行为：clean 过滤器子进程继承 GIT_INDEX_FILE（S3 用它区分两种 add、G/D 用它定位目标目录）、GIT_CONFIG_GLOBAL（约 git ≥ 2.32 才支持）、filter.<name>.required（约 2.2x 起，具体年代我未实测、按计划「实测」口径应登记）。计划只在 git 2.54 一次 scratch 验证。失败形态是当场红而非静默通过（G2/R1/S3 都断言锁确实落下），这一点设计得好；缺的是把「这组用例钉住的 git 版本前提」写进测试报告与 §5 观察面，否则换机器首红的排查成本会重复发生。另 G3b 的 timeoutMs:300 对 sleep 5 的余量、以及过滤器对每个文件都要起一个子进程跑锁检查（夹具文件少、成本可忽略）都应记一笔。",
+      "evidence": "本机实测：git version 2.54.0 (Apple Git-157)（本轮 git --version）；被审计划 §1.8「scratchpad 实测（git 2.54）」；src/trivium/util/git.ts:102-123 实读确认 add 步是唯一会触发 clean 过滤器的步骤。版本年代判断为推理，标低一档确定性。",
+      "suggestion": "在 REPORT 与测试文件头注释里写明这组用例的 git 最低版本与「机制前提三条」；可选地让脚本在第一次被调时往私有根写一个标记文件、用例先断标记存在，把「环境不支持」与「改动错」分成两类红。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.1 indexResidueText 措辞「其中剩下的只会是 git 临时索引文件、没有凭据」",
+      "problem": "「只会是」是对目录内容的全貌断言，而计划自己的摆锁法（§1.8/§2.6：由 clean 过滤器往 dirname(GIT_INDEX_FILE) 写文件）恰恰证明第三方进程也能在该目录落东西——真实用户的 git-lfs / 自定义 filter 仓库同理。EV-199 那次措辞收敛的方向就是「不断言残留全貌」。安全关键的后半句「没有凭据」只需对『本程序写入的东西』负责即可成立。",
+      "evidence": "被审计划 §1.8、§2.6（过滤器在临时索引目录内建 locked/ 并放文件）；src/trivium/util/git.ts:102-123（该目录由 mkdtemp 建、内容仅 index 与 git 自己的 index.lock）；doc/08_project/BACKLOG.md EV-199 行（「都补…不断言残留全貌」的先例）。",
+      "suggestion": "把主语收到本程序侧，例如「本程序写在其中的只有 git 临时索引（可能被杀时另有 index.lock），没有凭据」；这与 §2.1 已挂起的『措辞待用户确认』是同一处，一并定夺即可。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §4 残余 / §5 观察（trivium-index-* 与被杀遗留、selftest 运行目录漏删）",
+      "problem": "§5 两类漏（SIGKILL 遗留的 trivium-index-*：本机实测 110 个、2026-09-30 起在累积；自检每次泄漏一个 *-runs：实测 616 个）目前只写在「收尾时向用户报告」的观察里，§4 残余清单不含它们。决策八定了零配额、本题不扩范围，我认可；但「观察」随报告归档后不再有机器面承接，数字会继续涨且无人对账——EV-199 的先例是把已知漏写进 BACKLOG 行的残余句里。",
+      "evidence": "本轮实测：ls $TMPDIR | grep -c '^trivium-index-' = 110；grep -c 'trivium-selftest-.*-runs' = 616（与计划 §5 逐字一致）；src/trivium/selftest.ts:124 实读确认 run_root 指夹具根兄弟目录、finish 不删它；doc/08_project/BACKLOG.md EV-199/204 行的「残余」书写先例。",
+      "suggestion": "结案语里把 §5.1/§5.2 各落成 BACKLOG EV-204 残余的一句（或按用户裁定转登条目），保证这两组计数在台账里有承接点，而不是只活在 evidence 目录里。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§1 现状核对八条经我逐条实读 e00a1e2 全部成立，包括对任务目标失实处（selftest.ts:202 走不到）的纠正——先修「走得到」再按决策三处置的顺序是对的。",
+    "§2.5 清零守卫取「src/ 全树 + 豁免表逐文件计数」而非按目录扩，符合 EV-199 教训；豁免表三项与 grep 实测计数（fsx×1、install×3、lock×1）吻合，等值断言能同时抓「新增」与「豁免失效」。",
+    "§2.3(2) 对决策四取两层读法（删不掉的目录自己也走凭据抹除）我在凭据面上支持：部分删除后残留副本可能恰在未删掉的子树里，落回抹除路径比 continue 更稳；备选一行退回方案也已写明。",
+    "G3 的 rejects 断言（含 git add to temp index failed、不含删除错误码）与 finally 不顶替的语义设计正确；G4 用子进程断言「同一进程只打一次」避开了模块级标志在测试进程内的污染，取径干净。",
+    "D1 的计数前提（--start 只有一次 workTreeHash）经 build-stamp 的本仓模式门（checkBuildStamp→computeInputsSha256 仅 self 时调）间接核实，且「将来多了一次先红」的自检声明写进了用例语义。",
+    "零配额计划成立：G/D/S/R/W 全部走本机 git 与桩适配器；变异表 M1-M14 与用例映射齐全。"
+  ],
+  "not_covered": [
+    "未读任务目标全文与用户决策一～八的原文（编排材料不在我可读范围），「措辞改一处需用户确认」与决策四的本意裁定我只能表态、不能代判。",
+    "未实际编写/运行 G/D/S/R/W 任何用例与变异，用例「按描述应能红绿」是推演。",
+    "未评审设计文档 §9.2/§10.5 补丁句的具体措辞与版本记录格式（只核了 v1.3.84 与 v1.3.83 现号不冲突、doc/05_testing/README 登记规范存在）。",
+    "EPERM 与 EACCES 的具体出现条件、filter.<name>.required 的确切引入版本未做跨版本实测（CODEX-02/03 内已标推理）。",
+    "另一视角（逻辑正确性、契约面并发、RCA）由另一位审查员负责，未覆盖。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/README.md",
+    "src/trivium/util/git.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/util/log.ts",
+    "src/trivium/selftest.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/status.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/build-stamp.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/install.ts",
+    "test/unit/probe-fixture-cleanup.test.ts",
+    "test/integration/selftest.test.ts",
+    "test/helpers/fixture.ts"
+  ]
+}

@@ -1,0 +1,297 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261004T055413Z",
+  "topic": "临时索引与清扫删除收尾",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「临时索引与清扫删除收尾」：EV-204，探针夹具删除收尾计划双审第 1 轮 CODEX-02 登记。EV-199 把 src/trivium/probes 与 src/trivium/adapters 两目录里的递归删除清零之后，两目录之外仍有同族的「递归删除加 force、不带 maxRetries」：force 只吞 ENOENT，ENOTEMPTY、EBUSY、EACCES 照样抛出。…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "e00a1e27cc1a41f93e580cc1eabc7263fd845ad1",
+    "tree_hash": "dcaec48d3ae5f03ca484a9e6c6ec75116dd7c046",
+    "dirty": true,
+    "subject_sha256": "771f319b5e98c3b83871cae1291336ca498414bd876e24a8aeb1a434afd1788c",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "e00a1e27cc1a41f93e580cc1eabc7263fd845ad1",
+      "dirty": false,
+      "inputs_sha256": "35c4a479c8f31305d422391cff61c69ec7af7c7bed2e9b32b651c21ed6629c11",
+      "built_at": "2026-10-04T04:48:30.356Z"
+    },
+    "after_tree_hash": "7ef8135284b832b88ee520e713f3d6738c191e27"
+  },
+  "started_at": "2026-10-04T05:54:16.375Z",
+  "finished_at": "2026-10-04T06:08:22.757Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.0",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "qwen",
+      "model_provider": "qwen",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 585.827,
+      "tool_calls": {
+        "run_command": 20,
+        "project_reads": 33
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a1057a-31b4-7f33-946d-02af549802c7",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.16",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 235.647,
+      "tool_calls": {
+        "read": 31,
+        "grep": 11,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 295497,
+        "output_tokens": 37621,
+        "thinking_tokens": 32285,
+        "cache_read_tokens": 3122222,
+        "total_tokens": 333118
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "bab442bc-e3c7-48c2-8a91-0d3ea4b9cb8b",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 845.941,
+      "tool_calls": {
+        "read": 30,
+        "grep": 12,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 30
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 23,
+        "inputTokens": 2643370,
+        "outputTokens": 47085,
+        "totalTokens": 2690455,
+        "cacheReadTokens": 2480064,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_223fa675-edf1-4c31-8721-cbeb97adf949",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "临时索引与清扫删除收尾/plan/_meta/brief-codex-20261004T055413Z.md",
+      "sha256": "928e4be82f695e02469fb4482c9593cc59b6345e429d42864825f1d85ce2ae27"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/plan/_meta/brief-gemini-20261004T055413Z.md",
+      "sha256": "26faf19573a1c10c062dd9033521fef1b07065a4437a1528190e0643b970a4e4"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/plan/_meta/brief-glm-20261004T055413Z.md",
+      "sha256": "ceecff79fde83426eb23c230452997bc0e761af20e054fac832c1d9189f97612"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/plan/_meta/review-codex-20261004T055413Z.json",
+      "sha256": "78ca83b24a233a10ade15e9e41e6d0527d115bdce0f047a2bfe150338af147e2"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/plan/_meta/review-gemini-20261004T055413Z.json",
+      "sha256": "9351135aa7446d84f7f4c09589fecc1f6aea15aa40fe4ff285eb5c9893d71971"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/plan/_meta/review-glm-20261004T055413Z.json",
+      "sha256": "632943a4db26a80163e0e19877d3b8f99380c737391ae7d618b7b84a9a016e64"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/plan/2026-10-04-临时索引与清扫删除收尾-codex.md",
+      "sha256": "1ea86d732e5815625bccc4648b93792ae37a023585a07548372d9c864e949852"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/plan/2026-10-04-临时索引与清扫删除收尾-gemini.md",
+      "sha256": "c8332e371dd9d8d9abb25956db09fcdd5716610f2ad80741e90c6886f0d40c04"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/plan/2026-10-04-临时索引与清扫删除收尾-glm.md",
+      "sha256": "3edca56ee62119afa9059bb79797cd2b9ffca4428901ef646dfd723e524c4e75"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/plan/2026-10-04-临时索引与清扫删除收尾-claude.md",
+      "sha256": "771f319b5e98c3b83871cae1291336ca498414bd876e24a8aeb1a434afd1788c"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
