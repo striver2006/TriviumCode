@@ -9,6 +9,7 @@
  *   G：`workTreeHash` 直测——删成功、删不掉照常返回哈希、git 步骤失败与超时时报原始错误、提示逐字且同一进程只打一次；
  *   S：`runSelftest` 经注入口换掉建夹具的最后一步（`initFixtureRepo`），`mkdtemp` 与 `made.dir` 赋值仍走生产路径；
  *      `finish` 那一支的行为级用例在 `test/integration/selftest.test.ts`（打包 CLI）；
+ *      EV-207 起删的是夹具仓库与运行根的父目录，S1 断言给出的是父目录、S5 守保留提示里的运行目录；
  *   W：`src/` 全树的递归删除按豁免表逐文件计数（计划 r2 §2.5）。
  *
  * **摆锁法**：git clean 过滤器。`workTreeHash` 的 `add -A` 对每个文件跑过滤器（临时索引由 `read-tree HEAD` 填充、
@@ -249,12 +250,17 @@ test('S1 建夹具失败且删不掉：报的仍是建夹具失败的原因，�
     });
     assert.equal(r.ok, false);
     assert.deepEqual(r.steps.map((s) => [s.name, s.ok, s.detail]), [['创建夹具仓库', false, '造的建夹具失败']]);
-    assert.ok(r.fixtureRoot.startsWith(path.join(w.tmp, 'trivium-selftest-')), `fixtureRoot 应是那个目录：${r.fixtureRoot}`);
-    await fs.access(r.fixtureRoot);
+    // EV-207：给出的是 mkdtemp 父目录本身（夹具仓库 repo/ 与运行根 runs/ 都在其下），不是 repo/
+    assert.equal(path.dirname(r.fixtureRoot), w.tmp, `fixtureRoot 应是 mkdtemp 的父目录：${r.fixtureRoot}`);
+    assert.ok(path.basename(r.fixtureRoot).startsWith('trivium-selftest-'), r.fixtureRoot);
+    // 锁在 repo/locked 里；runs/ 是空目录，递归删除顺序不定，可能已被删掉，不断言它
+    await fs.access(path.join(r.fixtureRoot, 'repo', 'locked'));
+    assert.equal(r.runRoot, '');
     const m = /删除失败（([A-Z]+)）/.exec(r.cleanupResidue ?? '');
     assert.ok(m && LOCK_CODES.has(m[1]!), `残留提示缺错误码：${r.cleanupResidue}`);
     assert.equal(r.cleanupResidue, selftestResidueText(r.fixtureRoot, m[1]!));
-    assert.match(r.cleanupResidue!, /：~\/tmp\/trivium-selftest-/, '路径要家目录归一');
+    assert.match(r.cleanupResidue!, /^自检临时目录删除失败（[A-Z]+）：~\/tmp\/trivium-selftest-[^/\s]+ 仍在——/, '路径要家目录归一、是父目录');
+    assert.match(r.cleanupResidue!, /夹具仓库.*运行目录/, '措辞要覆盖夹具仓库与运行目录两者');
     assert.equal(r.kept, false);
   });
 });
@@ -276,12 +282,34 @@ test('S2 建夹具失败而删掉了：无残留提示，fixtureRoot 为空、�
 });
 
 test('S4 渲染：有残留提示时打这一句、不说「夹具已清理」；没有时原样', () => {
-  const base = { ok: true, steps: [], fixtureRoot: '/x', kept: false, notCovered: [] };
+  const base = { ok: true, steps: [], fixtureRoot: '/x', runRoot: '', kept: false, notCovered: [] };
   const residue = selftestResidueText('/x/trivium-selftest-abc', 'EACCES');
   const withResidue = renderSelftest({ ...base, cleanupResidue: residue });
   assert.ok(withResidue.includes(residue), withResidue);
   assert.doesNotMatch(withResidue, /夹具已清理/);
   assert.match(renderSelftest({ ...base, cleanupResidue: null }), /夹具已清理/);
+});
+
+test('S5 渲染（EV-207）：保留时给出运行目录；同父才说「两者同在」，运行根为空不打这一行', () => {
+  const base = { ok: false, steps: [], kept: true, notCovered: [], cleanupResidue: null };
+  const kept = renderSelftest({ ...base, fixtureRoot: '/t/trivium-selftest-abc/repo', runRoot: '/t/trivium-selftest-abc/runs' });
+  assert.match(kept, /夹具保留在 \/t\/trivium-selftest-abc\/repo\n/);
+  assert.ok(
+    kept.includes(
+      '  本次自检的运行目录（worker 日志、交接文件与状态文件）在 /t/trivium-selftest-abc/runs；' +
+        '两者同在 /t/trivium-selftest-abc 下，排查完删这一个目录即可。',
+    ),
+    kept,
+  );
+
+  // 计划双审 AGY-03：不同父时不推「两者同在」
+  const apart = renderSelftest({ ...base, fixtureRoot: '/t/a/repo', runRoot: '/t/b/runs' });
+  assert.match(apart, /运行目录（worker 日志、交接文件与状态文件）在 \/t\/b\/runs。/);
+  assert.doesNotMatch(apart, /两者同在/);
+
+  const noRuns = renderSelftest({ ...base, fixtureRoot: '/t/a/repo', runRoot: '' });
+  assert.match(noRuns, /夹具保留在 \/t\/a\/repo/);
+  assert.doesNotMatch(noRuns, /运行目录/);
 });
 
 // ─────────────────────────── W：src/ 全树守卫 ───────────────────────────

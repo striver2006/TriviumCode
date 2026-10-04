@@ -33,7 +33,7 @@ async function writeGlmReview(abs: string, topic: string): Promise<void> {
 /** `.reviews/` 与运行根前后逐字节一致、`.trivium/` 下除锁以外不变（闸门状态文件没被碰） */
 async function snapshotTrace(fx: Fixture): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  for (const [label, dir] of [['archive', fx.archiveRoot], ['runs', `${fx.root}-runs`], ['trivium', path.join(fx.root, '.trivium')]] as const) {
+  for (const [label, dir] of [['archive', fx.archiveRoot], ['runs', fx.runRoot], ['trivium', path.join(fx.root, '.trivium')]] as const) {
     for (const f of await listFiles(dir)) {
       if (label === 'trivium' && f.startsWith('lock/')) continue;
       out[`${label}:${f}`] = await fs.readFile(path.join(dir, f), 'utf8');

@@ -383,7 +383,10 @@ interface FixtureRepo {
  * 一个被十几条用例共用的助手多出三个只服务本文件的分支。
  */
 async function makeStubFixtureRepo(): Promise<FixtureRepo> {
-  const root = await mkTemp('proj');
+  // 父目录登记进 temps，夹具仓库与运行根都在其下，after 删父目录就一起带走（EV-207；此前运行根是兄弟目录 `<root>-runs`，无人删）
+  const base = await mkTemp('proj');
+  const root = path.join(base, 'repo');
+  const runRoot = path.join(base, 'runs');
   const home = await mkTemp('home');
 
   await fs.mkdir(path.join(root, 'src'), { recursive: true });
@@ -428,7 +431,7 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
     path.join(root, '.trivium/config.yaml'),
     [
       'runtime:',
-      `  run_root: ${root}-runs`,
+      `  run_root: ${runRoot}`,
       'review:',
       /*
        * **夹具钉住自己考的那三侧**：gemini + glm + 新接入的桩。

@@ -1,0 +1,228 @@
+{
+  "targets_sha256": {
+    "src/trivium/selftest.ts": "64f5dce962d7e92a96e0049a752541515109bd1f1e37b39b417ffe8c10b7aa4d",
+    "test/helpers/fixture.ts": "17816da7682366ae1dcc8da83dab03bced77450d9085b757757a27400fc3fba8"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "自检运行根改回夹具仓库的兄弟目录",
+      "suite": "dist/test/test/integration/selftest.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-207 ST1 通过时清理夹具：夹具仓库与运行目录一起删掉，系统临时目录里不留任何 trivium-selftest-*",
+        "EV-207 ST3 --keep-fixture 时整个父目录保留：给出夹具仓库与运行目录，两者同父",
+        "环境坏掉时如实报失败并保留夹具，绝不假装通过",
+        "EV-207 ST2 临时目录删不掉时结论不变、提示给出父目录且覆盖运行目录，不说「夹具已清理」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 28,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "finish 删夹具仓库而非父目录",
+      "suite": "dist/test/test/integration/selftest.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-207 ST1 通过时清理夹具：夹具仓库与运行目录一起删掉，系统临时目录里不留任何 trivium-selftest-*",
+        "EV-207 ST2 临时目录删不掉时结论不变、提示给出父目录且覆盖运行目录，不说「夹具已清理」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 28,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "残留提示不提运行目录",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S1 建夹具失败且删不掉：报的仍是建夹具失败的原因，残留提示另放、目录给出"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "保留时不给运行目录那一行",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S5 渲染（EV-207）：保留时给出运行目录；同父才说「两者同在」，运行根为空不打这一行"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "失败时不保留（keep 去掉 !ok）",
+      "suite": "dist/test/test/integration/selftest.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "环境坏掉时如实报失败并保留夹具，绝不假装通过"
+      ],
+      "firstLines": [],
+      "elapsed_s": 28,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "made.dir 记成夹具仓库而非 mkdtemp 父目录",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S1 建夹具失败且删不掉：报的仍是建夹具失败的原因，残留提示另放、目录给出",
+        "S2 建夹具失败而删掉了：无残留提示，fixtureRoot 为空、目录已不在"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "保留提示「两者同在」不判同父",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S5 渲染（EV-207）：保留时给出运行目录；同父才说「两者同在」，运行根为空不打这一行"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "H1",
+      "desc": "makeFixture 不登记父目录",
+      "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "FC1 退出后父目录不在：只读子目录、父目录自身只读、已被用例删掉、无手脚，四个都收干净且不误报",
+        "FC2 设保留变量时父目录都还在，并打一行列出路径",
+        "FC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码",
+        "FC4 建到一半抛出也删：mkdtemp 一返回就登记，退出时照样收尾"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "H2",
+      "desc": "权限恢复不先 chmod 自身",
+      "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "FC1 退出后父目录不在：只读子目录、父目录自身只读、已被用例删掉、无手脚，四个都收干净且不误报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "H3",
+      "desc": "忽略保留变量",
+      "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "FC2 设保留变量时父目录都还在，并打一行列出路径"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "H4",
+      "desc": "删不掉不打提示",
+      "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "FC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "H5",
+      "desc": "登记挪到建夹具写盘之后（建到一半抛出时漏收）",
+      "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "FC4 建到一半抛出也删：mkdtemp 一返回就登记，退出时照样收尾"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "H6",
+      "desc": "配置 run_root 改回兄弟目录（返回字段不变）",
+      "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "FC1 退出后父目录不在：只读子目录、父目录自身只读、已被用例删掉、无手脚，四个都收干净且不误报",
+        "FC2 设保留变量时父目录都还在，并打一行列出路径",
+        "FC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "H7",
+      "desc": "权限恢复遍历读目录失败不吞",
+      "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "FC1 退出后父目录不在：只读子目录、父目录自身只读、已被用例删掉、无手脚，四个都收干净且不误报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "H8",
+      "desc": "一个父目录删不掉就中断后面的",
+      "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "FC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    }
+  ]
+}

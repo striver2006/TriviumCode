@@ -61,8 +61,8 @@ test('D1 worker 里的漂移复算删不掉临时索引目录：运行照常成�
   await fs.mkdir(tmp, { recursive: true });
   const mark = path.join(base, 'filter-ran');
 
-  const { root, stageDir } = await makeFixture({ topic: TOPIC });
-  CREATED.push(root, `${root}-runs`);
+  // 夹具与它的运行根由 makeFixture 在进程退出时收尾（EV-207），不再登记进 CREATED
+  const { root, runRoot, stageDir } = await makeFixture({ topic: TOPIC });
 
   const script = path.join(base, 'lock.sh');
   await fs.writeFile(
@@ -114,7 +114,7 @@ test('D1 worker 里的漂移复算删不掉临时索引目录：运行照常成�
     exitCode = w.code ?? EXIT.FAIL;
     waitOut += w.stdout + w.stderr;
   }
-  const runDir = path.join(`${root}-runs`, repoId(root), runId);
+  const runDir = path.join(runRoot, repoId(root), runId);
   const workerLog = await fs.readFile(path.join(runDir, 'worker.log'), 'utf8').catch(() => '(worker.log 读不到)');
   assert.equal(exitCode, EXIT.OK, `漂移复算删不掉临时目录不该让运行失败：\n${waitOut}\n--- worker.log ---\n${workerLog}`);
 

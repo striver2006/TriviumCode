@@ -1,0 +1,82 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "夹具运行目录收尾",
+  "goal": "主题「夹具运行目录收尾」：EV-207，临时索引与清扫删除收尾计划双审第 1 轮 GLM-03 ≡ AGY-02 ≡ CODEX-05 登记。自检与集成测试夹具都把运行根设成夹具根的兄弟目录（夹具根路径加 -runs 后缀），收尾时没人清它，系统临时目录持续堆积。 开工前先读：记忆 pipeline-known-pitfalls.md、reply-in-chinese.md、dual-run-no…",
+  "created_at": "2026-10-04T08:54:04.222Z",
+  "updated_at": "2026-10-04T11:02:50.841Z",
+  "runs": [
+    {
+      "run_id": "20261004T090126Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "partial",
+      "started_at": "2026-10-04T09:01:28.578Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261004T102427Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-04T10:24:30.276Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261004T105739Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-04T11:02:50.841Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [
+    {
+      "run_id": "20261004T090126Z",
+      "stage": "plan",
+      "reason": "codex: failed（codex 未产出最终回复：Reconnecting... 1/5 (unexpected status 403 Forbidden: You've reached your 5-hour usage limit. Your quota will reset when the current 5-hour window ends. To continue now, purchase extra usage or upgrade your plan: https://www.kimi.com/membership/subscription?tab=quota, url: https://api.kimi.com/coding/v1/responses)；Reconnecting... 2/5 (unexpected status 403 Forbidden: You've reached your 5-hour usage limit. Your quota will reset when the current 5-hour window ends. To continue now, purchase extra usage or upgrade your plan: https://www.kimi.com/membership/subscription?tab=quota, url: https://api.kimi.com/coding/v1/responses)；Reconnecting... 3/5 (unexpected status 403 Forbidden: You've reached your 5-hour usage limit. Your quota will reset when the current 5-hour window ends. To continue now, purchase extra usage or upgrade your plan: https://www.kimi.com/membership/subscription?tab=quota, url: https://api.kimi.com/coding/v1/responses)；Reconnecting... 4/5 (unexpected status 403 Forbidden: You've reached your 5-hour usage limit. Your quota will reset when the current 5-hour window ends. To continue now, purchase extra usage or upgrade your plan: https://www.kimi.com/membership/subscription?tab=quota, url: https://api.kimi.com/coding/v1/responses)；Reconnecting... 5/5 (unexpected status 403 Forbidden: You've reached your 5-hour usage limit. Your quota will reset when the current 5-hour window ends. To continue now, purchase extra usage or upgrade your plan: https://www.kimi.com/membership/subscription?tab=quota, url: https://api.kimi.com/coding/v1/responses)；unexpected status 403 Forbidden: You've reached your 5-hour usage limit. Your quota will reset when the current 5-hour window ends. To continue now, purchase extra usage or upgrade your plan: https://www.kimi.com/membership/subscription?tab=quota, url: https://api.kimi.com/coding/v1/responses）",
+      "at": "2026-10-04T09:14:19.841Z"
+    }
+  ],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-04T08:54:04.222Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-04T09:53:54.136Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261004T090126Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-10-04T09:53:49.410Z"
+    },
+    {
+      "run_id": "20261004T102427Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-04T10:38:54.292Z"
+    }
+  ]
+}

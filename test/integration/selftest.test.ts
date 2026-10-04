@@ -76,62 +76,138 @@ test('不在项目根、当前项目未 init 也能跑', { skip: bundleMissing &
   assert.doesNotMatch(r.stdout + r.stderr, /不在 git 仓库|尚未初始化/);
 });
 
-test('通过时清理夹具，--keep-fixture 时保留', { skip: bundleMissing && bundleSkipReason }, async () => {
-  const clean = await selftest();
-  const m = /夹具已清理/.exec(clean.stdout);
-  assert.ok(m, `通过时应清理夹具：\n${clean.stdout}`);
+/**
+ * 私有临时目录（EV-207）：下面几格把自检的 `TMPDIR` 钉到这里，跑完能数清它留下了什么；
+ * 收尾只删本格 mkdtemp 的返回值，不拿自检输出里的路径去删。`TMPDIR` 在假家目录下，家目录归一能测出 `~/tmp/…`。
+ */
+async function privateTmp(tag: string): Promise<{ base: string; home: string; tmp: string }> {
+  const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), `trivium-${tag}-`)));
+  const home = path.join(base, 'home');
+  const tmp = path.join(home, 'tmp');
+  await fs.mkdir(tmp, { recursive: true });
+  return { base, home, tmp };
+}
 
-  const kept = await selftest(['--keep-fixture']);
-  const p = /夹具保留在 (\S+)/.exec(kept.stdout);
-  assert.ok(p, `--keep-fixture 应保留并给出路径：\n${kept.stdout}`);
-  const root = p[1]!;
-  assert.ok((await fs.stat(root)).isDirectory());
-  // 夹具必须真是「故意留洞」的项目（§17.3），否则拿去手工验收没有意义
-  const payment = await fs.readFile(`${root}/src/payment.ts`, 'utf8');
-  assert.match(payment, /故意留的洞/);
-  assert.match(payment, /幂等/);
-  await fs.rm(root, { recursive: true, force: true });
+/** 先逐层恢复权限（每层先 chmod 自身再列目录）再整删；删不掉打一行，不吞 */
+async function dropPrivateTmp(base: string): Promise<void> {
+  const walk = async (d: string): Promise<void> => {
+    await fs.chmod(d, 0o700).catch(() => {});
+    let entries;
+    try {
+      entries = await fs.readdir(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) if (e.isDirectory()) await walk(path.join(d, e.name));
+  };
+  await walk(base);
+  await fs.rm(base, { recursive: true, force: true, maxRetries: 3 }).catch((e: unknown) => {
+    console.warn(`selftest.test：私有目录没删掉，请手工删除 ${base}（${(e as NodeJS.ErrnoException).code ?? String(e)}）`);
+  });
+}
+
+async function selftestEntries(tmp: string): Promise<string[]> {
+  return (await fs.readdir(tmp)).filter((n) => n.startsWith('trivium-selftest-')).sort();
+}
+
+test('EV-207 ST1 通过时清理夹具：夹具仓库与运行目录一起删掉，系统临时目录里不留任何 trivium-selftest-*', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const w = await privateTmp('st1');
+  try {
+    const clean = await selftest([], { TMPDIR: w.tmp, HOME: w.home });
+    assert.equal(clean.code, EXIT.OK, `${clean.stdout}${clean.stderr}`);
+    assert.match(clean.stdout, /夹具已清理/, `通过时应清理夹具：\n${clean.stdout}`);
+    // 此前会剩一个 `trivium-selftest-XXXXXX-runs`（运行根是夹具根的兄弟目录，无人删）
+    assert.deepEqual(await selftestEntries(w.tmp), []);
+  } finally {
+    await dropPrivateTmp(w.base);
+  }
+});
+
+test('EV-207 ST3 --keep-fixture 时整个父目录保留：给出夹具仓库与运行目录，两者同父', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const w = await privateTmp('st3');
+  try {
+    const kept = await selftest(['--keep-fixture'], { TMPDIR: w.tmp, HOME: w.home });
+    assert.equal(kept.code, EXIT.OK, `${kept.stdout}${kept.stderr}`);
+    const p = /夹具保留在 (\S+)/.exec(kept.stdout);
+    assert.ok(p, `--keep-fixture 应保留并给出路径：\n${kept.stdout}`);
+    const root = p[1]!;
+    const entries = await selftestEntries(w.tmp);
+    assert.equal(entries.length, 1, `私有 TMPDIR 下只该有一个自检目录：${entries.join(', ')}`);
+    const parent = path.join(w.tmp, entries[0]!);
+    assert.equal(root, path.join(parent, 'repo'));
+    assert.ok(
+      kept.stdout.includes(`运行目录（worker 日志、交接文件与状态文件）在 ${path.join(parent, 'runs')}；两者同在 ${parent} 下`),
+      `保留时要给出运行目录与父目录：\n${kept.stdout}`,
+    );
+    // 运行目录里真有本次运行：<repoId>/<run_id>/status.json
+    const runFiles = await listFilesUnder(path.join(parent, 'runs'));
+    assert.ok(runFiles.some((f) => f.endsWith('/status.json')), `运行目录里应有本次运行的 status.json：${runFiles.join(', ')}`);
+    // 夹具必须真是「故意留洞」的项目（§17.3），否则拿去手工验收没有意义
+    const payment = await fs.readFile(`${root}/src/payment.ts`, 'utf8');
+    assert.match(payment, /故意留的洞/);
+    assert.match(payment, /幂等/);
+  } finally {
+    await dropPrivateTmp(w.base);
+  }
 });
 
 test('环境坏掉时如实报失败并保留夹具，绝不假装通过', { skip: bundleMissing && bundleSkipReason }, async () => {
-  const r = await selftest([], { TRIVIUM_ASSET_ROOT: '/nonexistent/assets' });
-  assert.equal(r.code, EXIT.FAIL, '资产根不存在时必须失败');
-  const out = r.stdout + r.stderr;
-  assert.match(out, /自检：❌ 未通过/);
-  assert.match(out, /lenses\.yaml/, '要指出具体缺什么');
+  const w = await privateTmp('stbad');
+  try {
+    const r = await selftest([], { TRIVIUM_ASSET_ROOT: '/nonexistent/assets', TMPDIR: w.tmp, HOME: w.home });
+    assert.equal(r.code, EXIT.FAIL, '资产根不存在时必须失败');
+    const out = r.stdout + r.stderr;
+    assert.match(out, /自检：❌ 未通过/);
+    assert.match(out, /lenses\.yaml/, '要指出具体缺什么');
 
-  const p = /夹具保留在 (\S+)/.exec(out);
-  assert.ok(p, '失败时必须保留夹具供排查');
-  await fs.rm(p[1]!, { recursive: true, force: true });
+    const p = /夹具保留在 (\S+)/.exec(out);
+    assert.ok(p, '失败时必须保留夹具供排查');
+    assert.equal((await selftestEntries(w.tmp)).length, 1, '失败时整个父目录保留');
+  } finally {
+    // EV-207：不再按输出里的路径删（那只删得到夹具仓库），整删本格私有目录
+    await dropPrivateTmp(w.base);
+  }
 });
 
+async function listFilesUnder(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  const walk = async (d: string): Promise<void> => {
+    for (const e of await fs.readdir(d, { withFileTypes: true }).catch(() => [])) {
+      const abs = path.join(d, e.name);
+      if (e.isDirectory()) await walk(abs);
+      else out.push(abs);
+    }
+  };
+  await walk(dir);
+  return out;
+}
+
 /**
- * EV-204 S3：自检通过而夹具根删不掉——结论不变（退 0、N/N 步），给出残留提示、不说「夹具已清理」。
+ * EV-207 ST2（由 EV-204 S3 改造）：自检通过而临时目录删不掉——结论不变（退 0、N/N 步），给出残留提示、不说「夹具已清理」。
  *
- * 此前 `finish` 里的裸递归删除抛出，而调用处是不带 await 的 `return finish(…)`，拒绝穿出 runSelftest，
- * 一次已经得出结论的自检崩成内部错误。
+ * EV-204 修的是：`finish` 里的裸递归删除抛出，而调用处是不带 await 的 `return finish(…)`，拒绝穿出 runSelftest，
+ * 一次已经得出结论的自检崩成内部错误。EV-207 起删的是夹具仓库 `repo/` 与运行根 `runs/` 的父目录，
+ * 提示给出的是父目录、措辞覆盖两者，且系统临时目录里不再有兄弟 `-runs`。
  *
  * 摆锁：`GIT_CONFIG_GLOBAL` 指向私有配置挂 git clean 过滤器（`core.attributesFile`），只在 `GIT_INDEX_FILE` 为空
  * （即 `initFixtureRepo` 的普通 `git add`，不是 `workTreeHash` 的临时索引）且 cwd 在钉住的 `TMPDIR` 下时，
- * 往夹具的 `.git/trvlock/` 摆只读锁——锁在 `.git/` 里，不进工作树、不影响任何一步。
- * **git 机制前提**：`GIT_CONFIG_GLOBAL`（约 git 2.32 起）、clean 过滤器继承 git 的环境；本机 git 2.54.0 实测。
+ * 往夹具仓库的**父目录**摆只读锁 `trvlock/`——在工作树之外，不影响任何一步。
+ * **git 机制前提**：`GIT_CONFIG_GLOBAL`（约 git 2.32 起）、clean 过滤器继承 git 的环境且 cwd 是工作树根；本机 git 2.54.0 实测。
  * 过滤器第一次被调就写标记，先断言标记在。涉及权限，root 下跳过。
  */
-test('EV-204 S3 夹具删不掉时结论不变、给出残留提示，不说「夹具已清理」', { skip: (bundleMissing && bundleSkipReason) || (process.getuid?.() === 0 && 'root 下只读目录锁不住') }, async () => {
-  const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-stc-')));
-  const home = path.join(base, 'home');
-  const tmp = path.join(home, 'tmp');
-  const mark = path.join(base, 'filter-ran');
+test('EV-207 ST2 临时目录删不掉时结论不变、提示给出父目录且覆盖运行目录，不说「夹具已清理」', { skip: (bundleMissing && bundleSkipReason) || (process.getuid?.() === 0 && 'root 下只读目录锁不住') }, async () => {
+  const w = await privateTmp('stc');
+  const mark = path.join(w.base, 'filter-ran');
   try {
-    await fs.mkdir(tmp, { recursive: true });
-    const script = path.join(base, 'lock.sh');
+    const script = path.join(w.base, 'lock.sh');
     await fs.writeFile(
       script,
       [
         `: > '${mark}'`,
         'if [ -z "${GIT_INDEX_FILE:-}" ]; then',
-        `  case "$(pwd -P)" in '${tmp}'/*)`,
-        '    if [ ! -d .git/trvlock ]; then mkdir .git/trvlock && : > .git/trvlock/f && chmod 500 .git/trvlock; fi ;;',
+        `  case "$(pwd -P)" in '${w.tmp}'/*)`,
+        '    p=$(cd .. && pwd -P)',
+        '    if [ ! -d "$p/trvlock" ]; then mkdir "$p/trvlock" && : > "$p/trvlock/f" && chmod 500 "$p/trvlock"; fi ;;',
         '  esac',
         'fi',
         'cat',
@@ -139,34 +215,29 @@ test('EV-204 S3 夹具删不掉时结论不变、给出残留提示，不说「�
       ].join('\n'),
       'utf8',
     );
-    await fs.writeFile(path.join(base, 'attributes'), '* filter=trvlock\n', 'utf8');
+    await fs.writeFile(path.join(w.base, 'attributes'), '* filter=trvlock\n', 'utf8');
     await fs.writeFile(
-      path.join(base, 'gitconfig'),
-      `[core]\n\tattributesFile = ${path.join(base, 'attributes')}\n[filter "trvlock"]\n\tclean = sh '${script}'\n`,
+      path.join(w.base, 'gitconfig'),
+      `[core]\n\tattributesFile = ${path.join(w.base, 'attributes')}\n[filter "trvlock"]\n\tclean = sh '${script}'\n`,
       'utf8',
     );
 
-    const r = await selftest([], { TMPDIR: tmp, HOME: home, GIT_CONFIG_GLOBAL: path.join(base, 'gitconfig') });
+    const r = await selftest([], { TMPDIR: w.tmp, HOME: w.home, GIT_CONFIG_GLOBAL: path.join(w.base, 'gitconfig') });
     await fs.access(mark).catch(() => {
       assert.fail('过滤器一次都没被调到——是 git 机制前提不成立（GIT_CONFIG_GLOBAL 等），不是被测改动的问题');
     });
     const out = r.stdout + r.stderr;
-    assert.equal(r.code, EXIT.OK, `删不掉夹具不该改写自检结论：\n${out}`);
+    assert.equal(r.code, EXIT.OK, `删不掉临时目录不该改写自检结论：\n${out}`);
     assert.match(out, /自检：✅ 通过（(\d+)\/\1 步）/);
-    assert.match(out, /自检夹具目录删除失败（(EACCES|EPERM)）：~\/tmp\/trivium-selftest-\S+ 仍在——/);
+    const entries = await selftestEntries(w.tmp);
+    assert.equal(entries.length, 1, `私有 TMPDIR 下只该剩被锁住的那一个父目录、没有兄弟 -runs：${entries.join(', ')}`);
+    await fs.access(path.join(w.tmp, entries[0]!, 'trvlock'));
+    const m = /自检临时目录删除失败（(EACCES|EPERM)）：(~\/tmp\/trivium-selftest-[^/\s]+) 仍在——([^\n]*)/.exec(out);
+    assert.ok(m, `残留提示形态不符（要错误码与家目录归一的父目录路径）：\n${out}`);
+    assert.equal(m[2], `~/tmp/${entries[0]}`, '提示给出的是父目录本身');
+    assert.match(m[3]!, /夹具仓库.*运行目录/, '措辞要覆盖夹具仓库与运行目录两者');
     assert.doesNotMatch(out, /夹具已清理/, '没删掉就不能说已清理');
   } finally {
-    const walk = async (d: string): Promise<void> => {
-      await fs.chmod(d, 0o700).catch(() => {});
-      let entries;
-      try {
-        entries = await fs.readdir(d, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const e of entries) if (e.isDirectory()) await walk(path.join(d, e.name));
-    };
-    await walk(base);
-    await fs.rm(base, { recursive: true, force: true, maxRetries: 3 });
+    await dropPrivateTmp(w.base);
   }
 });

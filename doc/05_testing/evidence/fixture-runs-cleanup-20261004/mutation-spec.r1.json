@@ -1,0 +1,125 @@
+{
+  "targets": [
+    "src/trivium/selftest.ts",
+    "test/helpers/fixture.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/selftest.test.js",
+    "dist/test/test/unit/temp-index-cleanup.test.js",
+    "dist/test/test/integration/fixture-cleanup.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/integration/selftest.test.js",
+      "desc": "自检运行根改回夹具仓库的兄弟目录",
+      "find": "  const runs = path.join(base, 'runs');\n",
+      "replace": "  const runs = `${base}-runs`;\n"
+    },
+    {
+      "id": "M2",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/integration/selftest.test.js",
+      "desc": "finish 删夹具仓库而非父目录",
+      "find": "    const left = keep || dir === null ? null : await tryRemoveTempDir(dir, []);\n",
+      "replace": "    const left = keep || dir === null ? null : await tryRemoveTempDir(root, []);\n"
+    },
+    {
+      "id": "M3",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "残留提示不提运行目录",
+      "find": "    '自检只往里写了夹具仓库（含本次自检的审查留痕 .reviews/）与本次自检的运行目录（worker 日志、交接文件与状态文件），' +\n",
+      "replace": "    '自检只往里写了夹具仓库（含本次自检的审查留痕 .reviews/），' +\n"
+    },
+    {
+      "id": "M4",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "保留时不给运行目录那一行",
+      "find": "      L.push(`  本次自检的运行目录（worker 日志、交接文件与状态文件）在 ${r.runRoot}${tail}`);\n",
+      "replace": ""
+    },
+    {
+      "id": "M5",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/integration/selftest.test.js",
+      "desc": "失败时不保留（keep 去掉 !ok）",
+      "find": "    const keep = !ok || opts.keepFixture === true;\n",
+      "replace": "    const keep = opts.keepFixture === true;\n"
+    },
+    {
+      "id": "M6",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "made.dir 记成夹具仓库而非 mkdtemp 父目录",
+      "find": "  made.dir = raw;\n",
+      "replace": "  made.dir = path.join(raw, 'repo');\n"
+    },
+    {
+      "id": "M7",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "保留提示「两者同在」不判同父",
+      "find": "      const tail = parent === path.dirname(r.fixtureRoot) ?",
+      "replace": "      const tail = true ?"
+    },
+    {
+      "id": "H1",
+      "file": "test/helpers/fixture.ts",
+      "expect": "dist/test/test/integration/fixture-cleanup.test.js",
+      "desc": "makeFixture 不登记父目录",
+      "find": "  FIXTURE_BASES.push(raw);\n",
+      "replace": ""
+    },
+    {
+      "id": "H2",
+      "file": "test/helpers/fixture.ts",
+      "expect": "dist/test/test/integration/fixture-cleanup.test.js",
+      "desc": "权限恢复不先 chmod 自身",
+      "find": "    chmodSync(dir, 0o700);\n",
+      "replace": "    void 0;\n"
+    },
+    {
+      "id": "H3",
+      "file": "test/helpers/fixture.ts",
+      "expect": "dist/test/test/integration/fixture-cleanup.test.js",
+      "desc": "忽略保留变量",
+      "find": "  if (process.env[KEEP_FIXTURES_ENV] === '1') {\n",
+      "replace": "  if (false) {\n"
+    },
+    {
+      "id": "H4",
+      "file": "test/helpers/fixture.ts",
+      "expect": "dist/test/test/integration/fixture-cleanup.test.js",
+      "desc": "删不掉不打提示",
+      "find": "      warnLine(`makeFixture：夹具目录没删掉，请手工删除 ${dir}（${(e as NodeJS.ErrnoException).code ?? String(e)}）`);\n",
+      "replace": ""
+    },
+    {
+      "id": "H5",
+      "file": "test/helpers/fixture.ts",
+      "expect": "dist/test/test/integration/fixture-cleanup.test.js",
+      "desc": "登记挪到建夹具写盘之后（建到一半抛出时漏收）",
+      "find": "  FIXTURE_BASES.push(raw);\n  if (!exitCleanupArmed) {\n    exitCleanupArmed = true;\n    process.on('exit', removeFixtureBasesSync);\n  }\n  // macOS 的 /var 是 /private/var 的符号链接，realpath 一下免得路径前缀比对失配\n  const base = await fs.realpath(raw);\n  const root = path.join(base, 'repo');\n  const runRoot = path.join(base, 'runs');\n\n  await fs.mkdir(path.join(root, 'src'), { recursive: true });\n  for (const f of ['a.ts', 'b.ts', 'c.ts']) {\n    await fs.writeFile(path.join(root, 'src', f), `export const ${f[0]} = 1;\\n`, 'utf8');\n  }\n  await fs.writeFile(path.join(root, 'README.md'), '# 夹具\\n', 'utf8');\n  await fs.writeFile(path.join(root, '.env'), 'FAKE_PLACEHOLDER=not-a-secret\\n', 'utf8');\n\n  await fs.mkdir(path.join(root, '.trivium'), { recursive: true });\n  await fs.writeFile(\n    path.join(root, '.trivium/config.yaml'),\n    [\n      // 运行目录放进同一个父目录：默认 ~/.trivium/runs 会让每个夹具在真实用户目录里\n      // 留一个桶，审核时那里已堆了 3000 多个 trivium-fx-*（M20）；放在父目录下随夹具一起删（EV-207）\n      'runtime:',\n      `  run_root: ${runRoot}`,\n      'review:',\n      /*\n       * **夹具显式钉两侧，不跟生产默认值漂移**（D4-4 翻 `defaultSelected` 时暴露）。\n       *\n       * 这些集成用例考的是闸门、工件落位、补丁冻结、漂移判定——**与几侧参审无关**。\n       * 而它们的桩注入写死了 `{gemini, glm}`，于是生产默认值一变成三侧，\n       * 103 条当场红在「codex 没有桩」上：测试对象没变，环境前提被别处的一行开关改了。\n       *\n       * 钉住之后，「默认跑几侧」这个决定归生产配置管，这些用例只管自己那件事。\n       * **三侧的默认路径另有覆盖**：接入套件验收（`stub-agent-kit.test.ts`）走的就是三审全链路。\n       */\n      '  default_critics: [gemini, glm]',\n      '  timeout_s:',\n      '    plan: 120',\n      '    code: 120',\n      '    bug: 120',\n      '  wait_timeout_s: 30',\n      ...(opts.extraReview ?? []).map((l) => `  ${l}`),\n      'verify:',\n      ...(opts.extraVerify ?? ['  build: []', '  test: []']),\n      '',\n    ].join('\\n'),\n    'utf8',\n  );\n\n  if (opts.probeModels) {\n    await fs.writeFile(\n      path.join(root, '.trivium/config.local.yaml'),\n      [\n        'probe:',\n        `  generated_at: '${new Date().toISOString()}'`,\n        '  agy:',\n        \"    bin: /bin/echo\",\n        \"    version: 'stub/0.0.0'\",\n        '    models:',\n        ...opts.probeModels.gemini.map((m) => `      - '${m}'`),\n        '    headless_read_ok: true',\n        '  zcode:',\n        \"    entry: /bin/echo\",\n        \"    version: 'stub/0.0.0'\",\n        '    models:',\n        ...opts.probeModels.glm.map((m) => `      - '${m}'`),\n        '',\n      ].join('\\n'),\n      'utf8',\n    );\n  }\n\n  const archiveRoot = path.join(root, '.reviews');\n  const draftStage = opts.draftStage ?? 'plan';\n  const stageDir = path.join(archiveRoot, opts.topic, draftStage);\n  if (opts.draft !== false) {\n    await fs.mkdir(stageDir, { recursive: true });\n    await fs.writeFile(\n      path.join(stageDir, `${today()}-${opts.topic}-claude.md`),\n      draftStage === 'bug'\n        ? '# 根因分析\\n\\n## 一、现象\\n\\n某接口偶发 500。\\n\\n## 二、根因\\n\\n并发下缓存击穿。\\n'\n        : '# 待审计划\\n\\n## 一、目标\\n\\n验证编排器行为。\\n',\n      'utf8',\n    );\n  }\n\n  await initFixtureRepo(root);\n",
+      "replace": "  if (!exitCleanupArmed) {\n    exitCleanupArmed = true;\n    process.on('exit', removeFixtureBasesSync);\n  }\n  // macOS 的 /var 是 /private/var 的符号链接，realpath 一下免得路径前缀比对失配\n  const base = await fs.realpath(raw);\n  const root = path.join(base, 'repo');\n  const runRoot = path.join(base, 'runs');\n\n  await fs.mkdir(path.join(root, 'src'), { recursive: true });\n  for (const f of ['a.ts', 'b.ts', 'c.ts']) {\n    await fs.writeFile(path.join(root, 'src', f), `export const ${f[0]} = 1;\\n`, 'utf8');\n  }\n  await fs.writeFile(path.join(root, 'README.md'), '# 夹具\\n', 'utf8');\n  await fs.writeFile(path.join(root, '.env'), 'FAKE_PLACEHOLDER=not-a-secret\\n', 'utf8');\n\n  await fs.mkdir(path.join(root, '.trivium'), { recursive: true });\n  await fs.writeFile(\n    path.join(root, '.trivium/config.yaml'),\n    [\n      // 运行目录放进同一个父目录：默认 ~/.trivium/runs 会让每个夹具在真实用户目录里\n      // 留一个桶，审核时那里已堆了 3000 多个 trivium-fx-*（M20）；放在父目录下随夹具一起删（EV-207）\n      'runtime:',\n      `  run_root: ${runRoot}`,\n      'review:',\n      /*\n       * **夹具显式钉两侧，不跟生产默认值漂移**（D4-4 翻 `defaultSelected` 时暴露）。\n       *\n       * 这些集成用例考的是闸门、工件落位、补丁冻结、漂移判定——**与几侧参审无关**。\n       * 而它们的桩注入写死了 `{gemini, glm}`，于是生产默认值一变成三侧，\n       * 103 条当场红在「codex 没有桩」上：测试对象没变，环境前提被别处的一行开关改了。\n       *\n       * 钉住之后，「默认跑几侧」这个决定归生产配置管，这些用例只管自己那件事。\n       * **三侧的默认路径另有覆盖**：接入套件验收（`stub-agent-kit.test.ts`）走的就是三审全链路。\n       */\n      '  default_critics: [gemini, glm]',\n      '  timeout_s:',\n      '    plan: 120',\n      '    code: 120',\n      '    bug: 120',\n      '  wait_timeout_s: 30',\n      ...(opts.extraReview ?? []).map((l) => `  ${l}`),\n      'verify:',\n      ...(opts.extraVerify ?? ['  build: []', '  test: []']),\n      '',\n    ].join('\\n'),\n    'utf8',\n  );\n\n  if (opts.probeModels) {\n    await fs.writeFile(\n      path.join(root, '.trivium/config.local.yaml'),\n      [\n        'probe:',\n        `  generated_at: '${new Date().toISOString()}'`,\n        '  agy:',\n        \"    bin: /bin/echo\",\n        \"    version: 'stub/0.0.0'\",\n        '    models:',\n        ...opts.probeModels.gemini.map((m) => `      - '${m}'`),\n        '    headless_read_ok: true',\n        '  zcode:',\n        \"    entry: /bin/echo\",\n        \"    version: 'stub/0.0.0'\",\n        '    models:',\n        ...opts.probeModels.glm.map((m) => `      - '${m}'`),\n        '',\n      ].join('\\n'),\n      'utf8',\n    );\n  }\n\n  const archiveRoot = path.join(root, '.reviews');\n  const draftStage = opts.draftStage ?? 'plan';\n  const stageDir = path.join(archiveRoot, opts.topic, draftStage);\n  if (opts.draft !== false) {\n    await fs.mkdir(stageDir, { recursive: true });\n    await fs.writeFile(\n      path.join(stageDir, `${today()}-${opts.topic}-claude.md`),\n      draftStage === 'bug'\n        ? '# 根因分析\\n\\n## 一、现象\\n\\n某接口偶发 500。\\n\\n## 二、根因\\n\\n并发下缓存击穿。\\n'\n        : '# 待审计划\\n\\n## 一、目标\\n\\n验证编排器行为。\\n',\n      'utf8',\n    );\n  }\n\n  await initFixtureRepo(root);\n  FIXTURE_BASES.push(raw);\n"
+    },
+    {
+      "id": "H6",
+      "file": "test/helpers/fixture.ts",
+      "expect": "dist/test/test/integration/fixture-cleanup.test.js",
+      "desc": "配置 run_root 改回兄弟目录（返回字段不变）",
+      "find": "      `  run_root: ${runRoot}`,\n",
+      "replace": "      `  run_root: ${root}-runs`,\n"
+    },
+    {
+      "id": "H7",
+      "file": "test/helpers/fixture.ts",
+      "expect": "dist/test/test/integration/fixture-cleanup.test.js",
+      "desc": "权限恢复遍历读目录失败不吞",
+      "find": "    entries = readdirSync(dir, { withFileTypes: true });\n  } catch {\n    return;\n  }\n",
+      "replace": "    entries = readdirSync(dir, { withFileTypes: true });\n  } catch (e) {\n    throw e;\n  }\n"
+    }
+  ]
+}

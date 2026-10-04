@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { bundleMissing, bundleSkipReason, cli, listFiles, makeFixture, today } from '../helpers/fixture.js';
+import { bundleMissing, bundleSkipReason, cli, listFiles, makeFixture, today, type Fixture } from '../helpers/fixture.js';
 import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
 import { ENV_R, ENV_W, assertEnvPairDistinct, withEnv } from '../helpers/start-env.js';
 import { processStartTime } from '../../src/trivium/util/exec.js';
@@ -2381,10 +2381,10 @@ const taskRunsOf = async (archiveRoot: string): Promise<TaskRunLike[] | null> =>
  * 可能用到的运行目录都建出来，交给 `prep` 做手脚。夹具根已 realpath（`makeFixture`），CLI 算 repoId 用的是同一个。
  * 60 秒远大于满载下一次 `--start` 从这里到落骨架的耗时；用例里只起一次 `--start`，不存在误命中第二次运行的问题。
  */
-async function precreateRunDirs(root: string, prep: (dir: string) => Promise<void>): Promise<{ ids: Set<string>; dirs: string[] }> {
+async function precreateRunDirs(fx: Fixture, prep: (dir: string) => Promise<void>): Promise<{ ids: Set<string>; dirs: string[] }> {
   const { repoId } = await import('../../src/trivium/review.js');
   const { newRunId } = await import('../../src/trivium/meta.js');
-  const base = path.join(`${root}-runs`, repoId(root));
+  const base = path.join(fx.runRoot, repoId(fx.root));
   const ids = new Set<string>();
   const dirs: string[] = [];
   const t0 = Date.now();
@@ -2458,7 +2458,7 @@ test('事后收尾余项 P2：第 1 轮已审批后第 2 轮登记失败 ⇒ 第
 
 test('事后收尾余项 P3：startRun 派生前失败（写交接文件 EACCES）⇒ 骨架与登记收尾为 failed（prepare_exception），闸门 idle、锁已放', { skip: NOT_ROOT_SKIP }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
-  const { ids, dirs } = await precreateRunDirs(fx.root, (d) => fs.chmod(d, 0o555));
+  const { ids, dirs } = await precreateRunDirs(fx, (d) => fs.chmod(d, 0o555));
   let r: Awaited<ReturnType<typeof cli>>;
   try {
     r = await startPlan(fx.root);
@@ -2478,7 +2478,7 @@ test('事后收尾余项 P3：startRun 派生前失败（写交接文件 EACCES�
 
 test('事后收尾余项 P3b：spawnDetached 内部、子进程诞生之前失败（开日志文件 EISDIR）⇒ 同样收尾为 prepare_exception，且没有 worker', { skip: NOT_ROOT_SKIP }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
-  const { ids } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.log')));
+  const { ids } = await precreateRunDirs(fx, (d) => fs.mkdir(path.join(d, 'worker.log')));
   try {
     const r = await startPlan(fx.root);
     assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
@@ -2496,17 +2496,17 @@ test('事后收尾余项 P3b：spawnDetached 内部、子进程诞生之前失�
 
 const HANG: StubConfig = { gemini: { mode: 'hang' }, glm: { mode: 'hang' } };
 
-/** 运行目录里的 status.json（夹具运行根是 `<root>-runs`，见 precreateRunDirs） */
-async function statusJsonOf(root: string, runId: string): Promise<{ phase: string; worker_pid: number | null } | null> {
+/** 运行目录里的 status.json（夹具运行根是 `fx.runRoot`，见 precreateRunDirs） */
+async function statusJsonOf(fx: Fixture, runId: string): Promise<{ phase: string; worker_pid: number | null } | null> {
   const { repoId } = await import('../../src/trivium/review.js');
-  return fs.readFile(path.join(`${root}-runs`, repoId(root), runId, 'status.json'), 'utf8')
+  return fs.readFile(path.join(fx.runRoot, repoId(fx.root), runId, 'status.json'), 'utf8')
     .then((t) => JSON.parse(t) as { phase: string; worker_pid: number | null })
     .catch(() => null);
 }
 
 test('派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
-  const { ids } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.pid')));
+  const { ids } = await precreateRunDirs(fx, (d) => fs.mkdir(path.join(d, 'worker.pid')));
   try {
     const r = await startPlan(fx.root, HANG);
     assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
@@ -2518,7 +2518,7 @@ test('派生后失败的孤儿worker P4：子进程诞生之后才失败（写 w
     assert.deepEqual((await taskRunsOf(fx.archiveRoot))?.map((t) => [t.run_id, t.status]), [[runId, 'failed']]);
     assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.state, 'idle');
     assert.ok(!(await fs.readdir(path.join(fx.root, '.trivium', 'lock'))).includes(`${TOPIC}.lock`), '主题锁必须已释放');
-    const st = await statusJsonOf(fx.root, runId);
+    const st = await statusJsonOf(fx, runId);
     assert.equal(st?.phase, 'failed');
     assert.ok(st?.worker_pid, 'status.json 应补记 worker_pid');
     assert.match(r.stderr, /已终止工作进程组/, r.stderr);
@@ -2537,7 +2537,7 @@ test('派生后失败的孤儿worker P4：子进程诞生之后才失败（写 w
 
 test('派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
-  const { ids } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.pid')));
+  const { ids } = await precreateRunDirs(fx, (d) => fs.mkdir(path.join(d, 'worker.pid')));
   try {
     const r = await startPlan(fx.root, STUB);
     assert.notEqual(r.code, EXIT.OK, `${r.stdout}${r.stderr}`);
@@ -2557,7 +2557,7 @@ test('派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后�
 
 test('派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
-  const { ids, dirs } = await precreateRunDirs(fx.root, (d) => fs.mkdir(path.join(d, 'worker.pid')));
+  const { ids, dirs } = await precreateRunDirs(fx, (d) => fs.mkdir(path.join(d, 'worker.pid')));
   let second: string | null = null;
   try {
     const r = await startPlan(fx.root, HANG);

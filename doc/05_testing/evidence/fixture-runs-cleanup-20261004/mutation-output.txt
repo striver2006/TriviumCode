@@ -1,0 +1,112 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  M1 ✓ 咬住（fail=4）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=2）
+  M7 ✓ 咬住（fail=1）
+  H1 ✓ 咬住（fail=4）
+  H2 ✓ 咬住（fail=1）
+  H3 ✓ 咬住（fail=1）
+  H4 ✓ 咬住（fail=1）
+  H5 ✓ 咬住（fail=1）
+  H6 ✓ 咬住（fail=3）
+  H7 ✓ 咬住（fail=1）
+  H8 ✓ 咬住（fail=1）
+{
+  "总数": 15,
+  "咬住": 15,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "自检运行根改回夹具仓库的兄弟目录",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M2",
+      "desc": "finish 删夹具仓库而非父目录",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "残留提示不提运行目录",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "保留时不给运行目录那一行",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "失败时不保留（keep 去掉 !ok）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "made.dir 记成夹具仓库而非 mkdtemp 父目录",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M7",
+      "desc": "保留提示「两者同在」不判同父",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H1",
+      "desc": "makeFixture 不登记父目录",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "H2",
+      "desc": "权限恢复不先 chmod 自身",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H3",
+      "desc": "忽略保留变量",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H4",
+      "desc": "删不掉不打提示",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H5",
+      "desc": "登记挪到建夹具写盘之后（建到一半抛出时漏收）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H6",
+      "desc": "配置 run_root 改回兄弟目录（返回字段不变）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "H7",
+      "desc": "权限恢复遍历读目录失败不吞",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H8",
+      "desc": "一个父目录删不掉就中断后面的",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

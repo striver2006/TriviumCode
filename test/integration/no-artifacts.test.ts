@@ -210,7 +210,7 @@ async function assertBlockedLeavesNoTrace(fx: Awaited<ReturnType<typeof makeFixt
   const gateOf = async () =>
     (JSON.parse(await fs.readFile(statePath, 'utf8')) as { gates: Record<string, unknown> }).gates;
   const taskPath = path.join(fx.archiveRoot, TOPIC, 'task.json');
-  const runRoot = `${fx.root}-runs`;
+  const runRoot = fx.runRoot;
   const gatesBefore = await gateOf();
   assert.equal((gatesBefore[`${TOPIC}/plan`] as { state: string }).state, 'review_done_awaiting_disposition', '前提：上一轮待裁决');
   const taskBefore = await fs.readFile(taskPath);

@@ -83,7 +83,7 @@ async function runDir(d: string, runId: string, dead: Awaited<ReturnType<typeof 
  */
 async function scene(cells: Cell[]): Promise<Scene> {
   const fx = await makeFixture({ topic: '清扫文字用例', draft: false });
-  const runRoot = `${fx.root}-runs`;
+  const runRoot = fx.runRoot;
   const tag = `${MARK}:${fx.root}`;
   const held = { pgid: null as number | null, exited: Promise.resolve() };
   const stop = async () => {
@@ -300,7 +300,7 @@ test('EV-166 T8：帮助不再承诺「躺到整删」；动机句带齐事实�
  */
 test('EV-164 T7：会话启动提示第四格整行逐字（「CLI 结束后下次会话会再判；记录读不懂的不会自愈」不改）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: '清扫文字用例', draft: false });
-  const d = path.join(`${fx.root}-runs`, repoId(fx.root), 'R-D');
+  const d = path.join(fx.runRoot, repoId(fx.root), 'R-D');
   const carrier = await runDir(d, 'R-D', await deadWorker(), MALFORMED);
   const r = await run(process.execPath, [BUNDLE, 'gate', 'hook-session-start'], {
     cwd: fx.root,

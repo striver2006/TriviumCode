@@ -8,7 +8,7 @@
  *
  * 不是 mock，不是「检查文件存在」。它建一个真 git 仓库、调**真实打包 CLI**
  * 走 plan 双审 → 闸门拦截 → 补裁决 → 闸门放行 → verify → report，
- * 逐步核对退出码与落盘结果。跑完即删。
+ * 逐步核对退出码与落盘结果。跑完即删：夹具仓库与本次的运行根同在一个 mkdtemp 父目录下，删的只是这个父目录（EV-207）。
  *
  * ## 各入选侧 Agent 用桩，且必须说清楚
  *
@@ -46,7 +46,13 @@ export interface SelftestStep {
 export interface SelftestResult {
   ok: boolean;
   steps: SelftestStep[];
+  /**
+   * 三态（代码双审 GLM-01）：建夹具成功后是父目录下的夹具仓库 `repo/`；建夹具失败且父目录删不掉时是 mkdtemp 父目录本身；
+   * 建夹具失败而删掉了（或拿不到自身脚本）时为 ''。只作显示与保留提示用，删除只认 `made.dir`。
+   */
   fixtureRoot: string;
+  /** 本次自检的运行根（与夹具仓库同在一个父目录下，EV-207）；夹具没建出来时为 '' */
+  runRoot: string;
   kept: boolean;
   /** 本次自检**没有**覆盖的东西，必须一并呈现 */
   notCovered: string[];
@@ -57,11 +63,15 @@ export interface SelftestResult {
   cleanupResidue: string | null;
 }
 
-/** 自检夹具目录删不掉时的提示（EV-204）：主语是自检，不断言目录全貌（同 `indexResidueText`） */
+/**
+ * 自检临时目录删不掉时的提示（EV-204）：主语是自检，不断言目录全貌（同 `indexResidueText`）。
+ * EV-207 起删的是夹具仓库与运行根的父目录，措辞覆盖两者。
+ */
 export function selftestResidueText(dir: string, code: string): string {
   return (
-    `自检夹具目录删除失败（${code}）：${tildeHome(dir)} 仍在——` +
-    '自检只往里写了夹具文件与本次自检的审查留痕（.reviews/），没有凭据，请手工删除'
+    `自检临时目录删除失败（${code}）：${tildeHome(dir)} 仍在——` +
+    '自检只往里写了夹具仓库（含本次自检的审查留痕 .reviews/）与本次自检的运行目录（worker 日志、交接文件与状态文件），' +
+    '没有凭据，请手工删除'
   );
 }
 
@@ -105,14 +115,22 @@ export interface SelftestOptions {
  *
  * `made.dir` 在 mkdtemp 一返回就记下（EV-204）：此前调用方写的是 `root = await buildFixture()`，
  * 中途抛出时赋值不发生，catch 里的删除恒走不到，建到一半的目录无人清理。删除只认 mkdtemp 的返回值。
+ *
+ * mkdtemp 建的是**父目录**，夹具仓库在其下 `repo/`、运行根在其下 `runs/`（EV-207）。此前运行根是夹具根的
+ * 兄弟目录 `<夹具根>-runs`——那是拼出来的路径，不是 mkdtemp 的返回值，按删除只认返回值的规矩不能拿去删，
+ * 于是每跑一次自检就在系统临时目录留一个。两者同在一个父目录下，删父目录就一起带走。
+ * `runs/` 预建：保留提示里给出的运行目录路径要恒存在（第①步就失败时编排器可能还没建它）。
  */
 async function buildFixture(
   made: { dir: string | null },
   init: (dir: string) => Promise<void>,
-): Promise<string> {
+): Promise<{ root: string; runs: string }> {
   const raw = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-selftest-'));
   made.dir = raw;
-  const root = await fs.realpath(raw);
+  const base = await fs.realpath(raw);
+  const root = path.join(base, 'repo');
+  const runs = path.join(base, 'runs');
+  await fs.mkdir(runs);
 
   await fs.mkdir(path.join(root, 'src'), { recursive: true });
   await fs.writeFile(
@@ -145,9 +163,9 @@ async function buildFixture(
   await fs.writeFile(
     path.join(root, '.trivium/config.yaml'),
     [
-      // 运行目录放到夹具旁边，不污染真实的 ~/.trivium/runs（M20）；夹具本身随 --keep-fixture 决定去留
+      // 运行目录放进同一个父目录，不污染真实的 ~/.trivium/runs（M20），并随父目录一起删或一起保留（EV-207）
       'runtime:',
-      `  run_root: ${root}-runs`,
+      `  run_root: ${runs}`,
       'review:',
       '  timeout_s:',
       '    plan: 120',
@@ -185,7 +203,7 @@ async function buildFixture(
   );
 
   await init(root);
-  return root;
+  return { root, runs };
 }
 
 export async function runSelftest(
@@ -214,6 +232,7 @@ export async function runSelftest(
       ok: false,
       steps: [{ name: '定位自身脚本', ok: false, detail: '拿不到 process.argv[1]，无法自调用' }],
       fixtureRoot: '',
+      runRoot: '',
       kept: false,
       notCovered,
       cleanupResidue: null,
@@ -230,14 +249,16 @@ export async function runSelftest(
    */
   const made: { dir: string | null } = { dir: null };
   let root = '';
+  let runs = '';
   try {
-    root = await buildFixture(made, deps.initFixtureRepo);
+    ({ root, runs } = await buildFixture(made, deps.initFixtureRepo));
   } catch (e) {
     const left = made.dir ? await tryRemoveTempDir(made.dir, []) : null;
     return {
       ok: false,
       steps: [{ name: '创建夹具仓库', ok: false, detail: (e as Error).message }],
       fixtureRoot: left ? made.dir! : '',
+      runRoot: '',
       kept: false,
       notCovered,
       cleanupResidue: left ? selftestResidueText(made.dir!, left.code) : null,
@@ -419,7 +440,7 @@ export async function runSelftest(
   /*
    * 删不掉不抛（EV-204）：此前 `fs.rm` 从这里抛出，而调用处是不带 await 的 `return finish(…)`，
    * 拒绝不进上面的 catch、直接穿出 runSelftest，一次已经得出结论的自检崩成内部错误。
-   * 删的是 `made.dir`（mkdtemp 的返回值，`root` 是它的 realpath，同一个目录）。
+   * 删的是 `made.dir`（mkdtemp 的返回值，即夹具仓库 `root` 与运行根 `runs` 的父目录，EV-207）。
    *
    * `made.dir` 在这里本应非空：finish 只在建夹具成功之后可达（`!selfScript` 早退与建夹具的 catch 都不经它）。
    * 不写非空断言而显式短路（代码双审 GLM-01）：将来若多出一条建夹具成功前的 `return finish(…)`，断言不会红——
@@ -433,6 +454,7 @@ export async function runSelftest(
       ok,
       steps,
       fixtureRoot: root,
+      runRoot: runs,
       kept: keep,
       notCovered,
       cleanupResidue: left && dir !== null ? selftestResidueText(dir, left.code) : null,
@@ -458,6 +480,15 @@ export function renderSelftest(r: SelftestResult): string {
     L.push(`夹具保留在 ${r.fixtureRoot}`);
     L.push('  它是一个故意留洞的最小项目（src/payment.ts 的并发退款没有幂等保护）。');
     L.push('  去掉 TRIVIUM_STUB_CRITIC 在其中重跑一次，可检验各侧真实审查能否指出这个洞。');
+    if (r.runRoot) {
+      /*
+       * 运行目录在哪（EV-207）。「两者同在」只在两者确实同父时说（计划双审 AGY-03）：
+       * 不靠「kept 支只在建夹具成功后可达」这一调用时序去保证 dirname 恰好是父目录。父目录只用于显示，不作删除依据。
+       */
+      const parent = path.dirname(r.runRoot);
+      const tail = parent === path.dirname(r.fixtureRoot) ? `；两者同在 ${parent} 下，排查完删这一个目录即可。` : '。';
+      L.push(`  本次自检的运行目录（worker 日志、交接文件与状态文件）在 ${r.runRoot}${tail}`);
+    }
   } else if (r.cleanupResidue) {
     // 没删掉就不能说「已清理」（EV-204）
     L.push(r.cleanupResidue);
