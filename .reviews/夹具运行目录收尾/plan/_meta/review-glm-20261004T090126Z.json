@@ -1,0 +1,95 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "整体高质量：现状核对的行号、计数与措辞同步面我逐项抽查几乎全部属实（selftest.ts:109-189/150/235-245/428-440、fixture.ts:76-160/95、8 处 -runs 拼接点与 grep 结果一致、makeFixture 恰为 22 文件 182 处、RUNBOOK:280/:358、设计 §17.1 在 :3433 且当前版本 v1.3.84 使 v1.3.85 成立、EV-207 已在 BACKLOG:305 登记而 EV-208 空闲、evidence 下恰 5 份 .mjs import helper）；父目录结构不改产品语义的关键论证（isUnder 按 / 边界、repoId=basename+路径哈希、测试用 src 导入的真 repoId）成立；收尾挂点选 process.on('exit') 的理由（node:test 的 after 会污染普通脚本输出）成立；登记时点、不预建 runs/ 保住 listFiles 依赖面、W 豁免表不受影响（退出钩子的 rmSync 在 test/ 不在 src/）等判断均核过。四条意见：FC4/H5 的注入前提与代码事实不符（最重要）；变异装置「只认 src/*.ts」的前提存疑；两处盘点小出入；退出钩子的 writeSync 未防抛。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "test/helpers/fixture.ts:158; src/trivium/util/git.ts:458-468; src/trivium/util/exec.ts:304-307",
+      "problem": "FC4 的注入前提不成立：计划写「子进程 PATH 只给 node 所在目录（找不到 git，initFixtureRepo 抛出）；子进程退 1（用例失败）」。但 exec.ts 的 run() 对 spawn 失败（git 不在 PATH，ENOENT）走 child.on('error') → finish(null, null)，Promise 只 resolve（code:null）、从不 reject；git.ts 的 initFixtureRepo 是六条裸 await run(...)、从不检查退出码。因此 git 整个缺失时 makeFixture 不会抛出，而是静默返回一个没有 .git 的夹具——子进程会退 0 而非 1，FC4 的两条断言（退 1、用例失败）都不会发生，H5（登记挪到 initFixtureRepo 之后 → FC4 红）的锚点也随之落空。附带暴露：initFixtureRepo 对 git 失败完全不看退出码，这是既有代码的潜在静默降级面，与本计划无直接关系但值得一记。",
+      "evidence": "src/trivium/util/exec.ts:304-307（spawn error 也 resolve code:null，无 reject 路径）；src/trivium/util/git.ts:458-468（initFixtureRepo 六条 await run，无任何 code 检查）；test/helpers/fixture.ts:158（makeFixture 直调 initFixtureRepo，中间无别的可抛步骤）。此为源码推演，未运行验证。",
+      "suggestion": "FC4 换注入手段后再定稿：要么给 makeFixture 开一个与 SelftestDeps 同形的注入口，要么用现有 opts 造一个必抛的写盘步骤（mkdtemp 与登记之后的某一步），使「建到一半抛出」真实可注入；H5 的锚点随之改挂到新的注入位。同时建议在结案语里如实记下「initFixtureRepo 不检查 git 退出码」这一发现，供另登或后续甄别。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "scripts/mutation-check.mjs:98-100,137-139,19-33",
+      "problem": "「装置只认 src/*.ts」这一分批前提与装置源码不符：规格的 targets 由调用方给定，装置内未见 src/ 前缀限定；artifactOf 对任意 .ts 都映射 dist/test/<相对路径>.js，而 test/helpers/fixture.ts 会映射到 dist/test/test/helpers/fixture.js——该产物存在（fixture.ts:18-20 头注即说明运行时位于此处）。若确无限制，helper 批（H1-H6）可以而且应该直接走装置，白拿七道闸；计划的自写预跑脚本按「同一机制」只点名了备份、替换、构建、恢复、逐字节核对、find 唯一，未含哨兵（上次善终检查）与产物指纹（闸 4）两道——装置头注里的三次历史失败恰恰都出自手工流程静默不走预期。",
+      "evidence": "scripts/mutation-check.mjs:98-100（规格示例 targets/suites/cases 均由规格给定）；:137-139（artifactOf 为通用 .ts→.js 映射）；:19-33（七道闸清单，含哨兵与产物指纹）；test/helpers/fixture.ts:18-20（构建产物路径自证）。未通读装置全文的全部校验分支，限定结论为「未见限定」。",
+      "suggestion": "先核装置是否真有限制；若没有，把 helper 批并入装置批跑（targets 含 test/helpers/fixture.ts、suites 指向 fixture-cleanup 套件），删掉自写脚本这条线；若确有限制，自写脚本需补齐哨兵与产物指纹两道闸再算「同一机制」。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "test/integration/gate-loop.test.ts:2461,2481,2509,2540,2560,2521; test/unit/temp-index-cleanup.test.ts:279-284",
+      "problem": "两处改动面盘点小出入：其一，precreateRunDirs 的调用点实为 5 处（gate-loop.test.ts:2461、2481、2509、2540、2560），计划 §2.3 写「三处调用点传 fx」；statusJsonOf 调用点为 1 处（:2521）。其二，SelftestResult 新增必填 runRoot 后，temp-index-cleanup.test.ts S4 里手工构造的合成对象（:279-284）会 typecheck 红，计划的 S 组改动清单未点名。两处都会被 tsc 全量兜住，不构成返工，但盘点数字按错误清单收口容易在自查时误判「改多了」。",
+      "evidence": "对 test/integration/gate-loop.test.ts 的检索：precreateRunDirs 定义于 :2384，调用点 :2461/:2481/:2509/:2540/:2560；statusJsonOf 定义于 :2500，调用点仅 :2521。test/unit/temp-index-cleanup.test.ts:279 的 base 对象缺 runRoot 字段，接口加必填字段后不满足 strict 类型检查。",
+      "suggestion": "订正 §2.3 的调用点数字为 5 处，并在 S 组改动清单里补一句「S4 的合成对象补 runRoot 字段」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "test/helpers/fixture.ts（§2.2 进程退出收尾）",
+      "problem": "退出钩子里的三处 fs.writeSync(2, …)（保留提示、删不掉提示、R5 防呆提示）未防抛：stderr 已关闭或管道破裂（EPIPE/EBADF）时异常会穿出 process.on('exit') 处理器，按 Node 语义进程以非 0 退出、且循环里后续夹具的清理不再执行——这正是 EV-204 花力气消灭的「收尾失败顶替已得出的结果」形态在测试侧的复刻。触发面窄（node --test 与终端场景 stderr 基本不会写失败），但修复只是一层 try/catch。",
+      "evidence": "计划 §2.2 第 1-3 点的 writeSync 用法；对照 EV-204 的设计原则（src/trivium/util/fsx.ts:139-155，tryRemoveTempDir 失败不抛、不顶替结果）。Node 对 exit 处理器抛错的退出码行为为文档语义推理，未实测。",
+      "suggestion": "退出钩子里每个 fs.writeSync(2, …) 单独包 try/catch（或整段提示收敛进一个永不抛的小函数），保证单个提示写不出去最多丢一行字，不翻转退出码、不中断其余夹具的删除。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§1 现状核对逐项属实：selftest.ts 的 buildFixture/finish/建夹具失败三处行号与内容、fixture.ts:95 的 run_root 拼接、-runs 全仓 8 行 5 文件清单与 grep 结果完全一致、makeFixture 调用量恰为 22 文件 182 处、hooks.test.ts 的 trivium-hook-runs- 与 peer-leak 的字符串数据确属本题之外。",
+    "挂点定为 process.on('exit') 的理由成立：node:test 的 after 被普通脚本 import 时会带起测试 harness 污染 stdout，而 evidence 下恰有 5 份 .mjs 验收脚本 import 该 helper；用 fs.writeSync(2,…) 规避退出期异步丢写也对。",
+    "父目录结构不改产品语义的论证核过关键两处：isUnder（adapters/base.ts:1807）按 / 边界判包含、repoId（review.ts:345）取 basename+路径哈希；gate-loop 与 worktree-hash-cleanup 用的都是从 src 导入的真 repoId，桶名一致性由构造保证，仓内确无按 trivium-fx 字面断言桶名的地方。",
+    "FIXTURE_BASES 登记放在 mkdtemp 之后、任何可能抛出的写盘之前，方向正确（FC4 的具体注入手段见 GLM-01）；R1/R5 的防呆约束合理。",
+    "不预建 runs/ 保住 no-artifacts 等用例对 listFiles（目录不存在返回空，fixture.ts:181-198）的依赖面，与自检侧预建 runs/ 的差异化处理各有理由。",
+    "退出钩子的 rmSync 在 test/helpers 而非 src/，EV-204 的 W 豁免表（temp-index-cleanup.test.ts:295-315 只扫 src/）确实不受影响。",
+    "旧措辞「自检夹具目录删除失败」在活文档里只有 RUNBOOK:280 一处（历史测试报告 REPORT_2026-10-04_temp_index_cleanup.md:31 是当时留痕、按惯例不回改），skills-src 无引用，§3 的文档同步清单是齐的；TRIVIUM_KEEP_FIXTURES 与仓内既有 TRIVIUM_* 变量不撞名。",
+    "doctor 自检「14/14」与 selftest.ts 里 record() 的实际步数及 RUNBOOK:357 相符；残余三条（信号杀、detached worker 重建、存量不删）如实登记。"
+  ],
+  "not_covered": [
+    "全程只读、未执行任何命令：FC3/ST2 的权限摆锁实验、Node 对 exit 处理器抛错的退出码行为（GLM-04 为推理）、os.tmpdir() 逐调用读取 env.TMPDIR 等均未实测。",
+    "§1.5 的存量计数（trivium-fx-* 58137、trivium-selftest-* 679、trivium-kit-* 240 及别的前缀计数）未复核；§1.7 的来源文件只抽核了 run-ctx.ts（trivium-proto- 确无收尾，归 EV-208 的判断成立），hooks/state/zcode-model/lock/preflight 各测未逐一读。",
+    "§1.8 引用的 freeze.ts:108/:357 与 guard.ts:712 两处未逐行读（等价性论证我只亲验了 isUnder 与 repoId 两处）。",
+    "变异 M1-M6 与 ST1-3/S1/S2/S5、H1-H6 与 FC1-FC4 的红绿对应只做了逻辑推演，未跑装置；scripts/build.mjs 的 --with-tests 行为按计划引用为既有机制，未核本体。",
+    "背靠背约束：未读另一位审查员的任何产出；所有检索均按 test/、src/、doc/、skills-src/ 目录限定，避开 .reviews 历史审查件与运行目录。"
+  ],
+  "consulted": [
+    ".reviews/夹具运行目录收尾/plan/2026-10-04-夹具运行目录收尾-claude.md",
+    "src/trivium/selftest.ts",
+    "test/helpers/fixture.ts",
+    "test/integration/selftest.test.ts",
+    "test/unit/temp-index-cleanup.test.ts",
+    "test/integration/worktree-hash-cleanup.test.ts",
+    "test/integration/stub-agent-kit.test.ts",
+    "test/integration/no-artifacts.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/mustread-deny.test.ts",
+    "test/integration/scrub-output-text.test.ts",
+    "test/helpers/run-ctx.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/base.ts",
+    "scripts/mutation-check.mjs",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-04_temp_index_cleanup.md",
+    "test/unit/hooks.test.ts",
+    "test/unit/peer-leak-command.test.ts"
+  ]
+}
