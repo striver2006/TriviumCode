@@ -27,8 +27,8 @@ import {
 import { WORKER_HEARTBEAT_MS, staleThresholdWithinHeartbeat } from './status.js';
 import { ALL_CLI_NAMES, DEFAULT_DRIVER, agentById, agentByCliName, type AgentId } from './agents/registry.js';
 import { realAdapters } from './adapters/index.js';
-import { routeModel, type AdapterContext, type AdapterTable, type CriticAdapter } from './adapters/base.js';
-import { exists } from './util/fsx.js';
+import { routeModel, type AdapterContext, type AdapterTable, type AuthProbe, type CriticAdapter } from './adapters/base.js';
+import { exists, tildeHome } from './util/fsx.js';
 import { isGitRepo } from './util/git.js';
 import { run } from './util/exec.js';
 import { step } from './util/log.js';
@@ -678,11 +678,20 @@ function checkVerifyConfigured(cfg: Config, scope: PreflightScope): CheckResult 
 
 // ─────────────────────── 探活 ───────────────────────
 
-interface AuthOutcome {
+export interface AuthOutcome {
   critic: CriticId;
   result: CheckResult;
   /** 通过时待写入缓存的条目（失败时为 null——只缓存正结论，GLM-06） */
   cache: AuthCacheEntry | null;
+}
+
+/**
+ * 适配器抛出的原因：家目录归一 `~`（路径里常带用户名）。
+ * `TRIVIUM_DEBUG` 置位时另把原始异常打到 stderr——兜住之后 `cli.ts` 出口的打印走不到这里，排障口径由这里接上（EV-202）。
+ */
+function thrownText(e: unknown): string {
+  if (process.env['TRIVIUM_DEBUG']) console.error(e);
+  return tildeHome(e instanceof Error ? e.message : String(e));
 }
 
 /**
@@ -695,8 +704,16 @@ interface AuthOutcome {
  *
  * 没实现 `authProbe` 的侧**如实报告为「没得探」**，不静默算通过——
  * 「探过通过」与「压根没探」长得一样，是本项目反复出现的那类失真。
+ *
+ * **适配器的三个调用点都在这里兜住**（EV-202）：构造、`fingerprint()`、`probe()` 任一抛出，此前都会穿过
+ * `probeAuthAll` 的 `Promise.all` 把整个预检崩成「内部错误」、退 1，连带丢掉别侧已花配额探出的结论。
+ * - 构造或 `probe()` 抛出 ⇒ 该侧失败（69），详情「探活内部失败：原因」；
+ * - `fingerprint()` 抛出 ⇒ **不折成 null**：null 是契约里的「无从计算」（`AuthProbe.fingerprint`），
+ *   上次指纹为 null 时 null 等于 null 会命中缓存、跳过探活。读不了就不查缓存、照常探活、通过也不写缓存，
+ *   原因接在详情末尾。代价：读不了期间每次预检该侧都会重探一次，修好文件才止。
+ *   zcode 的指纹自己吞掉了读盘异常（返回 null），不经这一支（EV-203）。
  */
-async function probeAuth(
+export async function probeAuth(
   ctx: Ctx,
   critic: CriticId,
   adapter: CriticAdapter,
@@ -708,10 +725,19 @@ async function probeAuth(
   const cliName = agentById(critic)?.cliName ?? null;
   const version = (cliName ? cfg.probe.cli[cliName]?.version : null) ?? null;
 
-  const auth = adapter.authProbe?.(
-    { cfg, nodePath: cfg.runtime.node ?? process.execPath },
-    ctx.projectRoot,
-  );
+  let auth: AuthProbe | undefined;
+  try {
+    auth = adapter.authProbe?.(
+      { cfg, nodePath: cfg.runtime.node ?? process.execPath },
+      ctx.projectRoot,
+    );
+  } catch (e) {
+    return {
+      critic,
+      result: { name, ok: false, exitCode: EXIT.ENV, detail: `探活内部失败：${thrownText(e)}` },
+      cache: null,
+    };
+  }
   if (!auth) {
     return {
       critic,
@@ -720,23 +746,58 @@ async function probeAuth(
     };
   }
 
-  const fp = await auth.fingerprint();
-  if (!opts.refreshAuth) {
+  let fp: string | null = null;
+  let fpError: string | null = null;
+  try {
+    fp = await auth.fingerprint();
+  } catch (e) {
+    fpError = thrownText(e);
+  }
+  if (fpError !== null) {
+    step(`[${critic}] 指纹读不了（${fpError}），不查缓存，执行最小 headless 探活`);
+  } else if (!opts.refreshAuth) {
     const v = authCacheValid(cfg.probe.auth?.[critic], version, fp, cfg.preflight.auth_cache_ttl_h);
     if (v.valid) return { critic, result: { name, ok: true, detail: v.reason }, cache: null };
     step(`[${critic}] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
   }
 
-  const r = await auth.probe();
+  let r: { ok: boolean; detail: string };
+  try {
+    r = await auth.probe();
+  } catch (e) {
+    r = { ok: false, detail: `探活内部失败：${thrownText(e)}` };
+  }
+  // 接在最后：适配器自己拼的残留提示（EV-197 / EV-200）在 r.detail 里，指纹注明恒在其后
+  const note = fpError === null ? '' : `；⚠️ 指纹读不了：${fpError}，本次未用缓存、也不写缓存`;
   return {
     critic,
     result: r.ok
-      ? { name, ok: true, detail: r.detail }
-      : { name, ok: false, exitCode: EXIT.ENV, detail: r.detail },
-    cache: r.ok
+      ? { name, ok: true, detail: r.detail + note }
+      : { name, ok: false, exitCode: EXIT.ENV, detail: r.detail + note },
+    cache: r.ok && fpError === null
       ? { checked_at: new Date().toISOString(), cli_version: version, fingerprint: fp, ok: true }
       : null,
   };
+}
+
+/**
+ * ⑧ 探活：按入选侧并行探（EV-202 从 `runPreflight` 原样抽出）。
+ *
+ * `adapters` 由 `runPreflight` 恒传 `realAdapters()`；**导出只为可测性**——用例传假适配器表、零配额。
+ * 不给 `runPreflight` 加探活注入口：那会给「⑧ 误花配额」再开一个口子（见 `PreflightOptions.adapters` 注释），
+ * 而本函数不带缺省真实表，调用方必须显式给表。
+ */
+export async function probeAuthAll(
+  ctx: Ctx,
+  selected: readonly CriticId[],
+  adapters: AdapterTable,
+  opts: PreflightOptions,
+): Promise<AuthOutcome[]> {
+  return Promise.all(
+    selected
+      .filter((id) => adapters[id])
+      .map((id) => probeAuth(ctx, id, adapters[id]!, opts)),
+  );
 }
 
 // ─────────────────────── 编排 ───────────────────────
@@ -828,12 +889,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
         detail: '⚠️ 已跳过（--skip-auth-check）。若凭据实际失效，会在运行中段才暴露。',
       });
     } else {
-      const adapters = realAdapters();
-      const probes = await Promise.all(
-        selected
-          .filter((id) => adapters[id])
-          .map((id) => probeAuth(ctx, id, adapters[id]!, opts)),
-      );
+      const probes = await probeAuthAll(ctx, selected, realAdapters(), opts);
       for (const p of probes) {
         checks.push(p.result);
         if (p.cache) pendingAuthCache[p.critic] = p.cache;

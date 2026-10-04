@@ -1135,6 +1135,8 @@ export const zcodeAdapter: CriticAdapter = {
         /*
          * 读不了就当「没有可用指纹」（代码双审 r1 CODEX-01）：缓存判失效、交给 probe() 报一条可读的失败，
          * 而不是让异常穿过无兜底的 `probeAuth` 把整个预检崩成「内部错误」。
+         * EV-202 起 `probeAuth` 自己兜住指纹抛错（不查也不写缓存）；这里的 catch 按该题决策保留、输出逐字不变。
+         * 折成 null 留下一个窄格：档位无模型时读不了也能探活通过、写入 null 缓存，之后 null 等于 null 命中（EV-203）。
          */
         try {
           return `${await sha256File(f)}|model=${model ?? ''}`;

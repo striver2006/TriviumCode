@@ -1,0 +1,98 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  M1 ✓ 咬住（fail=7）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=7）
+  M5 ✓ 咬住（fail=3）
+  M6a ✓ 咬住（fail=1）
+  M6b ✓ 咬住（fail=6）
+  M7 ✓ 咬住（fail=5）
+  M8 ✓ 咬住（fail=1）
+  M9 ✖ **没红**——该守卫对这条变异无效
+  M10 ✓ 咬住（fail=1）
+  M11 ✖ **没红**——该守卫对这条变异无效
+  M12 ✓ 咬住（fail=7）
+{
+  "总数": 13,
+  "咬住": 11,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "指纹调用去掉 try（裸 await）",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M2",
+      "desc": "指纹读不了时仍进缓存判据（以 null 比）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "写缓存条件去掉 fpError",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "指纹注明置空",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M5",
+      "desc": "probe 调用去掉 try",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M6a",
+      "desc": "构造抛错支的退出码改成 1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6b",
+      "desc": "失败支的退出码改成 1",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M7",
+      "desc": "thrownText 去掉家目录归一",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M8",
+      "desc": "构造抛错不兜（原样抛出）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "⑧ 改回内联 Promise.all（预计存活）",
+      "verdict": "✖ **没红**——该守卫对这条变异无效",
+      "fail": 0
+    },
+    {
+      "id": "M10",
+      "desc": "authCacheValid 对 null 指纹判失效",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "去掉 TRIVIUM_DEBUG 打印（预计存活）",
+      "verdict": "✖ **没红**——该守卫对这条变异无效",
+      "fail": 0
+    },
+    {
+      "id": "M12",
+      "desc": "注明与 probe 详情的拼接顺序对调",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    }
+  ]
+}

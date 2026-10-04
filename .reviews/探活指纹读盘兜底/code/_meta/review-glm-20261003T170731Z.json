@@ -1,0 +1,46 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "按安全、并发与错误处理、空值、测试缺口四个镜头审完本补丁，未发现需要整改的问题。核实路径：①前提成立——sha256File 就是裸 fs.readFile（util/fsx.ts:51），codex 指纹三处读盘（adapters/codex.ts:334-356）与 agy 指纹（adapters/agy.ts:202-207）都是先 exists 再读、无 try，文件在而读不了会抛；zcode 有 catch 折 null、claude 恒 null，与「不折成 null」论证所依赖的四家现状逐一相符。②「不折成 null」的理由在契约与判据两侧核实：AuthProbe.fingerprint 的 null 语义是「无从计算」（adapters/base.ts:97-105），authCacheValid 做全等比较（preflight.ts:132），上次 null 本次 null 即命中缓存——G7 恰好钉住这条未改的语义，G2 用「本可命中的 null 缓存」做对照，折 null 该用例即红，对照有效。③三个兜底支完整：构造（G5）、probe（G4/G6）、指纹（G2/G3/G8/G9），退出码 EXIT.ENV=69 与文档口径一致（exit-codes.ts:20）；G6 钉住「一侧崩不连带丢别侧结论」这一 EV-202 的核心性质。④并发面：probeAuthAll 原样抽出、runPreflight 恒传 realAdapters()（preflight.ts:892），与 PreflightOptions.adapters「只喂 ④″」的注释互洽；probeAuth 三个 try 之外无可抛路径（agentById、authCacheValid、step 均纯读），probeAuth 全仓无其它调用方，runPreflight 唯一调用方 cli.ts:809，退出码 1→69 的口径变化无消费方受损。⑤安全面：错误详情经 tildeHome 全量归一（fsx.ts:128-131），R2/R3 断言详情不含绝对家目录路径，输出抄进 evidence 不带用户名；TRIVIUM_DEBUG 打原始异常是排障口径、有意为之。⑥测试缺口镜头：12 格各有判别力，变异 11/13 咬住（mutation-output.txt 核实），存活的 M9/M11 在报告 §6 如实登记为计划内接受；R 系列钉 HOME/CODEX_HOME/TMPDIR、root 跳格、finally 恢复权限整删，零配额。⑦文档同步齐备且与代码核实一致：设计 v1.3.82 与 §8.1、RUNBOOK 新行、README 索引、BACKLOG EV-202 done（含修法方向偏离登记的显式说明）、EV-203 新登记、EV-197/EV-200 残余更新（「删除提示在抛出路径仍丢」与 zcode.ts:1163-1170、codex.ts:373-381 的 attempt+finally 结构核实一致）；zcode.ts 本题只动注释、代码逐字未变。check-2 尾部 2656/2654/0/2、退 0，doctor 自测 14/14，均与报告 §4 读数吻合。",
+  "findings": [],
+  "agreed": [
+    "兜底收在 preflight.ts 的 probeAuth 一处、不逐家改适配器，缓存策略保持单点，与 M8 第 3 步「厂商知识在适配器、通用逻辑在预检」的切分口径一致",
+    "指纹抛错不折成 null 的论证成立：null 是契约里的「无从计算」，authCacheValid 全等比较下折 null 会在上次指纹为 null 时命中缓存；G2 的缓存摆法（版本一致、刚写入、指纹 null）使「折 null」这条错误路径必然变红",
+    "G5 覆盖构造抛错、G6 钉住「一侧 probe 抛错不连带丢别侧结论与缓存」的核心性质；变异 M2/M3/M4/M6a/M6b/M8/M12 被咬住说明这些用例有真实判别力，不是恒真断言",
+    "probeAuthAll 导出但不带缺省真实表、runPreflight 不开探活注入口，避免给「⑧ 误花配额」新开一个口子，取舍连同理由写进 docstring",
+    "zcode 指纹的 catch 按决策保留、输出逐字不变，窄格（档位无模型时 null 入缓存后误命中）如实登记为 EV-203，含三个 null 来源的推导；本题在 zcode.ts 只补注释",
+    "家目录归一并断言详情不含绝对家路径（R2/R3/G2/G4/G9），延续了「预检输出常被抄进 evidence、不带用户名」的口径",
+    "退出码由 1 改 69 的口径变化做过消费方核查（runPreflight 唯一调用方 cli.ts cmdPreflight）并在报告 §2 写明",
+    "文档同步完整：设计版本与 §8.1、RUNBOOK 运维行（含 EACCES/EISDIR 处置与重探成本说明）、README 索引条目、BACKLOG 三处（EV-202 结案、EV-203 新登、EV-197/EV-200 残余更新）与代码实况一致"
+  ],
+  "not_covered": [
+    "本侧为只读审查，未运行任何命令：2656/2654/0/2、变异 11/13、doctor 14/14 等读数均取自仓库内的证据文件与报告转述，未复跑验证",
+    "被审对象内容哈希（sha256:0a047e…）与工作树快照哈希未做逐字节核验；diff 只读了前 400 行与各证据件的真实文件，check-1.txt 全文、gen-mutation-spec.mjs、mutation-spec.json、mutation-names-* 未逐行核",
+    "计划 r2 原文（.reviews/探活指纹读盘兜底/plan/ 下 Driver 的计划）未读，实现与已批准计划的对照以设计 v1.3.82 台账行与 BACKLOG EV-202 done 条目中的决策转述为准；按任务书禁读清单，计划双审三位审查员的产出一律未碰",
+    "「agy 指纹读不了时会真拉起、花一次配额」是基于 agy probe 形状（入口已记录即 invokeAgy）的推理，未实测；codex「多数形态在副本准备即失败」由 R1/R2 用例钉住，但其余读不了形态（如 profile toml 不可读）未逐一枚举",
+    "TRIVIUM_DEBUG 打栈行为无用例覆盖（报告 §6 已登记为 M11 存活），其输出内容未实际观察",
+    "运行目录中本侧材料之外的子树按禁读清单未读；.env.example 与 .trivium 未读"
+  ],
+  "consulted": [
+    "src/trivium/preflight.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/exit-codes.ts",
+    "test/unit/preflight-auth-guard.test.ts",
+    "doc/05_testing/REPORT_2026-10-04_auth_fingerprint_guard.md",
+    "doc/05_testing/evidence/auth-fingerprint-guard-20261004/mutation-output.txt",
+    "doc/05_testing/evidence/auth-fingerprint-guard-20261004/check-2.txt",
+    "doc/05_testing/evidence/auth-fingerprint-guard-20261004/doctor-selftest.r1.txt",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/02_design/README.md"
+  ]
+}

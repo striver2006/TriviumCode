@@ -1,0 +1,43 @@
+{
+  "agreed": [
+    "兜底收敛在 preflight.ts 的 probeAuth 一处，避免修改各厂商适配器，职责划分清晰",
+    "fingerprint() 抛错时不折成 null（避免误命中上次为 null 的缓存），而是跳过缓存读写、照常执行探活并把注明接在详情末尾，契约判定严密",
+    "authProbe 构造、fingerprint() 与 probe() 三个调用点均有完整 try/catch 兜底，抛错统一降级为 EXIT.ENV(69)，彻底杜绝单一审查员异常导致整个 preflight 崩溃退 1 的级联失真",
+    "thrownText 统一了 TRIVIUM_DEBUG 下的 stderr 排障堆栈输出与路径的 tildeHome 脱敏处理，与顶层异常出口口径一致",
+    "probeAuthAll 原样抽离并导出，使得测试能够在零配额、不侵入 runPreflight 的前提下对并行探活与单侧失败进行严密断言",
+    "单元测试涵盖假适配器组合矩阵（G1~G9）与真实适配器权限/目录异常（R1~R3），测试清理与权限恢复逻辑安全健全",
+    "主设计文档、RUNBOOK、BACKLOG、测试报告索引及实施报告同步完整，且对 zcode 既有窄格登记 EV-203 进行清晰跟踪"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    ".reviews/探活指纹读盘兜底/plan/2026-10-04-探活指纹读盘兜底-r2-claude.md",
+    "src/trivium/preflight.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/cli.ts",
+    "test/unit/preflight-auth-guard.test.ts",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-04_auth_fingerprint_guard.md",
+    "doc/05_testing/evidence/auth-fingerprint-guard-20261004/check-1.txt",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未在真实联网环境下触发各厂商远程 API 探活（依据零配额与零真实 CLI 调用原则）",
+    "未覆盖真机上各厂商 CLI 在长期网络抖动下的超时与重试实际表现",
+    "未在非 macOS（如 Linux / Windows）环境下运行测试（依据项目针对 macOS 的支持范围）"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本次代码变更（EV-202）严格按已批准计划 r2 实施：在 preflight.ts 的 probeAuth 统一兜住适配器构造、fingerprint() 与 probe() 三个抛错点，适配器抛错时降级为该侧 EXIT.ENV(69)，不再穿透崩溃整个预检；指纹不可读时不折成 null、跳过缓存查询与写入并追加详情注明，杜绝了缓存误命中；thrownText 兼顾脱敏与调试排障；导出 probeAuthAll 满足可测性；单测与变异测试覆盖完备，文档台账同步严密。未发现任何契约漂移或功能缺陷。",
+  "verdict": "approve"
+}

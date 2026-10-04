@@ -1,0 +1,62 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按「跨平台与环境耦合 / 资源与生命周期 / 运行环境与依赖版本」镜头审查了 EV-202 补丁。核心改动读法：`probeAuth` 兜住适配器构造、`fingerprint()`、`probe()` 三个调用点——我逐一核了四家适配器的实际抛出面（codex 指纹 `sha256File`/`fs.readFile` 无 try、agy 指纹同形、zcode 指纹自吞 catch 返回 null、claude 恒 null；构造体内 `codexConfig`/`agentConfigOf`/`zcodeProbeModel` 的同步求值也在 catch 覆盖内，同步抛出同样被 `try { auth = adapter.authProbe?.() }` 接住），`Promise.all` 自此不再有整树崩溃与兄弟结论丢失，异常也不会变成 unhandled rejection。缓存语义我对着 `authCacheValid` 的全等比较核过：fpError 时不查不写、null 不折入、G7 钉住「null 等于 null 命中」现状未动，EV-203 对 zcode 窄格的三来源描述与 `prepareZcodeHome` 无模型退路的读盘行为一致。退出码 1→69 的口径变化：全仓 grep `runPreflight` 调用方仅 `cli.ts:809` 的 cmdPreflight，且它按 `r.exitCode` 透传、无按 1 判别预检崩溃的消费方，报告 §2 的断言成立。跨平台与夹具卫生：R 系列钉 HOME/CODEX_HOME/TMPDIR 后收尾复原、`pinned` 的 finally 必恢复环境、`after` 递归 restorePerms 兜底、`codexHomeOf(env = process.env)` 默认参在调用时求值故钉 HOME 生效（本机 `node -e` 实测 os.homedir() 在 v25.2.1 即时反映 env 改动）；TMPDIR 钉到私有 mkdtemp 使 codex 探活临时副本随本格整删、root 下跳过 EACCES 两格、codex-auth-probe 同先例。变异留痕与报告对账（mutation-names-log：M9/M11 存活如计划、其余 11 条咬住；check-1 尾部 2656/2654/0/2 与报告一致）；doc/05_testing/README 归档条目按日期升序放在末位，符合 doc-archive-index 的排序口径。提两条：`AuthProbe.fingerprint` 接口注释未补「抛出已被中央兜住」的新契约口径（防 EV-203 形态被新适配器复刻），以及指纹注明不进机器可读 `warnings` 列表的转述缺口（与 EV-197/200 先例一致，请确认系有意）。均不阻断。",
+  "agreed": [
+    "兜底收在 `probeAuth` 一处、不逐家改适配器，符合架构纪律 1/7 的「缓存策略留在一处」切分，新适配器无需各自重复 catch",
+    "拒绝把指纹读不了折成 null 的理由成立：`authCacheValid` 是全等比较，上次指纹为 null（claude 恒 null、codex 三份都不在、agy agent.md 不在）时 null 会命中缓存——G7/M10 把这条现状语义钉住而不偷改，范围纪律好",
+    "`probeAuthAll` 导出仅为可测性、不给 `runPreflight` 开探活注入口，且函数体不带缺省真实表，「⑧ 误花配额」面没有变大",
+    "G 系列缓存条目一律摆成「进缓存判据就会命中」，使「读不了不查缓存」有真实对照；R 系列把 codex 入口指到不存在路径、agy 入口置空，两家都在到达真实调用前落成失败，零配额承诺与代码逐一对得上",
+    "退出码 1→69 的口径变化做了调用方 grep 对账；残留提示（EV-197/200）仍在 `r.detail` 内、指纹注明恒在其后的拼接顺序有 G9 逐字钉住",
+    "`TRIVIUM_DEBUG` 兜住处打栈接上排障口径，弥补了 `cli.ts:2026` 出口打印走不到被兜异常的缺口，测试端 `quiet`/`pinned` 都清了该变量、宿主置位不刷栈",
+    "zcode.ts 只补注释不改代码、EV-203 按决策登记，输出逐字不变的约束守住了"
+  ],
+  "not_covered": [
+    "未重跑 `npm run check`、变异与 selftest（沙箱只读），§4 读数全部以 evidence 文件对账，非本轮实跑",
+    "未审 worker/闸门/Hook 侧对预检输出 `checks[].detail` 的任何下游消费（只核了 cli.ts 直链）",
+    "未覆盖 `commitAuthCache`、`authCacheValid` 自身的既有语义与 claude/zcode 适配器其余分支",
+    "未验证非 macOS 环境（chmod 语义、盘符路径下 tildeHome 的行为）——项目本身仅支持 macOS，未据此立论",
+    "EV-203 的修法方向（zcode 去 catch）只核了症状成立，未评估其输出变化的波及面"
+  ],
+  "consulted": [
+    "src/trivium/preflight.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/cli.ts",
+    "test/unit/preflight-auth-guard.test.ts",
+    "test/unit/codex-auth-probe.test.ts",
+    "doc/05_testing/REPORT_2026-10-04_auth_fingerprint_guard.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/evidence/auth-fingerprint-guard-20261004/check-1.txt",
+    "doc/05_testing/evidence/auth-fingerprint-guard-20261004/mutation-spec.json",
+    "doc/05_testing/evidence/auth-fingerprint-guard-20261004/mutation-names-log.txt",
+    "test/helpers/doc-archive-index.ts"
+  ],
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/adapters/base.ts 的 `AuthProbe.fingerprint` 注释（L97-102）",
+      "problem": "EV-202 把「指纹读盘抛错是允许且被中央兜住的口径」写进了 `preflight.ts` 的 `probeAuth` 文档注释，但跨适配器的契约面 `AuthProbe.fingerprint` 在 `base.ts` 里的注释一字未动，仍只有「null = 无从计算」。`base.ts` 头注释明确说这套接口的切分口径是「新增一家只写自己那两件」——新适配器的作者最可能先读接口注释定「读不了怎么办」。此时他眼前有两个信号：接口注释教 null、`adapters/zcode.ts` 有一处现成的 catch→null 先例；照抄就会复刻 EV-203 的窄格（读不了混进「无从计算」、null 等于 null 命中缓存）。这正是本项目「两份事实源各改各的」反复现形的形状：缓存兜底口径的唯一完整表述落在了函数文档里而不是契约定义处。",
+      "evidence": "读过 src/trivium/adapters/base.ts（接口注释只写「null = 无从计算」，未提抛出契约）；src/trivium/preflight.ts L708-716（新口径完整表述在 `probeAuth` 文档注释）；src/trivium/adapters/zcode.ts L1135-1140（catch→null 先例仍在，注释新提 EV-202/EV-203）；doc/08_project/BACKLOG.md EV-203 对窄格三来源的描述与本读一致。结论为推理（新增适配器的读码路径），症状本身实读核实。",
+      "suggestion": "在 `base.ts` 的 `fingerprint()` 注释补一句口径：文件在而读不了应直接抛（`probeAuth` 统一兜：不查不写缓存、详情注明，EV-202）；null 专留「无从计算」，勿把读盘异常折成 null（zcode 现写法为待改历史欠账，EV-203）。一处措辞即可，不涉及行为改动。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/preflight.ts `probeAuth` 的 fpError 返回（约 L770-776）",
+      "problem": "「⚠️ 指纹读不了」注明只拼进 `detail`，探活本身通过时返回的 `CheckResult` 不带 `warn: true`，于是它不进 `collectWarnings` 的机器可读 `warnings` 列表——而 `cli.ts:829` 处的注释写明「恒在……skill 按它转述，键缺席会让转述句静默不触发」。载体侧按 `warnings` 转述时，这条「不修就一直花 agy 配额重探」的降级提示只有逐字读 detail 的调用方才看得到。它与本仓既有 warn 项（EV-160 阈值、EV-30 废弃键、EV-123 副本源：ok:true + warn:true + ⚠️ 起头、专门进 warnings）的惯例不同；但 EV-197/EV-200 的残留提示先例同样不标 warn，且计划与 RUNBOOK 都把处置口径定为「详情末尾」。所以这更像需要显式确认的统一决策，而非实现错误。",
+      "evidence": "实读 src/trivium/preflight.ts（warn:true 六处先例、collectWarnings 按 c.warn 过滤、fpError 返回不带 warn）；src/trivium/cli.ts cmdPreflight 的 JSON 输出面（warnings 恒在、checks 亦含 detail，文本模式 renderPreflight 打 detail，故信息并非不可见，只是不进转述判据）；被审 diff 中 RUNBOOK/设计 §8.1 均写「接在详情末尾」。推理：skill 转述是否漏读取决于其对 detail 的消费面，本轮未核 skill 正文。",
+      "suggestion": "请 Driver 一句话确认「探针类提示不进 warnings、只落 detail」是 EV-197/200/202 三代一致的有意口径；若判定配额成本值得被转述，同族三条（指纹读不了、EV-197 zcode 残留、EV-200 codex 残留）应一起处置，只动新的一条会造出第四份不一致。不改也可接受。",
+      "confidence": "low"
+    }
+  ]
+}

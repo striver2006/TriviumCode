@@ -1,0 +1,114 @@
+{
+  "targets": [
+    "src/trivium/preflight.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/preflight-auth-guard.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "指纹调用去掉 try（裸 await）",
+      "find": "  try {\n    fp = await auth.fingerprint();\n  } catch (e) {\n    fpError = thrownText(e);\n  }\n",
+      "replace": "  fp = await auth.fingerprint();\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "指纹读不了时仍进缓存判据（以 null 比）",
+      "find": "  } else if (!opts.refreshAuth) {\n",
+      "replace": "  }\n  if (!opts.refreshAuth) {\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "写缓存条件去掉 fpError",
+      "find": "    cache: r.ok && fpError === null\n",
+      "replace": "    cache: r.ok\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "指纹注明置空",
+      "find": "  const note = fpError === null ? '' : `；⚠️ 指纹读不了：${fpError}，本次未用缓存、也不写缓存`;\n",
+      "replace": "  const note = '';\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "probe 调用去掉 try",
+      "find": "  try {\n    r = await auth.probe();\n  } catch (e) {\n    r = { ok: false, detail: `探活内部失败：${thrownText(e)}` };\n  }\n",
+      "replace": "  r = await auth.probe();\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M6a",
+      "desc": "构造抛错支的退出码改成 1",
+      "find": "      result: { name, ok: false, exitCode: EXIT.ENV, detail: `探活内部失败：${thrownText(e)}` },\n",
+      "replace": "      result: { name, ok: false, exitCode: EXIT.FAIL, detail: `探活内部失败：${thrownText(e)}` },\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M6b",
+      "desc": "失败支的退出码改成 1",
+      "find": "      : { name, ok: false, exitCode: EXIT.ENV, detail: r.detail + note },\n",
+      "replace": "      : { name, ok: false, exitCode: EXIT.FAIL, detail: r.detail + note },\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "thrownText 去掉家目录归一",
+      "find": "  return tildeHome(e instanceof Error ? e.message : String(e));\n",
+      "replace": "  return e instanceof Error ? e.message : String(e);\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "构造抛错不兜（原样抛出）",
+      "find": "  } catch (e) {\n    return {\n      critic,\n      result: { name, ok: false, exitCode: EXIT.ENV, detail: `探活内部失败：${thrownText(e)}` },\n",
+      "replace": "  } catch (e) {\n    throw e;\n    return {\n      critic,\n      result: { name, ok: false, exitCode: EXIT.ENV, detail: `探活内部失败：${thrownText(e)}` },\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "⑧ 改回内联 Promise.all（预计存活）",
+      "find": "      const probes = await probeAuthAll(ctx, selected, realAdapters(), opts);\n",
+      "replace": "      const adapters = realAdapters();\n      const probes = await Promise.all(\n        selected\n          .filter((id) => adapters[id])\n          .map((id) => probeAuth(ctx, id, adapters[id]!, opts)),\n      );\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "authCacheValid 对 null 指纹判失效",
+      "find": "  if (!entry) return { valid: false, reason: '无缓存' };\n",
+      "replace": "  if (!entry) return { valid: false, reason: '无缓存' };\n  if (fingerprint === null) return { valid: false, reason: '指纹为 null' };\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "去掉 TRIVIUM_DEBUG 打印（预计存活）",
+      "find": "  if (process.env['TRIVIUM_DEBUG']) console.error(e);\n",
+      "replace": "",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "注明与 probe 详情的拼接顺序对调",
+      "find": "      ? { name, ok: true, detail: r.detail + note }\n      : { name, ok: false, exitCode: EXIT.ENV, detail: r.detail + note },\n",
+      "replace": "      ? { name, ok: true, detail: note + r.detail }\n      : { name, ok: false, exitCode: EXIT.ENV, detail: note + r.detail },\n",
+      "file": "src/trivium/preflight.ts",
+      "expect": "dist/test/test/unit/preflight-auth-guard.test.js"
+    }
+  ]
+}

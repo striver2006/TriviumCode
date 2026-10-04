@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.81
+> - **当前版本**：v1.3.82
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -1615,7 +1615,7 @@ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起�
 
 **作用域参数**：`trivium preflight --stage plan|code|bug|all`（默认 `all`）。`--stage all` 校验三个阶段 × 两侧的全部模型 slug；指定单阶段只校验该阶段，用于只跑某一阶段时省一次探活。注意 `all` **不是**阶段名，实现上需与 `Stage` 类型区分开（它只是预检的作用域）。
 
-**检查顺序是 fail-fast 的，且顺序本身有成本含义**：探针新鲜度排最前（它一旦过期，后面所有基于探针的判定都不可信，继续跑只是浪费）；两侧的**认证探活排最后**，因为只有它真的消耗厂商配额——前面任一项失败时就不该再烧配额。认证结论只在成功时才写入缓存，失败不缓存（否则一次网络抖动会把「未认证」钉住 TTL 那么久）。
+**检查顺序是 fail-fast 的，且顺序本身有成本含义**：探针新鲜度排最前（它一旦过期，后面所有基于探针的判定都不可信，继续跑只是浪费）；两侧的**认证探活排最后**，因为只有它真的消耗厂商配额——前面任一项失败时就不该再烧配额。认证结论只在成功时才写入缓存，失败不缓存（否则一次网络抖动会把「未认证」钉住 TTL 那么久）。凭据指纹读不了（权限、成了目录、两步之间被删）时不查也不写缓存、照常探活，原因接在该侧详情末尾——读不了不等于指纹契约里的「无从计算」（null），折成 null 会在上次指纹为 null 时命中缓存；代价是读不了期间每次预检都重探一次（v1.3.82，EV-202）。适配器构造或探活本身抛出落成该侧失败（69，「探活内部失败：原因」），不崩整个预检、不连带丢掉别侧结论。
 
 | 检查 | 判定 | 失败处理 |
 | :--- | :--- | :--- |
@@ -3656,6 +3656,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.82** | 2026-10-04 | **探活指纹读盘兜底（EV-202）。** 计划 `.reviews/探活指纹读盘兜底/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261003T163816Z`：三侧均 `approve-with-nits`，7 条全接受）。兜底收在 `preflight.ts` 的 `probeAuth` 一处、不逐家改适配器：codex 指纹（三处读盘）与 agy 指纹（`agent.md`，登记时漏写的同形）抛出时**不折成 null**——null 是 `AuthProbe.fingerprint` 契约里的「无从计算」，上次指纹为 null 时会命中缓存——改为不查也不写缓存、照常探活，详情末尾接「⚠️ 指纹读不了：原因，本次未用缓存、也不写缓存」（家目录归一 `~`）；适配器构造或 `probe()` 抛出落成该侧失败（退 69、「探活内部失败：原因」），不再崩整个预检（这条路径原先退 1），`TRIVIUM_DEBUG` 置位时兜住处照打原始异常。⑧ 的 `Promise.all` 原样抽成导出的 `probeAuthAll`，用例传假适配器零配额，不给 `runPreflight` 开探活注入口。zcode 指纹自己吞了读盘异常、不经这一支，档位无模型时的缓存误命中窄格另登 EV-203。§8.1 补一句。读数见 `doc/05_testing/REPORT_2026-10-04_auth_fingerprint_guard.md`。 |
 | **v1.3.81** | 2026-10-03 | **codex 探活删除收尾（EV-200）。** 计划 `.reviews/codex探活删除收尾/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261003T142424Z`：codex `request-changes`（4 条逐条降级，落在测试摆法）、gemini / glm `approve-with-nits`，12 条全接受）。codex 认证探活照 EV-197 拆出内部 `attempt`、外层 finally 删除：重试三次、失败不抛，删不掉时按现场查三份凭据副本（`codexCredentialCopies`）的结果取两档措辞之一接在详情末尾，结论不变，删除成功时输出逐字节不变；删除与现场查的通用部分抽到 `util/fsx.ts` 的 `tryRemoveTempDir`（`tildeHome` 一并挪来），`removeZcodeTempDir` 改为只管措辞的薄包装、zcode 侧输出逐字不变；副本准备失败落成写明哪一步的可读失败（`prepareCodexHome` 在原错误对象上挂步骤名，`run()` 文案不变）。代码双审 run `20261003T150101Z`（codex / glm `approve-with-nits`、gemini `approve`）4 条全接受：`isCredentialCarrier` 导出作单测对账口径、「没有凭据副本」档不再断言剩下的是 CLI 产物（副本准备失败时 CLI 未拉起）、删除失败回退消息也归一家目录。§10.5「凭据」一行与 §11.3 第 7 条各补一句。另登 EV-202（codex 指纹读盘无兜底）。读数见 `doc/05_testing/REPORT_2026-10-03_codex_probe_cleanup.md`。 |
 | **v1.3.80** | 2026-10-03 | **zcode 探针臂删除收尾（EV-198）。** 计划 `.reviews/zcode探针臂删除收尾/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261003T115927Z`：三侧 `approve-with-nits`，10 条全接受）。旗标探针、白名单臂、同形臂三处 finally 的裸删改调 `removeZcodeTempDir`（重试三次、失败不抛），删除失败的提示经返回值带出、`probeZcode` 逐臂推进 notes，判据、拉起方式、doctor 的 blocker 与 warning 不变。`zcodeTempDirResidueText` 加第三档「探针副本、凭据已换成哨兵」；`removeZcodeTempDir` 的副本位置与档位改由调用方传入（原先写死成 `prepareZcodeHome` 的布局，白名单臂的副本不在那儿），副本的写入与现场查共用 `zcodeCliCopyPath(homeDir)`；认证探活与 doctor headless 段输出逐字不变。代码双审 run `20261003T123538Z`（codex `approve-with-nits`，5 条逐条降级、接受 4 驳回 1；gemini、glm `approve`）：同形臂取档抽成 `fullCopyResidueKind`、`zcodeCliCopyPath` 的单源措辞收窄、测试夹具补收尾；另登 EV-200（codex 认证探活删除失败崩预检、残留真实 `auth.json`）；双审后全量实遇 `cancel-grace-unverifiable` 偶发红，经用户定登记 EV-201。§11.3 第 7 条补一句。另登 EV-199（探针夹具 cleanup 同族裸删，四侧共用）。读数见 `doc/05_testing/REPORT_2026-10-03_zcode_probe_arm_cleanup.md`。 |
 | **v1.3.79** | 2026-10-03 | **zcode 探针静默失败收口（EV-196 + EV-197）。** 计划 `.reviews/zcode探针静默失败收口/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261003T063541Z`：codex `approve-with-nits`、gemini `approve`、glm `approve-with-nits`，7 条全接受）。EV-196：doctor 的 headless 进了真实调用段却没刷新 `response_field` 时（副本源读取或解析失败、headless 失败、退 0 但抠不出 envelope 三支），`probeZcode` 把哪一支、哪几项沿用旧值作为过程事实带出、不落盘，doctor 出一条 warning、不拦；blocker 判据、退出码、结论 schema 不变，三支的人读名、note 定位字面与沿用项由 `ZCODE_HEADLESS_UNREFRESHED` 一张表给出。EV-197：认证探活与 doctor 探针的临时目录删除共用 `removeZcodeTempDir`（重试三次、失败不抛），残留提示按残留目录里是否还有副本分两档措辞（删除失败后现场查），认证探活接在详情末尾、结论不变。代码双审 run `20261003T071007Z`（codex / glm `approve-with-nits`、gemini `approve`）5 条全接受：「还有没有副本」由按写入时情形推断改为删除失败后现场查（GLM-01 ≡ CODEX-03）、warning 与 blocker 不互斥补用例（GLM-02）、认证探活措辞独立于表加注释（CODEX-02）；旗标探针与两条模型覆盖臂的同族裸删按范围不改、另登 EV-198（CODEX-01）。§11.3 第 7 条补一句。残余：warning 与残留提示都只当次可见（同 EV-86 形态）、拉起抛错且删不掉时提示随异常丢失（两侧同形）。读数见 `doc/05_testing/REPORT_2026-10-03_zcode_probe_silent_fail.md`。 |

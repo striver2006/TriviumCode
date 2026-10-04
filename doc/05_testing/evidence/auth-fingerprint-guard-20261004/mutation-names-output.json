@@ -1,0 +1,216 @@
+{
+  "targets_sha256": {
+    "src/trivium/preflight.ts": "4baaa9f10089cdf4287911e9d78899f5b28356863472f65ce6a80025b3b113c9"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "指纹调用去掉 try（裸 await）",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 7,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G2 指纹抛错：不查缓存（本可命中）、照常探活、通过也不写缓存，详情末尾注明且家目录归一",
+        "G3 指纹抛错 + probe 失败：该侧失败 69，详情 = probe 详情 + 注明",
+        "G8 refreshAuth + 指纹抛错：照常探活、注明照接、不写缓存",
+        "G9 指纹抛 + probe 也抛：内部失败在前、指纹注明在后，逐字",
+        "R1 codex 真实适配器：基底 config.toml 是目录（EISDIR）——预检不崩，副本准备失败 + 指纹注明",
+        "R2 codex 真实适配器：auth.json 不可读（EACCES）——预检不崩，家目录归一",
+        "R3 agy 真实适配器：agent.md 不可读（EACCES）——预检不崩，入口未记录 + 指纹注明"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "指纹读不了时仍进缓存判据（以 null 比）",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G2 指纹抛错：不查缓存（本可命中）、照常探活、通过也不写缓存，详情末尾注明且家目录归一",
+        "G3 指纹抛错 + probe 失败：该侧失败 69，详情 = probe 详情 + 注明"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "写缓存条件去掉 fpError",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G2 指纹抛错：不查缓存（本可命中）、照常探活、通过也不写缓存，详情末尾注明且家目录归一",
+        "G8 refreshAuth + 指纹抛错：照常探活、注明照接、不写缓存"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "指纹注明置空",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 7,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G2 指纹抛错：不查缓存（本可命中）、照常探活、通过也不写缓存，详情末尾注明且家目录归一",
+        "G3 指纹抛错 + probe 失败：该侧失败 69，详情 = probe 详情 + 注明",
+        "G8 refreshAuth + 指纹抛错：照常探活、注明照接、不写缓存",
+        "G9 指纹抛 + probe 也抛：内部失败在前、指纹注明在后，逐字",
+        "R1 codex 真实适配器：基底 config.toml 是目录（EISDIR）——预检不崩，副本准备失败 + 指纹注明",
+        "R2 codex 真实适配器：auth.json 不可读（EACCES）——预检不崩，家目录归一",
+        "R3 agy 真实适配器：agent.md 不可读（EACCES）——预检不崩，入口未记录 + 指纹注明"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "probe 调用去掉 try",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G4 probe 抛错：不抛，该侧失败 69，详情「探活内部失败：原因」且家目录归一",
+        "G6 probeAuthAll 两侧并行、一侧 probe 抛错：不抛，另一侧照常出结论并带缓存",
+        "G9 指纹抛 + probe 也抛：内部失败在前、指纹注明在后，逐字"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M6a",
+      "desc": "构造抛错支的退出码改成 1",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G5 authProbe 构造抛错：同 G4 形状，probe 不调用"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M6b",
+      "desc": "失败支的退出码改成 1",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G3 指纹抛错 + probe 失败：该侧失败 69，详情 = probe 详情 + 注明",
+        "G4 probe 抛错：不抛，该侧失败 69，详情「探活内部失败：原因」且家目录归一",
+        "G6 probeAuthAll 两侧并行、一侧 probe 抛错：不抛，另一侧照常出结论并带缓存",
+        "G9 指纹抛 + probe 也抛：内部失败在前、指纹注明在后，逐字",
+        "R1 codex 真实适配器：基底 config.toml 是目录（EISDIR）——预检不崩，副本准备失败 + 指纹注明",
+        "R3 agy 真实适配器：agent.md 不可读（EACCES）——预检不崩，入口未记录 + 指纹注明"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "thrownText 去掉家目录归一",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G2 指纹抛错：不查缓存（本可命中）、照常探活、通过也不写缓存，详情末尾注明且家目录归一",
+        "G4 probe 抛错：不抛，该侧失败 69，详情「探活内部失败：原因」且家目录归一",
+        "G9 指纹抛 + probe 也抛：内部失败在前、指纹注明在后，逐字",
+        "R2 codex 真实适配器：auth.json 不可读（EACCES）——预检不崩，家目录归一",
+        "R3 agy 真实适配器：agent.md 不可读（EACCES）——预检不崩，入口未记录 + 指纹注明"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "构造抛错不兜（原样抛出）",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G5 authProbe 构造抛错：同 G4 形状，probe 不调用"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M9",
+      "desc": "⑧ 改回内联 Promise.all（预计存活）",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 0,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M10",
+      "desc": "authCacheValid 对 null 指纹判失效",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G7 指纹 null + 缓存指纹 null（现状一格）：照契约命中缓存、不探活——本题不改这条语义"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M11",
+      "desc": "去掉 TRIVIUM_DEBUG 打印（预计存活）",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 0,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M12",
+      "desc": "注明与 probe 详情的拼接顺序对调",
+      "suite": "dist/test/test/unit/preflight-auth-guard.test.js",
+      "fail": 7,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G2 指纹抛错：不查缓存（本可命中）、照常探活、通过也不写缓存，详情末尾注明且家目录归一",
+        "G3 指纹抛错 + probe 失败：该侧失败 69，详情 = probe 详情 + 注明",
+        "G8 refreshAuth + 指纹抛错：照常探活、注明照接、不写缓存",
+        "G9 指纹抛 + probe 也抛：内部失败在前、指纹注明在后，逐字",
+        "R1 codex 真实适配器：基底 config.toml 是目录（EISDIR）——预检不崩，副本准备失败 + 指纹注明",
+        "R2 codex 真实适配器：auth.json 不可读（EACCES）——预检不崩，家目录归一",
+        "R3 agy 真实适配器：agent.md 不可读（EACCES）——预检不崩，入口未记录 + 指纹注明"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    }
+  ]
+}
