@@ -1,0 +1,52 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "本次变更完整实现了计划 r2 批准的内容，且经全量与变异测试验证充分：\n1. workTreeHash 的 finally 改用 tryRemoveTempDir，删不掉时不抛且同一进程只警告一次，既消除了漂移复算失败导致整次运行作废的问题，又避免了原 git 错误被覆盖。\n2. selftest 修复了 buildFixture 异常时无法清理半成品夹具的缺陷，finish 删除失败时不再崩溃，正确在结果与渲染中反映残留提示。\n3. retention 的 pruneRunDirs 到期整删失败时记入 removeFailed 并回落至凭据抹除，不再中断后续目录清扫；hooks 正确增加待办提醒且纳入早退条件。\n4. 全树守卫 W 严格以豁免表对账 src/ 目录下的递归删除调用点，防回潮完备。\n未发现阻断、重大、轻微缺陷或代码风格问题，同意通过。",
+  "findings": [],
+  "agreed": [
+    "workTreeHash 在 finally 中改调 tryRemoveTempDir，删除失败不抛且同一进程内只警告一次，彻底阻断了漂移复算因临时索引删除失败而将整轮运行判为 failed 的缺陷，同时保留了 git read-tree / add / write-tree 的原始错误和超时异常。",
+    "selftest.ts 中在 mkdtemp 立即记录 made.dir，修复了此前因 root 未赋值导致建夹具失败清理走不到的历史缺陷；finish 删除夹具失败时不修改结论，通过 cleanupResidue 和 renderSelftest 如实展示残留提示，避免内部错误崩溃。",
+    "retention.ts 中到期整删失败改记 removeFailed 并继续处理后续目录，同时回落至凭据抹除分支以确保删到一半的残留凭据依然被处理；hooks.ts 中实现 removeFailedLine 并纳入早退条件，语义精准且兼顾安全。",
+    "test/unit/temp-index-cleanup.test.ts 新增的全树递归删除守卫 W 覆盖 src/ 下全部 .ts 文件并按严格计数与豁免表对账，建立了可靠的代码防回潮机制。"
+  ],
+  "not_covered": [
+    "无法直接执行命令，未在本机终端实际运行 npm run check 或运行测试脚本验证 APFS 只读权限下的真实 errno，判断均基于代码逻辑分析及对测试报告与 evidence 的交叉比对。",
+    "未覆盖 EV-207 登记的自检与集成测试夹具 ${root}-runs 运行目录的长期堆积问题（已登 BACKLOG 暂缓）。",
+    "未覆盖 EV-206 登记的审批与 gate --check 放行后 resetStopBlockCount 失败可能误报的问题（已登 BACKLOG 暂缓）。"
+  ],
+  "consulted": [
+    ".reviews/临时索引与清扫删除收尾/code/_meta/changes-20261004T063823Z.diff",
+    ".reviews/临时索引与清扫删除收尾/plan/2026-10-04-临时索引与清扫删除收尾-r2-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/README.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-04_temp_index_cleanup.md",
+    "doc/05_testing/evidence/temp-index-cleanup-20261004/mutation-output.txt",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/README.md",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/selftest.ts",
+    "src/trivium/status.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/util/log.ts",
+    "test/contract/doc-archive-index.test.ts",
+    "test/helpers/fixture.ts",
+    "test/helpers/recursive-rm.ts",
+    "test/integration/selftest.test.ts",
+    "test/integration/worktree-hash-cleanup.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/probe-fixture-cleanup.test.ts",
+    "test/unit/retention.test.ts",
+    "test/unit/temp-index-cleanup.test.ts",
+    "tsconfig.json"
+  ]
+}

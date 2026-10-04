@@ -1,0 +1,255 @@
+{
+  "targets_sha256": {
+    "src/trivium/util/git.ts": "713e2410a67a0166938b1a02b16ba1287206a48fb4ac7a4053cbc76c1917dff4",
+    "src/trivium/retention.ts": "bf25dc80263a6cb721466258cef7ce65e684742e51b8cf8c43e8e44c2bc735bb",
+    "src/trivium/hooks.ts": "8b3a83db4271ba342bb7f491b8f7b4d2d25c39730158bd99dd2944239290d0aa",
+    "src/trivium/selftest.ts": "f1e84ad727c2db1a9c92c3beb17797d61cfa3e4a496c6d910cebfb91045dc96e"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "workTreeHash 的 finally 退回裸递归删除",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G2 删不掉照常返回已算出的哈希，不抛",
+        "G3 git 步骤失败时抛的是原始错误，不被删除失败顶替",
+        "G3b git 步骤超时时抛的仍是 GitTimeoutError，不被删除失败顶替",
+        "G4 提示逐字、家目录归一，同一进程连续两次删不掉只提示一次（子进程）",
+        "W src/ 全树的递归删除只剩豁免表里的那几处，其余一律经 tryRemoveTempDir"
+      ],
+      "firstLines": [
+        "✖ G3b git 步骤超时时抛的仍是 GitTimeoutError，不被删除失败顶替 (446.409209ms)"
+      ],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "去掉「同一进程只提示一次」的判断",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G4 提示逐字、家目录归一，同一进程连续两次删不掉只提示一次（子进程）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "删不掉时不提示（静默）",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G4 提示逐字、家目录归一，同一进程连续两次删不掉只提示一次（子进程）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "提示里不做家目录归一",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G4 提示逐字、家目录归一，同一进程连续两次删不掉只提示一次（子进程）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "删不掉就抛（漂移复算那一处会把运行判 failed）",
+      "suite": "dist/test/test/integration/worktree-hash-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D1 worker 里的漂移复算删不掉临时索引目录：运行照常成功，提示进 worker.log，--start 不受影响"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "到期目录删不掉后 break，后面的目录不再处理",
+      "suite": "dist/test/test/unit/retention.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-204 R1 到期目录删不掉：记进 removeFailed、落回凭据抹除，后面的目录照常整删、未到期的照常抹"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "删不掉后直接 continue，不落回凭据抹除",
+      "suite": "dist/test/test/unit/retention.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-204 R1 到期目录删不掉：记进 removeFailed、落回凭据抹除，后面的目录照常整删、未到期的照常抹"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "删不掉不记 removeFailed",
+      "suite": "dist/test/test/unit/retention.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-204 R1 到期目录删不掉：记进 removeFailed、落回凭据抹除，后面的目录照常整删、未到期的照常抹"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M9",
+      "desc": "会话启动早退条件不含 removeFailed",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 0,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M10",
+      "desc": "待办不截断到三个",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "removeFailedLine：最多列三个，超出写「等 N 个」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M11",
+      "desc": "buildFixture 不记 made.dir",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S1 建夹具失败且删不掉：报的仍是建夹具失败的原因，残留提示另放、目录给出",
+        "S2 建夹具失败而删掉了：无残留提示，fixtureRoot 为空、目录已不在"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M12",
+      "desc": "finish 退回裸递归删除",
+      "suite": "dist/test/test/integration/selftest.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-204 S3 夹具删不掉时结论不变、给出残留提示，不说「夹具已清理」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 27,
+      "also": []
+    },
+    {
+      "id": "M13",
+      "desc": "有残留提示也说「夹具已清理」",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S4 渲染：有残留提示时打这一句、不说「夹具已清理」；没有时原样"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M14",
+      "desc": "建夹具失败时用删除错误码顶替 detail",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S1 建夹具失败且删不掉：报的仍是建夹具失败的原因，残留提示另放、目录给出"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M15",
+      "desc": "建夹具失败时不删 made.dir",
+      "suite": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S1 建夹具失败且删不掉：报的仍是建夹具失败的原因，残留提示另放、目录给出",
+        "S2 建夹具失败而删掉了：无残留提示，fixtureRoot 为空、目录已不在"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M16",
+      "desc": "会话启动不出删不掉那一行",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "session-start：到期运行目录删不掉单列一行（目录与错误码），不再报「清扫本身失败」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M17",
+      "desc": "dryRun 也真删",
+      "suite": "dist/test/test/unit/retention.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "没有 status.json 的残留目录按 mtime 处理；run_dir_days 为 0 时不清理",
+        "EV-204 R2 dryRun：到期目录照列进 removed、不动盘，不会进 removeFailed"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    }
+  ]
+}

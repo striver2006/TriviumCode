@@ -1,0 +1,56 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "同一份改动的重审（上一轮 run 20261004T063823Z 因 codex 侧 429 整次判失败，期间工作树未动）。焦点六项逐一在工作树核实：一、workTreeHash 删不掉照常返回已算出的哈希（G2），git 失败抛「git add to temp index failed」、超时抛 GitTimeoutError，均不被删除失败顶替（G3/G3b），stderr 提示同一进程只打一次（模块级标志、无重置口）、措辞主语收到本程序不断言目录全貌；二、自检建夹具失败与 finish 两处删不掉不改结论、失败步骤仍报原始原因、渲染不说「夹具已清理」；三、到期整删删不掉记 removeFailed、落回 admitScrub 同一严准入的凭据抹除并继续循环，待办措辞只对「删掉一部分」承诺再过一个保留期重试、与 mtime 刷新语义一致；四、全树守卫豁免表与我对 src/ 的独立 grep 对账完全一致（install.ts×3、lock.ts×1、fsx.ts×1，其余 rm 均非递归）；五、摆锁装置成立（worker 命令行确含 review --worker，run-protocol.ts:435；标记文件先断言前提；错误码取实际值限 {EACCES,EPERM}；子进程 env 以 process.env 为基底），变异读数（预跑 16/17、M9 存活后补 R3b 复跑 fail=1、装置自测 17/17）支撑各结论；六、设计 v1.3.84、RUNBOOK 新行、BACKLOG EV-204 结案与 EV-206/EV-207 登记与代码逐点相符（resetStopBlockCount 四调用点、两处 run_root 兄弟目录均核实）。唯一意见是上一轮已提、因该轮整次失败未被裁决的 nit：selftest finish 的 made.dir 非空断言依赖隐式控制流前提，本轮照实重提。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/selftest.ts:426",
+      "problem": "finish 里 made.dir! 的非空断言成立，依赖一个只存在于控制流里的隐式前提：finish 仅在 buildFixture 成功之后可达（!selfScript 早退与建夹具 catch 都是字面 return，不经 finish），该前提既没写进注释也没落到类型上。若后续改动在建夹具成功前新增一条 return finish(…) 路径，made.dir 为 null 时不会红在断言处——tryRemoveTempDir 对 fs.rm 的一切抛出兜底，code 回退支会把整段 TypeError 消息当「错误码」拼进 cleanupResidue，自检结论照常返回，缺陷以怪异文案形态静默存在。上一轮 run 20261004T063823Z 我提过同一条，该轮因 codex 侧 429 整次判失败、意见未经裁决，本轮照实重提。",
+      "evidence": "src/trivium/selftest.ts:424-435（finish 用 made.dir!，注释只说明「删的是 made.dir、root 是它的 realpath」，未写非空前提）；src/trivium/util/fsx.ts:156-172（tryRemoveTempDir 捕获 fs.rm 全部抛出，code 缺失时回退到 tildeHome(整段消息)）；src/trivium/selftest.ts:212-245（两条不经 finish 的早退路径）。",
+      "suggestion": "两行以内的事：在 finish 注释补一句「made.dir 此处必非空：finish 仅在建夹具成功后可达」，或入口处对 made.dir 为 null 显式短路成无残留，堵住「误用被吞成怪文案」的静默路径。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "workTreeHash 的错误语义反转正确：哈希照常返回、git 失败与超时抛的仍是原始错误，finally 改调 tryRemoveTempDir 后不再顶替；签名与八处调用方（build-stamp.ts:64、freeze.ts:442、probes/agy.ts:242、probes/fixture.ts:109 与 :157、probes/zcode.ts:336、review.ts:1233、worktree-summary.ts:171）逐一核对未动",
+    "「同一进程只提示一次」经模块级 indexResidueNoticed 实现、不导出重置口，与决策二一致；warn 恒写 stderr（log.ts:24-26），--json 模式不污染 stdout；indexResidueText 主语收到本程序、clean 过滤器可另行写入的情形写进注释，不断言目录全貌",
+    "retention 删不掉的到期目录记 removeFailed、不进 removed、计入 kept，落回未到期那条路复用 admitScrub 同一严准入（status 读不到进 unknown 不抹），循环继续；R1 构造性锁住 readdir 排第一的到期目录，「继续处理后面的」有鉴别力；dryRun 语义未动（R2 钉住）",
+    "removeFailedLine 措辞与 mtime 刷新后的实际重试时机一致：只对「删掉一部分」说「再过一个保留期才会自动重试」，不承诺下次会话再试、不说「已抹除」；removeFailed 纳入会话启动早退条件（变异预跑 M9 存活、补 R3b 后复跑咬住，mutation-names-log.txt:9 与 mutation-names-log.m9-rerun.txt 佐证），截断到三个、超出写「等 N 个」（R4）",
+    "W 全树守卫豁免表与源码一致：独立 grep 对账 install.ts:243/477/491、lock.ts:522、fsx.ts:158 五处递归删除，其余 rm 调用均非递归（entry-render.ts:395 的 rmdir 无 recursive 不计数）；计数相等才过、扫描文件数下限 >50 防永绿",
+    "摆锁装置成立：worker 由 spawnDetached 以 [selfScript, review, --worker, runId] 派生（run-protocol.ts:433-438），祖先进程判据把锁只落在 worker、避开 --start 逐侧冻结的错位；过滤器第一次被调就写标记、用例先断言标记在，「环境没跑过滤器」与「改动错了」是两种红；错误码取实际值并限 {EACCES,EPERM}；子进程 env 以 {...process.env} 为基底合并（exec.ts:194-198），git 与 ps 可寻；worker 的 stdio 落 worker.log（run-protocol.ts:438 的 logFile），D1 断言成立",
+    "自检两处收尾正确：made.dir 在 mkdtemp 一返回即记下，建夹具失败步骤的 detail 仍是原始原因、删除残留另放 cleanupResidue（S1/S2）；finish 删不掉不抛、结论不变、渲染打残留句且不说「夹具已清理」（S3/S4），made.dir 只认 mkdtemp 返回值、不拼路径",
+    "文档与登记一致：设计 v1.3.84 的 §9.2 新要点与 §10.5 补句、RUNBOOK 新行（三目录、mtime 刷新、status.json 被删期间按 unknown 处置均与代码行为相符）、BACKLOG EV-204 done 的甄别与残余①-⑥如实；EV-206 的四个调用点（approval.ts:231、cli.ts:1533/1570、review.ts:1020 在 try 内）与裸删形态核实无误；EV-207 的两处 run_root 兄弟目录（selftest.ts:150、test/helpers/fixture.ts:95）核实无误；证据读数（check-2 收尾 2694/2692/0/2、装置自测 17/17、M9 复跑 fail=1）与报告表格相符"
+  ],
+  "not_covered": [
+    "只读审查，未运行任何测试、构建或变异复跑；对 check-1/check-2 全绿、17 条变异与 M9 复跑的采信基于证据文件与用例源码的静态核对，非复测",
+    "maxRetries 的重试路径（EPERM/ENOTEMPTY 族的退避重试）未实测，报告覆盖边界亦如实登记未覆盖；本侧摆锁只能造 EACCES",
+    "进程在 workTreeHash 中途被杀（finally 不跑）与 git 过滤器孤儿进程占住临时目录两形未验证，属 EV-204 已登记残余⑤；「系统临时目录 110 个 trivium-index-* 均为被杀形态」的说法无法在不执行命令的前提下核实，采信报告自述",
+    "pruneRunDirs 的 dryRun 分支「预测不到删不掉」只核到 R2 断言，生产调用面只有 hookSessionStart（不带 dryRun），未深究",
+    "countRecursiveRm 是词法守卫，经变量别名或解构间接调用递归删除可绕过（EV-199 起即接受的取舍）",
+    "证据目录未逐一全文复读：check-1.txt、doctor-selftest.r1.txt、gen-mutation-spec.mjs、mutation-names.mjs、mutation-spec*.json、mutation-names-output*.json 只经报告与补丁节选了解，check-2.txt 只读了收尾统计",
+    "scrub.ts、status.ts 只在调用面读过（cliGroupsConfirmedGone、scrubAdmission 的判定细节未逐行复审）；skills-src、schema 契约面本题未触及、未读"
+  ],
+  "consulted": [
+    ".reviews/临时索引与清扫删除收尾/code/_meta/changes-20261004T071443Z.diff",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/util/log.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/selftest.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/status.ts",
+    "test/helpers/fixture.ts",
+    "test/unit/retention.test.ts",
+    "doc/05_testing/evidence/temp-index-cleanup-20261004/mutation-output.txt",
+    "doc/05_testing/evidence/temp-index-cleanup-20261004/mutation-names-log.txt",
+    "doc/05_testing/evidence/temp-index-cleanup-20261004/mutation-names-log.m9-rerun.txt",
+    "doc/05_testing/evidence/temp-index-cleanup-20261004/check-2.txt",
+    ".reviews/临时索引与清扫删除收尾/code/2026-10-04-临时索引与清扫删除收尾-glm.md"
+  ]
+}

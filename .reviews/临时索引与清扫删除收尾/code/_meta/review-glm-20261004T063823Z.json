@@ -1,0 +1,59 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "无阻断或重要问题。EV-204 三处收尾的错误语义反转正确：workTreeHash 哈希照常返回、git 原始错误不被删除失败顶替（G3/G3b 守住）；到期目录删不掉落回同一严准入的凭据抹除并继续循环；会话启动早退条件纳入 removeFailed（变异 M9 存活证明确需它，R3b 补齐）。我独立对账了 src/ 递归删除分布与豁免表（install.ts×3、lock.ts×1、fsx.ts×1，别无其他）、workTreeHash 八处调用方签名与错误契约、pruneRunDirs 的唯一生产调用方、warn 恒走 stderr（--json 的 stdout 不受污染）、D1 桩两侧与夹具 default_critics 的一致性。唯一意见是一条可维护性 nit：finish 的 made.dir 非空断言依赖隐式控制流前提，将来误用时会被 tryRemoveTempDir 吞成怪异文案而非显式报错。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/selftest.ts:426",
+      "problem": "finish 里 made.dir! 的非空断言成立，依赖一个只存在于控制流里的隐式前提：finish 仅在 buildFixture 成功之后可达（!selfScript 早退与建夹具 catch 都是字面返回，不经 finish）。该前提没落在注释或类型上。若后续改动在建夹具成功前新增一条 return finish(…) 路径，made.dir 为 null 时不会红在断言处——fsx.ts 的 tryRemoveTempDir 对 fs.rm 的一切抛出兜底，code 回退支会把整段 TypeError 消息当「错误码」，cleanupResidue 变成一段怪异文案，自检结论照常返回，缺陷以文案形态静默存在。",
+      "evidence": "src/trivium/selftest.ts:424-435（finish 用 made.dir!，注释只说明「删的是 made.dir、root 是它的 realpath」，未写非空前提）；src/trivium/util/fsx.ts:156-172（tryRemoveTempDir 捕获 fs.rm 全部抛出，code 缺失时回退到 tildeHome(整段消息)）；src/trivium/selftest.ts:212-245（两条不经 finish 的早退路径）。",
+      "suggestion": "两行以内的事：在 finish 注释补一句「made.dir 此处必非空：finish 仅在建夹具成功后可达」，或入口处对 made.dir 为 null 显式短路成无残留，堵住「误用被吞成怪文案」的静默路径。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "workTreeHash 的「原始错误优先、删除失败不顶替结果」语义与「签名与八处调用方不动」的判断正确：我逐一核对 freeze.ts:442、review.ts:1233、worktree-summary.ts:171、build-stamp.ts:64 与探针四处，签名与错误契约均未变（src/trivium/util/git.ts:106-131）",
+    "retention 删不掉的到期目录落回未到期那条路、复用 admitScrub 同一严准入（status 读不到进 unknown 不抹），比旧形态（抛出中止整轮、后面的目录既不删也不抹）在凭据卫生上严格更优；removeFailed 不进 removed、计入 kept 的分档与接口注释一致（src/trivium/retention.ts:87-100、247-260）",
+    "会话启动把 removeFailed 纳入早退条件并单列一行，措辞不承诺「下次会话会再试」、不说「已抹除」——与 mtime 刷新推迟重试的事实相符（src/trivium/hooks.ts:1643-1722，计划双审 CODEX-01 的处置落实）",
+    "W 全树守卫的豁免表与我独立 grep 的 src/ 递归删除分布完全一致：install.ts:243/477/491、lock.ts:522、fsx.ts:158，别无其他；计数相等才过、文件数下限防永绿的写法有鉴别力（test/unit/temp-index-cleanup.test.ts:295-315）",
+    "摆锁法（git clean 过滤器 + 标记文件先断言前提 + root 跳过 + 收尾重新列目录恢复权限再整删）把「环境没跑过滤器」与「改动错了」分成两种红，D1 按进程身份只锁 worker、避开 --start 逐侧冻结的错位，设计严谨（test/integration/worktree-hash-cleanup.test.ts、test/unit/temp-index-cleanup.test.ts:111-128）",
+    "warn 恒写 stderr、--json 模式不污染 stdout（src/trivium/util/log.ts:24-26），子进程 env 以 {...process.env} 为基底合并、G4/D1 的子进程找得到 git 与 ps（src/trivium/util/exec.ts:194-198）",
+    "自检 finish 的删除失败原先经不带 await 的 return finish(…) 穿出 runSelftest 的成因分析准确，改后结论不改写、渲染不说「夹具已清理」（src/trivium/selftest.ts:419-461）",
+    "残余如实登记（worker 路径提示只进 worker.log、同进程第二处不再提示、maxRetries 重试路径未覆盖、进程被杀 finally 不跑、EV-206/EV-207），文档四面（设计 v1.3.84、RUNBOOK、BACKLOG、README 索引）同步齐整，符合改动同步清单"
+  ],
+  "not_covered": [
+    "只读审查，未运行任何测试、构建或变异复跑；对 check-1/check-2 全绿、17 条变异咬住与 M9 复跑的采信基于证据文件与用例源码的静态核对，非复测",
+    "maxRetries 重试路径（EPERM/ENOTEMPTY 族）未实测（报告 §覆盖边界亦登记未覆盖）；大量 EPERM 目录时会话启动清扫的耗时上界（每目录约三次重试退避）未评估",
+    "worker 进程在 workTreeHash 中途被杀（finally 不跑）与 git 过滤器孤儿进程占住临时目录两形未验证，属 EV-204 已登记残余 ⑤",
+    "pruneRunDirs 的 dryRun 分支无生产调用方（仅测试使用），其「预测不到删不掉」的口径未深究；R2 已把现状钉成断言",
+    "countRecursiveRm 是词法守卫，经变量别名或解构间接调用递归删除可绕过（EV-199 起即接受的取舍），未另行评估",
+    "scrub.ts、status.ts 的准入与判定细节只在调用面读过，未逐行复审；skills-src 与 schema 契约面本题未触及、未读"
+  ],
+  "consulted": [
+    ".reviews/临时索引与清扫删除收尾/code/_meta/changes-20261004T063823Z.diff",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/selftest.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/util/log.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/types.ts",
+    "src/trivium/status.ts",
+    "src/trivium/agents/registry.ts",
+    "test/helpers/recursive-rm.ts",
+    "test/helpers/fixture.ts",
+    "test/unit/temp-index-cleanup.test.ts",
+    "test/integration/worktree-hash-cleanup.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "doc/05_testing/REPORT_2026-10-04_temp_index_cleanup.md",
+    "doc/05_testing/evidence/temp-index-cleanup-20261004/mutation-output.txt",
+    "doc/05_testing/evidence/temp-index-cleanup-20261004/check-1.txt"
+  ]
+}

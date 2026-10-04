@@ -26,6 +26,7 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { run } from './util/exec.js';
 import { initFixtureRepo } from './util/git.js';
+import { tildeHome, tryRemoveTempDir } from './util/fsx.js';
 import { localDate } from './naming.js';
 import { DEFAULT_CRITICS } from './types.js';
 import { agentById } from './agents/registry.js';
@@ -49,6 +50,24 @@ export interface SelftestResult {
   kept: boolean;
   /** 本次自检**没有**覆盖的东西，必须一并呈现 */
   notCovered: string[];
+  /**
+   * 本该删掉的夹具目录没删掉时的提示（{@link selftestResidueText}），删掉了或本就保留时为 null（EV-204）。
+   * 不进 `steps`、不改 `ok`：删不掉是收尾的事，不改写已经得出的自检结论（决策三）。
+   */
+  cleanupResidue: string | null;
+}
+
+/** 自检夹具目录删不掉时的提示（EV-204）：主语是自检，不断言目录全貌（同 `indexResidueText`） */
+export function selftestResidueText(dir: string, code: string): string {
+  return (
+    `自检夹具目录删除失败（${code}）：${tildeHome(dir)} 仍在——` +
+    '自检只往里写了夹具文件与本次自检的审查留痕（.reviews/），没有凭据，请手工删除'
+  );
+}
+
+/** 测试注入口（EV-204 计划双审 GLM-01）：只换建夹具的最后一步，`mkdtemp` 与写文件仍走生产路径 */
+export interface SelftestDeps {
+  initFixtureRepo: (dir: string) => Promise<void>;
 }
 
 const TOPIC = '自检任务';
@@ -83,9 +102,16 @@ export interface SelftestOptions {
  * 留的洞是 `src/payment.ts` 里未处理的并发退款——桩适配器不会真的发现它，
  * 但真实审查会。这样同一个夹具既能给 selftest 用，也能给人拿去手工验收：
  * 把 `TRIVIUM_STUB_CRITIC` 去掉重跑，看各侧是否真能指出这个洞。
+ *
+ * `made.dir` 在 mkdtemp 一返回就记下（EV-204）：此前调用方写的是 `root = await buildFixture()`，
+ * 中途抛出时赋值不发生，catch 里的删除恒走不到，建到一半的目录无人清理。删除只认 mkdtemp 的返回值。
  */
-async function buildFixture(): Promise<string> {
+async function buildFixture(
+  made: { dir: string | null },
+  init: (dir: string) => Promise<void>,
+): Promise<string> {
   const raw = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-selftest-'));
+  made.dir = raw;
   const root = await fs.realpath(raw);
 
   await fs.mkdir(path.join(root, 'src'), { recursive: true });
@@ -158,11 +184,14 @@ async function buildFixture(): Promise<string> {
     'utf8',
   );
 
-  await initFixtureRepo(root);
+  await init(root);
   return root;
 }
 
-export async function runSelftest(opts: SelftestOptions = {}): Promise<SelftestResult> {
+export async function runSelftest(
+  opts: SelftestOptions = {},
+  deps: SelftestDeps = { initFixtureRepo },
+): Promise<SelftestResult> {
   const selfScript = opts.selfScript ?? process.argv[1];
   const steps: SelftestStep[] = [];
   /*
@@ -187,6 +216,7 @@ export async function runSelftest(opts: SelftestOptions = {}): Promise<SelftestR
       fixtureRoot: '',
       kept: false,
       notCovered,
+      cleanupResidue: null,
     };
   }
 
@@ -194,18 +224,23 @@ export async function runSelftest(opts: SelftestOptions = {}): Promise<SelftestR
    * 夹具的创建也要在 try 里（审查意见 AGY-06）：原先它在 try 之外，
    * mkdtemp / git init 失败会直接抛出——临时目录可能已建了一半却没人清，
    * 调用方也拿不到结构化诊断，只得到一个裸异常。
+   *
+   * 删除走 `made.dir`（mkdtemp 的返回值）而不是 `root`：`root` 在 buildFixture 抛出时还没被赋值（EV-204）。
+   * 失败步骤的 `detail` 仍是建夹具失败的原因，删不掉另放 `cleanupResidue`，不顶替它（决策三）。
    */
+  const made: { dir: string | null } = { dir: null };
   let root = '';
   try {
-    root = await buildFixture();
+    root = await buildFixture(made, deps.initFixtureRepo);
   } catch (e) {
-    if (root) await fs.rm(root, { recursive: true, force: true });
+    const left = made.dir ? await tryRemoveTempDir(made.dir, []) : null;
     return {
       ok: false,
       steps: [{ name: '创建夹具仓库', ok: false, detail: (e as Error).message }],
-      fixtureRoot: root,
+      fixtureRoot: left ? made.dir! : '',
       kept: false,
       notCovered,
+      cleanupResidue: left ? selftestResidueText(made.dir!, left.code) : null,
     };
   }
 
@@ -381,12 +416,27 @@ export async function runSelftest(opts: SelftestOptions = {}): Promise<SelftestR
     return finish(false);
   }
 
+  /*
+   * 删不掉不抛（EV-204）：此前 `fs.rm` 从这里抛出，而调用处是不带 await 的 `return finish(…)`，
+   * 拒绝不进上面的 catch、直接穿出 runSelftest，一次已经得出结论的自检崩成内部错误。
+   * 删的是 `made.dir`（mkdtemp 的返回值，`root` 是它的 realpath，同一个目录）。
+   *
+   * `made.dir` 在这里本应非空：finish 只在建夹具成功之后可达（`!selfScript` 早退与建夹具的 catch 都不经它）。
+   * 不写非空断言而显式短路（代码双审 GLM-01）：将来若多出一条建夹具成功前的 `return finish(…)`，断言不会红——
+   * tryRemoveTempDir 吞掉一切抛出，会把 TypeError 的整段消息当错误码拼进提示；为 null 时夹具根根本没建出来，「无残留」是实情。
+   */
   async function finish(ok: boolean): Promise<SelftestResult> {
     const keep = !ok || opts.keepFixture === true;
-    if (!keep) {
-      await fs.rm(root, { recursive: true, force: true });
-    }
-    return { ok, steps, fixtureRoot: root, kept: keep, notCovered };
+    const dir = made.dir;
+    const left = keep || dir === null ? null : await tryRemoveTempDir(dir, []);
+    return {
+      ok,
+      steps,
+      fixtureRoot: root,
+      kept: keep,
+      notCovered,
+      cleanupResidue: left && dir !== null ? selftestResidueText(dir, left.code) : null,
+    };
   }
 }
 
@@ -408,6 +458,9 @@ export function renderSelftest(r: SelftestResult): string {
     L.push(`夹具保留在 ${r.fixtureRoot}`);
     L.push('  它是一个故意留洞的最小项目（src/payment.ts 的并发退款没有幂等保护）。');
     L.push('  去掉 TRIVIUM_STUB_CRITIC 在其中重跑一次，可检验各侧真实审查能否指出这个洞。');
+  } else if (r.cleanupResidue) {
+    // 没删掉就不能说「已清理」（EV-204）
+    L.push(r.cleanupResidue);
   } else {
     L.push('夹具已清理。加 --keep-fixture 可保留以供手工验收（§17.3）。');
   }

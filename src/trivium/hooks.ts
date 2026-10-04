@@ -1640,6 +1640,23 @@ export async function hookStop(ctx: Ctx, input: HookInput): Promise<HookOutput> 
 
 // ─────────────────────── hook-session-start ───────────────────────
 
+/** 删不掉的到期运行目录在待办里最多列几个：待办注入每个会话的上下文，权限类成因可能一次几十个 */
+const REMOVE_FAILED_LISTED = 3;
+
+/**
+ * 到期整删删不掉的那一行（EV-204）。不承诺「下次会话会再试」（计划双审 CODEX-01）：删掉一部分会刷新目录 mtime，
+ * 下次会话判为未到期、这一行随之不再出现，要再过一个保留期才重试整删。路径与同段其余各行一致写原路径。
+ * 也不说「已抹除」：落回的抹除仍要过准入（status 读不到就进 unknown 不抹），结果由同段其余各行如实报。
+ */
+export function removeFailedLine(failed: readonly { dir: string; code: string }[]): string {
+  const listed = failed.slice(0, REMOVE_FAILED_LISTED).map((f) => `${f.dir}（${f.code}）`).join('、');
+  const more = failed.length > REMOVE_FAILED_LISTED ? `等 ${failed.length} 个` : '';
+  return (
+    `  · ${failed.length} 个到期运行目录删不掉：${listed}${more}——凭据副本改按未到期目录处理（抹除结果见同段其余各行）；` +
+    '请人工删除（删掉一部分的目录要再过一个保留期才会自动重试）'
+  );
+}
+
 /** 会话开始时注入待办清单（设计 §8.5）。永不阻断 */
 export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
   /*
@@ -1658,6 +1675,7 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
    * pull 式时机；失败不影响会话（目录清不掉只是占空间）。
    */
   let pruned = 0;
+  let removeFailed: { dir: string; code: string }[] = [];
   let scrubbed = 0;
   let runDirRedacted = 0;
   let scrubFailed: { dir: string; reason: string }[] = [];
@@ -1673,6 +1691,7 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
     const { wiredAdapter } = await import('./adapters/index.js');
     const r = await pruneRunDirs(ctx.config, ctx.projectRoot, { adapters: wiredAdapter });
     pruned = r.removed.length;
+    removeFailed = r.removeFailed;
     scrubbed = r.scrubbed.length;
     runDirRedacted = r.runDirRedacted.length;
     scrubFailed = r.scrubFailed;
@@ -1692,7 +1711,7 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
   const reportable = open.filter((g) => g.state !== 'running');
   if (
     reportable.length === 0 && running.length === 0 && swept.length === 0 &&
-    pruned === 0 && scrubbed === 0 && runDirRedacted === 0 && scrubFailed.length === 0 &&
+    pruned === 0 && removeFailed.length === 0 && scrubbed === 0 && runDirRedacted === 0 && scrubFailed.length === 0 &&
     unknown === 0 && deferred.length === 0 && incomplete.length === 0 && retentionError === null
   ) return ALLOW;
 
@@ -1700,6 +1719,7 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
   if (pruned > 0) {
     lines.push(`  · 已清理 ${pruned} 个超过 ${ctx.config.retention.run_dir_days} 天的运行目录（retention.run_dir_days）`);
   }
+  if (removeFailed.length > 0) lines.push(removeFailedLine(removeFailed));
   if (scrubbed > 0) {
     lines.push(`  · 已抹除 ${scrubbed} 个运行目录的凭据副本`);
   }

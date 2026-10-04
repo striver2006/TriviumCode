@@ -1,0 +1,18 @@
+{
+  "targets": [
+    "src/trivium/hooks.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/hooks.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M9",
+      "file": "src/trivium/hooks.ts",
+      "expect": "dist/test/test/unit/hooks.test.js",
+      "desc": "会话启动早退条件不含 removeFailed",
+      "find": "    pruned === 0 && removeFailed.length === 0 && scrubbed === 0 &&",
+      "replace": "    pruned === 0 && scrubbed === 0 &&"
+    }
+  ]
+}

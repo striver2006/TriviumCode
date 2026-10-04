@@ -1,0 +1,126 @@
+✓ 工作树干净、基线全绿（5 个套件）
+  M1 ✓ 咬住（fail=5）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=2）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=2）
+  M16 ✓ 咬住（fail=2）
+  M17 ✓ 咬住（fail=2）
+{
+  "总数": 17,
+  "咬住": 17,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "workTreeHash 的 finally 退回裸递归删除",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M2",
+      "desc": "去掉「同一进程只提示一次」的判断",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "删不掉时不提示（静默）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "提示里不做家目录归一",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "删不掉就抛（漂移复算那一处会把运行判 failed）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "到期目录删不掉后 break，后面的目录不再处理",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "删不掉后直接 continue，不落回凭据抹除",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "删不掉不记 removeFailed",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "会话启动早退条件不含 removeFailed",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "待办不截断到三个",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "buildFixture 不记 made.dir",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M12",
+      "desc": "finish 退回裸递归删除",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "有残留提示也说「夹具已清理」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "建夹具失败时用删除错误码顶替 detail",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "建夹具失败时不删 made.dir",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M16",
+      "desc": "会话启动不出删不掉那一行",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M17",
+      "desc": "dryRun 也真删",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    }
+  ]
+}

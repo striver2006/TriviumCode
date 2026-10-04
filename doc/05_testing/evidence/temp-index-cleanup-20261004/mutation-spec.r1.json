@@ -1,0 +1,153 @@
+{
+  "targets": [
+    "src/trivium/util/git.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/selftest.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/temp-index-cleanup.test.js",
+    "dist/test/test/integration/worktree-hash-cleanup.test.js",
+    "dist/test/test/unit/retention.test.js",
+    "dist/test/test/unit/hooks.test.js",
+    "dist/test/test/integration/selftest.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "file": "src/trivium/util/git.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "workTreeHash 的 finally 退回裸递归删除",
+      "find": "    const left = await tryRemoveTempDir(tmpDir, []);\n",
+      "replace": "    await (await import('node:fs')).promises.rm(tmpDir, { recursive: true, force: true });\n    const left = null as { code: string } | null;\n"
+    },
+    {
+      "id": "M2",
+      "file": "src/trivium/util/git.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "去掉「同一进程只提示一次」的判断",
+      "find": "    if (left && !indexResidueNoticed) {\n",
+      "replace": "    if (left) {\n"
+    },
+    {
+      "id": "M3",
+      "file": "src/trivium/util/git.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "删不掉时不提示（静默）",
+      "find": "      warn(indexResidueText(tmpDir, left.code));\n",
+      "replace": ""
+    },
+    {
+      "id": "M4",
+      "file": "src/trivium/util/git.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "提示里不做家目录归一",
+      "find": "    `工作树哈希的临时目录删除失败（${code}）：${tildeHome(dir)} 仍在——` +\n",
+      "replace": "    `工作树哈希的临时目录删除失败（${code}）：${dir} 仍在——` +\n"
+    },
+    {
+      "id": "M5",
+      "file": "src/trivium/util/git.ts",
+      "expect": "dist/test/test/integration/worktree-hash-cleanup.test.js",
+      "desc": "删不掉就抛（漂移复算那一处会把运行判 failed）",
+      "find": "    if (left && !indexResidueNoticed) {\n",
+      "replace": "    if (left) throw new Error('删除失败 ' + left.code);\n    if (left && !indexResidueNoticed) {\n"
+    },
+    {
+      "id": "M6",
+      "file": "src/trivium/retention.ts",
+      "expect": "dist/test/test/unit/retention.test.js",
+      "desc": "到期目录删不掉后 break，后面的目录不再处理",
+      "find": "        out.removeFailed.push({ dir, code: left.code });\n",
+      "replace": "        out.removeFailed.push({ dir, code: left.code });\n        break;\n"
+    },
+    {
+      "id": "M7",
+      "file": "src/trivium/retention.ts",
+      "expect": "dist/test/test/unit/retention.test.js",
+      "desc": "删不掉后直接 continue，不落回凭据抹除",
+      "find": "        out.removeFailed.push({ dir, code: left.code });\n",
+      "replace": "        out.removeFailed.push({ dir, code: left.code });\n        continue;\n"
+    },
+    {
+      "id": "M8",
+      "file": "src/trivium/retention.ts",
+      "expect": "dist/test/test/unit/retention.test.js",
+      "desc": "删不掉不记 removeFailed",
+      "find": "        out.removeFailed.push({ dir, code: left.code });\n",
+      "replace": ""
+    },
+    {
+      "id": "M9",
+      "file": "src/trivium/hooks.ts",
+      "expect": "dist/test/test/unit/hooks.test.js",
+      "desc": "会话启动早退条件不含 removeFailed",
+      "find": "    pruned === 0 && removeFailed.length === 0 && scrubbed === 0 &&",
+      "replace": "    pruned === 0 && scrubbed === 0 &&"
+    },
+    {
+      "id": "M10",
+      "file": "src/trivium/hooks.ts",
+      "expect": "dist/test/test/unit/hooks.test.js",
+      "desc": "待办不截断到三个",
+      "find": "  const listed = failed.slice(0, REMOVE_FAILED_LISTED)",
+      "replace": "  const listed = failed"
+    },
+    {
+      "id": "M11",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "buildFixture 不记 made.dir",
+      "find": "  made.dir = raw;\n",
+      "replace": ""
+    },
+    {
+      "id": "M12",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/integration/selftest.test.js",
+      "desc": "finish 退回裸递归删除",
+      "find": "    const left = keep ? null : await tryRemoveTempDir(made.dir!, []);\n",
+      "replace": "    if (!keep) await fs.rm(root, { recursive: true, force: true });\n    const left = null as { code: string } | null;\n"
+    },
+    {
+      "id": "M13",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "有残留提示也说「夹具已清理」",
+      "find": "    L.push(r.cleanupResidue);\n",
+      "replace": "    L.push(r.cleanupResidue);\n    L.push('夹具已清理。');\n"
+    },
+    {
+      "id": "M14",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "建夹具失败时用删除错误码顶替 detail",
+      "find": "      steps: [{ name: '创建夹具仓库', ok: false, detail: (e as Error).message }],\n",
+      "replace": "      steps: [{ name: '创建夹具仓库', ok: false, detail: left ? left.code : (e as Error).message }],\n"
+    },
+    {
+      "id": "M15",
+      "file": "src/trivium/selftest.ts",
+      "expect": "dist/test/test/unit/temp-index-cleanup.test.js",
+      "desc": "建夹具失败时不删 made.dir",
+      "find": "    const left = made.dir ? await tryRemoveTempDir(made.dir, []) : null;\n",
+      "replace": "    const left = null as { code: string } | null;\n"
+    },
+    {
+      "id": "M16",
+      "file": "src/trivium/hooks.ts",
+      "expect": "dist/test/test/unit/hooks.test.js",
+      "desc": "会话启动不出删不掉那一行",
+      "find": "  if (removeFailed.length > 0) lines.push(removeFailedLine(removeFailed));\n",
+      "replace": ""
+    },
+    {
+      "id": "M17",
+      "file": "src/trivium/retention.ts",
+      "expect": "dist/test/test/unit/retention.test.js",
+      "desc": "dryRun 也真删",
+      "find": "        const left = opts.dryRun ? null : await tryRemoveTempDir(dir, []);\n",
+      "replace": "        const left = await tryRemoveTempDir(dir, []);\n"
+    }
+  ]
+}

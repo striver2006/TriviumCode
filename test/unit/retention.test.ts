@@ -497,3 +497,81 @@ test('EV-154 U14：判不了（启动时刻没记下且组长还在）与记录�
     await g.stop();
   }
 });
+
+// ── 到期整删删不掉（EV-204）──
+
+const IS_ROOT = process.getuid?.() === 0;
+const LOCK_CODES = new Set(['EACCES', 'EPERM']);
+
+/** 把目录树里每个目录恢复成 0o700 再整删：被锁的子目录在收尾时重新列出来，不依赖被测函数的返回值 */
+async function unlockAndRemove(root: string): Promise<void> {
+  const walk = async (d: string): Promise<void> => {
+    await fs.chmod(d, 0o700).catch(() => {});
+    let entries;
+    try {
+      entries = await fs.readdir(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) if (e.isDirectory()) await walk(path.join(d, e.name));
+  };
+  await walk(root);
+  await fs.rm(root, { recursive: true, force: true, maxRetries: 3 });
+}
+
+/** 锁住一个运行目录的 zcode 载体所在目录：载体本身在锁里，删除与抹除都必然失败，结果确定 */
+async function lockCarrierDir(carrier: string): Promise<void> {
+  await fs.chmod(path.dirname(carrier), 0o500);
+}
+
+test('EV-204 R1 到期目录删不掉：记进 removeFailed、落回凭据抹除，后面的目录照常整删、未到期的照常抹', { skip: IS_ROOT && 'root 下只读目录锁不住' }, async () => {
+  const { cfg, projectRoot, b } = await bucket();
+  try {
+    const expired: { d: string; carrier: string }[] = [];
+    for (const n of ['R-e1', 'R-e2', 'R-e3', 'R-e4']) {
+      const x = await runDirWith(b, n, 'success');
+      await age(x.d, 40);
+      expired.push(x);
+    }
+    const fresh = await runDirWith(b, 'R-fresh', 'success');
+    /*
+     * 构造性地锁住遍历顺序里排第一的到期目录（计划双审 GLM-04）：pruneRunDirs 按 readdir 原序遍历，
+     * 那是文件系统行为、不受命名控制；锁第一个就保证它后面还有三个到期目录，「继续处理后面的」才有鉴别力。
+     */
+    const order = (await fs.readdir(b)).map((n) => path.join(b, n));
+    const first = expired.map((x) => x.d).sort((p, q) => order.indexOf(p) - order.indexOf(q))[0]!;
+    const locked = expired.find((x) => x.d === first)!;
+    await lockCarrierDir(locked.carrier);
+
+    const r = await pruneRunDirs(cfg, projectRoot, { adapters: wiredAdapter });
+    const others = expired.filter((x) => x !== locked).map((x) => x.d);
+    assert.deepEqual([...r.removed].sort(), [...others].sort(), '排在它后面的三个到期目录照常整删');
+    assert.equal(r.removeFailed.length, 1);
+    assert.equal(r.removeFailed[0]!.dir, locked.d);
+    assert.ok(LOCK_CODES.has(r.removeFailed[0]!.code), `错误码 ${r.removeFailed[0]!.code} 不在 {EACCES, EPERM} 内`);
+    await fs.access(locked.carrier);
+    assert.ok(
+      r.scrubFailed.some((f) => f.dir === locked.d),
+      `删不掉的目录应落回凭据抹除那条路（载体在锁里，抹除也失败）：${JSON.stringify(r.scrubFailed)}`,
+    );
+    assert.ok(r.scrubbed.includes(fresh.d), '未到期目录的凭据抹除照做');
+    await assert.rejects(fs.access(fresh.carrier));
+  } finally {
+    await unlockAndRemove(path.dirname(b));
+  }
+});
+
+test('EV-204 R2 dryRun：到期目录照列进 removed、不动盘，不会进 removeFailed', { skip: IS_ROOT && 'root 下只读目录锁不住' }, async () => {
+  const { cfg, projectRoot, b } = await bucket();
+  try {
+    const x = await runDirWith(b, 'R-old', 'success');
+    await age(x.d, 40);
+    await lockCarrierDir(x.carrier);
+    const r = await pruneRunDirs(cfg, projectRoot, { dryRun: true, adapters: wiredAdapter });
+    assert.deepEqual(r.removed, [x.d]);
+    assert.deepEqual(r.removeFailed, []);
+    await fs.access(x.carrier);
+  } finally {
+    await unlockAndRemove(path.dirname(b));
+  }
+});

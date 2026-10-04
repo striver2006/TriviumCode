@@ -1,0 +1,279 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261004T063823Z",
+  "topic": "临时索引与清扫删除收尾",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「临时索引与清扫删除收尾」：EV-204，探针夹具删除收尾计划双审第 1 轮 CODEX-02 登记。EV-199 把 src/trivium/probes 与 src/trivium/adapters 两目录里的递归删除清零之后，两目录之外仍有同族的「递归删除加 force、不带 maxRetries」：force 只吞 ENOENT，ENOTEMPTY、EBUSY、EACCES 照样抛出。…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "e00a1e27cc1a41f93e580cc1eabc7263fd845ad1",
+    "tree_hash": "40a5746ad51c43173f0b7b35b1049a7e45ff95ef",
+    "dirty": true,
+    "subject_sha256": "da7aee7c044d0d2d8bc5286cd369749a49bb867eaf977543a096dc808f90f655",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "e00a1e27cc1a41f93e580cc1eabc7263fd845ad1",
+      "dirty": false,
+      "inputs_sha256": "35c4a479c8f31305d422391cff61c69ec7af7c7bed2e9b32b651c21ed6629c11",
+      "built_at": "2026-10-04T04:48:30.356Z"
+    },
+    "after_tree_hash": "da1f49df2119fe25cbd3fe4d411f313a52d4b2a7"
+  },
+  "started_at": "2026-10-04T06:38:25.452Z",
+  "finished_at": "2026-10-04T06:47:20.205Z",
+  "review_mode": "partial",
+  "degraded_reason": "codex: failed（codex 未产出最终回复：exceeded retry limit, last status: 429 Too Many Requests, request id: 68389fe4-f8ce-41e2-bbe1-83437379ecd6）",
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.0",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": null,
+      "model_effective_source": "unverified",
+      "profile_requested": "qwen",
+      "model_provider": null,
+      "status": "failed",
+      "exit_code": 1,
+      "duration_s": 2.499,
+      "tool_calls": {
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": "codex 未产出最终回复：exceeded retry limit, last status: 429 Too Many Requests, request id: 68389fe4-f8ce-41e2-bbe1-83437379ecd6",
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "01a105a2-ad05-7e51-a87b-516759983100",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.16",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 317.362,
+      "tool_calls": {
+        "read": 48,
+        "grep": 6,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 30
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 326198,
+        "output_tokens": 39350,
+        "thinking_tokens": 32176,
+        "cache_read_tokens": 6866120,
+        "total_tokens": 365548
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "24713d94-467d-49d8-9c9a-38cb08f7cacd",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 534.412,
+      "tool_calls": {
+        "read": 18,
+        "grep": 12,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 20
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 17,
+        "inputTokens": 1638877,
+        "outputTokens": 27949,
+        "totalTokens": 1666826,
+        "cacheReadTokens": 1524224,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_13a4d9b3-acfb-4561-91e3-e82361aca327",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/临时索引与清扫删除收尾/plan/2026-10-04-临时索引与清扫删除收尾-gemini.md",
+    ".reviews/临时索引与清扫删除收尾/plan/2026-10-04-临时索引与清扫删除收尾-glm.md",
+    ".reviews/临时索引与清扫删除收尾/plan/_meta/review-gemini-20261004T055413Z.json",
+    ".reviews/临时索引与清扫删除收尾/plan/_meta/review-glm-20261004T055413Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "临时索引与清扫删除收尾/code/_meta/changes-20261004T063823Z.diff",
+      "sha256": "da7aee7c044d0d2d8bc5286cd369749a49bb867eaf977543a096dc808f90f655"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/code/_meta/brief-codex-20261004T063823Z.md",
+      "sha256": "bf2594037fa1850ac4352baf9073979a79327dc8f19cb1ca54f37766f1160177"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/code/_meta/brief-gemini-20261004T063823Z.md",
+      "sha256": "dfc9e6241004e7a2b81b8908bb0efee8f39704b587be2f10558957dd0c7578f2"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/code/_meta/brief-glm-20261004T063823Z.md",
+      "sha256": "a47f9e11e6c968fcafa1931bf87b8d264978baf611bdf847599165aafa902668"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/code/_meta/brief-codex-20261004T063823Z.retry.md",
+      "sha256": "8734cada336e04ea519ff7838aff31f9e33de30f096b54fa065b2fd480aa94da"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/code/_meta/review-codex-20261004T063823Z.failed.json",
+      "sha256": "2936ed1e588b6fbfec1e09e6ceedcfa7aa0734fa465e9aa97392687b31df3cec"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/code/_meta/review-gemini-20261004T063823Z.json",
+      "sha256": "e68b4c10a10f48076ea2dcfa26cd6731b3deb919bc7ff148b0f7a5334d0c31ad"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/code/_meta/review-glm-20261004T063823Z.json",
+      "sha256": "1782584008c5823fa06b1782d19dea9b21b2caba3c8a7837ee38fe32d8d8d408"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/code/2026-10-04-临时索引与清扫删除收尾-gemini.md",
+      "sha256": "0e6333e537d60e1482cccb5025c06985edf58204ba1171daedcfc6837d680bed"
+    },
+    {
+      "path": "临时索引与清扫删除收尾/code/2026-10-04-临时索引与清扫删除收尾-glm.md",
+      "sha256": "3997429c80f6b4f6e9b513c53df3d22aaf748932a8d10a54ee3bbe0bcf86f6dd"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装"
+    ]
+  },
+  "status": "failed"
+}

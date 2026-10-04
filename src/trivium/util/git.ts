@@ -6,10 +6,10 @@
  * 保证不干扰开发者的暂存区、不制造误提交风险。
  */
 import path from 'node:path';
-import { promises as fs } from 'node:fs';
 import { run } from './exec.js';
 import { EXIT, TriviumError, swallowedTextHint } from '../exit-codes.js';
-import { makeTempDir, matchesAnyGlob } from './fsx.js';
+import { makeTempDir, matchesAnyGlob, tildeHome, tryRemoveTempDir } from './fsx.js';
+import { warn } from './log.js';
 
 export interface GitStatusEntry {
   /** git status --porcelain 的两字符状态码，如 '??' 'M ' ' M' 'A ' */
@@ -98,6 +98,10 @@ export async function gitVersion(): Promise<string | null> {
  *
  * `opts.timeoutMs` 只给审批时的工作树摘要用（按剩余预算传）；送审冻结与漂移复算不传，
  * 行为与加这个参数之前逐字节相同。任一步超时抛 {@link GitTimeoutError}。
+ *
+ * 临时目录删不掉不抛（EV-204）：哈希已算出就照常返回，git 某一步失败就让那个原始错误出去。
+ * 此前 finally 的裸递归删除会顶替两者——漂移复算那一处会把三侧已跑完的审查整次判 failed。
+ * 没有 notes 通道，往 stderr 提示一行，同一进程只提示一次（{@link indexResidueText}）。
  */
 export async function workTreeHash(cwd: string, opts: GitCallOptions = {}): Promise<string> {
   const tmpDir = await makeTempDir('trivium-index');
@@ -118,8 +122,31 @@ export async function workTreeHash(cwd: string, opts: GitCallOptions = {}): Prom
     if (wt.code !== 0) throw new Error(`git write-tree failed: ${wt.stderr.trim()}`);
     return wt.stdout.trim();
   } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true });
+    const left = await tryRemoveTempDir(tmpDir, []);
+    if (left && !indexResidueNoticed) {
+      indexResidueNoticed = true;
+      warn(indexResidueText(tmpDir, left.code));
+    }
   }
+}
+
+/**
+ * 同一进程只提示一次（EV-204 决策二）：送审逐侧冻结、探针一轮都会连调好几次，同一个成因不必刷屏。
+ * 不导出重置口——「只打一次」只在单测的子进程里断言，进程内用例不断言 stderr（计划双审 AGY-03）。
+ */
+let indexResidueNoticed = false;
+
+/**
+ * 临时索引目录删不掉时的提示正文（导出供单测逐字比对）。
+ *
+ * 主语是本程序、不断言目录全貌（计划双审 CODEX-04）：TriviumCode 往里写的只有 git 经 `GIT_INDEX_FILE`
+ * 写的索引文件（`index`，被超时杀掉时可能另有 `index.lock`），而用户仓库的 clean 过滤器之类也能往这个目录写东西。
+ */
+export function indexResidueText(dir: string, code: string): string {
+  return (
+    `工作树哈希的临时目录删除失败（${code}）：${tildeHome(dir)} 仍在——` +
+    'TriviumCode 只往里写了 git 临时索引、没有凭据，请手工删除（本进程之后的同类失败不再提示）'
+  );
 }
 
 /** 是否浅克隆（`git rev-parse --is-shallow-repository`）；判不出返回 null */

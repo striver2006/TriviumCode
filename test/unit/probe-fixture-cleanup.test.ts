@@ -27,6 +27,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { countRecursiveRm, tsFiles } from '../helpers/recursive-rm.js';
 import { createFixture, createMemoryFixture, fixtureResidueText } from '../../src/trivium/probes/fixture.js';
 import { codexIsolationResidueText, probeCodex, probeCodexIsolation } from '../../src/trivium/probes/codex.js';
 import { probeClaude } from '../../src/trivium/probes/claude.js';
@@ -511,16 +512,6 @@ test('E4b probeCodex 对照：删成功时无提示、无残留，isolation 照�
 const PROBES_DIR = path.join(REPO_ROOT, 'src/trivium/probes');
 const ADAPTERS_DIR = path.join(REPO_ROOT, 'src/trivium/adapters');
 
-/** 目录下全部 `.ts`，**递归**（代码双审 r1 GLM-01：两目录将来有子目录也要扫到） */
-async function tsFiles(dir: string): Promise<{ name: string; src: string }[]> {
-  const out: { name: string; src: string }[] = [];
-  const rels = (await fs.readdir(dir, { recursive: true })).filter((n) => n.endsWith('.ts')).sort();
-  for (const rel of rels) {
-    out.push({ name: path.join(path.basename(dir), rel), src: await fs.readFile(path.join(dir, rel), 'utf8') });
-  }
-  return out;
-}
-
 const count = (src: string, needle: string): number => src.split(needle).length - 1;
 
 test('W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生）', async () => {
@@ -547,28 +538,6 @@ test('W2 probeCodex 取隔离探针的结论落盘、提示推进 notes', async 
   );
 });
 
-/**
- * 数源码里的递归删除调用：实参按括号深度配平截取（计划双审 r1 GLM-01）——
- * 单层正则会在 `path.join(…)` 的闭括号处截断，把 `fs.rm(path.join(a, b), { recursive: true })` 漏数成 0。
- *
- * 匹配面认形态不认名字（代码双审 r1 GLM-01 ≡ CODEX-04）：`rm` / `rmdir` 及其 `Sync` 形态，接收者任意
- * （`fs.` / `fsp.` 别名 / `fs.promises.`）或解构导入的裸调用；递归判据认 `recursive: true` 与速记 `{ recursive }`。
- */
-function countRecursiveRm(src: string): number {
-  let n = 0;
-  for (const m of src.matchAll(/\brm(?:dir)?(?:Sync)?\(/g)) {
-    let depth = 1;
-    let i = m.index! + m[0].length;
-    const start = i;
-    for (; i < src.length && depth > 0; i++) {
-      if (src[i] === '(') depth++;
-      else if (src[i] === ')') depth--;
-    }
-    if (/\brecursive\b\s*(?::\s*true\b|[,}])/.test(src.slice(start, i))) n++;
-  }
-  return n;
-}
-
 test('W3 自测：配平截取认得出嵌套括号与各种拼写的递归删除，单文件 force 删除不误报', () => {
   assert.equal(countRecursiveRm('await fs.rm(path.join(a, b), { recursive: true, force: true });'), 1);
   assert.equal(countRecursiveRm('await fs.rm(path.join(codexHome, name), { force: true });'), 0);
@@ -592,6 +561,6 @@ test('W3 probes 与 adapters 两目录下没有裸递归删除：删临时目录
     hits,
     [],
     'src/trivium/probes 与 src/trivium/adapters 两目录里出现了递归删除（rm / rmdir / rmSync 带 recursive）——删不掉会从 finally 抛出、' +
-      '顶替探针结论（EV-199）。改调 util/fsx.ts 的 tryRemoveTempDir。本条只管这两个目录，不是全仓清零（EV-204）',
+      '顶替探针结论（EV-199）。改调 util/fsx.ts 的 tryRemoveTempDir。本条只管这两个目录；src/ 全树守卫见 temp-index-cleanup.test.ts 的 W 组（EV-204）',
   );
 });

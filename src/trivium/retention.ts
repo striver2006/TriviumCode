@@ -23,6 +23,7 @@ import { cliGroupsConfirmedGone, isTerminal, readStatus, scrubAdmission, workerS
 import { processMatchesRecord } from './util/exec.js';
 import { RUN_DIR_FILES } from './run-files.js';
 import { scrubDidWork, scrubRunDir, sideLayerPending, type AdapterLookup } from './scrub.js';
+import { tryRemoveTempDir } from './util/fsx.js';
 
 /** 读运行目录那一层的 `worker.pid`：`status.json` 缺失或没记 pid 时的同源兜底 */
 async function readWorkerPid(dir: string): Promise<number | null> {
@@ -85,6 +86,12 @@ export interface ScrubTally {
 
 export interface PruneResult extends ScrubTally {
   removed: string[];
+  /**
+   * 到期、准入都过了而删不掉的运行目录与错误码（EV-204）。它们不进 `removed`、计入 `kept`，
+   * 落回未到期那条路照走凭据抹除——递归删除删到一半才失败，载体可能正好在没删掉的那部分里。
+   * 此前删不掉即抛出整个 `pruneRunDirs`，排在后面的目录既不整删也不抹凭据。
+   */
+  removeFailed: { dir: string; code: string }[];
   /**
    * 没被整删的运行目录数：worker 现势还在（含活着而取不到启动时刻、判不了的非终态目录，EV-175——它们同样不进 `deferred`），
    * 以及未到期或到期而被审查员 CLI 记录挡住的（代码双审 r1 GLM-01）
@@ -182,6 +189,7 @@ async function applyScrub(
  *
  * - **到期整删**：沿用原判据（终态或 worker 已死，且最后活动早于保留期；status 读不到按 mtime）。
  *   `run_dir_days <= 0` 关闭这一支。记录里的审查员 CLI 仍活着、判不了或读不懂时同样保留（EV-157）。
+ *   删不掉不抛、记进 `removeFailed` 并落回凭据抹除那条路（EV-204）。
  * - **凭据抹除**（EV-20，挂载点 ④）：对**未到期**的目录逐侧调适配器抹载体。
  *   与整删解耦——它是安全底线，不该挂在一个可以关掉的档位上（计划双审 CODEX-04）；
  *   判据比整删**更严**：抹除不可逆，`status.json` 读不到（缺失或损坏）一律**跳过并计数**，
@@ -194,7 +202,7 @@ export async function pruneRunDirs(
   opts: { now?: number; dryRun?: boolean; adapters?: AdapterLookup; sizeCap?: number } = {},
 ): Promise<PruneResult> {
   const days = cfg.retention.run_dir_days;
-  const out: PruneResult = { removed: [], kept: 0, ...emptyTally() };
+  const out: PruneResult = { removed: [], removeFailed: [], kept: 0, ...emptyTally() };
   const bucket = path.join(runRoot(cfg), repoId(projectRoot));
   let entries: string[];
   try {
@@ -232,11 +240,17 @@ export async function pruneRunDirs(
        * 到期也不删还在用的目录（EV-157，取消与失联的凭据准入核CLI计划 r2 §3.3）：记录里的审查员 CLI 仍活着、
        * 判不了、或记录读不懂 ⇒ 当作仍在用。worker 一半仍是上面的 workerStillAlive（D2）；CLI 一半与凭据抹除的准入
        * 同一个函数。被挡下的落回下面「未到期」那条路：计入 kept，再由 admitScrub 以同一判据记进 deferredCli。
+       *
+       * 删不掉的（EV-204）记进 removeFailed、同样落回那条路做凭据抹除，循环继续处理后面的目录。
+       * 删掉一部分会刷新目录 mtime，下次会话判为未到期，要再过一个保留期才重试整删——人读提示照此措辞。
        */
       if ((await cliGroupsConfirmedGone(status)).gone) {
-        if (!opts.dryRun) await fs.rm(dir, { recursive: true, force: true });
-        out.removed.push(dir);
-        continue;
+        const left = opts.dryRun ? null : await tryRemoveTempDir(dir, []);
+        if (!left) {
+          out.removed.push(dir);
+          continue;
+        }
+        out.removeFailed.push({ dir, code: left.code });
       }
     }
     out.kept++;

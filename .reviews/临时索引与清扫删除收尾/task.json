@@ -1,0 +1,100 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "临时索引与清扫删除收尾",
+  "goal": "主题「临时索引与清扫删除收尾」：EV-204，探针夹具删除收尾计划双审第 1 轮 CODEX-02 登记。EV-199 把 src/trivium/probes 与 src/trivium/adapters 两目录里的递归删除清零之后，两目录之外仍有同族的「递归删除加 force、不带 maxRetries」：force 只吞 ENOENT，ENOTEMPTY、EBUSY、EACCES 照样抛出。…",
+  "created_at": "2026-10-04T05:43:34.850Z",
+  "updated_at": "2026-10-04T08:01:28.224Z",
+  "runs": [
+    {
+      "run_id": "20261004T055413Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-04T05:54:16.375Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261004T063823Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "partial",
+      "started_at": "2026-10-04T06:38:25.452Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261004T071443Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-04T07:14:46.212Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261004T075639Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-04T08:01:28.224Z"
+    }
+  ],
+  "gate": {
+    "stage": "code",
+    "state": "approved",
+    "since": "2026-10-04T07:41:49.551Z",
+    "run_id": "20261004T071443Z"
+  },
+  "approvals": [
+    {
+      "at": "2026-10-04T07:41:49.551Z",
+      "stage": "code",
+      "run_id": "20261004T071443Z",
+      "decision": "approved",
+      "reason": "按应答件里已接受的项改代码，改完补齐验证、跑 verify 后停",
+      "session_id": null
+    }
+  ],
+  "degradations": [
+    {
+      "run_id": "20261004T063823Z",
+      "stage": "code",
+      "reason": "codex: failed（codex 未产出最终回复：exceeded retry limit, last status: 429 Too Many Requests, request id: 68389fe4-f8ce-41e2-bbe1-83437379ecd6）",
+      "at": "2026-10-04T06:47:21.785Z"
+    }
+  ],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-04T05:43:34.850Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-04T06:12:32.554Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261004T055413Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-04T06:12:27.935Z"
+    },
+    {
+      "run_id": "20261004T071443Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-04T07:30:56.044Z"
+    }
+  ]
+}

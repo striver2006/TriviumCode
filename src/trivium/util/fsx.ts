@@ -147,6 +147,9 @@ export interface TempDirLeftover {
  * 查不了（权限等）按在说——宁可多提醒，不在可能含凭据的目录上断言「没有」。为空时不查。
  * 措辞由各载体自持（`zcodeTempDirResidueText`、`codexTempDirResidueText`）。
  *
+ * EV-204 起它也删 `workTreeHash` 的临时索引目录、自检夹具根与到期运行目录——最后一种不是 mkdtemp 的返回值，
+ * 而是 `pruneRunDirs` 在本项目桶里逐个列出的目录；「只删传进来的那个路径」照旧成立。
+ *
  * 与 `probes/zcode.ts` 同形臂的注入选项 `removeTempDir` 不是一回事（EV-200 计划双审 GLM-04）：那个是 zcode 薄包装
  * `removeZcodeTempDir` 的替身、返回整句提示；本函数返回结构化现场。
  */

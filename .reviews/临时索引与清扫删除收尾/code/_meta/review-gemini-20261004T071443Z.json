@@ -1,0 +1,44 @@
+{
+  "agreed": [
+    "workTreeHash 采用 tryRemoveTempDir 并在 finally 捕获删除失败，哈希正常返回，git 原生错误/超时正常抛出，且 indexResidueNoticed 保证单进程只警告一次，提示文案不断言目录全貌",
+    "selftest.ts 在 mkdtemp 返回后立即记录 made.dir，修复了此前建夹具中途失败时目录无法清理的走不到分支；finish 收尾删不掉时不覆盖自检结果，renderSelftest 如实输出残留提示而不说夹具已清理",
+    "retention.ts 到期整删失败时记账入 removeFailed 并落回凭据抹除，保证后续目录继续处理；会话启动待办提示准确说明目录 mtime 刷新后需再过一个保留期才重试整删，与文件系统行为完全一致",
+    "src/ 全树递归删除守卫（W 组）豁免表与源码实际的 5 处 recursive rm（install.ts 3 处、lock.ts 1 处、fsx.ts 1 处）完全相符",
+    "测试装置利用 git clean 过滤器沿 PPID 向上判定 review --worker，精准仅在 worker 漂移复算中摆锁，配合 mark 标记与 LOCK_CODES 动态匹配，用例隔离与变异读数严谨充分",
+    "设计文档 v1.3.84、RUNBOOK 运维手册排查说明与 BACKLOG 的 EV-204/206/207 登记内容与实现完全一致"
+  ],
+  "consulted": [
+    "src/trivium/util/git.ts",
+    "src/trivium/util/log.ts",
+    "src/trivium/selftest.ts",
+    "src/trivium/retention.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/lock.ts",
+    "src/install.ts",
+    "test/helpers/recursive-rm.ts",
+    "test/integration/worktree-hash-cleanup.test.ts",
+    "test/unit/temp-index-cleanup.test.ts",
+    "test/unit/retention.test.ts",
+    "test/unit/hooks.test.ts",
+    "doc/05_testing/REPORT_2026-10-04_temp_index_cleanup.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未在只读权限受限或非标准文件系统（如网络文件系统 NFS/SMB）上实测各错误码覆盖路径",
+    "未模拟进程在 workTreeHash 中途被强制 KILL 时的孤儿临时目录清理（已在 BACKLOG EV-204 残余中登记）"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本次代码变更完整实现了 EV-204「临时索引与清扫删除收尾」的设计要求。workTreeHash 与自检夹具、到期运行目录删除失败均不再顶替核心执行结果与原始错误；会话待办文案与重试时机精确吻合；全树递归删除豁免表与代码完全对账；过滤器摆锁装置精确定位 worker 且错误码处理完备，变异测试咬合充分。未发现正确性、安全性、契约漂移或并发隐患。",
+  "verdict": "approve"
+}

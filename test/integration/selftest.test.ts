@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { ASSET_ROOT, BUNDLE, bundleMissing, bundleSkipReason } from '../helpers/fixture.js';
 import { run } from '../../src/trivium/util/exec.js';
@@ -101,4 +103,70 @@ test('环境坏掉时如实报失败并保留夹具，绝不假装通过', { ski
   const p = /夹具保留在 (\S+)/.exec(out);
   assert.ok(p, '失败时必须保留夹具供排查');
   await fs.rm(p[1]!, { recursive: true, force: true });
+});
+
+/**
+ * EV-204 S3：自检通过而夹具根删不掉——结论不变（退 0、N/N 步），给出残留提示、不说「夹具已清理」。
+ *
+ * 此前 `finish` 里的裸递归删除抛出，而调用处是不带 await 的 `return finish(…)`，拒绝穿出 runSelftest，
+ * 一次已经得出结论的自检崩成内部错误。
+ *
+ * 摆锁：`GIT_CONFIG_GLOBAL` 指向私有配置挂 git clean 过滤器（`core.attributesFile`），只在 `GIT_INDEX_FILE` 为空
+ * （即 `initFixtureRepo` 的普通 `git add`，不是 `workTreeHash` 的临时索引）且 cwd 在钉住的 `TMPDIR` 下时，
+ * 往夹具的 `.git/trvlock/` 摆只读锁——锁在 `.git/` 里，不进工作树、不影响任何一步。
+ * **git 机制前提**：`GIT_CONFIG_GLOBAL`（约 git 2.32 起）、clean 过滤器继承 git 的环境；本机 git 2.54.0 实测。
+ * 过滤器第一次被调就写标记，先断言标记在。涉及权限，root 下跳过。
+ */
+test('EV-204 S3 夹具删不掉时结论不变、给出残留提示，不说「夹具已清理」', { skip: (bundleMissing && bundleSkipReason) || (process.getuid?.() === 0 && 'root 下只读目录锁不住') }, async () => {
+  const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-stc-')));
+  const home = path.join(base, 'home');
+  const tmp = path.join(home, 'tmp');
+  const mark = path.join(base, 'filter-ran');
+  try {
+    await fs.mkdir(tmp, { recursive: true });
+    const script = path.join(base, 'lock.sh');
+    await fs.writeFile(
+      script,
+      [
+        `: > '${mark}'`,
+        'if [ -z "${GIT_INDEX_FILE:-}" ]; then',
+        `  case "$(pwd -P)" in '${tmp}'/*)`,
+        '    if [ ! -d .git/trvlock ]; then mkdir .git/trvlock && : > .git/trvlock/f && chmod 500 .git/trvlock; fi ;;',
+        '  esac',
+        'fi',
+        'cat',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.writeFile(path.join(base, 'attributes'), '* filter=trvlock\n', 'utf8');
+    await fs.writeFile(
+      path.join(base, 'gitconfig'),
+      `[core]\n\tattributesFile = ${path.join(base, 'attributes')}\n[filter "trvlock"]\n\tclean = sh '${script}'\n`,
+      'utf8',
+    );
+
+    const r = await selftest([], { TMPDIR: tmp, HOME: home, GIT_CONFIG_GLOBAL: path.join(base, 'gitconfig') });
+    await fs.access(mark).catch(() => {
+      assert.fail('过滤器一次都没被调到——是 git 机制前提不成立（GIT_CONFIG_GLOBAL 等），不是被测改动的问题');
+    });
+    const out = r.stdout + r.stderr;
+    assert.equal(r.code, EXIT.OK, `删不掉夹具不该改写自检结论：\n${out}`);
+    assert.match(out, /自检：✅ 通过（(\d+)\/\1 步）/);
+    assert.match(out, /自检夹具目录删除失败（(EACCES|EPERM)）：~\/tmp\/trivium-selftest-\S+ 仍在——/);
+    assert.doesNotMatch(out, /夹具已清理/, '没删掉就不能说已清理');
+  } finally {
+    const walk = async (d: string): Promise<void> => {
+      await fs.chmod(d, 0o700).catch(() => {});
+      let entries;
+      try {
+        entries = await fs.readdir(d, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const e of entries) if (e.isDirectory()) await walk(path.join(d, e.name));
+    };
+    await walk(base);
+    await fs.rm(base, { recursive: true, force: true, maxRetries: 3 });
+  }
 });

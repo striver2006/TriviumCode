@@ -2012,3 +2012,87 @@ test('D3 · M1：拦截文案列出的后缀与判据同源（全集四家，含
   }
   assert.ok(ALL_AGENT_IDS.includes(DEFAULT_DRIVER), '前提：缺省 Driver 是已登记 Agent');
 });
+
+// ── 会话启动：到期运行目录删不掉（EV-204）──
+
+test('session-start：到期运行目录删不掉单列一行（目录与错误码），不再报「清扫本身失败」', { skip: process.getuid?.() === 0 && 'root 下只读目录锁不住' }, async () => {
+  const ctx = await fakeCtx();
+  const { repoId } = await import('../../src/trivium/review.js');
+  const { newStatus, writeStatus } = await import('../../src/trivium/status.js');
+  const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-hook-runs-'));
+  ctx.config.runtime.run_root = runRoot;
+  const dir = path.join(runRoot, repoId(ctx.projectRoot), 'R-stuck');
+  const lockedDir = path.join(dir, 'glm', 'home', '.zcode', 'cli');
+  try {
+    await fs.mkdir(lockedDir, { recursive: true });
+    await fs.writeFile(path.join(lockedDir, 'config.json'), '{}');
+    const s = newStatus({ runId: 'R-stuck', topic: 't', stage: 'plan', sides: ['glm'], models: {} });
+    s.phase = 'success';
+    await writeStatus(dir, s);
+    const old = new Date(Date.now() - 40 * 86_400_000);
+    const sp = path.join(dir, 'status.json');
+    const st = JSON.parse(await fs.readFile(sp, 'utf8')) as { heartbeat_at: string };
+    st.heartbeat_at = old.toISOString();
+    await fs.writeFile(sp, JSON.stringify(st), 'utf8');
+    for (const f of await fs.readdir(dir)) await fs.utimes(path.join(dir, f), old, old);
+    await fs.utimes(dir, old, old);
+    await fs.chmod(lockedDir, 0o500);
+
+    const r = await hookSessionStart(ctx);
+    const text = String((r.json?.['hookSpecificOutput'] as Record<string, unknown> | undefined)?.['additionalContext']);
+    assert.match(text, /1 个到期运行目录删不掉/);
+    assert.match(text, /R-stuck（(EACCES|EPERM)）/, '要给出目录与错误码');
+    assert.match(text, /再过一个保留期/, '不承诺下次会话会再试（计划双审 CODEX-01）');
+    assert.doesNotMatch(text, /运行目录清扫本身失败/, '删不掉一个目录不能再中止整轮清扫');
+    assert.equal(r.exitCode, EXIT.OK, 'session-start 永不阻断');
+  } finally {
+    await fs.chmod(lockedDir, 0o700).catch(() => {});
+    await fs.rm(runRoot, { recursive: true, force: true, maxRetries: 3 });
+    await fs.rm(ctx.projectRoot, { recursive: true, force: true, maxRetries: 3 });
+  }
+});
+
+test('removeFailedLine：最多列三个，超出写「等 N 个」', async () => {
+  const { removeFailedLine } = await import('../../src/trivium/hooks.js');
+  const four = ['/r/a', '/r/b', '/r/c', '/r/d'].map((dir) => ({ dir, code: 'EACCES' }));
+  const line = removeFailedLine(four);
+  assert.match(line, /^ {2}· 4 个到期运行目录删不掉：\/r\/a（EACCES）、\/r\/b（EACCES）、\/r\/c（EACCES）等 4 个——/);
+  assert.doesNotMatch(line, /\/r\/d/);
+  assert.doesNotMatch(removeFailedLine(four.slice(0, 3)), /等 \d+ 个/);
+});
+
+test('session-start：删不掉是唯一一项待办时也要注入（锁在载体之外，落回的抹除无事可做），不能早退成静默', { skip: process.getuid?.() === 0 && 'root 下只读目录锁不住' }, async () => {
+  const ctx = await fakeCtx();
+  const { repoId } = await import('../../src/trivium/review.js');
+  const { newStatus, writeStatus } = await import('../../src/trivium/status.js');
+  const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-hook-runs-'));
+  ctx.config.runtime.run_root = runRoot;
+  const dir = path.join(runRoot, repoId(ctx.projectRoot), 'R-only');
+  const lockedDir = path.join(dir, 'misc', 'locked');
+  try {
+    await fs.mkdir(lockedDir, { recursive: true });
+    await fs.writeFile(path.join(lockedDir, 'f'), '');
+    const s = newStatus({ runId: 'R-only', topic: 't', stage: 'plan', sides: ['glm'], models: {} });
+    s.phase = 'success';
+    await writeStatus(dir, s);
+    const old = new Date(Date.now() - 40 * 86_400_000);
+    const sp = path.join(dir, 'status.json');
+    const st = JSON.parse(await fs.readFile(sp, 'utf8')) as { heartbeat_at: string };
+    st.heartbeat_at = old.toISOString();
+    await fs.writeFile(sp, JSON.stringify(st), 'utf8');
+    for (const f of await fs.readdir(dir)) await fs.utimes(path.join(dir, f), old, old);
+    await fs.utimes(dir, old, old);
+    await fs.chmod(lockedDir, 0o500);
+
+    const r = await hookSessionStart(ctx);
+    const j = r.json?.['hookSpecificOutput'] as Record<string, unknown> | undefined;
+    assert.ok(j, '只有「删不掉」一项也要注入待办（早退条件要含 removeFailed）');
+    const text = String(j['additionalContext']);
+    assert.match(text, /1 个到期运行目录删不掉：.*R-only（(EACCES|EPERM)）/);
+    assert.doesNotMatch(text, /抹除失败/, '前提：落回的抹除无事可做，本例里「删不掉」是唯一一项');
+  } finally {
+    await fs.chmod(lockedDir, 0o700).catch(() => {});
+    await fs.rm(runRoot, { recursive: true, force: true, maxRetries: 3 });
+    await fs.rm(ctx.projectRoot, { recursive: true, force: true, maxRetries: 3 });
+  }
+});
