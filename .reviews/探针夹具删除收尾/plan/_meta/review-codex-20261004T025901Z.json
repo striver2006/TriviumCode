@@ -1,0 +1,69 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "按「外部依赖与环境假设 / 成本与配额 / 回滚成本」这一侧通读计划并回仓库核实。计划的**事实核对部分基本站得住**：我本轮用 grep 独立复算了 §1 的第 1、2、6 条（`src/trivium/probes`+`src/trivium/adapters` 里带 `recursive: true` 且不带 `maxRetries` 的 `fs.rm` 恰三处，另三处是单文件 force 删除；`.cleanup()` 调用点恰五处、都在外层 finally；claude-events 的两个锚点在新写法下确实原样保留），BACKLOG EV-199 原文「四处」确为误数；§1.2 关于 finally 往同一个 notes 数组推一条对调用方可见的说法也成立（codex.ts 的「没有可用模型」提前 return 就在同一 try 里）。夹具与探针的措辞收窄、`tildeHome` 归一、`copies` 传空、root 下跳过摆锁格、假入口摆不出现场就退 3——都与 EV-197/EV-200 既有先例一致，回滚面只是内部函数签名与文案，无迁移成本。但 §2.4 用来选「结构断言、不开注入口」的事实前提被仓库自己的测试否证（CODEX-01），另有三处范围/口径问题会让「清零」与验证证据的名不副实：W3 的论域外仍有同族裸删（CODEX-02）、W1 靠手工枚举文件名与手数的 5（CODEX-03）、§3 第 4 步没钉 selftest 跑的是哪份产物且缺重装步骤（CODEX-04）、全量两次没预先定 EV-201 已知偶发红的处置口径（CODEX-05）。逐条裁决即可，方向不必照我说的改。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "§2.4（五处接线怎么守）与 §4 残余最后一条",
+      "problem": "§2.4 断言「五处调用点所在的探针函数都要拉真实 CLI 才走得到 finally」，据此否掉行为级覆盖、只留源码结构断言；§4 又把「真实探针里跑到了 finally 零配额做不到」写进残余。这个前提在本仓库里不成立：已有零配数的端到端装置就是拿假入口把整个探针函数跑到底的，外层 finally 必然执行。也就是说，「接线到底通不通」这件事有更便宜的等价路径，而计划按一条失实的前提放弃了它；若照此定稿，残余与测试报告里会留下一条与仓库事实相反的记录。",
+      "evidence": "读 `test/integration/claude-structured-probe.test.ts`：文件头写「`probeClaude` 此前**零端到端覆盖**……本文件要补的是纯函数断不到的那一段」，它 import `probeClaude`、在 before 里造 `#!/bin/sh` 假入口，用例里 `await probeClaude(fakeBin, { assetRoot })`（第 148、162、181 行等）。读 `src/trivium/probes/claude.ts`：`probeClaude` 在第 1082 行 `createFixture()`，第 1465 行的 `await fx.cleanup()` 就在包住这一段的外层 finally 里——假入口同样走到。另读 `test/unit/zcode-doctor-probe-home.test.ts:245` 与 `test/unit/zcode-provider-env.test.ts:740` 用假 entry 调 `probeZcode`，同样落到 `probes/zcode.ts:1722` 的 finally。本轮实际执行：`grep -rn \"probeClaude(\\|probeCodex(\\|probeAgy(\\|probeZcode(\" test/`。",
+      "suggestion": "二选一并写进计划：①在 I/F 组之外补一条行为级用例（假入口在作为 cwd 的夹具根下摆一个 0o500 的 locked/ 子目录，断言 `probeClaude` 返回的 notes 里出现该句提示），复用 claude-structured-probe 的假入口装置，零配额；②维持纯结构断言，但把 §2.4 与 §4 的措辞改成如实的取舍理由（例如「只补 claude 一侧行为级用例的成本是……」），不要把「零配额跑不到 finally」当作依据留在残余与设计/报告里。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§1 第 1 条的 grep 口径与「恰三处」我独立复算一致（`fs.rm(` + `recursive: true` + 无 `maxRetries`，限 probes/adapters），BACKLOG EV-199 的「四处」确为误数，结案时改准是对的；另三处单文件 force 删除不入本族也判得对。",
+    "§1 第 2 条对 JS 语义的核对正确：五处的返回值对象都引用同一个 notes 数组，finally 里 push 对调用方可见，含 codex.ts 的提前 return（我读到那段确在同一 try 内）；因此「不改控制流」成立。",
+    "§1 第 6 条成立：新写法保留 `await fx.cleanup()` 字面，claude-events 的两个锚点与「带括号的 createMemoryFixture( 恰一处」都不受影响（我读了该用例全文）。",
+    "决策四的两处收窄我认为是对的且更可核：「只有探针夹具文件」→「是探针写的夹具文件…与本次探测的临时文件」、「没有真实凭据」→「探针没有往里放真实凭据」；夹具内容核对无误（记忆夹具确实没有 .env，见 `probes/fixture.ts:110-135`）。",
+    "`copies` 传空数组不做现场查，与 `tryRemoveTempDir` 文档块「为空时不查」一致，也不改变任何判据。",
+    "夹具工厂只删 `makeTempDir` 返回值这一点，计划明确复述了 2026-09-20 事故后的规矩，写法保守正确。",
+    "测试摆锁的先例口径被照搬得对：root 下跳过摆锁格、假入口摆不出即退 3、收尾重 readdir 恢复权限再整删私有根——比 EV-200 那份 `after` 里直接裸 rm 更稳。",
+    "`initFixtureRepo` 用仓库级 config 设 user.name/user.email/commit.gpgsign 并 `--no-verify`（`src/trivium/util/git.ts:431-441`），所以钉 HOME 之后夹具仍能建，「只用本机 git」的零配额假设成立。",
+    "notes 文本不参与任何结论派生（`src/trivium/doctor.ts:230` 明确只读 `structuredArmCause`、不读 notes），多推一条 ⚠️ 提示不会翻转 blocker/warning，删成功时输出逐字不变的判断因此可信。",
+    "回滚成本很低：`Fixture.cleanup` 与 `probeCodexIsolation` 的签名只是内部契约，src 内五处 + `test/unit/deny-matrix.test.ts` 的十余处调用都忽略返回值、类型改动不破坏它们；无 schema/CLI/退出码变更，不需要迁移或回滚程序。"
+  ],
+  "not_covered": [
+    "未运行任何测试、构建或 doctor：本轮全部是只读核对（git log/status、grep、sed 读文件），关于「新用例会不会红/耗时」的判断都是推理。",
+    "未复算 `os.tmpdir()` / `os.homedir()` 在本机对 TMPDIR/HOME 的实际响应（计划第 1.7 条的说法与我掌握的 Node 行为一致，但我没有实测）。",
+    "变异装置的 12 条 case 与 targets/find 唯一命中的可行性没有逐条核（只读了 `scripts/mutation-check.mjs` 的闸口说明）；闸 7「每条 find 在目标文件恰好命中一处」在 M9/M10/M11 上的落地性由 Driver 自己确认。",
+    "另一位审查员的角度（不可逆决策、对外契约、迁移/回滚路径的选型面）不在我这侧，本审查未覆盖。",
+    "决策一~七本身是用户定的，我未质疑其取舍，只核其事实前提与执行细节。",
+    "`probes/agy.ts` 与 `probes/codex.ts` 是否也能像 claude/zcode 那样被假入口端到端驱动（CODEX-01 建议①的可推广性）我没有逐条读完，只确证了 claude 一侧。",
+    "未读 `.trivium/` 与运行目录（禁读与告警清单），因此未核对本主题任务文件原文（决策一~七的完整字面）。"
+  ],
+  "consulted": [
+    "AGENTS.md",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/selftest.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/cli.ts",
+    "test/unit/claude-events.test.ts",
+    "test/unit/codex-auth-probe.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/zcode-doctor-probe-home.test.ts",
+    "test/unit/zcode-provider-env.test.ts",
+    "test/integration/claude-structured-probe.test.ts",
+    "scripts/mutation-check.mjs",
+    "package.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-10-03_zcode_probe_arm_cleanup.md",
+    "doc/05_testing/README.md",
+    "doc/07_manuals/QUICKSTART.md",
+    "doc/04_development/GUIDE_env_setup.md"
+  ]
+}

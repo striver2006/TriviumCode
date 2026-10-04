@@ -1,0 +1,58 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "这份计划与仓库现状的对账精度非常高。§1 七条现状我逐项核到 02dcab2 的代码：五处调用点（agy.ts:362、claude.ts:1465/:1530、codex.ts:1041、zcode.ts:1722）确为各探针函数外层 finally 的裸 cleanup，且五个函数的 notes 数组都被返回值按引用带出（codex.ts:828 的 try 内提前 return 同样命中「先求值返回对象、再跑 finally」的 JS 语义）；派生清单恰好三处（fixture.ts:84/:134、codex.ts:666），BACKLOG EV-199 的「本条四处」与其括号列举自相矛盾，计划改准为三处是对的；claude-events 源序断言的两个锚点在新写法下确实原样保留。三处措辞偏离决策二的论证我按代码事实独立核实成立：记忆夹具确无 .env（fixture.ts:112-135 只写 CLAUDE.md、README.md、git 建仓），各侧 CLI 确以夹具根为 cwd 运行（claude.ts:1503 的 cwd: memFx.root；设计 §3.5 的 scratch_paths 一格正是为记 CLI 落文件而存在），隔离探针基线短路（codex.ts:657）时目录里只有 config.toml。测试设计有仓内既成先例（0o500 锁出 EACCES 已有 codex-auth-probe.test.ts:301-305 断言 left.code === 'EACCES' 支撑），F/I 组与 probeCodexIsolation 现语义逐格对上，变异表逐条咬合成立（M8 仅 W2 可咬，计划在 §4 如实承认）。文档四处落点与 AGENTS.md 同步清单对齐：RUNBOOK :279 正是残留提示那一行，设计版本 v1.3.82 之后顺延 v1.3.83 正确，报告与证据命名合乎 05_testing 惯例。唯一意见是 W3 括号截取的实现叮咛（GLM-01，nit）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §2.4 W3（清零守卫）",
+      "problem": "W3 用「按单个调用的参数括号截取后判 recursive」来数 fs.rm 递归删除，但没钉死截取机制。扫描面里今天就存在嵌套括号实参：adapters/codex-home.ts:177 是 fs.rm(path.join(codexHome, name), { force: true })。若实现落成单层截取（形如 fs\\.rm\\(([^)]*)\\)），它会截在 path.join 的闭括号上；更要紧的是反方向：未来有人写 fs.rm(path.join(…), { recursive: true }) 这类形态时，单层截取会在 recursive 出现前截断、判成 0——恰是 W3 承诺「下一处新写的裸递归删除当场红」的那一类，守卫会静默漏报。全部现有守卫测试（含 M1/M2/M6 变异）都是非嵌套形态，验证流程发现不了这个洞。仓里 v1.3.8 版本记录的教训（「守卫被守着也不等于守对了东西」）正是这个形状。",
+      "evidence": "计划 §2.4 原文「正则按单个调用的参数括号截取后判 recursive」；src/trivium/adapters/codex-home.ts:177（本次 Grep 实读）`await fs.rm(path.join(codexHome, name), { force: true });` 为嵌套括号实参；src/trivium/probes/agy.ts:182 与 src/trivium/adapters/zcode.ts:591 为平铺实参的对照例。",
+      "suggestion": "实现 W3 时用括号深度配平截取单次调用的完整实参（定位 fs.rm( 后按深度计数到配平闭括号），并在新测试文件里给 W3 自身补两条自测：一条负例（嵌套括号 + recursive: true 的源码串必须被计数为 1）、一条正例（codex-home.ts:177 形态的 path.join 单文件 force 删除不得误报）。不需要改计划结构，落实现时带着这条即可。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§1 现状七条逐项与 02dcab2 代码核实相符：五处调用点行号与形态、notes 引用语义（含 codex.ts:828 提前 return 分支）、夹具内容清单、隔离探针基线短路语义（codex.ts:656-662）、claude-events 两锚点（test/unit/claude-events.test.ts:1047-1061）、run() 的 env 叠加（util/exec.ts:194-198）全部对上。",
+    "派生清单恰好三处正确，BACKLOG EV-199「本条四处（两个 cleanup、codex 隔离探针）」确系数错，结案改准为三处的处理对。",
+    "措辞偏离决策二的三处论证按代码事实独立成立：记忆夹具无 .env；CLI 以夹具根为 cwd 会往残留里落文件，「只有夹具文件」确实说过头；基线短路时隔离目录里没有 CLI 产物。「探针没有往里放真实凭据」比「没有真实凭据」的口径更可核。",
+    "§2.4 取源码结构断言、不给夹具工厂开注入口的取舍成立：注入口同样零配额跑不到「探针函数走到 finally」，却要往四个探针函数签名里穿选项；结构断言与 claude-events 源序断言、EV-198 的 W 格同形，是仓内既有做法。",
+    "测试设计可测且有先例：私有根 + HOME/TMPDIR 钉死 + 0o500 锁的摆法与 codex-auth-probe / zcode 系测试同构，EACCES 断言有既成事实支撑；F1-F5、I1-I5 各格断言与现语义逐格一致，F5 顺带覆盖了 RUNBOOK「手工删除」等价路径的幂等性。",
+    "变异表逐条咬合核对成立：M1-M12 的预期 catcher 与 F/I/W 分组对得上，M8 仅 W2 可咬并与 §4 残余的承认一致，M7 守「结论不因删不掉翻转」；装置约束（只认 src 目标、expect 单套件、只记 fail 数）与 scripts/mutation-check.mjs 实际契约相符，替换串 $ 特殊字符扫描的字符集与 String.replace 的特殊形态一致。",
+    "文档落点齐全且位置正确：RUNBOOK_pipeline_ops.md:279 正是残留提示行（现六个前缀，补三个顺理）；设计文档最新 v1.3.82，v1.3.83 顺延正确，§3.5 存在；BACKLOG 结案含残余登记；报告与证据命名、doc/05_testing/README.md 登记均合乎惯例与 AGENTS.md 同步清单；package.json（0.1.0）与设计版本解耦，无需连带。",
+    "Fixture.cleanup 类型变更与 probeCodexIsolation 返回值变更的波及面为零：全仓只有五个调用点、probeCodex 一个调用方，测试无直接消费者（Grep 核实）。"
+  ],
+  "not_covered": [
+    "决策一~七的用户原话无从独立核对（task.json 的 goal 字段本身截断）；三处措辞偏离仅按代码事实判断其内在成立，未比对计划对原话的引用是否忠实。",
+    "所有「会绿/会红」均为静态推理：本轮只读审查，未运行构建、测试、变异或 doctor --selftest。",
+    "范围外的同族裸递归删除未审计（selftest.ts:202/:387、lock.ts:522、retention.ts:237、util/git.ts:121）——超出本题「探针与适配器」的用户口径，仅记录其存在，不属于本计划缺陷。",
+    "doctor 对四侧探针的串并行调度未核实；不影响本题结论（各侧夹具目录与 notes 互不相交）。",
+    "W3 断言的具体实现尚不存在，GLM-01 针对的就是该实现层；另变异规格里 claude.ts 两处调用点若 find 串不带 fx/memFx 区分上下文会被装置闸 7 拒跑（响亮失败、非静默），未单列为意见。"
+  ],
+  "consulted": [
+    ".reviews/探针夹具删除收尾/plan/2026-10-04-探针夹具删除收尾-claude.md",
+    ".reviews/探针夹具删除收尾/task.json",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/util/exec.ts",
+    "test/unit/claude-events.test.ts",
+    "scripts/mutation-check.mjs",
+    "doc/08_project/BACKLOG.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/README.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "package.json"
+  ]
+}

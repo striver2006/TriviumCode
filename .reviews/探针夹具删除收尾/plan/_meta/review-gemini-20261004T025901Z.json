@@ -1,0 +1,49 @@
+{
+  "agreed": [
+    "夹具工厂 cleanup 改为调用 tryRemoveTempDir(root, []) 并将返回值拓宽为 Promise<string | null>，5 处调用点利用 JS 的 finally 引用语义无侵入推进 notes，不破坏现有控制流且删除成功时 notes 保持逐字不变。",
+    "残留提示文案（fixtureResidueText / codexIsolationResidueText）设计严谨：区分记忆夹具无 .env 的事实，并将「无真实凭据」诚实改写为「探针没有往里放真实凭据」，遵循了 EV-200 的教训。",
+    "五处接线采用 W1/W2/W3 源码结构断言而非侵入修改探针函数签名以开注入口，既兼顾了零配额要求，又通过 W3 确保 probes 与 adapters 下形如 fs.rm({ recursive: true }) 的裸删调用彻底清零。",
+    "保留 'await fx.cleanup()' 原样字面量，避免破坏 claude-events.test.ts 的源序断言锚点。",
+    "零配额单测覆盖周全：F 组测试了主/记忆夹具的删除成功、EACCES 失败提示、家目录 ~ 归一及二次调用幂等清理；I 组用假入口验证了 codex 隔离探针的判定翻转不因删除失败受损。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/zcode.ts",
+    "test/unit/claude-events.test.ts",
+    "src/trivium/util/fsx.ts",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/doctor.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/README.md",
+    "test/unit/codex-auth-probe.test.ts",
+    "src/trivium/util/exec.ts",
+    "test/contract/fixture-credentials.test.ts",
+    "test/integration/selftest.test.ts",
+    "test/contract/entry-render-parity.test.ts",
+    "test/unit/probe-verify.test.ts",
+    "skills/dual-critic/agents/trivium-critic.md",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/parse.ts",
+    "test/unit/agy-events.test.ts"
+  ],
+  "findings": [],
+  "not_covered": [
+    "因审查员只读约束与零配额限制，未实际拉起各厂商真实 CLI 执行探针探测全流程。",
+    "夹具初始化阶段因磁盘耗尽等原因导致的 mkdtemp 或 git init 自身抛穿异常，属于计划明确声明的不做项与既有残余，未在单测中模拟。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "探针夹具删除收尾（EV-199）计划详尽周密，方向与范围界定准确。\n夹具工厂 cleanup 返回类型安全拓宽为 Promise<string | null>，与各探针函数内层 finally 接线自然，彻底解决临时目录删除失败顶替探针结论导致 doctor 崩溃的问题。\n残留文案设计严谨，区分主夹具与记忆夹具内容，并诚实限定为「探针未放凭据」，吸取了既有教训。\n零配额测试设计完善，F 组与 I 组全面覆盖权限锁与幂等删除，W1-W3 源码结构断言有效防范回潮且清零了 probes 与 adapters 下的裸递归删除。",
+  "verdict": "approve"
+}
