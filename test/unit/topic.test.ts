@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   resolveTopicName, resolveTopicReadOnly, resolveTopic, listTopics, locateSubject, topicExists,
@@ -9,6 +8,7 @@ import {
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { Ctx } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /*
  * topic.ts 原先只被集成用例间接覆盖。它决定「审的是哪份原稿」与「什么时候建目录」，
@@ -16,7 +16,7 @@ import type { Ctx } from '../../src/trivium/types.js';
  */
 
 async function fakeCtx(): Promise<Ctx> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-topic-'));
+  const root = await scratchDir('trivium-topic-');
   return { config: defaultConfig(), projectRoot: root, archiveRoot: path.join(root, '.reviews'), triviumDir: path.join(root, '.trivium'), sources: ['<test>'] };
 }
 

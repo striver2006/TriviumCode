@@ -7,7 +7,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   BUILD_WARN_CHECK_FAILED,
@@ -34,8 +33,9 @@ import { run } from '../../src/trivium/util/exec.js';
 import { newRunMeta } from '../../src/trivium/meta.js';
 import { validateRunMeta } from '../../src/trivium/schemas.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { scratchDir } from '../helpers/scratch.js';
 
-const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'trivium-buildstamp-'));
+const tmp = () => scratchDir('trivium-buildstamp-');
 
 /** 一个像本仓的最小仓库：作用面内外各有文件 */
 async function selfLikeRepo(name = SELF_PACKAGE_NAME): Promise<string> {

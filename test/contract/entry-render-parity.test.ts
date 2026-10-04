@@ -9,6 +9,7 @@ import {
 } from '../../src/entry-render.js';
 import { AGENTS, ALL_AGENT_IDS, agentById, guardProfileOf } from '../../src/trivium/agents/registry.js';
 import { describeGuard, gateHoldNotice } from '../../src/trivium/hook-config.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /**
  * 入口资产单源渲染的契约（M10b 第 2 步；计划 r5 §5.1、r9 §2、r10 §2.4 / §3.1.3）。
@@ -375,7 +376,7 @@ test('调用写法只登记在注册表：载体 yaml 里再写 invocation 当�
   // 产物侧：每家的 {{cmd:…}} 渲染结果就是注册表的写法
   for (const c of src.carriers) assert.equal(c.invocation, agentById(c.agent)!.entryInvocation, c.agent);
   // 源侧：把真实载体 yaml 拷进临时源目录、给其中一份加回 invocation，加载即抛
-  const tmp = await fs.mkdtemp(path.join((await import('node:os')).tmpdir(), 'trivium-carriers-'));
+  const tmp = await scratchDir('trivium-carriers-');
   const dst = path.join(tmp, 'skills-src/carriers');
   await fs.mkdir(dst, { recursive: true });
   const srcDir = path.join(REPO_ROOT, 'skills-src/carriers');

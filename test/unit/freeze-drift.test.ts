@@ -12,9 +12,10 @@ import {
   GIT_DEFAULT_TIMEOUT_MS, GitTimeoutError, initFixtureRepo, treeExists, workTreeHash,
 } from '../../src/trivium/util/git.js';
 import { run } from '../../src/trivium/util/exec.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 async function repo(): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-drift-'));
+  const dir = await scratchDir('trivium-drift-');
   await fs.mkdir(path.join(dir, 'src'), { recursive: true });
   await fs.mkdir(path.join(dir, '.reviews/t/plan/_meta'), { recursive: true });
   await fs.writeFile(path.join(dir, 'src/a.ts'), 'export const a = 1;\n');
@@ -277,7 +278,7 @@ test('EV-139 U5：比对超时 ⇒ timeout，且不再查对象（项目根不�
 });
 
 test('EV-139 U5′：比对快速失败之后核对对象共用一份有界预算（逐次显式传剩余毫秒）', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-drift-budget-'));
+  const dir = await scratchDir('trivium-drift-budget-');
   const seen: Array<number | undefined> = [];
   // 只记录传给 treeExists 的超时，不改它的行为：非 git 目录让核对当场出错，走 git_error
   const u = await classifyCompareFailure(dir, 'a'.repeat(40), 'b'.repeat(40), new Error('boom'), {
@@ -289,7 +290,7 @@ test('EV-139 U5′：比对快速失败之后核对对象共用一份有界预�
 });
 
 test('EV-139 U6：核对对象时 git 也出错（非 git 目录）⇒ git_error，两段首行都在', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-drift-nogit-'));
+  const dir = await scratchDir('trivium-drift-nogit-');
   const u = await classifyCompareFailure(dir, 'a'.repeat(40), 'b'.repeat(40), new Error('比对炸了\n第二行不要'));
   assert.equal(u.cause, 'git_error');
   assert.match(u.detail, /^比对炸了；核对对象时：git cat-file 失败（退出码 \d+）/);

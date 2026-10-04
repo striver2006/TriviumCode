@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { diffAgainst, initFixtureRepo } from '../../src/trivium/util/git.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /**
  * 未跟踪文件进补丁的边角（审查意见 GLM-04）。
@@ -15,7 +15,7 @@ import { diffAgainst, initFixtureRepo } from '../../src/trivium/util/git.js';
  */
 
 async function repo(): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-untracked-'));
+  const dir = await scratchDir('trivium-untracked-');
   await fs.writeFile(path.join(dir, 'tracked.ts'), 'export const a = 1;\n');
   await initFixtureRepo(dir);
   return dir;

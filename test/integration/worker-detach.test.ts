@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { groupsWithMark, killGroup } from '../helpers/proc.js';
 import {
   killProcessTree, spawnDetached, processAlive, run, terminateProcessGroup, type DetachedChildWatch,
 } from '../../src/trivium/util/exec.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /**
  * R-A 的验收（修订版 M2 计划 §6）：两条断言，不是一条模糊判据。
@@ -24,7 +24,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXEC_MODULE = path.resolve(HERE, '../../src/trivium/util/exec.js');
 
 async function tmpDir(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'trivium-detach-'));
+  return scratchDir('trivium-detach-');
 }
 
 async function waitFor(check: () => Promise<boolean>, timeoutMs: number): Promise<boolean> {
@@ -174,7 +174,7 @@ test('processAlive 能区分「同一进程」与「PID 被复用」', async () 
 // ── --cancel 必须连带杀掉厂商子进程（实测遗弃过）──
 
 test('killProcessTree 杀整组：子孙进程不被遗弃给 init', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-tree-'));
+  const dir = await scratchDir('trivium-tree-');
 
   /*
    * 造一棵真进程树：detached 的父进程再 spawn 一个长睡子进程（**不带** detached，与父进程同组）。

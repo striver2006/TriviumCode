@@ -23,6 +23,7 @@ import {
 import { judgeSide, matchConsulted } from '../../src/trivium/guard.js';
 import { TRIVIUM_DIR, defaultConfig } from '../../src/trivium/config.js';
 import type { CriticRequest, CriticResult, Review } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const ROOT = '/proj';
 const COMMAND_TRACE: TraceCapability = { traceShape: 'command-trace', rejectionRecorded: false };
@@ -441,7 +442,7 @@ test('归因扣除：尾段子串不相干文件不得被误扣（r7 AGY-03 ≡ 
   const { promises: fs } = await import('node:fs');
   const { initFixtureRepo, workTreeHash } = await import('../../src/trivium/util/git.js');
 
-  const dir = await fs.mkdtemp(nodePath.join(os.tmpdir(), 'trivium-subhit-'));
+  const dir = await scratchDir('trivium-subhit-');
   await fs.writeFile(nodePath.join(dir, 'subject.ts'), 'export const s = 1;\n');
   // 漂移文件名是另一条证据路径的**尾段子串**：data.ts ⊂ metadata.ts
   await fs.writeFile(nodePath.join(dir, 'data.ts'), 'export const d = 1;\n');
@@ -494,7 +495,7 @@ test('归因：不可用侧超时被跳过，仍须按其能力声明判定（r6
   const { promises: fs } = await import('node:fs');
   const { initFixtureRepo, workTreeHash } = await import('../../src/trivium/util/git.js');
 
-  const dir = await fs.mkdtemp(nodePath.join(os.tmpdir(), 'trivium-attrib-'));
+  const dir = await scratchDir('trivium-attrib-');
   await fs.writeFile(nodePath.join(dir, 'a.ts'), 'export const a = 1;\n');
   await fs.writeFile(nodePath.join(dir, 'b.ts'), 'export const b = 1;\n');
   await initFixtureRepo(dir);
@@ -577,7 +578,7 @@ test('归因扣除：斜杠对齐后缀与右端开放两族都不得误扣（r8
   const { promises: fs } = await import('node:fs');
   const { initFixtureRepo, workTreeHash } = await import('../../src/trivium/util/git.js');
 
-  const dir = await fs.mkdtemp(nodePath.join(os.tmpdir(), 'trivium-bound-'));
+  const dir = await scratchDir('trivium-bound-');
   await fs.writeFile(nodePath.join(dir, 'subject.ts'), 'export const s = 1;\n');
   await fs.writeFile(nodePath.join(dir, 'README.md'), '# root\n');
   await initFixtureRepo(dir);

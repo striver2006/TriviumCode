@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync, promises as fs } from 'node:fs';
 import { execFile } from 'node:child_process';
 import path from 'node:path';
-import os from 'node:os';
 import { promisify } from 'node:util';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const run = promisify(execFile);
 
@@ -51,7 +51,7 @@ function loadHookCommands(): Map<string, string> {
 const BLOCKING = ['pre-write', 'pre-bash', 'pre-commit', 'stop'];
 
 async function fakeProject(opts: { initialized: boolean; wrapper: 'ok' | 'missing' | 'noexec' }) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-guard-'));
+  const root = await scratchDir('trivium-guard-');
   await fs.mkdir(path.join(root, '.trivium/bin'), { recursive: true });
   if (opts.initialized) await fs.writeFile(path.join(root, '.trivium/config.yaml'), 'schema: trivium.config.v1\n');
   if (opts.wrapper !== 'missing') {

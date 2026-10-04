@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   assertVerifyConfigured,
@@ -15,6 +14,7 @@ import {
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { Ctx } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /**
  * 编译测试出口（设计 §14）。
@@ -24,7 +24,7 @@ import type { Ctx } from '../../src/trivium/types.js';
  */
 
 async function ctxWith(build: string[], testCmds: string[]): Promise<Ctx> {
-  const raw = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-verify-'));
+  const raw = await scratchDir('trivium-verify-');
   const root = await fs.realpath(raw);
   const cfg = defaultConfig();
   cfg.verify.build = build;

@@ -12,7 +12,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   UNREADABLE_RUN_META_EXIT_BODY, UNREADABLE_RUN_META_LIST_LIMIT, runMetaPaths, unreadableRunMetaExit,
@@ -28,11 +27,12 @@ import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { ArchiveLayout } from '../../src/trivium/archive.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { CIRCULAR_EXIT_PATTERNS, assertUnreadableExit } from '../helpers/unreadable-exit.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const TOPIC = '留痕读不出-出口';
 
 async function layoutWithUnreadable(runId: string): Promise<{ l: ArchiveLayout; file: string }> {
-  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-unreadable-exit-')));
+  const root = await fs.realpath(await scratchDir('trivium-unreadable-exit-'));
   const l: ArchiveLayout = { archiveRoot: path.join(root, '.reviews'), topic: TOPIC };
   const [file] = runMetaPaths(l, 'plan', [runId]);
   await fs.mkdir(path.dirname(file!), { recursive: true });

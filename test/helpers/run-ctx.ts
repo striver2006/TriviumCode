@@ -6,14 +6,13 @@
  * `seedDeadRun`）语义不同，各留在自己的文件里。
  */
 import path from 'node:path';
-import os from 'node:os';
-import { promises as fs } from 'node:fs';
 import { defaultConfig } from '../../src/trivium/config.js';
 import type { Ctx } from '../../src/trivium/types.js';
+import { scratchDir } from './scratch.js';
 
-/** 一个 mkdtemp 下的最小 Ctx：运行根、归档根、`.trivium` 都在它里面 */
+/** 一个 mkdtemp 下的最小 Ctx：运行根、归档根、`.trivium` 都在它里面；目录经 `scratchDir` 登记、本进程退出时删（EV-208） */
 export async function fakeCtx(prefix = 'trivium-proto-'): Promise<Ctx> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  const root = await scratchDir(prefix);
   const cfg = defaultConfig();
   cfg.runtime.run_root = path.join(root, 'runs');
   return {

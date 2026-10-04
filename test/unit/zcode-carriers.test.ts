@@ -14,7 +14,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   checkZcodeCarriers,
@@ -25,8 +24,9 @@ import {
 import { defaultConfig } from '../../src/trivium/config.js';
 import { readScrubSentinel, scrubSideDir } from '../../src/trivium/scrub.js';
 import type { CriticResult } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
-const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ev112-'));
+const tmp = () => scratchDir('trivium-ev112-');
 const SID = 'sess_ev112';
 const FAKE_MODEL = 'p/fake-model';
 const FAKE_CRED = ['Qx7mZp2L', 'k9Rt4Wv1', 'Ab3Cd5Ef', '7Gh9Jk2M'].join('');

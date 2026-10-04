@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { pruneRunDirs, scrubAllRunRoot } from '../../src/trivium/retention.js';
 import { defaultConfig } from '../../src/trivium/config.js';
@@ -11,11 +10,12 @@ import { processStartTime } from '../../src/trivium/util/exec.js';
 import { wiredAdapter } from '../../src/trivium/adapters/index.js';
 import { readScrubSentinel } from '../../src/trivium/scrub.js';
 import { TOOL_TRACE_CAPABILITY, failedResult, type CriticAdapter } from '../../src/trivium/adapters/base.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const DAY = 86_400_000;
 
 async function bucket() {
-  const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ret-'));
+  const runRoot = await scratchDir('trivium-ret-');
   const projectRoot = '/tmp/some-project';
   const cfg = defaultConfig();
   cfg.runtime.run_root = runRoot;
@@ -242,7 +242,7 @@ test('抹除失败进 scrubFailed 并带原因；dryRun 与不传 adapters 都�
  * 会话启动清扫只进本项目那一个桶，别的桶要等它自己再开一次会话。
  */
 async function twoBuckets() {
-  const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-sweep-'));
+  const runRoot = await scratchDir('trivium-sweep-');
   const cfg = defaultConfig();
   cfg.runtime.run_root = runRoot;
   const mine = path.join(runRoot, repoId('/tmp/project-a'));

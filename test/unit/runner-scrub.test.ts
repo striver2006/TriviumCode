@@ -8,18 +8,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { runBothSides, type SideProgress } from '../../src/trivium/runner.js';
 import { TOOL_TRACE_CAPABILITY, failedResult, type AdapterContext, type CriticAdapter } from '../../src/trivium/adapters/base.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { readScrubSentinel } from '../../src/trivium/scrub.js';
 import type { CriticId, CriticRequest, CriticResult } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const CTX: AdapterContext = { cfg: defaultConfig(), nodePath: process.execPath };
 
 async function req(): Promise<{ req: CriticRequest; sideDir: string }> {
-  const run = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-runner-scrub-'));
+  const run = await scratchDir('trivium-runner-scrub-');
   const sideDir = path.join(run, 'glm');
   await fs.mkdir(path.join(sideDir, 'out'), { recursive: true });
   return {

@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { recordApproval, humanDecidedThisRound } from '../../src/trivium/approval.js';
 import { setGate, getGate } from '../../src/trivium/state.js';
@@ -9,6 +8,7 @@ import { readTask } from '../../src/trivium/meta.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { Ctx } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const TOPIC = '审批';
 const STALE = 120_000;
@@ -16,7 +16,7 @@ const STALE = 120_000;
 const TASK_FILE = 'task.json';
 
 async function fakeCtx(): Promise<Ctx> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-approval-'));
+  const root = await scratchDir('trivium-approval-');
   const triviumDir = path.join(root, '.trivium');
   await fs.mkdir(triviumDir, { recursive: true });
   return { config: defaultConfig(), projectRoot: root, archiveRoot: path.join(root, '.reviews'), triviumDir, sources: ['<test>'] };

@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   finalizeCancelledRunMeta, newRunMeta, readTask, registerRun, writeRunMeta, type TaskLock,
@@ -9,6 +8,7 @@ import {
 import { metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { validateRunMeta } from '../../src/trivium/schemas.js';
 import type { RunMeta } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /**
  * EV-128：`review --cancel` 的归档侧收尾（计划 r2 §3.2 / §4.1 R1～R7）。
@@ -21,7 +21,7 @@ const TOPIC = '取消收尾';
 const RUN = '20260926T000000Z';
 
 async function setup(): Promise<{ layout: ArchiveLayout; lock: TaskLock; runJson: string; taskJson: string }> {
-  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-cancel-')));
+  const root = await fs.realpath(await scratchDir('trivium-cancel-'));
   const layout: ArchiveLayout = { archiveRoot: path.join(root, '.reviews'), topic: TOPIC };
   const lock: TaskLock = { triviumDir: path.join(root, '.trivium'), heartbeatStaleMs: 120_000 };
   return {

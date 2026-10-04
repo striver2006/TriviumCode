@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   setGate, StateCorruptError,
@@ -9,11 +8,12 @@ import {
   releaseRunningGateEntry,
 } from '../../src/trivium/state.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const STALE = 120_000;
 
 async function tmp(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'trivium-state-'));
+  return scratchDir('trivium-state-');
 }
 
 function entry(over: Partial<GateEntry> = {}): GateEntry {

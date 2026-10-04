@@ -5,14 +5,14 @@
  * 因为被测的正是「另一个进程在真实文件系统上的行为」。
  */
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { chmodSync, existsSync, readdirSync, rmSync, writeSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import YAML from 'yaml';
 import { fileURLToPath } from 'node:url';
 import { run } from '../../src/trivium/util/exec.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { encodeStubConfig, STUB_ENV_VAR, type StubConfig } from '../../src/trivium/adapters/stub.js';
+import { scratchDir } from './scratch.js';
 
 /**
  * 运行时本文件位于 `dist/test/test/helpers/`，源码位于 `test/helpers/`，
@@ -71,74 +71,11 @@ export interface Fixture {
   topic: string;
 }
 
-/** 设为 `1` 时进程退出不删夹具，只打一行列出路径，便于排查（EV-207） */
-export const KEEP_FIXTURES_ENV = 'TRIVIUM_KEEP_FIXTURES';
+/** 设为 `1` 时进程退出不删夹具（EV-208 起管全部经 `scratch.ts` 建的测试临时目录），只打一行列出路径，便于排查（EV-207） */
+export { KEEP_FIXTURES_ENV } from './scratch.js';
 
-/**
- * 本进程建过的夹具父目录（EV-207）。只由 `makeFixture` 在 mkdtemp 一返回就写入——删除只认 mkdtemp 的返回值。
- *
- * **收尾挂在进程退出上，不挂 `node:test` 的 `after`**（计划 §1.6 实测）：两者在用例通过、抛错、超时时都会触发，
- * 但本文件也被普通的验收脚本 import（`doc/05_testing/evidence/*\/acceptance*.mjs`），在那里调 `after`
- * 会顺带起一个测试 harness、往 stdout 打汇总，污染脚本输出。代价是退出处理器里只能做同步操作。
- * 被信号杀掉时两者都不跑，夹具照旧遗留（残余）。
- */
-const FIXTURE_BASES: string[] = [];
-let exitCleanupArmed = false;
-
-/**
- * 退出处理器里的提示：同步写 fd 2（macOS 上 stderr 接管道时 `process.stderr.write` 是异步的，退出时会丢），
- * 且永不抛——stderr 已关闭时最多丢一行，不让异常穿出退出处理器、改写退出码或中断后面的删除（计划双审 GLM-04）。
- */
-function warnLine(text: string): void {
-  try {
-    writeSync(2, `${text}\n`);
-  } catch {
-    // 写不出去就算了
-  }
-}
-
-/**
- * 删之前恢复权限：每一层（含根）**先 chmod 自身再 readdir**（计划双审 AGY-02）——父目录自身被改成只读或不可执行时，
- * 先 readdir 会当场 EACCES、子孙一个都恢复不了。软链不跟随（`isDirectory()` 对软链为假）。
- * 每一步失败都吞掉（AGY-01）：这只是删除的准备，目录已不在或读不了都照样去删，删不掉由删除报真实错误码。
- */
-function unlockTreeSync(dir: string): void {
-  try {
-    chmodSync(dir, 0o700);
-  } catch {
-    // 照样往下
-  }
-  let entries;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const e of entries) if (e.isDirectory()) unlockTreeSync(path.join(dir, e.name));
-}
-
-function removeFixtureBasesSync(): void {
-  if (process.env[KEEP_FIXTURES_ENV] === '1') {
-    if (FIXTURE_BASES.length > 0) {
-      warnLine(`makeFixture：${KEEP_FIXTURES_ENV}=1，保留本进程的 ${FIXTURE_BASES.length} 个夹具目录：${FIXTURE_BASES.join('、')}`);
-    }
-    return;
-  }
-  for (const dir of FIXTURE_BASES) {
-    // 防呆：清单只会由 makeFixture 写入，这一支正常不可达
-    if (!path.isAbsolute(dir) || !path.basename(dir).startsWith('trivium-fx-')) {
-      warnLine(`makeFixture：清单里有不像夹具目录的条目，未删：${dir}`);
-      continue;
-    }
-    try {
-      unlockTreeSync(dir);
-      // force 吞 ENOENT：用例自己已删掉的父目录不会被误报
-      rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
-    } catch (e) {
-      warnLine(`makeFixture：夹具目录没删掉，请手工删除 ${dir}（${(e as NodeJS.ErrnoException).code ?? String(e)}）`);
-    }
-  }
-}
+/** 夹具父目录的退出提示主语：与 EV-207 的三句提示逐字相同（「makeFixture：…夹具目录…」） */
+const FIXTURE_OWNER = { owner: 'makeFixture', noun: '夹具目录' };
 
 /**
  * 特意放一个 `.env`：它命中 `review.sensitive_globs`，于是 `deny_paths` 非空。
@@ -149,12 +86,8 @@ function removeFixtureBasesSync(): void {
  * 登记在任何可能抛出的写盘之前，建到一半抛出也会被收尾。
  */
 export async function makeFixture(opts: FixtureOptions): Promise<Fixture> {
-  const raw = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-fx-'));
-  FIXTURE_BASES.push(raw);
-  if (!exitCleanupArmed) {
-    exitCleanupArmed = true;
-    process.on('exit', removeFixtureBasesSync);
-  }
+  // mkdtemp 一返回就由 scratchDir 登记、本进程退出时删（EV-207 的机制，EV-208 抽到 scratch.ts）
+  const raw = await scratchDir('trivium-fx-', FIXTURE_OWNER);
   // macOS 的 /var 是 /private/var 的符号链接，realpath 一下免得路径前缀比对失配
   const base = await fs.realpath(raw);
   const root = path.join(base, 'repo');

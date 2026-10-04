@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   newStatus, writeStatus, readStatus, patchStatus, interpretStatus,
@@ -11,9 +10,10 @@ import {
 } from '../../src/trivium/status.js';
 import { processStartTime } from '../../src/trivium/util/exec.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 async function runDir(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'trivium-status-'));
+  return scratchDir('trivium-status-');
 }
 const STALE = 120_000;
 const DEAD_PID = 2 ** 22;

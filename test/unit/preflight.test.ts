@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import {
@@ -16,6 +15,7 @@ import type { Config, Ctx, ProbeSection } from '../../src/trivium/types.js';
 import { AGENTS, DEFAULT_DRIVER, guardProfileOf } from '../../src/trivium/agents/registry.js';
 import { mergeHooks, type InitReport } from '../../src/trivium/init.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const emptyReport = (): InitReport => ({ created: [], updated: [], skipped: [], notes: [] });
 
@@ -49,7 +49,7 @@ function freshProbe(cfg: Config): void {
 }
 
 async function fakeCtx(mutate?: (c: Config) => void): Promise<Ctx> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-pf-'));
+  const root = await scratchDir('trivium-pf-');
   await fs.writeFile(path.join(root, 'x.ts'), 'export const x = 1;\n');
   await initFixtureRepo(root);
   const cfg = defaultConfig();
@@ -461,7 +461,7 @@ test('无既有结论时仍从默认值起步（首次探测）', async () => {
 // ── doctor 的分段落盘（审查意见 GLM-08）──
 
 test('doctor 探完一侧即中途落盘，且 --only 不碰未探的那一侧', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ckpt-'));
+  const root = await scratchDir('trivium-ckpt-');
   const triviumDir = path.join(root, '.trivium');
   await fs.mkdir(triviumDir, { recursive: true });
 
@@ -498,7 +498,7 @@ test('doctor 探完一侧即中途落盘，且 --only 不碰未探的那一侧',
 });
 
 test('--only zcode 同样不碰 agy 段', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ckpt3-'));
+  const root = await scratchDir('trivium-ckpt3-');
   const triviumDir = path.join(root, '.trivium');
   await fs.mkdir(triviumDir, { recursive: true });
   await patchProbe(triviumDir, (cur) => {
@@ -701,7 +701,7 @@ test('全局时间戳新鲜但某键过期时，该键判为不新鲜', async ()
 });
 
 test('--only 一侧不刷新另一侧的新鲜度', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ttl-'));
+  const root = await scratchDir('trivium-ttl-');
   const triviumDir = path.join(root, TRIVIUM_DIR);
   await fs.mkdir(triviumDir, { recursive: true });
 
@@ -735,7 +735,7 @@ test('--only 一侧不刷新另一侧的新鲜度', async () => {
 });
 
 test('--only env 不写任何厂商段', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-envonly-'));
+  const root = await scratchDir('trivium-envonly-');
   const triviumDir = path.join(root, TRIVIUM_DIR);
   await fs.mkdir(triviumDir, { recursive: true });
 
@@ -851,13 +851,13 @@ function overrideOnly(src: string): CriticAdapter {
 }
 
 async function missingPath(): Promise<string> {
-  const d = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ovr-'));
+  const d = await scratchDir('trivium-ovr-');
   return path.join(d, '.zcode/cli/config.json'); // 不创建：「文件不在」
 }
 
 test('warnings 恒在：无警告时为空数组，渲染末行与今天逐字相同', async () => {
   const ctx = await fakeCtx((c) => probeWithVersionProbe(c, { runner: null, args: ['--version'], extract: '(' }));
-  const present = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ovr-')), 'config.json');
+  const present = path.join(await scratchDir('trivium-ovr-'), 'config.json');
   await fs.writeFile(present, '{}');
   // 必须跳过探活（不跳会真去探活、耗配额）；「探活已跳过」与覆盖面两条 warn 下面单独剥掉
   const r = await runPreflight({
@@ -1066,7 +1066,7 @@ test('U5′ 预检：不带已废弃键 ⇒ 不出该项；checkDeprecatedConfig
 
 /** doctor 只跑环境段：不碰任何审查员 CLI，也不花配额 */
 async function doctorEnvOnly(cfg: Config): Promise<Awaited<ReturnType<typeof runDoctor>>> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-dep-'));
+  const root = await scratchDir('trivium-dep-');
   const triviumDir = path.join(root, TRIVIUM_DIR);
   await fs.mkdir(triviumDir, { recursive: true });
   return runDoctor({ config: cfg, projectRoot: root, triviumDir, only: 'env', skipModelCalls: true });

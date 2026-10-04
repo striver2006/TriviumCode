@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { run, processAlive, spawnDetached } from '../../src/trivium/util/exec.js';
 import { inspectLock, acquireLock } from '../../src/trivium/lock.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /**
  * 跨进程抢锁竞态（BACKLOG M21 的最后一项）。
@@ -30,7 +30,7 @@ const STALE_MS = 120_000;
 const TOPIC = '跨进程抢锁';
 
 async function tmpTrivium(): Promise<string> {
-  const raw = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-xproc-'));
+  const raw = await scratchDir('trivium-xproc-');
   // macOS 的 /var 是 /private/var 的符号链接，realpath 一下免得路径比对失配
   return fs.realpath(raw);
 }

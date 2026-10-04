@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import {
@@ -19,6 +18,7 @@ import { newRunMeta, registerRun, writeRunMeta } from '../../src/trivium/meta.js
 import { metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
 import type { Ctx, RunMeta } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /**
  * EV-157：凭据抹除的准入与到期整删核审查员 CLI（取消与失联的凭据准入核CLI计划 r2 §4.1 U1～U7）。
@@ -253,7 +253,7 @@ function tracker() {
   };
 }
 
-const uniq = async (): Promise<string> => fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-scrub-adm-')));
+const uniq = async (): Promise<string> => fs.realpath(await scratchDir('trivium-scrub-adm-'));
 
 // ─────────────────────────── U0：judgeCliGroup 的三个新分支（EV-165） ───────────────────────────
 

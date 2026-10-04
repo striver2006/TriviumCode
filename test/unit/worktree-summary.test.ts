@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   diffTrees, diffTreesNameStatus, initFixtureRepo, parseNameStatusZ, treeExists, workTreeHash,
@@ -13,6 +12,7 @@ import {
   SUMMARY_BUDGET_MS, SUMMARY_JSON_LIMIT, budgetOverrideNote, fullListCommand, reasonTimeout, renderWorkTreeSummary,
   summarizeWorkTree, summaryBudget, unavailableSummary, type WorkTreeSummary,
 } from '../../src/trivium/worktree-summary.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /**
  * 审批时的工作树改动摘要（EV-132 候选 ② 折中版；计划 `.reviews/审批前工作树摘要/plan/` r2 §3.1）。
@@ -25,7 +25,7 @@ import {
  */
 
 async function repo(): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-wts-'));
+  const dir = await scratchDir('trivium-wts-');
   await fs.writeFile(path.join(dir, 'a.ts'), 'export const a = 1;\n');
   await fs.writeFile(path.join(dir, 'b.ts'), 'export const b = 1;\n');
   await fs.writeFile(path.join(dir, '.gitignore'), 'ignored.log\n');
@@ -181,7 +181,7 @@ test('8：基线对象被 git 清理 ⇒ 原因 2，绝不是「无改动」（�
 });
 
 test('9：非 git 目录 ⇒ 原因 3，不抛', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-wts-nogit-'));
+  const dir = await scratchDir('trivium-wts-nogit-');
   const s = await summarize(dir, '4b825dc642cb6eb9a060e54bf8d69288fbee4904');
   assert.equal(s.available, false);
   assert.ok(s.reason!.startsWith(REASON_GIT_FAILED_PREFIX), s.reason!);
@@ -258,7 +258,7 @@ test('r1 CODEX-01 ≡ GLM-01：基线是含 shell 元字符的合法引用名 �
 });
 
 test('r1 CODEX-01：以 - 开头的基线同样拦下；非 git 目录里也是形状闸先报（证明闸在任何 git 调用之前）', async () => {
-  const nogit = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-wts-shape-'));
+  const nogit = await scratchDir('trivium-wts-shape-');
   for (const bad of ['--output=/tmp/x', 'HEAD', `${'a'.repeat(39)}`, `${'A'.repeat(40)}`]) {
     const s = await summarize(nogit, bad);
     assert.equal(s.reason, REASON_BAD_BASELINE, bad);

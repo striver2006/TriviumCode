@@ -8,7 +8,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   canonicalStartOf, processAlive, processMatchesRecord, processStartTime, processStartTimes,
@@ -21,6 +20,7 @@ import { defaultConfig } from '../../src/trivium/config.js';
 import { repoId } from '../../src/trivium/review.js';
 import { wiredAdapter } from '../../src/trivium/adapters/index.js';
 import { ENV_R, ENV_W, assertEnvPairDistinct, withEnv } from '../helpers/start-env.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const SELF = process.pid;
 /** 一个与本进程规范化启动时刻不同、形状合法的时刻（k 格：pid 复用或手改） */
@@ -109,7 +109,7 @@ test('EV-158 U4 ①（D4）：workerLockContent 显式覆盖四个键——不�
 });
 
 async function tmpTrivium(): Promise<string> {
-  return path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-canon-')), '.trivium');
+  return path.join(await scratchDir('trivium-canon-'), '.trivium');
 }
 
 test('EV-158 U5（acquireLock 与 judgeStale，C4）：锁带本进程的规范化启动时刻；异环境不回收；删掉新字段即回到今天（pid_reused）；短锁同样带；规范化值不符（k 格）判 pid_reused', async () => {
@@ -164,7 +164,7 @@ test('EV-158 U6 ①③④（workerConfirmedGone，C2）：W 下写、R 下判 �
 test('EV-158 U7（interpretStatus 情形 C，C1）：W 下写、R 下判 ⇒ running 而不是 worker_lost；删掉新字段 ⇒ pid_gone（今天的行为）', async () => {
   await assertEnvPairDistinct(SELF);
   const rec = await recordUnderW();
-  const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-canon-run-'));
+  const runDir = await scratchDir('trivium-canon-run-');
   await writeStatus(runDir, runningStatus({ canonical: rec.canonical, legacy: rec.legacy }));
   const r1 = await withEnv(ENV_R, () => interpretStatus(runDir, { heartbeatStaleMs: 120_000 }));
   assert.equal(r1.kind, 'running', `b 格：${JSON.stringify(r1)}`);
@@ -219,7 +219,7 @@ test('EV-158 U10（h 格，计划双审 r1 AGY-02）：规范化取不到 ⇒ al
 // ── 到期整删与跨仓清扫的「活着就不动」（C3，U6 ②④） ──
 
 async function bucket() {
-  const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-canon-ret-'));
+  const runRoot = await scratchDir('trivium-canon-ret-');
   const projectRoot = '/tmp/some-canon-project';
   const cfg = defaultConfig();
   cfg.runtime.run_root = runRoot;

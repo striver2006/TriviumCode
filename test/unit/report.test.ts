@@ -1,17 +1,15 @@
 import { test } from 'node:test';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join as joinPath } from 'node:path';
-const TASK_LOCK_DIR = mkdtempSync(joinPath(tmpdir(), 'trivium-report-lock-'));
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { acceptanceRate, buildTopicReport, renderTopicReport, type RoundReport } from '../../src/trivium/report.js';
 import { newRunMeta, writeRunMeta, registerRun, type TaskMeta } from '../../src/trivium/meta.js';
 import { writeArtifact, writeMeta, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { CRITICS, EXCEPTION_TERMINATION_BY, type Review } from '../../src/trivium/types.js';
 import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+import { scratchDir, scratchDirSync } from '../helpers/scratch.js';
+
+const TASK_LOCK_DIR = scratchDirSync('trivium-report-lock-');
 
 /**
  * 主题级复盘（设计 §5.1 / §9.3 / §15.2）。
@@ -24,7 +22,7 @@ import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
 const TOPIC = '复盘主题';
 
 async function archive(): Promise<ArchiveLayout & { root: string }> {
-  const raw = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-report-'));
+  const raw = await scratchDir('trivium-report-');
   const root = await fs.realpath(raw);
   const archiveRoot = path.join(root, '.reviews');
   await fs.mkdir(path.join(archiveRoot, TOPIC, 'plan', '_meta'), { recursive: true });

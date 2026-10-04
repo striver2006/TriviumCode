@@ -1,0 +1,331 @@
+{
+  "targets_sha256": {
+    "test/helpers/scratch.ts": "79c133c7d858974e2a6378624e586a73ac9cb2648255a52e6a0b7b5f466f557e",
+    "test/helpers/fixture.ts": "8b5d98ea543a4e29558b9a46dd56a9f5bc5145e6165d17e3871c5429e9bcb265",
+    "test/helpers/run-ctx.ts": "45d210adc091437a6fcb0de89660a35995c6d7229500c69f03ca79c5bdb7d48a",
+    "test/unit/hooks.test.ts": "67da4aed91136e2e325d2911e24504c96688e053b3569d8d2e960a8453484b0f",
+    "test/unit/scratch-guard.test.ts": "84c283240c3b8d118e68215fc41ee7a9d7c3ee082d639244a35f151adf7820cd"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "scratchDir 不登记",
+      "suite": "dist/test/test/integration/scratch-cleanup.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "SC1 退出后都不在：只读子目录、自身只读、已被用例删掉、无手脚、同步版、带尾斜杠与相对路径的 TMPDIR，且不误报",
+        "SC2 设保留变量时都还在，并打一行列出路径",
+        "SC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码",
+        "SC4 用例失败时照样删，失败不被收尾翻成通过",
+        "SC5 与 makeFixture 同进程：都删；保留时按调用方各打一行，makeFixture 那行与 EV-207 逐字相同",
+        "SC6 前缀不合规时在 mkdtemp 之前拒绝（异步版被拒、同步版同步抛），合规的下划线前缀照常建出并删掉"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+          "fail": 4,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "FC1 退出后父目录不在：只读子目录、父目录自身只读、已被用例删掉、无手脚，四个都收干净且不误报",
+            "FC2 设保留变量时父目录都还在，并打一行列出路径",
+            "FC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码",
+            "FC4 建到一半抛出也删：mkdtemp 一返回就登记，退出时照样收尾"
+          ],
+          "firstLines": [],
+          "elapsed_s": 1
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "不挂退出钩子",
+      "suite": "dist/test/test/integration/scratch-cleanup.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "SC1 退出后都不在：只读子目录、自身只读、已被用例删掉、无手脚、同步版、带尾斜杠与相对路径的 TMPDIR，且不误报",
+        "SC2 设保留变量时都还在，并打一行列出路径",
+        "SC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码",
+        "SC4 用例失败时照样删，失败不被收尾翻成通过",
+        "SC5 与 makeFixture 同进程：都删；保留时按调用方各打一行，makeFixture 那行与 EV-207 逐字相同",
+        "SC6 前缀不合规时在 mkdtemp 之前拒绝（异步版被拒、同步版同步抛），合规的下划线前缀照常建出并删掉"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+          "fail": 4,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "FC1 退出后父目录不在：只读子目录、父目录自身只读、已被用例删掉、无手脚，四个都收干净且不误报",
+            "FC2 设保留变量时父目录都还在，并打一行列出路径",
+            "FC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码",
+            "FC4 建到一半抛出也删：mkdtemp 一返回就登记，退出时照样收尾"
+          ],
+          "firstLines": [],
+          "elapsed_s": 1
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "desc": "忽略保留变量",
+      "suite": "dist/test/test/integration/scratch-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "SC2 设保留变量时都还在，并打一行列出路径",
+        "SC5 与 makeFixture 同进程：都删；保留时按调用方各打一行，makeFixture 那行与 EV-207 逐字相同"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "FC2 设保留变量时父目录都还在，并打一行列出路径"
+          ],
+          "firstLines": [],
+          "elapsed_s": 1
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "权限恢复不先 chmod 自身",
+      "suite": "dist/test/test/integration/scratch-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "SC1 退出后都不在：只读子目录、自身只读、已被用例删掉、无手脚、同步版、带尾斜杠与相对路径的 TMPDIR，且不误报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "FC1 退出后父目录不在：只读子目录、父目录自身只读、已被用例删掉、无手脚，四个都收干净且不误报"
+          ],
+          "firstLines": [],
+          "elapsed_s": 1
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "desc": "一个删不掉就中断后面的",
+      "suite": "dist/test/test/integration/scratch-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "SC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "FC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码"
+          ],
+          "firstLines": [],
+          "elapsed_s": 1
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "desc": "防呆的父目录核对取反",
+      "suite": "dist/test/test/integration/scratch-cleanup.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "SC1 退出后都不在：只读子目录、自身只读、已被用例删掉、无手脚、同步版、带尾斜杠与相对路径的 TMPDIR，且不误报",
+        "SC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码",
+        "SC4 用例失败时照样删，失败不被收尾翻成通过",
+        "SC5 与 makeFixture 同进程：都删；保留时按调用方各打一行，makeFixture 那行与 EV-207 逐字相同",
+        "SC6 前缀不合规时在 mkdtemp 之前拒绝（异步版被拒、同步版同步抛），合规的下划线前缀照常建出并删掉"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+          "fail": 3,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "FC1 退出后父目录不在：只读子目录、父目录自身只读、已被用例删掉、无手脚，四个都收干净且不误报",
+            "FC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码",
+            "FC4 建到一半抛出也删：mkdtemp 一返回就登记，退出时照样收尾"
+          ],
+          "firstLines": [],
+          "elapsed_s": 1
+        }
+      ]
+    },
+    {
+      "id": "M7",
+      "desc": "去掉前缀校验",
+      "suite": "dist/test/test/integration/scratch-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "SC6 前缀不合规时在 mkdtemp 之前拒绝（异步版被拒、同步版同步抛），合规的下划线前缀照常建出并删掉"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "scratchDirSync 不登记",
+      "suite": "dist/test/test/integration/scratch-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "SC1 退出后都不在：只读子目录、自身只读、已被用例删掉、无手脚、同步版、带尾斜杠与相对路径的 TMPDIR，且不误报",
+        "SC2 设保留变量时都还在，并打一行列出路径"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M9",
+      "desc": "makeFixture 不传主语（提示落成缺省 scratchDir / 测试临时目录）",
+      "suite": "dist/test/test/integration/fixture-cleanup.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "FC2 设保留变量时父目录都还在，并打一行列出路径",
+        "FC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/scratch-cleanup.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "SC5 与 makeFixture 同进程：都删；保留时按调用方各打一行，makeFixture 那行与 EV-207 逐字相同"
+          ],
+          "firstLines": [],
+          "elapsed_s": 1
+        }
+      ]
+    },
+    {
+      "id": "M10",
+      "desc": "保留提示不按调用方分组（合成一行）",
+      "suite": "dist/test/test/integration/scratch-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "SC5 与 makeFixture 同进程：都删；保留时按调用方各打一行，makeFixture 那行与 EV-207 逐字相同"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M11",
+      "desc": "run-ctx 退回裸 mkdtemp",
+      "suite": "dist/test/test/unit/scratch-guard.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G1 test/ 下建临时目录的调用只剩豁免表里的那几处，其余一律经 scratchDir"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M12",
+      "desc": "hooks.test 的 trivium-hook- 退回裸 mkdtemp",
+      "suite": "dist/test/test/unit/scratch-guard.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G1 test/ 下建临时目录的调用只剩豁免表里的那几处，其余一律经 scratchDir"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M13",
+      "desc": "计数不剥离注释与字符串",
+      "suite": "dist/test/test/unit/scratch-guard.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G0 计数：注释与字符串里的提及不算，各种接收者与同步形态都算",
+        "G1 test/ 下建临时目录的调用只剩豁免表里的那几处，其余一律经 scratchDir"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M14",
+      "desc": "豁免表少一项",
+      "suite": "dist/test/test/unit/scratch-guard.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G1 test/ 下建临时目录的调用只剩豁免表里的那几处，其余一律经 scratchDir"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M15",
+      "desc": "登记时不解析成绝对路径",
+      "suite": "dist/test/test/integration/scratch-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "SC1 退出后都不在：只读子目录、自身只读、已被用例删掉、无手脚、同步版、带尾斜杠与相对路径的 TMPDIR，且不误报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    }
+  ]
+}

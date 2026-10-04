@@ -5,6 +5,7 @@ import {
 } from '../../src/trivium/render.js';
 import type { RenderInput } from '../../src/trivium/render.js';
 import { CRITICS, type CriticResult, type Review } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const RESULT: CriticResult = {
   critic: 'gemini', status: 'ok', exit_code: 0, duration_s: 472.4,
@@ -219,11 +220,10 @@ test('回归：超时的一侧不产生证据不足告警，避免把真正原�
   const { defaultConfig } = await import('../../src/trivium/config.js');
   const { failedResult } = await import('../../src/trivium/adapters/base.js');
   const path = await import('node:path');
-  const os = await import('node:os');
   const { promises: fs } = await import('node:fs');
   const { initFixtureRepo, workTreeHash } = await import('../../src/trivium/util/git.js');
 
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-guardnoise-'));
+  const dir = await scratchDir('trivium-guardnoise-');
   await fs.writeFile(path.join(dir, 'a.ts'), 'export const a = 1;\n');
   await initFixtureRepo(dir);
   const tree = await workTreeHash(dir);

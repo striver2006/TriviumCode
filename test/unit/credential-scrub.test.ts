@@ -6,7 +6,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { scrubCodexHome } from '../../src/trivium/adapters/codex-home.js';
 import { scrubZcodeHome } from '../../src/trivium/adapters/zcode.js';
@@ -15,6 +14,7 @@ import {
   SCRUB_SENTINEL, clearScrubSentinel, describeScrubFailure, readScrubSentinel,
   scanAndRemoveSecrets, scrubDidWork, scrubRunDir, scrubSideDir, sentinelSettled,
 } from '../../src/trivium/scrub.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /**
  * 假凭据：形态与真实一致（高熵），值是编造的。
@@ -27,7 +27,7 @@ const TOML = `model = "qwen3.8-max"\n[model_providers.qwen]\nexperimental_bearer
 /** 模型 I/O 日志里的一行：token 经 JSON 转义 */
 const IO_LINE = `{"type":"response_item","payload":{"text":"experimental_bearer_token = \\"${FAKE_CRED}\\""}}\n`;
 
-const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'trivium-scrub-'));
+const tmp = () => scratchDir('trivium-scrub-');
 const write = async (p: string, s: string | Buffer) => {
   await fs.mkdir(path.dirname(p), { recursive: true });
   await fs.writeFile(p, s);

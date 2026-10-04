@@ -8,7 +8,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { prepareZcodeHome, zcodeHomeUnder } from '../../src/trivium/adapters/zcode.js';
 import { reorderHint } from '../../src/trivium/guard.js';
@@ -22,8 +21,9 @@ import {
   reorderRequestedFirst,
   type VariantKind,
 } from '../../src/trivium/probes/zcode.js';
+import { scratchDir } from '../helpers/scratch.js';
 
-const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'trivium-runtimesel-test-'));
+const tmp = () => scratchDir('trivium-runtimesel-test-');
 const EVENT = 'bootstrap.app.startup.runtime_config.completed';
 
 async function homeWithLog(files: Record<string, string>): Promise<string> {

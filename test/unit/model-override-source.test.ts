@@ -9,16 +9,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { prepareZcodeHome, zcodeAdapter, zcodeOverrideSourcePath } from '../../src/trivium/adapters/zcode.js';
 import { checkModelOverrideSource, displayHomePath } from '../../src/trivium/preflight.js';
 import { agentById } from '../../src/trivium/agents/registry.js';
 import type { CriticAdapter } from '../../src/trivium/adapters/base.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 async function withHome<T>(populate: boolean, fn: (home: string) => Promise<T>): Promise<T> {
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ovr-home-'));
+  const home = await scratchDir('trivium-ovr-home-');
   if (populate) {
     await fs.mkdir(path.join(home, '.zcode/cli'), { recursive: true });
     await fs.writeFile(path.join(home, '.zcode/cli/config.json'), '{}\n');
@@ -40,7 +40,7 @@ test('唯一出处·世界 A（HOME 下不摆副本源）：三处都指向同�
     const p = zcodeOverrideSourcePath();
     assert.equal(p, path.join(home, '.zcode/cli/config.json'));
     assert.equal(zcodeAdapter.modelOverrideSource?.(), p, '适配器的可选成员必须回到同一出处');
-    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ovr-run-'));
+    const runDir = await scratchDir('trivium-ovr-run-');
     const prep = await prepareZcodeHome(runDir, 'GLM-5.3');
     assert.equal(prep.cause, 'source_missing', '不传 srcConfig 时缺省值就是这个路径');
     assert.equal(await zcodeAdapter.authProbe!(adapterCtx(), runDir).fingerprint(), null);
@@ -49,7 +49,7 @@ test('唯一出处·世界 A（HOME 下不摆副本源）：三处都指向同�
 
 test('唯一出处·世界 B（HOME 下摆着副本源）：缺省值与指纹读的都是它', async () => {
   await withHome(true, async () => {
-    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ovr-run-'));
+    const runDir = await scratchDir('trivium-ovr-run-');
     // 不给模型：过了存在性判定就走 no_model 出口，不必构造一份完整的 provider 配置
     const prep = await prepareZcodeHome(runDir, null);
     assert.notEqual(prep.cause, 'source_missing', '副本源在却判缺失 ⇒ 缺省值没走唯一出处');

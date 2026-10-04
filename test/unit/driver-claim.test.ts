@@ -17,7 +17,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   claimRejectionMessage, claimStageDriver, crossCheckDriver, declaredStageDriver, filesBearingSuffix,
@@ -29,11 +28,12 @@ import { emptyTask, newRunMeta } from '../../src/trivium/meta.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { AgentId, Ctx } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const SESSION = 'sess-claim';
 
 async function fakeCtx(): Promise<Ctx> {
-  const raw = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-claim-'));
+  const raw = await scratchDir('trivium-claim-');
   const root = await fs.realpath(raw);
   const triviumDir = path.join(root, '.trivium');
   await fs.mkdir(triviumDir, { recursive: true });

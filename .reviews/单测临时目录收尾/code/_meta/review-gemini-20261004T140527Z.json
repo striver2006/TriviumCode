@@ -1,0 +1,47 @@
+{
+  "agreed": [
+    "test/helpers/scratch.ts 将测试临时目录的创建与进程退出收尾统一抽取为通用 helper，严格复用 EV-207 验证过的 unlockTreeSync 逐层恢复权限、rmSync 重试与同步写 fd 2 永不抛异常的收尾机制，不改写测试退出码。",
+    "在登记时立即将临时目录路径与 os.tmpdir() 均 path.resolve 解析为绝对路径，成功解决了相对路径 TMPDIR 及后续测试代码可能变更 cwd 导致的路径比对失效问题；前缀白名单校验在 mkdtemp 之前拦截非法路径，防御严密。",
+    "test/unit/scratch-guard.test.ts 复用成熟的 stripNonCode 词法剥离器，按文件统计裸 mkdtemp/mkdtempSync/makeTempDir 调用并与豁免表精确 deepEqual 比对（23 个文件、39 处），杜绝未登记的裸临时目录新增。",
+    "test/helpers/fixture.ts 中的 makeFixture 仅改一行接入 scratchDir，通过 ScratchOwner 透传主语与名词，保持了向后兼容与日志格式的逐字一致，且 KEEP_FIXTURES_ENV 从 scratch.ts 重新导出保证契约不漂移。",
+    "实现严格忠实于已批准的计划 r2，改动范围限定于 test/ 与文档，业务代码 src/ 一行未动；变异测试 15/15 咬住，实测全量运行系统临时目录测试自建条目完全降为 0。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-04_test_scratch_cleanup.md",
+    "doc/08_project/BACKLOG.md",
+    "test/helpers/scratch.ts",
+    "test/helpers/fixture.ts",
+    "test/helpers/run-ctx.ts",
+    "test/helpers/strip-non-code.ts",
+    "test/helpers/recursive-rm.ts",
+    "test/unit/scratch-guard.test.ts",
+    "test/integration/scratch-cleanup.test.ts",
+    "test/integration/fixture-cleanup.test.ts",
+    "test/unit/report.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/task-goal.test.ts",
+    "test/unit/guard-capability.test.ts",
+    "test/unit/zcode-auth-probe.test.ts",
+    ".reviews/单测临时目录收尾/plan/2026-10-04-单测临时目录收尾-revised-claude.md",
+    ".reviews/单测临时目录收尾/plan/2026-10-04-单测临时目录收尾-r2-claude.md",
+    ".reviews/单测临时目录收尾/code/_meta/changes-20261004T140527Z.diff"
+  ],
+  "findings": [],
+  "not_covered": [
+    "未在非 macOS 操作系统环境下测试运行行为（符合仓库 macOS 专属运行平台约束）。",
+    "未模拟真实测试进程被操作系统 SIGKILL 强制杀死的极端场景（已作为残余记录，进程退出钩子在 SIGKILL 下无法执行）。",
+    "未覆盖通过动态计算字符串或外部 shell 脚本在子进程内直接调用 mkdtemp 的静态防护（已在守卫与报告中如实说明，现状均为零）。",
+    "未清理系统临时目录既有历史残留条目（符合既定决策，由用户后续决定是否清理）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本次单测临时目录收尾（EV-208）代码变更完整、规范，完全符合已批准的计划 r2 与项目设计纪律。\n新增通用的 test/helpers/scratch.ts 统一测试临时目录的登记与退出收尾，支持同步/异步双形态并强化了绝对路径解析与前缀校验；\n全仓 53 个测试文件平滑迁移至 scratchDir/scratchDirSync，自带可靠收尾的 21 个文件保持不动并由 scratch-guard 精确锁定豁免表；\n行为级集成测试与守卫测试覆盖完备，变异咬合度 15/15，src/ 保持零改动，整体质量优秀，准予通过。",
+  "verdict": "approve"
+}

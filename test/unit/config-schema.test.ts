@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { defaultConfig, loadCtx } from '../../src/trivium/config.js';
 import { validateConfig, validateRunMeta, validateDispositionFrontMatter } from '../../src/trivium/schemas.js';
@@ -10,6 +9,7 @@ import { CRITICS } from '../../src/trivium/types.js';
 import { AGENTS, ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /*
  * 配置原先完全不校验（审核 M12）：写错字段名只会静默落到默认值，写错枚举值
@@ -17,7 +17,7 @@ import { EXIT } from '../../src/trivium/exit-codes.js';
  */
 
 async function projectWith(configYaml: string): Promise<string> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-cfg-'));
+  const root = await scratchDir('trivium-cfg-');
   await fs.mkdir(path.join(root, '.trivium'), { recursive: true });
   await fs.writeFile(path.join(root, '.trivium/config.yaml'), configYaml, 'utf8');
   return root;

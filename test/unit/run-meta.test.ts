@@ -8,7 +8,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { latestRunMeta, newRunMeta, migrateRunMetaV1, readRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
 import { validateRunMeta, validateRunMetaV1, validateDispositionFrontMatter } from '../../src/trivium/schemas.js';
@@ -18,9 +17,10 @@ import { parseDisposition } from '../../src/trivium/disposition.js';
 import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
 import { CRITICS, CRITIC_VENDOR, type CriticId, type RunMeta } from '../../src/trivium/types.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 async function tmpLayout(): Promise<ArchiveLayout> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-runmeta-'));
+  const root = await scratchDir('trivium-runmeta-');
   return { archiveRoot: path.join(root, '.reviews'), topic: '登录重构' };
 }
 

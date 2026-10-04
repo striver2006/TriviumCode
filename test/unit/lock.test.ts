@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import {
@@ -14,9 +13,10 @@ import { EXIT } from '../../src/trivium/exit-codes.js';
 import { spawn } from 'node:child_process';
 import { readState, setGate } from '../../src/trivium/state.js';
 import { psStubWorks, stubPsFailure } from '../helpers/ps-stub.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 async function tmpTrivium(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'trivium-lock-'));
+  return scratchDir('trivium-lock-');
 }
 const STALE_MS = 120_000;
 const TOPIC = '登录重构';

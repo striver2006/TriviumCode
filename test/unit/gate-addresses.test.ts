@@ -10,12 +10,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
-import { promises as fs } from 'node:fs';
 import { checkAdjudication, expectedReviewDocs } from '../../src/trivium/gate.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { writeArtifact, type ArchiveLayout } from '../../src/trivium/archive.js';
 import type { Review, RunMeta } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const TOPIC = '登录重构';
 const DATE = '2026-09-10';
@@ -24,7 +23,7 @@ const GLM = `${DATE}-${TOPIC}-glm.md`;
 const COD = `${DATE}-${TOPIC}-codex.md`;
 
 async function layout(): Promise<ArchiveLayout> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-addr-'));
+  const root = await scratchDir('trivium-addr-');
   return { archiveRoot: path.join(root, '.reviews'), topic: TOPIC };
 }
 

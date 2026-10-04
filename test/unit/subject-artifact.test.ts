@@ -7,9 +7,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { subjectArtifactRelPath, resolveSubjectArtifactRelPath } from '../../src/trivium/review.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 test('归档内的原稿：返回相对归档根的路径，不是绝对路径', () => {
   const archiveRoot = '/proj/.reviews';
@@ -32,7 +32,7 @@ test('原稿恰好落在归档根本身：返回 null——归档根不是可登
 
 test('经软链写法给出的归档内原稿仍判归档内（代码双审 r2 CODEX-08）', async () => {
   // 真实目录 + 指向它的软链：纯词法比较会把软链写法判成「越出归档根」而静默不登记
-  const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-subj-')));
+  const base = await fs.realpath(await scratchDir('trivium-subj-'));
   const realRoot = path.join(base, 'real');
   const archiveRoot = path.join(realRoot, '.reviews');
   await fs.mkdir(path.join(archiveRoot, 'EV-1', 'plan'), { recursive: true });

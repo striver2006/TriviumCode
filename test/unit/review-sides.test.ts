@@ -10,16 +10,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { prepareRun } from '../../src/trivium/review.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { Ctx } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 async function fakeCtx(): Promise<Ctx> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-sides-'));
+  const root = await scratchDir('trivium-sides-');
   await fs.writeFile(path.join(root, 'a.ts'), 'export const a = 1;\n');
   await initFixtureRepo(root);
   await fs.writeFile(path.join(root, 'a.ts'), 'export const a = 2;\n');

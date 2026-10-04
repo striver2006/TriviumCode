@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   writeArtifact,
@@ -18,9 +17,10 @@ import { newRunMeta } from '../../src/trivium/meta.js';
 import { CRITICS, DEFAULT_CRITICS, type StageOrVerify } from '../../src/trivium/types.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 async function tmpLayout(): Promise<ArchiveLayout> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-archive-'));
+  const root = await scratchDir('trivium-archive-');
   return { archiveRoot: path.join(root, '.reviews'), topic: '登录重构' };
 }
 

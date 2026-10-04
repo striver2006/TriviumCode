@@ -10,7 +10,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import {
@@ -26,9 +25,10 @@ import { runInit } from '../../src/trivium/init.js';
 import { CRITICS, DEFAULT_CRITICS } from '../../src/trivium/types.js';
 import { AGENTS, CRITIC_AGENT_IDS } from '../../src/trivium/agents/registry.js';
 import { ALL_AGENT_IDS, agentById } from '../../src/trivium/agents/registry.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 async function projectWith(files: Record<string, string>): Promise<string> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-mig-'));
+  const root = await scratchDir('trivium-mig-');
   await fs.mkdir(path.join(root, '.trivium'), { recursive: true });
   for (const [name, body] of Object.entries(files)) {
     await fs.writeFile(path.join(root, '.trivium', name), body, 'utf8');

@@ -9,6 +9,7 @@ import { AGENTS, agentById, entrySkillRootOf } from '../../src/trivium/agents/re
 import { resolveAssetRoot } from '../../src/trivium/asset-root.js';
 import { codexHomeOf } from '../../src/trivium/adapters/codex-home.js';
 import { ENTRY_OUT_DIR } from '../../src/entry-render.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /*
  * 安装器（M10b 第 2 步起多目标；计划 r2 §3.2、r5 §5.4 / §5.5、r9 §2.1、r10 §2.1 / §2.2）。
@@ -25,7 +26,7 @@ const ENTRY_NAMES = [
 ];
 
 async function fakeRepo(): Promise<string> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-install-repo-'));
+  const root = await scratchDir('trivium-install-repo-');
   // 上一次构建的打包产物不拷：它可能不存在（未 build），也可能很大；这里放一个占位
   await fs.cp(path.join(REPO_ROOT, 'skills'), path.join(root, 'skills'), {
     recursive: true,
@@ -39,7 +40,7 @@ async function fakeRepo(): Promise<string> {
 
 /** 临时 home：四家家根都建好（除非 `missing` 点名），`CODEX_HOME` 不设 */
 async function fakeHome(missing: readonly string[] = []): Promise<InstallEnv> {
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-install-home-'));
+  const home = await scratchDir('trivium-install-home-');
   for (const a of AGENTS) {
     if (missing.includes(a.id)) continue;
     await fs.mkdir(path.join(home, a.entrySkillRoot.homeRel), { recursive: true });
@@ -101,7 +102,7 @@ test('四家目标 + 运行时根：任何目标根下都没有深度 ≥ 2 的 
 test('运行时根与编排器同源取值：TRIVIUM_ASSET_ROOT 设了就落那边，claude 根下不再有运行时', async () => {
   const root = await fakeRepo();
   const ie = await fakeHome();
-  const elsewhere = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-install-asset-'));
+  const elsewhere = await scratchDir('trivium-install-asset-');
   const env = { TRIVIUM_ASSET_ROOT: path.join(elsewhere, 'rt') };
   const r = await install(root, { home: ie.home, env });
   assert.equal(r.runtime.dir, resolveAssetRoot(undefined, env, ie.home));
@@ -112,7 +113,7 @@ test('运行时根与编排器同源取值：TRIVIUM_ASSET_ROOT 设了就落那�
 test('codex 的 skill 根走 CODEX_HOME，与 codexHomeOf() 同口径', async () => {
   const root = await fakeRepo();
   const ie = await fakeHome();
-  const codexHome = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-install-codexhome-'));
+  const codexHome = await scratchDir('trivium-install-codexhome-');
   const env = { CODEX_HOME: codexHome };
   await install(root, { home: ie.home, env });
   const codex = agentById('codex')!;
@@ -300,7 +301,7 @@ test('TRIVIUM_ASSET_ROOT 指向仓库的上级目录（把仓库包在里面）�
 });
 
 test('syncDir 源与目标同路径：什么都不做，顶层 exclude 掉的目录不会被当孤儿裁掉', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-install-same-'));
+  const dir = await scratchDir('trivium-install-same-');
   await fs.mkdir(path.join(dir, 'entry/x'), { recursive: true });
   await fs.writeFile(path.join(dir, 'entry/x/SKILL.md'), 'kept');
   await fs.writeFile(path.join(dir, 'a.md'), 'a');
@@ -313,7 +314,7 @@ test('syncDir 源与目标同路径：什么都不做，顶层 exclude 掉的目
 test('TRIVIUM_ASSET_ROOT 指向一个有内容、却不是本产品运行时的目录：安装拒绝、卸载不删，内容原样', async () => {
   const root = await fakeRepo();
   const ie = await fakeHome();
-  const foreign = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-install-foreign-'));
+  const foreign = await scratchDir('trivium-install-foreign-');
   await fs.writeFile(path.join(foreign, 'notes.md'), '用户自己的');
   await fs.mkdir(path.join(foreign, 'sub'));
   await fs.writeFile(path.join(foreign, 'sub/SKILL.md'), '---\nname: sub\n---\n');
@@ -335,7 +336,7 @@ test('TRIVIUM_ASSET_ROOT 指向一个有内容、却不是本产品运行时的�
 test('运行时根的放行格：不存在、空目录、被打断的上一次安装（只落了 SKILL.md）都照装', async () => {
   const root = await fakeRepo();
   const ie = await fakeHome();
-  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-install-rtok-'));
+  const base = await scratchDir('trivium-install-rtok-');
   const empty = path.join(base, 'empty');
   await fs.mkdir(empty);
   const partial = path.join(base, 'partial');
@@ -355,7 +356,7 @@ test('运行时根换了位置、缺省位置留着旧运行时：提示，不�
   const before = await listTree(r0.runtime.dir);
   assert.ok(!r0.notes.some((n) => n.includes('缺省位置')), '运行时根就在缺省位置时不该提示');
 
-  const elsewhere = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-install-moved-'));
+  const elsewhere = await scratchDir('trivium-install-moved-');
   const r = await install(root, { home: ie.home, env: { TRIVIUM_ASSET_ROOT: path.join(elsewhere, 'rt') } });
   assert.ok(r.notes.some((n) => n.includes('缺省位置') && n.includes(r0.runtime.dir)), JSON.stringify(r.notes));
   assert.deepEqual(await listTree(r0.runtime.dir), before, '缺省位置的旧副本必须原样保留');

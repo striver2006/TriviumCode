@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
@@ -14,6 +13,7 @@ import {
 import { defaultConfig } from '../../src/trivium/config.js';
 import type { Snapshot } from '../../src/trivium/freeze.js';
 import { expandHome } from '../../src/trivium/util/fsx.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const LENSES: Lenses = {
   gemini: { plan: '- 需求覆盖是否有遗漏\n- 不可逆决策是否写明' },
@@ -295,7 +295,7 @@ test('缺 prompts/ 文件时第 5 段只含镜头，不报错', () => {
 });
 
 test('loadStagePrompt 剥掉写给维护者的 HTML 注释', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-prompt-'));
+  const dir = await scratchDir('trivium-prompt-');
   await fs.mkdir(path.join(dir, 'prompts'), { recursive: true });
   await fs.writeFile(
     path.join(dir, 'prompts/plan-review.md'),
@@ -308,12 +308,12 @@ test('loadStagePrompt 剥掉写给维护者的 HTML 注释', async () => {
 });
 
 test('loadStagePrompt 文件不存在返回 null——旧版安装不该因此跑不起来', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-prompt-'));
+  const dir = await scratchDir('trivium-prompt-');
   assert.equal(await loadStagePrompt(dir, 'code'), null);
 });
 
 test('loadStagePrompt 只剩注释时也返回 null', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-prompt-'));
+  const dir = await scratchDir('trivium-prompt-');
   await fs.mkdir(path.join(dir, 'prompts'), { recursive: true });
   await fs.writeFile(path.join(dir, 'prompts/bug-review.md'), '<!-- 只有注释 -->\n', 'utf8');
   assert.equal(await loadStagePrompt(dir, 'bug'), null);

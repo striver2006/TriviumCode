@@ -31,6 +31,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { stripNonCode } from '../helpers/strip-non-code.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /**
  * 剥掉**一切不是代码的东西**：注释 + 字符串 / 模板 / 正则字面量的正文。
@@ -642,12 +643,11 @@ test('对账：两个「谁算原稿」的入口对同一夹具给出同一答�
    * `deny-matrix`）。这一条是同族：同一夹具分别过两个入口，断同一结果。
    * **抽成共用函数是更好的修法**（登记 EV-65），在那之前由本条看着。
    */
-  const os = await import('node:os');
   const { locateSubject, resolveTopicReadOnly } = await import('../../src/trivium/topic.js');
   const { resolveTopicArgs } = await import('../../src/trivium/topic-args.js');
   const { defaultConfig } = await import('../../src/trivium/config.js');
 
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-parity-'));
+  const root = await scratchDir('trivium-parity-');
   const ctx = {
     config: defaultConfig(), projectRoot: root,
     archiveRoot: path.join(root, '.reviews'),

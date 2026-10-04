@@ -9,18 +9,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { ASSET_ROOT, BUNDLE, bundleMissing, bundleSkipReason, makeFixture } from '../helpers/fixture.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import { STUB_ENV_VAR, encodeStubConfig, type StubConfig } from '../../src/trivium/adapters/stub.js';
 import { run } from '../../src/trivium/util/exec.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const TOPIC = '副本源复查';
 
 async function tmpHome(populate: boolean): Promise<string> {
-  const home = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-ovr-home-')));
+  const home = await fs.realpath(await scratchDir('trivium-ovr-home-'));
   if (populate) {
     await fs.mkdir(path.join(home, '.zcode/cli'), { recursive: true });
     await fs.writeFile(path.join(home, '.zcode/cli/config.json'), '{}\n');

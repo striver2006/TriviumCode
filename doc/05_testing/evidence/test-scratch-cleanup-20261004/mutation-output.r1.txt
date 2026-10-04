@@ -1,0 +1,112 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  M1 ✓ 咬住（fail=6）
+  M2 ✓ 咬住（fail=6）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=5）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=2）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=2）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=1）
+{
+  "总数": 15,
+  "咬住": 15,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "scratchDir 不登记",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M2",
+      "desc": "不挂退出钩子",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M3",
+      "desc": "忽略保留变量",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "权限恢复不先 chmod 自身",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "一个删不掉就中断后面的",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "防呆的父目录核对取反",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M7",
+      "desc": "去掉前缀校验",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "scratchDirSync 不登记",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "makeFixture 不传主语（提示落成缺省 scratchDir / 测试临时目录）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M10",
+      "desc": "保留提示不按调用方分组（合成一行）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "run-ctx 退回裸 mkdtemp",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "hooks.test 的 trivium-hook- 退回裸 mkdtemp",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "计数不剥离注释与字符串",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M14",
+      "desc": "豁免表少一项",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "登记时不解析成绝对路径",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

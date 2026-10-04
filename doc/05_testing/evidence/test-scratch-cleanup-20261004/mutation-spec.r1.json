@@ -1,0 +1,157 @@
+{
+  "targets": [
+    "test/helpers/scratch.ts",
+    "test/helpers/fixture.ts",
+    "test/helpers/run-ctx.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/scratch-guard.test.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/scratch-cleanup.test.js",
+    "dist/test/test/integration/fixture-cleanup.test.js",
+    "dist/test/test/unit/scratch-guard.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "file": "test/helpers/scratch.ts",
+      "expect": "dist/test/test/integration/scratch-cleanup.test.js",
+      "also": [
+        "dist/test/test/integration/fixture-cleanup.test.js"
+      ],
+      "desc": "scratchDir 不登记",
+      "find": "  // 与 await 之间没有别的 await：一返回就登记，早于调用方的任何写盘，建到一半抛出也会被收尾\n  register(raw, parent, prefix, who);\n",
+      "replace": "  // （变异：不登记）\n"
+    },
+    {
+      "id": "M2",
+      "file": "test/helpers/scratch.ts",
+      "expect": "dist/test/test/integration/scratch-cleanup.test.js",
+      "also": [
+        "dist/test/test/integration/fixture-cleanup.test.js"
+      ],
+      "desc": "不挂退出钩子",
+      "find": "    process.on('exit', removeScratchDirsSync);\n",
+      "replace": "    void 0;\n"
+    },
+    {
+      "id": "M3",
+      "file": "test/helpers/scratch.ts",
+      "expect": "dist/test/test/integration/scratch-cleanup.test.js",
+      "also": [
+        "dist/test/test/integration/fixture-cleanup.test.js"
+      ],
+      "desc": "忽略保留变量",
+      "find": "  if (process.env[KEEP_FIXTURES_ENV] === '1') {\n",
+      "replace": "  if (false) {\n"
+    },
+    {
+      "id": "M4",
+      "file": "test/helpers/scratch.ts",
+      "expect": "dist/test/test/integration/scratch-cleanup.test.js",
+      "also": [
+        "dist/test/test/integration/fixture-cleanup.test.js"
+      ],
+      "desc": "权限恢复不先 chmod 自身",
+      "find": "    chmodSync(dir, 0o700);\n",
+      "replace": "    void 0;\n"
+    },
+    {
+      "id": "M5",
+      "file": "test/helpers/scratch.ts",
+      "expect": "dist/test/test/integration/scratch-cleanup.test.js",
+      "also": [
+        "dist/test/test/integration/fixture-cleanup.test.js"
+      ],
+      "desc": "一个删不掉就中断后面的",
+      "find": "      warnLine(`${who.owner}：${who.noun}没删掉，请手工删除 ${dir}（${(e as NodeJS.ErrnoException).code ?? String(e)}）`);\n",
+      "replace": "      warnLine(`${who.owner}：${who.noun}没删掉，请手工删除 ${dir}（${(e as NodeJS.ErrnoException).code ?? String(e)}）`);\n      break;\n"
+    },
+    {
+      "id": "M6",
+      "file": "test/helpers/scratch.ts",
+      "expect": "dist/test/test/integration/scratch-cleanup.test.js",
+      "also": [
+        "dist/test/test/integration/fixture-cleanup.test.js"
+      ],
+      "desc": "防呆的父目录核对取反",
+      "find": "path.dirname(dir) !== parent",
+      "replace": "path.dirname(dir) === parent"
+    },
+    {
+      "id": "M7",
+      "file": "test/helpers/scratch.ts",
+      "expect": "dist/test/test/integration/scratch-cleanup.test.js",
+      "desc": "去掉前缀校验",
+      "find": "  if (!PREFIX_RE.test(prefix)) {\n",
+      "replace": "  if (false) {\n"
+    },
+    {
+      "id": "M8",
+      "file": "test/helpers/scratch.ts",
+      "expect": "dist/test/test/integration/scratch-cleanup.test.js",
+      "desc": "scratchDirSync 不登记",
+      "find": "  const raw = mkdtempSync(path.join(os.tmpdir(), prefix));\n  register(raw, parent, prefix, who);\n",
+      "replace": "  const raw = mkdtempSync(path.join(os.tmpdir(), prefix));\n"
+    },
+    {
+      "id": "M9",
+      "file": "test/helpers/fixture.ts",
+      "expect": "dist/test/test/integration/fixture-cleanup.test.js",
+      "also": [
+        "dist/test/test/integration/scratch-cleanup.test.js"
+      ],
+      "desc": "makeFixture 不传主语（提示落成缺省 scratchDir / 测试临时目录）",
+      "find": "  const raw = await scratchDir('trivium-fx-', FIXTURE_OWNER);\n",
+      "replace": "  const raw = await scratchDir('trivium-fx-');\n"
+    },
+    {
+      "id": "M10",
+      "file": "test/helpers/scratch.ts",
+      "expect": "dist/test/test/integration/scratch-cleanup.test.js",
+      "desc": "保留提示不按调用方分组（合成一行）",
+      "find": "      const key = `${e.who.owner}\\u0000${e.who.noun}`;\n",
+      "replace": "      const key = 'all';\n"
+    },
+    {
+      "id": "M11",
+      "file": "test/helpers/run-ctx.ts",
+      "expect": "dist/test/test/unit/scratch-guard.test.js",
+      "desc": "run-ctx 退回裸 mkdtemp",
+      "find": "  const root = await scratchDir(prefix);\n",
+      "replace": "  const root = await (await import('node:fs')).promises.mkdtemp(prefix);\n"
+    },
+    {
+      "id": "M12",
+      "file": "test/unit/hooks.test.ts",
+      "expect": "dist/test/test/unit/scratch-guard.test.js",
+      "desc": "hooks.test 的 trivium-hook- 退回裸 mkdtemp",
+      "find": "  const root = await scratchDir('trivium-hook-');\n",
+      "replace": "  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-hook-'));\n"
+    },
+    {
+      "id": "M13",
+      "file": "test/unit/scratch-guard.test.ts",
+      "expect": "dist/test/test/unit/scratch-guard.test.js",
+      "desc": "计数不剥离注释与字符串",
+      "find": "  return [...stripNonCode(src).matchAll(",
+      "replace": "  return [...src.matchAll("
+    },
+    {
+      "id": "M14",
+      "file": "test/unit/scratch-guard.test.ts",
+      "expect": "dist/test/test/unit/scratch-guard.test.js",
+      "desc": "豁免表少一项",
+      "find": "  'test/unit/probe-verify.test.ts': 1,\n",
+      "replace": ""
+    },
+    {
+      "id": "M15",
+      "file": "test/helpers/scratch.ts",
+      "expect": "dist/test/test/integration/scratch-cleanup.test.js",
+      "desc": "登记时不解析成绝对路径",
+      "find": "  ENTRIES.push({ dir: path.resolve(raw), parent, prefix, who });\n",
+      "replace": "  ENTRIES.push({ dir: raw, parent, prefix, who });\n"
+    }
+  ]
+}

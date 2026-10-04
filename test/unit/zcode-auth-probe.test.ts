@@ -16,8 +16,9 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { ZCODE_PERSONAL_PROVIDER_ENV, zcodeAdapter, zcodeTempDirResidueText, type ZcodeTempDirCopyKind } from '../../src/trivium/adapters/zcode.js';
+import { scratchDir } from '../helpers/scratch.js';
 
-const tmp = (p: string) => fs.mkdtemp(path.join(os.tmpdir(), p));
+const tmp = (p: string) => scratchDir(p);
 
 const OBSERVE_ENTRY = (exitCode: number, stderrLine = 'Error: Model creation failed (traceId: fake)') => `
 const fs = require('node:fs'), path = require('node:path');

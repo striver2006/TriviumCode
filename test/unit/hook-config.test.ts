@@ -8,7 +8,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   describeGuard, effectiveGuardLevel, gateHoldNotice, hookConfigPresent, hookNamesOf, loadHookSource, mergeAgentHooks,
@@ -20,6 +19,7 @@ import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { renderTamperedArtifacts } from '../../src/trivium/gate.js';
 import { resolveTopicArgs } from '../../src/trivium/topic-args.js';
 import { defaultConfig } from '../../src/trivium/config.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const HOOKS_JSON = path.join(REPO_ROOT, 'skills/dual-critic/hooks/hooks.json');
 const byFormat = (f: string): AgentDescriptor => {
@@ -33,7 +33,7 @@ const NO_HOOK = AGENTS.find((a) => a.hookConfigTarget === null)!;
 
 const report = (): HookMergeReport => ({ created: [], updated: [], skipped: [], notes: [] });
 async function project(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'trivium-hookcfg-'));
+  return scratchDir('trivium-hookcfg-');
 }
 async function source(): Promise<HookSource> {
   const s = await loadHookSource(HOOKS_JSON);

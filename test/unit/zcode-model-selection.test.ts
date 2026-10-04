@@ -11,7 +11,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   decideModelOverride,
@@ -36,8 +35,9 @@ import {
   probeModelOverride,
   ZCODE_PROBE_SENTINEL_KEY,
 } from '../../src/trivium/probes/zcode.js';
+import { scratchDir } from '../helpers/scratch.js';
 
-const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'trivium-zcode-model-'));
+const tmp = () => scratchDir('trivium-zcode-model-');
 
 /** 一份形态与本机一致的 `cli/config.json`（凭据位用假值） */
 function cliConfigFixture(): Record<string, unknown> {

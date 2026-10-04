@@ -27,10 +27,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const ROOT = REPO_ROOT;
 const SCRIPT = path.join(ROOT, 'scripts', 'mutation-check.mjs');
@@ -38,7 +38,7 @@ const SENTINEL = path.join(ROOT, '.mutation-check-running');
 
 /** 写一份最小规格到临时目录，返回路径 */
 async function writeSpec(spec: unknown): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-mut-test-'));
+  const dir = await scratchDir('trivium-mut-test-');
   const p = path.join(dir, 'spec.json');
   await fs.writeFile(p, JSON.stringify(spec), 'utf8');
   return p;

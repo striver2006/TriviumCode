@@ -20,6 +20,7 @@ import type { Ctx, RunMeta } from '../../src/trivium/types.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { run } from '../../src/trivium/util/exec.js';
 import { assertUnreadableExit } from '../helpers/unreadable-exit.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /** deny 的理由正文（`hookSpecificOutput.permissionDecisionReason`）；不是 deny 时为空串 */
 function denyReason(r: { json?: unknown }): string {
@@ -32,7 +33,7 @@ const SESSION = 'S-CURRENT';
 const STALE = 120_000;
 
 async function fakeCtx(opts: { withConfig?: boolean } = {}): Promise<Ctx> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-hook-'));
+  const root = await scratchDir('trivium-hook-');
   const triviumDir = path.join(root, '.trivium');
   await fs.mkdir(triviumDir, { recursive: true });
   if (opts.withConfig !== false) {
@@ -1644,7 +1645,7 @@ test('有运行中的双审时提醒先 --wait', async () => {
 test('状态读不到的运行目录单独成行，不因没抹别的目录而静默（代码双审 r1 CODEX-04 ≡ GLM-02）', async () => {
   const ctx = await fakeCtx();
   const { repoId } = await import('../../src/trivium/review.js');
-  ctx.config.runtime.run_root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-hook-runs-'));
+  ctx.config.runtime.run_root = await scratchDir('trivium-hook-runs-');
   const dir = path.join(ctx.config.runtime.run_root, repoId(ctx.projectRoot), 'R-nostatus');
   // 有侧目录、没有 status.json：清扫不做不可逆抹除，只计数——计数必须被人看见
   await fs.mkdir(path.join(dir, 'glm', 'out'), { recursive: true });
@@ -2019,7 +2020,7 @@ test('session-start：到期运行目录删不掉单列一行（目录与错误�
   const ctx = await fakeCtx();
   const { repoId } = await import('../../src/trivium/review.js');
   const { newStatus, writeStatus } = await import('../../src/trivium/status.js');
-  const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-hook-runs-'));
+  const runRoot = await scratchDir('trivium-hook-runs-');
   ctx.config.runtime.run_root = runRoot;
   const dir = path.join(runRoot, repoId(ctx.projectRoot), 'R-stuck');
   const lockedDir = path.join(dir, 'glm', 'home', '.zcode', 'cli');
@@ -2065,7 +2066,7 @@ test('session-start：删不掉是唯一一项待办时也要注入（锁在载�
   const ctx = await fakeCtx();
   const { repoId } = await import('../../src/trivium/review.js');
   const { newStatus, writeStatus } = await import('../../src/trivium/status.js');
-  const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-hook-runs-'));
+  const runRoot = await scratchDir('trivium-hook-runs-');
   ctx.config.runtime.run_root = runRoot;
   const dir = path.join(runRoot, repoId(ctx.projectRoot), 'R-only');
   const lockedDir = path.join(dir, 'misc', 'locked');

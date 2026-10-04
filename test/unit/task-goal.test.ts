@@ -1,16 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { resolveTaskGoal } from '../../src/trivium/review.js';
 import { emptyTask, updateTask, readTask } from '../../src/trivium/meta.js';
 import { stageDir, topicDir, type ArchiveLayout } from '../../src/trivium/archive.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const TOPIC = '登录重构';
 
 async function fixture(): Promise<ArchiveLayout> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tv-goal-'));
+  const root = await scratchDir('trivium-goal-');
   const layout: ArchiveLayout = { archiveRoot: path.join(root, '.reviews'), topic: TOPIC };
   await fs.mkdir(stageDir(layout, 'code'), { recursive: true });
   return layout;
@@ -90,7 +90,7 @@ test('超长目标被截断到 200 字符加省略号', async () => {
  */
 test('并发 updateTask 不丢更新（走 .task-<主题> 短临界区）', async () => {
   const l = await fixture();
-  const triviumDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tv-goal-lock-'));
+  const triviumDir = await scratchDir('trivium-goal-lock-');
   const lock = { triviumDir, heartbeatStaleMs: 120_000 };
   await Promise.all(
     Array.from({ length: 8 }, (_, i) =>

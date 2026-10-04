@@ -7,19 +7,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
-import { promises as fs } from 'node:fs';
 import { checkAdjudication, loadRoundReviews, renderGateResult } from '../../src/trivium/gate.js';
 import { newRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { writeArtifact, writeMeta, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { CRITIC_VENDOR, type CriticId, type Finding, type Review, type RunMeta } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 const DATE = '2026-09-10';
 const TOPIC = '降级闸门';
 
 async function layout(): Promise<ArchiveLayout> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-gate-degrade-'));
+  const root = await scratchDir('trivium-gate-degrade-');
   return { archiveRoot: path.join(root, '.reviews'), topic: TOPIC };
 }
 

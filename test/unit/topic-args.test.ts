@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   splitArguments, inferTopic, resolveTopicArgs, findSwallowedFlags, findLiteralQuoteWrapped,
@@ -13,6 +12,7 @@ import type { Ctx } from '../../src/trivium/types.js';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
 import { selectableCritics } from '../../src/trivium/critics.js';
 import { SELECTABLE, assertSelectableUsable } from '../helpers/critic-fixtures.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /*
  * ── 入参是 argv 数组，不是字符串（EV-18）──
@@ -23,7 +23,7 @@ import { SELECTABLE, assertSelectableUsable } from '../helpers/critic-fixtures.j
  */
 
 async function fakeCtx(): Promise<Ctx> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-args-'));
+  const root = await scratchDir('trivium-args-');
   await fs.writeFile(path.join(root, 'a.ts'), 'export const a = 1;\n');
   await initFixtureRepo(root);
   return {

@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   finalizeCancelledRunMeta, finalizeFailedRunMeta, newRunMeta, readTask, registerRun, taskLockName, writeRunMeta,
@@ -11,6 +10,7 @@ import { metaDir, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { withTopicLock } from '../../src/trivium/lock.js';
 import { validateRunMeta } from '../../src/trivium/schemas.js';
 import type { RunMeta, RunTermination } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /**
  * EV-142：没走到 worker 收尾就失败的运行，归档侧收尾为 failed（计划 r2 §3.1 / §4.1 F1～F7）。
@@ -25,7 +25,7 @@ const RUN = '20260927T000000Z';
 const LOST: RunTermination = { by: 'worker_lost', reason: 'pid_gone' };
 
 async function setup(): Promise<{ layout: ArchiveLayout; lock: TaskLock; runJson: string; taskJson: string }> {
-  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-failed-')));
+  const root = await fs.realpath(await scratchDir('trivium-failed-'));
   const layout: ArchiveLayout = { archiveRoot: path.join(root, '.reviews'), topic: TOPIC };
   const lock: TaskLock = { triviumDir: path.join(root, '.trivium'), heartbeatStaleMs: 120_000 };
   return {

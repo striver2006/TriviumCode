@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   runInit, mergeHooks, fixGitignore, writeWrapper, hookNamesOf, stableNodePath, checkWrapper, type InitReport,
@@ -11,10 +10,11 @@ import { REPO_ROOT } from '../helpers/fixture.js';
 import { AGENTS } from '../../src/trivium/agents/registry.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import type { Ctx } from '../../src/trivium/types.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /** 造一份最小的 asset root（init 只需要 hooks.json 与 protocol/ 片段） */
 async function fakeAssets(): Promise<string> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-assets-'));
+  const root = await scratchDir('trivium-assets-');
   await fs.mkdir(path.join(root, 'hooks'), { recursive: true });
   await fs.mkdir(path.join(root, 'protocol'), { recursive: true });
   await fs.mkdir(path.join(root, 'scripts'), { recursive: true });
@@ -38,7 +38,7 @@ async function fakeAssets(): Promise<string> {
 }
 
 async function fakeProject(): Promise<Ctx> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-proj-'));
+  const root = await scratchDir('trivium-proj-');
   return {
     config: defaultConfig(),
     projectRoot: root,
@@ -459,7 +459,7 @@ for (const [file, keep] of [
     const body = (await composeProtocol(assetRoot, sections))!;
     const leftover = (await composeProtocol(assetRoot, keep))!;
     assert.notEqual(leftover.trim(), body.trim(), '前提：剩下的正文不是本文件的当前版');
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-protocol-'));
+    const dir = await scratchDir('trivium-protocol-');
     const target = path.join(dir, file);
     const original = `# 项目说明\n${block(leftover)}\n## 后文\n`;
     await fs.writeFile(target, original);
