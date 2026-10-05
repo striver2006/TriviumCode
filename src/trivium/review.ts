@@ -39,6 +39,8 @@ import {
   renderBrief,
   renderContextConflicts,
   renderPrunedWarnings,
+  TASK_GOAL_MAX,
+  WARNING_MARK,
   type MustReadSource,
   type PrunedEntry,
   type SideConflicts,
@@ -82,11 +84,9 @@ import {
   TriviumError,
 } from './exit-codes.js';
 import { checkModelSlugs } from './preflight.js';
+import { assertNoSecrets } from './secrets.js';
 import { say, step, warn } from './util/log.js';
 import { effectiveGuardLevel } from './hook-config.js';
-
-/** 任务目标进 BRIEF 只占一行，不是正文——超长就截断，别把第 4 段挤成一篇文章 */
-const TASK_GOAL_MAX = 200;
 
 /**
  * 把单侧判定里的禁读结论整理成渲染层要的形状（设计 §10.1.1）。
@@ -213,10 +213,89 @@ function peerLeakOf(side: SideVerdict): NonNullable<RenderInput['peerLeak']> | u
   };
 }
 
+/**
+ * 任务目标的折叠规则：所有空白折成一个空格、去首尾。**只此一份**——`clampGoal` 与附录判定共用
+ * （任务目标全文送审计划 r2 §2.1，计划双审 CODEX-03）：各写一份，改了一处另一处静默分叉。
+ */
+function foldGoal(raw: string | null | undefined): string {
+  return (raw ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * 第 4 段的任务目标摘要：折叠后超过 `TASK_GOAL_MAX`（声明在 `brief.ts`）就截断加「…」。
+ * 任务文件的 `goal` 与运行元数据的 `task_goal` 存的也是它（设计 §6.7）。
+ */
 function clampGoal(raw: string | null | undefined): string | null {
-  const t = (raw ?? '').replace(/\s+/g, ' ').trim();
+  const t = foldGoal(raw);
   if (t.length === 0) return null;
   return t.length > TASK_GOAL_MAX ? `${t.slice(0, TASK_GOAL_MAX)}…` : t;
+}
+
+/**
+ * 计划阶段附录要给出的任务目标原文；不出附录时返回 null（设计 §9.4，EV-210，任务目标全文送审计划 r2 §2.2）。
+ *
+ * 只在**计划阶段**、本次**显式** `--goal` 的摘要真被截了一刀时给出：
+ *   - 判「被截断」与 `clampGoal` 同口径（同一个 `foldGoal`、同一单位）——200 字以内但含换行的目标，
+ *     摘要折掉了换行却没丢内容，不出附录，任务书逐字不变；
+ *   - 只认 `rawGoal`（`opts.taskGoal`，本次命令行的原文）：目标来自任务文件或计划原稿时它为空，自然不出；
+ *   - 代码阶段只出摘要：那一阶段的依据是计划定稿（`resolvePlanFinal`），用户原话里的决策已被计划双审裁过。
+ *
+ * 原文只做两处规整：`\r\n` → `\n`、去首尾空白；其余逐字。附录的上限在 `brief.ts` 渲染时按码点截。
+ */
+export function taskGoalAppendix(stage: Stage, rawGoal: string | null | undefined): string | null {
+  if (stage !== 'plan') return null;
+  if (foldGoal(rawGoal).length <= TASK_GOAL_MAX) return null;
+  return (rawGoal ?? '').replace(/\r\n/g, '\n').trim();
+}
+
+/** 计划阶段留痕读不出、没能列入计划定稿时的告警名（与「必读清单剔除」同形、同三个出口） */
+export const PLAN_FINAL_UNLISTED_WARNING = '必读清单未列计划定稿';
+
+/**
+ * 代码阶段要列入必读的本主题计划定稿（设计 §9.4 第 4 条，EV-210，任务目标全文送审计划 r2 §2.4）。
+ *
+ * 取法：先用全仓唯一的三级判定 `resolveStageDriver` 定**计划阶段**的执笔方（不是代码阶段的——
+ * 两个阶段可以分属两家），再用 `locateSubject` 按它的后缀取非裁决件、轮次最大的一份：
+ * 有修订稿（`-r2-`…）取最新修订稿，没有取原稿。裁决件不列（计划 r2 §2.5：它逐条复述别的审查员的意见）。
+ *
+ * - 计划阶段最新留痕读不出（`corrupt`）⇒ 不列，返回一条告警；不拒跑：这是自动条目，用户此刻改不了它（同 EV-02）。
+ * - `locateSubject` 抛出（没有计划目录、或没有该执笔方的原稿）⇒ 不列、无告警：「本主题没有计划阶段」是正常情况，
+ *   与 `resolveTaskGoal` 第三级同口径。
+ *
+ * 返回项目相对路径；列进第 4 段后照常过本侧交集判定（撞上禁读集即剔除并告警）。
+ */
+export async function resolvePlanFinal(
+  ref: { topic: string; layout: ArchiveLayout },
+  projectRoot: string,
+): Promise<{ path: string | null; warning: { name: string; detail: string } | null }> {
+  const { resolveStageDriver } = await import('./driver-claim.js');
+  const resolution = await resolveStageDriver(ref.layout, 'plan');
+  if (resolution.kind === 'corrupt') {
+    const { unreadableRunMetaExitAt } = await import('./meta.js');
+    return {
+      path: null,
+      warning: {
+        name: PLAN_FINAL_UNLISTED_WARNING,
+        detail:
+          `${WARNING_MARK}本主题计划阶段的运行留痕读不出（${resolution.unreadable.join('、')}），判不出计划阶段的执笔方，` +
+          '任务书第 4 段没有列入本主题计划定稿；本轮照常审查。\n' +
+          unreadableRunMetaExitAt(ref.layout, 'plan', resolution.unreadable),
+      },
+    };
+  }
+  try {
+    // 变量名与 resolveTaskGoal 的 planRef 区分开：driver-wiring.test.ts 按调用点锚点逐处核 driver 的取值
+    const planStageRef = { topic: ref.topic, layout: ref.layout, stage: 'plan' as const,
+      stageDirAbs: stageDir(ref.layout, 'plan') };
+    const abs = await locateSubject(planStageRef, null, projectRoot, resolution.driver);
+    return { path: path.relative(projectRoot, abs), warning: null };
+  } catch {
+    /*
+     * 阶段目录 `readdir` 失败也落到这里：`locateSubject` 把它当空目录、随后抛 65，与「没有计划阶段」同归一处
+     * （代码双审 GLM-03）。有意不收窄：收窄会让自动条目的意外形态上抛、拦住整轮代码审，与「自动条目不拒跑」相悖。
+     */
+    return { path: null, warning: null };
+  }
 }
 
 /**
@@ -249,7 +328,7 @@ function goalFromPlanDoc(text: string): string | null {
  *
  * 三级来源，取第一个非空：
  *   1. 显式 `--goal`（`/dual-run <任务目标>` 透传而来）
- *   2. `task.json` 的 `goal`——主题首次跑时落下的原文，后续阶段复用
+ *   2. `task.json` 的 `goal`——主题首次跑时落下的摘要（`clampGoal` 之后的值，不是原文；设计 §6.7），后续阶段复用
  *   3. 同主题 plan 阶段原稿的标题/首段
  *
  * 都取不到就返回 null，该行不渲染（保持既有行为，不硬造一个目标去误导审查员）。
@@ -787,11 +866,27 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const lenses = await loadLenses(lensesPath);
   // 阶段专属审查要点。缺文件返回 null，旧版安装不至于跑不起来
   const stagePrompt = await loadStagePrompt(assetRoot, stage);
-  const mustRead = await buildMustReadList(cfg, ctx.projectRoot, ref.topic, opts.contextPaths);
+  // 代码阶段必读本主题计划定稿（EV-210）；其余阶段不找
+  const planFinal = stage === 'code'
+    ? await resolvePlanFinal(ref, ctx.projectRoot)
+    : { path: null, warning: null };
+  const mustRead = await buildMustReadList(cfg, ctx.projectRoot, ref.topic, opts.contextPaths, planFinal.path);
   const suggestedRead = extractPathReferences(subjectText);
   const excerpt = excerptSubject(subjectText);
   // 两侧共用同一个任务目标：逐侧各解析一次，可能因中途写入而拿到不同结果
   const taskGoal = await resolveTaskGoal(opts, ref, ctx.projectRoot);
+  // 附录原文同样只算一次、各侧共用；只认本次命令行的显式原文（EV-210）
+  const goalAppendix = taskGoalAppendix(stage, opts.taskGoal);
+  /*
+   * 附录原文单独按 full 模式整份扫密钥（代码双审 GLM-01）。
+   *
+   * 任务书落盘走 `scan: 'added-lines'`（`scanDiffSecrets`）：它为第 3 段的补丁节选按 hunk 判，见到 `@@ ` 开头的行
+   * 就把其后以 `-`、空格、反斜杠开头的行与空行整行移出扫描论域。附录是开发者原文，完全可能有这种行——
+   * 修前实测：「`@@ ` 开头行 + 连字符开头行」夹带的凭据形态照常进了任务书。所以附录不能交给那套判据。
+   * 放在计算段（置闸门与任何落盘之前）：命中即抛（与归档拒绝同码同文案），零工件、闸门不用回收。
+   * 定位标签让行号读作原文的第几行；文案只给打码后的预览，不回显原文。
+   */
+  if (goalAppendix) assertNoSecrets(goalAppendix, `${ref.topic}/plan 任务目标原文（--goal）`, 'full');
 
   // ── 冻结 + 送审包（禁读清单逐侧不同：屏蔽的是**对方**的历史产出）──
   const snapshots: Partial<Record<CriticId, Awaited<ReturnType<typeof freeze>>>> = {};
@@ -912,6 +1007,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       mustRead: sideMustRead, suggestedRead: sideSuggested, ownHistory,
       schemaPath, lenses, stagePrompt,
       taskGoal,
+      taskGoalAppendix: goalAppendix,
       minToolCalls: cfg.review.min_tool_calls[stage],
       minProjectReads: cfg.review.min_project_reads[stage],
       /*
@@ -948,8 +1044,13 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
 
   const primarySnap = snapshots[sides[0]!]!;
   /** 全量进 run.json；播报通道（`--start` / 同步路径）用封顶后的那份（代码双审 CODEX-06） */
-  const mustReadPrunedAll = renderPrunedWarnings(pruned, sides);
-  const mustReadPruned = renderPrunedWarnings(pruned, sides, MUST_READ_PRUNED_DISPLAY_MAX);
+  /*
+   * 计划定稿没能列入的告警（至多一条）排在剔除告警之前，不受剔除封顶影响（EV-210）；
+   * 走同样三个出口：`--start` 的 warnings、同步路径的 warnings、run.json 的 gate.warnings。
+   */
+  const planFinalWarnings = planFinal.warning ? [planFinal.warning] : [];
+  const mustReadPrunedAll = [...planFinalWarnings, ...renderPrunedWarnings(pruned, sides)];
+  const mustReadPruned = [...planFinalWarnings, ...renderPrunedWarnings(pruned, sides, MUST_READ_PRUNED_DISPLAY_MAX)];
 
   /*
    * ── 闸门在第一次落盘之前置 running（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §3.1）──

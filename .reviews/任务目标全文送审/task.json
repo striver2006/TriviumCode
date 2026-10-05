@@ -1,0 +1,84 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "任务目标全文送审",
+  "goal": "主题「任务目标全文送审」：EV-210。/dual-run 的正文整段算任务目标，而 review.ts 的 clampGoal 把它折叠空白后截到 200 字（TASK_GOAL_MAX），BRIEF 第 4 段「任务目标：」只有这一行；用户正文里的现状、决策与要求到不了计划审查员面前，没法据此核对计划是否忠实。代码阶段的必读清单又不含本主题的计划，审查员能不能读到定稿计划全靠自己去找（EV-2…",
+  "created_at": "2026-10-05T00:00:04.584Z",
+  "updated_at": "2026-10-05T02:21:19.021Z",
+  "runs": [
+    {
+      "run_id": "20261005T000535Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-05T00:05:38.322Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261005T010708Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "full",
+      "started_at": "2026-10-05T01:07:11.968Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261005T013444Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-05T01:34:51.612Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261005T021613Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-05T02:21:19.021Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-05T00:00:04.584Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-05T00:25:20.680Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261005T000535Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-05T00:25:17.874Z"
+    },
+    {
+      "run_id": "20261005T013444Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-05T01:52:32.425Z"
+    }
+  ]
+}

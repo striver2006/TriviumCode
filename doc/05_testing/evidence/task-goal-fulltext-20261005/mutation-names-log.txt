@@ -1,0 +1,27 @@
+M1：fail=1 cancelled=0 0s ⇒ U1 · 计划阶段显式长目标 ⇒ 原文（换行逐字保留）；代码 / bug 阶段与空值 ⇒ null
+  亦跑 dist/test/test/integration/task-goal-fulltext.test.js：fail=2 ⇒ I5 · 代码阶段 --start：各侧第 4 段列最新修订稿 r2，不列 r1 与裁决件；带长 --goal 也不出附录 ｜ I10 · 同 I5 走同步 review --stage code
+M2：fail=1 cancelled=0 0s ⇒ U2 · 边界与 clampGoal 同口径：折叠后恰 200 ⇒ null，201 ⇒ 原文，原文超 200 但折叠后不超 ⇒ null
+M3：fail=2 cancelled=0 0s ⇒ U1 · 计划阶段显式长目标 ⇒ 原文（换行逐字保留）；代码 / bug 阶段与空值 ⇒ null ｜ U3 · 规整只做两处：\r\n 变 \n、去首尾空白；其余逐字
+  亦跑 dist/test/test/integration/task-goal-fulltext.test.js：fail=2 ⇒ I1 · 计划阶段 --start --entry A + 多行长 --goal：各侧任务书有指引与附录（逐字、同一份）；任务文件与 run.json 仍是摘要 ｜ I2 · 同 I1 走同步 review --stage plan
+M4：fail=3 cancelled=0 24s ⇒ I1 · 计划阶段 --start --entry A + 多行长 --goal：各侧任务书有指引与附录（逐字、同一份）；任务文件与 run.json 仍是摘要 ｜ I2 · 同 I1 走同步 review --stage plan ｜ I4 · 计划阶段不带 --goal、任务文件已有长目标（B 入口）：只出摘要、无附录
+M5：fail=3 cancelled=0 0s ⇒ U4 · 带附录：第 4 段摘要行后有指引；附录在第 8 节之后、页脚之前；分隔线内逐字是原文；不编号 ｜ U5 · 附录为 null：无指引行、无附录；带附录的版本去掉这两处后与之逐字相同（附录只做插入） ｜ U6 · 上限按码点：超出时分隔线之间恰是前 16000 码点，提示行在结束分隔线之后；不切代理对
+  亦跑 dist/test/test/integration/task-goal-fulltext.test.js：fail=2 ⇒ I1 · 计划阶段 --start --entry A + 多行长 --goal：各侧任务书有指引与附录（逐字、同一份）；任务文件与 run.json 仍是摘要 ｜ I2 · 同 I1 走同步 review --stage plan
+M6：fail=1 cancelled=0 0s ⇒ U4 · 带附录：第 4 段摘要行后有指引；附录在第 8 节之后、页脚之前；分隔线内逐字是原文；不编号
+  亦跑 dist/test/test/integration/task-goal-fulltext.test.js：fail=2 ⇒ I1 · 计划阶段 --start --entry A + 多行长 --goal：各侧任务书有指引与附录（逐字、同一份）；任务文件与 run.json 仍是摘要 ｜ I2 · 同 I1 走同步 review --stage plan
+M7：fail=2 cancelled=0 0s ⇒ U4 · 带附录：第 4 段摘要行后有指引；附录在第 8 节之后、页脚之前；分隔线内逐字是原文；不编号 ｜ U5 · 附录为 null：无指引行、无附录；带附录的版本去掉这两处后与之逐字相同（附录只做插入）
+M8：fail=1 cancelled=0 0s ⇒ U6 · 上限按码点：超出时分隔线之间恰是前 16000 码点，提示行在结束分隔线之后；不切代理对
+M9：fail=1 cancelled=0 0s ⇒ U8 · buildMustReadList：计划定稿排在关键词之后、--context 之前，来源 plan-final；与 --context 重名保留计划定稿来源；不存在不列
+  亦跑 dist/test/test/integration/task-goal-fulltext.test.js：fail=5 ⇒ I5 · 代码阶段 --start：各侧第 4 段列最新修订稿 r2，不列 r1 与裁决件；带长 --goal 也不出附录 ｜ I10 · 同 I5 走同步 review --stage code ｜ I6 · 代码阶段，计划目录只有 r1：列 r1 ｜ I8 · 非缺省执笔方：计划与代码阶段都是 codex ⇒ 列 -r2-codex.md ｜ I8 · 计划阶段 codex、代码阶段 claude ⇒ codex 侧列出，gemini / glm 侧按禁读剔除并告警（来源：本主题计划定稿）
+M10：fail=1 cancelled=0 0s ⇒ U7 · resolvePlanFinal：计划阶段声明为 codex ⇒ 取 -codex.md，不取 claude 后缀的那份
+  亦跑 dist/test/test/integration/task-goal-fulltext.test.js：fail=2 ⇒ I8 · 非缺省执笔方：计划与代码阶段都是 codex ⇒ 列 -r2-codex.md ｜ I8 · 计划阶段 codex、代码阶段 claude ⇒ codex 侧列出，gemini / glm 侧按禁读剔除并告警（来源：本主题计划定稿）
+M11：fail=2 cancelled=0 0s ⇒ U7 · resolvePlanFinal：计划阶段声明为 codex ⇒ 取 -codex.md，不取 claude 后缀的那份 ｜ U7 · resolvePlanFinal：计划阶段最新留痕读不出 ⇒ 不列，带一条「必读清单未列计划定稿」告警
+  亦跑 dist/test/test/integration/task-goal-fulltext.test.js：fail=2 ⇒ I8 · 计划阶段 codex、代码阶段 claude ⇒ codex 侧列出，gemini / glm 侧按禁读剔除并告警（来源：本主题计划定稿） ｜ I9 · 计划阶段 run.json 读不出：不列计划定稿，--start 的 warnings 与 run.json gate.warnings 都有「必读清单未列计划定稿」
+M12：fail=1 cancelled=0 0s ⇒ U7 · resolvePlanFinal：计划阶段最新留痕读不出 ⇒ 不列，带一条「必读清单未列计划定稿」告警
+  亦跑 dist/test/test/integration/task-goal-fulltext.test.js：fail=1 ⇒ I9 · 计划阶段 run.json 读不出：不列计划定稿，--start 的 warnings 与 run.json gate.warnings 都有「必读清单未列计划定稿」
+M12b：fail=1 cancelled=0 24s ⇒ I9 · 计划阶段 run.json 读不出：不列计划定稿，--start 的 warnings 与 run.json gate.warnings 都有「必读清单未列计划定稿」
+M13：fail=1 cancelled=0 0s ⇒ U8 · buildMustReadList：计划定稿排在关键词之后、--context 之前，来源 plan-final；与 --context 重名保留计划定稿来源；不存在不列
+M14：fail=2 cancelled=0 24s ⇒ I1 · 计划阶段 --start --entry A + 多行长 --goal：各侧任务书有指引与附录（逐字、同一份）；任务文件与 run.json 仍是摘要 ｜ I2 · 同 I1 走同步 review --stage plan
+M15：fail=2 cancelled=0 24s ⇒ I5 · 代码阶段 --start：各侧第 4 段列最新修订稿 r2，不列 r1 与裁决件；带长 --goal 也不出附录 ｜ I10 · 同 I5 走同步 review --stage code
+M16：fail=1 cancelled=0 0s ⇒ U6 · 上限按码点：超出时分隔线之间恰是前 16000 码点，提示行在结束分隔线之后；不切代理对
+M17：fail=1 cancelled=0 0s ⇒ U6 · 上限按码点：超出时分隔线之间恰是前 16000 码点，提示行在结束分隔线之后；不切代理对
+M18：fail=2 cancelled=0 0s ⇒ U4 · 带附录：第 4 段摘要行后有指引；附录在第 8 节之后、页脚之前；分隔线内逐字是原文；不编号 ｜ U5 · 附录为 null：无指引行、无附录；带附录的版本去掉这两处后与之逐字相同（附录只做插入）

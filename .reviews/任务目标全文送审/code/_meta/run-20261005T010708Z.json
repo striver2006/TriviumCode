@@ -1,0 +1,84 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261005T010708Z",
+  "topic": "任务目标全文送审",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「任务目标全文送审」：EV-210。/dual-run 的正文整段算任务目标，而 review.ts 的 clampGoal 把它折叠空白后截到 200 字（TASK_GOAL_MAX），BRIEF 第 4 段「任务目标：」只有这一行；用户正文里的现状、决策与要求到不了计划审查员面前，没法据此核对计划是否忠实。代码阶段的必读清单又不含本主题的计划，审查员能不能读到定稿计划全靠自己去找（EV-2…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "722a4719e8c5278c08e8a711180f051856fc161a",
+    "tree_hash": "be43314d45841e9bd434c4056cab4e1521428f28",
+    "dirty": true,
+    "subject_sha256": "7a5eea9979857f140fd8f3ed43137136e3757004246bfecb9a9aa17181d17dcc",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "72461c7c00c171888fef12ada9c0cf9eb628bcd0",
+      "dirty": false,
+      "inputs_sha256": "f3a6cca97b727fb64b14b2d0428b1a8588a0fff327f60c592b5a71fd8f651af6",
+      "built_at": "2026-10-04T22:56:56.057Z"
+    }
+  },
+  "started_at": "2026-10-05T01:07:11.968Z",
+  "finished_at": "2026-10-05T01:31:14.692Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {},
+  "deny_paths": [
+    ".env.example",
+    ".reviews/任务目标全文送审/plan/2026-10-05-任务目标全文送审-gemini.md",
+    ".reviews/任务目标全文送审/plan/2026-10-05-任务目标全文送审-glm.md",
+    ".reviews/任务目标全文送审/plan/_meta/review-gemini-20261005T000535Z.json",
+    ".reviews/任务目标全文送审/plan/_meta/review-glm-20261005T000535Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {},
+    "forged_role_file": false
+  },
+  "artifacts": [
+    {
+      "path": "任务目标全文送审/code/_meta/changes-20261005T010708Z.diff",
+      "sha256": "7a5eea9979857f140fd8f3ed43137136e3757004246bfecb9a9aa17181d17dcc"
+    },
+    {
+      "path": "任务目标全文送审/code/_meta/brief-codex-20261005T010708Z.md",
+      "sha256": "c4f75db8960bbae8f1c93b46da8e67c293814ea9e0fe815d7b63efa550d4d2c8"
+    },
+    {
+      "path": "任务目标全文送审/code/_meta/brief-gemini-20261005T010708Z.md",
+      "sha256": "fb4a35d7a689defd4817bff1306fbd7a4849659d14e261dcf1a105b0ecc2aa7e"
+    },
+    {
+      "path": "任务目标全文送审/code/_meta/brief-glm-20261005T010708Z.md",
+      "sha256": "022083e81c1742c44b0387c16c73c683675eed2c62d96b82a2eb3c0686811eb4"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed",
+  "termination": {
+    "by": "worker_exception",
+    "exit_code": 1
+  }
+}

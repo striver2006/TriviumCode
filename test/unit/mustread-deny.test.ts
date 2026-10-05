@@ -230,7 +230,7 @@ test('buildMustReadList：三类各带来源；与公约重名的 --context 保�
       'src/x.ts',
       'CLAUDE.md',
       'src/不存在.ts',
-    ]);
+    ], null);
     assert.deepEqual(got, [
       { path: 'CLAUDE.md', source: 'convention' },
       { path: 'README.md', source: 'convention' },
@@ -341,13 +341,13 @@ test('剔除告警：多侧多类时逐组写明是哪几侧；三侧剔两侧�
   assert.ok(mixed[0]!.detail.includes(`glm 侧：${DENY_CATEGORY_LABEL.sensitive}`), mixed[0]!.detail);
 });
 
-test('剔除告警：四类自动来源各有人读标签；来源标签表穷尽五值', () => {
-  const sources: MustReadSource[] = ['convention', 'keyword', 'suggested', 'own-history'];
+test('剔除告警：五类自动来源各有人读标签；来源标签表穷尽六值', () => {
+  const sources: MustReadSource[] = ['convention', 'keyword', 'plan-final', 'suggested', 'own-history'];
   for (const s of sources) {
     const ws = renderPrunedWarnings([prunedOf('gemini', s, 'a.md', conflict('a.md', 'a.md', 'sensitive'))], ['gemini', 'glm']);
     assert.ok(ws[0]!.detail.includes(`（来源：${MUST_READ_SOURCE_LABEL[s]}）`), `${s}：${ws[0]!.detail}`);
   }
-  assert.deepEqual(Object.keys(MUST_READ_SOURCE_LABEL).sort(), ['context', 'convention', 'keyword', 'own-history', 'suggested']);
+  assert.deepEqual(Object.keys(MUST_READ_SOURCE_LABEL).sort(), ['context', 'convention', 'keyword', 'own-history', 'plan-final', 'suggested']);
   // 同名条目来源不同时不合并（公约与建议核实各一条）
   const two = renderPrunedWarnings(
     [

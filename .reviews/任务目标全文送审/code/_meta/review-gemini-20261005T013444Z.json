@@ -1,0 +1,41 @@
+{
+  "agreed": [
+    "计划阶段附录（EV-210）设计严密：仅在计划阶段显式 --goal 折叠后超过 200 字时在第 8 节后渲染不编号的附录，并按码点设 16000 上限（不切代理对），提示行置于区外，同时在第 4 节摘要后加单行指引；无附录时与旧版任务书逐字完全一致（A1 比对 100% 一致）。",
+    "代码阶段计划定稿（resolvePlanFinal）解析精准：严格通过 resolveStageDriver 获取计划阶段执笔方，以 locateSubject 提取最新修订稿（剔除裁决件与审查件）；留痕损坏时产生 PLAN_FINAL_UNLISTED_WARNING 告警不拒跑，排在剔除告警之前同走三出口。",
+    "严格遵守多 Agent 隔离与禁读交集校验：计划定稿作为 plan-final 来源纳入 buildMustReadList，并在两阶段执笔方异构场景下被其它侧按禁读剔除并告警（I8b 测试验证）。",
+    "常量收敛与工程护栏完善：TASK_GOAL_MAX 统一移至 brief.ts 避免循环依赖，抽取 foldGoal 统一空白折叠；driver-wiring.test.ts 将 locateSubject 护栏用例提升至 3 处且强制断言 resolution.driver。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-05_task_goal_fulltext.md",
+    "doc/05_testing/evidence/task-goal-fulltext-20261005/a1-old-new-brief.txt",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/brief.ts",
+    "src/trivium/review.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/topic.ts",
+    "test/unit/task-goal-appendix.test.ts",
+    "test/integration/task-goal-fulltext.test.ts",
+    "test/unit/driver-wiring.test.ts",
+    "test/unit/mustread-deny.test.ts",
+    "test/unit/brief.test.ts"
+  ],
+  "findings": [],
+  "not_covered": [
+    "由于本侧审查员无命令执行能力（仅具备只读检索权限），未在本地实际运行 npm test 或 trivium doctor --selftest 等命令，其通过情况依据提交记录及报告中的读数推定。",
+    "真实 CLI 环境下整份任务书经 argv 传入外部审查器（如 agy / zcode）时的 OS 层 execve 极限吞吐与环境变量压力未作实际物理拉起验证。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本次代码变更（EV-210：任务目标全文送审）实现质量极高。\n代码精准落地了计划 r2 中的决策：计划阶段长显式目标通过不编号附录原文送审并按码点截断（上限 16000），代码阶段必读清单按计划阶段执笔方自动收敛本主题最新计划定稿；未出附录时任务书与旧版保持 100% 逐字相同。\n元数据持久化维持存摘要的既有结构不变，相关文档、契约与护栏均已同步到位，测试与变异套件覆盖严密。\n审查焦点核对：变更文件与证据中均未包含明文真实凭据字面量。整体准予合入。",
+  "verdict": "approve"
+}

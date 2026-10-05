@@ -1,0 +1,147 @@
+✓ 工作树干净、基线全绿（2 个套件）
+  M1 ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=5）
+  M5 ✓ 咬住（fail=3）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=2）
+  M12 ✓ 咬住（fail=1）
+  M12b ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=2）
+  M15 ✓ 咬住（fail=2）
+  M16 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=1）
+  M19 ✓ 咬住（fail=2）
+  M18 ✓ 咬住（fail=2）
+{
+  "总数": 20,
+  "咬住": 20,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "taskGoalAppendix 去掉「只在计划阶段」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "截断判定 > 改 >=（恰 200 也出附录）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "附录给折叠后的文本",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "调用点把解析后的摘要 taskGoal 当原文传入",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M5",
+      "desc": "renderBrief 不渲染附录",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M6",
+      "desc": "第 4 段不出指引行",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "附录放到页脚之后",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "上限判定差一（恰 16000 也截）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "buildMustReadList 不收计划定稿",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "resolvePlanFinal 按缺省 Driver 定位",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "resolvePlanFinal 判的是代码阶段的执笔方",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M12",
+      "desc": "计划阶段留痕读不出时不出告警",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12b",
+      "desc": "告警不并进三个出口",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "计划定稿排在 --context 之后",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "任务文件改存原文",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M15",
+      "desc": "代码阶段也出附录（判定传死 plan）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M16",
+      "desc": "上限按 UTF-16 截（切代理对）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "超限提示行落进分隔线之内",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M19",
+      "desc": "附录原文不单独按 full 扫（只剩任务书的 hunk 判据，代码双审 GLM-01）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M18",
+      "desc": "页脚拆分改了第 8 段与页脚之间的拼接",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    }
+  ]
+}

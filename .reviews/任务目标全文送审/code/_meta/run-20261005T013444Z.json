@@ -1,0 +1,305 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261005T013444Z",
+  "topic": "任务目标全文送审",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "引用凭据形态的样例时只写前缀或打码，不要写出完整字面量（归档会拒绝落盘）",
+  "task_goal": "主题「任务目标全文送审」：EV-210。/dual-run 的正文整段算任务目标，而 review.ts 的 clampGoal 把它折叠空白后截到 200 字（TASK_GOAL_MAX），BRIEF 第 4 段「任务目标：」只有这一行；用户正文里的现状、决策与要求到不了计划审查员面前，没法据此核对计划是否忠实。代码阶段的必读清单又不含本主题的计划，审查员能不能读到定稿计划全靠自己去找（EV-2…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "722a4719e8c5278c08e8a711180f051856fc161a",
+    "tree_hash": "adfea9a29b34154f5283a447af6aab2dfbb899be",
+    "dirty": true,
+    "subject_sha256": "5b3420471d4a2eb77e70e691f175f8b8dcd6f45b3ef879cbc613a440940a8d2d",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "72461c7c00c171888fef12ada9c0cf9eb628bcd0",
+      "dirty": false,
+      "inputs_sha256": "f3a6cca97b727fb64b14b2d0428b1a8588a0fff327f60c592b5a71fd8f651af6",
+      "built_at": "2026-10-04T22:56:56.057Z"
+    },
+    "after_tree_hash": "2e111f7e259717c7f9a53119d815d0a60ea875da"
+  },
+  "started_at": "2026-10-05T01:34:51.612Z",
+  "finished_at": "2026-10-05T01:51:21.462Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.0",
+      "model_requested": "k3",
+      "model_effective": "k3",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 989.234,
+      "tool_calls": {
+        "run_command": 44,
+        "project_reads": 22
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a109b3-10ea-7ec2-a84c-e6e6660e1f9a",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.16",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 220.388,
+      "tool_calls": {
+        "read": 31,
+        "grep": 11,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 254971,
+        "output_tokens": 24863,
+        "thinking_tokens": 20153,
+        "cache_read_tokens": 4182266,
+        "total_tokens": 279834
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "ee3d48c0-91cb-4509-a987-dcd094a7ef1d",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 474.319,
+      "tool_calls": {
+        "read": 12,
+        "grep": 7,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 8
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 16,
+        "inputTokens": 2068211,
+        "outputTokens": 23099,
+        "totalTokens": 2091310,
+        "cacheReadTokens": 1780864,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_a327cbc4-3d12-4725-b2d8-98df8ef3fccf",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/任务目标全文送审/plan/2026-10-05-任务目标全文送审-gemini.md",
+    ".reviews/任务目标全文送审/plan/2026-10-05-任务目标全文送审-glm.md",
+    ".reviews/任务目标全文送审/plan/_meta/review-gemini-20261005T000535Z.json",
+    ".reviews/任务目标全文送审/plan/_meta/review-glm-20261005T000535Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "任务目标全文送审/code/_meta/changes-20261005T013444Z.diff",
+      "sha256": "5b3420471d4a2eb77e70e691f175f8b8dcd6f45b3ef879cbc613a440940a8d2d"
+    },
+    {
+      "path": "任务目标全文送审/code/_meta/brief-codex-20261005T013444Z.md",
+      "sha256": "9e35bb9fa9b7e65814ec09bcfcc3eca8b6e472af0bd7b5a6e06dd7ec848beed2"
+    },
+    {
+      "path": "任务目标全文送审/code/_meta/brief-gemini-20261005T013444Z.md",
+      "sha256": "d36eed671a29319e9800f4584c7eb40e0742c62a4fab38e9ec493463b2df18f0"
+    },
+    {
+      "path": "任务目标全文送审/code/_meta/brief-glm-20261005T013444Z.md",
+      "sha256": "85bcf296c4a07e4909bafaabd0f9d6615090f71a66fb202a034028e8a025ccae"
+    },
+    {
+      "path": "任务目标全文送审/code/_meta/review-codex-20261005T013444Z.json",
+      "sha256": "aeada10ecdda8338e9dba0485cd500ce03b749f14657eb4ed1ad1496728b7100"
+    },
+    {
+      "path": "任务目标全文送审/code/_meta/review-gemini-20261005T013444Z.json",
+      "sha256": "08ab310b4130579973f2421686506e68c18212ba575bf105b21dc119b396fef1"
+    },
+    {
+      "path": "任务目标全文送审/code/_meta/review-glm-20261005T013444Z.json",
+      "sha256": "63629b3a11adc069e0b91a55ac4bb5390c78a999c9abf10c1c83538997ce6364"
+    },
+    {
+      "path": "任务目标全文送审/code/2026-10-05-任务目标全文送审-codex.md",
+      "sha256": "90f9af2c2ed204644b54404cd962175054c8d06d08695b6a601ea8addf6cd8df"
+    },
+    {
+      "path": "任务目标全文送审/code/2026-10-05-任务目标全文送审-gemini.md",
+      "sha256": "038641005dc4f6fb793f23dc25b73707a2195282aea38608b5019b5536862cbf"
+    },
+    {
+      "path": "任务目标全文送审/code/2026-10-05-任务目标全文送审-glm.md",
+      "sha256": "0009740f784a5245b4b104232c266e46274237bbe2bcaf66fef965a96a2cd9e4"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装",
+      "安装副本与仓库 HEAD 不同版（构建于 72461c7，仓库 HEAD 722a471）"
+    ]
+  },
+  "status": "success"
+}

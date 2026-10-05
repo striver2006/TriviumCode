@@ -210,6 +210,15 @@ const TARGETS: {
       '所以本点只证「取值挂在 opts.driver 上」，不证「块里没有 DEFAULT_DRIVER」。',
   },
   {
+    what: 'review.ts → locateSubject（resolvePlanFinal 内）',
+    file: 'src/trivium/review.ts',
+    anchor: /await\s+locateSubject\(planStageRef,/g,
+    fn: 'locateSubject',
+    count: 1,
+    key: 'resolution.driver',
+    why: '代码阶段必读的计划定稿要按**计划阶段**的执笔方取（EV-210）；漏传或传成本轮 Driver，两阶段分属两家时取不到或取错别家后缀的文件',
+  },
+  {
     /*
      * 计划 §3.1 花了整整一节论证「步骤表漏掉了这一处」，而上一版的扫描清单
      * 偏偏没把它纳进来——**本步花最多笔墨论证的高频漏传点，自己没进护栏**
@@ -984,7 +993,7 @@ test('判据自测：约束 2 的定位函数——括号配不平必须 fail-cl
  */
 const RECONCILE: { fn: string; expect: number; note: string }[] = [
   { fn: 'newRunMeta', expect: 1, note: '留痕的发起方只该有一个写入点' },
-  { fn: 'locateSubject', expect: 2, note: 'prepareRun 一处、resolveTaskGoal 一处' },
+  { fn: 'locateSubject', expect: 3, note: 'prepareRun 一处、resolveTaskGoal 一处、resolvePlanFinal 一处（EV-210）' },
   { fn: 'locateSubjectReadOnly', expect: 1, note: 'topic resolve 的只读定位' },
   { fn: 'resolveRerunIndex', expect: 2, note: 'review.ts 一处、cli.ts 闸门回落一处' },
   { fn: 'resolveCriticSelection', expect: 4, note: 'cmdReview / cmdPreflight / topic-args / review.ts 回落' },

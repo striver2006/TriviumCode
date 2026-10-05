@@ -48,6 +48,7 @@ function input(over: Partial<BriefInput> = {}): BriefInput {
     schemaPath: '/home/u/.claude/skills/dual-critic/schema/review.v1.json',
     lenses: LENSES,
     taskGoal: '把登录改造为 OIDC',
+    taskGoalAppendix: null,
     minToolCalls: 5,
     minProjectReads: 3,
     commandExecution: 'none',

@@ -1,0 +1,196 @@
+{
+  "targets": [
+    "src/trivium/review.ts",
+    "src/trivium/brief.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/task-goal-appendix.test.js",
+    "dist/test/test/integration/task-goal-fulltext.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "file": "src/trivium/review.ts",
+      "desc": "taskGoalAppendix 去掉「只在计划阶段」",
+      "find": "  if (stage !== 'plan') return null;\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js",
+      "also": [
+        "dist/test/test/integration/task-goal-fulltext.test.js"
+      ]
+    },
+    {
+      "id": "M2",
+      "file": "src/trivium/review.ts",
+      "desc": "截断判定 > 改 >=（恰 200 也出附录）",
+      "find": "  if (foldGoal(rawGoal).length <= TASK_GOAL_MAX) return null;\n",
+      "replace": "  if (foldGoal(rawGoal).length < TASK_GOAL_MAX) return null;\n",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js"
+    },
+    {
+      "id": "M3",
+      "file": "src/trivium/review.ts",
+      "desc": "附录给折叠后的文本",
+      "find": "  return (rawGoal ?? '').replace(/\\r\\n/g, '\\n').trim();\n",
+      "replace": "  return foldGoal(rawGoal);\n",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js",
+      "also": [
+        "dist/test/test/integration/task-goal-fulltext.test.js"
+      ]
+    },
+    {
+      "id": "M4",
+      "file": "src/trivium/review.ts",
+      "desc": "调用点把解析后的摘要 taskGoal 当原文传入",
+      "find": "  const goalAppendix = taskGoalAppendix(stage, opts.taskGoal);\n",
+      "replace": "  const goalAppendix = taskGoalAppendix(stage, taskGoal);\n",
+      "expect": "dist/test/test/integration/task-goal-fulltext.test.js"
+    },
+    {
+      "id": "M5",
+      "file": "src/trivium/brief.ts",
+      "desc": "renderBrief 不渲染附录",
+      "find": "  if (taskGoalAppendix) parts.push(renderGoalAppendix(taskGoalAppendix));\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js",
+      "also": [
+        "dist/test/test/integration/task-goal-fulltext.test.js"
+      ]
+    },
+    {
+      "id": "M6",
+      "file": "src/trivium/brief.ts",
+      "desc": "第 4 段不出指引行",
+      "find": "  ? `（上面是摘要：原文较长，只取了前 ${TASK_GOAL_MAX} 字。全文见本任务书末尾的「${TASK_GOAL_APPENDIX_TITLE}」。）\\n`\n",
+      "replace": "  ? ''\n",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js",
+      "also": [
+        "dist/test/test/integration/task-goal-fulltext.test.js"
+      ]
+    },
+    {
+      "id": "M7",
+      "file": "src/trivium/brief.ts",
+      "desc": "附录放到页脚之后",
+      "find": "  if (taskGoalAppendix) parts.push(renderGoalAppendix(taskGoalAppendix));\n  parts.push(`---\n\n*本任务书由 TriviumCode 编排器生成，落盘于归档 \\`_meta/\\`，是本次运行的审计材料之一。*\n`);\n\n",
+      "replace": "  parts.push(`---\n\n*本任务书由 TriviumCode 编排器生成，落盘于归档 \\`_meta/\\`，是本次运行的审计材料之一。*\n`);\n\n  if (taskGoalAppendix) parts.push(renderGoalAppendix(taskGoalAppendix));\n",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js"
+    },
+    {
+      "id": "M8",
+      "file": "src/trivium/brief.ts",
+      "desc": "上限判定差一（恰 16000 也截）",
+      "find": "  const over = points.length > TASK_GOAL_APPENDIX_MAX;\n",
+      "replace": "  const over = points.length >= TASK_GOAL_APPENDIX_MAX;\n",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js"
+    },
+    {
+      "id": "M9",
+      "file": "src/trivium/brief.ts",
+      "desc": "buildMustReadList 不收计划定稿",
+      "find": "  if (planFinal) await push(planFinal, 'plan-final');\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js",
+      "also": [
+        "dist/test/test/integration/task-goal-fulltext.test.js"
+      ]
+    },
+    {
+      "id": "M10",
+      "file": "src/trivium/review.ts",
+      "desc": "resolvePlanFinal 按缺省 Driver 定位",
+      "find": "    const abs = await locateSubject(planStageRef, null, projectRoot, resolution.driver);\n",
+      "replace": "    const abs = await locateSubject(planStageRef, null, projectRoot, DEFAULT_DRIVER);\n",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js",
+      "also": [
+        "dist/test/test/integration/task-goal-fulltext.test.js"
+      ]
+    },
+    {
+      "id": "M11",
+      "file": "src/trivium/review.ts",
+      "desc": "resolvePlanFinal 判的是代码阶段的执笔方",
+      "find": "  const resolution = await resolveStageDriver(ref.layout, 'plan');\n",
+      "replace": "  const resolution = await resolveStageDriver(ref.layout, 'code');\n",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js",
+      "also": [
+        "dist/test/test/integration/task-goal-fulltext.test.js"
+      ]
+    },
+    {
+      "id": "M12",
+      "file": "src/trivium/review.ts",
+      "desc": "计划阶段留痕读不出时不出告警",
+      "find": "    return {\n      path: null,\n      warning: {\n",
+      "replace": "    if (resolution.unreadable.length >= 0) return { path: null, warning: null };\n    return {\n      path: null,\n      warning: {\n",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js",
+      "also": [
+        "dist/test/test/integration/task-goal-fulltext.test.js"
+      ]
+    },
+    {
+      "id": "M12b",
+      "file": "src/trivium/review.ts",
+      "desc": "告警不并进三个出口",
+      "find": "  const planFinalWarnings = planFinal.warning ? [planFinal.warning] : [];\n",
+      "replace": "  const planFinalWarnings: { name: string; detail: string }[] = [];\n",
+      "expect": "dist/test/test/integration/task-goal-fulltext.test.js"
+    },
+    {
+      "id": "M13",
+      "file": "src/trivium/brief.ts",
+      "desc": "计划定稿排在 --context 之后",
+      "find": "  // 3) 本主题计划定稿（代码阶段，EV-210）\n  if (planFinal) await push(planFinal, 'plan-final');\n\n  // 4) Driver 通过 --context 指明的路径（优先级最高，但排在公约之后以保证阅读顺序）\n  for (const c of contextPaths) await push(c, 'context');\n",
+      "replace": "  // 4) Driver 通过 --context 指明的路径（优先级最高，但排在公约之后以保证阅读顺序）\n  for (const c of contextPaths) await push(c, 'context');\n\n  // 3) 本主题计划定稿（代码阶段，EV-210）\n  if (planFinal) await push(planFinal, 'plan-final');\n",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js"
+    },
+    {
+      "id": "M14",
+      "file": "src/trivium/review.ts",
+      "desc": "任务文件改存原文",
+      "find": "        if (!t.goal) t.goal = taskGoal;\n",
+      "replace": "        if (!t.goal) t.goal = opts.taskGoal ?? taskGoal;\n",
+      "expect": "dist/test/test/integration/task-goal-fulltext.test.js"
+    },
+    {
+      "id": "M15",
+      "file": "src/trivium/review.ts",
+      "desc": "代码阶段也出附录（判定传死 plan）",
+      "find": "  const goalAppendix = taskGoalAppendix(stage, opts.taskGoal);\n",
+      "replace": "  const goalAppendix = taskGoalAppendix('plan', opts.taskGoal);\n",
+      "expect": "dist/test/test/integration/task-goal-fulltext.test.js"
+    },
+    {
+      "id": "M16",
+      "file": "src/trivium/brief.ts",
+      "desc": "上限按 UTF-16 截（切代理对）",
+      "find": "  const shown = over ? points.slice(0, TASK_GOAL_APPENDIX_MAX).join('') : full;\n",
+      "replace": "  const shown = over ? full.slice(0, TASK_GOAL_APPENDIX_MAX) : full;\n",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js"
+    },
+    {
+      "id": "M17",
+      "file": "src/trivium/brief.ts",
+      "desc": "超限提示行落进分隔线之内",
+      "find": "${shown}\n${GOAL_FENCE_END}${tail}`;\n",
+      "replace": "${shown}${tail}\n${GOAL_FENCE_END}`;\n",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js"
+    },
+    {
+      "id": "M19",
+      "file": "src/trivium/review.ts",
+      "desc": "附录原文不单独按 full 扫（只剩任务书的 hunk 判据，代码双审 GLM-01）",
+      "find": "  if (goalAppendix) assertNoSecrets(goalAppendix, `${ref.topic}/plan 任务目标原文（--goal）`, 'full');\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/task-goal-fulltext.test.js"
+    },
+    {
+      "id": "M18",
+      "file": "src/trivium/brief.ts",
+      "desc": "页脚拆分改了第 8 段与页脚之间的拼接",
+      "find": "  parts.push(`---\n\n*本任务书由 TriviumCode 编排器生成",
+      "replace": "  parts.push(`---\n*本任务书由 TriviumCode 编排器生成",
+      "expect": "dist/test/test/unit/task-goal-appendix.test.js"
+    }
+  ]
+}

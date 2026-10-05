@@ -1,0 +1,390 @@
+{
+  "targets_sha256": {
+    "src/trivium/review.ts": "451de2dea14739fd9ff5d98d11de4e13e83c22aa2f6c317b502cef099117e210",
+    "src/trivium/brief.ts": "b3e77ccdf88ff224a7259ccf876a0a3cfe7c397be83b8b92a6fe4b986e4ec843"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "taskGoalAppendix 去掉「只在计划阶段」",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U1 · 计划阶段显式长目标 ⇒ 原文（换行逐字保留）；代码 / bug 阶段与空值 ⇒ null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+          "fail": 2,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I5 · 代码阶段 --start：各侧第 4 段列最新修订稿 r2，不列 r1 与裁决件；带长 --goal 也不出附录",
+            "I10 · 同 I5 走同步 review --stage code"
+          ],
+          "firstLines": [],
+          "elapsed_s": 24
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "截断判定 > 改 >=（恰 200 也出附录）",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U2 · 边界与 clampGoal 同口径：折叠后恰 200 ⇒ null，201 ⇒ 原文，原文超 200 但折叠后不超 ⇒ null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "附录给折叠后的文本",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U1 · 计划阶段显式长目标 ⇒ 原文（换行逐字保留）；代码 / bug 阶段与空值 ⇒ null",
+        "U3 · 规整只做两处：\\r\\n 变 \\n、去首尾空白；其余逐字"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+          "fail": 2,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I1 · 计划阶段 --start --entry A + 多行长 --goal：各侧任务书有指引与附录（逐字、同一份）；任务文件与 run.json 仍是摘要",
+            "I2 · 同 I1 走同步 review --stage plan"
+          ],
+          "firstLines": [],
+          "elapsed_s": 24
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "调用点把解析后的摘要 taskGoal 当原文传入",
+      "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "I1 · 计划阶段 --start --entry A + 多行长 --goal：各侧任务书有指引与附录（逐字、同一份）；任务文件与 run.json 仍是摘要",
+        "I2 · 同 I1 走同步 review --stage plan",
+        "I4 · 计划阶段不带 --goal、任务文件已有长目标（B 入口）：只出摘要、无附录"
+      ],
+      "firstLines": [],
+      "elapsed_s": 24,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "renderBrief 不渲染附录",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4 · 带附录：第 4 段摘要行后有指引；附录在第 8 节之后、页脚之前；分隔线内逐字是原文；不编号",
+        "U5 · 附录为 null：无指引行、无附录；带附录的版本去掉这两处后与之逐字相同（附录只做插入）",
+        "U6 · 上限按码点：超出时分隔线之间恰是前 16000 码点，提示行在结束分隔线之后；不切代理对"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+          "fail": 2,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I1 · 计划阶段 --start --entry A + 多行长 --goal：各侧任务书有指引与附录（逐字、同一份）；任务文件与 run.json 仍是摘要",
+            "I2 · 同 I1 走同步 review --stage plan"
+          ],
+          "firstLines": [],
+          "elapsed_s": 24
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "desc": "第 4 段不出指引行",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4 · 带附录：第 4 段摘要行后有指引；附录在第 8 节之后、页脚之前；分隔线内逐字是原文；不编号"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+          "fail": 2,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I1 · 计划阶段 --start --entry A + 多行长 --goal：各侧任务书有指引与附录（逐字、同一份）；任务文件与 run.json 仍是摘要",
+            "I2 · 同 I1 走同步 review --stage plan"
+          ],
+          "firstLines": [],
+          "elapsed_s": 24
+        }
+      ]
+    },
+    {
+      "id": "M7",
+      "desc": "附录放到页脚之后",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4 · 带附录：第 4 段摘要行后有指引；附录在第 8 节之后、页脚之前；分隔线内逐字是原文；不编号",
+        "U5 · 附录为 null：无指引行、无附录；带附录的版本去掉这两处后与之逐字相同（附录只做插入）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "上限判定差一（恰 16000 也截）",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U6 · 上限按码点：超出时分隔线之间恰是前 16000 码点，提示行在结束分隔线之后；不切代理对"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M9",
+      "desc": "buildMustReadList 不收计划定稿",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U8 · buildMustReadList：计划定稿排在关键词之后、--context 之前，来源 plan-final；与 --context 重名保留计划定稿来源；不存在不列"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+          "fail": 5,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I5 · 代码阶段 --start：各侧第 4 段列最新修订稿 r2，不列 r1 与裁决件；带长 --goal 也不出附录",
+            "I10 · 同 I5 走同步 review --stage code",
+            "I6 · 代码阶段，计划目录只有 r1：列 r1",
+            "I8 · 非缺省执笔方：计划与代码阶段都是 codex ⇒ 列 -r2-codex.md",
+            "I8 · 计划阶段 codex、代码阶段 claude ⇒ codex 侧列出，gemini / glm 侧按禁读剔除并告警（来源：本主题计划定稿）"
+          ],
+          "firstLines": [],
+          "elapsed_s": 24
+        }
+      ]
+    },
+    {
+      "id": "M10",
+      "desc": "resolvePlanFinal 按缺省 Driver 定位",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U7 · resolvePlanFinal：计划阶段声明为 codex ⇒ 取 -codex.md，不取 claude 后缀的那份"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+          "fail": 2,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I8 · 非缺省执笔方：计划与代码阶段都是 codex ⇒ 列 -r2-codex.md",
+            "I8 · 计划阶段 codex、代码阶段 claude ⇒ codex 侧列出，gemini / glm 侧按禁读剔除并告警（来源：本主题计划定稿）"
+          ],
+          "firstLines": [],
+          "elapsed_s": 24
+        }
+      ]
+    },
+    {
+      "id": "M11",
+      "desc": "resolvePlanFinal 判的是代码阶段的执笔方",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U7 · resolvePlanFinal：计划阶段声明为 codex ⇒ 取 -codex.md，不取 claude 后缀的那份",
+        "U7 · resolvePlanFinal：计划阶段最新留痕读不出 ⇒ 不列，带一条「必读清单未列计划定稿」告警"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+          "fail": 2,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I8 · 计划阶段 codex、代码阶段 claude ⇒ codex 侧列出，gemini / glm 侧按禁读剔除并告警（来源：本主题计划定稿）",
+            "I9 · 计划阶段 run.json 读不出：不列计划定稿，--start 的 warnings 与 run.json gate.warnings 都有「必读清单未列计划定稿」"
+          ],
+          "firstLines": [],
+          "elapsed_s": 24
+        }
+      ]
+    },
+    {
+      "id": "M12",
+      "desc": "计划阶段留痕读不出时不出告警",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U7 · resolvePlanFinal：计划阶段最新留痕读不出 ⇒ 不列，带一条「必读清单未列计划定稿」告警"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I9 · 计划阶段 run.json 读不出：不列计划定稿，--start 的 warnings 与 run.json gate.warnings 都有「必读清单未列计划定稿」"
+          ],
+          "firstLines": [],
+          "elapsed_s": 24
+        }
+      ]
+    },
+    {
+      "id": "M12b",
+      "desc": "告警不并进三个出口",
+      "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "I9 · 计划阶段 run.json 读不出：不列计划定稿，--start 的 warnings 与 run.json gate.warnings 都有「必读清单未列计划定稿」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 24,
+      "also": []
+    },
+    {
+      "id": "M13",
+      "desc": "计划定稿排在 --context 之后",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U8 · buildMustReadList：计划定稿排在关键词之后、--context 之前，来源 plan-final；与 --context 重名保留计划定稿来源；不存在不列"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M14",
+      "desc": "任务文件改存原文",
+      "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "I1 · 计划阶段 --start --entry A + 多行长 --goal：各侧任务书有指引与附录（逐字、同一份）；任务文件与 run.json 仍是摘要",
+        "I2 · 同 I1 走同步 review --stage plan"
+      ],
+      "firstLines": [],
+      "elapsed_s": 24,
+      "also": []
+    },
+    {
+      "id": "M15",
+      "desc": "代码阶段也出附录（判定传死 plan）",
+      "suite": "dist/test/test/integration/task-goal-fulltext.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "I5 · 代码阶段 --start：各侧第 4 段列最新修订稿 r2，不列 r1 与裁决件；带长 --goal 也不出附录",
+        "I10 · 同 I5 走同步 review --stage code"
+      ],
+      "firstLines": [],
+      "elapsed_s": 24,
+      "also": []
+    },
+    {
+      "id": "M16",
+      "desc": "上限按 UTF-16 截（切代理对）",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U6 · 上限按码点：超出时分隔线之间恰是前 16000 码点，提示行在结束分隔线之后；不切代理对"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M17",
+      "desc": "超限提示行落进分隔线之内",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U6 · 上限按码点：超出时分隔线之间恰是前 16000 码点，提示行在结束分隔线之后；不切代理对"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M18",
+      "desc": "页脚拆分改了第 8 段与页脚之间的拼接",
+      "suite": "dist/test/test/unit/task-goal-appendix.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4 · 带附录：第 4 段摘要行后有指引；附录在第 8 节之后、页脚之前；分隔线内逐字是原文；不编号",
+        "U5 · 附录为 null：无指引行、无附录；带附录的版本去掉这两处后与之逐字相同（附录只做插入）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    }
+  ]
+}
