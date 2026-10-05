@@ -1,0 +1,27 @@
+{
+  "targets": [
+    "test/unit/preflight.test.ts",
+    "src/trivium/probes/zcode.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/preflight.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "回归格退回 null 入口（改前形态）",
+      "file": "test/unit/preflight.test.ts",
+      "find": "  const { probe } = await probeZcode(entry, process.execPath, {\n",
+      "replace": "  const { probe } = await probeZcode(null, process.execPath, {\n",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "probeZcode 的入口探测不认调用方给的入口",
+      "file": "src/trivium/probes/zcode.ts",
+      "find": "  const { entry, version } = await probeZcodeEntry(configuredEntry, node);\n",
+      "replace": "  const { entry, version } = await probeZcodeEntry(null, node);\n",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    }
+  ]
+}

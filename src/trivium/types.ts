@@ -535,7 +535,9 @@ export interface CodexProbe extends CommonProbe {
    * 取不到再回落基底 `config.toml`。profile 是文件分层机制（C-1），
    * `<name>.config.toml` 同样能设这个键，只读基底会记错活跃档位下的目录
    * （审查意见 GLM-09）。
-   * **消费方**：人读诊断与 `doctor` 报告。
+   * **消费方**：没有代码读者。它只随整段探针结论落进 `.trivium/config.local.yaml` 的 `probe:` 段、
+   * 出现在 `doctor --json` 的 `probe` 里，供人翻看；`doctor` 的人读报告不渲染它（EV-23 订正：
+   * 此前这里写「人读诊断与 `doctor` 报告」，后半句不实）。
    *
    * ⚠️ **它与同段的 `models` 取自不同的层，两者不可当成一对读**：
    * `models` 走 `probeCodexModels(bin, null)` 即**基底** `config.toml` 的目录，

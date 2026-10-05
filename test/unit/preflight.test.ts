@@ -437,15 +437,40 @@ test('回归：--no-model-calls 保留上一次探到的 zcode 结论', async ()
     scratch_paths: [], isolation: 'home_copy' as const,
     model_id_form: 'p/GLM-5.3', models: ['GLM-5.3'],
   };
-  const { probe } = await probeZcode(null, process.execPath, {
+  /*
+   * 合成入口与合成 cli 配置（EV-94 ①）：原先传 `null` 入口，装了 ZCode.app 的机器上回落到 `/Applications/...` 候选、
+   * 真实跑七次旗标候选与版本探针；CI 上入口不在则早退，模型覆盖臂根本走不到——两台机器测的不是同一件事。
+   * 合成入口：`version` 打版本号，其余调用一律报 `Unknown option` 退 1（旗标臂七个候选全判拒绝、零配额）；
+   * 合成 cli 配置只为让 `cliConfigured` 门控确定地放行、进到下面两个桩。
+   */
+  const dir = await scratchDir('trivium-zentry-');
+  const entry = path.join(dir, 'zcode.cjs');
+  await fs.writeFile(entry, [
+    'const a = process.argv.slice(2);',
+    "if (a[0] === 'version') { console.log('zcode 0.16.9'); process.exit(0); }",
+    "process.stderr.write(\"Unknown option '\" + a[6] + \"'\\n\");",
+    'process.exit(1);',
+  ].join('\n') + '\n');
+  const cliConfigPath = path.join(dir, 'cli-config.json');
+  await fs.writeFile(cliConfigPath, '{}\n');
+  const armCalls = { whitelist: 0, fullCopy: 0 };
+  const { probe } = await probeZcode(entry, process.execPath, {
     skipModelCalls: true,
     existing,
-    modelOverrideProbe: async () => ({ override: null, requested: null, observed: null, why: '桩：本轮未判定' }),
-    // 同形第二臂同理（EV-82 小主题第一段）：不注入就会在装了 ZCode.app 的机器上读真实 cli/config.json 并真实拉起
-    modelOverrideFullCopyProbe: async () => ({
-      override: null, requested: null, observed: null, why: '桩：本轮未判定', replacedPaths: [], hostCredentialEnv: [],
-    }),
+    cliConfigPath,
+    modelOverrideProbe: async () => {
+      armCalls.whitelist++;
+      return { override: null, requested: null, observed: null, why: '桩：本轮未判定' };
+    },
+    // 同形第二臂同理（EV-82 小主题第一段）：不注入就会读 cli 配置并拉起入口
+    modelOverrideFullCopyProbe: async () => {
+      armCalls.fullCopy++;
+      return { override: null, requested: null, observed: null, why: '桩：本轮未判定', replacedPaths: [], hostCredentialEnv: [] };
+    },
   });
+  assert.equal(probe.entrypoint, entry, '入口应是合成入口，不得回落到本机安装的 ZCode.app');
+  assert.equal(probe.version, '0.16.9', '版本取自合成入口');
+  assert.ok(armCalls.whitelist === 1 && armCalls.fullCopy >= 1, `两个探针臂都应走到（${JSON.stringify(armCalls)}）`);
   assert.equal(probe.response_field, 'response', '不得被覆盖成 null');
   assert.equal(probe.model_override, 'env', '探针臂未判定时必须保留旧值——桩永远不会产出 env，改成别的值即现形');
   assert.equal(probe.model_id_form, 'p/GLM-5.3');

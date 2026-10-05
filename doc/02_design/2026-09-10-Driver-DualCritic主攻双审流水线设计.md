@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.97
+> - **当前版本**：v1.3.98
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3709,6 +3709,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.98** | 2026-10-06 | **探针注释失实与回归格合成入口（EV-23、EV-94 ①；EV-04 待拍板）。** M11 前待办批次第 4 题，**本批未走双审**。运行期行为零变化。①EV-23：`types.ts` `CodexProbe.model_catalog_path` 文档块的「消费方：人读诊断与 `doctor` 报告」失实——全仓无代码读者，`doctor` 人读报告不渲染，只随探针结论进 `config.local.yaml` 的 `probe:` 段与 `doctor --json`，据此改写；字段与落盘不动（改结构属改契约）。②EV-94 ①：`preflight.test.ts` 的「--no-model-calls 保留上一次探到的 zcode 结论」改传合成入口与合成 cli 配置，不再在装了 ZCode.app 的机器上回落到 `/Applications/...` 候选真实跑旗标探针，CI 与本机走同一条路径、两个探针臂都确定地走到；变异 2/2 咬住。③EV-04（区分 run.json「不存在 / 读不出」）必然改报错文案，属改输出，登记候选（A 换成实际成因 / B 只加一行成因 / C 不修，建议 B）等拍板。读数见 `doc/05_testing/REPORT_2026-10-06_probe_doc_and_entry.md`。 |
 | **v1.3.97** | 2026-10-06 | **僵尸排除的录制样本单测（EV-169）。** M11 前待办批次第 3 题，**本批未走双审**。`processGroupMemberCount` 的计数抽成纯函数 `countLiveGroupMembers`（判据逐字不变：组号整数相等、状态不以 `Z` 开头），本机录制两份真实 `ps -axo pgid=,stat=` 样本（组长 + 僵尸；组里只剩僵尸——父进程在组外 fork、子进程 setsid 后退出、父进程不 wait）收进 `test/fixtures/ps-samples/`，单测喂样本；另加 macOS 实机格以同一造法直接调 `processGroupMemberCount` 断言只剩僵尸的组计 0。行为零变化，变异 3/3 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_ps_zombie_sample.md`。 |
 | **v1.3.96** | 2026-10-06 | **run_id 同秒避让（EV-147）。** M11 前待办批次第 2 题，**本批未走双审**（用户以 `/goal` 授权直接开发、指定不改格式的那一档）。`meta.ts` 新增 `allocateRunId`：从 `newRunId(now)` 起，本主题已占用（task.json `runs[]` 已登记，或 plan / code / bug / verify 任一阶段 `_meta/run-<id>.json` 已存在；task.json 读不出时只看文件）就往后抬一秒，上限 120 次、用尽抛 69。`prepareRun` 与 `verify` 两个分配点改调它，源码护栏禁止 `meta.ts` 之外直接调 `newRunId`。格式、文件名、schema 与「字典序即时序」不变；run_id 不再保证等于开始时刻的秒，以 `started_at` 为准。先后两轮同秒不再覆盖彼此的 run.json 与登记（6.7「每份 run.json 至多一次终态写入」的已知例外随之关闭）；不持主题锁的 verify 与审查运行同秒**并发**分配仍可能撞，不看运行目录（跨主题共用另登 EV-218）。LLD 的 run_id 段同步。读数见 `doc/05_testing/REPORT_2026-10-06_run_id_collision.md`。 |
 | **v1.3.95** | 2026-10-06 | **cancel-grace 夹具等就绪（EV-217）。** M11 前待办批次第 1 题，**本批未走双审**（用户以 `/goal` 授权直接开发，提交前由执笔方自审补丁）。只改测试：`cancel-grace-unverifiable.test.ts` 的 `spawnMarked` 不再固定等 150 ms，改为等夹具程序正文执行完、经 stdout 打出就绪标记再返回（20 s 上界，超时以测试环境问题判红）——各程序的 SIGTERM 处理器在返回时已装好，高负载下 `node -e` 启动慢也不会让 SIGTERM 落在装处理器之前（K-K3 偶发红的推断成因）。新增夹具自检 R1（处理器装得慢的程序，返回后发 SIGTERM 不退），变异 2/2 咬住。产品代码零改动。读数见 `doc/05_testing/REPORT_2026-10-05_cancel_grace_ready.md`。 |
