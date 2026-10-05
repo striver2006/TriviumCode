@@ -1,0 +1,69 @@
+{
+  "targets_sha256": {
+    "src/trivium/cli.ts": "1f1170df3492d52fd2a8cafec9fd64770ca250f751e86fb6ba75ddd3a17ab5df",
+    "src/trivium/run-protocol.ts": "48d34aa41717abe346d9c37763699985b4537a36f3401754cfffb0e0e1a3c5bd"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "review 前台不装中断转发",
+      "suite": "dist/test/test/integration/foreground-interrupt.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-155 E1：同步 review 被 Ctrl-C ⇒ CLI 以 SIGINT 退出，两侧 hang_cli 拉起的组都结束",
+        "EV-155 G1（源码护栏）：doctor、preflight 入口与 review 的 worker 分支之后都装了中断转发"
+      ],
+      "firstLines": [],
+      "elapsed_s": 6,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "doctor 不装中断转发",
+      "suite": "dist/test/test/integration/foreground-interrupt.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-155 G1（源码护栏）：doctor、preflight 入口与 review 的 worker 分支之后都装了中断转发"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "处理器不看登记树、一律立即退出（等于没装）",
+      "suite": "dist/test/test/integration/foreground-interrupt.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-155 F1：有登记树时收到 SIGINT ⇒ 按组结束树、以 SIGINT 退出，并播报一行",
+        "EV-155 F3：有登记树时收到 SIGTERM ⇒ 同样结束树、以 SIGTERM 退出",
+        "EV-155 E1：同步 review 被 Ctrl-C ⇒ CLI 以 SIGINT 退出，两侧 hang_cli 拉起的组都结束"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "处理器不调 shutdownTrackedTrees",
+      "suite": "dist/test/test/integration/foreground-interrupt.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-155 F1：有登记树时收到 SIGINT ⇒ 按组结束树、以 SIGINT 退出，并播报一行",
+        "EV-155 F3：有登记树时收到 SIGTERM ⇒ 同样结束树、以 SIGTERM 退出",
+        "EV-155 E1：同步 review 被 Ctrl-C ⇒ CLI 以 SIGINT 退出，两侧 hang_cli 拉起的组都结束"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12,
+      "also": []
+    }
+  ]
+}

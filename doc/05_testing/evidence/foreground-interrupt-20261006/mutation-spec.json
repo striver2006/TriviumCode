@@ -1,0 +1,43 @@
+{
+  "targets": [
+    "src/trivium/cli.ts",
+    "src/trivium/run-protocol.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/foreground-interrupt.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "review 前台不装中断转发",
+      "file": "src/trivium/cli.ts",
+      "find": "  // worker 有自己的 SIGTERM 处理器，故放在 worker 分支之后\n  installForegroundInterruptForwarding();\n",
+      "replace": "  // worker 有自己的 SIGTERM 处理器，故放在 worker 分支之后\n",
+      "expect": "dist/test/test/integration/foreground-interrupt.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "doctor 不装中断转发",
+      "file": "src/trivium/cli.ts",
+      "find": "  // 前台探针以 killTree 拉起子进程，Ctrl-C 够不到它们：装中断转发（EV-155）\n  installForegroundInterruptForwarding();\n",
+      "replace": "  // 前台探针以 killTree 拉起子进程，Ctrl-C 够不到它们：装中断转发（EV-155）\n",
+      "expect": "dist/test/test/integration/foreground-interrupt.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "处理器不看登记树、一律立即退出（等于没装）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    if (trackedTrees().length === 0) {\n",
+      "replace": "    if (trackedTrees().length >= 0) {\n",
+      "expect": "dist/test/test/integration/foreground-interrupt.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "处理器不调 shutdownTrackedTrees",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    void (async () => {\n      try {\n        const r = await shutdownTrackedTrees({ graceMs: WORKER_TREE_GRACE_MS, killWaitMs: WORKER_TREE_KILL_WAIT_MS });\n        if (r.remaining.length > 0) process.stderr.write(`未能确认退出的进程组",
+      "replace": "    void (async () => {\n      try {\n        const r = { remaining: [] as number[] };\n        if (r.remaining.length > 0) process.stderr.write(`未能确认退出的进程组",
+      "expect": "dist/test/test/integration/foreground-interrupt.test.js"
+    }
+  ]
+}

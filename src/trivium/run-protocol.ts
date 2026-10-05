@@ -973,6 +973,64 @@ export function installWorkerSigtermForwarding(): () => void {
 }
 
 /**
+ * 前台入口的中断转发（EV-155）：同步 `review --stage`、`doctor`、`preflight` 在前台进程里以 `killTree` 拉起审查员 CLI /
+ * 探针子进程，它们自成进程组，终端 Ctrl-C 的 SIGINT 够不到；不装处理器时前台进程按缺省处置退出，子进程过继给 init、
+ * 超时计时器随之没了（零配额实测见 `doc/05_testing/evidence/foreground-interrupt-20261006/`）。处理器：
+ *   1. 接 SIGINT 与 SIGTERM，只处理第一次；本进程没有登记中的进程树时立即以同一信号重新自杀（与缺省处置同形）；
+ *   2. 有登记树时播报一行、起看门狗，`shutdownTrackedTrees` 按组结束它们（参数同 worker 处理器），然后以同一信号重新自杀；
+ *   3. 第二次信号不再等，立即退出（用户坚持要走，CLI 可能留下——播报里写明）。
+ * `shutdownTrackedTrees` 的契约是「调用即进入终止中、调用方必须随后退出」：本处理器调用后必定退出，满足它。
+ * worker 不装（它有自己的 SIGTERM 处理器 `installWorkerSigtermForwarding`）。中断后的留痕（run.json 仍为 running）不在这里收，见 BACKLOG EV-151。
+ */
+export function installForegroundInterruptForwarding(): () => void {
+  const SIGNALS: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
+  let handling = false;
+  let exiting = false;
+  let received: NodeJS.Signals = 'SIGINT';
+  let watchdog: NodeJS.Timeout | undefined;
+  const exitOnce = (): void => {
+    if (exiting) return;
+    exiting = true;
+    if (watchdog) clearTimeout(watchdog);
+    for (const s of SIGNALS) process.removeListener(s, onSignal);
+    process.kill(process.pid, received);
+    // 病态兜底：移除监听后缺省处置应已恢复、上一行即结束进程；不同步调用
+    setTimeout(() => process.exit(received === 'SIGINT' ? 130 : 143), 1000);
+  };
+  const onSignal = (sig: NodeJS.Signals): void => {
+    if (handling) {
+      exitOnce();
+      return;
+    }
+    handling = true;
+    received = sig;
+    if (trackedTrees().length === 0) {
+      exitOnce();
+      return;
+    }
+    const budgetMs = WORKER_TREE_GRACE_MS + WORKER_TREE_KILL_WAIT_MS + 500;
+    watchdog = setTimeout(exitOnce, budgetMs);
+    process.stderr.write(
+      `收到 ${sig}：正在结束本进程拉起的审查员 CLI（至多约 ${Math.ceil(budgetMs / 1000)} s；再按一次立即退出，CLI 可能留下）\n`,
+    );
+    void (async () => {
+      try {
+        const r = await shutdownTrackedTrees({ graceMs: WORKER_TREE_GRACE_MS, killWaitMs: WORKER_TREE_KILL_WAIT_MS });
+        if (r.remaining.length > 0) process.stderr.write(`未能确认退出的进程组：${r.remaining.join('，')}\n`);
+      } catch (e) {
+        process.stderr.write(`结束审查员 CLI 时出错：${(e as Error)?.message ?? String(e)}\n`);
+      } finally {
+        exitOnce();
+      }
+    })();
+  };
+  for (const s of SIGNALS) process.on(s, onSignal);
+  return () => {
+    if (!handling) for (const s of SIGNALS) process.removeListener(s, onSignal);
+  };
+}
+
+/**
  * `review --worker <runId>`：工作进程本体。**不应由人直接调用**。
  *
  * 它继承 `--start` 已经冻结好的送审包，跑完 `executeRun` 后写终态并释放锁。

@@ -24,7 +24,7 @@ import { selftestCommand } from './selftest.js';
 import { runReview } from './review.js';
 import { collectCommands, runVerify, summarizeVerify } from './verify.js';
 import { buildTopicReport, renderTopicReport } from './report.js';
-import { cancelRun, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
+import { cancelRun, installForegroundInterruptForwarding, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
 import {
   approveForkRecovery, awaitApprovalRecovery, checkAdjudication, loadRoundReviews, renderGateResult,
   renderTamperedArtifacts, verifyRoundForApproval,
@@ -439,6 +439,9 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   // ── 工作进程模式：不应由人直接调用 ──
   const workerId = flagString(args, 'worker');
   if (workerId) return workerMain(ctx, workerId);
+  // 前台各模式都装中断转发（EV-155）：同步审查在前台以 killTree 拉起审查员 CLI；没有登记中的进程树时处理器等同缺省处置。
+  // worker 有自己的 SIGTERM 处理器，故放在 worker 分支之后
+  installForegroundInterruptForwarding();
 
   /*
    * `--profile` 换本次运行的模型档位。放在 worker 分支**之后**：工作进程按
@@ -716,6 +719,8 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
 }
 
 async function cmdDoctor(args: ParsedArgs): Promise<number> {
+  // 前台探针以 killTree 拉起子进程，Ctrl-C 够不到它们：装中断转发（EV-155）
+  installForegroundInterruptForwarding();
   /*
    * --selftest 不读当前项目的配置：它在自己的临时夹具里跑。
    * 因此放在 loadCtx 之前——装完还没 init 的项目里也该能自检，
@@ -772,6 +777,8 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
 }
 
 async function cmdPreflight(args: ParsedArgs): Promise<number> {
+  // 探活以 killTree 拉起子进程，Ctrl-C 够不到它们：装中断转发（EV-155）
+  installForegroundInterruptForwarding();
   const ctx = await loadCtx();
   // 预检要校验的是**本次实际会用**的档位，所以同样受 --profile 影响
   ctx.config = applyProfileOverride(ctx.config, flagString(args, 'profile'));
