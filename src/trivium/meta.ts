@@ -18,6 +18,7 @@ import { withTopicLock } from './lock.js';
 import { validateRunMeta, validateRunMetaV1 } from './schemas.js';
 import { DEFAULT_DRIVER, type GuardLevel } from './agents/registry.js';
 import { warn } from './util/log.js';
+import { envError } from './exit-codes.js';
 
 /** `updateTask` 的短临界区参数 */
 export interface TaskLock {
@@ -36,6 +37,47 @@ export const taskLockName = (topic: string): string => `.task-${topic}`;
 /** run_id 形如 20260910T142310Z：UTC 紧凑时间戳，可排序、可做文件名 */
 export function newRunId(now: Date = new Date()): string {
   return now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+/** `allocateRunId` 往后抬的次数上限：一秒一次，120 次即两分钟——正常使用到不了，用尽说明留痕异常 */
+export const RUN_ID_MAX_BUMPS = 120;
+
+const RUN_ID_STAGES: readonly StageOrVerify[] = ['plan', 'code', 'bug', 'verify'];
+
+/**
+ * 分配一个本主题内不撞名的 run_id（EV-147）。
+ *
+ * `newRunId` 只到秒，`writeMeta` 对 `_meta/` 覆盖写、`registerRun` 按 run_id 替换登记——同一秒起的第二轮会把
+ * 第一轮的 run.json 与登记整份盖掉（准备阶段失败是亚秒级的，紧接着重跑就撞）。这里不改格式：从 `newRunId(now)`
+ * 起，已被占用就往后抬一秒。「占用」= task.json `runs[]` 已有这个 run_id（各阶段共用一个键空间），或任一阶段
+ * `_meta/run-<id>.json` 已存在；task.json 读不出时只看文件。**不看运行目录**（跨主题共用，见 BACKLOG EV-147 结案记要）。
+ *
+ * 抬出来的 id 仍是定宽 UTC 形态且大于被占用者，`latestRunMeta` 的「字典序即时序」照旧成立；代价是 run_id 不再
+ * 保证等于开始时刻的秒，开始时刻以 `started_at` 为准。检查与随后的写入之间不加锁：审查运行在主题锁内分配，
+ * 先后两轮不会撞；不持主题锁的 verify 与审查运行**同一秒并发**分配时仍可能撞，这一格不在本函数的承诺里。
+ */
+export async function allocateRunId(l: ArchiveLayout, now: Date = new Date(), maxBumps: number = RUN_ID_MAX_BUMPS): Promise<string> {
+  const { task, state } = await readTaskStrict(l);
+  const registered = new Set(state === 'ok' && Array.isArray(task.runs) ? task.runs.map((r) => r.run_id) : []);
+  const fileTaken = async (id: string): Promise<boolean> => {
+    for (const stage of RUN_ID_STAGES) {
+      try {
+        await fs.lstat(path.join(metaDirOf(l, stage), runMetaFileName(id)));
+        return true;
+      } catch {
+        // 不存在或读不到：看下一个阶段
+      }
+    }
+    return false;
+  };
+  for (let i = 0; i <= maxBumps; i++) {
+    const id = newRunId(new Date(now.getTime() + i * 1000));
+    if (!registered.has(id) && !(await fileTaken(id))) return id;
+  }
+  throw envError(
+    `主题「${l.topic}」从 ${newRunId(now)} 起连续 ${maxBumps + 1} 个 run_id 都已被占用（task.json 登记或 _meta/run-*.json）：` +
+      '留痕可能异常，请检查该主题的归档后重试',
+  );
 }
 
 export const runMetaFileName = (runId: string): string => `run-${runId}.json`;

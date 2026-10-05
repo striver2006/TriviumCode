@@ -1,0 +1,64 @@
+{
+  "targets": [
+    "src/trivium/meta.ts",
+    "src/trivium/review.ts",
+    "src/trivium/cli.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/run-id-alloc.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "allocateRunId 不看占用，第一个就返回（等价改前 newRunId）",
+      "file": "src/trivium/meta.ts",
+      "find": "    if (!registered.has(id) && !(await fileTaken(id))) return id;\n",
+      "replace": "    return id;\n",
+      "expect": "dist/test/test/unit/run-id-alloc.test.js",
+      "also": [
+        "dist/test/test/integration/run-id-collision.test.js"
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "allocateRunId 不看 task.json 登记",
+      "file": "src/trivium/meta.ts",
+      "find": "    if (!registered.has(id) && !(await fileTaken(id))) return id;\n",
+      "replace": "    if (!(await fileTaken(id))) return id;\n",
+      "expect": "dist/test/test/unit/run-id-alloc.test.js",
+      "also": [
+        "dist/test/test/integration/run-id-collision.test.js"
+      ]
+    },
+    {
+      "id": "M3",
+      "desc": "allocateRunId 不看 _meta 文件",
+      "file": "src/trivium/meta.ts",
+      "find": "    if (!registered.has(id) && !(await fileTaken(id))) return id;\n",
+      "replace": "    if (!registered.has(id)) return id;\n",
+      "expect": "dist/test/test/unit/run-id-alloc.test.js",
+      "also": [
+        "dist/test/test/integration/run-id-collision.test.js"
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "prepareRun 退回直接调 newRunId",
+      "file": "src/trivium/review.ts",
+      "find": "  const runId = await allocateRunId(ref.layout);\n",
+      "replace": "  const runId = (await import('./meta.js')).newRunId();\n",
+      "expect": "dist/test/test/unit/run-id-alloc.test.js",
+      "also": [
+        "dist/test/test/integration/run-id-collision.test.js"
+      ]
+    },
+    {
+      "id": "M5",
+      "desc": "cmdVerify 退回直接调 newRunId",
+      "file": "src/trivium/cli.ts",
+      "find": "  const runId = await allocateRunId(ref.layout);\n",
+      "replace": "  const runId = (await import('./meta.js')).newRunId();\n",
+      "expect": "dist/test/test/unit/run-id-alloc.test.js"
+    }
+  ]
+}

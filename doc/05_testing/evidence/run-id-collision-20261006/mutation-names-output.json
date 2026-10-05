@@ -1,0 +1,133 @@
+{
+  "targets_sha256": {
+    "src/trivium/meta.ts": "706057eb7f1416a05b91ab99b566f18a53b9692c3217e6c341b92269780decac",
+    "src/trivium/review.ts": "d4e460a2811605552b3f931b03e19117511dc9935f9c2aa2e5c3e8dd640876a3",
+    "src/trivium/cli.ts": "4fd627ed7927e7466cf7c9a8f5d4285f9d9ae8954f3d35ce4ae42b3ee29db5ca"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "allocateRunId 不看占用，第一个就返回（等价改前 newRunId）",
+      "suite": "dist/test/test/unit/run-id-alloc.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-147 A2：task.json 已登记同秒 ⇒ 抬一秒",
+        "EV-147 A3：别的阶段 _meta 里有同名 run.json ⇒ 也算占用（task.json 跨阶段共用键空间）",
+        "EV-147 A4：登记与文件混合占用、中间有空档 ⇒ 取第一个空档",
+        "EV-147 A5：task.json 读不出 ⇒ 不抛，只看文件",
+        "EV-147 A6：连续占用超过上限 ⇒ 抛 69，文案点名主题与起点"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/run-id-collision.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-147 I1：同步 review 避开本主题已占用的 run_id（别的阶段的 _meta 同名也算），占位文件逐字节不动"
+          ],
+          "firstLines": [],
+          "elapsed_s": 1
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "allocateRunId 不看 task.json 登记",
+      "suite": "dist/test/test/unit/run-id-alloc.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-147 A2：task.json 已登记同秒 ⇒ 抬一秒",
+        "EV-147 A4：登记与文件混合占用、中间有空档 ⇒ 取第一个空档",
+        "EV-147 A6：连续占用超过上限 ⇒ 抛 69，文案点名主题与起点"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/run-id-collision.test.js",
+          "fail": 0,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [],
+          "firstLines": [],
+          "elapsed_s": 1
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "desc": "allocateRunId 不看 _meta 文件",
+      "suite": "dist/test/test/unit/run-id-alloc.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-147 A3：别的阶段 _meta 里有同名 run.json ⇒ 也算占用（task.json 跨阶段共用键空间）",
+        "EV-147 A4：登记与文件混合占用、中间有空档 ⇒ 取第一个空档",
+        "EV-147 A5：task.json 读不出 ⇒ 不抛，只看文件"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/run-id-collision.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-147 I1：同步 review 避开本主题已占用的 run_id（别的阶段的 _meta 同名也算），占位文件逐字节不动"
+          ],
+          "firstLines": [],
+          "elapsed_s": 1
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "prepareRun 退回直接调 newRunId",
+      "suite": "dist/test/test/unit/run-id-alloc.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-147 A7（源码护栏）：除 meta.ts 外，src/ 不直接调 newRunId 分配 run_id"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/run-id-collision.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-147 I1：同步 review 避开本主题已占用的 run_id（别的阶段的 _meta 同名也算），占位文件逐字节不动"
+          ],
+          "firstLines": [],
+          "elapsed_s": 1
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "desc": "cmdVerify 退回直接调 newRunId",
+      "suite": "dist/test/test/unit/run-id-alloc.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-147 A7（源码护栏）：除 meta.ts 外，src/ 不直接调 newRunId 分配 run_id"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    }
+  ]
+}

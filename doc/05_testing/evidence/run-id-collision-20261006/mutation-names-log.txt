@@ -1,0 +1,9 @@
+M1：fail=5 cancelled=0 1s ⇒ EV-147 A2：task.json 已登记同秒 ⇒ 抬一秒 ｜ EV-147 A3：别的阶段 _meta 里有同名 run.json ⇒ 也算占用（task.json 跨阶段共用键空间） ｜ EV-147 A4：登记与文件混合占用、中间有空档 ⇒ 取第一个空档 ｜ EV-147 A5：task.json 读不出 ⇒ 不抛，只看文件 ｜ EV-147 A6：连续占用超过上限 ⇒ 抛 69，文案点名主题与起点
+  亦跑 dist/test/test/integration/run-id-collision.test.js：fail=1 ⇒ EV-147 I1：同步 review 避开本主题已占用的 run_id（别的阶段的 _meta 同名也算），占位文件逐字节不动
+M2：fail=3 cancelled=0 1s ⇒ EV-147 A2：task.json 已登记同秒 ⇒ 抬一秒 ｜ EV-147 A4：登记与文件混合占用、中间有空档 ⇒ 取第一个空档 ｜ EV-147 A6：连续占用超过上限 ⇒ 抛 69，文案点名主题与起点
+  亦跑 dist/test/test/integration/run-id-collision.test.js：fail=0 ⇒ 
+M3：fail=3 cancelled=0 1s ⇒ EV-147 A3：别的阶段 _meta 里有同名 run.json ⇒ 也算占用（task.json 跨阶段共用键空间） ｜ EV-147 A4：登记与文件混合占用、中间有空档 ⇒ 取第一个空档 ｜ EV-147 A5：task.json 读不出 ⇒ 不抛，只看文件
+  亦跑 dist/test/test/integration/run-id-collision.test.js：fail=1 ⇒ EV-147 I1：同步 review 避开本主题已占用的 run_id（别的阶段的 _meta 同名也算），占位文件逐字节不动
+M4：fail=1 cancelled=0 1s ⇒ EV-147 A7（源码护栏）：除 meta.ts 外，src/ 不直接调 newRunId 分配 run_id
+  亦跑 dist/test/test/integration/run-id-collision.test.js：fail=1 ⇒ EV-147 I1：同步 review 避开本主题已占用的 run_id（别的阶段的 _meta 同名也算），占位文件逐字节不动
+M5：fail=1 cancelled=0 1s ⇒ EV-147 A7（源码护栏）：除 meta.ts 外，src/ 不直接调 newRunId 分配 run_id

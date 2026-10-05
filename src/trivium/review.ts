@@ -66,7 +66,7 @@ import { diffAgainst, headSha } from './util/git.js';
 import { collectBuildStampNotices, embeddedBuildStamp } from './build-stamp.js';
 import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
 import {
-  finalizeFailedRunMeta, finalizeLines, newRunId, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta,
+  allocateRunId, finalizeFailedRunMeta, finalizeLines, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta,
   type TaskLock,
 } from './meta.js';
 import { acquireLock } from './lock.js';
@@ -878,7 +878,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    * 而是骨架运行元数据短暂记错轮次 + 必然触发一次抬升告警。
    */
   const rerunIndex = await resolveRerunIndex(ref.layout, stage, driver);
-  const runId = newRunId();
+  const runId = await allocateRunId(ref.layout);
 
   /*
    * ── 被审对象 ──

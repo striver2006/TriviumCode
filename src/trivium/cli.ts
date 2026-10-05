@@ -34,7 +34,7 @@ import { readHookInput, runHook, type HookName } from './hooks.js';
 import { getGate, listOpenGates, setGateChecked } from './state.js';
 import { assertGateDecidable, recordApproval } from './approval.js';
 import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
-import { latestRunMeta, newRunId, readTask, readRunMeta } from './meta.js';
+import { allocateRunId, latestRunMeta, readTask, readRunMeta } from './meta.js';
 import { mergeAllHooks, runInit, renderInitReport, type InitReport } from './init.js';
 import {
   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
@@ -1766,7 +1766,7 @@ async function cmdVerify(args: ParsedArgs): Promise<number> {
     }
     timeoutS = n;
   }
-  const runId = newRunId();
+  const runId = await allocateRunId(ref.layout);
   const out = await runVerify({
     ctx,
     layout: ref.layout,

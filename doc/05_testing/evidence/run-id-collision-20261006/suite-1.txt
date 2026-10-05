@@ -1,0 +1,16 @@
+✔ EV-147 I1：同步 review 避开本主题已占用的 run_id（别的阶段的 _meta 同名也算），占位文件逐字节不动 (459.422208ms)
+✔ EV-147 A1：没有占用 ⇒ 就是 newRunId(now)，格式 YYYYMMDDTHHMMSSZ (2.396125ms)
+✔ EV-147 A2：task.json 已登记同秒 ⇒ 抬一秒 (1.179291ms)
+✔ EV-147 A3：别的阶段 _meta 里有同名 run.json ⇒ 也算占用（task.json 跨阶段共用键空间） (1.916583ms)
+✔ EV-147 A4：登记与文件混合占用、中间有空档 ⇒ 取第一个空档 (0.966ms)
+✔ EV-147 A5：task.json 读不出 ⇒ 不抛，只看文件 (1.182375ms)
+✔ EV-147 A6：连续占用超过上限 ⇒ 抛 69，文案点名主题与起点 (0.840958ms)
+✔ EV-147 A7（源码护栏）：除 meta.ts 外，src/ 不直接调 newRunId 分配 run_id (240.815542ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 572.759667

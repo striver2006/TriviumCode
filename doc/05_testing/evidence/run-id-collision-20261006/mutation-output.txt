@@ -1,0 +1,42 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  M1 ✓ 咬住（fail=5）
+  M2 ✓ 咬住（fail=3）
+  M3 ✓ 咬住（fail=3）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+{
+  "总数": 5,
+  "咬住": 5,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "allocateRunId 不看占用，第一个就返回（等价改前 newRunId）",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M2",
+      "desc": "allocateRunId 不看 task.json 登记",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M3",
+      "desc": "allocateRunId 不看 _meta 文件",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M4",
+      "desc": "prepareRun 退回直接调 newRunId",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "cmdVerify 退回直接调 newRunId",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

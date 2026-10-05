@@ -127,7 +127,7 @@ graph TD
 | 模块 | 行数 | 职责 | 关键导出 |
 | :--- | ---: | :--- | :--- |
 | `archive.ts` | 550 | 防覆盖落盘、最低工件集校验、sha256 核对、**运行清单读侧按阶段分发**（设计 6.7.1） | `writeArtifact()` `checkRecordedArtifacts()` `checkRunManifests()` `runManifestProblem()` |
-| `meta.ts` | 382 | `run.json`（`trivium.run.v2`）与主题级任务档的构造与更新；**读侧按 schema 分发与 v1 → v2 内存迁移** | `newRunId()` `writeRunMeta()` `readRunMeta()` `migrateRunMetaV1()` `updateTask()` `readTaskStrict()` |
+| `meta.ts` | 382 | `run.json`（`trivium.run.v2`）与主题级任务档的构造与更新；**读侧按 schema 分发与 v1 → v2 内存迁移** | `newRunId()` `allocateRunId()` `writeRunMeta()` `readRunMeta()` `migrateRunMetaV1()` `updateTask()` `readTaskStrict()` |
 | `naming.ts` | 142 | 文件名生成与反解析（纯函数，不碰文件系统） | `buildArtifactName()` `parseArtifactName()` `validateTopic()` |
 | `report.ts` | 556 | 人读复盘生成 | `buildReport()` |
 | `render.ts` | 253 | 审查文档的 Markdown 渲染（参与者事实与降级警示分两处标注） | `renderReviewDoc()` |
@@ -279,7 +279,7 @@ bug 阶段传 `() => resolvePlanFinal(ref, projectRoot)`（现算，只取目标
 
 **置闸门是落盘之前的最后一步**（v1.1.7，EV-109 / EV-145 ①）：`setGateChecked(running)` 排在计算段之后、第一次落盘之前，被拦（上一轮未裁决，退 2）时零工件；此前它排在落盘段之后，被拦那次已写下 brief、便利副本 `changes.diff`、run.json 骨架、task.json 登记与运行目录。置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 经 `state.ts` 的 `releaseRunningGateEntry` 回收闸门；写完骨架之后才失败（登记、任务目标落盘）时，回收闸门之后再把骨架收尾为 `failed`（`prepare_exception`，v1.1.8，EV-145；v1.1.7 时骨架留 `running`）；骨架之前的失败不进收尾。
 
-**`run_id` 生成**（[meta.ts:36](../../src/trivium/meta.ts#L36)，`newRunId`；只到秒，同秒撞名见 BACKLOG EV-147）：UTC 紧凑时间戳 `20260910T142310Z`，可排序、可直接做文件名。
+**`run_id` 生成**（[meta.ts:37](../../src/trivium/meta.ts#L37)，`newRunId`；分配走同文件的 `allocateRunId`）：UTC 紧凑时间戳 `20260910T142310Z`，可排序、可直接做文件名。只到秒：同秒已被本主题占用（task.json 登记或任一阶段 `_meta/run-<id>.json`）就往后抬一秒，格式不变、字典序仍即时序，但 run_id 不再保证等于开始时刻，开始时刻以 `started_at` 为准（EV-147）。
 
 **code 阶段的补丁只算一次**（`review.ts:341-347`）后透传给两侧——逐侧各自 `git diff` 会让两次之间的工作树变动导致两侧拿到不同的 `subject_sha256`，那等于两侧审的不是同一段变更。
 
