@@ -42,6 +42,18 @@ import type { Ctx } from '../../src/trivium/types.js';
 
 const TOPIC = '故障注入';
 
+/**
+ * 有接受项时执笔方的新一轮计划（EV-214，§6.6 规则 9）：新运行带 `plan_final_check`，
+ * 闸门要求它存在、且逐字引用每条被接受的编号。本文件的计划阶段都只跑一轮，轮次恒为 r2。
+ */
+async function writeNextPlan(planDir: string, ids: string[], role: string = DEFAULT_DRIVER): Promise<void> {
+  await fs.writeFile(
+    path.join(planDir, `${today()}-${TOPIC}-r2-${role}.md`),
+    ['# 计划 r2', '', '相对上一轮的改动：', ...ids.map((id) => `- ${id}：按建议补上`), ''].join('\n'),
+    'utf8',
+  );
+}
+
 /** 跑完整 --start → --wait 循环，返回最终退出码与 run.json */
 async function runInjected(
   stub: StubConfig,
@@ -255,6 +267,8 @@ test('归档外被审对象（--plan-file doc/…）不登记，run.json 与 gat
     ].join('\n'),
     'utf8',
   );
+  // 被审对象在归档外（没有轮次）⇒ 基准退回 rerun_index，新一轮计划同样是归档内的 r2
+  await writeNextPlan(path.join(root, '.reviews', TOPIC, 'plan'), ['AGY-01', 'GLM-01']);
   const aw = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--json']);
   assert.equal(aw.code, EXIT.OK, `--await-approval 应成功：\n${aw.stdout}\n${aw.stderr}`);
   const awCand = extractJsonCandidate(aw.stdout);
@@ -472,6 +486,7 @@ test('审查中写项目文件 → readonly_breach，且 gate --check 判失败�
     ].join('\n'),
     'utf8',
   );
+  await writeNextPlan(stageDir, ids.map((x) => x.id));
   const g = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
   assert.notEqual(g.code, EXIT.OK, `只读失守必须让 gate --check 失败：\n${g.stdout}${g.stderr}`);
   const out = JSON.parse(extractJsonCandidate(g.stdout)!.json) as { ok: boolean; failures: { code: string; message: string }[] };
@@ -860,6 +875,7 @@ test('停点话术：调用写法与「不得修改业务文件」都按当轮 D
       ].join('\n'),
       'utf8',
     );
+    await writeNextPlan(path.join(root, '.reviews', TOPIC, 'plan'), ['AGY-01', 'GLM-01'], drv.id);
     const aw = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--await-approval', '--json']);
     assert.equal(aw.code, EXIT.OK, `--await-approval 应成功：\n${aw.stdout}\n${aw.stderr}`);
     const msg = (JSON.parse(extractJsonCandidate(aw.stdout)!.json) as { message: string }).message;
@@ -1093,6 +1109,7 @@ test('I1 部分意见不合 schema → 该侧仍 ok，只把那几条逐条降�
       ].join('\n'),
       'utf8',
     );
+    await writeNextPlan(stageDir, ids);
   };
   await disp(['AGY-01', 'AGY-02', ...glmIds]);
   const c1 = await cli(root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);

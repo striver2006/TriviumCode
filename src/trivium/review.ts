@@ -50,6 +50,7 @@ import { decideMode, runBothSides, type SideProgress } from './runner.js';
 import { judgeRun, renderGuardWarnings, type SideVerdict } from './guard.js';
 import { FALLBACK_CAUSE_LABEL, renderReviewDoc, type RenderInput } from './render.js';
 import { resolveTopicReadOnly, locateSubject } from './topic.js';
+import { parseArtifactName } from './naming.js';
 import {
   buildDiffHeader,
   classifyDiff,
@@ -246,6 +247,22 @@ export function taskGoalAppendix(stage: Stage, rawGoal: string | null | undefine
   if (stage !== 'plan') return null;
   if (foldGoal(rawGoal).length <= TASK_GOAL_MAX) return null;
   return (rawGoal ?? '').replace(/\r\n/g, '\n').trim();
+}
+
+/**
+ * 计划阶段被审对象的轮次，写进 run.json `plan_final_check.subject_rerun_index`（EV-214，计划 r2 §2.6）。
+ *
+ * 只认**本主题 `plan/` 根下、当轮 Driver 的原稿形态**：文件名可解析、主题相同、后缀为当轮 Driver、
+ * 无 `-revised` / `-response` 中缀——与 `locateSubject` 自动候选的筛法同一口径。其余（归档外的 `--plan-file`、
+ * 名字不合规、别家后缀、裁决件）一律 null：闸门据此退回 `rerun_index` 当基准，不猜一个轮次。
+ *
+ * 纯函数、不碰文件系统：被审对象此刻已由 `locateSubject` 定位并读过，是不是审查件那道剔除已在那里做完。
+ */
+export function planSubjectRerunIndex(layout: ArchiveLayout, subjectPath: string, driver: AgentId): number | null {
+  if (path.resolve(path.dirname(subjectPath)) !== path.resolve(stageDir(layout, 'plan'))) return null;
+  const parsed = parseArtifactName(path.basename(subjectPath));
+  if (!parsed || parsed.topic !== layout.topic || parsed.role !== driver || parsed.kind !== null) return null;
+  return parsed.rerunIndex;
 }
 
 /** 计划阶段留痕读不出、没能列入计划定稿时的告警名（与「必读清单剔除」同形、同三个出口） */
@@ -843,6 +860,10 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     subjectPath = await locateSubject(ref, opts.subjectFile, ctx.projectRoot, driver);
     subjectText = await fs.readFile(subjectPath, 'utf8');
   }
+  // 计划定稿校验标记（EV-214）：只在计划阶段写，存在即本轮按 §6.6 规则 9 判；bug 阶段同为文件型被审对象，但不在本规则论域
+  const planFinalCheck = stage === 'plan'
+    ? { subject_rerun_index: planSubjectRerunIndex(ref.layout, subjectPath, driver) }
+    : undefined;
 
   step(`主题 ${ref.topic} ｜ 阶段 ${stage} ｜ 第 ${rerunIndex} 轮 ｜ run ${runId}`);
   step(`被审对象 ${path.relative(ctx.projectRoot, subjectPath)}`);
@@ -1185,6 +1206,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
        * 在这里取，而不是信预检那一次：预检与 `--start` 之间配置可能被改，留痕要记的是**本次运行时**的事实。
        */
       ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),
+      ...(planFinalCheck ? { planFinalCheck } : {}),
       treeHash: primarySnap.treeHash,
       gitHead: primarySnap.gitHead,
       dirty: primarySnap.dirty,

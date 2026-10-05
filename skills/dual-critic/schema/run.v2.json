@@ -80,6 +80,18 @@
       "type": "boolean",
       "description": "当轮 Driver 在这次运行时是否已启用为 Driver（M9 第 5 步）。可选：早于该步的留痕没有此字段，缺失即「无从得知」，不等于 false。M9 的 --driver 只校验「已登记」，因此归档里会出现 driver_enabled: false 的合法留痕；M10 把校验收紧之后那些留痕仍要读得回，所以它不进 required，也不加 if/then"
     },
+    "plan_final_check": {
+      "type": "object",
+      "required": ["subject_rerun_index"],
+      "additionalProperties": false,
+      "properties": {
+        "subject_rerun_index": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        }
+      },
+      "description": "计划定稿校验的标记（EV-214，设计 §6.6 规则 9）。只在计划阶段、由 EV-214 之后的编排器写入；代码与 bug 阶段不写。存在即「本轮按 EV-214 的规则跑」：闸门只对带它的轮次要求有接受项时存在执笔方的新一轮计划；缺失即「无从得知」，有接受项时 gate 出 next_plan_unchecked 告警、不判失败（不追溯历史轮次）。subject_rerun_index 是本轮被审对象的轮次：位于本主题 plan/ 根、文件名可解析、后缀为当轮 Driver、无 -revised/-response 中缀时取其轮次，否则（归档外的 --plan-file、名字不合规）为 null，此时闸门的基准轮次退回 rerun_index"
+    },
     "driver_guard_level": {
       "enum": ["L1", "L2"],
       "description": "当轮 Driver 在这次运行时的有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而项目内 Hook 配置不在场即记 L2。可选：早于该步的留痕没有此字段，缺失即「无从得知」，不等于 L1。只看存在性、不看内容——Hook 命令被改、wrapper 被替换这里都看不见；只读注册表登记的那一个项目内配置文件（Claude 另读同目录 settings.local.json 的 disableAllHooks），落在 user 级或其它设置层的 Hook 看不见，会记成 L2（偏保守）"

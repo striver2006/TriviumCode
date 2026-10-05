@@ -8,7 +8,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type {
-  AgentId, CriticId, LegacyReviewMode, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
+  AgentId, CriticId, LegacyReviewMode, PlanFinalCheck, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
 } from './types.js';
 import { describeDriftUnknown } from './types.js';
 import { embeddedBuildStamp, type BuildStamp } from './build-stamp.js';
@@ -308,6 +308,11 @@ export interface NewRunMetaInput {
    * 留痕里「缺失」即「无从得知」——不在这里替它补一个 L1，那等于替没检查过的运行作证。
    */
   driverGuardLevel?: GuardLevel;
+  /**
+   * 计划定稿校验标记（EV-214）：计划阶段由 `prepareRun` 传入，代码与 bug 阶段不传、不写。
+   * 不在这里按阶段补一个默认值——缺失即「这一轮不按 EV-214 的规则判」，替没算过的运行作证等于追溯历史。
+   */
+  planFinalCheck?: PlanFinalCheck;
   /** 本轮入选的审核者集合。**必填**：它是「本该跑几侧」的唯一事实来源 */
   criticsSelected: readonly CriticId[];
   treeHash: string;
@@ -337,6 +342,7 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     // 也可能是本步漏传，事后分不开（口径与 profile_requested / model_provider 同源）
     driver_enabled: i.driverEnabled ?? true,
     ...(i.driverGuardLevel !== undefined ? { driver_guard_level: i.driverGuardLevel } : {}),
+    ...(i.planFinalCheck !== undefined ? { plan_final_check: { subject_rerun_index: i.planFinalCheck.subject_rerun_index } } : {}),
     critics_selected: [...i.criticsSelected],
     snapshot: {
       git_head: i.gitHead,

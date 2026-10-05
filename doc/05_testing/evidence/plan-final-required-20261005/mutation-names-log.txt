@@ -1,0 +1,24 @@
+M1：fail=1 cancelled=0 0s ⇒ U10 bug / code 阶段即使传了 planFinal 也不校验
+M2a：fail=1 cancelled=0 0s ⇒ U15 复审未修订原稿（rerun_index 2、被审对象 r1）→ 要求 r2 而非 r3
+  亦跑 dist/test/test/integration/plan-final-gate.test.js：fail=1 ⇒ I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2
+M2b：fail=2 cancelled=0 0s ⇒ U8 第 1 轮但被审对象已是 r2（送审前就写了 r2）→ 要求 r3 ｜ U15 复审未修订原稿（rerun_index 2、被审对象 r1）→ 要求 r2 而非 r3
+M3：fail=2 cancelled=0 0s ⇒ U7 第 2 轮（被审对象 r2）：r2 不算新一轮，要 r3；补 r3 后通过 ｜ U8 第 1 轮但被审对象已是 r2（送审前就写了 r2）→ 要求 r3
+  亦跑 dist/test/test/integration/plan-final-gate.test.js：fail=5 ⇒ I1 · 命令 A 新运行写标记；有接受项、没有新一轮计划 → missing_next_plan 并给出应写文件名 ｜ I3 · 命令 B：通过后立停点，新一轮计划被挪走 → approve 与 --await-approval 的复核都拦下 ｜ I4 · 第二轮：被审对象是 r2、要求 r3；用 --run-id 回看第 1 轮仍通过（已被接手，核 r2） ｜ I6 · 非缺省执笔方 codex：应写名为 -r2-codex.md，别家后缀的 r2 不算 ｜ I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2
+M4：fail=1 cancelled=0 0s ⇒ U11 编号整词判据：GLM-010 不算 GLM-01；括号与冒号相邻算；被接受的虚拟编号必须出现
+M5：fail=1 cancelled=0 0s ⇒ U11 编号整词判据：GLM-010 不算 GLM-01；括号与冒号相邻算；被接受的虚拟编号必须出现
+M6：fail=2 cancelled=0 0s ⇒ U2 有接受项、没有新一轮计划 → missing_next_plan，给出应写文件名与接受编号 ｜ U4 全部驳回 / 全部暂缓 → 不要求新一轮计划
+M7：fail=1 cancelled=0 0s ⇒ U6 非缺省 Driver：别家后缀的 r2 不算，应写名取当轮 Driver 后缀
+  亦跑 dist/test/test/integration/plan-final-gate.test.js：fail=1 ⇒ I6 · 非缺省执笔方 codex：应写名为 -r2-codex.md，别家后缀的 r2 不算
+M8：fail=1 cancelled=0 0s ⇒ U12 顶着执笔方后缀的审查件不算候选
+M9：fail=2 cancelled=0 0s ⇒ U13 在用的轮次核定稿（最大候选）：r2 齐、r3 缺 → 判缺；r3 补齐后通过 ｜ U16 已被后续运行接手的轮次核紧随那份：r2 齐、r3 只引用后一轮编号 → 通过
+M10：fail=6 cancelled=0 24s ⇒ I1 · 命令 A 新运行写标记；有接受项、没有新一轮计划 → missing_next_plan 并给出应写文件名 ｜ I2 · 新一轮计划漏一条 → next_plan_missing_ids；补齐后通过 ｜ I3 · 命令 B：通过后立停点，新一轮计划被挪走 → approve 与 --await-approval 的复核都拦下 ｜ I4 · 第二轮：被审对象是 r2、要求 r3；用 --run-id 回看第 1 轮仍通过（已被接手，核 r2） ｜ I6 · 非缺省执笔方 codex：应写名为 -r2-codex.md，别家后缀的 r2 不算 ｜ I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2
+  亦跑 dist/test/test/unit/plan-final-gate.test.js：fail=1 ⇒ loadRoundReviews：带标记的计划阶段给出 planFinal（含更晚运行的被审对象轮次）；无标记或代码阶段为 null
+M11：fail=6 cancelled=0 23s ⇒ I1 · 命令 A 新运行写标记；有接受项、没有新一轮计划 → missing_next_plan 并给出应写文件名 ｜ I2 · 新一轮计划漏一条 → next_plan_missing_ids；补齐后通过 ｜ I3 · 命令 B：通过后立停点，新一轮计划被挪走 → approve 与 --await-approval 的复核都拦下 ｜ I4 · 第二轮：被审对象是 r2、要求 r3；用 --run-id 回看第 1 轮仍通过（已被接手，核 r2） ｜ I6 · 非缺省执笔方 codex：应写名为 -r2-codex.md，别家后缀的 r2 不算 ｜ I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2
+M12：fail=5 cancelled=0 24s ⇒ I1 · 命令 A 新运行写标记；有接受项、没有新一轮计划 → missing_next_plan 并给出应写文件名 ｜ I2 · 新一轮计划漏一条 → next_plan_missing_ids；补齐后通过 ｜ I4 · 第二轮：被审对象是 r2、要求 r3；用 --run-id 回看第 1 轮仍通过（已被接手，核 r2） ｜ I6 · 非缺省执笔方 codex：应写名为 -r2-codex.md，别家后缀的 r2 不算 ｜ I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2
+M13：fail=1 cancelled=0 25s ⇒ I3 · 命令 B：通过后立停点，新一轮计划被挪走 → approve 与 --await-approval 的复核都拦下
+M14：fail=1 cancelled=0 0s ⇒ U14 既有失败与新失败同时存在：一次全报，新失败排在最后
+M15：fail=2 cancelled=0 0s ⇒ U11 编号整词判据：GLM-010 不算 GLM-01；括号与冒号相邻算；被接受的虚拟编号必须出现 ｜ U17 期望集外的接受编号只由 unknown_findings 报，不要求写进新一轮计划
+M16：fail=1 cancelled=0 0s ⇒ U16 已被后续运行接手的轮次核紧随那份：r2 齐、r3 只引用后一轮编号 → 通过
+  亦跑 dist/test/test/integration/plan-final-gate.test.js：fail=1 ⇒ I4 · 第二轮：被审对象是 r2、要求 r3；用 --run-id 回看第 1 轮仍通过（已被接手，核 r2）
+M17：fail=1 cancelled=0 0s ⇒ loadRoundReviews：带标记的计划阶段给出 planFinal（含更晚运行的被审对象轮次）；无标记或代码阶段为 null
+M18：fail=1 cancelled=0 0s ⇒ planSubjectRerunIndex：plan 根下当轮 Driver 的原稿取轮次，其余为 null

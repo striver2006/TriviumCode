@@ -215,7 +215,7 @@ TriviumCode **绝非**调用 LLM 补全接口，而是直接拉起各厂商**系
 
 | 阶段 | 必备工件 |
 | :--- | :--- |
-| **`plan/`** 计划审 | 原始计划 `-<Driver>.md` · 每个入选审核者一份审查（缺省 `-codex.md` / `-gemini.md` / `-glm.md`） · 修订计划 `-revised-<Driver>.md`（含逐条裁决表） |
+| **`plan/`** 计划审 | 原始计划 `-<Driver>.md` · 每个入选审核者一份审查（缺省 `-codex.md` / `-gemini.md` / `-glm.md`） · 修订计划 `-revised-<Driver>.md`（含逐条裁决表） · 有接受项时的新一轮计划 `-r<N>-<Driver>.md`（开头逐条引用接受编号，即代码阶段送审的计划定稿；闸门核它存在且编号齐全，设计 §6.6 规则 9） |
 | **`code/`** 代码审 | 每个入选审核者一份审查 · 应答件 `-response-<Driver>.md`（每条接受/驳回/暂缓 + 理由 + 修改计划） |
 | **`bug/`** 根因审 | 根因原稿 `-<Driver>.md` · 每个入选审核者一份审查 · 修订根因 `-revised-<Driver>.md` |
 | **`verify/`** 编译测试出口 | `-verify.md` + `_meta/verify-<run_id>.json`（含实际执行的命令与退出码） |

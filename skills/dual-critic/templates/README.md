@@ -4,7 +4,7 @@
 
 | 模板 | 产出工件 | 阶段 |
 | :--- | :--- | :--- |
-| [`plan.md.template`](./plan.md.template) | `plan/<日期>-<主题>-<当轮 Driver>.md` 计划原稿 | 计划审 |
+| [`plan.md.template`](./plan.md.template) | `plan/<日期>-<主题>-<当轮 Driver>.md` 计划原稿；有接受项时的新一轮计划 `plan/<日期>-<主题>-r<N>-<当轮 Driver>.md` 同样照它写，开头另加「相对上一轮的改动」逐条引用接受编号（设计 §6.6 规则 9） | 计划审 |
 | [`rca.md.template`](./rca.md.template) | `bug/<日期>-<主题>-<当轮 Driver>.md` 根因原稿 | 根因审 |
 | [`disposition.md.template`](./disposition.md.template) | `<阶段>/<日期>-<主题>-revised-<当轮 Driver>.md` 修订件（含逐条裁决） | 计划审 / 根因审 |
 | [`response.md.template`](./response.md.template) | `code/<日期>-<主题>-response-<当轮 Driver>.md` 应答件 | 代码审 |

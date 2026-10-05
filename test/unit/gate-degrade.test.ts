@@ -57,6 +57,7 @@ test('G1 降级编号没有裁决 ⇒ missing_findings 点名它', async () => {
   const l = await layout();
   await putDisposition(l, ['| AGY-01 | gemini | major | 接受 | 成立 | §1 |']);
   const r = await checkAdjudication({
+    planFinal: null, // 与计划定稿无关的用例（EV-214）
     ...base, layout: l, reviews: { gemini: review([{ id: 'AGY-01' }]) }, expectedDegradedIds: ['AGY-02'],
   });
   assert.equal(r.ok, false, renderGateResult(r));
@@ -71,6 +72,7 @@ test('G2 降级编号有裁决 ⇒ 通过；不在合格 ∪ 降级里的编号�
     '| AGY-02 | gemini | minor | 驳回 | 与事实不符 | 不改 |',
   ]);
   const ok = await checkAdjudication({
+    planFinal: null, // 与计划定稿无关的用例（EV-214）
     ...base, layout: l, reviews: { gemini: review([{ id: 'AGY-01' }]) }, expectedDegradedIds: ['AGY-02'],
   });
   assert.equal(ok.ok, true, renderGateResult(ok));
@@ -84,6 +86,7 @@ test('G2 降级编号有裁决 ⇒ 通过；不在合格 ∪ 降级里的编号�
     '| AGY-09 | gemini | minor | 驳回 | 抄错 | 不改 |',
   ]);
   const bad = await checkAdjudication({
+    planFinal: null, // 与计划定稿无关的用例（EV-214）
     ...base, layout: l2, reviews: { gemini: review([{ id: 'AGY-01' }]) }, expectedDegradedIds: ['AGY-02'],
   });
   assert.deepEqual(bad.failures.find((x) => x.code === 'unknown_findings')?.ids, ['AGY-09']);
@@ -96,6 +99,7 @@ test('G3 降级意见「接受」也要写落点', async () => {
     '| AGY-02 | gemini | minor | 接受 | 成立 |  |',
   ]);
   const r = await checkAdjudication({
+    planFinal: null, // 与计划定稿无关的用例（EV-214）
     ...base, layout: l, reviews: { gemini: review([{ id: 'AGY-01' }]) }, expectedDegradedIds: ['AGY-02'],
   });
   assert.deepEqual(r.failures.find((x) => x.code === 'missing_action')?.ids, ['AGY-02']);
@@ -107,6 +111,7 @@ test('G4 一侧全部降级、没有 F 单元、裁决表为空 ⇒ unparsable_t
   const l = await layout();
   await putDisposition(l, []);
   const r = await checkAdjudication({
+    planFinal: null, // 与计划定稿无关的用例（EV-214）
     ...base, layout: l, reviews: { gemini: review([]) }, expectedDegradedIds: ['AGY-01', 'AGY-02'],
   });
   const f = r.failures.find((x) => x.code === 'unparsable_table');
@@ -126,6 +131,7 @@ test('G5〔回归〕两侧同位置的 blocker 其一降级 ⇒ 不算共同来�
   const l0 = await layout();
   await putDisposition(l0, rows);
   const both = await checkAdjudication({
+    planFinal: null, // 与计划定稿无关的用例（EV-214）
     ...base, cfg, layout: l0, expectedDegradedIds: [],
     reviews: { gemini: review([{ id: 'AGY-01', severity: 'blocker', location: 'X' }]), glm: review([{ id: 'GLM-01', severity: 'blocker', location: 'X' }]) },
   });
@@ -134,6 +140,7 @@ test('G5〔回归〕两侧同位置的 blocker 其一降级 ⇒ 不算共同来�
   const l1 = await layout();
   await putDisposition(l1, rows);
   const one = await checkAdjudication({
+    planFinal: null, // 与计划定稿无关的用例（EV-214）
     ...base, cfg, layout: l1, expectedDegradedIds: ['GLM-01'],
     reviews: { gemini: review([{ id: 'AGY-01', severity: 'blocker', location: 'X' }]), glm: review([]) },
   });
@@ -148,6 +155,7 @@ test('G6 有降级意见 ⇒ degraded_findings 告警列全编号，并说清不
     '| GLM-03 | glm | minor | 驳回 | 不成立 | 不改 |',
   ]);
   const r = await checkAdjudication({
+    planFinal: null, // 与计划定稿无关的用例（EV-214）
     ...base, layout: l, expectedDegradedIds: ['GLM-03', 'AGY-02'],
     reviews: { gemini: review([{ id: 'AGY-01' }]), glm: review([]) },
   });

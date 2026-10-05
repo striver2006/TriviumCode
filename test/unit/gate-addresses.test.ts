@@ -48,6 +48,7 @@ async function check(addresses: string[], reviewDocs: readonly string[] | null) 
   const l = await layout();
   await putDisposition(l, addresses);
   return checkAdjudication({
+    planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review('AGY-01'), glm: review('GLM-01') },

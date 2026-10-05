@@ -95,6 +95,19 @@ async function writeDisposition(stageDir: string, runId: string) {
     ].join('\n'),
     'utf8',
   );
+  await writeNextPlan(stageDir, 2, ['AGY-01', 'GLM-01']);
+}
+
+/**
+ * 有接受项时执笔方的新一轮计划（EV-214，§6.6 规则 9）：新运行带 `plan_final_check`，
+ * 闸门要求它存在、且逐字引用每条被接受的编号。轮次 = 本轮被审对象的轮次 + 1。
+ */
+async function writeNextPlan(stageDir: string, rerunIndex: number, ids: string[], topic = TOPIC, role = 'claude') {
+  await fs.writeFile(
+    path.join(stageDir, `${today()}-${topic}-r${rerunIndex}-${role}.md`),
+    [`# 计划 r${rerunIndex}`, '', '相对上一轮的改动：', ...ids.map((id) => `- ${id}：按建议补上`), ''].join('\n'),
+    'utf8',
+  );
 }
 
 test('双方共同 blocker 被驳回 → task.json 记 disputed，status 显示争议（§6.6 规则 7）', { skip: bundleMissing && bundleSkipReason }, async () => {
@@ -167,6 +180,7 @@ test('无共同驳回 → 三态落 checked-none；run.json 那一侧只到 pend
     ].join('\n'),
     'utf8',
   );
+  await writeNextPlan(fx.stageDir, 2, ['AGY-01']);
   const g = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
   assert.equal(g.code, EXIT.OK, `${g.stdout}${g.stderr}`);
 
@@ -608,6 +622,8 @@ test('重跑抬升的新工件不会被误判——旧工件仍在即放行', { 
     ].join('\n'),
     'utf8',
   );
+  // 第一轮写了 r2（被第二轮送审），第二轮的接受项合进 r3（EV-214）
+  await writeNextPlan(fx.stageDir, 3, ['AGY-01', 'GLM-01']);
   const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
   assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
 
@@ -1701,8 +1717,9 @@ test(
         `失败在别的地方说明这一格没被真正验到。\n  实际输出：${lieOut}`,
     );
 
-    // 第 3 格：补齐**诚实**的裁决件（front-matter 的 run_id 要对得上）
+    // 第 3 格：补齐**诚实**的裁决件（front-matter 的 run_id 要对得上），连同当轮 Driver 后缀的新一轮计划（EV-214）
     await fs.writeFile(dispositionPath, dispositionBody(driver), 'utf8');
+    await writeNextPlan(stageDir, 2, [`${DEFAULT_DRIVER.toUpperCase()}-01`], DRIVER_TOPIC, driver);
     const after = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', DRIVER_TOPIC, '--check', '--json'], stub);
     /*
      * ## 非缺省 Driver 的闸门闭环，这是它第一次真正走通（EV-66 已结案）
@@ -2221,6 +2238,8 @@ test('W8：同阶段重跑一轮后审批 ⇒ 摘要的 run id 与基线都取�
     ].join('\n'),
     'utf8',
   );
+  // 第一轮写了 r2（被第二轮送审），第二轮的接受项合进 r3（EV-214）
+  await writeNextPlan(fx.stageDir, 3, ['AGY-01', 'GLM-01']);
   const check = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
   assert.equal(check.code, EXIT.OK, `${check.stdout}${check.stderr}`);
   assert.equal((await gatesOf(fx.root))[`${TOPIC}/plan`]?.run_id, runId2, '前提：闸门项指向新一轮');

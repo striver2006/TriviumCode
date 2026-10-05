@@ -1,0 +1,180 @@
+{
+  "targets": [
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts",
+    "src/trivium/cli.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/plan-final-gate.test.js",
+    "dist/test/test/integration/plan-final-gate.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "file": "src/trivium/gate.ts",
+      "desc": "去掉「只在计划阶段」",
+      "find": "  if (stage === 'plan') {\n    const acceptedIds = [\n",
+      "replace": "  if (true) {\n    const acceptedIds = [\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js"
+    },
+    {
+      "id": "M2a",
+      "file": "src/trivium/gate.ts",
+      "desc": "基准取 max(rerun_index, 被审对象轮次)（计划双审 GLM-01 之前的写法）",
+      "find": "  const base = i.planFinal.subjectRerunIndex ?? i.rerunIndex;\n",
+      "replace": "  const base = Math.max(i.planFinal.subjectRerunIndex ?? 0, i.rerunIndex);\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js",
+      "also": [
+        "dist/test/test/integration/plan-final-gate.test.js"
+      ]
+    },
+    {
+      "id": "M2b",
+      "file": "src/trivium/gate.ts",
+      "desc": "基准只取 rerun_index",
+      "find": "  const base = i.planFinal.subjectRerunIndex ?? i.rerunIndex;\n",
+      "replace": "  const base = i.rerunIndex;\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js"
+    },
+    {
+      "id": "M3",
+      "file": "src/trivium/gate.ts",
+      "desc": "候选条件 > 改 >=（被审对象本身算新一轮）",
+      "find": "    if (it.parsed.role !== i.driver || it.parsed.kind !== null || it.parsed.rerunIndex <= base) continue;\n",
+      "replace": "    if (it.parsed.role !== i.driver || it.parsed.kind !== null || it.parsed.rerunIndex < base) continue;\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js",
+      "also": [
+        "dist/test/test/integration/plan-final-gate.test.js"
+      ]
+    },
+    {
+      "id": "M4",
+      "file": "src/trivium/gate.ts",
+      "desc": "编号判据改成子串包含",
+      "find": "  return new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])`).test(text);\n",
+      "replace": "  return text.includes(id);\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js"
+    },
+    {
+      "id": "M5",
+      "file": "src/trivium/gate.ts",
+      "desc": "接受集合排除虚拟编号",
+      "find": "            isFallbackId(r.id) ? (expectedFallback ? expectedFallback.includes(r.id) : true) : idsSet.has(r.id),\n",
+      "replace": "            isFallbackId(r.id) ? false : idsSet.has(r.id),\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js"
+    },
+    {
+      "id": "M6",
+      "file": "src/trivium/gate.ts",
+      "desc": "接受集合不按裁决过滤（全部行）",
+      "find": ".filter((r) => r.disposal === '接受')\n",
+      "replace": ".filter((r) => r.disposal.length > 0)\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js"
+    },
+    {
+      "id": "M7",
+      "file": "src/trivium/gate.ts",
+      "desc": "去掉角色过滤",
+      "find": "    if (it.parsed.role !== i.driver || it.parsed.kind !== null || it.parsed.rerunIndex <= base) continue;\n",
+      "replace": "    if (it.parsed.kind !== null || it.parsed.rerunIndex <= base) continue;\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js",
+      "also": [
+        "dist/test/test/integration/plan-final-gate.test.js"
+      ]
+    },
+    {
+      "id": "M8",
+      "file": "src/trivium/gate.ts",
+      "desc": "去掉审查件剔除",
+      "find": "    if (await isReviewArtifact(path.join(stageDir(i.layout, 'plan'), it.fileName))) continue;\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js"
+    },
+    {
+      "id": "M9",
+      "file": "src/trivium/gate.ts",
+      "desc": "「在用」分支改为取最小候选",
+      "find": "  const pick = superseded\n",
+      "replace": "  const pick = true\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js"
+    },
+    {
+      "id": "M10",
+      "file": "src/trivium/gate.ts",
+      "desc": "loadRoundReviews 的 planFinal 恒为 null",
+      "find": "  const planCheck = stage === 'plan' ? runMeta?.plan_final_check : undefined;\n",
+      "replace": "  const planCheck = stage === 'never' ? runMeta?.plan_final_check : undefined;\n",
+      "expect": "dist/test/test/integration/plan-final-gate.test.js",
+      "also": [
+        "dist/test/test/unit/plan-final-gate.test.js"
+      ]
+    },
+    {
+      "id": "M11",
+      "file": "src/trivium/review.ts",
+      "desc": "prepareRun 不写标记",
+      "find": "      ...(planFinalCheck ? { planFinalCheck } : {}),\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/plan-final-gate.test.js"
+    },
+    {
+      "id": "M12",
+      "file": "src/trivium/cli.ts",
+      "desc": "gate --check 调用点传 null",
+      "find": "    expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs, planFinal,\n",
+      "replace": "    expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs, planFinal: null,\n",
+      "expect": "dist/test/test/integration/plan-final-gate.test.js"
+    },
+    {
+      "id": "M13",
+      "file": "src/trivium/gate.ts",
+      "desc": "verifyRoundForApproval 传 null",
+      "find": "    expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs, planFinal,\n",
+      "replace": "    expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs, planFinal: null,\n",
+      "expect": "dist/test/test/integration/plan-final-gate.test.js"
+    },
+    {
+      "id": "M14",
+      "file": "src/trivium/gate.ts",
+      "desc": "新失败项插到最前",
+      "find": "    failures.push(...np.failures);\n",
+      "replace": "    failures.unshift(...np.failures);\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js"
+    },
+    {
+      "id": "M15",
+      "file": "src/trivium/gate.ts",
+      "desc": "接受集合不按期望集过滤（计划双审 AGY-02）",
+      "find": "            isFallbackId(r.id) ? (expectedFallback ? expectedFallback.includes(r.id) : true) : idsSet.has(r.id),\n",
+      "replace": "            true,\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js"
+    },
+    {
+      "id": "M16",
+      "file": "src/trivium/gate.ts",
+      "desc": "「已被接手」判定恒假（计划双审 AGY-01 / GLM-03）",
+      "find": "  const superseded = i.planFinal.laterSubjectRerunIndexes.some((s) => s > base);\n",
+      "replace": "  const superseded = false;\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js",
+      "also": [
+        "dist/test/test/integration/plan-final-gate.test.js"
+      ]
+    },
+    {
+      "id": "M17",
+      "file": "src/trivium/gate.ts",
+      "desc": "「更晚运行」把更早的运行也收进来",
+      "find": "    if (!id || id <= runId) continue;\n",
+      "replace": "    if (!id || id === runId) continue;\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js"
+    },
+    {
+      "id": "M18",
+      "file": "src/trivium/review.ts",
+      "desc": "被审对象轮次不核后缀",
+      "find": "  if (!parsed || parsed.topic !== layout.topic || parsed.role !== driver || parsed.kind !== null) return null;\n",
+      "replace": "  if (!parsed || parsed.topic !== layout.topic || parsed.kind !== null) return null;\n",
+      "expect": "dist/test/test/unit/plan-final-gate.test.js"
+    }
+  ]
+}

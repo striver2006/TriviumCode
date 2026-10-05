@@ -1,0 +1,76 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "实现忠实于计划定稿 r2：基准轮次只取被审对象轮次并在归档外退回 rerun_index、「已被接手核最小候选 / 在用核最大候选」的二分与 resolvePlanFinal 取件口径一致、接受集合限期望集内（虚拟编号按清单或表行同既有 fallback 口径）、mentionsFindingId 带正则转义与前后 [A-Za-z0-9_] 整词断言、planFinal 做成必填可空参数且两个生产调用点都透传、只对带 plan_final_check 的新运行生效且旧轮次仅告警不追溯。顺着调用链核了 checkAdjudication 全文（bad_front_matter 等失败不会提前返回吞掉第 6 步）、prepareRun 的标记写入、newRunMeta/run.v2 schema 的加法形状、selftest 与既有集成用例的适配、四载体入口产物与 skills-src 源同批提交。我的镜头（注入/并发/空值越界/测试缺口）未发现正确性或安全问题：候选枚举经 listStageArtifacts 已按主题过滤、pick 的非空断言有 candidates.length 前置、readdir/readFile 均有失败分支、正则无注入面。三条意见：新集成测试未按项目纪律断言桩指纹（次要）、types.ts 里 RunTermination 的文档注释被新接口插断悬空（吹毛求疵）、I6 用 codex 扮演非缺省 Driver 与计划 r2 写的 gemini 有未声明偏离（吹毛求疵）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/integration/plan-final-gate.test.ts（全文，经补丁新增段核实）",
+      "problem": "整个文件用桩适配器构造两侧意见（AGY-01、GLM-01 是全部断言的事实基础），但没有任何一处断言桩指纹 cli_version 为 stub/0.0.0。项目测试纪律要求桩经环境变量跨进程注入时必须断言该指纹——它是子进程真的用了桩的直接证据；同用桩的 fault-injection.test.ts（37、135、330 行）、command-trace.test.ts（122 行）、stub-agent-kit.test.ts 都逐侧断言了，本文件是唯一例外。当前只有间接保障：runPlan 断言运行成功且裁决表写死桩的编号，桩未生效时测试大概率也会红，但这依赖一层推理，而指纹是一行断言的直接证据。",
+      "evidence": "补丁新增的 test/integration/plan-final-gate.test.ts 全文；对该文件 grep cli_version|stub/0.0.0 无匹配；test/helpers/fixture.ts:177-193（cli() 只注入 TRIVIUM_STUB_CRITIC、不验指纹）；test/integration/fault-injection.test.ts:37 的注释写明指纹只可能由执行适配器的进程写入。",
+      "suggestion": "在 I1 读 run.json 时（或 runPlan 收尾处）按侧断言 critics.gemini.cli_version 与 critics.glm.cli_version 均为 stub/0.0.0，与 fault-injection 同款。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/types.ts:1405-1414",
+      "problem": "PlanFinalCheck 被插在 RunTermination 的文档注释与其声明之间：1405 行「run.json termination……」的注释现在悬空（其后紧跟另一条文档注释，只有最后一条会附着到声明），RunTermination 自身失去文档注释。读者会短暂误以为 1405 行在描述 plan_final_check，EV-142/145 那段背景说明随之失去了归属。",
+      "evidence": "src/trivium/types.ts 实读 1398-1425 行：1405 行为 termination 的注释、1406-1410 为新增 PlanFinalCheck、1412 行 export type RunTermination 无注释附着。",
+      "suggestion": "把 PlanFinalCheck 挪到 RunTermination 声明之后，或将 termination 的注释移回 RunTermination 上方，两条注释各归其位。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "scope-drift",
+      "location": "test/integration/plan-final-gate.test.ts（I6 用例）",
+      "problem": "计划 r2 §3.2 的 I6 写的是「--driver 取 gemini、审核者取其余，照 driver-flag.test.ts 的构造」，实现用的是 codex（topic claim --driver codex，随后 --driver codex --critics gemini,glm）。覆盖等价：测的都是非缺省执笔方下应写名取当轮后缀、别家后缀的 r2 不算，单测 U6 同样用 codex；但这是对已批准计划的一处未声明偏离，按任务书要求显式指出，交 Driver 裁决是保持现状还是改回计划写法。",
+      "evidence": ".reviews/计划定稿强制产出/plan/2026-10-05-计划定稿强制产出-r2-claude.md §3.2 I6；补丁中 test/integration/plan-final-gate.test.ts 的 I6 段（topic claim --driver codex、断言 -r2-codex.md）。",
+      "suggestion": "无需改代码；在测试报告里记一句与计划 r2 的差异，或把 I6 的执笔方改回 gemini 以与计划逐字对齐。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "基准轮次只取被审对象轮次、归档外或名字不合规才退回 rerun_index，不取 max——U15/U15b/I7 与实现一致，避免「复审未修订原稿要 r3」的自相矛盾（计划双审 GLM-01 的落地）",
+    "「已被后续运行接手核最小候选、在用核最大候选」的二分正确：候选筛法（Driver 后缀、无中缀、非审查件、轮次大于基准）与 locateSubject 同一道剔除，同轮次按文件名降序排序一致，代码阶段读到的定稿与闸门核的是同一份",
+    "接受集合只收期望集内的编号，期望集外的接受行只由既有 unknown_findings 报，两条文案不自相矛盾；虚拟编号给了 fallback-items 清单按清单、没给按表里出现行，与既有 fallback 对账同口径（U11、U17）",
+    "mentionsFindingId 对编号做了正则转义并配 (?<![A-Za-z0-9_]) 与 (?![A-Za-z0-9_]) 断言，GLM-010、XGLM-01 不冒充，（GLM-01）、GLM-01：算数，无注入面",
+    "GateCheckInput.planFinal 做成必填可空参数（与 reviewDocs 同一教训），cmdGate 与 verifyRoundForApproval 两个生产调用点都经 loadRoundReviews 透传，漏传由 tsc 拦下",
+    "只对 run.json 带 plan_final_check 的轮次生效：旧轮次有接受项只出 next_plan_unchecked 告警不转红（U9、I5），历史归档零追溯；标记只在计划阶段骨架写入，代码与 bug 阶段即使构造出标记也不消费（U10）",
+    "新失败码排在全部既有失败项之后且不因前置失败跳过、一次全报（U14）；checkAdjudication 前段 bad_front_matter 等只 push 不提前返回，第 6 步不会被吞",
+    "run.v2 schema 为纯加法：subject_rerun_index 取 integer 不小于 1 或 null、additionalProperties false，形状错被 validateRunMeta 拦下；newRunMeta 只在显式传入时写出字段",
+    "prepareRun 在计划阶段定位被审对象后用纯函数 planSubjectRerunIndex 记轮次，plan 根、当轮 Driver 后缀、无中缀、同主题四项口径与闸门候选筛法对称",
+    "selftest 补写的 r2 与裁决表同源派生（只引用各侧 -01 接受项），重跑抬升判据收紧为「解析文件名且后缀非当轮 Driver」，不被 Driver 自己的 r2 冒充",
+    "fault-injection、gate-loop 等既有集成用例里计划阶段有接受项的流程均补写新一轮计划，单测 41 处调用统一补 planFinal: null 并注明与计划定稿无关",
+    "skills-src 源（run.contract、body、next-plan 三变体）与四载体渲染产物同批提交，code/bug 用空变体使非计划阶段产物零变化；文档面（设计 v1.3.89、LLD、PROTOCOL、MANUAL、QUICKSTART、README、testing README、BACKLOG EV-214 结案并新登 EV-215/EV-216）同步齐整"
+  ],
+  "not_covered": [
+    "只读审查、未运行任何构建或测试：报告中全量两次 2792/2790/0/2、变异 19/19、自检 14/14 等读数均引自报告与证据文件，未独立复跑",
+    "历史归档实扫（scan-plan-final.mjs 得出的 26 个主题转红读数）未重算，仅读了证据目录清单与报告说明",
+    "evidence/plan-final-required-20261005/ 下大体积留痕只抽看 diff 中的头部与文件清单，未逐份核对内容",
+    "src/entry-render.ts 渲染器本身未读：空变体「连同所在行去掉」的行为按计划 §1.6 与 code/bug 产物未变更推断，零漂移由 entry-render-parity 契约测试兜底",
+    "laterPlanSubjectRerunIndexes 不区分后续运行的状态：failed/cancelled/running 的骨架也计入接手判定——评估为与设计一致（被冻结为被审对象的那份计划本就该核）、方向可辩护，但未构造用例验证该边界",
+    "四家载体渲染产物只看了补丁涉及 hunk，未逐字节复算；mutation 装置 19 条与计划 §4 的 16 条之间的对应关系未逐条对账"
+  ],
+  "consulted": [
+    ".reviews/计划定稿强制产出/code/_meta/changes-20261005T041442Z.diff",
+    ".reviews/计划定稿强制产出/plan/2026-10-05-计划定稿强制产出-r2-claude.md",
+    "CLAUDE.md",
+    "src/trivium/gate.ts",
+    "src/trivium/types.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/review.ts",
+    "src/trivium/selftest.ts",
+    "src/trivium/archive.ts",
+    "test/helpers/fixture.ts",
+    "test/integration/plan-final-gate.test.ts",
+    "test/unit/plan-final-gate.test.ts"
+  ]
+}

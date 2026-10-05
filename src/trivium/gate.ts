@@ -10,9 +10,9 @@ import { promises as fs } from 'node:fs';
 import { agentById, DEFAULT_DRIVER, entryCommandOf, findingPrefixAlternation, type AgentId } from './agents/registry.js';
 import { DEFAULT_CRITICS, VOIDING_DENY_CATEGORIES, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
-import { checkRecordedArtifacts, listStageArtifacts, metaDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
+import { checkRecordedArtifacts, isReviewArtifact, listStageArtifacts, metaDir, stageDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
 import { EXIT, TriviumError } from './exit-codes.js';
-import { dispositionKindForStage, parseArtifactName } from './naming.js';
+import { buildArtifactName, dispositionKindForStage, localDate, parseArtifactName } from './naming.js';
 import { checkReviewIntegrity, parseReview } from './parse.js';
 import { validateDispositionFrontMatter } from './schemas.js';
 
@@ -54,7 +54,11 @@ export type GateFailureCode =
   | 'missing_action'
   | 'joint_blocker_rejected'
   | 'missing_review_json'
-  | 'readonly_breach';
+  | 'readonly_breach'
+  /** 计划阶段有接受项，却没有执笔方的新一轮计划（EV-214，§6.6 规则 9） */
+  | 'missing_next_plan'
+  /** 新一轮计划在，但有被接受的编号没有整词逐字出现（EV-214，§6.6 规则 9） */
+  | 'next_plan_missing_ids';
 
 export interface GateFailure {
   code: GateFailureCode;
@@ -77,9 +81,23 @@ export interface GateWarning {
     /** 本轮期望的审查文档集为空（run 元数据读不出，或没有一侧落了审查文档），`addresses` 只核非空（EV-134） */
     | 'addresses_unchecked'
     /** 本轮有逐条降级的意见：仍须逐条裁决，但不参与阻断与共同阻断判定（设计 §6.5） */
-    | 'degraded_findings';
+    | 'degraded_findings'
+    /** 计划阶段有接受项，但本轮运行元数据没有 `plan_final_check`（早于 EV-214 的运行）：新一轮计划未校验 */
+    | 'next_plan_unchecked';
   message: string;
   ids?: string[];
+}
+
+/**
+ * 计划定稿校验的输入（EV-214，计划 r2 §2.2），由 `loadRoundReviews` 从运行元数据派生。
+ *
+ * - `subjectRerunIndex`：本轮 `run.json.plan_final_check.subject_rerun_index`；
+ * - `laterSubjectRerunIndexes`：本阶段 run_id 晚于本轮、且带标记的各次运行的被审对象轮次（null 不收），
+ *   供「本轮是否已被后续运行接手」的判定（计划 r2 §2.4）。
+ */
+export interface PlanFinalInput {
+  subjectRerunIndex: number | null;
+  laterSubjectRerunIndexes: readonly number[];
 }
 
 export interface GateCheckResult {
@@ -213,6 +231,14 @@ export interface GateCheckInput {
    * 由 `loadRoundReviews` 带出，接线同 `readonlyBreach`。
    */
   runWarnings?: string[];
+  /**
+   * 计划定稿校验的输入（EV-214，§6.6 规则 9），由 `loadRoundReviews` 派生。
+   *
+   * **必填、可为 null**——与 `reviewDocs` 同一个教训：做成可选参数，漏传就静默不校验，闸门照绿。
+   * null 表示本轮不适用：非计划阶段，或旧运行没有 `plan_final_check` 标记（后者有接受项时出 `next_plan_unchecked`）。
+   * 只在 `stage === 'plan'` 时消费；其余阶段传了也不看。
+   */
+  planFinal: PlanFinalInput | null;
 }
 
 export async function checkAdjudication(input: GateCheckInput): Promise<GateCheckResult> {
@@ -610,6 +636,32 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     });
   }
 
+  /*
+   * 第 6 步：计划定稿（EV-214，§6.6 规则 9）——**排在全部既有失败项之后**。
+   *
+   * 既有各项都是裁决件自身的问题，先修裁决件、接受集合才定得下来；新一轮计划依赖它。
+   * 但不因前面有失败而跳过：两类一次全报，让 Driver 照着一次补完。
+   *
+   * 接受集合只收**期望集内**的编号（计划双审 AGY-02）：期望集外的接受行已由 `unknown_findings` 判失败，
+   * 再要求新计划逐字写出它们，两条文案会自相矛盾。虚拟编号给了 `.fallback-items.md` 时按清单、没给时按表里出现的，
+   * 与上面第 5 步的 fallback 对账同一口径。
+   */
+  if (stage === 'plan') {
+    const acceptedIds = [
+      ...new Set(
+        rows
+          .filter((r) => r.disposal === '接受')
+          .filter((r) =>
+            isFallbackId(r.id) ? (expectedFallback ? expectedFallback.includes(r.id) : true) : idsSet.has(r.id),
+          )
+          .map((r) => r.id),
+      ),
+    ].sort();
+    const np = await checkNextPlan({ layout, driver, rerunIndex, acceptedIds, planFinal: input.planFinal });
+    failures.push(...np.failures);
+    warnings.push(...np.warnings);
+  }
+
   return {
     ok: failures.length === 0,
     failures,
@@ -621,6 +673,120 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     rows,
     jointCheck: jc,
   };
+}
+
+/** 编号作为整词出现：前后都不是 `[A-Za-z0-9_]`——`GLM-01` 不被 `GLM-010`、`XGLM-01` 冒充（计划 r2 §2.3） */
+export function mentionsFindingId(text: string, id: string): boolean {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])`).test(text);
+}
+
+/**
+ * 计划定稿校验（EV-214，设计 §6.6 规则 9，计划 r2 §2.1～§2.5）。
+ *
+ * 本轮有被接受的编号时，必须存在一份**执笔方的新一轮计划**——它就是代码阶段 `resolvePlanFinal`
+ * 列给代码审查员的「本主题计划定稿」；没有它，送去的是未修订的原稿。
+ *
+ * ## 基准轮次（计划双审 GLM-01）
+ *
+ * 取**本轮被审对象的轮次**，被审对象在归档外、没有轮次时才退回 `rerun_index`。不取两者的 max：
+ * `rerun_index` 只数审核者工件，上一轮全部驳回后复审未修订的原稿时它是 2、被审对象仍是 r1，
+ * 取 max 会要求 r3，与流程说明「被审对象轮次 + 1」自相矛盾。
+ *
+ * ## 核对哪一份（计划双审 AGY-01、GLM-03）
+ *
+ * 候选 = `plan/` 根下当轮 Driver 后缀、无中缀、不是审查件、轮次大于基准的计划。
+ *   · 本轮**已被后续运行接手**（某次更晚的计划双审把更高轮次的计划送审过）⇒ 核**最小**候选，
+ *     即紧随本轮的那份——逐轮各核其后一份，链条每环都有判据；回看早期轮次不因定稿只引用最后一轮编号而转红；
+ *   · 否则本轮就是**在用**的一轮 ⇒ 核**最大**候选，即代码阶段会读的定稿；中间未送审的轮次不影响代码阶段，不核。
+ *
+ * ## 边界
+ *
+ * 只核字面（整词逐字出现），不判合得对不对、不判出现的语境；编号每轮从 01 重编，分不出是哪一轮的同名编号；
+ * 判定只在闸门调用那一刻成立，通过之后再写的更高轮次计划不在本函数的视野里（BACKLOG 另登）。
+ */
+export async function checkNextPlan(i: {
+  layout: ArchiveLayout;
+  driver: AgentId;
+  /** 本轮 `rerun_index`：被审对象没有轮次时的基准 */
+  rerunIndex: number;
+  /** 本轮被接受、且属于期望集的编号（已去重排序） */
+  acceptedIds: readonly string[];
+  planFinal: PlanFinalInput | null;
+}): Promise<{ failures: GateFailure[]; warnings: GateWarning[] }> {
+  const failures: GateFailure[] = [];
+  const warnings: GateWarning[] = [];
+  if (i.acceptedIds.length === 0) return { failures, warnings };
+  const ids = [...i.acceptedIds];
+  if (!i.planFinal) {
+    warnings.push({
+      code: 'next_plan_unchecked',
+      message:
+        '本轮运行早于 EV-214（运行元数据没有 plan_final_check），未校验新一轮计划；' +
+        '本轮有被接受的意见，代码阶段读到的计划定稿是否合入了它们，需人工核对',
+      ids,
+    });
+    return { failures, warnings };
+  }
+
+  const base = i.planFinal.subjectRerunIndex ?? i.rerunIndex;
+  const all = await listStageArtifacts(i.layout, 'plan');
+  const candidates: { fileName: string; rerunIndex: number }[] = [];
+  for (const it of all) {
+    if (it.parsed.role !== i.driver || it.parsed.kind !== null || it.parsed.rerunIndex <= base) continue;
+    // 与 locateSubject 同一道剔除：换过 Driver 的主题里，别家当 Driver 时的审查件恰好顶着这一家的后缀
+    if (await isReviewArtifact(path.join(stageDir(i.layout, 'plan'), it.fileName))) continue;
+    candidates.push({ fileName: it.fileName, rerunIndex: it.parsed.rerunIndex });
+  }
+
+  if (candidates.length === 0) {
+    const expected = buildArtifactName(
+      { date: localDate(), topic: i.layout.topic, rerunIndex: base + 1, kind: null, role: i.driver },
+      i.driver,
+    );
+    failures.push({
+      code: 'missing_next_plan',
+      message:
+        `本轮有 ${ids.length} 条意见被接受，但找不到执笔方的新一轮计划（轮次须高于本轮被审对象的 r${base}）。` +
+        `请写 ${expected}：开头列「相对上一轮的改动」，逐条引用下列被接受意见的编号——` +
+        '它就是代码阶段送审的计划定稿，没有它代码审查员读到的是未修订的原稿。全部驳回或暂缓时不要求（§6.6 规则 9）',
+      ids,
+    });
+    return { failures, warnings };
+  }
+
+  const superseded = i.planFinal.laterSubjectRerunIndexes.some((s) => s > base);
+  // 同轮次多份按文件名降序取第一份，与 locateSubject 一致
+  const byName = (a: { fileName: string }, b: { fileName: string }) => b.fileName.localeCompare(a.fileName);
+  const pick = superseded
+    ? [...candidates].sort((a, b) => a.rerunIndex - b.rerunIndex || byName(a, b))[0]!
+    : [...candidates].sort((a, b) => b.rerunIndex - a.rerunIndex || byName(a, b))[0]!;
+  const role = superseded
+    ? '紧随本轮的新一轮计划（本轮之后已有更晚的计划双审接手）'
+    : '代码阶段会读的计划定稿（轮次最大的一份）';
+
+  let text: string;
+  try {
+    text = await fs.readFile(path.join(stageDir(i.layout, 'plan'), pick.fileName), 'utf8');
+  } catch {
+    failures.push({
+      code: 'next_plan_missing_ids',
+      message: `新一轮计划 ${pick.fileName}（${role}）读不出，无从核对被接受意见的编号`,
+      ids,
+    });
+    return { failures, warnings };
+  }
+  const missing = ids.filter((id) => !mentionsFindingId(text, id));
+  if (missing.length > 0) {
+    failures.push({
+      code: 'next_plan_missing_ids',
+      message:
+        `新一轮计划 ${pick.fileName}（${role}）里没有出现下列被接受意见的编号。` +
+        '判据是编号整词逐字出现（只核字面，不判合得对不对）；请在开头的「相对上一轮的改动」里逐条引用（§6.6 规则 9）',
+      ids: missing,
+    });
+  }
+  return { failures, warnings };
 }
 
 /**
@@ -917,6 +1083,11 @@ export async function loadRoundReviews(
    * 在这里派生而不是让调用方算——理由同 `voidedSides`：两个 `--check` 调用点各自去算就会各自漏。
    */
   reviewDocs: string[] | null;
+  /**
+   * 计划定稿校验的输入（EV-214）；非计划阶段、或本轮运行元数据没有 `plan_final_check` 时为 null。
+   * 在这里派生而不是让调用方读——理由同 `voidedSides`：三个调用点各自去读就会各自漏。
+   */
+  planFinal: PlanFinalInput | null;
 }> {
   const reviews: Partial<Record<CriticId, Review | null>> = {};
   const notes: string[] = [];
@@ -1040,9 +1211,45 @@ export async function loadRoundReviews(
   const runWarnings = [...(runMeta?.gate?.warnings ?? [])];
   const reviewDocs = runMeta ? expectedReviewDocs(layout, stage, runMeta) : null;
 
+  const planCheck = stage === 'plan' ? runMeta?.plan_final_check : undefined;
+  const planFinal: PlanFinalInput | null = planCheck
+    ? {
+        subjectRerunIndex: planCheck.subject_rerun_index,
+        laterSubjectRerunIndexes: await laterPlanSubjectRerunIndexes(layout, runId, readRunMeta),
+      }
+    : null;
+
   return {
     reviews, notes, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs,
+    planFinal,
   };
+}
+
+/**
+ * 本阶段 run_id 晚于 `runId` 的各次计划双审的被审对象轮次（EV-214，计划 r2 §2.2）。
+ *
+ * run_id 是 `YYYYMMDDTHHMMSSZ`，字典序即时间序。读不出、没有标记、被审对象没有轮次的一律跳过——
+ * 跳过只会让 `checkNextPlan` 走更严的「核定稿」分支，不会放宽。
+ */
+async function laterPlanSubjectRerunIndexes(
+  layout: ArchiveLayout,
+  runId: string,
+  readRunMeta: (l: ArchiveLayout, s: Stage, id: string) => Promise<RunMeta | null>,
+): Promise<number[]> {
+  let files: string[];
+  try {
+    files = await fs.readdir(metaDir(layout, 'plan'));
+  } catch {
+    return [];
+  }
+  const out: number[] = [];
+  for (const f of files.sort()) {
+    const id = /^run-(.+)\.json$/.exec(f)?.[1];
+    if (!id || id <= runId) continue;
+    const s = (await readRunMeta(layout, 'plan', id))?.plan_final_check?.subject_rerun_index;
+    if (typeof s === 'number') out.push(s);
+  }
+  return out;
 }
 
 /**
@@ -1215,14 +1422,14 @@ export async function verifyRoundForApproval(i: ApprovalCheckInput): Promise<App
     );
   }
 
-  const { reviews, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs } =
+  const { reviews, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs, planFinal } =
     await loadRoundReviews(layout, stage, runId);
   const result = await checkAdjudication({
     cfg, layout, stage, rerunIndex: runMeta.rerun_index, reviews,
     driver: runMeta.driver,
     runIdPinned: i.runIdPinned,
     degraded, voidedSides, readonlyBreach, runWarnings,
-    expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs,
+    expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs, planFinal,
   });
   const tampered = await checkRecordedArtifacts(layout, [
     { run_id: runId, stage, artifacts: runMeta.artifacts },

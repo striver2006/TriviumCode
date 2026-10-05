@@ -118,6 +118,10 @@ TV preflight --stage all --driver {{DRIVER}} --critics <critics> [--profile <名
 读两份审查全文，写 `…-revised-<当轮 Driver>.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
 后缀与 front-matter 的 `role` 都填**你自己的 Agent id**，不是固定的 `claude`。
 
+{{> review/next-plan.plan}}
+
+S5 编码依据的「已批准的修订计划」就是这份新一轮计划（没有接受项时是上一轮计划）。
+
 ### S4 裁决校验
 `TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐后重跑本步；
 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。

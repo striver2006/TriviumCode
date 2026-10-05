@@ -170,6 +170,8 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 - 三种裁决**都**要有非空理由；**接受**必须写明落点；
 - 禁止静默忽略任何一条（FR-14）。即使全部驳回也必须产出本件并写明「无修改及原因」。
 
+{{> review/next-plan@STAGE}}
+
 ### 6. 校验裁决完整性
 
 运行 `TV gate --stage {{STAGE}} --topic <主题> --check --json`。

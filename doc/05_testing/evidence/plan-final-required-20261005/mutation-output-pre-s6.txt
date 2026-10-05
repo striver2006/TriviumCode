@@ -1,0 +1,140 @@
+✓ 工作树干净、基线全绿（2 个套件）
+  M1 ✓ 咬住（fail=1）
+  M2a ✓ 咬住（fail=1）
+  M2b ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=2）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=2）
+  M10 ✓ 咬住（fail=6）
+  M11 ✓ 咬住（fail=6）
+  M12 ✓ 咬住（fail=5）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=2）
+  M16 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=1）
+  M18 ✓ 咬住（fail=1）
+{
+  "总数": 19,
+  "咬住": 19,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "去掉「只在计划阶段」",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2a",
+      "desc": "基准取 max(rerun_index, 被审对象轮次)（计划双审 GLM-01 之前的写法）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2b",
+      "desc": "基准只取 rerun_index",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "候选条件 > 改 >=（被审对象本身算新一轮）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "编号判据改成子串包含",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "接受集合排除虚拟编号",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "接受集合不按裁决过滤（全部行）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M7",
+      "desc": "去掉角色过滤",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "去掉审查件剔除",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "「在用」分支改为取最小候选",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M10",
+      "desc": "loadRoundReviews 的 planFinal 恒为 null",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M11",
+      "desc": "prepareRun 不写标记",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M12",
+      "desc": "gate --check 调用点传 null",
+      "verdict": "✓ 咬住（fail=5）",
+      "fail": 5
+    },
+    {
+      "id": "M13",
+      "desc": "verifyRoundForApproval 传 null",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "新失败项插到最前",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "接受集合不按期望集过滤（计划双审 AGY-02）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M16",
+      "desc": "「已被接手」判定恒假（计划双审 AGY-01 / GLM-03）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "「更晚运行」把更早的运行也收进来",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M18",
+      "desc": "被审对象轮次不核后缀",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

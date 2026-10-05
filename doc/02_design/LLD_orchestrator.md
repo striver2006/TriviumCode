@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.34
+> - **当前版本**：v1.1.35
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.35（2026-10-05）随设计 v1.3.89（计划定稿强制产出，EV-214）同步：3.4「`gate --check` 的失败码」表补 `missing_next_plan` / `next_plan_missing_ids` 两个失败码与 `next_plan_unchecked` 告警，其后新增「计划定稿校验」一段（`checkNextPlan`、必填可为 null 的 `planFinal`、`loadRoundReviews` 派生、基准轮次与核对哪一份、`prepareRun` 写 `plan_final_check`）。表头「11 个失败码」与行数列未重核。
 > - **变更说明**：v1.1.34（2026-10-05）随设计 v1.3.88（任务目标全文送审，EV-210）同步：3.3「`prepareRun()` 的『零工件』不变式」段补计算段的两步（代码阶段 `resolvePlanFinal` 解析本主题计划定稿并交给 `buildMustReadList` 的第五个参数；`taskGoalAppendix` 判定计划阶段附录原文，与 `taskGoal` 一样只算一次、各侧共用）与渲染接线的第三个必填入参 `taskGoalAppendix`；计划定稿没能列入的告警并进 `rc.mustReadPruned` 与 `gate.warnings`。行数列未重核。
 > - **变更说明**：v1.1.33（2026-10-02）随设计 v1.3.77（收工闸门文案区分只读失守，EV-98 文案部分）同步：3.x「`hook-stop` 的三层防死循环」之后新增「待裁决闸门的只读失守文案」一小节（`splitByBreach` / `breachLines`、按闸门项 `run_id` 直读、处置句与 `gate --check` 共用 `READONLY_BREACH_TRIAGE`）。行数列未重核。
 > - **变更说明**：v1.1.32（2026-10-02）随设计 v1.3.76（任务书点名禁用MCP执行工具，EV-191 缓解①）同步：2.6 `adapters/base.ts` 行补可选声明 `mcpExecPrefixes`；3.3 渲染接线句补第二个必填入参 `mcpExecPrefixes`（取 `adapters[critic].mcpExecPrefixes ?? []`，非空时第 7 节多一条点名禁令）。行数列未重核。
@@ -370,6 +371,11 @@ bashTimeoutFor  = min(600_000, waitTimeoutS × 1000 + 60_000)
 | `joint_blocker_rejected` | 双方共同提的 blocker 被全部驳回 |
 | `parse_problem` | 裁决表某行解析不了（逐行报出行号与原因） |
 | `degraded_round` | 本轮是降级轮次（有入选审核者未成功）。**只出 warning 不出 failure**：降级是关于「运行」的事实，Driver 改裁决件修不掉它，报 failure 会变成无法满足的闸门 |
+| `missing_next_plan` | （v1.1.35，设计 v1.3.89 §6.6 规则 9）计划阶段有期望集内的接受项，却没有执笔方的新一轮计划；文案给出应写的文件名 |
+| `next_plan_missing_ids` | 同上，新一轮计划在，但有接受编号没有整词逐字出现；`ids` 给缺的编号 |
+| `next_plan_unchecked` | warning：有接受项，但本轮 run.json 没有 `plan_final_check`（早于 v1.3.89 的运行），未校验新一轮计划 |
+
+**计划定稿校验**（v1.1.35，设计 v1.3.89 §6.6 规则 9，EV-214）：`checkAdjudication` 在全部既有项之后、仅 `stage === 'plan'` 时调 `checkNextPlan`。输入 `planFinal` **必填、可为 null**（与 `reviewDocs` 同一个教训），由 `loadRoundReviews` 派生：本轮 run.json 的 `plan_final_check.subject_rerun_index`，加上本阶段 run_id 更晚、带标记的各次运行的被审对象轮次（`laterPlanSubjectRerunIndexes`，读不出的跳过——只会走更严的分支）。基准轮次取被审对象轮次（没有才取 `rerun_index`）；候选 = 当轮 Driver 后缀、无中缀、非审查件、轮次大于基准；本轮已被后续运行接手时核最小候选，否则核最大候选（代码阶段 `resolvePlanFinal` 会读的那份）。标记由 `prepareRun` 在计划阶段算一次（`planSubjectRerunIndex`）、经 `newRunMeta` 写进骨架。
 
 > **本表以 `gate.ts` 的 `GateWarning` / `GateFailureCode` 联合类型为唯一来源。**
 > 扩枚举时请一并回补本表；即便漏补，以类型为准——本表只会不全，不会变错。

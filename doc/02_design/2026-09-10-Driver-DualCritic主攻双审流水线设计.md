@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.88
+> - **当前版本**：v1.3.89
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -864,7 +864,7 @@ TriviumCode/
 | 规则 | 说明 |
 | :--- | :--- |
 | 日期 | 该文件**首次生成**当日的本地日期，`YYYY-MM-DD` |
-| `-r<N>` | 仅当同一主题同一阶段重跑时出现，`N` 从 2 起递增（首跑无后缀）。同一次运行内两侧与裁决件共用同一 `N`（FR-25 / AD-11） |
+| `-r<N>` | 仅当同一主题同一阶段重跑时出现，`N` 从 2 起递增（首跑无后缀）。同一次运行内两侧与裁决件共用同一 `N`（FR-25 / AD-11）。Driver 的**新一轮计划**同样用 `-r<N>`（无中缀、Driver 后缀，N = 本轮被审对象的轮次 + 1）：计划阶段有接受项时必须产出（6.6 规则 9，v1.3.89 起）；它不参与轮次计算（`resolveRerunIndex` 只数审核者工件），下一轮计划双审 `locateSubject` 取到它当被审对象 |
 | `-revised` | 计划修订件、根因修订件专用；只出现在 `plan/`、`bug/` 的 `claude` 文件 |
 | `-response` | 代码应答件专用；只出现在 `code/` 的 `claude` 文件 |
 | 角色后缀 | 审查员不得产出 Driver 后缀；Driver 不得产出审核者后缀（由 Hook + `archive` 双重拦截，PRD 6.3）。**Hook 的 Write/Edit 侧判定自 M9 第 6 步前置起已按当轮 Driver 泛化**（EV-68）：保护集 = 全部已登记角色减当轮 Driver，当轮 Driver 按三级判定：该阶段最新可读的 `run.json.driver` → `task.json` 的按阶段声明 `drivers[<阶段>]`（`topic claim`，M10a 第 1 步）→ 缺省 Driver，拦截文案注明取值来源；判定单点是 `driver-claim.ts` 的 `resolveStageDriver`（见 8.5）。**后缀标识产出方、`run.json.driver` 标识发起方，两者正交**，同一后缀在不同运行中可能是 Driver 也可能是审核者。**跨时间面**（EV-55，M10a 已收口）：提交锚改按「位置 + 登记」判不可变，不再看后缀（第 2 步，见 8.5 Hook 表）；Bash 侧文本扫描拿不到 run 上下文，角色后缀按**全集**字面判（第 5 步 D3），含当轮 Driver 自己的后缀在内——此前是「全集减缺省 Driver」，非缺省轮次里缺省 Driver 的后缀恰是审核者产出而无字面保护 |
@@ -1118,6 +1118,14 @@ addresses:               # 本件应答的审查文档文件名，不是意见�
    **「双方」这个措辞随 N 审泛化为「两家」**：阈值 2 的语义是「至少两个独立来源指出同一处」，与入选总数无关——三家里的两家仍是两个独立来源，故 N=3 时阈值不上调。
    **按 10.1.1 判作废的一侧不计入独立来源**：它作为「第二只眼」的身份已不可采信，与它每条意见是否属实无关。排除后有效侧不足两家时，按 12.1 落三态字段并告警，**不得静默返回空集**。
 8. `parse_fallback` 侧（AD-08）的原文意见同样必须逐条进入裁决表：Driver 自行按 `<前缀>-F<序号>` 编号并标 `来源: fallback`；`gate` 对该侧只校验「每条被编号的意见均有裁决与理由」，不参与规则 7 的共同阻断判定。**v1.3.68 起 `<前缀>-F<n>` 只属于整份回退**（6.5.1）；逐条降级的意见按**原编号**裁决，与合格意见同一套逐行校验（接受要写落点），但同样不参与规则 7——`gate --check` 出 `degraded_findings` 告警点名它们。
+9. **计划阶段有接受项 ⇒ 必须有执笔方的新一轮计划**（v1.3.89 起，EV-214）。动因：代码阶段必读清单列的「本主题计划定稿」取执笔方最新一轮计划（9.4 第 4 条，`resolvePlanFinal`），Driver 没写新一轮计划时送去的是未修订的原稿——已接受的修改落进代码会被看成偏离计划，漏改了也查不出。判据落在 `checkAdjudication`（`checkNextPlan`），排在全部既有失败项之后、照常一次全报；`gate --check`、`--await-approval` 与 `approve` 的审批前复核共用，命令 A 与 B 同时生效。**只在 `stage === plan` 时执行**，代码与 bug 阶段不适用。
+   - **何时要求**：本轮裁决件里有**期望集内**的编号被裁为「接受」（合格 ∪ 逐条降级 ∪ 整份回退的 `<前缀>-F<n>`——给了 `.fallback-items.md` 时按清单，否则按表里出现的虚拟编号行）。期望集外的接受行只由 `unknown_findings` 报，不进本条。全部驳回、全部暂缓、零意见时不要求，上一轮计划即为定稿。
+   - **新一轮计划**：`plan/` 根下、文件名可解析、主题相同、后缀为当轮 Driver、无 `-revised` / `-response` 中缀、不是审查件（`isReviewArtifact`，与 `locateSubject` 同一道剔除），轮次**大于基准轮次**。**基准轮次 = 本轮被审对象的轮次**（run.json `plan_final_check.subject_rerun_index`，6.7.1），被审对象在归档外、没有轮次时才取 `rerun_index`——不取两者的 max：`rerun_index` 只数审核者工件，上一轮全部驳回后复审未修订的原稿时它是 2 而被审对象仍是 r1，取 max 会要求 r3、与流程说明「被审对象轮次 + 1」自相矛盾（计划双审 GLM-01）。
+   - **核对哪一份**：本轮**已被后续运行接手**（本阶段 run_id 更晚的某次运行，其标记里的被审对象轮次高于基准）时核候选中轮次最小的一份，即紧随本轮的那份——多轮主题逐轮各核其后一份，`--run-id` 回看早期轮次不因定稿只引用最后一轮编号而转红；否则本轮就是在用的一轮，核轮次最大的一份，即代码阶段会读的定稿（计划双审 AGY-01、GLM-03）。
+   - **编号判据**：每个被接受的编号在那份文件**全文**里**整词逐字**出现——前后字符都不是 `[A-Za-z0-9_]`（`GLM-01` 不被 `GLM-010`、`XGLM-01` 冒充）。不限定在某一节：本仓没有固定的节标题约定。流程说明要求开头列「相对上一轮的改动」逐条引用编号，闸门只核字面存在。
+   - **失败码**：`missing_next_plan`（候选为空；文案给出应写的文件名 `<今日>-<主题>-r<基准+1>-<Driver>.md` 与接受编号）、`next_plan_missing_ids`（候选在、编号不全；点名核对的文件及其身份，`ids` 给缺的编号；文件读不出时同码、`ids` 给全部接受编号）。
+   - **只对新运行生效**：判据只对 run.json 带 `plan_final_check` 的轮次执行；不带的旧轮次有接受项时出告警 `next_plan_unchecked`、不判失败。历史归档实扫（`doc/05_testing/evidence/plan-final-required-20261005/`）：按本条规则一律校验，会让 26 个主题的最新一轮转红——2026-09-26 前「有接受项不写新一轮计划」或「新一轮计划不逐条引用编号」是常见做法。
+   - **边界**：①只核字面，不判合入内容是否正确，也不判编号出现的语境（「GLM-03 不改」同样算出现）；②编号每轮从 01 重编，字面判据分不出新一轮计划里的同名编号指哪一轮——第 2 轮之后照抄上一轮改动清单可能让同名编号顺带过关；③接受集合取自裁决件，裁决件本身被改由既有校验与提交锚负责；④判定只在闸门调用那一刻成立：`--check`（与命令 B 的审批前复核）通过之后才写的更高轮次计划会成为代码阶段读到的定稿而不经核对，命令 A 没有第二次计划闸门、代码阶段入口也不复核（BACKLOG EV-215）。
 
 ### 6.7 运行元数据 schema（`trivium.run.v1`，对应 NFR-05 / FR-24）
 
@@ -1237,6 +1245,7 @@ v1.3.88 前本句写「任务目标原文」，与实现不符，EV-210）。`go
 | `snapshot.after_tree_hash` | 审查收尾复算漂移时的工作树 tree（与 `tree_hash` 同法，`workTreeHash`），与 `drift` 同一处写、同一次收尾落盘，之后 run.json 不再更新（EV-133 的不变量不受影响）。**只供审批时的工作树改动摘要作基线，不参与任何判定**（8.5）。缺席 = 本字段之前的旧留痕或运行未走到复算，摘要据此报「本轮没有审查收尾时的工作树基线」，不回落到 `tree_hash`。它是不可达的 git 对象，可能被 git 清理，摘要此时报「基线对象已不在对象库」 | **可选** | 【已实现 · v1.3.46，EV-132 候选 ② 折中版】`src/trivium/review.ts`、`src/trivium/worktree-summary.ts` |
 | `snapshot.drift.unknown_reason` | 跑后复算**比不了**改了哪些文件时才写（9.2 第 3.a′ 步）：`{ cause, detail }`，`cause` ∈ `object_gone`（送审快照或跑后复算的 tree 已不在对象库）/ `git_error`（其余 git 失败，含 tree 值不是合法对象名）/ `timeout`（git 调用超时），枚举唯一来源是 `types.ts` 的 `DRIFT_UNKNOWN_CAUSES`；`detail` 是单行事实（报错首行，截 300 字符，不回显不合形状的 tree 值）；对象 `additionalProperties: false`。此时既有三字段含义不变：`changed` 为 true（结论不是 `none`，与 `subject_drift` 同形）、`files` 为空、`policy` 取本轮实际适用的 `on_drift_related`。**只取加法**：`drift` 子对象本身不禁额外键，旧版本读新留痕照过、只看到「changed 真、0 个文件」；缺席 = 比对成功或本字段之前的旧留痕 | **可选** | 【已实现 · v1.3.70，EV-139】`src/trivium/freeze.ts`、`src/trivium/review.ts` |
 | `termination` | 这一次终态由哪条事后收尾写的（6.7 注记）：`{ by, exit_code }`（`by` 取 `worker_exception` / `prepare_exception` / `sync_exception` / `post_spawn_exception`）或 `{ by: "worker_lost", reason }`，两个形状各自 `additionalProperties: false`。`worker_exception` 由 worker 异常分支写、`worker_lost` 由 `--wait` 判失联且确认工作进程已退出时写（或由 `review --cancel` 在 `--wait` 判 `heartbeat_stale` 之后结束仍挂着的工作进程并确认退出时照写，v1.3.54，EV-146）、`prepare_exception` 由准备阶段写完骨架之后失败（含 `startRun` 在子进程诞生之前失败）时本进程写、`sync_exception` 由同步路径 `executeRun` 抛错时本进程写（后两者 v1.3.50，EV-145）、`post_spawn_exception` 由 `--start` 在子进程诞生之后失败、终止工作进程并确认退出之后本进程写（v1.3.51，EV-150）；缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕。**只存结构化字段、不存异常原文**：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。第一个形状的 `by` 与 `types.ts` 的 `EXCEPTION_TERMINATION_BY`、`reason` 与 `status.ts` 的 `WORKER_LOST_REASONS` 逐项相等，由用例守住。**只增不减**：schema 在构建期内嵌进 bundle，旧 bundle 读不懂新取值（读成 null，当轮 Driver 判定随之判坏）；回滚代码时保留「取值面」——本 schema、`EXCEPTION_TERMINATION_BY`、`report` 的说明与对应用例——只回退行为代码，重建并重装（派生后失败的孤儿worker计划 r2 §6.3，零配额验收 A7 演练过；只留 schema 会让单一来源用例 S3 / V9 变红） | **可选** | 【已实现 · v1.3.48，EV-142；扩值 v1.3.50，EV-145；扩值 v1.3.51，EV-150】`src/trivium/meta.ts`、`src/trivium/run-protocol.ts`、`src/trivium/review.ts` |
+| `plan_final_check` | 计划定稿校验的标记（EV-214，§6.6 规则 9）：`{ subject_rerun_index }`，`additionalProperties: false`。**只在计划阶段**、由 v1.3.89 起的编排器在骨架里写入，代码与 bug 阶段不写。**存在即「本轮按规则 9 判」**：闸门只对带它的轮次要求有接受项时存在执笔方的新一轮计划；缺席 = 本字段之前的旧留痕，有接受项时 `gate --check` 出 `next_plan_unchecked` 告警、不判失败（不追溯历史，与 `driver_enabled` 同一「缺失即无从得知」口径）。`subject_rerun_index` 是本轮被审对象的轮次：位于本主题 `plan/` 根、文件名可解析、后缀为当轮 Driver、无中缀时取其轮次，否则（归档外的 `--plan-file`、名字不合规）为 `null`、闸门的基准轮次退回 `rerun_index`。run.json 此前不记被审对象的路径或轮次，基准轮次只能由它给出 | **可选** | 【已实现 · v1.3.89，EV-214】 |
 
 `effort_effective` 必须**回读**而非采信请求值：部分厂商存在请求值归并映射
 （如 DeepSeek 的 `medium/high/xhigh → high`），「请求 medium 实际生效 high」。
@@ -2048,7 +2057,8 @@ Hook 行为约定：
    就会让其后以连字符、空格开头的行与空行移出扫描论域（代码双审 GLM-01，修前实测漏扫）。
    ②**代码阶段**只出摘要、不出附录；必读清单在关键词设计文档之后、`--context` 之前自动列入**本主题计划定稿**
    （来源 `plan-final`，「本主题计划定稿」）：按 `resolveStageDriver(…, 'plan')` 判出的**计划阶段**执笔方，
-   用 `locateSubject` 取该后缀、非裁决件、轮次最大的一份——有修订稿（`-r2-` …）取最新修订稿，没有取原稿；
+   用 `locateSubject` 取该后缀、非裁决件、轮次最大的一份——有修订稿（`-r2-` …）取最新修订稿，没有取原稿
+   （v1.3.89 起，计划阶段有接受项时由闸门保证这份是合入了接受项的新一轮计划，6.6 规则 9）；
    本主题没有计划阶段（目录不存在或没有该执笔方的原稿）时不列、不报错；计划阶段最新留痕读不出时不列，
    出一条「必读清单未列计划定稿」告警（至多一条、排在剔除告警之前、不计入剔除封顶），与剔除告警同走三个出口。
    计划定稿照常过下面的交集校验：两个阶段执笔方不同时它对后缀不是本侧的各侧是禁读（`indeterminate`），从这些侧剔除并告警。
@@ -3687,6 +3697,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.89** | 2026-10-05 | **计划定稿强制产出（EV-214）。** 计划 `.reviews/计划定稿强制产出/plan/` r2（命令 A；codex 配额用尽，用户改用 `--critics gemini,glm`；计划双审第 1 轮 run `20261005T032334Z`：gemini、glm 均 `request-changes`，7 条全接受——GLM-01 基准轮次只取被审对象轮次、AGY-01 ≈ GLM-03 在用的轮次核定稿、AGY-02 接受集合限期望集内）。计划阶段裁决件有期望集内的接受项时，`checkAdjudication` 要求执笔方的新一轮计划存在（轮次高于本轮被审对象）且每个接受编号整词逐字出现；新失败码 `missing_next_plan` / `next_plan_missing_ids` 排在全部既有失败项之后，`gate --check` 与审批前复核共用（6.6 规则 9）。只对新运行生效：run.v2 新增可选字段 `plan_final_check`（计划阶段骨架写入，记被审对象轮次，6.7.1），不带它的旧轮次有接受项时出 `next_plan_unchecked` 告警、不转红。`/dual-run` S3 与 `/dual-review-plan` 第 5 步写明「有接受项时同时写新一轮计划、开头逐条引用编号」（`skills-src/partials/review/next-plan.*.md`）；自检计划阶段补写 r2、重跑抬升判据只认审核者后缀。6.2 `-r<N>` 一行、9.4 第 4 条随之补注。代码双审 run `20261005T041442Z`：gemini `approve`、glm `approve-with-nits`（次要 1、吹毛求疵 2），3 条全接受（新集成用例补桩指纹断言、类型声明挪位、I6 偏离记入报告）。另登 EV-215（通过之后再写的更高轮次计划无人复核）、EV-216（跨轮同名编号）。读数见 `doc/05_testing/REPORT_2026-10-05_plan_final_required.md`。 |
 | **v1.3.88** | 2026-10-05 | **任务目标全文送审（EV-210）。** 计划 `.reviews/任务目标全文送审/plan/` r2（命令 A；计划双审第 1 轮 run `20261005T000535Z` 三侧到齐：codex、gemini、glm 均 `approve-with-nits`，7 条全接受）。计划阶段显式 `--goal` 的摘要被截断时，任务书第 4 段摘要行后加指引、第 8 段之后加不编号的「附录：任务目标原文」（逐字、保留换行，按码点设 16000 上限；附录原文在计算段单独按 full 模式扫密钥、命中即拒且零工件）；代码阶段必读清单自动列入本主题计划定稿（按计划阶段执笔方取最新修订稿，没有取原稿；留痕读不出时告警不拒跑），不出附录；裁决件不列入。代码双审第 1 轮 run `20261005T010708Z` 因 codex 证据里写出示例密钥的完整字面量被归档闸拒绝、整轮失败；加焦点重跑 run `20261005T013444Z`：codex `approve-with-nits`（吹毛求疵 1）、gemini `approve`、glm `approve-with-nits`（重要 1、次要 1、吹毛求疵 1），4 条全接受——GLM-01 附录原文按任务书的 hunk 判据扫会漏（修前实测），改为计算段单独 full 扫，GLM-02 补 I11 / I12，CODEX-01 同步 `AGENTS.md`。`TASK_GOAL_MAX` 挪到 `brief.ts`，折叠规则 `foldGoal` 只留一份；`task.json` 的 `goal` 与 run.json 的 `task_goal` 字段与取值不变。§6.7 订正（`goal` 存的是摘要，不是原文）、§9.4 开头与第 4 条补分阶段规则。读数见 `doc/05_testing/REPORT_2026-10-05_task_goal_fulltext.md`。 |
 | **v1.3.87** | 2026-10-05 | **建仓步骤失败显式化（EV-209）。** 计划 `.reviews/建仓步骤失败显式化/plan/` r2（计划双审第 1 轮 run `20261004T160118Z` 三侧到齐：codex `approve-with-nits`、gemini `request-changes`、glm `approve-with-nits`，9 条全接受）。`initFixtureRepo` 六步逐步查结果、第一步失败即停、每步 30 s、基线提交恒带 `--allow-empty`，文案由 `fixtureRepoStepError` 成文（判定顺序超时先于信号，stderr 为空取 stdout）；两个探针夹具工厂建到一半抛出时删已建目录、抛 `ProbeFixtureError`；doctor 的 `guardFixture` 只接它——该侧一条 blocker、落盘不动、其余侧照常；claude 记忆一格在探针内接住、出 warning 不拦；自检不改代码。计划外新增测试注入口 `DoctorOptions.probeBins`（codex 候选表里 `/opt/homebrew/bin/codex` 先于家目录，不开口子用例会拉起真实 CLI）。§3.5 补一段。读数见 `doc/05_testing/REPORT_2026-10-05_fixture_repo_init_failure.md`。 |
 | **v1.3.86** | 2026-10-04 | **单测临时目录收尾（EV-208）。** 计划 `.reviews/单测临时目录收尾/plan/` r2（用户决策送审前已定；计划双审第 1 轮 run `20261004T133008Z` 三侧到齐：codex `approve-with-nits`、gemini `request-changes`、glm `approve-with-nits`，7 条全接受——三侧同指 r1 的守卫豁免表漏了新测试文件自己的私有根；AGY-02 订正后接受：相对路径的 `TMPDIR` 会让 mkdtemp 返回相对路径，登记时解析成绝对路径）。EV-207 给 `makeFixture` 做的「mkdtemp 一返回就登记、测试文件进程退出时同步删」抽成通用 helper `test/helpers/scratch.ts`，`makeFixture` 与 `test/` 下跑完不删的 53 个文件、88 处改走它，已有可靠收尾的 21 个文件不动；此前每跑一遍全量在系统临时目录多留约一千个，改后测试自建的为 0。守卫 `scratch-guard` 剥离注释与字符串后逐文件数建临时目录的调用、与豁免表逐项相等。只改 `test/` 与文档，`src/` 未动。§17.1「夹具目录约定」段末补一句。读数见 `doc/05_testing/REPORT_2026-10-04_test_scratch_cleanup.md`。 |

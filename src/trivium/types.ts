@@ -1407,6 +1407,12 @@ export type RunTermination =
   | { by: ExceptionTerminationBy; exit_code: number }
   | { by: 'worker_lost'; reason: WorkerLostReason };
 
+/** run.json `plan_final_check`：计划阶段的计划定稿校验标记（EV-214，见 `RunMeta.plan_final_check`） */
+export interface PlanFinalCheck {
+  /** 本轮被审对象的轮次；被审对象在归档外或名字不合规时为 null */
+  subject_rerun_index: number | null;
+}
+
 export interface RunMeta {
   schema: 'trivium.run.v2';
   run_id: string;
@@ -1446,6 +1452,20 @@ export interface RunMeta {
    * 落在 user 级或其它设置层的 Hook 看不见、会记成 L2——偏保守（代码双审 r3 CODEX-02 ≈ GLM-01）。
    */
   driver_guard_level?: GuardLevel;
+  /**
+   * 计划定稿校验的标记与被审对象轮次（EV-214，设计 §6.6 规则 9、§6.7.1）。
+   *
+   * **只在计划阶段**、由 EV-214 之后的编排器在骨架里写入；代码与 bug 阶段不写。
+   * 它有两重作用：
+   *   · **存在即「本轮按 EV-214 的规则跑」**——闸门只对带它的轮次要求新一轮计划，
+   *     旧轮次缺它即「无从得知」，有接受项时出 `next_plan_unchecked` 告警、不转红（不追溯历史，决策六）；
+   *   · `subject_rerun_index` 是本轮被审对象的轮次：位于本主题 `plan/` 根、名字可解析、
+   *     后缀为当轮 Driver、无中缀时取其轮次，否则（归档外的 `--plan-file`、名字不合规）为 null。
+   *     run.json 此前不记被审对象的路径或轮次，闸门的基准轮次由它给出。
+   *
+   * **可选**：与 `driver_enabled` / `driver_guard_level` 同一口径，缺失不等于任何取值。
+   */
+  plan_final_check?: PlanFinalCheck;
   /**
    * 本轮**入选**的审核者集合（基数 1～3，FR-29）。
    *

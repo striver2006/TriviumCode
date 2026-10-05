@@ -1,0 +1,358 @@
+{
+  "targets_sha256": {
+    "src/trivium/gate.ts": "dd579e55d188ad85b5cc9ec652a4befa0c23df83648b5c092795b2c299fb51fc",
+    "src/trivium/review.ts": "bc69b3e96580c2a42ed34717789aa474629b8c720b995e4a98206905937942e2",
+    "src/trivium/cli.ts": "1e9554bb963b5fd86b36b4ab7eba1aa3ba64693b07260375091072432f1be3dc"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "去掉「只在计划阶段」",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U10 bug / code 阶段即使传了 planFinal 也不校验"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M2a",
+      "desc": "基准取 max(rerun_index, 被审对象轮次)（计划双审 GLM-01 之前的写法）",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U15 复审未修订原稿（rerun_index 2、被审对象 r1）→ 要求 r2 而非 r3"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/plan-final-gate.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2"
+          ],
+          "firstLines": [],
+          "elapsed_s": 24
+        }
+      ]
+    },
+    {
+      "id": "M2b",
+      "desc": "基准只取 rerun_index",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U8 第 1 轮但被审对象已是 r2（送审前就写了 r2）→ 要求 r3",
+        "U15 复审未修订原稿（rerun_index 2、被审对象 r1）→ 要求 r2 而非 r3"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "候选条件 > 改 >=（被审对象本身算新一轮）",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U7 第 2 轮（被审对象 r2）：r2 不算新一轮，要 r3；补 r3 后通过",
+        "U8 第 1 轮但被审对象已是 r2（送审前就写了 r2）→ 要求 r3"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/plan-final-gate.test.js",
+          "fail": 5,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I1 · 命令 A 新运行写标记；有接受项、没有新一轮计划 → missing_next_plan 并给出应写文件名",
+            "I3 · 命令 B：通过后立停点，新一轮计划被挪走 → approve 与 --await-approval 的复核都拦下",
+            "I4 · 第二轮：被审对象是 r2、要求 r3；用 --run-id 回看第 1 轮仍通过（已被接手，核 r2）",
+            "I6 · 非缺省执笔方 codex：应写名为 -r2-codex.md，别家后缀的 r2 不算",
+            "I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2"
+          ],
+          "firstLines": [],
+          "elapsed_s": 24
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "编号判据改成子串包含",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U11 编号整词判据：GLM-010 不算 GLM-01；括号与冒号相邻算；被接受的虚拟编号必须出现"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "接受集合排除虚拟编号",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U11 编号整词判据：GLM-010 不算 GLM-01；括号与冒号相邻算；被接受的虚拟编号必须出现"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "接受集合不按裁决过滤（全部行）",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U2 有接受项、没有新一轮计划 → missing_next_plan，给出应写文件名与接受编号",
+        "U4 全部驳回 / 全部暂缓 → 不要求新一轮计划"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "去掉角色过滤",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U6 非缺省 Driver：别家后缀的 r2 不算，应写名取当轮 Driver 后缀"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/plan-final-gate.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I6 · 非缺省执笔方 codex：应写名为 -r2-codex.md，别家后缀的 r2 不算"
+          ],
+          "firstLines": [],
+          "elapsed_s": 25
+        }
+      ]
+    },
+    {
+      "id": "M8",
+      "desc": "去掉审查件剔除",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U12 顶着执笔方后缀的审查件不算候选"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M9",
+      "desc": "「在用」分支改为取最小候选",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U13 在用的轮次核定稿（最大候选）：r2 齐、r3 缺 → 判缺；r3 补齐后通过",
+        "U16 已被后续运行接手的轮次核紧随那份：r2 齐、r3 只引用后一轮编号 → 通过"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M10",
+      "desc": "loadRoundReviews 的 planFinal 恒为 null",
+      "suite": "dist/test/test/integration/plan-final-gate.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "I1 · 命令 A 新运行写标记；有接受项、没有新一轮计划 → missing_next_plan 并给出应写文件名",
+        "I2 · 新一轮计划漏一条 → next_plan_missing_ids；补齐后通过",
+        "I3 · 命令 B：通过后立停点，新一轮计划被挪走 → approve 与 --await-approval 的复核都拦下",
+        "I4 · 第二轮：被审对象是 r2、要求 r3；用 --run-id 回看第 1 轮仍通过（已被接手，核 r2）",
+        "I6 · 非缺省执笔方 codex：应写名为 -r2-codex.md，别家后缀的 r2 不算",
+        "I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2"
+      ],
+      "firstLines": [],
+      "elapsed_s": 24,
+      "also": [
+        {
+          "suite": "dist/test/test/unit/plan-final-gate.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "loadRoundReviews：带标记的计划阶段给出 planFinal（含更晚运行的被审对象轮次）；无标记或代码阶段为 null"
+          ],
+          "firstLines": [],
+          "elapsed_s": 0
+        }
+      ]
+    },
+    {
+      "id": "M11",
+      "desc": "prepareRun 不写标记",
+      "suite": "dist/test/test/integration/plan-final-gate.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "I1 · 命令 A 新运行写标记；有接受项、没有新一轮计划 → missing_next_plan 并给出应写文件名",
+        "I2 · 新一轮计划漏一条 → next_plan_missing_ids；补齐后通过",
+        "I3 · 命令 B：通过后立停点，新一轮计划被挪走 → approve 与 --await-approval 的复核都拦下",
+        "I4 · 第二轮：被审对象是 r2、要求 r3；用 --run-id 回看第 1 轮仍通过（已被接手，核 r2）",
+        "I6 · 非缺省执笔方 codex：应写名为 -r2-codex.md，别家后缀的 r2 不算",
+        "I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2"
+      ],
+      "firstLines": [],
+      "elapsed_s": 23,
+      "also": []
+    },
+    {
+      "id": "M12",
+      "desc": "gate --check 调用点传 null",
+      "suite": "dist/test/test/integration/plan-final-gate.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "I1 · 命令 A 新运行写标记；有接受项、没有新一轮计划 → missing_next_plan 并给出应写文件名",
+        "I2 · 新一轮计划漏一条 → next_plan_missing_ids；补齐后通过",
+        "I4 · 第二轮：被审对象是 r2、要求 r3；用 --run-id 回看第 1 轮仍通过（已被接手，核 r2）",
+        "I6 · 非缺省执笔方 codex：应写名为 -r2-codex.md，别家后缀的 r2 不算",
+        "I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2"
+      ],
+      "firstLines": [],
+      "elapsed_s": 24,
+      "also": []
+    },
+    {
+      "id": "M13",
+      "desc": "verifyRoundForApproval 传 null",
+      "suite": "dist/test/test/integration/plan-final-gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "I3 · 命令 B：通过后立停点，新一轮计划被挪走 → approve 与 --await-approval 的复核都拦下"
+      ],
+      "firstLines": [],
+      "elapsed_s": 25,
+      "also": []
+    },
+    {
+      "id": "M14",
+      "desc": "新失败项插到最前",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U14 既有失败与新失败同时存在：一次全报，新失败排在最后"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M15",
+      "desc": "接受集合不按期望集过滤（计划双审 AGY-02）",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U11 编号整词判据：GLM-010 不算 GLM-01；括号与冒号相邻算；被接受的虚拟编号必须出现",
+        "U17 期望集外的接受编号只由 unknown_findings 报，不要求写进新一轮计划"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M16",
+      "desc": "「已被接手」判定恒假（计划双审 AGY-01 / GLM-03）",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U16 已被后续运行接手的轮次核紧随那份：r2 齐、r3 只引用后一轮编号 → 通过"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/plan-final-gate.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "I4 · 第二轮：被审对象是 r2、要求 r3；用 --run-id 回看第 1 轮仍通过（已被接手，核 r2）"
+          ],
+          "firstLines": [],
+          "elapsed_s": 25
+        }
+      ]
+    },
+    {
+      "id": "M17",
+      "desc": "「更晚运行」把更早的运行也收进来",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "loadRoundReviews：带标记的计划阶段给出 planFinal（含更晚运行的被审对象轮次）；无标记或代码阶段为 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M18",
+      "desc": "被审对象轮次不核后缀",
+      "suite": "dist/test/test/unit/plan-final-gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "planSubjectRerunIndex：plan 根下当轮 Driver 的原稿取轮次，其余为 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    }
+  ]
+}

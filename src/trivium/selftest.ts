@@ -27,9 +27,9 @@ import { promises as fs } from 'node:fs';
 import { run } from './util/exec.js';
 import { initFixtureRepo } from './util/git.js';
 import { tildeHome, tryRemoveTempDir } from './util/fsx.js';
-import { localDate } from './naming.js';
+import { localDate, parseArtifactName } from './naming.js';
 import { DEFAULT_CRITICS } from './types.js';
-import { agentById } from './agents/registry.js';
+import { DEFAULT_DRIVER, agentById } from './agents/registry.js';
 import { EXIT } from './exit-codes.js';
 import { STUB_ENV_VAR } from './adapters/stub.js';
 import { say, step, warn } from './util/log.js';
@@ -382,6 +382,20 @@ export async function runSelftest(
       ].join('\n'),
       'utf8',
     );
+    /*
+     * 有接受项 ⇒ 同时写执笔方的新一轮计划（EV-214，§6.6 规则 9）：本轮运行元数据带 `plan_final_check`，
+     * 闸门要求 r2 存在、且逐字引用每条被接受的编号。编号与上面的裁决表同源派生。
+     */
+    await fs.writeFile(
+      path.join(planDir, `${localDate()}-${TOPIC}-r2-claude.md`),
+      [
+        '# selftest 计划 r2', '',
+        '相对上一轮的改动：',
+        ...DEFAULT_CRITICS.map((c) => `- ${agentById(c)?.findingPrefix ?? c.toUpperCase()}-01：按示例裁决补上 §二`),
+        '',
+      ].join('\n'),
+      'utf8',
+    );
 
     const check = await tv(['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--session-id', SESSION]);
     record(`裁决完整性校验通过（逐条对齐 ${DEFAULT_CRITICS.length + 1} 条意见）`, EXIT.OK, check.code, check.stdout + check.stderr);
@@ -428,7 +442,11 @@ export async function runSelftest(
       'review', '--stage', 'plan', '--topic', TOPIC, '--focus', '再审一次', '--session-id', SESSION,
     ]);
     const unchanged = Buffer.compare(await fs.readFile(firstDoc), before) === 0;
-    const bumped = (await fs.readdir(planDir)).some((f) => f.includes('-r2-'));
+    // 只认审核者后缀的 r2：上面③写了执笔方的 `-r2-claude.md`，按 `-r2-` 字面判会被它冒充（EV-214）
+    const bumped = (await fs.readdir(planDir)).some((f) => {
+      const p = parseArtifactName(f);
+      return p !== null && p.rerunIndex === 2 && p.kind === null && p.role !== DEFAULT_DRIVER;
+    });
     record('重跑抬升 -r2 且首轮字节不变（FR-25 / P6）', EXIT.OK, rerun.code, `字节不变=${unchanged} 抬轮=${bumped}`, unchanged && bumped);
 
     return finish(steps.every((s) => s.ok));
