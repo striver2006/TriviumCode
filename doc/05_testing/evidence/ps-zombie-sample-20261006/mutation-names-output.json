@@ -1,0 +1,52 @@
+{
+  "targets_sha256": {
+    "src/trivium/util/exec.ts": "79ed33219682695a20e27088ea32ccf87866918fb3626e1e0024255f081d5a21"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "不排除僵尸（删掉 stat 判据）",
+      "suite": "dist/test/test/unit/ps-group-members.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-169 S1：录制样本「组长 + 僵尸」⇒ 只数组长，计 1",
+        "EV-169 S2：录制样本「组里只剩僵尸」⇒ 计 0；父进程所在组计 1",
+        "EV-169 L1（实机）：只剩僵尸的组 ⇒ processGroupMemberCount 计 0"
+      ],
+      "firstLines": [],
+      "elapsed_s": 5,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "组号按字符串前缀匹配",
+      "suite": "dist/test/test/unit/ps-group-members.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-169 S3：组号整数比较——前缀相同的别的组、不存在的组都计 0",
+        "EV-169 L1（实机）：只剩僵尸的组 ⇒ processGroupMemberCount 计 0"
+      ],
+      "firstLines": [],
+      "elapsed_s": 5,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "processGroupMemberCount 不经计数函数、数全部行（取数侧绕开僵尸排除）",
+      "suite": "dist/test/test/unit/ps-group-members.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-169 L1（实机）：只剩僵尸的组 ⇒ processGroupMemberCount 计 0"
+      ],
+      "firstLines": [],
+      "elapsed_s": 5,
+      "also": []
+    }
+  ]
+}

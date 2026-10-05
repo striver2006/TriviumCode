@@ -1,0 +1,34 @@
+{
+  "targets": [
+    "src/trivium/util/exec.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/ps-group-members.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "不排除僵尸（删掉 stat 判据）",
+      "file": "src/trivium/util/exec.ts",
+      "find": "    if (m && Number(m[1]) === pgid && !m[2]!.startsWith('Z')) n++;\n",
+      "replace": "    if (m && Number(m[1]) === pgid) n++;\n",
+      "expect": "dist/test/test/unit/ps-group-members.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "组号按字符串前缀匹配",
+      "file": "src/trivium/util/exec.ts",
+      "find": "    if (m && Number(m[1]) === pgid && !m[2]!.startsWith('Z')) n++;\n",
+      "replace": "    if (m && m[1]!.startsWith(String(pgid).slice(0, -1)) && !m[2]!.startsWith('Z')) n++;\n",
+      "expect": "dist/test/test/unit/ps-group-members.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "processGroupMemberCount 不经计数函数、数全部行（取数侧绕开僵尸排除）",
+      "file": "src/trivium/util/exec.ts",
+      "find": "  return countLiveGroupMembers(r.stdout, pgid);\n",
+      "replace": "  return r.stdout.split('\\n').filter((l) => Number(/^\\s*(\\d+)\\s/.exec(l)?.[1]) === pgid).length;\n",
+      "expect": "dist/test/test/unit/ps-group-members.test.js"
+    }
+  ]
+}

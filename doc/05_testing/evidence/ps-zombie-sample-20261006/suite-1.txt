@@ -1,0 +1,36 @@
+✔ EV-169 S1：录制样本「组长 + 僵尸」⇒ 只数组长，计 1 (2.553333ms)
+✔ EV-169 S2：录制样本「组里只剩僵尸」⇒ 计 0；父进程所在组计 1 (1.409625ms)
+✔ EV-169 S3：组号整数比较——前缀相同的别的组、不存在的组都计 0 (0.902875ms)
+✔ EV-169 L1（实机）：只剩僵尸的组 ⇒ processGroupMemberCount 计 0 (50.046209ms)
+✔ EV-165 U0：judgeCliGroup——组长已退且组里还有非僵尸成员判 orphaned（out 带出成员数）；成员归零判 gone；成员计数取不到判 orphan_unverifiable（依赖注入，零配额） (1519.414667ms)
+✔ EV-157 U1：cliGroupsConfirmedGone 五格的 gone 与 blockers；why 逐字保持「第一个阻挡项」的旧文字 (68.959291ms)
+✔ EV-165 U1′：cliGroupsConfirmedGone 新增 H / Hz 两格——组长已退、组员仍在阻挡且带精确成员数；成员归零放行 (1491.888875ms)
+✔ EV-157 U2：scrubAdmission——worker 已不在 × 五格；worker 仍在时不判 CLI（cli 为 null）；scrubHoldWhy 两种形态 (1268.44625ms)
+✔ EV-157 U3：admitScrub 行为不变——worker 已不在 × 五格的分档与 detail 文字（会话启动清扫与 trivium scrub 两条路径）；worker 仍在而记录形状坏只进 deferred (98.680792ms)
+✔ EV-165 U3′：会话启动清扫 / trivium scrub 新增 H / Hz 两格——H 不抹并进 deferredCli 带精确成员数；Hz 照抹 (1288.408417ms)
+✔ EV-157 U4：到期整删——A / C / D 格不删、计入 kept 并进 deferredCli；B / E 照删；dry-run 下 A 格不进 removed (87.79675ms)
+✔ EV-165 U4′：到期整删新增 H / Hz 两格——H 不删、计入 kept 并进 deferredCli；Hz 照删 (1242.60175ms)
+运行 R-CANCEL-A 已取消
+运行 R-CANCEL-B 已取消
+运行 R-CANCEL-Br 已取消
+运行 R-CANCEL-C 已取消
+运行 R-CANCEL-D 已取消
+运行 R-CANCEL-E 已取消
+✔ EV-157 U5：--cancel（worker 已不在）五格——A / C / D 不抹、告警逐侧带组号与成因、被挡侧记录留存；B / E 照抹；归档在五格里都收尾为 cancelled (197.398125ms)
+运行 R-CANCEL-ORPHAN-UNVERIFIABLE 已取消
+✔ EV-165 U5‴（代码双审 r1 GLM-02）：reportRecordedCliGroups 对 orphan_unverifiable 的 warn 文案逐字——仿 U5 A 格用 terminateCli 注入伪造 outcome，不需要真实孤儿组也不需要真实 ps 失败 (47.68875ms)
+运行 R-CANCEL-H 已取消
+✔ EV-165 U5″：--cancel（worker 已不在）新增 H 格——按组结束组员（组信号打到 pgid 仍有效）之后照抹，记录清 null (233.966625ms)
+运行 R-CANCEL-BOTH 已取消
+✔ EV-157 U5′：--cancel 两侧都挡住（判不了 + 读不懂）⇒ 一行告警逐侧列出 (48.257708ms)
+✔ EV-157 U6：--wait 判失联（pid_gone）五格——A / C / D 不抹、正文逐侧说明、不结束进程、记录留存；B / E 照抹；归档在五格里都收尾为 failed (193.623333ms)
+✔ EV-165 U6′：--wait 判失联新增 H 格——不抹、正文带精确成员数、不结束进程；--cancel 出口对 orphaned 也给出（不只 alive） (183.343459ms)
+✔ EV-157 U7：worker 仍在（heartbeat_stale）时 --wait 的「凭据副本未抹」逐字不变 (14.905208ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8136.272375

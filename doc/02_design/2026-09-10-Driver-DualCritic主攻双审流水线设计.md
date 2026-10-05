@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.96
+> - **当前版本**：v1.3.97
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3709,6 +3709,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.97** | 2026-10-06 | **僵尸排除的录制样本单测（EV-169）。** M11 前待办批次第 3 题，**本批未走双审**。`processGroupMemberCount` 的计数抽成纯函数 `countLiveGroupMembers`（判据逐字不变：组号整数相等、状态不以 `Z` 开头），本机录制两份真实 `ps -axo pgid=,stat=` 样本（组长 + 僵尸；组里只剩僵尸——父进程在组外 fork、子进程 setsid 后退出、父进程不 wait）收进 `test/fixtures/ps-samples/`，单测喂样本；另加 macOS 实机格以同一造法直接调 `processGroupMemberCount` 断言只剩僵尸的组计 0。行为零变化，变异 3/3 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_ps_zombie_sample.md`。 |
 | **v1.3.96** | 2026-10-06 | **run_id 同秒避让（EV-147）。** M11 前待办批次第 2 题，**本批未走双审**（用户以 `/goal` 授权直接开发、指定不改格式的那一档）。`meta.ts` 新增 `allocateRunId`：从 `newRunId(now)` 起，本主题已占用（task.json `runs[]` 已登记，或 plan / code / bug / verify 任一阶段 `_meta/run-<id>.json` 已存在；task.json 读不出时只看文件）就往后抬一秒，上限 120 次、用尽抛 69。`prepareRun` 与 `verify` 两个分配点改调它，源码护栏禁止 `meta.ts` 之外直接调 `newRunId`。格式、文件名、schema 与「字典序即时序」不变；run_id 不再保证等于开始时刻的秒，以 `started_at` 为准。先后两轮同秒不再覆盖彼此的 run.json 与登记（6.7「每份 run.json 至多一次终态写入」的已知例外随之关闭）；不持主题锁的 verify 与审查运行同秒**并发**分配仍可能撞，不看运行目录（跨主题共用另登 EV-218）。LLD 的 run_id 段同步。读数见 `doc/05_testing/REPORT_2026-10-06_run_id_collision.md`。 |
 | **v1.3.95** | 2026-10-06 | **cancel-grace 夹具等就绪（EV-217）。** M11 前待办批次第 1 题，**本批未走双审**（用户以 `/goal` 授权直接开发，提交前由执笔方自审补丁）。只改测试：`cancel-grace-unverifiable.test.ts` 的 `spawnMarked` 不再固定等 150 ms，改为等夹具程序正文执行完、经 stdout 打出就绪标记再返回（20 s 上界，超时以测试环境问题判红）——各程序的 SIGTERM 处理器在返回时已装好，高负载下 `node -e` 启动慢也不会让 SIGTERM 落在装处理器之前（K-K3 偶发红的推断成因）。新增夹具自检 R1（处理器装得慢的程序，返回后发 SIGTERM 不退），变异 2/2 咬住。产品代码零改动。读数见 `doc/05_testing/REPORT_2026-10-05_cancel_grace_ready.md`。 |
 | **v1.3.94** | 2026-10-05 | **类型与注释失实收口（EV-59、EV-70）。** 计划 `.reviews/类型与注释失实收口/plan/` r2（计划双审第 1 轮 run `20261005T134028Z`，降级：codex 一侧用量用尽未产出，用户选 `--allow-single`；gemini `approve`、glm `approve-with-nits`，2 条全接受）。**运行期行为零变化**：只改一个测试文件与 `types.ts` 的一个纯类型。①EV-59：`registry-parity` 的「每一个已登记 Agent 出现在入选集合里」去掉对缺省 Driver 的跳过——跳过的理由「会触发身份补校的互斥规则」失实，`checkAgentIdentities` 只校 driver 已登记、入选元素已登记、`critics` 键的 vendor 与入选子集三条；注释改为如实说明**落盘层（run.v2 校验）不判 Driver 是否入选**，由 `resolveCriticSelection` 与 `prepareRun` 对 `sides` 的兜底两处拦（`critics_selected` 唯一产出点在兜底之后）；新增用例钉住这一现状。**不在落盘层补互斥规则**：`validateRunMeta` 同时是读侧判据，补了只会让违例留痕整份不可读、牵连闸门与审批，而上游两道已覆盖全部写入入口（归档实扫违例 0 份）。②EV-70：删掉零消费方的 `types.ts` `Disposition` 接口，不做派生，裁决件类型只认 `disposition.ts` 的 `DispositionFrontMatter`；`types.ts` 文件头契约对照改指它。读数见 `doc/05_testing/REPORT_2026-10-05_type_comment_truth.md`。 |

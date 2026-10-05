@@ -678,8 +678,16 @@ export async function processMatchesRecord(
 export async function processGroupMemberCount(pgid: number): Promise<number | null> {
   const r = await run('/bin/ps', ['-axo', 'pgid=,stat='], { timeoutMs: 10_000 });
   if (r.code !== 0) return null;
+  return countLiveGroupMembers(r.stdout, pgid);
+}
+
+/**
+ * `processGroupMemberCount` 的计数部分：在 `ps -axo pgid=,stat=` 的输出里数组号等于 `pgid`、状态不以 `Z` 开头的行。
+ * 抽成纯函数是为了能喂录制的真实样本（EV-169：「组里只剩僵尸」在实机上窗口短、难稳定构造，`test/fixtures/ps-samples/`）。
+ */
+export function countLiveGroupMembers(psOutput: string, pgid: number): number {
   let n = 0;
-  for (const line of r.stdout.split('\n')) {
+  for (const line of psOutput.split('\n')) {
     const m = /^\s*(\d+)\s+(\S+)/.exec(line);
     if (m && Number(m[1]) === pgid && !m[2]!.startsWith('Z')) n++;
   }
