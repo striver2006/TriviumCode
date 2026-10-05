@@ -1,0 +1,79 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最危险的一条：变异表 M-order 声称的杀手不成立——C2 夹具里没有剔除告警在场，「排到剔除告警之后 / 计入封顶」两种变异都必存活，计划却把它列为有杀手的条目。另两条同为测试面缺口：第 ⑥ 格兜底异常分支零覆盖（删掉 try/catch 的变异全 suite 存活）、期望集拼装将在复核侧复制第二份而非共用。除此之外计划质量高：现状陈述与源码逐条核对无误；§1.5 历史实扫经我独立复扫完全复现（82 主题、最新轮无裁决件 0、中途 7 次全 failed、EV-74 骨架、0 带标记），决策二定案有据；§2.4 恒传空 laterSubjectRerunIndexes 的偏离经核对 checkNextPlan 语义后判定正确且必要；告警排序、互斥、三出口与 run_warning 早退回灌均与现状代码吻合；零配额验证的外部依赖逐一核实存在；改动纯增量可回退。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §4 变异 M-order（对应 §3.2 C2 与 §2.5 排序/封顶）",
+      "problem": "M-order（复核告警排到剔除告警之后、或计入剔除封顶）按计划写的杀法杀不死。C2 的夹具构造里没有任何必读剔除告警，「--start 的 warnings 恰有一条该名」在两种变异下照样成立：只有一条告警时顺序差异不可见，封顶 5 条不触发；R2 只测组装函数 planFinalRecheckWarning 的返回，不经过 prepareRun 的拼接。落地时这条变异只能按「构造不出」删去——但它其实构造得出，计划的变异表在声称一个不存在的杀手。",
+      "evidence": "实读 src/trivium/review.ts:1072-1077：planFinalWarnings 与 renderPrunedWarnings(pruned, sides)（全量）及 renderPrunedWarnings(pruned, sides, MUST_READ_PRUNED_DISPLAY_MAX)（封顶）两处拼接，封顶只作用在 renderPrunedWarnings 第二参，复核告警若在拼接层被挪后或计入封顶，没有剔除告警在场的用例看不出来；计划 §3.2 C2 的断言序列（被审件）未构造剔除告警。",
+      "suggestion": "在 C2 或新增一格里构造剔除告警在场的场景（自动必读条目撞上 deny 路径），断言复核告警排在剔除告警之前；再补一个剔除条目超过 5 条的构造，断言复核告警不被顶掉。若决定不做，按 §4 自己的口径在变异报告里如实写明 M-order 删除原因，不要在计划里继续声称它由 C2 杀死。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §2.4 第 ⑥ 格 / §3.1 R9 / §4 变异清单",
+      "problem": "「无从复核」的三个成因里，「复核过程抛出异常」（兜底 catch）没有任何用例与变异覆盖：R9 只构造「往旧找途中 run.json 读不出」与「driver 与定稿后缀不同」两格。删掉兜底 try/catch（异常上抛、prepareRun 崩掉）的变异在 R1～R12 / C1～C7 下全部存活，而这条兜底正是 §2.1「自动条目不拒跑」承诺的最后一道防线——没有它，复核自身任何一个未预料的异常都会把代码双审炸死在准备段。",
+      "evidence": "计划 §2.4 第 ⑥ 格列了三个成因、§3.1 R9 只覆盖前两个、§4 变异清单无对应条目（被审件）。实读 src/trivium/review.ts:891 附近确认 prepareRun 在计算段调 resolvePlanFinal，复核若上抛异常其上没有任何别的兜底层。",
+      "suggestion": "单测补一格强制抛错的构造（让读裁决件或解析抛出的夹具），断言 recheckPlanFinal 返回 unverifiable、原因含「复核出错」、组装后的告警含「无从复核」；变异清单加一条 M-catch（删兜底）指向该格。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §2.4 第 ⑤ 格（对照 src/trivium/gate.ts:253-256、492）",
+      "problem": "期望集（结构化编号 ∪ 逐条降级）的拼装将在 recheckPlanFinal 里按「checkAdjudication 第 1、5 步同样拼出」复制第二份，而不是与 acceptedIdsForNextPlan 一起抽成共用。计划自己的设计原则是「判据只有一份」（§2.5 复用 checkNextPlan 文案正是这个理由），本仓纪律 12 记录着同族「两份事实源漂移」反复现形；R12 只保证当下等价，将来改闸门那一侧（例如 EV-216 动期望集口径）时没有任何机制拦漂移，复核对的是旧判据还不报错。",
+      "evidence": "实读 src/trivium/gate.ts:253-256（structuredIds 收集）与 492（idsSet = 结构化 ∪ degradedIds）；计划 §2.4 ⑤ 明确写「按 checkAdjudication 第 1、5 步同样拼出期望集」（被审件）；AGENTS.md 架构纪律 11/12 的两份事实源教训。",
+      "suggestion": "把期望集拼装一并抽成导出小函数（或提供一个从 loadRoundReviews 产出直接算出接受集合的 helper），闸门与复核调同一个，抽离成本极小；若坚持复制，至少在两侧互留对账注释，并在 R12 的注释里写明它守的是这条等价。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§1.5 历史实扫经我独立复扫（只读 _meta/run-*.json 与 plan/ 目录文件名，node 一次性脚本）完全复现：82 个主题、最新一次运行无裁决件 0、中途无裁决件 7 次全部 gate.state=failed、EV-74 r4 双运行骨架、0 个最新运行带 plan_final_check。「退回上一轮有裁决件的运行」的定案建立在真实数据上，防的正是失败轮让复核整体失效的窗口。",
+    "§2.4 恒传 laterSubjectRerunIndexes: [] 的偏离判断正确：按 §2.3 的取法，取到的那一轮之后的运行都没有裁决件；实读 checkNextPlan（gate.ts:758-763）确认照传真实后续轮次会转去核最小候选（已被该轮闸门核过的那份），漏掉代码审查员实际读到的最大那份——正是本题要堵的窗口；R7 与 M-later 把这格钉死。",
+    "告警排序（剔除之前、不计入封顶、与「必读清单未列计划定稿」互斥）与 review.ts:1072-1077 的既有结构吻合；run.json gate.warnings 经 loadRoundReviews（gate.ts:1211）在 gate.ts:250 一切早退之前回灌为 run_warning，C2 的第三出口断言可行。",
+    "决策四（任务书第 4 段不标注）的权衡与 §9.4 第 4 条 / FR-10 一致；告警经 --start warnings 与 run_warning 两个通道已到达该到的人，标注只会把裁决信息推进各侧。",
+    "零配额验证路径的外部依赖逐一核实存在：scripts/mutation-check.mjs、doc/05_testing/evidence/lock-reclaim-enoent-20260930/mutation-names.mjs、doc/05_testing/evidence/test-scratch-cleanup-20261004/count-new.mjs、selftest 的 r2 构造（src/trivium/selftest.ts:390-393）；设计当前版本 v1.3.89，计划升 v1.3.90 正确；entryCommandOf（agents/registry.ts:503）现成可用，告警文案不需要新机制。",
+    "改动纯增量、无持久格式变化：新告警字符串走既有 gate.warnings 通道，旧构建读到只会原样回灌为 run_warning；回滚等于 revert，回滚成本一步、不丢任何东西。"
+  ],
+  "not_covered": [
+    "BACKLOG 中 EV-215 / EV-214 / EV-210 / EV-211 条目原文未逐字读，决策映射是依据任务书附录的任务目标原文核对的。",
+    "skills-src 入口资产源文件未读：计划决定不改流程说明，其「S3 已写、不需要新措辞」的论据我只核了设计 v1.3.89 版本记录行里的转述。",
+    "未实际构建或运行任何测试：计划尚未实施、无可跑代码，本次为只读审查，全部判断为源码精读与只读复扫。",
+    ".reviews/ 历史归档只读了 _meta/run-*.json 与目录文件名（复核 §1.5），未打开任何历史审查件正文。",
+    "计划中的源码行号引用抽查约十处（resolvePlanFinal、prepareRun、告警拼接、gate.warnings 落盘、同步出口、run-protocol 合并、checkAdjudication 第 6 步、checkNextPlan、loadRoundReviews、run_warning 早退回灌、locateSubject 筛法）均一致，未逐行全对。"
+  ],
+  "consulted": [
+    ".reviews/计划定稿复核/plan/2026-10-05-计划定稿复核-claude.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/05_testing/README.md",
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/selftest.ts",
+    "test/unit/plan-final-gate.test.ts",
+    "test/integration/task-goal-fulltext.test.ts"
+  ]
+}
