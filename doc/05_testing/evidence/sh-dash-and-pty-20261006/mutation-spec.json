@@ -1,0 +1,42 @@
+{
+  "targets": [
+    "src/trivium/util/exec.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/pty-run.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "pty 下 stdin 退回管道（改前形态）",
+      "file": "src/trivium/util/exec.ts",
+      "find": "    stdio: [bsdPty ? 'ignore' : 'pipe', 'pipe', 'pipe'],\n",
+      "replace": "    stdio: ['pipe', 'pipe', 'pipe'],\n",
+      "expect": "dist/test/test/unit/pty-run.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "stdout 不经还原",
+      "file": "src/trivium/util/exec.ts",
+      "find": "    child.stdout?.on('data', ptyOut ? (c: string) => appendOut(ptyOut.push(c)) : appendOut);\n",
+      "replace": "    child.stdout?.on('data', appendOut);\n",
+      "expect": "dist/test/test/unit/pty-run.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "还原不去首部回显",
+      "file": "src/trivium/util/exec.ts",
+      "find": "      const out = head.startsWith(PTY_EOF_ECHO) ? head.slice(PTY_EOF_ECHO.length) : head;\n",
+      "replace": "      const out = head;\n",
+      "expect": "dist/test/test/unit/pty-run.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "收尾不吐扣住的余量",
+      "file": "src/trivium/util/exec.ts",
+      "find": "      if (ptyOut) appendOut(ptyOut.flush());\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/pty-run.test.js"
+    }
+  ]
+}

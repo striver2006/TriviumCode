@@ -1,0 +1,98 @@
+环境
+  /bin/sh   : /bin/bash（/bin/sh 经 /private/var/select/sh 选定）；3.2.57(1)-release
+  /bin/dash : 420992 Sep 24 15:10（dash 无 --version）
+  uname     : Darwin 27.0.0
+  仓库      : e79e61dd
+
+── /bin/sh：文件目标族 ──
+  > 2                          rc=0  建出文件: 2              
+  >> 2                         rc=0  建出文件: 2              
+  &> 2                         rc=0  建出文件: 2              
+  &>> 2                        rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `>'
+  >>& 2                        rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `&'
+  >>&2（紧贴）                     rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `&'
+  >&2foo（等值防线）                 rc=0  建出文件: 2foo           
+  2>& t1.txt                   rc=1  建出文件: （无）            /bin/sh: t1.txt: ambiguous redirect
+  2>&t2.txt（紧贴）                rc=1  建出文件: （无）            /bin/sh: t2.txt: ambiguous redirect
+  >>& sep.txt                  rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `&'
+  >>&glu.txt（紧贴）               rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `&'
+  2>>&1                        rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `&'
+  >>&-                         rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `&'
+  >& bashsep.txt               rc=0  建出文件: bashsep.txt    
+── /bin/sh：强制覆盖后缀族 ──
+  >&| t1.txt                   rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `|'
+  >&! t2.txt                   rc=0  建出文件: !              
+  &>| t3.txt                   rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `|'
+  &>! t4.txt                   rc=0  建出文件: !              
+  2>&| t5.txt                  rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `|'
+  2>&! t6.txt                  rc=1  建出文件: （无）            /bin/sh: !: ambiguous redirect
+  >&| 2                        rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `|'
+  >&!2（紧贴）                     rc=0  建出文件: !2             
+  >&| -                        rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `|'
+  2>&! 1                       rc=1  建出文件: （无）            /bin/sh: !: ambiguous redirect
+── /bin/sh：普通强制覆盖后缀 ──
+  >| p1.txt                    rc=0  建出文件: p1.txt         
+  >! p2.txt                    rc=0  建出文件: !              
+  >>| p3.txt                   rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `|'
+  >>! p4.txt                   rc=0  建出文件: !              
+── /bin/sh：判据判 fd 操作（X 档）的那一族——关注点 ──
+  >& 2（分离）                     rc=0  建出文件: （无）            HELLO
+  >& -（分离）                     rc=1  建出文件: （无）            /bin/sh: line 0: echo: write error: Bad file descriptor
+  >&2（紧贴）                      rc=0  建出文件: （无）            X
+  2>&1（紧贴）                     rc=0  建出文件: （无）            
+  1>&2（紧贴）                     rc=0  建出文件: （无）            X
+  >&-（紧贴）                      rc=1  建出文件: （无）            /bin/sh: line 0: echo: write error: Bad file descriptor
+  2>&-（紧贴）                     rc=0  建出文件: （无）            
+  2>& 1（分离）                    rc=0  建出文件: （无）            
+  2>& -（分离）                    rc=0  建出文件: （无）            
+── /bin/sh：对照 ──
+  > -                          rc=0  建出文件: -              
+  {fd}> fdvar.txt              rc=0  建出文件: fdvar.txt      
+  >>&&x                        rc=2  建出文件: （无）            /bin/sh: -c: line 0: syntax error near unexpected token `&&'
+
+── /bin/dash：文件目标族 ──
+  > 2                          rc=0  建出文件: 2              
+  >> 2                         rc=0  建出文件: 2              
+  &> 2                         rc=0  建出文件: 2              
+  &>> 2                        rc=0  建出文件: 2              
+  >>& 2                        rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "&" unexpected
+  >>&2（紧贴）                     rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "&" unexpected
+  >&2foo（等值防线）                 rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: Bad fd number
+  2>& t1.txt                   rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: Bad fd number
+  2>&t2.txt（紧贴）                rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: Bad fd number
+  >>& sep.txt                  rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "&" unexpected
+  >>&glu.txt（紧贴）               rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "&" unexpected
+  2>>&1                        rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "&" unexpected
+  >>&-                         rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "&" unexpected
+  >& bashsep.txt               rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: Bad fd number
+── /bin/dash：强制覆盖后缀族 ──
+  >&| t1.txt                   rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "|" unexpected
+  >&! t2.txt                   rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: Bad fd number
+  &>| t3.txt                   rc=0  建出文件: t3.txt         
+  &>! t4.txt                   rc=127  建出文件: !              /bin/dash: 1: t4.txt: not found
+  2>&| t5.txt                  rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "|" unexpected
+  2>&! t6.txt                  rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: Bad fd number
+  >&| 2                        rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "|" unexpected
+  >&!2（紧贴）                     rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: Bad fd number
+  >&| -                        rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "|" unexpected
+  2>&! 1                       rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: Bad fd number
+── /bin/dash：普通强制覆盖后缀 ──
+  >| p1.txt                    rc=0  建出文件: p1.txt         
+  >! p2.txt                    rc=0  建出文件: !              
+  >>| p3.txt                   rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "|" unexpected
+  >>! p4.txt                   rc=0  建出文件: !              
+── /bin/dash：判据判 fd 操作（X 档）的那一族——关注点 ──
+  >& 2（分离）                     rc=0  建出文件: （无）            HELLO
+  >& -（分离）                     rc=1  建出文件: （无）            /bin/dash: 1: echo: echo: I/O error
+  >&2（紧贴）                      rc=0  建出文件: （无）            X
+  2>&1（紧贴）                     rc=0  建出文件: （无）            
+  1>&2（紧贴）                     rc=0  建出文件: （无）            X
+  >&-（紧贴）                      rc=1  建出文件: （无）            /bin/dash: 1: echo: echo: I/O error
+  2>&-（紧贴）                     rc=0  建出文件: （无）            
+  2>& 1（分离）                    rc=0  建出文件: （无）            
+  2>& -（分离）                    rc=0  建出文件: （无）            
+── /bin/dash：对照 ──
+  > -                          rc=0  建出文件: -              
+  {fd}> fdvar.txt              rc=0  建出文件: fdvar.txt      
+  >>&&x                        rc=2  建出文件: （无）            /bin/dash: 1: Syntax error: "&&" unexpected
+

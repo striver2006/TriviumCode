@@ -1,0 +1,74 @@
+{
+  "targets_sha256": {
+    "src/trivium/util/exec.ts": "ccdf82701e88f2618b12668f296a00a2900aa3674d03f555df3102d5644ec3ea"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "pty 下 stdin 退回管道（改前形态）",
+      "suite": "dist/test/test/unit/pty-run.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-156 R1（macOS）：pty 模式跑得起来，stdout 与非 pty 一致",
+        "EV-156 R2（macOS）：被包装的命令确实拿到了伪终端",
+        "EV-156 R3（macOS）：逐行回调不带 \\r，stderr 经伪终端并进 stdout",
+        "EV-156 R4（macOS）：输出以孤立的 \\r 收尾——收尾时吐回扣住的 \\r，不丢字符"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "stdout 不经还原",
+      "suite": "dist/test/test/unit/pty-run.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-156 R1（macOS）：pty 模式跑得起来，stdout 与非 pty 一致",
+        "EV-156 R2（macOS）：被包装的命令确实拿到了伪终端",
+        "EV-156 R3（macOS）：逐行回调不带 \\r，stderr 经伪终端并进 stdout",
+        "EV-156 R4（macOS）：输出以孤立的 \\r 收尾——收尾时吐回扣住的 \\r，不丢字符"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "还原不去首部回显",
+      "suite": "dist/test/test/unit/pty-run.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-156 N1：首部回显去掉，\\r\\n 还原",
+        "EV-156 N2：回显被拆在两块之间、\\r 落在块尾——照样还原",
+        "EV-156 R1（macOS）：pty 模式跑得起来，stdout 与非 pty 一致",
+        "EV-156 R2（macOS）：被包装的命令确实拿到了伪终端",
+        "EV-156 R3（macOS）：逐行回调不带 \\r，stderr 经伪终端并进 stdout",
+        "EV-156 R4（macOS）：输出以孤立的 \\r 收尾——收尾时吐回扣住的 \\r，不丢字符"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "收尾不吐扣住的余量",
+      "suite": "dist/test/test/unit/pty-run.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-156 R4（macOS）：输出以孤立的 \\r 收尾——收尾时吐回扣住的 \\r，不丢字符"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.99
+> - **当前版本**：v1.3.100
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3350,10 +3350,13 @@ schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束
   **有 fd 语义的只有无强制覆盖后缀的 `[n]>&` 一族**；该族内又只有目标位**恰为**
   纯数字或 `-` 时才是 fd 操作（`>&2foo` 建出文件，故判据须等值、不可前缀）。
   其余（`&>` / `&>>` / `>>&` / `>|` / `>&|` / `>&!` …）一律取文件目标。
-  判据外壳无关，取各外壳拼写的**并集**（实测范围 = zsh 5.9 / bash 3.2.57；
-  `SUBSHELL_RE` 还接受 `sh` / `dash`，那两种未测，见 BACKLOG EV-101）：某拼写在别的外壳下退非零时，
-  「只喂成功命令」的调用契约已把它挡在判定层外，收进来两个外壳下都不亏。
-  外壳语义的实测留痕见 `doc/05_testing/evidence/ev79-shell-redirect-20260922/`。
+  判据外壳无关，取各外壳拼写的**并集**（实测范围 = zsh 5.9 / bash 3.2.57；v1.3.100 起补测 macOS `/bin/sh`
+  〔即 bash 3.2 的 posix 模式〕与 `/bin/dash`，EV-101）：某拼写在别的外壳下退非零时，
+  「只喂成功命令」的调用契约已把它挡在判定层外，收进来两个外壳下都不亏。判 fd 操作、不取目标的那一族
+  在四种外壳下都不建文件，这一半成立。**带 `!` 后缀的拼写不成立**：`>! X` / `>>! X` / `>&! X` / `&>! X`
+  在 zsh 下写 `X`，在 bash / sh / dash 下写的是名为 `!` 的文件（`>&!2` 建出 `!2`），多数退 0，而判据只取 `X`——
+  `X` 在项目外、实际写到项目内的 `!` 时文本判据会放过（指纹比对兜得住），见 BACKLOG EV-219。
+  外壳语义的实测留痕见 `doc/05_testing/evidence/ev79-shell-redirect-20260922/` 与 `sh-dash-and-pty-20261006/`。
 - **项目外写入不算失守**（本步裁决）：依据是自洽性——codex 每次运行都往
   `$CODEX_HOME/sessions/` 写会话文件，而生效模型的回读正依赖读它；
   若项目外写入算失守，这条流水线赖以工作的那次写入自己就会把每一轮判成失守。
@@ -3710,6 +3713,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.100** | 2026-10-06 | **sh / dash 补测与 pty 模式修复（EV-101、EV-156）。** M11 前待办批次第 6 题，**本批未走双审**。①EV-101：EV-79 的重定向拼写全表在 macOS `/bin/sh`（bash 3.2 posix 模式）与 `/bin/dash` 下零配额补测——判据判 fd 操作、不取目标的那一族在两种外壳下都不建文件，并集对这一半成立；带 `!` 后缀的拼写（`>! X` 等）在 bash / sh / dash 下写的是名为 `!` 的文件，判据只取 `X`，另登 EV-219（判据不改，指纹比对兜得住）。11.1 的并集句据此改写。②EV-156：`run()` 的 pty 分支在 macOS 上原先必失败（stdin 是管道，BSD `script` 立即退 1）；只改 BSD 分支——stdin 给 /dev/null，stdout 经新导出的 `ptyOutputNormalizer` 去掉首部 `^D\b\b` 回显、`\r\n` 还原为 `\n`（处理跨块边界）。`RunOptions.pty` 写明 BSD 下 `stdin` 选项不生效、被包装命令的 stderr 并进 stdout。新单测 7 格（macOS 真跑 `script`），变异 4/4 咬住。**未在真实 agy 上验证**（本机 `pty_required: false`），pty 下 agy 按 stderr 判的 print-timeout 告警会看不到，记在 BACKLOG EV-156。读数见 `doc/05_testing/REPORT_2026-10-06_sh_dash_and_pty.md`。 |
 | **v1.3.99** | 2026-10-06 | **命令 B/C/D 先解析后预检（EV-126）。** M11 前待办批次第 5 题，**本批未走双审**。B / C / D 共用的 `skills-src/partials/review/body.md` 步序改为「1 解析 → 2 预检 → 3 启动」，预检无条件带第 1 步 resolve 输出的 `critics`，`profile` / `models` 非空时照传，三样与 `--start` 同一组——用户显式加进来的一侧在开跑前就被探活，不再等拉起后才失败；与命令 A 的 S0.5 → S0.6（EV-125）同序。三份契约 `@QUOTE_RULE_AT` 改「第 1 步」，正文两处依赖旧步序的句子与 `review.ts` slug 校验注释的前提同步订正；7.1 的次序对比句与 7.4 示例同改。重渲染 12 份产物，新增契约格钉住 B/C/D 的次序与 `--critics`；CLI 行为零变化。读数见 `doc/05_testing/REPORT_2026-10-06_bcd_preflight_order.md`。 |
 | **v1.3.98** | 2026-10-06 | **探针注释失实与回归格合成入口（EV-23、EV-94 ①；EV-04 待拍板）。** M11 前待办批次第 4 题，**本批未走双审**。运行期行为零变化。①EV-23：`types.ts` `CodexProbe.model_catalog_path` 文档块的「消费方：人读诊断与 `doctor` 报告」失实——全仓无代码读者，`doctor` 人读报告不渲染，只随探针结论进 `config.local.yaml` 的 `probe:` 段与 `doctor --json`，据此改写；字段与落盘不动（改结构属改契约）。②EV-94 ①：`preflight.test.ts` 的「--no-model-calls 保留上一次探到的 zcode 结论」改传合成入口与合成 cli 配置，不再在装了 ZCode.app 的机器上回落到 `/Applications/...` 候选真实跑旗标探针，CI 与本机走同一条路径、两个探针臂都确定地走到；变异 2/2 咬住。③EV-04（区分 run.json「不存在 / 读不出」）必然改报错文案，属改输出，登记候选（A 换成实际成因 / B 只加一行成因 / C 不修，建议 B）等拍板。读数见 `doc/05_testing/REPORT_2026-10-06_probe_doc_and_entry.md`。 |
 | **v1.3.97** | 2026-10-06 | **僵尸排除的录制样本单测（EV-169）。** M11 前待办批次第 3 题，**本批未走双审**。`processGroupMemberCount` 的计数抽成纯函数 `countLiveGroupMembers`（判据逐字不变：组号整数相等、状态不以 `Z` 开头），本机录制两份真实 `ps -axo pgid=,stat=` 样本（组长 + 僵尸；组里只剩僵尸——父进程在组外 fork、子进程 setsid 后退出、父进程不 wait）收进 `test/fixtures/ps-samples/`，单测喂样本；另加 macOS 实机格以同一造法直接调 `processGroupMemberCount` 断言只剩僵尸的组计 0。行为零变化，变异 3/3 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_ps_zombie_sample.md`。 |

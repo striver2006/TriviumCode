@@ -47,7 +47,15 @@ export interface RunOptions {
    * 那时进程随即退出，计时器随进程消失。
    */
   stopEarly?: (stop: () => void) => void;
-  /** 用 `script -q /dev/null` 包一层伪终端（应对 agy 在管道下丢 stdout，probe.agy.pty_required） */
+  /**
+   * 用 `script -q /dev/null` 包一层伪终端（应对 agy 在管道下丢 stdout，probe.agy.pty_required）。
+   *
+   * BSD `script`（macOS）的三条事实（EV-156，零配额实测见 `doc/05_testing/evidence/sh-dash-and-pty-20261006/`）：
+   * stdin 是管道（Node 在 macOS 上用 socketpair）时它在拉起命令之前就退 1，所以这一支 stdin 恒为 /dev/null，
+   * **`stdin` 选项不生效**；它读到 EOF 后往伪终端送一个 EOF，回显成 stdout 首部的 `^D\b\b`，伪终端还把 `\n` 改成
+   * `\r\n`——两者由 `ptyOutputNormalizer` 还原；被包装命令的 stderr 经伪终端**并进 stdout**，`stderr` 只剩
+   * `script` 自己的。Linux 的 util-linux 分支未实测，原样不动。
+   */
   pty?: boolean;
   /** 输出上限，超出即截断，防止把整个仓库读进内存 */
   maxBufferBytes?: number;
@@ -160,6 +168,39 @@ export function watchTrackedTrees(listener: () => void): () => void {
  */
 let treeShutdown = false;
 
+/** BSD `script` 读到 stdin 的 EOF 后往伪终端送 EOF，伪终端回显成这 4 个字符（`^`、`D`、两个退格） */
+export const PTY_EOF_ECHO = '^D\b\b';
+
+/**
+ * BSD `script` 伪终端输出的还原（EV-156）：去掉**首部恰为** `PTY_EOF_ECHO` 的回显，`\r\n` 还原为 `\n`。
+ * 两者都可能被拆在两个数据块之间：块尾的 `\r` 先扣住等下一块，首部不足 4 个字符时先攒着。`flush()` 吐出扣住的余量。
+ * 只认首部：实测 80 次全在首部（`script` 先读完 /dev/null 再转发子进程输出）；正文中间出现同样 4 个字符照原样保留。
+ */
+export function ptyOutputNormalizer(): { push(chunk: string): string; flush(): string } {
+  let head: string | null = '';
+  let pendingCR = false;
+  return {
+    push(chunk: string): string {
+      let s = (pendingCR ? '\r' : '') + chunk;
+      pendingCR = s.endsWith('\r');
+      if (pendingCR) s = s.slice(0, -1);
+      s = s.replace(/\r\n/g, '\n');
+      if (head === null) return s;
+      head += s;
+      if (head.length < PTY_EOF_ECHO.length && PTY_EOF_ECHO.startsWith(head)) return '';
+      const out = head.startsWith(PTY_EOF_ECHO) ? head.slice(PTY_EOF_ECHO.length) : head;
+      head = null;
+      return out;
+    },
+    flush(): string {
+      const out = (head ?? '') + (pendingCR ? '\r' : '');
+      head = null;
+      pendingCR = false;
+      return out;
+    },
+  };
+}
+
 /** 供人读/归档的命令行拼装，含最小引号处理。不用于实际执行（执行一律走 argv 数组，无 shell） */
 export function formatCommand(bin: string, args: readonly string[]): string {
   const q = (s: string) => (/^[A-Za-z0-9_\-./:=@]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
@@ -190,6 +231,7 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
   } = opts;
 
   // BSD script（macOS）：`script -q /dev/null <cmd…>`；util-linux script：`script -q -c "<cmd>" /dev/null`
+  const bsdPty = pty && process.platform !== 'linux';
   const realBin = pty ? 'script' : bin;
   const realArgs = pty
     ? process.platform === 'linux'
@@ -207,7 +249,8 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
   const spawnOpts: SpawnOptions = {
     cwd,
     env: childEnv,
-    stdio: ['pipe', 'pipe', 'pipe'],
+    // BSD script 在管道 stdin 下拉不起命令（EV-156），给 /dev/null
+    stdio: [bsdPty ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     ...(killTree ? { detached: true } : {}),
   };
 
@@ -269,8 +312,9 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
       }
     };
 
+    const ptyOut = bsdPty ? ptyOutputNormalizer() : null;
     child.stdout?.setEncoding('utf8');
-    child.stdout?.on('data', appendOut);
+    child.stdout?.on('data', ptyOut ? (c: string) => appendOut(ptyOut.push(c)) : appendOut);
     child.stderr?.setEncoding('utf8');
     child.stderr?.on('data', (c: string) => {
       if (stderr.length + c.length <= maxBufferBytes) stderr += c;
@@ -293,6 +337,7 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
       if (exitTimer) clearTimeout(exitTimer);
       // 终止中不兑现：兑现了调用方就会往下走（抹副本、重试、写归档终态），取消就不再由 cancelRun 收尾（EV-152）
       if (treeShutdown) return;
+      if (ptyOut) appendOut(ptyOut.flush());
       if (lineBuf.length > 0 && onStdoutLine) onStdoutLine(lineBuf);
       if (errLineBuf.length > 0 && onStderrLine) onStderrLine(errLineBuf);
       resolve({
