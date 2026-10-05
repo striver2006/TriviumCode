@@ -1,0 +1,66 @@
+{
+  "targets_sha256": {
+    "src/trivium/run-protocol.ts": "1a0c1aadd095d608320268439c3a7ced569517ee8fcfc128bb0951c5e62e4988"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "失联格的 isGone 退回布尔的 lostWorkerGone（改前形态）",
+      "suite": "dist/test/test/integration/cancel-grace-unverifiable.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-177 L1：失联后取消，SIGTERM 之后判不了、忽略 SIGTERM ⇒ 不升级 SIGKILL、按记录结束 CLI、工作进程仍在、退 0 且什么都不收",
+        "EV-177 L2：失联后取消，入格之后首检即判不了 ⇒ 一个信号都不发，播报不说「发送 （无）」，退 0 且什么都不收"
+      ],
+      "firstLines": [],
+      "elapsed_s": 49,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "lostWorkerGoneJudgment 不报判不了",
+      "suite": "dist/test/test/integration/cancel-grace-unverifiable.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-177 W2：lostWorkerGoneJudgment——取不到 ⇒ unverifiable；同一进程 ⇒ false；不在 ⇒ true；布尔的 lostWorkerGone 不变",
+        "EV-177 L1：失联后取消，SIGTERM 之后判不了、忽略 SIGTERM ⇒ 不升级 SIGKILL、按记录结束 CLI、工作进程仍在、退 0 且什么都不收",
+        "EV-177 L2：失联后取消，入格之后首检即判不了 ⇒ 一个信号都不发，播报不说「发送 （无）」，退 0 且什么都不收"
+      ],
+      "firstLines": [],
+      "elapsed_s": 49,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "零信号判不了不单独播报（退回「发送 （无）」）",
+      "suite": "dist/test/test/integration/cancel-grace-unverifiable.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-177 L2：失联后取消，入格之后首检即判不了 ⇒ 一个信号都不发，播报不说「发送 （无）」，退 0 且什么都不收"
+      ],
+      "firstLines": [],
+      "elapsed_s": 44,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "宽限期满判不了不说明为何没升级",
+      "suite": "dist/test/test/integration/cancel-grace-unverifiable.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-177 L1：失联后取消，SIGTERM 之后判不了、忽略 SIGTERM ⇒ 不升级 SIGKILL、按记录结束 CLI、工作进程仍在、退 0 且什么都不收"
+      ],
+      "firstLines": [],
+      "elapsed_s": 44,
+      "also": []
+    }
+  ]
+}

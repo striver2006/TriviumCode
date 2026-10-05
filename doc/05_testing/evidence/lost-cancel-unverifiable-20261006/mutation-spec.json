@@ -1,0 +1,42 @@
+{
+  "targets": [
+    "src/trivium/run-protocol.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "失联格的 isGone 退回布尔的 lostWorkerGone（改前形态）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      isGone: () => lostWorkerGoneJudgment(p, r),\n",
+      "replace": "      isGone: () => lostWorkerGone(p, r),\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "lostWorkerGoneJudgment 不报判不了",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  if (m.identity === 'unverifiable') return 'unverifiable';\n  if (m.expected === null) return !m.alive;\n  return lostWorkerGoneFrom(m, m.expected);\n}\n\n/** `cancelRun`",
+      "replace": "  if (m.expected === null) return !m.alive;\n  return lostWorkerGoneFrom(m, m.expected);\n}\n\n/** `cancelRun`",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "零信号判不了不单独播报（退回「发送 （无）」）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    const head = t?.unverifiable && noSignalSent\n",
+      "replace": "    const head = false && noSignalSent\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "宽限期满判不了不说明为何没升级",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      : t?.unverifiable && !t.escalated\n",
+      "replace": "      : false && !t?.escalated\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    }
+  ]
+}

@@ -468,6 +468,31 @@ test('EV-176 W1：workerGoneForCancel——取不到 ⇒ unverifiable；同一�
   }
 });
 
+test('EV-177 W2：lostWorkerGoneJudgment——取不到 ⇒ unverifiable；同一进程 ⇒ false；不在 ⇒ true；布尔的 lostWorkerGone 不变', T, async () => {
+  // 动态导入：与文件头同一约定（静态导入新导出会让移植到改前树的测试文件整份加载失败）
+  const rp = (await import('../../src/trivium/run-protocol.js')) as unknown as Record<string, unknown>;
+  const judgment = rp.lostWorkerGoneJudgment as (pid: number, rec: { legacy: string; canonical: string }) => Promise<unknown>;
+  const lostWorkerGone = rp.lostWorkerGone as (pid: number, rec: { legacy: string; canonical: string }) => Promise<boolean>;
+  assert.equal(typeof judgment, 'function', '应导出 lostWorkerGoneJudgment');
+  const owned: Proc[] = [];
+  try {
+    const w = await spawnMarked('w2', 'default', owned);
+    const rec = await fixtureRecord(w.pid);
+    assert.equal(await judgment(w.pid, rec), false, '同一进程');
+    assert.equal(await judgment(DEAD_PID, rec), true, '不在');
+    const stub = stubPsFailure('both', { pids: [w.pid] });
+    try {
+      assert.equal(await judgment(w.pid, rec), 'unverifiable', '活着而取不到启动时刻应判不了');
+      assert.equal(await lostWorkerGone(w.pid, rec), false, '布尔口径不变：判不了即「仍在」');
+      assert.ok(stub.blocked > 0, '桩应拦到');
+    } finally {
+      stub.restore();
+    }
+  } finally {
+    await killAll(owned);
+  }
+});
+
 // ─────────────────────────── K 系列：cancelRun 主路径 ───────────────────────────
 
 /** 一格：起工作进程（与可选的 CLI）、预置运行、装桩与信号包装、跑 cancelRun，收尾按序还原 */
@@ -476,6 +501,8 @@ async function kCell(
   o: {
     program: keyof typeof PROGRAMS;
     cli?: boolean;
+    /** 把 status.json 摆成 `--wait` 判过失联的样子（EV-177：入失联后取消那一格 `cancelLostWorker`） */
+    lost?: boolean;
     stub?: (pid: number) => PsStub;
     kills?: (pid: number, stub: PsStub | null) => Parameters<typeof watchKills>[1];
   },
@@ -494,6 +521,14 @@ async function kCell(
     const rec = await fixtureRecord(w.pid);
     const runId = `R-EV176-${name}`;
     const seeded = await seedCancelRun(ctx, runId, w, rec, cli ?? undefined);
+    if (o.lost) {
+      const s = JSON.parse(await fs.readFile(seeded.statusPath, 'utf8')) as RunStatus;
+      s.phase = 'failed';
+      s.exit_code = EXIT.FAIL;
+      s.message = 'worker_lost（heartbeat_stale）';
+      s.lost = { reason: 'heartbeat_stale', at: new Date().toISOString() };
+      await fs.writeFile(seeded.statusPath, JSON.stringify(s, null, 2) + '\n');
+    }
     const lockBefore = await fileFacts(seeded.lockPath);
     stub = o.stub ? o.stub(w.pid) : null;
     kills = watchKills(w.pid, o.kills ? o.kills(w.pid, stub) : {});
@@ -636,5 +671,52 @@ test('EV-176 K-E1（回归）：入口即判不了 ⇒ 69，正文与 EV-175 逐
         '之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI',
     );
     assert.deepEqual(sent, []);
+  });
+});
+
+// ─────────────────────────── L 系列：失联后取消那一格（EV-177 ①） ───────────────────────────
+
+/** 失联那一格未确认退出：退 0（EV-177 ② 不改）、归档 / 登记 / 锁 / 闸门原样、status.json 仍是失联判定时的样子 */
+async function assertLostUntouched(ctx: Ctx, seeded: Seeded, runId: string, io: Awaited<ReturnType<typeof captureIO>>, lockBefore: string | null) {
+  assert.equal(io.value, EXIT.OK, `失联那一格未确认退出仍退 0（EV-177 ② 不改）：${String((io.error as Error | undefined)?.message)}\nstderr=${io.err}`);
+  assert.deepEqual(await facts(ctx, seeded, runId), {
+    phase: 'failed', lock: true, gate: 'running', carrier: true, archive: 'running', task: 'running',
+  }, '未确认退出：归档、登记、锁、闸门、载体都不动；status.json 保持失联判定时的 failed');
+  assert.equal(await fileFacts(seeded.lockPath), lockBefore, '锁文件内容与身份不动');
+  assert.match(io.out, /未能确认工作进程 \d+ 退出，归档与主题锁未动/);
+}
+
+test('EV-177 L1：失联后取消，SIGTERM 之后判不了、忽略 SIGTERM ⇒ 不升级 SIGKILL、按记录结束 CLI、工作进程仍在、退 0 且什么都不收', T, async () => {
+  await kCell('L1', {
+    program: 'ignore',
+    cli: true,
+    lost: true,
+    stub: (pid) => stubPsFailure('both', { pids: [pid], startArmed: false }),
+    kills: (_pid, stub) => ({ onTerm: () => stub!.arm() }),
+  }, async ({ ctx, runId, w, cli, seeded, io, sent, stub, lockBefore, ms }) => {
+    assert.ok(stub!.blocked > 0, 'SIGTERM 之后应拦到（桩自证）');
+    assert.deepEqual(sent, ['SIGTERM'], '不向身份判不了的进程发 SIGKILL');
+    assert.ok(ms >= 4_900, `应等满宽限期（${ms} ms）`);
+    assert.match(io.err, /判不了身份：不升级 SIGKILL/);
+    assert.ok(!io.err.includes('发送 SIGKILL'), `不能说发了 SIGKILL：${io.err}`);
+    await assertLostUntouched(ctx, seeded, runId, io, lockBefore);
+    await within(cli!.exited, 10_000, 'CLI 组应照 D4 按记录结束');
+    assert.ok(isAlive(w.pid), '工作进程应仍活着（忽略 SIGTERM、没收到 SIGKILL）');
+  });
+});
+
+test('EV-177 L2：失联后取消，入格之后首检即判不了 ⇒ 一个信号都不发，播报不说「发送 （无）」，退 0 且什么都不收', T, async () => {
+  await kCell('L2', {
+    program: 'ignore',
+    lost: true,
+    stub: (pid) => stubPsFailure('both', { pids: [pid], allowFirst: 1 }),
+  }, async ({ ctx, runId, w, seeded, io, sent, stub, lockBefore }) => {
+    assert.equal(stub!.allowed, 1, '入格那次判定应放过（桩自证）');
+    assert.ok(stub!.blocked > 0, '入格之后应拦到（桩自证）');
+    assert.deepEqual(sent, [], '一个信号都不应发');
+    assert.match(io.err, /判不了它是不是 status\.json 记录的那个工作进程：未发信号，未能确认退出/);
+    assert.ok(!io.err.includes('发送 （无）'), `零信号不能说「发送 （无）」：${io.err}`);
+    await assertLostUntouched(ctx, seeded, runId, io, lockBefore);
+    assert.ok(isAlive(w.pid), '工作进程应仍活着');
   });
 });

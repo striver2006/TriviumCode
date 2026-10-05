@@ -1,0 +1,35 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=3）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+{
+  "总数": 4,
+  "咬住": 4,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "失联格的 isGone 退回布尔的 lostWorkerGone（改前形态）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "lostWorkerGoneJudgment 不报判不了",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M3",
+      "desc": "零信号判不了不单独播报（退回「发送 （无）」）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "宽限期满判不了不说明为何没升级",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

@@ -2,8 +2,10 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.37
+> - **当前版本**：v1.1.39
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.39（2026-10-06）随设计 v1.3.101（失联取消判不了不升级，EV-177 ①）同步：已知缺口表「失联后取消与主路径的两处不同口径」改为 ① 已收口（`cancelLostWorker` 的 `isGone` 改用三态的 `lostWorkerGoneJudgment`），只剩 ② 未确认退 0。本批未走双审。
+> - **变更说明**：v1.1.38（2026-10-06）随设计 v1.3.96（run_id 同秒避让，EV-147）同步：「`run_id` 生成」一段补 `allocateRunId` 的避让判据与「run_id 不再保证等于开始时刻」，锚点随 `meta.ts` 加一行导入改为 :37；模块表 `meta.ts` 行补 `allocateRunId()`。本批未走双审（v1.1.38 这一笔随 EV-147 改了正文、当时漏记，v1.1.39 时补记）。行数列未重核。
 > - **变更说明**：v1.1.37（2026-10-05）随设计 v1.3.91（目标回退取计划定稿，EV-212）同步：3.3 计算段那一段补任务目标第三级的取件——`resolveTaskGoal` 第 4 个必填参数「怎么取计划定稿」，代码阶段传已算好的 `resolvePlanFinal` 结果、bug 阶段第三级走到时现算，留痕读不出时不取、告警丢弃。行数列未重核。
 > - **变更说明**：v1.1.36（2026-10-05）随设计 v1.3.90（计划定稿复核，EV-215）同步：3.4「计划定稿校验」之后新增「代码阶段复核」一段（`acceptedIdsForNextPlan` 与两个小函数为闸门与复核共用、`recheckPlanFinal` 的四种结论、`planFinalRecheckWarning` 与 `composeMustReadWarnings`）。行数列未重核。
 > - **变更说明**：v1.1.35（2026-10-05）随设计 v1.3.89（计划定稿强制产出，EV-214）同步：3.4「`gate --check` 的失败码」表补 `missing_next_plan` / `next_plan_missing_ids` 两个失败码与 `next_plan_unchecked` 告警，其后新增「计划定稿校验」一段（`checkNextPlan`、必填可为 null 的 `planFinal`、`loadRoundReviews` 派生、基准轮次与核对哪一份、`prepareRun` 写 `plan_final_check`）。表头「11 个失败码」与行数列未重核。
@@ -679,7 +681,7 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 | **遗留锁回收仍可能挪走活锁的剩余格** | v1.1.22 起回收者之间按遗留锁身份认领互斥，回收者对回收者的竞争已关死（实施期 e149 形状压测 1200 轮 0 双持有）。剩下三格：①认领之后、rename 之前被**非回收者**删掉并重建（被误判遗留的活持有者自己 release——只在 `heartbeat_dead` / `runTerminal` 下可达）；②`fstat` 失败取不到身份，无法认领，退回只靠预检；③认领者中途崩溃、认领残留 10 s 以上时，两个回收者同时按年龄清理认领的竞争。另有④崩溃残件（`.reclaim-*` / `.stale-*` / `.tmp-*`）没有通用清扫，只在同身份后来者撞上时机会性清理，残件不会被 `hooks.ts` 的锁目录枚举误读成锁（按 `.lock` 后缀过滤），只是垃圾文件。同族：`release()` 的「读 → 比 → 删」在「活持有者被判遗留、锁被回收并由别人重建」时会删掉别人的锁 | 命中时两个持有者并存；复验不符后的 `link` 放回会失败并告警「挪走了一把新建的锁且放不回」，不再静默。三格都要求罕见前提（误判活持有者、stat 失败、回收中途崩溃），暂缓（EV-174；读数见锁回收误判已删锁文件实施报告） |
 | ~~**其余身份消费方把「活着而取不到启动时刻」当「不在」**~~ | ~~`processMatchesRecord` 在进程活着而 `ps` 取不到启动时刻时返回 `sameProcess: false`，「确认不符」与「判不了」压成一个布尔；`interpretStatus` 情形 C、`workerConfirmedGone`、`workerStillAlive`、`cancelRun` 主路径按「不在 / 失联」处置~~ | **已解决（2026-09-30，EV-175，v1.1.24）**：`RecordMatch` 加可选三态字段 `identity`，五处只在 `unverifiable` 时走新分支（情形 A 同活着、情形 C 按心跳、`workerConfirmedGone` 不算已不在、`workerStillAlive` 当仍在、`cancelRun` 主路径什么都不动并以 69 退出），见 4.2「`cancelRun` 主路径判不了身份」。改前构建上 14 格零配额读数（`--wait` 写 failed 并抹凭据、到期整删活 worker 的目录、`--cancel` 只清不杀后同主题双跑）改后逐格等于不拦时的结局；情形 A 生产形状本就不受影响。残余：`ps` 持续取不到时工具自己结束不了这一轮（`--cancel` 每次 69，出路是正文里的手工结束），见下一行与 BACKLOG EV-176 |
 | ~~**`--cancel` 发过 SIGTERM 之后、宽限期里 `ps` 转坏仍回收锁**~~ | ~~主路径已判同一进程、发了 SIGTERM；宽限期轮询 `workerGoneForCancel` 有意不读 `identity`，取不到即按已退出停止升级；收尾经 `scrubAdmission` 不抹、不补收 run.json，但 status.json 写 cancelled、锁与闸门照常回收~~ | **已解决（v1.1.25，EV-176）**：`workerGoneForCancel` 三态、`terminateProcessGroup` 认得判不了（首检判不了零信号、期满判不了不升级、SIGKILL 后等确认），主路径未确认退出（仍是同一进程或判不了）⇒ 69、不收尾；零信号形态（入口之后首检才取不到）一并修掉，「发送 SIGTERM」只在确实要发时播报 |
-| **失联后取消与主路径的两处不同口径** | `cancelLostWorker` 的 `isGone` 是 `lostWorkerGone`（布尔，取不到即「仍在」），宽限期满最后一次判不了照样升级 SIGKILL；未确认退出退 0（EV-146 D6「与主路径同口径」的前提已不成立） | 归档与锁都以确认退出为前提，不会放出活锁；误伤要 5 s 内 pid 被复用且取不到新进程的启动时刻，极罕见。改①要另配三态判据（`lostWorkerGone` 不改）、改②要动 EV-146 的退出码与用例，暂缓（EV-177） |
+| **失联后取消与主路径的口径差**（① 已收口） | ~~`cancelLostWorker` 的 `isGone` 是布尔，宽限期满判不了照样升级 SIGKILL~~：设计 v1.3.101 起改用三态的 `lostWorkerGoneJudgment`，判不了不升级、首检判不了零信号（EV-177 ①）。**剩下的一处**：未确认退出退 0（EV-146 D6「与主路径同口径」的前提已不成立），零信号那一格仍照 D4 按记录结束 CLI | 归档与锁都以确认退出为前提，不会放出活锁。改②要动 EV-146 的退出码与用例，用户 2026-10-05 定本批不做（EV-177 ②） |
 | **取消落在收尾段时归档可能不是 `cancelled`** | 两侧 CLI 已结束、worker 在解析与归档时，信号到达与 SIGTERM 处理器执行之间至多一次事件循环迭代，其间已就绪的回调可先行（没有处理器时这段窗口为零）；按代码论证，造不出确定时序 | 最坏：worker 把 run.json 与 status.json 都写成终态 ⇒ `--cancel` 终态早退，归档记 `success` / `failed`；只写了 run.json ⇒ status.json 被写成 `cancelled`，两边劈叉。如实保留（取消够不到审查员CLI计划 r2 §4.4 a″） |
 | **协议片段无升级路径** | `appendSnippet`（`init.ts:63-66`）见标记即跳过，与 hooks 的「按名替换」不一致 | 已初始化项目的协议片段永不更新。实测某项目落后 18 行 |
 | **人工审批无机械边界** | `recordApproval`（`approval.ts:54-86`）无任何调用者身份校验；skill 的 `allowed-tools` 预批准了 `Bash(.trivium/bin/trivium:*)` | Driver 自己一条命令就能关掉等人工审批的闸门。曾加过一次性确认码，因明文经 stdout 由 Driver 转述、构不成边界而**主动移除**——「虚假的安全感比没有护栏更糟」。真解需要宿主提供不经过模型的带外通道 |

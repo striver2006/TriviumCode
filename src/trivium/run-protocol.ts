@@ -1506,7 +1506,8 @@ export async function classifyLostCancel(s: RunStatus): Promise<LostCancelCell> 
  * 立本判据时（EV-146），共享的 `workerGoneForCancel` 把「取不到」并入「不是同一进程」算已退出，而本格随后要补收 run.json、
  * 回收锁，那样会在 worker 其实还活着时破坏 EV-142「没有另一个写者」的前提，所以另立了严格判据。EV-176 起共享判据已三态化，
  * 对判不了返回 `'unverifiable'`、不算已退出；本格仍保留自己的判据（布尔，判不了即「仍在」）——两者对「判不了算不算已退出」
- * 已一致，差别只在宽限期满判不了时是否升级 SIGKILL 与未确认时的退出码，登记在 BACKLOG EV-177（代码双审 r1 CODEX-03）。
+ * 已一致。宽限期满判不了是否升级 SIGKILL 这一处差别已由 EV-177 ① 收口（本格结束工作进程改用三态的 `lostWorkerGoneJudgment`，
+ * 它与 `lostWorkerGone` 共用本函数；`lostWorkerGone` 的布尔口径只剩抛错后的复判在用）；未确认时的退出码仍与主路径不同（EV-177 ②，代码双审 r1 CODEX-03）。
  * 与 EV-154 代码双审 r1 GLM-01 对 CLI 那一侧的收紧同一取向：轮询中判不了不算已不在。
  */
 export function lostWorkerGoneFrom(p: { alive: boolean; startedAt: string | null }, expectedStartedAt: string): boolean {
@@ -1515,7 +1516,8 @@ export function lostWorkerGoneFrom(p: { alive: boolean; startedAt: string | null
 }
 
 /**
- * `lostWorkerGoneFrom` 接上 `processMatchesRecord`：`terminateProcessGroup` 的 `isGone` 与抛错后的复判都用它。
+ * `lostWorkerGoneFrom` 接上 `processMatchesRecord`：`cancelLostWorker` 里 `terminateProcessGroup` 抛错后的复判用它
+ * （`isGone` 自 EV-177 ① 起改用三态的 `lostWorkerGoneJudgment`）。
  * 取到的形态与记录值出自同一 basis（EV-158）：判格按规范化判了 `alive`，这里也按规范化判退出，不会拿缺省形态去配规范化记录。
  * `expected` 为 null 只可能出自「判格之后记录被改成两种形态都没有」，按严格判据无从比较：只认「不在」。
  */
@@ -1525,6 +1527,22 @@ export async function lostWorkerGone(
   o: { canonicalStartTimeOf?: (pid: number) => Promise<string | null> } = {},
 ): Promise<boolean> {
   const m = await processMatchesRecord(pid, rec, o);
+  if (m.expected === null) return !m.alive;
+  return lostWorkerGoneFrom(m, m.expected);
+}
+
+/**
+ * 失联那一格 `terminateProcessGroup` 的 `isGone`（EV-177 ①）：判据同 `lostWorkerGone`，只把「活着而取不到启动时刻」
+ * （`identity === 'unverifiable'`）报成 `'unverifiable'`——首检判不了一个信号都不发、宽限期满判不了不升级 SIGKILL，
+ * 与主路径的 `workerGoneForCancel`（EV-176）同口径。`lostWorkerGone` 本身不动：抛错后的复判仍用它的布尔口径（判不了即「仍在」）。
+ */
+export async function lostWorkerGoneJudgment(
+  pid: number,
+  rec: RecordedStart,
+  o: { canonicalStartTimeOf?: (pid: number) => Promise<string | null> } = {},
+): Promise<GoneJudgment> {
+  const m = await processMatchesRecord(pid, rec, o);
+  if (m.identity === 'unverifiable') return 'unverifiable';
   if (m.expected === null) return !m.alive;
   return lostWorkerGoneFrom(m, m.expected);
 }
@@ -1617,7 +1635,7 @@ async function finalizeGoneWorker(ctx: Ctx, runId: string, s: RunStatus, cell: {
  * **不做**：status.json 一个字节都不写（phase / message 不改写、CLI 记录也不清——终态分支不追溯改写，也让本格可重入：
  * 未确认退出后再跑一次仍入本格）；闸门不动（`--wait` 判失联时已回收）；凭据副本不抹（留给会话启动清扫，EV-157 范围不动）。
  * 退出码两种结局都是 0（与 EV-146 当时的主路径同口径，D6），结局写在 stdout 的结论句里。EV-176 起主路径未确认退出以 69 退出、
- * 不收尾；本格仍退 0（宽限期满判不了时仍升级 SIGKILL 也与主路径不同），两处口径差登记 BACKLOG EV-177，暂缓。
+ * 不收尾；本格仍退 0（EV-177 ②，用户定暂不改）。宽限期满判不了时不升级 SIGKILL、首检判不了零信号，与主路径同口径（EV-177 ①）。
  */
 async function cancelLostWorker(
   ctx: Ctx,
@@ -1640,10 +1658,11 @@ async function cancelLostWorker(
   }
 
   // 2. 按组结束工作进程并确认退出
-  let t: { gone: boolean; escalated: boolean; signals: NodeJS.Signals[] } | null;
+  let t: TerminateResult | null;
   try {
     t = await (o.terminateWorker ?? ((p: number, r: RecordedStart) => terminateProcessGroup(p, {
-      isGone: () => lostWorkerGone(p, r),
+      // 三态：判不了不算已退出、也不升级 SIGKILL（EV-177 ①）
+      isGone: () => lostWorkerGoneJudgment(p, r),
       graceMs: WORKER_TERM_GRACE_MS,
       killWaitMs: ORPHAN_KILL_CONFIRM_MS,
       pollMs: 250,
@@ -1671,8 +1690,15 @@ async function cancelLostWorker(
   } else if (gone) {
     step(`工作进程组 ${pid} 已结束（${sent}）`);
   } else {
+    // 判不了的两种（EV-177 ①）：零信号（首检即判不了）不能说「发送 （无）」；宽限期满判不了要说清为什么没升级
+    const head = t?.unverifiable && noSignalSent
+      ? `取不到工作进程 ${pid} 的启动时刻（ps 未返回），判不了它是不是 status.json 记录的那个工作进程：未发信号，未能确认退出`
+      : t?.unverifiable && !t.escalated
+        ? `已向工作进程组 ${pid} 发送 ${sent}，宽限 ${WORKER_TERM_GRACE_MS / 1000} s 期满时取不到它的启动时刻、判不了身份：` +
+          '不升级 SIGKILL（不向身份判不了的进程发），未能确认退出'
+        : `已向工作进程组 ${pid} 发送 ${sent}，未能确认退出`;
     warn(
-      `已向工作进程组 ${pid} 发送 ${sent}，未能确认退出：归档 run.json、主题任务文件的运行登记与主题锁都不动（它若还活着就是写者）。` +
+      `${head}：归档 run.json、主题任务文件的运行登记与主题锁都不动（它若还活着就是写者）。` +
         '可以再跑一次 --cancel（仍会入这一格，再次尝试结束）；若改为在终端手工结束它，之后再跑 --cancel 会判它已不在' +
         '（gone 格），按前提补收归档 run.json 与运行登记（EV-159）',
     );

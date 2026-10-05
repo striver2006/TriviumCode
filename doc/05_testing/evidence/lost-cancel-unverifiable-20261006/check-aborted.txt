@@ -1,0 +1,1066 @@
+
+> triviumcode@0.1.0 check
+> npm run typecheck && npm run build && npm test
+
+
+> triviumcode@0.1.0 typecheck
+> tsc --noEmit
+
+
+> triviumcode@0.1.0 build
+> node scripts/build.mjs
+
+构建标识：231cf8a（作用面内有未提交改动），inputs 11f049386d8b
+
+  skills/dual-critic/scripts/trivium.cjs  1.5mb ⚠️
+
+⚡ Done in 25ms
+
+  dist/install.cjs  288.1kb
+
+⚡ Done in 5ms
+
+> triviumcode@0.1.0 pretest
+> node scripts/build.mjs --with-tests
+
+构建标识：231cf8a（作用面内有未提交改动），inputs 11f049386d8b
+
+  skills/dual-critic/scripts/trivium.cjs  1.5mb ⚠️
+
+⚡ Done in 22ms
+
+  dist/install.cjs  288.1kb
+
+⚡ Done in 6ms
+
+  dist/test/test/integration/gate-loop.test.js        560.2kb
+  dist/test/test/unit/hooks.test.js                   293.7kb
+  dist/test/src/trivium/review.js                     254.7kb
+  dist/test/src/trivium/run-protocol.js               245.5kb
+  dist/test/src/trivium/cli.js                        242.4kb
+  dist/test/test/integration/run-protocol.test.js     227.2kb
+  dist/test/src/trivium/probes/zcode.js               213.5kb
+  dist/test/src/trivium/hooks.js                      211.4kb
+  dist/test/test/unit/registry-parity.test.js         208.1kb
+  dist/test/src/trivium/adapters/zcode.js             193.6kb
+  dist/test/src/trivium/gate.js                       175.3kb
+  dist/test/src/trivium/adapters/base.js              172.1kb
+  dist/test/test/unit/lock.test.js                    164.7kb
+  dist/test/test/integration/fault-injection.test.js  159.7kb
+  dist/test/src/trivium/probes/claude.js              151.7kb
+  dist/test/test/unit/zcode-provider-env.test.js      151.6kb
+  dist/test/src/trivium/types.js                      151.3kb
+  dist/test/test/unit/preflight.test.js               151.2kb
+  dist/test/test/unit/zcode-model-selection.test.js   143.2kb
+  dist/test/test/unit/gate.test.js                    138.3kb
+  ...and 225 more output files...
+
+⚡ Done in 75ms
+
+> triviumcode@0.1.0 test
+> node --test "dist/test/**/*.test.js"
+
+✔ §3.2.2 扫描判据：每一处 git 恢复类文案都要在同一语句组内提示「终端」（豁免须具名） (73.856375ms)
+✔ 变异腿：从 hooks.ts 删去「终端」提示，判据必须报出两处已知站点 (39.062208ms)
+✔ 报错行号是原文行号：剥注释保留换行（代码双审 r2 CODEX-05） (0.355791ms)
+✔ 判据认得带取值型选项的 git 写法与全部恢复类子命令（代码双审 r2 CODEX-07） (0.454083ms)
+✔ 语句组：跨行 + 拼接的文案作为一组判定，「终端」出现在组外不算数（代码双审 r2 GLM-01 宽松方向） (0.307333ms)
+✔ 语句组：跨行模板串与数组 join 各自整体成组（代码双审 r3 CODEX-02 ≡ AGY-01 ≡ GLM-03） (0.197667ms)
+✔ 防空转腿：剥注释真的剥掉了注释，且不误伤字符串 / 正则字面量 (0.345125ms)
+✔ 每个以 === true 判定的旗标都登记在 BOOLEAN_FLAGS 里 (1.128292ms)
+✔ BOOLEAN_FLAGS 里没有死条目：每一项都有判据 (0.098ms)
+✔ parseArgs 对布尔旗标的两条路径都改了：不吞 token、= 只认 true/false (0.088ms)
+✔ 准入脚本的结构化臂契约：经共用出口取 schema，不得再造内联迷你 schema（EV-74 计划 §5 用例 5） (3.785291ms)
+✔ 防空转腿：「不得再造内联迷你 schema」的正则确实抓得住 EV-74 之前的旧形态 (0.207417ms)
+✔ 资产契约：指挥产出工件的祈使句不得写死角色名 (65.60475ms)
+✔ 资产契约：裁决件模板必须留出角色占位符，SKILL 必须指明当轮 Driver (15.960708ms)
+✔ 资产契约：判据自测——注入写死的角色名，必须被真实扫描管线抓住 (0.428917ms)
+✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (1.618334ms)
+▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标
+  ✔ doc/02_design/README.md (0.5205ms)
+  ✔ doc/03_api/README.md (0.111292ms)
+  ✔ doc/04_development/README.md (0.101709ms)
+  ✔ doc/05_testing/README.md (1.006084ms)
+  ✔ doc/06_deployment/README.md (0.14675ms)
+  ✔ doc/07_manuals/README.md (0.1045ms)
+✔ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (2.245166ms)
+▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序
+  ✔ doc/02_design/README.md (0.396625ms)
+  ✔ doc/03_api/README.md (0.583ms)
+  ✔ doc/04_development/README.md (1.447834ms)
+  ✔ doc/05_testing/README.md (1.056917ms)
+  ✔ doc/06_deployment/README.md (0.177667ms)
+  ✔ doc/07_manuals/README.md (0.098916ms)
+✔ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (4.320333ms)
+✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.268792ms)
+✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.192291ms)
+✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.2355ms)
+✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.148667ms)
+✔ B5 同一文件两条条目 ⇒ duplicate (0.086ms)
+✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.190875ms)
+✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.073209ms)
+✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.145958ms)
+✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.114125ms)
+✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.057125ms)
+✔ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02） (0.145625ms)
+✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.051792ms)
+✔ 论域：四家载体 × 七条命令，且覆盖全部可作 Driver 的 Agent (0.63025ms)
+✔ EV-131：命令描述与一级标题不写死任何已登记 Agent 的产品名（缺省审核者随当轮 Driver 变） (0.40525ms)
+✔ 源 → 产物零 diff（改了源请跑 npm run render） (14.447042ms)
+✔ 没有残留产物：entry/ 下只有渲染出来的文件，top 布局的 skill 目录都来自契约 (3.903625ms)
+✔ 参数写法：substitute 载体用 $ARGUMENTS；transcribe 载体一处都不许有，且两段规约完整在场 (0.69975ms)
+✔ --driver <自家 id>：次数等于应注入的调用数，且不出现别家 id (1.135083ms)
+✔ 认领步骤：plan / bug / run 在「写原稿」之前；run 在 S5 之前认领 code；命令 C 不认领 (0.255541ms)
+✔ 命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2） (0.147334ms)
+✔ 命令 B/C/D 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-126） (0.539042ms)
+✔ 护栏注入段与 r10 §3.1.3 的表一致 (0.251667ms)
+✔ EV-132：L2 事后覆盖面的两族失实措辞在所有用户可见面都不再出现 (2.70975ms)
+✔ EV-132：L2 护栏段的审批两格带命令限定（命令 A 没有审批停点），且不把事后核对说成「拦下」 (0.251583ms)
+✔ EV-132 ② 折中版：L2 闸门期那一条写「不会让审批失败、审批时列出改动」，不再说无机制发现，也不就拦不拦表态 (0.347042ms)
+✔ EV-132 ② 折中版：driver.snippet 的 L2 事后覆盖面同步改写（旧版指纹仍在已知表里，改回旧句不会让 init.test 变红，只能在这里钉） (0.8485ms)
+✔ EV-132 ② 折中版：各载体的 dual-approve 都交代摘要只告知、不改变审批结论（计划双审 CODEX-06） (0.1255ms)
+✔ EV-134：命令 B / C / D 的写裁决件一步交代 addresses 填审查文档文件名、不是意见编号 (0.177625ms)
+✔ 调用写法按载体渲染：codex 用 $名字，另两家与 claude 各按实测写法 (0.20475ms)
+✔ 模型与选侧取值由注册表派生，不给当轮 Driver 自己留槽位（EV-61） (0.62475ms)
+✔ 调用写法只登记在注册表：载体 yaml 里再写 invocation 当场报错；产物用的是注册表的值（M10b 第 3 步） (14.446792ms)
+✔ 渲染器自测：未知变量与缺失片段当场抛错，不静默留空 (0.176167ms)
+▶ T1 每条当前版本指针：不写死版本号、带标记短语、仍链接目标文档
+  ✔ P1 doc/02_design/README.md「**Driver-DualCritic 主攻双审流水线总体架构与详细设计**」 (1.0185ms)
+  ✔ P2 doc/02_design/README.md「**编排器详细设计说明书**」 (0.129584ms)
+  ✔ P3 doc/07_manuals/README.md「**使用手册**」 (0.074875ms)
+  ✔ P4 doc/03_api/PROTOCOL_dual_critic_relay.md「第 6、7、9 章与」 (0.218333ms)
+  ✔ P5 doc/07_manuals/QUICKSTART.md「依据 [设计」 (0.143542ms)
+  ✔ P6 doc/07_manuals/MANUAL_user.md「16.1 与 §24 台账」 (0.268333ms)
+  ✔ P7 doc/01_requirements/PRD_driver_dual_critic.md「五条演进需求的设计依据见」 (0.316667ms)
+  ✔ P8 .reviews/README.md「规范依据：」 (0.101959ms)
+  ✔ P9 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md「> - **需求依据**」 (3.732083ms)
+✔ T1 每条当前版本指针：不写死版本号、带标记短语、仍链接目标文档 (6.832542ms)
+✔ T2 带标记短语的行都在清单里，清单项的文件都在门面论域内 (15.190959ms)
+✔ T3 历史语境不误报：样本行确含版本号，不与清单项同行，不被全局规则命中 (8.735292ms)
+✔ T5 全局规则：门面论域里没有自指版本与写死的增长型计数 (14.284625ms)
+✔ T4 基准：改后形态零问题（变更记录形态、「一个模块」、只引述标记短语的叙述句都不报） (0.104541ms)
+✔ T4 写回版本号 ⇒ forbidden (0.095292ms)
+✔ T4 回到 79d2ed4 形态（版本号 + 无标记 + 无 PRD 链接）⇒ 三类同时报 (0.046917ms)
+✔ T4 锚点找不到 ⇒ anchor_missing；锚点重复 ⇒ anchor_ambiguous；文件不存在 ⇒ file_missing (0.0425ms)
+✔ T4 删掉链接 ⇒ link_missing；删掉标记短语 ⇒ marker_missing (0.043708ms)
+✔ T4 从清单删掉一项 ⇒ unlisted_marker；新增一行带标记短语的指针而不进清单 ⇒ unlisted_marker (0.085625ms)
+✔ T4 只引述标记短语、不带会升版文档链接的叙述句不报；带了就报（CODEX-06） (0.071875ms)
+✔ T4 清单项的文件不在论域内 ⇒ not_in_corpus (0.0275ms)
+✔ T4 全局规则：自指版本、阿拉伯与汉字数字的增长型计数都报 (0.112417ms)
+✔ T4 历史样本：版本号被删 ⇒ forbidden；与清单项同行 ⇒ sample_on_pointer (0.071042ms)
+✔ T4 论域规则：报告、证据、项目日志、参考答卷、演进设计不在论域内；根级门面文件在 (0.031459ms)
+✔ T4 候选路径：只收存在的根级门面文件，doc/ 递归展开 (0.077875ms)
+✔ T4 变更记录形态的识别 (0.023917ms)
+✔ 源码与测试里没有完整形态的凭据字面量（夹具一律运行时拼接） (270.638292ms)
+✔ 未初始化的项目（无 config.yaml）：守卫静默放行，不打扰协作者 (104.560083ms)
+✔ AGY-03：已初始化但 wrapper 被删或去掉执行位 → 拦截型 Hook 必须 exit 2，不得永真放行 (189.415708ms)
+✔ wrapper 就位时守卫把判定交给编排器本身 (1280.058875ms)
+✔ GLM-02：hook-pre-commit 不得靠前缀型 if 过滤（sh -c 包裹的提交会整个漏掉） (0.455708ms)
+✔ session-start 不是拦截型：任何情形都不得阻断会话 (183.949167ms)
+✔ 适配器写进 out/ 的每份原始日志都在 ORCHESTRATOR_LOG_FILES 里 (14.621875ms)
+✔ 补丁与 BRIEF 两个落点共用一套扫描判据（CODEX-07） (2.818125ms)
+✔ 清单里没有死条目：每一项都有适配器在写 (9.138208ms)
+✔ claude/dual-review-code：argument-hint 声明的旗标都在 --start 模板里有槽位 (1.485083ms)
+✔ claude/dual-review-code：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.074667ms)
+✔ claude/dual-review-code：模板要求把 resolve 输出的模型覆盖透传下去 (0.040125ms)
+✔ codex/dual-review-code：argument-hint 声明的旗标都在 --start 模板里有槽位 (0.133833ms)
+✔ codex/dual-review-code：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.04075ms)
+✔ codex/dual-review-code：模板要求把 resolve 输出的模型覆盖透传下去 (0.023416ms)
+✔ gemini/dual-review-code：argument-hint 声明的旗标都在 --start 模板里有槽位 (0.074458ms)
+✔ gemini/dual-review-code：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.032917ms)
+✔ gemini/dual-review-code：模板要求把 resolve 输出的模型覆盖透传下去 (0.032292ms)
+✔ glm/dual-review-code：argument-hint 声明的旗标都在 --start 模板里有槽位 (0.088542ms)
+✔ glm/dual-review-code：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.041041ms)
+✔ glm/dual-review-code：模板要求把 resolve 输出的模型覆盖透传下去 (0.026583ms)
+✔ claude/dual-review-plan：argument-hint 声明的旗标都在 --start 模板里有槽位 (0.051292ms)
+✔ claude/dual-review-plan：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.027875ms)
+✔ claude/dual-review-plan：模板要求把 resolve 输出的模型覆盖透传下去 (0.013625ms)
+✔ codex/dual-review-plan：argument-hint 声明的旗标都在 --start 模板里有槽位 (0.055625ms)
+✔ codex/dual-review-plan：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.0245ms)
+✔ codex/dual-review-plan：模板要求把 resolve 输出的模型覆盖透传下去 (0.018458ms)
+✔ gemini/dual-review-plan：argument-hint 声明的旗标都在 --start 模板里有槽位 (0.039625ms)
+✔ gemini/dual-review-plan：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.024791ms)
+✔ gemini/dual-review-plan：模板要求把 resolve 输出的模型覆盖透传下去 (0.013208ms)
+✔ glm/dual-review-plan：argument-hint 声明的旗标都在 --start 模板里有槽位 (0.042834ms)
+✔ glm/dual-review-plan：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.781958ms)
+✔ glm/dual-review-plan：模板要求把 resolve 输出的模型覆盖透传下去 (0.100417ms)
+✔ claude/dual-review-bug：argument-hint 声明的旗标都在 --start 模板里有槽位 (0.140792ms)
+✔ claude/dual-review-bug：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.096333ms)
+✔ claude/dual-review-bug：模板要求把 resolve 输出的模型覆盖透传下去 (0.047709ms)
+✔ codex/dual-review-bug：argument-hint 声明的旗标都在 --start 模板里有槽位 (0.205792ms)
+✔ codex/dual-review-bug：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.094958ms)
+✔ codex/dual-review-bug：模板要求把 resolve 输出的模型覆盖透传下去 (0.04025ms)
+✔ gemini/dual-review-bug：argument-hint 声明的旗标都在 --start 模板里有槽位 (0.126375ms)
+✔ gemini/dual-review-bug：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.081917ms)
+✔ gemini/dual-review-bug：模板要求把 resolve 输出的模型覆盖透传下去 (0.054041ms)
+✔ glm/dual-review-bug：argument-hint 声明的旗标都在 --start 模板里有槽位 (0.082416ms)
+✔ glm/dual-review-bug：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.276625ms)
+✔ glm/dual-review-bug：模板要求把 resolve 输出的模型覆盖透传下去 (0.063667ms)
+✔ claude/dual-review-code：正文要交代把 resolve 输出的 critics 透传下去 (0.074375ms)
+✔ claude/dual-review-code：正文不得指示 Driver 透传 --only（它已并入 critics） (0.134083ms)
+✔ codex/dual-review-code：正文要交代把 resolve 输出的 critics 透传下去 (0.035375ms)
+✔ codex/dual-review-code：正文不得指示 Driver 透传 --only（它已并入 critics） (0.029333ms)
+✔ gemini/dual-review-code：正文要交代把 resolve 输出的 critics 透传下去 (0.026792ms)
+✔ gemini/dual-review-code：正文不得指示 Driver 透传 --only（它已并入 critics） (0.030916ms)
+✔ glm/dual-review-code：正文要交代把 resolve 输出的 critics 透传下去 (0.028375ms)
+✔ glm/dual-review-code：正文不得指示 Driver 透传 --only（它已并入 critics） (0.033583ms)
+✔ claude/dual-review-plan：正文要交代把 resolve 输出的 critics 透传下去 (0.027333ms)
+✔ claude/dual-review-plan：正文不得指示 Driver 透传 --only（它已并入 critics） (0.027875ms)
+✔ codex/dual-review-plan：正文要交代把 resolve 输出的 critics 透传下去 (0.02925ms)
+✔ codex/dual-review-plan：正文不得指示 Driver 透传 --only（它已并入 critics） (0.031333ms)
+✔ gemini/dual-review-plan：正文要交代把 resolve 输出的 critics 透传下去 (0.027125ms)
+✔ gemini/dual-review-plan：正文不得指示 Driver 透传 --only（它已并入 critics） (0.025917ms)
+✔ glm/dual-review-plan：正文要交代把 resolve 输出的 critics 透传下去 (0.026209ms)
+✔ glm/dual-review-plan：正文不得指示 Driver 透传 --only（它已并入 critics） (0.027542ms)
+✔ claude/dual-review-bug：正文要交代把 resolve 输出的 critics 透传下去 (0.031125ms)
+✔ claude/dual-review-bug：正文不得指示 Driver 透传 --only（它已并入 critics） (0.029833ms)
+✔ codex/dual-review-bug：正文要交代把 resolve 输出的 critics 透传下去 (0.029875ms)
+✔ codex/dual-review-bug：正文不得指示 Driver 透传 --only（它已并入 critics） (0.048ms)
+✔ gemini/dual-review-bug：正文要交代把 resolve 输出的 critics 透传下去 (0.031625ms)
+✔ gemini/dual-review-bug：正文不得指示 Driver 透传 --only（它已并入 critics） (0.101333ms)
+✔ glm/dual-review-bug：正文要交代把 resolve 输出的 critics 透传下去 (0.042ms)
+✔ glm/dual-review-bug：正文不得指示 Driver 透传 --only（它已并入 critics） (0.030542ms)
+✔ claude/dual-run：正文要交代把 resolve 输出的 critics 透传下去 (0.030292ms)
+✔ claude/dual-run：正文不得指示 Driver 透传 --only（它已并入 critics） (0.02675ms)
+✔ codex/dual-run：正文要交代把 resolve 输出的 critics 透传下去 (0.0275ms)
+✔ codex/dual-run：正文不得指示 Driver 透传 --only（它已并入 critics） (0.045666ms)
+✔ gemini/dual-run：正文要交代把 resolve 输出的 critics 透传下去 (0.030708ms)
+✔ gemini/dual-run：正文不得指示 Driver 透传 --only（它已并入 critics） (0.03875ms)
+✔ glm/dual-run：正文要交代把 resolve 输出的 critics 透传下去 (0.026334ms)
+✔ glm/dual-run：正文不得指示 Driver 透传 --only（它已并入 critics） (0.025125ms)
+✔ claude/dual-run：正文交代把 resolve 输出的 allow_single 透传下去 (0.067833ms)
+✔ claude/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） (0.344459ms)
+✔ claude/dual-run：交代 resolve 输出的 notes 要逐条念给用户 (0.048708ms)
+✔ claude/dual-run：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.09925ms)
+✔ codex/dual-run：正文交代把 resolve 输出的 allow_single 透传下去 (0.029959ms)
+✔ codex/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） (0.0485ms)
+✔ codex/dual-run：交代 resolve 输出的 notes 要逐条念给用户 (0.027083ms)
+✔ codex/dual-run：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.049417ms)
+✔ gemini/dual-run：正文交代把 resolve 输出的 allow_single 透传下去 (0.027875ms)
+✔ gemini/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） (0.053959ms)
+✔ gemini/dual-run：交代 resolve 输出的 notes 要逐条念给用户 (0.026083ms)
+✔ gemini/dual-run：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.044209ms)
+✔ glm/dual-run：正文交代把 resolve 输出的 allow_single 透传下去 (0.028583ms)
+✔ glm/dual-run：S0.6、S2、S6 的交接各自点名入选、档位、模型覆盖（S2 / S6 另含降级许可） (0.055292ms)
+✔ glm/dual-run：交代 resolve 输出的 notes 要逐条念给用户 (0.027542ms)
+✔ glm/dual-run：声明的旗标 CLI 都认（topic resolve 的具名旗标白名单） (0.048208ms)
+✔ claude/dual-review-code：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.099208ms)
+✔ codex/dual-review-code：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.069625ms)
+✔ gemini/dual-review-code：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.061791ms)
+✔ glm/dual-review-code：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.039625ms)
+✔ claude/dual-review-plan：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.055833ms)
+✔ codex/dual-review-plan：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.057375ms)
+✔ gemini/dual-review-plan：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.040459ms)
+✔ glm/dual-review-plan：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.042833ms)
+✔ claude/dual-review-bug：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.079875ms)
+✔ codex/dual-review-bug：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.058958ms)
+✔ gemini/dual-review-bug：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.04075ms)
+✔ glm/dual-review-bug：--start 模板带 --entry，让 CLI 知道焦点必填与留痕来源 (0.040083ms)
+✔ claude/dual-run：argument-hint 声明的每个旗标在正文里都有交代 (0.192792ms)
+✔ codex/dual-run：argument-hint 声明的每个旗标在正文里都有交代 (0.089708ms)
+✔ gemini/dual-run：argument-hint 声明的每个旗标在正文里都有交代 (0.132083ms)
+✔ glm/dual-run：argument-hint 声明的每个旗标在正文里都有交代 (0.17075ms)
+✔ claude/dual-run：有主题解析步骤，且委托执行时以命令 A 身份启动 (0.098292ms)
+✔ codex/dual-run：有主题解析步骤，且委托执行时以命令 A 身份启动 (0.035083ms)
+✔ gemini/dual-run：有主题解析步骤，且委托执行时以命令 A 身份启动 (0.029791ms)
+✔ glm/dual-run：有主题解析步骤，且委托执行时以命令 A 身份启动 (0.02925ms)
+✔ dual-review-plan：不再教「补字面双引号」，改教单引号包裹与 '\'' 转义 (0.644458ms)
+✔ dual-review-code：不再教「补字面双引号」，改教单引号包裹与 '\'' 转义 (0.111834ms)
+✔ dual-review-bug：不再教「补字面双引号」，改教单引号包裹与 '\'' 转义 (0.1065ms)
+✔ dual-run：不再教「补字面双引号」，改教单引号包裹与 '\'' 转义 (0.101292ms)
+✔ dual-approve：交代附言走 --reason，不把自由文字拼成位置参数（EV-24） (0.070792ms)
+✔ 论域非空：至少四份 skill 带预检步骤（防止扫描本身空转） (0.832875ms)
+✔ dual-review-bug：预检步骤约定了 warnings 的转述 (0.081ms)
+✔ dual-review-bug：开场播报约定了 --start 返回的 warnings 的转述 (0.041708ms)
+✔ dual-review-code：预检步骤约定了 warnings 的转述 (0.027625ms)
+✔ dual-review-code：开场播报约定了 --start 返回的 warnings 的转述 (0.031625ms)
+✔ dual-review-plan：预检步骤约定了 warnings 的转述 (0.026209ms)
+✔ dual-review-plan：开场播报约定了 --start 返回的 warnings 的转述 (0.0325ms)
+✔ dual-run：预检步骤约定了 warnings 的转述 (0.025125ms)
+✔ dual-run：委托继承句点名了 warnings（S2 / S6 的开场播报随委托继承） (0.226875ms)
+✔ 转抄往返（plain）：resolve 与 --start 经 shell 解析后，主题与 BRIEF 第 2 段焦点逐字一致 (2831.445875ms)
+✔ 转抄往返（roleSuffix）：resolve 与 --start 经 shell 解析后，主题与 BRIEF 第 2 段焦点逐字一致 (3021.777ms)
+✔ Bash Hook 误拦的真实触发条件：焦点含写动词字面即拦（预期，照实记为「被拦」）；只有角色后缀字样不拦 (613.247542ms)
+✔ 桩缺省：command_trace 一侧拿到只读 shell 说法、ok 一侧拿到不能执行命令说法 (606.875417ms)
+✔ 解耦组合：渲染跟适配器的 commandExecution 走，不跟轨迹形状 (483.833167ms)
+✔ 声明了执行型 MCP 前缀的一侧拿到点名禁令，另一侧没有 (589.776292ms)
+✔ 两侧互换：禁令跟着声明走，不跟侧名 (483.662458ms)
+✔ bug 阶段双审：工件落 bug/，不串到 plan/ (2647.764833ms)
+✔ 缺根因原稿 → 退 65，提示用 --rca-file (245.93825ms)
+✔ bug 阶段的最低工件集：缺裁决件即退 65，补上即通过（AC-15） (3190.806708ms)
+✔ 原稿不被修订件覆盖，字节不变（AC-15） (2760.085542ms)
+✖ dist/test/test/integration/bug-stage.test.js (11117.078833ms)
+✔ EV-176 T1：首检判不了 ⇒ 一个信号都不发、onTerm 不调、gone 为假且 unverifiable (3.685208ms)
+✔ EV-176 T2：宽限期里判不了 ⇒ 继续轮询，之后判已退出即返回（只发 SIGTERM） (32.330958ms)
+✔ EV-176 T3：宽限期满仍判不了 ⇒ 不升级 SIGKILL、onEscalate 不调、unverifiable、等满宽限 (150.616584ms)
+✔ EV-176 T4：期中判不了、期满恢复为同一进程 ⇒ 照常升级 SIGKILL (302.037167ms)
+✔ EV-176 T5：SIGKILL 之后的等待窗里判不了 ⇒ escalated、gone 为假、unverifiable (303.813833ms)
+✔ EV-176 T6（回归）：布尔判据的四种序列与改前逐字相同 (462.488958ms)
+✔ EV-217 R1（夹具）：spawnMarked 返回时 SIGTERM 处理器已装好——处理器装得慢也不会被 SIGTERM 打死 (1053.304208ms)
+✔ EV-176 W1：workerGoneForCancel——取不到 ⇒ unverifiable；同一进程 ⇒ false；不在 ⇒ true (50.145458ms)
+✔ EV-177 W2：lostWorkerGoneJudgment——取不到 ⇒ unverifiable；同一进程 ⇒ false；不在 ⇒ true；布尔的 lostWorkerGone 不变 (47.162666ms)
+✔ EV-176 K-Z1：入口判同一进程之后首检即判不了 ⇒ 零信号、69、不播报「发送 SIGTERM」、什么都不动 (91.308542ms)
+✔ EV-176 K-G1：宽限期里判不了、工作进程 3 s 后才退出 ⇒ 继续等到它真退出，收尾完整（凭据已抹、归档 cancelled） (3117.735083ms)
+✖ dist/test/test/integration/cancel-grace-unverifiable.test.js (11101.126291ms)
+✔ 用例 1：结构化臂经 readSchemaJson 取 schema——argv 里的内容取自注入路径下的文件 (1629.437625ms)
+✔ 用例 2：资产根缺失——字段为 null，notes 含未安装说明且含指路句，结构化臂那一次调用未发生 (687.202167ms)
+✔ 用例 2b：资产根存在（正向对照）——进入实际探测且不产生未安装 note (875.862333ms)
+✔ 结构化臂三态经真实子进程可达：干净拒绝 ⇒ false/clean-reject，缺键 ⇒ null/model-noncompliant (1644.254792ms)
+✔ 正对照真的取自读探针的 completed，不是恒真常量（代码双审 CODEX-05） (508.705625ms)
+✔ 审查期间被审代码被改 → subject_drift，整次作废（设计 §9.2 第 2 步） (2707.619792ms)
+✔ 审查期间无关文件被改：code 阶段的被审对象是整段工作树变更，同样判 subject_drift (2859.141041ms)
+✔ .env 等敏感文件的改动不进被审补丁（M17） (2711.58275ms)
+✖ dist/test/test/integration/code-stage.test.js (11068.22375ms)
+· [codex] 第 1 次尝试，模型 qwen3.8-max，上限 30s
+✔ 出口 ok：副本已抹、sessions 保留、结果 ok (1373.317708ms)
+· [codex] 第 1 次尝试，模型 qwen3.8-max，上限 30s
+· [codex] 失败原因判定为业务性，不重试：codex 未产出最终回复：(无错误消息)
+✔ 出口 无最终回复（failed）：副本已抹 (78.933125ms)
+· [codex] 第 1 次尝试，模型 qwen3.8-max，上限 1s
+· [codex] 失败原因判定为业务性，不重试：脚本级超时（1s）
+✔ 出口 超时：副本已抹 (1008.475417ms)
+· [codex] 第 1 次尝试，模型 qwen3.8-max，上限 30s
+⚠️  [codex] 瞬时故障，重试一次：codex 未产出最终回复：429 rate limit
+· [codex] 第 2 次尝试，模型 qwen3.8-max，上限 30s
+✔ 瞬时故障重试：第二次重新准备的副本同样被抹（CODEX-02 的变异点） (123.667166ms)
+✔ doctor --only codex 是合法取值，且给出确定结论 (992.101583ms)
+✔ preflight --critics codex,glm：codex 侧真的被检查到 (610.724708ms)
+✔ preflight：没选 codex 时不因它的环境未配而失败 (261.186ms)
+✔ preflight --critics 选了环境未配的 codex → 如实拦下并说明原因 (265.945958ms)
+✔ review --start：非默认侧的非法 slug 必须被拦（第五处回落的锁例） (183.166ms)
+✔ preflight：未入选侧的版本漂移只提示，不让本次运行失败 (352.407ms)
+✔ preflight --json：warnings 键恒在，warn 项在 checks[] 里带 warn 并逐条进 warnings（EV-123） (212.803041ms)
+✔ command-trace 侧证据达标：路径只在命令文本里，回填与 toolTotal 分档全程生效 (2609.318375ms)
+✔ 桩七条命令的提取口径被精确计数咬住（r7 AGY-05 ≡ GLM-05） (0.099042ms)
+✔ 两条通道的降级档位逐侧落进 run.json（留痕第一面） (0.053166ms)
+✔ 降级档位进审查文档 front-matter（留痕第二面） (1.197667ms)
+✔ 降级横幅进审查文档正文（留痕第三面） (1.149083ms)
+✔ 降级两行进复盘报告 guardFlags（留痕第四面） (67.597167ms)
+✔ 降级两行进运行时 CLI 告警（留痕第五面） (0.116208ms)
+✔ J8：--driver 与 --critics 指向同一家 → 退 64（自己不能审自己） (366.048459ms)
+✔ J8 的反面：把 Driver 换成别家之后，原 Driver 那一家可以入选（选侧走得通） (184.698208ms)
+✔ --driver 取值未登记 → 退 64，并列出「可用作 Driver」的那几家（M10a 第 3 步起与未启用分支同口径） (178.821ms)
+✔ EV-53：review --start 也要拒绝「给本轮当不了审核者的一家指定模型」 (459.249792ms)
+✔ 命令 A 接受 --driver：与两个阶段都相容时通过并回显 (493.557875ms)
+✔ 命令 A：--driver 与 code 阶段的声明冲突 ⇒ 入口处退 64（不等到 S6 的 --start） (539.770459ms)
+✔ 命令 A：Driver 与某阶段冲突时带上 --critics，先报的仍是 Driver 冲突（选侧在其后，EV-125） (329.799375ms)
+✔ 命令 A：省略 --driver 而两个阶段的权威值不同 ⇒ 退 64，不挑一个继承 (459.256417ms)
+✔ 命令 A：省略 --driver 时继承唯一的权威值（只声明了 plan） (310.208958ms)
+✔ 桩经环境变量跨进程注入，worker 真的用了桩（AGY-05） (2802.020458ms)
+✔ plan 原稿在成功收尾后进 meta.artifacts（M10a 第 2 步 EV-55 §3.1.1） (2956.491083ms)
+✖ dist/test/test/integration/fault-injection.test.js (8235.920375ms)
+✔ FC1 退出后父目录不在：只读子目录、父目录自身只读、已被用例删掉、无手脚，四个都收干净且不误报 (463.750833ms)
+✔ FC2 设保留变量时父目录都还在，并打一行列出路径 (325.734875ms)
+✔ FC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码 (292.944959ms)
+✔ FC4 建到一半抛出也删：mkdtemp 一返回就登记，退出时照样收尾 (140.299417ms)
+✔ 双方共同 blocker 被驳回 → task.json 记 disputed，status 显示争议（§6.6 规则 7） (2973.202167ms)
+✔ 无共同驳回 → 三态落 checked-none；run.json 那一侧只到 pending (2824.642375ms)
+✖ dist/test/test/integration/gate-loop.test.js (6969.311625ms)
+✔ G1 · 计划 codex、代码 claude、无目标 ⇒ 三侧第 4 段取到 codex 那份定稿的标题 (2719.863417ms)
+✔ G2 · 计划 codex、bug 阶段 claude、无目标 ⇒ 两侧第 4 段取到同一标题，不出计划定稿相关告警 (2767.451583ms)
+✖ dist/test/test/integration/goal-fallback-plan-final.test.js (5956.242833ms)
+✔ EV-160 I1：阈值 2 s ⇒ --start 退 0、warnings 恰一项「失联阈值」，worker 照常拉起 (819.597334ms)
+✔ EV-160 I2：阈值 120 s ⇒ --start 的 warnings 为空数组（键仍在） (1110.613875ms)
+✔ EV-160 I3：预检 2 s 出「失联阈值」、120 s 不出；去掉这一项后两次的 checks 逐项相同 (1166.797ms)
+✔ EV-160 I4：同步 review --stage 不做这项复查——2 s 阈值下输出里没有「失联阈值」 (674.21125ms)
+✔ EV-160 I5：人读模式 --start 逐条打印警告行 (1149.915584ms)
+✔ EV-160 I6：2 s 阈值 + 纯文档跳过 ⇒ finished_inline，warnings 仍为空数组（那一支没有 worker 与 --wait） (346.87125ms)
+✔ hooks --agent <ZCode 形态的家>：只写该家的配置，不碰 Claude 的 (240.381959ms)
+✔ hooks：没有 Hook 机制的家 ⇒ 退 64 并说明 L2；缺 --agent、未登记的 id ⇒ 退 64 (598.348334ms)
+✔ hooks --dry-run：报告会写什么，但一个文件都不落 (336.539166ms)
+✔ init：两家的 Hook 配置一起合并（r5 §6.1「trivium init 同时合并两家」） (409.4255ms)
+✔ 跨进程：N 个独立进程同抢一把锁，有且只有一个拿到 (1617.596833ms)
+✔ 跨进程：临界区串行化，并发读改写不丢更新 (1055.204208ms)
+⚠️  回收主题「跨进程抢锁」的遗留锁（原因 pid_gone，原持有者 pid 18803）
+✔ 跨进程：持锁进程被杀后，遗留锁按 pid_gone 被真实回收 (185.83425ms)
+✖ dist/test/test/integration/lock-cross-process.test.js (4539.34275ms)
+✔ 名单外 MCP 调用 ⇒ 证据不可信走五面、不失守、不进闸门（EV-188 I1） (3022.689125ms)
+✖ dist/test/test/integration/mcp-detect.test.js (3893.039625ms)
+✔ C1 · --context 指向对端审查件 ⇒ 退 64、零工件，只点名把它当禁读的那一侧 (297.351875ms)
+✖ dist/test/test/integration/mustread-deny.test.js (435.623084ms)
+✖ dist/test/test/integration/no-artifacts.test.js
+✖ dist/test/test/integration/override-source-start.test.js
+✖ dist/test/test/integration/plan-final-gate.test.js
+✖ dist/test/test/integration/plan-final-recheck.test.js
+✖ dist/test/test/integration/run-id-collision.test.js
+✖ dist/test/test/integration/run-protocol.test.js
+✖ dist/test/test/integration/scratch-cleanup.test.js
+✖ dist/test/test/integration/scrub-output-text.test.js
+✖ dist/test/test/integration/selftest.test.js
+✖ dist/test/test/integration/stub-agent-kit.test.js
+✖ dist/test/test/integration/task-goal-fulltext.test.js
+✖ dist/test/test/integration/topic-claim.test.js
+✖ dist/test/test/integration/topic-resolve.test.js
+✖ dist/test/test/integration/unverifiable-start.test.js
+✖ dist/test/test/integration/usage-registry-parity.test.js
+✖ dist/test/test/integration/worker-detach.test.js
+✖ dist/test/test/integration/worktree-hash-cleanup.test.js
+✖ dist/test/test/unit/adapter-argv.test.js
+✖ dist/test/test/unit/adapter-base.test.js
+✖ dist/test/test/unit/agy-events.test.js
+✖ dist/test/test/unit/approval.test.js
+✖ dist/test/test/unit/archive.test.js
+✖ dist/test/test/unit/brief-command-execution.test.js
+✖ dist/test/test/unit/brief-mcp-exec.test.js
+✖ dist/test/test/unit/brief-output-contract.test.js
+✖ dist/test/test/unit/brief.test.js
+✖ dist/test/test/unit/build-stamp.test.js
+✖ dist/test/test/unit/claude-adapter.test.js
+✖ dist/test/test/unit/claude-events.test.js
+✖ dist/test/test/unit/claude-severity.test.js
+✖ dist/test/test/unit/claude-trace.test.js
+✖ dist/test/test/unit/cli-group-record.test.js
+✖ dist/test/test/unit/code-stage.test.js
+✖ dist/test/test/unit/codex-adapter.test.js
+✖ dist/test/test/unit/codex-auth-probe.test.js
+✖ dist/test/test/unit/codex-events.test.js
+✖ dist/test/test/unit/codex-header-drain.test.js
+✖ dist/test/test/unit/codex-severity.test.js
+✖ dist/test/test/unit/codex-write-verbs.test.js
+✖ dist/test/test/unit/command-execution-parity.test.js
+✖ dist/test/test/unit/config-consumers.test.js
+✖ dist/test/test/unit/config-migrate.test.js
+✖ dist/test/test/unit/config-schema.test.js
+✖ dist/test/test/unit/coverage-wiring.test.js
+✖ dist/test/test/unit/credential-scrub.test.js
+✖ dist/test/test/unit/critics.test.js
+✖ dist/test/test/unit/deny-category.test.js
+✖ dist/test/test/unit/deny-matrix.test.js
+✖ dist/test/test/unit/disposition-parse.test.js
+✖ dist/test/test/unit/divergence.test.js
+✖ dist/test/test/unit/drift-unknown.test.js
+✖ dist/test/test/unit/driver-claim.test.js
+✖ dist/test/test/unit/driver-wiring.test.js
+✖ dist/test/test/unit/exec-timeout.test.js
+✖ dist/test/test/unit/fixture-repo-init.test.js
+✖ dist/test/test/unit/freeze-drift.test.js
+✖ dist/test/test/unit/gate-addresses.test.js
+✖ dist/test/test/unit/gate-degrade.test.js
+✖ dist/test/test/unit/gate.test.js
+✖ dist/test/test/unit/git-diff-untracked.test.js
+✖ dist/test/test/unit/grep-hits.test.js
+✖ dist/test/test/unit/guard-capability.test.js
+✖ dist/test/test/unit/hook-config.test.js
+✖ dist/test/test/unit/hooks.test.js
+✖ dist/test/test/unit/init.test.js
+✖ dist/test/test/unit/install.test.js
+✖ dist/test/test/unit/known-forms-parity.test.js
+✖ dist/test/test/unit/lock.test.js
+✖ dist/test/test/unit/model-override-source.test.js
+✖ dist/test/test/unit/mustread-deny.test.js
+✖ dist/test/test/unit/mutation-device.test.js
+✖ dist/test/test/unit/naming.test.js
+✖ dist/test/test/unit/parse-degrade.test.js
+✖ dist/test/test/unit/parse.test.js
+✖ dist/test/test/unit/peer-leak-command.test.js
+✖ dist/test/test/unit/plan-final-gate.test.js
+✖ dist/test/test/unit/plan-final-recheck.test.js
+✖ dist/test/test/unit/preflight-auth-guard.test.js
+✖ dist/test/test/unit/preflight.test.js
+✖ dist/test/test/unit/probe-fixture-cleanup.test.js
+✖ dist/test/test/unit/probe-verify.test.js
+✖ dist/test/test/unit/profile-override.test.js
+✖ dist/test/test/unit/promise-landing.test.js
+✖ dist/test/test/unit/ps-group-members.test.js
+✖ dist/test/test/unit/pty-run.test.js
+✖ dist/test/test/unit/registry-parity.test.js
+✖ dist/test/test/unit/render-degrade.test.js
+✖ dist/test/test/unit/render.test.js
+✖ dist/test/test/unit/report.test.js
+✖ dist/test/test/unit/retention.test.js
+✖ dist/test/test/unit/review-sides.test.js
+✖ dist/test/test/unit/run-files-parity.test.js
+✖ dist/test/test/unit/run-id-alloc.test.js
+✖ dist/test/test/unit/run-meta-cancel.test.js
+✖ dist/test/test/unit/run-meta-failed.test.js
+✖ dist/test/test/unit/run-meta-strict.test.js
+✖ dist/test/test/unit/run-meta.test.js
+✖ dist/test/test/unit/run-schema-mcp.test.js
+✖ dist/test/test/unit/runner-scrub.test.js
+✖ dist/test/test/unit/runner.test.js
+✖ dist/test/test/unit/scratch-guard.test.js
+✖ dist/test/test/unit/scripts-contract.test.js
+✖ dist/test/test/unit/scrub-admission.test.js
+✖ dist/test/test/unit/secrets.test.js
+✖ dist/test/test/unit/start-canonical.test.js
+✖ dist/test/test/unit/state.test.js
+✖ dist/test/test/unit/status.test.js
+✖ dist/test/test/unit/subject-artifact.test.js
+✖ dist/test/test/unit/task-goal-appendix.test.js
+✖ dist/test/test/unit/task-goal.test.js
+✖ dist/test/test/unit/temp-index-cleanup.test.js
+✖ dist/test/test/unit/topic-args.test.js
+✖ dist/test/test/unit/topic.test.js
+✖ dist/test/test/unit/unreadable-run-exit.test.js
+✖ dist/test/test/unit/verify.test.js
+✖ dist/test/test/unit/worktree-summary.test.js
+✖ dist/test/test/unit/zcode-auth-probe.test.js
+✖ dist/test/test/unit/zcode-availability.test.js
+✖ dist/test/test/unit/zcode-bash-denied.test.js
+✖ dist/test/test/unit/zcode-carriers.test.js
+✖ dist/test/test/unit/zcode-doctor-probe-home.test.js
+✖ dist/test/test/unit/zcode-full-copy-arm.test.js
+✖ dist/test/test/unit/zcode-mcp-adapter.test.js
+✖ dist/test/test/unit/zcode-mcp-detect.test.js
+✖ dist/test/test/unit/zcode-model-selection.test.js
+✖ dist/test/test/unit/zcode-provider-env.test.js
+✖ dist/test/test/unit/zcode-runtime-selection.test.js
+✖ dist/test/test/unit/zcode-trace.test.js
+ℹ tests 434
+ℹ suites 0
+ℹ pass 297
+ℹ fail 0
+ℹ cancelled 137
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11395.077958
+
+✖ failing tests:
+
+test at dist/test/test/integration/bug-stage.test.js:1:1
+✖ dist/test/test/integration/bug-stage.test.js (11117.078833ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/cancel-grace-unverifiable.test.js:1:1
+✖ dist/test/test/integration/cancel-grace-unverifiable.test.js (11101.126291ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/code-stage.test.js:1:1
+✖ dist/test/test/integration/code-stage.test.js (11068.22375ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/fault-injection.test.js:1:1
+✖ dist/test/test/integration/fault-injection.test.js (8235.920375ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/gate-loop.test.js:1:1
+✖ dist/test/test/integration/gate-loop.test.js (6969.311625ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/goal-fallback-plan-final.test.js:1:1
+✖ dist/test/test/integration/goal-fallback-plan-final.test.js (5956.242833ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/lock-cross-process.test.js:1:1
+✖ dist/test/test/integration/lock-cross-process.test.js (4539.34275ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/mcp-detect.test.js:1:1
+✖ dist/test/test/integration/mcp-detect.test.js (3893.039625ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/mustread-deny.test.js:1:1
+✖ dist/test/test/integration/mustread-deny.test.js (435.623084ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/no-artifacts.test.js:1:1
+✖ dist/test/test/integration/no-artifacts.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/override-source-start.test.js:1:1
+✖ dist/test/test/integration/override-source-start.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/plan-final-gate.test.js:1:1
+✖ dist/test/test/integration/plan-final-gate.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/plan-final-recheck.test.js:1:1
+✖ dist/test/test/integration/plan-final-recheck.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/run-id-collision.test.js:1:1
+✖ dist/test/test/integration/run-id-collision.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/run-protocol.test.js:1:1
+✖ dist/test/test/integration/run-protocol.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/scratch-cleanup.test.js:1:1
+✖ dist/test/test/integration/scratch-cleanup.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/scrub-output-text.test.js:1:1
+✖ dist/test/test/integration/scrub-output-text.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/selftest.test.js:1:1
+✖ dist/test/test/integration/selftest.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/stub-agent-kit.test.js:1:1
+✖ dist/test/test/integration/stub-agent-kit.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/task-goal-fulltext.test.js:1:1
+✖ dist/test/test/integration/task-goal-fulltext.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/topic-claim.test.js:1:1
+✖ dist/test/test/integration/topic-claim.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/topic-resolve.test.js:1:1
+✖ dist/test/test/integration/topic-resolve.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/unverifiable-start.test.js:1:1
+✖ dist/test/test/integration/unverifiable-start.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/usage-registry-parity.test.js:1:1
+✖ dist/test/test/integration/usage-registry-parity.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/worker-detach.test.js:1:1
+✖ dist/test/test/integration/worker-detach.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/integration/worktree-hash-cleanup.test.js:1:1
+✖ dist/test/test/integration/worktree-hash-cleanup.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/adapter-argv.test.js:1:1
+✖ dist/test/test/unit/adapter-argv.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/adapter-base.test.js:1:1
+✖ dist/test/test/unit/adapter-base.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/agy-events.test.js:1:1
+✖ dist/test/test/unit/agy-events.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/approval.test.js:1:1
+✖ dist/test/test/unit/approval.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/archive.test.js:1:1
+✖ dist/test/test/unit/archive.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/brief-command-execution.test.js:1:1
+✖ dist/test/test/unit/brief-command-execution.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/brief-mcp-exec.test.js:1:1
+✖ dist/test/test/unit/brief-mcp-exec.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/brief-output-contract.test.js:1:1
+✖ dist/test/test/unit/brief-output-contract.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/brief.test.js:1:1
+✖ dist/test/test/unit/brief.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/build-stamp.test.js:1:1
+✖ dist/test/test/unit/build-stamp.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/claude-adapter.test.js:1:1
+✖ dist/test/test/unit/claude-adapter.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/claude-events.test.js:1:1
+✖ dist/test/test/unit/claude-events.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/claude-severity.test.js:1:1
+✖ dist/test/test/unit/claude-severity.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/claude-trace.test.js:1:1
+✖ dist/test/test/unit/claude-trace.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/cli-group-record.test.js:1:1
+✖ dist/test/test/unit/cli-group-record.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/code-stage.test.js:1:1
+✖ dist/test/test/unit/code-stage.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/codex-adapter.test.js:1:1
+✖ dist/test/test/unit/codex-adapter.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/codex-auth-probe.test.js:1:1
+✖ dist/test/test/unit/codex-auth-probe.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/codex-events.test.js:1:1
+✖ dist/test/test/unit/codex-events.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/codex-header-drain.test.js:1:1
+✖ dist/test/test/unit/codex-header-drain.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/codex-severity.test.js:1:1
+✖ dist/test/test/unit/codex-severity.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/codex-write-verbs.test.js:1:1
+✖ dist/test/test/unit/codex-write-verbs.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/command-execution-parity.test.js:1:1
+✖ dist/test/test/unit/command-execution-parity.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/config-consumers.test.js:1:1
+✖ dist/test/test/unit/config-consumers.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/config-migrate.test.js:1:1
+✖ dist/test/test/unit/config-migrate.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/config-schema.test.js:1:1
+✖ dist/test/test/unit/config-schema.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/coverage-wiring.test.js:1:1
+✖ dist/test/test/unit/coverage-wiring.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/credential-scrub.test.js:1:1
+✖ dist/test/test/unit/credential-scrub.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/critics.test.js:1:1
+✖ dist/test/test/unit/critics.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/deny-category.test.js:1:1
+✖ dist/test/test/unit/deny-category.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/deny-matrix.test.js:1:1
+✖ dist/test/test/unit/deny-matrix.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/disposition-parse.test.js:1:1
+✖ dist/test/test/unit/disposition-parse.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/divergence.test.js:1:1
+✖ dist/test/test/unit/divergence.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/drift-unknown.test.js:1:1
+✖ dist/test/test/unit/drift-unknown.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/driver-claim.test.js:1:1
+✖ dist/test/test/unit/driver-claim.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/driver-wiring.test.js:1:1
+✖ dist/test/test/unit/driver-wiring.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/exec-timeout.test.js:1:1
+✖ dist/test/test/unit/exec-timeout.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/fixture-repo-init.test.js:1:1
+✖ dist/test/test/unit/fixture-repo-init.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/freeze-drift.test.js:1:1
+✖ dist/test/test/unit/freeze-drift.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/gate-addresses.test.js:1:1
+✖ dist/test/test/unit/gate-addresses.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/gate-degrade.test.js:1:1
+✖ dist/test/test/unit/gate-degrade.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/gate.test.js:1:1
+✖ dist/test/test/unit/gate.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/git-diff-untracked.test.js:1:1
+✖ dist/test/test/unit/git-diff-untracked.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/grep-hits.test.js:1:1
+✖ dist/test/test/unit/grep-hits.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/guard-capability.test.js:1:1
+✖ dist/test/test/unit/guard-capability.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/hook-config.test.js:1:1
+✖ dist/test/test/unit/hook-config.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/hooks.test.js:1:1
+✖ dist/test/test/unit/hooks.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/init.test.js:1:1
+✖ dist/test/test/unit/init.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/install.test.js:1:1
+✖ dist/test/test/unit/install.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/known-forms-parity.test.js:1:1
+✖ dist/test/test/unit/known-forms-parity.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/lock.test.js:1:1
+✖ dist/test/test/unit/lock.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/model-override-source.test.js:1:1
+✖ dist/test/test/unit/model-override-source.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/mustread-deny.test.js:1:1
+✖ dist/test/test/unit/mustread-deny.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/mutation-device.test.js:1:1
+✖ dist/test/test/unit/mutation-device.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/naming.test.js:1:1
+✖ dist/test/test/unit/naming.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/parse-degrade.test.js:1:1
+✖ dist/test/test/unit/parse-degrade.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/parse.test.js:1:1
+✖ dist/test/test/unit/parse.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/peer-leak-command.test.js:1:1
+✖ dist/test/test/unit/peer-leak-command.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/plan-final-gate.test.js:1:1
+✖ dist/test/test/unit/plan-final-gate.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/plan-final-recheck.test.js:1:1
+✖ dist/test/test/unit/plan-final-recheck.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/preflight-auth-guard.test.js:1:1
+✖ dist/test/test/unit/preflight-auth-guard.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/preflight.test.js:1:1
+✖ dist/test/test/unit/preflight.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/probe-fixture-cleanup.test.js:1:1
+✖ dist/test/test/unit/probe-fixture-cleanup.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/probe-verify.test.js:1:1
+✖ dist/test/test/unit/probe-verify.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/profile-override.test.js:1:1
+✖ dist/test/test/unit/profile-override.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/promise-landing.test.js:1:1
+✖ dist/test/test/unit/promise-landing.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/ps-group-members.test.js:1:1
+✖ dist/test/test/unit/ps-group-members.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/pty-run.test.js:1:1
+✖ dist/test/test/unit/pty-run.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/registry-parity.test.js:1:1
+✖ dist/test/test/unit/registry-parity.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/render-degrade.test.js:1:1
+✖ dist/test/test/unit/render-degrade.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/render.test.js:1:1
+✖ dist/test/test/unit/render.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/report.test.js:1:1
+✖ dist/test/test/unit/report.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/retention.test.js:1:1
+✖ dist/test/test/unit/retention.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/review-sides.test.js:1:1
+✖ dist/test/test/unit/review-sides.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/run-files-parity.test.js:1:1
+✖ dist/test/test/unit/run-files-parity.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/run-id-alloc.test.js:1:1
+✖ dist/test/test/unit/run-id-alloc.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/run-meta-cancel.test.js:1:1
+✖ dist/test/test/unit/run-meta-cancel.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/run-meta-failed.test.js:1:1
+✖ dist/test/test/unit/run-meta-failed.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/run-meta-strict.test.js:1:1
+✖ dist/test/test/unit/run-meta-strict.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/run-meta.test.js:1:1
+✖ dist/test/test/unit/run-meta.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/run-schema-mcp.test.js:1:1
+✖ dist/test/test/unit/run-schema-mcp.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/runner-scrub.test.js:1:1
+✖ dist/test/test/unit/runner-scrub.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/runner.test.js:1:1
+✖ dist/test/test/unit/runner.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/scratch-guard.test.js:1:1
+✖ dist/test/test/unit/scratch-guard.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/scripts-contract.test.js:1:1
+✖ dist/test/test/unit/scripts-contract.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/scrub-admission.test.js:1:1
+✖ dist/test/test/unit/scrub-admission.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/secrets.test.js:1:1
+✖ dist/test/test/unit/secrets.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/start-canonical.test.js:1:1
+✖ dist/test/test/unit/start-canonical.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/state.test.js:1:1
+✖ dist/test/test/unit/state.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/status.test.js:1:1
+✖ dist/test/test/unit/status.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/subject-artifact.test.js:1:1
+✖ dist/test/test/unit/subject-artifact.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/task-goal-appendix.test.js:1:1
+✖ dist/test/test/unit/task-goal-appendix.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/task-goal.test.js:1:1
+✖ dist/test/test/unit/task-goal.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/temp-index-cleanup.test.js:1:1
+✖ dist/test/test/unit/temp-index-cleanup.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/topic-args.test.js:1:1
+✖ dist/test/test/unit/topic-args.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/topic.test.js:1:1
+✖ dist/test/test/unit/topic.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/unreadable-run-exit.test.js:1:1
+✖ dist/test/test/unit/unreadable-run-exit.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/verify.test.js:1:1
+✖ dist/test/test/unit/verify.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/worktree-summary.test.js:1:1
+✖ dist/test/test/unit/worktree-summary.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-auth-probe.test.js:1:1
+✖ dist/test/test/unit/zcode-auth-probe.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-availability.test.js:1:1
+✖ dist/test/test/unit/zcode-availability.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-bash-denied.test.js:1:1
+✖ dist/test/test/unit/zcode-bash-denied.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-carriers.test.js:1:1
+✖ dist/test/test/unit/zcode-carriers.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-doctor-probe-home.test.js:1:1
+✖ dist/test/test/unit/zcode-doctor-probe-home.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-full-copy-arm.test.js:1:1
+✖ dist/test/test/unit/zcode-full-copy-arm.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-mcp-adapter.test.js:1:1
+✖ dist/test/test/unit/zcode-mcp-adapter.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-mcp-detect.test.js:1:1
+✖ dist/test/test/unit/zcode-mcp-detect.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-model-selection.test.js:1:1
+✖ dist/test/test/unit/zcode-model-selection.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-provider-env.test.js:1:1
+✖ dist/test/test/unit/zcode-provider-env.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-runtime-selection.test.js:1:1
+✖ dist/test/test/unit/zcode-runtime-selection.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dist/test/test/unit/zcode-trace.test.js:1:1
+✖ dist/test/test/unit/zcode-trace.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
