@@ -1,0 +1,74 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "逐条核了计划的现状陈述与 b5f52ca 源码：probeCodexHeader 的轮询与 31s 兜底（codex.ts:453-461）、run 的 stopEarly 契约与不 reject 的兑现链路（exec.ts:168-349）、cli.ts 只设 exitCode 的收尾、stopEarly 全仓唯一调用方、五处调用点行号、EV-199 假 codex 注释（241 行）、BACKLOG EV-205 原文，全部属实。决策 D1-D6 忠实复述任务目标，BACKLOG 两条修法方向不取的理由成立（unref 是藏漏不是收漏；settle 钩子服务单调用点）。装置层面核过：dist/test 产物为 ESM 逐文件转译（scripts/build.mjs format esm），drain.mjs 动态 import 命名导出可行；假入口 shebang+0755 有 EV-199 writeEntry 先例；scratchDir 前缀合规；H1-H5 断言与 run/parseHeaderLines 实际行为一致；M1-M4 预期与代码结构推导一致；v1.3.93 正确接续当前 v1.3.92；登记口径与 count-new.mjs 证据脚本均在。零配额口径成立，回滚成本可忽略（纯内存行为、无持久化与契约迁移，revert 即退）。三条小意见：stopEarly 文档块补文与计划自己 §3.4 的 treeShutdown 口径相矛盾、测试装置父侧 kill 未防 macOS PID 复用、自检命令名写错。均无方向性返工风险。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "被审计划 §3.2（src/trivium/util/exec.ts 的 RunOptions.stopEarly 文档块补文）",
+      "problem": "补写的「run 必然兑现（超时链路兜底），且不会 reject」没有排除 treeShutdown 终止态：run() 开头命中 treeShutdown 时返回一个永不兑现的 Promise，finish 在 treeShutdown 置位时也直接 return 不 resolve。被审计划自己的 §3.4 就写着「此后 run 的 Promise 永不兑现，finally 不跑」——同一份计划里 §3.2 与 §3.4 口径相矛盾。D2 的全部产出就是这段文档，而它误导的恰是将来在 shutdown 路径上读 stopEarly 契约的人。",
+      "evidence": "本轮 sed 读 src/trivium/util/exec.ts：run() 开头的 treeShutdown 早退分支（返回永不 settle 的 Promise，注释「终止中（EV-152）：不再派生，也不兑现」）与 finish 内的 treeShutdown 判断（「终止中不兑现」）；被审计划 §3.4「终止冻结」段原文。",
+      "suggestion": "补文加一句限定即可，例如「终止中（treeShutdown）除外——那时进程随即退出，回调里挂的计时器随进程消失」，与 §3.4 对齐；不需要改实现。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "被审计划 §4.1 收尾（finally）段",
+      "problem": "父侧收尾读 fake.pid 后直接 process.kill(pid, SIGKILL) 与 process.kill(-pid, SIGKILL)，只吞 ESRCH，没有任何存活或启动时刻核对。macOS PID 复用是本仓自己登记过的坑（架构纪律 6 因此禁止 kill(pid,0) 判活）。假 codex 已退出、pid 在收尾前被复用时，SIGKILL 会发给无关进程；组杀形式要求复用者恰好是同号进程组长，概率更低但不为零。窗口虽然只有秒级，缓解措施也同样便宜，而失控后果落在开发机上的无辜进程。",
+      "evidence": "被审计划 §4.1「收尾（finally）：子进程仍活就 SIGKILL；读 fake.pid，在则 process.kill(pid, SIGKILL)…一并 process.kill(-pid, SIGKILL)，吞掉 ESRCH」；AGENTS.md 架构纪律 6「进程存活比对 ps -o lstart=，不能用 kill(pid,0)（macOS 复用 PID）」；src/trivium/util/exec.ts 已有 processStartTime 启动时刻核对机制可复用。本轮未实跑该装置，概率判断为推理。",
+      "suggestion": "三选一：kill 前按纪律 6 比 ps -o lstart= 启动时刻；或复用 processStartTime 做同款核对；或干脆依赖假进程 40 秒自毙加 scratchDir 进程退出时删目录，去掉父侧 kill。最低限度把「pid 可能已被复用」写进装置注释，别把这处例外养成惯例。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "被审计划 §4.4「本机 doctor 自检（trivium selftest，零配额）」",
+      "problem": "CLI 没有 selftest 子命令：分发表只有 doctor/review/hooks/init/preflight/topic/gate/approve/abandon/verify/report/status/scrub，自检是 doctor 的 --selftest 旗标。照字面执行会撞「未知子命令」错误，虽然 Driver 会立刻从 USAGE 里看到正确写法，返工成本约一分钟，但计划里的验证指令应当是可照做的。",
+      "evidence": "本轮 grep src/trivium/cli.ts：1984-2008 行子命令分发表无 selftest；729 行 args.flags.get('selftest') 在 doctor 分支内；200 行 USAGE 写作 trivium doctor --selftest；AGENTS.md 测试要点「trivium doctor --selftest（桩适配器，14 步）」。",
+      "suggestion": "把 §4.4 的命令名改成 trivium doctor --selftest。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§1 现状八条与 b5f52ca 源码逐条吻合：轮询未 unref、兜底 unref（codex.ts:453-461）、run 只在执行器内 resolve 且无 reject 路径、自然退出不通知调用方、stopEarly 全仓唯一调用方（grep src test 只命中 exec.ts 定义与 codex.ts:453）、五处调用点行号 981/992/1002/1034/1055、EV-199 注释原文、全仓无 probeCodexHeader 直接测试，均经本轮实测核对。",
+    "D1 修法方向正确且忠实任务目标：try/finally 对 resolve 与 reject 都兜底，对象持有句柄绕开 TS 收窄的写法稳妥；删掉 31s 兜底后 run 的 30s 超时链（SIGTERM→5s→SIGKILL→close/exit 后 2s）仍是必然收尾的上界，除 treeShutdown 外无新挂死风险（§3.4 已如实写明）。",
+    "BACKLOG 两条修法方向不取的理由成立：轮询 unref 只是把漏清藏起来（doctor 后续探针期间事件循环不空，轮询照样空转到兜底）；stopEarly 加 settle 钩子服务全仓唯一调用点，确属为单点造抽象。",
+    "测试设计零配额且可落地：假入口直作 bin 不经 PATH、shebang+0755 有 writeEntry 先例、dist/test 为 ESM 产物故 drain.mjs 命名 import 可行、H1-H5 结果断言与 run/parseHeaderLines 实际行为一致、M1-M4 变异预期与代码结构推导一致；H1/H2 锁计时、H4/H5 锁抽取与早退，「只打部分标签后退出」与 H1 同走 finally 路径，不另需用例。",
+    "成本与回滚核算无误：全部验证不烧配额，主要成本是本机构建与每格至多 10s 的超时等待；改动无持久化、无对外契约迁移，回滚即 revert，verify 后停在未提交状态，审批权留在用户手里。"
+  ],
+  "not_covered": [
+    "未实跑任何构建、测试或装置（只读审查）；H 组断言、变异预期均为源码级推导，非实测。",
+    "§4.2 改前对照的可操作性（git archive 导出加 node_modules 软链加叠加新测试文件）未实测，只核对了它依赖的 scratchDir 等 helper 在 b5f52ca 已存在。",
+    "drain 阈值 10s 在高负载机器上的实际分布未验证；计划自述以修后读数回填报告，此处只能认可其两侧余量论证的方向。",
+    "另一位审查员镜头内的角度（如并发形态、schema 契约形状、措辞文风）未主动覆盖。"
+  ],
+  "consulted": [
+    ".reviews/header探测计时器收尾/plan/2026-10-05-header探测计时器收尾-claude.md",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/run-protocol.ts",
+    "test/unit/probe-fixture-cleanup.test.ts",
+    "test/helpers/scratch.ts",
+    "scripts/build.mjs",
+    "scripts/mutation-check.mjs",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "package.json"
+  ]
+}
