@@ -221,7 +221,7 @@ export interface TopicResolution {
   /**
    * 任务目标原文（设计 §9.4，进 BRIEF 第 4 段）。
    * 命令 A 的命令正文就是它；B/C/D 只认显式 `--goal`（或「`<目标> --focus <焦点>`」写法里的正文），
-   * 为 null 时由编排器回退到 task.json / plan 原稿。与 `prompt_hint` **刻意分开**（RV-19）。
+   * 为 null 时由编排器回退到 task.json / 本主题计划定稿。与 `prompt_hint` **刻意分开**（RV-19）。
    */
   task_goal: string | null;
   /**
@@ -400,7 +400,7 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
    *
    *   命令 A（scope=all）：正文 = 任务目标（「要达成什么」，BRIEF 第 4 段），`--focus` 可选。
    *   命令 B/C/D：       正文 = 审查焦点（「重点看什么」，第 2 段，FR-20 / AC-09 的唯一落点），
-   *                     `--goal` 可选；任务目标缺省时由编排器回退到 task.json / plan 原稿。
+   *                     `--goal` 可选；任务目标缺省时由编排器回退到 task.json / 本主题计划定稿。
    *
    * 这是 PRD 的原始定义（第 8 章：「命令后面带的提示语」= 审查焦点）。用户在 B/C/D 里
    * 最常打的就是焦点，几乎不会打目标——目标本来就能从归档里取回。曾经把 B/C/D 的正文

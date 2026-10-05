@@ -238,7 +238,7 @@ function clampGoal(raw: string | null | undefined): string | null {
  * 只在**计划阶段**、本次**显式** `--goal` 的摘要真被截了一刀时给出：
  *   - 判「被截断」与 `clampGoal` 同口径（同一个 `foldGoal`、同一单位）——200 字以内但含换行的目标，
  *     摘要折掉了换行却没丢内容，不出附录，任务书逐字不变；
- *   - 只认 `rawGoal`（`opts.taskGoal`，本次命令行的原文）：目标来自任务文件或计划原稿时它为空，自然不出；
+ *   - 只认 `rawGoal`（`opts.taskGoal`，本次命令行的原文）：目标来自任务文件或计划定稿时它为空，自然不出；
  *   - 代码阶段只出摘要：那一阶段的依据是计划定稿（`resolvePlanFinal`），用户原话里的决策已被计划双审裁过。
  *
  * 原文只做两处规整：`\r\n` → `\n`、去首尾空白；其余逐字。附录的上限在 `brief.ts` 渲染时按码点截。
@@ -276,10 +276,10 @@ export const PLAN_FINAL_UNLISTED_WARNING = '必读清单未列计划定稿';
  * 有修订稿（`-r2-`…）取最新修订稿，没有取原稿。裁决件不列（计划 r2 §2.5：它逐条复述别的审查员的意见）。
  *
  * - 计划阶段最新留痕读不出（`corrupt`）⇒ 不列，返回一条告警；不拒跑：这是自动条目，用户此刻改不了它（同 EV-02）。
- * - `locateSubject` 抛出（没有计划目录、或没有该执笔方的原稿）⇒ 不列、无告警：「本主题没有计划阶段」是正常情况，
- *   与 `resolveTaskGoal` 第三级同口径。
+ * - `locateSubject` 抛出（没有计划目录、或没有该执笔方的原稿）⇒ 不列、无告警：「本主题没有计划阶段」是正常情况。
  *
  * 返回项目相对路径；列进第 4 段后照常过本侧交集判定（撞上禁读集即剔除并告警）。
+ * `resolveTaskGoal` 第三级就取这里的结果（EV-212）：全仓只留这一处「哪份是计划定稿」的判定。
  */
 export async function resolvePlanFinal(
   ref: { topic: string; layout: ArchiveLayout },
@@ -301,7 +301,7 @@ export async function resolvePlanFinal(
     };
   }
   try {
-    // 变量名与 resolveTaskGoal 的 planRef 区分开：driver-wiring.test.ts 按调用点锚点逐处核 driver 的取值
+    // driver-wiring.test.ts 按锚点 `planStageRef` 核这一处 driver 的取值：改变量名要同步护栏表
     const planStageRef = { topic: ref.topic, layout: ref.layout, stage: 'plan' as const,
       stageDirAbs: stageDir(ref.layout, 'plan') };
     const abs = await locateSubject(planStageRef, null, projectRoot, resolution.driver);
@@ -378,7 +378,7 @@ export function composeMustReadWarnings(
 }
 
 /**
- * 从 plan 阶段原稿里取任务目标：第一个 Markdown 标题，取不到就取第一段正文。
+ * 从本主题计划定稿里取任务目标：第一个 Markdown 标题，取不到就取第一段正文。
  *
  * 跳过 YAML front matter 与围栏代码块——否则 `---` 或 ```lang 会被当成标题行。
  */
@@ -402,23 +402,32 @@ function goalFromPlanDoc(text: string): string | null {
   return null;
 }
 
+/** `resolvePlanFinal` 的结果：计划定稿的项目相对路径（取不到为 null）与至多一条告警 */
+export type PlanFinal = Awaited<ReturnType<typeof resolvePlanFinal>>;
+
 /**
  * 解析本次要送进 BRIEF 第 4 段的任务目标（设计 §9.4）。
  *
  * 三级来源，取第一个非空：
  *   1. 显式 `--goal`（`/dual-run <任务目标>` 透传而来）
  *   2. `task.json` 的 `goal`——主题首次跑时落下的摘要（`clampGoal` 之后的值，不是原文；设计 §6.7），后续阶段复用
- *   3. 同主题 plan 阶段原稿的标题/首段
+ *   3. 本主题计划定稿（`resolvePlanFinal`：计划阶段执笔方、轮次最大的一份）的首个标题/首段
  *
  * 都取不到就返回 null，该行不渲染（保持既有行为，不硬造一个目标去误导审查员）。
  * 刻意**不**兜底到主题名：主题是个短标签，当任务目标只会给审查员噪音。
  *
  * 两侧共用同一个结果——和「补丁只算一次」同理，否则两位审查员可能看到不同的目标。
+ *
+ * **`planFinal` 必填**（EV-212）：第三级曾自己用本轮 Driver 的后缀找计划文档，计划与代码 / bug 阶段分属两家时
+ * 静默取空或取到别家后缀的文件。现在只认 `resolvePlanFinal` 那一处判定；做成可选参数的话，漏传会静默退回某种
+ * 旧取法——正是本题要堵的那一类。它只在第三级真正走到时调用、至多一次：代码阶段由 `prepareRun` 传入已算好的结果，
+ * bug 阶段走到时才现算。
  */
 export async function resolveTaskGoal(
-  opts: Pick<ReviewOptions, 'taskGoal' | 'stage' | 'subjectFile' | 'driver'>,
+  opts: Pick<ReviewOptions, 'taskGoal' | 'stage'>,
   ref: { topic: string; layout: ArchiveLayout },
   projectRoot: string,
+  planFinal: () => Promise<PlanFinal>,
 ): Promise<string | null> {
   const explicit = clampGoal(opts.taskGoal);
   if (explicit) return explicit;
@@ -433,21 +442,21 @@ export async function resolveTaskGoal(
   if (opts.stage === 'plan') return null;
 
   try {
-    const planRef = { topic: ref.topic, layout: ref.layout, stage: 'plan' as const,
-      stageDirAbs: stageDir(ref.layout, 'plan') };
-    // 显式 subjectFile 是给当前阶段的，不能拿来定位 plan 原稿
+    const final = await planFinal();
     /*
-     * **driver 必须传**（M9 第 5 步，计划双审 r2 CODEX-03）。这是 `locateSubject`
-     * 的第三处调用，也是最容易漏的一处——整段包在 try/catch 里，漏了不报错。
-     *
-     * 漏传的后果分两种，都不进留痕：非缺省 Driver 下按缺省后缀找 plan 原稿，
-     * 要么找不到（任务目标**无声消失**，BRIEF 第 4 段空着），
-     * 要么找到的是**别人的审查件**，把对计划的意见当成计划本身来提目标。
+     * `path` 为 null 有两种：本主题没有计划阶段（无告警，正常），或计划阶段留痕读不出（带告警）。
+     * 后者的告警在这里**有意丢弃**（EV-212 决策二）：代码阶段 `prepareRun` 已把同一份结果的告警送进三个出口，
+     * 这里再报是重复；bug 阶段要同时满足「bug 阶段、两级都没有目标、计划阶段留痕读不出」才走到，而留痕读不出
+     * 本身已被计划阶段各入口与提交时的留痕核对拒绝——不另起告警、不拒跑，取不到目标与「没有计划阶段」同样不渲染。
      */
-    const planPath = await locateSubject(planRef, null, projectRoot, opts.driver ?? DEFAULT_DRIVER);
-    return goalFromPlanDoc(await fs.readFile(planPath, 'utf8'));
+    if (!final.path) return null;
+    // 项目相对路径按同一个 projectRoot 还原，不能按进程 cwd 读
+    return goalFromPlanDoc(await fs.readFile(path.resolve(projectRoot, final.path), 'utf8'));
   } catch {
-    // 纯 code 主题没有 plan 目录，属正常情况——静默跳过，不是错误
+    /*
+     * 读件失败（竞态删除等），或 bug 阶段现算 `resolvePlanFinal` 时意外抛出：静默跳过，与旧第三级同口径。
+     * try 包住 `planFinal()` 本身是为 bug 阶段——那次调用是新增的，不能借它给 bug 阶段添一个拒跑面。
+     */
     return null;
   }
 }
@@ -513,7 +522,7 @@ export interface ReviewOptions {
    * 任务目标原文：这次到底想达成什么（设计 §9.4，进 BRIEF 第 4 段）。
    *
    * **不要拿 `promptHint` 顶替它**（RV-19）：那是「本次审查焦点」，语义不同且已独占第 2 段。
-   * 不传时由 `resolveTaskGoal` 回退到 task.json / plan 原稿。
+   * 不传时由 `resolveTaskGoal` 回退到 task.json / 本主题计划定稿。
    */
   taskGoal?: string | null;
   /**
@@ -964,7 +973,9 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const suggestedRead = extractPathReferences(subjectText);
   const excerpt = excerptSubject(subjectText);
   // 两侧共用同一个任务目标：逐侧各解析一次，可能因中途写入而拿到不同结果
-  const taskGoal = await resolveTaskGoal(opts, ref, ctx.projectRoot);
+  // 第三级的计划定稿：代码阶段复用上面已算好的、不判第二次；bug 阶段走到第三级时才现算（EV-212）；计划阶段不走第三级
+  const taskGoal = await resolveTaskGoal(opts, ref, ctx.projectRoot,
+    stage === 'code' ? async () => planFinal : () => resolvePlanFinal(ref, ctx.projectRoot));
   // 附录原文同样只算一次、各侧共用；只认本次命令行的显式原文（EV-210）
   const goalAppendix = taskGoalAppendix(stage, opts.taskGoal);
   /*
@@ -1310,7 +1321,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     /*
      * 任务目标落进 task.json，供本主题后续阶段复用——但**只落显式传入的那一个**。
      *
-     * 从 plan 原稿推导出来的值不写回：它是个尽力而为的猜测（一个标题而已），
+     * 从计划定稿推导出来的值不写回：它是个尽力而为的猜测（一个标题而已），
      * 一旦持久化就会永久占位，把日后真正传进来的 `--goal` 挡在门外——
      * 上面那条「已有则不覆盖」的规则会站在错误的一边。推导每次现算即可，成本几乎为零。
      *

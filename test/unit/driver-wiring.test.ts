@@ -87,8 +87,8 @@ import { scratchDir } from '../helpers/scratch.js';
  * 键/实参是否**以完整标识符的形态**出现在这段代码里。
  *
  * 约束 3。判据是**词边界**，不是「属性位后面跟逗号冒号」：
- * 后者套不住位置实参（`locateSubject(planRef, null, root, opts.driver ?? X)`
- * 里 `opts.driver` 后面跟的是 `??`），把两种形态各写一套匹配器又会多一个能写错的地方。
+ * 后者套不住位置实参（形如 `locateSubject(ref, null, root, opts.driver ?? X)`
+ * 的写法里 `opts.driver` 后面跟的是 `??`），把两种形态各写一套匹配器又会多一个能写错的地方。
  *
  * 词边界足以守住本步真正要防的那一格：`driverEnabled,` **不**满足 `driver`
  * （`driver` 之后是 `E`，是词字符，边界不成立），而「只加了 driverEnabled、
@@ -196,19 +196,11 @@ const TARGETS: {
     key: 'driver',
     why: '非缺省 Driver 下按缺省后缀找原稿，第一步就退 65',
   },
-  {
-    what: 'review.ts → locateSubject（resolveTaskGoal 内）',
-    file: 'src/trivium/review.ts',
-    anchor: /await\s+locateSubject\(planRef,/g,
-    fn: 'locateSubject',
-    count: 1,
-    key: 'opts.driver',
-    why: '整段包在 try/catch 里，漏传不报错：任务目标无声消失，或把审查意见当计划原稿提目标',
-    defaultOk:
-      '这一处的取值写作 `opts.driver ?? DEFAULT_DRIVER`：它在 prepareRun 之外被调用，' +
-      '拿不到那个已经归一化过的 driver，缺省回落是**这一点的正确写法**（上一轮 CODEX-03 的落点）。' +
-      '所以本点只证「取值挂在 opts.driver 上」，不证「块里没有 DEFAULT_DRIVER」。',
-  },
+  /*
+   * 原先这里还有「locateSubject（resolveTaskGoal 内）」一条（锚点 planRef、键 opts.driver）。
+   * EV-212 起任务目标第三级改为复用 resolvePlanFinal 的取件（必填参数传入），那次调用随之删去：
+   * 它按**本轮** Driver 找计划文档，计划与代码 / bug 阶段分属两家时取空或取到别家后缀的文件。
+   */
   {
     what: 'review.ts → locateSubject（resolvePlanFinal 内）',
     file: 'src/trivium/review.ts',
@@ -993,7 +985,7 @@ test('判据自测：约束 2 的定位函数——括号配不平必须 fail-cl
  */
 const RECONCILE: { fn: string; expect: number; note: string }[] = [
   { fn: 'newRunMeta', expect: 1, note: '留痕的发起方只该有一个写入点' },
-  { fn: 'locateSubject', expect: 3, note: 'prepareRun 一处、resolveTaskGoal 一处、resolvePlanFinal 一处（EV-210）' },
+  { fn: 'locateSubject', expect: 2, note: 'prepareRun 一处、resolvePlanFinal 一处（EV-210）；resolveTaskGoal 自 EV-212 起复用后者' },
   { fn: 'locateSubjectReadOnly', expect: 1, note: 'topic resolve 的只读定位' },
   { fn: 'resolveRerunIndex', expect: 2, note: 'review.ts 一处、cli.ts 闸门回落一处' },
   { fn: 'resolveCriticSelection', expect: 4, note: 'cmdReview / cmdPreflight / topic-args / review.ts 回落' },

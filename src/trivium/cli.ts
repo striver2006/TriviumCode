@@ -209,7 +209,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --focus     审查焦点提示语：这次重点看什么，进 BRIEF 第 2 段（FR-20 / AC-09）。
                   除 --entry A 外必填；缺失退 64
       --goal      任务目标原文：这次想达成什么，进 BRIEF 第 4 段（§9.4）。
-                  与 --focus 是两回事，不可互相顶替。省略时回退 task.json / plan 原稿
+                  与 --focus 是两回事，不可互相顶替。省略时回退 task.json / 本主题计划定稿
       --entry A|B|C|D  发起本次运行的斜杠命令，记入 run.json 留痕。
                   只有 A（全流程）的焦点是可选补充；手工调用可省略，按 B/C/D 规则校验
       --context   被审对象涉及的代码路径与相关文档，逗号分隔；并入必读清单，

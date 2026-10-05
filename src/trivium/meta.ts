@@ -286,7 +286,7 @@ export interface NewRunMetaInput {
   rerunIndex: number;
   command: string;
   promptHint: string | null;
-  /** 本次运行实际送进 BRIEF 第 4 段的任务目标（已解析，可能来自 task.json 或 plan 原稿） */
+  /** 本次运行实际送进 BRIEF 第 4 段的任务目标（已解析，可能来自 task.json 或本主题计划定稿） */
   taskGoal: string | null;
   /** 发起本次运行的斜杠命令（A/B/C/D），手工调用为 null */
   entry?: CommandEntry | null;

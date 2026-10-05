@@ -1,0 +1,68 @@
+{
+  "agreed": [
+    "resolveTaskGoal 接口清晰，删去 driver 与 subjectFile 等非必要字段，将计划定稿取法收敛至唯一来源 resolvePlanFinal，根除了多头判定和跨阶段 Driver 不一致的缺陷。",
+    "代码阶段复用已解析的计划定稿避免重复计算；bug 阶段通过回调惰性解析，仅在第三级真正走到时现算，且妥善捕获异常不增拒跑面。",
+    "测试覆盖非常扎实，包含了单元测试 T1~T7（含 GLM-01 要求的 projectRoot 相对路径还原）、集成测试 G1~G6、8 个变异测试全部被捕获，以及新旧构建 A1/A2 逐字比对。",
+    "对全仓 CLI 帮助、技能源及 12 份生成的 SKILL.md 进行了同步更新，保持了概念与文档的高度一致。"
+  ],
+  "consulted": [
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/review.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/driver-claim.ts",
+    "src/trivium/types.ts",
+    "skills-src/partials/review/body.md",
+    "test/unit/task-goal.test.ts",
+    "test/unit/driver-wiring.test.ts",
+    "test/integration/goal-fallback-plan-final.test.ts",
+    "test/contract/doc-archive-index.test.ts",
+    "test/contract/entry-render-parity.test.ts",
+    "doc/05_testing/README.md",
+    "doc/05_testing/evidence/goal-fallback-plan-final-20261005/check-1-pre-s6.txt",
+    "doc/05_testing/evidence/goal-fallback-plan-final-20261005/mutation-output.txt",
+    "doc/05_testing/evidence/goal-fallback-plan-final-20261005/a1-a2-old-new-brief.txt",
+    ".reviews/目标回退取计划定稿/plan/2026-10-05-目标回退取计划定稿-r2-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/目标回退取计划定稿/code/_meta/changes-20261005T093847Z.diff"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "核对被审补丁 .reviews/目标回退取计划定稿/code/_meta/changes-20261005T093847Z.diff 文件列表及 doc/05_testing/README.md 最新条目（仅到 REPORT_2026-10-05_task_goal_fulltext.md），磁盘上无 REPORT_2026-10-05_goal_fallback_plan_final.md 文件；而 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:3712 与 doc/08_project/BACKLOG.md:310 均已直接引用该报告。",
+      "id": "AGY-01",
+      "kind": "scope-drift",
+      "layer": "code",
+      "location": "doc/05_testing/README.md",
+      "problem": "计划 r2 §5、主设计 v1.3.91 及 BACKLOG EV-212 均已明确指定测试报告 doc/05_testing/REPORT_2026-10-05_goal_fallback_plan_final.md 并要求登记进 doc/05_testing/README.md，但本次补丁仅交付了 doc/05_testing/evidence/goal-fallback-plan-final-20261005/ 下的执行读数，遗漏了测试报告本身及其在 doc/05_testing/README.md 中的索引登记，导致设计与任务记要中的报告链接悬空。",
+      "severity": "minor",
+      "suggestion": "依据 doc/05_testing/evidence/goal-fallback-plan-final-20261005/ 中已记录的完整读数补充创建 REPORT_2026-10-05_goal_fallback_plan_final.md，并同步按文件名升序登记进 doc/05_testing/README.md。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查看 src/trivium/review.ts:241 注释仍写作「计划原稿」，而同文件 414 行、525 行以及 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2064 均已改写为「计划定稿」。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/review.ts:241",
+      "problem": "src/trivium/review.ts:241 的 taskGoalAppendix 文档块中仍残留「目标来自任务文件或计划原稿时它为空」，未同步更新为「计划定稿」，与主设计 §9.4 及全仓措辞统一口径微有不符。",
+      "severity": "nit",
+      "suggestion": "将 src/trivium/review.ts:241 的「计划原稿」同步更新为「计划定稿」。"
+    }
+  ],
+  "not_covered": [
+    "由于本侧为只读审查员环境，无外部模型真实配额及 CLI 执行能力，未在真机上实际启动子进程复测 G1~G6，测试结论基于静态代码走查、证据留痕与测试断言逻辑验证。",
+    "未实际执行真实模型对短语/标题截断的视觉渲染效果比对。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "实现准确落地了 EV-212：resolveTaskGoal 第三级改由必填的 planFinal 参数取件，全仓统一定位来源，消除了跨 Agent 执笔时的静默取空与误取问题；\n代码阶段复用计划定稿结果、bug 阶段惰性求值、计划阶段短路不走第三级，逻辑完备且告警丢弃符合 D2 决策；\n8 个变异测试全部咬住，新旧构建对照 A1/A2 完全吻合。\n次要问题是遗漏了测试报告 REPORT_2026-10-05_goal_fallback_plan_final.md 及其在 doc/05_testing/README.md 的索引登记，导致设计与 BACKLOG 中的链接悬空；\n微瑕是 review.ts:241 注释遗留了「计划原稿」措辞。整体通过（approve-with-nits）。",
+  "verdict": "approve-with-nits"
+}

@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "目标回退取计划定稿",
+  "goal": "主题「目标回退取计划定稿」：EV-212。任务目标的第三级回退（resolveTaskGoal：没有 --goal、任务文件里也没有目标时，从本主题计划文档取首个标题或首段）按当前阶段的 Driver 后缀定位计划文档，而不是按计划阶段的执笔方。计划阶段与代码（或 bug）阶段分属两家时，它找不到计划文档，任务目标静默为空，或者取到别家后缀的文件。EV-210 新加的 resolvePlanFin…",
+  "created_at": "2026-10-05T09:03:48.349Z",
+  "updated_at": "2026-10-05T10:17:49.622Z",
+  "runs": [
+    {
+      "run_id": "20261005T090634Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-05T09:06:37.600Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261005T093847Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-05T09:38:50.193Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261005T101225Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-05T10:17:49.622Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-05T09:03:48.349Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-05T09:20:14.283Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261005T090634Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-05T09:20:11.311Z"
+    },
+    {
+      "run_id": "20261005T093847Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-05T09:57:00.098Z"
+    }
+  ]
+}

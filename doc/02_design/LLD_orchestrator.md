@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.36
+> - **当前版本**：v1.1.37
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.37（2026-10-05）随设计 v1.3.91（目标回退取计划定稿，EV-212）同步：3.3 计算段那一段补任务目标第三级的取件——`resolveTaskGoal` 第 4 个必填参数「怎么取计划定稿」，代码阶段传已算好的 `resolvePlanFinal` 结果、bug 阶段第三级走到时现算，留痕读不出时不取、告警丢弃。行数列未重核。
 > - **变更说明**：v1.1.36（2026-10-05）随设计 v1.3.90（计划定稿复核，EV-215）同步：3.4「计划定稿校验」之后新增「代码阶段复核」一段（`acceptedIdsForNextPlan` 与两个小函数为闸门与复核共用、`recheckPlanFinal` 的四种结论、`planFinalRecheckWarning` 与 `composeMustReadWarnings`）。行数列未重核。
 > - **变更说明**：v1.1.35（2026-10-05）随设计 v1.3.89（计划定稿强制产出，EV-214）同步：3.4「`gate --check` 的失败码」表补 `missing_next_plan` / `next_plan_missing_ids` 两个失败码与 `next_plan_unchecked` 告警，其后新增「计划定稿校验」一段（`checkNextPlan`、必填可为 null 的 `planFinal`、`loadRoundReviews` 派生、基准轮次与核对哪一份、`prepareRun` 写 `plan_final_check`）。表头「11 个失败码」与行数列未重核。
 > - **变更说明**：v1.1.34（2026-10-05）随设计 v1.3.88（任务目标全文送审，EV-210）同步：3.3「`prepareRun()` 的『零工件』不变式」段补计算段的两步（代码阶段 `resolvePlanFinal` 解析本主题计划定稿并交给 `buildMustReadList` 的第五个参数；`taskGoalAppendix` 判定计划阶段附录原文，与 `taskGoal` 一样只算一次、各侧共用）与渲染接线的第三个必填入参 `taskGoalAppendix`；计划定稿没能列入的告警并进 `rc.mustReadPruned` 与 `gate.warnings`。行数列未重核。
@@ -270,6 +271,10 @@ sequenceDiagram
 第 11 步之前**一个文件都没写**（`review.ts:928`，段注释「到这里为止不写任何审查工件与留痕」）。校验、定位被审对象、冻结、渲染 BRIEF 全在内存里完成，确认全部成功后才统一落盘。
 冻结与渲染之间夹一段必读交集校验（v1.1.29，设计 v1.3.73 / EV-02）：先逐侧 `freeze()` 算出禁读集，再对 `--context` 的原始写法逐侧跑 `brief.ts` 的 `findDenyConflicts`，撞上任一侧即 `usageError`（退 64，仍在零工件区、排在逐侧 `routeModel` 的 69 之前）；随后逐侧把第 4 段的自动条目（公约、关键词、建议核实、己方历史）过同一判定、撞上的只从该侧剔除，攒成两份告警：全量那份写骨架时并进 `gate.warnings`（纯文档跳过轮同样写，代码双审 CODEX-03），封顶 5 条那份（`MUST_READ_PRUNED_DISPLAY_MAX`，CODEX-06）存进 `RunContext.mustReadPruned` 供两个播报通道用——`startRun` 追加、`executeRun` 汇总告警时排在 guard 告警之前；工作进程重建上下文时给 `[]`。拒跑发生在逐侧冻结之后，冻结写进对象库的松散对象与正常运行同形（CODEX-04，不改次序的理由见设计 10.1.1 末节）。这是审查意见 GLM-04 的修复——原先 `locateSubject` 抛 65 或第二侧 `routeModel` 抛 69 时，会留下「目录 + 单侧 brief」的半套工件。
 计算段另有两步（v1.1.34，设计 v1.3.88 / EV-210）：代码阶段先 `resolvePlanFinal`（按计划阶段执笔方定位本主题计划定稿，取不到返回 null，计划阶段留痕读不出返回 null 加一条「必读清单未列计划定稿」告警），结果作为 `buildMustReadList` 的第五个参数，计划定稿与其余自动条目一样过逐侧剔除；告警排在两份剔除告警之前、同走 `gate.warnings` 与 `rc.mustReadPruned`。`taskGoalAppendix(stage, opts.taskGoal)` 紧跟 `resolveTaskGoal` 算一次、各侧共用，只在计划阶段且显式目标的摘要被截断时非空，作为渲染的第三个必填入参 `taskGoalAppendix` 传入（非空时第 4 段多一行指引、第 8 段之后多一个不编号附录）。
+`resolveTaskGoal` 的第三级（v1.1.37，设计 v1.3.91 / EV-212）不再自己定位计划文档，改收第 4 个必填参数 `planFinal: () => Promise<PlanFinal>`，
+只在前两级都为空、且不是计划阶段时调用、至多一次：代码阶段传 `async () => planFinal`（复用上面那次 `resolvePlanFinal`，不判第二次），
+bug 阶段传 `() => resolvePlanFinal(ref, projectRoot)`（现算，只取目标、不进必读清单）。结果的 `path` 为 null（没有计划阶段，或计划阶段留痕读不出）
+即返回 null，后者的告警在这里丢弃；读件或现算抛出同样落 catch 返回 null，不新增拒跑面。相对路径按同一个 `projectRoot` 还原。
 渲染 BRIEF 时的必填入参 `commandExecution`（v1.1.30，设计 v1.3.74 / EV-95）取入选侧适配器的声明 `adapters[critic].commandExecution`——可用性检查已逐侧判过适配器非空；不按侧名查表、不从 `capability.traceShape` 推导。第 7 节据此二选一渲染证据性质那一条（设计 9.4 第 7 条、11.1「命令执行能力」）。第二个必填入参 `mcpExecPrefixes`（v1.1.32，设计 v1.3.76 / EV-191）取 `adapters[critic].mcpExecPrefixes ?? []`——适配器侧可选（今天只有 zcode 声明，值即 `ZCODE_MCP_EXEC_PREFIXES` 本身），非空时第 7 节在证据性质那条之后多一条点名禁令，空则逐字不变。工作进程不重新渲染任务书，这是唯一调用点。
 
 **置闸门是落盘之前的最后一步**（v1.1.7，EV-109 / EV-145 ①）：`setGateChecked(running)` 排在计算段之后、第一次落盘之前，被拦（上一轮未裁决，退 2）时零工件；此前它排在落盘段之后，被拦那次已写下 brief、便利副本 `changes.diff`、run.json 骨架、task.json 登记与运行目录。置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 经 `state.ts` 的 `releaseRunningGateEntry` 回收闸门；写完骨架之后才失败（登记、任务目标落盘）时，回收闸门之后再把骨架收尾为 `failed`（`prepare_exception`，v1.1.8，EV-145；v1.1.7 时骨架留 `running`）；骨架之前的失败不进收尾。

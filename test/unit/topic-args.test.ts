@@ -377,7 +377,7 @@ test('B/C/D：正文就是审查焦点，用户不必区分目标与焦点', asy
   await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
   const r = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['--topic', 'T', '重点看并发安全与回滚路径'] });
   assert.equal(r.prompt_hint, '重点看并发安全与回滚路径');
-  assert.equal(r.task_goal, null, '目标缺省，交给编排器回退 task.json / plan 原稿');
+  assert.equal(r.task_goal, null, '目标缺省，交给编排器回退 task.json / 本主题计划定稿');
 });
 
 test('B/C/D：显式 --goal 是已知旗标且贪婪取值，不会被吞进焦点', async () => {

@@ -1,0 +1,162 @@
+{
+  "targets_sha256": {
+    "src/trivium/review.ts": "5592de689d357dbb3d727c8a12a19b425e5691a3f618e19df4258817d60ea201"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "代码阶段改传恒取不到的桩（不复用已算好的计划定稿）",
+      "suite": "dist/test/test/integration/goal-fallback-plan-final.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G1 · 计划 codex、代码 claude、无目标 ⇒ 三侧第 4 段取到 codex 那份定稿的标题",
+        "G3 · 计划与代码同为 codex ⇒ 照旧取 codex 定稿，不取 claude 后缀那份",
+        "G4 · 缺省执笔方：代码与 bug 阶段都取 r2 标题（与修前同值）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 19,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "bug 阶段改传恒取不到的桩（不现算）",
+      "suite": "dist/test/test/integration/goal-fallback-plan-final.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "G2 · 计划 codex、bug 阶段 claude、无目标 ⇒ 两侧第 4 段取到同一标题，不出计划定稿相关告警",
+        "G4 · 缺省执笔方：代码与 bug 阶段都取 r2 标题（与修前同值）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 21,
+      "also": []
+    },
+    {
+      "id": "M3a",
+      "desc": "删去 path 判空（预期等价：path.resolve 遇 null 抛出、落 catch）",
+      "suite": "dist/test/test/unit/task-goal.test.js",
+      "fail": 0,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M3b",
+      "desc": "不丢弃告警：path 为空时把告警名当目标返回",
+      "suite": "dist/test/test/unit/task-goal.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T3 · 计划阶段留痕读不出：代码与 bug 阶段都 null、不抛（不取、不拒跑、不报错）",
+        "T6 · 取件返回 path 为 null 且带告警 ⇒ null，告警不进返回值"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "相对路径不按 projectRoot 还原、按进程 cwd 读（GLM-01）",
+      "suite": "dist/test/test/unit/task-goal.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "task.json 无 goal 时回退计划定稿的首个标题，跳过 front matter",
+        "计划定稿无标题时取首段正文，且不把围栏代码块当标题",
+        "推导目标不写回 task.json，resolveTaskGoal 全程只读",
+        "T1 · 计划阶段声明 codex：代码与 bug 阶段都取 -r2-codex.md 的标题，不取 claude 后缀那份、也不取 r1",
+        "T4 · 惰性：显式目标、任务文件有目标、计划阶段都不调取件；走到第三级时恰调一次",
+        "T7 · projectRoot 与 cwd 不同：按同一个根还原相对路径，取到非空目标"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "惰性破坏：函数开头先调一次取件",
+      "suite": "dist/test/test/unit/task-goal.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T4 · 惰性：显式目标、任务文件有目标、计划阶段都不调取件；走到第三级时恰调一次",
+        "T5 · 取件抛错 ⇒ null（bug 阶段现算那次不新增拒跑面）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "删去计划阶段短路",
+      "suite": "dist/test/test/unit/task-goal.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "plan 阶段不回退计划文档（被审对象就是它，同义反复）",
+        "T4 · 惰性：显式目标、任务文件有目标、计划阶段都不调取件；走到第三级时恰调一次"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "删去兜底：catch 原样抛出",
+      "suite": "dist/test/test/unit/task-goal.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T5 · 取件抛错 ⇒ null（bug 阶段现算那次不新增拒跑面）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "退回旧取法：第三级按缺省 Driver 后缀自己找计划文档",
+      "suite": "dist/test/test/unit/task-goal.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T1 · 计划阶段声明 codex：代码与 bug 阶段都取 -r2-codex.md 的标题，不取 claude 后缀那份、也不取 r1",
+        "T2 · 别家后缀不误取：计划阶段声明 codex、目录里只有 -claude.md ⇒ null",
+        "T3 · 计划阶段留痕读不出：代码与 bug 阶段都 null、不抛（不取、不拒跑、不报错）",
+        "T4 · 惰性：显式目标、任务文件有目标、计划阶段都不调取件；走到第三级时恰调一次",
+        "T5 · 取件抛错 ⇒ null（bug 阶段现算那次不新增拒跑面）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/goal-fallback-plan-final.test.js",
+          "fail": 5,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "G1 · 计划 codex、代码 claude、无目标 ⇒ 三侧第 4 段取到 codex 那份定稿的标题",
+            "G2 · 计划 codex、bug 阶段 claude、无目标 ⇒ 两侧第 4 段取到同一标题，不出计划定稿相关告警",
+            "G3 · 计划与代码同为 codex ⇒ 照旧取 codex 定稿，不取 claude 后缀那份",
+            "G5 · 计划阶段留痕读不出：bug 阶段照常跑完、无目标行、无告警；代码阶段无目标行、告警只有既有一条",
+            "G6 · 别家后缀不误取：计划 codex、目录里只有 claude 后缀那份 ⇒ 代码阶段无目标行"
+          ],
+          "firstLines": [],
+          "elapsed_s": 19
+        }
+      ]
+    }
+  ]
+}

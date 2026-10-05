@@ -1,0 +1,78 @@
+{
+  "targets": [
+    "src/trivium/review.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/goal-fallback-plan-final.test.js",
+    "dist/test/test/unit/task-goal.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "代码阶段改传恒取不到的桩（不复用已算好的计划定稿）",
+      "file": "src/trivium/review.ts",
+      "find": "    stage === 'code' ? async () => planFinal : () => resolvePlanFinal(ref, ctx.projectRoot));\n",
+      "replace": "    stage === 'code' ? async () => ({ path: null, warning: null }) : () => resolvePlanFinal(ref, ctx.projectRoot));\n",
+      "expect": "dist/test/test/integration/goal-fallback-plan-final.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "bug 阶段改传恒取不到的桩（不现算）",
+      "file": "src/trivium/review.ts",
+      "find": "    stage === 'code' ? async () => planFinal : () => resolvePlanFinal(ref, ctx.projectRoot));\n",
+      "replace": "    stage === 'code' ? async () => planFinal : async () => ({ path: null, warning: null }));\n",
+      "expect": "dist/test/test/integration/goal-fallback-plan-final.test.js"
+    },
+    {
+      "id": "M3b",
+      "desc": "不丢弃告警：path 为空时把告警名当目标返回",
+      "file": "src/trivium/review.ts",
+      "find": "    if (!final.path) return null;\n",
+      "replace": "    if (!final.path) return final.warning ? clampGoal(final.warning.name) : null;\n",
+      "expect": "dist/test/test/unit/task-goal.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "相对路径不按 projectRoot 还原、按进程 cwd 读（GLM-01）",
+      "file": "src/trivium/review.ts",
+      "find": "    return goalFromPlanDoc(await fs.readFile(path.resolve(projectRoot, final.path), 'utf8'));\n",
+      "replace": "    return goalFromPlanDoc(await fs.readFile(final.path, 'utf8'));\n",
+      "expect": "dist/test/test/unit/task-goal.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "惰性破坏：函数开头先调一次取件",
+      "file": "src/trivium/review.ts",
+      "find": "  const explicit = clampGoal(opts.taskGoal);\n  if (explicit) return explicit;\n",
+      "replace": "  await planFinal().catch(() => null);\n  const explicit = clampGoal(opts.taskGoal);\n  if (explicit) return explicit;\n",
+      "expect": "dist/test/test/unit/task-goal.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "删去计划阶段短路",
+      "file": "src/trivium/review.ts",
+      "find": "  if (opts.stage === 'plan') return null;\n\n  try {\n    const final = await planFinal();\n",
+      "replace": "  try {\n    const final = await planFinal();\n",
+      "expect": "dist/test/test/unit/task-goal.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "删去兜底：catch 原样抛出",
+      "file": "src/trivium/review.ts",
+      "find": "  } catch {\n    /*\n     * 读件失败（竞态删除等）",
+      "replace": "  } catch (e) {\n    throw e;\n    /*\n     * 读件失败（竞态删除等）",
+      "expect": "dist/test/test/unit/task-goal.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "退回旧取法：第三级按缺省 Driver 后缀自己找计划文档",
+      "file": "src/trivium/review.ts",
+      "find": "    const final = await planFinal();\n",
+      "replace": "    const final = { path: path.relative(projectRoot, await locateSubject({ topic: ref.topic, layout: ref.layout, stage: 'plan' as const, stageDirAbs: stageDir(ref.layout, 'plan') }, null, projectRoot)) };\n",
+      "expect": "dist/test/test/unit/task-goal.test.js",
+      "also": [
+        "dist/test/test/integration/goal-fallback-plan-final.test.js"
+      ]
+    }
+  ]
+}
