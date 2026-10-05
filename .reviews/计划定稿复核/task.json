@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "计划定稿复核",
+  "goal": "主题「计划定稿复核」：EV-215。EV-214 让计划闸门在有接受项时要求执笔方的新一轮计划存在、且逐字引用每条接受编号，但判定只在 gate --check（与命令 B 的审批前复核）那一刻成立。命令 A 在 S4 之后没有第二次计划闸门；代码阶段取「本主题计划定稿」时（resolvePlanFinal 取执笔方轮次最大的一份）也不看计划阶段的裁决件。于是闸门通过之后再写的、没送审的更高轮次计…",
+  "created_at": "2026-10-05T06:19:45.286Z",
+  "updated_at": "2026-10-05T07:34:24.650Z",
+  "runs": [
+    {
+      "run_id": "20261005T062609Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-05T06:26:12.659Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261005T070435Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-05T07:04:38.723Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261005T072937Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-05T07:34:24.650Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-05T06:19:45.286Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-05T06:43:08.085Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261005T062609Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-05T06:43:04.664Z"
+    },
+    {
+      "run_id": "20261005T070435Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-05T07:19:11.178Z"
+    }
+  ]
+}

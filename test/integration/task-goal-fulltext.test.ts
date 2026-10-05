@@ -305,6 +305,8 @@ test('I9 · 计划阶段 run.json 读不出：不列计划定稿，--start 的 w
   assert.ok(!s4.includes(`.reviews/${topic}/plan/`), s4);
   const w = js.warnings.filter((x) => x.name === '必读清单未列计划定稿');
   assert.equal(w.length, 1, JSON.stringify(js.warnings));
+  // EV-215：没列入就无从复核，既有告警之外不叠加「计划定稿未通过复核」
+  assert.deepEqual(js.warnings.filter((x) => x.name === '计划定稿未通过复核'), [], JSON.stringify(js.warnings));
   assert.ok(w[0]!.detail.startsWith('⚠️ ') && w[0]!.detail.includes('20261005T000000Z'), w[0]!.detail);
   const plain = w[0]!.detail.slice('⚠️ '.length);
   assert.ok((await runMeta(fx, 'code', js.run_id)).gate.warnings?.includes(plain), 'run.json gate.warnings 要留这一笔（去掉前缀）');

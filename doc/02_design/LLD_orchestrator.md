@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.35
+> - **当前版本**：v1.1.36
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.36（2026-10-05）随设计 v1.3.90（计划定稿复核，EV-215）同步：3.4「计划定稿校验」之后新增「代码阶段复核」一段（`acceptedIdsForNextPlan` 与两个小函数为闸门与复核共用、`recheckPlanFinal` 的四种结论、`planFinalRecheckWarning` 与 `composeMustReadWarnings`）。行数列未重核。
 > - **变更说明**：v1.1.35（2026-10-05）随设计 v1.3.89（计划定稿强制产出，EV-214）同步：3.4「`gate --check` 的失败码」表补 `missing_next_plan` / `next_plan_missing_ids` 两个失败码与 `next_plan_unchecked` 告警，其后新增「计划定稿校验」一段（`checkNextPlan`、必填可为 null 的 `planFinal`、`loadRoundReviews` 派生、基准轮次与核对哪一份、`prepareRun` 写 `plan_final_check`）。表头「11 个失败码」与行数列未重核。
 > - **变更说明**：v1.1.34（2026-10-05）随设计 v1.3.88（任务目标全文送审，EV-210）同步：3.3「`prepareRun()` 的『零工件』不变式」段补计算段的两步（代码阶段 `resolvePlanFinal` 解析本主题计划定稿并交给 `buildMustReadList` 的第五个参数；`taskGoalAppendix` 判定计划阶段附录原文，与 `taskGoal` 一样只算一次、各侧共用）与渲染接线的第三个必填入参 `taskGoalAppendix`；计划定稿没能列入的告警并进 `rc.mustReadPruned` 与 `gate.warnings`。行数列未重核。
 > - **变更说明**：v1.1.33（2026-10-02）随设计 v1.3.77（收工闸门文案区分只读失守，EV-98 文案部分）同步：3.x「`hook-stop` 的三层防死循环」之后新增「待裁决闸门的只读失守文案」一小节（`splitByBreach` / `breachLines`、按闸门项 `run_id` 直读、处置句与 `gate --check` 共用 `READONLY_BREACH_TRIAGE`）。行数列未重核。
@@ -376,6 +377,8 @@ bashTimeoutFor  = min(600_000, waitTimeoutS × 1000 + 60_000)
 | `next_plan_unchecked` | warning：有接受项，但本轮 run.json 没有 `plan_final_check`（早于 v1.3.89 的运行），未校验新一轮计划 |
 
 **计划定稿校验**（v1.1.35，设计 v1.3.89 §6.6 规则 9，EV-214）：`checkAdjudication` 在全部既有项之后、仅 `stage === 'plan'` 时调 `checkNextPlan`。输入 `planFinal` **必填、可为 null**（与 `reviewDocs` 同一个教训），由 `loadRoundReviews` 派生：本轮 run.json 的 `plan_final_check.subject_rerun_index`，加上本阶段 run_id 更晚、带标记的各次运行的被审对象轮次（`laterPlanSubjectRerunIndexes`，读不出的跳过——只会走更严的分支）。基准轮次取被审对象轮次（没有才取 `rerun_index`）；候选 = 当轮 Driver 后缀、无中缀、非审查件、轮次大于基准；本轮已被后续运行接手时核最小候选，否则核最大候选（代码阶段 `resolvePlanFinal` 会读的那份）。标记由 `prepareRun` 在计划阶段算一次（`planSubjectRerunIndex`）、经 `newRunMeta` 写进骨架。
+
+**代码阶段复核**（v1.1.36，设计 v1.3.90 §6.6 规则 9，EV-215）：接受集合由 `acceptedIdsForNextPlan({ reviews, expectedDegradedIds, expectedFallbackIds, rows })` 派生，内部调 `collectStructuredIds`（第 1 步）与 `expectedFindingIds`（第 5 步的合格 ∪ 逐条降级）；`checkAdjudication` 第 1、5、6 步与复核调同一组。`recheckPlanFinal(layout, 定稿文件名)` 返回 `skipped` / `passed` / `failed`（带 `checkNextPlan` 的原样失败项）/ `unverifiable`，只读、函数体内兜底、从不抛出：执笔方取文件名后缀（解析不出即 `unverifiable`）；计划阶段 run.json 从新到旧取第一份有裁决件的（读不出即 `unverifiable`、执笔方与后缀不同即 `unverifiable`）；无标记或接受集合为空即 `skipped`；否则以 `laterSubjectRerunIndexes: []` 调 `checkNextPlan`（恒核最大候选，即 `resolvePlanFinal` 列出的那份）。`review.ts` 的 `planFinalRecheckWarning` 把结论组装成 `{ name: '计划定稿未通过复核', detail }`，`prepareRun` 在 `resolvePlanFinal` 列入定稿后调它；告警拼接抽成 `composeMustReadWarnings(planFinalWarnings, pruned, sides)` → `{ all, display }`，计划定稿那条（与「未列入」互斥）排在剔除告警之前、不计入封顶。
 
 > **本表以 `gate.ts` 的 `GateWarning` / `GateFailureCode` 联合类型为唯一来源。**
 > 扩枚举时请一并回补本表；即便漏补，以类型为准——本表只会不全，不会变错。

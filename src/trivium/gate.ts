@@ -249,11 +249,8 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
   // 排在一切早退之前：缺裁决件那一格也要看得见运行期标注
   for (const w of input.runWarnings ?? []) warnings.push({ code: 'run_warning', message: w });
 
-  // 第 1 步：收集本轮结构化意见编号
-  const structuredIds: string[] = [];
-  for (const c of Object.keys(reviews) as CriticId[]) {
-    for (const f of reviews[c]?.findings ?? []) structuredIds.push(f.id);
-  }
+  // 第 1 步：收集本轮结构化意见编号（与代码阶段的计划定稿复核共用，EV-215）
+  const structuredIds = collectStructuredIds(reviews);
 
   // 第 2 步：定位本轮裁决件
   const kind = dispositionKindForStage(stage);
@@ -489,7 +486,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
 
   const decKeys = new Set(structuredRows.map((r) => r.id));
   // 期望集 = 合格 ∪ 逐条降级（后者按原编号，同走下面的缺裁决 / 多余裁决与逐行校验，接受照样要落点）
-  const idsSet = new Set([...structuredIds, ...degradedIds]);
+  const idsSet = expectedFindingIds(structuredIds, degradedIds);
 
   /*
    * fallback 编号同样要逐条对账（§6.6 规则 8）。原先 fallback 行只在**出现时**被校验、
@@ -642,21 +639,14 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
    * 既有各项都是裁决件自身的问题，先修裁决件、接受集合才定得下来；新一轮计划依赖它。
    * 但不因前面有失败而跳过：两类一次全报，让 Driver 照着一次补完。
    *
-   * 接受集合只收**期望集内**的编号（计划双审 AGY-02）：期望集外的接受行已由 `unknown_findings` 判失败，
-   * 再要求新计划逐字写出它们，两条文案会自相矛盾。虚拟编号给了 `.fallback-items.md` 时按清单、没给时按表里出现的，
-   * 与上面第 5 步的 fallback 对账同一口径。
+   * 接受集合的口径见 `acceptedIdsForNextPlan`；代码阶段的计划定稿复核（`recheckPlanFinal`，EV-215）调的是同一个函数，
+   * 输入同样来自 `loadRoundReviews`——改这里的口径即同时改了复核。它在内部重算一次期望集（几十个编号的集合运算），
+   * 换来派生只有一份（计划定稿复核计划双审 CODEX-03 ≡ GLM-01）。
    */
   if (stage === 'plan') {
-    const acceptedIds = [
-      ...new Set(
-        rows
-          .filter((r) => r.disposal === '接受')
-          .filter((r) =>
-            isFallbackId(r.id) ? (expectedFallback ? expectedFallback.includes(r.id) : true) : idsSet.has(r.id),
-          )
-          .map((r) => r.id),
-      ),
-    ].sort();
+    const acceptedIds = acceptedIdsForNextPlan({
+      reviews, expectedDegradedIds: input.expectedDegradedIds, expectedFallbackIds: expectedFallback, rows,
+    });
     const np = await checkNextPlan({ layout, driver, rerunIndex, acceptedIds, planFinal: input.planFinal });
     failures.push(...np.failures);
     warnings.push(...np.warnings);
@@ -673,6 +663,50 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     rows,
     jointCheck: jc,
   };
+}
+
+/** `checkAdjudication` 第 1 步：本轮各侧结构化意见编号（只有合格意见；逐条降级的不在 `reviews` 里） */
+export function collectStructuredIds(reviews: Partial<Record<CriticId, Review | null>>): string[] {
+  const ids: string[] = [];
+  for (const c of Object.keys(reviews) as CriticId[]) {
+    for (const f of reviews[c]?.findings ?? []) ids.push(f.id);
+  }
+  return ids;
+}
+
+/** `checkAdjudication` 第 5 步的期望集：合格 ∪ 逐条降级（后者按原编号） */
+export function expectedFindingIds(structuredIds: readonly string[], degradedIds: readonly string[]): Set<string> {
+  return new Set([...structuredIds, ...degradedIds]);
+}
+
+/**
+ * 计划阶段裁决件里要求新一轮计划逐字引用的接受编号（§6.6 规则 9）：期望集内、裁为接受；去重排序。
+ *
+ * **闸门与代码阶段复核共用这一个函数**（计划定稿复核计划 r2 §2.2，计划双审 CODEX-03 ≡ GLM-01）：
+ * `checkAdjudication` 第 6 步与 `recheckPlanFinal` 都把 `loadRoundReviews` 的产出原样交进来，期望集只在这里派生——
+ * 两处各拼一份，将来改口径（如 EV-216）时复核会静默对着旧判据。
+ *
+ * 只收**期望集内**的编号（计划定稿强制产出计划双审 AGY-02）：期望集外的接受行已由 `unknown_findings` 判失败，
+ * 再要求新计划逐字写出它们，两条文案会自相矛盾。虚拟编号给了 `.fallback-items.md` 时按清单、
+ * `expectedFallbackIds` 为 null 时按表里出现的，与第 5 步的 fallback 对账同一口径。
+ */
+export function acceptedIdsForNextPlan(i: {
+  reviews: Partial<Record<CriticId, Review | null>>;
+  expectedDegradedIds: readonly string[];
+  /** null = 不按清单（虚拟编号按表里出现的）；两个生产调用点传的都是 `loadRoundReviews` 给的数组 */
+  expectedFallbackIds: readonly string[] | null;
+  rows: readonly DispositionRow[];
+}): string[] {
+  const idsSet = expectedFindingIds(collectStructuredIds(i.reviews), [...new Set(i.expectedDegradedIds)]);
+  const fb = i.expectedFallbackIds;
+  return [
+    ...new Set(
+      i.rows
+        .filter((r) => r.disposal === '接受')
+        .filter((r) => (isFallbackId(r.id) ? (fb ? fb.includes(r.id) : true) : idsSet.has(r.id)))
+        .map((r) => r.id),
+    ),
+  ].sort();
 }
 
 /** 编号作为整词出现：前后都不是 `[A-Za-z0-9_]`——`GLM-01` 不被 `GLM-010`、`XGLM-01` 冒充（计划 r2 §2.3） */
@@ -703,7 +737,8 @@ export function mentionsFindingId(text: string, id: string): boolean {
  * ## 边界
  *
  * 只核字面（整词逐字出现），不判合得对不对、不判出现的语境；编号每轮从 01 重编，分不出是哪一轮的同名编号；
- * 判定只在闸门调用那一刻成立，通过之后再写的更高轮次计划不在本函数的视野里（BACKLOG 另登）。
+ * 判定只在闸门调用那一刻成立——通过之后再写的更高轮次计划，由代码阶段取定稿时的 `recheckPlanFinal`
+ * 用本函数再核一次（EV-215，只告警不拒跑）。
  */
 export async function checkNextPlan(i: {
   layout: ArchiveLayout;
@@ -787,6 +822,104 @@ export async function checkNextPlan(i: {
     });
   }
   return { failures, warnings };
+}
+
+/** 代码阶段计划定稿复核的结论（EV-215，设计 §6.6 规则 9 边界④，计划定稿复核计划 r2 §2.4） */
+export type PlanFinalRecheck =
+  /** 不复核：计划阶段没有运行、没有一轮有裁决件、那一轮是旧运行（无标记）、或那一轮没有接受项 */
+  | { kind: 'skipped' }
+  | { kind: 'passed'; runId: string; rerunIndex: number }
+  /** `failure` 是 `checkNextPlan` 的原样失败项（`missing_next_plan` / `next_plan_missing_ids`） */
+  | { kind: 'failed'; runId: string; rerunIndex: number; failure: GateFailure }
+  /** 无从复核：定稿文件名解析不出、途中有读不出的运行留痕、执笔方与定稿后缀不同、或复核本身出错 */
+  | { kind: 'unverifiable'; reason: string };
+
+/**
+ * 代码阶段取到计划定稿之后，用 §6.6 规则 9 的同一份判据复核一次（EV-215，计划定稿复核计划 r2 §2.3～§2.4）。
+ *
+ * EV-214 的判定只在计划阶段 `gate --check`（与审批前复核）那一刻成立；命令 A 在 S4 之后没有第二次计划闸门，
+ * 闸门通过之后再写的、没送审的更高轮次计划会原样成为代码阶段的定稿。本函数在代码阶段 `prepareRun` 里补这一眼。
+ *
+ * `finalFileName` 是 `resolvePlanFinal` 列出的那份定稿的**文件名**（不是路径，计划双审 AGY-01）；
+ * 执笔方取它的后缀——定稿就是按这一家取的，「核哪一家的候选」与「列哪份定稿」同源，也不必再判一次 Driver。
+ *
+ * ## 取哪一轮
+ *
+ * 计划阶段 run.json 从新到旧，取**第一份有裁决件的**（裁决件按该轮 `driver` + `rerun_index` 定位，与 `checkAdjudication`
+ * 第 2 步同一口径）。没有裁决件的运行往旧里跳过：历史归档里它们只有失败轮与崩溃骨架两种（计划 r2 §1.5 实扫），
+ * 不产生新的接受集合；「最新一次没有裁决件就不复核」会让任何一次超时失败的计划双审把复核整个关掉。
+ *
+ * ## 恒核定稿
+ *
+ * `laterSubjectRerunIndexes` 恒传空数组，让 `checkNextPlan` 恒核最大候选——与 `locateSubject` 同一筛法与排序，
+ * 即代码审查员此刻读到的那份。照传真实的后续轮次（那些运行都没有裁决件），会让它转去核紧随那一轮的较小候选，
+ * 漏掉此后又写的、没送审的定稿——正是本函数要堵的窗口（计划 r2 §2.4，偏离决策字面、计划双审三侧认可）。
+ *
+ * 只读、从不抛出（兜底在本函数内，计划双审 CODEX-02）：它服务的是自动条目，复核出错不能拦住整轮代码审。
+ */
+export async function recheckPlanFinal(layout: ArchiveLayout, finalFileName: string): Promise<PlanFinalRecheck> {
+  try {
+    const final = parseArtifactName(finalFileName);
+    if (!final) return { kind: 'unverifiable', reason: `定稿文件名 ${finalFileName} 解析不出执笔方` };
+    const driver = final.role;
+
+    let files: string[];
+    try {
+      files = await fs.readdir(metaDir(layout, 'plan'));
+    } catch {
+      return { kind: 'skipped' };
+    }
+    const ids = files
+      .map((f) => /^run-(.+)\.json$/.exec(f)?.[1])
+      .filter((x): x is string => x !== undefined)
+      .sort()
+      .reverse();
+    const { readRunMeta } = await import('./meta.js');
+    const artifacts = await listStageArtifacts(layout, 'plan');
+    const kind = dispositionKindForStage('plan');
+
+    for (const id of ids) {
+      const m = await readRunMeta(layout, 'plan', id);
+      if (!m) {
+        return { kind: 'unverifiable', reason: `计划阶段运行留痕 run-${id}.json 读不出，判不出那一轮有没有裁决件` };
+      }
+      const disp = artifacts.find(
+        (a) => a.parsed.role === m.driver && a.parsed.kind === kind && a.parsed.rerunIndex === m.rerun_index,
+      );
+      if (!disp) continue;
+      if (m.driver !== driver) {
+        return {
+          kind: 'unverifiable',
+          reason: `计划阶段第 ${m.rerun_index} 轮（run ${id}）的执笔方是 ${m.driver}，与定稿 ${finalFileName} 的后缀 ${driver} 不同`,
+        };
+      }
+      const mark = m.plan_final_check;
+      if (!mark) return { kind: 'skipped' };
+
+      const round = await loadRoundReviews(layout, 'plan', id);
+      const md = await fs.readFile(path.join(stageDir(layout, 'plan'), disp.fileName), 'utf8');
+      // 与 checkAdjudication 第 6 步同一个函数、同一组输入（都来自 loadRoundReviews）
+      const acceptedIds = acceptedIdsForNextPlan({
+        reviews: round.reviews,
+        expectedDegradedIds: round.expectedDegradedIds,
+        expectedFallbackIds: round.expectedFallbackIds,
+        rows: parseDisposition(md).rows,
+      });
+      if (acceptedIds.length === 0) return { kind: 'skipped' };
+
+      const np = await checkNextPlan({
+        layout, driver, rerunIndex: m.rerun_index, acceptedIds,
+        planFinal: { subjectRerunIndex: mark.subject_rerun_index, laterSubjectRerunIndexes: [] },
+      });
+      const failure = np.failures[0];
+      return failure
+        ? { kind: 'failed', runId: id, rerunIndex: m.rerun_index, failure }
+        : { kind: 'passed', runId: id, rerunIndex: m.rerun_index };
+    }
+    return { kind: 'skipped' };
+  } catch (e) {
+    return { kind: 'unverifiable', reason: `复核出错：${e instanceof Error ? e.message : String(e)}` };
+  }
 }
 
 /**

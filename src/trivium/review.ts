@@ -315,6 +315,68 @@ export async function resolvePlanFinal(
   }
 }
 
+/** 计划定稿没合入计划阶段最新一轮接受项（或无从复核）时的告警名（EV-215；与「必读清单未列计划定稿」同形、同三个出口） */
+export const PLAN_FINAL_RECHECK_WARNING = '计划定稿未通过复核';
+
+/**
+ * 代码阶段计划定稿复核的告警（设计 §6.6 规则 9 边界④，EV-215，计划定稿复核计划 r2 §2.5）；通过或不复核时返回 null。
+ *
+ * 判据在 `gate.ts` 的 `recheckPlanFinal`（与计划阶段闸门同一份），这里只管措辞。失败时把 `checkNextPlan` 的失败消息
+ * **原文**嵌进来：判据一份、措辞也只留一份，两种消息分别给出应写的文件名与核对的文件，正是要点名的东西。
+ *
+ * 不拒跑、不剔除、任务书第 4 段也不标注（计划 r2 §2.6）：处置在 Driver 手里，告警经三个出口到达 Driver 与裁决时的
+ * `gate --check`；带编号的标注会把裁决信息推进各侧（FR-10）。
+ *
+ * `finalPath` 是 `resolvePlanFinal` 给出的项目相对路径；`codeDriver` 只用来写处置里的调用写法。
+ */
+export async function planFinalRecheckWarning(
+  layout: ArchiveLayout,
+  finalPath: string,
+  codeDriver: AgentId,
+): Promise<{ name: string; detail: string } | null> {
+  const { recheckPlanFinal } = await import('./gate.js');
+  // 传文件名而不是路径：parseArtifactName 锚定日期开头（计划双审 AGY-01）
+  const r = await recheckPlanFinal(layout, path.basename(finalPath));
+  if (r.kind === 'skipped' || r.kind === 'passed') return null;
+  if (r.kind === 'unverifiable') {
+    return {
+      name: PLAN_FINAL_RECHECK_WARNING,
+      detail:
+        `${WARNING_MARK}本主题计划定稿 ${finalPath} 无从复核：${r.reason}。` +
+        '本轮照常审查；定稿是否合入了计划阶段最新一轮被接受的意见，需人工核对。',
+    };
+  }
+  const { entryCommandOf } = await import('./agents/registry.js');
+  return {
+    name: PLAN_FINAL_RECHECK_WARNING,
+    detail:
+      `${WARNING_MARK}本主题计划定稿 ${finalPath} 没有通过复核：计划阶段第 ${r.rerunIndex} 轮（run ${r.runId}）有被接受的意见，` +
+      `按 §6.6 规则 9 的同一份判据核对——${r.failure.message}\n` +
+      `  涉及编号：${(r.failure.ids ?? []).join('、')}。本轮照常审查，代码审查员读到的仍是这份定稿。\n` +
+      '  处置二选一：① 把这些接受项合进计划定稿（没有新一轮计划时按上面的文件名写一份；编号逐条写进开头的「相对上一轮的改动」）后，' +
+      '重跑代码双审；' +
+      `② 把这份定稿送一轮计划双审（${entryCommandOf(codeDriver, 'dual-review-plan')}），按那一轮的裁决定稿后再跑代码双审。`,
+  };
+}
+
+/**
+ * 任务书第 4 段的告警拼接（EV-210 / EV-215；计划定稿复核计划 r2 §2.5，计划双审 CODEX-01 抽成纯函数以便单测顺序与封顶）。
+ *
+ * 计划定稿的两条告警（「未列入」与「未通过复核」，互斥、合起来至多一条）排在剔除告警之前，**不计入剔除封顶**：
+ * 封顶管的是「按侧 × 条目」可能很长的那一串，计划定稿是主题级的单条事实。`all` 进 run.json 的 `gate.warnings`，
+ * `display` 进 `--start` 与同步路径的播报。
+ */
+export function composeMustReadWarnings(
+  planFinalWarnings: readonly { name: string; detail: string }[],
+  pruned: readonly PrunedEntry[],
+  sides: readonly CriticId[],
+): { all: Array<{ name: string; detail: string }>; display: Array<{ name: string; detail: string }> } {
+  return {
+    all: [...planFinalWarnings, ...renderPrunedWarnings(pruned, sides)],
+    display: [...planFinalWarnings, ...renderPrunedWarnings(pruned, sides, MUST_READ_PRUNED_DISPLAY_MAX)],
+  };
+}
+
 /**
  * 从 plan 阶段原稿里取任务目标：第一个 Markdown 标题，取不到就取第一段正文。
  *
@@ -891,6 +953,13 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const planFinal = stage === 'code'
     ? await resolvePlanFinal(ref, ctx.projectRoot)
     : { path: null, warning: null };
+  /*
+   * 列入了计划定稿就用计划阶段闸门的同一份判据复核一次（EV-215）：闸门通过之后再写的、没送审的更高轮次计划
+   * 会原样成为定稿。只读、从不抛出、不拒跑；没列入时（留痕读不出 / 没有计划阶段）无从复核，与「未列入」告警互斥。
+   */
+  const planFinalRecheck = planFinal.path
+    ? await planFinalRecheckWarning(ref.layout, planFinal.path, driver)
+    : null;
   const mustRead = await buildMustReadList(cfg, ctx.projectRoot, ref.topic, opts.contextPaths, planFinal.path);
   const suggestedRead = extractPathReferences(subjectText);
   const excerpt = excerptSubject(subjectText);
@@ -1066,12 +1135,12 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   const primarySnap = snapshots[sides[0]!]!;
   /** 全量进 run.json；播报通道（`--start` / 同步路径）用封顶后的那份（代码双审 CODEX-06） */
   /*
-   * 计划定稿没能列入的告警（至多一条）排在剔除告警之前，不受剔除封顶影响（EV-210）；
-   * 走同样三个出口：`--start` 的 warnings、同步路径的 warnings、run.json 的 gate.warnings。
+   * 计划定稿的告警——没能列入（EV-210）或没通过复核（EV-215），两者互斥、合起来至多一条——排在剔除告警之前，
+   * 不受剔除封顶影响（`composeMustReadWarnings`）；走同样三个出口：`--start` 的 warnings、同步路径的 warnings、
+   * run.json 的 gate.warnings（代码阶段 `gate --check` 以 run_warning 回灌）。
    */
-  const planFinalWarnings = planFinal.warning ? [planFinal.warning] : [];
-  const mustReadPrunedAll = [...planFinalWarnings, ...renderPrunedWarnings(pruned, sides)];
-  const mustReadPruned = [...planFinalWarnings, ...renderPrunedWarnings(pruned, sides, MUST_READ_PRUNED_DISPLAY_MAX)];
+  const planFinalWarnings = [planFinal.warning, planFinalRecheck].filter((w): w is { name: string; detail: string } => w !== null);
+  const { all: mustReadPrunedAll, display: mustReadPruned } = composeMustReadWarnings(planFinalWarnings, pruned, sides);
 
   /*
    * ── 闸门在第一次落盘之前置 running（EV-109 / EV-145 ①，闸门拦截不留骨架计划 r2 §3.1）──

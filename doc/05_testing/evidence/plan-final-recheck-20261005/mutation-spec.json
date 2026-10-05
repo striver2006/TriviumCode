@@ -1,0 +1,147 @@
+{
+  "targets": [
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/plan-final-recheck.test.js",
+    "dist/test/test/integration/plan-final-recheck.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "file": "src/trivium/gate.ts",
+      "desc": "M-later：照传真实后续轮次（loadRoundReviews 的 planFinal）",
+      "find": "        planFinal: { subjectRerunIndex: mark.subject_rerun_index, laterSubjectRerunIndexes: [] },\n",
+      "replace": "        planFinal: round.planFinal ?? { subjectRerunIndex: mark.subject_rerun_index, laterSubjectRerunIndexes: [] },\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js"
+    },
+    {
+      "id": "M2",
+      "file": "src/trivium/gate.ts",
+      "desc": "M-stop：最新一次没有裁决件即不复核（不往旧里找）",
+      "find": "      if (!disp) continue;\n",
+      "replace": "      if (!disp) return { kind: 'skipped' };\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js"
+    },
+    {
+      "id": "M3",
+      "file": "src/trivium/gate.ts",
+      "desc": "M-drv：不比对那一轮执笔方与定稿后缀",
+      "find": "      if (m.driver !== driver) {\n",
+      "replace": "      if (false) {\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js"
+    },
+    {
+      "id": "M4",
+      "file": "src/trivium/gate.ts",
+      "desc": "M-unmarked：去掉第 ③ 格（无标记按被审对象轮次 null 照判）",
+      "find": "      const mark = m.plan_final_check;\n      if (!mark) return { kind: 'skipped' };\n",
+      "replace": "      const mark = m.plan_final_check ?? { subject_rerun_index: null };\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js",
+      "also": [
+        "dist/test/test/integration/plan-final-recheck.test.js"
+      ]
+    },
+    {
+      "id": "M5",
+      "file": "src/trivium/gate.ts",
+      "desc": "去掉第 ④ 格（接受集合为空也交给 checkNextPlan）",
+      "find": "      if (acceptedIds.length === 0) return { kind: 'skipped' };\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js"
+    },
+    {
+      "id": "M6",
+      "file": "src/trivium/gate.ts",
+      "desc": "M-name：去掉定稿文件名判空（AGY-01）",
+      "find": "    if (!final) return { kind: 'unverifiable', reason: `定稿文件名 ${finalFileName} 解析不出执笔方` };\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js"
+    },
+    {
+      "id": "M7",
+      "file": "src/trivium/gate.ts",
+      "desc": "M-catch：兜底改为原样抛出（CODEX-02）",
+      "find": "    return { kind: 'unverifiable', reason: `复核出错：${e instanceof Error ? e.message : String(e)}` };\n",
+      "replace": "    throw e;\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js"
+    },
+    {
+      "id": "M8",
+      "file": "src/trivium/gate.ts",
+      "desc": "M-accept：接受集合不按期望集过滤",
+      "find": "        .filter((r) => (isFallbackId(r.id) ? (fb ? fb.includes(r.id) : true) : idsSet.has(r.id)))\n",
+      "replace": "        .filter(() => true)\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js",
+      "also": [
+        "dist/test/test/unit/plan-final-gate.test.js"
+      ]
+    },
+    {
+      "id": "M9",
+      "file": "src/trivium/gate.ts",
+      "desc": "M-fallback：虚拟编号不按清单",
+      "find": "        .filter((r) => (isFallbackId(r.id) ? (fb ? fb.includes(r.id) : true) : idsSet.has(r.id)))\n",
+      "replace": "        .filter((r) => (isFallbackId(r.id) ? true : idsSet.has(r.id)))\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js"
+    },
+    {
+      "id": "M10",
+      "file": "src/trivium/gate.ts",
+      "desc": "接受集合不按裁决过滤（驳回 / 暂缓也收）",
+      "find": "        .filter((r) => r.disposal === '接受')\n",
+      "replace": "        .filter((r) => r.disposal.length > 0)\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js",
+      "also": [
+        "dist/test/test/unit/plan-final-gate.test.js"
+      ]
+    },
+    {
+      "id": "M11",
+      "file": "src/trivium/gate.ts",
+      "desc": "M-gate：逐条降级不进期望集",
+      "find": "  const idsSet = expectedFindingIds(collectStructuredIds(i.reviews), [...new Set(i.expectedDegradedIds)]);\n",
+      "replace": "  const idsSet = expectedFindingIds(collectStructuredIds(i.reviews), []);\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js"
+    },
+    {
+      "id": "M12",
+      "file": "src/trivium/review.ts",
+      "desc": "M-wire：prepareRun 不并入复核告警",
+      "find": "  const planFinalWarnings = [planFinal.warning, planFinalRecheck].filter(",
+      "replace": "  const planFinalWarnings = [planFinal.warning].filter(",
+      "expect": "dist/test/test/integration/plan-final-recheck.test.js"
+    },
+    {
+      "id": "M13",
+      "file": "src/trivium/review.ts",
+      "desc": "M-order-a：播报通道里复核告警排到剔除告警之后（CODEX-01）",
+      "find": "    display: [...planFinalWarnings, ...renderPrunedWarnings(pruned, sides, MUST_READ_PRUNED_DISPLAY_MAX)],\n",
+      "replace": "    display: [...renderPrunedWarnings(pruned, sides, MUST_READ_PRUNED_DISPLAY_MAX), ...planFinalWarnings],\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js",
+      "also": [
+        "dist/test/test/integration/plan-final-recheck.test.js"
+      ]
+    },
+    {
+      "id": "M14",
+      "file": "src/trivium/review.ts",
+      "desc": "M-order-a′：run.json 里复核告警排到剔除告警之后",
+      "find": "    all: [...planFinalWarnings, ...renderPrunedWarnings(pruned, sides)],\n",
+      "replace": "    all: [...renderPrunedWarnings(pruned, sides), ...planFinalWarnings],\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js",
+      "also": [
+        "dist/test/test/integration/plan-final-recheck.test.js"
+      ]
+    },
+    {
+      "id": "M15",
+      "file": "src/trivium/review.ts",
+      "desc": "M-order-b：复核告警计入剔除封顶（CODEX-01）",
+      "find": "    display: [...planFinalWarnings, ...renderPrunedWarnings(pruned, sides, MUST_READ_PRUNED_DISPLAY_MAX)],\n",
+      "replace": "    display: [...planFinalWarnings, ...renderPrunedWarnings(pruned, sides, MUST_READ_PRUNED_DISPLAY_MAX)].slice(0, MUST_READ_PRUNED_DISPLAY_MAX),\n",
+      "expect": "dist/test/test/unit/plan-final-recheck.test.js"
+    }
+  ]
+}

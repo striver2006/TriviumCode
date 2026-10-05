@@ -1,0 +1,20 @@
+M1：fail=1 cancelled=0 0s ⇒ R7 最新一轮失败无裁决件 ⇒ 退回上一轮；恒核最大候选（r3），不因后续运行转去核 r2
+M2：fail=2 cancelled=0 0s ⇒ R7 最新一轮失败无裁决件 ⇒ 退回上一轮；恒核最大候选（r3），不因后续运行转去核 r2 ｜ R9 无从复核：途中读不出的留痕 / 执笔方与定稿后缀不同 / 入参不是可解析的文件名
+M3：fail=1 cancelled=0 0s ⇒ R9 无从复核：途中读不出的留痕 / 执笔方与定稿后缀不同 / 入参不是可解析的文件名
+M4：fail=1 cancelled=0 0s ⇒ R5 旧运行（无标记）有接受项、没有 r2 ⇒ skipped
+  亦跑 dist/test/test/integration/plan-final-recheck.test.js：fail=1 ⇒ C6 · 旧运行（run.json 没有标记）有接受项、没有 r2 ⇒ 不复核、无告警
+M5：fail=1 cancelled=0 0s ⇒ R4 最新一轮全部驳回 ⇒ skipped（即使此后写了不引用任何编号的 r3）
+M6：fail=1 cancelled=0 0s ⇒ R9 无从复核：途中读不出的留痕 / 执笔方与定稿后缀不同 / 入参不是可解析的文件名
+M7：fail=1 cancelled=0 0s ⇒ R13 复核出错（裁决件位置是个目录，读文件抛出）⇒ unverifiable「复核出错」，不抛（计划双审 CODEX-02）
+M8：fail=1 cancelled=0 0s ⇒ R10 acceptedIdsForNextPlan：期望集内、裁为接受、去重排序；虚拟编号按清单或按表
+  亦跑 dist/test/test/unit/plan-final-gate.test.js：fail=2 ⇒ U11 编号整词判据：GLM-010 不算 GLM-01；括号与冒号相邻算；被接受的虚拟编号必须出现 ｜ U17 期望集外的接受编号只由 unknown_findings 报，不要求写进新一轮计划
+M9：fail=1 cancelled=0 0s ⇒ R10 acceptedIdsForNextPlan：期望集内、裁为接受、去重排序；虚拟编号按清单或按表
+M10：fail=3 cancelled=0 0s ⇒ R4 最新一轮全部驳回 ⇒ skipped（即使此后写了不引用任何编号的 r3） ｜ R11 一侧整份回退：被接受的虚拟编号按清单进接受集合，r2 没写它即点名 ｜ R10 acceptedIdsForNextPlan：期望集内、裁为接受、去重排序；虚拟编号按清单或按表
+  亦跑 dist/test/test/unit/plan-final-gate.test.js：fail=2 ⇒ U2 有接受项、没有新一轮计划 → missing_next_plan，给出应写文件名与接受编号 ｜ U4 全部驳回 / 全部暂缓 → 不要求新一轮计划
+M11：fail=2 cancelled=0 0s ⇒ R10 acceptedIdsForNextPlan：期望集内、裁为接受、去重排序；虚拟编号按清单或按表 ｜ R12 闸门等价：同一布局上 checkAdjudication 与 recheckPlanFinal 的失败码与 ids 一致（含逐条降级与整份回退）
+M12：fail=5 cancelled=0 41s ⇒ C2 · 闸门通过后另写 r3 漏 GLM-01 ⇒ --start 告警、run.json 留痕、代码 gate --check 以 run_warning 回灌；第 4 段照常列 r3、无标注 ｜ C3 · 同 C2 走同步 review --stage code：同步输出与 run.json 都有该条 ｜ C4 · 有接受项、没有任何新一轮计划 ⇒ 告警点名应写的 r2 与两条编号 ｜ C7 · 计划与代码阶段都由 codex 执笔：claude 后缀的 r2 齐全不算，告警点名漏编号的 -r2-codex.md ｜ C8 · 计划 codex、代码 claude：复核告警排第一，其后是 gemini / glm 两侧对计划定稿的剔除告警（计划双审 CODEX-01）
+M13：fail=1 cancelled=0 0s ⇒ R14 composeMustReadWarnings：计划定稿告警排第一、不占剔除封顶名额（计划双审 CODEX-01）
+  亦跑 dist/test/test/integration/plan-final-recheck.test.js：fail=1 ⇒ C8 · 计划 codex、代码 claude：复核告警排第一，其后是 gemini / glm 两侧对计划定稿的剔除告警（计划双审 CODEX-01）
+M14：fail=1 cancelled=0 0s ⇒ R14 composeMustReadWarnings：计划定稿告警排第一、不占剔除封顶名额（计划双审 CODEX-01）
+  亦跑 dist/test/test/integration/plan-final-recheck.test.js：fail=1 ⇒ C8 · 计划 codex、代码 claude：复核告警排第一，其后是 gemini / glm 两侧对计划定稿的剔除告警（计划双审 CODEX-01）
+M15：fail=1 cancelled=0 0s ⇒ R14 composeMustReadWarnings：计划定稿告警排第一、不占剔除封顶名额（计划双审 CODEX-01）
