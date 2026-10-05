@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.98
+> - **当前版本**：v1.3.99
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -1379,7 +1379,7 @@ v1 → 内存 v2 的映射：`dual → full`、`single → partial`、`driver` �
 > 命令 A 又没有旗标能把它加进来；按轮控制侧数只能改 `config.yaml`。
 > 契约侧：S0.5 输出的 `critics` 由 S0.6 预检、S2、S6 **无条件**照传（用户没写时即缺省集合减当轮 Driver），
 > `allow_single` 为真时 S2、S6 都加 `--allow-single`，`--only` 一律不透传。
-> **命令 A 的预检因此挪到解析之后**（S0.6，带入选、档位与模型覆盖），与 B / C / D「先预检后解析」的次序不同：
+> **命令 A 的预检因此挪到解析之后**（S0.6，带入选、档位与模型覆盖）；B / C / D 当时仍是「先预检后解析」，v1.3.99 起同样改为先解析、预检带上 resolve 输出的 `critics` / `profile` / `models`（EV-126）。命令 A 先改的理由：
 > `review --start` 只查当阶段的 slug、不探活，显式加进来的一家若缺 code 阶段 slug，不在开跑前查出就要到 S6（编码之后）才暴露。
 > **残余（如实登记）**：S6 若漏传 `critics`，`--start` 会自行重取配置缺省，两轮可能跑的是不同的几家；运行期没有跨阶段比对。
 > 当轮靠 S2 / S6 开场播报念出的 `models` 键（即本轮入选侧）发现，事后靠两份运行留痕的 `critics_selected` 对出。
@@ -1471,11 +1471,12 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 执行契约（必须严格按序，不得跳步、不得自行调用 agy 或 zcode；下文 `TV` 指 `.trivium/bin/trivium`，
 一律用该项目相对路径，不依赖 PATH 与 ${CLAUDE_SKILL_DIR}，见 5.3 / 10.5；若该文件不存在，
 提示用户先在本项目执行 `trivium init` 并停止）：
-1. 运行 `TV preflight --stage plan --json`。失败则原样转述错误并停止。
-   通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，然后继续——警告不阻断（v1.3.41，EV-123）。
-2. 运行 `TV topic resolve --stage plan --json -- '<正文>' --topic <主题> [其余旗标]` 获得主题、原始计划路径与 run 上下文。
+1. 运行 `TV topic resolve --stage plan --json -- '<正文>' --topic <主题> [其余旗标]` 获得主题、原始计划路径与 run 上下文。
    原始参数**必须走 `--` 终止符**传入（它本身以 `--topic` 开头），且按 argv 逐个 token 解析——正文整段放进一个单引号参数（`--args` 传法已删，EV-18）；
    若提示语为空则停止并说明「命令 B 必须带提示语」；若未提供 `--context`，依据计划内容补一份涉及路径清单再传入（v1.3.73 起：清单不得写到本轮禁读范围，`--start` 因 `--context` 退 64 时，用户写的原样转述并停止、自动补的按报错去掉点名条目后重跑并在开场播报里写明去掉了哪几条——10.1.1 末节）。
+2. 运行 `TV preflight --stage plan --critics <critics> [--profile …] [--model-<id> …] --json`，三样取自上一步 resolve 的输出、与第 3 步同一组。失败则原样转述错误并停止。
+   通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，然后继续——警告不阻断（v1.3.41，EV-123）。
+   （v1.3.99 起先解析后预检，与命令 A 的 S0.5 → S0.6 同序：预检要查本轮实际入选的几侧，EV-126。）
 3. 运行 `TV review --start --entry B --stage plan --topic <主题> --focus <焦点> [--goal …] [--plan-file …] [--context …] --json`，
    得到 `run_id`（该命令冻结送审包、派生工作进程并立即返回）。上一步解析出的参数逐项透传，不得省略。
    返回的 `warnings` 非空时，在开场播报里逐条原样念出 `detail`，并提醒想中止就用 `TV review --cancel <run_id>`（v1.3.41）。
@@ -3709,6 +3710,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.99** | 2026-10-06 | **命令 B/C/D 先解析后预检（EV-126）。** M11 前待办批次第 5 题，**本批未走双审**。B / C / D 共用的 `skills-src/partials/review/body.md` 步序改为「1 解析 → 2 预检 → 3 启动」，预检无条件带第 1 步 resolve 输出的 `critics`，`profile` / `models` 非空时照传，三样与 `--start` 同一组——用户显式加进来的一侧在开跑前就被探活，不再等拉起后才失败；与命令 A 的 S0.5 → S0.6（EV-125）同序。三份契约 `@QUOTE_RULE_AT` 改「第 1 步」，正文两处依赖旧步序的句子与 `review.ts` slug 校验注释的前提同步订正；7.1 的次序对比句与 7.4 示例同改。重渲染 12 份产物，新增契约格钉住 B/C/D 的次序与 `--critics`；CLI 行为零变化。读数见 `doc/05_testing/REPORT_2026-10-06_bcd_preflight_order.md`。 |
 | **v1.3.98** | 2026-10-06 | **探针注释失实与回归格合成入口（EV-23、EV-94 ①；EV-04 待拍板）。** M11 前待办批次第 4 题，**本批未走双审**。运行期行为零变化。①EV-23：`types.ts` `CodexProbe.model_catalog_path` 文档块的「消费方：人读诊断与 `doctor` 报告」失实——全仓无代码读者，`doctor` 人读报告不渲染，只随探针结论进 `config.local.yaml` 的 `probe:` 段与 `doctor --json`，据此改写；字段与落盘不动（改结构属改契约）。②EV-94 ①：`preflight.test.ts` 的「--no-model-calls 保留上一次探到的 zcode 结论」改传合成入口与合成 cli 配置，不再在装了 ZCode.app 的机器上回落到 `/Applications/...` 候选真实跑旗标探针，CI 与本机走同一条路径、两个探针臂都确定地走到；变异 2/2 咬住。③EV-04（区分 run.json「不存在 / 读不出」）必然改报错文案，属改输出，登记候选（A 换成实际成因 / B 只加一行成因 / C 不修，建议 B）等拍板。读数见 `doc/05_testing/REPORT_2026-10-06_probe_doc_and_entry.md`。 |
 | **v1.3.97** | 2026-10-06 | **僵尸排除的录制样本单测（EV-169）。** M11 前待办批次第 3 题，**本批未走双审**。`processGroupMemberCount` 的计数抽成纯函数 `countLiveGroupMembers`（判据逐字不变：组号整数相等、状态不以 `Z` 开头），本机录制两份真实 `ps -axo pgid=,stat=` 样本（组长 + 僵尸；组里只剩僵尸——父进程在组外 fork、子进程 setsid 后退出、父进程不 wait）收进 `test/fixtures/ps-samples/`，单测喂样本；另加 macOS 实机格以同一造法直接调 `processGroupMemberCount` 断言只剩僵尸的组计 0。行为零变化，变异 3/3 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_ps_zombie_sample.md`。 |
 | **v1.3.96** | 2026-10-06 | **run_id 同秒避让（EV-147）。** M11 前待办批次第 2 题，**本批未走双审**（用户以 `/goal` 授权直接开发、指定不改格式的那一档）。`meta.ts` 新增 `allocateRunId`：从 `newRunId(now)` 起，本主题已占用（task.json `runs[]` 已登记，或 plan / code / bug / verify 任一阶段 `_meta/run-<id>.json` 已存在；task.json 读不出时只看文件）就往后抬一秒，上限 120 次、用尽抛 69。`prepareRun` 与 `verify` 两个分配点改调它，源码护栏禁止 `meta.ts` 之外直接调 `newRunId`。格式、文件名、schema 与「字典序即时序」不变；run_id 不再保证等于开始时刻的秒，以 `started_at` 为准。先后两轮同秒不再覆盖彼此的 run.json 与登记（6.7「每份 run.json 至多一次终态写入」的已知例外随之关闭）；不持主题锁的 verify 与审查运行同秒**并发**分配仍可能撞，不看运行目录（跨主题共用另登 EV-218）。LLD 的 run_id 段同步。读数见 `doc/05_testing/REPORT_2026-10-06_run_id_collision.md`。 |

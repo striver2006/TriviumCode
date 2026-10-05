@@ -230,6 +230,26 @@ test('命令 A 先解析、后预检，预检带上 resolve 解析出的入选�
   }
 });
 
+test('命令 B/C/D 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-126）', () => {
+  /*
+   * 与命令 A 同理（EV-125 D2）：用户用 `--critics` 加进来的一侧没登录，预检不带 `--critics` 就查不到，要等拉起后才失败。
+   * B/C/D 的预检在 `--start` 之前、解析之后；认领（B/D 的第 0 步）仍在两者之前，不在本格的判据里。
+   */
+  const reviews = rendered.filter((r) => /^review-(plan|code|bug)$/.test(r.command));
+  assert.equal(reviews.length, src.carriers.length * 3, '论域塌了');
+  for (const r of reviews) {
+    const resolveAt = r.content.search(/TV topic resolve --stage (plan|code|bug) --json/);
+    const preflightLine = r.content.split('\n').find((l) => /TV preflight --stage (plan|code|bug)/.test(l));
+    const startAt = r.content.search(/TV review --start/);
+    assert.ok(resolveAt >= 0 && preflightLine && startAt >= 0, `${r.relPath}：缺解析、预检或启动命令`);
+    const preflightAt = r.content.indexOf(preflightLine);
+    assert.ok(resolveAt < preflightAt, `${r.relPath}：预检须在解析之后`);
+    assert.ok(preflightAt < startAt, `${r.relPath}：预检须在 --start 之前`);
+    assert.match(preflightLine, /--critics /, `${r.relPath}：预检须带 --critics`);
+    assert.equal(r.content.split('\n').filter((l) => /TV preflight /.test(l)).length, 1, `${r.relPath}：预检命令应只有一处`);
+  }
+});
+
 test('护栏注入段与 r10 §3.1.3 的表一致', () => {
   // 表本身先钉住：它来自注册表派生，派生规则或登记值一改，这里先红
   const table = Object.fromEntries(AGENTS.map((a) => [a.id, guardProfileOf(a)]));

@@ -13,7 +13,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 @DISPOSITION: revised
 @AFTER_GATE: **此后不得开始编写或修改任何业务代码。** 等用户 `{{cmd:dual-approve}}` 之后才能继续。
 @ARG_KIND: text
-@QUOTE_RULE_AT: 第 2 步
+@QUOTE_RULE_AT: 第 1 步
 ---
 
 {{> review/body}}

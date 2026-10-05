@@ -764,7 +764,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   /*
    * ── slug 校验内嵌于此（审查意见 GLM-01）──
    *
-   * 独立的 `preflight` 命令看不到 skill 步骤 3 才传来的 --model-* 覆盖值，
+   * 独立的 `preflight` 命令只校验调用方传给它的 --model-* 覆盖值——命令 A 的 S0.6 与 B/C/D 的第 2 步
+   * （EV-126 起）会传同一组，但 skill 漏传、或在终端直接跑 `--start` 时它看不到这一步的覆盖值，
    * 而 routeModel 只透传不校验。若不在这里校验，非法 slug 会漏到运行中段才
    * 以业务性失败暴露——白烧配额且 strict 下整次中止。
    * §7.3 承诺的「退 64 并列出可用值」正是在这一处才真正成立。

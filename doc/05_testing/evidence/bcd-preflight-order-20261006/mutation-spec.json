@@ -1,0 +1,26 @@
+{
+  "targets": [
+    "skills-src/partials/review/body.md"
+  ],
+  "suites": [
+    "dist/test/test/contract/entry-render-parity.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "预检不带 --critics（改前的预检命令形态）",
+      "file": "skills-src/partials/review/body.md",
+      "find": "TV preflight --stage {{STAGE}} --driver {{DRIVER}} --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json\n",
+      "replace": "TV preflight --stage {{STAGE}} --driver {{DRIVER}} --json\n",
+      "expect": "dist/test/test/contract/entry-render-parity.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "在解析之前再放一条预检（退回「先预检后解析」）",
+      "file": "skills-src/partials/review/body.md",
+      "find": "### 1. 解析主题与被审对象\n",
+      "replace": "运行 `TV preflight --stage {{STAGE}} --driver {{DRIVER}} --critics <critics> --json`。\n\n### 1. 解析主题与被审对象\n",
+      "expect": "dist/test/test/contract/entry-render-parity.test.js"
+    }
+  ]
+}

@@ -15,13 +15,7 @@
 
 {{> review/claim@SUBJECT_KIND}}
 
-### 1. 预检
-
-运行 `TV preflight --stage {{STAGE}} --driver {{DRIVER}} --json`。失败则**原样转述**错误并停止，不要自行猜测修复。
-
-通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
-
-### 2. 解析主题与被审对象
+### 1. 解析主题与被审对象
 
 运行 `TV topic resolve --stage {{STAGE}} --json -- {{ARGS}} --driver {{DRIVER}}`。
 
@@ -63,6 +57,23 @@ TV topic resolve --stage {{STAGE}} --json -- '看 it'\''s 这一处与 "双引�
 连同后一个词一起被抠走。`--topic` 被包进了引号里，resolve 会退 64 并指出来；其余旗标字样
 被包进去时 resolve 只在 `notes` 里提醒——照原样转述给用户。
 
+### 2. 预检（在解析之后）
+
+```
+TV preflight --stage {{STAGE}} --driver {{DRIVER}} --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json
+```
+
+- `--critics`：第 1 步 resolve 输出的 `critics` 用逗号连接，**无条件传**；
+- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；
+- **这三样必须与第 3 步传的是同一组**，都取自第 1 步的输出，不要各拼各的。
+
+预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+不带 `--critics` 就查不到，要等拉起之后才失败。
+
+失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
+
+通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+
 ### 3. 启动双审并等待
 
 先运行：
@@ -79,7 +90,7 @@ TV review --start --entry {{ENTRY}} --stage {{STAGE}} --topic <主题> --driver 
 省略 `--goal` 时编排器会回退到 `task.json` 已记录的目标或同主题计划定稿。
 
 把 resolve 输出的 `prompt_hint` 原样传给 `--focus`。本步走标准 argv 解析，
-按普通命令行写法给带空格的值加引号即可，不涉及第 2 步那套拼串规则。
+按普通命令行写法给带空格的值加引号即可，不涉及第 1 步那套拼串规则。
 
 若 resolve 输出的 `profile` 非空，把它原样传给 `--profile`。它换的是本次运行的
 模型档位（`config.yaml` 的 `profiles`），与 `--model-*` 不冲突——后者指定具体模型、
@@ -106,8 +117,8 @@ TV review --start --entry {{ENTRY}} --stage {{STAGE}} --topic <主题> --driver 
 
 若 resolve 输出的 `models` 字段非空，把其中的模型覆盖逐个原样传给对应的
 `--model-<审核者 id>`（`models` 的键就是审核者 id：{{MODEL_FLAGS}}）。
-**用户指定的模型只在这一步才真正生效**——独立的 `preflight` 看不到
-步骤 3 才传来的覆盖值（`review.ts` 的 slug 校验注释写明了这点），漏传会静默回退到
+**用户指定的模型只在这一步才真正生效**——第 2 步的预检只拿同一组覆盖值做校验，
+`--start` 不会沿用它（`--start` 自己再校验一次 slug，见 `review.ts` 的 slug 校验注释），漏传会静默回退到
 profile 配置模型，且留痕里记的就是回退后的模型，事后看不出用户曾经指定过。
 
 它会冻结送审包、派生工作进程后**立即返回**，输出含 `run_id`、`max_waits`、
@@ -125,7 +136,7 @@ profile 配置模型，且留痕里记的就是回退后的模型，事后看不
 写死就会漂移成错误播报。
 
 `--start` 返回的 `warnings` 非空时，在开场播报里逐条原样念出 `detail`，并提醒：想中止就用 `TV review --cancel <run_id>`。
-这条警告是按**本轮实际入选侧**、在拉起前复查的（第 1 步的预检按缺省选侧查，可能没说到这一侧）；
+这条警告是按**本轮实际入选侧**、在拉起前复查的（第 2 步的预检已按同一组查过，两步之间配置或探活结论可能变）；
 它随返回值到达时审查已经拉起，拦不住拉起，但能让用户立刻决定要不要中止。
 
 然后循环运行：

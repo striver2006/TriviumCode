@@ -1,0 +1,38 @@
+{
+  "targets_sha256": {
+    "skills-src/partials/review/body.md": "913751d86033076c4d06a62aea348709b1ed69689b2306d9db729500da1c7c83"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "预检不带 --critics（改前的预检命令形态）",
+      "suite": "dist/test/test/contract/entry-render-parity.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "源 → 产物零 diff（改了源请跑 npm run render）",
+        "命令 B/C/D 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-126）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "在解析之前再放一条预检（退回「先预检后解析」）",
+      "suite": "dist/test/test/contract/entry-render-parity.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "源 → 产物零 diff（改了源请跑 npm run render）",
+        "--driver <自家 id>：次数等于应注入的调用数，且不出现别家 id",
+        "命令 B/C/D 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-126）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    }
+  ]
+}
