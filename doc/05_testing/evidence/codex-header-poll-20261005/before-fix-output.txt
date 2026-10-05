@@ -1,0 +1,64 @@
+work=〈scratchpad〉/hdr-before-dCdVk8
+✖ H1 不打 header、非零退出：结论照旧，返回后进程即可退出（EV-205） (10351.686667ms)
+✖ H2 不打 header、零退出：结论照旧，返回后进程即可退出（EV-205） (10349.364167ms)
+✖ H3 入口不存在（启动失败）：结论照旧，返回后进程即可退出（EV-205） (10114.35425ms)
+H4：调用 357 ms，返回后排空 2 ms
+✔ H4 五个标签打齐：早退、字段逐一取到（结论与改动前相同） (361.9715ms)
+H5：调用 282 ms，返回后排空 2 ms
+✔ H5 只见到分隔线：早退、只取到已打出的标签（结论与改动前相同） (284.817ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 2
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31533.935083
+
+✖ failing tests:
+
+test at dist/test/test/unit/codex-header-drain.test.js:106:1
+✖ H1 不打 header、非零退出：结论照旧，返回后进程即可退出（EV-205） (10351.686667ms)
+  AssertionError [ERR_ASSERTION]: 调用返回后 10 秒子进程仍未退出：轮询计时器漏清（EV-205）
+      at runDrain (file://〈scratchpad〉/hdr-before-dCdVk8/dist/test/test/unit/codex-header-drain.test.js:86:12)
+      at async TestContext.<anonymous> (file://〈scratchpad〉/hdr-before-dCdVk8/dist/test/test/unit/codex-header-drain.test.js:107:13)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'timeout',
+    expected: 'timeout',
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/codex-header-drain.test.js:114:1
+✖ H2 不打 header、零退出：结论照旧，返回后进程即可退出（EV-205） (10349.364167ms)
+  AssertionError [ERR_ASSERTION]: 调用返回后 10 秒子进程仍未退出：轮询计时器漏清（EV-205）
+      at runDrain (file://〈scratchpad〉/hdr-before-dCdVk8/dist/test/test/unit/codex-header-drain.test.js:86:12)
+      at async TestContext.<anonymous> (file://〈scratchpad〉/hdr-before-dCdVk8/dist/test/test/unit/codex-header-drain.test.js:115:13)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'timeout',
+    expected: 'timeout',
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/unit/codex-header-drain.test.js:121:1
+✖ H3 入口不存在（启动失败）：结论照旧，返回后进程即可退出（EV-205） (10114.35425ms)
+  AssertionError [ERR_ASSERTION]: 调用返回后 10 秒子进程仍未退出：轮询计时器漏清（EV-205）
+      at runDrain (file://〈scratchpad〉/hdr-before-dCdVk8/dist/test/test/unit/codex-header-drain.test.js:86:12)
+      at async TestContext.<anonymous> (file://〈scratchpad〉/hdr-before-dCdVk8/dist/test/test/unit/codex-header-drain.test.js:122:13)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'timeout',
+    expected: 'timeout',
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+node-test-exit=1

@@ -38,6 +38,13 @@ export interface RunOptions {
    *
    * 早退终止的结果里 `timedOut` 为 false、`earlyStopped` 为 true：
    * 两者必须分得开，否则调用方无从判断输出是不是完整的。
+   *
+   * `run` 只在早退时用到这个句柄，**不会**在子进程自然退出、超时或启动失败时通知回调方。
+   * 回调里挂的计时器（轮询之类）由调用方在 `run` 返回后自行清理——`await run(…)` 包进
+   * `try/finally` 即可：给了 `timeoutMs` 时，除终止中外 `run` 必然兑现（超时链路兜底），且不会 reject（EV-205）。
+   * 不给超时、子进程又挂住时 `run` 同样不兑现、`finally` 跑不到——在回调里挂计时器就必须给 `timeoutMs`。
+   * 终止中（`shutdownTrackedTrees` 置位后）`run` 永不兑现、`finally` 不跑，见该函数文档块；
+   * 那时进程随即退出，计时器随进程消失。
    */
   stopEarly?: (stop: () => void) => void;
   /** 用 `script -q /dev/null` 包一层伪终端（应对 agy 在管道下丢 stdout，probe.agy.pty_required） */

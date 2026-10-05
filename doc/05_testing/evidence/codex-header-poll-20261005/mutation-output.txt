@@ -1,0 +1,35 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  M1 ✓ 咬住（fail=3）
+  M2 ✓ 咬住（fail=3）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=1）
+{
+  "总数": 4,
+  "咬住": 4,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "删掉 finally 里的清理，恢复 31 s 兜底（恢复只靠兜底）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M2",
+      "desc": "删掉 finally 里的清理、不恢复兜底",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M3",
+      "desc": "轮询见到 header 后不调 stop()（不早退）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "早退判据去掉分隔线一支",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

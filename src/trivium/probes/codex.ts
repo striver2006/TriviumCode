@@ -23,7 +23,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
-import { run, tryRun } from '../util/exec.js';
+import { run, tryRun, type RunResult } from '../util/exec.js';
 import { exists, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
 import { createFixture, SENTINEL_OPEN, type Fixture } from './fixture.js';
 import { probeScratchPaths } from './agy.js';
@@ -425,43 +425,55 @@ export async function probeCodexHeader(
    *   ③ **固定超时无论调到多少，都只是在赌「请求还没发出去」**——
    *      而早退能把那个窗口压到接近零。
    *
-   * 仍留一个兜底超时：CLI 可能根本不打 header（版本变了、参数被拒），
-   * 那时没有早退信号，不能永远等下去。
+   * 兜底是 `run` 自己的 30s 超时：CLI 可能根本不打 header（版本变了、参数被拒），
+   * 那时没有早退信号，不能永远等下去。不打 header 就自己退出时 `run` 照常兑现，
+   * 轮询由下面的 finally 清掉（EV-205）。
    */
   const want = HEADER_LABELS;
   const seen = new Map<string, string>();
   let sawDivider = false;
+  /*
+   * 轮询计时器用对象持有：在回调里赋值的 let，到 finally 里会被收窄成初值 null。
+   * finally 是唯一清理点：run 有 30s 超时、必然收尾（超时 → SIGTERM → 宽限 → SIGKILL；
+   * 唯一例外是 worker 终止中，那时进程随即退出），子进程不打 header 就自己退出时 run 照样兑现，
+   * 而它不通知调用方——不在这里清，轮询会空转下去，拖住只靠事件循环排空退出的 doctor（EV-205）。
+   */
+  const poll: { timer: NodeJS.Timeout | null } = { timer: null };
 
-  const r = await run(
-    bin,
-    ['exec', ...extraArgs, '--skip-git-repo-check', '-C', cwd, 'probe'],
-    {
-      timeoutMs: 30_000,
-      cwd,
-      stdin: '',
-      killTree: true,
-      /*
-       * **header 走 stderr，模型回复走 stdout**（本机实测 0.154.0）。
-       * 手工验证时习惯写 `2>&1` 所以看得见；代码里若只挂 stdout 回调，
-       * 会一行都收不到——本步真机第一遍就栽在这里。
-       */
-      onStderrLine: (line) => {
-        for (const [k, v] of parseHeaderLines([line])) seen.set(k, v);
-        // header 段以 `--------` 收尾；见到分隔线且已收到标签说明 header 打完了
-        if (/^-{4,}$/.test(line.trim())) sawDivider = seen.size > 0;
+  let r: RunResult;
+  try {
+    r = await run(
+      bin,
+      ['exec', ...extraArgs, '--skip-git-repo-check', '-C', cwd, 'probe'],
+      {
+        timeoutMs: 30_000,
+        cwd,
+        stdin: '',
+        killTree: true,
+        /*
+         * **header 走 stderr，模型回复走 stdout**（本机实测 0.154.0）。
+         * 手工验证时习惯写 `2>&1` 所以看得见；代码里若只挂 stdout 回调，
+         * 会一行都收不到——本步真机第一遍就栽在这里。
+         */
+        onStderrLine: (line) => {
+          for (const [k, v] of parseHeaderLines([line])) seen.set(k, v);
+          // header 段以 `--------` 收尾；见到分隔线且已收到标签说明 header 打完了
+          if (/^-{4,}$/.test(line.trim())) sawDivider = seen.size > 0;
+        },
+        stopEarly: (stop) => {
+          poll.timer = setInterval(() => {
+            if (sawDivider || want.every((k) => seen.has(k))) {
+              // 见到 header 就停轮询，不必等 run 兑现（还要过 SIGTERM 与 close）
+              if (poll.timer) clearInterval(poll.timer);
+              stop();
+            }
+          }, 50);
+        },
       },
-      stopEarly: (stop) => {
-        const timer = setInterval(() => {
-          if (sawDivider || want.every((k) => seen.has(k))) {
-            clearInterval(timer);
-            stop();
-          }
-        }, 50);
-        // 兜底超时到了也要停掉轮询，别把定时器漏出去
-        setTimeout(() => clearInterval(timer), 31_000).unref();
-      },
-    },
-  );
+    );
+  } finally {
+    if (poll.timer) clearInterval(poll.timer);
+  }
 
   const pick = (label: string): string | null => seen.get(label) ?? null;
   return {

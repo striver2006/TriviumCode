@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.92
+> - **当前版本**：v1.3.93
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3709,6 +3709,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.93** | 2026-10-05 | **header探测计时器收尾（EV-205）。** 计划 `.reviews/header探测计时器收尾/plan/` r2（计划双审第 1 轮 run `20261005T113659Z`：gemini `approve`，codex、glm `approve-with-nits`，6 条全接受）。`probeCodexHeader` 把 `run` 的调用包进 `try/finally`，`run` 返回或抛出后一律清掉 `stopEarly` 回调里挂的 50 ms 轮询（句柄用对象持有），31 s 兜底删去——codex 不打 header 就退出时，调用返回后进程不再多挂约 30 秒（实测旧 30 647 ms、新 2 ms）。`run` 的实现与 `stopEarly` 签名不改，`RunOptions.stopEarly` 文档块补写「回调里挂的计时器由调用方在 `run` 返回后清理；给了 `timeoutMs` 时，除终止中外 `run` 必然兑现、不会 reject」（前提由代码双审 run `20261005T120550Z` CODEX-01 ≡ GLM-01 补入：codex、glm `approve-with-nits`，gemini `approve`，2 条全接受）。探针结论、notes、doctor 输出逐字不变。读数见 `doc/05_testing/REPORT_2026-10-05_codex_header_poll_cleanup.md`。 |
 | **v1.3.92** | 2026-10-05 | **待办甄别：EV-216 认定为已知边界（纯文档）。** 6.6 规则 9 边界②补「刻意不堵」的理由与重开条件：带轮次的引用要改四家技能正文、流程说明与闸门判据，代价远大于它防的那类诚实失误；代码双审对照计划定稿读实现仍是一层兜底。同批 BACKLOG：EV-216、EV-211 改「不修」（bug 阶段审的是根因而非实现是否忠实于计划，需要时用 `--context` 显式列入计划定稿），EV-203 保留触发式。实现与行为不变。 |
 | **v1.3.91** | 2026-10-05 | **目标回退取计划定稿（EV-212）。** 计划 `.reviews/目标回退取计划定稿/plan/` r2（命令 A；计划双审第 1 轮 run `20261005T090634Z`：gemini `approve`，codex、glm `approve-with-nits`，4 条全接受——CODEX-01 验收配方措辞、GLM-01 钉住「项目根与 cwd 不同」那一格、GLM-02 渲染产物份数、GLM-03 新旧两侧各用全新夹具）；代码双审第 1 轮 run `20261005T093847Z`：glm `approve`，gemini `approve-with-nits`，codex `request-changes`，6 条全接受（测试报告与索引随被审 diff 补齐、新集成套件补桩指纹断言、三处措辞与注释）。**一、** 9.4 第 4 条任务目标第三级改为与 ② 必读清单**同一份、同一处判定**的计划定稿：`resolveTaskGoal` 删去自己那次 `locateSubject`（它按本轮 Driver 的后缀找，计划与代码 / bug 阶段分属两家时静默取空或取到别家后缀的文件），改收必填参数「怎么取计划定稿」、只在第三级走到时调用——代码阶段复用 `prepareRun` 已算好的 `resolvePlanFinal` 结果，bug 阶段现算一次、只用来取目标。**二、** 计划阶段留痕读不出时第三级不取、不拒跑，告警在该处有意丢弃（代码阶段已有「必读清单未列计划定稿」，bug 阶段不补）。**三、** 本条原写「plan 原稿」，实现一直取轮次最大的一份；改成与实现一致，执笔方相同的主题目标逐字不变（新旧构建任务书比对 A1 逐字相同）。同义的「plan 原稿」措辞在 6.7、7.1、MANUAL、CLI `--goal` 帮助与三个 review 技能正文一并改为「计划定稿」。护栏表 `locateSubject` 调用点 3 降 2。报告 `doc/05_testing/REPORT_2026-10-05_goal_fallback_plan_final.md`。 |
 | **v1.3.90** | 2026-10-05 | **计划定稿复核（EV-215）。** 计划 `.reviews/计划定稿复核/plan/` r2（命令 A；计划双审第 1 轮 run `20261005T062609Z`：codex、gemini、glm 均 `approve-with-nits`，5 条全接受——CODEX-03 ≡ GLM-01 期望集派生抽成共用、CODEX-01 告警拼接抽成纯函数以便测顺序与封顶、CODEX-02 复核兜底有用例、AGY-01 入参明确为文件名并判空）。代码阶段 `prepareRun` 列入计划定稿之后调 `recheckPlanFinal`，用计划阶段闸门的同一份判据复核一次：取计划阶段第一份有裁决件的运行（没有裁决件的往旧里跳过），接受集合与闸门调同一个 `acceptedIdsForNextPlan`，`checkNextPlan` 恒核最大候选；不一致出「计划定稿未通过复核」告警、不拒跑、第 4 段不标注，与「必读清单未列计划定稿」互斥、同走三个出口（6.6 规则 9 边界④与「代码阶段复核」、9.4 第 4 条）。`checkAdjudication` 第 1、5、6 步改调抽出的 `collectStructuredIds` / `expectedFindingIds` / `acceptedIdsForNextPlan`，闸门行为与输出逐字不变。历史归档 82 个主题的最新一轮都没有标记，复核对它们都不触发。读数见 `doc/05_testing/REPORT_2026-10-05_plan_final_recheck.md`。 |

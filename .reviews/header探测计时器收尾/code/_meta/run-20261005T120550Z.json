@@ -1,0 +1,305 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261005T120550Z",
+  "topic": "header探测计时器收尾",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": null,
+  "task_goal": "主题「header探测计时器收尾」：EV-205。codex 认证与配置探针里的 header 探测（probeCodexHeader）在 run 的 stopEarly 回调里挂了一个 50 毫秒的轮询计时器，只在见到 header 时才清；codex 没打出 header 就退出时，轮询要再空转至多 31 秒，期间事件循环不空。CLI 收尾只设退出码、靠事件循环自然排空退出，所以 doctor…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "b5f52ca0d7fc529f832dabdced033aabaa58816f",
+    "tree_hash": "ddf3d751e06b82749e04bb2b0c861b2632c4db5a",
+    "dirty": true,
+    "subject_sha256": "0eb090b82336bbefdc174ade38470f685c3ed69f1acc3ed73e448a2a780ebf19",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "360927dd1db1eadce25962c7f49574ca2fb5bd81",
+      "dirty": false,
+      "inputs_sha256": "1e5aadfa5a2fed923df73b2af060015b82201af75696561b6fe5261a429c4d70",
+      "built_at": "2026-10-05T10:22:28.028Z"
+    },
+    "after_tree_hash": "c0989ac138d4094e56d7a01533e763d73ba54d1e"
+  },
+  "started_at": "2026-10-05T12:05:53.643Z",
+  "finished_at": "2026-10-05T12:17:34.737Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.0",
+      "model_requested": "k3",
+      "model_effective": "k3",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 700.862,
+      "tool_calls": {
+        "run_command": 20,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a10bf4-c911-7312-a0a3-893002bcf893",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.17",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 114.683,
+      "tool_calls": {
+        "read": 17,
+        "grep": 3,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 16
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 142030,
+        "output_tokens": 13002,
+        "thinking_tokens": 10520,
+        "cache_read_tokens": 1348352,
+        "total_tokens": 155032
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "5cc6918c-a9dc-400b-a90a-77999e05e116",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 482.707,
+      "tool_calls": {
+        "read": 20,
+        "grep": 5,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 23
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 9,
+        "inputTokens": 921620,
+        "outputTokens": 28180,
+        "totalTokens": 949800,
+        "cacheReadTokens": 799104,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_c933afa8-8073-411f-b56d-c0cb8c165133",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/header探测计时器收尾/plan/2026-10-05-header探测计时器收尾-gemini.md",
+    ".reviews/header探测计时器收尾/plan/2026-10-05-header探测计时器收尾-glm.md",
+    ".reviews/header探测计时器收尾/plan/_meta/review-gemini-20261005T113659Z.json",
+    ".reviews/header探测计时器收尾/plan/_meta/review-glm-20261005T113659Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "header探测计时器收尾/code/_meta/changes-20261005T120550Z.diff",
+      "sha256": "0eb090b82336bbefdc174ade38470f685c3ed69f1acc3ed73e448a2a780ebf19"
+    },
+    {
+      "path": "header探测计时器收尾/code/_meta/brief-codex-20261005T120550Z.md",
+      "sha256": "dfb0b788c27493a12bcb2956f8bb438b69399657678a453e9008229dc2b06c02"
+    },
+    {
+      "path": "header探测计时器收尾/code/_meta/brief-gemini-20261005T120550Z.md",
+      "sha256": "5e33a7a510a7c34c20b41613ff7bbc9fc566f78596ec277bd04c0c9f866eee59"
+    },
+    {
+      "path": "header探测计时器收尾/code/_meta/brief-glm-20261005T120550Z.md",
+      "sha256": "96b9c3b4f0167ade297afca9e2da93d4f88ccbc0ab309ba3cb688b96833d4c7f"
+    },
+    {
+      "path": "header探测计时器收尾/code/_meta/review-codex-20261005T120550Z.json",
+      "sha256": "8ef568f1aff5a301527bba3e30547fd3557003343bc6b2e92cf592c75132ff1e"
+    },
+    {
+      "path": "header探测计时器收尾/code/_meta/review-gemini-20261005T120550Z.json",
+      "sha256": "dca304d19add1069cd35d2953ef6f33a46e392e0993507d2153afa8dd5fbd82c"
+    },
+    {
+      "path": "header探测计时器收尾/code/_meta/review-glm-20261005T120550Z.json",
+      "sha256": "577a23025df784b1cf14f4e1809397cf4fd11ba6b7091c8a69bd6b2261bb8a19"
+    },
+    {
+      "path": "header探测计时器收尾/code/2026-10-05-header探测计时器收尾-codex.md",
+      "sha256": "66783c8200571f87e3abb9f119892babbe7e6f2073964b26b86bfa9174f5be21"
+    },
+    {
+      "path": "header探测计时器收尾/code/2026-10-05-header探测计时器收尾-gemini.md",
+      "sha256": "b2b08eb9b10e40116639ff2baa67a8ec2e058b8eb8bfefdf19c50d005ba6740d"
+    },
+    {
+      "path": "header探测计时器收尾/code/2026-10-05-header探测计时器收尾-glm.md",
+      "sha256": "85432b7757e1d0a75bdad29e1d9ec8661bed7cfef2db359538fda1a5d4ba512d"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装",
+      "安装副本与仓库 HEAD 不同版（构建于 360927d，仓库 HEAD b5f52ca）"
+    ]
+  },
+  "status": "success"
+}

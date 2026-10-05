@@ -238,7 +238,8 @@ if (argv[0] === 'debug' && argv[1] === 'models') {
 }
 if (argv.includes('--help')) { process.stdout.write('Usage: codex exec [OPTIONS] [PROMPT]\\n'); process.exit(0); }
 if (LOCK) lockUnder(LOCK);
-// 吐一段最小 header：probeCodexHeader 的 50ms 轮询只在见到 header 时清掉，不吐就要等它 31 秒的兜底（既有行为，本题不改）
+// 吐一段最小 header：让 exec 调用走「见到 header 早退」这条与真实 codex 同形的路径、各项判据有值可比。
+// 原先不吐就要多等 probeCodexHeader 轮询的 31 秒兜底；EV-205 起轮询在 run 返回后即清，不吐也不再多等
 process.stderr.write('model: fake-model\\n--------\\nfake codex: refused\\n');
 process.exit(1);
 `;

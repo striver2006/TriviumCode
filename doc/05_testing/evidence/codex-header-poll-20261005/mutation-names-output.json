@@ -1,0 +1,68 @@
+{
+  "targets_sha256": {
+    "src/trivium/probes/codex.ts": "f6da79d93c75f69a7475e1e3c9e5dd7422d356d9dccd1e0cae938760804575d8"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "删掉 finally 里的清理，恢复 31 s 兜底（恢复只靠兜底）",
+      "suite": "dist/test/test/unit/codex-header-drain.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "H1 不打 header、非零退出：结论照旧，返回后进程即可退出（EV-205）",
+        "H2 不打 header、零退出：结论照旧，返回后进程即可退出（EV-205）",
+        "H3 入口不存在（启动失败）：结论照旧，返回后进程即可退出（EV-205）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 33,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "删掉 finally 里的清理、不恢复兜底",
+      "suite": "dist/test/test/unit/codex-header-drain.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "H1 不打 header、非零退出：结论照旧，返回后进程即可退出（EV-205）",
+        "H2 不打 header、零退出：结论照旧，返回后进程即可退出（EV-205）",
+        "H3 入口不存在（启动失败）：结论照旧，返回后进程即可退出（EV-205）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 32,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "轮询见到 header 后不调 stop()（不早退）",
+      "suite": "dist/test/test/unit/codex-header-drain.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "H4 五个标签打齐：早退、字段逐一取到（结论与改动前相同）",
+        "H5 只见到分隔线：早退、只取到已打出的标签（结论与改动前相同）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 21,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "早退判据去掉分隔线一支",
+      "suite": "dist/test/test/unit/codex-header-drain.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "H5 只见到分隔线：早退、只取到已打出的标签（结论与改动前相同）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12,
+      "also": []
+    }
+  ]
+}

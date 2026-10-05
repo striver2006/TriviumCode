@@ -1,0 +1,42 @@
+{
+  "targets": [
+    "src/trivium/probes/codex.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/codex-header-drain.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "删掉 finally 里的清理，恢复 31 s 兜底（恢复只靠兜底）",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "          }, 50);\n        },\n      },\n    );\n  } finally {\n    if (poll.timer) clearInterval(poll.timer);\n  }\n",
+      "replace": "          }, 50);\n          setTimeout(() => clearInterval(poll.timer!), 31_000).unref();\n        },\n      },\n    );\n  } finally {\n  }\n",
+      "expect": "dist/test/test/unit/codex-header-drain.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "删掉 finally 里的清理、不恢复兜底",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "  } finally {\n    if (poll.timer) clearInterval(poll.timer);\n  }\n",
+      "replace": "  } finally {\n  }\n",
+      "expect": "dist/test/test/unit/codex-header-drain.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "轮询见到 header 后不调 stop()（不早退）",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "              stop();\n",
+      "replace": "              void stop;\n",
+      "expect": "dist/test/test/unit/codex-header-drain.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "早退判据去掉分隔线一支",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "            if (sawDivider || want.every((k) => seen.has(k))) {\n",
+      "replace": "            if (want.every((k) => seen.has(k))) {\n",
+      "expect": "dist/test/test/unit/codex-header-drain.test.js"
+    }
+  ]
+}

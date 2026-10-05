@@ -1,0 +1,114 @@
+---
+schema: trivium.review.v1
+topic: header探测计时器收尾
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.160.0
+model_requested: k3
+model_effective: k3
+model_effective_source: trace
+model_route: config_copy
+run_id: 20261005T120550Z
+rerun_index: 1
+snapshot_hash: sha256:0eb090b82336bbefdc174ade38470f685c3ed69f1acc3ed73e448a2a780ebf19
+blind: true
+started_at: 2026-10-05T12:05:53.830Z
+finished_at: 2026-10-05T12:17:34.737Z
+duration_s: 701
+tool_calls:
+  run_command: 20
+  project_reads: 17
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 0
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: true
+session_id: 01a10bf4-c911-7312-a0a3-893002bcf893
+---
+
+# 代码审查：header探测计时器收尾
+
+> Critic-C · OpenAI Codex ｜ 模型 `k3`
+> ｜ 运行 `20261005T120550Z`
+> ｜ 本轮审核者 codex、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+
+## 总判断
+
+修复方向正确且最小：probeCodexHeader 用对象持有轮询句柄（规避 TS 把 finally 里只经闭包赋值的 let 收窄成初值 null）、try/finally 在 run 兑现后清掉 50 ms 轮询、删去 31 s 兜底；exec.ts 只补契约文档、实现一行未动。我沿调用链核实了 run 的兑现与拒绝路径（spawn error 走 error 事件 → resolve、close 或 exit+2s 兜底、30 s 超时 → SIGTERM → 5 s 宽限 → SIGKILL、treeShutdown 两格：置位前 stopEarly 根本不会被调用、置位后 finish 不兑现而进程随即退出）、killProcessTree 对 ESRCH 的吞没（轮询回调里 stop() 不会抛出）、EV-199 假入口仅改注释、新单测装置（干净子进程量排空、10 s 上限两侧余量均在 2 倍以上、不按 pid 补杀假 codex、假 codex 靠 ppid 自查加 40 s 自毙不遗留）、证据自洽（排空实测旧 30 647 ms → 新 2 ms、变异 4/4 咬住、改前对照 H1～H3 红 H4/H5 绿、全量 fail 0、临时目录仅已知 trivium-index- 残留）、文档同步（BACKLOG EV-205 结案、设计 v1.3.93、README 索引按文件名升序插入、src/skills-src/design/api 四处 grep 无 31 s 兜底残留引用）。实现与计划 r2 §3.1～§4 逐条相符，唯一计划外的 drain-time.mjs 不设上限实测已在报告 §3 显式声明。唯一意见：exec.ts 新文档段把「run 必然兑现」写成无条件主句，漏了「调用方须给 timeoutMs」这个前提（CODEX-01，nit）。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 1 条：吹毛求疵 1）
+
+### CODEX-01 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/util/exec.ts RunOptions.stopEarly 文档块新增段（约 42～46 行，「除终止中外 run 必然兑现（超时链路兜底），且不会 reject」一句）` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：新增段把「run 必然兑现」写成无条件主句，但它成立的前提是调用方真的配置了 timeoutMs：timeoutMs 缺省为 0 时不装 softTimer，此时子进程挂住（或退出后留下继承 stdio 管道的孙进程、close 永不触发，exit 后的 2 s 兜底又以 exit 事件为前提）run 同样永不兑现。这段文字的受众恰是「日后在 stopEarly 回调里挂计时器的调用方」，按现措辞，一个没配超时的调用方会以为 await 包 try/finally 就够用，而它的 finally 在子进程挂死时永远跑不到，计时器照旧漏清——正是本条契约想防的事故形态。括号注「超时链路兜底」只点了机制，没点前提。
+
+**依据**：本轮实读：src/trivium/util/exec.ts 中 timeoutMs 缺省 0（解构默认值）、softTimer 仅在 timeoutMs > 0 时安装（约 331～337 行）、finish 只由 close / error / exit+2s 三处触发（约 290～325 行）、exit 后等 close 的 2 s 兜底注释（「子进程退出后若留下继承了 stdout 管道的孙进程……管道不闭合，close 永不触发」）。执行命令：sed -n '130,360p' src/trivium/util/exec.ts；sed -n '1,120p' src/trivium/util/exec.ts。属读码推理，未运行。
+
+**建议**：把前提写进主句即可，一句的事，例如改为「调用方给了 timeoutMs 时，除终止中外 run 必然兑现（超时链路兜底）、不会 reject；不给超时且子进程挂住时 run 同样不兑现，挂计时器的调用方须自知」。实现不动。
+
+## 认为正确的部分
+
+- try/finally 加对象持有句柄是正确的最小修法：「回调里赋值的 let 到 finally 被收窄成初值 null」的注释与 TS 控制流分析行为一致，poll.timer 对象属性绕开该收窄是必要的而非防御性多余的写法（src/trivium/probes/codex.ts 434～475 行实读核实）。
+- 清理时序无残留窗口：await 的 continuation 是微任务、50 ms 轮询是宏任务，run 兑现后 finally 先于下一次轮询 tick 执行；回调内 clearInterval 与 finally 内重复 clear 是幂等的，见 header 即停轮询那次保留合理（不必等 SIGTERM 与 close）。
+- 文档块对终止冻结的两格描述与实现相符：treeShutdown 已置位时 run 直接返回永不兑现的 Promise、stopEarly 根本不会被执行（不建计时器）；置位发生在运行中时 finish 跳过 resolve、进程按 shutdownTrackedTrees 契约随即退出（exec.ts 153～160 行与 176 行、283～289 行实读核实）。
+- run 不 reject 与超时链路在源码层成立：spawn 失败走 error 事件进 finish(null, null)、超时走 SIGTERM → killGraceMs 5 s → SIGKILL、exit 后有 2 s 等 close 兜底；killProcessTree 对 ESRCH 双层 catch 吞没，轮询回调里的 stop() 在「子进程恰已自行退出」的竞态下不会抛出未捕获异常。
+- 新单测装置设计成立：在干净子进程里量「返回后多久自然退出」抓住了被测对象（本进程事件循环另有挂饰会掩盖漏清）；10 s 上限对修好（毫秒级）与漏清（约 29～31 s）两侧余量均在 2 倍以上；父侧只对直接子进程兜底 SIGKILL、不按 pid 补杀假 codex，假 codex 以 ppid 每 100 ms 自查加 40 s 自毙保证不遗留；H4/H5 把五个字段、gotHeader、exitCode 逐一钉住，守住了「早退路径结论逐字不变」。
+- 证据链自洽且与报告一致：drain-time-output.txt 旧构建调用 435 ms / 返回后排空 30 647 ms、新构建 858 ms / 2 ms；mutation-output.txt 四条变异 fail 数为 3/3/2/1 全咬住；before-fix-output.txt H1～H3 红在 10 s 上限、H4/H5 绿；check-1-pre-s6.txt 全量 fail 0 / skipped 2；count-new-check-1-pre-s6.txt 仅 1 个已知 trivium-index- 残留；before-fix.sh 用 git archive 叠加新测试文件的做法与计划 r2 §4.2 一致。
+- 文档同步无遗漏：BACKLOG EV-205 结案含修法、两条原方向不取的理由与两条残余；设计 v1.3.93 条目与实现一致；README 索引新条目位于 10-04 之后、fixture_repo_init_failure 之前，文件名升序成立；对 src/、skills-src/、doc/02_design/、doc/03_api/ 的 grep 未发现 31 秒兜底的残留描述；git status 显示工作树改动与 diff 文件清单一致（6 个修改加报告、证据目录、新测试三个未跟踪项）。
+
+## 未覆盖范围（本侧盲区）
+
+- 只读沙箱，本轮未重跑任何构建或测试（npm run check、新单测、变异装置、改前对照均未执行）；所有运行期结论来自实读源码与证据文件，属读码核证而非本轮实测。
+- 30 s 超时兑现路径（报告边界二）按计划与报告有意不测，我只在 exec.ts 源码层核了超时链路结构（softTimer → SIGTERM → hardTimer → SIGKILL → close 或 exit+2 s），未实测。
+- 证据目录的三个 .mjs 脚本（drain-time、gen-mutation-spec、mutation-names）只核了产出与关键结构，未逐行审。
+- run() 对类型非法入参可能同步 throw 而 reject 的理论路径未列为意见：TS 类型在本仓内杜绝该入参形态，且即使 reject，调用方的 try/finally 照样清理，无实际误导后果。
+- 探针判据本身的正确性（profile / effort 差异法等）不在本侧镜头内，只顺调用链核了 probeCodex 五处调用点对新收尾的依赖方式。
+- macOS 之外的平台行为未核（项目仅支持 macOS，假 codex 的 shebang 与 process.ppid 用法在 macOS 与 Linux 均成立，Windows 不在支持面）。
+
+## 实际查阅的项目文件
+
+- `src/trivium/probes/codex.ts`
+- `src/trivium/util/exec.ts`
+- `src/trivium/cli.ts`
+- `test/unit/codex-header-drain.test.ts`
+- `test/unit/probe-fixture-cleanup.test.ts`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/05_testing/README.md`
+- `doc/05_testing/evidence/codex-header-poll-20261005/before-fix.sh`
+- `doc/05_testing/evidence/codex-header-poll-20261005/drain-time-output.txt`
+- `doc/05_testing/evidence/codex-header-poll-20261005/mutation-output.txt`
+- `doc/05_testing/evidence/codex-header-poll-20261005/check-1-pre-s6.txt`
+- `doc/05_testing/evidence/codex-header-poll-20261005/count-new-check-1-pre-s6.txt`
+- `.reviews/header探测计时器收尾/plan/2026-10-05-header探测计时器收尾-r2-claude.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":20,"project_reads":17}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*
