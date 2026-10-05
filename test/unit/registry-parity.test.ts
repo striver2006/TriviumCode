@@ -281,7 +281,7 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
   /*
    * 本条的理由**改写过两次**，两次都是「字面还在、但为什么在」变了：
    *   · 第一版：CriticId 的字面收窄 —— M7b 第 6 步放开成注册表全集后作废；
-   *   · 第二版：Disposition.role 的字面 'claude'（「Driver 任意化排在 M10」）——
+   *   · 第二版：Disposition.role 的字面 'claude'（「Driver 任意化排在 M10」；该接口无消费方，已于 EV-70 删除）——
    *     EV-66 在 M9 第 6 步前就把 role 放开成 AgentId 了，那句预言本身失效，
    *     再留着就是一条**失实的留痕**（而上面那条守卫只查字面在不在，查不出理由过期）。
    * 现在的理由是探针键，与裁决件契约无关。下一个动这行的人请照样如实改写，别顺手删。
@@ -845,44 +845,72 @@ test('config.v2 schema：身份字段不得枚举 Agent id（但形状判别式�
  *     「已登记的 Agent」，而不是「当前启用的审核者」。拿启用状态当夹具来源，
  *     等于把一条恒真的形状约束绑在一个会变的运行期布尔上。
  *
- * 唯一要排除的是 `driver` 那一格：`critics_selected` 含当轮 Driver 会触发
- * 身份补校的互斥规则，那是**另一条**规则的正确行为，不该在这里被当成形状失败。
+ * **Driver 那一格不排除**（EV-59）。此前这里 `continue` 掉了 `DEFAULT_DRIVER`，理由写的是
+ * 「`critics_selected` 含当轮 Driver 会触发身份补校的互斥规则」——实核 `checkAgentIdentities`
+ * 没有这条规则，那一格本来就通过；排除只让读的人以为落盘层还有第二道防线。
+ *
+ * 实况：**落盘层（run.v2 校验）不判 Driver 是否入选**。「Driver 不得入选」由上游两处拦——
+ * `resolveCriticSelection`（CLI 入口，退 64、零工件）与 `prepareRun` 对 `sides` 的兜底
+ * （直传 `critics` 也过它）；`critics_selected` 唯一的产出点在兜底之后。不在落盘层补：
+ * `validateRunMeta` 同时是读侧判据，补了只会让违例留痕整份不可读，理由见 BACKLOG EV-59 结案记录。
+ * 这一现状由下一条用例钉住。
  */
-test('run.v2 校验：每一个已登记 Agent 出现在入选集合里，形状上都必须被接受', () => {
-  for (const spare of ALL_AGENT_IDS) {
-    if (spare === DEFAULT_DRIVER) continue; // 见上：Driver 互斥是另一条规则
-
-  const agent = agentById(spare)!;
-  const meta = {
+function minimalRunV2(driver: string, selected: string[], criticIds: string[]): Record<string, unknown> {
+  return {
     schema: 'trivium.run.v2',
     run_id: 'R1', topic: 't', stage: 'plan', rerun_index: 1, command: 'x',
     prompt_hint: null, task_goal: null,
-    driver: DEFAULT_DRIVER,
-    critics_selected: [spare],
+    driver,
+    critics_selected: selected,
     snapshot: {
       git_head: null, tree_hash: 'h', dirty: false, subject_sha256: 's',
       drift: { changed: false, files: [], policy: 'warn' },
     },
     started_at: 'x', finished_at: null,
     review_mode: 'full', degraded_reason: null,
-    critics: {
-      [spare]: {
-        vendor: agent.vendor, cli_version: null,
+    critics: Object.fromEntries(
+      criticIds.map((id) => [id, {
+        vendor: agentById(id)!.vendor, cli_version: null,
         model_requested: null, model_effective: null,
         status: 'ok', exit_code: 0, duration_s: 1,
         tool_calls: {}, evidence_ok: true, heterogeneous: true,
-      },
-    },
+      }]),
+    ),
     deny_paths: [],
     guard: { readonly_breach: false, peer_artifact_read: false, peer_deny_applied: {}, forged_role_file: false },
     artifacts: [], gate: { adjudication_complete: false, state: 'running' }, status: 'running',
   };
+}
 
-  assert.deepEqual(
-    validateRunMeta(meta), [],
-    `${spare} 是已登记 Agent，run.v2 不该在形状上拒绝它——` +
-      '拒绝即说明枚举被塞回了 schema（可能不是用 enum 写的）',
-  );
+test('run.v2 校验：每一个已登记 Agent 出现在入选集合里，形状上都必须被接受', () => {
+  for (const spare of ALL_AGENT_IDS) {
+    assert.deepEqual(
+      validateRunMeta(minimalRunV2(DEFAULT_DRIVER, [spare], [spare])), [],
+      `${spare} 是已登记 Agent，run.v2 不该在形状上拒绝它——` +
+        '拒绝即说明枚举被塞回了 schema（可能不是用 enum 写的）',
+    );
+  }
+});
+
+/*
+ * 钉的是**现状**，不是规格（EV-59）：上一条用例上方的注释说「落盘层不判 Driver 是否入选」，
+ * 这条让那句话有测试兜着。两种形态分开，「只看 `critics_selected`」与「只看 `critics` 键」
+ * 两种补法都会让它红——将来真有理由在落盘层补这条规则时，它会逼着同步改注释与 BACKLOG 结论。
+ */
+test('run.v2 校验：落盘层不拦 Driver 入选（EV-59 钉住现状，补规则时要同步改注释）', () => {
+  for (const driver of ALL_AGENT_IDS) {
+    const other = ALL_AGENT_IDS.find((id) => id !== driver)!;
+    const forms: [string, Record<string, unknown>][] = [
+      ['Driver 入选且有结果', minimalRunV2(driver, [driver], [driver])],
+      ['Driver 只在入选集合里', minimalRunV2(driver, [driver, other], [other])],
+    ];
+    for (const [label, meta] of forms) {
+      assert.deepEqual(
+        validateRunMeta(meta), [],
+        `driver=${driver}，形态「${label}」被落盘层拒绝了。若有意在落盘层补 Driver 互斥规则，` +
+          '同步改上一条用例上方的注释、BACKLOG EV-59 的结论，并改写或删除本用例',
+      );
+    }
   }
 });
 

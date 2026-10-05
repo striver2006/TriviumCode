@@ -1,0 +1,10 @@
+# bundle 佐证比对（计划 r2 §5.3 第 4 项）：改前 = 98f3f06 工作树未改时构建；改后 = 本主题改动后构建
+40543d6682ce8dba9329a9c4c356595d57753bec61317c3962e4340e47ef2303  (scratchpad)/bundle-before.cjs
+6ba567b62ab4376db4c4a04911d3023b37eb9d34d03a18236f12d61f8622eae7  skills/dual-critic/scripts/trivium.cjs
+# 全文 diff（只应有构建标识一行）：
+50c50
+<     define_TRIVIUM_BUILD_default = { repo_root_commit: "8a5406aeeefe62fb882353c84cc51656667469e7", git_head: "98f3f0645c7bccb45f9cf136c175318cd1f3b463", dirty: false, inputs_sha256: "93d6c36b3ff25b2f0623a0ad3bceff6c12657079c3738a1e3970e5155ad234d9", built_at: "2026-10-05T13:56:14.482Z" };
+---
+>     define_TRIVIUM_BUILD_default = { repo_root_commit: "8a5406aeeefe62fb882353c84cc51656667469e7", git_head: "98f3f0645c7bccb45f9cf136c175318cd1f3b463", dirty: true, inputs_sha256: "4f308beb861ad0d0708ccce914e775c87a90e34d251933e2bddb3a2277b62c57", built_at: "2026-10-05T13:57:59.669Z" };
+# 去掉构建标识行后比对：
+IDENTICAL

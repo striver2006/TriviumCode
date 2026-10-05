@@ -1,0 +1,26 @@
+{
+  "targets": [
+    "src/trivium/schemas.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/registry-parity.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "checkAgentIdentities 补「critics_selected 含 driver ⇒ 报问题」",
+      "file": "src/trivium/schemas.ts",
+      "find": "        problems.push(`critics_selected 含未登记的 Agent id：${JSON.stringify(id)}`);\n      }\n    }\n  }\n",
+      "replace": "        problems.push(`critics_selected 含未登记的 Agent id：${JSON.stringify(id)}`);\n      }\n    }\n  }\n  if (Array.isArray(m.critics_selected) && m.critics_selected.includes(m.driver)) {\n    problems.push('critics_selected 含当轮 Driver（变异 M1）');\n  }\n",
+      "expect": "dist/test/test/unit/registry-parity.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "checkAgentIdentities 的 critics 循环补「键等于 driver ⇒ 报问题」",
+      "file": "src/trivium/schemas.ts",
+      "find": "      continue;\n    }\n    if (side?.vendor !== agent.vendor) {\n",
+      "replace": "      continue;\n    }\n    if (id === m.driver) problems.push('critics 含当轮 Driver（变异 M2）');\n    if (side?.vendor !== agent.vendor) {\n",
+      "expect": "dist/test/test/unit/registry-parity.test.js"
+    }
+  ]
+}

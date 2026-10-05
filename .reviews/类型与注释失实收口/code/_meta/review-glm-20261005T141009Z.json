@@ -1,0 +1,57 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "被审补丁声称「运行期行为零变化」，我沿调用链亲读源码逐条核实了它的全部载重事实，均成立：schemas.ts:255-297 的 checkAgentIdentities 确实只有三条规则、没有 Driver 互斥（EV-59 的前提属实）；上游两道拦截实在——critics.ts:336 对显式点名 Driver 退 64、review.ts:807 对直传 sides 的兜底抛 usageError；critics_selected 唯一产出点 review.ts:1273 排在兜底之后（report.ts:218 的同名字段是渲染层 RoundReport 的初始值，不构成第二产出点）；validateRunMeta 的三个消费点（meta.ts:385 写前抛、630 读侧返回 null、802 终态回写跳过）与「不在落盘层补规则」的理由完全对得上。新用例「落盘层不拦 Driver 入选」有真实鉴别力：变异证据链闭合（改前 M1/M2 在旧套件 fail 0 存活，改后各 fail 2 杀 T1 与 T2，装置 2/2 咬住），形态②专门咬「只看 critics_selected」的补法、形态①咬「只看 critics 键」的补法。EV-70 侧删除彻底：src、test、scripts、skills-src 按词边界 grep 唯一命中是 registry-parity.test.ts:284 的沿革注释且已补注；Disposal 与 DispositionRow 保留且被 disposition.ts:12 使用；bundle 去构建标识行后逐字相同。文档面（设计 v1.3.94 台账、BACKLOG 两条结案、README 索引条目、报告读数与证据文件一致性、排序快照偏离的处置依据）抽查均属实。唯一发现是一处文档数字的时点注记缺失，nit 级。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/08_project/BACKLOG.md，EV-59 行结案记录第③点「归档实扫 run.v2 242 份、违例 0 份」",
+      "problem": "BACKLOG EV-59 结案记录写 242 份，而同主题证据文件 scan-driver-selected-output.json 记 v2 为 244。时点差在实施报告 §4 有解释（起草计划时 242、落证据时 244，多出的是本主题两轮计划运行），但 BACKLOG 这一句既未注时点也未指向报告——同一主题两份文档数字不一致且无交叉注记，较真的读者会先怀疑其中一处写错，而解释只存在于第三份文件里。对一个以「失实收口」为主题的改动，这类数字精确性正是主题精神所在。",
+      "evidence": "doc/08_project/BACKLOG.md EV-59 行「③归档实扫 run.v2 242 份、违例 0 份」；doc/05_testing/evidence/type-comment-truth-20261005/scan-driver-selected-output.json 记 v2: 244、driverSelected: 0；doc/05_testing/REPORT_2026-10-05_type_comment_truth.md §4 第一行载明两个数字的时点与成因。",
+      "suggestion": "BACKLOG 那句补一个时点或指针，例如「（起草计划时；落证据时 244 份，见报告 §4）」，一行改动、结论不动；是否值得改由 Driver 裁决。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "EV-59 的事实链全部亲核属实：checkAgentIdentities（schemas.ts:255-297）只有 driver 已登记、critics_selected 元素已登记、critics 键 vendor 一致且属入选集合三条，无 Driver 互斥；上游两道拦截（critics.ts:336 显式拒绝、review.ts:807 对 sides 的兜底）与「critics_selected 唯一产出点在兜底之后」（review.ts:1273）均实在；validateRunMeta 三消费点（meta.ts:385/630/802）使「读侧加严会让违例留痕整份不可读」的理由成立。",
+    "新用例有真实鉴别力且变异证据链闭合：mutation-names-before.json 改前 M1/M2 均 fail 0（证明旧套件确实没钉住），mutation-names-output.json 改后各 fail 2（T1 与 T2），装置 mutation-output.txt 2/2 咬住；两种形态分别覆盖「只看 critics_selected」与「只看 critics 键」两种补规则写法，与用例注释的宣称一致。",
+    "EV-70 删除彻底且保留面正确：src、test、scripts、skills-src 按词边界 grep 的唯一命中是 registry-parity.test.ts:284 沿革注释（已补「已于 EV-70 删除」半句）；Disposal（types.ts:1143）、DispositionRow（1145）保留且 disposition.ts:12 在用；bundle-compare.txt 显示去掉构建标识行后 IDENTICAL，佐证纯类型删除零运行期影响。",
+    "文档核对清单抽查属实：BACKLOG EV-07（104 行）与主设计 v1.3.29（3777 行）的 Disposition 命中确为历史记载，无把它当现行类型引用之处。",
+    "报告 §3.1 对「排序快照第 7 序未标完成」的偏离处理正确：快照自述规则（BACKLOG.md:325「一次性快照……不随后续主题回改」）优先于计划条目，且偏离已在报告中显式登记、给了出处。",
+    "doc/05_testing/README.md 的新报告条目形态与相邻条目一致；EV-217 登记如实标注「成因是按读数推断，未实测复现」，未把推断写成事实。"
+  ],
+  "not_covered": [
+    "全程未运行任何命令（只读审查）：变异、bundle 比对、全量 check 2832/2829/1/2、doctor 14/14 等读数均以证据文件核对，未复跑验证。",
+    "check-1-pre-s6.txt（3145 行）只抽查了头段、中段与被审 diff 的截断核对，未逐行读完。",
+    "EV-217 的成因推断未读 test/integration/cancel-grace-unverifiable.test.ts 源码核实，spawnMarked 固定等待 150 ms 的描述按登记原文与报告采信。",
+    "gen-mutation-spec.mjs 生成的 find 锚点在 schemas.ts 中的唯一性未逐字节复核，以装置输出为准。",
+    "EXIT.USAGE 的具体数值 64 未直读 EXIT 定义，采信仓内多处记载与报错文案。",
+    "未读 doc/02_design/reference/ 下 gemini 早期稿术语表原文，EV-70 命中清单中「概念词」的定性按结案记录采信。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-05_type_comment_truth.md",
+    "doc/05_testing/evidence/type-comment-truth-20261005/mutation-names-before.json",
+    "doc/05_testing/evidence/type-comment-truth-20261005/mutation-names-output.json",
+    "doc/05_testing/evidence/type-comment-truth-20261005/mutation-output.txt",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/types.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/review.ts",
+    "src/trivium/disposition.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/report.ts",
+    "test/unit/registry-parity.test.ts",
+    ".reviews/类型与注释失实收口/plan/2026-10-05-类型与注释失实收口-r2-claude.md"
+  ]
+}
