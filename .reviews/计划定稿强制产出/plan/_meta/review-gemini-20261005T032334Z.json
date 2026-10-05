@@ -1,0 +1,89 @@
+{
+  "agreed": [
+    "现状核实极其详实（§1.5）：通过只读脚本全面扫描历史 92 个主题，证实无新计划曾是常态，为决策六采用运行元数据标记而非一律校验或日期切分提供了坚实的实证数据。",
+    "运行元数据标记切分方案（§2.6）：在 plan 阶段由 prepareRun 计算并在 newRunMeta 骨架中落盘 plan_final_check，使旧运行自动获得 next_plan_unchecked 告警而免于转红，设计自包含且契合项目一贯的留痕自作证原则。",
+    "变异测试矩阵设计完备（§4）：不仅设计了纯函数边界的变异（M1～M9），更覆盖了各调用点传参和失败码顺序（M10～M14），体现了严谨的工程把控力。",
+    "对自检 selftest.ts 影响的预判敏锐（§1.7、§2.9）：准确识别出计划阶段补写 r2 计划后会导致原有重跑抬轮判据恒真的潜在问题，并提出了精准收窄的修复方案。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/计划定稿强制产出/plan/2026-10-05-计划定稿强制产出-claude.md",
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/naming.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "src/trivium/meta.ts",
+    "src/trivium/types.ts",
+    "src/trivium/disposition.ts",
+    "src/trivium/parse.ts",
+    "src/entry-render.ts",
+    "skills-src/commands/run.contract.md",
+    "skills-src/partials/review/body.md",
+    "src/trivium/selftest.ts",
+    "test/integration/gate-loop.test.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/cli.ts",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "package.json",
+    "scripts/build.mjs"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §2.4、skills-src/commands/run.contract.md:121-136 以及 src/trivium/review.ts:267-291。在命令 A 的全流程中，S4 校验通过后自动推进至 S5 编码与 S6 代码双审（无人工审批）；而 S6 提取计划定稿的 resolvePlanFinal 经 locateSubject 降序选取轮次最大的一份原稿。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §2.4",
+      "problem": "当本轮为计划阶段最新运行时，若候选计划存在大于基准+1 的更高轮次文件（例如存在未送审的 r3 草稿），plan §2.4 仅核验轮次最小的 r2，对 r3 仅出非阻断告警 next_plan_not_final。在全流程命令 A 下流程自动放行进入代码阶段，resolvePlanFinal 会直接读取轮次最大的 r3 作为定稿送给代码审查员，导致受闸门核验的 r2 被旁路，脱离受控的 r3 成为定稿。",
+      "severity": "major",
+      "suggestion": "在判定多候选时区分当前运行是否为该阶段最新轮次：回看早期历史轮次时允许存在后续轮次并出告警；但若本轮为当前最新运行，则当最大候选轮次高于紧随轮次时，应直接判失败阻断自动流转，或要求最高轮次候选（实际定稿）必须同样包含本轮所有接受项。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §2.3、plan §2.5 以及 src/trivium/gate.ts:464-496。裁决表中若包含未知编号，现有逻辑会将其记录在 unknown_findings 中，但该行仍留存在 parsed.rows 里。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §2.3",
+      "problem": "plan §2.3 规定核对「本轮裁决件中裁决为接受的全部行的编号」，未排除 unknown_findings。若 Driver 笔误写错意见编号（如 GLM-99）且裁决为「接受」，既有校验会报 unknown_findings 指明编号不在本轮审查结论中，而 checkNextPlan 却会将 GLM-99 纳入接受集合，要求新一轮计划全文逐字包含该非法编号，导致两处失败文案自相矛盾。",
+      "severity": "major",
+      "suggestion": "将核对新计划所依据的「接受集合」限定在属于合法期望集（合格 ∪ 降级 ∪ 合法 fallback）内被接受的编号，自动剔除判定为 unknown_findings 的非法编号。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §6、AGENTS.md 改动同步清单以及 doc/03_api/PROTOCOL_dual_critic_relay.md:53-64。既有 run.v2 的可选字段扩展（如 driver_guard_level、termination 等）均在 PROTOCOL 文档中有独立段落说明。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §6",
+      "problem": "plan §2.6 对 run.v2.json 新增了顶层可选字段 plan_final_check，但 §6 的文档更新清单遗漏了对外契约文档 doc/03_api/PROTOCOL_dual_critic_relay.md，违反了项目 JSON Schema 变更必须同步协议文档的纪律。",
+      "severity": "minor",
+      "suggestion": "在计划 §6 中补齐对 doc/03_api/PROTOCOL_dual_critic_relay.md 的更新规划，记录 plan_final_check 的契约形态与语义说明。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §2.8、scripts/build.mjs:12-16 以及 package.json:13。scripts/build.mjs 明确注明缺省构建故意不重写入口产物，入口产物由 npm run render（即 scripts/build.mjs --render-only）专门更新。",
+      "id": "AGY-04",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §2.8",
+      "problem": "plan §2.8 指示改完源文件后运行 node scripts/build.mjs 重新生成入口载体。由于缺省构建故意跳过入口资产渲染，该命令无法更新入口 SKILL.md，会导致后续全量检查中的 entry-render-parity 契约测试失败。",
+      "severity": "minor",
+      "suggestion": "将重新生成各载体入口资产的命令明确纠正为 npm run render（或 node scripts/build.mjs --render）。"
+    }
+  ],
+  "not_covered": [
+    "由于审查环境为严格只读模式，未真实执行 build 与测试套件运行，所有行为影响均为基于代码静态调用链推演。",
+    "未对全部既有集成测试用例逐一运行断言，既有用例受影响的具体数目需在编码阶段跑全量测试验证。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "实施计划整体结构完备，历史扫描与标记切分设计严谨。最主要的问题在于最新轮次下仅核验紧随其后的候选计划，在全流程命令 A 自动推进时会被 resolvePlanFinal 拾取未受核验的更高轮次草稿而导致定稿旁路；其次是裁决表中的未知编号若为接受会导致新旧文案互踩，以及 PROTOCOL 契约文档与渲染命令细节遗漏。建议修订上述缺陷后再进入编码。",
+  "verdict": "request-changes"
+}

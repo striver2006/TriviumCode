@@ -1,0 +1,76 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险一条：§2.1 的基准轮次取 max(本轮 rerun_index, 被审对象轮次)，在「复审未修订原稿」这一合法流里会凭空抬高应写轮次、与 §2.8 自己的指引自相矛盾（详见 GLM-01，major）——rerun_index 只数审核者工件、被审对象轮次只数 Driver 计划，两者分叉时按流程说明写的 r2 过不了闸而被要求写 r3，且 U7/U8/M2 都没盖住这个方向。另有两条 minor：§2.8 的重渲命令漏了 --render 旗标（GLM-02）；§2.4「核对紧随那份+告警」在最新一轮上留有事后写更高轮次的无提示窗口（GLM-03）。其余核实扎实：§1 现状断言我逐项对上（41 处单测调用点、cli.ts 五处行号、selftest 判据、两份流程说明行号、entry-render 片段机制），run.v2 顶层 additionalProperties: true 使旧版可读新留痕、prepareRun 先定位被审对象后写骨架、标记切分的选型与测试矩阵均成立。修掉基准公式并补上该方向的用例后可通过。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.1（基准轮次），与 §2.5、§2.8 联动",
+      "problem": "基准轮次 = max(本轮 rerun_index, 被审对象轮次) 在「本轮被审对象未被修订」的合法流里判错。rerun_index 只数非 Driver 工件（archive.ts 的 resolveRerunIndex 跳过当轮 Driver 的原稿与裁决件），被审对象轮次由 Driver 计划的最大轮次决定（topic.ts 的 locateSubject）：上一轮全部驳回/暂缓后原稿未修订、再次发起计划双审时，rerun_index 抬到 2 而被审对象仍是 r1；本轮有接受项时基准 = 2，闸门要求写 r3，而 §2.8 流程说明让 Driver 写的是「被审对象轮次 + 1」即 r2，§2.5 的应写文件名同样给 r3——同一份计划内部自相矛盾，照指引写的 r2 过不了闸。「旧运行有接受项未修订、升级编排器后重跑计划双审补审」这一 §2.6 自己设想的收口路径正是这个形状。任务目标决策一原文是「轮次高于本轮被审对象」，把 rerun_index 并进 max 偏离了已确认的决策。",
+      "evidence": "读过 src/trivium/archive.ts（resolveRerunIndex 只数审核者工件取 max+1）、src/trivium/topic.ts（locateSubject 按 Driver 后缀、kind 为 null 取轮次最大者作被审对象）、被审计划 §1.2（只提了被审对象轮次大于 rerun_index 一个方向）、§2.1、§2.5、§2.8，以及 §3.1 的 U7/U8 与 §4 的 M2：U7、U8 两个方向都是被审对象轮次 ≥ rerun_index，没有任何用例覆盖 rerun_index > 被审对象轮次，M2（只取 rerunIndex）的变异也区分不了 max() 与「只取被审对象轮次」两种实现。",
+      "suggestion": "基准只取被审对象轮次（被审对象在归档内时），归档外无轮次时才退回 rerun_index——被审对象轮次单独就能覆盖 U8（送审前预写 r2）那一向，max 里并进 rerun_index 没有它能 cover 而被审对象轮次 cover 不了的场景。§3.1 补一格「rerun_index=2、被审对象轮次=1、有接受 ⇒ 要求 r2 而非 r3」，集成侧（§3.2）补同形状一格；M2 改成能区分两种基准取法的变异。§2.5 的应写文件名公式随之对齐。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.8（重渲命令）",
+      "problem": "§2.8 写「改完跑 node scripts/build.mjs 重新生成 skills/dual-critic/entry/* 各载体」，但 scripts/build.mjs 缺省构建不重渲入口产物，必须带 --render（或用 npm run render，即 --render-only）；§5.1 的 --with-tests 同样不含渲染。照计划字面执行会漏渲四家载体产物，只能靠 entry-render-parity 契约测试事后变红兜住，多烧一轮返工。",
+      "evidence": "读过 scripts/build.mjs（第 29-33 行旗标解析，第 163 行仅 withRender 时调 renderEntryAssets，文件头注释明写「缺省构建不重写它们」）与 package.json（render 脚本为 node scripts/build.mjs --render-only）。",
+      "suggestion": "§2.8 与 §5 的命令改为 npm run render（或 node scripts/build.mjs --render），与 AGENTS.md 改动同步清单里「改 skills-src 后 npm run render 重出四家产物」的口径一致。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.4（核对轮次最小的候选 + next_plan_not_final 告警）",
+      "problem": "核对紧随本轮的那份、更高轮次只出告警，存在一个无提示窗口：--check 与审批复核通过之后（告警只覆盖核对时点已存在的更高候选），Driver 再写一份不含被接受编号的更高轮次计划，resolvePlanFinal 在代码阶段取的是轮次最大那份，会把它当计划定稿送给代码审查员，闸门与审批复核都不会再看一眼。回看历史轮次不该转红是对的；但「本轮即最新一轮」时高于基准的候选恰恰就是代码阶段要读的那份，只告警不拦、且代码阶段入口不重现该信息，EV-214 要防的「标着定稿的其实是没合入接受项的那份」会以更高轮次的形态复发。",
+      "evidence": "读过 src/trivium/review.ts 的 resolvePlanFinal（经 locateSubject 取执笔方轮次最大一份，只按后缀与轮次取、不校验编号）与被审计划 §2.4、§2.7（明确不改 resolvePlanFinal）；§2.6 的 run_warning 通道（gate.warnings 原样透传）在 gate.ts 的 loadRoundReviews 与 checkAdjudication 里已有现成管线。",
+      "suggestion": "择一即可：最新一轮（非 --run-id 回看）时把高于基准的全部候选纳入编号核对，或将该场景的 next_plan_not_final 升为失败；或在代码阶段运行入口（resolvePlanFinal 的调用点）把「定稿轮次高于计划阶段被核对的那份」经 run_warning 通道带出来，让缺口在消费点可见。方向性指出即可，不必四家产物全改。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§1 现状核实逐项属实：41 处 checkAdjudication 单测调用点（gate.test 32、gate-degrade 8、gate-addresses 1）、cli.ts 1177/1186/1268/1375/1663 五个调用点、selftest.ts 约 349 行写含接受的裁决件与 431 行 includes('-r2-') 判据、run.contract.md:117 的 S3、body.md:160 的第 5 步——我逐一核对无误。",
+    "§2.6 用运行元数据标记而非日期切分是对的；且 run.v2.json 顶层 additionalProperties: true（我核过该契约），新版写入的 plan_final_check 不会被旧版编排器判成不可读，版本交叠安全。",
+    "prepareRun 的时序支撑 §2.6 的写入点：定位被审对象在写 run.json 骨架之前（review.ts prepareRun 实现与头注释），planSubjectRerunIndex 在彼处算一次可行。",
+    "GateCheckInput.planFinal 做成必填可为 null、由 loadRoundReviews 派生，沿用 reviewDocs/voidedSides 两段注释记着的教训，与既有防线同一模式，tsc 能逼出三个调用点。",
+    "§2.3 虚拟编号一律入核对集是对的（豁免它会让整份回退侧的接受项整批脱管）；全文整词判据（前后字符非 [A-Za-z0-9_]）确实防住 GLM-010 与 XGLM-01 两类冒充，边界三条写进设计的安排妥当。",
+    "§2.4 核「紧随本轮那份」而非最大轮次，对 --run-id 回看历史轮次的行为正确（§1.5 第二条读数支撑）；§2.7 不动 resolveRerunIndex/locateSubject/resolvePlanFinal、不把新一轮计划塞进 checkStageArtifacts 最低工件集（会误伤全部驳回轮次）的边界划得对。",
+    "§2.8 的片段方案可行：entry-render.ts 的 collectPartials 按相对路径去 .md 建表、renderPartial 按 @VAR 拼变体键，带点的键（review/next-plan.plan）直接可查，空变体连同所在行去掉的机制已存在。",
+    "§2.9 自检判据收紧（只认审核者后缀的 -r2- 文件）必要且正确；U6（非缺省 Driver 后缀）、U12（审查件冒充候选）、I3（把 r2 挪出 plan/ 后审批被拒）都咬得住真实边界。"
+  ],
+  "not_covered": [
+    "本侧只读：未运行任何命令，全部结论基于读码推断；构建、测试、自检的实际行为未实测。",
+    "§1.5 的 92 主题历史扫描读数未独立复算，只核了其结论与决策六取向的相容性。",
+    "受影响既有用例清单只抽查：核了 task-goal-fulltext.test.ts（其裁决件仅作代码阶段 brief 夹具、不经 gate --check，不受影响）；gate-loop/fault-injection/mcp-detect/stub-agent-kit 未逐格核对，采信计划 §3.3「先跑全量、按红逐个核」的流程。",
+    "Hook（hook-stop/hook-pre-commit）与新失败码的联动按计划 §1.1 的闸门状态链推断采信，未读 hooks.ts 逐行验证。",
+    "四家载体的渲染产物（skills/dual-critic/entry/**）未逐份查看；§2.9 所称自检 14 项的计数未核。"
+  ],
+  "consulted": [
+    ".reviews/计划定稿强制产出/plan/2026-10-05-计划定稿强制产出-claude.md",
+    "src/trivium/gate.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/review.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/disposition.ts",
+    "src/trivium/selftest.ts",
+    "src/entry-render.ts",
+    "skills-src/partials/review/body.md",
+    "skills-src/commands/run.contract.md",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/integration/task-goal-fulltext.test.ts",
+    "package.json",
+    "scripts/build.mjs"
+  ]
+}

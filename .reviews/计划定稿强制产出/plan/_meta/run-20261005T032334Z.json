@@ -1,0 +1,234 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261005T032334Z",
+  "topic": "计划定稿强制产出",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「计划定稿强制产出」：EV-214。计划阶段的裁决件里有接受项时，流程不要求把它们合进一份新一轮计划。而代码阶段的必读清单自 EV-210 起会自动列入「本主题计划定稿」（resolvePlanFinal 取执笔方的非裁决件里轮次最大的一份）。于是 Driver 没写新一轮计划时，标着定稿送给代码审查员的其实是未修订的原稿：已接受的修改落进代码后会被看成偏离计划，漏改了也查不出来。历次主题都有…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "50110fc0b9b7639898ea5771885d5591e9d2c5c6",
+    "tree_hash": "6267ce2bcb71c254a96b0dfd3c0bedfc925ee7ef",
+    "dirty": true,
+    "subject_sha256": "71458b2a479d65ad0a54dd4b788ffeb41661832d4c8888d185edb471dc35e1fa",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "7d3db2e449e86dd5ab1e8a286587d2bca1170097",
+      "dirty": false,
+      "inputs_sha256": "618f48195307725697e88f2cc4ecaf0498aa8a8857c02c8ec79a5edae1386aff",
+      "built_at": "2026-10-05T02:36:28.042Z"
+    },
+    "after_tree_hash": "90f9870e308d4414c25c11decb9f29c072280a41"
+  },
+  "started_at": "2026-10-05T03:23:36.809Z",
+  "finished_at": "2026-10-05T03:30:59.433Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.16",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 363.597,
+      "tool_calls": {
+        "read": 48,
+        "grep": 13,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 28
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 400871,
+        "output_tokens": 41297,
+        "thinking_tokens": 34266,
+        "cache_read_tokens": 6605064,
+        "total_tokens": 442168
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "588324e5-2e11-45d3-9b82-6e1ae49ac607",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 442.314,
+      "tool_calls": {
+        "read": 18,
+        "grep": 7,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 18
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 11,
+        "inputTokens": 1237997,
+        "outputTokens": 30675,
+        "totalTokens": 1268672,
+        "cacheReadTokens": 1109568,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_cf5a4a6c-0a55-45e2-a643-e97e68a1f74a",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "计划定稿强制产出/plan/_meta/brief-gemini-20261005T032334Z.md",
+      "sha256": "111313e96a5d12a25feda77139e3d243d7dc1b4798f1f3de2d2f2e05a3a32ced"
+    },
+    {
+      "path": "计划定稿强制产出/plan/_meta/brief-glm-20261005T032334Z.md",
+      "sha256": "5350fc1a2ad4b6b77f70ed3d85594a13cfe623143ec261f73e167d47e831873a"
+    },
+    {
+      "path": "计划定稿强制产出/plan/_meta/review-gemini-20261005T032334Z.json",
+      "sha256": "4fdedbf0f9344742afd82b8186eb8deedb1aa70beeb99098294036c9d6c5d8be"
+    },
+    {
+      "path": "计划定稿强制产出/plan/_meta/review-glm-20261005T032334Z.json",
+      "sha256": "00b3fe15560a30142b778039068e15f8f16c18d9a7b5bb18eca4d9eb22366536"
+    },
+    {
+      "path": "计划定稿强制产出/plan/2026-10-05-计划定稿强制产出-gemini.md",
+      "sha256": "390fc24ca4e11cdb951b1ca97e086e8d70c078e4e4092a0ed750b94e2acd9633"
+    },
+    {
+      "path": "计划定稿强制产出/plan/2026-10-05-计划定稿强制产出-glm.md",
+      "sha256": "bd9844f45ec25f349889a15882e57d6234bb0c48ab157a68f1e55a7c62aa3cb7"
+    },
+    {
+      "path": "计划定稿强制产出/plan/2026-10-05-计划定稿强制产出-claude.md",
+      "sha256": "71458b2a479d65ad0a54dd4b788ffeb41661832d4c8888d185edb471dc35e1fa"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
