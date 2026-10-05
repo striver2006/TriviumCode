@@ -1,0 +1,300 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261005T090634Z",
+  "topic": "目标回退取计划定稿",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "主题「目标回退取计划定稿」：EV-212。任务目标的第三级回退（resolveTaskGoal：没有 --goal、任务文件里也没有目标时，从本主题计划文档取首个标题或首段）按当前阶段的 Driver 后缀定位计划文档，而不是按计划阶段的执笔方。计划阶段与代码（或 bug）阶段分属两家时，它找不到计划文档，任务目标静默为空，或者取到别家后缀的文件。EV-210 新加的 resolvePlanFin…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "7b643b0695744126837de7185b1e78fd153e5e75",
+    "tree_hash": "0669d71a4bee3a744a5602700ba9f70bd43534a6",
+    "dirty": true,
+    "subject_sha256": "7380f05e650c4eb57872a582f29799556ddd31b95ff9074b02bc78c401594f8b",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "7b643b0695744126837de7185b1e78fd153e5e75",
+      "dirty": false,
+      "inputs_sha256": "6326b73e133ff2765fc32a007c3a932abbbfef12f201425d828b41122e2d95e3",
+      "built_at": "2026-10-05T07:39:12.674Z"
+    },
+    "after_tree_hash": "ac9ba81d44854b5931f77f182efca54abd2f08b2"
+  },
+  "started_at": "2026-10-05T09:06:37.600Z",
+  "finished_at": "2026-10-05T09:18:25.343Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.0",
+      "model_requested": "k3",
+      "model_effective": "k3",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 707.537,
+      "tool_calls": {
+        "run_command": 35,
+        "project_reads": 33
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a10b50-a981-71f0-bd5f-d68160d0b909",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.2.17",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 170.947,
+      "tool_calls": {
+        "read": 25,
+        "grep": 10,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 18
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 218591,
+        "output_tokens": 21007,
+        "thinking_tokens": 17373,
+        "cache_read_tokens": 2948964,
+        "total_tokens": 239598
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "fdcb18eb-fbf9-4580-b27b-29f8f86833d9",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 570.129,
+      "tool_calls": {
+        "read": 20,
+        "grep": 13,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 25
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 12,
+        "inputTokens": 1045081,
+        "outputTokens": 37647,
+        "totalTokens": 1082728,
+        "cacheReadTokens": 930496,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_1c3fa6d5-1050-47f7-aff9-477932542030",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "目标回退取计划定稿/plan/_meta/brief-codex-20261005T090634Z.md",
+      "sha256": "609286d3c7713cac9e600d5bcbdd4172decda10be6763e3d9cc533758ad2a470"
+    },
+    {
+      "path": "目标回退取计划定稿/plan/_meta/brief-gemini-20261005T090634Z.md",
+      "sha256": "d238fc3118d8d32234f048ab31ac462a9e846630ebebf19f1970be3b9fa9b19f"
+    },
+    {
+      "path": "目标回退取计划定稿/plan/_meta/brief-glm-20261005T090634Z.md",
+      "sha256": "ac37e6eb23c85fac454107435ff902fc479a9f5c7f90def098eb87aaa783dfab"
+    },
+    {
+      "path": "目标回退取计划定稿/plan/_meta/review-codex-20261005T090634Z.json",
+      "sha256": "a1eb849b9ecda43fa4664dde6c06324e6d779f04f1061a9fa629b2448627405c"
+    },
+    {
+      "path": "目标回退取计划定稿/plan/_meta/review-gemini-20261005T090634Z.json",
+      "sha256": "5a33245ae1eda348b67f3ddb8d574bc835b88ff8aa3b998a87690060870cf6e3"
+    },
+    {
+      "path": "目标回退取计划定稿/plan/_meta/review-glm-20261005T090634Z.json",
+      "sha256": "dbbe4db18f1446ccf8a85fe413ce6df615365927120a5ba17cc7a116cd072422"
+    },
+    {
+      "path": "目标回退取计划定稿/plan/2026-10-05-目标回退取计划定稿-codex.md",
+      "sha256": "5222837c5dc3e291eb1e1c1110c12b76e1ed09565cc727403c51c9810a179e21"
+    },
+    {
+      "path": "目标回退取计划定稿/plan/2026-10-05-目标回退取计划定稿-gemini.md",
+      "sha256": "d26e1db92dac9f04645d05c5c8cb83cfa71b9947382932cf271937b75538dec9"
+    },
+    {
+      "path": "目标回退取计划定稿/plan/2026-10-05-目标回退取计划定稿-glm.md",
+      "sha256": "a7dabc4c06cb560edc04fa4a3908d44bcc25f74fe2db80150be405a42ce125b6"
+    },
+    {
+      "path": "目标回退取计划定稿/plan/2026-10-05-目标回退取计划定稿-claude.md",
+      "sha256": "7380f05e650c4eb57872a582f29799556ddd31b95ff9074b02bc78c401594f8b"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
