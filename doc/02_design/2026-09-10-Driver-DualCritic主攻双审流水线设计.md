@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.94
+> - **当前版本**：v1.3.95
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3709,6 +3709,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.95** | 2026-10-06 | **cancel-grace 夹具等就绪（EV-217）。** M11 前待办批次第 1 题，**本批未走双审**（用户以 `/goal` 授权直接开发，提交前由执笔方自审补丁）。只改测试：`cancel-grace-unverifiable.test.ts` 的 `spawnMarked` 不再固定等 150 ms，改为等夹具程序正文执行完、经 stdout 打出就绪标记再返回（20 s 上界，超时以测试环境问题判红）——各程序的 SIGTERM 处理器在返回时已装好，高负载下 `node -e` 启动慢也不会让 SIGTERM 落在装处理器之前（K-K3 偶发红的推断成因）。新增夹具自检 R1（处理器装得慢的程序，返回后发 SIGTERM 不退），变异 2/2 咬住。产品代码零改动。读数见 `doc/05_testing/REPORT_2026-10-05_cancel_grace_ready.md`。 |
 | **v1.3.94** | 2026-10-05 | **类型与注释失实收口（EV-59、EV-70）。** 计划 `.reviews/类型与注释失实收口/plan/` r2（计划双审第 1 轮 run `20261005T134028Z`，降级：codex 一侧用量用尽未产出，用户选 `--allow-single`；gemini `approve`、glm `approve-with-nits`，2 条全接受）。**运行期行为零变化**：只改一个测试文件与 `types.ts` 的一个纯类型。①EV-59：`registry-parity` 的「每一个已登记 Agent 出现在入选集合里」去掉对缺省 Driver 的跳过——跳过的理由「会触发身份补校的互斥规则」失实，`checkAgentIdentities` 只校 driver 已登记、入选元素已登记、`critics` 键的 vendor 与入选子集三条；注释改为如实说明**落盘层（run.v2 校验）不判 Driver 是否入选**，由 `resolveCriticSelection` 与 `prepareRun` 对 `sides` 的兜底两处拦（`critics_selected` 唯一产出点在兜底之后）；新增用例钉住这一现状。**不在落盘层补互斥规则**：`validateRunMeta` 同时是读侧判据，补了只会让违例留痕整份不可读、牵连闸门与审批，而上游两道已覆盖全部写入入口（归档实扫违例 0 份）。②EV-70：删掉零消费方的 `types.ts` `Disposition` 接口，不做派生，裁决件类型只认 `disposition.ts` 的 `DispositionFrontMatter`；`types.ts` 文件头契约对照改指它。读数见 `doc/05_testing/REPORT_2026-10-05_type_comment_truth.md`。 |
 | **v1.3.93** | 2026-10-05 | **header探测计时器收尾（EV-205）。** 计划 `.reviews/header探测计时器收尾/plan/` r2（计划双审第 1 轮 run `20261005T113659Z`：gemini `approve`，codex、glm `approve-with-nits`，6 条全接受）。`probeCodexHeader` 把 `run` 的调用包进 `try/finally`，`run` 返回或抛出后一律清掉 `stopEarly` 回调里挂的 50 ms 轮询（句柄用对象持有），31 s 兜底删去——codex 不打 header 就退出时，调用返回后进程不再多挂约 30 秒（实测旧 30 647 ms、新 2 ms）。`run` 的实现与 `stopEarly` 签名不改，`RunOptions.stopEarly` 文档块补写「回调里挂的计时器由调用方在 `run` 返回后清理；给了 `timeoutMs` 时，除终止中外 `run` 必然兑现、不会 reject」（前提由代码双审 run `20261005T120550Z` CODEX-01 ≡ GLM-01 补入：codex、glm `approve-with-nits`，gemini `approve`，2 条全接受）。探针结论、notes、doctor 输出逐字不变。读数见 `doc/05_testing/REPORT_2026-10-05_codex_header_poll_cleanup.md`。 |
 | **v1.3.92** | 2026-10-05 | **待办甄别：EV-216 认定为已知边界（纯文档）。** 6.6 规则 9 边界②补「刻意不堵」的理由与重开条件：带轮次的引用要改四家技能正文、流程说明与闸门判据，代价远大于它防的那类诚实失误；代码双审对照计划定稿读实现仍是一层兜底。同批 BACKLOG：EV-216、EV-211 改「不修」（bug 阶段审的是根因而非实现是否忠实于计划，需要时用 `--context` 显式列入计划定稿），EV-203 保留触发式。实现与行为不变。 |

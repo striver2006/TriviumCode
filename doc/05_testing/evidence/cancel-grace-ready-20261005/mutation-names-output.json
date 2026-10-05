@@ -1,0 +1,35 @@
+{
+  "targets_sha256": {
+    "test/integration/cancel-grace-unverifiable.test.ts": "1ac79a33b5266999379153071f5b42f5953838f358cb7a09fe53d686f7be0dd0"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "spawnMarked 退回固定等 150 ms（改前形态），不等就绪标记",
+      "suite": "dist/test/test/integration/cancel-grace-unverifiable.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-217 R1（夹具）：spawnMarked 返回时 SIGTERM 处理器已装好——处理器装得慢也不会被 SIGTERM 打死"
+      ],
+      "firstLines": [],
+      "elapsed_s": 38,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "就绪标记挪到程序正文之前打（处理器还没装就报就绪）",
+      "suite": "dist/test/test/integration/cancel-grace-unverifiable.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-217 R1（夹具）：spawnMarked 返回时 SIGTERM 处理器已装好——处理器装得慢也不会被 SIGTERM 打死"
+      ],
+      "firstLines": [],
+      "elapsed_s": 37,
+      "also": []
+    }
+  ]
+}

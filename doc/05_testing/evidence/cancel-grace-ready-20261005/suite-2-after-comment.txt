@@ -1,0 +1,25 @@
+✔ EV-176 T1：首检判不了 ⇒ 一个信号都不发、onTerm 不调、gone 为假且 unverifiable (1.334375ms)
+✔ EV-176 T2：宽限期里判不了 ⇒ 继续轮询，之后判已退出即返回（只发 SIGTERM） (35.763334ms)
+✔ EV-176 T3：宽限期满仍判不了 ⇒ 不升级 SIGKILL、onEscalate 不调、unverifiable、等满宽限 (153.06675ms)
+✔ EV-176 T4：期中判不了、期满恢复为同一进程 ⇒ 照常升级 SIGKILL (305.298667ms)
+✔ EV-176 T5：SIGKILL 之后的等待窗里判不了 ⇒ escalated、gone 为假、unverifiable (303.007666ms)
+✔ EV-176 T6（回归）：布尔判据的四种序列与改前逐字相同 (465.051208ms)
+✔ EV-217 R1（夹具）：spawnMarked 返回时 SIGTERM 处理器已装好——处理器装得慢也不会被 SIGTERM 打死 (1062.852625ms)
+✔ EV-176 W1：workerGoneForCancel——取不到 ⇒ unverifiable；同一进程 ⇒ false；不在 ⇒ true (58.735583ms)
+✔ EV-176 K-Z1：入口判同一进程之后首检即判不了 ⇒ 零信号、69、不播报「发送 SIGTERM」、什么都不动 (100.382416ms)
+✔ EV-176 K-G1：宽限期里判不了、工作进程 3 s 后才退出 ⇒ 继续等到它真退出，收尾完整（凭据已抹、归档 cancelled） (3111.615625ms)
+✔ EV-176 K-G2：宽限期满仍判不了（忽略 SIGTERM）⇒ 不升级 SIGKILL、按记录结束 CLI、69、其余什么都不动 (5174.363042ms)
+✔ EV-176 K-G3：宽限期里判不了、工作进程收 SIGTERM 300 ms 后退出 ⇒ 轮询到它不在，收尾完整 (590.05975ms)
+✔ EV-176 K-K1：SIGKILL 扣下、等满仍是同一进程 ⇒ 按记录结束 CLI、69、其余什么都不动 (10178.37375ms)
+✔ EV-176 K-K3：SIGKILL 延迟 300 ms 才生效（不带 CLI 记录）⇒ 等到确认退出，收尾完整 (5611.455458ms)
+✔ EV-176 K-K4：SIGKILL 扣下、之后才取不到启动时刻 ⇒ 69、正文说 SIGKILL 之后判不了、什么都不动 (10087.504083ms)
+✔ EV-176 K-C0（回归）：不拦 ⇒ 退 0、工作进程收 SIGTERM 退出、收尾完整 (352.821125ms)
+✔ EV-176 K-E1（回归）：入口即判不了 ⇒ 69，正文与 EV-175 逐字相同、什么都不动 (61.637834ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 37778.6715

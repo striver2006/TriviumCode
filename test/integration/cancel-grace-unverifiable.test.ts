@@ -9,6 +9,7 @@
  *   `ps` 失败桩造（`stubPsFailure`，只用派生失败一种拦法；挂到 10 s 超时的形态只由探针实测，计划双审 r1 CODEX-03）；
  *   桩「何时开始拦」由 `allowFirst`（放过入口那次）或 `arm()`（用例包装 `process.kill`，观察到 SIGTERM / SIGKILL 时调）定。
  *   SIGKILL 的扣留 / 延迟投递也在这层包装里做（真实进程在 SIGKILL 下必死，零配额造不出「SIGKILL 后未确认」）。
+ *   夹具进程等它经 stdout 报就绪（处理器已装好）才交给用例（EV-217，R1 自检这一点）。
  *
  * **不静态导入任何本主题新增的导出**（移植验收：测试构建逐文件转译，静态导入改前树不存在的具名导出会让整个文件加载失败）；
  * 新增的返回字段 `unverifiable` 按属性读。回归格（改前改后都应绿）名字里带「回归」二字，其余是新行为格（改前应红）。
@@ -209,16 +210,43 @@ const PROGRAMS = {
   delay3s: "process.on('SIGTERM', () => setTimeout(() => process.exit(0), 3000)); setInterval(() => {}, 1e6)",
   /** 忽略 SIGTERM */
   ignore: "process.on('SIGTERM', () => {}); setInterval(() => {}, 1e6)",
+  /** 只给夹具自检用（EV-217 R1）：先忙等 500 ms 再装「忽略 SIGTERM」，模拟高负载下 `node -e` 迟迟装不上处理器 */
+  slowIgnore: "const t0 = Date.now(); while (Date.now() - t0 < 500) {} process.on('SIGTERM', () => {}); setInterval(() => {}, 1e6)",
 } as const;
 
+/** 夹具程序执行完（处理器已装好）后经 stdout 打的就绪标记 */
+const READY_MARK = 'trivium-ev217-ready';
+/** 等就绪标记的上界：超时以「测试环境问题」判红，不当成被测行为 */
+const READY_TIMEOUT_MS = 20_000;
+
+/**
+ * 起一个带标记的夹具进程，**等它报就绪再返回**（EV-217）：程序正文执行完才经 stdout 打 `READY_MARK`，
+ * 所以返回时各程序的 SIGTERM 处理器已经装好。原先固定等 150 ms，负载高时 `node -e` 启动慢过这段时间，
+ * SIGTERM 落在装处理器之前、进程按默认处置直接退出（K 格偶发红的推断成因，按读数推断、未实测复现）。
+ */
 async function spawnMarked(mark: string, program: keyof typeof PROGRAMS, owned: Proc[]): Promise<Proc> {
-  const child = childProcess.spawn(process.execPath, ['-e', PROGRAMS[program], `trivium-ev176-test:${mark}`], {
-    detached: true, stdio: 'ignore',
+  const code = `${PROGRAMS[program]}; process.stdout.write(${JSON.stringify(`${READY_MARK}\n`)})`;
+  const child = childProcess.spawn(process.execPath, ['-e', code, `trivium-ev176-test:${mark}`], {
+    detached: true, stdio: ['ignore', 'pipe', 'ignore'],
   });
   const exited = new Promise((r) => child.once('exit', r));
   const p = { pid: child.pid!, exited };
   owned.push(p);
-  await sleep(150);
+  const ready = new Promise<void>((resolve, reject) => {
+    let buf = '';
+    child.stdout!.setEncoding('utf8');
+    child.stdout!.on('data', (c: string) => {
+      buf += c;
+      if (buf.includes(READY_MARK)) resolve();
+    });
+    child.once('exit', (c, s) => reject(new Error(`夹具进程 ${mark} 没报就绪就退出了（code=${c} signal=${s}）`)));
+  });
+  try {
+    await within(ready, READY_TIMEOUT_MS, `夹具进程 ${mark} 报就绪（测试环境问题，不是被测行为）`);
+  } finally {
+    // 只读这一行：读端关掉，之后程序不再写 stdout
+    child.stdout!.destroy();
+  }
   return p;
 }
 
@@ -401,6 +429,23 @@ async function assertFinalized(ctx: Ctx, seeded: Seeded, runId: string, io: Awai
     phase: 'cancelled', lock: false, gate: 'idle', carrier: false, archive: 'cancelled', task: 'cancelled',
   }, `确认退出后收尾完整（凭据已抹、归档与登记 cancelled）；stderr=${io.err}`);
 }
+
+// ─────────────────────────── R1 夹具自检（EV-217） ───────────────────────────
+
+test('EV-217 R1（夹具）：spawnMarked 返回时 SIGTERM 处理器已装好——处理器装得慢也不会被 SIGTERM 打死', T, async () => {
+  const owned: Proc[] = [];
+  try {
+    const t0 = Date.now();
+    const w = await spawnMarked('r1', 'slowIgnore', owned);
+    const ms = Date.now() - t0;
+    assert.ok(ms >= 500, `应等到程序忙等完、装好处理器才返回（${ms} ms）`);
+    process.kill(w.pid, 'SIGTERM');
+    const died = await within(w.exited, 500, '夹具进程退出').then(() => true, () => false);
+    assert.equal(died, false, '返回之后发的 SIGTERM 应被已装好的处理器接住，进程不该退出');
+  } finally {
+    await killAll(owned);
+  }
+});
 
 // ─────────────────────────── W1 workerGoneForCancel ───────────────────────────
 

@@ -1,0 +1,26 @@
+{
+  "targets": [
+    "test/integration/cancel-grace-unverifiable.test.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "spawnMarked 退回固定等 150 ms（改前形态），不等就绪标记",
+      "file": "test/integration/cancel-grace-unverifiable.test.ts",
+      "find": "    await within(ready, READY_TIMEOUT_MS, `夹具进程 ${mark} 报就绪（测试环境问题，不是被测行为）`);\n",
+      "replace": "    ready.catch(() => {});\n    await sleep(150);\n",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "就绪标记挪到程序正文之前打（处理器还没装就报就绪）",
+      "file": "test/integration/cancel-grace-unverifiable.test.ts",
+      "find": "const code = `${PROGRAMS[program]}; process.stdout.write(${JSON.stringify(`${READY_MARK}\\n`)})`;",
+      "replace": "const code = `process.stdout.write(${JSON.stringify(`${READY_MARK}\\n`)}); ${PROGRAMS[program]}`;",
+      "expect": "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+    }
+  ]
+}
