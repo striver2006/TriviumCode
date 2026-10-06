@@ -1,0 +1,21 @@
+✔ EV-221 E1：传了排除 ⇒ 归档根与 .trivium 下的改、增、删都不改哈希（等于 HEAD 的 tree）；不传时同一批改动改变哈希 (242.776667ms)
+✔ EV-221 E2：传了排除 ⇒ 业务文件的改、增、删照常改变哈希，且被排除处干净时与不排除同值 (270.955ms)
+✔ EV-221 E3：漂移判定的结论与不排除时相同（只动归档与 .trivium / 无关业务改动 / 相关业务改动 / 增删业务文件） (929.997167ms)
+✔ EV-221 E4：用户环境带 GIT_LITERAL_PATHSPECS=1 时照常算、照常排除（add 这一步钉回 0） (170.264708ms)
+✔ EV-221 E5：前缀按字面匹配（rev[1] 不吃 rev1、rev* 不吃 revX），规范化与 isOwn 同口径（./x/ 同 x；空串、. 与上溯路径不排除） (492.145542ms)
+✔ EV-221 E6：构建标识的排除含缺省归档根与 .trivium、与作用面不相交，作用面指纹不受这两处改动影响 (263.627125ms)
+✔ EV-221 R1：add 报「unable to stat … No such file or directory」⇒ 重跑一次成功，哈希是受害文件不在时的工作树 (193.705ms)
+✔ EV-221 R2：每次都撞上 ⇒ 至多重试 2 次（共 3 次 add），抛最后一次的原文 (205.416541ms)
+✔ EV-221 R3：其它报错不重试——假 git 让临时索引的 add 失败（stderr 不是「文件中途消失」）⇒ add 只调 1 次、抛原文 (457.792625ms)
+✔ EV-221 R4：「文件中途消失」判据只认 unable to stat 且 No such file or directory 的英文原文 (0.152541ms)
+✔ EV-221 S1：审批摘要的当前树与同法算的基线相同——审查收尾之后只动归档与 .trivium 时 current_tree 等于基线 (199.122625ms)
+✔ EV-221 G1（扫描器自测）：直接调用、经变量、缺 exclude、来源不明各自判对 (3.273708ms)
+✔ EV-221 G2（源码护栏）：src/ 里的 workTreeHash 调用点与登记表一致，四处传 diffExcludePrefixes 同源的排除 (119.727125ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3907.338667

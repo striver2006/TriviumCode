@@ -69,6 +69,51 @@ export interface GitCallOptions {
   timeoutMs?: number;
 }
 
+export interface WorkTreeHashOptions extends GitCallOptions {
+  /**
+   * 不收进哈希的项目相对路径前缀（EV-221）。送审冻结、跑后复算、审批摘要与构建标识四处传
+   * `diffExcludePrefixes` 的结果（归档根、`.trivium`、`.git`），探针夹具仓库不传。
+   *
+   * 被排除的路径在临时索引里保持 `read-tree HEAD` 的版本，哈希仍只取决于工作树内容。
+   * 漂移判定与审批摘要本就剔除这几处（`judgeDrift` 的 `isOwn`、摘要的 `excluded`），排除后结论不变；
+   * 不排除时，另一个主题的工作进程正往归档根或 `.trivium/` 原子写的临时文件会让 `add -A` 报
+   * 「unable to stat」、把整轮审查判成失败。前缀按字面匹配（等于它或以「它/」开头），与 `isOwn` 同义。
+   */
+  exclude?: readonly string[];
+}
+
+/**
+ * `add -A` 遇「文件在列目录与 stat 之间消失」时的重试次数（EV-221）：至多再跑 2 次，共 3 次。
+ * 兜住排除面之外的原子写（编辑器保存、构建产物）；其它报错与超时不重试。
+ */
+export const ADD_VANISHED_RETRIES = 2;
+
+/**
+ * `git add` 的报错是不是「列入的文件 stat 时已不在」：git 先列目录、后逐个 stat，
+ * 中间被别的进程改名或删掉的文件报 `fatal: unable to stat '<路径>': No such file or directory`。
+ *
+ * 只认 git 的英文原文：装了翻译的 git 在别的语言环境下报错被翻译时判 false、不重试，退回改前的行为。
+ * 不写正则字面量（`registry-parity` 的剥注释器不认正则）。
+ */
+export function isVanishedFileError(stderr: string): boolean {
+  return stderr.includes('unable to stat') && stderr.includes('No such file or directory');
+}
+
+/**
+ * 排除前缀 → `add` 的 pathspec。规范化与 `judgeDrift` 的 `normPrefix` 同口径（去掉开头的 `./` 与末尾的 `/`），
+ * 空串、`.` 与上溯路径丢弃——`isOwn` 对它们从不命中，排除它们会让哈希与判定口径分家
+ * （排除 `.` 等于整棵树都不算，漂移再也判不出来）。
+ */
+function excludePathspecs(prefixes: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const raw of prefixes) {
+    const p = raw.replace(/^\.\//, '').replace(/\/+$/, '');
+    if (p === '' || p === '.' || p.startsWith('..')) continue;
+    out.push(`:(exclude,literal)${p}`);
+  }
+  return out;
+}
+
 export async function isGitRepo(cwd: string): Promise<boolean> {
   const r = await git(cwd, ['rev-parse', '--is-inside-work-tree']);
   return r.code === 0 && r.stdout.trim() === 'true';
@@ -102,8 +147,12 @@ export async function gitVersion(): Promise<string | null> {
  * 临时目录删不掉不抛（EV-204）：哈希已算出就照常返回，git 某一步失败就让那个原始错误出去。
  * 此前 finally 的裸递归删除会顶替两者——漂移复算那一处会把三侧已跑完的审查整次判 failed。
  * 没有 notes 通道，往 stderr 提示一行，同一进程只提示一次（{@link indexResidueText}）。
+ *
+ * `opts.exclude`（EV-221）：这些前缀不收进哈希，见 {@link WorkTreeHashOptions.exclude}。不传时 `add` 的参数与环境与改前相同。
+ * `add` 报「文件中途消失」（{@link isVanishedFileError}）时重跑，至多 {@link ADD_VANISHED_RETRIES} 次；
+ * 失败的 `add` 不写临时索引（git 回滚锁文件），重跑仍从 `read-tree HEAD` 的状态开始。用尽时抛最后一次的原文。
  */
-export async function workTreeHash(cwd: string, opts: GitCallOptions = {}): Promise<string> {
+export async function workTreeHash(cwd: string, opts: WorkTreeHashOptions = {}): Promise<string> {
   const tmpDir = await makeTempDir('trivium-index');
   const idx = path.join(tmpDir, 'index');
   try {
@@ -114,7 +163,14 @@ export async function workTreeHash(cwd: string, opts: GitCallOptions = {}): Prom
     // 以 HEAD 为基线填充临时索引；空仓库（无 HEAD）时跳过，从零开始
     const rt = await git(cwd, ['read-tree', 'HEAD'], env, t);
     if (timed && rt.timedOut) throw new GitTimeoutError('read-tree');
-    const add = await git(cwd, ['add', '-A', '--', '.'], env, t);
+    const excludes = excludePathspecs(opts.exclude ?? []);
+    const addArgs = ['add', '-A', '--', '.', ...excludes];
+    // 用户环境带 GIT_LITERAL_PATHSPECS=1 时 git 把 `:(exclude,…)` 当字面路径、报「did not match any files」退 128（实测）
+    const addEnv = excludes.length > 0 ? { ...env, GIT_LITERAL_PATHSPECS: '0' } : env;
+    let add = await git(cwd, addArgs, addEnv, t);
+    for (let n = 0; n < ADD_VANISHED_RETRIES && add.code !== 0 && !add.timedOut && isVanishedFileError(add.stderr); n++) {
+      add = await git(cwd, addArgs, addEnv, t);
+    }
     if (timed && add.timedOut) throw new GitTimeoutError('add');
     if (add.code !== 0) throw new Error(`git add to temp index failed: ${add.stderr.trim()}`);
     const wt = await git(cwd, ['write-tree'], env, t);

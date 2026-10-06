@@ -169,7 +169,8 @@ export async function summarizeWorkTree(i: SummarizeInput): Promise<WorkTreeSumm
       if (!(await treeExists(i.projectRoot, baseline, { timeoutMs: remaining() }))) {
         return { ...withBase, reason: REASON_BASELINE_GONE };
       }
-      const current = await workTreeHash(i.projectRoot, { timeoutMs: remaining() });
+      // 与漂移复算同一份排除（EV-221），基线 after_tree_hash 也是这样算的；下面的 isOwn 仍保留——旧留痕的基线没排除
+      const current = await workTreeHash(i.projectRoot, { timeoutMs: remaining(), exclude: excluded });
       if (current === baseline) return { ...withBase, available: true, current_tree: current };
 
       const isOwn = (f: string): boolean => excluded.some((p) => f === p || f.startsWith(`${p}/`));

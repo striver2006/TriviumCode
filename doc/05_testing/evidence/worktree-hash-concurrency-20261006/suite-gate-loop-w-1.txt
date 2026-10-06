@@ -1,0 +1,16 @@
+✔ W1：闸门期新建 NOTES.md ⇒ approve 仍退 0、照常落审批，输出里列出 NOTES.md (2890.290875ms)
+✔ W2：闸门期没有改动 ⇒ approve 退 0，输出「无改动」一行 (2869.219291ms)
+✔ W3：approve --json 带 worktree_summary（按阶段），含 total 与 truncated (2844.740542ms)
+✔ W4：停点出口也打印摘要——--check 自动立停点与 --await-approval 都列出改动 (3073.815958ms)
+✔ W5：基线被 git 清理 ⇒ approve 仍退 0、照常落审批，报「取不到」而不是「无改动」 (2894.072292ms)
+✔ W6：审查收尾把 after_tree_hash 落进 run.json，且过 run.v2 schema (2549.704459ms)
+✔ W7：摘要超时 ⇒ approve 退 0、照常落审批，报超时（先打印再落审批不让摘要挡住审批） (2825.120042ms)
+✔ W8：同阶段重跑一轮后审批 ⇒ 摘要的 run id 与基线都取自闸门项指向的新一轮（计划双审 CODEX-09） (5751.948667ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25903.711

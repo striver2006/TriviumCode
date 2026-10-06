@@ -402,7 +402,8 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
      *
      * **`drift` 只能单向用**（EV-79 代码双审 r2 CODEX-09、r3 CODEX-r3-01）：
      * `judgeDrift` 是 git 树比对：`workTreeHash` 走临时索引 `add -A`，已跟踪文件与**未被忽略的**未跟踪文件
-     * 都在内，**看不见被 `.gitignore` 忽略的文件**，`ownPrefixes` 还显式排除归档根与 `.trivium/`。
+     * 都在内，**看不见被 `.gitignore` 忽略的文件**，`ownPrefixes` 还显式排除归档根与 `.trivium/`
+     * （EV-221 起这两处在算哈希时就已排除，取 HEAD 的版本）。
      * （此前这里写「只看已跟踪文件」，与实现相反；留痕与文案小修计划双审 r1 CODEX-01 ≡ AGY-01 更正。）
      * 于是 `dist/` 这类在 `.gitignore` 里的目录被真实递归删除同样 drift=false。
      * 所以 drift=false **只排除了「未被忽略的文件被改」这一种失守**，不足以推出误报——

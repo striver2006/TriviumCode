@@ -2253,9 +2253,14 @@ test('W4：停点出口也打印摘要——--check 自动立停点与 --await-a
 
 test('W5：基线被 git 清理 ⇒ approve 仍退 0、照常落审批，报「取不到」而不是「无改动」', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
+  /*
+   * 收尾基线要不等于 HEAD 的 tree，才是不可达对象、gc 能清掉。EV-221 起归档根与 .trivium/ 不进 tree，
+   * 只有归档件变化时基线就是 HEAD 的 tree（可达，gc 清不掉）；所以审查前放一个未跟踪的业务文件，
+   * 它进送审快照与收尾基线（两边都有，不算漂移）。
+   */
+  await fs.writeFile(path.join(fx.root, 'scratch-note.txt'), '让收尾基线不等于 HEAD 的 tree\n', 'utf8');
   await toAwaitingApproval(fx);
   const { run } = await import('../../src/trivium/util/exec.js');
-  // 收尾基线里含未跟踪的归档件，不等于 HEAD 的 tree，属不可达对象，gc 能清掉
   const gc = await run('git', ['gc', '-q', '--prune=now'], { cwd: fx.root, timeoutMs: 60_000 });
   assert.equal(gc.code, 0, gc.stderr);
   const r = await approveNow(fx.root);

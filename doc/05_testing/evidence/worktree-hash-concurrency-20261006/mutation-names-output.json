@@ -1,0 +1,221 @@
+{
+  "targets_sha256": {
+    "src/trivium/util/git.ts": "a742eb45c29588b28fc2d649d066b123b0b749bb48d9f9a4eea874a6aa085c9b",
+    "src/trivium/freeze.ts": "ab11916986ddebc300ea8b1d2fa005758f87b38ca6f9f491129e231c8e21a576",
+    "src/trivium/review.ts": "7c89bd168e32ece3668651f1af698c7df8b3ea15e0c433ff3a05cb2731e1e2d3",
+    "src/trivium/worktree-summary.ts": "2490980c29a9a26c1b0ff7b7106f47570fa0a6b99c4d61eb7f5b07eb38a74384",
+    "src/trivium/build-stamp.ts": "d35995c48fc6274d0a6710191bd94775edde123979afeccd4aa9f51a8d071b8a"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "排除失效：add 不带排除 pathspec（改前形态）",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 E1：传了排除 ⇒ 归档根与 .trivium 下的改、增、删都不改哈希（等于 HEAD 的 tree）；不传时同一批改动改变哈希",
+        "EV-221 E2：传了排除 ⇒ 业务文件的改、增、删照常改变哈希，且被排除处干净时与不排除同值",
+        "EV-221 E4：用户环境带 GIT_LITERAL_PATHSPECS=1 时照常算、照常排除（add 这一步钉回 0）",
+        "EV-221 E5：前缀按字面匹配（rev[1] 不吃 rev1、rev* 不吃 revX），规范化与 isOwn 同口径（./x/ 同 x；空串、. 与上溯路径不排除）",
+        "EV-221 S1：审批摘要的当前树与同法算的基线相同——审查收尾之后只动归档与 .trivium 时 current_tree 等于基线"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/worktree-hash-concurrency.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-221 W1：一轮审查收尾后，run.json 的 snapshot.tree_hash 与 after_tree_hash 都等于 HEAD 的 tree，drift 未变"
+          ],
+          "firstLines": [],
+          "elapsed_s": 3
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "送审冻结不传排除",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 G2（源码护栏）：src/ 里的 workTreeHash 调用点与登记表一致，四处传 diffExcludePrefixes 同源的排除"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/worktree-hash-concurrency.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-221 W1：一轮审查收尾后，run.json 的 snapshot.tree_hash 与 after_tree_hash 都等于 HEAD 的 tree，drift 未变"
+          ],
+          "firstLines": [],
+          "elapsed_s": 3
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "desc": "跑后复算不传排除",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 G2（源码护栏）：src/ 里的 workTreeHash 调用点与登记表一致，四处传 diffExcludePrefixes 同源的排除"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/worktree-hash-concurrency.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-221 W1：一轮审查收尾后，run.json 的 snapshot.tree_hash 与 after_tree_hash 都等于 HEAD 的 tree，drift 未变"
+          ],
+          "firstLines": [],
+          "elapsed_s": 3
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "审批摘要不传排除",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 S1：审批摘要的当前树与同法算的基线相同——审查收尾之后只动归档与 .trivium 时 current_tree 等于基线",
+        "EV-221 G2（源码护栏）：src/ 里的 workTreeHash 调用点与登记表一致，四处传 diffExcludePrefixes 同源的排除"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "构建标识不传排除（结果按设计不变，只有源码护栏咬得住）",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 G2（源码护栏）：src/ 里的 workTreeHash 调用点与登记表一致，四处传 diffExcludePrefixes 同源的排除"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "不重试（改前形态）",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 R1：add 报「unable to stat … No such file or directory」⇒ 重跑一次成功，哈希是受害文件不在时的工作树",
+        "EV-221 R2：每次都撞上 ⇒ 至多重试 2 次（共 3 次 add），抛最后一次的原文"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "任何报错都重试（不看判据）",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 R3：其它报错不重试——假 git 让临时索引的 add 失败（stderr 不是「文件中途消失」）⇒ add 只调 1 次、抛原文"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "判据放宽：只看 unable to stat",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 R4：「文件中途消失」判据只认 unable to stat 且 No such file or directory 的英文原文"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": []
+    },
+    {
+      "id": "M9",
+      "desc": "重试次数改 1",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 R2：每次都撞上 ⇒ 至多重试 2 次（共 3 次 add），抛最后一次的原文"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": []
+    },
+    {
+      "id": "M10",
+      "desc": "add 这一步不钉 GIT_LITERAL_PATHSPECS=0",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 E4：用户环境带 GIT_LITERAL_PATHSPECS=1 时照常算、照常排除（add 这一步钉回 0）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": []
+    },
+    {
+      "id": "M11",
+      "desc": "排除前缀不按字面（去掉 literal 魔法）",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 E5：前缀按字面匹配（rev[1] 不吃 rev1、rev* 不吃 revX），规范化与 isOwn 同口径（./x/ 同 x；空串、. 与上溯路径不排除）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": []
+    },
+    {
+      "id": "M12",
+      "desc": "规范化不丢 .（排除整棵树）",
+      "suite": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-221 E5：前缀按字面匹配（rev[1] 不吃 rev1、rev* 不吃 revX），规范化与 isOwn 同口径（./x/ 同 x；空串、. 与上溯路径不排除）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3,
+      "also": []
+    }
+  ]
+}

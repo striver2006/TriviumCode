@@ -1479,7 +1479,9 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   const finishedAt = new Date().toISOString();
 
   // ── 复算快照，判漂移 ──
-  const afterTreeHash = await workTreeHash(ctx.projectRoot);
+  // 与送审冻结同一份排除（EV-221）：归档根、.trivium/、.git 不进 tree；code 阶段重取补丁也用它
+  const ownExcludes = diffExcludePrefixes(path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root);
+  const afterTreeHash = await workTreeHash(ctx.projectRoot, { exclude: ownExcludes });
   /*
    * 被审对象的复算必须**重新取一次**，不能重读冻结文件。
    *
@@ -1494,8 +1496,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   if (stage === 'code') {
     const frozen = parseFrozenDiff(await fs.readFile(subjectPath, 'utf8'));
     diffFiles = frozen.files;
-    const excludes = diffExcludePrefixes(path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root);
-    const nowBody = await diffAgainst(ctx.projectRoot, frozen.base ?? opts.diffBase ?? 'HEAD', excludes, cfg.review.sensitive_globs);
+    const nowBody = await diffAgainst(ctx.projectRoot, frozen.base ?? opts.diffBase ?? 'HEAD', ownExcludes, cfg.review.sensitive_globs);
     afterSubjectSha = sha256(frozen.header + nowBody);
   } else {
     afterSubjectSha = await sha256File(subjectPath);

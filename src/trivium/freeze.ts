@@ -439,7 +439,12 @@ export async function freeze(input: FreezeInput): Promise<Snapshot> {
   const { cfg, projectRoot, archiveRoot, stage, critic } = input;
 
   const gitHead = await headSha(projectRoot);
-  const treeHash = await workTreeHash(projectRoot);
+  /*
+   * 归档根、.trivium/、.git 不进 tree_hash（EV-221），与 code 阶段补丁同一份排除：漂移判定本就剔除这几处，
+   * 而另一个主题的工作进程正往归档根或 .trivium/ 原子写的临时文件会让临时索引的 `add -A` 报「unable to stat」。
+   */
+  const ownExcludes = diffExcludePrefixes(path.relative(projectRoot, archiveRoot));
+  const treeHash = await workTreeHash(projectRoot, { exclude: ownExcludes });
   const status = await statusPorcelain(projectRoot);
   const dirty = status.length > 0;
 
@@ -451,7 +456,7 @@ export async function freeze(input: FreezeInput): Promise<Snapshot> {
     const base = input.base ?? 'HEAD';
     diffText =
       input.diffText ??
-      (await diffAgainst(projectRoot, base, diffExcludePrefixes(path.relative(projectRoot, archiveRoot)), cfg.review.sensitive_globs));
+      (await diffAgainst(projectRoot, base, ownExcludes, cfg.review.sensitive_globs));
     subjectSha256 = sha256(diffText);
     // 真实路径在 _meta/ 下，由调用方落盘后回填；这里先给逻辑路径
     subjectPath = path.join(archiveRoot, '_pending', 'changes.diff');

@@ -1,0 +1,119 @@
+{
+  "targets": [
+    "src/trivium/util/git.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/review.ts",
+    "src/trivium/worktree-summary.ts",
+    "src/trivium/build-stamp.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/worktree-hash-exclude.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "排除失效：add 不带排除 pathspec（改前形态）",
+      "file": "src/trivium/util/git.ts",
+      "find": "    const addArgs = ['add', '-A', '--', '.', ...excludes];\n",
+      "replace": "    const addArgs = ['add', '-A', '--', '.'];\n",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "also": [
+        "dist/test/test/integration/worktree-hash-concurrency.test.js"
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "送审冻结不传排除",
+      "file": "src/trivium/freeze.ts",
+      "find": "  const treeHash = await workTreeHash(projectRoot, { exclude: ownExcludes });\n",
+      "replace": "  const treeHash = await workTreeHash(projectRoot);\n",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "also": [
+        "dist/test/test/integration/worktree-hash-concurrency.test.js"
+      ]
+    },
+    {
+      "id": "M3",
+      "desc": "跑后复算不传排除",
+      "file": "src/trivium/review.ts",
+      "find": "  const afterTreeHash = await workTreeHash(ctx.projectRoot, { exclude: ownExcludes });\n",
+      "replace": "  const afterTreeHash = await workTreeHash(ctx.projectRoot);\n",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js",
+      "also": [
+        "dist/test/test/integration/worktree-hash-concurrency.test.js"
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "审批摘要不传排除",
+      "file": "src/trivium/worktree-summary.ts",
+      "find": "      const current = await workTreeHash(i.projectRoot, { timeoutMs: remaining(), exclude: excluded });\n",
+      "replace": "      const current = await workTreeHash(i.projectRoot, { timeoutMs: remaining() });\n",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "构建标识不传排除（结果按设计不变，只有源码护栏咬得住）",
+      "file": "src/trivium/build-stamp.ts",
+      "find": "    tree = await workTreeHash(root, { exclude: INPUT_HASH_EXCLUDES });\n",
+      "replace": "    tree = await workTreeHash(root);\n",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "不重试（改前形态）",
+      "file": "src/trivium/util/git.ts",
+      "find": "    for (let n = 0; n < ADD_VANISHED_RETRIES && add.code !== 0",
+      "replace": "    for (let n = 0; n < 0 && add.code !== 0",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "任何报错都重试（不看判据）",
+      "file": "src/trivium/util/git.ts",
+      "find": " && !add.timedOut && isVanishedFileError(add.stderr); n++) {\n",
+      "replace": " && !add.timedOut; n++) {\n",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "判据放宽：只看 unable to stat",
+      "file": "src/trivium/util/git.ts",
+      "find": "  return stderr.includes('unable to stat') && stderr.includes('No such file or directory');\n",
+      "replace": "  return stderr.includes('unable to stat');\n",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "重试次数改 1",
+      "file": "src/trivium/util/git.ts",
+      "find": "export const ADD_VANISHED_RETRIES = 2;\n",
+      "replace": "export const ADD_VANISHED_RETRIES = 1;\n",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "add 这一步不钉 GIT_LITERAL_PATHSPECS=0",
+      "file": "src/trivium/util/git.ts",
+      "find": "    const addEnv = excludes.length > 0 ? { ...env, GIT_LITERAL_PATHSPECS: '0' } : env;\n",
+      "replace": "    const addEnv = env;\n",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "排除前缀不按字面（去掉 literal 魔法）",
+      "file": "src/trivium/util/git.ts",
+      "find": "    out.push(`:(exclude,literal)${p}`);\n",
+      "replace": "    out.push(`:(exclude)${p}`);\n",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "规范化不丢 .（排除整棵树）",
+      "file": "src/trivium/util/git.ts",
+      "find": "    if (p === '' || p === '.' || p.startsWith('..')) continue;\n",
+      "replace": "    if (p === '' || p.startsWith('..')) continue;\n",
+      "expect": "dist/test/test/unit/worktree-hash-exclude.test.js"
+    }
+  ]
+}

@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.46
+> - **当前版本**：v1.1.47
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.47（2026-10-06）随设计 v1.3.125（工作树哈希排除归档根与 `.trivium/`、文件中途消失时重试，EV-221）同步：3.3「`executeRun()` 的漂移复算」补工作树哈希的排除来源、pathspec 写法与重试；模块表 `util/git.ts` 行补一句。本批未走双审。行数列未重核。
 > - **变更说明**：v1.1.46（2026-10-06）随设计 v1.3.124（运行目录跨主题同秒避让，EV-218）同步：「`run_id` 生成」一段补运行目录的排他占用、测试开关与落盘前失败的清理。本批未走双审。
 > - **变更说明**：v1.1.45（2026-10-06）随设计 v1.3.116（建议命令里的主题名统一转义，EV-195）同步：模块表 `naming.ts` 行补 `shellQuoteArg()`。本批未走双审。行数列未重核。
 > - **变更说明**：v1.1.44（2026-10-06）随设计 v1.3.115（失联取消两格退 69，EV-177 ② 补）同步：4.2「`cancelRun` 结束失联后仍挂着的 worker」引述块的退出码一句补上 `mismatch` / `no_identity` 两格也以 69 退出。本批未走双审。
@@ -194,7 +195,7 @@ graph TD
 | `types.ts` | 518 | 全部类型定义与编译期契约 |
 | `exit-codes.ts` | 67 | 九个退出码 |
 | `util/exec.ts` | 894 | 子进程执行、进程树杀灭、PID 复用识别（`processMatchesRecord` 给出三态身份结论 `identity`：同一 / 不是 / 判不了，v1.1.24；`terminateProcessGroup` 的 `isGone` 可给「判不了」，不算已退出、也不对它发下一个信号，v1.1.25） |
-| `util/git.ts` | 447 | 工作树哈希、补丁生成、变更列举；审批时摘要用的严格助手 `treeExists()` / `diffTreesNameStatus()`（失败即抛，与失败返回空的 `diffTrees()` 分开） |
+| `util/git.ts` | 447 | 工作树哈希（可选排除前缀、`add` 遇文件中途消失至多重试 2 次，v1.1.47）、补丁生成、变更列举；审批时摘要用的严格助手 `treeExists()` / `diffTreesNameStatus()`（失败即抛，与失败返回空的 `diffTrees()` 分开） |
 | `util/fsx.ts` `util/log.ts` | 119 / 39 | 文件系统与日志 |
 
 ---
@@ -314,6 +315,8 @@ bug 阶段传 `() => resolvePlanFinal(ref, projectRoot)`（现算，只取目标
 #### `executeRun()` 的漂移复算（[review.ts:676-696](../../src/trivium/review.ts#L676-L696)）
 
 被审对象**必须重新取一次**，不能重读冻结件——code 阶段是取出冻结头部逐字复用 + **此刻重新 `git diff <base>`** 的正文再算哈希。注释明说：重读冻结件永远等于自己，导致 `subject_drift` 在 code 阶段从未触发过。
+
+**工作树哈希的排除与重试**（v1.1.47，EV-221）：复算前先算 `ownExcludes = diffExcludePrefixes(归档根相对路径 || cfg.archive_root)`，`workTreeHash(projectRoot, { exclude: ownExcludes })` 与 code 阶段重取补丁共用这一份；送审冻结（`freeze()`，与它的补丁同一份）、审批摘要（`summarizeWorkTree` 的 `excluded`）、构建标识（`build-stamp.ts` 的 `INPUT_HASH_EXCLUDES`，缺省归档根 `.reviews`）同法，三处探针不传。`util/git.ts` 把前缀规范化（去 `./` 与末尾 `/`，丢空串、`.`、上溯路径，与 `judgeDrift` 的 `normPrefix` 同口径）后追加 `:(exclude,literal)<前缀>`，这一步的环境钉 `GIT_LITERAL_PATHSPECS=0`；被排除处在临时索引里保持 `read-tree HEAD` 的版本，`tree_hash` / `after_tree_hash` 因而是「排除这几处之后的工作树」。`add` 失败且 `isVanishedFileError(stderr)`（含 `unable to stat` 与 `No such file or directory`）时重跑，至多 `ADD_VANISHED_RETRIES`（2）次，超时不重试；失败的 `add` 不写临时索引，重跑仍从 `read-tree HEAD` 的状态开始。`judgeDrift` 的 `isOwn` 与摘要的剔除照旧保留（改前写下的留痕没排除）。调用点由 `test/unit/worktree-hash-exclude.test.ts` 的 AST 护栏按文件登记。
 
 **比不了的那一格**（v1.1.27，EV-139）：`freeze.ts` 的 `judgeDrift` 在两棵 tree 不同之后先过 `OBJECT_NAME_RE` 形状闸（定义在 `util/git.ts`，审批时的工作树摘要同用；worker 的送审快照从运行目录的 `request.json` 读回，以 `-` 开头的值会被 git 当成选项），再用失败即抛的 `diffTreesNameStatus`（`-z`）列变更。不合形状或比对抛错 ⇒ 结论 `{ kind: 'unknown', cause, detail }`，不再落进「列表空 ⇒ `none`」。抛错后由导出的 `classifyCompareFailure` 分原因：`GitTimeoutError` ⇒ `timeout`、不再查对象；否则逐棵 `treeExists`，任一不在 ⇒ `object_gone`，核对时超时 ⇒ `timeout`、出错 ⇒ `git_error`（两段首行），都在 ⇒ `git_error`。两次核对共用 `DRIFT_PROBE_BUDGET_MS`（= `util/git.ts` 导出的 `GIT_DEFAULT_TIMEOUT_MS`，120 s；逐次显式传剩余毫秒，按进程组收尾），所以比不了那一格最坏耗时是比对 120 s + 核对至多 120 s，期间 worker 心跳照跳、不会被判失联；超时文案的子命令名取 `GitTimeoutError.what`、时长取同一常量（代码双审 CODEX-01/02 ≡ GLM-02/03）。快乐路径仍是一次 `diff-tree`。原因枚举 `DRIFT_UNKNOWN_CAUSES`、标签表 `DRIFT_UNKNOWN_LABEL` 与排版 `describeDriftUnknown` 在 `types.ts`（`render.ts` 被 `freeze.ts` 引用，从 `freeze.ts` 取会成环）。`driftAction` 对 `unknown` 按 `on_drift_related`；`guard.ts` `renderGuardWarnings` 新增一格并以 `never` 穷尽性断言收尾；`review.ts` 写 `snapshot.drift`（`policy` 取 `on_drift_related`、另写 `unknown_reason`）并给审查文档传 `driftUnknown`；`report.ts` 推「漂移无法判定」旗标、`meta.ts` `summarizeRun` 打同名一行，都不再落到「0 个文件」。测试桩 `prune_objects`（`adapters/stub.ts`）在项目根执行 `git prune --expire=now` 再改一个文件，只在系统临时目录之下动手。
 

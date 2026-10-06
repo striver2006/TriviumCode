@@ -71,7 +71,7 @@ test('EV-218 I1：别的运行占着「从现在起 60 秒」的运行目录 ⇒
   assert.equal(await archiveStatus(fx.archiveRoot, A, id), 'success');
 });
 
-test('EV-218 I2：同一仓库两个主题对齐到一秒开头并发 --start ⇒ run_id 不同、各用各的运行目录，两轮都收尾（不再停在 running）', { skip: bundleMissing && bundleSkipReason }, async () => {
+test('EV-218 I2：同一仓库两个主题对齐到一秒开头并发 --start ⇒ run_id 不同、各用各的运行目录，两轮都 success（EV-221 起）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: A });
   await addPlanDraft(fx.archiveRoot, B);
   const ms = Date.now() % 1000;
@@ -83,19 +83,18 @@ test('EV-218 I2：同一仓库两个主题对齐到一秒开头并发 --start �
   const idB = runIdOf(rb.stdout);
   assert.notEqual(idA, idB, '两个主题分到了同一个 run_id——会共用一个运行目录、后到的那一轮被吞掉');
   /*
-   * 两轮只要求**都收尾**（归档 run.json 不再停在 running），不要求都 success：同一仓库两个主题并发时，
-   * 一侧工作进程算工作树哈希的 `git add` 可能撞上另一侧正在写的原子临时文件而整轮判失败——那是另一个已有的
-   * 并发竞态（BACKLOG EV-221），与运行目录无关；改前它被「两主题共用一个运行目录」遮住了。
+   * 两轮都要 success（EV-221 起）：此前一侧工作进程算工作树哈希的 `git add` 可能撞上另一侧正往归档根或 `.trivium/`
+   * 原子写的临时文件而整轮判失败，这一格曾放宽为「都收尾即可」；EV-221 让工作树哈希排除这两处、`add` 遇文件中途消失时重试，
+   * 收回到 success。不是 success 时断言文案带上运行目录 status.json 的原文，便于分辨是不是又撞上了。
    */
-  for (const id of [idA, idB]) {
-    const { code, out } = await waitTerminal(fx.root, id);
-    assert.ok(code === EXIT.OK || code === EXIT.FAIL, `运行 ${id} 没有到终态：\n${out}`);
-  }
+  for (const id of [idA, idB]) await waitTerminal(fx.root, id);
   const bucket = path.join(fx.runRoot, repoId(fx.root));
   for (const [id, topic] of [[idA, A], [idB, B]] as const) {
     const request = JSON.parse(await fs.readFile(path.join(bucket, id, 'request.json'), 'utf8')) as { topic: string };
     assert.equal(request.topic, topic, `运行目录 ${id} 的交接文件属于 ${request.topic}，不是 ${topic}`);
-    assert.ok(['success', 'failed'].includes(await archiveStatus(fx.archiveRoot, topic, id)), `${topic} 那一轮的 run.json 没有收尾（改前后到的那一轮停在 running）`);
+    const status = await archiveStatus(fx.archiveRoot, topic, id);
+    const message = status === 'success' ? '' : await fs.readFile(path.join(bucket, id, 'status.json'), 'utf8').catch((e: Error) => e.message);
+    assert.equal(status, 'success', `${topic} 那一轮没有 success：${message}`);
   }
 });
 

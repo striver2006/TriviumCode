@@ -1,0 +1,15 @@
+M1：fail=5 cancelled=0 4s ⇒ EV-221 E1：传了排除 ⇒ 归档根与 .trivium 下的改、增、删都不改哈希（等于 HEAD 的 tree）；不传时同一批改动改变哈希 ｜ EV-221 E2：传了排除 ⇒ 业务文件的改、增、删照常改变哈希，且被排除处干净时与不排除同值 ｜ EV-221 E4：用户环境带 GIT_LITERAL_PATHSPECS=1 时照常算、照常排除（add 这一步钉回 0） ｜ EV-221 E5：前缀按字面匹配（rev[1] 不吃 rev1），规范化与 isOwn 同口径（./x/ 同 x；空串、. 与上溯路径不排除） ｜ EV-221 S1：审批摘要的当前树与同法算的基线相同——审查收尾之后只动归档与 .trivium 时 current_tree 等于基线
+  亦跑 dist/test/test/integration/worktree-hash-concurrency.test.js：fail=1 ⇒ EV-221 W1：一轮审查收尾后，run.json 的 snapshot.tree_hash 与 after_tree_hash 都等于 HEAD 的 tree，drift 未变
+M2：fail=1 cancelled=0 3s ⇒ EV-221 G2（源码护栏）：src/ 里的 workTreeHash 调用点与登记表一致，四处传 diffExcludePrefixes 同源的排除
+  亦跑 dist/test/test/integration/worktree-hash-concurrency.test.js：fail=1 ⇒ EV-221 W1：一轮审查收尾后，run.json 的 snapshot.tree_hash 与 after_tree_hash 都等于 HEAD 的 tree，drift 未变
+M3：fail=1 cancelled=0 3s ⇒ EV-221 G2（源码护栏）：src/ 里的 workTreeHash 调用点与登记表一致，四处传 diffExcludePrefixes 同源的排除
+  亦跑 dist/test/test/integration/worktree-hash-concurrency.test.js：fail=1 ⇒ EV-221 W1：一轮审查收尾后，run.json 的 snapshot.tree_hash 与 after_tree_hash 都等于 HEAD 的 tree，drift 未变
+M4：fail=2 cancelled=0 3s ⇒ EV-221 S1：审批摘要的当前树与同法算的基线相同——审查收尾之后只动归档与 .trivium 时 current_tree 等于基线 ｜ EV-221 G2（源码护栏）：src/ 里的 workTreeHash 调用点与登记表一致，四处传 diffExcludePrefixes 同源的排除
+M5：fail=1 cancelled=0 3s ⇒ EV-221 G2（源码护栏）：src/ 里的 workTreeHash 调用点与登记表一致，四处传 diffExcludePrefixes 同源的排除
+M6：fail=2 cancelled=0 3s ⇒ EV-221 R1：add 报「unable to stat … No such file or directory」⇒ 重跑一次成功，哈希是受害文件不在时的工作树 ｜ EV-221 R2：每次都撞上 ⇒ 至多重试 2 次（共 3 次 add），抛最后一次的原文
+M7：fail=1 cancelled=0 3s ⇒ EV-221 R3：其它报错不重试——假 git 让临时索引的 add 失败（stderr 不是「文件中途消失」）⇒ add 只调 1 次、抛原文
+M8：fail=1 cancelled=0 3s ⇒ EV-221 R4：「文件中途消失」判据只认 unable to stat 且 No such file or directory 的英文原文
+M9：fail=1 cancelled=0 3s ⇒ EV-221 R2：每次都撞上 ⇒ 至多重试 2 次（共 3 次 add），抛最后一次的原文
+M10：fail=1 cancelled=0 3s ⇒ EV-221 E4：用户环境带 GIT_LITERAL_PATHSPECS=1 时照常算、照常排除（add 这一步钉回 0）
+M11：fail=0 cancelled=0 3s ⇒ 
+M12：fail=1 cancelled=0 3s ⇒ EV-221 E5：前缀按字面匹配（rev[1] 不吃 rev1），规范化与 isOwn 同口径（./x/ 同 x；空串、. 与上溯路径不排除）

@@ -21,6 +21,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { headSha, isDirtyWithin, isShallowRepo, rootCommit, treeEntryIds, workTreeHash } from './util/git.js';
 import { sha256 } from './util/fsx.js';
+import { diffExcludePrefixes } from './code-stage.js';
 
 /**
  * 影响安装产物内容的路径集（r2 §2 作用面，CODEX-07 ≡ AGY-01 ≡ GLM-03）。
@@ -38,6 +39,16 @@ export const INSTALL_INPUT_PATHS: readonly string[] = [
   'tsconfig.json',
 ];
 
+/**
+ * 算作用面指纹时不收进工作树哈希的前缀（EV-221）：与送审冻结同源的 `diffExcludePrefixes`，归档根取缺省值 `.reviews`。
+ *
+ * 作用面（{@link INSTALL_INPUT_PATHS}）与这几处不相交，排除不改 `inputs_sha256`（单测守着不相交）；排除只为让
+ * 另一个主题正往归档根、`.trivium/` 原子写的临时文件不再把临时索引的 `add -A` 弄失败。
+ * 指纹只在本仓重算（构建时、本仓模式的收尾与 doctor），本仓 config 钉的归档根就是缺省值；
+ * 不经 `config.ts` 取缺省值，是因为构建脚本把本文件单独打包，引它会把 yaml / schema 一并拉进去。归档根改到别处时只是少排除一处，结果仍不变。
+ */
+export const INPUT_HASH_EXCLUDES: readonly string[] = diffExcludePrefixes('.reviews');
+
 /** 本仓的包名：构建标识缺失时，用它兜底判定「被审项目就是本仓」 */
 export const SELF_PACKAGE_NAME = 'triviumcode';
 
@@ -53,15 +64,16 @@ export interface BuildStamp {
 }
 
 /**
- * 作用面指纹：对工作树（含未跟踪文件，经临时索引、不碰真实索引）的 tree，
+ * 作用面指纹：对工作树（含未跟踪文件，经临时索引、不碰真实索引；{@link INPUT_HASH_EXCLUDES} 不收进 tree）的 tree，
  * 逐项取作用面路径的对象 id，按路径排序拼接后取 sha256。
  *
  * 作用面外的改动不影响结果；取不到（非 git、`write-tree` 失败）返回 null。
+ * 自定义 `paths` 不得与 {@link INPUT_HASH_EXCLUDES} 相交，否则被排除的部分取的是 HEAD 的版本（生产只用缺省作用面）。
  */
 export async function computeInputsSha256(root: string, paths: readonly string[] = INSTALL_INPUT_PATHS): Promise<string | null> {
   let tree: string;
   try {
-    tree = await workTreeHash(root);
+    tree = await workTreeHash(root, { exclude: INPUT_HASH_EXCLUDES });
   } catch {
     return null;
   }

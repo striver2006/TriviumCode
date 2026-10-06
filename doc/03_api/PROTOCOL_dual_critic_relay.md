@@ -242,12 +242,14 @@ deny 核验完全由措施 b 承担。这一降级逐侧记于 `guard.verificati
 送审前：
   ① git rev-parse HEAD
   ② 临时 GIT_INDEX_FILE → add -A → write-tree  得 tree_hash（绝不触碰用户暂存区）
+     add 排除归档根、.trivium/、.git（与 code 阶段补丁同一份），被排除处取 HEAD 的版本；
+     add 遇文件中途消失（unable to stat … No such file or directory）至多重试 2 次（设计 9.2，v1.3.125，EV-221）
   ③ 被审对象 sha256 → subject_sha256
   ④ 枚举对方历史产出 + 敏感文件 → deny_paths
   ⑤ 渲染两侧 BRIEF
 
 跑后：
-  1. 重算 tree_hash' 与 subject_sha256'
+  1. 重算 tree_hash'（同一份排除）与 subject_sha256'
   2. subject_sha256' ≠ subject_sha256 → FAIL(subject_drift)，整次运行作废
   3. tree_hash' ≠ tree_hash：
      a′. 比不了（tree 值不合对象名形状 / diff-tree 失败：送审快照的 tree 已被清理、git 出错、超时）

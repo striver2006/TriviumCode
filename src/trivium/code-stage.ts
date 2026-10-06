@@ -100,6 +100,8 @@ const stripPrefix = (p: string, prefix: string): string =>
  * commit 时处于未跟踪状态，若被收进补丁就会经**被审对象本身**递给审查员——
  * BRIEF 禁读清单、CLI 路径 deny、事后轨迹核验三道全被绕过。
  * 这不能靠用户的 `.gitignore` 保障，必须在生成补丁时就排除。
+ *
+ * EV-221 起工作树哈希（送审冻结、跑后复算、审批摘要、构建标识）也传这一份，`workTreeHash` 的 `exclude`。
  */
 export function diffExcludePrefixes(archiveRootRel: string): string[] {
   const out = new Set<string>(['.trivium', '.git']);
