@@ -66,7 +66,7 @@ import { diffAgainst, headSha } from './util/git.js';
 import { collectBuildStampNotices, embeddedBuildStamp } from './build-stamp.js';
 import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
 import {
-  allocateRunId, finalizeFailedRunMeta, finalizeLines, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta,
+  RUN_ID_MAX_BUMPS, allocateRunId, finalizeFailedRunMeta, finalizeLines, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta,
   type TaskLock,
 } from './meta.js';
 import { acquireLock, type LockHandle } from './lock.js';
@@ -734,7 +734,33 @@ export async function resolveSubjectArtifactRelPath(archiveRoot: string, subject
  * 写完 run.json 骨架之后才失败的，回收闸门之后再把骨架收尾为 `failed`（`termination.by = prepare_exception`，
  * EV-145，事后收尾余项计划 r2 §3.2）。
  */
+/** 分配 run_id 时占到的运行目录（EV-218）：`dir` 只记本次新建的；`landed` 表示已走到落盘段原本建目录的那一步 */
+interface RunDirClaim {
+  dir: string | null;
+  landed: boolean;
+}
+
+/**
+ * 准备一次审查运行。外层只负责一件事（EV-218）：分配 run_id 时已排他建好了运行目录（`allocateRunId` 的
+ * `claimRunDirIn`），而建目录原本推迟在落盘段（GLM-04「零工件」）——落盘段之前的任何失败（原稿缺失、必读与禁读相交、
+ * 上一轮未裁决……）都要把这个还空着的目录删掉，被拒时才不在项目外留下运行目录。只删本次新建的（测试开关下接管的
+ * 已有目录不删），只用非 recursive 的 `rmdir`（目录里一旦有东西就不删）。落盘段之后的失败照旧由内层处理。
+ */
 export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
+  const claim: RunDirClaim = { dir: null, landed: false };
+  try {
+    return await prepareRunClaimed(opts, claim);
+  } catch (e) {
+    if (claim.dir !== null && !claim.landed) {
+      await fs.rmdir(claim.dir).catch((err: NodeJS.ErrnoException) => {
+        if (err?.code !== 'ENOENT') warn(`运行目录 ${claim.dir} 是本次占的、还没用上，删不掉（${err?.code ?? err}）——请手工删除这个空目录`);
+      });
+    }
+    throw e;
+  }
+}
+
+async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promise<RunContext> {
   const { ctx, stage } = opts;
   const cfg: Config = ctx.config;
   const assetRoot = resolveAssetRoot(opts.assetRoot);
@@ -888,7 +914,14 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    * 而是骨架运行元数据短暂记错轮次 + 必然触发一次抬升告警。
    */
   const rerunIndex = await resolveRerunIndex(ref.layout, stage, driver);
-  const runId = await allocateRunId(ref.layout);
+  /*
+   * 分配 run_id 的同时排他占下运行目录（EV-218）：运行目录按仓库分桶、不按主题分，两个主题同一秒起跑会分到同一个 id。
+   * 占到的目录记进 claim，落盘段之前失败由外层 `prepareRun` 删掉（守 GLM-04 的零工件）。
+   */
+  const runId = await allocateRunId(ref.layout, new Date(), RUN_ID_MAX_BUMPS, {
+    claimRunDirIn: path.join(runRoot(cfg), repoId(ctx.projectRoot)),
+    onRunDirClaimed: (dir, created) => { if (created) claim.dir = dir; },
+  });
   if (opts.onRunIdAllocated) await opts.onRunIdAllocated(runId);
 
   /*
@@ -963,7 +996,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
   }
 
   // ── 运行目录（项目外，§10.1 第 ② 道）──
-  // 运行目录也推迟到落盘阶段才建（GLM-04）
+  // 运行目录在分配 run_id 时已排他占下（EV-218）；落盘段照旧 ensureDir 一次，之前失败由外层删掉（GLM-04）
   const runDirBase = path.join(runRoot(cfg), repoId(ctx.projectRoot), runId);
 
   const lenses = await loadLenses(lensesPath);
@@ -1216,7 +1249,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
     }
 
     /*
-     * ── 到这里为止**不写任何审查工件与留痕**（brief、补丁与便利副本、run.json、task.json 登记、运行目录）；
+     * ── 到这里为止**不写任何审查工件与留痕**（brief、补丁与便利副本、run.json、task.json 登记、运行目录里的文件；
+     * 运行目录本身在分配 run_id 时已排他占下、还是空的，这之前失败由外层 `prepareRun` 删掉，EV-218）；
      * 闸门状态文件只多了上面那次比较-交换（判负时也会刷新 `updated_at`，闸门项不变——代码双审 r1 GLM-01）。
      * 闸门已归本轮（跳过轮除外），从这里开始才落盘。──
      * 顺序：重置收工阻断计数 → 建阶段目录 → 写补丁与 brief → 建运行目录 → 写 run.json → 登记
@@ -1269,6 +1303,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
       metaArtifacts.push({ path: w.relPath, sha256: w.sha256 });
     }
     await ensureDir(runDirBase);
+    claim.landed = true;
 
     // ── run.json 骨架（status: running），崩溃后也能取证 ──
     const meta = newRunMeta({

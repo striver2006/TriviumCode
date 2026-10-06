@@ -14,6 +14,7 @@ import { APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID } from '../../
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import type { StubConfig } from '../../src/trivium/adapters/stub.js';
 import { assertUnreadableExit } from '../helpers/unreadable-exit.js';
+import { ADOPT_PRECREATED_RUN_DIR_ENV } from '../../src/trivium/meta.js';
 
 /**
  * 闸门闭环（AC-01 / AC-02 / AC-12 / 设计 §8.5）：
@@ -2469,6 +2470,7 @@ const taskRunsOf = async (archiveRoot: string): Promise<TaskRunLike[] | null> =>
  * 预建运行目录（计划 r2 §4.2，r1 CODEX-02）：run_id 只到秒、生成时刻不可预知，所以把从现在起 60 秒内每一秒
  * 可能用到的运行目录都建出来，交给 `prep` 做手脚。夹具根已 realpath（`makeFixture`），CLI 算 repoId 用的是同一个。
  * 60 秒远大于满载下一次 `--start` 从这里到落骨架的耗时；用例里只起一次 `--start`，不存在误命中第二次运行的问题。
+ * EV-218 起分配 run_id 会排他占运行目录、绕开已存在的目录，所以这几格经 `startPlan` 带测试开关接管预建目录。
  */
 async function precreateRunDirs(fx: Fixture, prep: (dir: string) => Promise<void>): Promise<{ ids: Set<string>; dirs: string[] }> {
   const { repoId } = await import('../../src/trivium/review.js');
@@ -2517,8 +2519,19 @@ async function killWorkersOf(ids: Set<string>): Promise<number[]> {
   return pids;
 }
 
+/**
+ * 只给本节预建运行目录的故障注入用例用：带 `TRIVIUM_TEST_ADOPT_PRECREATED_RUN_DIR=1`（EV-218 候选 A）。
+ * EV-218 起 `allocateRunId` 排他占运行目录，预建的目录会被当成别的运行的而绕开；开关让它接管预建目录，这几格才测得到
+ * 「落骨架之后写盘失败」。其余用例不设这个开关。
+ */
 const startPlan = (root: string, stub: StubConfig = STUB) =>
-  cli(root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'], stub);
+  cli(
+    root,
+    ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+    stub,
+    120_000,
+    { [ADOPT_PRECREATED_RUN_DIR_ENV]: '1' },
+  );
 
 const syncPlan = (root: string) =>
   cli(root, ['review', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION], STUB);

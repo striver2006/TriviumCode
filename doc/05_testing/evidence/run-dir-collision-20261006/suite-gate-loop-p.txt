@@ -1,0 +1,14 @@
+✔ 事后收尾余项 P3：startRun 派生前失败（写交接文件 EACCES）⇒ 骨架与登记收尾为 failed（prepare_exception），闸门 idle、锁已放 (362.755959ms)
+✔ 事后收尾余项 P3b：spawnDetached 内部、子进程诞生之前失败（开日志文件 EISDIR）⇒ 同样收尾为 prepare_exception，且没有 worker (394.2025ms)
+✔ 派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker (1014.625875ms)
+✔ 派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写） (3705.910458ms)
+✔ 派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发） (2563.267292ms)
+✔ 事后收尾余项 P5：同步路径 executeRun 抛错（写审查文档 EACCES）⇒ 骨架与登记收尾为 failed（sync_exception），闸门 idle (619.627208ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8930.935708

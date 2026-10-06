@@ -1,0 +1,36 @@
+✖ EV-218 I2：同一仓库两个主题对齐到一秒开头并发 --start ⇒ run_id 不同、各用各的运行目录，两轮都正常收尾 (4381.7505ms)
+makeFixture：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 1 个夹具目录：/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-fx-dAc6ie
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4566.278584
+
+✖ failing tests:
+
+test at dist/test/test/integration/run-dir-collision.test.js:52:1
+✖ EV-218 I2：同一仓库两个主题对齐到一秒开头并发 --start ⇒ run_id 不同、各用各的运行目录，两轮都正常收尾 (4381.7505ms)
+  AssertionError [ERR_ASSERTION]: 运行 20261006T090741Z 没有正常结束：
+  运行 20261006T090741Z ｜ 主题 EV218乙 ｜ 阶段 plan ｜ 阶段状态 失败
+  已用 3s / 预算 2m0s（3%） ｜ 第 1/14 次等待 ｜ 最近心跳 2s 前
+    gemini: 已完成 ｜ gemini-3.8-flash-high ｜ 第 1 次尝试
+    glm: 已完成 ｜ GLM-5.3 ｜ 第 1 次尝试
+  
+  
+  1 !== 0
+  
+      at waitDone (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/integration/run-dir-collision.test.js:24:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/integration/run-dir-collision.test.js:64:3)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.45
+> - **当前版本**：v1.1.46
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.46（2026-10-06）随设计 v1.3.124（运行目录跨主题同秒避让，EV-218）同步：「`run_id` 生成」一段补运行目录的排他占用、测试开关与落盘前失败的清理。本批未走双审。
 > - **变更说明**：v1.1.45（2026-10-06）随设计 v1.3.116（建议命令里的主题名统一转义，EV-195）同步：模块表 `naming.ts` 行补 `shellQuoteArg()`。本批未走双审。行数列未重核。
 > - **变更说明**：v1.1.44（2026-10-06）随设计 v1.3.115（失联取消两格退 69，EV-177 ② 补）同步：4.2「`cancelRun` 结束失联后仍挂着的 worker」引述块的退出码一句补上 `mismatch` / `no_identity` 两格也以 69 退出。本批未走双审。
 > - **变更说明**：v1.1.43（2026-10-06）随设计 v1.3.106（回收遗留锁时收尾上一轮，EV-151）同步：4.3「告警」条之后新增「回收之后」一条（`LockHandle.reclaimed`、`settleReclaimedRunLocks` 的过滤与收尾、同步路径的 `onRunIdAllocated`）；前台中断转发一条、4.2「仍会停在 `running` 的」与已知缺口表 `cancelRun` 一行里指向 EV-151 的半句改准。本批未走双审。行数列未重核。
@@ -287,7 +288,7 @@ bug 阶段传 `() => resolvePlanFinal(ref, projectRoot)`（现算，只取目标
 
 **置闸门是落盘之前的最后一步**（v1.1.7，EV-109 / EV-145 ①）：`setGateChecked(running)` 排在计算段之后、第一次落盘之前，被拦（上一轮未裁决，退 2）时零工件；此前它排在落盘段之后，被拦那次已写下 brief、便利副本 `changes.diff`、run.json 骨架、task.json 登记与运行目录。置闸门之后的失败（重置收工阻断计数、落盘段）由 `prepareRun` 经 `state.ts` 的 `releaseRunningGateEntry` 回收闸门；写完骨架之后才失败（登记、任务目标落盘）时，回收闸门之后再把骨架收尾为 `failed`（`prepare_exception`，v1.1.8，EV-145；v1.1.7 时骨架留 `running`）；骨架之前的失败不进收尾。
 
-**`run_id` 生成**（[meta.ts:37](../../src/trivium/meta.ts#L37)，`newRunId`；分配走同文件的 `allocateRunId`）：UTC 紧凑时间戳 `20260910T142310Z`，可排序、可直接做文件名。只到秒：同秒已被本主题占用（task.json 登记或任一阶段 `_meta/run-<id>.json`）就往后抬一秒，格式不变、字典序仍即时序，但 run_id 不再保证等于开始时刻，开始时刻以 `started_at` 为准（EV-147）。
+**`run_id` 生成**（[meta.ts:37](../../src/trivium/meta.ts#L37)，`newRunId`；分配走同文件的 `allocateRunId`）：UTC 紧凑时间戳 `20260910T142310Z`，可排序、可直接做文件名。只到秒：同秒已被本主题占用（task.json 登记或任一阶段 `_meta/run-<id>.json`）就往后抬一秒，格式不变、字典序仍即时序，但 run_id 不再保证等于开始时刻，开始时刻以 `started_at` 为准（EV-147）。审查运行（`prepareRun`）分配时另传 `claimRunDirIn`（本仓库在运行根下的桶）：对候选 id 做非 recursive `mkdir <桶>/<id>`，`EEXIST` 即被别的运行占着、往后抬一秒，与上面共用上限与 69（v1.1.46，EV-218——运行目录按仓库分，两个主题同秒起跑此前会共用一个）；占到的目录在落盘段之前失败时由 `prepareRun` 外层 `rmdir`（只删本次新建的空目录）。`TRIVIUM_TEST_ADOPT_PRECREATED_RUN_DIR=1` 让已存在的运行目录可被接管，只给 `gate-loop` 预建运行目录的故障注入用例用；verify 不建运行目录、不传桶。
 
 **code 阶段的补丁只算一次**（`review.ts:341-347`）后透传给两侧——逐侧各自 `git diff` 会让两次之间的工作树变动导致两侧拿到不同的 `subject_sha256`，那等于两侧审的不是同一段变更。
 

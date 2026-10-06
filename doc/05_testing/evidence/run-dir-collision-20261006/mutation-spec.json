@@ -1,0 +1,58 @@
+{
+  "targets": [
+    "src/trivium/meta.ts",
+    "src/trivium/review.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/run-id-alloc.test.js",
+    "dist/test/test/integration/run-dir-collision.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "不排他：占用判定恒为可占（改前形态）",
+      "file": "src/trivium/meta.ts",
+      "find": "    if (bucket === null) return true;\n    const dir = path.join(bucket, id);\n",
+      "replace": "    return true;\n    const dir = path.join(bucket, id);\n",
+      "expect": "dist/test/test/unit/run-id-alloc.test.js",
+      "also": [
+        "dist/test/test/integration/run-dir-collision.test.js"
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "EEXIST 一律当可占（不看测试开关）",
+      "file": "src/trivium/meta.ts",
+      "find": "      if (process.env[ADOPT_PRECREATED_RUN_DIR_ENV] !== '1') return false;\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/run-id-alloc.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "测试开关失效（预建目录一律绕开）",
+      "file": "src/trivium/meta.ts",
+      "find": "      if (process.env[ADOPT_PRECREATED_RUN_DIR_ENV] !== '1') return false;\n",
+      "replace": "      return false;\n",
+      "expect": "dist/test/test/unit/run-id-alloc.test.js",
+      "also": [
+        "dist/test/test/integration/gate-loop.test.js"
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "外层不删落盘前占下的空目录",
+      "file": "src/trivium/review.ts",
+      "find": "    if (claim.dir !== null && !claim.landed) {\n",
+      "replace": "    if (claim.dir !== null && !claim.landed && Date.now() < 0) {\n",
+      "expect": "dist/test/test/integration/run-dir-collision.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "分配点不传运行根桶（退回只看归档）",
+      "file": "src/trivium/review.ts",
+      "find": "    claimRunDirIn: path.join(runRoot(cfg), repoId(ctx.projectRoot)),\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/run-dir-collision.test.js"
+    }
+  ]
+}

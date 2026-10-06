@@ -50,13 +50,28 @@ const RUN_ID_STAGES: readonly StageOrVerify[] = ['plan', 'code', 'bug', 'verify'
  * `newRunId` 只到秒，`writeMeta` 对 `_meta/` 覆盖写、`registerRun` 按 run_id 替换登记——同一秒起的第二轮会把
  * 第一轮的 run.json 与登记整份盖掉（准备阶段失败是亚秒级的，紧接着重跑就撞）。这里不改格式：从 `newRunId(now)`
  * 起，已被占用就往后抬一秒。「占用」= task.json `runs[]` 已有这个 run_id（各阶段共用一个键空间），或任一阶段
- * `_meta/run-<id>.json` 已存在；task.json 读不出时只看文件。**不看运行目录**（跨主题共用，见 BACKLOG EV-147 结案记要）。
+ * `_meta/run-<id>.json` 已存在；task.json 读不出时只看文件。
+ *
+ * **运行目录**（EV-218）：运行目录是 `<运行根>/<repoId>/<runId>`，按仓库分、不按主题分；两个主题各持各的主题锁，
+ * 同一秒起跑会分到同一个 run_id、共用一个运行目录（实测后到的那一轮被静默吞掉）。给了 `claimRunDirIn`（本仓库的桶）
+ * 时，对每个本主题未占用的候选 id 再做**非 recursive** 的 `mkdir <桶>/<id>`：建成即占到（目录由本次运行独占），
+ * `EEXIST` 即别的运行已占用、往后抬一秒——排他靠文件系统的原子 mkdir，不靠事先查看。审查运行（`prepareRun`）传它；
+ * `verify` 不建运行目录，不传。
  *
  * 抬出来的 id 仍是定宽 UTC 形态且大于被占用者，`latestRunMeta` 的「字典序即时序」照旧成立；代价是 run_id 不再
- * 保证等于开始时刻的秒，开始时刻以 `started_at` 为准。检查与随后的写入之间不加锁：审查运行在主题锁内分配，
- * 先后两轮不会撞；不持主题锁的 verify 与审查运行**同一秒并发**分配时仍可能撞，这一格不在本函数的承诺里。
+ * 保证等于开始时刻的秒，开始时刻以 `started_at` 为准。归档那一半的检查与随后的写入之间不加锁：审查运行在主题锁内
+ * 分配，先后两轮不会撞；不持主题锁的 verify 与审查运行**同一秒并发**分配时仍可能撞，这一格不在本函数的承诺里。
  */
-export async function allocateRunId(l: ArchiveLayout, now: Date = new Date(), maxBumps: number = RUN_ID_MAX_BUMPS): Promise<string> {
+export async function allocateRunId(
+  l: ArchiveLayout,
+  now: Date = new Date(),
+  maxBumps: number = RUN_ID_MAX_BUMPS,
+  opts: {
+    claimRunDirIn?: string;
+    /** 占到运行目录时回调：`created` 为真是本次建的，为假是测试开关下接管的已有目录（调用方失败时只删前者） */
+    onRunDirClaimed?: (dir: string, created: boolean) => void;
+  } = {},
+): Promise<string> {
   const { task, state } = await readTaskStrict(l);
   const registered = new Set(state === 'ok' && Array.isArray(task.runs) ? task.runs.map((r) => r.run_id) : []);
   const fileTaken = async (id: string): Promise<boolean> => {
@@ -70,15 +85,42 @@ export async function allocateRunId(l: ArchiveLayout, now: Date = new Date(), ma
     }
     return false;
   };
+  const bucket = opts.claimRunDirIn ?? null;
+  if (bucket !== null) await fs.mkdir(bucket, { recursive: true });
+  /** 占运行目录：建成或（测试开关下）接管已存在的 ⇒ true；被别的运行占着 ⇒ false */
+  const claimRunDir = async (id: string): Promise<boolean> => {
+    if (bucket === null) return true;
+    const dir = path.join(bucket, id);
+    try {
+      await fs.mkdir(dir);
+      opts.onRunDirClaimed?.(dir, true);
+      return true;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException)?.code !== 'EEXIST') throw e;
+      if (process.env[ADOPT_PRECREATED_RUN_DIR_ENV] !== '1') return false;
+      opts.onRunDirClaimed?.(dir, false);
+      return true;
+    }
+  };
   for (let i = 0; i <= maxBumps; i++) {
     const id = newRunId(new Date(now.getTime() + i * 1000));
-    if (!registered.has(id) && !(await fileTaken(id))) return id;
+    if (!registered.has(id) && !(await fileTaken(id)) && (await claimRunDir(id))) return id;
   }
   throw envError(
-    `主题「${l.topic}」从 ${newRunId(now)} 起连续 ${maxBumps + 1} 个 run_id 都已被占用（task.json 登记或 _meta/run-*.json）：` +
-      '留痕可能异常，请检查该主题的归档后重试',
+    `主题「${l.topic}」从 ${newRunId(now)} 起连续 ${maxBumps + 1} 个 run_id 都已被占用（task.json 登记或 _meta/run-*.json` +
+      `${bucket !== null ? '，或运行目录已存在' : ''}）：留痕可能异常，请检查该主题的归档后重试`,
   );
 }
+
+/**
+ * **只给故障注入用例用的测试开关**（EV-218，用户 2026-10-06 定候选 A）：设为 `1` 时，`allocateRunId` 把已存在的
+ * 运行目录当作可占用（接管），不往后抬。
+ *
+ * 用途只有一个：`gate-loop` 里 EV-145 / EV-150 那几格预建运行目录、在里面做手脚（目录只读、把 `worker.pid` 摆成目录），
+ * 制造「落骨架之后写盘失败」。没有这个开关，排他占用会把预建目录当成别的运行的、绕开它们，那几格就测不到原本要测的东西。
+ * 生产与其余用例一律不设；设了就失去跨主题同秒的保护。接管的目录不是本进程建的，`prepareRun` 失败时也不删它。
+ */
+export const ADOPT_PRECREATED_RUN_DIR_ENV = 'TRIVIUM_TEST_ADOPT_PRECREATED_RUN_DIR';
 
 export const runMetaFileName = (runId: string): string => `run-${runId}.json`;
 

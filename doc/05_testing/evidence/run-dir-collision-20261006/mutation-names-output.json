@@ -1,0 +1,113 @@
+{
+  "targets_sha256": {
+    "src/trivium/meta.ts": "332bdf28849323c298df87155519ad2a8faa90820a3bb8d21c604cc2ed0db95d",
+    "src/trivium/review.ts": "e22e67cf18d38786ab7d47f1dda4624e4e1b00487ead15d9b1103157c17f3808"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "不排他：占用判定恒为可占（改前形态）",
+      "suite": "dist/test/test/unit/run-id-alloc.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-218 D1：别的运行已占着同秒的运行目录 ⇒ 抬一秒，并把抬到的那个目录建出来、回调报「本次新建」",
+        "EV-218 D2：本主题归档已占用的 id 直接跳过，不去建它的运行目录；桶不存在时先建桶",
+        "EV-218 D3：测试开关下接管已存在的运行目录（不抬秒），回调报「接管」；不设开关时同一构造会抬秒",
+        "EV-218 D4：上限内的运行目录全被占 ⇒ 69，文案补「或运行目录已存在」；不带桶时同一构造不受运行目录影响"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/run-dir-collision.test.js",
+          "fail": 2,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-218 I1：别的运行占着「从现在起 60 秒」的运行目录 ⇒ --start 落到窗口之外、用自己新建的目录，占着的目录一个不动",
+            "EV-218 I2：同一仓库两个主题对齐到一秒开头并发 --start ⇒ run_id 不同、各用各的运行目录，两轮都收尾（不再停在 running）"
+          ],
+          "firstLines": [],
+          "elapsed_s": 2
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "EEXIST 一律当可占（不看测试开关）",
+      "suite": "dist/test/test/unit/run-id-alloc.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-218 D1：别的运行已占着同秒的运行目录 ⇒ 抬一秒，并把抬到的那个目录建出来、回调报「本次新建」",
+        "EV-218 D3：测试开关下接管已存在的运行目录（不抬秒），回调报「接管」；不设开关时同一构造会抬秒",
+        "EV-218 D4：上限内的运行目录全被占 ⇒ 69，文案补「或运行目录已存在」；不带桶时同一构造不受运行目录影响"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "测试开关失效（预建目录一律绕开）",
+      "suite": "dist/test/test/unit/run-id-alloc.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-218 D3：测试开关下接管已存在的运行目录（不抬秒），回调报「接管」；不设开关时同一构造会抬秒"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/gate-loop.test.js",
+          "fail": 5,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "事后收尾余项 P3：startRun 派生前失败（写交接文件 EACCES）⇒ 骨架与登记收尾为 failed（prepare_exception），闸门 idle、锁已放",
+            "事后收尾余项 P3b：spawnDetached 内部、子进程诞生之前失败（开日志文件 EISDIR）⇒ 同样收尾为 prepare_exception，且没有 worker",
+            "派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker",
+            "派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写）",
+            "派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发）"
+          ],
+          "firstLines": [],
+          "elapsed_s": 292
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "外层不删落盘前占下的空目录",
+      "suite": "dist/test/test/integration/run-dir-collision.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-218 I3：分配 run_id 之后、落盘之前失败（被审原稿缺失，退 65）⇒ 运行根里不留下本次占的空目录"
+      ],
+      "firstLines": [],
+      "elapsed_s": 6,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "分配点不传运行根桶（退回只看归档）",
+      "suite": "dist/test/test/integration/run-dir-collision.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-218 I1：别的运行占着「从现在起 60 秒」的运行目录 ⇒ --start 落到窗口之外、用自己新建的目录，占着的目录一个不动",
+        "EV-218 I2：同一仓库两个主题对齐到一秒开头并发 --start ⇒ run_id 不同、各用各的运行目录，两轮都收尾（不再停在 running）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    }
+  ]
+}

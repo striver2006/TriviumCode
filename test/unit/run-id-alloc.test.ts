@@ -2,12 +2,13 @@
  * run_id 同秒避让（EV-147）：`allocateRunId` 从 `newRunId(now)` 起，被占用（task.json 登记或任一阶段
  * `_meta/run-<id>.json`）就往后抬一秒；格式不变、抬出来的大于被占用者；task.json 读不出时只看文件；用尽抛 69。
  * 另有一格源码护栏：除 `meta.ts` 自身外不得直接调 `newRunId` 分配 run_id（新分配点绕过避让会再撞）。
+ * EV-218 补 D1～D4：带 `claimRunDirIn` 时对运行目录做排他 mkdir、撞了抬一秒，测试开关下接管已有目录，用尽 69。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { allocateRunId, newRunId } from '../../src/trivium/meta.js';
+import { ADOPT_PRECREATED_RUN_DIR_ENV, RUN_ID_MAX_BUMPS, allocateRunId, newRunId } from '../../src/trivium/meta.js';
 import { metaDir } from '../../src/trivium/archive.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { StageOrVerify } from '../../src/trivium/types.js';
@@ -104,4 +105,61 @@ test('EV-147 A7（源码护栏）：除 meta.ts 外，src/ 不直接调 newRunId
   };
   await walk(root);
   assert.deepEqual(hits, [], `分配 run_id 应走 allocateRunId（同秒避让），直接调 newRunId 的：${hits.join('、')}`);
+});
+
+// ── 运行目录跨主题同秒避让（EV-218）：带 claimRunDirIn 时对 `<桶>/<id>` 排他 mkdir，撞了抬一秒 ──
+
+async function bucketDir() {
+  return path.join(await scratchDir('trivium-runbucket-'), 'repo-bucket');
+}
+
+test('EV-218 D1：别的运行已占着同秒的运行目录 ⇒ 抬一秒，并把抬到的那个目录建出来、回调报「本次新建」', async () => {
+  const l = await layout();
+  const bucket = await bucketDir();
+  await fs.mkdir(path.join(bucket, at(0)), { recursive: true });
+  const claimed: [string, boolean][] = [];
+  const id = await allocateRunId(l, NOW, RUN_ID_MAX_BUMPS, { claimRunDirIn: bucket, onRunDirClaimed: (d, c) => claimed.push([d, c]) });
+  assert.equal(id, at(1));
+  assert.ok((await fs.stat(path.join(bucket, at(1)))).isDirectory(), '占到的运行目录要已建好');
+  assert.deepEqual(claimed, [[path.join(bucket, at(1)), true]]);
+  assert.deepEqual(await fs.readdir(path.join(bucket, at(0))), [], '别人占着的目录不动');
+});
+
+test('EV-218 D2：本主题归档已占用的 id 直接跳过，不去建它的运行目录；桶不存在时先建桶', async () => {
+  const l = await layout();
+  await register(l, [at(0)]);
+  const bucket = await bucketDir();
+  const id = await allocateRunId(l, NOW, RUN_ID_MAX_BUMPS, { claimRunDirIn: bucket });
+  assert.equal(id, at(1));
+  assert.deepEqual((await fs.readdir(bucket)).sort(), [at(1)], '只建了占到的那一个');
+});
+
+test('EV-218 D3：测试开关下接管已存在的运行目录（不抬秒），回调报「接管」；不设开关时同一构造会抬秒', async () => {
+  const l = await layout();
+  const bucket = await bucketDir();
+  await fs.mkdir(path.join(bucket, at(0)), { recursive: true });
+  const prev = process.env[ADOPT_PRECREATED_RUN_DIR_ENV];
+  const claimed: [string, boolean][] = [];
+  try {
+    process.env[ADOPT_PRECREATED_RUN_DIR_ENV] = '1';
+    const id = await allocateRunId(l, NOW, RUN_ID_MAX_BUMPS, { claimRunDirIn: bucket, onRunDirClaimed: (d, c) => claimed.push([d, c]) });
+    assert.equal(id, at(0));
+    assert.deepEqual(claimed, [[path.join(bucket, at(0)), false]]);
+  } finally {
+    if (prev === undefined) delete process.env[ADOPT_PRECREATED_RUN_DIR_ENV];
+    else process.env[ADOPT_PRECREATED_RUN_DIR_ENV] = prev;
+  }
+  assert.equal(await allocateRunId(l, NOW, RUN_ID_MAX_BUMPS, { claimRunDirIn: bucket }), at(1), '开关撤掉后照常抬秒');
+});
+
+test('EV-218 D4：上限内的运行目录全被占 ⇒ 69，文案补「或运行目录已存在」；不带桶时同一构造不受运行目录影响', async () => {
+  const l = await layout();
+  const bucket = await bucketDir();
+  for (let i = 0; i <= 3; i++) await fs.mkdir(path.join(bucket, at(i)), { recursive: true });
+  await assert.rejects(allocateRunId(l, NOW, 3, { claimRunDirIn: bucket }), (e: { code?: number; message?: string }) => {
+    assert.equal(e.code, EXIT.ENV);
+    assert.ok(e.message!.includes('或运行目录已存在'), e.message);
+    return true;
+  });
+  assert.equal(await allocateRunId(l, NOW, 3), at(0), '不带桶：只看归档，与 EV-147 行为相同');
 });
