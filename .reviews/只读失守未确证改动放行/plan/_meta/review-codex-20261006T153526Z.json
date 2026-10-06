@@ -1,0 +1,80 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "计划质量高：§1 现状陈述我逐条核过源码全部属实（gate.ts:394-424 无条件 failure 与 missing_disposition 早退次序、hooks.ts roundBreach/splitByBreach/breachLines、review.ts:1797-1806 drift 取值、freeze.ts judgeDrift 五种结论与 scratch/归档根/.trivium 排除、guard.ts:819-834 运行时告警、brief.ts:299-300、stub.ts write_breach 只产事件不落盘）；§1.2 可达性分析与我核到的缺省配置一致（config.ts:301 on_drift=warn、on_drift_related=fail）；§6.2 翻转清单与实际用例逐一对得上（gate.test:775/:874、gate-loop:730/:776、fault-injection:455、mcp-detect I2、hooks.test seedBreach 11 处调用点、brief-mcp-exec:54）；R5 历史面我全仓扫了 run.json， breached+changed=false 的确实只有 EV-79 code r2 一份且该阶段已有更新的运行。我这一侧的三个具体问题：一是 A 格「两处 Hook 放行」依赖 gate --check 成功后按 entry 迁移状态（A→idle）这一未写明的机制，断言清单建议补上状态格；二是盲区清单忠实照抄决策二，但 judgeDrift 同样看不见 scratch 白名单内的写入，可在风险节登记一句（不偏离用户决策）。成本面：三格全部走 TRIVIUM_STUB_CRITIC 桩、S10 verify 只执行配置声明的构建/测试命令，零配额成立；回滚为单提交 revert、不改写 run.json、无 schema 变更，成本核算通过。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "被审计划 §6.1 gate-loop A 格",
+      "problem": "A 格期望「闸门离开待裁决、两处 Hook 放行」，但 gate --check 退 0 本身不迁移闸门状态：迁移发生在 --check 成功之后按 run.json 的 entry 分流（A→idle，B/C/D→awaiting_approval，读不出 entry 也回 idle）。A 格的断言清单只列了退出码、warnings 码与 Hook 放行，没有列出「闸门状态已离开 review_done_awaiting_disposition」这一格；而现有失守用例（gate-loop:754-756）恰恰断言了失败时闸门停在 awaiting_disposition。若实施时照抄现有用例骨架只改桩与期望码，漏掉状态断言，A 格会丢失对「放行是真的状态迁移、不是 Hook 恰好没拦」的咬合——状态若没动、Hook 又恰好在别的判据下放行，用例照样绿。",
+      "evidence": "实测 sed -n '1470,1520p' src/trivium/cli.ts：gate --check 成功后按 entry 分流迁移（entry===B/C/D 立 awaiting_approval，A 或无 entry 回 idle），且 alreadyDecided 时不迁移；实测 sed -n '720,760p' test/integration/gate-loop.test.ts：现有失守用例断言 st.gates 停在 review_done_awaiting_disposition。结论为对这两处的推理。",
+      "suggestion": "在 §6.1 A 格补一句机制说明（--check 通过后闸门按 entry 迁移，A 入口夹具断言状态为 idle），并把「断言闸门状态已离开 review_done_awaiting_disposition」写进 A 格断言清单；B 格保留「停在原地」断言与之对偶。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "被审计划 §2.4 BREACH_BLIND_SPOTS 与 §8 R2",
+      "problem": "盲区清单照抄用户决策二（被 .gitignore 忽略的文件、归档根与 .trivium/、改了又改回、写到项目外、MCP 执行型调用的任意写），这是忠实实现、不要改。但 judgeDrift 的 drift 判定还有一道过滤在计划与决策清单里都没点名：scratch 白名单（各家 Agent 运行时自行创建的文件 glob）。审查员写事件的目标若落在 scratch 白名单路径内，跑后复算同样看不见（该路径被 matchesAnyGlob(scratchGlobs) 整体剔除），失守会走「复算无变化」放行格，而放行告警点名的盲区清单不含这一项。不登记不等于要扩清单——扩清单会偏离用户拍板的决策二；缺的是风险节里一句如实登记。",
+      "evidence": "实测 sed -n '598,647p' src/trivium/freeze.ts：judgeDrift 中 changed 过滤条件为 !matchesAnyGlob(f, scratchGlobs) && !isOwn(f)，scratchGlobs 来自两侧 Agent scratch 白名单并集（DriftInput 注释）；任务目标原文决策二的盲区清单不含 scratch 白名单。",
+      "suggestion": "在 §8 R2（盲区放行）补一句登记：scratch 白名单内的写入同样不在复算面内，不在决策二清单范围、告警不点名，属接受的盲区；若日后用户要收紧再放行判据，此处是现成的注记锚点。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "判据收成 gate.ts 单一导出函数、checkAdjudication 与 roundBreach 共用，与 READMEONLY_BREACH_TRIAGE 单一来源的先例同向，避免两处文案分叉。",
+    "§2.2 用判别联合（hit:true 必带 drift）把「漏传 drift」顶到编译期，与 voidedSides/planFinal 由 loadRoundReviews 派生的教训一致，方向正确。",
+    "§1.2 可达性分析（缺省配置下进得了待裁决的失守轮只有 none 与 unrelated 两格、比不了+写事件须改 on_drift_related 才可达）与我核到的 config.ts:301-302 缺省值、review.ts:1797-1806 取值逻辑完全吻合，三格测试设计建立在真实的可达性上。",
+    "§2.4 confirmedDriftText 处理 files 为空的「无法归因」分支、并删除 hooks driftText 的比不了死分支，与我读到的 driftText 现状（hooks.ts:1328-1340 在 changed=true 且 files 空时会误说「比对未完成」）正好对上，这一格确有必要。",
+    "§5 新桩形态设计合理：write_breach 只产事件不落盘、mutate_file 只落盘无事件，新模式恰好补齐矩阵对角线；写事件与落盘文件同名使 attributedToBreach 的相等比对（guard.ts:797-801）不受影响。",
+    "R5 历史面无实际影响我独立核实过：全仓归档扫 run.json，breached 且 changed=false 的仅 EV-79 code r2（run-20260922T123905Z）一份，且该阶段存在更新的运行（134058Z、134313Z），闸门早已离开待裁决。",
+    "§6.3 变异 M1-M6 与 mutation-check.mjs 装置「只收一个套件」的约束相容，M1/M2 分别咬住 changed 与 unknown_reason 两个分支，满足任务目标「至少咬住两个分支」的底线。",
+    "成本与配额面成立：三格全部经 TRIVIUM_STUB_CRITIC 桩（集成测试纪律），S10 trivium verify 只执行 config.yaml 声明的构建/测试命令（verify.ts 头部注释），全程零 LLM 配额；回滚为单提交 revert、不改写任何 run.json、不动 run.v2 契约，回滚成本核算通过。",
+    "文档同步范围与仓库惯例一致：设计文档版本记录加行、§8.5 Hook 职责表、AD-06、PRD FR-15/AC-08/异常表、LLD Hook 失守文案小节、BACKLOG EV-98/EV-75 注记+登记 EV-223，均能在对应文件中找到锚点。"
+  ],
+  "not_covered": [
+    "未逐行预写 PRD/设计/LLD 的改后行文，只核对了计划声称的落点存在且现状描述与文件实际一致。",
+    "未实际运行构建、测试或变异（只读审查，沙箱只读），§9 验证步骤的可行性是依装置既有用法与历史报告推理得出。",
+    "未打开 LLD_orchestrator.md 的 472 行附近原文核对小节标题，只确认了计划所引形态与 doc/README 的命名规范不冲突。",
+    "未核对 doc/05_testing/README.md 的「当前已归档文件」规范句形态（doc-archive-index 契约的 A2 登记形式），计划声称按该契约登记，实施时由契约测试把关。",
+    "另一位审查员的产出按禁读清单全程未接触，本结论独立得出。",
+    "bash-recovery-wording 契约测试我做了影响面核查（新文案不含 git 恢复类子命令、guard.ts 豁免组的 marker 仍命中同一语句组），但未逐条重跑其剥注释扫描逻辑。"
+  ],
+  "consulted": [
+    ".reviews/只读失守未确证改动放行/plan/2026-10-06-只读失守未确证改动放行-claude.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/gate.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/types.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/config.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/verify.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/report.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/render.test.ts",
+    "test/unit/brief-mcp-exec.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/integration/mcp-detect.test.ts",
+    "test/contract/bash-recovery-wording.test.ts",
+    "test/helpers/fixture.ts",
+    "scripts/mutation-check.mjs",
+    ".reviews/EV-79-写命令判据两处缺口/code/_meta/run-20260922T123905Z.json"
+  ]
+}

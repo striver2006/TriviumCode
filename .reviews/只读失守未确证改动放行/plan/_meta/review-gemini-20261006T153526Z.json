@@ -1,0 +1,86 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "计划整体结构严谨、判据收敛单点设计扎实，但 §6.2 翻转清单遗漏了现有单测中依赖旧文案字面的断言，按计划直接实施会导致构建闸门打红。\n最危险的问题在于：§6.2 遗漏了 hooks.test U13 中对 reason.split('处置：先核对') 的切割断言，以及 U2 中对「都须先作废这一轮」的子串断言；计划修改文案后这两个断言必挂。\n此外，gate.test:775 对 snapshot.drift 出现的断言在 failure 文案剔除该短语后同样会挂，需同步迁移至 warning 断言。\n设计文档第 2569 行尚存一处「整侧作废」的不实表述，建议一并加入文档同步清单。\n整体判定为 request-changes，补齐遗漏断言的翻转方案后即可通过。",
+  "findings": [
+    {
+      "id": "AGY-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §6.2",
+      "problem": "§6.2 翻转清单遗漏了 hooks.test 中两处依赖旧文案字面的断言，按计划直接实施会导致单测打红。其一，test/unit/hooks.test.ts:1587（用例 U13）断言 reason.split('处置：先核对').length - 1 为 1，而 §2.4 将 READONLY_BREACH_TRIAGE 开头改为「处置：用 git status / git diff 核对...」，完全移除了「处置：先核对」，导致切割计数为 0；其二，test/unit/hooks.test.ts:1384（用例 U2）断言 reason 包含「都须先作废这一轮：闸门停在待裁决时 review --start 拒绝重跑」，而 §3 将该句改为「要重跑须先作废这一轮：...」，导致子串匹配失败。",
+      "evidence": "查看 test/unit/hooks.test.ts 第 1384 行与第 1587 行，对比被审计划 .reviews/只读失守未确证改动放行/plan/2026-10-06-只读失守未确证改动放行-claude.md §2.4、§3 与 §6.2。§6.2 的翻转清单仅记载了 U2 的「快照漂移：未检出」与「drift 为 false 只排除了」，漏掉了上述两处字面断言。",
+      "suggestion": "在 §6.2 翻转清单中补齐对 U13（切割锚点改为新处置句开头如「处置：用 git status」）与 U2（断言匹配串改为「要重跑须先作废这一轮」，或保留原句中的「都须先作废这一轮」）的修改规划。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §6.2",
+      "problem": "§6.2 对 gate.test:775（readonly_breach 带出）的断言翻转说明不完整，遗漏了第 815 行对 snapshot.drift 的正向断言。当前 gate.test.ts:815-819 断言 assert.match(f!.message, /snapshot\\.drift/)。在新计划下，当 files 非空时 failure readonly_breach 的 message（含新首句、confirmedDriftText 和新处置句）不再包含 snapshot.drift 字样（该字段仅在放行告警 readonly_breach_unconfirmed 中保留），若不更新或迁移该断言，gate.test:775 将失败。",
+      "evidence": "查看 test/unit/gate.test.ts:815-819，对比被审计划 .reviews/只读失守未确证改动放行/plan/2026-10-06-只读失守未确证改动放行-claude.md §2.4 与 §6.2。§2.4 的 failure 文案中 READONLY_BREACH_TRIAGE 已移除 snapshot.drift，而 §6.2 仅说明了翻转第 831 行的否定式锁，未说明第 815 行的正向断言处置。",
+      "suggestion": "在 §6.2 明确第 815 行断言的处置方案：将 snapshot.drift 的存在性断言迁移至放行告警（warning）的断言用例中，确证 failure 侧移除该断言或更新为断言新的排障指引短语（如 git status / git diff）。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §7",
+      "problem": "§7 文档同步清单遗漏了设计文档第 2569 行关于只读失守「整侧作废」的不实措辞修正。计划 §1.4 正确指出了「失守从不作废某侧，作废侧只从禁读泄漏派生」，并在 §4、§7 中规划了对 brief.ts:300、设计文档 :2101 及 :2572 的同步修正；但设计文档第 2569 行仍写有「一被调用即以 MCP: 前缀进写事件、判只读失守、整侧作废，与 Bash 同档」，属于同源失实陈述，未列入同步落点。",
+      "evidence": "查看 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2569 与 :2101，对比被审计划 .reviews/只读失守未确证改动放行/plan/2026-10-06-只读失守未确证改动放行-claude.md §1.4 与 §7。计划 §7 仅列出了第 2101 行与第 2572 行，遗漏了第 2569 行。",
+      "suggestion": "在 §7 设计文档修改清单中追加第 2569 行，将「整侧作废」一并修正为与实现一致的只读失守表述。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "核心判定逻辑收敛为单点：judgeReadonlyBreach 纯函数导出并按 unknown_reason 优先、changed 判定的真值表设计简洁稳妥，类型收紧为判别联合逼迫调用方显式传参；",
+    "跑后复算可达性分析清晰，明确了缺省配置下进待裁决的失守轮仅 none 与 unrelated 两种，准确推导出「比不了」必须在夹具配置 on_drift_related: warn 下才能进入待裁决；",
+    "桩的扩展设计合理，在 stub.ts 中新增真落盘的 write_breach_applied，同时保持原 write_breach 不动，使得失守放行（A格）与失守阻断（B格）形成正交覆盖；",
+    "明确将 Hook 中的 BREACH_UNFIXABLE 和 driftText 改调 gate.ts 的同源实现，消除了两处文案分叉风险；",
+    "后果描述与任务书禁令的解耦合理，理清了「只读失守从不作废某侧，作废侧只来自禁读泄漏」的事实。"
+  ],
+  "not_covered": [
+    "未能在本地真实构建运行 npm test 或执行 scripts/mutation-check.mjs（受审查员只读与无执行权限约束，全凭代码与断言文本静态推演）；",
+    "未穷举验证真实 CLI（Antigravity、ZCode、Codex）在出现 MCP 或写事件时底层的轨迹格式差异，假设既有 guard.ts 的写事件判定不变的前提成立；",
+    "未复核历史归档中所有历史主题的 run.json，仅依据计划正文对 EV-79 r2 的现状说明进行逻辑核验。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    ".reviews/只读失守未确证改动放行/plan/2026-10-06-只读失守未确证改动放行-claude.md",
+    "src/trivium/gate.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/report.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/brief-mcp-exec.test.ts",
+    "test/unit/plan-final-gate.test.ts",
+    "test/unit/agy-events.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/integration/mcp-detect.test.ts",
+    "scripts/mutation-check.mjs"
+  ]
+}

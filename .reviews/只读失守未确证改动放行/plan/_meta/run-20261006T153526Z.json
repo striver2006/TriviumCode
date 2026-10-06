@@ -1,0 +1,297 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261006T153526Z",
+  "topic": "只读失守未确证改动放行",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "背景：原始需求 20261005 第 1 条把只读失守的处置改为「只要没有真正进行了修改，就放行」。现状是审查员轨迹里只要出现写事件记录（guard.ts judgeSide 的 write_events 非空），gate.ts checkAdjudication 就对 readonlyBreach.hit 无条件判 failure readonly_breach，gate 的 check、awa…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "80ff60b231a2580ca8520c6f8df619f4aa1eabca",
+    "tree_hash": "6d96b8c758d1bd41bd84065869e7ab830b543ff3",
+    "dirty": true,
+    "subject_sha256": "ebc23bea432fcf1aed9cf727ec731dd3bbf46da8409a8d068f5dc92d08c931a5",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "6a334b61cc281338438278a79aa47847c3f745e0",
+      "dirty": false,
+      "inputs_sha256": "5f3d3f26e69d8fefae26f1b0315086445220c665d0230e9b19f6c35193cd0f25",
+      "built_at": "2026-10-06T11:58:32.157Z"
+    },
+    "after_tree_hash": "6d96b8c758d1bd41bd84065869e7ab830b543ff3"
+  },
+  "started_at": "2026-10-06T15:35:28.276Z",
+  "finished_at": "2026-10-06T15:59:18.581Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.1",
+      "model_requested": "kimi-for-coding",
+      "model_effective": "kimi-for-coding",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1036.629,
+      "tool_calls": {
+        "run_command": 81,
+        "project_reads": 31
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a111db-052b-71c2-a7d7-35424114b463",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.0",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1430.091,
+      "tool_calls": {
+        "read": 70,
+        "grep": 31,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 36
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 753617,
+        "output_tokens": 58992,
+        "thinking_tokens": 45726,
+        "cache_read_tokens": 12735076,
+        "total_tokens": 812609
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "94df3b20-c794-456b-87cb-bdd6502d4378",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 632.455,
+      "tool_calls": {
+        "read": 38,
+        "grep": 21,
+        "glob": 6,
+        "run_command": 0,
+        "project_reads": 36
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 34,
+        "inputTokens": 3370807,
+        "outputTokens": 38615,
+        "totalTokens": 3409422,
+        "cacheReadTokens": 3236992,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_6afc716e-c230-4ef2-9c89-8189b69ff982",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "只读失守未确证改动放行/plan/_meta/brief-codex-20261006T153526Z.md",
+      "sha256": "7342283058ec13f93e4403c0c0abde2be33b99704583c4c00bb37109574429ee"
+    },
+    {
+      "path": "只读失守未确证改动放行/plan/_meta/brief-gemini-20261006T153526Z.md",
+      "sha256": "4d0522e0eb55505acb10602233a9f106d35b1a020acf41abab97be67ad917887"
+    },
+    {
+      "path": "只读失守未确证改动放行/plan/_meta/brief-glm-20261006T153526Z.md",
+      "sha256": "e70d258c6ee35abd853ceaea5af574900bf8d1744b8c8fcfc59f541f546651cd"
+    },
+    {
+      "path": "只读失守未确证改动放行/plan/_meta/review-codex-20261006T153526Z.json",
+      "sha256": "9d541b6c1f5e670ca268dff907a5e67306c32c8d56375f32329305db6bb684aa"
+    },
+    {
+      "path": "只读失守未确证改动放行/plan/_meta/review-gemini-20261006T153526Z.json",
+      "sha256": "fcb51638ef32f5bfce3905e50ef759160635a4ab4aa657642d2796036086e0d1"
+    },
+    {
+      "path": "只读失守未确证改动放行/plan/_meta/review-glm-20261006T153526Z.json",
+      "sha256": "c50d50e5526468dbf961e610bcce11f0e1def6cb4729a4c461c4e40577f5a249"
+    },
+    {
+      "path": "只读失守未确证改动放行/plan/2026-10-06-只读失守未确证改动放行-codex.md",
+      "sha256": "e8de3901c2610ad579869b939406cfa539aceb868d1a5142a26fc9650e85fc0c"
+    },
+    {
+      "path": "只读失守未确证改动放行/plan/2026-10-06-只读失守未确证改动放行-gemini.md",
+      "sha256": "f9457db5d8dd83c6d56c52aae501b175119f043bb0bbb37906058bac3e95ca56"
+    },
+    {
+      "path": "只读失守未确证改动放行/plan/2026-10-06-只读失守未确证改动放行-glm.md",
+      "sha256": "3e4839b59112009f4c079c092a702211315b67f249757d438ee27fb4339bb07b"
+    },
+    {
+      "path": "只读失守未确证改动放行/plan/2026-10-06-只读失守未确证改动放行-claude.md",
+      "sha256": "ebc23bea432fcf1aed9cf727ec731dd3bbf46da8409a8d068f5dc92d08c931a5"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
