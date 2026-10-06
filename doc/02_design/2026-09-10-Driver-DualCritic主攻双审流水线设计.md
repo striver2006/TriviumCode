@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.122
+> - **当前版本**：v1.3.123
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3722,6 +3722,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.123** | 2026-10-06 | **运行目录跨主题同秒共用：复现确认，落地方式待定（EV-218）；EV-28 ③ 补触发条件。** M11 前小批第四批第 2 题，**本批未走双审**。零配额复现第 1 次就撞上：同一仓库两个主题同一秒 `review --start` 分到同一 run_id、共用一个运行目录，后到的那一轮归档 run.json 停在 `running`、无任何提示。用户定的「排他建运行目录、撞了抬一秒」实施时核出与 `gate-loop` 5 格故障注入用例（预建运行目录做手脚）冲突，候选（A 测试注入开关〔建议〕/ B 进程内注入 / C 旁路占用标记 / D 维持）写进 BACKLOG 待定；代码未改。EV-28 第③层探针臂改为等触发（下一次改 `probes/agy.ts`）。正文与代码不改。 |
 | **v1.3.122** | 2026-10-06 | **空配置项收口二：删除 `review.parallel` 与 `isolation.deny_via_cli`（EV-30 ②③）。** M11 前小批第四批第 1 题，**本批未走双审**（方案由用户 2026-10-06 定：删，照搬 EV-30 ① / EV-15）。两键类型与默认值删除（`init` 随之不写）；`DEPRECATED_CONFIG_KEYS` 补两条，doctor / preflight 的已废弃键提示随表覆盖；config.v2 两属性保留、标 `deprecated`、移出 `required`、类型约束不变，带着它们的旧配置照常通过。`runner.ts` 的并行与 deny 注入判据不变。13.1 示例删两行、13.1.1「已废弃键」补两键；用户手册 v1.0.40（§5.2 / §5.3 两行原说法已失实，改为已删除；「已废弃的键」表补两行）；本仓 `.trivium/config.yaml` 删两行；`config.v1.json`（历史契约）与演进设计（冻结）不改。新用例 5 格，源码变异 3/3、schema 预跑 2/2。读数见 `doc/05_testing/REPORT_2026-10-06_config_dead_keys_2.md`。 |
 | **v1.3.121** | 2026-10-06 | **codex 只读负对照改正对照口径（EV-25，含用户定的 B1）。** 第三批第 4 题的续做，**本批未走双审**（方案由用户定：A 仿 zcode P-29；停点那一格定 B1）。`probes/codex.ts`：负对照钉死 shell 写命令，`judgeReadonlyControl` 三态（失守 / 挡住 / 未判定）、`applyReadonlyControl`（未判定不动 `readonly_flags`）、`runReadonlyControl`；`probeCodex` 返回值加 `readonlyIndeterminate`（不落盘）；`rejected_command_in_trace` 不再从这次调用刷新、保留上一次结论并出注记（B1）。`doctor.ts`：`codexSeverity` 未判定时不报「文件仍被创建」，`runDoctor` 出未判定 warning（有旧结论 / 首次空集两种说法）。`availability()` 与能力声明不改。3.6「M8 第 4 步再更正」之后补 v1.3.121 落地注记。新单测 5 格、接线 E4c / D10，变异 8/8；真实 codex 2 次均判挡住。读数见 `doc/05_testing/REPORT_2026-10-06_codex_readonly_control.md`。 |
 | **v1.3.120** | 2026-10-06 | **三句文档（EV-27、EV-48、EV-138）。** M11 前待办第三批第 7 题，**本批未走双审**（三条方案都由用户 2026-10-06 定，全按第二批建议）。EV-27：13.1.1 表后补一段「厂商 profile 是本机事实，协作时在本机层同批覆盖 `agents.codex.profile` 与 `profiles.*.codex` 两处」，结构问题仍并入 M11 与 EV-22。EV-48（判定不修）：用户手册 v1.0.39 场景 7 补「续作沿用原主题名；换名即新任务，旧主题的审查意见不再进禁读集」。EV-138（维持手工维护）：`init.ts` 里 `KNOWN_PROTOCOL_SHA256` 的维护说明加一格「改 `driver.snippet` 时同步核对本仓根 `CLAUDE.md`」，只改注释；本仓 `CLAUDE.md` 不动。 |

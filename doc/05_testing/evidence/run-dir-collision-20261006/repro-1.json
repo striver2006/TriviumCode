@@ -1,0 +1,41 @@
+{
+  "attempts": [
+    {
+      "attempt": 1,
+      "codeA": 0,
+      "codeB": 0,
+      "idA": "20261006T082237Z",
+      "idB": "20261006T082237Z"
+    }
+  ],
+  "collided": {
+    "run_id": "20261006T082237Z",
+    "run_dir_shared": true,
+    "run_dir_listing": [
+      "request.json",
+      "status.json",
+      "worker.log",
+      "worker.pid"
+    ],
+    "request_topic": "EV218甲",
+    "status_topic_before_wait": "EV218甲",
+    "wait_code": 0,
+    "wait_tail": "运行 20261006T082237Z ｜ 主题 EV218甲 ｜ 阶段 plan ｜ 阶段状态 已完成\n已用 2s / 预算 2m0s（2%） ｜ 第 1/10 次等待 ｜ 最近心跳 2s 前\n  gemini: 已完成 ｜ gemini-3.8-flash-high ｜ 第 1 次尝试\n  glm: 已完成 ｜ GLM-5.3 ｜ 第 1 次尝试\n",
+    "status_after": {
+      "topic": "EV218甲",
+      "phase": "success",
+      "message": "gemini 侧 consulted 无法与工具轨迹交叉核对 ｜ glm 侧 consulted 无法与工具轨迹交叉核对 ｜ 多审退化：gemini 与 glm 的镜头重合度过高，见上方 Jaccard 提示"
+    },
+    "archive_A": {
+      "status": "success",
+      "critics": [
+        "gemini",
+        "glm"
+      ]
+    },
+    "archive_B": {
+      "status": "running",
+      "critics": []
+    }
+  }
+}
