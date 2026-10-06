@@ -116,6 +116,11 @@ export async function composeProtocol(assetRoot: string, sections: readonly Prot
  * `driver.snippet` / `critic.snippet` 就当场变红，照提示把新值追加进对应的档即可。
  * 旧值不用「挪」：它还是当前版时就已经在档里了。
  *
+ * **改 `driver.snippet` 时另有一格人工核对：本仓根 `CLAUDE.md`**（BACKLOG EV-138，用户 2026-10-06 定维持手工维护）。
+ * 它的标记内是手工演进的旧形态、不在 `CLAUDE.md` 那一档的任何一版里，`init` 对它恒走「未替换、提示手工合并」，
+ * 所以 `driver.snippet` 的演进不会自动进这份文件——而它正是本仓缺省 Driver 读的指令文件。改完片段后对照一遍，
+ * 需要同步的内容请用户决定、由用户改（它同时是用户的项目指令文件）；不要为了让 `init` 接管而把它登记进上面的档。
+ *
  * 当前版也在档里不影响判定：标记内正文等于当前正文时先走「已是当前版本」那一格。
  */
 export const KNOWN_PROTOCOL_SHA256: Readonly<Record<string, ReadonlySet<string>>> = {

@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.119
+> - **当前版本**：v1.3.120
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3142,6 +3142,8 @@ probe:                                # 由 trivium doctor 回填，勿手工编
 | `agents.<id>.tiers` / `models` / `default_tier` | 【待实施 · M11】**schema 定义为可选、M7b 不接线**；在场即告警 |
 | `profiles` 的值形态 | **M7b 的 schema 只接受裸 slug**，不接受 `{tier}` / `{model, effort}`。理由：现实现拿不到模型即退 69，接受一个「schema 层合法、运行期必然失败」的形态正是本项目反对的。M11 随档位全链路放开 |
 
+**厂商 profile 是本机事实，协作时在本机层同批覆盖两处**（v1.3.120 补，EV-27 的文档部分；「profile 该放哪一层」的结构问题并入 M11 与 EV-22 一起定）：共享配置里的 `agents.codex.profile` 要求每台机器的 `$CODEX_HOME/<name>.config.toml` 真实存在，`adapters/codex.ts` 的 `availability()` 也以「配置的 profile 在本机探针结论里」为前提。协作者机器上没有那个 profile 时，在本机层 `config.local.yaml` 里**同批覆盖** `agents.codex.profile` 与 `profiles.*.codex` 的模型两处——只改一处，要么被端点拒绝，要么预检以「不在该 profile 的模型目录中」退 64（与共享配置注释写的「换家族必须两处同批改」同理）。
+
 **迁移**：`loadCtx` 检测 `schema: trivium.config.v1` 即做**内存迁移**（`critics.*→agents.*`、
 profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 stderr 告警一次**
 （每次 CLI 调用最多一次，允许派生的 worker 各打一次，不引入跨进程状态）；
@@ -3716,6 +3718,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.120** | 2026-10-06 | **三句文档（EV-27、EV-48、EV-138）。** M11 前待办第三批第 7 题，**本批未走双审**（三条方案都由用户 2026-10-06 定，全按第二批建议）。EV-27：13.1.1 表后补一段「厂商 profile 是本机事实，协作时在本机层同批覆盖 `agents.codex.profile` 与 `profiles.*.codex` 两处」，结构问题仍并入 M11 与 EV-22。EV-48（判定不修）：用户手册 v1.0.39 场景 7 补「续作沿用原主题名；换名即新任务，旧主题的审查意见不再进禁读集」。EV-138（维持手工维护）：`init.ts` 里 `KNOWN_PROTOCOL_SHA256` 的维护说明加一格「改 `driver.snippet` 时同步核对本仓根 `CLAUDE.md`」，只改注释；本仓 `CLAUDE.md` 不动。 |
 | **v1.3.119** | 2026-10-06 | **批之前再看一眼改动：写明现有路径（EV-140）。** M11 前待办第三批第 6 题，**本批未走双审**（方案由用户 2026-10-06 定：取 ③，不加入口）。`skills-src/commands/approve.contract.md` 加一段：用户只想先看改动时不跑 `approve`，改跑 `gate --await-approval`（同一份复核、同样打印工作树改动摘要、不落审批，闸门保持等待审批），重渲染四份 `dual-approve` 入口产物；用户手册 v1.0.38 §4.8 同步。零代码，`approve` 与 `gate` 行为不变。`.md` 目标只做逐条预跑（删掉新段 ⇒ `entry-render-parity` 红）。**用户重装后 skill 才生效**。读数见 `doc/05_testing/REPORT_2026-10-06_approve_preview_doc.md`。 |
 | **v1.3.118** | 2026-10-06 | **claude Grep 输出格式一次性核对（EV-78）。** M11 前待办第三批第 5 题，**本批未走双审**（方案由用户 2026-10-06 定：取 B，先核对、格式没变就继续等触发）。claude 2.1.288 上 1 次真实调用、四次 Grep（目录级 / 文件级 content、count、缺省 files_with_matches），行形态与噪声行和 §3.7 记的三种严格形态逐项一致，现有解析器 hits / listed 正确。不改解析器、不入夹具，继续等触发；截取件与比对摘要在 `doc/05_testing/evidence/claude-grep-sample-20261006/`。正文与代码不改。 |
 | **v1.3.117** | 2026-10-06 | **codex 只读负对照改正对照口径：实施后停在一处未覆盖的决策（EV-25）。** M11 前待办第三批第 4 题，**本批未走双审**。按用户定的 A（仿 zcode P-29）实施完负对照判据三态、未判定保留旧值、doctor 未判定 warning，单测与接线格全绿，真实 codex 1 次判 `held`（写命令进轨迹、输出 operation not permitted + 失败标记、文件未创建）。同一次调用算出的 `rejected_command_in_trace` 随提示改成钉死 shell 命令而由 `false` 翻成 `true`，提交后会让能力对账劝人去掉降级标记——状态列没覆盖，登记候选（建议 B1：这一项不再从负对照那次调用刷新）待用户定；补丁未提交，存 `doc/05_testing/evidence/codex-readonly-control-20261006/`。正文与代码不改。 |
