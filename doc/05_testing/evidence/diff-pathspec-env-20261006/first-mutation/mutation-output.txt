@@ -1,0 +1,42 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=3）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=3）
+  M5 ✓ 咬住（fail=1）
+{
+  "总数": 5,
+  "咬住": 5,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "补丁的 git diff 不钉环境（改前形态）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "常量里去掉 GIT_LITERAL_PATHSPECS",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M3",
+      "desc": "常量里去掉 GIT_NOGLOB_PATHSPECS",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "常量里去掉 GIT_ICASE_PATHSPECS",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M5",
+      "desc": "工作树哈希退回只钉 GIT_LITERAL_PATHSPECS（EV-221 形态）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

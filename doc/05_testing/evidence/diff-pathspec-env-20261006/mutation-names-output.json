@@ -1,0 +1,120 @@
+{
+  "targets_sha256": {
+    "src/trivium/util/git.ts": "5f100e51a1cb2efb11c983245b45d3d92e59718738e11ac4ece648b015eea662"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "补丁的 git diff 不钉环境（改前形态）",
+      "suite": "dist/test/test/unit/diff-pathspec-env.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-222 P1：四个 pathspec 变量逐个设 1，diffAgainst 的补丁与不设时逐字相同，只含业务文件",
+        "EV-222 P2：GIT_ICASE_PATHSPECS=1 不让补丁的排除变成不分大小写（排除写 Docs、目录叫 docs，照常进补丁）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/diff-pathspec-env.test.js",
+          "fail": 2,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-222 W：用户环境带 GIT_LITERAL_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动",
+            "EV-222 W：用户环境带 GIT_NOGLOB_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动"
+          ],
+          "firstLines": [],
+          "elapsed_s": 5
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "常量里去掉 GIT_LITERAL_PATHSPECS",
+      "suite": "dist/test/test/unit/diff-pathspec-env.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-222 P1：四个 pathspec 变量逐个设 1，diffAgainst 的补丁与不设时逐字相同，只含业务文件",
+        "EV-222 H1：四个 pathspec 变量逐个设 1，workTreeHash（带排除）与不设时同值",
+        "EV-222 H3：钉住的是四个变量的缺省值"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/diff-pathspec-env.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-222 W：用户环境带 GIT_LITERAL_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动"
+          ],
+          "firstLines": [],
+          "elapsed_s": 3
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "desc": "常量里去掉 GIT_NOGLOB_PATHSPECS",
+      "suite": "dist/test/test/unit/diff-pathspec-env.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-222 P1：四个 pathspec 变量逐个设 1，diffAgainst 的补丁与不设时逐字相同，只含业务文件",
+        "EV-222 H3：钉住的是四个变量的缺省值"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/diff-pathspec-env.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-222 W：用户环境带 GIT_NOGLOB_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动"
+          ],
+          "firstLines": [],
+          "elapsed_s": 5
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "常量里去掉 GIT_ICASE_PATHSPECS",
+      "suite": "dist/test/test/unit/diff-pathspec-env.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-222 P2：GIT_ICASE_PATHSPECS=1 不让补丁的排除变成不分大小写（排除写 Docs、目录叫 docs，照常进补丁）",
+        "EV-222 H2：GIT_ICASE_PATHSPECS=1 不让工作树哈希的排除变成不分大小写（排除写 Docs、目录叫 docs，照常进哈希）",
+        "EV-222 H3：钉住的是四个变量的缺省值"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "工作树哈希退回只钉 GIT_LITERAL_PATHSPECS（EV-221 形态）",
+      "suite": "dist/test/test/unit/diff-pathspec-env.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-222 H2：GIT_ICASE_PATHSPECS=1 不让工作树哈希的排除变成不分大小写（排除写 Docs、目录叫 docs，照常进哈希）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    }
+  ]
+}

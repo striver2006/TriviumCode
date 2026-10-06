@@ -83,6 +83,23 @@ export interface WorkTreeHashOptions extends GitCallOptions {
 }
 
 /**
+ * 带魔法 pathspec 的 git 调用钉住的环境（EV-222）：四个改变 pathspec 解释方式的全局变量都取 git 的缺省值。
+ *
+ * 用户环境里的值会被子进程继承：`GIT_LITERAL_PATHSPECS=1` 把 `:(exclude,…)` 整串当字面路径，
+ * `GIT_NOGLOB_PATHSPECS=1` 把 `/**` 当字面——`git diff` 对不匹配的 pathspec 不报错、照常退 0，
+ * 补丁的排除于是静默失效，对方产出与敏感文件经被审对象本身送出（实测，EV-222 报告 §0）。
+ * `GIT_ICASE_PATHSPECS=1` 让排除不分大小写（排除写 `Docs` 时连 `docs` 一并排除，实测）；`GIT_GLOB_PATHSPECS=1` 对现有写法实测无影响。
+ * 四个一并钉住，让排除语义只取决于写法本身（与 JS 侧的 `excluded()` 同为区分大小写）。
+ * 用到的地方：`diffAgainst` 的已跟踪 `git diff`、`workTreeHash` 有排除时的 `add`。不带魔法、不带通配的普通前缀不受影响，不用它。
+ */
+export const PATHSPEC_ENV_DEFAULTS: Readonly<Record<string, string>> = {
+  GIT_LITERAL_PATHSPECS: '0',
+  GIT_NOGLOB_PATHSPECS: '0',
+  GIT_GLOB_PATHSPECS: '0',
+  GIT_ICASE_PATHSPECS: '0',
+};
+
+/**
  * `add -A` 遇「文件在列目录与 stat 之间消失」时的重试次数（EV-221）：至多再跑 2 次，共 3 次。
  * 兜住排除面之外的原子写（编辑器保存、构建产物）；其它报错与超时不重试。
  */
@@ -165,8 +182,9 @@ export async function workTreeHash(cwd: string, opts: WorkTreeHashOptions = {}):
     if (timed && rt.timedOut) throw new GitTimeoutError('read-tree');
     const excludes = excludePathspecs(opts.exclude ?? []);
     const addArgs = ['add', '-A', '--', '.', ...excludes];
-    // 用户环境带 GIT_LITERAL_PATHSPECS=1 时 git 把 `:(exclude,…)` 当字面路径、报「did not match any files」退 128（实测）
-    const addEnv = excludes.length > 0 ? { ...env, GIT_LITERAL_PATHSPECS: '0' } : env;
+    // 用户环境带 GIT_LITERAL_PATHSPECS=1 时 git 把 `:(exclude,…)` 当字面路径、报「did not match any files」退 128（实测）；
+    // EV-222 起四个 pathspec 变量一并钉回缺省（ICASE=1 会让排除不分大小写）
+    const addEnv = excludes.length > 0 ? { ...env, ...PATHSPEC_ENV_DEFAULTS } : env;
     let add = await git(cwd, addArgs, addEnv, t);
     for (let n = 0; n < ADD_VANISHED_RETRIES && add.code !== 0 && !add.timedOut && isVanishedFileError(add.stderr); n++) {
       add = await git(cwd, addArgs, addEnv, t);
@@ -445,7 +463,8 @@ export async function diffAgainst(
     ...excludePrefixes.map((p) => `:(exclude)${p.replace(/\/+$/, '')}/**`),
     ...excludeGlobs.map((g) => `:(exclude,glob)${g}`),
   ];
-  const tracked = await git(cwd, ['diff', '--find-renames', base, '--', '.', ...pathspecs]);
+  // 钉住 pathspec 的解释方式（EV-222）：用户全局设了 LITERAL / NOGLOB 时上面的排除会静默失效，git diff 照常退 0
+  const tracked = await git(cwd, ['diff', '--find-renames', base, '--', '.', ...pathspecs], PATHSPEC_ENV_DEFAULTS);
   /*
    * ── 非零退出必须抛，不能吞（审查意见 GLM-r2-04）──
    *

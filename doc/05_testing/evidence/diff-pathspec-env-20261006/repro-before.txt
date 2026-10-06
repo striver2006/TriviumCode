@@ -1,0 +1,57 @@
+✖ EV-222 W：用户环境带 GIT_LITERAL_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动 (2509.720083ms)
+✖ EV-222 W：用户环境带 GIT_NOGLOB_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动 (2494.080208ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5140.87
+
+✖ failing tests:
+
+test at dist/test/test/integration/diff-pathspec-env.test.js:12:3
+✖ EV-222 W：用户环境带 GIT_LITERAL_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动 (2509.720083ms)
+  AssertionError [ERR_ASSERTION]: 补丁里的文件不对：.env, .reviews/EV222补丁/plan/2026-10-06-EV222补丁-claude.md, .trivium/config.yaml, src/a.ts
+  + actual - expected
+  
+    [
+  +   '.env',
+  +   '.reviews/EV222补丁/plan/2026-10-06-EV222补丁-claude.md',
+  +   '.trivium/config.yaml',
+      'src/a.ts'
+    ]
+  
+      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/integration/diff-pathspec-env.test.js:41:12)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ '.env', '.reviews/EV222补丁/plan/2026-10-06-EV222补丁-claude.md', '.trivium/config.yaml', 'src/a.ts' ],
+    expected: [ 'src/a.ts' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at dist/test/test/integration/diff-pathspec-env.test.js:12:3
+✖ EV-222 W：用户环境带 GIT_NOGLOB_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动 (2494.080208ms)
+  AssertionError [ERR_ASSERTION]: 补丁里的文件不对：.reviews/EV222补丁/plan/2026-10-06-EV222补丁-claude.md, .trivium/config.yaml, src/a.ts
+  + actual - expected
+  
+    [
+  +   '.reviews/EV222补丁/plan/2026-10-06-EV222补丁-claude.md',
+  +   '.trivium/config.yaml',
+      'src/a.ts'
+    ]
+  
+      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/integration/diff-pathspec-env.test.js:41:12)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ '.reviews/EV222补丁/plan/2026-10-06-EV222补丁-claude.md', '.trivium/config.yaml', 'src/a.ts' ],
+    expected: [ 'src/a.ts' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,59 @@
+{
+  "targets": [
+    "src/trivium/util/git.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/diff-pathspec-env.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "补丁的 git diff 不钉环境（改前形态）",
+      "file": "src/trivium/util/git.ts",
+      "find": "'--', '.', ...pathspecs], PATHSPEC_ENV_DEFAULTS);\n",
+      "replace": "'--', '.', ...pathspecs]);\n",
+      "expect": "dist/test/test/unit/diff-pathspec-env.test.js",
+      "also": [
+        "dist/test/test/integration/diff-pathspec-env.test.js"
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "常量里去掉 GIT_LITERAL_PATHSPECS",
+      "file": "src/trivium/util/git.ts",
+      "find": "  GIT_LITERAL_PATHSPECS: '0',\n  GIT_NOGLOB_PATHSPECS: '0',\n",
+      "replace": "  GIT_NOGLOB_PATHSPECS: '0',\n",
+      "expect": "dist/test/test/unit/diff-pathspec-env.test.js",
+      "also": [
+        "dist/test/test/integration/diff-pathspec-env.test.js"
+      ]
+    },
+    {
+      "id": "M3",
+      "desc": "常量里去掉 GIT_NOGLOB_PATHSPECS",
+      "file": "src/trivium/util/git.ts",
+      "find": "  GIT_NOGLOB_PATHSPECS: '0',\n  GIT_GLOB_PATHSPECS: '0',\n",
+      "replace": "  GIT_GLOB_PATHSPECS: '0',\n",
+      "expect": "dist/test/test/unit/diff-pathspec-env.test.js",
+      "also": [
+        "dist/test/test/integration/diff-pathspec-env.test.js"
+      ]
+    },
+    {
+      "id": "M4",
+      "desc": "常量里去掉 GIT_ICASE_PATHSPECS",
+      "file": "src/trivium/util/git.ts",
+      "find": "  GIT_GLOB_PATHSPECS: '0',\n  GIT_ICASE_PATHSPECS: '0',\n",
+      "replace": "  GIT_GLOB_PATHSPECS: '0',\n",
+      "expect": "dist/test/test/unit/diff-pathspec-env.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "工作树哈希退回只钉 GIT_LITERAL_PATHSPECS（EV-221 形态）",
+      "file": "src/trivium/util/git.ts",
+      "find": "{ ...env, ...PATHSPEC_ENV_DEFAULTS }",
+      "replace": "{ ...env, GIT_LITERAL_PATHSPECS: '0' }",
+      "expect": "dist/test/test/unit/diff-pathspec-env.test.js"
+    }
+  ]
+}

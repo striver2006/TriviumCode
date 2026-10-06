@@ -1,0 +1,8 @@
+M1：fail=2 cancelled=0 1s ⇒ EV-222 P1：四个 pathspec 变量逐个设 1，diffAgainst 的补丁与不设时逐字相同，只含业务文件 ｜ EV-222 P2：GIT_ICASE_PATHSPECS=1 不让补丁的排除变成不分大小写（排除写 Docs、目录叫 docs，照常进补丁）
+  亦跑 dist/test/test/integration/diff-pathspec-env.test.js：fail=2 ⇒ EV-222 W：用户环境带 GIT_LITERAL_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动 ｜ EV-222 W：用户环境带 GIT_NOGLOB_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动
+M2：fail=3 cancelled=0 1s ⇒ EV-222 P1：四个 pathspec 变量逐个设 1，diffAgainst 的补丁与不设时逐字相同，只含业务文件 ｜ EV-222 H1：四个 pathspec 变量逐个设 1，workTreeHash（带排除）与不设时同值 ｜ EV-222 H3：钉住的是四个变量的缺省值
+  亦跑 dist/test/test/integration/diff-pathspec-env.test.js：fail=1 ⇒ EV-222 W：用户环境带 GIT_LITERAL_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动
+M3：fail=2 cancelled=0 1s ⇒ EV-222 P1：四个 pathspec 变量逐个设 1，diffAgainst 的补丁与不设时逐字相同，只含业务文件 ｜ EV-222 H3：钉住的是四个变量的缺省值
+  亦跑 dist/test/test/integration/diff-pathspec-env.test.js：fail=1 ⇒ EV-222 W：用户环境带 GIT_NOGLOB_PATHSPECS=1 时 code 阶段冻结的补丁只含业务文件，不含归档根、.trivium/ 与 .env 的改动
+M4：fail=3 cancelled=0 1s ⇒ EV-222 P2：GIT_ICASE_PATHSPECS=1 不让补丁的排除变成不分大小写（排除写 Docs、目录叫 docs，照常进补丁） ｜ EV-222 H2：GIT_ICASE_PATHSPECS=1 不让工作树哈希的排除变成不分大小写（排除写 Docs、目录叫 docs，照常进哈希） ｜ EV-222 H3：钉住的是四个变量的缺省值
+M5：fail=1 cancelled=0 1s ⇒ EV-222 H2：GIT_ICASE_PATHSPECS=1 不让工作树哈希的排除变成不分大小写（排除写 Docs、目录叫 docs，照常进哈希）
