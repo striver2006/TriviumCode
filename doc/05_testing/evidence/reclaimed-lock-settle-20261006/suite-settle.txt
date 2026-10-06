@@ -1,0 +1,15 @@
+✔ EV-151 S1：工作进程那一轮（status.json 的 worker_pid 与锁相同）⇒ 闸门回收、run.json 与登记收尾为 failed（worker_lost / pid_gone） (117.275167ms)
+✔ EV-151 S2：同步运行（没有 status.json，锁里补写了 run_id）⇒ 同样收尾 (71.557709ms)
+✔ EV-151 S3：status.json 记的工作进程不是锁里的 pid ⇒ 不收尾，给 --wait 出口 (68.729917ms)
+✔ EV-151 S4：锁里没有 run_id ⇒ 只多告警一句「定位不到上一轮」，什么都不写 (60.948375ms)
+✔ EV-151 S5：上一轮已是终态 ⇒ 不重写、不多出声；归档不存在 ⇒ 同样不出声 (142.307542ms)
+✔ EV-151 S6：短临界区锁、或持锁进程还活着 ⇒ 不收尾（只处理已确认不在的运行锁） (62.382125ms)
+✔ EV-151 S7：没有回收时 reclaimed 为空数组 (3.06975ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 655.247542

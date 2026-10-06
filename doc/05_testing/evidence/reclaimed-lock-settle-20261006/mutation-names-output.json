@@ -1,0 +1,126 @@
+{
+  "targets_sha256": {
+    "src/trivium/lock.ts": "0274dc19260dfb21845b7bc873bba838a932d20e671b4cbe8e1bb39fe74a79bc",
+    "src/trivium/run-protocol.ts": "36cef752e90a621b8b43e6bbd7c3e9c035eafc33027a1576be3a2a8a8e189403",
+    "src/trivium/review.ts": "db0a0f4ee8ad17422c3ea60338bc187e68be3e2758b84d597a6a7f2606ac2ff9"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "acquireLock 不交还回收掉的锁",
+      "suite": "dist/test/test/integration/reclaimed-lock-settle.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-151 S1：工作进程那一轮（status.json 的 worker_pid 与锁相同）⇒ 闸门回收、run.json 与登记收尾为 failed（worker_lost / pid_gone）",
+        "EV-151 S2：同步运行（没有 status.json，锁里补写了 run_id）⇒ 同样收尾",
+        "EV-151 S3：status.json 记的工作进程不是锁里的 pid ⇒ 不收尾，给 --wait 出口",
+        "EV-151 S4：锁里没有 run_id ⇒ 只多告警一句「定位不到上一轮」，什么都不写",
+        "EV-151 S5：上一轮已是终态 ⇒ 不重写、不多出声；归档不存在 ⇒ 同样不出声",
+        "EV-151 S6：短临界区锁、或持锁进程还活着 ⇒ 不收尾（只处理已确认不在的运行锁）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "--start 取锁后不给上一轮收尾（改前形态）",
+      "suite": "dist/test/test/integration/gate-loop.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-151 G1：--start 的工作进程被强杀后再 --start ⇒ 新一轮回收遗留锁时把上一轮收尾为 failed（worker_lost / pid_gone），新一轮照常跑完"
+      ],
+      "firstLines": [],
+      "elapsed_s": 318,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "同步 review 取锁后不给上一轮收尾",
+      "suite": "dist/test/test/integration/gate-loop.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-151 G2：同步 review 被强杀后再跑同步 review ⇒ 锁里补写的 run_id 让新一轮定位到上一轮并收尾为 failed"
+      ],
+      "firstLines": [],
+      "elapsed_s": 417,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "同步路径不把 run_id 写进锁（扩展之前的形态）",
+      "suite": "dist/test/test/integration/gate-loop.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-151 G2：同步 review 被强杀后再跑同步 review ⇒ 锁里补写的 run_id 让新一轮定位到上一轮并收尾为 failed"
+      ],
+      "firstLines": [],
+      "elapsed_s": 334,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "不核 status.json 的 worker_pid 与锁里的 pid",
+      "suite": "dist/test/test/integration/reclaimed-lock-settle.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-151 S3：status.json 记的工作进程不是锁里的 pid ⇒ 不收尾，给 --wait 出口"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "不按回收原因过滤（持锁进程活着也收）",
+      "suite": "dist/test/test/integration/reclaimed-lock-settle.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-151 S6：短临界区锁、或持锁进程还活着 ⇒ 不收尾（只处理已确认不在的运行锁）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "不按锁种类过滤（短临界区锁也收）",
+      "suite": "dist/test/test/integration/reclaimed-lock-settle.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-151 S6：短临界区锁、或持锁进程还活着 ⇒ 不收尾（只处理已确认不在的运行锁）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "收尾时不回收上一轮的闸门项",
+      "suite": "dist/test/test/integration/reclaimed-lock-settle.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-151 S1：工作进程那一轮（status.json 的 worker_pid 与锁相同）⇒ 闸门回收、run.json 与登记收尾为 failed（worker_lost / pid_gone）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1,
+      "also": []
+    }
+  ]
+}

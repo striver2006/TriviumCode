@@ -15,7 +15,9 @@ import type { Config, CriticId, CriticRequest, Ctx, Stage, CommandEntry } from '
 import { EXIT, TriviumError, envError, exitCodeOf, missingArtifact } from './exit-codes.js';
 import { runRoot } from './config.js';
 import { RUN_DIR_FILES } from './run-files.js';
-import { acquireLock, inspectLock, lockPathFor, reclaimStaleLock, workerLockContent, type LockHandle } from './lock.js';
+import {
+  acquireLock, inspectLock, lockPathFor, reclaimStaleLock, workerLockContent, type LockHandle, type ReclaimedLock,
+} from './lock.js';
 import {
   cliRecordsOf, computeMaxWaits, interpretStatus, isTerminal, judgeCliGroup, lostOf, newStatus, patchStatus, rawCliOf, readStatus,
   renderProgress, renderProgressBrief, progressViewOf, scrubAdmission, scrubHoldWhy, staleThresholdWithinHeartbeat, syncCliRecords,
@@ -28,7 +30,8 @@ import {
 } from './review.js';
 import { resolveTopic } from './topic.js';
 import {
-  describeFinalizeStepWith, finalizeCancelledRunMeta, finalizeFailedRunMeta, finalizeLines, readRunMeta, type FinalizeStep,
+  describeFinalizeStepWith, describeRunMetaCause, finalizeCancelledRunMeta, finalizeFailedRunMeta, finalizeLines, readRunMeta,
+  readRunMetaDetailed, type FinalizeStep,
 } from './meta.js';
 import { type AgentId } from './agents/registry.js';
 import { releaseRunningGateEntry, setGateChecked } from './state.js';
@@ -306,6 +309,77 @@ export interface StartOutcome {
 }
 
 /**
+ * 回收了上一轮遗留的运行锁之后，给那一轮收尾（EV-151，候选 A 并含同步路径扩展）。`startRun` 与同步 `runReview`
+ * 取到锁、准备新一轮之前各调一次，入参是 `acquireLock` 交还的 `reclaimed`。
+ *
+ * **只收「持锁进程已确认不在」的运行锁**：原因为 `pid_gone` / `pid_reused`（按 pid + 启动时刻判，与 `--wait` 判 `pid_gone`
+ * 同一判据）、`kind: 'run'`、带 `run_id` 与 `stage`。锁里记的是那一轮唯一的写者——`--start` 派生之后改写成的工作进程，
+ * 或同步路径分配 run_id 之后补写了 run_id 的同步 CLI 自己——它不在，就满足 EV-142「没有另一个写者」的前提。
+ * - 归档 run.json 不存在（同步路径分配 run_id 之后、写骨架之前就中断）⇒ 什么都不做；读不出 ⇒ 告警一行、不收；
+ *   已是终态 ⇒ 什么都不做（正常结束的运行释放了锁，走不到这里；这一格是「写完终态之后、放锁之前被中断」）；
+ * - 运行目录的 status.json 记了 `worker_pid` 而与锁里的 pid 不同 ⇒ 不收：锁记的不是那一轮的工作进程，按 `--wait` 判；
+ *   status.json 不在（同步运行）或还没补 `worker_pid`（`--start` 改写锁与补写之间）⇒ 以锁为准；
+ * - 否则先回收该轮仍为 running 的闸门项（比 run_id），再 `finalizeFailedRunMeta`（`worker_lost` / `pid_gone`），逐步播报。
+ *   顺序同同步路径的收尾：没有下一次补齐的入口时先放闸门（`meta.ts` `finalizeUnfinishedRunMeta` 文档块）。
+ * status.json 不写（工作进程那一轮之后 `--wait` 仍判 `pid_gone`、不再改写已终态的 run.json）。
+ *
+ * 带 `kind: 'run'` 却没有 `run_id` 的遗留锁——`--start` 在改写之前中断（EV-150 那个窗口，工作进程可能还活着），
+ * 或本版之前的同步运行——定位不到那一轮，只多告警一句，不收。
+ */
+export async function settleReclaimedRunLocks(ctx: Ctx, reclaimed: readonly ReclaimedLock[]): Promise<void> {
+  for (const r of reclaimed) {
+    const c = r.content;
+    if (!c || c.kind !== 'run' || (r.reason !== 'pid_gone' && r.reason !== 'pid_reused')) continue;
+    if (!c.run_id || !c.stage) {
+      warn(
+        `被回收的遗留锁里没有记 ${c.run_id ? '阶段' : 'run_id'}（派生工作进程之前就中断，或本版之前的同步运行）：` +
+          '定位不到上一轮，不替它收尾；它的归档若停在 running，请人工核对',
+      );
+      continue;
+    }
+    try {
+      await settleReclaimedRun(ctx, c.topic, c.stage, c.run_id, c.pid);
+    } catch (err) {
+      warn(`给上一轮运行 ${c.run_id} 收尾时出错：${String((err as Error)?.message ?? err).split('\n')[0]}——不影响本轮，请人工核对它的归档`);
+    }
+  }
+}
+
+async function settleReclaimedRun(ctx: Ctx, topic: string, stage: Stage, runId: string, pid: number): Promise<void> {
+  const layout: ArchiveLayout = { archiveRoot: ctx.archiveRoot, topic };
+  const read = await readRunMetaDetailed(layout, stage, runId);
+  if (!read.ok) {
+    if (read.cause.kind !== 'missing') {
+      warn(`上一轮运行 ${runId}（${stage} 阶段）的归档 run.json 读不出（${describeRunMetaCause(read.cause)}），不替它收尾`);
+    }
+    return;
+  }
+  if (read.meta.status !== 'running') return;
+  const st = await readStatus(runDirFor(ctx.config, ctx.projectRoot, runId)).catch(() => null);
+  if (typeof st?.worker_pid === 'number' && st.worker_pid !== pid) {
+    warn(
+      `上一轮运行 ${runId} 的归档仍为 running，但遗留锁记的 pid ${pid} 不是 status.json 记的工作进程 ${st.worker_pid}：` +
+        `不替它收尾，请 trivium review --wait ${runId} 判定`,
+    );
+    return;
+  }
+  const heartbeatStaleMs = ctx.config.review.heartbeat_stale_s * 1000;
+  step(`上一轮运行 ${runId}（${stage} 阶段）的持锁进程 ${pid} 已不在、归档仍为 running：按失联收尾（worker_lost / pid_gone）`);
+  await releaseRunningGateEntry({ triviumDir: ctx.triviumDir, topic, stage, runId, heartbeatStaleMs }); // 自身不抛
+  const fin = await finalizeFailedRunMeta({
+    layout, stage, runId,
+    lock: { triviumDir: ctx.triviumDir, heartbeatStaleMs },
+    workerGone: true,
+    termination: { by: 'worker_lost', reason: 'pid_gone' },
+  });
+  const noRetry =
+    '这一步不会自动重试（遗留锁已回收）：请人工核对归档 run.json 与 task.json 的运行登记' +
+    '（工作进程那一轮还可以 trivium review --wait 补收，同步运行没有这个入口）';
+  reportFinalizeStep(fin.runMeta, `已把归档里的 run-${runId}.json 收尾为 failed`, `归档 run-${runId}.json 未回写`, noRetry);
+  reportFinalizeStep(fin.task, '已把 task.json 的运行登记同步为 failed', 'task.json 的运行登记未改', noRetry);
+}
+
+/**
  * `review --start`：准备 → 派生工作进程 → **立即返回**。
  *
  * 锁的所有权在这里有个要点：`--start` 进程拿到锁后**不能** release——
@@ -330,6 +404,8 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
       return m !== null && m.status !== 'running';
     },
   });
+  // 回收了上一轮遗留的运行锁时给那一轮收尾（EV-151）。本函数自身不抛；放在 try 之前，不进本轮的失败收尾
+  await settleReclaimedRunLocks(ctx, lock.reclaimed);
 
   let rc: RunContext;
   try {
@@ -980,7 +1056,7 @@ export function installWorkerSigtermForwarding(): () => void {
  *   2. 有登记树时播报一行、起看门狗，`shutdownTrackedTrees` 按组结束它们（参数同 worker 处理器），然后以同一信号重新自杀；
  *   3. 第二次信号不再等，立即退出（用户坚持要走，CLI 可能留下——播报里写明）。
  * `shutdownTrackedTrees` 的契约是「调用即进入终止中、调用方必须随后退出」：本处理器调用后必定退出，满足它。
- * worker 不装（它有自己的 SIGTERM 处理器 `installWorkerSigtermForwarding`）。中断后的留痕（run.json 仍为 running）不在这里收，见 BACKLOG EV-151。
+ * worker 不装（它有自己的 SIGTERM 处理器 `installWorkerSigtermForwarding`）。中断后的留痕（run.json 仍为 running）不在这里收：同步路径已把 run_id 写进主题锁，由同主题下一次取锁回收遗留锁时收（`settleReclaimedRunLocks`，EV-151）。
  */
 export function installForegroundInterruptForwarding(): () => void {
   const SIGNALS: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];

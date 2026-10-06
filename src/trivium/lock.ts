@@ -79,6 +79,17 @@ export interface LockHandle {
   path: string;
   content: LockContent;
   release: () => Promise<void>;
+  /**
+   * 本次取锁过程中**真回收掉**的遗留锁（判定原因 + 判定时读到的内容；不可解析时内容为 null），按回收先后排列（EV-151）。
+   * 调用方据此给上一轮收尾（`run-protocol.ts` `settleReclaimedRunLocks`）；没回收过就是空数组。
+   */
+  reclaimed: ReclaimedLock[];
+}
+
+/** 一份被 `acquireLock` 回收掉的遗留锁（EV-151） */
+export interface ReclaimedLock {
+  reason: Exclude<StaleReason, null>;
+  content: LockContent | null;
 }
 
 const lockDir = (triviumDir: string): string => path.join(triviumDir, 'lock');
@@ -338,6 +349,7 @@ export async function acquireLock(opts: AcquireOptions): Promise<LockHandle> {
 
   const retries = opts.retries ?? 0;
   const delay = opts.retryDelayMs ?? 200;
+  const reclaimed: ReclaimedLock[] = [];
 
   for (let attempt = 0; ; attempt++) {
     const content: LockContent = {
@@ -365,6 +377,7 @@ export async function acquireLock(opts: AcquireOptions): Promise<LockHandle> {
       return {
         path: p,
         content,
+        reclaimed,
         release: async () => {
           // 只删自己的锁：内容不符说明已被回收并被别人重新持有
           const cur = await readLock(p);
@@ -400,6 +413,7 @@ export async function acquireLock(opts: AcquireOptions): Promise<LockHandle> {
       // 只在真回收了判定的那一份之后告警：预检不符 / 别人先动手时什么都没回收（r2 D5）
       if (await reclaimStaleLock(p, existing, seen.identity ?? undefined)) {
         warn(`回收主题「${opts.topic}」的遗留锁（原因 ${stale}，原持有者 pid ${existing?.pid ?? '?'}）`);
+        reclaimed.push({ reason: stale, content: existing });
         continue; // 立刻重试创建
       }
       // 没回收成（别人先动手 / 预检不符 / 认领被占）：隔一个间隔再来。认领者中途崩溃时认领要 10 s 才清得掉，

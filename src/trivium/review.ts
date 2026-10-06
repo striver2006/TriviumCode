@@ -69,7 +69,7 @@ import {
   allocateRunId, finalizeFailedRunMeta, finalizeLines, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta,
   type TaskLock,
 } from './meta.js';
-import { acquireLock } from './lock.js';
+import { acquireLock, type LockHandle } from './lock.js';
 import { measureAllPairs, renderDivergence } from './divergence.js';
 import { agentConfigOf, resolveAssetRoot, resolveReviewSchemaPath, runRoot, vendorProfileOf } from './config.js';
 import { resolveCriticSelection } from './critics.js';
@@ -570,6 +570,15 @@ export interface ReviewOptions {
    * 否则「默认 strict」就成了纸面规定。
    */
   allowSingle?: boolean;
+  /**
+   * `prepareRun` 分配完 run_id、写骨架 run.json 之前调用（EV-151，同步路径扩展）。
+   *
+   * 只有同步路径传：它借此把 run_id 写进自己持有的主题锁（与 worker 锁同形），进程被 SIGKILL / Ctrl-C 中断之后，
+   * 下一次取锁回收这把遗留锁时能定位到这一轮并收尾。`--start` **不传**——派生之前锁记的是 `--start` 自己，
+   * 此时带上 run_id，`--start` 死在派生之后、改写成工作进程之前（EV-150 那个窗口）会把一个活工作进程的运行判成可收尾。
+   * 回调自己负责吞错：写不进锁只是退回此前「定位不到」的形态，不该挡住本轮。
+   */
+  onRunIdAllocated?: (runId: string) => Promise<void>;
 }
 
 export interface ReviewOutcome {
@@ -880,6 +889,7 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
    */
   const rerunIndex = await resolveRerunIndex(ref.layout, stage, driver);
   const runId = await allocateRunId(ref.layout);
+  if (opts.onRunIdAllocated) await opts.onRunIdAllocated(runId);
 
   /*
    * ── 被审对象 ──
@@ -2141,9 +2151,29 @@ export async function runReview(opts: ReviewOptions): Promise<ReviewOutcome> {
     },
   });
   try {
-    return await runReviewLocked(opts);
+    /*
+     * 回收了上一轮遗留的运行锁时给那一轮收尾（EV-151）；再把本轮的 run_id 写进锁（同步路径扩展），
+     * 本进程被中断之后下一次取锁能据此收本轮的尾。动态导入：`run-protocol.ts` 静态导入本模块，反向静态导入会成环。
+     */
+    const { settleReclaimedRunLocks } = await import('./run-protocol.js');
+    await settleReclaimedRunLocks(ctx, lock.reclaimed);
+    return await runReviewLocked({ ...opts, onRunIdAllocated: (runId) => recordRunIdInLock(lock, runId) });
   } finally {
     await lock.release();
+  }
+}
+
+/**
+ * 同步路径把本轮 run_id 写进自己持有的主题锁（EV-151 同步路径扩展）：pid、启动时刻、`acquired_at` 都不变，
+ * 只补 `run_id`，与 worker 锁同形（`release` 按 pid + `acquired_at` 认自己的锁，不受影响）。
+ * 与 `--start` 改写 worker 锁同一种非原子写：并发者撕裂读判 `unparsable`，由 `acquireLock` 对不足 2 s 的不可解析锁
+ * 不回收的防御兜住。写不进只告警——退回「锁里定位不到上一轮」的旧形态，不挡本轮。
+ */
+async function recordRunIdInLock(lock: LockHandle, runId: string): Promise<void> {
+  try {
+    await fs.writeFile(lock.path, JSON.stringify({ ...lock.content, run_id: runId }, null, 2) + '\n', 'utf8');
+  } catch (e) {
+    warn(`没能把 run_id ${runId} 写进主题锁（${String((e as Error)?.message ?? e).split('\n')[0]}）：本进程若被中断，下一次取锁定位不到这一轮、不会替它收尾`);
   }
 }
 

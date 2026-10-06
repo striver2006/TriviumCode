@@ -3564,3 +3564,92 @@ test('EV-165 K6：worker 已死、glm 侧组长已退但组员仍在 ⇒ --cance
     cleanupGroups(r);
   }
 });
+
+/*
+ * ── EV-151：回收遗留锁时给上一轮收尾（候选 A 并含同步路径扩展）──
+ *
+ * 改前：工作进程被强杀（或同步 review 被强杀）之后再起一轮，`acquireLock` 只回收锁、告警一行，旧运行的 run.json 与登记一直停在 running。
+ * 进程内各格见 `reclaimed-lock-settle.test.ts`；这里经真实 bundle 各走一遍两条取锁路径。
+ */
+
+const HANG_CLI: StubConfig = { gemini: { mode: 'hang_cli' }, glm: { mode: 'hang_cli' } };
+const settleLine = (runId: string) =>
+  new RegExp(`上一轮运行 ${runId}（plan 阶段）的持锁进程 \\d+ 已不在、归档仍为 running：按失联收尾（worker_lost / pid_gone）`);
+
+test('EV-151 G1：--start 的工作进程被强杀后再 --start ⇒ 新一轮回收遗留锁时把上一轮收尾为 failed（worker_lost / pid_gone），新一轮照常跑完', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await startWithRecordedClis(HANG_CLI);
+  try {
+    assertRecorded(r);
+    await killWorker(r.js.worker_pid);
+    cleanupGroups(r);
+    assert.equal((await readRunJson(r.fx.stageDir, r.js.run_id)).status, 'running', '前提：强杀之后上一轮停在 running');
+
+    const s2 = await cli(
+      r.fx.root,
+      ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION, '--json'],
+      STUB,
+    );
+    assert.equal(s2.code, EXIT.OK, `${s2.stdout}${s2.stderr}`);
+    assert.match(s2.stderr, /回收主题「闸门闭环」的遗留锁（原因 pid_gone/, s2.stderr);
+    assert.match(s2.stderr, settleLine(r.js.run_id), s2.stderr);
+    const old = await readRunJson(r.fx.stageDir, r.js.run_id);
+    assert.equal(old.status, 'failed');
+    assert.deepEqual(old.termination, { by: 'worker_lost', reason: 'pid_gone' });
+    assert.equal((await taskRunsOf(r.fx.archiveRoot))?.find((t) => t.run_id === r.js.run_id)?.status, 'failed');
+
+    const js2 = JSON.parse(extractJsonCandidate(s2.stdout)!.json) as { run_id: string };
+    assert.notEqual(js2.run_id, r.js.run_id);
+    const w = await cli(r.fx.root, ['review', '--wait', js2.run_id, '--timeout', '60'], STUB, 120_000);
+    assert.equal(w.code, EXIT.OK, `${w.stdout}${w.stderr}`);
+    assert.equal((await readRunJson(r.fx.stageDir, js2.run_id)).status, 'success');
+  } finally {
+    cleanupGroups(r);
+  }
+});
+
+test('EV-151 G2：同步 review 被强杀后再跑同步 review ⇒ 锁里补写的 run_id 让新一轮定位到上一轮并收尾为 failed', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const { spawn } = await import('node:child_process');
+  const { BUNDLE, ASSET_ROOT } = await import('../helpers/fixture.js');
+  const { encodeStubConfig, STUB_ENV_VAR } = await import('../../src/trivium/adapters/stub.js');
+  const fx = await makeFixture({ topic: TOPIC });
+  const mark = `trivium-stub-cli:${fx.runRoot}`;
+  const args = ['review', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--session-id', SESSION];
+  const child = spawn(process.execPath, [BUNDLE, ...args], {
+    cwd: fx.root,
+    env: { ...process.env, TRIVIUM_ASSET_ROOT: ASSET_ROOT, [STUB_ENV_VAR]: encodeStubConfig(HANG_CLI) },
+    detached: true,
+    stdio: 'ignore',
+  });
+  const exited = new Promise((res) => child.once('exit', res));
+  const lockFile = path.join(fx.root, '.trivium', 'lock', `${TOPIC}.lock`);
+  let oldId: string | null = null;
+  try {
+    // 等锁里补上 run_id、骨架 run.json 落盘、两侧桩 CLI 起来（20 s 上界，超时即用例前提不成立）
+    for (let i = 0; i < 200; i++) {
+      const lock = await fs.readFile(lockFile, 'utf8').then((t) => JSON.parse(t) as { run_id: string | null }).catch(() => null);
+      if (lock?.run_id && groupsWithMark(mark).length >= 2) {
+        const ok = await fs.access(path.join(fx.stageDir, '_meta', `run-${lock.run_id}.json`)).then(() => true, () => false);
+        if (ok) { oldId = lock.run_id; break; }
+      }
+      await new Promise((res) => setTimeout(res, 100));
+    }
+    assert.ok(oldId, '前提：同步路径应已把 run_id 写进主题锁、骨架 run.json 已落盘、两侧桩 CLI 已起来');
+    process.kill(-child.pid!, 'SIGKILL');
+    await exited;
+    for (const g of groupsWithMark(mark)) killGroup(g);
+    assert.equal((await readRunJson(fx.stageDir, oldId)).status, 'running', '前提：强杀之后上一轮停在 running');
+
+    const r2 = await cli(fx.root, args, STUB);
+    assert.equal(r2.code, EXIT.OK, `${r2.stdout}${r2.stderr}`);
+    assert.match(r2.stderr, settleLine(oldId), r2.stderr);
+    const old = await readRunJson(fx.stageDir, oldId);
+    assert.equal(old.status, 'failed');
+    assert.deepEqual(old.termination, { by: 'worker_lost', reason: 'pid_gone' });
+    assert.equal((await taskRunsOf(fx.archiveRoot))?.find((t) => t.run_id === oldId)?.status, 'failed');
+    const newer = (await taskRunsOf(fx.archiveRoot))?.filter((t) => t.run_id !== oldId) ?? [];
+    assert.deepEqual(newer.map((t) => t.status), ['success'], '新一轮照常跑完');
+  } finally {
+    try { process.kill(-child.pid!, 'SIGKILL'); } catch { /* 已不在 */ }
+    for (const g of groupsWithMark(mark)) killGroup(g);
+  }
+});

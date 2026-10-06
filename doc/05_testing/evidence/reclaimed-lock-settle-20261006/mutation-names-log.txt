@@ -1,0 +1,9 @@
+M1：fail=6 cancelled=0 1s ⇒ EV-151 S1：工作进程那一轮（status.json 的 worker_pid 与锁相同）⇒ 闸门回收、run.json 与登记收尾为 failed（worker_lost / pid_gone） ｜ EV-151 S2：同步运行（没有 status.json，锁里补写了 run_id）⇒ 同样收尾 ｜ EV-151 S3：status.json 记的工作进程不是锁里的 pid ⇒ 不收尾，给 --wait 出口 ｜ EV-151 S4：锁里没有 run_id ⇒ 只多告警一句「定位不到上一轮」，什么都不写 ｜ EV-151 S5：上一轮已是终态 ⇒ 不重写、不多出声；归档不存在 ⇒ 同样不出声 ｜ EV-151 S6：短临界区锁、或持锁进程还活着 ⇒ 不收尾（只处理已确认不在的运行锁）
+M2：fail=1 cancelled=0 318s ⇒ EV-151 G1：--start 的工作进程被强杀后再 --start ⇒ 新一轮回收遗留锁时把上一轮收尾为 failed（worker_lost / pid_gone），新一轮照常跑完
+M3：fail=1 cancelled=0 417s ⇒ EV-151 G2：同步 review 被强杀后再跑同步 review ⇒ 锁里补写的 run_id 让新一轮定位到上一轮并收尾为 failed
+M4：fail=1 cancelled=0 334s ⇒ EV-151 G2：同步 review 被强杀后再跑同步 review ⇒ 锁里补写的 run_id 让新一轮定位到上一轮并收尾为 failed
+M5：fail=1 cancelled=0 1s ⇒ EV-151 S3：status.json 记的工作进程不是锁里的 pid ⇒ 不收尾，给 --wait 出口
+M6：fail=1 cancelled=0 1s ⇒ EV-151 S6：短临界区锁、或持锁进程还活着 ⇒ 不收尾（只处理已确认不在的运行锁）
+M7：fail=1 cancelled=0 1s ⇒ EV-151 S6：短临界区锁、或持锁进程还活着 ⇒ 不收尾（只处理已确认不在的运行锁）
+M8：fail=1 cancelled=0 1s ⇒ EV-151 S1：工作进程那一轮（status.json 的 worker_pid 与锁相同）⇒ 闸门回收、run.json 与登记收尾为 failed（worker_lost / pid_gone）
+exit=0
