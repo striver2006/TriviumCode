@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.106
+> - **当前版本**：v1.3.107
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3716,6 +3716,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.107** | 2026-10-06 | **K 格偶发红甄别（EV-201 合并入 EV-217 结案）。** M11 前待办第二批第 4 题，**本批未走双审**。正文不改、代码与用例不改。EV-201 的两次红（K-K4 592 ms、K-K3 524 ms，只见 SIGTERM）与 EV-217 推断的成因同一形态（夹具 SIGTERM 处理器未装上即收信号、按缺省处置退出），已由 v1.3.95 的 `spawnMarked` 等就绪标记修掉；其后入库的 22 份全量读数 K 格红 0 次。读数见 `doc/05_testing/REPORT_2026-10-06_k_cell_flake_triage.md`。 |
 | **v1.3.106** | 2026-10-06 | **回收遗留锁时收尾上一轮（EV-151）。** M11 前待办第二批第 3 题，**本批未走双审**（方案由用户 2026-10-06 定：候选 A 并含同步路径扩展）。`acquireLock` 把本次真回收掉的遗留锁（原因 + 内容）经 `LockHandle.reclaimed` 交还调用方，告警不变；新增 `settleReclaimedRunLocks`，`--start` 与同步 `review` 取到锁、准备新一轮之前各调一次：只收原因为 `pid_gone` / `pid_reused`、`kind: 'run'`、带 run_id 与阶段的锁，归档仍为 running、status.json 记的 `worker_pid`（若有）与锁相同 ⇒ 先回收该轮仍为 running 的闸门项、再 `finalizeFailedRunMeta`（`worker_lost` / `pid_gone`），逐步播报；status.json 记的是别的 pid ⇒ 不收、给 `--wait` 出口；归档不存在或已是终态 ⇒ 不出声；锁里没有 run_id ⇒ 多告警一句「定位不到上一轮」。同步路径扩展：`ReviewOptions.onRunIdAllocated` 在 `prepareRun` 分配 run_id 之后、写骨架之前调用，同步 `runReview` 借它把 run_id 补写进自己持有的锁（与 worker 锁同形），被 SIGKILL / Ctrl-C 中断之后下一次取锁能定位并收尾；`--start` 不传（EV-150 窗口）。status.json 不写，`termination` 不新增取值（同步运行也记 `worker_lost` / `pid_gone`，另登 EV-220）。7.5 新增一段、v1.3.102「不收留痕」一句与 6.7 未回填清单改准；LLD v1.1.43、用户手册 v1.0.35 同步。新用例进程内 7 格、经真实 bundle 2 格（G1 `--start` 工作进程被强杀、G2 同步 review 被强杀），变异 8/8 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_reclaimed_lock_settle.md`。 |
 | **v1.3.105** | 2026-10-06 | **失联取消未确认退 69（EV-177 ②）。** M11 前待办第二批第 2 题，**本批未走双审**（方案由用户 2026-10-06 定：改）。`cancelLostWorker` 未确认退出（仍是同一进程、判不了身份、首检即判不了零信号）由退 0 改为以 69 退出，与 EV-176 起的主路径同口径；stderr 告警与 stdout 结论句逐字不变，确认退出那一支、`gone` / `mismatch` / `no_identity` 各格仍退 0。7.5 两处、LLD v1.1.42、PROTOCOL、用户手册 v1.0.34 同步；EV-146 K4 与 EV-177 L1 / L2 的断言改 69。变异 2/2 咬住（含「确认退出也退 69」的范围扩大变异）。读数见 `doc/05_testing/REPORT_2026-10-06_lost_cancel_exit_code.md`。 |
 | **v1.3.104** | 2026-10-06 | **留痕读不出的成因（EV-04，候选 B）。** M11 前待办第二批第 1 题，**本批未走双审**（方案由用户 2026-10-06 定）。`meta.ts` 新增 `readRunMetaDetailed`（同一条读取路径，失败时给成因四档：文件不存在 / 文件在但读不了 / 不是合法 JSON / 不合 run.v1/v2 契约，细节只取首行、封顶 160 字）与 `describeRunMetaCause`；`readRunMeta` 改为调它，返回值不变。两处硬失败出口——`gate --await-approval` / `approve` 的复核（`verifyRoundForApproval`）、`gate --run-id` 钉住读不出——在原文与共用出口段之间加一行「本次判定：…」，原文、共用出口段 `UNREADABLE_RUN_META_EXIT_BODY`、退出码一字不动；`report` 两处注记原文之后补「（本次判定：…）」。七处同源出口里另外五处不在候选 B 范围内、未加。LLD v1.1.41 同步模块表。新用例 7 格、扩 2 格，变异 5/5 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_run_meta_read_cause.md`。 |
