@@ -1,0 +1,43 @@
+✓ 工作树干净、基线全绿（3 个套件）
+  M1 ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=3）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=2）
+{
+  "总数": 5,
+  "咬住": 5,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "文件不存在不再单列（ENOENT 并进「读不了」）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "不是合法 JSON 误报成不合契约",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "审批复核出口不加本次判定一行",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M4",
+      "desc": "gate --run-id 出口不加本次判定一行",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "report 未进时间线那条注记不补成因",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    }
+  ]
+}
+exit=0

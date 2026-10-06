@@ -494,6 +494,24 @@ test('EV-144 V6：读不出来的 run.json 不进下表，进 notes（此前被�
   const r = await buildTopicReport(l);
   assert.equal(r.unlistedRuns.length, 0);
   assert.ok(r.notes.some((n) => /plan\/_meta\/run-BAD\.json` 读不出来/.test(n)), r.notes.join(' | '));
+  // EV-04 候选 B：原文之后补上这一次的成因
+  assert.ok(
+    r.notes.some((n) => /读不出来（不可解析或不合契约），未列入报告（本次判定：文件在但不是合法 JSON（/.test(n)),
+    r.notes.join(' | '),
+  );
+});
+
+test('EV-04：读得到 JSON 但 schema 不识的 run.json ⇒ 注记的成因是「不合契约」，不是「不是合法 JSON」', async () => {
+  const l = await archive();
+  await fs.writeFile(
+    path.join(l.archiveRoot, TOPIC, 'plan', '_meta', 'run-V99.json'), JSON.stringify({ schema: 'trivium.run.v99' }), 'utf8',
+  );
+  const r = await buildTopicReport(l);
+  assert.equal(r.unlistedRuns.length, 0);
+  assert.ok(
+    r.notes.some((n) => /run-V99\.json` 读不出来（不可解析或不合契约），未列入报告（本次判定：文件是 JSON，但不合 run\.v1\/v2 契约（/.test(n)),
+    r.notes.join(' | '),
+  );
 });
 
 test('EV-144 V7：所有运行都进了时间线 ⇒ 不渲染下表，头部也没有「另有」半句（防噪声）', async () => {

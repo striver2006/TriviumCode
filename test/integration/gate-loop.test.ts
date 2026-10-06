@@ -1844,6 +1844,24 @@ test(
     // 归属无误时它与另外七处同状态：同样以共用出口段收尾，只列钉住的那一份（代码双审 r1 GLM-01）
     assertUnreadableExit(pinned.stdout + pinned.stderr, [files[1]!], 'gate --check --run-id（钉住读不出）');
     assert.ok(!(pinned.stdout + pinned.stderr).includes(files[0]!), '只列钉住的那一份');
+
+    /*
+     * EV-04 候选 B：原有两行之后、共用出口段之前加一行「本次判定」，说清这一次是哪一档。
+     * 钉住的那份 schema 是 trivium.run.v99 ⇒ 不合契约；钉一个不存在的 run_id ⇒ 文件不存在（同样硬失败、同一出口）。
+     */
+    const pinnedOut = pinned.stdout + pinned.stderr;
+    const judged = pinnedOut.indexOf('  本次判定：文件是 JSON，但不合 run.v1/v2 契约（schema 字段是 "trivium.run.v99"');
+    assert.ok(judged > pinnedOut.indexOf('按下列成因处置。\n'), `缺本次判定一行，或不在原文之后：${pinnedOut}`);
+    assert.ok(judged < pinnedOut.indexOf('  涉及的运行留痕'), `本次判定要在共用出口段之前：${pinnedOut}`);
+    const absent = await cli(
+      fx.root,
+      ['gate', '--stage', 'plan', '--topic', CORRUPT_TOPIC, '--check', '--run-id', '20260103T000000Z'],
+      STUB,
+    );
+    const absentOut = absent.stdout + absent.stderr;
+    assert.equal(absent.code, EXIT.MISSING_ARTIFACT, '钉到不存在的 run_id 同样硬失败，退出码不动');
+    assert.match(absentOut, /\n {2}本次判定：文件不存在。\n/, absentOut);
+    assert.match(absentOut, /运行元数据读不出来（文件缺失、内容损坏，或 schema 不识）。\n/, '原文不动');
   },
 );
 

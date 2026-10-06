@@ -1,0 +1,85 @@
+{
+  "targets_sha256": {
+    "src/trivium/meta.ts": "517a7f92663d509898b0998fbe49a721c32ef5ead6b99cbc092ef38c96db7ea1",
+    "src/trivium/gate.ts": "afc5ae88c5b48483a443da9b95bb458fc4695aad18321a06fbbfca5384610853",
+    "src/trivium/cli.ts": "a8ee1d26faf2a02c8825e7080113b5ce0350127434416d99183d2b91ea213ba0",
+    "src/trivium/report.ts": "5b07477f65125510bbee33a5527357f42377558c6b3752a3281140feea594a28"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "文件不存在不再单列（ENOENT 并进「读不了」）",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4：readRunMetaDetailed 分四档成因；读得出时与 readRunMeta 结果相同",
+        "U4：审批复核读不出（文件不存在）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "不是合法 JSON 误报成不合契约",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4：readRunMetaDetailed 分四档成因；读得出时与 readRunMeta 结果相同",
+        "U4：审批复核读不出（不是合法 JSON）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "审批复核出口不加本次判定一行",
+      "suite": "dist/test/test/unit/unreadable-run-exit.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4：审批复核读不出（文件不存在）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动",
+        "U4：审批复核读不出（不是合法 JSON）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动",
+        "U4：审批复核读不出（不合契约）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "gate --run-id 出口不加本次判定一行",
+      "suite": "dist/test/test/integration/gate-loop.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T-12：留痕全部读不出时，硬失败的文案必须给出走得通的出口"
+      ],
+      "firstLines": [],
+      "elapsed_s": 299,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "report 未进时间线那条注记不补成因",
+      "suite": "dist/test/test/unit/report.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-144 V6：读不出来的 run.json 不进下表，进 notes（此前被静默跳过）",
+        "EV-04：读得到 JSON 但 schema 不识的 run.json ⇒ 注记的成因是「不合契约」，不是「不是合法 JSON」"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    }
+  ]
+}

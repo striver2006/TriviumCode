@@ -1,0 +1,55 @@
+{
+  "targets": [
+    "src/trivium/meta.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/report.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/unreadable-run-exit.test.js",
+    "dist/test/test/integration/gate-loop.test.js",
+    "dist/test/test/unit/report.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "文件不存在不再单列（ENOENT 并进「读不了」）",
+      "file": "src/trivium/meta.ts",
+      "find": "    if (code === 'ENOENT') return { ok: false, cause: { kind: 'missing' } };\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "不是合法 JSON 误报成不合契约",
+      "file": "src/trivium/meta.ts",
+      "find": "    return { ok: false, cause: { kind: 'unparsable', detail",
+      "replace": "    return { ok: false, cause: { kind: 'contract', detail",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "审批复核出口不加本次判定一行",
+      "file": "src/trivium/gate.ts",
+      "find": "        `  本次判定：${describeRunMetaCause(read.cause)}。\\n` +\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/unreadable-run-exit.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "gate --run-id 出口不加本次判定一行",
+      "file": "src/trivium/cli.ts",
+      "find": "        `  本次判定：${describeRunMetaCause(pinnedRead.cause)}。\\n` +\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "report 未进时间线那条注记不补成因",
+      "file": "src/trivium/report.ts",
+      "find": "，未列入报告（本次判定：${describeRunMetaCause(read.cause)}）`",
+      "replace": "，未列入报告`",
+      "expect": "dist/test/test/unit/report.test.js"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+M1：fail=2 cancelled=0 0s ⇒ U4：readRunMetaDetailed 分四档成因；读得出时与 readRunMeta 结果相同 ｜ U4：审批复核读不出（文件不存在）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动
+M2：fail=2 cancelled=0 0s ⇒ U4：readRunMetaDetailed 分四档成因；读得出时与 readRunMeta 结果相同 ｜ U4：审批复核读不出（不是合法 JSON）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动
+M3：fail=3 cancelled=0 0s ⇒ U4：审批复核读不出（文件不存在）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动 ｜ U4：审批复核读不出（不是合法 JSON）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动 ｜ U4：审批复核读不出（不合契约）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动
+M4：fail=1 cancelled=0 299s ⇒ T-12：留痕全部读不出时，硬失败的文案必须给出走得通的出口
+M5：fail=2 cancelled=0 0s ⇒ EV-144 V6：读不出来的 run.json 不进下表，进 notes（此前被静默跳过） ｜ EV-04：读得到 JSON 但 schema 不识的 run.json ⇒ 注记的成因是「不合契约」，不是「不是合法 JSON」
+exit=0

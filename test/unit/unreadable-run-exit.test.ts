@@ -5,6 +5,7 @@
  * - U2：源码契约——`src/` 里（含注释）再没有「重跑……会（先）落一份可读 / 随即恢复」这类循环出口；
  * - U3：`--await-approval` 与 `approve` 两处的出口构造函数接进 `verifyRoundForApproval` 后的真实文案。
  *   `--await-approval` 那一格只在竞态下可达（runId 取自读得出的那份），CLI 层没有端到端用例，只能在这里咬住。
+ * - U4：读不出的成因（EV-04 候选 B）——`readRunMetaDetailed` 的四档，与审批复核出口加的「本次判定」一行。
  *
  * 另外五处（`review --start`、`topic claim`、`topic resolve`、`hook-pre-write`、`gate` 一份都读不出）
  * 由 `topic-claim.test.ts`、`hooks.test.ts`、`gate-loop.test.ts` 经同一个 `assertUnreadableExit` 断言。
@@ -14,8 +15,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import {
-  UNREADABLE_RUN_META_EXIT_BODY, UNREADABLE_RUN_META_LIST_LIMIT, runMetaPaths, unreadableRunMetaExit,
-  unreadableRunMetaExitAt,
+  UNREADABLE_RUN_META_EXIT_BODY, UNREADABLE_RUN_META_LIST_LIMIT, describeRunMetaCause, newRunMeta, readRunMeta,
+  readRunMetaDetailed, runMetaPaths, unreadableRunMetaExit, unreadableRunMetaExitAt, writeRunMeta,
 } from '../../src/trivium/meta.js';
 import type { BuildStamp } from '../../src/trivium/build-stamp.js';
 import {
@@ -208,3 +209,123 @@ test('U3：approve 闸门项没有 run_id ⇒ 维持 abandon 后重跑，不拼�
     },
   );
 });
+
+// ─────────── U4：读不出的成因（EV-04 候选 B）───────────
+/*
+ * 原先 `readRunMeta` 把「文件不存在」与「文件在但读不出」回落成同一个 null，硬失败出口只能把三档并列。
+ * 候选 B：`readRunMetaDetailed` 给出成因，两处硬失败出口在原文与共用出口段之间**加一行**「本次判定：…」，
+ * 原文、共用出口段、退出码一字不动。`gate --run-id` 那一处经真实 CLI 的断言在 `gate-loop.test.ts` T-12，
+ * `report.ts` 的注记在 `report.test.ts` EV-144 V6。
+ */
+
+async function bareLayout(): Promise<ArchiveLayout> {
+  const root = await fs.realpath(await scratchDir('trivium-unreadable-cause-'));
+  return { archiveRoot: path.join(root, '.reviews'), topic: TOPIC };
+}
+
+async function putRunMeta(l: ArchiveLayout, runId: string, body: string): Promise<string> {
+  const [file] = runMetaPaths(l, 'plan', [runId]);
+  await fs.mkdir(path.dirname(file!), { recursive: true });
+  await fs.writeFile(file!, body, 'utf8');
+  return file!;
+}
+
+test('U4：readRunMetaDetailed 分四档成因；读得出时与 readRunMeta 结果相同', async () => {
+  const l = await bareLayout();
+  // 不存在
+  assert.deepEqual(await readRunMetaDetailed(l, 'plan', 'NONE'), { ok: false, cause: { kind: 'missing' } });
+  // 文件在但读不了：同名位置是个目录（EISDIR）
+  const [dirAsFile] = runMetaPaths(l, 'plan', ['DIR']);
+  await fs.mkdir(dirAsFile!, { recursive: true });
+  const io = await readRunMetaDetailed(l, 'plan', 'DIR');
+  assert.equal(io.ok, false);
+  assert.equal(!io.ok && io.cause.kind, 'io', JSON.stringify(io));
+  assert.match(!io.ok && io.cause.kind === 'io' ? io.cause.detail : '', /^EISDIR/);
+  // 不是合法 JSON
+  await putRunMeta(l, 'BAD', '{ 这不是 JSON');
+  const bad = await readRunMetaDetailed(l, 'plan', 'BAD');
+  assert.equal(!bad.ok && bad.cause.kind, 'unparsable', JSON.stringify(bad));
+  // 是 JSON 但 schema 不识
+  await putRunMeta(l, 'V99', JSON.stringify({ schema: 'trivium.run.v99' }));
+  const v99 = await readRunMetaDetailed(l, 'plan', 'V99');
+  assert.equal(!v99.ok && v99.cause.kind, 'contract', JSON.stringify(v99));
+  assert.match(!v99.ok && v99.cause.kind === 'contract' ? v99.cause.detail : '', /"trivium\.run\.v99"/);
+  // schema 认得、校验不过：给出首条校验错误
+  await putRunMeta(l, 'V2BAD', JSON.stringify({ schema: 'trivium.run.v2' }));
+  const v2bad = await readRunMetaDetailed(l, 'plan', 'V2BAD');
+  assert.equal(!v2bad.ok && v2bad.cause.kind, 'contract', JSON.stringify(v2bad));
+  assert.ok(!v2bad.ok && v2bad.cause.kind === 'contract' && v2bad.cause.detail.length > 0);
+  // 读得出：与 readRunMeta 逐字段相同
+  const meta = newRunMeta({
+    runId: 'OK', topic: TOPIC, stage: 'plan', rerunIndex: 1,
+    command: 'test', promptHint: '焦点', taskGoal: null, criticsSelected: ['gemini', 'glm'],
+    treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S', denyPaths: [], driftPolicy: 'warn',
+  });
+  await writeRunMeta(l, 'plan', meta);
+  const ok = await readRunMetaDetailed(l, 'plan', 'OK');
+  assert.ok(ok.ok);
+  assert.deepEqual(ok.ok && ok.meta, await readRunMeta(l, 'plan', 'OK'));
+  // 读不出的四档，readRunMeta 照旧一律 null
+  for (const id of ['NONE', 'DIR', 'BAD', 'V99', 'V2BAD']) assert.equal(await readRunMeta(l, 'plan', id), null, id);
+});
+
+test('U4：成因细节只取首行、封顶，不把整段原文回显出来', async () => {
+  const l = await bareLayout();
+  await putRunMeta(l, 'LONG', JSON.stringify({ schema: 'x'.repeat(1000) }));
+  const r = await readRunMetaDetailed(l, 'plan', 'LONG');
+  assert.ok(!r.ok && r.cause.kind === 'contract');
+  const d = !r.ok && r.cause.kind === 'contract' ? r.cause.detail : '';
+  assert.ok(d.length <= 161, `细节没封顶：${d.length}`);
+  assert.ok(!d.includes('\n'));
+});
+
+test('U4：describeRunMetaCause 四档各一句，互不相同', () => {
+  const lines = [
+    describeRunMetaCause({ kind: 'missing' }),
+    describeRunMetaCause({ kind: 'io', detail: 'EACCES：x' }),
+    describeRunMetaCause({ kind: 'unparsable', detail: 'Unexpected token' }),
+    describeRunMetaCause({ kind: 'contract', detail: 'schema 不识' }),
+  ];
+  assert.equal(lines[0], '文件不存在');
+  assert.match(lines[1]!, /^文件在但读不了（EACCES：x）$/);
+  assert.match(lines[2]!, /^文件在但不是合法 JSON（Unexpected token）$/);
+  assert.match(lines[3]!, /^文件是 JSON，但不合 run\.v1\/v2 契约（schema 不识）$/);
+  assert.equal(new Set(lines).size, 4);
+});
+
+for (const c of [
+  { name: '文件不存在', body: null, want: '本次判定：文件不存在。' },
+  { name: '不是合法 JSON', body: '{ 坏', want: '本次判定：文件在但不是合法 JSON（' },
+  { name: '不合契约', body: '{}\n', want: '本次判定：文件是 JSON，但不合 run.v1/v2 契约（' },
+]) {
+  test(`U4：审批复核读不出（${c.name}）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动`, async () => {
+    const l = await bareLayout();
+    const [file] = runMetaPaths(l, 'plan', ['R1']);
+    if (c.body !== null) await putRunMeta(l, 'R1', c.body);
+    for (const recovery of [
+      await awaitApprovalRecovery(l, 'plan', 'R1'),
+      await approveForkRecovery({ layout: l, topic: TOPIC, stage: 'plan', abandonCmd: '/dual-abandon', runId: 'R1' }),
+    ]) {
+      await assert.rejects(
+        verifyRoundForApproval({
+          cfg: defaultConfig(), layout: l, stage: 'plan', runId: 'R1',
+          runIdPinned: false, runIdSource: '最新一次运行', recovery,
+        }),
+        (e: { code?: number; message: string }) => {
+          assert.equal(e.code, EXIT.MISSING_ARTIFACT, '退出码不动');
+          const lines = e.message.split('\n');
+          // 首行原文逐字不动
+          assert.equal(
+            lines[0],
+            `plan 阶段 run R1（来源：最新一次运行）：${APPROVAL_CHECK_META_UNREADABLE}（文件缺失、内容损坏，或不合 run.v1/v2 契约）。`,
+          );
+          // 第二行就是本次判定，随后原样接调用方的出口
+          assert.ok(lines[1]!.startsWith(`  ${c.want}`), `第二行不是本次判定：\n${e.message}`);
+          assert.equal(lines.slice(2).join('\n'), recovery.unreadableRunMeta, '出口段要原样接在后面');
+          assertUnreadableExit(e.message, [file!], `审批复核（${c.name}）`);
+          return true;
+        },
+      );
+    }
+  });
+}

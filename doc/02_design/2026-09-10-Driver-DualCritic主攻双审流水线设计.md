@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.103
+> - **当前版本**：v1.3.104
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3715,6 +3715,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.104** | 2026-10-06 | **留痕读不出的成因（EV-04，候选 B）。** M11 前待办第二批第 1 题，**本批未走双审**（方案由用户 2026-10-06 定）。`meta.ts` 新增 `readRunMetaDetailed`（同一条读取路径，失败时给成因四档：文件不存在 / 文件在但读不了 / 不是合法 JSON / 不合 run.v1/v2 契约，细节只取首行、封顶 160 字）与 `describeRunMetaCause`；`readRunMeta` 改为调它，返回值不变。两处硬失败出口——`gate --await-approval` / `approve` 的复核（`verifyRoundForApproval`）、`gate --run-id` 钉住读不出——在原文与共用出口段之间加一行「本次判定：…」，原文、共用出口段 `UNREADABLE_RUN_META_EXIT_BODY`、退出码一字不动；`report` 两处注记原文之后补「（本次判定：…）」。七处同源出口里另外五处不在候选 B 范围内、未加。LLD v1.1.41 同步模块表。新用例 7 格、扩 2 格，变异 5/5 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_run_meta_read_cause.md`。 |
 | **v1.3.103** | 2026-10-06 | **补记真实 CLI 验证（EV-156、EV-155）。** 正文不改。用户授权花配额后补测：①EV-156——`invokeAgy` 同一条极短提示各跑一次管道与 pty，均退 0、回复一致，pty 那次 stdout 首行可按 JSON 解析、无 `^D` 回显与 `\r`；v1.3.100 那行「未在真实 agy 上验证」就此关闭（pty 下 stderr 并进 stdout 那一格仍未覆盖）。②EV-155——前台装中断转发、同时拉起 agy / zcode / codex 三家真实 CLI，8 s 后发 SIGINT ⇒ 前台 670 ms 内以 SIGINT 退出、三个进程组成员归零；claude 作审查员那一侧未测。读数见两份报告的 §4。 |
 | **v1.3.102** | 2026-10-06 | **前台中断结束审查员 CLI（EV-155）。** M11 前待办批次第 9 题，**本批未走双审**（用户定先零配额实测再定修法）。实测确认：前台进程以 `killTree` 拉起的子进程在 Ctrl-C 后过继给 init、继续活着。`run-protocol.ts` 新增 `installForegroundInterruptForwarding`，装在 `cmdReview`（worker 分支之后）、`cmdDoctor`、`cmdPreflight`：接 SIGINT / SIGTERM、只处理第一次；无登记中的进程树即以同一信号重新自杀（同缺省处置）；有就 `shutdownTrackedTrees` 按组结束后再重新自杀（调用后必定退出，守住它的「调用方须随后退出」契约）；第二次信号立即退出。退出形态不变，不收中断后的留痕（EV-151）。7.5 新增「前台入口的中断语义」段，LLD v1.1.40、用户手册 v1.0.33 同步。新用例 5 格（含经真实 bundle 的同步 review 端到端），变异 4/4 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_foreground_interrupt.md`。 |
 | **v1.3.101** | 2026-10-06 | **失联取消判不了不升级（EV-177 ①）。** M11 前待办批次第 7 题，**本批未走双审**（用户定只做 ①、② 改退出码不做）。`cancelLostWorker` 结束工作进程的 `isGone` 由布尔的 `lostWorkerGone`（判不了即「仍在」）改为新导出的三态 `lostWorkerGoneJudgment`（`identity === 'unverifiable'` ⇒ `'unverifiable'`），与主路径（EV-176）同口径：首检判不了一个信号都不发、宽限期满判不了不升级 SIGKILL。`lostWorkerGone` 不动（只剩抛错后的复判在用）。未确认告警首句按两种判不了分写（「判不了身份：不升级 SIGKILL」/「未发信号」——后者是改用三态判据后才有的零信号形态，不套「已向……发送」句式）；照 D4 按记录结束 CLI、退 0（②）不变。7.5 那句、LLD 已知缺口表、用户手册 v1.0.32 同步。新用例 3 格（真工作进程 + `ps` 失败桩），变异 4/4 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_lost_cancel_unverifiable.md`。 |

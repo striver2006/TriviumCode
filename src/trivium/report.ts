@@ -19,7 +19,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { DEFAULT_DRIVER, type AgentId, type GuardLevel } from './agents/registry.js';
 import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
-import { readRunMeta, readTask, type TaskMeta } from './meta.js';
+import { describeRunMetaCause, readRunMeta, readRunMetaDetailed, readTask, type TaskMeta } from './meta.js';
 import { loadRoundReviews } from './gate.js';
 import { parseDisposition } from './disposition.js';
 import { measureAllPairs, type DivergenceReport } from './divergence.js';
@@ -234,11 +234,13 @@ async function buildRound(
     return base;
   }
 
-  const meta = await readRunMeta(layout, stage, runId);
-  if (!meta) {
-    notes.push(`\`_meta/run-${runId}.json\` 读取失败`);
+  const read = await readRunMetaDetailed(layout, stage, runId);
+  if (!read.ok) {
+    // 「本次判定」是 EV-04 候选 B 补的成因，原文不动
+    notes.push(`\`_meta/run-${runId}.json\` 读取失败（本次判定：${describeRunMetaCause(read.cause)}）`);
     return base;
   }
+  const meta = read.meta;
 
   base.startedAt = meta.started_at;
   base.finishedAt = meta.finished_at;
@@ -481,11 +483,15 @@ async function collectUnlistedRuns(
   for (const f of files.sort()) {
     const runId = /^run-(.+)\.json$/.exec(f)?.[1];
     if (runId === undefined || listed.has(runId)) continue;
-    const meta = await readRunMeta(layout, stage, runId);
-    if (!meta) {
-      notes.push(`\`${stage}/_meta/${f}\` 读不出来（不可解析或不合契约），未列入报告`);
+    const read = await readRunMetaDetailed(layout, stage, runId);
+    if (!read.ok) {
+      // 「本次判定」是 EV-04 候选 B 补的成因，原文不动
+      notes.push(
+        `\`${stage}/_meta/${f}\` 读不出来（不可解析或不合契约），未列入报告（本次判定：${describeRunMetaCause(read.cause)}）`,
+      );
       continue;
     }
+    const meta = read.meta;
     const names = meta.artifacts.map((a) => path.basename(a.path));
     const failedSides = names.filter((n) => n.endsWith('.failed.json')).length;
     // 只数本轮入选审核者后缀的审查文档：plan / bug 成功轮还会登记 Driver 自己的原稿，那不是审查文档

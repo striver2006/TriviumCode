@@ -1538,22 +1538,25 @@ export async function verifyRoundForApproval(i: ApprovalCheckInput): Promise<App
     );
   }
 
-  const { readRunMeta } = await import('./meta.js');
-  const runMeta = await readRunMeta(layout, stage, runId);
-  if (!runMeta) {
+  const { readRunMetaDetailed, describeRunMetaCause } = await import('./meta.js');
+  const read = await readRunMetaDetailed(layout, stage, runId);
+  if (!read.ok) {
     /*
      * 比 `loadRoundReviews` 的宽松口径严（计划 r3 §5 偏差 5）：那里 run.json 读不到时
      * 交给 `missingSides` 判，这里连 driver 与轮次都拿不到，审批停点不该按猜测放行。
      * 本函数只点名；出口（含「别动锚」那一句）由调用方给，两个调用点都以 `meta.ts` 的共用出口段收尾
      * ——上一版这里内联的「不要删除或改写」已并进共用段（留痕读不出的出口计划 r2 §2.2，计划双审 CODEX-03）。
+     * 「本次判定」一行是 EV-04 候选 B 加的：三档并列的原文不动，只在出口之前补上这一次实际是哪一档。
      */
     throw new TriviumError(
       EXIT.MISSING_ARTIFACT,
       `${stage} 阶段 run ${runId}（来源：${i.runIdSource}）：${APPROVAL_CHECK_META_UNREADABLE}` +
         '（文件缺失、内容损坏，或不合 run.v1/v2 契约）。\n' +
+        `  本次判定：${describeRunMetaCause(read.cause)}。\n` +
         i.recovery.unreadableRunMeta,
     );
   }
+  const runMeta = read.meta;
 
   const { reviews, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs, planFinal } =
     await loadRoundReviews(layout, stage, runId);

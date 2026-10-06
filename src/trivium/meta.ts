@@ -659,22 +659,88 @@ export async function readRunMeta(
   stage: Stage,
   runId: string,
 ): Promise<RunMeta | null> {
+  const r = await readRunMetaDetailed(l, stage, runId);
+  return r.ok ? r.meta : null;
+}
+
+/**
+ * 一份 run.json 读不出的成因（EV-04）。`readRunMeta` 把它们回落成同一个 `null`；
+ * 要向用户说清是哪一种的出口改调 `readRunMetaDetailed`。
+ *
+ * - `missing`：文件不存在（`ENOENT`）；
+ * - `io`：文件在但读不了（权限、是目录等），`detail` 是错误消息的首行（以错误码开头）；
+ * - `unparsable`：读得到但不是合法 JSON，`detail` 是解析器消息的首行；
+ * - `contract`：是 JSON，但 `schema` 不识或不合 run.v1/v2 契约，`detail` 是首条校验错误。
+ */
+export type RunMetaUnreadableCause =
+  | { kind: 'missing' }
+  | { kind: 'io' | 'unparsable' | 'contract'; detail: string };
+
+export type RunMetaReadResult = { ok: true; meta: RunMeta } | { ok: false; cause: RunMetaUnreadableCause };
+
+/** 成因细节只取首行、封顶这么多字：解析器消息会带上一段原文，整段回显没有用 */
+const CAUSE_DETAIL_MAX = 160;
+
+function causeDetail(s: string): string {
+  const line = s.split('\n')[0] ?? '';
+  return line.length > CAUSE_DETAIL_MAX ? `${line.slice(0, CAUSE_DETAIL_MAX)}…` : line;
+}
+
+/**
+ * `readRunMeta` 的带成因版本（EV-04，候选 B）：同一条读取路径，失败时说清是哪一档。
+ * 成功时的结果与 `readRunMeta` 完全相同（v1 同样迁移成内存形状）。
+ */
+export async function readRunMetaDetailed(
+  l: ArchiveLayout,
+  stage: Stage,
+  runId: string,
+): Promise<RunMetaReadResult> {
   const { metaDir } = await import('./archive.js');
+  const p = path.join(metaDir(l, stage), runMetaFileName(runId));
+  let text: string;
+  try {
+    text = await fs.readFile(p, 'utf8');
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException)?.code;
+    if (code === 'ENOENT') return { ok: false, cause: { kind: 'missing' } };
+    // Node 的 fs 错误消息本身以错误码开头（如「EISDIR: illegal operation…」），不再另拼
+    return { ok: false, cause: { kind: 'io', detail: causeDetail(String((e as Error)?.message ?? e)) } };
+  }
   let raw: unknown;
   try {
-    const p = path.join(metaDir(l, stage), runMetaFileName(runId));
-    raw = JSON.parse(await fs.readFile(p, 'utf8'));
-  } catch {
-    return null;
+    raw = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, cause: { kind: 'unparsable', detail: causeDetail(String((e as Error)?.message ?? e)) } };
   }
   const schema = (raw as { schema?: unknown } | null)?.schema;
+  const contract = (problems: string[]): RunMetaReadResult =>
+    ({ ok: false, cause: { kind: 'contract', detail: causeDetail(problems[0] ?? '校验不过') } });
   if (schema === 'trivium.run.v2') {
-    return validateRunMeta(raw).length === 0 ? (raw as RunMeta) : null;
+    const problems = validateRunMeta(raw);
+    return problems.length === 0 ? { ok: true, meta: raw as RunMeta } : contract(problems);
   }
   if (schema === 'trivium.run.v1') {
-    return validateRunMetaV1(raw).length === 0 ? migrateRunMetaV1(raw) : null;
+    const problems = validateRunMetaV1(raw);
+    return problems.length === 0 ? { ok: true, meta: migrateRunMetaV1(raw) } : contract(problems);
   }
-  return null;
+  return contract([`schema 字段是 ${causeDetail(JSON.stringify(schema) ?? 'undefined')}，不是 trivium.run.v1 / v2`]);
+}
+
+/**
+ * 成因写成一句（不带句号），供出口在原有文字之后加一行「本次判定：…」（EV-04 候选 B）。
+ * 只陈述这一次读到的情形，不替代共用出口段的三档处置。
+ */
+export function describeRunMetaCause(c: RunMetaUnreadableCause): string {
+  switch (c.kind) {
+    case 'missing':
+      return '文件不存在';
+    case 'io':
+      return `文件在但读不了（${c.detail}）`;
+    case 'unparsable':
+      return `文件在但不是合法 JSON（${c.detail}）`;
+    case 'contract':
+      return `文件是 JSON，但不合 run.v1/v2 契约（${c.detail}）`;
+  }
 }
 
 // ─────────────────────── 事后收尾：--cancel（EV-128）、worker 异常与 worker_lost（EV-142） ───────────────────────

@@ -34,7 +34,7 @@ import { readHookInput, runHook, type HookName } from './hooks.js';
 import { getGate, listOpenGates, setGateChecked } from './state.js';
 import { assertGateDecidable, recordApproval } from './approval.js';
 import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
-import { allocateRunId, latestRunMeta, readTask, readRunMeta } from './meta.js';
+import { allocateRunId, describeRunMetaCause, latestRunMeta, readTask, readRunMeta, readRunMetaDetailed } from './meta.js';
 import { mergeAllHooks, runInit, renderInitReport, type InitReport } from './init.js';
 import {
   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
@@ -1112,18 +1112,21 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    * 与下面「事实来源是 critics_selected 不是键集」同一条原则。
    */
   const pinnedId = flagString(args, 'run-id');
-  const pinned = pinnedId ? await readRunMeta(ref.layout, stage, pinnedId) : null;
-  if (pinnedId && !pinned) {
+  const pinnedRead = pinnedId ? await readRunMetaDetailed(ref.layout, stage, pinnedId) : null;
+  const pinned = pinnedRead?.ok ? pinnedRead.meta : null;
+  if (pinnedId && pinnedRead && !pinnedRead.ok) {
     /*
      * 不静默回落：--run-id 是用户显式指定的，读不出来要说清是哪一种，别按缺省继续。
      * 归属无误时这一格与另外七处同状态（同一份文件、同样的三档成因），而 `missing_disposition` 的提示与
      * 「没有任何运行元数据」的警告都会主动把人引向 --run-id——只给「请确认归属」等于把人领到死路上，
      * 所以同样以共用出口段收尾（代码双审 r1 GLM-01）。
+     * 「本次判定」一行是 EV-04 候选 B 加的：原有两行不动，只在共用出口段之前补上这一次实际是哪一档。
      */
     const { unreadableRunMetaExitAt } = await import('./meta.js');
     throw missingArtifactError(
       `--run-id ${pinnedId} 的运行元数据读不出来（文件缺失、内容损坏，或 schema 不识）。\n` +
         `  请确认该 run_id 属于主题「${topic}」的 ${stage} 阶段；归属无误、文件在而读不出时，按下列成因处置。\n` +
+        `  本次判定：${describeRunMetaCause(pinnedRead.cause)}。\n` +
         unreadableRunMetaExitAt(ref.layout, stage, [pinnedId]),
     );
   }

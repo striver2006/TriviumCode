@@ -1,0 +1,140 @@
+✔ 双方共同 blocker 被驳回 → task.json 记 disputed，status 显示争议（§6.6 规则 7） (3253.329708ms)
+✔ 无共同驳回 → 三态落 checked-none；run.json 那一侧只到 pending (2851.414333ms)
+✔ review 必须把闸门写进 state.json，否则四个 Hook 全都无事可判 (2626.220167ms)
+✔ 裁决未齐备 → hook-pre-commit 退 2 并点名主题（AC-12） (2818.630458ms)
+✔ 裁决未齐备 → hook-stop 阻止收工（AC-02） (2707.686459ms)
+✔ 裁决齐备并通过校验 → 闸门回 idle，两个 Hook 一起放行 (3175.064917ms)
+✔ EV-133：--check 通过、--await-approval、approve 三步之后 run.json 都逐字节不变（不回写 adjudication_complete） (3227.541708ms)
+✔ AGY-02：命令 B/C/D 的 check 通过后闸门立起来，省略 --await-approval 也旁路不了 (3475.895125ms)
+✔ AGY-05：通过审批必须显式指定 --stage，不能批量放行 (3115.334959ms)
+✔ EV-24：多余位置参数 / --reject 带值 → 退 64 并指向 --reason；附言经 --reason 落盘 (3671.371416ms)
+✔ EV-24：--reason=<值> 是那条报错给的出口，必须真能用且原样落盘（CODEX-03） (2980.423042ms)
+✔ EV-24：help / version 豁免上限表；topic 与 gate 各接受恰好一个位置参数（CODEX-11） (372.922375ms)
+✔ 裁决件不完整 → 校验不放行，闸门保持拦截 (2909.99525ms)
+✔ 审查进行中禁写业务文件，但归档内的裁决件不拦（§8.5） (670.114584ms)
+✔ 当轮 Driver 按真实留痕判定：非缺省 Driver 交得了卷，审核者产出仍受保护 (401.376708ms)
+✔ 伪造角色后缀文件一律拦下，与闸门状态无关（AC-07） (366.328959ms)
+✔ 删掉一份审查文档后提交被拦（§17.3 剧本 5） (3208.830125ms)
+✔ 改动已落盘的审查文档后提交同样被拦 (3103.656208ms)
+✔ 重跑抬升的新工件不会被误判——旧工件仍在即放行 (5830.601583ms)
+✔ 尚未落盘的工件不算「丢失」——只拦记录在案的 (250.648833ms)
+✔ gate.block_commit 为 false 时完全不拦（用户显式关掉的开关要生效） (3075.516625ms)
+✔ 旧轮未裁决就重跑 → 拒绝启动，并指出两条正当出路 (2991.115542ms)
+✔ 显式 abandon 之后可以重跑 (5130.407959ms)
+✔ 只读失守且裁决件齐备 → gate --check 仍失败，两个 Hook 说失守与出口；不作废不能重跑，作废后放行 (6278.022ms)
+✔ 只读失守而裁决件还没写 → 两个 Hook 同样说失守（gate --check 此时先报缺件、看不到失守） (3153.7075ms)
+✔ gate --check 放行只动本轮闸门，不清掉已接管的新一轮 (2793.325166ms)
+✔ --cancel 旧 run 不清掉新一轮的闸门 (837.38125ms)
+✔ EV-128 E4：running 的 run.json 已入库、--cancel 回写后提交锚放行；入库的 cancelled 版本再改被拦 (1236.231875ms)
+✔ EV-128 E5：取消轮回写为 cancelled 后，gate 仍把它当最新一轮（run_id / 轮次不变） (996.372125ms)
+✔ EV-142 W1 / W2：worker 写审查文档时抛异常 ⇒ 归档 run.json 收尾为 failed、带 termination，且先于 status.json 写 (2529.397458ms)
+✔ EV-142 X1：running 的 run.json 已入库、worker 被杀后 --wait 收尾为 failed ⇒ 提交锚放行；随后 --cancel 终态早退、run.json 不动 (1447.664ms)
+✔ EV-142 X2：先 --cancel 后 --wait ⇒ --wait 按终态返回、不进失联分支，run.json 仍是 cancelled 且逐字节不变 (1056.492583ms)
+✔ 心跳过期但进程仍在的 worker_lost：不做不可逆抹除，留给会话启动清扫（代码双审 r1 CODEX-01） (3129.401125ms)
+✔ worker 被杀后 --wait 判 worker_lost，并回收 running 闸门 (1311.039875ms)
+✔ 裁决未齐备时 --await-approval 被拒，堵死「跳过裁决直接审批」 (2846.917916ms)
+✔ 裁决齐备后 --await-approval 正常置闸门 (2980.185625ms)
+✔ 删掉 run.json 本身也拦——清单不能是被核对对象自己 (3159.999166ms)
+✔ 把 run.json 搅坏也拦，而不是静默跳过 (3031.016625ms)
+✔ 被审补丁与送审包也在保护集内（审查意见 GLM-r2-05） (3206.984709ms)
+✔ 已提交的归档文件被删 → git 锚捕获（整目录删除/改名的情形） (3237.149167ms)
+✔ verify 记录也受保护（审查意见 GLM-r2-08） (3468.93775ms)
+✔ 改审查文档并同步改写 run.json 的 sha → git 锚拦下（锚与被核对对象同域） (3091.555208ms)
+✔ 结构化结论 review-*.json 在保护集内：改成空意见即拦，删掉则 gate --check 失败 (3481.549958ms)
+✔ 首次提交之前删掉整个主题目录 → state.json 锚拦下 (3120.711084ms)
+✔ hook-pre-write 拒绝 Driver 写 _meta/ 与 task.json（真实 CLI） (3397.146166ms)
+✔ git 锚：task.json 与裁决件的正常改动不得误伤，不可变工件的改动才拦 (3532.363166ms)
+✔ 搅坏 task.json → 按违例拦截，而不是静默当成空 (3303.14025ms)
+✔ task.json 不存在是正常的，不拦 (283.568ms)
+✔ 把 run.json 挪到别的阶段目录也拦（审查意见 GLM-08） (3201.655208ms)
+✔ 推断不出 runId 时 --await-approval 拒绝，而不是跳过校验 (224.876334ms)
+✔ --cancel 已终态的运行：不改写历史、不动闸门（审查意见 GLM-04） (2679.166875ms)
+✔ hook-session-start 回收「worker 已死但闸门还挂着」的遗留状态（GLM-06） (1201.013792ms)
+✔ worker 还活着时 hook-session-start 绝不回收 (567.648208ms)
+✔ T-11：非缺省 Driver 下 gate --check 找的是 -revised-<真Driver>.md，不是缺省的 (3088.822583ms)
+✖ T-12：留痕全部读不出时，硬失败的文案必须给出走得通的出口 (644.968666ms)
+✔ A1：停点之后裁决件少了一条 ⇒ approve 退 2，闸门保持等待 (2967.709541ms)
+✔ A2：--await-approval 通过后删掉裁决件 ⇒ approve 仍退 2 (3114.36525ms)
+✔ A3：--await-approval 通过后改了渲染出的审查文档 ⇒ approve 退 2，点名该文件 (3374.218083ms)
+✔ A3′：--await-approval 之前审查文档已被改 ⇒ --await-approval 退 2（抽核两处都补了） (2919.198125ms)
+✔ A4：闸门项没有 run_id ⇒ approve 退 65（第 1 步拒绝、不跳过复核），出口 abandon 后重跑走得通 (5572.161625ms)
+✔ A4′：闸门项指向不存在的运行 ⇒ approve 退 65（第 2 步拒绝），出口同样走得通 (5776.848209ms)
+✔ A4″：闸门项指向最新且读不出的运行 ⇒ approve 退 65；abandon 走得通，重跑仍被拒且给同一段出口 (3415.119583ms)
+✔ A4‴：已提交的运行留痕在工作树里被改坏 ⇒ approve 退 65；restore 之后直接重新 approve 即通过 (3450.411917ms)
+✔ 拒绝与放弃不复核：停点之后裁决件被删，reject 照常生效 (3142.96675ms)
+✔ W1：闸门期新建 NOTES.md ⇒ approve 仍退 0、照常落审批，输出里列出 NOTES.md (3046.077125ms)
+✔ W2：闸门期没有改动 ⇒ approve 退 0，输出「无改动」一行 (3178.69225ms)
+✔ W3：approve --json 带 worktree_summary（按阶段），含 total 与 truncated (3020.717042ms)
+✔ W4：停点出口也打印摘要——--check 自动立停点与 --await-approval 都列出改动 (3517.977ms)
+✔ W5：基线被 git 清理 ⇒ approve 仍退 0、照常落审批，报「取不到」而不是「无改动」 (3258.670333ms)
+✔ W6：审查收尾把 after_tree_hash 落进 run.json，且过 run.v2 schema (2592.039125ms)
+✔ W7：摘要超时 ⇒ approve 退 0、照常落审批，报超时（先打印再落审批不让摘要挡住审批） (3038.313292ms)
+✔ W8：同阶段重跑一轮后审批 ⇒ 摘要的 run id 与基线都取自闸门项指向的新一轮（计划双审 CODEX-09） (6146.571291ms)
+✔ 事后收尾余项 P1（原闸门拦截不留骨架 B5）：置闸门之后登记失败 ⇒ 闸门回收为 idle、锁已放、骨架收尾为 failed（prepare_exception）；重跑前不带 --run-id 的 gate 仍指向它 (694.756209ms)
+✔ 闸门拦截不留骨架 B6：上一轮已审批（槽位 approved）时置闸门之后失败 ⇒ 回收为 idle，不恢复成 approved（D2 (a)） (4518.499708ms)
+✔ 闸门拦截不留骨架 B7：置闸门之后重置收工阻断计数失败 ⇒ 同样回收闸门、锁已放、零工件 (367.153ms)
+✔ 事后收尾余项 P2：第 1 轮已审批后第 2 轮登记失败 ⇒ 第 2 轮骨架收尾为 prepare_exception；主题任务文件与第 1 轮 run.json 逐字节不变 (4538.931ms)
+✔ 事后收尾余项 P3：startRun 派生前失败（写交接文件 EACCES）⇒ 骨架与登记收尾为 failed（prepare_exception），闸门 idle、锁已放 (530.787375ms)
+✔ 事后收尾余项 P3b：spawnDetached 内部、子进程诞生之前失败（开日志文件 EISDIR）⇒ 同样收尾为 prepare_exception，且没有 worker (463.644791ms)
+✔ 派生后失败的孤儿worker P4：子进程诞生之后才失败（写 worker.pid EISDIR，hang 桩）⇒ 终止 worker 并收尾为 post_spawn_exception，--wait / --cancel 按终态处理，没有残留 worker (985.689375ms)
+✔ 派生后失败的孤儿worker P4b：同一构造换 ok 桩 ⇒ 3 秒后闸门仍 idle、run.json 仍 failed、没有审查文档（孤儿不会事后改写） (3709.70125ms)
+✔ 派生后失败的孤儿worker P4c：失败之后同阶段再 --start ⇒ 正常起跑，进程表里只有新一轮的 worker（不再有两个并发） (2767.953542ms)
+✔ 事后收尾余项 P5：同步路径 executeRun 抛错（写审查文档 EACCES）⇒ 骨架与登记收尾为 failed（sync_exception），闸门 idle (604.041041ms)
+✔ 事后收尾余项 P6：同步路径在准备阶段就失败（登记写不进）⇒ 只由 prepareRun 收尾一次（prepare_exception），同步路径的 catch 不再收 (399.1865ms)
+✔ EV-152 I1：--cancel 结束 worker 以 killTree 拉起的两侧审查员 CLI（整组），归档仍由 cancelRun 收尾为 cancelled (1353.082083ms)
+✔ EV-152 I2：一侧 CLI 忽略 SIGTERM——worker 在宽限内升级 SIGKILL 结束它，--cancel 不被升级 (3490.745833ms)
+✔ EV-154 I3：worker 先被强杀，再 --cancel ⇒ 按记录逐组结束两侧 CLI（忽略 SIGTERM 的那组升级 SIGKILL），收尾 cancelled 并清掉已结束的记录 (4036.94525ms)
+✔ EV-154 I4：worker 的事件循环被堵住 ⇒ --cancel 升级 SIGKILL，随后按记录结束两侧 CLI (7592.442917ms)
+✔ EV-154 I5：worker 被强杀后 --wait 先判失联（不结束进程），之后 --cancel 在终态早退分支里按记录结束 CLI、不改 status.json (1188.752ms)
+✔ EV-154 I6：worker 已死而 CLI 还活着 ⇒ 会话启动清扫不结束进程、也不抹凭据副本（EV-38）；CLI 结束后再清扫即抹 (1064.601167ms)
+✔ EV-154 I7：CLI 自然结束 ⇒ status.json 里该侧的记录清成 null (2740.02175ms)
+✔ EV-146 J1：worker 事件循环被堵住、--wait 判 heartbeat_stale ⇒ --cancel 升级 SIGKILL 结束它、按记录结束两侧 CLI、补收 run.json 与登记、回收锁；status.json 与闸门不动，之后能重新起跑 (12239.369417ms)
+✔ EV-146 J2：心跳只是慢（事件循环没堵住）也被判 heartbeat_stale ⇒ --cancel 不升级，worker 的处理器自己收拾 CLI 并退出；输出如实说「可能只是心跳慢」 (4415.6705ms)
+✔ EV-146 J3：本格不抹凭据副本（用户决策 7）——--wait 与 --cancel 之后载体仍在；worker 与 CLI 都结束之后，会话启动清扫放行 (9621.446167ms)
+✔ EV-159 G1：worker 被手工结束（未经 --cancel）⇒ --cancel 落 gone 格：按记录结束两侧 CLI、补收 run.json 与登记、回收锁；CLI 结束先于归档补收播报 (4550.933333ms)
+✔ EV-159 G2：G1 场景上 --cancel 之后再跑一次 ⇒ 幂等，run.json / task.json / status.json 均逐字节不变，输出不再说「已把归档……收尾为 failed」 (4503.872458ms)
+✔ EV-158 I1～I5：--start 在 W 下写两种启动时刻；R 下的 --wait、会话启动清扫、trivium scrub、同阶段 --start 都认得活 worker，R 下的 --cancel 对它发 SIGTERM 并收尾 (4904.315084ms)
+✔ EV-158 I6（C7 / C8）：--wait 在 W 下判 heartbeat_stale，--cancel 在 R 下 ⇒ 入失联后取消那一格（不再判 mismatch），结束 worker 与两侧 CLI、补收 run.json 为 failed (9501.831ms)
+✔ EV-158 I7（d 格回归）：删掉 status.json 里的规范化字段（模拟旧版写下；--wait 不读锁）⇒ R 下 --wait 仍判失联 pid_gone，与今天相同 (1663.062ms)
+✔ EV-157 K1：worker 已死而两侧 CLI 仍活 ⇒ --wait 判失联不抹、正文逐侧带组号、不结束进程、记录留存；会话启动清扫同样挡住；CLI 结束后清扫即抹 (1633.351541ms)
+✔ EV-157 K2：worker 与两侧 CLI 都已结束 ⇒ --wait 判失联照抹，正文没有「凭据副本未抹」 (1228.285792ms)
+✔ EV-157 K3：worker 已死、两侧记录判不了（启动时刻没记下）⇒ --cancel 不发信号也不抹、一行告警逐侧列出、记录留存、归档照收尾；会话启动清扫同样挡住；CLI 结束后即抹 (1550.46675ms)
+✔ EV-157 K4：worker 已死、两侧 CLI 仍活 ⇒ --cancel 按记录结束两组之后照抹，没有「凭据副本未抹」 (1367.510833ms)
+✔ EV-165 K5：worker 已死、glm 侧组长已退但组员仍在（gemini 侧组长仍活）⇒ --wait 判失联两侧都不抹、glm 侧正文带精确成员数、都不结束进程；会话启动清扫同样挡住；组员结束后清扫即抹 (1781.569625ms)
+✔ EV-165 K6：worker 已死、glm 侧组长已退但组员仍在 ⇒ --cancel 按组结束组员（组信号打到 pgid 仍有效）之后照抹；gemini 侧走既有 alive 路径不受影响 (1669.54325ms)
+ℹ tests 104
+ℹ suites 0
+ℹ pass 103
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 305603.200834
+
+✖ failing tests:
+
+test at dist/test/test/integration/gate-loop.test.js:1287:1
+✖ T-12：留痕全部读不出时，硬失败的文案必须给出走得通的出口 (644.968666ms)
+  AssertionError [ERR_ASSERTION]: 缺本次判定一行，或不在原文之后：✗ --run-id 20260101T000000Z 的运行元数据读不出来（文件缺失、内容损坏，或 schema 不识）。
+    请确认该 run_id 属于主题「留痕全坏-闸门话术」的 plan 阶段；归属无误、文件在而读不出时，按下列成因处置。
+    本次判定：文件是 JSON，但不合 run.v1/v2 契约（schema 字段是 "trivium.run.v99"，不是 trivium.run.v1 / v2）。
+    涉及的运行留痕（逐份判断成因，每份可能不同）：
+      · /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-fx-AJ7rR9/repo/.reviews/留痕全坏-闸门话术/plan/_meta/run-20260101T000000Z.json
+    判别 ①：本工具的构建是 8c5d404（2026-10-06T00:10:55.996Z）；能以 JSON 打开的 run.json 看它的 snapshot.build.git_head——比本工具新即属 ①。
+    重跑该阶段双审不是出口：review --start 在冻结送审包之前就按同一判定拒绝，新运行落不下来。按成因处置：
+    ① 本工具版本落后于写下它的版本（它含本工具不认的 schema 或取值；常见于装好的副本比写入方旧，此时 git status 往往是干净的，判别见上面那行构建标识）：按 MANUAL §3.6「升级」更新并重装本工具后重试。
+    ② 它已提交过，工作树里的这一份与提交的版本不同（git -c core.quotePath=false status --porcelain -- '<路径>' 显示 M）：由用户在终端执行 git restore -- '<上面列出的路径>' 恢复后重试。这一步只能由用户在终端做——会话里的恢复命令会被 Hook 拦下，换写法绕过属于违规。
+    ③ 其余情形——从未提交（同一条命令显示 ??），或已提交的版本本身就读不出——且排除了①：工具内没有出口。没有可恢复的副本，也没有跳过这条判定的入口（BACKLOG EV-148 的剩余项）；本工具写入前会按契约校验，这一格只可能来自工具之外的改动。请停下，保留文件，交由用户人工判断。
+    无论哪种成因，都不要删除或改写这些 run-*.json：删掉后这条判定会放行——登记过的运行，提交时的留痕核对会以「运行清单已丢失」拦下 git commit；没登记的删掉则无从追查、判定悄悄降级；改写同样会被拦。
+  
+      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/integration/gate-loop.test.js:1344:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

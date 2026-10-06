@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.40
+> - **当前版本**：v1.1.41
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.41（2026-10-06）随设计 v1.3.104（留痕读不出的成因，EV-04）同步：模块表 `meta.ts` 行补 `readRunMetaDetailed()`（带成因四档的读取，`readRunMeta()` 改为调它、返回值不变）。本批未走双审。行数列未重核。
 > - **变更说明**：v1.1.40（2026-10-06）随设计 v1.3.102（前台中断结束审查员 CLI，EV-155）同步：worker 节「SIGTERM 处理器」之后新增「前台中断转发」一条（`installForegroundInterruptForwarding` 的装点、只处理第一次、无登记树等同缺省处置、第二次信号直接退出、不收留痕）。本批未走双审。行数列未重核。
 > - **变更说明**：v1.1.39（2026-10-06）随设计 v1.3.101（失联取消判不了不升级，EV-177 ①）同步：已知缺口表「失联后取消与主路径的两处不同口径」改为 ① 已收口（`cancelLostWorker` 的 `isGone` 改用三态的 `lostWorkerGoneJudgment`），只剩 ② 未确认退 0。本批未走双审。
 > - **变更说明**：v1.1.38（2026-10-06）随设计 v1.3.96（run_id 同秒避让，EV-147）同步：「`run_id` 生成」一段补 `allocateRunId` 的避让判据与「run_id 不再保证等于开始时刻」，锚点随 `meta.ts` 加一行导入改为 :37；模块表 `meta.ts` 行补 `allocateRunId()`。本批未走双审（v1.1.38 这一笔随 EV-147 改了正文、当时漏记，v1.1.39 时补记）。行数列未重核。
@@ -130,7 +131,7 @@ graph TD
 | 模块 | 行数 | 职责 | 关键导出 |
 | :--- | ---: | :--- | :--- |
 | `archive.ts` | 550 | 防覆盖落盘、最低工件集校验、sha256 核对、**运行清单读侧按阶段分发**（设计 6.7.1） | `writeArtifact()` `checkRecordedArtifacts()` `checkRunManifests()` `runManifestProblem()` |
-| `meta.ts` | 382 | `run.json`（`trivium.run.v2`）与主题级任务档的构造与更新；**读侧按 schema 分发与 v1 → v2 内存迁移** | `newRunId()` `allocateRunId()` `writeRunMeta()` `readRunMeta()` `migrateRunMetaV1()` `updateTask()` `readTaskStrict()` |
+| `meta.ts` | 382 | `run.json`（`trivium.run.v2`）与主题级任务档的构造与更新；**读侧按 schema 分发与 v1 → v2 内存迁移** | `newRunId()` `allocateRunId()` `writeRunMeta()` `readRunMeta()` `readRunMetaDetailed()` `migrateRunMetaV1()` `updateTask()` `readTaskStrict()` |
 | `naming.ts` | 142 | 文件名生成与反解析（纯函数，不碰文件系统） | `buildArtifactName()` `parseArtifactName()` `validateTopic()` |
 | `report.ts` | 556 | 人读复盘生成 | `buildReport()` |
 | `render.ts` | 253 | 审查文档的 Markdown 渲染（参与者事实与降级警示分两处标注） | `renderReviewDoc()` |
