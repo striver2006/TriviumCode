@@ -1,0 +1,377 @@
+diff --git a/src/trivium/doctor.ts b/src/trivium/doctor.ts
+index ea742ff6..5006027c 100644
+--- a/src/trivium/doctor.ts
++++ b/src/trivium/doctor.ts
+@@ -118,7 +118,13 @@ export interface SeverityLine {
+  */
+ export function codexSeverity(
+   probe: CodexProbe,
+-  ctx: { enabled: boolean; asked: boolean; skipModelCalls: boolean },
++  ctx: {
++    enabled: boolean;
++    asked: boolean;
++    skipModelCalls: boolean;
++    /** 只读负对照本轮判不了（EV-25）：`readonly_flags` 是保留的旧值，为空也不报失守，改由 doctor 出 warning */
++    readonlyIndeterminate?: boolean;
++  },
+ ): SeverityLine[] {
+   const gate = (message: string): SeverityLine =>
+     ctx.enabled || ctx.asked
+@@ -130,9 +136,9 @@ export function codexSeverity(
+   /*
+    * 只读负对照失守：**恒 blocker**，不看 criticEnabled、不看是否点名。
+    * 判据要排除 skipModelCalls——那时负对照根本没跑，readonly_flags
+-   * 保留的是上一次结论，空集不代表失守。
++   * 保留的是上一次结论，空集不代表失守。本轮负对照判不了时同理（EV-25）。
+    */
+-  if (!ctx.skipModelCalls && probe.readonly_flags.length === 0) {
++  if (!ctx.skipModelCalls && !ctx.readonlyIndeterminate && probe.readonly_flags.length === 0) {
+     return [
+       {
+         level: 'blocker',
+@@ -169,6 +175,20 @@ export function codexSeverity(
+   return [];
+ }
+ 
++/**
++ * codex 只读负对照本轮判不了时的 warning（EV-25，用户 2026-10-06 定取 A，仿 zcode P-29）。
++ *
++ * 有上一次的结论：写明保留的是哪一份——它既不是「失守」，也没有被这一轮重新确认。
++ * 没有上一次的结论（首次探测就判不了）：`readonly_flags` 为空、该侧仍不可用，但说法是「未判定」而不是「失守」。
++ */
++export function codexReadonlyIndeterminateWarning(why: string, flags: readonly string[]): string {
++  return flags.length > 0
++    ? `codex 只读负对照本轮未判定（${why}）：readonly_flags 保留的是上一次的结论 ${JSON.stringify(flags)}——` +
++        '这不是「沙箱失守」，也没有重新确认沙箱可信。请重跑 trivium doctor --only codex。'
++    : `codex 只读负对照未判定（${why}），且没有上一次的结论：readonly_flags 为空，该侧仍不可用——` +
++        '这是「未判定」，不是「沙箱失守」。请重跑 trivium doctor --only codex。';
++}
++
+ /**
+  * **能力声明 ↔ 探针实测的对账**（M8 第 3 步，清偿 EV-06）。
+  *
+@@ -730,10 +750,15 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+         enabled: agentByCliName('codex')?.criticEnabled === true,
+         asked: only === 'codex',
+         skipModelCalls: opts.skipModelCalls ?? false,
++        readonlyIndeterminate: r.readonlyIndeterminate !== null,
+       })) {
+         if (line.level === 'blocker') blockers.push(line.message);
+         else notes.push(`[codex] ${line.message}`);
+       }
++      // 负对照本轮判不了（EV-25）：不拦，但要让人看见保留的是旧结论（仿 zcode P-29 的未判定 warning）
++      if (r.readonlyIndeterminate !== null) {
++        warnings.push(codexReadonlyIndeterminateWarning(r.readonlyIndeterminate, r.probe.readonly_flags));
++      }
+     }
+   }
+ 
+diff --git a/src/trivium/probes/codex.ts b/src/trivium/probes/codex.ts
+index a2475993..e956d1f3 100644
+--- a/src/trivium/probes/codex.ts
++++ b/src/trivium/probes/codex.ts
+@@ -47,9 +47,10 @@ const PROBE_EFFORT = 'low';
+  * 「探针记的配方」不可能分叉，并给 `registry-parity` 第 6 条的**反向对账**一个
+  * 可 import 的事实源（此前这两处各存一份内联字面量，代码双审 CODEX-03）。
+  *
+- * 该值是**负对照挣来的**：探针让模型在 cwd 建文件，文件没被创建才记它；
++ * 该值是**负对照挣来的**：探针让模型在 cwd 执行一条钉死的写命令，命令进了轨迹、输出带失败标记、
++ * 文件没被创建才记它（EV-25 起带正对照；此前只看文件在不在，「模型没动手」也会被记成可信）；
+  * 创建成功则 `readonly_flags` 落空数组，含义是「本机沙箱不可信、该侧不可用」，
+- * **绝不是**回落到一个「文档上写着应该管用」的默认值。
++ * **绝不是**回落到一个「文档上写着应该管用」的默认值；本轮判不了时不动它（保留上一次的结论）。
+  */
+ export const CODEX_READONLY_INVARIANTS: readonly string[] = ['-s', 'read-only'];
+ const PROBE_TIMEOUT_MS = 180_000;
+@@ -536,7 +537,7 @@ export function judgeHeadlessRead(
+  */
+ async function execProbe(
+   bin: string,
+-  fx: Fixture,
++  fx: Pick<Fixture, 'root'>,
+   prompt: string,
+   profile: string | null,
+   model: string,
+@@ -571,6 +572,111 @@ async function execProbe(
+   return { ...trace, completed: traceCompleted(trace, r.timedOut), timedOut: r.timedOut };
+ }
+ 
++// ─────────────────────── 只读负对照：钉死写命令 + 正对照（EV-25） ───────────────────────
++
++/** 负对照要写的文件（夹具根下）；与 EV-25 之前的自由提示同名 */
++export const READONLY_CONTROL_FILE = 'breach.txt';
++/** 写入失败时那条命令输出的标记 */
++export const READONLY_CONTROL_MARK_DENIED = 'TRIVIUM_WRITE_DENIED';
++/** 写入成功时那条命令输出的标记 */
++export const READONLY_CONTROL_MARK_WRITTEN = 'TRIVIUM_SHELL_ALIVE';
++
++/**
++ * 负对照的提示：**钉死命令形态**，照搬 `scripts/codex-sandbox-control.mjs`（AC-20 J5 的正对照）。
++ *
++ * EV-25 之前是「请在当前目录创建文件 breach.txt」的自由提示，结论只看文件在不在——
++ * 「沙箱拒了」与「模型压根没动手」产出相同的观测，一次模型没听懂就被记成「沙箱可信」。
++ * 钉死命令之后，「命令进了轨迹、输出带失败标记」才是「被拒」的正面证据。
++ */
++export const READONLY_CONTROL_PROMPT = [
++  '你是一个测试夹具。请逐字执行下面这一条 shell 命令，不要改写、不要解释、不要做别的事：',
++  '',
++  `printf 'BREACH' > ${READONLY_CONTROL_FILE} && echo ${READONLY_CONTROL_MARK_WRITTEN} || echo ${READONLY_CONTROL_MARK_DENIED}`,
++  '',
++  '执行完把命令的完整输出原样贴出来。',
++].join('\n');
++
++/** 负对照三态：`held` 沙箱挡住了写入（有正对照）；`breached` 失守；`indeterminate` 本轮判不了 */
++export type ReadonlyControlVerdict =
++  | { kind: 'held' }
++  | { kind: 'breached'; why: string }
++  | { kind: 'indeterminate'; why: string };
++
++/**
++ * 负对照判据（EV-25，用户 2026-10-06 定取 A）。
++ *
++ * - 文件被创建，或写命令的输出带成功标记 ⇒ `breached`（不看轨迹全不全：写成了就是写成了）；
++ * - 轨迹里有那条写命令、且输出带失败标记 ⇒ `held`；
++ * - 其余 ⇒ `indeterminate`：轨迹里没有那条写命令（模型没执行、超时、provider 报错退出），
++ *   或执行了但输出里读不到失败标记（区分不了「被拒」与「命令被改写成没真写」）。
++ */
++export function judgeReadonlyControl(
++  trace: CodexTrace,
++  timedOut: boolean,
++  fileCreated: boolean,
++): ReadonlyControlVerdict {
++  if (fileCreated) return { kind: 'breached', why: `${READONLY_CONTROL_FILE} 被创建` };
++  const writes = trace.commands.filter((c) => c.command.includes(READONLY_CONTROL_FILE));
++  if (writes.some((c) => (c.output ?? '').includes(READONLY_CONTROL_MARK_WRITTEN))) {
++    return { kind: 'breached', why: '写命令的输出报告写入成功' };
++  }
++  if (writes.length === 0) {
++    return {
++      kind: 'indeterminate',
++      why: timedOut ? '探测超时，轨迹里没有那条写命令' : '轨迹里没有那条写命令（模型没有执行它）',
++    };
++  }
++  if (writes.some((c) => (c.output ?? '').includes(READONLY_CONTROL_MARK_DENIED))) return { kind: 'held' };
++  return { kind: 'indeterminate', why: '写命令执行了，但输出里读不到写入失败的标记' };
++}
++
++/**
++ * 把判据结论落到探针上：`held` / `breached` 照旧写 `readonly_flags`；`indeterminate` **不动它**——
++ * 保留上一次的结论（仿 zcode P-29 的 `flagsIndeterminate`），成因经返回值带出、不落盘。
++ * 首次探测就判不了时上一次的结论是空集，该侧仍不可用，但 doctor 说的是「未判定」而不是「失守」。
++ */
++export function applyReadonlyControl(
++  probe: CodexProbe,
++  verdict: ReadonlyControlVerdict,
++): { note: string; indeterminate: string | null } {
++  switch (verdict.kind) {
++    case 'breached':
++      probe.readonly_flags = [];
++      return {
++        note: `⚠️ 只读沙箱负对照**失败**：-s read-only 下${verdict.why}，该侧不可用于审查`,
++        indeterminate: null,
++      };
++    case 'held':
++      probe.readonly_flags = [...CODEX_READONLY_INVARIANTS];
++      return {
++        note: `只读负对照成立（带正对照）：写命令确实执行、输出显示写入失败，${READONLY_CONTROL_FILE} 未创建`,
++        indeterminate: null,
++      };
++    case 'indeterminate':
++      return {
++        note:
++          `⚠️ 只读负对照本轮未判定（${verdict.why}）：readonly_flags 保留上一次的结论 ` +
++          `${JSON.stringify(probe.readonly_flags)}`,
++        indeterminate: verdict.why,
++      };
++  }
++}
++
++/**
++ * 跑一次负对照并判定：`probeCodex` 与真实 CLI 验证脚本共用这一段（验证走的就是生产代码）。
++ * 返回轨迹本身，`probeCodex` 还要用它算 `rejected_command_in_trace`。
++ */
++export async function runReadonlyControl(
++  bin: string,
++  fx: Pick<Fixture, 'root'>,
++  profile: string | null,
++  model: string,
++): Promise<{ verdict: ReadonlyControlVerdict; write: CodexTrace & { completed: boolean; timedOut: boolean } }> {
++  const write = await execProbe(bin, fx, READONLY_CONTROL_PROMPT, profile, model);
++  const created = await exists(path.join(fx.root, READONLY_CONTROL_FILE));
++  return { verdict: judgeReadonlyControl(write, write.timedOut, created), write };
++}
++
+ /**
+  * 路径级 deny 支持性 —— **真跑 `--help` 再下结论**（审查意见 GLM-04）。
+  *
+@@ -718,8 +824,17 @@ async function judgeCodexIsolation(bin: string, dir: string): Promise<ProbeIsola
+ export async function probeCodex(
+   configuredBin: string | null,
+   opts: { skipModelCalls?: boolean; existing?: CodexProbe } = {},
+-): Promise<{ probe: CodexProbe; notes: string[] }> {
++): Promise<{
++  probe: CodexProbe;
++  notes: string[];
++  /**
++   * 只读负对照本轮判不了时的成因，判得了（或没跑负对照）时为 null（EV-25）。
++   * 是「本次探测过程」的事实，不是被探对象的属性，**不落盘**（仿 zcode `flagsIndeterminate`）；doctor 据它出 warning、不报失守。
++   */
++  readonlyIndeterminate: string | null;
++}> {
+   const notes: string[] = [];
++  let readonlyIndeterminate: string | null = null;
+   /*
+    * 同 probeAgy / probeZcode：以既有结论为起点，跳过的探针保留原值。
+    * 否则 `--no-model-calls` 会把上一次真实探到的结论覆盖成 null，
+@@ -762,7 +877,7 @@ export async function probeCodex(
+   probe.version_probe = { runner: null, args: ['--version'], extract: String.raw`(\d+\.\d+\.\d+)` };
+   if (!bin) {
+     notes.push('未找到 codex 可执行文件，Codex 侧不可用');
+-    return { probe, notes };
++    return { probe, notes, readonlyIndeterminate };
+   }
+ 
+   const home = codexHome();
+@@ -838,7 +953,7 @@ export async function probeCodex(
+       '已跳过需要真实模型调用的探针（--no-model-calls）——' +
+         'exec_headless_read_ok / trace_path_structured / rejected_command_in_trace / scratch_paths 保留上一次的结论',
+     );
+-    return { probe, notes };
++    return { probe, notes, readonlyIndeterminate };
+   }
+ 
+   const fx = await createFixture();
+@@ -873,7 +988,7 @@ export async function probeCodex(
+         '⚠️ 没有任何 profile 的模型目录里有可用模型——跳过需要真实调用的探针。' +
+           '这是**探针无从开展**，不是 codex 的能力缺陷，相关字段保持未测（null）。',
+       );
+-      return { probe, notes };
++      return { probe, notes, readonlyIndeterminate };
+     }
+     notes.push(`探针用 profile=${probeProfile}、model=${probeModel}`);
+     const read = await execProbe(
+@@ -925,23 +1040,12 @@ export async function probeCodex(
+         'M8 的 project_reads 与禁读核验只能走命令文本解析（BACKLOG EV-01 措施 b）',
+     );
+ 
+-    // ── 只读负对照：写入必须失败 ──────────────────────────────────
+-    const write = await execProbe(
+-      bin,
+-      fx,
+-      '请在当前目录创建文件 breach.txt，内容写 BREACH。只做这一件事。',
+-      probeProfile,
+-      probeModel,
+-    );
+-    const breachPath = path.join(fx.root, 'breach.txt');
+-    const breached = await exists(breachPath);
+-    if (breached) {
+-      probe.readonly_flags = [];
+-      notes.push('⚠️ 只读沙箱负对照**失败**：read-only 下文件仍被创建，该侧不可用于审查');
+-    } else {
+-      probe.readonly_flags = [...CODEX_READONLY_INVARIANTS];
+-      notes.push('只读负对照成立：-s read-only 下写入被拒，breach.txt 未创建');
+-    }
++    // ── 只读负对照：钉死写命令，写入必须失败且有正对照（EV-25）────────────
++    const control = await runReadonlyControl(bin, fx, probeProfile, probeModel);
++    const write = control.write;
++    const applied = applyReadonlyControl(probe, control.verdict);
++    readonlyIndeterminate = applied.indeterminate;
++    notes.push(applied.note);
+     /*
+      * 被拒的命令有没有留在轨迹里。
+      *
+@@ -955,6 +1059,9 @@ export async function probeCodex(
+      *
+      * 判据复现录制样本里的推理：那条结论是靠**模型自述试过两条途径且被拒**
+      * 才坐实的——没有那段自述，commands 为空什么也证明不了。
++     *
++     * EV-25 起这一次调用的提示换成了钉死的 shell 写命令（见 `READONLY_CONTROL_PROMPT`），本判据未改；
++     * 命令形态变了，读数可能随之变化，真实读数记在 EV-25 的实施报告里。
+      */
+     const deniedNarrative = /只读|read-only|not permitted|sandbox/i.test(write.finalText ?? '');
+     probe.rejected_command_in_trace = !write.completed
+@@ -1093,7 +1200,7 @@ export async function probeCodex(
+     if (fixtureResidue) notes.push(fixtureResidue);
+   }
+ 
+-  return { probe, notes };
++  return { probe, notes, readonlyIndeterminate };
+ }
+ 
+ /**
+diff --git a/test/unit/fixture-repo-init.test.ts b/test/unit/fixture-repo-init.test.ts
+index e2e7c432..6b86672a 100644
+--- a/test/unit/fixture-repo-init.test.ts
++++ b/test/unit/fixture-repo-init.test.ts
+@@ -31,7 +31,7 @@ import {
+   fixtureResidueText,
+   ProbeFixtureError,
+ } from '../../src/trivium/probes/fixture.js';
+-import { guardFixture, memoryFixtureWarning, probeFixtureBlocker, runDoctor } from '../../src/trivium/doctor.js';
++import { codexReadonlyIndeterminateWarning, guardFixture, memoryFixtureWarning, probeFixtureBlocker, runDoctor } from '../../src/trivium/doctor.js';
+ import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
+ import { ZCODE_BUILTIN_PROVIDER_ENV, type ZcodeInvokeOptions, type ZcodeInvokeOutcome } from '../../src/trivium/adapters/zcode.js';
+ import type { Config } from '../../src/trivium/types.js';
+@@ -592,3 +592,23 @@ test('措辞：记忆格 warning 逐字', () => {
+       '其余各格已刷新；project_memory_blocked 沿用的是上一次的结论（从未探过则仍为空），修好后重跑 trivium doctor --only claude',
+   );
+ });
++
++/*
++ * EV-25 接线：runDoctor 把 probeCodex 带出的「只读负对照本轮未判定」传进 codexSeverity、并出 warning。
++ * 本文件的假 codex 对一切 exec 退 1、不吐事件流 ⇒ 负对照判不了。EV-25 之前探针只看 breach.txt 在不在，
++ * 这一格会把 readonly_flags 记成可信；改判据而漏接线时，空集会被报成「-s read-only 下文件仍被创建」。
++ */
++test('D10 doctor --only codex（EV-25）：负对照判不了 ⇒ 出未判定 warning、不报「文件仍被创建」，readonly_flags 保留上一次的结论', async () => {
++  const WHY = '轨迹里没有那条写命令（模型没有执行它）';
++  for (const prior of [[], ['-s', 'read-only']]) {
++    const w = await world();
++    await inWorld(w, {}, async () => {
++      const d = await doctorWorld(w, true);
++      (d.cfg.probe.cli.codex as { readonly_flags: string[] }).readonly_flags = [...prior];
++      const rep = await doctorIn(d, 'codex');
++      assert.ok(!rep.blockers.some((b) => b.includes('文件仍被创建')), `${JSON.stringify(prior)}：未判定冒充了失守：${rep.blockers.join('\n')}`);
++      assert.ok(rep.warnings.includes(codexReadonlyIndeterminateWarning(WHY, prior)), `${JSON.stringify(prior)}：${rep.warnings.join('\n')}`);
++      assert.deepEqual((rep.probe.cli.codex as { readonly_flags: string[] }).readonly_flags, prior, '未判定不动 readonly_flags');
++    });
++  }
++});
+diff --git a/test/unit/probe-fixture-cleanup.test.ts b/test/unit/probe-fixture-cleanup.test.ts
+index a8a5de79..2c604257 100644
+--- a/test/unit/probe-fixture-cleanup.test.ts
++++ b/test/unit/probe-fixture-cleanup.test.ts
+@@ -479,13 +479,13 @@ async function codexIn(w: World, lock: boolean) {
+     w,
+     { CODEX_HOME: codexHome, FAKE_LOCK: lock ? `${FIXTURE_PREFIX},${ISO_PREFIX}` : undefined, FAKE_BASE_EXIT: '0', FAKE_ISO_EXIT: '1', FAKE_OBSERVE: undefined },
+     async () => {
+-      const { probe, notes } = await probeCodex(entry);
++      const { probe, notes, readonlyIndeterminate } = await probeCodex(entry);
+       const main = await left(w, FIXTURE_PREFIX);
+       const iso = await left(w, ISO_PREFIX);
+       const want = main.length === 1 && iso.length === 1
+         ? [codexIsolationResidueText(iso[0]!, 'EACCES'), fixtureResidueText('main', main[0]!, 'EACCES')]
+         : null;
+-      return { probe, notes, main, iso, want };
++      return { probe, notes, main, iso, want, readonlyIndeterminate };
+     },
+   );
+ }
+@@ -508,6 +508,18 @@ test('E4b probeCodex 对照：删成功时无提示、无残留，isolation 照
+   assert.equal(probe.isolation, 'home_copy', `探针没走到隔离探针那一步：${notes.join('\n')}`);
+ });
+ 
++test('E4c probeCodex（EV-25 接线）：假 exec 不执行那条写命令 ⇒ 只读负对照未判定，readonly_flags 不被写成可信、成因经返回值带出', async () => {
++  /*
++   * 本文件的假 codex 对一切 exec 退 1、不吐事件流。EV-25 之前探针只看 breach.txt 在不在，
++   * 这一格会把 readonly_flags 记成 ['-s','read-only']（「模型没动手」被记成「沙箱可信」）；现在是未判定、保留旧值（空集）。
++   */
++  const w = await world();
++  const { probe, notes, readonlyIndeterminate } = await codexIn(w, false);
++  assert.equal(readonlyIndeterminate, '轨迹里没有那条写命令（模型没有执行它）', notes.join('\n'));
++  assert.deepEqual(probe.readonly_flags, [], '未判定不得把 readonly_flags 写成可信');
++  assert.ok(notes.some((n) => n.includes('只读负对照本轮未判定')), notes.join('\n'));
++});
++
+ // ─────────────────────────── W：源码结构断言 ───────────────────────────
+ 
+ const PROBES_DIR = path.join(REPO_ROOT, 'src/trivium/probes');
