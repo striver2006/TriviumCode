@@ -1565,7 +1565,7 @@ export async function classifyLostCancel(s: RunStatus): Promise<LostCancelCell> 
  * 回收锁，那样会在 worker 其实还活着时破坏 EV-142「没有另一个写者」的前提，所以另立了严格判据。EV-176 起共享判据已三态化，
  * 对判不了返回 `'unverifiable'`、不算已退出；本格仍保留自己的判据（布尔，判不了即「仍在」）——两者对「判不了算不算已退出」
  * 已一致。宽限期满判不了是否升级 SIGKILL 这一处差别已由 EV-177 ① 收口（本格结束工作进程改用三态的 `lostWorkerGoneJudgment`，
- * 它与 `lostWorkerGone` 共用本函数；`lostWorkerGone` 的布尔口径只剩抛错后的复判在用）；未确认时的退出码仍与主路径不同（EV-177 ②，代码双审 r1 CODEX-03）。
+ * 它与 `lostWorkerGone` 共用本函数；`lostWorkerGone` 的布尔口径只剩抛错后的复判在用）；未确认时的退出码也已由 EV-177 ② 改为与主路径同为 69（代码双审 r1 CODEX-03 指出的那一处）。
  * 与 EV-154 代码双审 r1 GLM-01 对 CLI 那一侧的收紧同一取向：轮询中判不了不算已不在。
  */
 export function lostWorkerGoneFrom(p: { alive: boolean; startedAt: string | null }, expectedStartedAt: string): boolean {
@@ -1692,8 +1692,9 @@ async function finalizeGoneWorker(ctx: Ctx, runId: string, s: RunStatus, cell: {
  *   5. 确认退出后按 run_id + pid 复核回收主题锁（D10）。
  * **不做**：status.json 一个字节都不写（phase / message 不改写、CLI 记录也不清——终态分支不追溯改写，也让本格可重入：
  * 未确认退出后再跑一次仍入本格）；闸门不动（`--wait` 判失联时已回收）；凭据副本不抹（留给会话启动清扫，EV-157 范围不动）。
- * 退出码两种结局都是 0（与 EV-146 当时的主路径同口径，D6），结局写在 stdout 的结论句里。EV-176 起主路径未确认退出以 69 退出、
- * 不收尾；本格仍退 0（EV-177 ②，用户定暂不改）。宽限期满判不了时不升级 SIGKILL、首检判不了零信号，与主路径同口径（EV-177 ①）。
+ * 退出码：确认退出、补收之后退 0；未确认退出（仍是同一进程、判不了身份、首检即判不了零信号）以 69 退出，与 EV-176 起的主路径同口径
+ * （EV-177 ②；EV-146 D6 原定两种结局都退 0，前提「与当时的主路径同口径」已不成立）。结局仍写在 stdout 的结论句里，播报文字不变。
+ * 宽限期满判不了时不升级 SIGKILL、首检判不了零信号，与主路径同口径（EV-177 ①）。
  */
 async function cancelLostWorker(
   ctx: Ctx,
@@ -1768,7 +1769,8 @@ async function cancelLostWorker(
 
   if (!gone) {
     say(`运行 ${runId} 已被 --wait 判为失联（heartbeat_stale）：未能确认工作进程 ${pid} 退出，归档与主题锁未动。`);
-    return EXIT.OK;
+    // 69 与主路径未确认退出同码：这次没做收尾、状态原样、可重试（EV-177 ②）
+    return EXIT.ENV;
   }
 
   // 4、5. 补收 run.json 与登记、按 run_id + pid 复核回收主题锁——与 gone 格（EV-159）共用，见 finalizeLostAndReclaimLock

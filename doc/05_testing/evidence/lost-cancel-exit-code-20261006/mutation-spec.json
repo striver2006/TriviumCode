@@ -1,0 +1,29 @@
+{
+  "targets": [
+    "src/trivium/run-protocol.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/run-protocol.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "未确认退出退回 0（改前形态）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    // 69 与主路径未确认退出同码：这次没做收尾、状态原样、可重试（EV-177 ②）\n    return EXIT.ENV;\n",
+      "replace": "    return EXIT.OK;\n",
+      "expect": "dist/test/test/integration/run-protocol.test.js",
+      "also": [
+        "dist/test/test/integration/cancel-grace-unverifiable.test.js"
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "确认退出、补收之后也退 69（范围扩大）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  say('  status.json 的 phase 与 message 保持失联判定时的样子（不追溯改写）；归档 run.json 与运行登记见上方输出。');\n  return EXIT.OK;\n}\n\n/** `ps` 持续取不到时",
+      "replace": "  say('  status.json 的 phase 与 message 保持失联判定时的样子（不追溯改写）；归档 run.json 与运行登记见上方输出。');\n  return EXIT.ENV;\n}\n\n/** `ps` 持续取不到时",
+      "expect": "dist/test/test/integration/run-protocol.test.js"
+    }
+  ]
+}

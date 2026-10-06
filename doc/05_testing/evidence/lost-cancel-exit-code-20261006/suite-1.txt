@@ -1,0 +1,92 @@
+✔ EV-176 T1：首检判不了 ⇒ 一个信号都不发、onTerm 不调、gone 为假且 unverifiable (1.610584ms)
+✔ EV-176 T2：宽限期里判不了 ⇒ 继续轮询，之后判已退出即返回（只发 SIGTERM） (32.49275ms)
+✔ EV-176 T3：宽限期满仍判不了 ⇒ 不升级 SIGKILL、onEscalate 不调、unverifiable、等满宽限 (150.77ms)
+✔ EV-176 T4：期中判不了、期满恢复为同一进程 ⇒ 照常升级 SIGKILL (301.816416ms)
+✔ EV-176 T5：SIGKILL 之后的等待窗里判不了 ⇒ escalated、gone 为假、unverifiable (302.575792ms)
+✔ EV-176 T6（回归）：布尔判据的四种序列与改前逐字相同 (465.082458ms)
+✔ EV-217 R1（夹具）：spawnMarked 返回时 SIGTERM 处理器已装好——处理器装得慢也不会被 SIGTERM 打死 (1072.241667ms)
+✔ EV-176 W1：workerGoneForCancel——取不到 ⇒ unverifiable；同一进程 ⇒ false；不在 ⇒ true (64.949959ms)
+✔ EV-177 W2：lostWorkerGoneJudgment——取不到 ⇒ unverifiable；同一进程 ⇒ false；不在 ⇒ true；布尔的 lostWorkerGone 不变 (57.751709ms)
+✔ EV-176 K-Z1：入口判同一进程之后首检即判不了 ⇒ 零信号、69、不播报「发送 SIGTERM」、什么都不动 (104.51925ms)
+✔ EV-176 K-G1：宽限期里判不了、工作进程 3 s 后才退出 ⇒ 继续等到它真退出，收尾完整（凭据已抹、归档 cancelled） (3111.596834ms)
+✔ EV-176 K-G2：宽限期满仍判不了（忽略 SIGTERM）⇒ 不升级 SIGKILL、按记录结束 CLI、69、其余什么都不动 (5439.503792ms)
+✔ EV-176 K-G3：宽限期里判不了、工作进程收 SIGTERM 300 ms 后退出 ⇒ 轮询到它不在，收尾完整 (592.026084ms)
+✔ EV-176 K-K1：SIGKILL 扣下、等满仍是同一进程 ⇒ 按记录结束 CLI、69、其余什么都不动 (10169.465084ms)
+✔ EV-176 K-K3：SIGKILL 延迟 300 ms 才生效（不带 CLI 记录）⇒ 等到确认退出，收尾完整 (5602.742166ms)
+✔ EV-176 K-K4：SIGKILL 扣下、之后才取不到启动时刻 ⇒ 69、正文说 SIGKILL 之后判不了、什么都不动 (10098.90075ms)
+✔ EV-176 K-C0（回归）：不拦 ⇒ 退 0、工作进程收 SIGTERM 退出、收尾完整 (376.597625ms)
+✔ EV-176 K-E1（回归）：入口即判不了 ⇒ 69，正文与 EV-175 逐字相同、什么都不动 (83.167417ms)
+✔ EV-177 L1：失联后取消，SIGTERM 之后判不了、忽略 SIGTERM ⇒ 不升级 SIGKILL、按记录结束 CLI、工作进程仍在、退 69 且什么都不收 (5186.07075ms)
+✔ EV-177 L2：失联后取消，入格之后首检即判不了 ⇒ 一个信号都不发，播报不说「发送 （无）」，退 69 且什么都不收 (74.537375ms)
+✔ --status 在运行中返回 73 并渲染两侧进度 (14.475875ms)
+✔ 尚无有效心跳时：status 为 null，字段退化而非报错（AC-19） (1005.648292ms)
+✔ Bash 工具超时贴着等待窗口，并封顶在平台上限 (0.108583ms)
+✔ --status 对不存在的运行返回 65 (2.767125ms)
+✔ --wait 窗口用尽时返回 73（这是预期返回，不是失败） (3015.13375ms)
+✔ --wait 在工作进程写下终态后立即返回其退出码 (9.434416ms)
+✔ --wait 透出工作进程记录的失败退出码 (5.310167ms)
+✔ --wait 发现工作进程失联时抛错并把终态写下来 (328.571917ms)
+✔ --wait 对不存在的运行目录报 65 (0.333042ms)
+· 向工作进程组 42517 发送 SIGTERM
+· 归档 run-R-CANCEL.json 未回写：归档里没有 run-R-CANCEL.json
+· task.json 的运行登记未改：归档 run.json 不是 cancelled（读不到），不改登记
+已回收主题「协议用例」的锁
+运行 R-CANCEL 已取消
+✔ --cancel 终止工作进程、标 cancelled、并回收主题锁 (786.44175ms)
+已回收主题「协议用例」的锁
+运行 R-ARCH 已取消
+✔ EV-128 E1：--cancel 把归档 run.json 与 task.json 登记收尾为 cancelled，且排在 status.json 之前写 (337.4005ms)
+✔ 锁回收误判 U11：--cancel 收尾时锁在复核之后被改动 ⇒ 回收放弃，播报「未回收」而不是「已回收」（计划 r2 D7） (289.002916ms)
+运行 R-UNSURE 已取消
+✔ EV-128 E3：工作进程未确认退出（运行中却拿不到 worker_pid）⇒ 归档 run.json 不写，输出写明原因 (16.197833ms)
+已回收主题「协议用例」的锁
+运行 R-ROFS 已取消
+✔ EV-128 E6：归档侧写失败（_meta 只读）不连坐锁与闸门回收：退 0、锁已回收、status.json 为 cancelled、告警写明原因 (287.02375ms)
+✔ EV-142 L1：worker 被杀后 --wait 判 pid_gone ⇒ 归档 run.json 收尾为 failed、带 termination，task.json 同步 (324.663167ms)
+✔ EV-142 L2：进程还活着、只是心跳过期（heartbeat_stale）⇒ 归档 run.json 不写，报错写明未确认退出 (23.414625ms)
+✔ EV-142 L3：运行中却拿不到 pid、心跳过期 ⇒ 用改写前的 status.json 判「未确认」，run.json 不写 (14.488584ms)
+✔ EV-142 L5：status.json 读不到、worker.pid 指向的进程已死（pid_gone）⇒ 也收尾为 failed；进程活着则不判失联 (2333.243125ms)
+· 工作进程 42715 已不存在，仅做状态与锁的清理
+⚠️  status.json 里没有在跑的审查员 CLI 记录——CLI 已先结束，或派生后来不及记下；后者本命令够不到，请用 ps 核对 ppid 为 1 的 CLI 进程（设计 7.5「审查员 CLI 进程组记录」的如实保留清单）
+· 归档 run-R-DEADCANCEL.json 未回写：归档里没有 run-R-DEADCANCEL.json
+· task.json 的运行登记未改：归档 run.json 不是 cancelled（读不到），不改登记
+运行 R-DEADCANCEL 已取消
+✔ --cancel 对已退出的工作进程也能清理状态与锁 (620.951542ms)
+✔ EV-150 U5①：确认退出 ⇒ 终止先于闸门回收；随后闸门 idle、run.json 与登记 failed（post_spawn_exception）、status.json failed、已改写成 worker 的锁按 run_id 回收 (29.015042ms)
+✔ EV-150 U5②：确认不了退出 ⇒ 闸门、run.json、status.json 的 phase 不动；补记 worker_pid 与启动时刻；本进程内容的锁改记到 worker 名下；给出 --cancel 出路 (13.770958ms)
+✔ EV-150 U5③：收尾窗口里主题锁已被新一轮接管 ⇒ 第 6 步不删它，新一轮的闸门也不动 (26.262625ms)
+✔ EV-150 U5④：worker 在被终止之前已跑完（run.json 与 status.json 都是 success）⇒ 两者都不改写，指路 --wait (16.688709ms)
+✔ EV-150 U5⑤：回读 run.json 读不出（不可解析）⇒ status.json 的 phase 不动、只补 pid，并告警人工核对（代码双审 r1 CODEX-03） (16.67775ms)
+✔ EV-150 U5⑥：确认不了退出、锁已不归本进程也不归 worker ⇒ 不说「已记在它名下」，如实说明锁的归属与并发风险（代码双审 r1 GLM-01 第 2 点） (15.067333ms)
+✔ EV-150 U6：--cancel 宽限期判据——存活但不是同一进程（PID 被复用）即算已退出；同一进程算未退出；不存在算已退出 (5.810167ms)
+✔ EV-152 U8：worker 处理器的预算落在取消宽限之内（转发宽限 + SIGKILL 后等待 + 1 s 余量 ≤ WORKER_TERM_GRACE_MS） (0.087958ms)
+✔ EV-152 U9①：处理器——登记为空时收到 SIGTERM 即以 signal: SIGTERM 退出（退出形态与今天相同，不是 exit(143)） (617.5155ms)
+✔ EV-152 U9②：处理器——连发两次 SIGTERM 只处理第一次：忽略 SIGTERM 的 CLI 组被升级 SIGKILL 结束（组空），worker 仍以 signal: SIGTERM 在宽限内退出 (2706.124917ms)
+✔ EV-146 K2：--wait 判失联时记下结构化的 lost；heartbeat_stale 的报错先列事实再给 --cancel 出口，pid_gone 不给 (369.614291ms)
+✔ EV-160 R1：--wait 那一句、共享判据、预检告警三者对同一阈值给出同一结论（2 / 30 / 30.5 / 120） (106.443375ms)
+✔ EV-146 K3：本格主线——结束 worker、补收 run.json 与登记（worker_lost / heartbeat_stale）、按 run_id + pid 回收锁；status.json 逐字节不变、闸门不动 (322.140333ms)
+✔ EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如实说明，退 69（EV-177 ②）；再跑一次仍入本格（判格可重入） (35.236584ms)
+✔ EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」 (187.92425ms)
+✔ EV-146 K5′：身份判不上（mismatch）时，status.json 里记着的活 CLI 组也不结束（代码双审 r1 CODEX-02）；同形但两种启动时刻缺失、worker 已不在时改判 gone（EV-159）、照旧按记录结束 CLI 并尝试补收 (610.002792ms)
+✔ EV-146 K10：结束工作进程时一个信号都没发就判已不在（零信号）⇒ 不说「响应 SIGTERM」「处理器已收拾」，无记录告警照常打，结论不说「已结束仍挂着的」（代码双审 r1 CODEX-01） (34.949625ms)
+✔ EV-146 K11：本格的退出判据是严格的——进程在而启动时刻取不到（ps 瞬时失败）不算已退出；不存在或启动时刻不同才算（代码双审 r1 GLM-01） (0.081167ms)
+✔ EV-146 K6：锁已不归本运行的 worker（run_id 相同而 pid 不同 / run_id 不同）⇒ 不动它、如实说明；worker 与归档照常收尾 (592.741625ms)
+✔ EV-146 K7：worker 挂住之前已写下归档终态（success）⇒ run.json 不追溯改写、如实说明；worker 照样结束、锁照样回收 (333.142375ms)
+✔ EV-159 N2：alive 格成功之后再跑一次 --cancel ⇒ worker 已不在（gone 格），按前提跳过（已是终态，不追溯改写）、可重入、逐字节不变 (357.796125ms)
+✔ EV-146 K9：本格的归档写失败（归档元数据目录只读）⇒ 告警带本格自己的「没有第二次机会」半句，不是主路径那句；锁照常回收 (292.397458ms)
+✔ EV-159 N1：worker 自己死了（不经 cancelLostWorker）⇒ classifyLostCancel 直接判 gone，--cancel 按 EV-142 前提补收 run.json 与登记、回收锁；不说「无需取消」 (341.438125ms)
+✔ EV-159 N3：gone 格下锁已不归本运行的 worker（run_id 相同而 pid 不同 / run_id 不同）⇒ 不动它、如实说明；归档照常补收 (670.573958ms)
+✔ EV-159 N4：gone 格归档写失败（归档元数据目录只读）⇒ 告警带「可以再跑一次 --cancel 重试」的措辞，不是「没有第二次机会」；锁照常回收 (360.976375ms)
+✔ EV-159 classifyLostCancel 矩阵：pid 不合法（不管死活）⇒ no_identity；pid 合法+两时刻缺失+活着 ⇒ no_identity；+已死 ⇒ gone（新增）；pid 合法+有时刻+已死 ⇒ gone（既有行为，回归） (309.002583ms)
+✔ EV-158 U4 ②：settleOrphanedStart 确认不了退出 ⇒ status.json 补记规范化启动时刻、改写后的锁带 worker 的而不是本进程的；已有值不覆盖（??=） (27.556667ms)
+✔ EV-158 U4 ②′：settleOrphanedStart 确认退出一支 ⇒ status.json 为 null 的规范化字段按 startRun 已取到的值补上 (23.380875ms)
+✔ EV-158 C5 / C6：--cancel 主路径在与 --start 不同的环境里——新版记录 ⇒ 向活 worker 发 SIGTERM 并确认退出、收尾 cancelled；旧版记录 ⇒ 仍当它已不存在（今天的行为） (316.007292ms)
+✔ EV-158 U9（D6）：失联后取消那一格判 mismatch ⇒ 告警按比对依据分写，两种依据下都不对 worker 与记录里的 CLI 发信号 (77.038ms)
+ℹ tests 69
+ℹ suites 0
+ℹ pass 69
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 43422.678209

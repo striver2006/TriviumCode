@@ -909,7 +909,7 @@ test('EV-146 K3：本格主线——结束 worker、补收 run.json 与登记（
   }
 });
 
-test('EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如实说明；再跑一次仍入本格（判格可重入）', async () => {
+test('EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如实说明，退 69（EV-177 ②）；再跑一次仍入本格（判格可重入）', async () => {
   const ctx = await fakeCtx();
   const r = await lostScenario(ctx, 'R-K4');
   try {
@@ -923,7 +923,8 @@ test('EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如�
       return { gone: false, escalated: true, signals: ['SIGTERM', 'SIGKILL'] as NodeJS.Signals[] };
     };
     const first = await captureOut(() => cancelRun(ctx, 'R-K4', { terminateWorker }));
-    assert.equal(first.value, EXIT.OK);
+    // 未确认退出以 69 退出，与主路径同口径（EV-177 ②；EV-146 D6 原为 0）；播报文字不变
+    assert.equal(first.value, EXIT.ENV);
     assert.equal(await readText(r.a.runJson), runBefore, '未确认退出时 run.json 必须逐字节不变');
     assert.equal(await readText(r.a.taskJson), taskBefore);
     assert.equal(await readText(lockFile(ctx)), lockBefore, '未确认退出时锁不动');
@@ -934,7 +935,7 @@ test('EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如�
     assert.equal((await processAlive(r.pid)).alive, true, '桩没有真的发信号，假 worker 仍在');
 
     const second = await captureOut(() => cancelRun(ctx, 'R-K4', { terminateWorker }));
-    assert.equal(second.value, EXIT.OK);
+    assert.equal(second.value, EXIT.ENV);
     assert.equal(calls, 2, '第二次 --cancel 仍入本格、再次尝试结束（CODEX-06 ③）');
     assert.match(second.out, /未能确认工作进程 \d+ 退出/);
   } finally {

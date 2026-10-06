@@ -676,9 +676,9 @@ test('EV-176 K-E1（回归）：入口即判不了 ⇒ 69，正文与 EV-175 逐
 
 // ─────────────────────────── L 系列：失联后取消那一格（EV-177 ①） ───────────────────────────
 
-/** 失联那一格未确认退出：退 0（EV-177 ② 不改）、归档 / 登记 / 锁 / 闸门原样、status.json 仍是失联判定时的样子 */
+/** 失联那一格未确认退出：退 69（EV-177 ②，与主路径同口径）、归档 / 登记 / 锁 / 闸门原样、status.json 仍是失联判定时的样子 */
 async function assertLostUntouched(ctx: Ctx, seeded: Seeded, runId: string, io: Awaited<ReturnType<typeof captureIO>>, lockBefore: string | null) {
-  assert.equal(io.value, EXIT.OK, `失联那一格未确认退出仍退 0（EV-177 ② 不改）：${String((io.error as Error | undefined)?.message)}\nstderr=${io.err}`);
+  assert.equal(io.value, EXIT.ENV, `失联那一格未确认退出退 69，与主路径同口径（EV-177 ②）：${String((io.error as Error | undefined)?.message)}\nstderr=${io.err}`);
   assert.deepEqual(await facts(ctx, seeded, runId), {
     phase: 'failed', lock: true, gate: 'running', carrier: true, archive: 'running', task: 'running',
   }, '未确认退出：归档、登记、锁、闸门、载体都不动；status.json 保持失联判定时的 failed');
@@ -686,7 +686,7 @@ async function assertLostUntouched(ctx: Ctx, seeded: Seeded, runId: string, io: 
   assert.match(io.out, /未能确认工作进程 \d+ 退出，归档与主题锁未动/);
 }
 
-test('EV-177 L1：失联后取消，SIGTERM 之后判不了、忽略 SIGTERM ⇒ 不升级 SIGKILL、按记录结束 CLI、工作进程仍在、退 0 且什么都不收', T, async () => {
+test('EV-177 L1：失联后取消，SIGTERM 之后判不了、忽略 SIGTERM ⇒ 不升级 SIGKILL、按记录结束 CLI、工作进程仍在、退 69 且什么都不收', T, async () => {
   await kCell('L1', {
     program: 'ignore',
     cli: true,
@@ -705,7 +705,7 @@ test('EV-177 L1：失联后取消，SIGTERM 之后判不了、忽略 SIGTERM ⇒
   });
 });
 
-test('EV-177 L2：失联后取消，入格之后首检即判不了 ⇒ 一个信号都不发，播报不说「发送 （无）」，退 0 且什么都不收', T, async () => {
+test('EV-177 L2：失联后取消，入格之后首检即判不了 ⇒ 一个信号都不发，播报不说「发送 （无）」，退 69 且什么都不收', T, async () => {
   await kCell('L2', {
     program: 'ignore',
     lost: true,
