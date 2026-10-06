@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.37
+> - **当前版本**：v1.0.38
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -369,6 +369,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 - `abandon` 可省略 `--stage`，批量放弃该主题全部非 running 的闸门
 - **三种结论都解除写锁，工件一律保留**
 - `reject` 必须带 `--reason`
+- **批之前想再看一眼改动**：`approve` 没有确认步骤，工作树改动摘要打印出来时审批已经落下。想先看再决定，就先不批，重跑 `.trivium/bin/trivium gate --stage <阶段> --topic <主题> --await-approval`——它与 `approve` 走同一份复核、同样打印改动摘要，但不落审批，闸门保持等待审批（只按原值刷新一次闸门项的会话与时间）；看完再 `/dual-approve`（v1.0.38 起写明，设计 v1.3.119，EV-140；`/dual-approve` 的 skill 同步写了这条）
 
 ### 4.9 直接调 CLI 的命令
 

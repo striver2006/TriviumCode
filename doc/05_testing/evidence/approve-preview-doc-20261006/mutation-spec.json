@@ -1,0 +1,26 @@
+{
+  "targets": [
+    "skills-src/commands/approve.contract.md"
+  ],
+  "suites": [
+    "dist/test/test/contract/entry-render-parity.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "删掉 skill 源里新加的整段",
+      "file": "skills-src/commands/approve.contract.md",
+      "find": "\n**批之前想再看一眼改动**：`approve` 没有确认步骤，摘要打印出来时审批已经落下。用户只是想先看改动、\n还没决定批不批时，**不要跑 `approve`**，改跑：\n\n```\n.trivium/bin/trivium gate --stage <阶段> --topic <主题> --await-approval\n```\n\n它与 `approve` 走同一份复核、同样打印工作树改动摘要，但不落审批，闸门保持等待审批（只按原值刷新一次闸门项的会话与时间）。\n把输出原样转述给用户，等用户看完、明确要求审批时再运行上面的 `approve`。\n",
+      "replace": "",
+      "expect": "dist/test/test/contract/entry-render-parity.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "只删那条 --await-approval 命令",
+      "file": "skills-src/commands/approve.contract.md",
+      "find": ".trivium/bin/trivium gate --stage <阶段> --topic <主题> --await-approval\n",
+      "replace": "\n",
+      "expect": "dist/test/test/contract/entry-render-parity.test.js"
+    }
+  ]
+}
