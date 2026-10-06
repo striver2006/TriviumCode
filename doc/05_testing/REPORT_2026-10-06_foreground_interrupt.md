@@ -68,3 +68,7 @@
 - 断言范围：既有用例一条未改。经 CLI 入口跑的用例（`doctor --selftest`、集成用例里起 bundle 的 `doctor` / `preflight` / `review`）都在装了处理器的入口上跑，它们不发信号，处理器不触发；直调 `runDoctor` / `runPreflight` 的单测不经入口、不受影响。（这一句起草时写成「全量里 doctor / preflight 的用例都在装了处理器的入口上跑」，说宽了，全量跑完后订正。）
 - 契约：`shutdownTrackedTrees` 只在本处理器里调、调用后经 `exitOnce` 必定退出（看门狗兜底）；没有登记树时不调它，不冻结任何东西。
 - 护栏：新用例不建临时目录（E1 的夹具走 `makeFixture`，随测试文件进程退出删除）；所有子进程按组收尾，单跑与预跑后核过无残留（`pgrep` 标记为空）。
+
+## 4. 真实 CLI 验证（2026-10-06 补，用户授权花配额）
+
+`real-cli-sigint.mjs`：前台进程装 `installForegroundInterruptForwarding`，以仓库构建的调用函数同时拉起三家真实审查员 CLI——agy 走 `invokeAgy`、zcode 走 `invokeZcode`、codex 用 `run()` 按 `killTree` 直接起 `codex exec -s read-only`（正式调用要准备凭据副本目录，这里只验进程组能否被结束）——提示语要求长篇输出并带唯一标记；8 s 后对前台进程组发 SIGINT。读数（`real-cli-sigint.out.txt`）：发信号前三个组各 2 个成员、命令行带标记的进程 4 个；前台 670 ms 内以 SIGINT 退出，stderr 播报「收到 SIGINT：正在结束本进程拉起的审查员 CLI」；2 s 后三个组成员都归零、带标记的进程一个不剩——三家真实 CLI 都在宽限期内响应了按组发的 SIGTERM。未测：claude 作审查员那一侧（本机缺省 Driver 是 claude，不在缺省审查员里）。

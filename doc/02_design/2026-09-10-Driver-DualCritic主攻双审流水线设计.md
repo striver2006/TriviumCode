@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.102
+> - **当前版本**：v1.3.103
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3715,6 +3715,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.103** | 2026-10-06 | **补记真实 CLI 验证（EV-156、EV-155）。** 正文不改。用户授权花配额后补测：①EV-156——`invokeAgy` 同一条极短提示各跑一次管道与 pty，均退 0、回复一致，pty 那次 stdout 首行可按 JSON 解析、无 `^D` 回显与 `\r`；v1.3.100 那行「未在真实 agy 上验证」就此关闭（pty 下 stderr 并进 stdout 那一格仍未覆盖）。②EV-155——前台装中断转发、同时拉起 agy / zcode / codex 三家真实 CLI，8 s 后发 SIGINT ⇒ 前台 670 ms 内以 SIGINT 退出、三个进程组成员归零；claude 作审查员那一侧未测。读数见两份报告的 §4。 |
 | **v1.3.102** | 2026-10-06 | **前台中断结束审查员 CLI（EV-155）。** M11 前待办批次第 9 题，**本批未走双审**（用户定先零配额实测再定修法）。实测确认：前台进程以 `killTree` 拉起的子进程在 Ctrl-C 后过继给 init、继续活着。`run-protocol.ts` 新增 `installForegroundInterruptForwarding`，装在 `cmdReview`（worker 分支之后）、`cmdDoctor`、`cmdPreflight`：接 SIGINT / SIGTERM、只处理第一次；无登记中的进程树即以同一信号重新自杀（同缺省处置）；有就 `shutdownTrackedTrees` 按组结束后再重新自杀（调用后必定退出，守住它的「调用方须随后退出」契约）；第二次信号立即退出。退出形态不变，不收中断后的留痕（EV-151）。7.5 新增「前台入口的中断语义」段，LLD v1.1.40、用户手册 v1.0.33 同步。新用例 5 格（含经真实 bundle 的同步 review 端到端），变异 4/4 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_foreground_interrupt.md`。 |
 | **v1.3.101** | 2026-10-06 | **失联取消判不了不升级（EV-177 ①）。** M11 前待办批次第 7 题，**本批未走双审**（用户定只做 ①、② 改退出码不做）。`cancelLostWorker` 结束工作进程的 `isGone` 由布尔的 `lostWorkerGone`（判不了即「仍在」）改为新导出的三态 `lostWorkerGoneJudgment`（`identity === 'unverifiable'` ⇒ `'unverifiable'`），与主路径（EV-176）同口径：首检判不了一个信号都不发、宽限期满判不了不升级 SIGKILL。`lostWorkerGone` 不动（只剩抛错后的复判在用）。未确认告警首句按两种判不了分写（「判不了身份：不升级 SIGKILL」/「未发信号」——后者是改用三态判据后才有的零信号形态，不套「已向……发送」句式）；照 D4 按记录结束 CLI、退 0（②）不变。7.5 那句、LLD 已知缺口表、用户手册 v1.0.32 同步。新用例 3 格（真工作进程 + `ps` 失败桩），变异 4/4 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_lost_cancel_unverifiable.md`。 |
 | **v1.3.100** | 2026-10-06 | **sh / dash 补测与 pty 模式修复（EV-101、EV-156）。** M11 前待办批次第 6 题，**本批未走双审**。①EV-101：EV-79 的重定向拼写全表在 macOS `/bin/sh`（bash 3.2 posix 模式）与 `/bin/dash` 下零配额补测——判据判 fd 操作、不取目标的那一族在两种外壳下都不建文件，并集对这一半成立；带 `!` 后缀的拼写（`>! X` 等）在 bash / sh / dash 下写的是名为 `!` 的文件，判据只取 `X`，另登 EV-219（判据不改，指纹比对兜得住）。11.1 的并集句据此改写。②EV-156：`run()` 的 pty 分支在 macOS 上原先必失败（stdin 是管道，BSD `script` 立即退 1）；只改 BSD 分支——stdin 给 /dev/null，stdout 经新导出的 `ptyOutputNormalizer` 去掉首部 `^D\b\b` 回显、`\r\n` 还原为 `\n`（处理跨块边界）。`RunOptions.pty` 写明 BSD 下 `stdin` 选项不生效、被包装命令的 stderr 并进 stdout。新单测 7 格（macOS 真跑 `script`），变异 4/4 咬住。**未在真实 agy 上验证**（本机 `pty_required: false`），pty 下 agy 按 stderr 判的 print-timeout 告警会看不到，记在 BACKLOG EV-156。读数见 `doc/05_testing/REPORT_2026-10-06_sh_dash_and_pty.md`。 |

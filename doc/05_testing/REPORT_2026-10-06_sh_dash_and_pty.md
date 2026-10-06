@@ -58,3 +58,7 @@
 - 断言范围：既有用例一条未改；非 pty 路径的行为没有变化（R1 顺带比对了非 pty 输出）。
 - `stdin` 选项在 BSD pty 下静默不生效：全仓 `pty: true` 的调用方只有 agy 适配器，它不传 `stdin`；文档块已写明。
 - 护栏：新用例不建临时目录；拉起的只有 `script` 包装的系统命令，随命令结束退出。
+
+## 4. 真实 CLI 验证（2026-10-06 补，用户授权花配额）
+
+`real-agy-pty.mjs`：用仓库构建的 `invokeAgy`、同一条极短提示（只回复 OK、不调工具），各跑一次 `pty: false` 与 `pty: true`（`script -q /dev/null agy …`）。两次都退 0、解析出的回复都是 `OK`、stdout 都是 5 行且首行能按 JSON 解析；pty 那次 stdout 里没有 `^D\b\b` 回显、没有 `\r`（已被 `ptyOutputNormalizer` 还原），耗时 27.7 s / 29.1 s（`real-agy-pty.out.txt`）。§0 边界里「未在真实 agy 上验证」这一条就此关闭；「pty 下 agy 的 stderr 并进 stdout、适配器按 stderr 判 `printTimeoutWarned` 那一格看不到」仍成立（这次调用 stderr 为空，测不到那一格）。
