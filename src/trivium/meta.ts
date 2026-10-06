@@ -508,6 +508,8 @@ export function migrateRunMetaV1(raw: unknown): RunMeta {
  * `--check` 会返回 ok 而**最新一轮落盘的审查件从未被裁决检查过**。
  * 提交时 `checkRunManifests` 会拦下这种归档（所以不是静默放行），
  * 但闸门自身不留痕迹的话，人看到的只是「第 N-1 轮通过了」。
+ * （EV-73 起这一格不再发生：`cmdGate` 与 `resolveStageDriver` 一样，`unreadable` 非空即硬失败，
+ * 本函数的「往下试」只为把最新一份可读的交给调用方点名；告警照旧。）
  *
  * **「一份都没有」与「有但全读不出」是两回事**（代码双审 AGY-01 / GLM-02）：
  * 前者是正常的「还没跑过」，后者是留痕被搅坏。上一版把两者压成同一个 `null`，
@@ -560,6 +562,8 @@ export async function latestRunMeta(l: ArchiveLayout, stage: Stage): Promise<Lat
  * 各处只写自己的前半句（什么判不了、为什么不按缺省），出口一律以本段收尾——
  * 上一版七处各写一句，全都写成「重跑一次该阶段双审」，而那条路在 `review --start` 入口就被
  * 同一个 `corrupt` 判定拒绝（重跑到不了先落骨架那一步），出口指回自己。
+ * 此后 `gate` 又有两处同状态的拒绝接上本段：`--run-id` 钉住的那一份读不出（代码双审 r1 GLM-01），
+ * 以及取到了可读的一份、但比它更新的读不出（EV-73，与 `resolveStageDriver` 的 `corrupt` 同口径）。
  *
  * 第八个消费点（v1.3.88，EV-210）是 `review.ts` 的 `resolvePlanFinal`，也是**唯一不拒绝**的一处：
  * 代码阶段判不出计划阶段的执笔方时，只是不列计划定稿、出一条告警，本轮照常审查——

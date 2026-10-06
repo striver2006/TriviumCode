@@ -1,0 +1,42 @@
+{
+  "targets": [
+    "src/trivium/cli.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/gate-loop.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "删掉新分支：最新坏、旧可读时照旧采信旧份（改前形态）",
+      "file": "src/trivium/cli.ts",
+      "find": "  if (latest && scan.unreadable.length > 0) {\n",
+      "replace": "  if (latest && scan.unreadable.length > 0 && Date.now() < 0) {\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "删掉「本次判定」一行",
+      "file": "src/trivium/cli.ts",
+      "find": "        `  本次判定：${judged.join('；')}。\\n` +\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "查看旧轮的出路指向读不出的那一份",
+      "file": "src/trivium/cli.ts",
+      "find": "`  只想查看上一轮的，可用 --run-id ${latest.run_id} 钉住那一份。\\n`",
+      "replace": "`  只想查看上一轮的，可用 --run-id ${scan.unreadable[0]} 钉住那一份。\\n`",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "出口段列的是可读的旧份而不是读不出的那几份",
+      "file": "src/trivium/cli.ts",
+      "find": "        unreadableRunMetaExitAt(ref.layout, stage, scan.unreadable),\n    );\n  }\n\n  const gateDriver",
+      "replace": "        unreadableRunMetaExitAt(ref.layout, stage, [latest.run_id]),\n    );\n  }\n\n  const gateDriver",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    }
+  ]
+}

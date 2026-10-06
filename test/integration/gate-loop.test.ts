@@ -1865,6 +1865,58 @@ test(
   },
 );
 
+/*
+ * ───────── T-12b：最新一份读不出、较旧一份可读（EV-73，用户 2026-10-06 定取 A）─────────
+ *
+ * 此前 `gate` 静默采信较旧那份：driver、轮次与 run_id 一并变旧，`--check` / `--await-approval`
+ * 对上一轮做裁决校验、立停点，唯一的迹象是一行 stderr。Driver 判定的四个消费点早已把这一格判坏，
+ * 现在 gate 同口径：三条子命令都退 65、以共用出口段收尾、带「本次判定」一行；
+ * 查看上一轮改走 `--run-id` 钉住可读的那一份——它不扫目录，仍然走得通。
+ */
+test(
+  'T-12b：最新一份读不出、较旧一份可读时，gate 三条子命令都硬失败；--run-id 钉住可读那份仍可查看',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    const { metaDir } = await import('../../src/trivium/archive.js');
+    const fx = await makeFixture({ topic: TOPIC });
+    const runId = await runPlan(fx.root);
+    await writeDisposition(fx.stageDir, runId);
+
+    // 比任何真实 run_id 都新的一份坏留痕（字典序即时序）
+    const dir = metaDir({ archiveRoot: path.join(fx.root, '.reviews'), topic: TOPIC }, 'plan');
+    const badId = '29991231T235959Z';
+    await fs.writeFile(path.join(dir, `run-${badId}.json`), '{ 这不是 JSON', 'utf8');
+    const badFile = path.join(await fs.realpath(dir), `run-${badId}.json`);
+
+    for (const sub of ['--check', '--check-artifacts', '--await-approval']) {
+      const r = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, sub, '--session-id', SESSION], STUB);
+      const out = r.stdout + r.stderr;
+      assert.equal(r.code, EXIT.MISSING_ARTIFACT, `${sub}：最新一份读不出时应硬失败，不得采信上一轮：${out}`);
+      assert.match(out, new RegExp(`plan 阶段最新的 1 份运行元数据读不出来（${badId}），可读的最新一份是更早的 ${runId}。\n`), `${sub}：${out}`);
+      assert.match(out, /不能按那一份继续/, `${sub}：要说清为什么不按上一轮继续：${out}`);
+      assert.match(out, new RegExp(`只想查看上一轮的，可用 --run-id ${runId} 钉住那一份。\n`), `${sub}：要给出查看旧轮的出路：${out}`);
+      const judged = out.indexOf(`  本次判定：${badId} 文件在但不是合法 JSON（`);
+      assert.ok(judged > out.indexOf('钉住那一份。\n'), `${sub}：缺本次判定一行，或不在原文之后：${out}`);
+      assert.ok(judged < out.indexOf('  涉及的运行留痕'), `${sub}：本次判定要在共用出口段之前：${out}`);
+      assertUnreadableExit(out, [badFile], `gate ${sub}（最新一份读不出）`);
+      // 只列读不出的那一份，可读的旧份不进出口段的路径列表
+      assert.ok(!out.includes(`    · ${path.join(await fs.realpath(dir), `run-${runId}.json`)}\n`), `${sub}：把可读的旧份也列进去了：${out}`);
+    }
+    // 硬失败之前不立停点：--check 与 --await-approval 都没把闸门推到上一轮的等待审批
+    const gates = await gatesOf(fx.root).catch(() => ({} as Record<string, { state: string; run_id: string | null }>));
+    for (const [k, g] of Object.entries(gates)) {
+      assert.notEqual(g.state, 'awaiting_approval', `硬失败的同时立了停点（${k}）：${JSON.stringify(g)}`);
+    }
+
+    // 钉住可读的那一份：不扫目录，照常对那一轮校验
+    for (const sub of ['--check-artifacts', '--check']) {
+      const p = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, sub, '--run-id', runId, '--session-id', SESSION], STUB);
+      assert.equal(p.code, EXIT.OK, `${sub} --run-id 钉住可读的旧份应仍可用：${p.stdout + p.stderr}`);
+      assert.doesNotMatch(p.stdout + p.stderr, /读不出来/, `${sub} --run-id：钉住时不扫目录，不该提那份坏的：${p.stdout + p.stderr}`);
+    }
+  },
+);
+
 // ─────────── approve 通过前复核（M10a 第 3 步，M10 计划 r7 §4.3 / §4.4 / §4.5，计划 r3 §4.1）───────────
 /*
  * 停点立起来之后（`--check` 自动立、或 `--await-approval`），approve 此前不做任何复核：

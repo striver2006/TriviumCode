@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.35
+> - **当前版本**：v1.0.36
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -863,6 +863,7 @@ v1.0.26 起（设计 v1.3.72），下面两个键**删除**了：它们写在配
 | 一侧超时 | 默认 strict 会中止。调大 `review.timeout_s`，或临时 `--allow-single` 降级 |
 | 主题被锁但没有运行在跑 | 遗留锁会自动回收（四条判据取任一）。真卡住用 `review --cancel <run_id>` |
 | 每次工具调用都报 hook 错误 | wrapper 里写死的 node 路径失效了（`brew upgrade node` 之后）。重跑 `init` |
+| `gate` 退 65，说「最新的 N 份运行元数据读不出来」，可读的最新一份是更早的某个 run | 该阶段最新那一轮的 `_meta/run-*.json` 读不出（v1.0.36 起，设计 v1.3.114，EV-73；此前 `gate` 会静默改按上一轮判）。按文案里「本次判定」与三档成因处置，不要删改那份文件；只想查看上一轮的，用 `gate --run-id <文案里点名的那一份>` 钉住 |
 | Bash 命令莫名被拦 | 命令正文里有 `.trivium` / `_meta` / `task.json` 之类的字样？见 §8.1 |
 
 深度故障（锁、闸门、跑挂、留痕）按退出码查 [RUNBOOK_pipeline_ops.md](../06_deployment/RUNBOOK_pipeline_ops.md)。

@@ -1183,6 +1183,32 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
         unreadableRunMetaExitAt(ref.layout, stage, scan.unreadable),
     );
   }
+  if (latest && scan.unreadable.length > 0) {
+    /*
+     * ── 最新那几份读不出、较旧一份可读（EV-73，用户定取 A）──
+     *
+     * `latestRunMeta` 是 newest-first、命中即返回，所以 `unreadable` 里恰好全是**比 `latest` 更新**的那几份。
+     * 此前这里静默采信 `latest`——driver、轮次与 run_id 一并变旧，`--check` / `--await-approval` 对上一轮
+     * 做裁决校验、立停点，唯一的迹象是 `latestRunMeta` 打的一行 stderr。Driver 判定的四个消费点
+     * （`resolveStageDriver`）早已把这一格判坏；gate 恰恰是立停点、走向审批的入口，判错当场生效，所以同口径。
+     * 查看上一轮的出路是 `--run-id` 钉住可读的那一份（钉住时不扫目录，走不到这里）。
+     */
+    const { unreadableRunMetaExitAt } = await import('./meta.js');
+    const judged: string[] = [];
+    for (const id of scan.unreadable) {
+      const r = await readRunMetaDetailed(ref.layout, stage, id);
+      // 扫描与复读之间文件被修好了也照实说，不改判：这一次的结论以扫描为准
+      judged.push(r.ok ? `${id} 复读时已可读` : `${id} ${describeRunMetaCause(r.cause)}`);
+    }
+    throw missingArtifactError(
+      `${stage} 阶段最新的 ${scan.unreadable.length} 份运行元数据读不出来` +
+        `（${scan.unreadable.join('、')}），可读的最新一份是更早的 ${latest.run_id}。\n` +
+        '  不能按那一份继续——那会把「最新一轮的留痕坏了」判成「按上一轮的 Driver、轮次与 run_id 算」。\n' +
+        `  只想查看上一轮的，可用 --run-id ${latest.run_id} 钉住那一份。\n` +
+        `  本次判定：${judged.join('；')}。\n` +
+        unreadableRunMetaExitAt(ref.layout, stage, scan.unreadable),
+    );
+  }
 
   const gateDriver = latest?.driver ?? DEFAULT_DRIVER;
   /*
