@@ -943,8 +943,11 @@ test('EV-146 K4：确认不了退出 ⇒ run.json、登记、锁都不动，如�
   }
 });
 
-/** 不入本格的各格：直接把 status.json 摆成给定形状（不经 waitRun），看 --cancel 不发信号、什么都不写 */
-async function notThisCell(runId: string, shape: (s: RunStatus, pid: number) => void) {
+/**
+ * 不入本格的各格：直接把 status.json 摆成给定形状（不经 waitRun），看 --cancel 不发信号、什么都不写。
+ * `code`：期望的退出码。`none` 格（无需取消）退 0；`mismatch` / `no_identity` 两格自 EV-177 ② 补起退 69（这次没做收尾、状态原样、可重试）。
+ */
+async function notThisCell(runId: string, shape: (s: RunStatus, pid: number) => void, code: number = EXIT.OK) {
   const ctx = await fakeCtx();
   const { pid, runDir } = await seedRun(ctx, runId);
   const a = await seedArchive(ctx, runId);
@@ -960,7 +963,7 @@ async function notThisCell(runId: string, shape: (s: RunStatus, pid: number) => 
   const before = { run: await readText(a.runJson), lock: await readText(lockFile(ctx)), status: await readText(statusPath) };
   try {
     const r = await captureOut(() => cancelRun(ctx, runId));
-    assert.equal(r.value, EXIT.OK);
+    assert.equal(r.value, code, `${runId}：退出码`);
     assert.equal((await processAlive(pid)).alive, true, `${runId}：不入本格就不对 worker 发信号`);
     assert.equal(await readText(a.runJson), before.run, `${runId}：run.json 不动`);
     assert.equal(await readText(lockFile(ctx)), before.lock, `${runId}：锁不动`);
@@ -971,7 +974,7 @@ async function notThisCell(runId: string, shape: (s: RunStatus, pid: number) => 
   }
 }
 
-test('EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」', async () => {
+test('EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」、退 69（EV-177 ② 补）', async () => {
   // ① 没有 lost、message 恰好是人读的失联文案：证明判据不读 message
   let r = await notThisCell('R-K5-1', (s) => { delete s.lost; });
   assert.match(r.out, /已处于终态（failed），无需取消/);
@@ -982,7 +985,7 @@ test('EV-146 K5：不入本格的各格——没有 lost（不读文案）、原
   r = await notThisCell('R-K5-3', (s) => { s.phase = 'success'; s.exit_code = EXIT.OK; });
   assert.match(r.out, /已处于终态（success），无需取消/);
   // ④ 启动时刻不符（PID 复用 / EV-158 环境错配）
-  r = await notThisCell('R-K5-4', (s) => { s.worker_started_at = 'Thu Jan  1 00:00:00 1970'; });
+  r = await notThisCell('R-K5-4', (s) => { s.worker_started_at = 'Thu Jan  1 00:00:00 1970'; }, EXIT.ENV);
   assert.match(r.err, /上有活进程，但启动时刻与 status\.json 的记录不符：可能是 PID 已被复用，也可能是本命令的 TZ \/ 区域设置与 --start 不同（BACKLOG EV-158）——不对它发信号/);
   assert.match(r.out, /已被 --wait 判为失联（heartbeat_stale），但工作进程的身份与记录不符，未对工作进程与它名下的审查员 CLI 发信号；归档 run\.json 与主题锁未动/);
   assert.doesNotMatch(r.out, /无需取消/, 'AGY-01：不跌回「无需取消」');
@@ -994,7 +997,7 @@ test('EV-146 K5：不入本格的各格——没有 lost（不读文案）、原
     ['R-K5-5d', (s, pid) => { (s as unknown as { worker_pid: unknown }).worker_pid = String(pid); }],
   ];
   for (const [id, shape] of shapes) {
-    r = await notThisCell(id, shape);
+    r = await notThisCell(id, shape, EXIT.ENV);
     assert.match(r.err, /status\.json 里工作进程的 pid 或启动时刻缺失 \/ 形状不对，判不了是不是同一进程，不发信号/, id);
     assert.match(r.out, /但 status\.json 没记下可核对的工作进程身份，未对工作进程发信号；归档 run\.json 与主题锁未动/, id);
     assert.doesNotMatch(r.out, /无需取消/, id);
@@ -1024,7 +1027,7 @@ test('EV-146 K5′：身份判不上（mismatch）时，status.json 里记着的
     const r = await notThisCell('R-K5P-M', (s) => {
       s.worker_started_at = 'Thu Jan  1 00:00:00 1970';
       s.sides.gemini!.cli = g1;
-    });
+    }, EXIT.ENV);
     assert.doesNotMatch(r.err, /按记录结束审查员 CLI/, r.err);
     assert.match(r.err, /本次也未结束它名下的审查员 CLI/, r.err);
     assert.equal(groupMemberCount(g1.pgid) > 0, true, 'mismatch 格不对记录里的 CLI 发信号');
@@ -1367,7 +1370,7 @@ test('EV-158 C5 / C6：--cancel 主路径在与 --start 不同的环境里——
   }
 });
 
-test('EV-158 U9（D6）：失联后取消那一格判 mismatch ⇒ 告警按比对依据分写，两种依据下都不对 worker 与记录里的 CLI 发信号', async () => {
+test('EV-158 U9（D6）：失联后取消那一格判 mismatch ⇒ 告警按比对依据分写，两种依据下都不对 worker 与记录里的 CLI 发信号、退 69（EV-177 ② 补）', async () => {
   const c = childProcess.spawn('sh', ['-c', 'sleep 600; : "$0"', `trivium-c158-u9-${process.pid}-${Date.now()}`], { detached: true, stdio: 'ignore' });
   c.unref();
   const pgid = c.pid!;
@@ -1381,7 +1384,7 @@ test('EV-158 U9（D6）：失联后取消那一格判 mismatch ⇒ 告警按比�
     let r = await notThisCell('R-C158-U9-C', (s) => {
       s.worker_started_at_canonical = 'Thu Jan  1 00:00:00 1970';
       s.sides.gemini!.cli = { pgid, started_at: started };
-    });
+    }, EXIT.ENV);
     assert.match(r.err, /上有活进程，但启动时刻与 status\.json 的规范化记录不符：PID 已被复用，或本次取不到它的启动时刻——不对它发信号，本次也未结束它名下的审查员 CLI/, r.err);
     assert.doesNotMatch(r.err, /TZ \/ 区域设置|BACKLOG EV-158|按记录结束审查员 CLI/, r.err);
     assert.match(r.out, /但工作进程的身份与记录不符，未对工作进程与它名下的审查员 CLI 发信号/);
@@ -1391,7 +1394,7 @@ test('EV-158 U9（D6）：失联后取消那一格判 mismatch ⇒ 告警按比�
       s.worker_started_at = 'Thu Jan  1 00:00:00 1970';
       delete s.worker_started_at_canonical;
       s.sides.gemini!.cli = { pgid, started_at: started };
-    });
+    }, EXIT.ENV);
     assert.match(r.err, /也可能是本命令的 TZ \/ 区域设置与 --start 不同（BACKLOG EV-158）——不对它发信号/, r.err);
     assert.match(r.err, /这份记录没有规范化启动时刻——由升级前的旧版写下，或写时取不到——所以只能按缺省环境比较/, r.err);
     assert.doesNotMatch(r.err, /按记录结束审查员 CLI/, r.err);

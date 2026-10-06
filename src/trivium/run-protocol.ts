@@ -1994,12 +1994,14 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
               '（这份记录没有规范化启动时刻——由升级前的旧版写下，或写时取不到——所以只能按缺省环境比较）',
       );
       say(`运行 ${runId} 已被 --wait 判为失联（heartbeat_stale），但工作进程的身份与记录不符，未对工作进程与它名下的审查员 CLI 发信号；归档 run.json 与主题锁未动。`);
-      return EXIT.OK;
+      // 69 与 alive 格未确认退出、主路径判不了身份同码：这次没做收尾、状态原样、可重试（EV-177 ② 补，用户 2026-10-06 定）
+      return EXIT.ENV;
     }
     if (cell.kind === 'no_identity') {
       warn('status.json 里工作进程的 pid 或启动时刻缺失 / 形状不对，判不了是不是同一进程，不发信号——请用 ps 核对');
       say(`运行 ${runId} 已被 --wait 判为失联（heartbeat_stale），但 status.json 没记下可核对的工作进程身份，未对工作进程发信号；归档 run.json 与主题锁未动。`);
-      return EXIT.OK;
+      // 同上一格：69（EV-177 ② 补）
+      return EXIT.ENV;
     }
     say(`运行 ${runId} 已处于终态（${s.phase}），无需取消。`);
     say('  已完成的运行不会被追溯改写——归档里的事实就是当时发生的事实。');

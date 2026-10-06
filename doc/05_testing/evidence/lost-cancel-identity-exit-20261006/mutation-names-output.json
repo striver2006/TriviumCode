@@ -1,0 +1,51 @@
+{
+  "targets_sha256": {
+    "src/trivium/run-protocol.ts": "89aecbd905824221b16a0e7c35318f93ac33819aeceb259227ba1b80cf4e6259"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "mismatch 格退回 0（改前形态）",
+      "suite": "dist/test/test/integration/run-protocol.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」、退 69（EV-177 ② 补）",
+        "EV-146 K5′：身份判不上（mismatch）时，status.json 里记着的活 CLI 组也不结束（代码双审 r1 CODEX-02）；同形但两种启动时刻缺失、worker 已不在时改判 gone（EV-159）、照旧按记录结束 CLI 并尝试补收",
+        "EV-158 U9（D6）：失联后取消那一格判 mismatch ⇒ 告警按比对依据分写，两种依据下都不对 worker 与记录里的 CLI 发信号、退 69（EV-177 ② 补）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 19,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "no_identity 格退回 0（改前形态）",
+      "suite": "dist/test/test/integration/run-protocol.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」、退 69（EV-177 ② 补）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 19,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "none 格（无需取消）也退 69（范围扩大）",
+      "suite": "dist/test/test/integration/run-protocol.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-146 K5：不入本格的各格——没有 lost（不读文案）、原因不是 heartbeat_stale、phase 不是 failed、lost 形状坏 ⇒ 原两行；身份判不上 / 缺失 ⇒ 如实结论、不说「无需取消」、退 69（EV-177 ② 补）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 19,
+      "also": []
+    }
+  ]
+}
