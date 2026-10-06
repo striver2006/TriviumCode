@@ -470,6 +470,11 @@ export interface CodexProbe extends CommonProbe {
    * false 的准确含义是「**尝试写**的检测失效」：没检出写事件时，排除不了
    * 「试过但被拒、没留痕」。这是**阴性结论**的可信度问题，只读保障从三重降到两重
    * （指纹比对仍有效），不是检测全盲。降级如实留痕在 `guard.verification_degraded.readonly`。
+   *
+   * **EV-25 起不再实测刷新**（用户 2026-10-06 定 B1）：这一项原本与只读负对照共用一次自由提示，
+   * 负对照改成钉死的 shell 重定向之后，被拒的命令照常进轨迹、同一公式会读出 true，
+   * 而那只对 shell 写入成立（补丁工具的写入被拒时仍可能不留痕）。探针保留上一次的结论并出一条注记；
+   * 从未探过的机器上它停在 null，能力对账跳过（`capabilityParity` 只对非 null 对账）。
    */
   rejected_command_in_trace: boolean | null;
   /**

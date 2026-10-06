@@ -479,13 +479,13 @@ async function codexIn(w: World, lock: boolean) {
     w,
     { CODEX_HOME: codexHome, FAKE_LOCK: lock ? `${FIXTURE_PREFIX},${ISO_PREFIX}` : undefined, FAKE_BASE_EXIT: '0', FAKE_ISO_EXIT: '1', FAKE_OBSERVE: undefined },
     async () => {
-      const { probe, notes } = await probeCodex(entry);
+      const { probe, notes, readonlyIndeterminate } = await probeCodex(entry);
       const main = await left(w, FIXTURE_PREFIX);
       const iso = await left(w, ISO_PREFIX);
       const want = main.length === 1 && iso.length === 1
         ? [codexIsolationResidueText(iso[0]!, 'EACCES'), fixtureResidueText('main', main[0]!, 'EACCES')]
         : null;
-      return { probe, notes, main, iso, want };
+      return { probe, notes, main, iso, want, readonlyIndeterminate };
     },
   );
 }
@@ -506,6 +506,21 @@ test('E4b probeCodex 对照：删成功时无提示、无残留，isolation 照�
   assert.deepEqual(residueNotes(notes), []);
   assert.deepEqual([...main, ...iso], []);
   assert.equal(probe.isolation, 'home_copy', `探针没走到隔离探针那一步：${notes.join('\n')}`);
+});
+
+test('E4c probeCodex（EV-25 接线）：假 exec 不执行那条写命令 ⇒ 只读负对照未判定，readonly_flags 不被写成可信、成因经返回值带出', async () => {
+  /*
+   * 本文件的假 codex 对一切 exec 退 1、不吐事件流。EV-25 之前探针只看 breach.txt 在不在，
+   * 这一格会把 readonly_flags 记成 ['-s','read-only']（「模型没动手」被记成「沙箱可信」）；现在是未判定、保留旧值（空集）。
+   */
+  const w = await world();
+  const { probe, notes, readonlyIndeterminate } = await codexIn(w, false);
+  assert.equal(readonlyIndeterminate, '轨迹里没有那条写命令（模型没有执行它）', notes.join('\n'));
+  assert.deepEqual(probe.readonly_flags, [], '未判定不得把 readonly_flags 写成可信');
+  assert.ok(notes.some((n) => n.includes('只读负对照本轮未判定')), notes.join('\n'));
+  // B1：rejected_command_in_trace 不再从这次调用刷新，从未探过就停在 null，并出注记
+  assert.equal(probe.rejected_command_in_trace, null);
+  assert.ok(notes.some((n) => n.startsWith('rejected_command_in_trace 不再由只读负对照那次调用刷新')), notes.join('\n'));
 });
 
 // ─────────────────────────── W：源码结构断言 ───────────────────────────

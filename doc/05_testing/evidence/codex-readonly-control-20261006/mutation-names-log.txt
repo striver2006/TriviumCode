@@ -1,0 +1,9 @@
+M1：fail=1 cancelled=0 0s ⇒ EV-25 R2：判据三态
+M2：fail=1 cancelled=0 0s ⇒ EV-25 R2：判据三态
+M3：fail=1 cancelled=0 0s ⇒ EV-25 R3：未判定不动 readonly_flags（保留上一次的结论，含首次的空集）；成立 / 失守照旧落值
+M4：fail=1 cancelled=0 0s ⇒ EV-25 R4：doctor——未判定时不报「文件仍被创建」那条 blocker；失守照旧 blocker
+M5：fail=1 cancelled=0 21s ⇒ D10 doctor --only codex（EV-25）：负对照判不了 ⇒ 出未判定 warning、不报「文件仍被创建」，readonly_flags 保留上一次的结论；rejected_command_in_trace 不刷新（B1）
+M6：fail=1 cancelled=0 21s ⇒ D10 doctor --only codex（EV-25）：负对照判不了 ⇒ 出未判定 warning、不报「文件仍被创建」，readonly_flags 保留上一次的结论；rejected_command_in_trace 不刷新（B1）
+M7：fail=1 cancelled=0 8s ⇒ E4c probeCodex（EV-25 接线）：假 exec 不执行那条写命令 ⇒ 只读负对照未判定，readonly_flags 不被写成可信、成因经返回值带出
+M8：fail=1 cancelled=0 21s ⇒ D10 doctor --only codex（EV-25）：负对照判不了 ⇒ 出未判定 warning、不报「文件仍被创建」，readonly_flags 保留上一次的结论；rejected_command_in_trace 不刷新（B1）
+exit=0

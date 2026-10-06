@@ -118,7 +118,13 @@ export interface SeverityLine {
  */
 export function codexSeverity(
   probe: CodexProbe,
-  ctx: { enabled: boolean; asked: boolean; skipModelCalls: boolean },
+  ctx: {
+    enabled: boolean;
+    asked: boolean;
+    skipModelCalls: boolean;
+    /** 只读负对照本轮判不了（EV-25）：`readonly_flags` 是保留的旧值，为空也不报失守，改由 doctor 出 warning */
+    readonlyIndeterminate?: boolean;
+  },
 ): SeverityLine[] {
   const gate = (message: string): SeverityLine =>
     ctx.enabled || ctx.asked
@@ -130,9 +136,9 @@ export function codexSeverity(
   /*
    * 只读负对照失守：**恒 blocker**，不看 criticEnabled、不看是否点名。
    * 判据要排除 skipModelCalls——那时负对照根本没跑，readonly_flags
-   * 保留的是上一次结论，空集不代表失守。
+   * 保留的是上一次结论，空集不代表失守。本轮负对照判不了时同理（EV-25）。
    */
-  if (!ctx.skipModelCalls && probe.readonly_flags.length === 0) {
+  if (!ctx.skipModelCalls && !ctx.readonlyIndeterminate && probe.readonly_flags.length === 0) {
     return [
       {
         level: 'blocker',
@@ -167,6 +173,20 @@ export function codexSeverity(
     ];
   }
   return [];
+}
+
+/**
+ * codex 只读负对照本轮判不了时的 warning（EV-25，用户 2026-10-06 定取 A，仿 zcode P-29）。
+ *
+ * 有上一次的结论：写明保留的是哪一份——它既不是「失守」，也没有被这一轮重新确认。
+ * 没有上一次的结论（首次探测就判不了）：`readonly_flags` 为空、该侧仍不可用，但说法是「未判定」而不是「失守」。
+ */
+export function codexReadonlyIndeterminateWarning(why: string, flags: readonly string[]): string {
+  return flags.length > 0
+    ? `codex 只读负对照本轮未判定（${why}）：readonly_flags 保留的是上一次的结论 ${JSON.stringify(flags)}——` +
+        '这不是「沙箱失守」，也没有重新确认沙箱可信。请重跑 trivium doctor --only codex。'
+    : `codex 只读负对照未判定（${why}），且没有上一次的结论：readonly_flags 为空，该侧仍不可用——` +
+        '这是「未判定」，不是「沙箱失守」。请重跑 trivium doctor --only codex。';
 }
 
 /**
@@ -730,9 +750,14 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
         enabled: agentByCliName('codex')?.criticEnabled === true,
         asked: only === 'codex',
         skipModelCalls: opts.skipModelCalls ?? false,
+        readonlyIndeterminate: r.readonlyIndeterminate !== null,
       })) {
         if (line.level === 'blocker') blockers.push(line.message);
         else notes.push(`[codex] ${line.message}`);
+      }
+      // 负对照本轮判不了（EV-25）：不拦，但要让人看见保留的是旧结论（仿 zcode P-29 的未判定 warning）
+      if (r.readonlyIndeterminate !== null) {
+        warnings.push(codexReadonlyIndeterminateWarning(r.readonlyIndeterminate, r.probe.readonly_flags));
       }
     }
   }

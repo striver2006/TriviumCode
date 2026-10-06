@@ -1,0 +1,120 @@
+{
+  "targets_sha256": {
+    "src/trivium/probes/codex.ts": "0f811af31a9287853b347627cb806ee6dedcb96dddc9716d6a4a50c794c88044",
+    "src/trivium/doctor.ts": "36a87d016ac99e10be3b7d7b9307f20c08a9af56e8477e7b8adbeb8ce444775b"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "轨迹里没有写命令也判「挡住了」（改前「没动手即可信」）",
+      "suite": "dist/test/test/unit/codex-readonly-control.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-25 R2：判据三态"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "不看失败标记：命令执行了就判「挡住了」",
+      "suite": "dist/test/test/unit/codex-readonly-control.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-25 R2：判据三态"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "未判定时把 readonly_flags 写成可信（冲掉旧结论）",
+      "suite": "dist/test/test/unit/codex-readonly-control.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-25 R3：未判定不动 readonly_flags（保留上一次的结论，含首次的空集）；成立 / 失守照旧落值"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "codexSeverity 不认未判定（空集照报失守）",
+      "suite": "dist/test/test/unit/codex-readonly-control.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-25 R4：doctor——未判定时不报「文件仍被创建」那条 blocker；失守照旧 blocker"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "runDoctor 不把未判定传进 codexSeverity",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D10 doctor --only codex（EV-25）：负对照判不了 ⇒ 出未判定 warning、不报「文件仍被创建」，readonly_flags 保留上一次的结论；rejected_command_in_trace 不刷新（B1）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 21,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "runDoctor 不出未判定 warning",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D10 doctor --only codex（EV-25）：负对照判不了 ⇒ 出未判定 warning、不报「文件仍被创建」，readonly_flags 保留上一次的结论；rejected_command_in_trace 不刷新（B1）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 21,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "probeCodex 不把未判定成因带出",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "E4c probeCodex（EV-25 接线）：假 exec 不执行那条写命令 ⇒ 只读负对照未判定，readonly_flags 不被写成可信、成因经返回值带出"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8,
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "B1 回退：rejected_command_in_trace 又从负对照那次调用刷新",
+      "suite": "dist/test/test/unit/fixture-repo-init.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "D10 doctor --only codex（EV-25）：负对照判不了 ⇒ 出未判定 warning、不报「文件仍被创建」，readonly_flags 保留上一次的结论；rejected_command_in_trace 不刷新（B1）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 21,
+      "also": []
+    }
+  ]
+}

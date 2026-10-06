@@ -1,0 +1,77 @@
+{
+  "targets": [
+    "src/trivium/probes/codex.ts",
+    "src/trivium/doctor.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/codex-readonly-control.test.js",
+    "dist/test/test/unit/fixture-repo-init.test.js",
+    "dist/test/test/unit/probe-fixture-cleanup.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "轨迹里没有写命令也判「挡住了」（改前「没动手即可信」）",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "  if (writes.length === 0) {\n    return {\n      kind: 'indeterminate',",
+      "replace": "  if (writes.length === 0) {\n    return { kind: 'held' };\n    return {\n      kind: 'indeterminate',",
+      "expect": "dist/test/test/unit/codex-readonly-control.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "不看失败标记：命令执行了就判「挡住了」",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "  if (writes.some((c) => (c.output ?? '').includes(READONLY_CONTROL_MARK_DENIED))) return { kind: 'held' };\n",
+      "replace": "  return { kind: 'held' };\n",
+      "expect": "dist/test/test/unit/codex-readonly-control.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "未判定时把 readonly_flags 写成可信（冲掉旧结论）",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "    case 'indeterminate':\n      return {",
+      "replace": "    case 'indeterminate':\n      probe.readonly_flags = [...CODEX_READONLY_INVARIANTS];\n      return {",
+      "expect": "dist/test/test/unit/codex-readonly-control.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "codexSeverity 不认未判定（空集照报失守）",
+      "file": "src/trivium/doctor.ts",
+      "find": "!ctx.skipModelCalls && !ctx.readonlyIndeterminate && probe.readonly_flags.length === 0",
+      "replace": "!ctx.skipModelCalls && probe.readonly_flags.length === 0",
+      "expect": "dist/test/test/unit/codex-readonly-control.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "runDoctor 不把未判定传进 codexSeverity",
+      "file": "src/trivium/doctor.ts",
+      "find": "        readonlyIndeterminate: r.readonlyIndeterminate !== null,\n",
+      "replace": "        readonlyIndeterminate: false,\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "runDoctor 不出未判定 warning",
+      "file": "src/trivium/doctor.ts",
+      "find": "        warnings.push(codexReadonlyIndeterminateWarning(r.readonlyIndeterminate, r.probe.readonly_flags));\n",
+      "replace": "        void codexReadonlyIndeterminateWarning;\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "probeCodex 不把未判定成因带出",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "    readonlyIndeterminate = applied.indeterminate;\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "B1 回退：rejected_command_in_trace 又从负对照那次调用刷新",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "    if (probe.rejected_command_in_trace === false) {\n",
+      "replace": "    probe.rejected_command_in_trace = control.write.completed ? control.write.commands.length > 0 : null;\n    if (probe.rejected_command_in_trace === false) {\n",
+      "expect": "dist/test/test/unit/fixture-repo-init.test.js"
+    }
+  ]
+}

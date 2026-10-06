@@ -31,7 +31,7 @@ import {
   fixtureResidueText,
   ProbeFixtureError,
 } from '../../src/trivium/probes/fixture.js';
-import { guardFixture, memoryFixtureWarning, probeFixtureBlocker, runDoctor } from '../../src/trivium/doctor.js';
+import { codexReadonlyIndeterminateWarning, guardFixture, memoryFixtureWarning, probeFixtureBlocker, runDoctor } from '../../src/trivium/doctor.js';
 import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
 import { ZCODE_BUILTIN_PROVIDER_ENV, type ZcodeInvokeOptions, type ZcodeInvokeOutcome } from '../../src/trivium/adapters/zcode.js';
 import type { Config } from '../../src/trivium/types.js';
@@ -591,4 +591,27 @@ test('措辞：记忆格 warning 逐字', () => {
     'Claude Code（claude）项目记忆一格本轮没有探测成：建探针夹具失败：x。' +
       '其余各格已刷新；project_memory_blocked 沿用的是上一次的结论（从未探过则仍为空），修好后重跑 trivium doctor --only claude',
   );
+});
+
+/*
+ * EV-25 接线：runDoctor 把 probeCodex 带出的「只读负对照本轮未判定」传进 codexSeverity、并出 warning。
+ * 本文件的假 codex 对一切 exec 退 1、不吐事件流 ⇒ 负对照判不了。EV-25 之前探针只看 breach.txt 在不在，
+ * 这一格会把 readonly_flags 记成可信；改判据而漏接线时，空集会被报成「-s read-only 下文件仍被创建」。
+ */
+test('D10 doctor --only codex（EV-25）：负对照判不了 ⇒ 出未判定 warning、不报「文件仍被创建」，readonly_flags 保留上一次的结论；rejected_command_in_trace 不刷新（B1）', async () => {
+  const WHY = '轨迹里没有那条写命令（模型没有执行它）';
+  for (const prior of [[], ['-s', 'read-only']]) {
+    const w = await world();
+    await inWorld(w, {}, async () => {
+      const d = await doctorWorld(w, true);
+      (d.cfg.probe.cli.codex as { readonly_flags: string[] }).readonly_flags = [...prior];
+      // B1：rejected_command_in_trace 不再从负对照那次调用刷新——预置 false，假 exec 跑完仍是 false（旧公式会读成 null）
+      (d.cfg.probe.cli.codex as { rejected_command_in_trace: boolean | null }).rejected_command_in_trace = false;
+      const rep = await doctorIn(d, 'codex');
+      assert.ok(!rep.blockers.some((b) => b.includes('文件仍被创建')), `${JSON.stringify(prior)}：未判定冒充了失守：${rep.blockers.join('\n')}`);
+      assert.ok(rep.warnings.includes(codexReadonlyIndeterminateWarning(WHY, prior)), `${JSON.stringify(prior)}：${rep.warnings.join('\n')}`);
+      assert.deepEqual((rep.probe.cli.codex as { readonly_flags: string[] }).readonly_flags, prior, '未判定不动 readonly_flags');
+      assert.equal((rep.probe.cli.codex as { rejected_command_in_trace: boolean | null }).rejected_command_in_trace, false, 'B1：保留上一次的结论');
+    });
+  }
 });

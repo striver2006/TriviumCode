@@ -1,45 +1,97 @@
-✔ EV-25 R1：提示钉死命令形态——写的是 breach.txt，带成功 / 失败两枚标记 (0.922708ms)
-✔ EV-25 R2：判据三态 (0.649125ms)
-✔ EV-25 R3：未判定不动 readonly_flags（保留上一次的结论，含首次的空集）；成立 / 失守照旧落值 (1.159834ms)
-✔ EV-25 R4：doctor——未判定时不报「文件仍被创建」那条 blocker；失守照旧 blocker (0.121541ms)
-✔ EV-25 R5：doctor 的未判定 warning 两种说法 (0.071084ms)
-✔ 一切正常时不产生任何诊断 (1.61075ms)
-✔ 【安全】只读沙箱失守恒为 blocker，哪怕该侧尚未启用为审核者 (0.105917ms)
-✔ 【安全】失守的严重度高于「读不到文件」：两者同时出现时先报失守 (0.044167ms)
-✔ 负对照没跑过时，readonly_flags 为空不算失守 (0.0395ms)
-✔ 未启用为审核者时，「没装」只是 note，不阻断全量 doctor (0.048625ms)
-✔ 显式 --only codex 时，「没装」升为 blocker (0.03875ms)
-✔ 启用为审核者后，「读不到文件」升为 blocker (0.055209ms)
-✔ 第三态不静默放行：未得出结论要留痕，且不是 blocker (0.039ms)
-✔ 第三态在 --no-model-calls 下不报：那时本来就没打算测 (0.049125ms)
-✔ F1 主夹具删成功：cleanup 返回 null、根目录不在 (173.433625ms)
-✔ F2 主夹具删不掉：不抛、返回整句提示（家目录归一 ~）、根目录仍在 (127.259625ms)
-✔ F3 记忆夹具删不掉：内容说明是记忆夹具那一句、不提 .env (124.214375ms)
-✔ F4 记忆夹具删成功：cleanup 返回 null、根目录不在 (145.192125ms)
-✔ F5 删不掉之后恢复权限再 cleanup 一次：返回 null、收干净（幂等） (129.861ms)
-✔ I1 基线通、对照翻转、删成功：home_copy，无提示、无残留 (1148.374959ms)
-✔ I2 对照翻转 + 目录删不掉：不抛、结论仍 home_copy、提示整句（家目录归一 ~） (280.195458ms)
-✔ I3 对照不翻转 + 目录删不掉：结论仍 shared（不因删不掉而改）、提示同 I2 (285.576375ms)
-✔ I4 基线不通：shared、对照那次没跑、目录已删 (229.451208ms)
-✔ I5 入口不存在：shared、不抛、目录已删（原 catch 语义不变） (1.779958ms)
-✔ E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句 (835.875041ms)
-✔ E1b probeClaude 对照：删成功时 notes 里没有删除失败字样、无残留 (770.831916ms)
-✔ E2 probeAgy：夹具删不掉——不抛，恰一条主夹具提示 (514.70175ms)
-✔ E2b probeAgy 对照：删成功时无提示、无残留 (465.568167ms)
-✔ E3 probeZcode：夹具删不掉——不抛，恰一条主夹具提示 (480.180708ms)
-✔ E3b probeZcode 对照：删成功时无提示、无残留 (469.939542ms)
-✔ E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy (874.336125ms)
-✔ E4b probeCodex 对照：删成功时无提示、无残留，isolation 照常 home_copy (814.835791ms)
-✔ E4c probeCodex（EV-25 接线）：假 exec 不执行那条写命令 ⇒ 只读负对照未判定，readonly_flags 不被写成可信、成因经返回值带出 (783.565583ms)
-✔ W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生） (1.591083ms)
-✔ W2 probeCodex 取隔离探针的结论落盘、提示推进 notes (0.344ms)
-✔ W3 自测：配平截取认得出嵌套括号与各种拼写的递归删除，单文件 force 删除不误报 (0.168542ms)
-✔ W3 probes 与 adapters 两目录下没有裸递归删除：删临时目录一律经 tryRemoveTempDir (3.119916ms)
-ℹ tests 37
+✔ EV-25 R1：提示钉死命令形态——写的是 breach.txt，带成功 / 失败两枚标记 (0.573625ms)
+✔ EV-25 R2：判据三态 (1.538166ms)
+✔ EV-25 R3：未判定不动 readonly_flags（保留上一次的结论，含首次的空集）；成立 / 失守照旧落值 (1.259291ms)
+✔ EV-25 R4：doctor——未判定时不报「文件仍被创建」那条 blocker；失守照旧 blocker (0.169708ms)
+✔ EV-25 R5：doctor 的未判定 warning 两种说法 (0.119166ms)
+✔ 一切正常时不产生任何诊断 (1.979791ms)
+✔ 【安全】只读沙箱失守恒为 blocker，哪怕该侧尚未启用为审核者 (0.101417ms)
+✔ 【安全】失守的严重度高于「读不到文件」：两者同时出现时先报失守 (0.043459ms)
+✔ 负对照没跑过时，readonly_flags 为空不算失守 (0.038791ms)
+✔ 未启用为审核者时，「没装」只是 note，不阻断全量 doctor (0.04825ms)
+✔ 显式 --only codex 时，「没装」升为 blocker (0.036125ms)
+✔ 启用为审核者后，「读不到文件」升为 blocker (0.050542ms)
+✔ 第三态不静默放行：未得出结论要留痕，且不是 blocker (0.035875ms)
+✔ 第三态在 --no-model-calls 下不报：那时本来就没打算测 (0.037667ms)
+✔ U1 有内容的目录、真 git：建出带基线提交的仓库，提交树里有那几个文件 (2363.593417ms)
+✔ U2 空目录、真 git：照样有 HEAD，树是空树（决策二，--allow-empty） (635.983375ms)
+✔ U3 PATH 里没有 git：第 1 步就抛，原因是启动失败（ENOENT） (2.573292ms)
+✔ U4 假 git 让第 1 步「初始化仓库」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调 (192.922583ms)
+✔ U5 假 git 让第 2 步「配置提交者邮箱」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调 (292.110417ms)
+✔ U6 假 git 让第 3 步「配置提交者名称」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调 (344.188292ms)
+✔ U7 假 git 让第 4 步「关闭提交签名」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调 (446.15975ms)
+✔ U8 假 git 让第 5 步「暂存全部文件」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调 (442.903042ms)
+✔ U9 假 git 让第 6 步「提交基线」退 128：抛出带步骤与 stderr 头三行，后面的步骤一次都没调 (489.83525ms)
+✔ U10 提交基线失败而 stderr 为空：原因取 stdout 那一行（git commit 的「无可提交」写在 stdout） (503.702584ms)
+✔ U11 成文函数直测：超时先于信号；信号、启动失败（有无 spawn 消息）各一句 (0.107125ms)
+✔ P1 createFixture：提交基线失败——抛 ProbeFixtureError、原因带步骤、无残留 (509.872542ms)
+✔ P2 createMemoryFixture：提交基线失败——同上，kind 是 memory (528.817167ms)
+✔ P3 createFixture：PATH 里没有 git——原因是第 1 步启动失败、无残留 (3.417458ms)
+✔ P4 createFixture：工作树哈希那次暂存失败——原因是 workTreeHash 的原文，夹具与临时索引都不留 (665.65025ms)
+✔ P5 createFixture：失败且目录删不掉——残留提示整句接在原因后面、residue 等于它 (511.419459ms)
+✔ P6 createMemoryFixture：失败且目录删不掉——残留提示整句接在原因后面、residue 等于它 (513.59575ms)
+✔ P7 TMPDIR 不存在：建临时目录本身失败也包成 ProbeFixtureError、residue 为 null (1.311292ms)
+· 探测运行环境…
+· 探测 Antigravity（agy）…
+✔ D1 doctor --only agy：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留 (956.379375ms)
+· 探测运行环境…
+· 探测 ZCode（zcode.cjs）…
+✔ D2 doctor --only zcode：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留 (679.929375ms)
+· 探测运行环境…
+· 探测 Codex（codex exec）…
+✔ D3 doctor --only codex：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留 (1073.944709ms)
+· 探测运行环境…
+· 探测 Claude Code（claude -p）…
+✔ D4 doctor --only claude：夹具没建起来——不抛，恰一条该侧 blocker（逐字），该侧结论与落盘都原样、无残留 (930.282708ms)
+· 探测运行环境…
+· 探测 Antigravity（agy）…
+· 探测 ZCode（zcode.cjs）…
+· 探测 Codex（codex exec）…
+· 探测 Claude Code（claude -p）…
+✔ D5 doctor 全段：第一段（agy）夹具没建起来——agy 一条 blocker，后面三侧照常探完、各自刷新 (4683.004583ms)
+· 探测运行环境…
+· 探测 Claude Code（claude -p）…
+✔ D6 doctor --only claude：记忆夹具（第 2 次提交）没建起来——一条 warning、不拦，主夹具各格已刷新、记忆格原样 (1747.329334ms)
+· 探测运行环境…
+· 探测 Antigravity（agy）…
+✔ D7 doctor --only agy、盘上从没有 agy 的结论：一条 blocker，notes 里没有「尚无探针实现」那句 (885.562625ms)
+✔ D8 guardFixture：只接 ProbeFixtureError；普通异常原样重抛、不记失败 (0.140709ms)
+· 探测运行环境…
+· 探测 ZCode（zcode.cjs）…
+✔ D9 doctor --only zcode --no-model-calls：zcode 仍建夹具（只读旗标探针在夹具里跑），失败照样一条 blocker、不抛 (682.819417ms)
+✔ 措辞：记忆格 warning 逐字 (0.084042ms)
+· 探测运行环境…
+· 探测 Codex（codex exec）…
+· 探测运行环境…
+· 探测 Codex（codex exec）…
+✔ D10 doctor --only codex（EV-25）：负对照判不了 ⇒ 出未判定 warning、不报「文件仍被创建」，readonly_flags 保留上一次的结论；rejected_command_in_trace 不刷新（B1） (3598.75575ms)
+✔ F1 主夹具删成功：cleanup 返回 null、根目录不在 (144.677542ms)
+✔ F2 主夹具删不掉：不抛、返回整句提示（家目录归一 ~）、根目录仍在 (124.783208ms)
+✔ F3 记忆夹具删不掉：内容说明是记忆夹具那一句、不提 .env (120.486666ms)
+✔ F4 记忆夹具删成功：cleanup 返回 null、根目录不在 (127.413583ms)
+✔ F5 删不掉之后恢复权限再 cleanup 一次：返回 null、收干净（幂等） (122.798583ms)
+✔ I1 基线通、对照翻转、删成功：home_copy，无提示、无残留 (1336.845917ms)
+✔ I2 对照翻转 + 目录删不掉：不抛、结论仍 home_copy、提示整句（家目录归一 ~） (231.364625ms)
+✔ I3 对照不翻转 + 目录删不掉：结论仍 shared（不因删不掉而改）、提示同 I2 (323.633417ms)
+✔ I4 基线不通：shared、对照那次没跑、目录已删 (186.813833ms)
+✔ I5 入口不存在：shared、不抛、目录已删（原 catch 语义不变） (1.8565ms)
+✔ E1 probeClaude：主夹具与记忆夹具都删不掉——不抛，两条提示各一、逐字等于各自那句 (922.985708ms)
+✔ E1b probeClaude 对照：删成功时 notes 里没有删除失败字样、无残留 (803.755708ms)
+✔ E2 probeAgy：夹具删不掉——不抛，恰一条主夹具提示 (591.097042ms)
+✔ E2b probeAgy 对照：删成功时无提示、无残留 (436.785625ms)
+✔ E3 probeZcode：夹具删不掉——不抛，恰一条主夹具提示 (482.594166ms)
+✔ E3b probeZcode 对照：删成功时无提示、无残留 (488.215416ms)
+✔ E4 probeCodex：夹具与隔离探针目录都删不掉——不抛，两条提示各一，isolation 仍 home_copy (900.602625ms)
+✔ E4b probeCodex 对照：删成功时无提示、无残留，isolation 照常 home_copy (798.664417ms)
+✔ E4c probeCodex（EV-25 接线）：假 exec 不执行那条写命令 ⇒ 只读负对照未判定，readonly_flags 不被写成可信、成因经返回值带出 (838.949041ms)
+✔ W1 probes 目录下每一处 .cleanup() 调用都接住提示并推进 notes（论域从目录派生） (1.703084ms)
+✔ W2 probeCodex 取隔离探针的结论落盘、提示推进 notes (0.438959ms)
+✔ W3 自测：配平截取认得出嵌套括号与各种拼写的递归删除，单文件 force 删除不误报 (0.18775ms)
+✔ W3 probes 与 adapters 两目录下没有裸递归删除：删临时目录一律经 tryRemoveTempDir (3.41175ms)
+ℹ tests 66
 ℹ suites 0
-ℹ pass 37
+ℹ pass 66
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 8761.377666
+ℹ duration_ms 23803.1615
