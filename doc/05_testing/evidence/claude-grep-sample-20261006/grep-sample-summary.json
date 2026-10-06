@@ -1,0 +1,61 @@
+{
+  "exit_code": 0,
+  "elapsed_ms": 11914,
+  "stderr_head": "",
+  "completed": true,
+  "grep_calls": 4,
+  "per_call": [
+    {
+      "input": {
+        "pattern": "NEEDLE_EV78",
+        "path": "./src",
+        "output_mode": "content"
+      },
+      "result": "src/a.ts:2:// NEEDLE_EV78 one\nsrc/a.ts:3:export const b = 2; // NEEDLE_EV78 two\nsrc/b.ts:1:// NEEDLE_EV78 three"
+    },
+    {
+      "input": {
+        "pattern": "NEEDLE_EV78",
+        "path": "./src/a.ts",
+        "output_mode": "content"
+      },
+      "result": "2:// NEEDLE_EV78 one\n3:export const b = 2; // NEEDLE_EV78 two"
+    },
+    {
+      "input": {
+        "pattern": "NEEDLE_EV78",
+        "path": "./src",
+        "output_mode": "count"
+      },
+      "result": "src/a.ts:2\nsrc/b.ts:1\n\nFound 3 total occurrences across 2 files."
+    },
+    {
+      "input": {
+        "pattern": "NEEDLE_EV78",
+        "path": "./src"
+      },
+      "result": "Found 2 files\nsrc/b.ts\nsrc/a.ts"
+    }
+  ],
+  "parsed": {
+    "hits": [
+      "/proj/ev78/src/a.ts",
+      "/proj/ev78/src/b.ts"
+    ],
+    "listed": [
+      "/proj/ev78/src/a.ts",
+      "/proj/ev78/src/b.ts"
+    ],
+    "resultLines": 11
+  },
+  "expected": {
+    "hits": [
+      "/proj/ev78/src/a.ts",
+      "/proj/ev78/src/b.ts"
+    ],
+    "listed_includes": [
+      "/proj/ev78/src/a.ts",
+      "/proj/ev78/src/b.ts"
+    ]
+  }
+}

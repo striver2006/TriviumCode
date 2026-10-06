@@ -1,0 +1,10 @@
+{"type":"system","subtype":"init","cwd":"<ROOT>","tools":["Grep"],"mcp_servers":[],"model":"claude-haiku-4-5-20251001","claude_code_version":"2.1.288"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_01VPkn98RTeakUCZh8kSP4Wa","name":"Grep","input":{"pattern":"NEEDLE_EV78","path":"./src","output_mode":"content"},"caller":{"type":"direct"}}]}}
+{"type":"user","message":{"content":[{"tool_use_id":"toolu_01VPkn98RTeakUCZh8kSP4Wa","type":"tool_result","content":"src/a.ts:2:// NEEDLE_EV78 one\nsrc/a.ts:3:export const b = 2; // NEEDLE_EV78 two\nsrc/b.ts:1:// NEEDLE_EV78 three"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_019kdyyGiLjMBu5ySWAKjQXr","name":"Grep","input":{"pattern":"NEEDLE_EV78","path":"./src/a.ts","output_mode":"content"},"caller":{"type":"direct"}}]}}
+{"type":"user","message":{"content":[{"tool_use_id":"toolu_019kdyyGiLjMBu5ySWAKjQXr","type":"tool_result","content":"2:// NEEDLE_EV78 one\n3:export const b = 2; // NEEDLE_EV78 two"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_01PLD1PUVEgeXAAtDokAFZL3","name":"Grep","input":{"pattern":"NEEDLE_EV78","path":"./src","output_mode":"count"},"caller":{"type":"direct"}}]}}
+{"type":"user","message":{"content":[{"tool_use_id":"toolu_01PLD1PUVEgeXAAtDokAFZL3","type":"tool_result","content":"src/a.ts:2\nsrc/b.ts:1\n\nFound 3 total occurrences across 2 files."}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_01C6xX9ha8MZ38RdvjyrZMh1","name":"Grep","input":{"pattern":"NEEDLE_EV78","path":"./src"},"caller":{"type":"direct"}}]}}
+{"type":"user","message":{"content":[{"tool_use_id":"toolu_01C6xX9ha8MZ38RdvjyrZMh1","type":"tool_result","content":"Found 2 files\nsrc/b.ts\nsrc/a.ts"}]}}
+{"type":"result","subtype":"success","is_error":false,"num_turns":5,"total_cost_usd":0.0309074}
