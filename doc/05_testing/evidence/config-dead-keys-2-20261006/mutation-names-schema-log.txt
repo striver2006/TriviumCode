@@ -1,0 +1,3 @@
+S1：fail=8 cancelled=0 0s ⇒ 内置默认配置本身合法 ｜ 合法的覆盖（本项目自己的 config.yaml 形状）照常通过 ｜ 可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家 ｜ U1 两个空配置项：带着已废弃键的配置仍通过校验；不带时同样通过 ｜ U2 两个空配置项：类型约束没有放宽——升级前就不合法的值升级后照旧被拒 ｜ U7 两个空配置项：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里 ｜ V1 EV-30 ②③：带着 parallel / deny_via_cli 的配置仍通过校验；默认值里不再有它们、不带时同样通过 ｜ V3 EV-30 ②③：schema 把两键标为 deprecated，且不在各自段的 required 里
+S2：fail=1 cancelled=0 0s ⇒ V3 EV-30 ②③：schema 把两键标为 deprecated，且不在各自段的 required 里
+exit=0

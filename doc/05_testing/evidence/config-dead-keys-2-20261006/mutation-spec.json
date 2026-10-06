@@ -1,0 +1,34 @@
+{
+  "targets": [
+    "src/trivium/config.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/config-consumers.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "废弃表漏登 review.parallel（出现了也不提示）",
+      "file": "src/trivium/config.ts",
+      "find": "  { path: ['review', 'parallel'] }, // EV-30 ②（2026-10-06）：runner 恒并行；单侧调试用 --critics\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "废弃表漏登 isolation.deny_via_cli",
+      "file": "src/trivium/config.ts",
+      "find": "  { path: ['isolation', 'deny_via_cli'] }, // EV-30 ③（2026-10-06）：注不注入路径级 deny 只看探针实测\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "默认值加回 review.parallel（改前形态）",
+      "file": "src/trivium/config.ts",
+      "find": "    review: {\n      // parallel 已删除（EV-30 ②）：见 DEPRECATED_CONFIG_KEYS\n",
+      "replace": "    review: {\n      parallel: true,\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    }
+  ]
+}

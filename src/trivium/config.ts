@@ -265,11 +265,11 @@ export function defaultConfig(): Config {
        * 改缺省值对它们无效、只会让新旧项目的配置文件无故分叉；并集语义下它也不构成漏洞。
        */
       peer_artifact_globs: ['**/*-gemini.md', '**/*-glm.md'],
-      deny_via_cli: 'auto',
+      // deny_via_cli 已删除（EV-30 ③）：见 DEPRECATED_CONFIG_KEYS
       context_max_docs: 12,
     },
     review: {
-      parallel: true,
+      // parallel 已删除（EV-30 ②）：见 DEPRECATED_CONFIG_KEYS
       failure_policy: 'strict',
       allow_partial_flag: true,
       /*
@@ -424,15 +424,15 @@ export function defaultConfig(): Config {
 }
 
 /**
- * 已废弃、但 schema 仍接受的配置键（2026-10-01，EV-30 ① / EV-15）。
+ * 已废弃、但 schema 仍接受的配置键（2026-10-01，EV-30 ① / EV-15；2026-10-06 补 EV-30 ②③ 两条）。
  *
- * 两键都是「类型 + 默认值 + 文档承诺」齐全而**从未被任何代码读取**，删了类型与默认值；
+ * 每一条都是「类型 + 默认值 + 文档承诺」齐全而**从未被任何代码读取**，删了类型与默认值；
  * schema 里保留属性（标 `deprecated`、去掉 `required`），只为带着它们的旧配置升级后照常通过校验——
- * gate 段与 antigravity 分支都是 `additionalProperties: false`，直接删属性会让那些配置退 69。
+ * 这几段都是 `additionalProperties: false`，直接删属性会让那些配置退 69。
  *
  * 出现时**只在 doctor 与 preflight 提示一条**（`deprecatedConfigNotice`），`loadCtx` 与其余命令不打任何东西。
  *
- * 判定看**合并结果**就够：默认值不再带这两键，合并结果里出现 ⇔ 某个磁盘源写了它。
+ * 判定看**合并结果**就够：默认值不再带这些键，合并结果里出现 ⇔ 某个磁盘源写了它。
  * 代价是分不出是 `config.yaml` 还是 `config.local.yaml`，所以正文两个文件都点名。
  *
  * 路径里的 `'*'` 匹配 `agents` 下任一 Agent id（不写死 id：Agent 身份的唯一来源是注册表）。
@@ -441,6 +441,8 @@ export function defaultConfig(): Config {
 export const DEPRECATED_CONFIG_KEYS: readonly { path: readonly string[] }[] = [
   { path: ['gate', 'max_check_retries'] }, // EV-30 ①
   { path: ['agents', '*', 'readonly_commands'] }, // EV-15
+  { path: ['review', 'parallel'] }, // EV-30 ②（2026-10-06）：runner 恒并行；单侧调试用 --critics
+  { path: ['isolation', 'deny_via_cli'] }, // EV-30 ③（2026-10-06）：注不注入路径级 deny 只看探针实测
 ];
 
 /** 合并后的配置里实际出现的已废弃键（点分路径；按表序，同一条里 `'*'` 展开的按键名排序） */

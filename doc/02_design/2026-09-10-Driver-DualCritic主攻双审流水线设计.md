@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.121
+> - **当前版本**：v1.3.122
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3048,11 +3048,9 @@ runtime:
 
 isolation:                           # 就地模式（唯一模式，ADR-001）
   peer_artifact_globs: ["**/*-gemini.md", "**/*-glm.md"]   # 枚举 deny_paths 用
-  deny_via_cli: auto                 # auto（探针支持则注入路径 deny）| off
   context_max_docs: 12               # 必读清单中自动匹配的需求/设计文档上限（9.4）
 
 review:
-  parallel: true
   failure_policy: strict
   allow_single_flag: true            # 是否允许命令行用 --only / --allow-single 显式降级为单审
   timeout_s: {plan: 900, code: 1200, bug: 1200}
@@ -3165,9 +3163,9 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
 > `util/log.ts` 的铁律是「机读模式 stdout 只允许出现一个 JSON、`warn` 恒走 stderr」。
 > 迁移告警若写 stdout 会破坏 Hook 读取 CLI 输出的协议。
 
-**已废弃键**【已实现 · v1.3.72，EV-30 ① / EV-15】：`gate.max_check_retries` 与 `agents.<id>.readonly_commands`（只在 antigravity 一支）
+**已废弃键**【已实现 · v1.3.72，EV-30 ① / EV-15；v1.3.122 补 EV-30 ②③】：`gate.max_check_retries` 与 `agents.<id>.readonly_commands`（只在 antigravity 一支），以及 v1.3.122 起的 `review.parallel`（审查各侧恒并行，单侧调试用 `--critics`）与 `isolation.deny_via_cli`（路径级 deny 注不注入只看探针实测 `path_deny.supported`）
 都是类型、默认值、文档承诺齐全而**从未被任何代码读取**，删了类型与默认值，`init` 因此不再写它们。
-schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束不放宽——gate 段与 antigravity 分支都是
+schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束不放宽——gate、review、isolation 段与 antigravity 分支都是
 `additionalProperties: false`，直接删属性会让带着它们的旧配置升级后退 69。判定看合并结果（默认值不再带，
 出现即某个磁盘源写了它），清单与正文的唯一来源是 `config.ts` 的 `DEPRECATED_CONFIG_KEYS` / `deprecatedConfigNotice`：
 **只在 `doctor`（告警段，不影响退出码）与 `preflight`（④⁗ 只警告项）提示一条**，只列实际出现的键、
@@ -3724,6 +3722,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.122** | 2026-10-06 | **空配置项收口二：删除 `review.parallel` 与 `isolation.deny_via_cli`（EV-30 ②③）。** M11 前小批第四批第 1 题，**本批未走双审**（方案由用户 2026-10-06 定：删，照搬 EV-30 ① / EV-15）。两键类型与默认值删除（`init` 随之不写）；`DEPRECATED_CONFIG_KEYS` 补两条，doctor / preflight 的已废弃键提示随表覆盖；config.v2 两属性保留、标 `deprecated`、移出 `required`、类型约束不变，带着它们的旧配置照常通过。`runner.ts` 的并行与 deny 注入判据不变。13.1 示例删两行、13.1.1「已废弃键」补两键；用户手册 v1.0.40（§5.2 / §5.3 两行原说法已失实，改为已删除；「已废弃的键」表补两行）；本仓 `.trivium/config.yaml` 删两行；`config.v1.json`（历史契约）与演进设计（冻结）不改。新用例 5 格，源码变异 3/3、schema 预跑 2/2。读数见 `doc/05_testing/REPORT_2026-10-06_config_dead_keys_2.md`。 |
 | **v1.3.121** | 2026-10-06 | **codex 只读负对照改正对照口径（EV-25，含用户定的 B1）。** 第三批第 4 题的续做，**本批未走双审**（方案由用户定：A 仿 zcode P-29；停点那一格定 B1）。`probes/codex.ts`：负对照钉死 shell 写命令，`judgeReadonlyControl` 三态（失守 / 挡住 / 未判定）、`applyReadonlyControl`（未判定不动 `readonly_flags`）、`runReadonlyControl`；`probeCodex` 返回值加 `readonlyIndeterminate`（不落盘）；`rejected_command_in_trace` 不再从这次调用刷新、保留上一次结论并出注记（B1）。`doctor.ts`：`codexSeverity` 未判定时不报「文件仍被创建」，`runDoctor` 出未判定 warning（有旧结论 / 首次空集两种说法）。`availability()` 与能力声明不改。3.6「M8 第 4 步再更正」之后补 v1.3.121 落地注记。新单测 5 格、接线 E4c / D10，变异 8/8；真实 codex 2 次均判挡住。读数见 `doc/05_testing/REPORT_2026-10-06_codex_readonly_control.md`。 |
 | **v1.3.120** | 2026-10-06 | **三句文档（EV-27、EV-48、EV-138）。** M11 前待办第三批第 7 题，**本批未走双审**（三条方案都由用户 2026-10-06 定，全按第二批建议）。EV-27：13.1.1 表后补一段「厂商 profile 是本机事实，协作时在本机层同批覆盖 `agents.codex.profile` 与 `profiles.*.codex` 两处」，结构问题仍并入 M11 与 EV-22。EV-48（判定不修）：用户手册 v1.0.39 场景 7 补「续作沿用原主题名；换名即新任务，旧主题的审查意见不再进禁读集」。EV-138（维持手工维护）：`init.ts` 里 `KNOWN_PROTOCOL_SHA256` 的维护说明加一格「改 `driver.snippet` 时同步核对本仓根 `CLAUDE.md`」，只改注释；本仓 `CLAUDE.md` 不动。 |
 | **v1.3.119** | 2026-10-06 | **批之前再看一眼改动：写明现有路径（EV-140）。** M11 前待办第三批第 6 题，**本批未走双审**（方案由用户 2026-10-06 定：取 ③，不加入口）。`skills-src/commands/approve.contract.md` 加一段：用户只想先看改动时不跑 `approve`，改跑 `gate --await-approval`（同一份复核、同样打印工作树改动摘要、不落审批，闸门保持等待审批），重渲染四份 `dual-approve` 入口产物；用户手册 v1.0.38 §4.8 同步。零代码，`approve` 与 `gate` 行为不变。`.md` 目标只做逐条预跑（删掉新段 ⇒ `entry-render-parity` 红）。**用户重装后 skill 才生效**。读数见 `doc/05_testing/REPORT_2026-10-06_approve_preview_doc.md`。 |

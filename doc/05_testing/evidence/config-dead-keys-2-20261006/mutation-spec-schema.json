@@ -1,0 +1,26 @@
+{
+  "targets": [
+    "skills/dual-critic/schema/config.v2.json"
+  ],
+  "suites": [
+    "dist/test/test/unit/config-schema.test.js"
+  ],
+  "cases": [
+    {
+      "id": "S1",
+      "desc": "schema review.required 加回 parallel（不带它的配置会校验失败）",
+      "file": "skills/dual-critic/schema/config.v2.json",
+      "find": "      \"required\": [\n        \"failure_policy\",",
+      "replace": "      \"required\": [\n        \"parallel\",\n        \"failure_policy\",",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    },
+    {
+      "id": "S2",
+      "desc": "schema 去掉 deny_via_cli 的 deprecated 标注",
+      "file": "skills/dual-critic/schema/config.v2.json",
+      "find": "          ],\n          \"deprecated\": true,\n          \"description\": \"已废弃（2026-10-06，EV-30 ③）",
+      "replace": "          ],\n          \"description\": \"已废弃（2026-10-06，EV-30 ③）",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    }
+  ]
+}

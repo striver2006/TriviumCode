@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.39
+> - **当前版本**：v1.0.40
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -421,7 +421,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | 字段 | 默认 | 说明 |
 | :--- | :--- | :--- |
 | `isolation.peer_artifact_globs` | `**/*-gemini.md`, `**/*-glm.md` | 对方产出的识别模式，用于生成禁读清单。**只是追加项**：禁读清单取「注册表派生的全部已登记角色 ∪ 这里配的模式」，四家（含 codex / claude）不写也会进清单；缺省值只列两家是历史遗留，不影响判定（v1.0.3 注明） |
-| `isolation.deny_via_cli` | `auto` | 是否用 CLI 的路径级 deny。**两侧实测均不支持，实际恒为降级** |
+| ~~`isolation.deny_via_cli`~~ | — | **已删除**（v1.0.40 起，见本节下文「已废弃的键」）：从来没有代码读它。路径级 deny 注不注入只看探针实测（claude 侧支持、会注入；codex 侧没有这类机制） |
 | `isolation.context_max_docs` | 12 | 必读清单的文件数上限 |
 
 ### 5.3 审查
@@ -435,7 +435,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `review.allow_partial_flag` | `true` | 是否允许命令行 `--allow-single`。设 `false` 则命令行也开不回来。**旧名 `allow_single_flag` 仍可用**（加载时自动迁移） |
 | `review.default_critics` | `[gemini, glm]` | 不给 `--critics` 时的默认审核者集合。**已接线**：它就是缺省跑哪几侧的来源 |
 | `review.max_critics` | `3` | 单次运行可选审核者的基数上限 |
-| `review.parallel` | `true` | 两侧并行。改 `false` 只会更慢，无收益 |
+| ~~`review.parallel`~~ | — | **已删除**（v1.0.40 起，见下文「已废弃的键」）：从来没有代码读它，各侧恒并行（此前这里写「改 `false` 只会更慢」，不实——改了什么都不变）。只想跑一侧，用 `--critics` |
 | `review.retry.transient_max` | 1 | 瞬时失败重试次数（429、连接重置、解析失败等）。超时**不重试**——大概率再超时 |
 | `review.min_tool_calls` | 每阶段 5 | 证据下限：该侧至少要有这么多次读/搜工具调用 |
 | `review.min_project_reads` | 每阶段 3 | 至少读到这么多个**项目文件**（排除被审对象、任务书、归档内文件、项目外文件） |
@@ -524,14 +524,16 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 #### 已废弃的键
 
-v1.0.26 起（设计 v1.3.72），下面两个键**删除**了：它们写在配置里、文档里，却从来没有任何代码读过——改了不会有任何效果。
+v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3.122）又删除了后两个：它们写在配置里、文档里，却从来没有任何代码读过——改了不会有任何效果。
 
 | 字段 | 原来写的 | 实际情况 |
 | :--- | :--- | :--- |
 | `gate.max_check_retries` | 「`gate --check` 最多重试几次」 | 重试几次是入口命令里的流程约定（补齐后重跑，重跑最多 3 次（首次校验不计），仍不通过就停下交给你），不是配置项 |
 | `agents.gemini.readonly_commands` | 「允许的只读命令」 | Antigravity 侧的审查员根本没有命令工具，跑不了任何命令；ZCode 侧整个 `Bash` 禁用；Codex 侧能跑 shell、靠只读沙箱挡写，没有命令白名单 |
+| `review.parallel` | 「两侧并行；改 `false` 串行」 | 各侧恒并行，改 `false` 什么都不变。只想跑一侧，用 `--critics` |
+| `isolation.deny_via_cli` | 「是否用 CLI 的路径级 deny」 | 注不注入路径级 deny 只看探针实测（claude 侧支持、会注入；codex 侧没有这类机制），这个开关从未被读过 |
 
-旧配置里留着它们**不会报错**，升级后照常能跑。配置里出现时，`trivium doctor` 与预检各提示一条「已废弃、从未生效，可从配置里去掉」，其余命令不提示。从 `.trivium/config.yaml`（或 `config.local.yaml`）里删掉这两行即可，删了不改变任何行为。新 `trivium init` 出来的配置不再带它们。
+旧配置里留着它们**不会报错**，升级后照常能跑。配置里出现时，`trivium doctor` 与预检各提示一条「已废弃、从未生效，可从配置里去掉」，其余命令不提示。从 `.trivium/config.yaml`（或 `config.local.yaml`）里删掉这几行即可，删了不改变任何行为。新 `trivium init` 出来的配置不再带它们。
 
 ---
 

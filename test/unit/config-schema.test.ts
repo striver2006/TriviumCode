@@ -388,3 +388,61 @@ test('U7 两个空配置项：磁盘 config.yaml 带着两键时 loadCtx 照常�
   assert.equal(merged.gate['max_check_retries'], 3);
   assert.deepEqual(merged.agents['gemini']!['readonly_commands'], ['git log', 'ls']);
 });
+
+// ── 空配置项收口二（2026-10-06，EV-30 ②③）：review.parallel、isolation.deny_via_cli 同一做法 ──
+
+/** 默认配置叠上两个新废弃的键（升级前合法、带着它们的旧配置合并后的形状） */
+function withDeprecatedKeys2(over: { parallel?: unknown; deny?: unknown } = {}): unknown {
+  const cfg = structuredClone(defaultConfig()) as unknown as {
+    review: Record<string, unknown>;
+    isolation: Record<string, unknown>;
+  };
+  cfg.review['parallel'] = 'parallel' in over ? over.parallel : true;
+  cfg.isolation['deny_via_cli'] = 'deny' in over ? over.deny : 'auto';
+  return cfg;
+}
+
+test('V1 EV-30 ②③：带着 parallel / deny_via_cli 的配置仍通过校验；默认值里不再有它们、不带时同样通过', () => {
+  assert.deepEqual(validateConfig(withDeprecatedKeys2()), [], '带两键的旧配置升级后不得校验失败');
+  assert.deepEqual(validateConfig(withDeprecatedKeys2({ parallel: false, deny: 'off' })), [], '另一组合法取值同样通过');
+  const bare = defaultConfig() as unknown as { review: object; isolation: object };
+  assert.ok(!('parallel' in bare.review), '默认值里不该再有 review.parallel');
+  assert.ok(!('deny_via_cli' in bare.isolation), '默认值里不该再有 isolation.deny_via_cli');
+  assert.deepEqual(validateConfig(bare), [], '不带两键的配置必须通过——schema 不得再要求它们');
+});
+
+test('V2 EV-30 ②③：类型约束没有放宽——升级前就不合法的值升级后照旧被拒', () => {
+  const p = validateConfig(withDeprecatedKeys2({ parallel: 'yes' }));
+  assert.equal(p.length, 1, p.join('\n'));
+  assert.match(p[0]!, /parallel/);
+  const d = validateConfig(withDeprecatedKeys2({ deny: 'on' }));
+  assert.equal(d.length, 1, d.join('\n'));
+  assert.match(d[0]!, /deny_via_cli/);
+});
+
+test('V3 EV-30 ②③：schema 把两键标为 deprecated，且不在各自段的 required 里', async () => {
+  const schema = JSON.parse(
+    await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'), 'utf8'),
+  ) as { properties: Record<string, { required: string[]; properties: Record<string, { deprecated?: boolean }> }> };
+  const review = schema.properties['review']!;
+  const isolation = schema.properties['isolation']!;
+  assert.equal(review.properties['parallel']?.deprecated, true);
+  assert.ok(!review.required.includes('parallel'));
+  assert.equal(isolation.properties['deny_via_cli']?.deprecated, true);
+  assert.ok(!isolation.required.includes('deny_via_cli'));
+});
+
+test('V4 EV-30 ②③：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里', async () => {
+  const root = await projectWith([
+    'schema: trivium.config.v2',
+    'isolation:',
+    '  deny_via_cli: off',
+    'review:',
+    '  parallel: false',
+    '',
+  ].join('\n'));
+  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
+  const merged = ctx.config as unknown as { review: Record<string, unknown>; isolation: Record<string, unknown> };
+  assert.equal(merged.review['parallel'], false);
+  assert.equal(merged.isolation['deny_via_cli'], 'off');
+});

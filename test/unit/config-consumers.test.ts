@@ -56,30 +56,17 @@ const KNOWN_DEAD: { key: string; why: string }[] = [
   /*
    * 原有第一条 `readonly_commands`（EV-15）与下面的 `max_check_retries`（EV-30 ①）
    * 已于 2026-10-01 删除（两个空配置项收口），不再是「死配置」而是「已废弃键」，
-   * 由文件末尾的回归锁守着不许加回默认值。
+   * 由文件末尾的回归锁守着不许加回默认值。2026-10-06 又删了 `parallel`（EV-30 ②）与 `deny_via_cli`（EV-30 ③），同一做法。
    *
-   * 以下是本条测试**第一次运行时抓出来的**七条中余下的六条，此前没有任何登记。
+   * 以下是本条测试**第一次运行时抓出来的**七条中余下的四条（原为六条），此前没有任何登记；EV-30 ④～⑦ 并入 M11。
    * 它们与被删的 `block_severities` 同形：类型定义与默认值齐全、`src/` 下零消费方。
    * 本批只做防新增，存量逐条裁另立主题（BACKLOG EV-30）。
    */
-  {
-    key: 'deny_via_cli',
-    why:
-      'EV-30：本该控制「要不要向 CLI 注入路径级 deny」（设计 §10.1 机制③(b)），' +
-      '而注入与否实际由探针的 path_deny.supported 决定，这个开关从未被读过。' +
-      '删或接线要先定：探针说不支持时，用户把它设成 auto 意味着什么',
-  },
   {
     key: 'forbid_chars',
     why:
       'EV-30：本该用于主题名字符校验，而校验实际走 topic.ts 的独立实现。' +
       '两处规则若不一致，用户改配置不会有效果——与 max_len 同段而后者有消费方，容易误以为都生效',
-  },
-  {
-    key: 'parallel',
-    why:
-      'EV-30：本该控制并行/串行执行，而 runner 恒并行。设成 false 不会串行——' +
-      '调试单侧问题时最可能被用到的开关，恰恰是无效的',
   },
   {
     key: 'require_adjudication',
@@ -235,9 +222,9 @@ test('回归锁：被删掉的那个死配置不得再出现在默认配置或 s
 
 // ── 两个空配置项收口（2026-10-01，EV-30 ① / EV-15；计划 r2 §3.4 / §3.6） ──
 
-const DELETED_KEYS = ['max_check_retries', 'readonly_commands'] as const;
+const DELETED_KEYS = ['max_check_retries', 'readonly_commands', 'parallel', 'deny_via_cli'] as const;
 
-test('回归锁：已删除的 max_check_retries / readonly_commands 不得再出现在默认配置或 schema 的 required 里', async () => {
+test('回归锁：已删除的 max_check_retries / readonly_commands / parallel / deny_via_cli 不得再出现在默认配置或 schema 的 required 里', async () => {
   const keys = configKeys(defaultConfig() as unknown);
   for (const k of DELETED_KEYS) {
     assert.ok(!keys.has(k), `默认配置里又出现了 ${k}——它已于 2026-10-01 删除（零消费方），不要加回来`);
@@ -314,7 +301,7 @@ test('U4 已废弃键判定：五格各自只报实际出现的键；正文只�
   }
 });
 
-test('U8 流程文档回归锁：skills-src/ 全部文件与 skills/ 下全部 SKILL.md 不得再提已删除的两个配置键', async () => {
+test('U8 流程文档回归锁：skills-src/ 全部文件与 skills/ 下全部 SKILL.md 不得再提已删除的配置键（EV-30 ①②③、EV-15）', async () => {
   /*
    * 防有人把「按配置重试 N 次」这类承诺写回流程文档——那正是 EV-30 ① 的起因。
    * 源目录里没有叫 SKILL.md 的文件（契约是 *.contract.md、片段是 *.md、载体是 *.yaml），
@@ -370,4 +357,27 @@ test('U9「gate --check 重跑几次」的流程约定在各处源文件里是�
     if (n !== e.count) wrong.push(`${e.file}（${e.where}）：期望 ${e.count} 处，实有 ${n} 处`);
   }
   assert.deepEqual(wrong, [], `「${PHRASE}…」这句不一致：\n  ` + wrong.join('\n  '));
+});
+
+test('U10 EV-30 ②③：review.parallel、isolation.deny_via_cli 出现时与旧两键一样只报实际出现的那几个；正文列出它们', () => {
+  const base = () => structuredClone(defaultConfig()) as unknown as {
+    review: Record<string, unknown>;
+    isolation: Record<string, unknown>;
+    gate: Record<string, unknown>;
+  };
+  const onlyParallel = base();
+  onlyParallel.review['parallel'] = true;
+  assert.deepEqual(deprecatedConfigKeysIn(onlyParallel as unknown as Config), ['review.parallel']);
+  const onlyDeny = base();
+  onlyDeny.isolation['deny_via_cli'] = 'auto';
+  assert.deepEqual(deprecatedConfigKeysIn(onlyDeny as unknown as Config), ['isolation.deny_via_cli']);
+  const all = base();
+  all.gate['max_check_retries'] = 3;
+  all.review['parallel'] = false;
+  all.isolation['deny_via_cli'] = 'off';
+  const want = ['gate.max_check_retries', 'review.parallel', 'isolation.deny_via_cli'];
+  assert.deepEqual(deprecatedConfigKeysIn(all as unknown as Config), want, '按表序列出');
+  const notice = deprecatedConfigNotice(all as unknown as Config);
+  assert.ok(notice !== null && notice.includes(`已废弃的键：${want.join('、')}。`), String(notice));
+  assert.equal(deprecatedConfigNotice(defaultConfig()), null, '默认配置不带任何已废弃键');
 });

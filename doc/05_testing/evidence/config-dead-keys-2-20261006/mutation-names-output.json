@@ -1,0 +1,52 @@
+{
+  "targets_sha256": {
+    "src/trivium/config.ts": "1c114c8206fb9424fbddd73fbe97b80bf158e38c71d7bd824b3041cd1a32c4b2"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "废弃表漏登 review.parallel（出现了也不提示）",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U10 EV-30 ②③：review.parallel、isolation.deny_via_cli 出现时与旧两键一样只报实际出现的那几个；正文列出它们"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "废弃表漏登 isolation.deny_via_cli",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U10 EV-30 ②③：review.parallel、isolation.deny_via_cli 出现时与旧两键一样只报实际出现的那几个；正文列出它们"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "默认值加回 review.parallel（改前形态）",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "配置项对账：每个配置键都要有消费方，否则必须具名登记为已知死配置",
+        "回归锁：已删除的 max_check_retries / readonly_commands / parallel / deny_via_cli 不得再出现在默认配置或 schema 的 required 里",
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null",
+        "U10 EV-30 ②③：review.parallel、isolation.deny_via_cli 出现时与旧两键一样只报实际出现的那几个；正文列出它们"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    }
+  ]
+}

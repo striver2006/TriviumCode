@@ -880,12 +880,12 @@ export interface RuntimeConfig {
 
 export interface IsolationConfig {
   peer_artifact_globs: string[];
-  deny_via_cli: 'auto' | 'off';
+  // deny_via_cli 已删除（EV-30 ③）：见 config.ts 的 DEPRECATED_CONFIG_KEYS
   context_max_docs: number;
 }
 
 export interface ReviewConfig {
-  parallel: boolean;
+  // parallel 已删除（EV-30 ②）：见 config.ts 的 DEPRECATED_CONFIG_KEYS
   failure_policy: 'strict' | 'degrade';
   /**
    * 允许部分入选审核者失败后降级续跑（`--allow-single` 的配置开关）。
