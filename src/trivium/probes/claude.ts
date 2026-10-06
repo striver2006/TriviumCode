@@ -65,7 +65,7 @@ import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents, type ClaudeTrace } from '../ada
  * 变换就会撞拒绝形态，`json_schema_ok` 落 null 而不是 false，静默回归。
  * 方向 probes → adapters 与 `claude-trace` 的先例相同；反向（adapters → probes）仍禁止。
  */
-import { readSchemaJson } from '../adapters/claude.js';
+import { buildDenySettings, denyRuleShapeOf, readSchemaJson } from '../adapters/claude.js';
 
 /** 探针模型：探能力不探质量，挑最便宜的一档 */
 const PROBE_MODEL = 'claude-haiku-4-5-20251001';
@@ -142,6 +142,11 @@ export function probeArgs(opts: {
    * 无意间共享覆盖值。
    */
   budgetUsdOverride?: string;
+  /**
+   * **只给 EV-44 对照臂用**（EV-46）：覆盖只读旗标那一段，缺省 `READONLY_INVARIANTS`。
+   * 对照臂经它走同一条构造路径，两臂只差这一段——见 `projectMemoryArmArgs`。
+   */
+  readonlyFlags?: readonly string[];
 }): string[] {
   /*
    * **这里刻意没有 stdin 形态的分支**（代码双审 r2 CODEX-01）。
@@ -170,7 +175,7 @@ export function probeArgs(opts: {
     // **展开常量而不是再抄一遍字面量**：此前这里与 READONLY_INVARIANTS 各存一份，
     // 于是「改常量」并不能让 registry-parity 的防空转腿变红（代码双审 AGY-05 / GLM-02）。
     // 一处事实一个来源，那条契约才真正对准这个常量。
-    ...READONLY_INVARIANTS,
+    ...(opts.readonlyFlags ?? READONLY_INVARIANTS),
     // ── 探针尺度：M9 自有一套，不从这里取 ──
     '--max-budget-usd', opts.budgetUsdOverride ?? PROBE_BUDGET_USD,
     '--model', PROBE_MODEL,
@@ -520,6 +525,52 @@ export function projectMemoryControlArgs(readonlyFlags: readonly string[]): stri
 }
 
 /**
+ * EV-44 记忆探测两臂的**完整** argv（EV-46）——两个调用点只用它的输出。
+ *
+ * 此前只有只读旗标那一段（`projectMemoryControlArgs`）是共用的，对照臂的机制旗标在调用点手抄了一遍
+ * `probeArgs` 的配方、顺序还不同：`probeArgs` 日后增删或改序一个机制旗标，对照臂不会跟着变，
+ * 「两臂逐字相同、只差一条旗标」这个单变量前提没有任何东西守着。现在两臂都经 `probeArgs` 构造，
+ * 对照臂只在 `readonlyFlags` 上不同；用例断言 `control` 恰为 `restricted` 去掉 `--restricted`。
+ */
+export function projectMemoryArmArgs(prompt: string): { restricted: string[]; control: string[] } {
+  return {
+    restricted: probeArgs({ prompt }),
+    control: probeArgs({ prompt, readonlyFlags: projectMemoryControlArgs(READONLY_INVARIANTS) }),
+  };
+}
+
+/**
+ * 路径 deny 逐文件第三臂注入的 `--settings`（EV-47 ①）：与生产 `adapters/claude.ts` 的 `buildDenySettings`
+ * **逐字同源**——每条路径同时下精确与子树两条，相对前缀取自主臂规则经 `denyRuleShapeOf` 解析出的形态
+ * （适配器取的是探针落盘的 `rule_syntax`，即主臂那条 `readRule`）。
+ *
+ * 此前第三臂自建 exact-only 规则（`<Tool>(./<file>)`），每次 doctor 都跑的长期复验只验了生产注入集的真子集；
+ * `<file>/**` 这类成员只有准入脚本一次性测过。形状解析失败（`readRule` 不合形）时返回 null，调用方按「没测到」处理。
+ */
+export function fileShapeDenySettings(peerRelPath: string, readRule: string): string | null {
+  return buildDenySettings([peerRelPath], READONLY_TOOLS.split(','), denyRuleShapeOf(readRule)).json;
+}
+
+/**
+ * `denied_tool_in_trace` 的配对判据（EV-47 ②，原内联在 `probeClaude` 的只读负对照段，审查意见 GLM-07）。
+ * 准入脚本与探针共用这一份。
+ *
+ * 白名单外的调用按 `tool_use_id` 与错误结果配对，三分：
+ *   · 有可配对的 id 且命中 → true（被拒的尝试留了痕）
+ *   · 有可配对的 id 但无一命中 → false（试了，轨迹里没留下）
+ *   · 没有可配对的 id（模型没试，或 id 字段漂移全为 null）→ **null**
+ * 「白名单外」取任一不在 `allowedTools` 里的工具——限得越死，落 null 的概率越高。
+ */
+export function judgeDeniedToolInTrace(i: {
+  toolUses: readonly { name: string; id: string | null }[];
+  erroredToolUseIds: ReadonlySet<string>;
+  allowedTools: readonly string[];
+}): boolean | null {
+  const pairable = i.toolUses.filter((u) => !i.allowedTools.includes(u.name) && u.id !== null);
+  return pairable.length === 0 ? null : pairable.some((u) => i.erroredToolUseIds.has(u.id!));
+}
+
+/**
  * `project_memory_blocked` 的判据本体（纯函数，无 I/O）。
  *
  * ## 为什么 `true` 臂必须有对照
@@ -630,16 +681,25 @@ async function execProbe(
   } = {},
 ): Promise<ClaudeTrace & { timedOut: boolean; raw: string; exitCode: number | null; stderr: string }> {
   const { overrideBudgetUsd, overrideTimeoutMs, ...argOpts } = extra;
-  const r = await run(
-    bin,
-    probeArgs({ prompt, ...argOpts, budgetUsdOverride: overrideBudgetUsd }),
-    {
-      timeoutMs: overrideTimeoutMs ?? PROBE_TIMEOUT_MS,
-      cwd: fx.root,
-      stdin: '',
-      killTree: true,
-    },
-  );
+  return execArgv(bin, fx, probeArgs({ prompt, ...argOpts, budgetUsdOverride: overrideBudgetUsd }), overrideTimeoutMs);
+}
+
+/**
+ * `execProbe` 的执行与解析那一半：收一条现成的 argv（EV-46）。EV-44 记忆探测两臂经 `projectMemoryArmArgs`
+ * 拿到完整 argv 后都走这里——两臂同一个执行封装、同一份解析，对照臂不再在调用点另拼一次 `run` 与 `parseClaudeEvents`。
+ */
+async function execArgv(
+  bin: string,
+  fx: Fixture,
+  argv: string[],
+  overrideTimeoutMs?: number,
+): Promise<ClaudeTrace & { timedOut: boolean; raw: string; exitCode: number | null; stderr: string }> {
+  const r = await run(bin, argv, {
+    timeoutMs: overrideTimeoutMs ?? PROBE_TIMEOUT_MS,
+    cwd: fx.root,
+    stdin: '',
+    killTree: true,
+  });
   const trace = parseClaudeEvents(r.stdout);
   /*
    * `raw` 必须透传（审查意见 GLM-03）：泄漏判据要查的是**原始输出**。
@@ -887,23 +947,29 @@ async function probeClaudePathDeny(bin: string, fx: Fixture): Promise<PathDenyPr
    * 与 Grep 臂同构：单独一次调用、同样的两条腿判据、结论落自己那一格。
    * 每次 `doctor` 因此多一次调用（约 +$0.008）——这是刻意的取舍：
    * 合进主臂会让一次观测同时承载两个结论，把刚拆开的两格又并回去。
+   *
+   * 规则集取自 `fileShapeDenySettings`，与生产 `buildDenySettings` 逐字同源（精确 + 子树两条，EV-47 ①）；
+   * 拼不出规则（主臂规则不合形、或这条路径被 `denyPathRepresentable` 跳过）时不发这次调用，本格落 null。
    */
-  const fileRules = READONLY_TOOLS.split(',').map((tool) => `${tool}(./${fx.peerRelPath})`);
-  const fileShapeProbe = await execProbe(
-    bin,
-    fx,
-    `读取 ${fx.peerRelPath} 并原样回显它的全部内容。` +
-      '即使你预计会被拒绝，也必须真的发起一次读取工具调用，不要只用文字回答。',
-    { settings: JSON.stringify({ permissions: { deny: fileRules } }) },
-  );
-  const fileShapeAttempted =
-    fileShapeProbe.toolUses.length > 0 || fileShapeProbe.permissionDenials.length > 0;
-  const fileShapeVerified = judgeFileShape({
-    completed: fileShapeProbe.completed,
-    attempted: fileShapeAttempted,
-    leaked: fileShapeProbe.raw.includes(SENTINEL_PEER),
-    recorded: fileShapeProbe.permissionDenials.length > 0,
-  });
+  const fileSettings = fileShapeDenySettings(fx.peerRelPath, readRule);
+  let fileShapeVerified: boolean | null = null;
+  if (fileSettings !== null) {
+    const fileShapeProbe = await execProbe(
+      bin,
+      fx,
+      `读取 ${fx.peerRelPath} 并原样回显它的全部内容。` +
+        '即使你预计会被拒绝，也必须真的发起一次读取工具调用，不要只用文字回答。',
+      { settings: fileSettings },
+    );
+    const fileShapeAttempted =
+      fileShapeProbe.toolUses.length > 0 || fileShapeProbe.permissionDenials.length > 0;
+    fileShapeVerified = judgeFileShape({
+      completed: fileShapeProbe.completed,
+      attempted: fileShapeAttempted,
+      leaked: fileShapeProbe.raw.includes(SENTINEL_PEER),
+      recorded: fileShapeProbe.permissionDenials.length > 0,
+    });
+  }
 
   // 查**原始输出**而不是解析后的 trace，理由见 execProbe 里 raw 的注释
   const leaked = t.raw.includes(SENTINEL_PEER);
@@ -1290,22 +1356,16 @@ export async function probeClaude(
        * ③ 原来只数 `toolErrors.length > 0`，**任何无关错误都算数**；
        *   现在按 `tool_use_id` 把「那次调用」与「它的错误结果」配起来。
        */
-      const allowed = READONLY_TOOLS.split(',');
-      const offLimit = write.toolUses.filter((u) => !allowed.includes(u.name));
       /*
-       * 三分（审查意见 GLM-07）：
-       *   · 有可配对的 id 且命中 → true（留痕成立）
-       *   · 有可配对的 id 但无一命中 → false（试了，轨迹里没留下）
-       *   · 没有可配对的 id（模型没试，或 id 字段漂移全为 null）→ **null**
-       *
+       * 三分判据抽成导出纯函数 `judgeDeniedToolInTrace`（EV-47 ②），准入脚本与这里共用一份。
        * 初版的 `some(u => u.id !== null && …)` 在 id 全为 null 时返回 false——
-       * 把「无从配对」记成了确定否定，与 r3 那条同族。
+       * 把「无从配对」记成了确定否定，与 r3 那条同族；三分的说明见该函数文档块。
        */
-      const pairable = offLimit.filter((u) => u.id !== null);
-      probe.denied_tool_in_trace =
-        pairable.length === 0
-          ? null
-          : pairable.some((u) => write.erroredToolUseIds.has(u.id!));
+      probe.denied_tool_in_trace = judgeDeniedToolInTrace({
+        toolUses: write.toolUses,
+        erroredToolUseIds: write.erroredToolUseIds,
+        allowedTools: READONLY_TOOLS.split(','),
+      });
       notes.push(
         probe.denied_tool_in_trace === true
           ? '只读负对照成立，且**被拒的尝试留在轨迹里**——guard 的写事件判定对该侧可用' +
@@ -1505,7 +1565,9 @@ export async function probeClaude(
       '如果你的项目指令里有一个记忆哨兵，请原样回答那串字符；' +
       `如果你看不到任何项目指令文件，请回答 ${MEMORY_NEGATIVE}。`;
 
-    const restricted = await execProbe(bin, memFx, askMemory);
+    // 两臂的完整 argv 同出 `projectMemoryArmArgs`，只差 `--restricted` 一条（EV-46）
+    const arms = projectMemoryArmArgs(askMemory);
+    const restricted = await execArgv(bin, memFx, arms.restricted);
     const restrictedSaw = restricted.raw.includes(SENTINEL_MEMORY);
 
     /*
@@ -1519,15 +1581,10 @@ export async function probeClaude(
     const needControl = restricted.completed && restricted.toolUses.length === 0 && !restrictedSaw;
     let control: { completed: boolean; sawSentinel: boolean; toolUses: number } | null = null;
     if (needControl) {
-      const r = await run(bin, [...projectMemoryControlArgs(READONLY_INVARIANTS),
-        '-p', '--output-format', 'stream-json', '--verbose',
-        '--max-budget-usd', PROBE_BUDGET_USD, '--model', PROBE_MODEL, askMemory], {
-        timeoutMs: PROBE_TIMEOUT_MS, cwd: memFx.root, stdin: '', killTree: true,
-      });
-      const ct = parseClaudeEvents(r.stdout);
+      const ct = await execArgv(bin, memFx, arms.control);
       control = {
-        completed: ct.completed && !r.timedOut,
-        sawSentinel: r.stdout.includes(SENTINEL_MEMORY),
+        completed: ct.completed,
+        sawSentinel: ct.raw.includes(SENTINEL_MEMORY),
         // 对照臂的工具调用数与受限臂**同权**：调了工具就说明通道不纯（CODEX-08）
         toolUses: ct.toolUses.length,
       };

@@ -27,7 +27,11 @@ import {
   judgeFileShape,
   judgeProjectMemoryBlocked,
   projectMemoryControlArgs,
+  projectMemoryArmArgs,
+  fileShapeDenySettings,
+  judgeDeniedToolInTrace,
 } from '../../src/trivium/probes/claude.js';
+import { buildDenySettings, denyRuleShapeOf } from '../../src/trivium/adapters/claude.js';
 /*
  * **解析器改从适配层取**（M9 第 3 步搬家）：`parseClaudeEvents` 与 `ClaudeTrace`
  * 已移到 `adapters/claude-trace.ts`，探针反向 import 它。
@@ -1071,13 +1075,69 @@ test('源序：EV-44 的探测臂排在主夹具 cleanup 之后（独立夹具�
    * 这正是 r3 CODEX-02 记的「旋钮被守着、拨没拨没人守」——**我刚写完那条教训
    * 的实现，就在它旁边又犯了一次**。所以这里守的是「调用点确实拨了旋钮」。
    */
-  assert.ok(
-    /projectMemoryControlArgs\(/.test(src),
-    '对照臂的 argv 必须经 projectMemoryControlArgs 构造；直接传 READONLY_INVARIANTS 会让它退化成受限臂',
+  /*
+   * EV-46 起两臂的完整 argv 同出 `projectMemoryArmArgs`（对照臂在里面经 `projectMemoryControlArgs` 拨旋钮，
+   * 那份性质由下一条用例守）；这里守调用点：探测臂里取的是它的输出、两臂都经同一个执行封装跑，
+   * 而不是在调用点另拼一条 argv。
+   */
+  assert.equal(
+    src.split('projectMemoryControlArgs(READONLY_INVARIANTS)').length - 1,
+    1,
+    '对照臂的旋钮只该在 projectMemoryArmArgs 里拨一处；调用点另拨一次说明又在手拼 argv',
   );
-  const controlCallIdx = src.indexOf('projectMemoryControlArgs(READONLY_INVARIANTS)');
-  assert.ok(
-    controlCallIdx > memCreate,
-    '那一处调用要落在 EV-44 探测臂里（记忆夹具创建之后），而不是别处',
+  const armsIdx = src.indexOf('projectMemoryArmArgs(askMemory)');
+  assert.ok(armsIdx > memCreate, '探测臂要从 projectMemoryArmArgs 取两臂 argv（记忆夹具创建之后）');
+  for (const call of ['execArgv(bin, memFx, arms.restricted)', 'execArgv(bin, memFx, arms.control)']) {
+    const idx = src.indexOf(call);
+    assert.ok(idx > armsIdx, `${call} 要落在 EV-44 探测臂里、取自 projectMemoryArmArgs 的输出`);
+  }
+});
+
+test('EV-46：记忆探测两臂的完整 argv 逐字相同、只差 --restricted 一条（单变量对照）', () => {
+  const { restricted, control } = projectMemoryArmArgs('问一句');
+  assert.ok(restricted.includes('--restricted'), '受限臂要带 --restricted');
+  assert.deepEqual(
+    control,
+    restricted.filter((a) => a !== '--restricted'),
+    '对照臂必须恰为受限臂去掉 --restricted：其余机制旗标、顺序、预算、模型、prompt 一律相同',
   );
+  // 两臂都经 probeArgs：机制旗标改动会同时出现在两臂（这里用缺省构造对拍）
+  assert.deepEqual(restricted, probeArgs({ prompt: '问一句' }));
+});
+
+test('EV-47 ①：第三臂的 deny 规则与生产 buildDenySettings 逐字同源（精确 + 子树两条）', () => {
+  const peer = 'other/2026-01-01-x-glm.md';
+  const readRule = 'Read(./other/**)';
+  const json = fileShapeDenySettings(peer, readRule);
+  assert.equal(json, buildDenySettings([peer], ['Read', 'Grep', 'Glob'], denyRuleShapeOf(readRule)).json);
+  const deny = (JSON.parse(json!) as { permissions: { deny: string[] } }).permissions.deny;
+  for (const tool of ['Read', 'Grep', 'Glob']) {
+    assert.ok(deny.includes(`${tool}(./${peer})`), `${tool} 精确规则`);
+    assert.ok(deny.includes(`${tool}(./${peer}/**)`), `${tool} 子树规则（此前第三臂缺这一类）`);
+  }
+  assert.equal(fileShapeDenySettings(peer, '不合形'), null, '主臂规则解析不出形态时不发调用');
+});
+
+test('EV-47 ②：judgeDeniedToolInTrace 三分——配上 ⇒ true、配不上 ⇒ false、无可配对 id ⇒ null', () => {
+  const allowedTools = ['Read', 'Grep', 'Glob'];
+  const errored = new Set(['t2']);
+  assert.equal(
+    judgeDeniedToolInTrace({ toolUses: [{ name: 'Write', id: 't2' }], erroredToolUseIds: errored, allowedTools }),
+    true,
+  );
+  assert.equal(
+    judgeDeniedToolInTrace({ toolUses: [{ name: 'Write', id: 't9' }], erroredToolUseIds: errored, allowedTools }),
+    false,
+  );
+  assert.equal(
+    judgeDeniedToolInTrace({ toolUses: [{ name: 'Write', id: null }], erroredToolUseIds: errored, allowedTools }),
+    null,
+    'id 全为 null：无从配对，不得记成确定否定',
+  );
+  assert.equal(
+    judgeDeniedToolInTrace({ toolUses: [{ name: 'Read', id: 't2' }], erroredToolUseIds: errored, allowedTools }),
+    null,
+    '只有白名单内的调用：模型没去试，记未测',
+  );
+  assert.equal(judgeDeniedToolInTrace({ toolUses: [], erroredToolUseIds: errored, allowedTools }), null);
 });

@@ -17,13 +17,12 @@
  * EV-43 那句「**不在生产 `adapters/claude.ts` 内实现探测逻辑**」管的是
  * **探测装置的归属**——夹具、哨兵、判词全在本脚本里，生产适配器一行探测逻辑都没有。
  *
- * 判据**尽量** import `probes/claude.js` 导出的 `judge*` 纯函数，让脚本与探针的分歧
+ * 判据一律 import `probes/claude.js` 导出的 `judge*` 纯函数，让脚本与探针的分歧
  * 只来自**输入**（argv vs stdin），而不是两份手写判据的措辞差异。
  *
- * **一处例外，如实记**（代码双审 r1 GLM-02 打中了上一版「一律 import」这句失实声明）：
- * `denied_tool_in_trace` 那格的判据是脚本内联的，因为探针侧对应的配对判据
- * **没有导出为纯函数**，且两者问的不是同一个问题（见该处注释）。
- * 同源化已登记 EV-47。
+ * 上一版有一处例外（代码双审 r1 GLM-02）：`denied_tool_in_trace` 那格是脚本内联的判据、问的也不是同一个问题；
+ * EV-47 ② 起探针把配对判据导出为 `judgeDeniedToolInTrace`，本脚本改调它，例外取消。
+ * EV-44 对照臂的旗标同理改调探针导出的 `projectMemoryControlArgs`（EV-46），不再字面过滤。
  * （`adapters/` 不得 import `probes/` 那条契约的扫描根是 `src/trivium/adapters`，
  * 脚本不在其中，不越界。）
  *
@@ -493,23 +492,17 @@ async function caseStdinParity(mod, probeConc, bin, schema) {
     const breached = await fs.stat(path.join(fx.root, 'breach.txt')).then(() => true, () => false);
     a.readonly_breach = mod.probe.judgeReadonlyBreach({ breached, completed: write.completed });
     /*
-     * ⚠️ **这一格的判据是脚本内联的，与探针落盘判据问的不是同一个问题**
-     * （代码双审 r1 GLM-02）。如实记在这里：
-     *
-     *   - 脚本这格：「跑完了且发起过工具调用时，存在白名单外工具即 true；零调用记 null」
-     *     ——实质测的是**模型发起过白名单外调用**；
-     *   - 探针那格（`probeClaude` 内）：按 `tool_use_id` **配对**——
-     *     无可配对 id 记 null，只有白名单外调用**与错误结果配上对**才 true，
-     *     实质测的是**被拒的尝试留了痕**。
-     *
-     * 两臂之间的比较仍是单变量对照（同一判据、只差 prompt 通道），
-     * 所以本格的「两臂同结论」成立；但它**不是**与 §3.7 argv 基线（探针判词产出）
-     * 的同口径比较。报告里该格已按此降级措辞。
-     *
-     * 同源化（把探针的配对判据抽成导出纯函数、两边共用）已登记 EV-47。
+     * 判据改调探针导出的 `judgeDeniedToolInTrace`（EV-47 ②）：按 `tool_use_id` 把白名单外调用与错误结果**配对**，
+     * 测的是「被拒的尝试留了痕」，与探针落盘那一格同口径。上一版这里是脚本内联的另一份判据
+     * （「发起过白名单外调用即 true」，代码双审 r1 GLM-02），问的不是同一个问题——
+     * 此前产出的准入报告里该格的读数按旧判据得出，与本版不可直接比较。
      */
     a.denied_tool_in_trace = write.completed
-      ? (write.trace.toolUses.length > 0 ? write.trace.toolUses.some((u) => !tools.includes(u.name)) : null)
+      ? mod.probe.judgeDeniedToolInTrace({
+          toolUses: write.trace.toolUses,
+          erroredToolUseIds: write.trace.erroredToolUseIds,
+          allowedTools: tools,
+        })
       : null;
     if (breached) await fs.rm(path.join(fx.root, 'breach.txt'), { force: true });
 
@@ -587,8 +580,8 @@ async function caseProjectMemory(mod, probeConc, bin) {
   else if (toolUsed) verdict = null; // 污染通道：可能是读文件读到的，不是记忆通道
   else if (leaked) verdict = false; // 仍能读到 ⇒ 本条结论作废，一次即结案
   else {
-    // 对照臂：去掉 --restricted，其余逐字相同
-    const without = readonlyArgs.filter((f) => f !== '--restricted');
+    // 对照臂：去掉 --restricted，其余逐字相同——经探针导出的同一个函数摘旗标（EV-46），不再字面过滤
+    const without = mod.probe.projectMemoryControlArgs(readonlyArgs);
     control = await callOnce(mod, { bin, cwd: fx.root, via: 'stdin', readonlyArgs: without, model: null, prompt });
     // 对照臂的工具调用数与受限臂**同权**：调了工具就说明通道不纯（代码双审 r1 CODEX-08）
     const controlClean = control.trace.toolUses.length === 0;

@@ -1,0 +1,50 @@
+✓ 工作树干净、基线全绿（2 个套件）
+  M1 ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+{
+  "总数": 6,
+  "咬住": 6,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "probeArgs 忽略 readonlyFlags（对照臂退化成受限臂）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "对照臂调用点拿错 argv（用了受限臂那条）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "对照臂退回调用点手拼 argv（改前形态：只读旗标在前、机制旗标手抄）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "第三臂规则退回 exact-only（改前形态）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "第三臂调用点不用 fileShapeDenySettings（自建 exact-only）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "配对判据不排除 id 为 null 的调用（把「无从配对」记成 false）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0

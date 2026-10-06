@@ -1,0 +1,9 @@
+M1：fail=1 cancelled=0 0s ⇒ EV-46：记忆探测两臂的完整 argv 逐字相同、只差 --restricted 一条（单变量对照）
+  亦跑 dist/test/test/integration/claude-probe-arm-parity.test.js：fail=1 ⇒ EV-46 端到端：记忆探测两次调用的 argv 逐字相同、只差 --restricted；结论走到 true
+M2：fail=1 cancelled=0 2s ⇒ EV-46 端到端：记忆探测两次调用的 argv 逐字相同、只差 --restricted；结论走到 true
+M3：fail=1 cancelled=0 2s ⇒ EV-46 端到端：记忆探测两次调用的 argv 逐字相同、只差 --restricted；结论走到 true
+M4：fail=1 cancelled=0 0s ⇒ EV-47 ①：第三臂的 deny 规则与生产 buildDenySettings 逐字同源（精确 + 子树两条）
+  亦跑 dist/test/test/integration/claude-probe-arm-parity.test.js：fail=1 ⇒ EV-47 ① 端到端：逐文件第三臂注入的规则含生产形态的精确与子树两条
+M5：fail=1 cancelled=0 2s ⇒ EV-47 ① 端到端：逐文件第三臂注入的规则含生产形态的精确与子树两条
+M6：fail=1 cancelled=0 0s ⇒ EV-47 ②：judgeDeniedToolInTrace 三分——配上 ⇒ true、配不上 ⇒ false、无可配对 id ⇒ null
+exit=0

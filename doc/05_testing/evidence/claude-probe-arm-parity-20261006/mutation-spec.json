@@ -1,0 +1,65 @@
+{
+  "targets": [
+    "src/trivium/probes/claude.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/claude-events.test.js",
+    "dist/test/test/integration/claude-probe-arm-parity.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "probeArgs 忽略 readonlyFlags（对照臂退化成受限臂）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "    ...(opts.readonlyFlags ?? READONLY_INVARIANTS),\n",
+      "replace": "    ...READONLY_INVARIANTS,\n",
+      "expect": "dist/test/test/unit/claude-events.test.js",
+      "also": [
+        "dist/test/test/integration/claude-probe-arm-parity.test.js"
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "对照臂调用点拿错 argv（用了受限臂那条）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "      const ct = await execArgv(bin, memFx, arms.control);\n",
+      "replace": "      const ct = await execArgv(bin, memFx, arms.restricted);\n",
+      "expect": "dist/test/test/integration/claude-probe-arm-parity.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "对照臂退回调用点手拼 argv（改前形态：只读旗标在前、机制旗标手抄）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "      const ct = await execArgv(bin, memFx, arms.control);\n",
+      "replace": "      const ct = await execArgv(bin, memFx, [...projectMemoryControlArgs(READONLY_INVARIANTS), '-p', '--output-format', 'stream-json', '--verbose', '--max-budget-usd', PROBE_BUDGET_USD, '--model', PROBE_MODEL, askMemory]);\n",
+      "expect": "dist/test/test/integration/claude-probe-arm-parity.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "第三臂规则退回 exact-only（改前形态）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  return buildDenySettings([peerRelPath], READONLY_TOOLS.split(','), denyRuleShapeOf(readRule)).json;\n",
+      "replace": "  void readRule; return JSON.stringify({ permissions: { deny: READONLY_TOOLS.split(',').map((tool) => tool + '(./' + peerRelPath + ')') } });\n",
+      "expect": "dist/test/test/unit/claude-events.test.js",
+      "also": [
+        "dist/test/test/integration/claude-probe-arm-parity.test.js"
+      ]
+    },
+    {
+      "id": "M5",
+      "desc": "第三臂调用点不用 fileShapeDenySettings（自建 exact-only）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  const fileSettings = fileShapeDenySettings(fx.peerRelPath, readRule);\n",
+      "replace": "  const fileSettings: string | null = JSON.stringify({ permissions: { deny: READONLY_TOOLS.split(',').map((tool) => tool + '(./' + fx.peerRelPath + ')') } });\n",
+      "expect": "dist/test/test/integration/claude-probe-arm-parity.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "配对判据不排除 id 为 null 的调用（把「无从配对」记成 false）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  const pairable = i.toolUses.filter((u) => !i.allowedTools.includes(u.name) && u.id !== null);\n",
+      "replace": "  const pairable = i.toolUses.filter((u) => !i.allowedTools.includes(u.name));\n",
+      "expect": "dist/test/test/unit/claude-events.test.js"
+    }
+  ]
+}

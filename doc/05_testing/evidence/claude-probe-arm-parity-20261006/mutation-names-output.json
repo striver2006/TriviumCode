@@ -1,0 +1,115 @@
+{
+  "targets_sha256": {
+    "src/trivium/probes/claude.ts": "03637cb39b7c3f01f02ff027d9a3ca229cc465c5f8e1a2a94b659c1c55e36afe"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "probeArgs 忽略 readonlyFlags（对照臂退化成受限臂）",
+      "suite": "dist/test/test/unit/claude-events.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-46：记忆探测两臂的完整 argv 逐字相同、只差 --restricted 一条（单变量对照）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/claude-probe-arm-parity.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-46 端到端：记忆探测两次调用的 argv 逐字相同、只差 --restricted；结论走到 true"
+          ],
+          "firstLines": [],
+          "elapsed_s": 2
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "desc": "对照臂调用点拿错 argv（用了受限臂那条）",
+      "suite": "dist/test/test/integration/claude-probe-arm-parity.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-46 端到端：记忆探测两次调用的 argv 逐字相同、只差 --restricted；结论走到 true"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "对照臂退回调用点手拼 argv（改前形态：只读旗标在前、机制旗标手抄）",
+      "suite": "dist/test/test/integration/claude-probe-arm-parity.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-46 端到端：记忆探测两次调用的 argv 逐字相同、只差 --restricted；结论走到 true"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "第三臂规则退回 exact-only（改前形态）",
+      "suite": "dist/test/test/unit/claude-events.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-47 ①：第三臂的 deny 规则与生产 buildDenySettings 逐字同源（精确 + 子树两条）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": [
+        {
+          "suite": "dist/test/test/integration/claude-probe-arm-parity.test.js",
+          "fail": 1,
+          "timed_out": false,
+          "cancelled": 0,
+          "red": [
+            "EV-47 ① 端到端：逐文件第三臂注入的规则含生产形态的精确与子树两条"
+          ],
+          "firstLines": [],
+          "elapsed_s": 2
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "desc": "第三臂调用点不用 fileShapeDenySettings（自建 exact-only）",
+      "suite": "dist/test/test/integration/claude-probe-arm-parity.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-47 ① 端到端：逐文件第三臂注入的规则含生产形态的精确与子树两条"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "配对判据不排除 id 为 null 的调用（把「无从配对」记成 false）",
+      "suite": "dist/test/test/unit/claude-events.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-47 ②：judgeDeniedToolInTrace 三分——配上 ⇒ true、配不上 ⇒ false、无可配对 id ⇒ null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    }
+  ]
+}
