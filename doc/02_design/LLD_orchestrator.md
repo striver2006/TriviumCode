@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.44
+> - **当前版本**：v1.1.45
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.45（2026-10-06）随设计 v1.3.116（建议命令里的主题名统一转义，EV-195）同步：模块表 `naming.ts` 行补 `shellQuoteArg()`。本批未走双审。行数列未重核。
 > - **变更说明**：v1.1.44（2026-10-06）随设计 v1.3.115（失联取消两格退 69，EV-177 ② 补）同步：4.2「`cancelRun` 结束失联后仍挂着的 worker」引述块的退出码一句补上 `mismatch` / `no_identity` 两格也以 69 退出。本批未走双审。
 > - **变更说明**：v1.1.43（2026-10-06）随设计 v1.3.106（回收遗留锁时收尾上一轮，EV-151）同步：4.3「告警」条之后新增「回收之后」一条（`LockHandle.reclaimed`、`settleReclaimedRunLocks` 的过滤与收尾、同步路径的 `onRunIdAllocated`）；前台中断转发一条、4.2「仍会停在 `running` 的」与已知缺口表 `cancelRun` 一行里指向 EV-151 的半句改准。本批未走双审。行数列未重核。
 > - **变更说明**：v1.1.42（2026-10-06）随设计 v1.3.105（失联取消未确认退 69，EV-177 ②）同步：4.2「`cancelRun` 结束失联后仍挂着的 worker」引述块的退出码改为「确认退出退 0、`alive` 格未确认退出 69」；已知缺口表「失联后取消与主路径的口径差」行改为两处都已收口。本批未走双审。
@@ -135,7 +136,7 @@ graph TD
 | :--- | ---: | :--- | :--- |
 | `archive.ts` | 550 | 防覆盖落盘、最低工件集校验、sha256 核对、**运行清单读侧按阶段分发**（设计 6.7.1） | `writeArtifact()` `checkRecordedArtifacts()` `checkRunManifests()` `runManifestProblem()` |
 | `meta.ts` | 382 | `run.json`（`trivium.run.v2`）与主题级任务档的构造与更新；**读侧按 schema 分发与 v1 → v2 内存迁移** | `newRunId()` `allocateRunId()` `writeRunMeta()` `readRunMeta()` `readRunMetaDetailed()` `migrateRunMetaV1()` `updateTask()` `readTaskStrict()` |
-| `naming.ts` | 142 | 文件名生成与反解析（纯函数，不碰文件系统） | `buildArtifactName()` `parseArtifactName()` `validateTopic()` |
+| `naming.ts` | 142 | 文件名生成与反解析（纯函数，不碰文件系统） | `buildArtifactName()` `parseArtifactName()` `validateTopic()` `shellQuoteArg()` |
 | `report.ts` | 556 | 人读复盘生成 | `buildReport()` |
 | `render.ts` | 253 | 审查文档的 Markdown 渲染（参与者事实与降级警示分两处标注） | `renderReviewDoc()` |
 

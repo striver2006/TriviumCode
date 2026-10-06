@@ -1,0 +1,85 @@
+{
+  "targets_sha256": {
+    "src/trivium/naming.ts": "c64d791d55caafc08eeaf04c7b6484c48e636ef87e0c5b199cc5407755ef273c",
+    "src/trivium/driver-claim.ts": "5e61e1b06756429fb9674e50bd12fc4514448f7ee7cbc0c17184857df10e5e98",
+    "src/trivium/hooks.ts": "faedac68d7b1345955ad13aae561c90ba2140c813c0cb350da6b236281760724"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "一律不加引号（改前的裸拼形态）",
+      "suite": "dist/test/test/unit/topic-arg-quoting.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-195 Q2：含白名单外字符时整体加单引号；内含单引号按 '\\'' 转义",
+        "EV-195 Q3：这些主题名确实能过 validateTopic（校验不收紧），转义后经 sh 原样还原",
+        "EV-195 Q4：两处纯函数调用点——带特殊字符的主题加引号，白名单内逐字不变"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "内含单引号的转义写错（只加反斜杠）",
+      "suite": "dist/test/test/unit/topic-arg-quoting.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-195 Q2：含白名单外字符时整体加单引号；内含单引号按 '\\'' 转义",
+        "EV-195 Q3：这些主题名确实能过 validateTopic（校验不收紧），转义后经 sh 原样还原",
+        "EV-195 Q4：两处纯函数调用点——带特殊字符的主题加引号，白名单内逐字不变"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "白名单内也加引号（现存主题的输出不再逐字不变）",
+      "suite": "dist/test/test/unit/topic-arg-quoting.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-195 Q1：白名单内的主题原样返回（含中文、数字、- _ .）",
+        "EV-195 Q4：两处纯函数调用点——带特殊字符的主题加引号，白名单内逐字不变"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "认领命令回退成裸拼",
+      "suite": "dist/test/test/unit/topic-arg-quoting.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-195 Q4：两处纯函数调用点——带特殊字符的主题加引号，白名单内逐字不变",
+        "EV-195 Q6（源码护栏）：src/ 里 `--topic ` 之后的插值一律经 shellQuoteArg，调用点与登记表一致"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "失守作废命令回退成裸拼（只有源码护栏能抓）",
+      "suite": "dist/test/test/unit/topic-arg-quoting.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-195 Q6（源码护栏）：src/ 里 `--topic ` 之后的插值一律经 shellQuoteArg，调用点与登记表一致"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    }
+  ]
+}

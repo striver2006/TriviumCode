@@ -26,6 +26,7 @@
 import { entryCommandOf } from './agents/registry.js';
 import { diffExcludePrefixes } from './code-stage.js';
 import { OBJECT_NAME_RE, diffTreesNameStatus, treeExists, workTreeHash } from './util/git.js';
+import { shellQuoteArg } from './naming.js';
 
 /** 摘要总预算（计划双审 CODEX-02）：超出即落原因 4，审批照常 */
 export const SUMMARY_BUDGET_MS = 20_000;
@@ -284,7 +285,7 @@ export function renderWorkTreeSummary(s: WorkTreeSummary, opts: RenderOptions): 
   lines.push(`  （比对范围：${scope}；闸门期提交过的改动同样列出）`);
   lines.push(
     opts.exit === 'approval'
-      ? `  若这些改动不该发生：请自行 git diff 核对，必要时 ${entryCommandOf(opts.driver, 'dual-abandon')} --topic ${opts.topic} 作废本轮后重跑。`
+      ? `  若这些改动不该发生：请自行 git diff 核对，必要时 ${entryCommandOf(opts.driver, 'dual-abandon')} --topic ${shellQuoteArg(opts.topic)} 作废本轮后重跑。`
       : '  审批时会再列出一次。',
   );
   if (override) lines.push(`  ${override}`);

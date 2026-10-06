@@ -50,7 +50,7 @@ import { decideMode, runBothSides, type SideProgress } from './runner.js';
 import { judgeRun, renderGuardWarnings, type SideVerdict } from './guard.js';
 import { FALLBACK_CAUSE_LABEL, renderReviewDoc, type RenderInput } from './render.js';
 import { resolveTopicReadOnly, locateSubject } from './topic.js';
-import { parseArtifactName } from './naming.js';
+import { parseArtifactName, shellQuoteArg } from './naming.js';
 import {
   buildDiffHeader,
   classifyDiff,
@@ -1209,8 +1209,8 @@ export async function prepareRun(opts: ReviewOptions): Promise<RunContext> {
           EXIT.GATE_BLOCK,
           `上一轮（run ${g.entry?.run_id ?? '未知'}，第 ${g.entry?.rerun_index ?? '?'} 轮）的审查意见尚未裁决，不能直接重跑。\n` +
             `  ${g.skipped ?? ''}\n` +
-            `  补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${ref.topic} --check\` 后再来，\n` +
-            `  或用 \`trivium abandon --topic ${ref.topic} --stage ${stage}\` 显式作废那一轮（工件保留）。`,
+            `  补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${shellQuoteArg(ref.topic)} --check\` 后再来，\n` +
+            `  或用 \`trivium abandon --topic ${shellQuoteArg(ref.topic)} --stage ${stage}\` 显式作废那一轮（工件保留）。`,
         );
       }
     }

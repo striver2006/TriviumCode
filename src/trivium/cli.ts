@@ -40,6 +40,7 @@ import {
   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
 } from './preflight.js';
 import { resolveTopicArgs } from './topic-args.js';
+import { shellQuoteArg } from './naming.js';
 import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
 import { scrubAllRunRoot } from './retention.js';
 import { wiredAdapter } from './adapters/index.js';
@@ -1317,7 +1318,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
         (v.result.ok ? '本轮登记的审查工件与留痕不符' : '裁决尚未齐备') + '，不能置为等待人工审批。\n' +
           (v.result.ok
             ? '  先恢复上面列出的工件（或作废这一轮）再重试。'
-            : `  先补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${topic} --check\`。`),
+            : `  先补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${shellQuoteArg(topic)} --check\`。`),
       );
       return EXIT.GATE_BLOCK;
     }
@@ -1376,9 +1377,9 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     const approveCmd = entryCommandOf(gateDriver, 'dual-approve');
     const msg =
       `已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
-      `  通过：${approveCmd} --topic ${topic} --stage ${stage} [--reason <附言>]\n` +
-      `  拒绝：${approveCmd} --topic ${topic} --stage ${stage} --reject --reason <理由>\n` +
-      `  放弃：${entryCommandOf(gateDriver, 'dual-abandon')} --topic ${topic}\n` +
+      `  通过：${approveCmd} --topic ${shellQuoteArg(topic)} --stage ${stage} [--reason <附言>]\n` +
+      `  拒绝：${approveCmd} --topic ${shellQuoteArg(topic)} --stage ${stage} --reject --reason <理由>\n` +
+      `  放弃：${entryCommandOf(gateDriver, 'dual-abandon')} --topic ${shellQuoteArg(topic)}\n` +
       `  ${await holdNoticeFor(ctx.projectRoot, gateDriver)}` +
       preWarnings.map((w) => `\n  ⚠️ [${w.code}] ${w.message}`).join('');
     // 停点上的工作树改动摘要：闸门已迁移完才算，只告知（审批前工作树摘要计划 r2 §2.4）
@@ -1558,7 +1559,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     } else {
       const msg =
         `裁决齐备，已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
-        `  停点话术：trivium gate --stage ${stage} --topic ${topic} --await-approval\n` +
+        `  停点话术：trivium gate --stage ${stage} --topic ${shellQuoteArg(topic)} --await-approval\n` +
         `  ${await holdNoticeFor(ctx.projectRoot, gateDriver)}`;
       if (!isJsonMode()) {
         say(msg);
@@ -1712,7 +1713,7 @@ async function cmdApproval(
           `${topic} / ${stage}（第 ${v.rerunIndex} 轮）通过前复核未过，本次不放行，闸门保持等待审批。\n` +
             (v.result.ok
               ? `  先恢复上面列出的工件（或 ${abandonCmd} 作废这一轮）再审批。`
-              : `  先补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${topic} --check\`，再审批。`),
+              : `  先补齐裁决件并通过 \`trivium gate --stage ${stage} --topic ${shellQuoteArg(topic)} --check\`，再审批。`),
         );
         return EXIT.GATE_BLOCK;
       }

@@ -29,7 +29,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
 import { type Ctx, type RunMeta, type Stage, STAGES, describeDriftUnknown } from './types.js';
-import { looksLikeRoleArtifact } from './naming.js';
+import { looksLikeRoleArtifact, shellQuoteArg } from './naming.js';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, entryCommandOf, type AgentId } from './agents/registry.js';
 import { EXIT } from './exit-codes.js';
 import { listOpenGates, readState, shouldLockWrites, StateCorruptError, type GateEntry } from './state.js';
@@ -701,9 +701,9 @@ export async function hookPreWrite(ctx: Ctx, input: HookInput): Promise<HookOutp
            * 拿不到单一的「当轮」。最坏情况是给出上一轮 Driver 的写法——今天带 Hook 的两家写法相同，看不出差别。
            * 下面 Bash 拦截与会话开场待办两处同此。
            */
-          `  通过审批：${entryCommandOf(gate.driver, 'dual-approve')} --topic ${gate.topic} --stage ${gate.stage}\n` +
-          `  拒绝：    ${entryCommandOf(gate.driver, 'dual-approve')} --topic ${gate.topic} --stage ${gate.stage} --reject --reason <理由>\n` +
-          `  放弃闸门：${entryCommandOf(gate.driver, 'dual-abandon')} --topic ${gate.topic}`,
+          `  通过审批：${entryCommandOf(gate.driver, 'dual-approve')} --topic ${shellQuoteArg(gate.topic)} --stage ${gate.stage}\n` +
+          `  拒绝：    ${entryCommandOf(gate.driver, 'dual-approve')} --topic ${shellQuoteArg(gate.topic)} --stage ${gate.stage} --reject --reason <理由>\n` +
+          `  放弃闸门：${entryCommandOf(gate.driver, 'dual-abandon')} --topic ${shellQuoteArg(gate.topic)}`,
       );
     }
   }
@@ -1058,8 +1058,8 @@ export async function hookPreBash(ctx: Ctx, input: HookInput): Promise<HookOutpu
         `${decision.reason}，此时不得用 Bash 改动工作树：${shown}\n` +
           '  这是按写命令形态的启发式判定（重定向、tee、sed -i、rm/mv/cp、git checkout…），只在闸门期生效。\n' +
           '  裁决件请用 Write 工具写进归档；其它改动请等审查结束，或\n' +
-          `  通过审批：${entryCommandOf(gate.driver, 'dual-approve')} --topic ${gate.topic} --stage ${gate.stage}\n` +
-          `  放弃闸门：${entryCommandOf(gate.driver, 'dual-abandon')} --topic ${gate.topic}`,
+          `  通过审批：${entryCommandOf(gate.driver, 'dual-approve')} --topic ${shellQuoteArg(gate.topic)} --stage ${gate.stage}\n` +
+          `  放弃闸门：${entryCommandOf(gate.driver, 'dual-abandon')} --topic ${shellQuoteArg(gate.topic)}`,
       );
     }
   }
@@ -1356,7 +1356,7 @@ async function breachLines(items: BreachedGate[], indent: string): Promise<strin
       `${indent}  调用记录（非文件路径）：${breachRecordsText(meta.guard.breached_files ?? [])}`,
       `${indent}  快照漂移：${driftText(meta)}`,
       `${indent}  出口：由用户决定用 ${entryCommandOf(meta.driver, 'dual-abandon')} ` +
-        `--topic ${g.topic} --stage ${g.stage} 作废这一轮（保留工件、只解闸门）。`,
+        `--topic ${shellQuoteArg(g.topic)} --stage ${g.stage} 作废这一轮（保留工件、只解闸门）。`,
     );
   }
   lines.push(
@@ -1800,7 +1800,7 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
       lines.push(
         `  · ${g.topic}/${g.stage} 等待人工审批（自 ${g.since}）` +
           // 闸门项的 driver 只用来选写法、不作身份来源（见写入拦截那处的说明）
-          `——${entryCommandOf(g.driver, 'dual-approve')} --topic ${g.topic} --stage ${g.stage}`,
+          `——${entryCommandOf(g.driver, 'dual-approve')} --topic ${shellQuoteArg(g.topic)} --stage ${g.stage}`,
       );
     } else {
       lines.push(`  · ${g.topic}/${g.stage} 审查已落盘但裁决未齐备`);

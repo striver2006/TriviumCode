@@ -23,6 +23,23 @@ export type DispositionKind = 'revised' | 'response';
 /** 主题名的保留后缀：主题不得以这些结尾，否则文件名无法反向解析 */
 const RESERVED_SUFFIX = /-(?:r\d+|revised|response|verify)$/;
 
+/** 不需要引号的字符：字母（含中文）、数字、`_`、`.`、`-`——本仓全部现存主题都在其内（EV-195 第二批核过） */
+const SHELL_SAFE_ARG = /^[\p{L}\p{N}_.-]+$/u;
+
+/**
+ * 把一个参数（今天只用于主题名）转成可以原样粘贴进 POSIX shell 的形式（EV-195，用户 2026-10-06 定取 B）。
+ *
+ * 全部字符都在 {@link SHELL_SAFE_ARG} 内时**原样返回**——建议命令的输出对现存主题逐字不变；
+ * 否则整体加单引号，内含的单引号写成 `'\''`。空串返回 `''`，免得参数整个消失。
+ * 与 `worktree-summary.ts` / `probes/verify-commands.ts` 的 `shQuote` 的区别只在「白名单内不加引号」。
+ */
+export function shellQuoteArg(s: string): string {
+  if (SHELL_SAFE_ARG.test(s)) return s;
+  // 不用 /'/g 正则字面量：registry-parity 的简易剥注释器不认正则，会把其后的注释当成字符串扫
+  const q = "'";
+  return q + s.split(q).join(`${q}\\${q}${q}`) + q;
+}
+
 export interface TopicValidation {
   ok: boolean;
   /** 规范化后的主题（空格转 -） */
@@ -34,8 +51,11 @@ export interface TopicValidation {
 /**
  * 主题名合法性（设计 §6.1）。
  *
- * 允许中英文、数字、`-`、`_`、`.`；长度 1～64；
- * 禁止路径分隔符、`..`、前导 `.`、控制字符；空格自动转 `-`。
+ * **判据是黑名单**（EV-195 改准；此前这里写的「允许中英文、数字、`-`、`_`、`.`」是白名单口径，与实现不符）：
+ * 长度 1～64；禁止路径分隔符 `/` `\`、`..`、前导 `.`、控制字符与保留后缀；空白自动转 `-`。
+ * 其余字符一概放行——含 `;` `&` `$`、反引号、引号、括号等 shell 元字符。所以把主题名拼进给人复制执行的
+ * 建议命令时一律经 {@link shellQuoteArg}，不要裸拼（源码护栏 `test/unit/topic-arg-quoting.test.ts`）。
+ * 不收紧为白名单是用户定的（EV-195 取 B）：别的项目里已有的、含其它字符的主题会从此任何命令都打不开。
  */
 export function validateTopic(raw: string, maxLen = 64): TopicValidation {
   const normalized = raw.trim().replace(/\s+/g, '-');

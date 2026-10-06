@@ -12,7 +12,7 @@ import { DEFAULT_CRITICS, VOIDING_DENY_CATEGORIES, type Config, type CriticId, t
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
 import { checkRecordedArtifacts, isReviewArtifact, listStageArtifacts, metaDir, stageDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
 import { EXIT, TriviumError } from './exit-codes.js';
-import { buildArtifactName, dispositionKindForStage, localDate, parseArtifactName } from './naming.js';
+import { buildArtifactName, dispositionKindForStage, localDate, parseArtifactName, shellQuoteArg } from './naming.js';
 import { checkReviewIntegrity, parseReview } from './parse.js';
 import { validateDispositionFrontMatter } from './schemas.js';
 
@@ -1474,7 +1474,7 @@ export async function approveForkRecovery(i: {
   runId: string | null;
 }): Promise<ApprovalCheckInput['recovery']> {
   const { unreadableRunMetaExitAt } = await import('./meta.js');
-  const abandon = `${i.abandonCmd} --topic ${i.topic} --stage ${i.stage} --reason '<说明分叉>'`;
+  const abandon = `${i.abandonCmd} --topic ${shellQuoteArg(i.topic)} --stage ${i.stage} --reason '<说明分叉>'`;
   return {
     missingRunId:
       '本机闸门项没有记下 run_id：归档是正本、本机闸门是副本，两者已经分叉。\n' +

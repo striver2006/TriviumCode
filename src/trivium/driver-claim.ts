@@ -63,6 +63,7 @@ import type { AgentId, Stage } from './types.js';
 import type { StageDriverClaim, TaskMeta } from './meta.js';
 import { stageDir, type ArchiveLayout } from './archive.js';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER } from './agents/registry.js';
+import { shellQuoteArg } from './naming.js';
 
 /**
  * 读出该阶段的声明值。**读侧唯一入口**——别处直接摸 `task.drivers?.[stage]?.driver`
@@ -382,7 +383,7 @@ export function stageDriverInvariant(args: {
  * 所以命令形态收在这一个函数里，并由一条**真跑一次 CLI 并断言退 0**的用例守着。
  */
 export function claimCommand(topic: string, stage: Stage, driver: AgentId): string {
-  return `trivium topic claim --topic ${topic} --stage ${stage} --driver ${driver}`;
+  return `trivium topic claim --topic ${shellQuoteArg(topic)} --stage ${stage} --driver ${driver}`;
 }
 
 /**

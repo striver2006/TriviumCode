@@ -12,6 +12,7 @@ import type { ArchiveLayout } from './archive.js';
 import { resolveTopic } from './topic.js';
 import { resetStopBlockCount } from './lock.js';
 import { EXIT, TriviumError } from './exit-codes.js';
+import { shellQuoteArg } from './naming.js';
 
 /**
  * ## 审批这道关的信任边界（审查意见 GLM-01，如实记录）
@@ -185,7 +186,7 @@ export async function recordApproval(i: ApprovalInput): Promise<{ message: strin
       EXIT.GATE_BLOCK,
       `闸门当前记着 run ${gate.run_id ?? '（无）'}，而通过前复核的是 ${i.verifiedRunId ?? '（未给出）'}——` +
         '两者不是同一轮，本次不放行。\n' +
-        `  请重新查看 \`trivium status --topic ${i.topic}\` 后再审批。`,
+        `  请重新查看 \`trivium status --topic ${shellQuoteArg(i.topic)}\` 后再审批。`,
     );
   }
 
@@ -218,7 +219,7 @@ export async function recordApproval(i: ApprovalInput): Promise<{ message: strin
   if (!g.applied) {
     throw new TriviumError(
       EXIT.GATE_BLOCK,
-      `闸门未变更：${g.skipped ?? '状态已被另一次运行接管'}。请重新查看 \`trivium status --topic ${i.topic}\` 后再决定。`,
+      `闸门未变更：${g.skipped ?? '状态已被另一次运行接管'}。请重新查看 \`trivium status --topic ${shellQuoteArg(i.topic)}\` 后再决定。`,
     );
   }
 
