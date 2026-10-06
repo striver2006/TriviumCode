@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.111
+> - **当前版本**：v1.3.112
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3716,6 +3716,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.112** | 2026-10-06 | **排序快照「需用户拍板」七条：逐条核现状、写候选与建议（EV-11、EV-27、EV-34、EV-48、EV-73、EV-138、EV-140）。** M11 前待办第二批第 9 题（D 组，只论证），**本批未走双审**。正文与代码不改。要点：EV-11 逐条降级上线后 49 轮里枚举越界只剩 1 条、降级全在 codex 且主因是漏填 `confidence`（4 条 major 因此失去阻断资格），建议维持现状继续观测；EV-27 与并入 M11 的 EV-22 同一处结构，建议一起定；EV-34 审查员本就读真实工作树，补丁上下文行的出站增量接近零，建议接受；EV-48 换名续作自 M10 起未再出现，建议接受并写进手册；EV-73 gate 是五个入口里唯一会静默采信上一轮的，建议与另四处同口径；EV-138 建议维持手工维护；EV-140 现有「重跑 `gate --await-approval`」已能看了再批，建议写明即可。各条出处与改动面见 BACKLOG，统计脚本见 `doc/05_testing/evidence/backlog-decisions-20261006/`。 |
 | **v1.3.111** | 2026-10-06 | **主题名校验与建议命令引号：论证后登记建议（EV-195）。** M11 前待办第二批第 8 题（D 组，只论证），**本批未走双审**。正文与代码不改。核实：`validateTopic` 实为黑名单、与文档块和 §6.1 的白名单口径不符；建议命令裸拼主题名的落点按字面是 20 处（不是登记时的五处）；本仓 96 个主题全在白名单内。候选 A 收紧白名单 / B 建议命令统一转义 / C 两者都做 / D 不修，建议 B 并改准注释与 §6.1，写进 BACKLOG EV-195 待用户定。 |
 | **v1.3.110** | 2026-10-06 | **claude 探针两臂同源（EV-46、EV-47）。** M11 前待办第二批第 7 题，**本批未走双审**（C 组，花 claude 配额 3 次）。①EV-46：`probeArgs` 加 `readonlyFlags` 覆盖；新增导出 `projectMemoryArmArgs` 给 EV-44 记忆探测两臂的完整 argv（都经 `probeArgs`，对照臂只差 `--restricted`），两臂经同一个执行封装 `execArgv` 跑——对照臂不再在调用点手抄机制旗标；准入脚本改调 `projectMemoryControlArgs`。②EV-47 ①：路径 deny 逐文件第三臂的规则改由 `fileShapeDenySettings`（即生产 `buildDenySettings` + `denyRuleShapeOf(主臂规则)`）给出，每条路径精确 + 子树两条，长期复验与生产注入逐字同源；③EV-47 ②：`denied_tool_in_trace` 配对判据抽成导出纯函数 `judgeDeniedToolInTrace`，探针与准入脚本共用。判据语义、落盘字段、doctor 输出不变。真实 claude 2.1.288 三次调用：两臂 argv 单变量、`project_memory_blocked: true`、第三臂 6 条规则下 `file_shape_verified: true`，与改前落盘结论一致。新用例 5 格（含假 claude 端到端 2 格），变异 6/6 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_claude_probe_arm_parity.md`。 |
 | **v1.3.109** | 2026-10-06 | **codex 只读负对照的混淆：论证后登记候选、本批跳过（EV-25）。** M11 前待办第二批第 6 题，**本批未走双审**。正文与代码不改、未花配额。照搬 `scripts/codex-sandbox-control.mjs` 的正对照口径会多出「判不了」第三态，而 `codexSeverity` 与 `availability()` 只认二值，第三态怎么落值、doctor 怎么说属改输出与可用性判定；候选 A（仿 zcode P-29：保留上次结论 + warning）/ B（判不了即不可用、改写 blocker 措辞）/ C（不修），建议 A，写进 BACKLOG EV-25 待用户定。 |
