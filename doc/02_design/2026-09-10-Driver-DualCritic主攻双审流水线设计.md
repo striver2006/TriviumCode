@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.108
+> - **当前版本**：v1.3.109
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3716,6 +3716,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.109** | 2026-10-06 | **codex 只读负对照的混淆：论证后登记候选、本批跳过（EV-25）。** M11 前待办第二批第 6 题，**本批未走双审**。正文与代码不改、未花配额。照搬 `scripts/codex-sandbox-control.mjs` 的正对照口径会多出「判不了」第三态，而 `codexSeverity` 与 `availability()` 只认二值，第三态怎么落值、doctor 怎么说属改输出与可用性判定；候选 A（仿 zcode P-29：保留上次结论 + warning）/ B（判不了即不可用、改写 blocker 措辞）/ C（不修），建议 A，写进 BACKLOG EV-25 待用户定。 |
 | **v1.3.108** | 2026-10-06 | **zcode 指纹读不了的窄格：甄别后越出范围、跳过（EV-203）。** M11 前待办第二批第 5 题，**本批未走双审**。正文不改、代码不改。「zcode 既有写法不动」指 EV-202 定下的 `adapters/zcode.ts` 指纹 try/catch 不动、输出逐字不变；窄格的唯一收口写法是去掉这个 catch、交给 `probeAuth` 的「读不了不查也不写缓存」，必然动 zcode 写法并让 doctor 详情多一段告警，越出范围。其余落点（`probeAuth` 一律不认 null、zcode 改返回区别于 null 的定值）要么改掉 codex / agy 的既有口径，要么只是换了个键、窄格仍在。维持 2026-10-05 定的触发式，建议写进 BACKLOG EV-203。 |
 | **v1.3.107** | 2026-10-06 | **K 格偶发红甄别（EV-201 合并入 EV-217 结案）。** M11 前待办第二批第 4 题，**本批未走双审**。正文不改、代码与用例不改。EV-201 的两次红（K-K4 592 ms、K-K3 524 ms，只见 SIGTERM）与 EV-217 推断的成因同一形态（夹具 SIGTERM 处理器未装上即收信号、按缺省处置退出），已由 v1.3.95 的 `spawnMarked` 等就绪标记修掉；其后入库的 22 份全量读数 K 格红 0 次。读数见 `doc/05_testing/REPORT_2026-10-06_k_cell_flake_triage.md`。 |
 | **v1.3.106** | 2026-10-06 | **回收遗留锁时收尾上一轮（EV-151）。** M11 前待办第二批第 3 题，**本批未走双审**（方案由用户 2026-10-06 定：候选 A 并含同步路径扩展）。`acquireLock` 把本次真回收掉的遗留锁（原因 + 内容）经 `LockHandle.reclaimed` 交还调用方，告警不变；新增 `settleReclaimedRunLocks`，`--start` 与同步 `review` 取到锁、准备新一轮之前各调一次：只收原因为 `pid_gone` / `pid_reused`、`kind: 'run'`、带 run_id 与阶段的锁，归档仍为 running、status.json 记的 `worker_pid`（若有）与锁相同 ⇒ 先回收该轮仍为 running 的闸门项、再 `finalizeFailedRunMeta`（`worker_lost` / `pid_gone`），逐步播报；status.json 记的是别的 pid ⇒ 不收、给 `--wait` 出口；归档不存在或已是终态 ⇒ 不出声；锁里没有 run_id ⇒ 多告警一句「定位不到上一轮」。同步路径扩展：`ReviewOptions.onRunIdAllocated` 在 `prepareRun` 分配 run_id 之后、写骨架之前调用，同步 `runReview` 借它把 run_id 补写进自己持有的锁（与 worker 锁同形），被 SIGKILL / Ctrl-C 中断之后下一次取锁能定位并收尾；`--start` 不传（EV-150 窗口）。status.json 不写，`termination` 不新增取值（同步运行也记 `worker_lost` / `pid_gone`，另登 EV-220）。7.5 新增一段、v1.3.102「不收留痕」一句与 6.7 未回填清单改准；LLD v1.1.43、用户手册 v1.0.35 同步。新用例进程内 7 格、经真实 bundle 2 格（G1 `--start` 工作进程被强杀、G2 同步 review 被强杀），变异 8/8 咬住。读数见 `doc/05_testing/REPORT_2026-10-06_reclaimed_lock_settle.md`。 |
