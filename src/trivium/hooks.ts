@@ -28,7 +28,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
-import { type Ctx, type RunMeta, type Stage, STAGES, describeDriftUnknown } from './types.js';
+import { type Ctx, type RunMeta, type Stage, STAGES } from './types.js';
 import { looksLikeRoleArtifact, shellQuoteArg } from './naming.js';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, entryCommandOf, type AgentId } from './agents/registry.js';
 import { EXIT } from './exit-codes.js';
@@ -1268,9 +1268,13 @@ function looksLikeCommit(input: HookInput, projectRoot: string): boolean {
 // ─────────────── 待裁决闸门的只读失守文案（EV-98 文案部分） ───────────────
 
 /*
- * 只读失守时 `gate --check` 必败（`gate.ts` 的 `readonly_breach` failure），闸门停在
- * `review_done_awaiting_disposition`，两处 Hook 照旧拦——但原文案一律说「未逐条裁决」，
- * 把 Driver 引去补裁决件，而补多少都解不开（EV-79 代码双审 r2：22 条裁决齐备、最终 abandon）。
+ * 确证改动的只读失守（`gate.ts` 的 `classifyReadonlyBreach` 判 `confirmed`）时 `gate --check` 必败
+ * （`readonly_breach` failure），闸门停在 `review_done_awaiting_disposition`，两处 Hook 照旧拦——
+ * 但原文案一律说「未逐条裁决」，把 Driver 引去补裁决件，而补多少都解不开（EV-79 代码双审 r2：
+ * 22 条裁决齐备、最终 abandon）。
+ *
+ * **失守项只收确证格**（只读失守未确证改动放行计划 r2 §3，用户决策 2026-10-06）：复算无变化或比不了的
+ * 失守轮，`gate --check` 降为告警放行，补齐裁决件就解得开——那一轮按普通轮出原文案，逐字不变。
  *
  * 这里只换给人看的文字：退出码、是否拦、阻断计数都在读留痕之前定好，读取结果只选文案。
  * 所以不需要 `resolveRoundDriver` 那套 realpath / 软链守卫——伪造一份失守留痕的最坏后果
@@ -1298,7 +1302,10 @@ async function roundBreach(ctx: Ctx, g: GateEntry): Promise<BreachedGate | null>
   if (!g.run_id) return null;
   const { readRunMeta } = await import('./meta.js');
   const meta = await readRunMeta({ archiveRoot: ctx.archiveRoot, topic: g.topic }, g.stage, g.run_id);
-  return meta?.guard.readonly_breach === true ? { g, meta } : null;
+  if (meta?.guard.readonly_breach !== true) return null;
+  // 判据与 gate --check 同一个函数（计划 r2 §3，决策四）：未确证的失守轮按普通轮处理
+  const { classifyReadonlyBreach } = await import('./gate.js');
+  return classifyReadonlyBreach(meta.snapshot.drift) === 'confirmed' ? { g, meta } : null;
 }
 
 /** 把待裁决闸门按「本轮失守 B / 未见失守 N」拆开，保持原顺序 */
@@ -1319,26 +1326,21 @@ async function splitByBreach(
 const gateLabel = (g: GateEntry): string => `${g.topic}/${g.stage}`;
 
 /*
- * 「gate --check 对只读失守一律判失败」陈述的是 `checkAdjudication` 对 `readonlyBreach.hit`
- * 无条件推 failure 这件事（`gate.ts` 的 `READONLY_BREACH_TRIAGE` 旁有互指注释）。
- * 将来若给失守加豁免出口，这句要同改；`gate-loop` 集成用例（齐裁决件仍失败 + Hook 说失守）会先红。
+ * 「gate --check 对这类只读失守判失败」陈述的是 `checkAdjudication` 只对 `classifyReadonlyBreach`
+ * 判确证的失守推 failure 这件事（`gate.ts` 的 `READONLY_BREACH_TRIAGE` 旁有互指注释）。
+ * 判据再变时这句要同改；`gate-loop` 集成用例（齐裁决件仍失败 + Hook 说失守）会先红。
  */
 const BREACH_UNFIXABLE =
-  '这道闸门靠补裁决件解不开——gate --check 对只读失守一律判失败，裁决件写得再齐也不放行';
+  '这道闸门靠补裁决件解不开——跑后复算确证审查期间工作树有改动，gate --check 对这类只读失守判失败，裁决件写得再齐也不放行';
 
-/** 快照漂移的实际取值，按 Hook 已读到的那份留痕直接写出（计划双审 CODEX-08） */
-function driftText(meta: RunMeta): string {
-  const d = meta.snapshot.drift;
-  if (!d.changed) return '未检出（snapshot.drift.changed 为 false——这不足以判定误报，见下方处置）';
-  if (d.files.length === 0) {
-    // 「比不了」走全部人读面共用的排版（EV-139）
-    return `比对未完成（${d.unknown_reason ? describeDriftUnknown(d.unknown_reason) : '原因未记录'}），按有改动对待`;
-  }
-  return (
-    `检出 ${d.files.length} 个文件改动：` +
-    d.files.slice(0, 8).join('、') +
-    (d.files.length > 8 ? '…' : '')
-  );
+/**
+ * 快照漂移的实际取值，按 Hook 已读到的那份留痕直接写出（计划双审 CODEX-08）。
+ * 失守项只收确证格，`changed` 恒 true、无 `unknown_reason`，摘要与 `gate --check` 同源（`confirmedDriftText`）。
+ */
+async function driftText(meta: RunMeta): Promise<string> {
+  const { confirmedDriftText } = await import('./gate.js');
+  const t = confirmedDriftText(meta.snapshot.drift);
+  return meta.snapshot.drift.files.length > 0 ? `检出 ${t}` : t;
 }
 
 /**
@@ -1354,7 +1356,7 @@ async function breachLines(items: BreachedGate[], indent: string): Promise<strin
     lines.push(
       `${indent}· ${gateLabel(g)}（run ${meta.run_id}）`,
       `${indent}  调用记录（非文件路径）：${breachRecordsText(meta.guard.breached_files ?? [])}`,
-      `${indent}  快照漂移：${driftText(meta)}`,
+      `${indent}  快照漂移：${await driftText(meta)}`,
       `${indent}  出口：由用户决定用 ${entryCommandOf(meta.driver, 'dual-abandon')} ` +
         `--topic ${shellQuoteArg(g.topic)} --stage ${g.stage} 作废这一轮（保留工件、只解闸门）。`,
     );
@@ -1364,10 +1366,10 @@ async function breachLines(items: BreachedGate[], indent: string): Promise<strin
     `${indent}（与 gate --check 的 readonly_breach 一条同一判据；裁决件尚未落盘时 gate --check 会先报缺件、看不到那一条。）`,
     /*
      * 「重跑」不是独立出口（实施期核实，计划 r2 §7）：闸门停在待裁决时 `review --start` 的比较-交换
-     * 拒绝启动（`review.ts` 的「尚未裁决，不能直接重跑」），而失守轮的 `gate --check` 又必败——
-     * 不论确有改动要清理后重跑，还是核实为误报想重跑，都要先作废这一轮。
+     * 拒绝启动（`review.ts` 的「尚未裁决，不能直接重跑」），而确证失守轮的 `gate --check` 又必败——
+     * 要重跑都得先作废这一轮。
      */
-    `${indent}不论确有改动要清理后重跑，还是核实为误报想重跑，都须先作废这一轮：` +
+    `${indent}要重跑须先作废这一轮：` +
       '闸门停在待裁决时 review --start 拒绝重跑，而这一轮的 gate --check 不会通过。',
   );
   return lines;

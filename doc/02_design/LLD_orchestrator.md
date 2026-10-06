@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.48
+> - **当前版本**：v1.1.49
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.49（2026-10-06）随设计 v1.3.127（只读失守未确证改动放行，EV-223）同步：「待裁决闸门的只读失守文案」小节补判据单点——失守组只收 `gate.ts` 的 `classifyReadonlyBreach` 判确证的那一格，复算无变化或比不了的失守轮归未见失守组、出原文案；快照漂移改调 `confirmedDriftText()`。行数列未重核。
 > - **变更说明**：v1.1.48（2026-10-06）随设计 v1.3.126（补丁排除不受 pathspec 环境变量影响，EV-222）同步：3.3「`executeRun()` 的漂移复算」补「魔法 pathspec 钉住解释方式」一段，EV-221 那段「钉 `GIT_LITERAL_PATHSPECS=0`」补指向。未走双审。行数列未重核。
 > - **变更说明**：v1.1.47（2026-10-06）随设计 v1.3.125（工作树哈希排除归档根与 `.trivium/`、文件中途消失时重试，EV-221）同步：3.3「`executeRun()` 的漂移复算」补工作树哈希的排除来源、pathspec 写法与重试；模块表 `util/git.ts` 行补一句。本批未走双审。行数列未重核。
 > - **变更说明**：v1.1.46（2026-10-06）随设计 v1.3.124（运行目录跨主题同秒避让，EV-218）同步：「`run_id` 生成」一段补运行目录的排他占用、测试开关与落盘前失败的清理。本批未走双审。
@@ -471,7 +472,7 @@ bashTimeoutFor  = min(600_000, waitTimeoutS × 1000 + 60_000)
 
 #### 待裁决闸门的只读失守文案（v1.1.33，设计 v1.3.77 / EV-98 文案部分）
 
-`hook-stop` 与 `hook-pre-commit` 在拦截与计数定好之后，经 `splitByBreach()` 把待裁决闸门拆成「本轮失守 / 未见失守」两组：对每个闸门项按它的 `run_id` 用 `readRunMeta()` 直读那一份（不用 `latestRunMeta()`——后者读不出时向进程 stderr 告警，会破坏「未见失守时逐字不变」），`guard.readonly_breach === true` 即归失守组。失守组为空走原文案；非空时由 `breachLines()` 生成逐项段（调用记录、快照漂移实际取值、按该轮 `driver` 经 `entryCommandOf()` 给出的作废命令）与共用处置段（`gate.ts` 的 `READONLY_BREACH_TRIAGE`，与 `gate --check` 同一来源）。读取只选文案、不影响判定，故不套 `resolveRoundDriver` 的软链守卫。
+`hook-stop` 与 `hook-pre-commit` 在拦截与计数定好之后，经 `splitByBreach()` 把待裁决闸门拆成「本轮失守 / 未见失守」两组：对每个闸门项按它的 `run_id` 用 `readRunMeta()` 直读那一份（不用 `latestRunMeta()`——后者读不出时向进程 stderr 告警，会破坏「未见失守时逐字不变」），`guard.readonly_breach === true` **且** `gate.ts` 的 `classifyReadonlyBreach(snapshot.drift)` 判 `confirmed`（跑后复算确证改动）才归失守组（v1.1.49，设计 v1.3.127 / EV-223：判据与 `checkAdjudication` 同一个函数；复算无变化或比不了的失守轮 `gate --check` 告警放行，补裁决件解得开，归未见失守组、文案逐字不变）。失守组为空走原文案；非空时由 `breachLines()` 生成逐项段（调用记录、快照漂移实际取值——与 `gate --check` 共用 `confirmedDriftText()`、按该轮 `driver` 经 `entryCommandOf()` 给出的作废命令）与共用处置段（`gate.ts` 的 `READONLY_BREACH_TRIAGE`，与 `gate --check` 同一来源）。读取只选文案、不影响判定，故不套 `resolveRoundDriver` 的软链守卫。
 
 #### `hook-session-start`（永不阻断）
 

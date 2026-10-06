@@ -1,0 +1,87 @@
+{
+  "targets": [
+    "src/trivium/gate.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/adapters/stub.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/gate.test.js",
+    "dist/test/test/unit/hooks.test.js",
+    "dist/test/test/integration/gate-loop.test.js",
+    "dist/test/test/integration/fault-injection.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1a",
+      "desc": "判据不看 changed：失守一律算确证（复算无变化也拦）",
+      "file": "src/trivium/gate.ts",
+      "find": "  return drift.changed ? 'confirmed' : 'unconfirmed_unchanged';\n",
+      "replace": "  return 'confirmed';\n",
+      "expect": "dist/test/test/unit/gate.test.js"
+    },
+    {
+      "id": "M1b",
+      "desc": "同 M1a，期望集成三格（A 格：只产写事件不落盘应放行）咬住",
+      "file": "src/trivium/gate.ts",
+      "find": "  return drift.changed ? 'confirmed' : 'unconfirmed_unchanged';\n",
+      "replace": "  return 'confirmed';\n",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M2a",
+      "desc": "判据不看 unknown_reason：比不了（changed 为 true）按确证拦",
+      "file": "src/trivium/gate.ts",
+      "find": "  if (drift.unknown_reason !== undefined) return 'unconfirmed_unknown';\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/gate.test.js"
+    },
+    {
+      "id": "M2b",
+      "desc": "同 M2a，期望集成三格（C 格：比不了加写事件应放行）咬住",
+      "file": "src/trivium/gate.ts",
+      "find": "  if (drift.unknown_reason !== undefined) return 'unconfirmed_unknown';\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/gate-loop.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "Hook 的 roundBreach 不调判定函数（只看失守布尔）",
+      "file": "src/trivium/hooks.ts",
+      "find": "  return classifyReadonlyBreach(meta.snapshot.drift) === 'confirmed' ? { g, meta } : null;\n",
+      "replace": "  return { g, meta };\n",
+      "expect": "dist/test/test/unit/hooks.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "checkAdjudication 未确证格也推 failure（回到无条件拦）",
+      "file": "src/trivium/gate.ts",
+      "find": "    if (cls === 'confirmed') {\n",
+      "replace": "    if (true) {\n",
+      "expect": "dist/test/test/unit/gate.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "放行告警两种说法串位：比不了说成复算无变化",
+      "file": "src/trivium/gate.ts",
+      "find": "      const unknown = cls === 'unconfirmed_unknown' ? drift.unknown_reason : undefined;\n",
+      "replace": "      const unknown = cls === 'unconfirmed_unchanged' ? drift.unknown_reason : undefined;\n",
+      "expect": "dist/test/test/unit/gate.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "桩 write_breach_applied 不落盘（只剩写事件）",
+      "file": "src/trivium/adapters/stub.ts",
+      "find": "          await fsp.appendFile(target, `// written during review by stub ${critic}\\n`, 'utf8');\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "loadRoundReviews 带出的 drift 被改写为未改动（接线断）",
+      "file": "src/trivium/gate.ts",
+      "find": "      ? { hit: true, files: breachFiles, drift: runMeta.snapshot.drift }\n",
+      "replace": "      ? { hit: true, files: breachFiles, drift: { ...runMeta.snapshot.drift, changed: false } }\n",
+      "expect": "dist/test/test/unit/gate.test.js"
+    }
+  ]
+}

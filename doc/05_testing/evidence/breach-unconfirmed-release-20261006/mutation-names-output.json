@@ -1,0 +1,131 @@
+{
+  "targets_sha256": {
+    "src/trivium/gate.ts": "da7f311cd2d87904b3adddea58afd8908bddc09ea9d563ec612bcc4f6522d8f3",
+    "src/trivium/hooks.ts": "743f599fd78711019f2e97ebafae5e367217bd490f0325981956a2cb2ecb69cc",
+    "src/trivium/adapters/stub.ts": "52947f07bd5cb5d4b2598dafcec8674f40a077a2693d0c01e349363b93ed430f"
+  },
+  "results": [
+    {
+      "id": "M1a",
+      "desc": "判据不看 changed：失守一律算确证（复算无变化也拦）",
+      "suite": "dist/test/test/unit/gate.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-06；M9 第 6 步代码双审 CODEX-02 ≡ AGY-02 ≡ GLM-02）",
+        "classifyReadonlyBreach 真值表：只有 changed 且无 unknown_reason 才是确证",
+        "只读失守三档的 gate --check 文案：确证判失败；复算无变化与比不了各说各的、互不串（计划 r2 §2.4）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M1b",
+      "desc": "同 M1a，期望集成三格（A 格：只产写事件不落盘应放行）咬住",
+      "suite": "dist/test/test/integration/gate-loop.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A 只产写事件不落盘（复算无变化）→ 两个 Hook 按普通轮说未裁决；裁决齐后 gate --check 告警放行、闸门迁到 idle、Hook 放行"
+      ],
+      "firstLines": [],
+      "elapsed_s": 285
+    },
+    {
+      "id": "M2a",
+      "desc": "判据不看 unknown_reason：比不了（changed 为 true）按确证拦",
+      "suite": "dist/test/test/unit/gate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "classifyReadonlyBreach 真值表：只有 changed 且无 unknown_reason 才是确证",
+        "只读失守三档的 gate --check 文案：确证判失败；复算无变化与比不了各说各的、互不串（计划 r2 §2.4）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M2b",
+      "desc": "同 M2a，期望集成三格（C 格：比不了加写事件应放行）咬住",
+      "suite": "dist/test/test/integration/gate-loop.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C 比不了 + 写事件（on_drift_related: warn）→ gate --check 以「比不了」的说法告警放行，审批停点带出该告警"
+      ],
+      "firstLines": [],
+      "elapsed_s": 284
+    },
+    {
+      "id": "M3",
+      "desc": "Hook 的 roundBreach 不调判定函数（只看失守布尔）",
+      "suite": "dist/test/test/unit/hooks.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U17 收工与提交·失守但复算无变化（未确证）：按普通轮出原文案，逐字不变",
+        "U17 收工与提交·失守但比不了（未确证）：按普通轮出原文案，逐字不变"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M4",
+      "desc": "checkAdjudication 未确证格也推 failure（回到无条件拦）",
+      "suite": "dist/test/test/unit/gate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-06；M9 第 6 步代码双审 CODEX-02 ≡ AGY-02 ≡ GLM-02）",
+        "只读失守三档的 gate --check 文案：确证判失败；复算无变化与比不了各说各的、互不串（计划 r2 §2.4）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M5",
+      "desc": "放行告警两种说法串位：比不了说成复算无变化",
+      "suite": "dist/test/test/unit/gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "只读失守三档的 gate --check 文案：确证判失败；复算无变化与比不了各说各的、互不串（计划 r2 §2.4）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M6",
+      "desc": "桩 write_breach_applied 不落盘（只剩写事件）",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "审查中真写项目文件 → readonly_breach 且复算确证改动，gate --check 判失败（接线端到端）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 81
+    },
+    {
+      "id": "M7",
+      "desc": "loadRoundReviews 带出的 drift 被改写为未改动（接线断）",
+      "suite": "dist/test/test/unit/gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-06；M9 第 6 步代码双审 CODEX-02 ≡ AGY-02 ≡ GLM-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    }
+  ]
+}

@@ -823,7 +823,13 @@ export function renderGuardWarnings(v: RunVerdict): string[] {
         '\n  编排器**不会**自动回滚。建议人工核对：\n' +
         '    git status --porcelain -uall\n' +
         '    git diff\n' +
-        '  确认无误后再决定是否 `git checkout --` 相关文件。',
+        '  确认无误后再决定是否 `git checkout --` 相关文件。\n' +
+        /*
+         * 后果说准（只读失守未确证改动放行计划 r2 §4，决策六）：判据在 `gate.ts` 的 `classifyReadonlyBreach`。
+         * 固定句、不按本轮 drift 分说——下面的漂移告警与它同屏。
+         */
+        '  闸门拦不拦取决于跑后复算：复算检出工作树改动则 gate --check 判失败、须作废重跑；' +
+        '未检出或比不了则降为告警、结论照常进审批（复算有盲区，见 gate --check 的告警）。',
     );
     /*
      * MCP 通道的补句（EV-188 决策五）：`MCP:` 条目括号里是代码摘要不是文件路径——它能写任意文件，

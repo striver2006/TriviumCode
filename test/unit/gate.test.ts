@@ -4,7 +4,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import {
   APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID,
-  checkAdjudication, findJointRejectedBlockers, jointCheckState, isHollowReason, loadRoundReviews, renderGateResult,
+  checkAdjudication, classifyReadonlyBreach, findJointRejectedBlockers, jointCheckState, isHollowReason, loadRoundReviews, renderGateResult,
   verifyRoundForApproval,
 } from '../../src/trivium/gate.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
@@ -776,6 +776,7 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
   /*
    * 此前这一格只有渲染面：M9 第 6 步验收 run 20260919T120643Z 的 guard.readonly_breach
    * 为 true，同一轮 gate --check 照样 ok:true——真失守与假失守走同一条路。
+   * 只读失守未确证改动放行（2026-10-06）起，失败面只收跑后复算确证改动的那一格。
    */
   const base = {
     topic: TOPIC, stage: 'plan' as const, rerunIndex: 1, command: 'x',
@@ -786,14 +787,17 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
   const table = `${HEAD}
 | AGY-01 | gemini | major | 接受 | 成立 | §3 |`;
 
-  // ① 失守为 true → loadRoundReviews 带出文件清单；checkAdjudication 判 failure 并列文件
+  // ① 失守 + 复算确证改动 → loadRoundReviews 带出调用记录与 drift；checkAdjudication 判 failure
   const l1 = await layout();
   const m1 = newRunMeta({ ...base, runId: 'RB1' });
   m1.guard.readonly_breach = true;
   m1.guard.breached_files = ['Write(/p/breach.txt)'];
+  m1.snapshot.drift = { changed: true, files: ['breach.txt'], policy: 'warn' };
   await writeRunMeta(l1, 'plan', m1);
   const rb1 = (await loadRoundReviews(l1, 'plan', 'RB1')).readonlyBreach;
-  assert.deepEqual(rb1, { hit: true, files: ['Write(/p/breach.txt)'] });
+  assert.deepEqual(rb1, {
+    hit: true, files: ['Write(/p/breach.txt)'], drift: { changed: true, files: ['breach.txt'], policy: 'warn' },
+  });
   await putDisposition(l1, table);
   const r1 = await checkAdjudication({
     planFinal: null, // 与计划定稿无关的用例（EV-214）
@@ -802,40 +806,53 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
     cfg: defaultConfig(), layout: l1, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, readonlyBreach: rb1,
   });
-  assert.equal(r1.ok, false, '只读失守必须是 failure，不是 warning——失守侧的结论不可采信');
+  assert.equal(r1.ok, false, '确证改动的只读失守必须是 failure，不是 warning——失守侧的结论不可采信');
   const f = r1.failures.find((x) => x.code === 'readonly_breach');
   assert.ok(f, renderGateResult(r1));
-  assert.match(f!.message, /breach\.txt/, '按 AD-06 列出受影响文件');
+  assert.match(f!.message, /breach\.txt/, '按 AD-06 列出受影响的调用与复算检出的文件');
+  assert.ok(f!.message.includes('复算检出：1 个文件改动：breach.txt'), f!.message);
+  assert.ok(f!.message.includes('git status / git diff'), '确证格给核对清理的处置');
+  assert.ok(f!.message.includes('要重跑须先作废这一轮'), f!.message);
+  assert.ok(!r1.warnings.some((w) => w.code === 'readonly_breach_unconfirmed'), '确证格不再出放行告警');
+
   /*
-   * 处置文案必须保留「先核 snapshot.drift」这一步（EV-79 代码双审 GLM-05）。
-   * base.ts 的幂等收紧注释把排障指纹押在它身上——`rm -rf <项目内不存在目录>` 的误杀形态
-   * 没有工作树改动，故 drift 为 false。文案措辞一旦漂移，那条指纹静默失效，
-   * 而代码里只剩一句没人守的注释。
-   */
-  assert.match(
-    f!.message,
-    /snapshot\.drift/,
-    '文案要给出 drift 分档指引——base.ts 的误杀排障指纹指着它',
-  );
-  /*
-   * 但指纹**只能单向用**（r2 CODEX-09 定性，r3 CODEX-r3-01 落到这里）：
-   * `judgeDrift` 是 git 树比对、看不见被 .gitignore 忽略的文件，被 ignore 的目录（`dist/`）
-   * 被真实递归删除同样 drift=false。文案若回到「没有改动则是误报」的反推，
-   * 就是在教人把真失守降级。
+   * ①′ 失守 + 复算无变化 → 放行，降为 warning（用户决策 2026-10-06）。
    *
-   * **这里刻意用否定式锁**：锁「不含反推句」而不是「含某个正确短语」。
-   * 肯定式会把文案钉死在一种写法上，正常演进即误伤——这正是 r2 焦点六问的
-   * 「锁法是否过紧」，当时答「不过紧」只因为它锁的是字段名。
-   * 否定式只禁掉一种语义，对措辞怎么演进都不敏感，而它要防的恰恰就是那一种。
+   * 原先 :815 的正向锁 `/snapshot\.drift/` 守的是 base.ts 误杀排障指纹（`rm -rf <项目内不存在目录>`
+   * 那一形态没有工作树改动，drift 为 false）。新规则下那一形态归放行格，指纹随之迁到这里：
+   * 放行告警必须写出「snapshot.drift.changed 为 false」（计划双审 AGY-02 ≡ GLM-01）。
    */
-  assert.doesNotMatch(
-    f!.message,
-    /(没有|无)改动.{0,6}(就|则|即).{0,4}(是|按).{0,6}误报/,
-    'drift 指纹只能单向用：文案不得出现「没有改动则是误报」式反推，' +
-      '否则被 ignore 的产物目录被真实删除时会被判成误报（r3 CODEX-r3-01）',
-  );
+  const l1b = await layout();
+  const m1b = newRunMeta({ ...base, runId: 'RB1B' });
+  m1b.guard.readonly_breach = true;
+  m1b.guard.breached_files = ['Write(/p/breach.txt)'];
+  await writeRunMeta(l1b, 'plan', m1b);
+  const rb1b = (await loadRoundReviews(l1b, 'plan', 'RB1B')).readonlyBreach;
+  assert.equal(rb1b.hit, true);
+  await putDisposition(l1b, table);
+  const r1b = await checkAdjudication({
+    planFinal: null, expectedDegradedIds: [], reviewDocs: null,
+    cfg: defaultConfig(), layout: l1b, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, readonlyBreach: rb1b,
+  });
+  assert.equal(r1b.ok, true, renderGateResult(r1b));
+  assert.ok(!r1b.failures.some((x) => x.code === 'readonly_breach'));
+  const w = r1b.warnings.find((x) => x.code === 'readonly_breach_unconfirmed');
+  assert.ok(w, renderGateResult(r1b));
+  assert.ok(w!.message.includes('snapshot.drift.changed 为 false'), '排障指纹迁到放行告警（AGY-02 ≡ GLM-01）');
+  assert.ok(w!.message.includes('Write(/p/breach.txt)'), '放行告警也列调用记录');
+  assert.ok(w!.message.includes('本轮结论照常进入审批'), w!.message);
+  /*
+   * 原否定式锁守的是「不得暗示复算能证明没写」（r3 CODEX-r3-01）。drift 单向用的口径已被用户决策推翻，
+   * 但这层意思留着：放行告警必须逐条点明决策二的盲区，且不得出现「没有改动则是误报」式反推。
+   */
+  for (const blind of ['被 .gitignore 忽略的文件', '归档根与 .trivium/', '改了又改回', '写到项目外', 'MCP 执行型调用的任意写']) {
+    assert.ok(w!.message.includes(blind), `放行告警要点名盲区「${blind}」：\n${w!.message}`);
+  }
+  assert.ok(w!.message.includes('未检出不等于没写'), w!.message);
+  assert.doesNotMatch(w!.message, /(没有|无)改动.{0,6}(就|则|即).{0,4}(是|按).{0,6}误报/);
   // 同一否定式锁法（留痕与文案小修 r2 D6）：workTreeHash 含未忽略的未跟踪文件，「只看已跟踪」与实现相反
-  assert.doesNotMatch(f!.message, /已跟踪文件被改/, 'drift 的盲区是被 .gitignore 忽略的文件，不是未跟踪文件');
+  assert.doesNotMatch(w!.message, /已跟踪文件被改/, 'drift 的盲区是被 .gitignore 忽略的文件，不是未跟踪文件');
 
   // ② 字段在场且为 false（newRunMeta 缺省）→ hit:false，闸门不失败。
   //    注意这**不是**「旧留痕无字段」：该字段两版契约必填，writeRunMeta 写前按 run.v2 校验、
@@ -854,6 +871,7 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, readonlyBreach: rb2,
   });
   assert.equal(r2.ok, true, renderGateResult(r2));
+  assert.ok(!r2.warnings.some((x) => x.code === 'readonly_breach_unconfirmed'), '未失守不出放行告警');
 
   // ③ 漏传（可选参数缺省）→ 与 ② 同：守的是「缺省不误拦」，接线由 cli 侧两处调用点负责
   const r3 = await checkAdjudication({
@@ -867,16 +885,69 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
 });
 
 /*
- * 处置句抽成 `READONLY_BREACH_TRIAGE` 供两处 Hook 共用（收工闸门文案区分只读失守计划 r2 §2.3，
- * 计划双审 CODEX-01）。抽常量只是搬位置：`gate --check` 的 message 必须与改前**逐字节**相同。
- * 期望串取自 `364ef0f` 的 gate.ts、写成字面量，不从源码引用。
+ * 判据单点（只读失守未确证改动放行计划 r2 §2.1）：`checkAdjudication` 与 Hook 的 `roundBreach` 共用。
+ * 变异 M1（不看 changed）与 M2（不看 unknown_reason）各在这张表里至少红一行。
  */
-test('U15 readonly_breach 的 message 抽常量后与改前逐字相同（截断与空记录两格）', async () => {
-  const OLD = (records: string): string =>
-    '本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），裁决不得进入审批。' +
-    '处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。' +
-    'drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，' +
-    '还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。' +
+test('classifyReadonlyBreach 真值表：只有 changed 且无 unknown_reason 才是确证', () => {
+  const unknown = { cause: 'object_gone' as const, detail: 'tree 已不在' };
+  assert.equal(classifyReadonlyBreach({ changed: false }), 'unconfirmed_unchanged');
+  assert.equal(classifyReadonlyBreach({ changed: true }), 'confirmed');
+  assert.equal(classifyReadonlyBreach({ changed: true, unknown_reason: unknown }), 'unconfirmed_unknown');
+  // 写侧不产出这一格（unknown_reason 只在 changed:true 时写）；手改留痕时按更弱的「比不了」说
+  assert.equal(classifyReadonlyBreach({ changed: false, unknown_reason: unknown }), 'unconfirmed_unknown');
+});
+
+test('只读失守三档的 gate --check 文案：确证判失败；复算无变化与比不了各说各的、互不串（计划 r2 §2.4）', async () => {
+  const l = await layout();
+  await putDisposition(l, `${HEAD}
+| AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
+  const run = (drift: { changed: boolean; files: string[]; unknown_reason?: { cause: 'timeout'; detail: string } }) =>
+    checkAdjudication({
+      planFinal: null, expectedDegradedIds: [], reviewDocs: null,
+      cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
+      reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
+      readonlyBreach: { hit: true, files: ['W(x)'], drift },
+    });
+
+  // 确证但文件清单为空（被审对象漂移 / 有侧无法归因）：摘要如实说清单不在 drift.files 里
+  const c = await run({ changed: true, files: [] });
+  assert.equal(c.ok, false);
+  assert.ok(
+    c.failures.find((x) => x.code === 'readonly_breach')?.message.includes(
+      '复算检出：有改动，文件清单未记入 snapshot.drift.files（本轮有侧无法归因时清单在 guard.unattributed_drift_files）',
+    ),
+    renderGateResult(c),
+  );
+
+  const unchanged = await run({ changed: false, files: [] });
+  const unknown = await run({ changed: true, files: [], unknown_reason: { cause: 'timeout', detail: 'diff-tree 超时' } });
+  for (const r of [unchanged, unknown]) {
+    assert.equal(r.ok, true, renderGateResult(r));
+    assert.deepEqual(r.failures, []);
+  }
+  const wu = unchanged.warnings.find((x) => x.code === 'readonly_breach_unconfirmed')!.message;
+  const wk = unknown.warnings.find((x) => x.code === 'readonly_breach_unconfirmed')!.message;
+  assert.ok(wk.includes('但跑后复算比不了（git 超时：diff-tree 超时），未能确证改动。'), wk);
+  assert.ok(wk.includes('连一般的项目文件改动也没有核过'), wk);
+  assert.ok(wk.includes('本轮结论照常进入审批'), wk);
+  // 两种说法互不串（变异 M5：对调即红）
+  assert.ok(!wu.includes('比不了'), wu);
+  assert.ok(!wk.includes('snapshot.drift.changed 为 false'), wk);
+  assert.ok(!wk.includes('未检出不等于没写'), wk);
+});
+
+/*
+ * 处置句 `READONLY_BREACH_TRIAGE` 供两处 Hook 共用（收工闸门文案区分只读失守计划 r2 §2.3）。
+ * 原 U15 锁的是「抽常量只搬位置、与 364ef0f 逐字相同」；只读失守未确证改动放行（2026-10-06）
+ * 有意改写了确证格的文案，这里改锁新文案逐字。期望串写成字面量，不从源码引用。
+ */
+test('U15 readonly_breach（确证）的 message 逐字（截断与空记录两格）', async () => {
+  const WANT = (records: string): string =>
+    '本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），且跑后复算确证审查期间工作树有改动，裁决不得进入审批。' +
+    '复算检出：2 个文件改动：src/a.ts、src/b.ts。' +
+    '处置：用 git status / git diff 核对这些改动是否出自审查员并清理。' +
+    '复算只能确证「有改动」，归不了因——审查期间别处的手改同样会落进这一格，拦截照旧。' +
+    '要重跑须先作废这一轮。' +
     '调用记录（非文件路径）：' + records;
   const nine = Array.from({ length: 9 }, (_, i) => `W${i + 1}(x)`);
   const l = await layout();
@@ -891,9 +962,9 @@ test('U15 readonly_breach 的 message 抽常量后与改前逐字相同（截断
       expectedDegradedIds: [], reviewDocs: null,
       cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
       reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
-      readonlyBreach: { hit: true, files: [...files] },
+      readonlyBreach: { hit: true, files: [...files], drift: { changed: true, files: ['src/a.ts', 'src/b.ts'] } },
     });
-    assert.equal(r.failures.find((x) => x.code === 'readonly_breach')?.message, OLD(want));
+    assert.equal(r.failures.find((x) => x.code === 'readonly_breach')?.message, WANT(want));
   }
 });
 

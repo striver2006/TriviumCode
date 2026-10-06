@@ -452,9 +452,16 @@ test('EV-139 I2：on_drift_related=warn 时比不了只告警，运行成功、�
   assert.match(await terminalMessage(root, meta.run_id, stub), /本轮照常结束，但漂移是否涉及被审范围无从判断/);
 });
 
-test('审查中写项目文件 → readonly_breach，且 gate --check 判失败（接线端到端）', { skip: bundleMissing && bundleSkipReason }, async () => {
-  const { root, stageDir, meta } = await runInjected({ gemini: { mode: 'write_breach' }, glm: { mode: 'ok' } });
+test('审查中真写项目文件 → readonly_breach 且复算确证改动，gate --check 判失败（接线端到端）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  /*
+   * 只读失守未确证改动放行（2026-10-06）起，闸门只拦复算确证改动的失守：桩换成真落盘的
+   * `write_breach_applied`。只产写事件不落盘的 `write_breach` 那一半归放行格（gate-loop A 格）。
+   */
+  const { root, stageDir, meta } = await runInjected({ gemini: { mode: 'write_breach_applied' }, glm: { mode: 'ok' } });
   assert.equal(meta.guard.readonly_breach, true, '审查员写文件必须被判只读违规');
+  assert.equal(meta.snapshot.drift.changed, true, '桩真的落了盘，复算应检出改动');
+  assert.equal(meta.snapshot.drift.unknown_reason, undefined);
+  assert.ok(meta.snapshot.drift.files.includes('src/injected.ts'), JSON.stringify(meta.snapshot.drift));
 
   /*
    * 续到闸门（M9 第 6 步代码双审第 2 轮 GLM-02）：gate.test 只测 loadRoundReviews 与
@@ -493,6 +500,7 @@ test('审查中写项目文件 → readonly_breach，且 gate --check 判失败�
   assert.equal(out.ok, false);
   const f = out.failures.find((x) => x.code === 'readonly_breach');
   assert.ok(f, `失败面必须含 readonly_breach，实得：${JSON.stringify(out.failures)}`);
+  assert.ok(f!.message.includes('跑后复算确证审查期间工作树有改动'), f!.message);
   assert.doesNotMatch(out.failures.map((x) => x.code).join(','), /missing_disposition/, '裁决件已落，失败必须来自失守本身而不是缺件早退');
 });
 

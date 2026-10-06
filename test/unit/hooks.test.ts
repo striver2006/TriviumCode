@@ -1322,7 +1322,12 @@ async function pendingGate(ctx: Ctx, topic: string, stage: 'plan' | 'code', runI
   });
 }
 
-/** 落一份记着只读失守的留痕 */
+/**
+ * 落一份记着只读失守的留痕。
+ *
+ * 缺省 drift 为**确证改动**（只读失守未确证改动放行，2026-10-06）：Hook 只把确证格当失守项，
+ * 缺省取它让 U2～U16 失守组用例的语义不变；未确证两格由调用方显式传 drift。
+ */
 async function seedBreach(
   ctx: Ctx, topic: string, stage: 'plan' | 'code', runId: string,
   over: { records?: string[]; driver?: AgentId; drift?: RunMeta['snapshot']['drift'] } = {},
@@ -1330,7 +1335,7 @@ async function seedBreach(
   await seedRunMeta(ctx, topic, stage, runId, over.driver ?? DEFAULT_DRIVER, (m) => {
     m.guard.readonly_breach = true;
     m.guard.breached_files = over.records ?? ['write_to_file(/p/src/injected.ts)', 'MCP:mcp__node_repl__js(c1 1+1)'];
-    if (over.drift) m.snapshot.drift = over.drift;
+    m.snapshot.drift = over.drift ?? { changed: true, files: ['src/injected.ts'], policy: 'warn' };
   });
 }
 
@@ -1378,12 +1383,14 @@ test('U2 收工·只读失守：说真因、列调用记录与漂移、给作废
   assert.match(reason, /^本轮审查记录到只读失守：t\/code。这道闸门靠补裁决件解不开/);
   assert.ok(reason.includes('· t/code（run R1）'), reason);
   assert.ok(reason.includes('write_to_file(/p/src/injected.ts)、MCP:mcp__node_repl__js(c1 1+1)'), reason);
-  assert.ok(reason.includes('快照漂移：未检出（snapshot.drift.changed 为 false'), reason);
+  assert.ok(reason.includes('快照漂移：检出 1 个文件改动：src/injected.ts'), reason);
   assert.ok(reason.includes('出口：由用户决定用 /dual-abandon --topic t --stage code 作废这一轮（保留工件、只解闸门）。'), reason);
   // 重跑不是独立出口：待裁决时 review --start 拒绝重跑（计划 r2 §7），文案不得把它说成并列的另一条路
-  assert.ok(reason.includes('都须先作废这一轮：闸门停在待裁决时 review --start 拒绝重跑'), reason);
+  // 计划双审 AGY-01 ≡ GLM-02：末行措辞随本题改为「要重跑须先作废这一轮」
+  assert.ok(reason.includes('要重跑须先作废这一轮：闸门停在待裁决时 review --start 拒绝重跑'), reason);
   assert.ok(!reason.includes('或重跑该阶段审查'), reason);
-  assert.ok(reason.includes('drift 为 false 只排除了'), '处置判据句来自 gate.ts 的共用常量');
+  assert.ok(reason.includes('处置：用 git status / git diff 核对'), '处置判据句来自 gate.ts 的共用常量');
+  assert.ok(reason.includes('跑后复算确证审查期间工作树有改动'), 'BREACH_UNFIXABLE 说清为什么解不开');
   assert.ok(!reason.includes('未逐条裁决'), reason);
   assert.equal(r.stderr, '本轮审查记录到只读失守：t/code');
 });
@@ -1545,7 +1552,7 @@ test('U11 提交·留痕读不出：文案逐字不变，进程级 stderr 零输
   assert.equal(err, '');
 });
 
-test('U12 调用记录截断与漂移三种形态', async () => {
+test('U12 调用记录截断与确证漂移三种形态', async () => {
   const nine = Array.from({ length: 9 }, (_, i) => `w${i + 1}(x)`);
   const cases: { records: string[]; drift: RunMeta['snapshot']['drift']; want: string[] }[] = [
     {
@@ -1554,9 +1561,13 @@ test('U12 调用记录截断与漂移三种形态', async () => {
       want: ['调用记录（非文件路径）：w1(x)、w2(x)、w3(x)、w4(x)、w5(x)、w6(x)、w7(x)、w8(x)…', '快照漂移：检出 2 个文件改动：src/a.ts、src/b.ts'],
     },
     {
+      // 比不了的那一格已不是失守项（见 U17）；确证但文件清单为空（被审对象漂移 / 有侧无法归因）
       records: [],
-      drift: { changed: true, files: [], policy: 'warn', unknown_reason: { cause: 'timeout', detail: 'diff-tree 超时' } },
-      want: ['调用记录（非文件路径）：（run 元数据未记录）', '快照漂移：比对未完成（git 超时：diff-tree 超时），按有改动对待'],
+      drift: { changed: true, files: [], policy: 'warn' },
+      want: [
+        '调用记录（非文件路径）：（run 元数据未记录）',
+        '快照漂移：有改动，文件清单未记入 snapshot.drift.files（本轮有侧无法归因时清单在 guard.unattributed_drift_files）',
+      ],
     },
     {
       // 文件侧截断与调用记录截断对偶（代码双审 GLM-01）
@@ -1584,7 +1595,8 @@ test('U13 多个失守项：每项各给自己的作废命令', async () => {
   const reason = reasonOf(await hookStop(ctx, { session_id: SESSION }));
   assert.ok(reason.includes('/dual-abandon --topic a --stage plan'), reason);
   assert.ok(reason.includes('/dual-abandon --topic b --stage code'), reason);
-  assert.equal(reason.split('处置：先核对').length - 1, 1, '共用处置段只出一次');
+  // 计划双审 AGY-01：处置句开头随本题改写，锚点跟着换，守的仍是「共用处置段只出一次」
+  assert.equal(reason.split('处置：用 git status').length - 1, 1, '共用处置段只出一次');
 });
 
 test('U14 已知边界：这一轮读不出、更旧一轮失守 ⇒ 原文案、无额外输出（计划 r2 §4 R4）', async () => {
@@ -1596,6 +1608,28 @@ test('U14 已知边界：这一轮读不出、更旧一轮失守 ⇒ 原文案�
   assert.equal(reasonOf(r), OLD_STOP_REASON('t/code', 'code'));
   assert.equal(err, '');
 });
+
+/*
+ * 只读失守未确证改动放行（计划 r2 §3，决策四）：复算无变化或比不了的失守轮，`gate --check` 降为告警放行，
+ * 补齐裁决件就解得开——两处 Hook 按普通轮处理，文案与改前逐字相同。变异 M3（`roundBreach` 不调判定函数）在这里红。
+ */
+for (const [label, drift] of [
+  ['复算无变化', { changed: false, files: [], policy: 'warn' }],
+  ['比不了', { changed: true, files: [], policy: 'fail', unknown_reason: { cause: 'object_gone', detail: 'tree 已不在' } }],
+] as const) {
+  test(`U17 收工与提交·失守但${label}（未确证）：按普通轮出原文案，逐字不变`, async () => {
+    const ctx = await fakeCtx();
+    await seedBreach(ctx, 't', 'code', 'R1', { drift: { ...drift, files: [...drift.files] } });
+    await pendingGate(ctx, 't', 'code', 'R1');
+    const stop = await hookStop(ctx, { session_id: SESSION });
+    assert.equal(stop.exitCode, EXIT.GATE_BLOCK, '裁决未齐时照旧拦');
+    assert.equal(reasonOf(stop), OLD_STOP_REASON('t/code', 'code'));
+    assert.equal(stop.stderr, OLD_STOP_STDERR('t/code'));
+    const commit = await hookPreCommit(ctx, { session_id: SESSION });
+    assert.equal(commit.exitCode, EXIT.GATE_BLOCK);
+    assert.equal(commit.stderr, OLD_COMMIT('t/code'));
+  });
+}
 
 test('U16 作废命令按该轮 run.json 的 driver 取写法', async () => {
   const ctx = await fakeCtx();

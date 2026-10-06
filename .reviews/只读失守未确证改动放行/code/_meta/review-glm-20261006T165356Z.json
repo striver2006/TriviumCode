@@ -1,0 +1,67 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按补丁-完整上下文-调用链的顺序审了这道变更：判据单点、三个出口与两处 Hook 的接线、契约必填性、桩与任务书措辞、测试三格与变异设计、文档同步，实现与已批准的计划 r2 逐条对上，未发现偏离；唯一一条意见是回应计划 §8 D1 留给代码审查员的待议题（nit）。核实要点：(1) gate.ts 新增 classifyReadonlyBreach（先判 unknown_reason 再判 changed，拦截集与次序无关、说法取更弱档），checkAdjudication 与 hooks.ts roundBreach 共用同一函数，三个出口（gate --check 走 cli.ts 的 loadRoundReviews+checkAdjudication，--await-approval 与 approve 走 verifyRoundForApproval）全部经同一判定；(2) runMeta.snapshot.drift 的非空访问有根据——run.v1 与 run.v2 两版契约的 snapshot.drift 均在 required 里，readRunMeta 校验不过即返回 null，hit 分支只在 runMeta 非空时走；(3) readonlyBreach 改判别联合（hit:true 必带 drift）让漏传在编译期暴露，loadRoundReviews 在失守成立时原样带出 snapshot.drift；(4) 放行告警两种说法（复算无变化、比不了）各自逐条点明 BREACH_BLIND_SPOTS 五项、并列调用记录，gate.test 同时保留「不得出现『没有改动则是误报』式反推」的否定式锁与五项盲区的正向锁；(5) Hook 失守组只收确证格，未确证轮按普通轮逐字出原文案（U17 用 OLD_* 字面锁定，变异 M3 有对应用例）；(6) 桩 write_breach_applied 真落盘、与只产写事件的 write_breach 分列，确证与放行两格各有夹具；gate-loop 三格（A 放行且闸门迁 idle、B 确证拦且停在待裁决、C 比不了放行且审批停点带出告警）与 fault-injection、mcp-detect 的翻转都核过 diff；(7) 文档同步齐全（PRD v1.4.18 的 FR-15/AC-08/异常表、设计 v1.3.127 的 AD-06/Hook 表/9.2/10.3/四处落点、LLD v1.1.49、BACKLOG EV-223/EV-98/EV-75 注记、05_testing 索引），并在 skills-src、skills 渲染产物、doc/03_api、doc/07_manuals 里 grep 过旧口径（「该侧结论作废」「一律判失败」一类），无失实残留，打包产物 trivium.cjs 已含新判据与新文案。本侧无执行能力，以上均为读码与读证据文件的静态核对，报告读数未独立复跑。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/report.ts:288、src/trivium/meta.ts:1063",
+      "problem": "放行档落地后，复盘观测面对确证与未确证的失守轮不可直接区分：report 的 guardFlags 与 summarizeRun 都只出「只读失守」四个字，读复盘的人只能靠相邻的漂移行间接推断那一轮当时是拦了还是放了（复算无变化的放行轮连漂移行也没有）。计划 r2 §8 D1 已把这一格登记为待议并明确留给代码审查员与用户定，本条即对该待议题给出意见：值得补一个「未确证」限定，属低成本观测面改进，不阻断本题。",
+      "evidence": "src/trivium/report.ts 第 288 行 guardFlags.push('只读失守') 与 src/trivium/meta.ts 第 1063 行 summarizeRun 的「  ⚠️ 只读失守」，两处均不带确证与否的限定；计划 r2（.reviews/只读失守未确证改动放行/plan/2026-10-06-只读失守未确证改动放行-r2-claude.md）§8 D1；实施报告 §4「待议」同记。",
+      "suggestion": "在 report.ts 的 guardFlags 与 meta.ts 的 summarizeRun 按同轮 snapshot.drift 复用 classifyReadonlyBreach 分说「只读失守（复算确证）」与「只读失守（未确证放行）」；若 D1 决议维持现状，建议在主设计或 BACKLOG 记一句「复盘面不区分两档」及理由，免得后人把放行轮的旗标误读成应当被拦。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "判据收成 gate.ts 的 classifyReadonlyBreach 单点，闸门与两处 Hook 共用，杜绝三处口径分叉；先判 unknown_reason 的次序说明（拦截集相同、说法取更弱档）成立",
+    "readonlyBreach 入参改判别联合（hit:true 必带 drift），与 planFinal、reviewDocs「可选参数漏传静默成功」的既有教训同向，这次是编译期收紧",
+    "runMeta.snapshot.drift 非空访问的安全性论证成立：两版 run 契约 snapshot.drift 均必填（已核 skills/dual-critic/schema/run.v1.json 与 run.v2.json 的 required 数组），readRunMeta 校验不过即 null",
+    "BREACH_BLIND_SPOTS 五项与 PRD FR-15、设计 10.3 的用户决策清单一致，scratch 白名单不在清单里但源码注释与报告如实登记为接受的盲区",
+    "hook 侧失守组只收确证格、未确证轮逐字出原文案，exceeded 放行的 systemMessage 分支也按两组分别点名，与 gate 分档一致",
+    "未确证告警只在裁决件落盘后可见（缺件早退在前）维持既有次序，breachLines 括注与 B′ 用例都写明了这一点",
+    "变异设计比计划又扩了 M7（loadRoundReviews 的 drift 接线被改写）与 M1/M2 的分套件格，9 条全部有期望套件，方向正确",
+    "「不改」清单（guard 判定、run.v2 契约、退出码与 meta.status、待裁决拒绝重跑、on_drift 策略）与 diff 实际改动面吻合，EV-75② 的触发条件确未满足"
+  ],
+  "not_covered": [
+    "本侧无执行能力（只读审查）：npm run check、变异装置、doctor selftest、三格验收均未复跑，报告与证据里的读数（全量两次 2937/2935/0/2、变异 9/9、三格 3/3、selftest 14/14）只做了文本层面核对——acceptance-readout.json 三格的告警与失败消息已与源码字面逐字比对一致，属推理采信而非实测复现",
+    "证据目录里的脚本（acceptance.mjs、gen-mutation-spec.mjs、mutation-names.mjs）与 check-1.txt、check-2.txt、doctor-selftest.txt 全文未逐行审，只抽读了 acceptance-readout.json 与 diff 中的片段",
+    "未读 .trivium 运行目录与另一位审查员的任何材料（按任务书第 8 节禁读清单，grep 均限定在 src、test、doc、skills 与被审对象路径内）",
+    "CLAUDE.md 与 README.md 只读了协议段与概况开头（CLAUDE.md 与 AGENTS.md 同源），doc/ 各级 README 未逐一展开；schema 细节只核了 snapshot 与 drift 的 required 面，未通读 run.v2.json 全部字段",
+    "适配器轨迹解析、探针与真实四家 CLI 的行为不在本题改动面，未复核；LLM 实际产出的审查质量不在机读判定面，未评估"
+  ],
+  "consulted": [
+    ".reviews/只读失守未确证改动放行/code/_meta/changes-20261006T165356Z.diff",
+    ".reviews/只读失守未确证改动放行/plan/2026-10-06-只读失守未确证改动放行-r2-claude.md",
+    "src/trivium/gate.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/types.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/report.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/run.v1.json",
+    "skills/dual-critic/scripts/trivium.cjs",
+    "test/integration/fault-injection.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/mcp-detect.test.ts",
+    "test/unit/gate.test.ts",
+    "test/unit/hooks.test.ts",
+    "test/unit/brief-mcp-exec.test.ts",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-06_breach_unconfirmed_release.md",
+    "doc/05_testing/evidence/breach-unconfirmed-release-20261006/acceptance-readout.json",
+    "doc/08_project/BACKLOG.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md"
+  ]
+}

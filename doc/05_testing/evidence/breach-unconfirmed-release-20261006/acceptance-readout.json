@@ -1,0 +1,158 @@
+{
+  "bundle_sha256": "ef428ee9786531437db90aa8b7151788c2ec948c9264e0c43b10639e454b85c0",
+  "grids": [
+    {
+      "grid": "A",
+      "desc": "只产写事件不落盘",
+      "stub": {
+        "gemini": {
+          "mode": "write_breach"
+        },
+        "glm": {
+          "mode": "ok"
+        }
+      },
+      "extra_review": [],
+      "review_exit": 0,
+      "run_status": "success",
+      "guard": {
+        "readonly_breach": true,
+        "breached_files": [
+          "write_to_file(/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-fx-WsJnUK/repo/src/injected.ts)"
+        ]
+      },
+      "drift": {
+        "changed": false,
+        "files": [],
+        "policy": "warn"
+      },
+      "gate_check": {
+        "exit": 0,
+        "ok": true,
+        "failure_codes": [],
+        "warning_codes": [
+          "readonly_breach_unconfirmed"
+        ],
+        "readonly_breach_message": null,
+        "readonly_breach_unconfirmed_message": "本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），但跑后复算未检出工作树改动（snapshot.drift.changed 为 false）。按「只有确证改动才拦」放行，本轮结论照常进入审批。未检出不等于没写：被 .gitignore 忽略的文件、归档根与 .trivium/、改了又改回、写到项目外、MCP 执行型调用的任意写，复算都看不见，由审批人自行斟酌。调用记录（非文件路径）：write_to_file(/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-fx-WsJnUK/repo/src/injected.ts)"
+      },
+      "gate_state": {
+        "before_check": "review_done_awaiting_disposition",
+        "after_check": "idle"
+      },
+      "hooks_after_check": {
+        "stop_exit": 0,
+        "pre_commit_exit": 0,
+        "stop_reason_head": ""
+      },
+      "expect": "release",
+      "got": "release",
+      "pass": true
+    },
+    {
+      "grid": "B",
+      "desc": "真改项目文件",
+      "stub": {
+        "gemini": {
+          "mode": "write_breach_applied"
+        },
+        "glm": {
+          "mode": "ok"
+        }
+      },
+      "extra_review": [],
+      "review_exit": 0,
+      "run_status": "success",
+      "guard": {
+        "readonly_breach": true,
+        "breached_files": [
+          "write_to_file(/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-fx-JTNQUA/repo/src/injected.ts)"
+        ]
+      },
+      "drift": {
+        "changed": true,
+        "files": [
+          "src/injected.ts"
+        ],
+        "policy": "warn"
+      },
+      "gate_check": {
+        "exit": 2,
+        "ok": false,
+        "failure_codes": [
+          "readonly_breach"
+        ],
+        "warning_codes": [],
+        "readonly_breach_message": "本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），且跑后复算确证审查期间工作树有改动，裁决不得进入审批。复算检出：1 个文件改动：src/injected.ts。处置：用 git status / git diff 核对这些改动是否出自审查员并清理。复算只能确证「有改动」，归不了因——审查期间别处的手改同样会落进这一格，拦截照旧。要重跑须先作废这一轮。调用记录（非文件路径）：write_to_file(/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-fx-JTNQUA/repo/src/injected.ts)",
+        "readonly_breach_unconfirmed_message": null
+      },
+      "gate_state": {
+        "before_check": "review_done_awaiting_disposition",
+        "after_check": "review_done_awaiting_disposition"
+      },
+      "hooks_after_check": {
+        "stop_exit": 2,
+        "pre_commit_exit": 2,
+        "stop_reason_head": "{\"decision\":\"block\",\"reason\":\"本轮审查记录到只读失守：失守三格/plan。这道闸门靠补裁决件解不开——跑后复算确证审查期间工作树有改动，gate --check 对这类只读失守判失败，裁决件写得再齐也不放行，不要再为解闸门去补裁决件。\\n· 失守三格/plan（run 20261006T1"
+      },
+      "expect": "block",
+      "got": "block",
+      "pass": true
+    },
+    {
+      "grid": "C",
+      "desc": "比不了 + 写事件（on_drift_related: warn）",
+      "stub": {
+        "gemini": {
+          "mode": "write_breach"
+        },
+        "glm": {
+          "mode": "prune_objects"
+        }
+      },
+      "extra_review": [
+        "on_drift_related: warn"
+      ],
+      "review_exit": 0,
+      "run_status": "success",
+      "guard": {
+        "readonly_breach": true,
+        "breached_files": [
+          "write_to_file(/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-fx-TMjvSi/repo/src/injected.ts)"
+        ]
+      },
+      "drift": {
+        "changed": true,
+        "files": [],
+        "policy": "warn",
+        "unknown_reason": {
+          "cause": "object_gone",
+          "detail": "送审快照的 tree 67b8344217ef 在审查期间被清理"
+        }
+      },
+      "gate_check": {
+        "exit": 0,
+        "ok": true,
+        "failure_codes": [],
+        "warning_codes": [
+          "readonly_breach_unconfirmed"
+        ],
+        "readonly_breach_message": null,
+        "readonly_breach_unconfirmed_message": "本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），但跑后复算比不了（对象已不在：送审快照的 tree 67b8344217ef 在审查期间被清理），未能确证改动。按「只有确证改动才拦」放行，本轮结论照常进入审批。比不了即不知道改没改，被 .gitignore 忽略的文件、归档根与 .trivium/、改了又改回、写到项目外、MCP 执行型调用的任意写之外，连一般的项目文件改动也没有核过，由审批人自行斟酌。调用记录（非文件路径）：write_to_file(/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-fx-TMjvSi/repo/src/injected.ts)"
+      },
+      "gate_state": {
+        "before_check": "review_done_awaiting_disposition",
+        "after_check": "idle"
+      },
+      "hooks_after_check": {
+        "stop_exit": 0,
+        "pre_commit_exit": 0,
+        "stop_reason_head": ""
+      },
+      "expect": "release",
+      "got": "release",
+      "pass": true
+    }
+  ],
+  "all_pass": true
+}

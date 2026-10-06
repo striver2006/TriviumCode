@@ -8,7 +8,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { agentById, DEFAULT_DRIVER, entryCommandOf, findingPrefixAlternation, type AgentId } from './agents/registry.js';
-import { DEFAULT_CRITICS, VOIDING_DENY_CATEGORIES, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type Stage } from './types.js';
+import { DEFAULT_CRITICS, describeDriftUnknown, VOIDING_DENY_CATEGORIES, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type SnapshotMeta, type Stage } from './types.js';
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
 import { checkRecordedArtifacts, isReviewArtifact, listStageArtifacts, metaDir, stageDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
 import { EXIT, TriviumError } from './exit-codes.js';
@@ -19,26 +19,78 @@ import { validateDispositionFrontMatter } from './schemas.js';
 // ─────────────────────── 只读失守的处置句（单一来源） ───────────────────────
 
 /**
- * `readonly_breach` 那条 failure 的处置判据句，**`gate --check` 与两处 Hook 共用这一份**
- * （收工闸门文案区分只读失守计划 r2 §2.3，计划双审 CODEX-01）。
+ * 只读失守成立之后，按跑后复算（run 元数据 `snapshot.drift`）分三档——**判据只此一处**，
+ * `checkAdjudication` 与 `hooks.ts` 的 `roundBreach` 共用（只读失守未确证改动放行计划 r2 §2.1，决策四）。
  *
- * 这句话的上下文与历次更正记在 `checkAdjudication` 推这条 failure 的地方；它被单点改过四次，
- * 让 Hook 另抄一份就会在无人察觉时分叉。改它即同时改了 `gate --check` 的输出与
- * `hook-stop` / `hook-pre-commit` 的失守段——这正是要的。
+ * 用户决策（2026-10-06，原始需求 20261005 第 1 条「只要没有真正进行了修改，就放行」）取最宽档
+ * 「只有确证改动才拦」：
+ * - `confirmed`：`changed` 为 true 且没有 `unknown_reason`（含被审对象漂移）⇒ 照旧 failure `readonly_breach`；
+ * - `unconfirmed_unchanged`：复算无变化 ⇒ 降为 warning `readonly_breach_unconfirmed`，结论照常进审批；
+ * - `unconfirmed_unknown`：比不了（带 `unknown_reason`，EV-139）⇒ 同上，告警换「比不了」的说法。
  *
- * 两处 Hook 失守段里「gate --check 对只读失守一律判失败」那半句，陈述的是 `checkAdjudication`
- * 对 `readonlyBreach.hit` 无条件推 failure 这件事；将来若加豁免出口，那半句要同改
+ * 先判 `unknown_reason`：写侧只在 `changed: true` 时写它，两种次序拦截集相同；先判它是为了
+ * 「`changed: false` 却带 `unknown_reason`」（手改留痕才可达）时按更弱的「比不了」说。
+ * 不给 `drift` 缺席设分支：run.v1 / run.v2 契约都必填，`readRunMeta` 校验不过即 null。
+ *
+ * 「失守是否成立」不归这里管，仍只看 `guard.readonly_breach`（写事件，决策五）。
+ * 与 `probes/claude.ts` 的 `judgeReadonlyBreach`（探针负对照的三态）不是同一件事（计划双审 GLM-03）。
+ */
+export type ReadonlyBreachClass = 'confirmed' | 'unconfirmed_unchanged' | 'unconfirmed_unknown';
+
+export function classifyReadonlyBreach(
+  drift: Pick<SnapshotMeta['drift'], 'changed' | 'unknown_reason'>,
+): ReadonlyBreachClass {
+  if (drift.unknown_reason !== undefined) return 'unconfirmed_unknown';
+  return drift.changed ? 'confirmed' : 'unconfirmed_unchanged';
+}
+
+/**
+ * 跑后复算看不见的写入（用户决策二，告警与注释同源）。放行告警逐条点名，**不暗示复算能证明没写**。
+ *
+ * 另有一项不在决策清单里、告警不点名：scratch 白名单内的写入（`judgeDrift` 整体剔除各家 Agent 的
+ * 运行时文件 glob），属接受的盲区（计划双审 CODEX-02）；日后要收紧放行判据时从这里起。
+ */
+export const BREACH_BLIND_SPOTS =
+  '被 .gitignore 忽略的文件、归档根与 .trivium/、改了又改回、写到项目外、MCP 执行型调用的任意写';
+
+/**
+ * 确证失守（`classifyReadonlyBreach` 判 `confirmed`）那条 failure 的处置判据句，
+ * **`gate --check` 与两处 Hook 共用这一份**（收工闸门文案区分只读失守计划 r2 §2.3，计划双审 CODEX-01）。
+ *
+ * 这句话的上下文与历次更正记在 `checkAdjudication` 推这条 failure 的地方；让 Hook 另抄一份
+ * 就会在无人察觉时分叉。改它即同时改了 `gate --check` 的输出与 `hook-stop` / `hook-pre-commit`
+ * 的失守段——这正是要的。「要重跑须先作废」不放进来：`gate --check` 在它之后自己补，
+ * Hook 由 `breachLines` 末行说，各说一次（只读失守未确证改动放行计划 r2 §2.4）。
+ *
+ * 两处 Hook 失守段里「gate --check 对这类只读失守判失败」那半句，陈述的是 `checkAdjudication`
+ * 只对确证格推 failure 这件事；判据再变时那半句要同改
  * （`hooks.ts` 的 `BREACH_UNFIXABLE` 旁有互指注释，`gate-loop` 集成用例会先红）。
  */
 export const READONLY_BREACH_TRIAGE =
-  '处置：先核对 run 元数据的 snapshot.drift 与工作区是否确有改动——确有则清理后重跑审查。' +
-  'drift 为 false 只排除了「未被 .gitignore 忽略的文件被改」，不足以判定误报：git 树比对看不见被 ignore 的产物目录，' +
-  '还须核调用记录本身是否真的写入、目标是否存在、是否被 ignore，确认后再按 BACKLOG EV-75 登记重跑。';
+  '处置：用 git status / git diff 核对这些改动是否出自审查员并清理。' +
+  '复算只能确证「有改动」，归不了因——审查期间别处的手改同样会落进这一格，拦截照旧。';
 
 /** 失守调用记录的展示：至多 8 条、超出加「…」，为空写「（run 元数据未记录）」。与 Hook 失守段同一口径 */
 export function breachRecordsText(files: readonly string[]): string {
   return files.length > 0 ? files.slice(0, 8).join('、') + (files.length > 8 ? '…' : '') : '（run 元数据未记录）';
 }
+
+/**
+ * 确证格的改动摘要，`gate --check` 与 Hook 失守段共用。确证格里 `changed` 恒 true、无 `unknown_reason`；
+ * `files` 可以为空：被审对象漂移不收文件，本轮有侧无法归因时清单挪去 `guard.unattributed_drift_files`。
+ */
+export function confirmedDriftText(drift: Pick<SnapshotMeta['drift'], 'files'>): string {
+  const f = drift.files;
+  if (f.length === 0) {
+    return '有改动，文件清单未记入 snapshot.drift.files（本轮有侧无法归因时清单在 guard.unattributed_drift_files）';
+  }
+  return `${f.length} 个文件改动：` + f.slice(0, 8).join('、') + (f.length > 8 ? '…' : '');
+}
+
+/** `readonlyBreach` 的入参形态：失守成立时**必带** `drift`，漏传编译期即红（计划 r2 §2.2） */
+export type ReadonlyBreachInput =
+  | { hit: false; files: string[] }
+  | { hit: true; files: string[]; drift: Pick<SnapshotMeta['drift'], 'changed' | 'unknown_reason' | 'files'> };
 
 // ─────────────────────── 校验结果 ───────────────────────
 
@@ -83,7 +135,9 @@ export interface GateWarning {
     /** 本轮有逐条降级的意见：仍须逐条裁决，但不参与阻断与共同阻断判定（设计 §6.5） */
     | 'degraded_findings'
     /** 计划阶段有接受项，但本轮运行元数据没有 `plan_final_check`（早于 EV-214 的运行）：新一轮计划未校验 */
-    | 'next_plan_unchecked';
+    | 'next_plan_unchecked'
+    /** 只读失守成立、但跑后复算未确证改动（复算无变化或比不了）：放行，点明盲区（用户决策 2026-10-06） */
+    | 'readonly_breach_unconfirmed';
   message: string;
   ids?: string[];
 }
@@ -223,8 +277,12 @@ export interface GateCheckInput {
    * 该字段在 run.v1 / run.v2 两版契约里都**必填**，`readRunMeta` 校验不过即 null——
    * 所以不存在「旧留痕缺字段」这一格（第 2 轮 CODEX-F01-②）：历史轮次按当年刻下的布尔判；
    * 留痕整份读不出时 `missingSides` 先行兜底。漏传本参数才按不拦处理，接线由 cli 两处调用点负责。
+   *
+   * 失守成立时一并带 `snapshot.drift`，由 `classifyReadonlyBreach` 分档：只有确证改动才推 failure，
+   * 未确证降为 warning（只读失守未确证改动放行，用户决策 2026-10-06）。判别联合让 `hit: true`
+   * 而不带 `drift` 的字面量编译不过（计划 r2 §2.2）。
    */
-  readonlyBreach?: { hit: boolean; files: string[] };
+  readonlyBreach?: ReadonlyBreachInput;
   /**
    * run.json `gate.warnings` 里运行期写下的标注，原样作为 `run_warning` 告警透传
    * （M10a 第 2 步代码双审 r2 GLM-04：此前该字段只写不读，「如实标注」没有读者）。
@@ -386,40 +444,60 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
    * 不是 Driver 改裁决件能修的东西，报 failure 会变成无法满足的闸门。
    */
   /*
-   * 只读失守 = 审查员写了工作树（AD-06：主仓库被写入即中止并列出受影响文件）。
-   * 它是关于**运行**的事实，Driver 改裁决件修不了——但与 `degraded_round` 不同，
-   * 这里必须是 failure 而不是 warning：失守侧的结论不可采信，放它进审批等于
-   * 让一份可能被自己改过的代码通过闸门。处置是清理工作区后重跑审查。
+   * 只读失守 = 审查员的轨迹里出现了写事件（AD-06）。它是关于**运行**的事实，Driver 改裁决件修不了。
+   *
+   * **只有跑后复算确证改动的那一格是 failure**：失守侧的结论不可采信，放它进审批等于
+   * 让一份可能被自己改过的代码通过闸门。处置是核对清理后作废这一轮再重跑。
+   * 复算无变化或比不了的那两格降为 warning、结论照常进审批——这是用户决策
+   * （2026-10-06，原始需求 20261005 第 1 条），不是本函数的推理结论，见下方「原口径被推翻」。
    */
   if (input.readonlyBreach?.hit) {
-    const files = input.readonlyBreach.files;
+    const { files, drift } = input.readonlyBreach;
     /*
      * 文案与判据对齐（第 2 轮 CODEX-F01-①）：判据是「轨迹里出现白名单外的工具调用」，
      * 不是「工作区确有改动」——两者要分开说。`breached_files` 装的是 `工具名(参数)` 形式的
      * 调用记录，不是文件路径；该判据有过误报（M9 第 6 步 run 20260919T120643Z：
-     * 五条记录全是 `StructuredOutput(...)`，`snapshot.drift.changed: false`），
-     * 所以处置分两步：先看 `snapshot.drift` 与工作区，确有改动才谈清理。
+     * 五条记录全是 `StructuredOutput(...)`，`snapshot.drift.changed: false`；
+     * EV-79 r2 又因解释器内联脚本误报一次，22 条已齐备的裁决随整轮作废而丢失）。
      *
-     * **`drift` 只能单向用**（EV-79 代码双审 r2 CODEX-09、r3 CODEX-r3-01）：
-     * `judgeDrift` 是 git 树比对：`workTreeHash` 走临时索引 `add -A`，已跟踪文件与**未被忽略的**未跟踪文件
-     * 都在内，**看不见被 `.gitignore` 忽略的文件**，`ownPrefixes` 还显式排除归档根与 `.trivium/`
-     * （EV-221 起这两处在算哈希时就已排除，取 HEAD 的版本）。
-     * （此前这里写「只看已跟踪文件」，与实现相反；留痕与文案小修计划双审 r1 CODEX-01 ≡ AGY-01 更正。）
-     * 于是 `dist/` 这类在 `.gitignore` 里的目录被真实递归删除同样 drift=false。
-     * 所以 drift=false **只排除了「未被忽略的文件被改」这一种失守**，不足以推出误报——
-     * 还要核调用记录本身是不是真的写、目标是否真实存在、是否被 ignore。
-     * 拿 drift=false 直接判误报会把真失守降级，这正是本判据要防的事。
+     * **原口径被推翻**：EV-79 代码双审 r2 CODEX-09、r3 CODEX-r3-01 定下「`drift` 只能单向用」——
+     * drift=false 只排除了「未被忽略的文件被改」，拿它判误报会把真失守降级。
+     * **用户 2026-10-06 决策推翻这一口径**，取最宽档「只有确证改动才拦」，明知的代价是下列盲区里的
+     * 真写会被放行。`judgeDrift` 是 git 树比对：`workTreeHash` 走临时索引 `add -A`，已跟踪文件与
+     * **未被忽略的**未跟踪文件都在内，**看不见被 `.gitignore` 忽略的文件**（`dist/` 被真实递归删除同样
+     * drift=false），`ownPrefixes` 显式排除归档根与 `.trivium/`（EV-221 起算哈希时就已排除），
+     * scratch 白名单整体剔除；改了又改回、写到项目外、MCP 执行型调用的任意写同样看不见。
+     * 放行告警逐条点明 `BREACH_BLIND_SPOTS`，**不说复算证明没写**，判断交给审批人。
      *
      * 整跑布尔说不出是哪一侧（EV-75②），这里不暗示可以按侧清理。
      */
-    failures.push({
-      code: 'readonly_breach',
-      message:
-        '本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），裁决不得进入审批。' +
-        READONLY_BREACH_TRIAGE +
-        '调用记录（非文件路径）：' +
-        breachRecordsText(files),
-    });
+    const cls = classifyReadonlyBreach(drift);
+    const head = '本轮轨迹记录到审查员调用了白名单外的工具（写事件记录），';
+    const records = '调用记录（非文件路径）：' + breachRecordsText(files);
+    if (cls === 'confirmed') {
+      failures.push({
+        code: 'readonly_breach',
+        message:
+          head +
+          '且跑后复算确证审查期间工作树有改动，裁决不得进入审批。' +
+          `复算检出：${confirmedDriftText(drift)}。` +
+          READONLY_BREACH_TRIAGE +
+          '要重跑须先作废这一轮。' +
+          records,
+      });
+    } else {
+      const unknown = cls === 'unconfirmed_unknown' ? drift.unknown_reason : undefined;
+      const lead = unknown
+        ? `但跑后复算比不了（${describeDriftUnknown(unknown)}），未能确证改动。`
+        : '但跑后复算未检出工作树改动（snapshot.drift.changed 为 false）。';
+      const blind = unknown
+        ? `比不了即不知道改没改，${BREACH_BLIND_SPOTS}之外，连一般的项目文件改动也没有核过，由审批人自行斟酌。`
+        : `未检出不等于没写：${BREACH_BLIND_SPOTS}，复算都看不见，由审批人自行斟酌。`;
+      warnings.push({
+        code: 'readonly_breach_unconfirmed',
+        message: head + lead + '按「只有确证改动才拦」放行，本轮结论照常进入审批。' + blind + records,
+      });
+    }
   }
 
   if (input.degraded) {
@@ -1208,8 +1286,11 @@ export async function loadRoundReviews(
    * 各自去读就会各自漏。字段在两版契约里必填，读得出来的留痕都带它；
    * 留痕整份读不出（`runMeta` 为 null）时给 `{ hit: false, files: [] }`，
    * 那一格由 `missingSides` 判失败，不靠这里。
+   *
+   * 失守成立时一并带出 `snapshot.drift`（两版契约同样必填），供 `classifyReadonlyBreach` 分档
+   * ——只有确证改动才判 failure（只读失守未确证改动放行计划 r2 §2.2）。
    */
-  readonlyBreach: { hit: boolean; files: string[] };
+  readonlyBreach: ReadonlyBreachInput;
   /** run.json `gate.warnings`（读不到 run.json 时为空） */
   runWarnings: string[];
   /**
@@ -1337,10 +1418,11 @@ export async function loadRoundReviews(
     if (pathVoiding || viaCmd?.hit === true) voidedSides.push(c);
   }
 
-  const readonlyBreach = {
-    hit: runMeta?.guard?.readonly_breach === true,
-    files: [...(runMeta?.guard?.breached_files ?? [])],
-  };
+  const breachFiles = [...(runMeta?.guard?.breached_files ?? [])];
+  const readonlyBreach: ReadonlyBreachInput =
+    runMeta?.guard?.readonly_breach === true
+      ? { hit: true, files: breachFiles, drift: runMeta.snapshot.drift }
+      : { hit: false, files: breachFiles };
 
   const runWarnings = [...(runMeta?.gate?.warnings ?? [])];
   const reviewDocs = runMeta ? expectedReviewDocs(layout, stage, runMeta) : null;

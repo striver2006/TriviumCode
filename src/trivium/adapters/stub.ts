@@ -65,8 +65,17 @@ export type StubMode =
   | 'no_tools'
   /** 只读了送审包与被审对象，未读任何项目文件 */
   | 'no_project_reads'
-  /** 向项目写文件（对应「审查中写入业务文件」） */
+  /**
+   * 向项目写文件（对应「审查中写入业务文件」）——**只产写事件、不落盘**。
+   * 只读失守未确证改动放行（2026-10-06）起它恰是放行那一格：跑后复算无变化 ⇒ 告警放行。
+   */
   | 'write_breach'
+  /**
+   * 与 `write_breach` 同一条写事件，同时**真的**在 `note` 指的项目相对路径（缺省 `src/injected.ts`，
+   * 与写事件同一文件）追加一行——跑后复算确证改动 ⇒ 闸门判 `readonly_breach` failure 的那一格
+   * （只读失守未确证改动放行计划 r2 §5）。写事件与落盘文件同名，`attributedToBreach` 的扣除不受影响。
+   */
+  | 'write_breach_applied'
   /**
    * 读取了禁读清单里的文件（对应「读到对方产出」）——措施 a 的通道。
    *
@@ -494,6 +503,16 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
             ...baseResult(critic, req, spec),
             write_events: [`write_to_file(${req.project_root}/src/injected.ts)`],
           };
+        case 'write_breach_applied': {
+          const rel = spec.note ?? 'src/injected.ts';
+          const target = path.join(req.project_root, rel);
+          await fsp.mkdir(path.dirname(target), { recursive: true });
+          await fsp.appendFile(target, `// written during review by stub ${critic}\n`, 'utf8');
+          return {
+            ...baseResult(critic, req, spec),
+            write_events: [`write_to_file(${target})`],
+          };
+        }
         case 'peer_leak': {
           /*
            * **`note` 给了就只读拼写里含该子串的条目**，缺省读全部。

@@ -14,8 +14,9 @@ import type { StubConfig } from '../../src/trivium/adapters/stub.js';
  * `review --start` → `--wait` 全链路，咬住两档各自的留痕面——
  *   - 名单外（证据不可信）：run.json `verification_degraded.glm.evidence_untrusted`、`tool_calls.mcp`、front-matter 条件键、
  *     文档横幅、终态播报、报告旗标；`gate --check` **不**出 `readonly_breach`；
- *   - 执行型（只读失守）：run.json `readonly_breach` 与 `breached_files` 的 `MCP:` 条目、终态播报的 MCP 补句、报告 `只读失守`、
- *     `gate --check` 出 `readonly_breach` failure。
+ *   - 执行型（只读失守）：run.json `readonly_breach` 与 `breached_files` 的 `MCP:` 条目、终态播报的 MCP 补句、报告 `只读失守`；
+ *     桩只产写事件不落盘、跑后复算无变化，只读失守未确证改动放行（2026-10-06）起 `gate --check` 出
+ *     `readonly_breach_unconfirmed` 告警放行，不再出 `readonly_breach` failure（确证改动那一格由 gate-loop B 格守）。
  * run.json 落盘前过 run.v2 校验，新键的 schema 也在这条链上。
  */
 
@@ -73,7 +74,10 @@ async function runCode(root: string, codeDir: string, stub: StubConfig) {
     'utf8',
   );
   const gate = await cli(root, ['gate', '--stage', 'code', '--topic', TOPIC, '--check', '--json'], stub);
-  const gateJs = JSON.parse(extractJsonCandidate(gate.stdout)!.json) as { failures: { code: string; message: string }[] };
+  const gateJs = JSON.parse(extractJsonCandidate(gate.stdout)!.json) as {
+    failures: { code: string; message: string }[];
+    warnings: { code: string; message: string }[];
+  };
   const rep = await cli(root, ['report', '--topic', TOPIC, '--json'], stub);
   return { exitCode, meta, out, message, doc, fm, gate: gateJs, report: rep.stdout };
 }
@@ -107,10 +111,12 @@ test('MCP 执行型调用 ⇒ 只读失守的既有各面、写事件一眼看�
   assert.equal(r.meta.critics.glm?.tool_calls.mcp, 1);
   assert.ok(r.message.includes('只读失守'), `终态播报，实得：${r.message || '(空)'}`);
   assert.ok(r.message.includes('`MCP:` 开头的是 MCP 执行型工具调用'), 'MCP 补句');
-  const f = r.gate.failures.find((x) => x.code === 'readonly_breach');
-  assert.ok(f, JSON.stringify(r.gate.failures));
-  assert.doesNotMatch(r.gate.failures.map((x) => x.code).join(','), /missing_disposition/, '失败要来自失守本身');
-  assert.ok(f!.message.includes('MCP:mcp__node_repl__js('), '闸门消息里的调用记录点名该工具');
+  // 桩不落盘、复算无变化 ⇒ 未确证，告警放行（只读失守未确证改动放行，用户决策 2026-10-06）
+  assert.deepEqual(r.gate.failures, [], `应答件齐备、复算无变化：不该有失败，实得 ${JSON.stringify(r.gate.failures)}`);
+  const w = r.gate.warnings.find((x) => x.code === 'readonly_breach_unconfirmed');
+  assert.ok(w, JSON.stringify(r.gate.warnings));
+  assert.ok(w!.message.includes('MCP:mcp__node_repl__js('), '闸门告警里的调用记录点名该工具');
+  assert.ok(w!.message.includes('MCP 执行型调用的任意写'), '放行告警点明 MCP 盲区');
   assert.ok(r.report.includes('只读失守'));
   assert.equal('evidence_untrusted' in r.fm, false);
 });

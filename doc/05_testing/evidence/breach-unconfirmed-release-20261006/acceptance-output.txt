@@ -1,0 +1,4 @@
+A 只产写事件不落盘：期望 release，实得 release（gate --check 退 0；failures []；warnings ["readonly_breach_unconfirmed"]；drift.changed false；闸门 review_done_awaiting_disposition → idle）
+B 真改项目文件：期望 block，实得 block（gate --check 退 2；failures ["readonly_breach"]；warnings []；drift.changed true；闸门 review_done_awaiting_disposition → review_done_awaiting_disposition）
+C 比不了 + 写事件（on_drift_related: warn）：期望 release，实得 release（gate --check 退 0；failures []；warnings ["readonly_breach_unconfirmed"]；drift.changed true，unknown object_gone；闸门 review_done_awaiting_disposition → idle）
+三格 3/3 符合期望

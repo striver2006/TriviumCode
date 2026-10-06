@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.126
+> - **当前版本**：v1.3.127
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -287,7 +287,7 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 | `agy.pty_required` | 管道下 stdout 是否为空但 exit 0；是则启用 `script -q /dev/null` 伪终端包装重试 | 记录到 probe |
 | `agy.path_deny` | 实测 `permissions.deny`（独立 settings 路径或环境变量注入）能否以**路径级**规则拒绝读取指定文件（如 `.reviews/**/*-glm.md`）：在临时目录放一个被 deny 的文件，headless 要求读取，检查是否被拒且轨迹中无读取事件。记录 `agy.path_deny: {supported: bool, rule_syntax: "…"}` | 不支持则第 ③ 道屏蔽只剩 BRIEF 禁读清单 + 轨迹核验（10.1），`run.json.guard.peer_deny_applied=false` |
 | `zcode.path_deny` | 同上，实测 `--disallowed-tools` / 配置文件 / `AGENTS.md` 之外是否存在路径级读取拒绝机制 | 同上 |
-| `agy.scratch_paths` / `zcode.scratch_paths` | 在干净临时 git 仓库跑一次最小任务，`git status --porcelain -uall` 列出运行时自行创建的文件（会话缓存、`.agents/` 等），记录为白名单 glob | 指纹比对时排除白名单；白名单外的任何新增/修改即 `readonly_breach` |
+| `agy.scratch_paths` / `zcode.scratch_paths` | 在干净临时 git 仓库跑一次最小任务，`git status --porcelain -uall` 列出运行时自行创建的文件（会话缓存、`.agents/` 等），记录为白名单 glob | 指纹比对时排除白名单；白名单外的新增/修改进 `snapshot.drift`（v1.3.127 更正：原写「即 `readonly_breach`」，与实现不符——失守只由轨迹写事件判定，见 10.3）。白名单内的写入复算看不见，属接受的盲区（EV-223） |
 | `agy.home_isolation` / `zcode.home_isolation` | **仅当** `zcode.model_override` 落到 `config_copy` 档、或 `agy.path_deny` 需要独立 settings 路径时才需要：实测独立 `HOME`（拷入凭据）/ `ZCODE_HOME` / 独立 settings 路径 / 仅环境变量覆盖中首个可用者，记录 `*.isolation: home_copy\|settings_path\|env\|shared` | 需要而不可用时该侧不可用；默认共享 `HOME`（两侧厂商不同，`~/.gemini` 与 `~/.zcode` 天然不冲突） |
 | `zcode.entry` | 候选路径探测 + `version` 输出 | 预检失败 |
 | `zcode.readonly_flags` | 依次实测 `--mode plan`、`--disallowed-tools`、`--allowed-tools`，记录**实际被接受**的组合。0.16.9 起 provider 配置定位先于参数解析：定位失败的候选记 `indeterminate`，**不写入**结论（P-29）；该探针只注入内置 provider 配置，个人那份自带默认模型会让空 `HOME` 失去挡模型调用的作用（P-30） | 只读不可保障则该侧不可用 |
@@ -628,7 +628,7 @@ sequenceDiagram
 | **AD-03** | **双审为「派生 + 分段等待」：`trivium review --start` 立即返回 `run_id`，命令模板循环调用 `review --wait <run_id> --timeout <s>` 直到完成；不用 async Hook** | ①单次同步阻塞调用；②Stop Hook + `async:true/asyncRewake:true` 后台审查（zcode 参考方案） | ① Driver 的 Bash 工具有工具级超时（3.1），单侧 900～1200s + 重试的同步调用必然被杀，心跳无法延长；② 异步唤醒会与 B/C/D 的人工停点语义打架。派生的工作子进程在两侧回收完成后即退出，不是常驻 Daemon；`--wait` 每次不超过 Bash 工具超时（窗口取 `wait_timeout_s`），返回专用退出码表示「仍在运行」。命令返回给 Driver 时工件已齐的语义由 `--wait` 的最终成功返回保证（7.5） |
 | **AD-04** | **触发方式 = 显式斜杠命令为主，Hook 只做护栏** | `PostToolUse(Write)` 自动交单、`PreToolUse(ExitPlanMode)` 计划闸门 | PRD 第 8 章规定四条命令的意图/输入/停点，且 B/C/D **必须**带提示语；自动交单无法获得提示语，且会在无关写入上误触发。Hook 用于：闸门期禁止业务写、禁止伪造审查文件、未完成裁决时阻止收工 |
 | **AD-05** | **就地审查（`in-place`）为唯一隔离模式：审查员 cwd 即项目根，不构造镜像树**（`ADR_001_isolation_mode.md`，Accepted，2026-09-11） | ①冻结镜像树 `mirror`（v1.0.0～v1.1.0 默认）；②`in-place` 仅靠提示词 | 项目负责人裁决 UR-03/UR-06。`in-place` 与 PRD FR-07 字面一致，`.git`、依赖目录、`git log/blame` 能力无损，零拷贝。需要屏蔽的对方产出只有两类：**本次**结论（延迟落盘 + 运行目录在项目外，审查中物理不存在，无需提示词）与**同主题重跑时的历史**产出（三层屏蔽：BRIEF 逐个列出的禁读清单 → CLI 路径级 deny（探针可用时注入）→ 事后轨迹核验，命中即作废重跑）。代价：整树无法 `chmod` 只读，只读退化为「工具层禁写 + 前后指纹」；审查期间开发者手改文件会造成漂移，只能检出并记录（9.2）；两家 Agent 在 cwd 的临时文件需探针白名单（10.3）。`mirror` 方案被否决的理由：无 `.git`、依赖缺席、双份拷贝、与 FR-07 字面冲突需回填 PRD，而其唯一收益（历史产出物理剔除）可由三层屏蔽以可接受的置信度替代 |
-| **AD-06** | **只读 = 工具白名单/黑名单 + 前后指纹（`tree_hash` + `git status --porcelain -uall`，排除 scratch 白名单）+ 轨迹核验三重** | 仅提示词约束；整树 `chmod a-w`（就地模式不可行） | 提示词可被绕过；三重叠加使「审查员改代码」成为可检出的事件，主仓库被写入即中止并列出受影响文件（FR-15 / AC-08） |
+| **AD-06** | **只读 = 工具白名单/黑名单 + 前后指纹（`tree_hash` + `git status --porcelain -uall`，排除 scratch 白名单）+ 轨迹核验三重** | 仅提示词约束；整树 `chmod a-w`（就地模式不可行） | 提示词可被绕过；三重叠加使「审查员改代码」成为可检出的事件，轨迹记到写事件即判只读失守并列出受影响的调用；闸门是否拦审批取决于跑后复算——确证工作树改动则判 failure、裁决不得进入审批，未确证（复算无变化或比不了）降为告警放行并点明复算盲区（v1.3.127，EV-223，用户决策 2026-10-06；原写「主仓库被写入即中止」）（FR-15 / AC-08） |
 | **AD-07** | **禁用 `--dangerously-skip-permissions`** | 用它避免 headless 挂起 | 它会连写工具一起放行，与只读要求正面冲突。挂起问题改用「自定义只读 Agent + 预授权只读工具 + 伪终端兜底 + 轨迹下限校验」解决 |
 | **AD-08** | **结构化输出 = `agy --json-schema` + zcode 提示词约定同一 schema；解析失败降级留原文** | 只收自由文本 | 结构化才能做严重度聚合、逐条裁决校验与统计；降级路径保证鲁棒（该侧标 `parse_fallback`，不参与阻断判定）。**v1.3.68 起分两档**：根对象合法而个别意见不合 schema 时只把那几条逐条降级、其余照常参与阻断；整份回退只留给连根对象都拿不到的情形，并标成因（6.5.1） |
 | **AD-09** | **失败策略默认 `strict`（阻塞中止）** | 默认 `degrade` | PRD 要求两种都支持、默认留给设计。默认严格更贴合「不得假双审」的整体立场；降级需项目配置或 `--allow-single` 显式开启，且必须写入降级标记与原因 |
@@ -1878,8 +1878,8 @@ Hook 行为约定：
 | :--- | :--- | :--- |
 | `hook-pre-write` | 每次文件写入前 | 见 8.4。另：存在**本会话**触发且状态为 `running` 的审查运行时，同样 `deny` 归档根之外的写入（就地模式下审查员正在读真实工作树，Driver 此时不得改业务文件；Driver 本就处于 `--wait` 循环，正常不会触发）。安全兜底：①本设计的 Hook 配置只由 `trivium init` 注入**项目级** `.claude/settings.json`；②每条命令外层的 `sh -c` 守卫**区分两种情形**：无 `.trivium/config.yaml` → 项目从未初始化（协作者克隆仓库后尚未跑过 `trivium init` 是必然常态），静默 exit 0，不会误伤；有 `config.yaml` 但 wrapper 缺失或不可执行 → 护栏已被破坏，exit 2 并打印修复指引。守卫**不可一律 exit 0**：那样一条 `rm -rf` 或 `chmod -x` 打在 wrapper 上，就能把四个拦截型 Hook 一次性变成永真放行，而且悄无声息（审查意见 AGY-03）；③wrapper 自身在检测不到 `.trivium/config.yaml` 时同样返回 0 |
 | `hook-pre-bash` | 每次 Bash 调用前 | `hook-pre-write` 只覆盖 Edit / Write / NotebookEdit，`cat > f`、`sed -i`、`tee`、`git checkout` 都是旁路。本 Hook 挂**全部** Bash 事件（无 `if` 过滤），按写命令形态做**启发式**拦截（重定向、`tee`、`sed -i` / `perl -i`、`rm` / `mv` / `cp` / `touch`、`git checkout` / `reset` / `commit`、包管理器安装等）：①命中编排器独占对象（角色后缀文件——**全部已登记角色的后缀，含当轮 Driver 自己的**：Bash 侧拿不到当轮，只能全集字面判，M10a 第 5 步 D3 起；此前是全集减缺省 Driver——、运行时状态目录及其下的状态文件、锁与 wrapper、归档内 `_meta/` 与 `task.json`）→ **任何时候**都 deny，不受闸门状态限制；②其余写命令仅在闸门期（`awaiting_approval` / `running`）deny。判定**刻意在未剥 heredoc 的原文上**进行——先剥 heredoc 会让 `python3 - <<'PY' … PY` 剥完只剩 `python3 -`，两条规则连评估机会都没有，而归档根与 `.trivium/` 被 `judgeDrift` 整体排除、提交锚只在 commit 时触发，这条路**没有任何跑后兜底**（GLM-03）。**已知代价：误拦**——命令正文里出现任一角色后缀（D3 起含 `-claude.md`）/ `_meta` / `task.json` / `state.json` / `.trivium` 字样即命中，哪怕它实际要写别的文件。**任何把这些名字写进 Bash 命令文本的场合都会撞上**，不限于写文件（本项目改护栏文档时已实撞两次：一次是改文档的脚本，一次是描述该误拦的 commit message）。出口是改用 Write / Edit 工具落文件、提交用 `git commit -F <文件>`（精确判定，不看字面）。**没有任何例外**——曾为 `git commit` 开过一条豁免（RV-B1），双审打穿后已撤回，理由见 §21 的 v1.2.5：原判定是 fail-closed（看见字面就拦，代价是误拦），豁免把它变成需要穷举危险形态的 fail-open，而 shell 的攻击面穷举不完（三个前置条件漏掉至少五条路径，三条实测击穿）。误拦有零成本出口，漏拦则直接击穿本条不变式且无跑后兜底——**这个方向本身不成立，不要再试**。该代价**刻意接受**：正文写保护路径正是要防的攻击形态，正则无法区分「讨论它」与「攻击它」，而漏拦的后果（裁决期归档被篡改且无兜底）远重于误拦的后果（换个工具）。收窄规则以减少误拦会把判定重新推向依赖命令结构精确解析的方向，那正是 AGY-01 实跑复现过的整体失防形态。启发式不求完备：它挡住顺手的旁路，绕过去的改动仍会被跑后复算判成漂移 |
-| `hook-pre-commit` | 每次 Bash 调用前 | 存在「审查文档已落盘但裁决件缺失/不完整」的阶段时 exit 2 阻断，说明缺哪些编号；并校验留痕完整性三条锚（已提交工件被删 / 不可变工件被改、run 清单与其元数据文件互相可达且 `artifacts[].sha256` 逐份吻合、记过 run 的主题其 `task.json` 仍在）。**不按会话过滤**——裁决完整性是仓库的属性，不是会话的属性。原先带 `if: Bash(git commit:*)`，但那是**前缀**匹配：`sh -c 'git commit -m x'` 不以 `git commit` 开头，Hook 根本不触发，裁决期的提交拦截与留痕校验被一起跳过，被篡改的归档可以一次性洗进 HEAD（审查意见 GLM-02）。现改为不设 `if`、由 `looksLikeCommit` 在进程内过滤，它还要判这次提交是否打在**本项目**上（前缀规则本来也表达不了这件事）。可由 `gate.block_commit: false` 关闭。**「不可变工件」怎么判**（M10a 第 2 步，EV-55；此前按角色后缀与 `_meta/` 内的文件名正则判）：①**位置判据**——已跟踪、位于 `_meta/` 内的文件被改即拦，排除两项：`changes.diff`（便利副本，每轮覆盖写）与「已提交版本为 running」的 `run-*.json`（正常收尾回写；收窄为同一 run_id、已登记条目逐条保留且 sha 不变、只许追加）；②**登记判据（锚②）**——plan / bug 原稿在该轮**成功收尾**时按**归档相对路径**登记进 `run.json.artifacts[]`，此后原地改原稿即判 `modified`；作废轮不登记；**归档根外的被审对象不登记**，改为在 `run.json` 的 `gate.warnings` 标注「本轮原稿不在保护集」（收尾 stderr 与 `gate --check` 的 `run_warning` 同句）。审查文档自 M1 起即登记。由此 `verify-*.json` 从**锚②单层**（verify 运行清单早已登记它）变为**锚①②双层**。**三条边界如实登记**：强制力单向——只挂在 Claude Code 的 Bash matcher 上，终端里直接提交完全绕过；剩余两格够不着——收尾新追加的登记条目在追加那一刻可被同步改写，审查文档已落盘而登记未发生时进程崩溃且该状态被提交（BACKLOG EV-108）；预检**没有**「不在保护集」的标注（`preflight` 不接 `--topic`，标注落在上述三处）。用户出口：未送审的原稿直接改；作废轮之后继续改；已成功送审的原稿要改就另起 `-r<N>` 新稿（原稿的 `-r<N>` 与审查轮次号是两套编号）。**只读失守时的文案**（v1.3.77，EV-98 文案部分）：待裁决阶段那一轮的运行留痕（按闸门项的 `run_id` 直读，不取最新一份）记录了 `guard.readonly_breach` 时，该阶段改说「审查记录到只读失守」——列调用记录与快照漂移的实际取值、处置判据句与 `gate --check` 共用 `gate.ts` 的 `READONLY_BREACH_TRIAGE`、给出 `/dual-abandon --topic … --stage …` 作废出口（重跑也须先作废：待裁决时 `review --start` 拒绝重跑）；其余阶段照原文案，关闭方式恒为最后一行。拦截行为与退出码不变；读不出、未失守、闸门项无 `run_id` 时文案与改前逐字相同 |
-| `hook-stop` | Driver 结束回合前 | 若存在**本会话**的 `review_done_awaiting_disposition` 状态 → 输出 `{"decision":"block","reason":"还有未逐条裁决的审查意见：…"}`（或 exit 2 + stderr）；若为 `awaiting_approval` → exit 0（这是**期望的**停点）。带 `stop_hook_active` 早退与每阶段最多 2 次阻断上限，避免死循环。**只读失守时的文案**（v1.3.77，EV-98 文案部分）：该阶段那一轮的运行留痕（按闸门项的 `run_id` 直读）记录了 `guard.readonly_breach` 时，`reason` 改说「本轮审查记录到只读失守」与「补裁决件解不开」、列调用记录与快照漂移、给出作废出口（同 `hook-pre-commit` 行），与未裁决阶段并存时两段都出、`stderr` 两个真因都在；阻断上限放行的 `systemMessage` 同样点名失守与未裁决两类。拦截、阻断计数与退出码不变；未见失守时文案与改前逐字相同 |
+| `hook-pre-commit` | 每次 Bash 调用前 | 存在「审查文档已落盘但裁决件缺失/不完整」的阶段时 exit 2 阻断，说明缺哪些编号；并校验留痕完整性三条锚（已提交工件被删 / 不可变工件被改、run 清单与其元数据文件互相可达且 `artifacts[].sha256` 逐份吻合、记过 run 的主题其 `task.json` 仍在）。**不按会话过滤**——裁决完整性是仓库的属性，不是会话的属性。原先带 `if: Bash(git commit:*)`，但那是**前缀**匹配：`sh -c 'git commit -m x'` 不以 `git commit` 开头，Hook 根本不触发，裁决期的提交拦截与留痕校验被一起跳过，被篡改的归档可以一次性洗进 HEAD（审查意见 GLM-02）。现改为不设 `if`、由 `looksLikeCommit` 在进程内过滤，它还要判这次提交是否打在**本项目**上（前缀规则本来也表达不了这件事）。可由 `gate.block_commit: false` 关闭。**「不可变工件」怎么判**（M10a 第 2 步，EV-55；此前按角色后缀与 `_meta/` 内的文件名正则判）：①**位置判据**——已跟踪、位于 `_meta/` 内的文件被改即拦，排除两项：`changes.diff`（便利副本，每轮覆盖写）与「已提交版本为 running」的 `run-*.json`（正常收尾回写；收窄为同一 run_id、已登记条目逐条保留且 sha 不变、只许追加）；②**登记判据（锚②）**——plan / bug 原稿在该轮**成功收尾**时按**归档相对路径**登记进 `run.json.artifacts[]`，此后原地改原稿即判 `modified`；作废轮不登记；**归档根外的被审对象不登记**，改为在 `run.json` 的 `gate.warnings` 标注「本轮原稿不在保护集」（收尾 stderr 与 `gate --check` 的 `run_warning` 同句）。审查文档自 M1 起即登记。由此 `verify-*.json` 从**锚②单层**（verify 运行清单早已登记它）变为**锚①②双层**。**三条边界如实登记**：强制力单向——只挂在 Claude Code 的 Bash matcher 上，终端里直接提交完全绕过；剩余两格够不着——收尾新追加的登记条目在追加那一刻可被同步改写，审查文档已落盘而登记未发生时进程崩溃且该状态被提交（BACKLOG EV-108）；预检**没有**「不在保护集」的标注（`preflight` 不接 `--topic`，标注落在上述三处）。用户出口：未送审的原稿直接改；作废轮之后继续改；已成功送审的原稿要改就另起 `-r<N>` 新稿（原稿的 `-r<N>` 与审查轮次号是两套编号）。**只读失守时的文案**（v1.3.77，EV-98 文案部分）：待裁决阶段那一轮的运行留痕（按闸门项的 `run_id` 直读，不取最新一份）记录了 `guard.readonly_breach`、且跑后复算确证改动时（v1.3.127 起只收这一格，判据与 `gate --check` 同为 `gate.ts` 的 `classifyReadonlyBreach`；复算无变化或比不了的失守轮按普通轮出原文案，EV-223），该阶段改说「审查记录到只读失守」——列调用记录与快照漂移的实际取值、处置判据句与 `gate --check` 共用 `gate.ts` 的 `READONLY_BREACH_TRIAGE`、给出 `/dual-abandon --topic … --stage …` 作废出口（重跑也须先作废：待裁决时 `review --start` 拒绝重跑）；其余阶段照原文案，关闭方式恒为最后一行。拦截行为与退出码不变；读不出、未失守、闸门项无 `run_id` 时文案与改前逐字相同 |
+| `hook-stop` | Driver 结束回合前 | 若存在**本会话**的 `review_done_awaiting_disposition` 状态 → 输出 `{"decision":"block","reason":"还有未逐条裁决的审查意见：…"}`（或 exit 2 + stderr）；若为 `awaiting_approval` → exit 0（这是**期望的**停点）。带 `stop_hook_active` 早退与每阶段最多 2 次阻断上限，避免死循环。**只读失守时的文案**（v1.3.77，EV-98 文案部分）：该阶段那一轮的运行留痕（按闸门项的 `run_id` 直读）记录了 `guard.readonly_breach`、且跑后复算确证改动时（v1.3.127 起，EV-223，同 `hook-pre-commit` 行），`reason` 改说「本轮审查记录到只读失守」与「补裁决件解不开」、列调用记录与快照漂移、给出作废出口（同 `hook-pre-commit` 行），与未裁决阶段并存时两段都出、`stderr` 两个真因都在；阻断上限放行的 `systemMessage` 同样点名失守与未裁决两类。拦截、阻断计数与退出码不变；未见失守时文案与改前逐字相同 |
 | `hook-session-start` | 会话开始 | 通过 `additionalContext` 注入当前待审批闸门与未完成裁决的清单 |
 
 > 说明：`Stop` 的阻断上限与 `stop_hook_active` 判据必须实现；Claude Code 自身在 Stop hook 连续阻断 8 次后会强制覆盖（`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`）；两层保护共同防止「审查—阻断」死循环。所有 Hook 子命令经统一 wrapper 执行：只在明确判定时返回 `2`，内部异常返回 `1`（非阻断），检测不到 `.trivium/config.yaml` 时返回 `0`。
@@ -1997,9 +1997,11 @@ Hook 行为约定：
    b. F 为空 → 无漂移（只有 Agent 临时文件）
    c. F 与 --context 路径 / diff 涉及文件相交 → 按 review.on_drift_related（默认 fail）
    d. 其它 → 按 review.on_drift（默认 warn）：run.json.snapshot.drift = {changed: true, files: F}，命令输出显著提示
-4. 同时做只读失守判定（10.3）：F 中若有非白名单文件且 git status 显示为审查期间新出现的改动，
-   需区分「开发者手改」与「审查员写入」——一律先按 readonly_breach 告警并列出文件，由人确认；
-   轨迹中出现写工具/写命令事件则直接判 readonly_breach
+4. 同时做只读失守判定（10.3）：轨迹中出现写工具/写命令事件即判 readonly_breach——只看写事件，
+   指纹变化不置这一位（v1.3.127 更正：原写「F 中有改动一律先按 readonly_breach 告警」，与实现不符）；
+   指纹变化而轨迹无写事件的按漂移处理（开发者手改；有侧不可归因时进 guard.unattributed_drift_files），列出文件由人确认。
+   闸门是否因失守拦审批取决于本步的漂移结论（v1.3.127，EV-223）：snapshot.drift.changed 为 true 且无 unknown_reason
+   ⇒ gate --check 判 failure readonly_breach；复算无变化或比不了 ⇒ 降为告警 readonly_breach_unconfirmed 放行
 ```
 
 要点：
@@ -2098,7 +2100,7 @@ Hook 行为约定：
    焦点要求实测或复测而做不到时如实说明后照常交付、不停下来等放行；能执行只读命令的一侧——写「实测」「复测」的判断要在 `evidence` 里给出本轮实际执行的命令，没执行的写明是推理。
    插在 `not_covered` 那条之后、不另起一段；此前靠 Driver 每轮在焦点里手写一句。
    适配器声明了执行型 MCP 前缀（`mcpExecPrefixes`，见 11.1「命令执行能力」末尾）的一侧——今天只有 zcode——证据性质那条之后紧跟一条点名禁令（v1.3.76 起，EV-191）：
-   工具清单里另有能执行代码的 MCP 工具（逐个点名前缀），不要调用、焦点要求也不行，一被调用即判只读失守、本轮该侧结论作废、整轮在闸门被挡下重跑，需要运行才能确认的内容按上一条处理；
+   工具清单里另有能执行代码的 MCP 工具（逐个点名前缀），不要调用、焦点要求也不行，一被调用即判只读失守、记入本轮留痕，跑后复算一旦检出工作树改动整轮在闸门被挡下、须作废重跑（v1.3.127 改准：原写「本轮该侧结论作废」，失守从不作废某侧），需要运行才能确认的内容按上一条处理；
    没有声明的侧第 7 节与改前逐字相同。只看适配器声明，不按侧名分叉。
 8. **禁读与禁止事项**：编排器**逐个列出**的对方历史审查文件路径（如 `.reviews/登录重构/plan/2026-09-10-登录重构-glm.md`）——「另一位审查员的文件，读取即本次审查作废」；`.trivium/`、`~/.trivium/`、`review.sensitive_globs` 匹配的敏感文件；不得给出大段可粘贴补丁（避免变成第二作者）；不得引用或猜测另一位审查员的结论。逐个列出而不是给 glob，是为了让轨迹核验与提示语之间可逐条对账。
 
@@ -2415,11 +2417,11 @@ flowchart LR
 | :--- | :--- | :--- |
 | **工具层** | 自定义 Agent `trivium-critic` 的 `tools:` 白名单只含五个只读工具（`view_file` 查看文件、`grep_search` 检索、`find_by_name` 按名查找、`list_dir` 列目录、`finish` 交结论），**没有任何命令工具**——审查员不跑命令（测试/构建命令同样不跑，取舍见 18.1 #11）；`run_command` 一旦出现在轨迹里即判 `readonly_breach`（`adapters/agy-events.ts`）。（v1.3.72 改准：原写「只读命令白名单 `readonly_commands`」「`commandExecutionPolicy` 设为沙箱/受限」「配合 `permissions.deny` 兜底写类工具」，三句都不是现状——`readonly_commands` 从未接线、已删除，EV-15） | `--mode plan` + `--disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash,…"`（以 `probe.zcode.readonly_flags` 实测组合为准；ZCode 侧若无法做命令级白名单，则整个 `Bash` 禁用，`run_command` 计数恒为 0）。**MCP 工具面不在 denylist 的论域**（经插件缓存带进副本 HOME，如 `mcp__node_repl__js`）：v1.3.75 起只检测、未关通道——执行型（`mcp__node_repl__` 开头）一被调用即判 `readonly_breach`，名单外的 MCP 调用记证据不可信（EV-188，见 11.1） |
 | **文件系统层** | **无**。就地模式不能把项目根整树 `chmod a-w`（会阻断 Driver 与开发者）；`.git` 在场，因此 `git commit/checkout/reset/stash` 等写命令必须在工具层就够不着：本侧没有命令工具，根本跑不了命令（v1.3.72 改准：原写「只读命令白名单之外一律拒绝」，那份白名单从未存在） | 同左（本侧整个 `Bash` 禁用） |
-| **事后核验层** | 跑前/跑后比对 `tree_hash` + `git status --porcelain -uall` 指纹（排除 `probe.*.scratch_paths` 白名单）+ 工具轨迹中的写工具/写命令事件扫描；任一命中即 `readonly_breach: true`；与开发者手改的区分见 9.2 第 4 步 | 同左；另（v1.3.75，EV-188）：rollout 的 `response.toolCalls` 与会话日志的 `tool.call.*` 里的 MCP 调用按调用 id 合并计数（`tool_calls.mcp`），执行型调用以 `MCP:` 前缀进写事件 |
+| **事后核验层** | 跑前/跑后比对 `tree_hash` + `git status --porcelain -uall` 指纹（排除 `probe.*.scratch_paths` 白名单）+ 工具轨迹中的写工具/写命令事件扫描；**工具轨迹的写事件**命中即 `readonly_breach: true`，指纹变化只进 `snapshot.drift`、不置这一位（v1.3.127 更正：原写「任一命中即 `readonly_breach: true`」，与实现不符——`guard.ts` 的失守只由写事件判定）；与开发者手改的区分见 9.2 第 4 步 | 同左；另（v1.3.75，EV-188）：rollout 的 `response.toolCalls` 与会话日志的 `tool.call.*` 里的 MCP 调用按调用 id 合并计数（`tool_calls.mcp`），执行型调用以 `MCP:` 前缀进写事件 |
 
 **表外的 codex 侧**（本表成形于两家时期，只有两列；v1.3.72 补）：codex 读文件就是跑 shell，**能跑命令**；挡写靠 `-s read-only` 沙箱（由探针负对照实测得出，落在 `probe.cli.codex.readonly_flags`；实测为空即该侧判不可用），**没有命令级白名单**——编排器不限制它能跑哪些命令，只靠沙箱挡写、靠措施 b 扫命令原文。codex 自带的 execpolicy 规则（2026-10-01 本机 codex-cli 0.159.2 实测）只能**按命令前缀**给 `allow` / `prompt` / `forbidden`，空模式不合法、写不出「默认拒绝」，包一层 `bash -lc` 或写绝对路径时 `execpolicy check` 不匹配；它能表达「禁止某些前缀」而表达不了白名单，本版不接线，机制与代价登 BACKLOG EV-184（codex 升级后按该条复核）。
 
-`readonly_breach` 的处理：告警 + 该侧审查不得标为干净完成 + 主仓库若被写入则中止流程并要求人工处置（**编排器不自动 `git checkout` 回滚**，避免误删用户未保存的工作；仅打印受影响文件清单与建议命令）。轨迹中有写事件的判为审查员失守；只有指纹变化而轨迹无写事件的，按漂移（开发者手改）处理但仍列出文件由人确认。
+`readonly_breach` 的处理：告警 + 该侧审查不得标为干净完成 + 列出受影响的调用与建议命令（**编排器不自动 `git checkout` 回滚**，避免误删用户未保存的工作）。**是否拦审批取决于跑后复算**（v1.3.127，EV-223；原始需求 20261005 第 1 条，用户 2026-10-06 定判据，推翻原「主仓库若被写入则中止流程」与「drift 只能单向用」两条口径）：`snapshot.drift.changed` 为 true 且无 `unknown_reason`（含被审对象漂移）⇒ `gate --check` 判 failure `readonly_breach`、裁决不得进入审批；复算无变化或比不了 ⇒ 降为告警 `readonly_breach_unconfirmed`、结论照常进审批。判据只此一处：`gate.ts` 的 `classifyReadonlyBreach`，`checkAdjudication` 与两处 Hook 共用。**接受的盲区**（放行告警逐条点名，不说复算证明没写）：被 `.gitignore` 忽略的文件、归档根与 `.trivium/`、改了又改回、写到项目外、MCP 执行型调用的任意写；scratch 白名单内的写入同样不在复算面内（不在决策清单里，告警不点名）。缺省配置下进得了待裁决的失守轮只有复算无变化（放行）与无关漂移（拦）两种：被审对象漂移恒判运行失败，相关漂移与比不了按 `on_drift_related`（缺省 fail）判运行失败。**复盘面不区分两档**（代码双审 GLM-01）：`report` 的旗标与 `summarizeRun` 只出「只读失守」，不区分确证与未确证；那一轮拦了还是放了，看 `gate --check` 的 `readonly_breach` / `readonly_breach_unconfirmed` 与 `snapshot.drift`。是否给复盘面加限定待用户定（BACKLOG EV-224）。轨迹中有写事件的判为审查员失守；只有指纹变化而轨迹无写事件的，按漂移（开发者手改）处理但仍列出文件由人确认。
 
 ### 10.4 主脑侧的写权限约束
 
@@ -2566,10 +2568,10 @@ claude 与 agy 的工具名过已分类表，出现未分类的名字即红（�
 **边界**：agy 侧对账的是仓库那份定义，运行期生效的是安装器拷进 `~/.gemini/config/agents/trivium-critic/agent.md` 的副本，两者漂移不在守备范围（EV-187）。
 zcode 侧的事实源只管内置工具名：MCP / 插件工具面不在 `ZCODE_READONLY_DENYLIST` 与对账用例的论域。本主题代码双审（GLM-01）核实，经插件缓存带进副本 HOME 的 `mcp__node_repl__js`（JS 执行）出现在 glm 侧每一次请求的工具清单里——`none` 只对内置工具面成立，这首先是只读保障的缺口，登记 **EV-188**。
 **v1.3.75 起两档检测（EV-188，只检测、未关通道）**：轨迹解析从 rollout 的 `response.toolCalls` 与日志 `tool.call.*`（两边按调用 id 合并）数出 MCP 调用（`tool_calls.mcp`，明细在该侧 `trace.json` 的 `mcpCalls`）；
-**执行型**（`ZCODE_MCP_EXEC_PREFIXES`，首批只有 `mcp__node_repl__` 开头，常量、实见才增）一被调用即以 `MCP:` 前缀进写事件、判只读失守、整侧作废，与 `Bash` 同档；
+**执行型**（`ZCODE_MCP_EXEC_PREFIXES`，首批只有 `mcp__node_repl__` 开头，常量、实见才增）一被调用即以 `MCP:` 前缀进写事件、判只读失守，与 `Bash` 同档（v1.3.127 改准：原写「整侧作废」，失守从不作废某侧；闸门拦不拦取决于跑后复算，EV-223）；
 **名单外**的 `mcp__` 调用记证据不可信（见上「证据不可信」，结论保留）。所以 zcode 格的声明**不改**、仍是 `none`：它仍只对内置工具面成立，
 而执行型工具一被调用就判失守——「能执行」的状态不会被当作合法结论采信，任务书第 7 节对该侧的说法也就不会被一份照常放行的结论反证。
-副本 HOME 与拉起参数不动，通道仍开着；历史上它被调用过（截至 2026-10-02 本主题计划双审之后扫描：本仓保留的 214 份 glm 侧 rollout 里 38 份、共 95 次，见报告证据 `history-scan-output.json`），落地后这类轮次会在闸门被挡下重跑（BACKLOG EV-191）。
+副本 HOME 与拉起参数不动，通道仍开着；历史上它被调用过（截至 2026-10-02 本主题计划双审之后扫描：本仓保留的 214 份 glm 侧 rollout 里 38 份、共 95 次，见报告证据 `history-scan-output.json`），落地后这类轮次判只读失守（BACKLOG EV-191）；v1.3.127 起跑后复算未确证改动时降为告警放行（EV-223）。
 **v1.3.76 起任务书点名（EV-191 缓解①，仍不关通道）**：`CriticAdapter` 新增**可选**声明 `mcpExecPrefixes?: readonly string[]`——该侧工具清单里有、但一被调用即判失守的执行型 MCP 工具名前缀。
 zcode 适配器声明为 `ZCODE_MCP_EXEC_PREFIXES` **本身**（同一个数组对象，判定层与任务书读同一份名单，由单测的同一引用断言守），其余三家与桩缺省不声明（桩可经 `StubSpec.mcpExecPrefixes` 显式覆盖，只为集成用例守接线）；
 `prepareRun` 以 `adapters[critic].mcpExecPrefixes ?? []` 递给 `renderBrief` 的必填入参，非空时第 7 节在证据性质那条之后多一条点名禁令（9.4 第 7 条）。
@@ -2960,7 +2962,7 @@ profiles:
 | 一侧失败（严格模式，默认） | 中止，退出 75 | 已生成的另一侧文件**保留**且标 `degraded: true`；**绝不**改名冒充对方 | FR-19 / AC-06 |
 | 一侧失败（降级模式） | 继续后续裁决与流程 | `review_mode: single`；`task.json` 记录降级事件；命令输出显著提示 | FR-19 |
 | 审查结果为零条意见 | 视为该侧「无问题」 | 文件照常落盘，元数据 `empty_review: true`；**不得删除该侧文件** | FR-13 / NFR-05 |
-| 审查阶段写入业务文件 | `readonly_breach: true`，告警；该次审查不得标为干净完成；主仓库被写入则中止并列出受影响文件 | `guard.readonly_breach: true` | FR-15 / AC-08 |
+| 审查阶段写入业务文件 | `readonly_breach: true`，告警；该次审查不得标为干净完成；列出受影响的调用。跑后复算确证改动则裁决不得进入审批，未确证降为告警放行并点明盲区（v1.3.127，EV-223） | `guard.readonly_breach: true`；`gate --check` 的 `readonly_breach`（failure）或 `readonly_breach_unconfirmed`（warning） | FR-15 / AC-08 |
 | 审查期间工作树漂移（开发者手改） | 被审对象被改 → 整次运行作废 `failed(subject_drift)`；相关文件被改 → 按 `on_drift_related`（默认 fail）；无关文件 → 按 `on_drift`（默认 warn）并列出文件；比不了改了哪些文件（送审快照的 tree 被清理、git 出错或超时）→ 按 `on_drift_related`（v1.3.70，EV-139） | `snapshot.drift`（比不了另记 `unknown_reason`）、审查文档 front-matter `drift: true` | FR-16 / AC-17 |
 | 读取到对方产出（轨迹命中 `deny_paths` 的**第①②类**，见 10.1.1） | 该侧作废并重跑一次（BRIEF 追加更醒目的禁读提示）；仍命中则标 `failed(peer_leak)`；strict 下整次中止。**「重跑一次」待实施**——机制就绪前该侧结论按作废处置但不重跑，共同阻断的有效侧不足时按下一行处置 | `guard.peer_artifact_read: true`、`guard.peer_leak_via_path`（按侧、逐条带类）、`peer_deny_applied` | FR-10 / AC-04 |
 | 命中 `deny_paths` 的②′／③／④类（己方运行时材料／编排器状态／凭据文件） | **不判作废**：②′ 不计入泄漏；③降告警级；④走安全告警线。分档理由与实测依据见 10.1.1 | `guard.peer_leak_via_path` 记类别与路径 | FR-10 |
@@ -3387,11 +3389,15 @@ schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束
   `judgeDrift` 是 git 树比对、**看不见被 `.gitignore` 忽略的文件**（未忽略的未跟踪文件在内，v1.3.45 更正），`dist/` 这类被 ignore 的目录
   被真实递归删除同样 drift=false。drift=false 时还须核目标是否真实存在、
   是否被 ignore；直接据此判「误报」会把真失守降级。
+  **v1.3.127 起这条口径在闸门上被用户决策推翻**（EV-223，2026-10-06）：闸门改按「只有确证改动才拦」，
+  drift=false 的失守轮告警放行；上述盲区不再挡审批，而由放行告警逐条点名、交审批人斟酌。
+  排障时的用法不变：看到 drift=false 仍不足以断定误报。
   **这条口径的落点有四处，不是三处**（r3 CODEX-r3-01）：`base.ts` 的收紧注释、
   本节、`probe-delete-exit-codes.sh` 的结论 3，以及 **`gate.ts` 的 `readonly_breach`
-  处置正文**——最后那处才是真正被人读到的一处，r2 改前三处时把它漏了。
+  处置正文**——最后那处才是真正被人读到的一处，r2 改前三处时把它漏了（v1.3.127 起改写为 `classifyReadonlyBreach` 旁的注释与放行告警，注明用户决策推翻）。
   `gate.test.ts` 另加了一条**否定式**断言（锁「文案不得出现『没有改动则是误报』式反推」）：
   否定式只禁掉一种语义、对措辞演进不敏感，肯定式会把文案钉死在一种写法上而误伤。
+  （v1.3.127 起这条否定式锁在放行告警上，另加盲区清单的正向锁。）
 
 > **一条过程教训**（r9 双审，两侧独立判出）：初版掩码判据写作 `&(?!&)`，
 > 而负向前瞻只看后一个字符——`&&` 的第二个 `&` 后面是空格，断言通过、命中。
@@ -3724,6 +3730,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.127** | 2026-10-06 | **只读失守未确证改动放行（EV-223）。** 命令 A 跑完计划双审与代码双审（主题 `只读失守未确证改动放行`）。原始需求 20261005 第 1 条把只读失守的处置改为「只要没有真正进行了修改，就放行」，用户 2026-10-06 定判据取最宽档「只有确证改动才拦」：只读失守成立时，`snapshot.drift.changed` 为 true 且无 `unknown_reason` 照旧判 failure `readonly_breach`；复算无变化或比不了降为告警 `readonly_breach_unconfirmed`、结论照常进审批。`gate.ts` 新增 `classifyReadonlyBreach`（单点判据，`checkAdjudication` 与两处 Hook 共用）、`BREACH_BLIND_SPOTS`、`confirmedDriftText`；`readonlyBreach` 入参改为判别联合（`hit: true` 必带 `drift`）；复盘面（`report` 旗标、`summarizeRun`）不区分两档，登记 EV-224 待用户定（代码双审 GLM-01）；`READONLY_BREACH_TRIAGE` 与 Hook 的 `BREACH_UNFIXABLE` 改写；运行时告警补「闸门拦不拦取决于跑后复算」；任务书 MCP 执行工具那句改准（删「该侧结论作废」）；桩新增 `write_breach_applied`。文档：AD-06、Hook 表两行、9.2 第 4 步、10.3（顺带更正「任一命中即 readonly_breach」与实现不符）、10.3 处理段、异常表、四处落点段、任务书复述与 MCP 执行型两处。guard 判定、run.v2 契约、退出码与 `meta.status`、待裁决拒绝重跑、`on_drift*` 策略均不变。读数见 `doc/05_testing/REPORT_2026-10-06_breach_unconfirmed_release.md` |
 | **v1.3.126** | 2026-10-06 | **补丁排除不受 pathspec 环境变量影响（EV-222）。** 单题，**未走双审**（用户 2026-10-06 定候选 A：钉住 pathspec 的解释方式，并顺查其余带魔法 pathspec 的 git 调用）。用户环境全局设了 `GIT_LITERAL_PATHSPECS=1` 时，code 阶段补丁对归档根、`.trivium/` 与敏感文件的已跟踪排除全部失效；顺查核出 `GIT_NOGLOB_PATHSPECS=1` 同样让前缀排除失效（`/**` 被当字面），`git diff` 照常退 0（经真实 CLI 复现：冻结补丁里多出归档原稿、`.trivium/config.yaml`，LITERAL 下还有 `.env`）。`util/git.ts` 新增 `PATHSPEC_ENV_DEFAULTS`（四个 pathspec 变量取 `0`），`diffAgainst` 的已跟踪 `git diff` 与 `workTreeHash` 有排除时的 `add` 都带它（后者由 v1.3.125 的单钉 LITERAL 扩为四个）；写法与默认环境下的输出不变。9.2 code 行与要点新增一条。新用例：单测 7 格（四个变量逐个设 1 时补丁与哈希不变、ICASE 两格、常量、源码护栏登记魔法 pathspec 字面量）、集成 2 格（两个变量各跑一轮 code 阶段）；变异 5/5。审批摘要打印给人复制的完整列表命令不改（用户 shell 里执行），记为残余。LLD v1.1.48 同步。读数见 `doc/05_testing/REPORT_2026-10-06_diff_pathspec_env.md` |
 | **v1.3.125** | 2026-10-06 | **工作树哈希排除归档根与 `.trivium/`、文件中途消失时重试（EV-221）。** M11 前小批第五批（1 题），**本批未走双审**（方案由用户 2026-10-06 定，两条都做）。同一仓库两个主题并发审查时，一侧算工作树哈希的 `git add -A` 撞上另一侧正原子写的 `*.tmp-*`，报 `unable to stat … No such file or directory`、整轮判 failed（零配额复现：每轮 4 份、每份两主题对齐同秒，第 7 轮累计 28 份撞上 2 份）。`workTreeHash` 加可选 `exclude`：`add` 追加 `:(exclude,literal)<前缀>`、钉 `GIT_LITERAL_PATHSPECS=0`，被排除处保持 HEAD 的版本；送审冻结、跑后复算、审批摘要、构建标识四处传 `diffExcludePrefixes` 的结果（构建标识取缺省归档根 `.reviews`，与作用面不相交），三处探针不传；`add` 报「文件中途消失」时至多重试 2 次。9.2 两行与要点、术语表、6.7.1 `snapshot.after_tree_hash` 一行、8.5 补偿 ③ 一句同步：`tree_hash` / `after_tree_hash` 语义改为「排除归档根与 `.trivium/` 之后的工作树」，字段与形状不变，漂移结论与审批摘要输出不变。新用例：单测 13 格（排除语义、漂移结论不变、重试的真实 git 构造与假 git、审批摘要接线、AST 源码护栏登记 7 个调用点）、集成 1 格（一轮审查的两棵 tree 都等于 HEAD 的 tree），EV-218 的 I2 收回到两轮都 success；gate-loop W5 的夹具补一个未跟踪业务文件（工作树在这两处之外与 HEAD 相同时基线就是 HEAD 的 tree、可达，立即清理清不掉，「基线对象已不在对象库」与漂移的 `object_gone` 因此比改前少见）；修后同一装置 80 份 0 失败。LLD v1.1.47 同步。读数见 `doc/05_testing/REPORT_2026-10-06_worktree_hash_concurrency.md` |
 | **v1.3.124** | 2026-10-06 | **运行目录跨主题同秒避让（EV-218，候选 A）。** M11 前小批第四批第 2 题的续做，**本批未走双审**（方案由用户 2026-10-06 定：排他建运行目录、撞了抬一秒；与故障注入用例的冲突取候选 A 测试注入开关）。`allocateRunId` 加可选 `claimRunDirIn`：对本主题未占用的候选 id 做非 recursive `mkdir <桶>/<id>`，`EEXIST` 抬一秒，共用上限与 69（文案补「或运行目录已存在」）；`prepareRun` 传本仓库的桶，外层在落盘段之前失败时 `rmdir` 本次新建的空目录。测试开关 `TRIVIUM_TEST_ADOPT_PRECREATED_RUN_DIR=1` 让已存在的运行目录可被接管，只给 `gate-loop` 预建运行目录的 5 格故障注入用例用。verify 不建运行目录、不改。6.7「每份 run.json 至多一次终态写入」那段补一句。LLD v1.1.46。单测 4 格、集成 3 格（含两主题对齐同秒并发），变异 5/5。加压重跑并发用例另核出同仓库两主题并发时工作树哈希的 `git add` 会撞上对方的原子临时文件，另登 EV-221（本题不修）。读数见 `doc/05_testing/REPORT_2026-10-06_run_dir_collision.md`。 |
