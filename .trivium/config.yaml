@@ -83,9 +83,9 @@ profiles:
     # 须与 agents.codex.profile 同家族，见该处注释。kimi profile 的缺省模型是 kimi-for-coding，
     # 这里显式钉 k3，不靠 profile 缺省兜底。
     codex:
-      plan: k3
-      code: k3
-      bug: k3
+      plan: kimi-for-coding
+      code: kimi-for-coding
+      bug: kimi-for-coding
     # claude 三档 slug 都须回读核实：probe.cli.claude.models 为 []，预检校验不了，猜错也拦不下。
     # 核法：`claude -p --output-format stream-json --model <slug>`，看 system/init.model 与 result。
     # 2026-09-27 已核：opus-5-5（约 $0.13）、sonnet-5（约 $0.20）、fable-5-1（约 $0.83）。
