@@ -1,0 +1,81 @@
+{
+  "agreed": [
+    "第 1、2 节的全部对账读数与源码行号经全量回溯核实无误。三条核心事实（AC-25 历史上在两侧形态下亦未实现作废重跑、agents.codex.effort 确为被 antigravity 同名键掩护的死键、四级路由中第二级主题级覆盖在 review.ts 与 preflight.ts 从未传参接线）完全确凿，论据扎实。",
+    "§3 档位数据模型与路由口径自洽：三级路由按字段合并与告警规则、厂商 profile 优先级次序（--profile-codex > 档位条目 profile > agents.codex.profile > 缺省）完全封闭，不会造成歧义或隐式覆盖。",
+    "run.v2 扩展方案在现行 additionalProperties: true 开放节点下追加可选字段，保持向前向后兼容，免去契约升 v3 的版本膨胀，策略正确。",
+    "codex 生效思考等级的回读口径与退路设定务实：以第 1 步实测对照为先，拿不到服务端回执则接受客户端解析值并明示边界，规避了外部模型服务不透明导致的阻断。",
+    "AC-25 将未实现的「作废重跑」剥离至 BACKLOG，收敛为现行已实现的检测处置（作废 + 三态可见 + 严格策略中止），使 M11 验收闭环具备可达性。",
+    "12 步拆步层次清晰、依赖明确，双审（A 档）与自审（B 档）分级合理，配额上限严格受控。"
+  ],
+  "consulted": [
+    ".reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-r2-claude.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/review.ts",
+    "src/trivium/config.ts",
+    "src/trivium/types.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/render.ts",
+    "src/trivium/report.ts",
+    "src/trivium/entry-render.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/codex-trace.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/probes/codex.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills-src/commands/review-plan.contract.md",
+    "test/unit/deny-matrix.test.ts",
+    "test/unit/config-consumers.test.ts",
+    "test/unit/registry-parity.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/config.ts:441-446，现存的 Agent 级已废弃键 readonly_commands 使用通配符 ['agents', '*', 'readonly_commands']；但查阅 src/trivium/review.ts:630，agents.gemini.effort 是真实消费方。第 4 步需要显式指定精确路径 ['agents', 'codex', 'effort'] 补入 DEPRECATED_CONFIG_KEYS。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": ".reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-r2-claude.md:304",
+      "problem": "第 4 步（§4.4）列出了将 agents.codex.effort 标为 deprecated 并移出 required，但改动范围未显式列出将其注册进 DEPRECATED_CONFIG_KEYS。若遗漏注册，现存配置（如本仓 .trivium/config.yaml:177）中的该键将不会触发废弃告警提示；若误照搬通配写法 ['agents', '*', 'effort']，则会误伤仍有真实消费方的 agents.gemini.effort。",
+      "severity": "minor",
+      "suggestion": "在第 4 步（§4.4）改动清单中明确将精确路径 ['agents', 'codex', 'effort'] 补入 DEPRECATED_CONFIG_KEYS，并在 doctor/preflight 提示中生效，保证仅针对 codex 废弃告警而不误伤 gemini。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/entry-render.ts:287-288，MODEL_HINT 与 MODEL_FLAGS 是在 carrierVars() 中由 critics.map(...) 统一派生；入口契约 skills-src/commands/review-plan.contract.md:4 使用 {{MODEL_HINT}} 占位。四条新旗标（及 profile 旗标）的载入需在 entry-render.ts 提供相应派生支持或模板变量扩展。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-r2-claude.md:317",
+      "problem": "第 5 步（§4.5）列出了旗标全链范围，包括 skills-src 四份命令契约、partials/review/body.md 以及渲染产物，但改动面未显式列出入口渲染器 src/entry-render.ts。四家载体的入口 argument-hint 模板依赖 entry-render.ts 注入 MODEL_HINT 等派生变量，若要支持 --tier-<id>、--effort-<id>、--profile-codex，渲染脚本的变量字典必须同步扩展。",
+      "severity": "nit",
+      "suggestion": "在第 5 步（§4.5）的改动面中补列 src/entry-render.ts，明确在渲染变量派生层面增加档位与 effort 旗标的提示占位支持。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查阅 src/trivium/adapters/zcode.ts:1122，其注释写有「不分阶段，只取 plan 阶段模型作代表；不分命令行 / 主题级覆盖……」。在清理主题级覆盖时，若仅改 base.ts 会残留过时注释。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-r2-claude.md:420",
+      "problem": "§6 第 4 条「语义翻转的落点」中列出了「主题级覆盖」删除落在主设计 11.5、routeModel 注释（base.ts:1832）与 LLD，但遗漏了 src/trivium/adapters/zcode.ts:1122 的现存注释，该处仍写有「不分命令行 / 主题级覆盖」的描述。",
+      "severity": "nit",
+      "suggestion": "在 §6 第 4 条落点清单中补列 src/trivium/adapters/zcode.ts:1122，清理该处对「主题级覆盖」的残留引用。"
+    }
+  ],
+  "not_covered": [
+    "未调用外部 CLI 或探针执行真实网络请求，未验证真实的 Codex CLI 在不同 profile 下的 debug models 联网输出与 turn_context.payload.effort 的实际行为（依赖第 1 步事实探针）。",
+    "未实测 ZCode 0.16.5 在真实环境中的 Provider options 解析细节（已定不修，持续观测）。",
+    "未实测各家 Agent 在真载体环境下的实际运行耗时与 Token 消耗。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "实施计划整体极为详实扎实，对账读数、源码行号与核心事实（AC-25 重跑未实现、codex effort 死键、四级路由主题级覆盖未接线）全部核实无误。§3 档位与路由口径闭环自洽，run.v2 开放节点扩展安全可行，12 步拆步与配额规划受控。主要建议：第 4 步补充精确路径 ['agents', 'codex', 'effort'] 入 DEPRECATED_CONFIG_KEYS 避免漏警或误伤 gemini；第 5 步补列 entry-render.ts 渲染变量派生扩展；清理 zcode.ts 残留的主题级覆盖注释。整体判定 approve-with-nits。",
+  "verdict": "approve-with-nits"
+}

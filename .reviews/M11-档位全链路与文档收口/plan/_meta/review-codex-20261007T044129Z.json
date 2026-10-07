@@ -1,0 +1,123 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "对账读数总体可信：三条核心结论（AC-25「重跑一次」两侧形态下也从未实现、agents.codex.effort 死键、主题级覆盖未接线）逐一回原文与源码核实成立，§1/§2 的绝大多数行号与引文准确（24.1/24.2 行数 37/18、PRD/BACKLOG/演进设计引文、run.v2/config.v2 形状、freeze/report/cli/critics/topic-args/stub/deny-matrix/fault-injection 各码点均核对一致）。但有两处必须在第 2 步开工前解决：①AC-25 契约并入步骤归属自相矛盾（§3.1 说在第 3 步开头、§4.2 第 2 步范围已含 PRD/12.1 改写、§4.3 又说第 3 步开头并入），按现状执行会两步改同一批段落；②§3.8 要求「PRD AC-23 达成边界写清 codex 只证到客户端解析」，但该动作没有落在任何一步的范围内，若第 1 步证实只能拿到客户端值，AC-23 的归并子句在 codex 侧不可证而 PRD 无标注，第 12 步翻状态将失实。另有翻转落点漏列（冻结的演进设计两处「四级」字样）、命令文本形态三侧用例归属未声明、18.1 表三处行号 +1 漂移等小项。改完这些口径级问题即可放行，骨架与依赖次序无需重排。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §3.1、§4.2（第 2 步范围）、§4.3（第 3 步范围）",
+      "problem": "AC-25 契约的并入步骤在三处互相矛盾。§3.1 明说「report 聚合与 AC-25 的契约与档位无关，在各自那一步开头并入（第 7、3 步）」，即 AC-25 归第 3 步；但 §4.2 第 2 步范围已包含「PRD：AC-25 原文按 §3.9 改写、里程碑标注 M7b → M11」与主设计「12.1 增行并改写『重跑一次』两行（§3.9）」「AC-25 里程碑标注」；§4.3 又写第 3 步「开头并入本步契约（AC-25 现行处置的定稿措辞）」。同一批段落（PRD AC-25、主设计 12.1 的 :2967/:2987 两行、16.1 里程碑标注）被第 2、3 步同时声称负责。",
+      "evidence": "被审计划 §3.1、§4.2、§4.3 原文；主设计 12.1 的 :2967 与 :2987 确有「重跑一次」待实施字样（本轮 sed 直读核实）；r1→r2 修订记录显示该矛盾系 r2 把 D-10 改写补进第 2 步范围、而 §3.1 未同步更新所致（推断，依据修订记录表第 3 行）。",
+      "suggestion": "指定唯一负责步并改齐另两处。建议口径：第 2 步做 PRD AC-25 改写、12.1 两行改写、里程碑标注与 BACKLOG 新立条目；第 3 步只做「严格策略下整体处置 / 共同阻断三态」措辞的实测后定稿与 17.2 用例行核实——并在 §3.1 把括号改成只指 report。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §6.4 语义翻转落点清单",
+      "problem": "「主题级覆盖」删除的落点清单漏了冻结的演进设计正文两处「四级」字样：演进设计 :271「在主设计 11.5 四级之上保持形状、逐级细化」（§5.4）与 :660「tier 路由四级解析（含冲突告警）」（§13.1 单元行）。M11 把四级删成三级后这两处即过时；§6.4 只列了主设计 11.5 :2900 起、routeModel 注释与 LLD。按本项目既定机制（演进设计 v1.0.0 冻结正文、修正只落主设计，§6.4 自己对 AC-25 与 §11 就是这么处理的），这两处应进 §6.4 清单或由主设计写修正指针，否则第 10 步「文档对账零冲突」核不到它们，三审的「档位路由到底几级」在冻结面与主设计面再次两套说法。",
+      "evidence": "演进设计 :271 与 :660（本轮 grep 直读）；被审计划 §6.4 第 4 条落点清单；主设计 :2913 现有四级表述「命令行参数 > 主题级 task.json 覆盖 > profile > 阶段默认值」（本轮直读）。",
+      "suggestion": "§6.4 该条补两处演进设计冻结落点（照抄「冻结，只在主设计写修正」的既有句式），或登记 BACKLOG 一条并在第 2 步主设计修正里带指针。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §4.3（第 3 步范围）对照演进设计 §13.1 集成行",
+      "problem": "演进设计 §13.1（冻结）集成行要求「三侧 peer_leak 两两命中（路径伪造与 run_command 命令文本伪造两种形态……）同等作废」；§4.3 第 3 步只补路径形态的三审桩用例（.md 审查件、_meta JSON、运行根输出），命令文本形态的三审用例（现有 test/integration/fault-injection.test.ts :673 与 :721 为 gemini/glm 两侧）未声明纳入还是排除。PRD AC-25 :554-555 把命令文本通道划给独立演进项、暂不排 AC 号，排除有依据，但计划通篇没有写这一句，M11 收口后冻结面「三侧两种形态」的要求仍处于未达成且未登记状态，下一次对账又会把它当新发现。",
+      "evidence": "演进设计 §13.1 集成行 :660 一带（本轮直读）；PRD :554-555（本轮直读）；fault-injection.test.ts :673/:721 的 peer_leak_via_command 用例（本轮 grep 直读，均为两侧形态）。",
+      "suggestion": "在 §4.3 或 §6 风险里显式写一句：命令文本形态的三侧用例不随 AC-25（随独立演进项、暂不排号），演进 §13.1 该句由主设计修正指针覆盖；或者把它收进第 3 步范围。二选一，写死。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §1.6 主设计 18.1 待拍板表行号",
+      "problem": "§1.6 的 18.1 表行号三处整体 +1：#17 写在 :3601（实际 :3600）、#18 写在 :3602（实际 :3601）、#20 写在 :3604（实际 :3603）。内容与处置读数均与原文一致（「三档挂 Agent 还是挂模型」「schema 升级策略」「旧旗标别名长期保留」），仅行号漂移。审查焦点明确点名的就是行号一致性，故单列。",
+      "evidence": "主设计 :3597-3604（本轮 awk 直读：:3600 为 #17、:3601 为 #18、:3603 为 #20）。",
+      "suggestion": "三处行号各减一；顺带提醒第 2 步把 #17 拍板记进 18.1 时以实际行号为准。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-06",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.2 与 §4.4（routeModel 改动面）",
+      "problem": "「主题级覆盖未接线」的结论正确（全仓无任何调用点传 topic），但 routeModel 实际有三个调用点：review.ts:1131、preflight.ts:346（同样只传 cli）、adapters/zcode.ts:961（探针模型，不传 overrides）。§2.2 只点名 review.ts:1131，§4.4 第 4 步「删 routeModel 的 topic 参数／换档位解析函数」的改动面未列 preflight.ts:346 与 zcode.ts:961，接手计划容易漏迁 zcode 探针模型这一格。",
+      "evidence": "src/trivium/preflight.ts:346 与 src/trivium/adapters/zcode.ts:961（本轮 grep routeModel( 直读）；被审计划 §2.2、§4.4。",
+      "suggestion": "§4.4 改动面补两个调用点（尤其 zcode.ts:961 的探针模型落点迁到新解析函数）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-07",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §6.2 重装节点清单",
+      "problem": "§6.2 列「第 4 步（探针结论形状）、第 5、6、7 步都改 bundle 或入口资产」，漏了第 8 步：§4.8 第 8 步要改 config 契约（deprecated 标注）、DEPRECATED_CONFIG_KEYS 与 doctor/preflight 提示，这些都是 src/ 运行时面，bundle 必变。第 8 步走 B 档不走双审，更容易在重装纪律上被漏掉，而其后的第 11 步是真实验收。",
+      "evidence": "被审计划 §4.8 改动面「config 契约（deprecated 标注）与 doctor / preflight 提示」与 §6.2 清单；对照 §4.5/§4.6 同样性质改动都列入了 §6.2。",
+      "suggestion": "§6.2 清单补上第 8 步。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "三条核心结论全部核实成立且引文准确：主设计 :2967/:2987 行内「重跑一次」均标待实施（本轮直读）；effortFor（review.ts:625-636）只对 antigravity 返回值、codex 适配器 :78 的 -c model_reasoning_effort= 通路现成但从未被喂值、types.ts:952 与 config.v2 必填形状俱全（死键判定成立）；routeModel 收 topic 参数而全部调用点只传 cli（结论成立）。",
+    "§1.2 的台账对账数字与抽样样行全部对得上：24.1 数据行 37、24.2 数据行 18（本轮计数）；11.5 行 ⏳ 未并入、17.2 行 ⏳、.env.example 行 ⏳ 目标 M8、仓库根 CLAUDE.md 行 ◐ 且 M10a/M10b 两份额均 ✅、doc/02_design/README 行停在 v1.3.43 而实际 v1.3.128（本轮直读）。",
+    "§2.4 的判断准确：run.v2 顶层与 $defs.critic 均 additionalProperties: true（:26、:573-583），effort_requested/effort_effective/tier_source 三字段已预留（:667/:674/:681），不升版本、原地接线的口径成立；既有同名词面已有 profile_requested（请求值）在先，顶层新 profile 不撞名。",
+    "§3.4 对「旧构建读到带新键配置被 additionalProperties: false 拒在预检」的代价如实记录，与升级 v3 的代价对比诚实；§3.8 对 codex 客户端值标了推断与单样本、退路另记来源，没有写成已证事实——纪律 1 的口径守住了。",
+    "拆步依赖次序合理（1→2→4→5→6 串行、第 7 步依赖第 6 步字段、第 3/8/9 步独立、第 10 步收口、第 11/12 步最后）；第 9 步「§24 无 ◐/⏳」断言推迟到第 12 步启用的安排自洽；§4.13 每个配额格都有「超出先停下问」的熔断，成本口径清楚。",
+    "§1.8 的 36 行「待实施」清点经本轮 grep 复核确为 36 行；其中 :2124 的初步判断（freeze.ts:270-310 按 ALL_AGENT_IDS 与文件名角色段派生）与源码一致。"
+  ],
+  "not_covered": [
+    "运行根（/Users/chenzhenbo/.trivium/runs）属禁读区：§2.3 引用的 turn_context.payload.effort 单样本值（max）未独立复测，机制面（codex-trace.ts:170-192 只解析 session_meta 首行、-c 通路现成）已核，样本值采信计划自述的「未做对照」。",
+    "演进设计 §17.2 的 19 行→§24 的逐行内容级比对只做了结构计数（37/18 ✓）与抽样，未逐格比对内容；§1.2 全表各行状态为抽样式核实。",
+    "本轮零配额、未跑任何真实 CLI/探针：agy 低中档 slug 回读形态、codex debug models 输出形态与厂商归并行为、claude 有无思考等级机制，均依赖第 1 步实测，本轮只核了代码与文档前提。",
+    "「步骤 4 之后新探针结论 + 旧构建降级运行」的兼容方向（探针结论多了字段，旧 doctor/preflight 读到会怎样）未展开核；预计容忍额外字段，但未验证。",
+    "MANUAL/RUNBOOK/LLD 需随 M11 改动的具体段落未统计（计划 §7 已自述留给第 10 步，与本侧未覆盖一致）。",
+    "档位解析新函数除 routeModel 三调用点外的潜在消费方（如 doctor 播报、report）未穷举；第 7 步 report 读新字段的具体缺席/null 区分实现未审（属第 7 步计划层）。"
+  ],
+  "consulted": [
+    ".reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-r2-claude.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/CASE_manual_acceptance.md",
+    "doc/02_design/README.md",
+    "src/trivium/review.ts",
+    "src/trivium/config.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/codex-trace.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/report.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/types.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/config.v2.json",
+    "test/unit/deny-matrix.test.ts",
+    "test/unit/config-consumers.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/contract/skill-flag-parity.test.ts",
+    ".trivium/config.yaml",
+    ".trivium/config.local.yaml"
+  ]
+}

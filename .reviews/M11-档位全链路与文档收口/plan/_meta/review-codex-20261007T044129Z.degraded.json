@@ -1,0 +1,28 @@
+{
+  "critic": "codex",
+  "run_id": "20261007T044129Z",
+  "findings": [
+    {
+      "index": 1,
+      "id": "CODEX-02",
+      "problems": [
+        {
+          "field": "layer",
+          "kind": "invalid",
+          "message": "/layer must be equal to one of the allowed values {\"allowedValues\":[\"requirement\",\"plan\",\"code\",\"rca\"]}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-02",
+        "severity": "major",
+        "layer": "contract",
+        "kind": "correctness",
+        "location": "计划 §3.8（codex 退路）与 §4.2/§4.6/§4.11 各步范围",
+        "problem": "§3.8 定稿口径要求「拿不到服务端回执则接受 turn_context.payload.effort 为生效值，effort_effective_source 写明来源，主设计 6.7.1 与 PRD AC-23 达成边界写清『codex 侧只证到客户端解析，服务端归并不可见』」。但「PRD AC-23 达成边界」这一笔没有写进任何一步的范围：§4.2 的 PRD 侧只有 AC-25 改写与里程碑；第 6 步只动代码与 schema 描述；第 11 步只验收不改文。而 PRD AC-23 :522 的 Then 是「归并后的生效值入档，请求值另记，两者不得混淆」——若第 1 步证实只能拿到客户端值（计划自己标注单样本、未对照，退路是大概率事件），codex 侧该子句在字面上永远不可证，PRD 又不带达成边界标注，第 12 步翻 AC-23 状态时与实际能力不符，「文档对账零冲突」的完成判据也留下一条对不上的缝。",
+        "evidence": "被审计划 §3.8、§4.2、§4.6、§4.11；PRD :519-522（本轮 awk 直读，:522 归并子句原文）；run.v2.json :674 effort_effective 描述「必须回读而非采信请求值……【待实施 · M11】」（本轮直读）。",
+        "suggestion": "把「PRD AC-23 达成边界（视第 1 步结论而定稿）」显式加进第 2 步范围（与主设计 6.7.1 同批），或在第 6 步范围补一笔；两条路任选，但不能没有落点。",
+        "confidence": "high"
+      }
+    }
+  ]
+}
