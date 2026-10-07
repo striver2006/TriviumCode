@@ -1,0 +1,54 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "对这份只做检测验收、不改运行期行为的计划做了逐条回源核对，三个焦点的结论如下。其一，矩阵用例覆盖了四种当轮 Driver × 三家审核者的全部组合，且 .md 通道的两种跨轮翻转（Driver 上轮当审核者、审核者更早轮当 Driver）都有格；唯一缺口在 _meta 通道——Driver 上轮当审核者时留下的结构化旧件（翻转 a 的 _meta 对应物）没有进夹具与期望集（GLM-01，minor）。其二，桩用例的断言全部落在行为面（run.json 逐侧命中与类别、审查文档横幅、闸门 missing_findings 差集覆盖作废侧编号、共同阻断按有效侧计算、task.json 三态），不是注入配置的回显；§3 的变异锚点逐一对应我读过的真实代码行，A4a-c 与 B3 刻意与既有两侧用例正交（「只有三审用例能逮住」），足以回答「同义反复」之问；断言的时序前提也成立——deny_paths 在派发前对全部侧冻结一次（review.ts:1050-1093），本轮对侧产物不会中途混入，8 条期望是确定的。其三，严格策略定稿句与源码现行行为逐行一致：decideMode 只按 status 分档、泄漏不改 status（runner.ts:316-378），终态只认 subject_drift / driftAction fail / mode.abort（review.ts:2046-2058），全仓无 failed(peer_leak) 写入点；10.1.1 与 12.1 确不构成冲突，「不列待拍板、据实定稿」的判断成立，且 AC-25 达成边界写明了路径通道、三审形态、桩级、不含重跑与命令文本通道，没有把未实现的写成已达成。另核实计划的两处关键前提修正均属实：run_material_leak 的对端取 CRITICS.find 首家非己（stub.ts:575），既有 :642 用例在默认 critics [gemini, glm] 下读的确实是未入选的 claude 目录、靠第三段分档照样绿——修正有价值，§2.2 的 peer:〈id〉 列表方案（桩配置是 JSON 载体，多 id 无解析冲突；未识别即失败）成立。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "被审计划 §2.1 矩阵夹具文件表与期望清单；src/trivium/freeze.ts:327-332",
+      "problem": "矩阵的「跨轮角色翻转」只覆盖 .md 通道：翻转 a 摆的是 Driver 上一轮的审查件正文（T/plan/2026-10-01-T-〈d〉.md），_meta 通道上没有对应的翻转格。_meta 判据（freeze.ts:327-332）只看 owner !== critic 且 isAgentId(owner)，与当轮 Driver 无关——上一轮 〈d〉 当审核者时留下的 _meta/review-〈d〉-….json 及其回退件，对当轮全部三家审核者都应禁读；而夹具表只为三家当轮审核者摆了 _meta 三件，期望集也只含「3 件 × 2」。审查焦点问的恰是「含当轮 Driver 轮换与跨轮角色翻转的全部组合」，Driver 轮换 × _meta 通道这一格缺席，将来若有人改动 _meta 判据（例如引入 driver 参与）不会有用例转红。",
+      "evidence": "src/trivium/freeze.ts:327-332（metaHit 正则与 owner !== critic 判据，全无 driver 参与）；被审计划 §2.1 夹具表（_meta 行只列〈c〉即三家审核者）与期望清单（「全部 _meta 三件（3 件 × 2）」不含 review-〈d〉 条目）；对照 .md 通道翻转 a 有显式条目与期望项。",
+      "suggestion": "每个 Driver 格的夹具补一份 _meta/review-〈d〉-20261001T000000Z.json（翻转 a 的结构化对应物，owner 为已登记 Agent、非任何一家当轮审核者），并把它计入全部三家审核者的期望禁读集。一行夹具、一条期望项的增量，与既有全集相等断言天然相容。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§0.2 的前提修正属实：run_material_leak 的对端取 CRITICS.find((c) => c !== critic)（stub.ts:575），注册表顺序为 claude/codex/gemini/glm（registry.ts:236 起，四家 criticEnabled 均真），三审下每侧只指一家且可能是未入选侧；fault-injection.test.ts:642 是裸 'peer' 的唯一调用点（src/ 与 test/ 全量检索，另仅 :618 用 'own'，selftest 不用此形态），该用例在夹具钉死的 default_critics [gemini, glm]（fixture.ts:122）下读的是未入选的 claude 侧目录，靠运行根第三段分档（freeze.ts:123-126）照样判 peer-run-output——「一直是绿的、但测的不是真正参审的对端」判断准确，§2.2 改显式对端列表并删裸 'peer' 是对的。",
+    "§1.4 严格策略核实与源码一致：effectivePolicy 只喂 decideMode（review.ts:1612-1614）；decideMode 的 okSides 按 status ∈ {ok, parse_fallback}、abort 仅在「有失败侧且 strict」或「入选侧全军覆没」（runner.ts:332-366）；终态三分支（review.ts:2046-2058）不含作废路径；全仓 grep 无 failed(peer_leak) 状态写入点。10.1.1 机制③（主设计 :2143）对第①②类只规定判该侧作废，12.1 演进行（:3031）触发条件是失败，基线行（:3014）已把 strict 整体处置显式留给本步定稿——「不冲突、不列待拍板」成立，12.1/PRD 的定稿措辞与代码行为逐句对得上。",
+    "FI 用例期望值独立推导的时序前提成立：全部侧的 freeze() 在渲染派发之前完成（review.ts:1036-1093），fixture.ts:62-67 注释明说禁读集在 --start 前枚举一次、之后不变——本轮对侧审查件与 _meta 不会中途进入任何一侧的 deny_paths，「hits 逐元素相等（8 条）」因此是确定断言而非竞态。",
+    "轮次算术与 writeNextPlan 复用断言成立：resolveRerunIndex 取非 Driver 产物的最大轮次加一（archive.ts:66-84），种子使本轮审查件与裁决件落 r2；而 checkNextPlan 以 plan_final_check.subject_rerun_index（原稿恒为 r1）为基准找「新一轮计划」（gate.ts:864-876），r2 计划恰合格——review 轮次升到 r2 不影响该复用。",
+    "§1.5 的陈旧措辞点位全部核实存在且确属 AC-25 旧口径：主设计 :3571/:3607、gate.ts:1080、types.ts:1553、freeze.ts:286、review.ts:1068/:1083、deny-matrix.test.ts:11/:104/:278/:431；brief.ts:301 与 guard.ts:831 的「须作废重跑」确属只读失守文案，不动是对的。scratch-guard 豁免表确有 'test/unit/deny-matrix.test.ts': 1（:55）且判据是逐文件计数相等，换 scratchDir 后不删该行会红。",
+    "§3 变异锚点逐一对应真实代码：freeze.ts:331（_meta out.add）、:336（role === critic 跳过）、:340（peer-review 入集）、:357（运行根）、:124（第三段己方判）、:257（无 schema 兜底），guard.ts:485（peerArtifactRead），gate.ts:1431-1437（voidedSides 收集），types.ts:94（作废类清单）；B3 期望「critics_selected 顺序下第三侧作废的那一格红」与 criticsOf 保序返回 critics_selected（gate.ts:1172-1175）一致；A4 三条与 B3 在既有两侧用例下的正交设计确实能证明新用例非同义反复。",
+    "FI-1 ⑥⑦ 与 FI-7 的闸门算术核对无误：collectStructuredIds 不排除作废侧（gate.ts:766-772），漏裁作废侧必出 missing_findings；findJointRejectedBlockers 排除作废侧后 critics.size < 2 即不成立（gate.ts:1044-1064）；jointCheckState 有效侧不足记 skipped-insufficient-sides 且 reason 判 'voided'（gate.ts:1106-1129）；三侧桩的 blocker 同位（sampleReview 第 1 条恒 blocker@src/stub.ts:10）使共同断言有料。",
+    "§2.6 文档点位抽查全部对上：主设计 :2143、:2265、:3014、:3031、:3034、:3353、:3477、:3482、:3571、:3606、:3607、:4050 与 PRD :10-16、:437（确为「截至 v1.4.8」时点记述，不改是对的）、:550-559、:748 的现文均与计划描述一致；BACKLOG EV-225 行的「由 M11 第 3 步核实后写进 AC-25」正是本步要回填的钩子；LLD 无涉及的声明与 doc/03_api 关键词检索结果一致（唯一 failure_policy 命中在 PROTOCOL :283 的退 75 行，措辞与定稿一致、无需改）。"
+  ],
+  "not_covered": [
+    "只读审查、未执行任何命令：变异是否如预期转红、新用例总数、npm run check 与全量读数、esbuild 重建等均为源码推理，未实测；§4 的两次串行全量与临时目录计数须由实施时落盘。",
+    "对 §3 预期红名单做了推演补充：按源码推 N2（Driver 原稿也禁）下 FI-1～3 的 hits 也会多出原稿一条而红、A4a（跳过 codex 审查件）下 FI-8（claude 读 codex+gemini）也会红——计划所列名单偏保守，不影响「新用例转红」的判据，但实测红名单会比计划写的长，实施时按装置逐条记录即可，不必视为异常。",
+    "test/integration/stub-agent-kit.test.ts 未读全文（夹具注释称其为三侧默认路径的既有覆盖，未核其与本组用例的重叠度）；doc/05_testing/README.md 的登记规范句未复读（计划对报告「不提前落盘」的处置与 doc-archive-index 的判据关系按既有惯例采信）。",
+    "FI-8 的非缺省 Driver 全链路（topic claim --driver glm + 自写 -glm.md 原稿 + --critics claude,codex,gemini）按 cli.ts 的旗标与三级判定接线推定可行，未实跑验证；deny-matrix 源码扫描用例在 review.ts 注释改动后的表现亦为推理（判据先剥注释，理论不受影响）。"
+  ],
+  "consulted": [
+    "src/trivium/freeze.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/review.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/types.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/agents/registry.ts",
+    "test/unit/deny-matrix.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/unit/scratch-guard.test.ts",
+    "test/helpers/fixture.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/08_project/BACKLOG.md"
+  ]
+}

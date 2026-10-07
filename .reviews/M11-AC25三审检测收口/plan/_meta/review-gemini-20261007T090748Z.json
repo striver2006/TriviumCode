@@ -1,0 +1,60 @@
+{
+  "agreed": [
+    "严格策略处置的源码还原（decideMode 与 review.ts 终态互不读取）严谨真实，定稿界限清晰，未把未实现的机制冒充为已实现",
+    "桩 run_material_leak 历史遗留问题（CRITICS.find 误选未入选对端）的核实与重构方案切中要害",
+    "变异验证设计详尽，A4a/b/c 与 B3 针对三方特有逻辑的靶向设计有效排除了同义反复风险",
+    "scratch-guard.test.ts 豁免计数联动的删减考虑周全，预防了测试闸门误红"
+  ],
+  "consulted": [
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/08_project/BACKLOG.md",
+    "src/trivium/freeze.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/stub.ts",
+    "test/unit/deny-matrix.test.ts",
+    "test/unit/scratch-guard.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/helpers/fixture.ts",
+    "test/integration/driver-flag.test.ts",
+    ".reviews/M11-AC25三审检测收口/plan/2026-10-07-M11-AC25三审检测收口-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/freeze.ts:327-332，_meta/ 下的条目匹配通过 owner !== critic && isAgentId(owner) 判定。计划 §2.1 的夹具表为跨轮翻转 a 只列出了 T/plan/2026-10-01-T-〈d〉.md，而未列入 T/plan/_meta/review-〈d〉-*.json，导致跨轮翻转 a 场景下的结构化意见载体未在矩阵逐格断言中被直接守住。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §2.1",
+      "problem": "三审禁读矩阵单测夹具在覆盖「跨轮翻转 a（上一轮 Driver 曾当审核者）」时，只种了正文审查件（2026-10-01-T-〈d〉.md），未包含其上一轮可能产出的 _meta/ 结构化意见文件。",
+      "severity": "minor",
+      "suggestion": "在 §2.1 夹具中为当轮 Driver 〈d〉 补充上一轮作为审核者留下的 _meta 三件（如 T/plan/_meta/review-〈d〉-20261001T000000Z.json 等），并在期望禁读集中追加断言。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查阅 src/trivium/adapters/stub.ts:574-580 与计划 §2.2，计划拟新增 'peer:〈id〉[,〈id〉…]' 语法逐个读取 <运行目录>/<id>/out/result.json。若测试配置中包含逗号后空格，裸 split(',') 会使 peer 变成带有前导空格的 id，导致路径拼接错误或误判为未登记 Agent。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §2.2",
+      "problem": "桩的 run_material_leak 支持 peer:〈id〉[,〈id〉…] 形态时，多 id 的切分若未防御空格，可能导致拼接出非法的运行目录路径或触发非预期的失败。",
+      "severity": "nit",
+      "suggestion": "在 stub.ts 解析逗号分隔列表时，做 split(',').map(s => s.trim()) 清理，并严格校验每个 id 的合法性。"
+    }
+  ],
+  "not_covered": [
+    "由于审查员没有写与运行权限，未在本地执行命令实际跑变异测试和全量检查，变异转红判断基于代码逻辑推理。",
+    "命令文本通道（措施 b）在三审形态下的命令解析闭集暂未覆盖（按需求已划归后续独立演进项）。",
+    "真实外部厂商 CLI 在三审并发读取下的真实表现未测试（本步范围限定为桩用例验收）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "实施计划整体严密扎实。焦点三核实准确：源码中 decideMode 保持 ok 状态且终态无中止分支，严格策略下确实不中止运行，定稿忠实反映现行行为且诚实界定 EV-225；焦点二桩用例期望值独立，13 组变异（含 A4 与 B3 专属变异）有力证明咬住作废判定且非同义反复；焦点一禁读矩阵 4×3 逐格全覆盖，仅跨轮翻转 a 场景夹具建议补全 _meta 结构化文件（AGY-01）。",
+  "verdict": "approve-with-nits"
+}

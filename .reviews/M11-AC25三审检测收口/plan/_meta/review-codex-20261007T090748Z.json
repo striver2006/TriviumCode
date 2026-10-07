@@ -1,0 +1,84 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "三个审查焦点全部回源码核实成立。(1) 禁读矩阵：classifyArtifact/enumerateDenyPaths 的实际语义与被审计划 §2.1 的期望集逐格对得上——4 Driver × 3 审核者共 12 格，跨轮翻转 a（上一轮 Driver 的审查件经 review schema 判 peer-review 进集）与翻转 b（更早一轮审核者当 Driver 的原稿/裁决件走 fail-closed 进集）均被覆盖；每 Driver 夹具 28 份文件按现行语义恰为禁 17、放 11，加 .trivium 与运行根两条非归档条目，数量自洽。(2) 桩用例与变异：期望值从种子清单独立推出、逐侧核桩指纹、A4a/A4b/A4c 与 B3 以 codex 为目标——我复核既有 fault-injection 用例只注 gemini/glm、note 只取 .env/-glm.md/own/peer，不依赖 codex 条目，「既有应全绿」成立，新用例不是同义反复。(3) 严格策略定稿：decideMode 只按 ok/parse_fallback 分档、作废不改 status，终态只认 subject_drift/driftAction fail/mode.abort，全仓 grep 无 failed(peer_leak) 写入点——「strict 下作废不整次中止」与现行行为一致，§2.6 的定稿措辞没有把未实现写成已达成，EV-225 边界保留正确。§1.5 陈旧措辞清单、BACKLOG EV-225 尾部、PRD/设计版本号、LLD 不涉及等陈述均与仓库实际相符。成本：8 次桩运行加约 10 次 gate --check，零配额，回滚为一次 revert。3 条 nit/minor 意见如下。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "被审计划 §2.3 FI-1 ⑦ 的「gate --check 通过、joint_blocker_rejected 告警」断言",
+      "problem": "该断言成立的前提是 gate.joint_blocker_policy 缺省为 warn：同一份「两家 -01 全部驳回」的裁决件，在 hard 档位下 joint_blocker_rejected 是 failure 而非 warning，gate --check 会失败。计划在同一格已前置核 failure_policy === strict 且未传 --allow-single，却未对这一对称依赖做任何前置核或显式锁定；若缺省将来改 hard，该用例会从「通过」翻成「失败」，排查者会误以为 AC-25 改动破坏了闸门。",
+      "evidence": "src/trivium/gate.ts:672-690（joint.length > 0 时按 cfg.gate.joint_blocker_policy === hard 分流 failures 与 warnings）；src/trivium/config.ts:416（缺省 joint_blocker_policy: 'warn'）；被审计划 §2.3 FI-1 ⑦ 原文只写「前置核 failure_policy === 'strict' 且未传 --allow-single」。",
+      "suggestion": "在 FI-1 ⑦ 的前置核里补一条 cfg.gate.joint_blocker_policy === 'warn'（或经 extraReview 显式锁 warn），与 failure_policy 前置核同风格，让两条配置依赖都显形。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "被审计划 §2.1 矩阵夹具的跨轮翻转种子",
+      "problem": "翻转语义只覆盖 .md 通道：翻转 a 只种了 Driver 上一轮的审查件正文，_meta 通道没有「上一轮 Driver 的结构化意见」这一格。现行 meta 分支对全部非己登记 Agent 一视同仁地禁（无 driver 特例），今天行为无差别；但正因为没有夹具格，将来若有人给 meta 分支加 Driver 特例（例如想放行 Driver 的某类文件），「前 Driver 的 review-〈d〉-….json 泄漏给本轮审核者」这一隔离洞不会被任何用例逮住。",
+      "evidence": "src/trivium/freeze.ts:327-332（metaHit 判据 owner !== critic && isAgentId(owner)，driver 形参不参与该分支）；被审计划 §2.1 夹具表 _meta 行只按审核者 〈c〉 列举，翻转 a 行只有 T/plan/2026-10-01-T-〈d〉.md 一份 .md。",
+      "suggestion": "夹具为 Driver 补一份 _meta/review-〈d〉-更早runId.json 并计入该侧期望集（禁读侧 +1 条），与翻转 a 的 .md 格并列；若有意不补，在矩阵用例注释里写明「meta 分支无 Driver 语义、不单独成格」的理由。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "被审计划 §2.2 桩 note 取值 peer:〈id〉[,〈id〉…] 的校验规则",
+      "problem": "校验只要求「已登记审核者且不等于本侧」，未排除当轮 Driver。peer:claude 在缺省 Driver 下会通过校验，伪造对一条不存在子树的读取并按 peer-run-output 作废——桩只在测试进程内生效、实际风险近零，但与「当轮 Driver 不得入选」这条全流水线不变量不一致，照该口径写校验更稳，也避免后来者照抄此形态写出语义可疑的注入。",
+      "evidence": "被审计划 §2.2 原文「每个 id 必须是已登记审核者且不等于本侧」；src/trivium/adapters/stub.ts:575-584 现行 peer 解析无 Driver 概念；「当轮 Driver 不得入选」见 src/trivium/gate.ts:1431 附近 voidedSides 派生所依赖的 critics_selected 语义与设计 12.1 演进增补行。",
+      "suggestion": "校验条件补「且不等于当轮 Driver」（请求上下文可得 driver），非法时按 failed 返回并写明原因，与现有失败口径一致。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§0.2 的核实诚实且改法正确：run_material_leak 的对端取 CRITICS.find(c => c !== critic)（src/trivium/adapters/stub.ts:575），CRITICS 含 claude 且居首（src/trivium/types.ts:109、src/trivium/agents/registry.ts:405），既有 fault-injection.test.ts:642 在两侧形态下读的确实是未入选的 claude 侧目录——它判作废靠的是第三段分档而非真读到参审对端。改为显式 peer:〈id〉并删除裸 peer 是对的方向；裸 peer 的唯一调用点经我 grep 复核就是 :642。",
+    "§1.4 严格策略结论与源码一致：decideMode（src/trivium/runner.ts:316-380）的 okSides 只认 ok/parse_fallback、abort 只在有失败侧时由 strict 触发；终态分支（src/trivium/review.ts:2046-2057）只认 subject_drift、driftAction === fail、mode.abort；grep peer_leak 全 src 只见 parse.ts:188 回显字段表与桩模式名，无 failed(peer_leak) 写入点。strict 下作废侧不整次中止的定稿有据。",
+    "§1.5 陈旧措辞清单逐条对得上：设计 :3571 与 :3607 仍写「作废重跑/二次命中 failed(peer_leak)」，17.2 增补行 :3606、12.1 两行 :3014/:3034、10.1 :2265 的现状描述与计划引用一致；brief.ts:301、guard.ts:831 的「须作废重跑」确属只读失守语境，排除正确。",
+    "A4a/A4b/A4c 与 B3 的「只有新用例能逮住」设计成立：既有故障注入用例的 note 只取 .env、-glm.md、own、peer（fault-injection.test.ts:530/567/618/642），夹具不种 codex  artifact；codex 字面只进不进提交的变异补丁，registry-parity 的扫描面也不含 test/（test/unit/registry-parity.test.ts:244-248 只扫 src/trivium 加 src/ 顶层两个具名模块）。",
+    "§2.6 文档收口与仓库现状吻合：PRD 头 v1.4.19、AC-25 条〔待实施 · M11〕与 :748 对照表「未实现」确需更新，:437 是截至 v1.4.8 时点记述不动是对的；BACKLOG EV-225 的「另：M11 第 2 步初读源码……由 M11 第 3 步核实后写进 AC-25」尾部确在（doc/08_project/BACKLOG.md:323）；LLD_orchestrator.md  grep 无 AC-25/run_material_leak/failure_policy 记述，模块表只写桩用途一行，「LLD 不涉及」成立。",
+    "回滚与成本核算干净：改动面是测试加注释加文档加环境变量门控的桩分支，§2.5 的不动清单（run.v2/config.v2、guard/gate/review/freeze/runner 判定逻辑）与源码核实相符；任何一步失败退回都是单 commit revert，无迁移、无状态残留。新增约 8 次桩运行加约 10 次 gate --check，零厂商配额，对全量时长的影响在 §6 风险 1 的 30～60 秒估计量级上可信。"
+  ],
+  "not_covered": [
+    "我没有执行任何构建、测试或变异复跑（只读审查、只读沙箱）；所有「与现行行为一致」的判断都是静态阅读加 grep 得出的，未经运行时复测。",
+    "另一个审查员的镜头（内部一致性等其它角度）不归我覆盖；我聚焦任务书指定的三个焦点加外部依赖、成本与回滚核算。",
+    "命令文本通道（措施 b）的三侧用例按计划明确划出范围，我没有评估那一格是否有独立缺口。",
+    "17.2「分歧度按 critics_selected 两两计算」行计划明确不认领，未核其现状。",
+    "gemini 的 driverEnabled 标志未单独核（矩阵走纯函数 enumerateDenyPaths、不校验该标志，不受影响；FI-8 用的 glm 已核为 driverEnabled: true）。",
+    "证据目录 doc/05_testing/evidence/ac25-three-critic-20261007 与既有目录的命名冲突只做了目测，未逐一比对全部既有证据目录名。"
+  ],
+  "consulted": [
+    ".reviews/M11-AC25三审检测收口/plan/2026-10-07-M11-AC25三审检测收口-claude.md",
+    "src/trivium/freeze.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/review.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/types.ts",
+    "src/trivium/render.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/config.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/brief.ts",
+    "test/unit/deny-matrix.test.ts",
+    "test/unit/scratch-guard.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/helpers/fixture.ts",
+    "test/helpers/scratch.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/README.md"
+  ]
+}
