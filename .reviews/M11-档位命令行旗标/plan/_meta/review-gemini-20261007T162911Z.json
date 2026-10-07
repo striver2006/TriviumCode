@@ -1,0 +1,100 @@
+{
+  "agreed": [
+    "三类旗标收集面在 tier-flags.ts 中基于 ALL_AGENT_IDS 全量派生，无硬编码 Agent id，既满足 registry-parity，又避免在 topic resolve 中被静默吞入审查焦点正文。",
+    "键校验通过参数化 critics.ts 中的 assertModelOverrideKeys 共用同一套入选与可用判据，既有 --model-<id> 报错文案逐字保持不变。",
+    "严格遵守与第 6 步的分期边界：未提前透传思考等级与厂商 profile 给适配器，未提前向 run.json 写入 tier / tier_source，并通过过渡闸以 exit 64 阻断非默认值的思考等级与厂商 profile。",
+    "entry-render.ts 引入 realAdapters() 符合纪律 10 与已定 ③，是在不修改注册表且不写死 codex 字面量前提下，从适配器钩子动态派生提示词变量的唯一合规解法。",
+    "§2.4 在交接协议中增补可选 tierFlags 并使 override_reason 准确归因 --tier-<id>，字段名、类型和 schema 均保持未变，未越过 run.v2 契约边界。"
+  ],
+  "consulted": [
+    ".reviews/M11-档位命令行旗标/plan/2026-10-08-M11-档位命令行旗标-claude.md",
+    "src/trivium/critics.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/topic-args.ts",
+    "src/entry-render.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/index.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "skills-src/commands/run.contract.md",
+    "skills-src/partials/review/body.md",
+    "test/contract/skill-flag-parity.test.ts",
+    "test/contract/entry-render-parity.test.ts",
+    "test/contract/skill-warnings-relay.test.ts",
+    "test/contract/boolean-flags-parity.test.ts",
+    "test/unit/tier-resolve.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/integration/usage-registry-parity.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "package.json",
+    "scripts/build.mjs",
+    "skills/dual-critic/schema/run.v2.json"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 test/contract/skill-flag-parity.test.ts:182-203，其通过 sections 数组分别对 S0.6、S2、S6 的交接段落正则匹配 [/--critics\\\\b/, /--profile\\\\b/, /--model-/]；而计划 §2.5 要求 S0.6/S2/S6 必须透传档位旗标，但在 §3.1 对账用例中仅写「skill-flag-parity 覆盖新槽位」，未说明同步更新 sections 正则断言。若未来在 run.contract.md 中漏写或删改某阶段的 --tier- 透传，测试无法拦阻。此外行 102 仅断言 models 的透传指引，未覆盖 tiers。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §3.1 / test/contract/skill-flag-parity.test.ts:182",
+      "problem": "计划未明确将命令 A 的 S0.6、S2、S6 交接段落对档位旗标（--tier- 等）的透传纳入 skill-flag-parity 的逐段断言，存在回归静默漏传的守卫缺口。",
+      "severity": "minor",
+      "suggestion": "在计划 §3.1 明确补充：更新 skill-flag-parity.test.ts 的 sections 断言，使 S0.6、S2、S6 的交接清单必须各自正则匹配 --tier-；并同步增加针对 tiers / efforts / vendor_profiles 透传说明的正文断言。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/topic-args.ts:146-152，当取值旗标后缺值或紧跟下一个旗标时，splitArguments 赋值 named[name] = ''；而在 topic-args.ts:617 处理 model 时使用的是 named['model-' + id]（空串判假过滤，曾有空值静默丢失的历史漏洞）。计划 §2.1 要求空值退 64，若 collectTierFlags 仅判断 truthy 就会重蹈该漏洞。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §2.1 / src/trivium/topic-args.ts:617",
+      "problem": "在 topic resolve 入口中，若用户传入无值的旗标（如 --tier-gemini 后紧跟其它旗标），会被 named[flag] = '' 存为空串，若按真假值过滤将导致空值被静默丢弃而非退 64。",
+      "severity": "minor",
+      "suggestion": "在 topic-args.ts 收集旗标时，按键名是否存在（named[name] !== undefined）判断是否显式提供，确保空串能够作为显式空值传入 assertTierFlags 并触发退 64 校验。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 test/integration/usage-registry-parity.test.ts:14-20，该测试通过打包产物严格验证 trivium --help 中的 --model-* 与已启用审核者清单完全对齐；计划 §2.2 补全了 help 说明，但 §1.3 与 §3.1 的测试清单遗漏了该文件的同步对账扩展。",
+      "id": "AGY-03",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §3.1 / test/integration/usage-registry-parity.test.ts:14",
+      "problem": "计划未将 test/integration/usage-registry-parity.test.ts 列入验证范围，trivium --help 新增的 --tier-*、--effort-* 取值与注册表对账缺少测试回归锁。",
+      "severity": "nit",
+      "suggestion": "在计划 §3.1 补充将 usage-registry-parity.test.ts 纳入扩展论域，断言 --tier-${id} 与 --effort-${id} 在帮助文本中的存在性与注册表对齐。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅计划 §2.1 声明了 mergeCliOverrides 并在 §3.1 编写单测；但在 §2.3 中，checkModelSlugs、checkTierCombos 及 review.ts:1145 均规划为自行执行 { model: overrides[c], ...tierFlags[c] }，无生产调用方调用 mergeCliOverrides。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §2.1 / §2.3",
+      "problem": "计划声明了 mergeCliOverrides(models, flags) 工具函数，但在 §2.3 的生产调用点中均由调用方自行手工展开对象合并，导致该函数沦为仅由单测覆盖的死代码。",
+      "severity": "nit",
+      "suggestion": "在 checkModelSlugs、checkTierCombos 内部或准备阶段统一调用 mergeCliOverrides 合并后的 TierOverrides，消除散落的重复解构代码，使该工具函数具备真实生产消费路径。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查阅 src/entry-render.ts 与 skills-src/commands/run.contract.md:109，Codex 载体下批评者集合排除 codex，无任何侧实现 vendorProfilesFor，故 VENDOR_PROFILE_FLAGS 为空串。若模板写作形如 厂商 profile 覆盖（{{VENDOR_PROFILE_FLAGS}}），Codex 产物将出现 （） 空括号。",
+      "id": "AGY-05",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §2.5 / src/entry-render.ts",
+      "problem": "在 Codex 为 Driver 载体时，VENDOR_PROFILE_FLAGS 渲染为空串，模板文本若直接拼接可能在产物中产生空括号或多余标点。",
+      "severity": "nit",
+      "suggestion": "在计划 §2.5 明确模板句式写法，或将厂商 profile 覆盖提示整体设计为可选片段/带条件渲染，避免在 Codex 载体产物中留下空括号或悬空标点。"
+    }
+  ],
+  "not_covered": [
+    "因审查员环境无命令执行能力，未在真实 Node 子进程与 esbuild 打包环境下实际执行 npm run render 和全量测试构建，相关依赖加载与打包体积表现基于源码与脚本静态分析。",
+    "未实际调用真实外部厂商 CLI 校验端点在后续第 6 步对各厂商参数的具体响应。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "整体方案结构清晰，审查员关心的五项重点均有稳妥处置：三类旗标收集面按 ALL_AGENT_IDS 派生、键校验与 --model-<id> 共用 critics.ts 判定；过渡闸严格拦截 effort 与非默认 vendorProfile，第 6 步透传与 run.json 档位留痕未提前越界；entry-render 引入 realAdapters() 符合纪律 10 与已定 ③；交接文件补 tierFlags 修复 override_reason 归因且未改 run.v2。提 5 条轻量意见（2 条 minor、3 条 nit）：建议将 skill-flag-parity 的 S0.6/S2/S6 段落断言与 usage-registry-parity 纳入对账闭环，处理 topic-args 空值边界，并在生产链路真正消费 mergeCliOverrides。",
+  "verdict": "approve-with-nits"
+}
