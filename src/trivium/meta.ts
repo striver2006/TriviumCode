@@ -11,6 +11,8 @@ import type {
   AgentId, CriticId, LegacyReviewMode, PlanFinalCheck, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
 } from './types.js';
 import { describeDriftUnknown } from './types.js';
+// gate.ts 的静态依赖闭包不含本文件（EV-224 编码时核过），不成环
+import { readonlyBreachLabel } from './gate.js';
 import { embeddedBuildStamp, type BuildStamp } from './build-stamp.js';
 import { writeAtomic } from './util/fsx.js';
 import { metaDir as metaDirOf, topicDir, type ArchiveLayout } from './archive.js';
@@ -1060,7 +1062,8 @@ export function summarizeRun(meta: RunMeta): string {
   } else if (meta.snapshot.drift.changed) {
     lines.push(`  ⚠️ 漂移：${meta.snapshot.drift.files.length} 个文件（策略 ${meta.snapshot.drift.policy}）`);
   }
-  if (meta.guard.readonly_breach) lines.push('  ⚠️ 只读失守');
+  // 按跑后复算分档说，与 report 旗标同一来源（EV-224）
+  if (meta.guard.readonly_breach) lines.push(`  ⚠️ ${readonlyBreachLabel(meta.snapshot.drift)}`);
   if (meta.guard.peer_artifact_read) lines.push('  ⚠️ 读到对方产出');
   return lines.join('\n');
 }

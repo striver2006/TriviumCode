@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.49
+> - **当前版本**：v1.1.50
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.50（2026-10-07）随设计 v1.3.128（复盘面失守旗标分档，EV-224）同步：模块表 `report.ts`、`meta.ts` 两行补一句——失守旗标与 `summarizeRun` 的失守一行改调 `gate.ts` 的 `readonlyBreachLabel`。未走双审。行数列未重核。
 > - **变更说明**：v1.1.49（2026-10-06）随设计 v1.3.127（只读失守未确证改动放行，EV-223）同步：「待裁决闸门的只读失守文案」小节补判据单点——失守组只收 `gate.ts` 的 `classifyReadonlyBreach` 判确证的那一格，复算无变化或比不了的失守轮归未见失守组、出原文案；快照漂移改调 `confirmedDriftText()`。行数列未重核。
 > - **变更说明**：v1.1.48（2026-10-06）随设计 v1.3.126（补丁排除不受 pathspec 环境变量影响，EV-222）同步：3.3「`executeRun()` 的漂移复算」补「魔法 pathspec 钉住解释方式」一段，EV-221 那段「钉 `GIT_LITERAL_PATHSPECS=0`」补指向。未走双审。行数列未重核。
 > - **变更说明**：v1.1.47（2026-10-06）随设计 v1.3.125（工作树哈希排除归档根与 `.trivium/`、文件中途消失时重试，EV-221）同步：3.3「`executeRun()` 的漂移复算」补工作树哈希的排除来源、pathspec 写法与重试；模块表 `util/git.ts` 行补一句。本批未走双审。行数列未重核。
@@ -139,9 +140,9 @@ graph TD
 | 模块 | 行数 | 职责 | 关键导出 |
 | :--- | ---: | :--- | :--- |
 | `archive.ts` | 550 | 防覆盖落盘、最低工件集校验、sha256 核对、**运行清单读侧按阶段分发**（设计 6.7.1） | `writeArtifact()` `checkRecordedArtifacts()` `checkRunManifests()` `runManifestProblem()` |
-| `meta.ts` | 382 | `run.json`（`trivium.run.v2`）与主题级任务档的构造与更新；**读侧按 schema 分发与 v1 → v2 内存迁移** | `newRunId()` `allocateRunId()` `writeRunMeta()` `readRunMeta()` `readRunMetaDetailed()` `migrateRunMetaV1()` `updateTask()` `readTaskStrict()` |
+| `meta.ts` | 382 | `run.json`（`trivium.run.v2`）与主题级任务档的构造与更新；`summarizeRun` 的失守一行同样按 `readonlyBreachLabel` 分档（v1.1.50 / EV-224）；**读侧按 schema 分发与 v1 → v2 内存迁移** | `newRunId()` `allocateRunId()` `writeRunMeta()` `readRunMeta()` `readRunMetaDetailed()` `migrateRunMetaV1()` `updateTask()` `readTaskStrict()` |
 | `naming.ts` | 142 | 文件名生成与反解析（纯函数，不碰文件系统） | `buildArtifactName()` `parseArtifactName()` `validateTopic()` `shellQuoteArg()` |
-| `report.ts` | 556 | 人读复盘生成 | `buildReport()` |
+| `report.ts` | 556 | 人读复盘生成；只读失守旗标按跑后复算分档（`gate.ts` 的 `readonlyBreachLabel`，v1.1.50 / EV-224） | `buildReport()` |
 | `render.ts` | 253 | 审查文档的 Markdown 渲染（参与者事实与降级警示分两处标注） | `renderReviewDoc()` |
 
 ### 2.5 解析层

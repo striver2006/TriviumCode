@@ -45,6 +45,24 @@ export function classifyReadonlyBreach(
 }
 
 /**
+ * 复盘面（`report` 的旗标、`summarizeRun`）给只读失守的那一行字，按 `classifyReadonlyBreach` 分档（EV-224）。
+ *
+ * 此前两处只出「只读失守」，读复盘的人分不出那一轮是被挡在审批外还是告警放行了——复算无变化的放行轮
+ * 连漂移行都没有，最容易读成「该挡却放了」。前缀「只读失守」保留，按词检索的用法不受影响。
+ * 只在失守成立时调用；文字只有这一份来源。
+ */
+export function readonlyBreachLabel(drift: Pick<SnapshotMeta['drift'], 'changed' | 'unknown_reason'>): string {
+  switch (classifyReadonlyBreach(drift)) {
+    case 'confirmed':
+      return '只读失守（复算确证改动：裁决不得进入审批）';
+    case 'unconfirmed_unchanged':
+      return '只读失守（复算无变化：告警放行，复算有盲区）';
+    case 'unconfirmed_unknown':
+      return '只读失守（复算比不了：告警放行）';
+  }
+}
+
+/**
  * 跑后复算看不见的写入（用户决策二，告警与注释同源）。放行告警逐条点名，**不暗示复算能证明没写**。
  *
  * 另有一项不在决策清单里、告警不点名：scratch 白名单内的写入（`judgeDrift` 整体剔除各家 Agent 的

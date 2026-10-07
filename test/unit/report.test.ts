@@ -69,6 +69,8 @@ async function seedRound(
     guardLevel?: 'L1' | 'L2';
     /** 手工置 true：生产代码从不写 true，只用来钉「report 不据它打旗标」（EV-137） */
     forgedRoleFile?: boolean;
+    /** 记一次只读失守（写事件）；与 drift / driftUnknown 组合出三档（EV-224） */
+    breach?: boolean;
   },
 ) {
   const meta = newRunMeta({
@@ -86,6 +88,10 @@ async function seedRound(
     };
   }
   if (opts.forgedRoleFile) meta.guard.forged_role_file = true;
+  if (opts.breach) {
+    meta.guard.readonly_breach = true;
+    meta.guard.breached_files = ['write_to_file(/p/x.ts)'];
+  }
 
   for (const [c, rv] of [['gemini', opts.gemini], ['glm', opts.glm]] as const) {
     if (c === 'glm' && opts.glmFailed) {
@@ -303,6 +309,31 @@ test('EV-139：比不了进告警清单，不因两个桶都空而一声不吭',
   );
   assert.ok(!flags.some((g) => /漂移 \d+ 个文件/.test(g)), '比不了不能写成「漂移 N 个文件」');
   assert.match(renderTopicReport(r), /漂移无法判定/);
+});
+
+/*
+ * EV-224：只读失守的旗标按跑后复算分档说（判据同 `gate.ts` 的 `classifyReadonlyBreach`），
+ * 复盘时分得清那一轮是被挡在审批外还是告警放行了。前缀「只读失守」保留。
+ */
+test('EV-224：只读失守旗标按复算分三档，前缀不变', async () => {
+  const cases = [
+    { opts: { drift: true }, want: '只读失守（复算确证改动：裁决不得进入审批）' },
+    { opts: {}, want: '只读失守（复算无变化：告警放行，复算有盲区）' },
+    { opts: { driftUnknown: true }, want: '只读失守（复算比不了：告警放行）' },
+  ];
+  for (const c of cases) {
+    const l = await archive();
+    await seedRound(l, { rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM'), breach: true, ...c.opts });
+    const r = await buildTopicReport(l);
+    const flags = r.rounds[0]!.guardFlags;
+    assert.equal(flags.filter((g) => g.startsWith('只读失守')).length, 1, `恰一面失守旗标：${JSON.stringify(flags)}`);
+    assert.ok(flags.includes(c.want), `缺「${c.want}」：${JSON.stringify(flags)}`);
+    assert.ok(renderTopicReport(r).includes(c.want));
+  }
+  // 对照：未失守不出这面旗
+  const l = await archive();
+  await seedRound(l, { rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM'), drift: true });
+  assert.ok(!(await buildTopicReport(l)).rounds[0]!.guardFlags.some((g) => g.startsWith('只读失守')));
 });
 
 /*

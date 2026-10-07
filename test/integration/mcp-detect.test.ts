@@ -117,6 +117,6 @@ test('MCP 执行型调用 ⇒ 只读失守的既有各面、写事件一眼看�
   assert.ok(w, JSON.stringify(r.gate.warnings));
   assert.ok(w!.message.includes('MCP:mcp__node_repl__js('), '闸门告警里的调用记录点名该工具');
   assert.ok(w!.message.includes('MCP 执行型调用的任意写'), '放行告警点明 MCP 盲区');
-  assert.ok(r.report.includes('只读失守'));
+  assert.ok(r.report.includes('只读失守（复算无变化：告警放行'), '报告旗标按复算分档（EV-224）');
   assert.equal('evidence_untrusted' in r.fm, false);
 });

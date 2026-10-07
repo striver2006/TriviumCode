@@ -4,11 +4,11 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import {
   APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID,
-  checkAdjudication, classifyReadonlyBreach, findJointRejectedBlockers, jointCheckState, isHollowReason, loadRoundReviews, renderGateResult,
+  checkAdjudication, classifyReadonlyBreach, findJointRejectedBlockers, readonlyBreachLabel, jointCheckState, isHollowReason, loadRoundReviews, renderGateResult,
   verifyRoundForApproval,
 } from '../../src/trivium/gate.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
-import { newRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
+import { newRunMeta, summarizeRun, writeRunMeta } from '../../src/trivium/meta.js';
 import { CRITICS } from '../../src/trivium/types.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { writeArtifact, type ArchiveLayout } from '../../src/trivium/archive.js';
@@ -895,6 +895,32 @@ test('classifyReadonlyBreach 真值表：只有 changed 且无 unknown_reason �
   assert.equal(classifyReadonlyBreach({ changed: true, unknown_reason: unknown }), 'unconfirmed_unknown');
   // 写侧不产出这一格（unknown_reason 只在 changed:true 时写）；手改留痕时按更弱的「比不了」说
   assert.equal(classifyReadonlyBreach({ changed: false, unknown_reason: unknown }), 'unconfirmed_unknown');
+});
+
+/*
+ * EV-224：复盘面（report 旗标、summarizeRun）的失守一行按同一判据分档，文字只有 `readonlyBreachLabel` 一份。
+ * 期望串写字面量；summarizeRun 那一格守接线（它不经 report，单独调标签函数）。
+ */
+test('EV-224：readonlyBreachLabel 三档逐字，summarizeRun 按同轮 drift 分档、未失守不出', () => {
+  const unknown = { cause: 'timeout' as const, detail: 'diff-tree 超时' };
+  const rows = [
+    { drift: { changed: true, files: ['a.ts'], policy: 'warn' as const }, want: '只读失守（复算确证改动：裁决不得进入审批）' },
+    { drift: { changed: false, files: [], policy: 'warn' as const }, want: '只读失守（复算无变化：告警放行，复算有盲区）' },
+    { drift: { changed: true, files: [], policy: 'warn' as const, unknown_reason: unknown }, want: '只读失守（复算比不了：告警放行）' },
+  ];
+  for (const r of rows) {
+    assert.equal(readonlyBreachLabel(r.drift), r.want);
+    const meta = newRunMeta({
+      runId: '20261007T000000Z', topic: 't', stage: 'plan', rerunIndex: 1, command: 'x', promptHint: null, taskGoal: null,
+      criticsSelected: CRITICS, treeHash: 'T', gitHead: null, dirty: false, subjectSha256: 'S', denyPaths: [], driftPolicy: 'warn',
+    });
+    meta.snapshot.drift = r.drift;
+    assert.ok(!summarizeRun(meta).includes('只读失守'), '未失守不出失守行');
+    meta.guard.readonly_breach = true;
+    const s = summarizeRun(meta);
+    assert.ok(s.includes(`  ⚠️ ${r.want}`), s);
+    assert.equal(s.split('只读失守').length - 1, 1, '失守行恰一行');
+  }
 });
 
 test('只读失守三档的 gate --check 文案：确证判失败；复算无变化与比不了各说各的、互不串（计划 r2 §2.4）', async () => {

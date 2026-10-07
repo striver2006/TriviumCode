@@ -65,4 +65,4 @@ run `20261006T165356Z`（约 10 分 16 秒）：codex / gemini `approve`（零�
 - **可达性**：缺省配置下进得了待裁决的失守轮只有「复算无变化」（放行）与「无关漂移」（拦）两种；被审对象漂移恒判运行失败，相关漂移与比不了按 `on_drift_related`（缺省 fail）判运行失败。C 格因此要在夹具里设 `on_drift_related: warn`。
 - **`approve` 不出告警**：与其它 warning 现状一致；告警在 `gate --check` 与 `--await-approval` 停点可见。
 - **`review.ts` 重跑拒绝文案**「补齐裁决件并通过 gate --check 后再来」：对未确证轮现在走得通，对确证轮仍走不通（EV-98 登记的同族未改项之一），未动。
-- **待议（不在本题）**：`report` / `summarizeRun` 是否区分「失守（确证）」与「失守（未确证）」。代码双审 GLM-01 提出同一点，接受其后备建议：设计 10.3 记一句「复盘面不区分两档」，BACKLOG 登记 EV-224 待用户定。
+- **待议（不在本题）**：`report` / `summarizeRun` 是否区分「失守（确证）」与「失守（未确证）」。代码双审 GLM-01 提出同一点，接受其后备建议：设计 10.3 记一句「复盘面不区分两档」，BACKLOG 登记 EV-224 待用户定。（2026-10-07 补记：用户定做，已落地，见 [`REPORT_2026-10-07_breach_flag_split.md`](./REPORT_2026-10-07_breach_flag_split.md)。）

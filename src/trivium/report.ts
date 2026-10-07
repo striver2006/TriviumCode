@@ -20,7 +20,7 @@ import { promises as fs } from 'node:fs';
 import { DEFAULT_DRIVER, type AgentId, type GuardLevel } from './agents/registry.js';
 import { listStageArtifacts, metaDir, type ArchiveLayout } from './archive.js';
 import { describeRunMetaCause, readRunMeta, readRunMetaDetailed, readTask, type TaskMeta } from './meta.js';
-import { loadRoundReviews } from './gate.js';
+import { loadRoundReviews, readonlyBreachLabel } from './gate.js';
 import { parseDisposition } from './disposition.js';
 import { measureAllPairs, type DivergenceReport } from './divergence.js';
 import { summarizeVerify, type VerifyRecord } from './verify.js';
@@ -285,7 +285,8 @@ async function buildRound(
    */
   base.divergences = measureAllPairs(reviews, Object.keys(meta.critics) as CriticId[]);
 
-  if (meta.guard.readonly_breach) base.guardFlags.push('只读失守');
+  // 按跑后复算分档说（EV-224）：只说「只读失守」分不出那一轮是被挡了还是告警放行了
+  if (meta.guard.readonly_breach) base.guardFlags.push(readonlyBreachLabel(meta.snapshot.drift));
   if (meta.guard.peer_artifact_read) base.guardFlags.push('读到对方产出');
   /*
    * `guard.forged_role_file` 不读（EV-137）：它是保留字段，写侧恒 false，全仓没有检测去置它。

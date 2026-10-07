@@ -1,0 +1,37 @@
+{
+  "targets": [
+    "src/trivium/gate.ts",
+    "src/trivium/report.ts",
+    "src/trivium/meta.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/gate.test.js",
+    "dist/test/test/unit/report.test.js"
+  ],
+  "cases": [
+    {
+      "id": "N1",
+      "desc": "report 旗标退回不分档的「只读失守」",
+      "file": "src/trivium/report.ts",
+      "find": "  if (meta.guard.readonly_breach) base.guardFlags.push(readonlyBreachLabel(meta.snapshot.drift));\n",
+      "replace": "  if (meta.guard.readonly_breach) base.guardFlags.push('只读失守');\n",
+      "expect": "dist/test/test/unit/report.test.js"
+    },
+    {
+      "id": "N2",
+      "desc": "summarizeRun 退回不分档的「只读失守」",
+      "file": "src/trivium/meta.ts",
+      "find": "  if (meta.guard.readonly_breach) lines.push(`  ⚠️ ${readonlyBreachLabel(meta.snapshot.drift)}`);\n",
+      "replace": "  if (meta.guard.readonly_breach) lines.push('  ⚠️ 只读失守');\n",
+      "expect": "dist/test/test/unit/gate.test.js"
+    },
+    {
+      "id": "N3",
+      "desc": "标签不看判据：一律按确证说",
+      "file": "src/trivium/gate.ts",
+      "find": "  switch (classifyReadonlyBreach(drift)) {\n",
+      "replace": "  switch (('confirmed' as ReadonlyBreachClass)) {\n",
+      "expect": "dist/test/test/unit/report.test.js"
+    }
+  ]
+}
