@@ -1,0 +1,112 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "总体：计划对主设计 11.5 与 r3 §3.4～3.8 的忠实度高——两段式解析、五条 tier/tier_source 取值规则、校验三态口径、routeModel 三调用点迁移清单，逐格核实无误；无 blocker、无 major。最需先处置的是 CODEX-03：stageModel 给裸 slug 形态加 minLength:1，使空串 slug 这类退化但现行可载的旧配置从「加载成功、预检退 64」变成「加载期退 69」，与计划自己的「旧配置零改动可载、裸 slug 行为逐字不变」正面相抵，需在计划里二选一并登记。其余四条：PROTOCOL 废弃键枚举漏同步（CODEX-01）、假 codex 夹具「沿用」描述与现状不符（CODEX-02）、zcode 收紧未回补 11.5（CODEX-04）、EV-27 状态句过宽（CODEX-05）。过渡闸（P-1 A）触发条件我逐格推过：恰好覆盖「effort 不下传 / profile 运行时不换」两类不一致，对现行可跑配置（裸 slug、gemini·antigravity 回落 effort、agents.codex.profile 原样）零误拦；P-4 维持 64 改规范与现行代码实证一致，同意。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §4.1 文档收口清单",
+      "problem": "计划给 DEPRECATED_CONFIG_KEYS 新增精确路径 ['agents','codex','effort']，文档收口只列了用户手册「已废弃的键」表，漏了 doc/03_api/PROTOCOL_dual_critic_relay.md——该文件 :90 逐一枚举现行两条废弃键（gate.max_check_retries、agents.<id>.readonly_commands）及其「schema 仍接受」机制描述，新增第三条后该枚举即失实。AGENTS.md 的「改动同步清单」明确要求 JSON Schema 变更同步 PROTOCOL 文档与契约面描述。",
+      "evidence": "读 doc/03_api/PROTOCOL_dual_critic_relay.md:88-92（「已废弃键（设计 v1.3.72…）：gate.max_check_retries 与 agents.<id>.readonly_commands…」枚举句）；grep 全文件 effort 仅 :33（--effort-* 旗标属第 5 步，计划不碰，无连带失点）；AGENTS.md「改动同步清单」JSON Schema 行；plan §3.2/§4.1 只列 MANUAL_user.md。本轮 sed/grep 只读核实。",
+      "suggestion": "§4.1 补一行：PROTOCOL 的已废弃键枚举并入 agents.codex.effort（或把该句从逐条枚举改为指向 DEPRECATED_CONFIG_KEYS 的机制性描述，免除逐条维护）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §5.1 探针字段用例段",
+      "problem": "「沿用既有假 codex 夹具（debug models 吐带 supported_reasoning_levels 与 visibility: hide 的 JSON，skipModelCalls: true）」与现状不符：现有两处假 codex 的 debug models 输出只有 {models:[{slug:'fake-model',visibility:'list'}]}，既无 supported_reasoning_levels 也无 hide 项。probeCodex 层的「reasoning_levels 只含可见项、失败 profile 无条目」用例按「沿用」原样写必然红——必须扩写假 binary 的目录 JSON，而计划把它读成零夹具改动。",
+      "evidence": "grep -rn supported_reasoning_levels test/ 零命中（仅 src/trivium/probes/codex.ts:309,327 解析器自身）；test/unit/probe-fixture-cleanup.test.ts:219-233 CODEX_BODY 的 debug models 分支只吐 slug+visibility；test/unit/fixture-repo-init.test.ts:342-346 同形。本轮 grep/sed 只读核实。",
+      "suggestion": "把「沿用」改述为「扩写既有假 codex 的 debug models 输出」：加逐模型 supported_reasoning_levels 与一条 visibility:'hide' 项（hide 项同时喂「只收可见项」断言），并把「夹具扩写」明确列入 §4 改动面的 test 行。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3.1 stageModel 定义",
+      "problem": "裸 slug 形态从现行「type: string（无 minLength）」收紧为「string(minLength 1)」：空串 slug 的配置今天能通过加载、到 slug 校验才以 64 失败（routeModel 对空串 falsy 走「未定义模型且无覆盖」）；收紧后同一配置改为加载期 validateConfig 抛 envError（退 69）。这是一类退化但「现行零改动可载」的旧配置的可见行为改变，与计划 §0/§3.1 自己的「旧配置零改动可载、裸 slug 行为逐字不变」承诺正面相抵，而计划未登记这处收紧。",
+      "evidence": "skills/dual-critic/schema/config.v2.json:464-493（plan/code/bug 仅 type:string、无 minLength）；src/trivium/config.ts:817-822（校验失败 throw envError）；src/trivium/exit-codes.ts（USAGE=64、ENV=69）；src/trivium/preflight.ts:346-359（现行空 slug → bad → 64）；src/trivium/adapters/base.ts:1839-1841（if (fromProfile) 对空串 falsy）。代码推理＋既有测试佐证，未实跑空串配置。",
+      "suggestion": "二选一并写进计划：①裸 slug 形态保持无 minLength，非法值仍在 slug 校验处以 64 报（行为逐字不变，我倾向此项）；②保留 minLength:1，但登记为刻意收紧，补一条反例用例并在「风险与遗留」写明退出码 64→69 的代价。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3.1（zcode 支 tierEntryModelOnly）与 §4.1（11.5 更新清单）",
+      "problem": "zcode 支档位条目在 schema 层拒 effort 是对 11.5 的合理收紧（glm 无原生枚举，schema 拒早于「跳过校验＋运行期静默丢弃」，fail-closed，不碰旧配置），但 11.5 数据模型写的是每档统一形状 {model, effort?, profile?}；§4.1 的 11.5 更新清单没有回补这一句。按仓库「改动同步清单」（与设计文档不一致的行为先回补设计文档），落地后设计正文与 schema 行为分叉，下一位照 11.5 写字段的人会写出 zcode 拒收的档位条目。",
+      "evidence": "设计 :2942「每档是组合 {model, effort?, profile?}」；plan §3.1「这是对 11.5 的收紧，§6 请审查员核」；plan §4.1 列出的 11.5 更新项（引言块拆分、P-1 过渡闸、第 3/4 条规则字面读法、P-2 claude 归属、P-4 退出码、P-5 合并语义、:2960 已删）无此条；AGENTS.md「改动同步清单」第一行。本轮 sed 只读核实。",
+      "suggestion": "§4.1 给 11.5 数据模型补一句：zcode 支 schema 层拒 effort（glm 无原生枚举，拒比丢弃更早更准）；profile 仅 openai 支放行——把计划已做的分支不对称写回设计正文。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.7 范围外与刻意不做（EV-27 状态句）",
+      "problem": "「本机层整段覆盖 tiers 即换家族第 6 步才实际可用」过宽：过渡闸只比较「档位条目 profile」与「agents.codex.profile」是否相等，按 13.1.1 已记载的协作出口（本机层同批覆盖 agents.codex.profile 与模型两处、取同一家族），档位条目 profile == 覆盖后的 agents.codex.profile，闸不触发，换家族在第 4 步即可端到端跑通（availability、目录比对、运行时 -p 同读一个值）；被闸挡住的只是「只整段覆盖 tiers 一处」这一种形态（D-2 拍板形态）。状态句写成「第 6 步才可用」会把一条可用的逃生门误导为不可用，也低估本步的交付面。",
+      "evidence": "plan §2 P-1 A「档位 profile 与 agents.codex.profile 相同时放行（运行与预检一致）」；设计 13.1.1 表后段「本机层 config.local.yaml 里同批覆盖 agents.codex.profile 与 profiles.*.codex 的模型两处」；src/trivium/adapters/codex.ts:462 availability() 与 :499 catalogModelsFor 同读 agents.codex.profile。推理＋引用，未实跑双键覆盖场景。",
+      "suggestion": "§3.7 与 BACKLOG 的 EV-27 状态句区分两半：两键同改（13.1.1 现行出口）第 4 步可用；单键整段覆盖 tiers（D-2「覆盖一处即换家族」）待第 6 步拆闸。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "两段式与 tier/tier_source 五条规则逐格对得上主设计 :2950/:2952 与 r3 §3.7/§3.8：我比对了第一段三来源次序、第二段按字段叠加、gemini 特例文案、vendor profile 三层次序；第 3、4 条规则「被精确值全覆盖仍记 profile/legacy」的字面读法与设计原文一致（不对称在设计自身），按字面实现＋在 11.5 补注释我同意——改规则文本属另一次拍板，且消费方第 6 步才接线，返工成本低。",
+    "过渡闸（P-1 A）触发条件恰好覆盖「预检看到的 ≠ 实际发出的」两类：effort 来自档位/格子时运行期不下传（effortFor 不变）、档位 profile 不等于 agents.codex.profile 时运行期不换 -p；且对现行可跑配置零误拦——裸 slug 解析 effort=null、vendorProfile 来源是 agent 键而非档位条目，gemini/antigravity 回落 effort 的 fieldOrigin 是 agent，均不触发闸。我按 resolveTier 的 fieldOrigin 语义逐格推过。",
+    "P-4 建议维持 64、改规范，与现行代码实证一致：preflight.ts:346-359 与 review.ts:816-819 先以 checkModelSlugs 退 64，review.ts:1131 的 69 分支对同一输入不可达（r3 §3.7「与今天同一出口」的说法本身就建立在失实的前提上）；「裸 slug 行为逐字不变」优先于规范字面，方向正确，保留 69 分支作防御也合理。",
+    "废弃键精确路径与 13.1.1 拍板、DEPRECATED_CONFIG_KEYS 表注释（不用通配、不误伤 agents.gemini.effort）一致；判定看合并结果的机制核实无误（config.ts:435-446），「默认值不再带它 ⇒ 出现即某个磁盘源写了它」的论证成立；config.ts 在 registry-parity 白名单内，精确路径字面量不会打红对账。",
+    "routeModel 整删＋三调用点迁移清单与我 grep 到的全仓引用完全一致（含 preflight.ts:30、review.ts:22、zcode.ts:43 三处 import，topic.ts:37、review.ts:804/:901/:1048、config.ts:518-523、zcode.ts:1121-1122 注释，LLD:285 与全部测试引用）；topic 级两格测试的处置（删 topic 格、改断言 cli 优先于格子）合理；不留薄包装我同意——EV-226 已点名删参数，留 wrapper 即留死代码。",
+    "校验三态（非空而不命中→64 并列出可用值；为空/取不到→跳过但点名）与 slug 规则同口径，复用 models_by_profile「失败≠空」的既有语义；probe.cli 的 additionalProperties:true 已核实（config.v2.json:609-624），reasoning_levels 确无须改 schema、旧探针结论按「取不到」跳过不硬拒——硬拒/跳过边界完整，没有第三态。",
+    "成本与回滚（本侧镜头）：本步自证零配额成立——skipModelCalls 判断在基底与逐 profile 目录采集之后（probes/codex.ts:908-953），doctor --no-model-calls 可落新字段；schema 全为可选键、探针字段 additive（旧构建读新缓存无害、新构建读旧缓存跳过），回滚＝revert＋重装＋重跑 doctor，代价低；P-3 删三行不改行为且可逆；全量串行两次与变异装置（scripts/mutation-check.mjs 已存在）符合既有纪律。",
+    "计划 §1 现状核实抽核全部属实：routeModel 位置与「四级」注释（base.ts:1832）、openai 支 required 含 effort（config.v2.json:388-394）、ProfileEntry.effort 无读取点（types.ts:1042）、.trivium/config.yaml 的 profiles/agents 各行（:71-133、:161-180）、17.2 行号清单（:3601/:3609/:3610/:3613 翻、:3611/:3612 留）逐条对得上。"
+  ],
+  "not_covered": [
+    "未跑任何构建、测试或配置加载实验（只读审查）；CODEX-03 的空串行为链是代码推理＋既有测试佐证，未实造一个空串配置文件验证。",
+    "变异清单的可执行性（find 锚点唯一性、$ 特殊替换模式扫描）依赖实施时源码，未核；§5.2 十三条初拟只核了判据覆盖方向与既有装置的存在。",
+    "演进设计文档整体未读（LLD 只 grep 了 routeModel 一处；r3 已声明演进设计冻结、以主设计为准）。",
+    "gemini 真实目录上「去 -low/-medium/-high 后缀派生枚举」的形态未实测（派生法本身已由设计 11.5 拍板，属设计层事实）。",
+    "PRD 只读了抬头变更说明、FR-27/FR-30 条目与 AC-23 行；FR-28/FR-29/FR-31 条目与 S6～S8 场景未展开。",
+    "MANUAL_user.md 只核了「已废弃的键」表位置与机制句（:525-536）及全文件无 codex.effort 其它提及，未通读全手册。",
+    "另一位审查员的意见未读、未推断（背靠背）；/Users/chenzhenbo/.trivium/runs 未触碰。"
+  ],
+  "consulted": [
+    ".reviews/M11-配置契约与档位解析/plan/2026-10-07-M11-配置契约与档位解析-claude.md",
+    ".reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-r3-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "skills/dual-critic/schema/config.v2.json",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/config.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/types.ts",
+    "src/trivium/exit-codes.ts",
+    "test/unit/adapter-base.test.ts",
+    "test/unit/profile-override.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/config-consumers.test.ts",
+    "test/unit/codex-adapter.test.ts",
+    "test/unit/probe-fixture-cleanup.test.ts",
+    "test/unit/fixture-repo-init.test.ts",
+    "test/fixtures/stub-agent-kit/overlay.ts",
+    ".trivium/config.yaml",
+    "scripts/mutation-check.mjs"
+  ]
+}

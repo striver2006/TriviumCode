@@ -1,0 +1,300 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261007T130746Z",
+  "topic": "M11-配置契约与档位解析",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "重点看三件事：两段式解析与 tier、tier_source 的取值是否逐格对上主设计 11.5，有没有把第 5、6 步的事提前做、或把未接线的写成已达成；旧配置零改动可载、裸 slug 行为逐字不变，废弃键只按精确路径提示、不误伤 gemini；原生枚举与厂商 profile 校验的硬拒与跳过边界是否与 slug 规则同口径，routeModel 删参后三个调用点是否迁移完整。",
+  "task_goal": "M11 第 4 步：配置契约——tiers 与 profiles 三形态，加档位解析。上位计划是 .reviews/M11-档位全链路与文档收口/plan/ 的 r3 第 4.4 节（口径见 3.4～3.8 节）；契约已随主设计 v1.3.129 并入（11.5 档位路由、13.1.1 三行、12.1 档位异常行、17.2 的 M11 第 4 步各行），本步把标了「待实施 · M11 第 4 步」…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "951dc8d7771a4e879c028e7994fad8816ead0e82",
+    "tree_hash": "739babf2795c7defb59f23b225db7ade0a3a599c",
+    "dirty": true,
+    "subject_sha256": "d996ac17ba1beac5a86b226c6d5b27e8768a9ae10738e28539b5beb13ea91122",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "951dc8d7771a4e879c028e7994fad8816ead0e82",
+      "dirty": false,
+      "inputs_sha256": "17b18537c4aeb828c8c86fe0faa2c4dc67e3c5342ae2b5b3497dd3c0d37498ac",
+      "built_at": "2026-10-07T12:50:16.009Z"
+    },
+    "after_tree_hash": "739babf2795c7defb59f23b225db7ade0a3a599c"
+  },
+  "started_at": "2026-10-07T13:07:47.469Z",
+  "finished_at": "2026-10-07T13:33:05.951Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.1",
+      "model_requested": "kimi-for-coding",
+      "model_effective": "kimi-for-coding",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1518.255,
+      "tool_calls": {
+        "run_command": 65,
+        "project_reads": 43
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a1167a-2c45-7e53-99df-3cc48134e163",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.1",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 661.725,
+      "tool_calls": {
+        "read": 29,
+        "grep": 7,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 14
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 222153,
+        "output_tokens": 34110,
+        "thinking_tokens": 28719,
+        "cache_read_tokens": 3468661,
+        "total_tokens": 256263
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "2e3ba965-9ccc-4f8a-9dee-d8fa577adeb1",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1085.054,
+      "tool_calls": {
+        "read": 33,
+        "grep": 15,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 17,
+        "inputTokens": 1772281,
+        "outputTokens": 59224,
+        "totalTokens": 1831505,
+        "cacheReadTokens": 1675648,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_8ada3dfd-17af-4971-812f-779fac656422",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M11-配置契约与档位解析/plan/_meta/brief-codex-20261007T130746Z.md",
+      "sha256": "cfb3536c237c45839645087ca046739bcf841c5c2f51f8b93aa7dcfad1be2b70"
+    },
+    {
+      "path": "M11-配置契约与档位解析/plan/_meta/brief-gemini-20261007T130746Z.md",
+      "sha256": "657dd5ac134a7a656d165e0ca56a76a576ec74c2b455b2e94bea52a93d28ac6e"
+    },
+    {
+      "path": "M11-配置契约与档位解析/plan/_meta/brief-glm-20261007T130746Z.md",
+      "sha256": "03820a24ef17a903e13dc035e00756fa6ce52bf56e595f5ce536e528986846b1"
+    },
+    {
+      "path": "M11-配置契约与档位解析/plan/_meta/review-codex-20261007T130746Z.json",
+      "sha256": "6a3b8259006c344be9ff2dba7dc37d0b33345b1edd95960b8d6e43ef5bf887a8"
+    },
+    {
+      "path": "M11-配置契约与档位解析/plan/_meta/review-gemini-20261007T130746Z.json",
+      "sha256": "edfac5b5f28fb1cf71d6febc19879e9771104d1de66f7736d1258c02c51dff2e"
+    },
+    {
+      "path": "M11-配置契约与档位解析/plan/_meta/review-glm-20261007T130746Z.json",
+      "sha256": "3a4188f9a5835356b2e95e8c394b3671ac740401731cefe492d39ec338d8376b"
+    },
+    {
+      "path": "M11-配置契约与档位解析/plan/2026-10-07-M11-配置契约与档位解析-codex.md",
+      "sha256": "a9cff85f05e566ecce797e25dceb4ac692f36e1b185e3549d4dbe4befdefd389"
+    },
+    {
+      "path": "M11-配置契约与档位解析/plan/2026-10-07-M11-配置契约与档位解析-gemini.md",
+      "sha256": "7f5f5d6ed8e4203ff089f07951e73a589dcbb1d8f0c98c69e20eb34ea2d8ccf8"
+    },
+    {
+      "path": "M11-配置契约与档位解析/plan/2026-10-07-M11-配置契约与档位解析-glm.md",
+      "sha256": "d82df1988c0d2e9a9c09a3a3ea726eedf4b7c1d2eff1d8304bf625c4483dc682"
+    },
+    {
+      "path": "M11-配置契约与档位解析/plan/2026-10-07-M11-配置契约与档位解析-claude.md",
+      "sha256": "d996ac17ba1beac5a86b226c6d5b27e8768a9ae10738e28539b5beb13ea91122"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

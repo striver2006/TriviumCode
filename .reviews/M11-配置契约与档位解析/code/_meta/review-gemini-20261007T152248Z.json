@@ -1,0 +1,51 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "M11 第 4 步代码变更整体质量极高，所有既定契约与设计规范均严密对齐主设计 11.5 与计划 r2。两段式解析 resolveTier 与 tier/tier_source 取值矩阵对账完整，未提前下传思考等级与厂商 profile，由过渡闸精准硬拒；旧配置零改动可载，裸 slug 行为保持逐字等价，废弃键以精确路径登记且未误伤 gemini；原生枚举与 profile 名单校验的硬拒与跳过边界与既有 slug 规则保持同口径；routeModel 及其未接线的 topic 参数已彻底清理并迁移完备。",
+  "agreed": [
+    "两段式解析 resolveTier 严格落地：第一段按命令行档位 > 档位表格子 > default_tier 决策基础组合；第二段按字段覆盖并统一全覆盖判定规则（AGY-01），被覆盖字段源自档位时追加告警，逻辑边界清晰且单测全覆盖。",
+    "防范围漂移与过渡保护严密：未提前接入第 5 步命令行旗标与第 6 步适配器透传，通过 checkTierCombos 中的过渡闸在预检和 review 准备阶段硬拒并指向第 6 步，且永久校验排在过渡闸前，确保真病因优先报出。",
+    "旧配置兼容与裸 slug 行为零漂移：config.v2.json 保持裸 slug 无 minLength，agents.codex.effort 标 deprecated 移出 required 且保留原类型约束；gemini 阶段级 effort 在裸 slug 下平滑回落且不触发过渡闸，全量 60 格等价性单测守卫完备。",
+    "废弃键精准隔离：DEPRECATED_CONFIG_KEYS 采用精确路径 ['agents', 'codex', 'effort']，避免了通配符误伤 agents.gemini.effort。",
+    "校验口径高度统一：适配器钩子 reasoningLevelsFor 抽象三态（none/levels/unknown），采到非空枚举或名单外硬拒退 64、取不到或为空跳过并具名警告，与 checkModelAgainstCatalog 的设计哲学完全同构。",
+    "routeModel 重构彻底：review.ts、preflight.ts、adapters/zcode.ts 三处调用点迁移完整，死参数 topic 及注释残留已彻底清除，BACKLOG EV-226 结案；预检与 review 准备阶段准备时退 64 零工件亦有端到端测试保障。"
+  ],
+  "not_covered": [
+    "未拉起真实模型进行端到端 API 调用（本步定位为配置契约与纯函数解析，测试套件基于桩与夹具验证，未消耗真实厂商配额）。",
+    "未实机验证非 macOS 环境下的路径或进程行为（依据项目仅支持 macOS + VS Code 的前提）。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-07_m11_tier_config.md",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/M11-配置契约与档位解析/plan/2026-10-07-M11-配置契约与档位解析-r2-claude.md",
+    ".trivium/config.yaml",
+    "skills/dual-critic/schema/config.v2.json",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/codex.ts",
+    "test/unit/tier-resolve.test.ts",
+    "test/unit/config-schema.test.ts",
+    "test/unit/config-consumers.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/integration/no-artifacts.test.ts"
+  ],
+  "findings": []
+}

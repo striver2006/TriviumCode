@@ -1,0 +1,301 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261007T152248Z",
+  "topic": "M11-配置契约与档位解析",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点看三件事：两段式解析与 tier、tier_source 的取值是否逐格对上主设计 11.5，有没有把第 5、6 步的事提前做、或把未接线的写成已达成；旧配置零改动可载、裸 slug 行为逐字不变，废弃键只按精确路径提示、不误伤 gemini；原生枚举与厂商 profile 校验的硬拒与跳过边界是否与 slug 规则同口径，routeModel 删参后三个调用点是否迁移完整。",
+  "task_goal": "M11 第 4 步：配置契约——tiers 与 profiles 三形态，加档位解析。上位计划是 .reviews/M11-档位全链路与文档收口/plan/ 的 r3 第 4.4 节（口径见 3.4～3.8 节）；契约已随主设计 v1.3.129 并入（11.5 档位路由、13.1.1 三行、12.1 档位异常行、17.2 的 M11 第 4 步各行），本步把标了「待实施 · M11 第 4 步」…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "951dc8d7771a4e879c028e7994fad8816ead0e82",
+    "tree_hash": "d06bd7e95078e2f4d8bdc4ee5e96338d261fe3bd",
+    "dirty": true,
+    "subject_sha256": "46e9608a29e10bb41307b9477cac33bc7fc8f2d9e56b7585a28b656ceaf63794",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "951dc8d7771a4e879c028e7994fad8816ead0e82",
+      "dirty": false,
+      "inputs_sha256": "17b18537c4aeb828c8c86fe0faa2c4dc67e3c5342ae2b5b3497dd3c0d37498ac",
+      "built_at": "2026-10-07T12:50:16.009Z"
+    },
+    "after_tree_hash": "d06bd7e95078e2f4d8bdc4ee5e96338d261fe3bd"
+  },
+  "started_at": "2026-10-07T15:22:49.671Z",
+  "finished_at": "2026-10-07T15:48:15.543Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.1",
+      "model_requested": "kimi-for-coding",
+      "model_effective": "kimi-for-coding",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1525.58,
+      "tool_calls": {
+        "run_command": 78,
+        "project_reads": 30
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a116f5-cdee-7922-87d5-f673bfc11a06",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.1",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 726.067,
+      "tool_calls": {
+        "read": 58,
+        "grep": 15,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 31
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 577959,
+        "output_tokens": 34272,
+        "thinking_tokens": 25330,
+        "cache_read_tokens": 9961882,
+        "total_tokens": 612231
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "78f0af1d-dad8-47a2-ac15-711ea93f372c",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 797.637,
+      "tool_calls": {
+        "read": 13,
+        "grep": 10,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 11
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 18,
+        "inputTokens": 2454845,
+        "outputTokens": 45926,
+        "totalTokens": 2500771,
+        "cacheReadTokens": 2267648,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_6bdf861a-291a-4ac1-bb42-f019e5ce6d79",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M11-配置契约与档位解析/plan/2026-10-07-M11-配置契约与档位解析-gemini.md",
+    ".reviews/M11-配置契约与档位解析/plan/2026-10-07-M11-配置契约与档位解析-glm.md",
+    ".reviews/M11-配置契约与档位解析/plan/_meta/review-gemini-20261007T130746Z.json",
+    ".reviews/M11-配置契约与档位解析/plan/_meta/review-glm-20261007T130746Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M11-配置契约与档位解析/code/_meta/changes-20261007T152248Z.diff",
+      "sha256": "46e9608a29e10bb41307b9477cac33bc7fc8f2d9e56b7585a28b656ceaf63794"
+    },
+    {
+      "path": "M11-配置契约与档位解析/code/_meta/brief-codex-20261007T152248Z.md",
+      "sha256": "0a40609da49e1cb67f64e181d1d7c68873a30a979c82aeff2a72ec6799346b63"
+    },
+    {
+      "path": "M11-配置契约与档位解析/code/_meta/brief-gemini-20261007T152248Z.md",
+      "sha256": "67d3c2ce0ce41c0cadc8409e5bbd6870eb7b025c51ffbf23ca1dbf041536c152"
+    },
+    {
+      "path": "M11-配置契约与档位解析/code/_meta/brief-glm-20261007T152248Z.md",
+      "sha256": "895b68d2d3b78f93f4afec593b9a51922189a6308e5ba3cb223b2f9ad716efcc"
+    },
+    {
+      "path": "M11-配置契约与档位解析/code/_meta/review-codex-20261007T152248Z.json",
+      "sha256": "807d92fa64a33a73fd4b88410777f2eefc459d1a47e7ced68a1a012ffebac5f4"
+    },
+    {
+      "path": "M11-配置契约与档位解析/code/_meta/review-gemini-20261007T152248Z.json",
+      "sha256": "8001c3530d6e3818e1ee16398baa5ddc7548078076e980190bcf9c2fc521b9d3"
+    },
+    {
+      "path": "M11-配置契约与档位解析/code/_meta/review-glm-20261007T152248Z.json",
+      "sha256": "5814b0759acc720158005b853c42ddd469df6e4c3fc58db36be1e5ac5f3a6571"
+    },
+    {
+      "path": "M11-配置契约与档位解析/code/2026-10-07-M11-配置契约与档位解析-codex.md",
+      "sha256": "574c3c426b5689c3596829bf3822eab1d2b7ac68cf309921c7f62958b0f266f4"
+    },
+    {
+      "path": "M11-配置契约与档位解析/code/2026-10-07-M11-配置契约与档位解析-gemini.md",
+      "sha256": "4ead4a909475c300ffb0183731f62cb50d0eb27adc46b9929030001aac885e25"
+    },
+    {
+      "path": "M11-配置契约与档位解析/code/2026-10-07-M11-配置契约与档位解析-glm.md",
+      "sha256": "d8028d3ab93e855967bab4762cb9979f510d845f3527a284fd9d9e5d24db48dd"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装"
+    ]
+  },
+  "status": "success"
+}

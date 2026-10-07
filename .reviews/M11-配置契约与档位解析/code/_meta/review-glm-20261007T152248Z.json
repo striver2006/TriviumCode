@@ -1,0 +1,57 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "五个审查焦点逐一核对完毕，整体实现质量高、与计划 r2（P-1～P-6 全按建议）和主设计 v1.3.131 逐格一致。①两段式解析与 tier/tier_source 四格规则（AGY-01 统一后）实现正确，「提供的字段」按实际给出的键计、补全不算（base.ts resolveTier 与 R5～R8 用例逐格对上）；②没有把第 5、6 步的事提前做：cli.ts 不在改动面、无新旗标，适配器 -p 仍取 agents.codex.profile、profile_requested 未动，run.json 不写 tier/tier_source，PRD FR-30 未翻达成，设计/BACKLOG/报告的分期标注一致，过渡闸（含 gemini 残余告警）按 P-1 A 恰好覆盖「预检看到的≠实际发出的」且不误伤今天能跑的配置（C1/C4）；③旧配置零改动可载（T4 五形态）、裸 slug 解析与目录校验行为逐字不变（R11/S3）、废弃键按精确路径登记且 gemini 同名键不误报（U11），registry-parity 对 config.ts 的既有豁免先例仍覆盖；④原生枚举与厂商 profile 校验的三态（采到即拒并列可用值/取不到跳过并点名）与 slug 规则同口径，reasoningLevelsFor 钩子不漏厂商私有结构进 preflight，探针只收可见项、失败 profile 无条目（RL1）；⑤routeModel 删净——src 无活引用，review/preflight/zcodeProbeModel 三个调用点、注释、测试与 EV-226 结案全部对齐。发现一条 minor：空串裸 slug 与 default_tier 的组合语义在计划文本与实现之间分叉且无用例钉住（GLM-01）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/adapters/base.ts:1955-1963（resolveTier 第一段 else-if 链）；test/unit/tier-resolve.test.ts R4",
+      "problem": "空串裸 slug 的处置两份文本各说各话，且分叉形态无用例。计划 r2 §3.3 写「空串裸 slug 按『无模型』处理（与今天 routeModel 的 falsy 判定同）」，计划三审 CODEX-03 接受项的预期也是「空串 slug 仍可加载、退 64」；而实现把空串格子当作第一段未命中（base.ts:1955 的 typeof cell === 'string' && cell 不成立），落到 :1961 的 default_tier 分支——配置同时写了 agents.<id>.default_tier 时，原本在 slug 校验以 64 拦下的空串格子会静默解析成默认档的模型照常发起，CODEX-03 的「退 64」预期在该组合下不成立。代码注释（:1909「空串裸 slug 按未命中」）与计划（「按无模型处理」）语义不同，R4 只钉了没有 default_tier 的形态（断言 model === null），带 default_tier 的组合无任何用例。",
+      "evidence": "实际读过 src/trivium/adapters/base.ts:1893-1977（注释与 else-if 链）、.reviews/M11-配置契约与档位解析/plan/2026-10-07-M11-配置契约与档位解析-r2-claude.md §3.3 与 §5.1（CODEX-03 段）、被审 diff 中 test/unit/tier-resolve.test.ts 的 R4 用例（空串格子配置未设 default_tier）。",
+      "suggestion": "二选一并钉住：若「未命中→落到 default_tier」是想要的语义，把 11.5 正文与计划句改准为「按未命中处理」，并在 tier-resolve 补一例（空串格子 + default_tier ⇒ agent_default 解析、不退 64）；若要维持「空串=无模型、退 64」，让空串格子直接终止第一段（missingTier 之外再记一格，由 checkModelSlugs 以现有「未定义模型」文案报）。若维持现行为不改，至少补用例消除两份文本的分叉。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "resolveTier 的四格取值规则与设计 11.5（P-6/AGY-01 统一后）逐格一致：全覆盖判定按基础组合实际给出的键计、补全（厂商 profile 回落、gemini 阶段级 effort 回落）不算基础组合提供，档位部分覆盖保留档位名与来源、被覆盖字段来自档位时告警（R5～R8 矩阵与实现逐一核对）",
+    "第一段次序（cli.tier > 格子三形态 > default_tier）、未定义档记 missingTier 不静默落下一级、厂商 profile 三层次序、非 openai vendor 恒 null 且 smuggle 进来的 profile 被解析层丢弃（R1～R3、R9）",
+    "过渡闸按 P-1 A 落地且恰好覆盖「写了却不下传」：effort 来自档位/格子/命令行（slug 已编码档位豁免——那一格永不生效）、档位 profile 不等于 agents.codex.profile 时退 64 指向第 6 步；两键同改换家族不被拦（C4）、gemini 未写 effort 的残余与 CLI 覆盖模型两种形态只告警（C6，含 tierSource override 形态）",
+    "第 5/6 步未提前做也未被写成已达成：cli.ts 不在改动面、无新旗标；codex 适配器 -p 与 profile_requested 仍取 agents.codex.profile；run.json 不写 tier/tier_source；PRD v1.4.21 只补 FR-30 进度句不翻达成；设计 11.5/12.1/13.1.1、BACKLOG EV-22/EV-27、测试报告的分期标注一致",
+    "旧配置兼容面成立：schema 裸 slug 保持无 minLength、openai 支 effort 标 deprecated 移出 required 且类型不放宽（T5）、默认值删 codex.effort 留 gemini.effort、DEPRECATED_CONFIG_KEYS 精确路径不误伤 gemini（U11）、裸 slug 仍按 agents.codex.profile 的目录校验（S3）、R11 对内置默认与本仓配置逐格等价",
+    "mergeConfigLayer 的原子节点实现与「整段/整格替换」规范一致（tiers 整段、格子整格、null 语义与 deepMerge 既有行为对齐、T6 正反两例），且不动 deepMerge 通用语义",
+    "routeModel 删参迁移完整：src 全仓无活引用，review.ts/preflight.ts/zcodeProbeModel 三个调用点、五处注释残留、两个测试文件与 EV-226 结案对齐；review.ts 的 69 分支按 P-4 A 保留为防御并注明不可达",
+    "reasoningLevelsFor 三态与 catalogModelsFor 的「采集失败≠空目录」纪律同口径：codex 按 profile 取目录（无 profile 取基底、空枚举 unknown）、agy 后缀派生（modelEncodesEffort 判据只认 low/medium/high 后缀）、glm none、claude unknown（P-2 A）；探针 reasoning_levels 只收可见项、失败 profile 无条目、旧探针结论按取不到跳过（RL1），persistProbe 以 existing 克隆为起点故「基底失败保留上次结论」的注释属实",
+    "checkModelAgainstCatalog 的 vendorProfile 可选参数向后兼容：undefined 仍取 agents.codex.profile、null 走基底目录，gemini/glm 不实现钩子照旧回落 probe.models，旧调用行为逐字不变"
+  ],
+  "not_covered": [
+    ".trivium/config.yaml 未读（任务书 8.2 列为不宜读）：P-3 的 agents.codex.effort 三行删改是否落实无法核对——被审 diff 按惯例排除 .trivium/，该文件的改动不在被审对象里；T4 会在测试运行时加载它，粗合法性有测试兜底",
+    "未执行任何命令（只读审查）：typecheck、全量、31 条变异均未复跑，check-1.txt、check-2.txt 与 mutation-spec/mutation-output 证据文件只采信了报告转述的结论行，未逐行核对原始输出",
+    "agy 真实模型目录上的档位后缀派生未实测（计划 §8 自己也标注未实测；H2 是夹具形态的钉住）",
+    "LLD、PROTOCOL、MANUAL、PRD、主设计等文档的收口只经被审 diff 的改动行核对，未另读整份文件检查上下文一致性",
+    "codex 真机上 debug models 新输出（逐模型 supported_reasoning_levels）的解析未实测，只核了假 codex 夹具（RL1）"
+  ],
+  "consulted": [
+    ".reviews/M11-配置契约与档位解析/code/_meta/changes-20261007T152248Z.diff",
+    ".reviews/M11-配置契约与档位解析/plan/2026-10-07-M11-配置契约与档位解析-r2-claude.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/probes/codex.ts",
+    "test/helpers/fixture.ts",
+    "test/unit/registry-parity.test.ts",
+    "skills/dual-critic/schema/config.v2.json（经被审 diff 全段）",
+    "src/trivium/config.ts（经被审 diff 全段）",
+    "src/trivium/types.ts（经被审 diff 全段）",
+    "src/trivium/preflight.ts（经被审 diff 全段与工作树检索）",
+    "src/trivium/adapters/zcode.ts（经被审 diff 与工作树检索）",
+    "test/unit/tier-resolve.test.ts（经被审 diff 全文）",
+    "test/unit/config-schema.test.ts（经被审 diff 新增段）",
+    "test/unit/config-consumers.test.ts（经被审 diff 新增段）",
+    "test/integration/no-artifacts.test.ts（经被审 diff 新增段）",
+    "doc/08_project/BACKLOG.md（经被审 diff 改动行）"
+  ]
+}
