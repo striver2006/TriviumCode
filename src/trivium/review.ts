@@ -1065,7 +1065,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
        * 后果两重：①注入侧——claude 的 `--settings` 按这个集合逐条生成，
        * 规模放大一个数量级（实测 1620 条规则 / 202,785 字节 / 占 ARG_MAX 的 19.3%）；
        * ②隔离侧——`freeze.ts` 自己写明剪枝的理由是「非 Claude Driver 下，全仓其它主题的
-       * `-claude.md` 原稿整批进禁读集，审核者正常读取即 peer_leak 作废重跑」，
+       * `-claude.md` 原稿整批进禁读集，审核者正常读取即 peer_leak、该侧结论作废」，
        * 那条被点名要防的**误伤面此刻是敞开的**。
        *
        * **这是同一个错误的第二次**：下面 `driver` 字段的注释记的就是第一次
@@ -1080,7 +1080,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
        * 而这个唯一调用入口一直没传——M9 第 5 步补上。
        *
        * 漏传时禁读集按缺省 Driver 剪：非 Claude Driver 的原稿会整批进禁读集，
-       * 审核者正常读取即判 peer_leak、整次运行作废重跑。
+       * 审核者正常读取即判 peer_leak、该侧结论作废。
        */
       driver,
       subjectPath,

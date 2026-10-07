@@ -1,0 +1,166 @@
+{
+  "targets": [
+    "src/trivium/freeze.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/types.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/deny-matrix.test.js",
+    "dist/test/test/integration/fault-injection.test.js"
+  ],
+  "cases": [
+    {
+      "id": "A1a",
+      "desc": "_meta 结构化意见与回退件不再入禁读集（矩阵）",
+      "file": "src/trivium/freeze.ts",
+      "find": "        if (owner !== critic && isAgentId(owner)) out.add(rel);\n",
+      "replace": "        if (owner !== critic && isAgentId(owner)) void rel;\n",
+      "expect": "dist/test/test/unit/deny-matrix.test.js"
+    },
+    {
+      "id": "A1b",
+      "desc": "_meta 结构化意见与回退件不再入禁读集（集成）",
+      "file": "src/trivium/freeze.ts",
+      "find": "        if (owner !== critic && isAgentId(owner)) out.add(rel);\n",
+      "replace": "        if (owner !== critic && isAgentId(owner)) void rel;\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "A2a",
+      "desc": "对端 .md 审查件（review schema）不再入禁读集（矩阵）",
+      "file": "src/trivium/freeze.ts",
+      "find": "      if (verdict === 'peer-review' || verdict === 'indeterminate') out.add(rel);\n",
+      "replace": "      if (verdict === 'indeterminate') out.add(rel);\n",
+      "expect": "dist/test/test/unit/deny-matrix.test.js"
+    },
+    {
+      "id": "A2b",
+      "desc": "对端 .md 审查件（review schema）不再入禁读集（集成）",
+      "file": "src/trivium/freeze.ts",
+      "find": "      if (verdict === 'peer-review' || verdict === 'indeterminate') out.add(rel);\n",
+      "replace": "      if (verdict === 'indeterminate') out.add(rel);\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "A3a",
+      "desc": "运行根不再入禁读集（矩阵）",
+      "file": "src/trivium/freeze.ts",
+      "find": "  out.add(expandHome(cfg.runtime.run_root));\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/deny-matrix.test.js"
+    },
+    {
+      "id": "A3b",
+      "desc": "运行根不再入禁读集（集成）",
+      "file": "src/trivium/freeze.ts",
+      "find": "  out.add(expandHome(cfg.runtime.run_root));\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "A4aa",
+      "desc": "跳过 codex 的 .md 审查件（第三方漏禁）（矩阵）",
+      "file": "src/trivium/freeze.ts",
+      "find": "      if (parsed.role === critic) continue; // 己方历史产出：合法输入\n",
+      "replace": "      if (parsed.role === critic || parsed.role === 'codex') continue; // 己方历史产出：合法输入\n",
+      "expect": "dist/test/test/unit/deny-matrix.test.js"
+    },
+    {
+      "id": "A4ab",
+      "desc": "跳过 codex 的 .md 审查件（第三方漏禁）（集成）",
+      "file": "src/trivium/freeze.ts",
+      "find": "      if (parsed.role === critic) continue; // 己方历史产出：合法输入\n",
+      "replace": "      if (parsed.role === critic || parsed.role === 'codex') continue; // 己方历史产出：合法输入\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "A4ba",
+      "desc": "_meta 判据放过 codex（第三方漏禁）（矩阵）",
+      "file": "src/trivium/freeze.ts",
+      "find": "        if (owner !== critic && isAgentId(owner)) out.add(rel);\n",
+      "replace": "        if (owner !== critic && isAgentId(owner) && owner !== 'codex') out.add(rel);\n",
+      "expect": "dist/test/test/unit/deny-matrix.test.js"
+    },
+    {
+      "id": "A4bb",
+      "desc": "_meta 判据放过 codex（第三方漏禁）（集成）",
+      "file": "src/trivium/freeze.ts",
+      "find": "        if (owner !== critic && isAgentId(owner)) out.add(rel);\n",
+      "replace": "        if (owner !== critic && isAgentId(owner) && owner !== 'codex') out.add(rel);\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "A4c",
+      "desc": "运行根下第三段为 codex 也判己方材料（第三方漏判）",
+      "file": "src/trivium/freeze.ts",
+      "find": "      if (seg[2] === ctx.critic) return 'own-run-material';\n",
+      "replace": "      if (seg[2] === ctx.critic || seg[2] === 'codex') return 'own-run-material';\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "N1",
+      "desc": "己方历史产出不再跳过",
+      "file": "src/trivium/freeze.ts",
+      "find": "      if (parsed.role === critic) continue; // 己方历史产出：合法输入\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/deny-matrix.test.js"
+    },
+    {
+      "id": "N2a",
+      "desc": "无 schema 一律判不出（当轮 Driver 原稿也禁）（矩阵）",
+      "file": "src/trivium/freeze.ts",
+      "find": "  return role === driver ? 'own-or-driver' : 'indeterminate';\n",
+      "replace": "  return 'indeterminate';\n",
+      "expect": "dist/test/test/unit/deny-matrix.test.js"
+    },
+    {
+      "id": "N2b",
+      "desc": "无 schema 一律判不出（当轮 Driver 原稿也禁）（集成）",
+      "file": "src/trivium/freeze.ts",
+      "find": "  return role === driver ? 'own-or-driver' : 'indeterminate';\n",
+      "replace": "  return 'indeterminate';\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "B1",
+      "desc": "逐侧 peerArtifactRead 恒为 false",
+      "file": "src/trivium/guard.ts",
+      "find": "    peerArtifactRead: peerHits.length > 0 || cmdVoiding.hits.length > 0,\n",
+      "replace": "    peerArtifactRead: false,\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "B2",
+      "desc": "闸门不再收集作废侧",
+      "file": "src/trivium/gate.ts",
+      "find": "    if (pathVoiding || viaCmd?.hit === true) voidedSides.push(c);\n",
+      "replace": "    if (pathVoiding || viaCmd?.hit === true) void c;\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "B3",
+      "desc": "闸门只看入选集合的前两侧（第三侧作废不被排除）",
+      "file": "src/trivium/gate.ts",
+      "find": "  const voidedSides: CriticId[] = [];\n  for (const c of criticsOf(runMeta)) {\n",
+      "replace": "  const voidedSides: CriticId[] = [];\n  for (const c of criticsOf(runMeta).slice(0, 2)) {\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "B4",
+      "desc": "作废类只剩第①类（运行根下对端输出不再作废）",
+      "file": "src/trivium/types.ts",
+      "find": "export const VOIDING_DENY_CATEGORIES: readonly DenyCategory[] = ['peer-artifact', 'peer-run-output'];\n",
+      "replace": "export const VOIDING_DENY_CATEGORIES: readonly DenyCategory[] = ['peer-artifact'];\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "B5",
+      "desc": "牵连：全局 peer_artifact_read 为真即每侧都作废",
+      "file": "src/trivium/gate.ts",
+      "find": "    if (pathVoiding || viaCmd?.hit === true) voidedSides.push(c);\n",
+      "replace": "    if (runMeta?.guard?.peer_artifact_read === true) voidedSides.push(c);\n",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    }
+  ]
+}

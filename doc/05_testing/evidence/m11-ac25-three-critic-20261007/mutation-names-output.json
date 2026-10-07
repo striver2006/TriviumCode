@@ -1,0 +1,307 @@
+{
+  "targets_sha256": {
+    "src/trivium/freeze.ts": "f4d78cc45d101891f889d3aea0847c7d018fb94cd94656864abb8036a30488a6",
+    "src/trivium/guard.ts": "2864b9762663bc3034a1e484fdeffc3b058e28f9cd69383d663b8780debf83ee",
+    "src/trivium/gate.ts": "e94d1e0ffd43dd4e37693e67ad0204d3f6e5248c9d7557eeb653f0fa7b03255d",
+    "src/trivium/types.ts": "2aa62dbf04b10281e6b1907e1345d79e087b467a4d9d40433989450428f10bc1"
+  },
+  "results": [
+    {
+      "id": "A1a",
+      "desc": "_meta 结构化意见与回退件不再入禁读集（矩阵）",
+      "suite": "dist/test/test/unit/deny-matrix.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "正例：_meta 下的结构化意见原文同样进 deny 集合（措施 a 的缺口修补）",
+        "三审 × 四种当轮 Driver：每个审核者的禁读集与期望逐元素相等（含两个方向的跨轮角色翻转）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "A1b",
+      "desc": "_meta 结构化意见与回退件不再入禁读集（集成）",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "AC-25 三审 · 归档通道：codex 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：gemini 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：glm 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · Driver 轮换：Driver=glm、claude 当审核者读另两方产出 → 只有 claude 作废，glm 原稿不在任何命中里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 100
+    },
+    {
+      "id": "A2a",
+      "desc": "对端 .md 审查件（review schema）不再入禁读集（矩阵）",
+      "suite": "dist/test/test/unit/deny-matrix.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "跨轮角色翻转：上轮当审核者的 claude 审查件必须禁读，本轮 claude 原稿不禁",
+        "正例：他方审查件的 .md 正文进 deny 集合",
+        "三审 × 四种当轮 Driver：每个审核者的禁读集与期望逐元素相等（含两个方向的跨轮角色翻转）",
+        "调用链：freeze() 透传 driver，非 Claude Driver 的原稿不被误禁",
+        "Driver 换成 ZCode 时：glm 原稿放行，claude 审查件对 gemini 仍禁"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "A2b",
+      "desc": "对端 .md 审查件（review schema）不再入禁读集（集成）",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "读到对端审查产出 → 判作废（分档：会作废的那一档）",
+        "AC-25 三审 · 归档通道：codex 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：gemini 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：glm 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · Driver 轮换：Driver=glm、claude 当审核者读另两方产出 → 只有 claude 作废，glm 原稿不在任何命中里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 101
+    },
+    {
+      "id": "A3a",
+      "desc": "运行根不再入禁读集（矩阵）",
+      "suite": "dist/test/test/unit/deny-matrix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "三审 × 四种当轮 Driver：每个审核者的禁读集与期望逐元素相等（含两个方向的跨轮角色翻转）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "A3b",
+      "desc": "运行根不再入禁读集（集成）",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "读对端那一侧的运行输出 → 判作废（分档：② 对端输出）",
+        "命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01）",
+        "AC-25 三审 · 运行根通道：codex 侧读另两方本轮的原始输出 → 只有它作废（第②类）",
+        "AC-25 三审 · 运行根通道：gemini 侧读另两方本轮的原始输出 → 只有它作废（第②类）",
+        "AC-25 三审 · 运行根通道：glm 侧读另两方本轮的原始输出 → 只有它作废（第②类）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 101
+    },
+    {
+      "id": "A4aa",
+      "desc": "跳过 codex 的 .md 审查件（第三方漏禁）（矩阵）",
+      "suite": "dist/test/test/unit/deny-matrix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "三审 × 四种当轮 Driver：每个审核者的禁读集与期望逐元素相等（含两个方向的跨轮角色翻转）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "A4ab",
+      "desc": "跳过 codex 的 .md 审查件（第三方漏禁）（集成）",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "AC-25 三审 · 归档通道：gemini 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：glm 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · Driver 轮换：Driver=glm、claude 当审核者读另两方产出 → 只有 claude 作废，glm 原稿不在任何命中里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 101
+    },
+    {
+      "id": "A4ba",
+      "desc": "_meta 判据放过 codex（第三方漏禁）（矩阵）",
+      "suite": "dist/test/test/unit/deny-matrix.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "三审 × 四种当轮 Driver：每个审核者的禁读集与期望逐元素相等（含两个方向的跨轮角色翻转）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "A4bb",
+      "desc": "_meta 判据放过 codex（第三方漏禁）（集成）",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "AC-25 三审 · 归档通道：gemini 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：glm 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · Driver 轮换：Driver=glm、claude 当审核者读另两方产出 → 只有 claude 作废，glm 原稿不在任何命中里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 103
+    },
+    {
+      "id": "A4c",
+      "desc": "运行根下第三段为 codex 也判己方材料（第三方漏判）",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "AC-25 三审 · 运行根通道：gemini 侧读另两方本轮的原始输出 → 只有它作废（第②类）",
+        "AC-25 三审 · 运行根通道：glm 侧读另两方本轮的原始输出 → 只有它作废（第②类）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 102
+    },
+    {
+      "id": "N1",
+      "desc": "己方历史产出不再跳过",
+      "suite": "dist/test/test/unit/deny-matrix.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "负例：己方历史审查产出不禁（审查员要看自己上轮说过什么）",
+        "三审 × 四种当轮 Driver：每个审核者的禁读集与期望逐元素相等（含两个方向的跨轮角色翻转）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "N2a",
+      "desc": "无 schema 一律判不出（当轮 Driver 原稿也禁）（矩阵）",
+      "suite": "dist/test/test/unit/deny-matrix.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "跨轮角色翻转：上轮当审核者的 claude 审查件必须禁读，本轮 claude 原稿不禁",
+        "负例：审核者读当轮原稿不触发禁读",
+        "fail-closed 不外扩：无 schema 且后缀等于 driver 的，按原稿放行",
+        "三审 × 四种当轮 Driver：每个审核者的禁读集与期望逐元素相等（含两个方向的跨轮角色翻转）",
+        "调用链：freeze() 透传 driver，非 Claude Driver 的原稿不被误禁",
+        "Driver 换成 ZCode 时：glm 原稿放行，claude 审查件对 gemini 仍禁"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "N2b",
+      "desc": "无 schema 一律判不出（当轮 Driver 原稿也禁）（集成）",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "AC-25 三审 · 归档通道：codex 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：gemini 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：glm 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · Driver 轮换：Driver=glm、claude 当审核者读另两方产出 → 只有 claude 作废，glm 原稿不在任何命中里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 101
+    },
+    {
+      "id": "B1",
+      "desc": "逐侧 peerArtifactRead 恒为 false",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 11,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "读到对端审查产出 → 判作废（分档：会作废的那一档）",
+        "读对端那一侧的运行输出 → 判作废（分档：② 对端输出）",
+        "命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01）",
+        "AC-25 三审 · 归档通道：codex 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：gemini 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：glm 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 运行根通道：codex 侧读另两方本轮的原始输出 → 只有它作废（第②类）",
+        "AC-25 三审 · 运行根通道：gemini 侧读另两方本轮的原始输出 → 只有它作废（第②类）",
+        "AC-25 三审 · 运行根通道：glm 侧读另两方本轮的原始输出 → 只有它作废（第②类）",
+        "AC-25 三审 · 两侧作废：有效侧只剩一家，共同阻断记「未执行」并告警，严格策略下仍不中止",
+        "AC-25 三审 · Driver 轮换：Driver=glm、claude 当审核者读另两方产出 → 只有 claude 作废，glm 原稿不在任何命中里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 101
+    },
+    {
+      "id": "B2",
+      "desc": "闸门不再收集作废侧",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "AC-25 三审 · 归档通道：codex 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：gemini 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：glm 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 两侧作废：有效侧只剩一家，共同阻断记「未执行」并告警，严格策略下仍不中止"
+      ],
+      "firstLines": [],
+      "elapsed_s": 102
+    },
+    {
+      "id": "B3",
+      "desc": "闸门只看入选集合的前两侧（第三侧作废不被排除）",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "AC-25 三审 · 归档通道：glm 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算"
+      ],
+      "firstLines": [],
+      "elapsed_s": 104
+    },
+    {
+      "id": "B4",
+      "desc": "作废类只剩第①类（运行根下对端输出不再作废）",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 5,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "读对端那一侧的运行输出 → 判作废（分档：② 对端输出）",
+        "命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01）",
+        "AC-25 三审 · 运行根通道：codex 侧读另两方本轮的原始输出 → 只有它作废（第②类）",
+        "AC-25 三审 · 运行根通道：gemini 侧读另两方本轮的原始输出 → 只有它作废（第②类）",
+        "AC-25 三审 · 运行根通道：glm 侧读另两方本轮的原始输出 → 只有它作废（第②类）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 103
+    },
+    {
+      "id": "B5",
+      "desc": "牵连：全局 peer_artifact_read 为真即每侧都作废",
+      "suite": "dist/test/test/integration/fault-injection.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "AC-25 三审 · 归档通道：codex 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：gemini 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 归档通道：glm 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算",
+        "AC-25 三审 · 两侧作废：有效侧只剩一家，共同阻断记「未执行」并告警，严格策略下仍不中止"
+      ],
+      "firstLines": [],
+      "elapsed_s": 104
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "三个审查焦点全部回源码与证据核实，未发现 blocker/major。①禁读矩阵覆盖：deny-matrix 新用例把 Driver 论域放开到 ALL_AGENT_IDS（4 家 × 各 3 审核者 = 12 格），逐元素相等且漏禁/多禁两个方向都红，两个方向的跨轮角色翻转都在格里（翻转 a 的 _meta 三件单列、翻转 b 钉住 fail-closed 现行语义）；集成侧补 Driver=glm 轮换一格并断言当轮 Driver 原稿不在任何命中里。②桩用例咬住判定而非同义反复：期望从种子清单独立推出（不从 deny_paths 反推），归档通道逐条核 8 条命中与类别；变异 A4a/A4b/A4c/B3 是「只漏第三方/只看前两侧」的形态，既有两侧用例在它们下面全绿、只有新用例红，直接回答了 tautology 问题；装置 19/19 咬住且有逐条失败名单。③严格策略那一句与源码现行行为一致：decideMode 只看各侧 status，终态分支只认 subject_drift/driftAction=fail/mode.abort，全仓无 failed(peer_leak) 写入点，PRD v1.4.20/设计 12.1/EV-225 的表述逐字属实，没有把未实现的写成已达成。本补丁 src/ 仅注释与桩（零运行期行为改变），与计划 r2 §0.2 的显式登记一致。仅 1 条 nit：证据目录命名与本目录 README 自述约定不一致。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/README.md:124 与 doc/05_testing/evidence/ac25-three-critic-20261007/",
+      "problem": "证据目录命名与本目录 README 自述的现行约定不一致。README 末段写明「〈名称〉取本主题实施报告文件名里的〈名称〉段、下划线换成连字符」，本批报告名为 REPORT_2026-10-07_m11_ac25_three_critic.md，按该约定目录应为 m11-ac25-three-critic-20261007（同批的 m11-tier-facts 报告就保留了 m11 前缀），实际落成的目录删掉了 m11 段。doc-archive-index 契约测试只校链接可解析、不校命名，所以不会红；但这条约定是靠人读遵守的，同批两个目录一个保留前缀一个删掉，下一个按约定反查证据目录的人会找不到。",
+      "evidence": "实际读过 doc/05_testing/README.md:124（本批登记行，链接指向 evidence/ac25-three-critic-20261007/）、doc/05_testing/README.md 末段约定句、ls doc/05_testing/evidence/（ac25-three-critic-20261007 与 m11-tier-facts-20261007 并存）、doc/05_testing/REPORT_2026-10-07_m11_ac25_three_critic.md 头部「证据目录」行；并核过 test/contract/doc-archive-index.test.ts 只断言 evidence 链接解析存在（:237 附近），不断言目录命名形态。",
+      "suggestion": "二选一：把目录改名为 m11-ac25-three-critic-20261007 并同步改报告与 README 的链接；或在 README 约定句补一句「里程碑前缀（m11 等）可省」。改动 touches 三处路径引用，成本一行级。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "矩阵用例把 Driver 论域放开到 ALL_AGENT_IDS、审核者取 CRITICS 减当轮 Driver，并对 critics.length >= 3 设了前置断言——注册表扩第五家时矩阵自动扩格、缩小时当场红，不靠人记得同步。",
+    "期望集按角色直接写出且逐元素 deepEqual：漏禁报「隔离破洞」、多禁报「误伤，读了就作废」，两个方向都能红；翻转 a 的 _meta 三件单列，为将来给 _meta 分支引入 Driver 特例预置了变红点。",
+    "集成用例的期望一律从种子清单（priorRoundOf/stubOf）独立推出、不从 run.json.deny_paths 反推，注释明说反推会让用例永绿——这正面回答了「桩用例是不是同义反复」。",
+    "变异组合选得准：A4a/A4b/A4c（只漏 codex）与 B3（只看前两侧）在既有两侧用例下应全绿、只有新用例红，恰好证明新用例测到了旧用例测不到的东西；A3a 只红新矩阵一格（既有 deny-matrix 没有一格断言运行根）也如实写进报告 §5 而没有粉饰。",
+    "严格策略那一句的核实链完整且可复算：decideMode（runner.ts:316-376）只按 ok/parse_fallback 与其余分档，review.ts 终态分支只认 subject_drift/driftAction=fail/mode.abort，grep 全仓无 failed(peer_leak) 写入点；BACKLOG EV-225 还预先登记了「本条落地时那几条断言要跟着改」，没有把过渡处置说成充分机制。",
+    "桩 run_material_leak 改点名 peer:<id> 并做非空/已登记/非本侧三段校验、删去裸 'peer'，修掉了 M9 启用 claude 以来两侧用例「读的其实是未入选的 claude 目录、照样绿」的真问题；注释如实记录桩拿不到当轮 Driver 与入选集合的限制，不合格即 failedResult 不静默空转。",
+    "assertStrictRunUnaffected 把 strict、joint_blocker_policy: warn、无 --allow-single 三个配置依赖显形为前置断言——缺省值将来变了会红在前置核上而不是红在 AC-25 断言上，排查带不偏。",
+    "本补丁对 src/ 的改动只有五处注释与桩（桩只在 TRIVIUM_STUB_CRITIC 下生效），零运行期行为改变；对上位计划 §4.3「只加测试与文档」字面的偏离（桩这一处）在计划 r2 §0.2 与版本台账里都做了显式登记。"
+  ],
+  "not_covered": [
+    "本环境只读、禁止写命令，无法独立执行 npm run build / npm test / 变异装置：「全量 2948/2946/0/2 两次相同」「变异 19/19 咬住」「doctor --selftest 14/14」均采信提交的证据文件（check-1.txt、check-2.txt 的头部命令与尾部计数、mutation-output.txt 的逐条 verdict、doctor-selftest.txt），未复跑。",
+    "check-1.txt / check-2.txt 各约三千行，只读了开头（确认是 typecheck+build+test 全量）与结尾计数；逐条用例清单未通读。mutation-names-output.json 的逐条红名单未逐格解析，只核对了报告表格与 mutation-output.txt 的 fail 数一致。",
+    "「系统临时目录 trivium-deny- 新建数为 0」的泄漏统计未复测，采信报告 §4 与 count-new.mjs 的既有口径。",
+    "证据目录下的 gen-mutation-spec.mjs / mutation-names.mjs 两个脚本只抽查了头部与生成规格条数（19 条），未逐行审其锚点截取逻辑。",
+    "按禁读清单未读另一位审查员的任何产出（gemini/glm 计划件及其结构化意见），未读 .trivium/runs 下其它侧子树；grep 一律限定了具体路径，未从项目根递归归档目录。",
+    "README.md、doc/README.md 等门面文档未通读——本补丁对它们无同步点（改动同步清单所列各项均已逐一对账）。"
+  ],
+  "consulted": [
+    ".reviews/M11-AC25三审检测收口/code/_meta/changes-20261007T104116Z.diff",
+    ".reviews/M11-AC25三审检测收口/plan/2026-10-07-M11-AC25三审检测收口-r2-claude.md",
+    "src/trivium/freeze.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/types.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/render.ts",
+    "test/unit/deny-matrix.test.ts",
+    "test/unit/scratch-guard.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/helpers/fixture.ts",
+    "test/helpers/scratch.ts",
+    "test/helpers/doc-archive-index.ts",
+    "test/contract/doc-archive-index.test.ts",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/ADR_002_multicritic_isolation.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-07_m11_ac25_three_critic.md",
+    "doc/05_testing/evidence/ac25-three-critic-20261007/check-1.txt",
+    "doc/05_testing/evidence/ac25-three-critic-20261007/check-2.txt",
+    "doc/05_testing/evidence/ac25-three-critic-20261007/doctor-selftest.txt",
+    "doc/05_testing/evidence/ac25-three-critic-20261007/mutation-output.txt",
+    "doc/05_testing/evidence/ac25-three-critic-20261007/mutation-spec.json",
+    "doc/08_project/BACKLOG.md"
+  ]
+}

@@ -8,18 +8,21 @@
  *
  * 另一侧同样重要：**不能误伤**。deny 集合与 `checkPeerLeak` 的核验集合同源，
  * 一旦把被审对象原稿错误地放进去，审核者正常读取即触发 peer_leak、
- * 该侧作废重跑——代价不是「少读一份」，是「读了就作废」。
+ * 该侧结论作废——代价不是「少读一份」，是「读了就作废」。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { enumerateDenyPaths, freeze } from '../../src/trivium/freeze.js';
 import { checkPeerLeak } from '../../src/trivium/adapters/base.js';
 import { defaultConfig } from '../../src/trivium/config.js';
+import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
+import { CRITICS, type AgentId, type CriticId } from '../../src/trivium/types.js';
+import { expandHome } from '../../src/trivium/util/fsx.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { scratchDir } from '../helpers/scratch.js';
 
 /** 一份合格的审查件：front-matter 带 review schema，这是角色判定的主判据 */
 function reviewDoc(role: string): string {
@@ -43,15 +46,15 @@ function draftDoc(): string {
   return ['# 实施计划', '', '## 1. 背景', '正文若干。'].join('\n');
 }
 
-/** 一份裁决件 */
-function dispositionDoc(role: string): string {
+/** 一份裁决件（缺省为计划阶段的 revised；代码阶段传 response / code） */
+function dispositionDoc(role: string, kind: 'revised' | 'response' = 'revised', stage: 'plan' | 'code' = 'plan'): string {
   return [
     '---',
     'schema: trivium.disposition.v1',
     'topic: 某主题',
-    'stage: plan',
+    `stage: ${stage}`,
     `role: ${role}`,
-    'kind: revised',
+    `kind: ${kind}`,
     '---',
     '',
     '# 计划修订',
@@ -65,7 +68,8 @@ interface Fixture {
 }
 
 async function makeFixture(files: Record<string, string>): Promise<Fixture> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-deny-'));
+  // 经 scratchDir 建（EV-208）：一返回就登记，本进程退出时兜底删；各格 finally 里的 cleanup() 照旧先删
+  const root = await scratchDir('trivium-deny-');
   const archiveRoot = path.join(root, '.reviews');
   for (const [rel, content] of Object.entries(files)) {
     const abs = path.join(archiveRoot, rel);
@@ -75,8 +79,13 @@ async function makeFixture(files: Record<string, string>): Promise<Fixture> {
   return { root, archiveRoot, cleanup: () => fs.rm(root, { recursive: true, force: true }) };
 }
 
-const deny = (f: Fixture, critic: 'gemini' | 'glm', driver: 'claude' | 'codex' | 'gemini' | 'glm') =>
-  enumerateDenyPaths(defaultConfig(), f.root, f.archiveRoot, critic, driver);
+/**
+ * 审核者与 Driver 放开到全部已登记 Agent（M11 第 3 步，AC-25 三审形态）。
+ * 此前 `critic` 只收 gemini / glm 两值——两侧形态下够用，三审矩阵写不出来。
+ * `topic` 缺省 null（全归档扫描），与既有用例的调用方式相同；矩阵用例按生产口径传主题。
+ */
+const deny = (f: Fixture, critic: CriticId, driver: AgentId, topic: string | null = null) =>
+  enumerateDenyPaths(defaultConfig(), f.root, f.archiveRoot, critic, driver, topic);
 
 // ───────────────── 1. D-3 的回归锚点：跨轮角色翻转 ─────────────────
 
@@ -101,7 +110,7 @@ test('跨轮角色翻转：上轮当审核者的 claude 审查件必须禁读，
     );
     assert.ok(
       !paths.some((p) => p.endsWith('2026-09-13-某主题-claude.md')),
-      '本轮 Driver 原稿被误禁：审核者读被审对象会触发 peer_leak 作废重跑',
+      '本轮 Driver 原稿被误禁：审核者读被审对象会触发 peer_leak、该侧结论作废',
     );
   } finally {
     await f.cleanup();
@@ -242,6 +251,93 @@ test('fail-closed 不外扩：无 schema 且后缀等于 driver 的，按原稿�
 
 // ───────────────── 5. Driver 换家后的对称性 ─────────────────
 
+/*
+ * ── 三审 × 四种当轮 Driver 的期望禁读集（M11 第 3 步，AC-25）──
+ *
+ * 上面各格都是两侧形态、手挑一两个组合。这一条把论域放满：Driver 取全部已登记 Agent，
+ * 审核者取「启用的审核者减当轮 Driver」，逐个审核者断言禁读集与期望**逐元素相等**——
+ * 多禁一条是误伤（读了就作废），漏禁一条是隔离破洞，两个方向都要红。
+ *
+ * 期望不从被测函数反推，按角色直接写出：
+ *   - 禁：另两家审核者的全部产出（审查件正文含重跑轮与代码阶段、`_meta` 结构化意见与两种回退件及失败记录、
+ *     更早一轮它们当 Driver 时的原稿与裁决件）；当轮 Driver **上一轮当审核者**时留下的审查件与 `_meta` 四件；
+ *     编排器状态目录与运行根；
+ *   - 不禁：己方的全部产出；当轮 Driver 的本轮原稿与两种裁决件。
+ *
+ * 两个方向的跨轮角色翻转都在格里：
+ *   - **翻转 a**（上一轮审核者 → 本轮 Driver）：D-3 的那个破洞——后缀等于当轮 Driver 的审查件按后缀会被放行。
+ *     `_meta` 那四件单列（计划双审 CODEX-02 ≡ AGY-01 ≡ GLM-01）：`_meta` 判据今天不看 driver，
+ *     这四件与普通对端条目同处置；单列是为了将来给 `_meta` 分支引入 Driver 特例时这里当场红。
+ *
+ * `_meta` 每家种四件，含失败 / 超时侧落的 `.failed.json`（代码双审 GLM-01）：`_meta` 判据按文件名整体命中，
+ * 它同在覆盖内；「失败记录只是错误信息」恰是最可能被单独开特例的一种，不种就没有断言替它把关。
+ *   - **翻转 b**（更早一轮 Driver → 本轮审核者）：它当年的原稿（无 schema）与裁决件，后缀既不是
+ *     读者自己也不是当轮 Driver，`classifyArtifact` 判不出即禁（fail-closed）。这是**现行保守语义**，
+ *     本条只是钉住；将来放宽时这一格要随之改。
+ *
+ * 夹具不放凭据形态的文件，`sensitive_globs` 那部分为空，所以可以做全集相等而不只是包含。
+ */
+test('三审 × 四种当轮 Driver：每个审核者的禁读集与期望逐元素相等（含两个方向的跨轮角色翻转）', async () => {
+  const T = '某主题';
+  const RUN = '20261007T000000Z';
+  const OLD_RUN = '20261001T000000Z';
+  const metaFiles = (owner: string, runId: string): string[] =>
+    ['.json', '.fallback-items.md', '.degraded.json', '.failed.json'].map((s) => `${T}/plan/_meta/review-${owner}-${runId}${s}`);
+  const runRoot = expandHome(defaultConfig().runtime.run_root);
+
+  /** 某家审核者自己的全部产出：对自己一条都不禁，对另两家一条都不漏 */
+  const ownedBy = (c: CriticId): Record<string, string> => ({
+    [`${T}/plan/2026-10-07-${T}-${c}.md`]: reviewDoc(c),
+    [`${T}/plan/2026-10-07-${T}-r2-${c}.md`]: reviewDoc(c),
+    [`${T}/code/2026-10-07-${T}-${c}.md`]: reviewDoc(c),
+    ...Object.fromEntries(metaFiles(c, RUN).map((p) => [p, '{"findings":[]}'])),
+    // 翻转 b：更早一轮 c 当 Driver 时留下的原稿与裁决件
+    [`${T}/plan/2026-09-30-${T}-${c}.md`]: draftDoc(),
+    [`${T}/plan/2026-09-30-${T}-revised-${c}.md`]: dispositionDoc(c),
+  });
+
+  let cells = 0;
+  for (const driver of ALL_AGENT_IDS) {
+    const critics = CRITICS.filter((c) => c !== driver);
+    assert.ok(critics.length >= 3, `Driver=${driver} 时只有 ${critics.length} 家审核者——三审形态没被走到，本条退化成两侧`);
+
+    const driverAllowed: Record<string, string> = {
+      [`${T}/plan/2026-10-07-${T}-${driver}.md`]: draftDoc(),
+      [`${T}/plan/2026-10-07-${T}-revised-${driver}.md`]: dispositionDoc(driver),
+      [`${T}/code/2026-10-07-${T}-response-${driver}.md`]: dispositionDoc(driver, 'response', 'code'),
+    };
+    // 翻转 a：上一轮 driver 当审核者时留下的审查件与 _meta 四件
+    const driverFlipA: Record<string, string> = {
+      [`${T}/plan/2026-10-01-${T}-${driver}.md`]: reviewDoc(driver),
+      ...Object.fromEntries(metaFiles(driver, OLD_RUN).map((p) => [p, '{"findings":[]}'])),
+    };
+    const f = await makeFixture(Object.assign({}, driverAllowed, driverFlipA, ...critics.map(ownedBy)));
+    try {
+      for (const critic of critics) {
+        const expected = [
+          ...critics.filter((c) => c !== critic).flatMap((c) => Object.keys(ownedBy(c))),
+          ...Object.keys(driverFlipA),
+        ].map((rel) => path.join('.reviews', rel));
+        expected.push('.trivium', runRoot);
+
+        const actual = await deny(f, critic, driver, T);
+        const missing = expected.filter((p) => !actual.includes(p));
+        const extra = actual.filter((p) => !expected.includes(p));
+        assert.deepEqual(
+          [...actual].sort(),
+          [...expected].sort(),
+          `Driver=${driver}、审核者=${critic} 的禁读集与期望不符——` +
+            `漏禁（隔离破洞）：${JSON.stringify(missing)}；多禁（误伤，读了就作废）：${JSON.stringify(extra)}`,
+        );
+        cells++;
+      }
+    } finally {
+      await f.cleanup();
+    }
+  }
+  assert.ok(cells >= 12, `只走到 ${cells} 格，应为「每个 Driver × 其余三家审核者」至少 12 格`);
+});
+
 // ───────────── 6. 调用链：deny 矩阵必须在 freeze() 入口上真的生效 ─────────────
 
 test('调用链：freeze() 透传 driver，非 Claude Driver 的原稿不被误禁', async () => {
@@ -275,7 +371,7 @@ test('调用链：freeze() 透传 driver，非 Claude Driver 的原稿不被误�
     assert.ok(
       !snap.denyPaths.some((p) => p.endsWith('2026-09-13-某主题-glm.md')),
       'freeze() 没把 driver 透传给 enumerateDenyPaths：被审原稿进了禁读集，'
-        + '审核者读它即 peer_leak 作废重跑',
+        + '审核者读它即 peer_leak、该侧结论作废',
     );
     assert.ok(
       snap.denyPaths.some((p) => p.endsWith('2026-09-12-某主题-claude.md')),
@@ -428,6 +524,6 @@ test('调用链：freeze() 的真实调用点必须传 topic（不只是函数�
   assert.ok(
     /\bdriver\b/.test(noComments),
     'freeze() 的实参块里没有真实传值的 driver（注释里的不算）——' +
-      '禁读集会按缺省 Driver 剪枝，非 Claude Driver 的被审原稿进禁读集即 peer_leak 作废重跑',
+      '禁读集会按缺省 Driver 剪枝，非 Claude Driver 的被审原稿进禁读集即 peer_leak、该侧结论作废',
   );
 });

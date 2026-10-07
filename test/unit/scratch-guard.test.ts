@@ -51,8 +51,6 @@ const TEMP_DIR_EXEMPT: Record<string, number> = {
   'test/unit/codex-auth-probe.test.ts': 1,
   // 建在 node_modules/ 下（不在系统临时目录），finally 删
   'test/unit/codex-events.test.ts': 1,
-  // cleanup()，各格 finally 调
-  'test/unit/deny-matrix.test.ts': 1,
   // 每格 finally
   'test/unit/mustread-deny.test.ts': 2,
   // CREATED + after（先恢复权限）

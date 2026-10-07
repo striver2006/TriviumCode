@@ -283,7 +283,7 @@ export async function enumerateDenyPaths(
    *
    * 不剪枝有两重代价，其中误伤那重是实打实的：非 Claude Driver 下，全仓**其它
    * 主题**的 `-claude.md` 原稿因无 review schema 且 `role !== driver` 被判
-   * indeterminate，整批进禁读集——审核者正常读取即 `peer_leak` 作废重跑。
+   * indeterminate，整批进禁读集——审核者正常读取即 `peer_leak`、该侧结论作废。
    * 另一重是 I/O：`classifyArtifact` 要读文件，全归档 × 每侧 × 每次运行。
    *
    * 跨主题的他人审查意见不再入集是有意的：那是另一个任务的意见，锚定污染的

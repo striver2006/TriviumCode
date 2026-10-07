@@ -84,7 +84,7 @@ export type StubMode =
   | 'peer_leak'
   /**
    * 读运行根这棵**混合树**下的具体文件——`note: 'own'`（缺省）读本侧那一份与
-   * 编排器的运行时文件，`note: 'peer'` 读对端那一份。
+   * 编排器的运行时文件，`note: 'peer:<id>[,<id>…]'` 读点名的那几家对端各自那一份。
    *
    * 两者撞的是**同一个** deny 条目（整棵运行根），处置却分属「不算命中」与
    * 「判作废」两档。`peer_leak` 的条目筛选分不开它们，所以单列一个形态。
@@ -572,12 +572,40 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
            * 就是它们分属不同子树。
            */
           const runDir = path.dirname(path.dirname(req.out_dir));
-          const peer = CRITICS.find((c) => c !== critic) ?? critic;
           const which = spec.note ?? 'own';
-          const extra =
-            which === 'peer'
-              ? [path.join(runDir, peer, 'out', 'result.json')]
-              : [path.join(req.out_dir, 'result.json'), path.join(runDir, 'request.json')];
+          let extra: string[];
+          if (which === 'own') {
+            extra = [path.join(req.out_dir, 'result.json'), path.join(runDir, 'request.json')];
+          } else if (which.startsWith('peer:')) {
+            /*
+             * **对端必须点名**（M11 第 3 步，AC-25 三审形态）。
+             *
+             * 上一版是裸 `'peer'`，取 `CRITICS.find((c) => c !== critic)`——注册表里第一个非己方的审核者。
+             * M9 第 4 步启用 claude 当审核者之后，那一家恒是 claude：两侧用例里 gemini 读的
+             * 「对端」其实是**未入选**的 claude 侧目录，照样判作废（第三段不是己方），所以一直绿，
+             * 测的却不是「读到真正参审的对端」；三审下每侧也只能指向一家。
+             *
+             * 桩拿不到当轮 Driver 与入选集合（`CriticRequest` 不带），对端由用例按入选集合点名；
+             * 这里只校验三件事——非空、已登记审核者、不是本侧。不合格即失败，不静默空转：
+             * 与 `peer_leak` 筛空即失败同一口径（计划双审 AGY-02 要求逐段 trim）。
+             */
+            const ids = which.slice('peer:'.length).split(',').map((s) => s.trim());
+            const bad = ids.filter((id) => id === '' || id === critic || !CRITICS.includes(id as CriticId));
+            if (bad.length > 0) {
+              return failedResult(critic, {
+                status: 'failed',
+                reason: `桩的 run_material_leak note=${JSON.stringify(spec.note)} 含不合格的对端：${JSON.stringify(bad)}（须为非空、已登记、非本侧的审核者 id）`,
+                exitCode: 1,
+              });
+            }
+            extra = ids.map((id) => path.join(runDir, id, 'out', 'result.json'));
+          } else {
+            return failedResult(critic, {
+              status: 'failed',
+              reason: `桩的 run_material_leak 不认 note=${JSON.stringify(spec.note)}（只收 'own' 或 'peer:<id>[,<id>…]'）`,
+              exitCode: 1,
+            });
+          }
           return {
             ...baseResult(critic, req, spec),
             read_paths: [...baseResult(critic, req, spec).read_paths, ...extra],
