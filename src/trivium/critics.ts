@@ -134,13 +134,33 @@ export function assertModelOverrideKeys(
   picked: readonly string[],
   descriptors?: readonly AgentDescriptor[],
 ): void {
+  assertCriticFlagKeys(cfg, driver, ids, picked, 'model', descriptors);
+}
+
+/**
+ * 逐审核者旗标（`--〈前缀〉-〈id〉`）的键判定，**`--model-〈id〉` 与 M11 第 5 步的 `--tier-〈id〉` /
+ * `--effort-〈id〉` / `--profile-〈id〉` 共用这一份**（同一判定只有一处，EV-53 的教训）。
+ * 判据与两种措辞见 `assertModelOverrideKeys` 的文档块；`model` 前缀的文案逐字不变（集成用例截「当前可用」）。
+ */
+export type CriticFlagPrefix = 'model' | 'tier' | 'effort' | 'profile';
+const FLAG_NOUN: Record<CriticFlagPrefix, string> = { model: '模型', tier: '档位', effort: '思考等级', profile: '厂商 profile' };
+
+export function assertCriticFlagKeys(
+  cfg: Config,
+  driver: AgentId,
+  ids: readonly string[],
+  picked: readonly string[],
+  prefix: CriticFlagPrefix,
+  descriptors?: readonly AgentDescriptor[],
+): void {
+  const noun = FLAG_NOUN[prefix];
   const selectable = selectableCritics(cfg, driver, descriptors) as readonly string[];
   for (const id of ids) {
     if (picked.includes(id)) continue;
     if (selectable.includes(id)) {
       throw new TriviumError(
         EXIT.USAGE,
-        `--model-${id}：${id} 本轮没有入选，为它指定的模型不会生效。\n` +
+        `--${prefix}-${id}：${id} 本轮没有入选，为它指定的${noun}不会生效。\n` +
           `  本轮入选：${picked.join(' | ')}\n` +
           `  要让它参审，请用 --critics 把它列进来；否则去掉这个旗标。`,
       );
@@ -151,7 +171,7 @@ export function assertModelOverrideKeys(
         : `${id} 本轮不是可用审核者`;
     throw new TriviumError(
       EXIT.USAGE,
-      `--model-${id}：${why}，不能为它指定模型。\n` +
+      `--${prefix}-${id}：${why}，不能为它指定${noun}。\n` +
         `  当前可用：${legalList(cfg, driver, descriptors)}`,
     );
   }

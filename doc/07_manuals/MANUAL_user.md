@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.41
+> - **当前版本**：v1.0.42
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -250,6 +250,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 ```
 /dual-run <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>]
           [--profile <名称>] [--model-<审核者 id> <模型>]
+          [--tier-<审核者 id> <档>] [--effort-<审核者 id> <值>] [--profile-<审核者 id> <名>]
           [--critics <id,…>] [--only <一侧>] [--allow-single]
 ```
 
@@ -273,6 +274,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 /dual-review-plan <审查焦点提示语> [--goal <任务目标>] [--topic <主题>]
                   [--context <路径,…>] [--profile <名称>]
                   [--model-<审核者 id> <模型>]
+                  [--tier-<审核者 id> <档>] [--effort-<审核者 id> <值>] [--profile-<审核者 id> <名>]
                   [--plan-file <路径>] [--critics <id,…>] [--only <一侧>] [--allow-single]
 ```
 
@@ -475,7 +477,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | :--- | :--- | :--- |
 | `agents.gemini.agent` | `trivium-critic` | 只读 Agent 定义名。**工具白名单不含任何写工具** |
 | `agents.gemini.effort` | plan high / code high / bug high | 思考档位。**模型 slug 自带档位时不传**，否则 agy 会直接拒绝。v1.0.41 起只在档位表格子是裸 slug 时作回落；格子写成档位或 `{model, effort}` 时不再用它 |
-| `agents.<id>.tiers` / `default_tier` | 无（`init` 不写） | v1.0.41 起可选（M11 第 4 步）：`low` / `medium` / `high` 三档，每档 `{model, effort?, profile?}`（`profile` 只有 codex 能写，glm 的档只能写 `model`）；`default_tier` 是档位表没给该阶段模型时用哪一档。档位表 `profiles` 的格子随之可写 `{tier: high}` 或 `{model: …, effort: …}`。**命令行选档（`--tier-*`）还没有，思考等级与厂商 profile 也还没下传给各家**：在那之前，档位里写了 effort、或写了与 `agents.codex.profile` 不同的 profile，预检直接退 64 并说明原因——不会静默按另一组值跑。写错档名、思考等级不在该模型的可选值里，同样退 64 并列出可用值。本机层 `config.local.yaml` 里写 `tiers` 会**整段**替换共享配置里的那份 |
+| `agents.<id>.tiers` / `default_tier` | 无（`init` 不写） | v1.0.41 起可选（M11 第 4 步）：`low` / `medium` / `high` 三档，每档 `{model, effort?, profile?}`（`profile` 只有 codex 能写，glm 的档只能写 `model`）；`default_tier` 是档位表没给该阶段模型时用哪一档。档位表 `profiles` 的格子随之可写 `{tier: high}` 或 `{model: …, effort: …}`。**命令行选档用 `--tier-<审核者 id>`（v1.0.42 起，见 §四）；思考等级与厂商 profile 还没下传给各家**：在那之前，档位里写了 effort、或写了与 `agents.codex.profile` 不同的 profile，预检直接退 64 并说明原因——不会静默按另一组值跑。写错档名、思考等级不在该模型的可选值里，同样退 64 并列出可用值。本机层 `config.local.yaml` 里写 `tiers` 会**整段**替换共享配置里的那份 |
 | `agents.glm.max_turns` | 40 | ZCode 的最大轮数 |
 | `agents.glm.unsupported_override` | `reject` | 模型覆盖落到全局档时拒绝还是标注 |
 | `active_profile` | `default` | 当前档位 |
@@ -493,6 +495,18 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 单次切换用 `--profile <名称>`；只换某一侧的模型用 `--model-<审核者 id>`（优先级更高），
 旗标名随注册表派生，四家皆可，但只对本轮入选的审核者有效（见 §4.7）。
+
+**逐审核者选档与精确指定**（v1.0.42 起，M11 第 5 步）：
+
+- `--tier-<审核者 id> low|medium|high`：本次为该侧选档，取它在 `agents.<id>.tiers` 里定义的那一档（该档没定义就退 64，并列出已定义的档）。
+  在第 6 步之前，这一轮选的是哪一档**不写进 run.json**——发起时会告警，事后只能从请求的模型反推。
+  还要注意：选到的档若写了思考等级（`effort`），或写了与 `agents.codex.profile` 不同的 `profile`，**现在同样会被拦下**退 64——请换一档，或先去掉那一档里的 `effort` / `profile`。
+- `--effort-<审核者 id> <值>`：本次精确指定思考等级。**现在还用不了**：思考等级还没下传给各家，写了会被预检拦下退 64、说明原因；
+  例外是 gemini 的模型名已带档位后缀（如 `gemini-3.8-flash-high`）时，思考等级本就不生效，只告警。
+- `--profile-codex <名>`：本次精确指定 codex 的厂商 profile（`$CODEX_HOME/<名>.config.toml`，**不是** `--profile` 档位表名）。不在本机名单退 64；
+  与 `agents.codex.profile` 不同时**现在同样会被拦下**（厂商 profile 还没下传），相同时等于没写。只有带厂商 profile 概念的审核者有这个旗标，今天只有 codex。
+
+三类旗标与 `--model-<审核者 id>` 一样只对本轮入选的审核者有效；写给没入选的一家退 64。`/dual-run` 会把它们原样带进开跑前的预检和两轮审查。
 
 **旗标名按 Agent 注册表派生**，启用第三家时 `--model-<新 id>` 自动可用，不需要改解析器。
 给**本轮没有入选**的 Agent 指定模型会**退 64**——不是静默忽略。分两种：当不了审核者的

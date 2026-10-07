@@ -1,0 +1,164 @@
+{
+  "targets": [
+    "src/trivium/tier-flags.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/topic-args.ts",
+    "src/entry-render.ts",
+    "skills-src/commands/run.contract.md"
+  ],
+  "suites": [
+    "dist/test/test/unit/tier-flags.test.js",
+    "dist/test/test/unit/tier-resolve.test.js",
+    "dist/test/test/integration/tier-flags-cli.test.js",
+    "dist/test/test/contract/entry-render-parity.test.js",
+    "dist/test/test/contract/skill-flag-parity.test.js"
+  ],
+  "cases": [
+    {
+      "id": "A1",
+      "desc": "收集面漏掉一家（写给它的旗标被静默丢弃）",
+      "file": "src/trivium/tier-flags.ts",
+      "find": "      if (v !== undefined) out[k][id] = v;\n",
+      "replace": "      if (v !== undefined && id !== 'codex') out[k][id] = v;\n",
+      "expect": "dist/test/test/unit/tier-flags.test.js"
+    },
+    {
+      "id": "A2",
+      "desc": "键校验只查 profile 一类（tier / effort 跳过）",
+      "file": "src/trivium/tier-flags.ts",
+      "find": "  for (const k of KINDS) assertCriticFlagKeys(cfg, driver, Object.keys(raw[k]), picked, k);\n",
+      "replace": "  assertCriticFlagKeys(cfg, driver, Object.keys(raw.profile), picked, 'profile');\n",
+      "expect": "dist/test/test/unit/tier-flags.test.js"
+    },
+    {
+      "id": "A3",
+      "desc": "--profile-〈id〉 不查厂商 profile 钩子",
+      "file": "src/trivium/tier-flags.ts",
+      "find": "    if (!withProfile.has(id)) {\n",
+      "replace": "    if (false) {\n",
+      "expect": "dist/test/test/unit/tier-flags.test.js"
+    },
+    {
+      "id": "A4",
+      "desc": "--tier 取值不校验",
+      "file": "src/trivium/tier-flags.ts",
+      "find": "    if (!(TIER_NAMES as readonly string[]).includes(v)) {\n",
+      "replace": "    if (false) {\n",
+      "expect": "dist/test/test/unit/tier-flags.test.js"
+    },
+    {
+      "id": "B1",
+      "desc": "checkTierCombos 不收档位旗标",
+      "file": "src/trivium/preflight.ts",
+      "find": "  const cli = mergeCliOverrides(overrides, tierFlags);\n  const bad: string[] = [];\n  const gated: string[] = [];\n",
+      "replace": "  const cli = mergeCliOverrides(overrides, {});\n  const bad: string[] = [];\n  const gated: string[] = [];\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "B2",
+      "desc": "留痕空窗告警删去",
+      "file": "src/trivium/preflight.ts",
+      "find": "      if (tierFlags[critic]?.tier) {\n",
+      "replace": "      if (false) {\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "B3",
+      "desc": "过渡闸文案不再点明经 --tier 选到的档（代码三审 GLM-02 补）",
+      "file": "src/trivium/preflight.ts",
+      "find": "      const viaTierFlag = r.tierSource === 'cli' && r.tier !== null ? `--tier-${critic} ${r.tier}` : null;\n",
+      "replace": "      const viaTierFlag = false ? `--tier-${critic} ${r.tier}` : null;\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "C1",
+      "desc": "路由点不用合并结果（--tier 选出的模型不进请求）",
+      "file": "src/trivium/review.ts",
+      "find": "    const routed = resolveTier(cfg, critic, stage, cliOverrides[critic] ?? {});\n",
+      "replace": "    const routed = resolveTier(cfg, critic, stage, { model: opts.modelOverrides[critic] ?? null });\n",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "C2",
+      "desc": "--start 告警复查不带档位旗标",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    const tierCombos = checkTierCombos(cfg, rc.stage, rc.opts.modelOverrides, rc.sides, rc.opts.tierFlags);\n",
+      "replace": "    const tierCombos = checkTierCombos(cfg, rc.stage, rc.opts.modelOverrides, rc.sides);\n",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "C3",
+      "desc": "交接文件不带档位旗标",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      ...(rc.opts.tierFlags && Object.keys(rc.opts.tierFlags).length > 0 ? { tierFlags: rc.opts.tierFlags } : {}),\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "C4",
+      "desc": "override_reason 不认 --tier",
+      "file": "src/trivium/review.ts",
+      "find": "  if (tier) return `用户经 --tier-${c} ${tier} 选出了与当轮 Driver（${desc.display}）同族的模型`;\n",
+      "replace": "  if (false) return `用户经 --tier-${c} ${tier} 选出了与当轮 Driver（${desc.display}）同族的模型`;\n",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "D1",
+      "desc": "resolve 输出漏 tiers",
+      "file": "src/trivium/topic-args.ts",
+      "find": "    tiers,\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "D2",
+      "desc": "resolve 输出漏 efforts",
+      "file": "src/trivium/topic-args.ts",
+      "find": "    efforts,\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "D3",
+      "desc": "resolve 输出漏 vendor_profiles",
+      "file": "src/trivium/topic-args.ts",
+      "find": "    vendor_profiles: vendorProfiles,\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "D4",
+      "desc": "topic resolve 按真假过滤（写了不给值被静默丢弃）",
+      "file": "src/trivium/topic-args.ts",
+      "find": "    collectTierFlags((name) => (named as Record<string, string | undefined>)[name]),\n",
+      "replace": "    collectTierFlags((name) => (named as Record<string, string | undefined>)[name] || undefined),\n",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "E1",
+      "desc": "入口渲染漏厂商 profile 提示",
+      "file": "src/entry-render.ts",
+      "find": "    VENDOR_PROFILE_HINT: profileCritics.map((id) => ` [--profile-${id} <名>]`).join(''),\n",
+      "replace": "    VENDOR_PROFILE_HINT: '',\n",
+      "expect": "dist/test/test/contract/entry-render-parity.test.js"
+    },
+    {
+      "id": "M1",
+      "desc": "契约产物：dual-run 的 S2 交接删去三字段透传",
+      "file": "skills-src/commands/run.contract.md",
+      "find": "- `--profile` 传 S0.5 的 `profile`，为空则不传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；\n",
+      "replace": "- `--profile` 传 S0.5 的 `profile`，为空则不传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；\n",
+      "expect": "dist/test/test/contract/skill-flag-parity.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "契约产物：dual-run 的 S0.6 交接删去 `--profile` 本身（只剩 `--profile-〈id〉`，旧正则会被它代绿）",
+      "file": "skills-src/commands/run.contract.md",
+      "find": "- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；\n",
+      "replace": "- `profile` 非空时照传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；\n",
+      "expect": "dist/test/test/contract/skill-flag-parity.test.js"
+    }
+  ]
+}

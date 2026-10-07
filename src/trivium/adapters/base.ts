@@ -1900,7 +1900,8 @@ export interface TierResolution {
   warnings: string[];
 }
 
-const TIER_NAMES: readonly TierName[] = ['low', 'medium', 'high'];
+/** 三档清单。导出给命令行旗标层（`tier-flags.ts`）复用——同一事实只留一份（M11 第 5 步，计划三审 GLM-03） */
+export const TIER_NAMES: readonly TierName[] = ['low', 'medium', 'high'];
 
 /**
  * **档位解析**（设计 11.5 两段式，M11 第 4 步）。纯函数：不读盘、不读环境。

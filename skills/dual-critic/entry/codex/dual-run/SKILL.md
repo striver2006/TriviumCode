@@ -4,7 +4,7 @@ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → �
 ---
 
 参数：本载体**不替换**参数占位符。参数就是用户随本命令给出的全部文本（跟在命令名后面，或被载体标成「User request」的那一段）；
-下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--critics <id,…>] [--only claude|gemini|glm] [--allow-single]`
+下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-claude <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-claude <值>] [--effort-gemini <值>] [--effort-glm <值>] [--critics <id,…>] [--only claude|gemini|glm] [--allow-single]`
 
 **只在用户显式调用本命令时执行。** 本载体没有「禁止模型自行调用」的开关：你若是自己读到这份说明、
 而用户并没有调用本命令，不要执行其中任何一步。
@@ -60,6 +60,7 @@ S0 这个标签不再使用。
 - `task_goal`：透传给 S2/S6 的 `--goal`；
 - `prompt_hint`：非空时透传给 S2/S6 的 `--focus`，为空则省略；
 - `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（`--model-claude` / `--model-gemini` / `--model-glm`）、`--profile`；
+- `tiers` / `efforts` / `vendor_profiles`（M11 第 5 步）：分别透传给对应审核者的 `--tier-<审核者 id>`（`--tier-claude` / `--tier-gemini` / `--tier-glm`）、`--effort-<审核者 id>`（`--effort-claude` / `--effort-gemini` / `--effort-glm`）、`--profile-<审核者 id>`（本载体的审核者里没有带厂商 profile 概念的一家，`vendor_profiles` 恒为空）；`--effort-<审核者 id>` 与不同于 `agents.<id>.profile` 的 `--profile-<审核者 id>` 在 M11 第 6 步之前会被预检拦下退 64（思考等级与厂商 profile 尚未透传；gemini 的 slug 已编码档位时只告警）——照样原样传，不要自行去掉，拒绝由编排器给出；
 - `critics`：本轮**入选的审核者集合，计划审与代码审两轮共用这一组**。S0.6、S2、S6 都把 resolve 输出的 `critics`
   用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；
 - `allow_single`：为 true 时 S2、S6 都加 `--allow-single`（用户显式要求的降级：一侧失败时不中止，§12.4）。
@@ -78,12 +79,12 @@ S0 这个标签不再使用。
 ### S0.6 预检（在解析之后）
 
 ```
-TV preflight --stage all --driver codex --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json
+TV preflight --stage all --driver codex --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] [--tier-<审核者 id> <档> …] [--effort-<审核者 id> <值> …] [--profile-<审核者 id> <名> …] --json
 ```
 
 - `--critics`：S0.5 的 `critics` 用逗号连接，**无条件传**；
-- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；
-- **这三样必须与 S2 / S6 传的是同一组**，都取自 S0.5 的输出，不要各拼各的。
+- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；
+- **这几样必须与 S2 / S6 传的是同一组**，都取自 S0.5 的输出，不要各拼各的。
 
 `--stage all` 是命令 A 专用的范围：它校验**全部三个阶段**入选各侧的模型 slug，
 并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
@@ -118,7 +119,7 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运�
 - `--goal` 传 S0.5 的 `task_goal`（它在这里落进 `task.json`，之后 S6、乃至后续 bug 定位都会
   自动复用，审查员才知道这次改动要达成什么，§9.4）；
 - `--focus` 传 S0.5 的 `prompt_hint`，为空则不传；`--context` 传 `context_paths`；
-- `--profile` 传 S0.5 的 `profile`，为空则不传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；
+- `--profile` 传 S0.5 的 `profile`，为空则不传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；
 - `--critics` 传 S0.5 的 `critics`（逗号连接），**无条件传**；`allow_single` 为 true 时加 `--allow-single`；
   **不要传 `--only`**（理由见 S0.5）：两个旗标同时递给 `--start` 会被判互斥退 64；
 - **`--driver codex` 照带**（与 S0.5 / S0.6 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
@@ -130,9 +131,10 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运�
 文本消息，再发下一次 `--wait`」在 S2 / S6 里同样是硬要求——命令 A 的链路更长，
 用户等得更久，漏掉播报的代价比命令 B/C/D 还大。
 
-**本命令收到的模型覆盖（`--model-claude` / `--model-gemini` / `--model-glm`）、档位（`--profile`）、入选集合（`--critics`）
+**本命令收到的模型覆盖（`--model-claude` / `--model-gemini` / `--model-glm`）、档位（`--profile`）、档位旗标（`--tier-claude` / `--tier-gemini` / `--tier-glm`、`--effort-claude` / `--effort-gemini` / `--effort-glm` 与厂商 profile 旗标（本载体的审核者里没有带厂商 profile 概念的一家，`vendor_profiles` 恒为空））、入选集合（`--critics`）
 与降级许可（`--allow-single`）要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉：
 - 模型覆盖与档位一丢，就静默回退到配置里的 `active_profile`，留痕里记的是回退后的模型；
+- 档位旗标一丢，就静默回到档位表与 `default_tier` 的取值——用户选的档、指定的思考等级与厂商 profile 都消失（第 6 步之前档位名本就不入档，更看不出来）；
 - 入选集合一丢，`--start` 会自己重取配置缺省——用户加进来的那一家就此消失，两轮还可能不是同一组；
 - 降级许可一丢，一侧失败就整次失败。
 
@@ -167,7 +169,7 @@ S5 编码依据的「已批准的修订计划」就是这份新一轮计划（�
 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
 
 ### S6 代码双审
-同 S2（`--entry A`、`--driver codex`，含 `--goal` / `--focus` / `--context` / `--profile` / `--critics` / `--allow-single` / 模型覆盖的透传——
+同 S2（`--entry A`、`--driver codex`，含 `--goal` / `--focus` / `--context` / `--profile` / `--critics` / `--allow-single` / 模型覆盖 / 档位旗标（`--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`）的透传——
 入选集合用的仍是 S0.5 那一组，S2 里某侧失败过也照样传它），但 `--stage code`，
 按 `$dual-review-code` 的第 3 步执行。被审对象是 `git diff`，不是文档。
 比较基线默认 `HEAD`，即「尚未提交的全部改动」；S5 若已经提交过，

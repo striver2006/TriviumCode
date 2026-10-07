@@ -36,6 +36,7 @@ import {
   type ReasoningLevels,
   type TierResolution,
 } from './adapters/base.js';
+import { mergeCliOverrides, type TierFlagValues } from './tier-flags.js';
 import { exists, tildeHome } from './util/fsx.js';
 import { isGitRepo } from './util/git.js';
 import { run } from './util/exec.js';
@@ -97,6 +98,8 @@ export interface PreflightOptions {
   scope: PreflightScope;
   /** 本次实际生效的模型覆盖，用于按「实际生效值」校验 slug（GLM-01） */
   modelOverrides?: Partial<Record<CriticId, string>>;
+  /** 档位命令行旗标（M11 第 5 步）：与模型覆盖逐侧合并后进档位解析，同 review 准备阶段 */
+  tierFlags?: Partial<Record<CriticId, TierFlagValues>>;
   /** 跳过探活（调试用，会在输出中标注） */
   skipAuthCheck?: boolean;
   /** 强制重新探活，穿透 TTL 缓存（AGY-02） */
@@ -336,7 +339,10 @@ export function checkModelSlugs(
   scope: PreflightScope,
   overrides: Partial<Record<CriticId, string>> = {},
   critics: readonly CriticId[] = DEFAULT_CRITICS,
+  /** 档位命令行旗标（M11 第 5 步）；缺省为空，既有调用逐字不变 */
+  tierFlags: Partial<Record<CriticId, TierFlagValues>> = {},
 ): CheckResult {
+  const cli = mergeCliOverrides(overrides, tierFlags);
   const bad: string[] = [];
   /** 无法校验的侧：**不判失败，但必须说出来**（详见 checkModelAgainstCatalog） */
   const unverifiable = new Set<string>();
@@ -351,7 +357,7 @@ export function checkModelSlugs(
 
   for (const stage of scopeStages(scope)) {
     for (const critic of critics) {
-      const routed = resolveTier(cfg, critic, stage, { model: overrides[critic] ?? null });
+      const routed = resolveTier(cfg, critic, stage, cli[critic] ?? {});
       /*
        * **档名写错在这里报，不让位给「未定义模型」**（M11 第 4 步，计划三审 GLM-04）：档位缺失时模型也为 null，
        * 而 `review` 准备阶段本检查一失败就抛——若这里只报「未定义模型」，档名拼错与可用档列表在 `review`
@@ -433,7 +439,10 @@ export function checkTierCombos(
   scope: PreflightScope,
   overrides: Partial<Record<CriticId, string>> = {},
   critics: readonly CriticId[] = DEFAULT_CRITICS,
+  /** 档位命令行旗标（M11 第 5 步）；缺省为空，既有调用逐字不变 */
+  tierFlags: Partial<Record<CriticId, TierFlagValues>> = {},
 ): CheckResult {
+  const cli = mergeCliOverrides(overrides, tierFlags);
   const bad: string[] = [];
   const gated: string[] = [];
   const notes: string[] = [];
@@ -442,10 +451,17 @@ export function checkTierCombos(
 
   for (const stage of scopeStages(scope)) {
     for (const critic of critics) {
-      const r = resolveTier(cfg, critic, stage, { model: overrides[critic] ?? null });
+      const r = resolveTier(cfg, critic, stage, cli[critic] ?? {});
       if (r.missingTier || !r.model) continue;
       const at = `${critic}/${stage}`;
       for (const w of r.warnings) notes.push(w);
+      /*
+       * 留痕空窗（M11 第 5 步，用户 2026-10-08 定 ②）：tier / tier_source 随第 6 步才写进 run.json，
+       * 用 --tier-〈id〉 发起的这一轮事后只能从请求模型反推选了哪一档——说出来，不静默。
+       */
+      if (tierFlags[critic]?.tier) {
+        notes.push(`${at}: 本轮档位名与来源尚未入档（M11 第 6 步起），事后只能从请求模型反推（--tier-${critic} ${tierFlags[critic]!.tier}）`);
+      }
       const adapter: CriticAdapter | undefined = adapters[critic];
       const label = agentById(critic)?.display ?? critic;
       const lv: ReasoningLevels = adapter?.reasoningLevelsFor?.(cfg, r.model, r.vendorProfile) ?? {
@@ -481,15 +497,26 @@ export function checkTierCombos(
       // ── 过渡闸（M11 第 6 步拆除）──
       // slug 已编码档位时思考等级本就永不生效（11.5 gemini 特例，上面已告警），与接没接线无关，不进闸
       const suffixEncoded = lv.kind === 'levels' && lv.suffixEncoded === true;
+      /*
+       * 档位经 --tier-〈id〉 选到时，用户没直接写 effort / profile——文案点明是哪一档带出来的，指引改为
+       * 「换一档或改该档」（代码三审 GLM-02）；其余来源照旧。
+       */
+      const viaTierFlag = r.tierSource === 'cli' && r.tier !== null ? `--tier-${critic} ${r.tier}` : null;
       if (r.effort !== null && r.origin.effort !== 'agent' && !suffixEncoded) {
+        const from = r.origin.effort === 'tier' && viaTierFlag
+          ? `经 ${viaTierFlag} 选到的档位条目`
+          : originText(r.origin.effort, `--effort-${critic}`);
+        const hint = r.origin.effort === 'tier' && viaTierFlag
+          ? '换一档，或去掉该档定义里的 effort'
+          : '先去掉该 effort，或用模型选择承载档位差异';
         gated.push(
-          `${at}: 思考等级「${r.effort}」来自${originText(r.origin.effort)}，而思考等级随 M11 第 6 步才下传给适配器——` +
-            '当前版本会按厂商缺省（或 profile 基底）运行，与配置不一致。先去掉该 effort，或用模型选择承载档位差异',
+          `${at}: 思考等级「${r.effort}」来自${from}，而思考等级随 M11 第 6 步才下传给适配器——` +
+            `当前版本会按厂商缺省（或 profile 基底）运行，与配置不一致。${hint}`,
         );
       }
       if (r.vendorProfile !== null && r.origin.vendorProfile !== 'agent' && r.vendorProfile !== r.agentVendorProfile) {
         gated.push(
-          `${at}: 厂商 profile「${r.vendorProfile}」来自${originText(r.origin.vendorProfile)}，与 agents.${critic}.profile` +
+          `${at}: 厂商 profile「${r.vendorProfile}」来自${r.origin.vendorProfile === 'tier' && viaTierFlag ? `经 ${viaTierFlag} 选到的档位条目` : originText(r.origin.vendorProfile, `--profile-${critic}`)}，与 agents.${critic}.profile` +
             `「${r.agentVendorProfile ?? '（未配置）'}」不同，而厂商 profile 随 M11 第 6 步才透传——当前版本会按后者发起。` +
             `换家族请同批改 agents.${critic}.profile 与档位模型（设计 13.1.1）`,
         );
@@ -523,8 +550,9 @@ export function checkTierCombos(
   };
 }
 
-function originText(o: TierResolution['origin']['effort']): string {
-  return o === 'tier' ? '档位条目' : o === 'cell' ? '档位表格子' : o === 'cli' ? '命令行' : 'Agent 配置段';
+/** 字段来源的人读名；命令行来源点名是哪个旗标（M11 第 5 步） */
+function originText(o: TierResolution['origin']['effort'], cliFlag: string): string {
+  return o === 'tier' ? '档位条目' : o === 'cell' ? '档位表格子' : o === 'cli' ? `命令行 ${cliFlag}` : 'Agent 配置段';
 }
 
 /** 单侧模型 slug 的比对结论。三态，**「无法校验」与「通过」分开记** */
@@ -1029,9 +1057,9 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
     if (d) checks.push(d);
   }
   // ⑤ 模型 slug（按本次实际生效值）
-  if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected));
+  if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected, opts.tierFlags));
   // ⑤′ 档位组合（M11 第 4 步）：原生枚举、厂商 profile 名单、过渡闸；档名与无模型已由上一格报
-  if (checks.every((c) => c.ok)) checks.push(checkTierCombos(cfg, scope, opts.modelOverrides, selected));
+  if (checks.every((c) => c.ok)) checks.push(checkTierCombos(cfg, scope, opts.modelOverrides, selected, opts.tierFlags));
   // ⑥ 归档与 git（无残留探测）
   if (checks.every((c) => c.ok)) checks.push(await checkArchiveAndGit(ctx));
   // ⑦ 命令 A 的编译测试配置

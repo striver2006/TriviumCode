@@ -107,6 +107,17 @@ for (const { name, agent, content: md } of REVIEW_SKILLS.flatMap(entriesOf)) {
     );
   });
 
+  /*
+   * 档位旗标三字段（M11 第 5 步，计划三审 CODEX-01 / AGY-01）：与 `models` 同款的正文断言，
+   * 并且第 2 步预检与第 3 步 `--start` **两处**都要交代（三处同一组的 B/C/D 版本）。
+   */
+  test(`${agent}/${name}：正文交代把 resolve 输出的 tiers / efforts / vendor_profiles 透传到预检与 --start`, () => {
+    assert.match(md, /resolve 输出的 `tiers` \/ `efforts` \/ `vendor_profiles`/, `${name} 没交代第 3 步透传三字段`);
+    const pre = md.slice(md.search(/^### 2\. 预检/m), md.search(/^### 3\. /m));
+    assert.match(pre, /`tiers` \/ `efforts` \/ `vendor_profiles` 非空时逐个传/, `${name} 第 2 步预检没交代三字段`);
+    for (const re of [/--tier-/, /--effort-/, /--profile-/]) assert.match(pre, re, `${name} 第 2 步预检没点名 ${re.source}`);
+  });
+
 }
 
 /**
@@ -190,10 +201,17 @@ for (const { agent, content: md } of entriesOf('dual-run')) {
     const fenceOpen = md.indexOf('```', s06);
     const fenceClose = md.indexOf('\n```\n', fenceOpen + 3);
     assert.ok(fenceOpen >= 0 && fenceClose >= 0, 'S0.6 的预检命令代码块不在了');
+    /*
+     * 档位旗标三条（M11 第 5 步，计划三审 CODEX-01 ≡ AGY-01 ≡ GLM-01）：逐段锁是硬编码清单，不随新旗标自动扩展，
+     * 漏改一段套件照样绿——所以三段各自点名。`--profile` 改为不吞 `--profile-` 的精确形：
+     * `/--profile\b/` 会被 `--profile-codex` 代绿（`\b` 在 `-` 前成立），删掉 `--profile` 本身也不红。
+     */
+    const PROFILE = /--profile(?!-)/;
+    const TIERS = [/--tier-/, /--effort-/, /--profile-/];
     const sections: [string, string, RegExp[]][] = [
-      ['S0.6', paragraphAt(md.indexOf('- ', fenceClose), 'S0.6'), [/--critics\b/, /--profile\b/, /--model-/]],
-      ['S2', paragraphAt(md.search(/循环，但：$/m), 'S2'), [/--critics\b/, /--allow-single\b/, /--profile\b/, /--model-/]],
-      ['S6', paragraphAt(md.search(/^同 S2（/m), 'S6'), [/--critics\b/, /--allow-single\b/, /--profile\b/, /模型覆盖/]],
+      ['S0.6', paragraphAt(md.indexOf('- ', fenceClose), 'S0.6'), [/--critics\b/, PROFILE, /--model-/, ...TIERS]],
+      ['S2', paragraphAt(md.search(/循环，但：$/m), 'S2'), [/--critics\b/, /--allow-single\b/, PROFILE, /--model-/, ...TIERS]],
+      ['S6', paragraphAt(md.search(/^同 S2（/m), 'S6'), [/--critics\b/, /--allow-single\b/, PROFILE, /模型覆盖/, ...TIERS]],
     ];
     for (const [name, sec, wants] of sections) {
       for (const re of wants) {

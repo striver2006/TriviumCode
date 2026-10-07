@@ -4,7 +4,7 @@ description: 对已有 Bug 根因定位材料做背靠背双审，并产出修�
 ---
 
 参数：本载体**不替换**参数占位符。参数就是用户随本命令给出的全部文本（跟在命令名后面，或被载体标成「User request」的那一段）；
-下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-glm <模型>] [--rca-file <路径>] [--critics <id,…>] [--only claude|codex|glm] [--allow-single]`
+下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-glm <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-glm <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-glm <值>] [--profile-codex <名>] [--rca-file <路径>] [--critics <id,…>] [--only claude|codex|glm] [--allow-single]`
 
 **只在用户显式调用本命令时执行。** 本载体没有「禁止模型自行调用」的开关：你若是自己读到这份说明、
 而用户并没有调用本命令，不要执行其中任何一步。
@@ -103,12 +103,12 @@ TV topic resolve --stage bug --json -- '看 it'\''s 这一处与 "双引号" 的
 ### 2. 预检（在解析之后）
 
 ```
-TV preflight --stage bug --driver gemini --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] --json
+TV preflight --stage bug --driver gemini --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] [--tier-<审核者 id> <档> …] [--effort-<审核者 id> <值> …] [--profile-<审核者 id> <名> …] --json
 ```
 
 - `--critics`：第 1 步 resolve 输出的 `critics` 用逗号连接，**无条件传**；
-- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；
-- **这三样必须与第 3 步传的是同一组**，都取自第 1 步的输出，不要各拼各的。
+- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；
+- **这几样必须与第 3 步传的是同一组**，都取自第 1 步的输出，不要各拼各的。
 
 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
 不带 `--critics` 就查不到，要等拉起之后才失败。
@@ -122,7 +122,7 @@ TV preflight --stage bug --driver gemini --critics <critics> [--profile <名称>
 先运行：
 
 ```
-TV review --start --entry D --stage bug --topic <主题> --driver gemini --focus <提示语> [--goal <任务目标>] [--rca-file <路径>] [--model-claude <模型>] [--model-codex <模型>] [--model-glm <模型>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] --json
+TV review --start --entry D --stage bug --topic <主题> --driver gemini --focus <提示语> [--goal <任务目标>] [--rca-file <路径>] [--model-claude <模型>] [--model-codex <模型>] [--model-glm <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-glm <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-glm <值>] [--profile-codex <名>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] --json
 ```
 
 `--entry D` 标记本次运行由命令 D 发起，记入 run.json 留痕；它也让 CLI 按 B/C/D 规则
@@ -166,6 +166,10 @@ resolve 用它定位被审对象，而 `--start` 会**重新定位一次**——
 **用户指定的模型只在这一步才真正生效**——第 2 步的预检只拿同一组覆盖值做校验，
 `--start` 不会沿用它（`--start` 自己再校验一次 slug，见 `review.ts` 的 slug 校验注释），漏传会静默回退到
 profile 配置模型，且留痕里记的就是回退后的模型，事后看不出用户曾经指定过。
+
+resolve 输出的 `tiers` / `efforts` / `vendor_profiles`（M11 第 5 步）同理：非空时逐个原样传给对应的
+`--tier-<审核者 id>`（`--tier-claude` / `--tier-codex` / `--tier-glm`）、`--effort-<审核者 id>`（`--effort-claude` / `--effort-codex` / `--effort-glm`）、`--profile-<审核者 id>`（`--profile-codex`），
+与第 2 步的预检同一组。漏传会静默回到档位表与 `default_tier` 的取值。`--effort-<审核者 id>` 与不同于 `agents.<id>.profile` 的 `--profile-<审核者 id>` 在 M11 第 6 步之前会被预检拦下退 64（思考等级与厂商 profile 尚未透传；gemini 的 slug 已编码档位时只告警）——照样原样传，不要自行去掉，拒绝由编排器给出。
 
 它会冻结送审包、派生工作进程后**立即返回**，输出含 `run_id`、`max_waits`、
 `wait_timeout_s`、`bash_timeout_ms`，以及开场播报要用的 `stage_timeout_s`

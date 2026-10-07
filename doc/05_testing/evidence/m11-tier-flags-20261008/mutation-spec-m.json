@@ -1,0 +1,26 @@
+{
+  "targets": [
+    "skills-src/commands/run.contract.md"
+  ],
+  "suites": [
+    "dist/test/test/contract/skill-flag-parity.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "契约产物：dual-run 的 S2 交接删去三字段透传",
+      "file": "skills-src/commands/run.contract.md",
+      "find": "- `--profile` 传 S0.5 的 `profile`，为空则不传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；\n",
+      "replace": "- `--profile` 传 S0.5 的 `profile`，为空则不传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；\n",
+      "expect": "dist/test/test/contract/skill-flag-parity.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "契约产物：dual-run 的 S0.6 交接删去 `--profile` 本身（只剩 `--profile-〈id〉`，旧正则会被它代绿）",
+      "file": "skills-src/commands/run.contract.md",
+      "find": "- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；\n",
+      "replace": "- `profile` 非空时照传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；\n",
+      "expect": "dist/test/test/contract/skill-flag-parity.test.js"
+    }
+  ]
+}

@@ -85,6 +85,7 @@ import {
   TriviumError,
 } from './exit-codes.js';
 import { checkModelSlugs, checkTierCombos } from './preflight.js';
+import { mergeCliOverrides, type TierFlagValues } from './tier-flags.js';
 import { assertNoSecrets } from './secrets.js';
 import { say, step, warn } from './util/log.js';
 import { effectiveGuardLevel } from './hook-config.js';
@@ -499,13 +500,20 @@ function overrideReasonFor(
   model: string | null,
   modelOverrides: Partial<Record<CriticId, string>>,
   profileRequested: string | null,
+  // 档位旗标（M11 第 5 步）放在 driver 之前：driver-wiring 的调用链护栏要求末参恒为 meta.driver
+  tierFlags: Partial<Record<CriticId, TierFlagValues>> | undefined,
   driver: AgentId,
 ): string | null {
   const desc = agentById(driver)!;
   if (isHeterogeneous(model, desc.vendor)) return null;
-  return modelOverrides[c]
-    ? `用户经 --model-${c} 显式指定了与当轮 Driver（${desc.display}）同族的模型`
-    : `档位 ${profileRequested ?? '（缺省）'} 的默认模型与当轮 Driver（${desc.display}）同族`;
+  if (modelOverrides[c]) return `用户经 --model-${c} 显式指定了与当轮 Driver（${desc.display}）同族的模型`;
+  /*
+   * 经 --tier-〈id〉 选出的模型（M11 第 5 步）：不认这一档就会归因成「档位表默认模型」——
+   * 命令行的选择被记到配置头上（计划 §1.5）。字段名、类型、出现条件都不变，只是措辞如实。
+   */
+  const tier = tierFlags?.[c]?.tier;
+  if (tier) return `用户经 --tier-${c} ${tier} 选出了与当轮 Driver（${desc.display}）同族的模型`;
+  return `档位 ${profileRequested ?? '（缺省）'} 的默认模型与当轮 Driver（${desc.display}）同族`;
 }
 
 /** 运行目录按仓库路径哈希分桶，避免不同项目互相覆盖 */
@@ -535,6 +543,11 @@ export interface ReviewOptions {
   /** plan/bug 的被审对象显式路径 */
   subjectFile: string | null;
   modelOverrides: Partial<Record<CriticId, string>>;
+  /**
+   * 档位命令行旗标（M11 第 5 步）：`--tier-〈id〉` / `--effort-〈id〉` / `--profile-〈id〉` 的逐侧精确值。
+   * 可选、缺省为空——旧交接文件与手工构造的调用方不带它。随交接文件带给 worker（`override_reason` 要认得 `--tier`）。
+   */
+  tierFlags?: Partial<Record<CriticId, TierFlagValues>>;
   command: string;
   /**
    * 本轮**入选**的审核者集合（M7b 第 5 步）。
@@ -813,13 +826,13 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
    * 而这里才是真正决定烧不烧配额的地方。
    */
   {
-    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides);
+    const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides, opts.tierFlags);
     if (!slug.ok) throw usageError(`模型 slug 不合法：\n  ${slug.detail}`);
     /*
      * 档位组合（M11 第 4 步，设计 11.5）：与 slug 同理在这里再校验一次——原生枚举、厂商 profile 名单与过渡闸
      * 只在预检做的话，终端直接跑 `--start` 就绕过了。告警（不阻断）由 `--start` 的 warnings 复查念出。
      */
-    const combos = checkTierCombos(cfg, stage, opts.modelOverrides, sides);
+    const combos = checkTierCombos(cfg, stage, opts.modelOverrides, sides, opts.tierFlags);
     if (!combos.ok) throw usageError(`档位组合不合法：\n  ${combos.detail}`);
   }
   /*
@@ -1117,6 +1130,11 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
 
   /** 从各侧第 4 段剔除的自动条目（这里不可能有 `--context` 的——上一段已经拦下） */
   const pruned: PrunedEntry[] = [];
+  /*
+   * 命令行一级（模型覆盖 + 档位旗标）逐侧合并，**与上方两格校验内部用的是同一个函数**（计划三审 CODEX-02）：
+   * 路由点不再内联展开，`--tier-〈id〉` 选出的模型从这里进请求。
+   */
+  const cliOverrides = mergeCliOverrides(opts.modelOverrides, opts.tierFlags);
 
   for (const critic of sides) {
     const snap = snapshots[critic]!;
@@ -1142,7 +1160,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
      * 下面的 69 分支**不可达**：同一组参数已在上方 `checkModelSlugs` 以 64 拦下（M11 第 4 步计划 P-4，
      * 三侧审查员独立核实）。保留为防御——两处判据将来分叉时，宁可在零工件区退出也不带着 null 模型往下走。
      */
-    const routed = resolveTier(cfg, critic, stage, { model: opts.modelOverrides[critic] ?? null });
+    const routed = resolveTier(cfg, critic, stage, cliOverrides[critic] ?? {});
     if (!routed.model) {
       throw envError(
         `${critic} 侧没有可用模型：profile「${cfg.active_profile}」未定义 ${stage} 阶段的模型，` +
@@ -1744,7 +1762,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       jointCheck: jointCheckRun,
       heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model, agentById(meta.driver)!.vendor),
       overrideReason: overrideReasonFor(
-        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested, meta.driver,
+        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested, opts.tierFlags, meta.driver,
       ),
     });
 
@@ -2001,7 +2019,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       // 与上面渲染侧**共用同一个派生函数**：两处各写一份文案就会踩破
       // 「front-matter 与运行元数据两处同值」这条自己要守的判据（EV-54）
       override_reason: overrideReasonFor(
-        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested, meta.driver,
+        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested, opts.tierFlags, meta.driver,
       ),
       fail_reason: r.fail_reason,
       /*

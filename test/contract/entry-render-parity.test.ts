@@ -80,6 +80,15 @@ test('EV-131：命令描述与一级标题不写死任何已登记 Agent 的产�
   }
 });
 
+/*
+ * 派生变量为空集时不留空括号（M11 第 5 步，计划三审 AGY-05）：codex 载体的审核者里没有带厂商 profile 概念的一家，
+ * 厂商 profile 那一格若在模板里写括号，会渲染出「（）」。模板只放整段括注变量，这里守住结果。
+ */
+test('产物里没有空括号（派生变量为空集时不留下「（）」「()」）', () => {
+  const bad = rendered.filter((r) => /（\s*）|\(\s*\)/.test(r.content)).map((r) => r.relPath);
+  assert.deepEqual(bad, [], `这些产物出现了空括号：\n  ${bad.join('\n  ')}`);
+});
+
 test('源 → 产物零 diff（改了源请跑 npm run render）', async () => {
   const stale: string[] = [];
   for (const r of rendered) {

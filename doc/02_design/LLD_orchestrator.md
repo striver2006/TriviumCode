@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.51
+> - **当前版本**：v1.1.52
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.52（2026-10-08）随设计 v1.3.132（M11 第 5 步：档位命令行旗标）同步：模块表补 `tier-flags.ts`（三类档位旗标的收集、键校验、取值校验与合并，`cli.ts` / `topic-args.ts` 共用；键判定参数化后仍住在 `critics.ts` 的 `assertCriticFlagKeys`）；`cli.ts` 行补一句。行数列未重核。
 > - **变更说明**：v1.1.51（2026-10-07）随设计 v1.3.131（M11 第 4 步：配置契约与档位解析）同步：3.3 必读交集校验一段里「排在逐侧 `routeModel` 的 69 之前」改为档位解析（`resolveTier`，原 `routeModel` 已删），并注明那条 69 对同一输入不可达；准备阶段在 slug 校验之后新增「档位组合合法」一格（`preflight.ts` `checkTierCombos`）。行数列未重核。
 > - **变更说明**：v1.1.50（2026-10-07）随设计 v1.3.128（复盘面失守旗标分档，EV-224）同步：模块表 `report.ts`、`meta.ts` 两行补一句——失守旗标与 `summarizeRun` 的失守一行改调 `gate.ts` 的 `readonlyBreachLabel`。未走双审。行数列未重核。
 > - **变更说明**：v1.1.49（2026-10-06）随设计 v1.3.127（只读失守未确证改动放行，EV-223）同步：「待裁决闸门的只读失守文案」小节补判据单点——失守组只收 `gate.ts` 的 `classifyReadonlyBreach` 判确证的那一格，复算无变化或比不了的失守轮归未见失守组、出原文案；快照漂移改调 `confirmedDriftText()`。行数列未重核。
@@ -107,7 +108,8 @@ graph TD
 
 | 模块 | 行数 | 职责 | 关键导出 |
 | :--- | ---: | :--- | :--- |
-| `cli.ts` | 1058 | 子命令分发、argv 解析、退出码转换。**无单元测试**，仅由集成测试以子进程形式覆盖 | `main()` |
+| `cli.ts` | 1058 | 子命令分发、argv 解析、退出码转换。**无单元测试**，仅由集成测试以子进程形式覆盖。档位旗标（M11 第 5 步）经 `tier-flags.ts` 收集与判定 | `main()` |
+| `tier-flags.ts` | — | 档位命令行旗标 `--tier-<id>` / `--effort-<id>` / `--profile-<id>`（M11 第 5 步）：收集面为全部已登记 Agent；键判定与 `--model-<id>` 同一份（`critics.ts` `assertCriticFlagKeys`）；`--profile-<id>` 只对实现 `vendorProfilesFor` 钩子的侧成立；`mergeCliOverrides` 是模型覆盖与三类旗标逐侧合并的唯一实现 | `tierFlagNames()`、`collectTierFlags()`、`assertTierFlags()`、`mergeCliOverrides()`、`vendorProfileAgents()` |
 | `install.ts` | 217 | 把 `skills/*` 同步到 `~/.claude/skills/`，裁剪孤儿文件，拷只读 Agent 定义 | `runInstall()` |
 
 `cli.ts` 的 `USAGE` 常量（第 87 行起）是命令契约的人读版本，改命令必须同步改它。

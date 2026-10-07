@@ -1,0 +1,240 @@
+{
+  "targets_sha256": {
+    "src/trivium/tier-flags.ts": "fbb87c2b1a381b5c7b646d04d75d427212576a53bd3b6639bd0f53c8898b1240",
+    "src/trivium/preflight.ts": "e91120f4fae90406cbb1a3603388914698eed4fb94eb045de96fb209be34fb97",
+    "src/trivium/review.ts": "3b0e65b8b4c1b4226f88816009e3c2fdc383df84c9d82e1064c87dfb7bbc41de",
+    "src/trivium/run-protocol.ts": "c9b4339b20d2d72ff8d272bde18365e166063e6e654aa7e45792a4431bfd81ef",
+    "src/trivium/topic-args.ts": "a70994019d023e53ab8bed46d1adc92c6adf1d44c40b6c2e9b111e71c317a575",
+    "src/entry-render.ts": "cdb00a21dbfe51ef5934d6153465507df800283536c3204bd1b087ec837999c3",
+    "skills/dual-run/SKILL.md": "ec178f099e8bb40077c729a61f692c8f4a7231ea15de5717cb663d9a0fdd7b79"
+  },
+  "results": [
+    {
+      "id": "A1",
+      "desc": "收集面漏掉一家（写给它的旗标被静默丢弃）",
+      "suite": "dist/test/test/unit/tier-flags.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K1 收集面是全部已登记 Agent；没写的不出现；写了空串的出现为空串（计划三审 AGY-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "A2",
+      "desc": "键校验只查 profile 一类（tier / effort 跳过）",
+      "suite": "dist/test/test/unit/tier-flags.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K2 键校验与 --model-〈id〉 同一份判定：能入选未入选列本轮入选并给 --critics 出口；Driver 自己列当前可用"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "A3",
+      "desc": "--profile-〈id〉 不查厂商 profile 钩子",
+      "suite": "dist/test/test/unit/tier-flags.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K4 --profile-〈id〉 只对带厂商 profile 概念的侧成立；给别家退 64 并点明不是 --profile 档位表名"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "A4",
+      "desc": "--tier 取值不校验",
+      "suite": "dist/test/test/unit/tier-flags.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K5 --tier 只收三档名；三类旗标写了不给值都退 64"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "B1",
+      "desc": "checkTierCombos 不收档位旗标",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "F3 过渡闸三格：--tier 选到带 effort 的档、--effort 单独给、--profile-codex 不同于 agents.codex.profile——退 64 且点名旗标",
+        "F4 永久判据先于过渡闸：--effort 枚举外报枚举；--profile-codex 名单外报名单、名单为空跳过并点名",
+        "F5 gemini 的 slug 已编码档位：--effort-gemini 只告警不生效、不退 64（计划三审 GLM-02）",
+        "F6 --model 覆盖了 --tier 选出的档位模型：出「覆盖了档位」的告警，不阻断"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "B2",
+      "desc": "留痕空窗告警删去",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "F2 --tier 选到只写 model 的档：通过，并带留痕空窗告警（第 6 步前档位名不入档）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "C1",
+      "desc": "路由点不用合并结果（--tier 选出的模型不进请求）",
+      "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T5 --tier 选出的同族模型：override_reason 认得 --tier（worker 经交接文件拿到档位旗标）",
+        "T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 念出留痕空窗"
+      ],
+      "firstLines": [],
+      "elapsed_s": 6
+    },
+    {
+      "id": "C2",
+      "desc": "--start 告警复查不带档位旗标",
+      "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 念出留痕空窗"
+      ],
+      "firstLines": [],
+      "elapsed_s": 5
+    },
+    {
+      "id": "C3",
+      "desc": "交接文件不带档位旗标",
+      "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T5 --tier 选出的同族模型：override_reason 认得 --tier（worker 经交接文件拿到档位旗标）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 5
+    },
+    {
+      "id": "C4",
+      "desc": "override_reason 不认 --tier",
+      "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T5 --tier 选出的同族模型：override_reason 认得 --tier（worker 经交接文件拿到档位旗标）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 5
+    },
+    {
+      "id": "D1",
+      "desc": "resolve 输出漏 tiers",
+      "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T1 resolve 输出三字段：只含本轮入选侧，没写时为空对象",
+        "T3 resolve 输出照抄进 preflight：通过，并念出留痕空窗告警",
+        "T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 念出留痕空窗"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3
+    },
+    {
+      "id": "D2",
+      "desc": "resolve 输出漏 efforts",
+      "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T1 resolve 输出三字段：只含本轮入选侧，没写时为空对象",
+        "T3 resolve 输出照抄进 preflight：通过，并念出留痕空窗告警",
+        "T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 念出留痕空窗"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3
+    },
+    {
+      "id": "D3",
+      "desc": "resolve 输出漏 vendor_profiles",
+      "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T1 resolve 输出三字段：只含本轮入选侧，没写时为空对象",
+        "T3 resolve 输出照抄进 preflight：通过，并念出留痕空窗告警",
+        "T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 念出留痕空窗"
+      ],
+      "firstLines": [],
+      "elapsed_s": 3
+    },
+    {
+      "id": "D4",
+      "desc": "topic resolve 按真假过滤（写了不给值被静默丢弃）",
+      "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T2 resolve：写了不给值（后面紧跟另一个旗标）⇒ 退 64，不静默丢弃（计划三审 AGY-02）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 5
+    },
+    {
+      "id": "E1",
+      "desc": "入口渲染漏厂商 profile 提示",
+      "suite": "dist/test/test/contract/entry-render-parity.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "源 → 产物零 diff（改了源请跑 npm run render）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M1",
+      "desc": "契约产物：dual-run 的 S2 交接删去三字段透传",
+      "suite": "dist/test/test/contract/skill-flag-parity.test.js",
+      "fail": 0,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M2",
+      "desc": "契约产物：dual-run 的 S0.6 交接删去 `--profile` 本身（只剩 `--profile-〈id〉`，旧正则会被它代绿）",
+      "suite": "dist/test/test/contract/skill-flag-parity.test.js",
+      "fail": 0,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [],
+      "firstLines": [],
+      "elapsed_s": 0
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  A1 ✓ 咬住（fail=1）
+  A2 ✓ 咬住（fail=1）
+  A3 ✓ 咬住（fail=1）
+  A4 ✓ 咬住（fail=1）
+  B1 ✓ 咬住（fail=4）
+  B2 ✓ 咬住（fail=1）
+  B3 ✓ 咬住（fail=1）
+  C1 ✓ 咬住（fail=2）
+  C2 ✓ 咬住（fail=1）
+  C3 ✓ 咬住（fail=1）
+  C4 ✓ 咬住（fail=1）
+  D1 ✓ 咬住（fail=3）
+  D2 ✓ 咬住（fail=3）
+  D3 ✓ 咬住（fail=3）
+  D4 ✓ 咬住（fail=1）
+  E1 ✓ 咬住（fail=1）
+{
+  "总数": 16,
+  "咬住": 16,
+  "逐条": [
+    {
+      "id": "A1",
+      "desc": "收集面漏掉一家（写给它的旗标被静默丢弃）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "A2",
+      "desc": "键校验只查 profile 一类（tier / effort 跳过）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "A3",
+      "desc": "--profile-〈id〉 不查厂商 profile 钩子",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "A4",
+      "desc": "--tier 取值不校验",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "B1",
+      "desc": "checkTierCombos 不收档位旗标",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "B2",
+      "desc": "留痕空窗告警删去",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "B3",
+      "desc": "过渡闸文案不再点明经 --tier 选到的档（代码三审 GLM-02 补）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "C1",
+      "desc": "路由点不用合并结果（--tier 选出的模型不进请求）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "C2",
+      "desc": "--start 告警复查不带档位旗标",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "C3",
+      "desc": "交接文件不带档位旗标",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "C4",
+      "desc": "override_reason 不认 --tier",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "D1",
+      "desc": "resolve 输出漏 tiers",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "D2",
+      "desc": "resolve 输出漏 efforts",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "D3",
+      "desc": "resolve 输出漏 vendor_profiles",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "D4",
+      "desc": "topic resolve 按真假过滤（写了不给值被静默丢弃）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "E1",
+      "desc": "入口渲染漏厂商 profile 提示",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

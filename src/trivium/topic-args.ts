@@ -14,6 +14,7 @@ import { promises as fs } from 'node:fs';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, entryCommandOf, type AgentId } from './agents/registry.js';
 import type { CriticId, Ctx, Stage } from './types.js';
 import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
+import { assertTierFlags, collectTierFlags, tierFlagNames } from './tier-flags.js';
 import { validateTopic, parseArtifactName } from './naming.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { exists } from './util/fsx.js';
@@ -54,7 +55,14 @@ type StaticFlag = (typeof STATIC_FLAGS)[number];
 type ModelFlag = `model-${AgentId}`;
 const MODEL_FLAGS: readonly ModelFlag[] = ALL_AGENT_IDS.map((id): ModelFlag => `model-${id}`);
 
-const NAMED_FLAGS: readonly (StaticFlag | ModelFlag)[] = [...STATIC_FLAGS, ...MODEL_FLAGS];
+/**
+ * 档位旗标（M11 第 5 步）：`--tier-〈id〉` / `--effort-〈id〉` / `--profile-〈id〉`，名字由 `tier-flags.ts` 按注册表派生，
+ * 论域同 `MODEL_FLAGS`（全部已登记）。不在白名单里就会被当正文吞进焦点——这一族缺口的老形态。
+ */
+type TierFlag = `${'tier' | 'effort' | 'profile'}-${AgentId}`;
+const TIER_FLAGS: readonly TierFlag[] = tierFlagNames() as TierFlag[];
+
+const NAMED_FLAGS: readonly (StaticFlag | ModelFlag | TierFlag)[] = [...STATIC_FLAGS, ...MODEL_FLAGS, ...TIER_FLAGS];
 
 /**
  * `topic resolve` 认得的具名旗标全集（只读导出）。
@@ -236,6 +244,14 @@ export interface TopicResolution {
   diff_available: boolean | null;
   context_paths: string[];
   models: Partial<Record<CriticId, string>>;
+  /**
+   * 档位旗标（M11 第 5 步），逐入选侧、恒存在（没写为 `{}`），与 `models` 同形。
+   * skill 把它们照抄进 S0.6 预检与 S2、S6 的 `--start`（`--tier-〈id〉` / `--effort-〈id〉` / `--profile-〈id〉`），
+   * 三处必须同一组。`--effort-〈id〉` 与不同于 `agents.〈id〉.profile` 的厂商 profile 在第 6 步之前会被预检拦下。
+   */
+  tiers: Partial<Record<CriticId, string>>;
+  efforts: Partial<Record<CriticId, string>>;
+  vendor_profiles: Partial<Record<CriticId, string>>;
   profile: string | null;
   /** 只跑一侧（`review --start --only gemini|glm`），null 表示两侧都跑 */
   only: CriticId | null;
@@ -618,6 +634,26 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
   assertModelOverrideKeys(ctx.config, driver, written, critics);
   for (const id of written) models[id] = named[`model-${id}`]!;
 
+  /*
+   * 档位旗标（M11 第 5 步）：收集与判定与 cli.ts 的 review / preflight 同一份（tier-flags.ts）。
+   * **按「键在不在」判写了没写**（计划三审 AGY-02）：取值旗标缺值时上面记的是空串，按真假过滤会把它静默丢掉；
+   * 空串照传给判定函数退 64。既有 `--model-〈id〉` 的同一缺口另登记 BACKLOG，本步不改。
+   */
+  const tierFlags = assertTierFlags(
+    ctx.config,
+    driver,
+    collectTierFlags((name) => (named as Record<string, string | undefined>)[name]),
+    critics,
+  );
+  const tiers: Partial<Record<CriticId, string>> = {};
+  const efforts: Partial<Record<CriticId, string>> = {};
+  const vendorProfiles: Partial<Record<CriticId, string>> = {};
+  for (const [id, v] of Object.entries(tierFlags) as [CriticId, NonNullable<(typeof tierFlags)[CriticId]>][]) {
+    if (v.tier) tiers[id] = v.tier;
+    if (v.effort) efforts[id] = v.effort;
+    if (v.vendorProfile) vendorProfiles[id] = v.vendorProfile;
+  }
+
   const contextPaths = (named['context'] ?? '')
     .split(',')
     .map((c) => c.trim())
@@ -661,6 +697,9 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     diff_available: diffAvailable,
     context_paths: contextPaths,
     models,
+    tiers,
+    efforts,
+    vendor_profiles: vendorProfiles,
     profile: named['profile'] ?? null,
     only,
     critics,

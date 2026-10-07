@@ -42,6 +42,7 @@ import {
 import { resolveTopicArgs } from './topic-args.js';
 import { shellQuoteArg } from './naming.js';
 import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
+import { assertTierFlags, collectTierFlags, vendorProfileAgents } from './tier-flags.js';
 import { scrubAllRunRoot } from './retention.js';
 import { wiredAdapter } from './adapters/index.js';
 import { COMMAND_ENTRIES, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
@@ -220,6 +221,16 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       ${CRITIC_AGENT_IDS.map((id) => `--model-${id}`).join(' / ')} <模型>
                   本次模型覆盖（取值清单随注册表；只对本轮入选的审核者有效，
                   给没入选的一家指定模型退 64，不静默丢弃）
+      ${CRITIC_AGENT_IDS.map((id) => `--tier-${id}`).join(' / ')} low|medium|high
+                  本次为该侧选档（取该 Agent 在 agents.<id>.tiers 里定义的档；只对本轮入选的审核者有效，
+                  未入选或档未定义退 64）。M11 第 6 步之前本轮档位名与来源不入 run.json（会告警）；
+                  选到带思考等级、或厂商 profile 与 agents.<id>.profile 不同的档，同样被过渡闸拦下退 64
+      ${CRITIC_AGENT_IDS.map((id) => `--effort-${id}`).join(' / ')} <值>
+                  本次精确指定思考等级（对该模型的原生枚举校验）。**M11 第 6 步之前被预检的过渡闸拦下退 64**：
+                  思考等级尚未透传给各家；gemini 的 slug 已编码档位时本就不生效，只告警
+      ${vendorProfileAgents().map((id) => `--profile-${id}`).join(' / ') || '（本机没有带厂商 profile 概念的审核者）'} <名>
+                  本次精确指定厂商 profile（厂商 CLI 的配置分层名，不是 --profile 档位表名；不在本机名单退 64）。
+                  与 agents.<id>.profile 不同时 **M11 第 6 步之前被预检的过渡闸拦下退 64**（厂商 profile 尚未透传）
       --profile <名称>  本次改用另一档模型（config.yaml 的 profiles）。
                   与 --model-* 不冲突：那个指定具体模型、优先级更高，
                   这个只换默认值表。档位不存在则退 64 并列出可用值
@@ -249,7 +260,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                                                结束它与它拉起的审查员 CLI、确认退出后把 run.json 补收为 failed、
                                                回收主题锁；status.json 与闸门不动
 
-  trivium preflight --stage plan|code|bug|all [--json] [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--skip-auth-check] [--refresh-auth]
+  trivium preflight --stage plan|code|bug|all [--json] [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--tier-<id> <档>] [--effort-<id> <值>] [--profile-<id> <名>] [--skip-auth-check] [--refresh-auth]
       启动预检（FR-18 / AC-16）。失败时**不产生任何工件**。
       --stage all   命令 A 用：校验全部三阶段的模型 slug + 编译测试命令已配置
       --critics <id,…>  本次要用哪几侧。只读能力、模型 slug、探活都只查这几侧；
@@ -259,6 +270,17 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       ${CRITIC_AGENT_IDS.map((id) => `--model-${id}`).join(' / ')} <模型>
                   按该模型预检（口径同 review：只对本轮入选的审核者有效，未入选退 64）。
                   命令 A 在解析之后预检（EV-125），把 resolve 输出的 models 原样带来
+      ${CRITIC_AGENT_IDS.map((id) => `--tier-${id}`).join(' / ')} low|medium|high
+                  本次为该侧选档（取该 Agent 在 agents.<id>.tiers 里定义的档；只对本轮入选的审核者有效，
+                  未入选或档未定义退 64）。M11 第 6 步之前本轮档位名与来源不入 run.json（会告警）；
+                  选到带思考等级、或厂商 profile 与 agents.<id>.profile 不同的档，同样被过渡闸拦下退 64
+      ${CRITIC_AGENT_IDS.map((id) => `--effort-${id}`).join(' / ')} <值>
+                  本次精确指定思考等级（对该模型的原生枚举校验）。**M11 第 6 步之前被预检的过渡闸拦下退 64**：
+                  思考等级尚未透传给各家；gemini 的 slug 已编码档位时本就不生效，只告警
+      ${vendorProfileAgents().map((id) => `--profile-${id}`).join(' / ') || '（本机没有带厂商 profile 概念的审核者）'} <名>
+                  本次精确指定厂商 profile（厂商 CLI 的配置分层名，不是 --profile 档位表名；不在本机名单退 64）。
+                  与 agents.<id>.profile 不同时 **M11 第 6 步之前被预检的过渡闸拦下退 64**（厂商 profile 尚未透传）
+                  命令 A 同样把 resolve 输出的 tiers / efforts / vendor_profiles 原样带来
       --driver <id>  当轮 Driver，缺省 ${DEFAULT_DRIVER}。与 review --start 传同一个值：
                   它参与选侧判定，非缺省时预检会多打一行标注
       --refresh-auth  强制重新探活，穿透 TTL 缓存
@@ -371,6 +393,14 @@ function collectModelOverrides(args: ParsedArgs): Record<string, string> {
     if (v) out[id] = v;
   }
   return out;
+}
+
+/**
+ * 档位旗标（M11 第 5 步）的取值器：没写返回 `undefined`；写了没取到值由 `flagString` 退 64；
+ * `--x=` 写成空串时照传空串、由 `assertTierFlags` 退 64——「写了」与「没写」不得合流（计划三审 AGY-02）。
+ */
+function tierFlagGetter(args: ParsedArgs): (name: string) => string | undefined {
+  return (name) => (args.flags.has(name) ? (flagString(args, name) ?? '') : undefined);
 }
 
 /**
@@ -632,6 +662,8 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);
   // 判定通过 ⇒ 键集必然是本轮入选的审核者，这里才收窄（收集面见 collectModelOverrides）
   const models = modelOverrides as Partial<Record<CriticId, string>>;
+  // 档位旗标（M11 第 5 步）：收集与判定与 topic resolve、preflight 同一份（tier-flags.ts）
+  const tierFlags = assertTierFlags(ctx.config, driver, collectTierFlags(tierFlagGetter(args)), critics);
 
   const reviewOpts = {
     ctx,
@@ -644,6 +676,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     subjectFile: flagString(args, 'plan-file') ?? flagString(args, 'rca-file'),
     diffBase: flagString(args, 'base'),
     modelOverrides: models,
+    tierFlags,
     command: `trivium review --stage ${stage}`,
     critics,
     driver,
@@ -813,11 +846,13 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
   assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);
   // 判定通过 ⇒ 键集必然是本轮入选的审核者，这里才收窄（收集面见 collectModelOverrides）
   const models = modelOverrides as Partial<Record<CriticId, string>>;
+  const tierFlags = assertTierFlags(ctx.config, driver, collectTierFlags(tierFlagGetter(args)), critics);
 
   const r = await runPreflight({
     ctx,
     scope,
     modelOverrides: models,
+    tierFlags,
     critics,
     driver,
     skipAuthCheck: args.flags.get('skip-auth-check') === true,

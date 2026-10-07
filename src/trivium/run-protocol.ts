@@ -53,6 +53,7 @@ import {
   collectWarnings,
   type PreflightWarning,
 } from './preflight.js';
+import type { TierFlagValues } from './tier-flags.js';
 
 /**
  * 向工作进程组发 SIGTERM 之后等多久再升级 SIGKILL：`--cancel` 与 `--start` 派生后失败的收尾共用（EV-152 起具名）。
@@ -111,6 +112,12 @@ interface Handoff {
     contextPaths: string[];
     subjectFile: string | null;
     modelOverrides: Partial<Record<CriticId, string>>;
+    /**
+     * 档位命令行旗标（M11 第 5 步）。**可选**：旧交接文件没有它，读侧缺席即空。
+     * worker 用它让 `override_reason` 认得 `--tier-〈id〉`。回滚方向的降级（旧版 worker 读新交接文件会忽略它）
+     * 不改 run.v2 无解，见计划 r2 §5 第 4 条。
+     */
+    tierFlags?: Partial<Record<CriticId, TierFlagValues>>;
     command: string;
     /** 本轮入选的审核者集合。worker 是另一个进程，必须随交接文件带过去 */
     critics: CriticId[];
@@ -153,6 +160,7 @@ async function writeHandoff(rc: RunContext): Promise<void> {
       contextPaths: rc.opts.contextPaths,
       subjectFile: rc.opts.subjectFile,
       modelOverrides: rc.opts.modelOverrides,
+      ...(rc.opts.tierFlags && Object.keys(rc.opts.tierFlags).length > 0 ? { tierFlags: rc.opts.tierFlags } : {}),
       command: rc.opts.command,
       critics: [...rc.sides],
       sessionId: rc.opts.sessionId ?? null,
@@ -231,6 +239,7 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
       contextPaths: h.options.contextPaths,
       subjectFile: h.options.subjectFile,
       modelOverrides: h.options.modelOverrides,
+      tierFlags: h.options.tierFlags ?? {},
       command: h.options.command,
       critics: h.options.critics,
       sessionId: h.options.sessionId ?? null,
@@ -488,7 +497,7 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
   try {
     const heartbeatWarn = checkHeartbeatThreshold(cfg);
     // 档位组合的告警（M11 第 4 步）：准备阶段已判过 ok（不 ok 早已退 64），这里只为把告警念出来；纯函数、不抛
-    const tierCombos = checkTierCombos(cfg, rc.stage, rc.opts.modelOverrides, rc.sides);
+    const tierCombos = checkTierCombos(cfg, rc.stage, rc.opts.modelOverrides, rc.sides, rc.opts.tierFlags);
     warnings = [
       ...collectWarnings([
         ...(await checkModelOverrideSource(rc.sides, rc.adapters)),

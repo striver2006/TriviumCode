@@ -1,0 +1,18 @@
+{
+  "targets": [
+    "src/trivium/preflight.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/tier-resolve.test.js"
+  ],
+  "cases": [
+    {
+      "id": "B3",
+      "desc": "过渡闸文案不再点明经 --tier 选到的档（代码三审 GLM-02 补）",
+      "file": "src/trivium/preflight.ts",
+      "find": "      const viaTierFlag = r.tierSource === 'cli' && r.tier !== null ? `--tier-${critic} ${r.tier}` : null;\n",
+      "replace": "      const viaTierFlag = false ? `--tier-${critic} ${r.tier}` : null;\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    }
+  ]
+}

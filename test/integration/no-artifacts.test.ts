@@ -110,6 +110,35 @@ test('档位组合不合法 → review --start 退 64 且零工件（永久判�
   }
 });
 
+/*
+ * **档位命令行旗标的非法格同样零工件**（M11 第 5 步，计划 r2 §3.1）：形状层（未入选侧、档名、没有厂商 profile 概念的侧）
+ * 在入口退 64；过渡闸（`--effort-〈id〉` 在第 6 步前不下传）在准备阶段退 64。都在任何落盘之前。
+ */
+test('档位旗标不合法 → review --start 退 64 且零工件（未入选侧、档名、无厂商 profile 概念、过渡闸）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  for (const [flags, want, what] of [
+    [['--tier-codex', 'low'], /--tier-codex：codex 本轮没有入选/, '给未入选侧选档'],
+    [['--tier-glm', 'ultra'], /--tier-glm 只接受 low \| medium \| high/, '档名不在三档内'],
+    [['--profile-gemini', 'x'], /--profile-gemini：gemini 没有厂商 profile 概念/, '没有厂商 profile 概念的侧'],
+    // 模型不带档位后缀：夹具缺省的 gemini-3.8-flash-high 带后缀，按 11.5 gemini 特例只告警、不进闸
+    [['--model-gemini', 'gemini-x', '--effort-gemini', 'high'], /来自命令行 --effort-gemini[\s\S]*M11 第 6 步/, '过渡闸：思考等级尚未透传'],
+  ] as const) {
+    const fx = await makeFixture({ topic: TOPIC });
+    const r = await assertNoTrace(
+      fx.root,
+      fx.archiveRoot,
+      () =>
+        cli(
+          fx.root,
+          ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', ...flags],
+          { gemini: { mode: 'ok' }, glm: { mode: 'ok' } },
+        ),
+      EXIT.USAGE,
+      what,
+    );
+    assert.match(r.stdout + r.stderr, want, what);
+  }
+});
+
 test('无探针目录时 slug 校验按设计跳过，而不是误拒', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   const r = await cli(

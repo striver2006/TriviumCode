@@ -412,3 +412,77 @@ test('C7 档名缺失与无模型由 slug 检查报，档位组合检查不重�
   const r = checkTierCombos(c, 'plan', {}, ['glm']);
   assert.equal(r.ok, true, r.detail);
 });
+
+// ── F：命令行档位旗标进两格校验（M11 第 5 步，计划 r2 §2.3、§3.1）──
+
+/** codex 与 gemini 都配好档位：codex 两档（只写 model / 带 effort），gemini 一档不带后缀 */
+function flagCfg(): Config {
+  return comboCfg((c) => {
+    setTiers(c, 'codex', { low: { model: 'qwen3.8-flash' }, high: { model: 'qwen3.8-flash', effort: 'high' } });
+    setTiers(c, 'gemini', { low: { model: 'gemini-3.8-flash-low' } });
+  });
+}
+
+test('F1 --tier 选到未定义的档：slug 检查报档名与可用档、来源是命令行，退 64', () => {
+  const r = checkModelSlugs(flagCfg(), 'plan', {}, ['codex'], { codex: { tier: 'medium' } });
+  assert.equal(r.ok, false);
+  assert.equal(r.exitCode, EXIT.USAGE);
+  assert.match(r.detail, /档位「medium」（经命令行指定）未在 agents\.codex\.tiers 定义。可用：low, high/);
+});
+
+test('F2 --tier 选到只写 model 的档：通过，并带留痕空窗告警（第 6 步前档位名不入档）', () => {
+  const r = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { tier: 'low' } });
+  assert.equal(r.ok, true, r.detail);
+  assert.equal(r.warn, true);
+  assert.match(r.detail, /本轮档位名与来源尚未入档（M11 第 6 步起），事后只能从请求模型反推（--tier-codex low）/);
+  // 路由真的取到了档位的模型
+  assert.equal(checkModelSlugs(flagCfg(), 'plan', {}, ['codex'], { codex: { tier: 'low' } }).ok, true);
+});
+
+test('F3 过渡闸三格：--tier 选到带 effort 的档、--effort 单独给、--profile-codex 不同于 agents.codex.profile——退 64 且点名旗标', () => {
+  const tierEffort = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { tier: 'high' } });
+  assert.equal(tierEffort.ok, false);
+  // 经 --tier 选到的档：文案点明是哪一档带出来的，指引换一档（代码三审 GLM-02）
+  assert.match(tierEffort.detail, /思考等级「high」来自经 --tier-codex high 选到的档位条目.*M11 第 6 步.*换一档，或去掉该档定义里的 effort/);
+
+  const eff = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { effort: 'low' } });
+  assert.equal(eff.ok, false);
+  assert.equal(eff.exitCode, EXIT.USAGE);
+  assert.match(eff.detail, /思考等级「low」来自命令行 --effort-codex/);
+
+  const prof = checkTierCombos(flagCfg(), 'plan', { codex: 'deepseek-v4-pro' }, ['codex'], { codex: { vendorProfile: 'deepseek' } });
+  assert.equal(prof.ok, false);
+  assert.match(prof.detail, /厂商 profile「deepseek」来自命令行 --profile-codex，与 agents\.codex\.profile「qwen」不同/);
+
+  // --profile-codex 等于 agents.codex.profile：不触发（形同空操作）
+  assert.equal(checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { vendorProfile: 'qwen' } }).ok, true);
+});
+
+test('F4 永久判据先于过渡闸：--effort 枚举外报枚举；--profile-codex 名单外报名单、名单为空跳过并点名', () => {
+  const enumBad = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { effort: 'xhigh' } });
+  assert.equal(enumBad.ok, false);
+  assert.match(enumBad.detail, /「xhigh」不在模型「qwen3\.8-flash」的原生枚举中。可用值：low, medium, high/);
+  assert.doesNotMatch(enumBad.detail, /第 6 步/);
+
+  const nameBad = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { vendorProfile: 'kimi' } });
+  assert.equal(nameBad.ok, false);
+  assert.match(nameBad.detail, /厂商 profile「kimi」不在本机名单中。可用：qwen, deepseek/);
+
+  const empty = flagCfg();
+  empty.probe.cli.codex!.profiles = [];
+  const skipped = checkTierCombos(empty, 'plan', {}, ['codex'], { codex: { vendorProfile: 'qwen' } });
+  assert.equal(skipped.ok, true, skipped.detail);
+  assert.match(skipped.detail, /名单为空/);
+});
+
+test('F5 gemini 的 slug 已编码档位：--effort-gemini 只告警不生效、不退 64（计划三审 GLM-02）', () => {
+  const r = checkTierCombos(flagCfg(), 'plan', {}, ['gemini'], { gemini: { tier: 'low', effort: 'high' } });
+  assert.equal(r.ok, true, r.detail);
+  assert.match(r.detail, /slug 已编码档位，思考等级「high」不生效/);
+});
+
+test('F6 --model 覆盖了 --tier 选出的档位模型：出「覆盖了档位」的告警，不阻断', () => {
+  const r = checkTierCombos(flagCfg(), 'plan', { codex: 'qwen3.8-flash' }, ['codex'], { codex: { tier: 'low' } });
+  assert.equal(r.ok, true, r.detail);
+  assert.match(r.detail, /命令行模型「qwen3\.8-flash」覆盖了档位「low」的模型/);
+});

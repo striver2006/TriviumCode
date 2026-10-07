@@ -1,0 +1,17 @@
+A1：fail=1 cancelled=0 0s ⇒ K1 收集面是全部已登记 Agent；没写的不出现；写了空串的出现为空串（计划三审 AGY-02）
+A2：fail=1 cancelled=0 0s ⇒ K2 键校验与 --model-〈id〉 同一份判定：能入选未入选列本轮入选并给 --critics 出口；Driver 自己列当前可用
+A3：fail=1 cancelled=0 0s ⇒ K4 --profile-〈id〉 只对带厂商 profile 概念的侧成立；给别家退 64 并点明不是 --profile 档位表名
+A4：fail=1 cancelled=0 0s ⇒ K5 --tier 只收三档名；三类旗标写了不给值都退 64
+B1：fail=4 cancelled=0 0s ⇒ F3 过渡闸三格：--tier 选到带 effort 的档、--effort 单独给、--profile-codex 不同于 agents.codex.profile——退 64 且点名旗标 ｜ F4 永久判据先于过渡闸：--effort 枚举外报枚举；--profile-codex 名单外报名单、名单为空跳过并点名 ｜ F5 gemini 的 slug 已编码档位：--effort-gemini 只告警不生效、不退 64（计划三审 GLM-02） ｜ F6 --model 覆盖了 --tier 选出的档位模型：出「覆盖了档位」的告警，不阻断
+B2：fail=1 cancelled=0 0s ⇒ F2 --tier 选到只写 model 的档：通过，并带留痕空窗告警（第 6 步前档位名不入档）
+C1：fail=2 cancelled=0 6s ⇒ T5 --tier 选出的同族模型：override_reason 认得 --tier（worker 经交接文件拿到档位旗标） ｜ T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 念出留痕空窗
+C2：fail=1 cancelled=0 5s ⇒ T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 念出留痕空窗
+C3：fail=1 cancelled=0 5s ⇒ T5 --tier 选出的同族模型：override_reason 认得 --tier（worker 经交接文件拿到档位旗标）
+C4：fail=1 cancelled=0 5s ⇒ T5 --tier 选出的同族模型：override_reason 认得 --tier（worker 经交接文件拿到档位旗标）
+D1：fail=3 cancelled=0 3s ⇒ T1 resolve 输出三字段：只含本轮入选侧，没写时为空对象 ｜ T3 resolve 输出照抄进 preflight：通过，并念出留痕空窗告警 ｜ T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 念出留痕空窗
+D2：fail=3 cancelled=0 3s ⇒ T1 resolve 输出三字段：只含本轮入选侧，没写时为空对象 ｜ T3 resolve 输出照抄进 preflight：通过，并念出留痕空窗告警 ｜ T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 念出留痕空窗
+D3：fail=3 cancelled=0 3s ⇒ T1 resolve 输出三字段：只含本轮入选侧，没写时为空对象 ｜ T3 resolve 输出照抄进 preflight：通过，并念出留痕空窗告警 ｜ T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 念出留痕空窗
+D4：fail=1 cancelled=0 5s ⇒ T2 resolve：写了不给值（后面紧跟另一个旗标）⇒ 退 64，不静默丢弃（计划三审 AGY-02）
+E1：fail=1 cancelled=0 0s ⇒ 源 → 产物零 diff（改了源请跑 npm run render）
+M1：fail=0 cancelled=0 0s ⇒ 
+M2：fail=0 cancelled=0 0s ⇒ 
