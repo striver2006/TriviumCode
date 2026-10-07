@@ -1,0 +1,108 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最重一条：AC-25 的语义翻转漏了一处——主设计 10.1 机制③表 :2143 仍写着「作废…重跑一次，仍命中则 failed(peer_leak)」，与本次已改写的 12.1 :3014/:3034、15.3 :3353、16.1 :3477、17.2 :3606 新旧并存，计划偏离 5 只登记了两处残留、漏了同一章的第三处（GLM-01）。其余核验全部通过：原稿 §1 逐行清单的主设计 24 处、PRD 5 处、BACKLOG 5 条与工作树逐一对上；八条偏离逐条成立且与 r3 前言、拍板记录、第 1 步报告一致；两段式路由、tier/tier_source 五条规则、原生枚举硬拒（空或取不到跳过）、codex/claude 恒 null、run.v2 新字段挂开放节点（顶层 :26 与 $defs.critic :583 均 additionalProperties: true）与 schema 事实相符；演进设计五处冻结口径 :271/:647/:648/:660/:662 的修正指针逐行核实无误；待实施标记覆盖完整。另有 10.1.1 :2172 一处失效引用、PRD AC-23 归并子句与达成边界的矛盾及三处 nit。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2143（10.1 机制③「历史产出三层屏蔽」表行）",
+      "problem": "AC-25 的处置语义翻转没有改全：本步把 12.1 基线行（:3014）、演进增补行（:3034）、15.3 AC-25（:3353）、16.1 M7b 行（:3477）、17.2（:3606）、PRD AC-25 全部改为「作废、不自动重跑（EV-225）」，但同一主题在 10.1 机制③表 :2143 的规范正文仍是旧口径「即判该侧作废（peer_artifact_read: true）重跑一次，仍命中则该侧标 failed(peer_leak)」——无「原写」注记、无 EV-225 指针、无版本标注，且把从未实现的「重跑一次」写成了现行行为。计划 §1 对 10.1 只列了 :2265（措施 a 段），偏离 5 也只登记 10.1 与 16.1 两处残留，漏了同一章的第三处。本文档是第 3～6 步的唯一实现依据，同一议题两处相反处置正是 EV-14 记载的六次复发形态。",
+      "evidence": "实际读过工作树主设计 :2136-2163（机制③表行全文含「重跑一次」）、:2265、:3014、:3034、:3353、:3477、:3606、:3788（v1.3.129 变更记录自称「12.1 两行改为现行处置」），并对全文 grep「重跑一次」取得全部 14 处命中逐一判别（其余为 §21 历史记录、12.1 :3016 过渡句等合法保留）；另读 PRD :550-556 与计划原稿 §1/§2 偏离 5 对照。",
+      "suggestion": "把 :2143 该格的处置改为与 12.1 :3014 一致的现行口径（作废、不自动重跑，指向 EV-225），或在格内加「原写」引文加修正注记；同批把 10.1 一章内「重跑一次」的其余命中复核一遍（见 GLM-02）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2172（10.1.1 分档段）",
+      "problem": "失效引用：该句仍写「代价：§12.1『作废并重跑一次』待实施」，而 §12.1 的这一措辞与【待实施】标记已随本步移除（改为「作废、不自动重跑」，「重跑一次」移入 BACKLOG EV-225）。读者按此指针到 12.1 找不到被引的文字，且「待实施」的语义已变（原为 12.1 内待实施，现为独立演进项）。",
+      "evidence": "实际读过工作树主设计 :2172（grep「重跑一次」命中原文）与 :3014（12.1 改后文本，格内只以「原写」引文形式保留旧句并注明移出）。",
+      "suggestion": "把该处引用改为指向 12.1 现行处置或 EV-225，措辞与 GLM-01 的修复同批落地。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2920（11.3 zcode 要点 7 的 EV-136 残余句）",
+      "problem": "悬挂引用：该句列举探针残余「不分阶段、不分命令行 / 主题级覆盖、不回读生效模型」，其中「主题级覆盖」这一级已随 D-8 从规范整体删除（11.5 :2960），正文里再把它当作探针「不分」的维度，指向一个已不存在的概念。r3 §6 第 4 条的落点清单（11.5、routeModel 注释、三个调用点、zcode.ts:1121、演进设计、LLD）也没含这处正文，属清单外的漏网。",
+      "evidence": "实际读过工作树主设计 :2920 与 :2960（D-8 删除声明），并经 grep「主题级」取得全文命中逐处判别（其余命中为「主题级复盘 / task.json 主题级汇总」等无关用法）。",
+      "suggestion": "删去或改写该列举项（例如只留「不分阶段、不分命令行覆盖」），可与 zcode.ts:1121 注释清理同批或留给第 4 步，但正文这句建议本步顺手改掉。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "requirement",
+      "kind": "contract",
+      "location": "doc/01_requirements/PRD_driver_dual_critic.md:523（AC-23 第二个 Given/Then）",
+      "problem": "同一条目内新旧口径并存：AC-23 正文 :523 保留「Given 厂商对请求的思考等级做了归并，Then 归并后的生效值入档，请求值另记」，而本步追加的达成边界 :524 写明 codex 侧归并发生在厂商服务端、客户端看不到、生效值如实记空——恰在该 Given 描述的场景下，旧 Then 要求的「归并后生效值入档」按新事实永不可满足（gemini 无归并场景，档位编码在 slug 里）。本步只追加边界、未对该子句加注或改写，第 11 步验收若照字面执行会撞上一条不可达判据。",
+      "evidence": "实际读过工作树 PRD :520-524（AC-23 全文与达成边界）与 :35（v1.4.19 变更说明，只登记「补达成边界」）、主设计 15.3 :3351 与 6.7.1 :1276、第 1 步报告 §5.1（候选 a 的边界原文即「另三家只记请求值」）。",
+      "suggestion": "给 :523 该子句补一句边界注记（如「此场景按下方达成边界执行：无回读面的侧记空，不据此判失败」）或直接改写为只在可回读侧核；不要整段删除，保留原需求意图的痕迹。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:1259 与 :2851（6.7.1 effort_effective 行、11.1 逐家表 gemini 行）",
+      "problem": "一格边界未定值：gemini 回执在场（model_effective_source: envelope）但 slug 不带档位后缀时，effort_effective 记 null 没有歧义，但 effort_effective_source 取什么未写——「回读面名称（gemini 为 envelope）或 unverified；该侧无思考等级概念为 null」三值都对不上这一格（回读成功了、只是回读值不含档位；也不是 unverified，更不是无概念）。r3 §3.8 同样未定，属规格缺口而非偏离，第 6 步实现时得自行拍板。",
+      "evidence": "实际读过工作树主设计 :1258-1264（6.7.1 六行字段表）、:2845-2856（11.1 逐家表与两条约束）与 r3 §3.8 的逐家口径原文，三处都只覆盖「回执缺失为 null」「退到 requested 时 null/unverified」两格。",
+      "suggestion": "在 6.7.1 或 11.1 补一句该格取值（例如：回读在场而无档位后缀时记 envelope——表示「查过、该模型无档位」；或记 null 并写明理由），与「阴性结论与未查分得开」的三态纪律对齐。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "doc/05_testing/README.md:124（第 1 步报告登记行）",
+      "problem": "登记行末句「对 r3 §3.8 codex 退路与 §3.5 校验严格度的影响待用户定」在本批提交时点已过期：用户 2026-10-07 已就两项拍板（均取候选 a，见计划 §2 偏离 1、2，落点主设计 v1.3.129 / PRD v1.4.19）。该行随本步一起提交，读者会以为两问仍悬而未决。",
+      "evidence": "实际读过工作树 doc/05_testing/README.md :124（grep m11_tier_facts 命中全文）与计划原稿 §2 偏离 1、2 的拍板记述。",
+      "suggestion": "末句补一个时点注记（如「2026-10-07 已拍板均取候选 a，见主设计 v1.3.129」），或删去「待用户定」改为指向决策落点。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "原稿 §1 并入清单逐行核实全部对上：主设计 :6/:41、:379 起、:459 起、:1226-1238、:1258-1264、:1276、:1378-1388、:2265、:2473、:2840/:2845-2856、:2936-2954、:2960、:3014、:3034-3037、:3188-3203、:3351/:3353、:3477/:3482、:3601/:3606/:3609-3613、:3655、:3788、:4034/:4044/:4050-4052/:4058；PRD :5/:8/:35/:524/:550-555；BACKLOG EV-09 :106、EV-22 :119、EV-27 :128、EV-225 :323、EV-226 :324",
+    "八条偏离逐条成立且有据：偏离 1/2/4 与第 1 步报告 §5.1/§5.2 的候选 a 及用户拍板一致、按 r3 前言「事实推翻即改写并写明偏离」执行；偏离 3（claude 透传补登）与报告 F6、设计 3.7 回填一致；偏离 5 的两处残留（10.1 :2265、16.1 :3477）改法得当（不改 M7b 的 ✅、只在尾部注明 AC-25 一项不成立）；偏离 7 的源码线索与 gate.ts 相符（voidedSides 只进 findJointRejectedBlockers 与 jointCheckState 的排除计算，未见 strict 整次中止分支）；偏离 8 的 EV-225/226 编号正确接续现有最大号 EV-224",
+    "焦点二的规格自洽性成立：两段式路由（基础组合三级 + 按字段叠加、退 69 与现行出口同处）与 7.1 旗标表、12.1 三行档位异常、17.2 五行用例互相咬合；tier/tier_source 五条取值规则完整覆盖四类来源；原生枚举硬拒（枚举非空而值不在内退 64、枚举为空或取不到跳过）在 7.1/11.5/12.1 三处口径一致且如实记明「本机目录窄于厂商时改目录不放宽校验」的代价；run.v2 新字段只挂开放节点的断言与 schema 事实相符（顶层 :26 与 $defs.critic :583 均 additionalProperties: true，三个预留字段已在、tier/effort_effective_source/顶层 profile 未加，留待第 6 步）",
+    "焦点三除 GLM-01/02/03 外全部改净：演进设计五处冻结口径 :271（四级之上）、:647（profile 名单退 64）、:648（作废重跑一次）、:660（tier 路由四级解析）、:662（三侧两种形态）逐行读原文核对，主设计各修正指针所指行号与内容全部相符；13.1.1 对「tiers 在场即告警」的改准与 config.v2.json 事实相符（四个 agent 分支 additionalProperties: false 且无 tiers/default_tier 键，grep 零命中）",
+    "焦点四通过：并入的规格在各处均带【待实施 · M11 第 n 步】标记（术语表 :92、R-4 :123、FR-30 :3310、7.1、6.7.1、11.1、11.5、13.1.1、12.1 三行、17.2 五行、15.3 两行），文档头现状段 :41 明写「不是现状」，7.1 档位旗标段明写「下表是规格，尚未生效」；未发现把未实现内容新写成现状的加笔",
+    "EV-226 的核心事实断言经源码核实成立：routeModel（base.ts:1833）三个调用点 review.ts:1131、preflight.ts:346 只传 cli 覆盖、zcode.ts:961 不传覆盖，均不传 topic",
+    "偏离清单之外未发现未声明的偏离：对照 r3 §4.2 第 2 步范围逐项核对，本步多做的（12.1 三行档位异常、§24.1 六处、10.1/16.1 两处残留改准、13.1.1 消费端句）均在原稿 §1/§2 中逐条声明"
+  ],
+  "not_covered": [
+    "只读审查，未执行任何命令：原稿 §4/§4.1 的全量两次读数（tests 2939 / pass 2937）与「锚点恰好出现一次」的脚本断言只能采信原稿自述，未复跑",
+    "第 1 步报告的事实（F1-F7，含 turn_context 回显、claude --effort、qwen 目录窄于厂商）按报告原文与证据目录登记采信，未实测复现",
+    "主设计约 4100 行未逐字通读：按原稿行号逐处核对，另对「重跑一次、主题级、AC-25 与 M7b 组合、待实施 M11」四个关键词做全文检索；r3 §1.8 列的其它陈旧标记（:1924、:2909 等，第 10 步处理）未逐条核",
+    "AC-25 的 strict 语义只在 gate.ts 对 voidedSides 相关段落做了定向检索，未穷读 gate.ts 与 guard.ts 全文——偏离 7 本身也把它留给第 3 步核实",
+    "LLD、PROTOCOL、QUICKSTART、MANUAL、RUNBOOK、CASE、doc/02_design/README.md 的跟进（r3 第 10 步范围）与 skills-src/ 入口资产未核",
+    ".reviews/M11-档位全链路与文档收口/ 下的 r1/r2 与各审查员历史件未读（保持背靠背，只读了 r3 上位计划）"
+  ],
+  "consulted": [
+    ".reviews/M11-档位契约并入/plan/2026-10-07-M11-档位契约并入-claude.md",
+    ".reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-r3-claude.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-10-07_m11_tier_facts.md",
+    "doc/05_testing/README.md",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/review.v1.json",
+    "src/trivium/gate.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts"
+  ]
+}

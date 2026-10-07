@@ -1,0 +1,220 @@
+{
+  "bin": "/opt/homebrew/bin/codex",
+  "version": "0.160.1",
+  "base_keys": {
+    "model_catalog_json": "~/.codex/models-qwen.json",
+    "model": "qwen3.8-flash",
+    "model_reasoning_effort": "medium",
+    "model_provider": "qwen"
+  },
+  "profiles": [
+    "deepseek",
+    "glm",
+    "gpt",
+    "kimi",
+    "qwen"
+  ],
+  "profile_keys": {
+    "deepseek": {
+      "model_catalog_json": "~/.codex/models-deepseek.json",
+      "model": "deepseek-flash",
+      "model_reasoning_effort": "high",
+      "model_provider": "deepseek"
+    },
+    "glm": {
+      "model_catalog_json": "~/.codex/models-glm.json",
+      "model": "glm-5.3-flash",
+      "model_reasoning_effort": "low",
+      "model_provider": "zai"
+    },
+    "gpt": {
+      "model_catalog_json": "~/.codex/models-gpt.json",
+      "model": "gpt-5.6-luna",
+      "model_reasoning_effort": "medium",
+      "model_provider": "openai"
+    },
+    "kimi": {
+      "model_catalog_json": "~/.codex/models-kimi.json",
+      "model": "kimi-for-coding",
+      "model_reasoning_effort": "max",
+      "model_provider": "kimi"
+    },
+    "qwen": {
+      "model_catalog_json": "~/.codex/models-qwen.json",
+      "model": "qwen3.8-flash",
+      "model_reasoning_effort": "medium",
+      "model_provider": "qwen"
+    }
+  },
+  "catalogs": {
+    "deepseek": {
+      "visible": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "efforts": {
+        "deepseek-flash": [
+          "low",
+          "high",
+          "max"
+        ],
+        "deepseek-v4-pro": [
+          "low",
+          "high",
+          "max"
+        ]
+      }
+    },
+    "glm": {
+      "visible": [
+        "glm-5.3",
+        "glm-5.3-flash",
+        "glm-5-turbo"
+      ],
+      "efforts": {
+        "glm-5.3": [
+          "low",
+          "high",
+          "max"
+        ],
+        "glm-5.3-flash": [
+          "low",
+          "high",
+          "max"
+        ],
+        "glm-5-turbo": []
+      }
+    },
+    "gpt": {
+      "visible": [
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gpt-5.5",
+        "gpt-5.4-mini"
+      ],
+      "efforts": {
+        "gpt-reserve": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "gpt-5.6-terra": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+          "ultra"
+        ],
+        "gpt-5.6-luna": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "gpt-5.5": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "gpt-5.4-mini": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "codex-auto-review": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    },
+    "kimi": {
+      "visible": [
+        "k3",
+        "k3-256k",
+        "kimi-for-coding",
+        "kimi-for-coding-highspeed"
+      ],
+      "efforts": {
+        "k3": [
+          "low",
+          "high",
+          "max"
+        ],
+        "k3-256k": [
+          "low",
+          "high",
+          "max"
+        ],
+        "kimi-for-coding": [
+          "low",
+          "high",
+          "max"
+        ],
+        "kimi-for-coding-highspeed": [
+          "low",
+          "high",
+          "max"
+        ]
+      }
+    },
+    "qwen": {
+      "visible": [
+        "qwen3.8-max",
+        "qwen3.8-flash",
+        "qwen3.7-max",
+        "qwen3.7-plus",
+        "qwen3.6-flash"
+      ],
+      "efforts": {
+        "qwen3.8-max": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "qwen3.8-flash": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "qwen3.7-max": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "qwen3.7-plus": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "qwen3.6-flash": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "gpt-reserve": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "codex-auto-review": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    }
+  }
+}

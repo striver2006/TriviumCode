@@ -1,0 +1,54 @@
+{
+  "agreed": [
+    "第 1 节并入清单与第 2 节列出的 8 项偏离完全成立，均忠实反映了第 1 步探针报告（F1～F7）的实测结论及用户拍板记录，无任何未声明的隐蔽偏离。",
+    "两段式路由与按字段叠加（5 条 tier/tier_source 取值规则）边界清晰，严密覆盖了完全覆盖、部分覆盖、profile、历史 slug 与直接 CLI 参数 5 种形态，内部自洽。",
+    "针对 codex 归并客户端不可见与回显问题，果断放弃不实退路，将 codex/claude effort_effective 规范化为 null (unverified)，并将 AC-23 达成边界收敛至 gemini，实事求是。",
+    "对原生枚举依 slug 规则硬拒（退出码 64）替代弱回退，避免了未知档位静默失效；CLI 模型未命中 Stage 1 报错 69 的出口定义精确可行。",
+    "run.v2 新增 6 个档位留痕字段挂接于 schema 根节点与 critic 节点的 additionalProperties 开放节点，既满足留痕溯源需求又避免不必要的主版本号升级。",
+    "主设计各处（11.5、12.1、13.1.1、15.3、16.1、17.2、18.1、24.1）语义翻转彻底，演进设计的 5 处过时引用均设立了明确指向主设计的修正指针，无新旧冲突。",
+    "所有新增规范性条目均显式标记【待实施 · M11 第 n 步】，基线与未来演进界限分明，完全符合纪律 6b 与纪律 6a 要求。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/05_testing/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/05_testing/REPORT_2026-10-07_m11_tier_facts.md",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-r3-claude.md",
+    ".reviews/M11-档位契约并入/plan/2026-10-07-M11-档位契约并入-claude.md",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex-trace.ts",
+    "src/trivium/config.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅主设计 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md，11.5 节 :2960 行明确写道「删主题级 task.json 覆盖并登记 EV-226... 路由因此退化为全局/CLI/默认三级」，但 :164 行「FR-06... 路由优先级四级」、:3286 行「FR-06... 路由优先级四级」及 :3341 行「AC-13... 路由优先级四级」依然存在，与 11.5 节最新定义存在细微字面残留。",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:164",
+      "problem": "主设计 11.5 节已将第二级路由（主题级 task.json 覆盖）彻底废弃并立项 EV-226，正文改为三级基底与两段式路由；但主设计 1.4 节 FR-06 规格表（:164 行）、15.1 节 FR-06 验收标准（:3286 行）与 15.3 节 AC-13 规格（:3341 行）摘要中，仍残留「路由优先级四级」的历史定势表述，未同步修正为三级路由或两段式路由。",
+      "severity": "nit",
+      "suggestion": "在后续 M11 第 10 步文档全量收口或本步修订稿中，将 FR-06 与 AC-13 表格行摘要中的「路由优先级四级」修正为「三级基底 + 两段式路由（主题级 task.json 覆盖已废弃并转入 EV-226）」或类似表述，确保主设计内部前呼后应。"
+    }
+  ],
+  "not_covered": [
+    "因审查员只读约束与本步骤性质（纯文档契约并入），未执行任何业务代码变更与构建写操作。",
+    "各适配器具体代码改造、旗标解析与退出码拦截的实际运行效果，留待后续 M11 第 3 步至第 6 步代码实现阶段测试验证。",
+    "端到端跨进程双审运行与档位透传实际网络交互（AC-23、AC-25 等），留待后续第 11 步、第 12 步验收阶段实际执行。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本次审查未发现阻断性或严重缺陷，仅识别到主设计 1.4/15.1/15.3 节关于 FR-06 / AC-13 历史摘要仍残留「路由优先级四级」字样（见 AGY-01，建议后续收口同步），整体质量优秀，判定为 approve-with-nits。\n规范增量与上位计划 r3 §3、D-1~D-13 决策及第 1 步探针事实高度自洽，8 项偏离均有确凿证据且合理成立，未见未声明的隐性偏离。\n两段式路由与按字段叠加（5 条取值规则）、原生枚举 slug 硬拒、codex 与 claude 生效思考等级恒为 null 的达成边界设计严密、逻辑闭环。\nrun.v2 新增字段完全挂接在开放节点上，未破坏历史契约且无需升级 schema 主版本。\n旗标表参数校验与退出码（64/69）定义准确，全链路语义翻转与修正指针在主设计及演进设计相关章节均已落实。\n全量并入条目均带有明确的【待实施 · M11 第 n 步】状态标记，杜绝了未实现当作现状的问题。",
+  "verdict": "approve-with-nits"
+}

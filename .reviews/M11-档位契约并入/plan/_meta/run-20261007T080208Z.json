@@ -1,0 +1,300 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261007T080208Z",
+  "topic": "M11-档位契约并入",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "本步是纯文档的契约并入，规范增量已写进工作树，请直接读主设计、PRD、BACKLOG 的改后文本，按原稿第 1 节的行号逐处核。重点四件事。一、并入的规范文字是否与上位计划 r3 第 3 节、拍板记录、第 1 步探针报告的事实一致，原稿第 2 节列的八条偏离是否成立、有没有未声明的偏离。二、规格能否落地且内部自洽：两段式路由与按字段叠加、tier 与 tier_source 的五条取值规则、原生枚举照 slug 规则硬拒、codex 与 claude 的生效思考等级恒为空、run.v2 新字段只挂开放节点、旗标表的校验与退出码。三、语义翻转是否改全：主设计内同一议题的各处（11.5、12.1、13.1.1、15.3、16.1、17.2、18.1、24.1）有没有新旧两种说法并存，冻结的演进设计各处过时口径是否都有修正指针。四、状态标记：并入的规格是否都带待实施标记，有没有把未实现的写成现状。",
+  "task_goal": "M11 第 2 步：把档位全链路的特性契约与第 1 步事实并入主设计（v1.3.129）与 PRD（v1.4.19），作为第 3 至 6 步编码的准入前置",
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "92d53be4c55f069a06989e54f586ca4dd994da64",
+    "tree_hash": "5768e867ad8e9d10d0522e7e00e67e5c5a6cf8b8",
+    "dirty": true,
+    "subject_sha256": "4442d19f1325632fa90363d823b7f602be195e301534c575d49b27f55fc267fa",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "6adbfae2ab49a9c38d2c046cf321c624c080a4d6",
+      "dirty": false,
+      "inputs_sha256": "f80f17996d87041dac46e16022012649b58f543b31c7c258360d2a971a638693",
+      "built_at": "2026-10-07T00:53:08.649Z"
+    },
+    "after_tree_hash": "5768e867ad8e9d10d0522e7e00e67e5c5a6cf8b8"
+  },
+  "started_at": "2026-10-07T08:02:10.012Z",
+  "finished_at": "2026-10-07T08:17:11.141Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.1",
+      "model_requested": "kimi-for-coding",
+      "model_effective": "kimi-for-coding",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 900.854,
+      "tool_calls": {
+        "run_command": 52,
+        "project_reads": 13
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a11562-5dd8-76c3-8300-c5380b7bf381",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.1",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 636.096,
+      "tool_calls": {
+        "read": 47,
+        "grep": 10,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 18
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 471768,
+        "output_tokens": 36509,
+        "thinking_tokens": 28953,
+        "cache_read_tokens": 9140384,
+        "total_tokens": 508277
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "7b037be9-59da-4bca-ad02-de9f23e53c1e",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 479.87,
+      "tool_calls": {
+        "read": 28,
+        "grep": 9,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 11
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 15,
+        "inputTokens": 2097734,
+        "outputTokens": 37892,
+        "totalTokens": 2135626,
+        "cacheReadTokens": 1885056,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_e3a31f8f-bd0e-4151-adf8-fb122a449f8f",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M11-档位契约并入/plan/_meta/brief-codex-20261007T080208Z.md",
+      "sha256": "61bfdcc89158980e2f0496400a4a3ed5f87989ab50bd4a611f107e30f402d3ca"
+    },
+    {
+      "path": "M11-档位契约并入/plan/_meta/brief-gemini-20261007T080208Z.md",
+      "sha256": "6214001d0b1f75f15a4294a11b5d42057e0a22cc550e39d75d91d7940bf7a69a"
+    },
+    {
+      "path": "M11-档位契约并入/plan/_meta/brief-glm-20261007T080208Z.md",
+      "sha256": "118165c9e1a848241908becfa9821ffd27a7ed44b99f9d5241e36af5ea372ceb"
+    },
+    {
+      "path": "M11-档位契约并入/plan/_meta/review-codex-20261007T080208Z.json",
+      "sha256": "3abb36220c31e97a1b07fc857919e42dd705a4d5abe93d8a2d99d8d7d6202754"
+    },
+    {
+      "path": "M11-档位契约并入/plan/_meta/review-gemini-20261007T080208Z.json",
+      "sha256": "00ab40f9655777e1c64a0ece552bcf830f6e36dcf806808726f577f94b05ae59"
+    },
+    {
+      "path": "M11-档位契约并入/plan/_meta/review-glm-20261007T080208Z.json",
+      "sha256": "5d0b3d90cca577f37faf598d577f5fb7d7b9d8ea11808321ef53204ab7653acb"
+    },
+    {
+      "path": "M11-档位契约并入/plan/2026-10-07-M11-档位契约并入-codex.md",
+      "sha256": "ecc59ff383682a6552cbbded7578158235125a02b17c159c93dfe8d58ad9ed0c"
+    },
+    {
+      "path": "M11-档位契约并入/plan/2026-10-07-M11-档位契约并入-gemini.md",
+      "sha256": "ab9d20cc01b0c9fc4d89509b51312e432eda62bf61885205a4baace65162509c"
+    },
+    {
+      "path": "M11-档位契约并入/plan/2026-10-07-M11-档位契约并入-glm.md",
+      "sha256": "6a0447897cd1d92584ae13dd88602aea70de11a8040317966934f9eb4858b3d6"
+    },
+    {
+      "path": "M11-档位契约并入/plan/2026-10-07-M11-档位契约并入-claude.md",
+      "sha256": "4442d19f1325632fa90363d823b7f602be195e301534c575d49b27f55fc267fa"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
