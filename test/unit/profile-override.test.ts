@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyProfileOverride, defaultConfig } from '../../src/trivium/config.js';
-import { routeModel } from '../../src/trivium/adapters/base.js';
+import { resolveTier } from '../../src/trivium/adapters/base.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { Config } from '../../src/trivium/types.js';
 
@@ -25,11 +25,12 @@ function cfg(): Config {
   return c;
 }
 
-test('换档后 routeModel 取的是新档位的模型', () => {
+test('换档后档位解析取的是新档位的模型', () => {
   const c = applyProfileOverride(cfg(), 'flash');
   assert.equal(c.active_profile, 'flash');
-  assert.deepEqual(routeModel(c, 'gemini', 'code'), { model: 'g-low', source: 'profile' });
-  assert.deepEqual(routeModel(c, 'glm', 'plan'), { model: 'GLM-Flash', source: 'profile' });
+  assert.equal(resolveTier(c, 'gemini', 'code').model, 'g-low');
+  assert.equal(resolveTier(c, 'gemini', 'code').tierSource, 'legacy');
+  assert.equal(resolveTier(c, 'glm', 'plan').model, 'GLM-Flash');
 });
 
 test('不传时原样返回，不动 active_profile', () => {
@@ -54,11 +55,9 @@ test('档位不存在退 64 并列出可用值——不静默回退到 default',
 
 test('--model-* 优先于档位：更具体的赢', () => {
   const c = applyProfileOverride(cfg(), 'flash');
-  assert.deepEqual(
-    routeModel(c, 'gemini', 'code', { cli: 'g-pro-explicit' }),
-    { model: 'g-pro-explicit', source: 'cli' },
-    '显式指定的具体模型不该被档位覆盖——档位只提供默认值表',
-  );
+  const r = resolveTier(c, 'gemini', 'code', { model: 'g-pro-explicit' });
+  assert.equal(r.model, 'g-pro-explicit', '显式指定的具体模型不该被档位覆盖——档位只提供默认值表');
+  assert.equal(r.origin.model, 'cli');
 });
 
 test('不改动传入的 config 对象本身（避免跨调用污染）', () => {

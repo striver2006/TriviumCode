@@ -593,6 +593,24 @@ export interface CodexProbe extends CommonProbe {
    * （代码双审 CODEX-01）。
    */
   models_by_profile_errors: Record<string, string>;
+  /**
+   * **逐模型的原生思考等级枚举**（M11 第 4 步，设计 11.5「原生枚举与校验」）。
+   *
+   * 取自 `debug models` 的 `supported_reasoning_levels`——`parseCodexModelCatalog` 早就在解析，
+   * 此前算完即丢。`base` 是基底目录、`by_profile` 逐 profile；**只收可见项**，与 `models_visible` /
+   * `models_by_profile` 同口径。采集失败的 profile 不写条目（失败 ≠ 空，同 `models_by_profile_errors`）。
+   *
+   * **它只代表本机目录，不是厂商口径的权威**（设计 3.6：qwen 目录外的 `xhigh` 厂商也接受）。
+   * 目录窄于厂商时改本机目录文件，不放宽校验（用户 2026-10-07 定）。
+   *
+   * **消费方**：codex 适配器的 `reasoningLevelsFor` → 预检与 `review` 准备阶段的「档位组合合法」。
+   * 旧探针结论没有本字段 ⇒ 消费方当「取不到」、跳过 effort 校验，不硬拒。
+   * 零配额：采集在 `skipModelCalls` 判断之前，`doctor --no-model-calls` 即可落盘。
+   */
+  reasoning_levels?: {
+    base: Record<string, string[]>;
+    by_profile: Record<string, Record<string, string[]>>;
+  };
 }
 
 /**
@@ -923,10 +941,36 @@ export interface ReviewConfig {
   never_skip_globs: string[];
 }
 
-export interface GeminiCriticConfig {
+/** 档位名（设计 11.5，M11 第 4 步）。三档挂 Agent，不挂模型（18.1 #17） */
+export type TierName = 'low' | 'medium' | 'high';
+
+/**
+ * 一档的组合（`agents.<id>.tiers.<档>`，设计 11.5）。可跨模型、跨家族。
+ *
+ * - `effort` 取**该模型的原生枚举值**，不是统一的 `low/medium/high` 字面集（11.5 禁令 ①）；
+ *   缺省表示该 Agent 用模型选择承载档位差异。zcode 支 schema 层不收它（glm 无此概念）。
+ * - `profile` 是**厂商** profile（codex 的 `-p`），只对 openai vendor 有意义，schema 只在该支放行。
+ *
+ * M11 第 4 步只解析与校验；`effort` 与 `profile` 第 6 步才透传给适配器，
+ * 之间由预检的过渡闸拒绝「写了却不下传」的组合（`preflight.ts` `checkTierCombos`）。
+ */
+export interface TierEntry {
+  model: string;
+  effort?: string;
+  profile?: string;
+}
+
+/** 逐 Agent 的档位表与默认档（四个配置段共用；形状差异由 schema 按 vendor 收紧） */
+export interface TierFields {
+  tiers?: Partial<Record<TierName, TierEntry>>;
+  default_tier?: TierName;
+}
+
+export interface GeminiCriticConfig extends TierFields {
   vendor: 'antigravity';
   bin: string | null;
   agent: string;
+  /** 档位表格子是裸 slug 时的思考等级回落（设计 11.5）；档位与 `{model, effort}` 格子不回落它 */
   effort: Record<Stage, 'low' | 'medium' | 'high'>;
   /*
    * 原有 `readonly_commands`，2026-10-01 删除（BACKLOG EV-15）：从未接线，agy 侧工具面里
@@ -944,15 +988,20 @@ export interface GeminiCriticConfig {
  * 而 `unknown_profile_rejected` 实测为 false（未知 profile 静默回落基底），
  * 猜错一次就是「以为跑的是 deepseek、实际跑的是基底那家」而毫无提示。
  */
-export interface CodexCriticConfig {
+export interface CodexCriticConfig extends TierFields {
   vendor: 'openai';
   bin: string | null;
   /** 厂商 profile 名，对应 `$CODEX_HOME/<name>.config.toml`（0.154.0 的 `-p` 是文件分层） */
   profile: string | null;
-  effort: Record<Stage, 'low' | 'medium' | 'high'>;
+  /*
+   * 原有 `effort`（阶段级、枚举 low/medium/high），2026-10-07 删除（M11 第 4 步，设计 11.5）：
+   * 从未被读取（`effortFor` 只给 antigravity 取值），且枚举违反 11.5 禁令 ①。
+   * schema 仍接受它（标 deprecated），出现时只由 doctor / preflight 提示，见 `config.ts` 的
+   * `DEPRECATED_CONFIG_KEYS`。思考等级改由档位条目的 `effort` 表达。不要加回来。
+   */
 }
 
-export interface GlmCriticConfig {
+export interface GlmCriticConfig extends TierFields {
   vendor: 'zcode';
   entry: string | null;
   max_turns: number;
@@ -980,9 +1029,10 @@ export interface GlmCriticConfig {
  * **不要为了「补齐」把 `bin` 加回来。** 真需要本机入口覆盖时，
  * 再放宽这一支的 schema 是向后兼容的；反过来删一个已经进过用户配置的字段则不是。
  *
- * `effort` 同理不加：claude 侧没有对应的 CLI 旗标（探针未记录任何 effort 旗标）。
+ * 阶段级 `effort` 不加：M6 探针当时没有对应的 CLI 旗标。M11 第 1 步实测 2.1.291 已有 `--effort`
+ * 但不校验、不回读（设计 3.7），思考等级改由档位条目的 `effort` 表达（`TierFields`），透传随 M11 第 6 步。
  */
-export interface ClaudeCriticConfig {
+export interface ClaudeCriticConfig extends TierFields {
   vendor: 'anthropic';
 }
 
@@ -1039,7 +1089,13 @@ export interface GateConfig {
   joint_blocker_policy: 'warn' | 'hard';
 }
 
-export type ProfileEntry = Partial<Record<Stage, string>> & { effort?: 'low' | 'medium' | 'high' };
+/**
+ * 档位表格子（`profiles.<表>.<id>.<阶段>`）的三形态（设计 11.5，M11 第 4 步）：
+ * 裸 slug（旧形态，行为逐字不变）｜ `{tier}`（引用该 Agent 的档位）｜ `{model, effort}`（精确组合，无档位名）。
+ */
+export type StageModel = string | { tier: TierName } | { model: string; effort: string };
+
+export type ProfileEntry = Partial<Record<Stage, StageModel>> & { effort?: 'low' | 'medium' | 'high' };
 export type Profile = Partial<Record<CriticId, ProfileEntry>>;
 
 export interface Config {

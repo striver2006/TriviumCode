@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.50
+> - **当前版本**：v1.1.51
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.51（2026-10-07）随设计 v1.3.131（M11 第 4 步：配置契约与档位解析）同步：3.3 必读交集校验一段里「排在逐侧 `routeModel` 的 69 之前」改为档位解析（`resolveTier`，原 `routeModel` 已删），并注明那条 69 对同一输入不可达；准备阶段在 slug 校验之后新增「档位组合合法」一格（`preflight.ts` `checkTierCombos`）。行数列未重核。
 > - **变更说明**：v1.1.50（2026-10-07）随设计 v1.3.128（复盘面失守旗标分档，EV-224）同步：模块表 `report.ts`、`meta.ts` 两行补一句——失守旗标与 `summarizeRun` 的失守一行改调 `gate.ts` 的 `readonlyBreachLabel`。未走双审。行数列未重核。
 > - **变更说明**：v1.1.49（2026-10-06）随设计 v1.3.127（只读失守未确证改动放行，EV-223）同步：「待裁决闸门的只读失守文案」小节补判据单点——失守组只收 `gate.ts` 的 `classifyReadonlyBreach` 判确证的那一格，复算无变化或比不了的失守轮归未见失守组、出原文案；快照漂移改调 `confirmedDriftText()`。行数列未重核。
 > - **变更说明**：v1.1.48（2026-10-06）随设计 v1.3.126（补丁排除不受 pathspec 环境变量影响，EV-222）同步：3.3「`executeRun()` 的漂移复算」补「魔法 pathspec 钉住解释方式」一段，EV-221 那段「钉 `GIT_LITERAL_PATHSPECS=0`」补指向。未走双审。行数列未重核。
@@ -282,7 +283,7 @@ sequenceDiagram
 #### `prepareRun()` 的「零工件」不变式（[review.ts:542](../../src/trivium/review.ts#L542)）
 
 第 11 步之前**一个文件都没写**（`review.ts:928`，段注释「到这里为止不写任何审查工件与留痕」）。校验、定位被审对象、冻结、渲染 BRIEF 全在内存里完成，确认全部成功后才统一落盘。
-冻结与渲染之间夹一段必读交集校验（v1.1.29，设计 v1.3.73 / EV-02）：先逐侧 `freeze()` 算出禁读集，再对 `--context` 的原始写法逐侧跑 `brief.ts` 的 `findDenyConflicts`，撞上任一侧即 `usageError`（退 64，仍在零工件区、排在逐侧 `routeModel` 的 69 之前）；随后逐侧把第 4 段的自动条目（公约、关键词、建议核实、己方历史）过同一判定、撞上的只从该侧剔除，攒成两份告警：全量那份写骨架时并进 `gate.warnings`（纯文档跳过轮同样写，代码双审 CODEX-03），封顶 5 条那份（`MUST_READ_PRUNED_DISPLAY_MAX`，CODEX-06）存进 `RunContext.mustReadPruned` 供两个播报通道用——`startRun` 追加、`executeRun` 汇总告警时排在 guard 告警之前；工作进程重建上下文时给 `[]`。拒跑发生在逐侧冻结之后，冻结写进对象库的松散对象与正常运行同形（CODEX-04，不改次序的理由见设计 10.1.1 末节）。这是审查意见 GLM-04 的修复——原先 `locateSubject` 抛 65 或第二侧 `routeModel` 抛 69 时，会留下「目录 + 单侧 brief」的半套工件。
+冻结与渲染之间夹一段必读交集校验（v1.1.29，设计 v1.3.73 / EV-02）：先逐侧 `freeze()` 算出禁读集，再对 `--context` 的原始写法逐侧跑 `brief.ts` 的 `findDenyConflicts`，撞上任一侧即 `usageError`（退 64，仍在零工件区、排在逐侧路由——`resolveTier`，v1.1.51 前是 `routeModel`——的 69 之前；那条 69 对同一输入早被 slug 校验以 64 拦下、不可达。slug 校验之后另有「档位组合合法」一格 `checkTierCombos`，同样退 64、零工件）；随后逐侧把第 4 段的自动条目（公约、关键词、建议核实、己方历史）过同一判定、撞上的只从该侧剔除，攒成两份告警：全量那份写骨架时并进 `gate.warnings`（纯文档跳过轮同样写，代码双审 CODEX-03），封顶 5 条那份（`MUST_READ_PRUNED_DISPLAY_MAX`，CODEX-06）存进 `RunContext.mustReadPruned` 供两个播报通道用——`startRun` 追加、`executeRun` 汇总告警时排在 guard 告警之前；工作进程重建上下文时给 `[]`。拒跑发生在逐侧冻结之后，冻结写进对象库的松散对象与正常运行同形（CODEX-04，不改次序的理由见设计 10.1.1 末节）。这是审查意见 GLM-04 的修复——原先 `locateSubject` 抛 65 或第二侧 `routeModel` 抛 69 时，会留下「目录 + 单侧 brief」的半套工件。
 计算段另有两步（v1.1.34，设计 v1.3.88 / EV-210）：代码阶段先 `resolvePlanFinal`（按计划阶段执笔方定位本主题计划定稿，取不到返回 null，计划阶段留痕读不出返回 null 加一条「必读清单未列计划定稿」告警），结果作为 `buildMustReadList` 的第五个参数，计划定稿与其余自动条目一样过逐侧剔除；告警排在两份剔除告警之前、同走 `gate.warnings` 与 `rc.mustReadPruned`。`taskGoalAppendix(stage, opts.taskGoal)` 紧跟 `resolveTaskGoal` 算一次、各侧共用，只在计划阶段且显式目标的摘要被截断时非空，作为渲染的第三个必填入参 `taskGoalAppendix` 传入（非空时第 4 段多一行指引、第 8 段之后多一个不编号附录）。
 `resolveTaskGoal` 的第三级（v1.1.37，设计 v1.3.91 / EV-212）不再自己定位计划文档，改收第 4 个必填参数 `planFinal: () => Promise<PlanFinal>`，
 只在前两级都为空、且不是计划阶段时调用、至多一次：代码阶段传 `async () => planFinal`（复用上面那次 `resolvePlanFinal`，不判第二次），

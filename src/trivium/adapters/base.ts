@@ -13,9 +13,9 @@
 import nodePath from 'node:path';
 import os from 'node:os';
 import type {
-  Config, CriticId, CriticRequest, CriticResult, Stage, SuspectedWrite,
+  AgentConfig, Config, CriticId, CriticRequest, CriticResult, Stage, SuspectedWrite, TierName,
 } from '../types.js';
-import { VENDOR_MODEL_FAMILY, type AgentVendor } from '../agents/registry.js';
+import { VENDOR_MODEL_FAMILY, agentById, type AgentVendor } from '../agents/registry.js';
 
 export interface AdapterContext {
   cfg: Config;
@@ -162,7 +162,23 @@ export interface CriticAdapter {
    * 上一版把两者合成同一个空清单，于是一次子进程失败会被读成「确认没有目录」从而**放行**——
    * 把刚建起来的拦截静默降级成 fail-open，而给出的原因还是编的。
    */
-  catalogModelsFor?(cfg: Config): CatalogSource | null;
+  catalogModelsFor?(cfg: Config, vendorProfile?: string | null): CatalogSource | null;
+  /**
+   * **该模型的原生思考等级枚举**（M11 第 4 步，设计 11.5「原生枚举与校验」）。**可选**：缺席按 `unknown`。
+   *
+   * 与 `catalogModelsFor` 同理住在适配器里：codex 的枚举在探针的逐 profile 目录里、gemini 的由 slug 后缀派生、
+   * glm 没有这个概念——都是那一侧的知识，预检只按通用钩子判，不按 vendor 分派、不读厂商私有探针结构
+   * （计划三审 AGY-03）。`vendorProfile` 只对目录随厂商 profile 分层的侧有意义，其余忽略。
+   *
+   * 三态互不合并（同 `CatalogSource` 的纪律）：`none` 是「该侧没有思考等级」——给了值就该拒；
+   * `levels` 是「采到了」——非空而不在其中就该拒；`unknown` 是「不知道」——跳过并说出来。
+   */
+  reasoningLevelsFor?(cfg: Config, model: string, vendorProfile: string | null): ReasoningLevels;
+  /**
+   * **本机可用的厂商 profile 名单**（M11 第 4 步，设计 11.5「厂商 profile」预检格 ①）。**可选**：
+   * 没有厂商 profile 概念的侧不实现。返回空数组 = 名单为空 ⇒ 预检跳过该项校验（同 slug 规则）。
+   */
+  vendorProfilesFor?(cfg: Config): string[];
   /**
    * 该侧做模型覆盖时要读的**用户侧文件**（绝对路径，EV-123）。**可选**：不靠副本做覆盖的侧不实现。
    *
@@ -238,6 +254,17 @@ export type CatalogSource =
   | { kind: 'catalog'; models: string[]; source: string }
   | { kind: 'fallback'; why: string }
   | { kind: 'unverifiable'; why: string };
+
+/**
+ * 原生思考等级的三种答案，见 `CriticAdapter.reasoningLevelsFor`。
+ *
+ * `suffixEncoded`：slug 本身已编码档位（gemini 的 `-low/-medium/-high` 后缀，坑 P-16）——
+ * 此时 slug 即权威，再给思考等级不生效（设计 11.5 gemini 特例），预检告警而不校验。
+ */
+export type ReasoningLevels =
+  | { kind: 'none' }
+  | { kind: 'levels'; levels: string[]; suffixEncoded?: boolean }
+  | { kind: 'unknown'; why: string };
 
 /** 结构化轨迹两家（gemini / glm）的能力：与本步之前的行为逐字等价 */
 export const TOOL_TRACE_CAPABILITY: TraceCapability = {
@@ -1829,19 +1856,195 @@ export function toProjectRelative(p: string, roots: readonly string[]): string |
   return null;
 }
 
-/** 模型路由：命令行参数 > 主题级覆盖 > profile > 阶段默认（设计 §11.5 四级） */
-export function routeModel(
+/** 基础组合的来源，或「精确值全覆盖 / 第一段无命中」的 `override`（设计 11.5 / 6.7.1 `tier_source`） */
+export type TierSource = 'cli' | 'profile' | 'agent_default' | 'legacy' | 'override';
+
+/**
+ * 解析结果里每个字段从哪来：`tier` 档位条目 ｜ `cell` 档位表格子（裸 slug 或 `{model, effort}`）｜
+ * `cli` 命令行精确值 ｜ `agent` Agent 配置段的补全（厂商 profile 回落、gemini 阶段级 effort 回落）。
+ */
+export type FieldOrigin = 'tier' | 'cell' | 'cli' | 'agent';
+
+/** 命令行一级（第二段的精确值与第一段的 `--tier-<id>`）。旗标随 M11 第 5 步，本步以参数形式进来 */
+export interface TierOverrides {
+  tier?: TierName | null;
+  model?: string | null;
+  effort?: string | null;
+  vendorProfile?: string | null;
+}
+
+export interface TierResolution {
+  model: string | null;
+  effort: string | null;
+  /** 厂商 profile（codex 的 `-p`）；无此概念的族恒 null */
+  vendorProfile: string | null;
+  tier: TierName | null;
+  /** 无模型时为 null */
+  tierSource: TierSource | null;
+  origin: { model: FieldOrigin | null; effort: FieldOrigin | null; vendorProfile: FieldOrigin | null };
+  /** Agent 配置段自己的厂商 profile（`agents.<id>.profile`）——第 6 步之前运行期实际用的就是它 */
+  agentVendorProfile: string | null;
+  /**
+   * 第 6 步之前运行期**实际下传**的阶段级思考等级（`effortFor` 的取值：只有 antigravity 有）。
+   * 与 `effort` 不同：后者是解析结果，前者是现行请求构造会发出的值，过渡告警比的就是两者（GLM-01）。
+   */
+  stageEffort: string | null;
+  /**
+   * 档位表格子显式写了空串（计划三审 CODEX-03 / 代码三审 GLM-01）：按「无模型」处理，**不回落 `default_tier`**——
+   * 显式写空是配置错误，与「写错档名不落到下一级」同一口径；预检据此在「未定义模型」文案里点明是空串。
+   */
+  emptySlug: boolean;
+  /** 档位名指向未定义的档：解析不抛，由预检统一报 64 并列可用档 */
+  missingTier: { name: TierName; via: 'cli' | 'profile' | 'agent_default'; defined: TierName[] } | null;
+  /** 被覆盖的字段原本来自档位时的告警（设计 11.5，不阻断） */
+  warnings: string[];
+}
+
+const TIER_NAMES: readonly TierName[] = ['low', 'medium', 'high'];
+
+/**
+ * **档位解析**（设计 11.5 两段式，M11 第 4 步）。纯函数：不读盘、不读环境。
+ *
+ * 取代原 `routeModel`（只解析模型单值，且收一个从未有人传过的 `topic` 参数——主题级覆盖规范有、
+ * 实现从未接线，v1.3.129 从规范删除，BACKLOG EV-226）。
+ *
+ * **第一段 · 基础组合**，取第一个命中者：①`cli.tier` → `cli`；②档位表格子：`{tier}` → 该档、`profile`；
+ * `{model, effort}` → 该组合、`profile`；裸 slug → 该模型、`legacy`（行为与旧 `routeModel` 逐字相同）；
+ * ③`agents.<id>.tiers[default_tier]` → `agent_default`。命中的引用指向未定义的档 ⇒ 记 `missingTier`、
+ * 不再往下找（显式写错的档不能静默落到下一级）。空串裸 slug 按「无模型」、同样不往下找（记 `emptySlug`）——
+ * 没有 `default_tier` 时与旧实现的 falsy 判定结果相同（退 64），有时也不静默回落（代码三审 GLM-01）。
+ *
+ * **补全**：厂商 profile 取 档位条目 > `agents.<id>.profile`（只对 openai vendor）；裸 slug 格子的思考等级
+ * 回落 antigravity 段的阶段级 `effort`（11.5：「档位表格子是裸 slug 时」的回落，与 `effortFor` 同值）。
+ *
+ * **第二段 · 按字段叠加精确值**：`cli.model` / `cli.effort` / `cli.vendorProfile` 各自覆盖；
+ * 被覆盖字段原本来自档位时告警。
+ *
+ * **`tier` / `tier_source`**（11.5 / 6.7.1，计划三审 AGY-01 统一后的规则）：基础组合**提供的字段**被精确值
+ * 全部覆盖、或第一段无命中 ⇒ `null` / `override`；否则档位记档位名与其来源，`{model, effort}` 格子
+ * 记 `null` / `profile`，裸 slug 记 `null` / `legacy`。「提供的字段」按实际给出的键计，补全不算。
+ *
+ * vendor 取注册表登记的（与 `effortFor` 同一判据），不取配置段里自称的。
+ */
+export function resolveTier(
   cfg: Config,
   critic: CriticId,
   stage: Stage,
-  overrides: { cli?: string | null; topic?: string | null } = {},
-): { model: string | null; source: 'cli' | 'topic' | 'profile' | 'none' } {
-  if (overrides.cli) return { model: overrides.cli, source: 'cli' };
-  if (overrides.topic) return { model: overrides.topic, source: 'topic' };
-  const profile = cfg.profiles[cfg.active_profile];
-  const fromProfile = profile?.[critic]?.[stage];
-  if (fromProfile) return { model: fromProfile, source: 'profile' };
-  return { model: null, source: 'none' };
+  cli: TierOverrides = {},
+): TierResolution {
+  const agent = (cfg.agents as Partial<Record<string, AgentConfig>>)[critic];
+  const vendor = agentById(critic)?.vendor ?? null;
+  const tiers = agent?.tiers ?? {};
+  const defined = TIER_NAMES.filter((n) => tiers[n] !== undefined);
+
+  type Fields = { model?: string; effort?: string; profile?: string };
+  type Base = { kind: 'tier' | 'cell' | 'legacy'; source: Exclude<TierSource, 'override'>; tier: TierName | null; fields: Fields };
+  let base: Base | null = null;
+  let missingTier: TierResolution['missingTier'] = null;
+
+  const fromTier = (name: TierName, via: 'cli' | 'profile' | 'agent_default'): Base | null => {
+    const e = tiers[name];
+    if (!e) {
+      missingTier = { name, via, defined };
+      return null;
+    }
+    const fields: Fields = { model: e.model };
+    if (e.effort !== undefined) fields.effort = e.effort;
+    // 厂商 profile 只对 openai vendor 有意义；别的支 schema 不收它，这里再守一道
+    if (e.profile !== undefined && vendor === 'openai') fields.profile = e.profile;
+    return { kind: 'tier', source: via, tier: name, fields };
+  };
+
+  const cell = cfg.profiles[cfg.active_profile]?.[critic]?.[stage];
+  const emptySlug = !cli.tier && cell === '';
+  if (cli.tier) {
+    base = fromTier(cli.tier, 'cli');
+  } else if (typeof cell === 'string') {
+    if (cell) base = { kind: 'legacy', source: 'legacy', tier: null, fields: { model: cell } };
+  } else if (cell && typeof cell === 'object' && 'tier' in cell) {
+    base = fromTier(cell.tier, 'profile');
+  } else if (cell && typeof cell === 'object' && 'model' in cell) {
+    base = { kind: 'cell', source: 'profile', tier: null, fields: { model: cell.model, effort: cell.effort } };
+  } else if (agent?.default_tier) {
+    base = fromTier(agent.default_tier, 'agent_default');
+  }
+
+  const fieldOrigin: FieldOrigin | null = base ? (base.kind === 'tier' ? 'tier' : 'cell') : null;
+  let model: string | null = base?.fields.model ?? null;
+  let effort: string | null = base?.fields.effort ?? null;
+  let originModel: FieldOrigin | null = model !== null ? fieldOrigin : null;
+  let originEffort: FieldOrigin | null = effort !== null ? fieldOrigin : null;
+
+  const stageEffort =
+    vendor === 'antigravity' && agent?.vendor === 'antigravity' ? (agent.effort?.[stage] ?? null) : null;
+  if (effort === null && base?.kind === 'legacy' && stageEffort !== null) {
+    effort = stageEffort;
+    originEffort = 'agent';
+  }
+
+  const agentVendorProfile = vendor === 'openai' && agent?.vendor === 'openai' ? (agent.profile ?? null) : null;
+  let vendorProfile: string | null = null;
+  let originProfile: FieldOrigin | null = null;
+  if (vendor === 'openai') {
+    if (base?.fields.profile !== undefined) {
+      vendorProfile = base.fields.profile;
+      originProfile = 'tier';
+    } else if (agentVendorProfile !== null) {
+      vendorProfile = agentVendorProfile;
+      originProfile = 'agent';
+    }
+  }
+
+  const warnings: string[] = [];
+  const fromTierNote = base?.kind === 'tier' ? `档位「${base.tier}」` : '';
+  if (cli.model) {
+    if (originModel === 'tier') warnings.push(`${critic}/${stage}：命令行模型「${cli.model}」覆盖了${fromTierNote}的模型「${model}」`);
+    model = cli.model;
+    originModel = 'cli';
+  }
+  if (cli.effort) {
+    if (originEffort === 'tier') warnings.push(`${critic}/${stage}：命令行思考等级「${cli.effort}」覆盖了${fromTierNote}的「${effort}」`);
+    effort = cli.effort;
+    originEffort = 'cli';
+  }
+  // 厂商 profile 的命令行覆盖只对 openai vendor 生效；指向别的侧由旗标层（第 5 步）退 64，这里不替它报
+  if (cli.vendorProfile && vendor === 'openai') {
+    if (originProfile === 'tier') warnings.push(`${critic}/${stage}：命令行厂商 profile「${cli.vendorProfile}」覆盖了${fromTierNote}的「${vendorProfile}」`);
+    vendorProfile = cli.vendorProfile;
+    originProfile = 'cli';
+  }
+
+  const overridden: Record<keyof Fields, boolean> = {
+    model: Boolean(cli.model),
+    effort: Boolean(cli.effort),
+    profile: Boolean(cli.vendorProfile) && vendor === 'openai',
+  };
+  const provided = base ? (Object.keys(base.fields) as (keyof Fields)[]).filter((k) => base.fields[k] !== undefined) : [];
+  const allOverridden = provided.length > 0 && provided.every((k) => overridden[k]);
+
+  let tier: TierName | null = null;
+  let tierSource: TierSource | null = null;
+  if (model !== null) {
+    if (!base || allOverridden) tierSource = 'override';
+    else {
+      tierSource = base.source;
+      tier = base.tier;
+    }
+  }
+
+  return {
+    model,
+    effort,
+    vendorProfile,
+    tier,
+    tierSource,
+    origin: { model: originModel, effort: originEffort, vendorProfile: originProfile },
+    agentVendorProfile,
+    stageEffort,
+    emptySlug,
+    missingTier,
+    warnings,
+  };
 }
 
 /**

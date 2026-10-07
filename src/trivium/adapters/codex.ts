@@ -495,9 +495,12 @@ export const codexAdapter: CriticAdapter = {
    * 上一版在这里复述成「三种」且把 `fallback` 那一支写成了「无法校验」，
    * 与同文件的实现和它自己的锁例直接矛盾（代码双审 CODEX-04）。
    * 复述两处正是「同一个问题两个答案」，而它已经漂过一次。
+   *
+   * `vendorProfile`（M11 第 4 步）：档位解析出的厂商 profile（档位条目 > `agents.codex.profile`）。
+   * 缺省（`undefined`）仍取 `agents.codex.profile`，旧调用逐字不变；显式 `null` 即「不带 -p」，用基底目录。
    */
-  catalogModelsFor(cfg) {
-    const profile = agentConfigOf(cfg, 'codex', 'openai').profile;
+  catalogModelsFor(cfg, vendorProfile?: string | null) {
+    const profile = vendorProfile !== undefined ? vendorProfile : agentConfigOf(cfg, 'codex', 'openai').profile;
     const p = cfg.probe.cli.codex;
 
     /*
@@ -567,6 +570,31 @@ export const codexAdapter: CriticAdapter = {
       };
     }
     return { kind: 'catalog' as const, models, source: `profile「${profile}」的模型目录` };
+  },
+
+  /**
+   * 原生思考等级（M11 第 4 步，设计 11.5）：探针 `reasoning_levels` 里该 profile（无 profile 取基底）该模型的条目。
+   *
+   * 与 `catalogModelsFor` 同口径：只收可见项；采集失败的 profile 没有条目。查不到一律 `unknown`——
+   * 旧探针结论（M11 前）没有这个字段，按「取不到」跳过校验，不硬拒。
+   * 采到了而该模型的枚举为空（目录没写 `supported_reasoning_levels`）同样跳过：空枚举校验不了任何值。
+   */
+  reasoningLevelsFor(cfg, model, vendorProfile) {
+    const rl = cfg.probe.cli.codex?.reasoning_levels;
+    if (!rl) return { kind: 'unknown' as const, why: '探针结论早于思考等级目录（M11 第 4 步），请重跑 doctor' };
+    const table = vendorProfile ? rl.by_profile[vendorProfile] : rl.base;
+    const where = vendorProfile ? `profile「${vendorProfile}」` : '基底目录';
+    if (!table) return { kind: 'unknown' as const, why: `探针没有${where}的思考等级目录` };
+    const levels = table[model];
+    if (!levels || levels.length === 0) {
+      return { kind: 'unknown' as const, why: `${where}没有模型「${model}」的思考等级枚举` };
+    }
+    return { kind: 'levels' as const, levels };
+  },
+
+  /** 本机厂商 profile 名单（M11 第 4 步）：探针的 `profiles`，与 `availability()` 判存在性的来源同一份 */
+  vendorProfilesFor(cfg) {
+    return cfg.probe.cli.codex?.profiles ?? [];
   },
 
   /**

@@ -73,8 +73,8 @@ export const KIT_WHITELIST: readonly { path: string; piece: string }[] = [
 /*
  * 第 ⑥ 件（模型路由：`profiles.<档位>.<id>`）不在这张表里，因为它**不是代码路径**——
  * 它落在目标项目的 `.trivium/config.yaml`，属测试配置面。漏了它的症状是
- * `routeModel` 取不到模型、`review.ts` 当场退 69，把它写进计划是为了避免排障时
- * 把这个 69 误判成泛化失败。夹具在 `makeStubFixtureRepo` 里配它。
+ * 档位解析（原 `routeModel`）取不到模型、`review.ts` 准备阶段的 slug 校验当场退 64，把它写进计划是为了避免排障时
+ * 把这个 64 误判成泛化失败（M11 第 4 步前此处误记为 69：同一输入早被 slug 校验以 64 拦下）。夹具在 `makeStubFixtureRepo` 里配它。
  */
 
 /*

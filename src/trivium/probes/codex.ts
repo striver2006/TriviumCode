@@ -331,6 +331,13 @@ export function parseCodexModelCatalog(stdout: string): CodexCatalogLists | null
   return { models, visible, efforts };
 }
 
+/** 只留可见项的思考等级枚举（M11 第 4 步）：与 `models_by_profile` 存可见项同一理由——端点名单近似于可见项 */
+export function visibleEfforts(lists: CodexCatalogLists): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const slug of lists.visible) out[slug] = lists.efforts[slug] ?? [];
+  return out;
+}
+
 /**
  * 一次目录采集的结果。**「采集失败」与「采集到一份空目录」是两件事**。
  *
@@ -869,6 +876,7 @@ export async function probeCodex(
         models_by_profile: {},
         models_visible: [],
         models_by_profile_errors: {},
+        reasoning_levels: { base: {}, by_profile: {} },
       };
 
   const { bin, version } = await probeCodexBin(configuredBin);
@@ -902,9 +910,17 @@ export async function probeCodex(
   );
 
   const catalog = await probeCodexModels(bin, null);
+  /*
+   * 逐模型原生思考等级（M11 第 4 步，设计 11.5）：`parseCodexModelCatalog` 早就算出了 `efforts`，此前算完即丢。
+   * 与 `models_by_profile` 同口径**只收可见项**；基底采集失败时保留上一次结论（同 `models`），逐 profile 每次重建。
+   */
+  const reasoningBase = probe.reasoning_levels?.base ?? {};
+  const reasoningByProfile: Record<string, Record<string, string[]>> = {};
+  probe.reasoning_levels = { base: reasoningBase, by_profile: reasoningByProfile };
   if (catalog.ok) {
     probe.models = catalog.models;
     probe.models_visible = catalog.visible;
+    probe.reasoning_levels.base = visibleEfforts(catalog);
     notes.push(
       catalog.models.length > 0
         ? `模型目录 ${catalog.models.length} 个（可见 ${catalog.visible.length} 个）：` +
@@ -930,8 +946,10 @@ export async function probeCodex(
   probe.models_by_profile_errors = {};
   for (const name of probe.profiles) {
     const c = await probeCodexModels(bin, await readCatalogPath(name));
-    if (c.ok) probe.models_by_profile[name] = c.visible;
-    else probe.models_by_profile_errors[name] = c.why;
+    if (c.ok) {
+      probe.models_by_profile[name] = c.visible;
+      reasoningByProfile[name] = visibleEfforts(c);
+    } else probe.models_by_profile_errors[name] = c.why;
   }
   {
     const okList = Object.entries(probe.models_by_profile);

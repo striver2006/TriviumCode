@@ -286,7 +286,7 @@ export async function seedFakeProbes(root: string, over: Record<string, unknown>
       },
     },
   };
-  // 模型档位也得给 codex 配上，否则 routeModel 取不到值、slug 校验先失败
+  // 模型档位也得给 codex 配上，否则档位解析取不到值、slug 校验先失败
   doc['profiles'] = {
     default: {
       gemini: { plan: 'gemini-3.8-flash-high' },

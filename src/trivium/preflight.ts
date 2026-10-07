@@ -27,7 +27,15 @@ import {
 import { WORKER_HEARTBEAT_MS, staleThresholdWithinHeartbeat } from './status.js';
 import { ALL_CLI_NAMES, DEFAULT_DRIVER, agentById, agentByCliName, type AgentId } from './agents/registry.js';
 import { realAdapters } from './adapters/index.js';
-import { routeModel, type AdapterContext, type AdapterTable, type AuthProbe, type CriticAdapter } from './adapters/base.js';
+import {
+  resolveTier,
+  type AdapterContext,
+  type AdapterTable,
+  type AuthProbe,
+  type CriticAdapter,
+  type ReasoningLevels,
+  type TierResolution,
+} from './adapters/base.js';
 import { exists, tildeHome } from './util/fsx.js';
 import { isGitRepo } from './util/git.js';
 import { run } from './util/exec.js';
@@ -343,12 +351,30 @@ export function checkModelSlugs(
 
   for (const stage of scopeStages(scope)) {
     for (const critic of critics) {
-      const routed = routeModel(cfg, critic, stage, { cli: overrides[critic] ?? null });
-      if (!routed.model) {
-        bad.push(`${critic}/${stage}: profile「${cfg.active_profile}」未定义模型且无覆盖`);
+      const routed = resolveTier(cfg, critic, stage, { model: overrides[critic] ?? null });
+      /*
+       * **档名写错在这里报，不让位给「未定义模型」**（M11 第 4 步，计划三审 GLM-04）：档位缺失时模型也为 null，
+       * 而 `review` 准备阶段本检查一失败就抛——若这里只报「未定义模型」，档名拼错与可用档列表在 `review`
+       * 那条路上永远露不出来。两个入口都先走本函数，同一文案。有命令行模型覆盖时照样报：写错的档是配置错误。
+       */
+      if (routed.missingTier) {
+        bad.push(`${critic}/${stage}: ${missingTierText(critic, routed.missingTier)}`);
         continue;
       }
-      const r = checkModelAgainstCatalog(cfg, critic, routed.model);
+      /*
+       * 第一段无命中且无命令行覆盖：**退 64**，与 M11 之前「profile 未定义该阶段模型」同一出口（现行行为逐字不变）。
+       * 设计 12.1 / 13.1.1 在 v1.3.131 之前误记为 69（M11 第 4 步计划 P-4）。
+       */
+      if (!routed.model) {
+        bad.push(
+          `${critic}/${stage}: profile「${cfg.active_profile}」未定义模型且无覆盖` +
+            (routed.emptySlug
+              ? '（档位表该阶段写的是空串；空串按无模型处理，不回落 default_tier）'
+              : `（档位表未给该阶段模型，agents.${critic}.default_tier 也未给出）`),
+        );
+        continue;
+      }
+      const r = checkModelAgainstCatalog(cfg, critic, routed.model, routed.vendorProfile);
       if (r.kind === 'bad') bad.push(`${critic}/${stage}: ${r.detail}`);
       else if (r.kind === 'unverifiable') unverifiable.add(`${critic}（${r.why}）`);
       else if (r.note) fellBack.add(r.note);
@@ -373,6 +399,132 @@ export function checkModelSlugs(
       ...(fellBack.size > 0 ? [`  ⚠️ 其中已回落到基底目录校验：${[...fellBack].join('、')}`] : []),
     ].join('\n'),
   };
+}
+
+/** 档位名未定义的报错正文（预检与 `review` 共用，GLM-04） */
+function missingTierText(critic: CriticId, m: NonNullable<TierResolution['missingTier']>): string {
+  const via = m.via === 'cli' ? '命令行' : m.via === 'profile' ? '档位表格子' : `agents.${critic}.default_tier`;
+  const avail = m.defined.length > 0 ? `可用：${m.defined.join(', ')}` : `agents.${critic} 未定义 tiers`;
+  return `档位「${m.name}」（经${via}指定）未在 agents.${critic}.tiers 定义。${avail}`;
+}
+
+/**
+ * **档位组合合法**（M11 第 4 步，设计 11.5「原生枚举与校验」/ 12.1 档位行）。
+ *
+ * 与「模型 slug 合法」并列，两个执行点同 slug 校验：预检，以及 `review` 准备阶段（冻结与任何落盘之前）。
+ * 档名缺失与「解析不出模型」由 `checkModelSlugs` 报（它先跑），这里跳过那些格。逐入选侧、逐阶段：
+ *
+ * **永久判据**（与 slug 规则同口径：采到了而不在其中 ⇒ 64 并列可用值；取不到 ⇒ 跳过但点名）——
+ * ① 该侧没有思考等级概念（钩子 `none`）却解析出 effort ⇒ 64（schema 够不着档位表格子，计划三审 AGY-02）；
+ * ② effort 不在该模型的原生枚举里 ⇒ 64；slug 已编码档位 ⇒ 告警不生效（gemini 特例）；
+ * ③ 档位条目或命令行给的厂商 profile 不在本机名单 ⇒ 64；名单为空跳过。
+ * 来自 Agent 配置段的补全（gemini 阶段级 effort、`agents.codex.profile`）**不进这三格**：那是 M11 之前的现行路径，
+ * 校验它会改变旧配置的行为（`agents.codex.profile` 的存在性另由 `availability()` 判）。
+ *
+ * **过渡闸**（第 6 步拆除，计划 P-1 A）：effort 与厂商 profile 要到 M11 第 6 步才透传给适配器。此前
+ * 「写了却不下传」会让预检看到的组合与实际发出的不一致，故永久判据都过之后再拒：effort 来自档位 / 格子 / 命令行；
+ * 厂商 profile 来自档位 / 命令行且不等于 `agents.<id>.profile`。第三类（gemini 档位没写 effort、运行期仍下传
+ * 阶段级 effort）拦不得——拦了就杀掉「档位换模型」——只告警（计划三审 GLM-01）。
+ *
+ * 只读配置与探针结论、不抛；钩子取自 `realAdapters()`，同 `checkModelAgainstCatalog`。
+ */
+export function checkTierCombos(
+  cfg: Config,
+  scope: PreflightScope,
+  overrides: Partial<Record<CriticId, string>> = {},
+  critics: readonly CriticId[] = DEFAULT_CRITICS,
+): CheckResult {
+  const bad: string[] = [];
+  const gated: string[] = [];
+  const notes: string[] = [];
+  const unverified = new Set<string>();
+  const adapters = realAdapters();
+
+  for (const stage of scopeStages(scope)) {
+    for (const critic of critics) {
+      const r = resolveTier(cfg, critic, stage, { model: overrides[critic] ?? null });
+      if (r.missingTier || !r.model) continue;
+      const at = `${critic}/${stage}`;
+      for (const w of r.warnings) notes.push(w);
+      const adapter: CriticAdapter | undefined = adapters[critic];
+      const label = agentById(critic)?.display ?? critic;
+      const lv: ReasoningLevels = adapter?.reasoningLevelsFor?.(cfg, r.model, r.vendorProfile) ?? {
+        kind: 'unknown',
+        why: '该侧未声明思考等级能力',
+      };
+
+      let sideBad = false;
+      if (r.effort !== null && r.origin.effort !== 'agent') {
+        if (lv.kind === 'none') {
+          bad.push(`${at}: ${label} 不支持思考等级，档位 / 档位表却给了「${r.effort}」。去掉该 effort`);
+          sideBad = true;
+        } else if (lv.kind === 'levels' && lv.suffixEncoded) {
+          notes.push(`${at}: 模型「${r.model}」的 slug 已编码档位，思考等级「${r.effort}」不生效`);
+        } else if (lv.kind === 'levels' && !lv.levels.includes(r.effort)) {
+          bad.push(`${at}: 思考等级「${r.effort}」不在模型「${r.model}」的原生枚举中。可用值：${lv.levels.join(', ')}`);
+          sideBad = true;
+        } else if (lv.kind === 'unknown') {
+          unverified.add(`${label}（${lv.why}）`);
+        }
+      }
+
+      if (r.vendorProfile !== null && r.origin.vendorProfile !== 'agent') {
+        const names = adapter?.vendorProfilesFor?.(cfg) ?? [];
+        if (names.length === 0) unverified.add(`${label}（本机厂商 profile 名单为空）`);
+        else if (!names.includes(r.vendorProfile)) {
+          bad.push(`${at}: 厂商 profile「${r.vendorProfile}」不在本机名单中。可用：${names.join(', ')}`);
+          sideBad = true;
+        }
+      }
+      if (sideBad) continue;
+
+      // ── 过渡闸（M11 第 6 步拆除）──
+      // slug 已编码档位时思考等级本就永不生效（11.5 gemini 特例，上面已告警），与接没接线无关，不进闸
+      const suffixEncoded = lv.kind === 'levels' && lv.suffixEncoded === true;
+      if (r.effort !== null && r.origin.effort !== 'agent' && !suffixEncoded) {
+        gated.push(
+          `${at}: 思考等级「${r.effort}」来自${originText(r.origin.effort)}，而思考等级随 M11 第 6 步才下传给适配器——` +
+            '当前版本会按厂商缺省（或 profile 基底）运行，与配置不一致。先去掉该 effort，或用模型选择承载档位差异',
+        );
+      }
+      if (r.vendorProfile !== null && r.origin.vendorProfile !== 'agent' && r.vendorProfile !== r.agentVendorProfile) {
+        gated.push(
+          `${at}: 厂商 profile「${r.vendorProfile}」来自${originText(r.origin.vendorProfile)}，与 agents.${critic}.profile` +
+            `「${r.agentVendorProfile ?? '（未配置）'}」不同，而厂商 profile 随 M11 第 6 步才透传——当前版本会按后者发起。` +
+            `换家族请同批改 agents.${critic}.profile 与档位模型（设计 13.1.1）`,
+        );
+      }
+      // 过渡告警（GLM-01）：基础组合不是裸 slug、没给 effort，运行期却仍下传阶段级 effort
+      if (
+        r.tierSource !== 'legacy' &&
+        r.effort === null &&
+        r.stageEffort !== null &&
+        !suffixEncoded
+      ) {
+        notes.push(
+          `${at}: 档位没写思考等级，过渡期运行仍按 agents.${critic}.effort 下传「${r.stageEffort}」；M11 第 6 步起不下传`,
+        );
+      }
+    }
+  }
+
+  if (bad.length > 0 || gated.length > 0) {
+    return { name: '档位组合合法', ok: false, exitCode: EXIT.USAGE, detail: [...bad, ...gated].join('\n  ') };
+  }
+  const warnLines = [
+    ...notes.map((n) => `  ⚠️ ${n}`),
+    ...(unverified.size > 0 ? [`  ⚠️ 其中思考等级 / 厂商 profile 无从比对、未实际校验：${[...unverified].join('、')}`] : []),
+  ];
+  return {
+    name: '档位组合合法',
+    ok: true,
+    ...(warnLines.length > 0 ? { warn: true as const } : {}),
+    detail: [`已校验 ${scopeStages(scope).length} 个阶段 × ${critics.length} 侧`, ...warnLines].join('\n'),
+  };
+}
+
+function originText(o: TierResolution['origin']['effort']): string {
+  return o === 'tier' ? '档位条目' : o === 'cell' ? '档位表格子' : o === 'cli' ? '命令行' : 'Agent 配置段';
 }
 
 /** 单侧模型 slug 的比对结论。三态，**「无法校验」与「通过」分开记** */
@@ -406,7 +558,13 @@ type CatalogCheck =
  * 起不来；静默通过则让「校验了」和「没得校验」看起来一模一样。
  * 所以取第三态：不拦，但把是哪几侧没校验写进预检输出。
  */
-function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string): CatalogCheck {
+function checkModelAgainstCatalog(
+  cfg: Config,
+  critic: CriticId,
+  model: string,
+  /** 档位解析出的厂商 profile（M11 第 4 步）：档位换家族时要用**那个** profile 的目录校验 */
+  vendorProfile: string | null = null,
+): CatalogCheck {
   /*
    * **按 cliName 通用消费 `CommonProbe.models`**（M8 第 3 步收敛，计划双审 GLM-04）。
    *
@@ -435,7 +593,7 @@ function checkModelAgainstCatalog(cfg: Config, critic: CriticId, model: string):
    *
    * 钩子缺席即回落 `probe.models`，既有两家行为逐字不变。
    */
-  const scoped = realAdapters()[critic]?.catalogModelsFor?.(cfg) ?? null;
+  const scoped = realAdapters()[critic]?.catalogModelsFor?.(cfg, vendorProfile) ?? null;
   if (scoped?.kind === 'unverifiable') {
     return { kind: 'unverifiable', why: `${label}：${scoped.why}` };
   }
@@ -872,6 +1030,8 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
   }
   // ⑤ 模型 slug（按本次实际生效值）
   if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected));
+  // ⑤′ 档位组合（M11 第 4 步）：原生枚举、厂商 profile 名单、过渡闸；档名与无模型已由上一格报
+  if (checks.every((c) => c.ok)) checks.push(checkTierCombos(cfg, scope, opts.modelOverrides, selected));
   // ⑥ 归档与 git（无残留探测）
   if (checks.every((c) => c.ok)) checks.push(await checkArchiveAndGit(ctx));
   // ⑦ 命令 A 的编译测试配置

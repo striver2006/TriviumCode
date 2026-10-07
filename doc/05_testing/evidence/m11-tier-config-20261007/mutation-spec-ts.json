@@ -1,0 +1,244 @@
+{
+  "targets": [
+    "src/trivium/adapters/base.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/config.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/agy.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/tier-resolve.test.js",
+    "dist/test/test/integration/no-artifacts.test.js",
+    "dist/test/test/unit/config-consumers.test.js",
+    "dist/test/test/unit/config-schema.test.js",
+    "dist/test/test/unit/probe-fixture-cleanup.test.js"
+  ],
+  "cases": [
+    {
+      "id": "R1",
+      "desc": "{tier} 格子被当作未命中（解析跳过档位引用）",
+      "file": "src/trivium/adapters/base.ts",
+      "find": "  } else if (cell && typeof cell === 'object' && 'tier' in cell) {\n",
+      "replace": "  } else if (cell && typeof cell === 'object' && 'tier' in cell && false) {\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "R2",
+      "desc": "全覆盖判定恒假（override 失效）",
+      "file": "src/trivium/adapters/base.ts",
+      "find": "  const allOverridden = provided.length > 0 && provided.every((k) => overridden[k]);\n",
+      "replace": "const allOverridden = false;\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "R3",
+      "desc": "裸 slug 被命令行覆盖仍记 legacy（P-6 回退）",
+      "file": "src/trivium/adapters/base.ts",
+      "find": "    if (!base || allOverridden) tierSource = 'override';\n",
+      "replace": "    if (!base || (allOverridden && base.kind !== 'legacy')) tierSource = 'override';\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "R4",
+      "desc": "第一段次序颠倒：default_tier 先于格子",
+      "file": "src/trivium/adapters/base.ts",
+      "find": "  if (cli.tier) {\n    base = fromTier(cli.tier, 'cli');\n",
+      "replace": "  if (agent?.default_tier && !cli.tier) {\n    base = fromTier(agent.default_tier, 'agent_default');\n  } else if (cli.tier) {\n    base = fromTier(cli.tier, 'cli');\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "R5",
+      "desc": "厂商 profile 次序颠倒：agents.codex.profile 先于档位条目",
+      "file": "src/trivium/adapters/base.ts",
+      "find": "    if (base?.fields.profile !== undefined) {\n",
+      "replace": "    if (base?.fields.profile !== undefined && agentVendorProfile === null) {\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "R6",
+      "desc": "gemini 阶段级 effort 回落不再限裸 slug",
+      "file": "src/trivium/adapters/base.ts",
+      "find": "  if (effort === null && base?.kind === 'legacy' && stageEffort !== null) {\n",
+      "replace": "  if (effort === null && stageEffort !== null) {\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "E1",
+      "desc": "空串格子改回「未命中」、回落 default_tier",
+      "file": "src/trivium/adapters/base.ts",
+      "find": "  } else if (typeof cell === 'string') {\n    if (cell) base = { kind: 'legacy', source: 'legacy', tier: null, fields: { model: cell } };\n",
+      "replace": "  } else if (typeof cell === 'string' && cell) {\n    base = { kind: 'legacy', source: 'legacy', tier: null, fields: { model: cell } };\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "V1",
+      "desc": "枚举非空时不校验",
+      "file": "src/trivium/preflight.ts",
+      "find": "        } else if (lv.kind === 'levels' && !lv.levels.includes(r.effort)) {\n",
+      "replace": "        } else if (lv.kind === 'levels' && false) {\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "V2",
+      "desc": "枚举取不到时硬拒",
+      "file": "src/trivium/preflight.ts",
+      "find": "        } else if (lv.kind === 'unknown') {\n          unverified.add(`${label}（${lv.why}）`);\n",
+      "replace": "        } else if (lv.kind === 'unknown') {\n          sideBad = true; bad.push('x');\n          unverified.add(`${label}（${lv.why}）`);\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "V3",
+      "desc": "「无思考等级概念」一格删去（glm 写 effort 不再被永久判据拒）",
+      "file": "src/trivium/preflight.ts",
+      "find": "        if (lv.kind === 'none') {\n",
+      "replace": "        if (lv.kind === 'none' && false) {\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "V3b",
+      "desc": "同 V3，review 准备阶段集成用例",
+      "file": "src/trivium/preflight.ts",
+      "find": "        if (lv.kind === 'none') {\n",
+      "replace": "        if (lv.kind === 'none' && false) {\n",
+      "expect": "dist/test/test/integration/no-artifacts.test.js"
+    },
+    {
+      "id": "V4",
+      "desc": "厂商 profile 名单校验删去",
+      "file": "src/trivium/preflight.ts",
+      "find": "        else if (!names.includes(r.vendorProfile)) {\n",
+      "replace": "        else if (false) {\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "V5",
+      "desc": "slug 校验不传档位解析的厂商 profile",
+      "file": "src/trivium/preflight.ts",
+      "find": "      const r = checkModelAgainstCatalog(cfg, critic, routed.model, routed.vendorProfile);\n",
+      "replace": "      const r = checkModelAgainstCatalog(cfg, critic, routed.model);\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "V6",
+      "desc": "档名缺失分支删去（回落「未定义模型」）",
+      "file": "src/trivium/preflight.ts",
+      "find": "      if (routed.missingTier) {\n",
+      "replace": "      if (routed.missingTier && false) {\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "G1",
+      "desc": "过渡闸 effort 格删去",
+      "file": "src/trivium/preflight.ts",
+      "find": "      if (r.effort !== null && r.origin.effort !== 'agent' && !suffixEncoded) {\n",
+      "replace": "if (false) {\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "G1b",
+      "desc": "同 G1，review 准备阶段集成用例",
+      "file": "src/trivium/preflight.ts",
+      "find": "      if (r.effort !== null && r.origin.effort !== 'agent' && !suffixEncoded) {\n",
+      "replace": "if (false) {\n",
+      "expect": "dist/test/test/integration/no-artifacts.test.js"
+    },
+    {
+      "id": "G2",
+      "desc": "过渡闸 profile 格删去",
+      "file": "src/trivium/preflight.ts",
+      "find": "      if (r.vendorProfile !== null && r.origin.vendorProfile !== 'agent' && r.vendorProfile !== r.agentVendorProfile) {\n",
+      "replace": "if (false) {\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "G3",
+      "desc": "过渡闸不再豁免 slug 已编码档位",
+      "file": "src/trivium/preflight.ts",
+      "find": "      if (r.effort !== null && r.origin.effort !== 'agent' && !suffixEncoded) {\n",
+      "replace": "      if (r.effort !== null && r.origin.effort !== 'agent') {\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "G4",
+      "desc": "过渡告警（GLM-01）删去",
+      "file": "src/trivium/preflight.ts",
+      "find": "        r.tierSource !== 'legacy' &&\n",
+      "replace": "        false &&\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "D1",
+      "desc": "废弃键路径改回通配（gemini 同名键被误报）",
+      "file": "src/trivium/config.ts",
+      "find": "  { path: ['agents', 'codex', 'effort'] },\n",
+      "replace": "  { path: ['agents', '*', 'effort'] },\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M1",
+      "desc": "原子节点：tiers 改回逐键合并",
+      "file": "src/trivium/config.ts",
+      "find": "  ['agents', '*', 'tiers'],\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "原子节点：profiles 格子改回逐键合并",
+      "file": "src/trivium/config.ts",
+      "find": "  ['profiles', '*', '*', '*'],\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    },
+    {
+      "id": "P1",
+      "desc": "探针不落逐 profile 思考等级",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "      reasoningByProfile[name] = visibleEfforts(c);\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "P2",
+      "desc": "探针不落基底思考等级",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "    probe.reasoning_levels.base = visibleEfforts(catalog);\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "P3",
+      "desc": "思考等级收进隐藏项",
+      "file": "src/trivium/probes/codex.ts",
+      "find": "  for (const slug of lists.visible) out[slug] = lists.efforts[slug] ?? [];\n",
+      "replace": "  for (const slug of lists.models) out[slug] = lists.efforts[slug] ?? [];\n",
+      "expect": "dist/test/test/unit/probe-fixture-cleanup.test.js"
+    },
+    {
+      "id": "Q1",
+      "desc": "review 准备阶段不调档位组合校验（只有预检拦）",
+      "file": "src/trivium/review.ts",
+      "find": "    if (!combos.ok) throw usageError(`档位组合不合法：\\n  ${combos.detail}`);\n",
+      "replace": "    if (false) throw usageError(`档位组合不合法：\\n  ${combos.detail}`);\n",
+      "expect": "dist/test/test/integration/no-artifacts.test.js"
+    },
+    {
+      "id": "H1",
+      "desc": "codex 钩子不分 profile、一律取基底",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "    const table = vendorProfile ? rl.by_profile[vendorProfile] : rl.base;\n",
+      "replace": "const table = rl.base;\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "H2",
+      "desc": "agy 钩子不比对基名、目录里所有带后缀的都算",
+      "file": "src/trivium/adapters/agy.ts",
+      "find": "        .filter((m) => modelEncodesEffort(m) && m.slice(0, m.lastIndexOf('-')) === model)\n",
+      "replace": ".filter((m) => modelEncodesEffort(m))\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    }
+  ]
+}

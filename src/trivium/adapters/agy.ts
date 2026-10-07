@@ -191,6 +191,27 @@ export const agyAdapter: CriticAdapter = {
   commandExecution: 'none',
 
   /**
+   * 原生思考等级（M11 第 4 步，设计 11.5）：**由 slug 后缀派生**。
+   *
+   * agy 的档位编码在 slug 里（`gemini-3.8-flash-high`，坑 P-16）。模型本身带后缀 ⇒ slug 即权威、
+   * 再给思考等级不生效（`suffixEncoded`，预检告警不校验）；不带后缀 ⇒ 在探针模型目录里找
+   * 「去掉后缀等于它」的 slug，取这些后缀为枚举。目录里没有这样的变体（或目录为空）⇒ `unknown`。
+   */
+  reasoningLevelsFor(cfg, model) {
+    if (modelEncodesEffort(model)) return { kind: 'levels' as const, levels: [], suffixEncoded: true };
+    const models = cfg.probe.cli.agy?.models ?? [];
+    if (models.length === 0) return { kind: 'unknown' as const, why: '探针未记录 Antigravity 模型目录' };
+    const levels = [...new Set(
+      models
+        .filter((m) => modelEncodesEffort(m) && m.slice(0, m.lastIndexOf('-')) === model)
+        .map((m) => m.slice(m.lastIndexOf('-') + 1)),
+    )].sort();
+    return levels.length > 0
+      ? { kind: 'levels' as const, levels }
+      : { kind: 'unknown' as const, why: `模型目录里没有「${model}」的档位变体` };
+  },
+
+  /**
    * 探活（M8 第 3 步从 `preflight` 搬来）。
    *
    * 指纹取只读审查 Agent 的定义文件：那份 `agent.md` 一改，白名单就换了，

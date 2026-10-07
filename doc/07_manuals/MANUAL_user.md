@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.40
+> - **当前版本**：v1.0.41
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -474,7 +474,8 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | 字段 | 默认 | 说明 |
 | :--- | :--- | :--- |
 | `agents.gemini.agent` | `trivium-critic` | 只读 Agent 定义名。**工具白名单不含任何写工具** |
-| `agents.gemini.effort` | plan high / code high / bug high | 思考档位。**模型 slug 自带档位时不传**，否则 agy 会直接拒绝 |
+| `agents.gemini.effort` | plan high / code high / bug high | 思考档位。**模型 slug 自带档位时不传**，否则 agy 会直接拒绝。v1.0.41 起只在档位表格子是裸 slug 时作回落；格子写成档位或 `{model, effort}` 时不再用它 |
+| `agents.<id>.tiers` / `default_tier` | 无（`init` 不写） | v1.0.41 起可选（M11 第 4 步）：`low` / `medium` / `high` 三档，每档 `{model, effort?, profile?}`（`profile` 只有 codex 能写，glm 的档只能写 `model`）；`default_tier` 是档位表没给该阶段模型时用哪一档。档位表 `profiles` 的格子随之可写 `{tier: high}` 或 `{model: …, effort: …}`。**命令行选档（`--tier-*`）还没有，思考等级与厂商 profile 也还没下传给各家**：在那之前，档位里写了 effort、或写了与 `agents.codex.profile` 不同的 profile，预检直接退 64 并说明原因——不会静默按另一组值跑。写错档名、思考等级不在该模型的可选值里，同样退 64 并列出可用值。本机层 `config.local.yaml` 里写 `tiers` 会**整段**替换共享配置里的那份 |
 | `agents.glm.max_turns` | 40 | ZCode 的最大轮数 |
 | `agents.glm.unsupported_override` | `reject` | 模型覆盖落到全局档时拒绝还是标注 |
 | `active_profile` | `default` | 当前档位 |
@@ -524,7 +525,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 #### 已废弃的键
 
-v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3.122）又删除了后两个：它们写在配置里、文档里，却从来没有任何代码读过——改了不会有任何效果。
+v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3.122）又删除了中间两个，v1.0.41 起（设计 v1.3.131）删除了最后一个：它们写在配置里、文档里，却从来没有任何代码读过——改了不会有任何效果。
 
 | 字段 | 原来写的 | 实际情况 |
 | :--- | :--- | :--- |
@@ -532,6 +533,7 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | `agents.gemini.readonly_commands` | 「允许的只读命令」 | Antigravity 侧的审查员根本没有命令工具，跑不了任何命令；ZCode 侧整个 `Bash` 禁用；Codex 侧能跑 shell、靠只读沙箱挡写，没有命令白名单 |
 | `review.parallel` | 「两侧并行；改 `false` 串行」 | 各侧恒并行，改 `false` 什么都不变。只想跑一侧，用 `--critics` |
 | `isolation.deny_via_cli` | 「是否用 CLI 的路径级 deny」 | 注不注入路径级 deny 只看探针实测（claude 侧支持、会注入；codex 侧没有这类机制），这个开关从未被读过 |
+| `agents.codex.effort` | 「Codex 各阶段的思考等级」 | 从未下传给 codex——实际发出的思考等级是所用 profile 配置文件里的值。思考等级改由 `agents.codex.tiers` 的 `effort` 表达（第 6 步起下传）。**只有 codex 这一个**：`agents.gemini.effort` 仍在用，不报废弃 |
 
 旧配置里留着它们**不会报错**，升级后照常能跑。配置里出现时，`trivium doctor` 与预检各提示一条「已废弃、从未生效，可从配置里去掉」，其余命令不提示。从 `.trivium/config.yaml`（或 `config.local.yaml`）里删掉这几行即可，删了不改变任何行为。新 `trivium init` 出来的配置不再带它们。
 

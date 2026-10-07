@@ -34,7 +34,7 @@ export function resolveTopicName(ctx: Ctx, raw: string): string {
  * 解析主题引用，**不创建**任何目录。
  *
  * 零工件保证要求目录创建推迟到「确定要落盘」的那一刻（审查意见 GLM-04）：
- * 在此之前若 locateSubject 抛 65 或 routeModel 抛 69，就会留下孤立空目录。
+ * 在此之前若 locateSubject 抛 65 或档位解析抛 69，就会留下孤立空目录。
  */
 export async function resolveTopicReadOnly(
   ctx: Ctx,

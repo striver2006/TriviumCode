@@ -46,7 +46,13 @@ import {
   type GoneJudgment, type RecordedStart, type TerminateResult,
 } from './util/exec.js';
 import { fail, say, step, warn } from './util/log.js';
-import { checkHeartbeatThreshold, checkModelOverrideSource, collectWarnings, type PreflightWarning } from './preflight.js';
+import {
+  checkHeartbeatThreshold,
+  checkModelOverrideSource,
+  checkTierCombos,
+  collectWarnings,
+  type PreflightWarning,
+} from './preflight.js';
 
 /**
  * 向工作进程组发 SIGTERM 之后等多久再升级 SIGKILL：`--cancel` 与 `--start` 派生后失败的收尾共用（EV-152 起具名）。
@@ -481,10 +487,13 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
   let workerStartedAtCanonical: string | null = null;
   try {
     const heartbeatWarn = checkHeartbeatThreshold(cfg);
+    // 档位组合的告警（M11 第 4 步）：准备阶段已判过 ok（不 ok 早已退 64），这里只为把告警念出来；纯函数、不抛
+    const tierCombos = checkTierCombos(cfg, rc.stage, rc.opts.modelOverrides, rc.sides);
     warnings = [
       ...collectWarnings([
         ...(await checkModelOverrideSource(rc.sides, rc.adapters)),
         ...(heartbeatWarn ? [heartbeatWarn] : []),
+        tierCombos,
       ]),
       // 准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02），追加在后、既有两项顺序不变
       ...rc.mustReadPruned,

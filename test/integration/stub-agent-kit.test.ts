@@ -455,7 +455,7 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
       `    vendor: ${STUB_ID}`,
       'profiles:',
       '  default:',
-      // 接入套件第 ⑥ 件：模型路由。缺了它 routeModel 返回 null，review.ts 当场退 69
+      // 接入套件第 ⑥ 件：模型路由。缺了它档位解析取不到模型，review 准备阶段的 slug 校验当场退 64（M11 第 4 步前误记为 69）
       `    ${STUB_ID}:`,
       `      plan: ${STUB_MODEL}`,
       `      code: ${STUB_MODEL}`,

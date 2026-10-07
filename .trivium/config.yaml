@@ -174,10 +174,7 @@ agents:
     # profile 决定 provider 家族与模型目录（目录随 profile 分层）。**换家族必须与 profiles.*.codex
     # 同批改**：只改一处，要么被端点拒绝，要么预检以「不在该 profile 的模型目录中」退 64（均实测）。
     profile: kimi
-    effort:
-      plan: high
-      code: high
-      bug: high
+    # effort 已删（M11 第 4 步）：它从未下传，实际请求的思考等级是 kimi profile 基底的值；档位落地后由 tiers 表达
   # claude 段（M9 第 4 步）。只有判别式，没有其它字段——这是刻意的不对称：
   # 另三家的入口覆盖都有真实消费方，而 claude 的入口由探针独占
   # （probe.cli.claude.entrypoint），加 bin 就是加一个死字段。

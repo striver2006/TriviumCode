@@ -446,3 +446,138 @@ test('V4 EV-30 ②③：磁盘 config.yaml 带着两键时 loadCtx 照常加载�
   assert.equal(merged.review['parallel'], false);
   assert.equal(merged.isolation['deny_via_cli'], 'off');
 });
+
+// ── M11 第 4 步：档位键与 profiles 三形态（设计 11.5 / 13.1.1；计划 r2 §3.1、§5.1）──
+
+type Loose = Record<string, unknown>;
+type Mut = (c: { agents: Record<string, Loose>; profiles: Record<string, Record<string, Loose>> }) => void;
+/** 默认配置的可写深拷贝：改一处再交给 validateConfig */
+function cfgWith(mut: Mut): unknown {
+  const c = structuredClone(defaultConfig()) as unknown as Parameters<Mut>[0];
+  mut(c);
+  return c;
+}
+
+test('T1 三形态各一格：裸 slug、{tier}、{model, effort} 都合法', () => {
+  const cfg = cfgWith((c) => {
+    c.agents['codex']!['tiers'] = { high: { model: 'kimi-for-coding', effort: 'max', profile: 'kimi' } };
+    c.profiles['default']!['codex'] = { plan: 'qwen3.8-flash', code: { tier: 'high' }, bug: { model: 'qwen3.8-flash', effort: 'high' } };
+  });
+  assert.deepEqual(validateConfig(cfg), []);
+});
+
+test('T2 四支各带 tiers 与 default_tier：openai 支档位可带 profile，zcode 支只有 model', () => {
+  const cfg = cfgWith((c) => {
+    c.agents['gemini']!['tiers'] = { low: { model: 'gemini-3.8-flash-low' }, high: { model: 'gemini-3.8-flash', effort: 'high' } };
+    c.agents['gemini']!['default_tier'] = 'high';
+    c.agents['glm']!['tiers'] = { low: { model: 'GLM-5.3-Flash' }, high: { model: 'GLM-5.3' } };
+    c.agents['glm']!['default_tier'] = 'low';
+    c.agents['codex']!['tiers'] = { medium: { model: 'deepseek-v4-pro', effort: 'high', profile: 'deepseek' } };
+    c.agents['codex']!['default_tier'] = 'medium';
+    c.agents['claude']!['tiers'] = { high: { model: 'claude-opus-4-6', effort: 'xhigh' } };
+  });
+  assert.deepEqual(validateConfig(cfg), []);
+});
+
+test('T3 非法组合在 schema 层即拒（各自单独一格）', () => {
+  const bad: [string, Mut][] = [
+    ['档名不在三档内', (c) => { c.profiles['default']!['codex'] = { plan: { tier: 'ultra' } }; }],
+    ['{tier} 与 model 混写', (c) => { c.profiles['default']!['codex'] = { plan: { tier: 'high', model: 'x' } }; }],
+    ['{model} 缺 effort 的格子', (c) => { c.profiles['default']!['codex'] = { plan: { model: 'x' } }; }],
+    ['{effort} 单键格子', (c) => { c.profiles['default']!['codex'] = { plan: { effort: 'high' } }; }],
+    ['格子带 profile', (c) => { c.profiles['default']!['codex'] = { plan: { model: 'x', effort: 'high', profile: 'kimi' } }; }],
+    ['非 openai 支档位带 profile', (c) => { c.agents['gemini']!['tiers'] = { high: { model: 'g', profile: 'p' } }; }],
+    ['zcode 支档位带 effort', (c) => { c.agents['glm']!['tiers'] = { high: { model: 'GLM-5.3', effort: 'high' } }; }],
+    ['default_tier 不在三档内', (c) => { c.agents['codex']!['default_tier'] = 'ultra'; }],
+    ['tiers 多出键', (c) => { c.agents['codex']!['tiers'] = { max: { model: 'x' } }; }],
+    ['tiers 为空对象', (c) => { c.agents['codex']!['tiers'] = {}; }],
+    ['档位条目缺 model', (c) => { c.agents['codex']!['tiers'] = { high: { effort: 'max' } }; }],
+    ['档位条目 model 为空串', (c) => { c.agents['codex']!['tiers'] = { high: { model: '' } }; }],
+    ['effort 为空串', (c) => { c.agents['codex']!['tiers'] = { high: { model: 'x', effort: '' } }; }],
+  ];
+  for (const [what, mut] of bad) {
+    assert.ok(validateConfig(cfgWith(mut)).length > 0, `${what} 应被 schema 拒`);
+  }
+});
+
+test('T4 旧配置零改动可载：本仓 config.yaml 原样、含 agents.codex.effort 的旧配置、空串 slug 都能加载', async () => {
+  const own = await fs.readFile(path.join(REPO_ROOT, '.trivium/config.yaml'), 'utf8');
+  const ctx = await loadCtx({ cwd: await projectWith(own), allowUninitialized: true });
+  assert.equal(ctx.config.schema, 'trivium.config.v2');
+
+  const legacy = await projectWith([
+    'schema: trivium.config.v2',
+    'agents:',
+    '  codex:',
+    '    vendor: openai',
+    '    bin: null',
+    '    profile: qwen',
+    '    effort: { plan: high, code: medium, bug: low }',
+    'profiles:',
+    '  default:',
+    "    glm: { plan: '', code: GLM-5.3, bug: GLM-5.3 }",
+    '',
+  ].join('\n'));
+  const lctx = await loadCtx({ cwd: legacy, allowUninitialized: true });
+  const merged = lctx.config as unknown as Parameters<Mut>[0];
+  assert.deepEqual(merged.agents['codex']!['effort'], { plan: 'high', code: 'medium', bug: 'low' }, '废弃键原样留在合并结果里');
+  // 空串 slug：裸 slug 形态保持无 minLength，照旧能加载，到 slug 校验才以 64 失败（计划三审 CODEX-03）
+  assert.equal(merged.profiles['default']!['glm']!['plan'], '');
+});
+
+test('T5 agents.codex.effort：类型与默认值已删，schema 标 deprecated、不在 required，类型约束没放宽', async () => {
+  const codexDefault = defaultConfig().agents.codex as unknown as Loose;
+  assert.ok(!('effort' in codexDefault), '默认值里不该再有 agents.codex.effort');
+  assert.ok('effort' in (defaultConfig().agents.gemini as unknown as Loose), 'agents.gemini.effort 有消费方，不得一并删');
+  const schema = JSON.parse(
+    await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'), 'utf8'),
+  ) as { properties: { agents: { additionalProperties: { oneOf: { required: string[]; properties: Record<string, { const?: string; deprecated?: boolean }> }[] } } } };
+  const branches = schema.properties.agents.additionalProperties.oneOf;
+  const openai = branches.find((b) => b.properties['vendor']?.const === 'openai')!;
+  const agy = branches.find((b) => b.properties['vendor']?.const === 'antigravity')!;
+  assert.equal(openai.properties['effort']?.deprecated, true);
+  assert.ok(!openai.required.includes('effort'));
+  assert.ok(agy.required.includes('effort'), 'antigravity 支的 effort 仍必填');
+  assert.notEqual(agy.properties['effort']?.deprecated, true);
+  const widened = cfgWith((c) => { c.agents['codex']!['effort'] = { plan: 'max', code: 'high', bug: 'high' }; });
+  assert.ok(validateConfig(widened).length > 0, '原枚举外的值照旧被拒：废弃不等于放宽');
+});
+
+test('T6 本机层覆盖：tiers 整段替换、profiles 格子整格替换（设计 13.1.1「整段覆盖」）', async () => {
+  const root = await projectWith([
+    'schema: trivium.config.v2',
+    'agents:',
+    '  codex:',
+    '    vendor: openai',
+    '    bin: null',
+    '    profile: kimi',
+    '    tiers:',
+    '      low: { model: kimi-lite }',
+    '      high: { model: kimi-for-coding, effort: max, profile: kimi }',
+    'profiles:',
+    '  default:',
+    '    codex:',
+    '      plan: { model: qwen3.8-flash, effort: high }',
+    '      code: qwen3.8-flash',
+    '      bug: qwen3.8-flash',
+    '',
+  ].join('\n'));
+  await fs.writeFile(path.join(root, '.trivium', 'config.local.yaml'), [
+    'agents:',
+    '  codex:',
+    '    tiers:',
+    '      high: { model: deepseek-v4-pro, profile: deepseek }',
+    'profiles:',
+    '  default:',
+    '    codex:',
+    '      plan: { tier: high }',
+    '',
+  ].join('\n'), 'utf8');
+  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
+  const codex = ctx.config.agents.codex as unknown as { tiers: Loose; profile: string };
+  // 逐键合并会混出 {model: deepseek-v4-pro, effort: max, profile: deepseek}，并保留 low
+  assert.deepEqual(codex.tiers, { high: { model: 'deepseek-v4-pro', profile: 'deepseek' } });
+  assert.equal(codex.profile, 'kimi', '原子节点之外照常逐键合并');
+  // 逐键合并会混成 {tier, model, effort}，被 schema 拒；整格替换后合法
+  assert.deepEqual(ctx.config.profiles['default']!.codex, { plan: { tier: 'high' }, code: 'qwen3.8-flash', bug: 'qwen3.8-flash' });
+});

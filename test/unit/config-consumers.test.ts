@@ -381,3 +381,65 @@ test('U10 EV-30 ②③：review.parallel、isolation.deny_via_cli 出现时与�
   assert.ok(notice !== null && notice.includes(`已废弃的键：${want.join('、')}。`), String(notice));
   assert.equal(deprecatedConfigNotice(defaultConfig()), null, '默认配置不带任何已废弃键');
 });
+
+/*
+ * **U11 M11 第 4 步：agents.codex.effort 按精确路径报废弃，同名的 agents.gemini.effort 不报**（设计 11.5 / 13.1.1，
+ * 上位计划 r3 AGY-01）。gemini 那份有真实消费方（裸 slug 格子的思考等级回落）——废弃键表若用 `'*'` 通配，
+ * 内置默认配置本身就会被报废弃。
+ */
+test('U11 agents.codex.effort 出现即报；agents.gemini.effort 不报；两者同在只报 codex 那条', () => {
+  const base = () => structuredClone(defaultConfig()) as unknown as { agents: Record<string, Record<string, unknown>> };
+  assert.ok('effort' in base().agents['gemini']!, '前提：默认配置带着 agents.gemini.effort');
+  assert.deepEqual(deprecatedConfigKeysIn(base() as unknown as Config), [], 'gemini 的同名键不报');
+  const withCodex = base();
+  withCodex.agents['codex']!['effort'] = { plan: 'high', code: 'high', bug: 'high' };
+  assert.deepEqual(deprecatedConfigKeysIn(withCodex as unknown as Config), ['agents.codex.effort']);
+  const notice = deprecatedConfigNotice(withCodex as unknown as Config);
+  assert.ok(notice !== null && notice.includes('已废弃的键：agents.codex.effort。'), String(notice));
+  assert.ok(!notice.includes('gemini'), notice);
+  assert.ok(!configKeys(defaultConfig().agents.codex as unknown).has('effort'), 'codex 默认值里不该再有 effort');
+});
+
+/*
+ * **U12 schema 声明的可选键也要有消费方**（M11 第 4 步，计划 r2 §5.1）。
+ *
+ * 主对账只扫**默认配置**里出现的键；`tiers` / `default_tier` / `tier` 是可选键、默认值里没有（init 模板不写 tiers），
+ * 主对账看不见它们。这里改从 schema 取：`agents` 四支与 `$defs` 里档位相关定义的全部**非 deprecated** 属性名。
+ *
+ * **判活局限如实写在这里**：判据仍是「定义文件之外有 `.键` 属性访问」。`tiers` / `default_tier` / `tier`
+ * 名字独特，命中即有意义；`model` / `effort` / `profile` 这类通用名在 `src/` 里必然命中（别处的同名字段），
+ * **本条对它们不构成覆盖**——它们是否真被读，由 `tier-resolve.test.ts` 的行为用例守。
+ */
+test('U12 schema 里 agents 四支与档位定义的非废弃属性都有消费方，否则进 KNOWN_DEAD', async () => {
+  const schema = JSON.parse(
+    await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'), 'utf8'),
+  ) as {
+    properties: { agents: { additionalProperties: { oneOf: unknown[] } } };
+    $defs: Record<string, unknown>;
+  };
+  const keys = new Set<string>();
+  const walk = (n: unknown): void => {
+    if (Array.isArray(n)) return n.forEach(walk);
+    if (n === null || typeof n !== 'object') return;
+    const o = n as Record<string, unknown>;
+    if (o['properties'] && typeof o['properties'] === 'object') {
+      for (const [k, v] of Object.entries(o['properties'] as Record<string, { deprecated?: boolean }>)) {
+        if (v?.deprecated !== true && !STAGE_KEYS.has(k)) keys.add(k);
+      }
+    }
+    for (const v of Object.values(o)) walk(v);
+  };
+  walk(schema.properties.agents.additionalProperties.oneOf);
+  for (const name of ['tierEntry', 'tierEntryOpenai', 'tierEntryModelOnly', 'stageModel']) walk(schema.$defs[name]);
+  for (const k of ['tiers', 'default_tier', 'tier']) assert.ok(keys.has(k), `论域应含 ${k}，否则本条空转`);
+
+  const files = await collectSources(path.join(REPO_ROOT, 'src'));
+  const consumers: string[] = [];
+  for (const f of files) {
+    if (DEFINITION_FILES.includes(path.basename(f))) continue;
+    consumers.push(await fs.readFile(f, 'utf8'));
+  }
+  const registered = new Set(KNOWN_DEAD.map((d) => d.key));
+  const dead = [...keys].filter((k) => !registered.has(k) && !consumers.some((src) => hasPropertyAccess(src, k)));
+  assert.deepEqual(dead, [], `下列 schema 属性在 src/ 下没有消费方：${dead.join('、')}`);
+});

@@ -233,7 +233,13 @@ if (argv[0] === 'debug' && argv[1] === 'models') {
     process.exit(Number(env.FAKE_ISO_EXIT || '1'));
   }
   const code = Number(env.FAKE_BASE_EXIT || '0');
-  if (code === 0) process.stdout.write(JSON.stringify({ models: [{ slug: 'fake-model', visibility: 'list' }] }));
+  // 带 broken 字样的目录路径 ⇒ 该 profile 采集失败（M11 第 4 步 W1：失败的 profile 不写思考等级条目）
+  if (argv.some((a) => a.includes('broken'))) process.exit(3);
+  // 逐模型带 supported_reasoning_levels，另放一条隐藏项（M11 第 4 步，计划三审 CODEX-02：只收可见项要有反例可咬）
+  if (code === 0) process.stdout.write(JSON.stringify({ models: [
+    { slug: 'fake-model', visibility: 'list', supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }] },
+    { slug: 'fake-hidden', visibility: 'hide', supported_reasoning_levels: [{ effort: 'max' }] },
+  ] }));
   process.exit(code);
 }
 if (argv.includes('--help')) { process.stdout.write('Usage: codex exec [OPTIONS] [PROMPT]\\n'); process.exit(0); }
@@ -506,6 +512,35 @@ test('E4b probeCodex 对照：删成功时无提示、无残留，isolation 照�
   assert.deepEqual(residueNotes(notes), []);
   assert.deepEqual([...main, ...iso], []);
   assert.equal(probe.isolation, 'home_copy', `探针没走到隔离探针那一步：${notes.join('\n')}`);
+});
+
+/*
+ * **RL1 探针落盘逐模型思考等级**（M11 第 4 步，设计 11.5「原生枚举与校验」；计划 r2 §3.4、§5.1）。
+ * 基底与逐 profile 都只收可见项；采集失败的 profile 不写条目（失败 ≠ 空，同 models_by_profile_errors）。
+ * 走 --no-model-calls 同一路径（skipModelCalls）：这段在真实调用之前，零配额即可落盘。
+ */
+test('RL1 probeCodex 落 reasoning_levels：只收可见项、失败 profile 无条目、零配额路径即可落盘', async () => {
+  const w = await world();
+  const entry = await writeEntry(w, 'codex', CODEX_BODY);
+  const codexHome = path.join(w.home, '.codex');
+  await fs.mkdir(codexHome, { recursive: true });
+  await fs.writeFile(path.join(codexHome, 'fake.config.toml'), 'model = "fake-model"\nmodel_provider = "fake"\n', { mode: 0o600 });
+  await fs.writeFile(
+    path.join(codexHome, 'broken.config.toml'),
+    'model = "fake-model"\nmodel_provider = "fake"\nmodel_catalog_json = "/nonexistent/broken.json"\n',
+    { mode: 0o600 },
+  );
+  const { probe } = await inWorld(
+    w,
+    { CODEX_HOME: codexHome, FAKE_LOCK: undefined, FAKE_BASE_EXIT: '0', FAKE_ISO_EXIT: '1', FAKE_OBSERVE: undefined },
+    () => probeCodex(entry, { skipModelCalls: true }),
+  );
+  assert.deepEqual(probe.models, ['fake-model', 'fake-hidden'], '前提：基底全集含隐藏项');
+  assert.deepEqual(probe.reasoning_levels, {
+    base: { 'fake-model': ['low', 'high'] },
+    by_profile: { fake: { 'fake-model': ['low', 'high'] } },
+  });
+  assert.ok(probe.models_by_profile_errors['broken'], '前提：broken 采集失败');
 });
 
 test('E4c probeCodex（EV-25 接线）：假 exec 不执行那条写命令 ⇒ 只读负对照未判定，readonly_flags 不被写成可信、成因经返回值带出', async () => {

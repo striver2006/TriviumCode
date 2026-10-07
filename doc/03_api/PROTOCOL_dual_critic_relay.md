@@ -87,10 +87,18 @@ YAML 往返会丢注释，原注释保留在备份中）。三条跨字段规则
 `agents` 的键必须是已登记 Agent（**不要求 `criticEnabled`**——Driver 自身也需要配置容身之处）、
 `agents.<id>.vendor` 必须与注册表相符、`default_critics` 每项必须是可用审核者且在 `agents` 中有配置段。
 
-**已废弃键**（设计 v1.3.72，EV-30 ① / EV-15）：`gate.max_check_retries` 与 `agents.<id>.readonly_commands`（antigravity 一支）
+**已废弃键**（机制在 `config.ts` 的 `DEPRECATED_CONFIG_KEYS`，按路径登记）：`gate.max_check_retries`（设计 v1.3.72，EV-30 ①）、
+`agents.<id>.readonly_commands`（antigravity 一支，v1.3.72，EV-15）、`review.parallel` 与 `isolation.deny_via_cli`（v1.3.122，EV-30 ②③；
+此前本段漏登这两条）、`agents.codex.effort`（v1.3.131，M11 第 4 步；**精确路径**——`agents.gemini.effort` 同名却有消费方，不报）
 从未被读取，已删类型与默认值；schema 仍接受（标 `deprecated`、不在 `required`、类型约束照旧），
 带着它们的旧配置升级后照常通过。出现时只有 `doctor`（`warnings`，不影响退出码）与 `preflight`
 （名为「已废弃配置键」的只警告项，进 `warnings`）各提示一条，其余命令不打任何东西。
+
+**档位键**（设计 11.5 / 13.1.1，v1.3.131，M11 第 4 步）：`agents.<id>.tiers`（`low` / `medium` / `high` 三档，每档 `{model, effort?, profile?}`；
+`profile` 只在 openai 支、zcode 支只有 `model`）与 `agents.<id>.default_tier` 为可选键；`profiles.<表>.<id>.<阶段>` 收三形态：
+裸 slug ｜ `{tier}` ｜ `{model, effort}`。本机层覆盖时 `tiers` 整段替换、格子整格替换。预检与 `review` 准备阶段新增「档位组合合法」一格
+（原生枚举、无思考等级概念、厂商 profile 名单；不合法退 64、零工件）。思考等级与厂商 profile **尚未透传**（第 6 步），
+此前档位里写了思考等级、或档位 profile 与 `agents.codex.profile` 不同，发起前即退 64。
 
 ### `trivium.review.v1` 的硬约束
 

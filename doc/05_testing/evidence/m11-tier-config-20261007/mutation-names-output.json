@@ -1,0 +1,454 @@
+{
+  "targets_sha256": {
+    "src/trivium/adapters/base.ts": "82946c302e4fbc810e5979423444d3b31507d071e470cd8e4b46ae5f50a50931",
+    "src/trivium/preflight.ts": "53ce448bd7be43d6a6b9ecd1a0ec2fa9f67e101756cbfcec8a3418aab82781b6",
+    "src/trivium/config.ts": "0faddf1a883abf319f3fb3fe8f96b992d081e8207bb80655b3eb2a7ca644a087",
+    "src/trivium/probes/codex.ts": "a7f24e99db87aa734395a5fb86cf0655c6cae42385c15a45a3bafef9b5411736",
+    "src/trivium/review.ts": "9121afa220f9dff2afe35d23f7ee10fcd7b97b4187623403f794195279af549d",
+    "src/trivium/adapters/codex.ts": "7eef8beaf28335318d3b95543ad3e02941a767a11a5f1473670481016ab786c2",
+    "src/trivium/adapters/agy.ts": "5eae7174c1809b41e100798a7d001913c785a36acd0909170f3c55d42d5a6f41",
+    "skills/dual-critic/schema/config.v2.json": "bc1627d4731396292287a84384e11b325b28048f9c81cd7718d449dbf3726d6d"
+  },
+  "results": [
+    {
+      "id": "R1",
+      "desc": "{tier} 格子被当作未命中（解析跳过档位引用）",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 11,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R1 第一段次序：命令行档位 > 档位表格子 > default_tier",
+        "R2 档位表格子三形态：{tier} ⇒ profile；{model, effort} ⇒ 无档位名、profile；裸 slug ⇒ legacy",
+        "R3 引用未定义的档：记 missingTier（来源与已定义的档），不抛，也不静默落到下一级",
+        "R6 档位提供的字段被全部覆盖 ⇒ tier null、override；「提供的字段」按实际写了的键计",
+        "R9 厂商 profile 三层次序：命令行 > 档位条目 > agents.<id>.profile；非 openai vendor 恒 null",
+        "S1 档名写错：slug 检查直接报档名与可用档，退 64——有命令行模型覆盖时也报",
+        "S3 档位换家族：slug 按档位的厂商 profile 取目录校验",
+        "C2 永久判据：枚举外 effort、名单外 profile、无思考等级概念却给了 effort，各退 64 并列出可用值",
+        "C3 过渡闸：合法的 effort、与 agents.codex.profile 不同的档位 profile ⇒ 退 64 指向第 6 步",
+        "C5 取不到就跳过并点名：旧探针无枚举时 effort 不做枚举校验（过渡闸仍拦）；名单为空时 profile 跳过",
+        "C6 gemini 告警两格：档位没写 effort 而运行期仍下传阶段级 effort（GLM-01）；slug 已编码档位再给 effort"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "R2",
+      "desc": "全覆盖判定恒假（override 失效）",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R6 档位提供的字段被全部覆盖 ⇒ tier null、override；「提供的字段」按实际写了的键计",
+        "R7 {model, effort} 格子：部分覆盖仍记 profile，全覆盖记 override",
+        "R8 裸 slug：模型被命令行覆盖 ⇒ override（不把命令行的选择归给旧配置）；只给 effort 仍是 legacy"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "R3",
+      "desc": "裸 slug 被命令行覆盖仍记 legacy（P-6 回退）",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R8 裸 slug：模型被命令行覆盖 ⇒ override（不把命令行的选择归给旧配置）；只给 effort 仍是 legacy"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "R4",
+      "desc": "第一段次序颠倒：default_tier 先于格子",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R1 第一段次序：命令行档位 > 档位表格子 > default_tier",
+        "R3 引用未定义的档：记 missingTier（来源与已定义的档），不抛，也不静默落到下一级"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "R5",
+      "desc": "厂商 profile 次序颠倒：agents.codex.profile 先于档位条目",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 7,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R1 第一段次序：命令行档位 > 档位表格子 > default_tier",
+        "R5 档位被部分覆盖 ⇒ 保留档位名与来源；被覆盖字段原本来自档位时告警",
+        "R9 厂商 profile 三层次序：命令行 > 档位条目 > agents.<id>.profile；非 openai vendor 恒 null",
+        "S3 档位换家族：slug 按档位的厂商 profile 取目录校验",
+        "C2 永久判据：枚举外 effort、名单外 profile、无思考等级概念却给了 effort，各退 64 并列出可用值",
+        "C3 过渡闸：合法的 effort、与 agents.codex.profile 不同的档位 profile ⇒ 退 64 指向第 6 步",
+        "C5 取不到就跳过并点名：旧探针无枚举时 effort 不做枚举校验（过渡闸仍拦）；名单为空时 profile 跳过"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "R6",
+      "desc": "gemini 阶段级 effort 回落不再限裸 slug",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "R10 gemini 思考等级回落只对裸 slug：档位与 {model, effort} 格子不回落阶段级 effort",
+        "C6 gemini 告警两格：档位没写 effort 而运行期仍下传阶段级 effort（GLM-01）；slug 已编码档位再给 effort"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "V1",
+      "desc": "枚举非空时不校验",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C2 永久判据：枚举外 effort、名单外 profile、无思考等级概念却给了 effort，各退 64 并列出可用值"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "V2",
+      "desc": "枚举取不到时硬拒",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C5 取不到就跳过并点名：旧探针无枚举时 effort 不做枚举校验（过渡闸仍拦）；名单为空时 profile 跳过"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "V3",
+      "desc": "「无思考等级概念」一格删去（glm 写 effort 不再被永久判据拒）",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C2 永久判据：枚举外 effort、名单外 profile、无思考等级概念却给了 effort，各退 64 并列出可用值"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "V3b",
+      "desc": "同 V3，review 准备阶段集成用例",
+      "suite": "dist/test/test/integration/no-artifacts.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "档位组合不合法 → review --start 退 64 且零工件（永久判据与过渡闸各一格）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 7
+    },
+    {
+      "id": "V4",
+      "desc": "厂商 profile 名单校验删去",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C2 永久判据：枚举外 effort、名单外 profile、无思考等级概念却给了 effort，各退 64 并列出可用值"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "V5",
+      "desc": "slug 校验不传档位解析的厂商 profile",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S3 档位换家族：slug 按档位的厂商 profile 取目录校验"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "V6",
+      "desc": "档名缺失分支删去（回落「未定义模型」）",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S1 档名写错：slug 检查直接报档名与可用档，退 64——有命令行模型覆盖时也报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "G1",
+      "desc": "过渡闸 effort 格删去",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C3 过渡闸：合法的 effort、与 agents.codex.profile 不同的档位 profile ⇒ 退 64 指向第 6 步",
+        "C5 取不到就跳过并点名：旧探针无枚举时 effort 不做枚举校验（过渡闸仍拦）；名单为空时 profile 跳过"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "G1b",
+      "desc": "同 G1，review 准备阶段集成用例",
+      "suite": "dist/test/test/integration/no-artifacts.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "档位组合不合法 → review --start 退 64 且零工件（永久判据与过渡闸各一格）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8
+    },
+    {
+      "id": "G2",
+      "desc": "过渡闸 profile 格删去",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C3 过渡闸：合法的 effort、与 agents.codex.profile 不同的档位 profile ⇒ 退 64 指向第 6 步"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "G3",
+      "desc": "过渡闸不再豁免 slug 已编码档位",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C6 gemini 告警两格：档位没写 effort 而运行期仍下传阶段级 effort（GLM-01）；slug 已编码档位再给 effort"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "G4",
+      "desc": "过渡告警（GLM-01）删去",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C6 gemini 告警两格：档位没写 effort 而运行期仍下传阶段级 effort（GLM-01）；slug 已编码档位再给 effort"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "D1",
+      "desc": "废弃键路径改回通配（gemini 同名键被误报）",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null",
+        "U10 EV-30 ②③：review.parallel、isolation.deny_via_cli 出现时与旧两键一样只报实际出现的那几个；正文列出它们",
+        "U11 agents.codex.effort 出现即报；agents.gemini.effort 不报；两者同在只报 codex 那条"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M1",
+      "desc": "原子节点：tiers 改回逐键合并",
+      "suite": "dist/test/test/unit/config-schema.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T6 本机层覆盖：tiers 整段替换、profiles 格子整格替换（设计 13.1.1「整段覆盖」）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M2",
+      "desc": "原子节点：profiles 格子改回逐键合并",
+      "suite": "dist/test/test/unit/config-schema.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T6 本机层覆盖：tiers 整段替换、profiles 格子整格替换（设计 13.1.1「整段覆盖」）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "P1",
+      "desc": "探针不落逐 profile 思考等级",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "RL1 probeCodex 落 reasoning_levels：只收可见项、失败 profile 无条目、零配额路径即可落盘"
+      ],
+      "firstLines": [],
+      "elapsed_s": 9
+    },
+    {
+      "id": "P2",
+      "desc": "探针不落基底思考等级",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "RL1 probeCodex 落 reasoning_levels：只收可见项、失败 profile 无条目、零配额路径即可落盘"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8
+    },
+    {
+      "id": "P3",
+      "desc": "思考等级收进隐藏项",
+      "suite": "dist/test/test/unit/probe-fixture-cleanup.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "RL1 probeCodex 落 reasoning_levels：只收可见项、失败 profile 无条目、零配额路径即可落盘"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8
+    },
+    {
+      "id": "Q1",
+      "desc": "review 准备阶段不调档位组合校验（只有预检拦）",
+      "suite": "dist/test/test/integration/no-artifacts.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "档位组合不合法 → review --start 退 64 且零工件（永久判据与过渡闸各一格）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 8
+    },
+    {
+      "id": "H1",
+      "desc": "codex 钩子不分 profile、一律取基底",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "H1 codex 钩子：按厂商 profile 取逐模型枚举；无 profile 取基底；旧探针或查无 ⇒ unknown",
+        "C2 永久判据：枚举外 effort、名单外 profile、无思考等级概念却给了 effort，各退 64 并列出可用值"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "H2",
+      "desc": "agy 钩子不比对基名、目录里所有带后缀的都算",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "H2 agy 钩子：带后缀 ⇒ slug 已编码档位；不带后缀 ⇒ 由目录里的变体派生；没有变体 ⇒ unknown"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "S1",
+      "desc": "schema：裸 slug 形态加 minLength（空串 slug 改为加载期被拒）",
+      "suite": "dist/test/test/unit/config-schema.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T4 旧配置零改动可载：本仓 config.yaml 原样、含 agents.codex.effort 的旧配置、空串 slug 都能加载"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "S2",
+      "desc": "schema：{tier} 形态放开 additionalProperties（与 model 混写不再被拒）",
+      "suite": "dist/test/test/unit/config-schema.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T3 非法组合在 schema 层即拒（各自单独一格）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "S3",
+      "desc": "schema：zcode 支档位条目放行 effort",
+      "suite": "dist/test/test/unit/config-schema.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "T3 非法组合在 schema 层即拒（各自单独一格）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "S4",
+      "desc": "schema：openai 支 effort 回到 required",
+      "suite": "dist/test/test/unit/config-schema.test.js",
+      "fail": 14,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "内置默认配置本身合法",
+        "合法的覆盖（本项目自己的 config.yaml 形状）照常通过",
+        "可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家",
+        "U1 两个空配置项：带着已废弃键的配置仍通过校验；不带时同样通过",
+        "U2 两个空配置项：类型约束没有放宽——升级前就不合法的值升级后照旧被拒",
+        "U7 两个空配置项：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里",
+        "V1 EV-30 ②③：带着 parallel / deny_via_cli 的配置仍通过校验；默认值里不再有它们、不带时同样通过",
+        "V2 EV-30 ②③：类型约束没有放宽——升级前就不合法的值升级后照旧被拒",
+        "V4 EV-30 ②③：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里",
+        "T1 三形态各一格：裸 slug、{tier}、{model, effort} 都合法",
+        "T2 四支各带 tiers 与 default_tier：openai 支档位可带 profile，zcode 支只有 model",
+        "T4 旧配置零改动可载：本仓 config.yaml 原样、含 agents.codex.effort 的旧配置、空串 slug 都能加载",
+        "T5 agents.codex.effort：类型与默认值已删，schema 标 deprecated、不在 required，类型约束没放宽",
+        "T6 本机层覆盖：tiers 整段替换、profiles 格子整格替换（设计 13.1.1「整段覆盖」）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    }
+  ]
+}

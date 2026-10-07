@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   checkEvidence,
   checkPeerLeak,
-  routeModel,
+  resolveTier,
   isHeterogeneous,
   failedResult,
 } from '../../src/trivium/adapters/base.js';
@@ -144,28 +144,30 @@ test('轨迹核验：读己方产出不算泄漏', () => {
   assert.equal(r.leaked, false);
 });
 
-test('模型路由四级优先级：命令行 > 主题 > profile', () => {
+/*
+ * 原「四级优先级：命令行 > 主题 > profile」。主题级覆盖规范有、实现从未接线，v1.3.129 从规范删除、
+ * M11 第 4 步随 routeModel 一并删去（EV-226），这里改为三级的等价断言：命令行优先于档位表格子。
+ */
+test('模型路由：命令行 > 档位表格子（裸 slug）', () => {
   const cfg = defaultConfig();
-  assert.deepEqual(routeModel(cfg, 'gemini', 'plan', { cli: 'X', topic: 'Y' }), {
-    model: 'X',
-    source: 'cli',
-  });
-  assert.deepEqual(routeModel(cfg, 'gemini', 'plan', { topic: 'Y' }), {
-    model: 'Y',
-    source: 'topic',
-  });
-  assert.deepEqual(routeModel(cfg, 'gemini', 'plan'), {
-    model: 'gemini-3.8-flash-high',
-    source: 'profile',
-  });
-  assert.deepEqual(routeModel(cfg, 'glm', 'code'), { model: 'GLM-5.3', source: 'profile' });
+  const cli = resolveTier(cfg, 'gemini', 'plan', { model: 'X' });
+  assert.equal(cli.model, 'X');
+  // 裸 slug 只提供 model，被命令行全覆盖 ⇒ override（设计 11.5，计划三审 AGY-01）
+  assert.equal(cli.tierSource, 'override');
+  const legacy = resolveTier(cfg, 'gemini', 'plan');
+  assert.equal(legacy.model, 'gemini-3.8-flash-high');
+  assert.equal(legacy.tierSource, 'legacy');
+  assert.equal(resolveTier(cfg, 'glm', 'code').model, 'GLM-5.3');
 });
 
-test('模型路由：profile 缺该阶段时返回 none 而非瞎猜', () => {
+test('模型路由：档位表缺该阶段时返回 null 而非瞎猜', () => {
   const cfg = defaultConfig();
   cfg.profiles['bare'] = { gemini: {} };
   cfg.active_profile = 'bare';
-  assert.deepEqual(routeModel(cfg, 'gemini', 'plan'), { model: null, source: 'none' });
+  const r = resolveTier(cfg, 'gemini', 'plan');
+  assert.equal(r.model, null);
+  assert.equal(r.tierSource, null);
+  assert.equal(r.missingTier, null);
 });
 
 test('异构判定：Driver 为 anthropic 时 Claude 系为同源（FR-17 / AC-18）', () => {
@@ -236,7 +238,7 @@ test('缺省入选的各侧默认模型互不相同且均为非 Claude 系（AC-
 
   for (const stage of ['plan', 'code', 'bug'] as const) {
     const models = DEFAULT_CRITICS.map((c) => {
-      const m = routeModel(cfg, c, stage).model;
+      const m = resolveTier(cfg, c, stage).model;
       assert.ok(m, `${stage} 的 ${c} 侧应有默认模型——取不到会在 review.ts 直接抛 envError`);
       // `DEFAULT_CRITICS` 只对缺省 Driver 成立（非缺省 Driver 下缺省选侧会退 64），故厂商取缺省 Driver
       assert.equal(
@@ -274,7 +276,7 @@ test('AC-18 逐 Driver：每家 Driver 可选的每个审核者，档位默认�
       const vendor = agentById(driver)!.vendor;
       for (const c of selectableCritics(cfg, driver)) {
         for (const stage of ['plan', 'code', 'bug'] as const) {
-          const m = routeModel(cfg, c, stage).model;
+          const m = resolveTier(cfg, c, stage).model;
           assert.ok(m, `档位 ${p} 的 ${c} 侧 ${stage} 应有默认模型`);
           assert.equal(
             isHeterogeneous(m, vendor), true,
@@ -292,7 +294,7 @@ test('AC-18 逐 Driver：每家 Driver 可选的每个审核者，档位默认�
  * **claude 侧的模型路由取得到值**（M9 第 4 步，计划 §7 的 V5）。
  *
  * 它不在上一条的论域里（`defaultSelected: false`，不进缺省集合），
- * 但第 5 步 `--driver` 落地后它就会被真跑。`routeModel` 取不到值时
+ * 但第 5 步 `--driver` 落地后它就会被真跑。档位解析（原 `routeModel`）取不到值时
  * `review.ts:686` 直接抛 `envError`，而那要等到运行时才现形——
  * 第 ⑥ 件（模型路由）漏配的后果就是这个，所以在这里先钉住。
  *
@@ -303,9 +305,9 @@ test('claude 侧三阶段在两档下都有模型，且两档取值不同（第 
   const cfg = defaultConfig();
   for (const stage of ['plan', 'code', 'bug'] as const) {
     cfg.active_profile = 'default';
-    const d = routeModel(cfg, 'claude', stage).model;
+    const d = resolveTier(cfg, 'claude', stage).model;
     cfg.active_profile = 'flash';
-    const f = routeModel(cfg, 'claude', stage).model;
+    const f = resolveTier(cfg, 'claude', stage).model;
     assert.ok(d && f, `${stage}：两档都要取得到值，否则 review.ts 会在运行时抛 envError`);
     assert.notEqual(
       d, f,

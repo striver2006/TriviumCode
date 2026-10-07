@@ -139,6 +139,7 @@ export function defaultProbe(): ProbeSection {
     models_by_profile: {},
     models_visible: [],
     models_by_profile_errors: {},
+    reasoning_levels: { base: {}, by_profile: {} },
   };
 
   cli.claude = {
@@ -331,7 +332,7 @@ export function defaultConfig(): Config {
         vendor: 'openai',
         bin: null,
         profile: 'qwen',
-        effort: { plan: 'high', code: 'high', bug: 'high' },
+        // effort 已删除（M11 第 4 步，设计 11.5）：从未被读取；见 DEPRECATED_CONFIG_KEYS
       },
       /*
        * claude 段（M9 第 4 步）。**只有判别式，没有其它字段**——
@@ -443,6 +444,12 @@ export const DEPRECATED_CONFIG_KEYS: readonly { path: readonly string[] }[] = [
   { path: ['agents', '*', 'readonly_commands'] }, // EV-15
   { path: ['review', 'parallel'] }, // EV-30 ②（2026-10-06）：runner 恒并行；单侧调试用 --critics
   { path: ['isolation', 'deny_via_cli'] }, // EV-30 ③（2026-10-06）：注不注入路径级 deny 只看探针实测
+  /*
+   * M11 第 4 步（2026-10-07，设计 11.5）：codex 的阶段级思考等级从未下传（`effortFor` 只给 antigravity 取值），
+   * 思考等级改由档位条目的 `effort` 表达。**精确路径、不用 `'*'`**：`agents.gemini.effort` 是同名键，
+   * 却有真实消费方（裸 slug 格子的思考等级回落），通配会把它误报成废弃。
+   */
+  { path: ['agents', 'codex', 'effort'] },
 ];
 
 /** 合并后的配置里实际出现的已废弃键（点分路径；按表序，同一条里 `'*'` 展开的按键名排序） */
@@ -480,6 +487,49 @@ export function deprecatedConfigNotice(cfg: Config): string | null {
   );
 }
 
+/**
+ * 合并时**整个替换、不逐键递归**的节点（M11 第 4 步，设计 13.1.1 / 11.5）。`'*'` 匹配任一键。
+ *
+ * - `agents.<id>.tiers`：规范写「本机层**整段覆盖** `agents.codex.tiers`」。逐键合并会让本机层
+ *   `{profile: x, model: y}` 继承共享层同一档的 `effort`——那是另一家族模型的思考等级。
+ * - `profiles.<表>.<id>.<阶段>`：格子的三形态互斥。共享层 `{model, effort}` 与本机层 `{tier}` 逐键合并
+ *   会混成 `{tier, model, effort}`，两份文件各自合法、合并结果却被 schema 拒，报错指不出是哪个文件。
+ */
+export const ATOMIC_CONFIG_NODES: readonly (readonly string[])[] = [
+  ['agents', '*', 'tiers'],
+  ['profiles', '*', '*', '*'],
+];
+
+/**
+ * 叠加一层配置：`deepMerge`，但 `ATOMIC_CONFIG_NODES` 命中的节点由上层整个替换。
+ *
+ * 做法是先把下层在这些位置上的值摘掉（沿路径浅拷贝，不改动传入的对象），再交给 `deepMerge`——
+ * 下层缺席时 `deepMerge` 本就取上层原值。`deepMerge` 自身的通用语义不变。
+ */
+export function mergeConfigLayer<T>(base: T, override: unknown): T {
+  const strip = (b: unknown, o: unknown, rest: readonly string[]): unknown => {
+    const isObj = (x: unknown): x is Record<string, unknown> =>
+      x !== null && typeof x === 'object' && !Array.isArray(x);
+    if (!isObj(b) || !isObj(o)) return b;
+    const [head, ...tail] = rest;
+    if (head === undefined) return b;
+    const keys = head === '*' ? Object.keys(o) : [head];
+    let out: Record<string, unknown> | null = null;
+    for (const k of keys) {
+      // 上层给 null 时 deepMerge 保留下层（null 不覆盖），这里也不摘，否则 null 会把下层值抹成 undefined
+      if (!Object.prototype.hasOwnProperty.call(o, k) || o[k] === undefined || o[k] === null) continue;
+      if (!Object.prototype.hasOwnProperty.call(b, k)) continue;
+      out ??= { ...b };
+      if (tail.length === 0) delete out[k];
+      else out[k] = strip(b[k], o[k], tail);
+    }
+    return out ?? b;
+  };
+  let stripped: unknown = base;
+  for (const p of ATOMIC_CONFIG_NODES) stripped = strip(stripped, override, p);
+  return deepMerge(stripped as T, override);
+}
+
 /** 深合并：对象递归合并，数组与标量整体替换（数组语义是「覆盖」而非「追加」） */
 export function deepMerge<T>(base: T, override: unknown): T {
   if (override === undefined || override === null) return base;
@@ -515,12 +565,12 @@ export interface LoadOptions {
  * profile 是 `config.yaml` 里预设的成套模型（default / flash），
  * 平时由 `active_profile` 固定。`--profile` 让单次运行临时切档，省去改配置再改回来。
  *
- * 实现刻意选择「覆盖 `active_profile`」而不是给 `routeModel` 加参数：
+ * 实现刻意选择「覆盖 `active_profile`」而不是给档位解析（`resolveTier`，原 `routeModel`）加参数：
  * 后者内部读的就是 `cfg.profiles[cfg.active_profile]`，覆盖源头则两个调用点、
  * 以及 review/preflight 里那两句「profile『X』未定义模型」的错误文案全部自动正确，
  * 不存在漏改一处的可能。
  *
- * 与 `--model-*` 不冲突且优先级更低：后者直指某个具体模型（routeModel 的 `cli` 档），
+ * 与 `--model-*` 不冲突且优先级更低：后者直指某个具体模型（档位解析第二段的命令行精确值），
  * 本参数只是换一张默认值表——更具体的赢。
  */
 export function applyProfileOverride(cfg: Config, name: string | null | undefined): Config {
@@ -757,7 +807,7 @@ export async function loadCtx(opts: LoadOptions = {}): Promise<Ctx> {
           });
         }
       }
-      cfg = deepMerge(cfg, out);
+      cfg = mergeConfigLayer(cfg, out);
       sources.push(p);
     }
   }

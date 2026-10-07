@@ -40,7 +40,7 @@ import {
 } from './zcode-trace.js';
 import {
   failedResult,
-  routeModel,
+  resolveTier,
   TOOL_TRACE_CAPABILITY,
   type AdapterContext,
   type CarrierScrub,
@@ -954,11 +954,12 @@ export async function removeZcodeTempDir(
 /**
  * 探活与 doctor 探针要请求的模型：当前档位 plan 阶段的 glm 模型（EV-136 定、EV-194 起 doctor 共用）。
  *
- * 同一 provider 下各阶段只差模型档，取 plan 作代表；`--model-glm` 与主题级覆盖不进来——两处调用方都拿不到当轮生效模型
+ * 同一 provider 下各阶段只差模型档，取 plan 作代表；`--model-glm` 不进来——两处调用方都拿不到当轮生效模型
  * （EV-136 残余 ①②）。认证探活与 doctor 的 headless / path_deny 必须是同一个定义，改一处两处同变。
  */
 export function zcodeProbeModel(cfg: AdapterContext['cfg']): string | null {
-  return routeModel(cfg, 'glm', 'plan').model;
+  // 档位解析不带命令行一级（M11 第 4 步取代 routeModel）：格子缺席时按 default_tier 取，与 run() 的解析同一函数
+  return resolveTier(cfg, 'glm', 'plan').model;
 }
 
 /**
@@ -1073,6 +1074,14 @@ export const zcodeAdapter: CriticAdapter = {
   commandExecution: 'none',
 
   /*
+   * 没有思考等级概念（M11 第 4 步，设计 11.5「glm 无」；0.16.5 起 CLI 无 effort 旗标，EV-09 / C-07）：
+   * 档位只由模型承载。schema 已在 zcode 支档位条目上拒 effort；够不着的档位表格子由预检据此拒（计划三审 AGY-02）。
+   */
+  reasoningLevelsFor() {
+    return { kind: 'none' as const };
+  },
+
+  /*
    * 工具清单里经插件带进来的执行型 MCP 工具：任务书第 7 节据此点名「不要调用」（EV-191）。
    * 引用判失守的同一份名单，不另抄——通道仍开着，这里只管把后果提前告诉审查员
    */
@@ -1118,8 +1127,8 @@ export const zcodeAdapter: CriticAdapter = {
    * ## 已知残余（代码双审 r1 CODEX-03、CODEX-04 ≡ GLM-03，BACKLOG EV-136）
    *
    * - **不分阶段**：取 plan 阶段的模型作代表（同一 provider 下各阶段只差模型档）；
-   * - **不分覆盖**：`--model-glm` 与主题级覆盖不进探活与指纹——`AuthProbe` 接口拿不到当轮生效模型。
-   *   档位模型坏而覆盖模型好 ⇒ 误拦；反之 ⇒ 放行。中期方向是由调用方按 `run()` 同一 `routeModel` 式子算好传入；
+   * - **不分覆盖**：`--model-glm` 不进探活与指纹——`AuthProbe` 接口拿不到当轮生效模型。
+   *   档位模型坏而覆盖模型好 ⇒ 误拦；反之 ⇒ 放行。中期方向是由调用方按 `run()` 同一 `resolveTier` 式子算好传入；
    * - **不回读生效模型**：详情里的「模型 X」是请求的模型。置首挪不动时 0.16.9 会回落首个可见模型，
    *   这一格在详情里如实注明「实际生效模型未核」，但正结论照常缓存。
    *

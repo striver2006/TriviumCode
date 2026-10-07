@@ -1,0 +1,203 @@
+✓ 工作树干净、基线全绿（5 个套件）
+  R1 ✓ 咬住（fail=11）
+  R2 ✓ 咬住（fail=3）
+  R3 ✓ 咬住（fail=1）
+  R4 ✓ 咬住（fail=4）
+  R5 ✓ 咬住（fail=7）
+  R6 ✓ 咬住（fail=2）
+  E1 ✓ 咬住（fail=2）
+  V1 ✓ 咬住（fail=1）
+  V2 ✓ 咬住（fail=1）
+  V3 ✓ 咬住（fail=1）
+  V3b ✓ 咬住（fail=1）
+  V4 ✓ 咬住（fail=1）
+  V5 ✓ 咬住（fail=1）
+  V6 ✓ 咬住（fail=1）
+  G1 ✓ 咬住（fail=2）
+  G1b ✓ 咬住（fail=1）
+  G2 ✓ 咬住（fail=1）
+  G3 ✓ 咬住（fail=1）
+  G4 ✓ 咬住（fail=1）
+  D1 ✓ 咬住（fail=3）
+  M1 ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  P1 ✓ 咬住（fail=1）
+  P2 ✓ 咬住（fail=1）
+  P3 ✓ 咬住（fail=1）
+  Q1 ✓ 咬住（fail=1）
+  H1 ✓ 咬住（fail=2）
+  H2 ✓ 咬住（fail=1）
+{
+  "总数": 28,
+  "咬住": 28,
+  "逐条": [
+    {
+      "id": "R1",
+      "desc": "{tier} 格子被当作未命中（解析跳过档位引用）",
+      "verdict": "✓ 咬住（fail=11）",
+      "fail": 11
+    },
+    {
+      "id": "R2",
+      "desc": "全覆盖判定恒假（override 失效）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "R3",
+      "desc": "裸 slug 被命令行覆盖仍记 legacy（P-6 回退）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "R4",
+      "desc": "第一段次序颠倒：default_tier 先于格子",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "R5",
+      "desc": "厂商 profile 次序颠倒：agents.codex.profile 先于档位条目",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "R6",
+      "desc": "gemini 阶段级 effort 回落不再限裸 slug",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "E1",
+      "desc": "空串格子改回「未命中」、回落 default_tier",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "V1",
+      "desc": "枚举非空时不校验",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "V2",
+      "desc": "枚举取不到时硬拒",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "V3",
+      "desc": "「无思考等级概念」一格删去（glm 写 effort 不再被永久判据拒）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "V3b",
+      "desc": "同 V3，review 准备阶段集成用例",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "V4",
+      "desc": "厂商 profile 名单校验删去",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "V5",
+      "desc": "slug 校验不传档位解析的厂商 profile",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "V6",
+      "desc": "档名缺失分支删去（回落「未定义模型」）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "G1",
+      "desc": "过渡闸 effort 格删去",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "G1b",
+      "desc": "同 G1，review 准备阶段集成用例",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "G2",
+      "desc": "过渡闸 profile 格删去",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "G3",
+      "desc": "过渡闸不再豁免 slug 已编码档位",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "G4",
+      "desc": "过渡告警（GLM-01）删去",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "D1",
+      "desc": "废弃键路径改回通配（gemini 同名键被误报）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M1",
+      "desc": "原子节点：tiers 改回逐键合并",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "原子节点：profiles 格子改回逐键合并",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "P1",
+      "desc": "探针不落逐 profile 思考等级",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "P2",
+      "desc": "探针不落基底思考等级",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "P3",
+      "desc": "思考等级收进隐藏项",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "Q1",
+      "desc": "review 准备阶段不调档位组合校验（只有预检拦）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "H1",
+      "desc": "codex 钩子不分 profile、一律取基底",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "H2",
+      "desc": "agy 钩子不比对基名、目录里所有带后缀的都算",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

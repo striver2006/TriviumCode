@@ -19,7 +19,7 @@ import { CRITIC_PREFIX, CRITIC_VENDOR, VOIDING_DENY_CATEGORIES } from './types.j
 import { DEFAULT_DRIVER, agentById, type AgentId } from './agents/registry.js';
 import {
   isHeterogeneous,
-  routeModel,
+  resolveTier,
   type AdapterContext,
   type AdapterTable,
 } from './adapters/base.js';
@@ -84,7 +84,7 @@ import {
   usageError,
   TriviumError,
 } from './exit-codes.js';
-import { checkModelSlugs } from './preflight.js';
+import { checkModelSlugs, checkTierCombos } from './preflight.js';
 import { assertNoSecrets } from './secrets.js';
 import { say, step, warn } from './util/log.js';
 import { effectiveGuardLevel } from './hook-config.js';
@@ -801,7 +801,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
    *
    * 独立的 `preflight` 命令只校验调用方传给它的 --model-* 覆盖值——命令 A 的 S0.6 与 B/C/D 的第 2 步
    * （EV-126 起）会传同一组，但 skill 漏传、或在终端直接跑 `--start` 时它看不到这一步的覆盖值，
-   * 而 routeModel 只透传不校验。若不在这里校验，非法 slug 会漏到运行中段才
+   * 而档位解析（resolveTier）只透传不校验。若不在这里校验，非法 slug 会漏到运行中段才
    * 以业务性失败暴露——白烧配额且 strict 下整次中止。
    * §7.3 承诺的「退 64 并列出可用值」正是在这一处才真正成立。
    *
@@ -815,6 +815,12 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
   {
     const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides);
     if (!slug.ok) throw usageError(`模型 slug 不合法：\n  ${slug.detail}`);
+    /*
+     * 档位组合（M11 第 4 步，设计 11.5）：与 slug 同理在这里再校验一次——原生枚举、厂商 profile 名单与过渡闸
+     * 只在预检做的话，终端直接跑 `--start` 就绕过了。告警（不阻断）由 `--start` 的 warnings 复查念出。
+     */
+    const combos = checkTierCombos(cfg, stage, opts.modelOverrides, sides);
+    if (!combos.ok) throw usageError(`档位组合不合法：\n  ${combos.detail}`);
   }
   /*
    * **空集合要在这里就失败**（审查意见 GLM-05）。
@@ -898,7 +904,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
    * ── 零工件：先全部算、再统一写（审查意见 GLM-04）──
    *
    * 原先的顺序是「建阶段目录 → 逐侧冻结并**立即**写 brief」，于是
-   * locateSubject 抛 65、或第二侧 routeModel 抛 69 时，第一侧的 brief 已经落盘，
+   * locateSubject 抛 65、或第二侧路由抛 69 时，第一侧的 brief 已经落盘，
    * 留下「目录 + 单侧 brief + 运行目录」的半套工件。
    * review.ts 自己那句「不可用就别开工，避免产生半套工件」的注释因此没有兑现。
    *
@@ -1045,7 +1051,8 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
    *
    * 校验要等**全部**侧的禁读集都算出来，才能一次点名所有撞上的侧；又必须在置闸门与任何落盘之前，
    * 拒跑才是零工件。于是原先「冻结 → 路由 → 渲染」的单个循环拆成两段，中间夹校验。
-   * 次序上的代价：第二侧 `routeModel` 的 69 原先可能先于这里的 64，现在 64 在前——两者都在零工件区。
+   * 次序上的代价：第二侧路由的 69 原先可能先于这里的 64，现在 64 在前——两者都在零工件区。
+   * （M11 第 4 步核实：那条 69 在现行代码里不可达，同一输入已先被上方 slug 校验以 64 拦下，见下方路由处。）
    */
   for (const critic of sides) {
     const snap = await freeze({
@@ -1128,7 +1135,14 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
     const sideMustRead = keep(mustRead, (e) => e.path, (e) => e.source).map((e) => e.path);
     const sideSuggested = keep(suggestedRead, (p) => p, () => 'suggested');
 
-    const routed = routeModel(cfg, critic, stage, { cli: opts.modelOverrides[critic] ?? null });
+    /*
+     * 档位解析（M11 第 4 步取代 routeModel）。本步只取模型：思考等级与厂商 profile 随第 6 步才进请求，
+     * 之间由 `checkTierCombos` 的过渡闸拒绝「写了却不下传」的组合。
+     *
+     * 下面的 69 分支**不可达**：同一组参数已在上方 `checkModelSlugs` 以 64 拦下（M11 第 4 步计划 P-4，
+     * 三侧审查员独立核实）。保留为防御——两处判据将来分叉时，宁可在零工件区退出也不带着 null 模型往下走。
+     */
+    const routed = resolveTier(cfg, critic, stage, { model: opts.modelOverrides[critic] ?? null });
     if (!routed.model) {
       throw envError(
         `${critic} 侧没有可用模型：profile「${cfg.active_profile}」未定义 ${stage} 阶段的模型，` +

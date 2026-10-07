@@ -127,7 +127,8 @@ test('副本源在：探活走副本 HOME、不注入个人配置、落点根在
   assert.ok(seen.home?.startsWith(os.tmpdir()) || seen.home?.startsWith(await fs.realpath(os.tmpdir())), String(seen.home));
   assert.ok(seen.storage && seen.storage.startsWith(path.dirname(seen.home!)), '落点根要在副本运行目录下，不落真实 HOME');
   // 缺省档 glm plan = GLM-5.3，副本源里 model.main 原是 Flash：看到 GLM-5.3 才说明按档位覆盖了
-  const want = defaultConfig().profiles['default']!.glm!.plan!;
+  // 内置缺省档是裸 slug（M11 第 4 步后格子可以是三形态之一，这里取的是字符串那一形）
+  const want = defaultConfig().profiles['default']!.glm!.plan as string;
   assert.equal(seen.modelMain, `bigmodel-coding-plan/${want}`);
   assert.ok(r.detail.includes(want), `详情要写明探的是哪个模型：${r.detail}`);
   // 副本里有凭据：探完必须删掉

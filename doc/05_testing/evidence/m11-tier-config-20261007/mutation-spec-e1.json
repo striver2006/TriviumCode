@@ -1,0 +1,18 @@
+{
+  "targets": [
+    "src/trivium/adapters/base.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/tier-resolve.test.js"
+  ],
+  "cases": [
+    {
+      "id": "E1",
+      "desc": "空串格子改回「未命中」、回落 default_tier",
+      "file": "src/trivium/adapters/base.ts",
+      "find": "  } else if (typeof cell === 'string') {\n    if (cell) base = { kind: 'legacy', source: 'legacy', tier: null, fields: { model: cell } };\n",
+      "replace": "  } else if (typeof cell === 'string' && cell) {\n    base = { kind: 'legacy', source: 'legacy', tier: null, fields: { model: cell } };\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    }
+  ]
+}

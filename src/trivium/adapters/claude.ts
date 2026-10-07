@@ -658,6 +658,14 @@ export const claudeAdapter: CriticAdapter = {
   /* 不能执行命令：`probes/claude.ts` 的 `READONLY_INVARIANTS` 里 `--tools` 白名单是 `Read,Grep,Glob`（EV-95） */
   commandExecution: 'none',
 
+  /*
+   * 原生思考等级：**取不到**（M11 第 4 步）。2.1.291 的 `--effort` 取值在帮助文本里、CLI 级不分模型（设计 3.7），
+   * 由探针解析帮助文本落盘随 M11 第 6 步（用户 2026-10-07 定，与思考等级透传同步）；此前预检跳过并点名。
+   */
+  reasoningLevelsFor() {
+    return { kind: 'unknown' as const, why: 'claude 的思考等级取值随 M11 第 6 步由探针采集' };
+  },
+
   availability(ctx: AdapterContext) {
     // 两态判据同另三家：以 probed_at 区分「没探过」与「探过没找到」
     const p = ctx.cfg.probe.cli.claude;

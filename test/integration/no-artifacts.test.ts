@@ -17,7 +17,7 @@ import { acquireLock } from '../../src/trivium/lock.js';
  * 「失败不留半套工件」（修订版 M3 计划 §7，审查意见 GLM-04）。
  *
  * 原先 `prepareRun` 的顺序是「建阶段目录 → 逐侧冻结并**立即**写 brief」，
- * 于是第二侧 `routeModel` 抛 69 时，第一侧的 brief 已经落盘：
+ * 于是第二侧路由（当时的 `routeModel`）抛 69 时，第一侧的 brief 已经落盘：
  * `.reviews/` 里留下一个只有单侧送审包、没有任何审查结论的残骸，
  * 而 `gate --check-artifacts` 又会把它当成一次跑过的运行。
  *
@@ -78,6 +78,36 @@ test('非法模型 slug → 退 64 且零工件（GLM-01 的校验执行点）',
   );
   // §7.3 承诺「退 64 并列出可用值」——只报错不给可用值等于让人去猜
   assert.match(r.stdout + r.stderr, /gemini-3\.1-pro-high/, '必须列出可用值');
+});
+
+/*
+ * **档位组合在 review 准备阶段同样拦**（M11 第 4 步，设计 11.5；计划 r2 §3.4、§5.1）。
+ * 与 slug 校验同理：只在预检拦的话，终端直接跑 `--start` 就绕过了。两格各取一条判据：
+ * 永久判据（glm 没有思考等级概念，档位表格子却给了——schema 够不着这一格，计划三审 AGY-02）与
+ * 过渡闸（思考等级随 M11 第 6 步才下传；无探针目录时枚举取不到、跳过，闸照拦）。
+ */
+test('档位组合不合法 → review --start 退 64 且零工件（永久判据与过渡闸各一格）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  for (const [cell, want, what] of [
+    ['    glm:\n      plan: { model: GLM-5.3, effort: high }', /不支持思考等级/, 'glm 格子写 effort'],
+    ['    gemini:\n      plan: { model: gemini-3.8-flash, effort: high }', /M11 第 6 步/, 'gemini 格子写 effort（过渡闸）'],
+  ] as const) {
+    const fx = await makeFixture({ topic: TOPIC });
+    await fs.appendFile(path.join(fx.root, '.trivium', 'config.yaml'), `profiles:\n  default:\n${cell}\n`, 'utf8');
+    const r = await assertNoTrace(
+      fx.root,
+      fx.archiveRoot,
+      () =>
+        cli(
+          fx.root,
+          ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x'],
+          { gemini: { mode: 'ok' }, glm: { mode: 'ok' } },
+        ),
+      EXIT.USAGE,
+      what,
+    );
+    assert.match(r.stdout + r.stderr, /档位组合不合法/, what);
+    assert.match(r.stdout + r.stderr, want, what);
+  }
 });
 
 test('无探针目录时 slug 校验按设计跳过，而不是误拒', { skip: bundleMissing && bundleSkipReason }, async () => {
