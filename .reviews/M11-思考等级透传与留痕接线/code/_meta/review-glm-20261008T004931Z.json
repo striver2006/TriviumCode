@@ -1,0 +1,67 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按任务书三个焦点逐项在当前工作树核实（非仅读 diff）：① effort_effective 只取回读成立——必填钩子 effortReadback(result) 入参只有 CriticResult、结构上拿不到请求值，review.ts 对每侧派生一次（src/trivium/review.ts:1688-1692）供 run.json 与 front-matter 共用，全部产出点（review.ts:1730-1731、2025-2026、render.ts:190-191）都出自该钩子，grep 全 src 无任何拿请求值顶替的路径；agy 只认 envelope 且 slug 带后缀，failedResult（source unverified）与回执缺失退 requested 的两格都落 null+unverified（E1 有用例）。② codex 与 claude 如实落空成立——两家都是常量 () => EFFORT_UNVERIFIED，turn_context.payload.effort 在 src 里只出现在注释、没有任何读取点；集成测试 X1/X3/X4 用会话文件原样回显请求 effort 的假 CLI 真跑 run()，钉住「回显在场也仍 null+unverified」。③ 缺席与 null 两态不合流成立——五键在 run.json（review.ts:2024-2028）与 front-matter（render.ts）恒写、null 也写，顶层 profile 生产写侧恒传（review.ts:1341 附近 cfg.active_profile），旧名 effort 仍只在有值时出现且 schema 只收 string；C1（三态都过当前 schema）/C2（封闭枚举拒绝）/C3（第 6 步之前的 run.v2.json 快照校验新留痕通过）把三态与旧读者都钉住了；writeRunMeta 写前仍走 validateRunMeta。④ 厂商 profile 三处同值成立——review.ts 准备阶段 routedBy 逐侧只 resolveTier 一次，同一对象喂可用性检查（review.ts:869）与请求构造的 profile_requested；codex run() 经 codexInvocationOf(req) 让 -p、隔离副本（prepareCodexHome）与全部失败出口同源（codex.ts:636-780 区段）；预检侧 checkModelSlugs 与 checkReadonlyCapability 用同一 mergeCliOverrides 输入调同一纯函数再取 vendorProfile（preflight.ts:383、651）；P1/P2/P3/P4、X1 与变异 M9/M10/M18/M19 恰好覆盖纯函数守不到的 run() 内部与准备阶段。⑤ 过渡闸拆除干净——gated/originText/sideBad 与两条过渡告警（留痕空窗、gemini 阶段级 effort 残余）全删，永久判据（none 概念退 64、枚举外退 64、厂商 profile 名单外退 64、suffix 已编码只告警、取不到跳过并点名）逐条在位且测试加了「文案不含过渡说法」的反向断言；被删的 agentVendorProfile/stageEffort/effortFor/vendorProfileOf 无悬挂引用（仅剩注释与 resolveTier 内部同名局部变量，裸 slug 回落规则本身保留）；裸 slug 现役行为有双重证据：R1 单测（三张档位表×三阶段×三侧逐格对改前取值公式）与 acceptance.mjs（git archive 旧源码现构建 vs 新构建，6 格请求与 argv 逐字相同、bundle sha256 断言不同），报告自述与证据文件（acceptance-output.json ok:true、mutation-output 19/19 咬住、check-1.txt 3044/3042/0）相互一致。claude 探针 effort_levels 的四态映射与「取不到不落错枚举」的防御式解析（首对括号、逐项形状校验、失败落 null）覆盖充分。唯一发现是一处文档同步遗漏（GLM-01，nit）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "skills/dual-critic/schema/config.v2.json：tierEntryOpenai.profile 的 description（约 794-798 行）与 agents.claude 配置段的 description（约 484 行）",
+      "problem": "本步拆除了第 4、5 步的过渡闸并落地透传，run.v2.json 与 types.ts 的同位描述都改成了现在时，但 config.v2.json 的两处描述没跟着改：tierEntryOpenai.profile 仍写着「M11 第 6 步起透传；此前与 agents.codex.profile 不同时预检以过渡闸退 64」——「过渡闸退 64」描述的是本步已删除的行为，作为现行机读契约面会误导读者以为闸还在；claude 配置段仍写「思考等级改由 tiers 的 effort 表达，透传随 M11 第 6 步」——同句在 types.ts 的 ClaudeCriticConfig 注释里已改为「M11 第 6 步起经 --effort 透传；取值集合由探针解析帮助文本落盘（ClaudeProbe.effort_levels）」，两处同位文本现在不一致。纯描述、无功能影响，但 schema 描述在本项目是契约面（AGENTS.md 改动同步清单把 schema 描述列为同步项）。",
+      "evidence": "读 skills/dual-critic/schema/config.v2.json 当前内容：794-798 行 profile 属性 description 含「此前与 agents.codex.profile 不同时预检以过渡闸退 64」；484 行 claude 段 description 含「透传随 M11 第 6 步」。对照被审 diff：src/trivium/types.ts 同位注释从「透传随 M11 第 6 步」改为「M11 第 6 步起经 --effort 透传；取值集合由探针解析帮助文本落盘（ClaudeProbe.effort_levels）」；skills/dual-critic/schema/run.v2.json 的 profile_requested 描述改为全现在时且不再提过渡闸；src/trivium/preflight.ts checkTierCombos 已无任何闸逻辑。",
+      "suggestion": "下批顺手同步 config.v2.json 两处描述：删掉「过渡闸退 64」的历史子句（或改为「第 4、5 步的过渡闸已随第 6 步拆除」的完成式表述），claude 段对齐 types.ts 的现在时措辞并补 effort_levels 一句。方向对齐 run.v2.json 本次改法即可，不必单独发版。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "effort_effective 只取回读：effortReadback 钩子签名只收 CriticResult（base.ts:296-299 附近契约），review.ts 每侧派生一次、run.json 与 front-matter 共用（EV-54 两处同值），全 src 无请求值顶替路径；agy 仅 envelope+后缀取值，requested 来源与 failedResult 都落 null+unverified。",
+    "codex 与 claude 如实落 null+unverified：常量钩子，会话文件回显（turn_context.payload.effort）在源码中零读取点；X1/X3/X4 用真实 run() 加假 CLI 钉住，变异 M2/M3 防止未来有人「改进」成读回显。",
+    "缺席与 null 两态不合流：五键与顶层 profile 写侧恒写、类型层可选只为旧留痕；旧名 effort 仍条件展开且 schema 标注旧名；C1/C2/C3 覆盖三态、非法枚举与旧读者兼容。",
+    "厂商 profile 三处同值由构造保证：review.ts 一次 resolveTier 喂可用性与请求构造，codexInvocationOf 统一 -p、隔离副本与失败出口，预检侧同一 mergeCliOverrides 输入复算同一纯函数；P2 的负对照（配置段有凭据、解析出的那家没有 ⇒ 拒；不选档照旧通过）设计得当。",
+    "过渡闸拆除干净且永久判据无损：gated/originText/sideBad/两条过渡告警全删，none/枚举/名单三格永久判据与 suffix 告警、unverified 点名逐条在位；测试加了「不含第 6 步/过渡字样」的反向断言（C2/C3/F2/F4、tier-flags-cli T3/T4）。",
+    "裸 slug 现役行为逐字不变有双重证据：R1 单测（三表×三阶段×三侧，含 bug 阶段）与 acceptance.mjs 新旧双构建端到端（6 格请求与 argv 逐字同、bundle sha 断言不同），且 acceptance 用 git archive 旧源码现构建而非历史构建的取法正确。",
+    "claude 探针 effort_levels 的四态设计与 parseEffortLevels 的防御式解析（无行 ⇒ []、括号缺失/形状不合 ⇒ null 不落错枚举、取第一对括号）与 K1-K3 用例相称；采集排在 skipModelCalls 早退之前且不刷 probed_at 的取舍有测试钉住。",
+    "变异规格按「这条变异由哪个用例咬」对表补缺口（M9/M10/M12 补 run() 级集成、M19 补准备阶段真实可用性）是测试缺口自查的正确做法，20/20 与 19/19 读数与证据文件一致。"
+  ],
+  "not_covered": [
+    "全部结论基于只读审查：未执行任何构建、测试、变异装置或 acceptance 脚本；npm run check 两次 3044/3042/0/2、mutation 20/20 与 19/19、doctor --selftest 14/14 均取自报告自述与证据文件（check-1.txt 汇总行、mutation-output.txt、acceptance-output.json ok:true），未独立复跑；selftest 14/14 无独立证据文件可查。",
+    "四家真实 CLI 的行为事实（claude --effort 不校验取值、codex -c 透传与会话文件回显形态、agy slug 后缀编码档位）依据设计 3.6/3.7 的 M11 第 1 步探针回填与代码注释，本轮未实测。",
+    "check-1.txt / check-2.txt（各三千余行）只抽查了汇总行，未逐行核对；check-0-index-order.txt 只读了报告转述。",
+    "未改模块只做了影响面抽查（runner.ts 兜底、overrideReasonFor、guard 交接、meta 读写校验、freeze 形状闸），未逐行重审；agy/claude/zcode 适配器的轨迹解析与凭据脱敏部分未重审。",
+    "跨版本恢复边界（第 6 步之前的 request.json 被新 worker 续跑时 tier/tier_source 为 undefined 而被 JSON 丢弃）只做了推理分析，未构造用例验证；报告 §6.4 登记的回滚剥离缺口同样未验证。",
+    "zcode 侧（glm）本次只改了一行钩子声明，其 HOME 副本与 provider 注入逻辑未重审。"
+  ],
+  "consulted": [
+    ".reviews/M11-思考等级透传与留痕接线/code/_meta/changes-20261008T004931Z.diff",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/types.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/SKILL.md",
+    "doc/05_testing/REPORT_2026-10-08_m11_effort_wiring.md",
+    "doc/05_testing/evidence/m11-effort-wiring-20261008/acceptance.mjs",
+    "doc/05_testing/evidence/m11-effort-wiring-20261008/acceptance-output.json",
+    "doc/05_testing/evidence/m11-effort-wiring-20261008/mutation-output.txt",
+    "doc/05_testing/evidence/m11-effort-wiring-20261008/check-1.txt",
+    "test/unit/effort-wiring.test.ts",
+    "test/integration/effort-wiring.test.ts",
+    "test/integration/codex-effort-profile.test.ts",
+    "test/unit/tier-resolve.test.ts",
+    "test/integration/tier-flags-cli.test.ts",
+    "test/integration/no-artifacts.test.ts",
+    "test/fixtures/run.v2.pre-m11-step6.json",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/02_design/LLD_orchestrator.md"
+  ]
+}

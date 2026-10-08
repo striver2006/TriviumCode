@@ -1,0 +1,47 @@
+{
+  "agreed": [
+    "回读钩子 effortReadback 设计优秀：入参仅收 CriticResult、不收 CriticRequest，在类型系统层面彻底切断了「拿请求值冒充生效值」的通道；codex 显式不采信会话回显、claude 恒落 null+unverified、glm 恒落 null+null，准确落实了主设计 11.1 的回读约束。",
+    "留痕写侧与 schema 纪律严明：写侧对 effort_requested/effort_effective/effort_effective_source/tier/tier_source 采取恒写（不走条件展开），保留 null 事实；schema 保持可选不进 required，旧留痕缺席可读回，两态严格隔离不合流。",
+    "厂商 profile 三处同值保障扎实：在可用性检查前统一 resolveTier 算定 vendorProfile，提供给可用性检查、模型目录校验与 CriticRequest，并在 codex.run() 中彻底统一为 req.profile_requested，通过纯函数 codexInvocationOf 保证隔离副本与 -p 强一致；静态探活维持按配置段 profile 的边界取舍合理。",
+    "过渡闸拆除干净且永久判据零误删：两格过渡闸、留痕空窗告警、过渡残余告警整批拆除，resolveTier 中仅删过渡字段而永久保留裸 slug 阶段级 effort 回落；原生枚举、无此概念与 profile 名单三格永久判据完好保留；现役裸 slug 请求与 argv 逐字不变，且设计了 git archive 跨 bundle 零配额验收。"
+  ],
+  "consulted": [
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-10-07_m11_tier_facts.md",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills/dual-critic/schema/review.v1.json",
+    "src/trivium/types.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts",
+    "src/trivium/render.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/probes/claude.ts",
+    "test/unit/tier-resolve.test.ts",
+    "skills-src/commands/run.contract.md",
+    ".reviews/M11-思考等级透传与留痕接线/plan/2026-10-08-M11-思考等级透传与留痕接线-claude.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查看 src/trivium/adapters/base.ts:1860 可知 TierSource 定义在该文件中，且 base.ts 已经 import 了 types.ts 中的多个类型。而 types.ts:1-40 的文件头与 import 列表表明 types.ts 作为全局类型底层规范，并未依赖 adapters/ 目录下的任何模块。计划 §2.6 拟将 tier_source: TierSource | null 加入 types.ts 的 CriticRunMeta 与 CriticRequest，需要显式将 TierSource 移入 types.ts 避免打破单向依赖规则。",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/types.ts:1268",
+      "problem": "CriticRunMeta 与 CriticRequest 引入 tier_source 时，TierSource 类型目前定义在 adapters/base.ts，若 types.ts 直接引用会导致类型依赖倒置或循环依赖",
+      "severity": "nit",
+      "suggestion": "在实施 §2.6 时，将 TierSource 类型联合（五种来源）从 src/trivium/adapters/base.ts 上移定义至 src/trivium/types.ts 并导出，adapters/base.ts 改为从 types.ts 导入 TierSource，维持 types.ts 的底层纯粹性与单向依赖。"
+    }
+  ],
+  "not_covered": [
+    "零配额约束与审查员只读环境限制：未实际拉起真实 CLI 进程运行与网络调用，未消耗真实 token",
+    "入口资产重渲染结果：未在真实终端执行 npm run render 产出入口 Markdown 的物理文件 diff，仅从源契约 skills-src/ 与对账用例逻辑推演验证",
+    "变异预跑脚本的实际执行：未真机运行 scripts/mutation-check.mjs 脚本，仅对计划规划的 16 条变异项的杀伤路径做了静态交叉推演"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "方案设计严密，核心审查焦点逐条核实均完全成立，未发现阻断性或主要缺陷。\n1. 回读纯洁性：新增 effortReadback 钩子以 CriticResult 为唯一入参，在架构上物理切断请求值冒充通道；codex 与 claude 如实落 null+unverified，不读会话回显；\n2. 留痕契约：写侧恒写 null、schema 字段保持可选，旧留痕缺席与新留痕 null 两态清晰隔离、绝不合流；\n3. 厂商 profile：准备阶段一处算定，可用性检查、模型目录比对、隔离配置副本准备与实际发起的 -p 严格保证同一值，静态探活维持现状边界明确；\n4. 过渡闸拆除：过渡闸与过渡告警清理干净，裸 slug 阶段级回落等永久规则完整保留，现役 argv 逐字不变且验收脚本闭环。\n仅提一条关于 TierSource 类型定义上移 types.ts 避免依赖倒置的 nit 级实现建议，整体建议批准（approve-with-nits）。",
+  "verdict": "approve-with-nits"
+}

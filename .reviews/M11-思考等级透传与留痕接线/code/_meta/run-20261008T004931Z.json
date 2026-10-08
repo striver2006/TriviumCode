@@ -1,0 +1,304 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261008T004931Z",
+  "topic": "M11-思考等级透传与留痕接线",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点看三件事：effort_effective 是否只取回读、codex 与 claude 是否如实落 null 而没有拿请求值或会话回显冒充，字段缺席与 null 两态有没有合流；厂商 profile 改按本轮解析值下传后，可用性检查、模型目录比对与实际发起的 -p 是否同一个值；过渡闸拆除是否干净、永久判据有没有被一并误删，本仓裸 slug 配置的现役行为是否逐字不变。",
+  "task_goal": "M11 第 6 步：适配器透传思考等级与厂商 profile，run.v2 原地接线档位与思考等级字段，拆除第 4、5 步的过渡闸。上位计划是 .reviews/M11-档位全链路与文档收口/plan/ 的 r3 第 4.6 节（口径见 3.3、3.8 节）；规格已随主设计 v1.3.129 并入：11.1「思考等级透传与回读」逐家表、6.7.1 的 effort_requested、effort…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "c855dcee94822fbd857e9d350cc026efc1cc5fec",
+    "tree_hash": "69f6473c4b7017debc09452a034d671fcc358a02",
+    "dirty": true,
+    "subject_sha256": "dc6f8085338695e63fd0de35612034d140c00de7932fe5e5dc4fc55297c0d24e",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "c855dcee94822fbd857e9d350cc026efc1cc5fec",
+      "dirty": false,
+      "inputs_sha256": "962de68a6f0a1486216f85cb8d5413b544d44d7f19503c3e7b2ac2860d664d15",
+      "built_at": "2026-10-07T23:31:42.945Z"
+    },
+    "after_tree_hash": "69f6473c4b7017debc09452a034d671fcc358a02"
+  },
+  "started_at": "2026-10-08T00:49:32.992Z",
+  "finished_at": "2026-10-08T01:01:46.600Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.1",
+      "model_requested": "kimi-for-coding",
+      "model_effective": "kimi-for-coding",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 450.19,
+      "tool_calls": {
+        "run_command": 50,
+        "project_reads": 37
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a118fc-a75b-7e53-9a0c-3fe794091e85",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.1",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 407.214,
+      "tool_calls": {
+        "read": 52,
+        "grep": 33,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 27
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 557793,
+        "output_tokens": 21533,
+        "thinking_tokens": 13063,
+        "cache_read_tokens": 9916686,
+        "total_tokens": 579326
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "d8791b7b-bbd8-47d3-bc3a-d6978f7cca7f",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 732.907,
+      "tool_calls": {
+        "read": 26,
+        "grep": 26,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 55,
+        "inputTokens": 7474237,
+        "outputTokens": 38756,
+        "totalTokens": 7512993,
+        "cacheReadTokens": 7131904,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_38c2b868-c599-4b03-b1aa-8594b4258cf2",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M11-思考等级透传与留痕接线/plan/2026-10-08-M11-思考等级透传与留痕接线-gemini.md",
+    ".reviews/M11-思考等级透传与留痕接线/plan/2026-10-08-M11-思考等级透传与留痕接线-glm.md",
+    ".reviews/M11-思考等级透传与留痕接线/plan/_meta/review-gemini-20261007T234735Z.json",
+    ".reviews/M11-思考等级透传与留痕接线/plan/_meta/review-glm-20261007T234735Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M11-思考等级透传与留痕接线/code/_meta/changes-20261008T004931Z.diff",
+      "sha256": "dc6f8085338695e63fd0de35612034d140c00de7932fe5e5dc4fc55297c0d24e"
+    },
+    {
+      "path": "M11-思考等级透传与留痕接线/code/_meta/brief-codex-20261008T004931Z.md",
+      "sha256": "22854cad476d2f02b43ae2178ddc0586266cc093ac42f6b5595066e37ce1ba6e"
+    },
+    {
+      "path": "M11-思考等级透传与留痕接线/code/_meta/brief-gemini-20261008T004931Z.md",
+      "sha256": "743b2b84777eeea1101daedbe69a2fd4b8f536ba246951bd321b49e71edb9df3"
+    },
+    {
+      "path": "M11-思考等级透传与留痕接线/code/_meta/brief-glm-20261008T004931Z.md",
+      "sha256": "0599498c311dd0f061dc09b92eedeffc024a253c51f92f15b55f470b2f7cb79c"
+    },
+    {
+      "path": "M11-思考等级透传与留痕接线/code/_meta/review-codex-20261008T004931Z.json",
+      "sha256": "587a641d66111e638a34e243640d77dfab421a096df2c491a2f40a87901e2343"
+    },
+    {
+      "path": "M11-思考等级透传与留痕接线/code/_meta/review-gemini-20261008T004931Z.json",
+      "sha256": "821f55fe6787adc5aa0fc6b06e20afffff400271ec3b69d893cdd09287b51e5f"
+    },
+    {
+      "path": "M11-思考等级透传与留痕接线/code/_meta/review-glm-20261008T004931Z.json",
+      "sha256": "5ecf00b9b345bd4669d5a9a6460fbe64796bba9a4cbfaf10d7253ba3be80c060"
+    },
+    {
+      "path": "M11-思考等级透传与留痕接线/code/2026-10-08-M11-思考等级透传与留痕接线-codex.md",
+      "sha256": "44e1aabffeeb253ca62539eefed414e3b416e7e12bfb5d5f7c13a002a462aa5d"
+    },
+    {
+      "path": "M11-思考等级透传与留痕接线/code/2026-10-08-M11-思考等级透传与留痕接线-gemini.md",
+      "sha256": "a289a0ee33eb96b6c1cd6dbd01337b4a997e1c5cda09dd66b7a4dcd10584ce05"
+    },
+    {
+      "path": "M11-思考等级透传与留痕接线/code/2026-10-08-M11-思考等级透传与留痕接线-glm.md",
+      "sha256": "963f9ecebb956cf7f361936d14e7080d91b0403cffaf93971317f4c9f64f778e"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装"
+    ]
+  },
+  "status": "success"
+}
