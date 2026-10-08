@@ -6,8 +6,8 @@
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20VS%20Code-brightgreen.svg)](#-快速开始)
 [![Workflow](https://img.shields.io/badge/Architecture-Driver--DualCritic-orange.svg)](#-核心架构与流转时序)
 [![Agents](https://img.shields.io/badge/Agents-Claude%20Code%20%7C%20Antigravity%20%7C%20ZCode%20%7C%20Codex-purple.svg)](#-核心特性与创新)
-[![Status](https://img.shields.io/badge/Status-M0～M5%20%2B%20M7a～M10b%20已实现-brightgreen.svg)](./doc/02_design/README.md)
-[![Roadmap](https://img.shields.io/badge/Roadmap-M6～M11%20多%20Agent%20演进中-blue.svg)](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)
+[![Status](https://img.shields.io/badge/Status-M0～M10b%20已实现-brightgreen.svg)](./doc/02_design/README.md)
+[![Roadmap](https://img.shields.io/badge/Roadmap-M11%20档位与文档收口中-blue.svg)](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)
 
 **面向 macOS + VS Code 原生开发流的「主攻 + 双审」（Driver-DualCritic）全自动多智能体协同流水线**
 
@@ -36,6 +36,9 @@
 > 入选须由另一家当 Driver。**M10a（Driver 护栏与契约面）与 M10b（入口资产与真载体验收，2026-09-26）已合入**：四家都能在自己的会话里当 Driver——
 > ZCode（护栏 L2，有尽力拦截的 Hook）与 Codex（L2，没有 Hook）已在各自载体里真实验收，Antigravity 只以名义 Driver 验收过；
 > 护栏强度因载体而异，换谁主攻之前先读 [QUICKSTART §5.2](./doc/07_manuals/QUICKSTART.md)。
+> **M11（档位全链路与文档收口）进行中**：逐审核者选「低 / 中 / 高」档（`--tier-<审核者>`）、精确指定思考等级与 Codex 厂商 profile 已可用，
+> 档位名与来源、思考等级的请求值与回读到的生效值都记入运行留痕，复盘按 Driver 与审核者两个维度分开统计；
+> 用法见 [QUICKSTART §4「按档位选模型与思考深度」](./doc/07_manuals/QUICKSTART.md#按档位选模型与思考深度)。档位的真实验收与全量手工剧本随 M11 收口。
 > 规范与进度见[设计文档](./doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 16.1 与 §24 台账。
 > **本 README 其余部分描述的都是当前可用的系统。**
 

@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.44
+> - **当前版本**：v1.0.45
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -477,7 +477,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | :--- | :--- | :--- |
 | `agents.gemini.agent` | `trivium-critic` | 只读 Agent 定义名。**工具白名单不含任何写工具** |
 | `agents.gemini.effort` | plan high / code high / bug high | 思考档位。**模型 slug 自带档位时不传**，否则 agy 会直接拒绝。v1.0.41 起只在档位表格子是裸 slug 时作回落；格子写成档位或 `{model, effort}` 时不再用它 |
-| `agents.<id>.tiers` / `default_tier` | 无（`init` 不写） | v1.0.41 起可选（M11 第 4 步）：`low` / `medium` / `high` 三档，每档 `{model, effort?, profile?}`（`profile` 只有 codex 能写，glm 的档只能写 `model`）；`default_tier` 是档位表没给该阶段模型时用哪一档。档位表 `profiles` 的格子随之可写 `{tier: high}` 或 `{model: …, effort: …}`。**命令行选档用 `--tier-<审核者 id>`（v1.0.42 起，见 §四）；思考等级与厂商 profile 还没下传给各家**：在那之前，档位里写了 effort、或写了与 `agents.codex.profile` 不同的 profile，预检直接退 64 并说明原因——不会静默按另一组值跑。写错档名、思考等级不在该模型的可选值里，同样退 64 并列出可用值。本机层 `config.local.yaml` 里写 `tiers` 会**整段**替换共享配置里的那份 |
+| `agents.<id>.tiers` / `default_tier` | 无（`init` 不写） | v1.0.41 起可选（M11 第 4 步）：`low` / `medium` / `high` 三档，每档 `{model, effort?, profile?}`（`profile` 只有 codex 能写，glm 的档只能写 `model`）；`default_tier` 是档位表没给该阶段模型时用哪一档。档位表 `profiles` 的格子随之可写 `{tier: high}` 或 `{model: …, effort: …}`。**命令行选档用 `--tier-<审核者 id>`（v1.0.42 起，见本节下文）；档位里写的思考等级与厂商 profile 自 v1.0.43 起（M11 第 6 步）随请求下传给该侧**，此前「档位里写了 effort、或写了与 `agents.codex.profile` 不同的 profile 就退 64」的过渡限制已取消。写错档名、思考等级不在该模型的可选值里、给 ZCode 的档写了思考等级，仍在发起前退 64 并列出可用值；厂商 profile 不在本机名单时同样在发起前拦下，但预检退的是 69（先撞上「只读能力可用」一格，`review` 准备阶段才是 64，BACKLOG EV-232）。处置见 RUNBOOK §五「档位、思考等级与厂商 profile」。本机层 `config.local.yaml` 里写 `tiers` 会**整段**替换共享配置里的那份 |
 | ~~`agents.glm.max_turns`~~ | — | **已删除**（v1.0.44 起，见 §5.6「已废弃的键」）：从来没有代码读它，ZCode 也不接受轮数参数 |
 | ~~`agents.glm.unsupported_override`~~ | — | **已删除**（v1.0.44 起，见 §5.6「已废弃的键」）：从来没有代码读它，设 `reject` 也从未拒跑过。ZCode 侧模型没换成功时照常跑完，run.json 记 `model_unenforced`、终端播报一句，不阻断 |
 | `active_profile` | `default` | 当前档位 |
@@ -502,7 +502,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
   选到的档里写的思考等级（`effort`）与 codex 的厂商 `profile` 一并生效（v1.0.43 起，M11 第 6 步）；这一轮选的是哪一档、从哪来，记在 run.json 该侧的 `tier` / `tier_source`。
 - `--effort-<审核者 id> <值>`：本次精确指定思考等级，下传给该侧（取值要在该模型支持的范围内，否则退 64 并列出可用值；ZCode 没有思考等级，给了也退 64）。
   例外是 gemini 的模型名已带档位后缀（如 `gemini-3.8-flash-high`）时，思考等级不生效，只告警。
-- `--profile-codex <名>`：本次精确指定 codex 的厂商 profile（`$CODEX_HOME/<名>.config.toml`，**不是** `--profile` 档位表名）。不在本机名单退 64；
+- `--profile-codex <名>`：本次精确指定 codex 的厂商 profile（`$CODEX_HOME/<名>.config.toml`，**不是** `--profile` 档位表名）。不在本机名单时发起前就拦下（预检退 69、`review` 准备阶段退 64，见上表 tiers 一行）；
   它覆盖档位与 `agents.codex.profile`，codex 就以这个 profile 发起；预检的可用性与模型目录检查也按它。只有带厂商 profile 概念的审核者有这个旗标，今天只有 codex。
 
 **run.json 里怎么读档位与思考等级**（v1.0.43 起）：每侧多五个字段——`effort_requested`（请求的思考等级）、`effort_effective`（**回读到的**生效思考等级）、`effort_effective_source`、`tier`、`tier_source`；顶层多一个 `profile`（本轮用的档位表名）。`effort_effective` 只认回读：今天只有 gemini 读得到（取回执里模型名的档位后缀），codex 与 claude 恒为 `null`、来源 `unverified`——它们收下思考等级但不回报实际用了哪一档，`null` 就是如实的「不知道」，不是出错。字段不存在说明是更早版本留下的记录。
@@ -887,6 +887,7 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | 某侧报不可用 | `trivium preflight --stage plan`，它会指出是探针过期、CLI 不可调用还是未认证 |
 | 某侧被判「证据不足」 | 该侧读的项目文件数或工具调用数没达下限。看 `_meta/run-*.json` 的 `tool_calls` |
 | 一侧超时 | 默认 strict 会中止。调大 `review.timeout_s`，或临时 `--allow-single` 降级 |
+| 发起前退 64，说档位未定义、思考等级不在可选值里、某侧不支持思考等级；或厂商 profile 不在本机名单（预检此时退 69） | 按报错里列出的可用值改配置或旗标（§5.4）；逐条处置见 RUNBOOK §五「档位、思考等级与厂商 profile」 |
 | 主题被锁但没有运行在跑 | 遗留锁会自动回收（四条判据取任一）。真卡住用 `review --cancel <run_id>` |
 | 每次工具调用都报 hook 错误 | wrapper 里写死的 node 路径失效了（`brew upgrade node` 之后）。重跑 `init` |
 | `gate` 退 65，说「最新的 N 份运行元数据读不出来」，可读的最新一份是更早的某个 run | 该阶段最新那一轮的 `_meta/run-*.json` 读不出（v1.0.36 起，设计 v1.3.114，EV-73；此前 `gate` 会静默改按上一轮判）。按文案里「本次判定」与三档成因处置，不要删改那份文件；只想查看上一轮的，用 `gate --run-id <文案里点名的那一份>` 钉住 |

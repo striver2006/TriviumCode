@@ -5,9 +5,9 @@
 >
 > **本文描述的是当前可用的系统**：缺省由 Claude Code 主攻 + 缺省三侧审查（Antigravity / ZCode / Codex，2026-09-16 起默认即三侧）。
 > 第四家（Claude Code 作审核者）已随 M9 接入，入选须由另一家当 Driver。
-> **换一家 Agent 在自己的会话里主攻已可用（M10b，2026-09-26）**：ZCode、Codex 也能当 Driver，但**护栏强度不同**——先读 [§5.2](#52-换一家-agent-主攻护栏等级-l1--l2)。思考等级三档（M11）还不能用。
+> **换一家 Agent 在自己的会话里主攻已可用（M10b，2026-09-26）**：ZCode、Codex 也能当 Driver，但**护栏强度不同**——先读 [§5.2](#52-换一家-agent-主攻护栏等级-l1--l2)。逐审核者选档（低 / 中 / 高）或精确指定思考等级已可用，见 [§4「按档位选模型与思考深度」](#按档位选模型与思考深度)。
 > **`--critics <id,…>` 已可用**——从已启用的几家里选跑哪几侧（选一侧不算降级）。
-> 本文正文以 Claude Code 主攻为例；Codex 侧的 provider 配置由 `doctor` 探测并给可粘贴样例（设计 16.2 纪律 5），不代写你的全局配置。
+> 本文正文以 Claude Code 主攻为例；Codex 侧的 provider 配置由你写在 `$CODEX_HOME`（不设即 `~/.codex`）下：`doctor` 探测哪些 profile 带得出凭据，预检在缺凭据时点名该补哪个文件的哪一段；编排器不代写你的全局配置（设计 16.2 纪律 5）。
 
 这条流水线让 Claude Code 主攻写代码，**Google Antigravity** 与**智谱 ZCode** 两个
 独立审查员背靠背复审，结论逐条落盘留痕。你的角色是 Driver 的使用者——按 `/dual-*`
@@ -218,6 +218,38 @@ plan 审查中 ｜ 已用 5m0s / 预算 15m0s（33%）｜ gemini 已完成 · gl
 `/dual-run` 的计划审与代码审两轮用的是同一组。
 留痕里会如实记下本轮只选了这一侧，**不标降级**——那是配置意图，不是出了事。
 拼错、选了当轮 Driver、或与旧写法 `--only` 同时给，都会当场退 64 并列出可用值。
+
+### 按档位选模型与思考深度
+
+每个审核者可以在 `.trivium/config.yaml` 已有的 `agents.<id>` 段下预设低 / 中 / 高三档，每档是「模型 + 思考等级 + 厂商 profile」的组合（后两项可省）；发起时逐侧选档，也可以绕过档位直接指定。`init` 不写档位，要用先自己加，例如：
+
+```yaml
+agents:
+  codex:
+    tiers:
+      low:    {model: qwen3.8-flash, effort: low,  profile: qwen}
+      medium: {model: qwen3.8-flash, effort: high, profile: qwen}
+      high:   {model: deepseek-v4-pro, effort: high, profile: deepseek}   # 换档也可以换模型家族
+  glm:
+    tiers:
+      low:  {model: GLM-5.3-Flash}   # ZCode 没有思考等级，档里只写模型
+      high: {model: GLM-5.3}
+```
+
+模型名、思考等级与 profile 名都以本机探针为准（`doctor` 探到的模型目录与 `$CODEX_HOME` 下的 profile），写错会在发起前被拦下并列出可用值。档位表 `profiles` 的格子也可以写成 `{tier: high}`，让某个阶段默认用某一档。
+
+发起时把旗标写在提示语后面，只对本轮入选的审核者有效：
+
+```
+/dual-review-plan 重点看并发与回滚路径 --tier-codex high --tier-glm low
+/dual-review-code 重点看错误处理 --model-codex qwen3.8-flash --effort-codex high
+```
+
+- `--tier-<审核者>`：选档；`--model-<审核者>` / `--effort-<审核者>` / `--profile-codex`：精确指定，盖过档位里对应的那一项（盖掉时会提示一句）。`--profile-codex` 是 Codex 的厂商 profile（`$CODEX_HOME/<名>.config.toml`），不是 `--profile` 档位表名。
+- Antigravity 的模型名自带档位后缀（如 `gemini-3.8-flash-high`）时，思考等级由后缀决定，再给 `--effort-gemini` 只提示、不生效。
+- 事后核对：本轮运行记录（归档阶段目录下的 `run-<run_id>.json`）每侧记 `tier` / `tier_source`（选了哪一档、从哪来）、`effort_requested`（请求的思考等级）与 `effort_effective`（**回读到的**生效值）。生效值目前只有 Antigravity 读得到；Codex 与 Claude Code 收下思考等级但不回报，记 `null`、来源 `unverified`，这是如实的「不知道」，不是出错。`trivium report --topic <主题>` 第四节把请求与生效并排列出。
+
+报错怎么处理见 [RUNBOOK §五「档位、思考等级与厂商 profile」](../06_deployment/RUNBOOK_pipeline_ops.md#档位思考等级与厂商-profile)，字段的完整说明见 [MANUAL §5.4](./MANUAL_user.md#54-审查员与档位)。
 
 ---
 
