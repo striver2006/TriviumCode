@@ -1,0 +1,178 @@
+{
+  "targets_sha256": {
+    "src/trivium/report.ts": "702b30b0e69110595ee4f57eb8336db9702f540957ca7239b8875d0c552ab716"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "裁决件回到按缺省 Driver 定位（第 7 步之前的行为）",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 换了 Driver 的轮次读得到它自己的裁决件；codex 的原稿不定义幽灵轮次（r3 有 run.json、r6 没有）",
+        "A2 按 Driver 各算各的；读不到 Driver 的轮次单独成组、不归给缺省 Driver",
+        "A3 不变式：各已知 Driver 合计的裁决之和 = 全主题采纳率的分子分母",
+        "A4 按审核者：意见归提出方，回退编号按前缀，codex 同时出现在两张表"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M2",
+      "desc": "读不到元数据的轮次 driver 记成缺省 Driver（归给 claude 而不是单独成组）",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1b 没有 run.json 的轮次：claude 是唯一产出方、front-matter 完好 ⇒ 仍在时间线",
+        "A2 按 Driver 各算各的；读不到 Driver 的轮次单独成组、不归给缺省 Driver"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M3",
+      "desc": "第四节生效列在 null 时回落请求值",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A5 第四节：缺席写「—」、null 按语义写，生效列从不拿请求值顶替",
+        "A8 生效列映射：只看回读两格"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M3b",
+      "desc": "审核者聚合的生效计次把请求值记进去",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A6 审核者表 B：缺席与 null 分开计次"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M4",
+      "desc": "请求列 null 与缺席同写「—」",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A5 第四节：缺席写「—」、null 按语义写，生效列从不拿请求值顶替",
+        "A8 请求列映射"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M4b",
+      "desc": "旧留痕也写出 effortEffective 键（缺席合流成 null）",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A5 第四节：缺席写「—」、null 按语义写，生效列从不拿请求值顶替",
+        "A6 JSON：缺席的键不出现，null 照写 null；aggregates 三键齐全",
+        "A6 审核者表 B：缺席与 null 分开计次"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M5",
+      "desc": "有 run.json 的轮次仍按缺省 Driver 排除原稿",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 换了 Driver 的轮次读得到它自己的裁决件；codex 的原稿不定义幽灵轮次（r3 有 run.json、r6 没有）",
+        "A2 按 Driver 各算各的；读不到 Driver 的轮次单独成组、不归给缺省 Driver",
+        "A4 按审核者：意见归提出方，回退编号按前缀，codex 同时出现在两张表",
+        "A6 审核者表 B：缺席与 null 分开计次"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M6",
+      "desc": "整份回退编号不按前缀归属（落进来源不明）",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A4 按审核者：意见归提出方，回退编号按前缀，codex 同时出现在两张表"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M7",
+      "desc": "无 run.json 的轮次去掉内容谓词（计划三审 AGY-01 之前的规则）",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 换了 Driver 的轮次读得到它自己的裁决件；codex 的原稿不定义幽灵轮次（r3 有 run.json、r6 没有）",
+        "A1b 没有 run.json 的轮次：claude 是唯一产出方、front-matter 完好 ⇒ 仍在时间线",
+        "A2 按 Driver 各算各的；读不到 Driver 的轮次单独成组、不归给缺省 Driver"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M8",
+      "desc": "无 run.json 的轮次后缀兜底退回「≠ 缺省 Driver」（不排除本阶段当过 Driver 的家）",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A1 换了 Driver 的轮次读得到它自己的裁决件；codex 的原稿不定义幽灵轮次（r3 有 run.json、r6 没有）",
+        "A2 按 Driver 各算各的；读不到 Driver 的轮次单独成组、不归给缺省 Driver"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M9",
+      "desc": "run.v1 迁移不标来源",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A2 按 Driver 各算各的；读不到 Driver 的轮次单独成组、不归给缺省 Driver",
+        "A7 run.v1 迁移的轮次归 claude，并标出来源"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M10",
+      "desc": "按 Driver 聚合不再把读不到 Driver 的轮次单独成组",
+      "suite": "dist/test/test/unit/report-aggregate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "A2 按 Driver 各算各的；读不到 Driver 的轮次单独成组、不归给缺省 Driver"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    }
+  ]
+}

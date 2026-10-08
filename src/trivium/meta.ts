@@ -731,7 +731,13 @@ export type RunMetaUnreadableCause =
   | { kind: 'missing' }
   | { kind: 'io' | 'unparsable' | 'contract'; detail: string };
 
-export type RunMetaReadResult = { ok: true; meta: RunMeta } | { ok: false; cause: RunMetaUnreadableCause };
+/**
+ * 成功分支的 `sourceSchema`（M11 第 7 步）：落盘原件的 schema。v1 读进内存后已迁移成 v2 形状
+ * （`driver` 补为缺省 Driver），复盘要据它标出「这一轮的 Driver 来自 v1 迁移」，否则分不出。只增不改判定。
+ */
+export type RunMetaReadResult =
+  | { ok: true; meta: RunMeta; sourceSchema: 'trivium.run.v1' | 'trivium.run.v2' }
+  | { ok: false; cause: RunMetaUnreadableCause };
 
 /** 成因细节只取首行、封顶这么多字：解析器消息会带上一段原文，整段回显没有用 */
 const CAUSE_DETAIL_MAX = 160;
@@ -772,11 +778,11 @@ export async function readRunMetaDetailed(
     ({ ok: false, cause: { kind: 'contract', detail: causeDetail(problems[0] ?? '校验不过') } });
   if (schema === 'trivium.run.v2') {
     const problems = validateRunMeta(raw);
-    return problems.length === 0 ? { ok: true, meta: raw as RunMeta } : contract(problems);
+    return problems.length === 0 ? { ok: true, meta: raw as RunMeta, sourceSchema: schema } : contract(problems);
   }
   if (schema === 'trivium.run.v1') {
     const problems = validateRunMetaV1(raw);
-    return problems.length === 0 ? { ok: true, meta: migrateRunMetaV1(raw) } : contract(problems);
+    return problems.length === 0 ? { ok: true, meta: migrateRunMetaV1(raw), sourceSchema: schema } : contract(problems);
   }
   return contract([`schema 字段是 ${causeDetail(JSON.stringify(schema) ?? 'undefined')}，不是 trivium.run.v1 / v2`]);
 }

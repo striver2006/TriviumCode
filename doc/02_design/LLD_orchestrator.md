@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.53
+> - **当前版本**：v1.1.54
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.54（2026-10-08）随设计 v1.3.135（M11 第 7 步：复盘报告按 Driver 与审核者两个维度聚合）同步：模块表 `report.ts` 补「原稿与裁决件按该轮 run.json 的 driver 排除 / 定位，双维度聚合与第四节思考等级两列（设计 13.2.1）」；`meta.ts` 补「`readRunMetaDetailed` 成功分支带 `sourceSchema`，供复盘标出 run.v1 迁移轮次」；`report.ts` 行的入口名由 `buildReport()` 改准为 `buildTopicReport()`（旧错，代码三审 AGY-03）。行数列未重核。
 > - **变更说明**：v1.1.53（2026-10-08）随设计 v1.3.133（M11 第 6 步：思考等级透传与留痕接线）同步：3.3 准备阶段补「可用性检查之前逐侧解析一次档位（`resolveTier`），同一结果喂可用性检查的厂商 profile 与请求构造」；模块表 `adapters/base.ts` 补必填钩子 `effortReadback`（生效思考等级只从回读结果派生）与 `availability` 的可选入参 `vendorProfiles`；`probes/claude.ts` 补 `effort_levels`（零配额解析 `--help`）。行数列未重核。
 > - **变更说明**：v1.1.52（2026-10-08）随设计 v1.3.132（M11 第 5 步：档位命令行旗标）同步：模块表补 `tier-flags.ts`（三类档位旗标的收集、键校验、取值校验与合并，`cli.ts` / `topic-args.ts` 共用；键判定参数化后仍住在 `critics.ts` 的 `assertCriticFlagKeys`）；`cli.ts` 行补一句。行数列未重核。
 > - **变更说明**：v1.1.51（2026-10-07）随设计 v1.3.131（M11 第 4 步：配置契约与档位解析）同步：3.3 必读交集校验一段里「排在逐侧 `routeModel` 的 69 之前」改为档位解析（`resolveTier`，原 `routeModel` 已删），并注明那条 69 对同一输入不可达；准备阶段在 slug 校验之后新增「档位组合合法」一格（`preflight.ts` `checkTierCombos`）。行数列未重核。
@@ -144,9 +145,9 @@ graph TD
 | 模块 | 行数 | 职责 | 关键导出 |
 | :--- | ---: | :--- | :--- |
 | `archive.ts` | 550 | 防覆盖落盘、最低工件集校验、sha256 核对、**运行清单读侧按阶段分发**（设计 6.7.1） | `writeArtifact()` `checkRecordedArtifacts()` `checkRunManifests()` `runManifestProblem()` |
-| `meta.ts` | 382 | `run.json`（`trivium.run.v2`）与主题级任务档的构造与更新；`summarizeRun` 的失守一行同样按 `readonlyBreachLabel` 分档（v1.1.50 / EV-224）；**读侧按 schema 分发与 v1 → v2 内存迁移** | `newRunId()` `allocateRunId()` `writeRunMeta()` `readRunMeta()` `readRunMetaDetailed()` `migrateRunMetaV1()` `updateTask()` `readTaskStrict()` |
+| `meta.ts` | 382 | `run.json`（`trivium.run.v2`）与主题级任务档的构造与更新；`summarizeRun` 的失守一行同样按 `readonlyBreachLabel` 分档（v1.1.50 / EV-224）；**读侧按 schema 分发与 v1 → v2 内存迁移**；`readRunMetaDetailed` 成功分支带落盘原件的 `sourceSchema`，供复盘标出 run.v1 迁移轮次（v1.1.54） | `newRunId()` `allocateRunId()` `writeRunMeta()` `readRunMeta()` `readRunMetaDetailed()` `migrateRunMetaV1()` `updateTask()` `readTaskStrict()` |
 | `naming.ts` | 142 | 文件名生成与反解析（纯函数，不碰文件系统） | `buildArtifactName()` `parseArtifactName()` `validateTopic()` `shellQuoteArg()` |
-| `report.ts` | 556 | 人读复盘生成；只读失守旗标按跑后复算分档（`gate.ts` 的 `readonlyBreachLabel`，v1.1.50 / EV-224） | `buildReport()` |
+| `report.ts` | 556 | 人读复盘生成；只读失守旗标按跑后复算分档（`gate.ts` 的 `readonlyBreachLabel`，v1.1.50 / EV-224）；原稿与裁决件按该轮 run.json 的 `driver` 排除 / 定位，无 run.json 的轮次号先按内容谓词 `isReviewArtifact` 判；按 Driver 与按审核者两维聚合、第四节思考等级请求 / 生效两列（缺席与 null 分写，生效列只读回读字段）（设计 13.2.1，v1.1.54） | `buildTopicReport()` `renderTopicReport()` `aggregateByDriver()` `aggregateByCritic()` |
 | `render.ts` | 253 | 审查文档的 Markdown 渲染（参与者事实与降级警示分两处标注） | `renderReviewDoc()` |
 
 ### 2.5 解析层

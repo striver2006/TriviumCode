@@ -1,0 +1,91 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  M1 ✓ 咬住（fail=4）
+  M2 ✓ 咬住（fail=2）
+  M3 ✓ 咬住（fail=2）
+  M3b ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=2）
+  M4b ✓ 咬住（fail=3）
+  M5 ✓ 咬住（fail=4）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=3）
+  M8 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=2）
+  M10 ✓ 咬住（fail=1）
+{
+  "总数": 12,
+  "咬住": 12,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "裁决件回到按缺省 Driver 定位（第 7 步之前的行为）",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M2",
+      "desc": "读不到元数据的轮次 driver 记成缺省 Driver（归给 claude 而不是单独成组）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3",
+      "desc": "第四节生效列在 null 时回落请求值",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M3b",
+      "desc": "审核者聚合的生效计次把请求值记进去",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "请求列 null 与缺席同写「—」",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4b",
+      "desc": "旧留痕也写出 effortEffective 键（缺席合流成 null）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M5",
+      "desc": "有 run.json 的轮次仍按缺省 Driver 排除原稿",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M6",
+      "desc": "整份回退编号不按前缀归属（落进来源不明）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "无 run.json 的轮次去掉内容谓词（计划三审 AGY-01 之前的规则）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M8",
+      "desc": "无 run.json 的轮次后缀兜底退回「≠ 缺省 Driver」（不排除本阶段当过 Driver 的家）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "run.v1 迁移不标来源",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M10",
+      "desc": "按 Driver 聚合不再把读不到 Driver 的轮次单独成组",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

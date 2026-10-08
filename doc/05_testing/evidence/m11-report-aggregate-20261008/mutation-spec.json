@@ -1,0 +1,138 @@
+{
+  "targets": [
+    "src/trivium/report.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/report-aggregate.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "裁决件回到按缺省 Driver 定位（第 7 步之前的行为）",
+      "file": "src/trivium/report.ts",
+      "find": "  const disp = await loadDisposition(layout, stage, rerunIndex, notes, meta.driver);\n",
+      "replace": "  const disp = await loadDisposition(layout, stage, rerunIndex, notes, DEFAULT_DRIVER);\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "读不到元数据的轮次 driver 记成缺省 Driver（归给 claude 而不是单独成组）",
+      "file": "src/trivium/report.ts",
+      "find": "    driver: null,\n    driverSource: null,\n",
+      "replace": "    driver: DEFAULT_DRIVER,\n    driverSource: null,\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "第四节生效列在 null 时回落请求值",
+      "file": "src/trivium/report.ts",
+      "find": "  if (x.effortEffective !== null) return x.effortEffective;\n",
+      "replace": "  if (x.effortEffective !== null) return x.effortEffective;\n  if ((x as { effortRequested?: string | null }).effortRequested) return (x as { effortRequested?: string | null }).effortRequested as string;\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M3b",
+      "desc": "审核者聚合的生效计次把请求值记进去",
+      "file": "src/trivium/report.ts",
+      "find": "      else if (s.effortEffectiveSource === null) eff.noConcept++;\n",
+      "replace": "      else if (s.effortRequested) bump(eff.values, s.effortRequested);\n      else if (s.effortEffectiveSource === null) eff.noConcept++;\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "请求列 null 与缺席同写「—」",
+      "file": "src/trivium/report.ts",
+      "find": "  return x.effortRequested === null ? EFFORT_UNREQUESTED : x.effortRequested;\n",
+      "replace": "  return x.effortRequested === null ? EFFORT_ABSENT : x.effortRequested;\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M4b",
+      "desc": "旧留痕也写出 effortEffective 键（缺席合流成 null）",
+      "file": "src/trivium/report.ts",
+      "find": "      ...('effort_effective' in m ? { effortEffective: m.effort_effective ?? null } : {}),\n",
+      "replace": "      effortEffective: m.effort_effective ?? null,\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "有 run.json 的轮次仍按缺省 Driver 排除原稿",
+      "file": "src/trivium/report.ts",
+      "find": "      ? !drivers.has(i.parsed.role as AgentId)\n",
+      "replace": "      ? i.parsed.role !== DEFAULT_DRIVER\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "整份回退编号不按前缀归属（落进来源不明）",
+      "file": "src/trivium/report.ts",
+      "find": "  const agent = row.source === 'fallback' ? agentByFindingId(row.id) : null;\n",
+      "replace": "  const agent = null;\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "无 run.json 的轮次去掉内容谓词（计划三审 AGY-01 之前的规则）",
+      "file": "src/trivium/report.ts",
+      "find": "      : (await isReviewArtifact(path.join(stageDir(layout, stage), i.fileName))) ||\n",
+      "replace": "      : false ||\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "无 run.json 的轮次后缀兜底退回「≠ 缺省 Driver」（不排除本阶段当过 Driver 的家）",
+      "file": "src/trivium/report.ts",
+      "find": "        !seenDrivers.has(i.parsed.role as AgentId);\n",
+      "replace": "        i.parsed.role !== DEFAULT_DRIVER;\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "run.v1 迁移不标来源",
+      "file": "src/trivium/report.ts",
+      "find": "  base.driverSource = read.sourceSchema === 'trivium.run.v1' ? 'run.v1' : 'run.v2';\n",
+      "replace": "  base.driverSource = 'run.v2';\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "按 Driver 聚合不再把读不到 Driver 的轮次单独成组",
+      "file": "src/trivium/report.ts",
+      "find": "    if (r.driver === null) {\n",
+      "replace": "    if (r.driver === null && r.stage === STAGES[2]) {\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "同号多份 run.json 只看最后一份的 driver（代码三审 CODEX-02 之前）",
+      "file": "src/trivium/report.ts",
+      "find": "    ds.add(meta.driver);\n",
+      "replace": "    ds.clear();\n    ds.add(meta.driver);\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "本阶段有读不出的 run.json 仍说「找不到」（代码三审 CODEX-01 之前）",
+      "file": "src/trivium/report.ts",
+      "find": "      unreadableMetaInStage > 0\n",
+      "replace": "      unreadableMetaInStage < 0\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "裁决件读不出不单记（代码三审 GLM-02 之前）",
+      "file": "src/trivium/report.ts",
+      "find": "    base.dispositionUnreadable = true;\n",
+      "replace": "    base.dispositionUnreadable = false;\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "只在未进时间线运行里出现、未失败的审核者不成行（代码三审 GLM-04 之前）",
+      "file": "src/trivium/report.ts",
+      "find": "      const x = row(c); // 只在未进时间线运行里出现过、也没失败的审核者同样成行，各格为 0（设计 13.2.1，代码三审 GLM-04）\n",
+      "replace": "      if (st !== 'failed' && st !== 'timeout') continue;\n      const x = row(c); // 只在未进时间线运行里出现过、也没失败的审核者同样成行，各格为 0（设计 13.2.1，代码三审 GLM-04）\n",
+      "expect": "dist/test/test/unit/report-aggregate.test.js"
+    }
+  ]
+}
