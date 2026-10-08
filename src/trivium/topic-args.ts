@@ -247,7 +247,7 @@ export interface TopicResolution {
   /**
    * 档位旗标（M11 第 5 步），逐入选侧、恒存在（没写为 `{}`），与 `models` 同形。
    * skill 把它们照抄进 S0.6 预检与 S2、S6 的 `--start`（`--tier-〈id〉` / `--effort-〈id〉` / `--profile-〈id〉`），
-   * 三处必须同一组。`--effort-〈id〉` 与不同于 `agents.〈id〉.profile` 的厂商 profile 在第 6 步之前会被预检拦下。
+   * 三处必须同一组。M11 第 6 步起三类值都随请求下传给各家（第 5 步时思考等级与厂商 profile 被预检的过渡闸拦着）。
    */
   tiers: Partial<Record<CriticId, string>>;
   efforts: Partial<Record<CriticId, string>>;

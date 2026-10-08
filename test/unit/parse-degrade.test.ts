@@ -178,7 +178,9 @@ test('P9 回显清单 = 全开分支 renderFrontMatter 的键集 − review.v1 �
   const base: RenderInput = {
     critic: 'glm', stage: 'plan', topic: 'T', runId: 'R', rerunIndex: 1,
     review: review([finding('GLM-01')]) as unknown as Review, rawText: null, result: RESULT,
-    modelRequested: 'm', effort: 'high', snapshotHash: 'sha256:x', startedAt: 'a', finishedAt: 'b',
+    modelRequested: 'm', effort: 'high',
+    effortRequested: 'high', effortEffective: null, effortEffectiveSource: null, tier: null, tierSource: 'legacy',
+    snapshotHash: 'sha256:x', startedAt: 'a', finishedAt: 'b',
     evidenceOk: true, projectReads: 1, selectedCritics: CRITICS, degraded: false, drift: false, peerDeny: false,
     consultedUnverified: true,
     verification: { readonly: 'unavailable', path: 'unavailable', untrusted: { cause: 'mcp-call', tools: ['mcp__zread__read_file'] } },

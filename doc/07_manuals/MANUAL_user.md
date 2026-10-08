@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.42
+> - **当前版本**：v1.0.43
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -499,12 +499,13 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 **逐审核者选档与精确指定**（v1.0.42 起，M11 第 5 步）：
 
 - `--tier-<审核者 id> low|medium|high`：本次为该侧选档，取它在 `agents.<id>.tiers` 里定义的那一档（该档没定义就退 64，并列出已定义的档）。
-  在第 6 步之前，这一轮选的是哪一档**不写进 run.json**——发起时会告警，事后只能从请求的模型反推。
-  还要注意：选到的档若写了思考等级（`effort`），或写了与 `agents.codex.profile` 不同的 `profile`，**现在同样会被拦下**退 64——请换一档，或先去掉那一档里的 `effort` / `profile`。
-- `--effort-<审核者 id> <值>`：本次精确指定思考等级。**现在还用不了**：思考等级还没下传给各家，写了会被预检拦下退 64、说明原因；
-  例外是 gemini 的模型名已带档位后缀（如 `gemini-3.8-flash-high`）时，思考等级本就不生效，只告警。
+  选到的档里写的思考等级（`effort`）与 codex 的厂商 `profile` 一并生效（v1.0.43 起，M11 第 6 步）；这一轮选的是哪一档、从哪来，记在 run.json 该侧的 `tier` / `tier_source`。
+- `--effort-<审核者 id> <值>`：本次精确指定思考等级，下传给该侧（取值要在该模型支持的范围内，否则退 64 并列出可用值；ZCode 没有思考等级，给了也退 64）。
+  例外是 gemini 的模型名已带档位后缀（如 `gemini-3.8-flash-high`）时，思考等级不生效，只告警。
 - `--profile-codex <名>`：本次精确指定 codex 的厂商 profile（`$CODEX_HOME/<名>.config.toml`，**不是** `--profile` 档位表名）。不在本机名单退 64；
-  与 `agents.codex.profile` 不同时**现在同样会被拦下**（厂商 profile 还没下传），相同时等于没写。只有带厂商 profile 概念的审核者有这个旗标，今天只有 codex。
+  它覆盖档位与 `agents.codex.profile`，codex 就以这个 profile 发起；预检的可用性与模型目录检查也按它。只有带厂商 profile 概念的审核者有这个旗标，今天只有 codex。
+
+**run.json 里怎么读档位与思考等级**（v1.0.43 起）：每侧多五个字段——`effort_requested`（请求的思考等级）、`effort_effective`（**回读到的**生效思考等级）、`effort_effective_source`、`tier`、`tier_source`；顶层多一个 `profile`（本轮用的档位表名）。`effort_effective` 只认回读：今天只有 gemini 读得到（取回执里模型名的档位后缀），codex 与 claude 恒为 `null`、来源 `unverified`——它们收下思考等级但不回报实际用了哪一档，`null` 就是如实的「不知道」，不是出错。字段不存在说明是更早版本留下的记录。
 
 三类旗标与 `--model-<审核者 id>` 一样只对本轮入选的审核者有效；写给没入选的一家退 64。`/dual-run` 会把它们原样带进开跑前的预检和两轮审查。
 
@@ -547,7 +548,7 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | `agents.gemini.readonly_commands` | 「允许的只读命令」 | Antigravity 侧的审查员根本没有命令工具，跑不了任何命令；ZCode 侧整个 `Bash` 禁用；Codex 侧能跑 shell、靠只读沙箱挡写，没有命令白名单 |
 | `review.parallel` | 「两侧并行；改 `false` 串行」 | 各侧恒并行，改 `false` 什么都不变。只想跑一侧，用 `--critics` |
 | `isolation.deny_via_cli` | 「是否用 CLI 的路径级 deny」 | 注不注入路径级 deny 只看探针实测（claude 侧支持、会注入；codex 侧没有这类机制），这个开关从未被读过 |
-| `agents.codex.effort` | 「Codex 各阶段的思考等级」 | 从未下传给 codex——实际发出的思考等级是所用 profile 配置文件里的值。思考等级改由 `agents.codex.tiers` 的 `effort` 表达（第 6 步起下传）。**只有 codex 这一个**：`agents.gemini.effort` 仍在用，不报废弃 |
+| `agents.codex.effort` | 「Codex 各阶段的思考等级」 | 从未下传给 codex——实际发出的思考等级是所用 profile 配置文件里的值。思考等级改由 `agents.codex.tiers` 的 `effort` 表达（M11 第 6 步起已下传）。**只有 codex 这一个**：`agents.gemini.effort` 仍在用，不报废弃 |
 
 旧配置里留着它们**不会报错**，升级后照常能跑。配置里出现时，`trivium doctor` 与预检各提示一条「已废弃、从未生效，可从配置里去掉」，其余命令不提示。从 `.trivium/config.yaml`（或 `config.local.yaml`）里删掉这几行即可，删了不改变任何行为。新 `trivium init` 出来的配置不再带它们。
 

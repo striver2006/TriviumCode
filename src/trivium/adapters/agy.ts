@@ -30,10 +30,12 @@ import {
   type AgyStreamResult,
 } from './agy-events.js';
 import {
+  EFFORT_UNVERIFIED,
   failedResult,
   TOOL_TRACE_CAPABILITY,
   type AdapterContext,
   type CriticAdapter,
+  type EffortReadback,
 } from './base.js';
 import { agentConfigOf } from '../config.js';
 
@@ -70,6 +72,20 @@ export interface AgyInvokeOutcome {
  */
 export function modelEncodesEffort(model: string | null): boolean {
   return model !== null && /-(high|medium|low)$/.test(model);
+}
+
+/**
+ * 思考等级生效值的回读（M11 第 6 步，设计 11.1 gemini 一行）。纯函数，只看回读结果。
+ *
+ * **只认回执**：`model_effective_source === 'envelope'`（agy 的 init 事件带回的 `model`）且该 slug 带档位后缀，
+ * 才取后缀、来源 `envelope`（M11 第 1 步 F7：回执如实回读出请求的 slug）。其余一律 `null` + `unverified`——
+ * 回执缺失时适配器退到请求值（`requested`），那时 slug 是我们自己发出去的，**不是回读**，后缀不能当生效档位；
+ * 回执在场而 slug 不带后缀时（思考等级经 `--effort` 下传或取厂商缺省），回执证明不了生效档位。
+ */
+export function agyEffortReadback(result: Pick<CriticResult, 'model_effective' | 'model_effective_source'>): EffortReadback {
+  const m = result.model_effective;
+  if (result.model_effective_source !== 'envelope' || !modelEncodesEffort(m)) return EFFORT_UNVERIFIED;
+  return { effective: m!.slice(m!.lastIndexOf('-') + 1), source: 'envelope' };
 }
 
 /**
@@ -189,6 +205,8 @@ export const agyAdapter: CriticAdapter = {
    * 的 `tools:`）不含 `run_command`（EV-95）。对账的是仓库那份；运行期生效的是安装副本，漂移见 EV-187。
    */
   commandExecution: 'none',
+
+  effortReadback: agyEffortReadback,
 
   /**
    * 原生思考等级（M11 第 4 步，设计 11.5）：**由 slug 后缀派生**。

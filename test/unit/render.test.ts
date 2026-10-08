@@ -41,6 +41,7 @@ function input(over: Partial<RenderInput> = {}): RenderInput {
     critic: 'gemini', stage: 'plan', topic: '登录重构', runId: '20260910T142310Z',
     rerunIndex: 1, review: REVIEW, rawText: null, result: RESULT,
     modelRequested: 'gemini-3.1-pro-high', effort: 'high',
+    effortRequested: 'high', effortEffective: 'high', effortEffectiveSource: 'envelope', tier: null, tierSource: 'legacy',
     snapshotHash: 'sha256:8c1f', startedAt: '2026-09-10T14:23:10+08:00',
     finishedAt: '2026-09-10T14:31:02+08:00', evidenceOk: true, projectReads: 21,
     selectedCritics: CRITICS,
@@ -233,7 +234,7 @@ test('回归：超时的一侧不产生证据不足告警，避免把真正原�
     project_root: dir, subject_path: path.join(dir, 'a.ts'), deny_paths: [],
     out_dir: '/x', brief_path: '/b', brief_text: 'B', model: 'M',
     timeout_s: 900, schema_path: '/s', min_tool_calls: 5, min_project_reads: 3,
-    profile_requested: null,
+    profile_requested: null, tier: null, tier_source: null,
   };
 
   const v = await judgeRun({

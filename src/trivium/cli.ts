@@ -223,14 +223,15 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                   给没入选的一家指定模型退 64，不静默丢弃）
       ${CRITIC_AGENT_IDS.map((id) => `--tier-${id}`).join(' / ')} low|medium|high
                   本次为该侧选档（取该 Agent 在 agents.<id>.tiers 里定义的档；只对本轮入选的审核者有效，
-                  未入选或档未定义退 64）。M11 第 6 步之前本轮档位名与来源不入 run.json（会告警）；
-                  选到带思考等级、或厂商 profile 与 agents.<id>.profile 不同的档，同样被过渡闸拦下退 64
+                  未入选或档未定义退 64）。档位里的思考等级与厂商 profile 随请求下传给该侧，
+                  档位名与来源记入 run.json 的 tier / tier_source
       ${CRITIC_AGENT_IDS.map((id) => `--effort-${id}`).join(' / ')} <值>
-                  本次精确指定思考等级（对该模型的原生枚举校验）。**M11 第 6 步之前被预检的过渡闸拦下退 64**：
-                  思考等级尚未透传给各家；gemini 的 slug 已编码档位时本就不生效，只告警
+                  本次精确指定思考等级（对该模型的原生枚举校验，枚举外退 64；该侧没有思考等级概念也退 64）。
+                  下传给该侧（codex 的 -c model_reasoning_effort=、claude 的 --effort、agy 的 --effort）；
+                  gemini 的 slug 已编码档位时不生效，只告警
       ${vendorProfileAgents().map((id) => `--profile-${id}`).join(' / ') || '（本机没有带厂商 profile 概念的审核者）'} <名>
                   本次精确指定厂商 profile（厂商 CLI 的配置分层名，不是 --profile 档位表名；不在本机名单退 64）。
-                  与 agents.<id>.profile 不同时 **M11 第 6 步之前被预检的过渡闸拦下退 64**（厂商 profile 尚未透传）
+                  覆盖档位条目与 agents.<id>.profile，下传为该侧的厂商 profile（codex 的 -p）
       --profile <名称>  本次改用另一档模型（config.yaml 的 profiles）。
                   与 --model-* 不冲突：那个指定具体模型、优先级更高，
                   这个只换默认值表。档位不存在则退 64 并列出可用值
@@ -272,14 +273,15 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                   命令 A 在解析之后预检（EV-125），把 resolve 输出的 models 原样带来
       ${CRITIC_AGENT_IDS.map((id) => `--tier-${id}`).join(' / ')} low|medium|high
                   本次为该侧选档（取该 Agent 在 agents.<id>.tiers 里定义的档；只对本轮入选的审核者有效，
-                  未入选或档未定义退 64）。M11 第 6 步之前本轮档位名与来源不入 run.json（会告警）；
-                  选到带思考等级、或厂商 profile 与 agents.<id>.profile 不同的档，同样被过渡闸拦下退 64
+                  未入选或档未定义退 64）。档位里的思考等级与厂商 profile 随请求下传给该侧，
+                  档位名与来源记入 run.json 的 tier / tier_source
       ${CRITIC_AGENT_IDS.map((id) => `--effort-${id}`).join(' / ')} <值>
-                  本次精确指定思考等级（对该模型的原生枚举校验）。**M11 第 6 步之前被预检的过渡闸拦下退 64**：
-                  思考等级尚未透传给各家；gemini 的 slug 已编码档位时本就不生效，只告警
+                  本次精确指定思考等级（对该模型的原生枚举校验，枚举外退 64；该侧没有思考等级概念也退 64）。
+                  下传给该侧（codex 的 -c model_reasoning_effort=、claude 的 --effort、agy 的 --effort）；
+                  gemini 的 slug 已编码档位时不生效，只告警
       ${vendorProfileAgents().map((id) => `--profile-${id}`).join(' / ') || '（本机没有带厂商 profile 概念的审核者）'} <名>
                   本次精确指定厂商 profile（厂商 CLI 的配置分层名，不是 --profile 档位表名；不在本机名单退 64）。
-                  与 agents.<id>.profile 不同时 **M11 第 6 步之前被预检的过渡闸拦下退 64**（厂商 profile 尚未透传）
+                  覆盖档位条目与 agents.<id>.profile，下传为该侧的厂商 profile（codex 的 -p）
                   命令 A 同样把 resolve 输出的 tiers / efforts / vendor_profiles 原样带来
       --driver <id>  当轮 Driver，缺省 ${DEFAULT_DRIVER}。与 review --start 传同一个值：
                   它参与选侧判定，非缺省时预检会多打一行标注

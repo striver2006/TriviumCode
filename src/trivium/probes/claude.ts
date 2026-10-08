@@ -653,6 +653,43 @@ export async function probeClaudeBin(
 }
 
 /**
+ * 从 `claude --help` 的文本里取 `--effort` 的取值集合（M11 第 6 步，设计 11.5「原生枚举与校验」）。纯函数。
+ *
+ * 本机 2.1.291 实测原文（M11 第 1 步 F6）：`--effort <level>  Effort level for the current session (low, medium, high, xhigh, max)`。
+ *
+ * - 没有含 `--effort` 的行 ⇒ `[]`：该 CLI 没有这个旗标（下传会被当未知参数）；
+ * - 有这一行 ⇒ 取该行**第一对**圆括号里的逗号分隔列表（计划三审 CODEX-02：厂商若在列表后追加括号说明，
+ *   「最后一对」会取错）；括号缺失、列表为空、或任一项不合「小写字母开头、只含小写字母数字与 `-` `_`」⇒ `null`。
+ *
+ * 格式一漂移就落 `null`（取不到、预检跳过并点名），**不落一个猜出来的错枚举**——后者会把合法值硬拒 64，
+ * 而重跑 doctor 也自愈不了。
+ */
+export function parseEffortLevels(help: string): string[] | null {
+  const line = help.split(/\r?\n/).find((l) => /(^|\s)--effort(\s|=|$)/.test(l));
+  if (line === undefined) return [];
+  const open = line.indexOf('(');
+  const close = open >= 0 ? line.indexOf(')', open + 1) : -1;
+  if (open < 0 || close < 0) return null;
+  const items = line.slice(open + 1, close).split(',').map((x) => x.trim());
+  if (items.length === 0 || items.some((x) => !/^[a-z][a-z0-9_-]*$/.test(x))) return null;
+  return items;
+}
+
+/**
+ * 跑一次 `claude --help` 取 `effort_levels`（零配额：不发起模型调用）。退出码非零或拉起失败 ⇒ `null`。
+ * 放在 `skipModelCalls` 早退之前，`doctor --no-model-calls` 即可落盘（M11 第 6 步）。
+ */
+async function probeClaudeEffortLevels(bin: string): Promise<string[] | null> {
+  try {
+    const r = await run(bin, ['--help'], { timeoutMs: 60_000, stdin: '', killTree: true });
+    if (r.code !== 0 || r.timedOut) return null;
+    return parseEffortLevels(r.stdout + '\n' + r.stderr);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 跑一次最小任务并解析轨迹。
  *
  * **按臂覆盖预算/超时入参（EV-74 计划 §4.2）**：`overrideBudgetUsd` / `overrideTimeoutMs`
@@ -1135,6 +1172,19 @@ export async function probeClaude(
     notes.push('未找到 claude 可执行文件，Claude 侧不可用');
     return { probe, notes, structuredArmCause: 'carried-over', memoryFixtureFailure: null };
   }
+
+  /*
+   * `--effort` 的取值（M11 第 6 步）：零配额，排在 `skipModelCalls` 早退**之前**，`--no-model-calls` 也落盘；
+   * 不刷新 `probed_at`（那个戳的语义是「模型段真跑过」，见下方）。
+   */
+  probe.effort_levels = await probeClaudeEffortLevels(bin);
+  notes.push(
+    probe.effort_levels === null
+      ? 'claude --help 的 --effort 取值没能解析出来（effort_levels=null），预检对 claude 的思考等级跳过校验并点名'
+      : probe.effort_levels.length === 0
+        ? 'claude --help 里没有 --effort（effort_levels=[]），配了思考等级的 claude 档位预检将退 64'
+        : `claude --effort 取值：${probe.effort_levels.join(', ')}`,
+  );
 
   if (opts.skipModelCalls) {
     notes.push(

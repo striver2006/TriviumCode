@@ -1,0 +1,181 @@
+{
+  "targets": [
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/review.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/render.ts",
+    "src/trivium/preflight.ts",
+    "skills/dual-critic/schema/run.v2.json"
+  ],
+  "suites": [
+    "dist/test/test/unit/effort-wiring.test.js",
+    "dist/test/test/integration/effort-wiring.test.js",
+    "dist/test/test/integration/codex-effort-profile.test.js",
+    "dist/test/test/unit/tier-resolve.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "agy 回读不看来源（回执缺失退到请求值时也取后缀）",
+      "file": "src/trivium/adapters/agy.ts",
+      "find": "  if (result.model_effective_source !== 'envelope' || !modelEncodesEffort(m)) return EFFORT_UNVERIFIED;\n",
+      "replace": "  if (!modelEncodesEffort(m)) return EFFORT_UNVERIFIED;\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "codex 回读改取生效模型的 slug 后缀（拿非回读面冒充）",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "  effortReadback: () => EFFORT_UNVERIFIED,\n",
+      "replace": "  effortReadback: (r) => (r.model_effective && /-(high|medium|low)$/.test(r.model_effective) ? { effective: r.model_effective.slice(r.model_effective.lastIndexOf('-') + 1), source: 'envelope' } : EFFORT_UNVERIFIED),\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "claude 回读同上",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "  effortReadback: () => EFFORT_UNVERIFIED,\n",
+      "replace": "  effortReadback: (r) => (r.model_effective && /-(high|medium|low)$/.test(r.model_effective) ? { effective: r.model_effective.slice(r.model_effective.lastIndexOf('-') + 1), source: 'envelope' } : EFFORT_UNVERIFIED),\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "zcode 来源写 unverified（无此概念与没读到合流）",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "  effortReadback: () => EFFORT_NO_CONCEPT,\n",
+      "replace": "  effortReadback: () => ({ effective: null, source: 'unverified' as const }),\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "写侧 effort_effective 改条件展开（null 与缺席合流）",
+      "file": "src/trivium/review.ts",
+      "find": "      effort_effective: effortRead[c]!.effective,\n",
+      "replace": "      ...(effortRead[c]!.effective !== null ? { effort_effective: effortRead[c]!.effective } : {}),\n",
+      "expect": "dist/test/test/integration/effort-wiring.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "写侧 effort_requested 改条件展开",
+      "file": "src/trivium/review.ts",
+      "find": "      effort_requested: requests[c]!.effort ?? null,\n",
+      "replace": "      ...(requests[c]!.effort ? { effort_requested: requests[c]!.effort } : {}),\n",
+      "expect": "dist/test/test/integration/effort-wiring.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "不写 tier / tier_source",
+      "file": "src/trivium/review.ts",
+      "find": "      tier: requests[c]!.tier,\n      tier_source: requests[c]!.tier_source,\n      status: r.status,\n",
+      "replace": "      status: r.status,\n",
+      "expect": "dist/test/test/integration/effort-wiring.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "不写顶层 profile",
+      "file": "src/trivium/review.ts",
+      "find": "      profile: cfg.active_profile,\n",
+      "replace": "",
+      "expect": "dist/test/test/integration/effort-wiring.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "codex 的 -p 回退取配置段",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "        profile: inv.profile,\n        model: inv.model,\n",
+      "replace": "        profile: codexConfig(ctx).profile,\n        model: inv.model,\n",
+      "expect": "dist/test/test/integration/codex-effort-profile.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "codex 隔离副本拷配置段那家的 profile 文件",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "        profile: inv.profile,\n        projectRoot: req.project_root,\n",
+      "replace": "        profile: codexConfig(ctx).profile,\n        projectRoot: req.project_root,\n",
+      "expect": "dist/test/test/integration/codex-effort-profile.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "codex 可用性忽略本轮解析值",
+      "file": "src/trivium/adapters/codex.ts",
+      "find": "    const wantedAll = opts?.vendorProfiles !== undefined\n",
+      "replace": "    const wantedAll = false\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "claude run() 不下传 --effort",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "        effort: req.effort ?? null,\n        readonlyArgs,\n",
+      "replace": "        effort: null,\n        readonlyArgs,\n",
+      "expect": "dist/test/test/integration/codex-effort-profile.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "请求的思考等级回退为只给 antigravity（原 effortFor 口径）",
+      "file": "src/trivium/review.ts",
+      "find": "      ...(routed.effort !== null ? { effort: routed.effort } : {}),\n",
+      "replace": "      ...(routed.effort !== null && critic === 'gemini' ? { effort: routed.effort } : {}),\n",
+      "expect": "dist/test/test/integration/effort-wiring.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "parseEffortLevels 解析不出时落 []（错枚举：把「取不到」说成「没有这个旗标」）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  if (open < 0 || close < 0) return null;\n",
+      "replace": "  if (open < 0 || close < 0) return [];\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "claude reasoningLevelsFor 不读探针",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "    return claudeReasoningLevels(cfg.probe.cli.claude);\n",
+      "replace": "    return claudeReasoningLevels(undefined);\n",
+      "expect": "dist/test/test/unit/tier-resolve.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "front-matter 漏写 effort_effective",
+      "file": "src/trivium/render.ts",
+      "find": "    effort_effective: input.effortEffective,\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "parseEffortLevels 改回取最后一对括号（计划三审 CODEX-02）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  const open = line.indexOf('(');\n",
+      "replace": "  const open = line.lastIndexOf('(');\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "M18",
+      "desc": "预检可用性不传本轮解析值",
+      "file": "src/trivium/preflight.ts",
+      "find": "    const v = a.availability(actx, { vendorProfiles });\n",
+      "replace": "    const v = a.availability(actx);\n",
+      "expect": "dist/test/test/integration/effort-wiring.test.js"
+    },
+    {
+      "id": "M19",
+      "desc": "review 准备阶段可用性不传本轮解析值",
+      "file": "src/trivium/review.ts",
+      "find": "    const av = adapter.availability(adapterCtx, { vendorProfiles: [routedBy[c]!.vendorProfile] });\n",
+      "replace": "    const av = adapter.availability(adapterCtx);\n",
+      "expect": "dist/test/test/integration/effort-wiring.test.js"
+    },
+    {
+      "id": "MC1",
+      "desc": "契约：tier 枚举放宽（任意串都收）",
+      "file": "skills/dual-critic/schema/run.v2.json",
+      "find": "          \"enum\": [\n            \"low\",\n            \"medium\",\n            \"high\",\n            null\n          ],\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    }
+  ]
+}

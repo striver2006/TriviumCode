@@ -32,6 +32,7 @@ import {
 } from './codex-home.js';
 import {
   classifyWriteCommands,
+  EFFORT_UNVERIFIED,
   failedResult,
   COMMAND_TRACE_CAPABILITY,
   type AdapterContext,
@@ -82,6 +83,20 @@ export function buildCodexArgs(
     '-C', opts.cwd,
     '-',
   ];
+}
+
+/**
+ * 一次审查要下传给 codex 的三个请求值（M11 第 6 步，设计 11.5 / 11.1）。纯函数，**只取请求**、不读配置段。
+ *
+ * 厂商 profile 取 `req.profile_requested`——三层解析后的值（`--profile-codex` > 档位条目 > `agents.codex.profile`），
+ * 与 `review.ts` 准备阶段喂给可用性检查的是同一次 `resolveTier` 的同一个结果。`run()` 里**两处**用它：
+ * 隔离副本拷哪份 `<profile>.config.toml`（`prepareCodexHome`）与 argv 的 `-p`——都从这里取，两处同值由构造保证。
+ * 此前 `run()` 全程读 `agents.codex.profile`，档位条目或命令行换了厂商 profile 也照旧按配置段发起。
+ */
+export function codexInvocationOf(
+  req: Pick<CriticRequest, 'profile_requested' | 'model' | 'effort'>,
+): { profile: string | null; model: string | null; effort: string | null } {
+  return { profile: req.profile_requested, model: req.model, effort: req.effort ?? null };
 }
 
 /**
@@ -203,7 +218,7 @@ export function buildCodexResult(
   probe: { version: string | null; path_deny: { file_shape_verified: boolean | null } },
   projectRoot: string,
   /**
-   * 本次请求的厂商 profile（`agents.codex.profile`）。
+   * 本次请求的厂商 profile（三层解析后的值，即 `req.profile_requested`；M11 第 6 步之前是 `agents.codex.profile`）。
    *
    * **走入参而不是让 `run()` 事后补**：M8 第 3 步的 M4 变异证实过，
    * 埋在 `run()` 里的字段组装没有任何用例守得到（要真跑 codex 才走得到那行）。
@@ -310,6 +325,13 @@ export const codexAdapter: CriticAdapter = {
    * 与上一行的 `command-trace` 是两件事：那一项说轨迹形状，这一项说审查员能做什么。
    */
   commandExecution: 'readonly-shell',
+
+  /*
+   * 思考等级生效值：**恒 `null` + `unverified`**（M11 第 6 步，设计 11.1 codex 一行）。`-c model_reasoning_effort=`
+   * 照传，但没有回读面：`--json` 事件流里没有 effort，会话文件 `turn_context.payload.effort` 是请求原样回显
+   * （M11 第 1 步 F3：乱写值也照抄），读它就是拿请求值冒充生效值。
+   */
+  effortReadback: () => EFFORT_UNVERIFIED,
 
   /**
    * 探活。
@@ -422,7 +444,7 @@ export const codexAdapter: CriticAdapter = {
     }
   },
 
-  availability(ctx: AdapterContext) {
+  availability(ctx: AdapterContext, opts?: { vendorProfiles?: readonly (string | null)[] }) {
     // 两态判据同另两家：以 probed_at 区分「没探过」与「探过没找到」
     const p = ctx.cfg.probe.cli.codex;
     if (!p?.probed_at) {
@@ -458,16 +480,22 @@ export const codexAdapter: CriticAdapter = {
      * 判据落在**本次 profile** 上而不是「有任意一家可用」：家族由 profile 决定，
      * 而未知 profile 会被 codex **静默回落**到基底配置（`unknown_profile_rejected`
      * 实测为 false），所以这里不拦，用户就会以为跑的是 deepseek、实际跑的是别家。
+     *
+     * **本次 profile = 本轮解析出的那几个**（M11 第 6 步，设计 11.5）：调用方传了 `vendorProfiles` 就逐个判——
+     * 与 `-p` 和模型目录比对同出一次 `resolveTier`。不传是接口保留的旧行为（按配置段判）：现役生产调用方（`preflight.ts` 的只读能力检查、
+     * `review.ts` 准备阶段）都传，缺省分支只由单测守着（`effort-wiring.test.ts` P1；代码三审 CODEX-01）。
      */
-    const wanted = codexConfig(ctx).profile;
-    if (wanted !== null) {
+    const wantedAll = opts?.vendorProfiles !== undefined
+      ? [...new Set(opts.vendorProfiles.filter((x): x is string => x !== null))]
+      : [codexConfig(ctx).profile].filter((x): x is string => x !== null);
+    for (const wanted of wantedAll) {
       const hit = p.providers.find((x) => x.profile === wanted);
       if (!hit) {
         const known = p.providers.map((x) => x.profile).join('、') || '（探针未发现任何 profile）';
         return {
           ok: false,
           reason:
-            `配置的 codex profile「${wanted}」在本机不存在。已探测到的：${known}。\n` +
+            `本轮的 codex 厂商 profile「${wanted}」在本机不存在。已探测到的：${known}。\n` +
             '  注意 codex 对未知 profile 不报错、而是静默回落基底配置，所以这道拦截由预检负责。',
         };
       }
@@ -606,21 +634,24 @@ export const codexAdapter: CriticAdapter = {
   },
 
   async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
-    // 先取配置：失败出口也要写得出请求值（CODEX-03 ≡ GLM-02）
-    const cfgEarly = codexConfig(ctx);
+    /*
+     * 先取请求值：失败出口也要写得出它（CODEX-03 ≡ GLM-02）。厂商 profile 取本轮解析值（M11 第 6 步），
+     * 不再读配置段——`-p`、隔离副本与失败出口的 `profileRequested` 都从这一份取。
+     */
+    const inv = codexInvocationOf(req);
     const probe = ctx.cfg.probe.cli.codex;
     if (!probe?.probed_at) {
       return failedResult('codex', {
         status: 'failed',
         reason: 'codex 尚未探测，请先运行 trivium doctor --only codex',
-        profileRequested: cfgEarly.profile,
+        profileRequested: inv.profile,
       });
     }
     if (!probe.entrypoint) {
       return failedResult('codex', {
         status: 'failed',
         reason: 'codex 入口未探测到',
-        profileRequested: cfgEarly.profile,
+        profileRequested: inv.profile,
       });
     }
 
@@ -634,14 +665,14 @@ export const codexAdapter: CriticAdapter = {
     let home: CodexHomePrep;
     try {
       home = await prepareCodexHome(path.dirname(req.out_dir), {
-        profile: cfg.profile,
+        profile: inv.profile,
         projectRoot: req.project_root,
       });
     } catch (e) {
       return failedResult('codex', {
         status: 'failed',
         reason: `准备 codex 隔离副本失败：${(e as Error).message}`,
-        profileRequested: cfg.profile,
+        profileRequested: inv.profile,
       });
     }
 
@@ -651,9 +682,9 @@ export const codexAdapter: CriticAdapter = {
         bin,
         cwd: req.project_root,
         prompt: req.brief_text,
-        profile: cfg.profile,
-        model: req.model,
-        effort: req.effort ?? null,
+        profile: inv.profile,
+        model: inv.model,
+        effort: inv.effort,
         readonlyArgs: readonlyArgsFromProbe(probe.readonly_flags),
         codexHome: home.codexHome,
         fakeHome: home.fakeHome,
@@ -663,7 +694,7 @@ export const codexAdapter: CriticAdapter = {
       return failedResult('codex', {
         status: 'failed',
         reason: `拉起 codex 失败：${(e as Error).message}`,
-        profileRequested: cfg.profile,
+        profileRequested: inv.profile,
       });
     }
 
@@ -680,7 +711,7 @@ export const codexAdapter: CriticAdapter = {
         cliVersion: probe.version,
         commandLine: out.commandLine,
         sessionId: trace.threadId,
-        profileRequested: cfg.profile,
+        profileRequested: inv.profile,
       });
     }
 
@@ -700,7 +731,7 @@ export const codexAdapter: CriticAdapter = {
         cliVersion: probe.version,
         commandLine: out.commandLine,
         sessionId: trace.threadId,
-        profileRequested: cfg.profile,
+        profileRequested: inv.profile,
       });
     }
 
@@ -748,7 +779,7 @@ export const codexAdapter: CriticAdapter = {
       { stdout: stdoutPath, trace: tracePath },
       probe,
       req.project_root,
-      cfg.profile,
+      inv.profile,
     );
   },
 };

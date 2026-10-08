@@ -93,6 +93,7 @@ function renderInput(over: Partial<RenderInput> = {}): RenderInput {
     critic: 'gemini', stage: 'plan', topic: '漂移', runId: '20261001T000000Z',
     rerunIndex: 1, review: null, rawText: '{}', result: RESULT,
     modelRequested: 'gemini-x', effort: 'high',
+    effortRequested: 'high', effortEffective: null, effortEffectiveSource: 'unverified', tier: null, tierSource: 'legacy',
     snapshotHash: 'sha256:00', startedAt: '2026-10-01T00:00:00Z',
     finishedAt: '2026-10-01T00:10:00Z', evidenceOk: true, projectReads: 5,
     selectedCritics: CRITICS,

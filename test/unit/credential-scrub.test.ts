@@ -178,6 +178,7 @@ function stubAdapter(over: Partial<CriticAdapter> = {}): CriticAdapter {
     critic: 'glm',
     capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none',
     availability: () => ({ ok: true }),
+    effortReadback: () => ({ effective: null, source: null }),
     async run() { return failedResult('glm', { status: 'failed', reason: 'unused' }); },
     ...over,
   };

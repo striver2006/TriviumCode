@@ -3,7 +3,8 @@
  *
  * 走真实打包产物：`topic resolve` 的输出字段、写了不给值的空值格（计划三审 AGY-02）、
  * 以及「resolve 输出照抄进 preflight 与 `review --start`」——三处同一组值时预检通过、`--start` 能启动、
- * 请求模型真的取自所选的档，且两处都念出留痕空窗告警（用户 2026-10-08 定 ②）。
+ * 请求模型真的取自所选的档。第 5 步时两处都念「留痕空窗」告警（用户 2026-10-08 定 ②）；M11 第 6 步 tier / tier_source
+ * 入档后该告警拆除，这里反转为「不念」，并在 T5 核 run.json 里真的记下了档位名与来源。
  * 非法旗标的零工件格在 `no-artifacts.test.ts`。
  */
 import { test } from 'node:test';
@@ -65,7 +66,7 @@ test('T2 resolve：写了不给值（后面紧跟另一个旗标）⇒ 退 64，
   assert.match(r.stdout + r.stderr, /--tier-gemini 需要一个值/);
 });
 
-test('T3 resolve 输出照抄进 preflight：通过，并念出留痕空窗告警', { skip: bundleMissing && bundleSkipReason }, async () => {
+test('T3 resolve 输出照抄进 preflight：通过，且不再念留痕空窗告警（M11 第 6 步反转）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   await seedFakeProbes(fx.root);
   await withGeminiTier(fx.root, 'gemini-3.8-flash-high');
@@ -74,7 +75,7 @@ test('T3 resolve 输出照抄进 preflight：通过，并念出留痕空窗告�
   const r = await cli(fx.root, ['preflight', '--stage', 'plan', ...relay(json!), '--skip-auth-check', '--json'], null, 180_000);
   assert.equal(r.code, EXIT.OK, r.stdout + r.stderr);
   const js = parse<{ ok: boolean; warnings: Warning[] }>(r.stdout);
-  assert.ok(js.warnings.some((w) => /本轮档位名与来源尚未入档.*--tier-gemini low/.test(w.detail)), JSON.stringify(js.warnings));
+  assert.ok(!js.warnings.some((w) => /尚未入档|M11 第 6 步/.test(w.detail)), JSON.stringify(js.warnings));
 });
 
 /*
@@ -95,13 +96,20 @@ test('T5 --tier 选出的同族模型：override_reason 认得 --tier（worker �
   }
   assert.equal(code, EXIT.OK, `运行没有正常结束（退 ${code}）`);
   const meta = JSON.parse(await fs.readFile(path.join(fx.stageDir, '_meta', `run-${runId}.json`), 'utf8')) as {
-    critics: Record<string, { heterogeneous?: boolean; override_reason?: string | null }>;
+    profile?: string;
+    critics: Record<string, { heterogeneous?: boolean; override_reason?: string | null; tier?: string | null; tier_source?: string | null }>;
   };
   assert.equal(meta.critics['gemini']?.heterogeneous, false, '前提：档位模型与当轮 Driver 同族');
   assert.match(meta.critics['gemini']?.override_reason ?? '', /用户经 --tier-gemini low 选出了与当轮 Driver（.+）同族的模型/);
+  // M11 第 6 步：留痕空窗补上——档位名与来源入档；没选档的一侧照实记裸 slug 的 legacy
+  assert.equal(meta.critics['gemini']?.tier, 'low');
+  assert.equal(meta.critics['gemini']?.tier_source, 'cli');
+  assert.equal(meta.critics['glm']?.tier, null);
+  assert.equal(meta.critics['glm']?.tier_source, 'legacy');
+  assert.equal(meta.profile, 'default', '顶层记本轮档位表名');
 });
 
-test('T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 念出留痕空窗', { skip: bundleMissing && bundleSkipReason }, async () => {
+test('T4 resolve 输出照抄进 review --start：能启动、请求模型取自所选的档、warnings 不再念留痕空窗（M11 第 6 步反转）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   await withGeminiTier(fx.root, 'g-tier-low');
   const { json } = await resolve(fx.root, ['--tier-gemini', 'low']);
@@ -111,7 +119,7 @@ test('T4 resolve 输出照抄进 review --start：能启动、请求模型取自
   const js = parse<{ run_id: string; models: Record<string, string>; warnings: Warning[] }>(r.stdout);
   try {
     assert.equal(js.models['gemini'], 'g-tier-low', '--tier-gemini low 选出的模型要真的进请求');
-    assert.ok(js.warnings.some((w) => /本轮档位名与来源尚未入档.*--tier-gemini low/.test(w.detail)), JSON.stringify(js.warnings));
+    assert.ok(!js.warnings.some((w) => /尚未入档|M11 第 6 步/.test(w.detail)), JSON.stringify(js.warnings));
   } finally {
     await cli(fx.root, ['review', '--cancel', js.run_id], STUB);
   }

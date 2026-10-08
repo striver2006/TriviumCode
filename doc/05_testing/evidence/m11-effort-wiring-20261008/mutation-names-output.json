@@ -1,0 +1,277 @@
+{
+  "targets_sha256": {
+    "src/trivium/adapters/agy.ts": "deb24c4b22bd5d6752601cb411a16465d2484a7c0439a3341aa9ebae866f5834",
+    "src/trivium/adapters/codex.ts": "8252758f75b2fb020d88c0195d331b4f2b4595c8309b998da3d0114ef87fffb7",
+    "src/trivium/adapters/claude.ts": "7da01a45f5005a2d8bda29c710b0d3f191957b53a204f831d17d26bdb06e81cc",
+    "src/trivium/adapters/zcode.ts": "48f342088c4b967f176004f2a7f2fbd169d347f927e68ff7a578e7e75e783629",
+    "src/trivium/review.ts": "3b588cde26131cb12f7d0d2b2fbc2d14e361be911b1b4d1bc6b3f394ff50f2a4",
+    "src/trivium/probes/claude.ts": "628acf44d4d00482cdbcda6c48263085dac69f9127246897b2f67fb5eb4dcfdc",
+    "src/trivium/render.ts": "1548cc25c2d5841653d687420c4e6229789c1a2e0896719b37d54689ae94ad70",
+    "src/trivium/preflight.ts": "172fad89892e1fb54da1b89079c6f1dd919296d76b1b16f3d5d7c28cd4cf504f",
+    "skills/dual-critic/schema/run.v2.json": "b56d3a6022e892335a9e8f453813d4d3441b635f2bfcc91391af09a614774b87"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "agy 回读不看来源（回执缺失退到请求值时也取后缀）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "E1 agy：只认回执——envelope 且 slug 带后缀才取后缀，其余 null + unverified"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M2",
+      "desc": "codex 回读改取生效模型的 slug 后缀（拿非回读面冒充）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "E2 codex / claude：恒 null + unverified——结果里塞一个带后缀、来源 envelope 的生效模型也不冒充"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M3",
+      "desc": "claude 回读同上",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "E2 codex / claude：恒 null + unverified——结果里塞一个带后缀、来源 envelope 的生效模型也不冒充"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M4",
+      "desc": "zcode 来源写 unverified（无此概念与没读到合流）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "E3 zcode：无此概念，生效值与来源都是 null（不是「没读到」）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M5",
+      "desc": "写侧 effort_effective 改条件展开（null 与缺席合流）",
+      "suite": "dist/test/test/integration/effort-wiring.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S1 桩回报「请求 low ≠ 生效 high」：run.json 与 front-matter 分记，旧字段 effort 同请求值，档位与档位表名入档",
+        "S2 不注入生效值：effort_effective 为 null、来源 unverified——不拿请求值顶上"
+      ],
+      "firstLines": [],
+      "elapsed_s": 11
+    },
+    {
+      "id": "M6",
+      "desc": "写侧 effort_requested 改条件展开",
+      "suite": "dist/test/test/integration/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S1 桩回报「请求 low ≠ 生效 high」：run.json 与 front-matter 分记，旧字段 effort 同请求值，档位与档位表名入档"
+      ],
+      "firstLines": [],
+      "elapsed_s": 11
+    },
+    {
+      "id": "M7",
+      "desc": "不写 tier / tier_source",
+      "suite": "dist/test/test/integration/effort-wiring.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S1 桩回报「请求 low ≠ 生效 high」：run.json 与 front-matter 分记，旧字段 effort 同请求值，档位与档位表名入档",
+        "P3 --start：交接文件里发起用的厂商 profile / 模型 / 思考等级就是解析值；--profile-codex 覆盖档位条目时一并跟着变"
+      ],
+      "firstLines": [],
+      "elapsed_s": 9
+    },
+    {
+      "id": "M8",
+      "desc": "不写顶层 profile",
+      "suite": "dist/test/test/integration/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "S1 桩回报「请求 low ≠ 生效 high」：run.json 与 front-matter 分记，旧字段 effort 同请求值，档位与档位表名入档"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12
+    },
+    {
+      "id": "M9",
+      "desc": "codex 的 -p 回退取配置段",
+      "suite": "dist/test/test/integration/codex-effort-profile.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "X1 run()：-p 与隔离副本的 profile 分层文件都是请求里的解析值（deepseek），不是配置段（qwen）；-c 带请求的思考等级"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M10",
+      "desc": "codex 隔离副本拷配置段那家的 profile 文件",
+      "suite": "dist/test/test/integration/codex-effort-profile.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "X1 run()：-p 与隔离副本的 profile 分层文件都是请求里的解析值（deepseek），不是配置段（qwen）；-c 带请求的思考等级"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M11",
+      "desc": "codex 可用性忽略本轮解析值",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "P1 codex 可用性：传了本轮解析值就逐个判、不再看配置段；不传按配置段（旧行为）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M12",
+      "desc": "claude run() 不下传 --effort",
+      "suite": "dist/test/test/integration/codex-effort-profile.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "X4 claude run()：请求的思考等级以 --effort 下传；生效值仍落 null + unverified（init / result 没有 effort 字段）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "M13",
+      "desc": "请求的思考等级回退为只给 antigravity（原 effortFor 口径）",
+      "suite": "dist/test/test/integration/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "P3 --start：交接文件里发起用的厂商 profile / 模型 / 思考等级就是解析值；--profile-codex 覆盖档位条目时一并跟着变"
+      ],
+      "firstLines": [],
+      "elapsed_s": 9
+    },
+    {
+      "id": "M14",
+      "desc": "parseEffortLevels 解析不出时落 []（错枚举：把「取不到」说成「没有这个旗标」）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K1 parseEffortLevels：F6 原文、无此行、括号缺失、空串、同行多对括号取第一对、列表项不合形状"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M15",
+      "desc": "claude reasoningLevelsFor 不读探针",
+      "suite": "dist/test/test/unit/tier-resolve.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "H3 zcode 钩子 none；claude 钩子读探针的 effort_levels（M11 第 6 步）：缺席 / null ⇒ unknown，[] ⇒ none，非空 ⇒ levels"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M16",
+      "desc": "front-matter 漏写 effort_effective",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C4 front-matter 五键：恒写（null 也写），与 run.json 同值；回显剥离清单同批收录"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M17",
+      "desc": "parseEffortLevels 改回取最后一对括号（计划三审 CODEX-02）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K1 parseEffortLevels：F6 原文、无此行、括号缺失、空串、同行多对括号取第一对、列表项不合形状"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M18",
+      "desc": "预检可用性不传本轮解析值",
+      "suite": "dist/test/test/integration/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "P2 预检按本轮解析出的厂商 profile 判可用性与目录：通过；解析出的那家没凭据 ⇒ 拒（配置段那家有凭据也不放）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 11
+    },
+    {
+      "id": "M19",
+      "desc": "review 准备阶段可用性不传本轮解析值",
+      "suite": "dist/test/test/integration/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "P4 --start 的可用性检查按本轮解析出的厂商 profile 判：解析出的那家没凭据 ⇒ 退 69、零工件"
+      ],
+      "firstLines": [],
+      "elapsed_s": 12
+    },
+    {
+      "id": "MC1",
+      "desc": "契约：tier 枚举放宽（任意串都收）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "C2 非法取值被拒：tier / tier_source / effort_effective_source 都是封闭枚举，顶层 profile 不收空串"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    }
+  ]
+}

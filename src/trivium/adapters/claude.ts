@@ -32,7 +32,7 @@
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { CriticRequest, CriticResult } from '../types.js';
+import type { ClaudeProbe, CriticRequest, CriticResult } from '../types.js';
 import { run } from '../util/exec.js';
 import { ensureDir } from '../util/fsx.js';
 import {
@@ -48,10 +48,12 @@ import {
   type ClaudeTrace,
 } from './claude-trace.js';
 import {
+  EFFORT_UNVERIFIED,
   failedResult,
   TOOL_TRACE_CAPABILITY,
   type AdapterContext,
   type CriticAdapter,
+  type ReasoningLevels,
 } from './base.js';
 
 export interface ClaudeInvokeOptions {
@@ -60,6 +62,11 @@ export interface ClaudeInvokeOptions {
   /** 送审包全文。**走 stdin，不进 argv** */
   prompt: string;
   model: string | null;
+  /**
+   * 思考等级请求值（M11 第 6 步，设计 11.1 claude 一行）：非空即 `--effort <值>`。CLI 不校验取值（M11 第 1 步 F6），
+   * 合法性由预检对探针落盘的 `effort_levels` 把关。必填：探活等不涉思考等级的调用方显式给 `null`。
+   */
+  effort: string | null;
   /** 探针实测被接受的只读旗标（argv 形态，原样透传） */
   readonlyArgs: string[];
   /**
@@ -102,7 +109,8 @@ export interface ClaudeInvokeOptions {
  * 两者实测等价，取 A 是因为依赖面更小。
  */
 export function buildClaudeArgs(
-  opts: Pick<ClaudeInvokeOptions, 'model' | 'readonlyArgs' | 'schemaJson' | 'settingsJson' | 'maxBudgetUsd'>,
+  opts: Pick<ClaudeInvokeOptions, 'model' | 'readonlyArgs' | 'schemaJson' | 'settingsJson' | 'maxBudgetUsd'> &
+    Partial<Pick<ClaudeInvokeOptions, 'effort'>>,
 ): string[] {
   return [
     '-p',
@@ -121,6 +129,8 @@ export function buildClaudeArgs(
     // 只读旗标：探针实测挣来的安全不变量，**原样透传**（判据二，与 codex 同族）
     ...opts.readonlyArgs,
     ...(opts.model ? ['--model', opts.model] : []),
+    // 思考等级（M11 第 6 步）：空值不传——准入脚本（.mjs）不带这一键，照旧不传
+    ...(opts.effort ? ['--effort', opts.effort] : []),
     /*
      * 「送 CLI 的那一份 schema」的唯一出口（代码双审 CODEX-03）：无论调用方从哪读来，
      * 都在这里做幂等归一，剥掉 CLI 不认的 2020-12 `$schema` 头。`readSchemaJson` 也剥，
@@ -643,6 +653,23 @@ export function buildClaudeResult(
   };
 }
 
+/**
+ * 探针的 `effort_levels` → 原生思考等级三态（M11 第 6 步）。纯函数。
+ *
+ * 字段**缺席**（早于本步的旧探针结论）或 `null`（`--help` 失败 / 解析不出）⇒ `unknown`，预检跳过并点名、不硬拒；
+ * `[]`（帮助文本里没有 `--effort`）⇒ `none`：下传会被 CLI 当未知参数，配了思考等级预检即退 64；
+ * 非空 ⇒ `levels`。两种 `unknown` 的理由分写——一个该重跑 doctor，一个该看帮助文本是不是改了格式。
+ */
+export function claudeReasoningLevels(probe: Pick<ClaudeProbe, 'effort_levels'> | undefined): ReasoningLevels {
+  const lv = probe?.effort_levels;
+  if (lv === undefined) {
+    return { kind: 'unknown', why: '探针结论早于 effort_levels（M11 第 6 步），请重跑 trivium doctor --only claude' };
+  }
+  if (lv === null) return { kind: 'unknown', why: 'claude --help 的 --effort 取值没能解析出来' };
+  if (lv.length === 0) return { kind: 'none' };
+  return { kind: 'levels', levels: [...lv] };
+}
+
 export const claudeAdapter: CriticAdapter = {
   critic: 'claude',
   /*
@@ -658,13 +685,19 @@ export const claudeAdapter: CriticAdapter = {
   /* 不能执行命令：`probes/claude.ts` 的 `READONLY_INVARIANTS` 里 `--tools` 白名单是 `Read,Grep,Glob`（EV-95） */
   commandExecution: 'none',
 
-  /*
-   * 原生思考等级：**取不到**（M11 第 4 步）。2.1.291 的 `--effort` 取值在帮助文本里、CLI 级不分模型（设计 3.7），
-   * 由探针解析帮助文本落盘随 M11 第 6 步（用户 2026-10-07 定，与思考等级透传同步）；此前预检跳过并点名。
+  /**
+   * 原生思考等级（M11 第 6 步兑现第 4 步定的「随第 6 步」，设计 11.5）：读探针落盘的 `effort_levels`，
+   * CLI 级、不分模型。四态映射见 `claudeReasoningLevels`。
    */
-  reasoningLevelsFor() {
-    return { kind: 'unknown' as const, why: 'claude 的思考等级取值随 M11 第 6 步由探针采集' };
+  reasoningLevelsFor(cfg) {
+    return claudeReasoningLevels(cfg.probe.cli.claude);
   },
+
+  /*
+   * 思考等级生效值：**恒 `null` + `unverified`**（M11 第 6 步，设计 11.1 claude 一行）。`--effort` 照传，
+   * 但 `system/init` 与 `result` 事件都没有 effort 字段（M11 第 1 步 F6），没有回读面。
+   */
+  effortReadback: () => EFFORT_UNVERIFIED,
 
   availability(ctx: AdapterContext) {
     // 两态判据同另三家：以 probed_at 区分「没探过」与「探过没找到」
@@ -760,6 +793,7 @@ export const claudeAdapter: CriticAdapter = {
           cwd: projectRoot,
           prompt: '只回复 OK 两个字母，不要调用任何工具。',
           model: null, // 探的是登录态不是模型路由
+          effort: null,
           readonlyArgs: readonlyArgsFromProbe(p.readonly_flags),
           schemaJson: null,
           settingsJson: null,
@@ -897,6 +931,7 @@ export const claudeAdapter: CriticAdapter = {
         cwd: req.project_root,
         prompt: req.brief_text,
         model: req.model,
+        effort: req.effort ?? null,
         readonlyArgs,
         schemaJson,
         settingsJson,

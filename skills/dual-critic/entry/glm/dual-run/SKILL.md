@@ -68,7 +68,7 @@ S0 这个标签不再使用。
 - `task_goal`：透传给 S2/S6 的 `--goal`；
 - `prompt_hint`：非空时透传给 S2/S6 的 `--focus`，为空则省略；
 - `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（`--model-claude` / `--model-codex` / `--model-gemini`）、`--profile`；
-- `tiers` / `efforts` / `vendor_profiles`（M11 第 5 步）：分别透传给对应审核者的 `--tier-<审核者 id>`（`--tier-claude` / `--tier-codex` / `--tier-gemini`）、`--effort-<审核者 id>`（`--effort-claude` / `--effort-codex` / `--effort-gemini`）、`--profile-<审核者 id>`（`--profile-codex`）；`--effort-<审核者 id>` 与不同于 `agents.<id>.profile` 的 `--profile-<审核者 id>` 在 M11 第 6 步之前会被预检拦下退 64（思考等级与厂商 profile 尚未透传；gemini 的 slug 已编码档位时只告警）——照样原样传，不要自行去掉，拒绝由编排器给出；
+- `tiers` / `efforts` / `vendor_profiles`（M11 第 5 步）：分别透传给对应审核者的 `--tier-<审核者 id>`（`--tier-claude` / `--tier-codex` / `--tier-gemini`）、`--effort-<审核者 id>`（`--effort-claude` / `--effort-codex` / `--effort-gemini`）、`--profile-<审核者 id>`（`--profile-codex`）；思考等级与厂商 profile 随请求下传给各家，档位名与来源记入留痕（M11 第 6 步）。取值不合法（枚举外、该侧没有这个概念、厂商 profile 不在本机名单）由预检退 64——照样原样传，不要自行去掉，拒绝由编排器给出；
 - `critics`：本轮**入选的审核者集合，计划审与代码审两轮共用这一组**。S0.6、S2、S6 都把 resolve 输出的 `critics`
   用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；
 - `allow_single`：为 true 时 S2、S6 都加 `--allow-single`（用户显式要求的降级：一侧失败时不中止，§12.4）。
@@ -142,7 +142,7 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运�
 **本命令收到的模型覆盖（`--model-claude` / `--model-codex` / `--model-gemini`）、档位（`--profile`）、档位旗标（`--tier-claude` / `--tier-codex` / `--tier-gemini`、`--effort-claude` / `--effort-codex` / `--effort-gemini` 与厂商 profile 旗标（`--profile-codex`））、入选集合（`--critics`）
 与降级许可（`--allow-single`）要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉：
 - 模型覆盖与档位一丢，就静默回退到配置里的 `active_profile`，留痕里记的是回退后的模型；
-- 档位旗标一丢，就静默回到档位表与 `default_tier` 的取值——用户选的档、指定的思考等级与厂商 profile 都消失（第 6 步之前档位名本就不入档，更看不出来）；
+- 档位旗标一丢，就静默回到档位表与 `default_tier` 的取值——用户选的档、指定的思考等级与厂商 profile 都消失（留痕里记的是回落后的档位与来源，看起来一切正常）；
 - 入选集合一丢，`--start` 会自己重取配置缺省——用户加进来的那一家就此消失，两轮还可能不是同一组；
 - 降级许可一丢，一侧失败就整次失败。
 

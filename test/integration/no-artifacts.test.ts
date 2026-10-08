@@ -82,16 +82,22 @@ test('非法模型 slug → 退 64 且零工件（GLM-01 的校验执行点）',
 
 /*
  * **档位组合在 review 准备阶段同样拦**（M11 第 4 步，设计 11.5；计划 r2 §3.4、§5.1）。
- * 与 slug 校验同理：只在预检拦的话，终端直接跑 `--start` 就绕过了。两格各取一条判据：
- * 永久判据（glm 没有思考等级概念，档位表格子却给了——schema 够不着这一格，计划三审 AGY-02）与
- * 过渡闸（思考等级随 M11 第 6 步才下传；无探针目录时枚举取不到、跳过，闸照拦）。
+ * 与 slug 校验同理：只在预检拦的话，终端直接跑 `--start` 就绕过了。两格各取一条**永久**判据：
+ * glm 没有思考等级概念、档位表格子却给了（schema 够不着这一格，计划三审 AGY-02）；思考等级不在该模型的原生枚举里。
+ * 第 4、5 步这里第二格是过渡闸（gemini 格子写了合法 effort 即退 64），M11 第 6 步拆闸后那一格改为通过
+ * （见 tier-resolve.test.ts 的 T 组），这里换成枚举外取值——永久判据不随拆闸消失。
  */
-test('档位组合不合法 → review --start 退 64 且零工件（永久判据与过渡闸各一格）', { skip: bundleMissing && bundleSkipReason }, async () => {
-  for (const [cell, want, what] of [
-    ['    glm:\n      plan: { model: GLM-5.3, effort: high }', /不支持思考等级/, 'glm 格子写 effort'],
-    ['    gemini:\n      plan: { model: gemini-3.8-flash, effort: high }', /M11 第 6 步/, 'gemini 格子写 effort（过渡闸）'],
+test('档位组合不合法 → review --start 退 64 且零工件（两条永久判据各一格）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  for (const [cell, want, what, probeModels] of [
+    ['    glm:\n      plan: { model: GLM-5.3, effort: high }', /不支持思考等级/, 'glm 格子写 effort', undefined],
+    [
+      '    gemini:\n      plan: { model: gemini-3.8-flash, effort: ultra }',
+      /「ultra」不在模型「gemini-3\.8-flash」的原生枚举中。可用值：high, low/,
+      'gemini 格子写枚举外 effort',
+      { gemini: ['gemini-3.8-flash', 'gemini-3.8-flash-low', 'gemini-3.8-flash-high'], glm: ['GLM-5.3'] },
+    ],
   ] as const) {
-    const fx = await makeFixture({ topic: TOPIC });
+    const fx = await makeFixture({ topic: TOPIC, ...(probeModels ? { probeModels: { gemini: [...probeModels.gemini], glm: [...probeModels.glm] } } : {}) });
     await fs.appendFile(path.join(fx.root, '.trivium', 'config.yaml'), `profiles:\n  default:\n${cell}\n`, 'utf8');
     const r = await assertNoTrace(
       fx.root,
@@ -112,15 +118,15 @@ test('档位组合不合法 → review --start 退 64 且零工件（永久判�
 
 /*
  * **档位命令行旗标的非法格同样零工件**（M11 第 5 步，计划 r2 §3.1）：形状层（未入选侧、档名、没有厂商 profile 概念的侧）
- * 在入口退 64；过渡闸（`--effort-〈id〉` 在第 6 步前不下传）在准备阶段退 64。都在任何落盘之前。
+ * 在入口退 64；永久判据（给没有思考等级概念的侧 `--effort-〈id〉`）在准备阶段退 64。都在任何落盘之前。
+ * 第 5 步这里最后一格是过渡闸（`--effort-gemini` 在第 6 步前不下传），M11 第 6 步拆闸后改为永久判据那一格。
  */
-test('档位旗标不合法 → review --start 退 64 且零工件（未入选侧、档名、无厂商 profile 概念、过渡闸）', { skip: bundleMissing && bundleSkipReason }, async () => {
+test('档位旗标不合法 → review --start 退 64 且零工件（未入选侧、档名、无厂商 profile 概念、无思考等级概念）', { skip: bundleMissing && bundleSkipReason }, async () => {
   for (const [flags, want, what] of [
     [['--tier-codex', 'low'], /--tier-codex：codex 本轮没有入选/, '给未入选侧选档'],
     [['--tier-glm', 'ultra'], /--tier-glm 只接受 low \| medium \| high/, '档名不在三档内'],
     [['--profile-gemini', 'x'], /--profile-gemini：gemini 没有厂商 profile 概念/, '没有厂商 profile 概念的侧'],
-    // 模型不带档位后缀：夹具缺省的 gemini-3.8-flash-high 带后缀，按 11.5 gemini 特例只告警、不进闸
-    [['--model-gemini', 'gemini-x', '--effort-gemini', 'high'], /来自命令行 --effort-gemini[\s\S]*M11 第 6 步/, '过渡闸：思考等级尚未透传'],
+    [['--effort-glm', 'high'], /ZCode 不支持思考等级/, '永久判据：glm 没有思考等级概念'],
   ] as const) {
     const fx = await makeFixture({ topic: TOPIC });
     const r = await assertNoTrace(

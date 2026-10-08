@@ -30,7 +30,7 @@
 > （status ∈ {ok, parse_fallback}，失败侧不计），每项是审查文档的文件名（或以 `<主题>/<阶段>/<文件名>` 结尾的路径）、**不是意见编号**；
 > 闸门按 `run.json.artifacts[]` 派生期望集逐项比对（设计 v1.3.45 / EV-134；此前只核非空）。
 > **意见编号前缀已是四值**（`CODEX-` 随 M8、`CLAUDE-` 随 M9；取值由注册表派生、schema 不枚举）；
-> **档位旗标 `--tier-<id>` / `--effort-<id>` / `--profile-<id>` 自 M11 第 5 步（设计 v1.3.132）起生效**：`review` / `preflight` / `topic resolve` 都收，键必须是本轮入选审核者（与 `--model-<id>` 同一判据），`--profile-<id>` 只对带厂商 profile 概念的侧成立（今天只有 `--profile-codex`）。**过渡期**：`--effort-<id>` 与不同于 `agents.<id>.profile` 的 `--profile-<id>` 在 M11 第 6 步之前被预检的过渡闸拦下退 64（gemini 的 slug 已编码档位时只告警）；用 `--tier-<id>` 的运行在第 6 步之前不把档位名与来源写进 run.json（发起时告警）。（v1.3.43 前此处写「M10b / M11」；M10b 份额是四家入口，已生效，见上。）
+> **档位旗标 `--tier-<id>` / `--effort-<id>` / `--profile-<id>` 自 M11 第 5 步（设计 v1.3.132）起生效**：`review` / `preflight` / `topic resolve` 都收，键必须是本轮入选审核者（与 `--model-<id>` 同一判据），`--profile-<id>` 只对带厂商 profile 概念的侧成立（今天只有 `--profile-codex`）。**M11 第 6 步（设计 v1.3.133）起三类值都随请求下传**：思考等级经各家通路（codex 的 `-c model_reasoning_effort=`、claude 的 `--effort`、agy 的 `--effort`，gemini 的 slug 已编码档位时不传、只告警），厂商 profile 成为 codex 的 `-p`；第 5 步时的过渡闸与「档位名不入档」告警已拆除。run.json 审核者条目恒写 `effort_requested` / `effort_effective` / `effort_effective_source` / `tier` / `tier_source`（null 也写；缺席＝第 6 步之前的旧留痕），顶层写 `profile`（档位表名）；`effort_effective` 只取回读，codex / claude 恒 `null` + `unverified`，审查文档 front-matter 同值。（v1.3.43 前此处写「M10b / M11」；M10b 份额是四家入口，已生效，见上。）
 > `--critics` 当前可选四家：codex / gemini / glm 为缺省集合（默认即三侧，D4-4），
 > claude 只在 `--driver` 取非 claude 时可入选（当轮 Driver 不得入选）。
 > **按本文实现的客户端不会被演进破坏**：读侧双读、旧形态长期兼容。
@@ -97,8 +97,8 @@ YAML 往返会丢注释，原注释保留在备份中）。三条跨字段规则
 **档位键**（设计 11.5 / 13.1.1，v1.3.131，M11 第 4 步）：`agents.<id>.tiers`（`low` / `medium` / `high` 三档，每档 `{model, effort?, profile?}`；
 `profile` 只在 openai 支、zcode 支只有 `model`）与 `agents.<id>.default_tier` 为可选键；`profiles.<表>.<id>.<阶段>` 收三形态：
 裸 slug ｜ `{tier}` ｜ `{model, effort}`。本机层覆盖时 `tiers` 整段替换、格子整格替换。预检与 `review` 准备阶段新增「档位组合合法」一格
-（原生枚举、无思考等级概念、厂商 profile 名单；不合法退 64、零工件）。思考等级与厂商 profile **尚未透传**（第 6 步），
-此前档位里写了思考等级、或档位 profile 与 `agents.codex.profile` 不同，发起前即退 64。
+（原生枚举、无思考等级概念、厂商 profile 名单；不合法退 64、零工件）。思考等级与厂商 profile 自 M11 第 6 步起随请求下传（claude 的取值集合由探针解析 `--help` 落盘），
+第 4、5 步时档位里写了思考等级、或档位 profile 与 `agents.codex.profile` 不同即发起前退 64 的过渡闸已拆除。
 
 ### `trivium.review.v1` 的硬约束
 

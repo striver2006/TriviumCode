@@ -445,7 +445,7 @@ export const DEPRECATED_CONFIG_KEYS: readonly { path: readonly string[] }[] = [
   { path: ['review', 'parallel'] }, // EV-30 ②（2026-10-06）：runner 恒并行；单侧调试用 --critics
   { path: ['isolation', 'deny_via_cli'] }, // EV-30 ③（2026-10-06）：注不注入路径级 deny 只看探针实测
   /*
-   * M11 第 4 步（2026-10-07，设计 11.5）：codex 的阶段级思考等级从未下传（`effortFor` 只给 antigravity 取值），
+   * M11 第 4 步（2026-10-07，设计 11.5）：codex 的阶段级思考等级从未下传（当时的 `effortFor` 只给 antigravity 取值），
    * 思考等级改由档位条目的 `effort` 表达。**精确路径、不用 `'*'`**：`agents.gemini.effort` 是同名键，
    * 却有真实消费方（裸 slug 格子的思考等级回落），通配会把它误报成废弃。
    */
@@ -599,18 +599,10 @@ export function applyProfileOverride(cfg: Config, name: string | null | undefine
  * 本函数把两件事一起做掉：**缺段就地失败并说清是哪一段**，vendor 不符也失败
  * ——后者是路由错配，会把请求发给错误的 CLI（与 `run.v2` 的 vendor 逐值比对同一纪律）。
  */
-/**
- * 该 Agent 配置段里的**厂商 profile**，没有这个概念的 vendor 返回 `null`。
- *
- * **按字段存在性取，不按 Agent 身份分叉**（纪律 7）：`profile` 只出现在
- * `openai` 分支，将来若有别家也有同名概念，这里自动跟随，不必改。
- * 消费方是编排器的兜底出口——它要在适配器抛异常时也如实记下请求值，
- * 而那里不该拥有厂商知识。
+/*
+ * 原有 `vendorProfileOf`（取 Agent 配置段的厂商 profile），M11 第 6 步删除：唯一消费方 `review.ts` 改取档位解析
+ * 结果的 `vendorProfile`（三层：`--profile-<id>` > 档位条目 > 配置段，设计 11.5）。配置段那一层由 `resolveTier` 读。
  */
-export function vendorProfileOf(cfg: Config, id: AgentId): string | null {
-  const seg = cfg.agents[id] as { profile?: string | null } | undefined;
-  return seg && 'profile' in seg ? (seg.profile ?? null) : null;
-}
 
 export function agentConfigOf<V extends AgentConfig['vendor']>(
   cfg: Config,

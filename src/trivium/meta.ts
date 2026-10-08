@@ -399,6 +399,12 @@ export interface NewRunMetaInput {
    * 不在这里按阶段补一个默认值——缺失即「这一轮不按 EV-214 的规则判」，替没算过的运行作证等于追溯历史。
    */
   planFinalCheck?: PlanFinalCheck;
+  /**
+   * 本轮实际使用的档位表名（`--profile` 覆盖后的 `active_profile`，M11 第 6 步，设计 6.7.1 顶层 `profile`）。
+   * `review` 的准备阶段恒传；可选只是为了不逼几十处只关心别的字段的测试夹具一起改——
+   * 生产写侧不存在「没传」这条路，所以缺席仍只表示 M11 第 6 步之前的旧留痕。
+   */
+  profile?: string;
   /** 本轮入选的审核者集合。**必填**：它是「本该跑几侧」的唯一事实来源 */
   criticsSelected: readonly CriticId[];
   treeHash: string;
@@ -429,6 +435,7 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     driver_enabled: i.driverEnabled ?? true,
     ...(i.driverGuardLevel !== undefined ? { driver_guard_level: i.driverGuardLevel } : {}),
     ...(i.planFinalCheck !== undefined ? { plan_final_check: { subject_rerun_index: i.planFinalCheck.subject_rerun_index } } : {}),
+    ...(i.profile !== undefined ? { profile: i.profile } : {}),
     critics_selected: [...i.criticsSelected],
     snapshot: {
       git_head: i.gitHead,

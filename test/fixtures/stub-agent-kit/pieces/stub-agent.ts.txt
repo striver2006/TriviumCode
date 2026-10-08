@@ -110,6 +110,14 @@ export const stubAgentAdapter: CriticAdapter = {
    */
   commandExecution: 'none',
   /*
+   * 思考等级生效值的回读（§11.1「思考等级透传与回读」，M11 第 6 步）。**必填**：漏声明编不过。
+   * 本桩没有思考等级概念，生效值与来源都是 null。
+   *
+   * **接真实一家时按它的回读面填**：有思考等级概念而没有回读面的，如实记 `{ null, 'unverified' }`，
+   * 不得拿请求值顶上（钩子的入参只有回读结果，本就拿不到请求值）。
+   */
+  effortReadback: () => ({ effective: null, source: null }),
+  /*
    * 恒可用：桩不依赖任何外部 CLI、凭据或探针结论。
    *
    * 这是它与真实适配器最大的差别，也是本夹具**证明边界**的所在——

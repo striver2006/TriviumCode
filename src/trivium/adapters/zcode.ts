@@ -39,6 +39,7 @@ import {
   type ZcodeRolloutToolCall,
 } from './zcode-trace.js';
 import {
+  EFFORT_NO_CONCEPT,
   failedResult,
   resolveTier,
   TOOL_TRACE_CAPABILITY,
@@ -1080,6 +1081,9 @@ export const zcodeAdapter: CriticAdapter = {
   reasoningLevelsFor() {
     return { kind: 'none' as const };
   },
+
+  /* 同上：没有这个概念，生效值与来源都是 `null`（M11 第 6 步，设计 11.1 glm 一行）——不是「没读到」 */
+  effortReadback: () => EFFORT_NO_CONCEPT,
 
   /*
    * 工具清单里经插件带进来的执行型 MCP 工具：任务书第 7 节据此点名「不要调用」（EV-191）。

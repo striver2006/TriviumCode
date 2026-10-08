@@ -7,8 +7,8 @@
  */
 import YAML from 'yaml';
 import type {
-  CriticId, CriticResult, DegradedFinding, DenyCategory, DriftUnknownReason, EvidenceUntrusted, FallbackCause, ParseRepairs,
-  Review, Severity, Stage, Vendor,
+  CriticId, CriticResult, DegradedFinding, DenyCategory, DriftUnknownReason, EffortEffectiveSource, EvidenceUntrusted,
+  FallbackCause, ParseRepairs, Review, Severity, Stage, TierName, TierSource, Vendor,
 } from './types.js';
 import { CRITIC_VENDOR, describeDriftUnknown, EVIDENCE_UNTRUSTED_CAUSE_TEXT } from './types.js';
 import { agentById } from './agents/registry.js';
@@ -54,7 +54,17 @@ export interface RenderInput {
   parseFallbackCause?: FallbackCause;
   result: CriticResult;
   modelRequested: string | null;
+  /** 旧名：思考等级请求值，有值时才写（M11 第 6 步起与 `effortRequested` 同值） */
   effort?: string | null;
+  /*
+   * 档位与思考等级一组（M11 第 6 步，设计 6.5 / 6.7.1）：与 run.json 同一次计算、同值，渲染时恒写（null 也写）。
+   * **必填**：调用方要显式给 null，不留「没传」这一态——front-matter 里的缺席只属于 M11 第 6 步之前渲染的旧件。
+   */
+  effortRequested: string | null;
+  effortEffective: string | null;
+  effortEffectiveSource: EffortEffectiveSource | null;
+  tier: TierName | null;
+  tierSource: TierSource | null;
   snapshotHash: string;
   startedAt: string;
   finishedAt: string;
@@ -175,6 +185,12 @@ export function renderFrontMatter(input: RenderInput): string {
     model_effective: input.result.model_effective,
     model_effective_source: input.result.model_effective_source,
     ...(input.effort ? { effort: input.effort } : {}),
+    // 档位与思考等级一组（M11 第 6 步）：恒写；生效值只取回读（`effortReadback`），codex / claude 恒 null + unverified
+    effort_requested: input.effortRequested,
+    effort_effective: input.effortEffective,
+    effort_effective_source: input.effortEffectiveSource,
+    tier: input.tier,
+    tier_source: input.tierSource,
     ...(input.result.model_route ? { model_route: input.result.model_route } : {}),
     run_id: input.runId,
     rerun_index: input.rerunIndex,

@@ -30,7 +30,7 @@ function req(critic: CriticId): CriticRequest {
     project_root: '/proj', subject_path: '/proj/s.md', deny_paths: [],
     out_dir: '/runs/x', brief_path: '/proj/b.md', brief_text: 'BRIEF',
     model: 'M', timeout_s: 900, schema_path: '/s.json',
-    min_tool_calls: 5, profile_requested: null, min_project_reads: 3,
+    min_tool_calls: 5, profile_requested: null, min_project_reads: 3, tier: null, tier_source: null,
   };
 }
 
@@ -42,6 +42,7 @@ function stub(critic: CriticId, script: CriticResult[]): CriticAdapter & { brief
     critic, briefs,
     capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none',
     availability: () => ({ ok: true }),
+    effortReadback: () => ({ effective: null, source: null }),
     async run(_ctx, r) {
       briefs.push(r.brief_text);
       return script[Math.min(i++, script.length - 1)]!;
@@ -119,6 +120,7 @@ test('两侧真并行，一侧抛异常不连带丢掉另一侧（AC-06）', asy
     critic: 'glm',
     capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none',
     availability: () => ({ ok: true }),
+    effortReadback: () => ({ effective: null, source: null }),
     async run() { throw new Error('适配器内部炸了'); },
   };
   const out = await runBothSides({

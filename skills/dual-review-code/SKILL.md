@@ -139,7 +139,7 @@ profile 配置模型，且留痕里记的就是回退后的模型，事后看不
 
 resolve 输出的 `tiers` / `efforts` / `vendor_profiles`（M11 第 5 步）同理：非空时逐个原样传给对应的
 `--tier-<审核者 id>`（`--tier-codex` / `--tier-gemini` / `--tier-glm`）、`--effort-<审核者 id>`（`--effort-codex` / `--effort-gemini` / `--effort-glm`）、`--profile-<审核者 id>`（`--profile-codex`），
-与第 2 步的预检同一组。漏传会静默回到档位表与 `default_tier` 的取值。`--effort-<审核者 id>` 与不同于 `agents.<id>.profile` 的 `--profile-<审核者 id>` 在 M11 第 6 步之前会被预检拦下退 64（思考等级与厂商 profile 尚未透传；gemini 的 slug 已编码档位时只告警）——照样原样传，不要自行去掉，拒绝由编排器给出。
+与第 2 步的预检同一组。漏传会静默回到档位表与 `default_tier` 的取值，留痕里记的是回落后的档位与来源。思考等级与厂商 profile 随请求下传给各家（M11 第 6 步）；取值不合法（枚举外、该侧没有这个概念、厂商 profile 不在本机名单）由预检退 64、gemini 的 slug 已编码档位时只告警——照样原样传，不要自行去掉，拒绝由编排器给出。
 
 它会冻结送审包、派生工作进程后**立即返回**，输出含 `run_id`、`max_waits`、
 `wait_timeout_s`、`bash_timeout_ms`，以及开场播报要用的 `stage_timeout_s`

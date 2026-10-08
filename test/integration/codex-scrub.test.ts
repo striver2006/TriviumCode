@@ -116,7 +116,7 @@ async function runOnce(mode: string, timeoutS = 30) {
     project_root: proj, subject_path: path.join(proj, 's.md'), deny_paths: [],
     out_dir: path.join(sideDir, 'out'), brief_path: path.join(proj, 'b.md'), brief_text: 'BRIEF',
     model: 'qwen3.8-max', timeout_s: timeoutS, schema_path: '/s.json',
-    min_tool_calls: 0, profile_requested: null, min_project_reads: 0,
+    min_tool_calls: 0, profile_requested: null, min_project_reads: 0, tier: null, tier_source: null,
   };
   const out = await runBothSides({
     ctx: { cfg: cfgWith(), nodePath: process.execPath },

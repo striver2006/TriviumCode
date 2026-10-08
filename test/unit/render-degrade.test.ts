@@ -43,7 +43,9 @@ const DEGRADED: DegradedFinding[] = [
 function input(over: Partial<RenderInput> = {}): RenderInput {
   return {
     critic: 'codex', stage: 'code', topic: 'T', runId: 'R', rerunIndex: 1, review: REVIEW, rawText: null,
-    result: RESULT, modelRequested: 'qwen3.8-flash', snapshotHash: 'sha256:x', startedAt: 'a', finishedAt: 'b',
+    result: RESULT, modelRequested: 'qwen3.8-flash',
+    effortRequested: null, effortEffective: null, effortEffectiveSource: 'unverified', tier: null, tierSource: 'legacy',
+    snapshotHash: 'sha256:x', startedAt: 'a', finishedAt: 'b',
     evidenceOk: true, projectReads: 5, selectedCritics: CRITICS, degraded: false, drift: false, peerDeny: false,
     consultedUnverified: false, heterogeneous: true, ...over,
   };

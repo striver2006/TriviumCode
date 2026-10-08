@@ -59,7 +59,7 @@ export type CriticId = AgentId;
  * 各写一份。后果不是「多写一遍」而是**编译期防错被一个断言穿掉**：
  * `CRITIC_VENDOR` 的派生处写着 `agentById(c)!.vendor as Vendor`，把四值宽 union
  * 断言成两值窄 union，恒编译通过。于是新增一家审核者时，这条链不会像
- * `effortFor` / `checkModelSlugs` 的 `never` 分支那样在编译期报错，
+ * 当时 `effortFor`（M11 第 6 步并入 `resolveTier` 后删除）/ `checkModelSlugs` 的 `never` 分支那样在编译期报错，
  * 而是把新 vendor 静默塞进值位，直到落盘被 schema 枚举拒掉才现形。
  *
  * 收口的前提是 `run.v2` 的 `vendor` 不再枚举两值（见 run.v2.json 的说明），
@@ -817,6 +817,21 @@ export interface ClaudeProbe extends CommonProbe {
    * 与 `probed_at` 以及「本轮是否真跑过模型段」一并读——见 `strict_mcp_config_applied`。
    */
   project_memory_blocked: boolean | null;
+  /**
+   * `--effort` 的取值集合（M11 第 6 步，设计 11.5「原生枚举与校验」）：零配额跑 `claude --help`、
+   * 解析 `--effort` 行第一对圆括号里的列表（`probes/claude.ts` `parseEffortLevels`）。CLI 级、不分模型。
+   *
+   * **四态互不合并**：
+   * - **缺席** = 早于本字段的旧探针结论，没采过；
+   * - `null` = 跑了 `--help` 但失败，或该行在而列表解析不出 / 有项不合形状（格式漂移导向「取不到」，不导向错枚举）；
+   * - `[]` = 帮助文本里**没有** `--effort` 旗标（下传会被 CLI 当未知参数）；
+   * - 非空 = 取值集合。
+   *
+   * **消费方**：claude 适配器的 `reasoningLevelsFor`——缺席与 `null` 落 `unknown`（预检跳过并点名），
+   * `[]` 落 `none`（配了思考等级即退 64），非空落 `levels`（枚举外即退 64）。
+   * 采集在 `skipModelCalls` 早退之前，`doctor --no-model-calls` 即可落盘，且不刷新 `probed_at`。
+   */
+  effort_levels?: string[] | null;
 }
 
 export interface AuthCacheEntry {
@@ -945,14 +960,28 @@ export interface ReviewConfig {
 export type TierName = 'low' | 'medium' | 'high';
 
 /**
+ * 基础组合的来源，或「精确值全覆盖 / 第一段无命中」的 `override`（设计 11.5 / 6.7.1 `tier_source`）。
+ *
+ * M11 第 6 步从 `adapters/base.ts` 上移到这里（计划三审 AGY-01）：`CriticRequest` / `CriticRunMeta` 要引用它，
+ * 留在适配器层会让本文件反向依赖 `adapters/`。`base.ts` 原样再导出，旧导入点不必改。
+ */
+export type TierSource = 'cli' | 'profile' | 'agent_default' | 'legacy' | 'override';
+
+/**
+ * 思考等级生效值的来源（设计 6.7.1 `effort_effective_source`，与 `model_effective_source` 同构）：
+ * `envelope` = 从回执读到（今天只有 gemini 回执 slug 的档位后缀）；`unverified` = 该侧有思考等级概念、
+ * 但没有回读面或这次没读到。该侧**无此概念**时不取本类型的值，记 `null`（M11 第 6 步）。
+ */
+export type EffortEffectiveSource = 'envelope' | 'unverified';
+
+/**
  * 一档的组合（`agents.<id>.tiers.<档>`，设计 11.5）。可跨模型、跨家族。
  *
  * - `effort` 取**该模型的原生枚举值**，不是统一的 `low/medium/high` 字面集（11.5 禁令 ①）；
  *   缺省表示该 Agent 用模型选择承载档位差异。zcode 支 schema 层不收它（glm 无此概念）。
  * - `profile` 是**厂商** profile（codex 的 `-p`），只对 openai vendor 有意义，schema 只在该支放行。
  *
- * M11 第 4 步只解析与校验；`effort` 与 `profile` 第 6 步才透传给适配器，
- * 之间由预检的过渡闸拒绝「写了却不下传」的组合（`preflight.ts` `checkTierCombos`）。
+ * M11 第 4 步解析与校验，第 6 步起 `effort` 与 `profile` 随请求透传给适配器（`review.ts` 准备阶段）。
  */
 export interface TierEntry {
   model: string;
@@ -995,7 +1024,7 @@ export interface CodexCriticConfig extends TierFields {
   profile: string | null;
   /*
    * 原有 `effort`（阶段级、枚举 low/medium/high），2026-10-07 删除（M11 第 4 步，设计 11.5）：
-   * 从未被读取（`effortFor` 只给 antigravity 取值），且枚举违反 11.5 禁令 ①。
+   * 从未被读取（M11 第 6 步之前的 `effortFor` 只给 antigravity 取值），且枚举违反 11.5 禁令 ①。
    * schema 仍接受它（标 deprecated），出现时只由 doctor / preflight 提示，见 `config.ts` 的
    * `DEPRECATED_CONFIG_KEYS`。思考等级改由档位条目的 `effort` 表达。不要加回来。
    */
@@ -1030,7 +1059,8 @@ export interface GlmCriticConfig extends TierFields {
  * 再放宽这一支的 schema 是向后兼容的；反过来删一个已经进过用户配置的字段则不是。
  *
  * 阶段级 `effort` 不加：M6 探针当时没有对应的 CLI 旗标。M11 第 1 步实测 2.1.291 已有 `--effort`
- * 但不校验、不回读（设计 3.7），思考等级改由档位条目的 `effort` 表达（`TierFields`），透传随 M11 第 6 步。
+ * 但不校验、不回读（设计 3.7），思考等级由档位条目的 `effort` 表达（`TierFields`），M11 第 6 步起经
+ * `--effort` 透传；取值集合由探针解析帮助文本落盘（`ClaudeProbe.effort_levels`）。
  */
 export interface ClaudeCriticConfig extends TierFields {
   vendor: 'anthropic';
@@ -1287,7 +1317,27 @@ export interface CriticRunMeta {
   carriers_landed?: CriticResult['carriers_landed'];
   /** 没做覆盖而实际模型不同（EV-122）。缺席与取值的语义见 `CriticResult.model_unenforced` */
   model_unenforced?: CriticResult['model_unenforced'];
+  /**
+   * **旧名**：思考等级请求值。M11 之前只有 antigravity 侧写；M11 第 6 步起与 `effort_requested` 同值并写，
+   * 仍只在有值时出现（schema 只收 string）。新读者一律读 `effort_requested`。
+   */
   effort?: string;
+  /*
+   * ── 档位与思考等级一组（M11 第 6 步，设计 6.7.1 / 11.1）──
+   *
+   * 类型层可选、**写侧恒写**（null 也写）：缺席只表示 M11 第 6 步之前的旧留痕，`null` 表示该侧没有这项事实。
+   * 两态不得合流——与 `profile_requested` / `model_provider` 的「恒写」同一口径。
+   */
+  /** 思考等级请求值（档位解析并叠加 `--effort-<id>` 之后）；`null` = 本次没有请求值（该侧无此概念，或档位 / 格子 / 命令行都没给） */
+  effort_requested?: string | null;
+  /** 思考等级生效值，**只取回读**（适配器钩子 `effortReadback`）；回读不到为 `null` */
+  effort_effective?: string | null;
+  /** 生效值来源：`envelope`（回执）/ `unverified`（有此概念、没有回读面或没读到）/ `null`（该侧无此概念） */
+  effort_effective_source?: EffortEffectiveSource | null;
+  /** 档位名；基础组合不是档位、或档位字段被精确值全部覆盖时为 `null`（11.5 取值规则） */
+  tier?: TierName | null;
+  /** 基础组合的来源（11.5）；解析不出模型时为 `null`（实际不可达：那种情况在准备阶段即退 64） */
+  tier_source?: TierSource | null;
   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
   exit_code: number | null;
   duration_s: number;
@@ -1504,6 +1554,13 @@ export interface RunMeta {
    * **可选**：与 `driver_enabled` / `driver_guard_level` 同一口径，缺失不等于任何取值。
    */
   plan_final_check?: PlanFinalCheck;
+  /**
+   * 本轮实际使用的**档位表名**（`--profile` 覆盖后的 `active_profile`，设计 6.7.1，M11 第 6 步）。
+   *
+   * 与厂商 profile（`critics.<id>.profile_requested`，codex 的 `-p`）是两个命名空间。
+   * 类型层可选、写侧恒写：缺席 = M11 第 6 步之前的旧留痕。
+   */
+  profile?: string;
   /**
    * 本轮**入选**的审核者集合（基数 1～3，FR-29）。
    *
@@ -1728,24 +1785,30 @@ export interface CriticRequest {
   brief_path: string;
   brief_text: string;
   model: string;
+  /**
+   * 思考等级请求值：档位解析（`resolveTier`）叠加 `--effort-<id>` 之后的结果（M11 第 6 步起，设计 11.5）。
+   * 不传即本次没有请求值。各家按自己的通路下传：agy 的 `--effort`（slug 带档位后缀时不传）、
+   * codex 的 `-c model_reasoning_effort=`、claude 的 `--effort`；zcode 没有这个概念、不读它。
+   */
   effort?: string;
   timeout_s: number;
   schema_path: string;
   min_tool_calls: number;
   min_project_reads: number;
   /**
-   * 本次请求的厂商 profile 的**镜像**（编排器侧可读）。
+   * 本次请求的厂商 profile（codex 的 `-p`）。**M11 第 6 步起是三层解析后的值**：
+   * `--profile-<id>` > 档位条目的 `profile` > `agents.<id>.profile`（设计 11.5）；无此概念的族为 `null`。
    *
-   * 适配器读自己的配置段就够了，这个镜像是给**编排器的兜底出口**用的：
-   * `runner` 在适配器抛异常时要组装一个 `CriticResult`，那里拿不到厂商知识，
-   * 而按 Agent 身份去取配置会把 Agent 字面量带进编排器（纪律 7 禁止）。
-   * 于是由 `review.ts` 在组装请求时算一次，兜底处直接取镜像
-   * （代码双审 CODEX-01：上一版那一格恒写 null，
-   * 把「该族没有 profile 概念」与「这次没采到」压成同一个观测）。
-   *
-   * **同一次计算、同一个来源**：镜像与适配器读的是同一份配置段，不会漂。
+   * **它就是适配器下传的那个值**，不再只是镜像：codex 适配器的 `-p` 与隔离副本拷哪份 profile 分层文件都取它
+   * （`codexInvocationOf`），`review.ts` 的可用性检查取的是同一次 `resolveTier` 的同一个结果——
+   * 三处同值由构造保证。`runner` 在适配器抛异常时组装兜底结果也直接取它（纪律 7：编排器不该拥有厂商知识；
+   * 代码双审 CODEX-01：上一版那一格恒写 null，把「该族没有 profile 概念」与「这次没采到」压成同一个观测）。
    */
   profile_requested: string | null;
+  /** 档位名（M11 第 6 步，设计 11.5 取值规则）：与 `tier_source` 同出一次 `resolveTier`，原样进 run.json 与 front-matter */
+  tier: TierName | null;
+  /** 基础组合的来源（M11 第 6 步，设计 11.5）。必填：手写请求的调用方要显式给 `null`，不留「没写」这一态 */
+  tier_source: TierSource | null;
 }
 
 /**
@@ -1906,7 +1969,11 @@ export interface CriticResult {
    */
   model_provider: string | null;
   /**
-   * 本次**请求**的厂商 profile 名（`agents.<id>.profile`，codex 的 `-p`）。
+   * 本次**请求**的厂商 profile 名（codex 的 `-p`）。M11 第 6 步起是三层解析后的值：
+   * `--profile-<id>` > 档位条目的 `profile` > `agents.<id>.profile`（设计 11.5），与 `CriticRequest.profile_requested`
+   * 同值（计划三审 GLM-02）。
+   *
+   * 裸名顶层 `profile`（run.json，M11 第 6 步）是**档位表名**，与本字段是两个命名空间。
    *
    * ## 命名
    *

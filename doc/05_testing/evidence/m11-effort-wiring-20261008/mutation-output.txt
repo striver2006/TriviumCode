@@ -1,0 +1,141 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  M1 ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=2）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=1）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=1）
+  M16 ✓ 咬住（fail=1）
+  M17 ✓ 咬住（fail=1）
+  M18 ✓ 咬住（fail=1）
+  M19 ✓ 咬住（fail=1）
+{
+  "总数": 19,
+  "咬住": 19,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "agy 回读不看来源（回执缺失退到请求值时也取后缀）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "codex 回读改取生效模型的 slug 后缀（拿非回读面冒充）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "claude 回读同上",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "zcode 来源写 unverified（无此概念与没读到合流）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "写侧 effort_effective 改条件展开（null 与缺席合流）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M6",
+      "desc": "写侧 effort_requested 改条件展开",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "不写 tier / tier_source",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "不写顶层 profile",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "codex 的 -p 回退取配置段",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "codex 隔离副本拷配置段那家的 profile 文件",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "codex 可用性忽略本轮解析值",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "claude run() 不下传 --effort",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "请求的思考等级回退为只给 antigravity（原 effortFor 口径）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M14",
+      "desc": "parseEffortLevels 解析不出时落 []（错枚举：把「取不到」说成「没有这个旗标」）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "claude reasoningLevelsFor 不读探针",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M16",
+      "desc": "front-matter 漏写 effort_effective",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M17",
+      "desc": "parseEffortLevels 改回取最后一对括号（计划三审 CODEX-02）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M18",
+      "desc": "预检可用性不传本轮解析值",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M19",
+      "desc": "review 准备阶段可用性不传本轮解析值",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0

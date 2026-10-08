@@ -13,11 +13,10 @@
  *   `--profile-codex`（规格写的名字），源码不写任何 Agent id（用户 2026-10-08 定）。它与 trivium 自己的
  *   `--profile 〈档位表名〉` 是两个命名空间。
  *
- * ## 过渡期（第 6 步之前）
+ * ## 取值的去向
  *
- * 思考等级与厂商 profile 还没透传给适配器：`--effort-〈id〉` 与不等于 `agents.〈id〉.profile` 的 `--profile-〈id〉`
- * 会被预检的过渡闸拦下退 64（`preflight.ts` `checkTierCombos`；gemini 的 slug 已编码档位时只告警）。
- * 本模块只做形状层的判定，不替过渡闸做决定。
+ * M11 第 6 步起三类旗标的值随请求下传给各家适配器（思考等级与厂商 profile 第 5 步时被预检的过渡闸拦着，
+ * 第 6 步透传接线后拆除）。本模块只做形状层的判定；原生枚举、无此概念与本机名单是 `checkTierCombos` 的永久判据。
  */
 import type { Config, CriticId, TierName } from './types.js';
 import { ALL_AGENT_IDS, type AgentId } from './agents/registry.js';
@@ -69,7 +68,7 @@ export function collectTierFlags(get: (name: string) => string | undefined): Raw
  * 键校验 + 取值的形状校验，通过即返回逐入选侧的精确值。全部退 64、在任何落盘之前。
  *
  * 次序：①键（与 `--model-〈id〉` 同一判定）；②`--profile-〈id〉` 的该侧有没有厂商 profile 概念；
- * ③空值；④`--tier-〈id〉` 只收三档名。原生枚举、本机名单与过渡闸不在这里——那是 `checkTierCombos` 的事，
+ * ③空值；④`--tier-〈id〉` 只收三档名。原生枚举、无此概念与本机名单不在这里——那是 `checkTierCombos` 的事，
  * 与配置来源同一处、同一文案。
  */
 export function assertTierFlags(

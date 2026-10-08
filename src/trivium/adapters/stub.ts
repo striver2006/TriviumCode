@@ -26,6 +26,7 @@ import { promises as fsp } from 'node:fs';
 import { agentById, DEFAULT_DRIVER } from '../agents/registry.js';
 import { CRITICS, type CriticId, type CriticRequest, type CriticResult } from '../types.js';
 import {
+  EFFORT_UNVERIFIED,
   failedResult,
   MCP_WRITE_EVENT_PREFIX,
   TOOL_TRACE_CAPABILITY,
@@ -168,6 +169,11 @@ export interface StubSpec {
   findings?: number;
   /** 覆盖回读到的生效模型，用于 AC-13 的用例 */
   modelEffective?: string;
+  /**
+   * 注入思考等级生效值（M11 第 6 步，设计 17.2「桩回报请求值 ≠ 生效值」）：给了 ⇒ `effortReadback` 回
+   * `{该值, 'envelope'}`；不给 ⇒ `{null, 'unverified'}`。只为零配额造出「请求 ≠ 生效」的分记，桩不判定。
+   */
+  effortEffective?: string;
   /**
    * 模拟「模型覆盖是否落实」的四态（EV-82，代码双审 r2 AGY-02）：不给 ⇒ 字段缺席（无覆盖尝试），
    * 给 `true` / `false` / `null` ⇒ 原样产出。桩不判定，只让 `review.ts` 的条件展开与 `run.v2` 校验、
@@ -412,6 +418,9 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
     commandExecution: spec.commandExecution ?? (spec.mode === 'command_trace' ? 'readonly-shell' : 'none'),
     ...(spec.mcpExecPrefixes !== undefined ? { mcpExecPrefixes: spec.mcpExecPrefixes } : {}),
     availability: () => ({ ok: true }),
+    // 思考等级生效值（M11 第 6 步）：注入值走「回执读到」那一格，不注入走「有概念、没读到」那一格
+    effortReadback: () =>
+      spec.effortEffective !== undefined ? { effective: spec.effortEffective, source: 'envelope' as const } : EFFORT_UNVERIFIED,
     ...(spec.modelOverrideSource !== undefined
       ? { modelOverrideSource: () => spec.modelOverrideSource as string }
       : {}),

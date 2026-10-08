@@ -1,0 +1,809 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trivium.run.v2",
+  "title": "TriviumCode 运行元数据 v2",
+  "description": "每次运行的机读全量事实（设计 §6.7.1），落于归档 _meta/run-<run_id>.json。对应 NFR-05 / FR-24 / FR-29。v1 保留为历史契约（双读），本版为当前唯一写出的形状。",
+  "type": "object",
+  "required": [
+    "schema",
+    "run_id",
+    "topic",
+    "stage",
+    "rerun_index",
+    "command",
+    "driver",
+    "critics_selected",
+    "snapshot",
+    "started_at",
+    "review_mode",
+    "critics",
+    "deny_paths",
+    "guard",
+    "artifacts",
+    "gate",
+    "status"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema": {
+      "const": "trivium.run.v2"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "topic": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "enum": [
+        "plan",
+        "code",
+        "bug"
+      ]
+    },
+    "rerun_index": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "command": {
+      "type": "string"
+    },
+    "prompt_hint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "task_goal": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "entry": {
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D",
+        null
+      ]
+    },
+    "driver": {
+      "type": "string",
+      "minLength": 1,
+      "description": "当轮发起方的 Agent id。与归档后缀（产出方）正交：同一 Agent 在不同运行中可能是 Driver 也可能是审核者。M7b 起恒为 claude，M9 第 5 步放开 --driver 后可变。取值是否为已登记 Agent 由代码层按注册表校验——此处不枚举，见下方 critics 的说明"
+    },
+    "driver_enabled": {
+      "type": "boolean",
+      "description": "当轮 Driver 在这次运行时是否已启用为 Driver（M9 第 5 步）。可选：早于该步的留痕没有此字段，缺失即「无从得知」，不等于 false。M9 的 --driver 只校验「已登记」，因此归档里会出现 driver_enabled: false 的合法留痕；M10 把校验收紧之后那些留痕仍要读得回，所以它不进 required，也不加 if/then"
+    },
+    "plan_final_check": {
+      "type": "object",
+      "required": ["subject_rerun_index"],
+      "additionalProperties": false,
+      "properties": {
+        "subject_rerun_index": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        }
+      },
+      "description": "计划定稿校验的标记（EV-214，设计 §6.6 规则 9）。只在计划阶段、由 EV-214 之后的编排器写入；代码与 bug 阶段不写。存在即「本轮按 EV-214 的规则跑」：闸门只对带它的轮次要求有接受项时存在执笔方的新一轮计划；缺失即「无从得知」，有接受项时 gate 出 next_plan_unchecked 告警、不判失败（不追溯历史轮次）。subject_rerun_index 是本轮被审对象的轮次：位于本主题 plan/ 根、文件名可解析、后缀为当轮 Driver、无 -revised/-response 中缀时取其轮次，否则（归档外的 --plan-file、名字不合规）为 null，此时闸门的基准轮次退回 rerun_index"
+    },
+    "driver_guard_level": {
+      "enum": ["L1", "L2"],
+      "description": "当轮 Driver 在这次运行时的有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而项目内 Hook 配置不在场即记 L2。可选：早于该步的留痕没有此字段，缺失即「无从得知」，不等于 L1。只看存在性、不看内容——Hook 命令被改、wrapper 被替换这里都看不见；只读注册表登记的那一个项目内配置文件（Claude 另读同目录 settings.local.json 的 disableAllHooks），落在 user 级或其它设置层的 Hook 看不见，会记成 L2（偏保守）"
+    },
+    "critics_selected": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "本轮入选的审核者集合，基数 1～3（FR-29）。它区分「计划跑但失败了」与「压根没入选」——critics 的键集做不到这件事。选 1 个是配置意图而非降级：此时 review_mode 仍为 full 且无 degraded_reason（AC-22）"
+    },
+    "snapshot": {
+      "type": "object",
+      "required": [
+        "tree_hash",
+        "subject_sha256",
+        "drift"
+      ],
+      "properties": {
+        "git_head": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tree_hash": {
+          "type": "string"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "subject_sha256": {
+          "type": "string"
+        },
+        "after_tree_hash": {
+          "description": "审查收尾复算时的工作树 tree（与 tree_hash 同法）；只供审批时的工作树摘要作基线，不参与任何判定；缺席 = 本字段之前的旧留痕或运行未走到复算",
+          "type": "string"
+        },
+        "build": {
+          "description": "运行中的编排器自带的构建标识（EV-82）。git_head 是被审项目的 HEAD，这一项才是编排器本体的构建来源；null = 构建时取不到 git；缺席 = 本字段之前的旧留痕",
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "repo_root_commit",
+            "git_head",
+            "dirty",
+            "inputs_sha256",
+            "built_at"
+          ],
+          "properties": {
+            "repo_root_commit": {
+              "type": "string"
+            },
+            "git_head": {
+              "type": "string"
+            },
+            "dirty": {
+              "type": "boolean"
+            },
+            "inputs_sha256": {
+              "type": "string"
+            },
+            "built_at": {
+              "type": "string"
+            }
+          }
+        },
+        "drift": {
+          "type": "object",
+          "required": [
+            "changed",
+            "files",
+            "policy"
+          ],
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "policy": {
+              "enum": [
+                "warn",
+                "fail"
+              ]
+            },
+            "unknown_reason": {
+              "description": "跑后复算比不了改了哪些文件时才写（EV-139）：两棵 tree 不同，而 diff-tree 失败或 tree 值不合形状。此时 changed 为 true、files 为空、policy 取 on_drift_related（比不了就排除不了被审范围内的文件被改）。cause：object_gone = 送审快照或跑后复算的 tree 已不在对象库；git_error = 其余 git 失败（含 tree 值不是合法对象名）；timeout = git 调用超时。枚举与 types.ts 的 DRIFT_UNKNOWN_CAUSES 逐项相等（run-meta-strict.test.ts 守）。缺席 = 比对成功，或本字段之前的旧留痕",
+              "type": "object",
+              "required": [
+                "cause",
+                "detail"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "cause": {
+                  "enum": [
+                    "object_gone",
+                    "git_error",
+                    "timeout"
+                  ]
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "finished_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "review_mode": {
+      "enum": [
+        "full",
+        "partial"
+      ],
+      "description": "full = 入选的审核者全部成功；partial = 部分入选者失败后降级续跑（必须同时有 degraded_reason）。取代 v1 的 dual/single——后者把「跑了几侧」与「是否降级」混成一个值，导致 --only 单侧成功被记为 dual（§2.1）"
+    },
+    "degraded_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "critics": {
+      "type": "object",
+      "description": "逐审核者的运行事实，键取自 critics_selected。v1 在此处写死 gemini / glm 两键（additionalProperties: false），第三家入选即校验不过——这是本次升 v2 而非原地扩展的直接动因。键是否为已登记 Agent 不在 schema 里枚举：注册表是唯一来源（纪律 7），在 schema 里再抄一份等于制造第二个来源，新增一家时改一漏二不会报错。身份校验由 schemas.ts 的 validateRunMeta 在 ajv 之后按注册表补做",
+      "additionalProperties": {
+        "$ref": "#/$defs/critic"
+      }
+    },
+    "deny_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "guard": {
+      "type": "object",
+      "required": [
+        "readonly_breach",
+        "peer_artifact_read",
+        "peer_deny_applied",
+        "forged_role_file"
+      ],
+      "properties": {
+        "readonly_breach": {
+          "type": "boolean"
+        },
+        "peer_artifact_read": {
+          "type": "boolean"
+        },
+        "peer_deny_applied": {
+          "type": "object",
+          "description": "逐侧记录路径级 deny 是否实际生效。本机两侧均为 false（M0 实测）",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "deny_skipped": {
+          "type": "object",
+          "description": "逐侧记录本次注入时被跳过的禁读路径条数（拼不出一条能字面匹配的规则）。与 peer_deny_applied 成对读：那一格答「本机曾实测该形状可拦」（探针格、与本次规则无关），这一格答「本次有没有路径拼不出规则」。只看前者会把「主题名带一个括号或 glob 元字符 ⇒ 这一次每条对端产出都被跳过」读成「屏蔽正常」（代码双审 r2 CODEX-01）。**这是聚合 map（object）**，消费方是 report 的降级旗标；同名的 critics.<id>.deny_skipped 是该侧的整数事实，另有 deny_rule_count / deny_bytes 两格只在逐侧段",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "forged_role_file": {
+          "type": "boolean",
+          "description": "保留字段，恒为 false，不表示检测过（EV-137）。角色后缀伪造由写入前 Hook（带 Hook 的载体）、gate --check-artifacts 的未登记审查件判据与提交锚承担；report 不据它打旗标"
+        },
+        "breached_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "peer_leak_via_command": {
+          "type": "object",
+          "description": "命令文本通道（§10.1 措施 b / BACKLOG EV-01）的命中记录，**逐审核者**（键是 Agent id，与 critics 同构）。【已实现 · M8 第 1 步；命中带类 2026-09-17 补】三态落在结构上：整个字段缺失=该次运行早于接线；字段在而某侧的键缺失=**那一侧没扫**（失败/超时被 judgeRun 跳过）；hit=false=扫过、没命中。hit 的语义是「扫到了东西」而非「这一侧作废了」——后者看 peer_artifact_read，告警档的命中同样置 hit=true。已知形态清单（F-1～F-9）与盲区（B-1～B-5）见 adapters/base.ts 的 checkPeerLeakViaCommand 文档块与设计 §10.1 措施 b，两处由 known-forms-parity 契约测试对账；承诺是「已知形态必检」而非不可绕过（威胁模型见 §10.1 末段，R25）",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "hit",
+              "commands"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "hit": {
+                "type": "boolean"
+              },
+              "commands": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "hits": {
+                "type": "array",
+                "description": "命中逐条带类，与 peer_leak_via_path.hits 同构（2026-09-17 补）。在此之前命令通道只落命令原文，分档结果一个字都没进留痕，于是同一份分档在两条通道上可读性不对等——而命令通道是 command-trace 一族**唯一**的通道。字段缺失=那次运行早于本次接线，不是「没有命中明细」",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "command",
+                    "path",
+                    "category"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "command": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string",
+                      "description": "分类实际用的目标：命令里那个路径 token 归一后的绝对路径；静态解析不了（变量、命令替换、通配）时退回禁读条目本身——那必然落在更重的档上，是保守方向"
+                    },
+                    "category": {
+                      "enum": [
+                        "peer-artifact",
+                        "peer-run-output",
+                        "own-run-material",
+                        "orchestrator-state",
+                        "sensitive"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "verification_degraded": {
+          "type": "object",
+          "description": "两条核验通道的降级档位与本次生效的证据阈值，**逐审核者**（键是 Agent id，与 critics 同构）。【已实现 · M8 第 2 步】`readonly`=unavailable 表示该侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守——**它记的是能力恒态，与本次是否检出写事件无关**：真阳性由 readonly_breach 表达，两者正交，档位为 unavailable 的侧一样可能 readonly_breach=true（写命令成功执行、照常留痕）。`path`=unavailable 表示该侧读取路径只存在于命令文本里、措施 a（读取路径比对 deny）无结构化输入可扫，deny 核验完全由措施 b 承担。`evidence_threshold` 记本次生效的 min_project_reads——command-trace 族按折减系数下调，不记的话同一个读数在两族间一过一不过会像 bug。三态落在结构上：整个字段缺失=该次运行早于 M8 第 2 步；字段在而某侧的键缺失=**那一侧没判过**（失败/超时被 judgeRun 跳过）；值=该侧实际档位。注意 path=unavailable 与既有的 peer_deny_applied=false 是两件事：后者说的是 CLI 级路径拦截是否注入生效（第 ③ 道 (c) 层），前者说的是事后轨迹核验有没有输入可扫",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "readonly",
+              "path",
+              "evidence_threshold"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "readonly": {
+                "enum": [
+                  "ok",
+                  "unavailable"
+                ]
+              },
+              "path": {
+                "enum": [
+                  "ok",
+                  "partial",
+                  "unavailable"
+                ],
+                "description": "**partial（2026-09-16 新增）**：该侧有结构化轨迹，但「必然带路径」的读调用中出现了提不出路径的，即提取器相对厂商实际参数名已经退化。分母是**文件读类**工具的调用数（该类工具的路径/目录参数是厂商契约里的必填项）；可无路径的搜索、列目录类不计入——不带目录的搜索是合法形态，把它们算进分母会让 partial 变成稳态噪声。分母按厂商契约逐家取，两家的读工具集不同，差异写在各自适配器里。unavailable 的三种成因见 path_cause"
+              },
+              "path_cause": {
+                "enum": [
+                  "command-trace",
+                  "no-counts",
+                  "no-path-bearing-calls"
+                ],
+                "description": "path=unavailable 的成因（2026-09-17 新增）。三者处置完全不同：command-trace=该族结构性无信号（read_paths 恒空），没法修，deny 核验只剩措施 b；no-counts=该侧没报这两个计数（旧留痕，或适配器没采集），要修适配器；no-path-bearing-calls=本轮一次「必带路径」的读调用都没有，不是缺陷、只是探测面为零。缺失=该档位不是 unavailable，或那次运行早于本字段"
+              },
+              "evidence_threshold": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "evidence_untrusted": {
+                "type": "object",
+                "description": "证据不可信（2026-10-02 新增，EV-188）：该侧有经编排器看不见的通道完成的调用，tools 点名。今天唯一的成因是 mcp-call（zcode 侧调用了执行型名单之外的 MCP 工具；执行型的直接进 write_events、判 readonly_breach）。结论保留、不作废、不判失守——修饰的是阴性结论：「没命中禁读面」「没有写事件」在该侧打折，所以它也让本轮漂移落进 unattributed_drift_files。只在成立时出现；缺失=不成立，或那次运行早于本字段。旧构建读带本键的 run.json 会被本对象的 additionalProperties:false 拒掉，走「留痕读不出」出口（版本落后 ⇒ 升级）。",
+                "required": [
+                  "cause",
+                  "tools"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "cause": {
+                    "enum": [
+                      "mcp-call"
+                    ]
+                  },
+                  "tools": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "unattributed_drift_files": {
+          "type": "array",
+          "description": "指纹变化但**无法归因**的文件（§9.2 第 4 步 + §11.1）。【已实现 · M8 第 2 步】只在本轮有侧的 readonly 档位为 unavailable 时出现：「指纹变了但轨迹无写事件 ⇒ 开发者手改」这条推理的前提是轨迹能证明审查员没写，而该侧被拒的写不留痕，无写事件排除不了审查员写过。2026-10-02 起（EV-188）另有两种成因同样落进这里：有侧证据不可信（verification_degraded 的 evidence_untrusted），或有侧调用了 MCP 执行型工具（breached_files 里 MCP: 开头的条目——它能写任意文件而写事件里没有路径）。既不判失守（无正向证据）也不判开发者手改（阴性证据不可信），与 fingerprint 的已归因结论分开记——混进去等于用更强的断言掩盖证据缺口。字段缺失或空数组 = 无此情形",
+          "items": {
+            "type": "string"
+          }
+        },
+        "peer_leak_via_path": {
+          "type": "object",
+          "description": "路径通道（§10.1 措施 a）的命中记录，**逐审核者**（键是 Agent id，与 critics 同构）。【已实现 · 2026-09-16】与 peer_leak_via_command 同构，三态同样落在结构上：整个字段缺失=该次运行早于接线；字段在而某侧的键缺失=**那一侧没扫**（失败/超时被 judgeRun 跳过）；hit=false=扫过、没命中。**命中逐条带类**（设计 §10.1.1 的四类分档）：同一侧一轮内可同时命中多类，处置取最重档，留痕须能复盘「这一侧到底碰了什么」。补这个字段之前，路径通道只有一个全局 OR 的布尔位 peer_artifact_read，命中明细一条不进",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "hit",
+              "hits"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "hit": {
+                "type": "boolean"
+              },
+              "hits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "category"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "enum": [
+                        "peer-artifact",
+                        "peer-run-output",
+                        "own-run-material",
+                        "orchestrator-state",
+                        "sensitive"
+                      ],
+                      "description": "设计 §10.1.1 的分档：peer-artifact/peer-run-output 判作废；orchestrator-state 降告警级；sensitive 走安全告警线。own-run-material（审查员自己那一侧的运行时材料，运行根是混合树）**2026-09-17 起整个不进命中集**——读它是编排器要求审查员做的事，记成「碰了禁读集」会让告警档被必经动作填满、不再是告警；枚举里保留该值只为读回旧留痕"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "joint_check": {
+          "type": "object",
+          "description": "共同阻断这一档的执行状态（设计 §6.6 规则 7 / §12.1）。【已实现 · 2026-09-16；2026-09-17 改为运行期只到 pending】被判作废的一侧不计入独立来源，排除后有效侧可能不足两家，而 findJointRejectedBlockers 恒返回空集——**阴性结论与「没做」不得落成同一个观测**。这是「作废侧重跑一次」就绪前的过渡处置：只保证失效可见，不恢复交叉验证。**运行期给不出最终结论**：判据的一半（哪些共同 blocker 被驳回）在裁决件里，而裁决件在运行结束之后才写——run.json 能断言的只有「够不够两家」。最终三态落在 task.json.joint_checks，由 gate --check 写",
+          "required": [
+            "state",
+            "effective_sides"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "pending",
+                "checked-none",
+                "checked-found",
+                "skipped-insufficient-sides"
+              ],
+              "description": "pending=有效侧够两家、等裁决表齐备后由 gate --check 判（2026-09-17 起运行期只会落这个或 skipped-*）；skipped-insufficient-sides=有效侧不足两家、该项未做；checked-none=查过、无共同项，checked-found=查过、有共同项——后两个在 run.json 里只出现于 2026-09-17 之前的留痕（那时运行期把 checked-none 当默认值写，而那一档当时根本还没查），新留痕的这两态看 task.json.joint_checks"
+            },
+            "effective_sides": {
+              "type": "integer",
+              "description": "参与判定的审核者数：排除**被判作废的侧**与**没有结构化结论的侧**（解析降级/失败）之后还剩几家。分母与 gate 的 jointCheckState 一致——2026-09-17 之前这里只排作废侧，于是同一个数在 run.json 与告警文案里可能不同"
+            }
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "**本节点 additionalProperties: false（2026-09-16 收严）**：新增 guard 字段不同步 schema 时当场判错，而不是静默落盘一个机读面上不存在的字段。收严前实测本仓库 29 份 v2 留痕零差额"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": [
+        "adjudication_complete",
+        "state"
+      ],
+      "properties": {
+        "adjudication_complete": {
+          "type": "boolean",
+          "description": "运行期字段：只在本轮没有意见要裁决（纯文档跳过）时由编排器置 true，其余一律 false；run.json 收尾后不再更新（已提交的 run.json 受提交锚保护，不可改）。裁决是否齐备以 gate --check 的实时结果为准，审批事实以 task.json.approvals[] 为准（EV-133）"
+        },
+        "state": {
+          "type": "string"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "status": {
+      "description": "running 是骨架态（prepareRun 落盘）；success / failed 由 worker 收尾写；另有几条事后收尾，都只在仍为 running 时写、是那份运行唯一一次终态写入：cancelled 由 review --cancel 在工作进程确认退出后写（EV-128）；failed 也可能由 worker 异常分支自己写、由 --wait 判 worker_lost 且确认工作进程已退出时写（EV-142），或由 review --cancel 在 --wait 判 heartbeat_stale 之后结束仍挂着的工作进程并确认退出时写（EV-146），或由本进程在准备阶段写完骨架之后失败、startRun 在子进程诞生之前失败、同步路径 executeRun 抛错时写（EV-145），或由 review --start 在子进程诞生之后失败、终止工作进程并确认退出之后写（EV-150），这几条都同时写 termination。已结束却仍为 running 的留痕表示没有走到收尾（本版以前的异常 / 失联 / 取消 / 准备阶段失败 / 同步路径异常 / --start 在子进程诞生之后失败、失联时工作进程未确认退出、--start 派生后确认不了工作进程退出、worker 猝死而没人 --wait、纯文档跳过的终态写入本身失败，以及 EV-109 以前被闸门拦下留下的骨架），不回填",
+      "enum": [
+        "running",
+        "success",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "termination": {
+      "description": "这一次终态由哪条事后收尾写的（EV-142 / EV-145）。带退出码的一族：by=worker_exception（worker 异常分支）、by=prepare_exception（准备阶段写完骨架之后失败，或 startRun 在子进程诞生之前失败，审查员一个都没拉起）、by=sync_exception（同步路径 executeRun 抛错）、by=post_spawn_exception（review --start 在子进程诞生之后失败，工作进程已被终止并确认退出，EV-150）；另一形状 by=worker_lost（--wait 判失联且确认工作进程已退出，记失联原因；review --cancel 在 --wait 判 heartbeat_stale 之后结束仍挂着的工作进程并确认退出时照写同一取值，EV-146）。缺席 = 正常收尾（worker 写 success / failed）、取消轮（status: cancelled 已说明来路）、或本字段之前的留痕。只存结构化字段、不存异常原文：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。第一个分支的 by 枚举须与 types.ts 的 EXCEPTION_TERMINATION_BY、reason 的枚举须与 status.ts 的 WORKER_LOST_REASONS 逐项相等（由 run-meta-strict.test.ts 守住）。只增不减：旧 bundle 读不懂新取值，回滚代码时保留本文件的改动",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["by", "exit_code"],
+          "additionalProperties": false,
+          "properties": {
+            "by": { "enum": ["worker_exception", "prepare_exception", "sync_exception", "post_spawn_exception"] },
+            "exit_code": { "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["by", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "by": { "const": "worker_lost" },
+            "reason": { "enum": ["no_status_file", "heartbeat_stale", "pid_gone"] }
+          }
+        }
+      ]
+    },
+    "skipped": {
+      "type": "boolean"
+    },
+    "skip_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cache_hit": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "critic": {
+      "type": "object",
+      "required": [
+        "vendor",
+        "status",
+        "duration_s",
+        "tool_calls",
+        "evidence_ok",
+        "heterogeneous"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "vendor": {
+          "type": "string",
+          "minLength": 1,
+          "description": "厂商标识，取自注册表的 vendor。与 critics 的键同理不在此枚举：v1 写死 antigravity / zcode 两值，第三家的 openai 会被判非法"
+        },
+        "cli_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_requested": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_effective": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "回读得到的实际生效模型，不采信配置意图（AC-13）"
+        },
+        "model_effective_source": {
+          "enum": [
+            "envelope",
+            "trace",
+            "requested",
+            "unverified"
+          ]
+        },
+        "model_route": {
+          "enum": [
+            "env",
+            "config_copy",
+            "global"
+          ],
+          "description": "模型覆盖走了哪一档。zcode 的 config_copy 在 0.16.9 下仍生效，前提是拉起时不注入个人 provider 配置、让 CLI 从副本 cli/config.json 做 legacy 导入（EV-82）"
+        },
+        "model_override_applied": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "模型覆盖是否落实（EV-82）。字段缺席＝本次没有覆盖尝试；true/false＝比对过一致/不一致；null＝尝试了但没回读到生效模型。判据归各家适配器，判定层只播报。zcode 侧自 EV-82 第三段起审查运行把请求模型置首，true 只说明跑的就是请求模型，不说明副本默认被采信（后者见 doctor 的 zcode.runtime_selection）。没做覆盖而实际模型不同见 model_unenforced"
+        },
+        "model_unenforced": {
+          "type": "object",
+          "properties": {
+            "requested": { "type": "string" },
+            "effective": { "type": "string" },
+            "cause": { "enum": ["source_missing", "qualify_failed"] },
+            "reason": {
+              "type": "string",
+              "description": "prepareZcodeHome 给的理由原文，只供人读、不参与判定、不保证文案稳定。可能含副本源的 provider / 模型目录清单（qualify_failed）与真实 HOME 绝对路径（source_missing），随归档持久化；不含凭据"
+            }
+          },
+          "required": ["requested", "effective", "cause", "reason"],
+          "additionalProperties": false,
+          "description": "没做模型覆盖、而实际模型与请求不同（EV-122，目前只有 zcode 侧产出）。与 model_override_applied 互斥：那一格要求本次尝试了覆盖，这一格要求没尝试。requested 与 model_requested 同源；判据只看 modelId 段；cause＝为什么没做覆盖（source_missing：副本源 cli/config.json 不在；qualify_failed：请求的模型在副本源目录里限定失败），guard 按它分句。字段缺席＝做了覆盖、请求为空、没回读到生效模型、modelId 段相同、或该侧不产出"
+        },
+        "carriers_landed": {
+          "type": "object",
+          "properties": {
+            "log": { "type": "boolean" },
+            "rollout": { "type": "boolean" },
+            "leaked_to_home": {
+              "type": "object",
+              "properties": {
+                "log": { "type": "boolean" },
+                "rollout": { "type": "boolean" }
+              },
+              "required": ["log", "rollout"]
+            }
+          },
+          "required": ["log", "rollout"],
+          "description": "落点自检（EV-112，目前只有 zcode 侧产出）。log / rollout＝本次会话的 CLI 日志与 rollout 是否落进运行目录，两项合取，任一为 false 时 guard 播报；leaked_to_home 只在无副本的审查运行出现，两项同形：log＝真实 ~/.zcode/cli/log 里本次拉起后改过的文件中有本次会话的行，rollout＝真实 ~/.zcode/cli/rollout 下有本次会话的 rollout 文件，任一为 true 时 guard 另起一句。落点自检只覆盖日志与 rollout 两类载体。字段缺席＝没走到自检（失败早退、无 sessionId）或该侧不产出"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "effort_requested": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "思考等级的请求值。【待实施 · M11】schema 先留位，写侧尚未接线"
+        },
+        "effort_effective": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "思考等级的生效值，必须回读而非采信请求值——部分厂商存在归并映射（如 medium/high/xhigh → high），「请求 medium 实际生效 high」。这是 AC-13「生效模型可核对」对 effort 的延伸。【待实施 · M11】"
+        },
+        "tier_source": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "档位的来源（命令行 / 档位表 / 默认）。【待实施 · M11】"
+        },
+        "profile_requested": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "本次请求的厂商 profile 名（codex 的 -p，即 agents.<id>.profile）。命名随 model_requested / effort_requested 的既有惯例：它是请求值，回读值是 model_provider。裸名 profile 留空不占——在本系统里那个词已经指档位（config.yaml 的 profiles / active_profile / CLI --profile），而本 schema 自己的档位词汇是 tier*。无厂商 profile 概念的族恒为 null。【已实现 · M8 第 4 步】"
+        },
+        "model_provider": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "回读得到的 provider 家族归属，与 model_effective 是两个维度的事实。实测 codex exec -p qwen -m deepseek-v4-pro 成功且回读 provider=qwen、model=deepseek-v4-pro——同一个模型名可以挂在两个 provider 下，故「两次 model_effective 不同即两个家族」不成立，AC-20 的互可区分要两个维度都看。无此事实的族恒为 null（能说明理由的空）。【已实现 · M8 第 4 步】"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "timeout",
+            "failed",
+            "parse_fallback"
+          ]
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "duration_s": {
+          "type": "number"
+        },
+        "tool_calls": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "project_reads = 被审对象与送审包之外的项目文件读取次数（§11.4）"
+        },
+        "evidence_ok": {
+          "type": "boolean"
+        },
+        "usage": {
+          "type": "object",
+          "description": "厂商回读的原样 token 用量。实测 zcode 会混入字符串 source 字段，故值类型不限定为数字；report 汇总时只取数字",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "string",
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "heterogeneous": {
+          "type": "boolean",
+          "description": "是否与主脑异构。false 时必须有 override_reason（AC-18）"
+        },
+        "override_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fail_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "empty_review": {
+          "type": "boolean"
+        },
+        "parse_fallback": {
+          "type": "boolean"
+        },
+        "findings_degraded": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "逐条降级的意见编号（设计 §6.5）：根对象合法、这几条不合 trivium.review.v1。它们不在 _meta/review-<侧>-<run>.json 里（那份只含合格意见），按原编号逐条进裁决期望集，不参与阻断与共同阻断。解析成功（status ok）的侧恒写，[] = 解析过、没有降级；失败 / 超时 / parse_fallback 侧与早于该字段的留痕不写。原始对象与逐字段问题在旁路文件 _meta/review-<侧>-<run>.degraded.json"
+        },
+        "parse_repairs": {
+          "type": "object",
+          "properties": {
+            "stripped_fields": { "type": "array", "items": { "type": "string" } },
+            "unescaped_backslashes": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["stripped_fields", "unescaped_backslashes"],
+          "additionalProperties": false,
+          "description": "所选候选在校验前做过的无损修复（设计 §6.5）：剥掉的根字段（厂商注入的 toolAction / toolSummary 与编排器回显的 front-matter 键两类）与按字面还原的非法转义处数。解析成功的侧恒写，零值 = 解析过、没修；agy 侧 stripped_fields 常态含 toolAction / toolSummary"
+        },
+        "parse_fallback_cause": {
+          "enum": ["no_json_object", "json_syntax", "root_invalid", "finding_unaddressable", "foreign_prefix"],
+          "description": "整份回退的成因（设计 §6.5）：没有 JSON 对象 / 语法错（还原非法转义后仍无法解析）/ 根字段不合 / 有意见编号不可用 / 编号前缀不属于本侧。status 为 parse_fallback 的侧恒写，其余不写"
+        },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "peer_deny_applied": {
+          "type": "boolean"
+        },
+        "deny_skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "该侧本次注入时被跳过的禁读路径条数；不注入 --settings 的侧恒为 0。注意与 meta.guard.deny_skipped 区分：那一格是**逐侧聚合 map**（object），report 据它推降级旗标；这一格是本侧的整数事实。两处同名不同形，是刻意的分工，不是重复"
+        },
+        "deny_rule_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "该侧本次实际注入的 deny 规则条数；与 deny_skipped、deny_bytes 三格成对读。guard 段没有对应格"
+        },
+        "deny_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "该侧本次注入的 --settings 字节数；不注入的侧恒为 0。整份 settings 进单个 argv 项，越界即 spawn 失败（E2BIG），而条数看不出规模——字节数才是 ARG_MAX 预算的主要消费者。guard 段没有对应格"
+        }
+      }
+    }
+  }
+}

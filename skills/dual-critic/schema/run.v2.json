@@ -96,6 +96,11 @@
       "enum": ["L1", "L2"],
       "description": "当轮 Driver 在这次运行时的有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而项目内 Hook 配置不在场即记 L2。可选：早于该步的留痕没有此字段，缺失即「无从得知」，不等于 L1。只看存在性、不看内容——Hook 命令被改、wrapper 被替换这里都看不见；只读注册表登记的那一个项目内配置文件（Claude 另读同目录 settings.local.json 的 disableAllHooks），落在 user 级或其它设置层的 Hook 看不见，会记成 L2（偏保守）"
     },
+    "profile": {
+      "type": "string",
+      "minLength": 1,
+      "description": "本轮实际使用的档位表名（--profile 覆盖后的 active_profile，设计 6.7.1）。与厂商 profile（critics.<id>.profile_requested，codex 的 -p）是两个命名空间。写侧恒写；字段缺席＝M11 第 6 步之前的旧留痕。【已实现 · M11 第 6 步】"
+    },
     "critics_selected": {
       "type": "array",
       "minItems": 1,
@@ -662,35 +667,69 @@
           "description": "落点自检（EV-112，目前只有 zcode 侧产出）。log / rollout＝本次会话的 CLI 日志与 rollout 是否落进运行目录，两项合取，任一为 false 时 guard 播报；leaked_to_home 只在无副本的审查运行出现，两项同形：log＝真实 ~/.zcode/cli/log 里本次拉起后改过的文件中有本次会话的行，rollout＝真实 ~/.zcode/cli/rollout 下有本次会话的 rollout 文件，任一为 true 时 guard 另起一句。落点自检只覆盖日志与 rollout 两类载体。字段缺席＝没走到自检（失败早退、无 sessionId）或该侧不产出"
         },
         "effort": {
-          "type": "string"
+          "type": "string",
+          "description": "旧名：思考等级请求值（M11 之前只有 antigravity 侧写）。M11 第 6 步起与 effort_requested 同值并写，仍只在有值时出现；新读者一律读 effort_requested。删不删不在 M11"
         },
         "effort_requested": {
           "type": [
             "string",
             "null"
           ],
-          "description": "思考等级的请求值。【待实施 · M11】schema 先留位，写侧尚未接线"
+          "description": "思考等级的请求值（档位解析并叠加 --effort-<id> 之后，设计 11.5）。null＝本次没有请求值：该侧没有思考等级概念（glm），或档位、档位表格子、命令行都没给（如裸 slug 格子的 codex）。写侧恒写；字段缺席＝M11 第 6 步之前的旧留痕。【已实现 · M11 第 6 步】"
         },
         "effort_effective": {
           "type": [
             "string",
             "null"
           ],
-          "description": "思考等级的生效值，必须回读而非采信请求值——部分厂商存在归并映射（如 medium/high/xhigh → high），「请求 medium 实际生效 high」。这是 AC-13「生效模型可核对」对 effort 的延伸。【待实施 · M11】"
+          "description": "思考等级的生效值，只取回读、不采信请求值（设计 6.7.1 / 11.1，适配器钩子 effortReadback）：gemini 取回执 slug 的档位后缀（仅回执在场且 slug 带后缀），codex、claude 恒 null（没有回读面，codex 会话文件的 turn_context.payload.effort 是请求回显），glm 恒 null（无此概念）。写侧恒写；字段缺席＝M11 第 6 步之前的旧留痕。【已实现 · M11 第 6 步】"
+        },
+        "effort_effective_source": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "envelope",
+            "unverified",
+            null
+          ],
+          "description": "生效值来源，与 model_effective_source 同构：envelope＝从回执读到；unverified＝该侧有思考等级概念、但没有回读面或这次没读到；null＝该侧没有思考等级概念。写侧恒写；字段缺席＝M11 第 6 步之前的旧留痕。【已实现 · M11 第 6 步】"
+        },
+        "tier": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            null
+          ],
+          "description": "档位名（设计 11.5 取值规则）：基础组合是档位、且叠加精确值后至少保留一个来自档位的字段时记档位名，否则 null。写侧恒写；字段缺席＝M11 第 6 步之前的旧留痕。【已实现 · M11 第 6 步】"
         },
         "tier_source": {
           "type": [
             "string",
             "null"
           ],
-          "description": "档位的来源（命令行 / 档位表 / 默认）。【待实施 · M11】"
+          "enum": [
+            "cli",
+            "profile",
+            "agent_default",
+            "legacy",
+            "override",
+            null
+          ],
+          "description": "基础组合的来源（设计 11.5）：cli（--tier-<id>）/ profile（档位表格子，{tier} 或 {model, effort} 形态）/ agent_default（default_tier）/ legacy（档位表格子是裸 slug）/ override（基础组合提供的字段被精确值全部覆盖，或第一段无命中、模型完全来自 --model-<id>）。写侧恒写；字段缺席＝M11 第 6 步之前的旧留痕。【已实现 · M11 第 6 步】"
         },
         "profile_requested": {
           "type": [
             "string",
             "null"
           ],
-          "description": "本次请求的厂商 profile 名（codex 的 -p，即 agents.<id>.profile）。命名随 model_requested / effort_requested 的既有惯例：它是请求值，回读值是 model_provider。裸名 profile 留空不占——在本系统里那个词已经指档位（config.yaml 的 profiles / active_profile / CLI --profile），而本 schema 自己的档位词汇是 tier*。无厂商 profile 概念的族恒为 null。【已实现 · M8 第 4 步】"
+          "description": "本次请求的厂商 profile 名（codex 的 -p）。M11 第 6 步起记三层解析后的值：--profile-<id> > 档位条目的 profile > agents.<id>.profile（设计 11.5），与可用性检查、模型目录比对同一个值。命名随 model_requested / effort_requested 的既有惯例：它是请求值，回读值是 model_provider。顶层 profile 是档位表名，与本字段是两个命名空间。无厂商 profile 概念的族恒为 null。【已实现 · M8 第 4 步；三层来源 M11 第 6 步】"
         },
         "model_provider": {
           "type": [

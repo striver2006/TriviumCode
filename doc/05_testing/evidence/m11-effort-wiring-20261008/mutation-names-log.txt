@@ -1,0 +1,21 @@
+M1：fail=1 cancelled=0 0s ⇒ E1 agy：只认回执——envelope 且 slug 带后缀才取后缀，其余 null + unverified
+M2：fail=1 cancelled=0 0s ⇒ E2 codex / claude：恒 null + unverified——结果里塞一个带后缀、来源 envelope 的生效模型也不冒充
+M3：fail=1 cancelled=0 0s ⇒ E2 codex / claude：恒 null + unverified——结果里塞一个带后缀、来源 envelope 的生效模型也不冒充
+M4：fail=1 cancelled=0 0s ⇒ E3 zcode：无此概念，生效值与来源都是 null（不是「没读到」）
+M5：fail=2 cancelled=0 11s ⇒ S1 桩回报「请求 low ≠ 生效 high」：run.json 与 front-matter 分记，旧字段 effort 同请求值，档位与档位表名入档 ｜ S2 不注入生效值：effort_effective 为 null、来源 unverified——不拿请求值顶上
+M6：fail=1 cancelled=0 11s ⇒ S1 桩回报「请求 low ≠ 生效 high」：run.json 与 front-matter 分记，旧字段 effort 同请求值，档位与档位表名入档
+M7：fail=2 cancelled=0 9s ⇒ S1 桩回报「请求 low ≠ 生效 high」：run.json 与 front-matter 分记，旧字段 effort 同请求值，档位与档位表名入档 ｜ P3 --start：交接文件里发起用的厂商 profile / 模型 / 思考等级就是解析值；--profile-codex 覆盖档位条目时一并跟着变
+M8：fail=1 cancelled=0 12s ⇒ S1 桩回报「请求 low ≠ 生效 high」：run.json 与 front-matter 分记，旧字段 effort 同请求值，档位与档位表名入档
+M9：fail=1 cancelled=0 1s ⇒ X1 run()：-p 与隔离副本的 profile 分层文件都是请求里的解析值（deepseek），不是配置段（qwen）；-c 带请求的思考等级
+M10：fail=1 cancelled=0 1s ⇒ X1 run()：-p 与隔离副本的 profile 分层文件都是请求里的解析值（deepseek），不是配置段（qwen）；-c 带请求的思考等级
+M11：fail=1 cancelled=0 0s ⇒ P1 codex 可用性：传了本轮解析值就逐个判、不再看配置段；不传按配置段（旧行为）
+M12：fail=1 cancelled=0 1s ⇒ X4 claude run()：请求的思考等级以 --effort 下传；生效值仍落 null + unverified（init / result 没有 effort 字段）
+M13：fail=1 cancelled=0 9s ⇒ P3 --start：交接文件里发起用的厂商 profile / 模型 / 思考等级就是解析值；--profile-codex 覆盖档位条目时一并跟着变
+M14：fail=1 cancelled=0 0s ⇒ K1 parseEffortLevels：F6 原文、无此行、括号缺失、空串、同行多对括号取第一对、列表项不合形状
+M15：fail=1 cancelled=0 0s ⇒ H3 zcode 钩子 none；claude 钩子读探针的 effort_levels（M11 第 6 步）：缺席 / null ⇒ unknown，[] ⇒ none，非空 ⇒ levels
+M16：fail=1 cancelled=0 0s ⇒ C4 front-matter 五键：恒写（null 也写），与 run.json 同值；回显剥离清单同批收录
+M17：fail=1 cancelled=0 0s ⇒ K1 parseEffortLevels：F6 原文、无此行、括号缺失、空串、同行多对括号取第一对、列表项不合形状
+M18：fail=1 cancelled=0 11s ⇒ P2 预检按本轮解析出的厂商 profile 判可用性与目录：通过；解析出的那家没凭据 ⇒ 拒（配置段那家有凭据也不放）
+M19：fail=1 cancelled=0 12s ⇒ P4 --start 的可用性检查按本轮解析出的厂商 profile 判：解析出的那家没凭据 ⇒ 退 69、零工件
+MC1：fail=1 cancelled=0 0s ⇒ C2 非法取值被拒：tier / tier_source / effort_effective_source 都是封闭枚举，顶层 profile 不收空串
+exit=0

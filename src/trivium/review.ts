@@ -22,6 +22,8 @@ import {
   resolveTier,
   type AdapterContext,
   type AdapterTable,
+  type EffortReadback,
+  type TierResolution,
 } from './adapters/base.js';
 import { resolveAdapters } from './adapters/stub.js';
 import { realAdapters } from './adapters/index.js';
@@ -71,7 +73,7 @@ import {
 } from './meta.js';
 import { acquireLock, type LockHandle } from './lock.js';
 import { measureAllPairs, renderDivergence } from './divergence.js';
-import { agentConfigOf, resolveAssetRoot, resolveReviewSchemaPath, runRoot, vendorProfileOf } from './config.js';
+import { resolveAssetRoot, resolveReviewSchemaPath, runRoot } from './config.js';
 import { resolveCriticSelection } from './critics.js';
 import { releaseRunningGateEntry, setGateChecked } from './state.js';
 import { ensureDir, sha256, sha256File } from './util/fsx.js';
@@ -611,41 +613,12 @@ export interface ReviewOutcome {
   sideStatuses: Partial<Record<CriticId, CriticResult['status']>>;
 }
 
-/**
- * 逐侧取思考等级。**按 vendor 分派，不按 Agent 身份穷尽。**
- *
- * 演化到第三版，每一版治的是上一版的病：
- *
- *   v1 三目：`critic === 'gemini' ? … : undefined`。非 gemini 的一切取值静默落进
- *   undefined，第三家接入后思考等级无声丢失——不抛异常、不退非零，只是那一侧
- *   按厂商默认档跑。
- *
- *   v2 `switch` + `never`（M7b 第 1 步）：把静默换成编译期硬阻塞。两值时无懈可击，
- *   但它把「哪几家有思考等级」钉成一张**按身份**的表，于是注册表加一家这里当场
- *   编译不过，而修法只有「再加一个 case」——「新增 Agent 只需接入套件」那句话
- *   就此不成立，第 6 步的零改动验收会被自己打红（计划 §3.5 / GLM-03 警告的形态）。
- *
- *   v3（本版）：判据改回**厂商**。`effort` 本来就是 antigravity 形状配置段的字段，
- *   ZCode 0.16.5 实测无等价旗标（M0 坑清单 C-07）——它是厂商事实，不是身份事实。
- *   而 vendor 随新 Agent 一起进注册表（接入套件第 ① 件），所以按它分派不必改这里。
- *
- * vendor 取**注册表登记的**，不取配置段里自称的：后者是被校验的一方，
- * 拿它当判据等于让被校验方自己决定走哪条分支。用注册表还能保住
- * `agentConfigOf` 的「缺段即就地失败」——若写成 `cfg.agents[critic]?.vendor === …`，
- * 配置缺了 `agents.gemini` 会静默返回 undefined，思考等级无声降级成默认档，
- * 而留痕里看不出配置有洞。
+/*
+ * 原有 `effortFor`（逐侧取思考等级，按 vendor 分派、只给 antigravity 取阶段级 effort），M11 第 6 步删除：
+ * 请求的思考等级改取档位解析（`resolveTier`）的结果——裸 slug 格子回落阶段级 effort 那一支与它同一判据、
+ * 同一取值（注册表 vendor 为 antigravity 且配置段 vendor 也是），档位与命令行给的值则是它从来取不到的。
+ * 「`agents.gemini` 缺段响亮失败」的保障不随之丢：agy 适配器的 `availability` / `run` 仍经 `agentConfigOf` 取段。
  */
-function effortFor(
-  cfg: Config,
-  critic: CriticId,
-  stage: Stage,
-): 'low' | 'medium' | 'high' | undefined {
-  if (agentById(critic)?.vendor === 'antigravity') {
-    return agentConfigOf(cfg, critic, 'antigravity').effort[stage];
-  }
-  // 其余厂商形状不存在「思考等级」这个概念。是「本侧没有此概念」，不是「忘了传」。
-  return undefined;
-}
 
 /** 一次运行的准备产物：`--start` 与同步路径共用，也是交接给工作进程的全部上下文 */
 export interface PreparedRun {
@@ -829,8 +802,9 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
     const slug = checkModelSlugs(cfg, stage, opts.modelOverrides, sides, opts.tierFlags);
     if (!slug.ok) throw usageError(`模型 slug 不合法：\n  ${slug.detail}`);
     /*
-     * 档位组合（M11 第 4 步，设计 11.5）：与 slug 同理在这里再校验一次——原生枚举、厂商 profile 名单与过渡闸
+     * 档位组合（M11 第 4 步，设计 11.5）：与 slug 同理在这里再校验一次——原生枚举、无此概念与厂商 profile 名单
      * 只在预检做的话，终端直接跑 `--start` 就绕过了。告警（不阻断）由 `--start` 的 warnings 复查念出。
+     * （第 4、5 步在此另有一道过渡闸，M11 第 6 步透传接线后拆除。）
      */
     const combos = checkTierCombos(cfg, stage, opts.modelOverrides, sides, opts.tierFlags);
     if (!combos.ok) throw usageError(`档位组合不合法：\n  ${combos.detail}`);
@@ -865,6 +839,18 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
         '  自己审自己不构成二次审查——这条流水线存在的理由就是避免它。',
     );
   }
+  /*
+   * ── 档位解析：每侧只算一次（M11 第 6 步，设计 11.5）──
+   *
+   * 命令行一级（模型覆盖 + 档位旗标）逐侧合并，**与上方两格校验内部用的是同一个函数**（第 5 步计划三审 CODEX-02）。
+   * 结果同时喂两处：下面的可用性检查（本轮解析出的厂商 profile）与后面的请求构造（模型、思考等级、厂商 profile、
+   * 档位名与来源）——同一个对象，可用性检查与 codex 的 `-p` 不可能是两个值。`checkModelSlugs` 内部按同一组输入
+   * 另算一次去比模型目录，纯函数、结果相同。
+   */
+  const cliOverrides = mergeCliOverrides(opts.modelOverrides, opts.tierFlags);
+  const routedBy: Partial<Record<CriticId, TierResolution>> = {};
+  for (const c of sides) routedBy[c] = resolveTier(cfg, c, stage, cliOverrides[c] ?? {});
+
   for (const c of sides) {
     const adapter = adapters[c];
     /*
@@ -879,7 +865,8 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
           '  这说明注册表与 adapters/index.ts 的接线表不一致——属程序缺陷，不是配置问题。',
       );
     }
-    const av = adapter.availability(adapterCtx);
+    // 按本轮解析出的厂商 profile 判（M11 第 6 步）；没有这个概念的侧照收、忽略
+    const av = adapter.availability(adapterCtx, { vendorProfiles: [routedBy[c]!.vendorProfile] });
     if (!av.ok) throw envError(`${c} 侧不可用：${av.reason}`);
   }
   if (sides.length < 2) {
@@ -1130,11 +1117,6 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
 
   /** 从各侧第 4 段剔除的自动条目（这里不可能有 `--context` 的——上一段已经拦下） */
   const pruned: PrunedEntry[] = [];
-  /*
-   * 命令行一级（模型覆盖 + 档位旗标）逐侧合并，**与上方两格校验内部用的是同一个函数**（计划三审 CODEX-02）：
-   * 路由点不再内联展开，`--tier-〈id〉` 选出的模型从这里进请求。
-   */
-  const cliOverrides = mergeCliOverrides(opts.modelOverrides, opts.tierFlags);
 
   for (const critic of sides) {
     const snap = snapshots[critic]!;
@@ -1154,13 +1136,13 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
     const sideSuggested = keep(suggestedRead, (p) => p, () => 'suggested');
 
     /*
-     * 档位解析（M11 第 4 步取代 routeModel）。本步只取模型：思考等级与厂商 profile 随第 6 步才进请求，
-     * 之间由 `checkTierCombos` 的过渡闸拒绝「写了却不下传」的组合。
+     * 档位解析结果（上方可用性检查之前算好的同一份）：模型、思考等级、厂商 profile、档位名与来源全部从这里进请求
+     * （M11 第 6 步；第 4、5 步只取模型）。
      *
      * 下面的 69 分支**不可达**：同一组参数已在上方 `checkModelSlugs` 以 64 拦下（M11 第 4 步计划 P-4，
      * 三侧审查员独立核实）。保留为防御——两处判据将来分叉时，宁可在零工件区退出也不带着 null 模型往下走。
      */
-    const routed = resolveTier(cfg, critic, stage, cliOverrides[critic] ?? {});
+    const routed = routedBy[critic]!;
     if (!routed.model) {
       throw envError(
         `${critic} 侧没有可用模型：profile「${cfg.active_profile}」未定义 ${stage} 阶段的模型，` +
@@ -1210,12 +1192,19 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
       brief_path: briefAbs,
       brief_text: briefText,
       model: routed.model,
-      effort: effortFor(cfg, critic, stage),
+      /*
+       * 思考等级请求值（M11 第 6 步）：档位条目 / 档位表格子 / `--effort-<id>`，或裸 slug 格子回落的阶段级 effort。
+       * 没有就不带这一键（形状同第 6 步之前：可选字段）。
+       */
+      ...(routed.effort !== null ? { effort: routed.effort } : {}),
       timeout_s: cfg.review.timeout_s[stage],
       schema_path: schemaPath,
       min_tool_calls: cfg.review.min_tool_calls[stage],
       min_project_reads: cfg.review.min_project_reads[stage],
-      profile_requested: vendorProfileOf(cfg, critic),
+      // 三层解析后的厂商 profile（M11 第 6 步）：与上方可用性检查同一个值，codex 的 `-p` 也取它
+      profile_requested: routed.vendorProfile,
+      tier: routed.tier,
+      tier_source: routed.tierSource,
     };
   }
 
@@ -1349,6 +1338,8 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
        * 两者分开记，`gate` 才能把「入选但失败」与「压根没入选」判成两回事（§6.7.1）。
        */
       criticsSelected: sides,
+      // 档位表名（M11 第 6 步，顶层 `profile`）：`--profile` 已在载入配置时覆盖进 `active_profile`
+      profile: cfg.active_profile,
       /*
        * 发起方与它的启用状态一起落盘（M9 第 5 步）。
        *
@@ -1690,6 +1681,15 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
    * （分成两处算过一次，两边的分母就漂了——见下面落盘处的说明）。
    */
   const jointCheckRun = jointCheckRunState(sides, verdict, reviews);
+  /*
+   * 思考等级生效值（M11 第 6 步，设计 11.1）：逐侧从**回读结果**派生一次，front-matter 与下方 run.json 共用。
+   * 钩子入参只有 `CriticResult`——结构上拿不到请求值。失败结果（含 runner 兜底构造的）同样经它，不另写分支。
+   */
+  const effortRead: Partial<Record<CriticId, EffortReadback>> = {};
+  for (const c of sides) {
+    const r = results[c];
+    if (r) effortRead[c] = adapters[c]!.effortReadback(r);
+  }
   for (const c of sides) {
     const hints = retryHints[c];
     if (hints && hints.length > 0) {
@@ -1725,6 +1725,12 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       result: r,
       modelRequested: requests[c]!.model,
       effort: requests[c]!.effort ?? null,
+      // 档位与思考等级一组（M11 第 6 步）：与 run.json 同一次计算、同值（EV-54 的两处同值纪律）
+      effortRequested: requests[c]!.effort ?? null,
+      effortEffective: effortRead[c]!.effective,
+      effortEffectiveSource: effortRead[c]!.source,
+      tier: requests[c]!.tier,
+      tierSource: requests[c]!.tier_source,
       snapshotHash: `sha256:${primarySnap.subjectSha256}`,
       startedAt, finishedAt,
       evidenceOk: side?.evidenceOk ?? false,
@@ -1975,7 +1981,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
        * 类型层的防错也已补齐（M7b 第 3 步，BACKLOG EV-03 收口）：`Vendor` 不再是
        * 独立的两值 union，而**就是**注册表的 `AgentVendor`，`CRITIC_VENDOR` 派生处
        * 那个把四值宽 union 断言成两值的 `as Vendor` 随之删除。此前它恒编译通过，
-       * 新增审核者时这条链不会像 `effortFor` / `checkModelSlugs` 的 `never` 分支
+       * 新增审核者时这条链不会像当时 `effortFor`（M11 第 6 步已删）/ `checkModelSlugs` 的 `never` 分支
        * 那样报错，而是把新 vendor 静默塞进值位、落盘才被枚举校验拒掉。
        * 前提是 `run.v2` 的 `vendor` 不再枚举两值——所以它只能随本步一起做。
        */
@@ -2008,7 +2014,18 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       ...(r.carriers_landed === undefined ? {} : { carriers_landed: r.carriers_landed }),
       // 没做覆盖而实际模型不同（EV-122）：同一口径，缺席 = 不成立，不压成 null
       ...(r.model_unenforced === undefined ? {} : { model_unenforced: r.model_unenforced }),
+      // 旧名（M11 第 6 步起与 effort_requested 同值并写）：schema 只收 string，仍只在有值时出现
       ...(requests[c]!.effort ? { effort: requests[c]!.effort! } : {}),
+      /*
+       * 档位与思考等级一组（M11 第 6 步，设计 6.7.1）：**五格恒写**（null 也写），与上方 `profile_requested` /
+       * `model_provider` 同一口径——缺席只留给 M11 第 6 步之前的旧留痕，null 表示该侧没有这项事实。
+       * 生效值只取回读：`effortReadback` 的入参只有回读结果，拿不到请求值（与渲染侧共用同一次计算）。
+       */
+      effort_requested: requests[c]!.effort ?? null,
+      effort_effective: effortRead[c]!.effective,
+      effort_effective_source: effortRead[c]!.source,
+      tier: requests[c]!.tier,
+      tier_source: requests[c]!.tier_source,
       status: r.status,
       exit_code: r.exit_code,
       duration_s: r.duration_s,

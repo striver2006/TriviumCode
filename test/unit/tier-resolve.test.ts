@@ -172,7 +172,7 @@ test('R9 厂商 profile 三层次序：命令行 > 档位条目 > agents.<id>.pr
   for (const id of ['gemini', 'glm', 'claude']) {
     const r = resolveTier(c, id as CriticId, 'plan', { vendorProfile: 'kimi' });
     assert.equal(r.vendorProfile, null, `${id} 没有厂商 profile 概念`);
-    assert.equal(r.agentVendorProfile, null);
+    assert.equal(r.origin.vendorProfile, null);
   }
   // profile 在 schema 里只给 openai 支；就算手工塞进别家的档位，解析也不认
   const leak = cfgOf((cfg) => setTiers(cfg, 'gemini', { high: { model: 'g', profile: 'p' } }));
@@ -184,15 +184,16 @@ test('R10 gemini 思考等级回落只对裸 slug：档位与 {model, effort} �
   const c = cfgOf((cfg) => setTiers(cfg, 'gemini', { low: { model: 'gemini-3.8-flash' } }));
   setCell(c, 'gemini', 'plan', { tier: 'low' });
   const tier = resolveTier(c, 'gemini', 'plan');
+  // M11 第 6 步起这就是请求面的取值：档位没写 effort ⇒ 不下传（第 4、5 步另记的 stageEffort 随过渡告警删除）
   assert.equal(tier.effort, null);
-  assert.equal(tier.stageEffort, 'high', '运行期（第 6 步前）实际下传的值另记，供过渡告警');
+  assert.equal(tier.origin.effort, null);
   const slug = resolveTier(c, 'gemini', 'code');
   assert.equal(slug.effort, 'high');
   assert.equal(slug.origin.effort, 'agent');
   // 废弃键 agents.codex.effort 即使还在配置里，也不回落（只有 antigravity 有阶段级 effort）
   const legacyCodex = cfgOf((_cfg, a) => { a['codex']!['effort'] = { plan: 'high', code: 'high', bug: 'high' }; });
   assert.equal(resolveTier(legacyCodex, 'codex', 'plan').effort, null);
-  assert.equal(resolveTier(legacyCodex, 'codex', 'plan').stageEffort, null);
+  assert.equal(resolveTier(legacyCodex, 'codex', 'plan').origin.effort, null);
 });
 
 /*
@@ -251,10 +252,21 @@ test('H2 agy 钩子：带后缀 ⇒ slug 已编码档位；不带后缀 ⇒ 由�
   assert.equal(agy.reasoningLevelsFor!(c, 'gemini-3.8-flash', null).kind, 'unknown');
 });
 
-test('H3 zcode 钩子 none、claude 钩子 unknown（claude 枚举随 M11 第 6 步）', () => {
+test('H3 zcode 钩子 none；claude 钩子读探针的 effort_levels（M11 第 6 步）：缺席 / null ⇒ unknown，[] ⇒ none，非空 ⇒ levels', () => {
   const c = defaultConfig();
   assert.deepEqual(realAdapters().glm!.reasoningLevelsFor!(c, 'GLM-5.3', null), { kind: 'none' });
-  assert.equal(realAdapters().claude!.reasoningLevelsFor!(c, 'claude-x', null).kind, 'unknown');
+  const claude = realAdapters().claude!;
+  const old = claude.reasoningLevelsFor!(c, 'claude-x', null);
+  assert.equal(old.kind, 'unknown', '旧探针结论没有 effort_levels');
+  assert.match((old as { why: string }).why, /早于 effort_levels.*doctor/);
+  c.probe.cli.claude!.effort_levels = null;
+  const unparsed = claude.reasoningLevelsFor!(c, 'claude-x', null);
+  assert.equal(unparsed.kind, 'unknown');
+  assert.match((unparsed as { why: string }).why, /没能解析/);
+  c.probe.cli.claude!.effort_levels = [];
+  assert.deepEqual(claude.reasoningLevelsFor!(c, 'claude-x', null), { kind: 'none' }, '帮助文本里没有 --effort');
+  c.probe.cli.claude!.effort_levels = ['low', 'medium', 'high', 'xhigh', 'max'];
+  assert.deepEqual(claude.reasoningLevelsFor!(c, 'claude-x', null), { kind: 'levels', levels: ['low', 'medium', 'high', 'xhigh', 'max'] });
   assert.equal(realAdapters().glm!.vendorProfilesFor, undefined, '没有厂商 profile 概念的侧不实现名单钩子');
 });
 
@@ -330,7 +342,7 @@ test('C2 永久判据：枚举外 effort、名单外 profile、无思考等级�
   assert.equal(enumBad.ok, false);
   assert.equal(enumBad.exitCode, EXIT.USAGE);
   assert.match(enumBad.detail, /「xhigh」不在模型「qwen3\.8-flash」的原生枚举中。可用值：low, medium, high/);
-  assert.doesNotMatch(enumBad.detail, /第 6 步/, '永久判据排在过渡闸之前，先报真病因');
+  assert.doesNotMatch(enumBad.detail, /第 6 步|过渡/, '过渡闸已拆（M11 第 6 步），只剩永久判据的真病因');
 
   const profBad = checkTierCombos(comboCfg((c) => {
     setTiers(c, 'codex', { high: { model: 'kimi-for-coding', profile: 'kimi' } });
@@ -345,22 +357,34 @@ test('C2 永久判据：枚举外 effort、名单外 profile、无思考等级�
   assert.match(glm.detail, /ZCode 不支持思考等级/);
 });
 
-test('C3 过渡闸：合法的 effort、与 agents.codex.profile 不同的档位 profile ⇒ 退 64 指向第 6 步', () => {
+/*
+ * ── T：过渡闸拆除后的反转（M11 第 6 步，计划 r2 §3.1 T 组）──
+ *
+ * 第 4、5 步这几格退 64 或告警，理由是「思考等级与厂商 profile 尚未透传」。第 6 步接线后逐格反转为通过，
+ * 且文案里不再出现指向第 6 步的过渡说法——留着它们就是告诉用户一件已经不成立的事。
+ */
+test('C3 / T1 原过渡闸两格反转：档位表格子的合法 effort、与 agents.codex.profile 不同的档位 profile ⇒ 通过', () => {
   const eff = checkTierCombos(comboCfg((c) => setCell(c, 'codex', 'plan', { model: 'qwen3.8-flash', effort: 'high' })), 'plan', {}, ['codex']);
-  assert.equal(eff.ok, false);
-  assert.match(eff.detail, /思考等级「high」来自档位表格子.*M11 第 6 步/);
+  assert.equal(eff.ok, true, eff.detail);
+  assert.equal(eff.warn, undefined, eff.detail);
   const viaCli = checkTierCombos(comboCfg(() => {}), 'plan', {}, ['codex']);
-  assert.equal(viaCli.ok, true, '没写 effort 不触发');
+  assert.equal(viaCli.ok, true, '没写 effort 照旧通过');
 
   const prof = checkTierCombos(comboCfg((c) => {
     setTiers(c, 'codex', { high: { model: 'deepseek-v4-pro', profile: 'deepseek' } });
     setCell(c, 'codex', 'plan', { tier: 'high' });
   }), 'plan', {}, ['codex']);
-  assert.equal(prof.ok, false);
-  assert.match(prof.detail, /厂商 profile「deepseek」来自档位条目，与 agents\.codex\.profile「qwen」不同/);
+  assert.equal(prof.ok, true, prof.detail);
+  assert.doesNotMatch(prof.detail, /第 6 步|过渡/);
+  // 「只整段覆盖 tiers 一处即换家族」由此可用（EV-27 结构部分）：slug 也按档位的厂商 profile 取目录
+  const c = comboCfg((cfg) => {
+    setTiers(cfg, 'codex', { high: { model: 'deepseek-v4-pro', profile: 'deepseek' } });
+    setCell(cfg, 'codex', 'plan', { tier: 'high' });
+  });
+  assert.equal(checkModelSlugs(c, 'plan', {}, ['codex']).ok, true);
 });
 
-test('C4 两键同改换家族（设计 13.1.1 现行出口）不被过渡闸拦：档位 profile 等于 agents.codex.profile', () => {
+test('C4 两键同改换家族（设计 13.1.1 现行出口）照旧通过：档位 profile 等于 agents.codex.profile', () => {
   const r = checkTierCombos(comboCfg((c) => {
     (c.agents as unknown as Agents)['codex']!['profile'] = 'deepseek';
     setTiers(c, 'codex', { high: { model: 'deepseek-v4-pro', profile: 'deepseek' } });
@@ -369,14 +393,16 @@ test('C4 两键同改换家族（设计 13.1.1 现行出口）不被过渡闸拦
   assert.equal(r.ok, true, r.detail);
 });
 
-test('C5 取不到就跳过并点名：旧探针无枚举时 effort 不做枚举校验（过渡闸仍拦）；名单为空时 profile 跳过', () => {
+test('C5 / T2 取不到就跳过并点名：旧探针无枚举时 effort 不做枚举校验、通过并告警（原「过渡闸仍拦」反转）；名单为空时 profile 跳过', () => {
   const noEnum = checkTierCombos(comboCfg((c) => {
     delete c.probe.cli.codex!.reasoning_levels;
     setCell(c, 'codex', 'plan', { model: 'qwen3.8-flash', effort: 'whatever' });
   }), 'plan', {}, ['codex']);
-  assert.equal(noEnum.ok, false);
-  assert.doesNotMatch(noEnum.detail, /原生枚举/, '取不到枚举不得硬拒成「不在枚举中」');
-  assert.match(noEnum.detail, /M11 第 6 步/);
+  assert.equal(noEnum.ok, true, noEnum.detail);
+  assert.equal(noEnum.warn, true);
+  assert.doesNotMatch(noEnum.detail, /原生枚举中/, '取不到枚举不得硬拒成「不在枚举中」');
+  assert.match(noEnum.detail, /未实际校验/);
+  assert.doesNotMatch(noEnum.detail, /第 6 步|过渡/);
 
   const emptyNames = checkTierCombos(comboCfg((c) => {
     c.probe.cli.codex!.profiles = [];
@@ -388,14 +414,13 @@ test('C5 取不到就跳过并点名：旧探针无枚举时 effort 不做枚举
   assert.match(emptyNames.detail, /未实际校验：OpenAI Codex（本机厂商 profile 名单为空）|未实际校验：.*名单为空/);
 });
 
-test('C6 gemini 告警两格：档位没写 effort 而运行期仍下传阶段级 effort（GLM-01）；slug 已编码档位再给 effort', () => {
+test('C6 / T3 gemini：原过渡残余告警反转为不告警（档位没写 effort 即不下传）；slug 已编码档位再给 effort 仍告警（永久）', () => {
   const residual = checkTierCombos(comboCfg((c) => {
     setTiers(c, 'gemini', { low: { model: 'gemini-3.8-flash' } });
     setCell(c, 'gemini', 'plan', { tier: 'low' });
   }), 'plan', {}, ['gemini']);
   assert.equal(residual.ok, true, residual.detail);
-  assert.equal(residual.warn, true);
-  assert.match(residual.detail, /过渡期运行仍按 agents\.gemini\.effort 下传「high」/);
+  assert.equal(residual.warn, undefined, residual.detail);
 
   const suffixed = checkTierCombos(comboCfg((c) => {
     setTiers(c, 'gemini', { low: { model: 'gemini-3.8-flash-low' } });
@@ -430,39 +455,40 @@ test('F1 --tier 选到未定义的档：slug 检查报档名与可用档、来�
   assert.match(r.detail, /档位「medium」（经命令行指定）未在 agents\.codex\.tiers 定义。可用：low, high/);
 });
 
-test('F2 --tier 选到只写 model 的档：通过，并带留痕空窗告警（第 6 步前档位名不入档）', () => {
+test('F2 / T4 --tier 选到只写 model 的档：通过且零告警（原留痕空窗告警反转：tier / tier_source 第 6 步起入档）', () => {
   const r = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { tier: 'low' } });
   assert.equal(r.ok, true, r.detail);
-  assert.equal(r.warn, true);
-  assert.match(r.detail, /本轮档位名与来源尚未入档（M11 第 6 步起），事后只能从请求模型反推（--tier-codex low）/);
+  assert.equal(r.warn, undefined, r.detail);
+  assert.doesNotMatch(r.detail, /尚未入档|第 6 步/);
   // 路由真的取到了档位的模型
   assert.equal(checkModelSlugs(flagCfg(), 'plan', {}, ['codex'], { codex: { tier: 'low' } }).ok, true);
 });
 
-test('F3 过渡闸三格：--tier 选到带 effort 的档、--effort 单独给、--profile-codex 不同于 agents.codex.profile——退 64 且点名旗标', () => {
+test('F3 / T5 原过渡闸三格反转：--tier 选到带 effort 的档、--effort 单独给、--profile-codex 不同于 agents.codex.profile——通过', () => {
   const tierEffort = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { tier: 'high' } });
-  assert.equal(tierEffort.ok, false);
-  // 经 --tier 选到的档：文案点明是哪一档带出来的，指引换一档（代码三审 GLM-02）
-  assert.match(tierEffort.detail, /思考等级「high」来自经 --tier-codex high 选到的档位条目.*M11 第 6 步.*换一档，或去掉该档定义里的 effort/);
+  assert.equal(tierEffort.ok, true, tierEffort.detail);
+  assert.equal(tierEffort.warn, undefined, tierEffort.detail);
 
   const eff = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { effort: 'low' } });
-  assert.equal(eff.ok, false);
-  assert.equal(eff.exitCode, EXIT.USAGE);
-  assert.match(eff.detail, /思考等级「low」来自命令行 --effort-codex/);
+  assert.equal(eff.ok, true, eff.detail);
+  assert.equal(eff.warn, undefined, eff.detail);
 
   const prof = checkTierCombos(flagCfg(), 'plan', { codex: 'deepseek-v4-pro' }, ['codex'], { codex: { vendorProfile: 'deepseek' } });
-  assert.equal(prof.ok, false);
-  assert.match(prof.detail, /厂商 profile「deepseek」来自命令行 --profile-codex，与 agents\.codex\.profile「qwen」不同/);
+  assert.equal(prof.ok, true, prof.detail);
+  assert.doesNotMatch(prof.detail, /第 6 步|过渡/);
+  // 同一组输入下 slug 检查按 deepseek 的目录比对（三处同值的目录那一处）
+  assert.equal(checkModelSlugs(flagCfg(), 'plan', { codex: 'deepseek-v4-pro' }, ['codex'], { codex: { vendorProfile: 'deepseek' } }).ok, true);
 
-  // --profile-codex 等于 agents.codex.profile：不触发（形同空操作）
+  // --profile-codex 等于 agents.codex.profile：照旧通过
   assert.equal(checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { vendorProfile: 'qwen' } }).ok, true);
 });
 
-test('F4 永久判据先于过渡闸：--effort 枚举外报枚举；--profile-codex 名单外报名单、名单为空跳过并点名', () => {
+test('F4 永久判据不随过渡闸拆除：--effort 枚举外报枚举；--profile-codex 名单外报名单、名单为空跳过并点名', () => {
   const enumBad = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { effort: 'xhigh' } });
   assert.equal(enumBad.ok, false);
+  assert.equal(enumBad.exitCode, EXIT.USAGE);
   assert.match(enumBad.detail, /「xhigh」不在模型「qwen3\.8-flash」的原生枚举中。可用值：low, medium, high/);
-  assert.doesNotMatch(enumBad.detail, /第 6 步/);
+  assert.doesNotMatch(enumBad.detail, /第 6 步|过渡/);
 
   const nameBad = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { vendorProfile: 'kimi' } });
   assert.equal(nameBad.ok, false);

@@ -481,7 +481,7 @@
                 "$ref": "#/$defs/tierName"
               }
             },
-            "description": "claude 的配置段（M9 第 4 步）。**只有判别式，没有其它字段**——这是刻意的不对称，不是漏写。另三家段里的入口覆盖（gemini/codex 的 bin、glm 的 entry）都有真实消费方（doctor.ts 传给各自探针、adapters/codex.ts 取 cfg.bin ?? probe.entrypoint）；claude 侧的入口由探针独占——适配器的 run 与 authProbe 都读 probe.cli.claude.entrypoint，doctor 调 probeClaude 时第一个参数逐字传 null。加 bin 即加死字段，而本仓已有两条「登记而无消费方」的未结条目（EV-06 / EV-15），其危害是让后来者以为该字段已经生效。阶段级 effort 不加：M6 探针当时没有对应旗标；M11 第 1 步实测 2.1.291 已有 --effort 但不校验、不回读（设计 3.7），思考等级改由 tiers 的 effort 表达，透传随 M11 第 6 步。真需要本机入口覆盖时再放宽本支是向后兼容的，反向删字段不是。"
+            "description": "claude 的配置段（M9 第 4 步）。**只有判别式，没有其它字段**——这是刻意的不对称，不是漏写。另三家段里的入口覆盖（gemini/codex 的 bin、glm 的 entry）都有真实消费方（doctor.ts 传给各自探针、adapters/codex.ts 取 cfg.bin ?? probe.entrypoint）；claude 侧的入口由探针独占——适配器的 run 与 authProbe 都读 probe.cli.claude.entrypoint，doctor 调 probeClaude 时第一个参数逐字传 null。加 bin 即加死字段，而本仓已有两条「登记而无消费方」的未结条目（EV-06 / EV-15），其危害是让后来者以为该字段已经生效。阶段级 effort 不加：M6 探针当时没有对应旗标；M11 第 1 步实测 2.1.291 已有 --effort 但不校验、不回读（设计 3.7），思考等级由 tiers 的 effort 表达，M11 第 6 步起经 --effort 透传，取值集合由探针解析帮助文本落盘（probe.cli.claude.effort_levels）。真需要本机入口覆盖时再放宽本支是向后兼容的，反向删字段不是。"
           }
         ]
       }
@@ -794,7 +794,7 @@
         "profile": {
           "type": "string",
           "minLength": 1,
-          "description": "厂商 profile（codex 的 -p），「换家族 = 换档位」。取值次序：档位条目 > agents.codex.profile（--profile-codex 随 M11 第 5 步）。M11 第 6 步起透传；此前与 agents.codex.profile 不同时预检以过渡闸退 64。"
+          "description": "厂商 profile（codex 的 -p），「换家族 = 换档位」。取值次序：档位条目 > agents.codex.profile（--profile-codex 随 M11 第 5 步）。M11 第 6 步起随请求下传为 codex 的 -p，可用性检查与模型目录比对按同一个值；第 4、5 步时与 agents.codex.profile 不同即被预检过渡闸退 64，已随第 6 步拆除。"
         }
       },
       "description": "一档的组合（openai 支）：只有这一支收 profile——厂商 profile 只对 openai vendor 有意义（设计 11.5）。"

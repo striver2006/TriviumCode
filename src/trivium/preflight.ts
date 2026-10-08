@@ -425,12 +425,12 @@ function missingTierText(critic: CriticId, m: NonNullable<TierResolution['missin
  * ② effort 不在该模型的原生枚举里 ⇒ 64；slug 已编码档位 ⇒ 告警不生效（gemini 特例）；
  * ③ 档位条目或命令行给的厂商 profile 不在本机名单 ⇒ 64；名单为空跳过。
  * 来自 Agent 配置段的补全（gemini 阶段级 effort、`agents.codex.profile`）**不进这三格**：那是 M11 之前的现行路径，
- * 校验它会改变旧配置的行为（`agents.codex.profile` 的存在性另由 `availability()` 判）。
+ * 校验它会改变旧配置的行为（`agents.codex.profile` 的存在性另由 `availability()` 判——M11 第 6 步起按本轮解析出的
+ * 厂商 profile 判，含这一层回落）。
  *
- * **过渡闸**（第 6 步拆除，计划 P-1 A）：effort 与厂商 profile 要到 M11 第 6 步才透传给适配器。此前
- * 「写了却不下传」会让预检看到的组合与实际发出的不一致，故永久判据都过之后再拒：effort 来自档位 / 格子 / 命令行；
- * 厂商 profile 来自档位 / 命令行且不等于 `agents.<id>.profile`。第三类（gemini 档位没写 effort、运行期仍下传
- * 阶段级 effort）拦不得——拦了就杀掉「档位换模型」——只告警（计划三审 GLM-01）。
+ * 第 4、5 步在永久判据之后另有一道**过渡闸**（effort 与厂商 profile 尚未透传时拒「写了却不下传」的组合）与两条
+ * 过渡告警（gemini 档位没写 effort 时仍下传阶段级 effort、`--tier` 的留痕空窗），**M11 第 6 步透传与留痕接线后
+ * 整体拆除**（用户 2026-10-08 定：不留开关）。
  *
  * 只读配置与探针结论、不抛；钩子取自 `realAdapters()`，同 `checkModelAgainstCatalog`。
  */
@@ -444,7 +444,6 @@ export function checkTierCombos(
 ): CheckResult {
   const cli = mergeCliOverrides(overrides, tierFlags);
   const bad: string[] = [];
-  const gated: string[] = [];
   const notes: string[] = [];
   const unverified = new Set<string>();
   const adapters = realAdapters();
@@ -455,13 +454,6 @@ export function checkTierCombos(
       if (r.missingTier || !r.model) continue;
       const at = `${critic}/${stage}`;
       for (const w of r.warnings) notes.push(w);
-      /*
-       * 留痕空窗（M11 第 5 步，用户 2026-10-08 定 ②）：tier / tier_source 随第 6 步才写进 run.json，
-       * 用 --tier-〈id〉 发起的这一轮事后只能从请求模型反推选了哪一档——说出来，不静默。
-       */
-      if (tierFlags[critic]?.tier) {
-        notes.push(`${at}: 本轮档位名与来源尚未入档（M11 第 6 步起），事后只能从请求模型反推（--tier-${critic} ${tierFlags[critic]!.tier}）`);
-      }
       const adapter: CriticAdapter | undefined = adapters[critic];
       const label = agentById(critic)?.display ?? critic;
       const lv: ReasoningLevels = adapter?.reasoningLevelsFor?.(cfg, r.model, r.vendorProfile) ?? {
@@ -469,16 +461,13 @@ export function checkTierCombos(
         why: '该侧未声明思考等级能力',
       };
 
-      let sideBad = false;
       if (r.effort !== null && r.origin.effort !== 'agent') {
         if (lv.kind === 'none') {
           bad.push(`${at}: ${label} 不支持思考等级，档位 / 档位表却给了「${r.effort}」。去掉该 effort`);
-          sideBad = true;
         } else if (lv.kind === 'levels' && lv.suffixEncoded) {
           notes.push(`${at}: 模型「${r.model}」的 slug 已编码档位，思考等级「${r.effort}」不生效`);
         } else if (lv.kind === 'levels' && !lv.levels.includes(r.effort)) {
           bad.push(`${at}: 思考等级「${r.effort}」不在模型「${r.model}」的原生枚举中。可用值：${lv.levels.join(', ')}`);
-          sideBad = true;
         } else if (lv.kind === 'unknown') {
           unverified.add(`${label}（${lv.why}）`);
         }
@@ -489,54 +478,13 @@ export function checkTierCombos(
         if (names.length === 0) unverified.add(`${label}（本机厂商 profile 名单为空）`);
         else if (!names.includes(r.vendorProfile)) {
           bad.push(`${at}: 厂商 profile「${r.vendorProfile}」不在本机名单中。可用：${names.join(', ')}`);
-          sideBad = true;
         }
-      }
-      if (sideBad) continue;
-
-      // ── 过渡闸（M11 第 6 步拆除）──
-      // slug 已编码档位时思考等级本就永不生效（11.5 gemini 特例，上面已告警），与接没接线无关，不进闸
-      const suffixEncoded = lv.kind === 'levels' && lv.suffixEncoded === true;
-      /*
-       * 档位经 --tier-〈id〉 选到时，用户没直接写 effort / profile——文案点明是哪一档带出来的，指引改为
-       * 「换一档或改该档」（代码三审 GLM-02）；其余来源照旧。
-       */
-      const viaTierFlag = r.tierSource === 'cli' && r.tier !== null ? `--tier-${critic} ${r.tier}` : null;
-      if (r.effort !== null && r.origin.effort !== 'agent' && !suffixEncoded) {
-        const from = r.origin.effort === 'tier' && viaTierFlag
-          ? `经 ${viaTierFlag} 选到的档位条目`
-          : originText(r.origin.effort, `--effort-${critic}`);
-        const hint = r.origin.effort === 'tier' && viaTierFlag
-          ? '换一档，或去掉该档定义里的 effort'
-          : '先去掉该 effort，或用模型选择承载档位差异';
-        gated.push(
-          `${at}: 思考等级「${r.effort}」来自${from}，而思考等级随 M11 第 6 步才下传给适配器——` +
-            `当前版本会按厂商缺省（或 profile 基底）运行，与配置不一致。${hint}`,
-        );
-      }
-      if (r.vendorProfile !== null && r.origin.vendorProfile !== 'agent' && r.vendorProfile !== r.agentVendorProfile) {
-        gated.push(
-          `${at}: 厂商 profile「${r.vendorProfile}」来自${r.origin.vendorProfile === 'tier' && viaTierFlag ? `经 ${viaTierFlag} 选到的档位条目` : originText(r.origin.vendorProfile, `--profile-${critic}`)}，与 agents.${critic}.profile` +
-            `「${r.agentVendorProfile ?? '（未配置）'}」不同，而厂商 profile 随 M11 第 6 步才透传——当前版本会按后者发起。` +
-            `换家族请同批改 agents.${critic}.profile 与档位模型（设计 13.1.1）`,
-        );
-      }
-      // 过渡告警（GLM-01）：基础组合不是裸 slug、没给 effort，运行期却仍下传阶段级 effort
-      if (
-        r.tierSource !== 'legacy' &&
-        r.effort === null &&
-        r.stageEffort !== null &&
-        !suffixEncoded
-      ) {
-        notes.push(
-          `${at}: 档位没写思考等级，过渡期运行仍按 agents.${critic}.effort 下传「${r.stageEffort}」；M11 第 6 步起不下传`,
-        );
       }
     }
   }
 
-  if (bad.length > 0 || gated.length > 0) {
-    return { name: '档位组合合法', ok: false, exitCode: EXIT.USAGE, detail: [...bad, ...gated].join('\n  ') };
+  if (bad.length > 0) {
+    return { name: '档位组合合法', ok: false, exitCode: EXIT.USAGE, detail: bad.join('\n  ') };
   }
   const warnLines = [
     ...notes.map((n) => `  ⚠️ ${n}`),
@@ -548,11 +496,6 @@ export function checkTierCombos(
     ...(warnLines.length > 0 ? { warn: true as const } : {}),
     detail: [`已校验 ${scopeStages(scope).length} 个阶段 × ${critics.length} 侧`, ...warnLines].join('\n'),
   };
-}
-
-/** 字段来源的人读名；命令行来源点名是哪个旗标（M11 第 5 步） */
-function originText(o: TierResolution['origin']['effort'], cliFlag: string): string {
-  return o === 'tier' ? '档位条目' : o === 'cell' ? '档位表格子' : o === 'cli' ? `命令行 ${cliFlag}` : 'Agent 配置段';
 }
 
 /** 单侧模型 slug 的比对结论。三态，**「无法校验」与「通过」分开记** */
@@ -675,8 +618,20 @@ function checkModelAgainstCatalog(
  * 计划双审两侧独立指到这里（AGY-03 ≡ GLM-06）。现在只剩一份判据，
  * 住在「最知道自己怎么才算可用」的那个模块里。
  */
-function checkReadonlyCapability(ctx: Ctx, critics: readonly CriticId[]): CheckResult {
+function checkReadonlyCapability(
+  ctx: Ctx,
+  critics: readonly CriticId[],
+  /*
+   * 本轮档位输入（M11 第 6 步）：`availability()` 要按**本轮解析出的厂商 profile** 判（设计 11.5），
+   * 与模型目录比对、codex 的 `-p` 同出一次 `resolveTier`。`--stage all` 时一侧可能逐阶段解析出不同的厂商 profile，
+   * 逐个判；档名写错或解析不出模型的格跳过——那由「模型 slug 合法」一格报。
+   */
+  scope: PreflightScope,
+  overrides: Partial<Record<CriticId, string>> = {},
+  tierFlags: Partial<Record<CriticId, TierFlagValues>> = {},
+): CheckResult {
   const adapters = realAdapters();
+  const cli = mergeCliOverrides(overrides, tierFlags);
   // nodePath 取与运行期同一口径：配了 runtime.node 的机器上，预检与真实运行
   // 必须走同一个 node，否则就是本函数注释自称要消灭的那种「同一个问题两个答案」
   const actx: AdapterContext = { cfg: ctx.config, nodePath: ctx.config.runtime.node ?? process.execPath };
@@ -689,7 +644,11 @@ function checkReadonlyCapability(ctx: Ctx, critics: readonly CriticId[]): CheckR
       problems.push(`${agentById(id)?.display ?? id}：注册表启用了它，但 adapters/index.ts 没有接线`);
       continue;
     }
-    const v = a.availability(actx);
+    const vendorProfiles = scopeStages(scope)
+      .map((stage) => resolveTier(ctx.config, id, stage, cli[id] ?? {}))
+      .filter((r) => !r.missingTier && r.model)
+      .map((r) => r.vendorProfile);
+    const v = a.availability(actx, { vendorProfiles });
     if (v.ok) oks.push(agentById(id)?.display ?? id);
     else problems.push(`${agentById(id)?.display ?? id}：${v.reason ?? '不可用（未给出原因）'}`);
   }
@@ -1038,7 +997,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
   // ② ③ CLI 可调用且版本与探针一致
   if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected)));
   // ④ 只读能力
-  if (checks.every((c) => c.ok)) checks.push(checkReadonlyCapability(ctx, selected));
+  if (checks.every((c) => c.ok)) checks.push(checkReadonlyCapability(ctx, selected, scope, opts.modelOverrides, opts.tierFlags));
   // ④′ ZCode 运行期选模（EV-82 第三段 r3 §4.2）：只警告、不拒跑
   if (checks.every((c) => c.ok)) {
     const w = checkZcodeRuntimeSelection(cfg, selected);
@@ -1058,7 +1017,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
   }
   // ⑤ 模型 slug（按本次实际生效值）
   if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected, opts.tierFlags));
-  // ⑤′ 档位组合（M11 第 4 步）：原生枚举、厂商 profile 名单、过渡闸；档名与无模型已由上一格报
+  // ⑤′ 档位组合（M11 第 4 步）：原生枚举、无此概念、厂商 profile 名单；档名与无模型已由上一格报
   if (checks.every((c) => c.ok)) checks.push(checkTierCombos(cfg, scope, opts.modelOverrides, selected, opts.tierFlags));
   // ⑥ 归档与 git（无残留探测）
   if (checks.every((c) => c.ok)) checks.push(await checkArchiveAndGit(ctx));

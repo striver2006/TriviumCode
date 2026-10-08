@@ -13,7 +13,8 @@
 import nodePath from 'node:path';
 import os from 'node:os';
 import type {
-  AgentConfig, Config, CriticId, CriticRequest, CriticResult, Stage, SuspectedWrite, TierName,
+  AgentConfig, Config, CriticId, CriticRequest, CriticResult, EffortEffectiveSource, Stage, SuspectedWrite, TierName,
+  TierSource,
 } from '../types.js';
 import { VENDOR_MODEL_FAMILY, agentById, type AgentVendor } from '../agents/registry.js';
 
@@ -128,8 +129,35 @@ export interface CriticAdapter {
    * 不并进 `commandExecution`（那是能力枚举、有对账用例）也不并进 `capability`（判定层不读它）。
    */
   readonly mcpExecPrefixes?: readonly string[];
-  /** 该侧是否可用（探针结论决定）。不可用时给出人读原因 */
-  availability(ctx: AdapterContext): { ok: boolean; reason?: string };
+  /**
+   * 该侧是否可用（探针结论决定）。不可用时给出人读原因。
+   *
+   * `opts.vendorProfiles`（M11 第 6 步，设计 11.5「厂商 profile」）：**本轮解析出的厂商 profile**——
+   * 与 `-p` 和模型目录比对同出一次 `resolveTier`（`review.ts` 准备阶段、`preflight` 逐阶段收集）。
+   * 只对有厂商 profile 概念的侧有意义（今天是 codex），别家照收、忽略。**不传 = 旧行为**：
+   * 按 Agent 配置段自己的 profile 判——接口保留的旧行为，现役生产调用方（预检、`review` 准备阶段）都传（代码三审 CODEX-01）。
+   * 传了就逐个判、跳过 `null`。
+   */
+  availability(ctx: AdapterContext, opts?: { vendorProfiles?: readonly (string | null)[] }): { ok: boolean; reason?: string };
+  /**
+   * **从回读结果派生思考等级生效值**（M11 第 6 步，设计 11.1「思考等级透传与回读」/ 6.7.1）。**必填**。
+   *
+   * ## 只收回读结果，不收请求
+   *
+   * 签名里没有 `CriticRequest`：生效值**结构上拿不到请求值**，也就无从拿它冒充（11.5 禁令 ②、
+   * 11.1 约束 ②——与 `model_effective` 不拿 `requested` 冒充同一纪律）。codex 会话文件里的
+   * `turn_context.payload.effort` 是请求回显（M11 第 1 步 F3），同样不得读成生效值。
+   *
+   * ## 必填
+   *
+   * 照 `commandExecution` 的先例：缺省值本身就是一次推导，漏声明应当编不过。新增一家时
+   * 「没有回读面」必须如实落 `null`（有思考等级概念记来源 `unverified`，没有这个概念来源也是 `null`），
+   * 不得静默落成某个缺省。
+   *
+   * 失败结果（`failedResult`、runner 兜底）同样经它派生，调用方不另写分支。
+   * 偏离 11.1 原表「`CriticResult` 字段」的写法，理由见 M11 第 6 步计划 r2 §2.5，主设计随改。
+   */
+  effortReadback(result: CriticResult): EffortReadback;
   /**
    * 模型 slug 在与探针目录比对**之前**的归一。**可选**：不需要归一的侧不实现。
    *
@@ -265,6 +293,23 @@ export type ReasoningLevels =
   | { kind: 'none' }
   | { kind: 'levels'; levels: string[]; suffixEncoded?: boolean }
   | { kind: 'unknown'; why: string };
+
+/**
+ * `CriticAdapter.effortReadback` 的答案（M11 第 6 步）：原样进 run.json 的
+ * `effort_effective` / `effort_effective_source` 与审查文档 front-matter。
+ *
+ * 三种组合各有含义、不合并：`{值, 'envelope'}` 回执读到了；`{null, 'unverified'}` 该侧有思考等级概念、
+ * 但没有回读面或这次没读到；`{null, null}` 该侧没有这个概念。
+ */
+export interface EffortReadback {
+  effective: string | null;
+  source: EffortEffectiveSource | null;
+}
+
+/** 有思考等级概念、却没有回读面的侧（codex、claude）共用的答案 */
+export const EFFORT_UNVERIFIED: EffortReadback = Object.freeze({ effective: null, source: 'unverified' }) as EffortReadback;
+/** 没有思考等级概念的侧（zcode）的答案 */
+export const EFFORT_NO_CONCEPT: EffortReadback = Object.freeze({ effective: null, source: null }) as EffortReadback;
 
 /** 结构化轨迹两家（gemini / glm）的能力：与本步之前的行为逐字等价 */
 export const TOOL_TRACE_CAPABILITY: TraceCapability = {
@@ -1856,8 +1901,8 @@ export function toProjectRelative(p: string, roots: readonly string[]): string |
   return null;
 }
 
-/** 基础组合的来源，或「精确值全覆盖 / 第一段无命中」的 `override`（设计 11.5 / 6.7.1 `tier_source`） */
-export type TierSource = 'cli' | 'profile' | 'agent_default' | 'legacy' | 'override';
+/** 基础组合的来源：定义上移到 `types.ts`（M11 第 6 步，计划三审 AGY-01），这里原样再导出 */
+export type { TierSource };
 
 /**
  * 解析结果里每个字段从哪来：`tier` 档位条目 ｜ `cell` 档位表格子（裸 slug 或 `{model, effort}`）｜
@@ -1882,13 +1927,11 @@ export interface TierResolution {
   /** 无模型时为 null */
   tierSource: TierSource | null;
   origin: { model: FieldOrigin | null; effort: FieldOrigin | null; vendorProfile: FieldOrigin | null };
-  /** Agent 配置段自己的厂商 profile（`agents.<id>.profile`）——第 6 步之前运行期实际用的就是它 */
-  agentVendorProfile: string | null;
-  /**
-   * 第 6 步之前运行期**实际下传**的阶段级思考等级（`effortFor` 的取值：只有 antigravity 有）。
-   * 与 `effort` 不同：后者是解析结果，前者是现行请求构造会发出的值，过渡告警比的就是两者（GLM-01）。
+  /*
+   * 原有 `agentVendorProfile` / `stageEffort` 两个字段，M11 第 6 步删除：只供过渡闸与过渡残余告警比对
+   * 「解析结果」与「第 6 步之前运行期实际下传的值」，透传接线后两者同一，闸与告警随之拆除。
+   * 裸 slug 格子回落阶段级 effort 的**规则本身**保留（永久规则，见下方 `resolveTier` 的补全段）。
    */
-  stageEffort: string | null;
   /**
    * 档位表格子显式写了空串（计划三审 CODEX-03 / 代码三审 GLM-01）：按「无模型」处理，**不回落 `default_tier`**——
    * 显式写空是配置错误，与「写错档名不落到下一级」同一口径；预检据此在「未定义模型」文案里点明是空串。
@@ -1916,7 +1959,8 @@ export const TIER_NAMES: readonly TierName[] = ['low', 'medium', 'high'];
  * 没有 `default_tier` 时与旧实现的 falsy 判定结果相同（退 64），有时也不静默回落（代码三审 GLM-01）。
  *
  * **补全**：厂商 profile 取 档位条目 > `agents.<id>.profile`（只对 openai vendor）；裸 slug 格子的思考等级
- * 回落 antigravity 段的阶段级 `effort`（11.5：「档位表格子是裸 slug 时」的回落，与 `effortFor` 同值）。
+ * 回落 antigravity 段的阶段级 `effort`（11.5：「档位表格子是裸 slug 时」的回落；M11 第 6 步之前由 `effortFor` 单独取值、
+ * 判据相同，第 6 步起请求面只认本函数的结果，`effortFor` 删除）。
  *
  * **第二段 · 按字段叠加精确值**：`cli.model` / `cli.effort` / `cli.vendorProfile` 各自覆盖；
  * 被覆盖字段原本来自档位时告警。
@@ -1925,7 +1969,7 @@ export const TIER_NAMES: readonly TierName[] = ['low', 'medium', 'high'];
  * 全部覆盖、或第一段无命中 ⇒ `null` / `override`；否则档位记档位名与其来源，`{model, effort}` 格子
  * 记 `null` / `profile`，裸 slug 记 `null` / `legacy`。「提供的字段」按实际给出的键计，补全不算。
  *
- * vendor 取注册表登记的（与 `effortFor` 同一判据），不取配置段里自称的。
+ * vendor 取注册表登记的，不取配置段里自称的：后者是被校验的一方（原 `effortFor` 的同一判据）。
  */
 export function resolveTier(
   cfg: Config,
@@ -2040,8 +2084,6 @@ export function resolveTier(
     tier,
     tierSource,
     origin: { model: originModel, effort: originEffort, vendorProfile: originProfile },
-    agentVendorProfile,
-    stageEffort,
     emptySlug,
     missingTier,
     warnings,

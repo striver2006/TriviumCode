@@ -29,7 +29,7 @@ async function req(): Promise<{ req: CriticRequest; sideDir: string }> {
       project_root: run, subject_path: path.join(run, 's.md'), deny_paths: [],
       out_dir: path.join(sideDir, 'out'), brief_path: path.join(run, 'b.md'), brief_text: 'BRIEF',
       model: 'M', timeout_s: 30, schema_path: '/s.json',
-      min_tool_calls: 0, profile_requested: null, min_project_reads: 0,
+      min_tool_calls: 0, profile_requested: null, min_project_reads: 0, tier: null, tier_source: null,
     },
   };
 }
@@ -47,6 +47,7 @@ function preparing(script: (CriticResult | Error)[], opts: { scrubThrows?: boole
     critic: 'glm',
     capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none',
     availability: () => ({ ok: true }),
+    effortReadback: () => ({ effective: null, source: null }),
     async run(_ctx, r) {
       // 每次 run 开始时旧哨兵必须已被 runner 删掉：否则 worker 在本轮准备之后、finally 之前被杀，
       // 清扫路径会看见上一轮的 ok:true 而跳过这份新副本
@@ -138,6 +139,7 @@ test('抹除失败：审查结论不变，scrub.ok=false，进度回调收到 no
 test('侧目录不存在（假路径）：不抛、不写、scrub 记 skipped', async () => {
   const adapter: CriticAdapter = {
     critic: 'glm', capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none', availability: () => ({ ok: true }),
+    effortReadback: () => ({ effective: null, source: null }),
     async run() { return ok(); },
   };
   const out = await runBothSides({
