@@ -1,0 +1,108 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "计划的现状核实逐条属实：我把 §1 的每条陈述对到了源码——enumerateRounds 第 134 行与 loadDisposition 第 171 行的缺省 Driver 参数、buildTopicReport 第 524 行与 buildRound 第 400 行不传 driver、gate.ts:334 的对照、meta.ts migrateRunMetaV1 补 driver 与 readRunMetaDetailed 恰两个成功出口、types.ts 思考等级字段组的可选性与旧名 effort 语义、disposition.ts 裁决行来源的三态，全部吻合；串档根因的三条后果推演（幽灵轮次、裁决件找不到、唯一 claude 侧轮次消失）从现有代码逻辑推得通。§3.2 的修法与闸门侧对齐且 enumerateRounds 仅 report.ts 内部使用、不越范围边界；§2.2 的不变式（各 Driver 组裁决数之和 = acceptanceRate）经核实成立——读不到 run.json 的轮次在 buildRound 提前返回、disposals 恒 null，两边都不含它。既有 report.test.ts 断言全是宽松正则，第四节加两列不受影响，『不改断言』判断正确。任务目标五条要求（纪律 6b、双维度聚合、口径逐条定、思考等级两列、待拍板清单）全覆盖，夹具覆盖多 Driver、多审核者、新旧留痕混合与 v1。发现的问题全部是 minor：§2.4 规格文本内部有两处不自洽（⚠️ 对比与『任何分支都不读请求值』的矛盾、映射表的「—」双义），§2.3 表 A 的『产出结论轮次』边界未钉死，§5 漏了 PROTOCOL 文档对 report --json 形状的同步，R1 ②对缺省 Driver 恒在排除集的表述偏低估且存在一条无声消失路径，§2.5 的 JSON aggregates 形状未规格化。这些都在定稿规格并入主设计 13.2 之前修最便宜，不阻塞方向。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.4 表格第 6 行与同节纪律句、§3.4",
+      "problem": "§2.4 表格第 6 行写生效列「与请求值都为字符串且不等时加 ⚠️」，而同一小节的纪律句写「生效列只读 effort_effective 与 effort_effective_source，任何分支都不读请求值」，两句字面矛盾：⚠️ 标记的判定必须读请求值。§3.4 又规定 renderEffortEffective 的入参类型不含请求值字段，⚠️ 的拼装在哪个层做、算不算违反纪律句，规格没有给出出口。这段文本要原样并入主设计 13.2 成为长期纪律句，字面矛盾会造成文实不符或实现者丢掉 ⚠️ 功能。",
+      "evidence": "被审计划 §2.4：「生效列只读 effort_effective 与 effort_effective_source，任何分支都不读请求值（AC-13、AC-23）」与同节表格末行「有值 | 原值 | 原值；与请求值都为字符串且不等时加 ⚠️」并存；§3.4：「renderEffortEffective 的入参类型不含请求值字段（只收 effortEffective 与 effortEffectiveSource）」。对照 src/trivium/report.ts 第四节现状：模型列的 mismatch（第 705 行）正是在渲染层同时读请求与生效两个字段算出的。",
+      "suggestion": "定稿 §2.4 时把纪律句改写为「生效列的取值只来自 effort_effective 与 effort_effective_source，不以请求值顶替；与请求值不等时的 ⚠️ 是两列对比标记，在行级渲染拼装、不是生效列的取值来源」，并注明它与 §3.4 类型隔离的分工（纯函数出取值、组合层出 ⚠️），与 AC-13『不顶替』的本义对齐。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.4 留痕形态映射表",
+      "problem": "该表把请求列与生效列的判定耦在同一张行式表里，但两列的输入字段互相独立：第 2 行（effort_requested: null）生效列写的「—」会被读成「显示缺席」（与节末注「— 表示早于思考等级字段的缺席」撞义），而实际上该形态下生效列可以为任何形态（如该侧未请求但回执读到了值）；「请求有值 + 生效字段缺席」「请求 null + 生效有值」等组合在表里无行可套。A5 的期望值本身就是跨行组合（claude『max / 未回读到』= 第 6 行请求列 × 第 3 行生效列），证明实际意图是两列独立映射，但表格形态没有说明这一点，并入主设计后读者会按行组合误读或误实现。",
+      "evidence": "被审计划 §2.4 表格：第 2 行「| effort_requested: null | 「（未请求）」 | — |」中「—」与第 1 行两列均显示「—」（缺席）的字面相同而语义不同；A5 断言「claude『max / **未回读到**』」对应「effort_requested: max + effort_effective: null(unverified)」，表内没有任何一行同时覆盖这两格。src/trivium/types.ts:1332-1337 确认 effort_requested 与 effort_effective/_source 是互相独立的可选字段。",
+      "suggestion": "把表格拆成「请求列映射」与「生效列映射」两张单列小表，或在表前加一句「两列各自按本侧字段的在场性与取值独立判定，下表行仅列举典型组合，未覆盖的组合按两列各自的规则推出」，并把「此形态不约束该列」的占位记号（如空格或『·』）与显示值「—」区分开。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.3 表 A「入选轮次、产出结论轮次」列",
+      "problem": "「产出结论轮次」没有定义边界：parse_fallback（整份回退，无合格 review json、只有编排器造的回退编号）算不算「产出结论」？解析成功但 findings 为 0 的侧算不算？夹具 code r1 恰好包含 codex parse_fallback 场景，而 A4 没有断言 codex 的这一格——恰好是被略过的口径。该表要并入主设计 13.2，边界不钉死则实现与读者各做各的。",
+      "evidence": "被审计划 §2.3：「表 A · 意见与裁决（每个出现过的审核者一行，全阶段合并）：入选轮次、产出结论轮次、合格意见数……」未定义「产出结论」；§2.2 意见数口径明确写了「结论读不到的侧（失败、超时、整份回退）不贡献」，但表 A 的「产出结论轮次」是否同样把 parse_fallback 侧排除在外没有对应句。src/trivium/report.ts 的 sides[].findings 语义（review json 读不到即 null）与 §1.5 的两处来源差异佐证这个格子存在二义空间。",
+      "suggestion": "在 §2.3 给「产出结论轮次」一句定义（建议与意见数同口径：该侧本轮有可读的合格 review json 才算，parse_fallback 与失败侧计入「入选轮次」但不计入「产出结论轮次」），并在 A4 补一格断言（codex 在 code r1 parse_fallback：入选 1 轮、产出结论 0 轮）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划 §5 文档清单",
+      "problem": "report --json 的输出形状在 doc/03_api/PROTOCOL_dual_critic_relay.md 第 428 行有登记先例（EV-144 加 unlistedRuns 字段时同步了「--json 输出多一个 unlistedRuns 字段」）。本步给 --json 输出加 aggregates、逐侧加 effortRequested / effortEffective / effortEffectiveSource / effortLegacy、UnlistedRun 加 driver 与 sideStatuses，属于同类输出形状变化，§5 的同步清单只列了主设计、PRD、测试报告与 README 登记，漏了 PROTOCOL 这一行；不更新则该行从此片面（「多一个 unlistedRuns 字段」不再完整），机读消费方按文档对不上实现。",
+      "evidence": "doc/03_api/PROTOCOL_dual_critic_relay.md:428：「| report --topic <t> | 主题级复盘；没产出审查文档的运行另列「未进时间线的运行」，--json 输出多一个 unlistedRuns 字段（设计 v1.3.48，EV-144） |」；被审计划 §2.5 明确要改 --json 输出形状、§5 文档清单无 PROTOCOL 条目。src/trivium/cli.ts:1898-1899 确认 JSON 模式原样 spread TopicReport，形状变化会直接出现在该输出里。",
+      "suggestion": "在 §5 补一条：核对 PROTOCOL_dual_critic_relay.md 第 428 行 report 条目，按 D-5 拍板结果更新 --json 输出形状的描述（若决定不同步，也应在计划里写明为何该行不跟随）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §7 R1 ②（对应 §3.2 无 run.json 轮次的枚举排除集）",
+      "problem": "R1 ②把「审核者审查文档被排除」的条件写成「某审核者恰好在本阶段别的轮次当过 Driver」，但排除集是「本阶段可读 run.json 记过的 driver ∪ 缺省 Driver」——缺省 Driver 无条件在集内，claude 不需要「恰好当过」：任何「该轮 run.json 缺失或读不出 + claude 是该轮唯一产出方」的轮次都会消失，这是最常见的触发形态而非边角。且兜底描述「run.json 读不出时 collectUnlistedRuns 已把它记进主题 notes」只覆盖「读不出」：run.json 从未存在的那一种，collectUnlistedRuns 的枚举里根本没有它，轮次消失完全无声。表述偏低估会让 D-6 拍板时看不清代价。",
+      "evidence": "被审计划 §3.2：「后缀不属于『本阶段任一可读 run.json 记过的 driver ∪ 缺省 Driver』的文件才是审查文档」与 §7 R1 ②「某一轮里某审核者恰好在本阶段别的轮次当过 Driver ⇒ 它的审查文档被排除」；src/trivium/report.ts collectUnlistedRuns（第 471-515 行）按 _meta 目录下实际存在的 run-*.json 文件枚举，文件不存在则既不进 unlistedRuns 也不进 notes（读不出才进 notes，第 488-494 行）。",
+      "suggestion": "R1 定稿时如实写明两点：①缺省 Driver 恒在排除集，claude 作唯一产出方且 run.json 缺失/读不出的轮次必然消失，无需「恰好当过 Driver」；②兜底只覆盖「run.json 存在但读不出」，「从未存在」的消失路径无声。若认为②的残余值得兜，可在该情形下把消失前的审查文档文件名记进主题 notes（不改判据，只加观测）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划 §2.5（JSON 输出）",
+      "problem": "D-5 推荐项是「带聚合」，但 §2.5 只给了三个键名 aggregates: { byDriver, unknownDriver, byCritic }，没有定机读形状：byDriver 的行结构（driver、stage、轮次/意见数/裁决计数各字段名、每 Driver 合计放在行内还是并列）、表 B 的「逐值计次」（生效模型、思考等级的 map 形状）、「读不到 Driver」组的原因列表怎么序列化，全都没有规格。纪律 6b 要求规格与实现同一提交落进主设计 13.2，Markdown 表的口径定得很细而 JSON 面一句话带过，两侧会详略失衡。",
+      "evidence": "被审计划 §2.5 全文只有一句「推荐同步带：aggregates: { byDriver, unknownDriver, byCritic }；逐侧加 effortRequested / effortEffective / effortEffectiveSource（及旧名 effortLegacy），缺席时不写键、null 写 null」；对照 §2.2/§2.3 的 Markdown 表逐列口径均写明。src/trivium/cli.ts:1898-1899 确认 --json 原样输出 TopicReport，无中间层可依赖。",
+      "suggestion": "D-5 拍「带」之后，把 aggregates 的字段级形状（至少 byDriver 行结构与 byCritic 两张表的键值形态）补进 §2 定稿稿，与 Markdown 表同粒度；形状定了之后顺带解决 GLM-04 的 PROTOCOL 同步内容。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§1 现状核实逐条属实：enumerateRounds / loadDisposition 的缺省 Driver 参数与两处不传 driver 的调用点（report.ts:130-201、400、524）、gate.ts:334 按当轮 run.json driver 定位的对照、meta.ts 的 v1 迁移补 driver 与 readRunMetaDetailed 恰两个成功出口、types.ts 思考等级字段组的『类型可选、写侧恒写』与旧名 effort 语义、disposition.ts 裁决行来源的『列值优先、前缀反查、回退记 fallback、判不出记 null』，全部与源码吻合。",
+    "§3.2 修串档根因是本步必做（D-6 推荐正确）：不修则换 Driver 阶段的聚合必错；且 enumerateRounds 仅 report.ts 内部使用，改它不触碰闸门判据，范围边界成立。",
+    "『读不到 Driver』单独成组、不归缺省 Driver 也不归阶段认领声明的口径正确——task.json 的 drivers[stage] 声明只说明「谁声明要写」，与 run.json.driver 的「谁发起」确实是两回事（meta.ts StageDriverClaim 注释佐证）。",
+    "run.v1 迁移轮次归 claude（D-3 推荐项）的事实依据成立：migrateRunMetaV1 恒补 driver: DEFAULT_DRIVER，v1 时代 Driver 是系统常量，这是迁移事实而非读侧回落。",
+    "§2.2 不变式（各 Driver 组裁决数之和 = 第二节全主题采纳率分子分母）经源码核实成立：读不到 run.json 的轮次在 buildRound 提前返回、disposals 恒 null，两边都不含它；A3 可直接断言。",
+    "生效列的类型隔离（renderEffortEffective 入参不含请求值字段）沿用第 6 步 effortReadback 的机制化先例，配合 M3/M4 变异与 A5『claude 生效列不含 max』、A6 JSON 键在场性断言，把『拿请求值顶替』与『缺席与 null 合流』都钉住了。",
+    "夹具设计覆盖任务目标要求的全部维度（多 Driver、claude 跨侧出现、新旧留痕混合、v1 迁移、无 run.json 轮次、未进时间线运行、-r3-codex 幽灵轮次反例），A1-A8 与规格句一一对应，M1-M6 变异与断言的对应关系成立。",
+    "既有 test/unit/report.test.ts 的断言全是宽松正则匹配（如 /provider\\/GLM-x/），第四节加两列不破坏既有断言，『不改断言』的判断正确。",
+    "R1 自曝的两个残余方向分析正确：影响都只在「读不到 Driver」组内、不污染任何已知 Driver 的读数。"
+  ],
+  "not_covered": [
+    "本侧为只读审查、未执行任何命令：npm run check 通过性、mutation-check 装置的参数形态、scratchDir 实际行为均为静态推理，未实测。",
+    "未逐字核对 PRD v1.4.23 的 FR-30 / AC-23 / AC-13 原文措辞与主设计 16.1 M11 行、头部状态行的当前内容（只核了 13.2、R23 与演进设计 649 行、§13.3 第 4 条）。",
+    "本仓 .reviews 下 v1 留痕主题（如 M2-skills与闸门/plan/_meta/）的实际文件形状未读，计划 §4.3 对它只读跑 report 的可行性按计划陈述采信。",
+    "第四节扩到 7 列后在终端与 Markdown 渲染的表格宽度可读性未评估。",
+    "skills-src 契约、入口资产与 Hook 面未查（本步声明不涉及，采信范围边界）。"
+  ],
+  "consulted": [
+    ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-claude.md",
+    "src/trivium/report.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/disposition.ts",
+    "src/trivium/types.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/agents/registry.ts",
+    "test/unit/report.test.ts",
+    "test/fixtures/run.v2.pre-m11-step6.json",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "CLAUDE.md",
+    "AGENTS.md"
+  ]
+}

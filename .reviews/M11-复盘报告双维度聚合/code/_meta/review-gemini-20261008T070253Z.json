@@ -1,0 +1,80 @@
+{
+  "agreed": [
+    "按轮次隔离 Driver 与防止串档逻辑严密：enumerateRounds 与 loadDisposition 严格基于每轮的 run.json.driver 解析，在无 run 记录时安全优先回退为审查工件，换 Driver 或缺失元数据均不发生串档。",
+    "思考等级生效值严格隔离：类型定义上消除 effortRequested 顶替路径，生效值仅回读底层透传结果；未请求（未请求）、明确未回读（**未回读到**）与概念缺席（—）在 JSON 及 Markdown 表格中严格区分。",
+    "聚合数字与分母口径严格一致：采纳率计算仅计入实际裁决轮次（分母严格排除未裁决轮次），降级与 fallback 意见单独列表并入采纳率分母，各审查方意见独立不跨方去重，与设计文档 §13.2.1 完全吻合。",
+    "变异测试完备：针对 M1～M10 共 12 组变异注入（含分母漏算、符号混淆、Driver 串档等边界）均在单元测试中建立有效断言守卫。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-r2-claude.md",
+    ".reviews/M11-复盘报告双维度聚合/code/_meta/changes-20261008T070253Z.diff",
+    "src/trivium/report.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/types.ts",
+    "src/trivium/naming.ts",
+    "src/trivium/disposition.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/review.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/adapters/agy.ts",
+    "test/unit/report.test.ts",
+    "test/unit/report-aggregate.test.ts",
+    "test/contract/facade-version-pointers.test.ts",
+    "test/helpers/facade-pointers.ts",
+    "test/unit/registry-parity.test.ts",
+    "doc/05_testing/evidence/m11-report-aggregate-20261008/real-report-M2.md",
+    "doc/05_testing/evidence/m11-report-aggregate-20261008/real-report-self.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "在 src/trivium/report.ts:258-262 中，readRunMeta 返回 null 时未将该 runId 计入 metaByRound；随后 buildRound (src/trivium/report.ts:377-390) 处仅检查 runId 是否为空，若 metaByRound 缺失则直接判定为 NO_RUN_JSON（找不到对应的 run.json），使得第 384-390 行处理 run.json 损坏的逻辑无法触发。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/trivium/report.ts:261",
+      "problem": "enumerateRounds 中 readRunMeta 解析失败返回 null 时未保留损坏记录，下游 buildRound 无法识别 run.json 损坏成因，导致 driverUnknownReason 的损坏分支为死代码，误报为 missing。",
+      "severity": "minor",
+      "suggestion": "在 enumerateRounds 收集元数据时保留损坏文件的标记，使 buildRound 能够正确命中规格要求的 run.json 读不出 成因。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 doc/01_requirements/PRD_driver_dual_critic.md 第 5 行「当前版本：v1.4.24」与第 8 行「文档版本：v1.4.23」。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "requirement",
+      "location": "doc/01_requirements/PRD_driver_dual_critic.md:8",
+      "problem": "PRD 头部元数据存在重复且不一致的版本号声明：第 5 行已升至 v1.4.24，但第 8 行文档版本仍残留 v1.4.23。",
+      "severity": "nit",
+      "suggestion": "同步更新或移除 doc/01_requirements/PRD_driver_dual_critic.md 第 8 行的冗余版本字段。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "对比 doc/02_design/LLD_orchestrator.md:150 与 src/trivium/report.ts:634 的真实导出函数名 export async function buildTopicReport。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "doc/02_design/LLD_orchestrator.md:150",
+      "problem": "LLD 模块表中 report.ts 的关键导出函数名称写为 buildReport()，而代码实际导出名为 buildTopicReport()。",
+      "severity": "nit",
+      "suggestion": "将 LLD 文档中的函数名更正为 buildTopicReport()。"
+    }
+  ],
+  "not_covered": [
+    "动态执行写操作与直接运行 npm test（受只读审查员权限约束，依赖静态代码比对与已有测试报告）。",
+    "真实多 Agent 并行运行时文件读写竞态极端场景（如审查进行中外部进程并发破坏 run.json）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "最需注意的是 AGY-01：run.json 解析损坏时在 enumerateRounds 被静默吞掉，下游 buildRound 无法区分 run.json 缺失与内容损坏，导致规格所承诺的 driverUnknownReason=run.json 读不出 分支成为死代码。\n除此边界缺陷外，本次实现完整达成了 M11 复盘报告聚合目标：\n1. 换 Driver 不串档：严格按轮次元数据判定 Driver，旧轮次回退机制健全；\n2. 生效思考等级严格取回读值，彻底杜绝请求值顶替，未请求与未读到符号定义清晰；\n3. 聚合指标计算严密，分母去重与未裁决轮次处理在规格与代码间严格对齐；\n4. 12 组变异测试及真实留痕回放均表现稳健。",
+  "verdict": "approve-with-nits"
+}

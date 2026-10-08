@@ -1,0 +1,97 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "计划对 three 件焦点事的设计均与仓库核实一致：串档根因（enumerateRounds/loadDisposition 写死 DEFAULT_DRIVER，gate.ts:334 与 984 已按当轮 run.json driver 定位）定位准确，先修根因再聚合的顺序正确；缺席与 null 三态字面互异、JSON 缺席不写键，生效列只读 effort_effective 并以入参类型边界防请求值顶替；采纳率口径与 acceptanceRate() 现行为对齐，不变式把「读不到 Driver」组两边都排除。无 blocker/major。5 条 minor/nit：§1.4 把 test/fixtures/run.v2.pre-m11-step6.json 说成「可直接当缺席夹具」失实（那是一份 JSON Schema 快照而非 run 记录实例）；§2.4 的 ⚠️ 规则与 §3.4 的类型边界矛盾；§2.2/§2.3 有四处格子口径未钉死（无时间线轮次的 Driver 是否成行、未知组未进时间线格、审核者表「入选轮次」是否含未进时间线运行、审核者表行序）。这些不影响方向，建议在 D-1～D-6 拍板时一并钉死，避免编码期悬置。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §1.4 末段与 §4.1 夹具表",
+      "problem": "§1.4 称 test/fixtures/run.v2.pre-m11-step6.json「是一份第 6 步之前的真实形状留痕，可直接当『缺席』夹具」。实测该文件是 run.v2 的 JSON Schema 快照：顶层键为 $schema/$id/title/required/properties/$defs，其中 effort_requested/effort_effective 只是 properties 里的可选占位（required 数组不含它们）。它是形状元数据，不是一条 run 记录实例，无法直接喂给报告当「逐侧思考等级字段缺席」的留痕。",
+      "evidence": "亲自读 test/fixtures/run.v2.pre-m11-step6.json（python3 json 解析列键 + sed 看 640-700 行 properties 段）；其现有消费方 test/unit/effort-wiring.test.ts:243-252（C3 用例）把它当「旧 schema」编译后校验新留痕记录，正是 schema 快照的用法，与「缺席夹具」无关。",
+      "suggestion": "改计划措辞：该文件继续作为 schema 兼容快照（C3 式断言），「缺席」夹具需手造第 6 步之前的记录实例（可仿 effort-wiring.test.ts 的 metaWith 助手按缺字段构造），或从真实 v1 时代归档抄一份 run 记录进夹具。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.4 表末行 vs §3.4",
+      "problem": "§2.4 规定生效列「与请求值都为字符串且不等时加 ⚠️」，这要求渲染生效列时能同时看到请求值；而 §3.4 明确 renderEffortEffective 的入参类型不含请求值字段（只收 effortEffective 与 effortEffectiveSource）。两条条文对「⚠️ 在哪算」给出了互相矛盾的约束，实现时必然有一处在计划外。",
+      "evidence": "计划 §2.4「有值 | 原值 | 原值；与请求值都为字符串且不等时加 ⚠️」与 §3.4「renderEffortEffective 的入参类型不含请求值字段」；src/trivium/types.ts:1334 注释「生效值只取回读」支持类型边界的意图，故更可能是 ⚠️ 条文缺落点。",
+      "suggestion": "在拍板稿里二选一并写明：要么 ⚠️ 在渲染调用点用两值比较得出、纯函数只管单值渲染；要么 §3.4 增设一个收请求值与生效值两参的比较函数。别让编码者自行其是。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.2「行」与列口径表",
+      "problem": "§2.2 有两处格子口径未钉：(a) 行集——「每个（Driver, 阶段）一行」没有说一个在本阶段只有未进时间线运行、没有任何时间线轮次的 Driver 是否成行。§4.1 夹具里 glm 在 code 阶段正是这种情形（被取消的运行），A2 只说「记在 glm 名下」，而成行（轮次=0）还是只进合计行，两种读法都通，A2 的断言写法因此悬空。(b) 「读不到 Driver」组的「未进时间线的运行」格未定义——collectUnlistedRuns 只收可读 run.json（读不出的进 notes），故未进时间线运行必有已知 driver，该格事实上恒 0 或「—」，规格应明说写哪个，免得有人补 0 违反 §2.1 的「读不到就写读不到」精神。",
+      "evidence": "计划 §2.2「行」句与列口径表；src/trivium/report.ts 的 collectUnlistedRuns（读不出的 run.json 记 notes 后 continue，out 只含有可读 meta 的运行）与 §1.2 UnlistedRun 注释；§4.1 夹具表 code 行 glm 被取消运行。",
+      "suggestion": "拍板时补两句：行集取「时间线轮次出现过的（Driver, 阶段）∪ 未进时间线运行出现过的（Driver, 阶段）」（并写明轮次=0 时轮次格写 0）；「读不到 Driver」组的未进时间线格写「—」并注明成因（该组运行必有可读 run.json，不存在读不到 driver 的未进时间线运行）。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §2.3 表 A「入选轮次」",
+      "problem": "「入选轮次：该侧在本轮 critics_selected 里，或本轮 run.json 有它的条目」——「本轮」指时间线轮次还是含未进时间线的运行，未写明。§4.1 夹具里 code 阶段那次被取消的运行（glm 发起、gemini 入选且 failed）若计入，gemini 的入选轮次 +1 且与「产出结论轮次」的差值被拉大；若不计入，该信息只在表 B「未进时间线运行中的失败次数」里出现。两种口径读数不同，规格应定死。",
+      "evidence": "计划 §2.3「入选轮次」bullet 与 §4.1 夹具表 code（未进时间线）行；src/trivium/report.ts 的 UnlistedRun 注释「不占轮次号」，说明运行与轮次在数据模型里本就是两档。",
+      "suggestion": "拍板时写明：表 A「入选轮次」只数时间线轮次（未进时间线运行的入选情况由表 B 专列承担），或明确含入并说明与「产出结论轮次」的差值含义。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §2.3 表 A/表 B",
+      "problem": "审核者两张表的行序未指定。§2.2 Driver 表钉了「Driver 按注册表顺序，阶段按 plan / code / bug」，§2.3 只写「每个出现过的审核者一行」。报告自述守 P4「同一份归档得出同一份报告」，渲染顺序不钉，换实现或加快照断言时会出现顺序漂移类假差异。",
+      "evidence": "计划 §2.2「行」句有顺序约定而 §2.3 无对应句；src/trivium/report.ts 头部注释「换一台机器、拿同一份 .reviews/ 必须能得出同一份报告（P4）」。",
+      "suggestion": "§2.3 补一句「审核者按注册表顺序」，与 §2.2 对齐，一行即可。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "串档根因定位与仓库核实一致：enumerateRounds（report.ts:130 一带）与 loadDisposition（:165 一带）缺省 DEFAULT_DRIVER、buildRound 调 loadDisposition 时不传 driver，而闸门侧 gate.ts:334 与 :984 已按 run.json 的 driver 定位——报告确是唯一没跟上的读侧，先修 §3.2 再谈聚合的顺序正确。",
+    "双维度正交（R23：后缀=产出方、run.json.driver=发起方）、「读不到 Driver」单独成组且逐轮写原因、不归缺省也不归认领声明——与任务目标原文和上位计划 r3 §4.7 逐条对齐，无范围漂移；meta.ts 只加附加字段不改判定，符合「不改契约」边界。",
+    "缺席与 null 的区分设计扎实：三态字面互异（—/（未请求）/未回读到/（无此概念）），JSON 缺席不写键、null 写 null；生效列只读 effort_effective 与 effort_effective_source，并用「入参类型不含请求值」照第 6 步 effortReadback 的防呆做法，A5/A8 断言加变异 M3 正好守住「从不拿请求值顶替」（与 types.ts:1334 注释一致）。",
+    "采纳率口径与实现一致：acceptanceRate() 只计有裁决件的轮次，§2.2 未裁决轮次「意见计入意见数、不进分子分母」正是现行为；不变式把「读不到 Driver」组从两边同时排除，逻辑上闭合。",
+    "待拍板 6 条齐备且每条带推荐与备选代价、拍板前不编码；纪律 6b 规格与实现同一提交；文档版本接续正确（主设计 v1.3.135、PRD v1.4.24，与文档头现版本 v1.3.134/v1.4.23 顺次）；doc/05_testing/README.md 的登记格式（日期升序、一条一行）与计划 §5 写法相符。",
+    "测试设计对得上焦点：A1 幽灵轮次（-r3-codex 不定义 r3）、A2 未知组与 glm 取消运行、A4 整份回退编号按前缀归属、A7 v1 迁移、A8 五形态表驱动；变异 M1-M6 与断言逐条挂钩；零配额约束守住，§4.3 用本地构建对本仓真实 v1 主题只读实跑（v1 留痕已在 .reviews/M2-skills与闸门 等主题核实存在），符合「安装副本不随构建更新」的已知坑。"
+  ],
+  "not_covered": [
+    "未跑任何构建与测试——被审对象是尚未实施的计划，本轮全部结论来自只读代码与文档核实，未做行为复跑。",
+    "§2 规格正式并入主设计 13.2 后的文档措辞未逐字预演（编码第一步的产物）；只核对了 13.2 现有文字与 R23/演进设计 §13.3 第 4 条的引用真实性。",
+    "渲染层细节（表格具体措辞、加粗形态、列序在窄终端的折行）未审，审的是数据口径与形状。",
+    "另一位审查员的本轮结论未读、也未推断（背靠背协议），与他侧重复或互补的情况不明。",
+    "「读不到 Driver」的枚举兜底（R1）只做了逻辑推演与夹具推演，未在真实归档上统计该形态的出现频率（抽样确认了 v1 留痕存在性，未全量遍历 .reviews/）。"
+  ],
+  "consulted": [
+    ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-claude.md",
+    ".reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-r3-claude.md",
+    "src/trivium/report.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/types.ts",
+    "src/trivium/disposition.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/cli.ts",
+    "test/unit/report.test.ts",
+    "test/unit/effort-wiring.test.ts",
+    "test/fixtures/run.v2.pre-m11-step6.json",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/05_testing/README.md",
+    "CLAUDE.md",
+    "README.md"
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "实现与规格（主设计 13.2.1 / 计划 r2 §2）逐格一致：生效思考等级在类型层就只收回读两格、缺席与 null 在三处（EffortFields 可选键、JSON 在场性、表 B 计次）始终分写、换 Driver 的排除与定位按当轮 run.json、读不到 Driver 单独成组、两个聚合不变式都有断言，12 个变异全咬住、真实 v1 留痕实跑输出与规格相符。三条意见都是边角：①run.json 存在但读不出时，「读不到 Driver」组的原因误写「找不到」（规格承诺两形态分写，buildRound 里现成的「读不出」分支在现有调用图里实际不可达）；②同轮次号作废后换 Driver 重跑时，前一次运行的原稿会被当审查文档造幽灵轮次（设计残余未覆盖这一格）；③renderCounts 用 localeCompare 排序却引用 P4。均不影响本步达成判据，建议收口前处置①②的规格或实现。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/report.ts:261,378-381,755；src/trivium/meta.ts:712-717",
+      "problem": "run.json 存在但读不出（unparsable / 不合契约 / IO）时，该轮经审查文档枚举拿到 runId=null，buildRound 的 !runId 分支把 driverUnknownReason 写成「找不到对应的 run.json」，aggregateByDriver 的 items[].runId 也记 null——与规格 13.2.1 承诺的两种原因分写（「找不到对应的 run.json」或「run.json 读不出（成因）」）不符：报告把「存在但损坏」说成「不存在」。准确的成因只落在 collectUnlistedRuns 的主题告警（report.ts:653），读「读不到 Driver」组的人看到的是误导性原因，排查方向会错。buildRound 里现成的「读不出」分支（report.ts:387-390）在现有调用图里实际不可达：enumerateRounds 的 metaByRound 只收 readRunMeta 读得通的元数据（meta.ts:712 任意失败回落 null），传给 buildRound 的非 null runId 必然刚被读过一遍。",
+      "evidence": "静态走读 src/trivium/report.ts:247-267（enumerateRounds 只用 lenient 的 readRunMeta）、376-390（buildRound 两个分支）、753-757（aggregateByDriver 的 runId 取值）、645-657（collectUnlistedRuns 的 notes）；src/trivium/meta.ts:712-717（readRunMeta = readRunMetaDetailed 的 ok 分支，失败统一 null）。尝试实跑 dist/test/test/unit/report-aggregate.test.js：沙箱禁写临时目录（mkdtemp EPERM），夹具用例未跑成，纯函数用例 A4×2 / A8×3 实跑通过。",
+      "suggestion": "两个方向选一：①enumerateRounds 对「文件名解析得到 runId、但元数据读不出」的轮次号记下候选 runId（不必解析内容），buildRound 改用 readRunMetaDetailed 区分 missing 与 io/unparsable/contract，让两种原因真分写；②若有意维持现状，修订规格 13.2.1 与该组表下注记，如实写明「存在但读不出」当前并入「找不到」、成因只看主题告警。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/report.ts:263,269-276",
+      "problem": "「同号后写覆盖」（metaByRound 以 rerun_index 为键、文件名时序排序取最后一份）叠加「有 run.json 的轮次按 role ≠ 该轮 driver 判审查文档」，在「同一轮次号被作废后换 Driver 重跑」时产生有 run.json 的串档变体：前一次运行留下的当轮 Driver 原稿（kind=null、role=旧 Driver ≠ 后一次 run.json 的 driver）被当审查文档；后一次运行若没产出审查文档，就多出一个挂在后一次运行上的幽灵轮次，前一次运行同时出现在未进时间线表，r3 在两张表里各出现一次。这正是本步要支持的换 Driver 场景（UnlistedRun 注释自述「之后的重跑可能沿用同一个号」），且对 claude→codex 方向是新行为：旧实现恒排除缺省 Driver 后缀的文件，stale 的 claude 原稿不会冒头。设计 13.2.1 的「残余」只写了无 run.json 轮次的两格，没覆盖这一格有 run.json 的变体，读者会以为该面已收口。",
+      "evidence": "静态走读 src/trivium/report.ts:247-276（metaByRound 覆盖语义与 isReviewDoc 判定）、129-137（UnlistedRun 注释「之后的重跑沿用同一个号」）；对照 diff 中旧 enumerateRounds（恒排除 DEFAULT_DRIVER 后缀）确认该角落在缺省 Driver 方向是回归。未实测（沙箱禁写），触发频率取决于作废后同号重跑且换 Driver 的组合，故 confidence  medium。",
+      "suggestion": "处置方向：规格 13.2.1 的残余补这一格，并实现一个判据——如「该轮次号有多份 run.json 时，审查文档身份以本轮 artifacts 登记为准（或要求至少一份审查文档来自本轮登记）」，判不出就把该轮降级进「读不到 Driver」组；或显式裁决接受并写进残余。不 blocker：窄角、不污染已知 Driver 的读数。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/report.ts:929-936",
+      "problem": "renderCounts 的键排序用 localeCompare（默认 locale），注释却引 P4「同一份归档同一份报告」——localeCompare 的次序随 ICU 默认 locale 的强度规则变（大小写、标点的排序与码点序不同，如 'GLM-x' 与 'gemini-y' 在 ICU 根排序与码点序下顺序相反），严格说不是跨环境稳定的字典序；同文件第七节 token 键排序有同样先例，属既有惯例的延伸，实际风险低。",
+      "evidence": "静态走读 src/trivium/report.ts:929-936（localeCompare）与 1214（token 键同先例）。推理得出，未跨 locale 实测。",
+      "suggestion": "若要把 P4 坐实，改用码点序（默认 sort()）；至少把注释从「字典序」改成「locale 序」，别让后读者以为已满足跨机一致。可留待后续文档收口一并处理。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "生效思考等级「只取回读」落实到了类型层：renderEffortEffective 的入参 Pick 不含请求值字段，「拿请求值顶替」在编译期就写不出来（report.ts:903-910），第四节 ⚠️ 是独立的行级对比标记（effortMismatch），审核者表 B 的生效计次也只读 effortEffective / effortEffectiveSource（report.ts:838-841），M3 / M3b 两条变异各有测试咬住。",
+    "「缺席」与「null」全程分写且与 run.json 逐键同在场性：buildRound 用 'effort_requested' in m 条件展开（report.ts:426-429），JSON 输出缺席键不出现、null 照写；渲染映射覆盖规格两张表的每一行（A8 表驱动实跑通过）；旧名 effort 只作请求列缺席时的注记，生效列从不读它。",
+    "串档根因修复与闸门同口径：有 run.json 的轮次按该轮 driver 排除原稿 / 定位裁决件，无 run.json 的轮次号内容谓词优先、后缀兜底，claude 作唯一产出方的轮次不再消失（A1b），codex 的原稿不造幽灵轮次（A1）；「读不到 Driver」组不归缺省 Driver 也不归认领声明，run.v1 迁移轮次归 claude 并注明「其中 N 轮为 run.v1 迁移」。",
+    "聚合口径与规格逐格一致且互相钉住：采纳率分母只含有裁决件的轮次、意见数不跨侧去重且结论读不到的侧不贡献、失败 / 整份回退 / 逐条降级轮次 / 未进时间线失败四格判据分明、重复意见不去重；A3 不变式（各 Driver 合计 = 全主题采纳率分子分母）与「审核者分摊之和 = 裁决行总数」都有断言。",
+    "meta.ts 的 sourceSchema 只增不改判定，v1 / v2 两个成功出口各填一值；证据面完整：12/12 变异咬住、本仓 M2 真实 v1 留痕（parse_fallback 却有可读结论、旧名 effort）实跑输出与规格分毫不差，PRD / 主设计 / LLD / PROTOCOL 同步进同一提交，符合纪律 6b。"
+  ],
+  "not_covered": [
+    "夹具类用例 A1-A7 未能实跑：本侧只读沙箱禁写临时目录（scratchDir 的 mkdtemp EPERM），这 7 例本轮是静态通读代替执行；纯函数用例（A4×2、A8×3）实跑通过，npm run check 全量因同样原因未跑。",
+    "doc/05_testing/evidence/m11-report-aggregate-20261008/ 下只读了 mutation-output.txt 与 real-report-M2.md，mutation-names-output.json 与 real-report-self.md 未逐行核对。",
+    "闸门侧（gate.ts）「按当轮 driver 定位」的实现只按 diff 与注释引用确认存在，未逐行比对两读侧口径是否真同构。",
+    "CODEX-02 的场景（同号作废重跑 + 换 Driver）未实测构造，基于代码路径推理；实际触发频率取决于使用习惯。",
+    "另一名审查员（gemini / glm）的结论按背靠背协议不可见，本侧镜头不覆盖其视角；文档措辞层（如 PRD / PROTOCOL 的行文）只核了事实一致性，未做文字审校。"
+  ],
+  "consulted": [
+    "src/trivium/report.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/types.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/disposition.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/agents/registry.ts",
+    "skills/dual-critic/schema/run.v2.json",
+    "test/unit/report-aggregate.test.ts",
+    ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-r2-claude.md",
+    ".reviews/M11-复盘报告双维度聚合/code/_meta/changes-20261008T070253Z.diff",
+    "doc/05_testing/evidence/m11-report-aggregate-20261008/mutation-output.txt",
+    "doc/05_testing/evidence/m11-report-aggregate-20261008/real-report-M2.md",
+    "doc/05_testing/README.md"
+  ]
+}

@@ -1,0 +1,321 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261008T070253Z",
+  "topic": "M11-复盘报告双维度聚合",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点看三件事：同一主题换过 Driver 时聚合是否真的不串档（包括读不到 driver 的旧轮次）；新旧留痕混合时「缺席」与 null 是否始终分开显示，生效思考等级是否只取回读而从不拿请求值顶替；每个聚合数字的口径（分母、去重、失败与未裁决轮次）是否在规格里写清并与实现一致。",
+  "task_goal": "M11 第 7 步：复盘报告按 Driver 与审核者两个维度聚合（上位计划 .reviews/M11-档位全链路与文档收口/plan/ r3 §4.7，A 档）。 事实：src/trivium/report.ts 的主题报告现有九节，时间线逐轮带「Driver（护栏）」列，第二节逐轮按侧列意见数与裁决、全主题只算一个总采纳率（acceptanceRate），第四节逐轮逐侧列请求模型、生效模型与证…",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "profile": "default",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "7fe810561b8d7330ec92f453698e3fbd32ef1847",
+    "tree_hash": "320f816b21a5cb733ea18f7596f6b38eba129f88",
+    "dirty": true,
+    "subject_sha256": "6b62b36f585d4b57dc98081dfad639f027f5a998669da4885ceba8a129b5db53",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "a5210a89d7c3aa04e9c100888a760a59f5306f31",
+      "dirty": false,
+      "inputs_sha256": "9b92716e4ab1895a7074085df0313855e1949c32f366676447b7c2a8dd80d658",
+      "built_at": "2026-10-08T04:05:39.352Z"
+    },
+    "after_tree_hash": "320f816b21a5cb733ea18f7596f6b38eba129f88"
+  },
+  "started_at": "2026-10-08T07:02:55.545Z",
+  "finished_at": "2026-10-08T07:19:36.789Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.1",
+      "model_requested": "kimi-for-coding",
+      "model_effective": "kimi-for-coding",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": "unverified",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1001.004,
+      "tool_calls": {
+        "run_command": 46,
+        "project_reads": 19
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a11a52-7d02-73e1-9836-75c5708bfcb9",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.1",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 967.499,
+      "tool_calls": {
+        "read": 45,
+        "grep": 19,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 29
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 445910,
+        "output_tokens": 77483,
+        "thinking_tokens": 69537,
+        "cache_read_tokens": 10790733,
+        "total_tokens": 523393
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "976eea54-cab6-4f4a-8871-0d0af8176d82",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 675.945,
+      "tool_calls": {
+        "read": 7,
+        "grep": 11,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 9
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 11,
+        "inputTokens": 1509547,
+        "outputTokens": 28821,
+        "totalTokens": 1538368,
+        "cacheReadTokens": 1329600,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_db17df3f-827a-4346-b2d8-f8eda284ed46",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-gemini.md",
+    ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-glm.md",
+    ".reviews/M11-复盘报告双维度聚合/plan/_meta/review-gemini-20261008T053559Z.json",
+    ".reviews/M11-复盘报告双维度聚合/plan/_meta/review-glm-20261008T053559Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "M11-复盘报告双维度聚合/code/_meta/changes-20261008T070253Z.diff",
+      "sha256": "6b62b36f585d4b57dc98081dfad639f027f5a998669da4885ceba8a129b5db53"
+    },
+    {
+      "path": "M11-复盘报告双维度聚合/code/_meta/brief-codex-20261008T070253Z.md",
+      "sha256": "1c1a2620fd4a78ecfd3cd37d97d44323d34a3c7898c8c09e9b91dc4a4d51a2a8"
+    },
+    {
+      "path": "M11-复盘报告双维度聚合/code/_meta/brief-gemini-20261008T070253Z.md",
+      "sha256": "0f18e8ec9eca642c64bc433b31982061ade763cb06555f9280cdc35e23cd1b5d"
+    },
+    {
+      "path": "M11-复盘报告双维度聚合/code/_meta/brief-glm-20261008T070253Z.md",
+      "sha256": "93cf94a186fac9fd3b1567e65403f57a18c3140ba6afa6dbbab8d1e2541ac86e"
+    },
+    {
+      "path": "M11-复盘报告双维度聚合/code/_meta/review-codex-20261008T070253Z.json",
+      "sha256": "6de446a12ed664636d4f78e6cb3c43004c4e201be9149025078a369dfa74360c"
+    },
+    {
+      "path": "M11-复盘报告双维度聚合/code/_meta/review-gemini-20261008T070253Z.json",
+      "sha256": "fd87548b2d9fa8f6bdd782ed83969bafcf0ab525d4d6324fe6b995294e63a6a5"
+    },
+    {
+      "path": "M11-复盘报告双维度聚合/code/_meta/review-glm-20261008T070253Z.json",
+      "sha256": "2fe585f54f22f5e1111c544927b86686b3ac5b710b7b60afa714d23530ed155e"
+    },
+    {
+      "path": "M11-复盘报告双维度聚合/code/2026-10-08-M11-复盘报告双维度聚合-codex.md",
+      "sha256": "f925fc463c3a114d7e41314a8a0075a66c2ca92ebcc570a7171db1942a353b86"
+    },
+    {
+      "path": "M11-复盘报告双维度聚合/code/2026-10-08-M11-复盘报告双维度聚合-gemini.md",
+      "sha256": "d01332245d7aae7477b57ec202c383792f897e2bd57a5248157e723eaa41968e"
+    },
+    {
+      "path": "M11-复盘报告双维度聚合/code/2026-10-08-M11-复盘报告双维度聚合-glm.md",
+      "sha256": "a370c41f6f9bc11fe61171c45cb482bd6b7dbbe22838fe0f17d0134b10f8f047"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装",
+      "安装副本与仓库 HEAD 不同版（构建于 a5210a8，仓库 HEAD 7fe8105）"
+    ]
+  },
+  "status": "success"
+}

@@ -1,0 +1,86 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的问题在无 run.json 时轮次枚举的排除逻辑（AGY-01，major）：仅按「出现过的 Driver ∪ 缺省 Driver」排除后缀，在换过 Driver 的阶段会误杀合法审查工件导致轮次消失，放着现成的 isReviewArtifact 审查件内容谓词不用而采纳有缺陷的启发式。此外，「产出结论轮次」口径未定义（AGY-02），读不到 Driver 组的意见数口径正文与表格脱节（AGY-03），且将 schema 契约文件误当成留痕夹具（AGY-04）。",
+  "findings": [
+    {
+      "id": "AGY-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-claude.md:126",
+      "problem": "轮次枚举在缺少 run.json 时的启发式排除规则存在逻辑漏洞，在换过 Driver 的阶段会误杀审查工件导致轮次从时间线消失，且忽略了项目中已有的 isReviewArtifact 判据。",
+      "evidence": "计划 §3.2 规定第 n 轮没有可读 run.json 时，后缀属于「本阶段任一可读 run.json 记过的 driver ∪ 缺省 Driver」的文件被排除。在跨轮切换 Driver 场景下（如 r1 Driver 为 claude，r2 为 codex），已出现集合为 {claude, codex}。若 r3 缺失 run.json 且 codex 作为审核者产出审查工件，因 codex 在集合中会被错误排除；若该轮仅该侧产出，r3 将从时间线完全消失。反之，若 r3 Driver 是未出现过的第三家，其原稿反被当成审查件。实际上 src/trivium/archive.ts:149 早已提供 isReviewArtifact 谓词（依据 front-matter 的 schema 是否为 trivium.review.v1 精确判定），原稿绝不带该 schema 而审查件必带。计划放弃可靠的内容判据而选择启发式集合，凭空引入了 §7 R1 所列的两大残余风险。",
+      "suggestion": "在没有可读 run.json 时，改用调用 isReviewArtifact 检查候选文件的 front-matter schema 是否为 trivium.review.v1 来确认是否为审查工件，彻底消除 R1 所列的误杀审查件与造幽灵轮次风险。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-claude.md:90",
+      "problem": "审核者聚合表 A 中的核心统计项「产出结论轮次」缺乏明确的口径定义。",
+      "evidence": "§2.3 表 A 列出「入选轮次、产出结论轮次、合格意见数...」。规格正文中详细定义了「入选轮次」（该侧在 critics_selected 里或 run.json 有条目），但全文未定义何为「产出结论轮次」：是要求 status === 'ok'，还是包含整份回退（parse_fallback）与空审查（empty_review）？口径缺失会导致实现与单测断言产生分叉。",
+      "suggestion": "在 §2.3 中补齐「产出结论轮次」的准确判据定义，明确说明 parse_fallback、empty_review 以及仅有降级意见时是否计入该轮次，与失败/超时侧形成清晰区分。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-claude.md:70",
+      "problem": "「读不到 Driver」组的意见数列口径在正文说明与表格定义之间存在脱节。",
+      "evidence": "§2.2 正文明确写明「该组只给轮次数与原因，意见数、裁决、采纳率一律『—』」，且 §4.1 A2 断言也要求「该组意见与采纳率是『—』而不是 0」。但在 §2.2 表格中，「意见数」列的口径描述仍写为通用的「该组各轮各侧合格意见之和...」，未在表格定义中同步注明读不到 Driver 组意见数填「—」。",
+      "suggestion": "在 §2.2 表格的「意见数」及「已裁决/未裁决」列口径中补充说明：「读不到 Driver」组因元数据缺失无法关联 review.json 与裁决件，意见数与采纳率统一填「—」。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-claude.md:48",
+      "problem": "计划将 JSON Schema 契约定义文件误判为留痕数据实例夹具。",
+      "evidence": "§1.4 声称「test/fixtures/run.v2.pre-m11-step6.json 是一份第 6 步之前的真实形状留痕，可直接当『缺席』夹具」。实际核查该文件内容，其根节点为 draft 2020-12 的 JSON Schema 契约（含 $schema, $id, properties 等），并非可供直接反序列化为 RunMeta 的 run.json 留痕数据。",
+      "suggestion": "更正 §1.4 的描述，在 §4.1 测试夹具中通过测试辅助函数（类似已有的 seedRound/newRunMeta）显式构造缺席思考等级字段的真实 run.json 数据，避免编码时误读 schema。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-05",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-claude.md:91",
+      "problem": "审核者表 B 的列定义未明确拆分思考等级请求与生效列，且未进时间线运行的失败判据需要明确。",
+      "evidence": "§2.3 表 B 将「思考等级请求值与生效值」合并陈述，若在 Markdown 表中挤在同一列计次容易与第四节的分列模式产生混淆；同时「未进时间线运行中的失败次数」未说明判据是看该侧 critics[c].status 是否为 failed/timeout 还是看顶层 status。",
+      "suggestion": "在表 B 规格中明确将思考等级拆为「请求」与「生效」两列分别计次；并明确未进时间线运行中仅统计审核者自身状态为 failed 或 timeout 的次数。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "精准定位并解决了 report.ts 长期遗留的 enumerateRounds 与 loadDisposition 写死 DEFAULT_DRIVER 导致的串档根因（§0.1、§1.2）。",
+    "第四节思考等级生效列的纯函数入参严格剔除请求值字段（§3.4），从类型系统层面杜绝拿请求值充数，坚守了 AC-13 与 AC-23 纪律。",
+    "留痕字段「缺席」与显式「null」的三态区分完备，待拍板 D-4 将旧名 effort 转为注记的方案既尊重历史数据又保护了生效列的纯洁性。",
+    "待拍板清单（§6）覆盖全面、利弊权衡充分，D-1 保留回退编号进采纳率的设计守住了采纳率不变式。"
+  ],
+  "not_covered": [
+    "本审查员处于只读受限环境，未执行任何编译与测试命令，所有分析基于代码与文档推演。",
+    "未覆盖非 macOS 环境下的路径格式与兼容性边界。",
+    "未针对 100+ 轮次超大归档下的 report 执行耗时与内存开销做压力测试。"
+  ],
+  "consulted": [
+    ".reviews/M11-复盘报告双维度聚合/plan/2026-10-08-M11-复盘报告双维度聚合-claude.md",
+    "src/trivium/report.ts",
+    "src/trivium/types.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/disposition.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "test/unit/report.test.ts",
+    "test/fixtures/run.v2.pre-m11-step6.json"
+  ]
+}
