@@ -1,0 +1,119 @@
+{
+  "targets_sha256": {
+    "skills/dual-critic/schema/config.v2.json": "70acc760e68d3d436d2e1eabc3eed349dfcbbb139457383f2ae2699d49c24c4a"
+  },
+  "results": [
+    {
+      "id": "S1",
+      "desc": "schema topic.required 加回 forbid_chars（不带它的配置会校验失败）",
+      "suite": "dist/test/test/unit/config-schema.test.js",
+      "fail": 15,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "内置默认配置本身合法",
+        "合法的覆盖（本项目自己的 config.yaml 形状）照常通过",
+        "可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家",
+        "U1 两个空配置项：带着已废弃键的配置仍通过校验；不带时同样通过",
+        "U2 两个空配置项：类型约束没有放宽——升级前就不合法的值升级后照旧被拒",
+        "U7 两个空配置项：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里",
+        "V1 EV-30 ②③：带着 parallel / deny_via_cli 的配置仍通过校验；默认值里不再有它们、不带时同样通过",
+        "V2 EV-30 ②③：类型约束没有放宽——升级前就不合法的值升级后照旧被拒",
+        "V4 EV-30 ②③：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里",
+        "T1 三形态各一格：裸 slug、{tier}、{model, effort} 都合法",
+        "T2 四支各带 tiers 与 default_tier：openai 支档位可带 profile，zcode 支只有 model",
+        "T4 旧配置零改动可载：本仓 config.yaml 原样、含 agents.codex.effort 的旧配置、空串 slug 都能加载",
+        "T6 本机层覆盖：tiers 整段替换、profiles 格子整格替换（设计 13.1.1「整段覆盖」）",
+        "V5 EV-30 ④～⑦：带着四键的配置仍通过校验；默认值里不再有它们、不带时同样通过",
+        "V7 EV-30 ④～⑦：schema 把四键标为 deprecated，且不在各自段的 required 里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "S2",
+      "desc": "schema gate.required 加回 require_adjudication",
+      "suite": "dist/test/test/unit/config-schema.test.js",
+      "fail": 15,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "内置默认配置本身合法",
+        "合法的覆盖（本项目自己的 config.yaml 形状）照常通过",
+        "可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家",
+        "U1 两个空配置项：带着已废弃键的配置仍通过校验；不带时同样通过",
+        "U2 两个空配置项：类型约束没有放宽——升级前就不合法的值升级后照旧被拒",
+        "U7 两个空配置项：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里",
+        "V1 EV-30 ②③：带着 parallel / deny_via_cli 的配置仍通过校验；默认值里不再有它们、不带时同样通过",
+        "V2 EV-30 ②③：类型约束没有放宽——升级前就不合法的值升级后照旧被拒",
+        "V4 EV-30 ②③：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里",
+        "T1 三形态各一格：裸 slug、{tier}、{model, effort} 都合法",
+        "T2 四支各带 tiers 与 default_tier：openai 支档位可带 profile，zcode 支只有 model",
+        "T4 旧配置零改动可载：本仓 config.yaml 原样、含 agents.codex.effort 的旧配置、空串 slug 都能加载",
+        "T6 本机层覆盖：tiers 整段替换、profiles 格子整格替换（设计 13.1.1「整段覆盖」）",
+        "V5 EV-30 ④～⑦：带着四键的配置仍通过校验；默认值里不再有它们、不带时同样通过",
+        "V7 EV-30 ④～⑦：schema 把四键标为 deprecated，且不在各自段的 required 里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "S3",
+      "desc": "schema zcode 分支 required 加回 max_turns 与 unsupported_override",
+      "suite": "dist/test/test/unit/config-schema.test.js",
+      "fail": 15,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "内置默认配置本身合法",
+        "合法的覆盖（本项目自己的 config.yaml 形状）照常通过",
+        "可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家",
+        "U1 两个空配置项：带着已废弃键的配置仍通过校验；不带时同样通过",
+        "U2 两个空配置项：类型约束没有放宽——升级前就不合法的值升级后照旧被拒",
+        "U7 两个空配置项：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里",
+        "V1 EV-30 ②③：带着 parallel / deny_via_cli 的配置仍通过校验；默认值里不再有它们、不带时同样通过",
+        "V2 EV-30 ②③：类型约束没有放宽——升级前就不合法的值升级后照旧被拒",
+        "V4 EV-30 ②③：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里",
+        "T1 三形态各一格：裸 slug、{tier}、{model, effort} 都合法",
+        "T2 四支各带 tiers 与 default_tier：openai 支档位可带 profile，zcode 支只有 model",
+        "T4 旧配置零改动可载：本仓 config.yaml 原样、含 agents.codex.effort 的旧配置、空串 slug 都能加载",
+        "T6 本机层覆盖：tiers 整段替换、profiles 格子整格替换（设计 13.1.1「整段覆盖」）",
+        "V5 EV-30 ④～⑦：带着四键的配置仍通过校验；默认值里不再有它们、不带时同样通过",
+        "V7 EV-30 ④～⑦：schema 把四键标为 deprecated，且不在各自段的 required 里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "S4",
+      "desc": "schema 去掉 unsupported_override 的 deprecated 标注",
+      "suite": "dist/test/test/unit/config-schema.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "V7 EV-30 ④～⑦：schema 把四键标为 deprecated，且不在各自段的 required 里"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "S5",
+      "desc": "schema 放宽 max_turns 的类型约束（去掉 minimum）",
+      "suite": "dist/test/test/unit/config-schema.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "V6 EV-30 ④～⑦：类型约束没有放宽——升级前就不合法的值升级后照旧被拒"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    }
+  ]
+}

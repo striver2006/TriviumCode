@@ -30,6 +30,19 @@ test('主题名规范化：空格转连字符；非法名退 64 并带建议', a
   });
 });
 
+/*
+ * EV-30 ④（M11 第 8 步，2026-10-08）：`topic.forbid_chars` 删除——主题名校验是 naming.ts 的独立实现，
+ * 接线会允许把 `/`、`..` 移出禁止集。schema 仍接受它，旧配置可能写着空数组；这一格锁住「写了也不放松」。
+ */
+test('EV-30 ④：旧配置里 topic.forbid_chars: [] 不放松主题名校验——/、\\、..、前导点照样退 64', async () => {
+  const ctx = await fakeCtx();
+  (ctx.config.topic as unknown as Record<string, unknown>)['forbid_chars'] = [];
+  for (const bad of ['a/b', 'a\\b', '../etc', 'x..y', '.hidden']) {
+    assert.throws(() => resolveTopicName(ctx, bad), (e: { code?: number }) => e.code === EXIT.USAGE, bad);
+  }
+  assert.equal(resolveTopicName(ctx, '登录 重构'), '登录-重构', '空格仍转连字符，不是被禁');
+});
+
 test('resolveTopicReadOnly 不创建任何目录；resolveTopic 才建阶段目录', async () => {
   const ctx = await fakeCtx();
   const ro = await resolveTopicReadOnly(ctx, 't', 'plan');

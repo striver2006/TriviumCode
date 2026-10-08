@@ -256,7 +256,7 @@ export function defaultConfig(): Config {
   return {
     schema: CONFIG_SCHEMA_ID,
     archive_root: '.reviews',
-    topic: { max_len: 64, forbid_chars: ['/', '\\', '..', ' '] },
+    topic: { max_len: 64 }, // forbid_chars 已删除（EV-30 ④）：见 DEPRECATED_CONFIG_KEYS
     runtime: { node: null, run_root: '~/.trivium/runs' },
     isolation: {
       /*
@@ -321,7 +321,8 @@ export function defaultConfig(): Config {
         effort: { plan: 'high', code: 'high', bug: 'high' },
         // readonly_commands 已删除（EV-15）：见 DEPRECATED_CONFIG_KEYS
       },
-      glm: { vendor: 'zcode', entry: null, max_turns: 40, unsupported_override: 'reject' },
+      // max_turns 与 unsupported_override 已删除（EV-30 ⑥⑦）：见 DEPRECATED_CONFIG_KEYS
+      glm: { vendor: 'zcode', entry: null },
       /*
        * codex 段（M8 第 3 步）。`profile` 是 R-6 的落点，也是「家族」的唯一判定依据——
        * 本机实测 `model_provider` 随 `-p` 走。默认取 qwen：它是演进设计 §3.1 点名的家族之一，
@@ -405,7 +406,7 @@ export function defaultConfig(): Config {
     },
     active_profile: 'default',
     gate: {
-      require_adjudication: true,
+      // require_adjudication 已删除（EV-30 ⑤）：见 DEPRECATED_CONFIG_KEYS
       allow_defer: true,
       block_business_write_when_awaiting_approval: true,
       approval_lock_scope: 'session',
@@ -425,7 +426,8 @@ export function defaultConfig(): Config {
 }
 
 /**
- * 已废弃、但 schema 仍接受的配置键（2026-10-01，EV-30 ① / EV-15；2026-10-06 补 EV-30 ②③ 两条）。
+ * 已废弃、但 schema 仍接受的配置键（2026-10-01，EV-30 ① / EV-15；2026-10-06 补 EV-30 ②③ 两条；
+ * 2026-10-07 补 agents.codex.effort；2026-10-08 补 EV-30 ④～⑦ 四条）。
  *
  * 每一条都是「类型 + 默认值 + 文档承诺」齐全而**从未被任何代码读取**，删了类型与默认值；
  * schema 里保留属性（标 `deprecated`、去掉 `required`），只为带着它们的旧配置升级后照常通过校验——
@@ -450,6 +452,15 @@ export const DEPRECATED_CONFIG_KEYS: readonly { path: readonly string[] }[] = [
    * 却有真实消费方（裸 slug 格子的思考等级回落），通配会把它误报成废弃。
    */
   { path: ['agents', 'codex', 'effort'] },
+  /*
+   * EV-30 ④～⑦（2026-10-08，M11 第 8 步）：本条测试第一次运行抓出的七条里余下的四条，同一做法删除。
+   * **一律精确路径、不用 `'*'`**（与上一条同理）：两个 agents 键只属于 zcode 分支（vendor 由注册表钉死，只有 glm），
+   * 通配会把将来别家接上线的同名键（例如某家真的接了轮次上限）误报成废弃。
+   */
+  { path: ['topic', 'forbid_chars'] }, // ④ 主题名校验是 naming.ts 的独立实现；接线会允许把 /、.. 移出禁止集
+  { path: ['gate', 'require_adjudication'] }, // ⑤ 闸门恒强制逐条裁决；接线等于给核心判据加关闭开关
+  { path: ['agents', 'glm', 'max_turns'] }, // ⑥ zcode 0.16.5 无处可接（M0 坑清单 C-01：--max-turns 被拒）
+  { path: ['agents', 'glm', 'unsupported_override'] }, // ⑦ annotate 语义已由 model_unenforced 播报承担
 ];
 
 /** 合并后的配置里实际出现的已废弃键（点分路径；按表序，同一条里 `'*'` 展开的按键名排序） */
@@ -675,7 +686,7 @@ export function migrateConfigV1(raw: unknown): { config: unknown; note: string |
      * 两段并存：`agents` 已在，旧的 `critics` 会被下面的 delete 丢掉。
      * **必须说出来**（审查意见 AGY-02 ≡ GLM-03）——现实触发形态是「手工升级时
      * 抄入了默认 agents 段，却忘了删自己原有的 critics 覆盖」，那里面的
-     * `bin` / `max_turns` 等自定义值会无声消失。
+     * `bin` / `entry` 等自定义值会无声消失。
      * 与紧邻的 allow_single_flag 冲突处理同一模式：静默取其一是最坏的选择。
      */
     changes.push('同时写了 critics 与 agents 两段，以 agents 为准（critics 里的自定义值未生效）');
@@ -757,7 +768,7 @@ export async function loadCtx(opts: LoadOptions = {}): Promise<Ctx> {
    *
    * 顺序颠倒会得到一个静默错误的结果：`defaultConfig()` 已是 v2 形状（带 `agents`），
    * 先合并的话，磁盘上的 `critics` 段只会作为一个**额外的键**并排落在结果里，
-   * 而 `agents` 仍是内置默认——用户配的 bin / agent / max_turns **一个都不生效**，
+   * 而 `agents` 仍是内置默认——用户配的 bin / agent / entry **一个都不生效**，
    * 却没有任何报错。先迁移再合并，`critics` 在进入合并前就已改名为 `agents`。
    */
   /*

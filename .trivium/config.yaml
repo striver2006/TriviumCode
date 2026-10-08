@@ -7,11 +7,6 @@ schema: trivium.config.v2
 archive_root: .reviews
 topic:
   max_len: 64
-  forbid_chars:
-    - /
-    - \
-    - ..
-    - " "
 runtime:
   node: null
   run_root: ~/.trivium/runs
@@ -133,7 +128,6 @@ profiles:
       bug: claude-fable-5-1
 active_profile: default
 gate:
-  require_adjudication: true
   allow_defer: true
   block_business_write_when_awaiting_approval: true
   approval_lock_scope: session
@@ -165,8 +159,6 @@ agents:
   glm:
     vendor: zcode
     entry: null
-    max_turns: 40
-    unsupported_override: reject
   # 显式钉住，不靠代码内置默认兜底——否则改一行代码默认就能悄悄换掉本仓的审查模型。
   codex:
     vendor: openai

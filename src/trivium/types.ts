@@ -1034,9 +1034,12 @@ export interface CodexCriticConfig extends TierFields {
 export interface GlmCriticConfig extends TierFields {
   vendor: 'zcode';
   entry: string | null;
-  max_turns: number;
-  /** 模型覆盖落到 global 档时：reject 拒绝启动 / annotate 放行但标注（设计 §11.3） */
-  unsupported_override: 'reject' | 'annotate';
+  /*
+   * 原有 `max_turns` 与 `unsupported_override`，2026-10-08 删除（EV-30 ⑥⑦，M11 第 8 步）：从未被读取。
+   * `max_turns` 在 zcode 0.16.5 无处可接（M0 坑清单 C-01：`--max-turns` 被拒）；`unsupported_override` 的 annotate 语义
+   * 已由 `model_unenforced` 播报承担（EV-122），AC-23 要的是回读可核对而不是强制生效。
+   * schema 仍接受它们（标 deprecated），见 `config.ts` 的 `DEPRECATED_CONFIG_KEYS`。不要加回来。
+   */
 }
 
 /**
@@ -1071,7 +1074,7 @@ export interface ClaudeCriticConfig extends TierFields {
  * 单个 Agent 的配置段（`config.v2` 的 `agents.<id>`）。
  *
  * **以 `vendor` 为判别式的可辨识联合，不是同构 record**：两家的字段集合完全不同
- * （antigravity 要 `agent` 与 `effort`，zcode 要 `entry` 与 `max_turns`），
+ * （antigravity 要 `agent` 与 `effort`，zcode 只要 `entry`），
  * 硬压成同一个形状只会得到一堆互相不适用的可选字段，校验也就形同虚设。
  *
  * **四家形状自 M9 第 4 步起全部就位**（codex 随 M8 第 3 步、claude 随本步）。
@@ -1104,7 +1107,11 @@ export interface SuspectedWrite {
 }
 
 export interface GateConfig {
-  require_adjudication: boolean;
+  /*
+   * 原有 `require_adjudication`，2026-10-08 删除（EV-30 ⑤，M11 第 8 步）：从未被读取，闸门恒强制逐条裁决。
+   * 若接线，等于给闸门核心判据加一个关闭开关。schema 仍接受它（标 deprecated），见 `config.ts` 的
+   * `DEPRECATED_CONFIG_KEYS`。不要加回来。
+   */
   allow_defer: boolean;
   block_business_write_when_awaiting_approval: boolean;
   approval_lock_scope: 'session' | 'global';
@@ -1132,7 +1139,12 @@ export type Profile = Partial<Record<CriticId, ProfileEntry>>;
 export interface Config {
   schema: 'trivium.config.v2';
   archive_root: string;
-  topic: { max_len: number; forbid_chars: string[] };
+  /*
+   * 原有 `topic.forbid_chars`，2026-10-08 删除（EV-30 ④，M11 第 8 步）：从未被读取——主题名校验是
+   * `naming.ts` 的 `validateTopic`（经 `topic.ts` 调用）的独立实现。若接线，会允许把 `/`、`..` 移出禁止集。
+   * schema 仍接受它（标 deprecated），见 `config.ts` 的 `DEPRECATED_CONFIG_KEYS`。不要加回来。
+   */
+  topic: { max_len: number };
   runtime: RuntimeConfig;
   isolation: IsolationConfig;
   review: ReviewConfig;

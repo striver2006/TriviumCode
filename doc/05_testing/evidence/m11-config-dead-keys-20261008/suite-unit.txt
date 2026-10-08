@@ -1,0 +1,358 @@
+✔ agy：基本形态 -p <prompt> --output-format stream-json，且绝不带 --dangerously-skip-permissions（AD-07） (1.760208ms)
+✔ agy：slug 自带档位时不传 --effort（P-16：否则 agy 直接拒绝） (0.08475ms)
+✔ agy：slug 不带档位时才传 --effort (0.070958ms)
+✔ agy：--agent 与 --json-schema 只在给定时出现 (0.042208ms)
+✔ agy：--print-timeout 比脚本级超时短 20s、下限 30s（P-07：到期后 exit 0，靠墙钟判超时） (0.045792ms)
+✔ agy：只读 Agent 取自探针验证过的值（P7），探针记 null 即该侧不可用 (0.0855ms)
+✔ zcode：入口在首位，--prompt / --cwd / --json --no-color，只读参数最后 (0.057667ms)
+✔ zcode：只读参数只传探针接受的旗标，denylist 用完整清单（含 Bash 与出网工具） (0.075666ms)
+✔ zcode：模型短名按探针回读的 provider 前缀补全（P-06） (0.0515ms)
+✔ 配置项对账：每个配置键都要有消费方，否则必须具名登记为已知死配置 (75.593166ms)
+✔ 已知死配置清单不得留过期条目：登记了但其实有消费方，说明清单该缩短了 (1.790459ms)
+✔ 回归锁：被删掉的那个死配置不得再出现在默认配置或 schema 里 (0.997333ms)
+✔ 回归锁：已删除的配置键（EV-15、EV-30 ①～⑦）不得再出现在默认配置或 schema 的 required 里 (0.742333ms)
+✔ U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null (1.510084ms)
+✔ U8 流程文档回归锁：skills-src/ 全部文件与 skills/ 下全部 SKILL.md 不得再提已删除的配置键（EV-30 ①～⑦、EV-15） (17.458709ms)
+✔ U9「gate --check 重跑几次」的流程约定在各处源文件里是同一句、处数不缺（代码双审 r1 CODEX-02） (3.944208ms)
+✔ U10 EV-30 ②③：review.parallel、isolation.deny_via_cli 出现时与旧两键一样只报实际出现的那几个；正文列出它们 (0.336334ms)
+✔ U11 agents.codex.effort 出现即报；agents.gemini.effort 不报；两者同在只报 codex 那条 (0.196709ms)
+✔ U12 schema 里 agents 四支与档位定义的非废弃属性都有消费方，否则进 KNOWN_DEAD (24.678583ms)
+✔ U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / agents.glm.max_turns / agents.glm.unsupported_override 出现即报、只按精确路径报 (0.444792ms)
+✔ 迁移：critics.* 搬到 agents.*，schema 标识改写为 v2 (7.936917ms)
+✔ 迁移：allow_single_flag 搬到 allow_partial_flag，值保持不变 (0.373166ms)
+✔ 迁移：新旧名同时在场 → 以新名为准，且告警点出这件事 (2.679334ms)
+✔ 迁移：不补 default_critics（让它自然继承默认值，不改变审查面） (0.29325ms)
+✔ 迁移幂等：v2 输入原样返回，不再告警 (52.959375ms)
+✔ 迁移：非对象输入不炸（YAML 可能解析出标量或 null） (0.095167ms)
+✔ 迁移：没有 schema 字段但有 critics 段的覆盖片段，照样迁移 (0.052917ms)
+✔ 迁移：只有 allow_single_flag 的覆盖片段也认得出来 (0.040625ms)
+✔ 迁移：critics 与 agents 并存 → 以 agents 为准，且告警点出旧段被丢弃 (0.374375ms)
+✔ 迁移：与 v1 无关的片段原样返回，不打扰用户 (0.080375ms)
+⚠️  检测到 trivium.config.v1 形态的配置，已在内存中按 trivium.config.v2 迁移（磁盘文件未改动，旧配置继续可用）：
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-A6XJ8T/.trivium/config.yaml：
+        · critics.* → agents.*
+    · review.allow_single_flag → allow_partial_flag
+    出路：`trivium init` 可一次性改写它（带备份）
+✔ loadCtx：v1 配置里的自定义值真的生效（锁住「先迁移、后合并」） (34.808791ms)
+⚠️  检测到 trivium.config.v1 形态的配置，已在内存中按 trivium.config.v2 迁移（磁盘文件未改动，旧配置继续可用）：
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-rASiZD/.trivium/config.yaml：
+        · critics.* → agents.*
+    · review.allow_single_flag → allow_partial_flag
+    出路：`trivium init` 可一次性改写它（带备份）
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-rASiZD/.trivium/config.local.yaml：
+        · critics.* → agents.*
+    出路：本文件不进 Git，init 不会改它——手工把 `critics:` 改名为 `agents:`，或忽略本提示
+✔ loadCtx：config.local.yaml 的 v1 覆盖片段同样生效 (18.058583ms)
+⚠️  检测到 trivium.config.v1 形态的配置，已在内存中按 trivium.config.v2 迁移（磁盘文件未改动，旧配置继续可用）：
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-GS0pZD/.trivium/config.yaml：
+        · critics.* → agents.*
+    · review.allow_single_flag → allow_partial_flag
+    出路：`trivium init` 可一次性改写它（带备份）
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-GS0pZD/.trivium/config.local.yaml：
+        · critics.* → agents.*
+    出路：本文件不进 Git，init 不会改它——手工把 `critics:` 改名为 `agents:`，或忽略本提示
+✔ loadCtx：local 只覆盖单侧时，default_critics 仍是缺省集合（不被片段顶掉） (13.819542ms)
+⚠️  检测到 trivium.config.v1 形态的配置，已在内存中按 trivium.config.v2 迁移（磁盘文件未改动，旧配置继续可用）：
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-6o1Yve/.trivium/config.yaml：
+        · critics.* → agents.*
+    · review.allow_single_flag → allow_partial_flag
+    出路：`trivium init` 可一次性改写它（带备份）
+✔ loadCtx：主配置只写一侧时，default_critics 同样保持缺省集合 (15.926084ms)
+⚠️  检测到 trivium.config.v1 形态的配置，已在内存中按 trivium.config.v2 迁移（磁盘文件未改动，旧配置继续可用）：
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-qssDN0/.trivium/config.yaml：
+        · critics.* → agents.*
+    · review.allow_single_flag → allow_partial_flag
+    出路：`trivium init` 可一次性改写它（带备份）
+✔ 缺省集合的生效边界：盘上没有 default_critics 时，运行时取 DEFAULT_CRITICS (14.046208ms)
+⚠️  检测到 trivium.config.v1 形态的配置，已在内存中按 trivium.config.v2 迁移（磁盘文件未改动，旧配置继续可用）：
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-9Kna0v/.trivium/config.yaml：
+        · critics.* → agents.*
+    · review.allow_single_flag → allow_partial_flag
+    出路：`trivium init` 可一次性改写它（带备份）
+✔ 缺省集合的生效边界：盘上写死了 default_critics 时，注册表翻转不生效 (11.350667ms)
+⚠️  检测到 trivium.config.v1 形态的配置，已在内存中按 trivium.config.v2 迁移（磁盘文件未改动，旧配置继续可用）：
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-PeTVEL/.trivium/config.yaml：
+        · critics.* → agents.*
+    · review.allow_single_flag → allow_partial_flag
+    出路：`trivium init` 可一次性改写它（带备份）
+✔ loadCtx：磁盘文件不被改动（内存迁移的核心性质） (12.955125ms)
+✔ 校验：agents 的键不是已登记 Agent → 报错并列出已登记的 (0.195625ms)
+✔ 校验：agents.<id>.vendor 与注册表不符 → 报错（路由错配会发给另一家 CLI） (0.274458ms)
+✔ 校验：default_critics 含未登记 id → 报错并点名，不静默忽略 (0.098916ms)
+﹣ 校验：登记但未启用为审核者的 Agent 出现在 default_critics → 报错，不静默忽略 (0.070166ms) # 「已登记但未启用」这一子情形当前不可达（注册表四家 criticEnabled 均为真）；该分支对未登记 id 仍然可达，由上一条用例覆盖
+﹣ 校验：配了已登记但形状未定义的 Agent → 说清「形状尚未定义」，不是机读错误 (0.066541ms) # 注册表四家的 vendor 形状均已在 config.v2.json 定义，本分支当前不可达（见上方说明）
+✔ 校验：agents.claude 的合法段（只有 vendor 判别式）必须被放行 (0.149291ms)
+✔ 校验：未登记 id 的报错要区分「当前可配置」与「已登记但还配不了」 (0.123917ms)
+✔ 校验：default_critics 里的 Agent 在 agents 中没有配置段 → 报错 (0.102708ms)
+✔ 校验：default_critics 超过 max_critics → 报错 (0.076542ms)
+✔ 校验：迁移产出的配置本身是合法 v2 (0.228833ms)
+⚠️  检测到 trivium.config.v1 形态的配置，已在内存中按 trivium.config.v2 迁移（磁盘文件未改动，旧配置继续可用）：
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-X3rWq4/.trivium/config.yaml：
+        · critics.* → agents.*
+    · review.allow_single_flag → allow_partial_flag
+    出路：`trivium init` 可一次性改写它（带备份）
+✔ init：把 v1 的 config.yaml 改写为 v2，并备份原文 (46.183084ms)
+✔ init：已是 v2 时幂等 no-op，不产生备份 (35.565041ms)
+⚠️  检测到 trivium.config.v1 形态的配置，已在内存中按 trivium.config.v2 迁移（磁盘文件未改动，旧配置继续可用）：
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-T4pV90/.trivium/config.yaml：
+        · critics.* → agents.*
+    · review.allow_single_flag → allow_partial_flag
+    出路：`trivium init` 可一次性改写它（带备份）
+✔ init：备份已存在 → 放弃改写但不中断 init，并说明原因 (14.677542ms)
+⚠️  检测到 trivium.config.v1 形态的配置，已在内存中按 trivium.config.v2 迁移（磁盘文件未改动，旧配置继续可用）：
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-RTJaXH/.trivium/config.yaml：
+        · critics.* → agents.*
+    · review.allow_single_flag → allow_partial_flag
+    出路：`trivium init` 可一次性改写它（带备份）
+✔ init --dry-run：不写任何文件，报告用将来时 (13.145459ms)
+⚠️  检测到 trivium.config.v1 形态的配置，已在内存中按 trivium.config.v2 迁移（磁盘文件未改动，旧配置继续可用）：
+  /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-mig-x3OkMk/.trivium/config.yaml：
+        · critics.* → agents.*
+    · review.allow_single_flag → allow_partial_flag
+    出路：`trivium init` 可一次性改写它（带备份）
+✔ init：改写后的配置能被 loadCtx 直接加载，且不再触发迁移告警 (25.846167ms)
+✔ 探针迁移：旧平铺改为按 CLI 索引，bin / entry 统一成 entrypoint (1.867791ms)
+✔ 探针迁移：从没探到入口的旧段不得被盖上时间戳 (0.281083ms)
+✔ 探针迁移：YAML 空值段不被当成旧段 (0.097583ms)
+✔ 探针迁移：对新形状幂等 (0.058791ms)
+✔ 探针迁移：已有新形状的键不被同名旧段覆写 (0.048875ms)
+✔ 探针迁移：不凭空造 version_probe (0.068375ms)
+✔ 内置默认配置本身合法 (64.919792ms)
+✔ EV-130：codex 缺省为 -p qwen -m qwen3.8-flash（max 在 M10b 第 4 步实测跑满 code 档 1200s） (0.307042ms)
+✔ gate: "off" 用标量顶掉整个对象 → 退 69 并点名 (28.202958ms)
+✔ 拼错枚举值（approval_lock_scope: sesion）→ 报错列出可选值，而不是反向按 global 加锁 (15.192917ms)
+✔ stop_hook_max_blocks: 0 会让收工拦截一次都不生效 → 拒绝 (13.881875ms)
+✔ 未知顶层字段（gates: 拼错）→ 报「未知字段」，不再静默忽略 (12.667417ms)
+✔ heartbeat_stale_s 写成字符串 → 拒绝（否则 NaN 让陈旧锁永不回收） (10.039167ms)
+✔ archive_root 逃出项目根 → 拒绝 (9.575875ms)
+✔ 合法的覆盖（本项目自己的 config.yaml 形状）照常通过 (13.14175ms)
+✔ newRunMeta 产出的骨架符合 trivium.run.v2 (48.295875ms)
+✔ 裁决件 front-matter 按 disposition.v1 校验 (1.500916ms)
+✔ 裁决件 role：未登记的 id 必须被拒（放宽之后守的是这一格） (0.056083ms)
+✔ 裁决件 role：每一个已登记 Agent 都必须被接受 (0.046167ms)
+✔ 裁决件 front-matter：形状错与身份错同时存在时，两类错误都要报出来 (0.047125ms)
+✔ 可配置厂商集合从 schema 现取：oneOf 里有几支，就认几家 (3.034792ms)
+✔ schema 的 agents.oneOf 已覆盖注册表全部厂商——新增一家未定义形状的 Agent 时本条会红 (0.774709ms)
+✔ 探针段出现未登记的 CLI 名时明确报错，而不是静默忽略 (0.271834ms)
+✔ 探针段的合法键集恒等于注册表 cliName 全集 (0.188708ms)
+✔ U1 两个空配置项：带着已废弃键的配置仍通过校验；不带时同样通过 (0.303791ms)
+✔ U2 两个空配置项：类型约束没有放宽——升级前就不合法的值升级后照旧被拒 (0.202208ms)
+✔ U3 两个空配置项：schema 把两键标为 deprecated，且不在 required 里 (0.623042ms)
+✔ U7 两个空配置项：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里 (15.579708ms)
+✔ V1 EV-30 ②③：带着 parallel / deny_via_cli 的配置仍通过校验；默认值里不再有它们、不带时同样通过 (0.302792ms)
+✔ V2 EV-30 ②③：类型约束没有放宽——升级前就不合法的值升级后照旧被拒 (0.167125ms)
+✔ V3 EV-30 ②③：schema 把两键标为 deprecated，且不在各自段的 required 里 (1.304834ms)
+✔ V4 EV-30 ②③：磁盘 config.yaml 带着两键时 loadCtx 照常加载，键原样留在合并结果里 (10.953042ms)
+✔ T1 三形态各一格：裸 slug、{tier}、{model, effort} 都合法 (0.548208ms)
+✔ T2 四支各带 tiers 与 default_tier：openai 支档位可带 profile，zcode 支只有 model (0.178333ms)
+✔ T3 非法组合在 schema 层即拒（各自单独一格） (1.092791ms)
+✔ T4 旧配置零改动可载：本仓 config.yaml 原样、含 agents.codex.effort 的旧配置、空串 slug 都能加载 (26.175666ms)
+✔ T5 agents.codex.effort：类型与默认值已删，schema 标 deprecated、不在 required，类型约束没放宽 (0.618292ms)
+✔ T6 本机层覆盖：tiers 整段替换、profiles 格子整格替换（设计 13.1.1「整段覆盖」） (15.080458ms)
+✔ V5 EV-30 ④～⑦：带着四键的配置仍通过校验；默认值里不再有它们、不带时同样通过 (0.992834ms)
+✔ V6 EV-30 ④～⑦：类型约束没有放宽——升级前就不合法的值升级后照旧被拒 (0.82ms)
+✔ V7 EV-30 ④～⑦：schema 把四键标为 deprecated，且不在各自段的 required 里 (1.279708ms)
+✔ V8 EV-30 ④～⑦：磁盘 config.yaml 带着四键时 loadCtx 照常加载，键原样留在合并结果里 (13.003416ms)
+✔ 全部裁决齐备 → 通过 (58.414167ms)
+✔ 缺裁决件 → missing_disposition，并提示即使全驳回也要产出 (0.758875ms)
+✔ 删掉一条裁决 → missing_findings 并列出编号（AC-12） (3.896667ms)
+✔ EV-30 ⑤：旧配置里 gate.require_adjudication: false 不放松逐条裁决——漏裁照样 missing_findings (3.989875ms)
+✔ 裁决了不存在的编号 → unknown_findings (2.532292ms)
+✔ AGY-04 的关键点：fallback 虚拟编号不被判「多余 id」 (1.784917ms)
+✔ fallback 单元少裁一条 → missing_findings 点名 <前缀>-F<n> (2.183208ms)
+✔ 关键用例：两侧都 parse_fallback 时空裁决表不得通过 (1.812458ms)
+✔ 裁了清单之外的 fallback 编号 → unknown_findings (3.116833ms)
+✔ run.json 记录已产出结论、结构化结论却读不到 → missing_review_json (1.61075ms)
+✔ run.json 的 gate.warnings 作为 run_warning 透传，缺裁决件的早退路径也带着（代码双审 r2 GLM-04） (1.562625ms)
+✔ AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求落点 (1.182125ms)
+✔ AGY-04 的关键点：findings 为空数组显式合法 (1.278875ms)
+✔ 理由为空 → empty_reason（三种裁决都要理由） (1.634458ms)
+✔ 接受但无落点 → missing_action (1.593041ms)
+✔ 驳回不要求落点 (3.539167ms)
+✔ 空洞理由默认只 warn（reason_policy=warn） (2.160041ms)
+✔ reason_policy=hard 时空洞理由升级为失败 (1.360125ms)
+✔ allow_defer=false 时「暂缓」被拒 (1.673125ms)
+✔ 裁决件的 run_id 与本轮不符 → bad_front_matter（不得复用上一轮的裁决件） (1.786292ms)
+✔ front-matter 与本轮不匹配 → bad_front_matter (2.714167ms)
+✔ N-2：文件名后缀是当轮 Driver、front-matter 的 role 是另一个已登记 id → bad_front_matter (1.7615ms)
+✔ N-2 正例：非缺省 Driver 诚实写自己的 id → 通过（EV-66 的全部目的） (3.308458ms)
+✔ N-2 边界：role 是未登记的 id → bad_front_matter（闸门层 fail-closed，不区分是哪道判据拦的） (2.039292ms)
+✔ 双方共同 blocker 被驳回：默认只 warn，且只用 location 精确相同判定 (0.18675ms)
+✔ 位置不同的 blocker 不算共同（不做文本相似度，避免启发式误判卡死闸门） (0.056375ms)
+✔ 作废侧不计入独立来源——否则它反而获得了逼停流水线的否决权 (0.026958ms)
+✔ 三态：两家有效且有共同项 → checked-found (0.025417ms)
+✔ 三态：两家有效但无共同项 → checked-none（查过、没发现） (0.028083ms)
+✔ 三态：排除作废侧后不足两家 → skipped，与「查过没发现」分得开 (0.023291ms)
+✔ 三态：阈值不随入选总数上调——三家里的两家仍是两个独立来源 (0.028792ms)
+✔ 共同 blocker 只要有一条被接受就不算「被驳回」 (0.026125ms)
+✔ joint_blocker_policy=hard 时升级为失败 (3.183709ms)
+✔ 空洞词表判定：只有整条理由都是空洞词才算 (0.140541ms)
+✔ 渲染结果在失败时列出编号，便于 Driver 直接照着补 (1.550084ms)
+✔ 降级轮次出 warning 而非 failure：闸门仍放行，但审计面上看得见 (1.617958ms)
+✔ 非降级轮次不得凭空冒出 degraded_round 警告 (2.063291ms)
+✔ readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-06；M9 第 6 步代码双审 CODEX-02 ≡ AGY-02 ≡ GLM-02） (27.638083ms)
+✔ classifyReadonlyBreach 真值表：只有 changed 且无 unknown_reason 才是确证 (0.09525ms)
+✔ EV-224：readonlyBreachLabel 三档逐字，summarizeRun 按同轮 drift 分档、未失守不出 (0.172833ms)
+✔ 只读失守三档的 gate --check 文案：确证判失败；复算无变化与比不了各说各的、互不串（计划 r2 §2.4） (2.406792ms)
+✔ U15 readonly_breach（确证）的 message 逐字（截断与空记录两格） (1.753208ms)
+✔ voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数） (9.263125ms)
+✔ loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推 (4.395625ms)
+✔ 审批前复核：runId 为 null ⇒ 第 1 步拒绝（退 65），且不是落到第 2 步才被拦下 (0.915709ms)
+✔ 审批前复核：runId 非空但本轮运行元数据读不出 ⇒ 第 2 步拒绝（退 65），不回落缺省 Driver (0.472542ms)
+✔ 审批前复核：两句判别文字互不包含、都是纯文本（不带 Markdown 记号） (0.164083ms)
+✔ 主题名：合法值通过，空格转 - (1.277042ms)
+✔ 主题名：拒绝路径分隔符、.. 与前导点 (0.061542ms)
+✔ 主题名：拒绝保留后缀并给出修正建议 (0.08075ms)
+✔ 主题名：超长拒绝并截断建议 (0.038125ms)
+✔ 生成：首跑无 -r 后缀 (5.37325ms)
+✔ 生成：重跑加 -r<N>，裁决件加 -revised/-response (0.0745ms)
+✔ 生成：裁决件后缀不得用于审查员角色 (0.169417ms)
+✔ 解析：生成与解析互为逆运算 (0.215916ms)
+✔ 解析：主题本身含连字符时不会被误切 (0.0465ms)
+✔ 解析：非本流水线产出返回 null (0.074ms)
+✔ 角色后缀硬约束：审查员不得产 claude，Driver 不得产 gemini/glm (0.053416ms)
+✔ 阶段决定裁决件后缀：code 用 response，plan/bug 用 revised (0.037375ms)
+✔ verify 记录不带角色后缀，且不会被角色检查器误判 (0.081542ms)
+✔ localDate 取本地日期而非 UTC (3.029958ms)
+✔ --stage 接受 plan|code|bug|all (0.890583ms)
+✔ --stage 拒绝其它取值与缺省，退 64 (0.227708ms)
+✔ 默认 profile 的 slug 全部合法 (123.717833ms)
+✔ gemini 侧非法覆盖 → 不合格并列出可用值，退 64 (120.945583ms)
+✔ glm 侧非法覆盖同样被拦（此前因模型清单为空而空转） (84.425417ms)
+✔ glm 侧短名合法（适配层会补 providerId 前缀） (69.54375ms)
+✔ 模型清单为空时不误判（探针未采集到就跳过该项） (70.432208ms)
+✔ 预检：只在基底目录里的 slug，按本 profile 的目录判非法并点名 (65.650791ms)
+✔ 预检：该 profile 自己的默认模型必须放行（误杀方向） (65.48925ms)
+✔ 预检：目录采集失败 → 回落基底校验，且把回落这件事说出来 (61.884833ms)
+✔ 预检：回落后仍判非法时，报错要说清是回落（bad × fallback 组合） (63.537917ms)
+✔ 预检：该 profile 渲染不出目录 → 记「未实际校验」，与回落分开表述 (61.89025ms)
+✔ profile 缺该阶段模型时报不合格 (64.06675ms)
+✔ 从未探针 → 退 69，且明确说明不自动拉起 doctor (65.540875ms)
+✔ 探针过期 → 退 69 并指引手动执行 (62.3605ms)
+✔ 预检：--driver 非缺省时多打一行，带护栏等级，且它是 ok:true 不是一次失败 (55.167042ms)
+✔ 预检：有尽力拦截 Hook 的 L2 载体，文案写「不兜底」与五个生效前提，不说「无事前写拦截」 (56.182458ms)
+✔ 预检：缺省 Driver、Hook 配置在场 ⇒ 不打这行（每次都打等于没打） (57.148333ms)
+✔ 预检：缺省 Driver 登记 L1 而 Hook 配置不在场 ⇒ 降为 L2，打一行 ⚠️ 并进 warnings（B1） (64.662917ms)
+✔ 探针过期时后续检查不再执行（快速失败，不白烧配额） (54.646209ms)
+✔ --stage all 会校验全部三个阶段的 slug（GLM-02） (58.725417ms)
+✔ 单阶段 scope 不执行 verify 检查 (56.025959ms)
+✔ 预检失败时不写探活缓存 (59.977583ms)
+✔ 预检失败时不创建归档根（可写性探测用父目录权限） (61.727541ms)
+✔ 渲染器把失败项与退出码都写清楚 (61.704833ms)
+✔ 并发 patchProbe 不丢更新（经全局锁串行化） (525.861458ms)
+✔ 回归：--no-model-calls 保留上一次探到的 agy 结论 (5453.853541ms)
+✔ 回归：--no-model-calls 保留上一次探到的 zcode 结论 (434.159625ms)
+✔ 无既有结论时仍从默认值起步（首次探测） (6132.508416ms)
+· 探测运行环境…
+· 探测 Antigravity（agy）…
+✔ doctor 探完一侧即中途落盘，且 --only 不碰未探的那一侧 (4505.707417ms)
+· 探测运行环境…
+· 探测 ZCode（zcode.cjs）…
+✔ --only zcode 同样不碰 agy 段 (6501.021875ms)
+✔ 模型目录为空时不判失败，但必须在输出里点名是哪几侧没被实际校验 (56.185708ms)
+✔ 模型目录齐备时不出现「未实际校验」字样（避免恒真提示） (53.516625ms)
+✔ 一侧有目录一侧没有：只点名没有的那一侧 (55.250125ms)
+✔ 第三态①：探针没记录取版本方式时点名，不判失败 (57.289583ms)
+✔ 第三态②：不认识的运行时被点名，而不是静默按直接执行处理 (54.079083ms)
+✔ 第三态③：extract 不是合法正则时点名，而不是抛 JS 原始栈 (61.591542ms)
+✔ 全局时间戳新鲜但某键过期时，该键判为不新鲜 (0.149541ms)
+· 探测运行环境…
+· 探测 Antigravity（agy）…
+✔ --only 一侧不刷新另一侧的新鲜度 (4958.406833ms)
+· 探测运行环境…
+✔ --only env 不写任何厂商段 (59.147458ms)
+✔ defaultProbe 的键集恒等于注册表的 cliName 全集 (0.158167ms)
+✔ --only 的取值集合随注册表派生，每一家已登记 CLI 都合法 (0.077125ms)
+✔ checkZcodeRuntimeSelection：只在 glm 入选且读数为 reorder_ineffective 时出 ok:true 的 ⚠️ 项 (0.101875ms)
+✔ warnings 恒在：无警告时为空数组，渲染末行与今天逐字相同 (67.983916ms)
+✔ ④″：入选侧的副本源不在 ⇒ 出一条 ok:true 的 warn 项，进 warnings，不改退出码 (64.439208ms)
+✔ C5 与副本源各出一条 ⇒ 两条都进 warnings；渲染用 ⚠ 且末行报条数 (60.463625ms)
+✔ 模型 slug 合法：有侧没实际校验时通过但标 warn（按集合置位，不看文案） (106.298166ms)
+✔ runPreflight：slug 的未校验行同样进 warnings (62.627833ms)
+✔ 现有 ⚠️ 项一律标 warn：C5、覆盖面、探活已跳过 (67.082917ms)
+✔ EV-160 U2：checkHeartbeatThreshold——盖住一个心跳周期就不出项；没盖住出 ok:true 的 warn 项，正文四项齐备 (0.173541ms)
+✔ EV-160 P1：阈值 2 s ⇒ 预检照常通过、退出码不变，「失联阈值」进 warnings，排在副本源之后、探活之前 (62.48175ms)
+✔ EV-160 P2：阈值 120 s（缺省）⇒ 不出「失联阈值」 (62.484083ms)
+✔ EV-160 P3：预检侧的边界——30 s（等于间隔）出、30.5 s（略大于）不出 (121.308042ms)
+✔ EV-160 P4：前面有失败项（探针缺失）时不出——与 ④′ / ④″ 同一短路 (55.229084ms)
+✔ U5 预检：带已废弃键 ⇒ 照常通过、退出码不变，「已废弃配置键」进 warnings、以 ⚠️ 起头，排在失联阈值之后与模型 slug 之前 (61.524167ms)
+✔ U5′ 预检：不带已废弃键 ⇒ 不出该项；checkDeprecatedConfigKeys 对缺省配置返回 null (62.876958ms)
+· 探测运行环境…
+· 探测运行环境…
+· 探测运行环境…
+✔ U6 doctor：带两键 ⇒ warnings 含正文、阻断不受影响；只带一键 ⇒ 正文只列该键；不带 ⇒ 不含 (119.158125ms)
+✔ 主题名规范化：空格转连字符；非法名退 64 并带建议 (3.585125ms)
+✔ EV-30 ④：旧配置里 topic.forbid_chars: [] 不放松主题名校验——/、\、..、前导点照样退 64 (1.205833ms)
+✔ resolveTopicReadOnly 不创建任何目录；resolveTopic 才建阶段目录 (3.951084ms)
+✔ listTopics：跳过 . 与 _ 前缀目录与普通文件；归档根不存在返回空 (4.777125ms)
+✔ locateSubject：显式路径不存在退 65；存在则原样返回绝对路径 (3.341875ms)
+✔ locateSubject：取轮次最大的原稿，忽略裁决件、别的主题与审查文档 (3.811625ms)
+✔ locateSubject：换过 Driver 的主题里，顶着 Driver 后缀的审查件不得被当原稿 (10.281166ms)
+✔ locateSubject：剔到没有候选时退 65，并点名被剔掉的是哪些 (1.910084ms)
+✔ locateSubject：显式指定一份审查件 → 硬拒，不静默换成别的 (3.613333ms)
+✔ locateSubject：显式指定旧 Driver 后缀的**原稿**必须放行（R-1 的逃生门） (1.3535ms)
+✔ locateSubject：front-matter 缺失/损坏/空文件一律按原稿放行，不抛错 (2.7825ms)
+✔ locateSubject：同轮多份按文件名倒序取最新日期 (2.308333ms)
+✔ locateSubject：没有原稿退 65 并列出目录现状，目录不存在也不抛别的错 (1.418042ms)
+✔ topicExists 只看主题目录 (1.23475ms)
+✔ 限定：裸名在恰好一个 provider 下 → 补该 provider 键 (1.753666ms)
+✔ 限定：裸名没有任何 provider 提供 → null 并说明 (0.184041ms)
+✔ 限定：裸名在多个 provider 下都有 → null，要求写全限定 (0.119ms)
+✔ 限定：全限定形态原样通过 (0.166458ms)
+✔ 限定：全限定但 provider 键不在副本源里 → null（探针 model_id_form 的 UUID 形态就是这种输入） (0.099542ms)
+✔ 限定：provider 在、模型不在其 models 里 → null (0.078958ms)
+✔ 限定：空段一律判不成立 (0.096833ms)
+✔ 副本：限定成功 → route config_copy，model.main/lite 写请求模型，其余键原样 (15.636333ms)
+✔ 副本：限定失败 → 仍建副本（隔离照做）、model 段不动、route global 并给理由 (3.040375ms)
+✔ 副本：未指定模型 / 源文件不存在 → 不建副本 (1.816041ms)
+✔ 注入：omitPersonal 为真时个人键恒 undefined，即使真实用户目录下个人文件存在 (1.103334ms)
+✔ 注入：不省略时仍按真实用户目录派生（探活与探针走这条） (1.351334ms)
+✔ 注入：门控仍是逐键——个人在、内置不在时，个人照常注入（撤回 D-3 的守卫） (1.591666ms)
+✔ 注入：七个目录 / 路径键与四个落点开关键恒出现且为 undefined——宿主预置也进不了子进程（EV-110 加 ZCODE_LOG_DIR；EV-112 扩到十一键） (0.702666ms)
+✔ 端到端：omitPersonalProviderConfig + 宿主预置十一个目录 / 路径键与落点开关键 → 子进程一个都拿不到（EV-110、EV-112） (61.214666ms)
+✔ run()：副本 HOME 下拉起时个人键被删（即使真实用户目录下个人文件存在），route 记 config_copy (69.204833ms)
+✔ run() 负格：请求模型不在副本源目录 → route global，且 model_override_applied **缺席**（不是 null） (93.723791ms)
+✔ run() 限定失败·回读到别的模型 → model_unenforced 产出，cause 为 qualify_failed、requested 是请求原值 (64.192208ms)
+✔ run() 限定失败·回落模型的 modelId 段恰与请求相同 → 不产出（跑的就是请求的模型） (53.882333ms)
+✔ run() 做了覆盖且没落实 → 只有 model_override_applied: false，model_unenforced 缺席（互斥） (48.316041ms)
+✔ EV-30 ⑥⑦：旧配置带 agents.glm.max_turns / unsupported_override: reject → 调用参数逐字不变、不拒跑，model_unenforced 照常产出 (98.853875ms)
+✔ decideModelUnenforced：四条合取，任一不成立即缺席 (0.106875ms)
+✔ decideModelUnenforced：modelId 段不同 ⇒ 四字段原样产出 (0.041083ms)
+✔ run() 正格：回读生效模型与请求一致 → true；不一致 → false (99.665458ms)
+✔ run() 正格：回读 providerId 是 UUID 形态、modelId 一致 → 仍 true，trace.json 记形态差（r2 AGY-03） (46.088541ms)
+✔ 比对判据只取 modelId 段：两种 providerId 形态并存时不得判成未生效（P-31） (0.108292ms)
+✔ 比对：一致 → true；providerId 形态不同 → 仍 true 只记 note；模型不同 → false (0.049084ms)
+✔ 比对：尝试了但没回读到 → 不产出 true/false 带 note；没尝试 / 没请求 → 静默 (0.03825ms)
+✔ 清扫：三份已知凭据载体全部按名整删，各自计入 deleted（AGY-05） (2.503125ms)
+✔ 清扫：载体不在就跳过，不报错也不虚报删除（幂等） (1.781708ms)
+✔ 探针辅助：buildProbeCliConfig 按白名单重建——apiKey 是哨兵，headers/token 等一律不带，baseURL 与目录保留 (0.2265ms)
+✔ 探针辅助：pickNonFirstModel 挑第一个有两个以上模型的 provider 的第二个模型 (0.055125ms)
+✔ 探针臂：CLI 读到副本 model.main（非首位模型）→ config_copy；副本里绝无真实凭据（假入口见到就退 99） (50.683417ms)
+✔ 探针臂：写出的 providerId 是 UUID 形态、modelId 仍是请求值 → config_copy，形态差只进 why（r2 CODEX-03） (46.911125ms)
+✔ 探针臂：CLI 没读 model.main、回落首位模型 → global（非首位请求才分得出来） (47.858791ms)
+✔ 探针臂：CLI 跑到模型层却没写 v2 → global（导入确实没发生） (46.951333ms)
+✔ 探针臂：拉起崩溃（无输出退 137）→ null 未判定，不得记成有定论的 global（codex 子项 02） (42.956708ms)
+✔ 探针臂：拉起超时被杀 → null 未判定（timedOut 那一支，不得记成 global） (504.145ms)
+✔ 探针臂：内置 provider 配置定位失败（P-28 形态）→ null 未判定 (46.865958ms)
+✔ 探针臂：只读参数透传到 argv，且宿主的 ZCODE_API_KEY / ZCODE_BASE_URL 进不了子进程（AGY-02 / 子项 03） (46.990625ms)
+✔ 探针臂：副本 HOME 跑后被清（只认 makeTempDir 的返回值） (49.578209ms)
+✔ 探针臂：源里有免密 provider（apiKeyRequired:false）→ 探针副本带上该键、导入被拒、如实 global（r3 CODEX-01） (47.100209ms)
+✔ 成员规则与导入器同源：deleted 成员不计、modelId 取 id 而非键名、account:/builtin: 与非 custom 的 provider 不进注册表（r3 CODEX-02） (0.167458ms)
+✔ 切分与包内 okt 同规则——第一个 /：模型键名含 / 时限定与比对都不切错（r3 CODEX-03） (0.124083ms)
+✔ 探针臂：目录里没有非首位模型 → 未判定（null），不写结论 (2.067125ms)
+✔ 守卫：judgeSide 原样透传四种情况，本层不做归一 (4.237167ms)
+✔ 守卫：覆盖没落实 → 播报一条，点明 FR-06 / NFR-06 失效；其余三种不出声 (0.735708ms)
+✔ 守卫：不判失守、不动证据判定 (0.284542ms)
+✔ 守卫：model_unenforced 在 ⇒ 播报一句，含 critic、请求值、生效值、reason 原文与 FR-06 / NFR-06 (0.305959ms)
+✔ 守卫：按 cause 给排查指向，两种不串 (0.150208ms)
+✔ 守卫：两值之外的 cause（只可能来自未校验的桩注入）⇒ 主句照常、不拼出 undefined（代码双审 r1 CODEX-01） (0.073958ms)
+✔ 守卫：model_unenforced 缺席 ⇒ 不出声；覆盖没落实那句也不引出它 (0.130583ms)
+ℹ tests 278
+ℹ suites 0
+ℹ pass 276
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 2
+ℹ todo 0
+ℹ duration_ms 31753.683375
+exit=0

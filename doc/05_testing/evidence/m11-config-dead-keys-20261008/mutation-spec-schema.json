@@ -1,0 +1,50 @@
+{
+  "targets": [
+    "skills/dual-critic/schema/config.v2.json"
+  ],
+  "suites": [
+    "dist/test/test/unit/config-schema.test.js"
+  ],
+  "cases": [
+    {
+      "id": "S1",
+      "desc": "schema topic.required 加回 forbid_chars（不带它的配置会校验失败）",
+      "file": "skills/dual-critic/schema/config.v2.json",
+      "find": "      \"required\": [\n        \"max_len\"\n      ],",
+      "replace": "      \"required\": [\n        \"max_len\",\n        \"forbid_chars\"\n      ],",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    },
+    {
+      "id": "S2",
+      "desc": "schema gate.required 加回 require_adjudication",
+      "file": "skills/dual-critic/schema/config.v2.json",
+      "find": "      \"required\": [\n        \"allow_defer\",",
+      "replace": "      \"required\": [\n        \"require_adjudication\",\n        \"allow_defer\",",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    },
+    {
+      "id": "S3",
+      "desc": "schema zcode 分支 required 加回 max_turns 与 unsupported_override",
+      "file": "skills/dual-critic/schema/config.v2.json",
+      "find": "            \"required\": [\n              \"vendor\",\n              \"entry\"\n            ],",
+      "replace": "            \"required\": [\n              \"vendor\",\n              \"entry\",\n              \"max_turns\",\n              \"unsupported_override\"\n            ],",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    },
+    {
+      "id": "S4",
+      "desc": "schema 去掉 unsupported_override 的 deprecated 标注",
+      "file": "skills/dual-critic/schema/config.v2.json",
+      "find": "                ],\n                \"deprecated\": true,\n                \"description\": \"已废弃（2026-10-08，EV-30 ⑦）",
+      "replace": "                ],\n                \"description\": \"已废弃（2026-10-08，EV-30 ⑦）",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    },
+    {
+      "id": "S5",
+      "desc": "schema 放宽 max_turns 的类型约束（去掉 minimum）",
+      "file": "skills/dual-critic/schema/config.v2.json",
+      "find": "              \"max_turns\": {\n                \"type\": \"integer\",\n                \"minimum\": 1,\n",
+      "replace": "              \"max_turns\": {\n                \"type\": \"integer\",\n",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    }
+  ]
+}

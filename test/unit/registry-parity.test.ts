@@ -240,7 +240,7 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
       '同目录的 codex-trace.ts / codex-home.ts **不需要**豁免——它们只处理事件流与配置文件，' +
       '不写 Agent id 字面量，文件名带 codex 不进扫描面',
   },
-  { file: 'config.ts', why: '内置默认配置里各 Agent 的厂商专属配置段（agents.gemini / agents.glm 的 vendor、agent、entry、max_turns）与 profiles 的逐 Agent 模型档位。M7b 第 4 步迁成 agents.* 后**仍需要**：内置默认值本身就得指名道姓地写出每一家配什么，那不是硬编码而是默认值的定义处；新增一家时这里加一段，与注册表加一行是同一件事的两面' },
+  { file: 'config.ts', why: '内置默认配置里各 Agent 的厂商专属配置段（agents.gemini / agents.glm 的 vendor、agent、entry）与 profiles 的逐 Agent 模型档位。M7b 第 4 步迁成 agents.* 后**仍需要**：内置默认值本身就得指名道姓地写出每一家配什么，那不是硬编码而是默认值的定义处；新增一家时这里加一段，与注册表加一行是同一件事的两面' },
   // 注意：扫描面是 src/trivium/ **加上** EXTRA_SCANNED 点名的 `src/` 顶层模块
   // （M10b 第 2 步代码双审 CODEX-04）。`src/` 顶层今天的两个模块都纳入，且都不需要豁免：
   // `install.ts` 里唯一的家根字面量 `.gemini/…` 带路径分隔符，属性形态扫描本就排除它。

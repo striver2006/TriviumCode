@@ -2,7 +2,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.43
+> - **当前版本**：v1.0.44
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -411,7 +411,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | 字段 | 默认 | 说明 |
 | :--- | :--- | :--- |
 | `topic.max_len` | 64 | 主题名长度上限 |
-| `topic.forbid_chars` | `/ \ .. 空格` | 主题名要做文件名，禁路径分隔符 |
+| ~~`topic.forbid_chars`~~ | — | **已删除**（v1.0.44 起，见 §5.6「已废弃的键」）：从来没有代码读它。主题名的禁止规则是固定的、不可配置：不能含 `/`、`\`、`..`，不能以 `.` 开头，不能含控制字符；空格自动转成 `-` |
 | `runtime.node` | `null` | 派生 worker 用的 node；null 取当前进程 |
 | `runtime.run_root` | `~/.trivium/runs` | **原始输出落在项目外**，这是背靠背隔离的第二道 |
 | `retention.run_dir_days` | 30 | 运行目录保留期，会话开始时清理。**凭据副本不等这 30 天**：codex / zcode 为模型覆盖与隔离拷进运行目录的配置副本在该侧跑完即抹除，会话开始时对未到期的终态目录再兜底一次；此项设 0 只关整删、不关抹除 |
@@ -478,8 +478,8 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 | `agents.gemini.agent` | `trivium-critic` | 只读 Agent 定义名。**工具白名单不含任何写工具** |
 | `agents.gemini.effort` | plan high / code high / bug high | 思考档位。**模型 slug 自带档位时不传**，否则 agy 会直接拒绝。v1.0.41 起只在档位表格子是裸 slug 时作回落；格子写成档位或 `{model, effort}` 时不再用它 |
 | `agents.<id>.tiers` / `default_tier` | 无（`init` 不写） | v1.0.41 起可选（M11 第 4 步）：`low` / `medium` / `high` 三档，每档 `{model, effort?, profile?}`（`profile` 只有 codex 能写，glm 的档只能写 `model`）；`default_tier` 是档位表没给该阶段模型时用哪一档。档位表 `profiles` 的格子随之可写 `{tier: high}` 或 `{model: …, effort: …}`。**命令行选档用 `--tier-<审核者 id>`（v1.0.42 起，见 §四）；思考等级与厂商 profile 还没下传给各家**：在那之前，档位里写了 effort、或写了与 `agents.codex.profile` 不同的 profile，预检直接退 64 并说明原因——不会静默按另一组值跑。写错档名、思考等级不在该模型的可选值里，同样退 64 并列出可用值。本机层 `config.local.yaml` 里写 `tiers` 会**整段**替换共享配置里的那份 |
-| `agents.glm.max_turns` | 40 | ZCode 的最大轮数 |
-| `agents.glm.unsupported_override` | `reject` | 模型覆盖落到全局档时拒绝还是标注 |
+| ~~`agents.glm.max_turns`~~ | — | **已删除**（v1.0.44 起，见 §5.6「已废弃的键」）：从来没有代码读它，ZCode 也不接受轮数参数 |
+| ~~`agents.glm.unsupported_override`~~ | — | **已删除**（v1.0.44 起，见 §5.6「已废弃的键」）：从来没有代码读它，设 `reject` 也从未拒跑过。ZCode 侧模型没换成功时照常跑完，run.json 记 `model_unenforced`、终端播报一句，不阻断 |
 | `active_profile` | `default` | 当前档位 |
 
 > **字段名自 `config.v2` 起由 `critics.*` 改为 `agents.*`**（旧名仍能跑：加载时自动在内存里迁移，
@@ -520,7 +520,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 | 字段 | 默认 | 说明 |
 | :--- | :--- | :--- |
-| `gate.require_adjudication` | `true` | 是否强制逐条裁决 |
+| ~~`gate.require_adjudication`~~ | — | **已删除**（v1.0.44 起，见 §5.6「已废弃的键」）：从来没有代码读它。闸门**恒**要求逐条裁决，不可关闭 |
 | `gate.allow_defer` | `true` | 是否允许「暂缓」这第三态 |
 | `gate.block_business_write_when_awaiting_approval` | `true` | 闸门期锁业务写入。**关掉它只关业务文件锁，留痕的锚仍然任何时候都护着** |
 | `gate.approval_lock_scope` | `session` | 写锁作用域。`session` 时只有**明确记录了别的会话**才不加锁 |
@@ -540,7 +540,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 #### 已废弃的键
 
-v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3.122）又删除了中间两个，v1.0.41 起（设计 v1.3.131）删除了最后一个：它们写在配置里、文档里，却从来没有任何代码读过——改了不会有任何效果。
+v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3.122）又删除了其后两个，v1.0.41 起（设计 v1.3.131）删除了 `agents.codex.effort`，v1.0.44 起（设计 v1.3.136）删除了最后四个：它们写在配置里、文档里，却从来没有任何代码读过——改了不会有任何效果。
 
 | 字段 | 原来写的 | 实际情况 |
 | :--- | :--- | :--- |
@@ -549,6 +549,10 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | `review.parallel` | 「两侧并行；改 `false` 串行」 | 各侧恒并行，改 `false` 什么都不变。只想跑一侧，用 `--critics` |
 | `isolation.deny_via_cli` | 「是否用 CLI 的路径级 deny」 | 注不注入路径级 deny 只看探针实测（claude 侧支持、会注入；codex 侧没有这类机制），这个开关从未被读过 |
 | `agents.codex.effort` | 「Codex 各阶段的思考等级」 | 从未下传给 codex——实际发出的思考等级是所用 profile 配置文件里的值。思考等级改由 `agents.codex.tiers` 的 `effort` 表达（M11 第 6 步起已下传）。**只有 codex 这一个**：`agents.gemini.effort` 仍在用，不报废弃 |
+| `topic.forbid_chars` | 「主题名禁止的字符」 | 主题名校验是固定规则，从未读过这个列表；若真按它来，把 `/`、`..` 从列表里去掉就能让主题名逃出归档目录，所以不接、删掉 |
+| `gate.require_adjudication` | 「是否强制逐条裁决」 | 闸门恒强制逐条裁决，设 `false` 不放松任何检查；若真按它来，等于给闸门的核心判据加一个关闭开关，所以不接、删掉 |
+| `agents.glm.max_turns` | 「ZCode 的最大轮数」 | ZCode 拒绝轮数参数（实测 `--max-turns` 被拒），无处可接 |
+| `agents.glm.unsupported_override` | 「模型覆盖落到全局档时拒绝还是标注」 | 设 `reject` 从未拒跑。「标注」这一半已经有了：模型没换成功、实际跑的模型与请求不同时，run.json 记 `model_unenforced`，终端播报一句，不阻断。档位验收要的是事后能核对实际用了什么模型，不是强行拦下 |
 
 旧配置里留着它们**不会报错**，升级后照常能跑。配置里出现时，`trivium doctor` 与预检各提示一条「已废弃、从未生效，可从配置里去掉」，其余命令不提示。从 `.trivium/config.yaml`（或 `config.local.yaml`）里删掉这几行即可，删了不改变任何行为。新 `trivium init` 出来的配置不再带它们。
 

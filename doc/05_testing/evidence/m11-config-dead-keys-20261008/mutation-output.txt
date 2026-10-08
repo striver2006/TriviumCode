@@ -1,0 +1,92 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  M1 ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=6）
+  M7 ✓ 咬住（fail=6）
+  M8 ✓ 咬住（fail=6）
+  W1 ✓ 咬住（fail=1）
+  W2 ✓ 咬住（fail=1）
+  W3 ✓ 咬住（fail=1）
+  W4 ✓ 咬住（fail=1）
+{
+  "总数": 12,
+  "咬住": 12,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "废弃表漏登 topic.forbid_chars（出现了也不提示）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "废弃表漏登 gate.require_adjudication",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "废弃表漏登 agents.glm.max_turns",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "废弃表漏登 agents.glm.unsupported_override",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "agents.glm.max_turns 改成 '*' 通配（别家同名键会被误报）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "默认值加回 topic.forbid_chars（改前形态）",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M7",
+      "desc": "默认值加回 gate.require_adjudication（改前形态）",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "M8",
+      "desc": "默认值加回 agents.glm 的 max_turns 与 unsupported_override（改前形态）",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "W1",
+      "desc": "假想接线 forbid_chars：旧配置写空数组就跳过主题名校验",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "W2",
+      "desc": "假想接线 require_adjudication：旧配置写 false 就不报漏裁",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "W3",
+      "desc": "假想接线 max_turns：旧配置带它就给 zcode 加 --max-turns",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "W4",
+      "desc": "假想接线 unsupported_override：旧配置写 reject 且模型未受控就拒跑",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0

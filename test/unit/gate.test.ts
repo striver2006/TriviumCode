@@ -114,6 +114,27 @@ test('删掉一条裁决 → missing_findings 并列出编号（AC-12）', async
   assert.deepEqual(f?.ids, ['AGY-02']);
 });
 
+/*
+ * EV-30 ⑤（M11 第 8 步，2026-10-08）：`gate.require_adjudication` 删除——它从未被读取，接线等于给闸门核心判据
+ * 加一个关闭开关。schema 仍接受它，所以旧配置里可能还写着 false；这一格锁住「写了 false 也不放松」。
+ */
+test('EV-30 ⑤：旧配置里 gate.require_adjudication: false 不放松逐条裁决——漏裁照样 missing_findings', async () => {
+  const l = await layout();
+  await putDisposition(l, `${HEAD}
+| AGY-01 | gemini | major | 接受 | 成立 | §3 |`);
+  const cfg = structuredClone(defaultConfig());
+  (cfg.gate as unknown as Record<string, unknown>)['require_adjudication'] = false;
+  const r = await checkAdjudication({
+    planFinal: null, // 与计划定稿无关的用例（EV-214）
+    expectedDegradedIds: [],
+    reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    cfg, layout: l, stage: 'plan', rerunIndex: 1,
+    reviews: { gemini: review([{ id: 'AGY-01' }, { id: 'AGY-02' }]) }, degraded: false,
+  });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.failures.find((x) => x.code === 'missing_findings')?.ids, ['AGY-02']);
+});
+
 test('裁决了不存在的编号 → unknown_findings', async () => {
   const l = await layout();
   await putDisposition(l, `${HEAD}

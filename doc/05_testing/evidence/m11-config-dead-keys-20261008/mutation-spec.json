@@ -1,0 +1,112 @@
+{
+  "targets": [
+    "src/trivium/config.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/adapters/zcode.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/config-consumers.test.js",
+    "dist/test/test/unit/topic.test.js",
+    "dist/test/test/unit/gate.test.js",
+    "dist/test/test/unit/zcode-model-selection.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "废弃表漏登 topic.forbid_chars（出现了也不提示）",
+      "file": "src/trivium/config.ts",
+      "find": "  { path: ['topic', 'forbid_chars'] }, // ④ 主题名校验是 naming.ts 的独立实现；接线会允许把 /、.. 移出禁止集\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "废弃表漏登 gate.require_adjudication",
+      "file": "src/trivium/config.ts",
+      "find": "  { path: ['gate', 'require_adjudication'] }, // ⑤ 闸门恒强制逐条裁决；接线等于给核心判据加关闭开关\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "废弃表漏登 agents.glm.max_turns",
+      "file": "src/trivium/config.ts",
+      "find": "  { path: ['agents', 'glm', 'max_turns'] }, // ⑥ zcode 0.16.5 无处可接（M0 坑清单 C-01：--max-turns 被拒）\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "废弃表漏登 agents.glm.unsupported_override",
+      "file": "src/trivium/config.ts",
+      "find": "  { path: ['agents', 'glm', 'unsupported_override'] }, // ⑦ annotate 语义已由 model_unenforced 播报承担\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "agents.glm.max_turns 改成 '*' 通配（别家同名键会被误报）",
+      "file": "src/trivium/config.ts",
+      "find": "  { path: ['agents', 'glm', 'max_turns'] },",
+      "replace": "  { path: ['agents', '*', 'max_turns'] },",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "默认值加回 topic.forbid_chars（改前形态）",
+      "file": "src/trivium/config.ts",
+      "find": "    topic: { max_len: 64 }, // forbid_chars 已删除（EV-30 ④）：见 DEPRECATED_CONFIG_KEYS\n",
+      "replace": "    topic: { max_len: 64, forbid_chars: ['/', '\\\\', '..', ' '] },\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "默认值加回 gate.require_adjudication（改前形态）",
+      "file": "src/trivium/config.ts",
+      "find": "      // require_adjudication 已删除（EV-30 ⑤）：见 DEPRECATED_CONFIG_KEYS\n",
+      "replace": "      require_adjudication: true,\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "默认值加回 agents.glm 的 max_turns 与 unsupported_override（改前形态）",
+      "file": "src/trivium/config.ts",
+      "find": "      glm: { vendor: 'zcode', entry: null },\n",
+      "replace": "      glm: { vendor: 'zcode', entry: null, max_turns: 40, unsupported_override: 'reject' },\n",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "W1",
+      "desc": "假想接线 forbid_chars：旧配置写空数组就跳过主题名校验",
+      "file": "src/trivium/topic.ts",
+      "find": "  const v = validateTopic(raw, ctx.config.topic.max_len);\n",
+      "replace": "  const v = (ctx.config.topic as { forbid_chars?: string[] }).forbid_chars?.length === 0\n    ? { ok: true, normalized: raw.trim().replace(/\\s+/g, '-') } as ReturnType<typeof validateTopic>\n    : validateTopic(raw, ctx.config.topic.max_len);\n",
+      "expect": "dist/test/test/unit/topic.test.js"
+    },
+    {
+      "id": "W2",
+      "desc": "假想接线 require_adjudication：旧配置写 false 就不报漏裁",
+      "file": "src/trivium/gate.ts",
+      "find": "  if (missing.length > 0) {\n    failures.push({\n      code: 'missing_findings',",
+      "replace": "  if (missing.length > 0 && (cfg.gate as { require_adjudication?: boolean }).require_adjudication !== false) {\n    failures.push({\n      code: 'missing_findings',",
+      "expect": "dist/test/test/unit/gate.test.js"
+    },
+    {
+      "id": "W3",
+      "desc": "假想接线 max_turns：旧配置带它就给 zcode 加 --max-turns",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "        prompt: req.brief_text,\n        readonlyArgs,\n",
+      "replace": "        prompt: req.brief_text,\n        readonlyArgs: (ctx.cfg.agents.glm as { max_turns?: number } | undefined)?.max_turns !== undefined\n          ? [...readonlyArgs, '--max-turns', String((ctx.cfg.agents.glm as { max_turns?: number }).max_turns)]\n          : readonlyArgs,\n",
+      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
+    },
+    {
+      "id": "W4",
+      "desc": "假想接线 unsupported_override：旧配置写 reject 且模型未受控就拒跑",
+      "file": "src/trivium/adapters/zcode.ts",
+      "find": "    const unenforced = decideModelUnenforced(overrideAttempted, req.model, modelEffective, home.cause, home.reason);\n",
+      "replace": "    const unenforced = decideModelUnenforced(overrideAttempted, req.model, modelEffective, home.cause, home.reason);\n    if (unenforced && (ctx.cfg.agents.glm as { unsupported_override?: string } | undefined)?.unsupported_override === 'reject') {\n      return failedResult('glm', { status: 'failed', reason: 'unsupported_override: reject' });\n    }\n",
+      "expect": "dist/test/test/unit/zcode-model-selection.test.js"
+    }
+  ]
+}

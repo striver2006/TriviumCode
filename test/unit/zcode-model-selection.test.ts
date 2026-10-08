@@ -362,7 +362,13 @@ process.stdout.write(JSON.stringify({ sessionId: 'sess_fake', response: 'ok', us
 process.exit(0);
 `;
 
-async function runWithFakeEntry(entrySource: string, model: string, fakeModel: string | null) {
+async function runWithFakeEntry(
+  entrySource: string,
+  model: string,
+  fakeModel: string | null,
+  /** `legacyGlm` 叠进 agents.glm（旧配置里的已废弃键）；`at` 回填本次的项目根与运行目录，供读回假入口留下的文件 */
+  opts: { legacyGlm?: Record<string, unknown>; at?: { root?: string; runDir?: string } } = {},
+) {
   const { defaultConfig } = await import('../../src/trivium/config.js');
   const { zcodeAdapter } = await import('../../src/trivium/adapters/zcode.js');
   const root = await tmp();
@@ -377,7 +383,9 @@ async function runWithFakeEntry(entrySource: string, model: string, fakeModel: s
   cfg.probe.cli.zcode!.entrypoint = entry;
   cfg.probe.cli.zcode!.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit,Bash'];
   cfg.probe.cli.zcode!.response_field = 'response';
+  if (opts.legacyGlm) Object.assign(cfg.agents.glm as unknown as Record<string, unknown>, opts.legacyGlm);
   const runDir = await tmp();
+  if (opts.at) Object.assign(opts.at, { root, runDir });
   const req = {
     run_id: 'r', topic: 't', stage: 'code' as const, critic: 'glm' as const,
     project_root: root, subject_path: path.join(root, 's.md'), deny_paths: [],
@@ -430,6 +438,33 @@ test('run() 做了覆盖且没落实 → 只有 model_override_applied: false，
   const r = await runWithFakeEntry(ECHO_WITH_LOG_ENTRY, 'GLM-5.3-Flash', '84044858-fake/qwen3.8-max');
   assert.equal(r.model_override_applied, false);
   assert.equal('model_unenforced' in r, false);
+});
+
+/*
+ * EV-30 ⑥⑦（M11 第 8 步，2026-10-08）：`agents.glm.max_turns` 与 `unsupported_override` 删除——从未被读取。
+ * schema 仍接受，旧配置可能还写着 `reject`：它从未让 zcode 拒跑，删了之后同样不能。锁两件：
+ * 带两键时调用参数与不带时逐字相同（没有轮次参数）；`reject` 不阻断，`model_unenforced` 照常产出。
+ */
+const ARGV_ENTRY =
+  "require('node:fs').writeFileSync(require('node:path').join(__dirname, 'argv.json'), JSON.stringify(process.argv.slice(1)));\n" +
+  ECHO_WITH_LOG_ENTRY;
+
+test('EV-30 ⑥⑦：旧配置带 agents.glm.max_turns / unsupported_override: reject → 调用参数逐字不变、不拒跑，model_unenforced 照常产出', async () => {
+  const runs: { r: Awaited<ReturnType<typeof runWithFakeEntry>>; argv: string[] }[] = [];
+  for (const legacyGlm of [undefined, { max_turns: 1, unsupported_override: 'reject' }]) {
+    const at: { root?: string; runDir?: string } = {};
+    const r = await runWithFakeEntry(ARGV_ENTRY, 'nope-model', 'p/other', { legacyGlm, at });
+    const raw = JSON.parse(await fs.readFile(path.join(at.root!, 'Resources/glm/argv.json'), 'utf8')) as string[];
+    runs.push({ r, argv: raw.map((a) => a.split(at.root!).join('<ROOT>').split(at.runDir!).join('<RUN>')) });
+  }
+  const [bare, legacy] = runs as [(typeof runs)[0], (typeof runs)[0]];
+  assert.ok(bare.argv.includes('--prompt'), `前提：读回的是真实调用参数：${JSON.stringify(bare.argv)}`);
+  assert.deepEqual(legacy.argv, bare.argv, '旧键不得改变 zcode 的调用参数');
+  assert.ok(!legacy.argv.includes('--max-turns'), 'zcode 0.16.5 拒绝 --max-turns（C-01），不得出现');
+  assert.equal(legacy.r.status, 'ok', `reject 从未让 zcode 拒跑：${legacy.r.fail_reason ?? ''}`);
+  assert.equal(legacy.r.model_route, 'global');
+  assert.equal(legacy.r.model_unenforced?.cause, 'qualify_failed', 'annotate 语义由 model_unenforced 承担');
+  assert.deepEqual(legacy.r.model_unenforced, bare.r.model_unenforced);
 });
 
 test('decideModelUnenforced：四条合取，任一不成立即缺席', () => {

@@ -1,0 +1,193 @@
+{
+  "targets_sha256": {
+    "src/trivium/config.ts": "5289079ecc9ab393844b18b00c960d61e5a834ef738dca45492d703d0546c5ad",
+    "src/trivium/topic.ts": "6caf8256b39e934860bd46804e3b1f6b5753191b10c3734b59f43febab6af0e8",
+    "src/trivium/gate.ts": "e94d1e0ffd43dd4e37693e67ad0204d3f6e5248c9d7557eeb653f0fa7b03255d",
+    "src/trivium/adapters/zcode.ts": "48f342088c4b967f176004f2a7f2fbd169d347f927e68ff7a578e7e75e783629"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "废弃表漏登 topic.forbid_chars（出现了也不提示）",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / agents.glm.max_turns / agents.glm.unsupported_override 出现即报、只按精确路径报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "废弃表漏登 gate.require_adjudication",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / agents.glm.max_turns / agents.glm.unsupported_override 出现即报、只按精确路径报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "废弃表漏登 agents.glm.max_turns",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / agents.glm.max_turns / agents.glm.unsupported_override 出现即报、只按精确路径报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "废弃表漏登 agents.glm.unsupported_override",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / agents.glm.max_turns / agents.glm.unsupported_override 出现即报、只按精确路径报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "agents.glm.max_turns 改成 '*' 通配（别家同名键会被误报）",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / agents.glm.max_turns / agents.glm.unsupported_override 出现即报、只按精确路径报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "默认值加回 topic.forbid_chars（改前形态）",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "配置项对账：每个配置键都要有消费方，否则必须具名登记为已知死配置",
+        "回归锁：已删除的配置键（EV-15、EV-30 ①～⑦）不得再出现在默认配置或 schema 的 required 里",
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null",
+        "U10 EV-30 ②③：review.parallel、isolation.deny_via_cli 出现时与旧两键一样只报实际出现的那几个；正文列出它们",
+        "U11 agents.codex.effort 出现即报；agents.gemini.effort 不报；两者同在只报 codex 那条",
+        "U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / agents.glm.max_turns / agents.glm.unsupported_override 出现即报、只按精确路径报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "默认值加回 gate.require_adjudication（改前形态）",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "配置项对账：每个配置键都要有消费方，否则必须具名登记为已知死配置",
+        "回归锁：已删除的配置键（EV-15、EV-30 ①～⑦）不得再出现在默认配置或 schema 的 required 里",
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null",
+        "U10 EV-30 ②③：review.parallel、isolation.deny_via_cli 出现时与旧两键一样只报实际出现的那几个；正文列出它们",
+        "U11 agents.codex.effort 出现即报；agents.gemini.effort 不报；两者同在只报 codex 那条",
+        "U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / agents.glm.max_turns / agents.glm.unsupported_override 出现即报、只按精确路径报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "默认值加回 agents.glm 的 max_turns 与 unsupported_override（改前形态）",
+      "suite": "dist/test/test/unit/config-consumers.test.js",
+      "fail": 6,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "配置项对账：每个配置键都要有消费方，否则必须具名登记为已知死配置",
+        "回归锁：已删除的配置键（EV-15、EV-30 ①～⑦）不得再出现在默认配置或 schema 的 required 里",
+        "U4 已废弃键判定：五格各自只报实际出现的键；正文只列这些键、不带 ⚠️、无键时为 null",
+        "U10 EV-30 ②③：review.parallel、isolation.deny_via_cli 出现时与旧两键一样只报实际出现的那几个；正文列出它们",
+        "U11 agents.codex.effort 出现即报；agents.gemini.effort 不报；两者同在只报 codex 那条",
+        "U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / agents.glm.max_turns / agents.glm.unsupported_override 出现即报、只按精确路径报"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "W1",
+      "desc": "假想接线 forbid_chars：旧配置写空数组就跳过主题名校验",
+      "suite": "dist/test/test/unit/topic.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-30 ④：旧配置里 topic.forbid_chars: [] 不放松主题名校验——/、\\、..、前导点照样退 64"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "W2",
+      "desc": "假想接线 require_adjudication：旧配置写 false 就不报漏裁",
+      "suite": "dist/test/test/unit/gate.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-30 ⑤：旧配置里 gate.require_adjudication: false 不放松逐条裁决——漏裁照样 missing_findings"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "also": []
+    },
+    {
+      "id": "W3",
+      "desc": "假想接线 max_turns：旧配置带它就给 zcode 加 --max-turns",
+      "suite": "dist/test/test/unit/zcode-model-selection.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-30 ⑥⑦：旧配置带 agents.glm.max_turns / unsupported_override: reject → 调用参数逐字不变、不拒跑，model_unenforced 照常产出"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    },
+    {
+      "id": "W4",
+      "desc": "假想接线 unsupported_override：旧配置写 reject 且模型未受控就拒跑",
+      "suite": "dist/test/test/unit/zcode-model-selection.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "EV-30 ⑥⑦：旧配置带 agents.glm.max_turns / unsupported_override: reject → 调用参数逐字不变、不拒跑，model_unenforced 照常产出"
+      ],
+      "firstLines": [],
+      "elapsed_s": 2,
+      "also": []
+    }
+  ]
+}

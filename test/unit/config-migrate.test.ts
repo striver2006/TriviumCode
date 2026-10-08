@@ -48,7 +48,7 @@ const v1Yaml = (extra = ''): string =>
     '    bin: /custom/agy',
     '  glm:',
     '    vendor: zcode',
-    '    max_turns: 99',
+    '    entry: /custom/zcode.cjs',
     extra,
     '',
   ].join('\n');
@@ -125,7 +125,7 @@ test('迁移：非对象输入不炸（YAML 可能解析出标量或 null）', (
  * 用户看到「你的本机配置不合法」，而真正的原因是我们改了键名。
  */
 test('迁移：没有 schema 字段但有 critics 段的覆盖片段，照样迁移', () => {
-  const { config, note } = migrateConfigV1({ critics: { glm: { vendor: 'zcode', max_turns: 7 } } });
+  const { config, note } = migrateConfigV1({ critics: { glm: { vendor: 'zcode', entry: '/x/zcode.cjs' } } });
   const c = config as Record<string, unknown>;
   assert.ok(c['agents'], '覆盖片段也要迁移');
   assert.equal(c['critics'], undefined);
@@ -145,10 +145,10 @@ test('迁移：只有 allow_single_flag 的覆盖片段也认得出来', () => {
  */
 test('迁移：critics 与 agents 并存 → 以 agents 为准，且告警点出旧段被丢弃', () => {
   const raw = YAML.parse(v1Yaml());
-  raw.agents = { glm: { vendor: 'zcode', max_turns: 7 } };
+  raw.agents = { glm: { vendor: 'zcode', entry: '/x/zcode.cjs' } };
   const { config, note } = migrateConfigV1(raw);
   const c = config as Record<string, unknown>;
-  assert.deepEqual(c['agents'], { glm: { vendor: 'zcode', max_turns: 7 } }, '以 agents 为准');
+  assert.deepEqual(c['agents'], { glm: { vendor: 'zcode', entry: '/x/zcode.cjs' } }, '以 agents 为准');
   assert.equal(c['critics'], undefined);
   assert.match(
     note ?? '', /同时写了 critics 与 agents/,
@@ -169,7 +169,9 @@ test('迁移：与 v1 无关的片段原样返回，不打扰用户', () => {
  *
  * `defaultConfig()` 已是 v2 形状（带 `agents`）。若先 deepMerge 再迁移，
  * 磁盘上的 `critics` 段只会作为一个额外的键并排落在结果里，而 `agents` 仍是内置默认——
- * 用户配的 bin / max_turns **一个都不生效，且没有任何报错**。
+ * 用户配的 bin / entry **一个都不生效，且没有任何报错**。
+ * （样例原用 `max_turns`，它 2026-10-08 作为零消费方配置删除（EV-30 ⑥）后换成同段仍有消费方的 `entry`——
+ * doctor 把它传给 zcode 探针；内置默认是 null，顺序错了就停在 null。）
  * 断言「用户配的值真的生效了」，才能锁住这个顺序。
  */
 test('loadCtx：v1 配置里的自定义值真的生效（锁住「先迁移、后合并」）', async () => {
@@ -179,7 +181,7 @@ test('loadCtx：v1 配置里的自定义值真的生效（锁住「先迁移、�
   assert.equal(ctx.config.schema, CONFIG_SCHEMA_ID);
   const glm = ctx.config.agents.glm;
   assert.ok(glm && glm.vendor === 'zcode');
-  assert.equal(glm.max_turns, 99, '顺序错了这里会是内置默认 40，且不报错');
+  assert.equal(glm.entry, '/custom/zcode.cjs', '顺序错了这里会是内置默认 null，且不报错');
   const gemini = ctx.config.agents.gemini;
   assert.ok(gemini && gemini.vendor === 'antigravity');
   assert.equal(gemini.bin, '/custom/agy');
@@ -189,12 +191,12 @@ test('loadCtx：v1 配置里的自定义值真的生效（锁住「先迁移、�
 test('loadCtx：config.local.yaml 的 v1 覆盖片段同样生效', async () => {
   const root = await projectWith({
     'config.yaml': v1Yaml(),
-    'config.local.yaml': 'critics:\n  glm:\n    max_turns: 123\n',
+    'config.local.yaml': 'critics:\n  glm:\n    entry: /local/zcode.cjs\n',
   });
   const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
   const glm = ctx.config.agents.glm;
   assert.ok(glm && glm.vendor === 'zcode');
-  assert.equal(glm.max_turns, 123, '本机覆盖片段没被迁移的话，这里会停在 99');
+  assert.equal(glm.entry, '/local/zcode.cjs', '本机覆盖片段没被迁移的话，这里会停在 /custom/zcode.cjs');
 });
 
 /*
@@ -287,7 +289,7 @@ test('loadCtx：磁盘文件不被改动（内存迁移的核心性质）', asyn
 
 test('校验：agents 的键不是已登记 Agent → 报错并列出已登记的', () => {
   const cfg = defaultConfig() as unknown as { agents: Record<string, unknown> };
-  cfg.agents['nobody'] = { vendor: 'zcode', entry: null, max_turns: 1, unsupported_override: 'reject' };
+  cfg.agents['nobody'] = { vendor: 'zcode', entry: null }; // zcode 段的完整形状：问题只在 id 上
   const problems = validateConfig(cfg);
   assert.ok(problems.some((p) => p.includes('nobody')), problems.join('；'));
 });
@@ -447,7 +449,7 @@ test('校验：agents.claude 的合法段（只有 vendor 判别式）必须被�
 
 test('校验：未登记 id 的报错要区分「当前可配置」与「已登记但还配不了」', () => {
   const cfg = defaultConfig() as unknown as { agents: Record<string, unknown> };
-  cfg.agents['nobody'] = { vendor: 'zcode', entry: null, max_turns: 1, unsupported_override: 'reject' };
+  cfg.agents['nobody'] = { vendor: 'zcode', entry: null }; // zcode 段的完整形状：问题只在 id 上
   const problems = validateConfig(cfg);
   const hit = problems.find((p) => p.includes('nobody'));
   assert.ok(hit, problems.join('；'));
@@ -515,7 +517,7 @@ test('init：把 v1 的 config.yaml 改写为 v2，并备份原文', async () =>
   assert.equal(parsed.schema, CONFIG_SCHEMA_ID);
   assert.ok(parsed.agents, '改写后应是 agents');
   assert.equal(parsed.critics, undefined);
-  assert.equal(parsed.agents.glm.max_turns, 99, '用户的自定义值必须原样保留');
+  assert.equal(parsed.agents.glm.entry, '/custom/zcode.cjs', '用户的自定义值必须原样保留');
 
   const backup = await fs.readFile(path.join(root, '.trivium/config.yaml.trivium-backup'), 'utf8');
   assert.equal(backup, original, '备份必须是逐字原文——注释只存在于这里');

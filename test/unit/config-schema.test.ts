@@ -581,3 +581,98 @@ test('T6 本机层覆盖：tiers 整段替换、profiles 格子整格替换（�
   // 逐键合并会混成 {tier, model, effort}，被 schema 拒；整格替换后合法
   assert.deepEqual(ctx.config.profiles['default']!.codex, { plan: { tier: 'high' }, code: 'qwen3.8-flash', bug: 'qwen3.8-flash' });
 });
+
+// ── M11 第 8 步：EV-30 ④～⑦ 四个零消费方配置项删除（上位计划 r3 §4.8，D-7），照 ②③ 的 V1～V4 同一做法 ──
+
+/** 默认配置叠上四个新废弃的键（升级前合法、带着它们的旧配置合并后的形状） */
+function withDeprecatedKeys3(
+  over: { forbid?: unknown; adjud?: unknown; turns?: unknown; override?: unknown } = {},
+): unknown {
+  const cfg = structuredClone(defaultConfig()) as unknown as {
+    topic: Loose;
+    gate: Loose;
+    agents: Record<string, Loose>;
+  };
+  cfg.topic['forbid_chars'] = 'forbid' in over ? over.forbid : ['/', '\\', '..', ' '];
+  cfg.gate['require_adjudication'] = 'adjud' in over ? over.adjud : true;
+  cfg.agents['glm']!['max_turns'] = 'turns' in over ? over.turns : 40;
+  cfg.agents['glm']!['unsupported_override'] = 'override' in over ? over.override : 'reject';
+  return cfg;
+}
+
+test('V5 EV-30 ④～⑦：带着四键的配置仍通过校验；默认值里不再有它们、不带时同样通过', () => {
+  assert.deepEqual(validateConfig(withDeprecatedKeys3()), [], '带四键（原默认值）的旧配置升级后不得校验失败');
+  assert.deepEqual(
+    validateConfig(withDeprecatedKeys3({ forbid: [], adjud: false, turns: 1, override: 'annotate' })), [],
+    '另一组合法取值同样通过',
+  );
+  const bare = defaultConfig() as unknown as { topic: object; gate: object; agents: Record<string, object> };
+  assert.ok(!('forbid_chars' in bare.topic), '默认值里不该再有 topic.forbid_chars');
+  assert.ok(!('require_adjudication' in bare.gate), '默认值里不该再有 gate.require_adjudication');
+  assert.ok(!('max_turns' in bare.agents['glm']!), '默认值里不该再有 agents.glm.max_turns');
+  assert.ok(!('unsupported_override' in bare.agents['glm']!), '默认值里不该再有 agents.glm.unsupported_override');
+  assert.deepEqual(validateConfig(bare), [], '不带四键的配置必须通过——schema 不得再要求它们');
+});
+
+test('V6 EV-30 ④～⑦：类型约束没有放宽——升级前就不合法的值升级后照旧被拒', () => {
+  const cases: { over: Parameters<typeof withDeprecatedKeys3>[0]; key: RegExp }[] = [
+    { over: { forbid: '/' }, key: /forbid_chars/ },
+    { over: { forbid: [1] }, key: /forbid_chars/ },
+    { over: { adjud: 'yes' }, key: /require_adjudication/ },
+    { over: { turns: 0 }, key: /max_turns/ },
+    { over: { turns: 'many' }, key: /max_turns/ },
+    { over: { override: 'warn' }, key: /unsupported_override/ },
+  ];
+  for (const c of cases) {
+    const p = validateConfig(withDeprecatedKeys3(c.over));
+    assert.ok(p.length >= 1 && p.some((x) => c.key.test(x)), `${JSON.stringify(c.over)} 应被拒并点名：${p.join('\n')}`);
+  }
+});
+
+test('V7 EV-30 ④～⑦：schema 把四键标为 deprecated，且不在各自段的 required 里', async () => {
+  const schema = JSON.parse(
+    await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'), 'utf8'),
+  ) as {
+    properties: Record<string, { required: string[]; properties: Record<string, { deprecated?: boolean }> }> & {
+      agents: { additionalProperties: { oneOf: { required: string[]; properties: Record<string, { const?: string; deprecated?: boolean }> }[] } };
+    };
+  };
+  const topic = schema.properties['topic']!;
+  const gate = schema.properties['gate']!;
+  assert.equal(topic.properties['forbid_chars']?.deprecated, true);
+  assert.ok(!topic.required.includes('forbid_chars'));
+  assert.notEqual(topic.properties['max_len']?.deprecated, true, '同段的 max_len 有消费方，不得一并废弃');
+  assert.ok(topic.required.includes('max_len'));
+  assert.equal(gate.properties['require_adjudication']?.deprecated, true);
+  assert.ok(!gate.required.includes('require_adjudication'));
+  const zcode = schema.properties.agents.additionalProperties.oneOf.find((b) => b.properties['vendor']?.const === 'zcode')!;
+  for (const k of ['max_turns', 'unsupported_override']) {
+    assert.equal(zcode.properties[k]?.deprecated, true, `zcode 支 ${k} 应标 deprecated`);
+    assert.ok(!zcode.required.includes(k), `zcode 支 required 不该再有 ${k}`);
+  }
+  assert.deepEqual(zcode.required, ['vendor', 'entry'], 'entry 有消费方（doctor 传给 zcode 探针），仍必填');
+});
+
+test('V8 EV-30 ④～⑦：磁盘 config.yaml 带着四键时 loadCtx 照常加载，键原样留在合并结果里', async () => {
+  const root = await projectWith([
+    'schema: trivium.config.v2',
+    'topic:',
+    '  max_len: 64',
+    '  forbid_chars: ["/", "..", " "]',
+    'gate:',
+    '  require_adjudication: false',
+    'agents:',
+    '  glm:',
+    '    vendor: zcode',
+    '    entry: null',
+    '    max_turns: 7',
+    '    unsupported_override: annotate',
+    '',
+  ].join('\n'));
+  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
+  const merged = ctx.config as unknown as { topic: Loose; gate: Loose; agents: Record<string, Loose> };
+  assert.deepEqual(merged.topic['forbid_chars'], ['/', '..', ' ']);
+  assert.equal(merged.gate['require_adjudication'], false);
+  assert.equal(merged.agents['glm']!['max_turns'], 7);
+  assert.equal(merged.agents['glm']!['unsupported_override'], 'annotate');
+});

@@ -8,7 +8,8 @@
  * 这不是孤例：`instructionFiles`（EV-06）与 `readonly_commands`（EV-15）同形，
  * 后者还顶着设计两处「把不存在的机制当前提」的论证。
  * （后续：EV-06 走了「接上」；`readonly_commands` 与 `max_check_retries` 于 2026-10-01 删除，
- * schema 仍按已废弃接受，见下方「两个空配置项收口」一组用例。）
+ * schema 仍按已废弃接受，见下方「两个空配置项收口」一组用例。EV-30 余下各条 2026-10-06、10-08 同一做法删完，
+ * `KNOWN_DEAD` 自此为空。）
  *
  * 存量逐条裁另立主题。本条只做**防新增**：新加的配置项若没有任何代码读它，
  * 必须显式进 `KNOWN_DEAD` 并写明理由与去向，否则当场红。
@@ -29,9 +30,10 @@
  * 更强的判据需要统一的配置访问器（现在全是 `cfg.review.xxx` 直接取值），
  * 那是一次跨模块重构，不在本批范围内，已登记待议。
  * **这条测试的目标是「防新增」，不是「完备地找出所有死配置」**——
- * 而它第一次运行就抓出了**七个**此前无人登记的存量（见 `KNOWN_DEAD` 里标 EV-30 的那些），
+ * 而它第一次运行就抓出了**七个**此前无人登记的存量（BACKLOG EV-30；原先逐条登记在 `KNOWN_DEAD` 里），
  * 是原先已知的两个（`block_severities`、`readonly_commands`）的三倍多。
- * （其中 `max_check_retries` 与 `readonly_commands` 于 2026-10-01 删除，EV-30 ① / EV-15。）
+ * （其中 `max_check_retries` 与 `readonly_commands` 于 2026-10-01 删除，EV-30 ① / EV-15；
+ * 余下六条 2026-10-06 删两条、2026-10-08 删四条，EV-30 ②～⑦ 全部收口。）
  * 这个强度对目标绰绰有余，也说明这一类缺陷的真实规模比任何人估计的都大。
  */
 import { test } from 'node:test';
@@ -54,36 +56,17 @@ import { REPO_ROOT } from '../helpers/fixture.js';
  */
 const KNOWN_DEAD: { key: string; why: string }[] = [
   /*
-   * 原有第一条 `readonly_commands`（EV-15）与下面的 `max_check_retries`（EV-30 ①）
-   * 已于 2026-10-01 删除（两个空配置项收口），不再是「死配置」而是「已废弃键」，
-   * 由文件末尾的回归锁守着不许加回默认值。2026-10-06 又删了 `parallel`（EV-30 ②）与 `deny_via_cli`（EV-30 ③），同一做法。
+   * **现为空：本条测试第一次运行时抓出来的七条已全部收口**，没有一条走「接线」，全部删除——
+   * 不再是「死配置」而是「已废弃键」（schema 仍接受、doctor / preflight 提示一条），
+   * 由文件末尾的回归锁守着不许加回默认值：
+   *   - 2026-10-01：`max_check_retries`（EV-30 ①），连同此前登记的 `readonly_commands`（EV-15）；
+   *   - 2026-10-06：`parallel`（EV-30 ②）、`deny_via_cli`（EV-30 ③）；
+   *   - 2026-10-08（M11 第 8 步）：`forbid_chars`（④）、`require_adjudication`（⑤）、`max_turns`（⑥）、
+   *     `unsupported_override`（⑦）。删的理由逐条见 `config.ts` 的 `DEPRECATED_CONFIG_KEYS` 与 BACKLOG EV-30。
    *
-   * 以下是本条测试**第一次运行时抓出来的**七条中余下的四条（原为六条），此前没有任何登记；EV-30 ④～⑦ 并入 M11。
-   * 它们与被删的 `block_severities` 同形：类型定义与默认值齐全、`src/` 下零消费方。
-   * 本批只做防新增，存量逐条裁另立主题（BACKLOG EV-30）。
+   * 清单为空之后，上面那句「只许缩短、不许变长」就是「不许再有」：新增配置项要么有消费方，
+   * 要么连同理由与去向写进来并经用户拍板——别为了让下一条对账变绿顺手加。
    */
-  {
-    key: 'forbid_chars',
-    why:
-      'EV-30：本该用于主题名字符校验，而校验实际走 topic.ts 的独立实现。' +
-      '两处规则若不一致，用户改配置不会有效果——与 max_len 同段而后者有消费方，容易误以为都生效',
-  },
-  {
-    key: 'require_adjudication',
-    why:
-      'EV-30：本该控制「闸门要不要强制逐条裁决」，而 gate 恒强制。' +
-      '把它设成 false 不会放松任何检查——好在方向是「配置比实际更宽松」，不是反过来',
-  },
-  {
-    key: 'max_turns',
-    why: 'EV-30：zcode 侧的轮次上限，适配器从未读它。唯一命中是 probes/claude.ts 的一句注释',
-  },
-  {
-    key: 'unsupported_override',
-    why:
-      'EV-30：本该控制「模型覆盖不被支持时报错还是回落」，而 zcode 适配器走的是探针的 ' +
-      'model_override 档位。用户设 reject 不会让它报错',
-  },
 ];
 
 /** 定义处：这些文件里出现键名是「声明」而不是「消费」，不计入 */
@@ -222,12 +205,16 @@ test('回归锁：被删掉的那个死配置不得再出现在默认配置或 s
 
 // ── 两个空配置项收口（2026-10-01，EV-30 ① / EV-15；计划 r2 §3.4 / §3.6） ──
 
-const DELETED_KEYS = ['max_check_retries', 'readonly_commands', 'parallel', 'deny_via_cli'] as const;
+const DELETED_KEYS = [
+  'max_check_retries', 'readonly_commands', 'parallel', 'deny_via_cli',
+  // EV-30 ④～⑦（2026-10-08，M11 第 8 步）
+  'forbid_chars', 'require_adjudication', 'max_turns', 'unsupported_override',
+] as const;
 
-test('回归锁：已删除的 max_check_retries / readonly_commands / parallel / deny_via_cli 不得再出现在默认配置或 schema 的 required 里', async () => {
+test('回归锁：已删除的配置键（EV-15、EV-30 ①～⑦）不得再出现在默认配置或 schema 的 required 里', async () => {
   const keys = configKeys(defaultConfig() as unknown);
   for (const k of DELETED_KEYS) {
-    assert.ok(!keys.has(k), `默认配置里又出现了 ${k}——它已于 2026-10-01 删除（零消费方），不要加回来`);
+    assert.ok(!keys.has(k), `默认配置里又出现了 ${k}——它已删除（零消费方，见 DEPRECATED_CONFIG_KEYS），不要加回来`);
   }
   const schemaText = await fs.readFile(
     path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'),
@@ -301,7 +288,7 @@ test('U4 已废弃键判定：五格各自只报实际出现的键；正文只�
   }
 });
 
-test('U8 流程文档回归锁：skills-src/ 全部文件与 skills/ 下全部 SKILL.md 不得再提已删除的配置键（EV-30 ①②③、EV-15）', async () => {
+test('U8 流程文档回归锁：skills-src/ 全部文件与 skills/ 下全部 SKILL.md 不得再提已删除的配置键（EV-30 ①～⑦、EV-15）', async () => {
   /*
    * 防有人把「按配置重试 N 次」这类承诺写回流程文档——那正是 EV-30 ① 的起因。
    * 源目录里没有叫 SKILL.md 的文件（契约是 *.contract.md、片段是 *.md、载体是 *.yaml），
@@ -442,4 +429,65 @@ test('U12 schema 里 agents 四支与档位定义的非废弃属性都有消费�
   const registered = new Set(KNOWN_DEAD.map((d) => d.key));
   const dead = [...keys].filter((k) => !registered.has(k) && !consumers.some((src) => hasPropertyAccess(src, k)));
   assert.deepEqual(dead, [], `下列 schema 属性在 src/ 下没有消费方：${dead.join('、')}`);
+});
+
+/*
+ * **U13 EV-30 ④～⑦（M11 第 8 步）：四个键按精确路径报废弃，默认值里不再有**（上位计划 r3 §4.8，D-7）。
+ *
+ * 精确路径的理由同 U11：两个 agents 键只属于 zcode 分支（vendor 由注册表钉死，只有 glm），
+ * 通配会把将来别家接上线的同名键误报成废弃——所以「放在别家段里的同名键不报」也是本条要守的。
+ * 「只报实际出现的键、正文不带 ⚠️、提到 config.yaml」由 U4 守，这里不重复。
+ */
+test('U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / agents.glm.max_turns / agents.glm.unsupported_override 出现即报、只按精确路径报', () => {
+  assert.equal(KNOWN_DEAD.length, 0, 'EV-30 七条已全部收口，KNOWN_DEAD 应为空——加回去要先回答它为什么不删');
+
+  type Loose = {
+    topic: Record<string, unknown>;
+    gate: Record<string, unknown>;
+    review: Record<string, unknown>;
+    isolation: Record<string, unknown>;
+    agents: Record<string, Record<string, unknown>>;
+  };
+  const base = () => structuredClone(defaultConfig()) as unknown as Loose;
+  const asCfg = (c: Loose) => c as unknown as Config;
+
+  const d = base();
+  assert.ok(!('forbid_chars' in d.topic), '默认值里不该再有 topic.forbid_chars');
+  assert.ok(!('require_adjudication' in d.gate), '默认值里不该再有 gate.require_adjudication');
+  assert.ok(d.agents['glm'] !== undefined, '前提：默认配置带 agents.glm 段');
+  assert.ok(!('max_turns' in d.agents['glm']!), '默认值里不该再有 agents.glm.max_turns');
+  assert.ok(!('unsupported_override' in d.agents['glm']!), '默认值里不该再有 agents.glm.unsupported_override');
+  assert.deepEqual(deprecatedConfigKeysIn(asCfg(d)), []);
+
+  const singles: { name: string; set: (c: Loose) => void; want: string }[] = [
+    { name: 'forbid_chars', set: (c) => { c.topic['forbid_chars'] = ['/', '\\', '..', ' ']; }, want: 'topic.forbid_chars' },
+    { name: 'require_adjudication', set: (c) => { c.gate['require_adjudication'] = true; }, want: 'gate.require_adjudication' },
+    { name: 'max_turns', set: (c) => { c.agents['glm']!['max_turns'] = 40; }, want: 'agents.glm.max_turns' },
+    { name: 'unsupported_override', set: (c) => { c.agents['glm']!['unsupported_override'] = 'reject'; }, want: 'agents.glm.unsupported_override' },
+  ];
+  for (const s of singles) {
+    const c = base();
+    s.set(c);
+    assert.deepEqual(deprecatedConfigKeysIn(asCfg(c)), [s.want], `只写 ${s.name}`);
+  }
+
+  // 别家段里的同名键不报（精确路径；改成 '*' 这里会红）
+  const elsewhere = base();
+  elsewhere.agents['codex']!['max_turns'] = 40;
+  elsewhere.agents['codex']!['unsupported_override'] = 'reject';
+  elsewhere.agents['gemini']!['max_turns'] = 40;
+  assert.deepEqual(deprecatedConfigKeysIn(asCfg(elsewhere)), [], '只认 agents.glm 下的这两个键');
+
+  // 与既有废弃键同在：按表序列出，正文逐个点名
+  const all = base();
+  all.gate['max_check_retries'] = 3;
+  all.review['parallel'] = true;
+  for (const s of singles) s.set(all);
+  const want = [
+    'gate.max_check_retries', 'review.parallel',
+    'topic.forbid_chars', 'gate.require_adjudication', 'agents.glm.max_turns', 'agents.glm.unsupported_override',
+  ];
+  assert.deepEqual(deprecatedConfigKeysIn(asCfg(all)), want, '按表序列出');
+  const notice = deprecatedConfigNotice(asCfg(all));
+  assert.ok(notice !== null && notice.includes(`已废弃的键：${want.join('、')}。`), String(notice));
 });

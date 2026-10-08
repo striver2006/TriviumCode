@@ -36,8 +36,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "max_len",
-        "forbid_chars"
+        "max_len"
       ],
       "properties": {
         "max_len": {
@@ -49,7 +48,9 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "deprecated": true,
+          "description": "已废弃（2026-10-08，EV-30 ④）：从未被读取——主题名校验是 naming.ts 的独立实现（禁 / \\ ..、前导点、控制字符与保留后缀），不可配置。保留属性只为带着它的旧配置照常通过校验；出现时 doctor / preflight 提示一条，可从配置里去掉。"
         }
       }
     },
@@ -365,9 +366,7 @@
             "additionalProperties": false,
             "required": [
               "vendor",
-              "entry",
-              "max_turns",
-              "unsupported_override"
+              "entry"
             ],
             "properties": {
               "vendor": {
@@ -381,13 +380,17 @@
               },
               "max_turns": {
                 "type": "integer",
-                "minimum": 1
+                "minimum": 1,
+                "deprecated": true,
+                "description": "已废弃（2026-10-08，EV-30 ⑥）：从未被读取——zcode 0.16.5 拒绝 --max-turns（M0 坑清单 C-01），无处可接。保留属性只为带着它的旧配置照常通过校验；出现时 doctor / preflight 提示一条，可从配置里去掉。"
               },
               "unsupported_override": {
                 "enum": [
                   "reject",
                   "annotate"
-                ]
+                ],
+                "deprecated": true,
+                "description": "已废弃（2026-10-08，EV-30 ⑦）：从未被读取——实际模型与请求不同时由 model_unenforced 在 run.json 与 guard 播报里标注、不阻断；设 reject 也不会拒跑。保留属性只为带着它的旧配置照常通过校验；出现时 doctor / preflight 提示一条，可从配置里去掉。"
               },
               "tiers": {
                 "$ref": "#/$defs/tiersModelOnly"
@@ -525,7 +528,6 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "require_adjudication",
         "allow_defer",
         "block_business_write_when_awaiting_approval",
         "approval_lock_scope",
@@ -537,7 +539,9 @@
       ],
       "properties": {
         "require_adjudication": {
-          "type": "boolean"
+          "type": "boolean",
+          "deprecated": true,
+          "description": "已废弃（2026-10-08，EV-30 ⑤）：从未被读取——闸门恒强制逐条裁决，设 false 不放松任何检查。保留属性只为带着它的旧配置照常通过校验；出现时 doctor / preflight 提示一条，可从配置里去掉。"
         },
         "allow_defer": {
           "type": "boolean"
