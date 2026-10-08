@@ -1,0 +1,76 @@
+{
+  "targets": [
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "test/contract/evolution-ledger-parity.test.ts",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md"
+  ],
+  "suites": [
+    "dist/test/test/contract/evolution-ledger-parity.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "删 24.2 的 GUIDE_env_setup.md 行（§17.2 #6 失去对应）",
+      "file": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+      "find": "| [`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md) | A | 第零步 | ✅ 已并入 |\n",
+      "replace": "",
+      "expect": "dist/test/test/contract/evolution-ledger-parity.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "24.2 GUIDE_env_setup.md 行状态首字形 ✅ 改成 ✔（越出封闭字形集）",
+      "file": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+      "find": "| [`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md) | A | 第零步 | ✅ 已并入 |\n",
+      "replace": "| [`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md) | A | 第零步 | ✔ 已并入 |\n",
+      "expect": "dist/test/test/contract/evolution-ledger-parity.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "24.1「11.1 适配层契约泛化」行状态去掉 ◐，以文字「部分并入」开头",
+      "file": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+      "find": "| 11.1 适配层契约泛化 | **B-契约** | **M8 / M9** | ◐ 部分并入（能力声明与判定分档，M8 第 2 步；**写判据两档与厂商旗标收敛，M8 第 3 步**；**`model_provider` / `profile_requested` 进结果契约、模型目录钩子 `catalogModelsFor` 按逐 profile 校验，M8 第 4 步**；**旗标归属判据三条 + 会红的契约测试，M9 工前并入 v1.3.17，EV-12 结案**；**claude 侧 `event-stream` 族的写事件判据、输出通道豁免与 Grep 命中三态 `search_hit_paths`，M9 第 3～6 步**）；**思考等级透传与回读规格已并入 v1.3.129**（11.1「思考等级透传与回读」），实现 ✅ M11 第 6 步（v1.3.133；生效值由钩子 `effortReadback` 派生，偏离原 `CriticResult` 表已在 11.1 改写） | 11.1「轨迹能力与判定分档」「`command-trace` 族的写判据两档」「生效目录随配置分层」「旗标归属判据」+ 3.7.1 + `registry-parity` 第 6 条 |\n",
+      "replace": "| 11.1 适配层契约泛化 | **B-契约** | **M8 / M9** | 部分并入（能力声明与判定分档，M8 第 2 步；**写判据两档与厂商旗标收敛，M8 第 3 步**；**`model_provider` / `profile_requested` 进结果契约、模型目录钩子 `catalogModelsFor` 按逐 profile 校验，M8 第 4 步**；**旗标归属判据三条 + 会红的契约测试，M9 工前并入 v1.3.17，EV-12 结案**；**claude 侧 `event-stream` 族的写事件判据、输出通道豁免与 Grep 命中三态 `search_hit_paths`，M9 第 3～6 步**）；**思考等级透传与回读规格已并入 v1.3.129**（11.1「思考等级透传与回读」），实现 ✅ M11 第 6 步（v1.3.133；生效值由钩子 `effortReadback` 派生，偏离原 `CriticResult` 表已在 11.1 改写） | 11.1「轨迹能力与判定分档」「`command-trace` 族的写判据两档」「生效目录随配置分层」「旗标归属判据」+ 3.7.1 + `registry-parity` 第 6 条 |\n",
+      "expect": "dist/test/test/contract/evolution-ledger-parity.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "24.2 doc/03_api/README.md 行的链接改指同名的 doc/02_design/README.md（§17.2 #19 失去对应）",
+      "file": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+      "find": "| [`doc/03_api/README.md`](../03_api/README.md) | A | 第零步 | ✅ 已并入（角色枚举四值）；现状句于 M9 第 7 步改准；「当轮 Driver 今天仍是 claude」于 M10a 第 5 步改准；「别家执笔待 M10b」于 M10b 第 5 步改准 |\n",
+      "replace": "| [`doc/03_api/README.md`](./README.md) | A | 第零步 | ✅ 已并入（角色枚举四值）；现状句于 M9 第 7 步改准；「当轮 Driver 今天仍是 claude」于 M10a 第 5 步改准；「别家执笔待 M10b」于 M10b 第 5 步改准 |\n",
+      "expect": "dist/test/test/contract/evolution-ledger-parity.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "去掉 ③ 的跳过（今天应红并点名五行未绿）",
+      "file": "test/contract/evolution-ledger-parity.test.ts",
+      "find": "const NO_PENDING_SKIP: string | false = '第 12 步 M11 收口时启用；今天有五行未绿，第 10 步逐行翻绿';\n",
+      "replace": "const NO_PENDING_SKIP: string | false = false;\n",
+      "expect": "dist/test/test/contract/evolution-ledger-parity.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "24.2 表头「状态」改名「进度」（按表头名取列，应报列缺失而不是按序号误读）",
+      "file": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+      "find": "| 目标文档 | 批 | 目标里程碑 | 状态 |\n",
+      "replace": "| 目标文档 | 批 | 目标里程碑 | 进度 |\n",
+      "expect": "dist/test/test/contract/evolution-ledger-parity.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "24.2 锚点标题改号（解析失败应点名哪张表、哪个锚点）",
+      "file": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+      "find": "### 24.2 本文之外的目标文档\n",
+      "replace": "### 24.9 本文之外的目标文档\n",
+      "expect": "dist/test/test/contract/evolution-ledger-parity.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "删 §17.2 第 18 行（防空转：§17.2 行数不再是 19）",
+      "file": "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md",
+      "find": "| 18 | ★ `skills/` 资产（12 份） | 无版本号 | B | `dual-critic/SKILL.md`、`lenses.yaml`、`prompts/plan-review.md`、`protocol/CLAUDE.md.snippet`、`templates/README.md`、七份 `dual-*/SKILL.md`。随 M10「入口资产单源多渲染」一并收口 |\n",
+      "replace": "",
+      "expect": "dist/test/test/contract/evolution-ledger-parity.test.js"
+    }
+  ]
+}

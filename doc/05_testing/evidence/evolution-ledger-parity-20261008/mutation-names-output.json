@@ -1,0 +1,131 @@
+{
+  "targets_sha256": {
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md": "e10b7f69594614bd7a3064162003be4053b78b57288c9ba0447f0a0d6cc91184",
+    "test/contract/evolution-ledger-parity.test.ts": "1138579cfc754cf674e7a5dc1180c421d73db75a99c10116c2bfb488c23e3b63",
+    "doc/02_design/2026-09-13-通用Agent编排与动态多审设计.md": "1ce365aa6cf9f6f55bb51638465f556bb217ea79f65b8542ced758dc837183da"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "desc": "删 24.2 的 GUIDE_env_setup.md 行（§17.2 #6 失去对应）",
+      "suite": "dist/test/test/contract/evolution-ledger-parity.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "failing": "\n\ntest at dist/test/test/contract/evolution-ledger-parity.test.js:117:1\n✖ ① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2） (6.745083ms)\n  AssertionError [ERR_ASSERTION]: §17.2 → §24 对账不齐：\n  §17.2 #6「[`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md)」（键 doc/04_development/GUIDE_env_setup.md）在 §24.2 找不到对应行\n  + actual - expected\n  \n  + [\n  +   '§17.2 #6「[`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md)」（键 doc/04_development/GUIDE_env_setup.md）在 §24.2 找不到对应行'\n  + ]\n  - []\n  \n      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:149:10)\n      at Test.runInAsyncScope (node:async_hooks:213:14)\n      at Test.run (node:internal/test_runner/test:1106:25)\n      at Test.start (node:internal/test_runner/test:1003:17)\n      at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: [ '§17.2 #6「[`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md)」（键 doc/04_development/GUIDE_env_setup.md）在 §24.2 找不到对应行' ],\n    expected: [],\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n",
+      "also": []
+    },
+    {
+      "id": "M2",
+      "desc": "24.2 GUIDE_env_setup.md 行状态首字形 ✅ 改成 ✔（越出封闭字形集）",
+      "suite": "dist/test/test/contract/evolution-ledger-parity.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "failing": "\n\ntest at dist/test/test/contract/evolution-ledger-parity.test.js:152:1\n✖ ② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头 (5.46625ms)\n  AssertionError [ERR_ASSERTION]: 状态字形越出 ✅ / ◐ / ⏳：\n  §24.2 表「[`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md)」状态以「✔」开头：✔ 已并入\n  + actual - expected\n  \n  + [\n  +   '§24.2 表「[`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md)」状态以「✔」开头：✔ 已并入'\n  + ]\n  - []\n  \n      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:155:10)\n      at Test.runInAsyncScope (node:async_hooks:213:14)\n      at Test.run (node:internal/test_runner/test:1106:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)\n      at Test.postRun (node:internal/test_runner/test:1235:19)\n      at Test.run (node:internal/test_runner/test:1163:12)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: [ '§24.2 表「[`GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md)」状态以「✔」开头：✔ 已并入' ],\n    expected: [],\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n",
+      "also": []
+    },
+    {
+      "id": "M3",
+      "desc": "24.1「11.1 适配层契约泛化」行状态去掉 ◐，以文字「部分并入」开头",
+      "suite": "dist/test/test/contract/evolution-ledger-parity.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "failing": "\n\ntest at dist/test/test/contract/evolution-ledger-parity.test.js:152:1\n✖ ② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头 (5.921042ms)\n  AssertionError [ERR_ASSERTION]: 状态字形越出 ✅ / ◐ / ⏳：\n  §24.1 表「11.1 适配层契约泛化」状态以「部」开头：部分并入（能力声明与判定分档，M8 第 2 步；写判据两档与厂商旗标收敛，M8 \n  + actual - expected\n  \n  + [\n  +   '§24.1 表「11.1 适配层契约泛化」状态以「部」开头：部分并入（能力声明与判定分档，M8 第 2 步；写判据两档与厂商旗标收敛，M8 '\n  + ]\n  - []\n  \n      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:155:10)\n      at Test.runInAsyncScope (node:async_hooks:213:14)\n      at Test.run (node:internal/test_runner/test:1106:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)\n      at Test.postRun (node:internal/test_runner/test:1235:19)\n      at Test.run (node:internal/test_runner/test:1163:12)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: [ '§24.1 表「11.1 适配层契约泛化」状态以「部」开头：部分并入（能力声明与判定分档，M8 第 2 步；写判据两档与厂商旗标收敛，M8 ' ],\n    expected: [],\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n",
+      "also": []
+    },
+    {
+      "id": "M4",
+      "desc": "24.2 doc/03_api/README.md 行的链接改指同名的 doc/02_design/README.md（§17.2 #19 失去对应）",
+      "suite": "dist/test/test/contract/evolution-ledger-parity.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "failing": "\n\ntest at dist/test/test/contract/evolution-ledger-parity.test.js:117:1\n✖ ① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2） (6.271542ms)\n  AssertionError [ERR_ASSERTION]: §17.2 → §24 对账不齐：\n  §17.2 #19「[`doc/03_api/README.md`](../03_api/README.md)」（键 doc/03_api/README.md）在 §24.2 找不到对应行\n  + actual - expected\n  \n  + [\n  +   '§17.2 #19「[`doc/03_api/README.md`](../03_api/README.md)」（键 doc/03_api/README.md）在 §24.2 找不到对应行'\n  + ]\n  - []\n  \n      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:149:10)\n      at Test.runInAsyncScope (node:async_hooks:213:14)\n      at Test.run (node:internal/test_runner/test:1106:25)\n      at Test.start (node:internal/test_runner/test:1003:17)\n      at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: [ '§17.2 #19「[`doc/03_api/README.md`](../03_api/README.md)」（键 doc/03_api/README.md）在 §24.2 找不到对应行' ],\n    expected: [],\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n",
+      "also": []
+    },
+    {
+      "id": "M5",
+      "desc": "去掉 ③ 的跳过（今天应红并点名五行未绿）",
+      "suite": "dist/test/test/contract/evolution-ledger-parity.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "③ §24 无 ◐ / ⏳（M11 完成判据，主设计 24.3 第 2 条）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "failing": "\n\ntest at dist/test/test/contract/evolution-ledger-parity.test.js:158:1\n✖ ③ §24 无 ◐ / ⏳（M11 完成判据，主设计 24.3 第 2 条） (4.772208ms)\n  AssertionError [ERR_ASSERTION]: §24 还有 5 行未绿：\n  §24.1 表「11.1 适配层契约泛化」状态以「◐」开头：◐ 部分并入（能力声明与判定分档，M8 第 2 步；写判据两档与厂商旗标收敛，M\n  §24.1 表「17.2 必测故障注入表增用例」状态以「⏳」开头：⏳ 增补表已登记，用例随各里程碑并入；M11 份额五行 v1.3.129 登记、\n  §24.2 表「[`CASE_manual_acceptance.md`](../05_testing/CASE_manual_acceptance.md)」状态以「◐」开头：◐ S6 剧本 ✅ 随 M10b 第 5 步并入（剧本 7「换一家 Agent \n  §24.2 表「[`.env.example`](../../.env.example)」状态以「⏳」开头：⏳ 未并入（Codex 侧凭据与 provider 说明）\n  §24.2 表「仓库根 `CLAUDE.md`」状态以「◐」开头：◐ M10a 份额 ✅：误拦段的恢复出口于第 2 步改；当轮 Driver 三级\n  + actual - expected\n  \n  + [\n  +   '§24.1 表「11.1 适配层契约泛化」状态以「◐」开头：◐ 部分并入（能力声明与判定分档，M8 第 2 步；写判据两档与厂商旗标收敛，M',\n  +   '§24.1 表「17.2 必测故障注入表增用例」状态以「⏳」开头：⏳ 增补表已登记，用例随各里程碑并入；M11 份额五行 v1.3.129 登记、',\n  +   '§24.2 表「[`CASE_manual_acceptance.md`](../05_testing/CASE_manual_acceptance.md)」状态以「◐」开头：◐ S6 剧本 ✅ 随 M10b 第 5 步并入（剧本 7「换一家 Agent ',\n  +   '§24.2 表「[`.env.example`](../../.env.example)」状态以「⏳」开头：⏳ 未并入（Codex 侧凭据与 provider 说明）',\n  +   '§24.2 表「仓库根 `CLAUDE.md`」状态以「◐」开头：◐ M10a 份额 ✅：误拦段的恢复出口于第 2 步改；当轮 Driver 三级'\n  + ]\n  - []\n  \n      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:161:10)\n      at Test.runInAsyncScope (node:async_hooks:213:14)\n      at Test.run (node:internal/test_runner/test:1106:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)\n      at Test.postRun (node:internal/test_runner/test:1235:19)\n      at Test.run (node:internal/test_runner/test:1163:12)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: [ '§24.1 表「11.1 适配层契约泛化」状态以「◐」开头：◐ 部分并入（能力声明与判定分档，M8 第 2 步；写判据两档与厂商旗标收敛，M', '§24.1 表「17.2 必测故障注入表增用例」状态以「⏳」开头：⏳ 增补表已登记，用例随各里程碑并入；M11 份额五行 v1.3.129 登记、', '§24.2 表「[`CASE_manual_acceptance.md`](../05_testing/CASE_manual_acceptance.md)」状态以「◐」开头：◐ S6 剧本 ✅ 随 M10b 第 5 步并入（剧本 7「换一家 Agent ', '§24.2 表「[`.env.example`](../../.env.example)」状态以「⏳」开头：⏳ 未并入（Codex 侧凭据与 provider 说明）', '§24.2 表「仓库根 `CLAUDE.md`」状态以「◐」开头：◐ M10a 份额 ✅：误拦段的恢复出口于第 2 步改；当轮 Driver 三级' ],\n    expected: [],\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n",
+      "also": []
+    },
+    {
+      "id": "M6",
+      "desc": "24.2 表头「状态」改名「进度」（按表头名取列，应报列缺失而不是按序号误读）",
+      "suite": "dist/test/test/contract/evolution-ledger-parity.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "failing": "\n\ntest at dist/test/test/contract/evolution-ledger-parity.test.js:152:1\n✖ ② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头 (4.70425ms)\n  Error: §24.2 表 没有名为「状态」的列（表头：目标文档 / 批 / 目标里程碑 / 进度）\n      at cell (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:70:27)\n      at statusRows (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:110:17)\n      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:154:15)\n      at Test.runInAsyncScope (node:async_hooks:213:14)\n      at Test.run (node:internal/test_runner/test:1106:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)\n      at Test.postRun (node:internal/test_runner/test:1235:19)\n      at Test.run (node:internal/test_runner/test:1163:12)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3)\n",
+      "also": []
+    },
+    {
+      "id": "M7",
+      "desc": "24.2 锚点标题改号（解析失败应点名哪张表、哪个锚点）",
+      "suite": "dist/test/test/contract/evolution-ledger-parity.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2）",
+        "② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "failing": "\n\ntest at dist/test/test/contract/evolution-ledger-parity.test.js:117:1\n✖ ① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2） (5.802667ms)\n  Error: 主设计：§24.2 表 的锚点 /^### 24\\.2 / 命中 0 处（应恰一处）\n      at tableAfter (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:50:49)\n      at parseAll (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:95:16)\n      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:118:31)\n      at Test.runInAsyncScope (node:async_hooks:213:14)\n      at Test.run (node:internal/test_runner/test:1106:25)\n      at Test.start (node:internal/test_runner/test:1003:17)\n      at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17)\n\ntest at dist/test/test/contract/evolution-ledger-parity.test.js:152:1\n✖ ② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头 (4.285041ms)\n  Error: 主设计：§24.2 表 的锚点 /^### 24\\.2 / 命中 0 处（应恰一处）\n      at tableAfter (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:50:49)\n      at parseAll (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:95:16)\n      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:153:26)\n      at Test.runInAsyncScope (node:async_hooks:213:14)\n      at Test.run (node:internal/test_runner/test:1106:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)\n      at Test.postRun (node:internal/test_runner/test:1235:19)\n      at Test.run (node:internal/test_runner/test:1163:12)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3)\n",
+      "also": []
+    },
+    {
+      "id": "M8",
+      "desc": "删 §17.2 第 18 行（防空转：§17.2 行数不再是 19）",
+      "suite": "dist/test/test/contract/evolution-ledger-parity.test.js",
+      "fail": 2,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2）",
+        "② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0,
+      "failing": "\n\ntest at dist/test/test/contract/evolution-ledger-parity.test.js:117:1\n✖ ① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2） (7.235875ms)\n  AssertionError [ERR_ASSERTION]: §17.2 清单表解析出 18 行，应为 19（演进设计正文冻结）\n  \n  18 !== 19\n  \n      at parseAll (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:96:10)\n      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:118:31)\n      at Test.runInAsyncScope (node:async_hooks:213:14)\n      at Test.run (node:internal/test_runner/test:1106:25)\n      at Test.start (node:internal/test_runner/test:1003:17)\n      at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 18,\n    expected: 19,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n\ntest at dist/test/test/contract/evolution-ledger-parity.test.js:152:1\n✖ ② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头 (5.277542ms)\n  AssertionError [ERR_ASSERTION]: §17.2 清单表解析出 18 行，应为 19（演进设计正文冻结）\n  \n  18 !== 19\n  \n      at parseAll (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:96:10)\n      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/contract/evolution-ledger-parity.test.js:153:26)\n      at Test.runInAsyncScope (node:async_hooks:213:14)\n      at Test.run (node:internal/test_runner/test:1106:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)\n      at Test.postRun (node:internal/test_runner/test:1235:19)\n      at Test.run (node:internal/test_runner/test:1163:12)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 18,\n    expected: 19,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n",
+      "also": []
+    }
+  ]
+}
