@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.55
+> - **当前版本**：v1.1.56
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.56（2026-10-08）随设计 v1.3.139（M11 第 10 步第三批：文档对账、§24 翻绿）同步：①2.6「当前边界」补 M11 档位一句（两段式解析、三类旗标、思考等级与厂商 profile 透传，生效思考等级只有 gemini 回读得到；名单外厂商 profile 预检与 `review` 退出码不一致见 EV-232）；②模块表 `adapters/base.ts` 行补档位路由 `resolveTier`（原文只列契约与判定，没写路由，`routeModel` 删去后路由描述在本文缺了）；③六节测试表三层计数改为当前值（unit 119、contract 14、integration 46 个文件，原写 37 / 2 / 8），contract 一行的特征补上文档与资产对账类测试，「当前基线」改为不写死、给出第 10 步读数。行数列未重核。
 > - **变更说明**：v1.1.55（2026-10-08）随设计 v1.3.138（M11 第 10 步第一批：`P-xx` 本机坑清单搬家，EV-13）同步：「八、往下读」的坑清单条目改指 `doc/04_development/GUIDE_local_pitfalls.md`，M0 探针报告只作 C-xx 冲突项的出处；原句「18 个实测坑」是 M0 当时的计数，一并去掉。
 > - **变更说明**：v1.1.54（2026-10-08）随设计 v1.3.135（M11 第 7 步：复盘报告按 Driver 与审核者两个维度聚合）同步：模块表 `report.ts` 补「原稿与裁决件按该轮 run.json 的 driver 排除 / 定位，双维度聚合与第四节思考等级两列（设计 13.2.1）」；`meta.ts` 补「`readRunMetaDetailed` 成功分支带 `sourceSchema`，供复盘标出 run.v1 迁移轮次」；`report.ts` 行的入口名由 `buildReport()` 改准为 `buildTopicReport()`（旧错，代码三审 AGY-03）。行数列未重核。
 > - **变更说明**：v1.1.53（2026-10-08）随设计 v1.3.133（M11 第 6 步：思考等级透传与留痕接线）同步：3.3 准备阶段补「可用性检查之前逐侧解析一次档位（`resolveTier`），同一结果喂可用性检查的厂商 profile 与请求构造」；模块表 `adapters/base.ts` 补必填钩子 `effortReadback`（生效思考等级只从回读结果派生）与 `availability` 的可选入参 `vendorProfiles`；`probes/claude.ts` 补 `effort_levels`（零配额解析 `--help`）。行数列未重核。
@@ -165,7 +166,7 @@ graph TD
 | 模块 | 行数 | 职责 |
 | :--- | ---: | :--- |
 | **`agents/registry.ts`** | — | **全部 Agent 差异的唯一登记处**（M7a 引入，`039bdc9`）。`AgentDescriptor` 登记四家（`claude` / `codex` / `gemini` / `glm`）的 id、显示名、vendor、归档后缀、意见前缀、`criticEnabled` / `driverEnabled`、护栏等级与协议片段落点；归档后缀、意见前缀、配置键、探针段、镜头键、**禁读矩阵**、Hook 字面集一律由它派生。`test/unit/registry-parity.test.ts` 以 grep 级对账守着「除本文件与各适配器外，任何模块不得出现具体 Agent id / 后缀 / 前缀字面量」 |
-| `adapters/base.ts` | 164 | 适配器契约（含轨迹能力 `TraceCapability` 与命令执行能力 `CommandExecution` 两项声明，另有可选的执行型 MCP 前缀声明 `mcpExecPrefixes`，v1.1.32；必填钩子 `effortReadback(result)`——生效思考等级只从回读结果派生、入参拿不到请求值，`availability(ctx, { vendorProfiles })` 按本轮解析出的厂商 profile 判，v1.1.53）、证据下限判定、泄漏判定 |
+| `adapters/base.ts` | 164 | 适配器契约与档位路由（`resolveTier` 两段式：第一段取基础组合——`--tier-<id>`、档位表格子三形态、`default_tier`，第二段按字段叠加 `--model-<id>` / `--effort-<id>` / `--profile-<id>`，同时给出 `tier` / `tier_source`，设计 11.5；原 `routeModel` 与其从未接线的「主题级覆盖」一级于 v1.1.51 删去）；契约含轨迹能力 `TraceCapability` 与命令执行能力 `CommandExecution` 两项声明，另有可选的执行型 MCP 前缀声明 `mcpExecPrefixes`，v1.1.32；必填钩子 `effortReadback(result)`——生效思考等级只从回读结果派生、入参拿不到请求值，`availability(ctx, { vendorProfiles })` 按本轮解析出的厂商 profile 判，v1.1.53）、证据下限判定、泄漏判定 |
 | `adapters/agy.ts` | 314 | Antigravity CLI 的 argv 构造与结果解析 |
 | `adapters/zcode.ts` | 331 | ZCode CLI 同上，外加 `HOME` 副本的模型覆盖与 0.16.9 provider 配置环境变量注入（P-28，存在性门控） |
 | `adapters/agy-events.ts` | 176 | agy 的 `stream-json` 事件流解析（工具轨迹来源） |
@@ -182,6 +183,7 @@ graph TD
 > `driverEnabled` 自 M10a 第 3 步起四家均为真——`--driver <id>` 取未登记或未启用的值退 64（M9 时是只校验已登记、
 > 未启用的放行并标注）；plan / bug 阶段在写原稿之前可经 `topic claim` 按阶段声明当轮 Driver（M10a 第 1 步）。
 > 别家在自己的 CLI 里执笔（入口资产、真载体下的 Hook）已随 M10b（2026-09-26）落地：入口资产与安装目标见主设计 7.4.1，各载体的护栏等级（claude L1；glm L2 有尽力拦截的 Hook；codex / gemini L2 无 Hook）见 8.5。
+> 档位（M11 第 4～7 步）已落地：`agents.<id>.tiers` 与档位表三形态经 `resolveTier` 两段式解析，`--tier-<id>` / `--effort-<id>` / `--profile-<id>` 经 `tier-flags.ts` 收集，思考等级与厂商 profile 随请求下传；生效思考等级只取回读（`effortReadback`），今天只有 gemini 回读得到，codex / claude 记 `null`。名单外的厂商 profile 在预检里先撞上「只读能力可用」退 69、`review` 准备阶段退 64，两处不一致登记在 BACKLOG EV-232。
 > M7a 当时是行为等价重构：登记四家而只启用两家审核者，为的是让注册表从第一天起就是完整的单一来源；
 > 之后每接一家只翻注册表的开关与补接入套件，本文其余描述的代码路径不因此改变。
 >
@@ -662,13 +664,13 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 
 | 层 | 数量 | 特征 |
 | :--- | ---: | :--- |
-| `test/unit/` | 37 文件 | 纯函数 / 模块级 |
-| `test/contract/` | 2 文件 | **实跑内联 shell 守卫**、断言两份 hooks.json 拷贝一致、断言 skill 声明旗标 ⊆ `review --start` 模板槽位 |
-| `test/integration/` | 8 文件 | 起真实子进程跑**打包产物**，真 git 仓库 + 真文件系统 |
+| `test/unit/` | 119 文件 | 纯函数 / 模块级 |
+| `test/contract/` | 14 文件 | **实跑内联 shell 守卫**、断言两份 hooks.json 拷贝一致、断言 skill 声明旗标 ⊆ `review --start` 模板槽位；另有入口渲染零漂移、布尔旗标与日志对账、夹具凭据扫描，以及文档对账类（目录索引、门面版本指针、演进设计 §17.2 与主设计 §24 台账结构） |
+| `test/integration/` | 46 文件 | 起真实子进程跑**打包产物**，真 git 仓库 + 真文件系统 |
 
 框架是 Node 原生 `node:test` + `node:assert/strict`，零第三方测试依赖。TS 经 esbuild 逐文件转译到 `dist/test/` 后再跑（不用 Node 原生 type-stripping，那需要 Node ≥ 22）。
 
-当前基线：**726 pass / 0 fail**，`npx tsc --noEmit` 退出码 0。
+当前基线以 `npm run check` 的当次读数为准，本文不写死（原写「726 pass / 0 fail」早已失实）；M11 第 10 步全量为 3078 条、3075 通过、0 失败、3 跳过，`npx tsc --noEmit` 退出码 0。上表三层的文件数同样会随主题增长，以目录实际为准（M11 第 10 步核）。
 
 `trivium doctor --selftest` 在临时夹具里真跑一遍 14 步全流水线（双审 → 闸门拦截 → 补裁决 → 闸门放行 → 编译测试 → 复盘 → 重跑不覆盖），零配额消耗；两侧走桩适配器，因此**证明不了两家 CLI 可用**。
 

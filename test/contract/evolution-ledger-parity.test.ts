@@ -46,7 +46,7 @@ const LINKLESS_KEYS: ReadonlyArray<{ key: string; texts: readonly string[] }> = 
 ];
 
 /** 第 12 步 M11 收口时改为 false 启用 ③。 */
-const NO_PENDING_SKIP: string | false = '第 12 步 M11 收口时启用；今天有五行未绿，第 10 步逐行翻绿';
+const NO_PENDING_SKIP: string | false = '第 12 步 M11 收口时启用（第 10 步已翻绿，见报告）';
 
 type Row = ReadonlyMap<string, string>;
 
