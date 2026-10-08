@@ -1,0 +1,34 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "三焦点逐条核过，未发现问题。焦点一（拼接边界）：src/trivium/probes/claude.ts:678-684 的循环与用户给定续行定义、计划 r2 §2.1 伪代码逐字一致——选项行（缩进且去空白后以 - 起头）、空行含纯空白行、顶格行、文本结束四类终止齐全，只向后连续不跳行；K1 续行②③与变异 N2/N3/N4 把三条终止条件各自锁死，「不越下一个选项拿括号」有合形状诱饵用例直接验证。「别的段落的括号」在现行判据下被空行加顶格段标题双重挡住；我独立推演的「缩进段标题且段间无空行」跨段通路，经查计划 r2 §5 第 3 条已作为残余风险披露并裁定不处理（论证了 claude 帮助文本 Options 段内条目均以选项行起头、段间有空行），实现与裁决一致，不另立意见。焦点二（漂移导向取不到）：第一对括号、逐项形状校验、[] / null 三态逐字沿用，K1 原八格保留、M14 / M17 重锚后仍咬（mutation-output.txt 6/6）；错枚举的残留窗口（锚点散文提及、单词括号）在计划 §5 ①② 如实披露。焦点三（样本取原文）：test/fixtures/claude-help-2.1.291.txt 逐字节入库，测试常量钉 sha256 并断言第 84/85/86 行逐字形态，K3 假 claude 改 cat 夹具让探针整条链吃原文——我读夹具核实第 84 行锚点无括号、第 85 行 40 格缩进列表、第 86 行 --environment 选项，与断言一致，且 grep 证实全文仅第 84 行含 --effort（锚点唯一、Usage 行不含）。另核过：消费方 claudeReasoningLevels 四态映射与 reasoningLevelsFor 未动；REPO_ROOT 经 findRepoRoot 向上找 package.json，打包后仍指仓库根，夹具路径机制成立；fixture-credentials 的 SKIP_DIRS 整体跳过 fixtures；文档同步面（主设计 v1.3.134 行、11.5、3.7、16.1、v1.3.133 行括注、两份报告勘误、types.ts 注释）与代码一致，doc/ 各 README 无 v1.3.13x 版本断言需要同步；「真机未核、不写已落盘」的状态表述诚实。",
+  "findings": [],
+  "agreed": [
+    "成因诊断成立且两条都点到了实处：解析器只看锚点行、用例样本抄自第 1 步报告 F6 的两行拼一行转述——夹具第 84/85 行的真实形态（锚点无括号、40 格缩进续行载列表）与诊断完全吻合",
+    "修法最小且方向正确：只改 parseEffortLevels 一个纯函数，锚点正则、第一对括号、逐项形状校验、三态语义全部不动，探针调用面与适配器消费面未动",
+    "三条终止条件各有独立变异（N2/N3/N4）且预跑与正式装置 6/6 咬住；报告对「真空行被顶格判据双重挡住、N3 只能靠纯空白行变体咬」的分析与代码行为一致（src/trivium/probes/claude.ts:680-682：空串不以空白开头，先被顶格判据截停）",
+    "样本治理到位：整份原文夹具 + sha256 钉死 + 行形态逐字断言 + K3 假 claude cat 夹具走完整探针链，正面消除「再次转述」这一根因；K1 首格改名「单行形态（合成）」并注明非原文，杜绝旧样本名继续冒充",
+    "残余风险四条（锚点散文提及、单词括号错枚举、不看缩进深度、stdout/stderr 拼接边角）如实披露且论证了本机原文不触发；「待用户重装核 doctor、核到之前不写已落盘」的状态纪律得到遵守",
+    "文档回溯完整：v1.3.133 台账行不改写历史正文只补括注、第 1 步报告 F6 补勘误、第 6 步报告 §6 第 7 条划线订正并新增 §7，与 AGENTS.md 改动同步清单无冲突（未新增 doc/ 报告文件、CLI 与 schema 未动）"
+  ],
+  "not_covered": [
+    "夹具 sha256 未独立复算（本侧只读无命令执行），字节级一致性以测试内钉死值、夹具行形态抽查（84-86 行逐字比对）与计划三审 codex 独立复跑记录为据",
+    "未复跑任何测试、变异或全量检查，3049 / 3047 / 0 / 2 与变异 6/6 的读数为采信证据文件（check-1.txt 头部、mutation-output.txt、mutation-spec.json）与报告的自述；mutation-names.mjs / gen-mutation-spec.mjs / mutation-stop-conditions.mjs 及 check-2.txt 未逐行审读",
+    "真机 doctor 落盘未核（按计划须由用户重装后执行，本侧无法代验）",
+    "PRD 与 LLD 原文未读，计划「无相关断言、不改不升版本」的声明未独立复核",
+    "src/trivium/probes/claude.ts 仅精读 560-760 段（parseEffortLevels、probeClaudeEffortLevels 及周边），probeClaude 主体的落盘时序以 K3 行为用例为准；夹具中段（约 100-264 行）未逐行审读，凭据扫描依赖 fixture-credentials 契约测试（SKIP_DIRS 含 fixtures 已核）与计划声明"
+  ],
+  "consulted": [
+    ".reviews/M11-claude思考等级续行解析/code/_meta/changes-20261008T034807Z.diff",
+    "src/trivium/probes/claude.ts",
+    "test/unit/effort-wiring.test.ts",
+    "test/fixtures/claude-help-2.1.291.txt",
+    "src/trivium/adapters/claude.ts",
+    "test/helpers/fixture.ts",
+    "test/contract/fixture-credentials.test.ts",
+    ".reviews/M11-claude思考等级续行解析/plan/2026-10-08-M11-claude思考等级续行解析-r2-claude.md",
+    "CLAUDE.md",
+    "doc/05_testing/evidence/m11-effort-continuation-20261008/mutation-output.txt",
+    "doc/05_testing/evidence/m11-effort-continuation-20261008/mutation-spec.json"
+  ]
+}

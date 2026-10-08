@@ -1,0 +1,78 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "计划成立：根因定位（parseEffortLevels 只看锚点行，probes/claude.ts:667-676 现行代码与计划引用逐字一致）、拼接修法（逐条落在用户给定的续行定义上，只向后只连续、锚点与解析规则不动，我逐分支推演 K1 原八格在新逻辑下取值全部不变）、用例与变异设计直接覆盖三条审查焦点，且全部行号与文档引用我逐一核对无误（报告 25/88 行、主设计 41/459/2965/3802 行、types.ts 822、LLD 第 7 行、PRD v1.4.23）。夹具落位无障碍：fixture-credentials 测试明确跳过 fixtures 目录且只扫代码扩展名，REPO_ROOT 机制使 .txt 夹具在 dist 构建下也能读到。三条 nit：变异矩阵对第三条终止条件缺一条对称变异；转述错误源头件（第 1 步报告 F6）不在文档改动清单；报告第 25 行「八格」计数与计划「再补一格/这两格」的措辞会让最终文档与用例实数不一致。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §3.3（变异 N1-N3）与 §3.2 K1 新格 3",
+      "problem": "拼接循环有三条终止条件，N1/N2/N3 分别证「不拼续行」「不止于选项行」「不止于空行」，但第三条检查（行不以空白开头即止）没有对应的变异：它只有 K1 新格 3 的顶格 Commands: 变体在用例层守着。按计划自己为 N2/N3 立的标准——终止条件被删要有用例红、且要在变异装置上证咬——第三条只拿到了一半证据。",
+      "evidence": "计划 §3.3 仅列 N1（for 头立即退出）、N2（删选项行判据）、N3（删空行判据）；src/trivium/probes/claude.ts:667-676 现行函数尚无拼接循环；doc/05_testing/evidence/m11-effort-wiring-20261008/gen-mutation-spec.mjs 的 blockOf 装置按锚点核唯一，支持低成本加条目。",
+      "suggestion": "补一条 N4：删去「不以空白开头即止」的检查（或等价改写使顶格行被拼入），期望 K1 新格 3 的顶格 Commands: 变体红，与 N2/N3 同批进逐条预跑与正式装置。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §4（文档清单）——缺 doc/05_testing/REPORT_2026-10-07_m11_tier_facts.md 第 89 行",
+      "problem": "本次根因的源头——第 1 步报告 F6 条目标着「claude --help 第 84-85 行」却把两行排成一行、丢失续行缩进——不在计划的改动清单里。计划给第 6 步报告、主设计 v1.3.133 行、probes/claude.ts 文档块、types.ts 注释都做了改准或括注，唯独源头件原样保留：它是仓库里唯一把该引用呈现为「帮助文本行内容」的地方，后来的实现者照抄它仍会重蹈 F6 常量的覆辙。",
+      "evidence": "doc/05_testing/REPORT_2026-10-07_m11_tier_facts.md:89 的 F6 引用；src/trivium/probes/claude.ts:658 的文档块即抄自该引用；计划 §4 清单未列该文件。",
+      "suggestion": "照计划对 v1.3.133 变更记录行的处理方式，在第 1 步报告 F6 条目末尾补一个括注（引用把两行排成一行，原始形态见跟进修复的夹具），不改历史正文其余部分。是否纳入由 Driver 与用户取舍——用户任务书点名的文档面不含它。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §3.2 末条与 §4 报告第 25 行的口径",
+      "problem": "K1 现为八格，计划新增三格后又「再补一格」，但同一条里写的是「这两格是对拼接本身的正向覆盖」——一格还是两格自相矛盾，最终 K1 是十二或十三格不定。报告第 25 行的「parseEffortLevels 八格（F6 原文、……）」若只按 §4 把「F6 原文」改名，格数与括号列举仍是旧终态，文档会再次与用例实数不符——恰是本主题要修的那类失实断言。",
+      "evidence": "计划 §3.2「K1 再补一格……以及跨行列表……这两格」；doc/05_testing/REPORT_2026-10-08_m11_effort_wiring.md:25 现行「八格（F6 原文、无此行、括号缺失、空串、多对括号取第一对、列表项不合形状、空括号、前缀相同的别的旗标）」；test/unit/effort-wiring.test.ts:278-291 现为八格。",
+      "suggestion": "定稿时把「再补一格/这两格」数清（建议按两格写明），§4 报告改动把第 25 行的八格与括号列举改到终态（或注明原八格加跟进新增几格），与「跟进修复」一节的用例清单对齐。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "拼接规则逐条对上用户给定的续行定义（以空白开头、去空白后不以 - 起头；遇选项行或空行即止），只向后、只连续、锚点行与解析规则不动；我按 §2.1 样例逐分支推演，K1 原八格在新逻辑下取值全部不变。",
+    "焦点一（边界严格）：K1 新格 2 用括号内容合形状的下一个选项做诱饵（越界拼入会得到错枚举 ['a','b'] 而非仅仅断言不等），另配短旗标 -f 变体与 N2；空行/纯空白/顶格三变体配 N3。我静态推演了各红点，包括 N2 下整份夹具格仍绿（拼接保序使首括号仍在第 85 行的列表）——预期读数精确。",
+    "焦点二（漂移导向取不到）：新格 2/3 都是「旁边有合形状括号仍落 null」的形态；残余风险三条如实披露且不越用户给定的解析规则。",
+    "焦点三（样本取原文）：整份帮助文本入夹具、sha256 钉死、第 84/85 行逐字断言防「整理」、K3 假 claude 经 cat 同一份夹具吃整条探针链、F6 常量删除并如实改名合成——除 GLM-02 指出的源头件外，仓库内不再有冒充原文的转述。",
+    "计划的行号引用我逐一核对全部无误：probes/claude.ts 655-676 与 1180-1186、effort-wiring.test.ts 276/278-291/305-320、types.ts 822、报告 25/88 行、主设计 41/459/2965/3802 行、LLD_orchestrator.md 第 7 行。notes 文案由解析值派生，「调用面不动」的判断成立。",
+    "计划请审查员核「零配额 doctor 即落盘」是否有漏处：我全量检索主设计，「即落」仅 §3.7 第 459 行一处；其余 effort_levels 表述（主设计 2858 行为机制性描述、2965/3802 行已在计划改动面内、doc/05_testing/README.md 第 127 行为机制性摘要）均无需第三处补改，计划的自查结论我复核支持。",
+    "PRD v1.4.23 进度句确无 claude 原生枚举已落盘的断言（只改 FR-30/FR-27 进度句那版说明）、LLD v1.1.53 表述仍属实、BACKLOG 不新登——三项判定与仓库现状一致。",
+    "夹具与扫描兼容性无障碍：test/contract/fixture-credentials.test.ts 的 SKIP_DIRS 含 fixtures 且只扫五类代码扩展名（.txt 不在列），无需豁免登记；test/helpers/fixture.ts 的 REPO_ROOT 向上找 package.json，dist 构建下也能读到 test/fixtures/（run.v2.pre-m11-step6.json 已是先例），K3 的 cat 用运行期算出的绝对路径即可，不动构建脚本。",
+    "变异装置可行性：第 6 步 gen-mutation-spec.mjs 的 blockOf 按锚点核唯一、mutation-names.mjs 在位；M14/M17 的 find 串核实为现行源码原文，改动后 line 换 text 的重截正是该装置支持的用法。",
+    "范围边界与任务目标一致：探针调用面、三态语义、适配器、预检全部不动；parseEffortLevels 在 src 内仅探针一处消费，无隐性联动面。"
+  ],
+  "not_covered": [
+    "本机 claude --help 的真实输出我无法执行命令取得：311 行总数、第 84/85 行逐字内容与 40 格缩进、sha256 550db4f8…6c35f09、全文仅一处含 --effort、空行位置（第 2/5/8/264 行）均未独立核实——它们由实施时的夹具 sha256 与第 84/85 行逐字断言自证，属计划设计上已覆盖的验证。",
+    "未实际运行任何测试或变异装置；N1-N3 与 M14/M17 重跑的预期红点、K1 原八格取值不变均为静态推演。",
+    "probeClaudeEffortLevels 拼 stdout 加换行加 stderr 存在一个理论边角：stdout 恰以锚点或其连续续行收尾且无尾随换行、stderr 首行恰呈续行形态时会被拼入。现实形态下锚点居中、其后必有选项行挡住，我判定可不处理，与计划 §2.3 的论证一致，仅在此披露。",
+    "根 README.md 与 doc/README.md 仅按必读清单扫读结构未逐字核；PRD 的 FR-30/FR-27/AC-23 只核了文档头进度句与命中位置，未逐字读条目正文。",
+    "第 6 步的 19 条变异只复核了 M14/M17 两条锚点，其余未逐一重验；夹具尚未入库，其内容与「已扫过无 tab、无凭据形态」的断言待实施时自证。"
+  ],
+  "consulted": [
+    ".reviews/M11-claude思考等级续行解析/plan/2026-10-08-M11-claude思考等级续行解析-claude.md",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/types.ts",
+    "test/unit/effort-wiring.test.ts",
+    "test/helpers/fixture.ts",
+    "test/contract/fixture-credentials.test.ts",
+    "doc/05_testing/REPORT_2026-10-08_m11_effort_wiring.md",
+    "doc/05_testing/REPORT_2026-10-07_m11_tier_facts.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/evidence/m11-effort-wiring-20261008/gen-mutation-spec.mjs",
+    "doc/05_testing/evidence/m11-effort-wiring-20261008/mutation-spec-ts.json",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/01_requirements/README.md",
+    "CLAUDE.md"
+  ]
+}
