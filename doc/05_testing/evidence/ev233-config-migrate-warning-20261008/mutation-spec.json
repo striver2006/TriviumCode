@@ -1,0 +1,51 @@
+{
+  "targets": [
+    "src/trivium/config.ts",
+    "src/trivium/cli.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/config-migrate-warning.test.js"
+  ],
+  "cases": [
+    {
+      "id": "W1",
+      "desc": "逐源各打一条（两个源都是 v1 时出两条）",
+      "file": "src/trivium/config.ts",
+      "find": "    warn(`${head}（磁盘文件未改动，旧配置继续可用）：\\n${body}`);\n",
+      "replace": "    for (const _m of migrated) warn(`${head}（磁盘文件未改动，旧配置继续可用）：\\n${body}`);\n",
+      "expect": "dist/test/test/integration/config-migrate-warning.test.js"
+    },
+    {
+      "id": "W2",
+      "desc": "告警改走 stdout（破坏 --json 单 JSON 协议）",
+      "file": "src/trivium/config.ts",
+      "find": "    const { warn } = await import('./util/log.js');\n    const wayOut",
+      "replace": "    const warn = (s: string): void => { process.stdout.write(s + '\\n'); };\n    const wayOut",
+      "expect": "dist/test/test/integration/config-migrate-warning.test.js"
+    },
+    {
+      "id": "W3",
+      "desc": "迁移告警整条不打",
+      "file": "src/trivium/config.ts",
+      "find": "  if (migrated.length > 0) {\n",
+      "replace": "  if (migrated.length > 99) {\n",
+      "expect": "dist/test/test/integration/config-migrate-warning.test.js"
+    },
+    {
+      "id": "W4",
+      "desc": "只登记共享层的迁移（本机层 v1 片段不点名）",
+      "file": "src/trivium/config.ts",
+      "find": "      if (note) migrated.push({ file: p, shared: name === 'config.yaml', note, kind: 'config-v1' });\n",
+      "replace": "      if (note && name === 'config.yaml') migrated.push({ file: p, shared: name === 'config.yaml', note, kind: 'config-v1' });\n",
+      "expect": "dist/test/test/integration/config-migrate-warning.test.js"
+    },
+    {
+      "id": "W5",
+      "desc": "预检入口多加载一次配置（一次调用两条告警）",
+      "file": "src/trivium/cli.ts",
+      "find": "  installForegroundInterruptForwarding();\n  const ctx = await loadCtx();\n  // 预检要校验的是",
+      "replace": "  installForegroundInterruptForwarding();\n  await loadCtx();\n  const ctx = await loadCtx();\n  // 预检要校验的是",
+      "expect": "dist/test/test/integration/config-migrate-warning.test.js"
+    }
+  ]
+}
