@@ -1,0 +1,84 @@
+# AC-23 negative controls, 2026-10-08T12:12:53Z, fixture HEAD 4fb4cd4
+--- archive root (before)
+.reviews/README.md
+--- run root entries (before)
+13
+--- git status (before)
+
+=== N1: preflight --stage plan --critics codex,gemini --tier-codex medium
+预检（scope=plan）
+────────────────────────────────────────────────────────────
+  ✓ 探针结论新鲜
+      过期或未探：claude（其余在 TTL 内；跑 doctor --only <名> 可单独补）
+  ✓ Codex 可调用
+      codex 0.160.1
+  ✓ Antigravity 可调用
+      agy 1.3.1
+  ✓ ZCode 可调用
+      zcode 0.16.9
+  ✗ 只读能力可用
+      Codex：探针未实测到可用的只读旗标——**这包括只读沙箱负对照失败的情形**（read-only 下文件仍被创建时探针会把该字段清空）。无法保障审查员只读，该侧不可用。
+        Antigravity：探针尚未实测 agy headless 读取能力，请先运行 trivium doctor
+
+✗ 预检未通过（退出码 69）——不会产生任何工件
+exit=69
+
+=== N2: preflight --stage plan --critics codex,gemini --effort-codex medium
+预检（scope=plan）
+────────────────────────────────────────────────────────────
+  ✓ 探针结论新鲜
+      过期或未探：claude（其余在 TTL 内；跑 doctor --only <名> 可单独补）
+  ✓ Codex 可调用
+      codex 0.160.1
+  ✓ Antigravity 可调用
+      agy 1.3.1
+  ✓ ZCode 可调用
+      zcode 0.16.9
+  ✗ 只读能力可用
+      Codex：探针未实测到可用的只读旗标——**这包括只读沙箱负对照失败的情形**（read-only 下文件仍被创建时探针会把该字段清空）。无法保障审查员只读，该侧不可用。
+        Antigravity：探针尚未实测 agy headless 读取能力，请先运行 trivium doctor
+
+✗ 预检未通过（退出码 69）——不会产生任何工件
+exit=69
+
+=== N3: preflight --stage plan --critics codex,glm --effort-glm high
+预检（scope=plan）
+────────────────────────────────────────────────────────────
+  ✓ 探针结论新鲜
+      过期或未探：claude（其余在 TTL 内；跑 doctor --only <名> 可单独补）
+  ✓ Codex 可调用
+      codex 0.160.1
+  ✓ Antigravity 可调用
+      agy 1.3.1
+  ✓ ZCode 可调用
+      zcode 0.16.9
+  ✗ 只读能力可用
+      Codex：探针未实测到可用的只读旗标——**这包括只读沙箱负对照失败的情形**（read-only 下文件仍被创建时探针会把该字段清空）。无法保障审查员只读，该侧不可用。
+        ZCode：ZCode headless 未跑通。注意：CLI 的模型 provider 配置独立于桌面端，「已登录」不等于「可用」——请确认 ~/.zcode/cli/config.json 存在；若 doctor notes 里 provider_config 的内置文件为「未找到」，是 ZCode 安装布局问题（P-28），不是凭据问题。
+
+✗ 预检未通过（退出码 69）——不会产生任何工件
+exit=69
+
+=== N4: preflight --stage plan --critics codex,gemini --profile-codex nosuchprofile
+预检（scope=plan）
+────────────────────────────────────────────────────────────
+  ✓ 探针结论新鲜
+      过期或未探：claude（其余在 TTL 内；跑 doctor --only <名> 可单独补）
+  ✓ Codex 可调用
+      codex 0.160.1
+  ✓ Antigravity 可调用
+      agy 1.3.1
+  ✓ ZCode 可调用
+      zcode 0.16.9
+  ✗ 只读能力可用
+      Codex：探针未实测到可用的只读旗标——**这包括只读沙箱负对照失败的情形**（read-only 下文件仍被创建时探针会把该字段清空）。无法保障审查员只读，该侧不可用。
+        Antigravity：探针尚未实测 agy headless 读取能力，请先运行 trivium doctor
+
+✗ 预检未通过（退出码 69）——不会产生任何工件
+exit=69
+
+--- archive root (after)
+.reviews/README.md
+--- run root entries (after)
+13
+--- git status (after)

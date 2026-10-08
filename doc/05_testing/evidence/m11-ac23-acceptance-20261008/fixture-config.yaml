@@ -1,0 +1,141 @@
+# TriviumCode 项目配置（进 Git，团队共享）
+# 本机绝对路径与探针结论在 config.local.yaml（不进 Git）
+# verify.build / verify.test 只执行此处显式声明的命令——编排器不猜测执行（§14.1）
+
+schema: trivium.config.v2
+archive_root: .reviews
+topic:
+  max_len: 64
+runtime:
+  node: null
+  run_root: ~/.trivium/runs
+isolation:
+  peer_artifact_globs:
+    - "**/*-gemini.md"
+    - "**/*-glm.md"
+  context_max_docs: 12
+review:
+  failure_policy: strict
+  allow_partial_flag: true
+  default_critics:
+    - codex
+    - gemini
+    - glm
+  max_critics: 3
+  timeout_s:
+    plan: 900
+    code: 1200
+    bug: 1200
+  wait_timeout_s: 180
+  heartbeat_stale_s: 120
+  retry:
+    transient_max: 1
+  cache: false
+  min_tool_calls:
+    plan: 5
+    code: 5
+    bug: 5
+  min_project_reads:
+    plan: 3
+    code: 3
+    bug: 3
+  on_drift: warn
+  on_drift_related: fail
+  sensitive_globs:
+    - .env*
+    - "**/.env*"
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/id_rsa*"
+  skip_doc_only_review: false
+  skip_globs:
+    - "**/*.md"
+    - docs/**
+    - "**/*.txt"
+  never_skip_globs:
+    - "**/package.json"
+    - "**/pubspec.yaml"
+    - "**/Cargo.toml"
+    - "**/requirements*.txt"
+    - .github/**
+    - .gitlab-ci.yml
+    - Dockerfile
+    - .claude/**
+    - .trivium/**
+agents:
+  gemini:
+    vendor: antigravity
+    bin: null
+    agent: trivium-critic
+    effort:
+      plan: high
+      code: high
+      bug: high
+    tiers:
+      low: {model: gemini-3.8-flash-low}
+      medium: {model: gemini-3.8-flash-medium}
+  glm:
+    vendor: zcode
+    entry: null
+  codex:
+    vendor: openai
+    bin: null
+    profile: kimi
+    tiers:
+      low: {model: kimi-for-coding, effort: low, profile: kimi}
+      high: {model: kimi-for-coding, effort: high, profile: kimi}
+  claude:
+    vendor: anthropic
+profiles:
+  default:
+    gemini:
+      plan: gemini-3.8-flash-high
+      code: gemini-3.8-flash-high
+      bug: gemini-3.8-flash-high
+    glm:
+      plan: GLM-5.3
+      code: GLM-5.3
+      bug: GLM-5.3
+    codex:
+      plan: kimi-for-coding
+      code: kimi-for-coding
+      bug: kimi-for-coding
+    claude:
+      plan: claude-sonnet-5
+      code: claude-sonnet-5
+      bug: claude-sonnet-5
+  flash:
+    gemini:
+      plan: gemini-3.8-flash-high
+      code: gemini-3.8-flash-high
+      bug: gemini-3.8-flash-high
+    glm:
+      plan: GLM-5.3-Flash
+      code: GLM-5.3-Flash
+      bug: GLM-5.3-Flash
+    codex:
+      plan: qwen3.8-flash
+      code: qwen3.8-flash
+      bug: qwen3.8-flash
+    claude:
+      plan: claude-haiku-4-5-20251001
+      code: claude-haiku-4-5-20251001
+      bug: claude-haiku-4-5-20251001
+active_profile: default
+gate:
+  allow_defer: true
+  block_business_write_when_awaiting_approval: true
+  approval_lock_scope: session
+  approval_lock_ttl_h: 24
+  block_commit: true
+  stop_hook_max_blocks: 2
+  reason_policy: warn
+  joint_blocker_policy: warn
+preflight:
+  auth_cache_ttl_h: 1
+verify:
+  build: []
+  test: []
+retention:
+  run_dir_days: 30
+probe_ttl_days: 7

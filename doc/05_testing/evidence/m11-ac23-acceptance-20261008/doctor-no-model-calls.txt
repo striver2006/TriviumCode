@@ -1,0 +1,33 @@
+· 探测运行环境…
+· 探测 Antigravity（agy）…
+· 探测 ZCode（zcode.cjs）…
+· 探测 Codex（codex exec）…
+· 探测 Claude Code（claude -p）…
+
+TriviumCode 本机能力探测
+────────────────────────────────────────────────────────────
+  node=/opt/homebrew/opt/node/bin/node v25.2.1
+  git=2.54.0 (Apple Git-157)
+  编排器构建标识：df9abf4，inputs 088d9590046e，构建于 2026-10-08T08:54:23.517Z；当前项目不是编排器本仓，只记不比
+  本机无 GNU coreutils 的 timeout/gtimeout —— 编排器的超时全部在 Node 内实现，不依赖外部命令（这是预期行为，非问题）
+  编译测试命令候选：build=[] test=["npm run test"]（仅候选，需人确认后写入 verify 才会执行）
+  [agy] 已跳过需要真实模型调用的探针（--no-model-calls）——headless_read_ok / json_schema_ok / path_deny / scratch_paths 保留上一次的结论
+  [zcode] 可用模型 4 个（含短名与全限定形态）：GLM-5.3, GLM-5.3-Flash, bigmodel-coding-plan/GLM-5.3, bigmodel-coding-plan/GLM-5.3-Flash…
+  [zcode] trace_source（工具名/模型）=/Users/chenzhenbo/.zcode/cli/log/zcode-{date}.jsonl；trace_args_source（工具参数与路径）=/Users/chenzhenbo/.zcode/cli/rollout/model-io-{sessionId}.jsonl
+  [zcode] provider_config：内置=/Applications/ZCode.app/Contents/Resources/config/provider/zcode-builtin.json；个人=/Users/chenzhenbo/.zcode/v2/provider_config.json（个人那份按用户目录 /Users/chenzhenbo 取）（拉起时经 ZCODE_*_PROVIDER_CONFIG_FILE 注入，0.16.9 起独立拉起必需）
+  [zcode] readonly_flags 接受=["--mode plan","--mode yolo","--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash"]；拒绝=["--allowed-tools Read,Grep,Glob","--max-turns 40","--permission-mode plan","--settings /nonexistent-probe-settings.json"]（--help 列出不等于实际接受）
+  [zcode] model_override=config_copy / isolation=home_copy：副本 model.main 被 legacy 导入读到并成为 defaultModelSelection（请求 bigmodel-coding-plan/GLM-5.3-Flash，CLI 写出 bigmodel-coding-plan/GLM-5.3-Flash；运行期选定 bigmodel-coding-plan/GLM-5.3）。前提：副本 HOME 下不注入个人 provider 配置，CLI 从 cli/config.json 副本 legacy 导入；既无模型旗标也无选型环境变量，`--settings` 被拒
+  [zcode] model_override_full_copy=config_copy（本轮产出）：同形副本（整份拷贝、凭据换哨兵）的 model.main 被 legacy 导入读到（请求 bigmodel-coding-plan/GLM-5.3-Flash，CLI 写出 bigmodel-coding-plan/GLM-5.3-Flash；替换凭据键 1 处，另对每个 provider 的 apiKey 无条件写哨兵；运行期选定 bigmodel-coding-plan/GLM-5.3）。配置层结论只判配置读取层；运行期选定取自 CLI 启动事件（与审查臂的生效模型同一字段）。零配额的前提是副本里所有凭据都被换掉，拉起前已做残余扫描
+  [zcode] runtime_selection=reorder_needed：原样支运行期回落到 bigmodel-coding-plan/GLM-5.3，置首支选中请求 bigmodel-coding-plan/GLM-5.3-Flash——当前 CLI 仍需置首，审查臂已置首规避（EV-82 形态）
+  [zcode] 跳过需要真实模型调用的 ZCode 探针（配置缺失或已显式跳过）——response_field / path_deny / scratch_paths 保留上一次的结论
+  [codex] profile 名单（$CODEX_HOME/<name>.config.toml）：deepseek、glm、gpt、kimi、qwen
+  [codex] provider 家族探活：deepseek→deepseek、glm→zai、gpt→openai、kimi→kimi、qwen→qwen 有可用凭据
+  [codex] 模型目录 7 个（可见 5 个）：qwen3.8-max、qwen3.8-flash、qwen3.7-max、qwen3.7-plus、qwen3.6-flash…
+  [codex] 逐 profile 可见模型：deepseek→2、glm→3、gpt→4、kimi→4、qwen→5（预检按本次 profile 的这一份校验，不再拿基底目录顶替）
+  [codex] 已跳过需要真实模型调用的探针（--no-model-calls）——exec_headless_read_ok / trace_path_structured / rejected_command_in_trace / scratch_paths 保留上一次的结论
+  [claude] claude --effort 取值：low, medium, high, xhigh, max
+  [claude] 已跳过需要真实模型调用的探针（--no-model-calls）——headless_read_ok / trace_path_structured / denied_tool_in_trace / path_deny / scratch_paths / stream_json_requires_verbose / strict_mcp_config_applied / project_memory_blocked 保留上一次的结论
+  探针结论已写入 /private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/d8a869f3-11f6-4327-a7a1-61c9337e76d1/scratchpad/ac23/fx/.trivium/config.local.yaml
+
+✓ 未发现阻断级问题
+

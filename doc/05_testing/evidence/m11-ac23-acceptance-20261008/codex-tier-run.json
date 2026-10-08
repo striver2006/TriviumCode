@@ -1,0 +1,149 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261008T121531Z",
+  "topic": "ac23-codex-tier",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "重点看除零处理的错误类型与两条新用例是否足以覆盖计划所述行为（AC-23 验收样本）",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "profile": "default",
+  "critics_selected": [
+    "codex"
+  ],
+  "snapshot": {
+    "git_head": "4fb4cd41eb0bc4e25a02ab41c8394806f95126d5",
+    "tree_hash": "3858a312b9fa055e6c94c0e5273d787562709e70",
+    "dirty": true,
+    "subject_sha256": "390ab47c074c10e89a6545494de091db8fa0047b82e138035a72805a014c88da",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "df9abf4dc94ae6ef0f9b04b59c99b6361329d6ba",
+      "dirty": false,
+      "inputs_sha256": "088d9590046e109eb75c59e52c6515a0ce3c6da512bb9d6cb249c537f0c8e40a",
+      "built_at": "2026-10-08T08:54:23.517Z"
+    },
+    "after_tree_hash": "3858a312b9fa055e6c94c0e5273d787562709e70"
+  },
+  "started_at": "2026-10-08T12:15:31.689Z",
+  "finished_at": "2026-10-08T12:17:18.692Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.160.1",
+      "model_requested": "kimi-for-coding",
+      "model_effective": "kimi-for-coding",
+      "model_effective_source": "trace",
+      "profile_requested": "kimi",
+      "model_provider": "kimi",
+      "model_route": "config_copy",
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": null,
+      "effort_effective_source": "unverified",
+      "tier": "high",
+      "tier_source": "cli",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 106.795,
+      "tool_calls": {
+        "run_command": 6,
+        "project_reads": 7
+      },
+      "evidence_ok": true,
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a11b70-ae89-7973-990b-8c304f79bb4c",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false
+    },
+    "deny_skipped": {
+      "codex": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "ac23-codex-tier/plan/_meta/brief-codex-20261008T121531Z.md",
+      "sha256": "f96736a1b43d36b97e936d4c640e8f8f159b6c05173a6aaf5c57bb76ea039745"
+    },
+    {
+      "path": "ac23-codex-tier/plan/_meta/review-codex-20261008T121531Z.json",
+      "sha256": "c22832159fee686c10efc6cf1dc69dabbdc7aef1dc79f2e5caed9594f57e3875"
+    },
+    {
+      "path": "ac23-codex-tier/plan/2026-10-08-ac23-codex-tier-codex.md",
+      "sha256": "aa7e04cf81325d588225ca71baec04c3caafa196b5259f93402458460d823fe6"
+    },
+    {
+      "path": "ac23-codex-tier/plan/2026-10-08-ac23-codex-tier-claude.md",
+      "sha256": "390ab47c074c10e89a6545494de091db8fa0047b82e138035a72805a014c88da"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

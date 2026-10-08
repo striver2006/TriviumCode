@@ -1,0 +1,159 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261008T122046Z",
+  "topic": "ac23-gemini-tier",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "重点看除零处理的错误类型与两条新用例是否足以覆盖计划所述行为（AC-23 验收样本）",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "profile": "default",
+  "critics_selected": [
+    "gemini"
+  ],
+  "snapshot": {
+    "git_head": "4fb4cd41eb0bc4e25a02ab41c8394806f95126d5",
+    "tree_hash": "3858a312b9fa055e6c94c0e5273d787562709e70",
+    "dirty": true,
+    "subject_sha256": "390ab47c074c10e89a6545494de091db8fa0047b82e138035a72805a014c88da",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "df9abf4dc94ae6ef0f9b04b59c99b6361329d6ba",
+      "dirty": false,
+      "inputs_sha256": "088d9590046e109eb75c59e52c6515a0ce3c6da512bb9d6cb249c537f0c8e40a",
+      "built_at": "2026-10-08T08:54:23.517Z"
+    },
+    "after_tree_hash": "3858a312b9fa055e6c94c0e5273d787562709e70"
+  },
+  "started_at": "2026-10-08T12:20:46.537Z",
+  "finished_at": "2026-10-08T12:21:45.968Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.1",
+      "model_requested": "gemini-3.8-flash-low",
+      "model_effective": "gemini-3.8-flash-low",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort_requested": null,
+      "effort_effective": "low",
+      "effort_effective_source": "envelope",
+      "tier": "low",
+      "tier_source": "cli",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 59.237,
+      "tool_calls": {
+        "read": 8,
+        "grep": 0,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 6
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 55036,
+        "output_tokens": 1553,
+        "thinking_tokens": 0,
+        "cache_read_tokens": 195796,
+        "total_tokens": 56589
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "ebcb77f9-59d7-488c-b75f-18edea2fd85b",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false
+    },
+    "deny_skipped": {
+      "gemini": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "ac23-gemini-tier/plan/_meta/brief-gemini-20261008T122046Z.md",
+      "sha256": "bedcac833e5ccc739db8d3de5c4325fd2307a2eea08281883bbc002380f264da"
+    },
+    {
+      "path": "ac23-gemini-tier/plan/_meta/review-gemini-20261008T122046Z.json",
+      "sha256": "ef28560bf9ecac880b8a1ec12250c0bb897e9d58efa2229bdca13a54419e4182"
+    },
+    {
+      "path": "ac23-gemini-tier/plan/2026-10-08-ac23-gemini-tier-gemini.md",
+      "sha256": "84e6e02ae801db7138dd56aa5c826088b712ed66583b77326ac023f3c737cd22"
+    },
+    {
+      "path": "ac23-gemini-tier/plan/2026-10-08-ac23-gemini-tier-claude.md",
+      "sha256": "390ab47c074c10e89a6545494de091db8fa0047b82e138035a72805a014c88da"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}
