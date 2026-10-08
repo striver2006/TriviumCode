@@ -1,0 +1,90 @@
+{
+  "targets_sha256": {
+    "src/trivium/probes/claude.ts": "02160539c3793a69bbfac339dee23425f078fb5122f7d5d3096b5b40e7d92883"
+  },
+  "results": [
+    {
+      "id": "N1",
+      "desc": "不拼续行（循环立即退出，只看锚点行——第 6 步首版的行为）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 4,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K1 续行①本机原文：整份帮助文本取到五项，样本形态就是「列表在续行」",
+        "K1 续行④第二种排版：选项名独占一行、描述在下一行缩进",
+        "K1 续行⑤跨行列表：括号分在两行续行上也取全",
+        "K3 probeClaude 零配额落盘：--no-model-calls 下也采 effort_levels，且不刷新 probed_at"
+      ],
+      "firstLines": [],
+      "elapsed_s": 1
+    },
+    {
+      "id": "N2",
+      "desc": "拼接不止于选项行（越过下一个选项去拿它的括号）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K1 续行②续行后紧跟下一个选项：不拼进来（它的括号合形状，拼了就是错枚举）"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "N3",
+      "desc": "拼接不止于空行（含纯空白行）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K1 续行③续行里没有括号：空行、纯空白行、顶格行之后的括号都不拼入，落 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "N4",
+      "desc": "拼接不止于顶格行（段标题之后的缩进行也拼入）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K1 续行③续行里没有括号：空行、纯空白行、顶格行之后的括号都不拼入，落 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M14",
+      "desc": "parseEffortLevels 解析不出时落 []（错枚举：把「取不到」说成「没有这个旗标」）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 3,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K1 parseEffortLevels：单行形态（合成）、无此行、括号缺失、空串、同行多对括号取第一对、列表项不合形状",
+        "K1 续行②续行后紧跟下一个选项：不拼进来（它的括号合形状，拼了就是错枚举）",
+        "K1 续行③续行里没有括号：空行、纯空白行、顶格行之后的括号都不拼入，落 null"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    },
+    {
+      "id": "M17",
+      "desc": "parseEffortLevels 改回取最后一对括号（计划三审 CODEX-02）",
+      "suite": "dist/test/test/unit/effort-wiring.test.js",
+      "fail": 1,
+      "timed_out": false,
+      "cancelled": 0,
+      "red": [
+        "K1 parseEffortLevels：单行形态（合成）、无此行、括号缺失、空串、同行多对括号取第一对、列表项不合形状"
+      ],
+      "firstLines": [],
+      "elapsed_s": 0
+    }
+  ]
+}

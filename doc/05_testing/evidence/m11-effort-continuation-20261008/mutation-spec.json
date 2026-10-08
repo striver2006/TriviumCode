@@ -1,0 +1,58 @@
+{
+  "targets": [
+    "src/trivium/probes/claude.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/effort-wiring.test.js"
+  ],
+  "cases": [
+    {
+      "id": "N1",
+      "desc": "不拼续行（循环立即退出，只看锚点行——第 6 步首版的行为）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  for (let i = at + 1; i < lines.length; i++) {\n",
+      "replace": "  for (let i = at + 1; i < at + 1; i++) {\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "N2",
+      "desc": "拼接不止于选项行（越过下一个选项去拿它的括号）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "    if (t === '' || t.startsWith('-')) break; // 空行（含纯空白行）或下一个选项行\n",
+      "replace": "    if (t === '') break; // 空行（含纯空白行）或下一个选项行\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "N3",
+      "desc": "拼接不止于空行（含纯空白行）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "    if (t === '' || t.startsWith('-')) break; // 空行（含纯空白行）或下一个选项行\n",
+      "replace": "    if (t.startsWith('-')) break; // 空行（含纯空白行）或下一个选项行\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "N4",
+      "desc": "拼接不止于顶格行（段标题之后的缩进行也拼入）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "    if (!/^\\s/.test(l)) break; // 顶格行：段标题（`Commands:`）或顶格正文\n",
+      "replace": "    // 顶格判据被删 // 顶格行：段标题（`Commands:`）或顶格正文\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "parseEffortLevels 解析不出时落 []（错枚举：把「取不到」说成「没有这个旗标」）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  if (open < 0 || close < 0) return null;\n",
+      "replace": "  if (open < 0 || close < 0) return [];\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    },
+    {
+      "id": "M17",
+      "desc": "parseEffortLevels 改回取最后一对括号（计划三审 CODEX-02）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  const open = text.indexOf('(');\n",
+      "replace": "  const open = text.lastIndexOf('(');\n",
+      "expect": "dist/test/test/unit/effort-wiring.test.js"
+    }
+  ]
+}

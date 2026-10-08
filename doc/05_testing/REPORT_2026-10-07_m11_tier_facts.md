@@ -86,7 +86,7 @@
 | c3 | claude-haiku-4-5-20251001 | high | 0 | claude-haiku-4-5-20251001 | 同上；另有 `thinking_tokens=36` |
 | c4 | claude-sonnet-5 | bogus | **0** | claude-sonnet-5 | 同上 |
 
-- **F6**：`claude --help` 第 84-85 行：`--effort <level>  Effort level for the current session (low, medium, high, xhigh, max)`。M6 探针（2026-09-14）记录时没有这个旗标，`types.ts:983` 的注释据此写「claude 侧没有对应的 CLI 旗标」——**这条事实已过期**。
+- **F6**：`claude --help` 第 84-85 行：`--effort <level>  Effort level for the current session (low, medium, high, xhigh, max)`（**勘误，2026-10-08**：这条引用把第 84、85 行排成了一行；原始形态是第 84 行只有 `--effort <level>` 与说明、取值列表在第 85 行的 40 格缩进续行上。M11 第 6 步的解析器样本照抄了这条引用，真机落 `null`——原文见夹具 `test/fixtures/claude-help-2.1.291.txt`，修复见主设计 v1.3.134。正文其余不改）。M6 探针（2026-09-14）记录时没有这个旗标，`types.ts:983` 的注释据此写「claude 侧没有对应的 CLI 旗标」——**这条事实已过期**。
 - CLI 不校验取值：c4 的 `bogus` 退 0、正常作答。
 - init 事件的全部 28 个键（证据里有清单）里没有 effort；唯一相关的 `per_turn_effort_active` 在五格都是 false，与是否传 `--effort` 无关。result 事件也没有 effort 字段。
 - 结论：claude 侧**能透传、回读不到**。思考 token 只在 haiku 那格出现，单词回复下不足以反推档位。

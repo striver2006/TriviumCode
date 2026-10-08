@@ -5,13 +5,15 @@
  * - **R 组** 本仓同形配置（裸 slug）下请求面与 argv 与改前逐字相同；档位形态下 codex / claude 的思考等级真进请求；
  * - **E 组** 回读钩子 `effortReadback` 逐家逐格（设计 11.1 表）：只取回读，codex / claude 恒 null + unverified；
  * - **C 组** 契约三态：新字段在场 / 缺席 / null，非法取值被拒，**旧读者**（本步之前的 run.v2.json 快照）读新留痕；
- * - **K 组** claude 探针 `parseEffortLevels` 与 `probeClaude` 零配额落盘（计划三审 CODEX-02）；
+ * - **K 组** claude 探针 `parseEffortLevels` 与 `probeClaude` 零配额落盘（计划三审 CODEX-02）；续行五格与 K3 吃本机
+ *   `claude --help` 原文夹具（M11-claude思考等级续行解析）；
  * - **P 组** codex 可用性按本轮解析出的厂商 profile 判（三处同值的可用性那一处；目录那一处见 tier-resolve T 组）。
  *
  * 零配额：不拉起任何真实 CLI。K 组的假 claude 是 scratch 目录里的一段 sh。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
@@ -273,10 +275,18 @@ test('C4 front-matter 五键：恒写（null 也写），与 run.json 同值；�
 
 // ─────────────────────────── K 组：claude 原生枚举 ───────────────────────────
 
-const F6 = '  --effort <level>                                  Effort level for the current session (low, medium, high, xhigh, max)';
+/**
+ * 本机 `claude --help` 的**整份原始输出**（claude 2.1.291，2026-10-08 零配额实跑，`--help` 不调模型），逐字节入库、不手抄。
+ * 第 6 步首版的样本抄自第 1 步报告 F6 那份把第 84、85 行排成一行的转述，真机上取值列表在续行、解析落了 null
+ * （M11-claude思考等级续行解析）。sha256 钉死，防止夹具日后被「整理」回转述形态。
+ */
+const CLAUDE_HELP_FIXTURE = path.join(REPO_ROOT, 'test', 'fixtures', 'claude-help-2.1.291.txt');
+const CLAUDE_HELP_SHA256 = '550db4f88ae1d97bf7244ca96dc89554aabd3978241ceb69f79001e816c35f09';
+const FIVE = ['low', 'medium', 'high', 'xhigh', 'max'];
 
-test('K1 parseEffortLevels：F6 原文、无此行、括号缺失、空串、同行多对括号取第一对、列表项不合形状', () => {
-  assert.deepEqual(parseEffortLevels(`Usage: claude\n${F6}\n  --model <m>  Model`), ['low', 'medium', 'high', 'xhigh', 'max']);
+test('K1 parseEffortLevels：单行形态（合成）、无此行、括号缺失、空串、同行多对括号取第一对、列表项不合形状', () => {
+  const oneLine = '  --effort <level>                                  Effort level for the current session (low, medium, high, xhigh, max)';
+  assert.deepEqual(parseEffortLevels(`Usage: claude\n${oneLine}\n  --model <m>  Model`), FIVE, '单行形态（合成样本，不是本机原文）');
   assert.deepEqual(parseEffortLevels('Usage: claude\n  --model <m>  Model (sonnet, opus)'), [], '没有 --effort 旗标');
   assert.equal(parseEffortLevels('  --effort <level>  Effort level for the current session'), null, '行在而括号缺失');
   assert.deepEqual(parseEffortLevels(''), []);
@@ -288,6 +298,41 @@ test('K1 parseEffortLevels：F6 原文、无此行、括号缺失、空串、同
   assert.equal(parseEffortLevels('  --effort <level>  Effort (see docs at https://x)'), null, '列表项不合形状 ⇒ 取不到，不落错枚举');
   assert.equal(parseEffortLevels('  --effort <level>  Effort ()'), null);
   assert.deepEqual(parseEffortLevels('  --effort-budget <n>  Something (a, b)'), [], '前缀相同的别的旗标不算');
+});
+
+test('K1 续行①本机原文：整份帮助文本取到五项，样本形态就是「列表在续行」', async () => {
+  const raw = await fs.readFile(CLAUDE_HELP_FIXTURE);
+  assert.equal(createHash('sha256').update(raw).digest('hex'), CLAUDE_HELP_SHA256, '夹具必须是逐字节原文');
+  const lines = raw.toString('utf8').split('\n');
+  assert.equal(lines[83], '  --effort <level>                      Effort level for the current session', '第 84 行：锚点行没有括号');
+  assert.equal(lines[84], ' '.repeat(40) + '(low, medium, high, xhigh, max)', '第 85 行：40 格缩进续行');
+  assert.match(lines[85]!, /^ {2}--environment /, '第 86 行是下一个选项');
+  assert.deepEqual(parseEffortLevels(raw.toString('utf8')), FIVE, '本机原文 ⇒ 五项');
+});
+
+test('K1 续行②续行后紧跟下一个选项：不拼进来（它的括号合形状，拼了就是错枚举）', () => {
+  const head = '  --effort <level>          Effort level for the current session\n                            set per session';
+  assert.equal(parseEffortLevels(`${head}\n  --foo <x>                 Foo (a, b)`), null, '下一个长选项的括号不拼入');
+  assert.equal(parseEffortLevels(`${head}\n  -f, --foo <x>             Foo (a, b)`), null, '下一个短旗标选项的括号不拼入');
+});
+
+test('K1 续行③续行里没有括号：空行、纯空白行、顶格行之后的括号都不拼入，落 null', () => {
+  const head = '  --effort <level>          Effort level\n                            for the current\n                            session';
+  const tail = '                            (a, b)';
+  assert.equal(parseEffortLevels(`${head}\n\n${tail}`), null, '空行即止');
+  assert.equal(parseEffortLevels(`${head}\n      \n${tail}`), null, '纯空白行即止');
+  assert.equal(parseEffortLevels(`${head}\nCommands:\n${tail}`), null, '顶格行即止');
+});
+
+test('K1 续行④第二种排版：选项名独占一行、描述在下一行缩进', () => {
+  assert.deepEqual(parseEffortLevels('  --effort <level>\n      Effort level (low, high)\n  --model <m>  Model'), ['low', 'high']);
+});
+
+test('K1 续行⑤跨行列表：括号分在两行续行上也取全', () => {
+  assert.deepEqual(
+    parseEffortLevels('  --effort <level>    Effort level\n                      (low, medium,\n                      high)\n  --model <m>  Model'),
+    ['low', 'medium', 'high'],
+  );
 });
 
 test('K2 claudeReasoningLevels：缺席 / null ⇒ unknown（理由分写），[] ⇒ none，非空 ⇒ levels', () => {
@@ -307,11 +352,11 @@ test('K3 probeClaude 零配额落盘：--no-model-calls 下也采 effort_levels�
   const bin = path.join(dir, 'claude');
   await fs.writeFile(
     bin,
-    ['#!/bin/sh', 'case "$1" in', '  --version) echo "2.1.291 (Claude Code)";;', `  --help) printf '%s\\n' 'Usage: claude' '${F6}';;`, 'esac', ''].join('\n'),
+    ['#!/bin/sh', 'case "$1" in', '  --version) echo "2.1.291 (Claude Code)";;', `  --help) cat '${CLAUDE_HELP_FIXTURE}';;`, 'esac', ''].join('\n'),
     { mode: 0o755 },
   );
   const { probe, notes } = await probeClaude(bin, { skipModelCalls: true });
-  assert.deepEqual(probe.effort_levels, ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.deepEqual(probe.effort_levels, FIVE, '假 claude 吐本机原文');
   assert.equal(probe.probed_at, null, 'probed_at 的语义是「模型段真跑过」，帮助文本这一步不刷它');
   assert.ok(notes.some((n) => /--effort 取值：low, medium, high, xhigh, max/.test(n)), notes.join('\n'));
 

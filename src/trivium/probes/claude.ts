@@ -655,22 +655,37 @@ export async function probeClaudeBin(
 /**
  * 从 `claude --help` 的文本里取 `--effort` 的取值集合（M11 第 6 步，设计 11.5「原生枚举与校验」）。纯函数。
  *
- * 本机 2.1.291 实测原文（M11 第 1 步 F6）：`--effort <level>  Effort level for the current session (low, medium, high, xhigh, max)`。
+ * 本机 2.1.291 的取值列表**折在锚点下一行的缩进续行上**（夹具 `test/fixtures/claude-help-2.1.291.txt`
+ * 第 84～85 行：锚点行只有 `--effort <level>  Effort level for the current session`，第 85 行 40 格缩进后是
+ * `(low, medium, high, xhigh, max)`）。v1.3.133 首版只看锚点行，真机落了 `null`——样本抄自第 1 步报告 F6
+ * 那份把两行排成一行的转述，没对原文核对（v1.3.134 修）。
  *
  * - 没有含 `--effort` 的行 ⇒ `[]`：该 CLI 没有这个旗标（下传会被当未知参数）；
- * - 有这一行 ⇒ 取该行**第一对**圆括号里的逗号分隔列表（计划三审 CODEX-02：厂商若在列表后追加括号说明，
+ * - 有这一行 ⇒ 先把它与**紧随其后的连续续行**拼起来（单个空格连接）：续行 = 以空白开头、去空白后非空且
+ *   不以 `-` 起头的行；遇下一个选项行、空行（含纯空白行）、顶格行或文本结束即止，只向后、不跳行；
+ * - 取拼接后文本里**第一对**圆括号里的逗号分隔列表（计划三审 CODEX-02：厂商若在列表后追加括号说明，
  *   「最后一对」会取错）；括号缺失、列表为空、或任一项不合「小写字母开头、只含小写字母数字与 `-` `_`」⇒ `null`。
  *
  * 格式一漂移就落 `null`（取不到、预检跳过并点名），**不落一个猜出来的错枚举**——后者会把合法值硬拒 64，
- * 而重跑 doctor 也自愈不了。
+ * 而重跑 doctor 也自愈不了。续行止于下一个选项，**不会越过它去拿它的括号**：本选项的锚点与续行里都没有括号
+ * 时结果是 `null`，不是下一个选项的列表。
  */
 export function parseEffortLevels(help: string): string[] | null {
-  const line = help.split(/\r?\n/).find((l) => /(^|\s)--effort(\s|=|$)/.test(l));
-  if (line === undefined) return [];
-  const open = line.indexOf('(');
-  const close = open >= 0 ? line.indexOf(')', open + 1) : -1;
+  const lines = help.split(/\r?\n/);
+  const at = lines.findIndex((l) => /(^|\s)--effort(\s|=|$)/.test(l));
+  if (at < 0) return [];
+  let text = lines[at]!;
+  for (let i = at + 1; i < lines.length; i++) {
+    const l = lines[i]!;
+    if (!/^\s/.test(l)) break; // 顶格行：段标题（`Commands:`）或顶格正文
+    const t = l.trim();
+    if (t === '' || t.startsWith('-')) break; // 空行（含纯空白行）或下一个选项行
+    text += ' ' + t;
+  }
+  const open = text.indexOf('(');
+  const close = open >= 0 ? text.indexOf(')', open + 1) : -1;
   if (open < 0 || close < 0) return null;
-  const items = line.slice(open + 1, close).split(',').map((x) => x.trim());
+  const items = text.slice(open + 1, close).split(',').map((x) => x.trim());
   if (items.length === 0 || items.some((x) => !/^[a-z][a-z0-9_-]*$/.test(x))) return null;
   return items;
 }

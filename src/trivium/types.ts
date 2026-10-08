@@ -819,7 +819,8 @@ export interface ClaudeProbe extends CommonProbe {
   project_memory_blocked: boolean | null;
   /**
    * `--effort` 的取值集合（M11 第 6 步，设计 11.5「原生枚举与校验」）：零配额跑 `claude --help`、
-   * 解析 `--effort` 行第一对圆括号里的列表（`probes/claude.ts` `parseEffortLevels`）。CLI 级、不分模型。
+   * 解析 `--effort` 行及其续行里第一对圆括号中的列表（`probes/claude.ts` `parseEffortLevels`；本机取值列表
+   * 折在续行上，v1.3.134 起拼续行）。CLI 级、不分模型。
    *
    * **四态互不合并**：
    * - **缺席** = 早于本字段的旧探针结论，没采过；
