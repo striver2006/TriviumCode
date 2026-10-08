@@ -23,3 +23,4 @@
 ## 当前已归档文件
 
 - [`GUIDE_env_setup.md`](./GUIDE_env_setup.md)：本地开发与调试指南（工具链、产物与目录、分层测试、实现纪律 §16.2、常用调试姿势、改动时的同步清单）。面向修改 TriviumCode 自身的人；只想使用请看 [`doc/07_manuals/QUICKSTART.md`](../07_manuals/QUICKSTART.md)。
+- [`GUIDE_local_pitfalls.md`](./GUIDE_local_pitfalls.md)：本机坑清单，`P-xx` 编号的唯一落点，跨里程碑持续追加——各家 CLI 与本机环境的实测行为里，与文档、常识或原先假设不符、会让编排器或验收判据出错的那一类，每条附影响与对策。M11 第 10 步（BACKLOG EV-13）从 M0 探针报告 §7 逐字搬来。

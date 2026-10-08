@@ -41,7 +41,7 @@
 
 ### 实施记录
 
-- [`../05_testing/REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md)：M0 探针本机实测报告（本机坑清单）。设计原则 P7 规定实现代码只读探针结论、不得硬编码设计文档列出的命令行，本报告是该结论的人读副本（机读副本在 `.trivium/config.local.yaml` 的 `probe:` 段，不进 Git）。
+- [`../05_testing/REPORT_2026-09-11_m0_probe.md`](../05_testing/REPORT_2026-09-11_m0_probe.md)：M0 探针本机实测报告（M0 当时的快照；`P-xx` 本机坑清单 M11 第 10 步起在 [`../04_development/GUIDE_local_pitfalls.md`](../04_development/GUIDE_local_pitfalls.md)）。设计原则 P7 规定实现代码只读探针结论、不得硬编码设计文档列出的命令行，本报告是该结论的人读副本（机读副本在 `.trivium/config.local.yaml` 的 `probe:` 段，不进 Git）。
 
 ### 受控增量规范（已定稿，效力由主设计逐条授予）
 

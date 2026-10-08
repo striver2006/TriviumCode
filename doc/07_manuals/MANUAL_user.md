@@ -921,4 +921,4 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 - [.reviews/README.md](../../.reviews/README.md)：留痕目录与命名规范
 - [PROTOCOL_dual_critic_relay.md](../03_api/PROTOCOL_dual_critic_relay.md)：Schema 与协议契约
 - [LLD_orchestrator.md](../02_design/LLD_orchestrator.md)：编排器实现说明（想改代码时读）
-- [REPORT_2026-09-11_m0_probe.md](../05_testing/REPORT_2026-09-11_m0_probe.md)：两家 CLI 的实测坑清单
+- [GUIDE_local_pitfalls.md](../04_development/GUIDE_local_pitfalls.md)：各家 CLI 与本机环境的实测坑清单（`P-xx`）

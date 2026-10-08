@@ -421,4 +421,5 @@ Claude Code 主攻时，`/dual-review-plan` 后面的提示语由 Claude Code �
 - [`doc/04_development/GUIDE_env_setup.md`](../04_development/GUIDE_env_setup.md)：本地开发与调试
 - [`doc/06_deployment/RUNBOOK_pipeline_ops.md`](../06_deployment/RUNBOOK_pipeline_ops.md)：运行期故障处置（锁、闸门、跑挂、留痕）
 - [设计文档](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：唯一实现依据
-- [M0 本机坑清单](../05_testing/REPORT_2026-09-11_m0_probe.md)：两家 CLI 的实测行为与 12 条与文档记载不符之处
+- [本机坑清单](../04_development/GUIDE_local_pitfalls.md)：各家 CLI 与本机环境的实测坑（`P-xx`）
+- [M0 探针报告](../05_testing/REPORT_2026-09-11_m0_probe.md)：M0 当时的实测快照，含 12 条与文档记载不符之处

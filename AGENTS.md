@@ -182,7 +182,7 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
 | JSON Schema（含新增一份） | `parse` / `gate` / `meta` 校验、`doc/03_api/PROTOCOL_dual_critic_relay.md`、`skills/dual-critic/SKILL.md`、**本文件的契约面描述**、`registry-parity` 的 schema 扫描盯防点 |
 | CLI 参数或退出码 | `USAGE` 字符串、PROTOCOL 文档、相关命令契约（`skills-src/commands/`，改后 `npm run render`） |
 | 入口命令的措辞、护栏、参数写法 | 改 `skills-src/`（契约 / 片段 / 载体），`npm run render` 重出四家产物并一起提交；`entry-render-parity` 契约测试校验零漂移 |
-| 探针项 | 设计 §3.5 清单与 `doc/05_testing/REPORT_2026-09-11_m0_probe.md`（M0 坑清单） |
+| 探针项 | 设计 §3.5 清单与 `doc/04_development/GUIDE_local_pitfalls.md`（本机坑清单 `P-xx`；M0 当时的实测快照在 `doc/05_testing/REPORT_2026-09-11_m0_probe.md`） |
 | 新增测试报告（或其它带「当前已归档文件」一节的 `doc/` 目录下的文档） | 同批进该目录 README 的「当前已归档文件」一节；条目形态与顺序口径见 `doc/05_testing/README.md` 的规范句，判定以 `test/helpers/doc-archive-index.ts` 为准，`doc-archive-index` 契约测试对账 |
 | BRIEF 段落 | 八段结构是契约，只并入现有段，不得增删段号；v1.3.88 起第 8 段之后可带一个不编号附录（目前只有计划阶段的任务目标原文），见设计 §9.4 |
 

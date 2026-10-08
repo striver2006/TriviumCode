@@ -2,8 +2,9 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.1.54
+> - **当前版本**：v1.1.55
 > - **状态**：草稿(Draft)
+> - **变更说明**：v1.1.55（2026-10-08）随设计 v1.3.138（M11 第 10 步第一批：`P-xx` 本机坑清单搬家，EV-13）同步：「八、往下读」的坑清单条目改指 `doc/04_development/GUIDE_local_pitfalls.md`，M0 探针报告只作 C-xx 冲突项的出处；原句「18 个实测坑」是 M0 当时的计数，一并去掉。
 > - **变更说明**：v1.1.54（2026-10-08）随设计 v1.3.135（M11 第 7 步：复盘报告按 Driver 与审核者两个维度聚合）同步：模块表 `report.ts` 补「原稿与裁决件按该轮 run.json 的 driver 排除 / 定位，双维度聚合与第四节思考等级两列（设计 13.2.1）」；`meta.ts` 补「`readRunMetaDetailed` 成功分支带 `sourceSchema`，供复盘标出 run.v1 迁移轮次」；`report.ts` 行的入口名由 `buildReport()` 改准为 `buildTopicReport()`（旧错，代码三审 AGY-03）。行数列未重核。
 > - **变更说明**：v1.1.53（2026-10-08）随设计 v1.3.133（M11 第 6 步：思考等级透传与留痕接线）同步：3.3 准备阶段补「可用性检查之前逐侧解析一次档位（`resolveTier`），同一结果喂可用性检查的厂商 profile 与请求构造」；模块表 `adapters/base.ts` 补必填钩子 `effortReadback`（生效思考等级只从回读结果派生）与 `availability` 的可选入参 `vendorProfiles`；`probes/claude.ts` 补 `effort_levels`（零配额解析 `--help`）。行数列未重核。
 > - **变更说明**：v1.1.52（2026-10-08）随设计 v1.3.132（M11 第 5 步：档位命令行旗标）同步：模块表补 `tier-flags.ts`（三类档位旗标的收集、键校验、取值校验与合并，`cli.ts` / `topic-args.ts` 共用；键判定参数化后仍住在 `critics.ts` 的 `assertCriticFlagKeys`）；`cli.ts` 行补一句。行数列未重核。
@@ -717,6 +718,6 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 - [PROTOCOL_dual_critic_relay.md](../03_api/PROTOCOL_dual_critic_relay.md)：四份 Schema、BRIEF 八段、漂移算法的**契约定义**
 - [设计文档](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：唯一实现依据，§18.1 有 8 项仍未拍板的决策
 - [ADR_001_isolation_mode.md](./ADR_001_isolation_mode.md)：为什么选就地审查而非镜像树
-- [REPORT_2026-09-11_m0_probe.md](../05_testing/REPORT_2026-09-11_m0_probe.md)：两家 CLI 的 18 个实测坑与 12 条与厂商文档不符之处
+- [GUIDE_local_pitfalls.md](../04_development/GUIDE_local_pitfalls.md)：各家 CLI 与本机环境的实测坑（`P-xx`）；M0 当时与厂商文档不符的 12 条见 [REPORT_2026-09-11_m0_probe.md](../05_testing/REPORT_2026-09-11_m0_probe.md) §8
 - [BACKLOG.md](../08_project/BACKLOG.md)：技术债唯一事实源
 - [MANUAL_user.md](../07_manuals/MANUAL_user.md)：使用手册
