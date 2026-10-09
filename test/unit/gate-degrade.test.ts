@@ -8,7 +8,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { checkAdjudication, loadRoundReviews, renderGateResult } from '../../src/trivium/gate.js';
-import { newRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
+import { writeRunMeta } from '../../src/trivium/meta.js';
+import { historicalRunMeta } from '../helpers/legacy-run-meta.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { writeArtifact, writeMeta, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { CRITIC_VENDOR, type CriticId, type Finding, type Review, type RunMeta } from '../../src/trivium/types.js';
@@ -168,7 +169,7 @@ test('G6 有降级意见 ⇒ degraded_findings 告警列全编号，并说清不
 // ── loadRoundReviews：降级编号的来源与旧留痕重试（计划 r2 §3.4、§3.6） ──
 
 function runMeta(runId: string, critics: Partial<Record<CriticId, Partial<RunMeta['critics'][CriticId]>>>): RunMeta {
-  const m = newRunMeta({
+  const m = historicalRunMeta({
     runId, topic: TOPIC, stage: 'plan', rerunIndex: 1, command: 'x', promptHint: null, taskGoal: null,
     criticsSelected: Object.keys(critics) as CriticId[], treeHash: 'h', gitHead: null, dirty: false,
     subjectSha256: 's', denyPaths: [], driftPolicy: 'warn',

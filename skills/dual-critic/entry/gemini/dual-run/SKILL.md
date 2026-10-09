@@ -4,7 +4,7 @@ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → �
 ---
 
 参数：本载体**不替换**参数占位符。参数就是用户随本命令给出的全部文本（跟在命令名后面，或被载体标成「User request」的那一段）；
-下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-glm <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-glm <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-glm <值>] [--profile-codex <名>] [--critics <id,…>] [--only claude|codex|glm] [--allow-single]`
+下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-glm <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-glm <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-glm <值>] [--profile-claude <名>] [--native-claude] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--critics <id,…>] [--only claude|codex|glm] [--allow-single]`
 
 **只在用户显式调用本命令时执行。** 本载体没有「禁止模型自行调用」的开关：你若是自己读到这份说明、
 而用户并没有调用本命令，不要执行其中任何一步。
@@ -58,9 +58,10 @@ S0 这个标签不再使用。
 - `topic` / `topic_inferred`：主题名。未显式 `--topic` 时由任务目标推导——**这里先不停下来确认**，
   等 S0.6 预检通过后再回显给用户确认（预检失败的话，这一轮确认就白费了）；
 - `task_goal`：透传给 S2/S6 的 `--goal`；
+- `driver_model` / `driver_provider`：本轮会话声明，非空分别透传为 `--driver-model` / `--driver-provider`；S0.6、S2、S6 使用同一份，null 不传，不推断当前模型。
 - `prompt_hint`：非空时透传给 S2/S6 的 `--focus`，为空则省略；
 - `context_paths` / `models` / `profile`：分别透传给 `--context`、对应审核者的 `--model-<审核者 id>`（`--model-claude` / `--model-codex` / `--model-glm`）、`--profile`；
-- `tiers` / `efforts` / `vendor_profiles`（M11 第 5 步）：分别透传给对应审核者的 `--tier-<审核者 id>`（`--tier-claude` / `--tier-codex` / `--tier-glm`）、`--effort-<审核者 id>`（`--effort-claude` / `--effort-codex` / `--effort-glm`）、`--profile-<审核者 id>`（`--profile-codex`）；思考等级与厂商 profile 随请求下传给各家，档位名与来源记入留痕（M11 第 6 步）。取值不合法（枚举外、该侧没有这个概念、厂商 profile 不在本机名单）由预检退 64——照样原样传，不要自行去掉，拒绝由编排器给出；
+- `tiers` / `efforts` / `vendor_profiles`（M11 第 5 步）：分别透传给对应审核者的 `--tier-<审核者 id>`（`--tier-claude` / `--tier-codex` / `--tier-glm`）、`--effort-<审核者 id>`（`--effort-claude` / `--effort-codex` / `--effort-glm`）、`--profile-<审核者 id>`（`--profile-claude` / `--profile-codex`）；思考等级与厂商 profile 随请求下传给各家，档位名与来源记入留痕（M11 第 6 步）。取值不合法（枚举外、该侧没有这个概念、厂商 profile 不在本机名单）由预检退 64——照样原样传，不要自行去掉，拒绝由编排器给出； 接入字段缺席表示继承；vendor_profiles 中显式 null 必须传 --native-<审核者 id>，非空传 --profile-<审核者 id>，同侧不同时传。
 - `critics`：本轮**入选的审核者集合，计划审与代码审两轮共用这一组**。S0.6、S2、S6 都把 resolve 输出的 `critics`
   用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；
 - `allow_single`：为 true 时 S2、S6 都加 `--allow-single`（用户显式要求的降级：一侧失败时不中止，§12.4）。
@@ -79,12 +80,13 @@ S0 这个标签不再使用。
 ### S0.6 预检（在解析之后）
 
 ```
-TV preflight --stage all --driver gemini --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] [--tier-<审核者 id> <档> …] [--effort-<审核者 id> <值> …] [--profile-<审核者 id> <名> …] --json
+TV preflight --stage all --driver gemini --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] [--tier-<审核者 id> <档> …] [--effort-<审核者 id> <值> …] [--profile-<审核者 id> <名> …] --json [--native-<审核者 id>] [--driver-model <模型>] [--driver-provider <供应商>]
 ```
 
 - `--critics`：S0.5 的 `critics` 用逗号连接，**无条件传**；
-- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；
+- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`； 接入字段缺席表示继承；vendor_profiles 中显式 null 必须传 --native-<审核者 id>，非空传 --profile-<审核者 id>，同侧不同时传。
 - **这几样必须与 S2 / S6 传的是同一组**，都取自 S0.5 的输出，不要各拼各的。
+- 本载体可透传的接入旗标： [--profile-claude <名>] [--native-claude] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>]；显式原生不得漏传成继承。
 
 `--stage all` 是命令 A 专用的范围：它校验**全部三个阶段**入选各侧的模型 slug，
 并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
@@ -114,12 +116,13 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运�
 写错后缀会在那一步退 65（找不到被审对象），比闸门报得还早。
 
 ### S2 计划双审
+Driver 会话声明使用 S0.5 的 `driver_model` / `driver_provider`，非空分别透传 `--driver-model` / `--driver-provider`。
 按 `/dual-review-plan` 的第 3 步执行 `--start` / `--wait` 循环，但：
 - **`--entry A`** 替代那里的 `--entry B`——它标记这轮由命令 A 发起，并让编排器接受省略 `--focus`；
 - `--goal` 传 S0.5 的 `task_goal`（它在这里落进 `task.json`，之后 S6、乃至后续 bug 定位都会
   自动复用，审查员才知道这次改动要达成什么，§9.4）；
 - `--focus` 传 S0.5 的 `prompt_hint`，为空则不传；`--context` 传 `context_paths`；
-- `--profile` 传 S0.5 的 `profile`，为空则不传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；
+- `--profile` 传 S0.5 的 `profile`，为空则不传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`； 接入字段缺席表示继承；vendor_profiles 中显式 null 必须传 --native-<审核者 id>，非空传 --profile-<审核者 id>，同侧不同时传。
 - `--critics` 传 S0.5 的 `critics`（逗号连接），**无条件传**；`allow_single` 为 true 时加 `--allow-single`；
   **不要传 `--only`**（理由见 S0.5）：两个旗标同时递给 `--start` 会被判互斥退 64；
 - **`--driver gemini` 照带**（与 S0.5 / S0.6 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
@@ -131,7 +134,7 @@ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运�
 文本消息，再发下一次 `--wait`」在 S2 / S6 里同样是硬要求——命令 A 的链路更长，
 用户等得更久，漏掉播报的代价比命令 B/C/D 还大。
 
-**本命令收到的模型覆盖（`--model-claude` / `--model-codex` / `--model-glm`）、档位（`--profile`）、档位旗标（`--tier-claude` / `--tier-codex` / `--tier-glm`、`--effort-claude` / `--effort-codex` / `--effort-glm` 与厂商 profile 旗标（`--profile-codex`））、入选集合（`--critics`）
+**本命令收到的模型覆盖（`--model-claude` / `--model-codex` / `--model-glm`）、档位（`--profile`）、档位旗标（`--tier-claude` / `--tier-codex` / `--tier-glm`、`--effort-claude` / `--effort-codex` / `--effort-glm` 与厂商 profile 旗标（`--profile-claude` / `--profile-codex`））、入选集合（`--critics`）
 与降级许可（`--allow-single`）要一并传下去。** S2/S6 是委托执行，交接处最容易把它们丢掉：
 - 模型覆盖与档位一丢，就静默回退到配置里的 `active_profile`，留痕里记的是回退后的模型；
 - 档位旗标一丢，就静默回到档位表与 `default_tier` 的取值——用户选的档、指定的思考等级与厂商 profile 都消失（留痕里记的是回落后的档位与来源，看起来一切正常）；
@@ -169,6 +172,7 @@ S5 编码依据的「已批准的修订计划」就是这份新一轮计划（�
 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
 
 ### S6 代码双审
+Driver 会话声明继续使用 S0.5 的 `driver_model` / `driver_provider`，逐项透传 `--driver-model` / `--driver-provider`；null 不传。
 同 S2（`--entry A`、`--driver gemini`，含 `--goal` / `--focus` / `--context` / `--profile` / `--critics` / `--allow-single` / 模型覆盖 / 档位旗标（`--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`）的透传——
 入选集合用的仍是 S0.5 那一组，S2 里某侧失败过也照样传它），但 `--stage code`，
 按 `/dual-review-code` 的第 3 步执行。被审对象是 `git diff`，不是文档。

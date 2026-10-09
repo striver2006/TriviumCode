@@ -1652,7 +1652,7 @@ export async function verifyRoundForApproval(i: ApprovalCheckInput): Promise<App
     throw new TriviumError(
       EXIT.MISSING_ARTIFACT,
       `${stage} 阶段 run ${runId}（来源：${i.runIdSource}）：${APPROVAL_CHECK_META_UNREADABLE}` +
-        '（文件缺失、内容损坏，或不合 run.v1/v2 契约）。\n' +
+        '（文件缺失、内容损坏，或不合 run.v1/v2/v3 契约）。\n' +
         `  本次判定：${describeRunMetaCause(read.cause)}。\n` +
         i.recovery.unreadableRunMeta,
     );

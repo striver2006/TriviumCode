@@ -172,6 +172,8 @@ export interface WriteArtifactInput {
   role: Role;
   /** 谁在写——用于角色后缀硬约束校验 */
   writer: 'driver' | CriticId;
+  /** 非缺省 Driver 的原稿与裁决件必须显式带当轮身份。 */
+  driver?: AgentId;
   kind?: DispositionKind | null;
   rerunIndex: number;
   content: string;
@@ -201,7 +203,7 @@ export async function writeArtifact(input: WriteArtifactInput): Promise<WrittenA
   const kind = input.kind ?? null;
   const date = input.date ?? localDate();
 
-  if (!roleIsAllowedForWriter(writer, role)) {
+  if (!roleIsAllowedForWriter(writer, role, input.driver)) {
     throw new Error(
       `角色后缀违规：${writer} 不得产出 -${role}.md（设计 §6.2 / PRD 6.3）。` +
         `审查员不得产出 claude 后缀，Driver 不得产出 gemini/glm 后缀。`,
@@ -214,7 +216,7 @@ export async function writeArtifact(input: WriteArtifactInput): Promise<WrittenA
 
   let n = input.rerunIndex;
   for (let i = 0; i < MAX_BUMP; i++) {
-    const fileName = buildArtifactName({ date, topic: layout.topic, rerunIndex: n, kind, role });
+    const fileName = buildArtifactName({ date, topic: layout.topic, rerunIndex: n, kind, role }, input.driver);
     const absPath = path.join(dir, fileName);
     try {
       await createExclusive(absPath, content);
@@ -499,6 +501,7 @@ export interface RecordedRun {
  * 审查阶段（plan / code / bug）：
  *   trivium.run.v1  → v1 校验器（历史契约，按写入时的规范解读）
  *   trivium.run.v2  → v2 校验器
+ *   trivium.run.v3  → v3 校验器（当前写形）
  *   其余（含缺失）   → 不可读
  *
  * verify 阶段：
@@ -535,9 +538,9 @@ export function runManifestProblem(
     if (meta.schema === 'trivium.run.v1') return null;
     return `verify 阶段不认识的 schema：${JSON.stringify(meta.schema)}`;
   }
-  if (meta.schema === 'trivium.run.v2') {
+  if (meta.schema === 'trivium.run.v2' || meta.schema === 'trivium.run.v3') {
     const problems = validateRunMeta(meta);
-    return problems.length > 0 ? `不符合 trivium.run.v2：${problems.join('；')}` : null;
+    return problems.length > 0 ? `不符合 ${meta.schema}：${problems.join('；')}` : null;
   }
   if (meta.schema === 'trivium.run.v1') {
     const problems = validateRunMetaV1(meta);

@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
+import { scratchDir } from '../helpers/scratch.js';
+import { after } from 'node:test';
 import path from 'node:path';
 import YAML from 'yaml';
 import { resolveTier, type TierResolution } from '../../src/trivium/adapters/base.js';
@@ -20,6 +22,12 @@ import type { Config, CriticId, Stage, StageModel, TierEntry, TierName } from '.
  */
 
 const STAGES: readonly Stage[] = ['plan', 'code', 'bug'];
+// 名称校验读取真实文件清单；隔离 HOME，不依赖开发者机器上的 profile。
+const originalCodexHome = process.env['CODEX_HOME'];
+const profileHome = await scratchDir('trivium-profile-names-');
+for (const name of ['qwen', 'kimi', 'deepseek']) await fs.writeFile(path.join(profileHome, `${name}.config.toml`), '# 离线名称夹具\n');
+process.env['CODEX_HOME'] = profileHome;
+after(() => { if (originalCodexHome === undefined) delete process.env['CODEX_HOME']; else process.env['CODEX_HOME'] = originalCodexHome; });
 
 type Agents = Record<string, Record<string, unknown>>;
 function cfgOf(mut: (c: Config, agents: Agents) => void = () => {}): Config {
@@ -169,7 +177,7 @@ test('R9 厂商 profile 三层次序：命令行 > 档位条目 > agents.<id>.pr
   assert.equal(resolveTier(c, 'codex', 'plan').vendorProfile, 'deepseek');
   assert.equal(resolveTier(c, 'codex', 'code').vendorProfile, 'qwen');
   assert.equal(resolveTier(c, 'codex', 'code').origin.vendorProfile, 'agent');
-  for (const id of ['gemini', 'glm', 'claude']) {
+  for (const id of ['gemini', 'glm']) {
     const r = resolveTier(c, id as CriticId, 'plan', { vendorProfile: 'kimi' });
     assert.equal(r.vendorProfile, null, `${id} 没有厂商 profile 概念`);
     assert.equal(r.origin.vendorProfile, null);
@@ -237,7 +245,7 @@ test('H1 codex 钩子：按厂商 profile 取逐模型枚举；无 profile 取�
   assert.equal(codex.reasoningLevelsFor!(c, 'q2', 'qwen').kind, 'unknown', '空枚举校验不了任何值');
   assert.equal(codex.reasoningLevelsFor!(c, 'q1', 'deepseek').kind, 'unknown', '该 profile 没采到');
   c.probe.cli.codex!.profiles = ['qwen', 'kimi'];
-  assert.deepEqual(codex.vendorProfilesFor!(c), ['qwen', 'kimi']);
+  assert.deepEqual(codex.vendorProfilesFor!(c).sort(), ['deepseek', 'kimi', 'qwen'], '本机文件清单优先于过期探针名单');
 });
 
 test('H2 agy 钩子：带后缀 ⇒ slug 已编码档位；不带后缀 ⇒ 由目录里的变体派生；没有变体 ⇒ unknown', () => {
@@ -345,11 +353,11 @@ test('C2 永久判据：枚举外 effort、名单外 profile、无思考等级�
   assert.doesNotMatch(enumBad.detail, /第 6 步|过渡/, '过渡闸已拆（M11 第 6 步），只剩永久判据的真病因');
 
   const profBad = checkTierCombos(comboCfg((c) => {
-    setTiers(c, 'codex', { high: { model: 'kimi-for-coding', profile: 'kimi' } });
+    setTiers(c, 'codex', { high: { model: 'kimi-for-coding', profile: '__missing__' } });
     setCell(c, 'codex', 'plan', { tier: 'high' });
   }), 'plan', {}, ['codex']);
   assert.equal(profBad.ok, false);
-  assert.match(profBad.detail, /厂商 profile「kimi」不在本机名单中。可用：qwen, deepseek/);
+  assert.match(profBad.detail, /厂商 profile「__missing__」不在本机名单中/);
 
   // schema 够不着档位表格子：glm 写 {model, effort} 能过 schema，由这里拒（AGY-02 / GLM-02）
   const glm = checkTierCombos(comboCfg((c) => setCell(c, 'glm', 'plan', { model: 'GLM-5.3', effort: 'high' })), 'plan', {}, ['glm']);
@@ -410,8 +418,7 @@ test('C5 / T2 取不到就跳过并点名：旧探针无枚举时 effort 不做�
     setCell(c, 'codex', 'plan', { tier: 'high' });
   }), 'plan', {}, ['codex']);
   assert.equal(emptyNames.ok, true, emptyNames.detail);
-  assert.equal(emptyNames.warn, true);
-  assert.match(emptyNames.detail, /未实际校验：OpenAI Codex（本机厂商 profile 名单为空）|未实际校验：.*名单为空/);
+  assert.equal(emptyNames.warn, undefined, '本机存在 qwen，旧探针名单为空不造成跳过校验');
 });
 
 test('C6 / T3 gemini：原过渡残余告警反转为不告警（档位没写 effort 即不下传）；slug 已编码档位再给 effort 仍告警（永久）', () => {
@@ -490,15 +497,15 @@ test('F4 永久判据不随过渡闸拆除：--effort 枚举外报枚举；--pro
   assert.match(enumBad.detail, /「xhigh」不在模型「qwen3\.8-flash」的原生枚举中。可用值：low, medium, high/);
   assert.doesNotMatch(enumBad.detail, /第 6 步|过渡/);
 
-  const nameBad = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { vendorProfile: 'kimi' } });
+  const nameBad = checkTierCombos(flagCfg(), 'plan', {}, ['codex'], { codex: { vendorProfile: '__missing__' } });
   assert.equal(nameBad.ok, false);
-  assert.match(nameBad.detail, /厂商 profile「kimi」不在本机名单中。可用：qwen, deepseek/);
+  assert.match(nameBad.detail, /厂商 profile「__missing__」不在本机名单中/);
 
   const empty = flagCfg();
   empty.probe.cli.codex!.profiles = [];
   const skipped = checkTierCombos(empty, 'plan', {}, ['codex'], { codex: { vendorProfile: 'qwen' } });
   assert.equal(skipped.ok, true, skipped.detail);
-  assert.match(skipped.detail, /名单为空/);
+  assert.doesNotMatch(skipped.detail, /名单为空/, '名称从真实文件读取');
 });
 
 test('F5 gemini 的 slug 已编码档位：--effort-gemini 只告警不生效、不退 64（计划三审 GLM-02）', () => {

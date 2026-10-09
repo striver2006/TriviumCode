@@ -83,10 +83,10 @@ test('T3 resolve 输出照抄进 preflight：通过，且不再念留痕空窗�
  * override_reason 认得 `--tier-gemini`——不认就会归因成「档位表默认模型」，把命令行的选择记到配置头上。
  * 旧形状交接文件（不带 tierFlags）由其余全部 worker 用例覆盖：没写档位旗标时交接文件不含这个键。
  */
-test('T5 --tier 选出的同族模型：override_reason 认得 --tier（worker 经交接文件拿到档位旗标）', { skip: bundleMissing && bundleSkipReason }, async () => {
+test('T5 --tier 与Driver声明跨worker保留，同族按声明与回读判定', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   await withGeminiTier(fx.root, 'claude-tier-x');
-  const r = await cli(fx.root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--critics', 'gemini,glm', '--tier-gemini', 'low', '--json'], STUB);
+  const r = await cli(fx.root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--critics', 'gemini,glm', '--tier-gemini', 'low', '--driver-model', 'claude-4.5', '--json'], STUB);
   assert.equal(r.code, EXIT.OK, r.stdout + r.stderr);
   const runId = parse<{ run_id: string }>(r.stdout).run_id;
   let code: number = EXIT.FAIL;
@@ -97,10 +97,10 @@ test('T5 --tier 选出的同族模型：override_reason 认得 --tier（worker �
   assert.equal(code, EXIT.OK, `运行没有正常结束（退 ${code}）`);
   const meta = JSON.parse(await fs.readFile(path.join(fx.stageDir, '_meta', `run-${runId}.json`), 'utf8')) as {
     profile?: string;
-    critics: Record<string, { heterogeneous?: boolean; override_reason?: string | null; tier?: string | null; tier_source?: string | null }>;
+    critics: Record<string, { heterogeneous?: string; override_reason?: string | null; tier?: string | null; tier_source?: string | null }>;
   };
-  assert.equal(meta.critics['gemini']?.heterogeneous, false, '前提：档位模型与当轮 Driver 同族');
-  assert.match(meta.critics['gemini']?.override_reason ?? '', /用户经 --tier-gemini low 选出了与当轮 Driver（.+）同族的模型/);
+  assert.equal(meta.critics['gemini']?.heterogeneous, 'same-family', '前提：回读模型与 Driver 声明同族');
+  assert.match(meta.critics['gemini']?.override_reason ?? '', /claude/);
   // M11 第 6 步：留痕空窗补上——档位名与来源入档；没选档的一侧照实记裸 slug 的 legacy
   assert.equal(meta.critics['gemini']?.tier, 'low');
   assert.equal(meta.critics['gemini']?.tier_source, 'cli');

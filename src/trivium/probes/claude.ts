@@ -32,6 +32,7 @@
  */
 import path from 'node:path';
 import os from 'node:os';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { run, tryRun } from '../util/exec.js';
 import { exists, sha256 } from '../util/fsx.js';
 import {
@@ -66,6 +67,24 @@ import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents, type ClaudeTrace } from '../ada
  * 方向 probes → adapters 与 `claude-trace` 的先例相同；反向（adapters → probes）仍禁止。
  */
 import { buildDenySettings, denyRuleShapeOf, readSchemaJson } from '../adapters/claude.js';
+import { claudeRouteEnv, type ClaudeRoute } from '../adapters/claude-route.js';
+
+const routeContext = new AsyncLocalStorage<{ route: ClaudeRoute; model: string | null; effort: string | null }>();
+/** 一轮探针独占上下文；并行 doctor 的路线与参数互不串用。 */
+export function withClaudeProbeRoute<T>(route: ClaudeRoute, model: string | null, effort: string | null, fn: () => Promise<T>): Promise<T> {
+  return routeContext.run({ route, model, effort }, fn);
+}
+
+function routeInvocation(bin: string, argv: string[]): { bin: string; argv: string[]; env: Record<string, string | undefined> } {
+  const ctx = routeContext.getStore();
+  const args = argv.map(arg => arg === '-p' ? '--print' : arg);
+  if (ctx) {
+    const at = args.indexOf('--model');
+    if (at >= 0 && ctx.model !== null) args[at + 1] = ctx.model;
+    if (ctx.effort !== null) args.push('--effort', ctx.effort);
+  }
+  return { bin: ctx?.route.bin ?? bin, argv: [...(ctx?.route.prefix ?? []), ...args], env: ctx?.route.env ?? claudeRouteEnv(null) };
+}
 
 /** 探针模型：探能力不探质量，挑最便宜的一档 */
 const PROBE_MODEL = 'claude-haiku-4-5-20251001';
@@ -626,6 +645,7 @@ export function judgeProjectMemoryBlocked(o: {
 export async function probeClaudeBin(
   configured: string | null,
 ): Promise<{ bin: string | null; version: string | null }> {
+  if (configured && !(await exists(configured))) return { bin: null, version: null };
   const candidates = [
     configured,
     path.join(os.homedir(), '.local/bin/claude'),
@@ -647,7 +667,8 @@ export async function probeClaudeBin(
   if (!bin) return { bin: null, version: null };
 
   // 输出形如 `2.1.270 (Claude Code)`
-  const v = await run(bin, ['--version'], { timeoutMs: 60_000 });
+  const route = routeContext.getStore()?.route;
+  const v = await run(route?.bin ?? bin, [...(route?.prefix ?? []), '--version'], { timeoutMs: 60_000, env: route?.env ?? claudeRouteEnv(null) });
   const m = v.code === 0 ? /(\d+\.\d+\.\d+)/.exec(v.stdout) : null;
   return { bin, version: m?.[1] ?? null };
 }
@@ -696,7 +717,8 @@ export function parseEffortLevels(help: string): string[] | null {
  */
 async function probeClaudeEffortLevels(bin: string): Promise<string[] | null> {
   try {
-    const r = await run(bin, ['--help'], { timeoutMs: 60_000, stdin: '', killTree: true });
+    const route = routeContext.getStore()?.route;
+    const r = await run(route?.bin ?? bin, [...(route?.prefix ?? []), '--help'], { timeoutMs: 60_000, stdin: '', killTree: true, env: route?.env ?? claudeRouteEnv(null) });
     if (r.code !== 0 || r.timedOut) return null;
     return parseEffortLevels(r.stdout + '\n' + r.stderr);
   } catch {
@@ -746,7 +768,9 @@ async function execArgv(
   argv: string[],
   overrideTimeoutMs?: number,
 ): Promise<ClaudeTrace & { timedOut: boolean; raw: string; exitCode: number | null; stderr: string }> {
-  const r = await run(bin, argv, {
+  const invocation = routeInvocation(bin, argv);
+  const r = await run(invocation.bin, invocation.argv, {
+    env: invocation.env,
     timeoutMs: overrideTimeoutMs ?? PROBE_TIMEOUT_MS,
     cwd: fx.root,
     stdin: '',
@@ -831,7 +855,9 @@ async function probeStreamVerboseBinding(
    */
   if (!positiveControlOk) return null;
 
-  const r = await run(bin, verboseNegativeControlArgs(), {
+  const invocation = routeInvocation(bin, verboseNegativeControlArgs());
+  const r = await run(invocation.bin, invocation.argv, {
+    env: invocation.env,
     timeoutMs: PROBE_TIMEOUT_MS, cwd: fx.root, stdin: '', killTree: true,
   });
   return judgeVerboseBinding({
@@ -1254,7 +1280,9 @@ export async function probeClaude(
     probe.session_id_source = read.sessionId
       ? '每条事件的 session_id 字段（--session-id 可由调用方指定）'
       : null;
-    probe.model_flag = read.init ? read.init.model === PROBE_MODEL : null;
+    // profile 探针实际覆盖了模型，判据必须与送入子进程的组合一致。
+    const selectedModel = routeContext.getStore() ? routeContext.getStore()!.model : PROBE_MODEL;
+    probe.model_flag = read.init && selectedModel !== null ? read.init.model === selectedModel : null;
     /*
      * 信任提示：全新目录里首跑若需人工信任，进程会卡住或报错而拿不到结果。
      * 跑通即说明不需要——这条要如实记，因为「需要」会让该侧对新克隆的仓库不可用。

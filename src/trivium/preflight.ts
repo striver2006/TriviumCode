@@ -13,6 +13,7 @@
  */
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { promises as fs, constants as fsConstants } from 'node:fs';
 import type { AuthCacheEntry, CommonProbe, Config, CriticId, Ctx, Stage } from './types.js';
 import { DEFAULT_CRITICS, STAGES } from './types.js';
@@ -22,6 +23,7 @@ import {
   deprecatedConfigNotice,
   patchProbe,
   probeIsFresh,
+  cliProbeIsFresh,
   staleCliProbes,
 } from './config.js';
 import { WORKER_HEARTBEAT_MS, staleThresholdWithinHeartbeat } from './status.js';
@@ -32,6 +34,7 @@ import {
   type AdapterContext,
   type AdapterTable,
   type AuthProbe,
+  type AuthCombination,
   type CriticAdapter,
   type ReasoningLevels,
   type TierResolution,
@@ -90,10 +93,12 @@ export interface PreflightResult {
   /** 第一个失败项决定退出码 */
   exitCode: number;
   /** 通过后待写入的探活缓存（失败时不写——AC-16） */
-  pendingAuthCache: Partial<Record<CriticId, AuthCacheEntry>>;
+  pendingAuthCache: Record<string, AuthCacheEntry>;
 }
 
 export interface PreflightOptions {
+  driverModel?: string | null;
+  driverProvider?: string | null;
   ctx: Ctx;
   scope: PreflightScope;
   /** 本次实际生效的模型覆盖，用于按「实际生效值」校验 slug（GLM-01） */
@@ -193,9 +198,10 @@ function checkProbeFreshness(cfg: Config): CheckResult {
 async function readCliVersion(
   cfg: Config,
   probe: CommonProbe,
+  invocation?: { bin: string | null; prefix: string[]; env: Record<string, string | undefined> },
 ): Promise<{ version: string | null } | { unverifiable: string }> {
   const vp = probe.version_probe;
-  const entry = probe.entrypoint;
+  const entry = invocation ? invocation.bin : probe.entrypoint;
   if (!vp || !entry) return { unverifiable: '探针结论未记录取版本的方式' };
 
   /*
@@ -227,8 +233,8 @@ async function readCliVersion(
   }
 
   const runner = vp.runner === 'node' ? (cfg.runtime.node ?? process.execPath) : entry;
-  const args = vp.runner === 'node' ? [entry, ...vp.args] : vp.args;
-  const r = await run(runner, args, { timeoutMs: 60_000 });
+  const args = vp.runner === 'node' ? [entry, ...vp.args] : [...(invocation?.prefix ?? []), ...vp.args];
+  const r = await run(runner, args, { timeoutMs: 60_000, ...(invocation ? { env: invocation.env } : {}) });
   if (r.code !== 0) return { version: null };
   if (!re) return { version: r.stdout.trim() };
   return { version: re.exec(r.stdout)?.[1] ?? null };
@@ -251,6 +257,7 @@ async function readCliVersion(
 async function checkCliVersions(
   cfg: Config,
   critics: readonly CriticId[] = DEFAULT_CRITICS,
+  opts?: PreflightOptions,
 ): Promise<CheckResult[]> {
   const out: CheckResult[] = [];
   const unverifiable: string[] = [];
@@ -271,11 +278,33 @@ async function checkCliVersions(
   );
 
   for (const cliName of ALL_CLI_NAMES) {
-    const probe = cfg.probe.cli[cliName];
+    const rootProbe = cfg.probe.cli[cliName];
     // 没探过的 CLI 不在这里报——`checkProbeFreshness` 已经统一点过名了，
     // 这里再报一遍会把「没探过」说成「不可调用」，是两回事。
-    if (!probe?.probed_at) continue;
+    if (!rootProbe) continue;
     const selected = selectedCli.has(cliName);
+    if (!selected && !rootProbe.probed_at) continue;
+    const id = agentByCliName(cliName)?.id;
+    const adapter = id ? (opts?.adapters ?? realAdapters())[id] : undefined;
+    const cli = mergeCliOverrides(opts?.modelOverrides ?? {}, opts?.tierFlags);
+    const profiles = selected && id && adapter?.probeFor
+      ? [...new Set(scopeStages(opts?.scope ?? 'all').map(stage => resolveTier(cfg, id, stage, cli[id] ?? {}).vendorProfile))]
+      : [null];
+    for (const profile of profiles) {
+    const probe = selected && adapter?.probeFor ? adapter.probeFor(cfg, profile) : rootProbe;
+    if (!probe?.probed_at) {
+      if (!selected || !adapter?.probeFor) continue;
+      out.push({ name: `${cliName} 路线探针`, ok: false, exitCode: EXIT.ENV,
+        detail: `所选路线 ${profile ?? 'native'} 没有有效探针，请显式指定同一路线重跑 doctor。` });
+      continue;
+    }
+    if (selected && !cliProbeIsFresh({ ...cfg, probe: { ...cfg.probe,
+      cli: { ...cfg.probe.cli, [cliName]: probe } } }, cliName)) {
+      out.push({ name: `${cliName} 路线探针新鲜度`, ok: false, exitCode: EXIT.ENV,
+        detail: `所选路线 ${profile ?? 'native'} 的能力探针已过期，请显式指定同一路线重跑 doctor。` });
+      continue;
+    }
+    const invocation = selected ? adapter?.versionInvocationFor?.(cfg, profile) : undefined;
 
     const label = agentByCliName(cliName)?.display ?? cliName;
     /** 未入选侧的坏消息只报为 note：说出来有价值，但不该让没选它的运行失败 */
@@ -284,7 +313,7 @@ async function checkCliVersions(
         ? { name, ok: false, exitCode: EXIT.ENV, detail }
         : { name, ok: true, detail: `${detail}（本次未选用该侧，仅提示）` };
 
-    const entry = probe.entrypoint;
+    const entry = invocation ? invocation.bin : probe.entrypoint;
     if (!entry || !(await exists(entry))) {
       out.push(
         fail(`${label} 可调用`, `探针记录的 ${cliName} 入口不可用：${entry ?? '(未记录)'}。请重新运行 doctor。`),
@@ -292,7 +321,7 @@ async function checkCliVersions(
       continue;
     }
 
-    const res = await readCliVersion(cfg, probe);
+    const res = await readCliVersion(cfg, probe, invocation);
     if ('unverifiable' in res) {
       unverifiable.push(`${cliName}（${res.unverifiable}）`);
       out.push({ name: `${label} 可调用`, ok: true, detail: `${cliName} 入口在位（版本未校验）` });
@@ -311,6 +340,7 @@ async function checkCliVersions(
       );
     } else {
       out.push({ name: `${label} 可调用`, ok: true, detail: `${cliName} ${v}` });
+    }
     }
   }
 
@@ -423,16 +453,8 @@ function missingTierText(critic: CriticId, m: NonNullable<TierResolution['missin
  * **永久判据**（与 slug 规则同口径：采到了而不在其中 ⇒ 64 并列可用值；取不到 ⇒ 跳过但点名）——
  * ① 该侧没有思考等级概念（钩子 `none`）却解析出 effort ⇒ 64（schema 够不着档位表格子，计划三审 AGY-02）；
  * ② effort 不在该模型的原生枚举里 ⇒ 64；slug 已编码档位 ⇒ 告警不生效（gemini 特例）；
- * ③ 档位条目或命令行给的厂商 profile 不在本机名单 ⇒ 64；名单为空跳过。
- * 来自 Agent 配置段的补全（gemini 阶段级 effort、`agents.codex.profile`）**不进这三格**：那是 M11 之前的现行路径，
- * 校验它会改变旧配置的行为（`agents.codex.profile` 的存在性另由 `availability()` 判——M11 第 6 步起按本轮解析出的
- * 厂商 profile 判，含这一层回落）。
- *
- * 第 4、5 步在永久判据之后另有一道**过渡闸**（effort 与厂商 profile 尚未透传时拒「写了却不下传」的组合）与两条
- * 过渡告警（gemini 档位没写 effort 时仍下传阶段级 effort、`--tier` 的留痕空窗），**M11 第 6 步透传与留痕接线后
- * 整体拆除**（用户 2026-10-08 定：不留开关）。
- *
- * 只读配置与探针结论、不抛；钩子取自 `realAdapters()`，同 `checkModelAgainstCatalog`。
+ * ③ 本轮实际解析的profile（命令行、档位或Agent配置）明确不在现场名单均退64并点名来源。
+ * 名单无法读取退69；只有名单不具权威且无法核实时告警。effort的旧Agent补全规则保留。
  */
 export function checkTierCombos(
   cfg: Config,
@@ -445,6 +467,7 @@ export function checkTierCombos(
   const cli = mergeCliOverrides(overrides, tierFlags);
   const bad: string[] = [];
   const notes: string[] = [];
+  const unavailable: string[] = [];
   const unverified = new Set<string>();
   const adapters = realAdapters();
 
@@ -456,10 +479,23 @@ export function checkTierCombos(
       for (const w of r.warnings) notes.push(w);
       const adapter: CriticAdapter | undefined = adapters[critic];
       const label = agentById(critic)?.display ?? critic;
-      const lv: ReasoningLevels = adapter?.reasoningLevelsFor?.(cfg, r.model, r.vendorProfile) ?? {
-        kind: 'unknown',
-        why: '该侧未声明思考等级能力',
-      };
+      let lv: ReasoningLevels;
+      try {
+        if (r.vendorProfile !== null) {
+          const names = adapter?.vendorProfilesFor?.(cfg) ?? [];
+          if ((names.length > 0 || adapter?.profileNamesAuthoritative) && !names.includes(r.vendorProfile)) {
+            bad.push(`${at}: 厂商 profile「${r.vendorProfile}」不在本机名单中（来源${r.origin.vendorProfile ?? '未标注'}）。可用：${names.join(', ') || '无'}；显式 --native-${critic} 或配置 profile: null 选择原生，模型不变`);
+            continue;
+          }
+          if (names.length === 0) unverified.add(`${label}（本机厂商 profile 名单无法核实）`);
+        }
+        lv = adapter?.reasoningLevelsFor?.(cfg, r.model, r.vendorProfile) ?? {
+          kind: 'unknown', why: '该侧未声明思考等级能力',
+        };
+      } catch {
+        unavailable.push(`${at}: 所选路线配置或入口无法读取，请检查权限并重跑 doctor`);
+        continue;
+      }
 
       if (r.effort !== null && r.origin.effort !== 'agent') {
         if (lv.kind === 'none') {
@@ -473,18 +509,14 @@ export function checkTierCombos(
         }
       }
 
-      if (r.vendorProfile !== null && r.origin.vendorProfile !== 'agent') {
-        const names = adapter?.vendorProfilesFor?.(cfg) ?? [];
-        if (names.length === 0) unverified.add(`${label}（本机厂商 profile 名单为空）`);
-        else if (!names.includes(r.vendorProfile)) {
-          bad.push(`${at}: 厂商 profile「${r.vendorProfile}」不在本机名单中。可用：${names.join(', ')}`);
-        }
-      }
     }
   }
 
   if (bad.length > 0) {
     return { name: '档位组合合法', ok: false, exitCode: EXIT.USAGE, detail: bad.join('\n  ') };
+  }
+  if (unavailable.length > 0) {
+    return { name: '档位组合合法', ok: false, exitCode: EXIT.ENV, detail: unavailable.join('\n  ') };
   }
   const warnLines = [
     ...notes.map((n) => `  ⚠️ ${n}`),
@@ -825,6 +857,7 @@ function checkVerifyConfigured(cfg: Config, scope: PreflightScope): CheckResult 
 
 export interface AuthOutcome {
   critic: CriticId;
+  cacheKey?: string;
   result: CheckResult;
   /** 通过时待写入缓存的条目（失败时为 null——只缓存正结论，GLM-06） */
   cache: AuthCacheEntry | null;
@@ -863,18 +896,27 @@ export async function probeAuth(
   critic: CriticId,
   adapter: CriticAdapter,
   opts: PreflightOptions,
+  combination?: AuthCombination,
 ): Promise<AuthOutcome> {
   const cfg = ctx.config;
   const display = agentById(critic)?.display ?? critic;
   const name = `${display} 已认证`;
   const cliName = agentById(critic)?.cliName ?? null;
-  const version = (cliName ? cfg.probe.cli[cliName]?.version : null) ?? null;
+  const version = (adapter.probeFor
+    ? adapter.probeFor(cfg, combination?.vendorProfile ?? resolveTier(cfg, critic, 'code').vendorProfile)?.version
+    : (cliName ? cfg.probe.cli[cliName]?.version : null)) ?? null;
+  const tuple: NonNullable<AuthCacheEntry['combination']> | null = combination ? {
+    critic, mode: agentById(critic)?.supportsProfiles ? (combination.vendorProfile === null ? 'native' : 'profile') : 'standard',
+    profile: combination.vendorProfile, model: combination.model, effort: combination.effort,
+  } : null;
+  const cacheKey = tuple ? createHash('sha256').update(JSON.stringify(tuple)).digest('hex') : critic;
 
   let auth: AuthProbe | undefined;
   try {
     auth = adapter.authProbe?.(
       { cfg, nodePath: cfg.runtime.node ?? process.execPath },
       ctx.projectRoot,
+      combination,
     );
   } catch (e) {
     return {
@@ -901,7 +943,7 @@ export async function probeAuth(
   if (fpError !== null) {
     step(`[${critic}] 指纹读不了（${fpError}），不查缓存，执行最小 headless 探活`);
   } else if (!opts.refreshAuth) {
-    const v = authCacheValid(cfg.probe.auth?.[critic], version, fp, cfg.preflight.auth_cache_ttl_h);
+    const v = authCacheValid(tuple ? cfg.probe.auth_routes?.[cacheKey] : cfg.probe.auth?.[critic], version, fp, cfg.preflight.auth_cache_ttl_h);
     if (v.valid) return { critic, result: { name, ok: true, detail: v.reason }, cache: null };
     step(`[${critic}] 探活缓存不可用（${v.reason}），执行最小 headless 探活`);
   }
@@ -916,11 +958,12 @@ export async function probeAuth(
   const note = fpError === null ? '' : `；⚠️ 指纹读不了：${fpError}，本次未用缓存、也不写缓存`;
   return {
     critic,
+    cacheKey,
     result: r.ok
       ? { name, ok: true, detail: r.detail + note }
       : { name, ok: false, exitCode: EXIT.ENV, detail: r.detail + note },
     cache: r.ok && fpError === null
-      ? { checked_at: new Date().toISOString(), cli_version: version, fingerprint: fp, ok: true }
+      ? { checked_at: new Date().toISOString(), cli_version: version, fingerprint: fp, ok: true, ...(tuple ? { combination: tuple } : {}) }
       : null,
   };
 }
@@ -938,11 +981,17 @@ export async function probeAuthAll(
   adapters: AdapterTable,
   opts: PreflightOptions,
 ): Promise<AuthOutcome[]> {
-  return Promise.all(
-    selected
-      .filter((id) => adapters[id])
-      .map((id) => probeAuth(ctx, id, adapters[id]!, opts)),
-  );
+  const combinations = new Map<string, { critic: CriticId; route: AuthCombination }>();
+  const cli = mergeCliOverrides(opts.modelOverrides ?? {}, opts.tierFlags);
+  for (const critic of selected) {
+    if (!adapters[critic]) continue;
+    for (const stage of scopeStages(opts.scope)) {
+      const resolved = resolveTier(ctx.config, critic, stage, cli[critic] ?? {});
+      const route = { model: resolved.model, effort: resolved.effort, vendorProfile: resolved.vendorProfile };
+      combinations.set(JSON.stringify([critic, route]), { critic, route });
+    }
+  }
+  return Promise.all([...combinations.values()].map(({ critic, route }) => probeAuth(ctx, critic, adapters[critic]!, opts, route)));
 }
 
 // ─────────────────────── 编排 ───────────────────────
@@ -951,13 +1000,19 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
   const { ctx, scope } = opts;
   const cfg = ctx.config;
   const checks: CheckResult[] = [];
-  const pendingAuthCache: Partial<Record<CriticId, AuthCacheEntry>> = {};
+  const pendingAuthCache: Record<string, AuthCacheEntry> = {};
+  checks.push({ name: 'Driver 会话声明', ok: true, ...(!opts.driverModel ? { warn: true as const } : {}),
+    detail: opts.driverModel ? `模型 ${opts.driverModel}；供应商 ${opts.driverProvider ?? '未声明'}；来源为声明，异构以审查后的回读判定` :
+      'Driver 模型未声明，相关模型族比较将为 unknown；告警继续' });
   /*
    * 本次入选的审核者。只读能力、模型 slug、探活三项都按它检查，而不是按注册表全集：
    * codex 启用之后，全集检查会让「本次没选它」的运行也因它环境未配而失败
    * （而那正是 D-1 决定「默认不选它」时要避免的连带影响）。
    */
   const selected: readonly CriticId[] = opts.critics ?? cfg.review.default_critics;
+  // 参数类先于环境类；与prepareRun一致，明确非法组合不能被69掩盖。
+  checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected, opts.tierFlags));
+  if (checks.every(c => c.ok)) checks.push(checkTierCombos(cfg, scope, opts.modelOverrides, selected, opts.tierFlags));
 
   /*
    * ⓪ 当轮 Driver 非缺省时打一行可见提示（M9 第 5 步）。
@@ -993,9 +1048,9 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
   }
 
   // ① 探针新鲜度（过期即快速失败，不拉 doctor）
-  checks.push(checkProbeFreshness(cfg));
+  if (checks.every(c => c.ok)) checks.push(checkProbeFreshness(cfg));
   // ② ③ CLI 可调用且版本与探针一致
-  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected)));
+  if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected, opts)));
   // ④ 只读能力
   if (checks.every((c) => c.ok)) checks.push(checkReadonlyCapability(ctx, selected, scope, opts.modelOverrides, opts.tierFlags));
   // ④′ ZCode 运行期选模（EV-82 第三段 r3 §4.2）：只警告、不拒跑
@@ -1015,10 +1070,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
     const d = checkDeprecatedConfigKeys(cfg);
     if (d) checks.push(d);
   }
-  // ⑤ 模型 slug（按本次实际生效值）
-  if (checks.every((c) => c.ok)) checks.push(checkModelSlugs(cfg, scope, opts.modelOverrides, selected, opts.tierFlags));
-  // ⑤′ 档位组合（M11 第 4 步）：原生枚举、无此概念、厂商 profile 名单；档名与无模型已由上一格报
-  if (checks.every((c) => c.ok)) checks.push(checkTierCombos(cfg, scope, opts.modelOverrides, selected, opts.tierFlags));
+  // 参数检查已在函数开头先行执行（模型slug、档位与接入组合）。
   // ⑥ 归档与 git（无残留探测）
   if (checks.every((c) => c.ok)) checks.push(await checkArchiveAndGit(ctx));
   // ⑦ 命令 A 的编译测试配置
@@ -1039,7 +1091,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
       const probes = await probeAuthAll(ctx, selected, realAdapters(), opts);
       for (const p of probes) {
         checks.push(p.result);
-        if (p.cache) pendingAuthCache[p.critic] = p.cache;
+        if (p.cache) pendingAuthCache[p.cacheKey ?? p.critic] = p.cache;
       }
     }
   }
@@ -1067,7 +1119,10 @@ export async function commitAuthCache(ctx: Ctx, r: PreflightResult): Promise<voi
   await patchProbe(
     ctx.triviumDir,
     (p) => {
-      p.auth = { ...(p.auth ?? {}), ...r.pendingAuthCache };
+      for (const [key, entry] of Object.entries(r.pendingAuthCache)) {
+        if (entry.combination) (p.auth_routes ??= {})[key] = entry;
+        else (p.auth ??= {})[key as CriticId] = entry;
+      }
     },
     ctx.config.review.heartbeat_stale_s * 1000,
   );

@@ -13,8 +13,8 @@
 import nodePath from 'node:path';
 import os from 'node:os';
 import type {
-  AgentConfig, Config, CriticId, CriticRequest, CriticResult, EffortEffectiveSource, Stage, SuspectedWrite, TierName,
-  TierSource,
+  AccessMeta, AgentConfig, Config, CriticId, CriticRequest, CriticResult, EffortEffectiveSource, Stage, SuspectedWrite, TierName,
+  TierSource, CommonProbe,
 } from '../types.js';
 import { VENDOR_MODEL_FAMILY, agentById, type AgentVendor } from '../agents/registry.js';
 
@@ -38,8 +38,8 @@ export interface AdapterContext {
  *
  * ## 为什么挂在 `CriticAdapter` 上而不是注册表或 `CriticResult`
  *
- * 不挂 `CriticResult`：它是**该侧的固有能力**，不是单次运行的结果；挂结果上会让
- * 每次运行都要重填一遍，且允许同一侧两次运行报出不同能力（r1 裁决 §2.3）。
+ * 不挂 `CriticResult`：能力来自适配器及所选路线的有效探针，不由单次运行自报。
+ * 静态 `capability` 保留为契约基线；支持多路线的适配器用 `capabilityFor` 按路线取值。
  *
  * 不挂注册表：`criticEnabled=false` 的 Agent 选不进运行（`critics.ts` 抛 `EXIT.USAGE`），
  * 而 M8 第 2 步不翻 codex 的开关——静态注册表方案下，桩的 `command-trace` 形态
@@ -109,7 +109,17 @@ export interface AuthProbe {
   probe(): Promise<{ ok: boolean; detail: string }>;
 }
 
+/** 生产探活必须消费实际路由；可选参数仅供旧调用/夹具兼容。 */
+export type AuthCombination = Pick<TierResolution, 'model' | 'effort' | 'vendorProfile'>;
+
 export interface CriticAdapter {
+  accessFor?(cfg: Config, profile: string | null): AccessMeta;
+  /** 路线探针与版本入口由适配器提供，通用判定不按工具身份分叉。 */
+  probeFor?(cfg: Config, profile: string | null): CommonProbe | undefined;
+  versionInvocationFor?(cfg: Config, profile: string | null): {
+    bin: string | null; prefix: string[]; env: Record<string, string | undefined>;
+  };
+  capabilityFor?(cfg: Config, profile: string | null): TraceCapability;
   readonly critic: CriticId;
   /** 该侧轨迹的证据形状——判定层据此分档，不按 Agent id 分叉（§11.1） */
   readonly capability: TraceCapability;
@@ -207,6 +217,8 @@ export interface CriticAdapter {
    * 没有厂商 profile 概念的侧不实现。返回空数组 = 名单为空 ⇒ 预检跳过该项校验（同 slug 规则）。
    */
   vendorProfilesFor?(cfg: Config): string[];
+  /** 名单为空也能证明不存在，禁止将明确不存在的名称当未知。 */
+  readonly profileNamesAuthoritative?: boolean;
   /**
    * 该侧做模型覆盖时要读的**用户侧文件**（绝对路径，EV-123）。**可选**：不靠副本做覆盖的侧不实现。
    *
@@ -222,7 +234,7 @@ export interface CriticAdapter {
    * 探活。**可选**：没有凭据概念的侧（如桩）不实现，`preflight` 相应跳过并如实说明——
    * 「没得探」与「探过通过」不能长得一样。
    */
-  authProbe?(ctx: AdapterContext, projectRoot: string): AuthProbe;
+  authProbe?(ctx: AdapterContext, projectRoot: string, combination?: AuthCombination): AuthProbe;
   run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult>;
   /**
    * 抹掉该侧在运行目录里留下的**凭据载体**（BACKLOG EV-20）。**可选**：
@@ -380,12 +392,14 @@ export function failedResult(
      * 不传即视为该侧没有这种概念（另四家），三格落 0。
      */
     deny?: { skipped: number; ruleCount: number; bytes: number };
+    processStarted?: boolean;
   },
 ): CriticResult {
   return {
     critic,
     status: fail.status,
     exit_code: fail.exitCode ?? null,
+    process_started: fail.processStarted ?? (fail.exitCode !== undefined && fail.exitCode !== null),
     duration_s: fail.durationS ?? 0,
     raw_stdout_path: fail.rawStdoutPath ?? '',
     trace_path: fail.tracePath ?? null,
@@ -1958,7 +1972,7 @@ export const TIER_NAMES: readonly TierName[] = ['low', 'medium', 'high'];
  * 不再往下找（显式写错的档不能静默落到下一级）。空串裸 slug 按「无模型」、同样不往下找（记 `emptySlug`）——
  * 没有 `default_tier` 时与旧实现的 falsy 判定结果相同（退 64），有时也不静默回落（代码三审 GLM-01）。
  *
- * **补全**：厂商 profile 取 档位条目 > `agents.<id>.profile`（只对 openai vendor）；裸 slug 格子的思考等级
+ * **补全**：厂商 profile 取 档位条目 > `agents.<id>.profile`（注册表声明能力的侧）；裸 slug 格子的思考等级
  * 回落 antigravity 段的阶段级 `effort`（11.5：「档位表格子是裸 slug 时」的回落；M11 第 6 步之前由 `effortFor` 单独取值、
  * 判据相同，第 6 步起请求面只认本函数的结果，`effortFor` 删除）。
  *
@@ -1982,7 +1996,8 @@ export function resolveTier(
   const tiers = agent?.tiers ?? {};
   const defined = TIER_NAMES.filter((n) => tiers[n] !== undefined);
 
-  type Fields = { model?: string; effort?: string; profile?: string };
+  const supportsProfiles = agentById(critic)?.supportsProfiles === true;
+  type Fields = { model?: string; effort?: string; profile?: string | null };
   type Base = { kind: 'tier' | 'cell' | 'legacy'; source: Exclude<TierSource, 'override'>; tier: TierName | null; fields: Fields };
   let base: Base | null = null;
   let missingTier: TierResolution['missingTier'] = null;
@@ -1995,8 +2010,8 @@ export function resolveTier(
     }
     const fields: Fields = { model: e.model };
     if (e.effort !== undefined) fields.effort = e.effort;
-    // 厂商 profile 只对 openai vendor 有意义；别的支 schema 不收它，这里再守一道
-    if (e.profile !== undefined && vendor === 'openai') fields.profile = e.profile;
+    // 厂商 profile 只对注册表声明能力的侧有意义。
+    if (e.profile !== undefined && supportsProfiles) fields.profile = e.profile;
     return { kind: 'tier', source: via, tier: name, fields };
   };
 
@@ -2027,10 +2042,10 @@ export function resolveTier(
     originEffort = 'agent';
   }
 
-  const agentVendorProfile = vendor === 'openai' && agent?.vendor === 'openai' ? (agent.profile ?? null) : null;
+  const agentVendorProfile = supportsProfiles && agent && 'profile' in agent ? (agent.profile ?? null) : null;
   let vendorProfile: string | null = null;
   let originProfile: FieldOrigin | null = null;
-  if (vendor === 'openai') {
+  if (supportsProfiles) {
     if (base?.fields.profile !== undefined) {
       vendorProfile = base.fields.profile;
       originProfile = 'tier';
@@ -2052,8 +2067,8 @@ export function resolveTier(
     effort = cli.effort;
     originEffort = 'cli';
   }
-  // 厂商 profile 的命令行覆盖只对 openai vendor 生效；指向别的侧由旗标层（第 5 步）退 64，这里不替它报
-  if (cli.vendorProfile && vendor === 'openai') {
+  // 厂商 profile 的命令行覆盖按注册表能力；无能力侧由旗标层退 64。
+  if (cli.vendorProfile !== undefined && supportsProfiles) {
     if (originProfile === 'tier') warnings.push(`${critic}/${stage}：命令行厂商 profile「${cli.vendorProfile}」覆盖了${fromTierNote}的「${vendorProfile}」`);
     vendorProfile = cli.vendorProfile;
     originProfile = 'cli';
@@ -2062,7 +2077,7 @@ export function resolveTier(
   const overridden: Record<keyof Fields, boolean> = {
     model: Boolean(cli.model),
     effort: Boolean(cli.effort),
-    profile: Boolean(cli.vendorProfile) && vendor === 'openai',
+    profile: cli.vendorProfile !== undefined && supportsProfiles,
   };
   const provided = base ? (Object.keys(base.fields) as (keyof Fields)[]).filter((k) => base.fields[k] !== undefined) : [];
   const allOverridden = provided.length > 0 && provided.every((k) => overridden[k]);
@@ -2098,6 +2113,7 @@ export function resolveTier(
  * 所以 `true` 的准确读法是「未检出同族」，不是「确认异构」。
  * 取不到模型名时判 `true`，与改动前一致。
  */
+/** @deprecated 仅保留旧名义族判据的历史测试；v3生产链路只用compareRunModels，不回算历史布尔。 */
 export function isHeterogeneous(model: string | null, driverVendor: AgentVendor): boolean {
   if (!model) return true;
   return !VENDOR_MODEL_FAMILY[driverVendor].test(model);

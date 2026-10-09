@@ -291,14 +291,14 @@ function carrierVars(carrier: Carrier): Record<string, string> {
     MODEL_FLAGS: critics.map((id) => `\`--model-${id}\``).join(' / '),
     /*
      * 档位旗标（M11 第 5 步）：论域同 MODEL_HINT。厂商 profile 一类只对适配器实现了 `vendorProfilesFor` 的侧派生
-     * （用户 2026-10-08 定：从钩子派生、不写 Agent id）——今天只有 `--profile-codex`，codex 载体上一个都没有。
+     * 注册表 supportsProfiles 声明控制生成集合，不在此重复登记工具身份。
      * 厂商 profile 那一格给**整段括注**（计划三审 AGY-05）：模板只放变量、不写括号，免得空集时留下空括号。
      */
     TIER_HINT: critics.map((id) => `[--tier-${id} <档>]`).join(' '),
     TIER_FLAGS: critics.map((id) => `\`--tier-${id}\``).join(' / '),
     EFFORT_HINT: critics.map((id) => `[--effort-${id} <值>]`).join(' '),
     EFFORT_FLAGS: critics.map((id) => `\`--effort-${id}\``).join(' / '),
-    VENDOR_PROFILE_HINT: profileCritics.map((id) => ` [--profile-${id} <名>]`).join(''),
+    VENDOR_PROFILE_HINT: profileCritics.map((id) => ` [--profile-${id} <名>] [--native-${id}]`).join('') + ' [--driver-model <模型>] [--driver-provider <供应商>]',
     VENDOR_PROFILE_CLAUSE:
       profileCritics.length > 0
         ? `（${profileCritics.map((id) => `\`--profile-${id}\``).join(' / ')}）`

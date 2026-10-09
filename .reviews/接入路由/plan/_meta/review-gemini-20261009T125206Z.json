@@ -1,0 +1,107 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "实施计划对 Agent 身份稳定、注册表能力抽象以及 native 路线不隐式降级的原则把握正确，但在契约完整性与系统联动上存在四个关键缺口：一是增加了配置字段与 null 语义却完全遗漏了运行时机读权威 skills/dual-critic/schema/config.v2.json 的同步修订；二是任务目标中的「异构判定修正」在计划的边界与实现中完全悬空未予设计；三是新增的 --native-<id> 旗标缺少从 S0.5 topic resolve 向下游 preflight 与 review --start 传递的透传协议，导致跨阶段执行时显式覆盖被默认配置覆盖；四是遗漏了 skills-src/ 入口资产与 npm run render 渲染闭环。建议补齐上述契约与接线设计后再行实施。",
+  "findings": [
+    {
+      "id": "AGY-01",
+      "severity": "blocker",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "§3 第 1、3 条（ClaudeCriticConfig 与 config.v2 判别联合扩展）",
+      "problem": "计划拟为 ClaudeCriticConfig 增加 profile/bin/profile_bin 并允许档位 profile 设为 null，但完全遗漏了运行时权威契约 config.v2.json 的定义扩展与 ajv 校验对账。",
+      "evidence": "skills/dual-critic/schema/config.v2.json 中 agents.claude（anthropic 支）设为 additionalProperties: false 且仅允许 vendor/tiers/default_tier；$defs/tierEntryOpenai 的 profile 强制 minLength: 1 且不为 null；$defs/tierEntry 根本不允许 profile。src/trivium/types.ts:1069 仅声明编译期接口，不改 config.v2.json 会导致 validateConfig 在运行时直接判错退出。",
+      "suggestion": "在契约与实现清单中显式纳入 skills/dual-critic/schema/config.v2.json 的同步修订：扩展 anthropic 支允许 profile/bin/profile_bin，将 tierEntry 中 profile 放宽为 string 或 null（或为 anthropic 独立定义 tier 形状并收紧），并更新 parse/gate/config 校验与 registry-parity 契约测试。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-02",
+      "severity": "major",
+      "layer": "requirement",
+      "kind": "scope-drift",
+      "location": "§1「目标与边界」及 §3「契约与实现」",
+      "problem": "任务目标明确要求「异构判定修正」，但计划在目标切分与实现步骤中完全悬空，既无异构判定修正的具体方案，也未在目标与边界中说明其归属。",
+      "evidence": "BRIEF 任务目标与计划 §1 均载明主题全称为「Codex、Claude Code 双模式接入与异构判定修正」。但计划 §1 仅声明「本主题负责配置、档位与单次旗标解析，以及 Claude 的 cld 启动接线；探针认证和 run.v3 由另外两个主题负责」，而 §3 的 8 条实现步骤通篇未提及 isHeterogeneous 或 overrideReasonFor 的任何修正逻辑（当前 src/trivium/adapters/base.ts:2101 的 isHeterogeneous 仍只按 VENDOR_MODEL_FAMILY 启发式近似）。",
+      "suggestion": "若异构判定修正属于本主题，须在 §3 补充具体的判定修正设计（例如基于 profile 实际家族判定或模型名跨厂商判定，修复 Codex/Claude 经包装接入同族模型时的误判）；若已划归后续主题，须在 §1 目标与边界中明确写出该项的拆分归属与交接点。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "§3 第 4、5 条（--native-<id> 旗标解析与跨阶段接线）",
+      "problem": "显式指定的 --native-<id> 旗标未设计从 S0.5 topic resolve 向下游 S0.6 preflight 及 S2/S6 review --start 传递的命令行契约，跨阶段执行时将被档位或配置默认值静默覆盖。",
+      "evidence": "skills-src/commands/run.contract.md 中 S0.6 与 S2 命令仅透传 --profile-<审核者 id>；若用户在 S0.5 传入 --native-claude，S0.5 解析出 native，但下游命令若只透传 profile 则不会带 --native-claude 参数，导致 S2 启动时重新解析 resolveTier，再次读取 agents.claude.profile 配置而回落到 profile 模式，显式 native 决定静默丢失。",
+      "suggestion": "在 topic resolve 输出结构体与下游命令（preflight、review --start）中明确定义 native 状态的透传协议，使 S0.6 与 S2 命令行在入选侧处于显式 native 时能够透传 --native-<id> 旗标，避免被配置文件默认值覆盖。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-04",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "§3 第 1、4 条及 §4「验证与完成条件」",
+      "problem": "计划遗漏了入口资产单源 skills-src/ 的命令契约同步与 npm run render 渲染流程，将破坏 entry-render-parity 契约守卫。",
+      "evidence": "AGENTS.md 改动同步清单明确要求「CLI 参数或退出码必须同步相关命令契约（skills-src/commands/），改后 npm run render」；test/contract/entry-render-parity.test.ts 严格校验 skills-src/ 与 skills/ 产物零漂移以及 resolveNamedFlags 白名单对账。计划第 1 条仅提同步 CLI 说明与 AGENTS，未提 skills-src/ 改动与 render 步骤。",
+      "suggestion": "在 §3 第 1 条与完成条件中补全：修改 skills-src/commands/*.contract.md 及 carrierVars 派生量以接纳 --native-<id> 与 Claude 的 profile 提示，执行 npm run render 重建四家入口 SKILL.md，并将 entry-render-parity 纳入回归测试。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "§3 第 3、6 条（ClaudeCriticConfig 字段与路由回退）",
+      "problem": "ClaudeCriticConfig 中 bin 与 profile_bin 的优先级、回退阶梯及缺席报错规则未明确，与原有「入口独占由探针决定」纪律存在语义张力。",
+      "evidence": "src/trivium/types.ts:1056 注释曾明确说明 claude 侧入口由探针独占；计划新增 bin 与 profile_bin 两个可选路径字段，但未说明 profile 模式下当 profile_bin 缺席时是回落到 PATH 上的 cld 还是报错、native 模式下 bin 缺席时是否回落到 probe.cli.claude.entrypoint。",
+      "suggestion": "明确规定路由对象的二元路径解析规则：native 模式优先取 cfg.bin，缺席回落 probe.entrypoint；profile 模式优先取 cfg.profile_bin，缺席探测可执行的 cld，均取不到时退明确的退出码（如 64/66），避免隐式行为。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "security",
+      "location": "§3 第 7 条（子进程环境变量清理）",
+      "problem": "子进程清理冲突认证变量的范围未明确，缺乏具体黑白名单规则，存在误伤 native 模式合法环境变量或在 profile 模式遗漏泄漏的风险。",
+      "evidence": "计划第 7 条仅声明「子进程清理冲突 ANTHROPIC/CLAUDE 路由认证变量，再由显式路线加载」；若原生 Claude 在 native 模式下依赖宿主环境的 ANTHROPIC_API_KEY 运行，一刀切清理将导致 native 认证失效；若只清理部分变量，宿主环境的残留配置可能污染 profile 包装脚本。",
+      "suggestion": "明确制定环境变量清理白名单/黑名单规范：在 profile 模式下拉起子进程前，剥除可能干扰包装脚本的宿主 ANTHROPIC_BASE_URL、ANTHROPIC_AUTH_TOKEN 等路由变量；在 native 模式下确保保留原生官方认证所需的环境变量。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "坚持 Agent 身份稳定原则，不将模型提供商或代理网关泛化为新 Agent，符合注册表单一来源纪律",
+    "在 registry.ts 引入 profile 支持能力声明，促使业务模块面向能力抽象而非按厂商字面分叉",
+    "严格区分 native 与 profile 路线，坚持 native 路线绝不隐式回退到 profile，符合安全 fail-closed 语义",
+    "明确在 profile 模式下向 cld 传入完整长旗标 --print，消解了短选项 -p 与打印模式之间的冲突",
+    "在执行与日志记录中坚持对凭据和完整 profile 进行脱敏，防范凭据通过会话日志泄露"
+  ],
+  "not_covered": [
+    "由于当前为无写权限与无命令执行环境的只读审查员，未在本地实际拉起 cld 包装脚本验证其与 Claude 2.1.295 的真实交互输出",
+    "未实际测试 cld 包装脚本在并发多任务场景下的环境隔离与临时文件安全性",
+    "未实际验证真实第三方模型（Qwen/Kimi/DeepSeek）经 cld 转发时的 stream-json 事件流完整性与 JSON Schema 约束遵从度"
+  ],
+  "consulted": [
+    ".reviews/接入路由/plan/2026-10-09-接入路由-codex.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/types.ts",
+    "src/trivium/tier-flags.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/review.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "skills-src/commands/run.contract.md",
+    "src/entry-render.ts",
+    "test/contract/entry-render-parity.test.ts"
+  ]
+}

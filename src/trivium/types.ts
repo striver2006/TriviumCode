@@ -5,7 +5,7 @@
  *   trivium.config.v1      → Config
  *   trivium.review.v1      → Review / Finding
  *   trivium.disposition.v1 → disposition.ts 的 DispositionFrontMatter（front-matter）/ 本文件的 DispositionRow（表格行）
- *   trivium.run.v2         → RunMeta（v1 是历史契约，只读侧认，见 meta.ts 的 migrateRunMetaV1）
+ *   trivium.run.v3         → RunMeta（v1/v2严格历史读取后转换统一内存形状）
  * Schema 是运行时真理来源（ajv 校验），本文件是编译期的同一份约定。改一处必须改另一处。
  */
 
@@ -626,6 +626,10 @@ export interface CodexProbe extends CommonProbe {
  * claude 侧是三家里**可核验性最强**的一侧。
  */
 export interface ClaudeProbe extends CommonProbe {
+  /** 顶层兼容快照来自哪条路线；profile 快照不得作为原生能力使用。 */
+  route_profile?: string | null;
+  /** 路线的能力结论与当轮入口/版本/wrapper/profile指纹绑定 */
+  routes?: Record<string, { profile: string | null; fingerprint: string; probe: ClaudeProbe }>;
   /**
    * `claude -p` headless 下能否真的读到文件（哨兵首行回显命中）。
    * **消费方**：M9 适配器的 `availability()`——false 即该侧不可用。
@@ -836,6 +840,7 @@ export interface ClaudeProbe extends CommonProbe {
 }
 
 export interface AuthCacheEntry {
+  combination?: { critic: CriticId; mode: 'native' | 'profile' | 'standard'; profile: string | null; model: string | null; effort: string | null };
   checked_at: string;
   cli_version: string | null;
   /** 决定可用性的配置文件指纹：agy 取 Agent 定义哈希，zcode 取 CLI config.json 哈希 */
@@ -895,6 +900,8 @@ export interface ProbeSection {
    * 挡在 TTL 之外，而 `--skip-auth-check` 是跳过而非刷新、缓存依然是脏的。
    */
   auth?: Partial<Record<CriticId, AuthCacheEntry>>;
+  /** 按本轮实际组合隔离；旧auth不能证明模型组合，保留历史读取 */
+  auth_routes?: Record<string, AuthCacheEntry>;
   /** 本机环境事实 */
   host?: {
     platform: string;
@@ -987,7 +994,7 @@ export type EffortEffectiveSource = 'envelope' | 'unverified';
 export interface TierEntry {
   model: string;
   effort?: string;
-  profile?: string;
+  profile?: string | null;
 }
 
 /** 逐 Agent 的档位表与默认档（四个配置段共用；形状差异由 schema 按 vendor 收紧） */
@@ -1042,32 +1049,12 @@ export interface GlmCriticConfig extends TierFields {
    */
 }
 
-/**
- * claude 的配置段（M9 第 4 步）。
- *
- * ## 只有判别式，**没有任何其它字段**——这是刻意的不对称
- *
- * 另三家的段里都装着入口覆盖（gemini/codex 的 `bin`、glm 的 `entry`），
- * 于是「照先例给 claude 也加一个 `bin`」看起来天经地义。**核过之后不是这样**：
- * 那三个字段**都有真实消费方**——`doctor.ts` 把 `agents.gemini.bin` 传进 `probeAgy`、
- * 把 `agents.glm.entry` 传进 `probeZcode`，`adapters/codex.ts` 两处入口取值都是
- * `cfg.bin ?? probe.entrypoint`。**先例是「有消费方才登记」，不是「每家都有 bin」。**
- *
- * claude 侧没有这个消费方：适配器的 `run` 与 `authProbe` 都从
- * `probe.cli.claude.entrypoint` 取入口，`doctor.ts` 调 `probeClaude` 时第一个参数
- * 逐字传 `null`。**入口由探针独占。** 加一个 `bin` 就是加一个死字段——
- * 本仓有过两条「登记而无消费方」的 BACKLOG（EV-06 的 `instructionFiles`，后来接上了；
- * EV-15 的 `readonly_commands`，2026-10-01 删除），它们的危害正是**让后来者以为那个字段已经生效**。
- *
- * **不要为了「补齐」把 `bin` 加回来。** 真需要本机入口覆盖时，
- * 再放宽这一支的 schema 是向后兼容的；反过来删一个已经进过用户配置的字段则不是。
- *
- * 阶段级 `effort` 不加：M6 探针当时没有对应的 CLI 旗标。M11 第 1 步实测 2.1.291 已有 `--effort`
- * 但不校验、不回读（设计 3.7），思考等级由档位条目的 `effort` 表达（`TierFields`），M11 第 6 步起经
- * `--effort` 透传；取值集合由探针解析帮助文本落盘（`ClaudeProbe.effort_levels`）。
- */
+/** Claude 原生与包装器路线；profile 缺省/null 为原生，入口绝对路径只放本机配置。 */
 export interface ClaudeCriticConfig extends TierFields {
   vendor: 'anthropic';
+  profile?: string | null;
+  bin?: string | null;
+  profile_bin?: string | null;
 }
 
 /**
@@ -1308,7 +1295,25 @@ export const EVIDENCE_UNTRUSTED_CAUSE_TEXT: Record<
   },
 };
 
+export type FamilyStatus = 'same-family' | 'different-family' | 'unknown';
+export interface DriverDeclaration { model: string | null; provider: string | null; source: 'declared' | null }
+export interface FamilyComparison {
+  left: AgentId; right: AgentId; status: FamilyStatus;
+  left_model: string | null; right_model: string | null;
+  left_source: 'declared' | 'envelope' | 'trace' | null;
+  right_source: 'declared' | 'envelope' | 'trace' | null;
+  reason: string;
+}
+export interface AccessMeta {
+  requested_mode: 'native' | 'profile' | 'standard'; profile: string | null;
+  launcher_requested: string | null; launcher_effective: string | null;
+  wrapper_sha256: string | null; configuration_sha256: string | null;
+  provider_declared: string | null; provider_declared_source: 'profile' | 'config' | null;
+  provider_effective: string | null; provider_effective_source: 'envelope' | 'trace' | null;
+}
+
 export interface CriticRunMeta {
+  access?: AccessMeta;
   vendor: Vendor;
   cli_version: string | null;
   model_requested: string | null;
@@ -1357,13 +1362,13 @@ export interface CriticRunMeta {
   tool_calls: ToolCallCounts;
   evidence_ok: boolean;
   usage?: Record<string, number>;
-  heterogeneous: boolean;
+  heterogeneous: boolean | FamilyStatus;
   /**
-   * `heterogeneous === false` 时的成因（EV-54，M9 第 5 步补上写入方）。
+   * v3 为与 Driver 的模型族比较原因，由 compareRunModels 单点派生；所有三态均可写。
    *
    * `run.v2` 的散文契约要求 false 时必须有它。承接侧早就接通、一直没有写入方，
    * 因为在 claude 能被选为审核者之前，补了也没有路径能端到端验证。
-   * 取值由 `review.ts` 的 `overrideReasonFor` 单点派生，两个写点共用。
+   * v1/v2 的历史语义仍为旧名义族 false 的原因，读取不重新解释。
    *
    * **可选**：true 时为 null，早于本步的留痕则整个字段缺失。
    * 不给 schema 加 `if/then`——那会让历史留痕集体读不回。
@@ -1515,7 +1520,9 @@ export interface PlanFinalCheck {
 }
 
 export interface RunMeta {
-  schema: 'trivium.run.v2';
+  schema: 'trivium.run.v2' | 'trivium.run.v3';
+  driver_declaration?: DriverDeclaration;
+  family_comparisons?: FamilyComparison[];
   run_id: string;
   topic: string;
   stage: Stage;
@@ -1588,6 +1595,10 @@ export interface RunMeta {
   review_mode: ReviewMode;
   degraded_reason: string | null;
   critics: Partial<Record<CriticId, CriticRunMeta>>;
+  /** v3 启动前恒写请求快照，提前取消或 worker 启动失败也保留；历史件缺席。 */
+  requested_routes?: Partial<Record<CriticId, {
+    model: string | null; effort: string | null; tier: TierName | null; tier_source: TierSource | null; access: AccessMeta;
+  }>>;
   deny_paths: string[];
   guard: {
     readonly_breach: boolean;
@@ -1786,6 +1797,7 @@ export interface RunMeta {
 // ─────────────────── 适配层契约（设计 §11.1） ───────────────────
 
 export interface CriticRequest {
+  access?: AccessMeta;
   run_id: string;
   topic: string;
   stage: Stage;
@@ -1879,6 +1891,9 @@ export interface ScrubOutcome {
 export type ModelUnenforcedCause = 'source_missing' | 'qualify_failed';
 
 export interface CriticResult {
+  /** 运行期启动证据；不从请求命令行推断。 */
+  process_started?: boolean;
+  access?: AccessMeta;
   critic: CriticId;
   status: 'ok' | 'timeout' | 'failed' | 'parse_fallback';
   exit_code: number | null;

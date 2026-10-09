@@ -81,13 +81,11 @@ profiles:
       plan: kimi-for-coding
       code: kimi-for-coding
       bug: kimi-for-coding
-    # claude 三档 slug 都须回读核实：probe.cli.claude.models 为 []，预检校验不了，猜错也拦不下。
-    # 核法：`claude -p --output-format stream-json --model <slug>`，看 system/init.model 与 result。
-    # 2026-09-27 已核：opus-5-5（约 $0.13）、sonnet-5（约 $0.20）、fable-5-1（约 $0.83）。
+    # 2026-10-09 Claude/Qwen 默认组合探活通过；完整准入尚缺写入负对照尝试证据。
     claude:
-      plan: claude-opus-5-5
-      code: claude-opus-5-5
-      bug: claude-opus-5-5
+      plan: qwen3.8-flash
+      code: qwen3.8-flash
+      bug: qwen3.8-flash
   flash:
     gemini:
       plan: gemini-3.8-flash-high
@@ -102,11 +100,11 @@ profiles:
       plan: kimi-for-coding
       code: kimi-for-coding
       bug: kimi-for-coding
-    # 不与 default 同值（计划双审 CODEX-05）：同值会让 flash 在 claude 侧形同虚设。
+    # Qwen 当前默认模型与 default 同值，配置声明和探活均已核实。
     claude:
-      plan: claude-sonnet-5
-      code: claude-sonnet-5
-      bug: claude-sonnet-5
+      plan: qwen3.8-flash
+      code: qwen3.8-flash
+      bug: qwen3.8-flash
   # pro 档：按需 `--profile pro` 单次切档。取值原则：只换模型目录里确有比 default 更高档的格。
   # gemini / glm 与 default 同值是结果不是漏改：gemini 目录里的 3.1-pro 比 3.8-flash 旧两代，
   # GLM-5.3 已是顶档；codex 同理，k3 已是 kimi 目录顶档。
@@ -125,9 +123,10 @@ profiles:
       code: k3
       bug: k3
     claude:
-      plan: claude-fable-5-1
-      code: claude-fable-5-1
-      bug: claude-fable-5-1
+      # Qwen Max 尚未实测，暂保留原生pro路线；官方订阅当前不可用。
+      plan: { tier: high }
+      code: { tier: high }
+      bug: { tier: high }
 active_profile: default
 gate:
   allow_defer: true
@@ -169,8 +168,9 @@ agents:
     # 同批改**：只改一处，要么被端点拒绝，要么预检以「不在该 profile 的模型目录中」退 64（均实测）。
     profile: kimi
     # effort 已删（M11 第 4 步）：它从未下传，实际请求的思考等级是 kimi profile 基底的值；档位落地后由 tiers 表达
-  # claude 段（M9 第 4 步）。只有判别式，没有其它字段——这是刻意的不对称：
-  # 另三家的入口覆盖都有真实消费方，而 claude 的入口由探针独占
-  # （probe.cli.claude.entrypoint），加 bin 就是加一个死字段。
+  # 工具身份保持claude；Qwen只代表所选接入配置，运行时供应商无回读时null。
   claude:
     vendor: anthropic
+    profile: qwen
+    tiers:
+      high: { model: claude-fable-5-1, profile: null }

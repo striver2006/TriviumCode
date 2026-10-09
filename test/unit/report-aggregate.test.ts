@@ -13,7 +13,8 @@ import {
   renderTopicReport,
   type TopicReport,
 } from '../../src/trivium/report.js';
-import { newRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
+import { writeRunMeta } from '../../src/trivium/meta.js';
+import { historicalRunMeta } from '../helpers/legacy-run-meta.js';
 import { metaDir, stageDir, writeMeta, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { buildArtifactName, localDate } from '../../src/trivium/naming.js';
 import type { AgentId } from '../../src/trivium/agents/registry.js';
@@ -111,7 +112,7 @@ async function seedRun(
     status?: 'success' | 'cancelled';
   },
 ): Promise<void> {
-  const meta = newRunMeta({
+  const meta = historicalRunMeta({
     runId: o.runId, topic: TOPIC, stage: o.stage, rerunIndex: o.rerunIndex, command: 'test',
     promptHint: null, taskGoal: null, criticsSelected: Object.keys(o.sides) as CriticId[],
     treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S', denyPaths: [], driftPolicy: 'warn',

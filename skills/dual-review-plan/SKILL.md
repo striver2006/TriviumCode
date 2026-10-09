@@ -1,7 +1,7 @@
 ---
 name: dual-review-plan
 description: 对已有计划做背靠背双审，并产出逐条裁决的修订计划（命令 B）
-argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--plan-file <路径>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]
+argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--plan-file <路径>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]
 disable-model-invocation: true
 allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 ---
@@ -89,11 +89,11 @@ TV topic resolve --stage plan --json -- '看 it'\''s 这一处与 "双引号" �
 ### 2. 预检（在解析之后）
 
 ```
-TV preflight --stage plan --driver claude --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] [--tier-<审核者 id> <档> …] [--effort-<审核者 id> <值> …] [--profile-<审核者 id> <名> …] --json
+TV preflight --stage plan --driver claude --critics <critics> [--profile <名称>] [--model-<审核者 id> <模型> …] [--tier-<审核者 id> <档> …] [--effort-<审核者 id> <值> …] [--profile-<审核者 id> <名> …] --json [--native-<审核者 id>] [--driver-model <模型>] [--driver-provider <供应商>]
 ```
 
 - `--critics`：第 1 步 resolve 输出的 `critics` 用逗号连接，**无条件传**；
-- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`；
+- `profile` 非空时传 `--profile`；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`； 接入字段缺席表示继承；vendor_profiles 中显式 null 必须传 --native-<审核者 id>，非空传 --profile-<审核者 id>，同侧不同时传。
 - **这几样必须与第 3 步传的是同一组**，都取自第 1 步的输出，不要各拼各的。
 
 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
@@ -108,11 +108,13 @@ TV preflight --stage plan --driver claude --critics <critics> [--profile <名称
 先运行：
 
 ```
-TV review --start --entry B --stage plan --topic <主题> --driver claude --focus <提示语> [--goal <任务目标>] [--plan-file <路径>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] --json
+TV review --start --entry B --stage plan --topic <主题> --driver claude --focus <提示语> [--goal <任务目标>] [--plan-file <路径>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
 ```
 
 `--entry B` 标记本次运行由命令 B 发起，记入 run.json 留痕；它也让 CLI 按 B/C/D 规则
 校验焦点必填（缺 `--focus` 退 64）。
+
+Driver 会话声明从 resolve 输出的 driver_model / driver_provider 逐项透传至 preflight 与 review --start 的 --driver-model / --driver-provider；null 则不传。只记录声明，不推断当前会话模型。
 
 若上一步 resolve 输出的 `task_goal` 非空，把它原样传给 `--goal`。它与 `--focus` 是两回事：
 前者说「这次要达成什么」，进 BRIEF 第 4 段；后者说「这次重点看什么」，进第 2 段。
@@ -153,7 +155,7 @@ resolve 用它定位被审对象，而 `--start` 会**重新定位一次**——
 `--start` 不会沿用它（`--start` 自己再校验一次 slug，见 `review.ts` 的 slug 校验注释），漏传会静默回退到
 profile 配置模型，且留痕里记的就是回退后的模型，事后看不出用户曾经指定过。
 
-resolve 输出的 `tiers` / `efforts` / `vendor_profiles`（M11 第 5 步）同理：非空时逐个原样传给对应的
+resolve 输出的 `tiers` / `efforts` / `vendor_profiles`（M11 第 5 步）同理：逐项原样传给对应的旗标。接入字段缺席表示继承；vendor_profiles 中显式 null 必须传 --native-<审核者 id>，非空传 --profile-<审核者 id>，同侧不同时传。
 `--tier-<审核者 id>`（`--tier-codex` / `--tier-gemini` / `--tier-glm`）、`--effort-<审核者 id>`（`--effort-codex` / `--effort-gemini` / `--effort-glm`）、`--profile-<审核者 id>`（`--profile-codex`），
 与第 2 步的预检同一组。漏传会静默回到档位表与 `default_tier` 的取值，留痕里记的是回落后的档位与来源。思考等级与厂商 profile 随请求下传给各家（M11 第 6 步）；取值不合法（枚举外、该侧没有这个概念、厂商 profile 不在本机名单）由预检退 64、gemini 的 slug 已编码档位时只告警——照样原样传，不要自行去掉，拒绝由编排器给出。
 

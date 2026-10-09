@@ -13,6 +13,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import type { CriticRequest, CriticResult, CodexCriticConfig } from '../types.js';
 import { run } from '../util/exec.js';
@@ -27,7 +28,7 @@ import {
   type CodexTrace,
 } from './codex-trace.js';
 import {
-  codexCredentialCopies, codexHomeOf, codexHomeUnder, codexPrepStepOf, prepareCodexHome, scrubCodexHome,
+  codexCredentialCopies, codexHomeOf, codexHomeUnder, codexPrepStepOf, codexRouteEnv, codexRouteEnvKey, codexNativeRouteIssue, prepareCodexHome, scrubCodexHome,
   type CodexHomePrep,
 } from './codex-home.js';
 import {
@@ -117,6 +118,7 @@ export interface CodexInvokeOutcome {
   exitCode: number | null;
   timedOut: boolean;
   commandLine: string;
+  spawned?: boolean;
   durationMs: number;
 }
 
@@ -125,7 +127,7 @@ export async function invokeCodex(opts: CodexInvokeOptions): Promise<CodexInvoke
   const args = buildCodexArgs(opts);
   const r = await run(opts.bin, args, {
     cwd: opts.cwd,
-    env: { CODEX_HOME: opts.codexHome, HOME: opts.fakeHome },
+    env: { ...(await codexRouteEnv(opts.codexHome, opts.profile)), CODEX_HOME: opts.codexHome, HOME: opts.fakeHome },
     /*
      * stdin 必须显式给：codex 在 argv 已带 prompt 时**仍然读 stdin**
      * （stderr 恒打印 `Reading additional input from stdin...`）。
@@ -141,6 +143,7 @@ export async function invokeCodex(opts: CodexInvokeOptions): Promise<CodexInvoke
     exitCode: r.code,
     timedOut: r.timedOut,
     commandLine: r.commandLine,
+    spawned: r.spawned,
     durationMs: r.durationMs,
   };
 }
@@ -209,7 +212,7 @@ function codexConfig(ctx: AdapterContext): CodexCriticConfig {
 export function buildCodexResult(
   trace: CodexTrace,
   meta: CodexSessionMeta,
-  o: Pick<CodexInvokeOutcome, 'exitCode' | 'durationMs' | 'commandLine'>,
+  o: Pick<CodexInvokeOutcome, 'exitCode' | 'durationMs' | 'commandLine' | 'spawned'>,
   paths: { stdout: string; trace: string },
   /*
    * `path_deny` 取 `file_shape_verified` 那一格（EV-42）：入参类型跟着收，
@@ -238,6 +241,7 @@ export function buildCodexResult(
     critic: 'codex',
     status: 'ok',
     exit_code: o.exitCode,
+    process_started: o.spawned ?? o.exitCode !== null,
     duration_s: o.durationMs / 1000,
     raw_stdout_path: paths.stdout,
     trace_path: paths.trace,
@@ -349,13 +353,17 @@ export const codexAdapter: CriticAdapter = {
    * 探活若走宿主机配置而真实运行走副本，探到的「能用」证明不了副本里也能用——
    * 那正是本步要防的失败形态（F-2 的退出就发生在副本里，宿主机上一切正常）。
    */
-  authProbe(ctx: AdapterContext, projectRoot: string) {
+  authProbe(ctx: AdapterContext, projectRoot: string, combination) {
     const cfg = ctx.cfg;
-    const profile = codexConfig(ctx).profile;
+    const profile = combination ? combination.vendorProfile : codexConfig(ctx).profile;
     return {
       async fingerprint(): Promise<string | null> {
         const home = codexHomeOf();
-        const parts: string[] = [];
+        if (profile === null) {
+          const issue = codexNativeRouteIssue(home);
+          if (issue) throw new Error(issue);
+        }
+        const parts: string[] = [codexConfig(ctx).bin ?? cfg.probe.cli.codex?.entrypoint ?? '', cfg.probe.cli.codex?.version ?? ''];
         for (const f of [profile ? `${profile}.config.toml` : null, 'auth.json']) {
           if (!f) continue;
           const p = path.join(home, f);
@@ -372,12 +380,21 @@ export const codexAdapter: CriticAdapter = {
          */
         const base = path.join(home, 'config.toml');
         if (await exists(base)) {
-          const seg = providerSection(await fs.readFile(base, 'utf8'));
+          const text = await fs.readFile(base, 'utf8');
+          const seg = providerSection(text);
           if (seg) parts.push(createHash('sha256').update(seg).digest('hex'));
+          const provider = /^\s*model_provider\s*=\s*["']([^"']+)["']/m.exec(text.split(/^\s*\[/m)[0] ?? '')?.[1] ?? '';
+          parts.push(createHash('sha256').update(provider).digest('hex'));
         }
+        const envKey = await codexRouteEnvKey(home, profile);
+        if (envKey) parts.push(createHash('sha256').update(process.env[envKey] ?? '').digest('hex'));
         return parts.length > 0 ? parts.join(':') : null;
       },
       async probe(): Promise<{ ok: boolean; detail: string }> {
+        if (profile === null) {
+          const issue = codexNativeRouteIssue(codexHomeOf());
+          if (issue) return { ok: false, detail: issue };
+        }
         const probe = cfg.probe.cli.codex;
         const bin = codexConfig(ctx).bin ?? probe?.entrypoint ?? null;
         if (!bin) return { ok: false, detail: 'codex 入口未记录' };
@@ -425,8 +442,8 @@ export const codexAdapter: CriticAdapter = {
         cwd: projectRoot,
         prompt: '只回复 OK 两个字母，不要调用任何工具。',
         profile,
-        model: null, // 用 profile 的默认模型，探的是凭据不是模型路由
-        effort: null,
+        model: combination?.model ?? null,
+        effort: combination?.effort ?? null,
         readonlyArgs: readonlyArgsFromProbe(readonlyFlags),
         codexHome: home.codexHome,
         fakeHome: home.fakeHome,
@@ -488,6 +505,10 @@ export const codexAdapter: CriticAdapter = {
     const wantedAll = opts?.vendorProfiles !== undefined
       ? [...new Set(opts.vendorProfiles.filter((x): x is string => x !== null))]
       : [codexConfig(ctx).profile].filter((x): x is string => x !== null);
+    if (opts?.vendorProfiles?.includes(null) || (!opts?.vendorProfiles && codexConfig(ctx).profile === null)) {
+      const issue = codexNativeRouteIssue(codexHomeOf());
+      if (issue) return { ok: false, reason: issue };
+    }
     for (const wanted of wantedAll) {
       const hit = p.providers.find((x) => x.profile === wanted);
       if (!hit) {
@@ -495,8 +516,8 @@ export const codexAdapter: CriticAdapter = {
         return {
           ok: false,
           reason:
-            `本轮的 codex 厂商 profile「${wanted}」在本机不存在。已探测到的：${known}。\n` +
-            '  注意 codex 对未知 profile 不报错、而是静默回落基底配置，所以这道拦截由预检负责。',
+            `本轮的 codex 厂商 profile「${wanted}」没有对应的有效探针结论。已探测到的：${known}。\n` +
+            `  存在性以现场文件名单为准；请运行 trivium doctor --only codex --profile-codex ${wanted} 复核该路线。`,
         };
       }
       if (!hit.credentialed) {
@@ -620,9 +641,28 @@ export const codexAdapter: CriticAdapter = {
     return { kind: 'levels' as const, levels };
   },
 
-  /** 本机厂商 profile 名单（M11 第 4 步）：探针的 `profiles`，与 `availability()` 判存在性的来源同一份 */
+  /** 本机现场文件名单判存在性；探针providers只证明该路线已有探测及凭据结论。 */
   vendorProfilesFor(cfg) {
-    return cfg.probe.cli.codex?.profiles ?? [];
+    void cfg;
+    try { return readdirSync(codexHomeOf()).filter(name => name.endsWith('.config.toml')).map(name => name.slice(0, -12)); }
+    catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []; throw e; }
+  },
+  profileNamesAuthoritative: true,
+  accessFor(cfg, profile) {
+    const c = codexConfig({ cfg, nodePath: process.execPath });
+    const bin = c.bin ?? cfg.probe.cli.codex?.entrypoint ?? null;
+    const files = [path.join(codexHomeOf(), 'config.toml'), ...(profile ? [path.join(codexHomeOf(), `${profile}.config.toml`)] : [])];
+    const chunks: string[] = [];
+    for (const file of files) {
+      try { chunks.push(readFileSync(file, 'utf8')); }
+      catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
+    }
+    const providers = chunks.map(text => /^model_provider\s*=\s*"([^"\r\n]+)"/m.exec(text.split(/^\s*\[/m)[0] ?? '')?.[1]).filter((v): v is string => !!v);
+    const provider = providers.at(-1) ?? null;
+    return { requested_mode: profile === null ? 'native' : 'profile', profile, launcher_requested: bin, launcher_effective: null,
+      wrapper_sha256: null, configuration_sha256: chunks.length ? createHash('sha256').update(JSON.stringify(chunks)).digest('hex') : null,
+      provider_declared: provider, provider_declared_source: provider === null ? null : 'config',
+      provider_effective: null, provider_effective_source: null };
   },
 
   /**
@@ -634,6 +674,15 @@ export const codexAdapter: CriticAdapter = {
   },
 
   async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
+    if (req.profile_requested === null) {
+      const issue = codexNativeRouteIssue(codexHomeOf());
+      if (issue) return failedResult('codex', { status: 'failed', reason: issue, profileRequested: null });
+    }
+    const access = this.accessFor!(ctx.cfg, req.profile_requested);
+    if (req.access && (req.access.launcher_requested !== access.launcher_requested ||
+      req.access.configuration_sha256 !== access.configuration_sha256)) {
+      return failedResult('codex', { status: 'failed', reason: 'Codex 路线在准备后发生变化，请重新预检', profileRequested: req.profile_requested });
+    }
     /*
      * 先取请求值：失败出口也要写得出它（CODEX-03 ≡ GLM-02）。厂商 profile 取本轮解析值（M11 第 6 步），
      * 不再读配置段——`-p`、隔离副本与失败出口的 `profileRequested` 都从这一份取。
@@ -706,6 +755,7 @@ export const codexAdapter: CriticAdapter = {
         status: 'timeout',
         reason: `脚本级超时（${req.timeout_s}s）`,
         exitCode: out.exitCode,
+        processStarted: out.spawned,
         durationS: out.durationMs / 1000,
         rawStdoutPath: stdoutPath,
         cliVersion: probe.version,
@@ -726,6 +776,7 @@ export const codexAdapter: CriticAdapter = {
         status: 'failed',
         reason: `codex 未产出最终回复：${why || '(无错误消息)'}`,
         exitCode: out.exitCode,
+        processStarted: out.spawned,
         durationS: out.durationMs / 1000,
         rawStdoutPath: stdoutPath,
         cliVersion: probe.version,
@@ -772,7 +823,7 @@ export const codexAdapter: CriticAdapter = {
       'utf8',
     );
 
-    return buildCodexResult(
+    const result = buildCodexResult(
       trace,
       meta,
       out,
@@ -781,5 +832,7 @@ export const codexAdapter: CriticAdapter = {
       req.project_root,
       inv.profile,
     );
+    result.access = { ...access, launcher_effective: out.spawned ? bin : null };
+    return result;
   },
 };

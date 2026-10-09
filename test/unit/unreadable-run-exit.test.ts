@@ -289,14 +289,14 @@ test('U4：describeRunMetaCause 四档各一句，互不相同', () => {
   assert.equal(lines[0], '文件不存在');
   assert.match(lines[1]!, /^文件在但读不了（EACCES：x）$/);
   assert.match(lines[2]!, /^文件在但不是合法 JSON（Unexpected token）$/);
-  assert.match(lines[3]!, /^文件是 JSON，但不合 run\.v1\/v2 契约（schema 不识）$/);
+  assert.match(lines[3]!, /^文件是 JSON，但不合 run\.v1\/v2\/v3 契约（schema 不识）$/);
   assert.equal(new Set(lines).size, 4);
 });
 
 for (const c of [
   { name: '文件不存在', body: null, want: '本次判定：文件不存在。' },
   { name: '不是合法 JSON', body: '{ 坏', want: '本次判定：文件在但不是合法 JSON（' },
-  { name: '不合契约', body: '{}\n', want: '本次判定：文件是 JSON，但不合 run.v1/v2 契约（' },
+  { name: '不合契约', body: '{}\n', want: '本次判定：文件是 JSON，但不合 run.v1/v2/v3 契约（' },
 ]) {
   test(`U4：审批复核读不出（${c.name}）⇒ 原文之后、出口之前多一行本次判定，原文与共用出口段不动`, async () => {
     const l = await bareLayout();
@@ -317,7 +317,7 @@ for (const c of [
           // 首行原文逐字不动
           assert.equal(
             lines[0],
-            `plan 阶段 run R1（来源：最新一次运行）：${APPROVAL_CHECK_META_UNREADABLE}（文件缺失、内容损坏，或不合 run.v1/v2 契约）。`,
+            `plan 阶段 run R1（来源：最新一次运行）：${APPROVAL_CHECK_META_UNREADABLE}（文件缺失、内容损坏，或不合 run.v1/v2/v3 契约）。`,
           );
           // 第二行就是本次判定，随后原样接调用方的出口
           assert.ok(lines[1]!.startsWith(`  ${c.want}`), `第二行不是本次判定：\n${e.message}`);

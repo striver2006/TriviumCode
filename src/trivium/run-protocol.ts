@@ -114,10 +114,12 @@ interface Handoff {
     modelOverrides: Partial<Record<CriticId, string>>;
     /**
      * 档位命令行旗标（M11 第 5 步）。**可选**：旧交接文件没有它，读侧缺席即空。
-     * worker 用它让 `override_reason` 认得 `--tier-〈id〉`。回滚方向的降级（旧版 worker 读新交接文件会忽略它）
+     * worker 用它保留同一份档位请求；族比较依据本轮声明与回读。回滚方向的降级（旧版 worker 读新交接文件会忽略它）
      * 不改 run.v2 无解，见计划 r2 §5 第 4 条。
      */
     tierFlags?: Partial<Record<CriticId, TierFlagValues>>;
+    driverModel?: string | null;
+    driverProvider?: string | null;
     command: string;
     /** 本轮入选的审核者集合。worker 是另一个进程，必须随交接文件带过去 */
     critics: CriticId[];
@@ -160,6 +162,8 @@ async function writeHandoff(rc: RunContext): Promise<void> {
       contextPaths: rc.opts.contextPaths,
       subjectFile: rc.opts.subjectFile,
       modelOverrides: rc.opts.modelOverrides,
+      driverModel: rc.meta.driver_declaration?.model ?? null,
+      driverProvider: rc.meta.driver_declaration?.provider ?? null,
       ...(rc.opts.tierFlags && Object.keys(rc.opts.tierFlags).length > 0 ? { tierFlags: rc.opts.tierFlags } : {}),
       command: rc.opts.command,
       critics: [...rc.sides],
@@ -221,6 +225,18 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
   const ref = await resolveTopic(ctx, h.topic, h.stage);
   const meta = await readRunMeta(ref.layout, h.stage, runId);
   if (!meta) throw missingArtifact(`找不到运行 ${runId} 的 run.json`);
+  if (meta.schema !== 'trivium.run.v3') {
+    throw envError('旧版运行交接不能由v3 worker重新执行；历史读取与取消仍支持，请用原版本收尾后新开一轮');
+  }
+  for (const c of h.sides) {
+    const request = h.requests[c];
+    const frozen = meta.requested_routes?.[c];
+    const current = request ? { model: request.model, effort: request.effort ?? null,
+      tier: request.tier, tier_source: request.tier_source, access: request.access } : null;
+    if (!frozen || JSON.stringify(current) !== JSON.stringify(frozen) || request?.profile_requested !== frozen.access.profile) {
+      throw envError(`${c} 的执行交接与运行记录请求路线不一致，拒绝重新解析或替换组合`);
+    }
+  }
 
   const adapterCtx: AdapterContext = {
     cfg: ctx.config,
@@ -240,6 +256,8 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
       subjectFile: h.options.subjectFile,
       modelOverrides: h.options.modelOverrides,
       tierFlags: h.options.tierFlags ?? {},
+      driverModel: h.options.driverModel ?? null,
+      driverProvider: h.options.driverProvider ?? null,
       command: h.options.command,
       critics: h.options.critics,
       sessionId: h.options.sessionId ?? null,
@@ -580,7 +598,7 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
       /*
        * 开场播报要用的两项（审查意见 GLM-02）。skill 被要求在 --start 之后
        * 立刻告诉用户「两侧是谁、预算多久」，而这两项原先只有编排器知道：
-       * 模型是 profile 与 --model-* 覆盖路由后的**生效值**，让 skill 文档
+       * 模型是 profile 与 --model-* 覆盖路由后的**请求值（尚未回读）**，让 skill 文档
        * 自己写死等于让它随配置漂移成错误播报。
        */
       stageTimeoutS: cfg.review.timeout_s[rc.stage],

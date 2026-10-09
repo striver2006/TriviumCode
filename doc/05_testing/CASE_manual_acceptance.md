@@ -9,6 +9,10 @@
 
 ## 先做这一步
 
+M11 第12步前置（2026-10-09）：先完成接入路线准入，再执行全量剧本。Claude/Qwen、Kimi、DeepSeek 三批各12次，Codex官方及三profile一批12次，合计最多48次真实CLI启动（含help/version、失败、重试）；到上限停并记未测，不降低判据。准入逐路线核对读能力、工具白名单/MCP隔离、写入负对照、禁读检测、结构化输出与轨迹；另核对请求/实际入口、profile/模型/effort组合、供应商声明与回读来源。原生Claude真实验收待订阅恢复。
+
+新增契约剧本：显式null继承与单次覆盖、同侧native/profile冲突64、名单外profile统一64；真实子进程证明到执行端的组合、换路线/包装器后缓存失效；超时/取消/失败保留请求；跨Agent同族、同provider不同族、别名与缺Driver声明unknown；v1/v2历史不重写、v3贯通worker/gate/夹具审批/report/提交Hook。所有同族/未知场景告警继续。最终串行两次check与14/14桩自检，未测项明确标未测。
+
 ```bash
 cd /path/to/你的项目
 .trivium/bin/trivium doctor --selftest     # 零配额，14 步。不通过就别往下走
@@ -502,7 +506,7 @@ $TV preflight --stage plan --critics codex,gemini --profile-codex <本机没有�
 
 | # | 判据 | 怎么看 |
 | :--- | :--- | :--- |
-| 11.1 | 负对照前三条退 64；第四条在「只读能力可用」一格退 69（名单外的厂商 profile 在预检里先撞上这一格，`review` 准备阶段才是 64，BACKLOG EV-232）。四条都列出可用值或点名原因，主题目录下没有新文件 | 终端输出、`ls` |
+| 11.1 | 四条参数负对照均退 64；明确不存在的 profile 在预检与准备阶段同样先退 64（EV-232），凭据、服务、入口或只读能力不可用另退 69。四条都列出可用值或点名原因，主题目录下没有新文件 | 终端输出、`ls` |
 | 11.2 | 第 1 轮两侧 `tier` = 所选档、`tier_source` = `cli`；`model_requested` 与 `effort_requested` 等于该档里写的值；codex 侧 `profile_requested` 等于该档的 `profile`（档里没写则为 `agents.codex.profile`） | 运行记录 |
 | 11.3 | 第 1 轮 codex 子进程参数含 `-c model_reasoning_effort=<该档的 effort>`，以及该档 profile 的 `-p` | 第 1 步记下的 `ps` 输出 |
 | 11.4 | 第 2 轮两侧 `tier: null`、`tier_source: override`（基础组合是裸模型名，只提供模型，被精确值全部盖掉）；`effort_requested` 等于命令行的值 | 运行记录 |

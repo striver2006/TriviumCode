@@ -42,7 +42,7 @@ import {
 import { resolveTopicArgs } from './topic-args.js';
 import { shellQuoteArg } from './naming.js';
 import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
-import { assertTierFlags, collectTierFlags, vendorProfileAgents } from './tier-flags.js';
+import { assertTierFlags, collectTierFlags, nativeFlagNames, vendorProfileAgents } from './tier-flags.js';
 import { scrubAllRunRoot } from './retention.js';
 import { wiredAdapter } from './adapters/index.js';
 import { COMMAND_ENTRIES, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
@@ -83,6 +83,7 @@ interface ParsedArgs {
  * 对账：新增布尔旗标忘记登记这里，测试当场红，而不是回到静默吞值。
  */
 const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
+  ...nativeFlagNames(),
   'allow-single', 'await-approval', 'check-artifacts', 'dry-run', 'help', 'json',
   'keep-fixture', 'no-model-calls', 'quiet', 'refresh-auth', 'reject', 'selftest',
   'skip-auth-check', 'start', 'suggest-verify', 'version',
@@ -188,7 +189,7 @@ function rejectExtraPositionals(args: ParsedArgs): void {
 const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编排器
 
 用法：
-  trivium doctor [--json] [--no-model-calls] [--only ${doctorOnlyChoices().join('|')}]
+  trivium doctor [--json] [--no-model-calls] [--only ${doctorOnlyChoices().join('|')}] [--profile-<id> <名> | --native-<id>] [--model-<id> <模型>] [--effort-<id> <值>]
       本机能力探针。实测各家 CLI 的真实能力并回填 .trivium/config.local.yaml 的 probe: 段。
       --no-model-calls  只做静态探测，不消耗厂商配额
       --only            只探测指定一侧（取值随注册表登记的 CLI 自动扩展）
@@ -231,7 +232,12 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                   gemini 的 slug 已编码档位时不生效，只告警
       ${vendorProfileAgents().map((id) => `--profile-${id}`).join(' / ') || '（本机没有带厂商 profile 概念的审核者）'} <名>
                   本次精确指定厂商 profile（厂商 CLI 的配置分层名，不是 --profile 档位表名；不在本机名单退 64）。
-                  覆盖档位条目与 agents.<id>.profile，下传为该侧的厂商 profile（codex 的 -p）
+                  覆盖档位条目与 agents.<id>.profile（codex 的 -p；claude 的 cld --profile）。
+      ${vendorProfileAgents().map((id) => `--native-${id}`).join(' / ')}
+                  显式选择原生路线，覆盖档位与配置 profile；不改变模型和 effort。
+                  同侧与 --profile-<id> 同时给出退 64；路线失败不自动切换。
+      --driver-model <模型> / --driver-provider <供应商>
+                  本轮 Driver 会话声明，缺席合法；不从配置推断。缺模型或回读时模型族为 unknown，告警继续。
       --profile <名称>  本次改用另一档模型（config.yaml 的 profiles）。
                   与 --model-* 不冲突：那个指定具体模型、优先级更高，
                   这个只换默认值表。档位不存在则退 64 并列出可用值
@@ -261,7 +267,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                                                结束它与它拉起的审查员 CLI、确认退出后把 run.json 补收为 failed、
                                                回收主题锁；status.json 与闸门不动
 
-  trivium preflight --stage plan|code|bug|all [--json] [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--tier-<id> <档>] [--effort-<id> <值>] [--profile-<id> <名>] [--skip-auth-check] [--refresh-auth]
+  trivium preflight --stage plan|code|bug|all [--json] [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--tier-<id> <档>] [--effort-<id> <值>] [--profile-<id> <名> | --native-<id>] [--driver-model <模型>] [--driver-provider <供应商>] [--skip-auth-check] [--refresh-auth]
       启动预检（FR-18 / AC-16）。失败时**不产生任何工件**。
       --stage all   命令 A 用：校验全部三阶段的模型 slug + 编译测试命令已配置
       --critics <id,…>  本次要用哪几侧。只读能力、模型 slug、探活都只查这几侧；
@@ -402,7 +408,9 @@ function collectModelOverrides(args: ParsedArgs): Record<string, string> {
  * `--x=` 写成空串时照传空串、由 `assertTierFlags` 退 64——「写了」与「没写」不得合流（计划三审 AGY-02）。
  */
 function tierFlagGetter(args: ParsedArgs): (name: string) => string | undefined {
-  return (name) => (args.flags.has(name) ? (flagString(args, name) ?? '') : undefined);
+  return (name) => nativeFlagNames().includes(name)
+    ? (args.flags.get(name) === true ? 'true' : undefined)
+    : (args.flags.has(name) ? (flagString(args, name) ?? '') : undefined);
 }
 
 /**
@@ -423,6 +431,12 @@ function flagString(args: ParsedArgs, name: string): string | null {
     );
   }
   return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+function driverDeclarationFlag(args: ParsedArgs, name: 'driver-model' | 'driver-provider'): string | null {
+  const value = flagString(args, name)?.trim() ?? null;
+  if (args.flags.has(name) && !value) throw usageError(`--${name} 需要非空值。`);
+  return value;
 }
 
 function parseStage(args: ParsedArgs): Stage {
@@ -679,6 +693,8 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     diffBase: flagString(args, 'base'),
     modelOverrides: models,
     tierFlags,
+    driverModel: driverDeclarationFlag(args, 'driver-model'),
+    driverProvider: driverDeclarationFlag(args, 'driver-provider'),
     command: `trivium review --stage ${stage}`,
     critics,
     driver,
@@ -715,7 +731,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
         wait_timeout_s: st.waitTimeoutS,
         // skill 必须用这个值设置每次 --wait 的 Bash 工具超时（GLM-02）
         bash_timeout_ms: st.bashTimeoutMs,
-        // ↓ 开场播报要用：两侧是谁、预算多久。只有编排器知道生效值
+        // ↓ 开场播报要用：两侧是谁、预算多久。只有编排器知道路由后的请求值（尚未回读）
         stage_timeout_s: st.stageTimeoutS,
         models: st.models,
         worker_pid: st.workerPid,
@@ -795,6 +811,8 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
     config: ctx.config,
     skipModelCalls: args.flags.get('no-model-calls') === true,
     only,
+    tierFlags: assertTierFlags(ctx.config, resolveDriver(flagString(args, 'driver')).driver, collectTierFlags(tierFlagGetter(args)), CRITIC_AGENT_IDS),
+    modelOverrides: collectModelOverrides(args),
   });
 
   if (isJsonMode()) {
@@ -855,6 +873,8 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
     scope,
     modelOverrides: models,
     tierFlags,
+    driverModel: driverDeclarationFlag(args, 'driver-model'),
+    driverProvider: driverDeclarationFlag(args, 'driver-provider'),
     critics,
     driver,
     skipAuthCheck: args.flags.get('skip-auth-check') === true,
@@ -1215,7 +1235,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     const { unreadableRunMetaExitAt } = await import('./meta.js');
     throw missingArtifactError(
       `${stage} 阶段扫到 ${scan.scanned} 份运行元数据，但**一份都读不出来**` +
-        `（文件损坏、schema 不识，或不合 run.v1/v2 契约）：${scan.unreadable.join('、')}\n` +
+        `（文件损坏、schema 不识，或不合 run.v1/v2/v3 契约）：${scan.unreadable.join('、')}\n` +
         '  无法确定当轮 Driver 与轮次，不能按缺省 Driver 继续——那会把「留痕坏了」判成「按 claude 判」。\n' +
         '  （--run-id 在这一格没有用：它读的是同一批文件，同样读不出来。）\n' +
         unreadableRunMetaExitAt(ref.layout, stage, scan.unreadable),

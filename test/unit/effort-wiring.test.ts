@@ -27,7 +27,7 @@ import { makeStubAdapter } from '../../src/trivium/adapters/stub.js';
 import { realAdapters } from '../../src/trivium/adapters/index.js';
 import { parseEffortLevels, probeClaude } from '../../src/trivium/probes/claude.js';
 import { defaultConfig } from '../../src/trivium/config.js';
-import { newRunMeta } from '../../src/trivium/meta.js';
+import { historicalRunMeta } from '../helpers/legacy-run-meta.js';
 import { validateRunMeta } from '../../src/trivium/schemas.js';
 import { renderFrontMatter, type RenderInput } from '../../src/trivium/render.js';
 import { ECHOED_ORCHESTRATOR_KEYS } from '../../src/trivium/parse.js';
@@ -205,7 +205,7 @@ test('E5 钩子必填：四家真实适配器都声明了（新增一家不声�
 // ─────────────────────────── C 组：契约三态与旧读者 ───────────────────────────
 
 function metaWith(critic: Record<string, unknown> | null, top: Record<string, unknown> = {}): RunMeta {
-  const m = newRunMeta({
+  const m = historicalRunMeta({
     runId: 'R1', topic: '档位接线', stage: 'plan', rerunIndex: 1, command: 'x',
     promptHint: null, taskGoal: null, criticsSelected: ['gemini', 'glm'],
     treeHash: 'h', gitHead: null, dirty: false, subjectSha256: 's', denyPaths: [], driftPolicy: 'warn',
@@ -387,7 +387,7 @@ test('P1 codex 可用性：传了本轮解析值就逐个判、不再看配置�
   assert.deepEqual(codexAdapter.availability(ctx, { vendorProfiles: ['deepseek'] }), { ok: true }, '本轮解析出 deepseek：配置段的坏值不再相干');
   const missing = codexAdapter.availability(ctx, { vendorProfiles: ['deepseek', 'kimi'] });
   assert.equal(missing.ok, false);
-  assert.match(missing.reason!, /厂商 profile「kimi」在本机不存在/);
+  assert.match(missing.reason!, /厂商 profile「kimi」没有对应的有效探针结论/);
   const noCred = codexAdapter.availability(ctx, { vendorProfiles: ['glm'] });
   assert.equal(noCred.ok, false);
   assert.match(noCred.reason!, /没有可用凭据/);

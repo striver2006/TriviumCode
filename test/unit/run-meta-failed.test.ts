@@ -56,7 +56,7 @@ const fail = (env: Env, termination: RunTermination = LOST, workerGone = true) =
 
 const readRun = async (env: Env) => JSON.parse(await fs.readFile(env.runJson, 'utf8')) as RunMeta;
 
-test('F1：v2 骨架 ⇒ 两步都写；status / gate.state 为 failed、带 termination，其余逐键不变且过 run.v2 校验', async () => {
+test('F1：v3 骨架 ⇒ 两步都写；failed 带 termination 与 partial 原因，其余逐键不变', async () => {
   const env = await setup();
   const before = await seed(env);
   const termination: RunTermination = { by: 'worker_exception', exit_code: 69 };
@@ -67,11 +67,13 @@ test('F1：v2 骨架 ⇒ 两步都写；status / gate.state 为 failed、带 ter
   assert.deepEqual(validateRunMeta(after), []);
   assert.equal(after.status, 'failed');
   assert.equal(after.gate.state, 'failed');
+  assert.equal(after.review_mode, 'partial');
+  assert.match(after.degraded_reason!, /运行异常收尾/);
   assert.deepEqual(after.termination, termination);
   assert.ok(after.finished_at && !Number.isNaN(Date.parse(after.finished_at)));
   const strip = (m: RunMeta) => {
     const { termination: _t, ...rest } = m;
-    return { ...rest, status: null, finished_at: null, gate: { ...m.gate, state: null } };
+    return { ...rest, status: null, finished_at: null, review_mode: null, degraded_reason: null, gate: { ...m.gate, state: null } };
   };
   assert.deepEqual(strip(after), strip(before));
   assert.equal((await readTask(env.layout)).runs.find((e) => e.run_id === RUN)?.status, 'failed');

@@ -1,0 +1,245 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261009T125227Z",
+  "topic": "探针与认证",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "Codex、Claude Code 双模式接入与异构判定修正",
+  "entry": "A",
+  "driver": "codex",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "profile": "default",
+  "critics_selected": [
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "7780cd928a957935b45d3276c827451f1c41a36f",
+    "tree_hash": "b158706dfd1874d3ffa3f8021a38f1b8e57e250e",
+    "dirty": true,
+    "subject_sha256": "b3a1ed6dfe6f0a4edb16acea88b6d3b26376f50a57a03c172cf9c1cc70b66592",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "c226d2a2d81f3907c93a3c224a4b396cd4f3472e",
+      "dirty": false,
+      "inputs_sha256": "088d9590046e109eb75c59e52c6515a0ce3c6da512bb9d6cb249c537f0c8e40a",
+      "built_at": "2026-10-09T07:55:28.462Z"
+    },
+    "after_tree_hash": "b158706dfd1874d3ffa3f8021a38f1b8e57e250e"
+  },
+  "started_at": "2026-10-09T12:52:28.801Z",
+  "finished_at": "2026-10-09T13:02:46.118Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 567,
+      "tool_calls": {
+        "read": 22,
+        "grep": 22,
+        "glob": 7,
+        "run_command": 0,
+        "project_reads": 22
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 190647,
+        "output_tokens": 26187,
+        "thinking_tokens": 19836,
+        "cache_read_tokens": 3663475,
+        "total_tokens": 216834
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "d0e8b21b-1d0b-47a0-b0fc-d953f1a79459",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 617.04,
+      "tool_calls": {
+        "read": 13,
+        "grep": 10,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 16
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 13,
+        "inputTokens": 1080133,
+        "outputTokens": 26153,
+        "totalTokens": 1106286,
+        "cacheReadTokens": 886144,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_af4e9c0e-9d10-4b99-a227-f65d26faaf02",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "探针与认证/plan/_meta/brief-gemini-20261009T125227Z.md",
+      "sha256": "4461546293c4cb64af8d97db1b4b9275675df2a5d895c263cb0fb75e3d08af18"
+    },
+    {
+      "path": "探针与认证/plan/_meta/brief-glm-20261009T125227Z.md",
+      "sha256": "d2d8cef70342b3a07b5d4ebc41254dcfb6a7842e296aab19d99fe9fa2a96185e"
+    },
+    {
+      "path": "探针与认证/plan/_meta/review-gemini-20261009T125227Z.json",
+      "sha256": "406c97bc1806476b561aad394c2d16726c1e6edfa66f0709f8c68b4ca7c1d2f0"
+    },
+    {
+      "path": "探针与认证/plan/_meta/review-glm-20261009T125227Z.json",
+      "sha256": "7368b9aba0544db718cb39620261762a481fc64a7d77ebb9c08e05289d9f2e89"
+    },
+    {
+      "path": "探针与认证/plan/2026-10-09-探针与认证-gemini.md",
+      "sha256": "7cc2c9da0e556e306301401ab63d41254b9acb0549b27e636055edcf96b5dbf1"
+    },
+    {
+      "path": "探针与认证/plan/2026-10-09-探针与认证-glm.md",
+      "sha256": "7b068bef0cddb44b20451f8000194f48d0099e8f405f4720e5e85774f5746310"
+    },
+    {
+      "path": "探针与认证/plan/2026-10-09-探针与认证-codex.md",
+      "sha256": "b3a1ed6dfe6f0a4edb16acea88b6d3b26376f50a57a03c172cf9c1cc70b66592"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

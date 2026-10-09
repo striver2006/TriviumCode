@@ -226,6 +226,7 @@ const LITERAL_ALLOWLIST: readonly { file: string; why: string }[] = [
   { file: 'agents/registry.ts', why: '唯一登记处，字面量的来源本身' },
   { file: 'adapters/index.ts', why: 'Agent id → 厂商适配器的唯一接线处；新增一家在此加一行（M7b 第 2 步把 review/run-protocol 两份字面表收敛到这里）' },
   { file: 'adapters/agy.ts', why: '厂商专属适配器：文件本身即该 Agent 的命名空间' },
+  { file: 'adapters/claude-route.ts', why: 'Claude 适配器的路线解析与指纹模块，使用该 Agent 的配置与探针命名空间' },
   {
     file: 'adapters/claude.ts',
     why:

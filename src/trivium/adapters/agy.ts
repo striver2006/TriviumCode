@@ -59,6 +59,7 @@ export interface AgyInvokeOutcome {
   stdout: string;
   stderr: string;
   commandLine: string;
+  spawned?: boolean;
   durationMs: number;
   /** agy 自报的「输出可能被截断」告警（1.1.28 起的行为，见坑 P-07） */
   printTimeoutWarned: boolean;
@@ -138,6 +139,7 @@ export async function invokeAgy(opts: AgyInvokeOptions): Promise<AgyInvokeOutcom
     stdout: r.stdout,
     stderr: r.stderr,
     commandLine: r.commandLine,
+    spawned: r.spawned,
     durationMs: r.durationMs,
     printTimeoutWarned: /print timeout after/i.test(r.stderr),
   };
@@ -235,7 +237,7 @@ export const agyAdapter: CriticAdapter = {
    * 指纹取只读审查 Agent 的定义文件：那份 `agent.md` 一改，白名单就换了，
    * 旧的「已认证」结论对新的工具面不再成立——所以它必须参与缓存失效判定。
    */
-  authProbe(ctx: AdapterContext, projectRoot: string) {
+  authProbe(ctx: AdapterContext, projectRoot: string, combination) {
     const cfg = ctx.cfg;
     return {
       async fingerprint() {
@@ -252,7 +254,8 @@ export const agyAdapter: CriticAdapter = {
           bin,
           cwd: projectRoot,
           prompt: '只回复 OK 两个字母，不要调用任何工具。',
-          model: cfg.probe.cli.agy?.models[0] ?? null,
+          model: combination?.model ?? cfg.probe.cli.agy?.models[0] ?? null,
+          effort: combination?.effort ?? null,
           agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
           timeoutMs: 120_000,
           pty: cfg.probe.cli.agy?.pty_required === true,
@@ -352,6 +355,7 @@ export const agyAdapter: CriticAdapter = {
           ? `脚本级超时（${req.timeout_s}s）`
           : 'agy 自报 print timeout，输出可能不完整',
         exitCode: out.exitCode,
+        processStarted: out.spawned,
         durationS: out.durationMs / 1000,
         rawStdoutPath: stdoutPath,
         tracePath,
@@ -370,6 +374,7 @@ export const agyAdapter: CriticAdapter = {
           `工具被 headless 软拒绝且无任何输出：${out.parsed.deniedActions.map((d) => d.action).join(', ')}` +
           '（issue #548）。检查只读 Agent 的 tools 白名单是否包含了需要审批的工具。',
         exitCode: out.exitCode,
+        processStarted: out.spawned,
         durationS: out.durationMs / 1000,
         rawStdoutPath: stdoutPath,
         tracePath,
@@ -384,6 +389,7 @@ export const agyAdapter: CriticAdapter = {
         status: 'failed',
         reason: `agy 非零退出（${out.exitCode}）：${out.stderr.slice(0, 300)}`,
         exitCode: out.exitCode,
+        processStarted: out.spawned,
         durationS: out.durationMs / 1000,
         rawStdoutPath: stdoutPath,
         tracePath,
@@ -400,12 +406,10 @@ export const agyAdapter: CriticAdapter = {
      * 拿不到时可退到「预检已校验过的请求值」——因为未知 slug 会让 agy 直接非零退出，
      * 不会静默换模型。两者皆不成立记 unverified，不采信任何猜测。
      */
-    const modelEffective = out.parsed.model ?? req.model ?? null;
+    const modelEffective = out.parsed.model ?? null;
     const modelSource: CriticResult['model_effective_source'] = out.parsed.model
       ? 'envelope'
-      : req.model
-        ? 'requested'
-        : 'unverified';
+      : 'unverified';
 
     // 算一次就够：上一版在两个字段上各调了一遍，同一份轨迹被遍历两次
     const coverage = pathCoverage(out.parsed);
@@ -414,6 +418,7 @@ export const agyAdapter: CriticAdapter = {
       critic: 'gemini',
       status: 'ok',
       exit_code: out.exitCode,
+      process_started: out.spawned ?? out.exitCode !== null,
       duration_s: out.durationMs / 1000,
       raw_stdout_path: stdoutPath,
       trace_path: tracePath,

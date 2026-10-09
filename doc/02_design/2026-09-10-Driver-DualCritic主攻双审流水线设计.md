@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.141
+> - **当前版本**：v1.3.142
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -170,7 +170,7 @@
 | FR-13/14 意见可裁决 + 逐条裁决 | `trivium.review.v1` 意见 schema + `trivium gate` 裁决完整性硬校验 | 6.5、6.6、8.6 |
 | FR-15 只读 | 三重保障：工具集裁剪 + 前后指纹比对（`tree_hash` + `git status`）+ 轨迹核验 | 10.3 |
 | FR-16 送审自包含 | 送审包结构固定，落盘 `_meta/`；被审对象以真实路径 + sha256 固定，漂移可检出 | 第 9 章 |
-| FR-17 模型异构默认 | 默认 profile 下各审核者的生效模型不落在当轮 Driver 厂商的名义模型族（claude 为 Driver 时即非 Claude 系；按模型名判，属启发式，见 11.5）；覆盖需显式且回填元数据 | 11.3 |
+| FR-17 模型族可核对 | 按本轮 Driver 声明与审核者回读模型逐对三态比较；同族或未知告警继续，覆盖留痕 | 11.6 |
 | FR-18 启动预检 | `trivium preflight` 在任一侧送审前完成，失败即中止且零工件 | 8.1 |
 | FR-19 超时与降级 | `failure_policy: strict\|degrade` + 降级标记与原因写入元数据与文档头 | 第 12 章 |
 | FR-20 提示语进上下文 | 提示语是 B/C/D 必填参数，写入两侧送审包的固定段落 | 7.3、9.4 |
@@ -277,6 +277,8 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 ### 3.5 探针必测清单（`trivium doctor` 的输出契约）
 
 `doctor` 必须在本机实测下列各项并把结论写入 `.trivium/config.yaml` 的 `probe:` 段（人不手工编辑该段）：
+
+双模式增补（11.6）：Claude 每条 native/profile 路线分别探测读取、工具白名单与 MCP 隔离、写入负对照、禁读、结构化输出和轨迹；指纹含底层 CLI 版本、入口、包装器与 profile 配置哈希。指纹变化或探针过程中路线变化使旧结论失效。目录声明只用于元数据，不冒充完整服务端模型目录。认证按本轮 Agent/模式/profile/模型/effort 去重探活并隔离缓存，实际探活与审查使用同一解析组合。
 
 | 探针项 | 判定方式 | 失败后果 |
 | :--- | :--- | :--- |
@@ -1390,11 +1392,11 @@ v1 → 内存 v2 的映射：`dual → full`、`single → partial`、`driver` �
 > | :--- | :--- | :--- | :--- |
 > | `--tier-<id> <档>`（`low` / `medium` / `high`） | `review`、`preflight`、`topic resolve`（命令 A 由 resolve 输出照抄进 `--start`） | 为该审核者选档，即路由第一段第 1 级（11.5） | `<id>` 须是本轮入选审核者（与 `--model-<id>` 同一判据），否则退 64；该 Agent 未定义此档 → 退 64 并列出已定义的档；零工件 |
 > | `--effort-<id> <值>` | 同上 | 精确覆盖思考等级，可单独给，作用于路由解析出的模型（第二段） | 值须在该模型的原生枚举内（11.5「原生枚举与校验」），否则退 64 并列出可用值；枚举为空或取不到时跳过；gemini 的 slug 已带档位时告警「不生效」、请求值照记 |
-> | `--profile-codex <名>` | 同上 | 精确覆盖 codex 的厂商 profile（第二段） | 不在 `probe.codex.profiles` 名单 → 退 64 并列出可用 profile、零工件；名单为空跳过校验；漏检时 codex 自身报错、该侧归类 failed（照搬演进设计 §12 :647）（**预检实际退 69**：「只读能力可用」一格排在「档位组合合法」之前，而第 6 步起可用性检查也按解析出的厂商 profile 判，名单外的 profile 在预检里先以「在本机不存在」退 69；`review` 准备阶段档位组合在前，退 64。两处顺序不一致，M11 第 10 步零配额实测核出，BACKLOG EV-232） |
+> | `--profile-<id> <名>` / `--native-<id>` | 同上 | 按注册表能力覆盖接入方式；native 显式清空 profile，模型与 effort 独立解析 | 同侧冲突或现场文件名单明确不存在的 profile → 64、零工件；读取名单失败、入口、凭据或所选路线能力不可用 → 69。Agent 配置与档位中的值按相同顺序校验，名单为空也不得冒充存在（EV-232） |
 >
 > 与 trivium 自身的 `--profile <档位表名>` 是两个命名空间。三条旗标都进了入口资产的参数提示（`src/entry-render.ts` 的派生变量）与 `skill-flag-parity` 对账（S0.6 / S2 / S6 逐段点名）。
-> **`--profile-<id>` 按适配器钩子派生**（用户 2026-10-08 定）：收集面是全部已登记 Agent，只有实现了 `vendorProfilesFor` 的那一家成立——今天派生结果恰为规格写的 `--profile-codex`，源码不写 Agent id；给没有厂商 profile 概念的侧写这个旗标退 64，文案点明它不是 `--profile <档位表名>`。
-> 经 `--tier-<id>` 选出与当轮 Driver 同族的模型时，`override_reason` 写「用户经 `--tier-<id> <档>` 选出了…」（档位旗标随 worker 交接文件带过去；字段、类型、出现条件不变）。
+> **`--profile-<id>` 按注册表能力声明派生**：适配器契约测试核对 `vendorProfilesFor` 与 `accessFor`，目前 Claude、Codex 支持；无能力侧退 64。同侧可用 `--native-<id>` 显式切换原生，与 profile 参数互斥。
+> v3 的 `override_reason` 记录与 Driver 的模型族比较依据和原因，三态均可写；档位来源另记 tier_source。v1/v2 仍按旧名义族语义显示，不回算。
 > 旧旗标 `--only` / `--model-gemini` / `--model-glm` / `--allow-single` **长期保留为别名**
 > （目标项目里的旧 SKILL.md 可能未同步升级，18.1 #7）；`--only` 是 `--critics` 的
 > 单元素写法，**两者同时给退 64**——任选其一执行都会让另一个意图无声消失。
@@ -2956,7 +2958,7 @@ HOME="<run_home>" "<runtime.node>" "<entry>" \
 > - `profiles[<档位表>].<id>.<阶段>` 三形态：裸 slug（旧形态，行为逐字不变）｜ `{tier}` ｜ `{model, effort}`。
 > - `agents.codex.effort`（阶段级、枚举 low/medium/high）**废弃**：从未被读取（`effortFor` 只给 antigravity 取值），且枚举违反禁令 ①；`agents.gemini.effort` 保留，作「档位表格子是裸 slug 时」的回落。`init` 模板不写 tiers。
 >
-> **厂商 profile**（EV-22 / EV-27）：档位条目可带 `profile`，「换家族 = 换档位」；取值次序 `--profile-codex` > 档位条目的 `profile` > `agents.codex.profile` > 不传。预检两格：①给出的 profile 不在 `probe.codex.profiles` 名单 → 退 64（同 7.1）（**预检实际退 69**：「只读能力可用」一格排在「档位组合合法」之前，而第 6 步起可用性检查也按解析出的厂商 profile 判，名单外的 profile 在预检里先以「在本机不存在」退 69；`review` 准备阶段档位组合在前，退 64。两处顺序不一致，M11 第 10 步零配额实测核出，BACKLOG EV-232）；②档位里的模型须在该 profile 的模型目录中（`models_by_profile`，并入「模型 slug 合法」一格，按解析出的厂商 profile 取目录）。层级不拆：协作者机器上没有那个 profile 时，在本机层整段覆盖 `agents.codex.tiers`（13.1.1；合并时整段替换，不逐键混合）。**下传与三处同值**（M11 第 6 步，v1.3.133）：解析出的厂商 profile 同时用于 ①可用性检查（`availability()` 的存在性与凭据判据：`review` 准备阶段取同一次解析，预检对 `--stage` 覆盖的每个阶段逐个收集）②模型目录比对 ③codex 的 `-p` 与隔离副本拷哪份 `<profile>.config.toml`——三处同出一次 `resolveTier`。「只整段覆盖 `tiers` 一处即换家族」自此可用（EV-27 结构部分）。**边界**：探活（`authProbe`，最小 headless 调用、按指纹缓存）仍按 `agents.codex.profile` 探——解析出的那一家「凭据在、但过期或被拒」要到运行期才暴露（BACKLOG EV-229）。第 4、5 步时厂商 profile 尚未透传，档位或命令行给出的 profile 与 `agents.codex.profile` 不同即被过渡闸退 64，随本步拆除。
+> **厂商 profile 与接入方式**：Claude、Codex 的能力由注册表声明。单次 `--profile-<id>` 或 `--native-<id>` → 档位条目的 profile → Agent 配置，null 是原生、缺席继承。模型和 effort 独立解析。预检与 review 先校参数，明确不存在的 profile 退 64，配置/入口读取及能力失败退 69；认证按本轮 Agent/模式/profile/模型/effort 去重，不跨组合复用（EV-229、EV-232）。Claude 目录声明不冒充服务端目录。详见 11.6。
 >
 > **路由（两段式）**：第一段定**基础组合**，取第一个命中者并记来源——①`--tier-<id>` → `cli`；②档位表格子：`{tier}` → 该档、`profile`；`{model, effort}` → 该组合（无档位名）、`profile`；裸 slug → 该模型、`legacy`；③`agents.<id>.tiers[default_tier]` → `agent_default`。命中的引用指向未定义的档、或档位表格子显式写了空串，都按配置错误处理、**不往下一级落**（前者报档名与可用档，后者按无模型退 64；v1.3.131 代码三审 GLM-01）。第二段**按字段叠加精确值**——`--model-<id>`、`--effort-<id>`、`--profile-codex` 各自覆盖对应字段，被覆盖的字段原本来自档位时告警；`--effort-<id>` 可单独给。第一段无命中且没给 `--model-<id>` → **退 64**（预检零工件，与「profile 未定义该阶段模型」同一出口——v1.3.131 前此处误记为 69：该出口在 `checkModelSlugs` 处以 64 拦下，`review.ts` 路由处那条 69 分支对同一输入不可达，M11 第 4 步计划 P-4）。gemini 特例：slug 带档位后缀时再给 `--effort-gemini`，请求值照记、适配器不传、告警不生效，生效值取 slug 后缀。
 >
@@ -2966,10 +2968,10 @@ HOME="<run_home>" "<runtime.node>" "<entry>" \
 >
 > **过渡闸（已拆除）**：M11 第 4 步落地（计划 P-1，用户 2026-10-07 定）、第 5 步扩到旗标来源，**第 6 步（v1.3.133）随透传接线整体拆除**（用户 2026-10-08 定：不留开关）。它当时在永久校验之后再拒两类「写了却不下传」的组合（档位、格子或命令行给的思考等级；与 `agents.codex.profile` 不同的厂商 profile），另有两条告警（gemini 档位没写 effort 时运行期仍下传阶段级 effort；`--tier-<id>` 发起时档位名不入档的留痕空窗）。拆除后这些组合只过永久判据、照常下传；**gemini 档位没写 effort 时不再回落阶段级 effort**——回落只对裸 slug 格子（上方数据模型）。原被拦格逐格反转为通过，见 `test/unit/tier-resolve.test.ts` 的 T 组。
 >
-> **异构校验的 N 方化【部分实现】**（M11 第 10 步核实改写，原标【待实施 · M7b】）：**与当轮 Driver 不同族**这一半已实现——
-> 收尾时对入选的每一侧逐侧判定（`review.ts` 调 `isHeterogeneous`，取生效模型、回读不到时退回请求值），结果写进该侧 `heterogeneous`，见下方「异构默认的强制」；
-> **模型族按生效模型判定，不按 Agent**——同一 Agent（如 Codex）可承载多个模型家族。
-> **各审核者之间模型族互不相同**这一半**未实现**：编排器不比较审核者彼此的模型族，两侧落在同一家族时不告警、不留痕；默认档位表各侧取不同模型只是配置约定（BACKLOG EV-234）。
+> **异构校验的 N 方化（v3）**：新写契约按 11.6 比较所有参与者两两组合，取 Driver 声明和审核者回读，缺证据为 unknown；不从 Agent 或供应商推断模型族。
+> 新判定集中在 `model-family.ts`，三态及依据同时用于元数据与文档；旧版布尔只按旧版名义族判定展示。
+> 模型族按可解析的模型标识判定；Driver 声明明确标来源，不是运行时证明。
+> 审核者彼此同族或无法确认也告警继续，原因聚合，不变更选侧或模型（EV-234）。
 
 路由优先级（决定「请求哪个模型」，与 11.3 的 ZCode 覆盖两档「如何让请求生效」是两个概念）：**命令行参数 > `profile`（按任务类型）> 阶段默认值**；档位落地后的完整路由见上方两段式。原写四级，第二级「主题级 `task.json` 覆盖」**规范有而实现从未接线**（`routeModel` 收 `topic` 参数，`review.ts` / `preflight.ts` / `adapters/zcode.ts` 三个调用点都不传），v1.3.129 删除、登记 BACKLOG EV-226；M11 第 4 步（v1.3.131）随 `routeModel` 整个删去（三个调用点迁到 `resolveTier`），EV-226 结案。演进设计 :271「在主设计 11.5 四级之上」与 :660「tier 路由四级解析」随之过时，冻结正文不改，以本段为准。
 
@@ -2994,11 +2996,11 @@ profiles:
 字段已移除：它在实现里没有读取点，且 slug 自带 `-high/-medium/-low` 后缀时
 `buildAgyArgs` 本就不会传 `--effort`（坑 P-16），写了也不生效。
 
-**异构默认的强制**（FR-17 / AC-18）：
+**模型族三态（FR-17 / AC-18，替代旧名义族近似）**：
 
-- 默认 profile 中各审核者的生效模型都不落在**当轮 Driver 厂商的名义模型族**（注册表 `VENDOR_MODEL_FAMILY`，M10a 第 4 步 EV-62；claude 为 Driver 时即非 Claude 系，与原口径等价）；各侧默认互不相同（相同模型 + 相同镜头的双审只是把成本乘二）。
-- 若用户显式把某侧指定为与当轮 Driver 名义族**同族**的模型（claude 为 Driver 时即 `claude-*` slug，Antigravity 确实提供），编排器：①打印醒目告警；②在 `run.json` 写 `heterogeneous: false` 与 `override_reason`（文案点名当轮 Driver）；③在该侧审查文档 front-matter 标注（渲染标题「疑似与主脑同源」）。**不阻止**，但必须可见。
-- **判据两层都是启发式，不是确定性保证**：模型族按模型名判；Driver 一侧按厂商名义族近似——编排器不采集 Driver 的生效模型，与演进设计 §5.4「模型族按生效模型判定，不按 Agent」在 Driver 一侧有张力。`heterogeneous: true` 的准确读法是「未检出同族」；已知错判形态见 BACKLOG EV-107。`heterogeneous` 只驱动告警与留痕，不拦闸门。**历史留痕**里的 `override_reason` 旧文案（「落在 Claude 系」）不回改，与新文案并存，读旧留痕按写入时的口径理解。
+- Driver 与每侧、审核者彼此均比较；模型标识可解析时给出 same-family 或 different-family，无声明、无回读或别名不确定时为 unknown。
+- 同族或未知均打印告警，在 v3 和审查文档保留模型、来源及原因；不自动换模型、不作为门禁。
+- 不同编程工具或供应商不能证明模型异构；历史 v1/v2 布尔与原因不回写，显示为「旧版名义族判定」（EV-107）。
 - 模型 slug 一律以 `agy models` / ZCode 模型目录的实际值为准。
 
 **slug 校验的执行点**（两处，缺一不可）：
@@ -3010,7 +3012,31 @@ profiles:
 
 ---
 
+### 11.6 接入方式与模型族判定（M11 第12步前置 · 契约已定，实施验收中）
+
+本节修订11.5的名义族判据及仅Codex拥有profile的限制；未实测能力不能视为已准入。依据三个主题的计划裁决和 ADR_003_agent_access.md。
+
+Agent 表示编程工具，供应商不改变身份。注册表声明 profile 能力；Claude/Codex 支持，Antigravity/ZCode 保持原接入。Claude 配置允许 profile、bin、profile_bin；缺席或null为官方订阅/登录模式，非空profile走cld。档位profile缺席继承、null清空；单次 --profile-<id> 与 --native-<id> 同侧互斥，接入优先级单次参数>档位>Agent配置，模型与effort独立解析。resolve.vendor_profiles 中string转抄profile旗标、null转抄native旗标。缺值、冲突、明确不存在的profile退64；入口、凭据、服务、只读能力不可用退69，两入口先查64类。
+
+Claude 原生入口取bin再取探针entrypoint，profile入口取profile_bin再取已发现的cld；取不到即69，不自动换路线。使用cld --profile <名称> --print，正文仍走stdin。子进程删除ANTHROPIC_*及CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY、EFFORT_LEVEL等冲突变量；profile还删除CLAUDE_CODE_OAUTH_TOKEN。native 使用原生登录态；官方订阅真实验收待恢复。宿主环境和全局配置不改。包装器负责选择底层Claude入口，profile模式不能承诺bin字段覆盖其内部逻辑；help/version经实际包装器核验。
+
+各路线能力由底层CLI版本、原生路径、包装脚本哈希、对应配置哈希绑定；改变即失效，新profile不得沿用官方结论。doctor默认只探配置选择路线，显式profile/native一次选择一条；免模型调用不刷新paid能力。profile元数据只静态提取非敏感字段，不source、不输出凭据；配置模型映射不冒充服务端完整目录。预检按Agent/mode/profile/model/effort解析、去重探活，auth_routes哈希键下保存可读组合与正缓存；旧Agent缓存不能证明新组合。指纹只算一次，探针/认证/留痕共用。
+
+新写trivium.run.v3：顶层driver_declaration={model,provider,source}（可选参数的会话声明，缺席值null、source=null），family_comparisons为逐对{left,right,status,left_model,right_model,left_source,right_source,reason}。status取same-family/different-family/unknown。逐侧access保存requested_mode、profile、launcher_requested/launcher_effective、wrapper_sha256/configuration_sha256、provider_declared/provider_declared_source、provider_effective/provider_effective_source，均显式nullable。逐侧heterogeneous改为三态并与对应Driver比较一致；模型/effort已有请求、回读与来源字段继续使用，禁止requested来源冒充有效回读。未启动实际入口为null。Claude供应商和effort无回读时null。
+
+run.v3 的 requested_routes 在执行前按入选侧记录 model、effort、tier、tier_source、access。取消与 worker 启动失败不丢请求；worker 与交接逐项比对后执行，报告保留无结果侧的请求注记。历史 v1/v2 不补写。
+
+--driver-model/--driver-provider仅是用户会话声明，不从审核者配置或载体注入默认模型；旗标缺席合法，在场缺值退64。保守模型标识解析集中维护，Opus/Sonnet等可跨供应商映射的别名为unknown。Driver缺声明、有效回读缺失、标识未知均unknown；不同Agent或provider不能证明异构。比较Driver与每侧及审核者两两组合，同族/未知均告警继续，同因告警聚合、不进入闸门、不自动换模型。运行中进度明确显示请求模型。
+
+v1/v2先按原Schema严格校验再转统一内存接口，原工件与Schema不改。旧bool保留并显示「旧版名义族判定」，requested来源显示「旧版请求回填」，旧记录不生成新比较矩阵；sourceSchema保留。verify仍用自身契约，提交锚/gate/Hook按原阶段分发。
+
+真实路线探针与验收共48次CLI启动，四批各12次，重试/失败/超时都计；能力批次内help/version也计。正式审查另计每主题最多四轮。到上限停真实启动、记录未完成项、不降判据。七条当前路线通过、历史读取正常、恢复三审、串行两次check和14/14桩自检通过后才完成前置任务；原生Claude真实验收待订阅恢复。
+
 ## 12. 异常、超时、降级与重试
+
+本批代码裁决补充（v1.3.142）：profile入口依次本机配置的绝对路径、现场发现的可执行包装器；路径与哈希均绑定指纹，不挪用另一条路线版本。版本核对经所选启动器及清理后的环境，认证缓存同样取该路线版本。未解析出模型、无模型调用或入口缺失不刷新付费能力新鲜度，版本/入口变化使旧能力失效。轨迹能力由路线探针派生；被拒操作留痕为null或false时按保守能力处理，不能套用旧官方正结论。原生Claude同样清理ANTHROPIC_*及冲突模型路由变量，只保留官方登录凭据/CLAUDE_CODE_OAUTH_TOKEN；兼容网关必须显式使用profile。
+
+实际入口仅凭进程spawn证据记录，spawn失败为null；命令字符串只表示请求尝试。取消和异常收尾的完成度为partial并说明原因，保留请求快照。归档API支持显式当轮Driver，非缺省身份的裁决仍由archive唯一出口防覆盖写入。启动播报及状态里的模型均标请求模型，尚未回读。
 
 ### 12.1 异常矩阵（对齐 PRD 第 10 章）
 
@@ -3046,7 +3072,7 @@ profiles:
 | N 审中部分审核者失败，显式允许降级 | 续跑，记 `review_mode: partial` + `degraded_reason`。**选 1 审不走此路径**——那是配置意图，记 `full` | `run.json` | FR-29 | 【已实现 · M7b】 |
 | 选用的模型所属家族未在厂商侧完成 provider 配置 | **预检即拦截**并给出指引（只展示不写入，遵 16.2 纪律 5）。指引点名该补的文件与 `[model_providers.〈家族〉]` 段；原写「可粘贴的配置样例」，代码里没有样例输出，M11 第 10 步按现状改准（BACKLOG EV-231） | 无工件 | FR-27 | 【已实现 · M8 第 3 步】（逐家族 provider 探活随 codex 接入落地，AC-20 验收覆盖） |
 | 审核者读到任一其他审核者产物（轨迹读取路径或命令文本命中 deny 集的**第①②类**） | 该侧结论作废、不自动重跑（同上方基线行；「重跑一次」另立 EV-225）。演进设计 §12 :648 原句「作废重跑一次，二次命中 `failed(peer_leak)`；strict 中止」随之过时，冻结正文不改，以本行为准 | `guard.peer_artifact_read`、`guard.peer_leak_via_path` | FR-10 | **分档与按侧留痕【已实现 · 2026-09-16】（见 10.1.1）；三审形态验收【已实现 · M11 第 3 步，v1.3.130】（AC-25，路径通道）** |
-| `--tier-<id>` 或档位表 / `default_tier` 引用了该 Agent 未定义的档；`--effort-<id>` 或档位里的 effort 不在该模型原生枚举内；没有思考等级概念的侧（glm）给了 effort；`--profile-codex` 或档位条目的 profile 不在 `probe.codex.profiles` 名单；档位模型不在该 profile 的模型目录中 | 拒绝启动（退出 64），列出可用值；原生枚举或名单为空、取不到时跳过该项校验并点名（**预检实际退 69**：「只读能力可用」一格排在「档位组合合法」之前，而第 6 步起可用性检查也按解析出的厂商 profile 判，名单外的 profile 在预检里先以「在本机不存在」退 69；`review` 准备阶段档位组合在前，退 64。两处顺序不一致，M11 第 10 步零配额实测核出，BACKLOG EV-232） | 无工件 | FR-30 / FR-27 | 配置来源【已实现 · M11 第 4 步，v1.3.131】（`checkModelSlugs` 报档名与目录、`checkTierCombos` 报枚举 / 概念 / 名单，预检与 `review` 准备阶段两处）；`--tier-<id>` / `--effort-<id>` / `--profile-<id>` 旗标来源【已实现 · M11 第 5 步，v1.3.132】（形状层在入口 `tier-flags.ts` 退 64：未入选侧、档名不在三档、没有厂商 profile 概念的侧、写了不给值） |
+| `--tier-<id>` 或档位表 / `default_tier` 引用了该 Agent 未定义的档；`--effort-<id>` 或档位里的 effort 不在该模型原生枚举内；没有思考等级概念的侧（glm）给了 effort；支持 profile 的侧，其 CLI、档位或 Agent 配置的 profile 不在现场文件名单；档位模型不在该 profile 的模型目录中 | 拒绝启动（退出 64），列出可用值；原生枚举或名单为空、取不到时跳过该项校验并点名（v1.3.141 起预检与准备阶段均先校参数，明确不存在的 profile 退 64；凭据或能力不可用退 69，EV-232） | 无工件 | FR-30 / FR-27 | 配置来源【已实现 · M11 第 4 步，v1.3.131】（`checkModelSlugs` 报档名与目录、`checkTierCombos` 报枚举 / 概念 / 名单，预检与 `review` 准备阶段两处）；`--tier-<id>` / `--effort-<id>` / `--profile-<id>` 旗标来源【已实现 · M11 第 5 步，v1.3.132】（形状层在入口 `tier-flags.ts` 退 64：未入选侧、档名不在三档、没有厂商 profile 概念的侧、写了不给值） |
 | 某审核者经命令行、档位表与 Agent 默认档都解析不出模型 | 拒绝启动（**退出 64**） | 无工件 | FR-30 | 【已实现 · M11 第 4 步，v1.3.131】与「profile 未定义该阶段模型」同一出口。v1.3.129 写「退出 69」是误记：该出口一直在 slug 校验处以 64 拦下，`review.ts` 路由处的 69 对同一输入不可达（计划 P-4，用户 2026-10-07 定维持 64） |
 | 精确值覆盖了档位提供的字段；gemini 的 slug 已带档位又给了 `--effort-gemini`（或档位 / 格子的 effort） | 告警、不阻断 | 预检与 `--start` 的 `warnings`；`tier` / `tier_source` 按 11.5 记 | FR-30 | 解析与告警【已实现 · M11 第 4 步】（命令行一级以参数注入单测）；旗标来源【已实现 · M11 第 5 步】；`tier` / `tier_source` 写入 run.json【已实现 · M11 第 6 步，v1.3.133】 |
 | 档位里的思考等级、或与 `agents.codex.profile` 不同的厂商 profile（第 6 步透传之前） | 拒绝启动（退出 64），文案指向第 6 步——过渡闸；gemini 档位没写 effort 而运行期仍下传阶段级 effort 时只告警 | 无工件 | FR-30 | 【已实现 · M11 第 4 步】，**【已拆除 · M11 第 6 步，v1.3.133】**（11.5「过渡闸（已拆除）」）：这些组合现只过永久判据、照常下传 |
@@ -3365,7 +3391,7 @@ schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束
 | FR-14 逐条裁决 | P1 | 接受/驳回/暂缓 + 理由 + 落点，`gate` 硬校验（空洞理由与共同 blocker 默认 warning） | `gate` | 6.6、8.6 |
 | FR-15 审查员只读 | P1 | 工具层禁写 + 前后指纹 + 轨迹写事件扫描，失守检出与告警 | `guard` | 10.3 |
 | FR-16 送审自包含 | P1 | 送审包落 `_meta/` + 被审对象 sha256 + `tree_hash` 漂移检测 | `freeze`、`brief` | 9.1、9.2 |
-| FR-17 模型异构默认 | P1 | 默认不与当轮 Driver 厂商名义族同族（claude 为 Driver 时即非 Claude 系；启发式，见 11.5）；覆盖告警并写入元数据 | `config`、`meta` | 11.5 |
+| FR-17 模型族可核对 | P1 | 逐对三态、声明与回读分开、同族及未知告警继续 | `model-family`、`meta` | 11.6 |
 | FR-18 启动预检 | P1 | `trivium preflight` 八项检查，失败零工件 | `preflight` | 8.1 |
 | FR-19 超时与降级可见 | P1 | strict/degrade 双策略 + 降级三处留痕 | `runner`、`meta` | 12.1、12.4 |
 | FR-20 提示语进上下文 | P1 | BRIEF 第 2 段逐字嵌入，两侧都有 | `brief` | 9.4 |
@@ -3414,7 +3440,7 @@ schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束
 | AC-15 命令 D 工件齐全 | `bug/` 四件套，修订不覆盖原稿 | 目录校验 + 原稿哈希未变 |
 | AC-16 预检失败即中止 | 预检在送审前，失败零工件；**`review` 自身的任一失败出口（2/64/65/69/70）同样不得留半套工件**（2 即上一轮未裁决被闸门拦下，v1.3.49 补入） | 断网/改坏路径后启动，检查无任何文件生成；另需覆盖「第一侧送审包已渲染、第二侧才失败」这一形态——按失败出口逐个比对 `.reviews/` 前后文件集合应逐字节一致（`test/integration/no-artifacts.test.ts`） |
 | AC-17 送审材料固定且自包含 | 送审包落 `_meta/` + `subject_sha256` + `tree_hash` 漂移检测 | 审查中修改被审对象，运行应判 `subject_drift` 作废；修改无关文件，应出 `drift` 警告并列出文件；结论只对应 `run.json.snapshot` 记录的哈希 |
-| AC-18 模型异构默认与覆盖可见 | 默认不与当轮 Driver 厂商名义族同族（claude 为 Driver 时即非 Claude 系；启发式，见 11.5）；覆盖写入元数据与文档头 | 默认跑一次 + 显式覆盖跑一次，检查元数据 |
+| AC-18 模型族三态与请求可见 | 同族/不同族/未知、全部逐对留痕、历史布尔按旧义展示 | 缺声明、别名、跨工具同族及同供应商不同族；检查 v3/文档/报告 |
 | AC-19 等待期进度可读可预期 | `--wait` 返回结构化进度字段 + 单行摘要；启动播报 | 跑一次真实双审，核对每次等待返回与开场播报 |
 | **AC-20** Codex 真实审查（**至少两个模型家族各一次**）· **【已达成 · M8 第 4 步】**（2026-09-16，`qwen` 与 `deepseek` 两家族各一次真实代码审；证据链与三条达成边界见 [验收报告](../05_testing/REPORT_2026-09-16_m8_ac20_acceptance.md)） | 证据链完整 + 沙箱负对照（**带正对照**） | **逐分量断言，不是「二元组任一分量不同即可」**：两次运行的 ① `model_provider` 互不相同、② `model_effective` 互不相同、③ 各自与本次**请求**的模型一致、④ 两侧 provider 的 `base_url`（**归一到 host**）互不相同——**任一侧 host 取不到（`null`）时本分量记「无法校验」，不得据此宣布 AC-20 达成**（本机 `gpt` profile 就是这一格：内置 provider 无 `[model_providers.*]` 段）；`project_reads` 达该族生效下限（`command-trace` 折减后）；沙箱负对照**须含正对照**——同一次调用里：①那条写命令**确实进了轨迹**、②**它自己的输出显示写入被拒**、③项目内哨兵 A 未创建。缺了①②，A 的缺席证明不了任何事（「被拒」与「没尝试」产出相同观测）。**注**：本条初稿写的是「允许写路径的 B 存在」，**已由 M8 第 4 步实跑证伪**——`-s read-only` 把整个文件系统置为只读，不存在「允许写的路径」，按那个形态执行本条恒不可满足（见 3.6 的再更正与 M6 报告 P-C2）；`profile_requested` 如实入档而生效模型仍以回读为准 |
 | **AC-21** 任一 Agent 作为 Driver 走通命令 B · **【已达成 · 子句 ③ M10a + 子句 ① ② M10b（2026-09-26，v1.3.43）】**（③审批前的裁决完整性由编排器无条件复核兜住——M10a 第 3 步；①由 M10b 第 4 步 3-5 glm 真载体走通命令 B 验收；②由 QUICKSTART §5.2 与按当轮 Driver 措辞的停点话术交付。达成边界：gemini 仅名义 Driver、codex 真载体走的是命令 C；停点尾句对闸门期的「事后暴露」不成立，BACKLOG EV-132——v1.3.45 已按时点改写文案（候选 ①），闸门期仍不拦、不兜底，v1.3.46 起审批时打印工作树改动摘要、只告知（候选 ② 折中版）；见 16.1 M10b 行。M10a 时点原文「①②均待 M10b，不得据此整体转为达成」保留为记录） | 四 Driver 各跑一轮（计划期口径；实跑见第三列，不是四家各跑一轮命令 B） | 工件命名 / 闸门 / 裁决语义与本文一致（claude/zcode 真实，codex/gemini 夹具级——计划期口径，「夹具级」与「真载体」是两个维度，codex 两者兼有；实跑：claude plan + code 夹具、gemini 名义 plan 夹具、codex 真载体 code 夹具、glm 真载体 plan，M10b 第 4 步报告 §1.1～§1.5） |

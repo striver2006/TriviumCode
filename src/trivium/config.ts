@@ -19,7 +19,7 @@ import type {
   Stage,
 } from './types.js';
 import { DEFAULT_CRITICS, DEFAULT_MAX_CRITICS } from './types.js';
-import { ALL_CLI_NAMES } from './agents/registry.js';
+import { AGENTS, ALL_CLI_NAMES } from './agents/registry.js';
 import { EXIT, TriviumError, envError, swallowedTextHint } from './exit-codes.js';
 import { exists, expandHome } from './util/fsx.js';
 import { isGitRepo, repoRoot } from './util/git.js';
@@ -324,9 +324,9 @@ export function defaultConfig(): Config {
       // max_turns 与 unsupported_override 已删除（EV-30 ⑥⑦）：见 DEPRECATED_CONFIG_KEYS
       glm: { vendor: 'zcode', entry: null },
       /*
-       * codex 段（M8 第 3 步）。`profile` 是 R-6 的落点，也是「家族」的唯一判定依据——
+       * codex 段（M8 第 3 步）。`profile` 选择接入配置，不作为模型族判据——
        * 本机实测 `model_provider` 随 `-p` 走。默认取 qwen：它是演进设计 §3.1 点名的家族之一，
-       * 且本机实测可用；没配这个 profile 的机器会在预检被拦下并拿到可粘贴的指引，
+       * 且本机实测可用；明确缺此profile在参数检查退64并给来源和原生切换指引，
        * 而不是静默回落到基底那家（`unknown_profile_rejected` 实测为 false）。
        */
       codex: {
@@ -538,7 +538,17 @@ export function mergeConfigLayer<T>(base: T, override: unknown): T {
   };
   let stripped: unknown = base;
   for (const p of ATOMIC_CONFIG_NODES) stripped = strip(stripped, override, p);
-  return deepMerge(stripped as T, override);
+  const merged = deepMerge(stripped as T, override);
+  // profile 的显式null是接入选择，不沿用通用deepMerge的「null不覆盖」语义。
+  // tiers/profile格子整体替换已保留null；这里只处理非原子Agent配置叶子。
+  if (override !== null && typeof override === 'object' && merged !== null && typeof merged === 'object') {
+    const source = (override as { agents?: Record<string, { profile?: unknown } | null> }).agents;
+    const target = (merged as { agents?: Record<string, { profile?: unknown }> }).agents;
+    for (const a of AGENTS.filter(a => a.supportsProfiles)) {
+      if (source?.[a.id]?.profile === null && target?.[a.id]) target[a.id]!.profile = null;
+    }
+  }
+  return merged;
 }
 
 /** 深合并：对象递归合并，数组与标量整体替换（数组语义是「覆盖」而非「追加」） */

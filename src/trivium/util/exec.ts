@@ -88,9 +88,25 @@ export interface RunResult {
   truncated: boolean;
   /** 实际执行的命令行（人读，用于写进 run.json 与坑清单） */
   commandLine: string;
+  /** 收到 ChildProcess spawn 事件才为 true，命令字符串不证明启动。 */
+  spawned?: boolean;
 }
 
 const DEFAULT_MAX_BUFFER = 32 * 1024 * 1024;
+
+export interface LaunchBudget {
+  limit: number; used: number; launches: string[]; exhausted: boolean;
+  onStart?: (index: number, bin: string, args: readonly string[]) => void;
+  onComplete?: (index: number, bin: string, result: RunResult) => void | Promise<void>;
+}
+export class LaunchBudgetExceeded extends Error {
+  constructor(readonly budget: LaunchBudget) { super(`CLI 启动已达上限 ${budget.limit}，剩余项未测`); }
+}
+const launchBudgetStore = new AsyncLocalStorage<{ budget: LaunchBudget; accepts: (bin: string) => boolean }>();
+/** 计数在 spawn 之前，失败与重试照计；到上限后拒绝任何额外启动。 */
+export function withLaunchBudget<T>(budget: LaunchBudget, accepts: (bin: string) => boolean, fn: () => Promise<T>): Promise<T> {
+  return launchBudgetStore.run({ budget, accepts }, fn);
+}
 
 interface LiveTree {
   child: ChildProcess;
@@ -216,6 +232,19 @@ export function formatCommand(bin: string, args: readonly string[]): string {
 export function run(bin: string, args: readonly string[], opts: RunOptions = {}): Promise<RunResult> {
   // 终止中（EV-152）：不再派生，也不兑现——进程随即退出，悬着的 Promise 无害（见 shutdownTrackedTrees）
   if (treeShutdown) return new Promise<RunResult>(() => {});
+  const quota = launchBudgetStore.getStore();
+  let launchIndex: number | null = null;
+  if (quota?.accepts(bin)) {
+    if (quota.budget.used >= quota.budget.limit) {
+      quota.budget.exhausted = true;
+      return Promise.reject(new LaunchBudgetExceeded(quota.budget));
+    }
+    quota.budget.used++;
+    launchIndex = quota.budget.used;
+    quota.budget.launches.push(bin);
+    try { quota.budget.onStart?.(launchIndex, bin, args); }
+    catch (e) { return Promise.reject(e); }
+  }
   const {
     cwd,
     env,
@@ -254,9 +283,11 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     ...(killTree ? { detached: true } : {}),
   };
 
-  return new Promise<RunResult>((resolve) => {
+  const pending = new Promise<RunResult>((resolve) => {
     const startedAt = Date.now();
     const child = spawn(realBin, realArgs, spawnOpts);
+    let spawned = false;
+    child.once('spawn', () => { spawned = true; });
     // 登记与派生之间插不进别的 JS（spawn 是同步的），所以 SIGTERM 处理器看得到每一个已派生的组
     if (killTree && child.pid !== undefined) {
       const pid = child.pid;
@@ -350,6 +381,7 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
         earlyStopped,
         truncated,
         commandLine,
+        spawned,
       });
     };
 
@@ -397,6 +429,10 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     } else {
       child.stdin?.end();
     }
+  });
+  return pending.then(async result => {
+    if (launchIndex !== null && quota?.budget.onComplete) await quota.budget.onComplete(launchIndex, bin, result);
+    return result;
   });
 }
 

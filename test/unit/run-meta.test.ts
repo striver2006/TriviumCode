@@ -40,16 +40,25 @@ function sideMeta(c: CriticId): NonNullable<RunMeta['critics'][CriticId]> {
     cli_version: '1.0',
     model_requested: 'm', model_effective: 'm', model_effective_source: 'envelope',
     profile_requested: null, model_provider: null,
+    access: { requested_mode: 'standard', profile: null, launcher_requested: null, launcher_effective: null,
+      wrapper_sha256: null, configuration_sha256: null, provider_declared: null, provider_declared_source: null,
+      provider_effective: null, provider_effective_source: null },
     status: 'ok', exit_code: 0, duration_s: 1,
-    tool_calls: {}, evidence_ok: true, heterogeneous: true,
+    tool_calls: {}, evidence_ok: true, heterogeneous: 'unknown',
   };
+}
+
+function historicalSideMeta(c: CriticId): NonNullable<RunMeta['critics'][CriticId]> {
+  const side = { ...sideMeta(c), heterogeneous: true };
+  delete side.access;
+  return side;
 }
 
 // ─────────────────────────── 写侧形状 ───────────────────────────
 
-test('骨架写的是 run.v2，且带上 driver 与入选集合', () => {
+test('骨架写的是 run.v3，且带上 driver 与入选集合', () => {
   const meta = skeleton();
-  assert.equal(meta.schema, 'trivium.run.v2');
+  assert.equal(meta.schema, 'trivium.run.v3');
   assert.equal(meta.driver, DEFAULT_DRIVER);
   assert.deepEqual(meta.critics_selected, [...CRITICS]);
   assert.deepEqual(validateRunMeta(meta), []);
@@ -292,7 +301,7 @@ test('迁移：driver 缺省为 claude（v1 时代 Driver 是系统常量）', (
 
 test('迁移：入选集合由 critics 的实有键推导', () => {
   const only = CRITICS[0]!;
-  const m = migrateRunMetaV1(v1Raw({ critics: { [only]: sideMeta(only) } }));
+  const m = migrateRunMetaV1(v1Raw({ critics: { [only]: historicalSideMeta(only) } }));
   assert.deepEqual(m.critics_selected, [only]);
 });
 
@@ -307,7 +316,7 @@ test('迁移是有损的：v1 没跑出结果的一侧，迁移后同样不在�
 
 test('迁移产出的形状本身合 v2 契约（除非源记录缺了 v2 的必填项）', () => {
   const only = CRITICS[0]!;
-  const m = migrateRunMetaV1(v1Raw({ critics: { [only]: sideMeta(only) } }));
+  const m = migrateRunMetaV1(v1Raw({ critics: { [only]: historicalSideMeta(only) } }));
   assert.deepEqual(validateRunMeta(m), []);
 });
 
@@ -323,12 +332,12 @@ async function putRaw(l: ArchiveLayout, runId: string, body: unknown): Promise<v
   await fs.writeFile(path.join(dir, `run-${runId}.json`), JSON.stringify(body));
 }
 
-test('读侧：写进去的 v2 原样读回来', async () => {
+test('读侧：写进去的 v3 原样读回来', async () => {
   const l = await tmpLayout();
   const meta = skeleton({ runId: 'RW' });
   await writeRunMeta(l, 'plan', meta);
   const back = await readRunMeta(l, 'plan', 'RW');
-  assert.equal(back?.schema, 'trivium.run.v2');
+  assert.equal(back?.schema, 'trivium.run.v3');
   assert.deepEqual(back?.critics_selected, [...CRITICS]);
 });
 
@@ -347,7 +356,7 @@ test('读侧：历史 v1 读回来已是 v2 形状', async () => {
    * 这个身份不会再变，写死才是对的。
    */
   const only = 'gemini' as const;
-  await putRaw(l, 'RV1', v1Raw({ review_mode: 'single', critics: { [only]: sideMeta(only) } }));
+  await putRaw(l, 'RV1', v1Raw({ review_mode: 'single', critics: { [only]: historicalSideMeta(only) } }));
   const back = await readRunMeta(l, 'plan', 'RV1');
   assert.equal(back?.schema, 'trivium.run.v2');
   assert.equal(back?.review_mode, 'partial');

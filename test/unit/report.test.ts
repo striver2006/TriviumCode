@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { acceptanceRate, buildTopicReport, renderTopicReport, type RoundReport } from '../../src/trivium/report.js';
-import { newRunMeta, writeRunMeta, registerRun, type TaskMeta } from '../../src/trivium/meta.js';
+import { writeRunMeta, registerRun, type TaskMeta } from '../../src/trivium/meta.js';
+import { historicalRunMeta } from '../helpers/legacy-run-meta.js';
 import { writeArtifact, writeMeta, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { CRITICS, EXCEPTION_TERMINATION_BY, type Review } from '../../src/trivium/types.js';
 import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
@@ -73,7 +74,7 @@ async function seedRound(
     breach?: boolean;
   },
 ) {
-  const meta = newRunMeta({
+  const meta = historicalRunMeta({
     runId: opts.runId, topic: l.topic, stage: 'plan', rerunIndex: opts.rerunIndex,
     command: 'test', promptHint: '焦点', taskGoal: null, criticsSelected: CRITICS,
     treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S',
@@ -444,7 +445,7 @@ async function seedUnlisted(
     allSidesFailed?: boolean;
   },
 ) {
-  const meta = newRunMeta({
+  const meta = historicalRunMeta({
     runId: opts.runId, topic: l.topic, stage: 'plan', rerunIndex: opts.rerunIndex ?? 1,
     command: 'test', promptHint: '焦点', taskGoal: null, criticsSelected: ['gemini', 'glm'],
     treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S', denyPaths: [], driftPolicy: 'warn',
@@ -540,7 +541,7 @@ test('EV-04：读得到 JSON 但 schema 不识的 run.json ⇒ 注记的成因�
   const r = await buildTopicReport(l);
   assert.equal(r.unlistedRuns.length, 0);
   assert.ok(
-    r.notes.some((n) => /run-V99\.json` 读不出来（不可解析或不合契约），未列入报告（本次判定：文件是 JSON，但不合 run\.v1\/v2 契约（/.test(n)),
+    r.notes.some((n) => /run-V99\.json` 读不出来（不可解析或不合契约），未列入报告（本次判定：文件是 JSON，但不合 run\.v1\/v2\/v3 契约（/.test(n)),
     r.notes.join(' | '),
   );
 });

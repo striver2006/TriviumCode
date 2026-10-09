@@ -1,0 +1,93 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按焦点完成审查：run.v3 新写与 v1/v2 严格历史分发（validateRunMeta 按件上 schema 字段选 v3/v2 校验器、v1 仍走既有迁移，v2 布尔 heterogeneous 有历史夹具钉住）；「请求冒充回读」在三层落位（model-family.ts 只认 envelope/trace、review.ts 写 meta 与 render.ts 写文档都把 requested/unverified 的生效模型置 null、v3 schema 把 requested 从枚举删除）；requested_routes 在 writeRunMeta 之前随骨架落盘（含跳过轮），取消轮有集成测试逐字段断言保留，EV-145/150 失败收尾复用同一 finalize 例程；worker 冻结比对 fail-closed 且不重新路由；Driver 声明经交接文件与 run.json 双通道传递并被变异用例咬住；gate/report/审批/Hook 链路有零配额真实子进程测试（含 run.json 字节不变断言）。安全面上 profile 名形状校验后再拼路径、profile 元数据只认静态 export 不执行插值、凭据类环境变量只在子进程侧剥离、claude 输出过 redactSecrets、探活指纹只含哈希。发现的问题集中在：报告第四节内容被推到第三节标题之前渲染（GLM-01）、worker 冻结拒执行路径无任何测试会红（GLM-02）及两处小瑕疵。无 blocker/major。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/report.ts:1233-1249",
+      "problem": "新增的 v3 披露行（Driver 会话声明、逐侧接入 access、模型族两两比较）在 L.push('## 四、生效模型与思考等级…') 标题**之前**推入，渲染时全部落在「## 三、被驳回与暂缓的意见」小节尾部。代码注释「── 四、生效模型 ──」表明本意是第四节内容，实际章节归属错位：复盘读者会在「被驳回与暂缓」一节里读到接入与模型族信息，与该节语义（裁决复盘重点）相悖，也和 MANUAL/PROTOCOL 把这些字段归入「生效模型」核对面（AC-13/AC-18）的口径不一致。",
+      "evidence": "src/trivium/report.ts:1233 的注释标记为第四节，1234-1243 的循环先执行，1244-1249 才推入 '## 四、生效模型与思考等级（AC-13 / AC-18 / AC-23 核对）' 标题与表头；已读该文件 1215-1268 行确认顺序。",
+      "suggestion": "把 1234-1243 的循环移到 '## 四' 标题与表头推入之后（或为其单起一个小节标题），使披露行落在宣称的章节内；renderTopicReport 相关快照断言若覆盖此段可一并钉住。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/run-protocol.ts:228-239",
+      "problem": "worker 交接与 requested_routes 的冻结比对是本补丁里「避免请求冒充实际回读」的核心执行端防线（缺失、逐项不一致、profile 不符都 envError 拒绝执行），但**拒绝分支没有任何测试会红**：全 test/ 目录无「请求路线不一致」断言；变异证据（mutation-spec.json 六条：A1-A6）也未针对该检查设条目。A5 变异只证明「Driver 声明不被交接吞掉」，若有人删除或放宽这段比对（例如改成只比对 model），现有测试与变异装置都发现不了，防线静默消失后 worker 将按篡改过的交接重新组合执行。",
+      "evidence": "已读 src/trivium/run-protocol.ts:228-239（冻结比对实现）与 test/integration/access-v3.test.ts（只测一致路径与取消保留）、doc/05_testing/evidence/agent-access-20261009/mutation-spec.json（六条目标不含该检查）、mutation-result.json（6/6 为另一组目标）。",
+      "suggestion": "补一条集成用例：--start 落盘后篡改运行目录 request.json 的 model/profile（或 run.json 的 requested_routes），再以 worker 路径恢复，断言非零退出且报「执行交接与运行记录请求路线不一致」；并在 mutation-spec 里加一条把比对弱化为只比 model 的条目钉住。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/meta.ts:975",
+      "problem": "v3 起未完成运行的收尾路径已同时受理 run.v2 与 run.v3，但操作者可见文案仍写死 v2：975 行跳过提示「只回写 run.v2（不改历史形状）」、977 行「不合 trivium.run.v2 契约，不动它」、483 行注释「写前按 trivium.run.v2 校验」。取消/失联收尾正是出事后的取证入口，v3 运行读到这两句会让人误判收尾工具不认 v3。",
+      "evidence": "已读 src/trivium/meta.ts:974-977（条件已含 trivium.run.v3，两处文案仍只写 v2）与 483-486（注释仍写 v2、实际按 meta.schema 动态报）。",
+      "suggestion": "三处文案改为按 ${meta.schema}（或「只回写 run.v2 / run.v3」）动态表述；纯文案改动，不影响判定。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/claude.ts:779",
+      "problem": "doctor 改为「只探本轮解析出的那一条 Claude 路线」后，顶层探针快照带 route_profile；另一条路线没有结论时 claudeProbeForRoute 返回 undefined，availability 报「claude 尚未探测，请先运行 trivium doctor --only claude」（claude.ts:779/849）。但当机器配置的缺省路线是 profile 时，不带旗标重跑 doctor --only claude 仍只探 profile 那条，原生路线结论依旧缺席——提示语是死循环出口，缺「--native-claude（或 --profile-claude 按所需路线）」这半句。",
+      "evidence": "已读 diff 中 doctor.ts 的路线探测改造（routes 表、route_profile、只探 selected 路线）、src/trivium/adapters/claude-route.ts 的 claudeProbeForRoute（route_profile 非空时原生不复用顶层快照）与 src/trivium/adapters/claude.ts:779 文案；多阶段解析到不同 profile 时同理需带旗标重跑，属代码层推理、未实测。",
+      "suggestion": "在该不可用理由里补上路线旗标提示（例如「请先运行 trivium doctor --only claude --native-claude 或 --profile-claude 〈名〉」），或在 RUNBOOK 的接入诊断段点名这一运维路径。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "run.v3 新写与 v1/v2 严格历史分发实现干净：validateRunMeta 按件上 schema 字段分发到 v3/v2 校验器，v1 仍走既有内存迁移；v2 布尔 heterogeneous 由 historicalRunMeta/历史夹具钉住继续合法，且 v3 schema 明确拒绝布尔",
+    "「请求不得冒充回读」三层落位：model-family.ts 只认 envelope/trace 来源（requested 一律按 unknown）；review.ts 写 meta 与 render.ts 写 front-matter/正文共用双保险把 requested/unverified 的生效模型置 null；v3 schema 进一步把 requested 从 model_effective_source 枚举删除",
+    "requested_routes 在 writeRunMeta 之前随骨架写入（含 FR-23 跳过轮）；提前取消的集成测试断言取消前后 requested_routes 逐字段一致；EV-145/150 失败收尾与取消共用 finalize 例程，改写只动 status/termination 类字段",
+    "worker 冻结比对 fail-closed：交接缺失、requested_routes 缺席、逐项不一致、profile_requested 与冻结 profile 不符都拒绝执行且不重新路由；Driver 声明经 handoff 与 run.json 双通道传递，A4/A5 变异用例咬住接线",
+    "安全面处理到位：claude profile 名先过形状正则再拼路径（codex 名单来自 readdir，天然无穿越）；claudeProfileMetadata 只认静态 export、插值与凭据键不入元数据；claudeRouteEnv/codexRouteEnv 的 undefined 补丁只作用于子进程 env（exec.ts 显式 delete）且不回写父进程；invokeClaude 输出过 redactSecrets；探活指纹只含 sha256，凭据明文不落盘（access-modes 测试断言指纹不含凭据值）",
+    "认证缓存按 Agent/模式/profile/模型/effort 五元组隔离，同组合命中、四种组合变化与指纹轮换均重新探活，有单测逐格覆盖（EV-229 的收口方向正确）",
+    "family_comparisons 的身份、当轮参与、自比较与重复校验在 ajv 之后按注册表补做，schema 全程不枚举 Agent id，符合纪律 7/12；Driver 不得入选审核者仍由 resolveCriticSelection 独立强制（critics.ts:356），自比较在写侧不可达",
+    "预检参数类（slug/档位组合）前置于环境类，统一「明确不存在的 profile 退 64、环境不可用退 69」，access-v3 集成测试含 native/profile 冲突退 64 的真实子进程验证，EV-232 按设计收口"
+  ],
+  "not_covered": [
+    "未执行任何命令（typecheck/test/render 均未跑）；「测试会红」的判断全部来自读代码与既有变异证据，属推理而非实测",
+    "四家 entry/** 渲染产物与 skills-src 的逐字对账未逐份核对，信任 entry-render-parity 契约测试",
+    "48 次真实启动的 launch-*.json / summary.json / model-flag-recompute.json 未逐份核对，只读了 mutation-spec/result 与实施报告",
+    "设计文档 §11.6 与 ADR_003 只读了 diff 可见部分，未与实现逐句比对",
+    "claude 原生路线子进程剥离 ANTHROPIC_*（含 ANTHROPIC_AUTH_TOKEN）与 codex 原生 openai 剥离 OPENAI_API_KEY 对依赖环境变量认证的既有部署的影响未评估：判定为刻意的路线隔离（失败会明示原因、fail-loud），但未实测、文档未写迁移说明",
+    "doctor 只探所选路线后，多阶段档位解析到不同 profile 时需带路线旗标重跑 doctor 的运维路径只做了代码层推理",
+    "tier-resolve.test.ts 的其余断言与 scripts/probe-agent-access.mjs 全文未逐行审读",
+    "gate.ts / hooks.ts 本补丁未改动，仅按只读链路（readRunMeta 分发、提交锚、access-v3 的 hook-pre-commit 集成用例）核对，未逐行重审其内部逻辑"
+  ],
+  "consulted": [
+    ".reviews/留痕与异构/code/_meta/changes-20261009T153653Z.diff",
+    ".reviews/留痕与异构/plan/2026-10-09-留痕与异构-r2-codex.md",
+    "skills/dual-critic/schema/run.v3.json",
+    "skills/dual-critic/schema/run.v2.json",
+    "src/trivium/model-family.ts",
+    "src/trivium/access.ts",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/review.ts",
+    "src/trivium/report.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/adapters/claude.ts",
+    "test/integration/access-v3.test.ts",
+    "test/unit/access-modes.test.ts",
+    "doc/05_testing/REPORT_2026-10-09_agent_access.md",
+    "doc/05_testing/evidence/agent-access-20261009/mutation-spec.json",
+    "doc/05_testing/evidence/agent-access-20261009/mutation-result.json",
+    "AGENTS.md"
+  ]
+}

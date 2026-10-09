@@ -1,0 +1,482 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "codex",
+      "right": "claude",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "qwen3.8-flash",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "codex",
+      "right": "gemini",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "gemini-3.8-flash-high",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "codex",
+      "right": "glm",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "bigmodel-coding-plan/GLM-5.3",
+      "left_source": null,
+      "right_source": "trace",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "claude",
+      "right": "gemini",
+      "status": "different-family",
+      "left_model": "qwen3.8-flash",
+      "right_model": "gemini-3.8-flash-high",
+      "left_source": "envelope",
+      "right_source": "envelope",
+      "reason": "模型族不同：qwen / gemini"
+    },
+    {
+      "left": "claude",
+      "right": "glm",
+      "status": "different-family",
+      "left_model": "qwen3.8-flash",
+      "right_model": "bigmodel-coding-plan/GLM-5.3",
+      "left_source": "envelope",
+      "right_source": "trace",
+      "reason": "模型族不同：qwen / glm"
+    },
+    {
+      "left": "gemini",
+      "right": "glm",
+      "status": "different-family",
+      "left_model": "gemini-3.8-flash-high",
+      "right_model": "bigmodel-coding-plan/GLM-5.3",
+      "left_source": "envelope",
+      "right_source": "trace",
+      "reason": "模型族不同：gemini / glm"
+    }
+  ],
+  "run_id": "20261009T153653Z",
+  "topic": "留痕与异构",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "核对run.v3新写、v1/v2严格历史读取、声明与回读来源、模型族三态及逐对比较；重点检验取消和失败请求快照、worker交接、报告、gate和Hook的完整链路，避免请求冒充实际回读。",
+  "task_goal": "Codex、Claude Code 双模式接入与异构判定修正",
+  "entry": "A",
+  "driver": "codex",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "profile": "default",
+  "critics_selected": [
+    "claude",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "7780cd928a957935b45d3276c827451f1c41a36f",
+    "tree_hash": "a43047916e5fcd7ea4038e0bc42094187d1b44c4",
+    "dirty": true,
+    "subject_sha256": "0c38f428da631ef5d2736ec089d5a48bc7c736ac37207898b23c4d0b84d63348",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "7780cd928a957935b45d3276c827451f1c41a36f",
+      "dirty": true,
+      "inputs_sha256": "ad80748acbef27c19023b356f169a44674a09e8df1d8c30979cf45df4a3be79d",
+      "built_at": "2026-10-09T15:32:55.531Z"
+    },
+    "after_tree_hash": "a43047916e5fcd7ea4038e0bc42094187d1b44c4"
+  },
+  "started_at": "2026-10-09T15:36:55.640Z",
+  "finished_at": "2026-10-09T16:00:11.569Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "claude": {
+      "vendor": "anthropic",
+      "cli_version": "2.1.295",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "envelope",
+      "profile_requested": "qwen",
+      "model_provider": null,
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": "unverified",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1395.57,
+      "tool_calls": {
+        "read": 32,
+        "grep": 36,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 39
+      },
+      "evidence_ok": true,
+      "usage": {
+        "cost_usd": 8.682112
+      },
+      "access": {
+        "requested_mode": "profile",
+        "profile": "qwen",
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/cld",
+        "launcher_effective": "/Users/chenzhenbo/.local/bin/cld",
+        "wrapper_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+        "configuration_sha256": "9a3bfaa3acc006b11a8c5c6422da69841ccc121de244ee7eff9574e4146cb8e5",
+        "provider_declared": "qwen",
+        "provider_declared_source": "profile",
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "c19f57a9-3904-4bee-9ad5-e4ab6bd68f2b",
+      "peer_deny_applied": true,
+      "deny_skipped": 0,
+      "deny_rule_count": 42,
+      "deny_bytes": 2453
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 775.917,
+      "tool_calls": {
+        "read": 71,
+        "grep": 20,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 37
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 481718,
+        "output_tokens": 48714,
+        "thinking_tokens": 38497,
+        "cache_read_tokens": 14071819,
+        "total_tokens": 530432
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+        "launcher_effective": "/Users/chenzhenbo/.local/bin/agy",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "7fcce57d-2800-4bd4-aa99-a4abfcf1672e",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 705.405,
+      "tool_calls": {
+        "read": 17,
+        "grep": 14,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 17
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 20,
+        "inputTokens": 2990932,
+        "outputTokens": 39415,
+        "totalTokens": 3030347,
+        "cacheReadTokens": 2770880,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "launcher_effective": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_9d5aaabb-a30c-4485-8b31-658b24193c13",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "requested_routes": {
+    "claude": {
+      "model": "qwen3.8-flash",
+      "effort": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "profile",
+        "profile": "qwen",
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/cld",
+        "launcher_effective": null,
+        "wrapper_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+        "configuration_sha256": "9a3bfaa3acc006b11a8c5c6422da69841ccc121de244ee7eff9574e4146cb8e5",
+        "provider_declared": "qwen",
+        "provider_declared_source": "profile",
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    },
+    "gemini": {
+      "model": "gemini-3.8-flash-high",
+      "effort": "high",
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    },
+    "glm": {
+      "model": "GLM-5.3",
+      "effort": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/留痕与异构/plan/2026-10-09-留痕与异构-gemini.md",
+    ".reviews/留痕与异构/plan/2026-10-09-留痕与异构-glm.md",
+    ".reviews/留痕与异构/plan/_meta/review-gemini-20261009T125242Z.json",
+    ".reviews/留痕与异构/plan/_meta/review-glm-20261009T125242Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": true,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "claude": true,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "claude": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [
+      "Bash({\"command\":\"wc -l \\\"/Users/chenzhenbo/Work/TriviumCode/.reviews/留痕与异构/code/_meta)"
+    ],
+    "peer_leak_via_command": {
+      "claude": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "claude": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "claude": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "留痕与异构/code/_meta/changes-20261009T153653Z.diff",
+      "sha256": "0c38f428da631ef5d2736ec089d5a48bc7c736ac37207898b23c4d0b84d63348"
+    },
+    {
+      "path": "留痕与异构/code/_meta/brief-claude-20261009T153653Z.md",
+      "sha256": "62c9561df6ebae5972b647fc5034e24a321c58f0318e97d0f641a73e0b199bb5"
+    },
+    {
+      "path": "留痕与异构/code/_meta/brief-gemini-20261009T153653Z.md",
+      "sha256": "5522cac8762953a8cc3f5260b87d1010efc8048c3110d618aa4231815a1f8602"
+    },
+    {
+      "path": "留痕与异构/code/_meta/brief-glm-20261009T153653Z.md",
+      "sha256": "8fd1dce34218370b710b438910a0b1b0cb2b262eec48c0df7dd67ae7462761c1"
+    },
+    {
+      "path": "留痕与异构/code/_meta/review-claude-20261009T153653Z.json",
+      "sha256": "b18981ca0497336e83eeb3164d886867b737c31b72f71d543cc0fa83437003bf"
+    },
+    {
+      "path": "留痕与异构/code/_meta/review-gemini-20261009T153653Z.json",
+      "sha256": "c126c9b5c3923eb452f4af2faea3195efaefa73436815cf3361c3e1e6e7f29f0"
+    },
+    {
+      "path": "留痕与异构/code/_meta/review-glm-20261009T153653Z.json",
+      "sha256": "ab442265bcd2b07eea6f6c0c105def78ee6fe6285e10deb456620197deedd9aa"
+    },
+    {
+      "path": "留痕与异构/code/2026-10-10-留痕与异构-claude.md",
+      "sha256": "83dfb237cb08cf9c6d6228b4456b994ef36b1eeac0a64864e4f4070642032bfd"
+    },
+    {
+      "path": "留痕与异构/code/2026-10-10-留痕与异构-gemini.md",
+      "sha256": "45a1e7fc4fe320c40f084ba23e1a965bc3852aaf99177dbc7e832fccc0801376"
+    },
+    {
+      "path": "留痕与异构/code/2026-10-10-留痕与异构-glm.md",
+      "sha256": "c4a2111828da5a445f4544867a8496e9f9bbc027f406955a062e46db6d9f8650"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}

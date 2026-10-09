@@ -17,9 +17,12 @@ import { probeVerifyCommands } from './probes/verify-commands.js';
 import { probeAgy } from './probes/agy.js';
 import { probeZcode, ZCODE_HEADLESS_UNREFRESHED, type ZcodeHeadlessUnrefreshed } from './probes/zcode.js';
 import { probeCodex } from './probes/codex.js';
-import { probeClaude, type StructuredArmCause } from './probes/claude.js';
+import { probeClaude, withClaudeProbeRoute, type StructuredArmCause } from './probes/claude.js';
+import { claudeProbeForRoute, claudeRouteKey, resolveClaudeRoute, type ClaudeRoute } from './adapters/claude-route.js';
+import { resolveTier } from './adapters/base.js';
+import type { TierFlagValues } from './tier-flags.js';
 import { ProbeFixtureError } from './probes/fixture.js';
-import type { ClaudeProbe, CodexProbe, Config, ProbeSection } from './types.js';
+import type { ClaudeProbe, CodexProbe, Config, CriticId, ProbeSection } from './types.js';
 import { realAdapters } from './adapters/index.js';
 // 同源文案：blocker 与 `availability()` 对同一现象只能有一种说法（r2 AGY-04）
 import { ZCODE_HEADLESS_NOT_OK_HINT, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT, zcodeProbeModel } from './adapters/zcode.js';
@@ -28,6 +31,9 @@ import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
 import { say, step, warn } from './util/log.js';
 
 export interface DoctorOptions {
+  tierFlags?: Partial<Record<CriticId, TierFlagValues>>;
+  /** 明确的模型覆盖，与CLI同源，不藏在tierFlags的未声明键中。 */
+  modelOverrides?: Partial<Record<CriticId, string>>;
   projectRoot: string;
   triviumDir: string;
   config: Config;
@@ -725,10 +731,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   // ── Codex ───────────────────────────────────────────────────────────
   if (only === null || only === 'codex') {
     step('探测 Codex（codex exec）…');
+    const selected = resolveTier(opts.config, 'codex', 'code', {
+      ...opts.tierFlags?.codex, ...(opts.modelOverrides?.codex ? { model: opts.modelOverrides.codex } : {}) });
     const r = await guard('codex', () =>
-      probeCodex(opts.probeBins?.codex ?? null, {
+      probeCodex(opts.probeBins?.codex ?? (opts.config.agents.codex?.vendor === 'openai' ? opts.config.agents.codex.bin ?? null : null), {
         skipModelCalls: opts.skipModelCalls ?? false,
         existing: probe.cli.codex,
+        selected,
       }),
     );
     if (r) {
@@ -764,16 +773,44 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
 
   // ── Claude Code ─────────────────────────────────────────────────────
   if (only === null || only === 'claude') {
-    step('探测 Claude Code（claude -p）…');
-    const r = await guard('claude', () =>
-      probeClaude(opts.probeBins?.claude ?? null, {
-        skipModelCalls: opts.skipModelCalls ?? false,
-        existing: probe.cli.claude,
+    const selected = resolveTier(opts.config, 'claude', 'code', {
+      ...opts.tierFlags?.claude, ...(opts.modelOverrides?.claude ? { model: opts.modelOverrides.claude } : {}) });
+    const canProbeModel = !opts.skipModelCalls && selected.model !== null;
+    if (selected.model === null) notes.push('[claude] 未解析出本轮模型，跳过付费能力探针，不写路线准入结论');
+    step(`探测 Claude Code（${selected.vendorProfile === null ? '原生' : `profile:${selected.vendorProfile}`}）…`);
+    let routeBefore: ClaudeRoute | undefined;
+    const r = await guard('claude', async () => {
+      const route = resolveClaudeRoute(opts.config, selected.vendorProfile);
+      routeBefore = route;
+      notes.push(`[claude] 配置声明模型：${route.modelsDeclared.join('、') || '未声明'}；不代表完整服务端目录`);
+      return withClaudeProbeRoute(route, selected.model, selected.effort, () => probeClaude(opts.probeBins?.claude ?? route.nativeBin, {
+        skipModelCalls: !canProbeModel,
+        existing: claudeProbeForRoute(opts.config, selected.vendorProfile),
         assetRoot: resolveAssetRoot(),
-      }),
-    );
+      }));
+    });
     if (r) {
-      probe.cli.claude = r.probe;
+      const routes = { ...probe.cli.claude?.routes };
+      const snapshot = { ...r.probe, route_profile: selected.vendorProfile };
+      delete snapshot.routes;
+      let stable = false;
+      try { stable = routeBefore?.fingerprint === resolveClaudeRoute(opts.config, selected.vendorProfile).fingerprint; }
+      catch { /* 消失或权限变化同样使本轮结论失效 */ }
+      if (!stable) {
+        delete routes[claudeRouteKey(selected.vendorProfile)];
+        snapshot.readonly_flags = [];
+        snapshot.tool_surface_checked = false;
+        blockers.push('Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。');
+      } else if (canProbeModel && snapshot.probed_at !== null) {
+        const cfg = { ...opts.config, probe: { ...probe, cli: { ...probe.cli, claude: snapshot } } };
+        routes[claudeRouteKey(selected.vendorProfile)] = { profile: selected.vendorProfile,
+          fingerprint: resolveClaudeRoute(cfg, selected.vendorProfile, snapshot.version).fingerprint, probe: snapshot };
+      }
+      probe.cli.claude = { ...snapshot, routes };
+      const routeCapability = realAdapters().claude?.capabilityFor?.({ ...opts.config, probe }, selected.vendorProfile);
+      if (routeCapability?.rejectionRecorded === false) {
+        warnings.push(`Claude ${selected.vendorProfile ?? 'native'} 被拒操作留痕未证实，阴性轨迹不能证明未尝试写；漂移按保守能力归因`);
+      }
       notes.push(...r.notes.map((n) => `[claude] ${n}`));
       await checkpoint('claude');
       const claudeWarning = claudeStructuredArmWarning(r.structuredArmCause);
@@ -783,7 +820,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
       for (const line of claudeSeverity(r.probe, {
         enabled: agentByCliName('claude')?.criticEnabled === true,
         asked: only === 'claude',
-        skipModelCalls: opts.skipModelCalls ?? false,
+        skipModelCalls: !canProbeModel,
       })) {
         if (line.level === 'blocker') blockers.push(line.message);
         else notes.push(`[claude] ${line.message}`);

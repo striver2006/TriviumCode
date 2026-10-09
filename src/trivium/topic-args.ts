@@ -14,7 +14,7 @@ import { promises as fs } from 'node:fs';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, entryCommandOf, type AgentId } from './agents/registry.js';
 import type { CriticId, Ctx, Stage } from './types.js';
 import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
-import { assertTierFlags, collectTierFlags, tierFlagNames } from './tier-flags.js';
+import { assertTierFlags, collectTierFlags, nativeFlagNames, tierFlagNames } from './tier-flags.js';
 import { validateTopic, parseArtifactName } from './naming.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { exists } from './util/fsx.js';
@@ -35,7 +35,7 @@ const STATIC_FLAGS = [
   'profile', 'focus', 'goal',
   'only', 'allow-single', 'session-id', 'critics',
   // M9 第 5 步：不认识它就会被当正文压进 restParts，与 `--base` 那次同形
-  'driver',
+  'driver', 'driver-model', 'driver-provider',
 ] as const;
 type StaticFlag = (typeof STATIC_FLAGS)[number];
 
@@ -59,7 +59,7 @@ const MODEL_FLAGS: readonly ModelFlag[] = ALL_AGENT_IDS.map((id): ModelFlag => `
  * 档位旗标（M11 第 5 步）：`--tier-〈id〉` / `--effort-〈id〉` / `--profile-〈id〉`，名字由 `tier-flags.ts` 按注册表派生，
  * 论域同 `MODEL_FLAGS`（全部已登记）。不在白名单里就会被当正文吞进焦点——这一族缺口的老形态。
  */
-type TierFlag = `${'tier' | 'effort' | 'profile'}-${AgentId}`;
+type TierFlag = `${'tier' | 'effort' | 'profile' | 'native'}-${AgentId}`;
 const TIER_FLAGS: readonly TierFlag[] = tierFlagNames() as TierFlag[];
 
 const NAMED_FLAGS: readonly (StaticFlag | ModelFlag | TierFlag)[] = [...STATIC_FLAGS, ...MODEL_FLAGS, ...TIER_FLAGS];
@@ -83,7 +83,7 @@ const GREEDY_FLAGS: ReadonlySet<string> = new Set(['focus', 'goal']);
  * `/dual-review-code --allow-single 重点看并发安全` 会把「重点看并发安全」当成它的值吞掉，
  * 焦点变成空——补白名单反倒制造出一个新的静默截断。
  */
-const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['allow-single']);
+const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['allow-single', ...nativeFlagNames()]);
 type NamedFlag = (typeof NAMED_FLAGS)[number];
 
 export interface ParsedArgsBundle {
@@ -129,6 +129,9 @@ export function splitArguments(tokens: readonly string[]): ParsedArgsBundle {
     if (BOOLEAN_FLAGS.has(name)) {
       // `--allow-single` 或 `--allow-single=false`，都不吃后面的 token
       const v = eq === -1 ? 'true' : t.slice(eq + 1).trim().toLowerCase();
+      if (name.startsWith('native-') && !['true', 'false', '0', '1'].includes(v)) {
+        throw new TriviumError(EXIT.USAGE, `--${name} 只接受 true/false。`);
+      }
       if (v !== 'false' && v !== '0') booleans.add(name);
       continue;
     }
@@ -251,7 +254,7 @@ export interface TopicResolution {
    */
   tiers: Partial<Record<CriticId, string>>;
   efforts: Partial<Record<CriticId, string>>;
-  vendor_profiles: Partial<Record<CriticId, string>>;
+  vendor_profiles: Partial<Record<CriticId, string | null>>;
   profile: string | null;
   /** 只跑一侧（`review --start --only gemini|glm`），null 表示两侧都跑 */
   only: CriticId | null;
@@ -271,6 +274,8 @@ export interface TopicResolution {
    * 回显出来是让上层能看见本次采信的是哪一个——静默取缺省正是这一族缺口的形状。
    */
   driver: AgentId;
+  driver_model: string | null;
+  driver_provider: string | null;
   /**
    * 本次声明的 Driver 是否**已启用为 Driver**。
    *
@@ -642,16 +647,16 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
   const tierFlags = assertTierFlags(
     ctx.config,
     driver,
-    collectTierFlags((name) => (named as Record<string, string | undefined>)[name]),
+    collectTierFlags((name) => bundle.booleans.has(name) ? 'true' : (named as Record<string, string | undefined>)[name]),
     critics,
   );
   const tiers: Partial<Record<CriticId, string>> = {};
   const efforts: Partial<Record<CriticId, string>> = {};
-  const vendorProfiles: Partial<Record<CriticId, string>> = {};
+  const vendorProfiles: Partial<Record<CriticId, string | null>> = {};
   for (const [id, v] of Object.entries(tierFlags) as [CriticId, NonNullable<(typeof tierFlags)[CriticId]>][]) {
     if (v.tier) tiers[id] = v.tier;
     if (v.effort) efforts[id] = v.effort;
-    if (v.vendorProfile) vendorProfiles[id] = v.vendorProfile;
+    if (v.vendorProfile !== undefined) vendorProfiles[id] = v.vendorProfile;
   }
 
   const contextPaths = (named['context'] ?? '')
@@ -706,6 +711,8 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     allow_single: allowSingle,
     driver,
     driver_enabled: enabledAsDriver,
+    driver_model: named['driver-model'] ?? null,
+    driver_provider: named['driver-provider'] ?? null,
     session_id: named['session-id']?.trim() || null,
     topic_inferred: inferred,
     notes,

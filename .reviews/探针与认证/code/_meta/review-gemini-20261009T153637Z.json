@@ -1,0 +1,41 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "本次变更完整落实了 ADR-003 与设计 §11.6 的路线接入规范：能力指纹全面覆盖核心配置与凭据哈希且能灵敏失效；子进程环境变量严格脱敏与按需单向注入，杜绝凭据污染；逐组合独立缓存且探活失败绝不入库；参数合法性校验严格优先于环境/探针状态（64 优先于 69）；48次探针预算在进程拉起前强行熔断留痕，证据诚实暴露盲区且未套用旧官方假设。全流程严谨合规，准予通过。",
+  "findings": [],
+  "agreed": [
+    "路线能力指纹与缓存失效：Claude 基于 profile/bin/version/wrapperSha256/configurationSha256 计算指纹，Codex 基于 entrypoint/version/profile/auth.json/provider/authEnvVar 哈希计算指纹，任一要素变动即引起缓存失效并触发重验，防止环境漂移。",
+    "认证变量清理与隔离：Claude 清除 ANTHROPIC_* 及外部厂商环境变量并保护 OAUTH 令牌，Codex 按选择的 provider 仅注入专属 env_key 并剔除混杂变量；全部注入仅作用于子进程 env 字典，绝不污染 Node 主进程 process.env。",
+    "逐组合缓存与失败不入库：preflight.ts 的探活按 (critic, mode, profile, model, effort) 独立建键，探活失败显式返回 cache: null，杜绝了将网络抖动或配置错误作为成功状态缓存的隐患。",
+    "参数优先与退出码（EV-232）：preflight.ts 与 review.ts 均将 checkModelSlugs 与 checkTierCombos 置于 availability 与探针检查之前，错误参数统一稳定抛出 usageError (64)，不可用环境抛出 envError (69)，顺序与语义完全一致。",
+    "48次预算强约束与证据诚实性：withLaunchBudget 确保在子进程真实 spawn 之前原子占用预算，超限即抛出 LaunchBudgetExceeded；测试报告诚实记录 48 次实际使用与 Codex 轨迹能力未完整复核的事实，未套用旧官方静态结论冒充已验证。"
+  ],
+  "not_covered": [
+    "第三方模型服务商（DeepSeek / Qwen / Kimi）真实端到端 API 连通性与计费配额状态未做现场 live 调用（受只读审查员权限与网络/配额客观约束）。",
+    "macOS pty 伪终端在特定异常 shell 信号序列下的并发时序未做大规模压力测试。",
+    "Windows 与 Linux 环境下的路径与 CLI 表现（受项目目前仅支持 macOS 的边界约束）。"
+  ],
+  "consulted": [
+    ".reviews/探针与认证/plan/2026-10-09-探针与认证-r2-codex.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/ADR_003_agent_access.md",
+    "doc/05_testing/REPORT_2026-10-09_agent_access.md",
+    "scripts/probe-agent-access.mjs",
+    "skills/dual-critic/agents/trivium-critic.md",
+    "skills/dual-critic/schema/review.v1.json",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/util/exec.ts",
+    "test/unit/access-modes.test.ts"
+  ]
+}

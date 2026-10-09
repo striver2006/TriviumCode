@@ -530,17 +530,21 @@ test('RL1 probeCodex 落 reasoning_levels：只收可见项、失败 profile 无
     'model = "fake-model"\nmodel_provider = "fake"\nmodel_catalog_json = "/nonexistent/broken.json"\n',
     { mode: 0o600 },
   );
-  const { probe } = await inWorld(
-    w,
-    { CODEX_HOME: codexHome, FAKE_LOCK: undefined, FAKE_BASE_EXIT: '0', FAKE_ISO_EXIT: '1', FAKE_OBSERVE: undefined },
-    () => probeCodex(entry, { skipModelCalls: true }),
-  );
+  await inWorld(w,
+    { CODEX_HOME: codexHome, FAKE_LOCK: undefined, FAKE_BASE_EXIT: '0', FAKE_ISO_EXIT: '1', FAKE_OBSERVE: undefined }, async () => {
+  const { probe } = await probeCodex(entry, { skipModelCalls: true });
   assert.deepEqual(probe.models, ['fake-model', 'fake-hidden'], '前提：基底全集含隐藏项');
   assert.deepEqual(probe.reasoning_levels, {
     base: { 'fake-model': ['low', 'high'] },
     by_profile: { fake: { 'fake-model': ['low', 'high'] } },
   });
   assert.ok(probe.models_by_profile_errors['broken'], '前提：broken 采集失败');
+  assert.equal(probe.probed_at, null, '静态段没有模型调用，不能刷新付费能力新鲜度');
+  const preserved = await probeCodex(entry, { skipModelCalls: true, existing: { ...probe, probed_at: '2026-09-01T00:00:00Z' } });
+  assert.equal(preserved.probe.probed_at, '2026-09-01T00:00:00Z');
+  const changed = await probeCodex(entry, { skipModelCalls: true, existing: { ...probe, version: 'older', probed_at: '2026-09-01T00:00:00Z' } });
+  assert.equal(changed.probe.probed_at, null, '版本变化不能把旧付费能力绑定新版本');
+  });
 });
 
 test('E4c probeCodex（EV-25 接线）：假 exec 不执行那条写命令 ⇒ 只读负对照未判定，readonly_flags 不被写成可信、成因经返回值带出', async () => {

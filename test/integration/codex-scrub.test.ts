@@ -41,6 +41,7 @@ before(async () => {
     path.join(src, 'config.toml'),
     `model = "qwen3.8-max"\n[model_providers.qwen]\nexperimental_bearer_token = "${FAKE_CRED}"\nbase_url = "https://example.invalid/v1"\n`,
   );
+  await fs.writeFile(path.join(src, 'qwen.config.toml'), 'model = "qwen3.8-max"\nmodel_provider = "qwen"\n');
   await fs.writeFile(path.join(src, 'auth.json'), `{"OPENAI_API_KEY":"sk-proj-${FAKE_CRED}${FAKE_CRED}"}`);
   process.env['CODEX_HOME'] = src;
 
@@ -94,11 +95,11 @@ function cfgWith(): Config {
     version: '9.9.9',
     readonly_flags: ['-s', 'read-only'],
     exec_headless_read_ok: true,
-    profiles: [],
+    profiles: ['qwen'],
     providers: [],
   });
   (cfg.agents.codex as { bin: string | null; profile: string | null }).bin = fakeBin;
-  (cfg.agents.codex as { bin: string | null; profile: string | null }).profile = null;
+  (cfg.agents.codex as { bin: string | null; profile: string | null }).profile = 'qwen';
   return cfg;
 }
 
@@ -116,7 +117,7 @@ async function runOnce(mode: string, timeoutS = 30) {
     project_root: proj, subject_path: path.join(proj, 's.md'), deny_paths: [],
     out_dir: path.join(sideDir, 'out'), brief_path: path.join(proj, 'b.md'), brief_text: 'BRIEF',
     model: 'qwen3.8-max', timeout_s: timeoutS, schema_path: '/s.json',
-    min_tool_calls: 0, profile_requested: null, min_project_reads: 0, tier: null, tier_source: null,
+    min_tool_calls: 0, profile_requested: 'qwen', min_project_reads: 0, tier: null, tier_source: null,
   };
   const out = await runBothSides({
     ctx: { cfg: cfgWith(), nodePath: process.execPath },
@@ -130,6 +131,7 @@ async function runOnce(mode: string, timeoutS = 30) {
 async function assertScrubbed(sideDir: string, home: string) {
   await assert.rejects(fs.access(path.join(home, 'auth.json')), 'auth.json 副本必须被删');
   await assert.rejects(fs.access(path.join(home, 'config.toml')), 'config.toml 副本必须被删');
+  await assert.rejects(fs.access(path.join(home, 'qwen.config.toml')), '所选 profile 副本必须被删');
   const session = await fs.readFile(path.join(home, 'sessions/2026/09/17/rollout-2026-09-17-T1.jsonl'), 'utf8');
   assert.ok(session.startsWith('{"type":"session_meta"'), 'sessions/ 保留且首行结构不变');
   assert.ok(!session.includes(FAKE_CRED), 'sessions/ 里模型自读到的 token 必须被就地脱敏（EV-32）');

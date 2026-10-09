@@ -36,7 +36,7 @@ test('K1 收集面是全部已登记 Agent；没写的不出现；写了空串�
   }
   const given: Record<string, string> = { 'tier-gemini': 'high', 'effort-codex': '', 'profile-glm': 'x' };
   const r = collectTierFlags((n) => given[n]);
-  assert.deepEqual(r, { tier: { gemini: 'high' }, effort: { codex: '' }, profile: { glm: 'x' } });
+  assert.deepEqual(r, { tier: { gemini: 'high' }, effort: { codex: '' }, profile: { glm: 'x' }, native: {} });
 });
 
 test('K2 键校验与 --model-〈id〉 同一份判定：能入选未入选列本轮入选并给 --critics 出口；Driver 自己列当前可用', () => {
@@ -68,9 +68,9 @@ test('K3 --model-〈id〉 既有文案逐字不变（参数化之后的回归锁
 
 test('K4 --profile-〈id〉 只对带厂商 profile 概念的侧成立；给别家退 64 并点明不是 --profile 档位表名', () => {
   const cfg = defaultConfig();
-  assert.deepEqual(vendorProfileAgents(), ['codex'], '前提：今天只有 codex 实现了 vendorProfilesFor');
+  assert.deepEqual(vendorProfileAgents(), ['claude', 'codex'], '注册表声明的 profile 能力');
   usage(() => assertTierFlags(cfg, 'claude', raw({ profile: { gemini: 'x' } }), PICKED),
-    /--profile-gemini：gemini 没有厂商 profile 概念[\s\S]*不是 trivium 的 --profile 〈档位表名〉[\s\S]*可用：--profile-codex/);
+    /--profile-gemini：gemini 没有厂商 profile 概念[\s\S]*不是 trivium 的 --profile 〈档位表名〉[\s\S]*可用：--profile-claude \| --native-claude \| --profile-codex \| --native-codex/);
   assert.deepEqual(assertTierFlags(cfg, 'claude', raw({ profile: { codex: 'deepseek' } }), PICKED), { codex: { vendorProfile: 'deepseek' } });
 });
 

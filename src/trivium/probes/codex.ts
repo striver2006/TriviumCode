@@ -88,7 +88,7 @@ export async function probeCodexBin(
 
   const v = await run(bin, ['--version'], { timeoutMs: 60_000 });
   // 输出形如 `codex-cli 0.154.0`——取三段号，与 version_probe 落盘的 extract 一致
-  const m = v.code === 0 ? /(\d+\.\d+\.\d+)/.exec(v.stdout) : null;
+  const m = v.code === 0 ? /(\d+\.\d+\.\d+(?:-[\w.-]+)?)/.exec(v.stdout) : null;
   return { bin, version: m?.[1] ?? null };
 }
 
@@ -832,7 +832,7 @@ async function judgeCodexIsolation(bin: string, dir: string): Promise<ProbeIsola
 
 export async function probeCodex(
   configuredBin: string | null,
-  opts: { skipModelCalls?: boolean; existing?: CodexProbe } = {},
+  opts: { skipModelCalls?: boolean; existing?: CodexProbe; selected?: { vendorProfile: string | null; model: string | null; effort: string | null } } = {},
 ): Promise<{
   probe: CodexProbe;
   notes: string[];
@@ -882,9 +882,10 @@ export async function probeCodex(
   const { bin, version } = await probeCodexBin(configuredBin);
   probe.entrypoint = bin;
   probe.version = version;
-  probe.probed_at = new Date().toISOString();
+  // 静态段不能给旧付费能力刷新时间或换版本身份。
+  if (bin !== opts.existing?.entrypoint || version !== opts.existing?.version) probe.probed_at = null;
   // 与 agy 同形：直接执行、抠三段号（`codex --version` 输出 `codex-cli 0.154.0`）
-  probe.version_probe = { runner: null, args: ['--version'], extract: String.raw`(\d+\.\d+\.\d+)` };
+  probe.version_probe = { runner: null, args: ['--version'], extract: String.raw`(\d+\.\d+\.\d+(?:-[\w.-]+)?)` };
   if (!bin) {
     notes.push('未找到 codex 可执行文件，Codex 侧不可用');
     return { probe, notes, readonlyIndeterminate };
@@ -992,7 +993,7 @@ export async function probeCodex(
      */
     let probeProfile: string | null = null;
     let probeModel: string | null = null;
-    for (const name of probe.profiles) {
+    for (const name of opts.selected ? [] : probe.profiles) {
       // 复用上面采好的逐 profile 结论，不重复拉子进程（同一事实只算一次）。
       // 采集失败的 profile 在这张表里没有条目 ⇒ 自然跳过，与「目录为空」同样不可用
       const models = probe.models_by_profile[name] ?? [];
@@ -1002,6 +1003,10 @@ export async function probeCodex(
         probeModel = usable;
         break;
       }
+    }
+    if (opts.selected) {
+      probeProfile = opts.selected.vendorProfile;
+      probeModel = opts.selected.model;
     }
     if (!probeModel) {
       notes.push(
@@ -1018,6 +1023,7 @@ export async function probeCodex(
       probeProfile,
       probeModel,
     );
+    probe.probed_at = new Date().toISOString();
     probe.json_event_types = read.eventTypes;
     probe.json_item_types = read.itemTypes;
     /*

@@ -440,6 +440,7 @@ export interface ZcodeInvokeOutcome {
   stdout: string;
   stderr: string;
   commandLine: string;
+  spawned?: boolean;
   durationMs: number;
   failureKind: 'none' | 'model_config_missing' | 'provider_not_configured' | 'provider_config_unresolved' | 'other';
 }
@@ -528,6 +529,7 @@ export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvoke
     stdout: r.stdout,
     stderr: r.stderr,
     commandLine: r.commandLine,
+    spawned: r.spawned,
     durationMs: r.durationMs,
     failureKind,
   };
@@ -1138,9 +1140,9 @@ export const zcodeAdapter: CriticAdapter = {
    *
    * 指纹带上探活模型：换档位或改档位模型后缓存失效；格式一变，按旧路径探出来的缓存也随之作废。
    */
-  authProbe(ctx: AdapterContext, projectRoot: string) {
+  authProbe(ctx: AdapterContext, projectRoot: string, combination) {
     const cfg = ctx.cfg;
-    const model = zcodeProbeModel(cfg);
+    const model = combination?.model ?? zcodeProbeModel(cfg);
     return {
       async fingerprint() {
         const f = zcodeOverrideSourcePath();
@@ -1373,6 +1375,7 @@ export const zcodeAdapter: CriticAdapter = {
         status: 'timeout',
         reason: `脚本级超时（${req.timeout_s}s）`,
         exitCode: out.exitCode,
+        processStarted: out.spawned,
         durationS: out.durationMs / 1000,
         rawStdoutPath: stdoutPath,
         cliVersion: probe.version,
@@ -1396,6 +1399,7 @@ export const zcodeAdapter: CriticAdapter = {
         status: 'failed',
         reason: `zcode 执行失败（${out.failureKind}）：${hint}`,
         exitCode: out.exitCode,
+        processStarted: out.spawned,
         durationS: out.durationMs / 1000,
         rawStdoutPath: stdoutPath,
         cliVersion: probe.version,
@@ -1539,6 +1543,7 @@ export const zcodeAdapter: CriticAdapter = {
       critic: 'glm',
       status: 'ok',
       exit_code: out.exitCode,
+      process_started: out.spawned ?? out.exitCode !== null,
       duration_s: out.durationMs / 1000,
       raw_stdout_path: stdoutPath,
       trace_path: tracePath,

@@ -34,6 +34,15 @@ const DATE = '2026-09-10';
  */
 const TWO = ['gemini', 'glm'] as const;
 
+test('非缺省 Driver 的裁决件经唯一归档出口写入；仍拒绝其它角色', async () => {
+  const layout = await tmpLayout();
+  const input = { layout, stage: 'code' as const, role: 'codex' as const, writer: 'driver' as const,
+    driver: 'codex' as const, kind: 'response' as const, rerunIndex: 1, content: '# 逐条裁决\n', date: DATE };
+  const written = await writeArtifact(input);
+  assert.equal(written.fileName, `${DATE}-${layout.topic}-response-codex.md`);
+  await assert.rejects(writeArtifact({ ...input, role: 'claude' }), /角色后缀违规/);
+});
+
 
 test('首跑落盘：文件名无 -r 后缀，返回相对归档根的路径', async () => {
   const l = await tmpLayout();

@@ -29,7 +29,7 @@ import { initFixtureRepo } from './util/git.js';
 import { tildeHome, tryRemoveTempDir } from './util/fsx.js';
 import { localDate, parseArtifactName } from './naming.js';
 import { DEFAULT_CRITICS } from './types.js';
-import { DEFAULT_DRIVER, agentById } from './agents/registry.js';
+import { AGENTS, DEFAULT_DRIVER, agentById } from './agents/registry.js';
 import { EXIT } from './exit-codes.js';
 import { STUB_ENV_VAR } from './adapters/stub.js';
 import { say, step, warn } from './util/log.js';
@@ -172,6 +172,9 @@ async function buildFixture(
       '    code: 120',
       '    bug: 120',
       '  wait_timeout_s: 30',
+      // 桩不依赖宿主profile目录；显式原生避免把宿主凭据事实带进零配额自检。
+      'agents:',
+      ...AGENTS.filter(a => a.supportsProfiles).flatMap(a => [`  ${a.id}:`, '    profile: null']),
       'verify:',
       // 用一条必然成功且零副作用的命令：selftest 要验的是「verify 真的执行并记录」，
       // 不是这个夹具能不能编译

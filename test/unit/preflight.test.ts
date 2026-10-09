@@ -306,8 +306,8 @@ test('探针过期时后续检查不再执行（快速失败，不白烧配额�
    * M10b 第 3 步 B1），不是检查；本条要钉的是「探针过期之后不再往下跑」，所以把它剔掉再数。
    */
   const real = r.checks.filter((c) => c.name !== '当轮 Driver');
-  assert.equal(real.length, 1, `应只跑第一项就停，实际跑了 ${real.length} 项：${real.map((c) => c.name).join('、')}`);
-  assert.equal(real[0]!.ok, false);
+  assert.deepEqual(real.map(c => c.name), ['Driver 会话声明', '模型 slug 合法', '档位组合合法', '探针结论存在'], '参数检查先于环境检查，环境失败后不执行探活');
+  assert.equal(real.at(-1)!.ok, false);
 });
 
 // ── 命令 A 的编译测试检查（§14.1 / GLM-02）──
@@ -1075,7 +1075,7 @@ test('U5 预检：带已废弃键 ⇒ 照常通过、退出码不变，「已废
   assert.ok(w.detail.includes('gate.max_check_retries、agents.gemini.readonly_commands'), w.detail);
   const idx = (name: string) => r.checks.findIndex((c) => c.name === name);
   assert.ok(idx('失联阈值') >= 0 && idx('失联阈值') < idx('已废弃配置键'), '排在失联阈值之后');
-  assert.ok(idx('已废弃配置键') < idx('模型 slug 合法'), '排在模型 slug 之前');
+  assert.ok(idx('模型 slug 合法') < idx('已废弃配置键'), '参数检查先于环境告警');
   assertWarnInvariant(r);
 });
 

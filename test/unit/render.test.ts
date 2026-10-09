@@ -68,6 +68,17 @@ test('生效模型来源被记录，不采信 Agent 自述（AC-13）', () => {
   assert.equal(fm['model_effective_source'], 'envelope');
 });
 
+test('请求模型与未验证模型不能出现在回读列或正文回读标题', () => {
+  for (const source of ['requested', 'unverified'] as const) {
+    const md = renderReviewDoc(input({ result: { ...RESULT, model_effective: 'qwen3.8-flash', model_effective_source: source }, modelRequested: 'qwen3.8-flash' }));
+    const fm = parseFrontMatter(md)!;
+    assert.equal(fm['model_effective'], null);
+    assert.equal(fm['model_effective_source'], 'unverified');
+    assert.ok(md.includes('回读模型 `未知`'));
+    assert.ok(md.includes('请求模型 `qwen3.8-flash`'));
+  }
+});
+
 test('project_reads 进 tool_calls（AC-11 的机读落点）', () => {
   const fm = parseFrontMatter(renderReviewDoc(input({ projectReads: 21 })))!;
   assert.deepEqual(fm['tool_calls'], { read: 27, grep: 9, project_reads: 21 });
@@ -134,13 +145,13 @@ test('漂移会标注「结论对应送审时刻快照」', () => {
 
 test('与主脑同源时醒目告警并记录覆盖理由（AC-18）', () => {
   const md = renderReviewDoc(input({
-    heterogeneous: false, overrideReason: '用户显式指定',
+    heterogeneous: 'same-family', overrideReason: '用户显式指定',
     modelRequested: 'claude-sonnet-4-6',
   }));
-  assert.ok(md.includes('与主脑同源'));
+  assert.ok(md.includes('模型族 same-family'));
   assert.ok(md.includes('用户显式指定'));
   const fm = parseFrontMatter(md)!;
-  assert.equal(fm['heterogeneous'], false);
+  assert.equal(fm['heterogeneous'], 'same-family');
   assert.equal(fm['override_reason'], '用户显式指定');
 });
 
@@ -152,14 +163,14 @@ test('同源旗标不写死 Claude 系（EV-62）', () => {
    */
   const reason = '用户经 --model-gemini 显式指定了与当轮 Driver（Codex）同族的模型';
   const md = renderReviewDoc(input({
-    heterogeneous: false, overrideReason: reason,
+    heterogeneous: 'unknown', overrideReason: reason,
     modelRequested: 'gpt-oss-120b-medium',
   }));
-  assert.ok(md.includes('与主脑同源'));
+  assert.ok(md.includes('模型族 unknown'));
   assert.ok(md.includes(reason));
   assert.ok(!md.includes('Claude 系'), '同源旗标不得再写死「Claude 系」');
   // 这一格是按模型名的检出，不是同源的证明——标题不得写成确定性结论（代码双审 r5 CODEX-03）
-  assert.ok(md.includes('疑似与主脑同源'), '同源旗标的标题要带「疑似」：检出不等于证明');
+  assert.ok(md.includes('告警继续'), 'unknown 不进入阻断');
 });
 
 test('零意见时文件照常渲染，并提示这不等于没审（FR-13）', () => {

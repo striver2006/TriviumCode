@@ -18,6 +18,7 @@ import type { ErrorObject, ValidateFunction } from 'ajv';
 import configSchema from '../../skills/dual-critic/schema/config.v2.json' with { type: 'json' };
 import runV1Schema from '../../skills/dual-critic/schema/run.v1.json' with { type: 'json' };
 import runV2Schema from '../../skills/dual-critic/schema/run.v2.json' with { type: 'json' };
+import runV3Schema from '../../skills/dual-critic/schema/run.v3.json' with { type: 'json' };
 import dispositionSchema from '../../skills/dual-critic/schema/disposition.v1.json' with { type: 'json' };
 import {
   ALL_AGENT_IDS,
@@ -230,7 +231,7 @@ function checkConfigAgents(data: unknown): string[] {
 }
 
 /**
- * 校验 `trivium.run.v2`（当前写出的形状）。
+ * 校验 `trivium.run.v2`（v2历史与v3当前写出的形状）。
  *
  * **两段式**：先 ajv 校形状，再按注册表校身份。后半段不能塞进 schema——
  * Agent id 与厂商枚举的唯一来源是 `agents/registry.ts`（§16.2 纪律 7），
@@ -240,7 +241,8 @@ function checkConfigAgents(data: unknown): string[] {
  * 那也是本次必须升版而非原地扩展的直接原因。
  */
 export function validateRunMeta(data: unknown): string[] {
-  const v = compile('run.v2', runV2Schema as object);
+  const schema = (data as { schema?: unknown } | null)?.schema;
+  const v = schema === 'trivium.run.v3' ? compile('run.v3', runV3Schema as object) : compile('run.v2', runV2Schema as object);
   if (!v(data)) return formatErrors(v.errors);
   return checkAgentIdentities(data);
 }
@@ -257,8 +259,26 @@ function checkAgentIdentities(data: unknown): string[] {
     driver?: unknown;
     critics_selected?: unknown;
     critics?: Record<string, { vendor?: unknown }>;
+    family_comparisons?: { left?: unknown; right?: unknown }[];
+    requested_routes?: Record<string, unknown>;
   };
   const problems: string[] = [];
+
+  for (const id of Object.keys(m.requested_routes ?? {})) {
+    if (!isAgentId(id) || !agentById(id)?.criticEnabled) problems.push(`requested_routes 含未登记审核者：${id}`);
+    if (!Array.isArray(m.critics_selected) || !m.critics_selected.includes(id)) problems.push(`requested_routes.${id} 不在入选集合`);
+  }
+
+  const participants = new Set([m.driver, ...(Array.isArray(m.critics_selected) ? m.critics_selected : [])]);
+  const pairs = new Set<string>();
+  for (const pair of m.family_comparisons ?? []) {
+    for (const id of [pair.left, pair.right]) if (typeof id !== 'string' || !isAgentId(id)) problems.push(`family_comparisons 含未登记的 Agent id：${JSON.stringify(id)}`);
+    if (!participants.has(pair.left) || !participants.has(pair.right)) problems.push('family_comparisons 含当轮未参与的 Agent');
+    if (pair.left === pair.right) problems.push('family_comparisons 不允许自身比较');
+    const key = [pair.left, pair.right].sort().join(':');
+    if (pairs.has(key)) problems.push('family_comparisons 含重复比较');
+    pairs.add(key);
+  }
 
   if (typeof m.driver !== 'string' || !isAgentId(m.driver)) {
     problems.push(`driver 不是已登记的 Agent id：${JSON.stringify(m.driver)}`);
@@ -299,7 +319,7 @@ function checkAgentIdentities(data: unknown): string[] {
 /**
  * 校验 `trivium.run.v1`（**历史契约，只读**）。
  *
- * 保留它不是为了兼容写侧——写侧已只出 v2——而是因为既有归档里的 v1 记录
+ * 保留它不是为了兼容写侧——写侧已只出 v3，v1/v2为严格历史读取——而是因为既有归档里的 v1 记录
  * 是不可变工件：按写入时的规范解读留痕，是审计系统的基本要求（P6）。
  * 拿 v2 去校验 v1 会因缺 `driver` / `critics_selected` 全判不可读，
  * 而不可读即 `EXIT.GATE_BLOCK`——本仓库的每一次提交都会被拦死。

@@ -366,6 +366,8 @@ export async function updateTaskAsync(
 // ─────────────────────────── run.json ───────────────────────────
 
 export interface NewRunMetaInput {
+  driverModel?: string | null;
+  driverProvider?: string | null;
   runId: string;
   topic: string;
   stage: Stage;
@@ -420,7 +422,10 @@ export interface NewRunMetaInput {
 /** 运行开始时先写一份 `status: running` 的骨架，便于 `--wait` 与崩溃后取证 */
 export function newRunMeta(i: NewRunMetaInput): RunMeta {
   return {
-    schema: 'trivium.run.v2',
+    schema: 'trivium.run.v3',
+    driver_declaration: { model: i.driverModel ?? null, provider: i.driverProvider ?? null,
+      source: i.driverModel || i.driverProvider ? 'declared' : null },
+    family_comparisons: [],
     run_id: i.runId,
     topic: i.topic,
     stage: i.stage,
@@ -455,6 +460,7 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     review_mode: 'full',
     degraded_reason: null,
     critics: {},
+    requested_routes: {},
     deny_paths: i.denyPaths,
     guard: {
       readonly_breach: false,
@@ -474,10 +480,10 @@ export async function writeRunMeta(
   stage: Stage,
   meta: RunMeta,
 ): Promise<string> {
-  // 写前按 trivium.run.v2 校验：不合契约的运行元数据是程序缺陷，宁可在这里炸也不落盘
+  // 写前按声明的v2/v3契约校验；新运行只写v3，历史收尾保留原形状。
   const problems = validateRunMeta(meta);
   if (problems.length > 0) {
-    throw new Error(`run.json 不符合 trivium.run.v2：${problems.join('；')}`);
+    throw new Error(`run.json 不符合 ${meta.schema}：${problems.join('；')}`);
   }
   // 走 archive 是纪律（§16.2 纪律 2），但 run.json 不含审查正文、
   // 且 archive.writeMeta 已含密钥扫描，这里直接复用它
@@ -517,9 +523,10 @@ export function migrateRunMetaV1(raw: unknown): RunMeta {
  * 读回一份审查阶段的运行元数据，**按 schema 精确分发**（设计 §6.7.1 读侧）。
  *
  * 此前这里是 `JSON.parse` 直转、零校验：`schema` 字段写成任何字符串都能读出来，
- * 而返回值会被 `gate` 与 `report` 当成事实用。改为只认两种形状：
+ * 而返回值会被 `gate` 与 `report` 当成事实用。只认三种形状：
  *   · `trivium.run.v1` → v1 校验器通过后映射为内存 v2；
  *   · `trivium.run.v2` → v2 校验器；
+ *   · `trivium.run.v3` → v3 校验器（当前写形）；
  *   · 其余（含 `schema` 缺失）→ `null`，与「文件不存在」同等对待。
  *
  * 注意本函数只服务审查阶段（签名即是 `Stage`）。verify 阶段另有形状，
@@ -725,7 +732,7 @@ export async function readRunMeta(
  * - `missing`：文件不存在（`ENOENT`）；
  * - `io`：文件在但读不了（权限、是目录等），`detail` 是错误消息的首行（以错误码开头）；
  * - `unparsable`：读得到但不是合法 JSON，`detail` 是解析器消息的首行；
- * - `contract`：是 JSON，但 `schema` 不识或不合 run.v1/v2 契约，`detail` 是首条校验错误。
+ * - `contract`：是 JSON，但 `schema` 不识或不合 run.v1/v2/v3 契约，`detail` 是首条校验错误。
  */
 export type RunMetaUnreadableCause =
   | { kind: 'missing' }
@@ -736,7 +743,7 @@ export type RunMetaUnreadableCause =
  * （`driver` 补为缺省 Driver），复盘要据它标出「这一轮的 Driver 来自 v1 迁移」，否则分不出。只增不改判定。
  */
 export type RunMetaReadResult =
-  | { ok: true; meta: RunMeta; sourceSchema: 'trivium.run.v1' | 'trivium.run.v2' }
+  | { ok: true; meta: RunMeta; sourceSchema: 'trivium.run.v1' | 'trivium.run.v2' | 'trivium.run.v3' }
   | { ok: false; cause: RunMetaUnreadableCause };
 
 /** 成因细节只取首行、封顶这么多字：解析器消息会带上一段原文，整段回显没有用 */
@@ -776,7 +783,7 @@ export async function readRunMetaDetailed(
   const schema = (raw as { schema?: unknown } | null)?.schema;
   const contract = (problems: string[]): RunMetaReadResult =>
     ({ ok: false, cause: { kind: 'contract', detail: causeDetail(problems[0] ?? '校验不过') } });
-  if (schema === 'trivium.run.v2') {
+  if (schema === 'trivium.run.v2' || schema === 'trivium.run.v3') {
     const problems = validateRunMeta(raw);
     return problems.length === 0 ? { ok: true, meta: raw as RunMeta, sourceSchema: schema } : contract(problems);
   }
@@ -784,7 +791,7 @@ export async function readRunMetaDetailed(
     const problems = validateRunMetaV1(raw);
     return problems.length === 0 ? { ok: true, meta: migrateRunMetaV1(raw), sourceSchema: schema } : contract(problems);
   }
-  return contract([`schema 字段是 ${causeDetail(JSON.stringify(schema) ?? 'undefined')}，不是 trivium.run.v1 / v2`]);
+  return contract([`schema 字段是 ${causeDetail(JSON.stringify(schema) ?? 'undefined')}，不是 trivium.run.v1 / v2 / v3`]);
 }
 
 /**
@@ -800,7 +807,7 @@ export function describeRunMetaCause(c: RunMetaUnreadableCause): string {
     case 'unparsable':
       return `文件在但不是合法 JSON（${c.detail}）`;
     case 'contract':
-      return `文件是 JSON，但不合 run.v1/v2 契约（${c.detail}）`;
+      return `文件是 JSON，但不合 run.v1/v2/v3 契约（${c.detail}）`;
   }
 }
 
@@ -936,7 +943,7 @@ async function finalizeUnfinishedRunMeta(
  * 前者的 `status` / `finished_at`。锁与 task.json 同一把（`taskLockName`，与 worker 长持的运行锁不同名、不会自锁），
  * 两步各取一次、不嵌套。争用重试用尽即抛、转成带异常的跳过。
  *
- * 只改三格：`status`、`finished_at`、`gate.state`（取目标终态），给了 `termination` 再加这一键。`artifacts[]` 原样——
+ * 更新终态、结束时间与 gate.state，并以 partial 和原因表达未全部完成；给了 termination 再加这一键。artifacts[] 原样——
  * 提交锚对 HEAD 为 running 的 run.json 只查 `run_id` 与已登记条目（`hooks.ts` `runningRewriteViolation`），
  * 所以「运行中途提交过、之后被取消 / 失败」也能正常提交。`gate.warnings` 不追加：它会被回灌成 `run_warning`（EV-133）。
  */
@@ -965,14 +972,16 @@ async function unfinishedRunMetaStep(i: {
         return skipped(`${runMetaFileName(i.runId)} 不可解析，不动它`);
       }
       const schema = (raw as { schema?: unknown } | null)?.schema;
-      if (schema !== 'trivium.run.v2') {
-        return skipped(`schema 为 ${JSON.stringify(schema)}，只回写 run.v2（不改历史形状）`);
+      if (schema !== 'trivium.run.v2' && schema !== 'trivium.run.v3') {
+        return skipped(`schema 为 ${JSON.stringify(schema)}，只收尾 run.v2 / run.v3（保留原契约形状）`);
       }
-      if (validateRunMeta(raw).length > 0) return skipped('不合 trivium.run.v2 契约，不动它');
+      if (validateRunMeta(raw).length > 0) return skipped('不合所声明的 run.v2 / run.v3 契约，不动它');
       const meta = raw as RunMeta;
       if (meta.status !== 'running') return skipped(`已是终态（${meta.status}），不追溯改写`);
 
       meta.status = i.terminal;
+      meta.review_mode = 'partial';
+      meta.degraded_reason = i.terminal === 'cancelled' ? '运行被取消，入选审核者未全部完成' : '运行异常收尾，入选审核者未全部完成';
       meta.finished_at = new Date().toISOString();
       meta.gate.state = i.terminal;
       if (i.termination) meta.termination = i.termination;

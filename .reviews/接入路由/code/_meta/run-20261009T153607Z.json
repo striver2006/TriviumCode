@@ -1,0 +1,480 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "codex",
+      "right": "claude",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "qwen3.8-flash",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "codex",
+      "right": "gemini",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "gemini-3.8-flash-high",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "codex",
+      "right": "glm",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "bigmodel-coding-plan/GLM-5.3",
+      "left_source": null,
+      "right_source": "trace",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "claude",
+      "right": "gemini",
+      "status": "different-family",
+      "left_model": "qwen3.8-flash",
+      "right_model": "gemini-3.8-flash-high",
+      "left_source": "envelope",
+      "right_source": "envelope",
+      "reason": "模型族不同：qwen / gemini"
+    },
+    {
+      "left": "claude",
+      "right": "glm",
+      "status": "different-family",
+      "left_model": "qwen3.8-flash",
+      "right_model": "bigmodel-coding-plan/GLM-5.3",
+      "left_source": "envelope",
+      "right_source": "trace",
+      "reason": "模型族不同：qwen / glm"
+    },
+    {
+      "left": "gemini",
+      "right": "glm",
+      "status": "different-family",
+      "left_model": "gemini-3.8-flash-high",
+      "right_model": "bigmodel-coding-plan/GLM-5.3",
+      "left_source": "envelope",
+      "right_source": "trace",
+      "reason": "模型族不同：gemini / glm"
+    }
+  ],
+  "run_id": "20261009T153607Z",
+  "topic": "接入路由",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "核对 profile 与 native 优先级、显式 null、入口与认证隔离，以及参数和实际子进程的一致性；验证原生路线是否确实使用官方登录配置。",
+  "task_goal": "Codex、Claude Code 双模式接入与异构判定修正",
+  "entry": "A",
+  "driver": "codex",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "profile": "default",
+  "critics_selected": [
+    "claude",
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "7780cd928a957935b45d3276c827451f1c41a36f",
+    "tree_hash": "a43047916e5fcd7ea4038e0bc42094187d1b44c4",
+    "dirty": true,
+    "subject_sha256": "1c103c09014d49bc053a50c89eb88f9d749cd188ce6d8f7f21791feda47154b2",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "7780cd928a957935b45d3276c827451f1c41a36f",
+      "dirty": true,
+      "inputs_sha256": "ad80748acbef27c19023b356f169a44674a09e8df1d8c30979cf45df4a3be79d",
+      "built_at": "2026-10-09T15:32:55.531Z"
+    },
+    "after_tree_hash": "a43047916e5fcd7ea4038e0bc42094187d1b44c4"
+  },
+  "started_at": "2026-10-09T15:36:09.677Z",
+  "finished_at": "2026-10-09T16:00:01.454Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "claude": {
+      "vendor": "anthropic",
+      "cli_version": "2.1.295",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "envelope",
+      "profile_requested": "qwen",
+      "model_provider": null,
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": "unverified",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1431.391,
+      "tool_calls": {
+        "read": 28,
+        "grep": 27,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 37
+      },
+      "evidence_ok": true,
+      "usage": {
+        "cost_usd": 7.898549499999998
+      },
+      "access": {
+        "requested_mode": "profile",
+        "profile": "qwen",
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/cld",
+        "launcher_effective": "/Users/chenzhenbo/.local/bin/cld",
+        "wrapper_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+        "configuration_sha256": "9a3bfaa3acc006b11a8c5c6422da69841ccc121de244ee7eff9574e4146cb8e5",
+        "provider_declared": "qwen",
+        "provider_declared_source": "profile",
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "a70ae79b-304a-4620-aa89-78cf045595ec",
+      "peer_deny_applied": true,
+      "deny_skipped": 0,
+      "deny_rule_count": 42,
+      "deny_bytes": 2345
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 460.384,
+      "tool_calls": {
+        "read": 44,
+        "grep": 17,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 28
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 352807,
+        "output_tokens": 22926,
+        "thinking_tokens": 16345,
+        "cache_read_tokens": 7563279,
+        "total_tokens": 375733
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+        "launcher_effective": "/Users/chenzhenbo/.local/bin/agy",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "55807364-54e1-4d09-baf1-2dbd427c53b1",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 1152.867,
+      "tool_calls": {
+        "read": 28,
+        "grep": 17,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 24
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 37,
+        "inputTokens": 5604739,
+        "outputTokens": 42643,
+        "totalTokens": 5647382,
+        "cacheReadTokens": 5405504,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "launcher_effective": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_2db272f9-1ecd-474e-87f6-000c4bd5013f",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "requested_routes": {
+    "claude": {
+      "model": "qwen3.8-flash",
+      "effort": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "profile",
+        "profile": "qwen",
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/cld",
+        "launcher_effective": null,
+        "wrapper_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+        "configuration_sha256": "9a3bfaa3acc006b11a8c5c6422da69841ccc121de244ee7eff9574e4146cb8e5",
+        "provider_declared": "qwen",
+        "provider_declared_source": "profile",
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    },
+    "gemini": {
+      "model": "gemini-3.8-flash-high",
+      "effort": "high",
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    },
+    "glm": {
+      "model": "GLM-5.3",
+      "effort": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".reviews/接入路由/plan/2026-10-09-接入路由-gemini.md",
+    ".reviews/接入路由/plan/2026-10-09-接入路由-glm.md",
+    ".reviews/接入路由/plan/_meta/review-gemini-20261009T125206Z.json",
+    ".reviews/接入路由/plan/_meta/review-glm-20261009T125206Z.json",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "claude": true,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "claude": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "claude": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "claude": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "claude": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "接入路由/code/_meta/changes-20261009T153607Z.diff",
+      "sha256": "1c103c09014d49bc053a50c89eb88f9d749cd188ce6d8f7f21791feda47154b2"
+    },
+    {
+      "path": "接入路由/code/_meta/brief-claude-20261009T153607Z.md",
+      "sha256": "88fc5499f586237bb5d8a43dd32f917dcd9397715316a599382b6ace2008d6f7"
+    },
+    {
+      "path": "接入路由/code/_meta/brief-gemini-20261009T153607Z.md",
+      "sha256": "7e7c3d0c79cedcbd1f26c4c567f3731f943e0d06ee846dae2d4487c01d9e1824"
+    },
+    {
+      "path": "接入路由/code/_meta/brief-glm-20261009T153607Z.md",
+      "sha256": "49197d19d504ea8bf6c4efd579c3c219eacb8cfd3a99d1b5f5846c5dcfb3d49d"
+    },
+    {
+      "path": "接入路由/code/_meta/review-claude-20261009T153607Z.json",
+      "sha256": "463925a2270a92af5d2a4dc6f57d95ffacd39c02282101d56559b696c99e77f1"
+    },
+    {
+      "path": "接入路由/code/_meta/review-gemini-20261009T153607Z.json",
+      "sha256": "52df7af2f790931c704405e020a03c188b14f049cd39321d16ee3b57cc6c19f2"
+    },
+    {
+      "path": "接入路由/code/_meta/review-glm-20261009T153607Z.json",
+      "sha256": "cbec7273f05c0420dd42f78e9cc4102427c9c78465b3da9c737483b1ee7d6365"
+    },
+    {
+      "path": "接入路由/code/2026-10-10-接入路由-claude.md",
+      "sha256": "9b2bb3f989eb74f29ea7fb1340ee77892d8bd8a98779b6dabe75a5f78d565625"
+    },
+    {
+      "path": "接入路由/code/2026-10-10-接入路由-gemini.md",
+      "sha256": "a651377e2596f704014e3681c857cd4a4cc7bf4844890e9e0d1fe7e845ed0c56"
+    },
+    {
+      "path": "接入路由/code/2026-10-10-接入路由-glm.md",
+      "sha256": "78466042c99e751d68f9dd8705e5446a99c09c1847f8c8068179f63cb977f69f"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}

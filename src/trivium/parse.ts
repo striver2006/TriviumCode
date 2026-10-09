@@ -182,6 +182,7 @@ export const VENDOR_NOISE_KEYS = ['toolAction', 'toolSummary'] as const;
  */
 export const ECHOED_ORCHESTRATOR_KEYS: readonly string[] = [
   'topic', 'stage', 'role', 'vendor', 'agent_cli', 'model_requested', 'model_effective', 'model_effective_source',
+  'access', 'family_comparisons',
   'effort', 'effort_requested', 'effort_effective', 'effort_effective_source', 'tier', 'tier_source',
   'model_route', 'run_id', 'rerun_index', 'snapshot_hash', 'blind', 'started_at', 'finished_at',
   'duration_s', 'tool_calls', 'evidence_ok', 'findings_count', 'findings_degraded', 'degraded', 'parse_fallback',

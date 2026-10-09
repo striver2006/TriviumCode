@@ -1,0 +1,79 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按焦点逐项核对：48 次预算记账诚实且不可重置（逐次 wx 预占、--version/--help 计入、耗尽即停、四批各 12 共 48/48，报告对未完成项均保留判据）；认证变量清理只作用于子进程且 codex 侧凭据值只以哈希进指纹；逐组合认证缓存按 critic/模式/profile/模型/effort 哈希隔离、只缓存正结论、TTL+版本+指纹三重失效；64（参数/存在性）先于 69（环境/凭据）在 preflight 与 prepareRun 两入口一致落地，EV-232 消除；--profile 与 --native 互斥、单次旗标>档位>Agent 配置、null 清空不被深合并吞掉。发现两处问题：路线指纹的版本分量在读取侧取的是全局顶层版本而非被校验路线自己的实测版本，多路线版本不同时会互相静默作废（GLM-01，major）；claude 的轨迹能力声明仍为单值静态且无 codex 那样的能力对账，profile 路线实测证伪时判定层仍按原生官方结论工作（GLM-02，minor）。两处均不否定本次变更主体，建议整改后再收口。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/adapters/claude-route.ts:86-101（指纹 version 分量与读取侧比对）；src/trivium/doctor.ts:786-802（写入侧）；src/trivium/preflight.ts:887,926（authCacheValid 同源取值）",
+      "problem": "每条路线的落盘指纹在写入时嵌入的是「经该路线启动器实测的版本」（doctor 探测时 probeClaudeBin 经 route.bin 跑 --version，snapshot.version 随即成为顶层 version），但读取侧 claudeProbeForRoute 重算指纹时 version 分量取 cfg.probe.cli.claude.version——即「最后一次探测的任意一条路线」的版本，不是被校验路线自己的版本。当两条路线的下层 CLI 版本不同（例如 cld 钉了与原生入口不同的 claude 构建）时：①后探一条会让另一条的指纹恒不匹配，routes 字典里条目还在、读取侧却静默返回 undefined，availability 报「尚未探测」，下次 doctor 只能整段重探、花过真实预算的结论作废，且无任何告警指出差因是 version 分量，形成两条路线互相作废的乒乓；②反之路线自身的下层 CLI 升级而顶层 version 仍等于其旧值时，checkCliVersions 每次预检跑的是 probe.entrypoint（原生入口）的版本核对，看不见 cld 下层的变化，「底层 CLI 版本变化即使旧结论失效」在这一窗口不成立。与设计 11.6「各路线能力由底层 CLI 版本、原生路径、包装脚本哈希、对应配置哈希绑定；改变即失效」的口径不符。probeAuth 的缓存校验对 claude 用同一顶层 version，同源。当前本机各路线均报 2.1.295，该机制尚属潜伏状态，故置信标 medium。",
+      "evidence": "实读 src/trivium/adapters/claude-route.ts：resolveClaudeRoute 第 86-89 行指纹的 version 取 probe?.version（即 cfg.probe.cli.claude 顶层字段）；claudeProbeForRoute 第 96-101 行以该重算指纹与 entry.fingerprint 比对，不匹配即返回 undefined。实读 src/trivium/doctor.ts 第 786-802 行：写入时 routes[key].fingerprint 以嵌入本轮 snapshot（含该路线实测版本）的 cfg 计算，随后顶层 probe.cli.claude 被整体替换为该 snapshot，多路线共存时顶层 version 随最后探测的路线走。实读 src/trivium/preflight.ts 第 887 行 version 取 cfg.probe.cli[cliName]?.version、第 132-151 行 authCacheValid 以它做缓存版本比对、第 197-239 行 readCliVersion 只按 probe.version_probe 跑 probe.entrypoint（原生入口）。证据文件 doc/05_testing/evidence/agent-access-20261009/batch-1/summary.json 显示 native 与 cld 当前同报 2.1.295。",
+      "suggestion": "校验侧按路线各自取版本：routes 条目落盘时可显式保存该路线实测版本（或启动器实测版本的哈希），claudeProbeForRoute 比对时用条目内版本参与重算，而不是顶层字段；或把预检的版本核对扩展到「按解析出的 profile 路线经 route.bin 各跑一次 --version」与条目版本比对。至少应在指纹不匹配且差异仅在 version 分量时输出告警，避免「已探路线静默变未探」让人误以为需要整段重烧预算。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/adapters/claude.ts:689（静态 capability 声明）与 776-841（claudeAvailability 判据）；src/trivium/doctor.ts:748-753（仅 codex 有 capabilityParity）",
+      "problem": "双模式接入后，claude 适配器的轨迹能力声明仍是单值 TOOL_TRACE_CAPABILITY，对所有 native 与 profile 路线一体适用。探针字段 trace_path_structured 与 denied_tool_in_trace 已按路线经 cld 实测（routeContext 使全部探臂走所选路线），但这两个字段既不进 claudeAvailability 的门槛，也没有像 codex 那样在 doctor 里做 capabilityParity 对账。若某条 profile 路线实测 denied_tool_in_trace 为 false（被拒操作不留痕），guard 仍按 rejectionRecorded 为 true 信任阴性证据、把指纹变化归因给开发者手改——这正是 capabilityParity 注释自己点名的失效形态（「实测更悲观：阴性结论不可信，而声明说它可信」）。证据里三条 Claude 路线该格均为 null（模型未尝试写工具，未测到），报告已如实披露；但「未测到」同样不构成对原生官方结论（M9 正向样本）在新路线上的证实，设计 11.6「未实测能力不能视为已准入」在判定层这一格没有机制承接。",
+      "evidence": "实读 src/trivium/adapters/claude.ts 第 689 行 capability: TOOL_TRACE_CAPABILITY 与第 776-841 行 claudeAvailability（判据为 probed_at、entrypoint、readonly_flags、strict_mcp_config_applied、headless_read_ok、tool_surface_checked、白名单派生，均不含 denied_tool_in_trace 与 trace_path_structured）。实读 src/trivium/doctor.ts 第 217-253 行 capabilityParity 定义、第 748-753 行仅 codex 段调用、第 771-818 行 claude 段无对账。实读 src/trivium/guard.ts 第 580-610 行：rejectionRecorded 参与漂移归因，声明为 true 时「轨迹无写事件」被用于把指纹变化记为开发者手改。doc/05_testing/evidence/agent-access-20261009/batch-1/summary.json 中 profile:qwen 路线 denied_tool_in_trace 为 null；REPORT_2026-10-09_agent_access.md 第 29 行如实披露「被拒写操作留痕能力仍为未测」。",
+      "suggestion": "给 claude 补能力对账：按路线把探针实测的 denied_tool_in_trace、trace_path_structured 与声明比对（复用 capabilityParity 或按路线条目比对），实测为 false 时进 doctor 告警或 availability 判据；null 维持现状不拦即可。重点是让「实测证伪而声明仍说可信」这一格有出口，与「未知轨迹能力不能套用旧官方结论」的焦点对齐。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "48 次预算记账诚实且不可重置：scripts/probe-agent-access.mjs 对每次真实 CLI 启动先以 O_CREAT|O_EXCL 预占 reserved-N、完成后落 launch-N，目录已有证据即拒绝重跑；--version/--help 启动计入（batch-2/launch-1.json 即 cld --profile kimi --version）；失败与超时照计、额度耗尽即停（batch-4 summary exhausted=true 且如实记「剩余项未测」）；证据落盘前 redactSecrets 加 scanSecrets 双检，凭据形态拒绝保存。",
+    "真实证据与报告口径一致：四批各 12 次、合计 48/48；denied_tool_in_trace 未测、Codex 实际 0.162.0 与本机旧探针 0.160.1 的落差、qwen3.8-max 仅核实配置声明、七路线「探活成功不等于完整验收」均如实保留，没有把未完成项说成完成。",
+    "model_flag 修正的处理方式诚实：原始证据文件未改动，复算以 batch-N/launch-3.json 的原始 argv（--model 在场）与 init 事件回读双重核对后在零新增 CLI 启动下改判，单独留审计文件 model-flag-recompute.json。",
+    "认证变量清理正确且只作用于子进程：claudeRouteEnv 清 ANTHROPIC_* 与 CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY、EFFORT_LEVEL 等，profile 模式额外删 CLAUDE_CODE_OAUTH_TOKEN（变异 A2 守护）；codexRouteEnv 仅保留所选 provider 在配置里声明的 env_key，其余 OPENAI_*/CODEX_* 冲突变量删除，凭据值只以哈希进指纹且变量轮换使指纹失效（access-modes 用例断言指纹不含明文）；util/exec.ts 的 env 合并对 undefined 显式删除，父进程环境不被改动。",
+    "逐组合认证缓存实现正确：probeAuth 以 critic/模式/profile/模型/effort 规范化哈希为键，probeAuthAll 按阶段解析去重（EV-229），只缓存正结论，TTL、CLI 版本、指纹三重失效；模型、effort、profile、指纹任一变化都重新探活（单测加变异 A3 守护）。",
+    "64/69 顺序修正（EV-232）在两个入口一致落地：runPreflight 与 review.ts 的 prepareRunClaimed 都是先 checkModelSlugs、checkTierCombos（明确不存在的 profile 退 64 并列可用值；配置与入口读取失败退 69），探针新鲜度、只读能力、探活等 69 类检查排后短路，非法参数不再被环境失败掩盖。",
+    "参数优先级与显式 null 语义正确：--profile-<id> 与 --native-<id> 同侧互斥退 64（tier-flags.ts），单次旗标高于档位条目高于 Agent 配置，档位 null 清空不被四级配置深合并吞掉、缺席继承（access-modes 用例）；模型与 effort 独立解析。",
+    "路线能力结论不再被旧结论冒充：claudeProbeForRoute 按指纹放行 routes 条目，不匹配按未探处理；doctor 探测期间路线变化（探前探后指纹不一致）整轮作废并出 blocker；--no-model-calls 不写 routes 条目、不给旧 paid 结论换新指纹。",
+    "profile 元数据安全：claudeProfileMetadata 只以正则取静态 export 的模型键，不 source 配置、不输出令牌；catalogModelsFor 对 Claude 显式返回「配置声明不能当服务端完整目录」，模型目录不冒充权威。",
+    "变异验证 6/6 检出（含 A5 首轮未红、补交接断言后检出的如实记录），恢复件按字节比对并重新构建，报告对过程失败没有隐瞒。"
+  ],
+  "not_covered": [
+    "本侧为只读审查，未执行任何命令；npm test、串行两次 npm run check、14/14 桩自检、变异重放均未复跑，相关结论采信报告与证据文件的静态核对。",
+    "review.ts 的 executeRun 与 worker 全链路、run-protocol.ts 交接比对、render.ts 渲染、meta.ts 与 schemas.ts 的 v3 写入细节只经补丁尾部测试摘录与变异清单间接核对，未逐行读全文。",
+    "probes/codex.ts 与 doctor 的 codex 探针段未逐行读；Codex 四路线「完整能力复核未完成」是报告自认状态，本侧未加验证。",
+    "探针侧 routeInvocation 把 --effort 追加在位置参数（prompt）之后，该 argv 形态在证据批次中无真实覆盖（Claude 路线 effort 恒为 null），CLI 是否接受属运行期事实，未能验证。",
+    "skills/ 下渲染产物与 schema 文件的逐字对账未做，采信 entry-render-parity 与 registry-parity 契约测试的存在性。",
+    "未读取另一位审查员的任何产出（含禁读清单所列文件）。"
+  ],
+  "consulted": [
+    ".reviews/探针与认证/code/_meta/changes-20261009T153637Z.diff",
+    ".reviews/探针与认证/plan/2026-10-09-探针与认证-r2-codex.md",
+    "src/trivium/access.ts",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/tier-flags.ts",
+    "src/trivium/review.ts",
+    "scripts/probe-agent-access.mjs",
+    "test/unit/access-modes.test.ts",
+    "doc/05_testing/REPORT_2026-10-09_agent_access.md",
+    "doc/05_testing/evidence/agent-access-20261009/batch-1/summary.json",
+    "doc/05_testing/evidence/agent-access-20261009/batch-2/summary.json",
+    "doc/05_testing/evidence/agent-access-20261009/batch-2/launch-1.json",
+    "doc/05_testing/evidence/agent-access-20261009/batch-2/launch-3.json",
+    "doc/05_testing/evidence/agent-access-20261009/batch-2/reserved-3.json",
+    "doc/05_testing/evidence/agent-access-20261009/batch-2/reserved-12.json",
+    "doc/05_testing/evidence/agent-access-20261009/batch-4/summary.json",
+    "doc/05_testing/evidence/agent-access-20261009/batch-4/launch-5.json",
+    "doc/05_testing/evidence/agent-access-20261009/model-flag-recompute.json",
+    "doc/05_testing/evidence/agent-access-20261009/mutation-spec.json",
+    "doc/05_testing/evidence/agent-access-20261009/mutation-result.json"
+  ]
+}

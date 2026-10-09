@@ -142,8 +142,8 @@ export function assertModelOverrideKeys(
  * `--effort-〈id〉` / `--profile-〈id〉` 共用这一份**（同一判定只有一处，EV-53 的教训）。
  * 判据与两种措辞见 `assertModelOverrideKeys` 的文档块；`model` 前缀的文案逐字不变（集成用例截「当前可用」）。
  */
-export type CriticFlagPrefix = 'model' | 'tier' | 'effort' | 'profile';
-const FLAG_NOUN: Record<CriticFlagPrefix, string> = { model: '模型', tier: '档位', effort: '思考等级', profile: '厂商 profile' };
+export type CriticFlagPrefix = 'model' | 'tier' | 'effort' | 'profile' | 'native';
+const FLAG_NOUN: Record<CriticFlagPrefix, string> = { model: '模型', tier: '档位', effort: '思考等级', profile: '厂商 profile', native: '官方模式' };
 
 export function assertCriticFlagKeys(
   cfg: Config,

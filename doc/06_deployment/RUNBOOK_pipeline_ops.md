@@ -12,6 +12,8 @@
 
 ## 零、先做这一步
 
+2026-10-09 接入诊断：先核对本轮解析的模式/profile/模型/effort，再检查该路线入口和指纹。Claude 每条路线的能力结论独立，包装器、profile配置或底层CLI版本变更后须重跑同路线 doctor；不能用原生结论证明 profile。认证缓存按实际组合隔离；已知不存在的 profile 或相互冲突的 native/profile 退64，环境不可用69。不自动换路线，不修改全局凭据。v3 中 null 表示无回读，unknown 表示模型族无法确认；均不可据此宣称异构已证明。
+
 ```bash
 trivium status                 # 全部主题的闸门、运行、降级与争议
 trivium status --topic <主题>   # 只看一个主题
@@ -291,23 +293,23 @@ trivium doctor --only agy       # 只探一侧，省配额
 
 ### 档位、思考等级与厂商 profile
 
-档位（`agents.<id>.tiers`、档位表格子的 `{tier}` / `{model, effort}`）与 `--tier-<id>` / `--effort-<id>` / `--profile-codex` 写错，多数退 **64**、零工件，报错里列出可用值：旗标的值或键写错，`topic resolve`、预检与 `review` 当场就退；档名、思考等级不合法，预检（「模型 slug 合法」「档位组合合法」两格）与 `review` 准备阶段（冻结与任何落盘之前）退。**厂商 profile 例外**：本机没有那个 profile、或它没有可用凭据时，预检先在「只读能力可用」一格退 **69**（这一格排在档位两格之前，不论 profile 来自 `--profile-codex`、档位条目还是 `agents.codex.profile`），`review` 准备阶段则先在「档位组合合法」退 64——两处顺序不一致，登记在 BACKLOG EV-232。用法见 [QUICKSTART §4「按档位选模型与思考深度」](../07_manuals/QUICKSTART.md#按档位选模型与思考深度)，字段说明见 [MANUAL §5.4](../07_manuals/MANUAL_user.md#54-审查员与档位)，规范见设计 11.5。
+档位与 `--tier-<id>` / `--effort-<id>` / `--profile-<id>` / `--native-<id>` 参数错误统一先退 **64**、零工件；明确不存在的 profile 同样退 64。凭据、服务、入口或只读能力不可用退 **69**。预检与准备阶段按同一顺序解析、检查本轮实际组合（EV-229、EV-232）。
 
 | 现象 | 处置 |
 | :--- | :--- |
 | 「**--tier-〈id〉 只接受**〈三个档名〉**，收到：…**」或「**--〈tier / effort / profile〉-〈id〉 需要一个值，但没有给出。**」 | 旗标值写错或漏写。档名只有这三个；思考等级与厂商 profile 的值紧跟在旗标后面 |
 | 「**--〈…〉-〈id〉：〈id〉 本轮没有入选，为它指定的…不会生效**」 | 与 `--model-<id>` 同一判据：要么用 `--critics` 把它加进本轮，要么去掉这个旗标 |
-| 「**--profile-〈id〉：〈id〉 没有厂商 profile 概念**」 | 今天只有 `--profile-codex`。别把它和 `--profile <档位表名>` 混了：后者换的是 `.trivium/config.yaml` 的 `profiles` 表，前者是 Codex 自己的 `$CODEX_HOME/<名>.config.toml` |
+| 「**--profile-〈id〉：〈id〉 没有厂商 profile 概念**」 | 只有注册表声明能力的侧可选 profile，目前为 Claude、Codex。`--profile <档位表名>` 仍独立选择模型档位；原生路线用 `--native-〈id〉` |
 | 「**档位「〈档〉」（经命令行 / 档位表格子 / agents.〈id〉.default_tier 指定）未在 agents.〈id〉.tiers 定义。可用：…**」（或「agents.〈id〉 未定义 tiers」） | 档名对、但这一侧没定义那一档。补上那一档，或改选报错里列出的档。注意本机层 `config.local.yaml` 写了 `tiers` 会**整段替换**共享配置里的那份——本机层只写了两档，共享层的第三档就不存在了 |
 | 「**〈家〉 不支持思考等级，档位 / 档位表却给了「…」。去掉该 effort**」 | ZCode 没有思考等级，档位里只能写模型；去掉该档或该格子里的 `effort`，也别给 `--effort-glm` |
 | 「**思考等级「…」不在模型「…」的原生枚举中。可用值：…**」 | 改用列出的值。可选值来自本机探针：codex 取本机模型目录文件里该模型的思考等级表，claude 取 `claude --help`。**本机目录可能比厂商窄**（如本机 qwen 目录不列 `xhigh` 而厂商接受，设计 3.6）：确认厂商确实接受后，改本机目录文件、重跑 `trivium doctor --only codex`，不要指望放宽校验 |
-| 预检「只读能力可用」一格报「**本轮的 codex 厂商 profile「…」在本机不存在。已探测到的：…**」（退 69），或 `review` 准备阶段报「**厂商 profile「…」不在本机名单中。可用：…**」（退 64） | 这台机器的 `$CODEX_HOME` 下没有 `<名>.config.toml`。协作者机器没有共享配置里那个 profile 时，在本机层 `config.local.yaml` **整段覆盖** `agents.codex.tiers`（连同其中的 profile 与模型一起换），不要只改一处；新加了 profile 文件要重跑 `trivium doctor --only codex` |
+| 明确不存在的厂商 profile（退 64） | 核对本机对应 profile 文件；预检与审查准备阶段均先校参数。Claude 位于 ~/.claude/profiles/，Codex 位于 $CODEX_HOME |
 | 「只读能力可用」一格报「**codex profile「…」对应的 provider「…」没有可用凭据**」（退 69） | 那个 profile 的 provider 段没配凭据。按报错点名的文件与 `[model_providers.〈家族〉]` 段自己补上（编排器不代写），再重跑 `trivium doctor --only codex` |
 | 「**不在 … 模型目录中，可用值：…**」，且这一侧的厂商 profile 来自档位或 `--profile-codex` | 模型目录逐 profile 分层（坑 P-25）：换了 profile 就要换成该 profile 目录里的模型。只给 `--profile-codex` 不给 `--model-codex` 时最常见 |
 | 预检告警「**模型「…」的 slug 已编码档位，思考等级「…」不生效**」 | Antigravity 的模型名带 `-low` / `-medium` / `-high` 后缀时以后缀为准，请求值照记、不下传。要换思考等级就换模型名或换档 |
 | 预检告警「**〈侧〉/〈阶段〉：命令行…覆盖了档位「…」的…**」 | 只是告知：命令行精确值盖过了档位里对应的那一项。档位提供的字段被全部盖掉时，run.json 该侧记 `tier: null`、`tier_source: override` |
 | 预检告警「**其中思考等级 / 厂商 profile 无从比对、未实际校验：…**」 | 探针没取到可选值（如 claude 的 `effort_levels` 为空、profile 名单为空），这一格跳过校验、照常下传。先跑 `trivium doctor`（`--only` 那一侧）补探针；不补的话，写错的思考等级要到运行期才被厂商拒绝——该侧整格失败、白花一次调用 |
-| 换了档位里的 codex profile 之后，预检通过、运行期该侧却鉴权失败 | 已知边界（BACKLOG EV-229）：可用性检查按本轮解析出的 profile 判「凭据在不在」，但**探活**仍按 `agents.codex.profile` 探，解析出的那一家凭据过期或被拒要到运行期才暴露。核对那个 profile 的凭据，或先把 `agents.codex.profile` 临时改成它跑一次 `trivium preflight --refresh-auth` |
+| 切换 profile 后探活失败 | 探活按实际 Agent / 模式 / profile / 模型 / effort 分开缓存，不跨组合复用。核对所选路线的凭据和服务；失败不会自动改用另一家（EV-229） |
 | run.json 某侧 `effort_effective` 为 `null`、`effort_effective_source` 为 `unverified` | Codex 与 Claude Code 的正常读数：它们收下思考等级但不回报实际用了哪一档，`null` 是如实的「不知道」，不是出错（PRD AC-23 达成边界）。ZCode 侧两项都是 `null`（没有思考等级概念）。字段整个不存在说明是 M11 第 6 步之前的旧留痕 |
 
 ---

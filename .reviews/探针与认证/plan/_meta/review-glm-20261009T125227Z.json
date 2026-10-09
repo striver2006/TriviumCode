@@ -1,0 +1,109 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "计划方向正确：EV-229 取候选 A（按本轮解析组合探活、缓存键带组合、先解析去重）、EV-232 取候选 A（64 类检查统一前移）与 BACKLOG 登记的缺口吻合；探针结论按路线与四类指纹绑定、免配额模式不刷 paid 新鲜度、失败不缓存、不 source 配置取元数据等约束与现行代码不变量（probed_at 只在模型段真跑过才打戳、AuthCacheEntry 只缓存正结论）一致。我这一侧按边界与失败路径、并发与一致性、验收可测性、本土运维约束四个镜头审出 6 条意见，均为 minor/nit：核心是 48 次真实启动预算缺一个可核验的计数台账与口径边界（三主题全局共用计数但无机制）、EV-232 改序后的文档与 USAGE 同步未列入计划、预算可行性的算术与超限分支未决策，以及跨主题指纹归属、doctor 路线探测范围、缓存键可读性三处待定。无 blocker/major，建议逐条裁决后按计划实施。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": ".reviews/探针与认证/plan/2026-10-09-探针与认证-codex.md:23",
+      "problem": "「全项目最多 48 次 CLI 启动、逐次记录、到上限即停」缺一个可核验的计数机制与口径边界：①逐次记录落在哪个文件未指定；②姊妹主题明确「全局共用计数」（接入路由计划第 28 行、留痕与异构计划第 23 行），但三个主题各自独立会话执行，没有共享台账就没有单一事实源；③口径只排除了 --help/--version 与「服务端请求数」两类，而正式审查的 preflight 探活、开发期间的 doctor 真实模型段同样是真实 CLI 启动，算不算 48 未写明；④「全项目」指本任务还是项目生命周期不明。不先定，验收时「未超 48」无法事后核验，三个主题各记各的还会对不上账。",
+      "evidence": "被审计划第 23 行（预算段）；.reviews/接入路由/plan/2026-10-09-接入路由-codex.md 第 28 行（48 次上限、四批 12 次）；.reviews/留痕与异构/plan/2026-10-09-留痕与异构-codex.md 第 23 行（全局共用计数）；AGENTS.md 架构纪律第 8 条（计数禁止读-改-写、以增量文件为账，本仓已有既定计数范式）。",
+      "suggestion": "在计划里定死台账：一个三主题共享、追加式（只增不改）的逐次启动台账文件，字段即计划已列的七项，并写明计数口径边界（预检探活/doctor 模型段是否计入、--help 与 --version 不计入、审查轮次另计），使「≤48、每批 ≤12」可机器或至少可逐条对账。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": ".reviews/探针与认证/plan/2026-10-09-探针与认证-codex.md:16",
+      "problem": "第 6 条统一 64/69 顺序（消除 EV-232）会让一类现有失败的退出码从 69 变 64，属对外契约变更，但计划未列文档同步清单。EV-232 登记原文的「已做」一栏记着：MANUAL §5.4、PROTOCOL、RUNBOOK、CASE 剧本 11 刚按现状（预检 69 在前）写定，主设计 11.5 也已改准为现状；改序后这些位置全部需要再同步，加上 AGENTS.md 改动同步清单对「CLI 参数或退出码」明确要求 USAGE 字符串、PROTOCOL、相关命令契约一起改。",
+      "evidence": "doc/08_project/BACKLOG.md 第 330 行（EV-232 全文，含「已做」清单与「A 会改变一类现有失败的退出码（69 → 64），属行为变更」）；AGENTS.md「改动同步清单」第三行；src/trivium/preflight.ts 第 1000 行（只读能力 ENV）与第 1021 行（档位组合 USAGE）的现状顺序；被审计划第 16 行与第 21 行（测试段只写了用例，未写文档同步）。",
+      "suggestion": "在第 6 条落点里点名同步范围：cli.ts 的 USAGE 两段、PROTOCOL、MANUAL §5.4、RUNBOOK、CASE 剧本 11、主设计 11.5，随同批提交；与 BACKLOG EV-232 收口时一并核对。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": ".reviews/探针与认证/plan/2026-10-09-探针与认证-codex.md:23",
+      "problem": "预算可行性没有算术支撑，也没有超限分支：每条路线要核实读取、工具白名单、MCP 隔离、写入负对照、禁读检测、结构化输出、轨迹解析七项（第 13 行），七条路线另有逐组合探活（EV-229 修复后首轮未命中缓存即真实启动）。计划只承诺「探针算法先估计最大调用数、不能以降低判据压预算」，既没给出估算结果证明 48 可容纳，也没写诚实估算超过 48 时怎么办——按现在的措辞那是死锁（不许降判据、不许超预算），只能中途停下返工计划。",
+      "evidence": "被审计划第 13、14、23 行；src/trivium/preflight.ts 第 861-926 行（现行探活即真实 headless 调用，缓存未命中即烧配额）；.reviews/接入路由/plan/2026-10-09-接入路由-codex.md 第 28 行（「不能通过时如实记录未测或失败，不降判据」）。",
+      "suggestion": "计划阶段先做一遍每路线最小启动数的估算并写进计划（哪些结论可从同一次会话派生、哪些必须独立启动），同时写明估算超 48 时的出口：向用户申请加预算或由用户裁剪路线，而不是留一个不可达的验收条件。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": ".reviews/探针与认证/plan/2026-10-09-探针与认证-codex.md:11",
+      "problem": "包装器与配置指纹出现两处计算归属：第一主题的路由对象「包含 mode/profile/model/effort、实际执行路径、原生 CLI 与包装器指纹」（接入路由计划第 20 行），本主题的探针结论又「以底层 CLI 版本、原生入口、包装器脚本哈希、对应配置哈希绑定」。若两个主题各自实现一份指纹算法，缓存失效判据与运行留痕里的指纹会各自漂移——这正是本仓反复修过的「同一事实两份判据」病（checkReadonlyCapability 的收敛注释记录了同型教训）。",
+      "evidence": "被审计划第 11 行；.reviews/接入路由/plan/2026-10-09-接入路由-codex.md 第 20 行（路由对象含指纹）；src/trivium/preflight.ts 第 607-620 行注释（「同一事实有两份判据且已经分叉」的旧病与收敛原则）。",
+      "suggestion": "在本计划或主设计里指定指纹的唯一实现归属（建议：路由层算一次，探针绑定与 run 留痕都消费同一个值），并在两个主题的对接面上写明。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": ".reviews/探针与认证/plan/2026-10-09-探针与认证-codex.md:13",
+      "problem": "doctor 对 claude 路线的缺省探测范围未决策：现状 runDoctor 对 claude 段只调一次 probeClaude；扩展 native 与 profile 路线数据后，doctor 是探「全部发现的 profile」还是「仅本轮配置引用的路线」直接决定常规 doctor 的真实配额消耗与各路线 probed_at 新鲜度语义。计划写了验收批次的路线清单与「--no-model-calls 不刷 paid 新鲜度」，唯独没写日常 doctor 的路线选择策略，这是配额敏感的未决策点，落码后返工概率不低。",
+      "evidence": "src/trivium/doctor.ts 第 765-792 行（现状：claude 段单次 probeClaude、无路线维度）；被审计划第 11、13 行（扩展路线数据与新鲜度约束，无 doctor 路线范围策略）。",
+      "suggestion": "在第 1 或第 3 条落点补一句 doctor 的路线策略（建议按配置引用的路线探测，或提供 --route/--only 粒度），并说明未探路线在 availability 与新鲜度判定中的三态表现。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": ".reviews/探针与认证/plan/2026-10-09-探针与认证-codex.md:15",
+      "problem": "探活缓存键用「规范化组合的哈希」会让 config.local.yaml 的 auth 段完全不可人读：组合本身（Agent/mode/profile/model/effort）不含密钥，哈希在这里只有规范化作用、没有保密收益，却让「这个条目对应哪个组合」在排障时无从看起，也难以手工核对缓存隔离是否按预期分键。",
+      "evidence": "被审计划第 15 行；src/trivium/types.ts 第 838-845、897 行（现行 auth 缓存条目与 critic 键均为人可读形状）。",
+      "suggestion": "键或条目里保留可读的规范化组合串（哈希可另存作规范化校验），使本地缓存可人工审计；组合不含敏感值，不违背「不存密钥」约束。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "探针结论按路线与四类指纹（底层 CLI 版本、原生入口、包装器脚本哈希、配置哈希）绑定、任一变化即失效、禁止挪用旧原生能力（第 11 行）——堵住了换路线后静默沿用旧结论的洞，与「能力靠探针，不靠记忆」原则一致。",
+    "EV-229 取候选 A：preflight 先按阶段解析再去重、按本轮实际选用组合探活、单一模型结果不覆盖另一组合（第 14 行）——与 BACKLOG 第 326 行登记的缺口与候选 A 吻合，去重也控住了登记时担心的「--stage all 一侧多探」配额顾虑。",
+    "EV-232 取候选 A：64 类（参数/组合/profile 存在性）先于 69 类（入口/能力/凭据/服务），与 review 准备阶段同序（第 16 行；现状两处顺序相反见 preflight.ts:1000 与 :1021，BACKLOG:330 实测记录）。",
+    "「doctor 无模型调用模式不得刷满 paid 能力的新鲜度」（第 13 行）与现行不变量一致：probed_at 只在模型段真跑过时才打戳（types.ts 第 767 行、probes/claude.ts 第 1175-1218 行），扩展到新路线数据是正确的保持。",
+    "profile env 只解析可辨认的静态 export、不执行配置内容、不输出密钥或端点原文、哈希在内存计算（第 12 行）——与 CLAUDE.md 的凭据纪律同源，安全姿势正确。",
+    "失败不缓存、只缓存正结论、凭据指纹不得只用 mtime、指纹读取失败不查也不写缓存（第 15 行）——沿用并强化现行契约（types.ts 第 893-895 行；preflight.ts probeAuth 的 EV-202 处理）。",
+    "全部探针子调用走统一路由、所选模型与清理后的 env（第 13 行）——与 EV-194 把 zcode 探针与审查运行统一选模路径的先例同构，避免「探的不是跑的那条路」。",
+    "超时不用 shell timeout、进程树终止与清扫、临时认证副本与 Codex HOME 清理沿用现有纪律（第 17 行）——符合架构纪律第 5 条与 macOS 现实。",
+    "配置模型映射只作声明名单、不冒充服务端目录、无法核实即告警、以实际组合探活验可调用性（第 12 行）——避免了把静态名单当权威目录的误判方向。"
+  ],
+  "not_covered": [
+    "一切需运行才能确认的事实均未验证：cld 包装器的实际行为、~/.claude/profiles/*.env 的真实内容与可解析性、各厂商端点当前可用性、48 次预算的实际充裕度。本轮为只读审查，无执行能力，以上均为基于文档与代码的推理。",
+    "未读取任何用户级凭据与配置文件（~/.claude/profiles/、~/.codex/ 等），涉及密钥且在仓库之外；profile 模型映射的可行性只以第一主题计划的「已核实事实」段为据。",
+    "未逐行读 src/trivium/probes/codex.ts、probes/zcode.ts、adapters/codex-home.ts、review.ts 准备阶段与 runner.ts 的完整实现；review 侧 64/69 顺序以 BACKLOG EV-232 的登记（含行号引用）为准，未直接核对 review.ts 源码。",
+    "未读主设计 §3.5/§11.1/§11.5 全文与 PROTOCOL/MANUAL/RUNBOOK/CASE 剧本中 EV-232 相关段落原文，GLM-02 的同步清单以 BACKLOG「已做」栏记载为据。",
+    "背靠背约束：未读、不猜测另一位审查员的结论；也未读运行目录下任何他侧产出。"
+  ],
+  "consulted": [
+    ".reviews/探针与认证/plan/2026-10-09-探针与认证-codex.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/doctor.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/types.ts",
+    "src/trivium/adapters/base.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "doc/08_project/BACKLOG.md",
+    ".reviews/接入路由/plan/2026-10-09-接入路由-codex.md",
+    ".reviews/留痕与异构/plan/2026-10-09-留痕与异构-codex.md"
+  ]
+}

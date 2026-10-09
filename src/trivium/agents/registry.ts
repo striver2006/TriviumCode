@@ -50,7 +50,7 @@ export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode';
 /**
  * 各厂商的**名义**模型族，按模型名判定（EV-62，M10a 第 4 步）。
  *
- * 唯一用途：`isHeterogeneous` 用它近似「当轮 Driver 的模型族」。
+ * 已退役：仅供 `isHeterogeneous` 的历史测试，v3生产判定不使用此名义族表。
  * 编排器不采集 Driver 的生效模型，只能假定 Driver 跑的是其厂商的自家模型——
  * 这是**启发式**。本仓自己就有反例：codex 在本仓默认跑 qwen，Antigravity 提供 claude-* slug。
  * 它也**不是** `agents.codex.profile` 意义上的「家族」：那一个描述的是审核者调用连到哪家
@@ -65,6 +65,17 @@ export const VENDOR_MODEL_FAMILY: Readonly<Record<AgentVendor, RegExp>> = {
   antigravity: /gemini/i,
   zcode: /glm/i,
 };
+
+/** 模型标识族规则：短别名不解析，供应商与工具身份不参与判断。 */
+export const MODEL_FAMILY_RULES: readonly { family: string; pattern: RegExp }[] = [
+  { family: 'gpt', pattern: /^(?:gpt[-.]|o[134](?:[-.]|$))/i },
+  { family: 'claude', pattern: /^claude[-.]/i },
+  { family: 'gemini', pattern: /^gemini[-.]/i },
+  { family: 'glm', pattern: /^glm[-.]/i },
+  { family: 'qwen', pattern: /^qwen(?:\d|[-.])/i },
+  { family: 'kimi', pattern: /^(?:kimi[-.]|k[23](?:[-.]|$))/i },
+  { family: 'deepseek', pattern: /^deepseek[-.]/i },
+];
 
 /**
  * 护栏等级（计划 §7.5；M10b r10 §3.1.1 改写定义）。
@@ -175,6 +186,8 @@ export interface AgentDescriptor {
   findingPrefix: string;
   /** 可作为审核者被 headless 拉起 */
   criticEnabled: boolean;
+  /** 支持独立选择 native / 厂商 profile；适配器能力必须与登记对账 */
+  supportsProfiles?: boolean;
   /**
    * 缺省是否入选 —— 与 `criticEnabled` **分开的一件事**（M8 第 3 步）。
    *
@@ -236,6 +249,7 @@ export interface AgentDescriptor {
 export const AGENTS: readonly AgentDescriptor[] = [
   {
     id: 'claude',
+    supportsProfiles: true,
     display: 'Claude Code',
     // 字母取 D：A/B 是术语表钉死的称谓，新启用者取下一个未用字母（决策 D-2，本字段文档块）
     label: 'Critic-D · Anthropic Claude Code',
@@ -271,6 +285,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
   },
   {
     id: 'codex',
+    supportsProfiles: true,
     display: 'Codex',
     label: 'Critic-C · OpenAI Codex',
     vendor: 'openai',

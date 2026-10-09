@@ -31,6 +31,7 @@ export type RunPhase =
 
 export interface SideStatus {
   state: 'pending' | 'running' | 'ok' | 'failed' | 'timeout' | 'parse_fallback';
+  /** 路由后的请求模型，运行状态本身不提供模型回读。 */
   model: string | null;
   attempt: number;
   elapsed_s: number;
@@ -681,7 +682,7 @@ export function renderProgress(
     if (!side) continue;
     lines.push(
       `  ${c}: ${SIDE_STATE_CN[side.state] ?? side.state}` +
-        `${side.model ? ` ｜ ${side.model}` : ''}` +
+        `${side.model ? ` ｜ 请求模型 ${side.model}` : ''}` +
         `${side.attempt > 0 ? ` ｜ 第 ${side.attempt} 次尝试` : ''}` +
         `${side.elapsed_s > 0 ? ` ｜ ${fmtDuration(side.elapsed_s)}` : ''}` +
         `${side.note ? ` ｜ ${side.note}` : ''}`,

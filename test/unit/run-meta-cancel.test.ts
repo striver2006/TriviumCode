@@ -13,7 +13,7 @@ import { scratchDir } from '../helpers/scratch.js';
 /**
  * EV-128：`review --cancel` 的归档侧收尾（计划 r2 §3.2 / §4.1 R1～R7）。
  *
- * 直测 `finalizeCancelledRunMeta`：四个前提、只改三格、task.json 登记独立判定、自身不抛。
+ * 直测 `finalizeCancelledRunMeta`：四个前提、partial 终态、task.json 登记独立判定、自身不抛。
  * 经 `cancelRun` 的接线与顺序由 `test/integration/run-protocol.test.ts` 的 E1 / E3 / E6 守。
  */
 
@@ -58,7 +58,7 @@ async function seed(
 const call = (env: Awaited<ReturnType<typeof setup>>, workerGone = true) =>
   finalizeCancelledRunMeta({ layout: env.layout, stage: 'plan', runId: RUN, lock: env.lock, workerGone });
 
-test('R1：v2 骨架 ⇒ 两步都写；只改 status / finished_at / gate.state 三格，其余逐键不变且过 run.v2 校验', async () => {
+test('R1：v3 骨架 ⇒ 两步都写，取消标记 partial；其余逐键不变且过当前契约校验', async () => {
   const env = await setup();
   const before = await seed(env);
   const r = await call(env);
@@ -68,9 +68,11 @@ test('R1：v2 骨架 ⇒ 两步都写；只改 status / finished_at / gate.state
   assert.deepEqual(validateRunMeta(after), []);
   assert.equal(after.status, 'cancelled');
   assert.equal(after.gate.state, 'cancelled');
+  assert.equal(after.review_mode, 'partial');
+  assert.match(after.degraded_reason!, /运行被取消/);
   assert.ok(after.finished_at && !Number.isNaN(Date.parse(after.finished_at)));
   // 其余键一个不动（含 artifacts：提交锚对 HEAD 为 running 的版本只查 run_id 与已登记条目）
-  const strip = (m: RunMeta) => ({ ...m, status: null, finished_at: null, gate: { ...m.gate, state: null } });
+  const strip = (m: RunMeta) => ({ ...m, status: null, finished_at: null, review_mode: null, degraded_reason: null, gate: { ...m.gate, state: null } });
   assert.deepEqual(strip(after), strip(before));
   assert.deepEqual(after.artifacts, before.artifacts);
 });
@@ -98,7 +100,7 @@ test('R3：v1 形状的 running ⇒ 不写（写回会把历史文件改成 v2�
   await fs.writeFile(env.runJson, text, 'utf8');
   const r = await call(env);
   assert.equal(r.runMeta.kind, 'skipped');
-  assert.match(r.runMeta.kind === 'skipped' ? r.runMeta.why : '', /只回写 run\.v2/);
+  assert.match(r.runMeta.kind === 'skipped' ? r.runMeta.why : '', /只收尾 run\.v2 \/ run\.v3/);
   assert.equal(await fs.readFile(env.runJson, 'utf8'), text);
 });
 
@@ -115,7 +117,7 @@ test('R4：run.json 不存在 / 不可解析 / 不合契约 ⇒ 跳过、不抛'
 
   await fs.writeFile(env.runJson, JSON.stringify({ schema: 'trivium.run.v2', status: 'running' }), 'utf8');
   const invalid = await call(env);
-  assert.match(invalid.runMeta.kind === 'skipped' ? invalid.runMeta.why : '', /不合 trivium\.run\.v2 契约/);
+  assert.match(invalid.runMeta.kind === 'skipped' ? invalid.runMeta.why : '', /不合所声明的 run\.v2 \/ run\.v3 契约/);
   assert.equal(await fs.readFile(env.runJson, 'utf8'), JSON.stringify({ schema: 'trivium.run.v2', status: 'running' }));
 });
 

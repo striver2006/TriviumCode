@@ -19,9 +19,8 @@
  * 第 6 步透传接线后拆除）。本模块只做形状层的判定；原生枚举、无此概念与本机名单是 `checkTierCombos` 的永久判据。
  */
 import type { Config, CriticId, TierName } from './types.js';
-import { ALL_AGENT_IDS, type AgentId } from './agents/registry.js';
+import { ALL_AGENT_IDS, agentById, type AgentId } from './agents/registry.js';
 import { TIER_NAMES, type TierOverrides } from './adapters/base.js';
-import { realAdapters } from './adapters/index.js';
 import { assertCriticFlagKeys, type CriticFlagPrefix } from './critics.js';
 import { usageError } from './exit-codes.js';
 
@@ -29,25 +28,28 @@ import { usageError } from './exit-codes.js';
 export interface TierFlagValues {
   tier?: TierName;
   effort?: string;
-  vendorProfile?: string;
+  vendorProfile?: string | null;
 }
 
-type Kind = Exclude<CriticFlagPrefix, 'model'>;
+type Kind = Exclude<CriticFlagPrefix, 'model' | 'native'>;
 const KINDS: readonly Kind[] = ['tier', 'effort', 'profile'];
 
 /** 三类旗标的全部名字（逐已登记 Agent）。`topic resolve` 的白名单与 help 都从这里取 */
 export function tierFlagNames(): string[] {
-  return KINDS.flatMap((k) => ALL_AGENT_IDS.map((id) => `${k}-${id}`));
+  return [...KINDS.flatMap((k) => ALL_AGENT_IDS.map((id) => `${k}-${id}`)), ...nativeFlagNames()];
+}
+
+export function nativeFlagNames(): string[] {
+  return ALL_AGENT_IDS.map((id) => `native-${id}`);
 }
 
 /** 适配器实现了 `vendorProfilesFor` 的 Agent——`--profile-〈id〉` 只对它们成立 */
 export function vendorProfileAgents(): AgentId[] {
-  const table = realAdapters();
-  return ALL_AGENT_IDS.filter((id) => typeof table[id as CriticId]?.vendorProfilesFor === 'function');
+  return ALL_AGENT_IDS.filter((id) => agentById(id)?.supportsProfiles === true);
 }
 
 /** 收集结果：键是 Agent id，值是原文（**空串表示写了没给值**，与「没写」区分） */
-export type RawTierFlags = Record<Kind, Record<string, string>>;
+export type RawTierFlags = Record<Kind, Record<string, string>> & { native?: Record<string, string> };
 
 /**
  * 收集三类旗标。`get` 返回 `undefined` 表示没写；返回空串表示写了但没给值（计划三审 AGY-02：
@@ -60,6 +62,11 @@ export function collectTierFlags(get: (name: string) => string | undefined): Raw
       const v = get(`${k}-${id}`);
       if (v !== undefined) out[k][id] = v;
     }
+  }
+  out.native = {};
+  for (const id of ALL_AGENT_IDS) {
+    const v = get(`native-${id}`);
+    if (v !== undefined) out.native[id] = v;
   }
   return out;
 }
@@ -78,16 +85,20 @@ export function assertTierFlags(
   picked: readonly string[],
 ): Partial<Record<CriticId, TierFlagValues>> {
   for (const k of KINDS) assertCriticFlagKeys(cfg, driver, Object.keys(raw[k]), picked, k);
+  assertCriticFlagKeys(cfg, driver, Object.keys(raw.native ?? {}), picked, 'native');
 
   const withProfile = new Set<string>(vendorProfileAgents());
-  for (const id of Object.keys(raw.profile)) {
+  for (const id of new Set([...Object.keys(raw.profile), ...Object.keys(raw.native ?? {})])) {
     if (!withProfile.has(id)) {
       throw usageError(
-        `--profile-${id}：${id} 没有厂商 profile 概念，这个旗标对它不成立。\n` +
+        `--${raw.profile[id] !== undefined ? 'profile' : 'native'}-${id}：${id} 没有厂商 profile 概念，这个旗标对它不成立。\n` +
           `  --profile-〈id〉 是厂商 CLI 自己的配置分层名，不是 trivium 的 --profile 〈档位表名〉。\n` +
-          `  可用：${[...withProfile].map((a) => `--profile-${a}`).join(' | ') || '（本机没有任何一家有厂商 profile 概念）'}`,
+          `  可用：${[...withProfile].flatMap((a) => [`--profile-${a}`, `--native-${a}`]).join(' | ') || '（本机没有任何一家有厂商 profile 概念）'}`,
       );
     }
+  }
+  for (const id of Object.keys(raw.native ?? {})) {
+    if (raw.profile[id] !== undefined) throw usageError(`--native-${id} 与 --profile-${id} 不能同时指定。`);
   }
 
   for (const k of KINDS) {
@@ -107,6 +118,7 @@ export function assertTierFlags(
   for (const [id, v] of Object.entries(raw.tier)) slot(id).tier = v as TierName;
   for (const [id, v] of Object.entries(raw.effort)) slot(id).effort = v;
   for (const [id, v] of Object.entries(raw.profile)) slot(id).vendorProfile = v;
+  for (const id of Object.keys(raw.native ?? {})) slot(id).vendorProfile = null;
   return out;
 }
 

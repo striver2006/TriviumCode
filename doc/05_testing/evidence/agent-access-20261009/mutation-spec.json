@@ -1,0 +1,67 @@
+{
+  "targets": [
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/render.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/access-modes.test.js",
+    "dist/test/test/unit/render.test.js",
+    "dist/test/test/unit/driver-wiring.test.js",
+    "dist/test/test/integration/access-v3.test.js",
+    "dist/test/test/integration/claude-profile.test.js"
+  ],
+  "cases": [
+    {
+      "id": "A1",
+      "desc": "档位null不继承Agent profile",
+      "file": "src/trivium/adapters/base.ts",
+      "find": "vendorProfile = base.fields.profile;",
+      "replace": "vendorProfile = agentVendorProfile;",
+      "expect": "dist/test/test/unit/access-modes.test.js"
+    },
+    {
+      "id": "A2",
+      "desc": "包装器不能继承原生OAuth",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "(profile !== null && key === 'CLAUDE_CODE_OAUTH_TOKEN')",
+      "replace": "(profile === null && key === 'CLAUDE_CODE_OAUTH_TOKEN')",
+      "expect": "dist/test/test/integration/claude-profile.test.js"
+    },
+    {
+      "id": "A3",
+      "desc": "模型参与认证组合缓存",
+      "file": "src/trivium/preflight.ts",
+      "find": "profile: combination.vendorProfile, model: combination.model, effort: combination.effort,",
+      "replace": "profile: combination.vendorProfile, model: null, effort: combination.effort,",
+      "expect": "dist/test/test/unit/access-modes.test.js"
+    },
+    {
+      "id": "A4",
+      "desc": "Driver声明进入实际比较",
+      "file": "src/trivium/review.ts",
+      "find": "compareRunModels(meta.driver, meta.driver_declaration, sides, results)",
+      "replace": "compareRunModels(meta.driver, undefined, sides, results)",
+      "expect": "dist/test/test/integration/access-v3.test.js"
+    },
+    {
+      "id": "A5",
+      "desc": "worker交接不吞Driver声明",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "driverModel: rc.meta.driver_declaration?.model ?? null,",
+      "replace": "driverModel: null,",
+      "expect": "dist/test/test/integration/access-v3.test.js"
+    },
+    {
+      "id": "A6",
+      "desc": "正文不能将请求冒充回读",
+      "file": "src/trivium/render.ts",
+      "find": "model_effective: ['requested', 'unverified'].includes(input.result.model_effective_source) ? null : input.result.model_effective,",
+      "replace": "model_effective: input.result.model_effective,",
+      "expect": "dist/test/test/unit/render.test.js"
+    }
+  ]
+}

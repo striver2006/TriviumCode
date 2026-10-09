@@ -1945,7 +1945,7 @@ test(
      * 钉住的那份 schema 是 trivium.run.v99 ⇒ 不合契约；钉一个不存在的 run_id ⇒ 文件不存在（同样硬失败、同一出口）。
      */
     const pinnedOut = pinned.stdout + pinned.stderr;
-    const judged = pinnedOut.indexOf('  本次判定：文件是 JSON，但不合 run.v1/v2 契约（schema 字段是 "trivium.run.v99"');
+    const judged = pinnedOut.indexOf('  本次判定：文件是 JSON，但不合 run.v1/v2/v3 契约（schema 字段是 "trivium.run.v99"');
     assert.ok(judged > pinnedOut.indexOf('按下列成因处置。\n'), `缺本次判定一行，或不在原文之后：${pinnedOut}`);
     assert.ok(judged < pinnedOut.indexOf('  涉及的运行留痕'), `本次判定要在共用出口段之前：${pinnedOut}`);
     const absent = await cli(

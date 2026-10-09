@@ -35,6 +35,7 @@
 
 ### 架构决策记录 (ADR)
 
+- [`ADR_003_agent_access.md`](./ADR_003_agent_access.md)：Agent 接入路线与模型族三态决策；实施与真实验收状态见本次报告。
 - [`ADR_002_multicritic_isolation.md`](./ADR_002_multicritic_isolation.md)：N 方（多审核者）隔离**只做检测收口，不引入硬隔离**；四条泄漏通道与威胁模型定调，硬隔离路线留档备选。**状态：Accepted（2026-09-13）**，决策者 Chen Zhenbo。关联：设计 10.1 / 10.2、演进设计 §8.2～§8.4。
 - [`ADR_001_isolation_mode.md`](./ADR_001_isolation_mode.md)：审查员隔离模式采用**就地审查（in-place）**，不构造冻结镜像树；配三层屏蔽与漂移检测。**状态：Accepted（2026-09-11）**，决策者 Chen Zhenbo（评审意见 UR-03 / UR-06）。
   推翻 v1.0.0～v1.1.0 的 `mirror` 镜像树方案，并因此新增 `agy.path_deny` / `zcode.path_deny` / `agy.scratch_paths` / `zcode.scratch_paths` 四项 M0 探针。关联：设计 AD-05 与第 10 章、PRD FR-07 / FR-10 / FR-15 / FR-16。

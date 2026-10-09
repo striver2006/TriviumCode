@@ -26,6 +26,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { ensureDir, exists } from '../util/fsx.js';
 import { scanAndRemoveSecrets } from '../scrub.js';
 import type { CarrierScrub } from './base.js';
@@ -68,6 +69,69 @@ export interface CodexHomePrep {
 /** `$CODEX_HOME`，未设时回落官方默认 */
 export function codexHomeOf(env: NodeJS.ProcessEnv = process.env): string {
   return env['CODEX_HOME'] ?? path.join(os.homedir(), '.codex');
+}
+
+/** 原生入口必须是官方登录路线；只判非敏感模式与凭据有无，不返回凭据。 */
+export function codexNativeRouteIssue(home: string): string | null {
+  let config = '';
+  try { config = readFileSync(path.join(home, 'config.toml'), 'utf8'); }
+  catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return 'Codex 官方配置无法读取，请核对本机文件权限或配置路径'; }
+  const top = config.split(/^\s*\[/m)[0] ?? '';
+  const provider = /^\s*model_provider\s*=\s*["']([^"']+)["']/m.exec(top)?.[1] ?? 'openai';
+  if (provider !== 'openai') return 'Codex 原生路线要求官方登录，基底配置选择了其它provider；请显式选择供应商profile或核对官方配置';
+  const officialSection = config.split(/^\s*\[/m).find(section => /^model_providers\.openai\]\s*(?:#.*)?(?:\r?\n|$)/.test(section));
+  const url = officialSection && /^\s*base_url\s*=\s*["']([^"']+)["']/m.exec(officialSection)?.[1];
+  if (url) {
+    try { if (new URL(url).hostname !== 'api.openai.com') return 'Codex 原生路线的openai配置指向非官方入口，请使用明确的供应商profile'; }
+    catch { return 'Codex 原生路线入口配置无法解析，请核对官方配置'; }
+  }
+  let content: string;
+  try {
+    content = readFileSync(path.join(home, 'auth.json'), 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    return 'Codex 官方登录元数据无法读取，请核对本机文件权限或认证路径';
+  }
+  try {
+    const auth = JSON.parse(content) as { auth_mode?: string; OPENAI_API_KEY?: unknown };
+    if (auth.OPENAI_API_KEY || auth.auth_mode?.toLowerCase().startsWith('api')) {
+      return 'Codex 原生路线当前为API凭据模式，要求官方订阅登录；不自动切换认证或供应商';
+    }
+  } catch { return 'Codex 官方登录元数据无法解析，请重新登录'; }
+  return null;
+}
+
+/** 只解析所选路线引用的凭据变量名，实际值仅进入认证指纹。 */
+async function codexRouteEnvSelection(home: string, profile: string | null): Promise<{ keep: string | null; keys: string[] }> {
+  let provider = 'openai';
+  const keys = new Map<string, string>();
+  for (const name of ['config.toml', ...(profile ? [`${profile}.config.toml`] : [])]) {
+    let text: string;
+    try { text = await fs.readFile(path.join(home, name), 'utf8'); }
+    catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') continue; throw e; }
+    const top = text.split(/^\s*\[/m)[0] ?? '';
+    provider = /^\s*model_provider\s*=\s*["']([^"']+)["']/m.exec(top)?.[1] ?? provider;
+    let section: string | null = null;
+    for (const line of text.split(/\r?\n/)) {
+      if (/^\s*\[/.test(line)) section = /^\s*\[model_providers\.([\w-]+)\]\s*$/.exec(line)?.[1] ?? null;
+      const key = /^\s*env_key\s*=\s*["']([A-Z_][A-Z0-9_]*)["']/.exec(line)?.[1];
+      if (section && key) keys.set(section, key);
+    }
+  }
+  return { keep: profile === null && provider === 'openai' ? null : keys.get(provider) ?? null,
+    keys: [...keys.values()] };
+}
+
+export async function codexRouteEnvKey(home: string, profile: string | null): Promise<string | null> {
+  return (await codexRouteEnvSelection(home, profile)).keep;
+}
+
+/** 子进程清理路由冲突；仅保留所选provider明确引用的认证变量。 */
+export async function codexRouteEnv(home: string, profile: string | null): Promise<Record<string, undefined>> {
+  const { keep, keys } = await codexRouteEnvSelection(home, profile);
+  return Object.fromEntries([...new Set(['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_ORG_ID', 'OPENAI_ORGANIZATION',
+    'OPENAI_PROJECT_ID', 'CODEX_API_KEY', 'CODEX_MODEL', 'CODEX_MODEL_PROVIDER', 'CODEX_MODEL_REASONING_EFFORT']
+    .concat(keys))].filter(key => key !== keep).map(key => [key, undefined]));
 }
 
 /** 副本 `CODEX_HOME` 在该侧运行目录下的位置——准备与抹除共用同一个拼法 */

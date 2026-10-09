@@ -16,6 +16,7 @@
  * 一份把缺失渲染成「0 条意见」的复盘会让人以为那一轮很干净（P5 不可伪装）。
  */
 import path from 'node:path';
+import type { AccessMeta, DriverDeclaration, FamilyComparison } from './types.js';
 import { promises as fs } from 'node:fs';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, agentByFindingId, type AgentId, type GuardLevel } from './agents/registry.js';
 import { isReviewArtifact, listStageArtifacts, metaDir, stageDir, type ArchiveLayout } from './archive.js';
@@ -63,7 +64,10 @@ export interface RoundReport {
    * `driver` 出自哪一版留痕（设计 13.2.1，M11 第 7 步）：`run.v1` 读进内存时 driver 由迁移补为缺省 Driver
    * ——v1 时代 Driver 是系统常量，这是事实而非回落，但聚合要注明「其中 N 轮为 run.v1 迁移」。读不到元数据时为 null。
    */
-  driverSource: 'run.v2' | 'run.v1' | null;
+  driverSource: 'run.v3' | 'run.v2' | 'run.v1' | null;
+  driverDeclaration?: DriverDeclaration;
+  familyComparisons?: FamilyComparison[];
+  requestedRoutes?: RunMeta['requested_routes'];
   /** 读不到 Driver 的原因（找不到 run.json / 读不出）；读得到时为 null。这类轮次在聚合里单独成组，不归给任何 Driver */
   driverUnknownReason: string | null;
   /**
@@ -78,6 +82,9 @@ export interface RoundReport {
     status: string;
     modelEffective: string | null;
     modelRequested: string | null;
+    access?: AccessMeta;
+    familyStatus?: string;
+    modelSource?: string;
     durationS: number;
     findings: number | null;
     /**
@@ -127,6 +134,7 @@ export interface RoundReport {
  * （`resolveRerunIndex` 只看审查文档），之后的重跑沿用同一个号，所以这里记的是「预定轮次」。
  */
 export interface UnlistedRun {
+  requestedRoutes?: RunMeta['requested_routes'];
   stage: Stage;
   runId: string;
   /** 预定轮次：这次运行开始时算出的轮次号，之后的重跑可能沿用同一个号 */
@@ -434,7 +442,13 @@ async function buildRound(
   base.reviewMode = meta.review_mode;
   base.criticsSelected = [...meta.critics_selected];
   base.driver = meta.driver;
-  base.driverSource = read.sourceSchema === 'trivium.run.v1' ? 'run.v1' : 'run.v2';
+  base.driverSource = read.sourceSchema === 'trivium.run.v1' ? 'run.v1' : read.sourceSchema === 'trivium.run.v2' ? 'run.v2' : 'run.v3';
+  if (meta.driver_declaration) base.driverDeclaration = meta.driver_declaration;
+  if (meta.family_comparisons) base.familyComparisons = meta.family_comparisons;
+  if (meta.requested_routes) base.requestedRoutes = meta.requested_routes;
+  for (const [id, route] of Object.entries(meta.requested_routes ?? {})) {
+    if (route && !meta.critics[id as CriticId]) notes.push(`${id} 未产出结果；请求路线 ${route.access.requested_mode} / ${route.access.profile ?? '原生'}，模型 ${route.model ?? '未指定'}，effort ${route.effort ?? '未指定'}；实际启动及回读未知`);
+  }
   base.driverGuardLevel = meta.driver_guard_level ?? null;
   base.degradedReason = meta.degraded_reason;
 
@@ -456,6 +470,9 @@ async function buildRound(
       status: m.status,
       modelEffective: m.model_effective,
       modelRequested: m.model_requested,
+      ...(m.access ? { access: m.access } : {}),
+      familyStatus: typeof m.heterogeneous === 'boolean' ? `旧版名义族判定：${m.heterogeneous ? '异族' : '同族'}` : m.heterogeneous,
+      modelSource: m.model_effective_source,
       durationS: m.duration_s,
       findings: review ? review.findings.length : null,
       findingsDegraded: m.findings_degraded?.length ?? 0,
@@ -716,6 +733,7 @@ async function collectUnlistedRuns(
       sideStatuses: Object.fromEntries(
         (Object.keys(meta.critics) as CriticId[]).map((c) => [c, meta.critics[c]!.status]),
       ),
+      ...(meta.requested_routes ? { requestedRoutes: meta.requested_routes } : {}),
     });
   }
   return out;
@@ -1131,6 +1149,9 @@ export function renderTopicReport(r: TopicReport): string {
           `${u.status} | ${u.label} |`,
       );
     }
+    for (const u of r.unlistedRuns) for (const [id, request] of Object.entries(u.requestedRoutes ?? {})) {
+      if (request) L.push('', `> ${u.runId} / ${id} 请求：${request.access.requested_mode} / ${request.access.profile ?? '原生'}，模型 ${request.model ?? '未指定'}，effort ${request.effort ?? '未指定'}；此处仅记录请求。`);
+    }
     L.push(
       '',
       '> 这些运行不占轮次号：之后的重跑沿用同一个号，所以同一轮次号可能在上下两张表里各出现一次。',
@@ -1210,8 +1231,18 @@ export function renderTopicReport(r: TopicReport): string {
   }
 
   // ── 四、生效模型 ──
+  L.push('## 四、生效模型与思考等级（AC-13 / AC-18 / AC-23 核对）', '');
+  for (const d of r.rounds) {
+    if (d.driverDeclaration) L.push(`Driver 会话声明（${d.stage} r${d.rerunIndex}）：模型 ${d.driverDeclaration.model ?? '未声明'}，供应商 ${d.driverDeclaration.provider ?? '未声明'}。`, '');
+    for (const s of d.sides) {
+      const a = s.access;
+      if (a) L.push(`接入（${s.critic}）：${a.requested_mode} / ${a.profile ?? '无 profile'}；入口 ${a.launcher_effective ?? '未启动'}；供应商声明 ${a.provider_declared ?? '未知'}，供应商回读 ${a.provider_effective ?? '未回读'}。`, '');
+      if (s.modelSource === 'requested') L.push(`历史注记（${s.critic}）：旧版请求回填，不是模型回读。`, '');
+      if (!d.familyComparisons) L.push(`${s.critic}：${s.familyStatus ?? '旧版判定缺失'}。`, '');
+    }
+    for (const pair of d.familyComparisons ?? []) L.push(`${pair.left}/${pair.right}：${pair.status}（${pair.reason}；来源 ${pair.left_source ?? '无'}/${pair.right_source ?? '无'}）。`, '');
+  }
   L.push(
-    '## 四、生效模型与思考等级（AC-13 / AC-18 / AC-23 核对）',
     '',
     '| 阶段/轮 | 侧 | 请求 | 实际生效 | 思考等级请求 | 思考等级生效 | 证据 |',
     '| :--- | :--- | :--- | :--- | :--- | :--- | :--- |',

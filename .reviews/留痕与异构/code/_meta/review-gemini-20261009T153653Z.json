@@ -1,0 +1,80 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "本次代码变更完整落实了 trivium.run.v3 新写契约、v1/v2 历史工件严格只读读取、模型族三态判定与逐对比较机制，以及 worker 执行前的请求快照核对与取消/失败保护链路，杜绝了请求模型冒充回读。但发现入口技能契约（skills-src）存在参数透传说明遗漏、占位符缺失及段落错位问题（S0.5 未声明输出字段、Step 3 与 S2/S6 模板漏写 --driver-model/--driver-provider、透传说明被误贴在无关章节下方），此外存在若干诊断/日志文案未同步 v3 版本的维护性遗留。",
+  "findings": [
+    {
+      "id": "AGY-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "skills-src/commands/run.contract.md:40-49, 94-103, 138-140, 165 与 skills-src/partials/review/body.md:82, 205",
+      "problem": "入口技能契约与命令模板中，--driver-model 与 --driver-provider 的透传规约存在参数遗漏与排版错位，偏离修订实施计划 r2 的转抄契约要求：1) run.contract.md 的 S0.5 输出说明未列出 driver_model 与 driver_provider 字段；S2 与 S6 的 dual-review 命令说明及参数列表中未包含将 driver_model 与 driver_provider 传给 review --start；且第 165 行的透传规约句子被错误放置在文末「## 遇到 Bug 根因材料时」标题之下；2) body.md 在第 2 步 preflight 命令行模板中包含了 [--driver-model <模型>] [--driver-provider <供应商>]，但在第 3 步 review --start 的命令模板（第 82 行）中遗漏了这两个旗标，且第 205 行的透传说明置于第 7 步停点之后。这会导致 Driver Agent 依照技能提示词执行全流程或单阶段双审时，在 review --start 阶段遗漏会话声明旗标，使元数据退化为无声明的 unknown。",
+      "evidence": "skills-src/commands/run.contract.md:165 将透传说明挂在「## 遇到 Bug 根因材料时」下方：\"Driver 会话声明从 resolve 输出的 driver_model / driver_provider 逐项透传至预检与审查启动的 --driver-model / --driver-provider；null 则不传。只记录声明，不推断当前会话模型。\"；且 skills-src/partials/review/body.md:82 的模板 TV review --start ... 未包含 [--driver-model <模型>] [--driver-provider <供应商>]，导致渲染出的各载体 SKILL.md 均继承了该缺口。",
+      "suggestion": "1) 在 run.contract.md 的 S0.5 输出列表中正式声明 driver_model 与 driver_provider，在 S2 和 S6 明确透传给 --start，并将第 165 行移入 S0.5/S0.6 对应参数规约段落；2) 在 body.md 第 3 步 review --start 命令行模板中补齐 [--driver-model <模型>] [--driver-provider <供应商>]，并将第 205 行说明提升至启动步骤内；修改后执行 npm run render 重新生成四家载体入口资产。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/meta.ts:793, 809, 975, 977 与 src/trivium/gate.ts:1655",
+      "problem": "运行元数据校验与读取失败的诊断文案中，多处硬编码了旧版 run.v1/v2 字样，未同步更新包含 run.v3，导致校验失败与跳过提示存在误导性：1) meta.ts:793 中未知 schema 的报错为「不是 trivium.run.v1 / v2」；2) meta.ts:809 的 describeRunMetaCause 仍称「不合 run.v1/v2 契约」；3) meta.ts:975 与 977 中 unfinishedRunMetaStep 虽已支持 v2 与 v3，但 skip 原因分别写着「只回写 run.v2（不改历史形状）」与「不合 trivium.run.v2 契约，不动它」；4) gate.ts:1655 提示仍为「（文件缺失、内容损坏，或不合 run.v1/v2 契约）」。",
+      "evidence": "src/trivium/meta.ts:793 源码为 return contract([`schema 字段是 ${causeDetail(JSON.stringify(schema) ?? 'undefined')}，不是 trivium.run.v1 / v2`]);；src/trivium/meta.ts:975 源码为 if (schema !== 'trivium.run.v2' && schema !== 'trivium.run.v3') { return skipped(`schema 为 ${JSON.stringify(schema)}，只回写 run.v2（不改历史形状）`); }，随后 977 行仍写「不合 trivium.run.v2 契约，不动它」。",
+      "suggestion": "将上述几处提示中的「run.v1/v2」统一修订为「run.v1 / v2 / v3」或「run.v1～v3」，使错误信息与当前支持的契约范围完全一致。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "trivium.run.v3 新写契约设计完备：骨架阶段即写入 requested_routes 快照与 driver_declaration，经 validateRunMetaAjv 与 checkAgentIdentities 严格校验注册表身份，两段式校验不耦合硬编码 Agent id；",
+    "严格遵守历史工件不可变原则：run.v1 / run.v2 历史工件严格只读读取并校验原 schema，migrateRunMetaV1 仅在读入内存时做兼容映射，不向历史留痕反向补写 v3 比较矩阵或将布尔值重算为三态；",
+    "异构判定与来源真实性保障到位：model-family.ts 仅采信本轮 declared 声明与运行时回读（envelope/trace），有效模型缺失或未回读时严格输出 unknown，完全杜绝了以 requested 冒充 effective 回读的路径；",
+    "worker 执行端在 rebuildContext 中逐侧严格比对 handoff 请求与 run.json 中的 requested_routes，任何改动或非 v3 运行均拒绝执行；提前取消与准备失败分支均完整保留了请求路线快照；",
+    "模型族三态比较覆盖所有参与者两两组合，同族与未知情况通过 familyWarnings 按原因聚合输出且仅作为告警放行，不影响闸门通过与提交锚。"
+  ],
+  "not_covered": [
+    "作为只读审查员，本侧未执行任何写命令或真实 API 启动；所有进程交互与并发状态机均基于静态源码与既有测试夹具进行逻辑推演；",
+    "未在真实终端交互中实测 Driver Agent 读取修改后的 entry SKILL.md 时，对参数透传的实际指令遵从表现；",
+    "未消耗实际 API 配额验证外部 Claude/Qwen 与 Codex/Qwen 在真实网络环境下的连通与回读。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    ".reviews/留痕与异构/plan/2026-10-09-留痕与异构-r2-codex.md",
+    ".reviews/留痕与异构/code/_meta/changes-20261009T153653Z.diff",
+    "skills/dual-critic/schema/run.v3.json",
+    "src/trivium/meta.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/model-family.ts",
+    "src/trivium/access.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/render.ts",
+    "src/trivium/report.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/codex.ts",
+    "skills-src/commands/run.contract.md",
+    "skills-src/partials/review/body.md",
+    "skills/dual-critic/entry/codex/dual-run/SKILL.md",
+    "test/integration/access-v3.test.ts",
+    "test/unit/access-modes.test.ts",
+    "test/helpers/legacy-run-meta.ts",
+    "test/contract/entry-render-parity.test.ts",
+    "test/unit/run-meta.test.ts",
+    "test/unit/driver-wiring.test.ts",
+    "test/unit/report.test.ts",
+    "doc/05_testing/REPORT_2026-10-09_agent_access.md"
+  ]
+}

@@ -10,6 +10,8 @@
  * 因此不需要靠提示词去要求对方「别看」。
  */
 import path from 'node:path';
+import { compareRunModels, familyWarnings } from './model-family.js';
+import { requestedAccess, effectiveAccess } from './access.js';
 import { promises as fs } from 'node:fs';
 import type {
   Config, CriticId, CriticRequest, CriticResult, Ctx, DenyCategory, Review, Stage, CommandEntry,
@@ -18,7 +20,6 @@ import type {
 import { CRITIC_PREFIX, CRITIC_VENDOR, VOIDING_DENY_CATEGORIES } from './types.js';
 import { DEFAULT_DRIVER, agentById, type AgentId } from './agents/registry.js';
 import {
-  isHeterogeneous,
   resolveTier,
   type AdapterContext,
   type AdapterTable,
@@ -464,59 +465,6 @@ export async function resolveTaskGoal(
   }
 }
 
-/**
- * `heterogeneous: false` 那一格的成因说明（EV-54）。
- *
- * ## 为什么必须有写入方
- *
- * `run.v2` 的散文契约写着「false 时必须有 `override_reason`」，而承接侧
- * （`render.ts` 的声明、落盘、渲染三处）**早就接通了，一直没有人传值**。
- * M9 第 4 步推后它的理由是「claude 一次也选不上，补的写入方没有任何路径能端到端
- * 验证」——那条理由被第 5 步的 `--driver` 当场消灭：`--driver <非 claude> --critics claude`
- * 之后 claude 真能入选，而 `isHeterogeneous` 对 claude 系模型**恒返回 false**。
- * 不补的话，第 6 步验收产出的那份留痕必然自相矛盾，而它要作为达成证据进台账。
- *
- * ## 取值来源写死在这里，不留给调用点各写一份
- *
- * 只有两种成因：用户显式指定，或档位默认落在了与当轮 Driver 同族的模型上。两个写点
- * （审查文档 front-matter 与运行元数据）**共用本函数**——各写一份文案就会
- * 踩破「两处同值」这条判据本身。
- *
- * **只补写入方，不升 schema 的 `if/then` 机器判据**：那会让历史留痕集体读不回。
- *
- * ## M10a 第 4 步的变化（EV-62）
- *
- * 判据改为按**当轮 Driver 厂商的名义模型族**判定（`VENDOR_MODEL_FAMILY`，启发式），
- * 上面「恒返回 false」一句是 M9 时点的叙事，保留原文。文案随之不再写死「Claude 系」，
- * 改为点名当轮 Driver；历史留痕里的旧文案不回改，新旧两种说法并存。
- *
- * `agentById(driver)!` 的非空断言依赖的是 **run.v2 校验**：`driver` 取自 `meta.driver`，
- * 而 `meta` 在两条路径上都过了 `validateRunMeta` → `checkAgentIdentities`（要求 driver
- * 为已登记 id）——同步路径是 `prepareRun` 里 `writeRunMeta` 落盘之前，worker 路径是
- * `rebuildContext` 里 `readRunMeta` 读回之时（读不过即抛）。两个写点都在 `executeRun` 里，
- * 排在这两处之后。**不是「入口的 `resolveDriver` 已经拦过」**：worker 分支根本不经过它
- * （代码双审 r5 CODEX-01）。本函数自己不做这个判定。
- */
-function overrideReasonFor(
-  c: CriticId,
-  model: string | null,
-  modelOverrides: Partial<Record<CriticId, string>>,
-  profileRequested: string | null,
-  // 档位旗标（M11 第 5 步）放在 driver 之前：driver-wiring 的调用链护栏要求末参恒为 meta.driver
-  tierFlags: Partial<Record<CriticId, TierFlagValues>> | undefined,
-  driver: AgentId,
-): string | null {
-  const desc = agentById(driver)!;
-  if (isHeterogeneous(model, desc.vendor)) return null;
-  if (modelOverrides[c]) return `用户经 --model-${c} 显式指定了与当轮 Driver（${desc.display}）同族的模型`;
-  /*
-   * 经 --tier-〈id〉 选出的模型（M11 第 5 步）：不认这一档就会归因成「档位表默认模型」——
-   * 命令行的选择被记到配置头上（计划 §1.5）。字段名、类型、出现条件都不变，只是措辞如实。
-   */
-  const tier = tierFlags?.[c]?.tier;
-  if (tier) return `用户经 --tier-${c} ${tier} 选出了与当轮 Driver（${desc.display}）同族的模型`;
-  return `档位 ${profileRequested ?? '（缺省）'} 的默认模型与当轮 Driver（${desc.display}）同族`;
-}
 
 /** 运行目录按仓库路径哈希分桶，避免不同项目互相覆盖 */
 export function repoId(projectRoot: string): string {
@@ -524,6 +472,8 @@ export function repoId(projectRoot: string): string {
 }
 
 export interface ReviewOptions {
+  driverModel?: string | null;
+  driverProvider?: string | null;
   ctx: Ctx;
   stage: Stage;
   topic: string;
@@ -1203,6 +1153,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
       min_project_reads: cfg.review.min_project_reads[stage],
       // 三层解析后的厂商 profile（M11 第 6 步）：与上方可用性检查同一个值，codex 的 `-p` 也取它
       profile_requested: routed.vendorProfile,
+      access: requestedAccess(cfg, critic, routed.vendorProfile, adapters),
       tier: routed.tier,
       tier_source: routed.tierSource,
     };
@@ -1350,6 +1301,8 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
        */
       driver,
       driverEnabled,
+      driverModel: opts.driverModel,
+      driverProvider: opts.driverProvider,
       /*
        * 有效护栏等级（M10b 第 3 步 B1）：登记为 L1 而 Hook 配置当前不在场即记 L2。
        * 在这里取，而不是信预检那一次：预检与 `--start` 之间配置可能被改，留痕要记的是**本次运行时**的事实。
@@ -1364,6 +1317,10 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
       build: embeddedBuildStamp(),
       driftPolicy: cfg.review.on_drift,
     });
+    meta.requested_routes = Object.fromEntries(sides.map(c => [c, {
+      model: requests[c]!.model, effort: requests[c]!.effort ?? null,
+      tier: requests[c]!.tier, tier_source: requests[c]!.tier_source, access: requests[c]!.access!,
+    }]));
     meta.artifacts = [...metaArtifacts];
 
     // FR-23：跳过也要留痕，且必须写明命中的规则供人复核（§6.4）
@@ -1622,7 +1579,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
      */
     capabilities: Object.fromEntries(
       sides.flatMap((c) => {
-        const cap = adapters[c]?.capability;
+        const adapter = adapters[c];
+        const cap = adapter?.capabilityFor?.(cfg, requests[c]?.profile_requested ?? null) ?? adapter?.capability;
         return cap ? [[c, cap] as const] : [];
       }),
     ),
@@ -1686,6 +1644,10 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
    * 钩子入参只有 `CriticResult`——结构上拿不到请求值。失败结果（含 runner 兜底构造的）同样经它，不另写分支。
    */
   const effortRead: Partial<Record<CriticId, EffortReadback>> = {};
+  const comparisons = compareRunModels(meta.driver, meta.driver_declaration, sides, results);
+  meta.family_comparisons = comparisons;
+  warnings.push(...familyWarnings(comparisons));
+  const driverComparison = (c: CriticId) => comparisons.find(pair => pair.left === meta.driver && pair.right === c)!;
   for (const c of sides) {
     const r = results[c];
     if (r) effortRead[c] = adapters[c]!.effortReadback(r);
@@ -1766,10 +1728,10 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
        * 裁决者读的是这份单侧文档，「有效侧不足、这一档没做」直接决定他还剩几层防线。
        */
       jointCheck: jointCheckRun,
-      heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model, agentById(meta.driver)!.vendor),
-      overrideReason: overrideReasonFor(
-        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested, opts.tierFlags, meta.driver,
-      ),
+      access: effectiveAccess(requests[c]!.access!, r),
+      familyComparisons: comparisons.filter(pair => pair.left === c || pair.right === c),
+      heterogeneous: driverComparison(c).status,
+      overrideReason: driverComparison(c).reason,
     });
 
     const written = await writeArtifact({
@@ -1988,8 +1950,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       vendor: CRITIC_VENDOR[c],
       cli_version: r.cli_version,
       model_requested: requests[c]!.model,
-      model_effective: r.model_effective,
-      model_effective_source: r.model_effective_source,
+      model_effective: r.model_effective_source === 'requested' || r.model_effective_source === 'unverified' ? null : r.model_effective,
+      model_effective_source: r.model_effective_source === 'requested' ? 'unverified' : r.model_effective_source,
       /*
        * 两个字段**恒写**（含 null），不走 `...(x ? {} : {})` 的条件展开。
        *
@@ -2032,12 +1994,11 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       tool_calls: { ...r.tool_calls, project_reads: side?.projectReads ?? 0 },
       evidence_ok: side?.evidenceOk ?? false,
       ...(r.usage ? { usage: r.usage } : {}),
-      heterogeneous: isHeterogeneous(r.model_effective ?? requests[c]!.model, agentById(meta.driver)!.vendor),
+      access: effectiveAccess(requests[c]!.access!, r),
+      heterogeneous: driverComparison(c).status,
       // 与上面渲染侧**共用同一个派生函数**：两处各写一份文案就会踩破
       // 「front-matter 与运行元数据两处同值」这条自己要守的判据（EV-54）
-      override_reason: overrideReasonFor(
-        c, r.model_effective ?? requests[c]!.model, opts.modelOverrides, r.profile_requested, opts.tierFlags, meta.driver,
-      ),
+      override_reason: driverComparison(c).reason,
       fail_reason: r.fail_reason,
       /*
        * 「合格 0 条**且**降级 0 条」才是空结论（解析回退逐条降级计划 r2 §3.3）：只数合格意见的话，

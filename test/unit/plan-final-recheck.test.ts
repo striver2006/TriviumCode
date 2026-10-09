@@ -13,7 +13,8 @@ import {
   acceptedIdsForNextPlan, checkAdjudication, collectStructuredIds, expectedFindingIds, loadRoundReviews, recheckPlanFinal,
   renderGateResult, type PlanFinalRecheck,
 } from '../../src/trivium/gate.js';
-import { newRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
+import { writeRunMeta } from '../../src/trivium/meta.js';
+import { historicalRunMeta } from '../helpers/legacy-run-meta.js';
 import {
   composeMustReadWarnings, planFinalRecheckWarning, PLAN_FINAL_RECHECK_WARNING,
 } from '../../src/trivium/review.js';
@@ -85,7 +86,7 @@ async function round(l: ArchiveLayout, o: RoundSpec): Promise<void> {
   const r = o.r ?? 1;
   const driver = o.driver ?? 'claude';
   const sides = o.sides ?? { gemini: ['AGY-01'], glm: ['GLM-01'] };
-  const m = newRunMeta({
+  const m = historicalRunMeta({
     runId: o.runId, topic: TOPIC, stage: 'plan', rerunIndex: r, command: 'x', promptHint: null, taskGoal: null,
     driver, criticsSelected: Object.keys(sides) as CriticId[], treeHash: 'h', gitHead: null, dirty: false,
     subjectSha256: 's', denyPaths: [], driftPolicy: 'warn',

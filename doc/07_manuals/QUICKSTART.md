@@ -17,6 +17,10 @@
 
 ## 0. 前置条件
 
+Claude 和 Codex 可按任务选择接入路线。Claude 的 `agents.claude.profile` 缺席或 null 走原生登录，非空经 `cld --profile <name> --print`；本机绝对入口配置在 `bin` / `profile_bin`。单次 `--profile-claude qwen` 或 `--native-claude` 优先于档位和 Agent 配置，Codex 同理；同侧同时给出退64。切换路线不替换模型，必要时同时显式指定模型。供应商默认模型映射只作配置声明，需实际组合探活。
+
+Driver 可传 `--driver-model <model>` 和 `--driver-provider <provider>` 声明当前会话。v3 根据声明与审核者回读逐对比较模型族；缺证据、别名无法解析为 unknown。同族和未知均告警继续。旧版布尔只显示「旧版名义族判定」。本仓 Claude/Qwen default/flash 组合探活已通过；完整准入前保留本机临时两审默认，三审恢复须等准入完成；原生 Claude 实测待订阅恢复。
+
 | 项 | 要求 | 怎么确认 |
 | :--- | :--- | :--- |
 | 操作系统 | **macOS**（一级平台）。Linux / Windows 未验证 | — |

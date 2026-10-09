@@ -32,8 +32,12 @@
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { createHash } from 'node:crypto';
 import type { ClaudeProbe, CriticRequest, CriticResult } from '../types.js';
 import { run } from '../util/exec.js';
+import { claudeProbeForRoute, claudeProfileNames, executableFile, resolveClaudeRoute, type ClaudeRoute } from './claude-route.js';
+import { redactSecrets } from '../secrets.js';
 import { ensureDir } from '../util/fsx.js';
 import {
   CLAUDE_OUTPUT_TOOLS,
@@ -57,6 +61,7 @@ import {
 } from './base.js';
 
 export interface ClaudeInvokeOptions {
+  route?: ClaudeRoute;
   bin: string;
   cwd: string;
   /** 送审包全文。**走 stdin，不进 argv** */
@@ -113,7 +118,7 @@ export function buildClaudeArgs(
     Partial<Pick<ClaudeInvokeOptions, 'effort'>>,
 ): string[] {
   return [
-    '-p',
+    '--print',
     '--output-format', 'stream-json',
     /*
      * **`--verbose` 无条件硬编码，不读 `stream_json_requires_verbose` 来决定传不传。**
@@ -404,6 +409,7 @@ export interface ClaudeInvokeOutcome {
   exitCode: number | null;
   timedOut: boolean;
   commandLine: string;
+  spawned?: boolean;
   durationMs: number;
 }
 
@@ -414,19 +420,21 @@ export interface ClaudeInvokeOutcome {
  * codex 侧踩过「继承了一个不会 EOF 的 stdin、进程挂到超时被杀」，此处同理显式给定。
  */
 export async function invokeClaude(opts: ClaudeInvokeOptions): Promise<ClaudeInvokeOutcome> {
-  const args = buildClaudeArgs(opts);
-  const r = await run(opts.bin, args, {
+  const args = [...(opts.route?.prefix ?? []), ...buildClaudeArgs(opts)];
+  const r = await run(opts.route?.bin ?? opts.bin, args, {
+    env: opts.route?.env,
     cwd: opts.cwd,
     stdin: opts.prompt,
     timeoutMs: opts.timeoutMs,
     killTree: true,
   });
   return {
-    stdout: r.stdout,
-    stderr: r.stderr,
+    stdout: redactSecrets(r.stdout).content,
+    stderr: redactSecrets(r.stderr).content,
     exitCode: r.code,
     timedOut: r.timedOut,
     commandLine: r.commandLine,
+    spawned: r.spawned,
     durationMs: r.durationMs,
   };
 }
@@ -488,7 +496,7 @@ export function stripMetaSchemaRef(schemaJson: string): string {
  */
 export function buildClaudeResult(
   trace: ClaudeTrace,
-  o: Pick<ClaudeInvokeOutcome, 'exitCode' | 'durationMs' | 'commandLine'>,
+  o: Pick<ClaudeInvokeOutcome, 'exitCode' | 'durationMs' | 'commandLine' | 'spawned'>,
   paths: { stdout: string; trace: string },
   probe: { version: string | null; path_deny: { file_shape_verified: boolean | null } },
   /** 本次真实递出的只读工具白名单（`readonlyToolsFromProbe` 的产出） */
@@ -551,6 +559,7 @@ export function buildClaudeResult(
     critic: 'claude',
     status: 'ok',
     exit_code: o.exitCode,
+    process_started: o.spawned ?? o.exitCode !== null,
     duration_s: o.durationMs / 1000,
     raw_stdout_path: paths.stdout,
     trace_path: paths.trace,
@@ -673,14 +682,20 @@ export function claudeReasoningLevels(probe: Pick<ClaudeProbe, 'effort_levels'> 
 export const claudeAdapter: CriticAdapter = {
   critic: 'claude',
   /*
-   * 结构化轨迹族：读取路径有结构化字段，且**被拒的调用留在轨迹里**。
-   *
-   * `rejectionRecorded: true` 的依据是 M9 第 1 步的正向样本（报告 §3.1 第 3 条）：
-   * 模型真发起了 `Write`、收到 `is_error` 的 `tool_result`
-   * （`No such tool available: Write…in subagents as well as here`）、文件未创建。
-   * 探针那一格偶尔落 `null` 是「没测到」（依赖模型这轮去没去调写工具），**不构成反证**。
+   * 静态基线来自 M9 官方路线的结构化轨迹样本。
+   * 当前判定用 capabilityFor 的所选路线探针；拒绝留痕为 null/false 时均取保守档，
+   * 不把旧官方路线的正向结论套给供应商路线。
    */
   capability: TOOL_TRACE_CAPABILITY,
+  probeFor: claudeProbeForRoute,
+  versionInvocationFor(cfg, profile) {
+    const route = resolveClaudeRoute(cfg, profile);
+    return { bin: route.bin, prefix: route.prefix, env: route.env };
+  },
+  capabilityFor(cfg, profile) {
+    const probe = claudeProbeForRoute(cfg, profile);
+    return { traceShape: 'tool-trace', rejectionRecorded: probe?.denied_tool_in_trace === true };
+  },
 
   /* 不能执行命令：`probes/claude.ts` 的 `READONLY_INVARIANTS` 里 `--tools` 白名单是 `Read,Grep,Glob`（EV-95） */
   commandExecution: 'none',
@@ -689,9 +704,20 @@ export const claudeAdapter: CriticAdapter = {
    * 原生思考等级（M11 第 6 步兑现第 4 步定的「随第 6 步」，设计 11.5）：读探针落盘的 `effort_levels`，
    * CLI 级、不分模型。四态映射见 `claudeReasoningLevels`。
    */
-  reasoningLevelsFor(cfg) {
-    return claudeReasoningLevels(cfg.probe.cli.claude);
+  reasoningLevelsFor(cfg, _model, profile) {
+    return claudeReasoningLevels(claudeProbeForRoute(cfg, profile ?? null));
   },
+
+  vendorProfilesFor: () => claudeProfileNames(),
+  accessFor(cfg, profile) {
+    const route = resolveClaudeRoute(cfg, profile);
+    return { requested_mode: route.mode, profile, launcher_requested: route.bin, launcher_effective: null,
+      wrapper_sha256: route.wrapperSha256, configuration_sha256: route.configurationSha256,
+      provider_declared: route.providerDeclared, provider_declared_source: profile === null ? null : 'profile',
+      provider_effective: null, provider_effective_source: null };
+  },
+  profileNamesAuthoritative: true,
+  catalogModelsFor: () => ({ kind: 'unverifiable', why: 'Claude profile 模型映射是配置声明，服务端完整模型目录无法核实；由实际组合探活验证' }),
 
   /*
    * 思考等级生效值：**恒 `null` + `unverified`**（M11 第 6 步，设计 11.1 claude 一行）。`--effort` 照传，
@@ -699,9 +725,66 @@ export const claudeAdapter: CriticAdapter = {
    */
   effortReadback: () => EFFORT_UNVERIFIED,
 
-  availability(ctx: AdapterContext) {
+  availability(ctx: AdapterContext, opts) {
+    const profiles = opts?.vendorProfiles ?? [(ctx.cfg.agents.claude?.vendor === 'anthropic' ? ctx.cfg.agents.claude.profile : null) ?? null];
+    for (const profile of profiles) {
+      let route: ClaudeRoute;
+      try { route = resolveClaudeRoute(ctx.cfg, profile); } catch { return { ok: false, reason: 'Claude 路线配置读取失败，请检查所选profile与入口' }; }
+      let p: ClaudeProbe | undefined;
+      try { p = claudeProbeForRoute(ctx.cfg, profile); }
+      catch { return { ok: false, reason: 'Claude 路线指纹读取失败，请检查入口和配置权限' }; }
+      const result = claudeAvailability(p);
+      if (!result.ok) return { ok: false, reason: `${result.reason}；所选路线请运行 trivium doctor --only claude ${
+        profile === null ? '--native-claude' : `--profile-claude ${profile}`}` };
+      if (!executableFile(route.bin)) return { ok: false, reason: 'Claude 所选路线入口不可执行' };
+    }
+    return { ok: true };
+  },
+
+  authProbe(ctx: AdapterContext, projectRoot: string, combination) {
+    const profile = combination ? combination.vendorProfile :
+      (ctx.cfg.agents.claude?.vendor === 'anthropic' ? ctx.cfg.agents.claude.profile ?? null : null);
+    const route = resolveClaudeRoute(ctx.cfg, profile);
+    return {
+      async fingerprint() {
+        if (profile !== null) return route.fingerprint;
+        let credentialHash = '';
+        try { credentialHash = createHash('sha256').update(await fs.readFile(path.join(os.homedir(), '.claude', '.credentials.json'))).digest('hex'); }
+        catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
+        const tokenHash = createHash('sha256').update(process.env['CLAUDE_CODE_OAUTH_TOKEN'] ?? '').digest('hex');
+        return `${route.fingerprint}:${credentialHash}:${tokenHash}`;
+      },
+      async probe() {
+        const p = claudeProbeForRoute(ctx.cfg, profile);
+        if (!p || !claudeAvailability(p).ok || !route.bin) return { ok: false, detail: 'Claude 所选路线没有可用只读探针，拒绝无护栏探活' };
+        const out = await invokeClaude({ bin: route.bin, route, cwd: projectRoot,
+          prompt: '只回复 OK 两个字母，不要调用任何工具。',
+          model: combination?.model ?? null, effort: combination?.effort ?? null,
+          readonlyArgs: readonlyArgsFromProbe(p.readonly_flags), schemaJson: null, settingsJson: null, timeoutMs: 120_000 });
+        const trace = parseClaudeEvents(out.stdout);
+        const ok = trace.completed && out.exitCode === 0 && !out.timedOut;
+        return { ok, detail: ok ? `探活通过（${Math.round(out.durationMs / 1000)}s）` :
+          `探活失败（${route.mode}/${profile ?? 'native'}）：${redactSecrets(out.stderr).content.slice(0, 200) || '(无错误消息)'}` };
+      },
+    };
+  },
+
+  async run(ctx, req) {
+    const route = resolveClaudeRoute(ctx.cfg, req.profile_requested);
+    if (req.access && (req.access.launcher_requested !== route.bin ||
+      req.access.wrapper_sha256 !== route.wrapperSha256 || req.access.configuration_sha256 !== route.configurationSha256)) {
+      return failedResult('claude', { status: 'failed', reason: 'Claude 路线在准备后发生变化，请重跑探针和预检', profileRequested: req.profile_requested });
+    }
+    const access = req.access ?? this.accessFor!(ctx.cfg, req.profile_requested);
+    const result = await runClaudeReview(ctx, req, route);
+    result.profile_requested = req.profile_requested;
+    result.access = { ...access, launcher_effective: result.process_started ? access.launcher_requested : null };
+    return result;
+  },
+};
+
+function claudeAvailability(p: ClaudeProbe | undefined): { ok: boolean; reason?: string } {
     // 两态判据同另三家：以 probed_at 区分「没探过」与「探过没找到」
-    const p = ctx.cfg.probe.cli.claude;
     if (!p?.probed_at) {
       return { ok: false, reason: 'claude 尚未探测，请先运行 trivium doctor --only claude' };
     }
@@ -765,66 +848,11 @@ export const claudeAdapter: CriticAdapter = {
       };
     }
     return { ok: true };
-  },
+}
 
-  /**
-   * 探活。
-   *
-   * `fingerprint()` **返回 `null` 并写明理由**：claude 的登录态在系统钥匙串里，
-   * `~/.claude` 下没有凭据文件，**无从算指纹**。`null` 的契约语义就是
-   * 「这一侧没有可哈希的凭据载体」，缓存因此只由 TTL 与 CLI 版本约束——
-   * 这与「算出来是空字符串」不是一回事，后者会让任何凭据变更都命中缓存。
-   */
-  authProbe(ctx: AdapterContext, projectRoot: string) {
-    const cfg = ctx.cfg;
-    return {
-      async fingerprint(): Promise<string | null> {
-        return null;
-      },
-      async probe(): Promise<{ ok: boolean; detail: string }> {
-        const p = cfg.probe.cli.claude;
-        const bin = p?.entrypoint ?? null;
-        if (!bin) return { ok: false, detail: 'claude 入口未记录' };
-        if (!p || p.readonly_flags.length === 0) {
-          return { ok: false, detail: '探针没有可用的只读旗标，拒绝在无护栏下拉起' };
-        }
-        const out = await invokeClaude({
-          bin,
-          cwd: projectRoot,
-          prompt: '只回复 OK 两个字母，不要调用任何工具。',
-          model: null, // 探的是登录态不是模型路由
-          effort: null,
-          readonlyArgs: readonlyArgsFromProbe(p.readonly_flags),
-          schemaJson: null,
-          settingsJson: null,
-          timeoutMs: 120_000,
-        });
-        const trace = parseClaudeEvents(out.stdout);
-        const ok = trace.completed && !out.timedOut;
-        return {
-          ok,
-          detail: ok
-            ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
-            : `探活失败：${out.stderr.slice(0, 200) || '(无错误消息)'}。\n` +
-              '  请确认本机 claude 已登录（登录态在系统钥匙串，编排器不代管凭据）。',
-        };
-      },
-    };
-  },
 
-  /*
-   * `scrubRunDir` **刻意不实现**。
-   *
-   * claude 的凭据走自身登录态（系统钥匙串），运行目录里**没有副本**——
-   * 与 codex 把三份 toml/json 裁剪进 `codexhome/` 不同。清扫会如实记
-   * 「该侧无载体」，而不是记一次「抹过了」：**「没得抹」与「抹过了」不能长得一样**
-   * （`base.ts` 的契约，与 `authProbe?` 同一口径）。
-   *
-   * 给它加一个空实现会把前者伪装成后者，所以这里**不写**，不是忘了写。
-   */
-
-  async run(ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
-    const probe = ctx.cfg.probe.cli.claude;
+async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: ClaudeRoute): Promise<CriticResult> {
+    const probe = claudeProbeForRoute(ctx.cfg, req.profile_requested);
     if (!probe?.probed_at) {
       return failedResult('claude', {
         status: 'failed',
@@ -834,7 +862,8 @@ export const claudeAdapter: CriticAdapter = {
     if (!probe.entrypoint) {
       return failedResult('claude', { status: 'failed', reason: 'claude 入口未探测到' });
     }
-    const bin = probe.entrypoint;
+    const bin = route.bin;
+    if (!bin) return failedResult('claude', { status: 'failed', reason: 'Claude 所选路线入口不可用', profileRequested: req.profile_requested });
     const readonlyArgs = readonlyArgsFromProbe(probe.readonly_flags);
     const readonlyTools = readonlyToolsFromProbe(probe.readonly_flags);
 
@@ -928,6 +957,7 @@ export const claudeAdapter: CriticAdapter = {
     try {
       out = await invokeClaude({
         bin,
+        route,
         cwd: req.project_root,
         prompt: req.brief_text,
         model: req.model,
@@ -952,6 +982,7 @@ export const claudeAdapter: CriticAdapter = {
         status: 'timeout',
         reason: `脚本级超时（${req.timeout_s}s）`,
         exitCode: out.exitCode,
+        processStarted: out.spawned,
         durationS: out.durationMs / 1000,
         rawStdoutPath: stdoutPath,
         cliVersion: probe.version,
@@ -971,6 +1002,7 @@ export const claudeAdapter: CriticAdapter = {
         status: 'failed',
         reason: `claude 未产出最终回复：${why || '(无错误消息)'}`,
         exitCode: out.exitCode,
+        processStarted: out.spawned,
         durationS: out.durationMs / 1000,
         rawStdoutPath: stdoutPath,
         cliVersion: probe.version,
@@ -1020,5 +1052,4 @@ export const claudeAdapter: CriticAdapter = {
     return buildClaudeResult(trace, out, { stdout: stdoutPath, trace: tracePath }, probe, readonlyTools, deny, {
       fallbackRoot: req.project_root,
     });
-  },
-};
+}

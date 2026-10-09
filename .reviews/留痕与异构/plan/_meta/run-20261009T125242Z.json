@@ -1,0 +1,245 @@
+{
+  "schema": "trivium.run.v2",
+  "run_id": "20261009T125242Z",
+  "topic": "留痕与异构",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "Codex、Claude Code 双模式接入与异构判定修正",
+  "entry": "A",
+  "driver": "codex",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "profile": "default",
+  "critics_selected": [
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "7780cd928a957935b45d3276c827451f1c41a36f",
+    "tree_hash": "b158706dfd1874d3ffa3f8021a38f1b8e57e250e",
+    "dirty": true,
+    "subject_sha256": "c27c6eded9594d57ec9fbc31026a21cd19607153dd3ba9d654ee88aa64a5b200",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "c226d2a2d81f3907c93a3c224a4b396cd4f3472e",
+      "dirty": false,
+      "inputs_sha256": "088d9590046e109eb75c59e52c6515a0ce3c6da512bb9d6cb249c537f0c8e40a",
+      "built_at": "2026-10-09T07:55:28.462Z"
+    },
+    "after_tree_hash": "b158706dfd1874d3ffa3f8021a38f1b8e57e250e"
+  },
+  "started_at": "2026-10-09T12:52:43.157Z",
+  "finished_at": "2026-10-09T13:02:13.524Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 357.395,
+      "tool_calls": {
+        "read": 24,
+        "grep": 11,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 233640,
+        "output_tokens": 28328,
+        "thinking_tokens": 22383,
+        "cache_read_tokens": 3460956,
+        "total_tokens": 261968
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "11d9dda6-3796-49c2-a1c0-5edc64083fce",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 570.082,
+      "tool_calls": {
+        "read": 13,
+        "grep": 12,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 22
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 14,
+        "inputTokens": 1055398,
+        "outputTokens": 30976,
+        "totalTokens": 1086374,
+        "cacheReadTokens": 968768,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "heterogeneous": true,
+      "override_reason": null,
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_77edbd10-bad4-4243-b25f-b3693ff14fc1",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "留痕与异构/plan/_meta/brief-gemini-20261009T125242Z.md",
+      "sha256": "48291bbd0a915f77b7e869f15b44890540269a7db6f02a6a6aae0b8ea952062f"
+    },
+    {
+      "path": "留痕与异构/plan/_meta/brief-glm-20261009T125242Z.md",
+      "sha256": "ba4925e42e685cd470e0179f729b6b34e18b5bbe6b755cef6fcdb602da210cc5"
+    },
+    {
+      "path": "留痕与异构/plan/_meta/review-gemini-20261009T125242Z.json",
+      "sha256": "498ac70ce2eb492535a461d7b029c584997afa1a367462b0260ae68f2fc5be75"
+    },
+    {
+      "path": "留痕与异构/plan/_meta/review-glm-20261009T125242Z.json",
+      "sha256": "2c91c8d366c95ff49e6df2d7be0b64efa151929cc886cb07bd57d8a76b5ee08b"
+    },
+    {
+      "path": "留痕与异构/plan/2026-10-09-留痕与异构-gemini.md",
+      "sha256": "52dc27a7d0c6f31e2cebf1a0746f981b5445aad19d1247751b03b1e6e2af2522"
+    },
+    {
+      "path": "留痕与异构/plan/2026-10-09-留痕与异构-glm.md",
+      "sha256": "476d030aeaa316d5a5bad5f61ed77f5314589eb78a69f1783c6bb1452c8b51ff"
+    },
+    {
+      "path": "留痕与异构/plan/2026-10-09-留痕与异构-codex.md",
+      "sha256": "c27c6eded9594d57ec9fbc31026a21cd19607153dd3ba9d654ee88aa64a5b200"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

@@ -83,7 +83,7 @@ test('A3 argv：只读旗标原样、按序透传，不重排不增删', () => {
 test('A3b argv：探针没给只读旗标时不凭空补默认值', () => {
   const args = buildClaudeArgs({ ...base, readonlyArgs: readonlyArgsFromProbe([]) });
   // 只剩机制类旗标，一个安全不变量都不许被「补」出来
-  assert.deepEqual(args, ['-p', '--output-format', 'stream-json', '--verbose', '--model', base.model]);
+  assert.deepEqual(args, ['--print', '--output-format', 'stream-json', '--verbose', '--model', base.model]);
 });
 
 test('A4 argv：--json-schema 收的是 schema 内容，不是 schema_path', () => {
@@ -502,20 +502,18 @@ test('A15 能力：tool-trace + rejectionRecorded true（被拒的调用留在�
 
 test('A16 取舍：三个可选成员刻意不实现——「不实现」是决定，不是遗漏', () => {
   assert.equal(claudeAdapter.scrubRunDir, undefined, '凭据在系统钥匙串，运行目录无副本；空实现会把「没得抹」伪装成「抹过了」');
-  assert.equal(claudeAdapter.catalogModelsFor, undefined, '该族目录不随配置分层');
+  assert.equal(claudeAdapter.catalogModelsFor!({} as never)?.kind, 'unverifiable', '配置模型名单不是服务端目录');
   assert.equal(claudeAdapter.normalizeModelForCatalog, undefined, 'slug 无需归一');
 });
 
-test('A17 探活：fingerprint 返回 null，且那是「无从计算」不是「算错了」', async () => {
-  const ctx = { cfg: { probe: { cli: { claude: { entrypoint: '/x/claude', readonly_flags: [...READONLY_INVARIANTS] } } } }, nodePath: '/x/node' };
-  const fp = await claudeAdapter.authProbe!(ctx as never, '/proj').fingerprint();
-  assert.equal(fp, null, '登录态在系统钥匙串，没有可哈希的凭据载体——与「算出来是空串」不是一回事');
+test('A17 探活显式实现，路线指纹与凭据轮换在接入测试中验证', () => {
+  assert.equal(typeof claudeAdapter.authProbe, 'function');
 });
 
 test('A18 可用性：各档不可用理由互不混淆，且 null 与 false 分开答', () => {
-  const mk = (claude: unknown) => ({ cfg: { probe: { cli: { claude } } }, nodePath: '/x/node' }) as never;
+  const mk = (claude: unknown) => ({ cfg: { agents: {}, probe: { cli: { claude } } }, nodePath: '/x/node' }) as never;
   const base = {
-    probed_at: '2026-09-18T00:00:00Z', entrypoint: '/x/claude',
+    probed_at: '2026-09-18T00:00:00Z', entrypoint: process.execPath,
     readonly_flags: [...READONLY_INVARIANTS], strict_mcp_config_applied: true,
     headless_read_ok: true, tool_surface_checked: true,
   };

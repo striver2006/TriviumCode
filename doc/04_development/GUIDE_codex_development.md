@@ -21,13 +21,15 @@
 
 本仓共享配置的 `review.default_critics` 为 `[claude, gemini, glm]`，Codex 主攻时三家参审。
 正式 Codex 入口携带小写 `--driver codex`，产出使用 `-codex.md`、裁决件 `role: codex`。
-不修改注册表中的产品默认身份或缺省集合，也不更换已有审查模型与厂商凭据。
+工具身份与产品内置缺省 Driver 沿用注册表；供应商路线、模型与认证方式分别配置并留痕。
 
-本次本机预检发现 Claude 已登录，但最小探活返回 `API Error: 400 This organization has been disabled`。
-因此本机 `.trivium/config.local.yaml` 暂时覆盖 `review.default_critics: [gemini, glm]`，
-实际运行两家审查、仍使用严格失败策略。共享三审默认保留；Anthropic 组织恢复后移除本机的
-`review.default_critics` 覆盖即可恢复三审。显式 `--critics claude,gemini,glm` 会重新检查 Claude，
-账号未恢复时仍会被预检阻断，不能用跳过认证来伪装恢复。
+2026-10-09 初始预检中 Claude 官方路线返回组织停用错误，计划阶段曾临时采用 Gemini、GLM 两审。
+本次双模式改造后，Claude/Qwen 的读取、隔离与默认模型认证已实测。代码阶段曾提前使用
+Claude、Gemini、GLM 三审，既有记录保留；完成标准复核后恢复本机临时两审覆盖，写入负对照
+完整准入前不移除。共享 default/flash 采用 Qwen；Qwen pro 组合与完整路线
+准入的未测项见[本次报告](../05_testing/REPORT_2026-10-09_agent_access.md)，不能把默认模型探活
+当作所有档位通过。Claude 官方路线保留实现，真实验收待订阅恢复，恢复后须显式选择
+`--native-claude` 并重跑对应路线探针；失败不自动切换供应商。
 
 旧主题的 Driver 由该阶段已有运行留痕优先判定，不能用修改配置来迁移历史作者。
 已有他家工件的阶段不强行重新认领；新工作使用新主题或尚未被使用的阶段。

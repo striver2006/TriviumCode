@@ -1,0 +1,118 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按焦点逐项核对通过：①profile 与 native 优先级链（CLI 显式值＞档位条目＞Agent 配置，null 为原生、缺席继承）在 resolveTier、assertTierFlags、mergeConfigLayer 三处一致，--native 与 --profile 同侧互斥、无能力侧退 64，显式 null 有合并补丁段与 schema 的 string|null 兜住；②入口与认证隔离方向正确：claude native 清空全部 ANTHROPIC_ 前缀与 USE_BEDROCK/VERTEX/FOUNDRY 等变量（OAuth 仅 native 保留并计入认证指纹），codex 原生在 provider 为 openai 时清空 OPENAI_*/CODEX_* 路由变量、凭据走隔离副本的 auth.json，认证缓存按 Agent/模式/profile/模型/effort 组合隔离且凭据或包装器轮换即失效；③参数与实际子进程的一致性有结构保证：review 准备与 worker 消费同一 resolveTier 结果，codex 的 -p、隔离副本与失败出口同源，claude run 前重解析路线并与请求快照比对 launcher 与两级哈希，v3 worker 对 requested_routes 逐项 JSON 比对并拒绝重解析，探针 routeInvocation 与适配器共用同一 prefix/env 配方；④原生路线使用官方登录配置在代码层成立（Claude native 真实验收按报告如实记为待订阅恢复，Codex 官方路线探活已过）。另附 6 条非阻断意见：1 条收紧未竟的认证环境清理面、1 条跨路线指纹版本牵连、1 条路线化后失准的修复指引、3 条 nit。全部为 minor/nit，不构成阻断。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/adapters/codex-home.ts:93-99",
+      "problem": "codexRouteEnv 的清理面是九个固定变量名（OPENAI_* 与 CODEX_*），与同函数族已解析出的各 provider env_key 集合没有打通：除所选 provider 的键被保留外，配置里其它 provider 声明的自定义 env_key（名字不在九个固定项里）会随 process.env 原样继承进 codex 审查子进程。codex 审查员是 readonly-shell，可执行 printenv 一类只读命令，被审代码中的提示注入有机会让这些与本次审查无关的凭据进入命令输出、进而落入归档的 trace 留痕。函数注释宣称「仅保留所选provider明确引用的认证变量」，与实现（只清九个固定名）不符。属本批收紧未竟，不是回归（此前为全量继承）。",
+      "evidence": "src/trivium/adapters/codex-home.ts:74-91（codexRouteEnvKey 已把各 provider 的 env_key 收进 keys Map）与 :93-99（codexRouteEnv 仅枚举九个固定名减 keep）；src/trivium/util/exec.ts:270-274（子进程 env 为 process.env 全量再打补丁，undefined 删除）；src/trivium/adapters/codex.ts:125-129（invokeCodex 仅叠加该补丁）；对比 claude 侧 src/trivium/adapters/claude-route.ts:43-51 用 ANTHROPIC_ 前缀穷尽清理；changes-20261009T153607Z.diff 行 2025-2031 显示该清理面为本批新增。",
+      "suggestion": "清理集合改为「固定九项 ∪ codexRouteEnvKey 解析出的全部 env_key 值 − keep」，或按厂商前缀收敛；同步修正注释，使「仅保留所选 provider 引用的认证变量」成为事实。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/adapters/claude-route.ts:86-101",
+      "problem": "路线指纹含 version 分量，读取侧 claudeProbeForRoute 重算指纹时 version 取根快照 cfg.probe.cli.claude.version，即最后一次 doctor 探测的那条路线的版本；而路线条目写入时（doctor.ts）用的是当条路线自己刚探出的版本。两条路线底层 CLI 版本不同时（如 profile_bin 指向钉住旧版的包装器），为路线 B 重跑 doctor 会把根版本换成 B 的，路线 A 的存量条目指纹从此对不上、被无声判为失效（availability 报「尚未探测」），且该死条目不被清理；用户按文案重跑 doctor（不带路线旗标）也恢复不了 A。失效方向是 fail-closed，但失效无据、修复指引也走不通。",
+      "evidence": "src/trivium/adapters/claude-route.ts:86-89（version 缺省取 probe?.version，probe 为根条目）与 :100（读取侧比对）；src/trivium/doctor.ts:797-802（写入时把 cfg.probe.cli.claude 置为当轮 snapshot 后计算指纹，routes 展开保留旧条目）；test/integration/claude-profile.test.ts:40-46 只覆盖 wrapper 与配置内容轮换，无跨路线版本漂移用例。",
+      "suggestion": "路线条目里记录写入时的 version（或比对时用 entry.probe.version 重算指纹），使各路线指纹互不牵连；补一条「为 B 路线重跑 doctor 不得作废 A 路线条目」的用例。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/claude.ts:776-780",
+      "problem": "路线化后的失败指引没有跟着更新，两条都会把用户引向修不好的动作：其一，claude 侧所选路线没有对应探针条目时（profile 模式从未按该路线跑过 doctor）报「claude 尚未探测，请先运行 trivium doctor --only claude」，而不带 --profile-claude 的 doctor 探的是配置缺省路线，照做无法恢复所选 profile；其二，codex 的 vendorProfilesFor 本批从探针快照改为实时 readdir，checkTierCombos 的 64 判据随之跟文件系统走，而 availability 的 69 判据仍读探针 providers，于是「profile 文件在、探针未测」的组合会收到「在本机不存在」这一与事实相反的文案，正确出路是重跑 doctor。",
+      "evidence": "src/trivium/adapters/claude.ts:776-780（claudeAvailability 对 undefined 探针的文案）；src/trivium/adapters/codex.ts:629-635（vendorProfilesFor 实时 readdir，本批由 probe.codex.profiles 改来，见 changes-20261009T153607Z.diff 行 2113-2119）与 :497-507（providers 判据与「在本机不存在」文案）；src/trivium/preflight.ts:464-472（64 侧名单来源已是实时列表）。",
+      "suggestion": "两条文案按路线语境分岔：claude 侧点名需带 --profile-claude 名或 --native-claude 重探该路线；codex 侧把「不在本机不存在」按事实拆成「探针没有该 profile 的结论，请重跑 doctor」。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/entry-render.ts:293-295",
+      "problem": "注释仍写「今天只有 --profile-codex，codex 载体上一个都没有」；本批注册表已给 claude 声明 supportsProfiles，派生结果与 codex 载体上可选的旗标都变了（claude 是该载体的可选审核者，会渲染出 --profile-claude），注释与事实相反。提示模板本身已正确补上 --native，只有这段说明没跟上。",
+      "evidence": "src/entry-render.ts:293-295 与 :301-305；src/trivium/agents/registry.ts:252、288（claude 与 codex 均 supportsProfiles: true）；changes-20261009T153607Z.diff 行 1602-1607（本批只改了 VENDOR_PROFILE_HINT 模板行，未改该注释）。",
+      "suggestion": "改为按 vendorProfileAgents() 动态描述，或删去「今天只有」这类时效性断言。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/claude-route.ts:78-92",
+      "problem": "ClaudeRoute.modelsDeclared（profile .env 里静态声明的模型清单）在 resolveClaudeRoute 里计算，但全仓无消费方：accessFor 不记录、doctor 不展示、AccessMeta 无此字段。ADR_003「目录声明只用于元数据」的意图没有落点，读代码的人会以为 profile 模型声明已入档；该解析还有单测守着，形成「有测试、无产品消费」的空转面。",
+      "evidence": "全仓检索 modelsDeclared 仅 src/trivium/adapters/claude-route.ts:18、78、83、92 四处（类型与赋值本身）；claudeProfileMetadata 的产品消费只剩该字段，其余是单测（changes-20261009T153607Z.diff 尾部用例）；doc/02_design/ADR_003_agent_access.md 第 7 行「目录声明只用于元数据」。",
+      "suggestion": "要么把声明清单记入 AccessMeta 或探针留痕（标明是配置声明而非回读），要么删掉该字段与解析，避免后续主题误以为已接线。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "scope-drift",
+      "location": "src/trivium/adapters/claude-route.ts:58-64",
+      "problem": "已批准计划写「profile 入口依次 config.profile_bin、探针记录的可执行 cld」，实现是每次实时搜索 ~/.local/bin/cld 与 PATH（wrapperPath），没有「探针记录」的路径落点。指纹钉住的是 wrapper 的 sha256 而非路径，安全性等价甚至更强（PATH 命中变化会因指纹不符响亮失败），但与计划措辞不一致，且这一取舍未在 ADR 或设计 11.6 显式声明。",
+      "evidence": ".reviews/接入路由/plan/2026-10-09-接入路由-r2-codex.md（「profile 入口依次 config.profile_bin、探针记录的可执行 cld」）；src/trivium/adapters/claude-route.ts:58-64、75；src/trivium/doctor.ts:799-800（路线条目只存 fingerprint 与 probe 快照，probe.entrypoint 记的是 nativeBin，见 src/trivium/probes/claude.ts:1197-1199 的赋值路径）。",
+      "suggestion": "若维持实时发现，请在 ADR_003 或设计 11.6 明写「以指纹钉身份、不记录路径」；或按计划把 wrapper 路径记进路线条目并优先取用。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "接入优先级链核对通过：CLI 显式值（--profile-<id> 字串、--native-<id> 显式 null）＞档位条目 profile＞agents.<id>.profile，模型与 effort 独立解析、切入口不暗改模型；--native 与 --profile 同侧互斥、无能力侧退 64；显式 null 在 mergeConfigLayer 有专项补丁段（仅 supportsProfiles 侧）、schema 收 string|null、tier 内 null 经原子替换保真——resolveTier（base.ts:2037-2067）、assertTierFlags（tier-flags.ts:90-121）、config.ts:542-550 三处一致。",
+    "原生路线确实使用官方登录配置：claude native 清空全部 ANTHROPIC_ 前缀变量与 CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY、CLAUDE_CODE_EFFORT_LEVEL 等，官方 CLAUDE_CODE_OAUTH_TOKEN 仅 native 保留且与 .credentials.json 哈希一并进认证指纹（claude-route.ts:43-51、claude.ts:739-745），与计划第 24 段逐字对应；codex 原生在 provider 为 openai 时 keep 为 null、清空 OPENAI_*/CODEX_* 路由变量，凭据走隔离副本 auth.json（codex-home.ts:74-99、codex.ts:129）。",
+    "参数与实际子进程一致性有结构保证：review 准备与 worker 共用同一 resolveTier 结果（review.ts:800-802）；codex 的 -p、prepareCodexHome 与失败出口 profileRequested 同出 codexInvocationOf（codex.ts:661-671）；claude run 前重解析路线并与请求快照比对 launcher 与 wrapper/配置哈希（claude.ts:762-768）；v3 worker 对 requested_routes 逐项 JSON 比对、拒绝重解析（run-protocol.ts:231-238）；探针 routeInvocation 与适配器共用同一 prefix/env 配方（probes/claude.ts:78-87）；集成测试用真实包装器子进程钉住 argv、stdin、env 清理与指纹轮换（test/integration/claude-profile.test.ts）。",
+    "认证隔离与缓存：探活按 Agent/模式/profile/模型/effort 组合去重并独立缓存（preflight.ts:876-974），指纹含凭据、包装器与配置哈希，轮换即失效；探活与真实审查走同一条隔离路径；env patch 的 undefined 即删除（util/exec.ts:270-274）。",
+    "异构判定如实：model-family.ts 只采信声明与回读（requested/unverified 归 unknown）、别名不可解析记 unknown、同族与未知仅聚合告警不改选侧；探针 model_flag 判据随实际送入子进程的组合走（probes/claude.ts:1283-1284）。",
+    "报告如实区分已测与未测（Claude native 真实验收待订阅恢复、Codex 新版本逐路线能力复核未测、qwen3.8-max 组合未测），未把探活通过夸大为路线验收完成。"
+  ],
+  "not_covered": [
+    "只读审查、未执行任何命令：全部行为结论出自源码阅读；npm test 全量通过、关键接线变异 6/6、入口契约 146/146、安装副本哈希等均为报告转述，未亲验。",
+    "GLM-01 的暴露路径（readonly-shell 读到其它家族 env 凭据）是代码层推理，未实跑验证；GLM-02 的跨路线版本失效机制为代码追踪结论，触发依赖两条路线版本不同的前提，未构造实验。",
+    "未逐字比对渲染产物与源的同步（skills/dual-*/SKILL.md、skills/dual-critic/entry/**、skills-src/commands、partials），依赖 entry-render-parity 与 skill-flag-parity 契约测试的存在与通过。",
+    "未读 .trivium/config.yaml 本仓实配与 .env.example（任务书告警/禁读面）；48 份 evidence JSON 未逐条核对，只读了 REPORT 与模型复算说明。",
+    "report.ts 渲染层、gate.ts 对 access 与 family_comparisons 的消费、meta.ts 的 run.v3 写侧仅抽查组装点（review.ts:1935-2034），未逐行；agy/zcode 适配器仅经 base.ts 契约与 diff 片段确认行为不变。",
+    "README.md 与 doc 各级 README 的清单性内容未读，不影响焦点结论。"
+  ],
+  "consulted": [
+    ".reviews/接入路由/code/_meta/changes-20261009T153607Z.diff",
+    ".reviews/接入路由/plan/2026-10-09-接入路由-r2-codex.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "doc/02_design/ADR_003_agent_access.md",
+    "doc/05_testing/REPORT_2026-10-09_agent_access.md",
+    "src/trivium/access.ts",
+    "src/trivium/model-family.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/codex-home.ts",
+    "src/trivium/tier-flags.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/config.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/util/exec.ts",
+    "src/entry-render.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "test/integration/claude-profile.test.ts"
+  ]
+}

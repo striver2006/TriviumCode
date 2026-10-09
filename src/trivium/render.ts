@@ -8,7 +8,7 @@
 import YAML from 'yaml';
 import type {
   CriticId, CriticResult, DegradedFinding, DenyCategory, DriftUnknownReason, EffortEffectiveSource, EvidenceUntrusted,
-  FallbackCause, ParseRepairs, Review, Severity, Stage, TierName, TierSource, Vendor,
+  AccessMeta, FamilyComparison, FamilyStatus, FallbackCause, ParseRepairs, Review, Severity, Stage, TierName, TierSource, Vendor,
 } from './types.js';
 import { CRITIC_VENDOR, describeDriftUnknown, EVIDENCE_UNTRUSTED_CAUSE_TEXT } from './types.js';
 import { agentById } from './agents/registry.js';
@@ -135,7 +135,9 @@ export interface RenderInput {
     state: 'pending' | 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
     effective_sides: number;
   };
-  heterogeneous: boolean;
+  heterogeneous: boolean | FamilyStatus;
+  access?: AccessMeta;
+  familyComparisons?: FamilyComparison[];
   overrideReason?: string | null;
 }
 
@@ -182,8 +184,8 @@ export function renderFrontMatter(input: RenderInput): string {
     agent_cli: `${agentById(input.critic)?.cliName ?? input.critic}/${input.result.cli_version ?? 'unknown'}`,
     model_requested: input.modelRequested,
     // 回读值，不采信 Agent 自述（AC-13）
-    model_effective: input.result.model_effective,
-    model_effective_source: input.result.model_effective_source,
+    model_effective: ['requested', 'unverified'].includes(input.result.model_effective_source) ? null : input.result.model_effective,
+    model_effective_source: input.result.model_effective_source === 'requested' ? 'unverified' : input.result.model_effective_source,
     ...(input.effort ? { effort: input.effort } : {}),
     // 档位与思考等级一组（M11 第 6 步）：恒写；生效值只取回读（`effortReadback`），codex / claude 恒 null + unverified
     effort_requested: input.effortRequested,
@@ -264,6 +266,8 @@ export function renderFrontMatter(input: RenderInput): string {
         }
       : {}),
     heterogeneous: input.heterogeneous,
+    ...(input.access ? { access: input.access } : {}),
+    ...(input.familyComparisons ? { family_comparisons: input.familyComparisons } : {}),
     ...(input.overrideReason ? { override_reason: input.overrideReason } : {}),
     ...(input.result.session_id ? { session_id: input.result.session_id } : {}),
   };
@@ -294,7 +298,7 @@ export function renderReviewDoc(input: RenderInput): string {
 
   parts.push(`# ${STAGE_LABEL[input.stage]}：${input.topic}
 
-> ${criticLabel(input.critic)} ｜ 模型 \`${result.model_effective ?? input.modelRequested ?? '未知'}\`
+> ${criticLabel(input.critic)} ｜ 回读模型 \`${['requested', 'unverified'].includes(result.model_effective_source) ? '未知' : result.model_effective ?? '未知'}\` ｜ 请求模型 \`${input.modelRequested ?? '未指定'}\`
 > ｜ 运行 \`${input.runId}\`${input.rerunIndex > 1 ? ` ｜ 第 ${input.rerunIndex} 轮` : ''}
 > ｜ 本轮审核者 ${input.selectedCritics.join('、') || '（未记录）'}`);
 
@@ -427,10 +431,11 @@ export function renderReviewDoc(input: RenderInput): string {
         '本侧的禁读核验因此**不完整**：没命中不等于没读过。请核对适配器的路径键名表。',
     );
   }
-  if (!input.heterogeneous) {
+  if (typeof input.heterogeneous === 'boolean') {
+    flags.push(`**旧版名义族判定**：${input.heterogeneous ? '异族' : '同族'}（旧版启发式，不按新判据解释）。`);
+  } else if (input.heterogeneous !== 'different-family') {
     flags.push(
-      `**疑似与主脑同源**：本侧生效模型落在当轮 Driver 厂商的名义模型族里` +
-        `（按模型名判定，启发式）${input.overrideReason ? `：${input.overrideReason}` : ''}。`,
+      `**模型族 ${input.heterogeneous}**${input.overrideReason ? `：${input.overrideReason}` : ''}；告警继续。`,
     );
   }
   if (flags.length > 0) parts.push(flags.map((f) => `> ⚠️ ${f}`).join('\n>\n'));
