@@ -1,0 +1,107 @@
+# Codex 开发与配置迁移
+
+本仓自 2026-10-09 起以 Codex 作为日常开发会话的主攻方。产品仍是支持四家 Agent 的
+「主攻 + 多审」编排器，内置缺省 Driver 保持不变。项目共享规则在根目录 `AGENTS.md`。
+
+## 需求、设计与实现入口
+
+- [PRD](../01_requirements/PRD_driver_dual_critic.md) 定义四条入口：全流程 A、计划审查 B、
+  代码审查 C、根因审查 D。B / C / D 在逐条裁决后停在人工审批；A 继续编码、复审与真实编译测试。
+  审查使用厂商编程 Agent，要求项目上下文、背靠背隔离、可核验的证据与完整留痕。
+- [主设计](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 是实现依据；
+  [LLD](../02_design/LLD_orchestrator.md) 提供模块与状态机导航。
+  `cli.ts` 分发入口；`review.ts` / `run-protocol.ts` 冻结送审包并运行工作进程；
+  适配器与探针处理厂商差异；`guard.ts` 判定证据、隔离与漂移；`gate.ts` 核裁决；
+  `approval.ts` 处理用户审批；`archive.ts` 是归档写出口。Agent 身份与差异取注册表。
+- 配置按内置默认 → `.trivium/config.yaml` → `.trivium/config.local.yaml` → 命令行合并。
+  探针由 `doctor` 写入本机配置，不能手工编造能力结论。敏感实现的纪律见
+  [环境与实现指南](./GUIDE_env_setup.md)。
+
+## 本仓角色配置
+
+本仓共享配置的 `review.default_critics` 为 `[claude, gemini, glm]`，Codex 主攻时三家参审。
+正式 Codex 入口携带小写 `--driver codex`，产出使用 `-codex.md`、裁决件 `role: codex`。
+不修改注册表中的产品默认身份或缺省集合，也不更换已有审查模型与厂商凭据。
+
+本次本机预检发现 Claude 已登录，但最小探活返回 `API Error: 400 This organization has been disabled`。
+因此本机 `.trivium/config.local.yaml` 暂时覆盖 `review.default_critics: [gemini, glm]`，
+实际运行两家审查、仍使用严格失败策略。共享三审默认保留；Anthropic 组织恢复后移除本机的
+`review.default_critics` 覆盖即可恢复三审。显式 `--critics claude,gemini,glm` 会重新检查 Claude，
+账号未恢复时仍会被预检阻断，不能用跳过认证来伪装恢复。
+
+旧主题的 Driver 由该阶段已有运行留痕优先判定，不能用修改配置来迁移历史作者。
+已有他家工件的阶段不强行重新认领；新工作使用新主题或尚未被使用的阶段。
+
+## 技能与运行时
+
+Codex 的七个入口安装到 `$CODEX_HOME/skills/dual-*/`，未设该变量时为 `~/.codex/skills/`。
+核心运行时仍位于 `~/.claude/skills/dual-critic/`：这是四家共用的资产根，
+不表示当前 Driver 必须是 Claude Code。项目 `.trivium/bin/trivium` 指向已安装产物。
+
+```bash
+npm run build
+node dist/install.cjs --targets codex
+.trivium/bin/trivium --version
+```
+
+安装前取消指向工作树的 `TRIVIUM_ASSET_ROOT`。入口源在 `skills-src/`，需改入口时先改源再
+`npm run render`，不要直接改仓库渲染产物或用户目录里的技能。
+
+`~/.agents/skills` 是 Codex 与 ZCode 的共享读取面，不安装同名 `dual-*` 技能。
+发现重复时先备份并移出技能读取根，再安装正式入口；保留备份供回退。
+不要通过全文替换 `Claude` 为 `Codex` 来迁移技能：Agent id 必须为小写，
+参数转抄、审核者清单、角色后缀与护栏文案都由渲染器统一生成。
+
+## 本机 Codex 配置与护栏
+
+`.codex/` 已被 Git 忽略，本机配置不随仓库提交。可在 `.codex/config.toml` 使用：
+
+```toml
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+project_doc_max_bytes = 65536
+
+[sandbox_workspace_write]
+network_access = true
+```
+
+模型、登录、provider 与用户全局配置沿用用户选择。完整测试会创建子进程与临时 Git 仓库，
+在受限沙箱里遇到 `spawn EPERM` 时申请运行检查命令的权限，不把这些错误误报为测试通过。
+
+本仓集成仍为 **L2**，按 [QUICKSTART §5.2](../07_manuals/QUICKSTART.md#52-换一家-agent-主攻护栏等级-l1--l2)
+执行人工审批停点与只读约束。当前 Codex 官方已支持项目 Hook，但现有 TriviumCode 的
+结构化写入处理器读取文件路径，Codex `apply_patch` 事件提供的是 `tool_input.command` 补丁文本；
+直接复制 Claude 的 Hook 配置不能形成等价的文件写入拦截。现有本机 Hook 未经真实载体验收，
+不据其存在升级等级，也不代用户信任 Hook 或使用跳过信任的旗标。
+来源：[官方 Hook 文档](https://learn.chatgpt.com/docs/hooks)、
+[官方配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)。
+
+## 验证与日常入口
+
+```bash
+.trivium/bin/trivium doctor --selftest
+.trivium/bin/trivium status --json
+npm run check
+```
+
+自检使用桩适配器、零厂商配额，验证编排闭环，不能证明真实审核者的模型可用性。
+正式审查由用户在 Codex 会话中显式调用，例如：
+
+```text
+$dual-review-plan 重点检查并发与状态恢复 --topic 新主题
+$dual-review-code 重点检查失败路径 --topic 新主题
+```
+
+入口先解析主题、预检，再发起审查；按原参数执行并逐条裁决。
+审批只由用户显式调用 `$dual-approve` 发起。代码修改完成后先询问提交推送，
+Conventional Commits 的中文 subject 与末尾 `Edit by CZB` 沿用个人规范。
+
+## 迁移记录
+
+- 2026-10-09：采用 Codex 主攻约定，本仓缺省审核者调整为 Claude Code / Antigravity / ZCode。
+  同步正式 Codex 入口前保留本机技能备份；不改产品内置默认、历史审计工件、版本号与用户全局配置。
+  本机重复技能及旧运行时备份位于 `~/.trivium/backups/codex-migration-20261009-1791532540263/`。
+  Antigravity 1.3.2 能力已重新探测；Claude 组织停用时本机暂用两审，恢复方式见角色配置一节。
+  验证结果：正式七个入口各在 Codex 技能清单出现一次、与仓库渲染产物逐字一致；
+  文档索引与入口渲染契约 48 项通过，安装运行时自检 14/14 通过；
+  本机两审集合的 `preflight --stage all --driver codex` 通过，未跳过认证。

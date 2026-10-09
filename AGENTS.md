@@ -72,6 +72,23 @@ Node ≥ 18（开发建议 ≥ 22）。
 - `doc/` — 工程文档（八个一级子目录，**单层扁平**，文件名带前缀）
 - `.reviews/` — 流水线审计留痕（进 Git）
 
+## 本仓开发会话（Codex）
+
+- 本仓日常开发由 Codex 主攻；这是仓库工作约定，**不改变产品的内置缺省 Driver**。
+  Codex 的正式入口是 `$dual-run`、`$dual-review-plan`、`$dual-review-code`、`$dual-review-bug`。
+  仅在用户显式调用相应入口时启动审查，不因阅读技能而自行启动。
+- 新任务通过正式入口使用小写 `--driver codex`；plan / bug 写原稿前先按阶段认领。
+  原稿与裁决件后缀、front-matter `role` 均为 `codex`。旧主题按既有运行留痕与声明继续，
+  不改写历史作者，不删除旧工件来更换 Driver。
+- 本仓 `.trivium/config.yaml` 的缺省审核者为 `claude,gemini,glm`；显式选侧仍用 `--critics`。
+  本机覆盖取 `.trivium/config.local.yaml`；外部账号不可用时须如实说明实际入选集合。
+  Codex 不审自己的变更，审核者只读，审查进行中与人工审批停点均不得改业务文件。
+- 排查含凭据的文件时只提取所需非敏感键或判断有无，禁止整份打印用户 Codex 配置、
+  `auth.json`、厂商 profile 与运行目录中的凭据副本；日志和命令输出会进入对话。
+- Codex 在当前 TriviumCode 集成中仍按 **L2** 执行；本机 `.codex/hooks.json` 的存在
+  不证明写入拦截有效。入口资产以 `skills-src/` 渲染结果为准，不手工替换 Agent 名字或参数占位符。
+- 开发环境、迁移与检查方法见 [Codex 开发指南](doc/04_development/GUIDE_codex_development.md)。
+
 ## 常用命令
 
 ```bash
