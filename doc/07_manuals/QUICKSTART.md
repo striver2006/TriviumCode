@@ -19,7 +19,15 @@
 
 Claude 和 Codex 可按任务选择接入路线。Claude 的 `agents.claude.profile` 缺席或 null 走原生登录，非空经 `cld --profile <name> --print`；本机绝对入口配置在 `bin` / `profile_bin`。单次 `--profile-claude qwen` 或 `--native-claude` 优先于档位和 Agent 配置，Codex 同理；同侧同时给出退64。切换路线不替换模型，必要时同时显式指定模型。供应商默认模型映射只作配置声明，需实际组合探活。
 
-Driver 可传 `--driver-model <model>` 和 `--driver-provider <provider>` 声明当前会话。v3 根据声明与审核者回读逐对比较模型族；缺证据、别名无法解析为 unknown。同族和未知均告警继续。旧版布尔只显示「旧版名义族判定」。本仓 Claude/Qwen default/flash 组合探活已通过；完整准入前保留本机临时两审默认，三审恢复须等准入完成；原生 Claude 实测待订阅恢复。
+本仓显式供应商选择（沿用现有入口参数）：
+
+- Qwen：`--profile-claude qwen --model-claude qwen3.8-flash`；高档可用`--profile pro`。
+- Kimi：`--profile-claude kimi --model-claude kimi-for-coding`。
+- DeepSeek：`--profile-claude deepseek --model-claude deepseek-flash`。
+
+不要只换接入而沿用另一家的模型。Kimi/DeepSeek生产同形写负对照仍未测；可选接入不等于完整准入通过。失败不会自动回退官方。
+
+Driver 可传 `--driver-model <model>` 和 `--driver-provider <provider>` 声明当前会话。v3 根据声明与审核者回读逐对比较模型族；缺证据、别名无法解析为 unknown。同族和未知均告警继续。旧版布尔只显示「旧版名义族判定」。本仓 Claude/Qwen flash与max组合已完成适用准入；default/flash走Qwen flash，pro走Qwen max，本机默认恢复Claude、Gemini、GLM三审。Claude官方模式暂不用于其项目默认/pro，真实验收待订阅恢复。
 
 | 项 | 要求 | 怎么确认 |
 | :--- | :--- | :--- |
@@ -90,7 +98,7 @@ node ~/.claude/skills/dual-critic/scripts/trivium.cjs doctor
 想先不烧配额，可以 `doctor --no-model-calls` 只做静态探测；但模型调用相关的结论
 会留空，`preflight` 随后会报环境不可用。
 
-路线准入须逐组合核对真实读取、写入尝试及拒绝、禁读、MCP与输出轨迹；文件不存在不能证明写入拦截。版本或profile指纹变化后旧结论不能直接复用。2026-10-10本仓补测仍有Claude/Kimi、DeepSeek写入尝试未测，官方Claude待订阅恢复，pro与三审尚未切换；详见[真实准入报告](../05_testing/REPORT_2026-10-10_agent_access_admission.md)。旧48/48预算冻结，新预算及扩容独立留痕。
+路线准入须逐组合核对真实读取、写入尝试及拒绝、禁读、MCP与输出轨迹；文件不存在不能证明写入拦截。版本或profile指纹变化后旧结论不能直接复用。2026-10-10本仓补测仍有Claude/Kimi、DeepSeek写入尝试未测，官方Claude待订阅恢复，随后经用户授权，pro已切Qwen且默认三审已恢复；详见[真实准入报告](../05_testing/REPORT_2026-10-10_agent_access_admission.md)。旧48/48预算冻结，新预算及扩容独立留痕。
 
 ---
 
@@ -461,3 +469,7 @@ Claude Code 主攻时，`/dual-review-plan` 后面的提示语由 Claude Code �
 - [设计文档](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)：唯一实现依据
 - [本机坑清单](../04_development/GUIDE_local_pitfalls.md)：各家 CLI 与本机环境的实测坑（`P-xx`）
 - [M0 探针报告](../05_testing/REPORT_2026-09-11_m0_probe.md)：M0 当时的实测快照，含 12 条与文档记载不符之处
+
+2026-10-10三供应商补测边界见 [测试报告](../05_testing/REPORT_2026-10-10_claude_three_providers.md)：三条供应商路线都已实际读取并返回可解析 Schema；Qwen flash、DeepSeek V4 pro 的生产同形写拒绝已有证据，Kimi coding/k3、DeepSeek flash 的真实模型写尝试仍未测。当前 default/flash 与 pro/high 分别走 Qwen flash/max，显式选择 Kimi/DeepSeek 时必须同时指定对应模型。供应商可调用不等于所有组合完整准入；官方真实验收待订阅恢复，完整 M11 前置验收仍未完成。
+
+2026-10-10 Codex 项目默认使用官方 native：default/flash/pro 各自的所有阶段分别为 gpt-6.1-sol、gpt-6-luna、gpt-6-astra，agents.codex.profile:null；第三方仍通过单次 --profile-codex 和匹配模型显式选择。Claude 三供应商配置与审核者集合保持不变。

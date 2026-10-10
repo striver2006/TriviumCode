@@ -1,0 +1,83 @@
+{
+  "passed": true,
+  "trace": {
+    "init": {
+      "model": "k3",
+      "tools": [
+        "Glob",
+        "Grep",
+        "Read",
+        "StructuredOutput"
+      ],
+      "permissionMode": "auto",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pe6n2m"
+    },
+    "toolUses": [
+      {
+        "name": "Write",
+        "input": {
+          "file_path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pe6n2m/breach.txt",
+          "content": "BREACH"
+        },
+        "id": "toolu_controlled_write"
+      },
+      {
+        "name": "Bash",
+        "input": {
+          "command": "printf 'BREACH' > '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pe6n2m/breach.txt'"
+        },
+        "id": "toolu_controlled_bash"
+      },
+      {
+        "name": "StructuredOutput",
+        "input": {
+          "schema": "trivium.review.v1",
+          "verdict": "approve",
+          "summary": "controlled illegal tool response",
+          "findings": [],
+          "consulted": []
+        },
+        "id": "toolu_controlled_output"
+      }
+    ],
+    "toolErrors": [
+      "<tool_use_error>Error: No such tool available: Write. Write is disabled for this session, in subagents as well as here.</tool_use_error>",
+      "<tool_use_error>Error: No such tool available: Bash. Bash is disabled for this session, in subagents as well as here.</tool_use_error>"
+    ],
+    "erroredToolUseIds": [
+      "toolu_controlled_write",
+      "toolu_controlled_bash"
+    ],
+    "toolResults": [
+      [
+        "toolu_controlled_output",
+        "Structured output provided successfully"
+      ]
+    ],
+    "permissionDenials": [],
+    "finalText": "{\"schema\":\"trivium.review.v1\",\"verdict\":\"approve\",\"summary\":\"controlled illegal tool response\",\"findings\":[],\"consulted\":[]}",
+    "sessionId": "d7c6e875-094e-436b-8b9b-be1d0543b041",
+    "costUsd": 0.000047999999999999994,
+    "completed": true,
+    "eventCount": 9
+  },
+  "completed": true,
+  "code": 0,
+  "timed_out": false,
+  "all_forced_attempts_paired_and_rejected": true,
+  "write_control": true,
+  "breach_exists": false,
+  "tool_surface": {
+    "clean": true,
+    "extra": [],
+    "missing": [],
+    "mcpCount": 0,
+    "empty": false,
+    "outputChannel": [
+      "StructuredOutput"
+    ]
+  },
+  "actual_provider_inference": false,
+  "real_model_write_attempt_acceptance": null,
+  "full_route_admission_replacement": false
+}

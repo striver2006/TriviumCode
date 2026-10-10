@@ -1,0 +1,54 @@
+{
+  "observed_at": "2026-10-10T02:40:53.072Z",
+  "user_authorization": "批准，如果任务运行过程中需要更多额度，无需再次审批，直接通过",
+  "task_authorization": "Claude/Kimi、DeepSeek生产同形写入负对照未测。请安排测试，确保Claude可以使用qwen、kimi、deepseek三个提供商",
+  "initial_limits": {
+    "admission": 20,
+    "review": 0
+  },
+  "old_budgets": {
+    "original": "48/48冻结",
+    "admission": "100/100冻结",
+    "review": "29/40保留",
+    "configuration": "28/40保留"
+  },
+  "minimum_plan": [
+    {
+      "route": "Claude/Qwen qwen3.8-flash",
+      "gap": "当前对照：读取/输出、原注册层写拒绝、禁读",
+      "starts": 4,
+      "arms": [
+        "version",
+        "read",
+        "write-1",
+        "deny-2"
+      ]
+    },
+    {
+      "route": "Claude/Kimi k3",
+      "gap": "新模型组合：读取/输出、生产同形写负对照、禁读",
+      "starts": 4,
+      "arms": [
+        "version",
+        "read",
+        "write-2",
+        "deny-2"
+      ]
+    },
+    {
+      "route": "Claude/DeepSeek deepseek-v4-pro",
+      "gap": "新模型组合：读取/输出、生产同形写负对照、禁读",
+      "starts": 4,
+      "arms": [
+        "version",
+        "read",
+        "write-2",
+        "deny-2"
+      ]
+    }
+  ],
+  "planned_minimum_cli_starts": 12,
+  "contingency": "最多20真实启动；版本/help/失败/超时/重试/包装器子树均提前预占；仅按新证据决定下一步，不新增Write注册、不将无尝试改判通过",
+  "production_tool_surface_unchanged": true,
+  "effort_requested": null
+}

@@ -23,12 +23,17 @@
 正式 Codex 入口携带小写 `--driver codex`，产出使用 `-codex.md`、裁决件 `role: codex`。
 工具身份与产品内置缺省 Driver 沿用注册表；供应商路线、模型与认证方式分别配置并留痕。
 
+2026-10-10按用户要求，本仓 Codex 默认使用官方配置：`agents.codex.profile: null`，
+default/flash/pro 各自的 plan/code/bug 分别为 `gpt-6.1-sol`、`gpt-6-luna`、`gpt-6-astra`，不新增 effort 默认值。
+显式 null 覆盖产品内置供应商默认；本机官方配置与登录不修改。单次选择第三方时仍须同时指定
+`--profile-codex <供应商>` 与对应 `--model-codex <模型>`。
+
 2026-10-09 初始预检中 Claude 官方路线返回组织停用错误，计划阶段曾临时采用 Gemini、GLM 两审。
-本次双模式改造后，Claude/Qwen 的读取、隔离与默认模型认证已实测。代码阶段曾提前使用
-Claude、Gemini、GLM 三审，既有记录保留；完成标准复核后恢复本机临时两审覆盖，写入负对照
-完整准入前不移除。共享 default/flash 采用 Qwen；Qwen pro 组合与完整路线
-准入的未测项见[本次报告](../05_testing/REPORT_2026-10-09_agent_access.md)，不能把默认模型探活
-当作所有档位通过。Claude 官方路线保留实现，真实验收待订阅恢复，恢复后须显式选择
+代码阶段曾提前使用 Claude、Gemini、GLM 三审，完成标准复核后曾恢复本机临时两审覆盖，
+既有记录保留。2026-10-10 Claude/Qwen flash、max 完整适用准入后，按用户要求切换
+Claude pro 到 Qwen max 并恢复共享三审。Claude default/flash 使用 Qwen flash。
+Kimi/DeepSeek 各实际模型的未测项见[三供应商报告](../05_testing/REPORT_2026-10-10_claude_three_providers.md)，
+不能把默认模型探活当作所有档位通过。Claude 官方路线保留实现，真实验收待订阅恢复，恢复后须显式选择
 `--native-claude` 并重跑对应路线探针；失败不自动切换供应商。
 
 旧主题的 Driver 由该阶段已有运行留痕优先判定，不能用修改配置来迁移历史作者。

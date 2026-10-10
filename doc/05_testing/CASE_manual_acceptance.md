@@ -11,7 +11,7 @@
 
 M11 第12步前置（2026-10-09）：先完成接入路线准入，再执行全量剧本。Claude/Qwen、Kimi、DeepSeek 三批各12次，Codex官方及三profile一批12次，合计最多48次真实CLI启动（含help/version、失败、重试）；到上限停并记未测，不降低判据。准入逐路线核对读能力、工具白名单/MCP隔离、写入负对照、禁读检测、结构化输出与轨迹；另核对请求/实际入口、profile/模型/effort组合、供应商声明与回读来源。原生Claude真实验收待订阅恢复。
 
-2026-10-10补测：旧额度48/48已耗尽，新增证据在 `evidence/agent-access-20261010-admission/`。初始准入32/审查16，用户已明确授权按需扩容；每次扩容独立记账，达到现行上限先停再记账扩容，不重置或跨池挪用。统一入口为 `node scripts/agent-access-launch.mjs <admission|review> <唯一标签> tv|probe ...`。逐路线核对真实写尝试、配对拒绝、文件状态；无尝试仍记未测。单独注册Write的权限诊断保存工具面偏差、实际deny设置、配对拒绝和文件状态；它不替代生产同形准入，权限拒绝也不凭错误文案追认为明确deny规则命中。Qwen pro须验证qwen3.8-max模型回读及完整只读准入，全部成立才切配置并恢复三审。正式审查每主题最多四轮；本任务不执行M11第12步。
+2026-10-10补测：旧额度48/48已耗尽，新增证据在 `evidence/agent-access-20261010-admission/`。初始准入32/审查16，用户已明确授权按需扩容；每次扩容独立记账，达到现行上限先停再记账扩容，不重置或跨池挪用。统一入口为 `node scripts/agent-access-launch.mjs <admission|review> <唯一标签> tv|probe ...`。逐路线核对真实写尝试、配对拒绝、文件状态；无尝试仍记未测。单独注册Write的权限诊断保存工具面偏差、实际deny设置、配对拒绝和文件状态；它不替代生产同形准入，权限拒绝也不凭错误文案追认为明确deny规则命中。Qwen pro须验证qwen3.8-max模型回读及完整只读准入后切配置；默认三审恢复只要求Claude/Qwen flash完整准入，不等待Kimi/DeepSeek。2026-10-10用户授权暂用qwen/kimi/deepseek；配置切换与恢复后组合预检另存provider-routing证据，七条全准入条件不变。正式审查每主题最多四轮；本任务不执行M11第12步。
 
 新增契约剧本：显式null继承与单次覆盖、同侧native/profile冲突64、名单外profile统一64；真实子进程证明到执行端的组合、换路线/包装器后缓存失效；超时/取消/失败保留请求；跨Agent同族、同provider不同族、别名与缺Driver声明unknown；v1/v2历史不重写、v3贯通worker/gate/夹具审批/report/提交Hook。所有同族/未知场景告警继续。最终串行两次check与14/14桩自检，未测项明确标未测。
 
@@ -536,3 +536,9 @@ $TV preflight --stage plan --critics codex,gemini --profile-codex <本机没有�
 **不通过时不要就地改判据**。先按 §16.2 纪律 1 判断：是实现错了，还是设计记载
 与厂商实际行为不符。后者要回补修订设计文档，并把实测记进
 [本机坑清单](../04_development/GUIDE_local_pitfalls.md)（`P-xx`；[M0 探针报告](./REPORT_2026-09-11_m0_probe.md) §8 的冲突表是 M0 快照，不再追加）。
+
+### Claude 三供应商补测记录口径（2026-10-10）
+
+[本批结果](./REPORT_2026-10-10_claude_three_providers.md)按 profile × 实际请求模型拆分，DeepSeek V4 pro 不替代 flash，Kimi k3 不替代 coding。生产写负对照仍要求实际非法工具调用、配对错误、精确隔离目标前后未生成；注册 Write 的诊断及本地模拟供应商响应均单列，不自动替代真实模型尝试。能力臂传完整生产 Schema；禁读集合直接用生产 enumerateDenyPaths 并核对全部夹具工件，Read/Grep 逐目标取证，事后检测不删除。根目录 Grep 空结果、模型自述“通过”与文件不存在均不能单独判通过。超时保留原始拒绝事件但整个能力臂记未完成。
+
+Codex默认官方路线配置验收：合并共享/本机配置后，default、flash、pro各plan/code/bug共九格均须解析profile=null，模型按档分别为gpt-6.1-sol、gpt-6-luna、gpt-6-astra；由doctor核对当前版本及读取/只读能力，再走编排器preflight。不得沿用0.160.1探针或保留Kimi模型配官方入口；全局配置与登录文件hash前后核对；漂移须记录且不得追认旧完整指纹结论，CLI启动另记持久预算。

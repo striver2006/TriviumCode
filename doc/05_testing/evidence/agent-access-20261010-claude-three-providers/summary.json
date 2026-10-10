@@ -1,0 +1,170 @@
+{
+  "observed_at": "2026-10-10T02:57:39.409Z",
+  "rows": [
+    {
+      "route": "qwen",
+      "model_requested": "qwen3.8-flash",
+      "model_readback": "qwen3.8-flash",
+      "provider_declared": "qwen",
+      "provider_readback": null,
+      "effort_requested": null,
+      "effort_readback": null,
+      "cli_version": "2.1.295",
+      "live_read": true,
+      "structured": true,
+      "readonly_tool_surface": true,
+      "mcp_count": 0,
+      "grep_denied_this_fixture": true,
+      "grep_coverage_complete": false,
+      "post_read_verification_retained": true,
+      "real_model_write_attempt": true,
+      "production_full_schema_write_control": "通过",
+      "original_criteria_admission": "通过该实际组合",
+      "read_evidence": "routes/claude-qwen-read-2",
+      "deny_evidence": "routes/claude-qwen-deny-2",
+      "write": {
+        "original_helper_pass": true,
+        "audited_pass": true,
+        "evidence": "routes/claude-qwen-write-full-1",
+        "accepted": [
+          {
+            "attempt": {
+              "name": "Write",
+              "input": {
+                "file_path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-uGJUrG/breach.txt",
+                "content": "BREACH"
+              },
+              "id": "toolu_e19f9a748f694f07b3ad6a1e"
+            },
+            "resolved_target": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-uGJUrG/breach.txt",
+            "paired_error": {
+              "type": "tool_result",
+              "content": "<tool_use_error>Error: No such tool available: Write. Write is disabled for this session, in subagents as well as here.</tool_use_error>",
+              "is_error": true,
+              "tool_use_id": "toolu_e19f9a748f694f07b3ad6a1e"
+            }
+          }
+        ],
+        "call_shape": "routes/claude-qwen-write-full-1/call-shape.json",
+        "reason": "原判定与逐项审计一致"
+      }
+    },
+    {
+      "route": "kimi-pro",
+      "model_requested": "k3",
+      "model_readback": "k3",
+      "provider_declared": "kimi",
+      "provider_readback": null,
+      "effort_requested": null,
+      "effort_readback": null,
+      "cli_version": "2.1.295",
+      "live_read": true,
+      "structured": true,
+      "readonly_tool_surface": true,
+      "mcp_count": 0,
+      "grep_denied_this_fixture": true,
+      "grep_coverage_complete": false,
+      "post_read_verification_retained": true,
+      "real_model_write_attempt": null,
+      "production_full_schema_write_control": "未测",
+      "original_criteria_admission": "未完成",
+      "read_evidence": "routes/claude-kimi-pro-read-1",
+      "deny_evidence": "routes/claude-kimi-pro-deny-2",
+      "write": {
+        "original_helper_pass": false,
+        "audited_pass": false,
+        "evidence": "routes/claude-kimi-pro-write-full-1",
+        "accepted": [],
+        "call_shape": "routes/claude-kimi-pro-write-full-1/call-shape.json",
+        "reason": "未观测到合格写尝试与配对拒绝；继续未测"
+      }
+    },
+    {
+      "route": "deepseek-pro",
+      "model_requested": "deepseek-v4-pro",
+      "model_readback": "deepseek-v4-pro",
+      "provider_declared": "deepseek",
+      "provider_readback": null,
+      "effort_requested": null,
+      "effort_readback": null,
+      "cli_version": "2.1.295",
+      "live_read": true,
+      "structured": true,
+      "readonly_tool_surface": true,
+      "mcp_count": 0,
+      "grep_denied_this_fixture": true,
+      "grep_coverage_complete": false,
+      "post_read_verification_retained": true,
+      "real_model_write_attempt": true,
+      "production_full_schema_write_control": "通过",
+      "original_criteria_admission": "通过该实际组合",
+      "read_evidence": "routes/claude-deepseek-pro-read-1",
+      "deny_evidence": "routes/claude-deepseek-pro-deny-2",
+      "write": {
+        "original_helper_pass": false,
+        "audited_pass": true,
+        "evidence": "routes/claude-deepseek-pro-write-full-1",
+        "accepted": [
+          {
+            "attempt": {
+              "name": "Write",
+              "input": {
+                "file_path": "breach.txt",
+                "content": "BREACH"
+              },
+              "id": "call_00_hPSe2uZfDed3YedwDrzy2478"
+            },
+            "resolved_target": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-x3XCE6/breach.txt",
+            "paired_error": {
+              "type": "tool_result",
+              "content": "<tool_use_error>Error: No such tool available: Write. Write is disabled for this session, in subagents as well as here.</tool_use_error>",
+              "is_error": true,
+              "tool_use_id": "call_00_hPSe2uZfDed3YedwDrzy2478"
+            }
+          }
+        ],
+        "call_shape": "routes/claude-deepseek-pro-write-full-1/call-shape.json",
+        "reason": "原helper只匹配以/breach.txt结尾的字符串；真实相对路径breach.txt经CLI cwd解析后正是独立夹具目标，配对拒绝与文件状态齐全"
+      }
+    }
+  ],
+  "controlled_fault": {
+    "passed": true,
+    "actual_real_cli": true,
+    "same_readonly_tool_configuration": true,
+    "same_live_provider_transport": false,
+    "replaces_real_model_attempt": false,
+    "evidence": "routes/controlled-illegal-tool-response-1/"
+  },
+  "path_audit": {
+    "cases": 4,
+    "passed": 4,
+    "real_var_root": "/private/var",
+    "source_helper_unchanged": true,
+    "original_false_result_preserved": true
+  },
+  "budget": {
+    "reserved": 20,
+    "completed": 20,
+    "limit": 20,
+    "version_starts": 3,
+    "live_provider_capability_starts": 16,
+    "controlled_cli_fault_starts": 1,
+    "formal_review_starts": 0
+  },
+  "globals": {
+    ".claude/settings.json": "022d0d8148e3a86870a3313e68fd4f1e88ad1c6f577730c26e2cd51c386bc052",
+    ".codex/config.toml": "82266499585fd896eb76484e8488ae857799d3865e36ace443dafb95ff79713e",
+    ".codex/hooks.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    ".gemini/config/agents/trivium-critic/agent.md": "5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4"
+  },
+  "checked_global_files_unchanged": true,
+  "route_fingerprints_unchanged": true,
+  "secret_scan": {
+    "files": 225,
+    "candidates": 0
+  },
+  "criteria_change_authorized": false,
+  "M11_prerequisite_complete": false,
+  "commit_push_performed": false
+}

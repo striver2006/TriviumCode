@@ -1,0 +1,31 @@
+{
+  "load_id": "8dedbaf1-285c-4359-8840-128602f1f235",
+  "label": "pro",
+  "pool": "admission",
+  "argv": [
+    "preflight",
+    "--stage",
+    "all",
+    "--driver",
+    "codex",
+    "--critics",
+    "claude",
+    "--profile",
+    "pro",
+    "--json"
+  ],
+  "requested_at": "2026-10-10T02:21:15.045Z",
+  "script_sha256": "bef742729772b17bcb642f5cf6213b7b59a4d769679e31be71ac30b2469ac9c4",
+  "preload_sha256": "2b74abf72f7f67edb61879b58798761c6c53ade68ba92aa3dea07cb98b592b71",
+  "core_sha256": "c70a39ad6c041d9bb5b2cf39d32927c7e3d936e94f7d3f82988db9af2b55bb9b",
+  "shared_config_sha256": "7c0e13d7cf4309d47c24fc1d069516cec1e9ca8f9f2a5b6b40a13f5f96d721ca",
+  "local_config_sha256": "693c929331e5e30074ee7da7d6623e44bf4ccb87e7f81552fba6afa392d83571",
+  "wrapper_sha256": "2441083b1a55ada5a9b037890fee7d321c41fe1fef056bef6b9e3631113f4a7b",
+  "installed_bundle_sha256": "a2937b62bc3cac52bb11ef0980befb496df550ed7f16094189fd7041aac8ec96",
+  "code": 0,
+  "signal": null,
+  "primary_loaded": true,
+  "stdout": "{\n  \"ok\": true,\n  \"scope\": \"all\",\n  \"checks\": [\n    {\n      \"name\": \"Driver 会话声明\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"Driver 模型未声明，相关模型族比较将为 unknown；告警继续\"\n    },\n    {\n      \"name\": \"模型 slug 合法\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"已校验 3 个阶段 × 1 侧\\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（Claude Code：Claude profile 模型映射是配置声明，服务端完整模型目录无法核实；由实际组合探活验证）\"\n    },\n    {\n      \"name\": \"档位组合合法\",\n      \"ok\": true,\n      \"detail\": \"已校验 3 个阶段 × 1 侧\"\n    },\n    {\n      \"name\": \"当轮 Driver\",\n      \"ok\": true,\n      \"detail\": \"codex · 护栏 L2（该载体没有 Hook 机制，写入没有事前拦截；审查中的越界由跑后复算发现；闸门期改业务文件不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要；审查工件由审批前复核核本轮）\"\n    },\n    {\n      \"name\": \"探针结论新鲜\",\n      \"ok\": true,\n      \"detail\": \"全部 4 侧均在 TTL 内\"\n    },\n    {\n      \"name\": \"Claude Code 可调用\",\n      \"ok\": true,\n      \"detail\": \"claude 2.1.295\"\n    },\n    {\n      \"name\": \"Codex 版本与探针一致\",\n      \"ok\": true,\n      \"detail\": \"codex 版本已变（探针记录 0.160.1 → 实际 0.162.0）。\\n  参数与行为可能随版本漂移，请重新运行 `trivium doctor`。（本次未选用该侧，仅提示）\"\n    },\n    {\n      \"name\": \"Antigravity 可调用\",\n      \"ok\": true,\n      \"detail\": \"agy 1.3.2\"\n    },\n    {\n      \"name\": \"ZCode 可调用\",\n      \"ok\": true,\n      \"detail\": \"zcode 0.16.9\"\n    },\n    {\n      \"name\": \"只读能力可用\",\n      \"ok\": true,\n      \"detail\": \"Claude Code 均报告可用\"\n    },\n    {\n      \"name\": \"归档与 git 可用\",\n      \"ok\": true,\n      \"detail\": \"归档根 /Users/chenzhenbo/Work/TriviumCode/.reviews\"\n    },\n    {\n      \"name\": \"编译测试命令已配置\",\n      \"ok\": true,\n      \"detail\": \"build 2 条 / test 1 条\"\n    },\n    {\n      \"name\": \"Claude Code 已认证\",\n      \"ok\": true,\n      \"detail\": \"探活通过（4s）\"\n    }\n  ],\n  \"warnings\": [\n    {\n      \"name\": \"Driver 会话声明\",\n      \"detail\": \"Driver 模型未声明，相关模型族比较将为 unknown；告警继续\"\n    },\n    {\n      \"name\": \"模型 slug 合法\",\n      \"detail\": \"已校验 3 个阶段 × 1 侧\\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（Claude Code：Claude profile 模型映射是配置声明，服务端完整模型目录无法核实；由实际组合探活验证）\"\n    }\n  ],\n  \"exit_code\": 0\n}\n",
+  "stderr": "· [claude] 探活缓存不可用（无缓存），执行最小 headless 探活\n",
+  "completed_at": "2026-10-10T02:21:20.126Z"
+}

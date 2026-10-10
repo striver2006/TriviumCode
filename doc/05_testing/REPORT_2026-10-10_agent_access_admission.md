@@ -54,5 +54,35 @@ Codex Driver使用正式入口A。计划1轮两审10条全部接受、闸门通�
 ## 剩余缺口
 
 1. Claude/Kimi与DeepSeek的生产同形写负对照仍未测。具体原因已从轨迹辨明：生产工具面不注册Write/Bash，合规模型不发未知工具调用；Qwen的注册层拒绝依赖其仍发出未知工具调用。不能把没有写通道/文件未生成重新定义为通过。按此新诊断理由另注册Write、仅对独立夹具目标注入deny验证权限层；明确不同形，不替代生产同形准入，后续不默认继续换提示碰运气。
-2. 七条默认路线完整准入后，才实施共享Qwen pro切换与三审恢复、两文件失败恢复和批次E核对，当前均未测。
+2. 原补测收尾时pro与三审未切换；随后用户明确授权供应商配置调整，现状与补充验证见下节。七条全准入仍是前置任务收口条件。
 3. 官方Claude真实验收待订阅恢复。本轮不进入M11第12步，不宣称前置任务完成。
+
+## 后续项目供应商配置调整（2026-10-10）
+
+用户明确要求“Claude暂时忽略官方配置，只使用qwen、kimi、deepseek”。前述未切换、未恢复是原批次收尾状态，原始审查工件和证据不改写。当前项目default/flash保持qwen3.8-flash/profile:qwen；pro/high改为qwen3.8-max/profile:qwen，不添加effort默认值。Kimi/DeepSeek通过现有单次profile与匹配模型参数选择，未新增或改变协议。官方实现和离线测试保留，项目默认/pro暂不使用，失败不自动回退。
+
+Qwen flash和max已有完整适用准入，并零启动核对当前CLI二进制、包装器及profile指纹匹配；因此移除本机review.default_critics两审覆盖，恢复共享claude、gemini、glm。恢复条件按用户原要求以Qwen完整准入为准，不再附加“先完成Kimi/DeepSeek”的条件。配置模型解析覆盖三个阶段；独立临时夹具注入第二文件失败后两文件hash恢复一致，未在生产配置注入故障。
+
+新增证据独立保存在[evidence/agent-access-20261010-provider-routing/](./evidence/agent-access-20261010-provider-routing/README.md)，旧48/48、新准入100/100、旧正式审查29/40不清零。本配置批次初始启动上限40，使用既有预算模块提前预占，编排器preflight执行真实组合探活；不手动调用审核者CLI。默认三审已预检通过。正式三审全文审查未在本配置批次启动：用户未显式调用dual-*入口，本轮只改项目配置与说明，无业务代码、Schema、入口资产改动。Kimi/DeepSeek生产同形写负对照仍未测，官方真实验收待订阅恢复，M11前置任务仍未完成。
+
+配置调整最终验证：默认三审及Qwen pro、Kimi、DeepSeek四组编排器预检均通过，新增真实CLI预占/结束为28/40，正式审查0/0，无官方Claude模型启动。最终串行两次npm run check均3105通过、3跳过、0失败；重建重装成功，安装副本桩自检14/14，仓库/安装bundle及输入指纹一致，四个全局文件hash前后相同。嵌入dirty=false只描述安装作用面源码/资产不变，不代表本次配置已提交。新增证据脱敏扫描无候选；详情见provider-routing/final.json。本次配置调整尚未提交、推送；版本号仍0.1.0。
+
+## 后续生产工具面补测（2026-10-10）
+
+独立新批次见 [Claude 三供应商报告](./REPORT_2026-10-10_claude_three_providers.md)。36/36 启动：Qwen flash 与 DeepSeek V4 pro 取得完整 Schema 下的真实 Write、配对拒绝和文件未生成证据；默认 DeepSeek flash 及 Kimi coding/k3 仍无写调用，不能用高档通过替代默认缺口。实际读取、工具面与结构化输出各自列项；禁读补测使用生产枚举覆盖全部夹具同行工件，旧不完整集合结果不追改。真实 CLI 的模拟供应商故障注入仅证明确定性拦截，分项准入判据没有获用户明确批准。原批次本报告表格作为历史快照保留，当前具体组合以新报告为准。
+
+## 后续 Codex 项目默认官方路线（2026-10-10）
+
+用户要求“codex默认使用官方配置”，已将本仓 agents.codex.profile 显式设 null，default/flash/pro 三档 plan/code/bug 共九格全部设 gpt-6.1-sol，不新增 effort 默认值。Claude 路由与共享三审不变，产品内置默认不变，第三方保留单次显式接入。独立证据见 [codex-native-default](./evidence/agent-access-20261010-codex-native-default/README.md)。
+
+原生路线 doctor 已刷新旧 0.160.1 缓存，真实版本 0.162.0；读取、home_copy、read-only 及写命令被操作系统拒绝的负对照均成立。首次 preflight 的认证子进程因本批 40 次预占上限被拒绝 spawn，失败原件保留；按已有用户授权扩容到 64，第二次 preflight 三阶段模型/只读/认证检查通过。正式审查未启动。
+
+doctor 期间观察到全局 config.toml hash 漂移，原因未确认，未手工编辑该文件；当前官方基底仍为 openai/gpt-6.1-sol，登录文件 hash 不变。后续认证预检发生于漂移之后；旧完整指纹的能力结果不追认成当前完整准入。检查、重装、自检与最终启动数由新批次 final.json 记录，完整 M11 前置任务仍未完成。
+
+Codex官方默认配置收尾：本批真实CLI预占/结束47/64，包含一次预算拦截失败；正式审查0次。最终串行两次npm run check均3105通过、3跳过、0失败，重建重装成功，安装副本桩自检14/14，bundle及输入指纹一致。全局Codex配置hash自已记录漂移之后保持稳定，auth.json hash不变；漂移原因仍null，不追认旧完整指纹下的能力准入。版本0.1.0未改，未提交推送。证据见codex-native-default/final.json。
+
+## 后续 Codex 官方三档模型配置（2026-10-10）
+
+用户进一步明确三个档位：default 使用 gpt-6.1-sol，flash 使用 gpt-6-luna，pro 使用 gpt-6-astra；每档 plan/code/bug 同值。agents.codex.profile 继续显式 null，active_profile 仍为 default，不新增 effort 默认值，不修改全局模型配置或产品内置默认。此前“九格全部 sol”的结果保留为上一批快照。新证据目录为 [codex-native-tiers](./evidence/agent-access-20261010-codex-native-tiers/README.md)，预算独立预占，旧批不重置。配置解析九格已核对；逐档真实预检及最终检查结果在该目录记录。新模型没有新增完整能力臂，模型回读缺失记 null，不能据档位预检追认七路线完整准入。
+
+三档配置收尾：九格解析与三个官方组合真实认证预检均通过，CLI版本0.162.0；本批预占/结束21/24，正式审查0。请求模型来自档位配置，认证结果为成功，但本批没有保存实际模型/供应商回读，二者均null。两次串行npm run check各3105通过、3跳过、0失败，重建重装及安装副本自检14/14通过，bundle与构建输入指纹一致。本批全局配置、auth指纹稳定；软件版本0.1.0未变。Luna/Astra新模型完整能力臂未测，七路线原缺口未消除，未提交推送。

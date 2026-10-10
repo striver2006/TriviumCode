@@ -75,13 +75,12 @@ profiles:
       plan: GLM-5.3
       code: GLM-5.3
       bug: GLM-5.3
-    # 须与 agents.codex.profile 同家族，见该处注释。kimi profile 的缺省模型是 kimi-for-coding，
-    # 这里显式钉 k3，不靠 profile 缺省兜底。
+    # Codex 默认走官方 native；模型与本机官方基底配置一致。
     codex:
-      plan: kimi-for-coding
-      code: kimi-for-coding
-      bug: kimi-for-coding
-    # 2026-10-09 Claude/Qwen 默认组合探活通过；完整准入尚缺写入负对照尝试证据。
+      plan: gpt-6.1-sol
+      code: gpt-6.1-sol
+      bug: gpt-6.1-sol
+    # Claude/Qwen flash 已补齐真实准入；项目日常运行暂不使用官方订阅路线。
     claude:
       plan: qwen3.8-flash
       code: qwen3.8-flash
@@ -95,11 +94,11 @@ profiles:
       plan: GLM-5.3-Flash
       code: GLM-5.3-Flash
       bug: GLM-5.3-Flash
-    # 取 kimi 目录里比 default（k3）低一档的 kimi-for-coding。
+    # Codex flash 按用户指定使用官方 gpt-6-luna，不新增 effort 默认值。
     codex:
-      plan: kimi-for-coding
-      code: kimi-for-coding
-      bug: kimi-for-coding
+      plan: gpt-6-luna
+      code: gpt-6-luna
+      bug: gpt-6-luna
     # Qwen 当前默认模型与 default 同值，配置声明和探活均已核实。
     claude:
       plan: qwen3.8-flash
@@ -107,8 +106,8 @@ profiles:
       bug: qwen3.8-flash
   # pro 档：按需 `--profile pro` 单次切档。取值原则：只换模型目录里确有比 default 更高档的格。
   # gemini / glm 与 default 同值是结果不是漏改：gemini 目录里的 3.1-pro 比 3.8-flash 旧两代，
-  # GLM-5.3 已是顶档；codex 同理，k3 已是 kimi 目录顶档。
-  # claude-fable-5-1 单价明显高于 opus-5-5，真审成本相应放大。
+  # GLM-5.3 已是顶档；Codex pro 按用户指定使用官方 gpt-6-astra。
+  # Claude high 使用已真实验证的 Qwen Max，不设置未经核实的 effort 默认值。
   pro:
     gemini:
       plan: gemini-3.8-flash-high
@@ -119,11 +118,11 @@ profiles:
       code: GLM-5.3
       bug: GLM-5.3
     codex:
-      plan: k3
-      code: k3
-      bug: k3
+      plan: gpt-6-astra
+      code: gpt-6-astra
+      bug: gpt-6-astra
     claude:
-      # Qwen Max 尚未实测，暂保留原生pro路线；官方订阅当前不可用。
+      # high 显式绑定 Qwen，避免 profile:null 覆盖 Agent 默认接入。
       plan: { tier: high }
       code: { tier: high }
       bug: { tier: high }
@@ -164,13 +163,12 @@ agents:
   codex:
     vendor: openai
     bin: null
-    # profile 决定 provider 家族与模型目录（目录随 profile 分层）。**换家族必须与 profiles.*.codex
-    # 同批改**：只改一处，要么被端点拒绝，要么预检以「不在该 profile 的模型目录中」退 64（均实测）。
-    profile: kimi
-    # effort 已删（M11 第 4 步）：它从未下传，实际请求的思考等级是 kimi profile 基底的值；档位落地后由 tiers 表达
+    # 显式 null 选择官方 native，覆盖内置供应商默认；第三方须单次显式选择 profile 和匹配模型。
+    profile: null
+    # 不设置项目 effort 默认值；官方基底的声明与运行回读分别记录。
   # 工具身份保持claude；Qwen只代表所选接入配置，运行时供应商无回读时null。
   claude:
     vendor: anthropic
     profile: qwen
     tiers:
-      high: { model: claude-fable-5-1, profile: null }
+      high: { model: qwen3.8-max, profile: qwen }

@@ -1,0 +1,35 @@
+[
+  {
+    "endpoint": "/v1/messages",
+    "model": "k3",
+    "tools": [
+      "Glob",
+      "Grep",
+      "Read",
+      "StructuredOutput"
+    ],
+    "paired_results": []
+  },
+  {
+    "endpoint": "/v1/messages",
+    "model": "k3",
+    "tools": [
+      "Glob",
+      "Grep",
+      "Read",
+      "StructuredOutput"
+    ],
+    "paired_results": [
+      {
+        "tool_use_id": "toolu_controlled_write",
+        "is_error": true,
+        "content": "<tool_use_error>Error: No such tool available: Write. Write is disabled for this session, in subagents as well as here.</tool_use_error>"
+      },
+      {
+        "tool_use_id": "toolu_controlled_bash",
+        "is_error": true,
+        "content": "<tool_use_error>Error: No such tool available: Bash. Bash is disabled for this session, in subagents as well as here.</tool_use_error>"
+      }
+    ]
+  }
+]

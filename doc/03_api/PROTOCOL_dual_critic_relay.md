@@ -83,6 +83,8 @@ v3 必填 `driver_declaration: {model, provider, source}`（可选 CLI 的会话
 
 接入旗标由注册表 `supportsProfiles` 派生：`--profile-<id> <name>` 或 `--native-<id>`，同侧同时给出退 64。Claude 非空 profile 经 `cld --profile <name> --print`，正文走 stdin；null 为原生、缺席继承。优先级为单次参数 → 档位条目 → Agent 配置，模型与 effort 独立。`--driver-model` / `--driver-provider` 缺席合法、在场缺值退 64。已知不存在的 profile 退 64；入口、凭据、服务、只读能力不可用退 69；预检与审查准备都先检查参数组合。认证缓存按 Agent/模式/profile/模型/effort 隔离，失败不自动切换路线。
 
+本仓临时供应商策略（2026-10-10）：Claude default/flash → `qwen3.8-flash + qwen`，pro/high → `qwen3.8-max + qwen`；显式Kimi/DeepSeek同时提供`--profile-claude`与`--model-claude`。此为项目配置，不删除native协议能力；官方实测仍待订阅恢复。Qwen默认组合准入后恢复本仓三审，七条全准入仍用于M11前置收口。
+
 ### `trivium.config.v2` 的迁移与两段式校验（设计 13.1.1）
 
 `loadCtx` 对**每个** YAML 源单独做 v1 → v2 迁移，且**在四级合并之前**——
@@ -441,3 +443,5 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 | `hooks --agent <id> [--dry-run]` | 单独为一家渲染并合并 Hook 配置（M10b 第 3 步）：落点与形态取注册表 `hookConfigTarget`——claude 写 `.claude/settings.json`，glm 写 `.zcode/config.json`；codex / gemini 没有 Hook 机制，退 64 且零写入。`--dry-run` 零落盘。当轮 Driver 的判定**不读** `--agent`（设计 8.4 注记），它只选渲染目标 |
 
 参数细节见 `trivium --help`，它与实现同源、不会脱节。
+
+2026-10-10本仓配置实例：Codex接入的profile显式null选择官方native，default/flash/pro各自阶段模型分别为gpt-6.1-sol、gpt-6-luna、gpt-6-astra；CLI请求、官方配置声明和运行回读继续分别记录，不把配置默认值当回读证据。第三方profile可显式覆盖，协议和历史Schema不变。
