@@ -1,0 +1,17 @@
+{
+  "target": "claude",
+  "code": 0,
+  "stdout": "TriviumCode 安装\n────────────────────────────────────────────────────────────\n  + 运行时根 /Users/chenzhenbo/.claude/skills/dual-critic（23 个文件）\n  + claude：/Users/chenzhenbo/.claude/skills（7 个入口，7 个文件）\n  = codex：跳过（本次未选）\n  = gemini：跳过（本次未选）\n  = glm：跳过（本次未选）\n  + /Users/chenzhenbo/.gemini/config/agents/trivium-critic/agent.md\n\n共 30 个文件。\n下一步（`trivium` 不在 PATH 上，用下面的完整命令）：\n  1. 实测本机能力（会消耗少量厂商配额）：\n       node /Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs doctor\n  2. 在要启用双审的项目根启用：\n       node /Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs init\n  3. init 之后该项目内改用 wrapper（内含 node 绝对路径——GUI 进程不读 ~/.zshrc）：\n       ./.trivium/bin/trivium doctor\n  4. 用 `/dual-review-plan <审查焦点>` 试跑一条（各家的调用写法见 QUICKSTART）。\n  升级：重新 `npm run build && node dist/install.cjs`（会裁剪旧版残留），各项目内重跑 init 刷新 wrapper。\n  只装部分家：`node dist/install.cjs --targets claude,glm`（运行时根照装）。\n  卸载：`node dist/install.cjs --uninstall`。\n",
+  "stderr": "",
+  "global_config_before": {
+    ".claude/settings.json": "022d0d8148e3a86870a3313e68fd4f1e88ad1c6f577730c26e2cd51c386bc052",
+    ".codex/config.toml": "008cf2ec5394718d41d8290ae516996c0f4bf5f4369ea34d1c59c52837b032e1",
+    ".codex/hooks.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+  },
+  "global_config_after": {
+    ".claude/settings.json": "022d0d8148e3a86870a3313e68fd4f1e88ad1c6f577730c26e2cd51c386bc052",
+    ".codex/config.toml": "008cf2ec5394718d41d8290ae516996c0f4bf5f4369ea34d1c59c52837b032e1",
+    ".codex/hooks.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+  },
+  "global_config_unchanged": true
+}

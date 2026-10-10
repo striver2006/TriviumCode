@@ -38,6 +38,8 @@ P-01～P-15 是 M0 探针实测；P-16～P-18 是 M4/M5 真实运行期补录；
 
 2026-10-09 接入准入注意：`cld -p` 与 Claude 的打印旗标存在歧义，统一经 `cld --profile <name> --print`；Claude 的 profile 模型映射只是声明，不能当运行时供应商回读。每路线能力结论需匹配包装器/profile/CLI版本指纹。实测证据与未完成项将归入本次接入验收报告，未验路线不得套用官方模式结论。此段为实施约束，未新增实测 P 编号。
 
+2026-10-10补测执行约束：原48次脚本保持不变，使用新的统一调用器和独立台账。Node侧车需在原生CLI边界卸下，避免模型自己的Node读取命令继承证据写入；Node包装器及编排worker仍核对装载证明。Claude负对照只看到Glob或无工具时不能判写入拦截通过。Qwen的未知工具拒绝属于注册层；Kimi/DeepSeek注册Write后确有配对权限拒绝，但工具面不同，不替代生产同形未测项，错误文案也不独自证明deny规则命中。没有新增实测结论时不得新增P编号。
+
 原生Claude也清理ANTHROPIC_*及冲突模型路由环境，仅使用官方登录凭据或CLAUDE_CODE_OAUTH_TOKEN；兼容网关须显式profile。重探时必须带所需的 --native-claude 或 --profile-claude <名>，缺省doctor只探配置路线。Codex原生发现基底第三方provider、非官方入口或API凭据时明确拒绝，不自动切换认证。
 
 | # | 坑 | 影响 | 对策 |

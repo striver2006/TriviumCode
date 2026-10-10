@@ -1,0 +1,84 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "双模式真实准入补测",
+  "goal": "补齐“Codex、Claude Code 双模式接入与异构判定修正”的真实验收，作为 M11 第12步全量验收的前置任务。",
+  "created_at": "2026-10-09T23:54:43.018Z",
+  "updated_at": "2026-10-10T02:05:55.075Z",
+  "runs": [
+    {
+      "run_id": "20261009T235453Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-09T23:54:55.032Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261010T001656Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "full",
+      "started_at": "2026-10-10T00:16:59.338Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261010T005455Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-10T00:54:58.002Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261010T013815Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-10T01:43:53.544Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "codex",
+      "claimed_at": "2026-10-09T23:54:43.019Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "codex",
+      "claimed_at": "2026-10-10T00:04:46.307Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261009T235453Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-10-10T00:05:35.541Z"
+    },
+    {
+      "run_id": "20261010T005455Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-10-10T02:05:55.075Z"
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "observed_at": "2026-10-10T01:57:50.990Z",
+  "report": "doc/05_testing/REPORT_2026-10-10_agent_access_admission.md",
+  "summary": "summary-4cf8f088-ca06-4767-a6f7-c22821c718b2.json",
+  "old_budget": {
+    "used": 48,
+    "limit": 48,
+    "unchanged": true
+  },
+  "pools": {
+    "admission": {
+      "limit": 100,
+      "used": 100,
+      "completed": 100,
+      "incomplete": [],
+      "loaded_missing": [],
+      "legacy_without_loaded_proof": []
+    },
+    "review": {
+      "limit": 40,
+      "used": 29,
+      "completed": 29,
+      "incomplete": [],
+      "loaded_missing": [],
+      "legacy_without_loaded_proof": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ]
+    }
+  },
+  "sources": [
+    {
+      "source": "scripts/agent-access-admission.mjs",
+      "sha256": "69667ff00fd4c5fbcf7bc2d989a6ddc955ca5bd053ea07d2d24c610961241a6c",
+      "matches_frozen": true
+    },
+    {
+      "source": "scripts/agent-access-budget-preload.cjs",
+      "sha256": "2b74abf72f7f67edb61879b58798761c6c53ade68ba92aa3dea07cb98b592b71",
+      "matches_frozen": true
+    },
+    {
+      "source": "scripts/agent-access-budget.cjs",
+      "sha256": "c70a39ad6c041d9bb5b2cf39d32927c7e3d936e94f7d3f82988db9af2b55bb9b",
+      "matches_frozen": true
+    },
+    {
+      "source": "scripts/agent-access-evidence.mjs",
+      "sha256": "963502fbbef9d062d011d3efc870fab35a0d20f72a11fd8e4298937944e2756c",
+      "matches_frozen": true
+    },
+    {
+      "source": "scripts/agent-access-launch.mjs",
+      "sha256": "a6efd97f5b0c0b333ce5ac09fc56e96f152c319c92fccbf19effc1826cd012c9",
+      "matches_frozen": true
+    },
+    {
+      "source": "scripts/agent-access-summary.mjs",
+      "sha256": "f4d5ff338ff5ea43c3cadbe318b4f551f0ac0fd88f3f5154609c9595bf3095ce",
+      "matches_frozen": true
+    }
+  ],
+  "configuration": "configuration-final.json",
+  "checks": "checks/final-checks.json",
+  "installed_bundle": "install-final.json",
+  "installed_agent_source": "install-agent-final.json",
+  "review_disposition": ".reviews/双模式真实准入补测/code/2026-10-10-双模式真实准入补测-r2-response-codex.md",
+  "formal_verify": ".reviews/双模式真实准入补测/verify/_meta/verify-20261010T013815Z.json",
+  "prerequisite_complete": false,
+  "m11_step12_started": false,
+  "remaining": [
+    "Claude/Kimi生产同形实际写尝试未测",
+    "Claude/DeepSeek生产同形实际写尝试未测",
+    "共享Qwen pro切换及三审恢复未测",
+    "配置事务/回滚与恢复后三审核验未测",
+    "官方Claude待订阅恢复"
+  ],
+  "commit_push_performed": false
+}

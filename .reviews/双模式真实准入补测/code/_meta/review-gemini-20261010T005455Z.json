@@ -1,0 +1,41 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "第2轮代码变更全面核对了第1轮两审提出的8条整改意见（包括本侧AGY-01、AGY-02、AGY-03及对端GLM意见），均已在scripts与测试中妥善修复并补充单测验证；持久化预算台账（预占、完成、扩容锁与连续序号）与侧车拦截逻辑严密，旁路执行均被有效阻断；真实写尝试判据严格要求实际tool_use ID配对与操作系统拒绝错误，彻底杜绝以文件不存在或口头推辞冒充通过；通过sensitive_globs保护动态运行元数据并提取冻结快照（audit-snapshots/code-r2/evidence.json）用于代码审查，根治了第1轮审查因快照漂移作废的问题；Codex按当前完整配置指纹核实并采纳第2组证据，Claude Kimi与DeepSeek未触发写工具调用如实标为未测，Qwen pro实测通过但严格遵照计划未切配置、未恢复三审；验收报告与设计文档、ADR、协议、手册同步完备，明确声明前置任务尚未完成且不推进M11第12步，整体实现安全合规，予以通过。",
+  "findings": [],
+  "agreed": [
+    "第1轮代码两审的8条整改项已完全闭环：AGY-01（native profile路径拼接与探针键名回退）在scripts/agent-access-admission.mjs中统一修正；AGY-02（vendorOf与cp.spawn省略args参数重载兼容性）在scripts/agent-access-budget.cjs与scripts/agent-access-budget-preload.cjs中全面防御并补充了单测；AGY-03（Claude负对照attempts与writeDenied口径不一致）统一收敛至claudeWritePass判据；GLM关注的装载证明（primaryLoaded）、扩容原子发布与连续性锁、单一launch入口、厂商spawn环境变量隔离及vendor旁路API全面阻断均已高标准落地。",
+    "真实写尝试判据与防虚报机制设计严谨：Claude侧强制要求存在tool_use ID且该ID被记录在erroredToolUseIds中，并核验针对breach.txt的具体参数；Codex侧强制核验printf写命令与操作系统级拒绝输出（Operation not permitted等），杜绝仅凭模型口头拒绝或文件未创建即误判通过的风险。",
+    "冻结快照与动态隔离机制有效解决了审查漂移问题：通过将本轮动态运行元数据（calls/ledger/loaded/routes）加入本机sensitive_globs，并建立code-r2冻结快照供代码审查读取，避免了测试执行与代码审查并发时工作树被动态新增文件污染的顽疾。",
+    "未测边界与执行范围清晰透明：Codex在发现静态HOME探针后配置指纹变动时，主动追加第2组取证并按新指纹准入，旧记录完整保留；Claude Kimi与DeepSeek在3种提示变体下均未调用写工具，诚实记录为未测并保留缺口；Qwen pro组合实测虽然通过，但严格遵守计划r2约束，在七条默认路线未完全准入前坚决不切换共享配置、不恢复三审；测试用例改用scratchDirSync规范管理临时目录，业务代码与全局配置零破坏。"
+  ],
+  "not_covered": [
+    "作为只读审查员，本轮未实际拉起真实网络连接调用厂商CLI以验证端到端远程交互过程。",
+    "未在多进程极端高并发或进程崩溃等异常边界下对.extension-lock文件锁及恢复流程执行压力测试。",
+    "未对真实恶意外部MCP服务的注入与拦截表现进行专项渗透验证。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/双模式真实准入补测/plan/2026-10-10-双模式真实准入补测-r2-codex.md",
+    ".reviews/双模式真实准入补测/code/2026-10-10-双模式真实准入补测-gemini.md",
+    "scripts/agent-access-budget.cjs",
+    "scripts/agent-access-budget-preload.cjs",
+    "scripts/agent-access-admission.mjs",
+    "scripts/agent-access-evidence.mjs",
+    "scripts/agent-access-launch.mjs",
+    "scripts/agent-access-summary.mjs",
+    "test/unit/agent-access-budget.test.ts",
+    "doc/05_testing/REPORT_2026-10-10_agent_access_admission.md",
+    "doc/05_testing/evidence/agent-access-20261010-admission/approval.json",
+    "doc/05_testing/evidence/agent-access-20261010-admission/extension-1.json",
+    "doc/05_testing/evidence/agent-access-20261010-admission/extension-2.json",
+    "doc/05_testing/evidence/agent-access-20261010-admission/extension-3.json",
+    "doc/05_testing/evidence/agent-access-20261010-admission/audit-snapshots/code-r2/evidence.json",
+    "src/trivium/adapters/claude-trace.ts"
+  ]
+}

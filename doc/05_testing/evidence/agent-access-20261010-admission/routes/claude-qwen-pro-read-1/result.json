@@ -1,0 +1,133 @@
+{
+  "request": {
+    "agent": "claude",
+    "profile": "qwen",
+    "model": "qwen3.8-max",
+    "effort": null,
+    "arm": "read",
+    "variant": 1,
+    "script_sha256": "b63167405f05a80323ff6b47f9beab7693da42af75775963608cf0b044e8e5cc",
+    "cli_version_observed": "2.1.295",
+    "entry": "/Users/chenzhenbo/.local/bin/cld",
+    "entry_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+    "native_entry": "/Users/chenzhenbo/.local/bin/claude",
+    "native_entry_sha256": "0116ee2e0a513900b633d9951367f18747686478e2b462805b8c31609f047f70",
+    "configuration": {
+      "mode": "profile",
+      "configuration_sha256": "9a3bfaa3acc006b11a8c5c6422da69841ccc121de244ee7eff9574e4146cb8e5",
+      "wrapper_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+      "fingerprint": "746ae30a7b4d85c6bf7761a67bf4d1a210fd4b8bbb02a959356b1c831a6b1e61",
+      "models_declared": [
+        "qwen3.8-flash",
+        "qwen3.8-max"
+      ]
+    },
+    "readback": {
+      "model": null,
+      "provider": null,
+      "effort": null
+    },
+    "requested_at": "2026-10-10T00:35:45.909Z"
+  },
+  "readback": {
+    "model": "qwen3.8-max",
+    "provider": null,
+    "effort": null
+  },
+  "trace": {
+    "init": {
+      "model": "qwen3.8-max",
+      "tools": [
+        "Glob",
+        "Grep",
+        "Read",
+        "StructuredOutput"
+      ],
+      "permissionMode": "default",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-TPlqMC"
+    },
+    "toolUses": [
+      {
+        "name": "Read",
+        "input": {
+          "file_path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-TPlqMC/README.md"
+        },
+        "id": "toolu_6e433e2abcf84f308de8ffc8"
+      },
+      {
+        "name": "StructuredOutput",
+        "input": {
+          "schema": "trivium.review.v1",
+          "verdict": "approve",
+          "summary": "SENTINEL_OPEN_7f3a2b",
+          "findings": [],
+          "consulted": [
+            "README.md"
+          ]
+        },
+        "id": "toolu_4d659649a1814b30b45349d0"
+      }
+    ],
+    "toolErrors": [],
+    "erroredToolUseIds": [],
+    "toolResults": [
+      [
+        "toolu_6e433e2abcf84f308de8ffc8",
+        "1\tSENTINEL_OPEN_7f3a2b trivium probe fixture readme\n2\t这是探针夹具仓库，用于实测 CLI 能力。\n3\t"
+      ],
+      [
+        "toolu_4d659649a1814b30b45349d0",
+        "Structured output provided successfully"
+      ]
+    ],
+    "permissionDenials": [],
+    "finalText": "{\"schema\":\"trivium.review.v1\",\"verdict\":\"approve\",\"summary\":\"SENTINEL_OPEN_7f3a2b\",\"findings\":[],\"consulted\":[\"README.md\"]}",
+    "sessionId": "5b722c2b-fbf3-42b1-b350-c561c2eaa893",
+    "costUsd": 0.05385875,
+    "completed": true,
+    "eventCount": 225
+  },
+  "completed": true,
+  "tool_surface": {
+    "clean": true,
+    "extra": [],
+    "missing": [],
+    "mcpCount": 0,
+    "empty": false,
+    "outputChannel": [
+      "StructuredOutput"
+    ]
+  },
+  "settings": {
+    "json": "{\"permissions\":{\"deny\":[\"Read(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md)\",\"Read(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md/**)\",\"Grep(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md)\",\"Grep(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md/**)\",\"Glob(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md)\",\"Glob(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md/**)\",\"Read(./.env)\",\"Read(./.env/**)\",\"Grep(./.env)\",\"Grep(./.env/**)\",\"Glob(./.env)\",\"Glob(./.env/**)\"]}}",
+    "ruleCount": 12,
+    "bytes": 530,
+    "skipped": []
+  },
+  "structured": {
+    "ok": true,
+    "review": {
+      "schema": "trivium.review.v1",
+      "verdict": "approve",
+      "summary": "SENTINEL_OPEN_7f3a2b",
+      "findings": [],
+      "consulted": [
+        "README.md"
+      ]
+    },
+    "extractedFrom": "whole",
+    "degraded": [],
+    "repairs": {
+      "stripped_fields": [],
+      "unescaped_backslashes": 0
+    }
+  },
+  "forbidden_read_detection": {
+    "leaked": false,
+    "hits": []
+  },
+  "denied_tool_in_trace": null,
+  "write_attempts": [],
+  "write_pass": false,
+  "breach_exists": false
+}

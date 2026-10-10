@@ -6,6 +6,8 @@
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
 >
 > **当前写契约**：`config.v2` / `run.v3` / 四家审核者 / `--driver <id>`；`run.v1`、`run.v2` 原形保留并严格分发读取，verify 独立。双模式真实准入状态以本次验收报告为准。
+
+> 2026-10-10真实补测独立保存请求、配置指纹、回读和轨迹，不回写历史run/Schema。准入预算与正式审查预算分池，预占先于spawn，现行机制扩容序列连续且原子发布，重启不清零。首条bootstrap扩容的发布机制和确切时刻无回读，另记边界，不追写历史。工具没有实际尝试时拒绝结论为null；供应商/effort没有运行回读时为null。原48/48证据冻结。
 > `run.v2`（含 `driver` / `critics_selected` / `review_mode: full|partial`）于 M7b 第 3 步生效，规范见设计 6.7.1；
 > `config.v2`（`critics.*` → `agents.*`、`allow_single_flag` → `allow_partial_flag`、
 > 新增 `review.default_critics` / `max_critics`）于第 4 步生效，规范见设计 13.1.1。

@@ -1,0 +1,353 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "codex",
+      "right": "gemini",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "gemini-3.8-flash-high",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "codex",
+      "right": "glm",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "bigmodel-coding-plan/GLM-5.3",
+      "left_source": null,
+      "right_source": "trace",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "gemini",
+      "right": "glm",
+      "status": "different-family",
+      "left_model": "gemini-3.8-flash-high",
+      "right_model": "bigmodel-coding-plan/GLM-5.3",
+      "left_source": "envelope",
+      "right_source": "trace",
+      "reason": "模型族不同：gemini / glm"
+    }
+  ],
+  "run_id": "20261009T235453Z",
+  "topic": "双模式真实准入补测",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "补齐“Codex、Claude Code 双模式接入与异构判定修正”的真实验收，作为 M11 第12步全量验收的前置任务。",
+  "entry": "A",
+  "driver": "codex",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "profile": "default",
+  "critics_selected": [
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "b04cc302fbefa1ed1737edb676a6dc70eadba89c",
+    "tree_hash": "b3bb47b17e3e04bae555228724a5a580b73fce3d",
+    "dirty": true,
+    "subject_sha256": "7efa8562753e8712c35acd9db7c34b8f1e308b98912a8a2d154c567029cbca6a",
+    "drift": {
+      "changed": true,
+      "files": [
+        "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/launch-0010.json",
+        "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/launch-0011.json",
+        "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/launch-0012.json",
+        "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/launch-0013.json",
+        "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/reserved-0010.json",
+        "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/reserved-0011.json",
+        "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/reserved-0012.json",
+        "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/reserved-0013.json"
+      ],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "b04cc302fbefa1ed1737edb676a6dc70eadba89c",
+      "dirty": false,
+      "inputs_sha256": "e3f26eef1102219982103fca18a0209c5ed0de8601e52ed333a4e95ed6126ace",
+      "built_at": "2026-10-09T23:33:00.436Z"
+    },
+    "after_tree_hash": "7171d0c37ea2623b914ad54d1976bcf19bb0ccce"
+  },
+  "started_at": "2026-10-09T23:54:55.032Z",
+  "finished_at": "2026-10-10T00:02:53.883Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.2",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 343.715,
+      "tool_calls": {
+        "read": 32,
+        "grep": 5,
+        "glob": 5,
+        "run_command": 0,
+        "project_reads": 27
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 170437,
+        "output_tokens": 28172,
+        "thinking_tokens": 22678,
+        "cache_read_tokens": 3187809,
+        "total_tokens": 198609
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+        "launcher_effective": "/Users/chenzhenbo/.local/bin/agy",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "127a8b43-136f-41bd-a371-28978aee46fd",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 477.725,
+      "tool_calls": {
+        "read": 16,
+        "grep": 8,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 21
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 9,
+        "inputTokens": 534002,
+        "outputTokens": 31700,
+        "totalTokens": 565702,
+        "cacheReadTokens": 467968,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "launcher_effective": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_a036ee9b-6333-4538-973c-28d6c8df3925",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "requested_routes": {
+    "gemini": {
+      "model": "gemini-3.8-flash-high",
+      "effort": "high",
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    },
+    "glm": {
+      "model": "GLM-5.3",
+      "effort": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "/Users/chenzhenbo/.trivium/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "双模式真实准入补测/plan/_meta/brief-gemini-20261009T235453Z.md",
+      "sha256": "f3569bb9e179b7024ddedf7e48250787dc29a9655f7da034953e70bf5da99e38"
+    },
+    {
+      "path": "双模式真实准入补测/plan/_meta/brief-glm-20261009T235453Z.md",
+      "sha256": "038ca7b4986e4d88ec257df5bb362f8ea545455baa6aeba60f27994ffd1edb81"
+    },
+    {
+      "path": "双模式真实准入补测/plan/_meta/review-gemini-20261009T235453Z.json",
+      "sha256": "ccb604552a6d1f6ce2d009ec7af5a96f415c1ee8aeab3b45028ea1b58cd9cd14"
+    },
+    {
+      "path": "双模式真实准入补测/plan/_meta/review-glm-20261009T235453Z.json",
+      "sha256": "5eabf670e782ee7bad2a4fc8d5475bf1dcf84eff3153e6d9a509d04a1e58cf52"
+    },
+    {
+      "path": "双模式真实准入补测/plan/2026-10-10-双模式真实准入补测-gemini.md",
+      "sha256": "d63a270e6d76d24e0324c154d869eb791363028310c29f09f42a0affe769c1f8"
+    },
+    {
+      "path": "双模式真实准入补测/plan/2026-10-10-双模式真实准入补测-glm.md",
+      "sha256": "8eb9637bed8b6892d9ebcdbb6b6ea3cb28d38bfd063d0202d76e300be7074802"
+    },
+    {
+      "path": "双模式真实准入补测/plan/2026-10-10-双模式真实准入补测-codex.md",
+      "sha256": "7efa8562753e8712c35acd9db7c34b8f1e308b98912a8a2d154c567029cbca6a"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

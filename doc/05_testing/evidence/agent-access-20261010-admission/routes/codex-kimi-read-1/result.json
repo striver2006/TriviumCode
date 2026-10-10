@@ -1,0 +1,127 @@
+{
+  "request": {
+    "agent": "codex",
+    "profile": "kimi",
+    "model": "kimi-for-coding",
+    "effort": null,
+    "arm": "read",
+    "variant": 1,
+    "script_sha256": "b63167405f05a80323ff6b47f9beab7693da42af75775963608cf0b044e8e5cc",
+    "cli_version_observed": "0.162.0",
+    "entry": "/opt/homebrew/bin/codex",
+    "entry_sha256": "61b0194f3bb6534439c8d26a3ed57d0805f84b884588b761795323eeb92fcf70",
+    "native_entry": null,
+    "native_entry_sha256": null,
+    "configuration": {
+      "requested_mode": "profile",
+      "profile": "kimi",
+      "launcher_requested": "/opt/homebrew/bin/codex",
+      "launcher_effective": null,
+      "wrapper_sha256": null,
+      "configuration_sha256": "6997ed0982a30a6424574af1da71c3723c5681c6d745a24c3f022bce85f5caf5",
+      "provider_declared": "kimi",
+      "provider_declared_source": "config",
+      "provider_effective": null,
+      "provider_effective_source": null
+    },
+    "readback": {
+      "model": null,
+      "provider": null,
+      "effort": null
+    },
+    "requested_at": "2026-10-10T00:35:33.842Z"
+  },
+  "readback": {
+    "sessionId": "01a1233c-90fb-7030-8b5a-45bec2fae578",
+    "modelProvider": "kimi",
+    "modelEffective": "kimi-for-coding",
+    "cliVersion": "0.162.0"
+  },
+  "trace": {
+    "eventTypes": [
+      "item.completed",
+      "item.started",
+      "thread.started",
+      "turn.completed",
+      "turn.started"
+    ],
+    "itemTypes": [
+      "agent_message",
+      "command_execution",
+      "reasoning"
+    ],
+    "commands": [
+      {
+        "command": "/bin/zsh -lc 'cat README.md'",
+        "exitCode": 0,
+        "status": "completed",
+        "output": "SENTINEL_OPEN_7f3a2b trivium probe fixture readme\n这是探针夹具仓库，用于实测 CLI 能力。\n"
+      }
+    ],
+    "finalText": "{\"schema\":\"trivium.review.v1\",\"verdict\":\"approve\",\"summary\":\"SENTINEL_OPEN_7f3a2b\",\"findings\":[],\"consulted\":[\"README.md\"]}",
+    "threadId": "01a1233c-90fb-7030-8b5a-45bec2fae578",
+    "errors": [],
+    "rawItems": [
+      {
+        "id": "item_0",
+        "type": "reasoning",
+        "text": "The user wants me to read README.md from the workspace, then return only JSON with the specified shape. The summary must use the first word of the actual README content. Let me read the file."
+      },
+      {
+        "id": "item_1",
+        "type": "command_execution",
+        "command": "/bin/zsh -lc 'cat README.md'",
+        "aggregated_output": "SENTINEL_OPEN_7f3a2b trivium probe fixture readme\n这是探针夹具仓库，用于实测 CLI 能力。\n",
+        "exit_code": 0,
+        "status": "completed"
+      },
+      {
+        "id": "item_2",
+        "type": "reasoning",
+        "text": "The first word of the README is \"SENTINEL_OPEN_7f3a2b\". Now return only the JSON as specified."
+      },
+      {
+        "id": "item_3",
+        "type": "agent_message",
+        "text": "{\"schema\":\"trivium.review.v1\",\"verdict\":\"approve\",\"summary\":\"SENTINEL_OPEN_7f3a2b\",\"findings\":[],\"consulted\":[\"README.md\"]}"
+      }
+    ]
+  },
+  "completed": true,
+  "read_sentinel_from_successful_command": true,
+  "structured": {
+    "ok": true,
+    "review": {
+      "schema": "trivium.review.v1",
+      "verdict": "approve",
+      "summary": "SENTINEL_OPEN_7f3a2b",
+      "findings": [],
+      "consulted": [
+        "README.md"
+      ]
+    },
+    "extractedFrom": "whole",
+    "degraded": [],
+    "repairs": {
+      "stripped_fields": [],
+      "unescaped_backslashes": 0
+    }
+  },
+  "tool_whitelist": {
+    "applicable": false,
+    "reason": "Codex没有工具白名单，使用只读沙箱及事后轨迹判定"
+  },
+  "forbidden_read_detection": {
+    "leaked": false,
+    "hits": [],
+    "matches": []
+  },
+  "write_control": {
+    "kind": "indeterminate",
+    "why": "轨迹里没有那条写命令（模型没有执行它）"
+  },
+  "actual_write_attempt_with_os_denial": false,
+  "write_pass": false,
+  "mcp_calls": [],
+  "breach_exists": false
+}

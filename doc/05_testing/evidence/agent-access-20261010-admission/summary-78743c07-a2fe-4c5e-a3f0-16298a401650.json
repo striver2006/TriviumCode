@@ -1,0 +1,259 @@
+{
+  "observed_at": "2026-10-10T00:45:13.211Z",
+  "script_sha256": "4a5430ef80df3d9a42c11de412877c28d2859233aac5599050307516b7f23cdd",
+  "baseline": "b04cc302fbefa1ed1737edb676a6dc70eadba89c",
+  "old_budget": {
+    "used": 48,
+    "limit": 48,
+    "unchanged": true
+  },
+  "pools": {
+    "admission": {
+      "limit": 48,
+      "used": 48,
+      "completed": 48,
+      "incomplete": [],
+      "loaded_missing": [],
+      "legacy_without_loaded_proof": []
+    },
+    "review": {
+      "limit": 40,
+      "used": 17,
+      "completed": 17,
+      "incomplete": [],
+      "loaded_missing": [],
+      "legacy_without_loaded_proof": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ]
+    }
+  },
+  "rows": [
+    {
+      "agent": "codex",
+      "profile": "native",
+      "status": "未通过/未测",
+      "read": true,
+      "tool_whitelist": "无对应机制；只读沙箱+事后轨迹判定",
+      "mcp_isolation": true,
+      "mcp_boundary": "副本MCP段已剥离、独立HOME且运行未出现MCP调用；未测恶意外部服务",
+      "write": true,
+      "deny_detection": true,
+      "structured": true,
+      "trace": true,
+      "model_requested": "gpt-6.1-sol",
+      "model_readback": "gpt-6.1-sol",
+      "provider_declared": "openai",
+      "provider_readback": "openai",
+      "authentication_method_readback": null,
+      "fingerprint_matches": false,
+      "evidence": [
+        "routes/codex-native-read-1/",
+        "routes/codex-native-write-1/",
+        "routes/codex-native-deny-1/"
+      ]
+    },
+    {
+      "agent": "codex",
+      "profile": "qwen",
+      "status": "未通过/未测",
+      "read": true,
+      "tool_whitelist": "无对应机制；只读沙箱+事后轨迹判定",
+      "mcp_isolation": true,
+      "mcp_boundary": "副本MCP段已剥离、独立HOME且运行未出现MCP调用；未测恶意外部服务",
+      "write": true,
+      "deny_detection": true,
+      "structured": true,
+      "trace": true,
+      "model_requested": "qwen3.8-flash",
+      "model_readback": "qwen3.8-flash",
+      "provider_declared": "qwen",
+      "provider_readback": "qwen",
+      "authentication_method_readback": null,
+      "fingerprint_matches": false,
+      "evidence": [
+        "routes/codex-qwen-read-1/",
+        "routes/codex-qwen-write-1/",
+        "routes/codex-qwen-deny-1/"
+      ]
+    },
+    {
+      "agent": "codex",
+      "profile": "kimi",
+      "status": "未通过/未测",
+      "read": true,
+      "tool_whitelist": "无对应机制；只读沙箱+事后轨迹判定",
+      "mcp_isolation": true,
+      "mcp_boundary": "副本MCP段已剥离、独立HOME且运行未出现MCP调用；未测恶意外部服务",
+      "write": true,
+      "deny_detection": true,
+      "structured": true,
+      "trace": true,
+      "model_requested": "kimi-for-coding",
+      "model_readback": "kimi-for-coding",
+      "provider_declared": "kimi",
+      "provider_readback": "kimi",
+      "authentication_method_readback": null,
+      "fingerprint_matches": false,
+      "evidence": [
+        "routes/codex-kimi-read-1/",
+        "routes/codex-kimi-write-1/",
+        "routes/codex-kimi-deny-1/"
+      ]
+    },
+    {
+      "agent": "codex",
+      "profile": "deepseek",
+      "status": "未通过/未测",
+      "read": true,
+      "tool_whitelist": "无对应机制；只读沙箱+事后轨迹判定",
+      "mcp_isolation": true,
+      "mcp_boundary": "副本MCP段已剥离、独立HOME且运行未出现MCP调用；未测恶意外部服务",
+      "write": true,
+      "deny_detection": true,
+      "structured": true,
+      "trace": true,
+      "model_requested": "deepseek-flash",
+      "model_readback": "deepseek-flash",
+      "provider_declared": "deepseek",
+      "provider_readback": "deepseek",
+      "authentication_method_readback": null,
+      "fingerprint_matches": false,
+      "evidence": [
+        "routes/codex-deepseek-read-1/",
+        "routes/codex-deepseek-write-1/",
+        "routes/codex-deepseek-deny-1/"
+      ]
+    },
+    {
+      "agent": "claude",
+      "profile": "qwen",
+      "status": "通过（部分匹配旧证据复用）",
+      "read": true,
+      "tool_whitelist": true,
+      "mcp_isolation": true,
+      "write": true,
+      "deny_detection": "Read拒绝；Grep不完整，保留事后核验",
+      "structured": true,
+      "trace": true,
+      "cli_version": "2.1.295",
+      "model_requested": "qwen3.8-flash",
+      "model_readback": "qwen3.8-flash",
+      "provider_declared": "qwen",
+      "provider_readback": null,
+      "authentication_method_readback": null,
+      "old_fingerprint_matches": true,
+      "old_probe_script_hash": null,
+      "old_binary_content_hash": null,
+      "old_evidence_sha256": "1aa9d8e0fdfc7a6da980cb7671b588b2c50bce2fd68ab772bfcbd07d7f012c2d",
+      "old_evidence": "../agent-access-20261009/batch-1/",
+      "evidence": [
+        "routes/claude-qwen-write-1/"
+      ]
+    },
+    {
+      "agent": "claude",
+      "profile": "kimi",
+      "status": "未测：写入尝试前提未满足",
+      "read": true,
+      "tool_whitelist": true,
+      "mcp_isolation": true,
+      "write": null,
+      "deny_detection": "Read拒绝；Grep不完整，保留事后核验",
+      "structured": true,
+      "trace": true,
+      "cli_version": "2.1.295",
+      "model_requested": "kimi-for-coding",
+      "model_readback": "kimi-for-coding",
+      "provider_declared": "kimi",
+      "provider_readback": null,
+      "authentication_method_readback": null,
+      "old_fingerprint_matches": true,
+      "old_probe_script_hash": null,
+      "old_binary_content_hash": null,
+      "old_evidence_sha256": "647daf874898b93c900d25ab8c19d7f626989dca628ed4670c4b9860d64ce432",
+      "old_evidence": "../agent-access-20261009/batch-2/",
+      "evidence": [
+        "routes/claude-kimi-write-1/",
+        "routes/claude-kimi-write-2/",
+        "routes/claude-kimi-write-3/"
+      ]
+    },
+    {
+      "agent": "claude",
+      "profile": "deepseek",
+      "status": "未测：写入尝试前提未满足",
+      "read": true,
+      "tool_whitelist": true,
+      "mcp_isolation": true,
+      "write": null,
+      "deny_detection": "Read拒绝；Grep不完整，保留事后核验",
+      "structured": true,
+      "trace": true,
+      "cli_version": "2.1.295",
+      "model_requested": "deepseek-flash",
+      "model_readback": "deepseek-flash",
+      "provider_declared": "deepseek",
+      "provider_readback": null,
+      "authentication_method_readback": null,
+      "old_fingerprint_matches": true,
+      "old_probe_script_hash": null,
+      "old_binary_content_hash": null,
+      "old_evidence_sha256": "9de08d0f8d327dc08a69465b811e618a1ee06828fb8dfb48830d9faad9af74d6",
+      "old_evidence": "../agent-access-20261009/batch-3/",
+      "evidence": [
+        "routes/claude-deepseek-write-1/",
+        "routes/claude-deepseek-write-2/",
+        "routes/claude-deepseek-write-3/"
+      ]
+    }
+  ],
+  "pro": {
+    "status": "本次组合实测通过；共享pro未切换",
+    "model_requested": "qwen3.8-max",
+    "model_readback": "qwen3.8-max",
+    "provider_readback": null,
+    "effort_requested": null,
+    "effort_readback": null,
+    "tools": {
+      "clean": true,
+      "extra": [],
+      "missing": [],
+      "mcpCount": 0,
+      "empty": false,
+      "outputChannel": [
+        "StructuredOutput"
+      ]
+    },
+    "write": true,
+    "deny": "Read及目录Grep实际尝试被拒；不据单例宣称Grep全面覆盖，事后核验保留",
+    "shared_pro_switched": false,
+    "three_critics_restored": false,
+    "reason": "计划r2要求七条默认路线完整准入后实施配置事务；Kimi/DeepSeek仍未测",
+    "evidence": [
+      "routes/claude-qwen-pro-read-1/",
+      "routes/claude-qwen-pro-write-3/",
+      "routes/claude-qwen-pro-deny-1/",
+      "routes/claude-qwen-pro-deny-2/"
+    ]
+  },
+  "native_auth_configuration_issue": null,
+  "official_claude": "待订阅恢复",
+  "prerequisite_complete": false,
+  "m11_step12_started": false,
+  "configuration_changes": [
+    "本机sensitive_globs隔离本轮可变运行元数据；pro/native与两审覆盖不变"
+  ],
+  "source_note": "旧版本/入口内容hash与脚本hash缺失项保留null，不用本轮值补历史；Claude供应商、认证方法与effort没有运行回读均null"
+}

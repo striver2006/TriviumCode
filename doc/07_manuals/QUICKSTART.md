@@ -90,6 +90,8 @@ node ~/.claude/skills/dual-critic/scripts/trivium.cjs doctor
 想先不烧配额，可以 `doctor --no-model-calls` 只做静态探测；但模型调用相关的结论
 会留空，`preflight` 随后会报环境不可用。
 
+路线准入须逐组合核对真实读取、写入尝试及拒绝、禁读、MCP与输出轨迹；文件不存在不能证明写入拦截。版本或profile指纹变化后旧结论不能直接复用。2026-10-10本仓补测仍有Claude/Kimi、DeepSeek写入尝试未测，官方Claude待订阅恢复，pro与三审尚未切换；详见[真实准入报告](../05_testing/REPORT_2026-10-10_agent_access_admission.md)。旧48/48预算冻结，新预算及扩容独立留痕。
+
 ---
 
 ## 3. 在项目里启用（约 1 分钟）

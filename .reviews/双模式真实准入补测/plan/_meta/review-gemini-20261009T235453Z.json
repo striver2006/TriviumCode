@@ -1,0 +1,84 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "计划整体设计思路严密，高度尊重 TriviumCode 架构纪律与真实 Agentic 验证原则（坚守生产同形调用、全链路 O_EXCL 预算侧车预占、不以口头拒绝代替只读工具拦截、保持当轮审查选侧一致性）。但在配置变更回滚路径、预算侧车收敛到 scripts/ 时的路径解耦机制，以及模型持续口头拒绝时的路线隔离处置策略上存在决策与设计遗漏，若直接实施存在运行时报错与工作树脏污返工风险，需先补充修订。",
+  "findings": [
+    {
+      "id": "AGY-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "第 6 节「范围与执行器」与第 28 行「完成条件与收尾」",
+      "problem": "配置持久化变更与真实三审恢复验证缺乏失败回滚路径。计划要求先修改共享配置（将 claude high/pro 切到 Qwen 显式 max）及本机配置（移除仅 Gemini/GLM 覆盖以恢复三审），再通过编排器预检核对真实三审。但未规定当三审预检失败或准入结论作废时，如何原子撤销配置修改以避免工作树配置脏污，可能打断后续 code 审查与日常工作流。",
+      "evidence": ".reviews/双模式真实准入补测/plan/2026-10-10-双模式真实准入补测-codex.md:18,28; .trivium/config.yaml:125-130,171-177",
+      "suggestion": "在计划中补齐配置变更的回滚策略：明确在修改 .trivium/config.yaml 与 config.local.yaml 前制作备份，若预检未通过或准入失败，立即回滚至基线配置，并记录配置回滚事件，确保工作树在未达完成条件时不留半生配置。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "第 1 节「范围与执行器」与第 22 行「预计文件与回归」",
+      "problem": "预算侧车模块向 scripts/ 收敛时未定义台账路径解耦方案，存在寻址失败与历史审计证据损坏风险。既有侧车 budget-preload.cjs 以 __dirname 硬编码定位 approval.json 并写入同级 ledger/，且已有 13 次 reserved 记录绑定了其脚本哈希。若直接将其收敛至 scripts/ 且未通过环境变量支持外部台账目录注入，会导致新执行器运行时 ENOENT 找不到审批配置，或造成 ledger 目录分裂。",
+      "evidence": ".reviews/双模式真实准入补测/plan/2026-10-10-双模式真实准入补测-codex.md:13,22; doc/05_testing/evidence/agent-access-20261010-admission/budget-preload.cjs:7,12,23",
+      "suggestion": "明确预算记录模块的解耦契约：支持通过环境变量（如 TRIVIUM_BUDGET_ROOT 或 TRIVIUM_EVIDENCE_DIR）指定台账与审批文件所在目录；同时说明既有 evidence 目录中的 budget-preload.cjs 作为已落盘审计资产予以保留归档，不直接移动或原地删除以防破坏历史哈希引用。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "第 4 节「范围与执行器」与第 28 行「完成条件与收尾」",
+      "problem": "Claude 默认组合 Write 负对照对模型纯口头拒绝未定义单路线降级处置策略。生产 invokeClaude 传 --tools Read,Grep,Glob 并不暴露写入工具，第三方兼容端点模型极易仅文字回复拒绝而不生成 tool_use。计划虽严格将口头拒绝定性为未测（防御正确），但完成条件要求七条路线全部通过才算完成前置任务，若某条路线持续口头拒绝将导致整项任务死锁。",
+      "evidence": ".reviews/双模式真实准入补测/plan/2026-10-10-双模式真实准入补测-codex.md:15-16,28; src/trivium/probes/claude.ts:105,197",
+      "suggestion": "在计划中补充单路线未促成尝试时的处置边界：若多次重试后特定路线仍仅口头拒绝，应有明确决策——是将该单条路线标记为准入不通过并移出候选映射，还是挂起全量任务报备负责人，避免因单模型不配合造成死锁且耗尽储备启动额度。",
+      "confidence": "high"
+    },
+    {
+      "id": "AGY-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "第 9 行「基线与授权」",
+      "problem": "启动额度与预占台账时点记述与当前审查实际状态存在时差。计划记载当前预检辅助启动 9 次，而 review 预算池此前已通过 extension-1.json 扩容至 40，且本轮审查拉起后实际 ledger/review/ 已经预占到了 reserved-0013.json。草稿保留初始预检数字易在事后审计对账时产生混淆。",
+      "evidence": ".reviews/双模式真实准入补测/plan/2026-10-10-双模式真实准入补测-codex.md:9; doc/05_testing/evidence/agent-access-20261010-admission/extension-1.json:1-10; doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/reserved-0010.json:1-18",
+      "suggestion": "在计划的台账说明中注明该 9 次为准入任务正式双审拉起前的静态预检快照，并指明本轮双审拉起时已消费至 reserved-0013，使文档记述与磁盘台账严格吻合。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "坚持生产同形调用（生产 invokeCodex/prepareCodexHome 与 invokeClaude），不绕过编排器手写 CLI 规避验证。",
+    "严格遵循 O_EXCL 原子预占与配额硬刹车机制，先预占后 spawn，将失败/超时/辅助启动均纳入预算台账。",
+    "维持对端禁读检测（checkPeerLeakViaCommand）与只读沙箱纯判据校验，坚决否定零调用或口头拒绝作为隔离证明。",
+    "明确正式 code 审查选侧锁定当轮 plan 阶段集合（两审），不因中途恢复三审而破坏当轮审查选侧一致性。",
+    "探针导出机制限定在 src/trivium/probes/ 内，严格遵守 probes→adapters 单向依赖架构纪律。"
+  ],
+  "not_covered": [
+    "由于本审查员处于只读环境，未实际运行 scripts/ 脚本或拉起真实外部 CLI 验证厂商模型的交互表现。",
+    "未对本地实际网络环境下各第三方 API 端点（Kimi, Qwen, DeepSeek）的真实响应延迟与 rate limit 进行实测推演。"
+  ],
+  "consulted": [
+    ".reviews/双模式真实准入补测/plan/2026-10-10-双模式真实准入补测-codex.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/05_testing/evidence/agent-access-20261010-preflight/README.md",
+    "doc/05_testing/evidence/agent-access-20261010-admission/budget-preload.cjs",
+    "doc/05_testing/evidence/agent-access-20261010-admission/approval.json",
+    "doc/05_testing/evidence/agent-access-20261010-admission/extension-1.json",
+    "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/reserved-0010.json",
+    "src/trivium/runner.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/adapters/base.ts",
+    ".trivium/config.yaml",
+    "scripts/claude-admission-control.mjs"
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "计划整体扎实可执行：生产符号与设计章节引用全部属实，旧证据复用边界诚实（0.160.1 不借给 0.162.0、配置声明与回读分开），负对照判据严格可测，预算机制 fail-closed 且不完整预占按设计保留（台账实测已出现 0010/0011/0013 无完成件）。核心问题是 GLM-01：整套预算计数的有效性完全依赖每次正式编排器调用都由仓外人工带上指向侧车绝对路径的 NODE_OPTIONS——仓内无接线、无装载校验、完成条件里也没有台账与实际启动数的对账，而计划又要在审查后把侧车收敛迁移到 scripts/ 改变该路径；任何一次漏带都无计数烧池且台账零痕迹，这直接架空计划「所有失败/超时/辅助启动/重试计数」的承诺，需在计划层面补装载断言与收尾对账后再实施。其余为并发与验收口径的小项。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §范围与执行器 1「预算侧车用于正式编排器的独立worker进程，NODE_OPTIONS仅传本次进程」与 §预计文件与回归「预算侧车审查后收敛到scripts，不留下两份实现」",
+      "problem": "review 池计数依赖每次正式审查的编排器进程都带 NODE_OPTIONS=--require=<侧车绝对路径> 及 TRIVIUM_ACCESS_BUDGET_POOL 启动，但全仓 src/skills-src/scripts/test 四棵树 grep TRIVIUM_ACCESS 与 NODE_OPTIONS 零命中：装载是纯仓外人工步骤，无任何机制保证或校验。侧车只在被装载时才改写 spawn 并计数，漏带时不报错、不拦截，正式审查照常跑完而台账零记录——恰是整套预算机制要防的静默失账。计划还要求审查后把侧车收敛迁移到 scripts/，--require 的绝对路径随之改变，漏带概率进一步上升；§完成条件与收尾 只含 check、桩14/14、重装核对，没有台账与实际启动数的对账项，「所有失败/超时/辅助启动/重试计数」这一承诺按现计划无法验证。",
+      "evidence": "doc/05_testing/evidence/agent-access-20261010-admission/budget-preload.cjs（仅在装载后补丁 cp.spawn，未装载时无任何痕迹）；grep TRIVIUM_ACCESS|NODE_OPTIONS 于 src/ skills-src/ scripts/ test/ 无命中；ledger/review/reserved-0010.json 至 reserved-0013.json 均带人工传入的 label plan-round1，证明当前靠逐次手工传 env；计划 §预计文件与回归的收敛句。",
+      "suggestion": "在计划中补三件事：装载生效断言（如侧车装载时向台账目录写 loaded 标记，正式调用起跑前核对，缺失即拒跑或显式告警）；收敛迁移时同步更新调用程序并核对迁移前后路径各有一次装载证据；§完成条件 增加台账记录数与实际编排器运行记录（run 元数据中的各侧启动数）的对账步骤。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "concurrency",
+      "location": "计划 §范围与执行器 1「总池满先停止，再按授权留扩容记录后继续」与 §预计文件与回归 测试清单",
+      "problem": "扩容记录（extension-N.json）的写入无原子性与单写者约定：侧车 limit() 在每次 spawn 时同步重读 approval.json 与全部 extension-*.json 并 JSON.parse，一份被并发读到半写的残缺记录会让该池后续所有 spawn 抛错、整池停摆直至人工修复；两个并行流程同时触顶各自补写扩容记录则可能双倍扩容。计划测试清单（跨进程上限/重启、不完整预占、未尝试不通过、脱敏失败）未覆盖「扩容记录残缺」与「并发扩容」两条失败路径。",
+      "evidence": "doc/05_testing/evidence/agent-access-20261010-admission/budget-preload.cjs 的 limit()（逐 spawn 重读并 JSON.parse，无锁无原子性契约）；extension-1.json 已实际存在并计入现行上限，说明该路径已在使用。",
+      "suggestion": "计划中规定扩容记录一律 temp+rename 原子写、由单一写者（执行器或驱动，二选一）落盘，并补「残缺扩容记录」「并发触顶扩容恰一次」两个测试用例。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §预计文件与回归「预算侧车审查后收敛到scripts，不留下两份实现」",
+      "problem": "「不留下两份实现」的论域只有侧车与新预算模块，未涵盖 scripts/probe-agent-access.mjs 中既有的旧批次预算实现（withLaunchBudget、reserved-N/launch-N、wx 0600、每批 12 上限、防重置守卫）。收敛完成后 scripts/ 内仍并存旧脚本与新模块两套预算实现，该验收口径按现文不可判。",
+      "evidence": "scripts/probe-agent-access.mjs 第 66 至 84 行（withLaunchBudget 与 wx 预占落盘、第 66 行防重置守卫）。",
+      "suggestion": "在计划中写明旧脚本的处置：定位为历史冻结件（不再用于新批次，注明其产出止于旧 48 份证据）或改造为复用新模块，使「一份实现」可逐文件核验。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §范围与执行器 6「真实三审通过现有编排器的认证/能力预检核对」",
+      "problem": "三审恢复后经现有编排器核对认证/能力预检所产生的真实启动（claude、gemini、glm 各至少一次探活/版本/能力调用）未列入预检提案的任何预算批次（A5+B16+C3+D3+储备5=32，另正式审查池），也未写明计入哪个池。无归属的启动要么意外消耗某池额度，要么在侧车未装载时漏记账。",
+      "evidence": "doc/05_testing/evidence/agent-access-20261010-preflight/README.md「新增额度提案与分批」批次表（未含三审恢复核对项）；计划 §范围与执行器 6。",
+      "suggestion": "为三审恢复核对单列最小启动数并明确池归属（合理归 admission），落入选批表与台账，保持 32+16 算术可对账。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §范围与执行器 1「先原子预占后spawn，所有失败/超时/辅助启动/重试计数」与 §预计文件与回归 测试清单",
+      "problem": "计数通道的单一性未被钉为不变量：侧车只补丁 cp.spawn，execFile、spawnSync、fork 及经 npx 等包装的启动不在拦截面。当前生产代码只用 spawn（src/trivium/util/exec.ts 仅 import spawn）所以现状安全，但批次 A 的版本/帮助启动用同步 API 实现是很自然的写法，新执行器一旦绕过预算通道即整类无计数启动，且无测试会发现。",
+      "evidence": "doc/05_testing/evidence/agent-access-20261010-admission/budget-preload.cjs（仅覆盖 cp.spawn，syncBuiltinESMExports 不影响 execFile 内部路径）；src/trivium/util/exec.ts 第 8 行（生产仅用 spawn）。",
+      "suggestion": "把「厂商 CLI 启动一律经预算模块统一通道」写为执行器硬约束，并加负例测试：经 execFile/spawnSync 发起 vendor 形态启动时要么被通道拒绝、要么测试判红。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §基线与授权「初始能力池32、正式审查池16」",
+      "problem": "基线只记初始上限，未提 review 池已按授权扩容至 40（extension-1.json 已存在，理由正是首轮预检 9 次辅助启动）。审计者按计划文核对现行台账时会得到过期的上限数字。",
+      "evidence": "doc/05_testing/evidence/agent-access-20261010-admission/extension-1.json（previous_limit 16、new_limit 40、2026-10-10）。",
+      "suggestion": "基线段补一句现行有效上限（能力 32、审查 40）或显式声明上限以 ledger 目录的 approval 与 extension 记录为唯一权威。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "旧证据复用边界诚实且可执行：Codex 0.160.1 能力结论不借给 0.162.0、旧记录无二进制内容哈希不能证字节一致、配置声明与实际回读分开保存、无回读一律 null。",
+    "负对照通过判据严格且可测：必须实际 tool_use 与错误 tool_result 配对（对应生产 judgeDeniedToolInTrace 机制）、目标文件前后状态都存、口头拒绝与文件未生成均记未测、诊断臂不冒充生产臂。",
+    "Codex 无命令白名单不虚记为已支持，按设计 10.3 以沙箱与事后核验满足适用能力；MCP 隔离不凭零调用作全面隔离证明，缺运行时信号时记证据边界——这两条与设计文档口径一致。",
+    "预算机制方向正确：O_EXCL 唯一槽位、先预占后 spawn、不完整预占保留且占额度、不重置不挪用；ledger 实测已存在无完成件的预占（reserved-0010/0011/0013），行为与设计相符。",
+    "测试计划覆盖了关键的失败路径：跨进程上限/重启、不完整预占、未尝试不通过、脱敏失败、桩子进程不得烧厂商配额。",
+    "计划引用的生产符号与设计章节全部属实（invokeCodex、prepareCodexHome、checkPeerLeakViaCommand、patchProbe、resolveTier、archive.writeArtifact/writeMeta；设计 3.5、10.3、11.6 均存在，11.6 标题即 M11 第12步前置）。",
+    "配置切换顺序正确：七条默认路线与 pro 实测通过后才改共享 pro 映射与恢复三审，code 审选侧保持当轮 plan 集合，且 pro 实测前不动共享配置。",
+    "证据卫生约定到位：独立目录、写前脱敏、wx 防覆盖、临时凭据副本 0600 且 finally 清扫、夹具仅删 mkdtemp 返回值、归档一律经 archive.ts 唯一出口。"
+  ],
+  "not_covered": [
+    "受禁读清单约束未读 .trivium/ 下任何文件（含 config.local.yaml 与本机 probe 结论），计划中「本机仅Gemini/GLM默认覆盖」「probe/bin 保留」等本机状态声明未独立核实，只按文档链交叉印证。",
+    "本次为只读审查，未运行任何命令或 CLI；对预算侧车行为（cp.spawn 补丁在 esbuild CJS 打包产物内的拦截效果、NODE_OPTIONS 向厂商 CLI 后代的传播）判断全部来自静态读码，属推理而非实测。",
+    "子进程被杀后管道被孤孙进程持有导致 close 事件迟到、launch 记录长期缺失一类运行期边缘未验证（设计上由预占保留兜底，判断影响有界）。",
+    "budget-preload.cjs 的 selection 白名单正则对含特殊字符的模型/profile 值会静默不记录，属实现细节，未单列意见。",
+    "计划列出的文档同步面（主设计、ADR、协议、手册、验收剧本、README 索引）的具体改动点未逐项预核，仅核对了索引规范的存在。"
+  ],
+  "consulted": [
+    ".reviews/双模式真实准入补测/plan/2026-10-10-双模式真实准入补测-codex.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md（§3.5/§10.3/§11.6 核对）",
+    "doc/05_testing/evidence/agent-access-20261010-preflight/README.md",
+    "doc/05_testing/evidence/agent-access-20261010-admission/budget-preload.cjs",
+    "doc/05_testing/evidence/agent-access-20261010-admission/approval.json",
+    "doc/05_testing/evidence/agent-access-20261010-admission/extension-1.json",
+    "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/reserved-0010.json",
+    "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/reserved-0011.json",
+    "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/reserved-0013.json",
+    "doc/05_testing/evidence/agent-access-20261010-admission/ledger/review/launch-0012.json",
+    "src/trivium/util/exec.ts",
+    "src/trivium/archive.ts（writeArtifact/writeMeta 核对）",
+    "src/trivium/adapters/base.ts、src/trivium/adapters/codex.ts、src/trivium/adapters/codex-home.ts、src/trivium/preflight.ts、src/trivium/doctor.ts（resolveTier/invokeCodex/prepareCodexHome/checkPeerLeakViaCommand/patchProbe 符号核对）",
+    "scripts/probe-agent-access.mjs",
+    ".gitignore"
+  ]
+}
