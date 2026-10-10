@@ -81,3 +81,11 @@ P-01～P-15 是 M0 探针实测；P-16～P-18 是 M4/M5 真实运行期补录；
 2026-10-10独立取证装置补记：原写负对照 helper 对相对路径 breach.txt 漏判，需以 init.cwd 解析并精确核对隔离目标；旧判定不覆盖。夹具两同行工件曾只列一份 deny，后续复用生产 enumerateDenyPaths 后完整覆盖，不能把该测试清单遗漏说成生产枚举缺陷。Kimi coding/k3 与 DeepSeek flash 不调用未注册写工具，继续未测；DeepSeek V4 pro 的实际 Write 已被拒绝。细节及超时见 [三供应商报告](../05_testing/REPORT_2026-10-10_claude_three_providers.md)。
 
 2026-10-10 Codex 默认官方配置：接入profile须为native，default/flash/pro各自模型分别为gpt-6.1-sol、gpt-6-luna、gpt-6-astra，仅清空profile却保留Kimi模型会错配。更新前的本机旧探针标0.160.1且基底目录为旧Qwen快照；本次由doctor刷新为真实0.162.0与官方目录，未手工填探针事实。
+
+2026-10-10收口装置整改：`scripts/agent-access-closeout.mjs`及其summary为新的canonical入口；旧admission/summary冻结，不用它们固定0.162.0的断言验证新版。helper不兼容缺实际cwd/唯一目标/原始配对错误/前后状态的旧调用。旧Qwen与V4 pro录制样本进入边界回归，不改原件；tool_use_error包装需按实测剥离后精确识别注册层错误。`npm run build`缺省不重编测试，单项回归前须`node scripts/build.mjs --tests-only`，避免运行陈旧测试产物。敏感规则数组整体覆盖，追加必须保留凭据及旧目录规则；冻结的非敏感前后清单与效果断言应保持审查可读。最新版本和结论见[收口报告](../05_testing/REPORT_2026-10-10_agent_access_closeout.md)。
+
+本轮code整改的取证契约（原标准不变）：探针和汇总须共同使用显式批次selection manifest，固定variant及requested/result/fingerprints-after的hash；缺结果、未完成或指纹不符不得回退旧成功。版本证据亦显式引用并核对入口/包装器/配置/模块指纹。Codex实际读取须有CommandExecution.cwd、parsed_cmd精确README目标及唯一命令/完整输出/exit/status配对，不认单独echo；两种ID分列。CLI effort带来源记录，服务端null，不添加默认值。受控对照从同一manifest取当期真实臂并核对实际权限模式与工具面，缺值不判同形。独立清理与落盘失败仍执行其余清理；历史入口缺新版上下文明确报错，不重解释原件。
+
+P-32 目录参数规模（2026-10-10）：完整逐文件settings可随归档增长至MB，spawn E2BIG表示进程未启动。修复采用配置声明的字面目录投影，必须先当前路线逐工具doctor取证；单工具true不替代另两工具，真实settings大小以混合规则为准。不能删台账、历史件或禁读项来缩小argv。修改代码后先build/install，再运行新doctor；`--no-model-calls`会清除所选路线目录事实，不能刷新其它格后继续继承目录true。探针七个逻辑臂不等于七次总启动，既有doctor的version/help/模型臂及native子边界另计预算。
+
+P-33 版本上下文（2026-10-11）：canonical的完整版本指纹包含profile配置摘要，native记录不可直接用于第三方profile，否则应在启动模型前拒绝。每profile单独取版本记录并显式选manifest，保留严格比较及真实native子边界，不删除配置摘要“修通”。版本输出相同只表示CLI版本，供应商/模型运行身份仍须各能力臂回读。

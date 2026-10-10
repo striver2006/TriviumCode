@@ -1,0 +1,20 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {spawn} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const root=path.dirname(fileURLToPath(import.meta.url));
+const batch=JSON.parse(fs.readFileSync(path.join(root,'batch-h-final-profile-context.json')));
+const jobs=[...batch.help,...batch.codex.filter(j=>['qwen','kimi','deepseek'].includes(j[1])),...batch.codex.filter(j=>!['qwen','kimi','deepseek'].includes(j[1])),...batch.claude];
+let cursor=0,stop=false;const results=[];
+async function worker(){while(!stop){const job=jobs[cursor++];if(!job)return;const key=job.join('-');const log=path.join(root,'calls',key+'-runner.log');const fd=fs.openSync(log,'wx',0o600);
+ const child=spawn(process.execPath,[path.join(root,'launch.mjs'),'admission','h-'+key,'probe',...job],{cwd:path.resolve(root,'../../../..'),env:{...process.env,TRIVIUM_ACCESS_SELECTION:path.join(root,'selection-h-versions-'+(job[0]==='codex'&&['qwen','kimi','deepseek'].includes(job[1])?job[1]:'native')+'.json')},stdio:['ignore',fd,fd]});
+ let error=null;child.once('error',e=>{error=e.code??'spawn-error';});
+ const [code,signal]=await new Promise(resolve=>child.once('close',(...v)=>resolve(v)));fs.closeSync(fd);
+ results.push({job,code,signal,error,log,ended_at:new Date().toISOString()});
+ if(code!==0||signal||error)stop=true;
+ process.stdout.write(JSON.stringify({key,code,signal,error,completed:results.length,total:jobs.length,stopped:stop})+'\n');
+}}
+await Promise.allSettled([worker(),worker(),worker()]).then(out=>{for(const r of out)if(r.status==='rejected'){stop=true;results.push({runner_error:String(r.reason)});}});
+saveEvidence(path.join(root,'batch-h-runner-results.json'),{at:new Date().toISOString(),jobs:jobs.length,results,stopped:stop});
+process.exitCode=stop?1:0;

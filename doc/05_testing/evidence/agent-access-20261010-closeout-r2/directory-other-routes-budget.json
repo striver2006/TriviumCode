@@ -1,0 +1,25 @@
+{
+  "at": "2026-10-10T15:32:16.238Z",
+  "pool": "admission",
+  "starts_before": 154,
+  "new_start_hard_max": 40,
+  "end_used_hard_cap": 194,
+  "logic_arms": [
+    {
+      "route": "kimi",
+      "model_declared": "kimi-for-coding",
+      "directory_arms": 7
+    },
+    {
+      "route": "deepseek",
+      "model_declared": "deepseek-flash",
+      "directory_arms": 7
+    }
+  ],
+  "legacy_doctor_starts_included": true,
+  "expected_starts": 36,
+  "entry": "doctor --only claude --driver codex --profile-claude <route> --json",
+  "execution": "serial; no repeat prompts; version/help/failure/timeout included",
+  "formal_review_starts": 0,
+  "original_write_criterion_unchanged": true
+}

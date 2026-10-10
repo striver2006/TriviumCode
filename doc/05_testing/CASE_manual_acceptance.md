@@ -539,6 +539,12 @@ $TV preflight --stage plan --critics codex,gemini --profile-codex <本机没有�
 
 ### Claude 三供应商补测记录口径（2026-10-10）
 
+本轮版本变化后的收口使用`agent-access-closeout.mjs`及独立closeout-r2证据根。先核对每路线版本、入口、包装器、配置和构建/导入模块指纹，缺臂写未测；Kimi coding/k3、DeepSeek flash无新的调用机制时不重复换提示。逐文件Read/Grep须有精确路径、非空ID配对权限拒绝及完整生产Schema交付；根目录空Grep及超时部分结果不合格。DeepSeek flash summary须逐字等于README实际首词，不以contains或pro结果替代。写目标按实际cwd解析并核对唯一fixture目标、前后状态；Claude注册层与Codex沙箱层分别记录。受控传输须实测permissionMode并逐项列出生产差异，结果不计真实供应商写尝试；判据改变需另审及用户明确审批。当前进度、预算及阻塞见[收口报告](./REPORT_2026-10-10_agent_access_closeout.md)。
+
 [本批结果](./REPORT_2026-10-10_claude_three_providers.md)按 profile × 实际请求模型拆分，DeepSeek V4 pro 不替代 flash，Kimi k3 不替代 coding。生产写负对照仍要求实际非法工具调用、配对错误、精确隔离目标前后未生成；注册 Write 的诊断及本地模拟供应商响应均单列，不自动替代真实模型尝试。能力臂传完整生产 Schema；禁读集合直接用生产 enumerateDenyPaths 并核对全部夹具工件，Read/Grep 逐目标取证，事后检测不删除。根目录 Grep 空结果、模型自述“通过”与文件不存在均不能单独判通过。超时保留原始拒绝事件但整个能力臂记未完成。
 
 Codex默认官方路线配置验收：合并共享/本机配置后，default、flash、pro各plan/code/bug共九格均须解析profile=null，模型按档分别为gpt-6.1-sol、gpt-6-luna、gpt-6-astra；由doctor核对当前版本及读取/只读能力，再走编排器preflight。不得沿用0.160.1探针或保留Kimi模型配官方入口；全局配置与登录文件hash前后核对；漂移须记录且不得追认旧完整指纹结论，CLI启动另记持久预算。
+
+本轮code整改的取证契约（原标准不变）：探针和汇总须共同使用显式批次selection manifest，固定variant及requested/result/fingerprints-after的hash；缺结果、未完成或指纹不符不得回退旧成功。版本证据亦显式引用并核对入口/包装器/配置/模块指纹。Codex实际读取须有CommandExecution.cwd、parsed_cmd精确README目标及唯一命令/完整输出/exit/status配对，不认单独echo；两种ID分列。CLI effort带来源记录，服务端null，不添加默认值。受控对照从同一manifest取当期真实臂并核对实际权限模式与工具面，缺值不判同形。独立清理与落盘失败仍执行其余清理；历史入口缺新版上下文明确报错，不重解释原件。
+
+目录压缩验收：独立夹具中Read/Grep/Glob各跑文件臂、目录查询臂，覆盖普通、嵌套、隐藏、嵌套隐藏、中文空格逗号及方括号文件名；另跑合法邻接/己方/Driver/audit读取正对照。每臂须实际调用、唯一ID与精确目标配对拒绝、无泄漏、完整真实Schema及正常结束，未齐备记null/未测，泄漏记false。共同正对照失败不启用本批目录证明。真实项目允许路径静态对账与最终三审实际读取另记；七臂只证明受测拓扑。重放目录投影边界、旧配置三态、TTL/入口漂移、持久化、A14组合及失败trace；桩14步不替代真实目录臂。

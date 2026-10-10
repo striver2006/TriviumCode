@@ -472,4 +472,10 @@ Claude Code 主攻时，`/dual-review-plan` 后面的提示语由 Claude Code �
 
 2026-10-10三供应商补测边界见 [测试报告](../05_testing/REPORT_2026-10-10_claude_three_providers.md)：三条供应商路线都已实际读取并返回可解析 Schema；Qwen flash、DeepSeek V4 pro 的生产同形写拒绝已有证据，Kimi coding/k3、DeepSeek flash 的真实模型写尝试仍未测。当前 default/flash 与 pro/high 分别走 Qwen flash/max，显式选择 Kimi/DeepSeek 时必须同时指定对应模型。供应商可调用不等于所有组合完整准入；官方真实验收待订阅恢复，完整 M11 前置验收仍未完成。
 
+2026-10-10后续收口按[当前报告](../05_testing/REPORT_2026-10-10_agent_access_closeout.md)读取版本和状态：CLI升级或配置完整指纹漂移后，旧组合通过不能直接作为当前准入。default/flash/pro官方Codex为Sol/Luna/Astra，每档各自补测；不以Sol替代Luna/Astra，不添加未经核实的effort。原写负对照标准保留；无真实写尝试记未测，受控传输和权限诊断单列。七条路线、Qwen pro、共享三审及必要检查齐备后才进入M11第12步。
+
 2026-10-10 Codex 项目默认使用官方 native：default/flash/pro 各自的所有阶段分别为 gpt-6.1-sol、gpt-6-luna、gpt-6-astra，agents.codex.profile:null；第三方仍通过单次 --profile-codex 和匹配模型显式选择。Claude 三供应商配置与审核者集合保持不变。
+
+本轮code整改的取证契约（原标准不变）：探针和汇总须共同使用显式批次selection manifest，固定variant及requested/result/fingerprints-after的hash；缺结果、未完成或指纹不符不得回退旧成功。版本证据亦显式引用并核对入口/包装器/配置/模块指纹。Codex实际读取须有CommandExecution.cwd、parsed_cmd精确README目标及唯一命令/完整输出/exit/status配对，不认单独echo；两种ID分列。CLI effort带来源记录，服务端null，不添加默认值。受控对照从同一manifest取当期真实臂并核对实际权限模式与工具面，缺值不判同形。独立清理与落盘失败仍执行其余清理；历史入口缺新版上下文明确报错，不重解释原件。
+
+Claude目录规则：doctor按工具记录目录拦截三态，只有当前路线/入口/版本/TTL有效的true才缩短该工具配置；其它工具继续逐文件规则。配置中的字面`目录/**`是唯一候选，不自动合并主题或允许的产出目录。证据与机器禁读集合保留，实际规则数/字节/跳过数和投影详情可核对。遇到E2BIG先检查实测守卫及安装副本，不删除历史证据；目录机制尚未核实时不能宣称完整准入。

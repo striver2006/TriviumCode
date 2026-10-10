@@ -1,0 +1,66 @@
+---
+schema: trivium.disposition.v1
+topic: Agent双模式接入真实准入收口
+stage: code
+role: codex
+kind: response
+run_id: 20261010T130139Z
+addresses:
+  - 2026-10-10-Agent双模式接入真实准入收口-gemini.md
+  - 2026-10-10-Agent双模式接入真实准入收口-glm.md
+---
+
+# 代码审查逐条应答与整改方案
+
+本轮正式入口A、Driver=codex，运行20261010T130139Z以退出码75失败：Claude拉起spawn E2BIG，无结论；Gemini结构化request-changes；GLM JSON语法失败而parse_fallback，不参与阻断。不能称三审通过，不能把GLM原文中的approve-with-nits追认为结构化结论。两份归档全文已读。计划审批只授权已批准计划实施，没有批准准则替换或本轮代码整改。
+
+| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 落点 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| AGY-01 | gemini | major | 接受 | canonical只读variant1，E批最新臂只能靠旁路拷贝才能汇总，事实源确实分叉；不应以保守误判为交付完成。 | scripts/agent-access-closeout-summary.mjs：以显式批次/臂manifest选择编号，保留每个选择来源；最新请求缺结果/未完成不回退旧成功，原件不覆盖；将现有派生汇总作为历史快照保留，今后只运行canonical。 |
+| AGY-02 | gemini | major | 接受 | versionFile钉死1/2，从零与后续刷新会读取不存在或过时版本。单凭最大目录编号也不保证版本/指纹一致。 | scripts/agent-access-closeout.mjs：显式选择版本证据，核对已完成、版本值、入口/native/wrapper hash及当前相关配置；缺证据明确报错；记录引用的完整文件及hash，新增从零/刷新/未完成版本回归。 |
+| AGY-03 | gemini | minor | 接受 | canonical Codex actual_read仅检查输出marker可把echo误判为读取。本轮CommandExecution原件另经审计验证精确README与actual cwd，不能依赖外围脚本弥补主配方。仅检查命令文本包含README同样会接受echo，故接受问题、收紧建议实现。 | scripts/agent-access-closeout.mjs及evidence helper：使用会话CommandExecution.cwd/parsed_cmd、精确README路径、唯一命令/输出/exit/status配对；CLI stdout ID与session ID分别留存。写判定也消费实际command cwd，不用session默认目录替代。无匹配/歧义/echo/异cwd均不通过；带来源提取turn_context effort，仅作为CLI回读。 |
+| AGY-04 | gemini | nit | 接受 | 受控固定引用k3 read1会使后续比较错配或null；不能以参数相同追认actual permissionMode相同。 | scripts/agent-access-closeout.mjs：从显式manifest选择当前真实生产read基准并保存hash；核对model/profile/version、工具面与permissionMode，缺值null且不判同形；当前auto/default不同结果原样保留。 |
+| GLM-F01 | fallback | 未定级 | 接受 | 该单元含可辨认的variant/version逻辑分叉、bash未实测兼容、清理链、旧签名四类问题，均需整改；乱码与重复字段不赋予新含义，不接受“均不阻塞证据”的宽泛保证。 | 同AGY-01/02及下文四项：唯一canonical、精确目标/cwd、已录制shell范围、独立清理与历史入口边界。 |
+| GLM-F02 | fallback | 未定级 | 暂缓 | confidence和consulted片段损坏，不能可靠辨认独立问题或证据；不补写审核者意图，不作为审批通过依据。 | 保留原件；后续完整三审需可解析且引用明确的结论。 |
+| GLM-F03 | fallback | 未定级 | 驳回 | 这是审查员自称要裁决的流程描述，并非代码意见；裁决责任在Driver，不能移交给Critic或据该句证明审查合格。 | 无业务修改；Driver依本表应答。 |
+| GLM-F04 | fallback | 未定级 | 驳回 | 该句重复自称进行裁决，没有独立问题、位置或修改要求；保留原文，不编造新问题。 | 无业务修改；保留回退文档。 |
+| GLM-F05 | fallback | 未定级 | 接受 | 同步canonical的variant选择是清楚的修复方向，与AGY-01一致；不删除历史派生证据。 | canonical吸收显式编号选择，旁路脚本停用而历史原件保留。 |
+| GLM-F06 | fallback | 未定级 | 接受 | route编号应受批次manifest控制；找最新成功会在新臂未完成时错误回退。 | canonical route选择及缺失/未完成回归。 |
+| GLM-F07 | fallback | 未定级 | 接受 | 目录拼接位置与AGY-01重复，可合并实现但不忽略编号。 | 同AGY-01；记录variant与引用hash。 |
+
+## GLM解析回退原文逐项处理
+
+更正：缺裁决件初检的fallback_ids=[]属于提前返回，不代表未抽取。完整校验要求编排器review-glm-20261010T130139Z.fallback-items.md中的7个GLM-F单元，已逐项读取并列入上表。初稿通过archive.writeMeta保存在driver-disposition-initial-20261010T130139Z.json。原审查件不改、不修JSON、不制造审核者编号。下文展开summary可辨认的四类问题，不赋予结构化阻断资格；乱码无法恢复的观点保留为不可判定。
+
+1. 原文“canonical variant/version固定、判据两份拷贝”：接受。理由同AGY-01/02；落点同二条，合并修改但保留两个来源。原文畸形GLM-01重复片段不作为有效JSON意见。
+2. 原文“Codex bash形态错误正则不匹配，fail-closed死代码”：接受收窄兼容声明。当前真实样本均/bin/zsh，并未验证bash错误形态；不能按想象扩展正则。落点helper/文档：只声明已录制zsh形态，bash分支无真实样本则移除兼容声明或明确未测；如实现需受控/实际录制回归，并不替代模型能力。
+3. 原文“finally清理链单点抛错会跳过夹具与scratch清理”：接受。落点canonical finally改为独立try/finally或allSettled，scrub/落盘失败仍执行各项清理并汇总错误；故障注入验证临时凭据与夹具均处理，异常不冒充成功。
+4. 原文“冻结脚本旧签名静默全false”：接受显式历史入口边界。旧原始证据及冻结配方不改判；落点新helper独立模块/入口版本化，历史配方保持原配方hash与行为并标明不作当前准入；缺新版上下文必须清晰报错或标未测，避免旧入口静默产全false。具体兼容方式须在实施时对照批准计划，不复用旧宽松判据到新准入。
+
+## 新出现的启动阻塞与可审查修复范围
+
+本轮deny_paths实际2219条。零CLI按生产probe实际rule_syntax复算settings=1628531字节、13314条规则、skipped=0；Claude实际spawn E2BIG。复算是静态关联证据，未称整改复测或完整根因双审通过。源码invokeClaude prompt走stdin，settings仍内联单argv。不得为拉起删除敏感globs、删减禁读路径、搬走/清零台账或沿用旧配置。
+
+候选整改：保持全部生产enumerateDenyPaths及事后检测，只调整settings传输；先经现有doctor/适配器对独立0600临时settings文件的CLI支持和拒绝语义取证，若支持，再在适配器已有独立scratch中写文件、保存内容hash与字节数、沿用同一参数入口、finally清理。若CLI不支持文件载入，保持未测并重新提交方案，不猜旗标。覆盖大规模真实子进程、超时/失败清理、路径含特殊字符、完整禁读等价及不改全局配置。同步主设计11.1/只读章、探针清单、协议、手册、坑清单与测试报告；不调整版本。
+
+该项涉及生产敏感适配层，是新增范围，不在本轮两个审核者已给出的意见中。**本轮code审批不得被解释为已经完成该项计划三审。** 须另行明确审查/审批恢复路径；当前完整三审本身受E2BIG阻塞，不能假装已审。至此主题累计2次正式运行（plan1成功产出，code1失败），最多4次，尚余2次；不可无限重试或私自allow-single。
+
+## 原标准与现状
+
+当期矩阵见REPORT_2026-10-10_agent_access_closeout.md及summary-9c47935e-3026-4528-b28f-6a76a18df753.json：六组合取得完整能力证据，六组合仍有未测。Luna、Claude Qwen max、Kimi coding/k3、DeepSeek flash/V4 pro在当前指纹下没有实际生产写调用；Kimi coding Read及k3 Read/Grep的.env实际调用也未测。服务端身份均null。受控auto不等于实际default，不作为替代准入。候选分项准则须独立正式审查与用户准则审批，本轮code审批不授予该权利。M11第12步不可进入。
+
+整改后必须重新核对完整指纹、按最小受影响臂补测并提前发布上限；旧证据/台账保留，不修改采样历史。最终串行两次check、桩14/14、重建重装和安装副本核对仍未测，等待必需整改完成。未授权提交/推送。
+
+## 原始告警与独立性
+
+Gemini读到routes下4个sensitive类禁读文件，编排器记hit=true、category=sensitive，不作同行意见泄漏作废；Driver不把它称为零越界。GLM parse_fallback/json_syntax及乱码原文保留。共同阻断joint_check=skipped-insufficient-sides/effective_sides=1，不称已完成双审。
+
+审查期间无业务源码变化；calls/ledger/loaded的start/wait/status和worker预算装载元数据新增被判无关漂移warn。完整原始清单保存在calls/code-wait4-*-completed.json，不删除；不称零漂移。原告警：
+
+> 模型族 unknown：左侧模型信息缺失（codex/claude、codex/gemini、codex/glm、claude/gemini、claude/glm）；告警继续
+>
+> 安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装
+
+## 人工停点范围
+
+先以gate核对4条结构化意见、7条编排器回退单元全部应答及两份addresses，再按用户本轮明确要求进入人工code审批停点。本轮运行仍failed；gate裁决齐备不等于三审成功、不等于准入通过。批准前不执行accepted项、不改业务文件；不自行approve、不借用plan审批、不提交推送。若gate拒绝进入待审批，保留拒绝原文并停止，不绕过。

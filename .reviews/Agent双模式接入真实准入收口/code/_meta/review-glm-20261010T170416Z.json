@@ -1,0 +1,74 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "本轮补丁把我上一轮提出的四个问题全部实质修复：汇总改经显式 selection manifest（loadSelection 强制、hash 校验、身份核对，不再钉死 variant 1）；Codex 写判据改为钉死命令的精确匹配（消除旧正则死代码）；cleanupAll 聚合清理错误；旧签名缺 context 显式抛错不再静默 false。新增的目录投影链路（projectClaudeDenyPaths/buildProjectedDenySettings/verifiedClaudeDirectories/probeClaudeDirectories）与 r5 计划高度一致：严格字面目录、逐工具三态、指纹+TTL 独立失效、未压缩工具保留逐文件规则、七臂真机矩阵含中文空格逗号与方括号文件名、driver 原稿不入禁读集的正对照前提经 freeze.ts:classifyArtifact 核实成立；timeout、未完成、spawn 失败三条出口均写 trace 且含 projection 与 directoryGuard，集成测试用真子进程覆盖；config.v2 schema 的 probe.cli 段以 commonProbe additionalProperties 放行新三字段，持久化读回有测试。我按安全、错误处理、空值与测试缺口镜头审查了全部源码/测试变更及其上下游调用链，发现 3 条 minor：目录臂判定函数缺少假拒绝负例（守卫条件回归不会被测试抓住）、压缩候选的目录名形态域超出真机实测域（与计划'证明限定受测路径形态'存在张力）、探针尾部目录臂无兜底可让整轮 doctor 连带丢失主探针成果。均不阻塞。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/claude-directory.test.ts:71-91；src/trivium/probes/claude-directory.ts:55-57",
+      "problem": "judgeDirectoryArm 的 denied 判据要求「唯一调用 ID + tool_result 恰一条配对错误 + permission_denials 恰一条匹配」，三层证据里第三层没有任何测试负例：stub 的 output() 在 denied=true 时总是同步生成配对的 permission_denials，测试矩阵只覆盖 timedOut、泄漏、错 tool_use_id、无调用、坏 Schema 五种变体。若后续有人误删 permission?.length === 1 这个条件（回归为只看 tool_result 错误，即「权限诊断式假拒绝」重新合格），现有全部单测与集成测试仍然通过——这正是本仓在 agent-access-evidence.mjs 上花大量负例矩阵防守的那类漏洞（权限拒绝记录与错误结果必须双证据），新判据反而没有同等防守。permission 记录重复（length>1 歧义应落 null）同样无覆盖。",
+      "evidence": "src/trivium/probes/claude-directory.ts:55-57（denied = unique && errors.length === 1 && permission?.length === 1）；test/unit/claude-directory.test.ts:71-80（output() helper：denied 参数同时控制 is_error 与 permission_denials 生成，二者不可独立变异）、82-91（六个判例均未触及 permission_denials 独立缺失/重复）；对照 test/unit/agent-access-budget.test.ts:43-55（claudeWritePass 的负例矩阵包含 rawOutput 变体独立注入）。",
+      "suggestion": "在 judgeDirectoryArm 的单测中补两个负例：is_error 配对存在但 result 事件缺 permission_denials（或 permission_denials 里目标不匹配）时应落 null 而非 true；permission_denials 匹配两条（歧义）时同样落 null。stub 需要让 is_error 与 permission_denials 可独立构造。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/adapters/claude.ts:365-378；src/trivium/probes/claude-directory.ts:98-99,119",
+      "problem": "目录压缩的实测域与消费域不重合：真机七臂只在 ASCII 目录 evidence/calls 上验证了目录规则的 CLI 匹配语义（文件名维度覆盖了中文空格逗号与方括号，这点做得好），而 projectClaudeDenyPaths 接受任意字面合法目录作为压缩候选，单测里「中文 空格」这样的非 ASCII 目录名被实际压缩进规则。生产 sensitive_globs 若未来配置非 ASCII 目录名，其 D 与 D/** 规则的匹配语义从未经真机验证即被启用——一旦该 CLI 方言对非 ASCII 目录前缀失效，压缩后规则 fail-open 且 compressedTools 仍记为已验证。r5 计划明文「证明限定受测拓扑、方言及路径形态」「真实字面目录若含未实测的特殊形态，维持原规则/未测」，实现把目录名形态域随文件名域一并外推了，未见显式裁决。当前本仓 8 个字面子目录均为 ASCII，暂无实际影响；事后检测仍兜底。",
+      "evidence": "src/trivium/probes/claude-directory.ts:98（directory = 'evidence/calls'，真机唯一实测目录）、119（cfg.review.sensitive_globs 只配 evidence/calls/** 与 .env）；src/trivium/adapters/claude.ts:372-374（roots 过滤仅排除 glob 元字符/控制符等，不限制目录名字符域）；test/unit/claude-directory.test.ts:17-18（sensitiveGlobs 含 '中文 空格/**' 时该非 ASCII 目录被压缩）；.reviews/Agent双模式接入真实准入收口/plan/2026-10-10-Agent双模式接入真实准入收口-r5-codex.md:42-44（证明限定受测路径形态、未实测特殊形态维持原规则）。",
+      "suggestion": "二选一并显式裁决：把压缩候选限制在与实测目录同域的字符集（非 ASCII 目录名不压缩、保留逐文件规则），或在真机矩阵增加一个非 ASCII 目录名的文件臂+目录查询臂。至少在 projection 留痕中记录实测目录名的字符域，让未来配置非 ASCII 目录时消费侧可见该外推。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/claude-directory.ts:81-84；src/trivium/probes/claude.ts:1711-1727",
+      "problem": "probeClaudeDirectories 的 createFixture() 与结果对象构造位于 try 块之外，而 probeClaude 尾部对 probeClaudeDirectories 的调用（含其前的 resolveClaudeRoute）没有任何 try/catch 兜底：一旦目录臂在夹具创建或路线解析上抛错，异常会穿透 probeClaude 使整个 Claude 探针段失败，此前主夹具各臂已花费的真实配额结论（readonly_flags、path_deny 等）随返回值一起丢失，doctor 整轮重来。对比同函数内主夹具对 fixture 失败设有 ProbeFixtureError 专门通道（memoryFixtureFailure 捕获后仍返回既有 probe），新增目录臂没有同等防护，防护等级不一致。触发条件罕见（mkdtemp 失败、配置解析异常），故仅 minor。",
+      "evidence": "src/trivium/probes/claude-directory.ts:81-84（const fx = await createFixture() 与 result 构造在 try 之前，仅 try 内有全量 catch）；src/trivium/probes/claude.ts diff 区段 1711-1727（directorySchemaPath/selectedRoute 检查后直接 await probeClaudeDirectories，无 try 包裹，前面的早退路径均有 ProbeFixtureError 处理先例，见同文件 1658-1661）。",
+      "suggestion": "把目录臂调用包进与主夹具一致的容错通道：捕获后置 directoryEvidence.failure、清空 directory 三字段并照常返回主探针结论（对齐「单臂失败不摧毁既有成果」的既有语义），或至少把 createFixture 移入 try 内。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "显式 selection manifest（agent-access-selection.mjs）彻底修复上轮 GLM-01 的 variant 钉死问题：loadSelection 缺 manifest 即抛错、引用 hash 逐文件核对、请求身份核对、新臂未完成不回退旧成功，且有完整单测含真实录制样本重算",
+    "codexWriteAttemptDenied 改为与录制样本逐字一致的钉死命令匹配（含 zsh -lc 双引号与单引号转义两种形态、目标对应 OS 错误、TRIVIUM_WRITE_DENIED 分行），消除上轮指出的正则死代码；claudeWritePass/codexWriteAttemptDenied 对缺 context 显式抛错，冻结旧入口不再静默全 false，测试断言 throws",
+    "cleanupAll 逐项执行清理与证据落盘、AggregateError 汇总所有失败，修复上轮 finally 单点抛错跳过后续清理的问题，且单测注入双重失败验证",
+    "目录投影纯函数与 r5 计划逐条对应：仅认严格字面完整目录、P===D 或 startsWith(D+'/') 归属、相邻前缀（calls_extra）不误并、非法坐标不规范化、祖先去重、未覆盖成员保留、输出裸目录由既有精确/子树双规则承接、原机器集合与 sourceHash 不变",
+    "逐工具三态消费守卫完整：缺 map/键/null/false 均不压缩该工具；verifiedClaudeDirectories 用目录臂自己的时间戳与完整指纹（route.fingerprint+version+entry/native 文件内容哈希）判定，未来时间、过期、漂移均不继承，单测覆盖；runClaudeReview 的 directoryGuard 把 declared/recorded/observed/consumed 全部落 trace",
+    "peer_deny_applied 组合条件（file_shape_verified && 全部实际压缩工具 verified）有独立单测三格（true/false/null），且未压缩时保持原语义向后兼容",
+    "timeout、未完成、spawn 失败三条失败出口统一先写 trace.json（含 projection、directoryGuard、skippedPaths）再返回，补上旧版两条出口零留痕的缺口；集成测试用真子进程假 CLI 验证 argv/stdin 实际递入、4000 路径压缩后 deny_rule_count=6、超时与 spawn 失败出口的 trace 均在",
+    "probeClaudeDirectories 复用生产 enumerateDenyPaths、archive 唯一写出口、registry 派生的同行集合（registry-parity 允许清单登记），禁读枚举漏夹具/正对照被误纳时 fail-fast；judgeDirectoryArm 的无调用/超时/歧义/泄漏/坏 Schema 分判 null/false 有单测；registry-parity 对 claude-directory.ts 的 import 面做了具名例外登记",
+    "config.v2 schema 的 probe.cli 段经 commonProbe additionalProperties 放行厂商专属字段，符合纪律 12 两段式，新三字段持久化读回有测试；run.v3 契约未动",
+    "收口报告对未测边界诚实：Qwen flash Grep、k3 .env、四组合生产写、两条 Codex 读取证据断言均如实标未测/未通过，prerequisite_complete 由 12 行状态派生而非宣称"
+  ],
+  "not_covered": [
+    "本侧为只读审查，未运行任何命令：npm run check、typecheck、doctor 真机 14 步桩自检、esbuild 构建均未复测，实现可编译性与测试通过状态取自补丁报告的自述",
+    "judgeDirectoryArm 的泄漏检查只覆盖 raw.stdout，未评估工具内容经 stderr 泄漏的形态（判断 Claude 工具结果走 stdout，风险极低，未作为发现）",
+    "证据目录（calls/ledger/loaded/routes 下数百个 JSON）未逐一核对，只读了 diff 呈现的与测试直接消费的样本（如 codex-*-read/write-1、claude-qwen-write-full-1）",
+    "受控 HTTP 服务器臂（controlled shape/write）的传输细节只静态读过未实际运行，其 ANTHROPIC_BASE_URL 指向与流式响应伪造的正确性未验证",
+    "doctor 多路线场景（--profile 逐条循环）下 directoryEvidence 单值只承载 selected 路线的行为未深入评估，当前 runDoctor 只探一条路线",
+    "另一位审查员的结论未读也未引用（背靠背约束）"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/code/_meta/changes-20261010T170416Z.diff",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-10-Agent双模式接入真实准入收口-r5-codex.md",
+    ".reviews/Agent双模式接入真实准入收口/code/2026-10-10-Agent双模式接入真实准入收口-glm.md",
+    "src/trivium/probes/claude-directory.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/freeze.ts",
+    "scripts/agent-access-budget.cjs",
+    "test/unit/claude-directory.test.ts",
+    "test/unit/agent-access-closeout.test.ts",
+    "test/integration/claude-directory-adapter.test.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "doc/05_testing/REPORT_2026-10-10_agent_access_closeout.md"
+  ]
+}

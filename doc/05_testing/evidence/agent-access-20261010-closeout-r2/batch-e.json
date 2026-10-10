@@ -1,0 +1,28 @@
+{
+  "starts_before": 113,
+  "planned_max_starts": 23,
+  "cumulative_hard_cap": 156,
+  "extension": {
+    "pool": "admission",
+    "key": "closeout-e-global-fingerprint-refresh",
+    "additional": 24,
+    "previous_limit": 132,
+    "new_limit": 156,
+    "reason": "新Codex全局config hash漂移后Claude完整指纹刷新，批E最多23次，不重试无调用模型的写臂",
+    "authorized_by": "2026-10-10用户已授权按需扩容",
+    "published_at": "2026-10-10T12:55:38.189Z"
+  },
+  "reason": "C到D之间.codex/config.toml hash由3d126d0c变2051826c；原因null，未手工修改；旧C原件保留不追认完整匹配",
+  "arms": [
+    "static三供应商version variant3",
+    "Claude六组合read/deny-read/deny-grep variant2",
+    "Claude qwen/deepseek-pro write variant2"
+  ],
+  "no_write_retry": [
+    "qwen-pro",
+    "kimi",
+    "kimi-pro",
+    "deepseek"
+  ],
+  "canonical_sha256": "158bdede23f2389f7d148ad3b6cc3fe00b34007a8343e6e06ff0bed84c5de124"
+}

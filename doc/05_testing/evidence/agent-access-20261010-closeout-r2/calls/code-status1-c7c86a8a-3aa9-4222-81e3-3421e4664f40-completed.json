@@ -1,0 +1,36 @@
+{
+  "load_id": "c7c86a8a-3aa9-4222-81e3-3421e4664f40",
+  "pool": "review",
+  "label": "code-status1",
+  "mode": "tv",
+  "requested_at": "2026-10-10T13:02:01.605Z",
+  "preload_sha256": "2b74abf72f7f67edb61879b58798761c6c53ade68ba92aa3dea07cb98b592b71",
+  "build_inputs_observed": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "3e5ca6bb5d5d69c7cfc5059b4d9bcf1418fb5c0a",
+    "dirty": true,
+    "inputs_sha256": "999d39b4965388d551317b5bb94b14d2a8e4627a4b8e89d4e5c96990bfae08a2",
+    "built_at": "2026-10-10T13:02:02.390Z"
+  },
+  "argv_flags_only": [
+    "--status",
+    "--json"
+  ],
+  "script_sha256": "9f18071f857805454b7a9b03edd64b3d52232116a6a65369f0a5427a89bb8939",
+  "execution_sha256": "9f18071f857805454b7a9b03edd64b3d52232116a6a65369f0a5427a89bb8939",
+  "core_sha256": "c70a39ad6c041d9bb5b2cf39d32927c7e3d936e94f7d3f82988db9af2b55bb9b",
+  "secrets_module_sha256": "f60609b5a0a5b314a47ea197f0b167c300bb825e93e8100f4dd78d8ba6a04db1",
+  "evidence_helper_sha256": "6c15617cf673add0279fccb070d39abeadd640e81c0aacef264618823559a555",
+  "wrapper_sha256": "2441083b1a55ada5a9b037890fee7d321c41fe1fef056bef6b9e3631113f4a7b",
+  "installed_bundle_sha256": "e4b3731ef347083fa7f1d10c1f0a85430da18df0358d45802fbf75e255f914ec",
+  "shared_config_sha256": "9dd249afa2277bc53c76c75a032a9cbebc8db41cdf8fb54e8a6bb964d13c770f",
+  "local_config_sha256": "01cfe267954b61f09f5ec78c0260a51ce1b22f8ec5c9b547246bc9891eba9727",
+  "code": 73,
+  "signal": null,
+  "primary_loaded": true,
+  "loaded_pids": [
+    57999
+  ],
+  "stdout": "{\n  \"ok\": false,\n  \"run_id\": \"20261010T130139Z\",\n  \"phase\": \"running\",\n  \"status\": {\n    \"schema\": \"trivium.status.v1\",\n    \"run_id\": \"20261010T130139Z\",\n    \"topic\": \"Agent双模式接入真实准入收口\",\n    \"stage\": \"code\",\n    \"phase\": \"running\",\n    \"worker_pid\": 56821,\n    \"worker_started_at\": \"Sat Oct 10 21:01:44 2026\",\n    \"worker_started_at_canonical\": \"Sat Oct 10 13:01:44 2026\",\n    \"started_at\": \"2026-10-10T13:01:44.519Z\",\n    \"heartbeat_at\": \"2026-10-10T13:01:44.914Z\",\n    \"sides\": {\n      \"claude\": {\n        \"state\": \"failed\",\n        \"model\": \"qwen3.8-flash\",\n        \"attempt\": 1,\n        \"elapsed_s\": 0,\n        \"cli\": null,\n        \"note\": \"拉起 claude 失败：spawn E2BIG\"\n      },\n      \"gemini\": {\n        \"state\": \"running\",\n        \"model\": \"gemini-3.8-flash-high\",\n        \"attempt\": 1,\n        \"elapsed_s\": 0,\n        \"cli\": {\n          \"pgid\": 56872,\n          \"started_at\": \"Sat Oct 10 13:01:44 2026\"\n        }\n      },\n      \"glm\": {\n        \"state\": \"running\",\n        \"model\": \"GLM-5.3\",\n        \"attempt\": 1,\n        \"elapsed_s\": 0,\n        \"cli\": {\n          \"pgid\": 56876,\n          \"started_at\": \"Sat Oct 10 13:01:44 2026\"\n        }\n      }\n    },\n    \"artifacts\": [],\n    \"exit_code\": null,\n    \"message\": null\n  },\n  \"progress\": \"运行 20261010T130139Z ｜ 主题 Agent双模式接入真实准入收口 ｜ 阶段 code ｜ 阶段状态 审查中\\n已用 18s / 预算 60m0s（1%） ｜ 第 1/42 次等待 ｜ 最近心跳 18s 前\\n  claude: 失败 ｜ 请求模型 qwen3.8-flash ｜ 第 1 次尝试 ｜ 拉起 claude 失败：spawn E2BIG\\n  gemini: 审查中 ｜ 请求模型 gemini-3.8-flash-high ｜ 第 1 次尝试\\n  glm: 审查中 ｜ 请求模型 GLM-5.3 ｜ 第 1 次尝试\",\n  \"progress_brief\": \"code 审查中 ｜ 已用 18s / 预算 60m0s（1%） ｜ claude 失败 · gemini 审查中 · glm 审查中\",\n  \"elapsed_s\": 18,\n  \"budget_s\": 3600,\n  \"pct\": 1,\n  \"waits_done\": 1,\n  \"max_waits\": 42,\n  \"sides\": {\n    \"claude\": {\n      \"state\": \"failed\",\n      \"model\": \"qwen3.8-flash\",\n      \"attempt\": 1,\n      \"elapsed_s\": 0,\n      \"cli\": null,\n      \"note\": \"拉起 claude 失败：spawn E2BIG\"\n    },\n    \"gemini\": {\n      \"state\": \"running\",\n      \"model\": \"gemini-3.8-flash-high\",\n      \"attempt\": 1,\n      \"elapsed_s\": 0,\n      \"cli\": {\n        \"pgid\": 56872,\n        \"started_at\": \"Sat Oct 10 13:01:44 2026\"\n      }\n    },\n    \"glm\": {\n      \"state\": \"running\",\n      \"model\": \"GLM-5.3\",\n      \"attempt\": 1,\n      \"elapsed_s\": 0,\n      \"cli\": {\n        \"pgid\": 56876,\n        \"started_at\": \"Sat Oct 10 13:01:44 2026\"\n      }\n    }\n  }\n}\n",
+  "stderr": ""
+}

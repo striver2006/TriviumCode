@@ -822,6 +822,7 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
       notes: report.notes,
       blockers: report.blockers,
       warnings: report.warnings,
+      directoryEvidence: report.directoryEvidence,
     });
   } else {
     renderDoctorReport(report);

@@ -350,6 +350,71 @@ export interface DenySettingsBuild {
   bytes: number;
   /** 无法表示成规则、因而被跳过的路径（逐条记因，不静默丢） */
   skipped: string[];
+  /** 仅目录混合规则有此项；原逐文件消费方保持兼容。 */
+  projection?: {
+    sourceHash: string;
+    originalCount: number;
+    originalSkipped: string[];
+    tools: Record<string, { verified: boolean | null; projectedHash: string; projectedCount: number;
+      directories: { directory: string; coveredCount: number }[] }>;
+    compressedTools: string[];
+  };
+}
+
+/** 只认配置声明的字面完整禁读目录，绝不猜公共前缀或归一化非法坐标。 */
+export function projectClaudeDenyPaths(denyPaths: readonly string[], sensitiveGlobs: readonly string[]): {
+  paths: string[]; directories: { directory: string; coveredCount: number }[];
+} {
+  const original = [...new Set(denyPaths)];
+  const canonical = (p: string): boolean => !path.isAbsolute(p) && !/[\\\x00-\x1f\x7f]/.test(p) &&
+    p.split('/').every(s => s !== '' && s !== '.' && s !== '..');
+  const under = (p: string, d: string): boolean => canonical(p) && (p === d || p.startsWith(`${d}/`));
+  const roots = [...new Set(sensitiveGlobs.filter(g => g.endsWith('/**')).map(g => g.slice(0, -3)))]
+    .filter(d => canonical(d) && !/[*?\[\]{}!]/.test(d) && denyPathRepresentable(d) && original.some(p => under(p, d)))
+    .sort();
+  const directories = roots.filter(d => !roots.some(parent => parent !== d && under(d, parent)))
+    .map(directory => ({ directory, coveredCount: original.filter(p => under(p, directory)).length }));
+  return { paths: [...directories.map(d => d.directory), ...original.filter(p => !directories.some(d => under(p, d.directory)))], directories };
+}
+
+/** 工具独立启用；未核实工具仍生成全量逐文件规则。原集合不变。 */
+export function buildProjectedDenySettings(denyPaths: readonly string[], tools: readonly string[], shape: DenyRuleShape | null,
+  sensitiveGlobs: readonly string[], verified: Readonly<Record<string, boolean | null>> = {}): DenySettingsBuild {
+  const original = [...new Set(denyPaths)];
+  const projected = projectClaudeDenyPaths(original, sensitiveGlobs);
+  const digest = (paths: readonly string[]): string => createHash('sha256').update(JSON.stringify(paths)).digest('hex');
+  const rules: string[] = [], skipped = new Set<string>();
+  const detail: NonNullable<DenySettingsBuild['projection']> = { sourceHash: digest(original), originalCount: original.length,
+    originalSkipped: original.filter(p => !denyPathRepresentable(p)), tools: {}, compressedTools: [] };
+  for (const tool of [...new Set(tools)]) {
+    const compressed = shape !== null && verified[tool] === true && projected.directories.length > 0;
+    const paths = compressed ? projected.paths : original;
+    const built = buildDenySettings(paths, [tool], shape);
+    if (built.json) rules.push(...(JSON.parse(built.json) as { permissions: { deny: string[] } }).permissions.deny);
+    for (const p of built.skipped) skipped.add(p);
+    detail.tools[tool] = { verified: verified[tool] ?? null, projectedHash: digest(paths), projectedCount: paths.length,
+      directories: compressed ? projected.directories : [] };
+    if (compressed) detail.compressedTools.push(tool);
+  }
+  const json = rules.length ? JSON.stringify({ permissions: { deny: rules } }) : null;
+  return { json, ruleCount: rules.length, bytes: json ? Buffer.byteLength(json, 'utf8') : 0, skipped: [...skipped], projection: detail };
+}
+
+/** 包装器、profile、版本之外也绑定实际入口和native文件hash。 */
+export async function claudeDirectoryFingerprint(route: ClaudeRoute, version: string | null): Promise<string | null> {
+  if (!route.bin || !route.nativeBin || !version) return null;
+  try {
+    const entry = createHash('sha256').update(await fs.readFile(route.bin)).digest('hex');
+    const native = createHash('sha256').update(await fs.readFile(route.nativeBin)).digest('hex');
+    return createHash('sha256').update(JSON.stringify({ route: route.fingerprint, version, entry, native })).digest('hex');
+  } catch { return null; }
+}
+
+export function verifiedClaudeDirectories(probe: Pick<ClaudeProbe, 'directory_deny_verified' | 'directory_deny_probed_at' | 'directory_deny_fingerprint'>,
+  fingerprint: string | null, ttlDays: number, now = Date.now()): Record<string, boolean | null> {
+  const age = now - Date.parse(probe.directory_deny_probed_at ?? '');
+  return fingerprint && fingerprint === probe.directory_deny_fingerprint && Number.isFinite(age) && age >= 0 &&
+    age < ttlDays * 86_400_000 ? { ...probe.directory_deny_verified } : {};
 }
 
 export function buildDenySettings(
@@ -507,7 +572,7 @@ export function buildClaudeResult(
    * **走入参而不是让 `run()` 事后补**：这两格要进判定面（`report.ts` 据此推降级旗标），
    * 埋在 `run()` 里的字段组装没有任何用例守得到——codex 侧的 M4 变异证实过这一点。
    */
-  deny: Pick<DenySettingsBuild, 'ruleCount' | 'skipped' | 'bytes'>,
+  deny: Pick<DenySettingsBuild, 'ruleCount' | 'skipped' | 'bytes' | 'projection'>,
   /**
    * Grep 相对命中的绝对化基准，只在 `init.cwd` 缺失时用。可选是为了不动 14 处既有直调
    * （它们的夹具 init 无 cwd 且不含 Grep 结果，缺省 null 即「相对命中丢弃」）。
@@ -639,7 +704,8 @@ export function buildClaudeResult(
      * **同文件 249-250 行**（`denyPathRepresentable` 的立理由）一直写的就是准确口径，
      * 而这里的旧措辞与它并存自相矛盾了整整一轮——r1 应答件承诺过改它，**没落地**。
      */
-    peer_deny_applied: probe.path_deny.file_shape_verified === true,
+    peer_deny_applied: probe.path_deny.file_shape_verified === true &&
+      (deny.projection?.compressedTools ?? []).every(tool => deny.projection?.tools[tool]?.verified === true),
     /*
      * 本次注入的规模与跳过条数**进判定面**（代码双审 r2 CODEX-01）。
      *
@@ -905,7 +971,12 @@ async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: C
      */
     const denyShape =
       probe.path_deny.supported === true ? denyRuleShapeOf(probe.path_deny.rule_syntax) : null;
-    const deny = buildDenySettings(req.deny_paths, readonlyTools, denyShape);
+    const directoryFingerprint = await claudeDirectoryFingerprint(resolveClaudeRoute(ctx.cfg, req.profile_requested, probe.version), probe.version);
+    const directoryFacts = verifiedClaudeDirectories(probe, directoryFingerprint, ctx.cfg.probe_ttl_days);
+    const directoryGuard = { declared: probe.directory_deny_verified ?? null,
+      recordedFingerprint: probe.directory_deny_fingerprint ?? null, observedFingerprint: directoryFingerprint,
+      probedAt: probe.directory_deny_probed_at ?? null, ttlDays: ctx.cfg.probe_ttl_days, consumed: directoryFacts };
+    const deny = buildProjectedDenySettings(req.deny_paths, readonlyTools, denyShape, ctx.cfg.review.sensitive_globs, directoryFacts);
     const settingsJson = deny.json;
     /*
      * **两条失败出口也要拿到它**（代码双审 r3 GLM-04 ≡ CODEX-04）。
@@ -968,14 +1039,60 @@ async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: C
         timeoutMs: req.timeout_s * 1000,
       });
     } catch (e) {
+      await fs.writeFile(tracePath, JSON.stringify({ denySettings: { injected: settingsJson !== null,
+        ruleCount: deny.ruleCount, bytes: deny.bytes, skippedPaths: deny.skipped,
+        denyPathsRequested: req.deny_paths.length, fileShapeVerified: probe.path_deny.file_shape_verified,
+        projection: deny.projection, directoryGuard }, degradations, processStarted: false }, null, 2), 'utf8');
       return failedResult('claude', {
         status: 'failed',
         reason: `拉起 claude 失败：${(e as Error).message}`,
+        deny: denyPayload,
+        cliVersion: probe.version,
       });
     }
 
     await fs.writeFile(stdoutPath, out.stdout, 'utf8');
     const trace = parseClaudeEvents(out.stdout);
+
+    await fs.writeFile(
+      tracePath,
+      JSON.stringify(
+        {
+          sessionId: trace.sessionId,
+          init: trace.init,
+          toolUses: trace.toolUses,
+          toolErrors: trace.toolErrors,
+          permissionDenials: trace.permissionDenials,
+          eventCount: trace.eventCount,
+          /*
+           * Grep 结果解析留痕（EV-76 出路 ①，计划双审 CODEX-07）：
+           * `hits` = content 命中（去重后，进判定面）；`listed` = 另两档（去重后，只留痕）；
+           * `resultLines` = 成功 Grep 结果的非空行总数（去重前）。格式漂移 = hits 归零而 resultLines 不为零。
+           */
+          grep: parseGrepResults(trace, req.project_root),
+          denySettings: {
+            injected: settingsJson !== null,
+            ruleCount: deny.ruleCount,
+            // **字节数要记**：它是 ARG_MAX 预算的主要消费者，只记条数看不出规模
+            bytes: deny.bytes,
+            skippedPaths: deny.skipped,
+            denyPathsRequested: req.deny_paths.length,
+            fileShapeVerified: probe.path_deny.file_shape_verified,
+            projection: deny.projection,
+            directoryGuard,
+          },
+          /*
+           * 本次发生过的降级，逐条记。空数组的含义是「没有降级」，
+           * 与「没记录降级」不同——后者不会出现，因为这个键**恒在**。
+           */
+          degradations,
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
 
     if (out.timedOut) {
       return failedResult('claude', {
@@ -1012,42 +1129,6 @@ async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: C
       });
     }
 
-    await fs.writeFile(
-      tracePath,
-      JSON.stringify(
-        {
-          sessionId: trace.sessionId,
-          init: trace.init,
-          toolUses: trace.toolUses,
-          toolErrors: trace.toolErrors,
-          permissionDenials: trace.permissionDenials,
-          eventCount: trace.eventCount,
-          /*
-           * Grep 结果解析留痕（EV-76 出路 ①，计划双审 CODEX-07）：
-           * `hits` = content 命中（去重后，进判定面）；`listed` = 另两档（去重后，只留痕）；
-           * `resultLines` = 成功 Grep 结果的非空行总数（去重前）。格式漂移 = hits 归零而 resultLines 不为零。
-           */
-          grep: parseGrepResults(trace, req.project_root),
-          denySettings: {
-            injected: settingsJson !== null,
-            ruleCount: deny.ruleCount,
-            // **字节数要记**：它是 ARG_MAX 预算的主要消费者，只记条数看不出规模
-            bytes: deny.bytes,
-            skippedPaths: deny.skipped,
-            denyPathsRequested: req.deny_paths.length,
-            fileShapeVerified: probe.path_deny.file_shape_verified,
-          },
-          /*
-           * 本次发生过的降级，逐条记。空数组的含义是「没有降级」，
-           * 与「没记录降级」不同——后者不会出现，因为这个键**恒在**。
-           */
-          degradations,
-        },
-        null,
-        2,
-      ),
-      'utf8',
-    );
 
     return buildClaudeResult(trace, out, { stdout: stdoutPath, trace: tracePath }, probe, readonlyTools, deny, {
       fallbackRoot: req.project_root,

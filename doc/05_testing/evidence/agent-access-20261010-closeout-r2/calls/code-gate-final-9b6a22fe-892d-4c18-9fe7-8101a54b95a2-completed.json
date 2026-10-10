@@ -1,0 +1,38 @@
+{
+  "load_id": "9b6a22fe-892d-4c18-9fe7-8101a54b95a2",
+  "pool": "review",
+  "label": "code-gate-final",
+  "mode": "tv",
+  "requested_at": "2026-10-10T13:17:02.042Z",
+  "preload_sha256": "2b74abf72f7f67edb61879b58798761c6c53ade68ba92aa3dea07cb98b592b71",
+  "build_inputs_observed": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "3e5ca6bb5d5d69c7cfc5059b4d9bcf1418fb5c0a",
+    "dirty": true,
+    "inputs_sha256": "999d39b4965388d551317b5bb94b14d2a8e4627a4b8e89d4e5c96990bfae08a2",
+    "built_at": "2026-10-10T13:17:04.139Z"
+  },
+  "argv_flags_only": [
+    "--stage",
+    "--topic",
+    "--check",
+    "--json"
+  ],
+  "script_sha256": "9f18071f857805454b7a9b03edd64b3d52232116a6a65369f0a5427a89bb8939",
+  "execution_sha256": "9f18071f857805454b7a9b03edd64b3d52232116a6a65369f0a5427a89bb8939",
+  "core_sha256": "c70a39ad6c041d9bb5b2cf39d32927c7e3d936e94f7d3f82988db9af2b55bb9b",
+  "secrets_module_sha256": "f60609b5a0a5b314a47ea197f0b167c300bb825e93e8100f4dd78d8ba6a04db1",
+  "evidence_helper_sha256": "6c15617cf673add0279fccb070d39abeadd640e81c0aacef264618823559a555",
+  "wrapper_sha256": "2441083b1a55ada5a9b037890fee7d321c41fe1fef056bef6b9e3631113f4a7b",
+  "installed_bundle_sha256": "e4b3731ef347083fa7f1d10c1f0a85430da18df0358d45802fbf75e255f914ec",
+  "shared_config_sha256": "9dd249afa2277bc53c76c75a032a9cbebc8db41cdf8fb54e8a6bb964d13c770f",
+  "local_config_sha256": "01cfe267954b61f09f5ec78c0260a51ce1b22f8ec5c9b547246bc9891eba9727",
+  "code": 2,
+  "signal": null,
+  "primary_loaded": true,
+  "loaded_pids": [
+    94552
+  ],
+  "stdout": "{\n  \"ok\": false,\n  \"stage\": \"code\",\n  \"rerun_index\": 1,\n  \"run_id\": \"20261010T130139Z\",\n  \"failures\": [\n    {\n      \"code\": \"missing_findings\",\n      \"message\": \"下列意见没有裁决，必须逐条给出（禁止静默忽略，FR-14）\",\n      \"ids\": [\n        \"GLM-F01\",\n        \"GLM-F02\",\n        \"GLM-F03\",\n        \"GLM-F04\",\n        \"GLM-F05\",\n        \"GLM-F06\",\n        \"GLM-F07\"\n      ]\n    }\n  ],\n  \"warnings\": [\n    {\n      \"code\": \"run_warning\",\n      \"message\": \"安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装\"\n    },\n    {\n      \"code\": \"degraded_round\",\n      \"message\": \"本轮是降级轮次（有入选审核者未成功产出结论），裁决完整性是**对幸存侧**校验的。复核时请一并核对 run 元数据的 degraded_reason。\"\n    },\n    {\n      \"code\": \"joint_check_degraded\",\n      \"message\": \"共同阻断这一档**未执行**：有效侧只剩 1 家（需要 2 家）——有侧未产出结构化结论（解析降级或失败）。本轮不享有「两家同时提出的 blocker 被驳回即报」这层保护——这不是「查过、没发现」，是「没查」。\",\n      \"ids\": []\n    }\n  ],\n  \"structured_ids\": [\n    \"AGY-01\",\n    \"AGY-02\",\n    \"AGY-03\",\n    \"AGY-04\"\n  ],\n  \"fallback_ids\": [],\n  \"degraded_ids\": [],\n  \"disposition\": \"/Users/chenzhenbo/Work/TriviumCode/.reviews/Agent双模式接入真实准入收口/code/2026-10-10-Agent双模式接入真实准入收口-response-codex.md\"\n}\n",
+  "stderr": "· claude 侧本轮失败，未产出结论（单审降级）\n· glm 侧为 parse_fallback，其意见按 <前缀>-F<n> 编号逐条校验\n"
+}

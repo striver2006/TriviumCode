@@ -471,6 +471,20 @@ test('A14 组装：peer_deny_applied 读 file_shape_verified 的三态', () => {
   );
 });
 
+test('A14目录混合：保留文件前提，每个实际压缩工具必须已证实', () => {
+  const t = traceOf();
+  const mixed = { ...NO_DENY, projection: { sourceHash: 'source', originalCount: 2, originalSkipped: [],
+    tools: { Read: { verified: true as boolean | null, projectedHash: 'projection', projectedCount: 1, directories: [{ directory: 'calls', coveredCount: 2 }] } },
+    compressedTools: ['Read'] } };
+  assert.equal(buildClaudeResult(t, OUT, PATHS, PROBE_OK, TOOLS, mixed).peer_deny_applied, true);
+  for (const verified of [false, null]) {
+    mixed.projection.tools.Read.verified = verified;
+    assert.equal(buildClaudeResult(t, OUT, PATHS, PROBE_OK, TOOLS, mixed).peer_deny_applied, false);
+  }
+  mixed.projection.tools.Read.verified = true;
+  assert.equal(buildClaudeResult(t, OUT, PATHS, { ...PROBE_OK, path_deny: { file_shape_verified: false } }, TOOLS, mixed).peer_deny_applied, false);
+});
+
 test('A14b 组装：覆盖率两个计数无条件填，且 command_texts 恒空', () => {
   const r = buildClaudeResult(traceOf(), OUT, PATHS, PROBE_OK, TOOLS, NO_DENY);
   assert.equal(r.path_bearing_reads, 1);

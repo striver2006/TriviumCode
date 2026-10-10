@@ -1,0 +1,41 @@
+{
+  "starts_before": 73,
+  "planned_max_starts": 40,
+  "cumulative_hard_cap": 132,
+  "extension": {
+    "pool": "admission",
+    "key": "closeout-d-full-1621",
+    "additional": 40,
+    "previous_limit": 92,
+    "new_limit": 132,
+    "reason": "批准计划批D：Codex六组合×三能力臂及version/help，累计92→132",
+    "authorized_by": "2026-10-10用户已授权按需扩容",
+    "published_at": "2026-10-10T12:32:38.434Z"
+  },
+  "arms": [
+    "static/codex/version/1",
+    "static/codex/help/1",
+    "codex/native-sol/read/1",
+    "codex/native-sol/write/1",
+    "codex/native-sol/deny/1",
+    "codex/native-luna/read/1",
+    "codex/native-luna/write/1",
+    "codex/native-luna/deny/1",
+    "codex/native-astra/read/1",
+    "codex/native-astra/write/1",
+    "codex/native-astra/deny/1",
+    "codex/qwen/read/1",
+    "codex/qwen/write/1",
+    "codex/qwen/deny/1",
+    "codex/kimi/read/1",
+    "codex/kimi/write/1",
+    "codex/kimi/deny/1",
+    "codex/deepseek/read/1",
+    "codex/deepseek/write/1",
+    "codex/deepseek/deny/1"
+  ],
+  "canonical_sha256": "158bdede23f2389f7d148ad3b6cc3fe00b34007a8343e6e06ff0bed84c5de124",
+  "helper_sha256": "6c15617cf673add0279fccb070d39abeadd640e81c0aacef264618823559a555",
+  "failure_policy": "逐组合先read，非零或超时停止其余臂；不以其它模型替代",
+  "controlled_results_replace_live_model": false
+}

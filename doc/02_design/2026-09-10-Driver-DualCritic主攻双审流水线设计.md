@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.143
+> - **当前版本**：v1.3.145
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -275,6 +275,10 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 | `--dangerously-skip-permissions` 图省事 | 等于给审查员开写权限，直接违反 FR-15；且社区反馈该 flag 自身有工具调用失败问题 |
 
 ### 3.5 探针必测清单（`trivium doctor` 的输出契约）
+
+2026-10-10目录deny增量（设计修订v1.3.144，厂商实测未测）：Claude目录规则分别记录`directory_deny_verified: Record<string,boolean|null>`，工具名由已测工具面派生。每工具文件臂、目录查询臂各一次，另一个共同合法Read正对照，共七个逻辑臂。普通/嵌套/隐藏/嵌套隐藏/中文空格逗号/方括号文件名使用独立假夹具，生产`enumerateDenyPaths`构造机器集合，假角色件经`archive.ts`写出口。完整真实Schema、实际调用唯一ID与精确目标配对拒绝、无泄漏、正常完成及共同正对照齐备才为true；无调用、歧义、未完成为null，实际泄漏为false。`directory_deny_probed_at`与`directory_deny_fingerprint`独立绑定路线、版本、包装器/profile、入口及native文件hash，消费时另校TTL；跳过模型调用不继承目录true。doctor JSON的`directoryEvidence`保留脱敏原始臂及清理结果，配置只保存三态与绑定；14步桩自检不证明厂商目录能力。
+
+2026-10-10收口取证补充（不新增探针字段）：doctor机制结论与完整生产Schema能力臂分开，当前版本/入口/包装器/配置/导入模块及构建输入指纹匹配才复用。独立canonical取证脚本及逐模型状态见[收口报告](../05_testing/REPORT_2026-10-10_agent_access_closeout.md)；版本、help、失败、超时及重试均计CLI启动，准入与正式审查预算独立。当前探针和汇总共用显式selection manifest，固定variant及requested/result/fingerprints-after三份hash；所选臂缺失、未完成或不兼容不回退旧成功。版本证据亦显式引用及核对完整相关指纹；受控生产基准从同一manifest取当期真实臂，实际permissionMode和工具面缺值不判同形。Codex以CommandExecution实际cwd/parsed_cmd精确README和唯一命令/完整输出/exit/status配对确认读取，两种ID分别留存；CLI effort带来源回读，不加默认值、不推断服务端。异常清理和清理证据各自执行并汇总错误；旧配方缺新版上下文明确报错，原件不追改。
 
 `doctor` 必须在本机实测下列各项并把结论写入 `.trivium/config.yaml` 的 `probe:` 段（人不手工编辑该段）：
 
@@ -2153,6 +2157,8 @@ Hook 行为约定：
 
 ### 10.1 背靠背隔离的四道机制（FR-10 / AC-04）
 
+目录投影只改变Claude CLI规则表达，不改变BRIEF/检测器使用的完整禁读集合。候选只来自同一配置`sensitive_globs`的严格字面项目相对`D/**`，拒绝其它glob/非法路径段；归属判据为`P===D || P.startsWith(D+'/')`，不得按共同前缀合并主题根、Driver/己方产出或audit目录。未知工具仍使用全部逐文件规则；不能以规则变小、无输出或事后检测命中宣称CLI拦截。软链接、别名、未测路径方言不外推。原生产写负对照标准保持不变。
+
 需要屏蔽的对方产出只有两类，机制分别对应：
 
 | 机制 | 说明 | 屏蔽对象 |
@@ -2486,6 +2492,10 @@ flowchart LR
 ## 11. 适配层与模型路由
 
 ### 11.1 统一契约
+
+Claude逐工具目录规则：`projectClaudeDenyPaths`输出裸目录及未覆盖路径，既有`buildDenySettings`生成精确和子树规则；只有当前绑定/TTL有效且该工具目录实测true才启用投影。`peer_deny_applied`仍须`file_shape_verified===true`，并要求所有实际压缩工具已验证true，未压缩时条件保持原状。`trace.json.denySettings.projection`记录原集合hash/数量/不可表示项、逐工具投影hash/数量、目录覆盖数及实际压缩工具；`CriticResult/run.v3`继续记录规则数、字节、跳过数及机制标志，启动失败、超时、无最终结果也保留规模及trace。历史run Schema不改。Codex准入版本证据另绑定同一请求的成功native实际子边界及父边界/hash，缺失或歧义拒绝；读取/写入精确坐标缺绝对fixtureRoot或实际cwd不通过。
+
+2026-10-11取证上下文修订：Codex的native及各profile分别保存版本请求及完整配置指纹，能力臂显式选择本profile的版本manifest；不把native配置指纹用于第三方profile，不删除或归一化差异来通过比较。canonical静态Codex版本臂可接第五个内部参数选择已登记profile上下文，只适用于版本臂；这不是产品CLI旗标，也不证明供应商/模型运行身份。版本运行的实际native父子边界仍必须配对，服务端身份无证据null。
 
 > **【部分实施 · M8 第 2 步 / M9 工前】适配层契约的 N 方化**：能力声明（`TraceCapability`）
 > 已落地，见下文「轨迹能力与判定分档」；**厂商旗标差异的收敛方式已裁定**，见下文
@@ -3021,6 +3031,8 @@ profiles:
 ---
 
 ### 11.6 接入方式与模型族判定（M11 第12步前置 · 契约已定，实施验收中）
+
+本轮取证精确性（2026-10-10）：生产写负对照必须有真实模型实际尝试、按实际cwd解析的唯一隔离目标、非空调用ID配对拒绝及目标文件前后不存在。Claude核对原始tool_result的工具注册层错误；Codex核对唯一command ID、实际会话cwd、钉死写命令及其目标对应OS错误，不虚构tool_use/tool_result。权限诊断、受控传输或文件不存在均不能独自代替真实尝试。CLI回读与服务端身份分列，缺证据记null；相同模型请求不证明相同后端。禁读集调用生产enumerateDenyPaths并覆盖全部临时同行工件和敏感夹具，逐文件Read/Grep配对拒绝须伴随完整Schema交付，超时保留部分轨迹但不判该臂通过。事后检测保留。候选分项准入不改变本节原标准，未经用户另行明确审批不得改判。
 
 本节修订11.5的名义族判据及仅Codex拥有profile的限制；未实测能力不能视为已准入。依据三个主题的计划裁决和 ADR_003_agent_access.md。
 

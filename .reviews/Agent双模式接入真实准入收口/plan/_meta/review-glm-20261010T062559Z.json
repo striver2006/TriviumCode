@@ -1,0 +1,89 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "按边界与失败路径、幂等与预算、验收可测性、本土运维约束四个镜头审查了该实施计划，并对照仓库核实了其关键事实陈述与机制主张。计划的忠实度较好：claudeWritePass 缺陷诊断准确（scripts/agent-access-evidence.mjs:8-12 确实只做 endsWith('/breach.txt') 匹配、不校验 cwd 与目录归属）、0.162.0 固定复用前提属实（scripts/agent-access-admission.mjs:49 与 agent-access-summary.mjs:33/34/107）、路线探针混存 2.1.295/2.1.296 属实（.trivium/config.local.yaml:603-625）、『新根四类元数据未在敏感集合』陈述准确（config.local.yaml:673-676 只列旧 admission 根）、预算 O_EXCL 预占与 extend 机制与 scripts/agent-access-budget.cjs 实现一致、共享三审集合与 .trivium/config.yaml:20 一致；判据不可测试性的指出与『不自行改判、替代方案另列待决』忠实于任务目标。发现四条问题：最重的一条是收尾段把执行顺序写成『批准后按计划补测、整改』，与批次 D 对 admission.mjs:49 版本硬断言的整改依赖、批次 C write 臂对判定整改的依赖直接矛盾，按字面顺序会白烧不可回收的启动预算并造成新旧判定口径混用（GLM-01，major）；另有 sensitive_globs 本机覆盖是整键替换而非追加、计划未写明须并集抄全（GLM-02）；『敏感规则变更纳入代码审查』所选载体 config.local.yaml 不进 Git 且被补丁无条件剔除、承诺不可兑现（GLM-03）；分项准入候选的『注册层拒绝』可判定性未经预检（GLM-04）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划『收尾与停止条件』段（批准后按计划补测、整改、代码三审）与『取证装置整改范围』『分批补测及最小启动清单』批次 C/D 行",
+      "problem": "计划把补测列在整改之前，但批次 D 依赖版本断言整改：scripts/agent-access-admission.mjs:49 硬性要求 codexVersion === '0.162.0' 否则 throw，而本轮 Codex 已升至 0.162.1，不先移除断言则批次 D 每次尝试都会在预占预算（不回收）后失败；批次 C 的 write 臂（含 V4 pro 写负对照重跑）的 pass 结论口径依赖 claudeWritePass 整改，而计划只写了『用旧真实录制的 V4 pro 样本重算派生结论』，未写明本轮新录样本按哪套判定出具结论。按现在的文字顺序执行会造成预算浪费与新旧判定口径混用。",
+      "evidence": "scripts/agent-access-admission.mjs:49（版本硬断言 throw）；scripts/agent-access-summary.mjs:33-34,107（0.162.0 复用前提）；scripts/agent-access-evidence.mjs:8-12（现行 claudeWritePass）；计划『收尾与停止条件』段的顺序表述。",
+      "suggestion": "在计划中明确：取证装置目标判定与版本断言的整改先于依赖它们的补测批次；并写明本轮新录制的 write 臂一律按整改后判定出具结论（或新旧双算对账），与『旧样本重算』区分开。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "security",
+      "location": "计划『指纹、审查冻结与文档同步』段（审批后用受支持的项目本机配置将本轮这四类元数据加入敏感保护）",
+      "problem": "配置合并对数组键是整体覆盖而非追加（src/trivium/config.ts:554-564 明言数组语义是覆盖），config.local.yaml:668-676 的现行做法是全量重写（默认凭据四条加旧 admission 根四类）。计划文字未写明这一约束，若实施时按字面最小实现只写新根路径，.env*、*.pem、*.key、id_rsa* 将同时退出禁读集合（src/trivium/freeze.ts:376）与被审补丁剔除（src/trivium/util/git.ts:445-459），凭据保护静默失效，恰逢本轮大量证据落盘与凭据副本清理场景。",
+      "evidence": "src/trivium/config.ts:554-564（deepMerge 数组整体替换）；.trivium/config.local.yaml:668-676（现行全量重写先例）；src/trivium/freeze.ts:376 与 src/trivium/util/git.ts:445-459（sensitive_globs 的禁读与剔除双语义）。",
+      "suggestion": "计划写明本机覆盖必须包含既有全集（并集抄全），并把『合并后 .env* 仍在禁读集合』列入整改后的边界验证断言。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划『指纹、审查冻结与文档同步』段（敏感规则变更也纳入代码审查）",
+      "problem": "该承诺所选载体不可审计：敏感规则变更落在 .trivium/config.local.yaml，此文件不进 Git，且 .trivium/ 前缀被 diffAgainst 的无条件剔除集排除（src/trivium/util/git.ts:435-443 注释明示），代码审的被审补丁永远看不到这处变更，『纳入代码审查』无法兑现，除非另有副本送审。",
+      "evidence": "src/trivium/util/git.ts:432-443（.trivium/ 与 .reviews/ 由调用方显式传入无条件剔除）；.trivium/config.local.yaml 不进 Git（README.md 运行时布局一节）。",
+      "suggestion": "明确把 sensitive_globs 变更的前后值放进 audit-snapshots/ 冻结副本或代码审应答件随审，使该承诺有可核对的载体。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划『写负对照的可测试性与待决替代方案』第 2 条（受控传输臂证明非法 Write/Bash 返回会被注册层拒绝）",
+      "problem": "新接口要求『原始配对结果须明确为对应工具的注册层拒绝』，但现有轨迹判定只按 tool_use_id 配对错误结果（judgeDeniedToolInTrace 与 claudeWritePass 均不读错误类型），trace.permissionDenials 仅覆盖权限层拒绝面；『未注册工具的 tool_use 被注册层拒绝』在轨迹中是否可与权限层拒绝相区分，取决于 CLI 错误形态可辨性，计划未安排任何预检或既有样本验证即承诺按此判定。若形态不可辨，受控传输臂的核心判定无法落地。",
+      "evidence": "scripts/agent-access-admission.mjs:138（judgeDeniedToolInTrace 仅按 id 配对）与 :146-147（permissionDenials 仅权限面）；scripts/agent-access-evidence.mjs:8-12（同上）。此判断为代码推理，未经实测。",
+      "suggestion": "实施分项候选前，先用已录制样本或一次最小启动验证注册层与权限层拒绝在轨迹中可区分；不可区分则如实记录该臂不可测，不降低判定口径。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "claudeWritePass 缺陷诊断准确：scripts/agent-access-evidence.mjs:8-12 确实只检查 endsWith('/breach.txt') 与 content，不校验 init.cwd 与 fixture 根归属，相对路径漏判、其它目录同名目标误收，Bash 臂 includes('breach.txt') 同样有目标歧义；按实际 cwd 解析、统一 macOS /var 与 /private/var、精确匹配唯一隔离目标的整改方向正确（src/trivium/review.ts:652 已有同类归一先例）。",
+    "版本不追认原则正确且有代码依据：agent-access-admission.mjs:49 与 agent-access-summary.mjs:33/34/107 固定 0.162.0，2.1.295 探针结论不追认 2.1.296（.trivium/config.local.yaml:603-625 证实路线探针混存两版本），与 AGENTS.md 纪律 1『凡取值必须靠实测』一致。",
+    "写负对照可测试性问题的指出忠实且克制：真实模型可能只调用注册工具、不能凭提示保证发出未注册的 Write/Bash；权限层诊断、本地模拟供应商、文件未生成三者均不满足原标准；替代方案列为待决并明确其不能证明什么，未自行改判，符合任务目标第三节。",
+    "预算与留痕机制与实现一致：agent-access-budget.cjs 的 reserve 用 wx 旗标（O_CREAT|O_EXCL）预占、extend 具名扩容、预占不回收；saveEvidence 落盘 0600 且先脱敏后扫描（scripts/agent-access-evidence.mjs:3-7）。",
+    "『新根 calls/ledger/loaded/routes 尚未在敏感集合』陈述准确（.trivium/config.local.yaml:673-676 仅列旧 admission 根），且沿用本机配置扩展的路线有既有先例支撑。",
+    "人工审批停点优先于入口 A 默认、审批发起权在用户、闸门期与审查期间不改业务文件、原稿裁决件仅经 archive 出口——符合 AGENTS.md 与 CLAUDE.md 的流水线协议。",
+    "收尾安排符合已知坑清单：两次串行 npm run check、doctor --selftest、重装前取消 TRIVIUM_ASSET_ROOT、--targets claude 边界如实交代『未刷新其它载体不称已刷新』。",
+    "共享三审集合 claude,gemini,glm 与 .trivium/config.yaml:20 一致；批次表对任务目标五节收尾条件（逐模型验收矩阵、未测如实列阻塞、判据候选未经审批永久保持候选）覆盖完整。",
+    "计划引用的生产函数全部存在：invokeClaude（src/trivium/adapters/claude.ts:422）、invokeCodex（src/trivium/adapters/codex.ts:126）、readonlyArgsFromProbe、buildClaudeArgs（claude.ts:116）、readSchemaJson（claude.ts:443）、enumerateDenyPaths（src/trivium/freeze.ts:275）。"
+  ],
+  "not_covered": [
+    "本侧无命令执行能力：HEAD 与 origin/main 一致、工作树起始状态、安装副本 bundle hash、批次 A『已执行』的磁盘台账计数等『已核对的事实』均采信计划自述，未经复算。",
+    "禁读清单内的旧 evidence 与 result.json 样本（含 V4 pro 旧件）未读，『旧真实录制的 V4 pro 样本足以支撑重算』未验证。",
+    "Claude/Codex CLI 的实际行为（注册层与权限层拒绝的轨迹形态、2.1.296 下各 profile 探针、Codex 0.162.1 能力臂）未实测，GLM-04 为代码推理。",
+    "主设计 §3.5/§11.6、ADR_003、QUICKSTART §5.2、验收剧本等被引文档的正文未逐一重读，其与计划整改范围的一致性未复核。",
+    "另一位审查员的结论（背靠背不可见，未引用未推测）。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-10-Agent双模式接入真实准入收口-codex.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "scripts/agent-access-evidence.mjs",
+    "scripts/agent-access-admission.mjs",
+    "scripts/agent-access-summary.mjs",
+    "scripts/agent-access-budget.cjs",
+    "src/trivium/config.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/util/git.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/codex.ts",
+    ".trivium/config.yaml",
+    ".trivium/config.local.yaml"
+  ]
+}

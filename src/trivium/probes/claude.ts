@@ -45,7 +45,7 @@ import {
   type Fixture,
 } from './fixture.js';
 import { probeScratchPaths } from './agy.js';
-import type { ClaudeProbe, PathDenyProbe } from '../types.js';
+import type { ClaudeProbe, Config, PathDenyProbe } from '../types.js';
 import { emptyPathDeny, resolveReviewSchemaPath } from '../config.js';
 /*
  * 轨迹解析住在适配层，探针**反向 import** 它（M9 第 3 步）。
@@ -66,8 +66,9 @@ import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents, type ClaudeTrace } from '../ada
  * 变换就会撞拒绝形态，`json_schema_ok` 落 null 而不是 false，静默回归。
  * 方向 probes → adapters 与 `claude-trace` 的先例相同；反向（adapters → probes）仍禁止。
  */
-import { buildDenySettings, denyRuleShapeOf, readSchemaJson } from '../adapters/claude.js';
-import { claudeRouteEnv, type ClaudeRoute } from '../adapters/claude-route.js';
+import { buildDenySettings, claudeDirectoryFingerprint, denyRuleShapeOf, readSchemaJson } from '../adapters/claude.js';
+import { claudeRouteEnv, resolveClaudeRoute, type ClaudeRoute } from '../adapters/claude-route.js';
+import { probeClaudeDirectories } from './claude-directory.js';
 
 const routeContext = new AsyncLocalStorage<{ route: ClaudeRoute; model: string | null; effort: string | null }>();
 /** 一轮探针独占上下文；并行 doctor 的路线与参数互不串用。 */
@@ -1154,7 +1155,7 @@ export type StructuredArmCause = 'carried-over' | 'asset-root-missing' | JsonSch
 
 export async function probeClaude(
   configuredBin: string | null,
-  opts: { skipModelCalls?: boolean; existing?: ClaudeProbe; assetRoot?: string } = {},
+  opts: { skipModelCalls?: boolean; existing?: ClaudeProbe; assetRoot?: string; config?: Config } = {},
 ): Promise<{
   probe: ClaudeProbe;
   notes: string[];
@@ -1164,6 +1165,7 @@ export async function probeClaude(
    * 主夹具各格照常返回——它们已经花过真实配额。doctor 据此出一条 warning（计划双审 AGY-01）。
    */
   memoryFixtureFailure: string | null;
+  directoryEvidence?: Awaited<ReturnType<typeof probeClaudeDirectories>>;
 }> {
   const notes: string[] = [];
   // 同另两家：以既有结论为起点，跳过的探针保留原值，
@@ -1193,6 +1195,11 @@ export async function probeClaude(
         strict_mcp_config_applied: null,
         project_memory_blocked: null,
       };
+
+  // 新臂未执行不能继承true，即使本轮其它探针刷新了probed_at。
+  probe.directory_deny_verified = {};
+  probe.directory_deny_probed_at = null;
+  probe.directory_deny_fingerprint = null;
 
   const { bin, version } = await probeClaudeBin(configuredBin);
   probe.entrypoint = bin;
@@ -1245,6 +1252,7 @@ export async function probeClaude(
 
   // 早退轮不产出这个值；到这里说明「模型段真跑过」，见上方注释
   let structuredArmCause: StructuredArmCause = 'asset-root-missing';
+  let directoryEvidence: Awaited<ReturnType<typeof probeClaudeDirectories>> | undefined;
 
   const fx = await createFixture();
   try {
@@ -1650,7 +1658,7 @@ export async function probeClaude(
   } catch (e) {
     if (!(e instanceof ProbeFixtureError)) throw e;
     notes.push(`project_memory_blocked 本轮未刷新：${e.message}`);
-    return { probe, notes, structuredArmCause, memoryFixtureFailure: e.message };
+    return { probe, notes, structuredArmCause, memoryFixtureFailure: e.message, directoryEvidence };
   }
   try {
     const askMemory =
@@ -1703,5 +1711,22 @@ export async function probeClaude(
     if (fixtureResidue) notes.push(fixtureResidue);
   }
 
-  return { probe, notes, structuredArmCause, memoryFixtureFailure: null };
+  const directorySchemaPath = opts.assetRoot ? resolveReviewSchemaPath(opts.assetRoot) : null;
+  const selectedRoute = routeContext.getStore();
+  if (opts.config && directorySchemaPath && selectedRoute?.model && probe.readonly_flags.length > 0) {
+    const route = resolveClaudeRoute(opts.config, selectedRoute.route.profile, probe.version);
+    const before = await claudeDirectoryFingerprint(route, probe.version);
+    directoryEvidence = await probeClaudeDirectories({ critic: 'claude', cfg: opts.config, route, model: selectedRoute.model,
+      effort: selectedRoute.effort, readonlyFlags: probe.readonly_flags, schemaPath: directorySchemaPath });
+    const after = await claudeDirectoryFingerprint(resolveClaudeRoute(opts.config, route.profile, probe.version), probe.version);
+    const recorded = before !== null && before === after && directoryEvidence.arms.length > 0;
+    probe.directory_deny_verified = recorded ? directoryEvidence.verified : {};
+    probe.directory_deny_fingerprint = recorded ? before : null;
+    probe.directory_deny_probed_at = recorded ? new Date().toISOString() : null;
+    notes.push(`目录deny逐工具实测：${JSON.stringify(probe.directory_deny_verified)}；夹具拓扑范围，未知工具维持逐文件规则`);
+    if (directoryEvidence.failure) notes.push(`目录臂停止：${directoryEvidence.failure}`);
+    notes.push(...directoryEvidence.notes);
+  }
+
+  return { probe, notes, structuredArmCause, memoryFixtureFailure: null, directoryEvidence };
 }

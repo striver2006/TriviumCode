@@ -1201,6 +1201,8 @@ test('架构契约：probes/ 的 import 面——允许清单而非黑名单（E
   /** 具名登记的已知例外：把 `stableNodePath` 搬出 `init.ts` 不在本主题论域（plan §0.2） */
   const NAMED_EXCEPTIONS: ReadonlyMap<string, readonly string[]> = new Map([
     ['env.ts', ['../init.js']],
+    // 目录真机臂使用生产禁读枚举、唯一归档出口、注册表及完整契约解析。
+    ['claude-directory.ts', ['../archive.js', '../freeze.js', '../agents/registry.js', '../parse.js']],
   ]);
 
   const dir = path.join(REPO_ROOT, 'src/trivium/probes');

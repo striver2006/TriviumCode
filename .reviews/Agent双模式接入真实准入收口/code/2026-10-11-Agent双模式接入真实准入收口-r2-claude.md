@@ -1,0 +1,213 @@
+---
+schema: trivium.review.v1
+topic: Agent双模式接入真实准入收口
+stage: code
+role: claude
+vendor: anthropic
+agent_cli: claude/2.1.296
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: envelope
+effort_requested: null
+effort_effective: null
+effort_effective_source: unverified
+tier: null
+tier_source: legacy
+run_id: 20261010T170416Z
+rerun_index: 2
+snapshot_hash: sha256:6a162f95f17c3321cf74fb27dfd2b9cc9210788cd03497a848a0d539e2d4a348
+blind: true
+started_at: 2026-10-10T17:04:21.939Z
+finished_at: 2026-10-10T17:20:41.198Z
+duration_s: 979
+tool_calls:
+  read: 28
+  grep: 16
+  glob: 0
+  run_command: 0
+  project_reads: 21
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 2
+  nit: 2
+degraded: false
+parse_fallback: false
+peer_deny: true
+drift: true
+consulted_unverified: true
+heterogeneous: unknown
+access:
+  requested_mode: profile
+  profile: qwen
+  launcher_requested: /Users/chenzhenbo/.local/bin/cld
+  launcher_effective: /Users/chenzhenbo/.local/bin/cld
+  wrapper_sha256: e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5
+  configuration_sha256: 9a3bfaa3acc006b11a8c5c6422da69841ccc121de244ee7eff9574e4146cb8e5
+  provider_declared: qwen
+  provider_declared_source: profile
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: claude
+    status: unknown
+    left_model: null
+    right_model: qwen3.8-flash
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: claude
+    right: gemini
+    status: different-family
+    left_model: qwen3.8-flash
+    right_model: gemini-3.8-flash-high
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：qwen / gemini
+  - left: claude
+    right: glm
+    status: different-family
+    left_model: qwen3.8-flash
+    right_model: bigmodel-coding-plan/GLM-5.3
+    left_source: envelope
+    right_source: trace
+    reason: 模型族不同：qwen / glm
+override_reason: 左侧模型信息缺失
+session_id: 1ef259fe-10e6-41d0-86ec-a49cfa101e49
+---
+
+# 代码审查：Agent双模式接入真实准入收口
+
+> Critic-D · Anthropic Claude Code ｜ 回读模型 `qwen3.8-flash` ｜ 请求模型 `qwen3.8-flash`
+> ｜ 运行 `20261010T170416Z` ｜ 第 2 轮
+> ｜ 本轮审核者 claude、gemini、glm
+
+> ⚠️ **审查期间工作树发生漂移**：本结论对应送审时刻的快照，与当前工作树可能已不一致。
+>
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+整体实现与 r5 计划、设计 §3.5/§10.1/§11.1 高度同口径：逐工具三态、TTL/指纹/路线漂移的 fail-closed 链、取证 helper 的旧签名显式报错、selection manifest 不回退旧成功，均有消费方与负例测试，我认为可以作为收口候选接受。最需 Driver 裁决的一条是 CLAUDE-01：目录投影的启用事实只绑定路线/版本/入口指纹与 TTL，不绑定当前 sensitive_globs 集合——实测后新追加的 `D/**` 目录会继承逐工具 true，而该根从未经过正对照实测；QUICKSTART「不自动合并…允许的产出目录」一句只在「不猜公共前缀」意义上成立。其次 CLAUDE-02：计划承诺的真实 2290 原件逐条静态覆盖重放目前只落为一次性 evidence（directory-project-static-pre-doctor.json），未进 npm run check 的回归，属未显式化的计划偏离。另有两条不阻断的 nits（peer_deny_applied 第二个合取在生产接线不可为假、每次审查无条件双读哈希大二进制）。我无命令执行能力，全部结论基于静态阅读；「3121 全绿」等运行时声明未独立验证。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 4 条：次要 2 ｜ 吹毛求疵 2）
+
+### CLAUDE-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/claude.ts:365-378,413-418;src/trivium/probes/claude.ts:1717-1725` |
+| 类别 | security ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：目录能力的启用条件绑定「逐工具实测 true + 路线/版本/入口/native 指纹 + TTL」，但不绑定当时实测所依据的 sensitive_globs 候选根集合；而消费端 buildProjectedDenySettings 每次审查按【当前】cfg.review.sensitive_globs 现算候选目录。实测之后用户向 sensitive_globs 追加一个新的 `D/**`（本轮计划本身就为 calls/ledger/loaded/routes 四类根追加过），该从未被夹具正对照覆盖过的目录会立即继承 Read/Grep/Glob 的 true 并被压缩为子树规则。若该根同时含审查员合法可读写入的工件（正对照失败形态），CLI 层会过度屏蔽合法读取——方向是不泄密但静默少读，而 QUICKSTART 新增段「配置中的字面`目录/**`是唯一候选，不自动合并主题或允许的产出目录」只在「不猜公共前缀」的意义上为真：机制本身并不阻止配置声明的混合根吞掉允许产出。
+
+**依据**：读了 src/trivium/adapters/claude.ts:365-378（候选根仅按 canonical/成员过滤，无实测根清单核对）、413-418（verifiedClaudeDirectories 只校 fingerprint+TTL）、974-979（每次审查用 ctx.cfg.review.sensitive_globs 现算）、src/trivium/probes/claude.ts:1717-1725（fingerprint 只含 route/version/entry/native）、src/trivium/probes/claude-directory.ts:118-154（正对照只覆盖夹具内 evidence/calls 拓扑）、doc/07_manuals/QUICKSTART.md 新增段与 r5 计划 §真机目录探针（「真实项目…不被投影目录吞并另作静态包含对账」——该对账目前是一次性证据 directory-project-static-pre-doctor.json，不是每次审查的机制）。未读 .trivium 实际配置（禁读），当前项目真实 globs 集合规章未证。
+
+**建议**：三选一并由 Driver 裁决：①把实测时生效的 sensitive_globs 集合（或其 hash）并入 directory_deny_fingerprint / directoryGuard，新增根后旧 true 自动失效并要求重探；②消费端把「当前候选根 ⊆ 实测时根集合」做成硬闸（不满足则该工具不压缩）；③若维持现口径，把 QUICKSTART/设计 §10.1 的措辞从「不合并允许的产出目录」收窄为「不推断/不合并未声明目录，声明根的合法性依赖配置卫生与一次性静态对账」，避免读者以为有 per-run 机制保护。
+
+### CLAUDE-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/claude-directory.test.ts;doc/05_testing/evidence/agent-access-20261010-closeout-r2/directory-project-static-pre-doctor.json` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：r5 计划「纯函数/假CLI回归」一节明确要求『真实2290原件hash重放逐条静态覆盖并保存原机器集合不变断言』，即作为随 npm run check 的回归；实际测试面里找不到该重放用例（claude-directory.test.ts 只有合成拓扑与三态/指纹/持久化/七臂用例），真实集合的静态覆盖只以一次性证据文件（8 个目录、coveredCount 合计 2400 与 source hash）存在。偏离获批计划本身不算错，但它未在补丁的文档改动中被显式声明为「改由证据承担」，后来者按计划找用例会找不到。
+
+**依据**：读了 r5 计划原文（.reviews/Agent双模式接入真实准入收口/plan/2026-10-10-Agent双模式接入真实准入收口-r5-codex.md §纯函数/假CLI回归）；对 test/ 全目录 grep『2290|重放|replay』仅命中无关夹具与 lock 测试注释；读了 changes.diff 中 test/unit/claude-directory.test.ts 全文（无真实集合重放）与 directory-project-static-pre-doctor.json 的目录/coveredCount 结构。
+
+**建议**：要么补一个把冻结 deny_paths 原件（存 test/fixtures/ 的哈希重放用例，断言投影目录集合、原机器集合不变与 sourceHash），要么在报告/ADR 的本轮偏离记录里显式写明「2290 重放改由证据 directory-project-static-pre-doctor.json 承担、不进 check」，让裁决留痕。
+
+### CLAUDE-03 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/claude.ts:707-708` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：peer_deny_applied 新增的第二合取「每个实际压缩工具 verified===true」在生产接线下恒真：buildProjectedDenySettings 只在 verified[tool]===true 时才把工具压入 compressedTools（390/397 行），而 buildClaudeResult 拿到的 projection 来自同一次构建。它只对测试注入的混合 projection（A14 直调改写 tools.Read.verified）可达。作为输入不变式断言是合理的，但注释与 types.ts 的字段文档都没说明这一格在生产里不可为假——后来者可能误以为存在「压缩了未实测工具⇒peer 变 false」的活跃路径，或反向在放宽 compression 条件时把它当成已生效的守卫。
+
+**依据**：读了 src/trivium/adapters/claude.ts:380-401、707-708、1133（唯一生产调用传入同一 deny）；test/unit/claude-adapter.test.ts:476-491（负例靠手改 projection 对象构造）；test/integration/claude-directory-adapter.test.ts 全走真实构建路径，压缩即 verified true。
+
+**建议**：在 707 行旁加一句注释点明这是「对入参 projection 的不变式断言，经 runClaudeReview 接线不可为假；变异验证只能经 buildClaudeResult 直调」，或把 types.ts:2117 的字段说明同步到新组合条件，避免与 deny_skipped 注释里「peer 只读探针格」的旧口径并置产生第二次 r1-承诺-未落地式的漂移。
+
+### CLAUDE-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/claude.ts:404-411,974` |
+| 类别 | performance ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：每次 Claude 审查（runClaudeReview）都无条件调用 claudeDirectoryFingerprint 整份读盘并 sha256 route.bin 与 route.nativeBin，即使探针根本没有记录 directory_deny_fingerprint（旧配置、从未跑过目录臂、--no-model-calls 轮后）。原生路线下 bin===nativeBin，同一份（可能上百 MB 的）原生二进制被哈希两遍。单次成本亚秒级、方向 fail-closed，但这是新增的每轮固定开销且没有任何消费方需要这个结果（facts 为空时压缩路径本就不触发）。
+
+**依据**：读了 src/trivium/adapters/claude.ts:404-411（fs.readFile 整文件哈希，无大小上限/短路）、974-975（每次审查先算指纹再查 probe 字段）、413-418（fingerprint 传 null 或 probe 缺字段时结果必为 {}）；对比 src/trivium/adapters/claude-route.ts:84（profile 模式已另哈希 wrapper，属既有成本）。二进制实际大小未实测。
+
+**建议**：在 974 前短路：probe.directory_deny_fingerprint 为 null/undefined 且 probe.directory_deny_verified 无 true 项时直接以 {} 进入 directoryGuard（observed 指纹可记 null），把整文件哈希留给确有目录事实的路线；不影响任何失效判据。
+
+## 认为正确的部分
+
+- fail-closed 链条完整且处处显式：未执行目录臂即清零三字段（probes/claude.ts:1199-1202、doctor.ts:805-821 的 --no-model-calls/路线漂移分支），消费端 fingerprint+TTL+未来时间戳全部拒收（verifiedClaudeDirectories），探测中入口漂移不记录（before===after 闸），三条失败出口（spawn 失败/超时/无最终回复）都保住了 deny 规模与 trace——超时/未完成 return 被移到 trace 写出之后，与 §11.1 新口径逐字一致。
+- 泄漏判定站得住：哨兵形态（DIRECTORY_DENY_i_xxxx）不命中 secrets.ts 任何检出/脱敏规则，invokeClaude 先脱敏后 judge 检查 stdout 不会把真泄漏抹白；臂证据落盘前再 redact+scanSecrets 双保险（probes/claude-directory.ts:141-143）。
+- 取证脚本兑现了被点名的旧缺陷：claudeWritePass 从 endsWith('/breach.txt') 收紧为 init.cwd+fixtureRoot 双坐标一致、唯一 ID、tool_use_error 包装的注册层错误精确识别、前后文件状态与非空调用（scripts/agent-access-evidence.mjs:21-64），旧冻结入口缺 context 改为显式 throw 而非静默全 false；captureFileState 用 lstat 把悬空 symlink 记为已存在。
+- selection/version 机制与计划口径一致：显式 manifest、variant、三份 hash 引用、缺结果不回退旧成功、per-profile 版本上下文第五参数且仅版本臂可用、Codex native 父子边界唯一配对与缺绝对 fixtureRoot 直接报错，全部有负例单测（test/unit/agent-access-closeout.test.ts）。
+- 文档同步面齐全：设计 §3.5/§10.1/§11.1/§11.6、ADR_003、PROTOCOL、P-32/P-33、CASE、QUICKSTART、doc/05_testing/README 索引与 REPORT 同批落，版本链升到 v1.3.145；registry-parity 用具名例外登记 claude-directory.ts 的新 import 面而不是扩黑名单。
+
+## 未覆盖范围（本侧盲区）
+
+- 未执行任何命令：npm run check（报告自称 3121 通过）、桩 14/14、build/install 与 bundle 指纹核对均未独立验证，属静态阅读推理。
+- 未读 .trivium/config.yaml 与 config.local.yaml（任务书禁读），因此本机真实 sensitive_globs 集、四个新根 globs 的确切字面、以及 CLAUDE-01 在当前配置下的实际暴露面未证实。
+- doc/05_testing/evidence/agent-access-20261010-closeout-r2 约 2.4 万行 JSON 仅抽查（static-pre-doctor、selection 相关、REPORT 引用件）；未逐臂核对原始证据真实性，也未核对 launch/ledger 台账计数。
+- 厂商 CLI 语义未实测：目录子树规则对 `file[1].txt`/`.hidden` 的实际拦截、Glob 目录臂的错误形态、E2BIG 是否解除，均属真机臂与报告论域，我只核了判据代码与假 CLI 回归。
+- 未复审设计文档全文的版本链（v1.3.143→145 仅读新增段落），§10.1/§11.1 与既有章节的更大范围一致性未逐句对账。
+- batch-g/h 运行期证据的预算计数（342/343 等）与主题轮次台账未逐项复算。
+
+## 实际查阅的项目文件
+
+- `CLAUDE.md`
+- `AGENTS.md`
+- `.reviews/Agent双模式接入真实准入收口/plan/2026-10-10-Agent双模式接入真实准入收口-r5-codex.md`
+- `.reviews/Agent双模式接入真实准入收口/code/_meta/changes-20261010T170416Z.diff`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/adapters/claude-route.ts`
+- `src/trivium/probes/claude.ts`
+- `src/trivium/probes/claude-directory.ts`
+- `src/trivium/doctor.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/types.ts`
+- `src/trivium/secrets.ts`
+- `src/trivium/config.ts`
+- `src/trivium/freeze.ts`
+- `scripts/agent-access-evidence.mjs`
+- `scripts/agent-access-closeout.mjs`
+- `scripts/agent-access-selection.mjs`
+- `scripts/agent-access-closeout-summary.mjs`
+- `scripts/agent-access-admission.mjs`
+- `test/unit/claude-directory.test.ts`
+- `test/unit/claude-adapter.test.ts`
+- `test/unit/agent-access-closeout.test.ts`
+- `test/unit/agent-access-budget.test.ts`
+- `test/unit/registry-parity.test.ts`
+- `test/integration/claude-directory-adapter.test.ts`
+- `doc/02_design/ADR_003_agent_access.md`
+- `doc/04_development/GUIDE_local_pitfalls.md`
+- `doc/05_testing/CASE_manual_acceptance.md`
+- `doc/05_testing/README.md`
+- `doc/05_testing/REPORT_2026-10-10_agent_access_closeout.md`
+- `doc/07_manuals/QUICKSTART.md`
+- `doc/05_testing/evidence/agent-access-20261010-closeout-r2/directory-project-static-pre-doctor.json`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":28,"grep":16,"glob":0,"run_command":0,"project_reads":21}
+
+---
+
+*本文档由 TriviumCode 编排器从 `claude` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

@@ -1,0 +1,37 @@
+# 补充计划：按明确禁读目录压缩Claude权限规则，恢复三家代码审
+
+本补充是完整r3计划的现行增量；后附r2作为完整继承底稿，历史时间点表述不追改。本轮只审查新增范围和它与已批准收口任务的衔接。Driver=codex，入口A。用户已批准code1接受项并要求修改后重审；本次生产规则整改仍未批准。用户明确授权新增修复计划先由gemini、glm两家审查，审批实施后恢复claude、gemini、glm代码审。未授权allow-single、判据替代、版本调整或提交推送。主题已运行2次（plan1、失败code1），本计划是第3次，最终完整三审为第4次；不无限重试。
+
+## 事实、方案比较及取舍
+
+code1 run20261010T130139Z中Claude实际spawn E2BIG，没有启动结论。该轮2219条deny_paths唯一；生产buildDenySettings给每路径、每只读工具生成精确和子树两条，共13314规则、1628531字节，单argv承载。当前2290条对应13740规则、1688642字节。当前目录候选仅从本机既有sensitive_globs的8个字面目录/**派生，压缩后20表达式、120规则、10328字节，当前逐文件集合的静态包含关系全部覆盖。含script/module/config hash的独立静态原件在audit-snapshots/settings-options-analysis-7b018aff-9d4f-41a1-bd62-7b6c64acd144.json；CLI实际等价、子树拒绝和误拦尚未测。
+
+比较：①删证据、缩小禁读范围不可采用，违背原授权；②保持全量规则改临时文件传输可避argv尺寸，但CLI支持/安全等价未测、仍保留万条增长，不作为本轮优先实现；③只对配置明确整个禁读的目录使用已有规则方言的子树表达，机器逐文件集合保持，可把当前settings缩小约99.4%，故选③。文件传输仅保留未来候选，不增加未核实旗标，不在本轮敏感实现范围。压缩不能保证任意规模永不E2BIG，残余尺寸仍记录，未来不足则另审方案。
+
+## 已完成的code接受项及继承边界
+
+AGY-01/02/03/04及GLM-F01/05/06/07已按code审批实施：唯一canonical+显式selection manifest，版本和能力臂固定variant及requested/result/fingerprints-after hash，缺失/未完成不回退旧成功；Codex消费实际CommandExecution cwd/parsed_cmd精确README及唯一命令/完整输出/exit/status配对，两种ID分别记录；CLI effort带来源、不添加默认、不宣称服务端；受控生产对照不固定read1且核对当期工具面/permissionMode；已录制zsh范围之外不宣称bash兼容；清理与落盘各步独立汇总失败；旧入口缺新版上下文明示报错。定向零供应商CLI回归17/17、typecheck通过。源码指纹已变化，历史矩阵不是当前源码下已验收。暂缓GLM-F02及驳回GLM-F03/04不实施，原件不改。
+
+## 生产整改范围与安全约束
+
+1. src/trivium/adapters/claude.ts新增纯目录投影函数，输入仍是生产enumerateDenyPaths返回的完整集合及同一ctx.config.review.sensitive_globs。只认严格字面、项目相对、终端/**的完整禁读目录声明：不含其它glob元字符、控制符、反斜杠、空/点/父目录段，绝不按文件共同前缀猜目录，不以扩展名猜文件/目录。目录必须实际覆盖本次deny成员；最小祖先归并去重；未被目录覆盖的路径原样保留。保留原始完整deny_paths供BRIEF和机器事后检测；不把CLI投影回写为缩短的机器集合。
+2. 不压缩包含合法输入的整个.reviews主题根；同行意见仍按注册表/classifyArtifact逐份处理，自身历史、Driver计划可读。audit-snapshots、业务文件不因证据根共同前缀被连坐。候选目录只来自已经声明完整禁读的calls/ledger/loaded/routes等配置项，不在代码枚举这些目录或Agent身份。宽泛敏感glob、零散.env/凭据类文件保留现有逐文件语义；root/**不外推为整个证据根。合并root的精确项会限制对该完整禁读目录本身的工具访问，属于目录声明的显式保护，须在文档和实际目录查询负对照中验证，不偷偷扩展其它目录。
+3. buildDenySettings仍用实测rule_syntax/readonlyToolsFromProbe，为投影后的每表达式生成现行精确/子树规则。不改只读工具面、restricted、strict MCP、Schema、model/effort、prompt通道和用户全局配置。原始路径数、压缩表达式数、目录来源/覆盖个数、规则数、字节数、源与投影hash、原本不可表示路径与剩余skipped分别留痕；目录覆盖特殊文件名不能把缺未测字段误作验证通过。
+4. 子树压缩是否有效是厂商事实，不能仅凭静态覆盖开启。src/trivium/types.ts的ClaudeProbe新增可缺省三态directory_deny_verified（缺/null/false均不启用）；走现有路线fingerprint+version和TTL绑定。src/trivium/probes/claude.ts使用独立临时夹具和现有invoke/只读参数、完整Schema：在同一完全禁读目录内的文件及嵌套文件发起实际Read/Grep，核对精确路径、唯一非空ID/配对权限拒绝、完整交付，无泄漏；实际读取同级合法文件、己方历史/Driver稿及audit-snapshots正对照证明未连坐。必要的目录路径查询也实际发起并核对。不足、超时、模型口头拒绝均null，实际失效false，不借另一模型的无尝试为true。doctor以现有路线探针入口保存该事实；skip/升级/入口或wrapper/profile漂移不可继承为当前true。
+5. 生产claudeAdapter仅在当前路线探针确认true时使用压缩；未核实时保留原完整settings与尺寸告警，不删规则或自动降保护；因此未知状态可能仍E2BIG，诚实失败。若目录能力臂未取得有效结论，本方案不实施为开启状态、不私自改变标准，停并报告；不消耗最后正式代码审去重现已知启动失败。
+
+## 验证与预算
+
+纯函数回归验证：重复/嵌套配置目录、相邻同名前缀、根/**与精确文件、非字面glob、相对/父目录段、中文/空格/逗号目录、含glob特殊字符目录不能误压缩；对当前真实2290路径的来源hash重放，逐条包含且外部路径/同行/己方合法输入不被候选根吞并。机器枚举前后逐项完全一致，CLI规则投影不同而已。跨进程假CLI捕获大规模settings参数，核对实际字节、完整JSON规则与prompt stdin，spawn失败/超时不记有效启动；不以假CLI代替目录拒绝真机能力。目录能力的正负对照不能从文件不存在或模型口头拒绝改判。档位模型/身份与三态可缺字段保持契约兼容；历史Schema不改，新增字段形状通过现行厂商专属扩展口并以类型/消费回归核对，不枚举Agent。
+
+最小新增启动清单（正式审查、准入独立；失败/version/help/超时/native边界均计数）：本计划Gemini+GLM预检/审查一批最多8新增启动，review已10/40、硬cap40。审批后目录机制仅先用Claude当前Qwen路线：两个真实逻辑臂（目录逐文件/目录查询负对照+合法邻接正对照），每臂最大1启动；若模型没实际调用，留null，不换提示碰运气。doctor正常流程可能额外刷新现有路线能力，执行前发布精确批次上限，不用逻辑臂数冒充启动数。目录机制单批上限12新增准入启动，admission136/156，现有余20够；到上限即停，所需扩容已获用户一般授权但须先发布具名记录。
+
+完整源码/配置指纹变化后重取必要能力证据，统一canonical selection，不追认旧完整指纹；全局仍只读。先做目录机制，源码固定后刷新4个入口版本，每个实际子边界计数；12组合现行必要臂共38逻辑臂（Claude18个read/Read deny/Grep deny+已存在真实写的Qwen flash和V4 pro2臂；Codex18臂，不重复无新机制的Claude Qwen max/Kimi/flash写提示），预计Claude23启动、Codex40启动，合计63；若Luna仍不执行则未测，最多一次当前源码受影响重取，不反复碰提示。该能力批次执行前再发精确清单与新增上限64，所需扩容先原子发布，不提前消费。目录mechanism字段的指纹兼容只证明通用CLI能力，实际模型臂仍逐组合取证；无Write不改判。
+
+零CLI状态/原件hash核对不计供应商启动；最终串行2次npm run check、桩doctor --selftest14/14、重建重装安装副本核对均待全部整改完成。最终代码审仍恢复claude,gemini,glm，最多1轮（本主题第4次），启动预算届时提前发布；不能因剩余轮数自动宣称通过或自己allow-single。若仍失败或有必须整改意见，只给逐条裁决并报告正式轮次耗尽，向用户交代后续处理，不另起主题绕限额。
+
+## 同步文档与审批停点
+
+设计3.5/11.1/只读10.x、ADR_003、PROTOCOL、GUIDE_local_pitfalls、QUICKSTART、CASE_manual_acceptance、REPORT及README同步目录投影的来源、实际验证字段、机器集合保留、未测/误拦边界与尺寸证据。不改CLI用户旗标和入口措辞；如实施导致入口变更，改skills-src再render，禁止手改渲染物。archive.ts唯一归档出口；原审查件/历史Schema/旧原件和全部预算不覆盖。
+
+本计划审进行中冻结业务文件，只走wait/status及其预算元数据。读全文、逐条裁决、接受项合入r4完整计划、gate检查后进入plan人工审批；用户明确dual-approve前不实现任何新目录规则/厂商探针生产变更。code审批不授权这个新计划，也不授权准则替代。七条路线+Qwen pro+新官方档位+共享三审+必要检查不全时，M11前置未完成。

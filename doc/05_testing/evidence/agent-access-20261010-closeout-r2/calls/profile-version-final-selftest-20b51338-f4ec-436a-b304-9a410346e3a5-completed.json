@@ -1,0 +1,50 @@
+{
+  "load_id": "20b51338-f4ec-436a-b304-9a410346e3a5",
+  "pool": "admission",
+  "label": "profile-version-final-selftest",
+  "mode": "tv",
+  "requested_at": "2026-10-10T16:17:33.347Z",
+  "preload_sha256": "2b74abf72f7f67edb61879b58798761c6c53ade68ba92aa3dea07cb98b592b71",
+  "build_inputs_observed": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "3e5ca6bb5d5d69c7cfc5059b4d9bcf1418fb5c0a",
+    "dirty": true,
+    "inputs_sha256": "be6dbcd3498c135aa0209980d310db074e45aa3bbb2e8144a4f7aeb0bf4b2e38",
+    "built_at": "2026-10-10T16:17:33.873Z"
+  },
+  "argv_flags_only": [
+    "--selftest",
+    "--driver"
+  ],
+  "script_sha256": "9f18071f857805454b7a9b03edd64b3d52232116a6a65369f0a5427a89bb8939",
+  "execution_sha256": "9f18071f857805454b7a9b03edd64b3d52232116a6a65369f0a5427a89bb8939",
+  "core_sha256": "c70a39ad6c041d9bb5b2cf39d32927c7e3d936e94f7d3f82988db9af2b55bb9b",
+  "secrets_module_sha256": "f60609b5a0a5b314a47ea197f0b167c300bb825e93e8100f4dd78d8ba6a04db1",
+  "evidence_helper_sha256": "5765523ca78eb46e482a26c3e6cda618da6c692b5e5caf31fa459e760bf4690b",
+  "wrapper_sha256": "2441083b1a55ada5a9b037890fee7d321c41fe1fef056bef6b9e3631113f4a7b",
+  "installed_bundle_sha256": "e4b921bf744f35de39332d385dba6f6c36f76df24bfd6c2559e4ce4c0004dc91",
+  "shared_config_sha256": "9dd249afa2277bc53c76c75a032a9cbebc8db41cdf8fb54e8a6bb964d13c770f",
+  "local_config_sha256": "5308a2e2dd846d84af144d979eda0557fab1f3a4571c6929338552f2d07e542f",
+  "code": 0,
+  "signal": null,
+  "primary_loaded": true,
+  "loaded_pids": [
+    52549,
+    52691,
+    53096,
+    53099,
+    53353,
+    53400,
+    53447,
+    53494,
+    53544,
+    53591,
+    53661,
+    53708,
+    53757,
+    53808,
+    53868
+  ],
+  "stdout": "自检：在临时夹具仓库里真跑一遍整条流水线（各入选侧走桩适配器，不消耗厂商配额）\n\n自检：✅ 通过（14/14 步）\n\n本次自检**未**覆盖：\n  · Codex、Antigravity、ZCode 各家 CLI 是否可调用、是否已认证——各入选侧一律走桩适配器。请另跑 `trivium doctor` 与 `trivium preflight`。\n  · 真实模型的审查质量：桩产出的是固定假数据，不代表任何真实结论。\n  · 路径级 deny 等隔离机制的厂商侧行为（M0 探针的职责）。\n\n夹具已清理。加 --keep-fixture 可保留以供手工验收（§17.3）。\n",
+  "stderr": "· ✓ 双审启动（review --start）\n· ✓ 双审收敛（review --wait）\n· ✓ 各入选侧审查文档均已落盘\n· ✓ 缺裁决件时工件校验报缺（退 65）\n· ✓ 裁决未齐备时禁止提交（Hook 退 2）\n· ✓ 裁决未齐备时禁止收工（Hook 退 2）\n· ✓ 裁决完整性校验通过（逐条对齐 4 条意见）\n· ✓ 工件齐备（AC-01：原稿 + 3 侧审查 + 裁决件，共 5 件）\n· ✓ 裁决齐备后放行提交\n· ✓ 裁决齐备后放行收工\n· ✓ 禁止主脑自行产出 -gemini.md（AC-07）\n· ✓ 编译测试出口真实执行并落盘（AC-10）\n· ✓ 复盘可生成（含时间线与采纳率）\n· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）\n"
+}

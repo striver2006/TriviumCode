@@ -1,0 +1,37 @@
+{
+  "load_id": "04bbffa1-c821-423c-ad6d-8bdfd6e8900b",
+  "pool": "review",
+  "label": "final-three-code-wait-5",
+  "mode": "tv",
+  "requested_at": "2026-10-10T17:17:46.893Z",
+  "preload_sha256": "2b74abf72f7f67edb61879b58798761c6c53ade68ba92aa3dea07cb98b592b71",
+  "build_inputs_observed": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "3e5ca6bb5d5d69c7cfc5059b4d9bcf1418fb5c0a",
+    "dirty": true,
+    "inputs_sha256": "be6dbcd3498c135aa0209980d310db074e45aa3bbb2e8144a4f7aeb0bf4b2e38",
+    "built_at": "2026-10-10T17:17:48.260Z"
+  },
+  "argv_flags_only": [
+    "--wait",
+    "--timeout",
+    "--json"
+  ],
+  "script_sha256": "9f18071f857805454b7a9b03edd64b3d52232116a6a65369f0a5427a89bb8939",
+  "execution_sha256": "9f18071f857805454b7a9b03edd64b3d52232116a6a65369f0a5427a89bb8939",
+  "core_sha256": "c70a39ad6c041d9bb5b2cf39d32927c7e3d936e94f7d3f82988db9af2b55bb9b",
+  "secrets_module_sha256": "f60609b5a0a5b314a47ea197f0b167c300bb825e93e8100f4dd78d8ba6a04db1",
+  "evidence_helper_sha256": "5765523ca78eb46e482a26c3e6cda618da6c692b5e5caf31fa459e760bf4690b",
+  "wrapper_sha256": "2441083b1a55ada5a9b037890fee7d321c41fe1fef056bef6b9e3631113f4a7b",
+  "installed_bundle_sha256": "e4b921bf744f35de39332d385dba6f6c36f76df24bfd6c2559e4ce4c0004dc91",
+  "shared_config_sha256": "9dd249afa2277bc53c76c75a032a9cbebc8db41cdf8fb54e8a6bb964d13c770f",
+  "local_config_sha256": "5308a2e2dd846d84af144d979eda0557fab1f3a4571c6929338552f2d07e542f",
+  "code": 1,
+  "signal": null,
+  "primary_loaded": true,
+  "loaded_pids": [
+    33554
+  ],
+  "stdout": "{\n  \"ok\": false,\n  \"still_running\": false,\n  \"run_id\": \"20261010T170416Z\",\n  \"phase\": \"failed\",\n  \"artifacts\": [\n    \"/Users/chenzhenbo/Work/TriviumCode/.reviews/Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r2-claude.md\",\n    \"/Users/chenzhenbo/Work/TriviumCode/.reviews/Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r2-gemini.md\",\n    \"/Users/chenzhenbo/Work/TriviumCode/.reviews/Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r2-glm.md\"\n  ],\n  \"message\": \"只读失守：审查员的工具轨迹中出现了写事件。受影响的调用：\\n    Bash({\\\"command\\\":\\\"wc -l /Users/chenzhenbo/Work/TriviumCode/src/trivium/adapters/claude)\\n  编排器**不会**自动回滚。建议人工核对：\\n    git status --porcelain -uall\\n    git diff\\n  确认无误后再决定是否 `git checkout --` 相关文件。\\n  闸门拦不拦取决于跑后复算：复算检出工作树改动则 gate --check 判失败、须作废重跑；未检出或比不了则降为告警、结论照常进审批（复算有盲区，见 gate --check 的告警）。 ｜ 被审对象在审查期间被修改：本次结论已不对应送审的那份内容，整次运行作废 ｜ claude 侧 consulted 无法与工具轨迹交叉核对 ｜ glm 侧结论结构问题：evidence 引用但未列入 consulted：src/trivium/probes/claude.ts, test/unit/agent-access-budget.test.ts ｜ 模型族 unknown：左侧模型信息缺失（codex/claude、codex/gemini、codex/glm）；告警继续 ｜ 构建时工作树有未提交改动：安装副本不对应任何一个提交\",\n  \"progress\": \"运行 20261010T170416Z ｜ 主题 Agent双模式接入真实准入收口 ｜ 阶段 code ｜ 阶段状态 失败\\n已用 16m23s / 预算 60m0s（27%） ｜ 第 6/42 次等待 ｜ 最近心跳 1s 前\\n  claude: 已完成 ｜ 请求模型 qwen3.8-flash ｜ 第 1 次尝试 ｜ 16m19s\\n  gemini: 已完成 ｜ 请求模型 gemini-3.8-flash-high ｜ 第 1 次尝试 ｜ 7m16s\\n  glm: 已完成 ｜ 请求模型 GLM-5.3 ｜ 第 1 次尝试 ｜ 8m2s\",\n  \"progress_brief\": \"code 失败 ｜ 已用 16m23s / 预算 60m0s（27%） ｜ claude 已完成 · gemini 已完成 · glm 已完成\",\n  \"elapsed_s\": 983,\n  \"budget_s\": 3600,\n  \"pct\": 27,\n  \"waits_done\": 6,\n  \"max_waits\": 42,\n  \"sides\": {\n    \"claude\": {\n      \"state\": \"ok\",\n      \"model\": \"qwen3.8-flash\",\n      \"attempt\": 1,\n      \"elapsed_s\": 979,\n      \"cli\": null\n    },\n    \"gemini\": {\n      \"state\": \"ok\",\n      \"model\": \"gemini-3.8-flash-high\",\n      \"attempt\": 1,\n      \"elapsed_s\": 436,\n      \"cli\": null\n    },\n    \"glm\": {\n      \"state\": \"ok\",\n      \"model\": \"GLM-5.3\",\n      \"attempt\": 1,\n      \"elapsed_s\": 482,\n      \"cli\": null\n    }\n  }\n}\n",
+  "stderr": ""
+}

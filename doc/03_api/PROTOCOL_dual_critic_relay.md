@@ -422,6 +422,8 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 
 ## 九、CLI 接口一览
 
+真实接入补测的外部证据（2026-10-10，不改变run/review Schema）：请求、配置声明、CLI有效回读、服务端身份必须分列，后两者缺证据为null。独立脚本记录每臂入口/CLI版本/包装器/canonical与薄入口hash、完整导入模块及配置指纹；相对写目标按实际cwd解析，原始调用ID、对应注册层或沙箱层拒绝、文件前后状态均须可审计。只看到文件未生成或本地受控返回不能改判真实模型写负对照。禁读臂复用生产枚举，逐文件结果与完整Schema交付分别核对；超时不通过。历史原件不追改，重算另存派生证据及来源hash。详见[收口报告](../05_testing/REPORT_2026-10-10_agent_access_closeout.md)。
+
 | 命令 | 作用 |
 | :--- | :--- |
 | `doctor` | 逐项实测设计 §3.5 的本机能力探针清单，回填 `probe:` 段 |
@@ -445,3 +447,9 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 参数细节见 `trivium --help`，它与实现同源、不会脱节。
 
 2026-10-10本仓配置实例：Codex接入的profile显式null选择官方native，default/flash/pro各自阶段模型分别为gpt-6.1-sol、gpt-6-luna、gpt-6-astra；CLI请求、官方配置声明和运行回读继续分别记录，不把配置默认值当回读证据。第三方profile可显式覆盖，协议和历史Schema不变。
+
+本轮code整改的取证契约（原标准不变）：探针和汇总须共同使用显式批次selection manifest，固定variant及requested/result/fingerprints-after的hash；缺结果、未完成或指纹不符不得回退旧成功。版本证据亦显式引用并核对入口/包装器/配置/模块指纹。Codex实际读取须有CommandExecution.cwd、parsed_cmd精确README目标及唯一命令/完整输出/exit/status配对，不认单独echo；两种ID分列。CLI effort带来源记录，服务端null，不添加默认值。受控对照从同一manifest取当期真实臂并核对实际权限模式与工具面，缺值不判同形。独立清理与落盘失败仍执行其余清理；历史入口缺新版上下文明确报错，不重解释原件。
+
+目录规则增量：Claude厂商专属probe新增可缺`directory_deny_verified`逐工具三态、`directory_deny_probed_at`及`directory_deny_fingerprint`；缺字段/过期/版本或入口hash漂移一律不压缩。doctor JSON新增`directoryEvidence`为脱敏原始七臂、实际settings、原禁读集合与清理结果，不嵌入本机probe配置。trace详记逐工具投影；run.v3仍使用既有`deny_rule_count/deny_bytes/deny_skipped/peer_deny_applied`，不修改历史Schema。机制标志为原文件实测true与全部实际压缩工具true的合取，不能作为完整准入结论。
+
+Codex版本引用的profile上下文须与能力臂完整指纹一致；同一CLI版本不允许跨native/profile配置直接复用。独立版本selection各自保存请求/结果/前后hash及真实native父子边界，静态version命令不证明该profile的服务端身份。内部canonical探针的版本上下文参数不新增产品CLI参数或历史Schema。

@@ -1,0 +1,83 @@
+{
+  "at": "2026-10-10T15:33:03.203Z",
+  "source": "doc/05_testing/evidence/agent-access-20261010-closeout-r2/calls/directory-doctor-qwen-9a52110c-ba7d-48bd-96e1-f0d8c30ce5f1-completed.json",
+  "doctor_ok": true,
+  "blockers": [],
+  "warnings": [],
+  "cli_version": "2.1.296",
+  "readonly_flags": [
+    "--restricted",
+    "--strict-mcp-config",
+    "--tools",
+    "Read,Grep,Glob"
+  ],
+  "file_shape_verified": true,
+  "route_fingerprint_matches": true,
+  "directory_fingerprint_matches": true,
+  "consumed": {
+    "Read": true,
+    "Grep": true,
+    "Glob": true
+  },
+  "arms": [
+    {
+      "tool": "Read",
+      "kind": "files",
+      "request_model": "qwen3.8-flash",
+      "cli_model": "qwen3.8-flash",
+      "cli_provider": null,
+      "server_identity": null
+    },
+    {
+      "tool": "Read",
+      "kind": "directory",
+      "request_model": "qwen3.8-flash",
+      "cli_model": "qwen3.8-flash",
+      "cli_provider": null,
+      "server_identity": null
+    },
+    {
+      "tool": "Grep",
+      "kind": "files",
+      "request_model": "qwen3.8-flash",
+      "cli_model": "qwen3.8-flash",
+      "cli_provider": null,
+      "server_identity": null
+    },
+    {
+      "tool": "Grep",
+      "kind": "directory",
+      "request_model": "qwen3.8-flash",
+      "cli_model": "qwen3.8-flash",
+      "cli_provider": null,
+      "server_identity": null
+    },
+    {
+      "tool": "Glob",
+      "kind": "files",
+      "request_model": "qwen3.8-flash",
+      "cli_model": "qwen3.8-flash",
+      "cli_provider": null,
+      "server_identity": null
+    },
+    {
+      "tool": "Glob",
+      "kind": "directory",
+      "request_model": "qwen3.8-flash",
+      "cli_model": "qwen3.8-flash",
+      "cli_provider": null,
+      "server_identity": null
+    },
+    {
+      "tool": null,
+      "kind": "positive",
+      "request_model": "qwen3.8-flash",
+      "cli_model": "qwen3.8-flash",
+      "cli_provider": null,
+      "server_identity": null
+    }
+  ],
+  "supersedes_summary_only": "directory-doctor-qwen-bindings.json",
+  "reason": "修正零CLI审计的TTL字段取址：生产实际使用config.probe_ttl_days，源码无该错误",
+  "ttl_days": 7
+}

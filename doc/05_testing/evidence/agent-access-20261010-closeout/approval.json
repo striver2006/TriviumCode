@@ -1,0 +1,19 @@
+{
+  "client_date": "2026-10-10",
+  "timezone": "Asia/Singapore",
+  "authorization": "本前置任务新增CLI额度及必要扩容已获授权，无需再次审批额度；每批设明确上限并提前记录，达到上限即停，发布扩容记录后再继续。",
+  "initial_limits": {"admission": 16, "review": 40},
+  "batch_1": "正式共享三审preflight及路线版本核验，上限16；未发布扩容前不启动后续能力批次",
+  "formal_review_max_rounds_per_topic": 4,
+  "plan": [
+    {"route":"shared-critics/qwen-pro","gap":"current preflight","estimated_starts":"7-10"},
+    {"route":"claude/qwen-flash","gap":"complete explicit file Grep delivery","logical_arms":1},
+    {"route":"claude/kimi-k3","gap":"per-file Read and Grep denial","logical_arms":2},
+    {"route":"claude/deepseek-flash","gap":"strict first word read","logical_arms":1},
+    {"route":"claude/kimi-coding,k3/deepseek-flash","gap":"real model illegal tool attempt feasibility","starts_before_analysis":0},
+    {"route":"codex/native-sol,luna,astra","gap":"read/schema,write,deny/runtime readback","logical_arms":9,"estimated_starts":18},
+    {"route":"codex/qwen,kimi,deepseek","gap":"fingerprint compatibility","starts_if_match":0,"estimated_starts_per_mismatch":6}
+  ],
+  "criteria_change_authorized": false,
+  "commit_push_authorized": false
+}

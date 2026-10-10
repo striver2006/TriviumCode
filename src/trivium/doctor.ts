@@ -78,6 +78,8 @@ export function isDoctorOnly(v: string): boolean {
 }
 
 export interface DoctorReport {
+  /** 新目录臂的脱敏原始证据，随doctor既有输出出口落盘，不嵌入配置。 */
+  directoryEvidence?: Awaited<ReturnType<typeof probeClaude>>['directoryEvidence'];
   probe: ProbeSection;
   notes: string[];
   /** 阻断级问题：非空则 preflight 必然失败 */
@@ -526,6 +528,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     cli: { ...base.cli, ...(loaded.cli ?? {}) },
   };
   const notes: string[] = [];
+  let directoryEvidence: DoctorReport['directoryEvidence'];
   const blockers: string[] = [];
   const warnings: string[] = [];
   const only = opts.only ?? null;
@@ -787,10 +790,12 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
         skipModelCalls: !canProbeModel,
         existing: claudeProbeForRoute(opts.config, selected.vendorProfile),
         assetRoot: resolveAssetRoot(),
+        config: opts.config,
       }));
     });
     if (r) {
       const routes = { ...probe.cli.claude?.routes };
+      directoryEvidence = r.directoryEvidence;
       const snapshot = { ...r.probe, route_profile: selected.vendorProfile };
       delete snapshot.routes;
       let stable = false;
@@ -800,11 +805,19 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
         delete routes[claudeRouteKey(selected.vendorProfile)];
         snapshot.readonly_flags = [];
         snapshot.tool_surface_checked = false;
+        snapshot.directory_deny_verified = {};
+        snapshot.directory_deny_fingerprint = null;
+        snapshot.directory_deny_probed_at = null;
         blockers.push('Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。');
       } else if (canProbeModel && snapshot.probed_at !== null) {
         const cfg = { ...opts.config, probe: { ...probe, cli: { ...probe.cli, claude: snapshot } } };
         routes[claudeRouteKey(selected.vendorProfile)] = { profile: selected.vendorProfile,
           fingerprint: resolveClaudeRoute(cfg, selected.vendorProfile, snapshot.version).fingerprint, probe: snapshot };
+      } else {
+        const key = claudeRouteKey(selected.vendorProfile);
+        const existing = routes[key];
+        if (existing) routes[key] = { ...existing, probe: { ...existing.probe, directory_deny_verified: {},
+          directory_deny_probed_at: null, directory_deny_fingerprint: null } };
       }
       probe.cli.claude = { ...snapshot, routes };
       const routeCapability = realAdapters().claude?.capabilityFor?.({ ...opts.config, probe }, selected.vendorProfile);
@@ -870,7 +883,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   const written = path.join(opts.triviumDir, 'config.local.yaml');
   notes.push(`探针结论已写入 ${written}`);
 
-  return { probe, notes, blockers, warnings };
+  return { probe, notes, blockers, warnings, directoryEvidence };
 }
 
 /** 人读渲染 */

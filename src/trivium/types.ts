@@ -626,6 +626,11 @@ export interface CodexProbe extends CommonProbe {
  * claude 侧是三家里**可核验性最强**的一侧。
  */
 export interface ClaudeProbe extends CommonProbe {
+  /** 目录规则逐工具实测；缺省/null/false均不得压缩该工具的逐文件集合。 */
+  directory_deny_verified?: Record<string, boolean | null>;
+  /** 目录臂自己的时间与完整路线/二进制指纹，不继承其它doctor臂的刷新时间。 */
+  directory_deny_probed_at?: string | null;
+  directory_deny_fingerprint?: string | null;
   /** 顶层兼容快照来自哪条路线；profile 快照不得作为原生能力使用。 */
   route_profile?: string | null;
   /** 路线的能力结论与当轮入口/版本/wrapper/profile指纹绑定 */
