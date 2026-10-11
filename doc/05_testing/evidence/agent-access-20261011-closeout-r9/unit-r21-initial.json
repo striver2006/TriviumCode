@@ -1,0 +1,19 @@
+{
+  "started_at": "2026-10-11T10:33:16.040Z",
+  "finished_at": "2026-10-11T10:33:33.782Z",
+  "bin": "node",
+  "args": [
+    "--test",
+    "dist/test/test/unit/agent-access-read-evidence.test.js",
+    "dist/test/test/unit/agent-access-recovery.test.js",
+    "dist/test/test/unit/agent-access-closeout.test.js",
+    "dist/test/test/unit/agent-access-budget.test.js",
+    "dist/test/test/unit/agent-access-task-launch.test.js",
+    "dist/test/test/unit/agent-access-applicability.test.js"
+  ],
+  "code": 0,
+  "signal": null,
+  "stdout": "✔ 只允许唯一精确构建戳；业务注释/空白变化仍拒绝等价 (6.609791ms)\n✔ 具名旧机制引用不改变新未测；缺来源/配对/模型/配置均不可用 (0.190084ms)\n✔ 预占跨实例保留；超上限失败，失败启动也不回收 (6.216834ms)\n✔ 扩容同键幂等；正式发布后回执丢失不会重复扩容，参数漂移拒绝 (4.557125ms)\n✔ 扩容锁拒绝并发写者，缺口/坏记录fail closed (1.809875ms)\n✔ 仅bootstrap第1条容许无key；后续扩容无幂等键拒绝 (3.391583ms)\n✔ 原生codex边界卸下NODE_OPTIONS，Node包装器保留 (1253.498ms)\n✔ 真实子进程装载证明、统一spawn计数、旁路拒绝和无token拒绝 (506.540333ms)\n✔ 包装器和省略args的重载识别不丢失；无关命令不计数 (0.28875ms)\n✔ 厂商spawn显式env保留隔离语义，不重新注入调用者删除的环境变量 (290.061458ms)\n✔ 写负对照只认实际cwd下精确目标、注册层配对错误及前后文件状态 (2.567041ms)\n✔ 旧Qwen和V4 pro真实录制样本重算：相对路径不漏判，原件不改写 (15.1545ms)\n✔ 文件状态不把悬空链接当作未生成 (1.042375ms)\n✔ 脱敏失效拒绝落盘；装载绑定PID、token与两份脚本哈希 (1.811125ms)\n✔ 显式新臂未完成不回退旧成功；引用hash与身份必须一致 (13.506375ms)\n✔ 版本从零与刷新均显式引用；未完成、入口/配置漂移拒绝 (14.971209ms)\n✔ 六条Codex读取真实录制样本消费实际命令cwd；echo/错目录/歧义不通过 (7.828667ms)\n✔ 五条实际写拒绝重算使用CommandExecution cwd；session默认目录不能补足缺证据 (2.00275ms)\n✔ 脱敏落盘或凭据清理失败，仍清除夹具和临时凭据目录并汇总错误 (1.533292ms)\n✔ README采样缺失/目录/软链不消费；内部读取错误继续抛且关闭descriptor (7.927667ms)\n✔ 全文诊断严格配对、bytes/hash及尾部；不改变原读取断言 (4.716917ms)\n✔ 十四份真实非目标prompt固定hash回放；Codex/read无首词泄露或预设结论 (36.437416ms)\n✔ 已启动轮数4/5允许第五plan/第六code，6/7及原件不一致均拒绝 (2.55625ms)\n✔ 五个Claude生产写缺口均在spawn与计数之前拒绝；合法读取与Qwen flash写保留 (40.253292ms)\n✔ 独立总7轮授权仅允许第六补充plan及第七完整code，原6轮授权不变 (0.306209ms)\n✔ 历史v5固定夹具与v2纯核验保留11B/12C边界，不随实时指针升级 (5.359791ms)\n✔ 历史v6生产v2守卫固定覆盖13B/14C及参数、集合、权威负例 (2.158334ms)\n✔ 历史v7固定夹具保留15C/16拒绝、授权谱系和参数集合负例 (1.638167ms)\n✔ 历史v8固定数据对应委托首批16B/17C，不无限放行 (0.449041ms)\n✔ 当前hash权威读取壳与生产守卫消费逐轮枚举，批后/错误参数与集合拒绝 (2.008375ms)\n✔ 历史总10权威固定v4夹具，9B/10C边界不随v5指针改变 (0.750792ms)\n✔ quiet-v6只允许三种摘要入口，拒绝review/probe和缺必需旗标 (0.537416ms)\n✔ quiet-v6真实子进程拒绝review启动且不建立预算或调用证据 (55.915917ms)\n✔ 正式代码前软线与最终安装/事实核验：失败不spawn、不占正式轮数 (5.363375ms)\n✔ 独立总8轮授权仅允许第七敏感扫描plan、第八完整code，旧7轮不可复用 (0.9605ms)\n✔ quiet-v7同label重试各配本次token，缺本次完成不得选择旧成功 (2427.846541ms)\n✔ quiet-v7证据选择直接覆盖错token、目标字段、时间、装载与退出信息 (708.445125ms)\n✔ quiet-v7缺值/旗标样式/重复/错误version在真实main拒绝，0产品spawn/预算/task变动 (1682.535083ms)\n✔ launch-v10重复token跨label拒绝，invalid token在预算/测量/spawn前拒绝 (1033.371916ms)\n✔ quiet-v7缺本次证据时保留child 2/64，child0仍退出失败1 (456.317083ms)\n✔ v10生产stage分支：plan无测量；code测量通过才spawn，失败0 spawn/reserve/run (1779.96275ms)\n✔ precheck-v2默认测量链直测缺/未知stage与真实plan/code路由、投影、hash回读 (975.797416ms)\n✔ quiet-v8完整摘要脱敏覆盖尾行和其他字符串，保持code/signal及JSON形状 (1.166167ms)\n✔ quiet-v8本地launcher自身错误也脱敏，缺证据child0/2/64边界不变 (498.712417ms)\n✔ launch-v12实际v8接线：15历史允许16B，16历史允许17C且17历史拒18 (5156.986ms)\n✔ 当前authority唯一launcher引用直接执行，换载体仍覆盖而不只核旧v10 (2648.628667ms)\nℹ tests 46\nℹ suites 0\nℹ pass 46\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 17687.715041\n",
+  "stderr": "",
+  "vendor_cli_starts": 0
+}

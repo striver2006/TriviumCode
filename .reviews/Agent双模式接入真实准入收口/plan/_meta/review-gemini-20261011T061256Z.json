@@ -1,0 +1,81 @@
+{
+  "agreed": [
+    "严格落实审查焦点要求「授权总14轮，先计划审查再代码重审（建议）」，限定总轮数14且仅允许本次13B与后续14C，12次历史记录与失败状态完整保留，不擅改计数与准入判据。",
+    "CLAUDE-01将round-guard-v2的回归用例与不可变v5历史夹具解耦，完整覆盖v6新增正例与各项负例分支，测试思路严密。",
+    "CLAUDE-03在quiet-launch-v7与launch-v10间引入TRIVIUM_ACCESS_REQUEST_TOKEN显式配对与同token防复用预检，彻底阻断按历史label模糊匹配导致的收据错配。",
+    "CLAUDE-04明确将formal-start-precheck-v2限制在review --start --stage code专属调用，解除plan审查被未实施代码settings测量阻断的不合理约束。",
+    "GLM-01/02针对性解决直接测试入口缺失与旗标样式值误放行问题，在子进程前置拦截无效参数以避免无谓CLI启动消耗。",
+    "准入矩阵清晰维持c981全未测现状，不以诊断、受控响应或旧848结果替代生产准入标准，阻塞与交付边界把控审慎。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r17-codex.md",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r7-gemini.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "scripts/agent-access-recipes.mjs",
+    "scripts/agent-access-budget-preload.cjs",
+    "scripts/agent-access-evidence.mjs",
+    "test/unit/agent-access-recovery.test.ts",
+    ".trivium/bin/trivium",
+    ".trivium/config.yaml",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v6.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard-v2.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v9.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v6.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-start-precheck-v2.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r6/static-audit-round13.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r6/formal-round13-authorization-verification.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r5/post-round12-quiet-static-audit.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r5/post-round12-admission-matrix.md",
+    "doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r17-codex.md:44 与 :51，以及 doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v9.mjs:40 与 :58（start_precheck_sha256 强绑定测量模块文件名与哈希）。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r17-codex.md:44",
+      "problem": "计划在 §3.4 中明确「新v10只有正式review --start --stage code调用formal-start-precheck-v2」，但在 §3.5 与 §5 中又提出「必要时拆出最小依赖注入的非生产默认工厂于新版本precheck-v3」。若实现时引入了 precheck-v3，而 launch-v10 仍按 §3.4 导入 precheck-v2 并记录 precheck-v2 哈希，则新测量逻辑在生产链路上无法生效；反之若 launch-v10 切换至 precheck-v3，则与 §3.4 的具名契约矛盾。",
+      "severity": "minor",
+      "suggestion": "明确统一决策：鉴于隔离 HOME 下构造测试夹具已具备现成路径，优先直接回归 formal-start-precheck-v2.mjs 而不创建 v3；若确需引入 precheck-v3，应在计划中同步更新 launch-v10 的导入目标与 start_precheck_sha256 审计指纹字段，避免版本挂接分叉。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r17-codex.md:35 与 doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v6.mjs:30-35（若 records.length !== 1 直接 throw Error，未将 child code 赋给 process.exitCode）。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r17-codex.md:35",
+      "problem": "计划 §3.2 要求 quiet-v7 在子进程 completed 缺失或错配时判定失败，且「摘要的子进程code仍为本次code；不得由JSON ok或历史成功替换」。但在 quiet-launch-v6 现有实现中，若证据文件缺失则直接抛出未捕获异常退出（exit 1），可能掩盖子进程本身的真实退出码（例如子进程退出码为 2 或 64 时被吞为 1）。",
+      "severity": "nit",
+      "suggestion": "在 quiet-launch-v7 校验导出函数及 main 流程中明确：当 completed 缺失或校验失败时，应优先保留并传递已捕获的子进程 exit code / signal 至 process.exitCode（缺省回退 1），输出错误摘要后再退出，防止真实子进程退出码被异常处理掩盖。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r17-codex.md:54、doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v6.mjs:9 与 test/unit/agent-access-recovery.test.ts:127（assertQuietCommand('v8', ...) 校验）。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "plan",
+      "location": ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r17-codex.md:54",
+      "problem": "计划 §3.6 详细规定了 quiet-v7 白名单旗标值的拒绝规则，但未显式声明 quiet-launch-v7 接收的委托版本参数（assertQuietCommand 第一个参数 version）。quiet-launch-v6 强制校验 version === 'v8' 并硬编码代理 launch-v8.mjs；quiet-launch-v7 代理 launch-v10.mjs 时，其 version 参数应显式定为 'v10'，否则测试与调用脚本易产生版本参数不匹配。",
+      "severity": "nit",
+      "suggestion": "在 §3.6 或 §3.2 中明确声明 quiet-launch-v7 的 assertQuietCommand 对应校验版本为 'v10'，并在测试回归中对齐该契约值。"
+    }
+  ],
+  "not_covered": [
+    "本侧审查员处于严格只读隔离环境，未执行任何命令或测试，未能通过实际运行 node --test 验证用例在当前工作树上的实际执行结果。",
+    "未实际启动 Node 子进程验证 quiet-launch-v7 与 launch-v10 在传递真实环境与 token 时的端到端拦截行为。",
+    "未能调用外部模型 CLI 验证各路线模型在真实网络与凭据环境下的实际准入能力。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "实施计划严格落实授权焦点「授权总14轮，先计划审查再代码重审（建议）」，限定总轮数14且仅允许13B与14C，完整保留既有12次运行记录及拒绝状态，不擅改计数与准入判据。\n计划系统性覆盖第12次代码重审遗留的六项整改：解耦并补齐round-guard-v2回归断言、通过显式token配对根治quiet摘要入口按历史label错配风险、明确采样时点界定、将启动测量限定在正式code阶段、补齐measureCodeStart直接测试及修复quiet必需值前置过滤。\n主要改进点集中在细节一致性：避免launch-v10调用模块与新precheck-v3提议之间的挂接分叉、防止quiet-launch-v7在证据缺失时丢失子进程原始退出码，以及明确版本契约参数。\n整体逻辑严密、风险可控，同意计划通过并进入实施。",
+  "verdict": "approve-with-nits"
+}

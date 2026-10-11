@@ -227,3 +227,202 @@ directory-fact-reuse-scope-code-nits.json逐文件核对六份生产目录相关
 提交前final-closeout-state-r12.json核对501个变更文件脱敏扫描零命中、历史旧证据hash零改变；旧审查中仅task正常追加及code/_meta/changes.diff正常最新指针变动，两个原failed状态不变。独立current-raw-evidence-cleanup-audit-r12核402个本批原件零命中、38夹具及隔离目录实际不存在，原cleanup和凭据清理原件保留；采样时刻不冒充历史清理操作时刻。其后只追加本段交付说明，不改变安装输入或新准入指纹。
 
 完整暂存空白检查例外如实保留：原始changes*.diff有补丁上下文空白；已用于实际取证且hash被冻结的launch.mjs、launch-v2.mjs、launch-v2-plan-review-preserved.mjs、launch-v3.mjs、launch-v4.mjs有文件末尾空行。不为通过格式检查改写原件或放宽产品判据。业务src/scripts/test/skills及正式doc文档的暂存diff --check通过，不能将此表述成全部证据原件无空白。
+
+## 第9次有效计划审查与普通整改（2026-10-11 02:18 UTC采样）
+
+上述总8未授权10的段落属于当时采样，原文保留。用户现已独立明确“授权总10轮，先正式计划审查再代码重审”。v4授权及完整hash经既有current-authority壳消费，v3指针逐字另存、历史8次含失败全部保留；13项零CLI核验通过，不修改原生计数/失败状态。
+
+第9次B/plan为run20261011T020308Z（plan阶段序号6），Claude回读qwen3.8-flash、Gemini回读gemini-3.8-flash-high/effort high、GLM回读bigmodel-coding-plan/GLM-5.3。三家evidence_ok=true，fallback/degraded=false，run success，快照前后tree相同、readonly_breach/peer_artifact_read/forged均false。三份全文已读，9条全部接受合入完整r14，gate退出0，本轮普通委托plan审批已通过；两项准入判据均未采用。Claude与GLM对候选实质/部分组件有明确未覆盖，形式有效不等于所有新机制已实测。embedded历史dirty与Driver模型族unknown告警保留。
+
+本次9B启动路径没有机械settings事前测量；实际trace保存26960字节、skipped0、Read/Grep/Glob目录facts实际消费。这是事后核验，不能补造事前检查。后续新v2测量按实际stage解析路线、新launch-v6对plan/code启动都核安装/输入、生产完整集合、facts消费/settings≤131072，旧v5及旧code-only precheck原件保留。第10次须有效9B及本轮审批先行；已有round-guard不机械校审批链，Driver须单独核验，9B无效/作废/gate失败/未批立即停止不实施、不启动10C。10C必须显式base39ed20530d64a72f81f183095c6d9516632d0228而非默认HEAD，保证已提交的七整改与新增面完整送审。
+
+普通整改只修两处历史恢复测试（实时v4八ID/9B/10C/拒11；历史总8固定v3）、r4只读诊断及任务级启动检查，生产guard/只读/Schema/禁读/模型配置/effort均未改。诊断不进scripts或其它INSTALL_INPUT_PATHS；正常设计契约仍v1.3.148，无新能力事实。quiet-launch-v5仅claim/resolve/preflight摘要，须读完整completed输出原样反馈警告，正式start/wait/status直接launcher。源首行已冻结的旧launcher不改，新版本注释标实际路径。
+
+零CLI诊断核固定旧variant1与当前variant2及requested/result/fingerprint原件hash、具名Kimi.env/DeepSeek pro写/Luna写。旧实际机制可作为historical-mechanism-only，安装上下文资产inventory/消费仍unknown，current_admission_accepted恒false、approval_record=null；不能把旧实际尝试搬到当前列。其构建戳占位符为明确的`<TRIVIUM_BUILD_STAMP>`，该独立规范化hash与此前48db71df所用占位符不是同一序列；只比较各自保留的其余全部字节，不混用hash。
+
+受控传输现有实现绕过profile wrapper、独立HOME/config、局部provider transport及人工凭据，生产全路线同形未证；未补桥接证据前候选不能采用。原848完整指纹矩阵仍6通过/6未测，准入547/563不增加；实盘核账正式审查池103→新增15启动至118/123（版本/包装器/native及过期缓存探活全部计；初稿按缓存命中估计10已纠正）。第10次C/code尚未启动，判据采用需Bob另行明确批准，普通委托plan/code审批不包含该决定。M11前置未完成。
+
+## 第10次重审前最终安装与证据范围（2026-10-11 02:40 UTC采样）
+
+第9次普通整改后串行两次npm run check均为3142总数、3139通过、3跳过、0失败；source及正常安装副本doctor桩自检均14/14，夹具已清理。本次最终bundle cb6f4d17052a739f66c71d30fdb18c4c7999d3d6fbbf5fdcf263f4e5cefadd26，安装输入仍885a12a5d043d5e79c3d2736b25b7db8a64bb08d6a770ee7b779de46636602bc。构建戳git_head=f63e339f938bd7bca1d5c22f19be101d626a7e66、dirty=false的判定仅覆盖INSTALL_INPUT_PATHS；本轮测试/报告/证据及审查追加造成Git工作树实际有改动，不能写工作树干净。
+
+纠正起始静态核对遗漏：七份共享入口在01:38 UTC重新出现，早于9B；文件清单、内容、权限与前次获审备份逐项一致，来源未知。r13/r14及round9-static-report对“四目标此前通过”的引用属于前次安装历史，本轮开始时没有实查共享入口，不能据此证明起始完整安装仍通过。保留这些原件及首次最终安装退出1/零写入记录。根据本轮自动普通审批委托及有效9B的完整r14迁移方案，新建独立备份trivium-shared-r14-1791686121897-5a253e93-eab3-4364-ac01-8d0928592994，复制核验后移出七份同一内容，再由正常安装器成功完成四目标；migration-install-round9.json核28专用入口、运行时/source字节相等、七共享名缺席、四全局文件hash前后相同。恢复只能从该备份逐项核验、拒绝覆盖，不清理旧备份。来源、其他仓库完整依赖及客户端实际重名发现仍未测。
+
+零CLI current-full-fingerprint-diagnostic.json核显式38臂原件hash。旧848到当前cb6除唯一精确构建声明外全部编译字节相等，规范化hash均af48f6353104e880af94263b396d3a428787f172c10870981aa78b9561890e9a；仍不得追认完整准入。全部38臂的local_config、全局Codex config hash及bundle不同，Codex臂的profile_config亦不同；未取得完整旧配置语义及消费对照，config_delta_semantics=null。本次移入口和安装未改这四份全局配置，不能推断外部变化的来源。原848矩阵6通过/6未测只对其采样有效，当前cb6没有刷新后的全量模型矩阵；服务端身份均null。
+
+只读诊断与两项候选采用分开。component-scoped-evidence-v1仍未采用，具名旧Kimi .env、DeepSeek pro写、Luna写仅历史机制；restricted-tool-surface-v1仍未采用，受控路线与生产全形的桥接未证。本轮第10次完整代码重审覆盖七条累计整改、深度7、文档收敛和本次普通诊断/测试/启动核验，不包含任何判据采用层。保持原标准继续，不能以无文件生成或权限诊断判写通过，不能用正确首词代替读取轨迹。新增准入启动为0、累计547/563，正式review累计118/123；10C前按现授权另行发布CLI扩容和批次，不增加formal总10资格。
+
+## 第10次审查与拒绝审批后的当前阻塞（2026-10-11 03:02 UTC）
+
+run20261011T024158Z三家首尝试完成，evidence_ok=true、fallback/degraded=false、run success；正式完整base39ed2053到当前工作区197文件（5730.1KB补丁），tree前后4a4a42af5d7c61534f3c06f475a1cf9d68dc30ef相同，现行guard无漂移/只读失守/禁读集合命中/伪造。实际code settings29732字节、skipped0，与事前测量一致。Claude request-changes major1/minor2，Gemini及GLM approve无finding；三份全文及各侧盲区已读，r4-response-codex逐条接受三条，gate完整性检查退出0。Gemini把9B称全票通过、把26960当10C尺寸、把旧6/6称当前等误述在Driver裁决纠正，不回改审查原件；GLM未独立核运行检查，Driver两遍3139/3/0与14桩原收据保留。
+
+CLAUDE-01：DeepSeek pro当前0新写启动是操作纪律，现recipes机械拒绝仍四项；新增第五项会改变启动guard语义且超r14普通测试/诊断限，需要单列正式计划。CLAUDE-02：旧core默认current=authorization只纯计算，不校磁盘权威，真实launcher经强读取壳；新版本显式authority方案另审，旧件不改。CLAUDE-03：quiet-v5首注/过滤不足，新版本明确委托并机械禁review，旧v5保留；本10C未用quiet。三条接受不代表已实施。依据用户本轮根据建议自动审批的委托，03:01:53.547Z记录code rejected，session_id=null；普通委托审批不能超此前明确守卫整改计划范围。业务写锁已解除，全部工件保留，不回滚七条已提交整改，不自动编码这些新守卫事项。
+
+Claude根目录Grep结果被CLI保存40.9KB文件并实际Read，包含外侧历史BRIEF中的相同补丁、己方旧意见及Driver稿。生产enumerateDenyPaths并不禁brief；完整结果对照既有本轮deny_paths无命中。trace.grep.hits只反映可解析的预览文本，不证明持久结果全文均被核。既有success/guard原值不改，不能外推为所有_meta/未来生成工件均隔离；后续语义扩展必须先诊断并单列敏感计划。
+
+在10C结束并拒绝审批后追加零CLI独立校正：round10-grep-persisted-audit.json初版未处理Read每行行号/制表符，误把实际路径归普通；原件原样保留，round10-grep-persisted-audit-v2.json校正路径。round10-grep-read-exact-verify.json逐行剥除252个呈现前缀，所得47345字节与CLI持久Grep文件逐字节相同，证明实际Read响应向模型交付了全部文本。九个具名结果路径中八个位于本主题归档树、两份为外侧历史BRIEF；与本轮4290项实际生产deny集合交集零。外侧BRIEF不是他侧审查意见原文，但是否应纳入用户要求的“同行工件”完整禁读边界仍需正式计划裁决。该新证据不属于既成10C静态送审包，不追改当轮success/guard或审批；对新的生产guard语义不先行实施。
+
+正式已10/10；本批新增真实CLI10，review118→128/138，admission547/563、均收尾齐；扩容20记录为review123→138增15，不能视为11次授权。具体未审提案post-round10-guard-plan-proposal.md仅建议另行总12（11B/12C），没有切新authority、认领、预检或启动11。准入判据两项未采用，cb6完整矩阵未刷新，M11前置仍未完成。本轮新增工作未提交推送，不把原f63交付或预算余额当任务完成。
+
+## 第11次正式计划审查及当前守卫实施（2026-10-11 03:26 UTC采样）
+
+上一节“总10、未授权12、未启动11”为03:02时点历史。Bob随后独立授权正式总12轮，第11次B/plan、第12次C/code，未批准准入判据变化。v5授权与当前指针绑定完整hash，v4授权及指针逐字保留；原10次含失败及10C拒绝不动，13项零CLI正反核验通过。原生编排器无专用轮数例外接口，仍依任务级守卫启动前核对；总12资格与review/admission CLI额度独立。第11批review由128/138具名扩15至153，预计15、硬20、批止148；admission547/563本批0，旧976份预算连续性照旧。
+
+11B run20261011T031230Z为plan阶段序号7，Claude/Qwen flash、Gemini flash high、GLM-5.3三侧首尝试均完成，evidence_ok=true、fallback/degraded=false，run success、tree前后相同，无subject漂移、readonly_breach、现行deny命中或伪造。模型族Driver未知、Gemini/GLM路径级deny未生效照实保留。三份全文提出CLAUDE三条、AGY三条、GLM五条，共11条；全部接受并合入完整r16计划，裁决件由archive.ts唯一出口写入，gate检查退出0、0失败/告警。依据Bob本轮明确的自动普通审批委托，已于本轮记录plan通过，session_id依实际记录，**只批准三项守卫及配套测试/文档/安装核验**；component-scoped-evidence-v1、restricted-tool-surface-v1及BRIEF扩禁均未采用。
+
+10C Claude根Grep持久结果Read的严格校正为252行去呈现前缀后47345字节逐字节一致，实际送入模型的九个路径含两份他侧历史BRIEF，和当轮4290项生产deny交集零；旧审计首版漏行前缀的错误原件保留，v2与严格校正并列。现行规则禁他侧审查意见原文，不禁历史BRIEF输入件，故旧guard=false与当前规则相容，但不得宣称全部`_meta`隔离。第11次三审认为本轮无需据此扩大禁读；若将来要改生产guard，须独立计划/审批，v5仅到12次，第13次须Bob另行授权轮数，不能搭12C扩大范围。
+
+第11次裁决指出v5切换后原实时测试仍断言v4，尚未执行全check时只能标静态推断。获批实现把当前v5实时断言与不可变v4总10历史断言拆开；旧总6/7/8和旧guard hash保留。`launch-v7.mjs`是11B实际入口，但其首行路径仍误写v6且尾注误写v5；该字节已送审，保留原件与收据，以本段勘误，不倒改。第12次新`launch-v8.mjs`接`round-guard-v2.mjs`并记录其hash；`quiet-launch-v6.mjs`只委托v8的topic claim/topic resolve/preflight，正式review直接v8。DeepSeek pro加入Claude/write预启动拒绝集；无新生产同形实际调用机制时五臂仍0新启动、原写标准未测。源码与脚本已进入修改期，最终check/重装与新完整指纹尚待本节之后原件确认；cb6旧矩阵不追认。七共享目录未知来源复现一次，后续四目标重装之后必须另核其仍缺席及备份逐字节一致，实际客户端发现仍未测。
+
+## 第12次完整代码重审前检查与安装（2026-10-11 03:48 UTC采样）
+
+三项获批守卫已落实：recipes五个非flash Claude写臂预启动拒绝、v2纯守卫缺第五参/旧v4权威拒绝、v8生产启动接v2并记其hash、quiet-v6机械限定三种摘要命令。测试中保留旧总6/7/8历史与旧guard hash，新增v4总10固定夹具、v5实时10历史ID/11B/12C/拒13、quiet真实子进程拒绝review前不建预算/调用证据。定向恢复与scratch计数合计11/11通过。11B审查员对v7首行误述已按上段勘误，原v7字节未改。未修改产品enumerateDenyPaths、readonly guard/Schema、用户模型/effort/全局配置或软件版本；skills-src命令措辞未触及，无入口渲染修改。
+
+首次完整check1-round11退出1：新增真实子进程测试用了裸mkdtemp，仓库scratch清单测试捕获；该失败原件保留。改用统一scratchDir后，check2-round11与check3-round11串行两遍均退出0，各3145项、3142通过、3跳过、0失败。两遍bundle SHA不同只因build stamp的built_at采样不同，安装输入相同为d67020b113b391876e9db201b918fe8997f1c1587a574ec396bc982de6e7345d；未把检查内bundle用作最终证据。随后单独最终build退出0，source bundle=c9818aefe0e3a8bf2e57bb93a89db372841f0bd132b8b35fbf75c05d038628f2；源码与安装副本doctor桩自检各14/14通过，桩不证明真实CLI能力。
+
+正常安装器四目标claude/codex/gemini/glm成功，28专用入口逐文件与源相等；运行时bundle与上述source SHA完全一致，四份全局配置hash安装前后相等。七个共享重名目录安装前后均缺席，既有独立备份copied/moved七份逐文件hash一致且安装后未改变；来源未知与客户端实际发现未测仍保留。第12次启动前零CLI测量为安装/source一致、embedded inputs匹配、生产完整枚举及三工具目录事实实际消费、settings35276字节≤131072、skipped0；正式授权v5与第11次普通审批、10C拒绝原件均核对。review第11批143/153（128后新增15均收尾），第12批事前具名扩15至168、预计15硬20、累计批止163；admission547/563，本审查批新增0。第12次code尚未正式启动，cb6/旧848矩阵对新c981完整指纹不能追认；当前逐模型全量准入未测，M11前置未完成。
+
+## 第12次完整代码重审、裁决与拒绝审批（2026-10-11 04:10 UTC采样）
+
+上一节“第12次尚未启动”仅为03:48采样。12C `run20261011T035044Z`现已完成：显式base39ed2053到当前工作区241文件、7042.9KB，快照tree前后`0cdb8270950a53188000c291478c395bf1688feb`相同；三侧均首尝试、evidence_ok=true、fallback/degraded=false，run success，无subject/related漂移、readonly_breach/peer_artifact_read/forged。Claude actual qwen3.8-flash、Gemini actual gemini-3.8-flash-high、GLM actual bigmodel-coding-plan/GLM-5.3；Driver声明与三家服务端身份仍无独立证据，缺项为null。Gemini/GLM `consulted_unverified=true`、路径级deny未生效的限制保留；各侧实际查阅与not_covered以原件为准。运行告警“构建时工作树有未提交改动”如实保留，不误作审查漂移。
+
+Gemini零finding，Claude minor2/nit2、GLM minor1/nit1共六项已在`r5-response-codex.md`逐条接受：v2实时守卫及precheck-v2缺直测、quiet-v6按历史label选证据可错配、必需旗标值可为旗标样式、主设计4290采样时点不明、plan/code预检范围不一致。`gate --check`退出0，结构化六ID、无缺失/降级；await-approval复核列出审查完成后新建裁决辅助脚本一件，裁决原件由archive.ts唯一出口写入且业务核心未改。按Bob本轮普通自动审批委托，04:09:40Z正式记录**code rejected**、session_id=null；旧成功/失败审查、11B批准、12C有效原件及现代码均保留，不用本次拒绝回滚获批整改。
+
+实盘复核准入547/563、review153/168且两池预占均有同数完成件，正式轮数12/12。r5的`post-round12-guard-plan-proposal.md`给出六项与建议13B/14C的可审查方案；它不是已获授权的正式计划或准入判据采用。当前v5权威继续拒绝第13次；需要Bob独立追加轮数授权才可先正式B/plan，再依本轮委托审批、实施、完整C/code。四目标安装与两次check是03:48代码快照的证据，12C没有带来逐实际模型真实准入；旧848/cb6矩阵与新c981完整指纹不得互认。五个写臂仍无新实际模型尝试，官方Claude及客户端重名解析仍未测，服务端身份保持null；M11第12步前置任务保持未完成。
+
+第12次审批后的零CLI补充静态复核见`r5/post-round12-quiet-static-audit.md`：quiet-v6纯函数确放行旗标样式必需值，但现行产品`parseArgs`/`flagString`在task写入前拒绝；GLM-02的准确缺口为quiet层多一次无谓spawn/启动计数，不称已发生错误认领。现有246件completed的label各异，CLAUDE-03是代码谓词可触发的未来重试错配，尚无实际错配样本。第12次审查原文、裁决和拒绝审批均不回改，拟在下一正式计划中按更窄事实界定整改。
+
+另见`r5/other-repo-entry-dependency-audit.md`：只读遍历`~/Work`一级目录识别HomeIn、KaiXinGuo-SEL-czb、UniClip、trivium-m11-accept及本仓五个有项目config/bin的仓库；其bin均指向同一用户级Claude运行时bundle，安装更新会影响它们下一次通过wrapper执行的版本。共享七入口本时点仍缺席，已获批备份的copied/moved各有七份，四目标专用入口已在03:48安装核对；这些事实不能证明各客户端真实技能名解析，仍标未测。没有改其他仓或用户级入口。
+
+## 第13次计划审查准备：独立总14轮授权（启动前采样）
+
+Bob回复“授权总14轮，先计划审查再代码重审（建议）”。r6/prepare-round13保存旧v5权威指针、建立当前v6，仅允许同主题13B/14C；12次task/archive与审批记录不改，17项零CLI核验通过。launch-v9仅更新授权，六项尚未实施；正式plan已认领且完整原稿r17经archive.ts归档。后续修复版本名称为launch-v10/quiet-v7，前提为本次有效三审、逐条裁决及普通plan审批，不含准入判据变化。
+
+本批review预计15、硬20、批次止173，累计池按现有自动扩容授权168→183，实盘153；准入547/563新增0。r6/static-audit-round13核源码/安装c981一致、inputs适用、四目标28入口一致、共享七缺席及备份、配置和脚本hash；保存CLI旧probe/12C回读并注明本次未启动版本CLI。目录事实被消费、settings38048字节、4302路径、skipped0，扫描无凭据。旧4290/4298等仍按当时采样保留。客户端解析未测、服务端身份null、c981逐模型完整准入未测，目标仍未完成。
+
+## 第13B结果、六项实施及第14C送审前（07:04 UTC采样）
+
+13B run20261011T061256Z三侧首尝试有效，无subject漂移、现行readonly/peer/forged违规，十条全文逐条接受并合入r18，gate退出0。06:28:59.326Z依据Bob普通审批委托记录plan approved、session_id=null；只批准本任务六项及配套测试/文档，未批准判据变化或超过14轮。Claude根Grep中他侧同文brief不在现行禁读集合，披露及读取回读盲区保留，不修改判据追认。
+
+实施为launch-v10及quiet-v7：同一UUIDv4绑定请求、LOAD_TOKEN、预算mark与唯一wx认领；摘要只消费本次精确token的请求/完成证据并核时间、hash、加载、参数及退出状态；证据缺失时保留子进程2/64，子进程0转失败1。必需旗标值拒绝旗标形态；当前v6及v2守卫/precheck直测，旧v4/v5固定历史夹具保留；生产启动直接接precheck-v2，code实测、plan不无谓测量，未来另起plan需重新评估范围。主设计新增v1.3.150，旧v149采样不重写。产品准入判据、readonly语义、用户全局配置和软件版本未变。
+
+新定向测试17/17通过。首次类型与定向预期失败原件保留并修正；中途check不是最终双遍。最终check1-r18-2、check2-r18-1串行，各3153项、3150通过/3跳过/0失败；源码及安装端doctor桩各14/14。最终bundle9d04c11f48098b47c33ab0202fb33dbb554455bd75bd15e848a3446e81b85812，inputs a1d20d0225dee0016fabfc7333b0dfb3969c677ce2ae7efd41fd6967529abde7；正常四目标安装通过，28入口逐文件一致，七共享缺席，既有copied/moved备份各七份核hash、全局配置前后不变。客户端发现规则实际解析仍未测，不把运行时安装当客户端取证。
+
+零CLI生产枚举测量4306路径、settings40820字节、skipped0，source/install/input一致，目录事实被消费。pre-round14-state保存脚本/配置/版本旧probe指纹，14C预检将另核版本。本批正式13/14，review168/183（预计新增10、硬15、累计止183），admission547/563新增0。最新完整矩阵12未测见r6/pre-round14-admission-matrix.md；旧H、848、c981采样保留。第14C完整base39ed到当前工作区三审尚未启动，M11前置仍未完成。
+
+
+## 第14次完整代码三审、裁决及普通拒绝（2026-10-11 07:17后采样）
+
+14C run20261011T070836Z三侧首尝试有效，无fallback/degraded，tree前后32c5e453e178b839d27638ae1443dd8e52754394相同；subject e00c8bea400fb56e369d7ac8883b285ccd727f5607d148c969fbd86049d48fcc，无subject/related漂移、现行readonly_breach/peer_artifact_read/forged命中。实际审查模型Claude qwen3.8-flash、Gemini gemini-3.8-flash-high、GLM bigmodel-coding-plan/GLM-5.3，各证据/未覆盖依原件；服务端身份仍null。Claude根Grep命中他侧同文brief镜像、不在现行deny，保留披露，未改判据。294文件完整补丁显式相对39ed，实际settings40820字节/skipped0，与事前测量一致。
+
+Gemini/GLM无意见；Claude minor2/nit2共四条在r6-response-codex逐条裁决：01摘要外层脱敏接受，03授权谱系直测接受，02通用base守卫驳回（本轮固定脚本/冻结hash/resolve与实际start已显式39ed），04授权数值连续性增强暂缓（当前v6实盘自洽、完整hash绑定，通用增强属另列guard语义）。gate检查0，审批前业务摘要零改动，依Bob普通审批委托记录code rejected，时间/session依task.json原件。拒绝不回滚13B批准或七整改。
+
+实盘预算review178/183、178个launch完成件；admission547/563、547个launch完成件。14批新增review10/admission0，正式14/14。勘误：pre-round14-state.json的completed=0是该零CLI审计脚本使用了不存在的completed-文件前缀造成的查询错误，不能表示实际未收尾；权威完成件命名为launch-，上述正向计数已直接核实。旧错误采样不覆盖，保留并在本段校正；启动used/limit与侧车实际预占计数未受影响。
+
+两项常规补修沿13B已批准摘要/直测范围，不改guard判据；新quiet-v8全摘要使用既有脱敏/扫描，旧v7保留；v6谱系hash补断言。具体方案与独立总15/单C建议见r6/post-round14-wrapper-followup-proposal.md。当前v6/总14继续拒15，未经用户独立授权不切权威、不认领/预检/启动新正式轮。补修类型检查通过；其后测试/构建/安装尚待新原件，不把旧3150/3/0、9d04当补修后结果。最新准入仍12未测，原写实际调用缺口与Kimi.env/官方Claude/客户端发现边界保留，判据候选未采用，目标未完成。
+
+
+## 第14C两项补修完成、当前交接（2026-10-11 07:36后采样）
+
+quiet-v8全摘要脱敏/扫描与v6谱系字节hash直接断言已完成；新增两项合成凭据/本地子进程回归，合计定向19/19通过，旧v7与v10/v2 guard/precheck/当前v6授权及指针hash未变。补修后check1-r18-post14与check2-r18-post14串行，各3155项、3152通过、3跳过、0失败；两遍期间输入与测试hash固定。source和installed桩各14/14，随后最终build及正常四目标install-post14成功，28入口逐文件相等，七共享缺席、copied/moved备份七份核对一致，全局四配置前后hash及14C前hash未变。此处不是本轮code通过，也不是模型准入。
+
+最新bundle `64157315c818ae54676b5cd3f4a440084f0a491dfa947b1b08cb9f25f5b3b286`，安装输入 `b4d554eb138af72124b0fdb838118f630a395a43a3fc69cd1d29d4379202dff4`，HEAD f63e339f938bd7bca1d5c22f19be101d626a7e66、dirty=true；源及安装一致。零CLI实际生产枚举4310项、settings43592字节、skipped0，目录事实实消费，旧4306/40820、4302/38048等保留原采样。post14-checkpoint.json保存正向launch-*完成计数、审批原件、旧脚本不变核验、配置与安装、脚本hash及扫描0；旧pre-round14-state completed=0查询错误的原件与勘误均保留。
+
+13B普通plan approved时间06:28:59.326Z；14C普通code rejected时间07:20:25.054Z，两者session_id=null，依据明确委托而非冒充Bob亲自操作。原七整改及13B六项已获实施范围不回滚，两项补修尚待新完整C重审。正式14/14且机械拒15，单次15C独立授权请求尚无答复；未切当前权威、未启动15或新增审核者CLI。本批review实际10、累计178/183且178完成；admission新增0、累计547/563且547完成。未清零、重复合计或改旧额度。
+
+最新矩阵见r6/post14-current-admission-matrix.md及同名JSON：12组合当前完整准入均未测，请求model/effort、逐文件配置声明/哈希、当前CLI回读与服务端身份分列；后三者缺运行证据为null，旧848实际模型及6/6结果仅历史列。原H5/5/2、FBB、848与9d04记录全部保留。五Claude生产写无新机制、Luna写无真实命令、Kimi coding.env Read实际调用等缺口仍在；官方Claude待订阅，客户端入口实际发现未测。component/restricted候选均未采用；M11第12步前置任务仍未完成。当前未提交推送，避免把未获本次code重审的补修当成已批准交付。
+
+
+## 正式轮数待授权期间的零CLI证据差异核验
+
+r6/current-evidence-impact-audit.mjs/json/md显式核旧848 selection和38个完整臂请求/结果/事后fingerprint的hash及launch原件，历史文件hash未变。旧FBB与当前6415在唯一精确构建戳替换后编译字节相同，但38臂与当前存在配方/bundle/config.local/Codex全局config/profile_config等完整指纹差异，不能采用旧准入；此刻全局配置与14C前一致，不把历史差异误称本轮修改。上下文消费inventory不足，component/restricted判据仍未采用。第一次前缀匹配误含qwen-pro被计数断言阻断，原脚本/失败件保留；按精确agent/combination纠正后成功，均0真实CLI。
+
+下一条件式首组仅旧成熟的6组合，19能力臂按旧实际边界34启动，加对应配置上下文9版本启动，预计43/建议硬55；五Claude无机制写与Luna写/Kimi.env缺调用先留0，其他第二组先有具体用途再细化。该最小清单不是启动或扩容记录：仍须独立新增正式资格、完整C重审和本轮普通code批准、最终指纹冻结及事前精确批清单/CLI扩容。正式14/14且未收到15资格授权，review178/183、admission547/563均无新启动。目标未完成。
+
+## 第15次独立授权与完整代码重审前检查（2026-10-11 UTC采样）
+
+用户独立明确授权“授权总15轮，仅追加完整代码重审（建议）”。当前v7绑定14次task/archive实际历史，仅允许15C，拒绝16次和新增B；v6授权与指针原样保留，v11仅改授权文件及说明，v2 guard/precheck语义未改。旧14C有效审查及code拒绝均保留。普通审批委托、自动CLI扩容不包含准入判据变化。
+
+quiet-v8全摘要既有脱敏/扫描及合成凭据真实子进程回归、历史v6 supersedes原件hash直接断言已实施于13B批准范围；当前v7单独验证15C资格和谱系，定向20/20、类型检查通过。第一遍辅助全检3153/3/0时修正测试行尾空白，辅助结果原样保留；最终文件冻结后另行串行check1-r19-final15、check2-r19-final15，各3156项、3153通过、3跳过、0失败。两遍源码/脚本hash及inputs核验一致。源/安装桩均14/14，最终build后正常四目标安装28入口逐文件相等，七共享入口缺席、七份copied/moved备份核对一致、四全局配置前后及旧14C hash一致；实际客户端名称解析未测。
+
+本次最终bundle SHA256=874e41604f533c16abd7ac4baca30ecb944492433260094f090d6747faee824b，inputs=41128b5ee579a158f6a04e4f35d3d8ee0d13ac7f0ffcf32d2f0c708d905441a9，HEAD=f63e339f938bd7bca1d5c22f19be101d626a7e66、dirty=true。生产目录事实消费设置43592字节、4310原路径、skipped=0，静态证据secret扫描0；分项不代替模型独立能力证明。
+
+独立证据目录r7。正式review累计178/198，预计新增10、启动前修订硬20/累计停线198，使现有池强制边界与批清单一致；原预计10/硬15清单保留，修订前未新增CLI。准入547/563、本批0，完成件分别178/547，旧台账不清零。七条整改落点仍以上文逐项表为准；全部12当前完整准入未测、官方Claude订阅未恢复、服务端身份null，七路线/Qwen pro/共享三审/M11前置目标未完成。
+
+路线×历史实际模型×缺口×可复用证据×必要新增的完整12组合见r7/pre-round15-admission-matrix.md与JSON。r6/current-evidence-impact-audit的条件首组继续适用为机制清单而非新版准入：Claude Qwen flash四臂4启动，Codex Sol/Astra各三臂合12，Codex Qwen/Kimi/DeepSeek各三臂合18，版本共9，合43、建议硬55；正式code获批且完整指纹冻结后才另行发布准确批manifest并自动扩容。五Claude非flash生产写、Luna写和Kimi coding .env Read无新机制不重复提示；原写实际模型调用/精确配对拦截/前后状态标准、原未测列与未采用判据候选保留。审查开始前全部静态文件落盘，期间/审批停点不修改业务或新增被审静态证据。
+
+## 第15C有效审查、裁决及委托普通审批（2026-10-11 UTC）
+
+run=20261011T083951Z，共15次正式记录；全量base39ed2053，355文件/10446.2KB，三侧首尝试完成，总15m13s。Claude回读qwen3.8-flash、Gemini回读gemini-3.8-flash-high/high、GLM回读bigmodel-coding-plan/GLM-5.3；服务端身份null，Driver模型unknown。subject=68a0eda8bc65652315149cb2200d77a7cfb4fa0b2ae55188ddda1984caa636f3，tree前后bf91c0f637ac7c0aa05c0817affd32628efccf5b相同，readonly_breach/peer_artifact_read/forged均false，Claude43592字节/408规则/skipped0，静态冻结29文件hash未变。
+
+三份原件全文已读。Gemini零意见，Claude四条、GLM两条；Driver通过archive.ts唯一出口归档code-r7-response-codex，六条完整裁决：CLAUDE-01接受历史摘要入口说明性勘误（本轮实际v11/v7，无v10认领/预检）；CLAUDE-03接受索引采样标签勘误，普通批准后仅更新当前展示；CLAUDE-02、CLAUDE-04、GLM-01暂缓未来接口/测试建议，当前无生产失效证据且不实施guard语义变化；GLM-02驳回跨冻结版本重构/镜像测试，审前r7README已明确摘要v8固定历史v10、正式15用v11。说明性勘误已在裁决件完成，不需生产改动。
+
+Claude/Gemini consulted交叉核对受限，GLM引用task-launch.test.ts而未列consulted的结构告警完整保留；文件实际存在，Driver已核，按既有规则为告警，不补写原件也不声称引用无瑕疵。Gemini/GLM无路径级deny，仍任务书及事后检测。gate --check退出0，await-approval与approve均确认无业务改动。依据用户“根据你的建议自动审批”委托正式记录本轮code approved（session_id无声明为null）；批准不含第16次或准入判据变更。全部旧失败/拒绝原件保持。
+
+审查累计193/198，新增15（版本/认证探活/包装器/native/模型），所有完成件齐备；准入仍547/563。新版完整准入12未测，后续最小首批6组合19臂预计43启动、硬55、累计停线602，先发布扩容及明确variant/hash选择，不回退旧成功。七条已实施整改及必要检查可复核，但七路线/Qwen pro及剩余实际调用缺口未全部闭环，M11前置尚未完成。
+
+## 第15C批准后的真实首批与当前交接（2026-10-11 09:09 UTC后采样）
+
+独立r7/admission15-minimal-first-batch.json在启动前公布6组合19能力臂、5版本逻辑调用，预计43实际启动、硬55/累计停线602；按既有自动扩容授权把admission563扩39至602，原扩容及旧台账不改。所有调用经过现有launch-v11、生产doctor/适配器与预算侧车，选择新variant3及明确版本4/13/14/15/16，没有手工厂商CLI、提示改动、回退旧成功或重试。实际24逻辑调用/43启动（版本9、能力34）全部完成；admission590/602、review193/198，590/193完成件齐备，正式15/15未增加。
+
+当前完整指纹bundle874e4160、inputs41128b5e、CLI Claude2.1.296/Codex0.162.1的矩阵为**5通过、1未通过、6未测**。通过：Claude/Qwen flash；Codex官方Sol、Astra；Codex/Kimi coding、DeepSeek flash。未通过：Codex/Qwen flash。未测：Claude/Qwen max、Kimi coding、Kimi k3、DeepSeek flash、DeepSeek pro，以及Codex官方Luna。完整12行请求/计划模型、配置声明/哈希、实际CLI模型/provider/effort及来源、服务端身份分列于r7/matrix-admission15.md/json；所有服务端身份null，未测组合CLI身份null，目标型号不冒充本批实际请求。现有配置及effort均未修改：Codex回读Sol/Astra/DeepSeek high、Qwen medium、Kimi max；Claude effort没有回读为null。官方Claude仍待订阅恢复，未测。
+
+Codex/Qwen read-3唯一session命令call_ad7c1cf03dec45c99feedc06与stdout item_1配对，在实际夹具cwd执行ls/echo/cat复合命令，parsed_cmd=unknown，现行单read节点精确断言false。真实完整工具输出含README正文，但最终findings为三个字符串导致finding_unaddressable、summary非首词；三项失败独立保留，不以正确正文或首词代替精确读取，也不将错误模型叙述当文件事实。写负对照、禁读事后检测、模型回读、MCP与完整指纹通过不能抵销读取失败。诊断r7/codex-qwen-read3-diagnostic.json绑定全部原件hash，源码README104字节；原运行并未采集全文before/after hash，不补写旧证据。
+
+批后r7/final-admission15-audit.json零厂商CLI复核：19临时夹具及scratch清理、15个Codex能力臂凭据清理、24唯一token与43启动边界/请求完成件配对；4个profile的native版本父子实际入口hash绑定通过；976旧台账文件及29被审静态文件字节未变。源/安装874包与411inputs一致，运行时全部资产及28专用入口当前一致，七共享缺席、copied/moved备份七份相等，四全局配置和项目配置hash未变。扫描377文件0凭据发现；诊断及后续报告另做最终静态扫描。客户端实际技能名解析仍未测。Codex禁读仍为事后检测，不宣称CLI阻止读取。
+
+五Claude非flash写无新机制不启动，原标准下生产真实模型尝试仍未测；Kimi coding.env Read及Luna写缺真实调用同样保留。component/restricted判据候选未采用，普通15C批准不是判据批准。当前不进入M11第12步，目标未完成。
+
+针对本批实际读取及结构化交付失败的具体后续方案已保存r7/post-round15-read-evidence-plan-proposal.md：拟审夹具全文before/after绑定、保持原单cat断言的诊断及不泄露实际首词的明确对象Schema任务书；不直接加入已知旧Qwen忽略的output-schema旗标，不用unknown复合命令追认读取。建议独立总17轮（16B计划、17C完整代码）；当前总15权威仍机械拒16，没有新认领或实施。普通自动审批/CLI自动扩容不涵盖追加正式轮数或判据变化。未提交推送，当前dirty及构建标识如实保存，不以提交改变或重建时间戳追认旧模型证据。
+
+## 用户独立按需正式轮数委托与第16B准备
+
+用户随后明确回复“授权轮次可以按需增加，不必询问授权”。这是正式轮数的独立追加委托，之后可按实际需要发布有界批次，不再询问新增轮数；准入判据仍需另行明确批准。prepare-round16保存v7指针和原授权字节，新v8仅追加16B/17C、核全部15历史集合及谱系，22项零CLI正反核验通过，18仍拒绝。launch-v12仅更新当前授权文件及说明，v2 guard/precheck语义不改。旧r7提案与待授权采样保留，不回改为当时已获委托。
+
+plan认领经正式入口noop确认，完整r19原稿经archive.ts归档；夹具全文状态/诊断、任务书及v8测试还未实施。本批16B事前review193/213、预计10/硬20/池止213，已发布198扩15的记录；admission590/602新增0。原874矩阵5通过/1未通过/6未测及新机制待测分列。审前静态审计、配置/安装/脚本/台账与报告落盘后冻结；审查和普通审批停点不改业务或被审证据。
+
+static-audit-before16核验原源码/安装874及411inputs、正常28入口与七备份/共享缺席、项目和四全局配置、29旧被审静态原件及976旧台账均一致；零CLI生产消费4314路径、settings46364字节、skipped0。当前未实施方案、未更新v8业务测试，不把旧检查称为新实施验证。正式resolve显式r19与三侧，models/tiers/efforts/vendor_profiles均空、driver_model/provider/task_goal均null，沿现配置继承；preflight通过，新版本5实际启动后review198/213，admission590/602不变。Driver模型unknown、Claudeprofile配置不能核实服务端完整目录告警完整保留；审前冻结后才启动16B。
+
+## 第16B有效三审与本轮委托普通plan批准（09:47 UTC后）
+
+run20261011T093157Z三侧首尝试完成，11m43s；subject f70191cd91b3e3b4b55b8c90ff85fea59cfb5729ef551d37bf55421ceaeefeaa、tree前后f20da918a68e997ea4b3d00cfeb2b071ad10de82相同。readonly_breach/peer_artifact_read/forged均false，无降级/回退；审前11文件hash至审批均未变。Claude实际qwen3.8-flash、Gemini gemini-3.8-flash-high/high、GLM bigmodel-coding-plan/GLM-5.3，服务端身份null；Gemini consulted交叉核对受限、Driver模型unknown、dirty安装构建和两侧路径deny不生效告警保留。
+
+全文读取三原件plan-r9，五条逐项接受：CLAUDE-01时点/报告指针同步，CLAUDE-02有界发布的审计强度措辞，AGY-01仅Codex/read精确提示分支及非目标hash，AGY-02顶层固定诊断对象，GLM-01严格全文bytes/hash及后缀/尾换行口径。r9-revised-codex和完整r20仅经archive.ts归档。gate0、五ID完整，await-approval/approve业务摘要均0；09:47:21.684Z按用户明确委托记录本轮plan approved、session_id=null，不含判据变化。累计正式16/17，review203/213（新增10）、admission590/602新增0，完成件齐备。
+
+批准后先在七规范件、核心手册及索引追加当前委托/旧第15采样标签和报告指针，旧正文不回写。按r20开始实现：独立README状态采集与顶层严格诊断、原codexCommandEvidence函数体SHA256 8662c80393311859b01731f780641647a1be7e89ee3ec186d767355f574b1479逐字不变；单cat/完整Schema/首词和原写/禁读判据不变。14非目标真实prompt回放fixture以source及prompt hash保存，fixture SHA256 16d0ea2b0bc2a93ed9781339df859d704b84fa3f7e9eb3dbd08b795b75311e89；只在Codex/read新分支去首词/预设结论。类型检查已通过，定向/双遍check/新build安装和17C尚未取得，不把874旧5/1/6或3153旧检查当成新实施验证。设计升v1.3.152，package版本及模型/effort/软件版本不改，入口措辞未改不render。
+
+## 第17C完整代码重审前的获批r20实施验证
+
+r20实施完成：README逐字节状态采集使用不跟随符号链接的句柄、前后文件身份及长度复核；只在Codex/read输出顶层固定read_content_diagnostic，全文bytes/hash不裁剪、不改行尾，诊断不参与原actual_read/Schema/首词或整体准入判据。未知内部错误仍抛出、句柄finally关闭。14份非目标真实prompt回放与原读取函数体hash核对通过；四个Codex配置上下文指native/Qwen/Kimi/DeepSeek，涉及六个实际型号，未缩减型号矩阵。
+
+定向44/44、类型检查通过；最终作用面冻结后两遍串行npm run check各3161项、3158通过、3跳过、0失败，作用面输入及六文件hash相同。源码和安装副本桩自检均14/14，临时夹具已清理。最终build inputs=e03db7e3a06fff6d23565a67b66ec5d9ffcc01b4d606ca8917b205c2238a926f、bundle=ac9ac26b646a7dc4bb2f97c52e62551d4a8d93aad3306eff7bf2632c9b3c82b2、HEAD仍f63e339、dirty=true；正常四目标28入口和全部运行时资产逐文件相同，七共享入口缺席、七copied/moved备份相等、四全局配置前后hash相等，客户端实际重名解析仍未测。没有模型/effort/版本或准入判据改动。
+
+完整39ed基线17C准备中，当前正式16/17，原16B批准有效。独立r8/review-round17-code-batch事前发布review203/223、预计15/硬20/池停223，依据既有自动扩容授权213扩10；admission590/602，本批新增0。新ac9包的12组合完整准入均未测；旧874矩阵5通过/1未通过/6未测保留为历史，不能从原bundle自动追认。审前静态审计、最小路线清单与全部报告落盘后冻结，审查及普通审批停点不改业务/被审静态材料。目标及M11第12步前置仍未完成。
+
+17C审前零CLI核验4318生产禁读路径、settings49136字节、skipped0，29旧冻结件及976旧台账字节不变，静态凭据扫描0。正式resolve沿全量39ed与原用户焦点，三侧覆盖/Driver声明均空沿现配置；preflight缓存超过1h后重新认证探活，新增10实际启动后review213/223、完成件齐，admission590/602未动。预检通过，Driver模型unknown及Claude服务端完整目录不能核实告警保留。全部静态材料随后冻结；17C尚未启动。
+
+## 第17C有效裁决、拒绝与18C已批准范围补修
+
+17C run20261011T101510Z三侧首尝试完成11m57s，subject3e4168f17cafea576be0e26c5b4679b8a4b859c5d8049858b969fa651faa2b60、tree前后db07b2c6752bcd894525aa657570ccdfc0237952一致，readonly_breach/peer_artifact_read/forged均false。34静态件及10业务/原稿hash至审批未变，三原件全文已读；Claude一nit、GLM一minor均接受，Gemini零意见。code-r8-response通过archive出口逐条落盘、gate0、await及拒绝时业务摘要0；按用户委托code拒绝，全部原件保留。两侧consulted交叉核对受限、Driver unknown、路径deny未生效及dirty构建告警不回写。review218/223、admission590/602完成件齐备。
+
+在16B r20获批测试/静态核验范围内补修，不改变guard/precheck或任何准入判据：下一批显式核委托来源字段/逐字回复及判据未批准，旧17静态采样不改；task-launch保留v10历史，实际v12子进程16B/17C放行、18拒绝与错参数/hash/token/安装等负例，实际archive.ts构造合成历史，配对侧车完成件且0厂商预算。新增动态当前指针→唯一实际launcher引用测试，v13/18C也真执行。定向46/46与类型检查通过；最初局部测试变量重名已修，失败build原件保留，不冒充最终检查。
+
+依据用户正式轮数按需追加独立委托，保存v8原授权与指针、发布v9仅18C，19仍拒绝；v13仅唯一授权文件名和注释更新，生产guard不动。范围方案及后续检查/安装/正式18C资料在独立r9，本次一般审批不采用component/restricted候选。双check/新安装/18C未取得，新完整包模型准入仍未测，旧ac9与874按采样解释，M11前置未完成。
+
+## 第18C审前最终检查与安装采样
+
+r9补修定向46/46，最终两遍串行check各3163项、3160通过/3跳过/0失败，7文件和e03db7e3输入未变。源码与安装桩均14/14、独立夹具已清理；最终bundle=0d4701607f6e6ed3d49ddab7e17db70466025286b75e99f087b3d3e5a8d7f007，inputs=e03db7e3a06fff6d23565a67b66ec5d9ffcc01b4d606ca8917b205c2238a926f，HEAD f63e339、dirty=true。正常四目标安装运行时全部资产及28入口相等，七共享缺席与备份七份copied/moved一致、全局配置前后不变，实际客户端名称解析未测。原guard/precheck/原读取函数/模型配置/effort/软件版本/准入判据不变，设计v1.3.152行为规范继续适用，测试/采样补修同步本报告与索引。
+
+18C事前review218/238，预计10/硬20/止238；223扩15的自动扩容记录已发布，当前admission590/602新增0。v9仅18C、19拒绝，来源字段逐字回复及前驱原件hash显式核验；17次task/archive与17C拒绝记录保留。当前0d完整准入12未测，874五通过一未通过六未测及ac9未测原样保存，最小条件清单r9/pre-round18-admission-matrix以历史实际CLI型号与当前null分列，官方Claude订阅未恢复。全量39ed基线18C审前静态资料全部落盘冻结后才启动，普通审批不含判据采用，M11前置未完成。
+
+18C第一次静态核验因本机config.local完整hash与旧874不同而先停，尚未启动CLI。当前9270ce3a0961e5766ad1d1c04a520b082a00957e203a5a2ad449c068da3dc4e7，mtime10:14:37.596Z位于17C preflight内；三auth_routes checked_at对应该次重新探活，既有commitAuthCache成功后回填。共享配置和四全局hash不变，当前本机覆盖顶层仅agents/probe/review，操作覆盖仅Claude入口与sensitive_globs；目录事实消费另核实际globs绑定。旧完整文本未保存，complete_semantic_diff=null，不能声称所有旧字段只发生缓存变化。独立config-local-observation记录已知原因及新基线，不回滚、不修改用户配置、不追认旧完整准入。17C本身冻结/零漂移及有效性保持；后续18C/准入消费当前完整hash。
+
+18C正式resolve传原任务正文焦点、完整39ed基线与三侧，models/tiers/efforts/vendor_profiles及Driver模型/provider/task_goal均无覆盖沿现配置继承。preflight通过且0.59h认证缓存有效，新增5版本启动后review223/238、admission590/602未动；本机9270 hash未再变，Driver unknown及Claude服务端目录无法核实告警保留。随后冻结全部静态材料才start；正式18C尚未取得结论。
+
+## 第18C有效完整复审与委托code批准（11:03 UTC后）
+
+run20261011T105033Z三侧首尝试完成，Claude793s/Gemini505s/GLM535s；subject c4d83941bb58551074e8e043e5f25242c908253010b53762b2901ae7646ce005、tree前后d19dc3b3be2cc2e8c493cbb076f4dde592796e58相等。28静态件和14业务/权威/原稿hash、10件原始工件均一致，至普通审批业务摘要0。三原件全文及实现核读，CLAUDE-01/02驳回（已有独立固定目标/argv正例和原函数hash、r20明确成功首词与失败诚实分支），CLAUDE-03及GLM-01暂缓（未来内部ENOENT站点化需另B；未来入口映射扩展时补权威entry消费测试）。无接受待实施项；裁决仅经archive.ts，gate0、按用户明确普通审批委托本轮code approved、session_id=null，详r9/post-round18-code-status。
+
+readonly_breach=true原记录保留：Claude唯一Bash toolu_98c1ae6c66694639ba787777命令为wc统计本轮diff及ls列表本轮_meta，唯一同ID is_error=true明确工具禁用拒绝；不能声称实际执行。现有gate分档为unconfirmed_unchanged，仅告警进入审批，未改判据/白名单/旗标。复算ignored文件、项目外写、改回、scratch等盲区保留，不以树相同证明没写。Claude/Gemini consulted无法交叉核对、Gemini/GLM路径deny未生效、Driverunknown和dirty构建告警继续，Gemini称测试通过仅Driver事前记录而非独立执行。旧失败run20261010T170416Z资格不恢复。
+
+累计正式18/18、review228/238（本批新增10，完成齐）、admission590/602未新增。后续正式轮数按独立按需委托先发布有界追加；普通审批仍不包含component/restricted准入判据采用。当前0d包12组合真实完整准入未测，旧874的5通过/1未通过/6未测仅历史。先提交已审源码和留痕、重建正常四目标安装到新提交指纹，再事前发布最小Codex/Qwen首读取版本2+能力2启动清单；失败不换提示重试。七路线/Qwen pro/共享三审及剩余实际调用边界尚未齐，目标未完成，不能进入M11第12步。

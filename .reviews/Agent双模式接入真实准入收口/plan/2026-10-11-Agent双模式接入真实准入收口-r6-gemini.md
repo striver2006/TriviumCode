@@ -1,0 +1,206 @@
+---
+schema: trivium.review.v1
+topic: Agent双模式接入真实准入收口
+stage: plan
+role: gemini
+vendor: antigravity
+agent_cli: agy/1.3.3
+model_requested: gemini-3.8-flash-high
+model_effective: gemini-3.8-flash-high
+model_effective_source: envelope
+effort: high
+effort_requested: high
+effort_effective: high
+effort_effective_source: envelope
+tier: null
+tier_source: legacy
+run_id: 20261011T020308Z
+rerun_index: 6
+snapshot_hash: sha256:11cea8c361d4a9132e97d0e8344618359ae8c6820a71c113e82108dfe6ca6044
+blind: true
+started_at: 2026-10-11T02:03:12.803Z
+finished_at: 2026-10-11T02:13:01.781Z
+duration_s: 466
+tool_calls:
+  read: 44
+  grep: 2
+  glob: 1
+  run_command: 0
+  project_reads: 38
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 2
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: unknown
+access:
+  requested_mode: standard
+  profile: null
+  launcher_requested: /Users/chenzhenbo/.local/bin/agy
+  launcher_effective: /Users/chenzhenbo/.local/bin/agy
+  wrapper_sha256: null
+  configuration_sha256: null
+  provider_declared: null
+  provider_declared_source: null
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: gemini
+    status: unknown
+    left_model: null
+    right_model: gemini-3.8-flash-high
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: claude
+    right: gemini
+    status: different-family
+    left_model: qwen3.8-flash
+    right_model: gemini-3.8-flash-high
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：qwen / gemini
+  - left: gemini
+    right: glm
+    status: different-family
+    left_model: gemini-3.8-flash-high
+    right_model: bigmodel-coding-plan/GLM-5.3
+    left_source: envelope
+    right_source: trace
+    reason: 模型族不同：gemini / glm
+override_reason: 左侧模型信息缺失
+session_id: 47295ff5-b3ad-4a05-bfea-ce9dd217b89e
+---
+
+# 计划审查：Agent双模式接入真实准入收口
+
+> Critic-A · Google Antigravity ｜ 回读模型 `gemini-3.8-flash-high` ｜ 请求模型 `gemini-3.8-flash-high`
+> ｜ 运行 `20261011T020308Z` ｜ 第 6 轮
+> ｜ 本轮审核者 claude、gemini、glm
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+计划严格落实「授权总10轮，先正式计划审查再代码重审」要求，明确本轮第9次B/plan与后续第10次C/code边界，且清晰界定本次授权与一般自动审批均不批准「有限组件复用」与「受限工具面」两项候选判据，原准入缺口保持未测、M11准入继续阻塞。
+针对旧总8动态用例因权威切换至v4导致测试中断的问题，指出计划需完整覆盖test/unit/agent-access-recovery.test.ts中第62行与第105行两处动态断言，改读不可变v3夹具并验证当前v4权威。
+建议将候选适用性脚本agent-access-applicability.mjs放置于doc/05_testing/evidence目录而非scripts/，避免直接触碰INSTALL_INPUT_PATHS改变构建输入导致当前848指纹失效。
+建议在第10次C/code启动参数中明确显式指定--base 39ed2053，确保累积diff正确包含自39ed2053以来的完整128文件整改。
+整体计划审慎合规、证据链清晰，未放宽原生产准入判据，同意通过（附微调意见）。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 3 条：次要 2 ｜ 吹毛求疵 1）
+
+### AGY-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/agent-access-recovery.test.ts:62` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§3计划提到将历史总8案例改读不可变v3授权fixture，但test/unit/agent-access-recovery.test.ts中实际有两处动态调用readCurrentAuthorization()（第62行与第105行）。第62行当前测试在v4权威下同样会因历史ID不匹配而断言失败，且其模拟pointer硬编码了v3文件名，需在计划中一并纳入对v4实时权威（8历史ID、9B/10C、拒11轮）的回归适配。
+
+**依据**：查阅 test/unit/agent-access-recovery.test.ts:62-88 与 doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard.mjs:17-44，第62行用例调用 assertFormalRound(current, ...) 直读当前权威，当前 formal-round-authority.json 指向 v4（含 8 个 historical_run_ids），用例内 sixth 仅 6 个 run 会抛出「正式运行计数或原件缺失」，且 pointer 校验硬编码 formal-round-authorization-v3.json。
+
+**建议**：在§3整改计划中明确：test/unit/agent-access-recovery.test.ts 第105行改用不可变v3 fixture通过assertFormalRoundCore验证历史总8边界；第62行用例则适配实时v4权威，验证8条历史记录放行9B、9条放行10C及第11轮拒绝，并同步更新模拟pointer断言。
+
+### AGY-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `scripts/agent-access-applicability.mjs` |
+| 类别 | scope-drift ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§4拟将适用性账本实现为 scripts/agent-access-applicability.mjs。然而 src/trivium/build-stamp.ts 的 INSTALL_INPUT_PATHS 包含 scripts 目录，在 scripts/ 下新增文件会直接改变工作树 inputs_sha256，导致 formal-start-precheck.mjs 的 inputs_match 校验失败；若被迫重建重装，又会改变 bundle 848445c9 的哈希，导致刚测完的38臂完整指纹全部失效。在线下评估判据尚未获批前，不宜将候选工具放入生产构建输入路径。
+
+**依据**：查阅 src/trivium/build-stamp.ts:33-40（INSTALL_INPUT_PATHS 包含 'scripts'）、doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-start-precheck.mjs:48-54（inputs_match 强校验），以及 doc/05_testing/evidence/agent-access-20261011-closeout-r4/build-stamp-only-comparison.json:5-18。
+
+**建议**：在候选判据未获用户独立批准采用前，将 agent-access-applicability.mjs 等诊断分析脚本置于 doc/05_testing/evidence/agent-access-20261011-closeout-r4/（如同一批次中的 start-round9.mjs），避免污染 INSTALL_INPUT_PATHS 和提前使 848445c9 bundle 失效。
+
+### AGY-03 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `.reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r13-codex.md:83` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：§7明确第10次C/code需相对39ed20530d64a72f81f183095c6d9516632d0228完整diff。但由于第8轮审批后已向main提交并推送了 f63e339f，若第10轮C/code调用未显式传参 --base，review.ts 默认取 diffBase 为 HEAD（即相对 f63e339f），会导致被审变更漏掉已提交的128文件整改。计划中需明确启动参数必须带入 --base。
+
+**依据**：查阅 src/trivium/review.ts:899（const base = opts.diffBase ?? 'HEAD';）、src/trivium/code-stage.ts:904 及 doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v5.mjs:33-47。
+
+**建议**：在§7实施与启动清单中明确写出第10次C/code的正式调用参数必须包含 --base 39ed20530d64a72f81f183095c6d9516632d0228，确保生成的 changes-*.diff 覆盖预期的累积完整 diff。
+
+## 认为正确的部分
+
+- 严格遵循焦点要求「授权总10轮，先正式计划审查再代码重审」，将第9轮限定为B/plan、第10轮限定为C/code，round-guard与formal-round-authorization-v4闭环校验，未扩大正式轮数。
+- 严守生产准入底线，明确区分维护整改与判据变更；明确声明本次10轮授权及一般自动审批均不批准「有限复用」与「受限工具面」候选判据，准入未测状态如实保留，M11准入阻塞不擅自放行。
+- 客观分析FBB与848构建编译字节虽相同但安装输入（coreSKILL）不同的事实，拒绝将编译字节相同盲目升级为模型上下文等价，防止无依据复用旧准入证据。
+- 坚持零CLI分析与保守取证原则，拒绝重复调提示或强行将未注册工具解释为安全，对Kimi Read与Luna Write等缺失尝试客观列出机制差异。
+- 及时识别出切换至v4权威导致测试文件中总8硬编码断言失效的问题，并在计划中主动安排解耦历史断言的维护项。
+
+## 未覆盖范围（本侧盲区）
+
+- 本侧审查员处于只读环境，无法执行命令，未能运行测试验证test/unit/agent-access-recovery.test.ts在当前工作树下的实际报错输出。
+- 未能执行Node进程验证launch-v5.mjs在实际调用trivium review时的环境注入与precheck校验过程。
+- 未能在线调用厂商CLI验证Kimi或Luna在特定只读参数下的实际工具调用行为。
+
+## 实际查阅的项目文件
+
+- `.reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r13-codex.md`
+- `.reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r5-gemini.md`
+- `.reviews/Agent双模式接入真实准入收口/task.json`
+- `CLAUDE.md`
+- `README.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `doc/02_design/ADR_003_agent_access.md`
+- `doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v3.json`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v4.json`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-start-precheck.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v5.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/write-criterion-alternative-not-adopted.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r4/build-stamp-only-comparison.json`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r4/component-evidence-scope-comparison.json`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r4/current-matrix-scope.json`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r4/formal-round9-authorization-verification.json`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r4/remaining-gap-review-readiness.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r4/round9-static-report.md`
+- `scripts/agent-access-closeout.mjs`
+- `scripts/agent-access-recipes.mjs`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/adapters/codex.ts`
+- `src/trivium/brief.ts`
+- `src/trivium/build-stamp.ts`
+- `src/trivium/code-stage.ts`
+- `src/trivium/freeze.ts`
+- `src/trivium/probes/claude.ts`
+- `src/trivium/probes/codex.ts`
+- `src/trivium/review.ts`
+- `test/unit/agent-access-recovery.test.ts`
+- `test/unit/claude-directory.test.ts`
+- `test/unit/deny-matrix.test.ts`
+- `test/unit/freeze-drift.test.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":44,"grep":2,"glob":1,"run_command":0,"project_reads":38}
+
+---
+
+*本文档由 TriviumCode 编排器从 `gemini` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

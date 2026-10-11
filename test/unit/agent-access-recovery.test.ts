@@ -5,6 +5,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { scratchDir } from '../helpers/scratch.js';
 
 test('已启动轮数4/5允许第五plan/第六code，6/7及原件不一致均拒绝', async () => {
   const { assertFormalRoundCore: assertFormalRound } = await import(pathToFileURL(path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard.mjs')).href);
@@ -25,14 +27,15 @@ test('已启动轮数4/5允许第五plan/第六code，6/7及原件不一致均�
   assert.throws(() => assertFormalRound(auth, { runs: runs(4) }, [...runs(3), { run_id: '4', unreadable: true }], args('B', 'plan')));
 });
 
-test('四个Claude生产写缺口均在spawn与计数之前拒绝；Codex读取配方只有单一命令', async () => {
+test('五个Claude生产写缺口均在spawn与计数之前拒绝；合法读取与Qwen flash写保留', async () => {
   const { assertProductionArm, productionReadPrompt } = await import(pathToFileURL(path.resolve('scripts/agent-access-recipes.mjs')).href);
   let spawnCount = 0, budgetUsed = 0;
   const launch = (combination: string) => { assertProductionArm('claude', combination, 'write'); budgetUsed++; spawnCount++; };
-  for (const combo of ['qwen-pro', 'kimi', 'kimi-pro', 'deepseek']) assert.throws(() => launch(combo));
+  for (const combo of ['qwen-pro', 'kimi', 'kimi-pro', 'deepseek', 'deepseek-pro']) assert.throws(() => launch(combo));
   assert.equal(spawnCount, 0); assert.equal(budgetUsed, 0);
   assert.doesNotThrow(() => assertProductionArm('claude', 'qwen', 'write'));
-  assert.doesNotThrow(() => assertProductionArm('claude', 'kimi', 'read'));
+  for (const combo of ['qwen-pro', 'kimi', 'kimi-pro', 'deepseek', 'deepseek-pro'])
+    assert.doesNotThrow(() => assertProductionArm('claude', combo, 'read'));
   assert.match(productionReadPrompt('codex', 'JSON'), /单一读取命令 cat README.md/);
 });
 
@@ -59,22 +62,31 @@ test('独立总7轮授权仅允许第六补充plan及第七完整code，原6轮�
   assert.equal(JSON.stringify(original), before);
 });
 
-test('当前权威读取壳拒绝旧载体和授权hash漂移；原授权与历史guard保留', async () => {
+test('历史v5固定夹具与v2纯核验保留11B/12C边界，不随实时指针升级', async () => {
   const root = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3');
-  const { assertFormalRound, readCurrentAuthorization } = await import(pathToFileURL(path.join(root, 'round-guard.mjs')).href);
+  const { assertFormalRound, assertFormalRoundCore, readCurrentAuthorization } = await import(pathToFileURL(path.join(root, 'round-guard-v2.mjs')).href);
   const old = JSON.parse(await fs.readFile(path.join(root, 'formal-round-authorization.json'), 'utf8'));
-  const current = readCurrentAuthorization();
+  const current = JSON.parse(await fs.readFile(path.join(root, 'formal-round-authorization-v5.json'), 'utf8'));
   const runs = old.historical_run_ids.concat('20261010T175354Z').map((run_id: string) => ({ run_id }));
   const args = ['review', '--start', '--topic', old.topic, '--driver', 'codex', '--critics', 'claude,gemini,glm', '--entry', 'C', '--stage', 'code'];
   assert.throws(() => assertFormalRound(old, { runs }, runs, args), /授权已被替代/);
-  const sixth = [...runs, { run_id: '20261010T224543Z' }];
-  assert.throws(() => assertFormalRound(current, { runs: sixth }, sixth, args));
+  const tenth = current.historical_run_ids.map((run_id: string) => ({ run_id }));
+  assert.equal(current.new_limit, 12);
+  assert.equal(tenth.length, 10);
   const planArgs = args.map(a => a === 'C' ? 'B' : a === 'code' ? 'plan' : a);
-  assert.equal(assertFormalRound(current, { runs: sixth }, sixth, planArgs), 7);
-  const seventh = [...sixth, { run_id: 'current-seventh-fixture' }];
-  assert.equal(assertFormalRound(current, { runs: seventh }, seventh, args), 8);
+  assert.equal(assertFormalRoundCore(current, { runs: tenth }, tenth, planArgs, current), 11);
+  assert.throws(() => assertFormalRoundCore(current, { runs: tenth }, tenth, planArgs), /权威缺失/);
+  assert.throws(() => assertFormalRoundCore(current, { runs: tenth }, tenth, planArgs, null), /权威缺失/);
+  assert.throws(() => assertFormalRoundCore(current, { runs: tenth }, tenth, planArgs, {}), /形状无效/);
+  const prior = JSON.parse(await fs.readFile(path.join(root, 'formal-round-authorization-v4.json'), 'utf8'));
+  assert.throws(() => assertFormalRoundCore(prior, { runs: tenth }, tenth, planArgs, current), /授权已被替代/);
+  const eleventh = [...tenth, { run_id: 'current-eleventh-fixture' }];
+  assert.equal(assertFormalRoundCore(current, { runs: eleventh }, eleventh, args, current), 12);
+  assert.throws(() => assertFormalRoundCore(current, { runs: eleventh }, eleventh, planArgs, current));
+  const twelfth = [...eleventh, { run_id: 'current-twelfth-fixture' }];
+  assert.throws(() => assertFormalRoundCore(current, { runs: twelfth }, twelfth, args, current));
   const bytes = Buffer.from(JSON.stringify(current));
-  const pointer = { authorization: 'formal-round-authorization-v3.json', topic: current.topic,
+  const pointer = { authorization: 'formal-round-authorization-v5.json', topic: current.topic,
     sha256: createHash('sha256').update(bytes).digest('hex') };
   const reader = (file: URL) => file.pathname.endsWith('formal-round-authority.json') ? Buffer.from(JSON.stringify(pointer)) : bytes;
   assert.deepEqual(readCurrentAuthorization(reader), current);
@@ -85,6 +97,189 @@ test('当前权威读取壳拒绝旧载体和授权hash漂移；原授权与历�
   assert.equal(createHash('sha256').update(await fs.readFile(path.resolve(current.supersedes_file))).digest('hex'), current.supersedes_sha256);
   const oldGuard = await fs.readFile(path.join(root, 'round-guard-v1-preserved.mjs'));
   assert.equal(createHash('sha256').update(oldGuard).digest('hex'), 'd5e75c9df91c9bc9b94b8c3ab81dfaf223e68d8e562a6358092b6b9858e98991');
+});
+
+test('历史v6生产v2守卫固定覆盖13B/14C及参数、集合、权威负例', async () => {
+  const root = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3');
+  const { assertFormalRoundCore, readCurrentAuthorization } = await import(pathToFileURL(path.join(root, 'round-guard-v2.mjs')).href);
+  const current = JSON.parse(await fs.readFile(path.join(root, 'formal-round-authorization-v6.json'), 'utf8'));
+  assert.equal(current.new_limit, 14);
+  assert.equal(createHash('sha256').update(await fs.readFile(path.resolve(current.supersedes_file))).digest('hex'), current.supersedes_sha256);
+  const runs = current.historical_run_ids.map((run_id: string) => ({ run_id }));
+  assert.equal(runs.length, 12);
+  const args = ['review', '--start', '--topic', current.topic, '--driver', 'codex', '--critics', 'claude,gemini,glm', '--entry', 'B', '--stage', 'plan'];
+  const task = { runs };
+  assert.equal(assertFormalRoundCore(current, task, runs, args, current), 13);
+  const next = [...runs, { run_id: 'thirteenth-fixture' }];
+  const code = args.map(a => a === 'B' ? 'C' : a === 'plan' ? 'code' : a);
+  assert.equal(assertFormalRoundCore(current, { runs: next }, next, code, current), 14);
+  const final = [...next, { run_id: 'fourteenth-fixture' }];
+  assert.throws(() => assertFormalRoundCore(current, { runs: final }, final, code, current));
+  for (const flag of ['--topic', '--driver', '--critics', '--entry', '--stage']) {
+    const at = args.indexOf(flag);
+    const wrong = [...args]; wrong[at + 1] = 'wrong';
+    assert.throws(() => assertFormalRoundCore(current, task, runs, wrong, current), flag);
+    assert.throws(() => assertFormalRoundCore(current, task, runs, [...args, flag, args[at + 1]], current), flag);
+    assert.throws(() => assertFormalRoundCore(current, task, runs, args.filter((_, i) => i !== at && i !== at + 1), current), flag);
+  }
+  assert.throws(() => assertFormalRoundCore(current, task, runs, [...args, '--allow-single'], current));
+  for (const authority of [undefined, null, {}, []]) assert.throws(() => assertFormalRoundCore(current, task, runs, args, authority));
+  const old = JSON.parse(await fs.readFile(path.join(root, 'formal-round-authorization-v5.json'), 'utf8'));
+  assert.throws(() => assertFormalRoundCore(old, task, runs, args, current));
+  const mutations = [runs.slice(1), [...runs, { run_id: 'orphan' }], [...runs, runs[0]],
+    runs.map((r: { run_id: string }, i: number) => i === 0 ? { ...r, unreadable: true } : r),
+    runs.map((r: { run_id: string }, i: number) => i === 0 ? { run_id: 'replacement' } : r)];
+  for (const changed of mutations) {
+    assert.throws(() => assertFormalRoundCore(current, task, changed, args, current));
+    assert.throws(() => assertFormalRoundCore(current, { runs: changed }, changed, args, current));
+  }
+  assert.throws(() => assertFormalRoundCore(current, { runs: [...runs, runs[0]] }, runs, args, current));
+  const bytes = Buffer.from(JSON.stringify(current));
+  const pointer = { authorization: 'formal-round-authorization-v6.json', topic: 'wrong-topic', sha256: createHash('sha256').update(bytes).digest('hex') };
+  const reader = (file: URL) => file.pathname.endsWith('formal-round-authority.json') ? Buffer.from(JSON.stringify(pointer)) : bytes;
+  assert.throws(() => readCurrentAuthorization(reader), /主题不符/);
+});
+
+test('历史v7固定夹具保留15C/16拒绝、授权谱系和参数集合负例', async () => {
+  const root = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3');
+  const { assertFormalRound, assertFormalRoundCore, readCurrentAuthorization } = await import(pathToFileURL(path.join(root, 'round-guard-v2.mjs')).href);
+  const current = JSON.parse(await fs.readFile(path.join(root, 'formal-round-authorization-v7.json'), 'utf8'));
+  assert.equal(current.new_limit, 15);
+  assert.equal(createHash('sha256').update(await fs.readFile(path.resolve(current.supersedes_file))).digest('hex'), current.supersedes_sha256);
+  const runs = current.historical_run_ids.map((run_id: string) => ({ run_id }));
+  assert.equal(runs.length, 14);
+  const args = ['review', '--start', '--topic', current.topic, '--driver', 'codex', '--critics', 'claude,gemini,glm', '--entry', 'C', '--stage', 'code'];
+  const task = { runs };
+  assert.throws(() => assertFormalRound(current, task, runs, args), /授权已被替代/);
+  assert.equal(assertFormalRoundCore(current, task, runs, args, current), 15);
+  const final = [...runs, { run_id: 'fifteenth-fixture' }];
+  assert.throws(() => assertFormalRoundCore(current, { runs: final }, final, args, current));
+  assert.throws(() => assertFormalRoundCore(current, task, runs, args.map(a => a === 'C' ? 'B' : a === 'code' ? 'plan' : a), current));
+  for (const flag of ['--topic', '--driver', '--critics', '--entry', '--stage']) {
+    const at = args.indexOf(flag);
+    const wrong = [...args]; wrong[at + 1] = 'wrong';
+    assert.throws(() => assertFormalRoundCore(current, task, runs, wrong, current), flag);
+    assert.throws(() => assertFormalRoundCore(current, task, runs, [...args, flag, args[at + 1]], current), flag);
+    assert.throws(() => assertFormalRoundCore(current, task, runs, args.filter((_, i) => i !== at && i !== at + 1), current), flag);
+  }
+  assert.throws(() => assertFormalRoundCore(current, task, runs, [...args, '--allow-single'], current));
+  for (const authority of [undefined, null, {}, []]) assert.throws(() => assertFormalRoundCore(current, task, runs, args, authority));
+  const old = JSON.parse(await fs.readFile(path.join(root, 'formal-round-authorization-v6.json'), 'utf8'));
+  assert.throws(() => assertFormalRoundCore(old, task, runs, args, current));
+  const mutations = [runs.slice(1), [...runs, { run_id: 'orphan' }], [...runs, runs[0]],
+    runs.map((r: { run_id: string }, i: number) => i === 0 ? { ...r, unreadable: true } : r),
+    runs.map((r: { run_id: string }, i: number) => i === 0 ? { run_id: 'replacement' } : r)];
+  for (const changed of mutations) {
+    assert.throws(() => assertFormalRoundCore(current, task, changed, args, current));
+    assert.throws(() => assertFormalRoundCore(current, { runs: changed }, changed, args, current));
+  }
+  assert.throws(() => assertFormalRoundCore(current, { runs: [...runs, runs[0]] }, runs, args, current));
+  const bytes = Buffer.from(JSON.stringify(current));
+  const pointer = { authorization: 'formal-round-authorization-v7.json', topic: 'wrong-topic', sha256: createHash('sha256').update(bytes).digest('hex') };
+  const reader = (file: URL) => file.pathname.endsWith('formal-round-authority.json') ? Buffer.from(JSON.stringify(pointer)) : bytes;
+  assert.throws(() => readCurrentAuthorization(reader), /主题不符/);
+});
+
+test('历史v8固定数据对应委托首批16B/17C，不无限放行', async () => {
+  const root = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3');
+  const { assertFormalRoundCore } = await import(pathToFileURL(path.join(root, 'round-guard-v2.mjs')).href);
+  const auth = JSON.parse(await fs.readFile(path.join(root, 'formal-round-authorization-v8.json'), 'utf8'));
+  assert.equal(auth.delegation_exact_reply, '授权轮次可以按需增加，不必询问授权');
+  assert.equal(auth.criteria_change_authorized, false);
+  assert.equal(auth.new_limit, 17);
+  assert.equal(auth.historical_run_ids.length, 15);
+  assert.equal(createHash('sha256').update(await fs.readFile(path.resolve(auth.supersedes_file))).digest('hex'), auth.supersedes_sha256);
+  const runs = auth.historical_run_ids.map((run_id: string) => ({ run_id }));
+  const args = (entry: string, stage: string) => ['review', '--start', '--topic', auth.topic, '--driver', auth.driver,
+    '--critics', auth.critics.join(','), '--entry', entry, '--stage', stage];
+  assert.equal(assertFormalRoundCore(auth, { runs }, runs, args('B', 'plan'), auth), 16);
+  const next = [...runs, { run_id: 'sixteenth-fixture' }];
+  assert.equal(assertFormalRoundCore(auth, { runs: next }, next, args('C', 'code'), auth), 17);
+  assert.throws(() => assertFormalRoundCore(auth, { runs: next }, next, args('B', 'plan'), auth));
+  const final = [...next, { run_id: 'seventeenth-fixture' }];
+  assert.throws(() => assertFormalRoundCore(auth, { runs: final }, final, args('C', 'code'), auth));
+});
+
+test('当前hash权威读取壳与生产守卫消费逐轮枚举，批后/错误参数与集合拒绝', async () => {
+  const root = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3');
+  const { assertFormalRound, readCurrentAuthorization } = await import(pathToFileURL(path.join(root, 'round-guard-v2.mjs')).href);
+  const current = readCurrentAuthorization();
+  assert.equal(createHash('sha256').update(await fs.readFile(path.resolve(current.supersedes_file))).digest('hex'), current.supersedes_sha256);
+  const runs = current.historical_run_ids.map((run_id: string) => ({ run_id }));
+  for (const round of current.new_rounds) {
+    const args = ['review', '--start', '--topic', current.topic, '--driver', current.driver, '--critics', current.critics.join(','),
+      '--entry', round.entry, '--stage', round.stage];
+    assert.equal(assertFormalRound(current, { runs }, runs, args), round.ordinal);
+    for (const flag of ['--topic', '--driver', '--critics', '--entry', '--stage']) {
+      const at = args.indexOf(flag), wrong = [...args]; wrong[at + 1] = 'wrong';
+      assert.throws(() => assertFormalRound(current, { runs }, runs, wrong));
+      assert.throws(() => assertFormalRound(current, { runs }, runs, [...args, flag, args[at + 1]]));
+    }
+    assert.throws(() => assertFormalRound(current, { runs }, runs, [...args, '--allow-single']));
+    for (const altered of [runs.slice(1), [...runs, { run_id: 'orphan' }], [...runs, runs[0]],
+      runs.map((r: { run_id: string }, i: number) => i ? r : { ...r, unreadable: true })]) {
+      assert.throws(() => assertFormalRound(current, { runs }, altered, args));
+    }
+    runs.push({ run_id: `current-batch-fixture-${round.ordinal}` });
+    if (round === current.new_rounds.at(-1)) assert.throws(() => assertFormalRound(current, { runs }, runs, args));
+  }
+  const bytes = Buffer.from(JSON.stringify(current)), pointer = { authorization: 'formal-round-authorization-v8.json',
+    topic: current.topic, sha256: createHash('sha256').update(bytes).digest('hex') };
+  const reader = (file: URL) => file.pathname.endsWith('formal-round-authority.json') ? Buffer.from(JSON.stringify(pointer)) : bytes;
+  assert.deepEqual(readCurrentAuthorization(reader), current);
+  pointer.sha256 = '0'.repeat(64); assert.throws(() => readCurrentAuthorization(reader), /hash漂移/);
+  pointer.authorization = '../unknown.json'; assert.throws(() => readCurrentAuthorization(reader), /载体无效/);
+});
+
+test('历史总10权威固定v4夹具，9B/10C边界不随v5指针改变', async () => {
+  const root = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3');
+  const { assertFormalRoundCore } = await import(pathToFileURL(path.join(root, 'round-guard-v2.mjs')).href);
+  const old = JSON.parse(await fs.readFile(path.join(root, 'formal-round-authorization-v4.json'), 'utf8'));
+  const eighth = old.historical_run_ids.map((run_id: string) => ({ run_id }));
+  const args = (entry: string, stage: string) => ['review', '--start', '--topic', old.topic, '--driver', 'codex',
+    '--critics', 'claude,gemini,glm', '--entry', entry, '--stage', stage];
+  assert.equal(old.new_limit, 10);
+  assert.equal(eighth.length, 8);
+  assert.equal(assertFormalRoundCore(old, { runs: eighth }, eighth, args('B', 'plan'), old), 9);
+  assert.throws(() => assertFormalRoundCore(old, { runs: eighth }, eighth, args('C', 'code'), old));
+  const ninth = [...eighth, { run_id: 'historical-ninth' }];
+  assert.equal(assertFormalRoundCore(old, { runs: ninth }, ninth, args('C', 'code'), old), 10);
+  assert.throws(() => assertFormalRoundCore(old, { runs: ninth }, ninth, args('B', 'plan'), old));
+  const tenth = [...ninth, { run_id: 'historical-tenth' }];
+  assert.throws(() => assertFormalRoundCore(old, { runs: tenth }, tenth, args('C', 'code'), old));
+});
+
+test('quiet-v6只允许三种摘要入口，拒绝review/probe和缺必需旗标', async () => {
+  const { assertQuietCommand } = await import(pathToFileURL(path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v6.mjs')).href);
+  const allowed = [
+    ['tv', 'topic', 'claim', '--topic', 'original', '--stage', 'plan', '--driver', 'codex'],
+    ['tv', 'topic', 'resolve', '--stage', 'plan', '--json', '--', 'focus', '--topic', 'original'],
+    ['tv', 'preflight', '--stage', 'plan', '--driver', 'codex', '--critics', 'claude,gemini,glm']
+  ];
+  for (const argv of allowed) assert.doesNotThrow(() => assertQuietCommand('v8', 'review', 'fixture', argv));
+  let spawnCount = 0, budgetUsed = 0;
+  const launch = (version: string, argv: string[]) => { assertQuietCommand(version, 'review', 'fixture', argv); budgetUsed++; spawnCount++; };
+  for (const [version, argv] of [
+    ['v7', allowed[0]], ['v8', ['probe', 'route']], ['v8', ['tv', 'review', '--start']],
+    ['v8', ['tv', 'review', '--wait']], ['v8', ['tv', 'review', '--status']], ['v8', ['tv', 'review', '--cancel']],
+    ['v8', ['tv', 'topic', 'claim', '--topic', 'original', '--stage', 'plan']],
+    ['v8', ['tv', 'topic', 'resolve', '--stage', 'plan']],
+    ['v8', ['tv', 'preflight', '--stage', 'plan', '--driver', 'codex']],
+    ['v8', ['tv', 'unknown']]
+  ] as [string, string[]][]) assert.throws(() => launch(version, argv));
+  assert.equal(spawnCount, 0); assert.equal(budgetUsed, 0);
+});
+
+test('quiet-v6真实子进程拒绝review启动且不建立预算或调用证据', async () => {
+  const home = await scratchDir('trivium-quiet-guard-');
+  try {
+    const script = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v6.mjs');
+    const result = spawnSync(process.execPath, [script, 'v8', 'review', 'blocked-fixture', 'tv', 'review', '--start'],
+      { env: { ...process.env, HOME: home }, encoding: 'utf8', timeout: 5000 });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /只允许topic claim/);
+    await assert.rejects(fs.access(path.join(home, '.trivium')));
+  } finally { await fs.rm(home, { recursive: true, force: true }); }
 });
 
 test('正式代码前软线与最终安装/事实核验：失败不spawn、不占正式轮数', async () => {
@@ -104,8 +299,9 @@ test('正式代码前软线与最终安装/事实核验：失败不spawn、不�
 
 test('独立总8轮授权仅允许第七敏感扫描plan、第八完整code，旧7轮不可复用', async () => {
   const root = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3');
-  const { assertFormalRoundCore, readCurrentAuthorization } = await import(pathToFileURL(path.join(root, 'round-guard.mjs')).href);
-  const current = readCurrentAuthorization();
+  const { assertFormalRoundCore } = await import(pathToFileURL(path.join(root, 'round-guard.mjs')).href);
+  // 历史总8边界固定消费当时不可变授权，不随当前权威升级而改写历史断言。
+  const current = JSON.parse(await fs.readFile(path.join(root, 'formal-round-authorization-v3.json'), 'utf8'));
   const old = JSON.parse(await fs.readFile(path.join(root, 'formal-round-authorization-v2.json'), 'utf8'));
   const before = JSON.stringify(old);
   const runs = current.historical_run_ids.map((run_id: string) => ({ run_id }));

@@ -1,0 +1,118 @@
+{
+  "at": "2026-10-11T06:12:52.905Z",
+  "hashes": {
+    "README.md": "04e03d5763d3216fa35e71521dd54fcd54e16033d36acfad3f7d8b4c2fd5ce58",
+    "archive-plan-r17.mjs": "61d2c13fa26a879e37dcdd99ed2dd56af92acf51f9d5c90fd0bbfb27153f6273",
+    "formal-round13-authorization-verification.json": "9073bbdbae726bdee04a4fe172a0921fba5325b9f99ca59fef0b22d53a22b663",
+    "formal-round13.mjs": "ae22a6f141f92e0b648d890ff67c39161112a012a18fe9847d582d1d51adeb2b",
+    "freeze-round13.mjs": "1b5e53daf9cc8c4530ee2be7f890f249f245f757cd162eaf4adb0f83a1a75dee",
+    "plan-r17-body.md": "c9fbf805f9ba4e97c71c2afbc195a37d5b17eb978387947fdb6968eee117a13d",
+    "prepare-round13.mjs": "08c1b394459c1fc57d7515caf9c0f9b508d0ae2989fe2896be064266d6d7bd36",
+    "review-round13-plan-batch.json": "53a8326f307cc05a096aa1926a01a2bbfc43236d0a17b3765c8a7eb0e6d069ee",
+    "secret-scan-round13.json": "13381a139ade4cd0672b0f46e7779c64d710fadfcb07193a5f37367cdcb48f8f",
+    "static-audit-round13.json": "7ce23061ae5ba9b14154b5b7de924a92a0015a771a554327b9a3fbf5b4cae1b5",
+    "static-audit-round13.mjs": "e7d4264eb80d94ab1f741140785ee86b055ff0e350417de48a1bee5ef42e0ee3"
+  },
+  "secret_findings": [],
+  "business_diff_check": true,
+  "raw_archive_diff_whitespace": "历史编排器changes.diff有patch上下文空白，原件保留、不改写",
+  "freeze_scope": "从正式start到三侧结束及普通审批完成，不修改业务/静态证据；编排器运行元数据仅按既有规则",
+  "current_config_local_sha256": "eafcb3e65051ba43693e6b73888d85ae0e406367947c2d7aeb6a910c7d877fec",
+  "preflight_original": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r17-plan-preflight-f5d8efa4-ab39-4135-b3ca-0e2b16631487-completed.json",
+  "preflight_sha256": "228b7bb95640d718be2517136efd8f266cef5129d87679acd89a56565572d6ab",
+  "preflight_result": {
+    "ok": true,
+    "scope": "plan",
+    "checks": [
+      {
+        "name": "Driver 会话声明",
+        "ok": true,
+        "warn": true,
+        "detail": "Driver 模型未声明，相关模型族比较将为 unknown；告警继续"
+      },
+      {
+        "name": "模型 slug 合法",
+        "ok": true,
+        "warn": true,
+        "detail": "已校验 1 个阶段 × 3 侧\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（Claude Code：Claude profile 模型映射是配置声明，服务端完整模型目录无法核实；由实际组合探活验证）"
+      },
+      {
+        "name": "档位组合合法",
+        "ok": true,
+        "detail": "已校验 1 个阶段 × 3 侧"
+      },
+      {
+        "name": "当轮 Driver",
+        "ok": true,
+        "detail": "codex · 护栏 L2（该载体没有 Hook 机制，写入没有事前拦截；审查中的越界由跑后复算发现；闸门期改业务文件不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要；审查工件由审批前复核核本轮）"
+      },
+      {
+        "name": "探针结论新鲜",
+        "ok": true,
+        "detail": "全部 4 侧均在 TTL 内"
+      },
+      {
+        "name": "Claude Code 可调用",
+        "ok": true,
+        "detail": "claude 2.1.296"
+      },
+      {
+        "name": "Codex 可调用",
+        "ok": true,
+        "detail": "codex 0.162.1"
+      },
+      {
+        "name": "Antigravity 可调用",
+        "ok": true,
+        "detail": "agy 1.3.3"
+      },
+      {
+        "name": "ZCode 可调用",
+        "ok": true,
+        "detail": "zcode 0.16.9"
+      },
+      {
+        "name": "只读能力可用",
+        "ok": true,
+        "detail": "Claude Code、Antigravity、ZCode 均报告可用"
+      },
+      {
+        "name": "归档与 git 可用",
+        "ok": true,
+        "detail": "归档根 /Users/chenzhenbo/Work/TriviumCode/.reviews"
+      },
+      {
+        "name": "Claude Code 已认证",
+        "ok": true,
+        "detail": "探活通过（3s）"
+      },
+      {
+        "name": "Antigravity 已认证",
+        "ok": true,
+        "detail": "探活通过（81s）"
+      },
+      {
+        "name": "ZCode 已认证",
+        "ok": true,
+        "detail": "探活通过（7s，模型 bigmodel-coding-plan/GLM-5.3）"
+      }
+    ],
+    "warnings": [
+      {
+        "name": "Driver 会话声明",
+        "detail": "Driver 模型未声明，相关模型族比较将为 unknown；告警继续"
+      },
+      {
+        "name": "模型 slug 合法",
+        "detail": "已校验 1 个阶段 × 3 侧\n  ⚠️ 其中无模型目录可比对、未实际校验：claude（Claude Code：Claude profile 模型映射是配置声明，服务端完整模型目录无法核实；由实际组合探活验证）"
+      }
+    ],
+    "exit_code": 0
+  },
+  "review_budget": {
+    "used": 163,
+    "limit": 183,
+    "batch_stop": 173
+  },
+  "new_vendor_cli_starts": 10
+}

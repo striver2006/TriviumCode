@@ -1,0 +1,88 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最危险的一条：r14 计划把 Claude/DeepSeek pro 列为「原写未测、0 新增启动、判据另批」的第五组合，但机械的 spawn 前拒绝集合（agent-access-recipes.mjs 的 assertProductionArm）仍只覆盖旧四组合——`closeout claude deepseek-pro write` 能不被任何拦截地实际 spawn 厂商写调用。总10轮授权链本身（v4 绑定、指针翻转、9B→10C 次序、拒11、execute-round10 的审批链与显式 --base）我逐行对上，内部一致。另有两处与本仓自我纪律相抵的小项：assertFormalRoundCore 的默认参数使「当前权威」核验对四参调用静默旁路；新包装器 quiet-launch-v5 未按它自己接受的 GLM-03/CLAUDE-02 修订在首行登记沿革与允许用法。无执行能力，全部结论为静态阅读所得。",
+  "findings": [
+    {
+      "id": "CLAUDE-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "contract",
+      "location": "scripts/agent-access-recipes.mjs:2-6",
+      "problem": "「先于任何spawn与预算扣数」的 Claude 生产写拒绝集合只含 qwen-pro、kimi、kimi-pro、deepseek 四组合；r14 计划 §2 新增的 Claude/DeepSeek pro（deepseek-v4-pro，本次无 Write/Bash 实际调用、原写未测、必要新增准入启动=0，§5 判据另批）不在集合内。`node scripts/agent-access-closeout.mjs claude deepseek-pro write` 会顺利通过 assertProductionArm 并走到实际厂商写 spawn——计划声明的「0 启动、另批前不实施」在该组合上没有任何机械兜底。",
+      "evidence": "读 scripts/agent-access-recipes.mjs:2-6（拒绝名单四项）；读 scripts/agent-access-closeout.mjs:34-46（combinations.claude 含 'deepseek-pro'，line 42 允许 write 臂，line 46 assertProductionArm 后继续）与 :137（claude 的 write 臂构造实际调用 Write 的提示词）；读 .reviews/.../plan/...-r14-codex.md §2 行「Claude/DeepSeek pro…0；作为新增候选范围单列受控1臂」及 §5「取得另行明确答复前不实施」；读 test/unit/agent-access-recovery.test.ts:28-37，该回归同样只钉四组合；该闸门的先例正是 r7 接受 CLAUDE-03 时补入 qwen-pro（r14 附录「将qwen-pro加入现kimi/kimi-pro/deepseek的write启动前拒绝」）。本人无执行能力，结论为逐行静态阅读；未见 selection manifest 对普通 claude write 臂有额外过滤（closeout:93-97 仅核版本证据）。",
+      "suggestion": "把 deepseek-pro 加入 assertProductionArm 的 claude/write 拒绝集并扩回归负例；若有意保持四项，请在计划/恢复报告写明该组合的写启动为何不受同一闸门约束、以及由什么机制阻止误调。由 Driver 裁决「漏扩闸门」还是「计划刻意留口」。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard.mjs:22",
+      "problem": "assertFormalRoundCore 的第 5 参默认 `current = authorization`：任何四参调用都会令「authorization 是否等于当前权威」的核验（line 23 的 stringify 相等判断）恒真而静默旁路，与该函数头注释「纯核验：显式消费当前权威」相抵。现网 launcher 走 assertFormalRound 壳（内部强制 readCurrentAuthorization）故不受影响；但 prepare-round9.mjs 的两条正向核验（:36、:38）正是四参调用，未来新增调用方若忘传第 5 参，被替代授权会无声放行——与本仓一贯 fail-closed 的方向相反。",
+      "evidence": "读 round-guard.mjs:17-23（壳函数与默认参）、doc/05_testing/evidence/agent-access-20261011-closeout-r4/prepare-round9.mjs:36-38（正向核验省略第 5 参）；读 test/unit/agent-access-recovery.test.ts:9-26、39-60（合成夹具四参调用，正/负边界全在计数与参数面上，不触碰权威核验）；读 :110-130（历史总8用例按 AGY-01 修订「显式」传入 current，证明显式路径已足够承载全部合法用法）。",
+      "suggestion": "默认改为 `current = readCurrentAuthorization()`（合成夹具与历史用例全部改为显式传参即可），或去掉默认值强制显式传参；至少更新头注释，说明省略即旁路权威核验，不得把它当「纯核验」的缺省安全形态。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v5.mjs:1-9",
+      "problem": "r14 接受的 CLAUDE-02 修订规定 quiet-launch-v5「仅用于claim/resolve/preflight…禁止用于review --start/--wait/--status」，GLM-03 修订规定「后续新版本launcher首行标实际入口及沿革」。该文件是本次新生成的 launcher 包装器，但首行注释既未声明它委托 launch-v5（而非 10C 应走的 launch-v6），也未写允许/禁止的用法；且 line 10 原样转发任意 args——传入 review --start 时它照样 spawn launch-v5，而 task 满 9 记录后 launch-v5 会合法启动第 10 轮并走 v3 时代的 code-only precheck 而非 v2 全量事前测量。使用契约只存在于计划与报告里，读该文件的人无从得知。",
+      "evidence": "读 quiet-launch-v5.mjs:1、8-10（首行无入口/用法说明；args 无过滤转发 launch-v5）；读 launch-v5.mjs:31-46（硬编码 v4 授权、stage==='code' 时走 formal-start-precheck.mjs v1、四参 assertFormalRound 对第 10 记录 C/code 返回 10 不拒绝）；对照 doc/05_testing/evidence/agent-access-20261011-closeout-r4/prepare-round9.mjs:30-33（quiet-launch-v5 由字符串替换生成，无注释注入）、launch-v6.mjs:1（同补丁的新 launcher 首行确实写了「r14获批任务入口…v5原件保留」——同文件集内部口径不一致）、doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md:239（「正式start/wait/status直接launcher」仅见于报告）。计划已诚实声明该停机不属原生机制，故本条不要求机械强制，只要求落点与 GLM-03 承诺一致。",
+      "suggestion": "按 GLM-03 自受的规则给 quiet-launch-v5 补一行首注（实际委托 launch-v5；仅 claim/resolve/preflight 摘要；review --start/--wait/--status 一律直用 launch-v6/直接 launcher），与 launch-v6 的首行口径对齐；不改行为、不回改旧件。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "总10轮授权链内部一致：v4 由实时 task.runs 八 ID 构造、hash 绑定、v3 逐字另存、指针经 O_EXCL+rename 原子翻转；round-guard 的 ordinal→(entry,stage) 映射机械实现「先正式计划审查（9B）再代码重审（10C）」，第 11 次、孤儿/重复/不可读原件、superseded 授权均 fail-closed；恢复测试同时钉住实时 v4（9/10/拒11）与不可变 v3 的历史 7/8 边界，符合 AGY-01 接受口径。",
+    "execute-round10.mjs 把计划承认 round-guard 兜不住的审批链真正落成了代码：第 9 记录计数、run-20261011T020308Z success、plan 审批在场、获批 r14 计划 hash、显式 --base 39ed2053、静态冻结后再 spawn 且入口固定为 launch-v6——CLAUDE-01（9B 无效即停）的「正负情境」这次不只是说明文。",
+    "formal-start-precheck-v2 与设计 v1.3.148「正式代码启动前须核最终安装/输入 hash、生产完整枚举、新事实实际消费及 settings≤131072、skipped=0」逐条对上（assertCodeStartMeasurement），且旧 v5/v1 原件不追改、9B 的事前缺口在计划与报告中如实自报。",
+    "freeze.ts 的 SENSITIVE_SCAN_MAX_PARENT_DEPTH=7 以具名常量落地、.git/node_modules 排除与「目录软链不跟随后代、软链项自身照原 glob」的语义与设计口径一致，回归同时钉 7 与 6/8 相邻边界并由常量推导夹具。",
+    "claudeDirectoryFingerprint 的 Map 为每次调用新建、无事实候选不触发二进制读取、逐文件回退——与 CLAUDE-04「本次调用复用、无跨运行缓存、性能未实测不吹」的承诺同口径；peer_deny_applied 的合取措辞（防御不变式、非模型能力证明）已与设计文对齐。",
+    "agent-access-applicability.mjs 的纯诊断形态与 GLM-02/§4 一致：approval_record 恒 null、current_admission_accepted 恒 false，调用者自称批准也无法打开采用层；构建戳唯一性核验带 UTF8 往返与全字节保留边界。"
+  ],
+  "not_covered": [
+    "本人无执行能力：未运行 npm run check / node --test，「两次串行 3142 总数、3139 通过、3 跳过、0 失败」与 14/14 桩自检均为报告声明的转述，非本次实测。",
+    "未计算任何 sha256 与磁盘实物比对：formal-round-authority.json 中 v4 的绑定 hash、prepare-round9 各 save 的 hash、执行计划正文 9245a852… 等均由脚本逻辑与 recovery 测试（:90 运行时自核 supersedes_sha256）静态推定成立。",
+    "被审 diff 为 39ed2053→f63e339f 的提交态，但工作树在其上还有未提交改动（REPORT、formal-round-authority.json、agent-access-recovery.test.ts、doc/05_testing/README.md 等）；我读到的是工作树内容，上述文件在提交态的版本可能略有出入，未逐文件核对差异。",
+    "未深读：scripts/agent-access-selection.mjs 的本轮变更、adjudicate-round9.mjs/resolve-round10.mjs/start-round9.mjs 全文、test/unit/agent-access-applicability.test.ts 与 claude-directory/freeze-drift 测试全文（仅 diff 节选）、codex.ts/report.ts/doctor.ts 的完整上下文、以及 197 文件中绝大多数逐臂证据 JSON 与 41810 行被省略的 diff 尾部。",
+    "客户端实际重名发现、其他仓库依赖面、厂商 CLI 真实行为均未验证（不可执行，且报告本身标注为未测）。",
+    "Gemini/GLM 两份对方结论按禁令未读；另一次根目录 Grep 的命中行中包含 _meta 下对方 brief 文件内嵌的同一份被审 diff 片段与我自己 r6/r3 产出的文本，未触及任何对方审查结论文本。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r14-codex.md",
+    ".reviews/Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r3-claude.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v4.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v5.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v6.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v5.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-start-precheck.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-start-precheck-v2.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r4/prepare-round9.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r4/execute-round10.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r4/agent-access-applicability.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r4/round10-scope-and-minimum-admission.md",
+    "doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md",
+    "doc/05_testing/README.md",
+    "scripts/agent-access-recipes.mjs",
+    "scripts/agent-access-closeout.mjs",
+    "src/trivium/freeze.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/claude-directory.ts",
+    "src/trivium/types.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/report.ts",
+    "test/unit/agent-access-recovery.test.ts",
+    "test/fixtures/claude-deny-paths-replay.json"
+  ]
+}

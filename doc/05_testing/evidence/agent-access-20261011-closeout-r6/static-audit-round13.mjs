@@ -1,0 +1,40 @@
+/** 13B前零CLI审计：只读指纹/安装/事实，输出脱敏证据。 */
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { loadCtx } from '../../../../dist/test/src/trivium/config.js';
+import { computeBuildStamp } from '../../../../dist/test/src/trivium/build-stamp.js';
+import { listRecordedRuns } from '../../../../dist/test/src/trivium/archive.js';
+import { readTask } from '../../../../dist/test/src/trivium/meta.js';
+import { scanSecrets } from '../../../../dist/test/src/trivium/secrets.js';
+import { saveEvidence } from '../../../../scripts/agent-access-evidence.mjs';
+import { measureCodeStart, assertCodeStartMeasurement } from '../agent-access-20261011-closeout-r3/formal-start-precheck-v2.mjs';
+const repo=process.cwd(), root=path.dirname(new URL(import.meta.url).pathname), topic='Agent双模式接入真实准入收口';
+const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const old=JSON.parse(fs.readFileSync(path.join(root,'../agent-access-20261011-closeout-r5/install-round11.json')));
+const names=old.backup_names_verified;
+const shared=Object.fromEntries(names.map(name=>[name,fs.existsSync(path.join(process.env.HOME,'.agents/skills',name))]));
+if(Object.values(shared).some(Boolean))throw Error('共享入口重现，停止');
+const entries=old.entries.map(e=>({...e,verified:e.inventory.every(i=>i.type==='file'&&hash(path.join(e.target,i.path))===i.sha256)}));
+if(entries.length!==28||entries.some(e=>!e.verified))throw Error('28入口漂移');
+const backup=Object.fromEntries(names.map(name=>[name,['copied','moved'].map(kind=>({kind,sha256:hash(path.join(old.backup,kind,name,'SKILL.md'))}))]));
+const ctx=await loadCtx({cwd:repo});
+const measurement=await measureCodeStart(repo,topic,['--stage','plan']);assertCodeStartMeasurement(measurement);
+const scripts=['launch-v9.mjs','quiet-launch-v6.mjs','round-guard-v2.mjs','formal-start-precheck-v2.mjs','formal-round-authorization-v6.json','formal-round-authority.json'];
+const scriptHashes=Object.fromEntries(scripts.map(s=>[s,hash(path.join(root,'../agent-access-20261011-closeout-r3',s))]));
+const layout={archiveRoot:path.join(repo,'.reviews'),topic},task=await readTask(layout),runs=await listRecordedRuns(layout);
+if(task.runs.length!==12||runs.length!==12||runs.some(r=>r.unreadable))throw Error('正式集合异常');
+const require=createRequire(import.meta.url),{openBudget}=require('../../../../scripts/agent-access-budget.cjs');
+const budgetRoot=path.join(process.env.HOME,'.trivium/evidence/agent-access-20261011-closeout-r3/budget');
+const budget=Object.fromEntries(['review','admission'].map(pool=>{const b=openBudget(budgetRoot,pool);return[pool,{used:fs.readdirSync(b.dir).filter(n=>n.startsWith('reserved-')).length,limit:b.limit()}];}));
+const configHashes={};for(const f of ['.trivium/config.yaml','.trivium/config.local.yaml','.codex/config.toml','.claude/settings.json']){const p=path.join(repo,f);if(fs.existsSync(p))configHashes[f]=hash(p);}
+for(const f of ['.codex/config.toml','.claude/settings.json']){const p=path.join(process.env.HOME,f);if(fs.existsSync(p))configHashes['HOME/'+f]=hash(p);}
+const lastRun=JSON.parse(fs.readFileSync(path.join(repo,'.reviews',topic,'code/_meta/run-20261011T035044Z.json')));
+const record={at:new Date().toISOString(),head:execFileSync('git',['-c','core.quotePath=false','rev-parse','HEAD'],{encoding:'utf8'}).trim(),branch:execFileSync('git',['-c','core.quotePath=false','branch','--show-current'],{encoding:'utf8'}).trim(),build:await computeBuildStamp(repo),measurement,scriptHashes,configHashes,wrapper_sha256:hash(path.join(repo,'.trivium/bin/trivium')),entries,shared,backup,client_name_resolution:null,service_identity:null,cli_versions_scope:'保存的12C运行回读与当前已存probe，未启动版本CLI',last_run_fingerprints:lastRun.fingerprints??null,current_probe:ctx.config.probe,budget,formal:{used:12,limit:14,ids:task.runs.map(r=>r.run_id)},new_vendor_cli_starts:0};
+saveEvidence(path.join(root,'static-audit-round13.json'),record);
+const files=fs.readdirSync(root).filter(n=>fs.statSync(path.join(root,n)).isFile());
+const findings=files.flatMap(n=>scanSecrets(fs.readFileSync(path.join(root,n),'utf8')).map(f=>({file:n,...f})));
+saveEvidence(path.join(root,'secret-scan-round13.json'),{at:new Date().toISOString(),files,findings});if(findings.length)throw Error('扫描发现凭据');
+console.log(JSON.stringify({formal:'12/14',budget,measurement:{bytes:measurement.settings_bytes,paths:measurement.source_paths_count,skipped:measurement.skipped_count},entries:28,secret_findings:findings.length,starts:0}));

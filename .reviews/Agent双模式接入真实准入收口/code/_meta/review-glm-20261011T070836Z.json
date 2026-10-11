@@ -1,0 +1,44 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "第14次C/code完整重审（总14轮授权、base 39ed2053、对象为13B获批r18计划的六项实施）。逐项核对：①§3.1轮数守卫直接回归落地——agent-access-recovery.test.ts保留v1/v2/v3/v4/v5固定历史夹具边界，新增真实v6读取壳直测（new_limit=14、12条历史ID、13B/14C放行、15及其它参数/集合/权威负例拒绝），解决了此前披露的『v5活读断言必红』中间态；②§3.2 launch-v10唯一token配对实现正确——token经严格UUIDv4校验，claim件以saveEvidence的wx+0600在预算、轮数守卫、测量与spawn之前原子占用（文件名不含label，跨label同token并发必撞wx），readdir预检按token后缀label无关地拒绝旧requested/completed，invalid token在任何写之前失败；quiet-launch-v7摘要只按本次label+token精确读取两件证据，逐键核requested全字段、时间下界、脚本/执行hash、primary_loaded与本次code/signal，证据失败时非0子码沿用、0/null回退1、signal仅作字段保留，SIGKILL与stub退出0/2/64三种边界均有真实子进程测试；③§3.3设计v1.3.150与4290/4298勘误按『原文不改、新补丁指向』落盘；④§3.4测量仅作用于--stage code（plan无测量文件，测试断言数量为0），测量失败0产品spawn/0 reserve/0正式run（marker缺席验证）；⑤§3.5 precheck-v2默认依赖链直测覆盖缺/未知stage拒绝与真实plan/code路由、投影、hash回读；⑥§3.6 quiet-v7白名单必需值非空且不以--开头，正式review不能经quiet，负例证明0 spawn/0预算/task不变——我r5的GLM-01/GLM-02两条nit均按计划闭环。基线保留在当前树核实无回退：freeze.ts敏感枚举父深度上限7带相邻6/7入列、8不枚举及软链/排除语义回归；projectClaudeDenyPaths的covered谓词（根1-5段ASCII、后代余段≤3且目录段ASCII、文件名不限）与五根30文件探针拓扑等价，嵌套根去除不会让任何路径在无覆盖目录规则时被丢弃；consumeClaudeDirectories绑定真实项目globs哈希、形态常量、路线入口/native指纹与TTL，仅候选声明才读二进制；judgeDirectoryArm的permissionComplete与successful/denied独立判据及变异负例保留。config.v2的probe.cli各CLI对象additionalProperties:true，两个新probe字段不破坏机读校验，schema未新增身份枚举。文档同步（设计/ADR/PROTOCOL/GUIDE/CASE/RUNBOOK/QUICKSTART/核心SKILL.md边界段及doc/05_testing README新报告条目）与『七入口措辞未改、无需render』的声明一致。本侧镜头（注入/路径穿越、并发与退出码完整性、空值越界、测试有效性）未发现会让线上出错、误导后来者或加大改动难度的问题，故零意见；两遍完整check、安装指纹与真机doctor证据按报告采样接受，列入未覆盖。",
+  "findings": [],
+  "agreed": [
+    "launch-v10 token机制：UUIDv4格式校验先于一切写操作；claim件经saveEvidence以flag:wx、mode:0o600原子占用且文件名不含label，同token跨label与并发复用在预算/测量/reserve/spawn之前失败；readdir预检以endsWith(token后缀)做到label无关；孤儿池路径同样先写claim再失败，token不可复用有测试钉住",
+    "quiet-launch-v7证据配对：selectCurrentEvidence校验本次token/label/pool坐标、requested全部字段逐键与completed继承值深度相等、requested_at不早于摘要spawn时刻、script与execution hash均为64位且等于本次launcher、primary_loaded=true、code/signal与本次子进程一致；选择器作为导出函数被真实main与测试共用",
+    "退出码完整性：证据失败时child非0码沿用、0/null回退1、signal仅作字段；证据成功时沿用child码（signal致死回退1）；不存在『JSON正常或child=0即成功』的路径；FIXTURE_NO_COMPLETION(SIGKILL)与stub退出0/2/64两族测试覆盖全部三档",
+    "quiet-v7白名单：version唯一v10、仅topic claim/topic resolve/preflight三入口，必需旗标恰出现一次且值非空不以--开头，重复旗标与review --start拒绝，负例断言0产品spawn、0预算预留、task.json不变——r5 GLM-02按计划闭环",
+    "§3.1轮数守卫回归：v5改固定夹具核11B/12C/拒13，新增真实v6读取壳（活指针）核13B/14C/拒15与五种旗标缺失/重复/错值、集合不等、孤儿/重复/不可读、当前权威缺失/null/形状无效/旧授权，v4/v3/v2历史边界不随指针改写；round-guard-v2纯核验第五参必填经readCurrentAuthorization指针+hash+主题三重校验",
+    "precheck-v2直测：缺/未知stage在有效配置夹具下拒绝；plan/code经resolveTier→claudeProbeForRoute→consumeClaudeDirectories→enumerateDenyPaths→buildProjectedDenySettings真实默认链，禁读集合精确四条、安装/inputs哈希回读、目录事实消费与压缩工具断言均为实际值非字符串壳；assertCodeStartMeasurement九项负例——r5 GLM-01按计划闭环",
+    "v10生产分支：仅mode=tv且review含--start走轮数守卫，--stage code先测量（原件先落盘再断言，失败留证）后spawn；plan无测量；measurement文件名含独立UUID不与token耦合",
+    "基线无回退：SENSITIVE_SCAN_MAX_PARENT_DEPTH=7边界回归（6/7入列、8不枚举、.git/node_modules排除、目录软链不跟随后代而软链项自身入列）；covered谓词与探针五根拓扑等价且保守（未测形态逐文件）；目录事实三重绑定（项目globs排序去重哈希在夹具替换前取值、形态v2、入口/native/TTL）与零二进制回退保留；doctor预期失败降级清空含两个新字段的全部事实、未定义内部错误继续抛",
+    "文档与契约同步：设计v1.3.150正文+勘误不改v1.3.149原文；ADR_003/PROTOCOL/GUIDE_local_pitfalls/CASE/RUNBOOK/QUICKSTART/核心SKILL.md各带批次限定的边界段；仅核心SKILL.md（非render产物）修改、七入口未动故无需render；doc/05_testing README新增恢复报告条目符合归档索引规范",
+    "config.v2机读契约：probe.cli各CLI对象additionalProperties:true，directory_deny_sensitive_globs_sha256与directory_deny_shape两新字段不破坏校验；schema未新增Agent身份或意见前缀枚举，纪律12保持"
+  ],
+  "not_covered": [
+    "本侧只读无执行能力：两遍串行npm run check（README称3150通过/3跳过/0失败）、最终bundle与安装输入指纹、桩自检14/14、四目标安装与七共享入口缺席/备份一致性均按恢复报告与r6证据的静态声明接受，未独立复跑",
+    "diff中约150+份calls/routes/ledger/loaded/extensions取证JSON未逐份核对内容，仅核对launcher/guard/precheck/测试逻辑、授权链与文件清单一致性",
+    "同token并发竞争未实测（现有测试为顺序复用）；wx独占的原子性依据O_EXCL语义与代码阅读判定，非经验证",
+    "真机目录doctor证据（verified=true及新hash/shape字段）按采样件面值接受，未复核与当前安装指纹在本次审查时点的一致性；预算数字（153/183、准入547/563等）同按报告采样",
+    "formal-round-authorization-v6.json全文未直接读取，其内容经recovery测试活指针断言（new_limit=14、12条历史ID）与round-guard-v2校验逻辑间接核实",
+    "claude-directory.test.ts/freeze-drift.test.ts/claude-directory-adapter.test.ts等基线测试按diff节选与r5已核结论确认保留，本轮未逐行重读全文",
+    "各路线真实准入矩阵、生产写缺口与M11前置状态按计划§4声明维持未测，不属本轮六项实施范围"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/code/_meta/changes-20261011T070836Z.diff",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r18-codex.md",
+    ".reviews/Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r5-glm.md",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/freeze.ts",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v10.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v7.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard-v2.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-start-precheck-v2.mjs",
+    "scripts/agent-access-evidence.mjs",
+    "scripts/agent-access-budget-preload.cjs",
+    "test/unit/agent-access-task-launch.test.ts",
+    "test/unit/agent-access-recovery.test.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md"
+  ]
+}

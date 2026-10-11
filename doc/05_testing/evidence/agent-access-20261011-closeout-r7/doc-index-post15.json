@@ -1,0 +1,14 @@
+{
+  "started_at": "2026-10-11T09:25:16.018Z",
+  "finished_at": "2026-10-11T09:25:16.227Z",
+  "args": [
+    "--test",
+    "dist/test/test/contract/doc-archive-index.test.js"
+  ],
+  "code": 0,
+  "signal": null,
+  "stdout": "✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (1.477709ms)\n▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标\n  ✔ doc/02_design/README.md (0.488625ms)\n  ✔ doc/03_api/README.md (0.120834ms)\n  ✔ doc/04_development/README.md (0.128417ms)\n  ✔ doc/05_testing/README.md (1.260583ms)\n  ✔ doc/06_deployment/README.md (0.303958ms)\n  ✔ doc/07_manuals/README.md (0.103792ms)\n✔ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (2.665042ms)\n▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序\n  ✔ doc/02_design/README.md (0.239666ms)\n  ✔ doc/03_api/README.md (0.086833ms)\n  ✔ doc/04_development/README.md (0.07ms)\n  ✔ doc/05_testing/README.md (0.477584ms)\n  ✔ doc/06_deployment/README.md (0.051375ms)\n  ✔ doc/07_manuals/README.md (0.042166ms)\n✔ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (1.133542ms)\n✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.197292ms)\n✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.183667ms)\n✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.218083ms)\n✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.178125ms)\n✔ B5 同一文件两条条目 ⇒ duplicate (0.079834ms)\n✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.178708ms)\n✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.070875ms)\n✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.121458ms)\n✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.100542ms)\n✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.057917ms)\n✔ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02） (0.11425ms)\n✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.051375ms)\nℹ tests 27\nℹ suites 0\nℹ pass 27\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 154.95475\n",
+  "stderr": "",
+  "vendor_cli_starts": 0,
+  "build_reexecuted": false
+}

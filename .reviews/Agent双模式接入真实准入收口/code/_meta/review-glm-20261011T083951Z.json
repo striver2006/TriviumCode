@@ -1,0 +1,72 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "第15次C/code完整重审（总15轮授权、base 39ed2053、run 20261011T083951Z）：被审内容为13B获批r18计划的六项实施（launch-v10唯一token配对、仅code阶段测量、precheck-v2直测、quiet白名单、v5/v6守卫夹具化、设计v1.3.150勘误）加14C后两项补修（quiet-v8全摘要脱敏、v6 supersedes hash直测）与15C授权载体（v7授权件+指针、launch-v11）。本轮亲自重读了全部核心生产变更并沿调用链核实：目录压缩消费链（claudeSensitiveGlobsHash真实项目绑定、CLAUDE_DIRECTORY_SHAPE形态、入口/native/版本指纹与TTL、无可消费声明不读二进制）在适配器运行路径与precheck-v2测量中走同一consumeClaudeDirectories，测量与生产一致；projectClaudeDenyPaths的covered谓词（根1-5段ASCII、后代余段≤3且中间目录段ASCII、文件名不外推）与探针五根三十文件拓扑等价，未覆盖路径保留逐文件规则；launch-v10/v11的token经UUIDv4校验先于一切写，claim件wx+0600原子占用且不含label，同token跨label与并发在预算、守卫、测量、spawn之前失败；quiet-v7/v8退出码语义（非0沿用、0/null回退1、signal仅作字段）与SIGKILL/0/2/64边界正确，v8全摘要经既有脱敏与扫描；probes/claude-directory.ts仅降级定义过的外部失败、内部错误继续抛，臂未完成即停止并保守清空；freeze.ts深度上限7与探针最深夹具父深度吻合且有边界回归；closeout证据根与台账根分离后selection的root参数化正确。v7授权链（指针sha256+主题、supersedes v6 hash、14条历史ID、仅15C一轮）自洽且fail-closed。本侧镜头（注入与路径穿越、并发与退出码完整性、空值越界、测试有效性）发现两个问题，均在15C新增入口的测试覆盖面而非已批实现本身：launch-v11作为当前权威下唯一正式入口没有任何直接回归（GLM-01，fail-closed方向），quiet-v8与v7的逐字复制件无等价性钉住且委托目标停留在v10（GLM-02）。二者不阻断审批。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v11.mjs:37（对照 test/unit/agent-access-task-launch.test.ts:28）",
+      "problem": "launch-v11.mjs 是本 diff 新增、当前 v7 权威下唯一能通过轮数守卫的正式入口（第37行 authFile 硬编码 formal-round-authorization-v7.json，除首行注释与该行外与 launch-v10.mjs 逐字相同），但没有任何可重复测试覆盖它：task-launch 测试的 world() 复制清单只含 launch-v10/quiet-v7/quiet-v8/round-guard-v2/precheck-v2，recovery 测试的 v7 用例直接调 round-guard-v2 与 v7 授权件、不经过 launch-v11。若 v11 的授权载体接线有误（例如仍指向 v6），守卫会在 15C 实际启动时以「授权已被替代」失败——fail-closed、不损耗轮数与配额，但当前生产入口的首次真实执行就是正式启动本身，与 v10 曾获得的直接回归（stage 分支、token、测量次序、guard 拒绝）不对称，也让下一轮换载体时没有可对照的回归基线。",
+      "evidence": "在 test/ 目录以 launch-v11 全词检索零命中；test/unit/agent-access-task-launch.test.ts 第28行复制清单为 launch-v10.mjs、quiet-launch-v7.mjs、quiet-launch-v8.mjs、round-guard-v2.mjs、formal-start-precheck-v2.mjs，不含 launch-v11.mjs；本轮通读 launch-v11.mjs 与 launch-v10.mjs 全文比对确认差异仅首行注释与第37行授权载体路径，而 launch-v10 在同一测试文件内有 token、stage 分支、测量的端到端用例。",
+      "suggestion": "把 launch-v11.mjs 加入 task-launch world() 的复制清单并补一条端到端用例（隔离授权夹具下第15轮 code 放行、第16轮与错 topic/driver/critics/entry/stage 拒绝、0产品spawn断言），或最低限度加一条静态断言：launch-v11 实际读取的授权文件名等于 formal-round-authority.json 指针当前指向的载体名。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v8.mjs:10-44",
+      "problem": "quiet-launch-v8 把 assertQuietCommand 与 selectCurrentEvidence 从 quiet-launch-v7 逐字复制而非 import（v7 已导出二者，import 不会改动被要求保留的原件），且没有测试钉住两份拷贝等价；后续只修一份会让当前摘要入口的白名单与证据配对语义悄悄偏离已审定的 v7 基线，14C 裁决要求的「token、白名单、code/signal及证据选择语义保持」此后只能靠人工比对。另外 v8 第58行仍硬编码委托 launch-v10.mjs，而正式入口已切到 launch-v11——摘要命令不经过轮数守卫所以当前可用，但委托目标与正式入口的分叉没有任何测试或注释说明属预期。",
+      "evidence": "本轮全文比对 quiet-launch-v8.mjs 第10-22行与 quiet-launch-v7.mjs 第9-21行、第25-44行与第24-43行逐字相同；test/unit/agent-access-task-launch.test.ts 只分别测 v7 的 selectCurrentEvidence 导出与 v8 的 renderQuietSummary 及端到端脱敏，无两模块共享语义的等价性断言；quiet-launch-v8.mjs 第58行 launcher 路径固定为同目录 launch-v10.mjs。",
+      "suggestion": "v8 改为从 quiet-launch-v7.mjs import 两个导出函数（原件不动），或加一组共享用例矩阵/源码区间哈希对账测试钉住两份实现等价；同时在 v8 首行注释或恢复报告记一句：摘要委托停留在 v10 属预期，因为轮数守卫只在 review --start 分支生效。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "目录压缩消费链三重绑定正确：claudeSensitiveGlobsHash 对真实项目 globs 排序去重后哈希、在夹具替换 sensitive_globs 之前取值（probes/claude.ts:1724）、形态常量 CLAUDE_DIRECTORY_SHAPE 与入口/native/版本指纹加TTL同核；consumeClaudeDirectories 在无可消费声明时先回退、仅候选声明才触发二进制读取，且 bin 与 nativeBin 同路径时去重为一次读（adapters/claude.ts:416-456）",
+    "适配器生产路径（adapters/claude.ts:1012-1015）与 formal-start-precheck-v2 测量（第43-47行）走同一 consumeClaudeDirectories 与 buildProjectedDenySettings，测量口径与生产一致，peer_deny_applied 合取逐文件事实与实际压缩工具已验证不变式（adapters/claude.ts:745-746）",
+    "projectClaudeDenyPaths 的 covered 谓词与探针五根×六文件拓扑等价：根1-5段ASCII、后代余段≤3且中间目录段ASCII、文件名不限（特殊文件名经 files 臂实测目录规则拦截），未覆盖路径保留逐文件规则，宽祖先与深后代共存时深文件不丢失，原集合不变有单测钉住",
+    "launch-v10/v11 token 机制：UUIDv4 格式校验先于一切写操作；claim 件经 saveEvidence 以 wx+0600 原子占用且文件名不含 label，同 token 跨 label 与并发在预算、轮数守卫、测量与 spawn 之前失败；readdir 预检按 token 后缀做到 label 无关",
+    "quiet-v7/v8 退出码语义与证据配对：selectCurrentEvidence 逐键核 requested 全字段、requested_at 不早于摘要 spawn 时刻、脚本与执行 hash、primary_loaded、本次 code/signal；证据失败时 child 非0沿用、0/null 回退1、signal 仅作字段；SIGKILL 与 0/2/64 边界均有真实子进程测试；v8 全摘要经既有 redactSecrets 加 scanSecrets，本地 launcher 自身错误同样脱敏且保持 JSON 形状",
+    "v7 授权链自洽：指针 sha256 加主题双重校验 fail-closed，supersedes v6 原件 hash 直测，14 条历史 ID 与 new_limit=15、仅 15C 一轮，readCurrentAuthorization 对 hash 漂移、载体名越界、主题不符均拒绝",
+    "probes/claude-directory.ts 失败语义：expectedDirectoryFailure 仅降级 ProbeFixtureError、LaunchBudgetExceeded 与定义过的 errno，内部 TypeError 继续抛并清理夹具；臂 spawned/timedOut/exitCode 异常即停止追加、清空 true 保留 false、已完成臂证据保留；is_error 与 permission_denials 独立变异负例齐备，permissionComplete 对正对照要求全轨迹零拒绝",
+    "freeze.ts SENSITIVE_SCAN_MAX_PARENT_DEPTH=7 与探针最深夹具文件父深度一致，6/7 入列、8 不枚举、.git 与 node_modules 排除、目录软链不跟随后代而软链项自身入列均有回归；doctor 路线变化与跳过模型探测时同步清空两个新 probe 字段",
+    "closeout 证据根与台账根分离（TRIVIUM_ACCESS_EVIDENCE_ROOT 问号双杠 ledgerRoot）后 selectedVersion 增补 ledgerRoot 参数、nativeVersionFromLedger 的 fingerprint_manifest 绝对路径绑定仍以请求件为权威，错误使用证据根不得静默获得 native 身份有负例（agent-access-closeout.test.ts）"
+  ],
+  "not_covered": [
+    "本侧只读无执行能力：两遍完整 npm run check、最终 bundle 与安装输入指纹、桩自检、四目标安装与共享入口盘点按恢复报告及 r6/r7 证据采样面值接受，未独立复跑",
+    "diff 中数百份 calls、ledger、loaded、routes、extensions 取证 JSON 未逐份核对内容，仅核对 launcher、guard、precheck、测试逻辑、授权链与文件清单一致性",
+    "同 token 两进程真并发（同时越过 readdir 预检再撞 claim 的 wx）未实测，原子性依据 O_EXCL 语义与代码阅读判定",
+    "formal-round-authorization-v6 及更早授权原件全文未直接读取，经测试断言与 supersedes hash 间接核实；v7 指针 sha256 与文件字节的一致性以测试逻辑接受，未独立重算",
+    "各路线真实准入矩阵、Claude 非flash生产写缺口、Qwen pro 与共享三审前置按计划第4节维持未测，不属本轮授权范围；预算数字按报告采样",
+    "quiet-launch-v6、round-guard v1 等历史冻结原件未重读，按本侧 r6 已核结论接受；probes/claude.ts 全文仅精读目录段与改动邻域，其余臂沿用既往审查结论"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/code/_meta/changes-20261011T083951Z.diff",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r18-codex.md",
+    ".reviews/Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r6-glm.md",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/claude-directory.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/config.ts",
+    "scripts/agent-access-closeout.mjs",
+    "scripts/agent-access-selection.mjs",
+    "scripts/agent-access-evidence.mjs",
+    "scripts/agent-access-budget-preload.cjs",
+    "scripts/agent-access-recipes.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v10.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v11.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v7.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v8.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-start-precheck-v2.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard-v2.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v7.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json"
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按本轮镜头（边界与失败路径、幂等与一致性、验收可测性、运维约束）审查了 r13 计划并亲自核实了仓库工件：v4 授权文件逐字绑定用户焦点『授权总10轮，先正式计划审查再代码重审』，8 个历史 ID、第 9 轮 B/plan 与第 10 轮 C/code 的序数映射、旧权威/孤儿/重复/不可读拒绝逻辑与 round-guard.mjs、launch-v5.mjs 实现及 formal-round9-authorization-verification.json 的 13 项零 CLI 核验逐项吻合；预算数字（review 103/108 扩容 15 至 123、预计 15 硬 20、admission 547/563 本批 0 新启动、formal 8/10）与 review-round9-plan-batch.json 一致，触顶先停再扩容的保护在；两项替代判据（component-scoped-evidence-v1、restricted-tool-surface-v1）明确不由总 10 轮授权与一般自动审批批准、未获另行答复即不消费，与 write-criterion-alternative-not-adopted.md 的三列设计一致；计划如实披露权威切换后测试不适配（我核实 agent-access-recovery.test.ts 两个『当前权威』用例在 v4 下必然失败），其『历史用例改读不可变 v3 fixture、实时壳单列核 v4』的解耦方向正确。发现三个不改变方向的缺口：settings 软线预检在机制上只覆盖 code 阶段而 9B 的 B/plan 启动路径无任何软线拦截（与 r12 建立的正式审查启动前软线先例不一致）；只读适用性 ledger 的实施分支在两项判据均不批准时未决；launch-v5.mjs 首行注释残留旧 launcher 路径。建议按三条意见补齐后批准。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "r13 §6（第9B启动条件）与 §7（仅第10C写明 settings≤131072、skipped0）；机制面 doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v5.mjs 第39-46行",
+      "problem": "settings 软线预检只挂在 --stage code 分支：launch-v5.mjs 仅当 stage 为 code 时才执行 measureCodeStart 与 assertCodeStartMeasurement，而 r13 §6 给出的第 9 次 B/plan 启动条件（静态材料落盘、resolve、preflight 参数同组）不含 settings 尺寸核对。这偏离了已获批先例——plan-r4 裁决 CLAUDE-01 写明『新构建启动前……必须<=既有131072软上限，否则拒绝第7次spawn』，当时第 7 次正是 B/plan 轮。若第 9 轮启动时目录压缩事实因 TTL/配置/指纹漂移失配回退到逐文件全集（历史采样约 3MB），三家审查 CLI 将以超软线 deny 配置启动，第 9 轮可能中途失败作废。",
+      "evidence": "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v5.mjs（第33-46行：review --start 先过 assertFormalRound，但 measureCodeStart/assertCodeStartMeasurement 仅在 --stage code 时调用）；被审对象 §6、§7；r12 附录 plan-r4 CLAUDE-01 与『启动前检查……settings<=既有131072字节软线且无skipped才允许第8次C/code』",
+      "suggestion": "把 settings≤131072 与目录事实消费状态（directory_fact_consumed、deny_settings_applied）加入第 9 次 B/plan 的启动前检查清单并在 start-round9 前执行；或在计划中明确说明 B/plan 轮不受软线约束的依据。实现上可让 launch-v5 的 review --start 分支对两种 stage 都执行同一测量，plan 阶段仅断言 settings 相关字段。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "scope-drift",
+      "location": "r13 §3 末段（业务正常整改限）、§4（拟实现 scripts/agent-access-applicability.mjs 与必要测试）、§5 末段（若均不批准的分支）",
+      "problem": "只读适用性 ledger 的实施分支未决：§3 把『新增静态取证/适用性脚本及真正必要负例测试』列入业务正常整改限，读作无条件实施；§5 又说两项判据『若均不批准，就完成获批普通整改及第10完整重审』，§7 的第 10 次 C/code 范围含『候选实现』。当 Bob 对 component-scoped-evidence-v1 不批准或未答复时，ledger 及其测试是否仍建、是否进入 10C 审查范围，两个分支的工作量与新增常驻代码面不同，现行文本两处归类不一致。",
+      "evidence": "被审对象 §3『新增静态取证/适用性脚本及真正必要负例测试』、§4『拟实现独立只读适用性ledger』、§5『若均不批准，就完成获批普通整改及第10完整重审』、§7『覆盖……后续普通及候选实现』",
+      "suggestion": "在计划中一句明确分支：判据未获批或未答复时 ledger 是否实施。若仍实施，写明其作为只读工具不消费判据、输出恒为 not-applicable/unknown 的理由，并使 §7 的 10C 范围表述与该分支一致；若不实施，把 ledger 从『业务正常整改限』移到候选实现清单。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v5.mjs 第1行",
+      "problem": "首行注释『唯一本轮任务入口：node scripts/agent-access-launch.mjs <池> <标签> tv|probe <参数...>』是自旧 launcher 复制后未更新的路径与自称，与该文件实际位置和名字（doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v5.mjs）不符。第 10 次 C/code 将把所有 launcher 纳入完整 diff，这类注释漂移会再次出现在审查范围里。",
+      "evidence": "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v5.mjs 第1行注释与文件实际路径比对；被审对象 §7『所有launcher/授权/ledger/tests/docs』纳入第10次完整diff",
+      "suggestion": "在第 10 次 C/code 范围内顺带校正各 launcher 首行注释的入口路径与自称，或在文件头统一声明『本文件是 launch.mjs 的授权切换副本，仅 formal-round-authorization 指向不同』，避免后续读者按注释路径找不到入口。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "v4 授权逐字绑定用户独立回复『授权总10轮，先正式计划审查再代码重审』，authority.json 以完整 sha256 指向 v4、v4 又以 supersedes_sha256 指向 v3，链条完整；round-guard 的 fail-closed 设计（授权与当前权威不一致、task 与归档集合不严格相等、孤儿/重复/不可读、超限、错阶段/Driver/集合/主题、--allow-single 均拒绝）与 13 项零 CLI 核验工件逐一对应，vendor_cli_starts 为 0。",
+    "预算侧数字（review 103/108 经具名扩容 15 至 123、预计 15 硬 20、admission 547/563 本批 0 新启动、formal 8/10、第 9 轮 B/plan）与 review-round9-plan-batch.json 逐项吻合；『达到批/池上限先停再发布扩容』『预算不等金额、独立于 formal10』『旧台账 O_EXCL 追加不清零』的停机与连续性保护在位。",
+    "两项替代判据不由本次总 10 轮授权与一般自动审批批准、须 Bob 另行明确答复、取得答复前不消费不补通过列不宣布 M11 可进入——保守缺省正确；write-criterion-alternative-not-adopted.md 与 §5 的 A/B/C 三列设计一致，『不能证明模型主动写、抗诱导、任意/未来渠道安全、服务端身份』的边界诚实且不写回原 production_write 字段。",
+    "§3 如实披露权威切换后当前测试不适配（经核实 agent-access-recovery.test.ts 两个调用 readCurrentAuthorization 的用例在 v4 下序数断言必然失败），并将整改方向定为『历史总 8 案例改读不可变 v3 授权 fixture 并显式传入纯核验函数、实时读取壳单列核 v4 总 10/9B/10C』——历史断言与当前权威解耦、旧件与旧 guard hash 保留，是正确的幂等分层。",
+    "组件证据候选的边界可测且保守：build-stamp 唯一精确声明加全量其余字节 hash、任何额外差异拒绝；安装输入不同即不得升级为全上下文相同；缺 component inventory 或上下文资产消费证据一律 not-applicable/unknown；新无尝试只并列不覆盖新采样。",
+    "§2 矩阵把请求/配置声明/CLI 回读/服务端身份分列且服务端全部 null、官方 Claude 待订阅 0 启动、Codex deny 只表述为事后读取命令检测有效不冒充 CLI 禁读拦截——口径与既有审查结论一致，未借措辞抬高任何路线。"
+  ],
+  "not_covered": [
+    "本侧只读无执行能力：未运行任何命令，未独立重算 formal-round-authorization-v4.json 的 sha256 与 authority.json 记录值（041219c4...）的一致性，也未实测 task.json 与 .reviews 归档中 8 个历史 ID 的实盘一致；这部分以 round-guard 逻辑与 formal-round9-authorization-verification.json 的记录互证为准，属推理而非实测。",
+    "admission/review 台账与 calls 明细在禁读或告警清单内未读：547/563、103/108 等计数以批次工件与计划自述互证，未逐文件核对 ledger。",
+    "src/trivium/adapters/claude.ts、probes/claude.ts、freeze.ts、doctor.ts 及 scripts/agent-access-closeout.mjs 等大文件源码未逐行复核；§1 七条整改『已实现及验证』沿用第 8 次有效代码重审结论，本轮仅审计划与轮数/预算/判据边界。",
+    "shared-entry-audit.json 与共享七入口迁移的盘上实际状态未核，『客户端实际发现和其他仓库完整依赖面仍未测』按计划披露采信。",
+    "scripts/agent-access-applicability.mjs 尚不存在（计划拟新增），其设计仅有文本描述可审；两项判据的机器输出字段（criteria_version/approval_record 等）尚无实现可核。",
+    "closeout-r4 目录中 static-audit-before-round9.json、component-evidence-scope-comparison.json、build-stamp-only-comparison.json、remaining-gap-* 等静态审计工件本轮未逐一展开，仅核对了预算批次、授权核验与启动脚本三件。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r13-codex.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v4.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v5.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/write-criterion-alternative-not-adopted.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r4/review-round9-plan-batch.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r4/formal-round9-authorization-verification.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r4/start-round9.mjs",
+    "test/unit/agent-access-recovery.test.ts",
+    "AGENTS.md"
+  ]
+}

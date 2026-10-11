@@ -1,5 +1,9 @@
 # 2026-10-11 新一轮真实准入收口证据
 
+当前指针（2026-10-11 03:26 UTC采样）：原下述总6/7/8/10叙述均为其时点记录。用户已独立授权总12轮；v5授权与当前指针完整hash绑定，v4授权和指针另存。第11次B/plan run20261011T031230Z三审有效，11条逐项接受、r16完整计划及普通委托审批完成；第12次C/code尚未启动。11B实际入口launch-v7.mjs首行误写v6路径及v5尾注，原件保留，在恢复报告具时刻勘误。新v2权威守卫、v8正式入口和quiet-v6白名单处于获批实施阶段。两项准入替代判据与BRIEF扩禁未批准，M11前置未完成。最新启动预算与安装/准入状态见恢复报告。
+
+当前追加采样（2026-10-11 03:48 UTC）：三项获批守卫已实施，最终c9818aef bundle及d67020b1安装输入、两遍3142/3/0、源与安装桩14/14、四目标/28入口和七共享目录缺席与备份核验详见恢复报告。第12次正式C/code未启动；最初scratch清单check失败另存，不列合格两遍。原完整准入矩阵不能搬到新bundle。
+
 独立证据根；所有历史目录原样保留。`baseline.json`、`shared-entry-audit.json`、`historical-retention-before.json`由零厂商CLI的`static-audit.mjs`生成，脚本落盘前使用现有脱敏及扫描出口。
 
 准入与审查启动的连续权威台账仍为上一证据根`agent-access-20261010-closeout-r2/ledger/{admission,review}`，不复制预占、不重置。新调用的输出放在项目外`~/.trivium/evidence/agent-access-20261011-closeout-r3/`，避免审查期间新增被审证据。送审前的静态材料在本目录。扩容通过现有`openBudget.extend`，扩容不会增加正式轮数。
@@ -35,3 +39,7 @@ admission-directory-r12-batch.json发布三条新目录doctor，预计54、硬72
 post-code-fingerprint-r12-batch按公布清单新增69实际启动、无重试，累计准入547/563、review103/108均完整收尾；唯一权威是前述项目外预算根，仓内旧976文件原样冻结，复制不计新增。matrix-r12-code-nits与selection-r12-post-code-all-current明确38臂variant2、完整指纹均相符，新版6组合通过/6组合未测；五Claude生产写和Luna写无当前实际尝试，Kimi coding Read另缺.env尝试，不能隐藏完整禁读false。FBB旧矩阵及其曾通过样本保留，不追认到新bundle；原生产写标准不变，候选未采用。官方Claude未测，server身份全部null。
 
 目录事实六份相关源码未变、当前生产consume/TTL/CLI/形态/globs/入口绑定通过，完整settings26960字节、skipped0，见directory-fact-reuse-scope-code-nits；这项有限复用不代替完整模型准入。current-raw-evidence-cleanup-audit-r12核全部本批原件脱敏和38夹具实际消失状态，采样时间不冒充清理操作时间。final-closeout-state-r12为提交前零CLI冻结及历史hash/安装/预算核对出口。后续独立建议post-code-next-review-proposal已提出第9B/第10C总10轮请求，当前授权上限仍8；轮数授权不等于判据采用批准。goal未完成，M11第12步不可开始。
+
+较晚采样（第13B前）：Bob已独立授权总14轮13B/14C。当前formal-round-authority.json指向v6，旧v5指针逐字节另存；全部12次运行、失败及12C拒绝保留。launch-v9仅授权更新，使用v2 guard，尚未实施六项；新版实施名称为launch-v10/quiet-v7。完整原稿plan r17及r6独立审计已落盘，review153/183、admission547/563，静态settings38048字节/4302路径/skipped0；这些是当前时点，不覆盖前文旧采样。判据不变，目标未完成。
+
+2026-10-11 独立追加总15轮：权威改为 v7，仅15C；v6指针另存原样，v10与旧审查全部保留。新独立证据目录为 `../agent-access-20261011-closeout-r7/`，不重置历史计数、不批准判据变更。

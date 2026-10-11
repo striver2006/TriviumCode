@@ -1,0 +1,62 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按本轮镜头（边界与失败路径、幂等与一致性、验收可测性、运维约束）审查第16次B/plan原稿（r19）并逐项核实仓库工件。围绕审查焦点『授权轮次可以按需增加，不必询问授权』核验授权落地：v8授权件为有界追加（previous_limit 15→new_limit 17、仅16B/plan与17C/code两轮、15个历史run ID逐字保留），delegation_exact_reply逐字记录用户委托原文，supersedes以字节hash回链v7（与静态审计记录的v7文件hash一致），criteria_change_authorized=false与count_reset=false把判据变更和计数清零明确关在门外；权威指针formal-round-authority.json以sha256绑定v8且切换时刻（09:27:16Z）早于本轮运行；launch-v12相对launch-v11经逐行比对仅首行说明与授权文件名两处差异，round-guard-v2与formal-start-precheck-v2函数体未动（指针+hash fail-closed读取、与当前权威深比较、历史子集、ordinal/entry/stage/旗标及--allow-single拒绝全部保留）；r8/formal-round16-authorization-verification.json恰22项零CLI正反核验（15记录允许16B、16允许17C、旧v7被替代、缺/null/无效权威、缺/孤儿/重复/不可读原件、错/重复旗标、allow-single、18拒绝）已落盘，2个failed运行与2条rejected审批原件如实保留。计划对该开放性委托采取『每批有界追加+机械链核验』的保守解读，普通plan/code审批与准入判据变化各守各轨，忠实且方向正确。§2失败证据与r7诊断件逐项吻合（复合命令parsed_cmd=unknown、findings三字符串致finding_unaddressable、summary非首词、README源104字节、full_hash_before_after_captured_in_original=false、diagnostic_is_not_new_admission=true）；§3.3整改对象真实存在——closeout.mjs第134行确实把summary:firstWord（即fixture.ts的SENTINEL_OPEN_7f3a2b）与verdict:approve嵌入输出示例；§3.4覆盖了指针切v8后唯一活读指针用例（恢复测试第143-180行断言new_limit===15）的预期红中间态，『3153/3/0』经REPORT与矩阵澄清为通过/跳过/失败口径；预算review 193/213（198→213扩容先发布）、admission 590/602本批0、矩阵5/1/6均与工件互证。仅发现一个不改变方向的验收口径缺口（GLM-01）：§3.2新诊断从含首词containment收紧为全文一致，但未定义尾部差异取舍且负例矩阵无『额外后缀』形态。建议补齐该口径后批准。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "被审对象§3.2（『正例为唯一合法单cat和完整正文一致』及验证矩阵）、§3.3（『真实补测最多一次首尝试』）；scripts/agent-access-evidence.mjs:104（现行actual_read以aggregated_output含首词的containment判定）",
+      "problem": "新增read_content_diagnostic把比较从『含首词』收紧为『全量stdout与README完整正文一致』，但计划未定义尾部差异的取舍：CLI聚合输出层若在正文后附加换行或提示符，字节严格比较会让每次真实单cat都得出诊断false。§3.2枚举的负例有『截断』『额外前缀』而无『额外后缀』形态；且定向测试按§3.2为0厂商CLI的合成数据，无法暴露真实捕获层的尾部行为，该歧义只能在仅此一次的真实补测中现形——同批不许换提示重试放大了代价：既污染取证记录，也可能被误读为『原标准仍不能满足』而触发不必要的新机制提案轮。",
+      "evidence": "被审对象§3.2验证矩阵原文（缺全文、只有首词、截断、额外前缀、前后变化、缺before或after、重复session或stdout ID、错cwd/目标、非零退出、超时、turn未完成、unknown复合、软链、不可信路径负例——无后缀项）与『局部采样用独立临时文件，结束清理，0厂商CLI』；§3.3『真实补测最多一次首尝试；失败保留原件，不在同批换提示/自动重试』；scripts/agent-access-evidence.mjs第104行现行containment判定。",
+      "suggestion": "在§3.2明写比较规则二选一：字节严格比较并在负例矩阵补『额外后缀』用例，同时让read_content_diagnostic并列记录严格与文档化尾部归一两种结果及各自理由；或预先声明仅容忍单一尾部换行并为其加正反用例。使17C与一次补测对诊断false的解读有可测口径，避免把捕获层尾部行为误判为机制失败。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "v8授权件对用户按需委托的落地方式忠实且保守：有界首批16B/17C、delegation_exact_reply与authorization逐字记录委托、authorized_scope明确不含准入判据变化、criteria_change_authorized=false与count_reset=false关门，未来追加仍走有界权威+机械核验而非无限放行。",
+    "launch-v12相对launch-v11经逐行比对仅首行说明与第37行授权文件名两处差异；round-guard-v2与formal-start-precheck-v2函数体未动，读取壳hash绑定、深比较当前权威、历史ID子集、ordinal/entry/stage/旗标与--allow-single拒绝语义全部保留，与计划『仅更换授权文件与说明、guard/precheck语义不变』逐项相符。",
+    "r8/formal-round16-authorization-verification.json恰22项零CLI正反核验已落盘（含16B/17C正例、18拒绝、旧v7被替代、缺权威/原件与错参重复旗标负例），vendor_cli_starts=0；2个failed运行与2条rejected审批原件不改写，supersedes链经静态审计hash互证一致。",
+    "§2失败证据与r7/codex-qwen-read3-diagnostic.json逐项吻合：复合命令parsed_cmd=unknown致actual_read false、findings三字符串致finding_unaddressable、strict_first_word false、readme源104字节且原件未采前后全文hash、原件hash钉存、diagnostic_is_not_new_admission=true；35字节系模型把.env当README的叙述，不作文件事实的处理正确。",
+    "§3.3整改对象真实：closeout.mjs第134行输出示例确实嵌入summary:firstWord（fixture.ts第123行SENTINEL_OPEN_7f3a2b）与verdict:approve；修复方向（只述字段结构/类型、不预设结论、findings对象化、单cat与从实际输出取首词保留、write/deny/Claude字节保持并以定向回归钉住）正确且可测，四组合Codex同臂同机制不加Qwen特例。",
+    "§3.2可行且有据：codexCommandEvidence（evidence.mjs第80-116行）已建立唯一session/stdout配对与cwd核验，actual_read判据逐字保留、诊断仅新增不替代；evidence.mjs第17行captureFileState仅记exists/symlink，§3.1新辅助为扩展而非重复。",
+    "§3.4正确处理预期红中间态：全测试目录唯一活读指针用例为恢复测试第143-180行（断言new_limit===15，指针切v8后必红），『转为固定v7夹具+新增v8读取壳』与既有v4/v5/v6固定夹具分层一致；『3153/3/0』经REPORT第309/346行与矩阵第21行澄清为通过/跳过/失败，计划如实声明旧双遍结果不冒充覆盖v8。",
+    "预算与矩阵互证：review事前193/213（198→213扩容先发布再启动）、admission 590/602本批0、准入5/1/6、43启动、正式15/15，条件最小下一准入（首臂wrapper/native 2启动、首臂加专属版本最多4启动）有界且不以新首臂宣布全部路线通过。",
+    "EV-124在src/trivium/adapters/codex.ts第65行确实记载不传output-schema为实测结论，本轮不加schema旗标、不把help/退出0当遵守证明的决策有据。"
+  ],
+  "not_covered": [
+    "本侧只读无执行能力：未运行npm test/check、未复算任何sha256；授权链与脚本hash以authority、static-audit-before16、formal-round16-authorization-verification三件互证采信，launch-v11与v12差异为逐行目视比对结论，未经diff工具验证。",
+    "GLM-01中真实Codex CLI聚合输出是否附加尾部换行属推理，未实测；诊断比较的实际行为要等一次真实补测才能观察。",
+    "另一位审查员的任何产出与Driver对15C的裁决件按背靠背约束未读、不猜测。",
+    "src/trivium/adapters/codex.ts仅检索EV-124一处；ADR_003、PROTOCOL文档、设计文档、doc各README、test/unit/agent-access-applicability.test.ts、r7/final-admission15-audit.json、REPORT全文未逐行复核，§4七项历史整改按既有有效审查结论作为基线采信。",
+    "~/.trivium运行目录、预算ledger/calls/loaded明细在禁读或告警面未读，预算计数以静态审计与矩阵工件互证；git HEAD与dirty状态按任务书快照与静态审计采信。",
+    "17C后的准入刷新范围、doctor用途与启动数、新包inventory消费细节属各自启动前另行发布范围，本轮未深审。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r19-codex.md",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r8-glm.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v8.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v7.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard-v2.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v12.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v11.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-start-precheck-v2.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r8/static-audit-before16.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r8/formal-round16-authorization-verification.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r8/plan-r19-body.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r7/codex-qwen-read3-diagnostic.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r7/matrix-admission15.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r7/post-round15-read-evidence-plan-proposal.md",
+    "test/unit/agent-access-recovery.test.ts",
+    "scripts/agent-access-recipes.mjs",
+    "scripts/agent-access-evidence.mjs",
+    "scripts/agent-access-closeout.mjs",
+    "doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/adapters/codex.ts",
+    "CLAUDE.md"
+  ]
+}

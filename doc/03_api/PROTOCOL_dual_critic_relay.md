@@ -462,3 +462,16 @@ Codex版本引用的profile上下文须与能力臂完整指纹一致；同一CL
 当前目录事实与敏感枚举规范统一见[设计§3.5](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-directory-contract)：消费仅限受测ASCII形态、绑定实际项目及入口，失配回退逐文件。正式授权、实施、真实取证和未测状态见[恢复报告](../05_testing/REPORT_2026-10-11_agent_access_recovery.md)，不以本节历史计划采样替代当前验收。
 <!-- 本轮r12取证脚本边界补充；产品Schema与准入判据不变。 -->
 连续启动台账根与动态证据输出根允许分离。Codex native版本身份必须从预算环境声明的ledgerRoot取得实际wrapper/native配对记录，不能在动态输出根寻找ledger。输出根保存请求、结果及显式引用hash；台账复制切换需先等在途调用完成，逐文件/计数/上限对账，历史复制项不计新增启动。旧目录保留且只读，项目外新根作为后续唯一权威，计数不重置、不双计；这不豁免代码审subject复算或只读核验。
+
+2026-10-11当前主题任务级约束：正式总12轮的v5证据仅允许11B/plan、12C/code；原生协议未新增轮数例外字段，也未重写旧run。`round-guard-v2`的纯函数必须显式接收当前授权，第12次正式review由`launch-v8.mjs`读取当前pointer/hash并记录守卫脚本hash；`quiet-launch-v6.mjs`只允许topic claim/topic resolve/preflight，正式start/wait/status直接v8。Claude五个未有新机制的非flash写臂在预算预占和spawn前拒绝。此约束属于收口任务执行层，`review.v1`/`run.v3`/准入判据/只读判据均不改变；BRIEF扩禁另审，状态见[恢复报告](../05_testing/REPORT_2026-10-11_agent_access_recovery.md)。
+
+较晚任务契约（第13B/r18获批）：当前v6权威总14，实际13B已成功，下一仅14C。launch-v10读取同一pointer/hash及v2轮数守卫；quiet-launch-v7只接受version=v10，摘要白名单不含review，必需值非空且不以--开头。quiet传REQUEST_TOKEN，v10复用该唯一值为load_id与既有LOAD_TOKEN；token wx占用在测量/reserve/spawn前，跨label不复用。只取本次requested/completed并核全部请求字段、时间下界、hash、primary_loaded与code/signal；证据失败非0子码沿用，0/null回退1，JSON保留实际code/signal。正式code测量导入/hash固定precheck-v2；plan取消此任务级测量仅属当前方案，未来新plan须重评。产品Schema、只读与准入判据不改，v8/v9/v6摘要原件不动。
+
+
+较晚采样（第14C后）：14C run20261011T070836Z有效、无漂移/现行guard违规，但普通code依委托拒绝，四意见裁决为两接受、一驳回、一暂缓。沿13B已批准范围，quiet-v8对完整摘要JSON应用既有脱敏/扫描，补包装器自身异常尾行防御，token、白名单、code/signal及证据选择语义保持；v6谱系hash补直测。旧quiet-v7/授权/原件不改，通用base/数值连续性guard不扩。当前正式14/14，第15完整C资格待Bob独立授权，未启动。判据候选未采用、准入缺口仍保留，详见r6/post-round14-wrapper-followup-proposal.md及恢复报告；两遍check/安装指纹须以新的补修采样分别留痕。
+
+> 2026-10-11 第15次重审授权补记：用户独立授权“授权总15轮，仅追加完整代码重审（建议）”。当前权威 v7 保留 v6 原件及14次历史，仅开放15C，拒绝16次与新增计划审查。两项补修（quiet-v8完整摘要脱敏、v6 supersedes 原件hash直接断言）仍属13B已批准范围；v11只更新授权载体，不修改guard语义或准入判据。第14C普通code拒绝保持；第15C结果及新版完整指纹尚未取得，旧准入不自动迁移。
+
+> 上述第15次补记为授权当时采样，保留历史原文；当前执行口径以恢复报告最新段与hash绑定的正式权威指针为准。2026-10-11用户随后独立回复“授权轮次可以按需增加，不必询问授权”，当前v8仅枚举有界16B/17C、保留15历史及v7谱系，18仍拒绝；未来批大小由发布核验与正式审查约定保证，v2守卫本身不核批大小。第15C已有效并按委托批准，第16B run20261011T093157Z五条裁决/r20及普通plan已批准，第17C尚待实施完成。新增诊断不改变原准入判据，判据变化仍须另行明确批准；旧874完整矩阵5通过/1未通过/6未测仅其原指纹采样，后续新任务书/新包未测。
+
+> 第16B/r20获批取证契约（详见设计v1.3.152）：仅Codex/read使用无实际首词及无预设结论的对象Schema指引，单cat要求保留；Claude/write/deny的14份真实prompt固定hash回放。fixture-before/after在本臂新增readme_state（普通非软链文件、bytes/sha256/精确路径），result顶层read_content_diagnostic为固定诊断对象：kind=diagnostic-only、comparison=byte-exact/no-normalization、strict_content_match/reasons、前后状态、输出bytes/hash及两种ID。额外前后缀/尾换行、截断、缺证据、目标/cwd/ID错配、前后变化均不得诊断true，未定义读错误继续抛并清理。原配对函数/准入断言逐字保持，诊断不参与准入汇总，不改产品Schema、adapter/probe旗标或模型/effort/版本；新包检查、安装、17C及普通code批准后才做真实补测。

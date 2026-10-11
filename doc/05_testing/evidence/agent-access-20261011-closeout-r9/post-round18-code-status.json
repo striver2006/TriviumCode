@@ -1,0 +1,128 @@
+{
+  "at": "2026-10-11T11:14:52.031Z",
+  "run_id": "20261011T105033Z",
+  "approval": {
+    "at": "2026-10-11T11:14:02.707Z",
+    "stage": "code",
+    "run_id": "20261011T105033Z",
+    "decision": "approved",
+    "reason": "依据用户本轮明确委托：中途遇到需要审批的，根据你的建议自动审批。第18C三原件及四条裁决齐备，gate退出0；两驳回两暂缓、无接受待实施项。保留readonly_breach=true及复算无变化告警，唯一Bash调用获精确同ID禁用拒绝，前后冻结/hash/审批工作树摘要0；不改变只读guard或准入判据，不恢复旧失败运行，暂缓语义变化另需正式B，当前真实准入缺口仍未完成。",
+    "session_id": null
+  },
+  "formal": {
+    "used": 18,
+    "limit": 18
+  },
+  "review": {
+    "used": 228,
+    "limit": 238
+  },
+  "admission": {
+    "used": 590,
+    "limit": 602
+  },
+  "snapshot": {
+    "git_head": "f63e339f938bd7bca1d5c22f19be101d626a7e66",
+    "tree_hash": "d19dc3b3be2cc2e8c493cbb076f4dde592796e58",
+    "dirty": true,
+    "subject_sha256": "c4d83941bb58551074e8e043e5f25242c908253010b53762b2901ae7646ce005",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "f63e339f938bd7bca1d5c22f19be101d626a7e66",
+      "dirty": true,
+      "inputs_sha256": "e03db7e3a06fff6d23565a67b66ec5d9ffcc01b4d606ca8917b205c2238a926f",
+      "built_at": "2026-10-11T10:45:59.818Z"
+    },
+    "after_tree_hash": "d19dc3b3be2cc2e8c493cbb076f4dde592796e58"
+  },
+  "guard": {
+    "readonly_breach": true,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "claude": true,
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "claude": 0,
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [
+      "Bash({\"command\":\"wc -l \\\"/Users/chenzhenbo/Work/TriviumCode/.reviews/Agent双模式接入真实准入收口)"
+    ],
+    "peer_leak_via_command": {
+      "claude": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "claude": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "claude": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "disposition": {
+    "path": ".reviews/Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r9-response-codex.md",
+    "sha256": "3a85e68e7faf3f791e16cd6a99fdf986f4baeb8da29911fe63b64b80a2860db2",
+    "rejected": [
+      "CLAUDE-01",
+      "CLAUDE-02"
+    ],
+    "deferred": [
+      "CLAUDE-03",
+      "GLM-01"
+    ],
+    "accepted": []
+  },
+  "criteria_change_authorized": false,
+  "goal_complete": false
+}

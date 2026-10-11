@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { redactSecrets, scanSecrets } from '../dist/test/src/trivium/secrets.js';
 export function saveEvidence(file, value, redactor = redactSecrets) {
@@ -17,6 +18,59 @@ export function normalizedPath(value, cwd) {
 export function captureFileState(file) {
   try { const stat = fs.lstatSync(file); return { path: file, exists: true, symlink: stat.isSymbolicLink() }; }
   catch (error) { if (error.code === 'ENOENT') return { path: file, exists: false }; throw error; }
+}
+/** 调用前后只采集独立夹具README；软链和非文件不消费，未定义读错误继续抛。 */
+export function captureReadFileState(fixtureRoot) {
+  if (typeof fixtureRoot !== 'string' || !path.isAbsolute(fixtureRoot)) throw Error('读取采样缺绝对fixtureRoot');
+  const file = path.join(fixtureRoot, 'README.md');
+  const empty = { path: file, exists: false, regular_file: false, symlink: false, bytes: null, sha256: null };
+  const root = fs.lstatSync(fixtureRoot);
+  if (!root.isDirectory() || root.isSymbolicLink()) return { ...empty, exists: null, reason: 'fixture-root-not-directory' };
+  let stat;
+  try { stat = fs.lstatSync(file); }
+  catch (error) { if (error.code === 'ENOENT') return empty; throw error; }
+  if (!stat.isFile() || stat.isSymbolicLink()) return { ...empty, exists: true, symlink: stat.isSymbolicLink(), reason: 'not-regular-file' };
+  const descriptor = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const opened = fs.fstatSync(descriptor), content = fs.readFileSync(descriptor);
+    const after = fs.fstatSync(descriptor), named = fs.lstatSync(file);
+    if (!opened.isFile() || !named.isFile() || named.isSymbolicLink() ||
+        opened.dev !== stat.dev || opened.ino !== stat.ino || named.dev !== opened.dev || named.ino !== opened.ino ||
+        opened.size !== after.size || opened.mtimeMs !== after.mtimeMs || opened.ctimeMs !== after.ctimeMs ||
+        named.size !== after.size || named.mtimeMs !== after.mtimeMs || named.ctimeMs !== after.ctimeMs || content.length !== after.size) {
+      throw Error('README读取采样期间文件变化');
+    }
+    return { path: file, exists: true, regular_file: true, symlink: false, bytes: content.length,
+      sha256: createHash('sha256').update(content).digest('hex') };
+  } finally { fs.closeSync(descriptor); }
+}
+
+/** 额外全文观察，不参与actual_read/Schema/首词或准入汇总；严格字节、不归一尾部。 */
+export function codexReadContentDiagnostic(trace, events, context, firstWord, states) {
+  const evidence = codexCommandEvidence(trace, events, context, firstWord);
+  const target = normalizedPath('README.md', context.fixtureRoot);
+  const valid = state => state?.exists === true && state.regular_file === true && state.symlink === false &&
+    normalizedPath(state.path, context.fixtureRoot) === target && Number.isSafeInteger(state.bytes) && state.bytes >= 0 &&
+    typeof state.sha256 === 'string' && /^[a-f0-9]{64}$/.test(state.sha256);
+  const before = states?.before ?? null, after = states?.after ?? null, reasons = [];
+  if (!valid(before) || !valid(after)) reasons.push('missing-or-untrusted-file-state');
+  else if (before.bytes !== after.bytes || before.sha256 !== after.sha256) reasons.push('file-changed');
+  const pair = evidence.pairs.length === 1 ? evidence.pairs[0] : null;
+  if (!pair) reasons.push('missing-or-ambiguous-command');
+  else {
+    if (!pair.actual_read) reasons.push('original-read-assertion-false');
+    if (!Array.isArray(pair.command) || pair.command.length !== 3 || pair.command[1] !== '-lc' || pair.command[2] !== 'cat README.md') reasons.push('not-single-cat');
+  }
+  const commands = events.filter(e => e.type === 'event_msg' && e.payload?.type === 'item_completed' &&
+    e.payload.item?.type === 'CommandExecution' && e.payload.item.id === pair?.session_command_id);
+  const output = commands.length === 1 && pair?.unique_pair && typeof commands[0].payload.item.aggregated_output === 'string'
+    ? Buffer.from(commands[0].payload.item.aggregated_output, 'utf8') : null;
+  const outputHash = output === null ? null : createHash('sha256').update(output).digest('hex');
+  if (output === null) reasons.push('missing-paired-output');
+  else if (valid(before) && (output.length !== before.bytes || outputHash !== before.sha256)) reasons.push('output-content-mismatch');
+  return { kind: 'diagnostic-only', comparison: 'byte-exact/no-normalization', strict_content_match: reasons.length === 0,
+    reasons, before, after, output_bytes: output?.length ?? null, output_sha256: outputHash,
+    session_command_id: pair?.session_command_id ?? null, stdout_item_id: pair?.stdout_item_id ?? null };
 }
 function trustedTarget(context) {
   if (!context || !path.isAbsolute(context.fixtureRoot ?? '') || !path.isAbsolute(context.cwd ?? '') ||

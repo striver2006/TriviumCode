@@ -1,0 +1,15 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { writeArtifact } from '../../../../dist/test/src/trivium/archive.js';
+import { scanSecrets } from '../../../../dist/test/src/trivium/secrets.js';
+const root=path.dirname(new URL(import.meta.url).pathname),topic='Agent双模式接入真实准入收口';
+const historical=fs.readFileSync(`.reviews/${topic}/plan/2026-10-11-${topic}-r12-codex.md`,'utf8');
+const content=fs.readFileSync(path.join(root,'plan-r13-body.md'),'utf8')+'\n\n不编号附录：r12历史全文（逐字保留；所有旧状态仅属其时点，当前以r13正文为准）\n\n'+historical;
+const artifact=await writeArtifact({layout:{archiveRoot:path.resolve('.reviews'),topic},stage:'plan',role:'codex',writer:'driver',driver:'codex',rerunIndex:13,content,date:'2026-10-11'});
+fs.writeFileSync(path.join(root,'plan-r13-archive.json'),JSON.stringify(artifact,null,2)+'\n',{flag:'wx'});
+const source='doc/05_testing/evidence/agent-access-20261011-closeout-r3/matrix-r12-code-nits.json',matrix=JSON.parse(fs.readFileSync(source));
+fs.writeFileSync(path.join(root,'current-matrix-scope.json'),JSON.stringify({source,source_sha256:crypto.createHash('sha256').update(fs.readFileSync(source)).digest('hex'),observed_at:matrix.observed_at,known_gaps:matrix.known_gaps,summary:matrix.summary??null,rows:matrix.rows??matrix.matrix??null},null,2)+'\n',{flag:'wx'});
+const records=fs.readdirSync(root).filter(x=>fs.statSync(path.join(root,x)).isFile()).map(name=>{const b=fs.readFileSync(path.join(root,name));const findings=scanSecrets(b.toString());if(findings.length)throw Error('脱敏扫描不通过：'+name);return{name,sha256:crypto.createHash('sha256').update(b).digest('hex'),bytes:b.length,secrets:0};});
+fs.writeFileSync(path.join(root,'static-audit-before-round9.json'),JSON.stringify({recorded_at:new Date().toISOString(),artifact,files:records,source_changes:[],criteria_adopted:false,vendor_cli_starts:0,known_check_issue:'当前总8历史案例读动态权威，切v4后需获批修改fixture；没有本轮全check通过声明。'},null,2)+'\n',{flag:'wx'});
+console.log(JSON.stringify({artifact,files:records.length,secrets:0,matrix_keys:Object.keys(matrix)}));

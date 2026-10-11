@@ -1,0 +1,15 @@
+{
+  "started_at": "2026-10-11T06:33:53.221Z",
+  "finished_at": "2026-10-11T06:34:01.410Z",
+  "bin": "node",
+  "args": [
+    "--test",
+    "dist/test/test/unit/agent-access-recovery.test.js",
+    "dist/test/test/unit/agent-access-task-launch.test.js"
+  ],
+  "code": 1,
+  "signal": null,
+  "stdout": "✔ 已启动轮数4/5允许第五plan/第六code，6/7及原件不一致均拒绝 (1.530792ms)\n✔ 五个Claude生产写缺口均在spawn与计数之前拒绝；合法读取与Qwen flash写保留 (0.332708ms)\n✔ 独立总7轮授权仅允许第六补充plan及第七完整code，原6轮授权不变 (0.306584ms)\n✔ 历史v5固定夹具与v2纯核验保留11B/12C边界，不随实时指针升级 (4.346292ms)\n✔ 当前v6生产v2守卫直接覆盖13B/14C及参数、集合、权威负例 (1.026875ms)\n✔ 历史总10权威固定v4夹具，9B/10C边界不随v5指针改变 (0.32725ms)\n✔ quiet-v6只允许三种摘要入口，拒绝review/probe和缺必需旗标 (0.401959ms)\n✔ quiet-v6真实子进程拒绝review启动且不建立预算或调用证据 (56.38825ms)\n✔ 正式代码前软线与最终安装/事实核验：失败不spawn、不占正式轮数 (30.570917ms)\n✔ 独立总8轮授权仅允许第七敏感扫描plan、第八完整code，旧7轮不可复用 (1.513708ms)\n✔ quiet-v7同label重试各配本次token，缺本次完成不得选择旧成功 (2132.627333ms)\n✔ quiet-v7证据选择直接覆盖错token、目标字段、时间、装载与退出信息 (729.556666ms)\n✔ quiet-v7缺值/旗标样式/重复/错误version在真实main拒绝，0产品spawn/预算/task变动 (1475.826833ms)\n✔ launch-v10重复token跨label拒绝，invalid token在预算/测量/spawn前拒绝 (887.988791ms)\n✔ quiet-v7缺本次证据时保留child 2/64，child0仍退出失败1 (409.861334ms)\n✔ v10生产stage分支：plan无测量；code测量通过才spawn，失败0 spawn/reserve/run (1620.23475ms)\n✖ precheck-v2默认测量链直测缺/未知stage与真实plan/code路由、投影、hash回读 (661.503834ms)\nℹ tests 17\nℹ suites 0\nℹ pass 16\nℹ fail 1\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 8118.125416\n\n✖ failing tests:\n\ntest at dist/test/test/unit/agent-access-task-launch.test.js:313:1\n✖ precheck-v2默认测量链直测缺/未知stage与真实plan/code路由、投影、hash回读 (661.503834ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  4 !== 2\n  \n      at TestContext.<anonymous> (file:///Users/chenzhenbo/Work/TriviumCode/dist/test/test/unit/agent-access-task-launch.test.js:339:12)\n      at async Test.run (node:internal/test_runner/test:1113:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',\n    actual: 4,\n    expected: 2,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n",
+  "stderr": "",
+  "vendor_cli_starts": 0
+}

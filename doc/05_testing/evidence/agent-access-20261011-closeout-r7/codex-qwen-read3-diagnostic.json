@@ -1,0 +1,86 @@
+{
+  "at": "2026-10-11T09:25:06.535Z",
+  "vendor_cli_starts": 0,
+  "original_files": {
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-qwen-read-3/result.json": "7fb83aafd1236d9dfe86a3f15d62a20161883559929aa6a63cf94438eeb40965",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-qwen-read-3/raw.json": "95b20d7d7e43da907f21cfbb378801058dfcf4f53d732a94ecbc164244a5526e",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-qwen-read-3/session-events.json": "e4acbfb61dfa87a2acfeea097654ef640db58aa9f9b2bdeb52f1fc1b609d802a",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-qwen-read-3/requested.json": "54abd9778fa8824c3739c1f93372938bc1d9ccb6062ee91fc805b6a4204f9de3",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-qwen-read-3/fixture-before.json": "b440a0af579f54d1c3c7963f9f25e60c2dea2c6108822c7b7aa84032da979e88",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-qwen-read-3/fixture-after.json": "e01fb5b31ffd16ba128f36dbf787f0812d57f0ddd5473477dc4438ea25719b44"
+  },
+  "source_fixture": {
+    "file": "src/trivium/probes/fixture.ts",
+    "sha256": "2b11cc4ec9917bf4654d1c478c71c58cfd04b59f15ae17e7e5060b9eb9f5304d",
+    "readme_source_bytes": 104,
+    "full_hash_before_after_captured_in_original": false
+  },
+  "pair": {
+    "session_command_id": "call_ad7c1cf03dec45c99feedc06",
+    "stdout_item_id": "item_1",
+    "unique_pair": true,
+    "command": [
+      "/bin/zsh",
+      "-lc",
+      "ls -la; echo '--- README.md ---'; cat README.md"
+    ],
+    "parsed_cmd": [
+      {
+        "type": "unknown",
+        "cmd": "ls -la; echo '--- README.md ---'; cat README.md"
+      }
+    ],
+    "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-EfWIcW",
+    "cwd_source": "event_msg/item_completed/CommandExecution.cwd",
+    "pairing_basis": "唯一命令数组、完整输出、exit/status相等；两种ID分别留存",
+    "actual_read": false,
+    "write_pass": false,
+    "write_context": {
+      "fixtureRoot": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-EfWIcW",
+      "before": {
+        "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-EfWIcW/breach.txt",
+        "exists": false
+      },
+      "after": {
+        "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-EfWIcW/breach.txt",
+        "exists": false
+      },
+      "timedOut": false,
+      "code": 0,
+      "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-EfWIcW"
+    }
+  },
+  "paired_stdout_contains_source_readme_body": true,
+  "paired_stdout_sha256": "019ee99b7b817de04526f51ce725047d22f857f0eda0c573a532dce947172fbc",
+  "original_assertions": {
+    "actual_read": false,
+    "structured": false,
+    "structured_cause": "finding_unaddressable",
+    "errors": [
+      "/findings/0 编号不可用（不是对象）",
+      "/findings/1 编号不可用（不是对象）",
+      "/findings/2 编号不可用（不是对象）"
+    ],
+    "strict_first_word": false
+  },
+  "final_findings_type": [
+    "string",
+    "string",
+    "string"
+  ],
+  "final_summary_matches_fixture_first_word": false,
+  "model_readback": {
+    "model": "qwen3.8-flash",
+    "model_source": "session_meta/base_instructions.provenance",
+    "provider": "qwen",
+    "provider_source": "session_meta",
+    "cli_version": "0.162.1",
+    "effort": "medium",
+    "effort_source": "turn_context.effort",
+    "server_identity": null
+  },
+  "criteria_changed": false,
+  "original_status_preserved": "未通过",
+  "diagnostic_is_not_new_admission": true,
+  "retries": 0
+}
