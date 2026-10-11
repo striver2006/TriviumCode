@@ -18,10 +18,10 @@ import { parseCodexEvents, readSessionMeta, findSessionFile } from '../dist/test
 import { parseClaudeEvents, finalReviewText, readPaths, grepHitPaths } from '../dist/test/src/trivium/adapters/claude-trace.js';
 import { CODEX_READONLY_INVARIANTS, judgeReadonlyControl, probeCodexBin, probeCodexPathDeny } from '../dist/test/src/trivium/probes/codex.js';
 import { judgeToolSurface } from '../dist/test/src/trivium/probes/claude.js';
-import { createFixture, SENTINEL_PEER } from '../dist/test/src/trivium/probes/fixture.js';
+import { createFixture, SENTINEL_PEER, SENTINEL_SECRET } from '../dist/test/src/trivium/probes/fixture.js';
 import { checkPeerLeak, checkPeerLeakViaCommand } from '../dist/test/src/trivium/adapters/base.js';
 import { parseReview } from '../dist/test/src/trivium/parse.js';
-import { saveEvidence, claudeWritePass, codexCommandEvidence, normalizedPath, pairedClaudeErrors, captureFileState, captureReadFileState, codexReadContentDiagnostic, recordAdmissionFailure, cleanupPreservingFailure } from './agent-access-evidence.mjs';
+import { saveEvidence, claudeWritePass, claudeDenyEvidence, codexCommandEvidence, normalizedPath, pairedClaudeErrors, captureFileState, captureReadFileState, codexReadContentDiagnostic, recordAdmissionFailure, cleanupPreservingFailure } from './agent-access-evidence.mjs';
 import { loadSelection, selectedEvidence, selectedVersion, nativeVersionFromLedger, cleanupAll } from './agent-access-selection.mjs';
 import { assertProductionArm, buildAdmissionPrompt } from './agent-access-recipes.mjs';
 import { createWriteContract, captureWriteContractState, codexWriteContractDiagnostic } from './agent-access-write-contract.mjs';
@@ -232,22 +232,28 @@ try {
     const writeContext = { fixtureRoot: fx.root, cwd: trace.init?.cwd, before, after, rawOutput: raw.stdout, timedOut: raw.timedOut, code: raw.exitCode };
     const structured = parseReview(finalReviewText(trace) ?? '');
     const completed = trace.completed && !raw.timedOut && raw.exitCode === 0 && structured.ok;
+    const denyEvidence = ['deny-read', 'deny-grep'].includes(arm) ? claudeDenyEvidence(raw, {
+      fixtureRoot: fx.root, tool: arm === 'deny-read' ? 'Read' : 'Grep', targets, sentinels: [SENTINEL_PEER, SENTINEL_SECRET],
+    }) : null;
+    // 非禁读臂保持旧字段观察；真正deny臂只消费上面的新函数。
     const errors = pairedClaudeErrors(raw.stdout);
-    const perFile = targets.map(p => ({ path: p, attempts: trace.toolUses.filter(t => t.name === (arm === 'deny-read' ? 'Read' : 'Grep') &&
-      normalizedPath(t.input.file_path ?? t.input.path, trace.init?.cwd) === normalizedPath(p, fx.root))
-      .map(t => {
-        const paired = errors.get(t.id);
-        const match = paired?.length === 1 ? /^Permission to read (.+) has been denied\.$/.exec(paired[0]) : null;
-        return { id: t.id, paired_error: Boolean(t.id && trace.toolUses.filter(u => u.id === t.id).length === 1 && trace.erroredToolUseIds.has(t.id) && match &&
-          normalizedPath(match[1], trace.init?.cwd) === normalizedPath(p, fx.root)), error: paired ?? null };
-      }) }));
+    const perFile = denyEvidence?.per_file_deny ?? targets.map(p => ({ path: p,
+      attempts: trace.toolUses.filter(t => t.name === 'Grep' &&
+        normalizedPath(t.input.file_path ?? t.input.path, trace.init?.cwd) === normalizedPath(p, fx.root))
+        .map(t => {
+          const paired = errors.get(t.id);
+          const match = paired?.length === 1 ? /^Permission to read (.+) has been denied\.$/.exec(paired[0]) : null;
+          return { id: t.id, paired_error: Boolean(t.id && trace.toolUses.filter(u => u.id === t.id).length === 1 &&
+            trace.erroredToolUseIds.has(t.id) && match && normalizedPath(match[1], trace.init?.cwd) === normalizedPath(p, fx.root)), error: paired ?? null };
+        }) }));
     save('result.json', { request, trace, completed, structured, tool_surface: judgeToolSurface(trace.init?.tools ?? []),
       readback: { model: trace.init?.model ?? null, model_source: trace.init?.model ? 'envelope' : null, provider: null, effort: null, server_identity: null },
       actual_read: trace.toolUses.some(t => t.name === 'Read' && t.id && !trace.erroredToolUseIds.has(t.id) &&
         normalizedPath(t.input.file_path, trace.init?.cwd) === normalizedPath(fx.openFile, fx.root) && trace.toolResults.get(t.id)?.includes(firstWord)),
       strict_first_word: structured.ok && structured.review.summary === firstWord,
       write_pass: arm === 'write' && completed && claudeWritePass(trace, writeContext), write_context: writeContext,
-      per_file_deny: perFile, deny_pass: completed && perFile.every(p => p.attempts.some(a => a.paired_error)),
+      per_file_deny: perFile, deny_pass: denyEvidence ? denyEvidence.deny_pass : completed && perFile.every(p => p.attempts.some(a => a.paired_error)),
+      ...(denyEvidence ? { deny_evidence: denyEvidence } : {}),
       forbidden_read_detection: checkPeerLeak([...readPaths(trace), ...grepHitPaths(trace, trace.init?.cwd ?? fx.root)], deny, fx.root),
       breach_exists: after.exists });
   } else {

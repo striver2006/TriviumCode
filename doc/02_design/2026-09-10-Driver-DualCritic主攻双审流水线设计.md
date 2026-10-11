@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.154
+> - **当前版本**：v1.3.155
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -277,6 +277,16 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 ### 3.5 探针必测清单（`trivium doctor` 的输出契约）
 
 <a id="agent-access-directory-contract"></a>
+
+**v1.3.155 · 第22B获批Claude精确拒绝取证**
+
+22B run20261011T142848Z三侧原件和11条裁决齐备，gate通过；Bob本轮普通审批委托已明确绑定r24定稿SHA及§2至§4敏感取证守卫范围。两个evidence未列consulted告警保留，不补写查阅声明、不改变guard/gate；原失效run不恢复。23C完整代码重审与新指纹准入尚待完成。
+
+`claudeDenyEvidence(raw, context)`仅接canonical真实Claude deny-read/deny-grep。生产`judgeDirectoryArm(..., 'files')`的true是必要非充分初筛，null/false不能通过；其严格whole Schema无repair/degraded、完成、目标覆盖和原始哨兵判据继续消费。脚本最终各路径腿统一`normalizedPath`：仅/private/var与/var等值，不继承生产normalizeAbs较宽的/private/tmp等值论域；helper不改。非空唯一targets、实际绝对cwd、合法JSONL、唯一init/成功终态及调用→结果→终态顺序须成立。每目标唯一实际工具调用、同ID唯一is_error=true结果、终态同ID同工具同精确目标唯一permission_denials共同配对，总数/覆盖、重复/悬空/错坐标/目标成功读取任一不符拒绝。允许文件成功读取不误杀，raw假同行/secret泄漏先拒绝。
+
+错误仅接受实录携精确路径的`Permission to read … has been denied.`及完整标签包裹的通用目录拒绝形态，不接受任意denied子串或内部异常。新目录文本实测来源为Read，Grep新形态模拟只验证函数，不能作为实际Grep准入。result保留deny_pass及per_file_deny.path/attempts/id/paired_error/error，详细事实伴随deny_evidence；旧result原字节、原false及summary消费者保持，不回算历史。其他Claude臂、Codex函数冻结切片/原写标准、生产probe/adapter、Schema、模型/effort/版本和全局配置不改。
+
+新/旧Read及旧Grep逐字原件回放绑定来源hash；独立变异权限/is_error/ID/工具/目标/重复/事件/Schema/cwd/泄漏与合法读取正例、canonical实际接线同批核验。当前准入673/689、审查283/288、正式22/23；认证缓存时间戳使local4c87→6cc3，四通过只属于旧采样，当前完整指纹12未测。两次串行全检、14/14、正常四目标重装及完整23C批准后才分批新取证。五Claude非flash写无新机制仍0、官方Claude待订阅。普通敏感plan批准不采用component/restricted判据替代，后者仍须Bob独立明确批准，M11前置未完成。
 
 **v1.3.154 · 第20C失败留痕补正**
 
@@ -3964,6 +3974,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.155** | 2026-10-11 | **第22B批准Claude精确拒绝取证守卫。** 生产严格初筛与脚本同ID/工具/路径三腿、实录错误白名单、较窄路径权威及兼容字段；原false保留，23C和新指纹准入待完成，原生产写标准不变。 |
 | **v1.3.154** | 2026-10-11 | **按r22获批失败可见与清理范围补正。** 主/保存/清理异常因果保留，初始化进清理链、阶段与采样字段补齐；20C有效但普通code拒绝，21C与新包准入待验证，原守卫/判据不改。 |
 | **v1.3.153** | 2026-10-11 | **第19B/r22批准写合同取证。** 仅Codex/write临时合同及单cat全文来源诊断，六型号同机制、assets指纹、原写判据不变；14旧接口回放改称历史，当前非目标不变。20C/新包实际准入待取证。 |
 | **v1.3.152** | 2026-10-11 | **第16B/r20正式批准的读取取证补强。** 调用前后README bytes/hash与非软链采样，顶层严格全文诊断不改变原判据；仅Codex/read去首词泄露和预设结论、十四非目标prompt固定回放；v7历史/v8当前授权直测与按需有界委托文档口径。17C及新包实际准入待执行，原写标准/未测不变。 |

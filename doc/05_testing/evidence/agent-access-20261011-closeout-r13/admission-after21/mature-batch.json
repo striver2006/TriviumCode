@@ -1,0 +1,452 @@
+{
+  "at": "2026-10-11T14:07:01.245Z",
+  "pool": "admission",
+  "before": 649,
+  "expected_starts": 33,
+  "hard_max_starts": 40,
+  "batch_stop": 689,
+  "pool_limit": 689,
+  "review": {
+    "used": 268,
+    "limit": 273
+  },
+  "formal": {
+    "used": 21,
+    "limit": 21,
+    "new_rounds": 0
+  },
+  "topic": "Agent双模式接入真实准入收口",
+  "approval": {
+    "at": "2026-10-11T13:43:19.397Z",
+    "stage": "code",
+    "run_id": "20261011T131721Z",
+    "decision": "approved",
+    "reason": "依据Bob本轮明确普通自动审批委托：21C三原件全文及五条裁决齐备，两驳回三暂缓、无接受待实施项；gate与await均0，40静态/442业务及10原件hash一致，审批业务摘要0。readonly_breach=true及全部盲区告警保留，唯一ls-la Bash同ID被明确禁用拒绝，未改guard或恢复旧失败。批准当前code用于已审最小真实补测，不采用任何准入判据替代，不宣称目标完成；Driver模型和会话来源未声明，session保持null。",
+    "session_id": null
+  },
+  "repo": "/Users/chenzhenbo/Work/TriviumCode",
+  "root": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/admission-after21-77337038",
+  "evidence_root": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3",
+  "budget_root": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget",
+  "source_stamp": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "773370388eec5129ce941be8292f09ad0bb3413f",
+    "dirty": false,
+    "inputs_sha256": "63cf4e39240c89da3656a7643896b7b3c605d5fac32058a8b51bd1896c2794d4",
+    "built_at": "2026-10-11T13:54:11.111Z"
+  },
+  "bundle_sha256": "cd94b249732e6eadf0f2cfee5bae07a3a8f4ae1acffdf25428a6c67bfc1bddd0",
+  "jobs": [
+    {
+      "name": "mature-kimi-version",
+      "args": [
+        "static",
+        "codex",
+        "version",
+        "23",
+        "kimi"
+      ],
+      "route_directory": "static-codex-version-23",
+      "starts": 2
+    },
+    {
+      "name": "mature-deepseek-version",
+      "args": [
+        "static",
+        "codex",
+        "version",
+        "24",
+        "deepseek"
+      ],
+      "route_directory": "static-codex-version-24",
+      "starts": 2
+    },
+    {
+      "name": "mature-claude-qwen-version",
+      "args": [
+        "static",
+        "qwen",
+        "version",
+        "6"
+      ],
+      "route_directory": "static-qwen-version-6",
+      "starts": 1
+    },
+    {
+      "name": "mature-codex-native-sol-read",
+      "args": [
+        "codex",
+        "native-sol",
+        "read",
+        "5"
+      ],
+      "route_directory": "codex-native-sol-read-5",
+      "starts": 2,
+      "selection": "selection-mature-native.json"
+    },
+    {
+      "name": "mature-codex-native-sol-write",
+      "args": [
+        "codex",
+        "native-sol",
+        "write",
+        "5"
+      ],
+      "route_directory": "codex-native-sol-write-5",
+      "starts": 2,
+      "selection": "selection-mature-native.json"
+    },
+    {
+      "name": "mature-codex-native-sol-deny",
+      "args": [
+        "codex",
+        "native-sol",
+        "deny",
+        "5"
+      ],
+      "route_directory": "codex-native-sol-deny-5",
+      "starts": 2,
+      "selection": "selection-mature-native.json"
+    },
+    {
+      "name": "mature-codex-native-astra-read",
+      "args": [
+        "codex",
+        "native-astra",
+        "read",
+        "5"
+      ],
+      "route_directory": "codex-native-astra-read-5",
+      "starts": 2,
+      "selection": "selection-mature-native.json"
+    },
+    {
+      "name": "mature-codex-native-astra-write",
+      "args": [
+        "codex",
+        "native-astra",
+        "write",
+        "5"
+      ],
+      "route_directory": "codex-native-astra-write-5",
+      "starts": 2,
+      "selection": "selection-mature-native.json"
+    },
+    {
+      "name": "mature-codex-native-astra-deny",
+      "args": [
+        "codex",
+        "native-astra",
+        "deny",
+        "5"
+      ],
+      "route_directory": "codex-native-astra-deny-5",
+      "starts": 2,
+      "selection": "selection-mature-native.json"
+    },
+    {
+      "name": "mature-codex-kimi-read",
+      "args": [
+        "codex",
+        "kimi",
+        "read",
+        "5"
+      ],
+      "route_directory": "codex-kimi-read-5",
+      "starts": 2,
+      "selection": "selection-mature-kimi.json"
+    },
+    {
+      "name": "mature-codex-kimi-write",
+      "args": [
+        "codex",
+        "kimi",
+        "write",
+        "5"
+      ],
+      "route_directory": "codex-kimi-write-5",
+      "starts": 2,
+      "selection": "selection-mature-kimi.json"
+    },
+    {
+      "name": "mature-codex-kimi-deny",
+      "args": [
+        "codex",
+        "kimi",
+        "deny",
+        "5"
+      ],
+      "route_directory": "codex-kimi-deny-5",
+      "starts": 2,
+      "selection": "selection-mature-kimi.json"
+    },
+    {
+      "name": "mature-codex-deepseek-read",
+      "args": [
+        "codex",
+        "deepseek",
+        "read",
+        "5"
+      ],
+      "route_directory": "codex-deepseek-read-5",
+      "starts": 2,
+      "selection": "selection-mature-deepseek.json"
+    },
+    {
+      "name": "mature-codex-deepseek-write",
+      "args": [
+        "codex",
+        "deepseek",
+        "write",
+        "5"
+      ],
+      "route_directory": "codex-deepseek-write-5",
+      "starts": 2,
+      "selection": "selection-mature-deepseek.json"
+    },
+    {
+      "name": "mature-codex-deepseek-deny",
+      "args": [
+        "codex",
+        "deepseek",
+        "deny",
+        "5"
+      ],
+      "route_directory": "codex-deepseek-deny-5",
+      "starts": 2,
+      "selection": "selection-mature-deepseek.json"
+    },
+    {
+      "name": "mature-claude-qwen-read",
+      "args": [
+        "claude",
+        "qwen",
+        "read",
+        "5"
+      ],
+      "route_directory": "claude-qwen-read-5",
+      "starts": 1,
+      "selection": "selection-mature-claude-qwen.json"
+    },
+    {
+      "name": "mature-claude-qwen-write",
+      "args": [
+        "claude",
+        "qwen",
+        "write",
+        "5"
+      ],
+      "route_directory": "claude-qwen-write-5",
+      "starts": 1,
+      "selection": "selection-mature-claude-qwen.json"
+    },
+    {
+      "name": "mature-claude-qwen-deny-read",
+      "args": [
+        "claude",
+        "qwen",
+        "deny-read",
+        "5"
+      ],
+      "route_directory": "claude-qwen-deny-read-5",
+      "starts": 1,
+      "selection": "selection-mature-claude-qwen.json"
+    },
+    {
+      "name": "mature-claude-qwen-deny-grep",
+      "args": [
+        "claude",
+        "qwen",
+        "deny-grep",
+        "5"
+      ],
+      "route_directory": "claude-qwen-deny-grep-5",
+      "starts": 1,
+      "selection": "selection-mature-claude-qwen.json"
+    }
+  ],
+  "scripts": {
+    "scripts/agent-access-closeout.mjs": "ddca1045fe82ed3d5d44da6dd54a0911725847400983456f5cea4c34c8ebaf9f",
+    "scripts/agent-access-recipes.mjs": "ac500b1d0e8dc3b1621b1526b6ac5176cd54741f022ed424da801cafb3fb7909",
+    "scripts/agent-access-evidence.mjs": "d2c1ba99ee6b3a3b51b6f7311de5be00503fbae1631215ccd6cccf4dc8e2fde2",
+    "scripts/agent-access-write-contract.mjs": "f3b8c373bfcb347cd57db9dd93cbe3f3936304ce542c0ba056c1582a879c0301",
+    "scripts/agent-access-selection.mjs": "a0ce239b1ec53ae322e99ae9637cea0759ee63ce987f34a80f119389e50751a5",
+    "scripts/agent-access-budget.cjs": "c70a39ad6c041d9bb5b2cf39d32927c7e3d936e94f7d3f82988db9af2b55bb9b",
+    "scripts/agent-access-budget-preload.cjs": "2b74abf72f7f67edb61879b58798761c6c53ade68ba92aa3dea07cb98b592b71",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v15.mjs": "231be18c70675ca96df2d5c485092fff7a82956a7d0ac69f0742a31f076855b1",
+    "doc/05_testing/evidence/agent-access-20261010-closeout-r2/probe.mjs": "d73d5a8c134daf4f5c9c3858865dd0b881e91388205112d93bee955708f0a2c9"
+  },
+  "dispatcher_sha256": "7ad36de94aaa0a8b408ded794ff06b17cde657819a37e82cbfa33611e46a238f",
+  "selection_script_sha256": "a00d23157917d5f1af10b4620a8446cf0e66e1b5df6754c9212986910c463e0a",
+  "configs": {
+    "shared": "9dd249afa2277bc53c76c75a032a9cbebc8db41cdf8fb54e8a6bb964d13c770f",
+    "local": "4c87cd3318dc95d836b0e810d0a08d23546e69a82093cbcf0e8db3928849a018",
+    "globals": {
+      ".codex/config.toml": "d3a23d34efb049b228814bf55699b89b2085a079b25a429886293e4e89c5d17e",
+      ".codex/auth.json": "89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5",
+      ".codex/hooks.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      ".claude/settings.json": "00c802290bb6300b39d66b67ab1dc8edf1c141817f23fd26b3d745ce65f3e715"
+    }
+  },
+  "rows": [
+    {
+      "agent": "codex",
+      "combination": "native-sol",
+      "expected_model": "gpt-6.1-sol",
+      "actual_model": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "variant": 5,
+      "arms": [
+        "read",
+        "write",
+        "deny"
+      ],
+      "selection": "selection-mature-native.json",
+      "gap": "当前最终完整指纹各首次能力；历史准入不追认",
+      "reusable": "当前native版本22",
+      "necessary_starts": 6
+    },
+    {
+      "agent": "codex",
+      "combination": "native-astra",
+      "expected_model": "gpt-6-astra",
+      "actual_model": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "variant": 5,
+      "arms": [
+        "read",
+        "write",
+        "deny"
+      ],
+      "selection": "selection-mature-native.json",
+      "gap": "当前最终完整指纹各首次能力；历史准入不追认",
+      "reusable": "当前native版本22",
+      "necessary_starts": 6
+    },
+    {
+      "agent": "codex",
+      "combination": "kimi",
+      "expected_model": "kimi-for-coding",
+      "actual_model": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "variant": 5,
+      "arms": [
+        "read",
+        "write",
+        "deny"
+      ],
+      "selection": "selection-mature-kimi.json",
+      "gap": "当前最终完整指纹各首次能力；历史准入不追认",
+      "reusable": "已审机制/同输入检查；本批重录精确版本",
+      "necessary_starts": 6
+    },
+    {
+      "agent": "codex",
+      "combination": "deepseek",
+      "expected_model": "deepseek-flash",
+      "actual_model": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "variant": 5,
+      "arms": [
+        "read",
+        "write",
+        "deny"
+      ],
+      "selection": "selection-mature-deepseek.json",
+      "gap": "当前最终完整指纹各首次能力；历史准入不追认",
+      "reusable": "已审机制/同输入检查；本批重录精确版本",
+      "necessary_starts": 6
+    },
+    {
+      "agent": "claude",
+      "combination": "qwen",
+      "expected_model": "qwen3.8-flash",
+      "actual_model": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "variant": 5,
+      "arms": [
+        "read",
+        "write",
+        "deny-read",
+        "deny-grep"
+      ],
+      "selection": "selection-mature-claude-qwen.json",
+      "gap": "当前最终完整指纹各首次能力；历史准入不追认",
+      "reusable": "已审机制/同输入检查；本批重录精确版本",
+      "necessary_starts": 4
+    }
+  ],
+  "automatic_retry": false,
+  "criteria_changed": false,
+  "goal_complete": false,
+  "counting": "预计33硬40累计689即停；版本失败超时wrapper/native均计数；无自动重试/正式新轮/判据变化。",
+  "version_jobs": [
+    {
+      "name": "mature-kimi-version",
+      "args": [
+        "static",
+        "codex",
+        "version",
+        "23",
+        "kimi"
+      ],
+      "route_directory": "static-codex-version-23",
+      "starts": 2
+    },
+    {
+      "name": "mature-deepseek-version",
+      "args": [
+        "static",
+        "codex",
+        "version",
+        "24",
+        "deepseek"
+      ],
+      "route_directory": "static-codex-version-24",
+      "starts": 2
+    },
+    {
+      "name": "mature-claude-qwen-version",
+      "args": [
+        "static",
+        "qwen",
+        "version",
+        "6"
+      ],
+      "route_directory": "static-qwen-version-6",
+      "starts": 1
+    }
+  ],
+  "dispatcher_derivation": {
+    "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/admission-after21-77337038/first-write.mjs",
+    "sha256": "bdd252a46e701e9c127a23e85a3667ff72a011830b90dadeeefa64bb7d35d66d",
+    "changes": [
+      "批manifest名称",
+      "标签",
+      "注释"
+    ],
+    "same_production_scripts": true
+  },
+  "plan_reference": ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r22-codex.md",
+  "plan_sha256": "d3ffd5ede1f9037ded3c9b0c50fbfdc1b0728e10ae53caed291d77279fa9e8ac",
+  "condition_write_result_sha256": "b818b44b4a48c67b34b6033e515e4bab690146abe5f04cfde46d640ae3ac3c6c",
+  "reuse_first_complete_combinations": [
+    "codex/qwen",
+    "codex/native-luna"
+  ],
+  "reuse_native_version": 22,
+  "new_versions": {
+    "kimi": 23,
+    "deepseek": 24,
+    "claude-qwen": 6
+  },
+  "excluded": {
+    "claude_nonflash_write": "五组合0，无新机制禁止提示重试",
+    "official_claude": "订阅待恢复未测"
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "agreed": [
+    "把接受泛化拒绝文本定性为取证守卫语义变更、要求先B批准且不先写业务实现，与设计文档v1.3.149及第3097行「未经用户另行明确审批不得改判」同句一致，这正是本焦点条款要求的形态",
+    "三腿独立证据（唯一实际调用/同ID唯一is_error/同ID同工具同精确路径权限记录）严于现canonical文本正则，且与judgeDirectoryArm、path-denied.jsonl实录证据链吻合，明拒「仅子串、仅模型自述、仅泛化文本单独通过」，属收紧非放松",
+    "对/var与/private/var只做关联不做因果断言、不换提示重试、不追认原false、新模型调用放到获批后另采，证据时效立场正确",
+    "回归清单覆盖独立变异、调用生产函数守接线、禁止复制实现自证、Read/Grep互不外推；同步拒绝component-scoped-evidence-v1等判据替代，22B/23C有界与24拒绝和README的委托记录一致",
+    "文档同步面列得宽（设计/ADR003/协议/SKILL与索引），且经检索确认skills/与src/无旧错误文本的其它副本，旧文本规则唯一代码副本确在closeout:240，计划的定位陈述属实（引用行号239差一不影响）"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r23-codex.md",
+    "scripts/agent-access-closeout.mjs",
+    "scripts/agent-access-closeout-summary.mjs",
+    "scripts/agent-access-evidence.mjs",
+    "scripts/agent-access-recipes.mjs",
+    "src/trivium/probes/claude-directory.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/base.ts",
+    "test/unit/agent-access-recovery.test.ts",
+    "test/unit/claude-directory.test.ts",
+    "test/unit/agent-access-budget.test.ts",
+    "test/fixtures/claude-events/path-denied.jsonl",
+    "test/fixtures/claude-events/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r13/README.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r13/post-round21-denial-evidence-plan-proposal.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r13/admission-after21/claude-qwen-read-denial-variant5-audit.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r13/admission-after21/routes/claude-qwen-deny-read-5/raw.json"
+  ],
+  "findings": [
+    {
+      "id": "CLAUDE-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §最小敏感整改/§验证与文档；scripts/agent-access-closeout.mjs:241-250；scripts/agent-access-closeout-summary.mjs:49-50,58-60",
+      "problem": "计划把Claude拒绝核验换成新取证函数的「逐目标事实、明确原因、总拒绝结论」，但未声明result.json里现有拒绝腿字段契约（deny_pass布尔、per_file_deny[].attempts[].paired_error）是否原名原形保留。下游scripts/agent-access-closeout-summary.mjs第49-50行直接读d.result.deny_pass来推导组合「通过/未通过」，第60行按缺失记「未测」。若实现把新语义写成新字段名或新形状，summary会把undefined当假：原本应通过的组合被静默降级为「未通过」，或反过来在重放旧run时语义混读，而这正是M11第12步准入矩阵的判据出口。",
+      "evidence": "读了scripts/agent-access-closeout.mjs:236-252（现有perFile/deny_pass形状与旧正则/^Permission to read (.+) has been denied\\.$/）与scripts/agent-access-closeout-summary.mjs:30-74（消费deny_pass并产出通过/未测/未通过与deny_boundary措辞）。计划§最小敏感整改只写「由canonical现有Claude分支调用，返回逐目标事实、明确原因和总拒绝结论」，未提字段兼容，也未把closeout-summary列入改动或核对范围。",
+      "suggestion": "在计划中明文钉住：新结论继续写入既有deny_pass/per_file_deny字段名与原形状（旧run归档result.json重放时语义不随代码改变），或把scripts/agent-access-closeout-summary.mjs列为同步改动的消费方并补其回归；同时把「旧归档run在新代码下的summary行为」写进验证清单。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §实际触发与定位（「当前四完整组合通过、八未测」）与§新证据与预算决策（「源码/包/assets变化不自动复用」）；doc/05_testing/evidence/agent-access-20261011-closeout-r13/README.md:3,9,19",
+      "problem": "组合状态基线过时且自相矛盾：四个「完整通过」的组合（Codex Sol/Luna/Astra/Qwen）在r13 README记录的22B正式预检后已不能这样声称——预检使三处auth cache checked_at变化、本机local配置指纹改变，README明确写「上文四完整组合通过是4c87采样；新完整指纹12组合未测」。而计划另一段自己规定「按完整适用指纹判断，源码/包/assets变化不自动复用」。两句话不可能同时为真；按现文批准会把「四通过」当成事实交给23C收口，后续要么被迫重跑四组合、要么在收口陈述里失实。",
+      "evidence": "读了plan r23第15行与第35-36行、doc/05_testing/evidence/agent-access-20261011-closeout-r13/README.md（第3行本机配置指纹4c87、第9行四组合通过、第19行「22B正式预检后…local变6cc388ff…新完整指纹12组合未测」）、admission-after21/claude-qwen-read-denial-variant5-audit.json（observed_comparison/production_shape_bytes_same，佐证指纹等值判断口径）。本侧无执行能力，未复跑任何臂。",
+      "suggestion": "22B裁决时要求把状态句改写为「以最新完整指纹采样时刻为准」的表述或直接采用README末段口径（新指纹下组合全未测/需重采），并写明四组合重采是否计入本批预算与轮数，避免审批后才发现要补启动。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §最小敏感整改（「实际cwd须…在已有normalizeAbs/normalizedPath范围相等。仅保留已存在的/var与/private/var归一，不增加/tmp祖先」）；src/trivium/adapters/base.ts:1887-1890；scripts/agent-access-evidence.mjs:12-16",
+      "problem": "对「已有归一化范围」的描述与两份既有实现都不完全一致：normalizeAbs把任意/private/前缀整段剥掉（/private/tmp→/tmp、/private/etc→/etc），normalizedPath只折/private/var→/var。计划把两者并列为同一个「已有范围」，又承诺「仅保留/var与/private/var归一」——若新函数经judgeDirectoryArm（内部用normalizeAbs）继承等值，/private/tmp折算是「保留已有」而非「不增加」，与字面承诺不符；若用normalizedPath做cwd等值，又与judge的cwdOk（normalizeAbs）在/private/tmp形输入上一严一松、结论可分叉。test/fixtures/claude-events/path-denied.jsonl正是init cwd=/private/tmp/…、泛化错误文本的已录制形状，回归变异「错cwd」腿无法据此唯一确定期望。",
+      "evidence": "读了src/trivium/adapters/base.ts:1887-1896、scripts/agent-access-evidence.mjs:12-16、src/trivium/probes/claude-directory.ts:55-58（cwdOk用normalizeAbs）、scripts/agent-access-closeout.mjs:236-243（现腿用normalizedPath）、test/fixtures/claude-events/path-denied.jsonl全文（/private/tmp形态与含tool_use_id的permission_denials实录）。",
+      "suggestion": "计划里按「每条等值腿用哪个helper、对/private/tmp形输入期望是什么」逐腿钉死，并把「两个helper既有折法不同」写进敏感整改的范围说明；如需与judge共用cwdOk则明说继承normalizeAbs的全/private/剥离，不改口称「仅/var」。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "scope-drift",
+      "location": "plan §最小敏感整改（「尽量消费现有生产judgeDirectoryArm…若共用会扩展其他臂的职责或无从准确判定，先裁决范围」）；src/trivium/probes/claude-directory.ts:43-87",
+      "problem": "敏感整改最核心的复用边界没有决：「尽量消费」既未说明委托方式（调用judge后以verdict===true作必要非充分前置，再叠同ID校验，还是逐项重derive判据），也没说明judge的null（未完成/不可信）如何映射为新函数「不得true且给明确原因」、kind参数取什么、相对/绝对targets按哪侧口径传入。其「先裁决范围」的条件（共用是否扩展其他臂职责）从代码看现已可判定：judgeDirectoryArm是纯只读函数，probe臂各自调用它，取证侧复用不改变probe行为——把它留成批后再裁，等于让Bob对未定形的守卫语义签敏感批准，也给实施者留下回头动probe/其他臂的口子（计划明令禁止的那种）。",
+      "evidence": "读了src/trivium/probes/claude-directory.ts:43-87（签名、verdict三值、kind/targets/permissionComplete逻辑）、scripts/agent-access-closeout.mjs:7-27（scripts经../dist/test/src/…消费生产编译产物是既有惯例，复用可行）、plan第17-19行原文。",
+      "suggestion": "在计划内直接定死复用合同：例如「新函数调用judgeDirectoryArm(raw, fx.root, tool, targets, sentinels, kind)，要求verdict===true作前置，null按原因降级为false并记明确原因，再对raw result事件叠同tool_use_id、唯一记录、单终态校验；probe侧任何行为不在本批改动面」，把这句作为敏感批准的判据之一提交22B。",
+      "confidence": "medium"
+    }
+  ],
+  "not_covered": [
+    "本侧无执行能力：未复跑judgeDirectoryArm或任何检查，audit中「生产回放true」「14/14」「两次串行check」均采信归档记录，未独立验证",
+    "台账数字（formal 21/21、准入673/689、review 268/273及硬上限）只对照了plan与r13 README自述，未读.trivium运行账本与20261010两个证据子树（后者为禁读/告警面）",
+    "未全文通读CLAUDE.md、AGENTS.md、README.md、doc/README.md、doc/01_requirements/README.md、doc/02_design/README.md与test/unit/agent-access-recovery.test.ts（仅按检索命中处核对），这些文档若另有拒绝规则的成句副本，未逐条核其副本面",
+    "计划同步清单点名的开发坑指南、手册/Quickstart、Runbook、验收剧本具体文件未逐一核实现文是否含旧错误形态规则，仅核了设计文档、skills/、src/、test/",
+    "~/.trivium/evidence…r3动态来源与r13 admission-after21/其余277件未展开读取；claude-trace.test.ts、claude-events.test.ts、agent-access-budget.test.ts全文未读",
+    "五Claude生产写缺口、七路线/Qwen pro等未满足项与目标完成度的关系仅按计划文本理解，未做需求侧独立核对"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "方向正确：三腿配对（实际调用/同ID唯一is_error/同ID同工具同路径权限记录）与生产judgeDirectoryArm及已录制fixture一致，且计划自觉把它标为取证守卫语义变更、先停等B批。最危险的一条：计划仍声称「当前四完整组合通过」，而同目录README的22B预检后采样记录（本机配置指纹变化）与之和计划自身「变化不自动复用」规则互相矛盾，基线须在22B钉实。其次：result.json拒绝腿字段契约（deny_pass/per_file_deny）未钉，closeout-summary静默消费它；归一化「仅保留/var」与两个现有helper的实际行为不符；judgeDirectoryArm复用边界被留成待裁，而它已可从代码现在判定。建议按下列4条修订后再给敏感批准。",
+  "verdict": "request-changes"
+}

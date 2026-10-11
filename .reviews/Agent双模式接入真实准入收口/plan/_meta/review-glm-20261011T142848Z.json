@@ -1,0 +1,80 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "按本轮镜头（边界与失败路径、幂等与一致性、验收可测性、运维约束）审查第22B/plan原稿r23。计划的事实基础全部核实无误：scripts/agent-access-closeout.mjs第239-242行确实只接受带路径的Permission-to-read旧文本，audit件证实新形态六目标均具备唯一Read调用、唯一同ID is_error结果、唯一带tool_use_id的permission_denials记录而原paired_error与deny_pass为false；claude-trace.ts第69行permissionDenials类型确实未声明tool_use_id；生产judgeDirectoryArm的denied判定（唯一调用+同ID is_error+唯一权限记录）本就不依赖错误文本，本次是把取证脚本向生产判据对齐而非放松，方向正确且audit的diagnostic-only回放已预演。修改的两份脚本均已在fingerprints()的assets枚举内，跨运行指纹闸门自动覆盖（我r10同类关切自动满足）。但落在审查焦点正中有一个major缺口：计划一面声明属取证守卫语义变更必须先B批准、不先写业务实现，一面又写获普通plan批准后即启动设计/ADR003同步、两次check、重建重装直至23C，且全文未定义B批准的可核验载体——既有v8授权以criteria_change_authorized=false把判据变更关在门外并被test/unit/agent-access-recovery.test.ts第187-188行锚定，若按后句字面在普通批准后即开工，敏感整改的明确审批恰可能被普通流程穿过。另有三处次要缺口（否定条件成功读取的论域未限定为禁读目标、canonical接线守卫手段未写明、归一函数normalizeAbs与normalizedPath双选未定且前者论域超出计划自述范围）。判据方向与证据链扎实，建议补齐审批载体与三处口径后批准。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "被审计划『最小敏感整改』末段（它属于取证守卫语义变更，故必须先B批准，不先写业务实现）与『验证与文档』首句（获普通plan批准后先同步设计及ADR003……重建重装……23C）；对照 doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v8.json 的 criteria_change_authorized=false 先例（test/unit/agent-access-recovery.test.ts 第187-188行锚定，且该授权文件的 delegation_exact_reply 为轮次委托原文）",
+      "problem": "全文对『明确审批』的定义自相矛盾且无可核验载体：第25行要求B批准先于业务实现，第31行却写获普通plan批准后即启动文档同步、两次串行check、重建重装直至23C完整三审，第39行又强调不把一般plan/code审批当判据替代批准——三处并存意味着B批准要么是本轮闸门审批本身（则『普通』二字与第39行矛盾）、要么是另一独立审批（则第31行的流程顺序绕过了它）。计划未写明新轮次授权文件是否携带criteria_change_authorized=true、也未写闸门审批记录如何显式指向并覆盖『最小敏感整改』一节。既有v8授权以criteria_change_authorized=false把判据变更关在门外并有测试锚定，若本轮按普通批准口径开工，取证守卫语义变更恰好落在焦点要防的缺口里，事后对账无法机读区分这次批准是否覆盖了语义变更。",
+      "evidence": "被审计划r23原文三处（第25、31、39行表述）；test/unit/agent-access-recovery.test.ts 第187-188行 assert.equal(auth.criteria_change_authorized, false) 与 delegation_exact_reply 断言；.reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r9-glm.md 对v8授权件同字段的核实记录（本侧历史审查件）",
+      "suggestion": "在计划中写死判据变更授权的载体与次序，二选一并落成可核验留痕：新轮次授权文件显式携带criteria_change_authorized=true且delegation_exact_reply逐字记录用户对本敏感整改的批准原文；或明确本轮plan闸门审批即构成该明确审批、审批留痕须指向『最小敏感整改』一节。同时统一措辞，删去『普通plan批准』的歧义表述，把实现与文档同步的起点严格后置于该授权落盘之后。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "被审计划『每目标必须』段的否定清单（缺任何腿、悬空或重复ID、错误target/tool、成功读取、超时/缺交付/非零退出/损坏事件均不得true）；对照 scripts/agent-access-closeout.mjs 第234行与第250行（completed仅要求structured.ok，deny_pass=completed且perFile全配对，现状并不禁止合法Read）",
+      "problem": "『成功读取不得true』的论域未限定为禁读目标。deny臂判定若按『轨迹存在任何成功Read即false』字面实现，模型任何合法读取行为（例如为交付结构化输出而读取允许文件）都会使整臂恒false，混淆『禁读目标被真实读取』与『存在合法读取』两种成因——在失败即停不换提示、一次首尝试消耗配额的纪律下，会把可通过的臂误判为机制失败并可能触发不必要的新轮提案。",
+      "evidence": "被审计划否定清单原文（未限定目标论域）；scripts/agent-access-closeout.mjs 第234行 completed=trace.completed且!raw.timedOut且raw.exitCode===0且structured.ok、第250行 deny_pass=completed且perFile.every，现状不含任何成功Read禁令；src/trivium/adapters/claude-trace.ts 第279-281行 successfulToolUses 已有按erroredToolUseIds区分成功/失败调用的口径可复用",
+      "suggestion": "在计划中钉死论域为『目标文件出现非is_error配对的成功读取（即逐目标成功腿）不得true』，并在变异矩阵写明该项针对目标文件，同时补一条『允许文件成功读取不影响deny结论』的正例用例。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "被审计划『验证与文档』段（测试要调用生产函数并守canonical接线，不能复制实现制造自证）；对照 scripts/agent-access-closeout.mjs 第30-35行顶层副作用（预算包装器守卫、loadCtx、读argv并直接执行主体）",
+      "problem": "『守canonical接线』的手段未写明。canonical脚本顶层即执行预算检查与配置加载、按argv直接运行取证主体，无法被单元测试静态导入；若测试只调用agent-access-evidence.mjs中的新函数而不守接线，closeout的Claude分支可能仍走旧perFile文本正则而全部测试照样绿，新判据形同未接入。",
+      "evidence": "scripts/agent-access-closeout.mjs 第30-35行（if (!globalThis[...]) throw、await loadCtx()、process.argv.slice(2)均在模块顶层）；test/unit/agent-access-recovery.test.ts 第31行对可导入纯函数库scripts/agent-access-recipes.mjs直接import测试的既有先例，以及该文件对顶层副作用脚本改用spawnSync测拒绝路径（第273-283行）的分层做法",
+      "suggestion": "明确接线守卫手段并纳入契约层：例如断言closeout.mjs源文本中deny臂调用新导出函数、且旧正则 Permission to read 不再出现于判定路径（项目已有registry-parity一类grep级契约测试纪律可循），或把deny臂判定收敛为可导入的纯函数后再接线测试。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "被审计划『每目标必须』段（实际cwd须与fixture真实root在已有normalizeAbs/normalizedPath范围相等。仅保留已存在的/var与/private/var归一，不增加/tmp祖先或任意软链别名）；对照 src/trivium/adapters/base.ts 第1887-1890行与 scripts/agent-access-evidence.mjs 第12-16行",
+      "problem": "两个既有归一函数论域不同：normalizeAbs对任意以/private/开头的路径剥前缀（含/private/tmp与/tmp等价），normalizedPath仅剥/private/var。计划同时点名两者、又声明仅保留var归一，新函数选型未定——若选normalizeAbs即静默引入/tmp等价、超出计划自身声明；若复用judgeDirectoryArm全判据（内部用normalizeAbs）再叠加scripts侧normalizedPath比对，同一判定内两套归一并存，后续维护者无从判断哪套是权威口径。",
+      "evidence": "src/trivium/adapters/base.ts 第1887-1890行 normalizeAbs 以 startsWith('/private/') 整段剥前缀；scripts/agent-access-evidence.mjs 第12-16行 normalizedPath 仅替换 /^\\/private\\/var(?=\\/|$)/ 为 /var；doc/05_testing/evidence/agent-access-20261011-closeout-r13/admission-after21/claude-qwen-read-denial-variant5-audit.json 中工具路径/private/var与目标/var并存的实测样本证明归一步骤真实参与配对",
+      "suggestion": "钉死新函数使用scripts侧normalizedPath（与closeout现有perFile口径一致）；如确需整段复用judgeDirectoryArm，则在计划中显式声明接受其normalizeAbs更宽论域的理由，不让两种归一在同一判定路径内混用。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "诊断三处事实全部核实：closeout.mjs第239-242行确实只接受携带路径的Permission-to-read旧文本；audit件证实新形态六目标均具备唯一Read调用、唯一同ID is_error结果与唯一带tool_use_id的permission_denials记录而原paired_error与deny_pass为false；claude-trace.ts第69行permissionDenials类型确实未声明tool_use_id，计划要求直接校验raw中ID而非依赖该类型是必要的",
+    "三腿结构化证据的方向正确且与生产同口径：src/trivium/probes/claude-directory.ts第61-72行judgeDirectoryArm的denied判定=唯一调用+同ID is_error+唯一权限记录，生产判据本就不依赖错误文本；本次是把取证脚本向生产判据对齐而非放松，旧文本形态不受CLI版本控制的问题被正确消除",
+    "回放先例已验证且边界自律：audit的existing_production_directory_replay verdict=true并标注kind=diagnostic-only、does_not_replace_original=true、criteria_changed=false，与新vendor_cli_starts=0、original_result_unchanged钉存hash一致",
+    "本次修改的scripts/agent-access-evidence.mjs与agent-access-closeout.mjs均已在closeout.mjs第89-92行fingerprints()的assets枚举内，跨运行指纹闸门自动覆盖本次改动，我r10同类关切（新模块须入assets枚举）自动满足",
+    "不修改生产适配器、trace类型、gate/hooks/Schema/CLI旗标与全局配置的边界划定正确；新函数在scripts侧独立解析raw校验tool_use_id避免动生产面",
+    "Read/Grep分测不以外推、五Claude未注册生产写工具不新增启动、失败即停不换提示、预算有界且事前发布预计与硬上限、原false不追认不改写——纪律延续且与closeout组合表及selection指纹闸门机制吻合",
+    "文档同步清单覆盖AGENTS.md改动同步表要求的设计文档与ADR003（doc/02_design/ADR_003_agent_access.md确实存在）、协议、手册、测试报告索引等面"
+  ],
+  "not_covered": [
+    "本侧只读无执行能力：未运行npm test/check、未复算任何sha256（audit references与函数体hash以工件与既有锚定测试互证采信）；judgeDirectoryArm回放verdict=true为工件记录，非本轮复算",
+    "未逐行读CLAUDE.md、README.md、doc各README、ADR_003正文、PROTOCOL协议文档与admission-after21目录README；其约束以任务书上下文与本侧r9/r10两轮既有审查基础采信",
+    "当前权威授权文件（21轮批次）的实际字段值未读，GLM-01中当前criteria_change_authorized取值以v8先例与计划文字为据属推理而非实测；该缺口需Driver以实际授权件回应",
+    "deny-grep臂新错误形态样本尚不存在，Grep工具在permission_denials中的记录形状以Read样本类推，需实现后按计划各一次实测确认",
+    "另一位审查员的任何产出与Driver对各轮的裁决件按背靠背约束未读、不猜测；.trivium运行目录、ledger与calls明细未读"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r23-codex.md",
+    "scripts/agent-access-closeout.mjs",
+    "scripts/agent-access-evidence.mjs",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/probes/claude-directory.ts",
+    "src/trivium/adapters/base.ts",
+    "test/unit/agent-access-recovery.test.ts",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r13/admission-after21/claude-qwen-read-denial-variant5-audit.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r13/admission-after21/routes/claude-qwen-deny-read-5/raw.json",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r10-glm.md",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r9-glm.md"
+  ]
+}

@@ -1,0 +1,581 @@
+{
+  "at": "2026-10-11T15:49:37.651Z",
+  "approval": {
+    "at": "2026-10-11T15:45:53.758Z",
+    "stage": "code",
+    "run_id": "20261011T152631Z",
+    "decision": "approved",
+    "reason": "依据Bob本轮明确委托：中途遇到需要审批的，根据你的建议自动审批。Driver建议批准run20261011T152631Z的完整code；三侧原件全文已读，无blocker/major，两项非阻断暂缓已逐条记录限制与触发条件，接受待实施0；gate通过，31静态/552业务/10原审查工件hash未变，readonly_breach=false，subject/tree无漂移，审批停点业务改动0。裁决r12-response-codex SHA f4b47c2a42fa7a63edeb4986762ab3259b183370a93afdff013647ed3424b165，获批计划r24 SHA 1c7c4ffff68bff0644f2f156e4afcce064e0cfb40e4afcfe532790934130cee7。审批由Driver按用户委托执行，不声明Bob亲自操作，未声明会话null。GLM consulted_unverified、Gemini额外字段剥离、dirty安装和路径级deny边界保留。只批准本轮code，不授权准入判据变化、不采用component/restricted替代、不追认旧false或旧通过，当前12组合完整未测，M11前置未完成。",
+    "session_id": null
+  },
+  "run_id": "20261011T152631Z",
+  "original_review_artifacts": [
+    {
+      "path": "Agent双模式接入真实准入收口/code/_meta/changes-20261011T152631Z.diff",
+      "sha256": "c7daf8dfbf7e1bdd8cc3007b6547548a92d7d24af2d4c76c54afc795f8a6a541"
+    },
+    {
+      "path": "Agent双模式接入真实准入收口/code/_meta/brief-claude-20261011T152631Z.md",
+      "sha256": "90578eb33c53724d9f9f721f82d30a66406dbe20eda5dfcf7582d8565828759f"
+    },
+    {
+      "path": "Agent双模式接入真实准入收口/code/_meta/brief-gemini-20261011T152631Z.md",
+      "sha256": "7b6425cbd355e799bf038fb9e4d3a5dfb9f5d76e90dc61466beab20a56b54591"
+    },
+    {
+      "path": "Agent双模式接入真实准入收口/code/_meta/brief-glm-20261011T152631Z.md",
+      "sha256": "73b428187618d4eee9d7517920f1e5467560f75982855cded4173db8b6521103"
+    },
+    {
+      "path": "Agent双模式接入真实准入收口/code/_meta/review-claude-20261011T152631Z.json",
+      "sha256": "8036a957d5cbf66c698808d2ed1758642c962c1826f7e617102d8a5c804afa9d"
+    },
+    {
+      "path": "Agent双模式接入真实准入收口/code/_meta/review-gemini-20261011T152631Z.json",
+      "sha256": "d778b644fd000b387b8e6c8c9cf1901e5381110015ec3e5002b300b651fbe8e6"
+    },
+    {
+      "path": "Agent双模式接入真实准入收口/code/_meta/review-glm-20261011T152631Z.json",
+      "sha256": "8b8a3d1e0479a9cf3cd78f282cf1913e3f0a489785ab50a5029204b777529415"
+    },
+    {
+      "path": "Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r12-claude.md",
+      "sha256": "84d271d500311294fc90e3d60bf53223a30b36797ebf2f5576189e77eac4fea7"
+    },
+    {
+      "path": "Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r12-gemini.md",
+      "sha256": "14f5beca1c7cc32753a7445252585ed85128fd02b346d39d28fd5e0b541965c2"
+    },
+    {
+      "path": "Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r12-glm.md",
+      "sha256": "0db848b22c93da33f17d2a6eb1544f6a8f0d630006471627b98fbeb6eb665e44"
+    }
+  ],
+  "frozen": {
+    "static": 31,
+    "business": 552,
+    "all_equal_before_post_approval_status_update": true
+  },
+  "source_stamp": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "773370388eec5129ce941be8292f09ad0bb3413f",
+    "dirty": true,
+    "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+    "built_at": "2026-10-11T15:49:37.650Z"
+  },
+  "bundle_sha256": "28f16e946f1b6128a7f4b1e26aae1ff8c58824f02311a9ccf87ad70dd5d765eb",
+  "local_config_sha256": "496eed89fe1daf113196ea7a304831e47740432d3b9437f5850e56a1877249a7",
+  "budgets": {
+    "admission": {
+      "used": 673,
+      "completed": 673,
+      "limit": 689
+    },
+    "review": {
+      "used": 298,
+      "completed": 298,
+      "limit": 303
+    }
+  },
+  "formal": {
+    "used": 23,
+    "limit": 23,
+    "next_refused": 24
+  },
+  "findings": {
+    "accepted": 0,
+    "deferred": 2,
+    "criteria_changed": false
+  },
+  "historical_results": [
+    {
+      "label": "read-path",
+      "relative": "historical-denial-results/read-path-result.json",
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/claude-qwen-deny-read-4/result.json",
+      "sha256": "af9bd735f9aefdb7f5d759605da2a21537dcea156a715dff7e1775663a3498d1",
+      "original_deny_pass": true,
+      "original_not_recomputed": true,
+      "post_review_copy_not_reviewed_in_23C": true
+    },
+    {
+      "label": "grep-path",
+      "relative": "historical-denial-results/grep-path-result.json",
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/claude-qwen-deny-grep-4/result.json",
+      "sha256": "63bfd5d4efb69b6138e865e5fffd55ebec0fb24eb77667f4e361cf8dac79b5c1",
+      "original_deny_pass": true,
+      "original_not_recomputed": true,
+      "post_review_copy_not_reviewed_in_23C": true
+    },
+    {
+      "label": "read-directory",
+      "relative": "historical-denial-results/read-directory-result.json",
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/claude-qwen-deny-read-5/result.json",
+      "sha256": "67a125cf4d02eaf114ab07d35968f9d4d843bc9bb72cccf9353af31023716e76",
+      "original_deny_pass": false,
+      "original_not_recomputed": true,
+      "post_review_copy_not_reviewed_in_23C": true
+    }
+  ],
+  "copies": [
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/driver-code23-disposition.mjs",
+      "relative": "code23/driver-code23-disposition.mjs",
+      "bytes": 7735,
+      "sha256": "40de12b8a912c495429c3e9094892ec2ad35d88b71293ad75cfeca3684ec7e1c"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/code23-disposition-origin.json",
+      "relative": "code23/code23-disposition-origin.json",
+      "bytes": 3352,
+      "sha256": "e5fbff5f76a992307b6ff2efd09a54cfa6189fa11654c68ec373b89266e87092"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-await-e44ddb3d-978b-453b-9868-5b6f2ffc141e-completed.json",
+      "relative": "code23/calls/r27-code23-await-e44ddb3d-978b-453b-9868-5b6f2ffc141e-completed.json",
+      "bytes": 4205,
+      "sha256": "d0901364e3e26bfb2e39e1dc6a91644ba3d662b7e729cf112495c9a21fe4654c"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-await-e44ddb3d-978b-453b-9868-5b6f2ffc141e-requested.json",
+      "relative": "code23/calls/r27-code23-await-e44ddb3d-978b-453b-9868-5b6f2ffc141e-requested.json",
+      "bytes": 2227,
+      "sha256": "786ab366b58f2bfc2e375ee2e0c229e34a40e7aed45bf047d9522cb8c13e20ef"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-delegated-approve-4d67cd4a-eb6f-40da-b6f7-366a0959dcbd-completed.json",
+      "relative": "code23/calls/r27-code23-delegated-approve-4d67cd4a-eb6f-40da-b6f7-366a0959dcbd-completed.json",
+      "bytes": 4188,
+      "sha256": "4f0688e6ede76aea362063522cf101c3b1452716fa2467e4f5fe84ff36660dc0"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-delegated-approve-4d67cd4a-eb6f-40da-b6f7-366a0959dcbd-requested.json",
+      "relative": "code23/calls/r27-code23-delegated-approve-4d67cd4a-eb6f-40da-b6f7-366a0959dcbd-requested.json",
+      "bytes": 2231,
+      "sha256": "8d36e66cbbb08180c4e14009f1e47a6ba52997e678d7cb1c7797ad89a839a6d5"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-gate-9829c548-be6f-4fde-a5f6-8c837231f977-completed.json",
+      "relative": "code23/calls/r27-code23-gate-9829c548-be6f-4fde-a5f6-8c837231f977-completed.json",
+      "bytes": 2949,
+      "sha256": "d13eac0c60e9148fbb6652cd85064051dd7e7cb33fd7bf709122fb602c8b129a"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-gate-9829c548-be6f-4fde-a5f6-8c837231f977-requested.json",
+      "relative": "code23/calls/r27-code23-gate-9829c548-be6f-4fde-a5f6-8c837231f977-requested.json",
+      "bytes": 2217,
+      "sha256": "3d50e17e51722317115ab6704b082b952eac232010009405cdc4716361a2c0f7"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-preflight-7065d3b2-876b-4fc4-9750-5670bd6cfdc0-completed.json",
+      "relative": "code23/calls/r27-code23-preflight-7065d3b2-876b-4fc4-9750-5670bd6cfdc0-completed.json",
+      "bytes": 5608,
+      "sha256": "72a903e5164a5026c1957966be6588e08315f394a942fe8e90b635e8ffe393cd"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-preflight-7065d3b2-876b-4fc4-9750-5670bd6cfdc0-requested.json",
+      "relative": "code23/calls/r27-code23-preflight-7065d3b2-876b-4fc4-9750-5670bd6cfdc0-requested.json",
+      "bytes": 2225,
+      "sha256": "73496cd491829bff0f07445dbc2ef0408a33e804a6034e37a5cf8720bdea1f57"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-resolve-3b845db4-5c96-45dd-8849-362df4fbb614-completed.json",
+      "relative": "code23/calls/r27-code23-resolve-3b845db4-5c96-45dd-8849-362df4fbb614-completed.json",
+      "bytes": 3968,
+      "sha256": "5e4a5045fdb62010b15f183bcf0adbd06085217c510c9e40af949aa99b6a6b1c"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-resolve-3b845db4-5c96-45dd-8849-362df4fbb614-requested.json",
+      "relative": "code23/calls/r27-code23-resolve-3b845db4-5c96-45dd-8849-362df4fbb614-requested.json",
+      "bytes": 2279,
+      "sha256": "8d35f6db2745f6e6fcd2796e3aa88ce5d18fa18953b97bce9437b421884dd318"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-start-7782b43b-a086-400b-98c7-7db7ddacb6da-start-measurement.json",
+      "relative": "code23/calls/r27-code23-start-7782b43b-a086-400b-98c7-7db7ddacb6da-start-measurement.json",
+      "bytes": 1196,
+      "sha256": "a1d7e99029959984ca5d80d2d9ef620da949c23f2ccb230bb5cb1cbbb5fabbfb"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-start-bec0c710-a22d-479c-a5b0-b9fc46050486-completed.json",
+      "relative": "code23/calls/r27-code23-start-bec0c710-a22d-479c-a5b0-b9fc46050486-completed.json",
+      "bytes": 3199,
+      "sha256": "5ae96449e9c1517f96601a0386dc1d28ae044f0bf84c5af8a8a3166ccc8e6708"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-start-bec0c710-a22d-479c-a5b0-b9fc46050486-requested.json",
+      "relative": "code23/calls/r27-code23-start-bec0c710-a22d-479c-a5b0-b9fc46050486-requested.json",
+      "bytes": 2312,
+      "sha256": "38c1d91880fa893a12b2df58c2b94b36af08551b1dbd2d3f3357c90be0811a78"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status01-c22f82a9-9dd8-4018-a686-9af0eb7dc29a-completed.json",
+      "relative": "code23/calls/r27-code23-status01-c22f82a9-9dd8-4018-a686-9af0eb7dc29a-completed.json",
+      "bytes": 5238,
+      "sha256": "1a32a03b0648d97fbab56f20cf287f625830f9ba0090c04776c89eabb1817df1"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status01-c22f82a9-9dd8-4018-a686-9af0eb7dc29a-requested.json",
+      "relative": "code23/calls/r27-code23-status01-c22f82a9-9dd8-4018-a686-9af0eb7dc29a-requested.json",
+      "bytes": 2192,
+      "sha256": "593bb301e7a49f9f2332f7c85d0b6653db71385b027260a0051d84f4ae827cab"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status02-507dadb5-5d84-4eec-8d74-243ddb1b00cd-completed.json",
+      "relative": "code23/calls/r27-code23-status02-507dadb5-5d84-4eec-8d74-243ddb1b00cd-completed.json",
+      "bytes": 5244,
+      "sha256": "5d6685ce6100c2d619ea5b400a5fecbf08f88bfa1d62f39a809c70c60696f41d"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status02-507dadb5-5d84-4eec-8d74-243ddb1b00cd-requested.json",
+      "relative": "code23/calls/r27-code23-status02-507dadb5-5d84-4eec-8d74-243ddb1b00cd-requested.json",
+      "bytes": 2192,
+      "sha256": "1525815ca9ff29a4da5f17916ee4faa02430301c6712ac9db7d5d223f43c7651"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status03-68ab0f84-abb2-4224-8495-1db89729c0c4-completed.json",
+      "relative": "code23/calls/r27-code23-status03-68ab0f84-abb2-4224-8495-1db89729c0c4-completed.json",
+      "bytes": 5244,
+      "sha256": "157d9230d8c6d69b603b3aecfbe4201bdcc3689b77adf3a17bab4af3ceb342cb"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status03-68ab0f84-abb2-4224-8495-1db89729c0c4-requested.json",
+      "relative": "code23/calls/r27-code23-status03-68ab0f84-abb2-4224-8495-1db89729c0c4-requested.json",
+      "bytes": 2192,
+      "sha256": "f98e85a0dc98b464b27767fbc94d4ba3de0925cbbebc51a9698ce779e1cc14d1"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status04-a1676f7a-7d89-4aea-b145-c940514bed66-completed.json",
+      "relative": "code23/calls/r27-code23-status04-a1676f7a-7d89-4aea-b145-c940514bed66-completed.json",
+      "bytes": 4898,
+      "sha256": "c2859f3a98ee96ae449f653a03a8973fe734d59fc8031fefdddad08b7147d23c"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status04-a1676f7a-7d89-4aea-b145-c940514bed66-requested.json",
+      "relative": "code23/calls/r27-code23-status04-a1676f7a-7d89-4aea-b145-c940514bed66-requested.json",
+      "bytes": 2192,
+      "sha256": "5d482ec1ad170defca31c57857535bc2221597376a12abbe6c62ce0c3e7cffdb"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status05-f610ebb5-ba15-4d09-8b56-42b1312c73be-completed.json",
+      "relative": "code23/calls/r27-code23-status05-f610ebb5-ba15-4d09-8b56-42b1312c73be-completed.json",
+      "bytes": 4899,
+      "sha256": "669bbebd2b4131ad3b4500b80ee1c37aea9187e5664998a0f5a0f42849a8344f"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status05-f610ebb5-ba15-4d09-8b56-42b1312c73be-requested.json",
+      "relative": "code23/calls/r27-code23-status05-f610ebb5-ba15-4d09-8b56-42b1312c73be-requested.json",
+      "bytes": 2192,
+      "sha256": "a21ca9410de6074fbaf7f2d05cc79efdc1c4e410a48221e99521d9d945984950"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status06-095faf86-bed6-4d6d-b84a-87dfcfee86cf-completed.json",
+      "relative": "code23/calls/r27-code23-status06-095faf86-bed6-4d6d-b84a-87dfcfee86cf-completed.json",
+      "bytes": 4901,
+      "sha256": "a18353aaa9addaace16d55ebdb5051b0d37a4c3abad848fe78e6d486dc5f5aed"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status06-095faf86-bed6-4d6d-b84a-87dfcfee86cf-requested.json",
+      "relative": "code23/calls/r27-code23-status06-095faf86-bed6-4d6d-b84a-87dfcfee86cf-requested.json",
+      "bytes": 2192,
+      "sha256": "ae0801dd40cac0bdafb60eeb1c05b1c130e04b972240c610d35adad92e05ea0b"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status07-ac03875a-4ee9-4c81-a1fb-b2ba8c6bdc47-completed.json",
+      "relative": "code23/calls/r27-code23-status07-ac03875a-4ee9-4c81-a1fb-b2ba8c6bdc47-completed.json",
+      "bytes": 4901,
+      "sha256": "512e673c38becff405f2a6e8b1a817396441f3e57068049406826c540351f120"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status07-ac03875a-4ee9-4c81-a1fb-b2ba8c6bdc47-requested.json",
+      "relative": "code23/calls/r27-code23-status07-ac03875a-4ee9-4c81-a1fb-b2ba8c6bdc47-requested.json",
+      "bytes": 2192,
+      "sha256": "cea857296767b571fa61881fb681fa78868a4d33ec9dbe73bda69b1092aa5b0d"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status08-851444bb-7882-4016-aca4-5b7cd837e083-completed.json",
+      "relative": "code23/calls/r27-code23-status08-851444bb-7882-4016-aca4-5b7cd837e083-completed.json",
+      "bytes": 4901,
+      "sha256": "f06740029590914539ead4ea2e2e48abd649dfad2b7cfb57db5888a388448cbf"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status08-851444bb-7882-4016-aca4-5b7cd837e083-requested.json",
+      "relative": "code23/calls/r27-code23-status08-851444bb-7882-4016-aca4-5b7cd837e083-requested.json",
+      "bytes": 2192,
+      "sha256": "223ce3fb9141ff905e819ab33116d382b067e85102e6e359b8a7df5c87ef09ec"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status09-774b95f8-c8e1-4117-9d8a-db5d0ccb2a73-completed.json",
+      "relative": "code23/calls/r27-code23-status09-774b95f8-c8e1-4117-9d8a-db5d0ccb2a73-completed.json",
+      "bytes": 5457,
+      "sha256": "c7809af4c37172dcc7a0ae55207415f2d3fa4de23ddc8550dedf475e1039a07c"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-status09-774b95f8-c8e1-4117-9d8a-db5d0ccb2a73-requested.json",
+      "relative": "code23/calls/r27-code23-status09-774b95f8-c8e1-4117-9d8a-db5d0ccb2a73-requested.json",
+      "bytes": 2192,
+      "sha256": "880792b1020ff0256c8ce14fe616c2768b89245def22b5a7939b95412e419f1c"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-wait01-ff308433-eb19-490b-a597-ffafa92abf3e-completed.json",
+      "relative": "code23/calls/r27-code23-wait01-ff308433-eb19-490b-a597-ffafa92abf3e-completed.json",
+      "bytes": 3947,
+      "sha256": "f7ac5fe04df775f0b8f35b62f4227821fff59f8649d8423e50d700770db3cbfa"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-wait01-ff308433-eb19-490b-a597-ffafa92abf3e-requested.json",
+      "relative": "code23/calls/r27-code23-wait01-ff308433-eb19-490b-a597-ffafa92abf3e-requested.json",
+      "bytes": 2205,
+      "sha256": "990682957081f8426d56478e93ef56ea3aa2343bca591a69311fce307b432403"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-wait02-c2ece0eb-e99a-41dd-89ac-784961391e6c-completed.json",
+      "relative": "code23/calls/r27-code23-wait02-c2ece0eb-e99a-41dd-89ac-784961391e6c-completed.json",
+      "bytes": 3950,
+      "sha256": "81e654aca738dd791df7aa522ebccfae8caa44436221512228ed89b8d17f610a"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-wait02-c2ece0eb-e99a-41dd-89ac-784961391e6c-requested.json",
+      "relative": "code23/calls/r27-code23-wait02-c2ece0eb-e99a-41dd-89ac-784961391e6c-requested.json",
+      "bytes": 2205,
+      "sha256": "dc79119b91e8481817da59713ab6eaf3dc6ad9618e4eb174b286f8434c722f36"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-wait03-a41aeab3-1a76-437b-b6b2-ec413479bde9-completed.json",
+      "relative": "code23/calls/r27-code23-wait03-a41aeab3-1a76-437b-b6b2-ec413479bde9-completed.json",
+      "bytes": 3792,
+      "sha256": "68795c51565f361cf2c5915c8dbed0299dcb926f09c138909478b5562c2d39fd"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-wait03-a41aeab3-1a76-437b-b6b2-ec413479bde9-requested.json",
+      "relative": "code23/calls/r27-code23-wait03-a41aeab3-1a76-437b-b6b2-ec413479bde9-requested.json",
+      "bytes": 2205,
+      "sha256": "828428a6a216e1dc0e2eb26207e329ed2288fe07760df4eb0e9cd5e25e6edd6a"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-wait04-c6dcbd2d-6c89-4fd1-8892-fd5639cb299a-completed.json",
+      "relative": "code23/calls/r27-code23-wait04-c6dcbd2d-6c89-4fd1-8892-fd5639cb299a-completed.json",
+      "bytes": 3794,
+      "sha256": "5240363ade4202af56d3b25740507567c98a565d7f0841f5d7810ea9721ca600"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-wait04-c6dcbd2d-6c89-4fd1-8892-fd5639cb299a-requested.json",
+      "relative": "code23/calls/r27-code23-wait04-c6dcbd2d-6c89-4fd1-8892-fd5639cb299a-requested.json",
+      "bytes": 2205,
+      "sha256": "fcfe5bcff831bc1a22ffcf9e4d185d9c811a9b57205f8230146cbbe5a628c257"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-wait05-c7f0b8a9-fd3b-4610-961d-604daacfa439-completed.json",
+      "relative": "code23/calls/r27-code23-wait05-c7f0b8a9-fd3b-4610-961d-604daacfa439-completed.json",
+      "bytes": 4443,
+      "sha256": "1404e766d3742091eea20b220cd6a91c5011abf9bd9f4dedb00bce22d5f8160b"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r27-code23-wait05-c7f0b8a9-fd3b-4610-961d-604daacfa439-requested.json",
+      "relative": "code23/calls/r27-code23-wait05-c7f0b8a9-fd3b-4610-961d-604daacfa439-requested.json",
+      "bytes": 2205,
+      "sha256": "2b558bf453db43cc125708de9ff677d249b17dba086c8de1971e176a1d764671"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/claude-qwen-deny-read-4/result.json",
+      "relative": "historical-denial-results/read-path-result.json",
+      "bytes": 262368,
+      "sha256": "af9bd735f9aefdb7f5d759605da2a21537dcea156a715dff7e1775663a3498d1"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/claude-qwen-deny-grep-4/result.json",
+      "relative": "historical-denial-results/grep-path-result.json",
+      "bytes": 189226,
+      "sha256": "63bfd5d4efb69b6138e865e5fffd55ebec0fb24eb77667f4e361cf8dac79b5c1"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/claude-qwen-deny-read-5/result.json",
+      "relative": "historical-denial-results/read-directory-result.json",
+      "bytes": 224971,
+      "sha256": "67a125cf4d02eaf114ab07d35968f9d4d843bc9bb72cccf9353af31023716e76"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0284.json",
+      "relative": "code23/ledger/launch-0284.json",
+      "bytes": 1120,
+      "sha256": "3a1cdf35e037451ac468c029f4802da2065cf853437347290c6be6fbc9d914ba"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0285.json",
+      "relative": "code23/ledger/launch-0285.json",
+      "bytes": 1111,
+      "sha256": "96bff96b76242cb1d5d04a3eb70728f0e71ad8c635bd3f0ca60408dad37a8410"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0286.json",
+      "relative": "code23/ledger/launch-0286.json",
+      "bytes": 1223,
+      "sha256": "113ac81d6d6e40c1aa2f574bdbc26d9d0cdce3e429ab8eab82fe9fe79eb47691"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0287.json",
+      "relative": "code23/ledger/launch-0287.json",
+      "bytes": 1118,
+      "sha256": "5ff3c68d71b40395e092d1ff418465b48a65081aa00f5f84f58fe0e14fd75376"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0288.json",
+      "relative": "code23/ledger/launch-0288.json",
+      "bytes": 1129,
+      "sha256": "f03461bbcb7e8c185e57134884a715b2e493ba1b3d9fc3192f9e590ebc7a25f8"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0289.json",
+      "relative": "code23/ledger/launch-0289.json",
+      "bytes": 1138,
+      "sha256": "bdab6002327b5bd32b6e511e9cb6666c72cc90807fd1b1f1c551fb9c9a767cf5"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0290.json",
+      "relative": "code23/ledger/launch-0290.json",
+      "bytes": 1144,
+      "sha256": "3f96e6a5d6dd30debcc261aa3b40776400dcf81753bcdd4f7299646f7d050a24"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0291.json",
+      "relative": "code23/ledger/launch-0291.json",
+      "bytes": 1136,
+      "sha256": "61c8b8077eceb4c590b04ad4725cff69624a9bb2b299ff71043d3ee823c0c1f7"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0292.json",
+      "relative": "code23/ledger/launch-0292.json",
+      "bytes": 1149,
+      "sha256": "585e9d327b3432aa17b7815a3afbcdeacc9673bb759aa22fc9d244e4afb44235"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0293.json",
+      "relative": "code23/ledger/launch-0293.json",
+      "bytes": 1149,
+      "sha256": "2f2f52801f47899444c2f283a9407e19384d36e72ffeff263f4f574e1536fb2e"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0294.json",
+      "relative": "code23/ledger/launch-0294.json",
+      "bytes": 1136,
+      "sha256": "e3f4e86c8d3d57db3df30582c3154978ec28a4033f784fc99fd4e4f9ab160a71"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0295.json",
+      "relative": "code23/ledger/launch-0295.json",
+      "bytes": 1128,
+      "sha256": "ce60a88a6b184ceca47b63e8f6782fce27fec95fbd22dbc157621acfb95f4368"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0296.json",
+      "relative": "code23/ledger/launch-0296.json",
+      "bytes": 1130,
+      "sha256": "d3c42095a945e882267958841772fbbb8a27f8122e499e68025a84d3c5939212"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0297.json",
+      "relative": "code23/ledger/launch-0297.json",
+      "bytes": 1141,
+      "sha256": "bf88a460a0244a657ae2f16db256b6c987f6eab16071b01efbf9da027171a2f7"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/launch-0298.json",
+      "relative": "code23/ledger/launch-0298.json",
+      "bytes": 1141,
+      "sha256": "ffe01d7af1f43674ea79cc33215bfbadddaafed2182fd370b50e5529f792c177"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0284.json",
+      "relative": "code23/ledger/reserved-0284.json",
+      "bytes": 986,
+      "sha256": "e33c3265df40a6a2376e2c1e43532dfb2d4d586a73b905e963e44cebdc2fec75"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0285.json",
+      "relative": "code23/ledger/reserved-0285.json",
+      "bytes": 977,
+      "sha256": "ad94869adaf9ffc12e5152f703b9531bd2a7e0397701bf73373c7b06791dedf1"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0286.json",
+      "relative": "code23/ledger/reserved-0286.json",
+      "bytes": 1089,
+      "sha256": "18f726cc6a52ef6d173a7d8bf03996c1672ecbf938a3d03f6ef47154ed2551c0"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0287.json",
+      "relative": "code23/ledger/reserved-0287.json",
+      "bytes": 984,
+      "sha256": "9dda64971adc0730bdb65aabdbb7be8417b5baa79f05dde101b19dd56d20faf8"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0288.json",
+      "relative": "code23/ledger/reserved-0288.json",
+      "bytes": 995,
+      "sha256": "beacb9b806556b5385f51362838d98e742f09b440803016c46e6544ecf6f5ddb"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0289.json",
+      "relative": "code23/ledger/reserved-0289.json",
+      "bytes": 1004,
+      "sha256": "7ce4b707c8ba0450a3683bef95bca1b15f965a4c19e4d470dadb3a2eed36f3ea"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0290.json",
+      "relative": "code23/ledger/reserved-0290.json",
+      "bytes": 1010,
+      "sha256": "d21f703f2def42dfa81e3dbc2a718b430d7e599aa5c5764769c32dd3c29a950c"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0291.json",
+      "relative": "code23/ledger/reserved-0291.json",
+      "bytes": 1002,
+      "sha256": "16dedd808ff5a494e3bf1aa8ebfb1cb8db9cf6591ee228b89eaaf63cd629efb3"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0292.json",
+      "relative": "code23/ledger/reserved-0292.json",
+      "bytes": 1015,
+      "sha256": "eb0d7123fbd903f544bbeb876693f47073f872ff349c4beaa394bf69f6cfe2ba"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0293.json",
+      "relative": "code23/ledger/reserved-0293.json",
+      "bytes": 1015,
+      "sha256": "c0350c893b00e264912d386fefb7acdcb74a81c61e3893bb5b9f173267160884"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0294.json",
+      "relative": "code23/ledger/reserved-0294.json",
+      "bytes": 1002,
+      "sha256": "50eeb68b93ad40e93fb74003f58284df38ed20450bca341cf299bce1df90b67f"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0295.json",
+      "relative": "code23/ledger/reserved-0295.json",
+      "bytes": 994,
+      "sha256": "f988bb2a073b56c5fd4b642bd0dafbb1eef018d49994eaaa8de6e79495a27775"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0296.json",
+      "relative": "code23/ledger/reserved-0296.json",
+      "bytes": 996,
+      "sha256": "55c7902553e22ef2add798c12c020e729c33b4c7336a2cc00cd378e3feb29409"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0297.json",
+      "relative": "code23/ledger/reserved-0297.json",
+      "bytes": 1007,
+      "sha256": "4ba5cadeba89ae524e83fca64537cca7a531db02fce052d12e583b9d51f2504a"
+    },
+    {
+      "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget/ledger/review/reserved-0298.json",
+      "relative": "code23/ledger/reserved-0298.json",
+      "bytes": 1007,
+      "sha256": "0061deed3cd3077d02faccc7c250f4201db3593d2f7ff6af946ba7a572f1774f"
+    }
+  ],
+  "portable_variant4_source_addition_after_code_approval": true,
+  "old_frozen_records_untouched": true,
+  "new_vendor_starts": 0,
+  "prerequisite_complete": false
+}

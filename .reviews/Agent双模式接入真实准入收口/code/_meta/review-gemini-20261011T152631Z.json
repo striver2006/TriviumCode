@@ -1,0 +1,50 @@
+{
+  "agreed": [
+    "scripts/agent-access-evidence.mjs 中 claudeDenyEvidence 严格遵守必要非充分复用契约：调用生产 judgeDirectoryArm 确认完成交付、无修复降级与无泄漏，继而独立核验 JSONL 事件对象有效性、单一 init/terminal、事件前后时序与每目标严格一对一调用-结果-权限记录配对。",
+    "路径等值判据严格使用 normalizedPath，仅折叠 /private/var，防止生产 helper normalizeAbs 的宽初筛扩大最终路径论域；测试用例明确锁定了 /private/tmp 等路径在生产初筛可通过但在最终脚本层被拒绝的边界。",
+    "错误形态采用显式精确白名单（recorded-directory-denial 与 recorded-path-denial），剥离实录包装文本，拒绝任意异常或裸文本冒充，防止误判与过度放宽。",
+    "canonical 接入点精准限定于 scripts/agent-access-closeout.mjs 的 deny-read 与 deny-grep 分支，result.json 保持既有 deny_pass 与 per_file_deny 结构，平滑增补 deny_evidence，保证与 scripts/agent-access-closeout-summary.mjs 的完全互通与历史结果兼容。",
+    "单测覆盖严密：35 项独立变异、损坏 JSON/事件/状态处理、合法文件读取不误杀、Codex 冻结源码切片哈希校验及历史 4 号/5 号结果原件哈希锁定一应俱全。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r24-codex.md",
+    "scripts/agent-access-evidence.mjs",
+    "scripts/agent-access-closeout.mjs",
+    "test/unit/agent-access-denial-evidence.test.ts",
+    "src/trivium/probes/claude-directory.ts",
+    "scripts/agent-access-closeout-summary.mjs",
+    ".reviews/Agent双模式接入真实准入收口/code/_meta/changes-20261011T152631Z.diff",
+    "scripts/agent-access-recipes.mjs",
+    "scripts/agent-access-write-contract.mjs",
+    "test/unit/agent-access-recovery.test.ts",
+    "test/unit/claude-directory.test.ts",
+    "doc/02_design/ADR_003_agent_access.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v12.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r14/denial-fixtures/sources.json",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/report.ts",
+    "src/trivium/types.ts",
+    ".reviews/Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r11-gemini.md",
+    "doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r12/delivery-before21-commit.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r14/README.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "由于审查员环境无命令执行权限，未在本地执行 npm run check、编译构建或测试命令，依赖代码审查与仓库内已存静态证据进行验证。",
+    "未发起任何厂商 CLI 实际运行，未测试真实 Claude/Codex 在新指纹环境下的实际模型行为（依据计划，该步骤须待本次代码审查与审批完成后作为准入批执行）。",
+    "官方 Claude 待订阅恢复状态、客户端实际技能名重名发现规则以及服务端真实身份（均保持为未测/null）不在本次代码变更验证论域。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "1. 本次代码变更严格收敛于第22B轮获批计划（r24定稿§2-§4）的敏感取证守卫整改，未外溢至生产适配器、probe实现、产品Schema或全局配置。\n2. scripts/agent-access-evidence.mjs 新增局部导出 claudeDenyEvidence，以生产 judgeDirectoryArm 为必要非充分前置，严格补全事件完整性、时序、双向ID配对与权限记录覆盖校验。\n3. 最终路径等值严格以 normalizedPath 为权威，仅折叠 /private/var 与 /var，未放宽 /private/tmp 等非法别名域；错误文本严格采用录制形态白名单，杜绝泛化denied子串。\n4. scripts/agent-access-closeout.mjs 正确且唯一在 deny-read/deny-grep 臂接入新函数，非deny臂保留旧字段观察，原有 result.json 字段与 closeout-summary 消费契约完全兼容。\n5. test/unit/agent-access-denial-evidence.test.ts 采用不可变真实回放夹具，完备覆盖 35 种拒绝腿变异、结构损坏、路径归一界限及 Codex 冻结切片 SHA 锁定（8662c803），测试充分有效。\n6. 静态回放结论与历史工件严格隔离，历史 result.json 原始 false 字节与哈希保持不变，未发生能力追认或虚假宣称。",
+  "verdict": "approve"
+}

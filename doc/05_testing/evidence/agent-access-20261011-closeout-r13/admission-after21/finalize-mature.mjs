@@ -1,0 +1,23 @@
+/** 按公布的唯一variant汇总；未完成明确保留，原件复制脱敏扫描、hash相等。 */
+import fs from'node:fs';import path from'node:path';
+import{hash}from'/Users/chenzhenbo/Work/TriviumCode/scripts/agent-access-selection.mjs';
+import{saveEvidence}from'/Users/chenzhenbo/Work/TriviumCode/scripts/agent-access-evidence.mjs';
+import{scanSecrets}from'/Users/chenzhenbo/Work/TriviumCode/dist/test/src/trivium/secrets.js';
+const root=path.dirname(new URL(import.meta.url).pathname),b=JSON.parse(fs.readFileSync(root+'/mature-batch.json')),first=JSON.parse(fs.readFileSync(root+'/selection-after21-first.json')),routes={...first.routes},copies=[],details=[],versions={};
+function copyDirectory(key,variant){
+ const dir=b.evidence_root+'/routes/'+key+'-'+variant,r=JSON.parse(fs.readFileSync(dir+'/result.json')),a=JSON.parse(fs.readFileSync(dir+'/fingerprints-after.json'));
+ const ref={variant,...Object.fromEntries(['requested.json','result.json','fingerprints-after.json'].map(n=>[n,hash(dir+'/'+n)]))};
+ if(a.unchanged!==true)throw Error('原件指纹变化');
+ const dst=root+'/routes/'+key+'-'+variant;fs.mkdirSync(dst,{recursive:true});
+ for(const n of fs.readdirSync(dir)){const source=dir+'/'+n;if(!fs.statSync(source).isFile())throw Error('非单层原件');const bytes=fs.readFileSync(source);if(scanSecrets(bytes.toString('utf8')).length)throw Error('原件扫描非零');const target=dst+'/'+n;if(fs.existsSync(target)){if(hash(source)!==hash(target))throw Error('旧副本变化');}else fs.writeFileSync(target,bytes,{flag:'wx',mode:0o600});copies.push({source,target,sha256:hash(target),bytes:bytes.length});}
+ details.push({key,variant,completed:r.completed,structured_ok:r.structured?.ok??null,structured_degraded:r.structured?.degraded??null,structured_failure:r.structured?.ok===false?{cause:r.structured.cause,reason:r.structured.reason}:null,readback:r.readback??null,read_content_diagnostic:r.read_content_diagnostic??null,write_contract_diagnostic:r.write_contract_diagnostic??null,command_evidence:r.command_evidence??null,write_pass:r.write_pass??null,write_control:r.write_control??null,per_file_deny:r.per_file_deny??null,deny_pass:r.deny_pass??null,forbidden_read_detection:r.forbidden_read_detection??null,cleanup:fs.existsSync(dir+'/cleanup.json')?JSON.parse(fs.readFileSync(dir+'/cleanup.json')):null});return ref;
+}
+for(const[name,variant]of [['static-codex-version',21],['static-codex-version',22],['static-codex-version',23],['static-codex-version',24],['static-qwen-version',6]])versions[name+'-'+variant]=copyDirectory(name,variant);
+for(const[k,ref]of Object.entries(first.routes))copyDirectory(k,ref.variant);
+for(const row of b.rows)for(const arm of row.arms){const key=row.agent+'-'+row.combination+'-'+arm;routes[key]=copyDirectory(key,row.variant);}
+const dispatches=[];for(const j of b.jobs){const file=root+'/'+j.name+'-dispatch.json';if(!fs.existsSync(file))throw Error('已公布请求未终结');const d=JSON.parse(fs.readFileSync(file));dispatches.push({file,sha256:hash(file),code:d.code,signal:d.signal});}
+saveEvidence(root+'/selection-after21-mature.json',{schema:'trivium.access.selection.v1',created_at:new Date().toISOString(),versions:{},routes,batch_sha256:hash(root+'/mature-batch.json'),exact_versions:versions,implicit_fallback:false});
+saveEvidence(root+'/after21-mature-arm-details.json',{at:new Date().toISOString(),details,copies,dispatches,criteria_changed:false,goal_complete:false,missing_production_writes:['claude/qwen-pro','claude/kimi','claude/kimi-pro','claude/deepseek','claude/deepseek-pro'],codex_deny_boundary:'实际读取临时同行夹具由事后检测命中，不宣称CLI禁止读取；原deny配方无JSON要求，其结构化结果仍逐项保存',server_identity_boundary:'均无独立证据，null'});
+const source=root+'/summarize-after21-first.mjs',target=root+'/summarize-after21-mature.mjs';let text=fs.readFileSync(source,'utf8').replace("'matrix-after21-first.json'","'matrix-after21-mature.json'").replace("'after21-first-arm-details.json'","'after21-mature-arm-details.json'").replace('先写8及读/禁读8均按wrapper/native计数','先写8及读/禁读8，加本成熟批33，均按wrapper/native计数');fs.writeFileSync(target,text,{flag:'wx',mode:0o600});
+saveEvidence(root+'/after21-mature-summary-derivation.json',{source,source_sha256:hash(source),target,target_sha256:hash(target),algorithm_unchanged:true,details_sha256:hash(root+'/after21-mature-arm-details.json'),copies:copies.length,new_vendor_starts:0});
+console.log(JSON.stringify({selected_arms:Object.keys(routes).length,copies:copies.length,summary_script:target,new_vendor_starts:0}));

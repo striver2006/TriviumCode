@@ -1,0 +1,9 @@
+{
+  "kind": "zero-CLI-development-helper-rejection",
+  "label": "targeted-r27",
+  "assumed_node_path": "/opt/homebrew/bin/node",
+  "reason": "假定路径不等当前process.execPath，白名单前置拒绝，未派生检查子进程",
+  "correction": "逻辑node标记映射process.execPath，避免平台路径猜测；不改生产guard",
+  "vendor_cli_starts": 0,
+  "followup": "已有42定向绿；交叉回归由当前两遍全检覆盖，不重复定向"
+}

@@ -1,5 +1,13 @@
 # Agent真实准入收口恢复：送审前审计
 
+> 第23C获批交付准备：run20261011T152631Z三侧首次完成，无blocker/major；Claude两条非阻断意见逐项暂缓，接受待实施0，gate/await-approval及2026-10-11T15:45:53.758Z本轮委托code批准齐备，停点业务改动0。31静态/552业务/10原审查件未变，无subject/tree漂移或只读越界；GLM consulted_unverified与Gemini附加字段剥离保留。42回放、两次3207/3/0、源/安装桩各14/14和四目标安装通过。准入673/689、review298/303、正式23/23；最终清洁提交及重建重装待完成，local496eed89下12组合完整仍未测，判据未替代、M11前置未完成。新增交付与历史原result副本见[r15证据](./evidence/agent-access-20261011-closeout-r15/README.md)，旧r13/r14冻结保留。
+
+> 第23C送审准备：第22B三侧11条裁决、gate及本轮委托plan审批齐备，获批敏感取证整改已实施。42项回放/独立变异通过，两次串行npm run check各3207通过/3跳过/0失败，源端和安装端桩自检各14/14，正常四目标安装及28份入口核验通过；零CLI静态审计通过。bundle28f16e94与已测作用面输入7ac37129相符，嵌入HEAD7733703、dirty=true，本轮尚未提交。准入673/689、review293/303（事前扩容15，预检新增10）、正式22/23；第23C预计15启动、硬上限20，尚未开始。仅认证缓存时间更新，local496eed89，完整语义diff与二次静态核验见r14。当前完整指纹12组合未测，旧4c87四通过及ClaudeRead原false保留；判据未替代，目标未完成。详见[r14证据](./evidence/agent-access-20261011-closeout-r14/README.md)。
+
+> 2026-10-11第21C批准后的最新采样：main已提交推送773370388eec5129ce941be8292f09ad0bb3413f，清洁作用面输入63cf4e39240c，安装/仓库包cd94b249732e一致。当前完整准入Codex Sol/Luna/Astra/Qwen四组合通过，其余八组合未测；**Claude/Qwen Read禁读单臂deny_pass=false**，缺Grep的整行未测不能掩盖失败。该样本6/6唯一实际调用、同ID错误和精确权限记录已取得，现有生产目录探针回放true仅诊断、不追认原false。详情见[r13本批证据](./evidence/agent-access-20261011-closeout-r13/README.md)及[未实施敏感计划](./evidence/agent-access-20261011-closeout-r13/post-round21-denial-evidence-plan-proposal.md)。准入673/689、review268/288；成熟批预计33实际24后停，剩9未启动，无在途CLI，未修改业务/配置/判据。依据独立按需轮数委托仅追加22B与23C、24拒绝，当前正式21/23；不是一般自动审批暗含轮数或判据授权。目标未完成，M11第12步不可开始。历史段落按原采样时刻解释。
+
+22B正式预检随后追加：三侧认证缓存超过1h TTL，预检实际新增10启动，review278/288；只更新三项auth_routes.checked_at，完整语义diff已核、私有0600快照已删，local SHA由4c87变6cc388ff8af6a869383e2077911b2488e4f87c16ff75f33f80b352b709f654e4。模型/effort/共享及全局配置未改，源码和bundle未改；上段四组合通过属于4c87采样，此新完整配置指纹12组合完整准入仍未测，不自动追认。原ClaudeQwenRead失败及精确权限证据均保留。计划审查尚未启动，业务未实施。
+
 2026-10-11，Driver=codex。目标未完成，M11第12步不可开始。此前报告的未提交/未安装等文字仍按各自采样时刻解释，本文件追加当前状态。
 
 零厂商CLI核对：工作树起始干净，本地HEAD和Gitcode main均为39ed20530d64a72f81f183095c6d9516632d0228。安装与仓库bundle的SHA256均为74b71f286302f39ee16c890d8d2c38aa9252fb00fc5d8a356038168417c56074；嵌入标识dirty=false，输入be6dbcd3498c135aa0209980d310db074e45aa3bbb2e8144a4f7aeb0bf4b2e38与现工作树匹配。没有重建，也没有重跑两次check或14步自检；此前3121通过/3跳过属于原执行记录，不能证明待实施整改。

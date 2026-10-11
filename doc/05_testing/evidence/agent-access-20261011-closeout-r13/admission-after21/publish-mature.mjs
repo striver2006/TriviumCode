@@ -1,0 +1,21 @@
+/** 已审19B/r22与21C：首Qwen真实写通过后，只发布必要成熟刷新。 */
+import fs from 'node:fs';import path from 'node:path';import{createRequire}from'node:module';
+import{saveEvidence}from'/Users/chenzhenbo/Work/TriviumCode/scripts/agent-access-evidence.mjs';
+import{hash}from'/Users/chenzhenbo/Work/TriviumCode/scripts/agent-access-selection.mjs';
+const root=path.dirname(new URL(import.meta.url).pathname),b=JSON.parse(fs.readFileSync(root+'/first-write-batch.json'));
+const count=()=>fs.readdirSync(b.budget_root+'/ledger/admission').filter(n=>/^reserved-\d+\.json$/.test(n)).length;
+const before=count();if(before!==649)throw Error('公布基线非649');
+const qwen=JSON.parse(fs.readFileSync(b.evidence_root+'/routes/codex-qwen-write-5/result.json'));
+if(!qwen.completed||!qwen.write_pass||!qwen.structured.ok)throw Error('成熟条件未满足');
+const versionJobs=[{name:'mature-kimi-version',args:['static','codex','version','23','kimi'],route_directory:'static-codex-version-23',starts:2},{name:'mature-deepseek-version',args:['static','codex','version','24','deepseek'],route_directory:'static-codex-version-24',starts:2},{name:'mature-claude-qwen-version',args:['static','qwen','version','6'],route_directory:'static-qwen-version-6',starts:1}];
+const rows=[['codex','native-sol','gpt-6.1-sol','native'],['codex','native-astra','gpt-6-astra','native'],['codex','kimi','kimi-for-coding','kimi'],['codex','deepseek','deepseek-flash','deepseek'],['claude','qwen','qwen3.8-flash','claude-qwen']].map(([agent,combination,model,selection])=>({agent,combination,expected_model:model,actual_model:null,server_identity:null,effort_requested:null,variant:5,arms:agent==='codex'?['read','write','deny']:['read','write','deny-read','deny-grep'],selection:'selection-mature-'+selection+'.json',gap:'当前最终完整指纹各首次能力；历史准入不追认',reusable:selection==='native'?'当前native版本22':'已审机制/同输入检查；本批重录精确版本',necessary_starts:agent==='codex'?6:4}));
+const jobs=[...versionJobs,...rows.flatMap(r=>r.arms.map(arm=>({name:'mature-'+r.agent+'-'+r.combination+'-'+arm,args:[r.agent,r.combination,arm,String(r.variant)],route_directory:r.agent+'-'+r.combination+'-'+arm+'-'+r.variant,starts:r.agent==='codex'?2:1,selection:r.selection})))];
+for(const j of jobs)if(fs.existsSync(b.evidence_root+'/routes/'+j.route_directory)||fs.existsSync(root+'/'+j.name+'-dispatch.json'))throw Error('公布编号已存在');
+const expected=jobs.reduce((n,j)=>n+j.starts,0);if(expected!==33)throw Error('最小启动非33');
+const require=createRequire(import.meta.url),{openBudget}=require(b.repo+'/scripts/agent-access-budget.cjs'),budget=openBudget(b.budget_root,'admission');
+const hard=40,stop=before+hard,extension=budget.extend('after21-mature-refresh-20261011',stop-budget.limit(),'Bob自动CLI扩容委托；19B/r22/21C已批准，Qwen/Luna实际写原标准通过；其余四Codex三臂及ClaudeQwen四臂/必要三版本，预计33硬40，649→689，无提示重试、不增正式轮或改变判据');
+saveEvidence(root+'/mature-budget-extension.json',extension);
+const source=root+'/first-write.mjs',target=root+'/mature.mjs';let text=fs.readFileSync(source,'utf8').replace('首批：每个已公布臂只一次','成熟补批：每个已公布臂只一次').replaceAll("root+'/first-write-batch.json'","root+'/mature-batch.json'").replace("'r23-first-'+mode","'r25-'+mode");
+fs.writeFileSync(target,text,{flag:'wx',mode:0o600});
+saveEvidence(root+'/mature-batch.json',{...b,at:new Date().toISOString(),before,expected_starts:expected,hard_max_starts:hard,batch_stop:stop,pool_limit:budget.limit(),jobs,version_jobs:versionJobs,rows,dispatcher_sha256:hash(target),dispatcher_derivation:{source,sha256:hash(source),changes:['批manifest名称','标签','注释'],same_production_scripts:true},plan_reference:'.reviews/'+b.topic+'/plan/2026-10-11-'+b.topic+'-r22-codex.md',plan_sha256:hash(b.repo+'/.reviews/'+b.topic+'/plan/2026-10-11-'+b.topic+'-r22-codex.md'),condition_write_result_sha256:hash(b.evidence_root+'/routes/codex-qwen-write-5/result.json'),reuse_first_complete_combinations:['codex/qwen','codex/native-luna'],reuse_native_version:22,new_versions:{kimi:23,deepseek:24,'claude-qwen':6},excluded:{claude_nonflash_write:'五组合0，无新机制禁止提示重试',official_claude:'订阅待恢复未测'},counting:'预计33硬40累计689即停；版本失败超时wrapper/native均计数；无自动重试/正式新轮/判据变化。'});
+console.log(JSON.stringify({published:true,before,expected,hard,stop,limit:budget.limit(),batch_sha256:hash(root+'/mature-batch.json'),new_vendor_starts:0}));
