@@ -1,0 +1,15 @@
+{
+  "started_at": "2026-10-11T13:13:03.694Z",
+  "finished_at": "2026-10-11T13:13:07.988Z",
+  "bin": "node",
+  "args": [
+    "skills/dual-critic/scripts/trivium.cjs",
+    "doctor",
+    "--selftest"
+  ],
+  "code": 0,
+  "signal": null,
+  "stdout": "自检：在临时夹具仓库里真跑一遍整条流水线（各入选侧走桩适配器，不消耗厂商配额）\n\n自检：✅ 通过（14/14 步）\n\n本次自检**未**覆盖：\n  · Codex、Antigravity、ZCode 各家 CLI 是否可调用、是否已认证——各入选侧一律走桩适配器。请另跑 `trivium doctor` 与 `trivium preflight`。\n  · 真实模型的审查质量：桩产出的是固定假数据，不代表任何真实结论。\n  · 路径级 deny 等隔离机制的厂商侧行为（M0 探针的职责）。\n\n夹具已清理。加 --keep-fixture 可保留以供手工验收（§17.3）。\n",
+  "stderr": "· ✓ 双审启动（review --start）\n· ✓ 双审收敛（review --wait）\n· ✓ 各入选侧审查文档均已落盘\n· ✓ 缺裁决件时工件校验报缺（退 65）\n· ✓ 裁决未齐备时禁止提交（Hook 退 2）\n· ✓ 裁决未齐备时禁止收工（Hook 退 2）\n· ✓ 裁决完整性校验通过（逐条对齐 4 条意见）\n· ✓ 工件齐备（AC-01：原稿 + 3 侧审查 + 裁决件，共 5 件）\n· ✓ 裁决齐备后放行提交\n· ✓ 裁决齐备后放行收工\n· ✓ 禁止主脑自行产出 -gemini.md（AC-07）\n· ✓ 编译测试出口真实执行并落盘（AC-10）\n· ✓ 复盘可生成（含时间线与采纳率）\n· ✓ 重跑抬升 -r2 且首轮字节不变（FR-25 / P6）\n",
+  "vendor_cli_starts": 0
+}

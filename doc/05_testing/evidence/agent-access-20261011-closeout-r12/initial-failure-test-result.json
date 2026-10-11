@@ -1,0 +1,10 @@
+{
+  "local_vendor_cli_starts": 0,
+  "tests": 8,
+  "pass": 7,
+  "fail": 1,
+  "failed_case": "失败记录脱敏、wx原件不覆盖；保存错误仍保留未知主错误",
+  "cause": "新增测试使用fixture-token-not-real假Bearer字符串，既有扫描器不识别该形态，不能据此断言替换；测试假设错误，非改扫描器的依据",
+  "correction": "构造已登记sk形态的合成夹具，先断言扫描命中，再验证脱敏和0残留；未取用户凭据，未改secrets或guard语义",
+  "original_artifacts_unchanged": true
+}

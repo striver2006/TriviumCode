@@ -1,0 +1,238 @@
+---
+schema: trivium.review.v1
+topic: Agent双模式接入真实准入收口
+stage: code
+role: claude
+vendor: anthropic
+agent_cli: claude/2.1.296
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: envelope
+effort_requested: null
+effort_effective: null
+effort_effective_source: unverified
+tier: null
+tier_source: legacy
+run_id: 20261011T131721Z
+rerun_index: 11
+snapshot_hash: sha256:5da0fb298b4904b65a39616aeed290696a44a693d19217cc32b0fd1d5d411f3e
+blind: true
+started_at: 2026-10-11T13:17:27.917Z
+finished_at: 2026-10-11T13:36:11.220Z
+duration_s: 1123
+tool_calls:
+  read: 28
+  grep: 26
+  glob: 5
+  run_command: 0
+  project_reads: 31
+evidence_ok: true
+verdict: approve-with-nits
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 2
+  nit: 3
+degraded: false
+parse_fallback: false
+peer_deny: true
+drift: false
+heterogeneous: unknown
+access:
+  requested_mode: profile
+  profile: qwen
+  launcher_requested: /Users/chenzhenbo/.local/bin/cld
+  launcher_effective: /Users/chenzhenbo/.local/bin/cld
+  wrapper_sha256: e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5
+  configuration_sha256: 9a3bfaa3acc006b11a8c5c6422da69841ccc121de244ee7eff9574e4146cb8e5
+  provider_declared: qwen
+  provider_declared_source: profile
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: claude
+    status: unknown
+    left_model: null
+    right_model: qwen3.8-flash
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: claude
+    right: gemini
+    status: different-family
+    left_model: qwen3.8-flash
+    right_model: gemini-3.8-flash-high
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：qwen / gemini
+  - left: claude
+    right: glm
+    status: different-family
+    left_model: qwen3.8-flash
+    right_model: bigmodel-coding-plan/GLM-5.3
+    left_source: envelope
+    right_source: trace
+    reason: 模型族不同：qwen / glm
+override_reason: 左侧模型信息缺失
+session_id: e6def558-7953-46bb-b736-2cb29d9e17e8
+---
+
+# 代码审查：Agent双模式接入真实准入收口
+
+> Critic-D · Anthropic Claude Code ｜ 回读模型 `qwen3.8-flash` ｜ 请求模型 `qwen3.8-flash`
+> ｜ 运行 `20261011T131721Z` ｜ 第 11 轮
+> ｜ 本轮审核者 claude、gemini、glm
+
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+最值得关注的是新写合同机制的“文件名口径”只有定义方自洽：WRITE_CONTRACT_FILE 导出后无任何外部消费者，recipes 的提示词与测试各自硬编码同一字面，漂移只会让诊断静默全 false，无测试能接住。其次，第16B读诊断契约段在 ADR/PROTOCOL/GUIDE/QUICKSTART/CASE 五处逐字镜像，却独缺 MANUAL_user 与 RUNBOOK，而这两份又确实收录了紧随其后的 19B/20C 段，镜像面不齐。核心判据函数 codexCommandEvidence、codexWriteAttemptDenied、claudeWritePass 未被本次 diff 触碰，且函数体 hash 与 14 份历史 prompt 被双测试钉死，"诊断不参与准入"有独立断言，这一面可信。O_EXCL/O_NOFOLLOW/0600、lstat/fstat 双身份、先读后写与 session/turn 配对、失败可见与清理保全均与获批文档逐条对得上；plan-r21 承诺的负例矩阵在测试里基本逐项兑现。其余为措辞歧义与注释密度类小项。我没有执行命令的能力，测试计数与若干 pin hash 只能按文档采信，见 not_covered。
+
+**结论**：`approve-with-nits`
+
+## 审查意见（共 5 条：次要 2 ｜ 吹毛求疵 3）
+
+### CLAUDE-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `scripts/agent-access-write-contract.mjs:7 与 scripts/agent-access-recipes.mjs:31` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：合同文件名 WRITE_CONTROL.json 同时以“模块常量”和“提示词字面”两种形态存在：诊断侧（contractPath、captureWriteContractState 的目标、单 cat 匹配、expected 校验）全部经 WRITE_CONTRACT_FILE 推导，而生产提示词把 cat WRITE_CONTROL.json 写死在模板里，测试也各自硬编码；该导出在全仓没有任何外部 import 方（对 scripts、test、src 的检索只找到定义模块内部使用），属于未接线导出与未钉死副本并存。日后若有人改常量而不改 recipes，模型会被要求读旧名、诊断只会以 missing-or-ambiguous-single-cat 全量 false 静默失效，现有断言不比对“提示词里的 cat 参数”与“常量”，抓不到这层漂移。
+
+**依据**：读了 scripts/agent-access-write-contract.mjs 全文（常量用于 :16/:25/:49/:56/:60）、scripts/agent-access-recipes.mjs 全文（:31 写死字面，未 import 该常量）、test/unit/agent-access-write-contract.test.ts（:64 与 :153 也各自硬编码），并对 scripts、test、src、doc 目录做了 WRITE_CONTRACT_FILE 引用检索，确认无外部消费者。
+
+**建议**：二选一并留痕：要么让 recipes 直接引用 WRITE_CONTRACT_FILE 组装那句单 cat 指令（文件名是机制自身接口，不属于 plan-r21 刻意“不共享常量防同步蒙混”的原 BREACH 命令字面），要么在测试里加一条把提示词 cat 参数与该导出常量互钉的断言。
+
+### CLAUDE-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/07_manuals/MANUAL_user.md:929-939、doc/06_deployment/RUNBOOK_pipeline_ops.md:470-489` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：获批取证段落的多文档镜像不齐：第16B/r20 段（定义 readme_state 与 result.read_content_diagnostic 的口径）逐字出现在 ADR_003、PROTOCOL、GUIDE_local_pitfalls、QUICKSTART、CASE_manual_acceptance 五处，却完全缺席 MANUAL_user 与 RUNBOOK；而这两份文件又收录了紧随其后的第19B/r22 写合同段与第20C 补正段。运维与用户手册读者会看到“写合同只诊断”的上层承诺，却查不到它所叠放的读取侧取证契约，后续按手册口径改证据消费时容易只对齐一半。
+
+**依据**：对 doc 目录 grep 第16B 与 read_content 关键词：QUICKSTART.md:501、GUIDE_local_pitfalls.md:111、ADR:44、PROTOCOL:477、CASE:570 命中；MANUAL_user 与 RUNBOOK 零命中；同两次 grep 显示 MANUAL_user:930-937 与 RUNBOOK:480-487 完整收录 19B/20C 段。读了 GUIDE_local_pitfalls.md:96-123 与 MANUAL_user.md:908-939 原文确认。
+
+**建议**：要么把 16B 段按同样措辞补进 MANUAL_user 与 RUNBOOK（与 19B/20C 同镜像面），要么在这两份文件里显式写明“读取侧取证契约不在此重复、以恢复报告与设计为准”的取舍，别让缺段看起来像漏同步。
+
+### CLAUDE-03 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/03_api/PROTOCOL_dual_critic_relay.md:473（同一镜像段亦见 QUICKSTART.md:497、GUIDE_local_pitfalls.md:107、CASE_manual_acceptance.md:566、ADR_003_agent_access.md:40、设计文档:4301）` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：同一个裸版本号 v11 在同一批镜像段落里指两个不同命名空间：第15次补记段的“v11只更新授权载体”按证据文件 launch-v11.mjs 首行注释应读作启动器版本，而 20C 段的“按独立按需委托发布v11仅21C”指的是 formal-round-authorization-v11.json。RUNBOOK:471 用“任务级v11只更新授权载体”已经消歧，其余五份保留裸写法，后来的人按单层号序理解会串台。
+
+**依据**：grep 两处分句在各文档的行号后，读了 doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v11.mjs 首行注释（“v11仅更新当前v7权威”）与 formal-round-authorization-v11.json、formal-round-authority.json，确认两“v11”分属 launcher 与 authorization 两条号序。
+
+**建议**：沿用 RUNBOOK 的做法，把补记段里的裸号写成“任务级launch-v11”或“formal-round-authorization-v11”这类全名，与文件命名一一对应，避免号序歧义。
+
+### CLAUDE-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `scripts/agent-access-write-contract.mjs:78` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | low |
+
+**问题**：“先读后写”的时间边界在代码里是 read.completed_at_ms 大于 write.started_at_ms 才判乱序，即两毫秒值相等时视为成立；文档与 reason 命名只写“可信完成/启动时间及先读后写”，没说同毫秒怎么算。真实 Codex 事件以毫秒计时，同毫秒先后完全可能，把这个边界写死与否会决定后来者会不会“顺手改成严格大于”从而让历史证据被重判 false。
+
+**依据**：读了 scripts/agent-access-write-contract.mjs 全文与 test/unit/agent-access-write-contract.test.ts 的 mutations（:132 用 started_at_ms 改成 100 触发 false，未测相等情形），对照 PROTOCOL:482、ADR:49 与 plan-r21-body.md:31 的“先读后写”措辞均未定义 tie。
+
+**建议**：在 153 段或 reason 文案里把边界写明（允许同毫秒，仅严格逆序判负），或反过来若意图是严格先读后写就在代码与测试补 tie 负例，别让口径停在读代码才猜得着的位置。
+
+### CLAUDE-05 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `scripts/agent-access-write-contract.mjs:10-45` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：注释密度与同目录惯例不齐：agent-access-evidence.mjs 里几乎每个导出函数都带一行中文口径注释（说明“消费什么、拒绝什么、未知错误怎么走”），而新模块的 contractPath、createWriteContract、captureWriteContractState 三个函数没有任何函数级注释，只有模块头与诊断函数那两行；这三处恰是 O_EXCL/O_NOFOLLOW/双 fstat 语义所在，是后续改动最容易被“简化”掉防御的地方。
+
+**依据**：对照读了 scripts/agent-access-write-contract.mjs 全文与 scripts/agent-access-evidence.mjs 全文（captureFileState、captureReadFileState、codexReadContentDiagnostic 等均带 /** */ 口径行），并看了 plan-r21-body.md:29 对该采样器语义的承诺。
+
+**建议**：给这三个函数各补一行口径注释（拒绝软链与目录、未知错误直抛且 finally 关句柄、变化检测的双身份依据），与本目录既有写法一致即可，不需要长篇。
+
+## 认为正确的部分
+
+- 准入判据未被本次变更污染：codexCommandEvidence、codexWriteAttemptDenied、claudeWritePass、captureFileState 在本 diff 中只有上下文行而无改动，且函数体 hash（8662c803…）与 14 份历史 prompt（fixture 16d0ea2b…）被 read-evidence 与 write-contract 两处测试各自钉死，符合“旧五参仅历史兼容、当前非目标逐字节对账”的文档承诺
+- write_contract_diagnostic 的“只诊断不参与 write_pass”有独立断言：测试在同一条目下同时断言诊断 false 与 codexCommandEvidence.write_pass true（截断/前后缀/尾换行四变体），文档与代码在此口径一致
+- 诊断负例矩阵与 plan-r21 承诺逐项对得上：缺状态、来源不一致、前后变化、非 cat/head/jq/复合、重复 ID、错 cwd、错目标、非零退出、超时、turn 未完成、乱序、写项缺失均由 reasons 覆盖，且短路与可选链的写法让我找不到可达的 TypeError 路径
+- 失败可见性整改到位且与文档一致：recordAdmissionFailure 用 AggregateError 保留主异常与落盘次异常、cleanupPreservingFailure 让 cleanupAll 全部尝试后再合并、allocationStage 三段留痕、contract_created 三态含创建途中 null，测试对 EEXIST 不覆盖原件与脱敏扫描失败都做了断言
+- ledgerRoot 与动态输出根分离（TRIVIUM_ACCESS_EVIDENCE_ROOT）有 PROTOCOL:464/RUNBOOK:462 口径并有 selectedVersion 第五参与双目录回归测试支撑，不是只改代码的孤儿特性
+- 目录事实 v2（ascii-root1-5-depth0-2-v2 + sensitive_globs hash + shape 版本门禁）在 claude.ts/probes/claude.ts/doctor.ts/types.ts 四处联动一致，旧 v1 事实因缺字段不可消费；consumeClaudeDirectories 的 guard 载荷确实落进 trace.json（claude.ts:1080/:1117），不是无消费方的新字段
+- SENSITIVE_SCAN_MAX_PARENT_DEPTH 由 6 放宽到 7 有 v1.3.148 与 REPORT 的独立计划授权链条，且设计如实声明 brief.ts 运行模板未渲染该边界（我 grep brief.ts 确认无深度字样），文档没有把原型承诺冒充运行口径
+- 启动器换代纪律可核验：launch-v15 相对 v14 只改首行注释与授权文件名，且 task-launch 测试从当前 formal-round-authority.json 反查唯一 launcher 引用并实跑各授权轮次，文档“v15只换权威文件名及首注释”站得住
+
+## 未覆盖范围（本侧盲区）
+
+- 我这一侧没有执行能力：未跑 typecheck/check/selftest，因此 REPORT 与 README 声称的两遍3163通过/3跳过、定向49、源/安装桩14、63项定向等计数全部只按文档采信；两个 pin 值（codexCommandEvidence 函数体 sha 8662c803…、replay fixture sha 16d0ea2b…）与 authority 指针 sha256 对 v11 原件的等值我也无法计算，只能确认代码文本与 diff 新增行一致
+- 589 个文件里我只覆盖了实现面与规范面：scripts 全部、test/unit 三个新件与 task-launch/recovery、prompt-replay fixture、src 七个改动 hunk、七份镜像文档；doc/05_testing/evidence 下数百个 JSON 取证件只按必读清单与 grep 抽样，未逐件核验其 hash/ledger 连续性
+- 会话起始的 git status 显示 scripts/agent-access-closeout.mjs、agent-access-evidence.mjs、agent-access-recipes.mjs 与 agent-access-read-evidence.test.ts 在工作树仍为已修改状态，而我看到的 diff 头是 base 39ed2053 到 head c912bce7：我能核对我比对过的 hunk 区域（disk 与 diff 新增行逐字一致），但无法确认这些文件在 hunk 之外是否还有未纳入被审对象的改动，也无法确认被审对象是否等于工作树快照 tree:c98d2938
+- 真实 Codex 会话事件形状未静态验证：item_completed payload 是否总是携带 started_at_ms/completed_at_ms、thread_id/turn_id 是否总是同源，只能从 parseCodexEvents 与夹具推断，需要实跑取证
+- 未读 CLAUDE.md 全文与 README.md、doc/README.md 全文（只按关键词 grep 了 CLAUDE.md），产品级文档若另有口径可能改变我对镜像惯例的判断
+- 背靠背约束下未读另一位审查员的任何产出，也未读 _meta 下对方的结构化原文与 ~/.trivium/runs；本次结论只基于我列出的 consulted 文件与被审 diff
+- 写合同机制的“实际准入取证”本身（真实六型号 Codex/write 跑批）不属于静态可判断的范围，我只审查机制代码与其说明书是否同口径
+
+## 实际查阅的项目文件
+
+- `.reviews/Agent双模式接入真实准入收口/code/_meta/changes-20261011T131721Z.diff`
+- `scripts/agent-access-write-contract.mjs`
+- `scripts/agent-access-evidence.mjs`
+- `scripts/agent-access-closeout.mjs`
+- `scripts/agent-access-recipes.mjs`
+- `scripts/agent-access-selection.mjs`
+- `scripts/agent-access-budget.cjs`
+- `test/unit/agent-access-write-contract.test.ts`
+- `test/unit/agent-access-recovery.test.ts`
+- `test/unit/agent-access-task-launch.test.ts`
+- `test/fixtures/agent-access-prompt-replay.json`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/probes/codex.ts`
+- `src/trivium/probes/claude-directory.ts`
+- `src/trivium/brief.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `skills/dual-critic/SKILL.md`
+- `doc/02_design/ADR_003_agent_access.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `doc/04_development/GUIDE_local_pitfalls.md`
+- `doc/06_deployment/RUNBOOK_pipeline_ops.md`
+- `doc/07_manuals/MANUAL_user.md`
+- `doc/07_manuals/QUICKSTART.md`
+- `doc/05_testing/CASE_manual_acceptance.md`
+- `doc/05_testing/README.md`
+- `doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v15.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v14.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v13.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v11.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard-v2.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/quiet-launch-v8.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v11.json`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/README.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r10/plan-r21-body.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r12/pre-round21-admission-matrix.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r12/post-round20-failure-followup-proposal.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r11/pre-round20-admission-matrix.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":28,"grep":26,"glob":5,"run_command":0,"project_reads":31}
+
+---
+
+*本文档由 TriviumCode 编排器从 `claude` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

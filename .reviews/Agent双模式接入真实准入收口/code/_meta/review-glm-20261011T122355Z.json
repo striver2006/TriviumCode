@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "本轮审查覆盖 19B/r22 写合同取证机制、16B 读全文诊断、Claude 目录事实三重绑定（projectHash/shape/fingerprint）、敏感扫描深度 6→7、EVIDENCE_ROOT 与台账根分离五块变更，对照已批准 plan-r22 逐条核对了实施范围（合同 O_EXCL/0600/非软链根、nonce 不入提示外泄、先读后写双时间戳与同 thread/turn、字节级全文比对、诊断不参与 write_pass 与准入判据、codexCommandEvidence 函数体逐字保留并 hash 锚定、新模块进 assets 全指纹），并顺调用链读了 closeout/evidence/selection/claude 适配器/claude-directory 探针/doctor/probes 的完整上下文与配套测试。结论：无 blocker/major 问题；诊断与目录事实消费的失败方向全部 fail-closed（缺状态/篡改/截断/乱序/错坐标/重复 ID 均落 reasons 为 false），目录压缩消费端 covered() 的中间目录 ASCII 约束与探针夹具拓扑一致，旧探针事实因缺 shape/projectHash 字段自动不可消费。发现两条非阻断意见：失败留痕链（failure.json）自身无兜底且取证不对称（GLM-01，minor），以及采样与诊断逻辑成对重复（GLM-02，nit）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "scripts/agent-access-closeout.mjs:282-284",
+      "problem": "新增的 catch 失败留痕链自身没有兜底，且取证不对称：(1) catch 内先执行 save('failure.json', ...) 再 throw error，若 save 自身抛错（saveEvidence 的 scanSecrets 拒绝落盘、或 out 目录 IO 失败，见 scripts/agent-access-evidence.mjs:6-10），新异常会从 catch 块直接冒出，原始错误被完全替换且无 cause 链，failure.json 两头皆空——而这条链路正是为罕见失败路径的可见性而加的；(2) failure.json 只记录 write_contract_after，不记录 readme_after，read 臂失败时读取采样丢失；且 writeContractAfter 为 null 时无法区分「合同未创建」与「已创建但采样前失败」；(3) try 之外的预检段（selection/版本/指纹校验，第 56-118 行）与夹具创建段（第 119-124 行，fx 与 scratch 在 try 外）失败仍无 failure.json，后者的 mkdtemp 失败还会跳过 finally 清理造成夹具残留（该窗口是既有结构，本轮未顺手收口）。这些只影响失败路径的取证可见性与排障，不影响准入判定面（失败本就不通过）。",
+      "evidence": "scripts/agent-access-closeout.mjs:282-284 的 catch 块为 save('failure.json', { failed: true, name: ..., message: ..., write_contract_after: writeContractAfter ?? null }); throw error;，save 定义于同文件第 55 行指向 saveEvidence；scripts/agent-access-evidence.mjs:6-10 的 saveEvidence 在 scanSecrets 命中时 throw '脱敏扫描失败，拒绝落盘'，writeFileSync 亦可能 IO 失败；同文件第 257 行 readmeAfter 仅在成功路径进入 result.json/fixture-after.json。",
+      "suggestion": "catch 内用内层 try/catch 包住 save('failure.json')，保证任何情况下原始 error 优先冒泡（内层失败最多记 console 警示）；failure.json 补 readme_after 字段并在合同场景区分「未创建/已创建未采样」；或至少在注释中写明预检段失败不留痕与 fx/scratch 位于 try 外是既定取舍。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "scripts/agent-access-evidence.mjs:23-46 与 scripts/agent-access-write-contract.mjs:47-68、scripts/agent-access-evidence.mjs:49-74 与 scripts/agent-access-write-contract.mjs:74-87",
+      "problem": "captureReadFileState 与 captureWriteContractState 是近重复的 TOCTOU 采样骨架（lstat 预检、O_NOFOLLOW 打开、fstat/lstat 双身份与 mtime/ctime/size 核验、finally 关句柄），codexReadContentDiagnostic 与 codexWriteContractDiagnostic 也共享同一套 valid() 状态校验与 reasons 累积模式。两处各自演化时容易改一漏一（例如未来给采样增加一项核验，只改了其中一份）。计划只要求命令字面独立锚定防止错误同步蒙混，并未要求采样与校验骨架也双份维护。",
+      "evidence": "scripts/agent-access-evidence.mjs:33-45 与 scripts/agent-access-write-contract.mjs:64-81 的 descriptor 打开/三重 stat 比较/finally closeSync 结构逐行对应；两个 diagnostic 中 valid() 谓词（exists/regular_file/symlink/bytes/sha256 正则/路径归一）同样成对出现。",
+      "suggestion": "在 scripts/ 内抽一个私有的「安全采样常规文件（lstat 预检 + O_NOFOLLOW + 身份与时间核验）」helper 供两处复用，行为零变化；命令字面与诊断谓词保持各自独立锚定不动。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "写合同机制整体设计成立：WRITE_CONTROL.json 以 O_EXCL/0600 创建于真实非软链夹具根（realpath 与字面路径一致才接受），命令字面与 codexWriteAttemptDenied 认可的固定命令逐字一致且各自独立锚定（不共享常量防止错误同步蒙混），nonce 仅进提示不泄露首词/BREACH 字面（测试断言 prompt 不含 fixed/MUST_NOT_LEAK/BREACH）。",
+    "codexWriteContractDiagnostic 的先读后写判定严谨：唯一单 cat 双身份配对、parsed_cmd read 且目标归一到 fixture 根、输出与 before 状态字节级 hash 比对、read 完成时间 ≤ 写启动时间、同 thread/turn、原 write_pass 仍独立由真实拒绝配对决定；所有缺失/篡改/截断/乱序/重复路径均落 reasons 为 false，不参与原 write_pass 与准入汇总，方向全部 fail-closed。",
+    "codexCommandEvidence 函数体经测试以 SHA256 锚定逐字保留，原 actual_read/write_pass 判据未被诊断改动；codexReadContentDiagnostic 同为 diagnostic-only 且严格字节比较（前缀/后缀/尾换行/截断均 false）。",
+    "目录事实消费的三重绑定设计正确：directoryDeclarationUsable 要求 fingerprint + sensitive_globs 稳定 hash + CLAUDE_DIRECTORY_SHAPE + 至少一工具 true + TTL 内，缺任一回退逐文件规则；历史探针结论因无新字段自动不可消费；consumeClaudeDirectories 仅在候选声明可用时才读二进制指纹；covered() 的中间目录 ASCII、根 ≤5 段、后代 ≤2 层与探针夹具五根拓扑一致，未测形态不外推。",
+    "judgeDirectoryArm 收紧合理：denied 需要唯一 tool_use、恰一条 is_error 结果与恰一条对应 permission denial 三重配对，successful 独立三态，permissionComplete 要求拒绝总数与目标数吻合且无错目标，targets.length > 0 防空集 vacuous true；集成测试对 is_error/permission_denials 的九种独立变异均有负例。",
+    "expectedDirectoryFailure 白名单降级 + 内部错误上抛的分层符合「预期外部失败保留主 probe、内部断言不得吞掉」的既定口径，doctor 的 claudeDirectoryProbe 注入口仅测试使用、生产不传；probeClaude 目录段失败时五个新字段全部清空，doctor 路线变化重置点也已同步覆盖。",
+    "SENSITIVE_SCAN_MAX_PARENT_DEPTH=7 具名常量与注释口径一致（五段根加两层后代），测试验证深度 6/7 入列、8 仍不覆盖、.git/node_modules 排除与软链不跟随语义保持。",
+    "TRIVIUM_ACCESS_EVIDENCE_ROOT 与台账根分离是手动逃逸口且 fail-closed：仓内无设定方、缺省回落 ledgerRoot，错根读台账经测试确认 ENOENT 拒绝而非静默获得 native 身份。",
+    "assertProductionArm 将 Claude 生产写缺口组合扩为五个并在 spawn 与预算计数之前拒绝（测试断言 0 spawn/0 budget），Qwen flash 写与全部读取臂保留，与恢复报告及 SKILL 边界记录一致。",
+    "十四份历史 prompt 回放按逐份 SHA 固定，codex/read 新提示无首词泄露并断言不含预设 verdict 示例；canonical 第六参接线经源码正则锚定，防止仅用旧五参回放冒充目标臂未变。"
+  ],
+  "not_covered": [
+    "本侧为只读审查、未执行任何构建或测试：codexCommandEvidence 函数体 hash、prompt-replay fixture hash（16d0ea2b…）、claude-deny-paths-replay hash（0ae4c899…）等锚定值只静态确认了锚定关系存在，无法复算验证其与当前源码/夹件实际一致。",
+    "diff 中约 520 个取证 JSON（r2/r3/r4/r10/r11 各目录）未逐一与 ~/.trivium 原始证据比对来源 hash，仅抽查了 codex-qwen-write4-diagnostic.json 一件确认其与代码产出的字段形状一致。",
+    "真实 CLI 行为面只能按代码与既有证据推断：Codex session rollout 的事件顺序/时间戳单调性、Claude permission_denials 的计数语义（重试是否重复计数）未经实测确认——这些影响的是 verdict 从 true 降为 null 的保守方向，不影响 fail-closed 性。",
+    "launcher 侧脚本（launch-v14.mjs、quiet-launch-v8.mjs、round-guard-v2.mjs、formal-start-precheck-v2.mjs）只在任务书节选与 task-launch 集成测试引用层面看过，未逐行审读其内部守卫逻辑。",
+    "设计文档 §3.5、ADR_003、PROTOCOL、GUIDE_local_pitfalls、CASE_manual_acceptance 的更新只确认 diff 含这些文件，未逐字比对正文与实现的一致性；doc/05_testing/README.md 的归档索引条目合规性依赖 doc-archive-index 契约测试，未人工复核。",
+    "skills/dual-critic/SKILL.md 追加的多段历史边界记录（授权谱系、矩阵状态）只做了与代码/报告不矛盾的抽查，未追溯每一段对应的原始授权文件。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/code/_meta/changes-20261011T122355Z.diff",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r22-codex.md",
+    "scripts/agent-access-closeout.mjs",
+    "scripts/agent-access-evidence.mjs",
+    "scripts/agent-access-selection.mjs",
+    "src/trivium/probes/claude-directory.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/types.ts",
+    "src/trivium/report.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r10/codex-qwen-write4-diagnostic.json",
+    "test/unit/agent-access-write-contract.test.ts",
+    "test/unit/agent-access-read-evidence.test.ts",
+    "test/unit/claude-directory.test.ts",
+    "test/unit/freeze-drift.test.ts",
+    "test/unit/agent-access-closeout.test.ts",
+    "test/unit/agent-access-recovery.test.ts",
+    "test/unit/agent-access-task-launch.test.ts",
+    "test/integration/claude-directory-adapter.test.ts",
+    "test/integration/claude-structured-probe.test.ts"
+  ]
+}

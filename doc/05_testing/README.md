@@ -136,5 +136,11 @@
 - [`REPORT_2026-10-10_agent_access_admission.md`](./REPORT_2026-10-10_agent_access_admission.md)：双模式真实准入补测与后续项目供应商配置；原批次 Kimi/DeepSeek 写尝试未测，后续已将 pro 切 Qwen 并恢复共享三审，完整前置验收仍未完成。
 - [`REPORT_2026-10-10_agent_access_closeout.md`](./REPORT_2026-10-10_agent_access_closeout.md)：Agent双模式当前版本真实准入收口；独立canonical取证、精确写目标与逐文件禁读、预算及未测边界，实施补测中，M11前置未完成。
 - [`REPORT_2026-10-10_claude_three_providers.md`](./REPORT_2026-10-10_claude_three_providers.md)：Claude 三供应商生产工具面补测；36/36 启动，Qwen flash/DeepSeek V4 pro 取得真实 Write 拒绝，Kimi 两模型及 DeepSeek flash 写尝试仍未测；补齐夹具同行禁读集合，保留模拟传输与真实供应商证据边界。
-- [`REPORT_2026-10-11_agent_access_recovery.md`](./REPORT_2026-10-11_agent_access_recovery.md)：真实准入恢复与独立授权。**当前采样：用户已独立委托正式轮数按需追加，本批18/18；16B r20获批，17C两条接受后code拒绝及补修完成，18C有效且code按委托批准**。最终串行双遍各3160通过/3跳过/0失败；旧874矩阵5通过/1未通过/6未测、ac9及旧轮次按采样保留，当前新包完整准入未测，M11前置未完成。最新预算、检查、安装与指纹以报告及r9为准，旧原件保留。；最新18C有效、code按委托批准，228/238审查、590/602准入，保留只读未确证告警；新包12组合未测，前置未完成。
+- [`REPORT_2026-10-11_agent_access_recovery.md`](./REPORT_2026-10-11_agent_access_recovery.md)：真实准入恢复与独立授权。**当前采样：18C有效且code按委托批准；已提交推送c912bce7，新包实际5通过/1未通过/6未测，Qwen读取已通过、写错目标未通过；19B/20C有界追加、计划未审未实施**。双check各3160通过/3跳过/0失败、源/安装桩14/14、正常四目标28入口；admission633/645、review238/248，旧轮次和矩阵按时刻原样保留。19B预检缓存local变9d166后当前全指纹12组合未测，旧5/1/6是预检前采样；最新报告及r10为准，M11前置未完成。
 - `evidence/`：实跑的原始留痕（run / review / brief / trace / worker 日志 / Hook 与闸门原始输出 / 复现脚本），按 `<名称>-<YYYYMMDD>/` 分目录。现行写法是〈名称〉取本主题实施报告文件名里的〈名称〉段、下划线换成连字符（例：`REPORT_2026-10-01_doc_archive_index.md` 的证据在 `doc-archive-index-20261001/`）；早期目录按里程碑（`m<里程碑>-<用途>-<日期>/`）或 BACKLOG 编号（`ev<编号>-<用途>-<日期>/`）命名，原样保留、不改名。`m9-step7-20260920/` 是 M9 第 7 步纪律 6 回溯的 grep 差集自检记录；`zcode-provider-config-20260920/` 是 ZCode 0.16.9 provider 配置注入（坑 P-28～P-30，EV-81）的本机实测原始输出。
+
+第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
+
+20C前本地检查已完成：两遍3163通过/3跳过/0失败、定向49/49、源/安装桩14/14、四目标28入口相等；新写合同机制实际准入未测，正式20C尚待运行。
+
+20C有效、6条裁决2接受4暂缓，普通code按委托拒绝；已批准r22失败留痕范围补正在[evidence r12](evidence/agent-access-20261011-closeout-r12/)，正式21C有界重审待执行，原准入判据不变。

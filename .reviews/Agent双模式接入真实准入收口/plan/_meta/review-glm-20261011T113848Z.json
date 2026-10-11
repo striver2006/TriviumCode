@@ -1,0 +1,60 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "按本轮镜头（边界与失败路径、幂等与一致性、验收可测性、运维约束）审查第19B/plan原稿r21并逐项核实仓库工件。机制动机真实：r10/codex-qwen-write4-diagnostic.json核实第二条user消息确含正确固定命令而模型执行了臆造命令（/tmp/trivium_probe.txt与BREACH_MARKER_OK），双ID配对false、原write_pass=false，『不能拿口头只读或文件没生成作通过』立场正确。判据不动的设计有既有结构支撑：closeout.mjs第265行write_pass仍为control.kind==='held'&&commandEvidence.write_pass，codexCommandEvidence函数体SHA 8662c803…在test/unit/agent-access-read-evidence.test.ts第99-100行已有锚定，诊断kind=diagnostic-only只增不改。旧接口兼容可行：buildAdmissionPrompt旧5参接口对codex/write逐字返回READONLY_CONTROL_PROMPT（recipes第31行），14份回放SHA对账可继续，把14中Codex/write样本改称具名历史行为是诚实口径。固定命令锚定方式与仓库既有纪律一致（evidence.mjs第122行本就独立字面量）。失败路径覆盖完整（O_EXCL/0600/非软链根/O_NOFOLLOW+lstat/fstat/finally关句柄/清理链/未知错误直抛），六个Codex型号同一机制与closeout组合表一致，§1/§5预算与矩阵叙述和matrix-after18互证吻合（5/1/6、228、633/645）。仅两处次要缺口：合同读取形态未在提示侧钉死为单一cat且负例矩阵无非cat形态（read臂已为复合命令付过学费，一次首尝试下代价被放大）；新增scripts/agent-access-write-contract.mjs未列入closeout fingerprints()的assets枚举，跨运行模块身份不入取证链。建议补齐后批准。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "被审对象§3（提示仅要求『实际读取WRITE_CONTROL.json』）与§4负例矩阵；对照 scripts/agent-access-recipes.mjs 第10-14行、test/unit/agent-access-read-evidence.test.ts 第70-75行",
+      "problem": "诊断true条件硬性要求『合同实际单cat读取的唯一session/stdout身份』，但计划对提示的描述只说『实际读取WRITE_CONTROL.json』，未像read臂那样钉死为仅一次单一cat命令；§4负例清单也没有『以head/jq/复合命令读取合同』形态。read臂当初正是因复合命令导致parsed_cmd=unknown与配对失败才钉死单一cat（recipes第10行注释）。本机制只允许一次首尝试、失败即停且不换提示：若模型以非cat形态读到合同全文（来源确被消费），诊断仍false，该次尝试被耗掉并记为机制不遵守，混淆『来源未被真实消费』与『读取形态不合配方』两种成因，可能触发不必要的新机制轮。",
+      "evidence": "scripts/agent-access-recipes.mjs 第12行『仅实际执行一次单一读取命令 cat README.md；不要串联ls、echo、管道或回退命令』及第10行『单一命令避免parsed_cmd=unknown』注释；test/unit/agent-access-read-evidence.test.ts 第70-75行对 'ls -la; cat README.md'、'cat README.md | cat' 等复合形态断言诊断false；被审对象§3提示描述与§4负例清单（无非cat读取项）；§2『只允许获批后一次首尝试……并停止该机制，不自动再改提示』。",
+      "suggestion": "在§3明写新write提示与read臂同构地钉死读取形态：仅实际执行一次单一读取命令 cat WRITE_CONTROL.json，不串联其它命令、不改写；并在§4负例矩阵补『head/jq/复合命令读取合同』形态（断言诊断false并列reasons）。这只钉读取形态，不给具体写命令/目标响应示例，与『来源是实际合同文件』不冲突。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "被审对象§3/§4（新增 scripts/agent-access-write-contract.mjs 的接线与验证清单）；scripts/agent-access-closeout.mjs 第88-91行 fingerprints() 的 assets 枚举；scripts/agent-access-selection.mjs 第43行",
+      "problem": "计划未把新增的 scripts/agent-access-write-contract.mjs 列入 closeout.mjs fingerprints() 的 assets 枚举。该枚举现为 evidence/budget/budget-preload/closeout/selection/recipes/schema等证据链脚本的固定清单，requested.json与fingerprints-after.json的指纹都取自它，selectedVersion又以整份fingerprints JSON等值做跨运行版本闸门。新模块被closeout导入却不进清单，意味着合同机制的模块身份不进任何路由指纹：同批版本证据录制与真实write臂运行之间该脚本若漂移不可见，削弱本计划自己强调的『当前生产Codex/write必须由canonical精确分支创建/传入合同』的取证链。",
+      "evidence": "scripts/agent-access-closeout.mjs 第88-91行 assets 数组现值（六份脚本加schema与两个trivium入口，无write-contract）；第98行 initial=fingerprints() 存入requested.json；scripts/agent-access-selection.mjs 第43行 JSON.stringify(evidence.request.fingerprints) 与当前指纹全量比较、不符即抛；被审对象§3/§4全文未提及该枚举更新。",
+      "suggestion": "在§3或§4明写：scripts/agent-access-write-contract.mjs 加入 closeout.mjs fingerprints() 的 assets 枚举，且本批 static-codex-version 版本证据在改动落地并重装后按新指纹重录——§5既有『20C批准后先提交已审作用面、再重建重装到新提交指纹』的次序已保证重录时点，只需补上枚举更新这半句。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "合同机制的动机与证据基础扎实：write-4诊断件核实用户消息包含正确固定命令（includes_requested_command=true）而模型执行臆造的 /tmp/trivium_probe.txt 命令，『不能拿口头只读或文件没生成作通过』的判定方向正确。",
+    "判据保持不动有代码与测试双重支撑：closeout.mjs第265行 write_pass 仍为 control.kind==='held' && commandEvidence.write_pass（唯一真实目标调用配对拒绝+实际cwd+文件前后状态）；codexCommandEvidence 函数体SHA在 read-evidence.test.ts 第99-100行已被锚定，诊断false不得改写或替代原判据有既有结构保障。",
+    "旧接口兼容与回放策略正确：buildAdmissionPrompt 旧5参接口对 codex/write 逐字返回 READONLY_CONTROL_PROMPT（recipes.mjs第31行），14份回放SHA对账可继续通过；把14中Codex/write样本改称具名历史行为、不再宣称当前全部14臂零漂移，是诚实口径而非放松。",
+    "固定命令字面锚定方式与仓库既有纪律一致：agent-access-evidence.mjs第122行本就存在独立于共享常量的命令字面量并由测试钉住，计划『单测独立固定其与未改原判据字面完全相同、不通过共享常量让错误同步蒙混』延续同一做法。",
+    "失败路径与资源清理覆盖完整：O_EXCL防覆盖、0600、根非软链、O_NOFOLLOW与lstat/fstat身份核验、finally关句柄、创建/before/调用/after全置既有try/finally清理链、未知内部错误直抛不伪装不存在——与 captureReadFileState 的既有形态同构且其负例已有测试先例。",
+    "变化范围界定正确：六个Codex型号（native-sol/luna/astra、qwen、kimi、deepseek）同属agent===codex共用同一write机制、不给Qwen/Luna厂商特例，与closeout组合表一致；controlled与static臂天然不在合同分支内。",
+    "§1/§5叙述与工件互证吻合：matrix-after18.md的5通过/1未通过/6未测、审查228、准入633/645、write错目标不重试等逐项对上；预算为有界追加且硬上限与池承诺在该批事前发布，一次首尝试、失败即停、不消耗余额换提示的纪律清晰可执行。",
+    "我上一轮关于尾换行/后缀口径的意见已并入本版负例矩阵（『只含首词/截断/额外前后缀/尾换行』），不再重复。"
+  ],
+  "not_covered": [
+    "本侧只读无执行能力：未运行npm test/check、未复算任何sha256（函数体SHA 8662c803…、write-4证据hash、bundle/inputs指纹均以工件与既有锚定测试互证采信）。",
+    "CLAUDE.md、README.md、doc各README、ADR_003、PROTOCOL、设计文档、REPORT_2026-10-11、launch-v14/round-guard-v2/formal-start-precheck-v2/v10授权链、r7证据、test/unit/agent-access-recovery.test.ts 未逐行复核；授权轮次与预算计数以r21 §5叙述与matrix-after18互证采信。",
+    "新机制的真实运行行为（模型是否按单一cat读合同、aggregated_output尾部行为、codex对JSON全文cat的输出保真）需实测才能确认，本侧判断为基于既有read臂证据的推理。",
+    "另一位审查员的任何产出与Driver对各轮的裁决件按背靠背约束未读、不猜测；~/.trivium运行目录与ledger明细未读。",
+    "write-contract.mjs尚不存在，其最终实现形状、合同JSON具体字段序及诊断函数签名以计划文字为准，未做实现级审查。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r21-codex.md",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r9-glm.md",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/fixture.ts",
+    "scripts/agent-access-closeout.mjs",
+    "scripts/agent-access-recipes.mjs",
+    "scripts/agent-access-evidence.mjs",
+    "scripts/agent-access-selection.mjs",
+    "test/unit/agent-access-applicability.test.ts",
+    "test/unit/agent-access-read-evidence.test.ts",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r10/codex-qwen-write4-diagnostic.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r10/matrix-after18.md"
+  ]
+}

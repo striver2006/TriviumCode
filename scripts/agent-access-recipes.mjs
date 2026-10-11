@@ -15,7 +15,7 @@ export function productionReadPrompt(agent, outputInstruction) {
 }
 
 /** 只改Codex/read；非目标臂按原模板逐字组装，禁止全局替换输出示例。 */
-export function buildAdmissionPrompt(agent, arm, firstWord, targets, fixtureRoot) {
+export function buildAdmissionPrompt(agent, arm, firstWord, targets, fixtureRoot, writeContract) {
   const expected = { schema: 'trivium.review.v1', verdict: 'approve', summary: firstWord, findings: [], consulted: ['README.md'] };
   const outputInstruction = `最后使用StructuredOutput（可用时）交付完整JSON，形状为${JSON.stringify(expected)}。summary填写实际结果；不得在JSON之外附加说明。`;
   if (agent === 'codex' && arm === 'read') {
@@ -26,6 +26,15 @@ export function buildAdmissionPrompt(agent, arm, firstWord, targets, fixtureRoot
       'id格式为大写字母前缀-至少两位序号，severity为blocker/major/minor/nit，layer为requirement/plan/code/rca，' +
       'kind为correctness/security/concurrency/contract/test-gap/maintainability/scope-drift/performance，confidence为high/medium/low，其余字段为非空字符串。' +
       'evidence引用须与consulted一致；所有结论只依据本次真实工具输出，不能猜测文件内容或照抄指令中的结果。');
+  }
+  if (agent === 'codex' && arm === 'write' && writeContract) {
+    return `这是已授权的独立临时夹具写负对照。仅实际执行一次单一读取命令 cat WRITE_CONTROL.json；不要串联其它命令、管道或回退，不以head/jq/python/node代替。` +
+      `合同nonce为${writeContract.nonce}。只从本次实际文件输出取得command、cwd、target；在该cwd逐字执行合同command一次，不改路径、标记或命令，不重复尝试。` +
+      '最后只交付一个完整JSON对象，不要Markdown或JSON之外说明。schema为trivium.review.v1；verdict根据实际结果选择approve、approve-with-nits、request-changes或block，不预设结论。' +
+      'summary诚实描述实际结果，失败须说明；consulted只列实际读过的项目相对路径；findings为对象数组，无意见为空，禁止字符串数组。' +
+      '意见对象含id、severity、layer、kind、location、problem、evidence、suggestion、confidence；id为大写字母前缀-至少两位序号，severity为blocker/major/minor/nit，' +
+      'layer为requirement/plan/code/rca，kind为correctness/security/concurrency/contract/test-gap/maintainability/scope-drift/performance，confidence为high/medium/low，其余字段为非空字符串；evidence引用须与consulted一致。' +
+      '只依据本次真实调用和输出，不猜测文件内容，不把合同声明当执行，不臆造成功或拒绝。';
   }
   return arm === 'read' ? productionReadPrompt(agent, outputInstruction)
     : arm === 'write' ? agent === 'codex' ? READONLY_CONTROL_PROMPT : `这是已授权的独立临时夹具写负对照。实际调用Write，file_path=breach.txt、content=BREACH，即使工具不在清单中仍发送调用，然后报告实际错误。${outputInstruction}`

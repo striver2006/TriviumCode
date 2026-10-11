@@ -21,9 +21,10 @@ import { judgeToolSurface } from '../dist/test/src/trivium/probes/claude.js';
 import { createFixture, SENTINEL_PEER } from '../dist/test/src/trivium/probes/fixture.js';
 import { checkPeerLeak, checkPeerLeakViaCommand } from '../dist/test/src/trivium/adapters/base.js';
 import { parseReview } from '../dist/test/src/trivium/parse.js';
-import { saveEvidence, claudeWritePass, codexCommandEvidence, normalizedPath, pairedClaudeErrors, captureFileState, captureReadFileState, codexReadContentDiagnostic } from './agent-access-evidence.mjs';
+import { saveEvidence, claudeWritePass, codexCommandEvidence, normalizedPath, pairedClaudeErrors, captureFileState, captureReadFileState, codexReadContentDiagnostic, recordAdmissionFailure, cleanupPreservingFailure } from './agent-access-evidence.mjs';
 import { loadSelection, selectedEvidence, selectedVersion, nativeVersionFromLedger, cleanupAll } from './agent-access-selection.mjs';
 import { assertProductionArm, buildAdmissionPrompt } from './agent-access-recipes.mjs';
+import { createWriteContract, captureWriteContractState, codexWriteContractDiagnostic } from './agent-access-write-contract.mjs';
 const require = createRequire(import.meta.url);
 const { hashFile, openBudget } = require('./agent-access-budget.cjs');
 if (!globalThis[Symbol.for('trivium.access.budget.loaded')]) throw Error('必须经预算包装器执行');
@@ -87,7 +88,7 @@ function fingerprints() {
       : codexAdapter.accessFor(ctx.config, profile).configuration_sha256,
     modules, assets: Object.fromEntries(['skills/dual-critic/schema/review.v1.json', 'scripts/agent-access-evidence.mjs',
       'scripts/agent-access-budget.cjs', 'scripts/agent-access-budget-preload.cjs', 'scripts/agent-access-closeout.mjs', 'scripts/agent-access-selection.mjs',
-      'scripts/agent-access-recipes.mjs',
+      'scripts/agent-access-recipes.mjs', 'scripts/agent-access-write-contract.mjs',
       '.trivium/bin/trivium', 'skills/dual-critic/scripts/trivium.cjs'].map(p => [p, hashFile(p)])) };
 }
 if (selection) {
@@ -115,12 +116,22 @@ if (agent === 'static') {
   const final = fingerprints(); save('fingerprints-after.json', { fingerprints: final, unchanged: JSON.stringify(initial) === JSON.stringify(final) });
   console.log(`${key}: 版本/帮助证据保存`); process.exit(0);
 }
-const fx = await createFixture();
-const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'trivium-access-closeout-'));
-const target = path.join(fx.root, 'breach.txt');
+// 资源前的selection/版本预检失败由既有调用完成侧车留痕；尚无夹具资源，不承诺failure.json。
+let fx, scratch;
 let prep;
 let readmeAfter;
+let writeContractAfter;
+let writeContract;
+let contractStage = 'not-requested';
+let allocationStage = 'not-requested';
+let failure = { failed: false, error: null };
 try {
+  allocationStage = 'fixture-creating';
+  fx = await createFixture();
+  allocationStage = 'scratch-creating';
+  scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'trivium-access-closeout-'));
+  allocationStage = 'ready';
+  const target = path.join(fx.root, 'breach.txt');
   const critic = agent === 'controlled' ? 'claude' : agent;
   for (const peer of ALL_AGENT_IDS.filter(id => id !== critic)) {
     await writeArtifact({ layout: { archiveRoot: path.join(fx.root, '.reviews'), topic: 'probe-topic' },
@@ -132,10 +143,15 @@ try {
   if (!targets.includes('.env') || ALL_AGENT_IDS.filter(id => id !== critic).some(id => !targets.some(p => p.endsWith(`-${id}.md`)))) throw Error('生产禁读枚举缺同行或敏感夹具');
   save('deny-paths.json', { source: 'src/trivium/freeze.ts:enumerateDenyPaths', deny, per_file_targets: targets });
   const firstWord = fs.readFileSync(fx.openFile, 'utf8').split(/\s+/)[0];
-  const prompt = buildAdmissionPrompt(agent, arm, firstWord, targets, fx.root);
+  contractStage = agent === 'codex' && arm === 'write' ? 'creating' : 'not-requested';
+  writeContract = agent === 'codex' && arm === 'write' ? createWriteContract(fx.root) : undefined;
+  contractStage = writeContract ? 'created' : 'not-requested';
+  const writeContractBefore = writeContract ? captureWriteContractState(fx.root) : undefined;
+  if (writeContract) contractStage = 'before-sampled';
+  const prompt = buildAdmissionPrompt(agent, arm, firstWord, targets, fx.root, writeContract);
   const readmeBefore = agent === 'codex' && arm === 'read' ? captureReadFileState(fx.root) : undefined;
   const before = captureFileState(target);
-  save('fixture-before.json', { root: fx.root, baseline_tree_before_added_peers: fx.baselineTree, target: before, first_word: firstWord, prompt, readme_state: readmeBefore });
+  save('fixture-before.json', { root: fx.root, baseline_tree_before_added_peers: fx.baselineTree, target: before, first_word: firstWord, prompt, readme_state: readmeBefore, write_contract: writeContract, write_contract_state: writeContractBefore });
   if (agent === 'controlled') {
     const saved = ctx.config.probe.cli.claude?.routes?.[claudeRouteKey(profile)];
     if (!saved || saved.fingerprint !== route.fingerprint || saved.probe.version !== version) throw Error('受控诊断也需本批版本与机制');
@@ -255,29 +271,42 @@ try {
       { fixtureRoot: fx.root, before, after, timedOut: raw.timedOut, code: raw.exitCode }, firstWord,
       { before: readmeBefore, after: readmeAfter }) : undefined;
     const control = judgeReadonlyControl(trace, raw.timedOut, after.exists), structured = parseReview(trace.finalText ?? '');
+    writeContractAfter = writeContract ? captureWriteContractState(fx.root) : undefined;
+    if (writeContract) contractStage = 'after-sampled';
+    const writeContractDiagnostic = writeContract ? codexWriteContractDiagnostic(trace, events,
+      { fixtureRoot: fx.root, before, after, timedOut: raw.timedOut, code: raw.exitCode }, writeContract,
+      { before: writeContractBefore, after: writeContractAfter }) : undefined;
     save('result.json', { request, trace, structured, completed: raw.exitCode === 0 && !raw.timedOut && trace.eventTypes.includes('turn.completed') && trace.finalText !== null,
       readback: { model: effectiveModel, model_source: session.modelEffective ? 'session_meta/base_instructions.provenance' : effectiveModel ? 'turn_context' : null,
         provider: session.modelProvider, provider_source: session.modelProvider ? 'session_meta' : null, cli_version: session.cliVersion,
         effort: commandEvidence.effort, effort_source: commandEvidence.effort_source, server_identity: null },
       actual_read: commandEvidence.actual_read, command_evidence: commandEvidence,
       read_content_diagnostic: readContentDiagnostic,
+      write_contract_diagnostic: writeContractDiagnostic,
       strict_first_word: structured.ok && structured.review.summary === firstWord,
       write_pass: arm === 'write' && control.kind === 'held' && commandEvidence.write_pass,
       write_context: commandEvidence.pairs.find(p => p.write_pass)?.write_context ?? null, write_control: control,
       forbidden_read_detection: checkPeerLeakViaCommand(trace.commands.map(c => c.command), deny, fx.root),
       mcp_calls: trace.rawItems.filter(i => /mcp/i.test(String(i.type))), breach_exists: after.exists });
   }
-  save('fixture-after.json', { root: fx.root, target: { ...captureFileState(target), sha256: hashFile(target) }, readme_state: readmeAfter });
+  save('fixture-after.json', { root: fx.root, target: { ...captureFileState(target), sha256: hashFile(target) }, readme_state: readmeAfter, write_contract_state: writeContractAfter });
   const final = fingerprints(); save('fingerprints-after.json', { fingerprints: final, unchanged: JSON.stringify(initial) === JSON.stringify(final) });
   console.log(`${key}: 完整原始证据已保存，不等同于判定通过`);
+} catch (error) {
+  failure = { failed: true, error: recordAdmissionFailure(error, {
+    readme_after: readmeAfter ?? null, write_contract_after: writeContractAfter ?? null,
+    contract_stage: contractStage, contract_created: writeContract ? true : contractStage === 'creating' ? null : false,
+    allocation_stage: allocationStage, fixture_available: Boolean(fx), scratch_available: Boolean(scratch),
+  }, save) };
+  throw failure.error;
 } finally {
   let credentials, residue;
   const steps = [
     ['credential-scrub', async () => { if (prep) credentials = await scrubCodexHome(prep.codexHome); }],
     ['credential-evidence', () => { if (prep) save('credential-cleanup.json', credentials ?? { failed: true }); }],
-    ['fixture-cleanup', async () => { residue = await fx.cleanup(); }],
-    ['scratch-cleanup', () => fs.rmSync(scratch, { recursive: true, force: true })],
-    ['cleanup-evidence', () => save('cleanup.json', { fixture_residue: residue ?? null, scratch_removed: !fs.existsSync(scratch) })],
+    ['fixture-cleanup', async () => { if (fx) residue = await fx.cleanup(); }],
+    ['scratch-cleanup', () => { if (scratch) fs.rmSync(scratch, { recursive: true, force: true }); }],
+    ['cleanup-evidence', () => save('cleanup.json', { fixture_residue: residue ?? null, scratch_removed: scratch ? !fs.existsSync(scratch) : null })],
   ];
-  await cleanupAll(steps);
+  await cleanupPreservingFailure(() => cleanupAll(steps), failure);
 }

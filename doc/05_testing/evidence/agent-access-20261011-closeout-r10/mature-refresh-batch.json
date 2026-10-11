@@ -1,0 +1,225 @@
+{
+  "at": "2026-10-11T11:19:36.304Z",
+  "pool": "admission",
+  "before": 594,
+  "expected_starts": 39,
+  "hard_max_starts": 51,
+  "batch_stop": 645,
+  "pool_limit": 645,
+  "extension": {
+    "pool": "admission",
+    "key": "r22-approved18-mature-refresh",
+    "additional": 43,
+    "previous_limit": 602,
+    "new_limit": 645,
+    "reason": "用户自动CLI扩容委托；18C有效批准，c912bce7清洁提交05e370bb包Codex/Qwen首read原标准已过；剩余成熟6组合版本7+能力32预计39，594起硬51止645；不重复首read，不启动无新机制臂，不改变判据，正式0新增",
+    "authorized_by": "2026-10-10用户已授权按需扩容",
+    "published_at": "2026-10-11T11:19:36.303Z"
+  },
+  "review": {
+    "used": 228,
+    "limit": 238
+  },
+  "formal": {
+    "used": 18,
+    "limit": 18
+  },
+  "approval": {
+    "at": "2026-10-11T11:14:02.707Z",
+    "stage": "code",
+    "run_id": "20261011T105033Z",
+    "decision": "approved",
+    "reason": "依据用户本轮明确委托：中途遇到需要审批的，根据你的建议自动审批。第18C三原件及四条裁决齐备，gate退出0；两驳回两暂缓、无接受待实施项。保留readonly_breach=true及复算无变化告警，唯一Bash调用获精确同ID禁用拒绝，前后冻结/hash/审批工作树摘要0；不改变只读guard或准入判据，不恢复旧失败运行，暂缓语义变化另需正式B，当前真实准入缺口仍未完成。",
+    "session_id": null
+  },
+  "root": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/admission-after18-c912bce7",
+  "evidence_root": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3",
+  "budget_root": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget",
+  "repo": "/Users/chenzhenbo/Work/TriviumCode",
+  "source_stamp": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "c912bce7c0f09d74741a0bb000ea86e1f9dce40e",
+    "dirty": false,
+    "inputs_sha256": "e03db7e3a06fff6d23565a67b66ec5d9ffcc01b4d606ca8917b205c2238a926f",
+    "built_at": "2026-10-11T11:17:41.290Z"
+  },
+  "source_bundle_sha256": "05e370bb94fabbeb217ab569c0120cb62f6c8090bd9950cf12461591e68241dd",
+  "version_jobs": [
+    {
+      "name": "claude-qwen",
+      "args": [
+        "static",
+        "qwen",
+        "version",
+        "5"
+      ],
+      "starts": 1
+    },
+    {
+      "name": "native",
+      "args": [
+        "static",
+        "codex",
+        "version",
+        "18"
+      ],
+      "starts": 2
+    },
+    {
+      "name": "kimi",
+      "args": [
+        "static",
+        "codex",
+        "version",
+        "19",
+        "kimi"
+      ],
+      "starts": 2
+    },
+    {
+      "name": "deepseek",
+      "args": [
+        "static",
+        "codex",
+        "version",
+        "20",
+        "deepseek"
+      ],
+      "starts": 2
+    }
+  ],
+  "rows": [
+    {
+      "agent": "claude",
+      "combination": "qwen",
+      "requested_model": "qwen3.8-flash",
+      "actual_model": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "variant": 4,
+      "arms": [
+        "read",
+        "deny-read",
+        "deny-grep",
+        "write"
+      ],
+      "gap": "同新提交完整bundle下未取得的原实际读取/写/禁读/Schema/MCP证据",
+      "reusable_evidence": "历史机制及有效目录事实；旧完整准入不继承"
+    },
+    {
+      "agent": "codex",
+      "combination": "native-sol",
+      "requested_model": "gpt-6.1-sol",
+      "actual_model": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "variant": 4,
+      "arms": [
+        "read",
+        "deny",
+        "write"
+      ],
+      "gap": "同新提交完整bundle下未取得的原实际读取/写/禁读/Schema/MCP证据",
+      "reusable_evidence": "历史机制及有效目录事实；旧完整准入不继承"
+    },
+    {
+      "agent": "codex",
+      "combination": "native-astra",
+      "requested_model": "gpt-6-astra",
+      "actual_model": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "variant": 4,
+      "arms": [
+        "read",
+        "deny",
+        "write"
+      ],
+      "gap": "同新提交完整bundle下未取得的原实际读取/写/禁读/Schema/MCP证据",
+      "reusable_evidence": "历史机制及有效目录事实；旧完整准入不继承"
+    },
+    {
+      "agent": "codex",
+      "combination": "qwen",
+      "requested_model": "qwen3.8-flash",
+      "actual_model": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "variant": 4,
+      "arms": [
+        "deny",
+        "write"
+      ],
+      "gap": "同新提交完整bundle下未取得的原实际读取/写/禁读/Schema/MCP证据",
+      "reusable_evidence": "首批本版read-4+version-17当前指纹有效，其余新测"
+    },
+    {
+      "agent": "codex",
+      "combination": "kimi",
+      "requested_model": "kimi-for-coding",
+      "actual_model": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "variant": 4,
+      "arms": [
+        "read",
+        "deny",
+        "write"
+      ],
+      "gap": "同新提交完整bundle下未取得的原实际读取/写/禁读/Schema/MCP证据",
+      "reusable_evidence": "历史机制及有效目录事实；旧完整准入不继承"
+    },
+    {
+      "agent": "codex",
+      "combination": "deepseek",
+      "requested_model": "deepseek-flash",
+      "actual_model": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "variant": 4,
+      "arms": [
+        "read",
+        "deny",
+        "write"
+      ],
+      "gap": "同新提交完整bundle下未取得的原实际读取/写/禁读/Schema/MCP证据",
+      "reusable_evidence": "历史机制及有效目录事实；旧完整准入不继承"
+    }
+  ],
+  "held": [
+    "五Claude非flash生产write",
+    "Codex/Luna write",
+    "Claude/Kimi .env Read",
+    "官方Claude订阅"
+  ],
+  "scripts": {
+    "scripts/agent-access-closeout.mjs": "a18b2af0c319410a12060e7ab2ff7fc07eadc76b5a84b8659b42a96dd421f2aa",
+    "scripts/agent-access-recipes.mjs": "4cf0a73fb022b08ff93ae2efbb6a4e46f11ff3da6996b6ad67b8c76dc5fe5b78",
+    "scripts/agent-access-evidence.mjs": "77b53bf3cba27aa14faee8101bcd80413850135079dcac98f2894925cf0ce06f",
+    "scripts/agent-access-selection.mjs": "a0ce239b1ec53ae322e99ae9637cea0759ee63ce987f34a80f119389e50751a5",
+    "scripts/agent-access-budget.cjs": "c70a39ad6c041d9bb5b2cf39d32927c7e3d936e94f7d3f82988db9af2b55bb9b",
+    "scripts/agent-access-budget-preload.cjs": "2b74abf72f7f67edb61879b58798761c6c53ade68ba92aa3dea07cb98b592b71",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v13.mjs": "e3ffae4388380157ec4ef8da25080ec8196284ded24fd9dc266826fdd9ac0634"
+  },
+  "configs": {
+    "shared": "9dd249afa2277bc53c76c75a032a9cbebc8db41cdf8fb54e8a6bb964d13c770f",
+    "local": "9270ce3a0961e5766ad1d1c04a520b082a00957e203a5a2ad449c068da3dc4e7",
+    "globals": {
+      ".codex/config.toml": "d3a23d34efb049b228814bf55699b89b2085a079b25a429886293e4e89c5d17e",
+      ".codex/auth.json": "89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5",
+      ".codex/hooks.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      ".claude/settings.json": "00c802290bb6300b39d66b67ab1dc8edf1c141817f23fd26b3d745ce65f3e715"
+    }
+  },
+  "automatic_retry": false,
+  "criteria_changed": false,
+  "model_config_changed": false,
+  "criteria_change_authorized": false,
+  "goal_complete": false,
+  "counting": "版本/帮助/失败/超时/包装器/native/重试实际启动全部计数；批预计4，硬12对应池602；达到上限停止，必要扩容先发布",
+  "first_read_reference": {
+    "result_sha256": "601fac64aaea90f75a15335f47ab5f0c80740609bd0bdf5cc0dd11b9273c1dc2",
+    "selection_sha256": "f27856619014108fd30af5f07ea237928a9c06e0298f1f2229e322b88b51447c"
+  },
+  "prompt_changed": false
+}

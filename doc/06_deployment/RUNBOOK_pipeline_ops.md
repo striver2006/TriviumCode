@@ -475,3 +475,15 @@ Hook 与预检只做**存在性**检查：wrapper（`.trivium/bin/trivium`）内
 > 上述总15及预算补记均为当时采样；当前执行口径以恢复报告最新段与hash权威指针为准。用户现已独立授权“授权轮次可以按需增加，不必询问授权”，v8仅发布16B/17C有界批、18仍拒绝，后续按需另落批次；v2守卫不核批大小，有界性由发布核验及审查约定保证。16B run20261011T093157Z有效、五条裁决合入r20、普通plan依明确委托批准，review203/213、admission590/602完成件齐备；先同步时点口径，再实施新取证。原874矩阵5/1/6按其原指纹保留，新任务书/新包未测。准入判据变化仍需单独批准，旧失败/拒绝/台账不改。
 
 本批实现核对顺序：先保持原actual_read/写拒绝/禁读/MCP/汇总函数及旧原件；只在Codex/read增加README bytes/hash前后状态与顶层byte-exact/no-normalization诊断，完整输出/cwd/两个ID唯一配对，无尾部归一；诊断不决定原准入。核14真实非目标prompt哈希及新提示无首词泄露/预设结论、授权历史/当前读取壳，然后串行双遍check、源/安装桩14/14、最终build和正常四目标安装/28入口/七备份/配置hash。将新完整指纹与未测矩阵先落盘冻结，再17C完整base39ed审查。普通code批准后另发实际Qwen读取首臂及必要版本的精确批清单，无重试/全局配置/自动升级；失败与旧874矩阵保留，不用诊断false改判原断言。
+
+
+> 第19B/r22获批写合同取证（设计v1.3.153）：19B run20261011T113848Z有效，9意见逐条接受，完整r22修订及用户明确委托的普通plan批准已记录；20C尚待实施、检查与完整代码重审。仅生产Codex/write在独立临时夹具创建WRITE_CONTROL.json（O_EXCL、0600、真实非软链根），固定原目标/标记及未导出原BREACH字面，不改src探针命令。canonical唯一调用条件第六参接合同；旧五参14样本仅历史兼容，当前非目标逐项字节对账。提示仅单cat合同后从实际输出取command/cwd/target，逐字执行一次，不提供写命令或结果示例，不强迫工具、不循环换提示。新模块进入assets全指纹及版本重录。
+>
+> fixture-before/after保存合同普通文件状态、声明nonce、bytes/hash；result.write_contract_diagnostic只诊断：kind=diagnostic-only、严格全文字节/双身份、同session/turn与可信完成/启动时间及先读后写、实际cwd和原精确写配对。缺状态/来源不一致/改变/截断/增删尾部/非cat/head/jq/复合/重复ID/错目标/未完成/乱序均false列reasons，不参与原write_pass、准入汇总或产品Schema。未知错误直抛，脱敏failure留痕并走原凭据/夹具/scratch清理。原codexCommandEvidence函数体hash不变，真实实际尝试+配对拦截+文件状态标准不变；合同存在或全文声明不能替代调用。
+>
+> 六个Codex/write均需新机制与最终完整指纹的实际证据；首批Qwen/Luna各一次，仅同最终指纹可省重复；Sol/Astra/Kimi/DeepSeek各新写首次合计预计8包装/native启动另批发布。正式v10有界19B/20C，21当前拒绝；审查243/248、准入633/645为19B收尾采样。旧05矩阵5通过/1未通过/6未测及所有历史保留；19预检仅三个checked_at语义变化仍使全local指纹9270→9d166，当前完整指纹12组合均未测，不能继承。五个Claude非flash生产写仍无新机制、0启动；官方Claude待订阅、服务端身份null、客户端入口实际解析未测。component/restricted候选未采用，判据变化仍需独立明确批准，目标未完成。
+
+
+> 第20C后同获批范围失败留痕补正（设计v1.3.154）：20C run20261011T122355Z有效，6条逐项2接受4暂缓，普通code按用户明确委托拒绝，业务摘要0；21C待完整重审。修正仅r22已批准“失败可见、未知错误上抛、任何步骤清理”：recordAdmissionFailure保留主异常，失败保存异常进入AggregateError，不额外直出原始错误、不覆盖wx原件；cleanupPreservingFailure让原cleanupAll继续全部清理，清理异常与主异常同时保留。fixture/scratch初始化进原try/finally；failure.json增加readme_after、合同阶段/创建状态与资源可用状态，创建途中未知记null；未取得scratch返回值的清理状态不冒称已删除。selection/版本资源前预检失败仅有既有调用完成失败侧车，不承诺failure.json。
+>
+> 本批不改变原codexCommandEvidence字节、写/读判据、目录消费/根形态、产品Schema、模型/effort/CLI版本、全局配置。ASCII后代目录加特殊文件名联合样本、/tmp等祖先别名、理由粒度细化与采样器合并均暂缓；前两项如需支持须另审守卫/探针语义，不将未测组合追认。五Claude非flash写继续0启动，当前新完整指纹12组合均未测。按独立按需委托发布v11仅21C，22仍拒绝；新v15只换权威文件名及首注释，guard/precheck不改。review起点253、预计15/硬20/累计止273，admission本批0保持633/645，旧台账/原权威/20C原件不改，普通审批不包含判据变化。

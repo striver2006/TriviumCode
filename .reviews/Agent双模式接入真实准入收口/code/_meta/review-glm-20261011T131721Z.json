@@ -1,0 +1,51 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve",
+  "summary": "本侧按安全、并发与错误处理、空值越界、测试缺口四个镜头审了 r3 至 r21C 的累积补丁，未发现值得阻断或整改的问题。核对结论：(1) 写合同机制与 r22 计划第 6 节六项裁决逐条对齐——canonical 唯一调用以条件第六参接合同、新模块进入 assets 全指纹、BREACH 字面与整条命令在测试中独立锚定（不经共享常量）、head/jq/管道/复合命令负例齐备、诊断只落 result.write_contract_diagnostic 不改原 write_pass、codexCommandEvidence 函数体由两处测试钉住 hash。(2) createWriteContract 用 O_EXCL|O_NOFOLLOW、0600、根真实目录校验；captureWriteContractState 与 captureReadFileState 以 dev/ino/size/mtime/ctime 三方身份核验采样期间不变，未知错误上抛且 finally 关句柄，均有 mock 注入测试。(3) codexWriteContractDiagnostic 的合同声明与盘上状态双向比对（expected.nonce 取自入参合同但盘上 declaration 必须逐字节一致，且 sha256/bytes 另与合同对象比对），先读后写用数组序加 completed_at_ms/started_at_ms 双重校验并绑定同 thread/turn；命令、目标、cwd、parsed_cmd、exit/status 任一变异均落 reasons，变异清单覆盖 28 项。(4) 失败留痕链（recordAdmissionFailure 保留主异常、保存失败进 AggregateError、cleanupPreservingFailure 不吞清理错误、fixture/scratch 初始化分级进 try/finally、failure.json 不冒称未取得的清理状态）与设计 v1.3.154 一致，wx 不覆盖原件有 EEXIST 测试。(5) 目录事实消费门 fail-closed：projectHash/shape/TTL/指纹四重绑定缺一即不消费，二进制仅在候选声明成立时读取（测试钉住读取次数），doctor 路线漂移与 skip-model 路径都清空新增两字段，verifiedClaudeDirectories 无遗漏旧签名调用方；covered 形态（根 1-5 段 ASCII、后代 0-2 级）与 freeze.ts 扫描深度 7 精确咬合（5+2=7，深度 8 仍有边界测试声明未覆盖），压缩只会多拒不会漏拒。(6) 证据根与台账根分离后 nativeVersionFromLedger 仍只认台账目录并有分裂根负例。(7) 新提示不泄露首词、BREACH 与写命令字面（测试断言），非目标 14 份历史 prompt 逐字节回放。恢复报告与 doc README 索引同步。",
+  "findings": [],
+  "agreed": [
+    "写合同三件套（创建、状态采样、执行观察）严格实现获批边界：O_EXCL 防覆盖、0600、根非软链、nonce 为 UUIDv4，且诊断对盘上声明与合同对象做双向字节级比对，合同被改或采样期间变化均判 false 并列 reasons",
+    "诊断不替代原判据这一点在代码与测试两侧都成立：write_pass 仍唯一来自 control.kind === held 与 commandEvidence.write_pass，诊断 false 不回写任何准入字段",
+    "失败可见整改落实完整：初始化分级（allocationStage/contractStage）进原 try/finally，清理链条保留双因果 AggregateError，cred/fixture/scratch/cleanup 四步任一失败仍继续其余步骤并有测试",
+    "目录事实新增 projectHash 与 shape 两格后全链路 fail-closed：消费、doctor 失效、路线漂移、TTL、二进制读取门都验证过，未发现遗漏旧路径调用",
+    "敏感扫描深度 6 到 7 的扩展与受测目录形态精确一致且有边界测试钉住常量，不会随形态自动扩域",
+    "prompt 配方重构（assertProductionArm 前移、五组合 spawn 前拒绝、Codex read/write 新提示不带首词与结果示例）与 16B/19B 获批口径一致，14 份回放钉住非目标臂逐字不变"
+  ],
+  "not_covered": [
+    "本侧为只读审查，未运行任何测试、构建或安装；两次 check 3165 通过、桩 14/14、bundle 指纹等结论引自恢复报告留痕，未复测",
+    "未重算 fixture 与函数体钉住的 hash（如 codexCommandEvidence 的 8662c803、claude-deny-paths-replay 的 0ae4c899），仅核对其断言逻辑与来源绑定方式",
+    "doc/05_testing/evidence 下数百份证据 JSON 只抽查了 codex-qwen-write4-diagnostic 与索引同步，未逐份核对内容一致性",
+    "六个 Codex/write 新机制的真实模型行为按报告自述全部未测，本轮只审静态实现与测试设计，不能据此宣称准入目标完成",
+    "已知暂缓项（内部 ENOENT 站点化 guard、ASCII 后代目录与特殊文件名联合样本、/tmp 祖先别名、采样器合并）按计划明确暂缓，未作为意见重复提出",
+    "skills-src 渲染产物零漂移未经 render 验证，仅确认本轮改动落在核心容器 SKILL.md 而非渲染产物"
+  ],
+  "consulted": [
+    "scripts/agent-access-closeout.mjs",
+    "scripts/agent-access-evidence.mjs",
+    "scripts/agent-access-write-contract.mjs",
+    "scripts/agent-access-recipes.mjs",
+    "scripts/agent-access-selection.mjs",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/claude-directory.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/types.ts",
+    "src/trivium/report.ts",
+    "skills/dual-critic/SKILL.md",
+    "test/unit/agent-access-write-contract.test.ts",
+    "test/unit/agent-access-read-evidence.test.ts",
+    "test/unit/agent-access-closeout.test.ts",
+    "test/unit/agent-access-recovery.test.ts",
+    "test/unit/claude-directory.test.ts",
+    "test/unit/freeze-drift.test.ts",
+    "test/integration/claude-directory-adapter.test.ts",
+    "test/integration/claude-structured-probe.test.ts",
+    "test/fixtures/agent-access-prompt-replay.json",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r22-codex.md",
+    "doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r10/codex-qwen-write4-diagnostic.json"
+  ]
+}

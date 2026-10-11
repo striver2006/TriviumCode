@@ -1,0 +1,74 @@
+{
+  "agreed": [
+    "坚持单一来源与未改判据：原 codexCommandEvidence 函数体 SHA 逐字保留，不放宽 write_pass，不把额外诊断当作原写通过或替代标准。",
+    "变更范围严格隔离：合同机制仅在 scripts/agent-access-write-contract.mjs 中局部实现，仅在 agent === 'codex' && arm === 'write' 分支传递，不影响其余非目标臂，且非目标臂 prompt 逐字保持。",
+    "真实物理夹具安全防护：合同文件仅在独立创建的临时夹具根目录下写入，采用 O_EXCL 与 0600 权限，拒绝软链与外部全局目录，并置于既有清理链内。",
+    "止损与首尝试原则：明确仅允许一次首尝试，若模型仍不遵守或拒绝则判定失败并终止该机制，不自动循环换提示词。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r21-codex.md",
+    "scripts/agent-access-closeout.mjs",
+    "scripts/agent-access-recipes.mjs",
+    "scripts/agent-access-evidence.mjs",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/codex-trace.ts",
+    "test/unit/agent-access-read-evidence.test.ts",
+    "test/fixtures/agent-access-prompt-replay.json",
+    "test/unit/agent-access-closeout.test.ts",
+    "test/unit/agent-access-task-launch.test.ts",
+    "test/unit/scripts-contract.test.ts",
+    "test/contract/claude-admission-schema-source.test.ts",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r10/codex-qwen-write4-diagnostic.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r10/matrix-after18.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r10/review-round19-plan-batch-v2.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v14.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v10.json",
+    "doc/02_design/ADR_003_agent_access.md",
+    "doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "test/unit/agent-access-read-evidence.test.ts:96 包含对 scripts/agent-access-closeout.mjs 源码的精确正则断言 assert.match(source, /const prompt = buildAdmissionPrompt\\(agent, arm, firstWord, targets, fx.root\\)/)。计划 §3 明确要在 closeout.mjs 中针对 agent===codex && arm===write 分支向 buildAdmissionPrompt 传入可选的合同参数，但计划 §4 仅列出单测新增和 replay 样本覆盖，遗漏了对该处正则守卫的同步计划。若直接实施，npm run check 将在此处断言失败。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §4 与 test/unit/agent-access-read-evidence.test.ts:96",
+      "problem": "现有单测对 closeout.mjs 的 buildAdmissionPrompt 调用签名存在硬编码源码断言，计划未将其纳入同步改造范围，将导致检查闸门阻断。",
+      "severity": "major",
+      "suggestion": "在计划 §4 中明确同步更新 test/unit/agent-access-read-evidence.test.ts:96，使正则断言兼容 Codex/write 臂传入的可选合同参数。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "在 scripts/agent-access-recipes.mjs 中，针对读取指令明确要求「仅实际执行一次单一读取命令 cat README.md；不要串联ls、echo、管道或回退命令」，以确保 Codex trace 能够稳定提取到 parsed_cmd: read。而在计划 §3 中，给模型的提示仅要求「从实际输出取command/cwd/target后在该cwd逐字执行一次」，因 WRITE_CONTROL.json 为 json 后缀，模型极易调用 python3/jq/node 或使用管道过滤，导致 Codex 记录 parsed_cmd: unknown 并破坏单 cat 与双 ID 配对，白白浪费唯一的首尝试机会。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §3",
+      "problem": "对模型的提示词未将合同读取动作精确锚定为单一 cat 命令，可能引发 parsed_cmd 无法识别及诊断直接失败。",
+      "severity": "minor",
+      "suggestion": "在计划 §3 的提示词规范中明确固定要求「仅实际执行一次单一读取命令 cat WRITE_CONTROL.json」，保持与 productionReadPrompt 的约束一致。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "scripts/agent-access-closeout.mjs:88-92 中的 fingerprints().assets 显式采集了参与准入治理的关键脚本（recipes、evidence、closeout 等）的 hash。计划 §3 引入了新增模块 scripts/agent-access-write-contract.mjs，但未规划将其纳入 assets 指纹跟踪，导致运行留痕中的资产指纹未能完整反映准入执行依据。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §3 与 scripts/agent-access-closeout.mjs:88-92",
+      "problem": "新增治理脚本未规划纳入 closeout.mjs 的 fingerprints().assets 审计追踪。",
+      "severity": "minor",
+      "suggestion": "在计划 §3 中明确在 scripts/agent-access-closeout.mjs 的 fingerprints().assets 中登记 scripts/agent-access-write-contract.mjs。"
+    }
+  ],
+  "not_covered": [
+    "审查员环境为只读隔离，未执行真实命令或启动子进程验证实际测试运行结果。",
+    "Codex/Qwen 真实模型接收合同后的实际遵从行为（是否产生其他不可预见的工具调用偏离）取决于模型运行时推理，无法通过静态分析保证。",
+    "外部 CLI 探针版本及真实网络环境不在本次计划审查范围。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "被审计划整体设计审慎，严格隔离了 Codex/write 合同机制，原判据 SHA 与只读约束完整保留。最危险的问题是计划遗漏了现有单测 test/unit/agent-access-read-evidence.test.ts:96 对 closeout.mjs 中 buildAdmissionPrompt 调用签名的源码匹配断言，实施后将直接导致 npm run check 红测试；此外提示词未固定单一 cat 命令可能导致 parsed_cmd 提取失败，且新增脚本未纳入指纹追踪。需修订计划后方可实施。",
+  "verdict": "request-changes"
+}

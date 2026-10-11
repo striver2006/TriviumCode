@@ -1,0 +1,33 @@
+/** 独立按需轮次委托：本批仅21C，20原运行/权威保留，22仍拒绝。 */
+import fs from 'node:fs';import path from 'node:path';import os from 'node:os';import crypto from 'node:crypto';import {createRequire} from 'node:module';
+import {readTask} from '../../../../dist/test/src/trivium/meta.js';import {listRecordedRuns} from '../../../../dist/test/src/trivium/archive.js';
+import {assertFormalRoundCore} from '../agent-access-20261011-closeout-r3/round-guard-v2.mjs';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const repo=process.cwd(),topic='Agent双模式接入真实准入收口',root=path.dirname(new URL(import.meta.url).pathname),prior=path.resolve(root,'../agent-access-20261011-closeout-r3');
+const hash=b=>crypto.createHash('sha256').update(b).digest('hex'),save=(p,v)=>fs.writeFileSync(p,typeof v==='string'?v:JSON.stringify(v,null,2)+'\n',{flag:'wx',mode:0o600});
+const layout={archiveRoot:repo+'/.reviews',topic},task=await readTask(layout),runs=await listRecordedRuns(layout);
+if(task.runs.length!==20||runs.length!==20||runs.some(r=>r.unreadable)||JSON.stringify(task.runs.map(r=>r.run_id).sort())!==JSON.stringify(runs.map(r=>r.run_id).sort()))throw Error('20次task/archive集合不符');
+if(!task.approvals.some(a=>a.run_id==='20261011T122355Z'&&a.stage==='code'&&a.decision==='rejected')||!task.approvals.some(a=>a.run_id==='20261011T113848Z'&&a.stage==='plan'&&a.decision==='approved'))throw Error('缺本轮19B批准或20C拒绝');
+const old=fs.readFileSync(prior+'/formal-round-authorization-v10.json'),pointer=fs.readFileSync(prior+'/formal-round-authority.json'),priorAuth=JSON.parse(old),priorPointer=JSON.parse(pointer);
+if(priorPointer.authorization!=='formal-round-authorization-v10.json'||priorPointer.sha256!==hash(old)||priorAuth.delegated_round_extensions!==true||priorAuth.delegation_exact_reply!=='授权轮次可以按需增加，不必询问授权'||priorAuth.criteria_change_authorized!==false||hash(fs.readFileSync(priorAuth.supersedes_file))!==priorAuth.supersedes_sha256)throw Error('独立委托/谱系不符');
+const auth={...priorAuth,previous_limit:20,new_limit:21,historical_run_ids:task.runs.map(r=>r.run_id),new_rounds:[{ordinal:21,entry:'C',stage:'code'}],authorized_scope:'依据用户独立按需轮次委托，仅21C完整代码重审：20C接受CLAUDE-03/GLM-01，按19B/r22已批准失败可见及任何步骤清理范围整改，不改guard/准入判据，不实施暂缓意见；20历史和旧失败不改、计数不重置，22拒绝。',supersedes_file:'doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v10.json',supersedes_sha256:hash(old),criteria_change_authorized:false,count_reset:false,old_failed_status_unchanged:true,recorded_at:new Date().toISOString()};
+const argv=['review','--start','--entry','C','--stage','code','--topic',topic,'--driver','codex','--critics','claude,gemini,glm'],cases=[];
+if(assertFormalRoundCore(auth,task,runs,argv,auth)!==21)throw Error('21C不放行');cases.push('20实际一致历史允许21C');
+const deny=(name,a,t,r,args,current=auth)=>{let refused=false;try{assertFormalRoundCore(a,t,r,args,current)}catch{refused=true}if(!refused)throw Error(name);cases.push(name)};
+deny('旧v10被替代',priorAuth,task,runs,argv);
+for(const[n,current]of[['缺权威',undefined],['null权威',null],['无效权威',{}]])deny(n,auth,task,runs,argv,current);
+for(const r of[runs.slice(1),[...runs,{run_id:'orphan'}],[...runs,runs[0]],runs.map((r,i)=>i?r:{...r,unreadable:true})])deny('缺/孤儿/重复/不可读原件拒绝',auth,task,r,argv);
+for(const flag of['--topic','--driver','--critics','--entry','--stage']){const i=argv.indexOf(flag),wrong=[...argv];wrong[i+1]='wrong';deny('错'+flag,auth,task,runs,wrong);deny('重复'+flag,auth,task,runs,[...argv,flag,argv[i+1]])}
+deny('allow-single拒绝',auth,task,runs,[...argv,'--allow-single']);
+deny('22拒绝',auth,{...task,runs:[...task.runs,{run_id:'future21-fixture'}]},[...runs,{run_id:'future21-fixture'}],argv);
+const{openBudget}=createRequire(import.meta.url)('../../../../scripts/agent-access-budget.cjs'),budgetRoot=path.join(os.homedir(),'.trivium/evidence/agent-access-20261011-closeout-r3/budget');
+const pool=openBudget(budgetRoot,'review'),admission=openBudget(budgetRoot,'admission');const count=b=>fs.readdirSync(b.dir).filter(n=>/^reserved-\d+\.json$/.test(n)).length;
+if(count(pool)!==253||pool.limit()!==263||count(admission)!==633||admission.limit()!==645)throw Error('预算基线不符');
+const launcher=fs.readFileSync(prior+'/launch-v14.mjs','utf8');if(launcher.split('formal-round-authorization-v10.json').length!==2)throw Error('载体授权不是唯一引用');
+const newLauncher=launcher.replace(launcher.split('\n')[0],'/** 独立按需委托仅21C：v15仅切v11授权，guard/判据不变。 */').replace('formal-round-authorization-v10.json','formal-round-authorization-v11.json'),bytes=JSON.stringify(auth,null,2)+'\n';
+save(prior+'/formal-round-authority-v10-preserved.json',pointer.toString());save(prior+'/formal-round-authorization-v11.json',bytes);save(prior+'/launch-v15.mjs',newLauncher);
+const tmp=prior+'/authority-'+crypto.randomUUID()+'.tmp';save(tmp,{topic,authorization:'formal-round-authorization-v11.json',sha256:hash(bytes),basis:'独立按需正式轮次委托；仅21C有界重审、22拒绝；旧失败/计数和准入判据保持。',recorded_at:new Date().toISOString()});fs.renameSync(tmp,prior+'/formal-round-authority.json');
+saveEvidence(root+'/review-round21-code-batch.json',{at:new Date().toISOString(),pool:'review',before:253,expected:15,hard_limit:20,batch_stop:273,pool_limit:273,formal:{used:20,limit:21,this_round:21,entry:'C',stage:'code'},admission:{used:633,limit:645,new_starts:0},counting:'版本/帮助/认证探活/失败/超时/包装器/native/重试均计启动；达273停，另发扩容记录后才继续。',criteria_change:false});
+const extension=pool.extend('formal-round21-code-followup',10,'用户独立按需轮次委托及CLI自动扩容；21C基线253、预计15、硬20、累计止273，池263扩10至273，准入0，判据不变');saveEvidence(root+'/review-round21-budget-extension.json',extension);
+saveEvidence(root+'/formal-round21-authorization-verification.json',{at:new Date().toISOString(),authorization_sha256:hash(bytes),preserved_pointer_sha256:hash(pointer),launcher_sha256:hash(newLauncher),old_launcher_sha256:hash(launcher),historical_ids:auth.historical_run_ids,old_runs:task.runs,old_approvals:task.approvals,cases,delegated_round_extensions:true,delegation_exact_reply:auth.delegation_exact_reply,criteria_change_authorized:false,supersedes_file:auth.supersedes_file,supersedes_sha256:auth.supersedes_sha256,vendor_cli_starts:0});
+console.log(JSON.stringify({formal:'20/21',review:'253/273',admission:'633/645',cases:cases.length,vendor_cli_starts:0}));

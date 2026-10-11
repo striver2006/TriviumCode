@@ -77,7 +77,7 @@ test('全文诊断严格配对、bytes/hash及尾部；不改变原读取断言'
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('十四份真实非目标prompt固定hash回放；Codex/read无首词泄露或预设结论', async () => {
+test('十四份真实历史prompt兼容回放；当前非write臂不变且Codex/read无首词泄露', async () => {
   const h = await import(path.resolve('scripts/agent-access-recipes.mjs'));
   const raw = fs.readFileSync('test/fixtures/agent-access-prompt-replay.json');
   assert.equal(sha(raw), '16d0ea2b0bc2a93ed9781339df859d704b84fa3f7e9eb3dbd08b795b75311e89');
@@ -93,7 +93,7 @@ test('十四份真实非目标prompt固定hash回放；Codex/read无首词泄露
   assert.match(prompt, /findings是对象数组/); assert.match(prompt, /禁止字符串数组/); assert.match(prompt, /consulted/);
   assert.ok(!prompt.includes('"verdict":"approve"')); assert.ok(!prompt.includes('"summary":'));
   const source = fs.readFileSync('scripts/agent-access-closeout.mjs', 'utf8');
-  assert.match(source, /const prompt = buildAdmissionPrompt\(agent, arm, firstWord, targets, fx.root\)/);
+  assert.match(source, /const prompt = buildAdmissionPrompt\(agent, arm, firstWord, targets, fx.root, writeContract\)/);
   assert.match(source, /read_content_diagnostic: readContentDiagnostic/);
   const evidence = fs.readFileSync('scripts/agent-access-evidence.mjs', 'utf8');
   assert.equal(sha(evidence.slice(evidence.indexOf('export function codexCommandEvidence('), evidence.indexOf('export function primaryLoaded('))),

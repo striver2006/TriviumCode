@@ -1,0 +1,73 @@
+{
+  "at": "2026-10-11T13:44:33.652Z",
+  "run_id": "20261011T131721Z",
+  "gate_check_exit": 0,
+  "await_corrected_exit": 0,
+  "code_decision": {
+    "at": "2026-10-11T13:43:19.397Z",
+    "stage": "code",
+    "run_id": "20261011T131721Z",
+    "decision": "approved",
+    "reason": "依据Bob本轮明确普通自动审批委托：21C三原件全文及五条裁决齐备，两驳回三暂缓、无接受待实施项；gate与await均0，40静态/442业务及10原件hash一致，审批业务摘要0。readonly_breach=true及全部盲区告警保留，唯一ls-la Bash同ID被明确禁用拒绝，未改guard或恢复旧失败。批准当前code用于已审最小真实补测，不采用任何准入判据替代，不宣称目标完成；Driver模型和会话来源未声明，session保持null。",
+    "session_id": null
+  },
+  "disposition": ".reviews/Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r11-response-codex.md",
+  "disposition_sha256": "d520906523bd917914d46d2592f9e9b96b9580b57608d51d8c30003e811d13d1",
+  "frozen_static": 40,
+  "frozen_business": 442,
+  "mismatches": [],
+  "original_artifacts": 10,
+  "subject": "5da0fb298b4904b65a39616aeed290696a44a693d19217cc32b0fd1d5d411f3e",
+  "tree": "c98d2938d76346862f1f0567d6a8e25a513e241c",
+  "after_tree": "c98d2938d76346862f1f0567d6a8e25a513e241c",
+  "readonly_breach_preserved": true,
+  "bash_id": "toolu_7f24684fa84a405b91fcf027",
+  "unique_paired_is_error": true,
+  "guard_semantics_changed": false,
+  "criteria_changed": false,
+  "accepted": [],
+  "rejected": [
+    "CLAUDE-01",
+    "CLAUDE-02"
+  ],
+  "deferred": [
+    "CLAUDE-03",
+    "CLAUDE-04",
+    "CLAUDE-05"
+  ],
+  "review": {
+    "used": 268,
+    "completed": 268,
+    "limit": 273
+  },
+  "admission": {
+    "used": 633,
+    "completed": 633,
+    "limit": 645
+  },
+  "formal": {
+    "used": 21,
+    "limit": 21
+  },
+  "current_original_matrix": {
+    "passed": 0,
+    "failed": 0,
+    "untested": 12
+  },
+  "historical_05": {
+    "passed": 5,
+    "failed": 1,
+    "untested": 6
+  },
+  "first_await_command_failure": {
+    "file": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r23-code-await-1387542d-452a-42d8-b635-e2a1645040eb-completed.json",
+    "sha256": "f0ee4c683013413d24d250ca7afb2ac41b97182d733dcc386badd365471b8217",
+    "code": 64,
+    "command": "await-approval",
+    "new_vendor_cli_starts": 0,
+    "corrected_command": "gate --await-approval",
+    "original_preserved": true
+  },
+  "goal_complete": false,
+  "m11_step12_started": false
+}

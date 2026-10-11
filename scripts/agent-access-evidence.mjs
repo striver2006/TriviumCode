@@ -171,3 +171,20 @@ export function codexCommandEvidence(trace, events, context, firstWord) {
 export function primaryLoaded(marks, invocation, parentPid) {
   return marks.some(m => m.preload_sha256 === invocation.preload_sha256 && m.core_sha256 === invocation.core_sha256 && m.parent_pid === parentPid && m.load_id === invocation.load_id);
 }
+/** 失败记录同样可能失败：保留两条因果，不额外打印未脱敏错误，不覆盖原件。 */
+export function recordAdmissionFailure(error, details, publish) {
+  try {
+    publish('failure.json', { ...details, failed: true, name: error?.name ?? null, message: String(error?.message ?? error) });
+    return error;
+  } catch (recordError) {
+    return new AggregateError([error, recordError], '准入失败且脱敏失败记录保存失败');
+  }
+}
+/** 全部清理仍由原cleanupAll完成；清理失败不得替换已记录的主失败。 */
+export async function cleanupPreservingFailure(cleanup, failure) {
+  try { return await cleanup(); }
+  catch (cleanupError) {
+    if (failure.failed) throw new AggregateError([failure.error, cleanupError], '准入失败且独立清理失败');
+    throw cleanupError;
+  }
+}

@@ -1,0 +1,40 @@
+/** 用户正式轮数按需独立委托：本批仅19B/20C，全部18旧运行/原权威不变。 */
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import { createRequire } from 'node:module';
+import { readTask } from '../../../../dist/test/src/trivium/meta.js';
+import { listRecordedRuns } from '../../../../dist/test/src/trivium/archive.js';
+import { assertFormalRoundCore } from '../agent-access-20261011-closeout-r3/round-guard-v2.mjs';
+import { saveEvidence } from '../../../../scripts/agent-access-evidence.mjs';
+const repo=process.cwd(),topic='Agent双模式接入真实准入收口',prior=path.join(repo,'doc/05_testing/evidence/agent-access-20261011-closeout-r3'),root=path.dirname(new URL(import.meta.url).pathname);
+const hash=b=>crypto.createHash('sha256').update(b).digest('hex'),save=(p,v)=>fs.writeFileSync(p,typeof v==='string'?v:JSON.stringify(v,null,2)+'\n',{flag:'wx',mode:0o600});
+const layout={archiveRoot:path.join(repo,'.reviews'),topic},task=await readTask(layout),runs=await listRecordedRuns(layout);
+if(task.runs.length!==18||runs.length!==18||runs.some(r=>r.unreadable)||JSON.stringify(task.runs.map(r=>r.run_id).sort())!==JSON.stringify(runs.map(r=>r.run_id).sort()))throw Error('15次task/archive集合异常');
+if(!task.approvals.some(a=>a.run_id==='20261011T105033Z'&&a.stage==='code'&&a.decision==='approved'))throw Error('缺本轮15C批准');
+const old=fs.readFileSync(path.join(prior,'formal-round-authorization-v9.json')),pointer=fs.readFileSync(path.join(prior,'formal-round-authority.json'));
+if(JSON.parse(pointer).authorization!=='formal-round-authorization-v9.json'||JSON.parse(pointer).sha256!==hash(old))throw Error('v7权威hash不符');
+const auth={...JSON.parse(old),previous_limit:18,new_limit:20,historical_run_ids:task.runs.map(r=>r.run_id),new_rounds:[{ordinal:19,entry:'B',stage:'plan'},{ordinal:20,entry:'C',stage:'code'}],authorization:'2026-10-11用户独立明确回复：授权轮次可以按需增加，不必询问授权',authorized_scope:'用户授予正式轮数按需追加独立委托；本批仅19B计划审实际写合同读取及原固定负对照执行绑定、必要非写基线刷新，20C完整重审。原实际写/只读/禁读/Schema判据不变，不实施候选采用；计数与失败保持，21拒绝。',delegated_round_extensions:true,delegation_exact_reply:'授权轮次可以按需增加，不必询问授权',supersedes_file:'doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v9.json',supersedes_sha256:hash(old),criteria_change_authorized:false,count_reset:false,old_failed_status_unchanged:true,recorded_at:new Date().toISOString()};
+const args=['review','--start','--entry','B','--stage','plan','--topic',topic,'--driver','codex','--critics','claude,gemini,glm'],cases=[];
+if(assertFormalRoundCore(auth,task,runs,args,auth)!==19)throw Error('16B未允许');cases.push('15实际原件允许16B');
+const nextTask={...task,runs:[...task.runs,{run_id:'future19-fixture'}]},nextRuns=[...runs,{run_id:'future19-fixture'}],code=args.map(a=>a==='B'?'C':a==='plan'?'code':a);
+if(assertFormalRoundCore(auth,nextTask,nextRuns,code,auth)!==20)throw Error('17C未允许');cases.push('16一致原件允许17C');
+const deny=(name,a,t,r,argv,current=auth)=>{let denied=false;try{assertFormalRoundCore(a,t,r,argv,current);}catch{denied=true;}if(!denied)throw Error(name);cases.push(name);};
+deny('旧v7授权被替代',JSON.parse(old),task,runs,args);
+for(const [n,c]of [['缺当前权威',undefined],['null权威',null],['无效权威',{}]]){let denied=false;try{assertFormalRoundCore(auth,task,runs,args,c);}catch{denied=true;}if(!denied)throw Error(n);cases.push(n);}
+for(const r of [runs.slice(1),[...runs,{run_id:'orphan'}],[...runs,runs[0]],runs.map((r,i)=>i?r:{...r,unreadable:true})])deny('缺/孤儿/重复/不可读原件拒绝',auth,task,r,args);
+for(const flag of ['--topic','--driver','--critics','--entry','--stage']){const i=args.indexOf(flag),wrong=[...args];wrong[i+1]='wrong';deny('错'+flag,auth,task,runs,wrong);deny('重复'+flag,auth,task,runs,[...args,flag,args[i+1]]);}
+deny('allow-single拒绝',auth,task,runs,[...args,'--allow-single']);
+deny('21次拒绝',auth,{...nextTask,runs:[...nextTask.runs,{run_id:'future20-fixture'}]},[...nextRuns,{run_id:'future20-fixture'}],code);
+const {openBudget}=createRequire(import.meta.url)('../../../../scripts/agent-access-budget.cjs'),budgetRoot=path.join(os.homedir(),'.trivium/evidence/agent-access-20261011-closeout-r3/budget');
+const pool=openBudget(budgetRoot,'review'),admission=openBudget(budgetRoot,'admission');const count=b=>fs.readdirSync(b.dir).filter(n=>/^reserved-\d+\.json$/.test(n)).length;
+if(count(pool)!==228||pool.limit()!==238||count(admission)!==633||admission.limit()!==645)throw Error('当前预算基线不符');
+const launcher=fs.readFileSync(path.join(prior,'launch-v13.mjs'),'utf8');if(launcher.split('formal-round-authorization-v9.json').length!==2)throw Error('唯一替换失败');
+const newLauncher=launcher.replace(launcher.split('\n')[0],'/** 用户按需追加独立委托的19B/20C批：v14仅切当前v10授权，守卫/生产判据不变。 */').replace('formal-round-authorization-v9.json','formal-round-authorization-v10.json'),bytes=JSON.stringify(auth,null,2)+'\n';
+save(path.join(prior,'formal-round-authority-v9-preserved.json'),pointer.toString());save(path.join(prior,'formal-round-authorization-v10.json'),bytes);save(path.join(prior,'launch-v14.mjs'),newLauncher);
+const nextPointer={topic,authorization:'formal-round-authorization-v10.json',sha256:hash(bytes),basis:'用户独立按需正式轮数委托；本批19B/20C有界追加，当前仍拒21；不改旧计数/失败或准入判据。',recorded_at:new Date().toISOString()},tmp=path.join(prior,`authority-${crypto.randomUUID()}.tmp`);save(tmp,nextPointer);fs.renameSync(tmp,path.join(prior,'formal-round-authority.json'));
+const extension=pool.extend('formal-round19-plan-delegated-total20',10,'用户独立授权正式轮次按需增加，并已授权自动CLI扩容；19B预计15、硬20/止248，与review池238扩10至248一致；准入本批0，判据不变');
+saveEvidence(path.join(root,'review-round19-plan-batch.json'),{at:new Date().toISOString(),pool:'review',before:228,expected:15,hard_limit:20,batch_stop:248,pool_limit:248,extension,formal:{used:18,limit:20,this_round:19,entry:'B',stage:'plan'},admission:{used:633,limit:645,new_starts:0},routes:['Claude当前Qwen flash','Gemini当前flash','GLM当前coding'],counting:'版本/帮助/认证探活/失败/超时/包装器/native/重试均计启动，达到213先停、扩容记录发布后继续。',criterion_change:false});
+saveEvidence(path.join(root,'formal-round19-authorization-verification.json'),{at:new Date().toISOString(),authorization_sha256:hash(bytes),preserved_pointer_sha256:hash(pointer),launcher_sha256:hash(newLauncher),old_launcher_sha256:hash(launcher),historical_ids:auth.historical_run_ids,old_runs:task.runs,old_approvals:task.approvals,cases,delegation_exact_reply:auth.delegation_exact_reply,criteria_change_authorized:false,vendor_cli_starts:0});
+console.log(JSON.stringify({formal:'18/20',review:'228/248',admission:'633/645',cases:cases.length,new_vendor_starts:0}));

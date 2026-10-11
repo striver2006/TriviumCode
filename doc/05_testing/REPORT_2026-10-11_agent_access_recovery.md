@@ -426,3 +426,56 @@ run20261011T105033Z三侧首尝试完成，Claude793s/Gemini505s/GLM535s；subje
 readonly_breach=true原记录保留：Claude唯一Bash toolu_98c1ae6c66694639ba787777命令为wc统计本轮diff及ls列表本轮_meta，唯一同ID is_error=true明确工具禁用拒绝；不能声称实际执行。现有gate分档为unconfirmed_unchanged，仅告警进入审批，未改判据/白名单/旗标。复算ignored文件、项目外写、改回、scratch等盲区保留，不以树相同证明没写。Claude/Gemini consulted无法交叉核对、Gemini/GLM路径deny未生效、Driverunknown和dirty构建告警继续，Gemini称测试通过仅Driver事前记录而非独立执行。旧失败run20261010T170416Z资格不恢复。
 
 累计正式18/18、review228/238（本批新增10，完成齐）、admission590/602未新增。后续正式轮数按独立按需委托先发布有界追加；普通审批仍不包含component/restricted准入判据采用。当前0d包12组合真实完整准入未测，旧874的5通过/1未通过/6未测仅历史。先提交已审源码和留痕、重建正常四目标安装到新提交指纹，再事前发布最小Codex/Qwen首读取版本2+能力2启动清单；失败不换提示重试。七路线/Qwen pro/共享三审及剩余实际调用边界尚未齐，目标未完成，不能进入M11第12步。
+
+## c912bce7交付后的真实准入与第19B待审方案（11:25 UTC后）
+
+465件已审变更提交推送c912bce7c0f09d74741a0bb000ea86e1f9dce40e，main远端一致；曾误用commit说明路径导致失败、未创建提交，后以正确文件正常提交。源码/当前文档空白检查0，历史原件和旧载体367空白告警保持字节；扫描100733536字节/465件0凭据，索引27通过。提交后仅重建stamp，输入仍e03db7e3，bundle05e370bb94fabbeb217ab569c0120cb62f6c8090bd9950cf12461591e68241dd，采样dirty=false；正常四目标28入口、runtime全资产与源相等，七共享缺席/七备份一致，源/安装桩14/14。
+
+新包先Codex/Qwen profile版本17+read-4实际4启动，原实际单cat/parsed read/唯一ID配对/Schema/首词通过，104字节全文前后输出hash一致，诊断仍不参加原判据。随后另批成熟六组合版本+剩余能力，预计39/硬51，先扩池602→645再启动，实际39。合计24唯一逻辑调用/43实际启动，19能力夹具/凭据/scratch清理全核、365文件扫描0；976旧台账与29旧静态hash不变。新矩阵仍5通过/1未通过/6未测，但未通过原因已变化：Codex/Qwen write-4实际执行错误/tmp目标/标记、session与stdout转义差异unique_pair=false，原write_pass=false；原user消息包含正确命令且不含错误目标，不能说请求没交付，也不能推断服务端缓存或CLI漏洞。错误目标前后未采样null；预期breach.txt没生成不是拦截证明。原件不回算、不重试换提示，旧874读取失败仍历史。详r10/matrix-after18及codex-qwen-write4-diagnostic。
+
+依据独立按需轮数委托保存v9指针，v10只追加19B/20C、历史18次含失败，21拒绝；v14仅授权文件名与注释变，guard/precheck不变。22项纯核验完成、review228/238先扩10至248，计划批预计15/硬20/止248，admission633/645新增0。首记录两条case显示名及counting一句误沿旧值，v2仅纠正文案而不改原件或机械值；错误stage claim退出64无厂商启动，正确topic claim noop留痕。
+
+第19B r21原稿已经archive.ts写入，尚未正式审查/普通plan批准，尚未实现：拟在Codex/write独立夹具WRITE_CONTROL.json绑定原固定命令/实际cwd/精确目标/nonce，先取得实际读取合同全文，再执行原固定写负对照；新增诊断仅观察来源/顺序/状态，原actual_read/write_pass/Schema/禁读/只读/权限/模型/effort/软件版本全部不改。非目标实际prompt保持，原14fixture为历史兼容锚，新Codex/write生产实参另测。新机制批准后仅一次首尝试Qwen写及Luna写，失败停止；成熟或其他非写新指纹基线按必要性事前分批，不无依据全量循环。component/restricted候选未采用，不绕未测写标准。原七整改和18C暂缓边界保留；目标/M11前置仍未完成。
+
+19B预检已通过，版本与过期认证探活实际新增10启动，review238/248、admission633/645不动。原生commitAuthCache回填后local由9270变9d166b5cd95b0068458ac296c7dc7181b9a9c750aaac2ca3758fede629765400；本次私有before快照与after完整语义比对只变化三probe.auth_routes.<hash>.checked_at，项目/模型/effort及全局其他字段不变，私有副本已清除、不输出配置全文。旧17语义差异null仍不追写。原准入全指纹规则下，05/9270矩阵5/1/6是预检前采样，当前9d166完整准入12组合未测，不自动继承。Driver模型unknown及Claude服务端目录不能核实告警保留。after-preflight零CLI核当前事实/安装/业务和配置基线，随后冻结才启动19B。
+
+
+## 第19B计划正式收口及20C准备（2026-10-11）
+
+
+> 第19B/r22获批写合同取证（设计v1.3.153）：19B run20261011T113848Z有效，9意见逐条接受，完整r22修订及用户明确委托的普通plan批准已记录；20C尚待实施、检查与完整代码重审。仅生产Codex/write在独立临时夹具创建WRITE_CONTROL.json（O_EXCL、0600、真实非软链根），固定原目标/标记及未导出原BREACH字面，不改src探针命令。canonical唯一调用条件第六参接合同；旧五参14样本仅历史兼容，当前非目标逐项字节对账。提示仅单cat合同后从实际输出取command/cwd/target，逐字执行一次，不提供写命令或结果示例，不强迫工具、不循环换提示。新模块进入assets全指纹及版本重录。
+>
+> fixture-before/after保存合同普通文件状态、声明nonce、bytes/hash；result.write_contract_diagnostic只诊断：kind=diagnostic-only、严格全文字节/双身份、同session/turn与可信完成/启动时间及先读后写、实际cwd和原精确写配对。缺状态/来源不一致/改变/截断/增删尾部/非cat/head/jq/复合/重复ID/错目标/未完成/乱序均false列reasons，不参与原write_pass、准入汇总或产品Schema。未知错误直抛，脱敏failure留痕并走原凭据/夹具/scratch清理。原codexCommandEvidence函数体hash不变，真实实际尝试+配对拦截+文件状态标准不变；合同存在或全文声明不能替代调用。
+>
+> 六个Codex/write均需新机制与最终完整指纹的实际证据；首批Qwen/Luna各一次，仅同最终指纹可省重复；Sol/Astra/Kimi/DeepSeek各新写首次合计预计8包装/native启动另批发布。正式v10有界19B/20C，21当前拒绝；审查243/248、准入633/645为19B收尾采样。旧05矩阵5通过/1未通过/6未测及所有历史保留；19预检仅三个checked_at语义变化仍使全local指纹9270→9d166，当前完整指纹12组合均未测，不能继承。五个Claude非flash生产写仍无新机制、0启动；官方Claude待订阅、服务端身份null、客户端入口实际解析未测。component/restricted候选未采用，判据变化仍需独立明确批准，目标未完成。
+
+裁决[plan-r10-revised](../../.reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r10-revised-codex.md)与[完整r22](../../.reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r22-codex.md)保持只读。19B静态31+业务12冻结及10原件hash一致、tree相同，唯一Bash同IDis_error明确禁用；readonly_breach=true和Gemini拟议模块未列consulted告警不清，现gate按无漂移放行，普通审批业务摘要0。独立后续证据目录为evidence/agent-access-20261011-closeout-r11，当前定向先行35/35，最终全面检查尚未运行。七原整改落点与敏感扫描上限7保持，原guard/判据无变化。
+
+
+20C前实施与检查采样：新增scripts/agent-access-write-contract.mjs及三项实文件/真实轨迹诊断/当前生产配方测试，仅Codex/write条件第六参；14旧五参回放保持历史、9非目标当前prompt固定hash。原codexCommandEvidence字节hash8662c803保持，原write_pass/guard不变；合同诊断绑定同session/turn、全文哈希、完成/启动时间和先读后写。定向49/49，两次串行check各3163通过/3跳过/0失败，源与安装桩各14/14，最终inputs ef1643cb63b543ecf9e13656fa9c9f489df6cd28220726aaf928731b2c5a5b86，源码和安装bundle70234a7a0946d8bfc79560cc366032bb54709e8f64bcf3c208fcbbdaffcb0fc9，当前c912bce7作用面dirty=true未提交，不作清洁提交证明。正常四目标28入口/runtime逐项相等、共享七入口缺席/备份七一致、全局配置不变，实际客户端入口解析仍未测。静态审计核4330禁读路径/settings57464字节/skip0及原目录事实、60旧静态与976旧台账不变、扫描0。20C本批预计review15/硬20/累计止263已扩容落盘，起点243，admission新增0保持633/645；正式19/20，预检/完整重审尚未启动。新机制实际模型行为全部未测，component/restricted判据候选未采用，目标未完成。详见[evidence r11](evidence/agent-access-20261011-closeout-r11/)。
+
+20C预检通过，认证缓存有效，本次仅5版本启动，review248/263、admission633/645；local9d166完整语义对账无变化、私有快照已删除，模型/effort/全局配置未变。Driver模型unknown与Claude服务端模型目录不能核实告警保留。审查前再次静态审计通过、原有证据不回写，随后冻结业务和本批全部静态材料，仅编排器按既有规则产生元数据；完整20C结论尚未取得。
+
+
+## 第20C有效裁决及21C失败留痕整改（2026-10-11）
+
+
+> 第20C后同获批范围失败留痕补正（设计v1.3.154）：20C run20261011T122355Z有效，6条逐项2接受4暂缓，普通code按用户明确委托拒绝，业务摘要0；21C待完整重审。修正仅r22已批准“失败可见、未知错误上抛、任何步骤清理”：recordAdmissionFailure保留主异常，失败保存异常进入AggregateError，不额外直出原始错误、不覆盖wx原件；cleanupPreservingFailure让原cleanupAll继续全部清理，清理异常与主异常同时保留。fixture/scratch初始化进原try/finally；failure.json增加readme_after、合同阶段/创建状态与资源可用状态，创建途中未知记null；未取得scratch返回值的清理状态不冒称已删除。selection/版本资源前预检失败仅有既有调用完成失败侧车，不承诺failure.json。
+>
+> 本批不改变原codexCommandEvidence字节、写/读判据、目录消费/根形态、产品Schema、模型/effort/CLI版本、全局配置。ASCII后代目录加特殊文件名联合样本、/tmp等祖先别名、理由粒度细化与采样器合并均暂缓；前两项如需支持须另审守卫/探针语义，不将未测组合追认。五Claude非flash写继续0启动，当前新完整指纹12组合均未测。按独立按需委托发布v11仅21C，22仍拒绝；新v15只换权威文件名及首注释，guard/precheck不改。review起点253、预计15/硬20/累计止273，admission本批0保持633/645，旧台账/原权威/20C原件不改，普通审批不包含判据变化。
+
+20C三侧首尝试，Claude855秒、Gem369秒、GLM565秒；subject8b7e234a、前后tree46ec7f85相等，32静态/440业务/全部原件hash一致，local9d166未变。两Bash各同ID明确禁用，readonly_breach=true与GLM漏consulted/三侧consulted受限告警保持；现gate0。普通code拒绝，仅接受CLAUDE-03/GLM-01，两项整改前已解除业务写锁。新局部测试初次7/8源于假Bearer形态未被既有扫描器识别，后先验证已登记合成形态命中再测脱敏，8/8；不修改扫描器。独立证据evidence/agent-access-20261011-closeout-r12，首版轮次纯负例壳default误替undefined导致失败，0CLI且发布前；原件保留，v2实际21用例通过后才发布v11/v15和有界预算。新全量检查/桩/安装及21C仍待执行，目标未完成。
+
+### 21C启动前同范围失败整改验证（采样2026-10-11T13:14Z）
+
+20C普通code拒绝后，仅实施19B/r22已批准的失败可见及初始化清理整改：两次串行check同输入63cf4e39240c89da3656a7643896b7b3c605d5fac32058a8b51bd1896c2794d4，均3165通过/3跳过/0失败，针对51项通过，源码及安装桩各14/14。重建bundle a7e7e98b0fb734d531bd97b61491168c5832a42a4d6fcd5e8651771415a6a0df，HEAD c912bce7、dirty=true；正常四目标28入口及七备份逐文件一致、共享入口未复现、全局配置未改，客户端入口实际解析未测。原配对判据函数/生产guard/适配器无变化，四暂缓项未实施。详见r12的check-pair-r23-final-scope、install-before21及static-audit-before21。
+
+独立按需轮次委托仅追加21C：20/21，22拒绝。正式池253/273、下一批预计15硬20止273；准入633/645且本批0新增。新全指纹12组合全部未测，历史05包5通过/1未通过/6未测不追认。先完成预检、全部静态冻结及有效21C后再裁决普通code；原标准/只读判据与历史失败保留。M11前置仍未完成。
+
+### 21C有效完整重审与委托code批准（2026-10-11T13:43:19.397Z）
+
+run20261011T131721Z三侧首次完成：Claude approve-with-nits（2minor/3nit），Gemini/GLM approve零意见；三份原件已读并经archive.ts归档code-r11-response-codex，两驳回三暂缓、无接受待实施项。合同文件名漂移“现有测试抓不到”以真实文件stat固定字面反证；运维已含读取bytes/hash/双ID说明，用户手册已有协议/QUICKSTART链接，不要求内部诊断段机械逐字镜像。版本号序消歧、毫秒相等边界说明/测试、函数级注释暂缓，当前未修改。批准后另做内存合同文件名变异，既有固定文件stat确实ENOENT，原源码与测试不变、临时夹具清理、0厂商；见r12/filename-mutation-verification.json。
+
+40静态/442业务/10原件hash一致，subject5da0fb298b4904b65a39616aeed290696a44a693d19217cc32b0fd1d5d411f3e，tree前后c98d2938d76346862f1f0567d6a8e25a513e241c相同。readonly_breach=true保留：唯一ls-la Bash toolu_7f24684fa84a405b91fcf027获恰一同ID禁用is_error拒绝，非命令实际执行；现gate复算未变仅告警，不改判据、不加豁免、不恢复旧failed。Gem/GLM consulted_unverified和路径deny不支持、模型族unknown及dirty构建告警/复算盲区保留。gate0；初次误用await-approval子命令退64、0厂商，原件保留，更正gate --await-approval后0；审批业务摘要0，依据用户明确普通自动审批委托批准code，session_id=null，不宣称Bob亲自运行CLI，不含判据变化。
+
+三审请求/回读：qwen3.8-flash/envelope、gemini-3.8-flash-high/envelope、GLM-5.3→bigmodel-coding-plan/GLM-5.3/trace；provider与服务端身份null。当前启动review268/273、admission633/645全部完成，formal21/21；本批15=预检10+正式5，不清旧账。12组合新完整指纹仍未测，旧05包5/1/6仅历史。待交付提交/新清洁构建安装后，另批首测Qwen/Luna各write一次及各profile版本，不重试，原Qwen写未通过则不进入成熟批。目标未完成、M11第12步未启动。
