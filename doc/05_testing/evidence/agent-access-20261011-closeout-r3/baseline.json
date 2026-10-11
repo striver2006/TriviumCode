@@ -1,0 +1,388 @@
+{
+  "at": "2026-10-10T17:48:31.786Z",
+  "real_cli_starts": 0,
+  "stamp": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "39ed20530d64a72f81f183095c6d9516632d0228",
+    "dirty": false,
+    "inputs_sha256": "be6dbcd3498c135aa0209980d310db074e45aa3bbb2e8144a4f7aeb0bf4b2e38",
+    "built_at": "2026-10-10T17:48:31.308Z"
+  },
+  "installedStamp": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "39ed20530d64a72f81f183095c6d9516632d0228",
+    "dirty": false,
+    "inputs_sha256": "be6dbcd3498c135aa0209980d310db074e45aa3bbb2e8144a4f7aeb0bf4b2e38",
+    "built_at": "2026-10-10T17:39:39.289Z"
+  },
+  "bundle_sha256": "74b71f286302f39ee16c890d8d2c38aa9252fb00fc5d8a356038168417c56074",
+  "repo_bundle_sha256": "74b71f286302f39ee16c890d8d2c38aa9252fb00fc5d8a356038168417c56074",
+  "inputs_match": true,
+  "head_match": true,
+  "config_hashes": {
+    ".trivium/config.yaml": "9dd249afa2277bc53c76c75a032a9cbebc8db41cdf8fb54e8a6bb964d13c770f",
+    ".trivium/config.local.yaml": "5308a2e2dd846d84af144d979eda0557fab1f3a4571c6929338552f2d07e542f"
+  },
+  "global_hashes": {
+    ".codex/config.toml": "3d126d0c1265f60b47b7732781cd0a97488542484d5cf800f90422549e4374e3",
+    ".codex/auth.json": "89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5",
+    ".codex/hooks.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    ".claude/settings.json": "00c802290bb6300b39d66b67ab1dc8edf1c141817f23fd26b3d745ce65f3e715"
+  },
+  "scripts": {
+    "agent-access-admission.mjs": "69667ff00fd4c5fbcf7bc2d989a6ddc955ca5bd053ea07d2d24c610961241a6c",
+    "agent-access-budget-preload.cjs": "2b74abf72f7f67edb61879b58798761c6c53ade68ba92aa3dea07cb98b592b71",
+    "agent-access-budget.cjs": "c70a39ad6c041d9bb5b2cf39d32927c7e3d936e94f7d3f82988db9af2b55bb9b",
+    "agent-access-closeout-summary.mjs": "25313082054ff3108d380826887b2834a8875008993ea3b50d3950d1e657a2f2",
+    "agent-access-closeout.mjs": "805b4c3df184e43458a3a7c23004a53a351b06da72423f7aac79d17204826627",
+    "agent-access-evidence.mjs": "5765523ca78eb46e482a26c3e6cda618da6c692b5e5caf31fa459e760bf4690b",
+    "agent-access-launch.mjs": "a6efd97f5b0c0b333ce5ac09fc56e96f152c319c92fccbf19effc1826cd012c9",
+    "agent-access-selection.mjs": "f2d7f6dad40109a5738bd1c16615fd1e8750224aca9cf4cfda38c43b09c8f775",
+    "agent-access-summary.mjs": "f4d5ff338ff5ea43c3cadbe318b4f551f0ac0fd88f3f5154609c9595bf3095ce",
+    "probe-agent-access.mjs": "31b02c8b207455533f8b21f5f55e9c953a5bcaaf0569c02d1d98854b596a3a88"
+  },
+  "configuration": {
+    "critics": [
+      "claude",
+      "gemini",
+      "glm"
+    ],
+    "sensitive_globs": [
+      ".env*",
+      "**/*.pem",
+      "**/*.key",
+      "**/id_rsa*",
+      "doc/05_testing/evidence/agent-access-20261010-admission/calls/**",
+      "doc/05_testing/evidence/agent-access-20261010-admission/ledger/**",
+      "doc/05_testing/evidence/agent-access-20261010-admission/loaded/**",
+      "doc/05_testing/evidence/agent-access-20261010-admission/routes/**",
+      "doc/05_testing/evidence/agent-access-20261010-closeout-r2/calls/**",
+      "doc/05_testing/evidence/agent-access-20261010-closeout-r2/ledger/**",
+      "doc/05_testing/evidence/agent-access-20261010-closeout-r2/loaded/**",
+      "doc/05_testing/evidence/agent-access-20261010-closeout-r2/routes/**"
+    ],
+    "profiles": {
+      "default": {
+        "gemini": {
+          "plan": "gemini-3.8-flash-high",
+          "code": "gemini-3.8-flash-high",
+          "bug": "gemini-3.8-flash-high"
+        },
+        "glm": {
+          "plan": "GLM-5.3",
+          "code": "GLM-5.3",
+          "bug": "GLM-5.3"
+        },
+        "codex": {
+          "plan": "gpt-6.1-sol",
+          "code": "gpt-6.1-sol",
+          "bug": "gpt-6.1-sol"
+        },
+        "claude": {
+          "plan": "qwen3.8-flash",
+          "code": "qwen3.8-flash",
+          "bug": "qwen3.8-flash"
+        }
+      },
+      "flash": {
+        "gemini": {
+          "plan": "gemini-3.8-flash-high",
+          "code": "gemini-3.8-flash-high",
+          "bug": "gemini-3.8-flash-high"
+        },
+        "glm": {
+          "plan": "GLM-5.3-Flash",
+          "code": "GLM-5.3-Flash",
+          "bug": "GLM-5.3-Flash"
+        },
+        "codex": {
+          "plan": "gpt-6-luna",
+          "code": "gpt-6-luna",
+          "bug": "gpt-6-luna"
+        },
+        "claude": {
+          "plan": "qwen3.8-flash",
+          "code": "qwen3.8-flash",
+          "bug": "qwen3.8-flash"
+        }
+      },
+      "pro": {
+        "gemini": {
+          "plan": "gemini-3.8-flash-high",
+          "code": "gemini-3.8-flash-high",
+          "bug": "gemini-3.8-flash-high"
+        },
+        "glm": {
+          "plan": "GLM-5.3",
+          "code": "GLM-5.3",
+          "bug": "GLM-5.3"
+        },
+        "codex": {
+          "plan": "gpt-6-astra",
+          "code": "gpt-6-astra",
+          "bug": "gpt-6-astra"
+        },
+        "claude": {
+          "plan": {
+            "tier": "high"
+          },
+          "code": {
+            "tier": "high"
+          },
+          "bug": {
+            "tier": "high"
+          }
+        }
+      }
+    },
+    "codex_profile": null,
+    "claude_profile": "qwen"
+  },
+  "routes": {
+    "qwen": {
+      "entry": "/Users/chenzhenbo/.local/bin/cld",
+      "native": "/Users/chenzhenbo/.local/bin/claude",
+      "entry_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+      "native_sha256": "c9b5341637becbd423ddffc5b254afb645682a3868cb708bbc6cc0e7bb419937",
+      "wrapper_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+      "configuration_sha256": "9a3bfaa3acc006b11a8c5c6422da69841ccc121de244ee7eff9574e4146cb8e5",
+      "route_fingerprint": "7f81d4ee53938830752f27d5183b99e2b6cd776e5605512cdceb80032be94068",
+      "models_declared": [
+        "qwen3.8-flash",
+        "qwen3.8-max"
+      ],
+      "saved_version": "2.1.296",
+      "saved_directory_fingerprint": "642f34149ef51ab5ae062d003f46e17dbb0727420dd35351df3400a8d4686417"
+    },
+    "kimi": {
+      "entry": "/Users/chenzhenbo/.local/bin/cld",
+      "native": "/Users/chenzhenbo/.local/bin/claude",
+      "entry_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+      "native_sha256": "c9b5341637becbd423ddffc5b254afb645682a3868cb708bbc6cc0e7bb419937",
+      "wrapper_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+      "configuration_sha256": "8f3e1348ab5da155a0c75788ee6fa9dcbfb415745a272fddedb061def2531765",
+      "route_fingerprint": "d80ac31902acd97cbcf2974f3e534985b48eb95d33991f1abe41ea91f6841946",
+      "models_declared": [
+        "kimi-for-coding",
+        "k3"
+      ],
+      "saved_version": "2.1.296",
+      "saved_directory_fingerprint": "ea48e3c0cd6ba8b088d51f8ee0d1f054c0ce34202c315c6d53d8ca8e6e4a6d0b"
+    },
+    "deepseek": {
+      "entry": "/Users/chenzhenbo/.local/bin/cld",
+      "native": "/Users/chenzhenbo/.local/bin/claude",
+      "entry_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+      "native_sha256": "c9b5341637becbd423ddffc5b254afb645682a3868cb708bbc6cc0e7bb419937",
+      "wrapper_sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+      "configuration_sha256": "007dc1de98869c8c149a1f002cdc7d2f3cfe46d17affab8dc0d36090938e707a",
+      "route_fingerprint": "408d430f53b4945151e177299c95f9e447b290437ed2acb3630e7620bd064b75",
+      "models_declared": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "saved_version": "2.1.296",
+      "saved_directory_fingerprint": "95aeb89db4dfd57f505e8881338ce81af6056376895530ff88d84c8fe6b0bcd3"
+    }
+  },
+  "codex": {
+    "native": {
+      "requested_mode": "native",
+      "profile": null,
+      "launcher_requested": "/opt/homebrew/bin/codex",
+      "launcher_effective": null,
+      "wrapper_sha256": null,
+      "configuration_sha256": "a9c7a9fca0b414bf9b67430ec3b602b1acd0f347f0fdcf935f52716245e6db34",
+      "provider_declared": "openai",
+      "provider_declared_source": "config",
+      "provider_effective": null,
+      "provider_effective_source": null
+    },
+    "qwen": {
+      "requested_mode": "profile",
+      "profile": "qwen",
+      "launcher_requested": "/opt/homebrew/bin/codex",
+      "launcher_effective": null,
+      "wrapper_sha256": null,
+      "configuration_sha256": "d13f61352831a936bdad9336fd40dd18e2411940a51c1e3d45c4cf3a57a915c4",
+      "provider_declared": "qwen",
+      "provider_declared_source": "config",
+      "provider_effective": null,
+      "provider_effective_source": null
+    },
+    "kimi": {
+      "requested_mode": "profile",
+      "profile": "kimi",
+      "launcher_requested": "/opt/homebrew/bin/codex",
+      "launcher_effective": null,
+      "wrapper_sha256": null,
+      "configuration_sha256": "19de8be42ca9dd63df1e04b92648b7216ffdceeecef8c238b129ba92ccc18c0b",
+      "provider_declared": "kimi",
+      "provider_declared_source": "config",
+      "provider_effective": null,
+      "provider_effective_source": null
+    },
+    "deepseek": {
+      "requested_mode": "profile",
+      "profile": "deepseek",
+      "launcher_requested": "/opt/homebrew/bin/codex",
+      "launcher_effective": null,
+      "wrapper_sha256": null,
+      "configuration_sha256": "a2d55087d2f4c9a6e10e2055e60e55fb2c705d03ae753953bb13f14352ad90a9",
+      "provider_declared": "deepseek",
+      "provider_declared_source": "config",
+      "provider_effective": null,
+      "provider_effective_source": null
+    }
+  },
+  "cli_versions_live": null,
+  "version_boundary": "本轮未启动CLI版本命令；已保存版本仅是历史声明，新增启动须重新取证",
+  "formal_runs": [
+    {
+      "run_id": "20261010T062559Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-10T06:26:01.522Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261010T130139Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "partial",
+      "started_at": "2026-10-10T13:01:44.479Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261010T135427Z",
+      "stage": "plan",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-10T13:54:29.931Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261010T170416Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "status": "failed",
+      "review_mode": "full",
+      "started_at": "2026-10-10T17:04:21.702Z",
+      "driver": "codex"
+    }
+  ],
+  "archive_runs": [
+    {
+      "run_id": "20261010T062559Z",
+      "stage": "plan",
+      "status": "success"
+    },
+    {
+      "run_id": "20261010T135427Z",
+      "stage": "plan",
+      "status": "success"
+    },
+    {
+      "run_id": "20261010T130139Z",
+      "stage": "code",
+      "status": "failed"
+    },
+    {
+      "run_id": "20261010T170416Z",
+      "stage": "code",
+      "status": "failed"
+    }
+  ],
+  "budgets": {
+    "admission": {
+      "used": 342,
+      "completed": 342,
+      "limit": 343
+    },
+    "review": {
+      "used": 38,
+      "completed": 38,
+      "limit": 40
+    }
+  },
+  "last_review": "failed",
+  "current_full_admission": null,
+  "old_matrix": [
+    {
+      "agent": "claude",
+      "combination": "qwen",
+      "status": "未测",
+      "model": "qwen3.8-flash"
+    },
+    {
+      "agent": "claude",
+      "combination": "qwen-pro",
+      "status": "未测",
+      "model": "qwen3.8-max"
+    },
+    {
+      "agent": "claude",
+      "combination": "kimi",
+      "status": "未测",
+      "model": "kimi-for-coding"
+    },
+    {
+      "agent": "claude",
+      "combination": "kimi-pro",
+      "status": "未测",
+      "model": "k3"
+    },
+    {
+      "agent": "claude",
+      "combination": "deepseek",
+      "status": "未测",
+      "model": "deepseek-flash"
+    },
+    {
+      "agent": "claude",
+      "combination": "deepseek-pro",
+      "status": "通过",
+      "model": "deepseek-v4-pro"
+    },
+    {
+      "agent": "codex",
+      "combination": "native-sol",
+      "status": "通过",
+      "model": "gpt-6.1-sol"
+    },
+    {
+      "agent": "codex",
+      "combination": "native-luna",
+      "status": "通过",
+      "model": "gpt-6-luna"
+    },
+    {
+      "agent": "codex",
+      "combination": "native-astra",
+      "status": "通过",
+      "model": "gpt-6-astra"
+    },
+    {
+      "agent": "codex",
+      "combination": "qwen",
+      "status": "未通过",
+      "model": "qwen3.8-flash"
+    },
+    {
+      "agent": "codex",
+      "combination": "kimi",
+      "status": "通过",
+      "model": "kimi-for-coding"
+    },
+    {
+      "agent": "codex",
+      "combination": "deepseek",
+      "status": "未通过",
+      "model": "deepseek-flash"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "agreed": [
+    "准确识别并隔离了 walkSensitive 中 depth > 6 截断导致深度 7 敏感文件漏枚举的内部断言失败成因，坚持最小化将父目录上限微调为 7，坚守深度 8 为明确未覆盖边界。",
+    "轮数例外控制严格闭环：以 formal-round-authorization-v3.json 和 formal-round-authority.json 的 sha256 强绑定当前权威，第 7 轮仅限 B/plan，第 8 轮仅限 C/code，坚守不重置历史计数与不修改历史 run 失败状态的纪律。",
+    "第 8 轮代码启动前守卫 formal-start-precheck.mjs 严密有效：不仅比对源码与已安装 bundle 的 hash，且在 settings 超过 131072 软上限、存在 skipped 规则或缺少真实可消费目录事实时直接拒绝 spawn，防止带病进入代码审。",
+    "坚持高标准准入要求，对 4 个未注册写工具的模型组合拒绝用权限诊断替代真实生产写负对照，如实登记前置未完成状态。",
+    "共享七入口迁移方案详尽定义了整目录备份至 ~/.trivium/backups/、逐文件哈希核对及原子回滚机制，操作步骤安全可逆。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r11-codex.md",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r4-gemini.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/ADR_003_agent_access.md",
+    "doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v3.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-start-precheck.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v3.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/review-sensitive-depth-plan-batch.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/sensitive-depth-diagnostic.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/sensitive-depth-plan-amendment-proposal.md",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/probes/claude-directory.ts",
+    "test/integration/claude-directory-adapter.test.ts",
+    "test/integration/claude-structured-probe.test.ts",
+    "test/unit/agent-access-recovery.test.ts",
+    "test/unit/claude-directory.test.ts",
+    "test/unit/deny-matrix.test.ts",
+    "test/unit/freeze-drift.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/freeze.ts:360-380 中使用 readdir({ withFileTypes: true }) 与 e.isDirectory()，在 Node.js 中软链项 e.isDirectory() 恒为 false；test/unit/freeze-drift.test.ts:42-50 仅测试了单一 config/.env.production，未对目录软链目标后代不遍历、软链自身 glob 判定形成用例守护。",
+      "id": "AGY-01",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "test/unit/freeze-drift.test.ts:47",
+      "problem": "walkSensitive 在提升父目录深度至 7 时，虽然设计上不跟随目录软链后代、仅判定软链项自身 glob，但现有 test/unit/freeze-drift.test.ts 仅有一条浅层 .env.production 存在性断言，缺乏目录软链指向深层目录时的回归锚点；需防止未来重构时使用跟随软链的读取方式导致环形递归或目录跨越。",
+      "severity": "minor",
+      "suggestion": "在 test/unit/freeze-drift.test.ts 中补充深度 6/7 敏感文件夹具的同时，显式构造一个指向深层目录的软链接项，断言软链目标下的后代不被遍历，防止未来文件扫描器重构破坏不跟随软链的不变式。"
+    },
+    {
+      "confidence": "high",
+      "evidence": ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r11-codex.md:1-3 明确指出本件为 r11 修正稿（校正了 test/unit/freeze.test.ts），但在第 23 行沿用了 r10 原句「本r10送审原稿在已获批r9七条整改及11条追加约束上...」。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r11-codex.md:23",
+      "problem": "被审计划正文第一节首句保留了「本r10送审原稿」字样，与顶部「送审路径校正（r11原稿）」说明产生了版本称谓残留歧义。",
+      "severity": "nit",
+      "suggestion": "在后续裁决件或修订计划中统一版本称谓为 r11，消除历史草稿继承引入的局部文案脱节。"
+    }
+  ],
+  "not_covered": [
+    "审查员处于只读环境，无法执行 Node/Bash 命令，未能实测 launch-v3.mjs 在终端中的并发锁表现与真实启动拦截。",
+    "未能在真实终端中运行 doctor 验证三路线 Claude 在 5 段根及 30 文件夹具下的真实耗时与配额消耗。",
+    "未能在线调用真实模型 CLI 验证深度 7 敏感文件入列后，实际 settings 注入与模型读取拦截的表现。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "扫描深度 6→7 整改方案定位准确、边界克制，成功关闭了 5 段 ASCII 根加 2 级后代场景下 walkSensitive 漏枚举深度 7 敏感文件导致 probeClaudeDirectories 抛错的内部缺陷。\n方案严格遵守父目录深度 8 为未覆盖边界的不变式，未改动 sensitive_globs 及其稳定哈希，保持了现行排除逻辑与软链不遍历原则。\n授权机制严格落地用户「授权总 8 轮，先审扫描深度整改，再完整代码重审」要求，通过 formal-round-authorization-v3.json、formal-round-authority.json 与 round-guard.mjs 锁死第 7 轮 B/plan 与第 8 轮 C/code 边界。\n启动前检查通过 formal-start-precheck.mjs 强制检验 settings 字节数（<=131072）与真实目录事实消费，杜绝未取样或超软线启动。\n对 4 组生产写缺口维持原标准不妥协，四目标共享入口迁移机制具备完整备份与可逆回滚路径。\n提出的建议聚焦于 freeze-drift.test.ts 补充目录软链不遍历的显式回归用例，以及正文遗留版本代号的小幅修缮。整体计划严密，予以通过。",
+  "verdict": "approve-with-nits"
+}

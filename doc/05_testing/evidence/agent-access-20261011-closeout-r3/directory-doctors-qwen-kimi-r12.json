@@ -1,0 +1,325 @@
+{
+  "rows": [
+    {
+      "profile": "qwen",
+      "original": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-directory-doctor-qwen-2a41c275-9701-475e-9a31-f0ebd4e1d2e8-completed.json",
+      "original_sha256": "d2bf074eb892c5a8ec7a3be7b6132f16bad3288716b0c2c422230a9e14d4690b",
+      "code": 0,
+      "route_probe": {
+        "entrypoint": "/Users/chenzhenbo/.local/bin/claude",
+        "version": "2.1.296",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+)"
+        },
+        "probed_at": "2026-10-11T00:00:26.169Z",
+        "models": [],
+        "path_deny": {
+          "supported": true,
+          "coverage_complete": false,
+          "file_shape_verified": true,
+          "rule_syntax": "Read(./.reviews/probe-topic/plan/**)",
+          "method": "经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的",
+          "attempts": []
+        },
+        "scratch_paths": [],
+        "isolation": "shared",
+        "headless_read_ok": true,
+        "trace_path_structured": true,
+        "denied_tool_in_trace": true,
+        "readonly_breach": false,
+        "tool_surface_checked": true,
+        "readonly_flags": [
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob"
+        ],
+        "model_flag": true,
+        "json_schema_ok": true,
+        "session_id_source": "每条事件的 session_id 字段（--session-id 可由调用方指定）",
+        "trust_prompt_required": false,
+        "stream_json_requires_verbose": true,
+        "strict_mcp_config_applied": true,
+        "project_memory_blocked": true,
+        "effort_levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "route_profile": "qwen",
+        "directory_deny_verified": {
+          "Read": true,
+          "Grep": true,
+          "Glob": true
+        },
+        "directory_deny_probed_at": "2026-10-11T00:06:15.344Z",
+        "directory_deny_fingerprint": "642f34149ef51ab5ae062d003f46e17dbb0727420dd35351df3400a8d4686417",
+        "directory_deny_sensitive_globs_sha256": "e769d91333d97c6f071ef87dd5a7058f7b2d0763b038b1051ca6f4513a8c6eb0",
+        "directory_deny_shape": "ascii-root1-5-depth0-2-v2"
+      },
+      "arms": [
+        {
+          "tool": "Read",
+          "kind": "files",
+          "targets": 30,
+          "paired": 30,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 46818
+        },
+        {
+          "tool": "Read",
+          "kind": "directory",
+          "targets": 5,
+          "paired": 5,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 31055
+        },
+        {
+          "tool": "Grep",
+          "kind": "files",
+          "targets": 30,
+          "paired": 30,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 72137
+        },
+        {
+          "tool": "Grep",
+          "kind": "directory",
+          "targets": 5,
+          "paired": 5,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 26448
+        },
+        {
+          "tool": "Glob",
+          "kind": "files",
+          "targets": 30,
+          "paired": 30,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 48403
+        },
+        {
+          "tool": "Glob",
+          "kind": "directory",
+          "targets": 5,
+          "paired": 5,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 16901
+        },
+        {
+          "tool": null,
+          "kind": "positive",
+          "targets": 4,
+          "paired": 4,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 23504
+        }
+      ],
+      "cleanup_sample": {
+        "sampled_at": "2026-10-11T00:11:41.947Z",
+        "state": {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-ZzTFGY",
+          "exists": false
+        },
+        "operation_time": null,
+        "note": "当前新doctor结束后实际不存在核验；不将采样时间冒充实际清理操作时间；cleanup:null表示无清理失败"
+      },
+      "failure": null
+    },
+    {
+      "profile": "kimi",
+      "original": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-directory-doctor-kimi-8e9a0f4a-595c-4bd2-9024-20e781469111-completed.json",
+      "original_sha256": "1f57061b4f9c2341ea39a0b0d3da1c7b291d191c4997aad8581f26e1e7ece425",
+      "code": 0,
+      "route_probe": {
+        "entrypoint": "/Users/chenzhenbo/.local/bin/claude",
+        "version": "2.1.296",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+)"
+        },
+        "probed_at": "2026-10-11T00:06:55.637Z",
+        "models": [],
+        "path_deny": {
+          "supported": true,
+          "coverage_complete": false,
+          "file_shape_verified": true,
+          "rule_syntax": "Read(./.reviews/probe-topic/plan/**)",
+          "method": "经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的",
+          "attempts": []
+        },
+        "scratch_paths": [],
+        "isolation": "shared",
+        "headless_read_ok": true,
+        "trace_path_structured": true,
+        "denied_tool_in_trace": null,
+        "readonly_breach": false,
+        "tool_surface_checked": true,
+        "readonly_flags": [
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob"
+        ],
+        "model_flag": true,
+        "json_schema_ok": true,
+        "session_id_source": "每条事件的 session_id 字段（--session-id 可由调用方指定）",
+        "trust_prompt_required": false,
+        "stream_json_requires_verbose": true,
+        "strict_mcp_config_applied": true,
+        "project_memory_blocked": null,
+        "effort_levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "route_profile": "kimi",
+        "directory_deny_verified": {
+          "Read": true,
+          "Grep": true,
+          "Glob": true
+        },
+        "directory_deny_probed_at": "2026-10-11T00:11:13.716Z",
+        "directory_deny_fingerprint": "ea48e3c0cd6ba8b088d51f8ee0d1f054c0ce34202c315c6d53d8ca8e6e4a6d0b",
+        "directory_deny_sensitive_globs_sha256": "e769d91333d97c6f071ef87dd5a7058f7b2d0763b038b1051ca6f4513a8c6eb0",
+        "directory_deny_shape": "ascii-root1-5-depth0-2-v2"
+      },
+      "arms": [
+        {
+          "tool": "Read",
+          "kind": "files",
+          "targets": 30,
+          "paired": 30,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 32351
+        },
+        {
+          "tool": "Read",
+          "kind": "directory",
+          "targets": 5,
+          "paired": 5,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 14106
+        },
+        {
+          "tool": "Grep",
+          "kind": "files",
+          "targets": 30,
+          "paired": 30,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 52751
+        },
+        {
+          "tool": "Grep",
+          "kind": "directory",
+          "targets": 5,
+          "paired": 5,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 14834
+        },
+        {
+          "tool": "Glob",
+          "kind": "files",
+          "targets": 30,
+          "paired": 30,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 43225
+        },
+        {
+          "tool": "Glob",
+          "kind": "directory",
+          "targets": 5,
+          "paired": 5,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 15766
+        },
+        {
+          "tool": null,
+          "kind": "positive",
+          "targets": 4,
+          "paired": 4,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 16083
+        }
+      ],
+      "cleanup_sample": {
+        "sampled_at": "2026-10-11T00:11:41.956Z",
+        "state": {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-VLbrr7",
+          "exists": false
+        },
+        "operation_time": null,
+        "note": "当前新doctor结束后实际不存在核验；不将采样时间冒充实际清理操作时间；cleanup:null表示无清理失败"
+      },
+      "failure": null
+    }
+  ],
+  "not_full_route_admission": true
+}

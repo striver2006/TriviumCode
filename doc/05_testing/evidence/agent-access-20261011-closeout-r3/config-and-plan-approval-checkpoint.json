@@ -1,0 +1,92 @@
+{
+  "baseline_sha256": "5308a2e2dd846d84af144d979eda0557fab1f3a4571c6929338552f2d07e542f",
+  "mtime": "2026-10-10T17:53:18.008Z",
+  "cause_evidence": "preflight.ts1119-1125 patchProbe回填auth_routes；mtime位于本轮preflight执行时段",
+  "public_configuration_equal": {
+    "critics": true,
+    "sensitive_globs": true,
+    "profiles": true,
+    "codex_profile": true,
+    "claude_profile": true
+  },
+  "refreshed_auth_routes": [
+    {
+      "key": "27e1e0415da4ea47b713096a0367b63f1fac9b0b780cfb4d556bc8874a5182fb",
+      "checked_at": "2026-10-10T17:52:57.247Z",
+      "cli_version": "2.1.296",
+      "ok": true,
+      "combination": {
+        "critic": "claude",
+        "mode": "profile",
+        "profile": "qwen",
+        "model": "qwen3.8-flash",
+        "effort": null
+      }
+    },
+    {
+      "key": "c9529bd415278c064fc7b5bf8b367870c72b53264d58cfad154af59e59600bd4",
+      "checked_at": "2026-10-10T17:53:17.979Z",
+      "cli_version": "1.3.3",
+      "ok": true,
+      "combination": {
+        "critic": "gemini",
+        "mode": "standard",
+        "profile": null,
+        "model": "gemini-3.8-flash-high",
+        "effort": "high"
+      }
+    },
+    {
+      "key": "ce0accbd74848643cf2f4e899d651d442af4410c42e6d185a42cb2a6dc53a671",
+      "checked_at": "2026-10-10T17:53:02.499Z",
+      "cli_version": "0.16.9",
+      "ok": true,
+      "combination": {
+        "critic": "glm",
+        "mode": "standard",
+        "profile": null,
+        "model": "GLM-5.3",
+        "effort": null
+      }
+    }
+  ],
+  "complete_previous_local_contents_available": false,
+  "complete_semantic_diff": null,
+  "approval": [
+    {
+      "at": "2026-10-10T18:17:01.605Z",
+      "stage": "plan",
+      "run_id": "20261010T175354Z",
+      "decision": "approved",
+      "reason": "依据用户本轮明确指令：中途遇到需要审批的，根据你的建议自动审批；配额不够自动增加。批准run=20261010T175354Z第5次正式B/plan的r7修订计划；三家有效结构化审查成功、无subject_drift/readonly_breach/peer泄漏，12条逐条接受并落点，gate检查通过。保留无关预算元数据漂移告警及所有旧失败记录。仅批准该计划整改及按方案备份迁移，不改变生产写负对照标准，不授权第7次正式审查。",
+      "session_id": null
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "20261010T062559Z",
+      "stage": "plan",
+      "status": "success"
+    },
+    {
+      "run_id": "20261010T130139Z",
+      "stage": "code",
+      "status": "failed"
+    },
+    {
+      "run_id": "20261010T135427Z",
+      "stage": "plan",
+      "status": "success"
+    },
+    {
+      "run_id": "20261010T170416Z",
+      "stage": "code",
+      "status": "failed"
+    },
+    {
+      "run_id": "20261010T175354Z",
+      "stage": "plan",
+      "status": "success"
+    }
+  ]
+}

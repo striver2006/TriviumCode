@@ -63,6 +63,8 @@ export interface DoctorOptions {
    * 不开这个口子，经 `runDoctor` 走 codex 段的用例在装了 codex 的机器上会拉起真实 CLI、花配额。
    */
   probeBins?: { codex?: string; claude?: string };
+  /** 目录后置臂失败回归的注入口；生产路径不传。 */
+  claudeDirectoryProbe?: NonNullable<Parameters<typeof probeClaude>[1]>['directoryProbe'];
 }
 
 /** `--only` 的合法取值：全部已登记 CLI，外加环境段 */
@@ -791,6 +793,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
         existing: claudeProbeForRoute(opts.config, selected.vendorProfile),
         assetRoot: resolveAssetRoot(),
         config: opts.config,
+        directoryProbe: opts.claudeDirectoryProbe,
       }));
     });
     if (r) {
@@ -807,6 +810,8 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
         snapshot.tool_surface_checked = false;
         snapshot.directory_deny_verified = {};
         snapshot.directory_deny_fingerprint = null;
+        snapshot.directory_deny_sensitive_globs_sha256 = null;
+        snapshot.directory_deny_shape = null;
         snapshot.directory_deny_probed_at = null;
         blockers.push('Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。');
       } else if (canProbeModel && snapshot.probed_at !== null) {
@@ -817,7 +822,8 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
         const key = claudeRouteKey(selected.vendorProfile);
         const existing = routes[key];
         if (existing) routes[key] = { ...existing, probe: { ...existing.probe, directory_deny_verified: {},
-          directory_deny_probed_at: null, directory_deny_fingerprint: null } };
+          directory_deny_probed_at: null, directory_deny_fingerprint: null,
+          directory_deny_sensitive_globs_sha256: null, directory_deny_shape: null } };
       }
       probe.cli.claude = { ...snapshot, routes };
       const routeCapability = realAdapters().claude?.capabilityFor?.({ ...opts.config, probe }, selected.vendorProfile);

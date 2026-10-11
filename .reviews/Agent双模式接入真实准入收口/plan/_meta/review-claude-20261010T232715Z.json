@@ -1,0 +1,82 @@
+{
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r11-codex.md",
+    "src/trivium/freeze.ts",
+    "src/trivium/probes/claude-directory.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/config.ts",
+    "test/unit/freeze-drift.test.ts",
+    "test/unit/claude-directory.test.ts",
+    "test/unit/deny-matrix.test.ts",
+    "doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/ADR_003_agent_access.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/sensitive-depth-diagnostic.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/sensitive-depth-plan-amendment-proposal.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/review-sensitive-depth-plan-batch.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v3.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v3.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-start-precheck.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/code-start-precheck-current-unready.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/implementation-checkpoint-r9-depth-blocked.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/targeted-v3.json",
+    "CLAUDE.md",
+    "AGENTS.md"
+  ],
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "扫描深度整改的核心诊断经仓库静态核实成立：freeze.ts:361 的 depth>6 确实让夹具中父深度 7 的文件漏出禁读枚举，且这已超出获批压缩形态 ascii-root1-5-depth0-2-v2 承诺的最深拓扑——6→7 是对齐已批契约的前提而非扩域；轮数载体、预检闸门、预算数字与证据文件逐项吻合，边界声明克制。最需要注意的是措辞与副本面：单列段把夹具 glob 证据说成\"匹配真实 sensitive_globs\"，与计划自身 CLAUDE-01 行\"不能从替换后夹具配置取值\"的纪律相抵，可能让裁决高估现网泄漏；设计§9.4 第 8 段（BRIEF 禁读承诺的原型文本）不在计划列出的同步清单里，落地后父深度 8 的盲区会继续向每位审查员超承诺。另有 r9 七条整改已在工作树落地而计划正文仍用将来时、未逐行标注实施状态的返工风险。均不阻断批准，可在接受时限定解决。",
+  "findings": [
+    {
+      "id": "CLAUDE-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §本次单列敏感整改（同步清单）；对照 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2154、2066、2464",
+      "problem": "计划批准后的文档同步枚举了\"设计§9.2/10.1及§3.5/11.1/11.6、协议/ADR/手册/剧本/报告/索引\"，但漏掉设计§9.4 第 8 段——那正是生成每份 BRIEF 第 8 段禁读承诺的原型文本，写着\"review.sensitive_globs 匹配的敏感文件\"而无深度限定。6→7 落地后父深度 8 仍明确不入集合（计划自己承认），若§9.4/§8 文案继续无限定表述，每位审查员读到的禁读清单承诺仍比机器事实宽一层；且归档面（对端产物 walk 无深度上限）与敏感面（有上限）的不对称没有任何文档承载，读者易把\"逐个列出\"误读为全深度穷举。",
+      "evidence": "读设计文档 line 2154（§9.4 第8段：禁读类含\"review.sensitive_globs 匹配的敏感文件\"，无深度限定）、line 2066（§9.2 末条同型无限定句）、line 2464（§10.1 可读范围同型句）；src/trivium/freeze.ts:360-379 中 walkSensitive 的 depth 守卫与 line 308-343 无深度上限的 walk 并存；r11 送审原文与 sensitive-depth-plan-amendment-proposal.md 的同步枚举均未点名§9.4。",
+      "suggestion": "把§9.4 第 8 段纳入单列整改的同步枚举（或在 freeze.ts 新增的边界注释中显式标注\"§9.4 第8段/BRIEF 第8段承诺以本边界为准\"），边界句同时写明敏感面有父深度上限、归档面无上限的不对称；逐字补句即可，不需要重写段落。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §本次单列敏感整改第一句（\"仍匹配真实sensitive_globs却未入集合\"）；对照 src/trivium/probes/claude-directory.ts:141-142、src/trivium/config.ts:305",
+      "problem": "该句高估了证据：深度夹具来自目录 probe，其 sensitive_globs 被替换为五个目录各自的 d 加 /** 形式再并上 .env，漏枚举的 deep.txt、plain.txt 类文件并不匹配项目真实缺省 globs（.env*、*.pem、*.key、id_rsa*）。恢复报告与修订提案用的是限定措辞（\"匹配原glob\"），计划正文把它升格成\"真实 sensitive_globs\"。按本计划自己的取证纪律——CLAUDE-01 行\"不能从替换后夹具配置取值\"、§三\"不能称在线E2BIG\"——这句会让裁决者误读为当前仓库确有真实凭据文件正在逃逸禁读，而该前提没有任何现树扫描证明。",
+      "evidence": "src/trivium/probes/claude-directory.ts:141-142 在调用 enumerateDenyPaths 前执行 cfg.review.sensitive_globs = 夹具目录的 /** 形式加 .env；src/trivium/config.ts:305 缺省敏感 globs 为 .env*、**/.env*、**/*.pem、**/*.key、**/id_rsa*；sensitive-depth-diagnostic.json 三行命中均为 .txt 文件名；doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md:95 用\"匹配原glob\"记载；sensitive-depth-plan-amendment-proposal.md 同。",
+      "suggestion": "措辞降格为\"在同一 matchesAnyGlob 判据（夹具配置 globs）下命中却未入集合\"；并在实施验证里补一项现树前后对账：用最终构建分别在 cap 6/7 跑生产 enumerateDenyPaths，把增量条数写进报告与 settings 尺寸对账，作为真实敏感面受影响的第一手证据（本侧无执行能力，该步需 Driver 或有命令能力侧完成）。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "scope-drift",
+      "location": "plan §二 七条整改及落点（各行措辞）；对照 doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md:93-97 与 implementation-checkpoint-r9-depth-blocked.json",
+      "problem": "§二各行与正文用将来时描述七条整改（\"adapters/claude.ts新增稳定sensitive_globs哈希函数\"\"types.ts新增可选nullable…\"\"把createFixture纳入预期错误通道\"等），但仓库事实是这些项已在工作树落地且有通过断言：claudeSensitiveGlobsHash 已导出并被 consumeClaudeDirectories 消费，test/unit/claude-directory.test.ts 已含 is_error/permission_denials 独立变异、8 根回放固定断言、v1 形态拒绝用例；REPORT:93 明言 r9 获批后根已改为 1—5 段、形态升为 v2；checkpoint 记录 typecheck 退出 0、定向 24 项中 5 败且败因均为深度。计划正文没有任何一处逐行标注\"已实施/被深度阻塞/待采样\"，第 7 次 B/plan 的逐条裁决与第 8 次 C/code 的范围判定都要先从证据文件反推实现状态，存在对同一事项重复实施或重复批准的实际风险；§六把\"实施、定向验证\"整体写在第 8 轮之前，与名为 implementation-checkpoint-r9-depth-blocked（已实施、因深度阻塞）的记录读起来相互矛盾。",
+      "evidence": "test/unit/claude-directory.test.ts:9-16 从 adapters/claude.js 导入 claudeSensitiveGlobsHash 与 ProbeFixtureError，:235 起为独立变异用例、:28-66 为 8 根回放断言、:91 为 v1 形态不消费断言；src/trivium/adapters/claude.ts:365 CLAUDE_DIRECTORY_SHAPE='ascii-root1-5-depth0-2-v2'、:430-452 项目 hash 消费逻辑在场；implementation-checkpoint-r9-depth-blocked.json 记录 typecheck_exit_code 0、targeted_shape_tests 24/19/5 且 reason 为生产禁读枚举漏目录夹具；doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md:93-97 同向记载。",
+      "suggestion": "在§二表首加一行状态标注约定（每行：已实施待复审 / 被深度整改阻塞 / 待真实采样），并在§六把\"实施\"明确限定为仅深度项及其回归，其余七条写明\"已落工作树、纳入第 8 轮相对 39ed2053 基线 diff 的完整复审\"；不改动任何已获批约束的实质。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "核心诊断经仓库静态核实成立且整改是最小正确的：freeze.ts:361 的 depth>6 与 walkSensitive(projectRoot,0) 的计数使父深度≤6 的目录才被扫描，而夹具五段根 evidence/ascii_root/nested/deep/calls 加两级后代（claude-directory.ts:119-123）的 deep.txt 父深度恰为 7；这正是已获批压缩形态 ascii-root1-5-depth0-2-v2（adapters/claude.ts:365）承诺覆盖的最深拓扑——不升 cap 这些文件既不被逐文件禁读也不可能被压缩，6→7 是对齐已批契约的前提而非扩域。",
+    "边界与负面对照声明克制且与代码语义吻合：父深度 8 明确未覆盖、不宣称全部项目敏感文件覆盖；.git/node_modules 排除与\"不跟随目录软链后代、软链项自身按现有 glob 判定\"与 freeze.ts:368-376 的 readdir Dirent 行为一致；\"不得缩小30目标夹具/手填deny_paths/吞未知断言\"对应 claude-directory.ts:145、189-190 的抛出通道与 REPORT:95 记载的 19/5 失败不隐藏。",
+    "数字与证据文件逐项对账吻合：review 68/73→具名追加15→池上限88、admission 342/343、每臂文件30/目录5/正对照4（与 claude-directory.ts 夹具常量一致）、settings 3,049,196字节/24,660规则、soft_cap 131,072（adapters/claude.ts:507 为 ARG_MAX 的 1/8）、refused=true 且 real_cli_starts=0——\"当前已拒绝、不能称在线E2BIG\"表述正确。",
+    "轮数载体与闸门自洽且已实现：formal-round-authorization-v3.json（总8、第7=B/plan、第8=C/code、引用 v2 完整 hash、限定范围不含生产写判据变化）；formal-round-authority.json 以文件名加完整 sha256 绑定；round-guard 的 readCurrentAuthorization 与 assertFormalRoundCore 拒绝被替代授权、超上限、entry/stage/Driver/critics/allow-single 错配；launch-v3.mjs:29-36 在 spawn 之前执行 measureCodeStart 且 assertCodeStartMeasurement 抛错即不启动——\"失败不spawn、不占正式轮数\"是已落地机制而非承诺。",
+    "r11 的送审路径校正属实：test/unit/freeze.test.ts 确实不存在，test/unit/freeze-drift.test.ts（现有 enumerateDenyPaths 浅层用例，深度断言落点合理）与 test/unit/deny-matrix.test.ts（身份/同行回归）在场；launch.mjs、launch-v2.mjs、round-guard-v1-preserved.mjs 等历史载体保留，与§一\"旧件不改、新载体纳入第8轮完整审\"一致。"
+  ],
+  "not_covered": [
+    "本侧无命令执行能力：未重跑定向测试、npm run check 或任何测量；19/5、typecheck 退出0、台账计数、3,049,196 字节等均取自仓库内已落盘证据文件与静态阅读，属转述记录而非本侧执行结果。",
+    "禁读目录内的原始记录未逐件打开：admission 与 closeout-r2 的 ledger O_EXCL 追加原文、calls/trace 原件（含\"第6次实际使用安装基线18,644字节/192规则、4053中4029被8根覆盖、剩24逐文件共32坐标\"所指的原始 trace）未核对，只对照了 REPORT:91 与计划附录的成文值；settings-size-reconciliation.json 与 shared-entry-audit.json 全文未读。",
+    "未做\"当前项目树中是否存在父深度≥7 且匹配真实缺省 sensitive_globs 的现网文件\"的穷举核实；静态可见的深路径未见此类命中，但不构成证明。",
+    "src/trivium/archive.ts 的 listRecordedRuns 源码未读，\"task/archive 已启动集合含 failed/running\"依据的是 round-guard 行35注释与 REPORT:103 记载的推理。",
+    "§四共享七入口迁移与§五版本边界的措辞层只做范围判断：doc/07_manuals/QUICKSTART.md、doc/06_deployment/RUNBOOK_pipeline_ops.md、doc/05_testing/CASE_manual_acceptance.md、skills/dual-critic/SKILL.md 现文未逐句核对；设计§3.5/§11.1/§11.6 本体未逐句读。",
+    "未打开归档中的 r9 送审原件做 diff，无法确认本稿\"逐字保留\"的 plan-r4 十一条与 r7 历史附录与原件完全一致。"
+  ]
+}

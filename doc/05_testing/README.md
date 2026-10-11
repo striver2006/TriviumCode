@@ -136,4 +136,5 @@
 - [`REPORT_2026-10-10_agent_access_admission.md`](./REPORT_2026-10-10_agent_access_admission.md)：双模式真实准入补测与后续项目供应商配置；原批次 Kimi/DeepSeek 写尝试未测，后续已将 pro 切 Qwen 并恢复共享三审，完整前置验收仍未完成。
 - [`REPORT_2026-10-10_agent_access_closeout.md`](./REPORT_2026-10-10_agent_access_closeout.md)：Agent双模式当前版本真实准入收口；独立canonical取证、精确写目标与逐文件禁读、预算及未测边界，实施补测中，M11前置未完成。
 - [`REPORT_2026-10-10_claude_three_providers.md`](./REPORT_2026-10-10_claude_three_providers.md)：Claude 三供应商生产工具面补测；36/36 启动，Qwen flash/DeepSeek V4 pro 取得真实 Write 拒绝，Kimi 两模型及 DeepSeek flash 写尝试仍未测；补齐夹具同行禁读集合，保留模拟传输与真实供应商证据边界。
+- [`REPORT_2026-10-11_agent_access_recovery.md`](./REPORT_2026-10-11_agent_access_recovery.md)：真实准入恢复的零CLI基线、连续同主题例外及有效计划三审、敏感扫描深度整改、遗留整改与逐模型刷新清单；前置仍未完成。
 - `evidence/`：实跑的原始留痕（run / review / brief / trace / worker 日志 / Hook 与闸门原始输出 / 复现脚本），按 `<名称>-<YYYYMMDD>/` 分目录。现行写法是〈名称〉取本主题实施报告文件名里的〈名称〉段、下划线换成连字符（例：`REPORT_2026-10-01_doc_archive_index.md` 的证据在 `doc-archive-index-20261001/`）；早期目录按里程碑（`m<里程碑>-<用途>-<日期>/`）或 BACKLOG 编号（`ev<编号>-<用途>-<日期>/`）命名，原样保留、不改名。`m9-step7-20260920/` 是 M9 第 7 步纪律 6 回溯的 grep 差集自检记录；`zcode-provider-config-20260920/` 是 ZCode 0.16.9 provider 配置注入（坑 P-28～P-30，EV-81）的本机实测原始输出。

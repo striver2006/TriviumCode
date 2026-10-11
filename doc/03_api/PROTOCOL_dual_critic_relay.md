@@ -453,3 +453,12 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 目录规则增量：Claude厂商专属probe新增可缺`directory_deny_verified`逐工具三态、`directory_deny_probed_at`及`directory_deny_fingerprint`；缺字段/过期/版本或入口hash漂移一律不压缩。doctor JSON新增`directoryEvidence`为脱敏原始七臂、实际settings、原禁读集合与清理结果，不嵌入本机probe配置。trace详记逐工具投影；run.v3仍使用既有`deny_rule_count/deny_bytes/deny_skipped/peer_deny_applied`，不修改历史Schema。机制标志为原文件实测true与全部实际压缩工具true的合取，不能作为完整准入结论。
 
 Codex版本引用的profile上下文须与能力臂完整指纹一致；同一CLI版本不允许跨native/profile配置直接复用。独立版本selection各自保存请求/结果/前后hash及真实native父子边界，静态version命令不证明该profile的服务端身份。内部canonical探针的版本上下文参数不新增产品CLI参数或历史Schema。
+
+历史plan-r3/v1契约（已被当前r9补充修订，旧采样保留）：2026-10-11 plan-r3/run20261010T175354Z获批目录整改：Claude目录事实另带真实项目sensitive_globs稳定hash（排序去重字符串集合的JSON/SHA256）与受测形态版本；事实缺值、项目配置变更、TTL或路线/版本/入口/native不匹配时逐文件回退。v1受测范围限制为ASCII目录段^[A-Za-z0-9_-]+$、根1至4段及后代0至2级；特殊文件名证据不扩展到中文/空格/逗号/点目录。无候选事实不读二进制；同一精确路径仅本次调用复用hash，不设跨运行缓存，性能未实测。peer_deny_applied的Claude压缩分项是输入防御不变式，不是独立模型能力证明。目录后置臂预期失败保留主probe并清空目录事实、脱敏留痕及清理；未定义内部错误继续抛。
+
+历史r7送审前边界（已被当前r9补充修订，旧采样保留）：补充边界：原生产压缩根实际为5段，超出当前批准范围，静态回放回退settings为2,898,308字节。扩到5段尚待新增正式计划审查授权；不得因自动plan/code审批或CLI扩容自行扩大正式轮数或消费域。原生产写负对照标准始终保留；四个无新取证机制的Claude写组合在spawn前拒绝，无准入通过结论。当前状态见[恢复报告](../05_testing/REPORT_2026-10-11_agent_access_recovery.md)（skills说明从仓库doc/05_testing定位该报告）。
+历史plan-r4/run20261010T224543Z获批r9契约（当时总7轮）：目录形态为ascii-root1-5-depth0-2-v2，目录段^[A-Za-z0-9_-]+$、根1至5段、后代0至2级；仅真实新拓扑doctor通过且项目hash/时间/路线/版本/入口/native一致才消费，v1旧事实失效。五种根的七臂每工具文件30、目录5、共同正对照4，180秒每臂保持，失败保存主probe并清空目录事实。总7轮例外已独立授权，第6次补充计划已批准、第7次完整代码重审待执行；CLI额度与轮数分列。第7次启动前用最终构建、生产完整禁读枚举及实际可消费事实计算settings，超过既有131072字节软线则任务包装器拒绝正式启动，不删除禁读项、不改产品软线、不借旧安装绕过。原生产写四缺口仍未测，判据替代未采用，M11前置未完成。
+
+当前目录事实与敏感枚举规范统一见[设计§3.5](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-directory-contract)：消费仅限受测ASCII形态、绑定实际项目及入口，失配回退逐文件。正式授权、实施、真实取证和未测状态见[恢复报告](../05_testing/REPORT_2026-10-11_agent_access_recovery.md)，不以本节历史计划采样替代当前验收。
+<!-- 本轮r12取证脚本边界补充；产品Schema与准入判据不变。 -->
+连续启动台账根与动态证据输出根允许分离。Codex native版本身份必须从预算环境声明的ledgerRoot取得实际wrapper/native配对记录，不能在动态输出根寻找ledger。输出根保存请求、结果及显式引用hash；台账复制切换需先等在途调用完成，逐文件/计数/上限对账，历史复制项不计新增启动。旧目录保留且只读，项目外新根作为后续唯一权威，计数不重置、不双计；这不豁免代码审subject复算或只读核验。

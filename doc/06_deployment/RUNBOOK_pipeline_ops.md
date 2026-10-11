@@ -454,3 +454,9 @@ Hook 与预检只做**存在性**检查：wrapper（`.trivium/bin/trivium`）内
 | 删除临时夹具与运行目录（`~/.trivium/runs/<仓库>-<哈希>/`） | 破坏性动作；会话只核对路径、不执行 |
 
 终端里执行的命令**不要在行尾写 `# 注释`**：交互式 zsh 默认不开 `interactivecomments`，`#` 后面的词会被当成参数。
+
+2026-10-11获批整改执行边界：目录事实绑定真实项目sensitive_globs稳定hash、形态版本及入口/native/版本/路线/TTL；缺值或变化逐文件回退，目录追加预期失败保存主probe并清空目录事实。实际旧压缩根5段超出当前批准的4段拓扑，修订候选须补充正式计划审查，未擅自扩大范围。共享七入口迁移必须在最终代码及两次check完成后连贯执行备份核hash、移动、四目标安装核验；失败/意外中断先标rollback-required并恢复，拒覆盖目标。详见[恢复报告](../05_testing/REPORT_2026-10-11_agent_access_recovery.md)。
+
+当前目录事实与敏感枚举规范统一见[设计§3.5](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-directory-contract)：消费仅限受测ASCII形态、绑定实际项目及入口，失配回退逐文件。正式授权、实施、真实取证和未测状态见[恢复报告](../05_testing/REPORT_2026-10-11_agent_access_recovery.md)，不以本节历史计划采样替代当前验收。
+<!-- 2026-10-11 r12：运行元数据与被审diff分离，原判据保留。 -->
+本轮完整代码审前，预算连续台账已逐文件核验切换到项目外`~/.trivium/evidence/agent-access-20261011-closeout-r3/budget`。仓内旧台账保持原样；新根复制的旧启动不另计，后续累计启动以新根为唯一权威。使用本轮`launch-v4.mjs`，不能继续用旧预算根增加启动。第8次C/code仍消耗正式轮数；元数据目录迁移不改变任何只读/漂移判据、不增Git忽略、不追认旧failed。Codex版本核验读取ledgerRoot，动态输出根只保存取证工件；记录中的包装器/native配对须与相同请求hash绑定。

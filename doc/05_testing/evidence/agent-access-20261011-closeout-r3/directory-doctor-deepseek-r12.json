@@ -1,0 +1,165 @@
+{
+  "rows": [
+    {
+      "profile": "deepseek",
+      "original": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-directory-doctor-deepseek-e90bd1fa-5cc8-426f-a7f6-0a2fef942c96-completed.json",
+      "original_sha256": "307dda4183c84e496403bd2b632d896b39fb6d69e4a67cde691fe4e64c169e2b",
+      "code": 0,
+      "route_probe": {
+        "entrypoint": "/Users/chenzhenbo/.local/bin/claude",
+        "version": "2.1.296",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+)"
+        },
+        "probed_at": "2026-10-11T00:11:18.887Z",
+        "models": [],
+        "path_deny": {
+          "supported": true,
+          "coverage_complete": false,
+          "file_shape_verified": true,
+          "rule_syntax": "Read(./.reviews/probe-topic/plan/**)",
+          "method": "经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的",
+          "attempts": []
+        },
+        "scratch_paths": [],
+        "isolation": "shared",
+        "headless_read_ok": true,
+        "trace_path_structured": true,
+        "denied_tool_in_trace": null,
+        "readonly_breach": false,
+        "tool_surface_checked": true,
+        "readonly_flags": [
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob"
+        ],
+        "model_flag": true,
+        "json_schema_ok": true,
+        "session_id_source": "每条事件的 session_id 字段（--session-id 可由调用方指定）",
+        "trust_prompt_required": false,
+        "stream_json_requires_verbose": true,
+        "strict_mcp_config_applied": true,
+        "project_memory_blocked": null,
+        "effort_levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "route_profile": "deepseek",
+        "directory_deny_verified": {
+          "Read": true,
+          "Grep": true,
+          "Glob": true
+        },
+        "directory_deny_probed_at": "2026-10-11T00:12:57.880Z",
+        "directory_deny_fingerprint": "95aeb89db4dfd57f505e8881338ce81af6056376895530ff88d84c8fe6b0bcd3",
+        "directory_deny_sensitive_globs_sha256": "e769d91333d97c6f071ef87dd5a7058f7b2d0763b038b1051ca6f4513a8c6eb0",
+        "directory_deny_shape": "ascii-root1-5-depth0-2-v2"
+      },
+      "arms": [
+        {
+          "tool": "Read",
+          "kind": "files",
+          "targets": 30,
+          "paired": 30,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 10622
+        },
+        {
+          "tool": "Read",
+          "kind": "directory",
+          "targets": 5,
+          "paired": 5,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 7232
+        },
+        {
+          "tool": "Grep",
+          "kind": "files",
+          "targets": 30,
+          "paired": 30,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 12096
+        },
+        {
+          "tool": "Grep",
+          "kind": "directory",
+          "targets": 5,
+          "paired": 5,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 8762
+        },
+        {
+          "tool": "Glob",
+          "kind": "files",
+          "targets": 30,
+          "paired": 30,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 11551
+        },
+        {
+          "tool": "Glob",
+          "kind": "directory",
+          "targets": 5,
+          "paired": 5,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 6743
+        },
+        {
+          "tool": null,
+          "kind": "positive",
+          "targets": 4,
+          "paired": 4,
+          "verdict": true,
+          "schema": true,
+          "leaked": false,
+          "exitCode": 0,
+          "timedOut": false,
+          "durationMs": 8402
+        }
+      ],
+      "cleanup_sample": {
+        "sampled_at": "2026-10-11T00:47:25.795Z",
+        "state": {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-3mUVGN",
+          "exists": false
+        },
+        "operation_time": null,
+        "note": "新doctor返回后实际核验；采样时间不是清理操作时间"
+      },
+      "failure": null
+    }
+  ],
+  "not_full_route_admission": true
+}

@@ -6,7 +6,8 @@ import { promises as fs } from 'node:fs';
 import { scratchDir } from '../helpers/scratch.js';
 import { ASSET_ROOT } from '../helpers/fixture.js';
 import { defaultConfig } from '../../src/trivium/config.js';
-import { buildDenySettings, claudeAdapter, claudeDirectoryFingerprint } from '../../src/trivium/adapters/claude.js';
+import { buildDenySettings, claudeAdapter, claudeDirectoryFingerprint, claudeSensitiveGlobsHash,
+  CLAUDE_DIRECTORY_SHAPE } from '../../src/trivium/adapters/claude.js';
 import { resolveClaudeRoute } from '../../src/trivium/adapters/claude-route.js';
 import { READONLY_INVARIANTS } from '../../src/trivium/probes/claude.js';
 import type { CriticRequest } from '../../src/trivium/types.js';
@@ -28,11 +29,13 @@ test('生产适配器大集合经过目录投影实际递入argv/stdin；失败�
   const agent = cfg.agents.claude; assert.ok(agent?.vendor === 'anthropic'); agent.bin = bin;
   const probe = cfg.probe.cli.claude!;
   Object.assign(probe, { entrypoint: bin, version: 'stub/0.0.0', probed_at: new Date().toISOString(), readonly_flags: [...READONLY_INVARIANTS],
-    json_schema_ok: true, path_deny: { supported: true, rule_syntax: 'Read(./evidence/calls/**)', file_shape_verified: true },
+    json_schema_ok: true, path_deny: { supported: true, rule_syntax: 'Read(./evidence/ascii_root/nested/deep/calls/**)', file_shape_verified: true },
     directory_deny_verified: { Read: true, Grep: true, Glob: true }, directory_deny_probed_at: new Date().toISOString() });
-  cfg.review.sensitive_globs = ['evidence/calls/**'];
+  cfg.review.sensitive_globs = ['evidence/ascii_root/nested/deep/calls/**'];
+  probe.directory_deny_sensitive_globs_sha256 = claudeSensitiveGlobsHash(cfg.review.sensitive_globs);
+  probe.directory_deny_shape = CLAUDE_DIRECTORY_SHAPE;
   probe.directory_deny_fingerprint = await claudeDirectoryFingerprint(resolveClaudeRoute(cfg, null, probe.version), probe.version);
-  const deny = Array.from({ length: 4000 }, (_, i) => `evidence/calls/archive-${i}/长文件名-${i}.json`);
+  const deny = Array.from({ length: 4000 }, (_, i) => `evidence/ascii_root/nested/deep/calls/archive-${i}/长文件名-${i}.json`);
   assert.ok(buildDenySettings(deny, ['Read', 'Grep', 'Glob'], { sampleTool: 'Read', relPrefix: './' }).bytes > 1048576);
   const req: CriticRequest = { run_id: 'stub', topic: 'directory', stage: 'code', critic: 'claude', project_root: root,
     subject_path: path.join(root, 'subject'), deny_paths: deny, out_dir: path.join(root, 'success'), brief_path: '/unused', brief_text: '完整BRIEF经stdin',
@@ -44,6 +47,7 @@ test('生产适配器大集合经过目录投影实际递入argv/stdin；失败�
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
     assert.equal(captured.stdin, req.brief_text);
     const settings = captured.argv[captured.argv.indexOf('--settings') + 1];
+    assert.ok(JSON.parse(settings).permissions.deny.includes('Read(./evidence/ascii_root/nested/deep/calls/**)'));
     assert.equal(result.deny_bytes, Buffer.byteLength(settings, 'utf8'));
     assert.equal(result.deny_rule_count, 6);
     const trace = JSON.parse(await fs.readFile(path.join(outDir, 'trace.json'), 'utf8'));
@@ -58,4 +62,22 @@ test('生产适配器大集合经过目录投影实际递入argv/stdin；失败�
   assert.equal(result.peer_deny_applied, false);
   assert.equal(result.deny_rule_count, 6);
   assert.equal(JSON.parse(await fs.readFile(path.join(root, 'spawn-failure/trace.json'), 'utf8')).denySettings.ruleCount, 6);
+  await fs.chmod(bin, 0o700);
+  probe.directory_deny_shape = 'ascii-root1-4-depth0-2-v1';
+  const oldShapeOut = path.join(root, 'old-v1-shape');
+  const oldShape = await claudeAdapter.run({ cfg, nodePath: process.execPath }, { ...req, deny_paths: [deny[0]!], out_dir: oldShapeOut });
+  assert.equal(oldShape.process_started, true);
+  const oldShapeTrace = JSON.parse(await fs.readFile(path.join(oldShapeOut, 'trace.json'), 'utf8'));
+  assert.deepEqual(oldShapeTrace.denySettings.projection.compressedTools, []);
+  assert.equal(oldShapeTrace.denySettings.directoryGuard.observedFingerprint, null);
+  probe.directory_deny_shape = CLAUDE_DIRECTORY_SHAPE;
+  cfg.review.sensitive_globs.push('other/**');
+  const changedOut = path.join(root, 'project-config-changed');
+  const changed = await claudeAdapter.run({ cfg, nodePath: process.execPath }, { ...req, deny_paths: [deny[0]!], out_dir: changedOut });
+  assert.equal(changed.process_started, true);
+  const changedTrace = JSON.parse(await fs.readFile(path.join(changedOut, 'trace.json'), 'utf8'));
+  assert.deepEqual(changedTrace.denySettings.projection.compressedTools, []);
+  assert.deepEqual(changedTrace.denySettings.directoryGuard.consumed, {});
+  assert.equal(changedTrace.denySettings.directoryGuard.observedFingerprint, null);
+  assert.ok(changedTrace.denySettings.directoryGuard.recordedProjectHash !== changedTrace.denySettings.directoryGuard.observedProjectHash);
 });

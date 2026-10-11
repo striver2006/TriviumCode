@@ -5,6 +5,7 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
   judgeDrift, driftAction, enumerateDenyPaths, classifyCompareFailure, DRIFT_PROBE_BUDGET_MS,
+  SENSITIVE_SCAN_MAX_PARENT_DEPTH,
   type DriftVerdict, type Snapshot,
 } from '../../src/trivium/freeze.js';
 import { defaultConfig } from '../../src/trivium/config.js';
@@ -47,6 +48,47 @@ test('禁读清单：子目录里的 .env.production 也在内（默认 sensitiv
   const deny = await enumerateDenyPaths(defaultConfig(), dir, path.join(dir, '.reviews'), 'gemini');
   assert.ok(deny.includes('.env'));
   assert.ok(deny.includes('config/.env.production'), JSON.stringify(deny));
+});
+
+test('敏感枚举父深度：批准上限7，相邻6/7入列、8仍是未覆盖边界', async () => {
+  assert.equal(SENSITIVE_SCAN_MAX_PARENT_DEPTH, 7, '批准的扫描域不得随形态或测试常量自动扩展');
+  const dir = await repo();
+  const fileAt = (depth: number, name: string): string =>
+    path.join(...Array.from({ length: depth }, (_, i) => `level_${i}`), name);
+  const depths = [SENSITIVE_SCAN_MAX_PARENT_DEPTH - 1, SENSITIVE_SCAN_MAX_PARENT_DEPTH, SENSITIVE_SCAN_MAX_PARENT_DEPTH + 1];
+  for (const depth of depths) {
+    const file = path.join(dir, fileAt(depth, 'fixture.key'));
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, 'fixture-only\n');
+  }
+  const nonmatching = fileAt(SENSITIVE_SCAN_MAX_PARENT_DEPTH, 'public.txt');
+  await fs.writeFile(path.join(dir, nonmatching), 'public\n');
+  const deny = await enumerateDenyPaths(defaultConfig(), dir, path.join(dir, '.reviews'), 'gemini');
+  for (const depth of depths) {
+    assert.equal(deny.includes(fileAt(depth, 'fixture.key')), depth <= SENSITIVE_SCAN_MAX_PARENT_DEPTH, `父深度${depth}`);
+  }
+  assert.equal(deny.includes(nonmatching), false);
+  assert.ok(deny.includes('.trivium'), '扫描深度整改不得丢失编排器目录规则');
+});
+
+test('敏感枚举保留排除与软链语义：不下钻目标或自环，匹配软链项自身仍入列', async () => {
+  const dir = await repo();
+  const outside = await scratchDir('trivium-sensitive-link-');
+  const target = path.join(outside, ...Array.from({ length: SENSITIVE_SCAN_MAX_PARENT_DEPTH + 1 }, (_, i) => `deep_${i}`));
+  await fs.mkdir(target, { recursive: true });
+  await fs.writeFile(path.join(target, 'nested.key'), 'fixture-only\n');
+  await fs.symlink(target, path.join(dir, 'linked.key'), 'dir');
+  await fs.symlink(dir, path.join(dir, 'loop.key'), 'dir');
+  for (const excluded of ['.git', 'node_modules']) {
+    await fs.mkdir(path.join(dir, 'config', excluded), { recursive: true });
+    await fs.writeFile(path.join(dir, 'config', excluded, 'excluded.key'), 'fixture-only\n');
+  }
+  const deny = await enumerateDenyPaths(defaultConfig(), dir, path.join(dir, '.reviews'), 'gemini');
+  assert.ok(deny.includes('linked.key'), '匹配软链项自身不得新增豁免');
+  assert.ok(deny.includes('loop.key'));
+  assert.equal(deny.some(p => p.startsWith('linked.key/') || p.startsWith('loop.key/')), false);
+  assert.equal(deny.includes('config/.git/excluded.key'), false);
+  assert.equal(deny.includes('config/node_modules/excluded.key'), false);
 });
 
 test('工作树未变 → 无漂移', async () => {

@@ -66,9 +66,10 @@ import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents, type ClaudeTrace } from '../ada
  * 变换就会撞拒绝形态，`json_schema_ok` 落 null 而不是 false，静默回归。
  * 方向 probes → adapters 与 `claude-trace` 的先例相同；反向（adapters → probes）仍禁止。
  */
-import { buildDenySettings, claudeDirectoryFingerprint, denyRuleShapeOf, readSchemaJson } from '../adapters/claude.js';
+import { buildDenySettings, claudeDirectoryFingerprint, claudeSensitiveGlobsHash, CLAUDE_DIRECTORY_SHAPE,
+  denyRuleShapeOf, readSchemaJson } from '../adapters/claude.js';
 import { claudeRouteEnv, resolveClaudeRoute, type ClaudeRoute } from '../adapters/claude-route.js';
-import { probeClaudeDirectories } from './claude-directory.js';
+import { probeClaudeDirectories, expectedDirectoryFailure, directoryFailureText } from './claude-directory.js';
 
 const routeContext = new AsyncLocalStorage<{ route: ClaudeRoute; model: string | null; effort: string | null }>();
 /** 一轮探针独占上下文；并行 doctor 的路线与参数互不串用。 */
@@ -1068,14 +1069,14 @@ async function probeClaudePathDeny(bin: string, fx: Fixture): Promise<PathDenyPr
        * 此前这里恒为 `null`，理由是「等价性未验」。第三臂补上之后它有了真结论，
        * 而 `null` 的含义收窄为「本轮那一臂没测到」（没跑完 / 模型没发起调用）。
        *
-       * 适配器的 `peer_deny_applied` 读的正是这一格而非 `supported`：
+       * Claude适配器的 `peer_deny_applied` 合取这一格与实际压缩工具的已验证不变式：
        * 「这家 CLI 有没有路径级 deny」与「本机曾实测该逐文件形状可拦」是两件事，
        * 三态在这里天然安全——`null` 与 `false` 都判不过 `=== true`
        * （代码双审 r4 CODEX-03）。
        *
        * **口径要说准**（代码双审 r3 AGY-04）：这一格能承诺的只是
        * 「**本机曾实测**该逐文件形状可拦」——取值来自探针夹具里的单条 ASCII 路径。
-       * **对本次注入的每条规则是否生效它一无所知**：那批规则可能含被
+       * 这一格及压缩工具防御合取**不逐条证明本次规则**：那批规则可能含被
        * `denyPathRepresentable` 跳过的路径、或含 glob 元字符而字面匹配不上的路径。
        * 逐条结果看 `trace.json` 的 `denySettings.skippedPaths`，
        * 规模与跳过条数另经 `CriticResult` 的 `deny_skipped` / `deny_rule_count` /
@@ -1155,7 +1156,8 @@ export type StructuredArmCause = 'carried-over' | 'asset-root-missing' | JsonSch
 
 export async function probeClaude(
   configuredBin: string | null,
-  opts: { skipModelCalls?: boolean; existing?: ClaudeProbe; assetRoot?: string; config?: Config } = {},
+  opts: { skipModelCalls?: boolean; existing?: ClaudeProbe; assetRoot?: string; config?: Config;
+    directoryProbe?: typeof probeClaudeDirectories } = {},
 ): Promise<{
   probe: ClaudeProbe;
   notes: string[];
@@ -1200,6 +1202,8 @@ export async function probeClaude(
   probe.directory_deny_verified = {};
   probe.directory_deny_probed_at = null;
   probe.directory_deny_fingerprint = null;
+  probe.directory_deny_sensitive_globs_sha256 = null;
+  probe.directory_deny_shape = null;
 
   const { bin, version } = await probeClaudeBin(configuredBin);
   probe.entrypoint = bin;
@@ -1714,18 +1718,41 @@ export async function probeClaude(
   const directorySchemaPath = opts.assetRoot ? resolveReviewSchemaPath(opts.assetRoot) : null;
   const selectedRoute = routeContext.getStore();
   if (opts.config && directorySchemaPath && selectedRoute?.model && probe.readonly_flags.length > 0) {
-    const route = resolveClaudeRoute(opts.config, selectedRoute.route.profile, probe.version);
-    const before = await claudeDirectoryFingerprint(route, probe.version);
-    directoryEvidence = await probeClaudeDirectories({ critic: 'claude', cfg: opts.config, route, model: selectedRoute.model,
-      effort: selectedRoute.effort, readonlyFlags: probe.readonly_flags, schemaPath: directorySchemaPath });
-    const after = await claudeDirectoryFingerprint(resolveClaudeRoute(opts.config, route.profile, probe.version), probe.version);
-    const recorded = before !== null && before === after && directoryEvidence.arms.length > 0;
-    probe.directory_deny_verified = recorded ? directoryEvidence.verified : {};
-    probe.directory_deny_fingerprint = recorded ? before : null;
-    probe.directory_deny_probed_at = recorded ? new Date().toISOString() : null;
-    notes.push(`目录deny逐工具实测：${JSON.stringify(probe.directory_deny_verified)}；夹具拓扑范围，未知工具维持逐文件规则`);
-    if (directoryEvidence.failure) notes.push(`目录臂停止：${directoryEvidence.failure}`);
-    notes.push(...directoryEvidence.notes);
+    try {
+      const route = resolveClaudeRoute(opts.config, selectedRoute.route.profile, probe.version);
+      // 在夹具复制并替换sensitive_globs之前绑定真实项目配置。
+      const projectHash = claudeSensitiveGlobsHash(opts.config.review.sensitive_globs);
+      const before = await claudeDirectoryFingerprint(route, probe.version);
+      directoryEvidence = await (opts.directoryProbe ?? probeClaudeDirectories)({ critic: 'claude', cfg: opts.config, route, model: selectedRoute.model,
+        effort: selectedRoute.effort, readonlyFlags: probe.readonly_flags, schemaPath: directorySchemaPath });
+      const after = await claudeDirectoryFingerprint(resolveClaudeRoute(opts.config, route.profile, probe.version), probe.version);
+      if (!directoryEvidence.failure && (before === null || after === null || before !== after ||
+          projectHash !== claudeSensitiveGlobsHash(opts.config.review.sensitive_globs))) {
+        directoryEvidence.failure = '目录追加探针绑定未取得或发生变化，目录事实全部失效；主probe保留';
+      }
+      const recorded = before !== null && before === after && directoryEvidence.arms.length > 0 &&
+        !directoryEvidence.failure && !directoryEvidence.cleanup &&
+        projectHash === claudeSensitiveGlobsHash(opts.config.review.sensitive_globs);
+      probe.directory_deny_verified = recorded ? directoryEvidence.verified : {};
+      probe.directory_deny_fingerprint = recorded ? before : null;
+      probe.directory_deny_probed_at = recorded ? new Date().toISOString() : null;
+      probe.directory_deny_sensitive_globs_sha256 = recorded ? projectHash : null;
+      probe.directory_deny_shape = recorded ? CLAUDE_DIRECTORY_SHAPE : null;
+      notes.push(`目录deny逐工具实测：${JSON.stringify(probe.directory_deny_verified)}；夹具拓扑范围，未知工具维持逐文件规则`);
+      if (directoryEvidence.failure) notes.push(`目录臂停止：${directoryEvidence.failure}`);
+      notes.push(...directoryEvidence.notes);
+    } catch (error) {
+      if (!expectedDirectoryFailure(error)) throw error;
+      directoryEvidence ??= { verified: {}, arms: [], cleanup: null, sourceHash: null, denyPaths: [], settingsJson: null, failure: null, notes: [] };
+      directoryEvidence.failure = directoryFailureText(error);
+      directoryEvidence.verified = {};
+      probe.directory_deny_verified = {};
+      probe.directory_deny_fingerprint = null;
+      probe.directory_deny_probed_at = null;
+      probe.directory_deny_sensitive_globs_sha256 = null;
+      probe.directory_deny_shape = null;
+      notes.push(`目录后置臂预期失败，主probe保留：${directoryEvidence.failure}`);
+    }
   }
 
   return { probe, notes, structuredArmCause, memoryFixtureFailure: null, directoryEvidence };

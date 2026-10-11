@@ -29,14 +29,14 @@ export function selectedEvidence(root, selection, key, kind = 'routes') {
   return { dir, ref, complete: values['result.json'].completed === true,
     request, result: values['result.json'], after: values['fingerprints-after.json'], selection: selection.file };
 }
-export function selectedVersion(root, selection, routeKey, currentFingerprints) {
+export function selectedVersion(root, selection, routeKey, currentFingerprints, ledgerRoot = root) {
   const evidence = selectedEvidence(root, selection, `static-${routeKey}-version`, 'versions');
   if (!evidence?.complete || evidence.after?.unchanged !== true) throw Error(`${routeKey}: 所选版本证据缺失、未完成或漂移`);
   let native = null;
   const comparison = { ...currentFingerprints };
   if (routeKey === 'codex') {
     if (!evidence.result.native_version_reference) throw Error('Codex缺显式native版本引用');
-    native = nativeVersionFromLedger(root, path.join(evidence.dir, 'requested.json'), evidence.result.native_version_reference);
+    native = nativeVersionFromLedger(ledgerRoot, path.join(evidence.dir, 'requested.json'), evidence.result.native_version_reference);
     if (currentFingerprints.native_entry !== native.entry_sha256) throw Error('Codex当前native入口hash不符');
     comparison.native_entry = evidence.request.fingerprints.native_entry;
   }

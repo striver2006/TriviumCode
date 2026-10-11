@@ -41,7 +41,9 @@ test('版本从零与刷新均显式引用；未完成、入口/配置漂移拒�
     fs.writeFileSync(file, JSON.stringify({ schema: 'trivium.access.selection.v1', routes: {}, versions: {} }));
     const entry = path.join(root, 'node-wrapper'), native = path.join(root, 'native-cli');
     fs.writeFileSync(entry, 'wrapper'); fs.writeFileSync(native, 'native');
-    fs.mkdirSync(path.join(root, 'ledger/admission'), { recursive: true });
+    // 动态证据根与连续台账根分开；错误使用证据根不得静默获得native身份。
+    const ledgerRoot = path.join(root, 'budget-only');
+    fs.mkdirSync(path.join(ledgerRoot, 'ledger/admission'), { recursive: true });
     const selection = h.loadSelection(file), fingerprints = { entry: h.hash(entry), native_entry: h.hash(native), globals: { config: 'config-hash' } };
     assert.throws(() => h.selectedVersion(root, selection, 'codex', fingerprints), /缺失/);
     for (const variant of [1, 3]) {
@@ -52,28 +54,29 @@ test('版本从零与刷新均显式引用；未完成、入口/配置漂移拒�
       for (const [n, v] of Object.entries(values)) fs.writeFileSync(path.join(dir, n), JSON.stringify(v));
       const requestFile = path.join(dir, 'requested.json');
       const common = { fingerprint_manifest: requestFile, kind: 'version', cli: 'codex', spawned: true, code: 0, signal: null, error_code: null };
-      fs.writeFileSync(path.join(root, `ledger/admission/launch-000${variant}.json`), JSON.stringify({ ...common, index: variant, parent_pid: 100, pid: 200, entry, entry_sha256: h.hash(entry) }));
-      fs.writeFileSync(path.join(root, `ledger/admission/launch-000${variant + 4}.json`), JSON.stringify({ ...common, index: variant + 4, parent_pid: 200, boundary_parent: `codex:100:${variant}`, entry: native, entry_sha256: h.hash(native) }));
-      const nativeReference = h.nativeVersionFromLedger(root, requestFile);
+      fs.writeFileSync(path.join(ledgerRoot, `ledger/admission/launch-000${variant}.json`), JSON.stringify({ ...common, index: variant, parent_pid: 100, pid: 200, entry, entry_sha256: h.hash(entry) }));
+      fs.writeFileSync(path.join(ledgerRoot, `ledger/admission/launch-000${variant + 4}.json`), JSON.stringify({ ...common, index: variant + 4, parent_pid: 200, boundary_parent: `codex:100:${variant}`, entry: native, entry_sha256: h.hash(native) }));
+      assert.throws(() => h.nativeVersionFromLedger(root, requestFile), /ENOENT/);
+      const nativeReference = h.nativeVersionFromLedger(ledgerRoot, requestFile);
       fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ ...values['result.json'], native_version_reference: nativeReference }));
       selection.manifest.versions[key] = { variant, ...Object.fromEntries(Object.keys(values).map(n => [n, h.hash(path.join(dir, n))])) };
-      assert.equal(h.selectedVersion(root, selection, 'codex', scoped).version, `0.162.${variant}`);
-      assert.equal(h.selectedVersion(root, selection, 'codex', scoped).native_entry, native);
-      assert.throws(() => h.selectedVersion(root, selection, 'codex', { ...scoped, profile_config: 'other-profile' }), /指纹不符/);
-      const duplicate = path.join(root, 'ledger/admission/launch-0010.json');
-      fs.copyFileSync(path.join(root, `ledger/admission/launch-000${variant + 4}.json`), duplicate);
-      assert.throws(() => h.selectedVersion(root, selection, 'codex', scoped), /歧义/);
+      assert.equal(h.selectedVersion(root, selection, 'codex', scoped, ledgerRoot).version, `0.162.${variant}`);
+      assert.equal(h.selectedVersion(root, selection, 'codex', scoped, ledgerRoot).native_entry, native);
+      assert.throws(() => h.selectedVersion(root, selection, 'codex', { ...scoped, profile_config: 'other-profile' }, ledgerRoot), /指纹不符/);
+      const duplicate = path.join(ledgerRoot, 'ledger/admission/launch-0010.json');
+      fs.copyFileSync(path.join(ledgerRoot, `ledger/admission/launch-000${variant + 4}.json`), duplicate);
+      assert.throws(() => h.selectedVersion(root, selection, 'codex', scoped, ledgerRoot), /歧义/);
       fs.unlinkSync(duplicate);
       fs.writeFileSync(native, 'upgraded');
-      assert.throws(() => h.selectedVersion(root, selection, 'codex', scoped), /native入口/);
+      assert.throws(() => h.selectedVersion(root, selection, 'codex', scoped, ledgerRoot), /native入口/);
       fs.writeFileSync(native, 'native');
-      assert.throws(() => h.selectedVersion(root, selection, 'codex', { ...scoped, entry: 'new-binary' }), /指纹不符/);
+      assert.throws(() => h.selectedVersion(root, selection, 'codex', { ...scoped, entry: 'new-binary' }, ledgerRoot), /指纹不符/);
       fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify(values['result.json']));
       selection.manifest.versions[key]['result.json'] = h.hash(path.join(dir, 'result.json'));
-      assert.throws(() => h.selectedVersion(root, selection, 'codex', scoped), /缺显式native/);
+      assert.throws(() => h.selectedVersion(root, selection, 'codex', scoped, ledgerRoot), /缺显式native/);
       fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ completed: false, version: `0.162.${variant}` }));
       selection.manifest.versions[key]['result.json'] = h.hash(path.join(dir, 'result.json'));
-      assert.throws(() => h.selectedVersion(root, selection, 'codex', scoped), /未完成/);
+      assert.throws(() => h.selectedVersion(root, selection, 'codex', scoped, ledgerRoot), /未完成/);
     }
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

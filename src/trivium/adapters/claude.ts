@@ -270,8 +270,8 @@ export function denyRuleShapeOf(ruleSyntax: string | null): DenyRuleShape | null
  *
  * 两种可能结局都不好，**而且都不可见**：CLI 若拒整份 `--settings`，本次审查直接失败
  * （还算可诊断）；若**逐条静默丢弃**，禁读通道就死了一条而我们看不出来——
- * 因为 `peer_deny_applied` 读的是探针格（探针夹具、单条 ASCII 路径），
- * **不是本次注入的这批规则**。
+ * Claude `peer_deny_applied` 合取原逐文件事实与实际压缩工具已验证不变式；
+ * 后项不是独立模型证明，合取也不逐条证明本次全部规则。
  *
  * ## 判据：这条路径拼出来的规则，**还能不能字面匹配到它自己**
  *
@@ -361,7 +361,15 @@ export interface DenySettingsBuild {
   };
 }
 
-/** 只认配置声明的字面完整禁读目录，绝不猜公共前缀或归一化非法坐标。 */
+/** 已测ASCII拓扑的形态版本；旧事实没有该值不能消费。 */
+export const CLAUDE_DIRECTORY_SHAPE = 'ascii-root1-5-depth0-2-v2';
+
+/** 绑定真实项目字符串集合；夹具替换后的配置不得提供该事实。 */
+export function claudeSensitiveGlobsHash(globs: readonly string[]): string {
+  return createHash('sha256').update(JSON.stringify([...new Set(globs)].sort())).digest('hex');
+}
+
+/** 只认配置声明的受测字面ASCII目录；未测后代维持逐文件规则。 */
 export function projectClaudeDenyPaths(denyPaths: readonly string[], sensitiveGlobs: readonly string[]): {
   paths: string[]; directories: { directory: string; coveredCount: number }[];
 } {
@@ -369,12 +377,16 @@ export function projectClaudeDenyPaths(denyPaths: readonly string[], sensitiveGl
   const canonical = (p: string): boolean => !path.isAbsolute(p) && !/[\\\x00-\x1f\x7f]/.test(p) &&
     p.split('/').every(s => s !== '' && s !== '.' && s !== '..');
   const under = (p: string, d: string): boolean => canonical(p) && (p === d || p.startsWith(`${d}/`));
+  const covered = (p: string, d: string): boolean => under(p, d) &&
+    (p === d || (p.slice(d.length + 1).split('/').length <= 3 &&
+      p.slice(d.length + 1).split('/').slice(0, -1).every(s => /^[A-Za-z0-9_-]+$/.test(s))));
   const roots = [...new Set(sensitiveGlobs.filter(g => g.endsWith('/**')).map(g => g.slice(0, -3)))]
-    .filter(d => canonical(d) && !/[*?\[\]{}!]/.test(d) && denyPathRepresentable(d) && original.some(p => under(p, d)))
+    .filter(d => canonical(d) && d.split('/').length <= 5 && d.split('/').every(s => /^[A-Za-z0-9_-]+$/.test(s)) &&
+      denyPathRepresentable(d) && original.some(p => covered(p, d)))
     .sort();
   const directories = roots.filter(d => !roots.some(parent => parent !== d && under(d, parent)))
-    .map(directory => ({ directory, coveredCount: original.filter(p => under(p, directory)).length }));
-  return { paths: [...directories.map(d => d.directory), ...original.filter(p => !directories.some(d => under(p, d.directory)))], directories };
+    .map(directory => ({ directory, coveredCount: original.filter(p => covered(p, directory)).length }));
+  return { paths: [...directories.map(d => d.directory), ...original.filter(p => !directories.some(d => covered(p, d.directory)))], directories };
 }
 
 /** 工具独立启用；未核实工具仍生成全量逐文件规则。原集合不变。 */
@@ -401,20 +413,46 @@ export function buildProjectedDenySettings(denyPaths: readonly string[], tools: 
 }
 
 /** 包装器、profile、版本之外也绑定实际入口和native文件hash。 */
-export async function claudeDirectoryFingerprint(route: ClaudeRoute, version: string | null): Promise<string | null> {
+export async function claudeDirectoryFingerprint(route: ClaudeRoute, version: string | null,
+  readBinary: (file: string) => Promise<Buffer> = file => fs.readFile(file)): Promise<string | null> {
   if (!route.bin || !route.nativeBin || !version) return null;
   try {
-    const entry = createHash('sha256').update(await fs.readFile(route.bin)).digest('hex');
-    const native = createHash('sha256').update(await fs.readFile(route.nativeBin)).digest('hex');
+    const hashes = new Map<string, string>();
+    for (const file of [route.bin, route.nativeBin]) {
+      if (!hashes.has(file)) hashes.set(file, createHash('sha256').update(await readBinary(file)).digest('hex'));
+    }
+    const entry = hashes.get(route.bin), native = hashes.get(route.nativeBin);
     return createHash('sha256').update(JSON.stringify({ route: route.fingerprint, version, entry, native })).digest('hex');
   } catch { return null; }
 }
 
-export function verifiedClaudeDirectories(probe: Pick<ClaudeProbe, 'directory_deny_verified' | 'directory_deny_probed_at' | 'directory_deny_fingerprint'>,
-  fingerprint: string | null, ttlDays: number, now = Date.now()): Record<string, boolean | null> {
+type DirectoryProbe = Pick<ClaudeProbe, 'directory_deny_verified' | 'directory_deny_probed_at' | 'directory_deny_fingerprint' |
+  'directory_deny_sensitive_globs_sha256' | 'directory_deny_shape'>;
+
+function directoryDeclarationUsable(probe: DirectoryProbe, projectHash: string | null, ttlDays: number, now: number): boolean {
   const age = now - Date.parse(probe.directory_deny_probed_at ?? '');
-  return fingerprint && fingerprint === probe.directory_deny_fingerprint && Number.isFinite(age) && age >= 0 &&
-    age < ttlDays * 86_400_000 ? { ...probe.directory_deny_verified } : {};
+  return !!probe.directory_deny_fingerprint && !!projectHash && projectHash === probe.directory_deny_sensitive_globs_sha256 &&
+    probe.directory_deny_shape === CLAUDE_DIRECTORY_SHAPE && Object.values(probe.directory_deny_verified ?? {}).some(v => v === true) &&
+    Number.isFinite(age) && age >= 0 && age < ttlDays * 86_400_000;
+}
+
+export function verifiedClaudeDirectories(probe: DirectoryProbe,
+  fingerprint: string | null, ttlDays: number, now = Date.now(), projectHash: string | null = null): Record<string, boolean | null> {
+  return directoryDeclarationUsable(probe, projectHash, ttlDays, now) && fingerprint &&
+    fingerprint === probe.directory_deny_fingerprint ? { ...probe.directory_deny_verified } : {};
+}
+
+/** 无可消费声明先回退；仅候选声明才触发二进制读取。 */
+export async function consumeClaudeDirectories(probe: DirectoryProbe, route: ClaudeRoute, version: string | null,
+  globs: readonly string[], ttlDays: number, readBinary?: (file: string) => Promise<Buffer>, now = Date.now()) {
+  const projectHash = claudeSensitiveGlobsHash(globs);
+  const fingerprint = directoryDeclarationUsable(probe, projectHash, ttlDays, now)
+    ? await claudeDirectoryFingerprint(route, version, readBinary) : null;
+  return { declared: probe.directory_deny_verified ?? null, shape: probe.directory_deny_shape ?? null,
+    recordedProjectHash: probe.directory_deny_sensitive_globs_sha256 ?? null, observedProjectHash: projectHash,
+    recordedFingerprint: probe.directory_deny_fingerprint ?? null, observedFingerprint: fingerprint,
+    probedAt: probe.directory_deny_probed_at ?? null, ttlDays,
+    consumed: verifiedClaudeDirectories(probe, fingerprint, ttlDays, now, projectHash) };
 }
 
 export function buildDenySettings(
@@ -709,7 +747,7 @@ export function buildClaudeResult(
     /*
      * 本次注入的规模与跳过条数**进判定面**（代码双审 r2 CODEX-01）。
      *
-     * `peer_deny_applied` 读探针格，对本次这批规则一无所知；跳过项此前只躺在
+     * Claude合取原逐文件事实与实际压缩工具的防御不变式，不替代逐条核验；跳过项此前只躺在
      * `trace.json` 而全仓无消费方，且两条失败出口在写它**之前**就 return。
      * 有了这三格，`report.ts` 才能在 `deny_skipped > 0` 时推一条与
      * 「路径级 deny 未生效」同档的降级旗标。
@@ -971,11 +1009,9 @@ async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: C
      */
     const denyShape =
       probe.path_deny.supported === true ? denyRuleShapeOf(probe.path_deny.rule_syntax) : null;
-    const directoryFingerprint = await claudeDirectoryFingerprint(resolveClaudeRoute(ctx.cfg, req.profile_requested, probe.version), probe.version);
-    const directoryFacts = verifiedClaudeDirectories(probe, directoryFingerprint, ctx.cfg.probe_ttl_days);
-    const directoryGuard = { declared: probe.directory_deny_verified ?? null,
-      recordedFingerprint: probe.directory_deny_fingerprint ?? null, observedFingerprint: directoryFingerprint,
-      probedAt: probe.directory_deny_probed_at ?? null, ttlDays: ctx.cfg.probe_ttl_days, consumed: directoryFacts };
+    const directoryGuard = await consumeClaudeDirectories(probe,
+      resolveClaudeRoute(ctx.cfg, req.profile_requested, probe.version), probe.version, ctx.cfg.review.sensitive_globs, ctx.cfg.probe_ttl_days);
+    const directoryFacts = directoryGuard.consumed;
     const deny = buildProjectedDenySettings(req.deny_paths, readonlyTools, denyShape, ctx.cfg.review.sensitive_globs, directoryFacts);
     const settingsJson = deny.json;
     /*
@@ -997,8 +1033,7 @@ async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: C
      * **第三种语义：这条路径无法表示成规则**（代码双审 r1 CODEX-02）。
      *
      * 此前只有「没注入」与「注入了但被拒」两格。跳过的路径若不逐条记因，
-     * 就是**禁读通道死了一条而没人看得见**——而 `peer_deny_applied` 读的是探针格，
-     * 它对本次这批规则一无所知。
+     * 就是**禁读通道死了一条而没人看得见**；Claude的防御合取并不证明每条注入规则。
      */
     for (const p of deny.skipped) {
       /*

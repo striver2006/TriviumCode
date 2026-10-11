@@ -631,6 +631,10 @@ export interface ClaudeProbe extends CommonProbe {
   /** 目录臂自己的时间与完整路线/二进制指纹，不继承其它doctor臂的刷新时间。 */
   directory_deny_probed_at?: string | null;
   directory_deny_fingerprint?: string | null;
+  /** 真实项目sensitive_globs稳定hash；缺值/变化使目录事实失效。 */
+  directory_deny_sensitive_globs_sha256?: string | null;
+  /** 已实测的保守ASCII目录拓扑版本；特殊目录前缀不外推。 */
+  directory_deny_shape?: string | null;
   /** 顶层兼容快照来自哪条路线；profile 快照不得作为原生能力使用。 */
   route_profile?: string | null;
   /** 路线的能力结论与当轮入口/版本/wrapper/profile指纹绑定 */
@@ -2120,8 +2124,8 @@ export interface CriticResult {
    *
    * ## 为什么必须进判定面，而不是只躺在 `trace.json`
    *
-   * `peer_deny_applied` 读的是**探针格**（`file_shape_verified`，探针夹具里的单条
-   * ASCII 路径），它对**本次**注入的那批规则一无所知。于是「某些路径被跳过」这件事
+   * Claude的 `peer_deny_applied` 合取原**探针格**与实际压缩工具已验证防御不变式；其他侧仍读探针格（`file_shape_verified`，探针夹具里的单条
+   * ASCII 路径）；这些结论不逐条证明**本次**规则。于是「某些路径被跳过」这件事
    * 在判定面上**完全看不见**：落盘仍 `peer_deny_applied: true`，
    * 而 `report.ts` 的第 ③ 道屏蔽降级旗标只在它为 `false` 时推。
    *

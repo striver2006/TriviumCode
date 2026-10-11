@@ -1,0 +1,228 @@
+---
+schema: trivium.review.v1
+topic: Agent双模式接入真实准入收口
+stage: plan
+role: claude
+vendor: anthropic
+agent_cli: claude/2.1.296
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: envelope
+effort_requested: null
+effort_effective: null
+effort_effective_source: unverified
+tier: null
+tier_source: legacy
+run_id: 20261010T175354Z
+rerun_index: 3
+snapshot_hash: sha256:8fe8e97b53ffbc8618ecdc99bfd8b1674b6d3b12ea5a5f3b245285d473199528
+blind: true
+started_at: 2026-10-10T17:53:58.865Z
+finished_at: 2026-10-10T18:11:47.379Z
+duration_s: 1068
+tool_calls:
+  read: 23
+  grep: 19
+  glob: 3
+  run_command: 0
+  project_reads: 25
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 2
+  minor: 2
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: true
+drift: true
+heterogeneous: unknown
+access:
+  requested_mode: profile
+  profile: qwen
+  launcher_requested: /Users/chenzhenbo/.local/bin/cld
+  launcher_effective: /Users/chenzhenbo/.local/bin/cld
+  wrapper_sha256: e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5
+  configuration_sha256: 9a3bfaa3acc006b11a8c5c6422da69841ccc121de244ee7eff9574e4146cb8e5
+  provider_declared: qwen
+  provider_declared_source: profile
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: claude
+    status: unknown
+    left_model: null
+    right_model: qwen3.8-flash
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: claude
+    right: gemini
+    status: different-family
+    left_model: qwen3.8-flash
+    right_model: gemini-3.8-flash-high
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：qwen / gemini
+  - left: claude
+    right: glm
+    status: different-family
+    left_model: qwen3.8-flash
+    right_model: bigmodel-coding-plan/GLM-5.3
+    left_source: envelope
+    right_source: trace
+    reason: 模型族不同：qwen / glm
+override_reason: 左侧模型信息缺失
+session_id: 2b692def-75da-4b30-8e06-3cf9317c3153
+---
+
+# 计划审查：Agent双模式接入真实准入收口
+
+> Critic-D · Anthropic Claude Code ｜ 回读模型 `qwen3.8-flash` ｜ 请求模型 `qwen3.8-flash`
+> ｜ 运行 `20261010T175354Z` ｜ 第 3 轮
+> ｜ 本轮审核者 claude、gemini、glm
+
+> ⚠️ **审查期间工作树发生漂移**：本结论对应送审时刻的快照，与当前工作树可能已不一致。
+>
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+计划方向与仓库事实总体吻合：七条整改的落点逐条对到了现行代码，多数动机属实（probes/claude.ts:1722 保存目录事实确实不看 failure、claude.ts:974 无声明也读两份大二进制、claude-directory.test.ts 把 is_error 与 permission_denials 由同一布尔翻转）。最危险的一条：§一 最后一轮护栏只给了判据文字，没给载体和计数基准——task.runs 是启动即追加、含 running 条目的数组（现5条），照「保留原四次」字面实现会把第6次自拒，照「>=6拒绝」按轮序读也拒第6次；而任务只剩两次授权。次危险：CLAUDE-03 的过期注释清理只点名 adapters/claude.ts 与 types.ts，同一句「peer_deny_applied 读探针格、对本次注入一无所知」在 probes/claude.ts:1071/1076-1082 与 report.ts:545 还有现行副本，探针注释自己写着上一轮同类修补「恰好跳过了探针——这里是第五处」。另有「四个组合不重试write」与硬闸只覆盖三个的组合错位、02_design README:38 与 ADR_003:19 两句指向 REPORT_2026-10-10 的「指向现在」句未被同步清单点名（恰是 EV-171 自认的机器守卫盲区）。其余为编号歧义等小项。
+
+**结论**：`request-changes`
+
+## 审查意见（共 5 条：重要 2 ｜ 次要 2 ｜ 吹毛求疵 1）
+
+### CLAUDE-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §一 第9-10行（轮次授权与包装器护栏）` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：最后一轮准入的护栏有两个未决策点，实施者只能猜：其一，「包装器启动前核对task.runs及归档实际运行」没给出载体——哪个文件、进不进 git、属不属于第6轮 C/code 三审与回归面，全文（含 §六§七）再未出现「包装器」的路径或归属；其二，「两者都须保留原四次并一致」与「第6次只允许C/code，>=6拒绝」没钉计数基准。task.json 的 runs 是启动即追加、含 status=running 条目的数组，本轮（第5次）启动时其长度已是5；若实现按「保留原四次」取「恰为4」，第6次启动会被自拒；若「>=6拒绝」按轮序读，同样拒掉第6次；只有「ordinal=已启动条目数+1」这一种读法可放行5、6而拒7，而计划没写这种口径，也没把它列为回归场景。护栏锁死的恰是仅剩的两次授权，属做完才发现就返工的面。
+
+**依据**：读被审计划 §一 与 §六 原文；读 .reviews/Agent双模式接入真实准入收口/task.json——runs 现5条，最后一条 20261010T175354Z 为 stage=plan、status=running，即启动即追加；读 doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization.json——只写「包装器启动前核对」无载体路径，new_rounds 以 ordinal 5/6 定义；读 doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md:9——「status显示task.runs.length」「任务包装器核对task与实际归档运行一致」同样未给文件归属；scripts/agent-access-closeout.mjs:28 只体现既有预算包装器，无轮次闸。
+
+**建议**：在 §一 点名轮次护栏的载体（哪个包装器文件、是否 git；若不在三审面则写明理由），并钉死计数口径一句话（如「第N次 = task.runs 已启动条目数+1，归档 run-*.json 数须与之相等」），在 §二 或 §七 回归里补第4/5/6/7次启动各一格的放行与拒绝用例（含 task.json 不可读拒启动、归档多一条拒启动）。
+
+### CLAUDE-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §二 CLAUDE-03 行（peer_deny_applied 注释同步）` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：该断言在仓内是六个现行副本、分布四个文件：adapters/claude.ts:273、:712-713、:1000-1001，types.ts:2123-2125，probes/claude.ts:1071 与 :1076-1082，report.ts:545。计划只点名前两个文件。若按 §二 执行，probes/claude.ts「适配器的 peer_deny_applied 读的正是这一格」「对本次注入的每条规则是否生效它一无所知」与 report.ts「peer_deny_applied 读的是探针格，对本次注入的规则一无所知」两处将和 claude.ts:707 的合取实现（file_shape_verified 且压缩工具全 verified，第二项为构造性防御不变式）继续自相矛盾——而这恰是该探针注释自己记过的坑：probes/claude.ts:1084-1086 写明 r2 承诺「与探针侧同形处」一起改、「那一轮改了四家适配器、恰好跳过了探针——这里是第五处。成因是论域是 src/trivium/adapters/，不是全仓」。CLAUDE-03 的落点集合复现了同一论域。
+
+**依据**：读 src/trivium/adapters/claude.ts:261-275、:690-725、:996-1013（claude.ts:707 现行为合取）；读 src/trivium/types.ts:2117-2142；读 src/trivium/report.ts:525-560；读 src/trivium/probes/claude.ts:1056-1088；grep peer_deny_applied|只读探针|一无所知 于 src/ 与 doc/；grep doc/03_api/PROTOCOL_dual_critic_relay.md:453 显示文档面已写成「原文件实测true与全部实际压缩工具true的合取」，代码注释副本落在文档之后。
+
+**建议**：把 §二 CLAUDE-03 的落点改为「全仓该句族的清单」（至少补 probes/claude.ts:1071/1076-1082 与 report.ts:542-548），回归里加一条仓级对账（该句族不得再有「只读探针格」现行表述残留，历史叙述处除外并逐处标注）；同时写明其它三家适配器仍只读探针格，避免同步成「四家都是合取」的新失实。
+
+### CLAUDE-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 Claude 写组合段（第33行）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：「四个未注册写工具的模型组合……现阶段没有新机制，不重试write」与装置现状差一个组合：scripts/agent-access-closeout.mjs:44 的硬闸只覆盖 kimi、kimi-pro、deepseek 三个 claude 写臂，第四个 qwen-pro（REPORT_2026-10-11 矩阵中「写臂无新可行机制则0」那一行）没有闸，仍可被正常 spawn 并扣预算。计划的整改表、回归列与停止条件都没有「补第四组合闸」或「该组合拒绝留痕在哪」的安排，这条「绝不重试」断言在第四组合上只靠人记——与仓内反复重申的纪律（AGENTS.md 纪律12末：靠记性的纪律要换成不依赖记性的机制）相反，closeout.mjs:44 那句「不重复换提示」正是此前踩过后的机制化先例。
+
+**依据**：读被审计划 §三；读 scripts/agent-access-closeout.mjs:40-44（写臂拒绝组合列表逐项核对，qwen-pro 不在列）；读 doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md:16-19 矩阵行——写未测组合共四个：Qwen pro、Kimi、Kimi pro(k3)、DeepSeek；读 AGENTS.md 纪律12。
+
+**建议**：在 §二 增一行落点：qwen-pro 写臂进 closeout.mjs 的拒绝闸并配一用例（断言启动前拒、不占预算）；或在 §三 写明该组合为何不需要硬闸、由哪份具名清单与台账条目负责拒绝留痕。
+
+### CLAUDE-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 首句（路线清单权威句）与 §五 文档同步句` |
+| 类别 | scope-drift ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：「路线×实际模型×缺口×旧证据×必要启动清单见REPORT_2026-10-11」使本轮成为矩阵唯一权威面，但仓内两句「指向现在」的具体指针仍钉在旧报告：doc/02_design/README.md:38 说 ADR_003「当前版本与收口边界见2026-10-10收口报告」，ADR_003:19 尾部同样「当前采样与进度见[收口报告]」。按计划 §五 笼统的「报告及目录README」，读者无法确定这两句是否在被同步面内；而 doc/README.md:39 明说这类指针只有已知门面与已列举计数形态被机器盯住，清单之外的新写指针靠自觉（EV-171）——正是最容易被只改一处留下失实的副本。上一轮同一句指针（「见本次报告」）已被审出过一次，本轮它改写成了写死日期的形态，风险换了位置没有消失。
+
+**依据**：读 doc/02_design/README.md:25-54（含 :38 现文）；grep doc/02_design/ADR_003_agent_access.md:5/19（两处 REPORT_2026-10-10 指针句与将被本轮改写的现行断言）；读 doc/README.md 第36-39行的指向现在/记当时判据与 EV-171 盲区句；读被审计划 §三 首句、§五；对照我上一轮同主题意见（该指针句曾以「本次报告」形态被审出）。
+
+**建议**：在 §五 同步清单里点名这两句指针的改写方式（改为不写死单份报告的「见当前收口报告」式引用，或随本轮一并指到 REPORT_2026-10-11 并升 ADR_003 补记），别让它停在笼统的「目录README」四个字里。
+
+### CLAUDE-05 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §二 表头「历史编号」` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：七条整改只写裸编号 CLAUDE-01..04、GLM-01..03，不带阶段与轮次。同一主题的归档里至少存在两套同号不同事的编号：plan 轮（如 20261010T062559Z 我侧 CLAUDE-01..07，内容是取证装置落点、ADR 同步等）与 code 轮（本表所指的目录压缩与权限记录整改）。§六 要求「逐条接受/驳回/暂缓、接受写落点」，跨轮对账时同号歧义会让裁决件与整改行的对应关系要读者自行考古。
+
+**依据**：读被审计划 §二/§六；读 .reviews/Agent双模式接入真实准入收口/plan/2026-10-10-Agent双模式接入真实准入收口-claude.md（plan 轮 CLAUDE-01..07 与 §二 的 CLAUDE-01..04 内容互不重合）；读 task.json runs（本主题 plan 与 code 各有两轮编号起点）。
+
+**建议**：表头改「历史编号（阶段/轮）」或每行加限定（如 code-r2 CLAUDE-02），与 §六 逐条对账的键一致即可，不必改内容。
+
+## 认为正确的部分
+
+- 七条整改的「为什么」全部在我读到的现行代码里成立，落点指对了文件：claude.ts:974 确实在无声明时也先读入口/native 两份二进制（CLAUDE-04 动机）；probes/claude.ts:1722 的 recorded 只看 arms.length、不看 directoryEvidence.failure，计划「追加臂无failure才保存事实」正补此洞（CLAUDE-01）；claude-directory.ts:81 createFixture 在 try 外、:156-160 catch 全吞，且 ProbeFixtureError 与「不吞未定义内部错误」的接法在 fixture.ts:77、doctor.ts:507、probes/claude.ts:1652-1659 已有同款先例（GLM-03 可执行）；claude-directory.test.ts:75-76 的 is_error 与 permission_denials 由同一 denied 布尔翻转，确需独立构造（GLM-01）；claude.ts:707 合取已在、第二项按 :390/:414-417 构造确为输入防御不变式，计划表述与代码一致（CLAUDE-03 的语义部分）。
+- CLAUDE-01 把项目 hash 的哈希函数放 adapters/claude.ts、由 probes 在夹具替换配置前取值、消费端在 directoryGuard 比对——与 claude-directory.ts:119 的 structuredClone 加替换现实一致，也沿用 claudeDirectoryFingerprint 的既有归属，层次放置合理；config.v2.json 的厂商专属 probe 段 additionalProperties 为 true（:665-671），「不改历史Schema」成立。
+- §三 预算数字与 REPORT_2026-10-11 逐项一致（review38/40、342/343、逻辑臂 Claude20/Codex18、版本7臂与help1另计、三条目录doctor另批）；formal-round-authorization.json 与 §一 完全对表（previous_limit=4、new_limit=6、ordinal 5=B/plan、6=C/code、count_reset=false、criteria_change_authorized=false）。
+- §四 迁移影响面「Codex/ZCode所有读取~/.agents/skills的仓库」与 registry.ts:237-238（agy不读）及 install.ts:22-24 先查后写、只查不装、只报错不删除一致；「复制核hash再移、不删、恢复拒覆盖现存」方向与 2026-09-20 事故 R1/R8 的教训同构。
+- §五 的设计锚点 §3.5/§10.1/§11.1/§11.6 在主设计中全部存在，「先并契约修订再实施」的顺序符合 AGENTS.md 改动同步清单；ADR_003 已被列入（上一轮我侧漏项已补）。「新增字段不枚举Agent、按现commonProbe形状及注册表纪律检查」与纪律12一致。
+- §三 Codex 读取配方收紧表述与 scripts/agent-access-evidence.mjs:99-104 现行 parsed_cmd精确read+cwd配对+firstWord仅作一条腿的实现吻合；「README正确首词不是读取证据」有代码依据。
+
+## 未覆盖范围（本侧盲区）
+
+- 本侧无执行能力：未运行 npm run check、定向测试、hash 重算或任何 CLI；全部判断来自静态读码与文字比对，涉及「做完才会现形」的运行时行为（如合取在真实批次上的表现、白名单对现根的实际排除效果）均按推理标注。
+- doc/05_testing/evidence 下 agent-access-20261010-admission 全部与 closeout-r2 的 calls/ledger/routes 未读（§8.1/8.2 禁读）：review38/40、342/343、2290 条历史采样等台账计数只与 REPORT 文字比对，未对磁盘计数。
+- 被 §二 CLAUDE-02 引用的 .reviews/Agent双模式接入真实准入收口/code/_meta/run-20261010T170416Z.json 只核实存在（Glob），未读取内容——同目录含另两家本轮结构化原文；其内是否真含可提取的完整 deny_paths 集合未验证，属实施期核验面。
+- 未读 .trivium/config.yaml 与 config.local.yaml（§8.2）：现仓 sensitive_globs 是否真含 /** 形态目录根、这些根是否 ASCII，GLM-02 要求「逐项核对现合法根」的具体集合我无法代验。
+- 各轮 Driver 裁决件未读（其中会转述另两家意见，读会破坏背靠背）：§二 七条是否逐字对应各评审轮被接受原文仅按代码锚点抽查，未对账全部裁决。
+- 主设计 §3.5/§10.1/§11.1/§11.6 正文、QUICKSTART、RUNBOOK、CASE_manual_acceptance、ADR_003 全文仅 grep 锚点与命中行，未通读评估整改条款与每份副本的逐句一致性；根 README.md 未读。
+- §四「客户当前重名解析未测」「已读仓库未找到路径依赖」属 Driver 取证面，本侧无法以只读方式复核 ~/.agents/skills 与 ~/.trivium 的实际状态。
+- GLM-01/02/03 修复「做完后真机行为是否如断言」需要跑测试与 doctor 接线验证，本侧未执行；我核到的仅是现状缺陷与计划表述吻合。
+
+## 实际查阅的项目文件
+
+- `.reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r6-codex.md`
+- `.reviews/Agent双模式接入真实准入收口/plan/2026-10-10-Agent双模式接入真实准入收口-claude.md`
+- `.reviews/Agent双模式接入真实准入收口/task.json`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `doc/02_design/ADR_003_agent_access.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `doc/04_development/GUIDE_local_pitfalls.md`
+- `doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization.json`
+- `doc/05_testing/evidence/agent-access-20261010-closeout-r2/settings-plan-final.txt`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/probes/claude.ts`
+- `src/trivium/probes/claude-directory.ts`
+- `src/trivium/probes/fixture.ts`
+- `src/trivium/report.ts`
+- `src/trivium/types.ts`
+- `src/trivium/freeze.ts`
+- `src/trivium/doctor.ts`
+- `src/trivium/guard.ts`
+- `src/trivium/agents/registry.ts`
+- `src/trivium/config.ts`
+- `src/install.ts`
+- `skills/dual-critic/schema/config.v2.json`
+- `scripts/agent-access-closeout.mjs`
+- `scripts/agent-access-evidence.mjs`
+- `test/unit/claude-directory.test.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":23,"grep":19,"glob":3,"run_command":0,"project_reads":25}
+
+---
+
+*本文档由 TriviumCode 编排器从 `claude` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

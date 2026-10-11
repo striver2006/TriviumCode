@@ -1,0 +1,151 @@
+{
+  "at": "2026-10-11T00:07:48.581Z",
+  "original": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-directory-doctor-qwen-2a41c275-9701-475e-9a31-f0ebd4e1d2e8-completed.json",
+  "code": 0,
+  "ok": true,
+  "route": {
+    "profile": "qwen",
+    "fingerprint": "7f81d4ee53938830752f27d5183b99e2b6cd776e5605512cdceb80032be94068",
+    "probe": {
+      "entrypoint": "/Users/chenzhenbo/.local/bin/claude",
+      "version": "2.1.296",
+      "version_probe": {
+        "runner": null,
+        "args": [
+          "--version"
+        ],
+        "extract": "(\\d+\\.\\d+\\.\\d+)"
+      },
+      "probed_at": "2026-10-11T00:00:26.169Z",
+      "models": [],
+      "path_deny": {
+        "supported": true,
+        "coverage_complete": false,
+        "file_shape_verified": true,
+        "rule_syntax": "Read(./.reviews/probe-topic/plan/**)",
+        "method": "经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的",
+        "attempts": []
+      },
+      "scratch_paths": [],
+      "isolation": "shared",
+      "headless_read_ok": true,
+      "trace_path_structured": true,
+      "denied_tool_in_trace": true,
+      "readonly_breach": false,
+      "tool_surface_checked": true,
+      "readonly_flags": [
+        "--restricted",
+        "--strict-mcp-config",
+        "--tools",
+        "Read,Grep,Glob"
+      ],
+      "model_flag": true,
+      "json_schema_ok": true,
+      "session_id_source": "每条事件的 session_id 字段（--session-id 可由调用方指定）",
+      "trust_prompt_required": false,
+      "stream_json_requires_verbose": true,
+      "strict_mcp_config_applied": true,
+      "project_memory_blocked": true,
+      "effort_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "route_profile": "qwen",
+      "directory_deny_verified": {
+        "Read": true,
+        "Grep": true,
+        "Glob": true
+      },
+      "directory_deny_probed_at": "2026-10-11T00:06:15.344Z",
+      "directory_deny_fingerprint": "642f34149ef51ab5ae062d003f46e17dbb0727420dd35351df3400a8d4686417",
+      "directory_deny_sensitive_globs_sha256": "e769d91333d97c6f071ef87dd5a7058f7b2d0763b038b1051ca6f4513a8c6eb0",
+      "directory_deny_shape": "ascii-root1-5-depth0-2-v2"
+    }
+  },
+  "directoryEvidence": {
+    "verified": {
+      "Read": true,
+      "Grep": true,
+      "Glob": true
+    },
+    "failure": null,
+    "cleanup": null,
+    "sourceHash": "225556d58f1261edc11c381c1610b2a02c684ec0a66535f0448fe96ce5844869",
+    "arm_keys": [
+      [
+        "tool",
+        "kind",
+        "targets",
+        "outcome",
+        "paired",
+        "schemaOk",
+        "leaked",
+        "verdict"
+      ],
+      [
+        "tool",
+        "kind",
+        "targets",
+        "outcome",
+        "paired",
+        "schemaOk",
+        "leaked",
+        "verdict"
+      ],
+      [
+        "tool",
+        "kind",
+        "targets",
+        "outcome",
+        "paired",
+        "schemaOk",
+        "leaked",
+        "verdict"
+      ],
+      [
+        "tool",
+        "kind",
+        "targets",
+        "outcome",
+        "paired",
+        "schemaOk",
+        "leaked",
+        "verdict"
+      ],
+      [
+        "tool",
+        "kind",
+        "targets",
+        "outcome",
+        "paired",
+        "schemaOk",
+        "leaked",
+        "verdict"
+      ],
+      [
+        "tool",
+        "kind",
+        "targets",
+        "outcome",
+        "paired",
+        "schemaOk",
+        "leaked",
+        "verdict"
+      ],
+      [
+        "tool",
+        "kind",
+        "targets",
+        "outcome",
+        "paired",
+        "schemaOk",
+        "leaked",
+        "verdict"
+      ]
+    ]
+  },
+  "not_full_admission": true
+}

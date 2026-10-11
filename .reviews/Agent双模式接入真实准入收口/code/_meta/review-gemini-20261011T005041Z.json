@@ -1,0 +1,49 @@
+{
+  "agreed": [
+    "【焦点一：授权总8轮核验】formal-round-authorization-v3.json 完整串联 v2 sha256 形成单向不可篡改授权链，硬顶 8 轮；round-guard.mjs 强制绑定 formal-round-authority.json 指针校验；formal-start-precheck.mjs 深度绑定构建一致性、settings 字节数预算（<=131072）、skipped_count === 0、file_shape_verified 以及真实目录事实消费，闭环前置校验。",
+    "【焦点二：扫描深度整改】src/trivium/freeze.ts 导出 SENSITIVE_SCAN_MAX_PARENT_DEPTH = 7 常量，精准覆盖 5 段根 + 2 级后代（深度 7）拓扑，补齐了原上限 6 遗漏的 5 个夹具文件；严格保持深度 8 为未覆盖边界；保留 dirent.isDirectory() 语义以避免目录软链或自环下钻递归，同时保留匹配软链项本身入列与 .git/node_modules 排除规则；全仓 4170 个敏感文件枚举哈希完全一致，零生产漂移。",
+    "【焦点三：目录拓扑约束与消费】probes/claude-directory.ts 与 adapters/claude.ts 强制 CLAUDE_DIRECTORY_SHAPE = 'ascii-root1-5-depth0-2-v2' 契约，限定根 <= 5 段且后代 <= 2 级子目录，全部段名为 ASCII 标识符；未验证工具严格退回逐文件规则；sensitive_globs_hash 变更即自动失效缓存事实；consumeClaudeDirectories 精确在有效声明下才做二进制读取，并实现调用内路径级去重。",
+    "【焦点四：预算割接与错误通道隔离】预算割接经 cutover-budget.mjs 与 budget-continuity-r12.json 完整迁移至 ~/.trivium/evidence/.../budget，976 个文件 EXCL 排他写入无重算且哈希一致；probeClaude 健全捕获夹具/预算/系统可预期异常，隔离并脱敏错误信息同时清理临时夹具，核心类型错误正常外抛。",
+    "【焦点五：准入标准诚实报告】REPORT_2026-10-11_agent_access_recovery.md 如实公布 6 成功、5 未测、1 失败的真实评测结果，明确指出当前未满足 M11 第 12 步前置准入，坚决不通过降低准入指标或模拟传输掩盖真实能力边界。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/code/2026-10-10-Agent双模式接入真实准入收口-gemini.md",
+    ".reviews/Agent双模式接入真实准入收口/code/2026-10-11-Agent双模式接入真实准入收口-r2-gemini.md",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-11-Agent双模式接入真实准入收口-r12-codex.md",
+    "doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v3.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-start-precheck.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v4.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard.mjs",
+    "scripts/agent-access-closeout.mjs",
+    "scripts/agent-access-recipes.mjs",
+    "scripts/agent-access-selection.mjs",
+    "skills/dual-critic/schema/review.v1.json",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/probes/claude-directory.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/report.ts",
+    "src/trivium/types.ts",
+    "test/integration/claude-directory-adapter.test.ts",
+    "test/integration/claude-structured-probe.test.ts",
+    "test/unit/agent-access-closeout.test.ts",
+    "test/unit/agent-access-recovery.test.ts",
+    "test/unit/claude-directory.test.ts",
+    "test/unit/freeze-drift.test.ts"
+  ],
+  "findings": [],
+  "not_covered": [
+    "本审查员无 Bash 与外部写命令执行权限，未在实际 macOS 终端实际跑动 node 脚本、doctor、真实构建或调用外部云端大模型 CLI 进行实测。",
+    "未逐一比对 doc/05_testing/evidence/ 下全部历史 JSON 留痕镜像的全部原始字段值，仅核对了哈希指纹、核心字段与断言结果。",
+    "未对外部厂商 API 端点与本地网络之间的连通性及鉴权状态做实时探测。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "本轮聚焦「授权总8轮核验」与「扫描深度整改」，并对真实准入收口及目录拓扑约束进行完整代码重审：\n1. 授权总8轮机制完备：formal-round-authorization-v3.json 严格绑定父链哈希与 new_limit: 8，round-guard.mjs 与 formal-start-precheck.mjs 双重卡紧序号与前置事实，杜绝越界调用；\n2. 敏感扫描深度整改精确：SENSITIVE_SCAN_MAX_PARENT_DEPTH 导出常量定为 7，彻底修复 5 段 ASCII 根下 2 级后代未枚举缺陷，同时守住深度 8 边界、目录软链不递归及 .git/node_modules 排除语义；\n3. 真实准入事实边界严谨：REPORT 及 ADR_003 诚实记录 6 pass / 5 unmeasured / 1 fail，明确 M11 前置未完成；预算无缝割接与目录投影契约健全；\n4. 经全量代码、测试与留痕静态核验，未发现阻断性或功能性缺陷，审查结论为 approve。",
+  "verdict": "approve"
+}

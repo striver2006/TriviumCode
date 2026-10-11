@@ -35,7 +35,7 @@
 
 ### 架构决策记录 (ADR)
 
-- [`ADR_003_agent_access.md`](./ADR_003_agent_access.md)：Agent 接入路线与模型族三态决策；历史采样保留，当前版本与收口边界见[2026-10-10收口报告](../05_testing/REPORT_2026-10-10_agent_access_closeout.md)。
+- [`ADR_003_agent_access.md`](./ADR_003_agent_access.md)：Agent 接入路线与模型族三态决策；历史采样保留，当前版本与收口边界见[2026-10-11恢复报告](../05_testing/REPORT_2026-10-11_agent_access_recovery.md)。
 - [`ADR_002_multicritic_isolation.md`](./ADR_002_multicritic_isolation.md)：N 方（多审核者）隔离**只做检测收口，不引入硬隔离**；四条泄漏通道与威胁模型定调，硬隔离路线留档备选。**状态：Accepted（2026-09-13）**，决策者 Chen Zhenbo。关联：设计 10.1 / 10.2、演进设计 §8.2～§8.4。
 - [`ADR_001_isolation_mode.md`](./ADR_001_isolation_mode.md)：审查员隔离模式采用**就地审查（in-place）**，不构造冻结镜像树；配三层屏蔽与漂移检测。**状态：Accepted（2026-09-11）**，决策者 Chen Zhenbo（评审意见 UR-03 / UR-06）。
   推翻 v1.0.0～v1.1.0 的 `mirror` 镜像树方案，并因此新增 `agy.path_deny` / `zcode.path_deny` / `agy.scratch_paths` / `zcode.scratch_paths` 四项 M0 探针。关联：设计 AD-05 与第 10 章、PRD FR-07 / FR-10 / FR-15 / FR-16。
@@ -76,3 +76,5 @@
 - [`2026-09-10-Claude-Code主攻双智能体审核流水线-grok4.6.md`](./reference/2026-09-10-Claude-Code主攻双智能体审核流水线-grok4.6.md)
 - [`2026-09-10-Claude-Code主攻双智能体审核流水线-qwen3.8-flash.md`](./reference/2026-09-10-Claude-Code主攻双智能体审核流水线-qwen3.8-flash.md)
 - [`2026-09-10-Claude_Antigravity_ZCode_MultiAgent_Workflow-gemini.md`](./reference/2026-09-10-Claude_Antigravity_ZCode_MultiAgent_Workflow-gemini.md)
+
+当前目录事实与敏感枚举规范统一见[设计§3.5](2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-directory-contract)：消费仅限受测ASCII形态、绑定实际项目及入口，失配回退逐文件。正式授权、实施、真实取证和未测状态见[恢复报告](../05_testing/REPORT_2026-10-11_agent_access_recovery.md)，不以本节历史计划采样替代当前验收。

@@ -1,0 +1,196 @@
+{
+  "at": "2026-10-11T00:37:46.170Z",
+  "rows": [
+    {
+      "agent": "claude",
+      "combination": "qwen",
+      "requested_model": "qwen3.8-flash",
+      "arms": [
+        "read",
+        "deny-read",
+        "deny-grep",
+        "write"
+      ],
+      "actual_model_new": null,
+      "server_identity": null
+    },
+    {
+      "agent": "claude",
+      "combination": "qwen-pro",
+      "requested_model": "qwen3.8-max",
+      "arms": [
+        "read",
+        "deny-read",
+        "deny-grep"
+      ],
+      "write_gap": "未测；无新取样机制，不重试提示",
+      "actual_model_new": null,
+      "server_identity": null
+    },
+    {
+      "agent": "claude",
+      "combination": "kimi",
+      "requested_model": "kimi-for-coding",
+      "arms": [
+        "read",
+        "deny-read",
+        "deny-grep"
+      ],
+      "write_gap": "未测；无新取样机制",
+      "actual_model_new": null,
+      "server_identity": null
+    },
+    {
+      "agent": "claude",
+      "combination": "kimi-pro",
+      "requested_model": "k3",
+      "arms": [
+        "read",
+        "deny-read",
+        "deny-grep"
+      ],
+      "write_gap": "未测；无新取样机制",
+      "actual_model_new": null,
+      "server_identity": null
+    },
+    {
+      "agent": "claude",
+      "combination": "deepseek",
+      "requested_model": "deepseek-flash",
+      "arms": [
+        "read",
+        "deny-read",
+        "deny-grep"
+      ],
+      "write_gap": "未测；无新取样机制",
+      "actual_model_new": null,
+      "server_identity": null
+    },
+    {
+      "agent": "claude",
+      "combination": "deepseek-pro",
+      "requested_model": "deepseek-v4-pro",
+      "arms": [
+        "read",
+        "deny-read",
+        "deny-grep",
+        "write"
+      ],
+      "actual_model_new": null,
+      "server_identity": null
+    },
+    {
+      "agent": "codex",
+      "combination": "native-sol",
+      "requested_model": "gpt-6.1-sol",
+      "arms": [
+        "read",
+        "write",
+        "deny"
+      ],
+      "actual_model_new": null,
+      "server_identity": null
+    },
+    {
+      "agent": "codex",
+      "combination": "native-luna",
+      "requested_model": "gpt-6-luna",
+      "arms": [
+        "read",
+        "write",
+        "deny"
+      ],
+      "actual_model_new": null,
+      "server_identity": null
+    },
+    {
+      "agent": "codex",
+      "combination": "native-astra",
+      "requested_model": "gpt-6-astra",
+      "arms": [
+        "read",
+        "write",
+        "deny"
+      ],
+      "actual_model_new": null,
+      "server_identity": null
+    },
+    {
+      "agent": "codex",
+      "combination": "qwen",
+      "requested_model": "qwen3.8-flash",
+      "arms": [
+        "read",
+        "write",
+        "deny"
+      ],
+      "actual_model_new": null,
+      "server_identity": null
+    },
+    {
+      "agent": "codex",
+      "combination": "kimi",
+      "requested_model": "kimi-for-coding",
+      "arms": [
+        "read",
+        "write",
+        "deny"
+      ],
+      "actual_model_new": null,
+      "server_identity": null
+    },
+    {
+      "agent": "codex",
+      "combination": "deepseek",
+      "requested_model": "deepseek-flash",
+      "arms": [
+        "read",
+        "write",
+        "deny"
+      ],
+      "actual_model_new": null,
+      "server_identity": null
+    }
+  ],
+  "logical_arms": 38,
+  "expected_starts": 56,
+  "hard_max_starts": 76,
+  "batch_not_started": true,
+  "reuse_boundary": "历史H全套与失败版本臂不消费，新完整脚本/bundle/config/module指纹须与所选本批成功版本绑定；目录事实单独按绑定范围和相关源码不变核当前生产消费，不能填充模型cap矩阵",
+  "required_first_steps": [
+    "第二次check",
+    "最终构建与14桩",
+    "正常四目标重装",
+    "当前事实消费核验",
+    "新版本批和显式manifest",
+    "正式发布能力批计数及扩容后启动"
+  ],
+  "official_claude": {
+    "status": "未测，订阅恢复前0新启动",
+    "actual_model": null
+  },
+  "original_write_standard_unchanged": true,
+  "budget_root": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget",
+  "pool": "admission",
+  "before": 422,
+  "cumulative_pool_limit": 498,
+  "extension": {
+    "pool": "admission",
+    "key": "r12-capabilities-rootfix-20261011",
+    "additional": 70,
+    "previous_limit": 428,
+    "new_limit": 498,
+    "reason": "用户授权自动扩容；12组合38能力臂预计56、硬76，累计422至498，wrapper/native及失败超时均计；四无新机制的生产write不spawn，formal8轮不变",
+    "authorized_by": "2026-10-10用户已授权按需扩容",
+    "published_at": "2026-10-11T00:37:46.167Z"
+  },
+  "variant": 1,
+  "priority": [
+    "codex-qwen-read",
+    "codex-deepseek-read",
+    "claude-qwen-deny-grep",
+    "claude-kimi-pro-deny-read",
+    "claude-kimi-pro-deny-grep"
+  ],
+  "selected_versions": "明确selection-r12-{native,qwen,kimi,deepseek}，Codex5到8/Claude2；不复用旧失败或旧bundle全证据"
+}

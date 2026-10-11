@@ -1,0 +1,209 @@
+{
+  "at": "2026-10-11T01:25:38.476Z",
+  "code": 0,
+  "signal": null,
+  "stdout": "TriviumCode 安装\n────────────────────────────────────────────────────────────\n  + 运行时根 /Users/chenzhenbo/.claude/skills/dual-critic（23 个文件）\n  + claude：/Users/chenzhenbo/.claude/skills（7 个入口，7 个文件）\n  + codex：/Users/chenzhenbo/.codex/skills（7 个入口，7 个文件）\n  + gemini：/Users/chenzhenbo/.gemini/config/skills（7 个入口，7 个文件）\n  + glm：/Users/chenzhenbo/.zcode/skills（7 个入口，7 个文件）\n  + /Users/chenzhenbo/.gemini/config/agents/trivium-critic/agent.md\n\n共 51 个文件。\n下一步（`trivium` 不在 PATH 上，用下面的完整命令）：\n  1. 实测本机能力（会消耗少量厂商配额）：\n       node /Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs doctor\n  2. 在要启用双审的项目根启用：\n       node /Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs init\n  3. init 之后该项目内改用 wrapper（内含 node 绝对路径——GUI 进程不读 ~/.zshrc）：\n       ./.trivium/bin/trivium doctor\n  4. 用 `/dual-review-plan <审查焦点>` 试跑一条（各家的调用写法见 QUICKSTART）。\n  升级：重新 `npm run build && node dist/install.cjs`（会裁剪旧版残留），各项目内重跑 init 刷新 wrapper。\n  只装部分家：`node dist/install.cjs --targets claude,glm`（运行时根照装）。\n  卸载：`node dist/install.cjs --uninstall`。\n",
+  "stderr": "",
+  "targets": [
+    "claude",
+    "codex",
+    "gemini",
+    "glm"
+  ],
+  "entries": [
+    {
+      "agent": "claude",
+      "name": "dual-abandon",
+      "source": "dbc8e8d084b8a10de40adb610f247540a63849d738ca1d03755ff5933473a10c",
+      "installed": "dbc8e8d084b8a10de40adb610f247540a63849d738ca1d03755ff5933473a10c"
+    },
+    {
+      "agent": "claude",
+      "name": "dual-approve",
+      "source": "0a55842d8070ddbe964e7cafae5fd352705c46bca89ab80e8ddeb4f3f7ab1423",
+      "installed": "0a55842d8070ddbe964e7cafae5fd352705c46bca89ab80e8ddeb4f3f7ab1423"
+    },
+    {
+      "agent": "claude",
+      "name": "dual-review-bug",
+      "source": "85f2a7059298363d5a1d498aed4a28509b271ccc04d380f206d2cce67e3e3a47",
+      "installed": "85f2a7059298363d5a1d498aed4a28509b271ccc04d380f206d2cce67e3e3a47"
+    },
+    {
+      "agent": "claude",
+      "name": "dual-review-code",
+      "source": "40a2755414b064d4dcd384af8f64ef923bcb51ad033e86b145fa033749bdff9d",
+      "installed": "40a2755414b064d4dcd384af8f64ef923bcb51ad033e86b145fa033749bdff9d"
+    },
+    {
+      "agent": "claude",
+      "name": "dual-review-plan",
+      "source": "2ed160b897e831995584e286a2377b77fff385bcfd274de70bcb514fd1a78f87",
+      "installed": "2ed160b897e831995584e286a2377b77fff385bcfd274de70bcb514fd1a78f87"
+    },
+    {
+      "agent": "claude",
+      "name": "dual-run",
+      "source": "0ad7ecf14021c71b223274cf46bf6795e482aa040566206fff2ed53d1f157df0",
+      "installed": "0ad7ecf14021c71b223274cf46bf6795e482aa040566206fff2ed53d1f157df0"
+    },
+    {
+      "agent": "claude",
+      "name": "dual-status",
+      "source": "3edf7314ffd10d3e71bfa6f1b62f53d5168c175f32048ecba4fc71ace2d9c0ec",
+      "installed": "3edf7314ffd10d3e71bfa6f1b62f53d5168c175f32048ecba4fc71ace2d9c0ec"
+    },
+    {
+      "agent": "codex",
+      "name": "dual-abandon",
+      "source": "b5138a7510239536330285e0d9b092a2f88a403068f3278136285fa696f9f4af",
+      "installed": "b5138a7510239536330285e0d9b092a2f88a403068f3278136285fa696f9f4af"
+    },
+    {
+      "agent": "codex",
+      "name": "dual-approve",
+      "source": "ad60830f5fbbc65737c167c60143a390db5ed034f2d7b8304642f07bab5953b5",
+      "installed": "ad60830f5fbbc65737c167c60143a390db5ed034f2d7b8304642f07bab5953b5"
+    },
+    {
+      "agent": "codex",
+      "name": "dual-review-bug",
+      "source": "9f4fc9ec9bc656de42e41569a02cf138b566c4c7192370acfb0aeaaa58d57667",
+      "installed": "9f4fc9ec9bc656de42e41569a02cf138b566c4c7192370acfb0aeaaa58d57667"
+    },
+    {
+      "agent": "codex",
+      "name": "dual-review-code",
+      "source": "dee6f90fe9f9ca4ff5394db7afa0f34da0c6ad8c2a2af7774e5688edf1268612",
+      "installed": "dee6f90fe9f9ca4ff5394db7afa0f34da0c6ad8c2a2af7774e5688edf1268612"
+    },
+    {
+      "agent": "codex",
+      "name": "dual-review-plan",
+      "source": "9d13daa4ccd26390407d00c595275aeac3285707ff786394b1f06108da63a863",
+      "installed": "9d13daa4ccd26390407d00c595275aeac3285707ff786394b1f06108da63a863"
+    },
+    {
+      "agent": "codex",
+      "name": "dual-run",
+      "source": "da695827bfba45deb4f71d5659449932b0faed4816663212014aed7988fc2469",
+      "installed": "da695827bfba45deb4f71d5659449932b0faed4816663212014aed7988fc2469"
+    },
+    {
+      "agent": "codex",
+      "name": "dual-status",
+      "source": "828778d1b762a70f9821019efda232cc2a22af1a90067ce36594227aa4993630",
+      "installed": "828778d1b762a70f9821019efda232cc2a22af1a90067ce36594227aa4993630"
+    },
+    {
+      "agent": "gemini",
+      "name": "dual-abandon",
+      "source": "b5138a7510239536330285e0d9b092a2f88a403068f3278136285fa696f9f4af",
+      "installed": "b5138a7510239536330285e0d9b092a2f88a403068f3278136285fa696f9f4af"
+    },
+    {
+      "agent": "gemini",
+      "name": "dual-approve",
+      "source": "ad60830f5fbbc65737c167c60143a390db5ed034f2d7b8304642f07bab5953b5",
+      "installed": "ad60830f5fbbc65737c167c60143a390db5ed034f2d7b8304642f07bab5953b5"
+    },
+    {
+      "agent": "gemini",
+      "name": "dual-review-bug",
+      "source": "9f5c760e4d5a2e33dbb3eb7410b35220f6e0447918c2a65b9efbdd1d35391abe",
+      "installed": "9f5c760e4d5a2e33dbb3eb7410b35220f6e0447918c2a65b9efbdd1d35391abe"
+    },
+    {
+      "agent": "gemini",
+      "name": "dual-review-code",
+      "source": "081297a1e5846a5b74f036729005a5c996eb9b785f95eb69b6d6ef25d77d3cb3",
+      "installed": "081297a1e5846a5b74f036729005a5c996eb9b785f95eb69b6d6ef25d77d3cb3"
+    },
+    {
+      "agent": "gemini",
+      "name": "dual-review-plan",
+      "source": "89d446ea775efad5aba78d19beb38a834c19867a4249dc4b2c711d1a78e50e6c",
+      "installed": "89d446ea775efad5aba78d19beb38a834c19867a4249dc4b2c711d1a78e50e6c"
+    },
+    {
+      "agent": "gemini",
+      "name": "dual-run",
+      "source": "154a56d017eea73c21d91a115244be52a289c7d4dfe0dd35f8d5cc3d656e5191",
+      "installed": "154a56d017eea73c21d91a115244be52a289c7d4dfe0dd35f8d5cc3d656e5191"
+    },
+    {
+      "agent": "gemini",
+      "name": "dual-status",
+      "source": "828778d1b762a70f9821019efda232cc2a22af1a90067ce36594227aa4993630",
+      "installed": "828778d1b762a70f9821019efda232cc2a22af1a90067ce36594227aa4993630"
+    },
+    {
+      "agent": "glm",
+      "name": "dual-abandon",
+      "source": "b5138a7510239536330285e0d9b092a2f88a403068f3278136285fa696f9f4af",
+      "installed": "b5138a7510239536330285e0d9b092a2f88a403068f3278136285fa696f9f4af"
+    },
+    {
+      "agent": "glm",
+      "name": "dual-approve",
+      "source": "ad60830f5fbbc65737c167c60143a390db5ed034f2d7b8304642f07bab5953b5",
+      "installed": "ad60830f5fbbc65737c167c60143a390db5ed034f2d7b8304642f07bab5953b5"
+    },
+    {
+      "agent": "glm",
+      "name": "dual-review-bug",
+      "source": "e2807b2b12064f4987d6139aad4cd72fafde62382ccfeac57edc9b6d2627b7f3",
+      "installed": "e2807b2b12064f4987d6139aad4cd72fafde62382ccfeac57edc9b6d2627b7f3"
+    },
+    {
+      "agent": "glm",
+      "name": "dual-review-code",
+      "source": "e9398c6d11584f8e843a24b5799cc7f42c0c91fd6b6eebe98d78edc7aa8392a3",
+      "installed": "e9398c6d11584f8e843a24b5799cc7f42c0c91fd6b6eebe98d78edc7aa8392a3"
+    },
+    {
+      "agent": "glm",
+      "name": "dual-review-plan",
+      "source": "8d443cff34d79afa8d800735438cb6e5fcef4fcc187fb3a215b7dfb78bc330c0",
+      "installed": "8d443cff34d79afa8d800735438cb6e5fcef4fcc187fb3a215b7dfb78bc330c0"
+    },
+    {
+      "agent": "glm",
+      "name": "dual-run",
+      "source": "d85c429bee4ce69e987cccde45ecacfbf5bf1d45feff29fb5e4e2a3c7cbb8ff1",
+      "installed": "d85c429bee4ce69e987cccde45ecacfbf5bf1d45feff29fb5e4e2a3c7cbb8ff1"
+    },
+    {
+      "agent": "glm",
+      "name": "dual-status",
+      "source": "828778d1b762a70f9821019efda232cc2a22af1a90067ce36594227aa4993630",
+      "installed": "828778d1b762a70f9821019efda232cc2a22af1a90067ce36594227aa4993630"
+    }
+  ],
+  "before": {
+    ".codex/config.toml": "3d126d0c1265f60b47b7732781cd0a97488542484d5cf800f90422549e4374e3",
+    ".codex/auth.json": "89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5",
+    ".codex/hooks.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    ".claude/settings.json": "00c802290bb6300b39d66b67ab1dc8edf1c141817f23fd26b3d745ce65f3e715"
+  },
+  "after": {
+    ".codex/config.toml": "3d126d0c1265f60b47b7732781cd0a97488542484d5cf800f90422549e4374e3",
+    ".codex/auth.json": "89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5",
+    ".codex/hooks.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    ".claude/settings.json": "00c802290bb6300b39d66b67ab1dc8edf1c141817f23fd26b3d745ce65f3e715"
+  },
+  "source_sha256": "848445c9609aa6758b9580e95b6aa5d614090d18487ec534d6e57bb80520474e",
+  "installed_sha256": "848445c9609aa6758b9580e95b6aa5d614090d18487ec534d6e57bb80520474e",
+  "matched": true,
+  "stamp": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "39ed20530d64a72f81f183095c6d9516632d0228",
+    "dirty": true,
+    "inputs_sha256": "885a12a5d043d5e79c3d2736b25b7db8a64bb08d6a770ee7b779de46636602bc",
+    "built_at": "2026-10-11T01:25:38.377Z"
+  },
+  "runtime_skill_sha256": "1197c18680ecc6682f61f4283ce1113a74a172f874a3195caf69054652182eb1",
+  "migration_backup_preserved": "/Users/chenzhenbo/.trivium/backups/trivium-shared-r12-1791676816591-fdbe9965-5d20-48fd-a2e2-77540316da15",
+  "shared_entries_moved_again": false,
+  "model_configs_changed": false
+}

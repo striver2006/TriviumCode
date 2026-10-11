@@ -32,6 +32,13 @@ import { normalizeAbs, isUnder } from './adapters/base.js';
 import { isRunDirFile } from './run-files.js';
 
 /**
+ * 敏感文件父目录深度上限（项目根为0）。五段受测目录根加两层后代需要7；
+ * 不随消费形态自动扩域。父深度8仍未覆盖，归档同行扫描无此上限。
+ * BRIEF原型§9.4第8段与机器集合使用同一边界，不能宣称全深度枚举。
+ */
+export const SENSITIVE_SCAN_MAX_PARENT_DEPTH = 7;
+
+/**
  * 编排器状态目录里**允许审查员读**的具名清单（设计 §10.1.1）。
  *
  * ## 为什么是「整棵禁 + 具名放行」而不是「把子树展开成文件清单」
@@ -358,7 +365,7 @@ export async function enumerateDenyPaths(
 
   // 2) 敏感文件（就地模式无法「不带入」，只能列进禁读清单，§9.2 末条）
   const walkSensitive = async (dir: string, depth: number): Promise<void> => {
-    if (depth > 6) return;
+    if (depth > SENSITIVE_SCAN_MAX_PARENT_DEPTH) return;
     let entries: import('node:fs').Dirent[];
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });

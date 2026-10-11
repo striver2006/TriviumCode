@@ -1,0 +1,79 @@
+{
+  "at": "2026-10-11T00:18:09.145Z",
+  "rows": [
+    {
+      "label": "r12-version-codex-native",
+      "file": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-version-codex-native-a2748e6f-3d72-4618-8a3c-0b43fcd37a41-completed.json",
+      "sha256": "2394565dd0bcfa6289841ece72e09f007426f948f3b050b3ed78733240ec1835",
+      "code": 1,
+      "primary_loaded": true,
+      "codex_version_verified": false
+    },
+    {
+      "label": "r12-version-codex-qwen",
+      "file": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-version-codex-qwen-9da8d2b3-adbe-4bab-b65b-6c1843cbe09f-completed.json",
+      "sha256": "c0e80a66a7ac00e5fa034d72b14367130faf51fd7895319244bf5e230906ef64",
+      "code": 1,
+      "primary_loaded": true,
+      "codex_version_verified": false
+    },
+    {
+      "label": "r12-version-codex-kimi",
+      "file": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-version-codex-kimi-bc6666b8-1897-4811-81c1-a24a38dc25c3-completed.json",
+      "sha256": "4aaeb68e1a3b8617a2a54225917c95bc7a3b0d22172cc27c8022ddd23e56fafc",
+      "code": 1,
+      "primary_loaded": true,
+      "codex_version_verified": false
+    },
+    {
+      "label": "r12-version-codex-deepseek",
+      "file": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-version-codex-deepseek-64e5b6f7-7a17-4f1b-b7c6-37d955e91078-completed.json",
+      "sha256": "66d9a6856425f7503f1011aba5450d53b3a6cd304a33a9d62056ab93275e58ff",
+      "code": 1,
+      "primary_loaded": true,
+      "codex_version_verified": false
+    },
+    {
+      "label": "r12-version-claude-qwen",
+      "file": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-version-claude-qwen-a0f535ab-4bcc-4567-aa57-353342f98e4d-completed.json",
+      "sha256": "c15966c153f9f05380d91a122a4d4e65051ee9ad7caba103b72688227578c598",
+      "code": 0,
+      "primary_loaded": true,
+      "codex_version_verified": null
+    },
+    {
+      "label": "r12-version-claude-kimi",
+      "file": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-version-claude-kimi-613f2035-52e9-4629-ac68-dab03643243a-completed.json",
+      "sha256": "312e693eeae9182c34814db7f3b2e2ca74952a3a5cfe8f62b67ac9cddb5c0ef8",
+      "code": 0,
+      "primary_loaded": true,
+      "codex_version_verified": null
+    },
+    {
+      "label": "r12-version-claude-deepseek",
+      "file": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-version-claude-deepseek-1f5bf72a-af2d-4b69-a007-d30d30bbe203-completed.json",
+      "sha256": "9c24824544cdf491f86aff5aee4f045e21b92f1459286d75d0e21cc0709df9aa",
+      "code": 0,
+      "primary_loaded": true,
+      "codex_version_verified": null
+    },
+    {
+      "label": "r12-help-codex",
+      "file": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/calls/r12-help-codex-65aad660-aa8a-4129-ae55-0b47bc533f5c-completed.json",
+      "sha256": "28ea2f0a76b8847c5c2b9e4bd4b0787470001cdb76b53d091a78cc4d620030fe",
+      "code": 0,
+      "primary_loaded": true,
+      "codex_version_verified": null
+    }
+  ],
+  "new_starts": 13,
+  "before": 396,
+  "after": 409,
+  "limit": 414,
+  "root_cause": "static版本臂误将EVIDENCE_ROOT传给nativeVersionFromLedger，实际ledger在BUDGET_ROOT，4版本臂assert阶段ENOENT",
+  "fix": "仅root改为ledgerRoot，不修改身份配对、hash、CLI版本或判据；回归明确两目录不同",
+  "formal_runs_unchanged": 7,
+  "source_changed": true,
+  "old_complete_checks_not_covering_late_fix": true,
+  "all_old_records_preserved": true
+}
