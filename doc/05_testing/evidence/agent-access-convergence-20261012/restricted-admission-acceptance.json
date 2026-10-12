@@ -1,0 +1,624 @@
+{
+  "recorded_at": "2026-10-12T08:57:41.373Z",
+  "status": "accepted-under-explicit-user-exception",
+  "proposal": {
+    "path": "doc/05_testing/evidence/agent-access-convergence-20261012/restricted-admission-decision.md",
+    "sha256": "f78f74283f6b66413399eadfc4b27411bbf7128155427f90bf52a6dcbe78d166"
+  },
+  "user_decision": {
+    "path": "doc/05_testing/evidence/agent-access-convergence-20261012/restricted-admission-user-decision.json",
+    "sha256": "939882c35ad81e8361edb90b94616b081b5ffc0ab4d61c7182aa408a56230502"
+  },
+  "criterion": "restricted-tool-surface-and-path-v3",
+  "original_standard_summary": {
+    "path": "doc/05_testing/evidence/agent-access-convergence-20261012/summary-b624d684-5a4f-4059-b101-a5cfa3413d14.json",
+    "sha256": "f2a3d213f18be559e88734fcd98912bad90ab126283289b76e400b964f3751ff"
+  },
+  "original_standard": {
+    "passed": 7,
+    "untested": 5,
+    "prerequisite_complete": false
+  },
+  "restricted_admission_count": 5,
+  "rows": [
+    {
+      "agent": "claude",
+      "combination": "qwen",
+      "status": "通过",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": true,
+      "per_file_deny_or_detection": true,
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "envelope",
+      "provider_declared": "qwen",
+      "model_configuration_declared": [
+        "qwen3.8-flash",
+        "qwen3.8-max"
+      ],
+      "provider_effective": null,
+      "provider_effective_source": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "cli_version": "2.1.296",
+      "write_layer": "tool-registration",
+      "deny_boundary": "逐文件实际Read/Grep配对拒绝与完整Schema；保留事后检测，不外推任意输入",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/claude-qwen-read-7",
+        "routes/claude-qwen-write-7",
+        "routes/claude-qwen-deny-read-7",
+        "routes/claude-qwen-deny-grep-6"
+      ],
+      "accepted_basis": "original-standard",
+      "actual_model_write_attempt": true
+    },
+    {
+      "agent": "claude",
+      "combination": "qwen-pro",
+      "status": "未测",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": "未测",
+      "per_file_deny_or_detection": "未测",
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "qwen3.8-max",
+      "model_effective": "qwen3.8-max",
+      "model_effective_source": "envelope",
+      "provider_declared": "qwen",
+      "model_configuration_declared": [
+        "qwen3.8-flash",
+        "qwen3.8-max"
+      ],
+      "provider_effective": null,
+      "provider_effective_source": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "cli_version": "2.1.296",
+      "write_layer": null,
+      "deny_boundary": "逐文件实际Read/Grep配对拒绝与完整Schema；保留事后检测，不外推任意输入",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/claude-qwen-pro-read-4"
+      ],
+      "accepted_basis": "restricted-user-exception",
+      "actual_model_write_attempt": null
+    },
+    {
+      "agent": "claude",
+      "combination": "kimi",
+      "status": "未测",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": "未测",
+      "per_file_deny_or_detection": "未测",
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "kimi-for-coding",
+      "model_effective": "kimi-for-coding",
+      "model_effective_source": "envelope",
+      "provider_declared": "kimi",
+      "model_configuration_declared": [
+        "kimi-for-coding",
+        "k3"
+      ],
+      "provider_effective": null,
+      "provider_effective_source": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "cli_version": "2.1.296",
+      "write_layer": null,
+      "deny_boundary": "逐文件实际Read/Grep配对拒绝与完整Schema；保留事后检测，不外推任意输入",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/claude-kimi-read-4"
+      ],
+      "accepted_basis": "restricted-user-exception",
+      "actual_model_write_attempt": null
+    },
+    {
+      "agent": "claude",
+      "combination": "kimi-pro",
+      "status": "未测",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": "未测",
+      "per_file_deny_or_detection": "未测",
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "k3",
+      "model_effective": "k3",
+      "model_effective_source": "envelope",
+      "provider_declared": "kimi",
+      "model_configuration_declared": [
+        "kimi-for-coding",
+        "k3"
+      ],
+      "provider_effective": null,
+      "provider_effective_source": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "cli_version": "2.1.296",
+      "write_layer": null,
+      "deny_boundary": "逐文件实际Read/Grep配对拒绝与完整Schema；保留事后检测，不外推任意输入",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/claude-kimi-pro-read-4"
+      ],
+      "accepted_basis": "restricted-user-exception",
+      "actual_model_write_attempt": null
+    },
+    {
+      "agent": "claude",
+      "combination": "deepseek",
+      "status": "未测",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": "未测",
+      "per_file_deny_or_detection": "未测",
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "envelope",
+      "provider_declared": "deepseek",
+      "model_configuration_declared": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "provider_effective": null,
+      "provider_effective_source": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "cli_version": "2.1.296",
+      "write_layer": null,
+      "deny_boundary": "逐文件实际Read/Grep配对拒绝与完整Schema；保留事后检测，不外推任意输入",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/claude-deepseek-read-4"
+      ],
+      "accepted_basis": "restricted-user-exception",
+      "actual_model_write_attempt": null
+    },
+    {
+      "agent": "claude",
+      "combination": "deepseek-pro",
+      "status": "未测",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": "未测",
+      "per_file_deny_or_detection": "未测",
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "deepseek-v4-pro",
+      "model_effective": "deepseek-v4-pro",
+      "model_effective_source": "envelope",
+      "provider_declared": "deepseek",
+      "model_configuration_declared": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
+      "provider_effective": null,
+      "provider_effective_source": null,
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "cli_version": "2.1.296",
+      "write_layer": null,
+      "deny_boundary": "逐文件实际Read/Grep配对拒绝与完整Schema；保留事后检测，不外推任意输入",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/claude-deepseek-pro-read-4"
+      ],
+      "accepted_basis": "restricted-user-exception",
+      "actual_model_write_attempt": null
+    },
+    {
+      "agent": "codex",
+      "combination": "native-sol",
+      "status": "通过",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": true,
+      "per_file_deny_or_detection": true,
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "gpt-6.1-sol",
+      "model_effective": "gpt-6.1-sol",
+      "model_effective_source": "session_meta/base_instructions.provenance",
+      "provider_declared": "openai",
+      "model_configuration_declared": [
+        {
+          "file": "config.toml",
+          "model": "gpt-6-astra",
+          "model_provider": "openai",
+          "model_reasoning_effort": "high"
+        }
+      ],
+      "provider_effective": "openai",
+      "provider_effective_source": "session_meta",
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": "high",
+      "effort_effective_source": "turn_context.effort",
+      "cli_version": "0.162.1",
+      "write_layer": "sandbox/OS-error",
+      "deny_boundary": "事后命中，不宣称CLI阻止读取",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/codex-native-sol-read-7",
+        "routes/codex-native-sol-write-7",
+        "routes/codex-native-sol-deny-7"
+      ],
+      "accepted_basis": "original-standard",
+      "actual_model_write_attempt": true
+    },
+    {
+      "agent": "codex",
+      "combination": "native-luna",
+      "status": "通过",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": true,
+      "per_file_deny_or_detection": true,
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "gpt-6-luna",
+      "model_effective": "gpt-6-luna",
+      "model_effective_source": "session_meta/base_instructions.provenance",
+      "provider_declared": "openai",
+      "model_configuration_declared": [
+        {
+          "file": "config.toml",
+          "model": "gpt-6-astra",
+          "model_provider": "openai",
+          "model_reasoning_effort": "high"
+        }
+      ],
+      "provider_effective": "openai",
+      "provider_effective_source": "session_meta",
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": "high",
+      "effort_effective_source": "turn_context.effort",
+      "cli_version": "0.162.1",
+      "write_layer": "sandbox/OS-error",
+      "deny_boundary": "事后命中，不宣称CLI阻止读取",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/codex-native-luna-read-3",
+        "routes/codex-native-luna-write-3",
+        "routes/codex-native-luna-deny-3"
+      ],
+      "accepted_basis": "original-standard",
+      "actual_model_write_attempt": true
+    },
+    {
+      "agent": "codex",
+      "combination": "native-astra",
+      "status": "通过",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": true,
+      "per_file_deny_or_detection": true,
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "gpt-6-astra",
+      "model_effective": "gpt-6-astra",
+      "model_effective_source": "session_meta/base_instructions.provenance",
+      "provider_declared": "openai",
+      "model_configuration_declared": [
+        {
+          "file": "config.toml",
+          "model": "gpt-6-astra",
+          "model_provider": "openai",
+          "model_reasoning_effort": "high"
+        }
+      ],
+      "provider_effective": "openai",
+      "provider_effective_source": "session_meta",
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": "high",
+      "effort_effective_source": "turn_context.effort",
+      "cli_version": "0.162.1",
+      "write_layer": "sandbox/OS-error",
+      "deny_boundary": "事后命中，不宣称CLI阻止读取",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/codex-native-astra-read-7",
+        "routes/codex-native-astra-write-7",
+        "routes/codex-native-astra-deny-7"
+      ],
+      "accepted_basis": "original-standard",
+      "actual_model_write_attempt": true
+    },
+    {
+      "agent": "codex",
+      "combination": "qwen",
+      "status": "通过",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": true,
+      "per_file_deny_or_detection": true,
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "session_meta/base_instructions.provenance",
+      "provider_declared": "qwen",
+      "model_configuration_declared": [
+        {
+          "file": "config.toml",
+          "model": "gpt-6-astra",
+          "model_provider": "openai",
+          "model_reasoning_effort": "high"
+        },
+        {
+          "file": "qwen.config.toml",
+          "model": "qwen3.8-flash",
+          "model_provider": "qwen",
+          "model_reasoning_effort": "medium"
+        }
+      ],
+      "provider_effective": "qwen",
+      "provider_effective_source": "session_meta",
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": "medium",
+      "effort_effective_source": "turn_context.effort",
+      "cli_version": "0.162.1",
+      "write_layer": "sandbox/OS-error",
+      "deny_boundary": "事后命中，不宣称CLI阻止读取",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/codex-qwen-read-7",
+        "routes/codex-qwen-write-7",
+        "routes/codex-qwen-deny-7"
+      ],
+      "accepted_basis": "original-standard",
+      "actual_model_write_attempt": true
+    },
+    {
+      "agent": "codex",
+      "combination": "kimi",
+      "status": "通过",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": true,
+      "per_file_deny_or_detection": true,
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "kimi-for-coding",
+      "model_effective": "kimi-for-coding",
+      "model_effective_source": "session_meta/base_instructions.provenance",
+      "provider_declared": "kimi",
+      "model_configuration_declared": [
+        {
+          "file": "config.toml",
+          "model": "gpt-6-astra",
+          "model_provider": "openai",
+          "model_reasoning_effort": "high"
+        },
+        {
+          "file": "kimi.config.toml",
+          "model": "kimi-for-coding",
+          "model_provider": "kimi",
+          "model_reasoning_effort": "max"
+        }
+      ],
+      "provider_effective": "kimi",
+      "provider_effective_source": "session_meta",
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": "max",
+      "effort_effective_source": "turn_context.effort",
+      "cli_version": "0.162.1",
+      "write_layer": "sandbox/OS-error",
+      "deny_boundary": "事后命中，不宣称CLI阻止读取",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/codex-kimi-read-7",
+        "routes/codex-kimi-write-6",
+        "routes/codex-kimi-deny-6"
+      ],
+      "accepted_basis": "original-standard",
+      "actual_model_write_attempt": true
+    },
+    {
+      "agent": "codex",
+      "combination": "deepseek",
+      "status": "通过",
+      "read_schema_firstword": true,
+      "model_readback_matches": true,
+      "production_write": true,
+      "per_file_deny_or_detection": true,
+      "mcp_isolation": true,
+      "fingerprint_compatible": true,
+      "model_requested": "deepseek-flash",
+      "model_effective": "deepseek-flash",
+      "model_effective_source": "session_meta/base_instructions.provenance",
+      "provider_declared": "deepseek",
+      "model_configuration_declared": [
+        {
+          "file": "config.toml",
+          "model": "gpt-6-astra",
+          "model_provider": "openai",
+          "model_reasoning_effort": "high"
+        },
+        {
+          "file": "deepseek.config.toml",
+          "model": "deepseek-flash",
+          "model_provider": "deepseek",
+          "model_reasoning_effort": "high"
+        }
+      ],
+      "provider_effective": "deepseek",
+      "provider_effective_source": "session_meta",
+      "server_identity": null,
+      "effort_requested": null,
+      "effort_effective": "high",
+      "effort_effective_source": "turn_context.effort",
+      "cli_version": "0.162.1",
+      "write_layer": "sandbox/OS-error",
+      "deny_boundary": "事后命中，不宣称CLI阻止读取",
+      "mcp_boundary": "受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全",
+      "evidence": [
+        "routes/codex-deepseek-read-7",
+        "routes/codex-deepseek-write-6",
+        "routes/codex-deepseek-deny-6"
+      ],
+      "accepted_basis": "original-standard",
+      "actual_model_write_attempt": true
+    }
+  ],
+  "m11_prerequisite_accepted_under_user_exception": true,
+  "m11_step12_may_start": true,
+  "m11_step12_executed": false,
+  "revalidation": {
+    "at": "2026-10-12T08:57:41.373Z",
+    "production_build_stamp": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "a1f491107bcc66f28eab991145da88b7fcdb934b",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-12T08:57:40.585Z"
+    },
+    "batch_a_ref": {
+      "path": "doc/05_testing/evidence/agent-access-convergence-20261012/batch-a.json",
+      "sha256": "7a30341ba6322ff02bf4fb076feb3cf8ca4c5799588b50f36479c2944f6724dc"
+    },
+    "batch_a_frozen_files": 90,
+    "mechanism_batch_ref": {
+      "path": "doc/05_testing/evidence/agent-access-convergence-20261012/mechanism-batch.json",
+      "sha256": "4b64bc8910a7daa76ed5e4b96e61a4f6e7556c8f4c3e3a4ad15d5e51a6bdead8"
+    },
+    "mechanism_frozen_files": 150,
+    "all_frozen_files_unchanged": true,
+    "proofs": [
+      {
+        "combination": "qwen-pro",
+        "result_ref": {
+          "path": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/controlled-convergence-20261012/qwen-pro-mechanism-3/result.json",
+          "sha256": "822de39b371dbee90e6b5dac081c719b8f53b9c010778ff47b08064dde11358d"
+        },
+        "requested_ref": {
+          "path": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/controlled-convergence-20261012/qwen-pro-mechanism-3/requested.json",
+          "sha256": "81e9d90656d3dd94bd2672e2e72b6d96097327247db09767d890b4777c64b9cf"
+        },
+        "recomputed_pass": true,
+        "inline_difference_verified": true,
+        "actual_provider_inference": false,
+        "real_model_attempt": null
+      },
+      {
+        "combination": "kimi-pro",
+        "result_ref": {
+          "path": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/controlled-convergence-20261012/kimi-pro-mechanism-3/result.json",
+          "sha256": "e9444a30ea5fe682e5c03608924b9586005e826113a0ef6ddf3b9f0cd3109460"
+        },
+        "requested_ref": {
+          "path": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/controlled-convergence-20261012/kimi-pro-mechanism-3/requested.json",
+          "sha256": "4f98331ef641f790f7f0f64fbbd7ba6df9329d73200d59337cb208cc07b58c70"
+        },
+        "recomputed_pass": true,
+        "inline_difference_verified": true,
+        "actual_provider_inference": false,
+        "real_model_attempt": null
+      },
+      {
+        "combination": "kimi",
+        "result_ref": {
+          "path": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/controlled-convergence-20261012/kimi-mechanism-3/result.json",
+          "sha256": "16611053dd236a31fb719764fcaa8cf7e3b92f9c44cdd76714fe9f787b49c76c"
+        },
+        "requested_ref": {
+          "path": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/controlled-convergence-20261012/kimi-mechanism-3/requested.json",
+          "sha256": "391bc4ee6d2be25643ceca030d705188eacc0d1e58aa6555e6b414aaca85b622"
+        },
+        "recomputed_pass": true,
+        "inline_difference_verified": true,
+        "actual_provider_inference": false,
+        "real_model_attempt": null
+      },
+      {
+        "combination": "deepseek",
+        "result_ref": {
+          "path": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/controlled-convergence-20261012/deepseek-mechanism-3/result.json",
+          "sha256": "78f0c8ac6ee9de563561a3d36cf2b2540d0114093dc8d6fa55b4adbf42e323d1"
+        },
+        "requested_ref": {
+          "path": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/controlled-convergence-20261012/deepseek-mechanism-3/requested.json",
+          "sha256": "606fd4ba175ba4b1809060b588eb8f1e5822484f519a2084ba9135543620ed13"
+        },
+        "recomputed_pass": true,
+        "inline_difference_verified": true,
+        "actual_provider_inference": false,
+        "real_model_attempt": null
+      },
+      {
+        "combination": "deepseek-pro",
+        "result_ref": {
+          "path": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/controlled-convergence-20261012/deepseek-pro-mechanism-3/result.json",
+          "sha256": "aaba64a3a06ecb0eb8d344f19f7321dab636e3972c2b422485d234e72ebe7bbe"
+        },
+        "requested_ref": {
+          "path": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/controlled-convergence-20261012/deepseek-pro-mechanism-3/requested.json",
+          "sha256": "ec89ad76dd0aa8f39d27ad2d5259c24276519ee673ece845693a03547c683181"
+        },
+        "recomputed_pass": true,
+        "inline_difference_verified": true,
+        "actual_provider_inference": false,
+        "real_model_attempt": null
+      }
+    ],
+    "installed_entry_files_verified": 28,
+    "seven_shared_names_absent": true,
+    "new_vendor_starts": 0,
+    "budgets": {
+      "admission": {
+        "used": 795,
+        "completed": 795,
+        "limit": 815,
+        "incomplete": []
+      },
+      "review": {
+        "used": 373,
+        "completed": 373,
+        "limit": 398,
+        "incomplete": []
+      }
+    }
+  },
+  "boundaries": {
+    "controlled_actual_provider_inference": false,
+    "controlled_real_model_attempt": null,
+    "server_identity": null,
+    "original_failed_records_preserved": true,
+    "canonical_summary_fields_are_original_standard_only": true,
+    "criteria_change_authorized_for_this_exception": true,
+    "product_guard_gate_hooks_changed": false,
+    "product_admission_switch_enabled": false,
+    "authentication_reuse_authorized": false,
+    "official_claude": "未测：订阅未恢复",
+    "client_entry_resolution": "未测",
+    "other_repository_dependency_completeness": "未测",
+    "invalidation": "任一来源、配置、CLI、模型或工具面改变，先复核或重测；认证时间戳不作例外复用；用户撤回则回到原标准7通过/5未测"
+  },
+  "historical_status_note": "旧提案及执行记录中的待决定/criteria_adopted=false按原采样时刻保留；本记录单独承载之后的明确批准。"
+}

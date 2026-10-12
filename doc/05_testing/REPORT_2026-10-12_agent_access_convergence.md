@@ -1,6 +1,6 @@
 # Agent双模式准入：P0/P1收敛检查与后续执行方案
 
-2026-10-12，Driver=codex，沿用主题「Agent双模式接入真实准入收口」。本文件记录现状检查、范围分类、取证可行性及执行结果。下述第1—7节保留提出时的事实和方案；本轮最新执行授权以第8节为准。
+2026-10-12，Driver=codex，沿用主题「Agent双模式接入真实准入收口」。本文件记录现状检查、范围分类、取证可行性及执行结果。各节保留其采样时刻的事实和授权；最新结论见第13节：Bob已独立批准受限准入、M11前置例外及本次判据免审，按“7原标准通过＋5受限准入”完成前置收口，可进入M11第12步。第12步本身尚未执行，原标准全量完成仍为false。
 
 ## 1. P0当前基线
 
@@ -174,3 +174,15 @@ B批五模型真实正向读取及两个版本上下文全部通过，新增7次
 [剩余证据审计](./evidence/agent-access-convergence-20261012/remaining-evidence-audit.json)保存五组合结果，[最新原标准矩阵](./evidence/agent-access-convergence-20261012/summary-40fcbf94-09e7-49d5-892a-57b38e1d8f3f.json)仍为7通过/5未测。另按原字节导出527份A/B/C原始证据、调用及台账副本，脱敏扫描及源/副本hash核对通过，见[便携证据清单](./evidence/agent-access-convergence-20261012/portable-evidence-manifest.json)，避免远端报告只有本机绝对路径可读。
 
 剩余已收敛为一个明确决定：[五组合受限准入及M11前置验收例外提案](./evidence/agent-access-convergence-20261012/restricted-admission-decision.md)。这项提案明确改变本轮验收口径，并要求用户独立同意本次判据变更免审；未获答复前保持未采用，原标准全量完成仍为false。普通继续开发、提交推送或迁移授权均不代替此决定。
+
+## 13. 独立批准落盘与前置收口
+
+第12节材料已提交并推送至origin/main：`a1f491107bcc66f28eab991145da88b7fcdb934b`。随后Bob对具名提案明确答复：**「批准本提案的受限准入、M11前置例外及本次判据免审」**。完整问题、原文答复及提案SHA256保存在[独立决定记录](./evidence/agent-access-convergence-20261012/restricted-admission-user-decision.json)，提案hash为`f78f74283f6b66413399eadfc4b27411bbf7128155427f90bf52a6dcbe78d166`。旧提案“待决定”和旧批次`criteria_adopted=false`均按当时状态保留，不覆盖为事后批准。
+
+本次采用范围只限当前指纹下Claude路线的qwen3.8-max、kimi-for-coding、k3、deepseek-flash、deepseek-v4-pro五组合。以既有`restricted-tool-surface-and-path-v3`证据及上述独立例外，记录**7个原标准通过＋5个受限准入，M11第12步前置按用户明确例外完成，可进入第12步**。完整逐模型矩阵和批准绑定见[受限准入验收记录](./evidence/agent-access-convergence-20261012/restricted-admission-acceptance.json)。这不是新增正式plan/code审批或审查通过；未调用`trivium approve`，未恢复失败运行。
+
+批准后零新增供应商启动复核：A批90项、C批150项冻结文件全部未变，生产inputs仍为`7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f`，五份受控证明从原始工件重新计算通过；四目标28入口hash一致，七共享同名入口仍不存在。原标准汇总重新计算仍为[7通过、5未测](./evidence/agent-access-convergence-20261012/summary-b624d684-5a4f-4059-b101-a5cfa3413d14.json)，其`prerequisite_complete=false`和`criteria_change_authorized=false`是原标准消费者的固定口径，不承载本次独立例外；例外授权单独记录在受限验收文件。预算保持admission795/815、review373/398，预占与完成一致。
+
+五组合的真实模型写尝试仍为未测，受控阶段仍为`actual_provider_inference=false`、`real_model_attempt=null`；历史Read失败、服务端身份null与所有旧失败记录保留。Claude官方、客户端实际入口解析及其他仓库依赖完备性仍未测。没有修改产品guard/gate/hooks、模型配置、版本或认证复用规则，也未启用产品准入开关。任一来源、配置、CLI、模型、工具面或认证指纹变化，必须先复核或重测；用户撤回例外后回到原标准7通过/5未测。
+
+本次仅新增批准和验收记录并更新报告索引，未重新构建或安装生产bundle；此前定向回归、真实取证、四目标安装和14步自检保持各自适用边界。文档索引27项检查通过，本次五份变更文件脱敏扫描、文档链接及批准引用hash校验通过。M11第12步的全量验收本身尚未执行，不以此前提例外代替其真实验收。
