@@ -1,0 +1,69 @@
+{
+  "at": "2026-10-12T09:05:24.064Z",
+  "authorization": "Bob 2026-10-12 M11第12步新增CLI启动总上限80；允许按现有机制事前发布必要扩容",
+  "baseline": {
+    "admission": {
+      "used": 795,
+      "completed": 795,
+      "limit": 815
+    },
+    "review": {
+      "used": 373,
+      "completed": 373,
+      "limit": 398
+    }
+  },
+  "budgetRoot": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget",
+  "step_limits": {
+    "admission": 20,
+    "review": 60,
+    "total": 80
+  },
+  "absolute_step_caps": {
+    "admission": 815,
+    "review": 433
+  },
+  "extension": "仅必要时追加review最多35；不覆盖旧额度、不跨池；所有边界/version/help/失败/超时/重试计数",
+  "batches": [
+    {
+      "id": "Z0",
+      "target": "零配额核验、安装自检、11.1负对照及Hook直调辅助证据",
+      "pool": null,
+      "expected": 0,
+      "hard": 0,
+      "stop": "来源失配则停受影响项；负对照意外触发厂商调用立即停"
+    },
+    {
+      "id": "A1",
+      "target": "仅必要的正式预检与认证刷新",
+      "pool": "admission",
+      "expected": 6,
+      "hard": 20,
+      "stop": "69、指纹失效或未知停止相应路线；不复用认证时间戳"
+    },
+    {
+      "id": "R1",
+      "target": "剧本1-6：Claude客户端A/B/C/D与模型换档，复用同轮进程证据",
+      "pool": "review",
+      "expected": 24,
+      "hard": 30,
+      "stop": "失败保留；人工停点等待本轮决定；每主题最多4轮"
+    },
+    {
+      "id": "R2",
+      "target": "剧本7-11：跨载体、三审换profile、L2、换Driver、选档/精确值",
+      "pool": "review",
+      "expected": 24,
+      "hard": 30,
+      "stop": "失败保留、不自动重试；总review增量60即停"
+    },
+    {
+      "id": "Z1",
+      "target": "启用台账断言、串行两次check、安装副本14步自检、交付",
+      "pool": null,
+      "expected": 0,
+      "hard": 0,
+      "stop": "检查失败先定位；不得虚改达成状态"
+    }
+  ]
+}

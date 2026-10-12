@@ -6,7 +6,7 @@
 
 逐剧本、逐判据的68格矩阵见 [matrix.md](./evidence/m11-step12-20261012/matrix.md) 与 [matrix.json](./evidence/m11-step12-20261012/matrix.json)。其中9.6、11.7为可选，本轮不默认扩大范围。剧本1～7及新增必需判据必须本轮实跑，历史报告、桩与离线检查不替代真实客户端验收。
 
-[预算清单](./evidence/m11-step12-20261012/budget-plan.json)保留旧admission795/815、review373/398；本步子上限20/60、总80，版本/帮助/失败/超时/包装器与native边界/重试均累计。必要扩容事前追加，不覆盖旧台账、不跨池。客户端批次与硬停止点另见 [client-batch.json](./evidence/m11-step12-20261012/client-batch.json)。
+[预算清单](./evidence/m11-step12-20261012/budget-plan.json)保留旧admission795/815、review373/398；初始本步子上限20/60、总80（后按Bob明确同意修订为40/40，见后文），版本/帮助/失败/超时/包装器与native边界/重试均累计。必要扩容事前追加，不覆盖旧台账、不跨池。客户端批次与硬停止点另见 [client-batch.json](./evidence/m11-step12-20261012/client-batch.json)。
 
 ## 本轮零配额实跑
 
@@ -64,3 +64,17 @@ Bob已再次确认当前Claude Code模型为qwen3.8-flash；仅用作新运行Dr
 B1准备再次核对原安装bundle及28入口，均不变；生产作用面和归档先前hash留存在 [准备记录](./evidence/m11-step12-20261012/b1-preparation.json)。只修改验收助手的正整数输入检查、只读采样字段和夹具任务清单，未修改生产适配器、guard/gate/hooks/schema或验收判据，未重建重装。验收助手对原始rerunIndex=null错误的定向复现已退出1，旧归档字节不变，见 [输入校验记录](./evidence/m11-step12-20261012/archive-input-validation.json)。本次文档与证据增量的索引/台账定向检查30项通过、0失败、0跳过；先前两次全量check仍按各自采样结果引用。
 
 实测每次预检含4个版本启动边界，初始admission20估算不足。已提交 [40/40分池修订提案](./evidence/m11-step12-20261012/budget-repartition-proposal.json)：按联合取证预计38/35，共73次，预留7次，总80不变。该提案尚未批准、未生效、未扩容；B1可在原20/60内执行。旧台账不清零、不重分类、不跨池重记。
+
+## B1真实三侧运行与预算修订（2026-10-12 21:41至21:48）
+
+B1运行`20261012T134125Z`记录success/full，三侧首尝试完成；当前正式status出口确认plan处于awaiting_approval，尚无人工审批。GLM-01、CODEX-01、CODEX-02均接受并合入r2计划，gate检查覆盖三个编号且退出0。完整原始命令、运行、客户端和采样见 [运行证据](./evidence/m11-step12-20261012/client-b1-runs.json)、[客户端会话](./evidence/m11-step12-20261012/client-session-03.json)、[进程采样](./evidence/m11-step12-20261012/client-b1-processes.json)。
+
+计划实时采样中，部分审核者已结束而归档仍只有Driver原稿与_meta，2.4取得本轮实证。Codex包装器及native参数均抓到-p kimi、-m kimi-for-coding、-c model_reasoning_effort=low；首轮tier来源cli，gemini为medium且回读medium/envelope，Codex effort回读null/unverified。三侧front-matter的15个档位/effort字段与元数据逐一相同，report人读及JSON输出如实区分未请求/无此概念/未回读到，见 [首轮对账](./evidence/m11-step12-20261012/b1-report-parity.json)。ZCode全局模型与跑前一致。
+
+**B1不能称为合格三审全部通过**：Codex证据仅3次工具调用，小于原下限5，evidence_ok=false；审查件明确不得计为合格双审的一半。只读核验与结构化路径核验unavailable、三侧路径deny未生效、glm/codex镜头重合告警均保留。无门槛下调、无诱导工具重试、无生产修改；三条真实意见仍逐条裁决。[分项结论](./evidence/m11-step12-20261012/b1-assessment.json)把运行成功、档位功能通过、证据质量不足分开记录。
+
+CASE4.3尚残留旧布尔true与名义Driver模型族写法，实际已批准v3为三态different-family/same-family/unknown。尤其原Python示例按真值判断，会把非空unknown字符串打印为异构。本次先提交 [具体修正提案](./evidence/m11-step12-20261012/case43-correction-proposal.md)，未擅改判据、未标绿。report顶部当前闸门来自只读归档task占位，仍显示idle；当前审批状态以正式status的全局state为准，不拿该历史字段证明已审批。
+
+Bob明确答复“同意修订为40/40，总上限80”。[独立决定](./evidence/m11-step12-20261012/budget-repartition-user-decision.json)、[初始分池快照](./evidence/m11-step12-20261012/budget-plan-initial.json)、[修订计划](./evidence/m11-step12-20261012/budget-plan-revision-02.json)及[扩容回执](./evidence/m11-step12-20261012/budget-repartition-extension-receipts.json)均独立保存。既有extend机制追加admission815→835、review398→413，不重记既有消费，B1硬限8/6不变。旧提案的“待确认”按其采样时刻解释，以独立决定为准。
+
+本批实际新增admission8、review6，本步累计14/14，共28次；当前809/835、387/413。客户端收尾误述review+3、start admission+1，不采用该人工估算；预占与完成的实际CLI边界记录为唯一计数依据。下一步是已发布的零厂商CLI客户端Hook负对照，再由Bob针对本轮决定审批。M11仍未完成，原五组合受限准入边界完全不变。

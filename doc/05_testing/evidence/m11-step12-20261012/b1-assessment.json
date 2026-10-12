@@ -1,0 +1,119 @@
+{
+  "at": "2026-10-12T13:52:26.210Z",
+  "run_id": "20261012T134125Z",
+  "status": "success",
+  "review_mode": "full",
+  "gate_observation": {
+    "command": [
+      "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.trivium/bin/trivium",
+      "status",
+      "--topic",
+      "m11-s12-capacity",
+      "--json"
+    ],
+    "code": 0,
+    "stdout": "{\n  \"ok\": true,\n  \"topics\": [\n    {\n      \"topic\": \"m11-s12-capacity\",\n      \"open_gates\": [\n        {\n          \"stage\": \"plan\",\n          \"state\": \"awaiting_approval\",\n          \"since\": \"2026-10-12T13:48:20.426Z\"\n        }\n      ],\n      \"runs\": 1,\n      \"degradations\": 0,\n      \"disputed\": false,\n      \"approvals\": 0\n    }\n  ]\n}\n",
+    "stderr": ""
+  },
+  "checks": [
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "--stage",
+        "plan",
+        "--topic",
+        "m11-s12-capacity",
+        "--check",
+        "--json"
+      ],
+      "code": 0,
+      "stdout": "{\n  \"ok\": true,\n  \"stage\": \"plan\",\n  \"rerun_index\": 1,\n  \"run_id\": \"20261012T134125Z\",\n  \"failures\": [],\n  \"warnings\": [],\n  \"structured_ids\": [\n    \"GLM-01\",\n    \"CODEX-01\",\n    \"CODEX-02\"\n  ],\n  \"fallback_ids\": [],\n  \"degraded_ids\": [],\n  \"disposition\": \"/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-revised-claude.md\"\n}\n"
+    }
+  ],
+  "criteria": {
+    "2.4": {
+      "result": "通过",
+      "evidence": "b1-observation-inflight.json：部分侧已完成但计划目录仍只有Driver原稿和_meta"
+    },
+    "3.1": {
+      "result": "部分：B到人工闸门，C/D未测"
+    },
+    "8.1": {
+      "result": "部分：首轮3份文档齐备；Codex证据不足，不计为合格三审全通过；第二轮未测"
+    },
+    "8.2": {
+      "result": "部分：三编号裁决及gate通过，删除一行负对照待执行"
+    },
+    "8.3": {
+      "result": "通过",
+      "profile": "kimi",
+      "model": "kimi-for-coding",
+      "process_options": [
+        "-p kimi",
+        "-m kimi-for-coding"
+      ]
+    },
+    "11.2": {
+      "result": "首轮通过",
+      "codex": {
+        "tier": "low",
+        "tier_source": "cli",
+        "effort_requested": "low",
+        "profile_requested": "kimi"
+      },
+      "gemini": {
+        "tier": "medium",
+        "tier_source": "cli",
+        "effort_requested": null
+      }
+    },
+    "11.3": {
+      "result": "通过",
+      "process_options": [
+        "-p kimi",
+        "-c model_reasoning_effort=low"
+      ]
+    },
+    "11.6": {
+      "result": "首轮通过，第二轮待测",
+      "effort_effective": null,
+      "source": "unverified"
+    },
+    "4.3": {
+      "result": "口径差异待处理",
+      "observed": "different-family",
+      "case_expected": "旧布尔true",
+      "proposal": "case43-correction-proposal.md"
+    }
+  },
+  "evidence_limitation": {
+    "codex_evidence_ok": false,
+    "tool_calls": 3,
+    "min_tool_calls": 5,
+    "readonly": "unavailable",
+    "path": "unavailable",
+    "action": "保留原件，不降阈值，不反复诱导工具调用，不将该侧计为合格审查"
+  },
+  "budget": {
+    "batch_delta": {
+      "admission": 8,
+      "review": 6
+    },
+    "step_delta": {
+      "admission": 14,
+      "review": 14
+    },
+    "step_total": 28,
+    "current": {
+      "admission": 809,
+      "review": 387
+    },
+    "limits": {
+      "admission": 835,
+      "review": 413
+    },
+    "client_misstatement": "客户端称review+3与start admission+1；以实际预算侧车8/6为准，不采用该人工估算"
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-12T13:16:07.359704+00:00",
+  "at": "2026-10-12T13:56:32.624772+00:00",
   "source": "doc/05_testing/CASE_manual_acceptance.md",
   "source_sha256": "f1336102a232f9df287389fac290837d1ae2e8d7d1c5d21c241fcdba72e58b3e",
   "rows": [
@@ -145,10 +145,10 @@
       "estimated_starts": "A批已结束：实耗admission6/review8；2.4计划实时采样在B1补",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
-        "client-a-processes.json",
-        "client-session-02.json"
+        "b1-observation-inflight.json",
+        "client-b1-processes.json"
       ],
-      "status": "部分：代码阶段延迟落盘已实测；计划阶段物理目录采样待补"
+      "status": "本轮真实计划阶段进程/物理目录采样通过"
     },
     {
       "scenario": 2,
@@ -197,8 +197,11 @@
       "batch": "R1",
       "estimated_starts": "B部分在B1共用8/6；C/D分别发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "client-session-03.json",
+        "client-b1-runs.json"
+      ],
+      "status": "部分：B已awaiting_approval；C/D待实跑"
     },
     {
       "scenario": 3,
@@ -225,8 +228,10 @@
       "batch": "R1",
       "estimated_starts": "B部分在B1共用8/6；C/D分别发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "client-session-03.json"
+      ],
+      "status": "部分：B裁决及r2定稿通过真实客户端落盘；C/D待测"
     },
     {
       "scenario": 3,
@@ -265,7 +270,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [],
       "status": "未测"
@@ -279,7 +284,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [],
       "status": "未测"
@@ -293,10 +298,13 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b1-assessment.json",
+        "case43-correction-proposal.md"
+      ],
+      "status": "口径差异：当前v3为different-family，CASE仍要求旧true；待处理"
     },
     {
       "scenario": 4,
@@ -307,10 +315,12 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b1-report-parity.json"
+      ],
+      "status": "首轮核对通过，第二轮待测"
     },
     {
       "scenario": 4,
@@ -321,7 +331,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [],
       "status": "未测"
@@ -335,7 +345,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
         "hook-cli.json"
@@ -351,7 +361,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [],
       "status": "未测"
@@ -365,7 +375,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [],
       "status": "未测"
@@ -379,7 +389,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [],
       "status": "未测"
@@ -393,7 +403,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [],
       "status": "未测"
@@ -407,7 +417,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
         "hook-cli.json"
@@ -423,7 +433,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
         "hook-cli.json"
@@ -439,7 +449,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
         "hook-cli.json"
@@ -455,7 +465,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
         "hook-cli.json"
@@ -471,7 +481,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
         "hook-cli.json"
@@ -487,7 +497,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
         "hook-cli.json"
@@ -503,7 +513,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [],
       "status": "未测"
@@ -517,7 +527,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -531,7 +541,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -545,7 +555,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -559,7 +569,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -573,7 +583,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -587,7 +597,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -601,7 +611,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -615,7 +625,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -629,10 +639,13 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "client-b1-runs.json",
+        "b1-assessment.json"
+      ],
+      "status": "部分：首轮三件齐备；Codex证据不足，不计合格三审全通过；第二轮待测"
     },
     {
       "scenario": 8,
@@ -643,10 +656,13 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b1-assessment.json",
+        "client-session-03.json"
+      ],
+      "status": "部分：三条裁决齐备，gate通过；缺一行负对照待测"
     },
     {
       "scenario": 8,
@@ -657,10 +673,13 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "client-b1-processes.json",
+        "client-b1-runs.json"
+      ],
+      "status": "本轮真实进程与运行元数据核对通过"
     },
     {
       "scenario": 8,
@@ -671,7 +690,7 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -685,7 +704,7 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -699,7 +718,7 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -713,7 +732,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -727,7 +746,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -741,7 +760,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -755,7 +774,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -769,7 +788,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -783,7 +802,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "可选，本轮不默认执行",
       "batch": "optional",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未执行（可选）"
@@ -797,7 +816,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -811,7 +830,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -825,7 +844,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -839,7 +858,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -853,7 +872,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -867,7 +886,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -881,7 +900,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；分池修订仅为提案，尚未生效",
+      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -895,7 +914,7 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮CLI负对照",
       "batch": "Z0",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "无需",
       "evidence": [
         "negative-tier.json",
@@ -915,10 +934,13 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "client-b1-runs.json",
+        "b1-report-parity.json"
+      ],
+      "status": "首轮选档真实核对通过"
     },
     {
       "scenario": 11,
@@ -929,10 +951,12 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "client-b1-processes.json"
+      ],
+      "status": "首轮真实进程参数核对通过"
     },
     {
       "scenario": 11,
@@ -943,7 +967,7 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -957,10 +981,12 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "client-b1-runs.json"
+      ],
+      "status": "部分：首轮gemini回读medium/envelope；第二轮异值告警待测"
     },
     {
       "scenario": 11,
@@ -971,10 +997,12 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "client-b1-runs.json"
+      ],
+      "status": "首轮null/unverified如实记录；第二轮待测"
     },
     {
       "scenario": 11,
@@ -985,7 +1013,7 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "可选，本轮不默认执行",
       "batch": "optional",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未执行（可选）"
@@ -999,10 +1027,12 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b1-report-parity.json"
+      ],
+      "status": "首轮三侧15个字段逐一一致；第二轮待测"
     },
     {
       "scenario": 11,
@@ -1013,10 +1043,12 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1共用：admission8/review6，硬8/6；第二轮另发布，不重复累计",
+      "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b1-report-parity.json"
+      ],
+      "status": "首轮人读/JSON report与请求/回读一致；第二轮待测"
     }
   ],
   "formal_runs": 2,
