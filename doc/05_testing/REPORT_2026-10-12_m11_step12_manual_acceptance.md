@@ -17,7 +17,7 @@
 
 ## 真实载体与隔离项目
 
-Bob明确答复“现在可操作，Claude Code使用Qwen”。通过computer-use观察到VS Code打开TriviumCode窗口，本次观察仅证明窗口存在，入口发现与Hook实际事件不据窗口存在判通过。其后Bob直接答复“有7个入口”，据此记录Claude Code七入口可见；具体Qwen模型未回答，保持null，尚无入口执行及Hook集成通过结论。见 [客户端人工记录](./evidence/m11-step12-20261012/client-observation-01.json)。
+Bob明确答复“现在可操作，Claude Code使用Qwen”。通过computer-use观察到VS Code打开TriviumCode窗口，本次观察仅证明窗口存在，入口发现与Hook实际事件不据窗口存在判通过。初始采样随后收到Bob直接答复“有7个入口”，据此记录Claude Code七入口可见；该采样时刻具体Qwen模型未回答，保持null，当时尚无入口执行及Hook集成通过结论。见 [客户端人工记录](./evidence/m11-step12-20261012/client-observation-01.json)。
 
 既有 `/Users/chenzhenbo/Work/trivium-m11-accept` 有未提交业务改动，未触碰。新建 `/Users/chenzhenbo/Work/trivium-m11-step12-20261012`，初始化安装副本、真实Git基线与BoundedStack小项目；本批主题 `m11-s12-stack` 验证新增peek功能的命令A流程，不借旧准入主题的额外轮数。副本只复用仍在TTL且入口一致的agy/zcode/codex CLI事实，不复制认证，不复制Claude绑定项目的目录证明，不延伸五组合受限准入到新项目。所有审核者调用走安装编排器及既有预算模块，附加本步上限，原始调用记录保存在项目外独立目录。
 
@@ -39,10 +39,28 @@ Claude Code / Qwen 实际识别命令 A，S0.5 成功提取主题、目标与两
 
 [Hook CLI辅助记录](./evidence/m11-step12-20261012/hook-cli.json)的10条真实归档判定均符合预期，但没有触发客户端Hook事件；不替代剧本5/6的客户端集成部分。后续真实批次及客户端操作记录待追加。本轮未完成前，主设计16.1、PRD AC-23/FR-30/S8与演进设计M11达成状态不翻绿；AC-25保持原已达成边界。任何新运行审批均需要Bob当次决定，不使用旧批准，也不自行approve。
 
+## 命令A真实闭环（2026-10-12 20:47至21:05，Asia/Singapore）
+
+恢复预检实际执行新认证探活并通过。plan运行 `20261012T125354Z` 与code运行 `20261012T130035Z` 均success、full；gemini为 `gemini-3.8-flash-high`（envelope回读），glm为 `bigmodel-coding-plan/GLM-5.3`（trace回读），各侧首尝试成功。两轮均 `readonly_breach=false`、`snapshot.drift.changed=false`。Driver为Claude Code/Qwen，运行模型声明保持null；客户端模型标识qwen3.8-flash另列，不补写历史。
+
+计划轮两侧零意见；代码轮gemini零意见，glm提出GLM-01（存量容量校验，暂缓到独立变更）和GLM-02（peek语义注释，接受并落实）。两条意见均有真实逐条裁决，gate通过；plan裁决空占位行出现parse_problem告警但failures为空，原样保存。verify运行 `20261012T130542Z` 真实执行npm run build与npm test，两条命令退出0、3项测试通过。Bob确认全程未切换窗口，也没有额外交互授权。
+
+完整命令、退出状态、预算、运行记录、工件、脱敏stdout与轨迹见 [client-a-runs.json](./evidence/m11-step12-20261012/client-a-runs.json)，客户端原始消息见 [client-session-02.json](./evidence/m11-step12-20261012/client-session-02.json)。[进程采样](./evidence/m11-step12-20261012/client-a-processes.json)在代码审查进行中抓到两侧真实cwd、hub的add-dir、归档结论缺席以及两侧齐备后的落盘；采样没有覆盖计划运行时段，2.4的计划阶段物理目录证据仍待补。
+
+客户端执行中的非厂商错误也保留：首次助手输入rerunIndex=null失败，改为1后通过archive.ts写原稿；错误的树外运行目录查询重复两次。均不计为厂商CLI启动，亦不能从证据中删除。后续助手说明明确首轮rerunIndex为1。
+
 ## 当前交付边界与剩余行动
 
-本轮CLI新增0次：admission仍795/815、review仍373/398；本步20/60子上限未消费，未扩容。预算以原台账记录为准。正式审查运行0次，尚无任何新运行审批；不能把入口识别、桩自检、台账全绿或代码提交当成M11完成。
+截至命令A收尾，本步新增14次CLI：admission +6至801/815，review +8至381/398。版本、Codex包装器/native与ZCode内部CLI边界均计入；两次审查运行不等于两次CLI。未扩容；本步20/60子上限及总80继续生效。
 
-68格中，11.1完成本轮CLI负对照；7格仅取得真实归档Hook CLI辅助证据；其余必需项未完成或未测，9.6/11.7两格可选未执行。下一步是Bob在同一Claude Code会话恢复S0.6一次，成功后完成命令A及运行期间证据，再依矩阵推进B/C/D、模型切换、Hook负对照、ZCode/Codex及跨Driver等真实验收。后续人工审批须绑定各自新运行并逐次由Bob决定。
+剧本1成功路径已实跑（1.4正式failed条件分支未触发，预检69保留另列），剧本2取得代码阶段进程与落盘证据，11.1负对照已实跑；其余状态逐格见矩阵。下一步推进B/C/D人工闸门、三审与两轮模型/档位对照、真实Hook负对照，以及ZCode/Codex与跨Driver流程。新运行审批仍由Bob逐次决定。本轮未满足M11完成判据。
 
 主设计16.1、PRD、演进设计§14的M11状态未翻绿；AC-25原达成边界不变。五个受限Claude组合的真实写尝试仍未测，原标准前置条件仍false。
+
+## B1准备与后续预算估算
+
+Bob已再次确认当前Claude Code模型为qwen3.8-flash；仅用作新运行Driver声明，不回填命令A。B1通过独立容量校验任务共同取证计划阶段隔离、命令B人工闸门、三审首轮和档位首轮。路线与上限见 [B1批次](./evidence/m11-step12-20261012/client-batch-b1.json)，具体操作见 [客户端步骤](./evidence/m11-step12-20261012/client-steps-b1.md)。预计与硬限admission8/review6，累计809/387；发布不等于已经执行或通过。
+
+B1准备再次核对原安装bundle及28入口，均不变；生产作用面和归档先前hash留存在 [准备记录](./evidence/m11-step12-20261012/b1-preparation.json)。只修改验收助手的正整数输入检查、只读采样字段和夹具任务清单，未修改生产适配器、guard/gate/hooks/schema或验收判据，未重建重装。验收助手对原始rerunIndex=null错误的定向复现已退出1，旧归档字节不变，见 [输入校验记录](./evidence/m11-step12-20261012/archive-input-validation.json)。本次文档与证据增量的索引/台账定向检查30项通过、0失败、0跳过；先前两次全量check仍按各自采样结果引用。
+
+实测每次预检含4个版本启动边界，初始admission20估算不足。已提交 [40/40分池修订提案](./evidence/m11-step12-20261012/budget-repartition-proposal.json)：按联合取证预计38/35，共73次，预留7次，总80不变。该提案尚未批准、未生效、未扩容；B1可在原20/60内执行。旧台账不清零、不重分类、不跨池重记。

@@ -8,7 +8,7 @@
 
 ```text
 这是M11第12步真实客户端验收。本轮不要使用子代理，所有操作直接执行。项目仅为 /Users/chenzhenbo/Work/trivium-m11-step12-20261012。只通过 .trivium/bin/trivium 运行编排器，它已接入原预算与本批硬上限；不要改wrapper，不手工调用任何审核者CLI，不运行doctor探针，不跳认证，不改用户全局配置，不自动重试。审查失败保留原件并停止。命令A不设人工审批，但仍逐条裁决、审查期禁改业务文件。禁止自动提交本夹具。
-所有 .reviews 工件只能通过 /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/archive-driver.mjs 调用生产archive.ts写入：在归档外写一个JSON输入文件，包含topic、stage、driver、role、kind(null/revised/response)、rerunIndex、content；从项目根执行 node <上述助手绝对路径> <输入JSON绝对路径>。plan/bug必须先用编排器认领。只写本轮Driver工件，不碰审查员工件。
+所有 .reviews 工件只能通过 /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/archive-driver.mjs 调用生产archive.ts写入：在归档外写一个JSON输入文件，包含topic、stage、driver、role、kind(null/revised/response)、rerunIndex（首轮整数1，不能填null）、content；从项目根执行 node <上述助手绝对路径> <输入JSON绝对路径>。plan/bug必须先用编排器认领。只写本轮Driver工件，不碰审查员工件。
 ```
 
 ```text

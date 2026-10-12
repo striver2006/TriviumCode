@@ -27,18 +27,22 @@ while(!stopping&&Date.now()-start<30*60*1000){
  const processes=ps.stdout.split('\n').flatMap(line=>{
   const m=/^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);if(!m)return [];
   const raw=m[3];
-  if(!(/\bagy\b/.test(raw)||/zcode-cli/.test(raw)||raw.includes(cfg.fixture)))return [];
+  const isCodex=/(?:^|\/|\s)codex(?:\s|$)/.test(raw)&&/\bexec\b/.test(raw);
+  if(!(/\bagy\b/.test(raw)||/zcode-cli/.test(raw)||isCodex||raw.includes(cfg.fixture)))return [];
   if(/observe-client|exec_command|python3 -/.test(raw))return [];
   // argv只收判据字段，避免hub令牌、其它会话prompt/账号信息进入证据。
-  const pid=Number(m[1]),kind=/\bagy\b/.test(raw)?'agy':/zcode-cli/.test(raw)?'zcode-cli':'fixture-related';
+  const pid=Number(m[1]),kind=/\bagy\b/.test(raw)?'agy':/zcode-cli/.test(raw)?'zcode-cli':isCodex?'codex-exec':'fixture-related';
   const cwd=command('/usr/sbin/lsof',['-a','-p',String(pid),'-d','cwd','-Fn']);
+  const cwdPath=cwd.stdout.split('\n').find(s=>s.startsWith('n'))?.slice(1)??null;
+  if(cwdPath!==cfg.fixture&&!raw.includes(cfg.fixture))return [];
   const born=command('/bin/ps',['-p',String(pid),'-o','lstart=']);
   return [{pid,ppid:Number(m[2]),kind,lstart:born.stdout.trim(),hub:/--hub(?:\s|$|=)/.test(raw),
    project_in_argv:raw.includes(cfg.fixture),add_dir:raw.includes('--add-dir='+cfg.fixture)?cfg.fixture:null,
-   cwd:cwd.stdout.split('\n').find(s=>s.startsWith('n'))?.slice(1)??null,cwd_exit:cwd.code}];
+   cwd:cwdPath,cwd_exit:cwd.code,
+   codex_options:isCodex?[...raw.matchAll(/(?:^|\s)(-p|-m)\s+([A-Za-z0-9_.-]+)(?=\s|$)|(?:^|\s)(-c)\s+(model_reasoning_effort=[A-Za-z0-9_-]+)(?=\s|$)/g)].map(v=>[v[1]??v[3],v[2]??v[4]]):null}];
  });
  const budgets=Object.fromEntries(['admission','review'].map(p=>[p,fs.readdirSync(plan.budgetRoot+'/ledger/'+p).filter(f=>/^reserved-\d+\.json$/.test(f)).length]));
- const state={processes,budgets,archive:inventory(cfg.fixture+'/.reviews'),run_files:inventory(runRoot)};
+ const state={processes,budgets,archive:inventory(cfg.fixture+'/.reviews'),run_files:inventory(runRoot).filter(f=>/\/(?:out\/|status\.json|worker\.log)/.test(f.path)&&!f.path.includes('/home/'))};
  const signature=JSON.stringify(state);
  if(signature!==last||n%15===0){saveEvidence(root+'/'+Date.now()+'-'+String(n).padStart(5,'0')+'.json',{at,commands:[['/bin/ps','-axo','pid=,ppid=,command='],['/usr/sbin/lsof','-a','-p','<each selected pid>','-d','cwd','-Fn'],['/bin/ps','-p','<each selected pid>','-o','lstart=']],ps_exit:ps.code,argv_projection:true,fixture:cfg.fixture,run_root:runRoot,...state});last=signature;}
  if(n%15===0)console.log(JSON.stringify({at,sample:n,budgets,archive:state.archive.length,run_files:state.run_files.length}));

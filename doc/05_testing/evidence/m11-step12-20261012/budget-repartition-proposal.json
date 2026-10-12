@@ -1,0 +1,85 @@
+{
+  "at": "2026-10-12T13:26:26.621Z",
+  "status": "待Bob明确同意；未执行重分配或扩容",
+  "reason": "第一次正式预检实测每次版本检查4个CLI边界，admission20初始估算不足。保留旧台账与已用归属，不跨池重记。",
+  "current_step_limits": {
+    "admission": 20,
+    "review": 60,
+    "total": 80
+  },
+  "proposed_step_limits": {
+    "admission": 40,
+    "review": 40,
+    "total": 80
+  },
+  "proposed_absolute_caps": {
+    "admission": 835,
+    "review": 413
+  },
+  "necessary_extensions": {
+    "admission": {
+      "from": 815,
+      "to": 835,
+      "additional": 20
+    },
+    "review": {
+      "from": 398,
+      "to": 413,
+      "additional": 15
+    }
+  },
+  "batches": [
+    {
+      "id": "A实际",
+      "admission": 6,
+      "review": 8
+    },
+    {
+      "id": "B1三审选档",
+      "admission": 8,
+      "review": 6
+    },
+    {
+      "id": "B2三审换profile和精确值",
+      "admission": 8,
+      "review": 6
+    },
+    {
+      "id": "C-Claude",
+      "admission": 4,
+      "review": 4
+    },
+    {
+      "id": "D-Claude",
+      "admission": 4,
+      "review": 4
+    },
+    {
+      "id": "C-ZCode且跨Driver",
+      "admission": 4,
+      "review": 3
+    },
+    {
+      "id": "B-Codex且L2闸门",
+      "admission": 4,
+      "review": 4
+    }
+  ],
+  "expected": {
+    "admission": 38,
+    "review": 35,
+    "total": 73
+  },
+  "reserve": {
+    "admission": 2,
+    "review": 5,
+    "total": 7
+  },
+  "assumptions": [
+    "后续C/D与跨载体在对应路线1小时真实认证缓存内，不复制或刷新认证时间戳",
+    "B1/B2共同覆盖剧本4/8/11所列各判据；未覆盖项仍记未测",
+    "Hook与审批负对照不启动厂商CLI",
+    "正式失败不自动换主题重试，80仍为总硬上限"
+  ],
+  "execution": "同意后保存原budget-plan快照、追加本步修订记录，按openBudget.extend事前分别追加两池必要扩容；不修改已有extension或reservation；B1仍按原20/60及本批8/6继续"
+}

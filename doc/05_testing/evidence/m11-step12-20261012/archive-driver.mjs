@@ -6,6 +6,8 @@ import {readTask} from '../../../../dist/test/src/trivium/meta.js';
 const config=JSON.parse(fs.readFileSync(import.meta.dirname+'/client-batch.json'));
 if(process.cwd()!==config.fixture)throw Error('验收项目不符');
 const input=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
+// kind:null表示原稿；rerunIndex仍须是首轮1或后续正整数，不能填null。
+if(!Number.isSafeInteger(input.rerunIndex)||input.rerunIndex<1)throw Error('rerunIndex须为正整数；首轮填1，kind:null仅表示原稿');
 if(!config.topics.includes(input.topic)||!['plan','code','bug'].includes(input.stage))throw Error('主题/阶段不在本批');
 const layout={archiveRoot:path.join(process.cwd(),'.reviews'),topic:input.topic};
 const task=await readTask(layout),claimed=task?.drivers?.[input.stage]?.driver;
