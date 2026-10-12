@@ -1,0 +1,35 @@
+{
+  "at": "2026-10-12T09:07:56.129Z",
+  "command": [
+    "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v21.mjs",
+    "admission",
+    "m11-step12-negative-glm-effort",
+    "tv",
+    "preflight",
+    "--stage",
+    "plan",
+    "--driver",
+    "claude",
+    "--critics",
+    "codex,glm",
+    "--effort-glm",
+    "high",
+    "--json"
+  ],
+  "cwd": "/Users/chenzhenbo/Work/TriviumCode",
+  "code": 64,
+  "signal": null,
+  "expected": 64,
+  "stdout": "{\n  \"ok\": false,\n  \"scope\": \"plan\",\n  \"checks\": [\n    {\n      \"name\": \"Driver 会话声明\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"Driver 模型未声明，相关模型族比较将为 unknown；告警继续\"\n    },\n    {\n      \"name\": \"模型 slug 合法\",\n      \"ok\": true,\n      \"detail\": \"已校验 1 个阶段 × 2 侧\"\n    },\n    {\n      \"name\": \"档位组合合法\",\n      \"ok\": false,\n      \"detail\": \"glm/plan: ZCode 不支持思考等级，档位 / 档位表却给了「high」。去掉该 effort\"\n    }\n  ],\n  \"warnings\": [\n    {\n      \"name\": \"Driver 会话声明\",\n      \"detail\": \"Driver 模型未声明，相关模型族比较将为 unknown；告警继续\"\n    }\n  ],\n  \"exit_code\": 64\n}\n",
+  "stderr": "",
+  "before": {
+    "admission": 795,
+    "review": 373
+  },
+  "after": {
+    "admission": 795,
+    "review": 373
+  },
+  "zero_vendor_starts": true
+}

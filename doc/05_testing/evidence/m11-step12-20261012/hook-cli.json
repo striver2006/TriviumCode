@@ -1,0 +1,250 @@
+{
+  "at": "2026-10-12T09:13:46.123Z",
+  "cwd": "/Users/chenzhenbo/Work/TriviumCode",
+  "real_archive": true,
+  "client_hook_event": false,
+  "embedded_write_commands_executed": false,
+  "new_vendor_starts": 0,
+  "results": [
+    {
+      "id": "5.1",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-commit",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-step12-cli-only",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "git commit -m x"
+        }
+      },
+      "expected": 0,
+      "code": 0,
+      "signal": null,
+      "stdout": "",
+      "stderr": "",
+      "pass": true
+    },
+    {
+      "id": "6.1-delete",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-bash",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-step12-cli-only",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "rm .reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-gemini.md"
+        }
+      },
+      "expected": 2,
+      "code": 2,
+      "signal": null,
+      "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"禁止用 Bash 改动编排器独占的文件：rm .reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-gemini.md\\n  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\\n    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\\n      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\\n        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\\n    · 角色工件的后缀（-claude.md / -codex.md / -gemini.md / -glm.md）——\\n      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\\n  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\\n\\n  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\\n  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\\n  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\\n  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\\n  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\\n  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\\n\\n  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\\n  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\\n  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\\n  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。\"}}\n",
+      "stderr": "禁止用 Bash 改动编排器独占的文件：rm .reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-gemini.md\n  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\n    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\n        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\n    · 角色工件的后缀（-claude.md / -codex.md / -gemini.md / -glm.md）——\n      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\n  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\n\n  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\n  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\n  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\n  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\n  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\n  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\n\n  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\n  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\n  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\n  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。\n",
+      "pass": true
+    },
+    {
+      "id": "6.1-edit",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-bash",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-step12-cli-only",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "sed -i '' 's/blocker/minor/' .reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-glm.md"
+        }
+      },
+      "expected": 2,
+      "code": 2,
+      "signal": null,
+      "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"禁止用 Bash 改动编排器独占的文件：sed -i '' 's/blocker/minor/' .reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-glm.md\\n  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\\n    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\\n      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\\n        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\\n    · 角色工件的后缀（-claude.md / -codex.md / -gemini.md / -glm.md）——\\n      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\\n  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\\n\\n  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\\n  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\\n  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\\n  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\\n  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\\n  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\\n\\n  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\\n  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\\n  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\\n  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。\"}}\n",
+      "stderr": "禁止用 Bash 改动编排器独占的文件：sed -i '' 's/blocker/minor/' .reviews/M11-档位全链路与文档收口/plan/2026-10-07-M11-档位全链路与文档收口-glm.md\n  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\n    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\n        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\n    · 角色工件的后缀（-claude.md / -codex.md / -gemini.md / -glm.md）——\n      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\n  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\n\n  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\n  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\n  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\n  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\n  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\n  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\n\n  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\n  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\n  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\n  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。\n",
+      "pass": true
+    },
+    {
+      "id": "6.2",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-bash",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-step12-cli-only",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "echo x > .reviews/M11-档位全链路与文档收口/plan/_meta/task.json"
+        }
+      },
+      "expected": 2,
+      "code": 2,
+      "signal": null,
+      "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"禁止用 Bash 改动编排器独占的文件：echo x > .reviews/M11-档位全链路与文档收口/plan/_meta/task.json\\n  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\\n    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\\n      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\\n        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\\n    · 角色工件的后缀（-claude.md / -codex.md / -gemini.md / -glm.md）——\\n      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\\n  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\\n\\n  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\\n  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\\n  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\\n  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\\n  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\\n  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\\n\\n  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\\n  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\\n  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\\n  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。\"}}\n",
+      "stderr": "禁止用 Bash 改动编排器独占的文件：echo x > .reviews/M11-档位全链路与文档收口/plan/_meta/task.json\n  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\n    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\n        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\n    · 角色工件的后缀（-claude.md / -codex.md / -gemini.md / -glm.md）——\n      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\n  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\n\n  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\n  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\n  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\n  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\n  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\n  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\n\n  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\n  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\n  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\n  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。\n",
+      "pass": true
+    },
+    {
+      "id": "6.3",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-bash",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-step12-cli-only",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "rm -rf .trivium/bin"
+        }
+      },
+      "expected": 2,
+      "code": 2,
+      "signal": null,
+      "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"禁止用 Bash 改动编排器独占的文件：rm -rf .trivium/bin\\n  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\\n    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\\n      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\\n        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\\n    · 角色工件的后缀（-claude.md / -codex.md / -gemini.md / -glm.md）——\\n      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\\n  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\\n\\n  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\\n  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\\n  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\\n  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\\n  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\\n  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\\n\\n  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\\n  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\\n  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\\n  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。\"}}\n",
+      "stderr": "禁止用 Bash 改动编排器独占的文件：rm -rf .trivium/bin\n  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\n    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\n        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\n    · 角色工件的后缀（-claude.md / -codex.md / -gemini.md / -glm.md）——\n      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\n  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\n\n  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\n  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\n  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\n  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\n  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\n  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\n\n  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\n  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\n  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\n  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。\n",
+      "pass": true
+    },
+    {
+      "id": "6.4",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-bash",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-step12-cli-only",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "cat <<'EOF' > .reviews/M11-档位全链路与文档收口/plan/_meta/run-x.json\n{}\nEOF"
+        }
+      },
+      "expected": 2,
+      "code": 2,
+      "signal": null,
+      "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"禁止用 Bash 改动编排器独占的文件：cat <<'EOF' > .reviews/M11-档位全链路与文档收口/plan/_meta/run-x.json\\n{}\\nEOF\\n  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\\n    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\\n      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\\n        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\\n    · 角色工件的后缀（-claude.md / -codex.md / -gemini.md / -glm.md）——\\n      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\\n  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\\n\\n  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\\n  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\\n  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\\n  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\\n  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\\n  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\\n\\n  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\\n  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\\n  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\\n  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。\"}}\n",
+      "stderr": "禁止用 Bash 改动编排器独占的文件：cat <<'EOF' > .reviews/M11-档位全链路与文档收口/plan/_meta/run-x.json\n{}\nEOF\n  两类保护对象，Bash 侧都按**命令文本出现字面量**拦（判定在未剥 heredoc 的原文上做）：\n    · 归档内 _meta/ 与 task.json、.trivium/ 下的 state.json、lock/ 与 bin/\n      （bin/ 被删或去掉执行位 ⇒ 守卫保守拦截；wrapper **内容被替换** ⇒ 每条 Hook 的守卫永真放行；\n        Hook 配置段或 .trivium/ 整体被移除 ⇒ 不再有任何拦截）\n    · 角色工件的后缀（-claude.md / -codex.md / -gemini.md / -glm.md）——\n      **全部已登记角色，含当轮 Driver 自己的**：Bash 侧拿不到「当轮」，只能全集字面拦\n  审查文档与审计材料只能由编排器维护（FR-25 / P5）；Driver 自己的原稿与裁决件请用 Write / Edit 落笔。\n\n  只是在文本里「提到」这些名字（写文档、脚本正文、commit message），不是要改它们？\n  那是本 Hook 的已知误拦：看见字面就拦，区分不了「写它」与「说它」。\n  出口：改用 Write / Edit 工具落文件，提交用 `git commit -F <文件>`——它们精确判定，不看字面。\n  Write / Edit 对角色后缀只拦**归档根内**的目标：doc/ 下沿用「日期-主题-角色」命名的\n  设计稿可以直接编辑，Bash 侧则维持字面拦（收窄尝试经三轮双审打穿后撤回，见 hooks.ts 注释）。\n  这是刻意接受的取舍（正文写保护路径正是要防的攻击形态），**不要想办法绕过判定**。\n\n  确实要**恢复**一个被误改的受保护文件（`git checkout --` / `git restore`）？\n  请在终端里手动执行。那条命令本身会提到同一个受保护路径，常规写法在会话里会被\n  这条判据再拦一次（M10a 第 2 步 EV-55 §3.2.2）。这条判据是按命令形态的启发式、\n  并不完备——但换一种写法让它认不出来属于绕过判定，不是出口。\n",
+      "pass": true
+    },
+    {
+      "id": "6.5-cat-idle",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-bash",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-step12-cli-only",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "cat > src/foo.ts"
+        }
+      },
+      "expected": 0,
+      "code": 0,
+      "signal": null,
+      "stdout": "",
+      "stderr": "",
+      "pass": true
+    },
+    {
+      "id": "6.5-checkout-idle",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-bash",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-step12-cli-only",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "git checkout -- src/"
+        }
+      },
+      "expected": 0,
+      "code": 0,
+      "signal": null,
+      "stdout": "",
+      "stderr": "",
+      "pass": true
+    },
+    {
+      "id": "6.6-log",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-bash",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-step12-cli-only",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "git log --oneline -5"
+        }
+      },
+      "expected": 0,
+      "code": 0,
+      "signal": null,
+      "stdout": "",
+      "stderr": "",
+      "pass": true
+    },
+    {
+      "id": "6.6-grep",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-bash",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-step12-cli-only",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "grep -rn foo src/"
+        }
+      },
+      "expected": 0,
+      "code": 0,
+      "signal": null,
+      "stdout": "",
+      "stderr": "",
+      "pass": true
+    }
+  ]
+}

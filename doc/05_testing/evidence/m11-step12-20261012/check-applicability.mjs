@@ -1,0 +1,20 @@
+/** 构建后按真实输入和安装消费边界核验，不以提交号触发重新准入。 */
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import {computeBuildStamp} from '../../../../dist/test/src/trivium/build-stamp.js';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const here=import.meta.dirname,repo=path.resolve(here,'../../../..');
+const baseline=JSON.parse(fs.readFileSync(here+'/baseline.json'));
+const hash=f=>{try{return crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');}catch{return null;}};
+const installed=os.homedir()+'/.claude/skills/dual-critic/scripts/trivium.cjs';
+const source=repo+'/skills/dual-critic/scripts/trivium.cjs';
+const a=fs.readFileSync(installed,'utf8').split('\n'),b=fs.readFileSync(source,'utf8').split('\n');
+const differing=[];for(let i=0;i<Math.max(a.length,b.length);i++)if(a[i]!==b[i])differing.push({line:i+1,installed:a[i]??null,source:b[i]??null});
+const frozen=baseline.frozen.map(f=>({manifest:f.manifest,count:f.checks.length,mismatches:f.checks.filter(c=>hash(c.file)!==c.expected).map(c=>({file:c.file,expected:c.expected,actual:hash(c.file)}))}));
+const entries=baseline.entries.map(e=>({...e,actual:hash(e.path),match:e.expected===hash(e.path)}));
+const checks=[1,2].map(n=>{const c=JSON.parse(fs.readFileSync(here+'/check-'+n+'.json'));return {evidence:'check-'+n+'.json',code:c.code,summary:c.stdout?.split('\n').filter(s=>/^ℹ (tests|pass|fail|skipped|duration)/.test(s))};});
+const result={at:new Date().toISOString(),stamp:await computeBuildStamp(repo),installed_sha256:hash(installed),installed_unchanged:hash(installed)===baseline.installed_bundle,source_sha256:hash(source),differing_bundle_lines:differing,only_build_stamp_diff:differing.length===1&&differing[0].installed.includes('define_TRIVIUM_BUILD_default =')&&differing[0].source.includes('define_TRIVIUM_BUILD_default ='),frozen,entries,checks,reinstalled:false,scope:'历史全文件hash不适用于重建的仓库bundle。安装副本及生产输入不变，真实客户端继续消费原安装副本；无新认证复用、无批准指纹扩大。'};
+saveEvidence(here+'/post-check-applicability.json',result);
+console.log(JSON.stringify({installed_unchanged:result.installed_unchanged,stamp:result.stamp,only_build_stamp_diff:result.only_build_stamp_diff,mismatches:frozen.map(f=>f.mismatches),entries_match:entries.every(e=>e.match),checks}));

@@ -498,7 +498,7 @@ AC-23 的达成边界（PRD）：生效思考等级只有 gemini 回读得到，
 ```bash
 TV=.trivium/bin/trivium
 
-# ① 负对照（前三条应退 64、第四条退 69，见判据 11.1；.reviews/<主题>/ 下不出现新文件；预检在失败那一格就停，不探活）
+# ① 负对照（四条均应退 64，见判据 11.1；.reviews/<主题>/ 下不出现新文件；预检在失败那一格就停，不探活）
 $TV preflight --stage plan --critics codex,gemini --tier-codex <本侧没定义的那一档>
 $TV preflight --stage plan --critics codex,gemini --effort-codex <不在该模型可选值里的值>
 $TV preflight --stage plan --critics codex,glm --effort-glm high

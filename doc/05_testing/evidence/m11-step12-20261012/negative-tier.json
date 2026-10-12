@@ -1,0 +1,35 @@
+{
+  "at": "2026-10-12T09:07:53.942Z",
+  "command": [
+    "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v21.mjs",
+    "admission",
+    "m11-step12-negative-tier",
+    "tv",
+    "preflight",
+    "--stage",
+    "plan",
+    "--driver",
+    "claude",
+    "--critics",
+    "codex,gemini",
+    "--tier-codex",
+    "m11-nonexistent-tier",
+    "--json"
+  ],
+  "cwd": "/Users/chenzhenbo/Work/TriviumCode",
+  "code": 64,
+  "signal": null,
+  "expected": 64,
+  "stdout": "",
+  "stderr": "✗ --tier-codex 只接受 low | medium | high，收到：m11-nonexistent-tier\n",
+  "before": {
+    "admission": 795,
+    "review": 373
+  },
+  "after": {
+    "admission": 795,
+    "review": 373
+  },
+  "zero_vendor_starts": true
+}

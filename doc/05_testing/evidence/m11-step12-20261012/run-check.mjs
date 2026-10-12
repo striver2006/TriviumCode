@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import {spawn} from 'node:child_process';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const id=process.argv[2];if(!/^[12]$/.test(id??''))throw Error('指定1或2');
+const at=new Date().toISOString();let stdout='',stderr='';
+const p=spawn('npm',['run','check'],{cwd:process.cwd(),stdio:['ignore','pipe','pipe']});
+p.stdout.on('data',b=>stdout+=b);p.stderr.on('data',b=>stderr+=b);
+const heartbeat=setInterval(()=>console.log(JSON.stringify({running:id,elapsed_s:Math.round((Date.now()-Date.parse(at))/1000),last:stdout.trim().split('\n').slice(-1)[0]})),30000);
+const [code,signal]=await new Promise(r=>p.once('close',(...v)=>r(v)));
+clearInterval(heartbeat);
+const result={at,finished_at:new Date().toISOString(),command:['npm','run','check'],cwd:process.cwd(),code,signal,stdout,stderr};
+saveEvidence(import.meta.dirname+'/check-'+id+'.json',result);
+console.log(JSON.stringify({code,signal,summary:stdout.slice(-3500),stderr:stderr.slice(-1000)}));process.exitCode=code??1;

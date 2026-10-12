@@ -1,0 +1,21 @@
+/** 修正验收准备漏带来源时间戳；不伪造新探针、不复用认证。 */
+import fs from 'node:fs';
+import path from 'node:path';
+import YAML from 'yaml';
+import crypto from 'node:crypto';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const here=import.meta.dirname,repo=path.resolve(here,'../../../..');
+const batch=JSON.parse(fs.readFileSync(here+'/client-batch.json'));
+const file=batch.fixture+'/.trivium/config.local.yaml';
+const source=YAML.parse(fs.readFileSync(repo+'/.trivium/config.local.yaml','utf8'));
+const before=YAML.parse(fs.readFileSync(file,'utf8'));
+const hash=x=>crypto.createHash('sha256').update(x).digest('hex');
+if(before.probe.generated_at!==undefined)throw Error('当前不再是缺字段形态，停止');
+if(before.probe.auth||before.probe.auth_routes)throw Error('出现认证缓存，停止');
+for(const id of ['agy','zcode','codex'])if(JSON.stringify(before.probe.cli[id])!==JSON.stringify(source.probe.cli[id]))throw Error('复用事实已变化');
+const after=structuredClone(before);after.probe.generated_at=source.probe.generated_at;
+const bytes=YAML.stringify(after);
+const evidence={at:new Date().toISOString(),file,source_file:repo+'/.trivium/config.local.yaml',before_sha256:hash(fs.readFileSync(file)),after_sha256:hash(bytes),change:{field:'probe.generated_at',before:null,after:after.probe.generated_at},reason:'setup-fixture漏带来源元数据；preflight.ts:156在generated_at=null时提前退69。按CommonProbe.probed_at逐键判TTL，来源时间戳原样保留，未改成当前时刻。',auth_copied:false,claude_probe_copied:false,production_changed:false,restricted_exception_extended:false};
+fs.writeFileSync(file,bytes,{mode:0o600});
+saveEvidence(here+'/fixture-provenance-repair.json',evidence);
+console.log(JSON.stringify(evidence));

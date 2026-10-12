@@ -1,0 +1,35 @@
+{
+  "at": "2026-10-12T09:07:57.211Z",
+  "command": [
+    "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v21.mjs",
+    "admission",
+    "m11-step12-negative-profile",
+    "tv",
+    "preflight",
+    "--stage",
+    "plan",
+    "--driver",
+    "claude",
+    "--critics",
+    "codex,gemini",
+    "--profile-codex",
+    "m11-nonexistent-profile",
+    "--json"
+  ],
+  "cwd": "/Users/chenzhenbo/Work/TriviumCode",
+  "code": 64,
+  "signal": null,
+  "expected": 64,
+  "stdout": "{\n  \"ok\": false,\n  \"scope\": \"plan\",\n  \"checks\": [\n    {\n      \"name\": \"Driver 会话声明\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"Driver 模型未声明，相关模型族比较将为 unknown；告警继续\"\n    },\n    {\n      \"name\": \"模型 slug 合法\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"已校验 1 个阶段 × 2 侧\\n  ⚠️ 其中已回落到基底目录校验：Codex：探针没有 profile「m11-nonexistent-profile」的模型目录结论（该 profile 可能不存在），本次改用基底目录校验\"\n    },\n    {\n      \"name\": \"档位组合合法\",\n      \"ok\": false,\n      \"detail\": \"codex/plan: 厂商 profile「m11-nonexistent-profile」不在本机名单中（来源cli）。可用：deepseek, glm, gpt, kimi, qwen；显式 --native-codex 或配置 profile: null 选择原生，模型不变\"\n    }\n  ],\n  \"warnings\": [\n    {\n      \"name\": \"Driver 会话声明\",\n      \"detail\": \"Driver 模型未声明，相关模型族比较将为 unknown；告警继续\"\n    },\n    {\n      \"name\": \"模型 slug 合法\",\n      \"detail\": \"已校验 1 个阶段 × 2 侧\\n  ⚠️ 其中已回落到基底目录校验：Codex：探针没有 profile「m11-nonexistent-profile」的模型目录结论（该 profile 可能不存在），本次改用基底目录校验\"\n    }\n  ],\n  \"exit_code\": 64\n}\n",
+  "stderr": "",
+  "before": {
+    "admission": 795,
+    "review": 373
+  },
+  "after": {
+    "admission": 795,
+    "review": 373
+  },
+  "zero_vendor_starts": true
+}

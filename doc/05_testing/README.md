@@ -140,6 +140,7 @@
 - `evidence/`：实跑的原始留痕（run / review / brief / trace / worker 日志 / Hook 与闸门原始输出 / 复现脚本），按 `<名称>-<YYYYMMDD>/` 分目录。现行写法是〈名称〉取本主题实施报告文件名里的〈名称〉段、下划线换成连字符（例：`REPORT_2026-10-01_doc_archive_index.md` 的证据在 `doc-archive-index-20261001/`）；早期目录按里程碑（`m<里程碑>-<用途>-<日期>/`）或 BACKLOG 编号（`ev<编号>-<用途>-<日期>/`）命名，原样保留、不改名。`m9-step7-20260920/` 是 M9 第 7 步纪律 6 回溯的 grep 差集自检记录；`zcode-provider-config-20260920/` 是 ZCode 0.16.9 provider 配置注入（坑 P-28～P-30，EV-81）的本机实测原始输出。
 
 - [`REPORT_2026-10-12_agent_access_convergence.md`](./REPORT_2026-10-12_agent_access_convergence.md)：本轮新增61次启动，7组合原标准通过、5组合经用户独立批准受限准入；按明确例外完成M11第12步前置，第12步本身未执行，真实模型写尝试缺口保留。七共享入口已授权迁移，四目标28入口安装及14步桩自检通过；批准后指纹及五份受控证明复核通过。
+- [`REPORT_2026-10-12_m11_step12_manual_acceptance.md`](./REPORT_2026-10-12_m11_step12_manual_acceptance.md)：M11第12步逐判据矩阵、预算与真实客户端验收记录；本轮执行中，保留受限准入及未测边界。
 
 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
 
