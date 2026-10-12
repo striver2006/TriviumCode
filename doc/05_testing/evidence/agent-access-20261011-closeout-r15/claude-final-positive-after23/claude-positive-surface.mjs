@@ -1,0 +1,22 @@
+/** 已批准r24/23C精确拒绝先行批：每个已公布臂只一次，经既有v15/薄入口/生产适配器。 */
+import fs from 'node:fs';import path from 'node:path';import{spawn}from'node:child_process';
+import{saveEvidence}from'/Users/chenzhenbo/Work/TriviumCode/scripts/agent-access-evidence.mjs';
+import{hash}from'/Users/chenzhenbo/Work/TriviumCode/scripts/agent-access-selection.mjs';
+import{computeBuildStamp}from'/Users/chenzhenbo/Work/TriviumCode/dist/test/src/trivium/build-stamp.js';
+import{redactSecrets,scanSecrets}from'/Users/chenzhenbo/Work/TriviumCode/dist/test/src/trivium/secrets.js';
+const root=path.dirname(new URL(import.meta.url).pathname),batch=JSON.parse(fs.readFileSync(root+'/claude-positive-surface-batch.json')),mode=process.argv[2];
+const job=batch.jobs.find(j=>j.name===mode);if(!job)throw Error('未知首批臂');
+for(const[file,h]of Object.entries(batch.scripts))if(hash(path.join(batch.repo,file))!==h)throw Error('发布脚本变化');
+if(hash(new URL(import.meta.url))!==batch.dispatcher_sha256||hash(batch.repo+'/skills/dual-critic/scripts/trivium.cjs')!==batch.bundle_sha256||hash(batch.repo+'/.trivium/config.local.yaml')!==batch.configs.local)throw Error('发布壳/包/配置变化');
+const stamp=await computeBuildStamp(batch.repo);if(stamp.git_head!==batch.source_stamp.git_head||stamp.inputs_sha256!==batch.source_stamp.inputs_sha256||stamp.dirty)throw Error('清洁交付输入变化');
+const task=JSON.parse(fs.readFileSync(batch.repo+'/.reviews/'+batch.topic+'/task.json')),a=task.approvals.filter(a=>a.stage==='code').at(-1);
+if(task.gate.state!=='approved'||task.gate.run_id!==batch.approval.run_id||a?.run_id!==batch.approval.run_id||a.decision!=='approved')throw Error('当前code审批不再可用');
+const evidenceDir=path.join(batch.evidence_root,'routes',job.route_directory),dispatch=root+'/'+mode+'-dispatch.json';
+if(fs.existsSync(evidenceDir)||fs.existsSync(dispatch))throw Error('已请求臂禁止覆盖/重试');
+const count=()=>fs.readdirSync(batch.budget_root+'/ledger/admission').filter(n=>/^reserved-\d+\.json$/.test(n)).length;
+if(count()+job.starts>batch.batch_stop)throw Error('事前批上限不足');
+const env={...process.env};if(job.selection)env.TRIVIUM_ACCESS_SELECTION=root+'/'+job.selection;else delete env.TRIVIUM_ACCESS_SELECTION;
+const started_at=new Date().toISOString(),child=spawn(process.execPath,[batch.repo+'/doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v16.mjs','admission','r33-claude-positive-'+mode,'probe',...job.args],{cwd:batch.repo,env,stdio:['ignore','pipe','pipe']});
+let stdout='',stderr='';child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);child.once('error',e=>stderr+='dispatch:'+String(e.code??'unknown'));
+const[code,signal]=await new Promise(r=>child.once('close',(...v)=>r(v)));saveEvidence(dispatch,{started_at,finished_at:new Date().toISOString(),code,signal,args:job.args,stdout,stderr,batch_sha256:hash(root+'/claude-positive-surface-batch.json'),script_sha256:hash(new URL(import.meta.url)),admission_starts:count(),automatic_retry:false});
+const summary=redactSecrets(JSON.stringify({mode,code,signal,admission_starts:count(),stdout_tail:stdout.slice(-700),stderr_tail:stderr.slice(-500)})).content;if(scanSecrets(summary).length)throw Error('摘要扫描非零');console.log(summary);process.exitCode=code??1;

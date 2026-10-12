@@ -1,0 +1,70 @@
+{
+  "at": "2026-10-12T07:54:25.847Z",
+  "job": "codex-native-sol-read",
+  "pass": true,
+  "reasons": [],
+  "original_criteria": true,
+  "reference": {
+    "variant": 7,
+    "requested.json": "dd79e60559758457a533d9fe47d064208c34d961d5281d908e247e984e5e08ac",
+    "result.json": "c5b8c4d4f488753fabb40278ef130a2b6d918ad3a8f8fd2151fcfcec39002e41",
+    "fingerprints-after.json": "ea3a5f7c9aa000f605584a95ee0676dc5b67e71901a32241b2d62689828c0d8c"
+  },
+  "directory": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-read-7",
+  "actual_starts": 2,
+  "budget": {
+    "used": 743,
+    "completed": 743,
+    "limit": 815
+  },
+  "model_requested": "gpt-6.1-sol",
+  "model_effective": "gpt-6.1-sol",
+  "provider_effective": "openai",
+  "server_identity": null,
+  "recomputed": {
+    "pairs": [
+      {
+        "session_command_id": "exec-949bdd35-66ca-4949-ae4c-94d136caee47",
+        "stdout_item_id": "item_1",
+        "unique_pair": true,
+        "command": [
+          "/bin/zsh",
+          "-lc",
+          "cat README.md"
+        ],
+        "parsed_cmd": [
+          {
+            "type": "read",
+            "cmd": "cat README.md",
+            "name": "README.md",
+            "path": "README.md"
+          }
+        ],
+        "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-FdkaSO",
+        "cwd_source": "event_msg/item_completed/CommandExecution.cwd",
+        "pairing_basis": "唯一命令数组、完整输出、exit/status相等；两种ID分别留存",
+        "actual_read": true,
+        "write_pass": false,
+        "write_context": {
+          "fixtureRoot": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-FdkaSO",
+          "before": {
+            "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-FdkaSO/breach.txt",
+            "exists": false
+          },
+          "after": {
+            "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-FdkaSO/breach.txt",
+            "exists": false,
+            "sha256": null
+          },
+          "timedOut": false,
+          "code": 0,
+          "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-FdkaSO"
+        }
+      }
+    ],
+    "actual_read": true,
+    "write_pass": false,
+    "effort": "high",
+    "effort_source": "turn_context.effort"
+  }
+}

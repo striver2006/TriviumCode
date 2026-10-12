@@ -1,0 +1,114 @@
+{
+  "at": "2026-10-11T19:39:53.690Z",
+  "script_sha256": "3dcd66928ec789f7e824f144a43651bd4911905988f923ebc08b1d8ad4fb43f4",
+  "before": {
+    "bundle": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "installed": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "stamp": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T19:39:50.152Z"
+    }
+  },
+  "after": {
+    "bundle": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "installed": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "stamp": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T19:39:53.683Z"
+    }
+  },
+  "runs": [
+    {
+      "name": "fixture-syntax",
+      "bin": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "args": [
+        "--check",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r19/controlled-fixture-v3.mjs"
+      ],
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "launcher-syntax",
+      "bin": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "args": [
+        "--check",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r19/launch-controlled-mode2.mjs"
+      ],
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "typecheck",
+      "bin": "npm",
+      "args": [
+        "run",
+        "typecheck"
+      ],
+      "code": 0,
+      "timed_out": false,
+      "stdout": "\n> triviumcode@0.1.0 typecheck\n> tsc --noEmit\n\n",
+      "stderr": ""
+    },
+    {
+      "name": "tests-only-build",
+      "bin": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "args": [
+        "scripts/build.mjs",
+        "--tests-only"
+      ],
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": "\n  dist/test/test/integration/gate-loop.test.js        609.7kb\n  dist/test/test/unit/hooks.test.js                   298.9kb\n  dist/test/src/trivium/review.js                     270.0kb\n  dist/test/src/trivium/run-protocol.js               269.9kb\n  dist/test/src/trivium/cli.js                        261.7kb\n  dist/test/test/integration/run-protocol.test.js     228.1kb\n  dist/test/src/trivium/probes/zcode.js               213.5kb\n  dist/test/src/trivium/hooks.js                      212.4kb\n  dist/test/test/integration/fault-injection.test.js  211.2kb\n  dist/test/test/unit/registry-parity.test.js         209.1kb\n  dist/test/src/trivium/adapters/base.js              198.6kb\n  dist/test/src/trivium/adapters/zcode.js             195.8kb\n  dist/test/src/trivium/gate.js                       187.9kb\n  dist/test/src/trivium/probes/claude.js              180.5kb\n  dist/test/src/trivium/types.js                      166.4kb\n  dist/test/test/unit/lock.test.js                    164.7kb\n  dist/test/src/trivium/report.js                     162.9kb\n  dist/test/test/unit/gate.test.js                    160.8kb\n  dist/test/test/unit/zcode-provider-env.test.js      151.6kb\n  dist/test/test/unit/preflight.test.js               151.4kb\n  ...and 268 more output files...\n\n⚡ Done in 75ms\n"
+    },
+    {
+      "name": "targeted-tests",
+      "bin": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "args": [
+        "--test",
+        "dist/test/test/unit/agent-access-mode2-launch.test.js",
+        "dist/test/test/unit/agent-access-controlled-mechanism.test.js",
+        "dist/test/test/unit/agent-access-controlled-runtime.test.js"
+      ],
+      "code": 0,
+      "timed_out": false,
+      "stdout": "✔ 模拟mixed合同覆盖两写与全部Read/Grep；明确无真实推理与无原判据替代 (50.523791ms)\n✔ 模拟mixed独立变异拒绝：独立is_error错误 (0.512125ms)\n✔ 模拟mixed独立变异拒绝：未知写错误文本 (0.277583ms)\n✔ 模拟mixed独立变异拒绝：缺第二写工具 (0.261541ms)\n✔ 模拟mixed独立变异拒绝：错写目标 (0.227125ms)\n✔ 模拟mixed独立变异拒绝：复合Bash命令 (0.18825ms)\n✔ 模拟mixed独立变异拒绝：权限记录不足 (0.1865ms)\n✔ 模拟mixed独立变异拒绝：权限记录超量 (0.214917ms)\n✔ 模拟mixed独立变异拒绝：缺权限数组 (0.436708ms)\n✔ 模拟mixed独立变异拒绝：错权限工具 (0.692666ms)\n✔ 模拟mixed独立变异拒绝：错权限目标 (0.187833ms)\n✔ 模拟mixed独立变异拒绝：悬空权限ID (0.143417ms)\n✔ 模拟mixed独立变异拒绝：重复调用ID (0.152ms)\n✔ 模拟mixed独立变异拒绝：重复结果ID (0.128417ms)\n✔ 模拟mixed独立变异拒绝：缺合法读取 (0.111042ms)\n✔ 模拟mixed独立变异拒绝：错cwd (0.081583ms)\n✔ 模拟mixed独立变异拒绝：auto模式 (0.135792ms)\n✔ 模拟mixed独立变异拒绝：多注册工具 (0.123791ms)\n✔ 模拟mixed独立变异拒绝：模型错位 (0.110542ms)\n✔ 模拟mixed独立变异拒绝：重复init (0.055166ms)\n✔ 模拟mixed独立变异拒绝：重复终态 (0.061458ms)\n✔ 模拟mixed独立变异拒绝：先结果后调用 (0.133334ms)\n✔ 模拟mixed独立变异拒绝：目标成功读取 (0.121959ms)\n✔ 模拟mixed独立变异拒绝：缺文件状态 (0.101416ms)\n✔ 模拟mixed独立变异拒绝：文件发生变化 (0.111291ms)\n✔ 模拟mixed独立变异拒绝：软链状态 (0.134792ms)\n✔ 模拟mixed独立变异拒绝：错误Schema (0.292084ms)\n✔ 模拟mixed独立变异拒绝：修复型Schema (0.172167ms)\n✔ 模拟mixed独立变异拒绝：非零退出 (0.211708ms)\n✔ 模拟mixed独立变异拒绝：超时 (0.119375ms)\n✔ 模拟mixed独立变异拒绝：未spawn (0.165666ms)\n✔ 损坏JSON及raw敏感哨兵均不能通过 (0.291083ms)\n✔ 独立controlled证据Schema编译且禁止冒充真实推理或原准入 (17.707583ms)\n✔ 生命周期合格合同：生产全集含不存在路径，存在目标派生N，集合顺序无关 (17.269708ms)\n✔ 生命周期独立拒绝：生产deny变化 (0.698167ms)\n✔ 生命周期独立拒绝：持久manifest缺deny (0.160583ms)\n✔ 生命周期独立拒绝：持久manifest多deny (0.143083ms)\n✔ 生命周期独立拒绝：生产目标减少 (0.135458ms)\n✔ 生命周期独立拒绝：manifest相邻目标 (0.13175ms)\n✔ 生命周期独立拒绝：枚举重复目标 (0.122ms)\n✔ 生命周期独立拒绝：原deny为空 (0.137125ms)\n✔ 生命周期独立拒绝：调用目标来源错位 (0.131583ms)\n✔ 生命周期独立拒绝：清理null (0.1385ms)\n✔ 生命周期独立拒绝：清理false (0.125083ms)\n✔ 生命周期独立拒绝：缺模式清理 (0.112166ms)\n✔ 生命周期独立拒绝：额外清理自洽 (0.109167ms)\n✔ 生命周期独立拒绝：非loopback (0.10675ms)\n✔ 生命周期独立拒绝：handler未完 (0.104958ms)\n✔ 生命周期独立拒绝：关闭失败 (0.104458ms)\n✔ 生命周期独立拒绝：迟到错误 (0.106084ms)\n✔ 生命周期独立拒绝：限额声明不同 (0.114459ms)\n✔ 生命周期独立拒绝：空请求 (0.113875ms)\n✔ 生命周期独立拒绝：超请求 (0.104542ms)\n✔ 生命周期独立拒绝：超总字节 (0.104667ms)\n✔ 生命周期独立拒绝：缺逐体事实 (0.115875ms)\n✔ 生命周期独立拒绝：逐体超限 (0.231792ms)\n✔ 生命周期独立拒绝：倒退计时 (0.163584ms)\n✔ 生命周期独立拒绝：超运行时 (0.129917ms)\n✔ 生命周期独立拒绝：模式键未单一 (0.120833ms)\n✔ 生命周期独立拒绝：模式文件权限错 (0.131958ms)\n✔ 生命周期独立拒绝：模式文件hash变化 (0.121667ms)\n✔ 生命周期独立拒绝：模式hash损坏 (0.11925ms)\n✔ 生命周期独立拒绝：模式字节变化 (0.113416ms)\n✔ 生命周期独立拒绝：模式未删除 (0.106125ms)\n✔ 生命周期独立拒绝：主内部错误 (0.108667ms)\n✔ 生命周期独立拒绝：主错误未知 (0.119917ms)\n✔ 生命周期完整也不能补救mixed拒绝或缺主probe (0.145208ms)\n✔ 模式2局部Schema消费实际评估结果，生命周期/N/限额缺项不能冒充完整证据 (14.564583ms)\n✔ 真实HTTP成功：同helper精确计请求/字节，关闭后无在途handler (37.213708ms)\n✔ 真实HTTP请求数超限记录失败 (5.83225ms)\n✔ 真实HTTP逐请求字节超限记录失败 (2.038084ms)\n✔ 真实HTTP累计字节超限记录失败 (1.808708ms)\n✔ 真实HTTP坏JSON保留异常而非成功 (1.028416ms)\n✔ 真实HTTP非法协议根保留异常而非成功 (0.802ms)\n✔ 真实HTTP非法端点保留异常而非成功 (1.103625ms)\n✔ 关闭中等待实际handler：迟到内部错误进入最终失败事实 (30.998792ms)\n✔ 运行时上限真实计时触发；无请求也不得伪装通过 (31.672125ms)\n✔ 未启动资源是null；重复关闭拒绝而不是幂等伪装成功 (0.37925ms)\n✔ 清理全部尝试，主成果保留，主失败和两个清理失败均可审计 (0.17475ms)\n✔ 临时模式settings仅单键/0600/固定hash，变异权限、键、类型均拒绝，删除有证据 (3.056125ms)\n✔ 模式2纯启动合同绑定当前有效计划批准与限定批次；第二组合必须先复算首样本 (1.317875ms)\n✔ 实际审批记录的仓库相对完整路径与绝对路径绑定同一计划，不能只认basename (0.157417ms)\n✔ 同basename的错主题计划不能因hash与run字面相同而通过 (0.55075ms)\n✔ 模式2独立启动拒绝：review池 (0.134042ms)\n✔ 模式2独立启动拒绝：非fixture入口 (0.112875ms)\n✔ 模式2独立启动拒绝：旧variant (0.079792ms)\n✔ 模式2独立启动拒绝：多参数 (0.07775ms)\n✔ 模式2独立启动拒绝：未知组合 (0.079584ms)\n✔ 模式2独立启动拒绝：错plan运行 (0.076708ms)\n✔ 模式2独立启动拒绝：错plan原hash (0.114917ms)\n✔ 模式2独立启动拒绝：当前定稿漂移 (0.083458ms)\n✔ 模式2独立启动拒绝：无本轮批准 (0.075583ms)\n✔ 模式2独立启动拒绝：错批准运行 (0.065042ms)\n✔ 模式2独立启动拒绝：批准拒绝 (0.075334ms)\n✔ 模式2独立启动拒绝：批准范围缺项 (0.065375ms)\n✔ 模式2独立启动拒绝：失败审查 (0.058833ms)\n✔ 模式2独立启动拒绝：只读越界 (0.0525ms)\n✔ 模式2独立启动拒绝：引用泄漏 (0.052666ms)\n✔ 模式2独立启动拒绝：只读未知 (0.046375ms)\n✔ 模式2独立启动拒绝：侧证据不足 (0.057208ms)\n✔ 模式2独立启动拒绝：越批组合 (0.05625ms)\n✔ 模式2独立启动拒绝：批次增项 (0.051625ms)\n✔ 模式2独立启动拒绝：启动声明缺项 (0.0465ms)\n✔ 模式2独立启动拒绝：已有输出 (0.047ms)\n✔ 模式2独立启动拒绝：已有认领 (0.346959ms)\n✔ 模式2独立启动拒绝：预算在途 (0.044375ms)\n✔ 模式2独立启动拒绝：预算不足 (0.041458ms)\n✔ 模式2独立启动拒绝：错误基线 (0.040625ms)\n✔ 模式2独立启动拒绝：错误池上限 (0.048292ms)\n✔ 模式2独立启动拒绝：扩大批次 (0.03975ms)\n✔ 模式2独立启动拒绝：原件hash漂移 (0.042875ms)\n✔ 模式2独立启动拒绝：构建输入漂移 (0.044042ms)\n✔ 模式2独立启动拒绝：live模式未知 (0.039791ms)\n✔ 模式2独立启动拒绝：历史删除 (0.03925ms)\n✔ 模式2独立启动拒绝：提前第二组合 (0.039667ms)\n✔ 模式2独立启动拒绝：批准判据误采用 (0.110208ms)\n✔ 实际Node固定入口零CLI拒绝：错误池 (203.252ms)\n✔ 实际Node固定入口零CLI拒绝：未知组合 (126.740625ms)\n✔ 实际Node固定入口零CLI拒绝：旧模式 (121.853833ms)\n✔ 实际Node固定入口零CLI拒绝：多参数 (121.854125ms)\nℹ tests 120\nℹ suites 0\nℹ pass 120\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 640.643292\n",
+      "stderr": ""
+    }
+  ],
+  "budgets": {
+    "admission": {
+      "reserved": 732,
+      "completed": 732,
+      "limit": 742
+    },
+    "review": {
+      "reserved": 328,
+      "completed": 328,
+      "limit": 333
+    }
+  },
+  "asset_hashes": {
+    "controlled-fixture-v3.mjs": "514504b7e66c3ea6114285a5abc715772e3e7ab10e0b15765e1f132818589b26",
+    "controlled-mechanism.mjs": "79aec9ead2498e9a03dd8e6437d55034be7abbe68357145d2f4b211b1a59f499",
+    "controlled-runtime.mjs": "e5d883d76b4ce3572d65540b37b8edc79884bdcd6a0cead7bcf9b4885b3861b6",
+    "controlled-mechanism-mode2.v1.schema.json": "2d46688cb37c789dd8702a15329c9bca2ea6ce814ec6d7fb373fb7056c504719",
+    "launch-controlled-mode2.mjs": "71a68ab4e4540295d0b00a1c4e46e69ba050928065738472f4e9c73068c7fdd7",
+    "mode2-launch-guard.mjs": "c22f049d672f79bd30182f3603fe1d75ec3fb7bf6ca660880fede9c368f5b6af",
+    "mode2-launch-measurement.mjs": "7928fc49fb8d6b360c89b9bef902c0de0b090c0e562d1deea0489fdb851e33b2",
+    "mode2-proof.mjs": "197ce78ebe610a00263bc37629a11e06c1ea92843681b19af0fcc57216877dc8"
+  },
+  "preserved_r18": true,
+  "new_vendor_starts": 0
+}

@@ -1,0 +1,96 @@
+{
+  "file": "/Users/chenzhenbo/.local/bin/cld",
+  "sha256": "e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5",
+  "lines": [
+    {
+      "line": 5,
+      "text": "PROFILES_DIR=\"${HOME}/.claude/profiles\""
+    },
+    {
+      "line": 8,
+      "text": "if [[ \"$1\" == \"--list-profiles\" || \"$1\" == \"profiles\" ]]; then"
+    },
+    {
+      "line": 9,
+      "text": "  echo \"Available Claude profiles in ${PROFILES_DIR}:\""
+    },
+    {
+      "line": 10,
+      "text": "  if [[ -d \"$PROFILES_DIR\" ]]; then"
+    },
+    {
+      "line": 11,
+      "text": "    for f in \"$PROFILES_DIR\"/*.env; do"
+    },
+    {
+      "line": 20,
+      "text": "PROFILE=\"\""
+    },
+    {
+      "line": 28,
+      "text": "        PROFILE=\"$2\""
+    },
+    {
+      "line": 36,
+      "text": "      PROFILE=\"${1#--profile=}\""
+    },
+    {
+      "line": 40,
+      "text": "      PROFILE=\"${1#-p=}\""
+    },
+    {
+      "line": 46,
+      "text": "      if [[ -n \"$2\" && -f \"${PROFILES_DIR}/${2}.env\" ]]; then"
+    },
+    {
+      "line": 47,
+      "text": "        PROFILE=\"$2\""
+    },
+    {
+      "line": 61,
+      "text": "if [[ -n \"$PROFILE\" ]]; then"
+    },
+    {
+      "line": 62,
+      "text": "  PROFILE_FILE=\"${PROFILES_DIR}/${PROFILE}.env\""
+    },
+    {
+      "line": 63,
+      "text": "  if [[ ! -f \"$PROFILE_FILE\" ]]; then"
+    },
+    {
+      "line": 64,
+      "text": "    echo \"Error: Profile '${PROFILE}' not found in ${PROFILES_DIR}/\" >&2"
+    },
+    {
+      "line": 65,
+      "text": "    echo \"Available profiles:\" >&2"
+    },
+    {
+      "line": 66,
+      "text": "    if [[ -d \"$PROFILES_DIR\" ]]; then"
+    },
+    {
+      "line": 67,
+      "text": "      for f in \"$PROFILES_DIR\"/*.env; do"
+    },
+    {
+      "line": 77,
+      "text": "  source \"$PROFILE_FILE\""
+    },
+    {
+      "line": 82,
+      "text": "if [[ -x \"${HOME}/.local/bin/claude\" ]]; then"
+    },
+    {
+      "line": 83,
+      "text": "  CLAUDE_BIN=\"${HOME}/.local/bin/claude\""
+    },
+    {
+      "line": 93,
+      "text": "exec \"$CLAUDE_BIN\" \"${ARGS[@]}\""
+    }
+  ],
+  "coverage": "仅包装器源码；不读取profile凭据；未运行新CLI",
+  "new_vendor_starts": 0
+}

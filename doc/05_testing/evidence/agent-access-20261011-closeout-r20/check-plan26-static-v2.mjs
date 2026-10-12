@@ -1,0 +1,12 @@
+/** 只校验现有守卫/文档与编排资产，不实现待审谓词，不重打包。 */
+import fs from 'node:fs';import path from 'node:path';import {run} from '../../../../dist/test/src/trivium/util/exec.js';
+import {computeBuildStamp} from '../../../../dist/test/src/trivium/build-stamp.js';import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';import {hash} from '../../../../scripts/agent-access-selection.mjs';
+const root=path.dirname(new URL(import.meta.url).pathname),repo=process.cwd(),sample=async()=>({bundle:hash('skills/dual-critic/scripts/trivium.cjs'),installed:hash(process.env.HOME+'/.claude/skills/dual-critic/scripts/trivium.cjs'),stamp:await computeBuildStamp(repo)}),before=await sample(),runs=[];
+for(const[name,bin,args]of [
+ ['typecheck','npm',['run','typecheck']],['tests-only-build',process.execPath,['scripts/build.mjs','--tests-only']],
+ ['targeted-tests',process.execPath,['--test',...['unit/agent-access-recovery','unit/agent-access-controlled-mechanism','unit/agent-access-controlled-runtime','unit/agent-access-mode2-launch','unit/agent-access-auth-applicability','unit/agent-access-criteria-approval','contract/doc-archive-index'].map(p=>'dist/test/test/'+p+'.test.js')]],
+ ['diff-check','git',['-c','core.quotePath=false','diff','--check']],
+]){const r=await run(bin,args,{cwd:repo,timeoutMs:120000,killTree:true});const record={name,bin,args,code:r.code,timed_out:r.timedOut,stdout:r.stdout,stderr:r.stderr};runs.push(record);saveEvidence(root+'/static-check-v2-'+name+'.json',record);if(record.code!==0||record.timed_out)throw Error('静态检查失败:'+name);}
+const after=await sample();if(before.bundle!==after.bundle||before.installed!==after.installed||before.stamp.inputs_sha256!==after.stamp.inputs_sha256)throw Error('生产作用面变化');
+for(const n of ['archive-plan26.mjs','prepare-round26-27.mjs','prepare-review26-assets.mjs','resolve-plan26.mjs','invoke-plan26.mjs']){const r=await run(process.execPath,['--check',root+'/'+n],{timeoutMs:10000});if(r.code!==0)throw Error('新编排资产语法错误');}
+saveEvidence(root+'/static-checks-v2.json',{at:new Date().toISOString(),script_sha256:hash(new URL(import.meta.url)),before,after,runs,syntax_assets:5,new_vendor_starts:0,full_npm_check_performed:false,new_sensitive_implementation:false});console.log(JSON.stringify({checks:runs.map(r=>({name:r.name,code:r.code})),test_summary:runs.find(r=>r.name==='targeted-tests').stdout.split('\n').filter(l=>/^ℹ (tests|pass|fail|skipped)/.test(l)),bundle_unchanged:true,new_vendor_starts:0}));

@@ -1,0 +1,107 @@
+{
+  "at": "2026-10-11T21:52:17.446Z",
+  "runs": [
+    {
+      "name": "doc-index",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (1.531083ms)\n▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标\n  ✔ doc/02_design/README.md (0.548625ms)\n  ✔ doc/03_api/README.md (0.139042ms)\n  ✔ doc/04_development/README.md (0.146167ms)\n  ✔ doc/05_testing/README.md (1.3285ms)\n  ✔ doc/06_deployment/README.md (0.178ms)\n  ✔ doc/07_manuals/README.md (0.104292ms)\n✔ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (2.931666ms)\n▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序\n  ✔ doc/02_design/README.md (0.322333ms)\n  ✔ doc/03_api/README.md (0.096167ms)\n  ✔ doc/04_development/README.md (0.124375ms)\n  ✔ doc/05_testing/README.md (0.494125ms)\n  ✔ doc/06_deployment/README.md (0.073084ms)\n  ✔ doc/07_manuals/README.md (0.064792ms)\n✔ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (1.370583ms)\n✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.214834ms)\n✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.187375ms)\n✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.192208ms)\n✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.185042ms)\n✔ B5 同一文件两条条目 ⇒ duplicate (0.089375ms)\n✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.182ms)\n✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.069042ms)\n✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.121917ms)\n✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.100792ms)\n✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.048458ms)\n✔ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02） (0.111042ms)\n✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.054792ms)\nℹ tests 27\nℹ suites 0\nℹ pass 27\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 96.978625\n",
+      "stderr": ""
+    },
+    {
+      "name": "all-diff-raw-archive-preserved",
+      "code": 2,
+      "timed_out": false,
+      "stdout": ".reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:2425: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:2429: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:2433: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:2505: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:2511: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:2567: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:2627: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:132632: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:132639: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:132642: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:132718: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:132726: trailing whitespace.\n+@@ -479,3 +483,45 @@ Claude Code 主攻时，`/dual-review-plan` 后面的提示语由 Claude Code \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:132728: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133426: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133458: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133462: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133479: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133512: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133559: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133595: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133607: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133632: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133690: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133803: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133824: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133839: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:133894: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:138246: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:139648: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:139659: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:139753: trailing whitespace.\n+ \n.reviews/Agent双模式接入真实准入收口/code/_meta/changes.diff:139880: trailing whitespace.\n+ \n",
+      "stderr": ""
+    },
+    {
+      "name": "source-doc-diff",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "source_stamp": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+    "dirty": false,
+    "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+    "built_at": "2026-10-11T21:52:17.444Z"
+  },
+  "config_local_sha256": "6a2c6213ad3d62cb5f33f42480c90c40311bf6e35a4fb6d3080ce9afe84a79a5",
+  "bundle_sha256": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+  "scan": [
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/README.md",
+      "sha256": "42fb3848d6b4d725fe732c044c6b7f7c112a55549a9ee12768715ebe7f26060b",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/auth-criterion-decision-proposal.md",
+      "sha256": "d4a727382b74e2bf5c203c6bbd0cb701743e80255c488ce4ed7975e0f26da50e",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/auth-criterion-decision-scope.json",
+      "sha256": "5a63c58339ca01492c7d9ba0c80ad24d6d4e91c2b0e04ef57ea9bd84253e2e60",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/auth-diagnostic-after-code27.json",
+      "sha256": "ad95160cf68a5cc9d9fb33e8dbe1178a709711d5cc73afc75f0fa17491a63514",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/checkpoint-after27.mjs",
+      "sha256": "69666671b9be5db7780d7ae9ccf8b0a7836eb644ce49bda61368e87a91741bf5",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/code27-approved-checkpoint.json",
+      "sha256": "959a3dfdc6357004ca0fd9f424e25c9b9acbc8925d216f92bd862f1d313a0b24",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/decision-material-scan.json",
+      "sha256": "d5598f1cba41dfe497163967e22f91be2234de378f1e40d64f9c052ed63959de",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/post-code27-mechanism-plan-proposal.md",
+      "sha256": "00cc50c8e25ab0e1a97f8bb9b5368d9a9baf03518fece15de45f492c11b11ab0",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/post27-check-all-diff-raw-archive-preserved.json",
+      "sha256": "f186ab7c11c44496a28fd7c0b2d57e176db9c32172679f7cfedc5982970f5cd2",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/post27-check-doc-index.json",
+      "sha256": "2a3354a6d7ab4b0d4f8645d9c5915ce67e71554e68ba52cfe4e6cee02a3b3754",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/post27-check-source-doc-diff.json",
+      "sha256": "58bd9f6d3484035a7487fe86135a13f113d6ab2c4ec92e7fc9ff50eccd08a467",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/prepare-auth-decision-facts.mjs",
+      "sha256": "808192aa448805fbaf9db0afd012dbedc55b043d3259916c81dcf639ba657a61",
+      "candidates": 0
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r22/r21-preserved-snapshot.json",
+      "sha256": "bc7d8eee751306764fa3089ed77bca951f46dda070a136c556f63feaa26b8b0f",
+      "candidates": 0
+    }
+  ],
+  "r21_files_unchanged": 160,
+  "new_vendor_starts": 0,
+  "auth_decision_pending": true,
+  "criterion_adopted": false,
+  "raw_archive_diff_unchanged": true
+}

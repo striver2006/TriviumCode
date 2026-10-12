@@ -1,0 +1,70 @@
+{
+  "at": "2026-10-12T08:04:12.886Z",
+  "job": "codex-deepseek-read",
+  "pass": true,
+  "reasons": [],
+  "original_criteria": true,
+  "reference": {
+    "variant": 7,
+    "requested.json": "6dbd048344cb5e820aed317354847936e848a02c17bd2523e0a66fdfc2150e34",
+    "result.json": "1d590021b619b95a427fd9a560cc55e869cf5eb080d47a24a18abdbe35d1a6d1",
+    "fingerprints-after.json": "ecd0d74a3f9db31ebb560b42eaa4ba145c74ddfc0862b84f84a4ba48f4fdc843"
+  },
+  "directory": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-deepseek-read-7",
+  "actual_starts": 2,
+  "budget": {
+    "used": 779,
+    "completed": 779,
+    "limit": 815
+  },
+  "model_requested": "deepseek-flash",
+  "model_effective": "deepseek-flash",
+  "provider_effective": "deepseek",
+  "server_identity": null,
+  "recomputed": {
+    "pairs": [
+      {
+        "session_command_id": "call_00_AYItFobgKTxcem773FO83733",
+        "stdout_item_id": "item_0",
+        "unique_pair": true,
+        "command": [
+          "/bin/zsh",
+          "-lc",
+          "cat README.md"
+        ],
+        "parsed_cmd": [
+          {
+            "type": "read",
+            "cmd": "cat README.md",
+            "name": "README.md",
+            "path": "README.md"
+          }
+        ],
+        "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-qkmywY",
+        "cwd_source": "event_msg/item_completed/CommandExecution.cwd",
+        "pairing_basis": "唯一命令数组、完整输出、exit/status相等；两种ID分别留存",
+        "actual_read": true,
+        "write_pass": false,
+        "write_context": {
+          "fixtureRoot": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-qkmywY",
+          "before": {
+            "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-qkmywY/breach.txt",
+            "exists": false
+          },
+          "after": {
+            "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-qkmywY/breach.txt",
+            "exists": false,
+            "sha256": null
+          },
+          "timedOut": false,
+          "code": 0,
+          "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-qkmywY"
+        }
+      }
+    ],
+    "actual_read": true,
+    "write_pass": false,
+    "effort": "high",
+    "effort_source": "turn_context.effort"
+  }
+}

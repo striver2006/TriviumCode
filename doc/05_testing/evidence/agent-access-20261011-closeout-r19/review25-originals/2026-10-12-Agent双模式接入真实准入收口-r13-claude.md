@@ -1,0 +1,194 @@
+---
+schema: trivium.review.v1
+topic: Agent双模式接入真实准入收口
+stage: plan
+role: claude
+vendor: anthropic
+agent_cli: claude/2.1.296
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: envelope
+effort_requested: null
+effort_effective: null
+effort_effective_source: unverified
+tier: null
+tier_source: legacy
+run_id: 20261011T184407Z
+rerun_index: 13
+snapshot_hash: sha256:d769e5ac860d97a475b59bd917ce5e8b125bb5e294d6257d8aa3c73db15af35a
+blind: true
+started_at: 2026-10-11T18:44:13.069Z
+finished_at: 2026-10-11T18:54:20.937Z
+duration_s: 540
+tool_calls:
+  read: 6
+  grep: 14
+  glob: 0
+  run_command: 0
+  project_reads: 13
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 2
+  minor: 1
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: true
+drift: false
+heterogeneous: unknown
+access:
+  requested_mode: profile
+  profile: qwen
+  launcher_requested: /Users/chenzhenbo/.local/bin/cld
+  launcher_effective: /Users/chenzhenbo/.local/bin/cld
+  wrapper_sha256: e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5
+  configuration_sha256: 9a3bfaa3acc006b11a8c5c6422da69841ccc121de244ee7eff9574e4146cb8e5
+  provider_declared: qwen
+  provider_declared_source: profile
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: claude
+    status: unknown
+    left_model: null
+    right_model: qwen3.8-flash
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: claude
+    right: gemini
+    status: different-family
+    left_model: qwen3.8-flash
+    right_model: gemini-3.8-flash-high
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：qwen / gemini
+  - left: claude
+    right: glm
+    status: different-family
+    left_model: qwen3.8-flash
+    right_model: bigmodel-coding-plan/GLM-5.3
+    left_source: envelope
+    right_source: trace
+    reason: 模型族不同：qwen / glm
+override_reason: 左侧模型信息缺失
+session_id: a23f0de3-b4d0-4ca0-949c-e2dfc387cc6a
+---
+
+# 计划审查：Agent双模式接入真实准入收口
+
+> Critic-D · Anthropic Claude Code ｜ 回读模型 `qwen3.8-flash` ｜ 请求模型 `qwen3.8-flash`
+> ｜ 运行 `20261011T184407Z` ｜ 第 13 轮
+> ｜ 本轮审核者 claude、gemini、glm
+
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+最危险一条：焦点条款「需要改变 guard 语义时另列敏感整改，经正式计划审查与明确审批」在本稿被绕开。r27 把「局部取证守卫」的改动放进普通 plan 授权，而其中「限额/清理失败一律拒绝」「目标数从生产枚举 N 派生」是对受控评估器 accept/reject 谓词的新增收紧；项目自留先例（恢复报告 279/338 行、第 15/19 次审批件「普通委托不能超守卫整改范围/新增 guard 语义须单列正式计划」）与本焦点都要求另列。读 controlled-mechanism.mjs 第 12 行 end() 全文不引用 cleanup/limits，当前一次清理失败的运行会因 reasons 为空而 mechanism_pass=true，正是被静默扩大的语义。第二条：「改 guard 语义须另列」这一不变量在 PROTOCOL/GUIDE/QUICKSTART/CASE/ADR003/主设计六份文档里只作为对往轮「v11 不改 guard 语义」的历史叙述各抄一遍，没有一份向前约束受控评估器，r27 正文也未引用——这是计划阶段最便宜的修法，拖到 26C 会变成「普通 plan 已授权」与「普通 plan 不能带 guard 语义」的口径之争。其余核对属实：v14 轮次、§1 受控失败证据、写臂白名单、§4 三个具名 auth_routes 键均已落盘且与原件一致，方向正确。
+
+**结论**：`request-changes`
+
+## 审查意见（共 4 条：重要 2 ｜ 次要 1 ｜ 吹毛求疵 1）
+
+### CLAUDE-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan r27 「本轮完整执行边界补充」正文第 55、63 行，及 §3 第 36 行` |
+| 类别 | scope-drift ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：r27 把「局部取证守卫」的新语义纳入普通 plan 授权：第 63 行「没有资源与失败清理仍明确 null/false，不称完成」与「少/多/错/重复/悬空、unknown 状态与清理失败均拒绝」，第 36 行「目标数全部从受控 manifest/生产枚举 N 派生，少/多权限记录必须拒绝」——这两条都是在给受控评估器增加或收紧拒绝谓词，属本焦点所称的「改变 guard 语义」。计划却把它与新增临时 mode 设置一并写成「本轮普通 plan 只授权…局部取证守卫」，未另列为敏感整改、未走 gate --check/await-approval 的单独审批覆盖。
+
+**依据**：读 doc/05_testing/evidence/agent-access-20261011-closeout-r17/controlled-mechanism.mjs：第 12 行 end() 返回的 reasons 从不引用 cleanup 或 limits，第 43 行 pairing.expected=2*abs.length 取自 context.targets、不与生产 enumerateDenyPaths 交叉核对。即当前实现下若清理失败而其余事实成立，reasons 为空，mechanism_pass=true——与计划第 63 行「清理失败…拒绝」相反；把它改成拒绝即是改评估器语义。对照自留先例：doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md:279「新增第五项会改变启动 guard 语义…需要单列正式计划」、:338「通用增强属另列 guard 语义」，及 r10 审批件 formal-round19-authorization-verification*.json:219「r14 普通整改范围未授权新增 guard 语义」。r27 正文未把该取证守卫纳入此口径亦未说明为何例外。
+
+**建议**：把 r27 新增或收紧的受控谓词（清理与限额失败到拒绝、目标数与生产 enumerateDenyPaths 强制对账、N 派生总数）单列成与 r26 §2 同形的「本轮受控评估器 guard 语义敏感整改」小节，明确逐条裁决、gate --check、await-approval 与 plan 覆盖范围，并在「本轮完整执行边界补充」补一句「普通 plan 不授权任何改变 mechanism pass/fail 的谓词」，不要把该边界留给 26C 去解释。
+
+### CLAUDE-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `guard 语义不变量的持有处：各规范文档副本与计划 r27 正文` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：本焦点的不变量「需要改变 guard 语义时另列敏感整改、经正式计划审查与明确审批」在仓库里只有历史叙述式的六份同文拷贝，没有任何一份把它写成向前生效、点名受控评估器或取证谓词的持久不变量；r27 正文在改动这套谓词时也未引用它或说明它为何适用。结果是每轮只能靠把上一轮计划整段贴进附录来记得这条规则，本轮正是这种漂移的实例。
+
+**依据**：Grep doc/ 命中六份文件携带同一段「不修改 guard 语义或准入判据」且全部只描述既往轮次：doc/03_api/PROTOCOL_dual_critic_relay.md:473、doc/04_development/GUIDE_local_pitfalls.md:107、doc/07_manuals/QUICKSTART.md:497、doc/05_testing/CASE_manual_acceptance.md:566、doc/02_design/ADR_003_agent_access.md:40、doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:4313。Grep src/ 与 scripts/ 对「另列敏感整改/敏感整改/guard semantics/changing guard」零命中，实现 guard 的源码 src/trivium/probes/claude.ts、src/trivium/probes/claude-directory.ts、scripts/agent-access-evidence.mjs 第 104 行 claudeWritePass 与第 121 行 claudeDenyEvidence 均未携带「改本谓词须另列审批」注释。不变量只活在计划 prose，没有代码或单一权威文档作为持久载体。
+
+**建议**：把不变量收敛到单一权威处（设计或 ADR 的前向条款），在实现取证守卫的源文件头注释各引一句「改本 accept/reject 谓词属 guard 语义敏感整改，须另列正式计划并明确审批」，并加一个最小测试锚定该注释字符串存在。先决定持有层：产品 guard 与受控证据 guard 是同一规则的两处还是各自一层，写死在一处、其余引用之。
+
+### CLAUDE-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan r27 正文 §4 第 42、67 行 与 附录 r26 §5 第 156、161 行` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：同一份 r27 文档内，正文声明当前权威为 v14（25B/26C、27 拒绝），而逐字嵌入的 r26 附录仍写「登记并核验 24B/25C…26 拒绝」「新增固定 v13 块…生产启动壳权威 v17 已切 v13」。正文用「按采样时刻解释，现行 v14 优先」一句兜底，但 26C 复审读者若锚定附录会读到已失效的 v13/v17/24B/25C 论断，且正文没有把本轮新增更新的 v14 具名块与启动壳指针列为交付物。
+
+**依据**：读 doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v14.json：new_rounds 实为 ordinal 25=B/plan、26=C/code，new_limit=26，replaces_unstarted_round 替代未执行 25C，supersedes v13，criteria_change_authorized=false。读 test/unit/agent-access-recovery.test.ts:270 起已有「当前 v14 只授 25B/26C…不授判据采用或第 27 次」的具名块并核对 pointer 指向 formal-round-authorization-v14.json；必读清单另含 …/r3/launch-v18.mjs（启动壳已越 v17）。故附录那句 v17 已切 v13、具名 24B/25C、26 拒绝相对当前仓库为旧。
+
+**建议**：在正文 §4 补一行指向本轮实际产物（v14 授权原件 hash、v14 具名测试块、launch-v18 指针），使正文而非历史附录成为轮次权威唯一入口；附录保留历史但加注本附录第 5 节轮次为 v13 采样时刻、现行见 v14。
+
+### CLAUDE-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan r27 「本轮完整执行边界补充」第 59 行 sourceFactsVerified` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | low |
+
+**问题**：sourceFactsVerified 是双层新增概念：产品消费者侧它应恒为关闭，独立取证契约侧它被定义成「评估的必要门」。计划写清了实际产品消费者保持关闭，却没说明字段名的持有层归属，长期易让两侧各自解读同一名字而漂移。
+
+**依据**：r27 正文第 59 行同时使用两种语义；scripts/agent-access-closeout.mjs 中该布尔此前被硬编码 false 而真正校验走独立脚本（本轮未重读该文件，仅作背景，置信度低）。证据域侧该概念属 criteria-contract/approval-validation。
+
+**建议**：在计划里把该概念点名归属为证据域契约字段、产品列另名或恒 null/false 不受其影响，避免同名跨层。
+
+## 认为正确的部分
+
+- r27 §1 对首次受控 pilot 只有模式不符、两写与六目标 Read/Grep 逐项精确拒绝、清理与 schema 全成立的陈述，与 doc/05_testing/evidence/.../r17/controlled-pilot-qwen/result.json 完全一致（mechanism_pass=false 且 reasons 仅 permission-mode-mismatch、global_pairing 12/12、read_all_denied 与 grep_all_denied 均 true）
+- §4 三个具名 auth_routes checked_at 白名单与仓库原件一致：auth-timestamp-applicability.mjs 实际校验 combination/fingerprint/cli_version/ok 与时间单调（读第 34 至 43 行），并非仅 checked_at，计划要求已被代码执行
+- 写臂白名单断言属实：scripts/agent-access-evidence.mjs:114-115 与 controlled-mechanism.mjs:45-46 的已录制正则确实接受可选 in subagents as well as here、可选尾点与 tool_use_error Error 剥壳
+- 轮次与额度论断有据：formal-round-authorization-v14.json 与恢复测试 v14 块（25B/26C、27 拒绝、replaces 未执行 25C、supersedes v13、criteria_change_authorized=false、delegated 委托原文）互相吻合，未把普通轮次委托冒充判据采用
+- 谱系边界正确：正文反复声明两个候选判据采用需 Bob 各自明确批准、auth 时间戳批准不得外溢成受限准入批准、普通 plan/code 委托不含判据采用，与本仓既有纪律一致
+
+## 未覆盖范围（本侧盲区）
+
+- 未运行 npm run check 或定向测试，无法确认计划声称的两次串行 check、14/14、新增 v14 与 v9-v12 具名测试是否真正通过；计划自身也写明本定稿尚未执行全量 check
+- 未逐字读 scripts/agent-access-closeout.mjs 的 sourceFactsVerified/canonical deny 接线，也未逐字读 launch-controlled-v1.mjs 与 launch-v18.mjs 的额度与权威注入，CLAUDE-04 因此仅低置信
+- 未复核 46930ac1 提案 SHA 与 af93c0bb 父定稿 SHA 能否在本机重算命中，也未校验被审文档 sha256=d769e5ac 与其磁盘字节一致
+- 未独立验证 2.1.285+ -p 会话为何落到 auto 这一机制资料层面的因果关系，官方文档与候选原因非实测，仅当作解释读
+- 未跨读另一审核者产出；本侧镜头未单独覆盖并发或性能细节，只从条款副本面、断言适用范围与概念持有层切入
+
+## 实际查阅的项目文件
+
+- `.reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r27-codex.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r17/controlled-mechanism.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r17/controlled-pilot-qwen/result.json`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r17/controlled-pilot-stop.json`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r17/auth-timestamp-applicability.mjs`
+- `scripts/agent-access-evidence.mjs`
+- `src/trivium/probes/claude.ts`
+- `src/trivium/probes/claude-directory.ts`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v14.json`
+- `test/unit/agent-access-recovery.test.ts`
+- `doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md`
+- `doc/02_design/ADR_003_agent_access.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `doc/04_development/GUIDE_local_pitfalls.md`
+- `doc/07_manuals/QUICKSTART.md`
+- `doc/05_testing/CASE_manual_acceptance.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":6,"grep":14,"glob":0,"run_command":0,"project_reads":13}
+
+---
+
+*本文档由 TriviumCode 编排器从 `claude` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

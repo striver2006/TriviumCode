@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { hash } from '/Users/chenzhenbo/Work/TriviumCode/scripts/agent-access-selection.mjs';
+import { saveEvidence } from '/Users/chenzhenbo/Work/TriviumCode/scripts/agent-access-evidence.mjs';
+const root=path.dirname(new URL(import.meta.url).pathname),file=root+'/claude-read-deny-batch.json',b=JSON.parse(fs.readFileSync(file));
+const collisions=b.jobs.filter(j=>fs.existsSync(root+'/'+j.name+'-dispatch.json')).map(j=>j.name);
+saveEvidence(root+'/claude-batch-zero-cli-name-collision.json',{at:new Date().toISOString(),batch_sha256:hash(file),collisions,stage:'static-prelaunch',vendor_starts:0,original_batch_retained:true,guard_checks_changed:false});
+b.jobs=b.jobs.map(j=>({...j,name:'claude-'+j.name}));
+for(const j of b.jobs)if(fs.existsSync(root+'/'+j.name+'-dispatch.json')||fs.existsSync(b.evidence_root+'/routes/'+j.route_directory))throw Error('新请求仍冲突');
+b.at=new Date().toISOString();b.dispatcher_sha256=hash(root+'/claude-read-deny-v2.mjs');b.audit_sha256=hash(root+'/audit-claude-read-deny-v2.mjs');b.supersedes={file,sha256:hash(file),reason:'预启动静态检测发现与已完成Codex同名调度记录；只更换五Claude调度job名字前缀，不变实际参数/路线/守卫/预算，不启动原批'};b.dispatcher_derivation.changes.push('静态批次修订v2文件名和job名字前缀');
+saveEvidence(root+'/claude-read-deny-batch-v2.json',b);
+console.log(JSON.stringify({published_v2:true,collisions,original_batch_starts:0,new_guard_semantics:false,limit:742}));

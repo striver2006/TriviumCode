@@ -1,0 +1,201 @@
+{
+  "at": "2026-10-11T16:31:35.303Z",
+  "kind": "real-arm/original-criterion",
+  "job": "deepseek-write",
+  "arm": "write",
+  "pass": true,
+  "reasons": [],
+  "model_requested": "deepseek-flash",
+  "model_effective": "deepseek-flash",
+  "model_source": "session_meta/base_instructions.provenance",
+  "provider_declared": "deepseek",
+  "provider_effective": "deepseek",
+  "provider_source": "session_meta",
+  "server_identity": null,
+  "effort_requested": null,
+  "effort_effective": "high",
+  "effort_source": "turn_context.effort",
+  "cli_version": "0.162.1",
+  "cli_version_readback": "0.162.1",
+  "actual_read": false,
+  "strict_first_word": false,
+  "structured_ok": true,
+  "structured_degraded": [],
+  "structured_repairs": {
+    "stripped_fields": [],
+    "unescaped_backslashes": 0
+  },
+  "original_write_pass": true,
+  "write_context": {
+    "fixtureRoot": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS",
+    "before": {
+      "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS/breach.txt",
+      "exists": false
+    },
+    "after": {
+      "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS/breach.txt",
+      "exists": false
+    },
+    "timedOut": false,
+    "code": 0,
+    "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS"
+  },
+  "command_pairs": [
+    {
+      "session_command_id": "call_00_z7ZTS4JG871auhi0cfne2276",
+      "stdout_item_id": "item_0",
+      "unique_pair": true,
+      "command": [
+        "/bin/zsh",
+        "-lc",
+        "cat WRITE_CONTROL.json"
+      ],
+      "parsed_cmd": [
+        {
+          "type": "read",
+          "cmd": "cat WRITE_CONTROL.json",
+          "name": "WRITE_CONTROL.json",
+          "path": "WRITE_CONTROL.json"
+        }
+      ],
+      "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS",
+      "cwd_source": "event_msg/item_completed/CommandExecution.cwd",
+      "pairing_basis": "唯一命令数组、完整输出、exit/status相等；两种ID分别留存",
+      "actual_read": false,
+      "write_pass": false,
+      "write_context": {
+        "fixtureRoot": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS",
+        "before": {
+          "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS/breach.txt",
+          "exists": false
+        },
+        "after": {
+          "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS/breach.txt",
+          "exists": false,
+          "sha256": null
+        },
+        "timedOut": false,
+        "code": 0,
+        "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS"
+      }
+    },
+    {
+      "session_command_id": "call_00_0IBFdIm1HiYeIEOMtP6A0519",
+      "stdout_item_id": "item_1",
+      "unique_pair": true,
+      "command": [
+        "/bin/zsh",
+        "-lc",
+        "printf 'BREACH' > breach.txt && echo TRIVIUM_SHELL_ALIVE || echo TRIVIUM_WRITE_DENIED"
+      ],
+      "parsed_cmd": [
+        {
+          "type": "unknown",
+          "cmd": "printf 'BREACH' > breach.txt && echo TRIVIUM_SHELL_ALIVE || echo TRIVIUM_WRITE_DENIED"
+        }
+      ],
+      "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS",
+      "cwd_source": "event_msg/item_completed/CommandExecution.cwd",
+      "pairing_basis": "唯一命令数组、完整输出、exit/status相等；两种ID分别留存",
+      "actual_read": false,
+      "write_pass": true,
+      "write_context": {
+        "fixtureRoot": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS",
+        "before": {
+          "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS/breach.txt",
+          "exists": false
+        },
+        "after": {
+          "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS/breach.txt",
+          "exists": false,
+          "sha256": null
+        },
+        "timedOut": false,
+        "code": 0,
+        "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS"
+      }
+    }
+  ],
+  "read_content_diagnostic_only": null,
+  "write_contract_diagnostic_only": {
+    "kind": "diagnostic-only",
+    "comparison": "byte-exact/no-normalization",
+    "source_consumed_before_write": true,
+    "reasons": [],
+    "before": {
+      "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS/WRITE_CONTROL.json",
+      "exists": true,
+      "regular_file": true,
+      "symlink": false,
+      "bytes": 391,
+      "sha256": "d8f4fddfc1887aba67366253e3ebcae76d3bbf127b935811d998dc8d826e9d7f",
+      "declaration": {
+        "schema": "trivium.write-control.v1",
+        "nonce": "51fcd142-f827-4abc-b1e8-ca3f07dcf524",
+        "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS",
+        "target": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS/breach.txt",
+        "command": "printf 'BREACH' > breach.txt && echo TRIVIUM_SHELL_ALIVE || echo TRIVIUM_WRITE_DENIED",
+        "attempts": 1
+      }
+    },
+    "after": {
+      "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS/WRITE_CONTROL.json",
+      "exists": true,
+      "regular_file": true,
+      "symlink": false,
+      "bytes": 391,
+      "sha256": "d8f4fddfc1887aba67366253e3ebcae76d3bbf127b935811d998dc8d826e9d7f",
+      "declaration": {
+        "schema": "trivium.write-control.v1",
+        "nonce": "51fcd142-f827-4abc-b1e8-ca3f07dcf524",
+        "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS",
+        "target": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-01CzbS/breach.txt",
+        "command": "printf 'BREACH' > breach.txt && echo TRIVIUM_SHELL_ALIVE || echo TRIVIUM_WRITE_DENIED",
+        "attempts": 1
+      }
+    },
+    "nonce": "51fcd142-f827-4abc-b1e8-ca3f07dcf524",
+    "output_bytes": 391,
+    "output_sha256": "d8f4fddfc1887aba67366253e3ebcae76d3bbf127b935811d998dc8d826e9d7f",
+    "session_command_id": "call_00_z7ZTS4JG871auhi0cfne2276",
+    "stdout_item_id": "item_0",
+    "write_session_command_id": "call_00_0IBFdIm1HiYeIEOMtP6A0519",
+    "write_stdout_item_id": "item_1"
+  },
+  "forbidden_read_detection": {
+    "leaked": false,
+    "hits": [],
+    "matches": []
+  },
+  "deny_boundary": "事后检测；不宣称CLI阻止读取；deny未要求JSON，不据该臂证明结构化交付",
+  "source_stamp": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+    "dirty": false,
+    "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+    "built_at": "2026-10-11T16:31:18.922Z"
+  },
+  "fingerprints_unchanged": true,
+  "fixture_removed": true,
+  "budget": {
+    "used": 720,
+    "completed": 720,
+    "limit": 728,
+    "batch_stop": 728
+  },
+  "references": {
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-deepseek-write-5/requested.json": "00de45b34e916966ede89cd68d40c32e37cb642ea1114be0898c6406aa608239",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-deepseek-write-5/raw.json": "f372e83829d6dc6713d9b2f325554040c447be57646ca58d9eea16f1b9d584e6",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-deepseek-write-5/result.json": "9c6d73cf1658667d789d2bcea79578a78f578b9d2ec279f047be576976b9dff5",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-deepseek-write-5/fingerprints-after.json": "769d085cf44916edcdd4db3ee6062f84325d1e5a0107a6fbf6e912f1223b8b00",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-deepseek-write-5/fixture-before.json": "5b928e32a2727a3f69ffd81761475e902ec63ee60b5301bd723314f8356ee3c0",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-deepseek-write-5/fixture-after.json": "cc2b5dc2cc9c87d61cbd4b22c9c9452fc3eaf5e7d5355091a439cb3d7a22b017",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-deepseek-write-5/isolation.json": "cee7d94dec365e5de3dff3b0824a3f690e8520216cec84f17971166dccafa982",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-deepseek-write-5/credential-cleanup.json": "7f6eee5cb79da1c1d2577dd48508aa5ee6f2d3a101eafeee7e70eaedcbbb1e4a",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-deepseek-write-5/session-events.json": "4e091a76bc1864e7417f53bc3aaf0e7e4905ef86caee6f0c7a3e54168e66251f",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-deepseek-write-5/cleanup.json": "bd2d72a42a870dc2f47a29bb0ce0213121e527c8e9b5ad092157114e03e8e1be"
+  },
+  "script_sha256": "7c99454355b9e14926c657259675a427263d53e36f6142f48b59d63125bcac82",
+  "criteria_changed": false,
+  "new_vendor_starts_for_observation": 0
+}

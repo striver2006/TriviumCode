@@ -1,0 +1,36 @@
+/** 25B双跳诊断从原v2派生，旧脚本原件不变；全部替换锚须唯一命中。 */
+import fs from 'node:fs';import path from 'node:path';import {hash} from '../../../../scripts/agent-access-selection.mjs';import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const root=path.dirname(new URL(import.meta.url).pathname),original=path.resolve(root,'../agent-access-20261011-closeout-r17/run-auth-timestamp-diagnostic-v2.mjs');let code=fs.readFileSync(original,'utf8');
+const replace=(old,next)=>{if(code.split(old).length!==2)throw Error('auth-v3-source-anchor-not-unique');code=code.replace(old,next);};
+replace("import {evaluateAuthTimestamp} from './auth-timestamp-applicability.mjs';","import {evaluateAuthTimestampChain,reconstructAuthTimestampChain} from './auth-timestamp-chain.mjs';");
+replace("const observationPath=repo+'/doc/05_testing/evidence/agent-access-20261011-closeout-r16/config-after24-preflight-observation.json';\nconst observation=JSON.parse(fs.readFileSync(observationPath));",`const priorRoot=path.resolve(root,'../agent-access-20261011-closeout-r17');
+const firstPath=repo+'/doc/05_testing/evidence/agent-access-20261011-closeout-r16/config-after24-preflight-observation.json',first=JSON.parse(fs.readFileSync(firstPath));
+const observationPath=repo+'/doc/05_testing/evidence/agent-access-20261011-closeout-r18/config-after25-preflight-observation.json',observation=JSON.parse(fs.readFileSync(observationPath));
+// 原件字段auth_checked_at_only与permitted分列，不回写历史；转换只映射已记录的true。
+const hops=[{ref:ref(firstPath),observation:{...first,changes:first.changes.map(ch=>({...ch,permitted:ch.auth_checked_at_only===true}))}},{ref:ref(observationPath),observation}];
+const productionFactFile=root+'/production-target-facts.json',productionFacts=JSON.parse(fs.readFileSync(productionFactFile));
+if(productionFacts.verified!==true||productionFacts.fixture_removed!==true||productionFacts.before_config.local!==digest(repo+'/.trivium/config.local.yaml'))throw Error('生产N来源缺失或过时');`);
+const begin=code.indexOf('let oldBytes=Buffer.from(currentBytes);'),end=code.indexOf('\nconst roots=',begin);if(begin<0||end<begin)throw Error('old-byte-block-missing');
+code=code.slice(0,begin)+"let oldBytes;\nif(digest(local)!==observation.current_sha256)throw Error('当前完整配置hash不符');"+code.slice(end);
+replace('sourceRefs=[ref(observationPath),ref(summaryPath),ref(selectionPath)]','sourceRefs=[ref(firstPath),ref(observationPath),ref(productionFactFile),ref(summaryPath),ref(selectionPath)]');
+replace('fp.local_config!==observation.before_sha256','fp.local_config!==first.before_sha256');
+replace("const reviewFile=root+'/review24-originals/run-20261011T171203Z.json'","const reviewFile=root+'/review25-originals/run-20261011T184407Z.json'");
+replace("const pilotFile=root+'/controlled-pilot-qwen/result.json'","const pilotFile=priorRoot+'/controlled-pilot-qwen/result.json'");
+replace("pilotRawFile=root+'/controlled-pilot-qwen/raw.json'","pilotRawFile=priorRoot+'/controlled-pilot-qwen/raw.json'");
+replace('pilot.reads?.length===6&&pilot.greps?.length===6',"pilot.reads?.length===productionFacts.target_count&&pilot.greps?.length===productionFacts.target_count&&JSON.stringify([...pilot.target_manifest.targets].sort())===JSON.stringify([...productionFacts.production_targets].sort())&&JSON.stringify([...pilot.target_manifest.deny].sort())===JSON.stringify([...productionFacts.production_deny].sort())");
+replace('review_safety_known:reviewSafetyKnown,pilot_safety_known:pilotSafetyKnown','review_safety_known:reviewSafetyKnown,pilot_safety_known:pilotSafetyKnown,production_target_count:productionFacts.target_count,production_target_fact_ref:ref(productionFactFile)');
+replace('最新安全事实另以24B及受控原raw绑定','最新安全事实另以25B、生产N重枚举与受控原raw绑定');
+replace("fs.writeFileSync(scratch+'/reconstructed-old.yaml',oldBytes,{flag:'wx',mode:0o600});fs.writeFileSync(scratch+'/sampled-current.yaml',currentBytes,{flag:'wx',mode:0o600});\n diagnostic=evaluateAuthTimestamp({oldBytes:fs.readFileSync(scratch+'/reconstructed-old.yaml'),currentBytes:fs.readFileSync(scratch+'/sampled-current.yaml'),expectedOldHash:observation.before_sha256,expectedCurrentHash:observation.current_sha256,components,sourceRefs,consumptionRefs,latestLeak,latestActualInterceptionFailure});",`const chainContext={currentBytes,expectedOldHash:first.before_sha256,expectedCurrentHash:observation.current_sha256,hops,components,sourceRefs,consumptionRefs,latestLeak,latestActualInterceptionFailure};
+ const rebuilt=reconstructAuthTimestampChain(chainContext);oldBytes=rebuilt.oldBytes;
+ fs.writeFileSync(scratch+'/reconstructed-old.yaml',oldBytes,{flag:'wx',mode:0o600});fs.writeFileSync(scratch+'/sampled-current.yaml',currentBytes,{flag:'wx',mode:0o600});
+ diagnostic=evaluateAuthTimestampChain({...chainContext,currentBytes:fs.readFileSync(scratch+'/sampled-current.yaml')});
+ if(digest(scratch+'/reconstructed-old.yaml')!==first.before_sha256)throw Error('私有重建副本hash变化');`);
+replace('oldBytes.fill(0);','oldBytes?.fill(0);');
+replace("guard_sha256:digest(root+'/auth-timestamp-applicability.mjs')","guard_sha256:digest(root+'/auth-timestamp-chain.mjs'),parent_guard_ref:ref(priorRoot+'/auth-timestamp-applicability.mjs')");
+replace("initial_diagnostic_ref:ref(root+'/auth-timestamp-diagnostic.json')","initial_diagnostic_ref:ref(priorRoot+'/auth-timestamp-diagnostic-v2.json')");
+replace("mode_pilot_ref:ref(root+'/controlled-pilot-stop.json')","mode_pilot_ref:ref(priorRoot+'/controlled-pilot-stop.json')");
+replace("saveEvidence(root+'/auth-timestamp-diagnostic-v2.json'","saveEvidence(root+'/auth-timestamp-diagnostic-v3.json'");
+const target=root+'/run-auth-timestamp-diagnostic-v3.mjs';fs.writeFileSync(target,code,{flag:'wx',mode:0o600});
+const schemaSource=priorRoot+'/auth-timestamp-applicability.v1.schema.json';saveEvidence(root+'/auth-timestamp-applicability.v1.schema.json',JSON.parse(fs.readFileSync(schemaSource,'utf8')));
+saveEvidence(root+'/auth-v3-origin.json',{at:new Date().toISOString(),parent_ref:{path:original,sha256:hash(original)},output_ref:{path:target,sha256:hash(target)},guard_ref:{path:root+'/auth-timestamp-chain.mjs',sha256:hash(root+'/auth-timestamp-chain.mjs')},schema_parent_ref:{path:schemaSource,sha256:hash(schemaSource)},schema_output_ref:{path:root+'/auth-timestamp-applicability.v1.schema.json',sha256:hash(root+'/auth-timestamp-applicability.v1.schema.json')},generator_sha256:hash(new URL(import.meta.url)),new_vendor_starts:0});
+console.log(JSON.stringify({script_sha256:hash(target),new_vendor_starts:0}));

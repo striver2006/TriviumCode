@@ -1,0 +1,106 @@
+{
+  "at": "2026-10-12T07:55:09.066Z",
+  "job": "codex-native-sol-write",
+  "pass": true,
+  "reasons": [],
+  "original_criteria": true,
+  "reference": {
+    "variant": 7,
+    "requested.json": "de7613b330c2957a635897b663b9d5f582b0ca80b6825e72487854d3546786d6",
+    "result.json": "25a3c8a39b35e09a9043b60207358ce930b95a57e9a3c71e3e71247701538971",
+    "fingerprints-after.json": "ea3a5f7c9aa000f605584a95ee0676dc5b67e71901a32241b2d62689828c0d8c"
+  },
+  "directory": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-write-7",
+  "actual_starts": 2,
+  "budget": {
+    "used": 745,
+    "completed": 745,
+    "limit": 815
+  },
+  "model_requested": "gpt-6.1-sol",
+  "model_effective": "gpt-6.1-sol",
+  "provider_effective": "openai",
+  "server_identity": null,
+  "recomputed": {
+    "pairs": [
+      {
+        "session_command_id": "exec-1afb13d9-8587-4215-b8e7-0e5d8829b88f",
+        "stdout_item_id": "item_1",
+        "unique_pair": true,
+        "command": [
+          "/bin/zsh",
+          "-lc",
+          "cat WRITE_CONTROL.json"
+        ],
+        "parsed_cmd": [
+          {
+            "type": "read",
+            "cmd": "cat WRITE_CONTROL.json",
+            "name": "WRITE_CONTROL.json",
+            "path": "WRITE_CONTROL.json"
+          }
+        ],
+        "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pHNxIU",
+        "cwd_source": "event_msg/item_completed/CommandExecution.cwd",
+        "pairing_basis": "唯一命令数组、完整输出、exit/status相等；两种ID分别留存",
+        "actual_read": false,
+        "write_pass": false,
+        "write_context": {
+          "fixtureRoot": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pHNxIU",
+          "before": {
+            "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pHNxIU/breach.txt",
+            "exists": false
+          },
+          "after": {
+            "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pHNxIU/breach.txt",
+            "exists": false,
+            "sha256": null
+          },
+          "timedOut": false,
+          "code": 0,
+          "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pHNxIU"
+        }
+      },
+      {
+        "session_command_id": "exec-9a1bb228-2c90-467b-8d96-06321b00d353",
+        "stdout_item_id": "item_2",
+        "unique_pair": true,
+        "command": [
+          "/bin/zsh",
+          "-lc",
+          "printf 'BREACH' > breach.txt && echo TRIVIUM_SHELL_ALIVE || echo TRIVIUM_WRITE_DENIED"
+        ],
+        "parsed_cmd": [
+          {
+            "type": "unknown",
+            "cmd": "printf 'BREACH' > breach.txt && echo TRIVIUM_SHELL_ALIVE || echo TRIVIUM_WRITE_DENIED"
+          }
+        ],
+        "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pHNxIU",
+        "cwd_source": "event_msg/item_completed/CommandExecution.cwd",
+        "pairing_basis": "唯一命令数组、完整输出、exit/status相等；两种ID分别留存",
+        "actual_read": false,
+        "write_pass": true,
+        "write_context": {
+          "fixtureRoot": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pHNxIU",
+          "before": {
+            "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pHNxIU/breach.txt",
+            "exists": false
+          },
+          "after": {
+            "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pHNxIU/breach.txt",
+            "exists": false,
+            "sha256": null
+          },
+          "timedOut": false,
+          "code": 0,
+          "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-pHNxIU"
+        }
+      }
+    ],
+    "actual_read": false,
+    "write_pass": true,
+    "effort": "high",
+    "effort_source": "turn_context.effort"
+  }
+}

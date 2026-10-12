@@ -1,0 +1,626 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema",
+    "criteria_candidate",
+    "diagnostic_only",
+    "model_declared",
+    "actual_provider_inference",
+    "real_model_attempt",
+    "server_identity",
+    "live_reference",
+    "source_fingerprints",
+    "controlled_fingerprints",
+    "explicit_deviations",
+    "bridge",
+    "readonlyArgs",
+    "schema_settings",
+    "target_manifest",
+    "raw_ref",
+    "transport_ref",
+    "cleanup",
+    "mechanism_pass",
+    "reasons",
+    "replaces_original_criteria",
+    "production_target_count",
+    "production_manifest_verified",
+    "mode_settings",
+    "limits",
+    "completed",
+    "writes",
+    "reads",
+    "greps",
+    "global_pairing",
+    "file_states",
+    "inline_mode"
+  ],
+  "properties": {
+    "schema": {
+      "const": "controlled-mechanism-mode3.v1"
+    },
+    "criteria_candidate": {
+      "const": "restricted-tool-surface-and-path-v3"
+    },
+    "diagnostic_only": {
+      "const": true
+    },
+    "model_declared": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actual_provider_inference": {
+      "const": false
+    },
+    "real_model_attempt": {
+      "type": "null"
+    },
+    "server_identity": {
+      "type": "null"
+    },
+    "live_reference": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "source_fingerprints": {
+      "type": "object"
+    },
+    "controlled_fingerprints": {
+      "type": "object"
+    },
+    "explicit_deviations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "bridge": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "pid",
+          "parent_pid",
+          "lstart",
+          "comm",
+          "image",
+          "image_sha256"
+        ],
+        "properties": {
+          "pid": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "parent_pid": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "lstart": {
+            "type": "string"
+          },
+          "comm": {
+            "type": "string"
+          },
+          "image": {
+            "type": "string"
+          },
+          "image_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "readonlyArgs": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "schema_settings": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "target_manifest": {
+      "type": "object",
+      "required": [
+        "deny",
+        "targets",
+        "sha256"
+      ],
+      "properties": {
+        "deny": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "targets": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "raw_ref": {
+      "$ref": "#/$defs/ref"
+    },
+    "transport_ref": {
+      "$ref": "#/$defs/ref"
+    },
+    "cleanup": {
+      "type": "object",
+      "required": [
+        "server_closed",
+        "home_removed",
+        "fixture_removed",
+        "mode_settings_removed"
+      ],
+      "properties": {
+        "server_closed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "home_removed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "fixture_removed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "mode_settings_removed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "mechanism_pass": {
+      "type": "boolean"
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "replaces_original_criteria": {
+      "const": false
+    },
+    "writes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "reads": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "greps": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "global_pairing": {
+      "type": "object"
+    },
+    "permission_mode": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "tool_surface": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "schema_delivery": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "sentinel_detection": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "production_target_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "production_manifest_verified": {
+      "type": "boolean"
+    },
+    "completed": {
+      "type": "boolean"
+    },
+    "mode_settings": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "before",
+        "after",
+        "removed"
+      ],
+      "properties": {
+        "before": {
+          "$ref": "#/$defs/mode_snapshot"
+        },
+        "after": {
+          "$ref": "#/$defs/mode_snapshot"
+        },
+        "removed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "requests",
+        "bodyBytes",
+        "max_request_bytes",
+        "started_at",
+        "finished_at",
+        "host",
+        "limits",
+        "handlers_finished",
+        "server_closed",
+        "within_limits",
+        "errors"
+      ],
+      "properties": {
+        "requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bodyBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_request_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "started_at": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "finished_at": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "host": {
+          "type": "string"
+        },
+        "limits": {
+          "type": "object",
+          "required": [
+            "requests",
+            "per_request_bytes",
+            "total_body_bytes",
+            "runtime_ms"
+          ],
+          "properties": {
+            "requests": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "per_request_bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "total_body_bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "runtime_ms": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "handlers_finished": {
+          "type": "boolean"
+        },
+        "server_closed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "within_limits": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "file_states": {
+      "type": "object",
+      "required": [
+        "before",
+        "after"
+      ],
+      "properties": {
+        "before": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "after": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "inline_mode": {
+      "type": "object",
+      "required": [
+        "verified",
+        "reasons",
+        "binding",
+        "baseline_argv_sha256",
+        "controlled_argv_sha256",
+        "changed_argument_indices",
+        "deny_exactly_unchanged"
+      ],
+      "properties": {
+        "verified": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "binding": {
+          "$ref": "#/$defs/inline_binding"
+        },
+        "baseline_argv_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "controlled_argv_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "changed_argument_indices": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "deny_exactly_unchanged": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "ref": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "mode_snapshot": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "valid": {
+          "type": "boolean"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mode": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "single_key": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "valid"
+      ],
+      "additionalProperties": false
+    },
+    "inline_binding": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "schema",
+        "original_json",
+        "proposed_json",
+        "original_sha256",
+        "proposed_sha256",
+        "deny_sha256",
+        "deny_count",
+        "defaultMode",
+        "explicit_deviation"
+      ],
+      "properties": {
+        "schema": {
+          "const": "controlled-inline-mode.v1"
+        },
+        "original_json": {
+          "type": "string",
+          "minLength": 1
+        },
+        "proposed_json": {
+          "type": "string",
+          "minLength": 1
+        },
+        "original_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "proposed_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "deny_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "deny_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "defaultMode": {
+          "const": "default"
+        },
+        "explicit_deviation": {
+          "const": "CLI inline adds permissions.defaultMode; original deny unchanged; not byte-identical production settings"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mechanism_pass": {
+            "const": true
+          }
+        },
+        "required": [
+          "mechanism_pass"
+        ]
+      },
+      "then": {
+        "properties": {
+          "inline_mode": {
+            "properties": {
+              "verified": {
+                "const": true
+              },
+              "deny_exactly_unchanged": {
+                "const": true
+              },
+              "binding": {
+                "type": "object"
+              },
+              "baseline_argv_sha256": {
+                "type": "string"
+              },
+              "controlled_argv_sha256": {
+                "type": "string"
+              },
+              "changed_argument_indices": {
+                "minItems": 1,
+                "maxItems": 1,
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        }
+      }
+    }
+  ]
+}

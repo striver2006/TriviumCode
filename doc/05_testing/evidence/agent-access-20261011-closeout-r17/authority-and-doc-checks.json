@@ -1,0 +1,65 @@
+{
+  "at": "2026-10-11T17:36:13.050Z",
+  "script_sha256": "aafb6e7d623b5690ff4e5fbdb0322740a8eb4dd79926eace871bce69129c4416",
+  "before": {
+    "stamp": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T17:36:10.154Z"
+    },
+    "bundle_sha256": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e"
+  },
+  "after": {
+    "stamp": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T17:36:13.049Z"
+    },
+    "bundle_sha256": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e"
+  },
+  "unchanged_install_inputs_and_bundle": true,
+  "checks": [
+    {
+      "bin": "npm",
+      "args": [
+        "run",
+        "typecheck"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "\n> triviumcode@0.1.0 typecheck\n> tsc --noEmit\n\n",
+      "stderr": ""
+    },
+    {
+      "bin": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "args": [
+        "scripts/build.mjs",
+        "--tests-only"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "",
+      "stderr": "\n  dist/test/test/integration/gate-loop.test.js        609.7kb\n  dist/test/test/unit/hooks.test.js                   298.9kb\n  dist/test/src/trivium/review.js                     270.0kb\n  dist/test/src/trivium/run-protocol.js               269.9kb\n  dist/test/src/trivium/cli.js                        261.7kb\n  dist/test/test/integration/run-protocol.test.js     228.1kb\n  dist/test/src/trivium/probes/zcode.js               213.5kb\n  dist/test/src/trivium/hooks.js                      212.4kb\n  dist/test/test/integration/fault-injection.test.js  211.2kb\n  dist/test/test/unit/registry-parity.test.js         209.1kb\n  dist/test/src/trivium/adapters/base.js              198.6kb\n  dist/test/src/trivium/adapters/zcode.js             195.8kb\n  dist/test/src/trivium/gate.js                       187.9kb\n  dist/test/src/trivium/probes/claude.js              180.5kb\n  dist/test/src/trivium/types.js                      166.4kb\n  dist/test/test/unit/lock.test.js                    164.7kb\n  dist/test/src/trivium/report.js                     162.9kb\n  dist/test/test/unit/gate.test.js                    160.8kb\n  dist/test/test/unit/zcode-provider-env.test.js      151.6kb\n  dist/test/test/unit/preflight.test.js               151.4kb\n  ...and 263 more output files...\n\n⚡ Done in 113ms\n"
+    },
+    {
+      "bin": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "args": [
+        "--test",
+        "dist/test/test/unit/agent-access-recovery.test.js",
+        "dist/test/test/contract/doc-archive-index.test.js",
+        "dist/test/test/contract/evolution-ledger-parity.test.js"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (1.62075ms)\n▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标\n  ✔ doc/02_design/README.md (0.56475ms)\n  ✔ doc/03_api/README.md (0.117958ms)\n  ✔ doc/04_development/README.md (0.137041ms)\n  ✔ doc/05_testing/README.md (1.304167ms)\n  ✔ doc/06_deployment/README.md (0.214292ms)\n  ✔ doc/07_manuals/README.md (0.095375ms)\n✔ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (3.192375ms)\n▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序\n  ✔ doc/02_design/README.md (0.246333ms)\n  ✔ doc/03_api/README.md (0.082833ms)\n  ✔ doc/04_development/README.md (0.067084ms)\n  ✔ doc/05_testing/README.md (0.489125ms)\n  ✔ doc/06_deployment/README.md (0.060917ms)\n  ✔ doc/07_manuals/README.md (0.047042ms)\n✔ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (1.161166ms)\n✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.225208ms)\n✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.18475ms)\n✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.211ms)\n✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.147917ms)\n✔ B5 同一文件两条条目 ⇒ duplicate (0.092375ms)\n✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.197125ms)\n✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.071958ms)\n✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.131375ms)\n✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.108542ms)\n✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.052541ms)\n✔ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02） (0.116791ms)\n✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.049417ms)\n✔ ① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2） (6.201417ms)\n✔ ② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头 (4.579042ms)\n﹣ ③ §24 无 ◐ / ⏳（M11 完成判据，主设计 24.3 第 2 条） (0.044167ms) # 第 12 步 M11 收口时启用（第 10 步已翻绿，见报告）\n✔ 已启动轮数4/5允许第五plan/第六code，6/7及原件不一致均拒绝 (1.163167ms)\n✔ 五个Claude生产写缺口均在spawn与计数之前拒绝；合法读取与Qwen flash写保留 (34.739583ms)\n✔ 独立总7轮授权仅允许第六补充plan及第七完整code，原6轮授权不变 (0.282666ms)\n✔ 历史v5固定夹具与v2纯核验保留11B/12C边界，不随实时指针升级 (4.029708ms)\n✔ 历史v6生产v2守卫固定覆盖13B/14C及参数、集合、权威负例 (0.978625ms)\n✔ 历史v7固定夹具保留15C/16拒绝、授权谱系和参数集合负例 (0.95ms)\n✔ 历史v8固定数据对应委托首批16B/17C，不无限放行 (0.383875ms)\n✔ 当前hash权威读取壳与生产守卫消费逐轮枚举，批后/错误参数与集合拒绝 (1.957666ms)\n✔ 第24B获批合同锁定v13原件与指针，只授24B/25C而不授判据采用 (0.551542ms)\n✔ v9至v12新增固定历史原件测试，各自边界保留但现行v13拒绝旧权威 (2.805083ms)\n✔ 历史总10权威固定v4夹具，9B/10C边界不随v5指针改变 (0.313125ms)\n✔ quiet-v6只允许三种摘要入口，拒绝review/probe和缺必需旗标 (0.358208ms)\n✔ quiet-v6真实子进程拒绝review启动且不建立预算或调用证据 (45.373542ms)\n✔ 正式代码前软线与最终安装/事实核验：失败不spawn、不占正式轮数 (4.34725ms)\n✔ 独立总8轮授权仅允许第七敏感扫描plan、第八完整code，旧7轮不可复用 (0.462459ms)\nℹ tests 45\nℹ suites 0\nℹ pass 44\nℹ fail 0\nℹ cancelled 0\nℹ skipped 1\nℹ todo 0\nℹ duration_ms 180.011583\n",
+      "stderr": ""
+    }
+  ],
+  "current_full_check": "未执行；完整夹具/诊断实施完后按影响范围检查",
+  "new_vendor_starts": 0,
+  "criteria_change_authorized": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "焦点合规性成立且可在机读层核验：两项敏感范围（mode3 CLI inline defaultMode 消费面、1..32 逐跳认证谱系）与 v3 候选版本均已写入 v15 登记件 authorized_scope 并由本 26B 正式计划审查覆盖；v15 的 criteria_change_authorized=false 与 delegated_round_extensions=true 把轮数委托与判据采用分离，r29 §5 明确不改动 v2 含义、v3 采用须 Bob 另行独立原消息批准，旧 Schema/validator 原样保留。我实测读了 criteria-approval-validation.mjs：候选集硬编码（第7行）且版本严格相等校验（第22行），旧 v2 批准件在版本比对处必然被拒，跨版本批准重放不可行，这是 v3 方案的机制地基，成立。事实账目逐项吻合：mode2-stop-export.json 显示 admission 733/742、review 328/333、mechanism_pass=false 唯一原因 permission-mode-mismatch、real_model_attempt=null、四清理全真，与 §1/§7 起算数完全一致；mode2-readonly-diagnosis.json 证实 --restricted 实际在 argv、用户 settings 被忽略、inline permissions 仅 deny 且 deny 实际配对消费，mode3 把 defaultMode 放入 inline 面正是诊断件 limitations 指出的下一个未测输入面，前提有据。r19 auth-timestamp-chain.mjs 确为固定两跳（hops.length!==2 即拒）、三 AUTH_ROUTE_KEYS、ISO 严格递增、逐跳反向重建核 hash，新 1..32 helper 以新独立模块泛化且负例清单与既有错误分类一一对应。时间线自洽：25B 批准 19:00:55Z → mode2 失败 19:45:51Z → v15 登记 19:54:05Z（理由即 mode2 失配）→ 本 26B run 在其后启动，无权威时序矛盾（r13 GLM-01 一类问题未复发）。预算算术自洽（328+20=348；733+6=739≤742；739+9=748 且声明先扩池）；r21 执行域空闲无命名冲突；claude.ts 证实生产 settings 形状仅 permissions.deny，buildDenySettings 产品合同不被触碰。唯一意见：32 跳上限在本稿处处可溯源的纪律中是唯一无推导来源的数字，且超过 32 后的处置出路未写明，属吹毛求疵级。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "被审计划 §4 第二段（新helper接受1至32个显式manifest hop……32是取证输入大小上限……超过上限即拒绝，不能截断链）",
+      "problem": "本计划其余所有数字均可溯源到工件（预算对台账、轮数对 v15、hash 对原件、N 对生产枚举），唯独 32 这个新契约常量没有给出任何推导来源：当前实际链长仅 3 跳（496→fb64→c5b4→新），32 既非当前链长也非任何已登记上限的推导值，v15 authorized_scope 只是照抄了 1..32 而未解释。且「超过上限即拒绝」之后没有写明出路——按本任务节奏每轮正式计划审查的正常 preflight 都可能追加一跳，链长终会逼近 32，届时 helper 拒绝是 fail-closed 没错，但计划未声明处置是另列敏感计划扩界、还是以新原件重新锚定链原点，未来审计者对照「输入数量可重复核验」要求时会在此停住。",
+      "evidence": "读了 .reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md §4 原文；doc/05_testing/evidence/agent-access-20261011-closeout-r19/auth-timestamp-chain.mjs 第11行（现状固定两跳 hops.length!==2 即拒，无任何可变长度先例）；doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v15.json authorized_scope（仅照抄 1..32 无推导）；对照同稿 §7（review 328/333→348、admission 733/742 等每个数字都有台账出处）与 r28 §1（三跳链 496→fb64→c5b4 的实际记载）",
+      "suggestion": "修订或裁决时补一句：注明 32 的取值依据（例如取证输入规模上界的工程约定），并写明链长超过 32 时的处置是停用该诊断并另列敏感整改（扩界或以最新原件重新锚定原点 hash），不得静默截断或让拒绝成为无出路终态。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "焦点要求的敏感整改结构成立：v3 不沿用 v2 含义而是新列候选，v2 语义与旧 validator 原样保留，采用须 Bob 本轮另行明确原消息及引用 hash，普通 plan/code 批准、CLI 扩容和轮数委托均被显式排除在采用之外；v15 authorized_scope 具名列出 26B 敏感作用面且 criteria_change_authorized=false，轮数委托与判据采用在机读层分离。",
+    "§1 事实账目与仓库工件逐项吻合：mode2-stop-export.json 的 admission 733/742、review 328/333、second_combination_started=false、retries=0、real_model_attempt=null、actual_provider_inference=false、production_target_count=6、四清理全真、mechanism_pass=false 唯一原因 permission-mode-mismatch，与计划表述完全一致；mode2-readonly-diagnosis.json 证实 auto≠default、--restricted 实际存在、用户 settings 被忽略、inline permissions 仅 deny 而 deny 实际配对消费（inline_denials_actually_paired=true）。",
+    "mode3 的输入面选择有诊断件依据：mode2 失败根因是把 defaultMode 放在被 --restricted 忽略的用户文件，而 inline settings 的 deny 已证实被消费，把 defaultMode 移入 inline 是诊断件 limitations 明示的下一个未测面；成功判据独立于任何设置存在性（实际 init 严格 default 且工具/MCP/model 与 live 一致，未知即拒绝），失败不换第二配方、停批保留原件，fail-closed 到位。",
+    "版本隔离机制实测成立：criteria-approval-validation.mjs 第7行候选集硬编码为 v2 与 auth-v1、第22行要求 criterion_version 严格相等且与消费侧声明一致，旧 v2 批准件对 v3 消费必然报 wrong-version-topic-or-scope；事件清单完整性、撤销、重复、sourceFactsVerified 事实门与 §5 描述一致。",
+    "§4 泛化设计正确：r19 helper 确为固定两跳且逐跳核完整 hash、三 AUTH_ROUTE_KEYS、ISO 严格递增、Buffer 清零；新 1..32 helper 以独立模块实现不动旧件，负例清单（0/33、断链、循环、错序、软链、倒退时间、凭据变化等）与既有错误分类对应，且「零变化 preflight 另记，不伪造 hop」封住了无中生有的 hop。",
+    "生产边界保持：claude.ts 证实生产 settings 形状仅 permissions.deny（第85行注释、第405行解析），buildDenySettings 产品合同不变，--restricted/--strict-mcp-config/Read,Grep,Glob 来自实际 argv 记录；新资产全部独立，r21 执行域当前空闲无命名冲突（现存最高为 r20）。",
+    "预算与轮数账目自洽：328+20=348、733+6=739 不超池 742、739+9=748 且声明先扩池留痕；v15 的 new_rounds 仅 26/B/plan 与 27/C/code、new_limit=27，26C 未执行被显式替代并留 replaces_unstarted_round 理由，28 无条目即拒绝，historical_run_ids 含 25B run；时间线无矛盾（批准 19:00:55Z → mode2 19:45:51Z → v15 19:54:05Z → 本 run 其后）。",
+    "§7 审批 reason 具名覆盖四类敏感作用面并继承 HTTP/mixed/清理拒绝边界，延续了 r13 建议的敏感范围审批留痕格式；session 未声明 null、不冒充 Bob 亲自操作的表述保留。"
+  ],
+  "not_covered": [
+    "本侧只读无执行：未复算任何 sha256（r29/r28 提案与定稿 hash、v15 supersedes hash、native 与包装器 hash 均采信工件记录并与父稿及任务书快照交叉核对一致）；round-guard-v2.mjs 对 v15 的实际拦截行为由 r13 轮源码阅读推断，本轮未重读未实测。",
+    "v3 validator/consumer 与 mode 输入新证据 Schema、1..32 chain Schema 均为批准后新件，本轮只能核对其派生源（criteria-contract.mjs、criteria-approval-validation.mjs、auth-timestamp-chain.mjs）与计划合同的一致性，无法审阅尚不存在的新实现。",
+    "24B 的 496→fb64 与 25B 的 fb64→c5b4 原始观察件未直接打开核对hop载荷，采信 r28 §1 已审记录与 r19 helper 的存在性；27 具名历史来源臂与 378 项模块/资产清单未逐一重读。",
+    "§7 声明计数源为 task.runs 与 archive 实际一致，本轮未运行任何计数核对命令，无法实测复核 328/733 之外是否还有未入账启动。",
+    "mode3 fixture 是否仍写临时用户级单键 settings 文件，§3 措辞（旧临时单键用户文件仍保留生命周期检查）未完全明说；本侧推断其证据地位已被降级、成功判据独立于该文件存在与否，如实现时选择不写该文件亦不构成本侧异议。",
+    "背靠背约束：另一位审查员本轮与历史产出、plan/code _meta、.trivium 运行目录、ledger 与 calls 明细均未读不猜。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r28-codex.md",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r13-glm.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/criteria-contract.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/criteria-approval-validation.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r19/auth-timestamp-chain.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r19/mode2-readonly-diagnosis.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r19/mode2-stop-export.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v15.json",
+    "src/trivium/adapters/claude.ts"
+  ]
+}

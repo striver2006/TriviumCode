@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.155
+> - **当前版本**：v1.3.158
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3974,6 +3974,8 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.156** | 2026-10-12 | 第24B获批集中取证合同：受控包装器/native实证、default及工具面、混合工具唯一配对、局部证据Schema、三具名认证时间戳诊断与独立判据批准/撤销；原标准及旧列保留，两个候选尚未采用。新增v13及v9至v12具名测试，不改安装输入。 |
+| **v1.3.157** | 2026-10-12 | 第25B获批敏感证据守卫：临时模式生命周期、实际HTTP限额/在途错误/全清理、生产枚举唯一N、mode2批准hash绑定及双跳诊断；前向流程单一权威，产品守卫与未采用判据保持。 |
 | **v1.3.155** | 2026-10-11 | **第22B批准Claude精确拒绝取证守卫。** 生产严格初筛与脚本同ID/工具/路径三腿、实录错误白名单、较窄路径权威及兼容字段；原false保留，23C和新指纹准入待完成，原生产写标准不变。 |
 | **v1.3.154** | 2026-10-11 | **按r22获批失败可见与清理范围补正。** 主/保存/清理异常因果保留，初始化进清理链、阶段与采样字段补齐；20C有效但普通code拒绝，21C与新包准入待验证，原守卫/判据不改。 |
 | **v1.3.153** | 2026-10-11 | **第19B/r22批准写合同取证。** 仅Codex/write临时合同及单cat全文来源诊断，六型号同机制、assets指纹、原写判据不变；14旧接口回放改称历史，当前非目标不变。20C/新包实际准入待取证。 |
@@ -4312,3 +4314,110 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
 > 2026-10-11 第15次重审授权补记：用户独立授权“授权总15轮，仅追加完整代码重审（建议）”。当前权威 v7 保留 v6 原件及14次历史，仅开放15C，拒绝16次与新增计划审查。两项补修（quiet-v8完整摘要脱敏、v6 supersedes 原件hash直接断言）仍属13B已批准范围；v11只更新授权载体，不修改guard语义或准入判据。第14C普通code拒绝保持；第15C结果及新版完整指纹尚未取得，旧准入不自动迁移。
 
 > 上述第15次补记为授权当时采样，保留历史原文；当前执行口径以恢复报告最新段与hash绑定的正式权威指针为准。2026-10-11用户随后独立回复“授权轮次可以按需增加，不必询问授权”，当前v8仅枚举有界16B/17C、保留15历史及v7谱系，18仍拒绝；未来批大小由发布核验与正式审查约定保证，v2守卫本身不核批大小。第15C已有效并按委托批准，第16B run20261011T093157Z五条裁决/r20及普通plan已批准，第17C尚待实施完成。新增诊断不改变原准入判据，判据变化仍须另行明确批准；旧874完整矩阵5通过/1未通过/6未测仅其原指纹采样，后续新任务书/新包未测。
+
+
+<a id="agent-access-controlled-contract"></a>
+
+<a id="agent-access-inline-mode3-contract"></a>
+## CLI内联模式与有界谱系的当前合同（v1.3.158）
+
+第26B run20261011T200004Z三审有效、九意见逐条裁决，完整r30 SHA 9c457711d4146644d9dedd976cbdf854128283df0802ddf32ba6f4bc0cf75d5c，普通plan已按Bob本轮委托批准。仅授权下列新独立取证整改；实施采样见本节末段，restricted-tool-surface-and-path-v3与auth-cache-timestamp-applicability-v1均未采用，消费者关闭。此节为新v3谓词/有界链的唯一当前正文；敏感变更流程仍以#agent-access-evidence-guard-contract为准。旧v1.3.156/v2、v1.3.157/mode2及其“同一候选版本串”只按当时采样保留，不与本节并行为当前规范，不改旧工件。
+
+1. CLI实际argv含--restricted，同hash native说明忽略用户settings；mode2 auto/default失配失败保留，没有因果差分试验。新mode3只在独立fixture的CLI inline --settings加入permissions.defaultMode='default'，值来自具名live唯一init，original permissions.deny全部规则/顺序精确不变。原inline只permissions.deny，新inline只permissions.deny/defaultMode；未知键、allow/ask、已有mode冲突、损坏/空/重复deny、非default、任何其它argv差异拒绝。分列original/proposed字节/hash、deny数组hash、唯一settings argv索引；两argv只该JSON值一项不同，不能称生产settings同字节。生产builder/适配器、CLI版本、model/effort、全局配置不改。
+2. 旧临时单键0600用户文件继续实际生成并核前后原值/hash/权限/单键及清理；它被忽略，不证明消费。实际CLI init必须strict default且工具/MCP/model与live相同；缺模式或其它未知拒绝。完整生产enumerateDenyPaths/N/manifest、两写+2N禁读+合法README、恰2N权限唯一精确配对/终态/未repair Schema/哨兵/逐文件前后状态以及OS PID/lstart/comm/hash与启动记录实配保持。HTTP真实helper请求12、每体1048576、累计8388608、运行时120000ms、127.0.0.1及在途/迟到异常/聚合全清理保持；任一资源非true或未知错误均不得pass。
+3. 新controlled-mechanism-mode3.v1.schema.json根schema固定controlled-mechanism-mode3.v1；inline输入绑定/精确argv差异为必须消费事实，不只落盘。新fixture/guard/helper/proof/launcher/Schema及全部live/生产模块/当前配置hash实际绑定26B成功run、r30全路径/hash和真实批准reason，独立mode3 lease每组合一次，不写mode2旧目录。任一失败停止后续，不换第二配方或循环重试，actual_provider_inference=false、real_model_attempt=null、server_identity=null。
+4. 新auth-timestamp-chain-v2.mjs接受1..32显式旧到新hop，各来源存在普通文件/hash实核、端点完整config hash连续/无环、仅固定三个AUTH_ROUTE_KEYS.checked_at，ISO严格递增/ok旧新true，其余所有原值含凭据不变。逐跳反向重建完整hash后用原值语义核验，再核原496和最新完整hash。当前具名三hop为24B/25B/26B的496→fb64→c5b4→b40e8a37；路径/hash/时间原值见r30确切清单。重建不是原采样文件，私有Buffer清零、0600副本清理；预期损坏常量拒绝，未知内部错误抛出。27来源臂/生产组件/当前安全/消费者均重新核验，不能只信旧true或掩码后比较。
+5. 新auth-timestamp-chain.v2.schema.json根schema固定auth-timestamp-chain.v2，hops min1/max32，来源/端点hash与实际实现对账；0/33、缺损/软链/重复/循环/乱序/断链/原值非时间变化及安全/引用未知均not-applicable。32是本轮工程输入规模界，不称实测能力；超界停用并另正式敏感方案审批才能扩界或以真实新能力原件重锚，不能截断或追认旧样本。未列未来变化不默认复用；diagnostic_only=true、criteria_approval_ref=null直到独立批准，不改canonical。
+6. v3与旧v2的差别是具名inline mode映射，旧v1/v2未采用原件/校验器/Schema保持。r21 criteria-validation-core.mjs为新批准/撤销/冲突/未知状态机唯一实现，固定候选从criteria-contract唯一合同派生（仅v3和auth-v1），不从未核验批准载体扩大版本集；v3 wrapper/consumer不复制状态机。同事件语义的测试域v2→v3映射按完整撤销/重复/未知/来源/损坏负例逐臂对账，真实历史不改，错版本仍拒绝。approval/revocation形状与唯一源机械对账。
+7. A生产正向/B受控机制/C真实模型原标准/D独立决定分列。B不证明模型主动违规/任意调用安全/上游/服务端或未来行为；认证诊断不等于能力重测。原C false/未测保留；独立判据采用须Bob本轮分别明确原消息/hash、scope/source/plan/version/consumer/reason/撤销条件。普通自动plan/code/CLI扩容/轮数委托不采用。sourceFactsVerified是必要事实门，approval_valid只本地原文谱系不密码学证明身份；实际consumer重验全部原件/当前指纹/完整事件状态，任一unknown不消费。
+8. mode3首批Qwen max与k3各一次，预计4硬6、baseline733累计止739/池742；两个全合格才另发三组合预计6硬9、最坏止748/池至少748，hard9为本轮对24B hard8的明确修订，事前清单/扩容追加后生效。review本轮事前328/333→348、预检338、三审完成343/348；27C另批。CLI启动数与HTTP请求限额不同，所有启动版本/帮助/失败/超时/wrapper/native按真实边界计数，达到硬上限停；旧台账不改。reason和启动守卫共同绑定r30§8精确token数组、run/全路径/hash及实际batch/台账，不仅核token。
+
+获批实施/验证另记；27C完整重审及普通code审批仍待完成。本节不改变产品安装输入。若产品作用面变化，仍须串行两check、14/14、重建正常四目标安装和适用指纹/必要真实刷新。源码、安装、历史与独立资产检查分列，M11前置保持未完成。
+
+2026-10-12实施采样：首批Qwen max一次真实CLI取得default及完整受控机制事实，随后proof误解析已清理的临时入口，按“任一失败停止”关闭批次。原停止与旧源码保留；以已捕获的绝对comm、PID/lstart、稳定native image/hash和账本进行只读复算通过，不恢复批次，k3及其余组合仍未启动。该b40e8a37作用面的机制事实不证明模型实际推理或主动违规，也不自动适用于后来的完整指纹。
+
+27C正常预检仅刷新三个具名认证checked_at，产生第四个显式hop b40e8a37→6a2c6213；私有0600副本已删除。auth-diagnostic-after27-preflight.json实际重验4跳、27来源臂、378组件和91引用。获批时三跳及原件保持，后续hop必须显式加入并逐项重验，不能自动继承。当前canonical仍0通过/12未测，旧496下7通过/5未测保持。
+
+r21/criteria-consumer-v3.mjs的inspectCriterionConsumption先校验15项固定依赖hash，再经唯一criteria-validation-core.mjs核独立批准/撤销/冲突/原文谱系。调用方sourceFactsVerified不作为已核验事实；来源门通过后调用auth-evidence-replay.mjs或mode3-proof.mjs重验实际原件、当前配置与精确scope，然后再次核状态机。缺独立批准时不访问事实输入；未知或漂移关闭。candidate_report_consumable仅表示独立批准与重验后的候选报告可消费，production_consumer_enabled及changes_canonical_original_status始终false，不接线产品准入、不写canonical。实际缺批准的两个候选均保持关闭；已测拒绝边界和真实认证回放，不宣称实际独立批准的端到端正向消费已测。27C预计15/硬20、review池348→363事前追加，预检后353/363全部完成，审查未启动。
+
+2026-10-12第27C后采样：完整code run20261011T212239Z三审有效且普通批准，零漂移/真实只读隔离合格，3意见2暂缓1驳回，无必修实现项；GLM见证身份意见由现有全对象摘要和实际独立临时变异回放反证。r22保存r21全部160文件，最新27C安全及mode3原件的4跳/27臂认证重验成功；具体独立采用材料已另列，未产生判据批准。新的停止后机制方案仅提案，未审/未实施，不恢复原batch，不变更当前合同或产品输入。普通code批准不使canonical0/12或历史false/未测通过。
+
+<a id="agent-access-evidence-guard-contract"></a>
+## 取证守卫的前向敏感整改规范（v1.3.157）
+
+产品guard与独立证据guard职责分开，但改变任一层的accept/reject、配置输入、来源/权限配对、限额或清理成功条件，均须先单列正式计划审查、逐条裁决、有效gate与明确批准。一般未具名普通plan不授权新谓词；用户已有普通审批委托可执行具名本轮决定，reason仍须绑定run、定稿路径/hash与敏感范围。独立准入判据采用仍须用户另行明确决定，普通plan/code和轮数/配额委托不包含该决定。此节为前向流程唯一权威，其余文档及新证据模块引用此处，不以注释字符串镜像测试维持流程。
+
+25B run20261011T184407Z已按Bob普通委托批准完整r28（SHA f6b92255f1182e63905ed837ddf9fb1262eb84bdd38b13e80e17292a4687a406）。具名独立敏感范围如下；实施与验证另记，不由计划批准宣称完成：
+
+- 临时HOME用户settings仅permissions.defaultMode='default'，0600普通文件，值来自指定live实际init。启动前、结束清理前核JSON单键/权限/hash一致；实际CLI init、工具面、生产注入deny settings及完整拒绝另核，清理无残留。新增临时设置是显式差异，不称生产复制件，不复制真实凭据或用户缓存。
+- 夹具实际接入局部HTTP helper，仅127.0.0.1与合法端点/协议，请求12、每请求1048576字节、累计8388608字节、运行时120000ms。关闭连接并等待在途handler后聚合迟到异常；保留主成果、未知内部错误和多个清理错误。所有资源清理均尝试，未初始化null、失败false，任一非true机制拒绝。
+- 生产enumerateDenyPaths及其存在普通文件目标是唯一权威，manifest只是派生记录并与当次生产集合/数量完整对账。N从生产目标派生，两写+2N禁读+合法README、恰2N权限全局精确唯一配对；任一源变异、少多/重复/错位、桥接/规则/模式/状态/清理未知均拒绝，已录制白名单不扩。
+- mode2一次性启动绑定成功plan run/r28实际hash/批准reason敏感范围及fixture/guard/helper/launcher/Schema/live全部hash；不写variant1或循环重试。受控B不是实际模型尝试C，actual_provider_inference=false，服务端null，原标准false/未测保留。
+- 新认证诊断沿496→fb64→c5b4原件反向重建并逐跳完整hash；只三具名auth_routes.checked_at、ok严格true、时间有效单调，其余原值含凭据先比较后脱敏。新auth-timestamp-applicability.v1落机读诊断、未批criteria_approval_ref=null；散记只是输入，27来源/378比较与当前指纹/消费链重验，不恢复配置、不扩大TTL或默认复用未来变化。
+- 独立批准/撤销、重复作用面/来源及局部Schema唯一源对账属于证据域；sourceFactsVerified是该域必要门，不证明能力。消费者须重验原件事实/当前完整指纹/完整事件清单，未知不消费；两个候选仍未采用，完整代码重审及本轮普通批准仍待完成。
+
+完整执行与变异测试以本轮r28为准，旧r26/r27和失败状态按采样时刻保留。产品安装输入、guard/gate/hooks/Bash、模型/effort/软件版本不因本节改变；如后续产品作用面确变，仍须两次串行check、14/14、重建重装及必要真实刷新。
+
+## 集中取证与独立判据采用合同（v1.3.156）
+
+第24B run 20261011T171203Z三审有效、13意见逐条12接受/1驳回，完整r26经gate/await-approval，于2026-10-11T17:30:50.521Z依Bob普通审批委托批准。以下为正式审查修订后的实现依据，当前只授权夹具/诊断/测试，尚未证明受控可行或采用两项独立判据。旧生产真实模型调用标准、历史Schema、失败记录及配置不改；包版本不变。
+
+## 2. 方案A：保持原标准列，增加独立受限工具面及路径机制评估
+
+本方案是判据候选restricted-tool-surface-and-path-v2，不能由一般审批直接采用。谱系：旧restricted-tool-surface-v1从未采用，本v2针对旧受控绕过profile包装器、auto/default失配、缺live绑定等缺陷，新增同hash原包装器到native实际消费证据、default与工具面实测门、A/B/C/D独立列以及明确批准/撤销校验；它不继承旧v1批准，旧记录不改。旧component-scoped-evidence-v1也未采用，本次auth-cache-timestamp-applicability-v1只审三具名checked_at变化与本批确切证据，不采用一般组件缓存或跨版本复用。ADR/报告/批准工件使用同一候选版本串并注明此谱系。按五个实际模型逐项保存四层：
+
+| 层 | 必须有的证据 | 证明范围 |
+| :--- | :--- | :--- |
+| A | 当前真实模型Read README、首词、完整Schema、CLI模型回读、init工具面、default权限模式、空MCP及完整指纹 | 该模型在受测生产工具面能够完成只读任务 |
+| B | 相同原profile包装器和同hash native CLI、相同模型声明/只读参数/Schema/禁读settings，在独立夹具中受控送入精确Write/Bash及每一禁读目标Read/Grep；唯一ID/精确路径/配对错误及权限记录、哨兵和前后状态 | 当前CLI注册面及路径拒绝机制的受控输入行为 |
+| C | 真实模型生产写尝试与逐文件Read/Grep负对照 | 原标准；没有尝试继续未测/false，绝不由B补成true |
+| D | 单独判据批准的范围、版本、理由、撤销条件，以及A/B每一项消费证据hash | 明确是否允许另列受限准入用于M11；未批准永远不消费 |
+
+不能证明：真实模型主动发起被禁工具、任意诱导输入安全、所有系统调用渠道安全、恶意外部服务全面安全、服务端真实身份或未来版本行为。行为性拒读只是观察，不能替代B。模型/CLI/配置/工具面/权限模式/Schema/禁读规则或事实适用性变化、泄漏、原实际拦截失败、清理或证据配对不完整，均不得采用独立受限准入。
+
+## 3. B层受控取证机制：先解决旧桥接和权限差异
+
+不修改生产适配器、生产guard、全局配置、软件版本或effort。新的独立夹具脚本使用现有production invokeClaude/buildClaudeArgs、enumerateDenyPaths、生产探针结论、预算preload和脱敏工具；只通过受审的固定目标启动壳执行，不提供任意CLI或任意脚本出口。产物和评估脚本位于本任务独立证据域，不修改安装输入来反复改变已取证bundle。
+
+原包装器源码hash=e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5，读取${HOME}/.claude/profiles/<profile>.env，并优先exec ${HOME}/.local/bin/claude。方案在独立临时HOME内创建仅含假凭据、本地loopback地址及原非敏感模型声明的profile，并将临时native路径指向经hash核实的同一真实CLI；仍从原cld入口执行相同--profile前缀。原用户profile、auth、settings及其他入口不修改，不复制真实凭据。
+
+生产与受控逐项绑定wrapper/native hash、实际CLI版本、模型参数、readonlyArgs、Schema和settings字节、init工具面、实际cwd及permissionMode。临时HOME、假凭据和loopback传输是明示差异，不能声称真实provider推理。native实际消费需现有预算记录、唯一PID/lstart及只读进程映像观测支持，不能只靠请求路径或准备好的symlink推断。不得输出进程完整命令、环境或凭据。
+
+生产六模型init.permissionMode实测均default；旧受控为auto。受控pilot必须先取得default与相同工具面。只复制经白名单审过的非凭据设置，实际模式不一致就unknown并停止，不猜CLI旗标、不新增生产权限、不通过改注释或判据消除差异。仅准备相同argv还不构成桥接证明。
+
+固定夹具内生产enumerateDenyPaths导出的敏感及同行文件集合必须完整覆盖，含.env及现有角色/重跑工件。强制协议输入依次覆盖两种写工具及六目标Read/Grep，不通过真实模型换提示产生；记录唯一ID、实际CLI响应、终结权限记录、精确cwd目标、所有文件前后状态及无哨兵泄漏，合法README读取另留正对照。Write/Bash必须各有实际受控工具输入、唯一非空ID、唯一同ID且is_error严格true的tool_result。只接受claudeWritePass已录制白名单：No such tool available: <tool>. <tool> is disabled for this session（仅生产实现已经接受的标点、in subagents as well as here及已观察tool_use_error包装）；仍调用现有claudeWritePass作为必要初筛，但其some逻辑不足以证明两工具都拒绝，新评估独立逐工具复核。Write内容BREACH和Bash既有singleWriteTarget精确单目标、实际cwd及全部前后状态必须一致。注册禁用不要求伪造Write/Bash的permission_denials。
+
+Read/Grep各覆盖生产枚举完整目标集，复用claudeDenyEvidence的已录制文本白名单及严格同ID/工具/精确路径合同，不把结构化权限记录或自由文本单独当充分证明。混合原件不裁切raw去伪装单臂，不直接把包含两工具记录的原件传给固定单工具总数谓词。新增只读mixed评估核对原始全部事件：唯一init和终态成功result、完整未repair Schema、全部调用先于唯一配对结果且早于终态；两写+2N禁读+合法README正对照ID全局唯一；terminal.permission_denials恰2N、Read/Grep各N、逐ID/工具/路径全局一一对应且无额外/悬空记录。当前N=6须恰12条，未来只能从生产枚举N派生，不能硬编码历史数量。合法README成功不生成权限拒绝，全部raw仍扫描敏感哨兵。缺/错/重复权限记录、少/多总数、工具目标错位失败。任何未录制错误形态均明确失败并保留脱敏原件、停止pilot，不动态扩大白名单或循环换提示；若需要扩充，必须另列正式计划审查并明确批准。
+
+机读输出固定为独立证据域schema controlled-mechanism.v1（JSON Schema只校形状，身份按注册表）：schema、criteria_candidate、diagnostic_only=true、model_declared、actual_provider_inference=false、real_model_attempt=null、live_reference的路径/hash、source_fingerprints与controlled_fingerprints、explicit_deviations、bridge的PID/lstart/映像/hash/预算引用、permission_mode与tool_surface逐项比较、readonlyArgs/schema/settings字节hash、target_manifest及hash、raw_ref、transport_ref、writes的tool/id/absolute_target/result_id/is_error/error_shape/before/after/verdict/reasons、reads与greps逐目标同样配对事实、global_pairing的expected/observed/extra/missing/duplicate、completed、schema_delivery、sentinel_detection、cleanup和limits事实、mechanism_pass及reasons。所有未知null且mechanism_pass不得true。保存顺序在清理结果取得之后，输出schema校验与原件hash不合均拒绝。这个mechanism_pass仍只属B层，绝不代表模型能力或restricted_status。
+
+受控启动明确计入既有admission池，每笔label/type=controlled-mechanism，与real-model/version/diagnostic等类别分列；不建新池、不伪装生产模型启动。review池只计正式审查相关。当前剩余11不足pilot硬6加后续硬8的总14时，后续批事前发布并扩容留痕后才能启动，旧台账原样保留。构造失败、超时、解析损坏、模式不同、缺init或清理残留全部显式失败，未定义内部错误不吞。
+
+传输服务只监听127.0.0.1，限制请求数/字节/运行时长，记录脱敏tools及paired_results，不保存授权头；退出、失败、超时均完成连接关闭、临时profile/HOME/夹具清理。所有落盘先脱敏扫描，wx防覆盖，复制核hash。
+
+先做两模型pilot（Qwen max与k3，分别覆盖本次实际调用缺口）；预计逻辑2、保守包装/native预计4启动、硬6。任一桥接/模式/拒绝/状态条件失败即停，不循环调参。pilot成功后才执行其它三个组合一次，保守预计6、硬8；启动前按实际版本及边界计数重新发布批/池上限，达到上限先扩容留痕才继续。所有这些只提供B，不改变原C。
+
+## 4. 方案B：仅认证缓存时间变化时的具名适用性评估
+
+正式预检auth缓存TTL=1h；24B本次预检已更新三项auth_routes.checked_at（原件config-after24-preflight-observation.json），使local496eed89变为fb64a35a；不能因此把现7通过静默追认到新配置，也不能跳过认证或恢复旧时间伪装未变。
+
+另列候选auth-cache-timestamp-applicability-v1：仅对本次显式7组合及五Claude正向证据评估，旧完整指纹与原标准采样状态永远保留。预检前后在0600临时副本作全配置语义diff，只允许probe.auth_routes下27e1e0415da4ea47b713096a0367b63f1fac9b0b780cfb4d556bc8874a5182fb、c9529bd415278c064fc7b5bf8b367870c72b53264d58cfad154af59e59600bd4、ce0accbd74848643cf2f4e899d651d442af4410c42e6d185a42cb2a6dc53a671的checked_at变化，时间有效且不倒退、旧新ok均严格true、combination/fingerprint/cli_version/其它节点完全一致，不允许增删节点、probe.auth变动或其它route时间戳；所有其它配置节点、CLI/native/wrapper、modules/assets、安装bundle、实际模型、effort、Schema、规则/TTL、工具面及配对事实必须一致。出现任何其它变化、缺原件/身份/hash/配置消费说明、最新泄漏或实际拦截失败均not-applicable/unknown。记录CLI参数和生产route配置消费链，不把“认证不是能力”当充分证明。
+
+全配置包括任何凭据值节点按原值在0600临时内存/副本中先比较，再脱敏输出；凭据变化即not-applicable，不能先脱敏抹去差异。当前旧私有快照已清理，诊断若需复核可用确切已观察时间戳从当前字节重建临时旧副本，重建字节hash必须严格等于496eed89完整原hash；不符或缺原件则unknown，禁止恢复生产配置或把重建件称原采样文件。完整语义diff证明只限定本机已列二进制/配置/模型/effort/Schema/TTL/工具事实未发现变化与三时间戳按生产更新，不证明上游服务稳定、服务端身份、认证等于能力重测、未测负对照变通过或未来行为。独立诊断schema auth-timestamp-applicability.v1固定source_refs/hash、old/current完整指纹、三键差异、配置消费链引用、其它节点一致事实、raw_value_comparison=true、can_prove/cannot_prove、criteria_approval_ref（未批null）、diagnostic_only=true、applicable_diagnostic及reasons；诊断true不直接产出current original通过。敏感临时快照只保存必要脱敏diff及hash后立即清除；认证更新本身仍按生产实现进行，不扩大TTL、不改缓存校验、不重写历史配置。独立评估必须含criteria_version、explicit source refs、old/current完整指纹、精确差异、判据批准记录和结论。Bob未独立明确批准前，只输出诊断，不改变canonical全指纹要求或当前通过列。
+
+## 5. 正式审查、实施、独立判据批准与交付顺序
+
+1. 完成当前静态资料、依赖审计、最小启动清单、报告及证据后，经archive.ts认领/归档Codex计划；沿现有正式机制登记并核验24B/25C具名轮数例外，旧23轮全部保留，26拒绝。新增review启动另发预计/硬上限，CLI自动扩容不替代正式轮数留痕。
+2. 24B使用--driver codex、原主题、claude/gemini/glm三侧，审查本提案所有取证输入、桥接守卫、权限模式、适用性及独立判据边界。运行和审批停点不修改业务或被审证据；全文阅读、逐条裁决、有效gate后按Bob普通委托决定plan。
+3. 普通plan批准只授权实施独立夹具和只读评估诊断，不授权替代采用。实施前同步主设计补丁、ADR003、PROTOCOL、GUIDE_local_pitfalls、手册/QUICKSTART、RUNBOOK、恢复报告REPORT_2026-10-11_agent_access_recovery、验收剧本、测试报告、核心skills/dual-critic/SKILL.md及各目录索引；相关入口措辞只改skills-src再渲染。生产源码无必要不改；如必须改安装输入，先回报具体影响及新旧证据适用性，不能盲目重跑。
+4. 独立变异测试覆盖错/缺/重复ID与权限、错误cwd/相邻路径、模式和工具面失配、包/配置漂移、授权缺失/撤销/错范围、清理失败/内部错误和loopback限额；另明确混合permission总数11/13等少/多（N派生）、Read/Grep工具名或目标错位/额外/悬空记录、重复终态；配置diff的ok=false、fingerprint/cli_version/combination/TTL/凭据/非时间戳节点变化、非具名route或probe.auth变化、时间倒退/损坏、缺旧原hash均必须not-applicable；使用已存真实模型原件及实际CLI受控原件，不用自造结果证明能力。按实际代码/配置影响执行所需检查；源码整改则仍串行两次npm run check、14/14、重建重装并核对。
+
+现行test/unit/agent-access-recovery.test.ts动态权威测试已经随指针读v13，尚无本次绿色执行，不能说需要切换现有按版本引用。新增固定v13块明确current指针路径与hash、v13criteria_change_authorized===false、具名24B/25C枚举、26拒绝、supersedes hash和Bob轮数委托来源；保留原动态消费测试。v9/v10/v11/v12此前仅证据域原件保留而没有固定版本测试，本轮新增四个具名固定历史fixture测试，各验证自身new_rounds、耗尽拒绝和相对当前权威已被替代，所有旧授权/原件/既有v2至v8测试不改。生产启动壳权威v17已切v13，不修改round-guard-v2或Bash/只读判据；缺/错/重复运行记录、旧权威、缺委托来源及错阶段/身份/集合均拒绝。所有新增测试必须实际执行，不能以计划代替结果。
+5. 独立判据批准和消费机读合同（CLAUDE-02）：所有新增资产在doc/05_testing/evidence/agent-access-20261011-closeout-r17及对应外部独立域，明确不进入INSTALL_INPUT_PATHS；Schema为局部证据契约，不修改产品skills/schema或历史Schema。criteria-approval.v1形状：schema、decision_id、topic、criterion_version（两个候选分开）、decision（approved/rejected）、scope的具名route/model/arm与A/B/适用性source_refs精确hash、plan_run_id、plan_final_ref/hash、user_decision_ref/hash、user_statement_exact、initiator=Bob、performed_by=codex、delegated=false、session_id（缺声明null）、reason、approved_at、revocation_conditions、consumer_version/hash、can_prove/cannot_prove。ordinary approve记录、formal v13轮数授权、Driver自行推荐、受控pass均不能填decision=approved；只在收到Bob此后明确独立判据批准的消息时才能经现有脱敏wx出口归档该原文来源与机器记录。两个候选可分别批准或拒绝，未指定者未批准。
+
+批准工件和撤销以唯一事件追加保存，origin索引/hash绑定原文及全部消费证据；不覆盖批准文件。撤销事件criteria-revocation.v1须decision_id/criterion_version/source/hash/reason/at，缺失/损坏/重复或冲突事件、未知事件状态、记录被改和来源不匹配一律拒绝；明确无事件的完整事件清单才可认定未撤销。校验函数核schema形状后核scope/原文来源/plan run及定稿/hash/版本/证据全hash/最新完整事件清单，凡不存在明确批准、delegated不是false、范围不匹配、已撤销或任意未知则restricted_status及applicability_adopted只能unknown/未采用，保留diagnostic与原列。包/安装/模型/配置除本次三键外变动、桥接模式/tool/schema/规则失配、实际拦截失败、泄漏/清理不完整都触发无效条件。测试独立变异这些腿；不把一个approval=true布尔当校验对象。获Bob独立批准前仅实现诊断及批准校验的测试，候选消费分支不启用；批准后范围内才能实现相应只读矩阵消费，canonical原全指纹/原生产准入列不改。该合同的文本留痕不能密码学证明消息作者，依赖真实本会话用户来源，并在报告明示。
+
+取得实际A/B及适用性诊断后，在有效24B正式计划审查、逐条裁决与普通plan审批覆盖范围内，将两项具体判据、实际证据及残余未知单独交Bob决定。只取得明确独立判据批准才可实现/启用相应消费；未批只保留诊断和原列。不得把B可行或一般plan审批视作判据已批；实际方案越出24B批准边界时须补充正式审查，不自行扩大。
+6. 完整25C覆盖累积整改、全部新夹具、获独立批准的消费实现（如有）、诊断/边界及证据，三审有效、逐条裁决和普通委托code审批后才报告可用结论。最终矩阵并列original_status、每个原单臂false/未测、restricted_status、applicability及approved_criteria版本。只有用户批准范围内全部路线/模型、Qwen pro、共享三审、检查和官方档位边界齐备才可另算M11 readiness；原标准仍未满足就如实显示。未获独立批准或B有任何未知，目标保持未完成。
+
+本节依据有效24B修订定稿及本轮普通plan批准；实施与验证结果以恢复报告最新采样为准。两个独立判据未批准，受控取证仍未证明可行。官方Claude待订阅恢复、客户端真实重名解析及其它仓库完整依赖覆盖仍未测。

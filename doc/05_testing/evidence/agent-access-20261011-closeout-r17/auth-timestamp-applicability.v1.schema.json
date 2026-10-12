@@ -1,0 +1,24 @@
+{
+ "$schema":"https://json-schema.org/draft/2020-12/schema",
+ "type":"object",
+ "required":["schema","criteria_version","diagnostic_only","raw_value_comparison","old_complete_config_sha256","current_complete_config_sha256","changes","components","source_refs","configuration_consumption_refs","criteria_approval_ref","applicable_diagnostic","reasons","can_prove","cannot_prove","changes_canonical_original_status"],
+ "properties":{
+  "schema":{"const":"auth-timestamp-applicability.v1"},
+  "criteria_version":{"const":"auth-cache-timestamp-applicability-v1"},
+  "diagnostic_only":{"const":true},
+  "raw_value_comparison":{"type":"boolean"},
+  "old_complete_config_sha256":{"type":["string","null"]},
+  "current_complete_config_sha256":{"type":["string","null"]},
+  "changes":{"type":"array","items":{"type":"object"}},
+  "components":{"type":"array","items":{"type":"object","required":["kind","name","expected","observed"],"properties":{"kind":{"type":"string"},"name":{"type":"string"},"expected":{},"observed":{}}}},
+  "source_refs":{"type":"array","items":{"$ref":"#/$defs/ref"}},
+  "configuration_consumption_refs":{"type":"array","items":{"$ref":"#/$defs/ref"}},
+  "criteria_approval_ref":{"type":"null"},
+  "applicable_diagnostic":{"type":"boolean"},
+  "reasons":{"type":"array","items":{"type":"string"}},
+  "can_prove":{"type":"array","items":{"type":"string"}},
+  "cannot_prove":{"type":"array","items":{"type":"string"}},
+  "changes_canonical_original_status":{"const":false}
+ },
+ "$defs":{"ref":{"type":"object","required":["path","sha256"],"properties":{"path":{"type":"string"},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}}}}
+}

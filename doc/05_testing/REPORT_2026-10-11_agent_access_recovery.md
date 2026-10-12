@@ -1,5 +1,46 @@
 # Agent真实准入收口恢复：送审前审计
 
+> 2026-10-12第28B终态：run20261012T044824Z三侧首次均2700秒超时、正式failed，0份有效审查意见；wait退出75，gate检查退出2，未执行plan审批或新补测。1839冻结文件变化0、6正式失败工件hash一致、无开放闸门；原始部分读轨迹及Gemini末尾EOF/Claude未知API重试不恢复有效审查，GLM根因null。准入734/742、review373/398、正式28/29。认证复用已被Bob明确拒绝，当前local54f73dd6原标准0通过/12未测，旧7/5与false/停止保持；当前再次完整安装受重新出现的七共享入口阻断。详情见[r22失败停点](./evidence/agent-access-20261011-closeout-r22/round28-failure-status.md)。未直接重跑或改模型/effort/版本/判据，M11前置未完成；下文历史采样不改写。
+
+> 第28B审前安装追加：七共享目录重新出现，SKILL与旧备份字节相同、copied/moved完好，恢复来源/操作者null；已安装runtime/28入口一致，但当前再次完整四目标安装受共享同名阻断。最初静态失败保留，r33原稿已并入具体备份/影响/恢复提案及真实状态；本轮不迁移/删除共享目录。旧“安装通过/共享缺席”仅按当时采样解释，客户端重名解析仍未测。
+
+> 2026-10-12第28B预检后：Bob独立答复“不采用，保留当前未测状态”，认证复用拒绝事件及实际消费者关闭验证已保存到r22/auth-decision-20261012-rejected；不是普通审批推断。必要27能力臂/7版本及五受控机制清单已并入完整r32，均尚未实施。28B正常预检通过，三认证checked_at刷新、私有副本已删，当前完整local54f73dd6，原6a2提案与旧事实保持历史。当前原标准仍0通过/12未测，旧496的7/5及原false/停止不变；正式27/29、review368/398、admission734/742，无新准入启动。全部静态审计与冻结后方启动28B；判据未采用，M11前置未完成。
+
+> 最新27C实际批准：run20261011T212239Z完整三审有效，readonly/peer/forged严格false、snapshot零漂移、1773冻结核对0变化。三意见2暂缓1驳回，GLM身份见证意见经实际全对象摘要及临时回放驳回；gate/await通过、业务摘要0，普通code于UTC21:40:25按Bob委托由Codex批准，session=null。准入734/742、review358/363全部完成、正式27/27。新[r22](./evidence/agent-access-20261011-closeout-r22/README.md)保留r21全部160文件，认证方案重验最新27C安全、4跳/27臂/378组件/91引用，待Bob独立判据决定；受限候选5当前机制仍未测，原canonical0/12、旧7/5及false/停止保留，M11前置未完成。
+
+> 第27C送审静态审计通过：115 literal context三侧冲突0，settings76952字节/无跳过；runtime/四目标28入口/七备份一致，历史失败、审批原件、旧预算和r17/r18/r19/r20保持。认证4跳事实与关闭消费者再次实际重验；1183证据文件扫描0。准入734/742、review353/363全部完成，formal26/27，冻结后启动27C，不改判据或续原停止批次。
+
+> 第27C全量v4核验：3621通过/3跳过/0失败、未超时、日志完整、bundle未变；scratch修正定向41通过，typecheck/仅测试构建/diff通过。此前错误/超时/失败全保留。当前生产输入不变，历史两次npm run check/14步自检和新独立资产全量编译测试分列；尚未启动27C，先完成静态审计和冻结。
+
+> 第27C全量v3追加：3620通过/3跳过/1失败、未超时，生产bundle不变。唯一失败为新runtime测试裸mkdtemp不符既有scratch-guard；改为scratchDir，不加豁免、不改生产语义。原失败保留，定向回归与全量v4结果待核；正式27C仍未启动。
+
+> 2026-10-12第27C预检后采样：实际关闭消费者及唯一状态机拒绝边界检查74通过/0失败；无独立批准的两个候选保持关闭，调用方sourceFactsVerified=true不能提升。auth-diagnostic-after27-preflight.json实核第4跳、27来源臂/378组件/91引用及私有副本清理，当前完整配置6a2c6213。原三跳和b40下Qwen受控机制原件、事后停止记录保持；首批不恢复，k3未启动。准入734/742、review353/363，formal26/27，27C预检通过尚未启动；当前canonical0/12和原标准false/未测不变。全量测试第一命令路径错误、第二次120秒超时均保留，尚不能据此声称全量通过。
+
+> 2026-10-12第26B实施追加采样：r21实际三跳诊断通过（27来源臂/378组件/90引用），仍未采用判据；mode3首批前静态233通过。Qwen max一次实际CLI回读default、完整机制事实通过，但事后proof误解析已删临时入口而停止批次。原停止保留，修正后仅只读复算通过；k3未启动、不重跑、不续批。11原件见r21/mode3-stop-export.json。准入734/742、review343/348均完成，formal26/27，27C未启动；实际provider推理false、real_model_attempt及server_identity null，原标准及当前canonical0/12不变。下文先前采样状态按当时解释。
+
+
+> 第26B有效完成并按Bob委托普通批准：run20261011T200004Z，九意见逐项裁决，完整r30/hash/具名敏感范围绑定，1607冻结和10原件保持，readonly/peer/forged严格false，停点业务变化0。当前正式26/27，27C待完整实施后另批；准入733/742、review343/348全部完成。新r21已保存审批/13原件副本/r20快照，按获批合同进入inline消费面与有界链实施，mode3未启动、两判据未采用；当前b40e8a37 canonical0通过/12未测，旧7/5及false保留，M11前置未完成。详情见[r21](./evidence/agent-access-20261011-closeout-r21/README.md)。
+
+> 第26B送审准备完成：238定向检查/typecheck/仅测试构建/diff通过，首轮历史v14实时指针测试失败与修正来源保留；77个literal context三侧禁读冲突0，settings74168字节，1024文件脱敏扫描0。正常四目标28入口/七备份、生产输入/bundle、25B原件/真实guard/全局批准和r17/r18/r19历史证据保持。完整原稿r29经archive.ts唯一出口归档，SHA be0cce529a6f52534deffd139a30089e6568bfb007a86ff101588e5a0c342756。准入733/742、review338/348，正式25/27；审查将在全部静态材料冻结后启动，新inline/有界链/v3候选未实施/未采用。历史采样如下保留。
+
+> 第26B预检追加：按正常TTL新增10启动，review338/348、准入733/742；完整原值差异只三具名checked_at，c5b4→b40e8a37，私有0600快照已删，模型/effort/共享及全局配置保持。完整canonical0通过/12未测，旧7/5不追认；新inline/有界链/v3候选未实施，正式26B尚未启动。r29原稿c5b4是预检前采样，第三跳原件列本批明确审查范围。
+
+> 最新模式2关闭与集中计划采样：Qwen max一次实际CLI因auto/default不符而失败，k3未启动、无重试；其余精确拒绝配对/Schema/状态/桥接和四清理通过不能替代原标准。实际--restricted与同hash native说明支持定位用户settings被忽略、inline仅deny，没有因果差分试验。原件和失败见[r19](./evidence/agent-access-20261011-closeout-r19/README.md)。准入733/742、review328/348（原333按既有委托追加15）；v15登记26B集中计划/27C完整代码、28拒绝，正式仍25/27，26B未启动。新inline消费面、1..32显式认证谱系和restricted-tool-surface-and-path-v3候选仅在[r20提案](./evidence/agent-access-20261011-closeout-r20/consolidated-gap-plan-proposal.md)，均未实施/未采用。canonical仍0通过/12未测，旧7/5及两Read false保留，M11前置未完成；下列历史采样不回写。
+
+> 第25B已有效完成并按Bob普通审批委托批准：run20261011T184407Z，12意见逐项裁决，完整r28 hash与敏感作用面明确绑定，停点业务变化0；正式25/26，26C未启动。新r19独立资产已实施HTTP/清理与单键模式生命周期、生产枚举/manifest/N对账、双跳原值/hash诊断和批准谱系负例；197项定向检查通过/0失败，生产bundle与安装输入未变，无新增供应商启动。实际双跳诊断27来源臂/378比较/89引用通过，专门Schema及来源/current hash再核通过，私有夹具已清理；诊断不采用判据、不恢复canonical。准入732/742、review328/333，当前完整原标准0通过/12未测，旧7/5及false保留。模式2固定启动守卫及pilot尚未完成；M11前置未完成。新增证据见[r19](./evidence/agent-access-20261011-closeout-r19/README.md)，下列历史采样不回写。
+
+> 第25B准备采样（后于下列历史记录）：按需轮数委托已通过既有正式守卫登记v14，仅25B/26C，总26，原24次运行/审批及失效状态保留。正式原稿r27经archive.ts归档，新临时权限模式设置未实施。生产源码aa6db337、输入7ac37129、bundle1737c946、四目标28入口和7迁移备份保持；125项定向测试通过，未重打包或冒充新全量check。真实preflight10启动后review323/333，准入732/742；原始配置仅三项checked_at，fb64→c5b4新完整指纹另列、私有快照清理。三侧49个context无生产禁读冲突，settings71384字节；首次静态peer字段错误以真实契约补件校正，原件保留。当前全量准入0通过/12未测，旧7通过/5未测仍历史，两个候选判据未采用。证据见[r18](./evidence/agent-access-20261011-closeout-r18/README.md)，25B尚未启动，M11前置未完成。
+
+> 第24B完成并获本轮普通plan委托批准：run 20261011T171203Z，三侧首轮完成，13意见12接受/1驳回，1357冻结与10原工件hash一致、无subject/tree漂移或readonly违规；gate/await-approval及2026-10-11T17:30:50.521Z审批记录齐备，停点业务改动0。完整r26 SHA af93c0bb996da1b2125e70f66784b1151dc6d09c87853d2c8a77c718672ea2f9。两个独立判据仍未批准，25C未启动；当前fb64严格完整0通过/12未测，旧496下7通过/5未测及两禁读Read false保留。准入731/742、review313/318、正式24/25；开始按获批合同实施局部夹具/诊断和v13/v9至v12测试，未宣称检查或pilot已过。新增证据见[r17](./evidence/agent-access-20261011-closeout-r17/README.md)，目标仍未完成。
+
+> 第24B启动前最新采样：独立按需轮数委托已登记24B/25C，总25、26拒绝，正式仍23/25。真实计划preflight10启动review298→308/318，准入731/742不变；local完整语义diff仅三项auth_routes.checked_at，496eed89→fb64a35a，临时快照已删、模型/effort/只读规则/全局不改。旧local496下7通过和五Claude正向原件保留；新完整指纹12组合未测，适用性候选未采用，不盲重跑或追认。正式原稿r25仅archive.ts归档，静态settings68,600字节/三工具facts消费/skipped0/四目标运行时与28入口/7备份/context冲突0/扫描0齐备，尚未启动审查。具体见[r16准备证据](./evidence/agent-access-20261011-closeout-r16/README.md)。目标未完成，M11第12步不可开始。
+
+> 最新完成采样（准入731/742，review298/303，正式23/23，无在途）：原标准完整仍7通过/5未测；五Claude剩余组合正向读取、实际模型回读、工具面和完整Schema全部通过。Qwen max禁读Read也无实际Read尝试、原deny_pass=false，第二批按失败停止；与k3 Read单臂false均单列，完整JSON/无泄漏不翻绿。随后只完成原定DeepSeek flash/pro及Kimi coding正向三臂，未继续同类负臂、五生产写0启动、无重试。报告当前matrix见[r15最终正向证据](./evidence/agent-access-20261011-closeout-r15/README.md)。已落盘[集中正式计划提案](./evidence/agent-access-20261011-closeout-r15/post-round23-admission-criteria-plan-proposal.md)：同包装器/native/权限模式的受控路径与工具面候选、认证缓存时间限定适用性候选，均未批准/未实施/未采用，拟24B与25C尚未激活。旧受控权限模式auto与生产default不同、缺live绑定/绕包装器，不能采用。M11前置仍未完成。
+
+> 第23C后最新已完成采样（准入726/742）：稳定源码aa6db337、bundle1737c946、local496eed89下，**完整原标准7通过、5未测**：Claude/Qwen flash，以及Codex Sol/Luna/Astra/Qwen/Kimi/DeepSeek全部通过；六Codex四版本与18能力臂实际44启动678→722，无重试。随后Claude Kimi/DeepSeek版本、Kimi k3正向读取及禁读Read共4启动722→726；k3正向读取/首词/完整Schema通过，禁读Read原deny_pass=false，模型对六目标均未发出Read，完整JSON/无泄漏不能替代实际拒绝取证。该新失败已停批，剩13臂未启动；随后零CLI核实根因，独立四Claude未启动的12臂另发批，预计12硬16、仍累计742，任一失败即停、不重试k3 Read，五生产写保持0启动。review298/303、正式23/23未新增；原判据未改变、目标未完成。逐字来源及脱敏扫描见[r15最新证据](./evidence/agent-access-20261011-closeout-r15/README.md)；旧1通过/11未测采样如下原样保留。
+
+> 第23C后真实准入最新采样：源码main aa6db337315dd60691af966bb2bee1dfc5b0829d已推送核验，清洁作用面7ac37129，重建重装bundle1737c946，源/安装桩各14/14及四目标28入口核验通过。**当前Claude/Qwen flash完整原标准通过，其余11组合未测**：实际回读qwen3.8-flash，Read/Grep各6目标唯一精确配对且完整交付；正向实际读取/首词/Schema和真实Write负对照（同ID拦截、精确目标前后不存在）通过，无诊断替代。5实际启动673→678，review298/303无新增，local496eed89未变，无在途CLI或重试；旧失败不追认，服务端身份null。完整矩阵及逐字证据见[r15本批](./evidence/agent-access-20261011-closeout-r15/README.md)，尚须六Codex刷新，另五Claude生产写无新机制，官方Claude待订阅。目标未完成，M11第12步不可开始。
+
 > 第23C获批交付准备：run20261011T152631Z三侧首次完成，无blocker/major；Claude两条非阻断意见逐项暂缓，接受待实施0，gate/await-approval及2026-10-11T15:45:53.758Z本轮委托code批准齐备，停点业务改动0。31静态/552业务/10原审查件未变，无subject/tree漂移或只读越界；GLM consulted_unverified与Gemini附加字段剥离保留。42回放、两次3207/3/0、源/安装桩各14/14和四目标安装通过。准入673/689、review298/303、正式23/23；最终清洁提交及重建重装待完成，local496eed89下12组合完整仍未测，判据未替代、M11前置未完成。新增交付与历史原result副本见[r15证据](./evidence/agent-access-20261011-closeout-r15/README.md)，旧r13/r14冻结保留。
 
 > 第23C送审准备：第22B三侧11条裁决、gate及本轮委托plan审批齐备，获批敏感取证整改已实施。42项回放/独立变异通过，两次串行npm run check各3207通过/3跳过/0失败，源端和安装端桩自检各14/14，正常四目标安装及28份入口核验通过；零CLI静态审计通过。bundle28f16e94与已测作用面输入7ac37129相符，嵌入HEAD7733703、dirty=true，本轮尚未提交。准入673/689、review293/303（事前扩容15，预检新增10）、正式22/23；第23C预计15启动、硬上限20，尚未开始。仅认证缓存时间更新，local496eed89，完整语义diff与二次静态核验见r14。当前完整指纹12组合未测，旧4c87四通过及ClaudeRead原false保留；判据未替代，目标未完成。详见[r14证据](./evidence/agent-access-20261011-closeout-r14/README.md)。
@@ -487,3 +528,13 @@ run20261011T131721Z三侧首次完成：Claude approve-with-nits（2minor/3nit�
 40静态/442业务/10原件hash一致，subject5da0fb298b4904b65a39616aeed290696a44a693d19217cc32b0fd1d5d411f3e，tree前后c98d2938d76346862f1f0567d6a8e25a513e241c相同。readonly_breach=true保留：唯一ls-la Bash toolu_7f24684fa84a405b91fcf027获恰一同ID禁用is_error拒绝，非命令实际执行；现gate复算未变仅告警，不改判据、不加豁免、不恢复旧failed。Gem/GLM consulted_unverified和路径deny不支持、模型族unknown及dirty构建告警/复算盲区保留。gate0；初次误用await-approval子命令退64、0厂商，原件保留，更正gate --await-approval后0；审批业务摘要0，依据用户明确普通自动审批委托批准code，session_id=null，不宣称Bob亲自运行CLI，不含判据变化。
 
 三审请求/回读：qwen3.8-flash/envelope、gemini-3.8-flash-high/envelope、GLM-5.3→bigmodel-coding-plan/GLM-5.3/trace；provider与服务端身份null。当前启动review268/273、admission633/645全部完成，formal21/21；本批15=预检10+正式5，不清旧账。12组合新完整指纹仍未测，旧05包5/1/6仅历史。待交付提交/新清洁构建安装后，另批首测Qwen/Luna各write一次及各profile版本，不重试，原Qwen写未通过则不进入成熟批。目标未完成、M11第12步未启动。
+
+### 第24B获批独立诊断与首个受控pilot停点（2026-10-12）
+
+以下为较晚采样，前文历史数字及状态不回写。24B run20261011T171203Z有效、三原件全文读、13条12接受1驳回，gate0；完整r26按Bob普通委托批准。当前生产源码aa6db337、安装作用面7ac37129、bundle1737c946及正常四目标安装保持，旧两次3207/3/0和源/安装14/14仅说明该生产作用面。新独立夹具、认证诊断、批准校验及局部Schema不进入INSTALL_INPUT_PATHS。
+
+当前准入732/742、review313/318，正式24/25全部完成。Qwen max受控pilot仅一次新增启动：原包装器exec同PID native映像已核实；两写与六目标Read/Grep精确拒绝、完整Schema、合法读取、状态及清理都有受控原件，但模式auto与生产default不符，mechanism_pass=false。未启动k3或其它三组合、重试0；没有真实provider推理或实际模型负对照，不替换原标准。权限原因只读诊断仅支持缓存/独立HOME差异的候选解释，无历史用户缓存hash，不宣称因果实测。
+
+本批typecheck、仅测试构建及124项定向检查通过，新增供应商0，生产输入/bundle保持。认证时间戳诊断重建字节严格匹配原496eed89，仅三具名checked_at变化、当前fb64a35a不改；27项来源、378项比较、私有副本清理true。首次错误解释旧Codex负对照检测命中导致的false保留；v2按原检测层含义及最新24B/受控原raw分别绑定，有限适用性诊断true。它不证明上游/新模型能力、不改变旧false或未测，旧完整7通过/5未测仅历史，当前canonical0通过/12未测仍保留。
+
+独立批准/撤销校验拒绝普通approve、轮数委托、错范围/hash、缺原件、未知/撤销/冲突事件，测试为模拟来源且实际消费者未启用。集中模式补充、限额/清理及形状对账提案在r17/post-pilot-mode-plan-proposal.md；新临时权限设置未实施，拟依已有按需轮数委托正式25B/26C，尚未登记或启动。两判据采用仍需Bob单独明确决定；资料和详细原件见r17/README.md、controlled-pilot-stop.json、auth-timestamp-diagnostic-v2.json、approved-diagnostic-checks.json。M11第12步前置仍未完成。

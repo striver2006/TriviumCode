@@ -1,0 +1,183 @@
+{
+  "at": "2026-10-11T20:39:53.024Z",
+  "script_sha256": "790e6498bb8ab93eefc7c4ce7ee9d163ac26e590624e6a1608c1ff584d49dc8d",
+  "before": {
+    "bundle": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "stamp": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T20:39:48.859Z"
+    }
+  },
+  "after": {
+    "bundle": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "stamp": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T20:39:53.024Z"
+    }
+  },
+  "runs": [
+    {
+      "name": "typecheck",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "\n> triviumcode@0.1.0 typecheck\n> tsc --noEmit\n\n",
+      "stderr": ""
+    },
+    {
+      "name": "tests-only",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": "\n  dist/test/test/integration/gate-loop.test.js        609.7kb\n  dist/test/test/unit/hooks.test.js                   298.9kb\n  dist/test/src/trivium/review.js                     270.0kb\n  dist/test/src/trivium/run-protocol.js               269.9kb\n  dist/test/src/trivium/cli.js                        261.7kb\n  dist/test/test/integration/run-protocol.test.js     228.1kb\n  dist/test/src/trivium/probes/zcode.js               213.5kb\n  dist/test/src/trivium/hooks.js                      212.4kb\n  dist/test/test/integration/fault-injection.test.js  211.2kb\n  dist/test/test/unit/registry-parity.test.js         209.1kb\n  dist/test/src/trivium/adapters/base.js              198.6kb\n  dist/test/src/trivium/adapters/zcode.js             195.8kb\n  dist/test/src/trivium/gate.js                       187.9kb\n  dist/test/src/trivium/probes/claude.js              180.5kb\n  dist/test/src/trivium/types.js                      166.4kb\n  dist/test/test/unit/lock.test.js                    164.7kb\n  dist/test/src/trivium/report.js                     162.9kb\n  dist/test/test/unit/gate.test.js                    160.8kb\n  dist/test/test/unit/zcode-provider-env.test.js      151.6kb\n  dist/test/test/unit/preflight.test.js               151.4kb\n  ...and 273 more output files...\n\n⚡ Done in 77ms\n"
+    },
+    {
+      "name": "mode3-tests",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (3.142209ms)\n▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标\n  ✔ doc/02_design/README.md (1.125541ms)\n  ✔ doc/03_api/README.md (0.462125ms)\n  ✔ doc/04_development/README.md (0.329625ms)\n  ✔ doc/05_testing/README.md (4.205375ms)\n  ✔ doc/06_deployment/README.md (0.16375ms)\n  ✔ doc/07_manuals/README.md (0.104875ms)\n✔ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (6.958916ms)\n▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序\n  ✔ doc/02_design/README.md (0.423541ms)\n  ✔ doc/03_api/README.md (0.107417ms)\n  ✔ doc/04_development/README.md (0.087333ms)\n  ✔ doc/05_testing/README.md (0.51325ms)\n  ✔ doc/06_deployment/README.md (0.059167ms)\n  ✔ doc/07_manuals/README.md (0.050875ms)\n✔ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (1.4435ms)\n✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.252917ms)\n✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.181291ms)\n✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.678166ms)\n✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.409958ms)\n✔ B5 同一文件两条条目 ⇒ duplicate (0.208125ms)\n✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.219666ms)\n✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.077417ms)\n✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.131959ms)\n✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.1235ms)\n✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.056125ms)\n✔ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02） (0.128041ms)\n✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.050291ms)\n✔ 1hop实读/逐字节反向重建及端到端原值比较 (25.52625ms)\n✔ 3hop实读/逐字节反向重建及端到端原值比较 (10.063625ms)\n✔ 32hop实读/逐字节反向重建及端到端原值比较 (36.042084ms)\n✔ 0hop拒绝而不输出私有原值 (2.267334ms)\n✔ 33hop拒绝而不输出私有原值 (2.033ms)\n✔ 错顺序拒绝而不输出私有原值 (1.840875ms)\n✔ 重复来源拒绝而不输出私有原值 (1.992792ms)\n✔ 错来源hash拒绝而不输出私有原值 (1.853667ms)\n✔ 错caller观察拒绝而不输出私有原值 (1.5515ms)\n✔ 错原点hash拒绝而不输出私有原值 (2.130875ms)\n✔ 错当前hash拒绝而不输出私有原值 (2.703458ms)\n✔ 缺消费引用拒绝而不输出私有原值 (3.747209ms)\n✔ 未知最新安全拒绝而不输出私有原值 (3.196625ms)\n✔ 组件变化拒绝而不输出私有原值 (2.612ms)\n✔ 实际来源missing拒绝 (2.129ms)\n✔ 实际来源damaged拒绝 (2.733167ms)\n✔ 实际来源symlink拒绝 (2.703375ms)\n✔ 实际来源conflicting-permission拒绝 (2.275667ms)\n✔ 实际来源rollback拒绝 (3.444042ms)\n✔ 实际来源unknown-key拒绝 (3.185875ms)\n✔ 实际来源missing-change拒绝 (2.241834ms)\n✔ 实际来源cycle拒绝 (2.130417ms)\n✔ 旧auth_checked_at_only字段只能无冲突映射，原件不回写 (2.280708ms)\n✔ 未知caller内部错误抛出，不能当普通not-applicable吞掉 (1.278709ms)\n✔ 完整原值链拒绝credential变化 (1.037334ms)\n✔ 完整原值链拒绝model变化 (1.192084ms)\n✔ 完整原值链拒绝TTL变化 (0.853ms)\n✔ 完整原值链拒绝ok变化 (0.838958ms)\n✔ 完整原值链拒绝CLI变化 (1.118625ms)\n✔ 完整原值链拒绝profile变化 (1.276625ms)\n✔ 完整原值链拒绝invalid-time变化 (0.730375ms)\n✔ 完整原值链拒绝extra-change变化 (0.784916ms)\n✔ 完整原值链拒绝duplicate-change变化 (0.681ms)\n✔ 完整原值链拒绝missing-source变化 (1.538792ms)\n✔ 新chain Schema只接受1..32完整链，空拒绝记录不能充当有效链 (41.307958ms)\n✔ 完整模拟独立批准校验有效，产品消费者仍未启用且身份证明边界明确 (39.709708ms)\n✔ 独立批准变异拒绝：普通审批替代 (1.325959ms)\n✔ 独立批准变异拒绝：正式轮数授权替代 (2.283958ms)\n✔ 独立批准变异拒绝：委托为true (1.171542ms)\n✔ 独立批准变异拒绝：自行推荐来源 (1.79925ms)\n✔ 独立批准变异拒绝：明确拒绝 (1.20325ms)\n✔ 独立批准变异拒绝：错主题 (1.117667ms)\n✔ 独立批准变异拒绝：旧候选版本 (1.032708ms)\n✔ 独立批准变异拒绝：错scope模型 (1.355417ms)\n✔ 独立批准变异拒绝：未登记route (1.270458ms)\n✔ 独立批准变异拒绝：缺scope (0.924ms)\n✔ 独立批准变异拒绝：错plan运行 (1.210208ms)\n✔ 独立批准变异拒绝：错consumer版本 (1.57875ms)\n✔ 独立批准变异拒绝：consumer字节漂移 (1.519792ms)\n✔ 独立批准变异拒绝：plan字节漂移 (1.156833ms)\n✔ 独立批准变异拒绝：源证据字节漂移 (1.040792ms)\n✔ 独立批准变异拒绝：缺可信用户消息 (0.929875ms)\n✔ 独立批准变异拒绝：用户原文字节漂移 (1.173959ms)\n✔ 独立批准变异拒绝：原文与声明不一致 (0.964083ms)\n✔ 独立批准变异拒绝：早于消息审批 (1.243833ms)\n✔ 独立批准变异拒绝：日期损坏 (1.346041ms)\n✔ 独立批准变异拒绝：机制事实尚未核验 (1.263959ms)\n✔ 独立批准变异拒绝：重复作用面 (1.421833ms)\n✔ 独立批准变异拒绝：重复来源 (1.569959ms)\n✔ 明确撤销、未知事件、冲突批准、重复批准及缺批准事件均拒绝 (7.603958ms)\n✔ 完整清单遗漏、重复、损坏、错hash、越域或事后追加事件均拒绝 (6.94325ms)\n✔ 关键来源软链不消费；缺批准输入不能发生隐式批准 (1.300958ms)\n✔ 未知撤销形状完整进入事件清单仍拒绝，不当作无撤销 (1.32925ms)\n✔ 落盘批准与撤销Schema真实对账唯一合同，重复数组形状由同源拒绝 (15.298125ms)\n✔ 新旧状态机逐臂对账：测试域唯一v2到v3映射，真实旧版本不能消费 (82.160291ms)\n✔ inline only新增defaultMode，原deny和其余实际buildClaudeArgs逐项不变 (17.110416ms)\n✔ 损坏JSON在构造时拒绝 (0.18675ms)\n✔ 缺deny在构造时拒绝 (0.080833ms)\n✔ 空deny在构造时拒绝 (0.064625ms)\n✔ 重复deny在构造时拒绝 (0.068041ms)\n✔ 原settings已有mode在构造时拒绝 (0.0455ms)\n✔ 原settings已有allow在构造时拒绝 (0.048834ms)\n✔ 未知根键在构造时拒绝 (0.063875ms)\n✔ 非字符串规则在构造时拒绝 (0.058083ms)\n✔ 非live default auto拒绝 (0.095791ms)\n✔ 非live default bypassPermissions拒绝 (0.046ms)\n✔ 非live default null拒绝 (0.036125ms)\n✔ 非live default undefined拒绝 (0.034375ms)\n✔ 丢deny规则由实际argv/输入重算拒绝 (0.106083ms)\n✔ 规则相邻目标由实际argv/输入重算拒绝 (0.062167ms)\n✔ deny顺序变化由实际argv/输入重算拒绝 (0.056792ms)\n✔ 新allow由实际argv/输入重算拒绝 (0.606375ms)\n✔ 新auto由实际argv/输入重算拒绝 (0.075375ms)\n✔ 伪造denyhash由实际argv/输入重算拒绝 (0.050667ms)\n✔ 伪造jsonhash由实际argv/输入重算拒绝 (0.053083ms)\n✔ 多余binding字段由实际argv/输入重算拒绝 (0.222083ms)\n✔ 改模型由实际argv/输入重算拒绝 (0.104584ms)\n✔ 工具面变化由实际argv/输入重算拒绝 (0.065916ms)\n✔ 移除restricted由实际argv/输入重算拒绝 (0.053125ms)\n✔ Schema变化由实际argv/输入重算拒绝 (0.045375ms)\n✔ 重复settings由实际argv/输入重算拒绝 (0.039709ms)\n✔ 模式3纯启动合同绑定当前有效计划批准与限定批次；第二组合必须先复算首样本 (1.308541ms)\n✔ 实际审批记录的仓库相对完整路径与绝对路径绑定同一计划，不能只认basename (0.748709ms)\n✔ 同basename的错主题计划不能因hash与run字面相同而通过 (0.28075ms)\n✔ 模式3独立启动拒绝：review池 (0.237542ms)\n✔ 模式3独立启动拒绝：非fixture入口 (0.328042ms)\n✔ 模式3独立启动拒绝：旧variant (0.18175ms)\n✔ 模式3独立启动拒绝：多参数 (0.090417ms)\n✔ 模式3独立启动拒绝：未知组合 (0.083084ms)\n✔ 模式3独立启动拒绝：错plan运行 (0.093292ms)\n✔ 模式3独立启动拒绝：错plan原hash (0.120333ms)\n✔ 模式3独立启动拒绝：当前定稿漂移 (0.078583ms)\n✔ 模式3独立启动拒绝：无本轮批准 (0.082709ms)\n✔ 模式3独立启动拒绝：错批准运行 (0.225792ms)\n✔ 模式3独立启动拒绝：批准拒绝 (0.092792ms)\n✔ 模式3独立启动拒绝：批准范围缺项 (0.065083ms)\n✔ 模式3独立启动拒绝：失败审查 (0.089666ms)\n✔ 模式3独立启动拒绝：只读越界 (0.063375ms)\n✔ 模式3独立启动拒绝：引用泄漏 (0.085375ms)\n✔ 模式3独立启动拒绝：只读未知 (0.052166ms)\n✔ 模式3独立启动拒绝：侧证据不足 (0.052166ms)\n✔ 模式3独立启动拒绝：越批组合 (0.06225ms)\n✔ 模式3独立启动拒绝：模型错位 (0.092417ms)\n✔ 模式3独立启动拒绝：profile错位 (0.79ms)\n✔ 模式3独立启动拒绝：预计缺项 (0.286083ms)\n✔ 模式3独立启动拒绝：批次增项 (0.185708ms)\n✔ 模式3独立启动拒绝：启动声明缺项 (0.125583ms)\n✔ 模式3独立启动拒绝：已有输出 (0.120125ms)\n✔ 模式3独立启动拒绝：已有认领 (0.109625ms)\n✔ 模式3独立启动拒绝：预算在途 (0.12275ms)\n✔ 模式3独立启动拒绝：预算不足 (0.104792ms)\n✔ 模式3独立启动拒绝：错误基线 (0.118209ms)\n✔ 模式3独立启动拒绝：错误池上限 (0.104ms)\n✔ 模式3独立启动拒绝：扩大批次 (0.10125ms)\n✔ 模式3独立启动拒绝：原件hash漂移 (0.113458ms)\n✔ 模式3独立启动拒绝：构建输入漂移 (0.104875ms)\n✔ 模式3独立启动拒绝：live模式未知 (0.216958ms)\n✔ 模式3独立启动拒绝：历史删除 (0.169375ms)\n✔ 模式3独立启动拒绝：提前第二组合 (0.210667ms)\n✔ 模式3独立启动拒绝：批准判据误采用 (0.21275ms)\n✔ 实际Node固定入口零CLI拒绝：错误池 (239.42975ms)\n✔ 实际Node固定入口零CLI拒绝：未知组合 (133.250542ms)\n✔ 实际Node固定入口零CLI拒绝：旧模式 (124.390542ms)\n✔ 实际Node固定入口零CLI拒绝：多参数 (122.94975ms)\n✔ mode3实际helper接线：mixed、生命周期、inline三项均核验才通过 (77.470375ms)\n✔ mode3 mixed接线拒绝：独立is_error错误 (0.765875ms)\n✔ mode3 mixed接线拒绝：未知写错误文本 (0.786667ms)\n✔ mode3 mixed接线拒绝：缺第二写工具 (0.324625ms)\n✔ mode3 mixed接线拒绝：错写目标 (0.30475ms)\n✔ mode3 mixed接线拒绝：复合Bash命令 (0.245125ms)\n✔ mode3 mixed接线拒绝：权限记录不足 (0.227334ms)\n✔ mode3 mixed接线拒绝：权限记录超量 (0.237667ms)\n✔ mode3 mixed接线拒绝：缺权限数组 (0.230584ms)\n✔ mode3 mixed接线拒绝：错权限工具 (0.284667ms)\n✔ mode3 mixed接线拒绝：错权限目标 (0.356583ms)\n✔ mode3 mixed接线拒绝：悬空权限ID (0.215125ms)\n✔ mode3 mixed接线拒绝：重复调用ID (0.193708ms)\n✔ mode3 mixed接线拒绝：重复结果ID (0.2685ms)\n✔ mode3 mixed接线拒绝：缺合法读取 (0.214958ms)\n✔ mode3 mixed接线拒绝：错cwd (0.157208ms)\n✔ mode3 mixed接线拒绝：auto模式 (0.360375ms)\n✔ mode3 mixed接线拒绝：多注册工具 (0.243042ms)\n✔ mode3 mixed接线拒绝：模型错位 (0.265916ms)\n✔ mode3 mixed接线拒绝：重复init (0.110958ms)\n✔ mode3 mixed接线拒绝：重复终态 (0.130708ms)\n✔ mode3 mixed接线拒绝：先结果后调用 (0.387083ms)\n✔ mode3 mixed接线拒绝：目标成功读取 (0.254333ms)\n✔ mode3 mixed接线拒绝：缺文件状态 (0.211542ms)\n✔ mode3 mixed接线拒绝：文件发生变化 (0.209375ms)\n✔ mode3 mixed接线拒绝：软链状态 (0.195375ms)\n✔ mode3 mixed接线拒绝：错误Schema (0.234167ms)\n✔ mode3 mixed接线拒绝：修复型Schema (0.181041ms)\n✔ mode3 mixed接线拒绝：非零退出 (0.145708ms)\n✔ mode3 mixed接线拒绝：超时 (0.135208ms)\n✔ mode3 mixed接线拒绝：未spawn (0.689917ms)\n✔ mode3生命周期接线拒绝：生产deny变化 (0.216833ms)\n✔ mode3生命周期接线拒绝：持久manifest缺deny (0.147792ms)\n✔ mode3生命周期接线拒绝：持久manifest多deny (0.133708ms)\n✔ mode3生命周期接线拒绝：生产目标减少 (0.131709ms)\n✔ mode3生命周期接线拒绝：manifest相邻目标 (0.14ms)\n✔ mode3生命周期接线拒绝：枚举重复目标 (0.169666ms)\n✔ mode3生命周期接线拒绝：原deny为空 (0.144417ms)\n✔ mode3生命周期接线拒绝：调用目标来源错位 (0.132541ms)\n✔ mode3生命周期接线拒绝：清理null (0.16225ms)\n✔ mode3生命周期接线拒绝：清理false (0.149833ms)\n✔ mode3生命周期接线拒绝：缺模式清理 (0.136292ms)\n✔ mode3生命周期接线拒绝：额外清理自洽 (0.128166ms)\n✔ mode3生命周期接线拒绝：非loopback (0.159792ms)\n✔ mode3生命周期接线拒绝：handler未完 (0.127958ms)\n✔ mode3生命周期接线拒绝：关闭失败 (0.1265ms)\n✔ mode3生命周期接线拒绝：迟到错误 (0.138791ms)\n✔ mode3生命周期接线拒绝：限额声明不同 (0.129292ms)\n✔ mode3生命周期接线拒绝：空请求 (0.124542ms)\n✔ mode3生命周期接线拒绝：超请求 (0.224417ms)\n✔ mode3生命周期接线拒绝：超总字节 (0.176875ms)\n✔ mode3生命周期接线拒绝：缺逐体事实 (0.196209ms)\n✔ mode3生命周期接线拒绝：逐体超限 (0.16125ms)\n✔ mode3生命周期接线拒绝：倒退计时 (0.134875ms)\n✔ mode3生命周期接线拒绝：超运行时 (0.137417ms)\n✔ mode3生命周期接线拒绝：模式键未单一 (0.139791ms)\n✔ mode3生命周期接线拒绝：模式文件权限错 (0.141333ms)\n✔ mode3生命周期接线拒绝：模式文件hash变化 (0.147667ms)\n✔ mode3生命周期接线拒绝：模式hash损坏 (0.206334ms)\n✔ mode3生命周期接线拒绝：模式字节变化 (0.138416ms)\n✔ mode3生命周期接线拒绝：模式未删除 (0.128209ms)\n✔ mode3生命周期接线拒绝：主内部错误 (0.125583ms)\n✔ mode3生命周期接线拒绝：主错误未知 (0.143625ms)\n✔ mode3 inline拒绝：缺绑定 (0.152958ms)\n✔ mode3 inline拒绝：错denyhash (0.143875ms)\n✔ mode3 inline拒绝：原deny减少 (0.16425ms)\n✔ mode3 inline拒绝：其它argv模型 (0.152792ms)\n✔ mode3 inline拒绝：其它argv工具 (0.143583ms)\n✔ mode3 inline拒绝：模式未传到CLI (0.632833ms)\n✔ mode3 inline拒绝：未知allow (0.2175ms)\n✔ mode3 inline拒绝：临时模式缺事实 (0.161208ms)\n✔ mode3新Schema实际消费结果，缺inline与旧v2版本均拒绝 (27.206708ms)\nℹ tests 233\nℹ suites 0\nℹ pass 233\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 704.3635\n",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-auth-timestamp-chain-v2.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-check-inline-current.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-check-mode3-current.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-collect-production-targets.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-controlled-fixture-mode3.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-controlled-inline-mode.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-controlled-mechanism-mode3.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-criteria-approval-validation-v3.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-criteria-contract.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-criteria-validation-core.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-launch-controlled-mode3.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-mode3-launch-guard.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-mode3-launch-measurement.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-mode3-proof.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-run-auth-timestamp-diagnostic-v4.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-sync-approved-contract.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "diff-check",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "new_vendor_starts": 0,
+  "actual_mode3_started": false,
+  "full_npm_check_performed": false,
+  "criterion_adopted": false,
+  "earlier_verification_failures": [
+    {
+      "kind": "typecheck",
+      "exit": 2,
+      "cause": "新测试context过宽，已补精确交集类型"
+    },
+    {
+      "kind": "unit",
+      "pass": 100,
+      "fail": 2,
+      "cause": "模拟options数组共享引用与新Schema strictTypes缺项，已修正并102/102复核"
+    }
+  ]
+}

@@ -1,0 +1,189 @@
+---
+schema: trivium.review.v1
+topic: Agent双模式接入真实准入收口
+stage: plan
+role: claude
+vendor: anthropic
+agent_cli: claude/2.1.296
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: envelope
+effort_requested: null
+effort_effective: null
+effort_effective_source: unverified
+tier: null
+tier_source: legacy
+run_id: 20261011T200004Z
+rerun_index: 14
+snapshot_hash: sha256:be0cce529a6f52534deffd139a30089e6568bfb007a86ff101588e5a0c342756
+blind: true
+started_at: 2026-10-11T20:00:10.729Z
+finished_at: 2026-10-11T20:11:51.687Z
+duration_s: 701
+tool_calls:
+  read: 9
+  grep: 9
+  glob: 0
+  run_command: 0
+  project_reads: 14
+evidence_ok: true
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 2
+  minor: 1
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: true
+drift: false
+heterogeneous: unknown
+access:
+  requested_mode: profile
+  profile: qwen
+  launcher_requested: /Users/chenzhenbo/.local/bin/cld
+  launcher_effective: /Users/chenzhenbo/.local/bin/cld
+  wrapper_sha256: e4e159df668f64694d550fb058cf5788e9ef0edf7da1e90e16719f68ebd627f5
+  configuration_sha256: 9a3bfaa3acc006b11a8c5c6422da69841ccc121de244ee7eff9574e4146cb8e5
+  provider_declared: qwen
+  provider_declared_source: profile
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: claude
+    status: unknown
+    left_model: null
+    right_model: qwen3.8-flash
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: claude
+    right: gemini
+    status: different-family
+    left_model: qwen3.8-flash
+    right_model: gemini-3.8-flash-high
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：qwen / gemini
+  - left: claude
+    right: glm
+    status: different-family
+    left_model: qwen3.8-flash
+    right_model: bigmodel-coding-plan/GLM-5.3
+    left_source: envelope
+    right_source: trace
+    reason: 模型族不同：qwen / glm
+override_reason: 左侧模型信息缺失
+session_id: 65271e56-5f49-4f03-8039-ae061617eafb
+---
+
+# 计划审查：Agent双模式接入真实准入收口
+
+> Critic-D · Anthropic Claude Code ｜ 回读模型 `qwen3.8-flash` ｜ 请求模型 `qwen3.8-flash`
+> ｜ 运行 `20261011T200004Z` ｜ 第 14 轮
+> ｜ 本轮审核者 claude、gemini、glm
+
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+最危险的一条：§7 把 review 池 328/333→348、admission 池 742→748、后续批硬上限从已批合同的 8 改成 9，这三项都是主设计 4324 明列须「单列正式计划审查+明确批准」的限额类 guard 语义变更，但计划把扩池写成既存「已授权」，且第 84 行批准 reason 的具名敏感作用面清单不含任何额度数字——照 r19 守卫逐字符串核对 reason 的先例，实现期将找不到机械可核的授权载体。其次：v3 判据的谓词目前只定义在计划文本，§6 的泛化「同步」未点明其落入主设计唯一权威锚，与 4343「同一候选版本串」旧句并存会失实。再次：v3 validator「从旧逻辑派生」复制了版本门与撤销/冲突状态机，违背 4324「不以镜像维持流程」的反面教训。方向上，本计划满足开发者焦点：生产 guard 面未动（claude.ts 内联 settings 仍 deny-only，已核实），敏感整改已分列 §3/§4/§5，判据采用严格隔离到 Bob 独立明确消息且 delegated=false。定稿前修正额度授权表述与 v3 正文归属即可，不必重写结构。
+
+**结论**：`request-changes`
+
+## 审查意见（共 4 条：重要 2 ｜ 次要 1 ｜ 吹毛求疵 1）
+
+### CLAUDE-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `r29 §7（.reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md:82,84,86）` |
+| 类别 | scope-drift ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：三项限额变更（review 池扩至 348、admission 池 742→≥748、后续批硬上限由已批合同的 8 改为 9）按主设计 4324 属「改变任一层的…限额」须单列正式审查并明确批准，但 §7 第 86 行把扩池表述为既存事实「先按已授权扩池至至少 748」，而本轮批准 reason 的具名覆盖清单（第 84 行）不含任何额度/池额字样，v15 授权的具名作用面也不含 748。
+
+**依据**：读被审件 §7 三处原文；对照主设计（doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:4324 限额须单列批准、4370 与 4374 原文写后续批「保守预计6、硬8」且「扩容留痕后才能启动」）；读 doc/05_testing/evidence/agent-access-20261011-closeout-r17/sync-approved-contract.mjs:34，24B 获批文本已把「后续三组合预计6硬8」写入 RUNBOOK；读 doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v15.json:59，authorized_scope 具名 mode3/链/v3 但无池额；读 doc/05_testing/evidence/agent-access-20261011-closeout-r19/mode2-launch-guard.mjs:10，启动守卫逐字符串核对批准 reason 的敏感作用面标记——reason 点名什么，守卫才能绑定什么。REPORT（doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md:5,7）显示 review 扩至 348 已以「按既有委托」追加，而该委托原话仅涉轮次。
+
+**建议**：在 §7 把三项额度显式列为本轮敏感作用面并加入第 84 行具名清单；admission 池 742→748 的授权改述为「经本轮批准、于后续批启动前按 4370 事前发布并追加留痕后生效」，删去「已授权」的既存语气；并明确声明硬 9 是对 24B 合同硬 8 数字的本轮修订，供逐条裁决可见。
+
+### CLAUDE-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `r29 §5-§6（同文件:64-72）` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：v3 判据的 accept/reject 谓词当前唯一完整定义在被审计划文本（§5）与其 r20 提案副本；§6 只泛列「同步主设计补丁、ADR003…」，未说明 v3 正文落入主设计哪个新权威锚、与 4343「ADR/报告/批准工件使用同一候选版本串并注明此谱系」这句已被 24B 批准文本锁定的旧话如何并存。按现在计划做完（批准 reason 出现 v3 串而权威节仍只述 v2），27C 全量重审时两份「同一候选版本串」互相矛盾。
+
+**依据**：读主设计 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:4324「此节为前向流程唯一权威，其余文档及新证据模块引用此处，不以注释字符串镜像测试维持流程」与 :4343 候选谱系句；读 doc/05_testing/evidence/agent-access-20261011-closeout-r17/sync-approved-contract.mjs:22,30,33：文档同步由 run 绑定的硬编码获批文本执行，ADR003/QUICKSTART 的获批串只述 v2，且有防重复追加断言；grep 确认 restricted-tool-surface-and-path-v3 全仓仅命中计划、task、REPORT 采样与 doc/05_testing/evidence/agent-access-20261011-closeout-r20/consolidated-gap-plan-proposal.md:56，无权威规范节；读 ADR_003_agent_access.md:5 确认前向权威指针即该设计节。
+
+**建议**：§6 点名：v3 谓词正文以主设计新增小节（新版本号+锚 id）为唯一权威，定稿、批准 reason、v3 validator/consumer 与报告引用同一版本串与该锚；同步脚本为绑定 26B run/定稿 hash 的新模块；同时写明 v2 小节与「同一候选版本串」旧话作为历史采样的处置，不改写、不与之并行为准。
+
+### CLAUDE-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `r29 §5（同文件:64,68）` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：「新独立 v3 validator、consumer 和形状契约从旧逻辑派生」使版本门（现硬编码候选集）与批准/撤销/冲突/未知拒绝的状态机同时存在于新旧两个校验器；criteria-contract 唯一源只覆盖 approval/revocation 的形状，不覆盖版本集合与状态机语义。派生副本随每轮累积，未来版本变更需同步改多处，正属 4324 警告的镜像维持模式。
+
+**依据**：读 doc/05_testing/evidence/agent-access-20261011-closeout-r17/criteria-approval-validation.mjs:7，候选集合以 Set 硬编码 v2 与 auth-v1；读 doc/05_testing/evidence/agent-access-20261011-closeout-r17/criteria-contract.mjs 全文，其导出仅 approvalSchema/revocationSchema 形状，criterion_version 为自由字符串；被审件 §5 要求 v1/v2 旧件原样保留、新逻辑另派生且「重复/冲突/撤销/来源/未知拒绝不变」，未规定两实现一致性的机械对账要求。
+
+**建议**：优先让 v3 校验走参数化的单一状态机（版本集合从批准载体/引用绑定读取）；若坚持新建独立模块，则§6 定向测试须增一条：同一事件序列（含撤销/重复/未知变异臂）上新旧校验器裁决逐臂一致的可重复对账。
+
+### CLAUDE-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `r29 §4（同文件:56）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：第三跳仍以条件句「26B 正常 preflight 若实际更新的 c5b4→新 hash」书写，而本轮预检实际已发生 c5b4→b40e8a37，且私有 0600 快照已删。§4 又要求「本批确切来源清单」逐项列路径/hash，新链 helper 按此实现时来源要等实现期回填，与本节「不伪造 hop、来源唯一可重复核验」的自证纪律存在定稿文本落后于事实的窗口。
+
+**依据**：读被审件 §4:54-58；读 doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md:5「完整原值差异只三具名 checked_at，c5b4→b40e8a37，私有 0600 快照已删…第三跳原件列本批明确审查范围」。
+
+**建议**：定稿把该 hop 落实为具体观察原件路径+完整 hash（b40e8a37 对应文件），并附一句私有快照清理后该跳仍满足「已落盘原值观察+完整 hash」的成立理由。
+
+## 认为正确的部分
+
+- 焦点要求的结构已满足：三处 guard 语义敏感面（mode3 输入面、有界认证链、v3 判据）各自单列并纳入本轮正式审查，判据采用与实施授权分离，v15 保持 criteria_change_authorized=false。
+- 生产面不动的声明经核实成立：src/trivium/adapters/claude.ts:85,147,411 显示生产内联 --settings 确为 deny-only，mode3 的 defaultMode 只进新独立 fixture，不碰 buildClaudeArgs/buildDenySettings 产品合同。
+- 不擅自改写 v2 含义、v1/v2 保留未采用、无 Bob 另行明确原消息则不生成 criteria approved 且不在消费者启用，与主设计 4324/4392 一致；criteria-contract 的 delegated=false 形状未被放宽。
+- 「禁止继续宣称生产 settings 字节完全相同」「没有因果差分试验」「不循环重试/不换第二配方/白名单不松动」等措辞与 REPORT、mode2 证据的归因边界一致，诚实标注了证据的适用范围。
+- §2 表格将受控 B 与真实模型 C 分列、0 新增启动路线不自动判当前通过，符合焦点要求的敏感边界。
+
+## 未覆盖范围（本侧盲区）
+
+- 本侧无执行能力：未实测任何命令；计划文件/定稿 hash 一致性、task.runs 与 archive 计数是否实际相符、b40e8a37 观察原件是否存在均只依据 REPORT 与 r20 验证件的记载，未逐一打开全部被引原件核验。
+- 未核验 Claude CLI 对 inline defaultMode 的真实消费行为（mode3 成败本身需实测定夺），只审计划文本与既有证据的一致性。
+- 未逐行审查 test/unit 四个测试文件与 scripts/agent-access-budget*.cjs 的内部实现（仅读了 r19 守卫与 r17 合同模块）。
+- §4 32-hop 上限与重建链对 24B/25B 各观察件的覆盖完整性，只核了文本承诺，未清点全部 27 来源臂文件。
+- 另一位审查员的产出与运行目录未读、未参考。
+
+## 实际查阅的项目文件
+
+- `.reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/02_design/ADR_003_agent_access.md`
+- `doc/05_testing/REPORT_2026-10-11_agent_access_recovery.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r17/criteria-contract.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r17/criteria-approval-validation.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r17/sync-approved-contract.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r19/mode2-launch-guard.mjs`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r20/consolidated-gap-plan-proposal.md`
+- `doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v15.json`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/adapters/claude-route.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":9,"grep":9,"glob":0,"run_command":0,"project_reads":14}
+
+---
+
+*本文档由 TriviumCode 编排器从 `claude` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

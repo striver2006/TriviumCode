@@ -1,0 +1,13 @@
+/** 实际关闭消费者与唯一core拒绝边界检查；不启动模型，不改生产。 */
+import fs from 'node:fs';import path from 'node:path';
+import {run} from '../../../../dist/test/src/trivium/util/exec.js';import {computeBuildStamp} from '../../../../dist/test/src/trivium/build-stamp.js';
+import {hash} from '../../../../scripts/agent-access-selection.mjs';import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+import {inspectCriterionConsumption} from './criteria-consumer-v3.mjs';
+const root=path.dirname(new URL(import.meta.url).pathname),before={bundle:hash('skills/dual-critic/scripts/trivium.cjs'),stamp:await computeBuildStamp(process.cwd())},runs=[];
+for(const[name,bin,args]of [['typecheck','npm',['run','typecheck']],['tests-only',process.execPath,['scripts/build.mjs','--tests-only']],['consumer-tests',process.execPath,['--test','dist/test/test/unit/agent-access-criteria-consumer.test.js','dist/test/test/unit/agent-access-criteria-v3.test.js','dist/test/test/unit/agent-access-auth-chain-v2.test.js']],...['auth-evidence-replay.mjs','criteria-consumer-v3.mjs','check-consumer-current.mjs'].map(n=>['syntax-'+n,process.execPath,['--check',root+'/'+n]]),['diff-check','git',['-c','core.quotePath=false','diff','--check']]]){
+ const r=await run(bin,args,{timeoutMs:120000,killTree:true}),record={name,code:r.code,timed_out:r.timedOut,stdout:r.stdout,stderr:r.stderr};runs.push(record);saveEvidence(root+'/consumer-check-'+name+'.json',record);if(r.code!==0||r.timedOut)throw Error(name+'验证失败');
+}
+const closed=[];for(const criterionVersion of ['restricted-tool-surface-and-path-v3','auth-cache-timestamp-applicability-v1']){const result=await inspectCriterionConsumption({criterionVersion,sourceFactsVerified:true});if(result.candidate_report_consumable||result.production_consumer_enabled||result.changes_canonical_original_status)throw Error('缺独立批准却消费');closed.push(result);}
+const after={bundle:hash('skills/dual-critic/scripts/trivium.cjs'),stamp:await computeBuildStamp(process.cwd())};if(before.bundle!==after.bundle||before.stamp.inputs_sha256!==after.stamp.inputs_sha256)throw Error('生产作用面变化');
+saveEvidence(root+'/consumer-current-checks.json',{at:new Date().toISOString(),script_sha256:hash(new URL(import.meta.url)),consumer_sha256:hash(root+'/criteria-consumer-v3.mjs'),before,after,runs,closed,new_vendor_starts:0,criterion_adopted:false,full_npm_check_performed:false});
+console.log(JSON.stringify({tests:runs[2].stdout.split('\n').filter(l=>/^ℹ (tests|pass|fail|skipped)/.test(l)),closed:closed.map(r=>({criterion:r.criterion_version,consumable:r.candidate_report_consumable,reasons:r.reasons})),new_vendor_starts:0,bundle_unchanged:true}));

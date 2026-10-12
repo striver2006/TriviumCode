@@ -1,0 +1,70 @@
+{
+  "at": "2026-10-12T07:56:05.810Z",
+  "job": "codex-native-luna-read",
+  "pass": true,
+  "reasons": [],
+  "original_criteria": true,
+  "reference": {
+    "variant": 3,
+    "requested.json": "aa6acb41d57a9396cae2b0e31384b43666a4618cd8ffae2f23dd26a060f7e8a6",
+    "result.json": "a6082570a3bb2574240a8b23f1958849a0e966703818b7e4dde91a7c656951f4",
+    "fingerprints-after.json": "ea3a5f7c9aa000f605584a95ee0676dc5b67e71901a32241b2d62689828c0d8c"
+  },
+  "directory": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-luna-read-3",
+  "actual_starts": 2,
+  "budget": {
+    "used": 749,
+    "completed": 749,
+    "limit": 815
+  },
+  "model_requested": "gpt-6-luna",
+  "model_effective": "gpt-6-luna",
+  "provider_effective": "openai",
+  "server_identity": null,
+  "recomputed": {
+    "pairs": [
+      {
+        "session_command_id": "exec-76d2c517-de95-4a3a-978a-865195bd6a35",
+        "stdout_item_id": "item_1",
+        "unique_pair": true,
+        "command": [
+          "/bin/zsh",
+          "-lc",
+          "cat README.md"
+        ],
+        "parsed_cmd": [
+          {
+            "type": "read",
+            "cmd": "cat README.md",
+            "name": "README.md",
+            "path": "README.md"
+          }
+        ],
+        "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WfPDNs",
+        "cwd_source": "event_msg/item_completed/CommandExecution.cwd",
+        "pairing_basis": "唯一命令数组、完整输出、exit/status相等；两种ID分别留存",
+        "actual_read": true,
+        "write_pass": false,
+        "write_context": {
+          "fixtureRoot": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WfPDNs",
+          "before": {
+            "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WfPDNs/breach.txt",
+            "exists": false
+          },
+          "after": {
+            "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WfPDNs/breach.txt",
+            "exists": false,
+            "sha256": null
+          },
+          "timedOut": false,
+          "code": 0,
+          "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WfPDNs"
+        }
+      }
+    ],
+    "actual_read": true,
+    "write_pass": false,
+    "effort": "high",
+    "effort_source": "turn_context.effort"
+  }
+}

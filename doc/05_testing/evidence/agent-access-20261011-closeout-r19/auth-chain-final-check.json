@@ -1,0 +1,39 @@
+{
+  "at": "2026-10-11T19:24:57.789Z",
+  "script_sha256": "7e45c4c749257e9c05f85f7333b6abdf19935d68c45417063533f8b5ce3f714e",
+  "args": [
+    "--test",
+    "dist/test/test/unit/agent-access-auth-applicability.test.js",
+    "dist/test/test/contract/doc-archive-index.test.js"
+  ],
+  "code": 0,
+  "timed_out": false,
+  "stdout": "✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (1.525792ms)\n▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标\n  ✔ doc/02_design/README.md (0.5565ms)\n  ✔ doc/03_api/README.md (0.116833ms)\n  ✔ doc/04_development/README.md (0.155458ms)\n  ✔ doc/05_testing/README.md (1.73875ms)\n  ✔ doc/06_deployment/README.md (0.121708ms)\n  ✔ doc/07_manuals/README.md (0.097834ms)\n✔ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (3.076375ms)\n▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序\n  ✔ doc/02_design/README.md (0.249166ms)\n  ✔ doc/03_api/README.md (0.088166ms)\n  ✔ doc/04_development/README.md (0.068125ms)\n  ✔ doc/05_testing/README.md (0.49375ms)\n  ✔ doc/06_deployment/README.md (0.054167ms)\n  ✔ doc/07_manuals/README.md (0.044458ms)\n✔ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (1.171584ms)\n✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.211417ms)\n✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.185875ms)\n✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.235291ms)\n✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.139209ms)\n✔ B5 同一文件两条条目 ⇒ duplicate (0.168084ms)\n✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.423667ms)\n✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.154542ms)\n✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.254709ms)\n✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.143917ms)\n✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.059584ms)\n✔ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02） (0.155375ms)\n✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.065292ms)\n✔ 三具名时间戳纯诊断通过，原值参与比较但不改变canonical或产生批准 (13.882208ms)\n✔ 适用性独立变异拒绝：ok为false (1.817833ms)\n✔ 适用性独立变异拒绝：缺旧ok (0.947417ms)\n✔ 适用性独立变异拒绝：指纹变化 (1.08ms)\n✔ 适用性独立变异拒绝：版本变化 (0.730416ms)\n✔ 适用性独立变异拒绝：模型变化 (0.565834ms)\n✔ 适用性独立变异拒绝：effort变化 (0.512625ms)\n✔ 适用性独立变异拒绝：TTL变化 (0.654833ms)\n✔ 适用性独立变异拒绝：凭据原值变化 (0.527917ms)\n✔ 适用性独立变异拒绝：非具名route追加 (0.445584ms)\n✔ 适用性独立变异拒绝：旧probe.auth追加 (0.41ms)\n✔ 适用性独立变异拒绝：无关配置节点追加 (0.476791ms)\n✔ 适用性独立变异拒绝：时间倒退 (0.3575ms)\n✔ 适用性独立变异拒绝：时间相等 (0.328166ms)\n✔ 适用性独立变异拒绝：时间损坏 (0.323916ms)\n✔ 适用性独立变异拒绝：目录事实变化 (0.380375ms)\n✔ 适用性独立变异拒绝：CLI组件漂移 (0.515792ms)\n✔ 适用性独立变异拒绝：缺工具事实消费链 (0.339667ms)\n✔ 适用性独立变异拒绝：缺原件 (0.277833ms)\n✔ 适用性独立变异拒绝：缺组件种类 (0.278792ms)\n✔ 适用性独立变异拒绝：泄漏事实 (0.402167ms)\n✔ 适用性独立变异拒绝：实际拦截失败 (0.325166ms)\n✔ 缺旧原hash、字节hash错及损坏/重复YAML均拒绝 (1.970375ms)\n✔ 认证局部Schema只允许诊断且不能携带采用批准 (23.874458ms)\n✔ 双跳逐字节反向重建与端到端原值比较，清空私有Buffer不影响原current (4.1595ms)\n✔ 双跳独立拒绝：缺hop (0.225625ms)\n✔ 双跳独立拒绝：多hop (0.150166ms)\n✔ 双跳独立拒绝：错链顺序 (0.1475ms)\n✔ 双跳独立拒绝：缺hop原件 (0.866375ms)\n✔ 双跳独立拒绝：错原件hash形状 (0.796833ms)\n✔ 双跳独立拒绝：错中间hash (0.176709ms)\n✔ 双跳独立拒绝：错最终原hash (1.233625ms)\n✔ 双跳独立拒绝：错当前原hash (0.15725ms)\n✔ 双跳独立拒绝：缺变化记录 (0.168041ms)\n✔ 双跳独立拒绝：重复变化路径 (0.153125ms)\n✔ 双跳独立拒绝：未知route键 (0.132416ms)\n✔ 双跳独立拒绝：非时间节点 (0.126917ms)\n✔ 双跳独立拒绝：未允许变化 (0.268375ms)\n✔ 双跳独立拒绝：时间倒退 (0.186ms)\n✔ 双跳独立拒绝：时间损坏 (0.13975ms)\n✔ 双跳独立拒绝：唯一替换值缺失 (0.194542ms)\n✔ 双跳独立拒绝：声明与重建字节错位 (0.137708ms)\n✔ 双跳独立拒绝：组件原值错 (0.729042ms)\n✔ 双跳独立拒绝：最新安全未知 (0.644792ms)\n✔ 同hash链可重建仍核原值：非时间戳变动不能经回填记录掩盖 (1.414125ms)\n✔ 双跳专门Schema核完整两跳；缺/错中间形状不接受为成功诊断 (14.431834ms)\nℹ tests 73\nℹ suites 0\nℹ pass 73\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 165.630958\n",
+  "stderr": "",
+  "before": {
+    "bundle": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "installed": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "local": "c5b4d9a93b574718980e594f41c49be47450378adb0b5043a3b947286404be3c"
+  },
+  "after": {
+    "bundle": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "installed": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "local": "c5b4d9a93b574718980e594f41c49be47450378adb0b5043a3b947286404be3c"
+  },
+  "budgets": {
+    "admission": {
+      "reserved": 732,
+      "completed": 732,
+      "limit": 742
+    },
+    "review": {
+      "reserved": 328,
+      "completed": 328,
+      "limit": 333
+    }
+  },
+  "preserved_r18": true,
+  "test_source_sha256": "ea531e7e8cfb6cc4fdd29a6c509ddc61365ef1a64e193c855fe12b3d66eb05ad",
+  "chain_schema_sha256": "172e1a048572c0a8917263df6e59ae9ed0df17269b929aaf37ae70ee2d5d5a48",
+  "new_vendor_starts": 0
+}

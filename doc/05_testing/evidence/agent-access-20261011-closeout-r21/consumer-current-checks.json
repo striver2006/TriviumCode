@@ -1,0 +1,111 @@
+{
+  "at": "2026-10-11T20:54:53.784Z",
+  "script_sha256": "1f45b82b9802136ec5043d5931ecacf1aa072711d5a80610ebe3e0c797bab8a2",
+  "consumer_sha256": "aa760fac18d22677739e39e888fc8b0e9087d0b38ddf6e455aba5f9646fd53cb",
+  "before": {
+    "bundle": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "stamp": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T20:54:50.502Z"
+    }
+  },
+  "after": {
+    "bundle": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "stamp": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T20:54:53.784Z"
+    }
+  },
+  "runs": [
+    {
+      "name": "typecheck",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "\n> triviumcode@0.1.0 typecheck\n> tsc --noEmit\n\n",
+      "stderr": ""
+    },
+    {
+      "name": "tests-only",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": "\n  dist/test/test/integration/gate-loop.test.js        609.7kb\n  dist/test/test/unit/hooks.test.js                   298.9kb\n  dist/test/src/trivium/review.js                     270.0kb\n  dist/test/src/trivium/run-protocol.js               269.9kb\n  dist/test/src/trivium/cli.js                        261.7kb\n  dist/test/test/integration/run-protocol.test.js     228.1kb\n  dist/test/src/trivium/probes/zcode.js               213.5kb\n  dist/test/src/trivium/hooks.js                      212.4kb\n  dist/test/test/integration/fault-injection.test.js  211.2kb\n  dist/test/test/unit/registry-parity.test.js         209.1kb\n  dist/test/src/trivium/adapters/base.js              198.6kb\n  dist/test/src/trivium/adapters/zcode.js             195.8kb\n  dist/test/src/trivium/gate.js                       187.9kb\n  dist/test/src/trivium/probes/claude.js              180.5kb\n  dist/test/src/trivium/types.js                      166.4kb\n  dist/test/test/unit/lock.test.js                    164.7kb\n  dist/test/src/trivium/report.js                     162.9kb\n  dist/test/test/unit/gate.test.js                    160.8kb\n  dist/test/test/unit/zcode-provider-env.test.js      151.6kb\n  dist/test/test/unit/preflight.test.js               151.4kb\n  ...and 275 more output files...\n\n⚡ Done in 81ms\n"
+    },
+    {
+      "name": "consumer-tests",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "✔ 1hop实读/逐字节反向重建及端到端原值比较 (20.504125ms)\n✔ 3hop实读/逐字节反向重建及端到端原值比较 (6.52975ms)\n✔ 32hop实读/逐字节反向重建及端到端原值比较 (33.005667ms)\n✔ 0hop拒绝而不输出私有原值 (1.714166ms)\n✔ 33hop拒绝而不输出私有原值 (1.673209ms)\n✔ 错顺序拒绝而不输出私有原值 (1.38575ms)\n✔ 重复来源拒绝而不输出私有原值 (1.222791ms)\n✔ 错来源hash拒绝而不输出私有原值 (1.088625ms)\n✔ 错caller观察拒绝而不输出私有原值 (1.288459ms)\n✔ 错原点hash拒绝而不输出私有原值 (1.312ms)\n✔ 错当前hash拒绝而不输出私有原值 (1.086125ms)\n✔ 缺消费引用拒绝而不输出私有原值 (1.558375ms)\n✔ 未知最新安全拒绝而不输出私有原值 (2.345791ms)\n✔ 组件变化拒绝而不输出私有原值 (1.531708ms)\n✔ 实际来源missing拒绝 (1.56125ms)\n✔ 实际来源damaged拒绝 (1.920333ms)\n✔ 实际来源symlink拒绝 (1.6585ms)\n✔ 实际来源conflicting-permission拒绝 (1.533542ms)\n✔ 实际来源rollback拒绝 (1.949917ms)\n✔ 实际来源unknown-key拒绝 (1.759542ms)\n✔ 实际来源missing-change拒绝 (1.732833ms)\n✔ 实际来源cycle拒绝 (1.402708ms)\n✔ 旧auth_checked_at_only字段只能无冲突映射，原件不回写 (1.638708ms)\n✔ 未知caller内部错误抛出，不能当普通not-applicable吞掉 (0.856ms)\n✔ 完整原值链拒绝credential变化 (0.84925ms)\n✔ 完整原值链拒绝model变化 (0.749708ms)\n✔ 完整原值链拒绝TTL变化 (0.745708ms)\n✔ 完整原值链拒绝ok变化 (0.701584ms)\n✔ 完整原值链拒绝CLI变化 (0.883416ms)\n✔ 完整原值链拒绝profile变化 (0.824834ms)\n✔ 完整原值链拒绝invalid-time变化 (0.821292ms)\n✔ 完整原值链拒绝extra-change变化 (0.821542ms)\n✔ 完整原值链拒绝duplicate-change变化 (0.71075ms)\n✔ 完整原值链拒绝missing-source变化 (1.494792ms)\n✔ 新chain Schema只接受1..32完整链，空拒绝记录不能充当有效链 (38.579708ms)\n✔ 消费者拒绝缺独立批准及自报事实：null (90.296334ms)\n✔ 消费者拒绝缺独立批准及自报事实：{} (0.585166ms)\n✔ 消费者拒绝缺独立批准及自报事实：{\"sourceFactsVerified\":true} (0.385625ms)\n✔ 消费者拒绝缺独立批准及自报事实：{\"criterionVersion\":\"restricted-tool-surface-and-path-v3\",\"sourceFactsVerified\":true} (0.464958ms)\n✔ 消费者拒绝缺独立批准及自报事实：{\"criterionVersion\":\"auth-cache-timestamp-applicability-v1\",\"sourceFactsVerified\":true} (0.569625ms)\n✔ 消费者拒绝缺独立批准及自报事实：{\"criterionVersion\":\"restricted-tool-surface-and-path-v2\",\"sourceFactsVerified\":true} (0.429625ms)\n✔ 消费者拒绝缺独立批准及自报事实：{\"approval\":{\"schema\":\"trivium.approval.v1\",\"decision\":\"approved\"},\"sourceFactsVerified\":true} (0.892209ms)\n✔ 实际消费者依赖集合精确hash，缺项、多项、未知或漂移均拒绝 (0.103833ms)\n✔ 缺批准时不能触发外部source verifier或隐式模型调用 (0.614625ms)\n✔ 完整模拟独立批准校验有效，产品消费者仍未启用且身份证明边界明确 (29.131417ms)\n✔ 独立批准变异拒绝：普通审批替代 (1.937125ms)\n✔ 独立批准变异拒绝：正式轮数授权替代 (1.890125ms)\n✔ 独立批准变异拒绝：委托为true (1.043167ms)\n✔ 独立批准变异拒绝：自行推荐来源 (1.322875ms)\n✔ 独立批准变异拒绝：明确拒绝 (1.212875ms)\n✔ 独立批准变异拒绝：错主题 (1.130542ms)\n✔ 独立批准变异拒绝：旧候选版本 (1.144708ms)\n✔ 独立批准变异拒绝：错scope模型 (1.3235ms)\n✔ 独立批准变异拒绝：未登记route (1.2335ms)\n✔ 独立批准变异拒绝：缺scope (0.774042ms)\n✔ 独立批准变异拒绝：错plan运行 (1.302125ms)\n✔ 独立批准变异拒绝：错consumer版本 (0.868959ms)\n✔ 独立批准变异拒绝：consumer字节漂移 (1.880542ms)\n✔ 独立批准变异拒绝：plan字节漂移 (0.910125ms)\n✔ 独立批准变异拒绝：源证据字节漂移 (0.892709ms)\n✔ 独立批准变异拒绝：缺可信用户消息 (0.906208ms)\n✔ 独立批准变异拒绝：用户原文字节漂移 (1.186292ms)\n✔ 独立批准变异拒绝：原文与声明不一致 (0.89325ms)\n✔ 独立批准变异拒绝：早于消息审批 (0.973583ms)\n✔ 独立批准变异拒绝：日期损坏 (0.8965ms)\n✔ 独立批准变异拒绝：机制事实尚未核验 (1.123792ms)\n✔ 独立批准变异拒绝：重复作用面 (1.1905ms)\n✔ 独立批准变异拒绝：重复来源 (0.820167ms)\n✔ 明确撤销、未知事件、冲突批准、重复批准及缺批准事件均拒绝 (6.007708ms)\n✔ 完整清单遗漏、重复、损坏、错hash、越域或事后追加事件均拒绝 (5.607583ms)\n✔ 关键来源软链不消费；缺批准输入不能发生隐式批准 (1.068125ms)\n✔ 未知撤销形状完整进入事件清单仍拒绝，不当作无撤销 (1.171292ms)\n✔ 落盘批准与撤销Schema真实对账唯一合同，重复数组形状由同源拒绝 (12.850625ms)\n✔ 新旧状态机逐臂对账：测试域唯一v2到v3映射，真实旧版本不能消费 (70.947583ms)\nℹ tests 74\nℹ suites 0\nℹ pass 74\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 287.568583\n",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-auth-evidence-replay.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-criteria-consumer-v3.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "syntax-check-consumer-current.mjs",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "diff-check",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "closed": [
+    {
+      "schema": "candidate-consumer-diagnostic.v3",
+      "criterion_version": "restricted-tool-surface-and-path-v3",
+      "diagnostic_only": true,
+      "approval_valid": false,
+      "source_facts_recomputed": false,
+      "candidate_report_consumable": false,
+      "production_consumer_enabled": false,
+      "changes_canonical_original_status": false,
+      "reasons": [
+        "missing-or-damaged-approval-shape"
+      ],
+      "real_model_attempt": null,
+      "server_identity": null
+    },
+    {
+      "schema": "candidate-consumer-diagnostic.v3",
+      "criterion_version": "auth-cache-timestamp-applicability-v1",
+      "diagnostic_only": true,
+      "approval_valid": false,
+      "source_facts_recomputed": false,
+      "candidate_report_consumable": false,
+      "production_consumer_enabled": false,
+      "changes_canonical_original_status": false,
+      "reasons": [
+        "missing-or-damaged-approval-shape"
+      ],
+      "real_model_attempt": null,
+      "server_identity": null
+    }
+  ],
+  "new_vendor_starts": 0,
+  "criterion_adopted": false,
+  "full_npm_check_performed": false
+}

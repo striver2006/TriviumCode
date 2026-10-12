@@ -231,6 +231,106 @@ test('当前hash权威读取壳与生产守卫消费逐轮枚举，批后/错误
   pointer.authorization = '../unknown.json'; assert.throws(() => readCurrentAuthorization(reader), /载体无效/);
 });
 
+test('历史第24B合同锁定v13原件与保留指针，只授24B/25C而不授判据采用', async () => {
+  const root = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3');
+  const { assertFormalRoundCore, readCurrentAuthorization } = await import(pathToFileURL(path.join(root, 'round-guard-v2.mjs')).href);
+  const bytes = await fs.readFile(path.join(root, 'formal-round-authorization-v13.json'));
+  const authority = JSON.parse(bytes.toString('utf8'));
+  const pointerBytes = await fs.readFile(path.join(root, 'formal-round-authority-v13-preserved.json'));
+  const pointer = JSON.parse(pointerBytes.toString('utf8'));
+  assert.equal(pointer.authorization, 'formal-round-authorization-v13.json');
+  assert.equal(pointer.sha256, createHash('sha256').update(bytes).digest('hex'));
+  assert.deepEqual(readCurrentAuthorization((file: URL) => file.pathname.endsWith('formal-round-authority.json') ? pointerBytes : bytes), authority);
+  assert.equal(authority.criteria_change_authorized, false);
+  assert.equal(authority.delegated_round_extensions, true);
+  assert.equal(authority.delegation_exact_reply, '授权轮次可以按需增加，不必询问授权');
+  assert.equal(authority.count_reset, false);
+  assert.equal(authority.previous_limit, 23);
+  assert.equal(authority.new_limit, 25);
+  assert.equal(authority.historical_run_ids.length, 23);
+  assert.deepEqual(authority.new_rounds, [
+    { ordinal: 24, entry: 'B', stage: 'plan' },
+    { ordinal: 25, entry: 'C', stage: 'code' },
+  ]);
+  const previous = await fs.readFile(path.resolve(authority.supersedes_file));
+  assert.equal(authority.supersedes_sha256, createHash('sha256').update(previous).digest('hex'));
+  const runs = authority.historical_run_ids.map((run_id: string) => ({ run_id }));
+  const args = (entry: string, stage: string) => ['review', '--start', '--topic', authority.topic,
+    '--driver', authority.driver, '--critics', authority.critics.join(','), '--entry', entry, '--stage', stage];
+  assert.throws(() => assertFormalRoundCore(authority, { runs }, runs, args('B', 'plan'), readCurrentAuthorization()), /授权已被替代/);
+  assert.equal(assertFormalRoundCore(authority, { runs }, runs, args('B', 'plan'), authority), 24);
+  assert.throws(() => assertFormalRoundCore(authority, { runs }, runs, args('C', 'code'), authority));
+  runs.push({ run_id: 'fixed-v13-round24-fixture' });
+  assert.equal(assertFormalRoundCore(authority, { runs }, runs, args('C', 'code'), authority), 25);
+  assert.throws(() => assertFormalRoundCore(authority, { runs }, runs, args('B', 'plan'), authority));
+  runs.push({ run_id: 'fixed-v13-round25-fixture' });
+  assert.throws(() => assertFormalRoundCore(authority, { runs }, runs, args('C', 'code'), authority));
+});
+
+test('历史v14只授25B/26C，保留24实记和旧v13谱系，不随现行权威更新', async () => {
+  const root = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3');
+  const { assertFormalRoundCore, readCurrentAuthorization } = await import(pathToFileURL(path.join(root, 'round-guard-v2.mjs')).href);
+  const bytes = await fs.readFile(path.join(root, 'formal-round-authorization-v14.json'));
+  const authority = JSON.parse(bytes.toString('utf8'));
+  const pointerBytes = await fs.readFile(path.join(root, 'formal-round-authority-v14-preserved.json'));
+  const pointer = JSON.parse(pointerBytes.toString('utf8'));
+  assert.equal(pointer.authorization, 'formal-round-authorization-v14.json');
+  assert.equal(pointer.sha256, createHash('sha256').update(bytes).digest('hex'));
+  assert.deepEqual(readCurrentAuthorization((file: URL) => file.pathname.endsWith('formal-round-authority.json') ? pointerBytes : bytes), authority);
+  assert.equal(authority.criteria_change_authorized, false);
+  assert.equal(authority.count_reset, false);
+  assert.equal(authority.old_failed_status_unchanged, true);
+  assert.equal(authority.delegation_exact_reply, '授权轮次可以按需增加，不必询问授权');
+  assert.equal(authority.previous_limit, 25);
+  assert.equal(authority.new_limit, 26);
+  assert.equal(authority.historical_run_ids.length, 24);
+  assert.deepEqual(authority.new_rounds, [{ ordinal: 25, entry: 'B', stage: 'plan' }, { ordinal: 26, entry: 'C', stage: 'code' }]);
+  assert.equal(authority.supersedes_sha256, createHash('sha256').update(await fs.readFile(path.resolve(authority.supersedes_file))).digest('hex'));
+  assert.deepEqual(authority.replaces_unstarted_round, { ordinal: 25, prior_entry: 'C', prior_stage: 'code', reason: '首次pilot实际auto/default不符，新增临时模式设置须先正式计划审查' });
+  const runs = authority.historical_run_ids.map((run_id: string) => ({ run_id }));
+  const args = (entry: string, stage: string) => ['review', '--start', '--topic', authority.topic, '--driver', authority.driver, '--critics', authority.critics.join(','), '--entry', entry, '--stage', stage];
+  assert.equal(assertFormalRoundCore(authority, { runs }, runs, args('B', 'plan'), authority), 25);
+  assert.throws(() => assertFormalRoundCore(authority, { runs }, runs, args('C', 'code'), authority));
+  runs.push({ run_id: 'fixed-v14-round25-fixture' });
+  assert.equal(assertFormalRoundCore(authority, { runs }, runs, args('C', 'code'), authority), 26);
+  assert.throws(() => assertFormalRoundCore(authority, { runs }, runs, args('B', 'plan'), authority));
+  runs.push({ run_id: 'fixed-v14-round26-fixture' });
+  assert.throws(() => assertFormalRoundCore(authority, { runs }, runs, args('C', 'code'), authority));
+});
+
+test('v9至v12新增固定历史原件测试，各自边界保留但现行权威拒绝旧声明', async () => {
+  const root = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3');
+  const { assertFormalRoundCore, readCurrentAuthorization } = await import(pathToFileURL(path.join(root, 'round-guard-v2.mjs')).href);
+  const current = readCurrentAuthorization();
+  const expected = [
+    { version: 9, limit: 18, rounds: [{ ordinal: 18, entry: 'C', stage: 'code' }] },
+    { version: 10, limit: 20, rounds: [{ ordinal: 19, entry: 'B', stage: 'plan' }, { ordinal: 20, entry: 'C', stage: 'code' }] },
+    { version: 11, limit: 21, rounds: [{ ordinal: 21, entry: 'C', stage: 'code' }] },
+    { version: 12, limit: 23, rounds: [{ ordinal: 22, entry: 'B', stage: 'plan' }, { ordinal: 23, entry: 'C', stage: 'code' }] },
+  ];
+  for (const fixture of expected) {
+    const file = path.join(root, `formal-round-authorization-v${fixture.version}.json`);
+    const before = await fs.readFile(file);
+    const authority = JSON.parse(before.toString('utf8'));
+    assert.equal(authority.new_limit, fixture.limit);
+    assert.deepEqual(authority.new_rounds, fixture.rounds);
+    assert.equal(authority.criteria_change_authorized, false);
+    assert.equal(authority.supersedes_sha256, createHash('sha256').update(await fs.readFile(path.resolve(authority.supersedes_file))).digest('hex'));
+    const runs = authority.historical_run_ids.map((run_id: string) => ({ run_id }));
+    for (const round of fixture.rounds) {
+      const args = ['review', '--start', '--topic', authority.topic, '--driver', authority.driver,
+        '--critics', authority.critics.join(','), '--entry', round.entry, '--stage', round.stage];
+      assert.equal(assertFormalRoundCore(authority, { runs }, runs, args, authority), round.ordinal);
+      assert.throws(() => assertFormalRoundCore(authority, { runs }, runs, args, current), /授权已被替代/);
+      const wrong = [...args]; wrong[wrong.indexOf('--stage') + 1] = 'wrong';
+      assert.throws(() => assertFormalRoundCore(authority, { runs }, runs, wrong, authority));
+      runs.push({ run_id: `fixed-v${fixture.version}-round${round.ordinal}-fixture` });
+      if (round === fixture.rounds.at(-1)) assert.throws(() => assertFormalRoundCore(authority, { runs }, runs, args, authority));
+    }
+    assert.deepEqual(await fs.readFile(file), before);
+  }
+});
+
 test('历史总10权威固定v4夹具，9B/10C边界不随v5指针改变', async () => {
   const root = path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r3');
   const { assertFormalRoundCore } = await import(pathToFileURL(path.join(root, 'round-guard-v2.mjs')).href);

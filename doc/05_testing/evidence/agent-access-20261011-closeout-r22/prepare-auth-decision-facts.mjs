@@ -1,0 +1,16 @@
+/** 27C批准后具名当前事实重验；只诊断，不生成独立批准或改变准入。 */
+import fs from 'node:fs';import path from 'node:path';
+import {hash} from '../../../../scripts/agent-access-selection.mjs';import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+import {replayAuthTimestampEvidence} from '../agent-access-20261011-closeout-r21/auth-evidence-replay.mjs';
+import {scopeDigest} from '../agent-access-20261011-closeout-r21/criteria-validation-core.mjs';
+const repo=process.cwd(),root=path.dirname(new URL(import.meta.url).pathname),r21=path.resolve(root,'../agent-access-20261011-closeout-r21');
+const ref=p=>({path:path.resolve(p),sha256:hash(p)}),checkpoint=JSON.parse(fs.readFileSync(root+'/code27-approved-checkpoint.json'));
+if(checkpoint.gate.state!=='approved'||hash(checkpoint.run_ref.path)!==checkpoint.run_ref.sha256||hash(checkpoint.response_ref.path)!==checkpoint.response_ref.sha256)throw Error('27C批准原件不符');
+const old=JSON.parse(fs.readFileSync(r21+'/auth-diagnostic-after27-preflight.json')),context={...old.consumer_replay_context,latestReviewRef:checkpoint.run_ref,controlledResultRef:ref(r21+'/controlled-mode3-qwen-originals/02-result.json'),controlledRawRef:ref(r21+'/controlled-mode3-qwen-originals/00-raw.json')};
+const facts=await replayAuthTimestampEvidence(context);
+if(!facts.applicable_diagnostic||facts.current_complete_config_sha256!==hash('.trivium/config.local.yaml')||facts.hops.length!==4||facts.scope.length!==27||facts.latest_safety.latest_leak!==false||facts.latest_safety.latest_actual_interception_failure!==false)throw Error('当前事实不合格');
+const diagnosticFile=root+'/auth-diagnostic-after-code27.json';
+saveEvidence(diagnosticFile,{...facts,consumer_replay_context:context,actual_latest_code_review:checkpoint.run_ref,explicit_manifest_only:true,controlled_mode_fields_conservative_no_mechanism_admission:true,new_vendor_starts:0,criterion_adopted:false});
+const diagnosticRef=ref(diagnosticFile),scope=facts.scope.map(s=>({route:s.route,model:s.model_requested,arm:s.arm,source_refs:[s.source_ref,diagnosticRef]}));
+saveEvidence(root+'/auth-criterion-decision-scope.json',{schema:'criterion-decision-proposal.v1',topic:checkpoint.gate.topic,criterion_version:'auth-cache-timestamp-applicability-v1',scope,scope_sha256:scopeDigest(scope),diagnostic_ref:diagnosticRef,plan_run_id:'20261011T200004Z',plan_final_ref:ref(repo+'/.reviews/'+checkpoint.gate.topic+'/plan/2026-10-12-'+checkpoint.gate.topic+'-r30-codex.md'),code_run_id:checkpoint.gate.run_id,code_checkpoint_ref:ref(root+'/code27-approved-checkpoint.json'),consumer_version:'candidate-consumer-v3',consumer_ref:ref(r21+'/criteria-consumer-v3.mjs'),auth_fact_context:context,current_complete_config_sha256:facts.current_complete_config_sha256,old_complete_config_sha256:facts.old_complete_config_sha256,hops:4,source_arms:scope.length,components:facts.components.length,source_refs:facts.source_refs.length,user_decision_ref:null,approved:false,delegated_ordinary_code_approval_does_not_adopt:true,changes_original_failed_or_untested:false,production_consumer_enabled:false,new_vendor_starts:0});
+console.log(JSON.stringify({applicable_diagnostic:true,hops:4,arms:scope.length,components:facts.components.length,refs:facts.source_refs.length,scope_sha256:scopeDigest(scope),diagnostic_ref:diagnosticRef,consumer_ref:ref(r21+'/criteria-consumer-v3.mjs'),criterion_adopted:false}));

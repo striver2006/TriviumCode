@@ -1,0 +1,82 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最危险一条：r27 对 v14 轮数权威的登记状态自相矛盾——文首与执行边界补充断言「现行v14只有25B、26C」，§4 却保留提案旧文「尚未登记、认领或启动新正式轮」。实测时间线自洽（v14 于 2026-10-11T18:28:44Z 登记、formal-round-authority.json 指针已切换并绑定 hash、本 run 18:44:07Z 在其下启动；18:24 的状态件仍标 new_limit26_proposed_only=true），但文内未做调和说明，轮数守卫消费工件的权威时间线审计会得出矛盾结论，需一句修正。其余为小缺口：N 派生措辞两处不一致且弱于父合同「只能从生产枚举N派生」口径；敏感取证守卫范围未按 r24 先例要求写入 25B 审批 reason；新认证时间链的适用性补充未写明须落 auth-timestamp-applicability.v1 机读形态。焦点结构满足：§2 模式补充以实测 init 严格 default 为门、合并漂移即失败停批、不碰产品 guard/gate/hooks；§3 守卫侧改动全部经本轮正式审查且现有白名单与配对谓词不扩大；v14 的 authorized_scope 在机读层面分离轮数委托与判据采用。§1 事实账目与 result.json、stop.json、诊断件、turn-status 逐项吻合（12/12 配对、两写拒绝、哨兵 0、模式 auto vs default 为唯一失败因、admission 732/742、诊断 v2 applicable_diagnostic=true）。预算算术自洽（732+6=738 不超 742，二批 746 超池已声明事前扩容），一次性路径、失败即停与批准守卫齐备。四条意见均不阻塞按计划推进。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "被审计划 §4「批次与正式顺序」末句（这里仅建议，尚未登记、认领或启动新正式轮）；对照同文首段「v14仅25B/26C、27拒绝」与执行边界补充「正式本轮v14只有25B、26C（27拒绝）」",
+      "problem": "同一文档对 v14 登记状态给出相反断言。实测：v14 已于 2026-10-11T18:28:44Z 登记（new_rounds 为 25/plan/B 与 26/code/C、27 无条目即拒绝、criteria_change_authorized=false），formal-round-authority.json 指针同刻切换并绑定 sha256 7b6b42c7开头值，本 25B run（20261011T184407Z）在其下合法启动；而 18:24:04Z 的 diagnostic-turn-status.json 仍标 new_limit26_proposed_only=true。§4 该句逐字继承自提案源 post-pilot-mode-plan-proposal.md（SHA 46930ac1）登记前的采样时刻，r27 对父合同声明了「按其采样时刻解释」的解释规则，却未对本提案正文做同样调和。事后审计轮数守卫的权威时间线（登记是否先于 run 启动）时会从文中得出矛盾结论，而这正是焦点关注的守卫消费工件留痕链。",
+      "evidence": "读了 .reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r27-codex.md（第7、9、42、67行）；doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v14.json（recorded_at、new_rounds、supersedes 字段）；同目录 formal-round-authority.json（指针已指 v14）；同目录 round-guard-v2.mjs（readCurrentAuthorization 按指针读、hash 漂移与被替代均 fail-closed）；doc/05_testing/evidence/agent-access-20261011-closeout-r17/diagnostic-turn-status.json（formal 段 new_limit26_proposed_only=true、new_round_started=false）；doc/05_testing/evidence/agent-access-20261011-closeout-r17/post-pilot-mode-plan-proposal.md §4 原句",
+      "suggestion": "修订或逐条裁决时注明：§4 该句描述提案登记前的采样时刻，并补记 v14 文件路径、sha256、recorded_at 与指针切换记录，使「25B 启动前权威已就位」可从计划文内直接核验，不再依赖读者自行比对工件时间戳。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "被审计划 §3 第二条（目标数全部从对应受控manifest/生产枚举N派生）与执行边界补充（从生产enumerateDenyPaths及原manifest的N派生）；对照 r26 父合同附录 §3（未来只能从生产枚举N派生，不能硬编码历史数量）",
+      "problem": "两处措辞不一致，且正文用斜杠连接可读作「二选一」。若按「仅受控 manifest」实现，mixed 配对总数（2N）就对同一次运行自己生成的 manifest 自洽，失去对生产枚举的独立锚定——manifest 在 controlled-fixture.mjs 第43-44行由 enumerateDenyPaths 派生并过滤存在文件，只是派生记录而非独立事实源，这弱于父合同已批准的「只能从生产枚举N派生」口径。§3 的「变异N必须拒绝」负例暗示了两源交叉核对，但未写明哪个是权威源、不一致时以何为准。",
+      "evidence": "读了被审计划 §3 与执行边界补充原文、附录 r26 §3 原文；doc/05_testing/evidence/agent-access-20261011-closeout-r17/controlled-fixture.mjs 第43-44行（deny 由 enumerateDenyPaths 生成、targets 为其存在文件过滤）；test/unit/agent-access-controlled-mechanism.test.ts 第10、30行（expected 由 targets.length 派生为 4，非硬编码 6）",
+      "suggestion": "统一为一句钉死：生产 enumerateDenyPaths 为唯一权威源，运行 manifest 仅作交叉核对记录，两者不一致即拒绝；「变异N」负例明确覆盖变异 manifest 侧与枚举侧的任一方向，避免实现时按斜杠读法择一。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "被审计划 §3 第一条与执行边界补充（本轮普通plan只授权……局部取证守卫）；对照 r24 附录 §2 先例与 diagnostic-turn-status.json 中 24B 审批 reason",
+      "problem": "焦点要求改变 guard 语义时另列敏感整改并经正式计划审查与明确审批。r27 把取证守卫侧改动（loopback 限额/清理 helper 提取——其中「HTTP异常/关闭时等待在途handler完结后再聚合错误」是清理聚合语义的实质变化、mode2 新 launcher/guard、临时 settings 注入）并入 §3「同批集中静态收口」并经本轮 25B 正式审查覆盖，结构上满足焦点；但未沿 r24 §2 先例要求把「敏感取证守卫范围已明确覆盖」连同 run_id、定稿路径与 SHA 写入 25B 普通 plan 审批 reason 及独立留痕。24B 的审批 reason 正是具名列出「明确覆盖混合工具配对与批准校验的敏感取证守卫边界」的，25B 计划若不延续，敏感整改链在审批件层面留白，只能靠 v14 的 authorized_scope 间接对账。",
+      "evidence": "读了被审计划 §3 与执行边界补充原文、附录 r24 §2（把run_id、定稿路径及SHA和「敏感取证守卫范围已明确覆盖」写入审批reason及独立留痕）；doc/05_testing/evidence/agent-access-20261011-closeout-r17/diagnostic-turn-status.json 的 review24_approval.reason 段；formal-round-authorization-v14.json 的 authorized_scope 字段",
+      "suggestion": "在计划或裁决中补一句：25B 普通 plan 批准的 reason 须具名列出本轮覆盖的取证守卫作用面（临时模式设置注入、限额与清理 helper 提取及迟到异常聚合语义、mode2 启动守卫绑定、N 派生口径），沿用 24B 审批留痕格式，使敏感范围在审批件层可直接核验。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "被审计划执行边界补充（若25B预检再次更新同三具名auth_routes.checked_at，本轮上下文保存前/后确切完整hash与原值语义diff、私有副本清理记录）",
+      "problem": "对 25B 预检产生的新认证时间链，计划只要求落「前后完整 hash、原值语义 diff、私有副本清理记录」这类散记，未写明必须产出符合 r26 §4 固定的 auth-timestamp-applicability.v1 机读诊断件（criteria_approval_ref 未批为 null、diagnostic_only=true、old/current 完整指纹、三键差异、raw_value_comparison）。已存 v2 诊断绑定的是 fb64a35a 采样时刻，新链若只留散记，26C 重审与后续任何消费校验都无法机器对账，届时还得事后补形。",
+      "evidence": "读了被审计划执行边界补充原文；doc/05_testing/evidence/agent-access-20261011-closeout-r17/auth-timestamp-diagnostic-v2.json 第8668-8669行（criteria_approval_ref 为 null、applicable_diagnostic 为 true）；附录 r26 §4 的独立诊断 schema 合同",
+      "suggestion": "补一句：新时间链的适用性补充以独立 auth-timestamp-applicability.v1 形态落盘（沿用 r26 §4 合同、未经批准保持 criteria_approval_ref=null），散记 hash 与 diff 仅作为其输入引用。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§1 事实账目与仓库工件逐项吻合：controlled-pilot-qwen/result.json 与 controlled-pilot-stop.json 显示两写 verdict true、六目标 Read/Grep 全拒、global_pairing 12/12、哨兵 0、清理三项全真、permission_mode observed auto 对 live default、mechanism_pass=false 且唯一原因为 permission-mode-mismatch、second_combination_started=false、retries=0、admission 732/742、review 313/318、正式 24/25；诊断 v2 applicable_diagnostic=true、raw_value_comparison=true、27 项 378 比较、首次 false 与脚本保留，均如计划所述。",
+    "权威链健全且在机读层落实焦点分离：v14 于本 run 启动前登记，指针 formal-round-authority.json 已切换并绑定 hash，round-guard-v2.mjs 对指针缺失、hash 漂移、被替代、历史运行缺失、entry/stage/critics 不符全部 fail-closed；v14 的 criteria_change_authorized=false 且 authorized_scope 具名列出临时模式设置与集中取证守卫作用面，轮数按需委托（delegation_exact_reply 留痕）与两个判据采用严格分开。",
+    "§2 模式补充设计边界正确：明示「新增临时设置不等于复制不存在的生产 settings 字段」、值必须严格为 default 且来源路径与字节 hash 独立记录、实际受控 init 仍须严格等于生产 default 而不能只靠设置声明、合并改变禁读拒绝或工具面或实际模式即失败保留原件并停批、未知错误形态不扩白名单、不猜 CLI 旗标、不改产品 guard/gate/hooks 与安装 bundle；把官方文档降格为机制资料而非因果证明，与 permission-mode-readonly-diagnosis.json 的 causal_cli_validation=false、retry_allowed=false 一致。",
+    "失败路径与幂等设计充分：固定 V2 目标与一次性输出路径、启动绑定本轮 plan run 与定稿 hash 及普通批准守卫、不得复用 variant1 输出、不得改旧失败状态、不得改为循环、任一未知或失败即停；预算算术自洽（732 加硬 6 为 738 不超 742，二批 738 加硬 8 为 746 超池已声明事前发布并扩容，review 313 加硬 20 为 333）。",
+    "实现事实支持计划前提：controlled-fixture.mjs 第43-44行由生产 enumerateDenyPaths 派生目标并强制覆盖 .env 与四家审核者后缀文件；agent-access-controlled-mechanism.test.ts 用两目标样本派生 expected=4 而非硬编码 6，且含 auto 模式负例与三十种独立变异，计划所述「仍须完成的静态测试」与现状（模拟协议已存在、真实 HTTP 与清理故障测试缺失）相符。",
+    "诚实边界保持：canonical 当前 0 通过 12 未测不改、B 层可行不等于判据采用、两候选任一采用都不回写原标准 C 列的 false 与未测、此提案与诊断 true 及新增轮数均不构成 M11 前置完成证据。"
+  ],
+  "not_covered": [
+    "本侧只读无执行：未运行任何命令、未复算任何 sha256（v14 指针 hash、pilot 各 SHA、包装器 hash 均采信工件内记录）；round-guard 对 v14 的实际拦截行为由源码阅读推断，未实测。",
+    "auth-timestamp-diagnostic-v2.json 约 680KB，仅定向检索结论字段（criteria_approval_ref、applicable_diagnostic），未逐行核对 diff 载荷与 27 项明细。",
+    "必读清单中 criteria-contract.mjs、criteria-approval-validation.mjs、launch-controlled-v1.mjs、controlled-mechanism.v1.schema.json、criteria-approval 与 revocation 两份 schema、test/unit/agent-access-auth-applicability.test.ts、test/unit/agent-access-criteria-approval.test.ts、ADR_003、主设计文档、PROTOCOL、QUICKSTART、claude.ts 等适配器源码本轮未逐一重读，以本侧 r12 轮既有阅读与本轮工件交叉采信。",
+    "25B 预检（即本次 run 的预检）是否已实际更新三具名 checked_at、其观察件是否已落盘未核实，按计划属批准后实施项；任务书必读清单给出的 v14 与 round-guard 路径位于 agent-access-20261010-closeout-r3/ 且不存在，实际文件在 agent-access-20261011-closeout-r3/，已按实际路径读取，清单路径过旧不是被审计划的问题。",
+    "另一位审查员的产出与 Driver 对历史各轮的裁决件按背靠背约束未读不猜；.trivium 运行目录、ledger 与 calls 明细未读。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r27-codex.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authorization-v14.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/formal-round-authority.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/round-guard-v2.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/controlled-pilot-qwen/result.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/permission-mode-readonly-diagnosis.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/controlled-pilot-stop.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/diagnostic-turn-status.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/post-pilot-mode-plan-proposal.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/controlled-mechanism.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/controlled-fixture.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/auth-timestamp-diagnostic-v2.json",
+    "test/unit/agent-access-controlled-mechanism.test.ts",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r12-glm.md"
+  ]
+}

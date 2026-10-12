@@ -1,0 +1,60 @@
+{
+  "at": "2026-10-11T20:22:04.118Z",
+  "script_sha256": "09de15b8a0ab9479122520f2501652d5b8131163a944395f96f447c24515032b",
+  "helper_sha256": "5a3d3d0c4db19072fc4bfa613043497b7ce2707f7add9cd2d7698dbb30cc11be",
+  "before": {
+    "bundle": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "stamp": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T20:22:01.177Z"
+    }
+  },
+  "after": {
+    "bundle": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+    "stamp": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T20:22:04.118Z"
+    }
+  },
+  "runs": [
+    {
+      "name": "typecheck",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "\n> triviumcode@0.1.0 typecheck\n> tsc --noEmit\n\n",
+      "stderr": ""
+    },
+    {
+      "name": "tests-only",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": "\n  dist/test/test/integration/gate-loop.test.js        609.7kb\n  dist/test/test/unit/hooks.test.js                   298.9kb\n  dist/test/src/trivium/review.js                     270.0kb\n  dist/test/src/trivium/run-protocol.js               269.9kb\n  dist/test/src/trivium/cli.js                        261.7kb\n  dist/test/test/integration/run-protocol.test.js     228.1kb\n  dist/test/src/trivium/probes/zcode.js               213.5kb\n  dist/test/src/trivium/hooks.js                      212.4kb\n  dist/test/test/integration/fault-injection.test.js  211.2kb\n  dist/test/test/unit/registry-parity.test.js         209.1kb\n  dist/test/src/trivium/adapters/base.js              198.6kb\n  dist/test/src/trivium/adapters/zcode.js             195.8kb\n  dist/test/src/trivium/gate.js                       187.9kb\n  dist/test/src/trivium/probes/claude.js              180.5kb\n  dist/test/src/trivium/types.js                      166.4kb\n  dist/test/test/unit/lock.test.js                    164.7kb\n  dist/test/src/trivium/report.js                     162.9kb\n  dist/test/test/unit/gate.test.js                    160.8kb\n  dist/test/test/unit/zcode-provider-env.test.js      151.6kb\n  dist/test/test/unit/preflight.test.js               151.4kb\n  ...and 269 more output files...\n\n⚡ Done in 79ms\n"
+    },
+    {
+      "name": "inline-tests",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (1.369833ms)\n▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标\n  ✔ doc/02_design/README.md (0.479459ms)\n  ✔ doc/03_api/README.md (0.111083ms)\n  ✔ doc/04_development/README.md (0.124791ms)\n  ✔ doc/05_testing/README.md (1.477208ms)\n  ✔ doc/06_deployment/README.md (0.129125ms)\n  ✔ doc/07_manuals/README.md (0.09225ms)\n✔ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (2.658833ms)\n▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序\n  ✔ doc/02_design/README.md (0.235583ms)\n  ✔ doc/03_api/README.md (0.081167ms)\n  ✔ doc/04_development/README.md (0.071208ms)\n  ✔ doc/05_testing/README.md (0.477292ms)\n  ✔ doc/06_deployment/README.md (0.048125ms)\n  ✔ doc/07_manuals/README.md (0.045959ms)\n✔ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (1.137167ms)\n✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.198417ms)\n✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.194291ms)\n✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.214458ms)\n✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.134125ms)\n✔ B5 同一文件两条条目 ⇒ duplicate (0.088875ms)\n✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.242208ms)\n✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.081375ms)\n✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.120667ms)\n✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.110625ms)\n✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.049833ms)\n✔ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02） (0.123541ms)\n✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.050292ms)\n✔ inline only新增defaultMode，原deny和其余实际buildClaudeArgs逐项不变 (9.114417ms)\n✔ 损坏JSON在构造时拒绝 (0.159125ms)\n✔ 缺deny在构造时拒绝 (0.051792ms)\n✔ 空deny在构造时拒绝 (0.055375ms)\n✔ 重复deny在构造时拒绝 (0.071416ms)\n✔ 原settings已有mode在构造时拒绝 (0.046ms)\n✔ 原settings已有allow在构造时拒绝 (0.051125ms)\n✔ 未知根键在构造时拒绝 (0.044291ms)\n✔ 非字符串规则在构造时拒绝 (0.069208ms)\n✔ 非live default auto拒绝 (0.087708ms)\n✔ 非live default bypassPermissions拒绝 (0.048167ms)\n✔ 非live default null拒绝 (0.035375ms)\n✔ 非live default undefined拒绝 (0.033375ms)\n✔ 丢deny规则由实际argv/输入重算拒绝 (0.097375ms)\n✔ 规则相邻目标由实际argv/输入重算拒绝 (0.064375ms)\n✔ deny顺序变化由实际argv/输入重算拒绝 (0.469083ms)\n✔ 新allow由实际argv/输入重算拒绝 (0.0935ms)\n✔ 新auto由实际argv/输入重算拒绝 (0.054084ms)\n✔ 伪造denyhash由实际argv/输入重算拒绝 (0.048667ms)\n✔ 伪造jsonhash由实际argv/输入重算拒绝 (0.051625ms)\n✔ 多余binding字段由实际argv/输入重算拒绝 (0.047708ms)\n✔ 改模型由实际argv/输入重算拒绝 (0.061417ms)\n✔ 工具面变化由实际argv/输入重算拒绝 (0.074834ms)\n✔ 移除restricted由实际argv/输入重算拒绝 (0.056667ms)\n✔ Schema变化由实际argv/输入重算拒绝 (0.038042ms)\n✔ 重复settings由实际argv/输入重算拒绝 (0.043375ms)\nℹ tests 53\nℹ suites 0\nℹ pass 53\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 88.9265\n",
+      "stderr": ""
+    },
+    {
+      "name": "diff-check",
+      "code": 0,
+      "timed_out": false,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "new_vendor_starts": 0,
+  "actual_mode3_started": false,
+  "actual_cli_consumption_proven": false,
+  "full_npm_check_performed": false,
+  "criterion_adopted": false
+}

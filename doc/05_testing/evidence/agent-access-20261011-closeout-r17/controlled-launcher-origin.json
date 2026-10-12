@@ -1,0 +1,23 @@
+{
+  "at": "2026-10-11T17:50:05.884Z",
+  "source": {
+    "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r17/../agent-access-20261011-closeout-r3/launch-v17.mjs",
+    "sha256": "a245ab97b6e760601fda4b930fdcfc2d09caf3eb33e02c00930192c1e2944634"
+  },
+  "target": {
+    "path": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/agent-access-20261011-closeout-r17/launch-controlled-v1.mjs",
+    "sha256": "379ba79294acd1d00c350d759d4f92631aa600e26591371604821fae8977ce8d"
+  },
+  "changes": [
+    "!['tv', 'probe'].includes(mode)",
+    "import { assertFormalRound } from './round-guard-v2.mjs';",
+    "import('./formal-start-precheck-v2.mjs')",
+    "const targetArgs = mode === 'tv' ? args : [path.join(legacyRoot, 'probe.mjs'), ...args];",
+    "hashFile(mode === 'tv' ? fileURLToPath(import.meta.url) : path.join(legacyRoot, 'probe.mjs'))"
+  ],
+  "round_guard_changed": false,
+  "budget_preload_changed": false,
+  "arbitrary_script_allowed": false,
+  "criteria_change_authorized": false,
+  "new_vendor_starts": 0
+}

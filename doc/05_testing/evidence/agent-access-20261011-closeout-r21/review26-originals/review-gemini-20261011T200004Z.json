@@ -1,0 +1,89 @@
+{
+  "agreed": [
+    "计划严格遵守审查焦点要求，对改变取证守卫谓词（mode3 命令行内联 defaultMode 输入、1..32 有界认证链、v3 候选判据）均作为正式敏感整改在计划中单列成节，并要求普通审批 reason 明确具名覆盖，未尝试以普通收口规避审查。",
+    "计划坚持生产与测试严格隔离原则，明确保持生产 invokeClaude、buildClaudeArgs、buildDenySettings 契约、生产适配器及现行 guard/gate/hooks 不变，拒绝在生产核心代码中硬编码或放宽权限模式。",
+    "计划对两项独立候选判据（restricted-tool-surface-and-path-v3 与 auth-cache-timestamp-applicability-v1）明确划定决策边界，坚持普通 plan/code 审批不授权采用判据、关闭消费者、不改写历史准入矩阵与未测/失败记录。",
+    "计划为 mode3 设定了单次执行失败即停批、不循环调参的严格熔断机制，并在测试中保留生产全量 deny 规则与两写禁用断言。"
+  ],
+  "consulted": [
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r13-gemini.md",
+    ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r28-codex.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r19/mode2-stop-export.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r19/mode2-readonly-diagnosis.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/criteria-contract.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r17/criteria-approval-validation.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r20/consolidated-gap-plan-proposal.md",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r20/formal-round26-27-authorization-verification.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r19/mode2-launch-guard.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r19/auth-timestamp-chain.mjs",
+    "test/unit/agent-access-criteria-approval.test.ts",
+    "test/unit/agent-access-controlled-mechanism.test.ts",
+    "test/unit/agent-access-auth-applicability.test.ts",
+    "test/unit/agent-access-mode2-launch.test.ts",
+    "src/trivium/adapters/claude.ts",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r19/launch-controlled-mode2.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r19/mode2-launch-measurement.mjs",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r19/auth-timestamp-chain.v1.schema.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r20/config-after26-preflight-observation.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r20/plan26-preflight-call.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r20/static-audit-before26.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r20/review-round26-budget-extension.json",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r19/controlled-fixture-v3.mjs",
+    "skills/dual-critic/schema/review.v1.json"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md 第23行声明「当前local c5b4下strict canonical0通过/12未测」；对照 doc/05_testing/evidence/agent-access-20261011-closeout-r20/config-after26-preflight-observation.json 第3-4行，26B 预检（19:56:34Z）已观察到 before_sha256: c5b4d9a9... 更新为 current_sha256: b40e8a37f3e1b4fb0b7184d9764c919a8ac4030a5c090c22f612ba7480d20989；doc/05_testing/evidence/agent-access-20261011-closeout-r20/static-audit-before26.json 第13行与第49行亦记录 config_local_sha256 已为 b40e8a37...。计划第 4 节第56行虽然提及「26B正常preflight若实际更新的c5b4→新hash」，但第 1 节仍硬编码旧哈希，导致计划基线叙述与已落盘审计事实不一致。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md:23",
+      "problem": "计划第 1 节将当前 local 配置基线断言为旧的 c5b4d9a9，与 26B 预检执行后落盘的真实配置哈希 b40e8a37f3e1 存在事实脱节与内部矛盾。",
+      "severity": "major",
+      "suggestion": "在计划第 1 节中将当前 local 配置哈希更新为 26B 预检后的真实哈希 b40e8a37，保持与 static-audit-before26.json 和 config-after26-preflight-observation.json 事实严格一致。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md 第46行「模式输入新证据Schema与实际guard/fixture/proof对账」、第60行「新增chain Schema支持1..32长度」及第64行「新独立v3 validator、consumer和形状契约从旧逻辑派生」；对照 doc/05_testing/evidence/agent-access-20261011-closeout-r19/auth-timestamp-chain.v1.schema.json，其根部 schema 属性固定为 auth-timestamp-applicability.v1 且 hops 数组硬约束为 maxItems: 2；对照 doc/05_testing/evidence/agent-access-20261011-closeout-r17/criteria-approval-validation.mjs 第7行，candidates 集合写死 v2 与 v1。计划缺少对新 Schema 文件路径（如 auth-timestamp-chain.v2.schema.json、controlled-mechanism-mode3.v1.schema.json）、顶层 schema 常量及新校验器候选集（candidates 变更）的机读契约定义，存在命名分叉与 Schema 冲突风险。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md:46",
+      "problem": "计划提出新增 1..32 长度认证链契约、mode3 证据与候选判据 restricted-tool-surface-and-path-v3，但未明确各新增 Schema 文件的命名规范、版本标识常量（schema const）以及配套校验器模块的派生契约。",
+      "severity": "major",
+      "suggestion": "在计划第 3、4、5 节明确补齐具体 Schema 文件名、schema 属性常量标识（如 auth-timestamp-chain.v2、controlled-mechanism-mode3.v1）以及 v3 校验器模块的命名与候选版本集合规约。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 .reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md 第82行称「本轮26B先从review328/333扩至348，预计15启动、硬20、累计止348」；对照 doc/05_testing/evidence/agent-access-20261011-closeout-r20/static-audit-before26.json 第87-91行，review 池在预检后实际 used/completed 已达 338/348（预检三侧探活消耗了 10 次启动）；对照 doc/05_testing/evidence/agent-access-20261011-closeout-r20/plan26-preflight-call.json 第7行，claude/gemini/glm 均执行了探活。计划正文叙述滞后于实际台账，未体现预检后审查池仅余 10 次启动的事实边界。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "plan",
+      "location": ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md:82",
+      "problem": "计划第 7 节审查额度叙述采用预检前的基线数据（328/333），未扣除 26B 预检探活实际消耗的 10 次审查启动，对剩余审查缓冲的核算存在滞后。",
+      "severity": "minor",
+      "suggestion": "在计划第 7 节中如实反映 26B 预检后审查启动已消耗至 338/348 的实际台账状态，并评估 3 侧双审及潜在重试所需的真实余量。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "查阅 .reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md 第84行；对照 doc/05_testing/evidence/agent-access-20261011-closeout-r19/mode2-launch-guard.mjs 第10行，守卫对审批 reason 的校验采用严格数组包含断言 `['本轮敏感取证守卫范围已明确覆盖','临时单键模式','HTTP限额','全清理','mode2','生产枚举/N/manifest'].every(s=>a.reason.includes(s))`。计划 r29 将模式由 mode2 变更为 mode3、临时单键模式变更为 CLI inline，但未给出启动守卫所要求的精准字面串集合。",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/Agent双模式接入真实准入收口/plan/2026-10-12-Agent双模式接入真实准入收口-r29-codex.md:84",
+      "problem": "计划第 7 节对于 26B 审批 reason 的具名覆盖范围采用长句描述，未定义启动守卫所校验的精确字面量子串数组（token array），易引发守卫实现与审批生成的断言错位。",
+      "severity": "nit",
+      "suggestion": "在计划第 7 节显式给出未来 mode3 启动守卫与审批 reason 对账的规范字面子串数组，确保守卫实现与审批生成的断言严格同构。"
+    }
+  ],
+  "not_covered": [
+    "审查员运行在严格只读环境下，未执行任何命令或脚本以实测 Claude CLI 在 --settings 传入 permissions.defaultMode 时的行为表现。",
+    "未实际启动或模拟运行 mode3 独立夹具与 HTTP 传输测试服务。",
+    "未测试外部模型供应商接口实际推理与服务端身份验证。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "审查焦点落实情况：计划严格遵守焦点要求，将 mode3 命令行内联模式输入、1..32 有界认证链及 v3 判据单列为正式敏感整改，明确不改生产代码与生产 guard，两候选判据保持未采用且消费者关闭，方向正确。\n最关键缺陷：计划第 1 节将当前 local 配置基线断言为旧的 c5b4d9a9，与 26B 预检落盘的真实配置哈希 b40e8a37f3e1 发生事实脱节与内部矛盾。\n次要缺陷：计划未明确 1..32 长度认证链与 mode3 取证的具体 Schema 文件名及版本标识常量；审查预算叙述滞后于预检探活消耗后的真实台账（已达 338/348）；审批 reason 缺少启动守卫断言所需的字面子串数组规范。\n整体结论：建议修改计划（request-changes），修订事实基线与补齐契约规约后再行推进。",
+  "verdict": "request-changes"
+}

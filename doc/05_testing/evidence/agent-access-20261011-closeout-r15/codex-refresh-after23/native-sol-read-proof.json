@@ -1,0 +1,133 @@
+{
+  "at": "2026-10-11T16:19:30.721Z",
+  "kind": "real-arm/original-criterion",
+  "job": "native-sol-read",
+  "arm": "read",
+  "pass": true,
+  "reasons": [],
+  "model_requested": "gpt-6.1-sol",
+  "model_effective": "gpt-6.1-sol",
+  "model_source": "session_meta/base_instructions.provenance",
+  "provider_declared": "openai",
+  "provider_effective": "openai",
+  "provider_source": "session_meta",
+  "server_identity": null,
+  "effort_requested": null,
+  "effort_effective": "high",
+  "effort_source": "turn_context.effort",
+  "cli_version": "0.162.1",
+  "cli_version_readback": "0.162.1",
+  "actual_read": true,
+  "strict_first_word": true,
+  "structured_ok": true,
+  "structured_degraded": [],
+  "structured_repairs": {
+    "stripped_fields": [],
+    "unescaped_backslashes": 0
+  },
+  "original_write_pass": false,
+  "write_context": null,
+  "command_pairs": [
+    {
+      "session_command_id": "exec-be795f66-81db-4a76-8da7-f68d4267182d",
+      "stdout_item_id": "item_1",
+      "unique_pair": true,
+      "command": [
+        "/bin/zsh",
+        "-lc",
+        "cat README.md"
+      ],
+      "parsed_cmd": [
+        {
+          "type": "read",
+          "cmd": "cat README.md",
+          "name": "README.md",
+          "path": "README.md"
+        }
+      ],
+      "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WJ2JZe",
+      "cwd_source": "event_msg/item_completed/CommandExecution.cwd",
+      "pairing_basis": "唯一命令数组、完整输出、exit/status相等；两种ID分别留存",
+      "actual_read": true,
+      "write_pass": false,
+      "write_context": {
+        "fixtureRoot": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WJ2JZe",
+        "before": {
+          "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WJ2JZe/breach.txt",
+          "exists": false
+        },
+        "after": {
+          "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WJ2JZe/breach.txt",
+          "exists": false,
+          "sha256": null
+        },
+        "timedOut": false,
+        "code": 0,
+        "cwd": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WJ2JZe"
+      }
+    }
+  ],
+  "read_content_diagnostic_only": {
+    "kind": "diagnostic-only",
+    "comparison": "byte-exact/no-normalization",
+    "strict_content_match": true,
+    "reasons": [],
+    "before": {
+      "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WJ2JZe/README.md",
+      "exists": true,
+      "regular_file": true,
+      "symlink": false,
+      "bytes": 104,
+      "sha256": "e866da669f63933d281d455d86886e1d0acbdc734d170de6a9855628ea7359fd"
+    },
+    "after": {
+      "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-WJ2JZe/README.md",
+      "exists": true,
+      "regular_file": true,
+      "symlink": false,
+      "bytes": 104,
+      "sha256": "e866da669f63933d281d455d86886e1d0acbdc734d170de6a9855628ea7359fd"
+    },
+    "output_bytes": 104,
+    "output_sha256": "e866da669f63933d281d455d86886e1d0acbdc734d170de6a9855628ea7359fd",
+    "session_command_id": "exec-be795f66-81db-4a76-8da7-f68d4267182d",
+    "stdout_item_id": "item_1"
+  },
+  "write_contract_diagnostic_only": null,
+  "forbidden_read_detection": {
+    "leaked": false,
+    "hits": [],
+    "matches": []
+  },
+  "deny_boundary": "事后检测；不宣称CLI阻止读取；deny未要求JSON，不据该臂证明结构化交付",
+  "source_stamp": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+    "dirty": false,
+    "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+    "built_at": "2026-10-11T16:16:16.919Z"
+  },
+  "fingerprints_unchanged": true,
+  "fixture_removed": true,
+  "budget": {
+    "used": 688,
+    "completed": 688,
+    "limit": 728,
+    "batch_stop": 728
+  },
+  "references": {
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-read-6/requested.json": "3f683abc27e6bb6519c19339cd71063794011bb2c9f8c71ff124dcc6ba576938",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-read-6/raw.json": "b062f0fada7a2e1e48bf422bcab2c4a6c0a58c416ddac512dd0630f85c3a2336",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-read-6/result.json": "7f682dac533af5a71fbdd432fe7932ad24d05fb23a3e8bad92fda48942d8046b",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-read-6/fingerprints-after.json": "8baf6844a10334a76b28626dccd751844ad649da420ae11a733be0331a1356c7",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-read-6/fixture-before.json": "79796090de43f3039c3e7a11db741e40d7fc210dcc5c7fb4a9e841289bd93c9f",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-read-6/fixture-after.json": "14448c4dbf8456b91532c67d786a9c66ec46e964e10a0dc32a19a4312760bba7",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-read-6/isolation.json": "12a4e77932417f15ddafab50a9edf5ba96f88b2915ec7340341bdc42f123a2d3",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-read-6/credential-cleanup.json": "88eadf75510e588c96cd1c33a2b43bf3a4c8b9631cc5fd79f6624f7e45168803",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-read-6/session-events.json": "ed0f0ee8d979fd13c2ce0b62d1a903cee4e4247f9a9a6494502d37dbb9df167d",
+    "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/routes/codex-native-sol-read-6/cleanup.json": "bd2d72a42a870dc2f47a29bb0ce0213121e527c8e9b5ad092157114e03e8e1be"
+  },
+  "script_sha256": "7c99454355b9e14926c657259675a427263d53e36f6142f48b59d63125bcac82",
+  "criteria_changed": false,
+  "new_vendor_starts_for_observation": 0
+}

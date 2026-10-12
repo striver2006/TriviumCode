@@ -1,0 +1,41 @@
+{
+  "schema": "permission-mode-diagnosis.v1",
+  "at": "2026-10-11T18:06:05.934Z",
+  "new_vendor_starts": 0,
+  "observed_modes": {
+    "observed": "auto",
+    "live": "default"
+  },
+  "observed_cli_version": "2.1.296",
+  "failed_pilot_ref": {
+    "path": "doc/05_testing/evidence/agent-access-20261011-closeout-r17/controlled-pilot-stop.json",
+    "sha256": "0666b88f1a3a651d6b8c7d12ca4720d2f663c3e675528fe1f3ad06dfd2c8f0a7"
+  },
+  "current_user_cache": {
+    "path": "/Users/chenzhenbo/.claude.json",
+    "sha256": "9945d8c673ce2690d459e18027bf413bd999dc62a0e85dbb7c2e8b7fe2366ab9",
+    "selected_key": "cachedGrowthBookFeatures.tengu_auto_mode_default_on",
+    "selected_value": false,
+    "has_completed_onboarding": true
+  },
+  "temporary_home_cache_present": false,
+  "production_mode_flags_added": false,
+  "global_settings_defaultMode": null,
+  "official_sources": [
+    {
+      "url": "https://code.claude.com/docs/en/permission-modes",
+      "retrieved_at": "2026-10-11T18:06:05.934Z",
+      "supported_claim": "官方说明2.1.285+在不获取功能开关的-p会话可默认auto；设置与会话环境影响初始模式"
+    }
+  ],
+  "hypothesis": "独立HOME没有真实用户功能开关缓存，且关闭非必要流量，可能走当前版本无开关时的auto默认分支",
+  "causal_cli_validation": false,
+  "limitations": [
+    "没有生产采样时的.claude.json hash，当前所选值不能外推历史文件完全不变",
+    "不复制用户缓存，不把假HOME模式观察当作生产模式变化",
+    "不以官方文档或静态字符串代替当前CLI模式实测"
+  ],
+  "changes_made": false,
+  "retry_allowed": false,
+  "criteria_adopted": false
+}

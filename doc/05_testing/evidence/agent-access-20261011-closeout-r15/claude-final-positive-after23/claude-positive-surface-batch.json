@@ -1,0 +1,163 @@
+{
+  "at": "2026-10-11T16:44:17.497Z",
+  "repo": "/Users/chenzhenbo/Work/TriviumCode",
+  "topic": "Agent双模式接入真实准入收口",
+  "approval": {
+    "at": "2026-10-11T15:45:53.758Z",
+    "stage": "code",
+    "run_id": "20261011T152631Z",
+    "decision": "approved",
+    "reason": "依据Bob本轮明确委托：中途遇到需要审批的，根据你的建议自动审批。Driver建议批准run20261011T152631Z的完整code；三侧原件全文已读，无blocker/major，两项非阻断暂缓已逐条记录限制与触发条件，接受待实施0；gate通过，31静态/552业务/10原审查工件hash未变，readonly_breach=false，subject/tree无漂移，审批停点业务改动0。裁决r12-response-codex SHA f4b47c2a42fa7a63edeb4986762ab3259b183370a93afdff013647ed3424b165，获批计划r24 SHA 1c7c4ffff68bff0644f2f156e4afcce064e0cfb40e4afcfe532790934130cee7。审批由Driver按用户委托执行，不声明Bob亲自操作，未声明会话null。GLM consulted_unverified、Gemini额外字段剥离、dirty安装和路径级deny边界保留。只批准本轮code，不授权准入判据变化、不采用component/restricted替代、不追认旧false或旧通过，当前12组合完整未测，M11前置未完成。",
+    "session_id": null
+  },
+  "source_stamp": {
+    "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+    "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+    "dirty": false,
+    "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+    "built_at": "2026-10-11T16:32:48.456Z"
+  },
+  "bundle_sha256": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+  "scripts": {
+    "scripts/agent-access-closeout.mjs": "65722194a19a697908572cf241af545c65043c2643c1c96d7fb946c672df5035",
+    "scripts/agent-access-evidence.mjs": "79ce3439ed11d0d0dc3bfc82a0411fc301eefa526c5fda91dd4016933181f2eb",
+    "scripts/agent-access-recipes.mjs": "ac500b1d0e8dc3b1621b1526b6ac5176cd54741f022ed424da801cafb3fb7909",
+    "scripts/agent-access-write-contract.mjs": "f3b8c373bfcb347cd57db9dd93cbe3f3936304ce542c0ba056c1582a879c0301",
+    "scripts/agent-access-selection.mjs": "a0ce239b1ec53ae322e99ae9637cea0759ee63ce987f34a80f119389e50751a5",
+    "scripts/agent-access-budget.cjs": "c70a39ad6c041d9bb5b2cf39d32927c7e3d936e94f7d3f82988db9af2b55bb9b",
+    "scripts/agent-access-budget-preload.cjs": "2b74abf72f7f67edb61879b58798761c6c53ade68ba92aa3dea07cb98b592b71",
+    "doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v16.mjs": "8ae537ceefeb283c7f6833a186ab708597a17103bb7700b45d97aa35a5935743",
+    "../../.codex/config.toml": "d3a23d34efb049b228814bf55699b89b2085a079b25a429886293e4e89c5d17e",
+    "../../.codex/auth.json": "89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5",
+    "../../.codex/hooks.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    "../../.claude/settings.json": "00c802290bb6300b39d66b67ab1dc8edf1c141817f23fd26b3d745ce65f3e715",
+    ".trivium/config.yaml": "9dd249afa2277bc53c76c75a032a9cbebc8db41cdf8fb54e8a6bb964d13c770f"
+  },
+  "configs": {
+    "local": "496eed89fe1daf113196ea7a304831e47740432d3b9437f5850e56a1877249a7",
+    "shared": "9dd249afa2277bc53c76c75a032a9cbebc8db41cdf8fb54e8a6bb964d13c770f",
+    "globals": {
+      ".codex/config.toml": "d3a23d34efb049b228814bf55699b89b2085a079b25a429886293e4e89c5d17e",
+      ".codex/auth.json": "89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5",
+      ".codex/hooks.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      ".claude/settings.json": "00c802290bb6300b39d66b67ab1dc8edf1c141817f23fd26b3d745ce65f3e715"
+    }
+  },
+  "evidence_root": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3",
+  "budget_root": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget",
+  "before": 728,
+  "expected_starts": 3,
+  "hard_max_starts": 3,
+  "batch_stop": 731,
+  "pool_limit": 742,
+  "dispatcher_sha256": "3b8c1b21d84a8840d05367d4126bfbaccbd2e49829fedd31da4bee589f557ceb",
+  "jobs": [
+    {
+      "name": "claude-deepseek-read",
+      "args": [
+        "claude",
+        "deepseek",
+        "read",
+        "3"
+      ],
+      "route_directory": "claude-deepseek-read-3",
+      "starts": 1,
+      "selection": "selection-claude-deepseek.json"
+    },
+    {
+      "name": "claude-deepseek-pro-read",
+      "args": [
+        "claude",
+        "deepseek-pro",
+        "read",
+        "3"
+      ],
+      "route_directory": "claude-deepseek-pro-read-3",
+      "starts": 1,
+      "selection": "selection-claude-deepseek.json"
+    },
+    {
+      "name": "claude-kimi-read",
+      "args": [
+        "claude",
+        "kimi",
+        "read",
+        "3"
+      ],
+      "route_directory": "claude-kimi-read-3",
+      "starts": 1,
+      "selection": "selection-claude-kimi.json"
+    }
+  ],
+  "rows": [
+    {
+      "route": "Claude/kimi",
+      "actual_model": null,
+      "configured_model": "kimi-for-coding",
+      "gap": "真实读取/首词/结构化交付",
+      "reusable": "七通过组合原始证据保留；Qwen版本7同完整指纹，仅作版本；五组合旧能力为历史事实",
+      "necessary_starts": 1,
+      "production_write": "未测；本批0启动",
+      "server_identity": null
+    },
+    {
+      "route": "Claude/deepseek",
+      "actual_model": null,
+      "configured_model": "deepseek-flash",
+      "gap": "真实读取/首词/结构化交付",
+      "reusable": "七通过组合原始证据保留；Qwen版本7同完整指纹，仅作版本；五组合旧能力为历史事实",
+      "necessary_starts": 1,
+      "production_write": "未测；本批0启动",
+      "server_identity": null
+    },
+    {
+      "route": "Claude/deepseek-pro",
+      "actual_model": null,
+      "configured_model": "deepseek-v4-pro",
+      "gap": "真实读取/首词/结构化交付",
+      "reusable": "七通过组合原始证据保留；Qwen版本7同完整指纹，仅作版本；五组合旧能力为历史事实",
+      "necessary_starts": 1,
+      "production_write": "未测；本批0启动",
+      "server_identity": null
+    }
+  ],
+  "counting": "相同不发Read行为在k3及qwen max出现，各负臂false保留，已按新失败停批；当前暂停其余负臂及五生产write，不换提示。仅完成原定未启动的三模型正向读取/实际模型和工具面/Schema，以准备集中方案；预计3硬3，728起731止，既有pool742不新增扩容，任一失败即停。正式0，判据不变。",
+  "criteria_change_authorized": false,
+  "prerequisite_complete": false,
+  "condition_pilot_sha256": "528f107164c6e6fe289ab646c34e7975e1ff9c008628bc7602a11caacaa18bae",
+  "dispatcher_derivation": {
+    "source": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/admission-after23-aa6db337/codex-refresh.mjs",
+    "source_sha256": "d063907eb9f9a3b0516f6f40b921e2dfe5d49d2a8139c4100dd70297a7de07fe",
+    "changes": [
+      "批清单名称和请求标签",
+      "静态批次修订v2文件名和job名字前缀"
+    ],
+    "guard_checks_changed": false
+  },
+  "prior_qwen_complete_summary": {
+    "file": "summary-cd6d8fa8-ddf3-48fc-9bf0-ec22d155e818.json",
+    "sha256": "8398673ec652d443037d52f7a61a30f1a21b2c7617c79257473283f8a10ec7e9"
+  },
+  "automatic_retry": false,
+  "review_new_starts": 0,
+  "audit_sha256": "a76b37eee395e4edbbd4bea580940fd45d339902b37918db0f1c3c19b0c9c304",
+  "prior_complete_summary": {
+    "file": "summary-958d830c-93da-4620-b06e-3a34ca12aecf.json",
+    "sha256": "bebec3f712a295003601d042151221ee2c3251f955506dae3f036052f95197d3"
+  },
+  "supersedes": {
+    "file": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/admission-after23-aa6db337/claude-read-deny-batch.json",
+    "sha256": "3bf4373e02e531ea4214636a66237b3c5d88b61c4827d5f9411ad8120b359312",
+    "reason": "预启动静态检测发现与已完成Codex同名调度记录；只更换五Claude调度job名字前缀，不变实际参数/路线/守卫/预算，不启动原批"
+  },
+  "prior_stop": {
+    "terminal_sha256": "f0324aab13ae990649f3ecf1a9c028bf85cf6a0512a4aa905967d09cc78d7bc4",
+    "proof_sha256": "983cea4026ec19d41660ac5f88cac82e4b886e5d3bbe49ca9a2062aa9c5ffb2d"
+  },
+  "implicit_fallback": false,
+  "original_failed_results_preserved": true,
+  "guard_checks_changed": false,
+  "additional_pool_extension": 0,
+  "negative_starts": 0,
+  "write_starts": 0
+}

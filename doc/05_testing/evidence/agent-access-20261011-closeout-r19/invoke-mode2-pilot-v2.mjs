@@ -1,0 +1,19 @@
+/** 固定两样本逐个执行，失败停批；只经现有预算入口及production invokeClaude。 */
+import fs from 'node:fs';import path from 'node:path';import os from 'node:os';import {createRequire} from 'node:module';import {run} from '../../../../dist/test/src/trivium/util/exec.js';import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';import {hash} from '../../../../scripts/agent-access-selection.mjs';import {measureMode2Launch} from './mode2-launch-measurement.mjs';import {recomputeMode2Proof} from './mode2-proof.mjs';
+const repo=process.cwd(),root=path.dirname(new URL(import.meta.url).pathname),batchFile=root+'/controlled-mode2-pilot-batch-v2.json',batch=JSON.parse(fs.readFileSync(batchFile,'utf8')),launcher=root+'/launch-controlled-mode2.mjs',schemaFile=root+'/controlled-mechanism-mode2.v1.schema.json',entries=[];let stopped=false,failure=null;
+const {openBudget}=createRequire(import.meta.url)('../../../../scripts/agent-access-budget.cjs'),counts=()=>Object.fromEntries(['admission','review'].map(pool=>{const b=openBudget(os.homedir()+'/.trivium/evidence/agent-access-20261011-closeout-r3/budget',pool),names=fs.readdirSync(b.dir);return[pool,{reserved:names.filter(n=>/^reserved-\d+\.json$/.test(n)).length,completed:names.filter(n=>/^launch-\d+\.json$/.test(n)).length,limit:b.limit()}];}));
+const before=counts();if(before.admission.reserved!==batch.before)throw Error('限定pilot起始额度变化');
+for(const job of batch.jobs){
+ try{
+  const measured=await measureMode2Launch(repo,'admission','fixture',[job.combination,'2']);
+  saveEvidence(root+'/mode2-precheck-v2-'+job.combination+'.json',{at:new Date().toISOString(),script_sha256:hash(new URL(import.meta.url)),batch_ref:measured.batch_ref,used:measured.facts.used,pool_limit:measured.facts.pool_limit,valid_plan_run:measured.facts.run.run_id,valid_plan_final_hash:measured.facts.final_sha256,source_hashes_verified:measured.facts.source_hashes_verified,live_source_verified:measured.facts.live_source_verified,historical_retention_verified:measured.facts.historical_retention_verified,previous_proofs:measured.facts.previous_proofs,new_vendor_starts:0});
+  const result=await run(process.execPath,[launcher,'admission','r37-mode2-'+job.combination,'fixture',job.combination,'2'],{cwd:repo,timeoutMs:180000,killTree:true});
+  const entry={combination:job.combination,model_declared:job.model,code:result.code,timed_out:result.timedOut,stdout:result.stdout,stderr:result.stderr,after:counts(),proof:null};
+  entries.push(entry);saveEvidence(root+'/mode2-call-v2-'+job.combination+'.json',entry);
+  if(result.code!==0||result.timedOut)throw Error('mode2-actual-call-failed:'+job.combination);
+  entry.proof=recomputeMode2Proof(job,schemaFile);saveEvidence(root+'/mode2-full-proof-v2-'+job.combination+'.json',entry.proof);
+  if(entry.after.admission.reserved>batch.cumulative_batch_stop||entry.after.admission.reserved!==entry.after.admission.completed)throw Error('mode2-budget-or-completion-failed');
+ }catch(error){stopped=true;failure={name:error.name,message:error.message};break;}
+}
+const after=counts();saveEvidence(root+'/mode2-pilot-completion-v2.json',{at:new Date().toISOString(),script_sha256:hash(new URL(import.meta.url)),batch_ref:{path:batchFile,sha256:hash(batchFile)},entries,before,after,new_vendor_starts:after.admission.reserved-before.admission.reserved,stopped,failure,second_combination_started:entries.some(e=>e.combination==='kimi-pro'),all_pilot_mechanisms_pass:!stopped&&entries.length===2&&entries.every(e=>e.proof?.recomputed_pass===true),actual_provider_inference:false,real_model_attempt:null,original_admission_changed:false,criterion_adopted:false,prerequisite_complete:false});
+console.log(JSON.stringify({entries:entries.map(e=>({combination:e.combination,code:e.code,recomputed_pass:e.proof?.recomputed_pass??null})),before,after,stopped,failure,criterion_adopted:false}));if(stopped)process.exitCode=1;

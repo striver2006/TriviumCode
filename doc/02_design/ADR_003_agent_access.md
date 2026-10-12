@@ -1,6 +1,12 @@
 # ADR-003：编程工具身份与接入路线分离
 
+2026-10-12第27C普通批准采样：run20261011T212239Z三审有效、零漂移，三意见2暂缓1驳回，gate/await通过、停点业务摘要0；按Bob本轮明确委托由Codex批准code，session=null。两项准入判据仍未采用；新r22保存160份r21原件hash和具体27臂/4跳认证决策方案。下文26B阶段状态按当时采样解释，原false/未测、停止批次和官方Claude待订阅保持，M11前置未完成。
+
+26B已有效审查并按Bob普通委托批准完整r30（SHA 9c457711d4146644d9dedd976cbdf854128283df0802ddf32ba6f4bc0cf75d5c），新CLI inline defaultMode/精确deny差异、有界1..32逐跳原值/hash及v3关闭消费者规范见[设计v1.3.158当前合同](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-inline-mode3-contract)。旧v2/mode2正文按历史采样保留；v3/auth两项独立采用仍未批准，原标准false/未测不改。实施采样：Qwen max一次真实CLI取得default与受控机制事实，事后proof错误使首批停止；修正后只读复算通过，原停止保留，k3及其他组合未启动。27C预检正常刷新三项认证时间，4跳/27臂/378组件/91引用重验通过，当前6a2c6213 canonical0通过/12未测。r21实际消费者先核15依赖及独立批准，忽略调用方事实布尔值，再重验原件/完整指纹/scope；候选报告消费与产品准入分列，实际两个候选缺批准保持关闭，正向实际独立批准消费未测。准入734/742、review353/363全部完成，正式26/27，27C尚未启动，M11前置未完成。
+
 日期：2026-10-09。状态：Accepted（用户批准开发计划）；实现与真实路线验收进行中。
+
+前向敏感流程统一见[设计v1.3.157取证守卫规范](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-evidence-guard-contract)：产品和独立证据层改变谓词均先正式计划与明确批准，普通审批委托不授权准入判据采用。25B已按委托批准r28具名临时模式/HTTP限额清理/N对账/启动绑定/双跳诊断范围，新增实施与实际取证待验证；旧原标准列保留，两个候选仍未采用。
 
 2026-10-10补测：基线实现已在b04cc302提交；Codex0.162.0四路线及Claude/Qwen flash补齐适用准入。Claude/Kimi、DeepSeek三种写入提示均没有实际写工具尝试，仍未测。Qwen max组合已回读并取得Bash拒绝证据，当时共享pro与三审按该轮审查计划等待七条默认路线完整准入；不宣称前置任务完成。正式结果见2026-10-10准入报告，官方Claude继续待订阅恢复。
 
@@ -59,3 +65,8 @@ profile入口取本机绝对配置路径，缺省才现场发现可执行包装�
 > 第22B获批Claude精确拒绝取证（设计v1.3.155）：22B run20261011T142848Z的11意见已裁决，gate通过并按Bob本轮明确委托审批r24定稿敏感范围；23C完整代码和新指纹准入尚待验证。canonical仅真实Claude deny-read/deny-grep调用claudeDenyEvidence：生产judgeDirectoryArm true为必要非充分初筛，脚本独立核合法事件、唯一init/成功终态、每目标唯一实际调用→同ID is_error=true结果→同ID同工具同精确路径权限记录及完整覆盖。最终路径仅折/private/var，生产helper较宽归一不扩大脚本域；已录制旧精确路径/新完整目录错误白名单之外拒绝，目标成功读取或raw哨兵泄漏拒绝，允许文件成功读取不误杀。
 >
 > result保持deny_pass/per_file_deny原字段，新增deny_evidence伴随事实；历史原false和原件不回算，summary判据不改。新目录文本Read回放及Grep模拟不是新模型能力，Grep仍须实际调用与完整配对。Codex冻结函数/原写标准、生产probe/adapter、Schema、版本/effort和全局配置保持。当前local6cc3下12组合完整未测，旧4c87四通过仅历史；准入673/689、review283/288、正式22/23，五Claude非flash写无新机制0启动，官方Claude待订阅。component/restricted判据替代未采用，仍须Bob独立明确批准；详见[设计契约](./2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-directory-contract)，M11前置仍未完成。
+
+
+## 第24B获批集中取证边界（2026-10-12）
+
+旧restricted-tool-surface-v1及component-scoped-evidence-v1仍未采用。24B/r26获普通plan批准，新增候选restricted-tool-surface-and-path-v2纠正包装桥、权限模式及live绑定缺口；auth-cache-timestamp-applicability-v1只限本次三具名checked_at。先实现受控夹具和诊断，再取得Bob独立明确判据决定；普通审批与轮数授权不能替代，原标准列/单臂false保留。 完整规范见[设计v1.3.156](2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-controlled-contract)；执行结果以恢复报告和r17证据为准，不能由剧本或计划宣称已测。

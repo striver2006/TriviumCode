@@ -1,0 +1,56 @@
+{
+  "recorded_at": "2026-10-12T07:27:29.290Z",
+  "scope": "P0/P1 offline verification; no production admission",
+  "baseline": "baseline.json",
+  "commands": [
+    {
+      "command": "npm run typecheck",
+      "exit_code": 0
+    },
+    {
+      "command": "node scripts/build.mjs --tests-only",
+      "exit_code": 0,
+      "production_bundle_rebuilt": false
+    },
+    {
+      "command": "node --test --test-reporter=spec dist/test/test/unit/agent-access-*.test.js dist/test/test/unit/claude-directory.test.js dist/test/test/contract/doc-archive-index.test.js",
+      "exit_code": 0,
+      "tests": 548,
+      "passed": 548,
+      "failed": 0,
+      "skipped": 0,
+      "duration_ms": 19876.747917,
+      "output_record": "terminal summary observed; per-test tool output truncated; full raw log not archived"
+    },
+    {
+      "command": "node --test --test-reporter=spec dist/test/test/contract/doc-archive-index.test.js",
+      "exit_code": 0,
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0,
+      "reason": "index and report added after baseline suite"
+    },
+    {
+      "command": "git diff --check -- doc/05_testing/README.md doc/05_testing/REPORT_2026-10-12_agent_access_convergence.md",
+      "exit_code": 0
+    }
+  ],
+  "preservation": {
+    "preexisting_dirty_files_verified": 1270,
+    "aggregate_sha256": "8801c04519e6e9daed3a8d2b6a1b9f20cefcbc6c5810c0a6f0fae517c2f55049",
+    "unchanged": true,
+    "key_source_refs_verified": 12,
+    "local_config_unchanged": true,
+    "source_bundle_unchanged": true,
+    "installed_bundle_unchanged": true,
+    "budgets_unchanged": true
+  },
+  "new_vendor_starts": 0,
+  "new_formal_runs": 0,
+  "two_full_npm_checks_rerun": false,
+  "selftest_rerun": false,
+  "full_install_rerun": false,
+  "criteria_adopted": false,
+  "prerequisite_complete": false
+}
