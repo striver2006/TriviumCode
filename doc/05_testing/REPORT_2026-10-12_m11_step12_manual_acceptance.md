@@ -78,3 +78,13 @@ CASE4.3尚残留旧布尔true与名义Driver模型族写法，实际已批准v3�
 Bob明确答复“同意修订为40/40，总上限80”。[独立决定](./evidence/m11-step12-20261012/budget-repartition-user-decision.json)、[初始分池快照](./evidence/m11-step12-20261012/budget-plan-initial.json)、[修订计划](./evidence/m11-step12-20261012/budget-plan-revision-02.json)及[扩容回执](./evidence/m11-step12-20261012/budget-repartition-extension-receipts.json)均独立保存。既有extend机制追加admission815→835、review398→413，不重记既有消费，B1硬限8/6不变。旧提案的“待确认”按其采样时刻解释，以独立决定为准。
 
 本批实际新增admission8、review6，本步累计14/14，共28次；当前809/835、387/413。客户端收尾误述review+3、start admission+1，不采用该人工估算；预占与完成的实际CLI边界记录为唯一计数依据。下一步是已发布的零厂商CLI客户端Hook负对照，再由Bob针对本轮决定审批。M11仍未完成，原五组合受限准入边界完全不变。
+
+## 真实Hook拦截、CASE口径批准与B1人工决定
+
+Claude Code真实工具事件确认：B1处于awaiting_approval时，`git log --oneline -1`退出0；Edit插入业务sentinel与Bash重定向创建sentinel文件均在PreToolUse写前被拦，两个Hook实际退出2，提示审批/放弃出口。源文件、测试文件hash与批次前一致，临时文件未创建，两池零增量。完整tool_use/tool_result配对、外壳调用和hash见 [真实Hook证据](./evidence/m11-step12-20261012/client-hook-gate-results.json)。这是3.2的B部分、6.5的闸门部分与6.6的闸门只读部分；审批后放行尚待独立实跑。
+
+Bob已明确批准按当前v3规范修正CASE4，见 [独立答复](./evidence/m11-step12-20261012/case43-user-decision.json)。现要求different-family与Driver—审核者逐对比较一致，unknown明确不通过，Python展示不再把非空unknown字符串判成异族。B1三侧逐对模型、来源和原因均齐备；第二轮仍未测。旧提案和旧分项报告按采样时刻保留，不回写历史、不改变生产或准入阈值。
+
+Bob随后明确答复“批准本轮计划，继续放行复测”。[本轮批准回执](./evidence/m11-step12-20261012/approval-b1.json)绑定主题、plan阶段、run `20261012T134125Z`、r2计划hash及精确审批命令；它是人工决定，不能代替客户端approve成功证据。已发布 [审批与放行步骤](./evidence/m11-step12-20261012/b1-approval-and-unlock.md)，厂商CLI预计/硬限均0，失败即停；此刻仍待客户端实际执行。Codex evidence_ok=false继续保留，批准不等于合格三审或M11完成。
+
+本次增量的文档索引与演进台账检查30项通过、0失败、0跳过，见 [检查原始结果](./evidence/m11-step12-20261012/doc-check-hook-approval.json)。[CASE示例定向校验](./evidence/m11-step12-20261012/case43-validation.json)直接提取文档表达式，确认unknown显示未知、旧布尔显示旧版判定，并核对B1逐对来源。验收外壳语法检查通过；生产与安装产物未改动，无重建、重装或新增厂商调用。

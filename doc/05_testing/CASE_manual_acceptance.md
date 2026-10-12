@@ -181,6 +181,10 @@ $TV gate --stage <阶段> --topic <主题> --check   # 应退 0
 
 **怎么做**
 
+先取得本轮 Driver 的实际会话模型声明，在两次运行中透传 `--driver-model`；
+已明确供应商时同时传 `--driver-provider`。缺声明仍记 `unknown`，不得按工具身份
+推断模型，也不得用本次声明回填旧运行。以下参数应随正式入口解析结果透传。
+
 ```bash
 TV=.trivium/bin/trivium
 
@@ -188,12 +192,14 @@ TV=.trivium/bin/trivium
 cat ~/.zcode/cli/config.json | python3 -m json.tool | grep -i model
 
 # 第一次：用 profile 默认
-$TV review --start --stage plan --topic <主题> --focus "第一轮" --json
+$TV review --start --stage plan --topic <主题> --focus "第一轮" \
+   --driver-model <本轮会话声明的模型> --json
 
 # 第二次（同主题重跑）：换另一组模型
 $TV review --start --stage plan --topic <主题> --focus "第二轮，换模型" \
    --model-gemini gemini-3.8-flash-high \
-   --model-glm    GLM-5.3-Flash --json
+   --model-glm    GLM-5.3-Flash \
+   --driver-model <本轮会话声明的模型> --json
 ```
 
 可用取值以 `.trivium/config.local.yaml` 的 `probe.agy.models` /
@@ -208,8 +214,13 @@ for f in sorted(glob.glob('.reviews/<主题>/plan/_meta/run-*.json')):
     d=json.load(open(f))
     print(d['run_id'], d['rerun_index'])
     for k,v in d['critics'].items():
+        family = v.get('heterogeneous')
+        family_label = ('旧版名义族判定' if isinstance(family, bool) else
+                        {'same-family': '同族', 'different-family': '异族',
+                         'unknown': '未知'}.get(family, '字段缺席或无效'))
         print('  ',k,'请求',v['model_requested'],'→ 生效',v['model_effective'],
-              '(来源',v.get('model_effective_source'),')','异构' if v['heterogeneous'] else '同构')
+              '(来源',v.get('model_effective_source'),')',family_label)
+    print('  逐对比较',d.get('family_comparisons', '旧版留痕无此字段'))
 PY
 ```
 
@@ -219,15 +230,15 @@ PY
 | :--- | :--- | :--- |
 | 4.1 | 两次的 `model_effective` 不同，且与各自 `model_requested` 一致 | ZCode 侧生效值带 `<providerId>/` 前缀属正常（坑 C-02），后半段应匹配 |
 | 4.2 | `model_effective_source` 是 `envelope` 或 `trace`，**不是** `requested` / `unverified` | `requested` 表示没回读到，等于没验证（AC-13） |
-| 4.3 | 两侧 `heterogeneous: true` | 默认 profile 下各侧生效模型都不落在当轮 Driver 厂商的名义模型族——本剧本以 Claude Code 为 Driver，即都不是 Claude 系（AC-18）。判定按模型名，属启发式；`true` 的准确读法是「未检出同族」 |
+| 4.3 | 两侧 `heterogeneous` 均为 `different-family`，且分别与 `family_comparisons` 中对应 Driver—审核者的结果一致；逐对模型、来源和原因齐备 | 按本轮 Driver 声明与审核者模型回读比较（AC-18）；工具身份或供应商不证明异构，`unknown` 不算通过。这不是服务端身份验证；历史 v1/v2 布尔保留为「旧版名义族判定」，不回写 |
 | 4.4 | `~/.zcode/cli/config.json` 的默认模型**与跑前一致** | 模型覆盖走独立 `HOME` 下的配置副本，绝不改用户全局配置 |
 | 4.5 | 第二轮产出 `-r2-` 文件，第一轮文件**字节不变** | `shasum` 比对（FR-25 / P6） |
 
-> 若把某侧显式指定为**与当轮 Driver 厂商名义族同族**的模型（本剧本 Driver 是 Claude Code，即 `claude-*` slug，`agy models` 里确实有），
-> 编排器**不阻止**，但会打醒目告警、在 `run.json` 写 `heterogeneous: false` 与 `override_reason`（文案点名当轮 Driver），
-> 并在该侧文档头标注（渲染为「疑似与主脑同源」）。换一家当 Driver 时「同族」跟着换：例如 codex 为 Driver 时，
-> 同族的是 OpenAI 名义族（模型名含 `gpt`），`claude-*` 反而判异构。判定按模型名、属启发式，
-> 模型名不含族名时会漏判（BACKLOG EV-107）。这条也值得单独验一次。
+> 可选同族对照：把某侧指定为与**本轮 Driver 声明模型**同族且有实际目录支持的模型。
+> 编排器不阻止；依据审核者回读值在 v3 与审查文档记录 `same-family`、来源及原因，并告警。
+> 缺声明、缺回读或别名不确定时记录 `unknown`，不能按非空字符串或工具身份解释成异族。
+> 同族与未知均不自动换模型、不作为审批门禁；4.3 的异族验收则必须取得 `different-family`。
+> 此对照仍为可选，不默认增加本轮实跑范围。当前三态规范见主设计 §11.6，历史 v1/v2 不回写。
 
 ---
 

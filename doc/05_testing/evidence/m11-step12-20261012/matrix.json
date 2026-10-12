@@ -1,7 +1,7 @@
 {
-  "at": "2026-10-12T13:56:32.624772+00:00",
+  "at": "2026-10-12T14:42:02.831017+00:00",
   "source": "doc/05_testing/CASE_manual_acceptance.md",
-  "source_sha256": "f1336102a232f9df287389fac290837d1ae2e8d7d1c5d21c241fcdba72e58b3e",
+  "source_sha256": "d6b96362ced49d628c38af4c286d82a18e0941958b913cc63d06dd28ccb61359",
   "rows": [
     {
       "scenario": 1,
@@ -214,8 +214,10 @@
       "batch": "R1",
       "estimated_starts": "B部分在B1共用8/6；C/D分别发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "client-hook-gate-results.json"
+      ],
+      "status": "部分：B闸门真实Edit被写前拦截，Hook退2且提示审批/放弃；C/D待测"
     },
     {
       "scenario": 3,
@@ -244,8 +246,11 @@
       "batch": "R1",
       "estimated_starts": "B部分在B1共用8/6；C/D分别发布批次",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "approval-b1.json",
+        "b1-approval-and-unlock.md"
+      ],
+      "status": "Bob已明确批准B1；客户端审批与放行复测待实跑"
     },
     {
       "scenario": 3,
@@ -292,8 +297,8 @@
     {
       "scenario": 4,
       "criterion": "4.3",
-      "requirement": "两侧 `heterogeneous: true`",
-      "expected": "默认 profile 下各侧生效模型都不落在当轮 Driver 厂商的名义模型族——本剧本以 Claude Code 为 Driver，即都不是 Claude 系（AC-18）。判定按模型名，属启发式；`true` 的准确读法是「未检出同族」",
+      "requirement": "两侧 `heterogeneous` 均为 `different-family`，且分别与 `family_comparisons` 中对应 Driver—审核者的结果一致；逐对模型、来源和原因齐备",
+      "expected": "按本轮 Driver 声明与审核者模型回读比较（AC-18）；工具身份或供应商不证明异构，`unknown` 不算通过。这不是服务端身份验证；历史 v1/v2 布尔保留为「旧版名义族判定」，不回写",
       "carrier": "Claude Code真实客户端 + 编排器",
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
@@ -301,10 +306,11 @@
       "estimated_starts": "B1已实耗admission8/review6；第二轮另发布批次",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
-        "b1-assessment.json",
-        "case43-correction-proposal.md"
+        "case43-user-decision.json",
+        "case43-validation.json",
+        "client-b1-runs.json"
       ],
-      "status": "口径差异：当前v3为different-family，CASE仍要求旧true；待处理"
+      "status": "获批按v3核验：B1三侧均different-family且逐对一致；第二轮待测"
     },
     {
       "scenario": 4,
@@ -484,9 +490,10 @@
       "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
-        "hook-cli.json"
+        "hook-cli.json",
+        "client-hook-gate-results.json"
       ],
-      "status": "空闲期CLI直调通过；闸门期及客户端未测"
+      "status": "真实客户端闸门期Bash写前拦截通过；审批后放行待测"
     },
     {
       "scenario": 6,
@@ -500,9 +507,10 @@
       "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
-        "hook-cli.json"
+        "hook-cli.json",
+        "client-hook-gate-results.json"
       ],
-      "status": "真实归档CLI直调通过；客户端集成未测"
+      "status": "真实客户端闸门期git log放行通过；审批后只读对照待测"
     },
     {
       "scenario": 6,
