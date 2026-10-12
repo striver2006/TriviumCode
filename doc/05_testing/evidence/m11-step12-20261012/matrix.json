@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-12T15:05:21.319579+00:00",
+  "at": "2026-10-12T15:54:07.076047+00:00",
   "source": "doc/05_testing/CASE_manual_acceptance.md",
   "source_sha256": "d6b96362ced49d628c38af4c286d82a18e0941958b913cc63d06dd28ccb61359",
   "rows": [
@@ -275,10 +275,13 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b2-assessment.json",
+        "client-b2-runs.json"
+      ],
+      "status": "本轮两轮真实运行对账通过"
     },
     {
       "scenario": 4,
@@ -289,10 +292,13 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b2-assessment.json",
+        "client-b2-runs.json"
+      ],
+      "status": "本轮两轮真实运行对账通过"
     },
     {
       "scenario": 4,
@@ -303,14 +309,16 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
         "case43-user-decision.json",
         "case43-validation.json",
-        "client-b1-runs.json"
+        "client-b1-runs.json",
+        "b2-assessment.json",
+        "client-b2-runs.json"
       ],
-      "status": "获批按v3核验：B1三侧均different-family且逐对一致；第二轮待测"
+      "status": "本轮两轮真实运行对账通过"
     },
     {
       "scenario": 4,
@@ -321,12 +329,14 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
-        "b1-report-parity.json"
+        "b1-report-parity.json",
+        "b2-assessment.json",
+        "client-b2-runs.json"
       ],
-      "status": "首轮核对通过，第二轮待测"
+      "status": "本轮两轮真实运行对账通过"
     },
     {
       "scenario": 4,
@@ -337,10 +347,13 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b2-assessment.json",
+        "client-b2-runs.json"
+      ],
+      "status": "本轮两轮真实运行对账通过"
     },
     {
       "scenario": 5,
@@ -647,13 +660,14 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "client-b1-runs.json",
-        "b1-assessment.json"
+        "client-b2-runs.json",
+        "b2-assessment.json"
       ],
-      "status": "部分：首轮三件齐备；Codex证据不足，不计合格三审全通过；第二轮待测"
+      "status": "两轮三份审查件齐备；B2三侧证据阈值通过，B1 Codex不足仍保留，不称两轮合格三审全通过"
     },
     {
       "scenario": 8,
@@ -664,13 +678,13 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "b1-assessment.json",
-        "client-session-03.json"
+        "b2-assessment.json"
       ],
-      "status": "部分：三条裁决齐备，gate通过；缺一行负对照待测"
+      "status": "两轮裁决与gate均通过；缺一行负对照仍未测"
     },
     {
       "scenario": 8,
@@ -681,7 +695,7 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "client-b1-processes.json",
@@ -698,10 +712,13 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b2-assessment.json",
+        "client-b2-runs.json"
+      ],
+      "status": "本轮第二轮真实运行对账通过"
     },
     {
       "scenario": 8,
@@ -712,10 +729,13 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b2-assessment.json",
+        "client-b2-runs.json"
+      ],
+      "status": "本轮两轮真实运行对账通过"
     },
     {
       "scenario": 8,
@@ -726,10 +746,13 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b2-assessment.json",
+        "client-b2-runs.json"
+      ],
+      "status": "本轮两轮真实运行对账通过"
     },
     {
       "scenario": 9,
@@ -922,7 +945,7 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮CLI负对照",
       "batch": "Z0",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "无需",
       "evidence": [
         "negative-tier.json",
@@ -942,7 +965,7 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "client-b1-runs.json",
@@ -959,7 +982,7 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "client-b1-processes.json"
@@ -975,10 +998,13 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "b2-assessment.json",
+        "client-b2-runs.json"
+      ],
+      "status": "本轮第二轮真实运行对账通过"
     },
     {
       "scenario": 11,
@@ -989,12 +1015,14 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
-        "client-b1-runs.json"
+        "client-b1-runs.json",
+        "b2-assessment.json",
+        "client-b2-runs.json"
       ],
-      "status": "部分：首轮gemini回读medium/envelope；第二轮异值告警待测"
+      "status": "本轮第二轮真实运行对账通过"
     },
     {
       "scenario": 11,
@@ -1005,12 +1033,14 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
-        "client-b1-runs.json"
+        "client-b1-runs.json",
+        "b2-assessment.json",
+        "client-b2-runs.json"
       ],
-      "status": "首轮null/unverified如实记录；第二轮待测"
+      "status": "本轮两轮真实运行对账通过"
     },
     {
       "scenario": 11,
@@ -1021,7 +1051,7 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "可选，本轮不默认执行",
       "batch": "optional",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未执行（可选）"
@@ -1035,12 +1065,14 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
-        "b1-report-parity.json"
+        "b1-report-parity.json",
+        "b2-assessment.json",
+        "client-b2-runs.json"
       ],
-      "status": "首轮三侧15个字段逐一一致；第二轮待测"
+      "status": "本轮两轮真实运行对账通过"
     },
     {
       "scenario": 11,
@@ -1051,12 +1083,14 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1实耗8/6；B2已发布预计/硬限8/6，实跑待采集",
+      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
-        "b1-report-parity.json"
+        "b1-report-parity.json",
+        "b2-assessment.json",
+        "client-b2-runs.json"
       ],
-      "status": "首轮人读/JSON report与请求/回读一致；第二轮待测"
+      "status": "本轮两轮真实运行对账通过"
     }
   ],
   "formal_runs": 2,

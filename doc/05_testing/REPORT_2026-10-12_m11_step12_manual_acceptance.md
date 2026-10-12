@@ -94,3 +94,21 @@ Bob随后明确答复“批准本轮计划，继续放行复测”。[本轮批�
 2026-10-12 22:53至22:56（Asia/Singapore），Claude Code实际调用具名approve，退出0，正式status显示open_gates为空、approvals为1；审批原文包含工作树改动摘要。随后以闸门期同一Edit参数、同一Bash重定向命令复测，均成功；删除临时行与文件后，源码和测试文件hash均与B1准备快照相同，sentinel缺席。只读git log在闸门期及空闲期均放行。全部工具对、审批回执引用、外壳退出状态与文件hash见 [放行原始证据](./evidence/m11-step12-20261012/client-b1-unlock-results.json)。本小批两池增量均0，本步仍28/80；3.4的B部分、6.5和6.6取得本轮真实客户端证据，C/D仍待测。
 
 B2按原计划在同一主题审查已批准r2计划，以deepseek profile/deepseek-flash/high替换首轮Codex kimi路线，Gemini明确high模型并请求low effort以验证告警与真实回读，GLM切到GLM-5.3。路线来自原探针确认目录；两profile的provider与endpoint互异，只有配置声明，不等于服务端身份验证。准备核对安装bundle、28入口和业务文件未变，第一轮工件hash另存，未重建重装、未复制认证。见 [准备记录](./evidence/m11-step12-20261012/b2-preparation.json)、[批次清单](./evidence/m11-step12-20261012/client-batch-b2.json)和[客户端步骤](./evidence/m11-step12-20261012/client-steps-b2.md)。本批预计/硬限admission8、review6，累计817/393；首次失败、69、漂移或预算拒绝立即停止。本节只记录发布，尚不宣称B2执行成功；B1批准不能用于B2。
+
+## B2真实第二轮结果（2026-10-12 23:40起，Asia/Singapore）
+
+run `20261012T154021Z`为plan第2轮，success/full，三侧evidence_ok均true；Codex记录14次工具调用、12次项目读取。五条意见（GLM-01、CODEX-01～04）全部接受，落入r3定稿，gate退出0、编号齐备、无警告；正式status为awaiting_approval。没有新增审批，B1批准不移用。原始留痕见 [运行与预算](./evidence/m11-step12-20261012/client-b2-runs.json)、[客户端会话](./evidence/m11-step12-20261012/client-session-04.json)，分项核对见 [B2核验](./evidence/m11-step12-20261012/b2-assessment.json)。
+
+两轮三侧生效模型均发生预期变化且由envelope/trace回读；Driver—审核者逐对模型族均为different-family，Driver来源declared、审核者分别envelope/trace，并非所有来源都是declared。第二轮Codex profile/provider为deepseek，首轮为kimi，配置endpoint互异；ZCode全局配置整文件hash不变。第一轮既有工件全部字节不变，仅task索引随新轮正常更新，第二轮审查件使用r2后缀。CASE4各项与8.4～8.6已取得本轮两轮对照；8.2缺一行负对照仍未测，B1 Codex证据不足不追改，因此不称两轮合格三审全部通过。
+
+CASE11精确指定轮：两侧tier=null、tier_source=override；Gemini effort请求low、生效high/envelope，预检明确告警low不生效；Codex请求high、生效null/unverified。三侧15个front-matter字段全部与元数据一致，report人读/JSON均退出0，第四节准确显示low→high告警、high→未回读到、GLM无此概念；首轮的Codex证据不足仍显示。可选11.7未执行。
+
+本轮进程采样窗口15:04～15:34 UTC，早于15:40正式启动，故[B2采样文件](./evidence/m11-step12-20261012/client-b2-processes.json)不能证明本轮实时ps参数；不倒填、不为此重开审查。8.3和11.3要求的第一轮参数已有B1实时证据。本轮真实启动由预算边界与脱敏运行轨迹另证。guard保留Codex的orchestrator-state命令字面命中：原命令中的`.trivium`在find的`-not -path`排除式内，这支持误命中的解释，但不改变原guard值；未检出审查意见读取、readonly_breach或工作树漂移。三侧deny未生效与Codex核验降级继续明示。
+
+预算实际为admission8（4个版本边界、4个探活边界）、review6（审查启动的包装器/native及ZCode内部边界），均到本批硬限。本步累计admission22、review20，共42/80；当前817/835、393/413，剩余18/20，不跨池。客户端“探活3＋审查3算review6、start算admission1”的口头账不采用。版本和认证均由既有编排器及预算机制执行，无手动CLI、无重试、无新增扩容。
+
+建议批准r3容量计划，但其中npm回退不得改变正式验收判据：配置命令失败时先保留失败、停止正式验证，等价Node命令仅作辅助，不自动替换verify配置或判绿。[具名审批提案](./evidence/m11-step12-20261012/b2-approval-proposal.md)已提交Bob，尚待本轮明确决定。后续仍需Claude C/D、ZCode与Codex真实主攻及跨Driver、剩余Hook与缺件/改件/缺裁决行负对照；M11状态保持未完成，五组合受限准入边界不变。
+
+随后Bob明确答复“批准本轮计划，保持正式verify判据”。[独立批准](./evidence/m11-step12-20261012/approval-b2.json)绑定本轮run和r3 hash；Codex主会话通过预算外壳执行具名approve，退出0，正式status为open_gates空、approvals=2，理由原文写入审批记录，见 [审批结果](./evidence/m11-step12-20261012/b2-approval-result.json)。该次载体为Codex主会话CLI（L2），不算新增Claude UI证据；B1已有真实UI入口及放行对照。未开始业务实现、未重开三审、厂商预算零增量。
+
+已发布[H1客户端步骤](./evidence/m11-step12-20261012/client-hook-h1-steps.md)，仅六次真实Bash负对照补6.1～6.4，厂商CLI预计/硬限0；目标四文件的原字节备份位于归档外，[准备清单](./evidence/m11-step12-20261012/h1-preparation.json)保留hash与权限。预期Hook写前拦截；意外放行立即停，不由模型自行清理/恢复。此处只记录准备，尚不记通过。B2证据增量的文档索引/台账检查30项通过、0失败、0跳过，见 [检查原始结果](./evidence/m11-step12-20261012/doc-check-b2-results.json)。
