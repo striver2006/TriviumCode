@@ -1,0 +1,23 @@
+/** H2按实际可见事件分项记录；没有事件的Hook不推断通过。 */
+import fs from 'node:fs';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const here=import.meta.dirname,home=os.homedir();
+const prep=JSON.parse(fs.readFileSync(here+'/h2-preparation.json'));
+const plan=JSON.parse(fs.readFileSync(here+'/budget-plan.json'));
+const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+const source=home+'/.claude/projects/-Users-chenzhenbo-Work-trivium-m11-step12-20261012/52c58d79-eb90-4953-89dc-6ebd5923112e.jsonl';
+const raw=fs.readFileSync(source,'utf8');
+const events=raw.split('\n').filter(Boolean).map(l=>JSON.parse(l)).filter(e=>e.timestamp>=prep.at&&['assistant','user','system'].includes(e.type)).map(e=>({type:e.type,timestamp:e.timestamp,uuid:e.uuid,subtype:e.subtype,message:e.message,hookCount:e.hookCount,hookInfos:e.hookInfos,hookErrors:e.hookErrors,preventedContinuation:e.preventedContinuation,stopReason:e.stopReason}));
+const blocks=events.flatMap(e=>(Array.isArray(e.message?.content)?e.message.content:[]).filter(c=>['tool_use','tool_result'].includes(c.type)).map(c=>({...c,at:e.timestamp})));
+const pairs=blocks.filter(b=>b.type==='tool_use').map(request=>({request,result:blocks.find(b=>b.type==='tool_result'&&b.tool_use_id===request.id)??null}));
+const edit=pairs.find(p=>p.request.name==='Edit'&&p.request.input.new_string?.includes('disabled-wrapper sentinel'));
+const bash=pairs.find(p=>p.request.name==='Bash'&&p.request.input.command==='git log --oneline -1');
+const stops=events.filter(e=>e.subtype==='stop_hook_summary'&&e.hookInfos?.some(h=>h.command.includes('gate hook-stop')));
+const files=prep.files.map(f=>({...f,current_sha256:hash(fs.readFileSync(prep.fixture+'/'+f.file)),current_mode:fs.statSync(prep.fixture+'/'+f.file).mode&0o777}));
+const restored=files.every(f=>f.sha256===f.current_sha256&&f.mode===f.current_mode);
+const budgets=Object.fromEntries(['admission','review'].map(p=>[p,fs.readdirSync(plan.budgetRoot+'/ledger/'+p).filter(n=>/^reserved-\d+\.json$/.test(n)).length]));
+const results={hook_pre_write:edit?.result?.is_error&&edit.result.content.includes('gate hook-pre-write')?'已实测拦截':'未证实',hook_pre_commit:bash?.result?.is_error&&bash.result.content.includes('gate hook-pre-commit')?'已实测拦截':'未证实',hook_pre_bash:'未测：同一Bash事件未单独呈现该Hook，具名debug日志不存在',hook_stop:stops.length?'真实Stop事件及客户端反馈已记录':'未证实'};
+saveEvidence(here+'/client-h2-results.json',{at:new Date().toISOString(),source,source_sha256:hash(raw),pairs,stops,results,files,restored,budgets,zero_vendor_delta:budgets.admission===prep.budget_before.admission&&budgets.review===prep.budget_before.review,unexpected_tools:pairs.filter(p=>p.request.name==='Artifact'),debug_source_exists:fs.existsSync(home+'/.claude/debug/52c58d79-eb90-4953-89dc-6ebd5923112e.txt'),events,scope:'6.7部分完成，保留5次Stop反馈及Artifact list被拒；不改登录/认证，不为缺一个Hook事件重跑循环；恢复确认后独立验收可继续'});
+console.log(JSON.stringify({results,restored,budgets,stop_events:stops.length,unexpected:pairs.filter(p=>p.request.name==='Artifact').length}));

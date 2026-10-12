@@ -1,0 +1,78 @@
+{
+  "at": "2026-10-12T22:24:18.114Z",
+  "status": "待Bob明确决定，未生效",
+  "reason": "H2跨夜完成，B2认证缓存已超过1h；剩余四个客户端正式入口各会执行4个版本边界，三条审核路线需最少4个探活边界。当前admission仅剩18，预计至少20。",
+  "current": {
+    "step_limits": {
+      "admission": 40,
+      "review": 40,
+      "total": 80
+    },
+    "step_used": {
+      "admission": 22,
+      "review": 20,
+      "total": 42
+    },
+    "ledger": {
+      "admission": 817,
+      "review": 393
+    },
+    "ledger_limits": {
+      "admission": 835,
+      "review": 413
+    }
+  },
+  "proposed": {
+    "step_limits": {
+      "admission": 44,
+      "review": 36,
+      "total": 80
+    },
+    "absolute_step_caps": {
+      "admission": 839,
+      "review": 409
+    },
+    "global_extension": {
+      "admission": 4,
+      "review": 0
+    },
+    "note": "只追加admission全局扩容835→839；历史review全局上限413不改，验收附加上限收紧到409。旧消费不重分类，不覆盖历史。"
+  },
+  "remaining_minimum": [
+    {
+      "batch": "C-Claude",
+      "admission": 6,
+      "review": 4,
+      "scope": "命令C与人工闸门；两侧冷缓存"
+    },
+    {
+      "batch": "D-Claude",
+      "admission": 4,
+      "review": 4,
+      "scope": "命令D与bug归档；需复用仍在TTL的同一路线缓存"
+    },
+    {
+      "batch": "C-ZCode",
+      "admission": 6,
+      "review": 3,
+      "scope": "实际ZCode主攻与跨Driver；Codex deepseek探活含包装器/native2"
+    },
+    {
+      "batch": "B-Codex",
+      "admission": 4,
+      "review": 4,
+      "scope": "实际Codex主攻与L2闸门；需复用仍在TTL的同一路线缓存"
+    }
+  ],
+  "expected_step_total": {
+    "admission": 42,
+    "review": 35,
+    "total": 77
+  },
+  "reserve": {
+    "admission": 2,
+    "review": 1,
+    "total": 3
+  },
+  "conditions": "不保证跨TTL后的额外启动仍够用；每批真实边界计数及停止机制不变。C-Claude批仍可在已批准40/40内先行，不依赖此分池调整。"
+}

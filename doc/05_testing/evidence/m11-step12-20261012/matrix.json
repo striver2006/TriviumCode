@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-12T16:06:55.139995+00:00",
+  "at": "2026-10-12T22:29:07.008932+00:00",
   "source": "doc/05_testing/CASE_manual_acceptance.md",
   "source_sha256": "d6b96362ced49d628c38af4c286d82a18e0941958b913cc63d06dd28ccb61359",
   "rows": [
@@ -195,7 +195,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B部分在B1共用8/6；C/D分别发布批次",
+      "estimated_starts": "B已实跑；C已发布预计/硬限6/4；D另批发布",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "client-session-03.json",
@@ -212,7 +212,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B部分在B1共用8/6；C/D分别发布批次",
+      "estimated_starts": "B已实跑；C已发布预计/硬限6/4；D另批发布",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "client-hook-gate-results.json"
@@ -228,7 +228,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B部分在B1共用8/6；C/D分别发布批次",
+      "estimated_starts": "B已实跑；C已发布预计/硬限6/4；D另批发布",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "client-session-03.json"
@@ -244,7 +244,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B部分在B1共用8/6；C/D分别发布批次",
+      "estimated_starts": "B已实跑；C已发布预计/硬限6/4；D另批发布",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "approval-b1.json",
@@ -261,7 +261,7 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B部分在B1共用8/6；C/D分别发布批次",
+      "estimated_starts": "B已实跑；C已发布预计/硬限6/4；D另批发布",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -538,13 +538,13 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "H2厂商CLI预计/硬限0",
+      "estimated_starts": "H2实际厂商CLI0；仍需补独立hook-pre-bash观测",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
-        "h2-preparation.json",
-        "client-hook-h2-steps.md"
+        "client-h2-results.json",
+        "h2-preparation.json"
       ],
-      "status": "H2步骤已发布，待真实客户端故障对照和恢复核验"
+      "status": "部分：真实Edit、hook-pre-commit与Stop拦截；hook-pre-bash无独立事件，未测；wrapper已恢复"
     },
     {
       "scenario": 7,
@@ -1113,5 +1113,9 @@
     ]
   },
   "ui": "Bob确认A全程未切换窗口，无额外交互授权；真实客户端会话与Hook事件已留存",
-  "source_sha256_at_initial_extraction": "4f7a8eb1b5a3e252a25dccbd9d029c3498aad714c717eebde99d46bbd34243dc"
+  "source_sha256_at_initial_extraction": "4f7a8eb1b5a3e252a25dccbd9d029c3498aad714c717eebde99d46bbd34243dc",
+  "shared_entry_current_observation": {
+    "evidence": "shared-entry-reappearance.json",
+    "status": "七个共享同名入口重现；不重复迁移；Codex Driver解析来源待定向核对；四目标28入口不变"
+  }
 }

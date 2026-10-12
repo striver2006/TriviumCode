@@ -120,3 +120,17 @@ CASE11精确指定轮：两侧tier=null、tier_source=override；Gemini effort�
 [H2准备](./evidence/m11-step12-20261012/h2-preparation.json)与[逐步操作](./evidence/m11-step12-20261012/client-hook-h2-steps.md)已发布：Bob在系统终端仅临时取消本项目wrapper执行权限，Claude Code真实发起Edit、Bash及Stop，之后Bob在终端恢复+x。厂商CLI预计/硬限0。需逐个确认实际Hook事件及恢复后的hash/权限；看不到的项记未测，恢复核对前不启新批次。
 
 本地日期跨到10月13日，验收落盘助手原固定首日日期已改为不传date，交给同一生产archive.ts的localDate默认值；生产代码、安装副本和历史工件均未改动。语法检查退出0、生产命名函数生成本地当日名称，零归档写入、零厂商启动，见[定向核验](./evidence/m11-step12-20261012/archive-date-followup.json)。这是验收助手的跨日修正，不触发生产重建、重装或准入重跑。
+
+## H2部分实证、恢复及命令C准备（2026-10-13早间）
+
+[H2原始事件](./evidence/m11-step12-20261012/client-h2-results.json)保留真实Edit的hook-pre-write拒绝、Bash中具名hook-pre-commit拒绝，以及5次Stop反馈。另一个hook-pre-bash没有独立呈现的执行结果，具名debug日志不存在，对应时段也没有其它可用进度事件；6.7仅部分完成，不从配置或另一个Hook推断通过。不重复触发Stop循环。期间一次Artifact list工具调用因未登录被拒，同样保留，不为此改认证或登录。
+
+恢复核对确认wrapper为原755，wrapper、项目Hook配置、源码和测试的hash及权限均与H2前一致；未由主会话恢复受保护文件。两池仍817/393，本步42/80。恢复后独立验收可继续。[C批次](./evidence/m11-step12-20261012/client-batch-c.json)在既有peek主题执行code第2轮，只验命令C审查、应答与人工闸门；预计/硬限admission6、review4，累计823/397。Gemini和GLM沿用已核实的B2模型/effort路线，跨夜探活纳入预算；不实现容量计划，不沿用旧审批。[准备证据](./evidence/m11-step12-20261012/c-preparation.json)复核安装运行时、28入口及工件hash，[操作步骤](./evidence/m11-step12-20261012/client-steps-c.md)已发布，尚不宣称执行完成。
+
+采样助手改为先只读status等待新批次开始，最长8小时；检测到真实运行后才高频采集，运行结束后停止，避免重复B2“30分钟窗口先于人工启动结束”的漏采。只改验收采样脚本，不启动厂商、不修改生产。旧B2实时ps缺口不回填。
+
+跨夜冷缓存使余下四个正式入口至少需admission20、review15；当前40/40仅剩admission18。[44/36提案](./evidence/m11-step12-20261012/budget-repartition-proposal-03.json)预计本步42/35=77、余3，总上限80不变。提案尚未批准、未扩容，C可在现有40/40内继续；旧账不重分类，不自行跨池。
+
+定向环境核对还发现：七个共享同名入口于2026-10-13 05:13（Asia/Singapore）重现，其中四份与四目标基线入口均不相同，来源unknown；[当前快照](./evidence/m11-step12-20261012/shared-entry-reappearance.json)保存hash、文件时间及匹配结果。初始“共享七入口缺席”只适用于当时采样。主会话未重新迁移或修改全局配置，原四目标28入口及安装运行时仍不变；Claude C消费已验证的Claude专属入口，后续Codex Driver入口解析来源须定向核对。此变化不自动触发全量准入重跑，也不延伸任何旧批准。
+
+[共享计划入口定向差异](./evidence/m11-step12-20261012/shared-entry-source-diagnostic.json)显示它仍为Claude参数占位形态，并把driver字面替成大写`Codex`；已验证的专属Codex入口则使用小写`codex`。未烧CLI去试错、未再次迁移；后续Codex客户端须明确绑定专属入口并留存实际读取来源。本次四个验收脚本语法检查与30项文档索引/台账检查均通过，原始结果见[检查记录](./evidence/m11-step12-20261012/doc-check-h2-c.json)。

@@ -21,8 +21,16 @@ function inventory(dir,prefix='') {
 }
 function command(bin,args){try{return {code:0,stdout:execFileSync(bin,args,{encoding:'utf8',stdio:['ignore','pipe','pipe']})};}catch(e){return {code:e.status??null,stdout:String(e.stdout??''),stderr:String(e.stderr??'')};}}
 let stopping=false;process.on('SIGTERM',()=>stopping=true);process.on('SIGINT',()=>stopping=true);
-const start=Date.now();let n=0,last='';
-while(!stopping&&Date.now()-start<30*60*1000){
+const start=Date.now();let n=0,last='',seenRunning=false,idleWaits=0;
+console.log(JSON.stringify({observer_pid:process.pid,batch:cfg.id,wait_for_start_max_h:8}));
+while(!stopping&&Date.now()-start<8*60*60*1000){
+ // 等待用户操作期间只读小型status文件；不提前耗完30分钟采样窗口。
+ const states=fs.existsSync(runRoot)?fs.readdirSync(runRoot).filter(n=>/^\d{8}T\d{6}Z$/.test(n)).flatMap(n=>{
+  try{return[JSON.parse(fs.readFileSync(path.join(runRoot,n,'status.json'),'utf8'))];}catch{return[];}
+ }):[];
+ const running=states.some(s=>s.started_at>=cfg.at&&['starting','running'].includes(s.phase));
+ if(!running&&!seenRunning){if(idleWaits++%10===0)console.log(JSON.stringify({at:new Date().toISOString(),waiting_for_batch:cfg.id}));await new Promise(r=>setTimeout(r,30000));continue;}
+ seenRunning ||= running;
  const at=new Date().toISOString(),ps=command('/bin/ps',['-axo','pid=,ppid=,command=']);
  const processes=ps.stdout.split('\n').flatMap(line=>{
   const m=/^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);if(!m)return [];
@@ -46,6 +54,6 @@ while(!stopping&&Date.now()-start<30*60*1000){
  const signature=JSON.stringify(state);
  if(signature!==last||n%15===0){saveEvidence(root+'/'+Date.now()+'-'+String(n).padStart(5,'0')+'.json',{at,commands:[['/bin/ps','-axo','pid=,ppid=,command='],['/usr/sbin/lsof','-a','-p','<each selected pid>','-d','cwd','-Fn'],['/bin/ps','-p','<each selected pid>','-o','lstart=']],ps_exit:ps.code,argv_projection:true,fixture:cfg.fixture,run_root:runRoot,...state});last=signature;}
  if(n%15===0)console.log(JSON.stringify({at,sample:n,budgets,archive:state.archive.length,run_files:state.run_files.length}));
- n++;await new Promise(r=>setTimeout(r,2000));
+ n++;if(seenRunning&&!running)break;await new Promise(r=>setTimeout(r,2000));
 }
 console.log(JSON.stringify({stopped:true,samples:n}));
