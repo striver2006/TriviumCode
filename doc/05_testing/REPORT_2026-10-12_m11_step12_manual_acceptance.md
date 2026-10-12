@@ -134,3 +134,17 @@ CASE11精确指定轮：两侧tier=null、tier_source=override；Gemini effort�
 定向环境核对还发现：七个共享同名入口于2026-10-13 05:13（Asia/Singapore）重现，其中四份与四目标基线入口均不相同，来源unknown；[当前快照](./evidence/m11-step12-20261012/shared-entry-reappearance.json)保存hash、文件时间及匹配结果。初始“共享七入口缺席”只适用于当时采样。主会话未重新迁移或修改全局配置，原四目标28入口及安装运行时仍不变；Claude C消费已验证的Claude专属入口，后续Codex Driver入口解析来源须定向核对。此变化不自动触发全量准入重跑，也不延伸任何旧批准。
 
 [共享计划入口定向差异](./evidence/m11-step12-20261012/shared-entry-source-diagnostic.json)显示它仍为Claude参数占位形态，并把driver字面替成大写`Codex`；已验证的专属Codex入口则使用小写`codex`。未烧CLI去试错、未再次迁移；后续Codex客户端须明确绑定专属入口并留存实际读取来源。本次四个验收脚本语法检查与30项文档索引/台账检查均通过，原始结果见[检查记录](./evidence/m11-step12-20261012/doc-check-h2-c.json)。
+
+## C正式运行与44/36独立批准
+
+Bob明确答复“同意44/36，总上限80”，[本次独立批准](./evidence/m11-step12-20261012/budget-repartition-user-decision-03.json)已保存。按既有机制只追加admission全局835→839，review全局413不改、本步附加上限收紧到409；[扩容回执](./evidence/m11-step12-20261012/budget-repartition-extension-receipts-03.json)和[第3版分池](./evidence/m11-step12-20261012/budget-plan-revision-03.json)保留完整链。旧账未清零或重分类，C批次6/4硬限不变。
+
+C于2026-10-13 06:57启动code第2轮，run `20261012T225703Z`，success/full，Gemini与GLM证据阈值均通过，project_reads各7，无漂移、只读越界或对方工件读取。Gemini请求low、生效high/envelope；GLM模型由trace回读；逐对different-family，来源如实分开。14次进程采样已保留，见[运行原始证据](./evidence/m11-step12-20261012/client-c-runs.json)、[进程采样](./evidence/m11-step12-20261012/client-c-processes.json)、[实际客户端事件](./evidence/m11-step12-20261012/client-session-05.json)。
+
+三条GLM意见逐条裁决：GLM-01接受并说明额外文件归属，GLM-02/03暂缓Codex Hook提示路径和环境变量静态风险。gate退出0，三编号齐备，无警告，正式status停awaiting_approval；无业务修改。[主会话核对](./evidence/m11-step12-20261012/c-assessment.json)同时纠正一项未经证实的归属：AGENTS主题清单确由prepare-b1.mjs调整，`.codex/hooks.json`来源却仍unknown，其创建时刻与共享入口重现相同不证明作者。原裁决不回写，Codex继续L2，暂缓项不自动授权护栏整改。
+
+验收检查脚本初次把每轮可变的`changes.diff`便利副本当成冻结工件，退出1；[失败记录](./evidence/m11-step12-20261012/c-assessment-script-failure.json)保留。对照生产review.ts与hooks.ts后，仅豁免具名便利副本与task.json，并增加便利副本等于本轮冻结diff的hash校验；定向重跑通过，旧冻结工件字节均未变。未修改生产、配置或历史审查原件。
+
+本批实际admission6/review4，当前823/397，本步28/24=52/80，剩余16/12。[C闸门实测步骤](./evidence/m11-step12-20261012/client-hook-c-gate-steps.md)已发布，预计/硬限零厂商CLI；[本轮审批提案](./evidence/m11-step12-20261012/c-approval-proposal.md)尚未获批。3.1及3.3的C部分已有真实证据；3.2/3.4仍待拦截、当次审批及放行。M11未完成，受限准入原边界不变。
+
+本批两个新增脚本语法检查与30项文档索引/台账检查通过，证据脱敏扫描零命中，见[本轮检查](./evidence/m11-step12-20261012/doc-check-c-results.json)。未重建或重装，安装与准入指纹消费边界不变。

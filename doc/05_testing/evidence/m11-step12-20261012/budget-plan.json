@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-12T13:45:35.606Z",
-  "authorization": "Bob明确答复：同意修订为40/40，总上限80；原始授权与20/60提案保留",
+  "at": "2026-10-12T23:03:11.211Z",
+  "authorization": "Bob明确答复：同意44/36，总上限80",
   "baseline": {
     "admission": {
       "used": 795,
@@ -15,60 +15,47 @@
   },
   "budgetRoot": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget",
   "step_limits": {
-    "admission": 40,
-    "review": 40,
+    "admission": 44,
+    "review": 36,
     "total": 80
   },
   "absolute_step_caps": {
-    "admission": 835,
-    "review": 413
+    "admission": 839,
+    "review": 409
   },
-  "extension": "本次admission815→835、review398→413，旧记录只追加；本步总80及各批硬上限持续生效",
+  "extension": "admission只追加835→839；review全局413不改，本步附加上限409；C批次硬限不变",
   "batches": [
     {
-      "id": "A实际",
+      "batch": "C-Claude",
       "admission": 6,
-      "review": 8,
-      "status": "实际完成"
+      "review": 4,
+      "scope": "命令C与人工闸门；两侧冷缓存",
+      "status": "估算；仅具名client-batch发布后可执行"
     },
     {
-      "id": "B1三审选档",
-      "admission": 8,
-      "review": 6,
-      "status": "估算；仅具名client-batch发布的批次可执行"
-    },
-    {
-      "id": "B2三审换profile和精确值",
-      "admission": 8,
-      "review": 6,
-      "status": "估算；仅具名client-batch发布的批次可执行"
-    },
-    {
-      "id": "C-Claude",
+      "batch": "D-Claude",
       "admission": 4,
       "review": 4,
-      "status": "估算；仅具名client-batch发布的批次可执行"
+      "scope": "命令D与bug归档；需复用仍在TTL的同一路线缓存",
+      "status": "估算；仅具名client-batch发布后可执行"
     },
     {
-      "id": "D-Claude",
-      "admission": 4,
-      "review": 4,
-      "status": "估算；仅具名client-batch发布的批次可执行"
-    },
-    {
-      "id": "C-ZCode且跨Driver",
-      "admission": 4,
+      "batch": "C-ZCode",
+      "admission": 6,
       "review": 3,
-      "status": "估算；仅具名client-batch发布的批次可执行"
+      "scope": "实际ZCode主攻与跨Driver；Codex deepseek探活含包装器/native2",
+      "status": "估算；仅具名client-batch发布后可执行"
     },
     {
-      "id": "B-Codex且L2闸门",
+      "batch": "B-Codex",
       "admission": 4,
       "review": 4,
-      "status": "估算；仅具名client-batch发布的批次可执行"
+      "scope": "实际Codex主攻与L2闸门；需复用仍在TTL的同一路线缓存",
+      "status": "估算；仅具名client-batch发布后可执行"
     }
   ],
-  "revision": 2,
+  "revision": 3,
   "initial_plan": "budget-plan-initial.json",
-  "decision": "budget-repartition-user-decision.json"
+  "decision": "budget-repartition-user-decision-03.json",
+  "previous_plan": "budget-plan-revision-02.json"
 }

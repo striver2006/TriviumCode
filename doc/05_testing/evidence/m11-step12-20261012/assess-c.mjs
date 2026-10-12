@@ -1,0 +1,28 @@
+/** C运行、工件、预算核对；只读编排器出口，零厂商启动。 */
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import {spawnSync} from 'node:child_process';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const here=import.meta.dirname;
+const cfg=JSON.parse(fs.readFileSync(here+'/client-batch-c.json'));
+const d=JSON.parse(fs.readFileSync(here+'/client-c-runs.json')),m=d.record;
+const prep=JSON.parse(fs.readFileSync(here+'/c-preparation.json'));
+const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+const args=['gate','--stage','code','--topic',m.topic,'--check','--json'];
+const r=spawnSync(cfg.fixture+'/.trivium/bin/trivium',args,{cwd:cfg.fixture,encoding:'utf8'});
+const gate=JSON.parse(r.stdout);
+if(r.status!==0||!gate.ok||gate.run_id!==m.run_id||gate.structured_ids.length!==3)throw Error('C裁决核对失败');
+const archives=prep.archive_before.map(f=>({...f,current:hash(f.file)}));
+const mutable=new Set([cfg.fixture+'/.reviews/'+m.topic+'/task.json',cfg.fixture+'/.reviews/'+m.topic+'/code/_meta/changes.diff']);
+if(archives.some(f=>f.current!==f.sha256&&!mutable.has(f.file)))throw Error('历史冻结工件字节变化');
+if(hash(cfg.fixture+'/.reviews/'+m.topic+'/code/_meta/changes.diff')!==hash(cfg.fixture+'/.reviews/'+m.topic+'/code/_meta/changes-'+m.run_id+'.diff'))throw Error('便利副本与本轮冻结diff不符');
+const inputs=prep.fixture_inputs.map(f=>({...f,current:hash(cfg.fixture+'/'+f.file)}));
+if(inputs.some(f=>f.current!==f.sha256))throw Error('C业务或编排器输入变化');
+const plan=JSON.parse(fs.readFileSync(here+'/budget-plan.json'));
+const counts=Object.fromEntries(['admission','review'].map(p=>[p,fs.readdirSync(plan.budgetRoot+'/ledger/'+p).filter(n=>/^reserved-\d+\.json$/.test(n)).length]));
+const delta=Object.fromEntries(Object.keys(counts).map(p=>[p,counts[p]-cfg.before[p]]));
+if(delta.admission!==6||delta.review!==4)throw Error('C预算不符');
+const observations=JSON.parse(fs.readFileSync(here+'/client-c-processes.json')).observations;
+const response=gate.disposition;
+saveEvidence(here+'/c-assessment.json',{at:new Date().toISOString(),run_id:m.run_id,status:m.status,review_mode:m.review_mode,entry:m.entry,driver:m.driver_declaration,critics:m.critics,guard:m.guard,snapshot:m.snapshot,gate,gate_command:{command:[cfg.fixture+'/.trivium/bin/trivium',...args],code:r.status,stdout:r.stdout,stderr:r.stderr},response:{file:response,sha256:hash(response)},archive_before:archives,inputs,observations:observations.length,budget:{current:counts,batch_delta:delta,step_used:{admission:counts.admission-795,review:counts.review-373,total:counts.admission+counts.review-1168},step_limits:plan.step_limits},provenance_correction:{AGENTS:'prepare-b1.mjs具名修改，可核实',codex_hooks:'来源unknown；birth与共享七入口重现同为2026-10-12T21:13:53Z，不能证明作者；C裁决的主会话工具链落盘说法未获证实，原件保留'},limitations:['GLM-02/03暂缓，不授权改Hook；Codex仍L2','路径级deny未生效，保留原报告告警','C尚未获得Bob当次审批；批准前仍不得业务写入','C闸门Edit拦截与审批后放行待真实客户端补测']});
+console.log(JSON.stringify({run_id:m.run_id,gate:gate.ok,ids:gate.structured_ids,budget:counts,delta,observations:observations.length}));

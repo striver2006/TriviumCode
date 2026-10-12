@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-12T23:05:04.295Z",
+  "command": [
+    "node",
+    "doc/05_testing/evidence/m11-step12-20261012/assess-c.mjs"
+  ],
+  "exit_code": 1,
+  "error": "Error: 历史工件字节变化",
+  "cause": "验收脚本未豁免生产每轮更新的code/_meta/changes.diff便利副本；变化仅该文件与task.json，旧冻结工件均未变",
+  "authority": [
+    "src/trivium/review.ts:1260",
+    "src/trivium/hooks.ts:517"
+  ],
+  "correction": "只豁免具名task.json及changes.diff；新增便利副本必须等于本轮changes-<run_id>.diff的hash校验",
+  "vendor_starts": 0
+}

@@ -1,0 +1,558 @@
+{
+  "at": "2026-10-12T23:05:04.683Z",
+  "run_id": "20261012T225703Z",
+  "status": "success",
+  "review_mode": "full",
+  "entry": "C",
+  "driver": {
+    "model": "qwen3.8-flash",
+    "provider": "qwen",
+    "source": "declared"
+  },
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.3",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "low",
+      "effort_requested": "low",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": null,
+      "tier_source": "override",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 120.196,
+      "tool_calls": {
+        "read": 12,
+        "grep": 0,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 7
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 60380,
+        "output_tokens": 8816,
+        "thinking_tokens": 7238,
+        "cache_read_tokens": 390163,
+        "total_tokens": 69196
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+        "launcher_effective": "/Users/chenzhenbo/.local/bin/agy",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "different-family",
+      "override_reason": "模型族不同：qwen / gemini",
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "f9c5e4d1-3e38-473f-b08d-974f607a15a3",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.16.9",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "tier": null,
+      "tier_source": "override",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 236.515,
+      "tool_calls": {
+        "read": 11,
+        "grep": 0,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 7
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 4,
+        "inputTokens": 161184,
+        "outputTokens": 17768,
+        "totalTokens": 178952,
+        "cacheReadTokens": 124160,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "launcher_effective": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "different-family",
+      "override_reason": "模型族不同：qwen / glm",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_17a4485c-7c82-4982-9288-b1155f18fe12",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "snapshot": {
+    "git_head": "a50caa623b4343902d4725a7c8023bbf5a0acabc",
+    "tree_hash": "73ef39b0e4b864cfc492860e4fb1952c92984dea",
+    "dirty": true,
+    "subject_sha256": "8c791eb6d69921ed7fbefa1131abd1a0b9c579ee312744e601728f8d025aebdc",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T15:54:27.580Z"
+    },
+    "after_tree_hash": "73ef39b0e4b864cfc492860e4fb1952c92984dea"
+  },
+  "gate": {
+    "ok": true,
+    "stage": "code",
+    "rerun_index": 2,
+    "run_id": "20261012T225703Z",
+    "failures": [],
+    "warnings": [],
+    "structured_ids": [
+      "GLM-01",
+      "GLM-02",
+      "GLM-03"
+    ],
+    "fallback_ids": [],
+    "degraded_ids": [],
+    "disposition": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/2026-10-13-m11-s12-stack-r2-response-claude.md"
+  },
+  "gate_command": {
+    "command": [
+      "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.trivium/bin/trivium",
+      "gate",
+      "--stage",
+      "code",
+      "--topic",
+      "m11-s12-stack",
+      "--check",
+      "--json"
+    ],
+    "code": 0,
+    "stdout": "{\n  \"ok\": true,\n  \"stage\": \"code\",\n  \"rerun_index\": 2,\n  \"run_id\": \"20261012T225703Z\",\n  \"failures\": [],\n  \"warnings\": [],\n  \"structured_ids\": [\n    \"GLM-01\",\n    \"GLM-02\",\n    \"GLM-03\"\n  ],\n  \"fallback_ids\": [],\n  \"degraded_ids\": [],\n  \"disposition\": \"/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/2026-10-13-m11-s12-stack-r2-response-claude.md\"\n}\n",
+    "stderr": ""
+  },
+  "response": {
+    "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/2026-10-13-m11-s12-stack-r2-response-claude.md",
+    "sha256": "697b8085ef392a4b7b5dcef8cdedac7e8ddff99e09d27334377711a7e1921fbc"
+  },
+  "archive_before": [
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/README.md",
+      "sha256": "564e30d45025061e7db3d25e824540780e5577fc9e0e8c26e3abb772c2108a7d",
+      "current": "564e30d45025061e7db3d25e824540780e5577fc9e0e8c26e3abb772c2108a7d"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-claude.md",
+      "sha256": "8e74b47845807961c58b89c29a72e9963a6c515e2bcc40178dbd0489507b243f",
+      "current": "8e74b47845807961c58b89c29a72e9963a6c515e2bcc40178dbd0489507b243f"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-codex.md",
+      "sha256": "606cc9e54e504b639d307ba1091dbc2c9122e93c79959df37488dc030fdc7a5a",
+      "current": "606cc9e54e504b639d307ba1091dbc2c9122e93c79959df37488dc030fdc7a5a"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-gemini.md",
+      "sha256": "f62ffae2af425de6caeb5dbe7045b094aad0396c2a44e7d3f01c8320a0e83944",
+      "current": "f62ffae2af425de6caeb5dbe7045b094aad0396c2a44e7d3f01c8320a0e83944"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-glm.md",
+      "sha256": "58f14a6642fffb1e4358ecf9be3db4b5b3be8d9e0bd3e51df1213624679eaf8a",
+      "current": "58f14a6642fffb1e4358ecf9be3db4b5b3be8d9e0bd3e51df1213624679eaf8a"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-claude.md",
+      "sha256": "329c8b364f6e37768b9e9bb612fac84e37147088d32cc9ebbcf1aa834b6e5883",
+      "current": "329c8b364f6e37768b9e9bb612fac84e37147088d32cc9ebbcf1aa834b6e5883"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-codex.md",
+      "sha256": "1a782179de394884615c8168aea120c2c2c646edba5c9a9e95462e4b3dec8e70",
+      "current": "1a782179de394884615c8168aea120c2c2c646edba5c9a9e95462e4b3dec8e70"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-gemini.md",
+      "sha256": "464fcb38396713cc187f9b5513aeab1e9e92991b865dc75e15bc37caaf6a714b",
+      "current": "464fcb38396713cc187f9b5513aeab1e9e92991b865dc75e15bc37caaf6a714b"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-glm.md",
+      "sha256": "6272030c1fe28eb775f7e5a06e59d55cd7fcd779c50ab9b41a3febe5e3a86ec5",
+      "current": "6272030c1fe28eb775f7e5a06e59d55cd7fcd779c50ab9b41a3febe5e3a86ec5"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-revised-claude.md",
+      "sha256": "6197963ebc69a20c6d28adc2e63d46a414e6872bfa3c7d504db228e2a21aae52",
+      "current": "6197963ebc69a20c6d28adc2e63d46a414e6872bfa3c7d504db228e2a21aae52"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r3-claude.md",
+      "sha256": "6180c353ce2e4fc882782d94ec598efce70dbfc1548da449d846725227deba98",
+      "current": "6180c353ce2e4fc882782d94ec598efce70dbfc1548da449d846725227deba98"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-revised-claude.md",
+      "sha256": "0a471e9b82a18ee8acd7000616fad8a5ebc6a0c5a03b2e8c5ba6e671ed1250d7",
+      "current": "0a471e9b82a18ee8acd7000616fad8a5ebc6a0c5a03b2e8c5ba6e671ed1250d7"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/brief-codex-20261012T134125Z.md",
+      "sha256": "214fe26aeab22ab3978f4223f9aa683b4073b6755ae0e18c1144627678a64ca7",
+      "current": "214fe26aeab22ab3978f4223f9aa683b4073b6755ae0e18c1144627678a64ca7"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/brief-codex-20261012T154021Z.md",
+      "sha256": "0532ee66a78fc351d7b1c067ecb95e802894be96c1301f8586c699fb17ce5019",
+      "current": "0532ee66a78fc351d7b1c067ecb95e802894be96c1301f8586c699fb17ce5019"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/brief-gemini-20261012T134125Z.md",
+      "sha256": "18205ea9b9ca4b8fbf85366cd15960501b4f71f755e575535461f59acf2583cf",
+      "current": "18205ea9b9ca4b8fbf85366cd15960501b4f71f755e575535461f59acf2583cf"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/brief-gemini-20261012T154021Z.md",
+      "sha256": "6fa09b130dbb0b01085e0c023cb06af14c8f316eae57d3883aa709b76c7cbc80",
+      "current": "6fa09b130dbb0b01085e0c023cb06af14c8f316eae57d3883aa709b76c7cbc80"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/brief-glm-20261012T134125Z.md",
+      "sha256": "b9b8cf16fcd605702b39c652ea69db6b5098c60f02a081feac96b853a538277e",
+      "current": "b9b8cf16fcd605702b39c652ea69db6b5098c60f02a081feac96b853a538277e"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/brief-glm-20261012T154021Z.md",
+      "sha256": "419b83336b6aba57abe182c94b69f55a403197ff917d7c76f6fbee70710fc457",
+      "current": "419b83336b6aba57abe182c94b69f55a403197ff917d7c76f6fbee70710fc457"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/review-codex-20261012T134125Z.json",
+      "sha256": "1620f0055014a86d02a9be0fe2633d04d5ad715e7b2bdb80f586a45d792429cd",
+      "current": "1620f0055014a86d02a9be0fe2633d04d5ad715e7b2bdb80f586a45d792429cd"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/review-codex-20261012T154021Z.json",
+      "sha256": "82a80eb1985b73dfdf0dd656a329ec6aa5c5a07fe3d05cf83ecdbca52a95e83e",
+      "current": "82a80eb1985b73dfdf0dd656a329ec6aa5c5a07fe3d05cf83ecdbca52a95e83e"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/review-gemini-20261012T134125Z.json",
+      "sha256": "4fa690c7fb852e934338153be3c9881103746612033add2cfb0d3605589133b6",
+      "current": "4fa690c7fb852e934338153be3c9881103746612033add2cfb0d3605589133b6"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/review-gemini-20261012T154021Z.json",
+      "sha256": "da841b2da55eb676d36f86373b4b41a82f4c7aa0f00d71020a75033f7d07e760",
+      "current": "da841b2da55eb676d36f86373b4b41a82f4c7aa0f00d71020a75033f7d07e760"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/review-glm-20261012T134125Z.json",
+      "sha256": "f81bab20e68a890fb2e4c6f4d1dc6338176f56bc0800349bf32b9281a81912fc",
+      "current": "f81bab20e68a890fb2e4c6f4d1dc6338176f56bc0800349bf32b9281a81912fc"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/review-glm-20261012T154021Z.json",
+      "sha256": "a5e18b28b3bb778d432faa72d820320200b9d1d715fc6a5ea30ed3dd2d9edd04",
+      "current": "a5e18b28b3bb778d432faa72d820320200b9d1d715fc6a5ea30ed3dd2d9edd04"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/run-20261012T134125Z.json",
+      "sha256": "bd1bc9aba72b25b4b810d1fac72e32f0ed3f08c8e269fdaf0cb1439c11d1c5c1",
+      "current": "bd1bc9aba72b25b4b810d1fac72e32f0ed3f08c8e269fdaf0cb1439c11d1c5c1"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/plan/_meta/run-20261012T154021Z.json",
+      "sha256": "96faa715b6332dfbdba82bdcfb945f8050e70dfd38873c7842cd596f3699df29",
+      "current": "96faa715b6332dfbdba82bdcfb945f8050e70dfd38873c7842cd596f3699df29"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/task.json",
+      "sha256": "7fd9aef4d1b3fd24a57e71f59979a58d3d2fc059a9c4a56281160540fced24fa",
+      "current": "7fd9aef4d1b3fd24a57e71f59979a58d3d2fc059a9c4a56281160540fced24fa"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/2026-10-12-m11-s12-stack-gemini.md",
+      "sha256": "1fe89903315c91e5885c4f571380bbbaa3eb3f449e78c092a54c7d1c3f0362df",
+      "current": "1fe89903315c91e5885c4f571380bbbaa3eb3f449e78c092a54c7d1c3f0362df"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/2026-10-12-m11-s12-stack-glm.md",
+      "sha256": "19bd4c52003b93f522679eae67b2c03e829f7f797a2160b1e8f24ffdea04c60f",
+      "current": "19bd4c52003b93f522679eae67b2c03e829f7f797a2160b1e8f24ffdea04c60f"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/2026-10-12-m11-s12-stack-response-claude.md",
+      "sha256": "4db5986c5ff14704d50557b6f73509cf5f1f7b9f40cfe502b32687faf2ae47ae",
+      "current": "4db5986c5ff14704d50557b6f73509cf5f1f7b9f40cfe502b32687faf2ae47ae"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/_meta/brief-gemini-20261012T130035Z.md",
+      "sha256": "3fe0ffe29f08719391e24cce06febbd97881995ea1a9d765280ad3a204a80428",
+      "current": "3fe0ffe29f08719391e24cce06febbd97881995ea1a9d765280ad3a204a80428"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/_meta/brief-glm-20261012T130035Z.md",
+      "sha256": "077ff0be688240ae880c6cb529c0278a2f2e1f2633d7b41bb4594d59f8355bce",
+      "current": "077ff0be688240ae880c6cb529c0278a2f2e1f2633d7b41bb4594d59f8355bce"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/_meta/changes-20261012T130035Z.diff",
+      "sha256": "ec64cc2cd0b95c0aa4f114ddb088e034a75a5fcca5e253c3ddfe0166973773ce",
+      "current": "ec64cc2cd0b95c0aa4f114ddb088e034a75a5fcca5e253c3ddfe0166973773ce"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/_meta/changes.diff",
+      "sha256": "ec64cc2cd0b95c0aa4f114ddb088e034a75a5fcca5e253c3ddfe0166973773ce",
+      "current": "8c791eb6d69921ed7fbefa1131abd1a0b9c579ee312744e601728f8d025aebdc"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/_meta/review-gemini-20261012T130035Z.json",
+      "sha256": "6a59d2a825bb2f7165609f8c09ce05f8897d9a677f817b4765a5de39bd8efc6e",
+      "current": "6a59d2a825bb2f7165609f8c09ce05f8897d9a677f817b4765a5de39bd8efc6e"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/_meta/review-glm-20261012T130035Z.json",
+      "sha256": "fc6f966bbcc3c69634f4c23710d715dad955795eda0d0fa803090d4e0e0daad0",
+      "current": "fc6f966bbcc3c69634f4c23710d715dad955795eda0d0fa803090d4e0e0daad0"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/code/_meta/run-20261012T130035Z.json",
+      "sha256": "272af3a4e61d10c61d8360e3c241fac09a8cf165d854a57cca87c8146f30aec2",
+      "current": "272af3a4e61d10c61d8360e3c241fac09a8cf165d854a57cca87c8146f30aec2"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/plan/2026-10-12-m11-s12-stack-claude.md",
+      "sha256": "f1fdf73151888d264dd96f765347066f10792eee575934bb33324dd19273b071",
+      "current": "f1fdf73151888d264dd96f765347066f10792eee575934bb33324dd19273b071"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/plan/2026-10-12-m11-s12-stack-gemini.md",
+      "sha256": "1b37782259374b77b8761e3dc525dbebd5a90736ae43ae0584118555fae0bbdb",
+      "current": "1b37782259374b77b8761e3dc525dbebd5a90736ae43ae0584118555fae0bbdb"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/plan/2026-10-12-m11-s12-stack-glm.md",
+      "sha256": "3a01f5d2e842cf9562a4955d5919d1d542b9b9cab218e650ac5a555a6920427b",
+      "current": "3a01f5d2e842cf9562a4955d5919d1d542b9b9cab218e650ac5a555a6920427b"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/plan/2026-10-12-m11-s12-stack-revised-claude.md",
+      "sha256": "1f22e2b8575efa2ffcfc6f9ec8dd4ef744547d6816a82a5fd162593adfc82493",
+      "current": "1f22e2b8575efa2ffcfc6f9ec8dd4ef744547d6816a82a5fd162593adfc82493"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/plan/_meta/brief-gemini-20261012T125354Z.md",
+      "sha256": "74da8e5ebf4677403c62158c8cb2d8e06fff423eb4de1c0d3c190c645677f5e7",
+      "current": "74da8e5ebf4677403c62158c8cb2d8e06fff423eb4de1c0d3c190c645677f5e7"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/plan/_meta/brief-glm-20261012T125354Z.md",
+      "sha256": "b881bd5e1c42d888d7b2bafae52c81971fe2e1dc7eba6531167f4c480166558f",
+      "current": "b881bd5e1c42d888d7b2bafae52c81971fe2e1dc7eba6531167f4c480166558f"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/plan/_meta/review-gemini-20261012T125354Z.json",
+      "sha256": "ca96348039f61b24b18e671fde6ccdb0cf5734f4bbc5a62348f5f0c48affa34c",
+      "current": "ca96348039f61b24b18e671fde6ccdb0cf5734f4bbc5a62348f5f0c48affa34c"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/plan/_meta/review-glm-20261012T125354Z.json",
+      "sha256": "2b6117dd9c9a186c839e1256765cfa2d8b7fd24513ba93efc982389389fa027c",
+      "current": "2b6117dd9c9a186c839e1256765cfa2d8b7fd24513ba93efc982389389fa027c"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/plan/_meta/run-20261012T125354Z.json",
+      "sha256": "d8e3851b8a537998efb4d3be12a52daa19205dca312d82acd7db9313c0adce9d",
+      "current": "d8e3851b8a537998efb4d3be12a52daa19205dca312d82acd7db9313c0adce9d"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/task.json",
+      "sha256": "10d70cc8508bf0ee269df254e75793c49e3fbd275d1edfce54c2028d1ccf137a",
+      "current": "75a4c709cd05d0cbfed1bfff5e757d6c70a8d9190fc39d636f90b6a27ddff234"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/verify/2026-10-12-m11-s12-stack-verify.md",
+      "sha256": "4bd6ab4dae72c702160694107ee0546d0fa6cb24ebca9c63e12d094ba1225e7e",
+      "current": "4bd6ab4dae72c702160694107ee0546d0fa6cb24ebca9c63e12d094ba1225e7e"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/verify/_meta/run-20261012T130542Z.json",
+      "sha256": "240670404067b1cf17f2bac8de383e24f492135991e748321bdc4d5c71fff9bf",
+      "current": "240670404067b1cf17f2bac8de383e24f492135991e748321bdc4d5c71fff9bf"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-stack/verify/_meta/verify-20261012T130542Z.json",
+      "sha256": "fd9825eab1f1ad40f71a66af29fa1a98b1a475558f1ea3cf1a2789d1edf87043",
+      "current": "fd9825eab1f1ad40f71a66af29fa1a98b1a475558f1ea3cf1a2789d1edf87043"
+    }
+  ],
+  "inputs": [
+    {
+      "file": "src/stack.js",
+      "sha256": "2509255bf743fc4f1bece7867ee60862d58e485eb67df9a06f55f570fc49ecd2",
+      "current": "2509255bf743fc4f1bece7867ee60862d58e485eb67df9a06f55f570fc49ecd2"
+    },
+    {
+      "file": "test/stack.test.js",
+      "sha256": "57efe6e67e9c511f4b8bebc542ac9a1c75d3fc43744d7218a4e067321bfb964d",
+      "current": "57efe6e67e9c511f4b8bebc542ac9a1c75d3fc43744d7218a4e067321bfb964d"
+    },
+    {
+      "file": ".trivium/config.yaml",
+      "sha256": "888efc243ae6fe66756b0e979eeed9b2b563d4c827c2944ad454cdf2a8580a4b",
+      "current": "888efc243ae6fe66756b0e979eeed9b2b563d4c827c2944ad454cdf2a8580a4b"
+    },
+    {
+      "file": ".trivium/bin/trivium",
+      "sha256": "07ac4e37315b252f103fd4bf475d6c60c896f97230f27d24194bc4a78644be80",
+      "current": "07ac4e37315b252f103fd4bf475d6c60c896f97230f27d24194bc4a78644be80"
+    }
+  ],
+  "observations": 14,
+  "budget": {
+    "current": {
+      "admission": 823,
+      "review": 397
+    },
+    "batch_delta": {
+      "admission": 6,
+      "review": 4
+    },
+    "step_used": {
+      "admission": 28,
+      "review": 24,
+      "total": 52
+    },
+    "step_limits": {
+      "admission": 44,
+      "review": 36,
+      "total": 80
+    }
+  },
+  "provenance_correction": {
+    "AGENTS": "prepare-b1.mjs具名修改，可核实",
+    "codex_hooks": "来源unknown；birth与共享七入口重现同为2026-10-12T21:13:53Z，不能证明作者；C裁决的主会话工具链落盘说法未获证实，原件保留"
+  },
+  "limitations": [
+    "GLM-02/03暂缓，不授权改Hook；Codex仍L2",
+    "路径级deny未生效，保留原报告告警",
+    "C尚未获得Bob当次审批；批准前仍不得业务写入",
+    "C闸门Edit拦截与审批后放行待真实客户端补测"
+  ]
+}

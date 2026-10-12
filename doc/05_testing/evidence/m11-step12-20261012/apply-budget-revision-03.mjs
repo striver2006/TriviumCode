@@ -1,0 +1,21 @@
+/** Bob明确批准44/36；旧账只追加，C批次硬限不变。 */
+import fs from 'node:fs';
+import {createRequire} from 'node:module';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const here=import.meta.dirname;
+const {openBudget}=createRequire(import.meta.url)('../../../../scripts/agent-access-budget.cjs');
+const old=JSON.parse(fs.readFileSync(here+'/budget-plan.json'));
+const proposal=JSON.parse(fs.readFileSync(here+'/budget-repartition-proposal-03.json'));
+if(old.revision!==2||old.step_limits.admission!==40||old.step_limits.review!==40)throw Error('前置分池不符，不重复执行');
+const admission=openBudget(old.budgetRoot,'admission'),review=openBudget(old.budgetRoot,'review');
+if(admission.limit()!==835||review.limit()!==413)throw Error('全局限额变化，停止');
+const decision={at:new Date().toISOString(),source:'Bob主会话对44/36分池提案的直接答复',answer:'同意44/36，总上限80',approved_step_limits:proposal.proposed.step_limits,approved_absolute_caps:proposal.proposed.absolute_step_caps,scope:'仅本步预算重划，旧台账不清零不重分类；C批次6/4不变；不代表任何审查运行获批'};
+saveEvidence(here+'/budget-repartition-user-decision-03.json',decision);
+const receipt=admission.extend('m11-step12-44x36-admission',4,'Bob明确答复：同意44/36，总上限80；见TriviumCode/doc/05_testing/evidence/m11-step12-20261012/budget-repartition-user-decision-03.json；旧台账不重分类，review本步上限收紧到409');
+saveEvidence(here+'/budget-repartition-extension-receipts-03.json',{at:new Date().toISOString(),receipt,review_global_limit:review.limit(),note:'既有extend的authorized_by为历史固定文案；本次授权以独立decision及reason为准。未改机制与历史。'});
+const revised={...old,at:new Date().toISOString(),revision:3,authorization:'Bob明确答复：同意44/36，总上限80',step_limits:proposal.proposed.step_limits,absolute_step_caps:proposal.proposed.absolute_step_caps,extension:'admission只追加835→839；review全局413不改，本步附加上限409；C批次硬限不变',batches:proposal.remaining_minimum.map(b=>({...b,status:'估算；仅具名client-batch发布后可执行'})),previous_plan:'budget-plan-revision-02.json',decision:'budget-repartition-user-decision-03.json'};
+saveEvidence(here+'/budget-plan-revision-03.json',revised);
+const tmp=here+'/budget-plan-revision-03.tmp';
+fs.writeFileSync(tmp,JSON.stringify(revised,null,2)+'\n',{flag:'wx',mode:0o600});
+fs.renameSync(tmp,here+'/budget-plan.json');
+console.log(JSON.stringify({step_limits:revised.step_limits,absolute_step_caps:revised.absolute_step_caps,global_limits:{admission:admission.limit(),review:review.limit()}}));
