@@ -1,0 +1,37 @@
+/** 只读核对真实审批和放行工具对，保留完整命令/结果及原预算。 */
+import fs from 'node:fs';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const here=import.meta.dirname,home=os.homedir();
+const decision=JSON.parse(fs.readFileSync(here+'/approval-b1.json'));
+const negative=JSON.parse(fs.readFileSync(here+'/client-hook-gate-results.json'));
+const before=JSON.parse(fs.readFileSync(here+'/b1-preparation.json'));
+const plan=JSON.parse(fs.readFileSync(here+'/budget-plan.json'));
+const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+const source=home+'/.claude/projects/-Users-chenzhenbo-Work-trivium-m11-step12-20261012/52c58d79-eb90-4953-89dc-6ebd5923112e.jsonl';
+const raw=fs.readFileSync(source,'utf8');
+const events=raw.split('\n').filter(Boolean).map(l=>JSON.parse(l)).filter(e=>e.timestamp>=decision.at&&['assistant','user','system'].includes(e.type)).map(e=>({type:e.type,timestamp:e.timestamp,uuid:e.uuid,subtype:e.subtype,message:e.message}));
+const blocks=events.flatMap(e=>(Array.isArray(e.message?.content)?e.message.content:[]).filter(c=>['tool_use','tool_result'].includes(c.type)).map(c=>({...c,at:e.timestamp})));
+const pairs=blocks.filter(c=>c.type==='tool_use').map(request=>({request,result:blocks.find(r=>r.type==='tool_result'&&r.tool_use_id===request.id)??null}));
+const successful=p=>p?.result&&!p.result.is_error;
+const matched=negative.pairs.map(n=>{const found=pairs.filter(p=>p.request.name===n.request.name&&JSON.stringify(p.request.input)===JSON.stringify(n.request.input));
+ // description是展示文本，不是工具操作参数；真实命令和Edit参数逐字核对。
+ const exact=found.length?found:pairs.filter(p=>p.request.name===n.request.name&&(n.request.name==='Bash'?p.request.input.command===n.request.input.command:JSON.stringify(p.request.input)===JSON.stringify(n.request.input)));
+ if(exact.length!==1||!successful(exact[0]))throw Error('缺唯一成功的同参放行对照：'+n.request.name);
+ return {negative_tool_id:n.request.id,positive_tool_id:exact[0].request.id,negative_error:n.result.is_error,positive_error:exact[0].result.is_error??false};});
+const status=pairs.find(p=>p.request.input?.command==='.trivium/bin/trivium status --topic m11-s12-capacity --json');
+const observed=JSON.parse(status?.result?.content??'{}');
+if(!observed.topics?.some(t=>t.topic===decision.topic&&t.open_gates.length===0&&t.approvals===1))throw Error('客户端尚未证明闸门关闭');
+const task=JSON.parse(fs.readFileSync(decision.fixture+'/.reviews/'+decision.topic+'/task.json'));
+if(!task.approvals.some(a=>a.run_id===decision.run_id&&a.decision==='approved'))throw Error('无本轮审批记录');
+const file_states=before.fixture_inputs.filter(f=>['src/stack.js','test/stack.test.js'].includes(f.file)).map(f=>({...f,current:hash(fs.readFileSync(decision.fixture+'/'+f.file))}));
+if(file_states.some(f=>f.sha256!==f.current)||fs.existsSync(decision.fixture+'/src/m11-hook-sentinel.txt'))throw Error('文件尚未恢复');
+const budgets=Object.fromEntries(['admission','review'].map(p=>[p,fs.readdirSync(plan.budgetRoot+'/ledger/'+p).filter(n=>/^reserved-\d+\.json$/.test(n)).length]));
+if(budgets.admission!==809||budgets.review!==387)throw Error('零增量批次预算变化');
+const dir=home+'/.trivium/evidence/m11-step12-20261012/calls';
+const calls=fs.readdirSync(dir).filter(n=>n.endsWith('-completed.json')).map(n=>JSON.parse(fs.readFileSync(dir+'/'+n))).filter(c=>c.at>=decision.at).sort((a,b)=>a.at.localeCompare(b.at));
+const approve=calls.find(c=>c.command.slice(2).join(' ')===decision.command_args.join(' '));
+if(approve?.code!==0||approve.approval_authorization?.run_id!==decision.run_id)throw Error('审批外壳退出或授权对账失败');
+saveEvidence(here+'/client-b1-unlock-results.json',{at:new Date().toISOString(),source,source_sha256:hash(raw),decision,task,pairs,matched,calls,file_states,sentinel_exists:false,budgets,batch_delta:{admission:0,review:0},events,scope:'真实客户端审批与写入放行通过；恢复字节；不改变Codex证据不足，不代表M11完成'});
+console.log(JSON.stringify({approval:approve.code,matched,file_states,budgets}));

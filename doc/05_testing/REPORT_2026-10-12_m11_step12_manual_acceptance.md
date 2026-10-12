@@ -88,3 +88,9 @@ Bob已明确批准按当前v3规范修正CASE4，见 [独立答复](./evidence/m
 Bob随后明确答复“批准本轮计划，继续放行复测”。[本轮批准回执](./evidence/m11-step12-20261012/approval-b1.json)绑定主题、plan阶段、run `20261012T134125Z`、r2计划hash及精确审批命令；它是人工决定，不能代替客户端approve成功证据。已发布 [审批与放行步骤](./evidence/m11-step12-20261012/b1-approval-and-unlock.md)，厂商CLI预计/硬限均0，失败即停；此刻仍待客户端实际执行。Codex evidence_ok=false继续保留，批准不等于合格三审或M11完成。
 
 本次增量的文档索引与演进台账检查30项通过、0失败、0跳过，见 [检查原始结果](./evidence/m11-step12-20261012/doc-check-hook-approval.json)。[CASE示例定向校验](./evidence/m11-step12-20261012/case43-validation.json)直接提取文档表达式，确认unknown显示未知、旧布尔显示旧版判定，并核对B1逐对来源。验收外壳语法检查通过；生产与安装产物未改动，无重建、重装或新增厂商调用。
+
+## B1真实审批与放行、B2发布
+
+2026-10-12 22:53至22:56（Asia/Singapore），Claude Code实际调用具名approve，退出0，正式status显示open_gates为空、approvals为1；审批原文包含工作树改动摘要。随后以闸门期同一Edit参数、同一Bash重定向命令复测，均成功；删除临时行与文件后，源码和测试文件hash均与B1准备快照相同，sentinel缺席。只读git log在闸门期及空闲期均放行。全部工具对、审批回执引用、外壳退出状态与文件hash见 [放行原始证据](./evidence/m11-step12-20261012/client-b1-unlock-results.json)。本小批两池增量均0，本步仍28/80；3.4的B部分、6.5和6.6取得本轮真实客户端证据，C/D仍待测。
+
+B2按原计划在同一主题审查已批准r2计划，以deepseek profile/deepseek-flash/high替换首轮Codex kimi路线，Gemini明确high模型并请求low effort以验证告警与真实回读，GLM切到GLM-5.3。路线来自原探针确认目录；两profile的provider与endpoint互异，只有配置声明，不等于服务端身份验证。准备核对安装bundle、28入口和业务文件未变，第一轮工件hash另存，未重建重装、未复制认证。见 [准备记录](./evidence/m11-step12-20261012/b2-preparation.json)、[批次清单](./evidence/m11-step12-20261012/client-batch-b2.json)和[客户端步骤](./evidence/m11-step12-20261012/client-steps-b2.md)。本批预计/硬限admission8、review6，累计817/393；首次失败、69、漂移或预算拒绝立即停止。本节只记录发布，尚不宣称B2执行成功；B1批准不能用于B2。

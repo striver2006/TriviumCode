@@ -1,0 +1,40 @@
+/** B2结论与真实客户端证据只读归集。成功/失败均保留，不覆盖既有证据。 */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import {spawnSync} from 'node:child_process';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const here=import.meta.dirname,home=os.homedir(),cfg=JSON.parse(fs.readFileSync(here+'/client-batch-b2.json'));
+const topic='m11-s12-capacity',fixture=cfg.fixture;
+const latest=JSON.parse(fs.readFileSync(fixture+'/.reviews/'+topic+'/task.json')).runs.filter(r=>r.stage==='plan').at(-1);
+if(latest?.rerun_index!==2)throw Error('B2尚未产生第二轮，或轮次不符');
+const id=latest.run_id;
+const runtime=home+'/.trivium/runs/trivium-m11-step12-20261012-cfe48502/'+id;
+const status=JSON.parse(fs.readFileSync(runtime+'/status.json'));
+if(['running','starting'].includes(status.phase))throw Error('B2仍运行，不归集为结束');
+const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+const capture=file=>{const content=fs.readFileSync(file,'utf8');return {source:file,sha256:hash(content),bytes:Buffer.byteLength(content),content};};
+const walk=dir=>fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(dir,e.name)):[path.join(dir,e.name)]);
+const meta=fixture+'/.reviews/'+topic+'/plan/_meta/run-'+id+'.json';
+const record=JSON.parse(fs.readFileSync(meta)),task=JSON.parse(fs.readFileSync(fixture+'/.reviews/'+topic+'/task.json'));
+// 当前闸门读全局state的正式status出口，不能拿task.json中的历史gate占位代替。
+const statusCommand=[fixture+'/.trivium/bin/trivium','status','--topic',topic,'--json'];
+const observed=spawnSync(statusCommand[0],statusCommand.slice(1),{cwd:fixture,encoding:'utf8'});
+if(observed.status!==0)throw Error('status核对失败：'+observed.stderr);
+const gateStatus=JSON.parse(observed.stdout);
+const atGate=gateStatus.topics.some(t=>t.topic===topic&&t.open_gates.some(g=>g.stage==='plan'&&g.state==='awaiting_approval'));
+if(record.status==='success'&&!atGate)throw Error('成功轮尚未到人工停点，等待客户端完成裁决');
+const raw=[];for(const side of ['gemini','glm','codex'])for(const name of ['stdout.jsonl','stdout.json','trace.json','rollout.jsonl']){const file=runtime+'/'+side+'/out/'+name;if(fs.existsSync(file))raw.push(capture(file));}
+const callsDir=home+'/.trivium/evidence/m11-step12-20261012/calls';
+const calls=fs.readdirSync(callsDir).filter(n=>n.endsWith('-completed.json')).map(n=>JSON.parse(fs.readFileSync(callsDir+'/'+n))).filter(c=>c.at>=cfg.at).sort((a,b)=>a.at.localeCompare(b.at));
+const plan=JSON.parse(fs.readFileSync(here+'/budget-plan.json'));
+const budget=Object.fromEntries(['admission','review'].map(p=>{const dir=plan.budgetRoot+'/ledger/'+p;const get=prefix=>fs.readdirSync(dir).filter(n=>n.startsWith(prefix)).map(n=>JSON.parse(fs.readFileSync(dir+'/'+n))).filter(r=>r.index>cfg.before[p]).sort((a,b)=>a.index-b.index);return[p,{before:cfg.before[p],reservations:get('reserved-'),completed:get('launch-')}];}));
+const obsDir=home+'/.trivium/evidence/m11-step12-20261012/observations';
+const observations=fs.readdirSync(obsDir).map(n=>JSON.parse(fs.readFileSync(obsDir+'/'+n))).filter(o=>o.at>=cfg.at);
+const sf=home+'/.claude/projects/-Users-chenzhenbo-Work-trivium-m11-step12-20261012/52c58d79-eb90-4953-89dc-6ebd5923112e.jsonl';const source=fs.readFileSync(sf,'utf8');
+const events=source.split('\n').filter(Boolean).flatMap(l=>{try{return[JSON.parse(l)];}catch{return[];}}).filter(e=>e.timestamp>=cfg.at&&['user','assistant','system'].includes(e.type)).map(e=>({type:e.type,timestamp:e.timestamp,uuid:e.uuid,sessionId:e.sessionId,subtype:e.subtype,message:e.message}));
+saveEvidence(here+'/client-b2-runs.json',{at:new Date().toISOString(),record,task,status,gate_observation:{command:statusCommand,code:observed.status,stdout:observed.stdout,stderr:observed.stderr},raw,worker_log:capture(runtime+'/worker.log'),archive:walk(fixture+'/.reviews/'+topic).map(capture),calls,budget});
+saveEvidence(here+'/client-b2-processes.json',{at:new Date().toISOString(),observations,argv_projection:true,scope:'只收具名项目进程的cwd及允许参数，不收令牌、prompt或隔离HOME凭据。'});
+saveEvidence(here+'/client-session-04.json',{at:new Date().toISOString(),source:sf,source_sha256:hash(source),events});
+console.log(JSON.stringify({id,status:record.status,awaiting_approval:atGate,calls:calls.length,events:events.length,budget:Object.fromEntries(Object.entries(budget).map(([p,v])=>[p,v.reservations.length]))}));
