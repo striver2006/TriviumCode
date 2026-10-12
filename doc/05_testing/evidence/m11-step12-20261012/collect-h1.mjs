@@ -1,0 +1,23 @@
+/** H1真实工具事件与写前阻止对账，不触碰受保护原件。 */
+import fs from 'node:fs';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const here=import.meta.dirname,home=os.homedir();
+const prep=JSON.parse(fs.readFileSync(here+'/h1-preparation.json'));
+const plan=JSON.parse(fs.readFileSync(here+'/budget-plan.json'));
+const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+const source=home+'/.claude/projects/-Users-chenzhenbo-Work-trivium-m11-step12-20261012/52c58d79-eb90-4953-89dc-6ebd5923112e.jsonl';
+const raw=fs.readFileSync(source,'utf8');
+const events=raw.split('\n').filter(Boolean).map(l=>JSON.parse(l)).filter(e=>e.timestamp>=prep.at&&['assistant','user','system'].includes(e.type)).map(e=>({type:e.type,timestamp:e.timestamp,uuid:e.uuid,subtype:e.subtype,message:e.message}));
+const blocks=events.flatMap(e=>(Array.isArray(e.message?.content)?e.message.content:[]).filter(c=>['tool_use','tool_result'].includes(c.type)).map(c=>({...c,at:e.timestamp})));
+const commands=[...fs.readFileSync(here+'/client-hook-h1-steps.md','utf8').matchAll(/```bash\n([\s\S]*?)\n```/g)].map(m=>m[1]);
+const pairs=commands.map(command=>{const hits=blocks.filter(b=>b.type==='tool_use'&&b.name==='Bash'&&b.input.command===command);return {command,attempts:hits.length,request:hits[0]??null,result:blocks.find(b=>b.type==='tool_result'&&b.tool_use_id===hits[0]?.id)??null};});
+if(pairs.some(p=>!p.result))throw Error('H1尚无全部六项结果，不补写成功');
+const files=prep.files.map(f=>({...f,exists:fs.existsSync(prep.fixture+'/'+f.file),actual_sha256:fs.existsSync(prep.fixture+'/'+f.file)?hash(fs.readFileSync(prep.fixture+'/'+f.file)):null,actual_mode:fs.existsSync(prep.fixture+'/'+f.file)?fs.statSync(prep.fixture+'/'+f.file).mode&0o777:null,backup_sha256:hash(fs.readFileSync(f.backup))}));
+const dir=home+'/.trivium/evidence/m11-step12-20261012/calls';
+const calls=fs.readdirSync(dir).filter(n=>n.endsWith('-completed.json')).map(n=>JSON.parse(fs.readFileSync(dir+'/'+n))).filter(c=>c.at>=pairs[0].request.at&&c.at<=pairs.at(-1).result.at&&c.command.includes('hook-pre-bash')).sort((a,b)=>a.at.localeCompare(b.at));
+const budgets=Object.fromEntries(['admission','review'].map(p=>[p,fs.readdirSync(plan.budgetRoot+'/ledger/'+p).filter(n=>/^reserved-\d+\.json$/.test(n)).length]));
+const checks={six_once:pairs.every(p=>p.attempts===1),six_pretool_errors:pairs.every(p=>p.result.is_error&&p.result.content.includes('PreToolUse:Bash hook error: 禁止用 Bash 改动编排器独占的文件')),six_hook_exit2:calls.length===6&&calls.every(c=>c.code===2),files_unchanged:files.every(f=>f.sha256===f.actual_sha256&&f.sha256===f.backup_sha256&&f.mode===f.actual_mode),zero_vendor_delta:budgets.admission===prep.budget_before.admission&&budgets.review===prep.budget_before.review};
+saveEvidence(here+'/client-h1-results.json',{at:new Date().toISOString(),source,source_sha256:hash(raw),pairs,calls,files,budgets,checks,passed:Object.values(checks).every(Boolean),events,scope:'仅6.1～6.4真实客户端实测，不代替6.7或剧本5'});
+console.log(JSON.stringify({checks,budgets,passed:Object.values(checks).every(Boolean)}));

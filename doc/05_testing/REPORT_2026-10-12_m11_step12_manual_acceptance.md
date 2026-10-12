@@ -112,3 +112,11 @@ CASE11精确指定轮：两侧tier=null、tier_source=override；Gemini effort�
 随后Bob明确答复“批准本轮计划，保持正式verify判据”。[独立批准](./evidence/m11-step12-20261012/approval-b2.json)绑定本轮run和r3 hash；Codex主会话通过预算外壳执行具名approve，退出0，正式status为open_gates空、approvals=2，理由原文写入审批记录，见 [审批结果](./evidence/m11-step12-20261012/b2-approval-result.json)。该次载体为Codex主会话CLI（L2），不算新增Claude UI证据；B1已有真实UI入口及放行对照。未开始业务实现、未重开三审、厂商预算零增量。
 
 已发布[H1客户端步骤](./evidence/m11-step12-20261012/client-hook-h1-steps.md)，仅六次真实Bash负对照补6.1～6.4，厂商CLI预计/硬限0；目标四文件的原字节备份位于归档外，[准备清单](./evidence/m11-step12-20261012/h1-preparation.json)保留hash与权限。预期Hook写前拦截；意外放行立即停，不由模型自行清理/恢复。此处只记录准备，尚不记通过。B2证据增量的文档索引/台账检查30项通过、0失败、0跳过，见 [检查原始结果](./evidence/m11-step12-20261012/doc-check-b2-results.json)。
+
+## 2026-10-13续跑：H1核验与H2准备
+
+[H1真实工具证据](./evidence/m11-step12-20261012/client-h1-results.json)确认六项各发起一次，六个PreToolUse:Bash结果均为编排器独占文件禁令，对应六个hook-pre-bash调用全部退出2；四个目标的hash和权限与归档外备份一致，未执行删除、覆盖或恢复。6.1～6.4已取得本轮真实客户端证据，预算仍817/393，本步42/80。该结论不代替剧本5完整性负对照或6.7。
+
+[H2准备](./evidence/m11-step12-20261012/h2-preparation.json)与[逐步操作](./evidence/m11-step12-20261012/client-hook-h2-steps.md)已发布：Bob在系统终端仅临时取消本项目wrapper执行权限，Claude Code真实发起Edit、Bash及Stop，之后Bob在终端恢复+x。厂商CLI预计/硬限0。需逐个确认实际Hook事件及恢复后的hash/权限；看不到的项记未测，恢复核对前不启新批次。
+
+本地日期跨到10月13日，验收落盘助手原固定首日日期已改为不传date，交给同一生产archive.ts的localDate默认值；生产代码、安装副本和历史工件均未改动。语法检查退出0、生产命名函数生成本地当日名称，零归档写入、零厂商启动，见[定向核验](./evidence/m11-step12-20261012/archive-date-followup.json)。这是验收助手的跨日修正，不触发生产重建、重装或准入重跑。

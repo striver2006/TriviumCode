@@ -13,4 +13,5 @@ const layout={archiveRoot:path.join(process.cwd(),'.reviews'),topic:input.topic}
 const task=await readTask(layout),claimed=task?.drivers?.[input.stage]?.driver;
 if(['plan','bug'].includes(input.stage)&&claimed!==input.driver)throw Error('先认领本阶段');
 if(input.role!==input.driver)throw Error('只能产出本轮Driver工件');
-console.log(JSON.stringify(await writeArtifact({layout,stage:input.stage,writer:'driver',driver:input.driver,role:input.role,kind:input.kind??null,rerunIndex:input.rerunIndex,content:input.content,date:'2026-10-12'})));
+// 跨日继续验收时由生产archive.ts的localDate命名，不固定为首日日期；旧件不改写。
+console.log(JSON.stringify(await writeArtifact({layout,stage:input.stage,writer:'driver',driver:input.driver,role:input.role,kind:input.kind??null,rerunIndex:input.rerunIndex,content:input.content})));

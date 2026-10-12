@@ -29,13 +29,13 @@
 | 5 | 5.3 | 改动内容同样拦下，并报出「记录 xxx，现为 yyy」 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | 尚无本轮满足判据的证据 | 未测 |
 | 5 | 5.4 | 恢复后立即放行 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | 尚无本轮满足判据的证据 | 未测 |
 | 5 | 5.5 | 从未跑过审查的仓库**不**被误拦 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | 尚无本轮满足判据的证据 | 未测 |
-| 6 | 6.1 | 改角色后缀文件（删 / `sed -i`）任何时候都被拦 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | hook-cli.json | 真实归档CLI直调通过；客户端集成未测 |
-| 6 | 6.2 | 改归档 `_meta/` 或 `task.json` 任何时候都被拦 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | hook-cli.json | 真实归档CLI直调通过；客户端集成未测 |
-| 6 | 6.3 | 删 wrapper 或 `.trivium/` 的状态与锁被拦 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | hook-cli.json | 真实归档CLI直调通过；客户端集成未测 |
-| 6 | 6.4 | heredoc 藏起来的写入同样被拦（判定在未剥 heredoc 的原文上做） | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | hook-cli.json | 真实归档CLI直调通过；客户端集成未测 |
+| 6 | 6.1 | 改角色后缀文件（删 / `sed -i`）任何时候都被拦 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | H1厂商CLI实际0，当前本步42/80 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | client-h1-results.json, h1-preparation.json | 本轮真实Claude Code工具调用与Hook退出2对账通过；原件hash/权限不变 |
+| 6 | 6.2 | 改归档 `_meta/` 或 `task.json` 任何时候都被拦 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | H1厂商CLI实际0，当前本步42/80 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | client-h1-results.json, h1-preparation.json | 本轮真实Claude Code工具调用与Hook退出2对账通过；原件hash/权限不变 |
+| 6 | 6.3 | 删 wrapper 或 `.trivium/` 的状态与锁被拦 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | H1厂商CLI实际0，当前本步42/80 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | client-h1-results.json, h1-preparation.json | 本轮真实Claude Code工具调用与Hook退出2对账通过；原件hash/权限不变 |
+| 6 | 6.4 | heredoc 藏起来的写入同样被拦（判定在未剥 heredoc 的原文上做） | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | H1厂商CLI实际0，当前本步42/80 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | client-h1-results.json, h1-preparation.json | 本轮真实Claude Code工具调用与Hook退出2对账通过；原件hash/权限不变 |
 | 6 | 6.5 | 普通业务文件的写命令：闸门期拦、空闲放行 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | client-hook-gate-results.json, client-b1-unlock-results.json | 本轮真实客户端闸门/空闲成对实跑通过 |
 | 6 | 6.6 | 只读命令任何时候不误伤 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | client-hook-gate-results.json, client-b1-unlock-results.json | 本轮真实客户端闸门/空闲成对实跑通过 |
-| 6 | 6.7 | 删掉 wrapper 后再调任意工具，四个拦截型 Hook 报「护栏失效」而**不是**静默放行 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | 尚无本轮满足判据的证据 | 未测 |
+| 6 | 6.7 | 删掉 wrapper 后再调任意工具，四个拦截型 Hook 报「护栏失效」而**不是**静默放行 | 真实归档上的Hook直调 + 真实客户端Hook事件 | gemini,glm；需要三审时显式选集合 | H2厂商CLI预计/硬限0 | 客户端操作；破坏性归档负对照由用户在隔离验收副本执行 | h2-preparation.json, client-hook-h2-steps.md | H2步骤已发布，待真实客户端故障对照和恢复核验 |
 | 7 | 7.1 | 原稿、修订件（或应答件）的后缀 = 当轮 Driver，front-matter `role` 同 | ZCode与Codex真实客户端 | ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；新运行审批由Bob逐次决定 | 尚无本轮满足判据的证据 | 未测 |
 | 7 | 7.2 | `run.json.driver` = 该家、`driver_enabled: true`、`driver_guard_level` 与 QUICKSTART §5.2 的表一致 | ZCode与Codex真实客户端 | ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；新运行审批由Bob逐次决定 | 尚无本轮满足判据的证据 | 未测 |
 | 7 | 7.3 | 审核者集合不含当轮 Driver（缺省即另外两家） | ZCode与Codex真实客户端 | ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver | 按后续具名批次发布；本步40/40、总80已获批 | 客户端操作；新运行审批由Bob逐次决定 | 尚无本轮满足判据的证据 | 未测 |
