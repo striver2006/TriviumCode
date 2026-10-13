@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-12T23:05:50.785615+00:00",
+  "at": "2026-10-13T13:36:26.135478+00:00",
   "source": "doc/05_testing/CASE_manual_acceptance.md",
   "source_sha256": "d6b96362ced49d628c38af4c286d82a18e0941958b913cc63d06dd28ccb61359",
   "rows": [
@@ -217,9 +217,10 @@
       "estimated_starts": "B已实跑；C实耗6/4；D另批发布",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
-        "client-hook-gate-results.json"
+        "client-hook-gate-results.json",
+        "client-c-gate-results.json"
       ],
-      "status": "部分：B闸门真实Edit被写前拦截，Hook退2且提示审批/放弃；C/D待测"
+      "status": "部分：B/C真实Edit被写前拦截且提示审批/拒绝/放弃；D待测"
     },
     {
       "scenario": 3,
@@ -251,9 +252,10 @@
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "approval-b1.json",
-        "client-b1-unlock-results.json"
+        "client-b1-unlock-results.json",
+        "approval-c.json"
       ],
-      "status": "部分：B真实审批及业务写入解锁通过；C/D待测"
+      "status": "部分：B审批放行通过；C已获当次批准，真实审批放行待测；D待测"
     },
     {
       "scenario": 3,

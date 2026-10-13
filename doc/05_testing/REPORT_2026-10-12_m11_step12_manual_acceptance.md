@@ -148,3 +148,13 @@ C于2026-10-13 06:57启动code第2轮，run `20261012T225703Z`，success/full，
 本批实际admission6/review4，当前823/397，本步28/24=52/80，剩余16/12。[C闸门实测步骤](./evidence/m11-step12-20261012/client-hook-c-gate-steps.md)已发布，预计/硬限零厂商CLI；[本轮审批提案](./evidence/m11-step12-20261012/c-approval-proposal.md)尚未获批。3.1及3.3的C部分已有真实证据；3.2/3.4仍待拦截、当次审批及放行。M11未完成，受限准入原边界不变。
 
 本批两个新增脚本语法检查与30项文档索引/台账检查通过，证据脱敏扫描零命中，见[本轮检查](./evidence/m11-step12-20261012/doc-check-c-results.json)。未重建或重装，安装与准入指纹消费边界不变。
+
+## C闸门负对照核实与当次批准
+
+[C真实闸门事件](./evidence/m11-step12-20261012/client-c-gate-results.json)确认status仍awaiting_approval、approvals=0，唯一一次Edit被PreToolUse写前拦截并提示批准/拒绝/放弃。源码及Codex Hook配置hash未变，厂商CLI增量0，3.2的C部分通过。Bob当次明确答复“批准本轮应答，完成负对照后放行复测”，[独立批准回执](./evidence/m11-step12-20261012/approval-c.json)绑定run 20261012T225703Z及应答hash；仅授权本轮审批与放行复测。真实客户端[两步操作](./evidence/m11-step12-20261012/c-approval-and-unlock.md)已发布，尚不宣称实际审批成功。C的Hook暂缓项、来源unknown与Codex L2保持。
+
+等待客户端期间，主会话仅以内存对象实际复现容量非法输入，完整Node命令/退出0/输出/source hash保存在[D根因辅助复现](./evidence/m11-step12-20261012/d-local-reproduction.json)。非法类型/数值被构造器接受，部分push触发隐式转换或延迟异常；zero合法且push拒绝为预期。不修改业务文件，不替代正式verify。D准备脚本与[客户端步骤草案](./evidence/m11-step12-20261012/client-steps-d.md)已写，但未执行prepare-d、未发布新批次、未启动审查；C放行核实是其前置。
+
+本次续跑已再次跨过认证TTL，D草案预留admission6/review4，44/36获批总额不变；按余下计划最坏累计44/35=79，剩1次review。后续缓存若再次失效，须按真实余量停止，不跨池或自动增加总额度。
+
+本批三个验收脚本语法检查、30项文档索引/台账检查及脱敏扫描通过，见[检查原件](./evidence/m11-step12-20261012/doc-check-c-gate-results.json)。本步预算仍28/24=52/80，生产与安装未改。

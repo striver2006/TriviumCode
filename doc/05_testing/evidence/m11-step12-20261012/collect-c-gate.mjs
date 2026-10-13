@@ -1,0 +1,26 @@
+/** C闸门真实工具对与零增量核验；不修改夹具与归档。 */
+import fs from 'node:fs';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const here=import.meta.dirname;
+const prep=JSON.parse(fs.readFileSync(here+'/c-gate-preparation.json'));
+const plan=JSON.parse(fs.readFileSync(here+'/budget-plan.json'));
+const source=os.homedir()+'/.claude/projects/-Users-chenzhenbo-Work-trivium-m11-step12-20261012/52c58d79-eb90-4953-89dc-6ebd5923112e.jsonl';
+const raw=fs.readFileSync(source,'utf8'),hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+const events=raw.split('\n').filter(Boolean).map(l=>JSON.parse(l)).filter(e=>e.timestamp>=prep.at);
+const blocks=events.flatMap(e=>(Array.isArray(e.message?.content)?e.message.content:[]).filter(c=>['tool_use','tool_result'].includes(c.type)).map(c=>({...c,at:e.timestamp})));
+const pairs=blocks.filter(c=>c.type==='tool_use').map(request=>({request,result:blocks.find(r=>r.type==='tool_result'&&r.tool_use_id===request.id)??null}));
+const edits=pairs.filter(p=>p.request.name==='Edit'&&p.request.input.new_string?.includes('// M11 C gate sentinel'));
+if(edits.length!==1||!edits[0].result?.is_error||!String(edits[0].result.content).includes('code 阶段闸门未审批'))throw Error('缺唯一C闸门写前拦截');
+const status=pairs.find(p=>p.request.input?.command==='.trivium/bin/trivium status --topic m11-s12-stack --json'&&p.request.at<edits[0].request.at);
+const observed=JSON.parse(status?.result?.content??'{}');
+if(!observed.topics?.some(t=>t.topic==='m11-s12-stack'&&t.open_gates.some(g=>g.stage==='code'&&g.state==='awaiting_approval')&&t.approvals===0))throw Error('缺实际status前提');
+const task=JSON.parse(fs.readFileSync(prep.fixture+'/.reviews/m11-s12-stack/task.json'));
+if(task.runs.filter(r=>r.stage==='code').at(-1)?.run_id!==prep.run_id)throw Error('本轮改变');
+const files=[prep.source_before,prep.hook_config].map(f=>({file:f.file,before:f.sha256,after:hash(fs.readFileSync(f.file))}));
+if(files.some(f=>f.before!==f.after))throw Error('源文件或Hook配置变化');
+const budget=Object.fromEntries(['admission','review'].map(p=>[p,fs.readdirSync(plan.budgetRoot+'/ledger/'+p).filter(n=>/^reserved-\d+\.json$/.test(n)).length]));
+if(Object.keys(budget).some(p=>budget[p]!==prep.budget_before[p]))throw Error('零配额批次出现增量');
+saveEvidence(here+'/client-c-gate-results.json',{at:new Date().toISOString(),source,source_sha256:hash(raw),run_id:prep.run_id,pairs:[status,...edits],files,budget,batch_delta:{admission:0,review:0},passed:true,scope:'C真实闸门Edit写前拦截通过；仅证明3.2的C部分，不替代审批后放行'});
+console.log(JSON.stringify({run_id:prep.run_id,passed:true,budget,files}));

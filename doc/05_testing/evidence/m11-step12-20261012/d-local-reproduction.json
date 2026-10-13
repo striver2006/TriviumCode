@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-13T13:34:25.127Z",
+  "command": [
+    "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+    "--input-type=module",
+    "-e",
+    "import {BoundedStack} from './src/stack.js';\nconst cases=[['negative',-1],['fraction',1.5],['NaN',NaN],['Infinity',Infinity],['string','2'],['undefined',undefined],['Symbol',Symbol('capacity')],['bigint',2n],['zero',0]];\nfor(const [name,value] of cases){const row={name,type:typeof value};try{const s=new BoundedStack(value);row.constructed=true;try{s.push('a');s.push('b');row.two_pushes=true;}catch(e){row.push_error={name:e.name,message:e.message};}row.size=s.size;}catch(e){row.constructed=false;row.constructor_error={name:e.name,message:e.message};}console.log(JSON.stringify(row));}"
+  ],
+  "cwd": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012",
+  "exit_code": 0,
+  "stdout": "{\"name\":\"negative\",\"type\":\"number\",\"constructed\":true,\"push_error\":{\"name\":\"RangeError\",\"message\":\"stack full\"},\"size\":0}\n{\"name\":\"fraction\",\"type\":\"number\",\"constructed\":true,\"two_pushes\":true,\"size\":2}\n{\"name\":\"NaN\",\"type\":\"number\",\"constructed\":true,\"two_pushes\":true,\"size\":2}\n{\"name\":\"Infinity\",\"type\":\"number\",\"constructed\":true,\"two_pushes\":true,\"size\":2}\n{\"name\":\"string\",\"type\":\"string\",\"constructed\":true,\"two_pushes\":true,\"size\":2}\n{\"name\":\"undefined\",\"type\":\"undefined\",\"constructed\":true,\"two_pushes\":true,\"size\":2}\n{\"name\":\"Symbol\",\"type\":\"symbol\",\"constructed\":true,\"push_error\":{\"name\":\"TypeError\",\"message\":\"Cannot convert a Symbol value to a number\"},\"size\":0}\n{\"name\":\"bigint\",\"type\":\"bigint\",\"constructed\":true,\"two_pushes\":true,\"size\":2}\n{\"name\":\"zero\",\"type\":\"number\",\"constructed\":true,\"push_error\":{\"name\":\"RangeError\",\"message\":\"stack full\"},\"size\":0}\n",
+  "stderr": "",
+  "source_sha256": "2509255bf743fc4f1bece7867ee60862d58e485eb67df9a06f55f570fc49ecd2",
+  "scope": "仅内存对象复现容量非法输入；零文件修改、零厂商CLI，不替代正式verify或真实命令D验收"
+}
