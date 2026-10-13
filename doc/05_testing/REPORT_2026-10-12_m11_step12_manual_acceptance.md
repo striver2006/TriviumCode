@@ -158,3 +158,13 @@ C于2026-10-13 06:57启动code第2轮，run `20261012T225703Z`，success/full，
 本次续跑已再次跨过认证TTL，D草案预留admission6/review4，44/36获批总额不变；按余下计划最坏累计44/35=79，剩1次review。后续缓存若再次失效，须按真实余量停止，不跨池或自动增加总额度。
 
 本批三个验收脚本语法检查、30项文档索引/台账检查及脱敏扫描通过，见[检查原件](./evidence/m11-step12-20261012/doc-check-c-gate-results.json)。本步预算仍28/24=52/80，生产与安装未改。
+
+## C真实审批放行闭环与D发布
+
+2026-10-13 21:38～21:39（Asia/Singapore），原Claude Code会话实际审批退出0，status显示open_gates空、approvals=1。同一组Edit参数由闸门期被拦变为审批后成功；随后仅删除sentinel行，源码、测试及Codex Hook配置hash均与准备快照一致。[C放行原始证据](./evidence/m11-step12-20261012/client-c-unlock-results.json)保存工具对、审批外壳回执与run绑定，厂商CLI增量0。首次归集时工具结果尚未齐备，退出1的[早期采样记录](./evidence/m11-step12-20261012/c-unlock-early-collection.json)保留；齐备后不改脚本重跑通过，未重复客户端动作。3.1～3.4的C部分均完成，D部分仍未测。
+
+C闭环后，[D批次](./evidence/m11-step12-20261012/client-batch-d.json)与[准备核对](./evidence/m11-step12-20261012/d-preparation.json)已发布：既有capacity主题的bug第1轮，Claude/Qwen主攻，Gemini high模型请求low effort、GLM-5.3，预计/硬限admission6、review4，累计上限829/401。源码复现hash、安装运行时及四目标28入口一致；正式status无未关闭闸门。仅读取原配置，不刷新认证、不重建重装。新的只读采样器等待实际运行；[两步客户端操作](./evidence/m11-step12-20261012/client-steps-d.md)已交Bob，尚不宣称D启动或成功。
+
+D仅起草和审查根因，不实施修复，裁决后必须停awaiting_approval。首个失败、69、漂移或预算拒绝即停，不重试；C的批准不移用。当前仍823/397、本步28/24=52/80，余16/12。受限准入边界与Codex L2不变，M11仍未完成。
+
+本批新增归集脚本语法检查、30项文档索引/台账检查及脱敏扫描通过，见[本批检查原件](./evidence/m11-step12-20261012/doc-check-c-unlock-d-results.json)。
