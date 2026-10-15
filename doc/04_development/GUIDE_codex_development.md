@@ -24,9 +24,28 @@
 工具身份与产品内置缺省 Driver 沿用注册表；供应商路线、模型与认证方式分别配置并留痕。
 
 2026-10-10按用户要求，本仓 Codex 默认使用官方配置：`agents.codex.profile: null`，
-default/flash/pro 各自的 plan/code/bug 分别为 `gpt-6.1-sol`、`gpt-6-luna`、`gpt-6-astra`，不新增 effort 默认值。
+default/flash/pro 各自的 plan/code/bug 分别为 `gpt-6.1-sol`、`gpt-6-luna`、`gpt-6-astra`，当时未新增 effort 默认值。
 显式 null 覆盖产品内置供应商默认；本机官方配置与登录不修改。单次选择第三方时仍须同时指定
 `--profile-codex <供应商>` 与对应 `--model-codex <模型>`。
+
+2026-10-16 按用户要求补齐共享配置中的 Codex effort 分档：default 为 Sol medium、flash 为 Luna medium、
+pro 为 Astra high，三个阶段一致。这样请求值不再继承本机基底的 `model_reasoning_effort: high`；
+不修改用户全局配置，生效值仍为 `null` + `unverified`，配置请求不等于服务端回读。
+这些档位只在 Codex 被选为审核者时生效，不改变当前主攻会话。
+
+Gemini default 保持 `gemini-3.8-flash-high`，flash 各阶段引用新增的 medium 档（`model: gemini-3.8-flash-medium`），
+pro 各阶段引用新增的 high 档（`model: gemini-4-argon-high`）。两个档位由模型名后缀承载强度，
+不另传 effort，也不继承旧 Agent 阶段级 high。本次刷新 Antigravity 探针通过，CLI 为 1.3.6，
+目录已列出 Argon 的 low/medium/high 三种后缀变体；Argon high 全阶段预检及实际探活通过（13 秒）后，
+按用户要求切换 pro。通用 doctor 的读文件探针使用 Flash low，不代表 Argon 已完成模型专属的只读与真实审查验收，
+这些验收仍未测，也不能只按模型代数判断强弱。
+GLM 保持 default/pro 使用 `GLM-5.3`、flash 使用 `GLM-5.3-Flash`；
+当前 ZCode 适配器没有 effort 控制入口，不新增该字段。
+
+本批 Codex 三档均通过全阶段预检及新的组合探活；Gemini flash 的 medium 档与切换后的 pro Argon high 档
+也均通过全阶段预检及实际探活。31 项档位解析测试与三档全阶段模型/effort/参数构造断言通过。
+Argon 的实际模型与 effort 生效回读本次未取得，模型专属文件读取、只读及完整审查验收仍未测；
+预检中的通用只读能力沿用 doctor 的 Flash low 探针，不能将其归为 Argon 的验收结果。
 
 2026-10-09 初始预检中 Claude 官方路线返回组织停用错误，计划阶段曾临时采用 Gemini、GLM 两审。
 代码阶段曾提前使用 Claude、Gemini、GLM 三审，完成标准复核后曾恢复本机临时两审覆盖，
