@@ -1,0 +1,265 @@
+--- /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/common.mjs	2026-10-16 00:08:13
++++ /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/common.mjs	2026-10-16 05:44:11
+@@ -1,58 +1,58 @@
+-/** S5后续准备的公共只读检查。无顶层初始化、Hook或厂商调用。 */
++/** 新版采集公共校验；未激活，不改变旧18文件或旧授权。 */
+ import fs from 'node:fs';
+ import path from 'node:path';
+-import crypto from 'node:crypto';
+ import assert from 'node:assert/strict';
+-export {saveEvidence} from '../../../../../../scripts/agent-access-evidence.mjs';
+-export const here=import.meta.dirname,base=path.resolve(here,'../..'),repo=path.resolve(here,'../../../../../..');
+-export const read=f=>JSON.parse(fs.readFileSync(f,'utf8'));
+-export const digest=b=>crypto.createHash('sha256').update(b).digest('hex');
+-export const hash=f=>digest(fs.readFileSync(f));
+-export function inventory(dir,rel='') {
+- assert(fs.lstatSync(dir).isDirectory()&&!fs.lstatSync(dir).isSymbolicLink());
+- return fs.readdirSync(path.join(dir,rel)).sort().flatMap(n=>{
+-  const p=rel?rel+'/'+n:n,f=path.join(dir,p),s=fs.lstatSync(f);
+-  assert(!s.isSymbolicLink(),'拒绝软链接：'+p);
+-  if(s.isDirectory())return inventory(dir,p);
+-  assert(s.isFile(),'拒绝特殊文件：'+p);
+-  return [{path:p,sha256:hash(f),mode:s.mode&0o777,bytes:s.size}];
+- });
++import {read,hash,digest,inventory,budget,fixture,assertSameExcept,phases,toolInput,saveEvidence} from '../s5-client-plan-20261016-01/common.mjs';
++import {ledgerSnapshot,verifyBudgetBinding} from './budget-binding.mjs';
++export {read,hash,digest,inventory,budget,fixture,assertSameExcept,phases,toolInput,saveEvidence};
++export const here=import.meta.dirname,oldHere=path.resolve(here,'../s5-client-plan-20261016-01'),base=path.resolve(here,'../..'),repo=path.resolve(here,'../../../../../..');
++export function assertDeployment(){
++ const d=read(here+'/deployment.json');
++ assert.equal(d.enabled,true,'CAPTURE_NOT_ACTIVATED');
++ assert.equal(d.actual_extension_host_coverage_verified,true,'PARENT_COVERAGE_UNVERIFIED');
++ assert(typeof d.coverage_evidence==='string'&&path.isAbsolute(d.coverage_evidence));
++ assert.equal(hash(d.coverage_evidence),d.coverage_evidence_sha256);
++ const proof=read(d.coverage_evidence);
++ assert.equal(proof.actual_extension_host_tested,true);assert.equal(proof.all_launch_boundaries_pre_reserved,true);
++ assert.equal(proof.scope,'real-isolated-extension-host');
+ }
+-export function budget() {
+- const p=read(base+'/budget-plan.json');
+- return Object.fromEntries(['admission','review'].map(k=>[k,fs.readdirSync(p.budgetRoot+'/ledger/'+k).filter(n=>/^reserved-\d+\.json$/.test(n)).length]));
+-}
+-export function verifyAnchors(p) {
+- assert.deepEqual(budget(),p.budget_before,'预算变化，需重新审阅批次');
+- for(const x of p.anchors)assert.equal(hash(x.file),x.sha256,'指纹变化：'+x.file);
+- assert.deepEqual(inventory(p.source),p.original_files,'原工程发生变化，停止');
+- assert.deepEqual(inventory(p.root+'/backup'),p.original_files,'备份发生变化，停止');
+-}
+-export function fixture(p,name) {
+- assert(['archive','empty'].includes(name));
+- const dir=p.fixtures[name];assert.equal(fs.realpathSync(dir),dir);return dir;
+-}
+-export function authorization(file,scope) {
+- // 本轮只准备；审批回执不在本脚本生成，不以传入旗标自我授权。
+- assert(fs.existsSync(file),'未取得具名授权：'+file);
+- const a=read(file);
+- assert.equal(a.decision,'approved');assert.equal(a.scope,scope);
+- assert(typeof a.user_instruction==='string'&&a.user_instruction.length>0);
+- assert.equal(a.preparation_sha256,hash(here+'/preparation.json'));
+- assert.equal(a.proposal_sha256,hash(here+'/proposal-manifest.json'));
+- for(const x of read(here+'/proposal-manifest.json').files)assert.equal(hash(here+'/'+x.file),x.sha256,'方案发布后文件变化');
+- assert.deepEqual(a.vendor_increment,{admission:0,review:0});
++export function authorization(file,scope){
++ assertDeployment();
++ const a=read(file);assert.equal(a.decision,'approved');assert.equal(a.scope,scope);
++ assert(typeof a.user_instruction==='string'&&a.user_instruction.trim());
++ assert.equal(a.old_proposal_sha256,hash(oldHere+'/proposal-manifest.json'));
++ for(const x of read(oldHere+'/proposal-manifest.json').files)assert.equal(hash(oldHere+'/'+x.file),x.sha256);
++ assert.equal(a.candidate_manifest_sha256,hash(here+'/candidate-manifest.json'));
++ for(const x of read(here+'/candidate-manifest.json').files)assert.equal(hash(here+'/'+x.file),x.sha256);
++ assert.deepEqual(a.hook_vendor_increment,{admission:0,review:0});
++ assert.equal(a.budget_binding_sha256,hash(here+'/launch-binding.json'));
++ assert(typeof a.batch_id==='string'&&a.batch_id.length>0);
++ assert(Array.isArray(a.allowed_starts));assert.deepEqual(a.expected_counts,read(here+'/launch-binding.json').expected_counts);
+  return a;
+ }
+-export function assertSameExcept(a,b,paths) {
+- const omit=v=>v.filter(x=>!paths.includes(x.path));
+- assert.deepEqual(omit(a),omit(b),'预期范围外发生变化');
++export function verifyAnchors(p){
++ // 不再把准备时838/401当新会话运行时的绝对相等条件；不可变文件仍按旧事实核验。
++ for(const x of p.anchors)assert.equal(hash(x.file),x.sha256);
++ assert.deepEqual(inventory(p.source),p.original_files);assert.deepEqual(inventory(p.root+'/backup'),p.original_files);
++ assert.deepEqual(inventory(p.root+'/empty-backup'),p.empty_files);
++ const auth=authorization(here+'/client-authorization.json','s5-client-v2');
++ const binding=read(here+'/launch-binding.json'),plan=read(base+'/budget-plan.json');
++ assert.equal(binding.batch_id,auth.batch_id);
++ const current=ledgerSnapshot(plan.budgetRoot),baseline=read(here+'/ledger-baseline.json');
++ verifyBudgetBinding(binding,baseline,current);
++ assert(current.counts.admission<=plan.absolute_step_caps.admission&&current.counts.review<=plan.absolute_step_caps.review);
++ assert(current.counts.admission-plan.baseline.admission.used+current.counts.review-plan.baseline.review.used<=80);
++ assert.equal(auth.allowed_starts.length,binding.driver_starts.length);
++ for(const s of binding.driver_starts){
++  assert.equal(hash(s.start_receipt),s.start_receipt_sha256);const r=read(s.start_receipt);
++  assert.equal(r.kind,'parent-pre-spawn.v2');assert.equal(r.phase,'spawned');assert.equal(r.batch_id,auth.batch_id);
++  assert.equal(r.reserved_sha256,s.reserved_sha256);assert.equal(r.pool,s.pool);assert.equal(r.index,s.index);
++  assert(Number.isSafeInteger(r.pid)&&r.pid>0&&Number.isSafeInteger(r.parent_pid)&&r.parent_pid>0);
++  assert(typeof r.lstart==='string'&&r.lstart.length>0);assert.equal(r.pre_reserved,true);
++  assert(auth.allowed_starts.some(x=>x.pool===s.pool&&x.index===s.index&&x.entry_sha256===r.entry_sha256&&x.cwd===r.cwd));
++ }
+ }
+-export const phases={baseline:{fixture:'archive',exit:0},missing:{fixture:'archive',exit:2},
+- 'restored-missing':{fixture:'archive',exit:0},changed:{fixture:'archive',exit:2},
+- 'restored-changed':{fixture:'archive',exit:0},empty:{fixture:'empty',exit:0}};
+-export function toolInput(p,phase) {
+- assert(Object.hasOwn(phases,phase));
+- return {command:'GIT_INDEX_FILE='+p.root+'/'+phases[phase].fixture+'.index git -c core.quotePath=false --no-optional-locks commit --dry-run',
+- description:'M11-S5N01 '+phase+' dry-run'};
++export function expectedBaseline(p,name){
++ const baseline=read(oldHere+'/setup-'+name+'-after.json').files;
++ return baseline.map(x=>x.path==='.trivium/bin/trivium'?{...x,sha256:hash(here+'/proposed-wrapper.sh'),bytes:fs.statSync(here+'/proposed-wrapper.sh').size,mode:0o755}:x);
+ }
+
+--- /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/runtime.mjs	2026-10-16 00:12:00
++++ /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/runtime.mjs	2026-10-16 05:45:47
+@@ -1,26 +1,31 @@
+-/** 未生效的具名夹具采集入口。只允许正式init或现有五个Hook，不开放审核/审批等命令。 */
++/** 未生效v2采集入口。仅现有五个Hook，不提供setup/init、审核或审批。 */
+ import fs from 'node:fs';
+ import crypto from 'node:crypto';
+ import assert from 'node:assert/strict';
+ import {spawn} from 'node:child_process';
+-import {here,base,repo,read,hash,budget,verifyAnchors,authorization,saveEvidence,digest} from './common.mjs';
++import {here,oldHere,base,repo,read,hash,budget,verifyAnchors,authorization,saveEvidence,digest} from './common.mjs';
+ import {primaryLoaded} from '../../../../../../scripts/agent-access-evidence.mjs';
+-const p=read(here+'/preparation.json'),args=process.argv.slice(2),cwd=fs.realpathSync(process.cwd());
++async function main(){
++const p=read(oldHere+'/preparation.json'),args=process.argv.slice(2),cwd=fs.realpathSync(process.cwd());
+ const name=Object.keys(p.fixtures).find(n=>p.fixtures[n]===cwd);assert(name,'cwd必须为具名新夹具，禁止原工程/伪造目录');
+ assert(!fs.existsSync(here+'/rollback-'+name+'.json'),'该夹具已回滚，禁止重新激活历史批次');
+-const init=JSON.stringify(args)===JSON.stringify(['init','--json']);
++const init=false; // setup已完成，新候选不提供init入口。
+ const hooks=Object.values(p.hooks).flatMap(es=>es.flatMap(e=>e.hooks.map(h=>h.command.match(/gate (hook-[a-z-]+)/)?.[1]))).filter(Boolean);
+ assert(init||(args.length===2&&args[0]==='gate'&&hooks.includes(args[1])),'命令不在本批白名单');
+-authorization(here+(init?'/setup-authorization.json':'/client-authorization.json'),init?'s5-setup':'s5-client');
++authorization(here+'/client-authorization.json','s5-client-v2');
+ verifyAnchors(p);
+-const lifecycle=read(here+'/lifecycle-readback.json');
++const lifecycle=read(oldHere+'/lifecycle-readback.json');
+ assert(!fs.existsSync(lifecycle.buckets.find(b=>b.name===name).path),'新夹具运行桶已出现，先核对生命周期副作用');
+ if(fs.existsSync(cwd+'/.trivium/state.json'))assert(Object.values(read(cwd+'/.trivium/state.json').gates).every(g=>['idle','approved'].includes(g.state)),'出现运行中/待裁决闸门，停止');
+-if(!init){assert(fs.existsSync(here+'/setup-'+name+'-after.json'));assert.equal(hash(cwd+'/.trivium/bin/trivium'),hash(here+'/proposed-wrapper.sh'));}
++if(!init){assert(fs.existsSync(oldHere+'/setup-'+name+'-after.json'));assert.equal(hash(cwd+'/.trivium/bin/trivium'),hash(here+'/proposed-wrapper.sh'));}
+ const token=crypto.randomUUID(),pool='review',before=budget();
+ let stdin=null,input=null;
+ if(!init){stdin=fs.readFileSync(0);input=JSON.parse(stdin.toString('utf8'));}
+-const dir=p.root+'/calls';fs.mkdirSync(dir,{recursive:true,mode:0o700});
++const binding=read(here+'/client-binding-'+name+'.json');
++assert.equal(binding.cwd,cwd);assert.equal(input.cwd,cwd,'HOOK_INPUT_CWD_MISMATCH');
++assert(typeof binding.session_id==='string'&&binding.session_id.length>0);
++assert.equal(input.session_id,binding.session_id,'HOOK_INPUT_SESSION_MISMATCH');
++const dir=here+'/calls';fs.mkdirSync(dir,{recursive:true,mode:0o700});
+ const request=dir+'/'+token+'-requested.json',preload=repo+'/scripts/agent-access-budget-preload.cjs';
+ const invocation={at:new Date().toISOString(),load_id:token,pool,label:'m11-s5-next-'+args.join('-'),cwd,
+  command:[p.node,p.installed,...args],parent_pid:process.pid,installed_sha256:hash(p.installed),
+@@ -45,5 +50,13 @@
+ const loaded=primaryLoaded(marks,invocation,process.pid),after=budget();
+ saveEvidence(dir+'/'+token+'-completed.json',{...invocation,finished:new Date().toISOString(),pid:child.pid??null,
+  code,signal,spawn_error:spawnError,primary_loaded:loaded,stdout,stderr,budget_before:before,budget_after:after,
+- scope:'采集层回执；没有独立客户端关联或行为等价证据时仅作辅助，不自动更新矩阵'});
+-process.exitCode=loaded&&JSON.stringify(before)===JSON.stringify(after)?code??1:2;
++ scope:'v2采集层回执；未完成真实客户端等价性核验，不自动更新矩阵'});
++if(!loaded||JSON.stringify(before)!==JSON.stringify(after))throw Error('CAPTURE_BUDGET_OR_PRELOAD_MISMATCH');
++if(signal)process.kill(process.pid,signal);else process.exitCode=code??75;
++
++}
++main().catch(error=>{
++ const file=here+'/capture-refusal-'+crypto.randomUUID()+'.json';
++ saveEvidence(file,{at:new Date().toISOString(),kind:'capture-layer-refusal',reason:error.message,exit_code:75,production_hook_exit:null});
++ process.stderr.write('M11 capture layer refused; see separate capture-refusal evidence.\n');process.exitCode=75;
++});
+
+--- /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/checkpoint.mjs	2026-10-16 00:14:51
++++ /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/checkpoint.mjs	2026-10-16 05:45:47
+@@ -1,10 +1,10 @@
+ /** 待客户端阶段使用。只读夹具、原始日志与回执，不启动任何Hook，不自动修改矩阵。 */
+ import fs from 'node:fs';
+ import assert from 'node:assert/strict';
+-import {here,read,hash,inventory,budget,verifyAnchors,authorization,fixture,phases,toolInput,saveEvidence} from './common.mjs';
++import {here,oldHere,expectedBaseline,read,hash,inventory,budget,verifyAnchors,authorization,fixture,phases,toolInput,saveEvidence} from './common.mjs';
+ const [phase,when]=process.argv.slice(2);assert.equal(process.argv.length,4);assert(Object.hasOwn(phases,phase));assert(['before','after'].includes(when));
+-authorization(here+'/client-authorization.json','s5-client');
+-const p=read(here+'/preparation.json'),name=phases[phase].fixture,cwd=fixture(p,name);
++authorization(here+'/client-authorization.json','s5-client-v2');
++const p=read(oldHere+'/preparation.json'),name=phases[phase].fixture,cwd=fixture(p,name);
+ const binding=read(here+'/client-binding-'+name+'.json');
+ assert.equal(binding.cwd,cwd);assert(binding.session_id&&binding.transcript&&binding.extension_log);
+ const output=here+'/checkpoint-'+phase+'-'+when+'.json';assert(!fs.existsSync(output));
+@@ -12,7 +12,7 @@
+ const expectedInput=toolInput(p,phase),files=inventory(cwd),currentBudget=budget();
+ // 失败后的after也保存现场，不因漂移而丢弃已发生的事件。
+ let anchorError=null;try{verifyAnchors(p);}catch(e){anchorError=e.message;}
+-const expected=phase==='missing'||phase==='changed'?read(here+'/operation-'+phase+'-after.json').files:read(here+'/setup-'+name+'-after.json').files;
++const expected=phase==='missing'||phase==='changed'?read(here+'/operation-'+phase+'-after.json').files:expectedBaseline(p,name);
+ const unchanged=JSON.stringify(files)===JSON.stringify(before?.files??expected);
+ const index=p.root+'/'+name+'.index',indexHash=fs.existsSync(index)?hash(index):null;
+ const sourceErrors=[];
+@@ -39,7 +39,7 @@
+   if(m&&commands.includes(m[1]))completions.push({...l,hook:m[1].match(/gate (hook-[a-z-]+)/)[1],actual_exit_code:Number(m[2]),pid:null,tool_use_id:null});
+  }
+  dispatch=window.filter(l=>l.text.includes('toolUseId='+request.block.id));
+- const dir=p.root+'/calls';
++ const dir=here+'/calls';
+  receipts=fs.existsSync(dir)?fs.readdirSync(dir).filter(n=>n.endsWith('-completed.json')).flatMap(n=>{
+   const f=dir+'/'+n,r=read(f);return r.cwd===cwd&&r.at>=request.at&&r.finished<=result.at&&['hook-pre-bash','hook-pre-commit'].includes(r.command.at(-1))?[{path:f,sha256:hash(f),record:r}]:[];
+  }):[];
+@@ -53,7 +53,7 @@
+ const receiptsOk=receipts.length===2&&hookNames.every(h=>{
+  const matches=receipts.filter(x=>x.record.command.at(-1)===h);if(matches.length!==1)return false;
+  const r=matches[0].record;
+- return r.code===codes[h]&&r.primary_loaded===true&&r.hook_input?.session_id===binding.session_id&&
++ return r.code===codes[h]&&r.primary_loaded===true&&r.cwd===cwd&&r.hook_input?.cwd===cwd&&r.hook_input?.session_id===binding.session_id&&
+   (r.hook_input?.tool_use_id==null||r.hook_input.tool_use_id===pairs[0]?.request.block.id);
+ });
+ const expectedCodes=codes['hook-pre-bash']===0&&codes['hook-pre-commit']===phases[phase].exit;
+@@ -65,7 +65,7 @@
+ const ready=!anchorError&&sourceErrors.length===0&&unchanged&&matching&&(when==='before'||(receiptsOk&&expectedCodes&&reasonOk&&dispatchOk));
+ saveEvidence(output,{at:new Date().toISOString(),phase,when,cwd,binding,files,unchanged,anchor_error:anchorError,
+  expected_input:expectedInput,index_sha256:indexHash,index_changed:before?before.index_sha256!==indexHash:null,
+- budget_before:before?.budget_after??p.budget_after,budget_after:currentBudget,
++ budget_before:before?.budget_after??read(here+'/launch-binding.json').expected_counts,budget_after:currentBudget,
+  transcript:{path:binding.transcript,sha256:raw===null?null:hash(binding.transcript)},log:{path:binding.extension_log,sha256:logRaw===null?null:hash(binding.extension_log)},source_errors:sourceErrors,
+  pairs,window_tools:windowTools,completions,dispatch,receipts,actual_hook_exit_codes:codes,actual_git_exit_code:actualGitExit,
+  channel_events:lines.filter(l=>/(?:Launching|Closing) Claude on channel:|Spawning Claude with SDK/.test(l.text)),
+
+--- /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/fixture-step.mjs	2026-10-16 00:08:13
++++ /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/fixture-step.mjs	2026-10-16 05:45:47
+@@ -1,18 +1,26 @@
+ /** 待具名授权，仅Bob系统终端操作新副本的两个目标。绝不作用于原工程。 */
+ import fs from 'node:fs';
+ import assert from 'node:assert/strict';
+-import {here,read,hash,digest,inventory,budget,verifyAnchors,authorization,fixture,assertSameExcept,saveEvidence} from './common.mjs';
++import {here,oldHere,expectedBaseline,read,hash,digest,inventory,budget,verifyAnchors,authorization,fixture,assertSameExcept,saveEvidence} from './common.mjs';
+ const action=process.argv[2];assert.equal(process.argv.length,3);
+ assert(['missing','restore-missing','changed','restore-changed'].includes(action));
+-const p=read(here+'/preparation.json'),cwd=fixture(p,'archive');
++const p=read(oldHere+'/preparation.json'),cwd=fixture(p,'archive');
+ const restore=action.startsWith('restore-'),kind=action.replace('restore-','');
+ const rel=p.targets[kind],target=cwd+'/'+rel,backup=p.root+'/backup/'+rel;
+-const baseline=read(here+'/setup-archive-after.json').files,expected=baseline.find(x=>x.path===rel);assert(expected);
++const baseline=expectedBaseline(p,'archive'),expected=baseline.find(x=>x.path===rel);assert(expected);
+ assert.equal(hash(backup),expected.sha256);assert.equal(fs.statSync(backup).mode&0o777,expected.mode);
+ const suffix=Buffer.from('\n<!-- M11 S5 isolated content-change control 20261016-01 -->\n');
+-const modified=Buffer.concat([fs.readFileSync(backup),suffix]),held=p.root+'/removed-review';
++const modified=Buffer.concat([fs.readFileSync(backup),suffix]),held=here+'/removed-review';
+ if(!restore) {
+- authorization(here+'/client-authorization.json','s5-client');verifyAnchors(p);
++ const a=authorization(here+'/fault-authorization.json','s5-fault-v2');verifyAnchors(p);
++ assert(Array.isArray(a.allowed_actions)&&a.allowed_actions.includes(action),'本段故障注入未具名批准');
++ const health=read(here+'/acceptance-baseline.json');
++ assert.equal(health.health_client_pass,true);assert.equal(health.new_collector_equivalence_verified,true);
++ assert.equal(health.checkpoint_sha256,hash(here+'/checkpoint-baseline-after.json'));
++ if(kind==='changed'){
++  const restored=read(here+'/acceptance-restored-missing.json');assert.equal(restored.client_pass,true);
++  assert.equal(restored.checkpoint_sha256,hash(here+'/checkpoint-restored-missing-after.json'));
++ }
+  assert(read(here+'/checkpoint-baseline-after.json').structurally_ready,'新夹具健康前置不足');
+  if(kind==='changed')assert(read(here+'/checkpoint-restored-missing-after.json').structurally_ready,'缺件恢复尚未核对');
+  assert.deepEqual(inventory(cwd),baseline);assert.equal(hash(target),expected.sha256);
+
+--- /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/proposed-wrapper.sh	2026-10-16 00:05:00
++++ /Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/proposed-wrapper.sh	2026-10-16 05:44:11
+@@ -1,2 +1,2 @@
+ #!/bin/sh
+-exec "/opt/homebrew/opt/node/bin/node" "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/runtime.mjs" "$@"
++exec "/opt/homebrew/opt/node/bin/node" "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/runtime.mjs" "$@"

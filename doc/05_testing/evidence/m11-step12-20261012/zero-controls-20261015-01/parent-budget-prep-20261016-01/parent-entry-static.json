@@ -1,0 +1,80 @@
+{
+  "at": "2026-10-15T21:39:52.886Z",
+  "sources": [
+    {
+      "file": "/Applications/Visual Studio Code.app/Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js",
+      "sha256": "74de4ceb93610658c5eb15b64b228d085f25c9c95d6ec8b002f791df7be4614c",
+      "excerpts": [
+        {
+          "needle": "function N$n(",
+          "offset": 17078749,
+          "excerpt": "*)$/,/^GDK_PIXBUF_.+$/];Object.keys(s).filter(n=>!e[n]).forEach(n=>{for(let r=0;r<t.length;r++)if(n.search(t[r])!==-1){delete s[n];break}})}function N$n(s){if(!s)return;let o=new Set([\"DEBUG\",\"NODE_OPTIONS\",\"VSCODE_NODE_OPTIONS\",\"LD_PRELOAD\",\"DYLD_INSERT_LIBRARIES\"]);for(let e of Object.keys(s))o.has(e.toUpperCase())&&delete s[e]}function Tnt(s,o){if(o)if(wi)for(let e in o){let t=e;for(let n in s)if(e.toLowerCase()===n.toLowerCase()){t=n;break}let i=o[e];i!==void 0&&O$n(s,t,i)}else Object.keys(o).forEach(e=>{let t=o[e];t!==void 0&&O$n(s,e,t)})}function O$n(s,o,e){Ue(e)?s[o]=e:delete s[o]}function Uds(s,o,e,t){s.TERM_PROGRAM=\"vscode\",o&&(s.TERM_PROGRAM_VERSION=o),zds(s,t)&&(s.LANG=Kds(e)),s.COLORTERM=\"truecolor\"}function F$n(s,o){if(o)for(let e of Object.keys(o)){let t=o[e];t!=null&&(s[e]=t)}}async function H$n(s,o){return await Promise.all(Object.entries(o).map(async([e,t])=>{if(Ue(t))try{o[e]=await s(t)}catch{o[e]=t}})),o}function zds(s,o){if(o===\"on\")return!0;if(o===\"auto\"){let e=s.LANG;return!e||e.search(/\\.UTF\\-8$/)===-1"
+        },
+        {
+          "needle": "this._environmentService.debugExtensionHost.env&&rm(n,",
+          "offset": 19854781,
+          "excerpt": "s._extensionHostStarter);let n=rm(i,{VSCODE_ESM_ENTRYPOINT:\"vs/workbench/api/node/extensionHostProcess\",VSCODE_HANDLES_UNCAUGHT_ERRORS:!0});this._environmentService.debugExtensionHost.env&&rm(n,this._environmentService.debugExtensionHost.env),N$n(n),this._isExtensionDevHost&&delete n.VSCODE_CODE_CACHE_PATH;let r={responseWindowId:this._nativeHostService.windowId,responseChannel:\"vscode:startExtensionHostMessagePortResult\",responseNonce:Je(),env:n,detached:!!wi,execArgv:void 0,silent:!0},a=\"127.0.0.1\";t!==0?r.execArgv=[\"--nolazy\",(this._isExtensionDevDebugBrk?\"--inspect-brk=\":\"--inspect=\")+`${a}:${t}`]:r.execArgv=[\"--inspect-port=0\"],this._environmentService.extensionTestsLocationURI&&r.execArgv.unshift(\"--expose-gc\"),this._environmentService.args[\"prof-v8-extensions\"]&&r.execArgv.unshift(\"--prof\"),r.execArgv.unshift(\"--dns-result-order=ipv4first\",\"--experimental-network-inspection\");let c=this._register(this._handleProcessOutputStream(this._extensionHostProcess.onStdout)),l=this._register(this._handleProcessOutputStream(this"
+        },
+        {
+          "needle": "r.execArgv=[\"--nolazy\"",
+          "offset": 19855153,
+          "excerpt": "eChannel:\"vscode:startExtensionHostMessagePortResult\",responseNonce:Je(),env:n,detached:!!wi,execArgv:void 0,silent:!0},a=\"127.0.0.1\";t!==0?r.execArgv=[\"--nolazy\",(this._isExtensionDevDebugBrk?\"--inspect-brk=\":\"--inspect=\")+`${a}:${t}`]:r.execArgv=[\"--inspect-port=0\"],this._environmentService.extensionTestsLocationURI&&r.execArgv.unshift(\"--expose-gc\"),this._environmentService.args[\"prof-v8-extensions\"]&&r.execArgv.unshift(\"--prof\"),r.execArgv.unshift(\"--dns-result-order=ipv4first\",\"--experimental-network-inspection\");let c=this._register(this._handleProcessOutputStream(this._extensionHostProcess.onStdout)),l=this._register(this._handleProcessOutputStream(this._extensionHostProcess.onStderr)),u=K.any(K.map(c.event,f=>({data:`%c${f}`,format:[\"\"]})),K.map(l.event,f=>({data:`%c${f}`,format:[\"color: red\"]})));this._environmentService.args[\"enable-smoke-test-driver\"]&&(this._register(c.event(f=>this._logService.info(`[Extension Host (stdout)] ${f.replace(/\\r?\\n$/,\"\")}`))),this._register(l.event(f=>this._logService.error(`[Extensi"
+        },
+        {
+          "needle": "async _tryFindDebugPort()",
+          "offset": 19857818,
+          "excerpt": "ority:3})},1e4));let g=await this._establishProtocol(this._extensionHostProcess,r);return await this._performHandshake(g),clearTimeout(h),g}async _tryFindDebugPort(){if(typeof this._environmentService.debugExtensionHost.port!=\"number\")return 0;let e=this._environmentService.debugExtensionHost.port,t=await this._nativeHostService.findFreePort(e,10,5e3,2048);return this._isExtensionDevTestFromCli||(t?(t!==e&&console.warn(`%c[Extension Host] %cProvided debugging port ${e} is not free, using ${t} instead.`,\"color: blue\",\"color:\"),this._isExtensionDevDebugBrk?console.warn(`%c[Extension Host] %cSTOPPED on first line for debugging on port ${t}`,\"color: blue\",\"color:\"):console.debug(`%c[Extension Host] %cdebugger listening on port ${t}`,\"color: blue\",\"color:\")):console.warn(\"%c[Extension Host] %cCould not find a free port for debugging\",\"color: blue\",\"color:\")),t||0}_establishProtocol(e,t){A7n(new E1t,t.env);let i=x4(void 0,t.responseChannel,t.responseNonce);return new Promise((n,r)=>{let a=setTimeout(()=>{r(\"The local extension hos"
+        }
+      ]
+    },
+    {
+      "file": "/Users/chenzhenbo/.vscode/extensions/anthropic.claude-code-2.1.296-darwin-arm64/extension.js",
+      "sha256": "1ce72af34e8df9d4545a645d5d0d7f225dfad54b88f93fe9b7942416a3f32353",
+      "excerpts": [
+        {
+          "needle": "spawnLocalProcess(",
+          "offset": 2569749,
+          "excerpt": "sign(this.options.env,$);else this.options.env={...$}}updateResume($){this.options.resume=$}getDefaultExecutable(){return Ls()?\"bun\":\"node\"}spawnLocalProcess($){let{command:J,args:Q,cwd:X,env:Y,signal:W}=$,z=Qg1.spawn(J,Q,{cwd:X,stdio:[\"pipe\",\"pipe\",\"pipe\"],signal:W,env:Y,windowsHide:!0});if(z.pid!==void 0&&this.options.onProcessSpawned)try{this.options.onProcessSpawned(z.pid)}catch(Z){k$(`onProcessSpawned threw: ${a3(Z)}`)}let G=new Wg1.StringDecoder(\"utf8\"),K=!1,V=!1,U=!1,q,B=X5(Y.DEBUG_CLAUDE_AGENT_SDK)||this.options.stderr!==void 0;z.stderr.on(\"data\",(Z)=>{if(U)return;let N=G.write(Z);if(this.stderrTail+=N,this.stderrTail.length>2*po)this.stderrTail=oR1(RP(this.stderrTail),po);if(B)k$(N),this.options.stderr?.(N)}),z.stderr.on(\"error\",(Z)=>{k$(`[ProcessTransport] stderr read failed: ${Z.code??Z.message}`)});let H=()=>{if(U)return;if(U=!0,q)clearTimeout(q);z.emit(Hg1,z.exitCode,z.signalCode);let Z=z.stderr;if(wb0(Z))Z.unref();else Z.destroy()};return z.stderr.once(\"close\",()=>{if(this.stderrTail+=G.end(),K=!0,V)H()}),z.onc"
+        },
+        {
+          "needle": "delete V.NODE_OPTIONS",
+          "offset": 2575049,
+          "excerpt": ",_1]of Object.entries(l))if(_1===null)r.push(`--${z1}`);else jb0(r,z1,_1);if(!V.CLAUDE_CODE_ENTRYPOINT)V.CLAUDE_CODE_ENTRYPOINT=\"sdk-ts\";if(delete V.NODE_OPTIONS,X5(V.DEBUG_CLAUDE_AGENT_SDK))V.DEBUG=\"1\";else delete V.DEBUG;let u=vb0(K),T=u?K:W,f=u?[...z,...r]:[...z,K,...r],h={command:T,args:f,cwd:Y,env:V,signal:this.forwardedAbort.signal};if(this.options.spawnClaudeCodeProcess)k$(`Spawning Claude Code (custom): ${T} ${f.join(\" \")}`),this.process=this.options.spawnClaudeCodeProcess(h);else k$(`Spawning Claude Code: ${T} ${f.join(\" \")}`),this.process=this.spawnLocalProcess(h);if(this.processStdin=this.process.stdin,this.processStdout=this.process.stdout,this.processStdin.on(\"error\",(z1)=>{k$(`[ProcessTransport] stdin write failed (child likely exited): ${z1.code??z1.message}`),this.ready=!1}),UP.track(this.process),this.abortHandler=()=>this.close(),this.abortController.signal.addEventListener(\"abort\",this.abortHandler),this.abortController.signal.aborted)this.close();let J1=this.process;J1.on(\"error\",(z1)=>{this.ready=!1;let "
+        },
+        {
+          "needle": "viaProcessWrapper:!0",
+          "offset": 3316650,
+          "excerpt": ".version)}function mS($,J){let Q=D4(\"claudeProcessWrapper\"),X=k95($);if(Q)return{pathToClaudeCodeExecutable:Q,executableArgs:X?[X]:[],env:J,viaProcessWrapper:!0};if(!X){let Y=f95($);throw Object.assign(y95(Fe(Y),\"unsupported_platform\"),{bundledSystem:Y})}return{pathToClaudeCodeExecutable:X,executableArgs:[],env:J,viaProcessWrapper:!1}}function k95($){let J=process.platform===\"win32\"?\"claude.exe\":\"claude\",Q=Ne()?`${process.arch}-musl`:process.arch,X=$.asAbsolutePath(z5.join(\"resources\",\"native-binaries\",`${process.platform}-${Q}`,J));if(j$.existsSync(X))return X;if(process.platform===\"win32\"&&process.arch===\"arm64\"){let W=$.asAbsolutePath(z5.join(\"resources\",\"native-binaries\",\"win32-x64\",J));if(j$.existsSync(W))return W}let Y=$.asAbsolutePath(z5.join(\"resources\",\"native-binary\",J));if(j$.existsSync(Y))return Y;return}function f95($){let J=XL();for(let Q of[\"claude\",\"claude.exe\"]){let X=mT($.asAbsolutePath(z5.join(\"resources\",\"native-binary\",Q)));if(X!==void 0&&X!==J)return X}return}function y95($,J){return Object.assign(Error"
+        }
+      ]
+    },
+    {
+      "file": "/Users/chenzhenbo/.vscode/extensions/anthropic.claude-code-2.1.300-darwin-arm64/extension.js",
+      "sha256": "f8c439c3e06fecf2132ffc6fb70d426b040d3850db0785ba61f38c5373c3ec6a",
+      "excerpts": [
+        {
+          "needle": "spawnLocalProcess(",
+          "offset": 2621412,
+          "excerpt": "sign(this.options.env,$);else this.options.env={...$}}updateResume($){this.options.resume=$}getDefaultExecutable(){return et()?\"bun\":\"node\"}spawnLocalProcess($){let{command:J,args:Q,cwd:X,env:Y,signal:W}=$,z=Lh1.spawn(J,Q,{cwd:X,stdio:[\"pipe\",\"pipe\",\"pipe\"],signal:W,env:Y,windowsHide:!0});if(z.pid!==void 0&&this.options.onProcessSpawned)try{this.options.onProcessSpawned(z.pid)}catch(Z){p$(`onProcessSpawned threw: ${V2(Z)}`)}let G=new jh1.StringDecoder(\"utf8\"),K=!1,V=!1,U=!1,B,H=G6(Y.DEBUG_CLAUDE_AGENT_SDK)||this.options.stderr!==void 0;z.stderr.on(\"data\",(Z)=>{if(U)return;let F=G.write(Z);if(this.stderrTail+=F,this.stderrTail.length>2*jr)this.stderrTail=Pv1(cC(this.stderrTail),jr);if(H)p$(F),this.options.stderr?.(F)}),z.stderr.on(\"error\",(Z)=>{p$(`[ProcessTransport] stderr read failed: ${Z.code??Z.message}`)});let q=()=>{if(U)return;if(U=!0,B)clearTimeout(B);z.emit(Ch1,z.exitCode,z.signalCode);let Z=z.stderr;if(Kh0(Z))Z.unref();else Z.destroy()};return z.stderr.once(\"close\",()=>{if(this.stderrTail+=G.end(),K=!0,V)q()}),z.onc"
+        },
+        {
+          "needle": "delete V.NODE_OPTIONS",
+          "offset": 2626712,
+          "excerpt": ",j1]of Object.entries(c))if(j1===null)o.push(`--${X1}`);else $h0(o,X1,j1);if(!V.CLAUDE_CODE_ENTRYPOINT)V.CLAUDE_CODE_ENTRYPOINT=\"sdk-ts\";if(delete V.NODE_OPTIONS,G6(V.DEBUG_CLAUDE_AGENT_SDK))V.DEBUG=\"1\";else delete V.DEBUG;let a=Wh0(K),b=a?K:W,f=a?[...z,...o]:[...z,K,...o],u={command:b,args:f,cwd:Y,env:V,signal:this.forwardedAbort.signal};if(this.options.spawnClaudeCodeProcess)p$(`Spawning Claude Code (custom): ${b} ${f.join(\" \")}`),this.process=this.options.spawnClaudeCodeProcess(u);else p$(`Spawning Claude Code: ${b} ${f.join(\" \")}`),this.process=this.spawnLocalProcess(u);if(this.processStdin=this.process.stdin,this.processStdout=this.process.stdout,this.processStdin.on(\"error\",(X1)=>{p$(`[ProcessTransport] stdin write failed (child likely exited): ${X1.code??X1.message}`),this.ready=!1}),vC.track(this.process),this.abortHandler=()=>this.close(),this.abortController.signal.addEventListener(\"abort\",this.abortHandler),this.abortController.signal.aborted)this.close();let s=this.process;s.on(\"error\",(X1)=>{this.ready=!1;let j1"
+        },
+        {
+          "needle": "viaProcessWrapper:!0",
+          "offset": 3395402,
+          "excerpt": ".version)}function Wk($,J){let Q=c4(\"claudeProcessWrapper\"),X=hW6($);if(Q)return{pathToClaudeCodeExecutable:Q,executableArgs:X?[X]:[],env:J,viaProcessWrapper:!0};if(!X){let Y=pW6($);throw Object.assign(cW6(J41(Y),\"unsupported_platform\"),{bundledSystem:Y})}return{pathToClaudeCodeExecutable:X,executableArgs:[],env:J,viaProcessWrapper:!1}}function hW6($){let J=process.platform===\"win32\"?\"claude.exe\":\"claude\",Q=e11()?`${process.arch}-musl`:process.arch,X=$.asAbsolutePath(W6.join(\"resources\",\"native-binaries\",`${process.platform}-${Q}`,J));if(p5.existsSync(X))return X;if(process.platform===\"win32\"&&process.arch===\"arm64\"){let W=$.asAbsolutePath(W6.join(\"resources\",\"native-binaries\",\"win32-x64\",J));if(p5.existsSync(W))return W}let Y=$.asAbsolutePath(W6.join(\"resources\",\"native-binary\",J));if(p5.existsSync(Y))return Y;return}function pW6($){let J=$D();for(let Q of[\"claude\",\"claude.exe\"]){let X=XE($.asAbsolutePath(W6.join(\"resources\",\"native-binary\",Q)));if(X!==void 0&&X!==J)return X}return}function cW6($,J){return Object.assign(Err"
+        }
+      ]
+    }
+  ],
+  "parent_entry": "extension host child_process.spawn before original call",
+  "extension_host_env_scrub_static": true,
+  "sdk_env_scrub_static": true,
+  "injection_verified": false,
+  "debug_break_route": "静态存在inspect-brk分支；端口获取失败可返回0，未验证加载/暂停顺序，不能当安全入口",
+  "verified_start_upper_bound": null,
+  "client_executed": false
+}

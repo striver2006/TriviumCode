@@ -330,3 +330,33 @@ archive当前141文件，仅wrapper变化；empty当前27文件，新增9个预�
 Bob明确要求提交、推送并起草下一步提示语后，本轮`npm run check`实际退出0，3624项、3622通过、0失败、2跳过，预算前后838/401；[本次完整输出](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/setup-delivery-check.json)独立保存，不覆盖前批检查。冻结18文件操作包及两个已setup夹具保持原样，未启动客户端、未做故障注入、未重跑旧采集脚本。自动化检查不替代5.2～5.5客户端验收。
 
 [下一步完整提示语](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/NEXT_TASK_PROMPT.md)限定只读核定VS Code/SDK/包装器/native启动链、计数覆盖、预算池与硬上限，完成最小执行提案后停在新启动或配置生效前；本轮提交推送授权不延伸到下一轮。相对交付前HEAD，矩阵仅5.2～5.5追加证据与观察，68行判据、顺序及状态不变。当前M11未完成。
+
+## 2026-10-16：客户端启动链及预算覆盖只读核定
+
+新增[启动链与覆盖表](./evidence/m11-step12-20261012/zero-controls-20261015-01/client-start-readonly-20261016-01/README.md)及[待批准的分段提案](./evidence/m11-step12-20261012/zero-controls-20261015-01/client-start-readonly-20261016-01/START_PROPOSAL.md)。[前置读数](./evidence/m11-step12-20261012/zero-controls-20261015-01/client-start-readonly-20261016-01/before-state.json)核对原工程/完整备份141文件、空备份18文件、archive141/empty27文件均与各自基线一致；冻结18文件、11个锚点及外部索引未变。新运行桶不存在，calls仍仅两组init、无Hook，client授权不存在。预算台账838/401，本步71/80，分池剩余1/8；当前授权仍0/0。
+
+只读包元数据/源码及既有日志确认：原VS Code会话使用2.1.296；进程PID63509、PPID70588、启动时间2026-10-15 19:42:46、实际cwd为原工程，与恢复日志时刻相符，但无直接日志PID连接，关联不升级为直接证明。磁盘同时存在2.1.300，另有Python环境并行启动/重启分支；没有执行版本命令或启动新会话。现有runtime侧车只覆盖Hook安装bundle及其后代，不能覆盖父级VS Code/SDK启动Driver；台账没有相应记录不能解释为零启动，也不据此回填历史预算。
+
+发现三个启动前限制：两版扩展的claudeProcessWrapper/environmentVariables为machine级配置，不能假定项目设置生效；SDK在启动子进程前删除NODE_OPTIONS，不能据其环境字符串认定计数覆盖；冻结采集包的verifyAnchors严格要求预算等于838/401，新Driver正确计数后反而会先拒绝Hook。runtime、checkpoint及故障操作脚本都须在新版本重新绑定授权预算，不能改冻结包、旧hash或批准回执。当前父级超额前拦截和完整启动上限均未验证，安全上限保持null，没有可直接执行的新启动方案。
+
+[配置差异与独立备份](./evidence/m11-step12-20261012/zero-controls-20261015-01/client-start-readonly-20261016-01/configuration-proposal.json)仅在新证据目录保存；捕获入口候选恒拒绝native，未配置、未执行，不证明健康或场景5完整性。最小路线为先核定父级事前计数，再单archive入口诊断/健康及采集等价性，随后缺件→恢复→改件→恢复，最后独立empty；复用原独立索引dry-run参数。两新会话若走wrapper/native至少4个边界只是结构下界，不是硬预算；不得跨池或将剩余额度视为启动许可。
+
+[最终本地校验](./evidence/m11-step12-20261012/zero-controls-20261015-01/client-start-readonly-20261016-01/validation.json)与[后置只读状态](./evidence/m11-step12-20261012/zero-controls-20261015-01/client-start-readonly-20261016-01/after-state.json)记录本轮实际检查及退出码；68行判据唯一、顺序和状态不变，仅5.2～5.5追加证据与观察。没有重跑setup/旧采集/审批/恢复，没有客户端或厂商CLI启动、故障注入、业务代码/全局配置改动，未提交推送。5.2～5.5客户端与新采集等价性仍未测；本轮停在新启动和配置生效前，M11未完成。
+
+## 2026-10-16：父级计数本地替身验证及v2未激活候选
+
+按Bob零厂商独立准备指令，新增[父级入口核定及候选说明](./evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/README.md)。本机VS Code源码显示，创建扩展宿主时先清理NODE_OPTIONS/VSCODE_NODE_OPTIONS等环境变量，再构造execArgv；扩展SDK还会清理子环境。逻辑计数点可定位到宿主内原始spawn调用之前，但真实加载路径、暂停/激活顺序及全部入口覆盖仍未验证。inspect-brk仅静态存在，端口获取失败可退回普通分支，未将其宣称为安全入口。
+
+[15项真实多进程本地替身实验](./evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/local-budget-results.json)全部通过：八个父进程争用三槽恰好3个替身进入、5个事前拒绝；零额度、分池/总上限、ENOENT预占不退款、未知路线/API/cwd/指纹拒绝、两级边界、ESM及子环境清理、退出码/stderr/signal均有独立原始记录。实验根严格限定local-lab，仅允许本包替身；没有执行VS Code、厂商CLI或真实Hook，没有写真实预算台账。该结果只证明独立Node中的计数机制，不替代真实扩展宿主覆盖。
+
+[10项预算绑定检查](./evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/budget-binding-results.json)全部通过。[v2完整源码差异](./evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/candidate-diffs-final.json)拆分不可变文件锚点与新批次逐项预算绑定，并同步runtime/checkpoint/故障操作路径；review仍零增量，采集拒绝独立退出75，故障注入另需单段授权和健康/等价性确认。[激活差异及当前wrapper独立备份](./evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/activation-diff.json)已保存，deployment仍false、父级覆盖null；没有生成真实启动/故障授权或安装新wrapper。候选首个SessionStart与外部session绑定的时序也尚未验证，不能预填session绕过；真实Hook行为等价性仍未测。
+
+[前后快照](./evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/after-state.json)与[最终校验](./evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/validation.json)核对冻结18文件、整个旧setup包、上一轮证据包、原工程/夹具/备份/索引/运行时及真实ledger不变；预算仍838/401，本步71/80，授权增量0/0。两份矩阵68行唯一、顺序及状态保持一致，仅5.2～5.5追加本批观察。真实父级控制仍阻断，安全启动上限null；未启动客户端、未使配置生效、未注入/恢复故障、未提交推送。M11未完成。
+
+## 2026-10-16：独立准备交付与下一步开发草案
+
+Bob要求提交、推送并起草下一步开发计划，本批将上述两轮证据一起交付。[下一步开发计划草案](./evidence/m11-step12-20261012/zero-controls-20261015-01/delivery-plan-20261016-01/NEXT_DEVELOPMENT_PLAN.md)依次安排现场复核、真实父级加载可行性核定、SessionStart首事件可信绑定、新目录v3可重复生成及本地闭环验证。草案不是正式双审工件或启动授权；不能因此执行下一轮开发、启动审核者/客户端、使配置生效或扩大预算。父级控制仍无法验证时明确阻断，安全启动上限保持null。
+
+本次完整自动化检查和真实基线前后核对单独留在[交付检查结果](./evidence/m11-step12-20261012/zero-controls-20261015-01/delivery-plan-20261016-01/delivery-check.json)，最终文件范围、hash、脱敏、文档及矩阵对账留在[交付前审计](./evidence/m11-step12-20261012/zero-controls-20261015-01/delivery-plan-20261016-01/delivery-audit.json)。不覆盖先前validation或冻结manifest，不重跑旧setup、实验、采集或故障操作。提交、远端引用回读与客户端验收仍为不同事实；5.2～5.5真实客户端及v2等价性仍未测，M11未完成。
+
+本次`npm run check`实际退出0：3624项、3622通过、0失败、2跳过。完整检查前后真实预算838/401、冻结包、运行时锚点、原工程/备份/两个已setup夹具及外部索引全部一致；当前允许厂商增量仍0/0，未启动客户端或使候选配置生效。

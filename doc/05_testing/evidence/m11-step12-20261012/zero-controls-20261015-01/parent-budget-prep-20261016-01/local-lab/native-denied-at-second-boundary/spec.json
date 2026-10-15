@@ -1,0 +1,50 @@
+{
+  "kind": "local-mock-only",
+  "root": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/local-lab/native-denied-at-second-boundary",
+  "pool": "admission",
+  "total_cap": 1,
+  "node_sha256": "87989003817c5347d6bad48e46897e1b6509328bb7e8295d83cb6b40af836b9c",
+  "routes": [
+    {
+      "name": "native",
+      "command": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "args": [
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/mock-native.cjs",
+        "ok"
+      ],
+      "script_sha256": "4c46d0885608d5dbbd2cad4c1ada660913f4173698e465fb825fc2f7fd9951a2"
+    },
+    {
+      "name": "failure-output",
+      "command": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "args": [
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/mock-native.cjs",
+        "exit7"
+      ],
+      "script_sha256": "4c46d0885608d5dbbd2cad4c1ada660913f4173698e465fb825fc2f7fd9951a2"
+    },
+    {
+      "name": "signal",
+      "command": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "args": [
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/mock-native.cjs",
+        "signal"
+      ],
+      "script_sha256": "4c46d0885608d5dbbd2cad4c1ada660913f4173698e465fb825fc2f7fd9951a2"
+    },
+    {
+      "name": "wrapper",
+      "command": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "args": [
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/mock-wrapper.cjs"
+      ],
+      "script_sha256": "c21761251f8ef5e0bdff573e234bb076d2f2dd8cb2a27ac12458279d7b7563bc"
+    },
+    {
+      "name": "missing-local-executable",
+      "command": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/local-lab/native-denied-at-second-boundary/missing-local-executable",
+      "args": [],
+      "missing": true
+    }
+  ]
+}

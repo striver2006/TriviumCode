@@ -1,0 +1,166 @@
+{
+  "at": "2026-10-15T21:33:03.873Z",
+  "activation_authorized": false,
+  "activated": false,
+  "isolation_root": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/client-start-readonly-20261016-01/diagnostic-isolation",
+  "backup_of_target": {
+    "exists": false,
+    "restoration": "关闭新隔离实例并保留现场改名；不覆盖任何已有配置"
+  },
+  "diffs": [
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/client-start-readonly-20261016-01/diagnostic-isolation/user-data/User/settings.json",
+      "before": null,
+      "after": "{\n  \"claudeCode.claudeProcessWrapper\": \"/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/client-start-readonly-20261016-01/capture-only-entry.sh\",\n  \"claudeCode.useTerminal\": false,\n  \"claudeCode.continueAfterReload\": false,\n  \"claudeCode.usePythonEnvironment\": false,\n  \"extensions.autoUpdate\": false,\n  \"extensions.autoCheckUpdates\": false,\n  \"update.mode\": \"none\",\n  \"window.restoreWindows\": \"none\"\n}\n",
+      "after_sha256": "0c8cd24ff57b35b3b083b7f0441fa17eb470e44f7876525f46d3e8b24a53d4a2",
+      "mode_after": 384
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/client-start-readonly-20261016-01/capture-only-entry.sh",
+      "current_mode": 420,
+      "proposed_mode": 493,
+      "sha256": "c87b09754db9aa7bc963fcd263d15a5d52d7eb3575ecd2a175c30a4ec1e83a3c",
+      "applied": false
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/client-start-readonly-20261016-01/diagnostic-isolation/extensions/anthropic.claude-code-2.1.296-darwin-arm64",
+      "before": null,
+      "copy_from": "/Users/chenzhenbo/.vscode/extensions/anthropic.claude-code-2.1.296-darwin-arm64",
+      "pinned_sources": [
+        {
+          "file": "/Users/chenzhenbo/.vscode/extensions/anthropic.claude-code-2.1.296-darwin-arm64/package.json",
+          "sha256": "8fe886d98dc55b5a1bccc938f56a2bdd1bd086fde0031a3e764aebbeacc80334",
+          "bytes": 21172,
+          "mode": 420
+        },
+        {
+          "file": "/Users/chenzhenbo/.vscode/extensions/anthropic.claude-code-2.1.296-darwin-arm64/extension.js",
+          "sha256": "1ce72af34e8df9d4545a645d5d0d7f225dfad54b88f93fe9b7942416a3f32353",
+          "bytes": 3492946,
+          "mode": 420
+        },
+        {
+          "file": "/Users/chenzhenbo/.vscode/extensions/anthropic.claude-code-2.1.296-darwin-arm64/resources/native-binary/claude",
+          "sha256": "c9b5341637becbd423ddffc5b254afb645682a3868cb708bbc6cc0e7bb419937",
+          "bytes": 240664432,
+          "mode": 493
+        }
+      ],
+      "copy_executed": false
+    }
+  ],
+  "independent_backups": [
+    {
+      "name": "archive",
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/archive/.claude/settings.json",
+      "sha256": "20b78840cab2d98fd79c23430f451b8a553f00cbbbfd59ccd66eb806eb9d9d43",
+      "mode": 420,
+      "content": "{\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n        \"matcher\": \"Edit|Write|NotebookEdit\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"sh -c 'D=\\\"${CLAUDE_PROJECT_DIR}/.trivium\\\"; W=\\\"$D/bin/trivium\\\"; test -x \\\"$W\\\" && exec \\\"$W\\\" gate hook-pre-write; test -f \\\"$D/config.yaml\\\" || exit 0; echo \\\"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\\\" >&2; exit 2'\",\n            \"timeout\": 15\n          }\n        ]\n      },\n      {\n        \"matcher\": \"Bash\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"sh -c 'D=\\\"${CLAUDE_PROJECT_DIR}/.trivium\\\"; W=\\\"$D/bin/trivium\\\"; test -x \\\"$W\\\" && exec \\\"$W\\\" gate hook-pre-bash; test -f \\\"$D/config.yaml\\\" || exit 0; echo \\\"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\\\" >&2; exit 2'\",\n            \"timeout\": 15\n          }\n        ]\n      },\n      {\n        \"matcher\": \"Bash\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"sh -c 'D=\\\"${CLAUDE_PROJECT_DIR}/.trivium\\\"; W=\\\"$D/bin/trivium\\\"; test -x \\\"$W\\\" && exec \\\"$W\\\" gate hook-pre-commit; test -f \\\"$D/config.yaml\\\" || exit 0; echo \\\"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\\\" >&2; exit 2'\",\n            \"timeout\": 15\n          }\n        ]\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"sh -c 'D=\\\"${CLAUDE_PROJECT_DIR}/.trivium\\\"; W=\\\"$D/bin/trivium\\\"; test -x \\\"$W\\\" && exec \\\"$W\\\" gate hook-stop; test -f \\\"$D/config.yaml\\\" || exit 0; echo \\\"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\\\" >&2; exit 2'\",\n            \"timeout\": 30\n          }\n        ]\n      }\n    ],\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"sh -c 'W=\\\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\\\"; test -x \\\"$W\\\" || exit 0; exec \\\"$W\\\" gate hook-session-start'\",\n            \"timeout\": 15\n          }\n        ]\n      }\n    ]\n  }\n}\n"
+    },
+    {
+      "name": "archive",
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/archive/.trivium/bin/trivium",
+      "sha256": "5d78258f261f03ca0ee72a1b0e46b67bad5a8cca14641fe7b62d1079daed3f65",
+      "mode": 493,
+      "content": "#!/bin/sh\nexec \"/opt/homebrew/opt/node/bin/node\" \"/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/runtime.mjs\" \"$@\"\n"
+    },
+    {
+      "name": "empty",
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/empty/.claude/settings.json",
+      "sha256": "20b78840cab2d98fd79c23430f451b8a553f00cbbbfd59ccd66eb806eb9d9d43",
+      "mode": 420,
+      "content": "{\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n        \"matcher\": \"Edit|Write|NotebookEdit\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"sh -c 'D=\\\"${CLAUDE_PROJECT_DIR}/.trivium\\\"; W=\\\"$D/bin/trivium\\\"; test -x \\\"$W\\\" && exec \\\"$W\\\" gate hook-pre-write; test -f \\\"$D/config.yaml\\\" || exit 0; echo \\\"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\\\" >&2; exit 2'\",\n            \"timeout\": 15\n          }\n        ]\n      },\n      {\n        \"matcher\": \"Bash\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"sh -c 'D=\\\"${CLAUDE_PROJECT_DIR}/.trivium\\\"; W=\\\"$D/bin/trivium\\\"; test -x \\\"$W\\\" && exec \\\"$W\\\" gate hook-pre-bash; test -f \\\"$D/config.yaml\\\" || exit 0; echo \\\"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\\\" >&2; exit 2'\",\n            \"timeout\": 15\n          }\n        ]\n      },\n      {\n        \"matcher\": \"Bash\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"sh -c 'D=\\\"${CLAUDE_PROJECT_DIR}/.trivium\\\"; W=\\\"$D/bin/trivium\\\"; test -x \\\"$W\\\" && exec \\\"$W\\\" gate hook-pre-commit; test -f \\\"$D/config.yaml\\\" || exit 0; echo \\\"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\\\" >&2; exit 2'\",\n            \"timeout\": 15\n          }\n        ]\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"sh -c 'D=\\\"${CLAUDE_PROJECT_DIR}/.trivium\\\"; W=\\\"$D/bin/trivium\\\"; test -x \\\"$W\\\" && exec \\\"$W\\\" gate hook-stop; test -f \\\"$D/config.yaml\\\" || exit 0; echo \\\"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\\\" >&2; exit 2'\",\n            \"timeout\": 30\n          }\n        ]\n      }\n    ],\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"sh -c 'W=\\\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\\\"; test -x \\\"$W\\\" || exit 0; exec \\\"$W\\\" gate hook-session-start'\",\n            \"timeout\": 15\n          }\n        ]\n      }\n    ]\n  }\n}\n"
+    },
+    {
+      "name": "empty",
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/empty/.trivium/bin/trivium",
+      "sha256": "5d78258f261f03ca0ee72a1b0e46b67bad5a8cca14641fe7b62d1079daed3f65",
+      "mode": 493,
+      "content": "#!/bin/sh\nexec \"/opt/homebrew/opt/node/bin/node\" \"/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/runtime.mjs\" \"$@\"\n"
+    }
+  ],
+  "protected_targets": [
+    {
+      "kind": "missing",
+      "relative": ".reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-gemini.md",
+      "target": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/archive/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-gemini.md",
+      "backup": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/backup/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-gemini.md",
+      "current_sha256": "464fcb38396713cc187f9b5513aeab1e9e92991b865dc75e15bc37caaf6a714b",
+      "backup_sha256": "464fcb38396713cc187f9b5513aeab1e9e92991b865dc75e15bc37caaf6a714b",
+      "mode": 420,
+      "independent_backup_content": "---\nschema: trivium.review.v1\ntopic: m11-s12-capacity\nstage: plan\nrole: gemini\nvendor: antigravity\nagent_cli: agy/1.3.3\nmodel_requested: gemini-3.8-flash-high\nmodel_effective: gemini-3.8-flash-high\nmodel_effective_source: envelope\neffort: low\neffort_requested: low\neffort_effective: high\neffort_effective_source: envelope\ntier: null\ntier_source: override\nrun_id: 20261012T154021Z\nrerun_index: 2\nsnapshot_hash: sha256:329c8b364f6e37768b9e9bb612fac84e37147088d32cc9ebbcf1aa834b6e5883\nblind: true\nstarted_at: 2026-10-12T15:40:22.271Z\nfinished_at: 2026-10-12T15:44:37.879Z\nduration_s: 99\ntool_calls:\n  read: 10\n  grep: 0\n  glob: 0\n  run_command: 0\n  project_reads: 6\nevidence_ok: true\nverdict: approve\nfindings_count:\n  blocker: 0\n  major: 0\n  minor: 0\n  nit: 0\ndegraded: false\nparse_fallback: false\npeer_deny: false\ndrift: false\nheterogeneous: different-family\naccess:\n  requested_mode: standard\n  profile: null\n  launcher_requested: /Users/chenzhenbo/.local/bin/agy\n  launcher_effective: /Users/chenzhenbo/.local/bin/agy\n  wrapper_sha256: null\n  configuration_sha256: null\n  provider_declared: null\n  provider_declared_source: null\n  provider_effective: null\n  provider_effective_source: null\nfamily_comparisons:\n  - left: claude\n    right: gemini\n    status: different-family\n    left_model: qwen3.8-flash\n    right_model: gemini-3.8-flash-high\n    left_source: declared\n    right_source: envelope\n    reason: 模型族不同：qwen / gemini\n  - left: gemini\n    right: glm\n    status: different-family\n    left_model: gemini-3.8-flash-high\n    right_model: bigmodel-coding-plan/GLM-5.3\n    left_source: envelope\n    right_source: trace\n    reason: 模型族不同：gemini / glm\n  - left: gemini\n    right: codex\n    status: different-family\n    left_model: gemini-3.8-flash-high\n    right_model: deepseek-flash\n    left_source: envelope\n    right_source: trace\n    reason: 模型族不同：gemini / deepseek\noverride_reason: 模型族不同：qwen / gemini\nsession_id: 94b77a5c-5b2e-4446-8b08-e9999c92df1f\n---\n\n# 计划审查：m11-s12-capacity\n\n> Critic-A · Google Antigravity ｜ 回读模型 `gemini-3.8-flash-high` ｜ 请求模型 `gemini-3.8-flash-high`\n> ｜ 运行 `20261012T154021Z` ｜ 第 2 轮\n> ｜ 本轮审核者 gemini、glm、codex\n\n> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。\n\n## 总判断\n\n实施计划 r2 严谨完备，针对上一轮审查意见已充分闭合。类型边界采用两段式校验精确覆盖 TypeError 与 RangeError；零容量语义清晰且补齐 peek/pop 与 push 行为断言；Symbol 显式纳入 TypeError 消除歧义，且为关键错误消息引入代表用例正则断言防回归；单点改动与单提交回滚方案安全可靠，无架构与兼容性风险。\n\n**结论**：`approve`\n\n## 审查意见\n\n本侧**未发现问题**。\n\n> 这不等于「没审」：请对照下方「未覆盖范围」判断这一结论的边界。\n\n## 认为正确的部分\n\n- 类型边界划分准确：两段式校验逻辑清晰，前置 typeof 判定拦截全部非 number 类型并抛出 TypeError，后续 Number.isSafeInteger 与负数判断拦截全部非法数字并抛出 RangeError，安全非负整数与零容量精确放行。\n- 零容量语义完备闭合：零容量正常构造，peek 与 pop 返回 undefined，push 自然命中现有 length >= capacity 守卫抛出 RangeError(\"stack full\")，保持现有逻辑零侵入且测试断言完整。\n- Symbol 与错误消息断言明确：Symbol 显式纳入 TypeError 测试清单并阐明直接判据依据，消除了隐式转换歧义；代表用例加入错误消息正则断言（/capacity must be a number/、/non-negative safe integer/、/stack full/），防回归承诺明确且克制。\n- 兼容性与回滚方案可靠：单点收敛于 constructor 与测试增量，单提交整体 revert 路径清晰，无外部副作用与状态迁移成本。\n\n## 未覆盖范围（本侧盲区）\n\n- 本侧为只读审查环境，未实际运行 npm test 与 npm run build 命令，验证基于静态逻辑与契约推演。\n- 未覆盖后续 code 阶段的具体实现落地与 TV verify 实际运行结果。\n\n## 实际查阅的项目文件\n\n- `CLAUDE.md`\n- `AGENTS.md`\n- `README.md`\n- `package.json`\n- `src/stack.js`\n- `test/stack.test.js`\n- `.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-claude.md`\n- `.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-revised-claude.md`\n- `.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-gemini.md`\n\n> 编排器从工具轨迹中记录到的读取次数：{\"read\":10,\"grep\":0,\"glob\":0,\"run_command\":0,\"project_reads\":6}\n\n---\n\n*本文档由 TriviumCode 编排器从 `gemini` 侧的结构化输出渲染而成。\n审查员无写仓库权限，全部落盘由编排器完成。*\n",
+      "proposed_changed_sha256": null
+    },
+    {
+      "kind": "changed",
+      "relative": ".reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-glm.md",
+      "target": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/archive/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-glm.md",
+      "backup": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/backup/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-glm.md",
+      "current_sha256": "6272030c1fe28eb775f7e5a06e59d55cd7fcd779c50ab9b41a3febe5e3a86ec5",
+      "backup_sha256": "6272030c1fe28eb775f7e5a06e59d55cd7fcd779c50ab9b41a3febe5e3a86ec5",
+      "mode": 420,
+      "independent_backup_content": "---\nschema: trivium.review.v1\ntopic: m11-s12-capacity\nstage: plan\nrole: glm\nvendor: zcode\nagent_cli: zcode/0.16.9\nmodel_requested: GLM-5.3\nmodel_effective: bigmodel-coding-plan/GLM-5.3\nmodel_effective_source: trace\neffort_requested: null\neffort_effective: null\neffort_effective_source: null\ntier: null\ntier_source: override\nmodel_route: config_copy\nrun_id: 20261012T154021Z\nrerun_index: 2\nsnapshot_hash: sha256:329c8b364f6e37768b9e9bb612fac84e37147088d32cc9ebbcf1aa834b6e5883\nblind: true\nstarted_at: 2026-10-12T15:40:22.271Z\nfinished_at: 2026-10-12T15:44:37.879Z\nduration_s: 255\ntool_calls:\n  read: 9\n  grep: 2\n  glob: 3\n  run_command: 0\n  project_reads: 8\nevidence_ok: true\nverdict: approve-with-nits\nfindings_count:\n  blocker: 0\n  major: 0\n  minor: 0\n  nit: 1\ndegraded: false\nparse_fallback: false\npeer_deny: false\ndrift: false\nheterogeneous: different-family\naccess:\n  requested_mode: standard\n  profile: null\n  launcher_requested: /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs\n  launcher_effective: /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs\n  wrapper_sha256: null\n  configuration_sha256: null\n  provider_declared: null\n  provider_declared_source: null\n  provider_effective: null\n  provider_effective_source: null\nfamily_comparisons:\n  - left: claude\n    right: glm\n    status: different-family\n    left_model: qwen3.8-flash\n    right_model: bigmodel-coding-plan/GLM-5.3\n    left_source: declared\n    right_source: trace\n    reason: 模型族不同：qwen / glm\n  - left: gemini\n    right: glm\n    status: different-family\n    left_model: gemini-3.8-flash-high\n    right_model: bigmodel-coding-plan/GLM-5.3\n    left_source: envelope\n    right_source: trace\n    reason: 模型族不同：gemini / glm\n  - left: glm\n    right: codex\n    status: different-family\n    left_model: bigmodel-coding-plan/GLM-5.3\n    right_model: deepseek-flash\n    left_source: trace\n    right_source: trace\n    reason: 模型族不同：glm / deepseek\noverride_reason: 模型族不同：qwen / glm\nsession_id: sess_5c78ea9e-21a8-407f-96f5-ca6998cfbb35\n---\n\n# 计划审查：m11-s12-capacity\n\n> Critic-B · 智谱 ZCode ｜ 回读模型 `bigmodel-coding-plan/GLM-5.3` ｜ 请求模型 `GLM-5.3`\n> ｜ 运行 `20261012T154021Z` ｜ 第 2 轮\n> ｜ 本轮审核者 gemini、glm、codex\n\n> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。\n\n## 总判断\n\nr2 计划将三条被接受意见（GLM-01、CODEX-01、CODEX-02）全部按裁决件落点如实并入，复核未发现方向性问题。逐项核实结果：类型边界上，§3.1 两段式判据对任务四条规则的映射经 ECMAScript 语义逐值验证成立——TypeError 组 undefined、\"2\"、null、{}、true、Symbol('cap') 均被 typeof 前置捕获，RangeError 组 NaN、±Infinity、-1、2.5、2**53 均落入 Number.isSafeInteger 或 <0 分支，合法组 0、2、MAX_SAFE_INTEGER 通过；零容量语义上，push 守卫先抛后改（src/stack.js:3），首次 push 抛既有 stack full 且栈保持空，§3.2 第 2 条新增的 peek/pop 返回 undefined 断言恰好落在空栈上（src/stack.js:4-7 的 pop/peek/size 不读 capacity）；三条消息正则与计划消息串精确匹配；兼容性声明经仓库核实成立（src/ 与 test/ 各仅一文件，唯一调用方 test/stack.test.js 传正整数 1、2，package.json 脚本引用属实）；回滚方案与两文件改动面匹配。唯一意见为 nit：§1 任务规则把 bigint 显式列入非 number 类型，§3.2 第 3 条逐值断言清单补入 Symbol 后仍缺 bigint 一项。\n\n**结论**：`approve-with-nits`\n\n## 审查意见（共 1 条：吹毛求疵 1）\n\n### GLM-01 · 吹毛求疵（nit）\n\n| 项 | 内容 |\n| :--- | :--- |\n| 位置 | `r2 计划 §3.2 第 3 条（test/stack.test.js TypeError 用例清单），对照 §1 校验规则` |\n| 类别 | test-gap ｜ 层次 plan |\n| 置信度 | high |\n\n**问题**：§1 把 bigint 显式列进非 number 类型清单，而 §3.2 第 3 条逐个断言 TypeError 的用例值只枚举了 undefined、\"2\"、null、{}、true、Symbol('cap') 六种，bigint 没有对应用例。r2 已按 CODEX-01 把 Symbol 从「代表值」升为显式用例，bigint 成为 §1 枚举清单中唯一没有直接断言的类型。按计划的 typeof 判据 bigint 必然走 TypeError（typeof 1n 为 bigint，不等于 number），实现不会错；但类型边界的回归保护在其余六种都有逐值断言、唯独这一种缺失，日后若重构判据（如改为基于 coercion 或 instanceof Number 的写法），bigint 可在无测试失败的情况下偏离其它非 number 类型。\n\n**依据**：读 r2 计划 §1（非 number 清单明确含 bigint：string、undefined、null、object、boolean、symbol、bigint 等）与 §3.2 第 3 条（逐值清单为 undefined、\"2\"、null、{}、true、Symbol('cap')，无 bigint）；读 src/stack.js:2-3（现状构造器无校验，bigint 的路由仅由计划 §3.1 的 typeof 判据保证，仓库现有代码无任何覆盖）；读 test/stack.test.js:1-6（既有 3 条用例均不含 bigint 入参）；对照我自己上一轮审查件（2026-10-12-m11-s12-capacity-glm.md）not_covered 一节——当时 Symbol 与 BigInt 均不在代表值内，r2 仅按 CODEX-01 补了 Symbol，bigint 缺口延续至今，此点从未被裁决过，不属重复意见。\n\n**建议**：§3.2 第 3 条用例清单补一个 bigint 入参（如 1n）随组断言 TypeError，与已加入的 Symbol('cap') 同款、单值成本；或在计划中写明 bigint 由 typeof 判据结构性覆盖、不逐值断言的取舍理由，二选一即可。\n\n## 认为正确的部分\n\n- §3.1 两段式判据与任务异常分工逐值对应无误：typeof 前置把全部非 number（含 null 走 typeof object、Symbol 走 typeof symbol）路由到 TypeError，Number.isSafeInteger 一并排除 NaN、±Infinity、小数与超安全整数（2**53 大于 MAX_SAFE_INTEGER），叠加 <0 排除负整数，其余非法数字统一 RangeError，对照 §1 四条规则无遗漏。\n- 零容量分析正确：push 守卫 this.items.length >= this.capacity 在 capacity 为 0 时首次即真、抛错先于数组变更（src/stack.js:3），栈保持空，故 §3.2 第 2 条的 peek/pop 返回 undefined 断言成立且构成焦点要求的兼容性直接回归证据（GLM-01 已按裁决落点闭合）；peek/pop/size 不引用 capacity（src/stack.js:4-7），零改动结论成立，size 为 getter，s.size === 0 的写法可用。\n- CODEX-01 的 Symbol 落实正确：用例显式加入 Symbol('cap')，判据依据（构造器无隐式 coercion、typeof 直接判定原始入参）与代码事实一致，歧义措辞已删除。\n- CODEX-02 的消息断言承诺落实且可行：/capacity must be a number/、/non-negative safe integer/ 与 §3.1 两条消息串精确匹配，/stack full/ 与既有 push 消息（src/stack.js:3）精确匹配；以代表用例为限、其余仅断言异常类型的政策表述清晰。\n- §2 现状与兼容性声明经仓库核实全部属实：capacity 直接赋值无校验（src/stack.js:2）、undefined 时守卫恒 false 无界退化、负数恒抛、小数（如 2.5 实容 3 个）多容纳一个元素；src/ 与 test/ 各仅一个文件，BoundedStack 唯一使用方 test/stack.test.js 传 1、2；package.json 的 build=node --check、test=node --test 与实际一致；README 无与校验冲突的用法示例。\n- §5 回滚方案与改动面匹配：仅 src/stack.js 构造器与测试追加两处、无配置依赖文件增删、单提交可整体 revert；§6 边界（不动四个方法、不防构造后改写 s.capacity）与任务给定的构造器校验范围一致。\n\n## 未覆盖范围（本侧盲区）\n\n- 只读约束下无执行能力：npm run build、npm test 与后续 TV verify 的通过性是基于源码与 ECMAScript 语义（typeof、Number.isSafeInteger、比较运算）的推理，未实测；被审对象 sha256 与工作树快照哈希未核验，属编排器职责。\n- -0 入参边缘：Number.isSafeInteger(-0) 为 true 且 -0 < 0 为 false，按计划判据会作为合法 0 通过——推理结论是行为与 0 等价、符合「非负安全整数」语义，未见危害，计划与测试均未提及，故不列为意见，仅在此留痕。\n- 构造后改写 s.capacity 可绕过校验——计划 §6 明确划出范围，与任务给定的「构造器校验」一致，不判为缺陷。\n- 背靠背约束：未读另一位审查员本轮及历史任何产出（codex、gemini 侧文件与运行目录），未读 .trivium；其视角（如有）不在本结论覆盖内。\n- 仓库外潜在使用者无法核实，兼容性结论仅限本仓库调用方。\n\n## 实际查阅的项目文件\n\n- `.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-claude.md`\n- `src/stack.js`\n- `test/stack.test.js`\n- `package.json`\n- `README.md`\n- `CLAUDE.md`\n- `AGENTS.md`\n- `.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-glm.md`\n- `.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-revised-claude.md`\n\n> 编排器从工具轨迹中记录到的读取次数：{\"read\":9,\"grep\":2,\"glob\":3,\"run_command\":0,\"project_reads\":8}\n\n---\n\n*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。\n审查员无写仓库权限，全部落盘由编排器完成。*\n",
+      "proposed_changed_sha256": "fb83bcf7a84d6f9656d61db1e4ce893e76cbe9bc8a16b9b905b13a7343f75090"
+    }
+  ],
+  "capture_entry": {
+    "file": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/client-start-readonly-20261016-01/capture-only-entry.mjs",
+    "sha256": "b1d36058f4424d78a8591de8d12eb617769a81a9009bf72fc3eddfa295e3a0ba",
+    "native_spawn_code_present": false,
+    "executed": false
+  },
+  "cli_source": {
+    "file": "/Applications/Visual Studio Code.app/Contents/Resources/app/out/cli.js",
+    "sha256": "af02cc89d0d687461d39d3382a83fdd4fc5d4fb280b0d999f81172566007743a",
+    "excerpts": [
+      {
+        "needle": "\"user-data-dir\"",
+        "offset": 176095,
+        "text": "\"user-data-dir\":{type:\"string\",cat:\"o\",args:\"dir\",description:v(3707,null)},profile:{type:\"string\",cat:\"o\",args:\"profileName\",description:v(3689,null)},help:{type:\"boolean\",cat:\"o\",alias:\"h\",descripti"
+      },
+      {
+        "needle": "\"extensions-dir\"",
+        "offset": 176312,
+        "text": "\"extensions-dir\":{type:\"string\",deprecates:[\"extensionHomePath\"],cat:\"e\",args:\"dir\",description:v(3669,null)},\"extensions-download-dir\":{type:\"string\"},\"builtin-extensions-dir\":{type:\"string\"},\"shared"
+      },
+      {
+        "needle": "\"new-window\"",
+        "offset": 174128,
+        "text": "\"new-window\":{type:\"boolean\",cat:\"o\",alias:\"n\",description:v(3684,null)},profile:{type:\"string\",cat:\"o\",args:\"profileName\",description:v(3689,null)},help:{type:\"boolean\",alias:\"h\",description:v(3672,n"
+      }
+    ]
+  },
+  "launch_argv": [
+    "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+    "--new-window",
+    "--user-data-dir",
+    "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/client-start-readonly-20261016-01/diagnostic-isolation/user-data",
+    "--extensions-dir",
+    "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/client-start-readonly-20261016-01/diagnostic-isolation/extensions",
+    "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/archive"
+  ],
+  "launch_argv_is_executable_plan": false,
+  "missing_parent_pre_spawn_gate": true,
+  "effects": [
+    "使用隔离VS Code用户数据，不能冒充原窗口effective配置",
+    "固定旧扩展版本，仅用于可比诊断；不修改原安装",
+    "禁自动恢复/更新/Python环境激活改变启动行为，只作辅助证据",
+    "不修改Claude用户/项目Hook及顺序，不设置伪造CLAUDE_PROJECT_DIR",
+    "捕获入口恒拒绝native，因此不能证明客户端健康或场景5完整性"
+  ],
+  "dynamic": {
+    "pool_proposed": "admission",
+    "pool_authorized": null,
+    "desired_wrapper_attempts": 1,
+    "native_allowed": 0,
+    "verified_total_start_upper_bound": null,
+    "verified_pre_spawn_cap": null,
+    "actual_exit": null,
+    "execution_authorized": false
+  },
+  "followup_runtime_v2": {
+    "implemented": false,
+    "reason": "父级计数路线及新预算绑定尚未核定；不可修订冻结包来绕过838/401等值检查"
+  },
+  "restoration_executed": false
+}

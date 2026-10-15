@@ -1,0 +1,71 @@
+{
+  "at": "2026-10-15T21:45:47.864Z",
+  "command": [
+    "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+    "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/parent-budget-prep-20261016-01/test-budget-binding.mjs"
+  ],
+  "cases": [
+    {
+      "name": "已绑定admission增量不再被旧等值校验误拒",
+      "passed": true,
+      "expected_refusal": false
+    },
+    {
+      "name": "零增量绑定",
+      "passed": true,
+      "expected_refusal": false
+    },
+    {
+      "name": "计数不符",
+      "passed": true,
+      "expected_refusal": true
+    },
+    {
+      "name": "未绑定启动",
+      "passed": true,
+      "expected_refusal": true
+    },
+    {
+      "name": "重复绑定",
+      "passed": true,
+      "expected_refusal": true
+    },
+    {
+      "name": "历史预占内容变化",
+      "passed": true,
+      "expected_refusal": true
+    },
+    {
+      "name": "不能动用review剩余额度",
+      "passed": true,
+      "expected_refusal": true
+    },
+    {
+      "name": "新预占hash不符",
+      "passed": true,
+      "expected_refusal": true
+    },
+    {
+      "name": "缺父级启动回执引用",
+      "passed": true,
+      "expected_refusal": true
+    },
+    {
+      "name": "未激活在读取任何真实授权之前拒绝",
+      "passed": true,
+      "expected_refusal": true
+    }
+  ],
+  "total": 10,
+  "passed": 10,
+  "budget_before": {
+    "admission": 838,
+    "review": 401
+  },
+  "budget_after": {
+    "admission": 838,
+    "review": 401
+  },
+  "scope": "纯合成预算结构检查；回执来源真实性及真实采集等价性未测",
+  "real_launch_receipts_created": false
+}
