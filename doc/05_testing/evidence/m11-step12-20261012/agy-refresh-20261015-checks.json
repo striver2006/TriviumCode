@@ -1,0 +1,70 @@
+{
+  "at": "2026-10-15T12:10:30.460Z",
+  "checks": [
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "--check",
+        "doc/05_testing/evidence/m11-step12-20261012/client-tv.mjs"
+      ],
+      "code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "--check",
+        "doc/05_testing/evidence/m11-step12-20261012/refresh-agy-20261015.mjs"
+      ],
+      "code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "--test",
+        "dist/test/test/contract/doc-archive-index.test.js",
+        "dist/test/test/contract/evolution-ledger-parity.test.js"
+      ],
+      "code": 0,
+      "stdout": "✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (1.578ms)\n▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标\n  ✔ doc/02_design/README.md (0.619333ms)\n  ✔ doc/03_api/README.md (0.157542ms)\n  ✔ doc/04_development/README.md (0.2825ms)\n  ✔ doc/05_testing/README.md (1.659166ms)\n  ✔ doc/06_deployment/README.md (0.102ms)\n  ✔ doc/07_manuals/README.md (0.090625ms)\n✔ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (3.18825ms)\n▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序\n  ✔ doc/02_design/README.md (0.2915ms)\n  ✔ doc/03_api/README.md (0.112125ms)\n  ✔ doc/04_development/README.md (0.077208ms)\n  ✔ doc/05_testing/README.md (0.534583ms)\n  ✔ doc/06_deployment/README.md (0.061417ms)\n  ✔ doc/07_manuals/README.md (0.049166ms)\n✔ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (1.322584ms)\n✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.218708ms)\n✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.200459ms)\n✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.236708ms)\n✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.13875ms)\n✔ B5 同一文件两条条目 ⇒ duplicate (0.098416ms)\n✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.181583ms)\n✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.078833ms)\n✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.122667ms)\n✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.119875ms)\n✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.056084ms)\n✔ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02） (0.119666ms)\n✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.056084ms)\n✔ ① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2） (7.897583ms)\n✔ ② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头 (5.114834ms)\n✔ ③ §24 无 ◐ / ⏳（M11 完成判据，主设计 24.3 第 2 条） (4.792125ms)\nℹ tests 30\nℹ suites 0\nℹ pass 30\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 103.6195\n",
+      "stderr": ""
+    }
+  ],
+  "scans": [
+    {
+      "file": "doc/05_testing/evidence/m11-step12-20261012/client-tv.mjs",
+      "findings": 0
+    },
+    {
+      "file": "doc/05_testing/evidence/m11-step12-20261012/refresh-agy-20261015.mjs",
+      "findings": 0
+    },
+    {
+      "file": "doc/05_testing/evidence/m11-step12-20261012/agy-refresh-20261015-approval.json",
+      "findings": 0
+    },
+    {
+      "file": "doc/05_testing/evidence/m11-step12-20261012/agy-refresh-20261015-before.json",
+      "findings": 0
+    },
+    {
+      "file": "doc/05_testing/evidence/m11-step12-20261012/agy-refresh-20261015-consumed.json",
+      "findings": 0
+    },
+    {
+      "file": "doc/05_testing/evidence/m11-step12-20261012/agy-refresh-20261015-result.json",
+      "findings": 0
+    },
+    {
+      "file": "doc/05_testing/evidence/m11-step12-20261012/client-d-preflight-69-20261015.json",
+      "findings": 0
+    },
+    {
+      "file": "doc/05_testing/REPORT_2026-10-12_m11_step12_manual_acceptance.md",
+      "findings": 0
+    }
+  ]
+}

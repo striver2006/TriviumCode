@@ -1,0 +1,148 @@
+{
+  "at": "2026-10-15T12:47:10.476Z",
+  "run_id": "20261015T123051Z",
+  "status": "success",
+  "review_mode": "full",
+  "awaiting_approval": true,
+  "gate": {
+    "ok": true,
+    "stage": "bug",
+    "rerun_index": 1,
+    "run_id": "20261015T123051Z",
+    "failures": [],
+    "warnings": [],
+    "structured_ids": [
+      "GLM-01",
+      "GLM-02",
+      "GLM-03",
+      "GLM-04"
+    ],
+    "fallback_ids": [],
+    "degraded_ids": [],
+    "disposition": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/bug/2026-10-15-m11-s12-capacity-revised-claude.md"
+  },
+  "disposition_sha256": "0f4adc251a4336dfb8dc65d28611db593508ba9eca37b0e501911b7247e86a4f",
+  "subject_unchanged": true,
+  "files": [
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/src/stack.js",
+      "before": "2509255bf743fc4f1bece7867ee60862d58e485eb67df9a06f55f570fc49ecd2",
+      "current": "2509255bf743fc4f1bece7867ee60862d58e485eb67df9a06f55f570fc49ecd2"
+    },
+    {
+      "file": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/test/stack.test.js",
+      "before": "57efe6e67e9c511f4b8bebc542ac9a1c75d3fc43744d7218a4e067321bfb964d",
+      "current": "57efe6e67e9c511f4b8bebc542ac9a1c75d3fc43744d7218a4e067321bfb964d"
+    }
+  ],
+  "phase_artifacts_only_bug": true,
+  "critics": {
+    "gemini": {
+      "status": "ok",
+      "evidence_ok": true,
+      "project_reads": 7,
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort_requested": "low",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope"
+    },
+    "glm": {
+      "status": "ok",
+      "evidence_ok": true,
+      "project_reads": 7,
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null
+    }
+  },
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "drift": {
+    "changed": false,
+    "files": [],
+    "policy": "warn"
+  },
+  "budget": {
+    "before": {
+      "admission": 832,
+      "review": 397
+    },
+    "after": {
+      "admission": 838,
+      "review": 401
+    },
+    "delta": {
+      "admission": 6,
+      "review": 4
+    },
+    "step_used": {
+      "admission": 43,
+      "review": 28
+    },
+    "total_used": 71,
+    "step_remaining": {
+      "admission": 1,
+      "review": 8
+    },
+    "batch_caps_reached": true
+  },
+  "corrections": [
+    "预检4次版本边界与2次探活均计admission；review为agy1次、zcode3次边界，不按2个审核者折为2次。",
+    "当前分池44/36，review本步28/36，未顶满；仅本批review4/4已满。"
+  ],
+  "process_samples": 34,
+  "limits": "正式停点成立；D的客户端写前拦截、当次审批和放行复测尚未执行。根因裁决内审查侧无法读取外部原件的原因不因gate通过而自动证实。"
+}

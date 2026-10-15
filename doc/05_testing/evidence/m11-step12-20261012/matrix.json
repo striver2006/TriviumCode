@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-13T13:42:04.389884+00:00",
+  "at": "2026-10-15T13:08:39.769Z",
   "source": "doc/05_testing/CASE_manual_acceptance.md",
   "source_sha256": "d6b96362ced49d628c38af4c286d82a18e0941958b913cc63d06dd28ccb61359",
   "rows": [
@@ -195,15 +195,19 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B/C已实跑；D已发布预计/硬限6/4",
+      "estimated_starts": "D恢复批实耗admission6/review4；本步累计43/28=71/80，余1/8；本批已满，不自行续跑",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "client-session-03.json",
         "client-b1-runs.json",
         "client-c-runs.json",
-        "c-assessment.json"
+        "c-assessment.json",
+        "client-d-runs.json",
+        "client-session-06.json",
+        "d-assessment.json"
       ],
-      "status": "部分：B/C均已awaiting_approval；D待实跑"
+      "status": "本轮B/C/D均实跑至awaiting_approval，未自动继续",
+      "observation": "D run 20261015T123051Z：审查/裁决/停点、写前拦截、当次审批及同参Edit放行恢复均有真实证据；源码/测试和裁决hash未变，审批复测零厂商增量。"
     },
     {
       "scenario": 3,
@@ -214,13 +218,18 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B/C已实跑；D已发布预计/硬限6/4",
+      "estimated_starts": "D恢复批实耗admission6/review4；本步累计43/28=71/80，余1/8；本批已满，不自行续跑",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "client-hook-gate-results.json",
-        "client-c-gate-results.json"
+        "client-c-gate-results.json",
+        "client-d-runs.json",
+        "client-session-06.json",
+        "d-assessment.json",
+        "client-d-gate-results.json"
       ],
-      "status": "部分：B/C真实Edit被写前拦截且提示审批/拒绝/放弃；D待测"
+      "status": "本轮B/C/D真实Edit均被写前拦截，且提示审批/拒绝/放弃出口",
+      "observation": "D run 20261015T123051Z：审查/裁决/停点、写前拦截、当次审批及同参Edit放行恢复均有真实证据；源码/测试和裁决hash未变，审批复测零厂商增量。"
     },
     {
       "scenario": 3,
@@ -231,13 +240,17 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B/C已实跑；D已发布预计/硬限6/4",
+      "estimated_starts": "D恢复批实耗admission6/review4；本步累计43/28=71/80，余1/8；本批已满，不自行续跑",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "client-session-03.json",
-        "client-session-05.json"
+        "client-session-05.json",
+        "client-d-runs.json",
+        "client-session-06.json",
+        "d-assessment.json"
       ],
-      "status": "部分：B/C裁决通过真实客户端落盘；D待测"
+      "status": "本轮B/C/D裁决均通过真实客户端落盘",
+      "observation": "D run 20261015T123051Z：审查/裁决/停点、写前拦截、当次审批及同参Edit放行恢复均有真实证据；源码/测试和裁决hash未变，审批复测零厂商增量。"
     },
     {
       "scenario": 3,
@@ -248,15 +261,20 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B/C已实跑；D已发布预计/硬限6/4",
+      "estimated_starts": "D恢复批实耗admission6/review4；本步累计43/28=71/80，余1/8；本批已满，不自行续跑",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "approval-b1.json",
         "client-b1-unlock-results.json",
         "approval-c.json",
-        "client-c-unlock-results.json"
+        "client-c-unlock-results.json",
+        "client-d-runs.json",
+        "client-session-06.json",
+        "d-assessment.json",
+        "client-d-unlock-results.json"
       ],
-      "status": "部分：B/C真实审批、同参数Edit放行及恢复通过；D待测"
+      "status": "本轮B/C/D真实审批后同参数Edit均放行，恢复原字节核对通过",
+      "observation": "D run 20261015T123051Z：审查/裁决/停点、写前拦截、当次审批及同参Edit放行恢复均有真实证据；源码/测试和裁决hash未变，审批复测零厂商增量。"
     },
     {
       "scenario": 3,
@@ -267,10 +285,15 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R1",
-      "estimated_starts": "B/C已实跑；D已发布预计/硬限6/4",
+      "estimated_starts": "D恢复批实耗admission6/review4；本步累计43/28=71/80，余1/8；本批已满，不自行续跑",
       "human": "客户端操作；新运行审批由Bob逐次决定",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "client-d-runs.json",
+        "client-session-06.json",
+        "d-assessment.json"
+      ],
+      "status": "本轮D原稿、审查件及裁决均落bug/，未串入plan/",
+      "observation": "D run 20261015T123051Z：审查/裁决/停点、写前拦截、当次审批及同参Edit放行恢复均有真实证据；源码/测试和裁决hash未变，审批复测零厂商增量。"
     },
     {
       "scenario": 4,

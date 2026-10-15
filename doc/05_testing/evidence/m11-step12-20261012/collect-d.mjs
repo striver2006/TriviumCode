@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
-const here=import.meta.dirname,home=os.homedir(),cfg=JSON.parse(fs.readFileSync(here+'/client-batch-d.json'));
+const here=import.meta.dirname,home=os.homedir(),cfg=JSON.parse(fs.readFileSync(here+'/client-batch-d-recovery01.json'));
 const topic='m11-s12-capacity',fixture=cfg.fixture;
 const latest=JSON.parse(fs.readFileSync(fixture+'/.reviews/'+topic+'/task.json')).runs.filter(r=>r.stage==='bug').at(-1);
 if(latest?.rerun_index!==1)throw Error('D尚未产生bug首轮，或轮次不符');

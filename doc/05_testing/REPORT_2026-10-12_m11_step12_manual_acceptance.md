@@ -168,3 +168,63 @@ C闭环后，[D批次](./evidence/m11-step12-20261012/client-batch-d.json)与[�
 D仅起草和审查根因，不实施修复，裁决后必须停awaiting_approval。首个失败、69、漂移或预算拒绝即停，不重试；C的批准不移用。当前仍823/397、本步28/24=52/80，余16/12。受限准入边界与Codex L2不变，M11仍未完成。
 
 本批新增归集脚本语法检查、30项文档索引/台账检查及脱敏扫描通过，见[本批检查原件](./evidence/m11-step12-20261012/doc-check-c-unlock-d-results.json)。
+
+## 2026-10-15：D预检版本漂移与获批agy定向刷新
+
+D的bug原稿已形成，阶段认领与解析成功；预检因agy探针1.3.3与实际1.3.5不一致退出69，未产生正式bug运行。[原始预检归集](./evidence/m11-step12-20261012/client-d-preflight-69-20261015.json)更正客户端“未烧任何厂商边界”的说法：实际有4次版本查询边界，admission823→827，review397不变。旧失败保留，不冒充正式审查失败或通过。
+
+Bob当次明确授权“批准 agy 定向刷新，admission 最多 6 次，计入原总额 80；刷新后先报告，不启动 D。”[独立回执](./evidence/m11-step12-20261012/agy-refresh-20261015-approval.json)绑定独立验收项目、起点827/397、上限833/397及唯一命令`doctor --only agy --json`。验收外壳仅加入该具名命令的一次性授权，仍用原预算侧车、本步44/36分池及总80上限；未改D批次、未扩容、不启其它厂商探针。
+
+[刷新原始结果](./evidence/m11-step12-20261012/agy-refresh-20261015-result.json)：agy1.3.5已真实执行版本、模型列表、文件读取、JSON Schema及路径负对照，共5次admission边界，全部子进程退出0。`headless_read_ok=true`且读取哨兵命中，`json_schema_ok=true`，`scratch_paths=[]`。路径负对照未命中，记录`path_deny.supported=false`，不能称路径隔离通过。新agy段及实测时间已由doctor写入独立项目的本地配置。
+
+**doctor总体仍退出69**，唯一blocker为本项目预算wrapper不是`trivium init`生成的标准形态；原wrapper明确转发到`client-tv.mjs`。未执行init、未覆盖预算wrapper、未重跑doctor或preflight。安装bundle、四目标28入口、容量主题task及源码/测试hash均与刷新前一致。配置整体hash发生变化；初次采样中的`other_config_sha256`也不一致。[后续精确核对](./evidence/m11-step12-20261012/agy-refresh-20261015-config-reconciliation.json)确认：在原投影已排除agy、generated_at、host的基础上，从当前配置移除doctor新增的`probe.verify_suggestion`与`probe.auth`后，JSON序列化sha256与刷新前投影完全一致；其余配置一致，正式verify配置未改变。原采样false保留，不回写成true。
+
+最终admission832、review397，本步37+24=61/80，余admission7、review12；本次5/6，无跨池。bug正式运行仍为空，D未启动，M11仍未完成。本次授权仅刷新，D恢复与验收wrapper诊断均未据此自动执行；受限Claude组合旧结论不延伸到此次变化后的新绑定。
+
+两份验收脚本语法检查与30项文档索引/台账检查通过，原始证据脱敏扫描零命中，见[检查记录](./evidence/m11-step12-20261012/agy-refresh-20261015-checks.json)。本次未重建重装，未提交或推送。
+
+## 2026-10-15：D单次恢复获批并发布，待原客户端执行
+
+Bob明确批准准备并发布D单次恢复：admission最多6次、review最多4次，计入原总80，不跨池、不自动重试；由原Claude Code测试会话执行，裁决后停awaiting_approval，不审批、不修业务。[本次决定](./evidence/m11-step12-20261012/d-recovery01-user-decision.json)与[具名恢复批次](./evidence/m11-step12-20261012/client-batch-d-recovery01.json)已落盘，当前`client-batch.json`已切换为`D-Claude-recovery-01`。
+
+[准备核对](./evidence/m11-step12-20261012/d-recovery01-preparation.json)确认预算起点832/397、绝对上限838/401，安装bundle与28入口未变，已有2026-10-15 bug原稿存在且hash绑定，源码与既有根因复现一致；新agy探针1.3.5及实测时间吻合，正式status无未关闭闸门，bug正式运行仍为空。仅执行零厂商调用的状态读取，未启动preflight、doctor或review；未修改业务、正式verify或安装配置。
+
+[两条客户端消息](./evidence/m11-step12-20261012/client-steps-d-recovery01.md)要求复用既有原稿、不重建主题，正式preflight与review --start各最多一次；首个失败/69/漂移/预算拒绝即停，裁决后等待Bob另行审批。旧D操作页标注转向恢复页，首次批次与失败原件不改写。`collect-d.mjs`改消费具名恢复批次，避免把前次预检与探针刷新混入本批预算增量。doctor的wrapper形态blocker保留，不执行init、不据此豁免正式预检。
+
+本次仅发布，不能记作D通过或已到审批停点。最坏再用10次后本步71/80，余admission1/review8；这不足以据旧估算承诺其余客户端批次全部完成，后续须按真实余量另行规划。当前预算仍61/80，M11未完成。
+
+## D恢复批真实运行与人工停点（2026-10-15）
+
+run `20261015T123051Z`，bug第1轮、entry D，实际`success/full`。Gemini与GLM两侧均`evidence_ok=true`、project_reads各7；回读分别为`gemini-3.8-flash-high`/envelope与`bigmodel-coding-plan/GLM-5.3`/trace。Gemini请求low、生效high按既定语义保留。无工作树漂移、只读越界或对方工件读取；两侧`peer_deny_applied=false`也保留，不以阴性结果宣称路径deny生效。原始材料见[运行归集](./evidence/m11-step12-20261012/client-d-runs.json)、[34份进程采样](./evidence/m11-step12-20261012/client-d-processes.json)、[真实客户端事件](./evidence/m11-step12-20261012/client-session-06.json)。
+
+Gemini零意见；GLM-01～04全部接受，分别补充树外复现证据引用、将完整命令标注改为节选、归纳第四种恒满退化、收窄测试缺口至零容量等实际未覆盖路径。gate退出0、无failures或warnings，四编号齐备；正式status确认`m11-s12-capacity/bug`为`awaiting_approval`。[主会话核对](./evidence/m11-step12-20261012/d-assessment.json)确认原稿hash与恢复批绑定一致，裁决落bug目录，源码/测试hash与恢复前一致。裁决中“审查侧因禁读/检索范围无法访问树外原件”的归因未据此独立证明，gate通过只说明裁决齐备，不消除该证据边界。
+
+**校正客户端预算转述**：实际admission6/6（四次版本查询边界＋两次探活），review4/4（agy一次、zcode三次边界），不是admission1、探活计review。累计838/401，本步43/28=71/80；获批分池为44/36，余admission1/review8。review总池未满，满的是本批4次上限；同样不得凭总池余量自行续跑。所有十次边界均退出0，当前无跨池、重试或超额证据。
+
+矩阵3.1、3.3与3.5的D部分已有本轮实证；3.2审批前真实Edit拦截、3.4当次审批及放行仍未测。[D闸门负对照步骤](./evidence/m11-step12-20261012/client-hook-d-gate-steps.md)已准备，厂商CLI预计/硬限0，仅由原Claude客户端触发一次预期被拦的Edit；意外成功即停，不自行恢复。准备不等于执行，本次未审批、未实施修复、未提交，M11仍未完成。
+
+## D真实审批前拦截核实，等待当次人工决定
+
+[真实工具对核验](./evidence/m11-step12-20261012/client-d-gate-results.json)确认：客户端先执行status，capacity主题bug仍awaiting_approval、历史approvals=2；随后唯一一次Edit（`toolu_3e4b7e67176e4a809cfac2a9`）被写前拦截，提示的审批/拒绝/放弃出口均指向本主题bug阶段。当前bug运行仍为`20261015T123051Z`，该run没有审批记录；历史两次审批不属于本轮。
+
+源码、测试与根因裁决hash均未变，预算保持838/401，本次admission/review增量均0。矩阵3.2的D部分通过，3.4的D审批与放行仍未测。已形成[具名审批提案](./evidence/m11-step12-20261012/d-approval-proposal.md)，建议仅批准本轮根因裁决并做零厂商CLI放行复测；保留树外证据访问原因未证实的边界。提案不是批准，本次未approve、未修业务、未提交，等待Bob当次决定。
+
+## D当次根因裁决获批，零厂商审批/放行批次已发布
+
+Bob明确批准`m11-s12-capacity / bug / 20261015T123051Z`本轮根因裁决，保留树外证据访问原因未证实的边界；仅授权原Claude Code会话审批及放行复测，零厂商CLI，不实施容量修复、不启动新审查、不提交。[独立批准回执](./evidence/m11-step12-20261012/approval-d.json)绑定本run、裁决全文sha256及含边界附言的精确approve参数。验收外壳额外核对回执中的裁决hash，原生产审批仍执行自身校验；不改变生产gate或审批规则。
+
+[发布前核对](./evidence/m11-step12-20261012/d-approval-preparation.json)确认源码/测试与裁决未变、正式status仍为bug awaiting_approval且历史approvals=2、本run无审批。当前批次已发布为[D-Claude-approval](./evidence/m11-step12-20261012/client-batch-d-approved.json)，admission/review两池硬增量均0、绝对上限维持838/401，不允许追加厂商边界。准备过程只执行零厂商status读取，没有替原客户端执行approve。
+
+[客户端两步操作](./evidence/m11-step12-20261012/d-approval-and-unlock.md)已发布：先单独执行具名审批入口，退出0后才验证历史approvals从2变3与本run批准记录，再做同参数Edit插入/删除sentinel。每步一次，失败即停。当前只有人工决定与准备证据，实际审批及放行复测仍未测，矩阵3.4不标通过，M11未完成。
+
+## D真实审批、同参放行及恢复闭环核实
+
+[放行原始证据](./evidence/m11-step12-20261012/client-d-unlock-results.json)确认原Claude客户端唯一一次具名approve退出0，外壳回执绑定本轮批准文件hash及run `20261015T123051Z`。其后真实status为open_gates空、approvals=3；task内本run唯一审批记录为bug/approved，reason与Bob批准的边界附言逐字一致，裁决hash仍为`0f4adc251a4336dfb8dc65d28611db593508ba9eca37b0e501911b7247e86a4f`。
+
+负对照Edit `toolu_3e4b7e67176e4a809cfac2a9`与审批后Edit `toolu_852bc9a0c3484a379b3cb770`所有参数一致，后者成功；随后唯一恢复Edit `toolu_2c81aae8fcbe45a68c11b9d1`成功且只删除新增sentinel行。源码恢复到`2509255bf743fc4f1bece7867ee60862d58e485eb67df9a06f55f570fc49ecd2`，测试仍为`57efe6e67e9c511f4b8bebc542ac9a1c75d3fc43744d7218a4e067321bfb964d`。两次Edit的唯一性、先后顺序与审批先行均已核对，预算保持838/401，admission/review增量均0。
+
+矩阵3.4的D部分据实记通过，至此剧本3的B/C/D人工闸门流程全部具有本轮实证。仅命令D验收闭环，不代表M11完成；树外证据访问原因未证实的边界仍保留，容量修复未实施，未启动新审查、未提交。当前本步71/80，剩admission1/review8，后续客户端批次仍需按余量独立规划，不能自行启动。
+
+## 2026-10-15交付检查
+
+Bob明确要求提交、推送后，主仓执行`npm run check`退出0：3624项，3622通过、0失败、2个条件跳过；8份新增/修改验收脚本语法检查通过。交付核对发现矩阵生成误把首条数据行留在表头，已修正三份归集脚本并重出Markdown，同时保留空证据的“尚无本轮满足判据的证据”提示；JSON与Markdown均68条、编号唯一且顺序一致，原始验收证据未回写。完整结果见[交付检查](./evidence/m11-step12-20261012/delivery-check-20261015.json)。本次完整检查包含仓库构建，未重装用户安装副本、未改版本号，验收预算仍838/401，不将自动化检查提升为剩余真实客户端验收通过。

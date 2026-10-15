@@ -1,0 +1,52 @@
+{
+  "at": "2026-10-15T12:20:40.535Z",
+  "id": "D-Claude-recovery-01",
+  "fixture": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012",
+  "topics": [
+    "m11-s12-capacity"
+  ],
+  "installed_sha256": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+  "before": {
+    "admission": 832,
+    "review": 397
+  },
+  "caps": {
+    "admission": 838,
+    "review": 401
+  },
+  "expected": {
+    "admission": 6,
+    "review": 4
+  },
+  "hard": {
+    "admission": 6,
+    "review": 4
+  },
+  "criteria": [
+    "3命令D"
+  ],
+  "driver": {
+    "agent": "claude",
+    "model": "qwen3.8-flash",
+    "provider": "qwen",
+    "source": "Bob在主会话本轮确认"
+  },
+  "command": "/dual-review-bug 核对容量非法输入的复现与构造器缺校验根因，检查类型错误与取值错误边界；本轮仅根因审查，不实施容量修复 --topic m11-s12-capacity --critics gemini,glm --model-gemini gemini-3.8-flash-high --effort-gemini low --model-glm GLM-5.3 --driver-provider qwen --driver-model qwen3.8-flash",
+  "focus": "核对容量非法输入的复现与构造器缺校验根因，检查类型错误与取值错误边界；本轮仅根因审查，不实施容量修复",
+  "goal": "为BoundedStack构造器补充容量校验：只接受非负安全整数；非number抛TypeError，其余非法数字抛RangeError；零容量合法且push拒绝；保留peek与push/pop行为并补充测试",
+  "approval_receipt": null,
+  "stop": "单次恢复；正式preflight与review --start各最多一次；首个失败/69/漂移/预算拒绝立即停，不自动重试；裁决后停awaiting_approval，不审批、不修业务、不提交",
+  "scope_note": "复用2026-10-15 bug原稿，不重建主题/原稿。agy定向刷新已消耗5次另计；doctor总体69的唯一blocker为受控预算wrapper形态，不改wrapper、不运行init、不重跑doctor，不豁免正式preflight。最坏本步71/80，余admission1/review8，不能承诺后续其它批次预算足够。",
+  "resume_receipt": "d-recovery01-user-decision.json",
+  "subject_path": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.reviews/m11-s12-capacity/bug/2026-10-15-m11-s12-capacity-claude.md",
+  "subject_sha256": "cd1ba5ccceb2664264e704a8c4f420b5cd9a00d12cb5c920aad8efb30a7b084d",
+  "stage": "bug",
+  "rerun_index": 1,
+  "agy_probe": {
+    "version": "1.3.5",
+    "probed_at": "2026-10-15T12:08:04.964Z",
+    "headless_read_ok": true,
+    "json_schema_ok": true,
+    "path_deny_supported": false
+  }
+}

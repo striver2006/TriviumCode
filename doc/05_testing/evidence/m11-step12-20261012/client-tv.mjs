@@ -12,7 +12,20 @@ const {openBudget,hashFile}=createRequire(import.meta.url)(repo+'/scripts/agent-
 const plan=JSON.parse(fs.readFileSync(here+'/budget-plan.json')),cfg=JSON.parse(fs.readFileSync(here+'/client-batch.json'));
 const args=process.argv.slice(2),pool=args[0]==='preflight'||args[0]==='doctor'?'admission':'review';
 if(process.cwd()!==cfg.fixture)throw Error('只允许在本轮具名独立验收项目运行');
-if(args[0]==='doctor'&&!args.includes('--selftest'))throw Error('本批不授权重新探针');
+let refreshAuthorization=null;
+if(args[0]==='doctor'&&!args.includes('--selftest')){
+ const file=path.join(here,'agy-refresh-20261015-approval.json');
+ if(!fs.existsSync(file))throw Error('本批不授权重新探针');
+ const a=JSON.parse(fs.readFileSync(file));
+ const used=fs.readdirSync(plan.budgetRoot+'/ledger/admission').filter(n=>/^reserved-\d+\.json$/.test(n)).length;
+ if(a.decision!=='approved'||a.fixture!==process.cwd()||a.user_answer!=='批准 agy 定向刷新，admission 最多 6 次，计入原总额 80；刷新后先报告，不启动 D。'||
+   JSON.stringify(args)!==JSON.stringify(['doctor','--only','agy','--json'])||a.before.admission!==used||a.hard.admission!==6||a.caps.admission!==used+6||a.caps.admission>plan.absolute_step_caps.admission)
+   throw Error('定向刷新授权或预算不匹配');
+ // 仅此次具名doctor消费单次授权，不改D批次，不扩大其它命令权限。
+ saveEvidence(path.join(here,'agy-refresh-20261015-consumed.json'),{at:new Date().toISOString(),approval_sha256:hashFile(file),args,before:used});
+ cfg.caps.admission=a.caps.admission;
+ refreshAuthorization={source:file,sha256:hashFile(file),hard:6,stop:'刷新后报告，不启动D'};
+}
 let approvalEvidence=null;
 if(args[0]==='abandon')throw Error('本批未授权放弃闸门');
 if(args[0]==='approve'){
@@ -24,6 +37,7 @@ if(args[0]==='approve'){
  const task=JSON.parse(fs.readFileSync(path.join(cfg.fixture,'.reviews',a.topic,'task.json')));
  const latest=task.runs.filter(r=>r.stage===a.stage).at(-1);
  if(latest?.run_id!==a.run_id||latest?.status!=='success'||task.approvals.some(r=>r.run_id===a.run_id))throw Error('批准不适用于当前轮或该轮已有审批');
+ if(a.response_file&&a.response_sha256&&hashFile(a.response_file)!==a.response_sha256)throw Error('裁决件与用户批准的hash不一致');
  approvalEvidence={source:file,sha256:hashFile(file),run_id:a.run_id};
 }
 if(args[0]==='review'&&args.includes('--start')){
@@ -36,7 +50,7 @@ const installed=path.join(os.homedir(),'.claude/skills/dual-critic/scripts/trivi
 if(hashFile(installed)!==cfg.installed_sha256)throw Error('安装指纹改变，停止');
 const preload=repo+'/scripts/agent-access-budget-preload.cjs',before=count();
 const output=path.join(os.homedir(),'.trivium/evidence/m11-step12-20261012/calls');fs.mkdirSync(output,{recursive:true});
-const invocation={at:new Date().toISOString(),load_id:token,pool,label,cwd:process.cwd(),command:[process.execPath,installed,...args],before,installed_sha256:hashFile(installed),script_sha256:hashFile(import.meta.filename),preload_sha256:hashFile(preload),core_sha256:hashFile(repo+'/scripts/agent-access-budget.cjs'),cap_sha256:hashFile(here+'/cap-preload.cjs'),approval_authorization:approvalEvidence};
+const invocation={at:new Date().toISOString(),load_id:token,pool,label,cwd:process.cwd(),command:[process.execPath,installed,...args],before,installed_sha256:hashFile(installed),script_sha256:hashFile(import.meta.filename),preload_sha256:hashFile(preload),core_sha256:hashFile(repo+'/scripts/agent-access-budget.cjs'),cap_sha256:hashFile(here+'/cap-preload.cjs'),approval_authorization:approvalEvidence,refresh_authorization:refreshAuthorization};
 const request=output+'/'+token+'-requested.json';saveEvidence(request,invocation);
 const env={...process.env,TRIVIUM_ACCESS_BUDGET_ROOT:plan.budgetRoot,TRIVIUM_ACCESS_BUDGET_POOL:pool,TRIVIUM_ACCESS_LABEL:label,TRIVIUM_ACCESS_LOAD_TOKEN:token,TRIVIUM_ACCESS_SCRIPT_SHA256:invocation.script_sha256,TRIVIUM_ACCESS_MANIFEST:request,M11_BATCH_ABSOLUTE_CAP:String(cfg.caps[pool]),NODE_OPTIONS:`--require ${here}/cap-preload.cjs --require ${preload}`};
 delete env.TRIVIUM_STUB_CRITIC;delete env.TRIVIUM_ASSET_ROOT;
