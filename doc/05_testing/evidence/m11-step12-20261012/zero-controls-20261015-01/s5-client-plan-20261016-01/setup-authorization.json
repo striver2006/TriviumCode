@@ -1,0 +1,63 @@
+{
+  "at": "2026-10-15T16:42:00.145Z",
+  "date_context": "2026-10-16 Asia/Singapore",
+  "decision": "approved",
+  "scope": "s5-setup",
+  "user_instruction": "批准两个新夹具的本地 setup，厂商增量为 0；不启动客户端、不做故障注入。",
+  "preparation_sha256": "d27f4cc475d1be02bd634c4381560b49255d142ae1075ee3f16e727464dc7ae6",
+  "proposal_sha256": "a6ab8836e2f3372fae7c228c630c9d951c7e87bd2c624aa8b658168a1f560a31",
+  "fixtures": {
+    "archive": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/archive",
+    "empty": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/empty"
+  },
+  "vendor_increment": {
+    "admission": 0,
+    "review": 0
+  },
+  "budget_before": {
+    "admission": 838,
+    "review": 401
+  },
+  "absolute_vendor_caps": {
+    "admission": 838,
+    "review": 401
+  },
+  "allowed_commands": [
+    {
+      "name": "archive",
+      "cwd": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/archive",
+      "system_terminal_command": [
+        "/opt/homebrew/opt/node/bin/node",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/setup.mjs",
+        "archive"
+      ],
+      "runtime_args": [
+        "init",
+        "--json"
+      ],
+      "max_attempts": 1
+    },
+    {
+      "name": "empty",
+      "cwd": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/empty",
+      "system_terminal_command": [
+        "/opt/homebrew/opt/node/bin/node",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/setup.mjs",
+        "empty"
+      ],
+      "runtime_args": [
+        "init",
+        "--json"
+      ],
+      "max_attempts": 1
+    }
+  ],
+  "changes": "仅两个具名新夹具的正式init及已审阅采集wrapper；逐文件预览校验，保留所有Hook",
+  "execution_owner": "Bob在系统终端执行；助手只记录授权、提供命令并只读回收结果",
+  "client_start_authorized": false,
+  "fault_injection_authorized": false,
+  "review_or_approval_authorized": false,
+  "product_code_change_authorized": false,
+  "commit_push_authorized": false,
+  "stop": "每个夹具一次；archive失败则不执行empty。任何输出差异/预算变化即停。完成后不启动客户端。"
+}

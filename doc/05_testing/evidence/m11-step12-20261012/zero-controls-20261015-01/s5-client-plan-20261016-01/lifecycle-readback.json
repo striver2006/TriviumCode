@@ -1,0 +1,60 @@
+{
+  "at": "2026-10-15T16:12:00.387Z",
+  "run_root": "/Users/chenzhenbo/.trivium/runs",
+  "buckets": [
+    {
+      "name": "archive",
+      "cwd": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/archive",
+      "path": "/Users/chenzhenbo/.trivium/runs/archive-6ac717ba",
+      "exists": false
+    },
+    {
+      "name": "empty",
+      "cwd": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/s5-client-plan-20261016-01/empty",
+      "path": "/Users/chenzhenbo/.trivium/runs/empty-1b5dde87",
+      "exists": false
+    }
+  ],
+  "archive_gates": [
+    {
+      "topic": "m11-s12-stack",
+      "stage": "plan",
+      "state": "idle",
+      "run_id": "20261012T125354Z"
+    },
+    {
+      "topic": "m11-s12-stack",
+      "stage": "code",
+      "state": "approved",
+      "run_id": "20261012T225703Z"
+    },
+    {
+      "topic": "m11-s12-capacity",
+      "stage": "plan",
+      "state": "approved",
+      "run_id": "20261012T154021Z"
+    },
+    {
+      "topic": "m11-s12-capacity",
+      "stage": "bug",
+      "state": "approved",
+      "run_id": "20261015T123051Z"
+    }
+  ],
+  "source_files": [
+    {
+      "file": "src/trivium/hooks.ts",
+      "sha256": "743f599fd78711019f2e97ebafae5e367217bd490f0325981956a2cb2ecb69cc"
+    },
+    {
+      "file": "src/trivium/retention.ts",
+      "sha256": "bf25dc80263a6cb721466258cef7ce65e684742e51b8cf8c43e8e44c2bc735bb"
+    },
+    {
+      "file": "src/trivium/review.ts",
+      "sha256": "9774ce2a011dd4354316b58ea22b6c573738b3a0115219286d1db6cec9e2f86d"
+    }
+  ],
+  "conclusion": "SessionStart只扫描本项目路径派生的桶；新桶均不存在，副本无running/待裁决闸门。启动前再次核对，不能仅凭本次静态读数执行。",
+  "hook_executed": false
+}

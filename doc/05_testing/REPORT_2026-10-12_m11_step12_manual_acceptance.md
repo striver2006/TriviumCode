@@ -298,3 +298,35 @@ Bob完成前后检查点及原会话唯一Bash后，[独立核验](./evidence/m1
 本次只归集已执行事件并同步报告/矩阵，不重跑检查点、Hook、旧脚本或厂商CLI，不自动提交推送。下一步先准备合法绑定自身cwd的独立客户端夹具与5.2～5.5的备份恢复方案，禁止在复制wrapper上绕过cwd限制；配置、初始化、新客户端及受保护工件操作均停在另行明确范围之前。M11尚未完成。
 
 Bob随后明确要求提交、推送，本次提交前执行`npm run check`退出0：3624项、3622通过、0失败、2跳过，预算前后均838/401；[本次完整检查输出](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/s5-client-delivery-check.json)独立保存。此前[独立一致性检查](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/s5-client-validation.json)确认68行唯一、顺序及判据一致，仅5.1状态变化。自动化检查不替代客户端验收，5.2～5.5客户端状态不变。
+
+## 2026-10-16：5.2～5.5独立客户端夹具执行前准备
+
+Bob要求开始执行上一段准备任务后，新增[完整操作包](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/README.md)。新根为Z01根下`s5-client-plan-20261016-01`，archive/backup各141文件与原工程逐项一致，empty/empty-backup各18文件，仅完成空Git初始化；原工程、旧副本及旧证据不变。预算仍838/401，增量0/0。本批未运行Trivium init、Hook、厂商CLI、审批或客户端；未修改任何受保护工件、未提交推送。
+
+只读定位确认cwd绑定来自验收`client-tv.mjs`，生产`writeWrapper()`不绑定cwd；正式init会替换该计数外壳，故不能直接初始化后启动客户端。[逐文件配置预览](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/configuration-preview.json)由纯函数与源代码推导：archive预计只有wrapper变化，empty新增标准配置/协议/Hook；Hook命令、顺序、超时均保留。拟在正式init后安装另行审阅的新夹具采集wrapper，保留原cap-preload、零厂商上限及安装指纹，原wrapper不修改、不伪造cwd。实际初始化结果须与预览逐字节核对；采集层行为等价性未测，其回执只能作辅助，不能自动替代原配置集成验收。
+
+[生命周期读数](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/lifecycle-readback.json)确认SessionStart按项目路径派生桶，两个新桶均不存在，副本仅idle/approved闸门；运行前仍须再核对。已准备setup、逐阶段检查点、用户终端缺/改件与恢复、整夹具保留现场回滚脚本，均没有激活或运行。唯一Bash参数、预期值及目前为null的实际退出码列于[client-requests.json](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/client-requests.json)。
+
+当前停点分两级：先明确批准两个新夹具的本地正式init及采集配置，受保护写入由Bob系统终端执行；随后另核定新VS Code Claude会话的启动边界、预算池与上限。Hook侧车不覆盖VS Code启动Driver，当前0/0不能授权新客户端，真实启动边界数仍null。未生成setup/client批准回执，未移除或弱化任何守卫。5.2～5.5只追加准备证据，68行判据、顺序及状态均不变；容量修复和其余未闭合项不前推。
+
+[本批准备检查](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/validation.json)实际通过9份脚本语法、2项未授权入口拒绝/无副作用检查及30项文档定向测试；68行矩阵唯一性/顺序/状态对账、脱敏、diff检查通过，原工程141文件及两个夹具不变，预算838/401。未重跑旧prepare/assess/s5/s82/恢复脚本，未跑本批真实init或Hook；这些检查不替代客户端验收。
+
+## 2026-10-16：两个新夹具的本地setup获批
+
+Bob明确批准“两个新夹具的本地 setup，厂商增量为 0；不启动客户端、不做故障注入。”已独占保存[具名授权回执](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/setup-authorization.json)，绑定准备证据及18文件操作包指纹；[授权前后只读核对](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/setup-authorization-check.json)通过，预算仍838/401，原工程/副本/备份未变。授权仅含两个具名夹具各一次正式init及已展示的采集wrapper安装，不是审查闸门审批，不包含客户端或故障注入。
+
+按Bob保留的受保护路径操作边界，[精确命令](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/SETUP_AUTHORIZED.md)交由Bob系统终端执行；本轮未运行setup/runtime或旧采集脚本。当前实际init退出码archive/empty均null、Hook退出码null，执行与恢复次数0。原冻结README保留准备时快照，新授权回执代表当前setup权限。5.2～5.5只追加授权记录，68行判据与状态不变；未提交推送。
+
+## 2026-10-16：两个本地setup实际完成
+
+Bob反馈完成后，[独立只读核验](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/setup-assessment.json)确认archive于00:44:25、empty于00:44:48（Asia/Singapore）各执行一次正式init，安装bundle与采集进程实际均退出0、signal null，stderr为空，预算侧车装载与真实子进程PID/父PID一致。顶层终端setup退出码未单独录制，仍为null，不用子进程结果代替。
+
+archive当前141文件，仅wrapper变化；empty当前27文件，新增9个预期文件，归档仅README、无审查记录。所有正式init文件与配置预览逐字节一致，最终采集wrapper与获批内容一致、模式755，完整Hook保留。原工程141文件、两份备份、外部索引及安装运行时指纹未变，两个新运行桶仍不存在，无恢复操作。预算保持838/401、增量0/0。
+
+[当前交接](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/SETUP_COMPLETED.md)：本地setup已完成，不再重跑；本批仅两个init回执、无Hook事件，实际Hook退出码和客户端验收结论保持null。5.2～5.5客户端状态不变，下一停点为只读核定新客户端启动边界及预算；未生成客户端授权，未启动客户端、未注入故障、未自动审批或提交推送。采集层行为等价性仍未测，M11尚未完成。
+
+## 2026-10-16：独立夹具setup交付检查与下一步提示语
+
+Bob明确要求提交、推送并起草下一步提示语后，本轮`npm run check`实际退出0，3624项、3622通过、0失败、2跳过，预算前后838/401；[本次完整输出](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/setup-delivery-check.json)独立保存，不覆盖前批检查。冻结18文件操作包及两个已setup夹具保持原样，未启动客户端、未做故障注入、未重跑旧采集脚本。自动化检查不替代5.2～5.5客户端验收。
+
+[下一步完整提示语](./evidence/m11-step12-20261012/zero-controls-20261015-01/s5-client-plan-20261016-01/NEXT_TASK_PROMPT.md)限定只读核定VS Code/SDK/包装器/native启动链、计数覆盖、预算池与硬上限，完成最小执行提案后停在新启动或配置生效前；本轮提交推送授权不延伸到下一轮。相对交付前HEAD，矩阵仅5.2～5.5追加证据与观察，68行判据、顺序及状态不变。当前M11未完成。
