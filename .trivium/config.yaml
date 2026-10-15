@@ -80,11 +80,11 @@ profiles:
       plan: gpt-6.1-sol
       code: gpt-6.1-sol
       bug: gpt-6.1-sol
-    # Claude/Qwen flash 已补齐真实准入；项目日常运行暂不使用官方订阅路线。
+    # Claude 默认档走官方 Opus，显式请求 medium；实际模型与 effort 以运行回读为准。
     claude:
-      plan: qwen3.8-flash
-      code: qwen3.8-flash
-      bug: qwen3.8-flash
+      plan: { model: opus, effort: medium }
+      code: { model: opus, effort: medium }
+      bug: { model: opus, effort: medium }
   flash:
     gemini:
       plan: gemini-3.8-flash-high
@@ -99,15 +99,15 @@ profiles:
       plan: gpt-6-luna
       code: gpt-6-luna
       bug: gpt-6-luna
-    # Qwen 当前默认模型与 default 同值，配置声明和探活均已核实。
+    # Claude flash 档走官方 Sonnet，显式请求 medium。
     claude:
-      plan: qwen3.8-flash
-      code: qwen3.8-flash
-      bug: qwen3.8-flash
-  # pro 档：按需 `--profile pro` 单次切档。取值原则：只换模型目录里确有比 default 更高档的格。
+      plan: { model: sonnet, effort: medium }
+      code: { model: sonnet, effort: medium }
+      bug: { model: sonnet, effort: medium }
+  # pro 档：按需 `--profile pro` 单次切档，按侧选择更高档模型或 effort。
   # gemini / glm 与 default 同值是结果不是漏改：gemini 目录里的 3.1-pro 比 3.8-flash 旧两代，
   # GLM-5.3 已是顶档；Codex pro 按用户指定使用官方 gpt-6-astra。
-  # Claude high 使用已真实验证的 Qwen Max，不设置未经核实的 effort 默认值。
+  # Claude high 使用官方 Opus，显式请求 high，与 default 的 medium 区分。
   pro:
     gemini:
       plan: gemini-3.8-flash-high
@@ -122,7 +122,7 @@ profiles:
       code: gpt-6-astra
       bug: gpt-6-astra
     claude:
-      # high 显式绑定 Qwen，避免 profile:null 覆盖 Agent 默认接入。
+      # high 显式绑定官方 native，与 Agent 默认接入保持一致。
       plan: { tier: high }
       code: { tier: high }
       bug: { tier: high }
@@ -166,9 +166,9 @@ agents:
     # 显式 null 选择官方 native，覆盖内置供应商默认；第三方须单次显式选择 profile 和匹配模型。
     profile: null
     # 不设置项目 effort 默认值；官方基底的声明与运行回读分别记录。
-  # 工具身份保持claude；Qwen只代表所选接入配置，运行时供应商无回读时null。
+  # Claude 默认走官方 native；模型别名与实际模型、供应商回读分别记录。
   claude:
     vendor: anthropic
-    profile: qwen
+    profile: null
     tiers:
-      high: { model: qwen3.8-max, profile: qwen }
+      high: { model: opus, effort: high, profile: null }

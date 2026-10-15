@@ -31,10 +31,25 @@ default/flash/pro 各自的 plan/code/bug 分别为 `gpt-6.1-sol`、`gpt-6-luna`
 2026-10-09 初始预检中 Claude 官方路线返回组织停用错误，计划阶段曾临时采用 Gemini、GLM 两审。
 代码阶段曾提前使用 Claude、Gemini、GLM 三审，完成标准复核后曾恢复本机临时两审覆盖，
 既有记录保留。2026-10-10 Claude/Qwen flash、max 完整适用准入后，按用户要求切换
-Claude pro 到 Qwen max 并恢复共享三审。Claude default/flash 使用 Qwen flash。
+Claude pro 到 Qwen max 并恢复共享三审，当时 Claude default/flash 使用 Qwen flash。
 Kimi/DeepSeek 各实际模型的未测项见[三供应商报告](../05_testing/REPORT_2026-10-10_claude_three_providers.md)，
-不能把默认模型探活当作所有档位通过。Claude 官方路线保留实现，真实验收待订阅恢复，恢复后须显式选择
-`--native-claude` 并重跑对应路线探针；失败不自动切换供应商。
+不能把默认模型探活当作所有档位通过。
+
+2026-10-16 按用户要求，共享配置恢复 Claude 官方路线：`agents.claude.profile: null`，
+default 各阶段使用 `{ model: opus, effort: medium }`，flash 各阶段使用 `{ model: sonnet, effort: medium }`；
+pro 保留 `{ tier: high }`，high 显式配置 `{ model: opus, effort: high, profile: null }`。
+模型别名跟随 Claude CLI 解析，实际模型以运行回读为准；Claude 的 effort 当前没有生效值回读，
+`effort_effective` 仍为 `null`、来源为 `unverified`，不能把请求值当作生效值。
+本机配置继续保存入口路径和探针结论，不修改全局登录配置。
+切换后须刷新官方路线探针并分别预检三个档位；预检不替代真实审查验收，未执行的验收仍为未测。
+单次使用第三方时须同时指定 `--profile-claude <供应商>` 与对应 `--model-claude <模型>`；失败不自动切换供应商。
+
+本次官方原生路线探针通过，首次不带 effort 的 Opus/Sonnet 全阶段预检均通过；对应探活会话的模型回读
+分别为 `claude-opus-5-5`、`claude-sonnet-5-5`。首次 pro 使用 Fable 时探活失败（退出码 69），
+会话返回 `Fable 5.1 requires usage credits`，没有成功的实际模型回读；随后按用户要求改为上述 Opus 分档。
+调整后的 Opus medium（default）与 Opus high（pro）全阶段预检均通过，均执行了新的组合探活；
+Sonnet medium（flash）也已通过全阶段预检及新的组合探活。这只证明请求组合可调用，
+不证明服务端实际采用了指定 effort。三个档位的真实审查验收均未测。
 
 旧主题的 Driver 由该阶段已有运行留痕优先判定，不能用修改配置来迁移历史作者。
 已有他家工件的阶段不强行重新认领；新工作使用新主题或尚未被使用的阶段。
