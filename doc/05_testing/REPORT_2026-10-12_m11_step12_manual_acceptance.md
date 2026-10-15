@@ -268,3 +268,23 @@ Bob报告已恢复755后，新采集器记录2026-10-15 22:28（Asia/Singapore�
 Bob明确要求提交、推送并起草下一步提示语后，本轮执行`npm run check`退出0：3624项、3622通过、0失败、2跳过，原始输出见[完整检查](./evidence/m11-step12-20261012/zero-controls-20261015-01/delivery-check.json)。检查包含仓库构建，未重装安装副本；Z01的8份脚本语法检查与新增文件脱敏扫描通过。68项判据的要求、执行载体和范围与交付前HEAD保持一致，两份矩阵状态同步，预算仍838/401，厂商增量0。未重跑已完成的手工负对照、审批或恢复步骤。
 
 [下一步任务提示语](./evidence/m11-step12-20261012/zero-controls-20261015-01/next-task-prompt.md)已起草，要求先解决6.7逐Hook真实事件取证，保留场景5客户端集成未测及其它未闭合项；新配置、客户端启动或厂商批次须按具体新增范围另行授权。此交付不代表M11验收完成。
+
+## Z01续验：既有扩展日志补齐6.7，场景5仅完成安全准备
+
+[新增只读回收](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/readback.json)在VS Code既有Claude扩展日志中找到逐Hook真实完成记录：H2的hook-pre-write/pre-bash/pre-commit/stop均为实际status 2；Z01 22:28:06.723与.724分别记录pre-bash、pre-commit退出2，夹在唯一Bash toolu_7ea1cacd34e54a649b00cd9e的request/result之间。其后Stop也退出2。每条均有护栏失效stderr；退出码取客户端完成记录，不取shell正文exit 2。由此确认pre-bash执行过，只是该tool_result单独呈现pre-commit错误；先前检索缺少扩展输出日志，旧证据中的null不回写。
+
+关联依据是扩展启动/恢复会话、原项目cwd、精确命令及唯一工具时间窗；日志未带Hook PID和直接tool_use_id，两者仍null，不宣称直接进程ID关联。四个Hook的真实事件与恢复证据现已齐备，矩阵6.7据实改为通过；没有新故障注入或诊断配置变化。原工程、Z01副本和备份的83个非.git文件集合/hash/权限/大小一致，wrapper原hash/755，预算仍838/401、本步71/80、余1/8，当前批次厂商增量0。
+
+[场景5准备与完整副本](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/next-preparation.json)只验证安全触发形式。第一次新副本git commit --dry-run虽不创建提交，仍刷新.git/index，脚本断言失败；失败副本保留、原件未变。第二次使用独立GIT_INDEX_FILE，Git退出1（无暂存变更），仅外部临时索引变化，副本141文件含.git及原工程/备份均未变，详见[dry-run原始结果](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/dry-run-v2.json)。没有执行Trivium Hook或重跑已完成s5，不能标客户端通过。
+
+[可审阅步骤、采集脚本及恢复边界](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/README.md)已准备：下一最小提案是原客户端/原cwd的一次健康归档dry-run，当前停在客户端操作之前。复制wrapper绑定原cwd，不能在副本直接做缺/改件客户端对照；不改绑定、不伪造cwd、不删除真实工件，5.2～5.5客户端格仍待合法独立夹具方案。无需为6.7开启新诊断、启动新客户端或改项目Hook配置。
+
+后续ZCode Driver并取跨Driver、Codex L2两批按冷缓存重估核心为7/3与6/4（admission/review），合计13/7；若新启Driver再暂留3与2次未验证启动边界，则拟议包络18/7。核心已超admission余量12，不能跨池或按旧6/3、4/4启动。Driver启动计数链、能力探针刷新和版本漂移另行核对批准，未发布可执行批次、未改预算台账。正式失败分支1.4、B1 Codex证据不足、剧本7/9/10及可选9.6/11.7状态保持。
+
+本次未提交推送，未改业务/生产Hook或实施容量修复；树外证据访问原因未证实的边界保留。旧Z01 delivery-check.json仍是上一轮完整检查，本轮新增脚本及文档定向验证另存本目录，不替代客户端验收，M11尚未完成。
+
+[本轮定向校验](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/validation.json)：6份新增脚本语法通过，文档索引/演进台账30项通过、0失败、0跳过，脱敏扫描及git diff --check通过；CASE/JSON/Markdown均68个唯一判据，顺序及要求不变，只有6.7状态改变。原工程全树含.git与新备份一致，失败副本仅.git/index变化；安装运行时hash未变。另保存[客户端通道关联](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/channel-binding.json)，确认Z01先前通道已在恢复原会话前关闭，不把未记录的PID补成已知。
+
+## 逐Hook补证的提交前完整检查
+
+Bob本轮明确要求提交、推送后，执行`npm run check`退出0：3624项、3622通过、0失败、2个既有跳过；[完整输出](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/delivery-check.json)独立保存，未覆盖旧交付检查。预算前后均838/401，无厂商增量，未重装运行时、未重跑客户端验收或审批。提交前字段核对另发现21行缺省observation被拼成undefined前缀，已修正当前矩阵及生成脚本缺省值，保留[修正前快照与说明](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/delivery-matrix-correction.json)；未改变判据或状态。修正后6份脚本语法、脱敏及68行矩阵对账通过，见[交付核对](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/delivery-audit.json)。场景5客户端操作仍停在触发前，M11未完成。

@@ -1,0 +1,33 @@
+{
+  "errors": [
+    {
+      "command": [
+        "node",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/readback.mjs"
+      ],
+      "exit_code": 1,
+      "error": "SyntaxError: Unexpected end of input",
+      "effect": "首次脚本解析前失败，无证据写入/夹具操作；补齐inventory函数括号后语法检查及一次采集成功"
+    },
+    {
+      "command": "临时只读YAML字段提取",
+      "exit_code": 1,
+      "error": "TypeError: Cannot read properties of undefined (reading 'cli')",
+      "effect": "误从共享config.yaml取probe；改为只读config.local.yaml中的所需字段，无文件变化"
+    },
+    {
+      "command": [
+        "node",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/prepare-next.mjs"
+      ],
+      "exit_code": 1,
+      "git_exit_code": null,
+      "error": "副本.git/index被git commit --dry-run刷新，整树不变断言失败",
+      "effect": "停止并保留s5-client-preparation-01原状；原工程与backup不变。原Git stdout未落盘，不补造；新v2使用独立GIT_INDEX_FILE，不覆盖旧副本。"
+    }
+  ],
+  "vendor_increment": {
+    "admission": 0,
+    "review": 0
+  }
+}
