@@ -1,0 +1,64 @@
+{
+  "at": "2026-10-15T15:23:30.989Z",
+  "scope": "S5C01归档后的独立一致性检查；自动化检查不替代客户端验收",
+  "checks": [
+    {
+      "command": "git diff --check",
+      "chunk_id": "bd0269",
+      "wall_time_seconds": 0.000007833,
+      "exit_code": 0,
+      "original_token_count": 0,
+      "output": ""
+    },
+    {
+      "command": "node --test dist/test/test/contract/doc-archive-index.test.js dist/test/test/contract/evolution-ledger-parity.test.js",
+      "chunk_id": "0c5c3a",
+      "wall_time_seconds": 0.109521125,
+      "exit_code": 0,
+      "original_token_count": 711,
+      "output": "✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (1.973583ms)\n▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标\n  ✔ doc/02_design/README.md (0.950833ms)\n  ✔ doc/03_api/README.md (0.139666ms)\n  ✔ doc/04_development/README.md (0.13275ms)\n  ✔ doc/05_testing/README.md (1.946833ms)\n  ✔ doc/06_deployment/README.md (0.19625ms)\n  ✔ doc/07_manuals/README.md (0.127209ms)\n✔ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (3.773958ms)\n▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序\n  ✔ doc/02_design/README.md (0.2505ms)\n  ✔ doc/03_api/README.md (0.085792ms)\n  ✔ doc/04_development/README.md (0.095417ms)\n  ✔ doc/05_testing/README.md (0.539333ms)\n  ✔ doc/06_deployment/README.md (0.0865ms)\n  ✔ doc/07_manuals/README.md (0.087708ms)\n✔ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (1.334166ms)\n✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.234666ms)\n✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.19475ms)\n✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.240375ms)\n✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.148542ms)\n✔ B5 同一文件两条条目 ⇒ duplicate (0.087791ms)\n✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.209084ms)\n✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.074417ms)\n✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.25975ms)\n✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.147875ms)\n✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.063875ms)\n✔ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02） (0.139959ms)\n✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.053292ms)\n✔ ① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2） (8.308542ms)\n✔ ② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头 (6.870916ms)\n✔ ③ §24 无 ◐ / ⏳（M11 完成判据，主设计 24.3 第 2 条） (4.959542ms)\nℹ tests 30\nℹ suites 0\nℹ pass 30\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 149.422417\n"
+    },
+    {
+      "command": "node --input-type=module <<'NODE'\nimport fs from 'node:fs';\nimport assert from 'node:assert/strict';\nimport {scanSecrets} from './dist/test/src/trivium/secrets.js';\nconst base='doc/05_testing/evidence/m11-step12-20261012',here=base+'/zero-controls-20261015-01/hook-readback-01';\nconst read=f=>JSON.parse(fs.readFileSync(f,'utf8'));\nconst matrix=read(base+'/matrix.json'),old=read(here+'/matrix-before-s5-client.json');\nconst ids=matrix.rows.map(r=>r.criterion);\nassert.equal(ids.length,68);assert.equal(new Set(ids).size,68);assert.deepEqual(ids,old.rows.map(r=>r.criterion));\nassert.deepEqual(ids,[...fs.readFileSync('doc/05_testing/CASE_manual_acceptance.md','utf8').matchAll(/^\\| (\\d+\\.\\d+) \\|/gm)].map(m=>m[1]));\nconst md=fs.readFileSync(base+'/matrix.md','utf8').split('\\n').filter(l=>/^\\| \\d+ \\|/.test(l)).map(l=>l.split(/(?<!\\\\)\\|/).slice(1,-1).map(c=>c.trim()));\nassert.equal(md.length,68);\nfor(let i=0;i<68;i++){\n assert.equal(md[i][1],ids[i]);assert.equal(md[i].at(-1),matrix.rows[i].status);\n for(const k of ['requirement','expected','carrier','kind','routes','human'])assert.deepEqual(matrix.rows[i][k],old.rows[i][k]);\n if(ids[i]!=='5.1')assert.deepEqual(matrix.rows[i],old.rows[i]);\n for(const f of matrix.rows[i].evidence)assert(fs.existsSync(base+'/'+f));\n}\nassert.deepEqual(matrix.rows.filter((r,i)=>r.status!==old.rows[i].status).map(r=>r.criterion),['5.1']);\nconst files=['doc/05_testing/REPORT_2026-10-12_m11_step12_manual_acceptance.md',base+'/matrix.json',base+'/matrix.md',...['README.md','assess-s5-client.mjs','matrix-before-s5-client.json','s5-client-before.json','s5-client-after.json','s5-client-assessment.json'].map(n=>here+'/'+n)];\nfor(const f of files)assert.equal(scanSecrets(fs.readFileSync(f,'utf8')).length,0,'secret scan: '+f);\nconst plan=read(base+'/budget-plan.json');\nconst budget=Object.fromEntries(['admission','review'].map(p=>[p,fs.readdirSync(plan.budgetRoot+'/ledger/'+p).filter(n=>/^reserved-\\d+\\.json$/.test(n)).length]));\nassert.deepEqual(budget,{admission:838,review:401});\nconsole.log(JSON.stringify({matrix:{json:68,markdown:68,case:68,unique:68,order_equal:true,criteria_unchanged:true,status_changed_only:['5.1'],other_rows_unchanged:true},secret_scan:{files:files.length,findings:0},budget_before:budget,budget_after:budget,vendor_delta:{admission:0,review:0}}));\nNODE",
+      "chunk_id": "bb8a90",
+      "wall_time_seconds": 0.000006208,
+      "exit_code": 0,
+      "original_token_count": 84,
+      "output": "{\"matrix\":{\"json\":68,\"markdown\":68,\"case\":68,\"unique\":68,\"order_equal\":true,\"criteria_unchanged\":true,\"status_changed_only\":[\"5.1\"],\"other_rows_unchanged\":true},\"secret_scan\":{\"files\":9,\"findings\":0},\"budget_before\":{\"admission\":838,\"review\":401},\"budget_after\":{\"admission\":838,\"review\":401},\"vendor_delta\":{\"admission\":0,\"review\":0}}\n"
+    }
+  ],
+  "results": {
+    "matrix": {
+      "json": 68,
+      "markdown": 68,
+      "case": 68,
+      "unique": 68,
+      "order_equal": true,
+      "criteria_unchanged": true,
+      "status_changed_only": [
+        "5.1"
+      ],
+      "other_rows_unchanged": true
+    },
+    "secret_scan": {
+      "files": 9,
+      "findings": 0
+    },
+    "budget_before": {
+      "admission": 838,
+      "review": 401
+    },
+    "budget_after": {
+      "admission": 838,
+      "review": 401
+    },
+    "vendor_delta": {
+      "admission": 0,
+      "review": 0
+    }
+  },
+  "protected_artifact_writes": false,
+  "old_scripts_rerun": false,
+  "client_or_vendor_launched": false,
+  "commit_or_push": false
+}

@@ -91,3 +91,9 @@ ZCode跨Driver可考虑复用已有Claude plan的stack主题进入code，但这�
 [validation.json](./validation.json)记录6份脚本语法通过、文档定向检查30/30、68行CASE/JSON/Markdown对账、脱敏和diff检查通过；原工程全树及运行时不变，预算仍838/401。`client-checkpoint.mjs`仅完成语法检查，真实客户端操作及其前后检查点未执行。
 
 Bob随后明确要求提交、推送。本轮新增[delivery-check.json](./delivery-check.json)：`npm run check`退出0，3624项、3622通过、0失败、2跳过，预算仍838/401。提交前修正生成脚本把缺省observation拼成undefined的展示问题，修正前快照与原因独立保留于[delivery-matrix-correction.json](./delivery-matrix-correction.json)；判据与状态不变。[delivery-audit.json](./delivery-audit.json)记录修正后的脚本语法、脱敏和矩阵核对。未执行真实客户端步骤，自动化检查不替代剩余验收。
+
+## S5C01执行后更新
+
+Bob已于2026-10-15 23:17（Asia/Singapore）完成上面的唯一客户端步骤；before/after均ready。新增[s5-client-assessment.json](./s5-client-assessment.json)确认pre-bash/pre-commit实际均退出0，Git退出1仅因无暂存变更；原工程141文件与外部临时索引均未变化，预算838/401。5.1已通过，上面的操作步骤作为历史留痕保留，禁止重复运行。5.2～5.5客户端集成仍未测，下一停点是合法独立夹具及备份恢复方案，未执行新初始化、配置修改或客户端启动。
+
+随后获Bob明确提交、推送授权。[s5-client-delivery-check.json](./s5-client-delivery-check.json)记录本次`npm run check`退出0：3624项、3622通过、0失败、2跳过，预算838/401不变；[s5-client-validation.json](./s5-client-validation.json)保存68行矩阵一致性及定向检查结果。该交付检查不替代客户端验收。

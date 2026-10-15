@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-15T14:55:56.340Z",
+  "at": "2026-10-15T15:21:00.939Z",
   "source": "doc/05_testing/CASE_manual_acceptance.md",
   "source_sha256": "d6b96362ced49d628c38af4c286d82a18e0941958b913cc63d06dd28ccb61359",
   "rows": [
@@ -400,10 +400,13 @@
         "zero-controls-20261015-01/preparation.json",
         "zero-controls-20261015-01/README.md",
         "zero-controls-20261015-01/copy-baseline.json",
-        "zero-controls-20261015-01/hook-readback-01/next-preparation.json"
+        "zero-controls-20261015-01/hook-readback-01/next-preparation.json",
+        "zero-controls-20261015-01/hook-readback-01/s5-client-before.json",
+        "zero-controls-20261015-01/hook-readback-01/s5-client-after.json",
+        "zero-controls-20261015-01/hook-readback-01/s5-client-assessment.json"
       ],
-      "status": "真实归档及完整副本CLI直调通过；客户端集成未测",
-      "observation": "2026-10-15 Z01：独立副本/备份已准备；CLI直接调用与真实客户端事件分列，受保护副本修改及gate --check仅待用户终端执行。 新增仅安全触发准备：独立临时索引下git commit --dry-run未创建提交、141文件含.git未变；不是客户端Hook结果。健康基线客户端提案待执行，复制wrapper的cwd限制不绕过。"
+      "status": "完整真实归档的客户端提交前Hook放行通过（独立临时索引dry-run；无真实提交）",
+      "observation": "S5C01唯一Bash toolu_3fb0ff3d5be3421980559972：pre-bash/pre-commit实际均退出0，扩展完成记录及安装运行时回执一致，预算侧车已加载。Git退出1仅因无暂存变更；原工程141文件含.git和外部临时索引均未变，无恢复。预算838/401不变，5.2～5.5客户端格不因此通过。"
     },
     {
       "scenario": 5,

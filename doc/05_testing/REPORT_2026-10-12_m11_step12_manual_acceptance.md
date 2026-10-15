@@ -288,3 +288,13 @@ Bob明确要求提交、推送并起草下一步提示语后，本轮执行`npm 
 ## 逐Hook补证的提交前完整检查
 
 Bob本轮明确要求提交、推送后，执行`npm run check`退出0：3624项、3622通过、0失败、2个既有跳过；[完整输出](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/delivery-check.json)独立保存，未覆盖旧交付检查。预算前后均838/401，无厂商增量，未重装运行时、未重跑客户端验收或审批。提交前字段核对另发现21行缺省observation被拼成undefined前缀，已修正当前矩阵及生成脚本缺省值，保留[修正前快照与说明](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/delivery-matrix-correction.json)；未改变判据或状态。修正后6份脚本语法、脱敏及68行矩阵对账通过，见[交付核对](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/delivery-audit.json)。场景5客户端操作仍停在触发前，M11未完成。
+
+## S5C01：完整归档的真实客户端提交前Hook放行
+
+Bob完成前后检查点及原会话唯一Bash后，[独立核验](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/s5-client-assessment.json)确认2026-10-15 23:17:39（Asia/Singapore）的toolu_3fb0ff3d5be3421980559972按原参数执行独立临时索引git commit --dry-run。扩展日志第4005/4009行分别记录hook-pre-bash、hook-pre-commit实际退出0，两个安装运行时回执也均为code 0、stdout/stderr空、预算侧车加载成功；之后出现同toolUseId的Bash dispatch记录。Git实际退出1仅因无暂存变更，不是Hook拦截。
+
+检查点窗口只有这一次工具请求，关联基于同一恢复会话、原cwd及完成时间窗；Hook完成行的PID/直接tool_use_id仍null。原工程141个文件（含.git索引、HEAD、refs与objects）的集合/hash/权限/大小前后及当前均一致，完整副本与备份一致，外部临时索引本次也未变化；未创建真实提交、未恢复文件。预算保持838/401，增量0。矩阵5.1据实记客户端放行通过，5.2～5.5仍为CLI格有证据、客户端未测；本结果不证明Git原生pre-commit脚本或负对照分支。
+
+本次只归集已执行事件并同步报告/矩阵，不重跑检查点、Hook、旧脚本或厂商CLI，不自动提交推送。下一步先准备合法绑定自身cwd的独立客户端夹具与5.2～5.5的备份恢复方案，禁止在复制wrapper上绕过cwd限制；配置、初始化、新客户端及受保护工件操作均停在另行明确范围之前。M11尚未完成。
+
+Bob随后明确要求提交、推送，本次提交前执行`npm run check`退出0：3624项、3622通过、0失败、2跳过，预算前后均838/401；[本次完整检查输出](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/s5-client-delivery-check.json)独立保存。此前[独立一致性检查](./evidence/m11-step12-20261012/zero-controls-20261015-01/hook-readback-01/s5-client-validation.json)确认68行唯一、顺序及判据一致，仅5.1状态变化。自动化检查不替代客户端验收，5.2～5.5客户端状态不变。
