@@ -1,0 +1,161 @@
+{
+  "at": "2026-10-15T14:02:41.897Z",
+  "commands": [
+    {
+      "command": [
+        "git",
+        "-c",
+        "core.quotePath=false",
+        "rev-parse",
+        "HEAD"
+      ],
+      "exit_code": 0,
+      "stdout": "3c70d9b4da98025587d71f559ac94cbb634ebc2a\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-c",
+        "core.quotePath=false",
+        "ls-remote",
+        "origin",
+        "refs/heads/main"
+      ],
+      "exit_code": 0,
+      "stdout": "3c70d9b4da98025587d71f559ac94cbb634ebc2a\trefs/heads/main\n",
+      "stderr": ""
+    }
+  ],
+  "checks": [
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "--check",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/prepare.mjs"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "--check",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/capture.mjs"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "--check",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/user-terminal.mjs"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "--check",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/collect-client.mjs"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "--check",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/reconcile.mjs"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "originals_unchanged": true,
+  "source_files_verified": 83,
+  "d": {
+    "run_id": "20261015T123051Z",
+    "approvals": 1,
+    "reason_matches": true,
+    "disposition_sha256": "0f4adc251a4336dfb8dc65d28611db593508ba9eca37b0e501911b7247e86a4f"
+  },
+  "open_gates": [],
+  "baseline_check": {
+    "tests": 3624,
+    "pass": 3622,
+    "fail": 0,
+    "skipped": 2
+  },
+  "results": [
+    {
+      "criterion": "5.1",
+      "mode": "copy-baseline",
+      "exit_code": 0,
+      "pass": true,
+      "client_hook_event": false
+    },
+    {
+      "criterion": "5.5",
+      "mode": "no-reviews",
+      "exit_code": 0,
+      "pass": true,
+      "client_hook_event": false
+    },
+    {
+      "criterion": "6.7",
+      "mode": "wrapper-missing",
+      "exit_code": 2,
+      "pass": true,
+      "client_hook_event": false
+    }
+  ],
+  "matrix": {
+    "rows": 68,
+    "unique": 68,
+    "markdown_rows": 68,
+    "case_ids_match": true,
+    "status_matches": true
+  },
+  "budget_before": {
+    "admission": 838,
+    "review": 401
+  },
+  "budget_after": {
+    "admission": 838,
+    "review": 401
+  },
+  "delta": {
+    "admission": 0,
+    "review": 0
+  },
+  "secret_scan_files": [
+    "README.md",
+    "capture.mjs",
+    "collect-client.mjs",
+    "copy-baseline.json",
+    "matrix-before.json",
+    "no-reviews.json",
+    "preparation.json",
+    "prepare.mjs",
+    "reconcile.mjs",
+    "user-terminal.mjs",
+    "wrapper-missing.json"
+  ],
+  "pending": [
+    "5.2",
+    "5.3",
+    "5.4",
+    "8.2负对照",
+    "场景5客户端集成",
+    "6.7真实pre-bash独立事件"
+  ],
+  "scope": "用户终端脚本仅语法检查，未执行；既有真实审查工件及CASE未改；本轮无完整check、无审批提交推送"
+}

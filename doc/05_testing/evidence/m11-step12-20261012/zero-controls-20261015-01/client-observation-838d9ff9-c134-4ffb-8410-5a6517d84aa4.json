@@ -1,0 +1,44 @@
+{
+  "at": "2026-10-15T14:29:33.100Z",
+  "criterion": "6.7",
+  "source": "/Users/chenzhenbo/.claude/projects/-Users-chenzhenbo-Work-trivium-m11-step12-20261012/52c58d79-eb90-4953-89dc-6ebd5923112e.jsonl",
+  "source_sha256": "2b571b1cd089d1c655431ef69c4a7b8a470ec891cc3fb6b24ecd6ecfb86383cd",
+  "since": "2026-10-15T13:56:44.147Z",
+  "pairs": [
+    {
+      "request": {
+        "type": "tool_use",
+        "id": "toolu_7ea1cacd34e54a649b00cd9e",
+        "name": "Bash",
+        "input": {
+          "command": "git log --oneline -1",
+          "description": "M11-Z01-6.7 hook-pre-bash independent event"
+        },
+        "at": "2026-10-15T14:28:06.684Z"
+      },
+      "results": [
+        {
+          "type": "tool_result",
+          "content": "PreToolUse:Bash hook error: [sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-commit; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2']: TriviumCode 护栏失效：/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.trivium/bin/trivium 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\n",
+          "is_error": true,
+          "tool_use_id": "toolu_7ea1cacd34e54a649b00cd9e",
+          "at": "2026-10-15T14:28:06.727Z"
+        }
+      ]
+    }
+  ],
+  "independent_pre_bash_error": false,
+  "actual_exit_code": null,
+  "debug_source_exists": false,
+  "restored": true,
+  "budget_before": {
+    "admission": 838,
+    "review": 401
+  },
+  "budget_after": {
+    "admission": 838,
+    "review": 401
+  },
+  "status": "未取得独立hook-pre-bash真实事件；不得标通过",
+  "scope": "工具错误与实际Hook退出码分开；不从直调结果反推真实事件退出码；不启动客户端、不执行旧采集脚本"
+}

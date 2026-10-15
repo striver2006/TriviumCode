@@ -1,0 +1,191 @@
+{
+  "at": "2026-10-15T14:23:21.584Z",
+  "inputs": [
+    {
+      "file": "disposition-baseline.json",
+      "sha256": "9b81d0fa3bffe1b1ca9f3719025a9e10711ea4fc7c0d008483ccc962821ad0fd"
+    },
+    {
+      "file": "disposition-missing.json",
+      "sha256": "0601236289e1da12d06f7102f32aae8b598c22c83e44362947904fa4b3652d59"
+    },
+    {
+      "file": "disposition-restored.json",
+      "sha256": "8f76273210d04b058f98f7574daff7687a5704c0fe0e5c1b78927ca4c031c012"
+    },
+    {
+      "file": "user-s82-started.json",
+      "sha256": "d3abd5c216b75f708350e5f6d364df29a695b2d01b783ec18d47e28b6eb91318"
+    },
+    {
+      "file": "user-s82-finished.json",
+      "sha256": "507fd3c8c3b50a52e8a64f4377cbb598aabe053db4bdef4043301f934b1025e2"
+    }
+  ],
+  "results": [
+    {
+      "mode": "disposition-baseline",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "--stage",
+        "plan",
+        "--topic",
+        "m11-s12-capacity",
+        "--run-id",
+        "20261012T154021Z",
+        "--check",
+        "--json"
+      ],
+      "exit_code": 0,
+      "output": {
+        "ok": true,
+        "stage": "plan",
+        "rerun_index": 2,
+        "run_id": "20261012T154021Z",
+        "failures": [],
+        "warnings": [],
+        "structured_ids": [
+          "GLM-01",
+          "CODEX-01",
+          "CODEX-02",
+          "CODEX-03",
+          "CODEX-04"
+        ],
+        "fallback_ids": [],
+        "degraded_ids": [],
+        "disposition": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/archive-copy/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-revised-claude.md"
+      },
+      "stderr": "· 本轮已有人工审批记录，闸门状态保持不变（校验命令不撤销审批）\n",
+      "changed_files": [
+        ".reviews/m11-s12-capacity/task.json"
+      ]
+    },
+    {
+      "mode": "disposition-missing",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "--stage",
+        "plan",
+        "--topic",
+        "m11-s12-capacity",
+        "--run-id",
+        "20261012T154021Z",
+        "--check",
+        "--json"
+      ],
+      "exit_code": 2,
+      "output": {
+        "ok": false,
+        "stage": "plan",
+        "rerun_index": 2,
+        "run_id": "20261012T154021Z",
+        "failures": [
+          {
+            "code": "missing_findings",
+            "message": "下列意见没有裁决，必须逐条给出（禁止静默忽略，FR-14）",
+            "ids": [
+              "CODEX-04"
+            ]
+          }
+        ],
+        "warnings": [],
+        "structured_ids": [
+          "GLM-01",
+          "CODEX-01",
+          "CODEX-02",
+          "CODEX-03",
+          "CODEX-04"
+        ],
+        "fallback_ids": [],
+        "degraded_ids": [],
+        "disposition": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/archive-copy/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-revised-claude.md"
+      },
+      "stderr": "",
+      "changed_files": [
+        ".reviews/m11-s12-capacity/task.json"
+      ]
+    },
+    {
+      "mode": "disposition-restored",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "--stage",
+        "plan",
+        "--topic",
+        "m11-s12-capacity",
+        "--run-id",
+        "20261012T154021Z",
+        "--check",
+        "--json"
+      ],
+      "exit_code": 0,
+      "output": {
+        "ok": true,
+        "stage": "plan",
+        "rerun_index": 2,
+        "run_id": "20261012T154021Z",
+        "failures": [],
+        "warnings": [],
+        "structured_ids": [
+          "GLM-01",
+          "CODEX-01",
+          "CODEX-02",
+          "CODEX-03",
+          "CODEX-04"
+        ],
+        "fallback_ids": [],
+        "degraded_ids": [],
+        "disposition": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/archive-copy/.reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-revised-claude.md"
+      },
+      "stderr": "· 本轮已有人工审批记录，闸门状态保持不变（校验命令不撤销审批）\n",
+      "changed_files": [
+        ".reviews/m11-s12-capacity/task.json"
+      ]
+    }
+  ],
+  "one_row_removal_verified": true,
+  "per_critic_findings": {
+    "gemini": [],
+    "glm": [
+      "GLM-01"
+    ],
+    "codex": [
+      "CODEX-01",
+      "CODEX-02",
+      "CODEX-03",
+      "CODEX-04"
+    ]
+  },
+  "restoration": {
+    "source": true,
+    "copy": true,
+    "backup": true,
+    "non_git_files": 83,
+    "checks": "exact file set, sha256, mode, bytes"
+  },
+  "budget_before": {
+    "admission": 838,
+    "review": 401
+  },
+  "budget_after": {
+    "admission": 838,
+    "review": 401
+  },
+  "delta": {
+    "admission": 0,
+    "review": 0
+  },
+  "matrix": {
+    "rows": 68,
+    "unique": 68
+  },
+  "client_hook_event": false,
+  "scope": "8.2按原终端判据通过；B1证据不足不追改；只读复核，不重跑任何负对照",
+  "pass": true
+}

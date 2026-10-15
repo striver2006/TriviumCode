@@ -1,0 +1,94 @@
+{
+  "at": "2026-10-15T14:13:32.142Z",
+  "phase": "s5",
+  "actions": [
+    {
+      "operation": "unlink-copy",
+      "path": ".reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-gemini.md"
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/capture.mjs",
+        "artifact-missing"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"mode\":\"artifact-missing\",\"exit_code\":2,\"pass\":true,\"changed_files\":[],\"budget\":{\"admission\":838,\"review\":401}}\n",
+      "stderr": ""
+    },
+    {
+      "operation": "restore-copy-from-backup",
+      "path": ".reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-gemini.md",
+      "sha256": "464fcb38396713cc187f9b5513aeab1e9e92991b865dc75e15bc37caaf6a714b",
+      "mode": 420
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/capture.mjs",
+        "restored-missing"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"mode\":\"restored-missing\",\"exit_code\":0,\"pass\":true,\"changed_files\":[],\"budget\":{\"admission\":838,\"review\":401}}\n",
+      "stderr": ""
+    },
+    {
+      "operation": "append-copy",
+      "path": ".reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-glm.md",
+      "content": "\n<!-- M11 local negative control -->\n",
+      "sha256": "5fb4313ff6be11fa44b57ab959d593dca0ddcce938da6a9a41930db872b8c2fe"
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/capture.mjs",
+        "artifact-changed"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"mode\":\"artifact-changed\",\"exit_code\":2,\"pass\":true,\"changed_files\":[],\"budget\":{\"admission\":838,\"review\":401}}\n",
+      "stderr": ""
+    },
+    {
+      "operation": "restore-copy-from-backup",
+      "path": ".reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-glm.md",
+      "sha256": "6272030c1fe28eb775f7e5a06e59d55cd7fcd779c50ab9b41a3febe5e3a86ec5",
+      "mode": 420
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/capture.mjs",
+        "restored-changed"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"mode\":\"restored-changed\",\"exit_code\":0,\"pass\":true,\"changed_files\":[],\"budget\":{\"admission\":838,\"review\":401}}\n",
+      "stderr": ""
+    },
+    {
+      "operation": "restore-copy-from-backup",
+      "path": ".reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-gemini.md",
+      "sha256": "464fcb38396713cc187f9b5513aeab1e9e92991b865dc75e15bc37caaf6a714b",
+      "mode": 420
+    },
+    {
+      "operation": "restore-copy-from-backup",
+      "path": ".reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-glm.md",
+      "sha256": "6272030c1fe28eb775f7e5a06e59d55cd7fcd779c50ab9b41a3febe5e3a86ec5",
+      "mode": 420
+    }
+  ],
+  "failure": null,
+  "restored": true,
+  "originals_unchanged": true,
+  "budget_before": {
+    "admission": 838,
+    "review": 401
+  },
+  "budget_after": {
+    "admission": 838,
+    "review": 401
+  },
+  "pass": true,
+  "client_hook_event": false,
+  "scope": "独立真实归档副本的CLI负对照；不替代真实客户端Hook；所有非.git文件按准备快照恢复"
+}

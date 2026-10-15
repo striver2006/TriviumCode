@@ -1,0 +1,74 @@
+{
+  "at": "2026-10-15T14:21:15.294Z",
+  "phase": "s82",
+  "actions": [
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/capture.mjs",
+        "disposition-baseline"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"mode\":\"disposition-baseline\",\"exit_code\":0,\"pass\":true,\"changed_files\":[\".reviews/m11-s12-capacity/task.json\"],\"budget\":{\"admission\":838,\"review\":401}}\n",
+      "stderr": ""
+    },
+    {
+      "operation": "remove-one-disposition-row",
+      "path": ".reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-revised-claude.md",
+      "id": "CODEX-04",
+      "sha256": "2787cd5e848593026b808c23e8e8ed2f3cfeebddbd81390228fb8d1b93c7f077"
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/capture.mjs",
+        "disposition-missing"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"mode\":\"disposition-missing\",\"exit_code\":2,\"pass\":true,\"changed_files\":[\".reviews/m11-s12-capacity/task.json\"],\"budget\":{\"admission\":838,\"review\":401}}\n",
+      "stderr": ""
+    },
+    {
+      "operation": "restore-copy-from-backup",
+      "path": ".reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-revised-claude.md",
+      "sha256": "6197963ebc69a20c6d28adc2e63d46a414e6872bfa3c7d504db228e2a21aae52",
+      "mode": 420
+    },
+    {
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/capture.mjs",
+        "disposition-restored"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"mode\":\"disposition-restored\",\"exit_code\":0,\"pass\":true,\"changed_files\":[\".reviews/m11-s12-capacity/task.json\"],\"budget\":{\"admission\":838,\"review\":401}}\n",
+      "stderr": ""
+    },
+    {
+      "operation": "restore-copy-from-backup",
+      "path": ".reviews/m11-s12-capacity/task.json",
+      "sha256": "e41cb521c003bcd7031fb7e28a88caa61c6bf776ee27257df06cbb3bb75dc303",
+      "mode": 420
+    },
+    {
+      "operation": "restore-copy-from-backup",
+      "path": ".reviews/m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-revised-claude.md",
+      "sha256": "6197963ebc69a20c6d28adc2e63d46a414e6872bfa3c7d504db228e2a21aae52",
+      "mode": 420
+    }
+  ],
+  "failure": null,
+  "restored": true,
+  "originals_unchanged": true,
+  "budget_before": {
+    "admission": 838,
+    "review": 401
+  },
+  "budget_after": {
+    "admission": 838,
+    "review": 401
+  },
+  "pass": true,
+  "client_hook_event": false,
+  "scope": "独立真实归档副本的CLI负对照；不替代真实客户端Hook；所有非.git文件按准备快照恢复"
+}

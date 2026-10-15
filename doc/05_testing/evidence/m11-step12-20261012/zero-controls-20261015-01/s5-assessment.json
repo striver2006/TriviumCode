@@ -1,0 +1,153 @@
+{
+  "at": "2026-10-15T14:15:20.717Z",
+  "inputs": [
+    {
+      "file": "artifact-missing.json",
+      "sha256": "b727b71f969bc06663c6c0e79ec1be26a9bd2b652bf3a409490d749253438557"
+    },
+    {
+      "file": "restored-missing.json",
+      "sha256": "f26abe77a0a8f10074a272ee8d422f35a775a604fc5312eba7e23adc30ef1ba7"
+    },
+    {
+      "file": "artifact-changed.json",
+      "sha256": "36e5493de65d648f63ce6f2661693a04ce3e9686d6f1af51bff31e39efa43e19"
+    },
+    {
+      "file": "restored-changed.json",
+      "sha256": "6d34e51174447dbb7d5eb94495f6ecf99484bba663e8827c1295c8776ef254a4"
+    },
+    {
+      "file": "user-s5-started.json",
+      "sha256": "2c408916aa616e8061638f75732fe18c314c7b12cf1ba9f0b0e2ca0059149883"
+    },
+    {
+      "file": "user-s5-finished.json",
+      "sha256": "b2cd5e148bfa8e8601b17140323dca4c01f7eef924fd8a8d510ffda7cb145110"
+    }
+  ],
+  "results": [
+    {
+      "mode": "artifact-missing",
+      "criterion": "5.2",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-commit",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-zero-controls-20261015-01",
+        "cwd": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/archive-copy",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "git commit -m x"
+        }
+      },
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "归档留痕不完整，提交被拦下——已落盘的审查工件不得删除或改动（FR-25 / 设计 §17.3 剧本 5）：\n  · 已丢失：m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-gemini.md（run 20261012T154021Z 记录过它，sha256 464fcb383967）\n\n  请用 `git checkout -- <路径>` 或 `git restore <路径>` 恢复。\n  **这一步请在终端里手动执行**：恢复命令的参数正是上面列出的受保护路径，\n  常规写法在会话里会被 hook-pre-bash 拦下（M10a 第 2 步 EV-55 §3.2.2）。\n  那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。\n  确实要作废某一轮，用 `/dual-abandon --topic <主题>`——它保留工件、只解闸门。\n  重跑会自动抬升 -r<N>，既有工件一律不覆盖，不需要先删。\n",
+      "client_hook_event": false
+    },
+    {
+      "mode": "restored-missing",
+      "criterion": "5.4",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-commit",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-zero-controls-20261015-01",
+        "cwd": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/archive-copy",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "git commit -m x"
+        }
+      },
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "",
+      "client_hook_event": false
+    },
+    {
+      "mode": "artifact-changed",
+      "criterion": "5.3",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-commit",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-zero-controls-20261015-01",
+        "cwd": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/archive-copy",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "git commit -m x"
+        }
+      },
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "归档留痕不完整，提交被拦下——已落盘的审查工件不得删除或改动（FR-25 / 设计 §17.3 剧本 5）：\n  · 已被改动：m11-s12-capacity/plan/2026-10-12-m11-s12-capacity-r2-glm.md（run 20261012T154021Z 记录 6272030c1fe2，现为 5fb4313ff6be）\n\n  请用 `git checkout -- <路径>` 或 `git restore <路径>` 恢复。\n  **这一步请在终端里手动执行**：恢复命令的参数正是上面列出的受保护路径，\n  常规写法在会话里会被 hook-pre-bash 拦下（M10a 第 2 步 EV-55 §3.2.2）。\n  那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。\n  确实要作废某一轮，用 `/dual-abandon --topic <主题>`——它保留工件、只解闸门。\n  重跑会自动抬升 -r<N>，既有工件一律不覆盖，不需要先删。\n",
+      "client_hook_event": false
+    },
+    {
+      "mode": "restored-changed",
+      "criterion": "5.4",
+      "command": [
+        "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "/Users/chenzhenbo/.claude/skills/dual-critic/scripts/trivium.cjs",
+        "gate",
+        "hook-pre-commit",
+        "--agent",
+        "claude"
+      ],
+      "input": {
+        "session_id": "m11-zero-controls-20261015-01",
+        "cwd": "/Users/chenzhenbo/Work/trivium-m11-step12-zero-20261015-01/archive-copy",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "git commit -m x"
+        }
+      },
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "",
+      "client_hook_event": false
+    }
+  ],
+  "restoration": {
+    "source": true,
+    "copy": true,
+    "backup": true,
+    "non_git_files": 83,
+    "checks": "exact file set, sha256, mode, bytes"
+  },
+  "budget_before": {
+    "admission": 838,
+    "review": 401
+  },
+  "budget_after": {
+    "admission": 838,
+    "review": 401
+  },
+  "delta": {
+    "admission": 0,
+    "review": 0
+  },
+  "matrix": {
+    "rows": 68,
+    "unique": 68
+  },
+  "s82_not_started": true,
+  "scope": "只读复核用户已执行的s5；CLI与客户端集成分列；不执行恢复或其它负对照",
+  "pass": true
+}

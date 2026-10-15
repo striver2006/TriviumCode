@@ -1,0 +1,21 @@
+{
+  "at": "2026-10-15T14:03:13.474Z",
+  "command": [
+    "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+    "--test",
+    "dist/test/test/contract/doc-archive-index.test.js",
+    "dist/test/test/contract/evolution-ledger-parity.test.js"
+  ],
+  "exit_code": 0,
+  "stdout": "✔ A1 论域：下限清单里的目录都带索引节，且节标题各恰一次 (1.819459ms)\n▶ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标\n  ✔ doc/02_design/README.md (1.12ms)\n  ✔ doc/03_api/README.md (0.148542ms)\n  ✔ doc/04_development/README.md (0.371292ms)\n  ✔ doc/05_testing/README.md (7.308542ms)\n  ✔ doc/06_deployment/README.md (0.14125ms)\n  ✔ doc/07_manuals/README.md (0.103708ms)\n✔ A2 覆盖与悬空：目录里的每个文件恰有一条条目，条目与行内链接都指向真实存在的目标 (9.52525ms)\n▶ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序\n  ✔ doc/02_design/README.md (0.298ms)\n  ✔ doc/03_api/README.md (0.127875ms)\n  ✔ doc/04_development/README.md (0.094083ms)\n  ✔ doc/05_testing/README.md (0.710958ms)\n  ✔ doc/06_deployment/README.md (0.073458ms)\n  ✔ doc/07_manuals/README.md (0.053333ms)\n✔ A3 顺序：组内无日期条目在前，含日期条目按（日期, 文件名）升序 (1.587667ms)\n✔ B1 基准形态零问题：跨目录条目、斜杠结尾的行内目录链接、目录说明项、围栏与别的节、隐藏项、子目录、非常规文件都不报 (0.246958ms)\n✔ B2 删一条条目 ⇒ missing，文案点名该文件 (0.229666ms)\n✔ B3 条目指向不存在的文件 ⇒ dangling；指向目录（含尾斜杠）⇒ dangling (0.283458ms)\n✔ B4 目录多一份不进索引的文件（.md 与非 .md 各一）⇒ missing (0.159458ms)\n✔ B5 同一文件两条条目 ⇒ duplicate (0.102209ms)\n✔ B6 顺序：跨日期逆序、同日文件名逆序、无日期排在含日期之后 ⇒ order；跨小节不报；垫底条目只报一条 (0.192042ms)\n✔ B7 行内链接悬空 ⇒ inline_dangling；带协议与纯锚点的链接不解析 (0.077ms)\n✔ B8 论域：节标题两次 ⇒ section_ambiguous；没有该节不入论域；下限清单里的目录不在论域 ⇒ not_in_domain (0.130375ms)\n✔ B9 缩进项与 * 起头的项不是条目 ⇒ 其文件报 missing (0.117584ms)\n✔ B10 目标解析：片段、百分号编码、尾斜杠、上级目录 (0.054042ms)\n✔ B12 断链软链：没进索引 ⇒ missing，进了索引 ⇒ dangling；非常规文件不计覆盖（代码双审 CODEX-02） (0.124167ms)\n✔ B11 解析：围栏里的节标题不算、别的二级标题结束本节、小标题分组 (0.064125ms)\n✔ ① §17.2 每行在 §24 有对应行（第 1 行对 24.1 整表，第 2～19 行按文档键对 24.2） (8.401125ms)\n✔ ② §24 两张表的状态列只用 ✅ / ◐ / ⏳ 开头 (5.320667ms)\n✔ ③ §24 无 ◐ / ⏳（M11 完成判据，主设计 24.3 第 2 条） (4.5615ms)\nℹ tests 30\nℹ suites 0\nℹ pass 30\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 133.215542\n",
+  "stderr": "",
+  "budget_before": {
+    "admission": 838,
+    "review": 401
+  },
+  "budget_after": {
+    "admission": 838,
+    "review": 401
+  },
+  "scope": "现有构建产物的两项文档契约套件；不构建、不重装、不执行验收用户脚本"
+}

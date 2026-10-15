@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-15T13:08:39.769Z",
+  "at": "2026-10-15T14:31:24.619Z",
   "source": "doc/05_testing/CASE_manual_acceptance.md",
   "source_sha256": "d6b96362ced49d628c38af4c286d82a18e0941958b913cc63d06dd28ccb61359",
   "rows": [
@@ -393,12 +393,16 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "Z01厂商边界0；累计838/401，本步71/80，余1/8；当前批次不得新增厂商调用",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
-        "hook-cli.json"
+        "hook-cli.json",
+        "zero-controls-20261015-01/preparation.json",
+        "zero-controls-20261015-01/README.md",
+        "zero-controls-20261015-01/copy-baseline.json"
       ],
-      "status": "真实归档CLI直调通过；客户端集成未测"
+      "status": "真实归档及完整副本CLI直调通过；客户端集成未测",
+      "observation": "2026-10-15 Z01：独立副本/备份已准备；CLI直接调用与真实客户端事件分列，受保护副本修改及gate --check仅待用户终端执行。"
     },
     {
       "scenario": 5,
@@ -409,10 +413,17 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "Z01厂商边界0；累计838/401，本步71/80，余1/8；当前批次不得新增厂商调用",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "zero-controls-20261015-01/preparation.json",
+        "zero-controls-20261015-01/README.md",
+        "zero-controls-20261015-01/artifact-missing.json",
+        "zero-controls-20261015-01/user-s5-finished.json",
+        "zero-controls-20261015-01/s5-assessment.json"
+      ],
+      "status": "真实归档副本CLI缺件退出2，点名路径与run；客户端集成未测",
+      "observation": "Bob在系统终端执行s5，Hook退出码依次2/0/2/0；原工程、副本和备份的全部非.git文件路径/hash/权限/大小复核一致；预算838/401不变。8.2和6.7真实事件未因此补绿。"
     },
     {
       "scenario": 5,
@@ -423,10 +434,17 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "Z01厂商边界0；累计838/401，本步71/80，余1/8；当前批次不得新增厂商调用",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "zero-controls-20261015-01/preparation.json",
+        "zero-controls-20261015-01/README.md",
+        "zero-controls-20261015-01/artifact-changed.json",
+        "zero-controls-20261015-01/user-s5-finished.json",
+        "zero-controls-20261015-01/s5-assessment.json"
+      ],
+      "status": "真实归档副本CLI改件退出2，前后hash匹配；客户端集成未测",
+      "observation": "Bob在系统终端执行s5，Hook退出码依次2/0/2/0；原工程、副本和备份的全部非.git文件路径/hash/权限/大小复核一致；预算838/401不变。8.2和6.7真实事件未因此补绿。"
     },
     {
       "scenario": 5,
@@ -437,10 +455,18 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "Z01厂商边界0；累计838/401，本步71/80，余1/8；当前批次不得新增厂商调用",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "zero-controls-20261015-01/preparation.json",
+        "zero-controls-20261015-01/README.md",
+        "zero-controls-20261015-01/restored-missing.json",
+        "zero-controls-20261015-01/restored-changed.json",
+        "zero-controls-20261015-01/user-s5-finished.json",
+        "zero-controls-20261015-01/s5-assessment.json"
+      ],
+      "status": "缺件/改件两次恢复后CLI均退出0，副本完整恢复；客户端集成未测",
+      "observation": "Bob在系统终端执行s5，Hook退出码依次2/0/2/0；原工程、副本和备份的全部非.git文件路径/hash/权限/大小复核一致；预算838/401不变。8.2和6.7真实事件未因此补绿。"
     },
     {
       "scenario": 5,
@@ -451,10 +477,15 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "Z01厂商边界0；累计838/401，本步71/80，余1/8；当前批次不得新增厂商调用",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
-      "evidence": [],
-      "status": "未测"
+      "evidence": [
+        "zero-controls-20261015-01/preparation.json",
+        "zero-controls-20261015-01/README.md",
+        "zero-controls-20261015-01/no-reviews.json"
+      ],
+      "status": "无审查记录仓库CLI直调退出0；客户端集成未测",
+      "observation": "2026-10-15 Z01：独立副本/备份已准备；CLI直接调用与真实客户端事件分列，受保护副本修改及gate --check仅待用户终端执行。"
     },
     {
       "scenario": 6,
@@ -567,13 +598,19 @@
       "routes": "gemini,glm；需要三审时显式选集合",
       "kind": "本轮真实归档/客户端实测；离线仅辅助",
       "batch": "R1",
-      "estimated_starts": "H2实际厂商CLI0；仍需补独立hook-pre-bash观测",
+      "estimated_starts": "Z01厂商边界0；累计838/401，本步71/80，余1/8；当前批次不得新增厂商调用",
       "human": "客户端操作；破坏性归档负对照由用户在隔离验收副本执行",
       "evidence": [
         "client-h2-results.json",
-        "h2-preparation.json"
+        "h2-preparation.json",
+        "zero-controls-20261015-01/preparation.json",
+        "zero-controls-20261015-01/README.md",
+        "zero-controls-20261015-01/wrapper-missing.json",
+        "zero-controls-20261015-01/client-observation-838d9ff9-c134-4ffb-8410-5a6517d84aa4.json",
+        "zero-controls-20261015-01/client-assessment.json"
       ],
-      "status": "部分：真实Edit、hook-pre-commit与Stop拦截；hook-pre-bash无独立事件，未测；wrapper已恢复"
+      "status": "部分：真实Edit/pre-commit/Stop已有证据；Z01仍只呈现pre-commit错误，pre-bash独立事件未证实；wrapper已恢复",
+      "observation": "Z01唯一具名Bash toolu_7ea1cacd34e54a649b00cd9e实际报gate hook-pre-commit护栏失效；无pre-bash独立结果，实际退出码null；不推断其未执行或已执行。wrapper原hash/755，原件/副本/备份完整，预算838/401不变。停止同形重试，下一步先准备逐Hook原始事件取证。"
     },
     {
       "scenario": 7,
@@ -584,7 +621,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -598,7 +635,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -612,7 +649,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -626,7 +663,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -640,7 +677,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -654,7 +691,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -668,7 +705,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -682,7 +719,7 @@
       "routes": "ZCode主攻显式gemini,codex；Codex主攻显式gemini,glm；都排除当轮Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -714,13 +751,21 @@
       "routes": "审核者含Codex；按已探测profile/effort选值；不能由Codex自审",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "B1与B2各实耗admission8/review6；本步累计22/20，共42/80",
+      "estimated_starts": "Z01厂商边界0；累计838/401，本步71/80，余1/8；当前批次不得新增厂商调用",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [
         "b1-assessment.json",
-        "b2-assessment.json"
+        "b2-assessment.json",
+        "zero-controls-20261015-01/preparation.json",
+        "zero-controls-20261015-01/README.md",
+        "zero-controls-20261015-01/disposition-baseline.json",
+        "zero-controls-20261015-01/disposition-missing.json",
+        "zero-controls-20261015-01/disposition-restored.json",
+        "zero-controls-20261015-01/user-s82-finished.json",
+        "zero-controls-20261015-01/s82-assessment.json"
       ],
-      "status": "两轮裁决与gate均通过；缺一行负对照仍未测"
+      "status": "两轮完整裁决gate通过；B2副本缺一行准确拒绝、恢复放行，8.2终端判据通过",
+      "observation": "Bob系统终端实测同参数gate退出0/2/0；唯一失败missing_findings、ids=[CODEX-04]。B2三侧意见共5条，Gemini零意见。只删一条裁决的hash与负例快照一致；副本裁决/task全部恢复，原件未变，预算838/401。B1 Codex证据不足仍在8.1保留；本结果不代表真实客户端Hook集成。"
     },
     {
       "scenario": 8,
@@ -799,7 +844,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -813,7 +858,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -827,7 +872,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -841,7 +886,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -855,7 +900,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -869,7 +914,7 @@
       "routes": "Codex主攻显式gemini,glm（L2）；不转用Claude受限项目证明",
       "kind": "可选，本轮不默认执行",
       "batch": "optional",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未执行（可选）"
@@ -883,7 +928,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -897,7 +942,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -911,7 +956,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -925,7 +970,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -939,7 +984,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -953,7 +998,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"
@@ -967,7 +1012,7 @@
       "routes": "Claude阶段gemini,glm；ZCode阶段gemini,codex，按阶段排除Driver",
       "kind": "本轮必须重跑，历史/桩不替代",
       "batch": "R2",
-      "estimated_starts": "按后续具名批次发布；本步40/40、总80已获批",
+      "estimated_starts": "仅规划：当前余admission1/review8；历史C-ZCode/B-Codex估算非授权，待具名冷缓存预算",
       "human": "客户端操作；新运行审批由Bob逐次决定",
       "evidence": [],
       "status": "未测"

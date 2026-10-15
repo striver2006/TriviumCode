@@ -1,0 +1,69 @@
+{
+  "at": "2026-10-15T14:31:24.621Z",
+  "criterion": "6.7",
+  "observation": {
+    "file": "client-observation-838d9ff9-c134-4ffb-8410-5a6517d84aa4.json",
+    "sha256": "d85cb6167aebe2071f3e43b564275da9c453694f20856eab80b691ac51bee312"
+  },
+  "request": {
+    "type": "tool_use",
+    "id": "toolu_7ea1cacd34e54a649b00cd9e",
+    "name": "Bash",
+    "input": {
+      "command": "git log --oneline -1",
+      "description": "M11-Z01-6.7 hook-pre-bash independent event"
+    },
+    "at": "2026-10-15T14:28:06.684Z"
+  },
+  "result": {
+    "type": "tool_result",
+    "content": "PreToolUse:Bash hook error: [sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-commit; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2']: TriviumCode 护栏失效：/Users/chenzhenbo/Work/trivium-m11-step12-20261012/.trivium/bin/trivium 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\n",
+    "is_error": true,
+    "tool_use_id": "toolu_7ea1cacd34e54a649b00cd9e",
+    "at": "2026-10-15T14:28:06.727Z"
+  },
+  "source_current_sha256": "ac9ab3ab50402bcd529bfce0f56aedd2a40cfbe014056fe054b883a399182ae3",
+  "window": {
+    "from": "2026-10-15T14:27:56.684Z",
+    "to": "2026-10-15T14:28:16.727Z",
+    "event_counts": {
+      "assistant": 4,
+      "user": 2,
+      "attachment": 1,
+      "system": 1
+    },
+    "progress_event_count": 0
+  },
+  "debug_source_exists": false,
+  "independent_pre_bash_event": false,
+  "actual_pre_bash_exit_code": null,
+  "actual_pre_commit_exit_code": null,
+  "pre_commit_error_observed": true,
+  "wrapper": {
+    "sha256": "07ac4e37315b252f103fd4bf475d6c60c896f97230f27d24194bc4a78644be80",
+    "mode": "755"
+  },
+  "restoration": {
+    "source": true,
+    "copy": true,
+    "backup": true
+  },
+  "budget_before": {
+    "admission": 838,
+    "review": 401
+  },
+  "budget_after": {
+    "admission": 838,
+    "review": 401
+  },
+  "delta": {
+    "admission": 0,
+    "review": 0
+  },
+  "matrix": {
+    "rows": 68,
+    "unique": 68
+  },
+  "conclusion": "恢复及零预算核验通过；6.7的pre-bash独立事件仍未证实，不升级为通过",
+  "next_stop": "不再重复本故障注入；先取得逐Hook真实事件/实际退出码的采集能力。不得改序、移除其它守卫或用shell直调替代客户端集成。"
+}
