@@ -309,6 +309,7 @@ cd TriviumCode
 
 npm install          # 安装 typescript / esbuild（仅构建期）
 npm run build        # esbuild 打包为单文件零依赖 skills/dual-critic/scripts/trivium.cjs
+npm run install:check  # 可选：只读检查各家 skill 根有没有重名 / 残留，不写任何文件
 node dist/install.cjs
 ```
 
