@@ -142,6 +142,7 @@
 - [`REPORT_2026-10-12_agent_access_convergence.md`](./REPORT_2026-10-12_agent_access_convergence.md)：本轮新增61次启动，7组合原标准通过、5组合经用户独立批准受限准入；按明确例外完成M11第12步前置，第12步本身未执行，真实模型写尝试缺口保留。七共享入口已授权迁移，四目标28入口安装及14步桩自检通过；批准后指纹及五份受控证明复核通过。
 - [`REPORT_2026-10-12_m11_step12_manual_acceptance.md`](./REPORT_2026-10-12_m11_step12_manual_acceptance.md)：M11第12步逐判据矩阵、预算与真实客户端验收记录；本轮执行中，保留受限准入及未测边界。
 - [`REPORT_2026-10-16_argon_acceptance.md`](./REPORT_2026-10-16_argon_acceptance.md)：Argon high 专属模型/effort 回读、实际文件读取与完整单侧代码审查夹具通过；无改动观测成立，写工具及命令没有实际尝试，强制拒绝仍未测；原始事件、逐条裁决与工件核验齐备。
+- [`REPORT_2026-10-16_m12_batch0.md`](./REPORT_2026-10-16_m12_batch0.md)：**M12 批次 0 · 零配额收口**（B 档）。EV-193 根因是测试采样竞态（`ps` 的组号与命令行不同时刻取，误采 worker 的组），产品记录无误，新增只认组长的采样判据，I6 单跑 30/30、变异咬住，证据见 [`evidence/ev193-pgid-race-20261016/`](./evidence/ev193-pgid-race-20261016/)；EV-230 失效关闭、EV-231 删承诺、EV-236 成因与流程规矩；M12 立项（主设计 v1.3.160）。
 
 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { bundleMissing, bundleSkipReason, cli, listFiles, makeFixture, today, type Fixture } from '../helpers/fixture.js';
-import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
+import { groupMemberCount, groupsWithMark, killGroup, leaderGroupsWithMark } from '../helpers/proc.js';
 import { ENV_R, ENV_W, assertEnvPairDistinct, withEnv } from '../helpers/start-env.js';
 import { processStartTime } from '../../src/trivium/util/exec.js';
 import {
@@ -2844,7 +2844,7 @@ async function cancelReachesCli(stub: StubConfig) {
   let groups: number[] = [];
   try {
     for (let i = 0; i < 100 && groups.length < 2; i++) {
-      groups = groupsWithMark(mark);
+      groups = leaderGroupsWithMark(mark);
       if (groups.length < 2) await new Promise((r) => setTimeout(r, 100));
     }
     assert.equal(groups.length, 2, '桩 CLI 没起来：两侧的组长都应出现，用例前提不成立');
@@ -2933,7 +2933,7 @@ async function startWithRecordedClis(stub: StubConfig, extraReview?: string[], e
   const mark = `trivium-stub-cli:${js.run_dir}`;
   let groups: number[] = [];
   for (let i = 0; i < 100 && groups.length < 2; i++) {
-    groups = groupsWithMark(mark);
+    groups = leaderGroupsWithMark(mark);
     if (groups.length < 2) await new Promise((r) => setTimeout(r, 100));
   }
   let rec: Record<string, SideCli> = {};

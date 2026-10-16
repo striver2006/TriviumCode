@@ -15,7 +15,7 @@ import path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { ASSET_ROOT, BUNDLE, REPO_ROOT, bundleMissing, bundleSkipReason, makeFixture } from '../helpers/fixture.js';
-import { groupsWithMark, killGroup } from '../helpers/proc.js';
+import { groupsWithMark, killGroup, leaderGroupsWithMark } from '../helpers/proc.js';
 import { encodeStubConfig, STUB_ENV_VAR } from '../../src/trivium/adapters/stub.js';
 import { stripNonCode } from '../helpers/strip-non-code.js';
 
@@ -144,8 +144,8 @@ test('EV-155 E1：同步 review 被 Ctrl-C ⇒ CLI 以 SIGINT 退出，两侧 ha
   child.stderr!.on('data', (c: Buffer) => (out += c.toString('utf8')));
   try {
     const deadline = Date.now() + 60_000;
-    while (groupsWithMark(mark).length < 2 && Date.now() < deadline && !st.exited) await sleep(200);
-    assert.equal(groupsWithMark(mark).length, 2, `前提：两侧桩各拉起一个组（60 s 内）\n${out}`);
+    while (leaderGroupsWithMark(mark).length < 2 && Date.now() < deadline && !st.exited) await sleep(200);
+    assert.equal(leaderGroupsWithMark(mark).length, 2, `前提：两侧桩各拉起一个组（60 s 内）\n${out}`);
     process.kill(-child.pid!, 'SIGINT');
     const ex = await within(exited, 20_000);
     assert.ok(ex, `CLI 应在 20 s 内退出\n${out}`);
