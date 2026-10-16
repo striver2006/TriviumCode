@@ -1,0 +1,55 @@
+{
+  "at": "2026-10-16",
+  "status": "proposal：未批准、未生效、未扩容",
+  "decision_basis": "user-decision.json D2：另开收口池，旧 80 次账封存",
+  "sealed_old_pool": {
+    "ledger_now": { "admission": 838, "review": 401 },
+    "step_used": { "admission": 43, "review": 28, "total": 71 },
+    "step_limits": { "admission": 44, "review": 36, "total": 80 },
+    "note": "旧池剩余 1/8 不再动用；新池消费从 838/401 起算，不回填、不重分类、不跨池"
+  },
+  "new_pool": {
+    "name": "M11-S12-closeout",
+    "hard": { "admission": 32, "review": 16, "total": 48 },
+    "absolute_caps": { "admission": 870, "review": 417 },
+    "extension_after_approval": "沿用既有 extend 机制把全局上限追加到 870/417，扩容回执独立落盘；批准前不执行"
+  },
+  "batches": [
+    {
+      "batch": "R0-agy-refresh",
+      "hard": { "admission": 6, "review": 0 },
+      "why": "agy 已升到 1.3.6，夹具探针记录 1.3.5，按 10-15 先例预检会因版本漂移退 69；10-15 同形刷新实耗 admission 5",
+      "command": "doctor --only agy --json（夹具内、预算外壳）"
+    },
+    {
+      "batch": "Z1-claude-plan",
+      "criteria": ["10.2 plan 部分", "10.3～10.7 前置"],
+      "hard": { "admission": 6, "review": 4 },
+      "why": "Claude/Qwen 主攻命令 B，审核者 gemini,glm；与 D 批同形，D 批实耗 6/4"
+    },
+    {
+      "batch": "Z2-zcode-code",
+      "criteria": ["7.1～7.8（ZCode）", "10.1～10.7"],
+      "hard": { "admission": 8, "review": 4 },
+      "why": "ZCode 主攻命令 C，审核者 gemini,codex(deepseek)；版本 4 + 探活 agy 1 + codex 包装器/native 2，按 7 估、留 1"
+    },
+    {
+      "batch": "X1-codex-plan",
+      "criteria": ["7.1～7.5、7.7（Codex）", "9.1～9.5"],
+      "hard": { "admission": 6, "review": 4 },
+      "why": "Codex 主攻命令 B，审核者 gemini,glm；同 D 批形态"
+    },
+    {
+      "batch": "X2-codex-drift（可选 9.6）",
+      "criteria": ["9.6", "9.4 第二子句（先提交再审批）"],
+      "hard": { "admission": 6, "review": 4 },
+      "why": "同主题第 2 轮，审查进行中改业务文件；仅在前四批无重试、用户另行点头时动用"
+    }
+  ],
+  "core_hard": { "admission": 26, "review": 12 },
+  "stop_rules": [
+    "每批首个失败 / 69 / 漂移 / 预算拒绝立即停，不自动重试；重试需用户逐次点头且只能用本池余量",
+    "Driver 会话自身的模型调用（Claude Code / ZCode / Codex 主会话）不计入本池，口径同 A～D 批",
+    "codex / zcode 探针已超 probe_ttl_days=7，只告警不拦；若预检因其它侧版本漂移退 69，停下另报，不在本池内自行刷新"
+  ]
+}

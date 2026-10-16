@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-15T21:48:27.033Z",
+  "at": "2026-10-16T01:12:19.556Z",
   "source": "doc/05_testing/CASE_manual_acceptance.md",
   "source_sha256": "d6b96362ced49d628c38af4c286d82a18e0941958b913cc63d06dd28ccb61359",
   "rows": [
@@ -74,10 +74,11 @@
       "evidence": [
         "client-a-runs.json",
         "client-session-02.json",
-        "client-observation-02.json"
+        "client-observation-02.json",
+        "closeout-20261016-01/user-decision.json"
       ],
-      "status": "条件分支未触发：正式review/verify均成功；预检69失败保留已验证",
-      "observation": "本轮未注入正式审查或verify失败，不能以预检69证明正式failed分支。"
+      "status": "达成（边界）（用户2026-10-16定）：正式failed分支未触发；预检69失败如实停止且原稿保留已验证，不专门制造正式失败",
+      "observation": "本轮未注入正式审查或verify失败，不能以预检69证明正式failed分支。；2026-10-16收口改判：正式review/verify失败分支本轮未触发，按D1同批计划派生项记边界达成。"
     },
     {
       "scenario": 2,
@@ -442,10 +443,11 @@
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/README.md",
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/local-budget-results.json",
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/budget-binding-results.json",
-        "zero-controls-20261015-01/parent-budget-prep-20261016-01/candidate-diffs-final.json"
+        "zero-controls-20261015-01/parent-budget-prep-20261016-01/candidate-diffs-final.json",
+        "closeout-20261016-01/user-decision.json"
       ],
-      "status": "真实归档副本CLI缺件退出2，点名路径与run；客户端集成未测",
-      "observation": "Bob在系统终端执行s5，Hook退出码依次2/0/2/0；原工程、副本和备份的全部非.git文件路径/hash/权限/大小复核一致；预算838/401不变。8.2和6.7真实事件未因此补绿。 新增仅安全触发准备：独立临时索引下git commit --dry-run未创建提交、141文件含.git未变；不是客户端Hook结果。健康基线客户端提案待执行，复制wrapper的cwd限制不绕过。 2026-10-16：新增独立完整副本、备份、空Git夹具及未生效的setup/采集/恢复方案；正式init与客户端启动均未执行，实际退出码null。配置差异已预览，新增启动预算尚待核定，不能用准备结果替代客户端集成。 2026-10-16：Bob已批准两个新夹具各一次本地setup，厂商增量0；等待Bob系统终端执行，init实际退出码仍null，未启动客户端或故障注入。 2026-10-16回读：两个本地setup已完成，安装bundle/采集进程退出码均0，配置差异与预览一致；原工程/备份未变、预算838/401。本批无Hook调用，客户端仍未测，未获启动或故障注入授权。；2026-10-16只读核定启动链：现有侧车不覆盖VS Code Driver，machine级包装器/SDK清除NODE_OPTIONS/冻结预算等值校验均限制新启动；安全启动上限null。独立差异与分段提案已准备，未生效、未启动，客户端状态不变。；2026-10-16父级零厂商准备：15项多进程本地替身与10项预算绑定检查通过，v2采集候选及完整差异未激活；真实扩展宿主加载/覆盖及首事件session绑定未验证，安全启动上限null，客户端状态不变。"
+      "status": "组合证据达成（用户2026-10-16定）：副本CLI缺件退出2并点名路径与run；同一hook-pre-commit通道的客户端放行(5.1)与退出2(6.7)已实证；真实会话内缺件负对照未触发",
+      "observation": "Bob在系统终端执行s5，Hook退出码依次2/0/2/0；原工程、副本和备份的全部非.git文件路径/hash/权限/大小复核一致；预算838/401不变。8.2和6.7真实事件未因此补绿。 新增仅安全触发准备：独立临时索引下git commit --dry-run未创建提交、141文件含.git未变；不是客户端Hook结果。健康基线客户端提案待执行，复制wrapper的cwd限制不绕过。 2026-10-16：新增独立完整副本、备份、空Git夹具及未生效的setup/采集/恢复方案；正式init与客户端启动均未执行，实际退出码null。配置差异已预览，新增启动预算尚待核定，不能用准备结果替代客户端集成。 2026-10-16：Bob已批准两个新夹具各一次本地setup，厂商增量0；等待Bob系统终端执行，init实际退出码仍null，未启动客户端或故障注入。 2026-10-16回读：两个本地setup已完成，安装bundle/采集进程退出码均0，配置差异与预览一致；原工程/备份未变、预算838/401。本批无Hook调用，客户端仍未测，未获启动或故障注入授权。；2026-10-16只读核定启动链：现有侧车不覆盖VS Code Driver，machine级包装器/SDK清除NODE_OPTIONS/冻结预算等值校验均限制新启动；安全启动上限null。独立差异与分段提案已准备，未生效、未启动，客户端状态不变。；2026-10-16父级零厂商准备：15项多进程本地替身与10项预算绑定检查通过，v2采集候选及完整差异未激活；真实扩展宿主加载/覆盖及首事件session绑定未验证，安全启动上限null，客户端状态不变。；2026-10-16收口改判：真实会话内缺件负对照未触发，判据靠CLI格与同通道客户端事件合证；父级启动计数控制转BACKLOG EV-235。"
     },
     {
       "scenario": 5,
@@ -481,10 +483,11 @@
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/README.md",
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/local-budget-results.json",
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/budget-binding-results.json",
-        "zero-controls-20261015-01/parent-budget-prep-20261016-01/candidate-diffs-final.json"
+        "zero-controls-20261015-01/parent-budget-prep-20261016-01/candidate-diffs-final.json",
+        "closeout-20261016-01/user-decision.json"
       ],
-      "status": "真实归档副本CLI改件退出2，前后hash匹配；客户端集成未测",
-      "observation": "Bob在系统终端执行s5，Hook退出码依次2/0/2/0；原工程、副本和备份的全部非.git文件路径/hash/权限/大小复核一致；预算838/401不变。8.2和6.7真实事件未因此补绿。 新增仅安全触发准备：独立临时索引下git commit --dry-run未创建提交、141文件含.git未变；不是客户端Hook结果。健康基线客户端提案待执行，复制wrapper的cwd限制不绕过。 2026-10-16：新增独立完整副本、备份、空Git夹具及未生效的setup/采集/恢复方案；正式init与客户端启动均未执行，实际退出码null。配置差异已预览，新增启动预算尚待核定，不能用准备结果替代客户端集成。 2026-10-16：Bob已批准两个新夹具各一次本地setup，厂商增量0；等待Bob系统终端执行，init实际退出码仍null，未启动客户端或故障注入。 2026-10-16回读：两个本地setup已完成，安装bundle/采集进程退出码均0，配置差异与预览一致；原工程/备份未变、预算838/401。本批无Hook调用，客户端仍未测，未获启动或故障注入授权。；2026-10-16只读核定启动链：现有侧车不覆盖VS Code Driver，machine级包装器/SDK清除NODE_OPTIONS/冻结预算等值校验均限制新启动；安全启动上限null。独立差异与分段提案已准备，未生效、未启动，客户端状态不变。；2026-10-16父级零厂商准备：15项多进程本地替身与10项预算绑定检查通过，v2采集候选及完整差异未激活；真实扩展宿主加载/覆盖及首事件session绑定未验证，安全启动上限null，客户端状态不变。"
+      "status": "组合证据达成（用户2026-10-16定）：副本CLI改件退出2且前后hash匹配；客户端通道同5.2；真实会话内改件负对照未触发",
+      "observation": "Bob在系统终端执行s5，Hook退出码依次2/0/2/0；原工程、副本和备份的全部非.git文件路径/hash/权限/大小复核一致；预算838/401不变。8.2和6.7真实事件未因此补绿。 新增仅安全触发准备：独立临时索引下git commit --dry-run未创建提交、141文件含.git未变；不是客户端Hook结果。健康基线客户端提案待执行，复制wrapper的cwd限制不绕过。 2026-10-16：新增独立完整副本、备份、空Git夹具及未生效的setup/采集/恢复方案；正式init与客户端启动均未执行，实际退出码null。配置差异已预览，新增启动预算尚待核定，不能用准备结果替代客户端集成。 2026-10-16：Bob已批准两个新夹具各一次本地setup，厂商增量0；等待Bob系统终端执行，init实际退出码仍null，未启动客户端或故障注入。 2026-10-16回读：两个本地setup已完成，安装bundle/采集进程退出码均0，配置差异与预览一致；原工程/备份未变、预算838/401。本批无Hook调用，客户端仍未测，未获启动或故障注入授权。；2026-10-16只读核定启动链：现有侧车不覆盖VS Code Driver，machine级包装器/SDK清除NODE_OPTIONS/冻结预算等值校验均限制新启动；安全启动上限null。独立差异与分段提案已准备，未生效、未启动，客户端状态不变。；2026-10-16父级零厂商准备：15项多进程本地替身与10项预算绑定检查通过，v2采集候选及完整差异未激活；真实扩展宿主加载/覆盖及首事件session绑定未验证，安全启动上限null，客户端状态不变。；2026-10-16收口改判：同5.2边界。"
     },
     {
       "scenario": 5,
@@ -521,10 +524,11 @@
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/README.md",
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/local-budget-results.json",
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/budget-binding-results.json",
-        "zero-controls-20261015-01/parent-budget-prep-20261016-01/candidate-diffs-final.json"
+        "zero-controls-20261015-01/parent-budget-prep-20261016-01/candidate-diffs-final.json",
+        "closeout-20261016-01/user-decision.json"
       ],
-      "status": "缺件/改件两次恢复后CLI均退出0，副本完整恢复；客户端集成未测",
-      "observation": "Bob在系统终端执行s5，Hook退出码依次2/0/2/0；原工程、副本和备份的全部非.git文件路径/hash/权限/大小复核一致；预算838/401不变。8.2和6.7真实事件未因此补绿。 新增仅安全触发准备：独立临时索引下git commit --dry-run未创建提交、141文件含.git未变；不是客户端Hook结果。健康基线客户端提案待执行，复制wrapper的cwd限制不绕过。 2026-10-16：新增独立完整副本、备份、空Git夹具及未生效的setup/采集/恢复方案；正式init与客户端启动均未执行，实际退出码null。配置差异已预览，新增启动预算尚待核定，不能用准备结果替代客户端集成。 2026-10-16：Bob已批准两个新夹具各一次本地setup，厂商增量0；等待Bob系统终端执行，init实际退出码仍null，未启动客户端或故障注入。 2026-10-16回读：两个本地setup已完成，安装bundle/采集进程退出码均0，配置差异与预览一致；原工程/备份未变、预算838/401。本批无Hook调用，客户端仍未测，未获启动或故障注入授权。；2026-10-16只读核定启动链：现有侧车不覆盖VS Code Driver，machine级包装器/SDK清除NODE_OPTIONS/冻结预算等值校验均限制新启动；安全启动上限null。独立差异与分段提案已准备，未生效、未启动，客户端状态不变。；2026-10-16父级零厂商准备：15项多进程本地替身与10项预算绑定检查通过，v2采集候选及完整差异未激活；真实扩展宿主加载/覆盖及首事件session绑定未验证，安全启动上限null，客户端状态不变。"
+      "status": "组合证据达成（用户2026-10-16定）：缺件/改件恢复后CLI均退出0；客户端放行通道由5.1实证；真实会话内恢复后放行未单独触发",
+      "observation": "Bob在系统终端执行s5，Hook退出码依次2/0/2/0；原工程、副本和备份的全部非.git文件路径/hash/权限/大小复核一致；预算838/401不变。8.2和6.7真实事件未因此补绿。 新增仅安全触发准备：独立临时索引下git commit --dry-run未创建提交、141文件含.git未变；不是客户端Hook结果。健康基线客户端提案待执行，复制wrapper的cwd限制不绕过。 2026-10-16：新增独立完整副本、备份、空Git夹具及未生效的setup/采集/恢复方案；正式init与客户端启动均未执行，实际退出码null。配置差异已预览，新增启动预算尚待核定，不能用准备结果替代客户端集成。 2026-10-16：Bob已批准两个新夹具各一次本地setup，厂商增量0；等待Bob系统终端执行，init实际退出码仍null，未启动客户端或故障注入。 2026-10-16回读：两个本地setup已完成，安装bundle/采集进程退出码均0，配置差异与预览一致；原工程/备份未变、预算838/401。本批无Hook调用，客户端仍未测，未获启动或故障注入授权。；2026-10-16只读核定启动链：现有侧车不覆盖VS Code Driver，machine级包装器/SDK清除NODE_OPTIONS/冻结预算等值校验均限制新启动；安全启动上限null。独立差异与分段提案已准备，未生效、未启动，客户端状态不变。；2026-10-16父级零厂商准备：15项多进程本地替身与10项预算绑定检查通过，v2采集候选及完整差异未激活；真实扩展宿主加载/覆盖及首事件session绑定未验证，安全启动上限null，客户端状态不变。；2026-10-16收口改判：同5.2边界。"
     },
     {
       "scenario": 5,
@@ -558,10 +562,11 @@
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/README.md",
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/local-budget-results.json",
         "zero-controls-20261015-01/parent-budget-prep-20261016-01/budget-binding-results.json",
-        "zero-controls-20261015-01/parent-budget-prep-20261016-01/candidate-diffs-final.json"
+        "zero-controls-20261015-01/parent-budget-prep-20261016-01/candidate-diffs-final.json",
+        "closeout-20261016-01/user-decision.json"
       ],
-      "status": "无审查记录仓库CLI直调退出0；客户端集成未测",
-      "observation": "2026-10-15 Z01：独立副本/备份已准备；CLI直接调用与真实客户端事件分列，受保护副本修改及gate --check仅待用户终端执行。 新增仅安全触发准备：独立临时索引下git commit --dry-run未创建提交、141文件含.git未变；不是客户端Hook结果。健康基线客户端提案待执行，复制wrapper的cwd限制不绕过。 2026-10-16：新增独立完整副本、备份、空Git夹具及未生效的setup/采集/恢复方案；正式init与客户端启动均未执行，实际退出码null。配置差异已预览，新增启动预算尚待核定，不能用准备结果替代客户端集成。 2026-10-16：Bob已批准两个新夹具各一次本地setup，厂商增量0；等待Bob系统终端执行，init实际退出码仍null，未启动客户端或故障注入。 2026-10-16回读：两个本地setup已完成，安装bundle/采集进程退出码均0，配置差异与预览一致；原工程/备份未变、预算838/401。本批无Hook调用，客户端仍未测，未获启动或故障注入授权。；2026-10-16只读核定启动链：现有侧车不覆盖VS Code Driver，machine级包装器/SDK清除NODE_OPTIONS/冻结预算等值校验均限制新启动；安全启动上限null。独立差异与分段提案已准备，未生效、未启动，客户端状态不变。；2026-10-16父级零厂商准备：15项多进程本地替身与10项预算绑定检查通过，v2采集候选及完整差异未激活；真实扩展宿主加载/覆盖及首事件session绑定未验证，安全启动上限null，客户端状态不变。"
+      "status": "组合证据达成（用户2026-10-16定）：无审查记录仓库CLI直调退出0；客户端放行通道由5.1实证；真实会话内未单独触发",
+      "observation": "2026-10-15 Z01：独立副本/备份已准备；CLI直接调用与真实客户端事件分列，受保护副本修改及gate --check仅待用户终端执行。 新增仅安全触发准备：独立临时索引下git commit --dry-run未创建提交、141文件含.git未变；不是客户端Hook结果。健康基线客户端提案待执行，复制wrapper的cwd限制不绕过。 2026-10-16：新增独立完整副本、备份、空Git夹具及未生效的setup/采集/恢复方案；正式init与客户端启动均未执行，实际退出码null。配置差异已预览，新增启动预算尚待核定，不能用准备结果替代客户端集成。 2026-10-16：Bob已批准两个新夹具各一次本地setup，厂商增量0；等待Bob系统终端执行，init实际退出码仍null，未启动客户端或故障注入。 2026-10-16回读：两个本地setup已完成，安装bundle/采集进程退出码均0，配置差异与预览一致；原工程/备份未变、预算838/401。本批无Hook调用，客户端仍未测，未获启动或故障注入授权。；2026-10-16只读核定启动链：现有侧车不覆盖VS Code Driver，machine级包装器/SDK清除NODE_OPTIONS/冻结预算等值校验均限制新启动；安全启动上限null。独立差异与分段提案已准备，未生效、未启动，客户端状态不变。；2026-10-16父级零厂商准备：15项多进程本地替身与10项预算绑定检查通过，v2采集候选及完整差异未激活；真实扩展宿主加载/覆盖及首事件session绑定未验证，安全启动上限null，客户端状态不变。；2026-10-16收口改判：同5.2边界。"
     },
     {
       "scenario": 6,
@@ -823,9 +828,11 @@
       "evidence": [
         "client-b1-runs.json",
         "client-b2-runs.json",
-        "b2-assessment.json"
+        "b2-assessment.json",
+        "closeout-20261016-01/user-decision.json"
       ],
-      "status": "两轮三份审查件齐备；B2三侧证据阈值通过，B1 Codex不足仍保留，不称两轮合格三审全通过"
+      "status": "通过（边界）（用户2026-10-16定）：两轮critics_selected均三家、三份审查件齐备；B2三侧证据阈值通过为合格三审，B1 Codex证据不足如实保留、不重跑",
+      "observation": "2026-10-16收口改判：判据本身（两轮三家、三份齐备）成立；「合格三审」只认B2。"
     },
     {
       "scenario": 8,
