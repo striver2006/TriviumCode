@@ -1,0 +1,12 @@
+{
+  "code": 0,
+  "signal": null,
+  "stdout": "{\n  \"ok\": true,\n  \"run_id\": \"20261016T000640Z\",\n  \"max_waits\": 22,\n  \"wait_timeout_s\": 30,\n  \"bash_timeout_ms\": 90000,\n  \"stage_timeout_s\": 300,\n  \"models\": {\n    \"gemini\": \"gemini-4-argon-high\"\n  },\n  \"worker_pid\": 43287,\n  \"run_dir\": \"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-argon-acceptance-sHMKsN/runs/repo-cbc88776/20261016T000640Z\",\n  \"warnings\": []\n}\n",
+  "stderr": "⚠️  本轮只跑 gemini 一侧：结论没有交叉验证，不构成多审。这是配置意图而非降级，留痕里不会有降级标记——参与者事实见审查文档抬头与 run 元数据的 critics_selected。\n· 主题 argon-high-acceptance ｜ 阶段 code ｜ 第 1 轮 ｜ run 20261016T000640Z\n· 被审对象 .reviews/argon-high-acceptance/code/_meta/changes-20261016T000640Z.diff\n· 相对 HEAD（HEAD dc896a7f）的 1 个文件变更，补丁 0.5 KB\n",
+  "durationMs": 234,
+  "timedOut": false,
+  "earlyStopped": false,
+  "truncated": false,
+  "commandLine": "/Users/chenzhenbo/Work/TriviumCode/.trivium/bin/trivium review --start --stage code --topic argon-high-acceptance --focus '审查库存预留变更的正确性与测试覆盖。先逐个读取必读清单里的六份文件，再结合补丁给出符合任务书的真实结论。禁止修改文件。' --goal '验证 Argon high 经生产编排器完成真实代码审查、模型回读与证据核验' --context 'README.md,doc/spec.md,src/inventory.js,src/orders.js,src/catalog.js,test/inventory.test.js' --driver codex --critics gemini --profile pro --json",
+  "spawned": true
+}

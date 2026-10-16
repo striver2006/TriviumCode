@@ -44,8 +44,11 @@ GLM 保持 default/pro 使用 `GLM-5.3`、flash 使用 `GLM-5.3-Flash`；
 
 本批 Codex 三档均通过全阶段预检及新的组合探活；Gemini flash 的 medium 档与切换后的 pro Argon high 档
 也均通过全阶段预检及实际探活。31 项档位解析测试与三档全阶段模型/effort/参数构造断言通过。
-Argon 的实际模型与 effort 生效回读本次未取得，模型专属文件读取、只读及完整审查验收仍未测；
-预检中的通用只读能力沿用 doctor 的 Flash low 探针，不能将其归为 Argon 的验收结果。
+以上配置切换批次尚未取得 Argon 的实际模型与 effort 回读；预检中的通用只读能力沿用 doctor 的 Flash low 探针。
+随后按用户要求完成[Argon 专属验收](../05_testing/REPORT_2026-10-16_argon_acceptance.md)：
+实际回读 `gemini-4-argon-high` 与 `high`（均为 `envelope`），实际文件读取、无改动观测、
+完整单侧代码审查夹具及逐条裁决/工件核验通过。写工具与命令负对照均没有实际工具尝试，
+强制拒绝能力仍未测；不能据口头拒绝、单侧夹具或通用 Flash low 探针宣称完整只读准入完成。
 
 2026-10-09 初始预检中 Claude 官方路线返回组织停用错误，计划阶段曾临时采用 Gemini、GLM 两审。
 代码阶段曾提前使用 Claude、Gemini、GLM 三审，完成标准复核后曾恢复本机临时两审覆盖，

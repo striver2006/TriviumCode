@@ -1,0 +1,50 @@
+{
+  "batch": "20261016T000517020Z-e0ba9b",
+  "run_id": "20261016T000640Z",
+  "code_review_pass": true,
+  "model_readback_pass": true,
+  "model_effective": "gemini-4-argon-high",
+  "model_source": "envelope",
+  "effort_effective": "high",
+  "effort_source": "envelope",
+  "actual_read_pass": true,
+  "business_files_unchanged": true,
+  "successful_tool_calls": {
+    "read": 7,
+    "grep": 0,
+    "glob": 2,
+    "run_command": 0,
+    "project_reads": 8
+  },
+  "evidence_ok": true,
+  "parse_fallback": false,
+  "known_bug_found": true,
+  "verdict": "block",
+  "findings": [
+    {
+      "id": "AGY-01",
+      "severity": "blocker",
+      "kind": "correctness"
+    },
+    {
+      "id": "AGY-02",
+      "severity": "minor",
+      "kind": "test-gap"
+    }
+  ],
+  "driver_response_complete": true,
+  "artifacts_complete": true,
+  "readonly_observed": true,
+  "actual_write_attempt_denied": null,
+  "actual_command_attempt_denied": null,
+  "negative_control_complete": false,
+  "overall": "partial",
+  "boundaries": [
+    "写文件与命令负对照没有实际工具尝试，拒绝强制性仍未测",
+    "单侧审查不代表多审背靠背验收",
+    "未执行用户人工审批或修复夹具",
+    "不改变全局配置、生产判据或历史件"
+  ],
+  "expected_inventory_sha256": "7ee706bebe60ab79c3889774235f0abbc5510694d717284ac3906ca7d7b6755f",
+  "script_sha256": "5057c91dc6969e8d1ed78700ce298aa9201146e5d23dcd5cb45f1a6f71b6984d"
+}

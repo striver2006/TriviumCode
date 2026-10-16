@@ -1,0 +1,46 @@
+{
+  "agreed": [
+    "src/inventory.js 第 2 行保留了 !Number.isInteger(quantity) || quantity <= 0 的正整数入参校验并抛出 invalid quantity，符合 doc/spec.md 中「预留数量必须是正整数」的契约要求。",
+    "src/inventory.js 的 reserve 函数基于值计算返回剩余库存，异常路径下无状态变更副作用，符合 doc/spec.md 中「失败时库存不得变化」的要求。"
+  ],
+  "consulted": [
+    "README.md",
+    "doc/spec.md",
+    "src/inventory.js",
+    "src/orders.js",
+    "src/catalog.js",
+    "test/inventory.test.js",
+    ".reviews/argon-high-acceptance/code/_meta/changes-20261016T000640Z.diff"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "读取 README.md（首行标识 ARGON_READ_bcb5cf793c1f9fe025b9adc8）与 doc/spec.md 第 2 行可见业务契约要求「预留数量必须是正整数，且不能超过可用库存；失败时库存不得变化」；对比 .reviews/argon-high-acceptance/code/_meta/changes-20261016T000640Z.diff 与 src/inventory.js 第 1-4 行，reserve(stock, quantity) 删除了 if (quantity > stock) throw new Error('insufficient stock')；这导致 test/inventory.test.js 第 4 行断言 assert.throws(() => reserve(3, 4), /insufficient stock/) 必然失败，且下游 src/orders.js 第 2 行 placeOrder(stock, quantity) 在超额预留（如超过 src/catalog.js 的 initialStock = 3）时会返回负数的 remaining 库存。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "src/inventory.js:1-4",
+      "problem": "补丁移除了 quantity > stock 的库存不足校验，导致预留数量超过可用库存时不再抛出 insufficient stock 异常，而是直接返回负数库存，违反了 doc/spec.md 的业务契约并破坏了下游调用链与现有单元测试。",
+      "severity": "blocker",
+      "suggestion": "在 src/inventory.js 的 reserve 函数中恢复对 quantity > stock 的分支检查并抛出 new Error('insufficient stock')，以符合 doc/spec.md 契约并通过 test/inventory.test.js 断言。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读取 test/inventory.test.js 第 1-5 行可见仅包含 reserve(3, 2)、reserve(3, 4) 和 reserve(3, 0) 三条断言；对照 doc/spec.md 第 2 行与 src/inventory.js 第 2 行，缺少 quantity === stock（如 reserve(3, 3) 返回 0）、负数与浮点数入参的测试，且未覆盖 src/orders.js 的 placeOrder 与 src/catalog.js 的 initialStock。",
+      "id": "AGY-02",
+      "kind": "test-gap",
+      "layer": "code",
+      "location": "test/inventory.test.js:1-5",
+      "problem": "测试仅覆盖了常规扣减、超额扣减和零数量，未覆盖耗尽库存边界（quantity === stock）、非整数及负数数量异常，也未覆盖下游 src/orders.js 中 placeOrder 的调用链。",
+      "severity": "minor",
+      "suggestion": "在 test/inventory.test.js 中补充 quantity === stock 边界值断言、负数与浮点数入参的 invalid quantity 异常断言，以及针对 src/orders.js 中 placeOrder（结合 src/catalog.js 的 initialStock）的测试。"
+    }
+  ],
+  "not_covered": [
+    "本侧审查环境无命令执行能力，未实际运行 node test/inventory.test.js，测试破坏结论基于对 src/inventory.js 与 test/inventory.test.js 的静态代码推理。",
+    "当前仓库（src/inventory.js、src/orders.js、src/catalog.js）仅为同步内存纯函数夹具，未覆盖异步并发扣减或外部存储事务隔离。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "阻断：src/inventory.js 移除了 quantity > stock 的库存不足校验（AGY-01），导致超额预留时返回负数库存而非抛出 insufficient stock，直接违反 doc/spec.md 契约并破坏 test/inventory.test.js 与下游 src/orders.js。此外 test/inventory.test.js 缺少边界值及下游调用链测试覆盖（AGY-02）。",
+  "verdict": "block"
+}

@@ -1,0 +1,196 @@
+schema: trivium.config.v2
+archive_root: .reviews
+topic:
+  max_len: 64
+runtime:
+  node: null
+  run_root: /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-argon-acceptance-sHMKsN/runs
+isolation:
+  peer_artifact_globs:
+    - "**/*-gemini.md"
+    - "**/*-glm.md"
+  context_max_docs: 12
+review:
+  default_critics:
+    - gemini
+  failure_policy: strict
+  timeout_s:
+    plan: 2700
+    code: 300
+    bug: 1800
+  wait_timeout_s: 30
+  heartbeat_stale_s: 120
+  retry:
+    transient_max: 1
+  cache: false
+  min_tool_calls:
+    plan: 5
+    code: 5
+    bug: 5
+  min_project_reads:
+    plan: 3
+    code: 3
+    bug: 3
+  on_drift: warn
+  on_drift_related: fail
+  sensitive_globs:
+    - .env*
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/id_rsa*"
+  skip_doc_only_review: false
+  skip_globs:
+    - "**/*.md"
+    - docs/**
+    - "**/*.txt"
+  never_skip_globs:
+    - "**/package.json"
+    - "**/pubspec.yaml"
+    - "**/Cargo.toml"
+    - "**/requirements*.txt"
+    - .github/**
+    - .gitlab-ci.yml
+    - Dockerfile
+    - .claude/**
+    - .trivium/**
+  allow_partial_flag: true
+  max_critics: 3
+profiles:
+  default:
+    gemini:
+      plan: gemini-3.8-flash-high
+      code: gemini-3.8-flash-high
+      bug: gemini-3.8-flash-high
+    glm:
+      plan: GLM-5.3
+      code: GLM-5.3
+      bug: GLM-5.3
+    codex:
+      plan:
+        model: gpt-6.1-sol
+        effort: medium
+      code:
+        model: gpt-6.1-sol
+        effort: medium
+      bug:
+        model: gpt-6.1-sol
+        effort: medium
+    claude:
+      plan:
+        model: opus
+        effort: medium
+      code:
+        model: opus
+        effort: medium
+      bug:
+        model: opus
+        effort: medium
+  flash:
+    gemini:
+      plan:
+        tier: medium
+      code:
+        tier: medium
+      bug:
+        tier: medium
+    glm:
+      plan: GLM-5.3-Flash
+      code: GLM-5.3-Flash
+      bug: GLM-5.3-Flash
+    codex:
+      plan:
+        model: gpt-6-luna
+        effort: medium
+      code:
+        model: gpt-6-luna
+        effort: medium
+      bug:
+        model: gpt-6-luna
+        effort: medium
+    claude:
+      plan:
+        model: sonnet
+        effort: medium
+      code:
+        model: sonnet
+        effort: medium
+      bug:
+        model: sonnet
+        effort: medium
+  pro:
+    gemini:
+      plan:
+        tier: high
+      code:
+        tier: high
+      bug:
+        tier: high
+    glm:
+      plan: GLM-5.3
+      code: GLM-5.3
+      bug: GLM-5.3
+    codex:
+      plan:
+        model: gpt-6-astra
+        effort: high
+      code:
+        model: gpt-6-astra
+        effort: high
+      bug:
+        model: gpt-6-astra
+        effort: high
+    claude:
+      plan:
+        tier: high
+      code:
+        tier: high
+      bug:
+        tier: high
+active_profile: pro
+gate:
+  allow_defer: true
+  block_business_write_when_awaiting_approval: true
+  approval_lock_scope: session
+  approval_lock_ttl_h: 24
+  block_commit: true
+  stop_hook_max_blocks: 2
+  reason_policy: warn
+  joint_blocker_policy: warn
+preflight:
+  auth_cache_ttl_h: 1
+verify:
+  build: []
+  test:
+    - node test/inventory.test.js
+retention:
+  run_dir_days: 30
+probe_ttl_days: 7
+agents:
+  gemini:
+    vendor: antigravity
+    bin: null
+    agent: trivium-critic
+    tiers:
+      medium:
+        model: gemini-3.8-flash-medium
+      high:
+        model: gemini-4-argon-high
+    effort:
+      plan: high
+      code: high
+      bug: high
+  glm:
+    vendor: zcode
+    entry: null
+  codex:
+    vendor: openai
+    bin: null
+    profile: null
+  claude:
+    vendor: anthropic
+    profile: null
+    tiers:
+      high:
+        model: opus
+        effort: high
+        profile: null

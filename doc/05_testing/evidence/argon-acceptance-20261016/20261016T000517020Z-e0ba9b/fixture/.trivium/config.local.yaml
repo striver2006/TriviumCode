@@ -1,0 +1,866 @@
+# TriviumCode 本机配置（不进 Git）
+# probe: 段由 `trivium doctor` 实测回填，请勿手工编辑（设计 §3.5 / §13.1）。
+# 其它字段可覆盖 config.yaml 中的任意配置项。
+
+probe:
+  generated_at: 2026-10-15T23:48:58.214Z
+  verify_suggestion:
+    build:
+      - npm run build
+    test:
+      - npm run test
+  cli:
+    claude:
+      entrypoint: /Users/chenzhenbo/.local/bin/claude
+      version: 2.1.301
+      version_probe: &a1
+        runner: null
+        args:
+          - --version
+        extract: (\d+\.\d+\.\d+)
+      probed_at: 2026-10-15T23:25:13.854Z
+      models: &a2 []
+      path_deny:
+        supported: true
+        rule_syntax: Read(./.reviews/probe-topic/plan/**)
+        method: 经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的
+        attempts: &a3 []
+        coverage_complete: false
+        file_shape_verified: true
+      scratch_paths: &a4 []
+      isolation: shared
+      headless_read_ok: true
+      trace_path_structured: true
+      denied_tool_in_trace: true
+      readonly_breach: false
+      tool_surface_checked: true
+      readonly_flags: &a5
+        - --restricted
+        - --strict-mcp-config
+        - --tools
+        - Read,Grep,Glob
+      model_flag: false
+      json_schema_ok: true
+      session_id_source: 每条事件的 session_id 字段（--session-id 可由调用方指定）
+      trust_prompt_required: false
+      stream_json_requires_verbose: true
+      strict_mcp_config_applied: true
+      project_memory_blocked: true
+      directory_deny_verified: &a6
+        Read: true
+        Grep: true
+        Glob: true
+      directory_deny_probed_at: 2026-10-15T23:27:29.841Z
+      directory_deny_fingerprint: 6bf811a95841aa857cfdfdf48b40c2e804548f4e4b1f6650b85ccbe856275701
+      directory_deny_sensitive_globs_sha256: e769d91333d97c6f071ef87dd5a7058f7b2d0763b038b1051ca6f4513a8c6eb0
+      directory_deny_shape: ascii-root1-5-depth0-2-v2
+      effort_levels: &a7
+        - low
+        - medium
+        - high
+        - xhigh
+        - max
+      routes:
+        profile:qwen:
+          profile: qwen
+          fingerprint: 7f81d4ee53938830752f27d5183b99e2b6cd776e5605512cdceb80032be94068
+          probe:
+            entrypoint: /Users/chenzhenbo/.local/bin/claude
+            version: 2.1.296
+            version_probe:
+              runner: null
+              args:
+                - --version
+              extract: (\d+\.\d+\.\d+)
+            probed_at: 2026-10-11T00:00:26.169Z
+            models: []
+            path_deny:
+              supported: true
+              coverage_complete: false
+              file_shape_verified: true
+              rule_syntax: Read(./.reviews/probe-topic/plan/**)
+              method: 经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的
+              attempts: []
+            scratch_paths: []
+            isolation: shared
+            headless_read_ok: true
+            trace_path_structured: true
+            denied_tool_in_trace: true
+            readonly_breach: false
+            tool_surface_checked: true
+            readonly_flags:
+              - --restricted
+              - --strict-mcp-config
+              - --tools
+              - Read,Grep,Glob
+            model_flag: true
+            json_schema_ok: true
+            session_id_source: 每条事件的 session_id 字段（--session-id 可由调用方指定）
+            trust_prompt_required: false
+            stream_json_requires_verbose: true
+            strict_mcp_config_applied: true
+            project_memory_blocked: true
+            effort_levels:
+              - low
+              - medium
+              - high
+              - xhigh
+              - max
+            route_profile: qwen
+            directory_deny_verified:
+              Read: true
+              Grep: true
+              Glob: true
+            directory_deny_probed_at: 2026-10-11T00:06:15.344Z
+            directory_deny_fingerprint: 642f34149ef51ab5ae062d003f46e17dbb0727420dd35351df3400a8d4686417
+            directory_deny_sensitive_globs_sha256: e769d91333d97c6f071ef87dd5a7058f7b2d0763b038b1051ca6f4513a8c6eb0
+            directory_deny_shape: ascii-root1-5-depth0-2-v2
+        profile:kimi:
+          profile: kimi
+          fingerprint: d80ac31902acd97cbcf2974f3e534985b48eb95d33991f1abe41ea91f6841946
+          probe:
+            entrypoint: /Users/chenzhenbo/.local/bin/claude
+            version: 2.1.296
+            version_probe:
+              runner: null
+              args:
+                - --version
+              extract: (\d+\.\d+\.\d+)
+            probed_at: 2026-10-11T00:06:55.637Z
+            models: []
+            path_deny:
+              supported: true
+              coverage_complete: false
+              file_shape_verified: true
+              rule_syntax: Read(./.reviews/probe-topic/plan/**)
+              method: 经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的
+              attempts: []
+            scratch_paths: []
+            isolation: shared
+            headless_read_ok: true
+            trace_path_structured: true
+            denied_tool_in_trace: null
+            readonly_breach: false
+            tool_surface_checked: true
+            readonly_flags:
+              - --restricted
+              - --strict-mcp-config
+              - --tools
+              - Read,Grep,Glob
+            model_flag: true
+            json_schema_ok: true
+            session_id_source: 每条事件的 session_id 字段（--session-id 可由调用方指定）
+            trust_prompt_required: false
+            stream_json_requires_verbose: true
+            strict_mcp_config_applied: true
+            project_memory_blocked: null
+            effort_levels:
+              - low
+              - medium
+              - high
+              - xhigh
+              - max
+            route_profile: kimi
+            directory_deny_verified:
+              Read: true
+              Grep: true
+              Glob: true
+            directory_deny_probed_at: 2026-10-11T00:11:13.716Z
+            directory_deny_fingerprint: ea48e3c0cd6ba8b088d51f8ee0d1f054c0ce34202c315c6d53d8ca8e6e4a6d0b
+            directory_deny_sensitive_globs_sha256: e769d91333d97c6f071ef87dd5a7058f7b2d0763b038b1051ca6f4513a8c6eb0
+            directory_deny_shape: ascii-root1-5-depth0-2-v2
+        profile:deepseek:
+          profile: deepseek
+          fingerprint: 408d430f53b4945151e177299c95f9e447b290437ed2acb3630e7620bd064b75
+          probe:
+            entrypoint: /Users/chenzhenbo/.local/bin/claude
+            version: 2.1.296
+            version_probe:
+              runner: null
+              args:
+                - --version
+              extract: (\d+\.\d+\.\d+)
+            probed_at: 2026-10-11T00:11:18.887Z
+            models: []
+            path_deny:
+              supported: true
+              coverage_complete: false
+              file_shape_verified: true
+              rule_syntax: Read(./.reviews/probe-topic/plan/**)
+              method: 经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的
+              attempts: []
+            scratch_paths: []
+            isolation: shared
+            headless_read_ok: true
+            trace_path_structured: true
+            denied_tool_in_trace: null
+            readonly_breach: false
+            tool_surface_checked: true
+            readonly_flags:
+              - --restricted
+              - --strict-mcp-config
+              - --tools
+              - Read,Grep,Glob
+            model_flag: true
+            json_schema_ok: true
+            session_id_source: 每条事件的 session_id 字段（--session-id 可由调用方指定）
+            trust_prompt_required: false
+            stream_json_requires_verbose: true
+            strict_mcp_config_applied: true
+            project_memory_blocked: null
+            effort_levels:
+              - low
+              - medium
+              - high
+              - xhigh
+              - max
+            route_profile: deepseek
+            directory_deny_verified:
+              Read: true
+              Grep: true
+              Glob: true
+            directory_deny_probed_at: 2026-10-11T00:12:57.880Z
+            directory_deny_fingerprint: 95aeb89db4dfd57f505e8881338ce81af6056376895530ff88d84c8fe6b0bcd3
+            directory_deny_sensitive_globs_sha256: e769d91333d97c6f071ef87dd5a7058f7b2d0763b038b1051ca6f4513a8c6eb0
+            directory_deny_shape: ascii-root1-5-depth0-2-v2
+        native:
+          profile: null
+          fingerprint: 5484e15d88f6a141f24856d98b85476640fad1d7f4b8265aad7efa19e937dd6d
+          probe:
+            entrypoint: /Users/chenzhenbo/.local/bin/claude
+            version: 2.1.301
+            version_probe: *a1
+            probed_at: 2026-10-15T23:25:13.854Z
+            models: *a2
+            path_deny:
+              supported: true
+              coverage_complete: false
+              file_shape_verified: true
+              rule_syntax: Read(./.reviews/probe-topic/plan/**)
+              method: 经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的
+              attempts: *a3
+            scratch_paths: *a4
+            isolation: shared
+            headless_read_ok: true
+            trace_path_structured: true
+            denied_tool_in_trace: true
+            readonly_breach: false
+            tool_surface_checked: true
+            readonly_flags: *a5
+            model_flag: false
+            json_schema_ok: true
+            session_id_source: 每条事件的 session_id 字段（--session-id 可由调用方指定）
+            trust_prompt_required: false
+            stream_json_requires_verbose: true
+            strict_mcp_config_applied: true
+            project_memory_blocked: true
+            directory_deny_verified: *a6
+            directory_deny_probed_at: 2026-10-15T23:27:29.841Z
+            directory_deny_fingerprint: 6bf811a95841aa857cfdfdf48b40c2e804548f4e4b1f6650b85ccbe856275701
+            directory_deny_sensitive_globs_sha256: e769d91333d97c6f071ef87dd5a7058f7b2d0763b038b1051ca6f4513a8c6eb0
+            directory_deny_shape: ascii-root1-5-depth0-2-v2
+            effort_levels: *a7
+            route_profile: null
+    codex:
+      entrypoint: /opt/homebrew/bin/codex
+      version: 0.162.1
+      version_probe:
+        runner: null
+        args:
+          - --version
+        extract: (\d+\.\d+\.\d+(?:-[\w.-]+)?)
+      probed_at: 2026-10-10T06:10:05.301Z
+      models:
+        - gpt-6.1-sol
+        - gpt-6-astra
+        - gpt-6-sol
+        - gpt-6-luna
+        - gpt-reserve
+        - gpt-5.6-sol
+        - gpt-5.6-terra
+        - gpt-5.6-luna
+        - gpt-5.5
+        - codex-auto-review
+      path_deny:
+        supported: false
+        rule_syntax: null
+        method: 实跑 codex exec --help 全文扫描 --deny / --disallow / deny_paths / path_deny / denied_paths，零命中（版本见同段的 probe.version，不在此处重复记以免它随版本过期）
+        attempts:
+          - sandbox_permissions：取值为 disk-full-read-access 一类的粗粒度放宽档，方向相反，不能用来收紧
+        coverage_complete: null
+        file_shape_verified: null
+      scratch_paths: []
+      isolation: home_copy
+      exec_headless_read_ok: true
+      json_event_types:
+        - item.completed
+        - item.started
+        - thread.started
+        - turn.completed
+        - turn.started
+      json_item_types:
+        - agent_message
+        - command_execution
+        - error
+      trace_path_structured: false
+      rejected_command_in_trace: false
+      readonly_flags:
+        - -s
+        - read-only
+      profile_flag: true
+      unknown_profile_rejected: false
+      profiles:
+        - deepseek
+        - glm
+        - gpt
+        - kimi
+        - qwen
+      providers:
+        - profile: deepseek
+          provider: deepseek
+          model: deepseek-flash
+          credentialed: true
+          base_url: api.deepseek.com
+        - profile: glm
+          provider: zai
+          model: glm-5.3-flash
+          credentialed: true
+          base_url: open.bigmodel.cn
+        - profile: gpt
+          provider: openai
+          model: gpt-5.6-luna
+          credentialed: true
+          base_url: null
+        - profile: kimi
+          provider: kimi
+          model: kimi-for-coding
+          credentialed: true
+          base_url: api.kimi.com
+        - profile: qwen
+          provider: qwen
+          model: qwen3.8-flash
+          credentialed: true
+          base_url: token-plan.cn-beijing.maas.aliyuncs.com
+      config_override: true
+      effort_validated: false
+      model_catalog_path: null
+      models_by_profile:
+        deepseek:
+          - deepseek-flash
+          - deepseek-v4-pro
+        glm:
+          - glm-5.3
+          - glm-5.3-flash
+          - glm-5-turbo
+        gpt:
+          - gpt-6.1-sol
+          - gpt-6-astra
+          - gpt-6-sol
+          - gpt-6-luna
+          - gpt-5.6-sol
+          - gpt-5.6-terra
+          - gpt-5.6-luna
+        kimi:
+          - k3
+          - k3-256k
+          - kimi-for-coding
+          - kimi-for-coding-highspeed
+        qwen:
+          - qwen3.8-max
+          - qwen3.8-flash
+          - qwen3.7-max
+          - qwen3.7-plus
+          - qwen3.6-flash
+      models_visible:
+        - gpt-6.1-sol
+        - gpt-6-astra
+        - gpt-6-sol
+        - gpt-6-luna
+        - gpt-5.6-sol
+        - gpt-5.6-terra
+        - gpt-5.6-luna
+      models_by_profile_errors: {}
+      reasoning_levels:
+        base:
+          gpt-6.1-sol:
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
+            - ultra
+          gpt-6-astra:
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
+            - ultra
+          gpt-6-sol:
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
+            - ultra
+          gpt-6-luna:
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
+          gpt-5.6-sol:
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
+            - ultra
+          gpt-5.6-terra:
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
+            - ultra
+          gpt-5.6-luna:
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
+        by_profile:
+          deepseek:
+            deepseek-flash:
+              - low
+              - high
+              - max
+            deepseek-v4-pro:
+              - low
+              - high
+              - max
+          glm:
+            glm-5.3:
+              - low
+              - high
+              - max
+            glm-5.3-flash:
+              - low
+              - high
+              - max
+            glm-5-turbo: []
+          gpt:
+            gpt-6.1-sol:
+              - low
+              - medium
+              - high
+              - xhigh
+              - max
+              - ultra
+            gpt-6-astra:
+              - low
+              - medium
+              - high
+              - xhigh
+              - max
+              - ultra
+            gpt-6-sol:
+              - low
+              - medium
+              - high
+              - xhigh
+              - max
+              - ultra
+            gpt-6-luna:
+              - low
+              - medium
+              - high
+              - xhigh
+              - max
+            gpt-5.6-sol:
+              - low
+              - medium
+              - high
+              - xhigh
+              - max
+              - ultra
+            gpt-5.6-terra:
+              - low
+              - medium
+              - high
+              - xhigh
+              - max
+              - ultra
+            gpt-5.6-luna:
+              - low
+              - medium
+              - high
+              - xhigh
+              - max
+          kimi:
+            k3:
+              - low
+              - high
+              - max
+            k3-256k:
+              - low
+              - high
+              - max
+            kimi-for-coding:
+              - low
+              - high
+              - max
+            kimi-for-coding-highspeed:
+              - low
+              - high
+              - max
+          qwen:
+            qwen3.8-max:
+              - low
+              - medium
+              - xhigh
+            qwen3.8-flash:
+              - low
+              - medium
+              - xhigh
+            qwen3.7-max:
+              - low
+              - medium
+              - high
+              - xhigh
+            qwen3.7-plus:
+              - low
+              - medium
+              - high
+              - xhigh
+            qwen3.6-flash:
+              - low
+              - medium
+              - high
+              - xhigh
+    agy:
+      entrypoint: /Users/chenzhenbo/.local/bin/agy
+      version: 1.3.6
+      version_probe:
+        runner: null
+        args:
+          - --version
+        extract: null
+      probed_at: 2026-10-15T23:48:10.487Z
+      models:
+        - gemini-4-argon-medium
+        - gemini-4-argon-high
+        - gemini-4-argon-low
+        - gemini-3.8-flash-high
+        - gemini-3.8-flash-medium
+        - gemini-3.8-flash-low
+        - claude-opus-5-5-low
+        - claude-opus-5-5-medium
+        - claude-opus-5-5-high
+        - claude-sonnet-5-5-low
+        - claude-sonnet-5-5-medium
+        - claude-sonnet-5-5-high
+        - gpt-oss-120b-medium
+      path_deny:
+        supported: false
+        rule_syntax: null
+        method: 否定对照成立：无路径级 deny 机制时，agy 确实读到了对方产出（哨兵命中）
+        attempts:
+          - 'permissions.deny 的 grant 语法 action(target)：合法 action 为 command/unsandboxed/mcp/url/read；read 属 GitHub 仓库授权（校验消息 "invalid grant: org and repo are required"），无文件系统路径档位'
+          - settings.fileAccessPolicy：枚举 AGENT_SETTING_POLICY_{ALLOW,ASK,DENY,UNSPECIFIED}，作用于整个作用域，会连被审对象一起挡掉，粒度不可用
+          - allowNonWorkspaceAccess / isWorkspaceOnly：工作区边界控制，而 deny_paths 就在项目根内，边界挡不住
+          - allow_agent_access_gitignore_files：依赖 .gitignore，但对方产出必须进 Git，不可用
+          - 未尝试：plugin 的 hooks.json（PreToolUse 可返回 deny 决定）——需向用户 plugin 集安装 TriviumCode plugin，留作 M3 候选
+        coverage_complete: null
+        file_shape_verified: null
+      scratch_paths: []
+      isolation: shared
+      headless_read_ok: true
+      json_schema_ok: true
+      pty_required: false
+      read_strategy: default
+      agent: trivium-critic
+    zcode:
+      entrypoint: /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs
+      version: 0.16.9
+      version_probe:
+        runner: node
+        args:
+          - version
+        extract: (\d+\.\d+\.\d+)
+      probed_at: 2026-10-10T06:07:56.724Z
+      models:
+        - GLM-5.3
+        - GLM-5.3-Flash
+        - bigmodel-coding-plan/GLM-5.3
+        - bigmodel-coding-plan/GLM-5.3-Flash
+      path_deny:
+        supported: false
+        rule_syntax: null
+        method: 否定对照成立：即使显式 deny 该路径，模型仍换用其它读工具读到了对方产出（哨兵命中）
+        attempts:
+          - --disallowed-tools "Read(<绝对路径>)"：语法被接受，但模型改用 Bash(head -1) 读到了目标文件
+          - --disallowed-tools "Read(<路径>) Write Edit MultiEdit ApplyPatch Bash"：模型改用 Grep 读到了目标文件
+          - --settings <path>：参数被拒绝（Unknown option），无法注入独立权限配置
+          - --mode plan：实测**不阻止命令执行**，不能作为只读手段单独使用
+          - 结论：要靠 denylist 挡住单个文件需封掉全部读路径（Read/Grep/Glob/ReadSessionContext/Bash），那样连被审对象也读不了，粒度不可用
+        coverage_complete: null
+        file_shape_verified: null
+      scratch_paths: []
+      isolation: home_copy
+      readonly_flags:
+        - --mode plan
+        - --mode yolo
+        - --disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash
+      model_override: config_copy
+      trace_source: /Users/chenzhenbo/.zcode/cli/log/zcode-{date}.jsonl
+      trace_args_source: /Users/chenzhenbo/.zcode/cli/rollout/model-io-{sessionId}.jsonl
+      response_field: response
+      model_id_form: bigmodel-coding-plan/GLM-5.3
+      provider_config:
+        builtin_file: /Applications/ZCode.app/Contents/Resources/config/provider/zcode-builtin.json
+        personal_file: /Users/chenzhenbo/.zcode/v2/provider_config.json
+      model_override_full_copy: config_copy
+      runtime_selection: reorder_needed
+  auth:
+    gemini:
+      checked_at: 2026-10-09T12:49:04.710Z
+      cli_version: 1.3.2
+      fingerprint: 5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4
+      ok: true
+    glm:
+      checked_at: 2026-10-09T12:48:45.381Z
+      cli_version: 0.16.9
+      fingerprint: 5cbbb8505c445a42a0e7a01c5d775ec372cf417396d22467e3d2077410eaab99|model=GLM-5.3
+      ok: true
+    codex:
+      checked_at: 2026-10-08T05:29:34.029Z
+      cli_version: 0.160.1
+      fingerprint: ab44435d92a7fa0bf5186d420ea84946b368f6f3f260164737b63a2387b93595:75aba49f154725c007d2878ee9c45bd08776508540c8e97aff40323f111e6772:ad208b54ed5d3919660d688667065b2513051f227b448603d5a14f2c8f53ca6a
+      ok: true
+  host:
+    platform: darwin 27.0.0
+    arch: arm64
+    has_timeout_bin: false
+    git_version: 2.54.0 (Apple Git-157)
+  auth_routes:
+    27e1e0415da4ea47b713096a0367b63f1fac9b0b780cfb4d556bc8874a5182fb:
+      checked_at: 2026-10-12T04:39:15.432Z
+      cli_version: 2.1.296
+      fingerprint: 7f81d4ee53938830752f27d5183b99e2b6cd776e5605512cdceb80032be94068
+      ok: true
+      combination:
+        critic: claude
+        mode: profile
+        profile: qwen
+        model: qwen3.8-flash
+        effort: null
+    c9529bd415278c064fc7b5bf8b367870c72b53264d58cfad154af59e59600bd4:
+      checked_at: 2026-10-12T04:40:15.396Z
+      cli_version: 1.3.3
+      fingerprint: 5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4
+      ok: true
+      combination:
+        critic: gemini
+        mode: standard
+        profile: null
+        model: gemini-3.8-flash-high
+        effort: high
+    ce0accbd74848643cf2f4e899d651d442af4410c42e6d185a42cb2a6dc53a671:
+      checked_at: 2026-10-12T04:39:23.440Z
+      cli_version: 0.16.9
+      fingerprint: 5cbbb8505c445a42a0e7a01c5d775ec372cf417396d22467e3d2077410eaab99|model=GLM-5.3
+      ok: true
+      combination:
+        critic: glm
+        mode: standard
+        profile: null
+        model: GLM-5.3
+        effort: null
+    427443e7d0f88963921123489f2043f4f598b3118528fc48cda76946e2df7ed9:
+      checked_at: 2026-10-10T02:21:20.094Z
+      cli_version: 2.1.295
+      fingerprint: 746ae30a7b4d85c6bf7761a67bf4d1a210fd4b8bbb02a959356b1c831a6b1e61
+      ok: true
+      combination:
+        critic: claude
+        mode: profile
+        profile: qwen
+        model: qwen3.8-max
+        effort: null
+    1ed11f19421c8bd49728efd0c4a84bb8b92f71a81233f85bee69bd015cbcd693:
+      checked_at: 2026-10-10T02:21:35.149Z
+      cli_version: 2.1.295
+      fingerprint: 21efd8891b445c58fec68f9be6ddc038de8dba30943a0fb4a9b11853070dd78a
+      ok: true
+      combination:
+        critic: claude
+        mode: profile
+        profile: kimi
+        model: kimi-for-coding
+        effort: null
+    ea63506f5de827ccb2efc260df4b8b682b5ba62da393afb9846fc70b38b99237:
+      checked_at: 2026-10-10T02:22:05.263Z
+      cli_version: 2.1.295
+      fingerprint: d6dbf2b79a79d5acc75e398dbe00081b145ec6ad2b21af02e5a5e4e8870763f0
+      ok: true
+      combination:
+        critic: claude
+        mode: profile
+        profile: deepseek
+        model: deepseek-flash
+        effort: null
+    a74d25b4c0ffbfbca0600aef12b95c6be1ad105550e5381be1e2dc6939711fb1:
+      checked_at: 2026-10-10T03:57:01.687Z
+      cli_version: 0.162.0
+      fingerprint: /opt/homebrew/bin/codex:0.162.0:89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5:40eca3db99608ea9429f9c6b748ccf51cd97bd1f5169f19f901ac0b65bed19dc:7d3194f79e645c42e4396dda38be04766810ec6a00d00aced3ffc2a0a1f1a9ef
+      ok: true
+      combination:
+        critic: codex
+        mode: native
+        profile: null
+        model: gpt-6.1-sol
+        effort: null
+    b98c1407f0b691d0557d299a6fdd1e578b7668d2fead60e768066dfde087636d:
+      checked_at: 2026-10-10T03:57:24.272Z
+      cli_version: 0.162.0
+      fingerprint: /opt/homebrew/bin/codex:0.162.0:89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5:40eca3db99608ea9429f9c6b748ccf51cd97bd1f5169f19f901ac0b65bed19dc:7d3194f79e645c42e4396dda38be04766810ec6a00d00aced3ffc2a0a1f1a9ef
+      ok: true
+      combination:
+        critic: codex
+        mode: native
+        profile: null
+        model: gpt-6-luna
+        effort: null
+    0867c95f200f03dadc7c46715da01a789d6a79535da5109363ad51080819211d:
+      checked_at: 2026-10-10T03:57:46.195Z
+      cli_version: 0.162.0
+      fingerprint: /opt/homebrew/bin/codex:0.162.0:89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5:40eca3db99608ea9429f9c6b748ccf51cd97bd1f5169f19f901ac0b65bed19dc:7d3194f79e645c42e4396dda38be04766810ec6a00d00aced3ffc2a0a1f1a9ef
+      ok: true
+      combination:
+        critic: codex
+        mode: native
+        profile: null
+        model: gpt-6-astra
+        effort: null
+    61c84343a7121ead058fc537c5774f56f7e66623a0b48b505ff5f874fbec1977:
+      checked_at: 2026-10-15T23:27:49.243Z
+      cli_version: 2.1.301
+      fingerprint: 5484e15d88f6a141f24856d98b85476640fad1d7f4b8265aad7efa19e937dd6d::e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+      ok: true
+      combination:
+        critic: claude
+        mode: native
+        profile: null
+        model: opus
+        effort: null
+    bb620c1fd0200aef321546508ce27f72ee0c2dd3c04ef6381219ece9cfc02481:
+      checked_at: 2026-10-15T23:27:53.191Z
+      cli_version: 2.1.301
+      fingerprint: 5484e15d88f6a141f24856d98b85476640fad1d7f4b8265aad7efa19e937dd6d::e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+      ok: true
+      combination:
+        critic: claude
+        mode: native
+        profile: null
+        model: sonnet
+        effort: null
+    73cbdc53f585334e8c83c0ce8519a6e67d967891e9bb54364297d058048c77a4:
+      checked_at: 2026-10-15T23:30:59.856Z
+      cli_version: 2.1.301
+      fingerprint: 5484e15d88f6a141f24856d98b85476640fad1d7f4b8265aad7efa19e937dd6d::e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+      ok: true
+      combination:
+        critic: claude
+        mode: native
+        profile: null
+        model: opus
+        effort: medium
+    acfa05bc00a71af16be8e59527c80b0194294c23c456a444f5149eabb5276f82:
+      checked_at: 2026-10-15T23:31:04.044Z
+      cli_version: 2.1.301
+      fingerprint: 5484e15d88f6a141f24856d98b85476640fad1d7f4b8265aad7efa19e937dd6d::e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+      ok: true
+      combination:
+        critic: claude
+        mode: native
+        profile: null
+        model: opus
+        effort: high
+    618fbac339917f31b9acac12c436111b70ca59b125bbe191cdb817047dbd0033:
+      checked_at: 2026-10-15T23:33:02.773Z
+      cli_version: 2.1.301
+      fingerprint: 5484e15d88f6a141f24856d98b85476640fad1d7f4b8265aad7efa19e937dd6d::e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+      ok: true
+      combination:
+        critic: claude
+        mode: native
+        profile: null
+        model: sonnet
+        effort: medium
+    25cb6b573f3faddf8150364d5ff5af0c84d03e0d00e7972d93f39ff4e4f11acd:
+      checked_at: 2026-10-15T23:49:32.988Z
+      cli_version: 0.162.1
+      fingerprint: /opt/homebrew/bin/codex:0.162.1:89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5:40eca3db99608ea9429f9c6b748ccf51cd97bd1f5169f19f901ac0b65bed19dc:7d3194f79e645c42e4396dda38be04766810ec6a00d00aced3ffc2a0a1f1a9ef
+      ok: true
+      combination:
+        critic: codex
+        mode: native
+        profile: null
+        model: gpt-6.1-sol
+        effort: medium
+    fb6183b3211cd3206fe83b4a312b5b3b78badb81a4a549ad9347555ec8b5e96c:
+      checked_at: 2026-10-15T23:49:43.476Z
+      cli_version: 0.162.1
+      fingerprint: /opt/homebrew/bin/codex:0.162.1:89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5:40eca3db99608ea9429f9c6b748ccf51cd97bd1f5169f19f901ac0b65bed19dc:7d3194f79e645c42e4396dda38be04766810ec6a00d00aced3ffc2a0a1f1a9ef
+      ok: true
+      combination:
+        critic: codex
+        mode: native
+        profile: null
+        model: gpt-6-luna
+        effort: medium
+    f81458824557ba5970dd140c28871d30e406abd0eaa38d76d34b11e4e2ad39d2:
+      checked_at: 2026-10-15T23:49:54.859Z
+      cli_version: 0.162.1
+      fingerprint: /opt/homebrew/bin/codex:0.162.1:89554a497e060a784fda93b8357040dc17433df92adc52022e3e04d4c7c7aca5:40eca3db99608ea9429f9c6b748ccf51cd97bd1f5169f19f901ac0b65bed19dc:7d3194f79e645c42e4396dda38be04766810ec6a00d00aced3ffc2a0a1f1a9ef
+      ok: true
+      combination:
+        critic: codex
+        mode: native
+        profile: null
+        model: gpt-6-astra
+        effort: high
+    76ea52527dc941ef50892d6852de7c6ce2236d7ffe222b1c353a6e7d66b89758:
+      checked_at: 2026-10-15T23:50:31.491Z
+      cli_version: 1.3.6
+      fingerprint: 5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4
+      ok: true
+      combination:
+        critic: gemini
+        mode: standard
+        profile: null
+        model: gemini-4-argon-high
+        effort: high
+    ab08c6c17358b229d0e2fba97d567dcf28b7db2e41b210cd2235a3ad49e5cc69:
+      checked_at: 2026-10-15T23:51:41.053Z
+      cli_version: 1.3.6
+      fingerprint: 5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4
+      ok: true
+      combination:
+        critic: gemini
+        mode: standard
+        profile: null
+        model: gemini-3.8-flash-medium
+        effort: null
+    391edaafb96a866e489c5a7347a01c76b72d3e5e70d8d5a04bb52fc4d911c3f2:
+      checked_at: 2026-10-16T00:06:40.378Z
+      cli_version: 1.3.6
+      fingerprint: 5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4
+      ok: true
+      combination:
+        critic: gemini
+        mode: standard
+        profile: null
+        model: gemini-4-argon-high
+        effort: null

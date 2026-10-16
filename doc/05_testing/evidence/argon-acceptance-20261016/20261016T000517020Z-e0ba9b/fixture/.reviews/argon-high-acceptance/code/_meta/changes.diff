@@ -1,0 +1,16 @@
+# trivium changes.diff
+# run_id: 20261016T000640Z
+# base: HEAD
+# head: dc896a7ff05fdf195ed69905c5822243f075f11f
+# files: 1
+#   src/inventory.js
+diff --git a/src/inventory.js b/src/inventory.js
+index ea2bdcb..e5c8c63 100644
+--- a/src/inventory.js
++++ b/src/inventory.js
+@@ -1,5 +1,4 @@
+ export function reserve(stock, quantity) {
+   if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('invalid quantity');
+-  if (quantity > stock) throw new Error('insufficient stock');
+   return stock - quantity;
+ }

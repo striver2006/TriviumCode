@@ -1,0 +1,205 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "codex",
+      "right": "gemini",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "gemini-4-argon-high",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    }
+  ],
+  "run_id": "20261016T000640Z",
+  "topic": "argon-high-acceptance",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "审查库存预留变更的正确性与测试覆盖。先逐个读取必读清单里的六份文件，再结合补丁给出符合任务书的真实结论。禁止修改文件。",
+  "task_goal": "验证 Argon high 经生产编排器完成真实代码审查、模型回读与证据核验",
+  "entry": null,
+  "driver": "codex",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "profile": "pro",
+  "critics_selected": [
+    "gemini"
+  ],
+  "snapshot": {
+    "git_head": "dc896a7ff05fdf195ed69905c5822243f075f11f",
+    "tree_hash": "8baafae0af85a5c72ab76a441d1314fafac6096c",
+    "dirty": true,
+    "subject_sha256": "9cbb7424d15e1af8b4cd8c63e573dba4390216c08692a552f4788306abf61b9f",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "aa6db337315dd60691af966bb2bee1dfc5b0829d",
+      "dirty": false,
+      "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+      "built_at": "2026-10-11T15:54:27.580Z"
+    },
+    "after_tree_hash": "8baafae0af85a5c72ab76a441d1314fafac6096c"
+  },
+  "started_at": "2026-10-16T00:06:40.630Z",
+  "finished_at": "2026-10-16T00:08:02.894Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.3.6",
+      "model_requested": "gemini-4-argon-high",
+      "model_effective": "gemini-4-argon-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort_requested": null,
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": "high",
+      "tier_source": "profile",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 82.095,
+      "tool_calls": {
+        "read": 7,
+        "grep": 0,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 8
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 27371,
+        "output_tokens": 5713,
+        "thinking_tokens": 3726,
+        "cache_read_tokens": 43279,
+        "total_tokens": 33084
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+        "launcher_effective": "/Users/chenzhenbo/.local/bin/agy",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [
+          "toolAction",
+          "toolSummary"
+        ],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "90fda10a-7642-4a63-86ba-964d3fa0c044",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "requested_routes": {
+    "gemini": {
+      "model": "gemini-4-argon-high",
+      "effort": null,
+      "tier": "high",
+      "tier_source": "profile",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-argon-acceptance-sHMKsN/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false
+    },
+    "deny_skipped": {
+      "gemini": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "argon-high-acceptance/code/_meta/changes-20261016T000640Z.diff",
+      "sha256": "9cbb7424d15e1af8b4cd8c63e573dba4390216c08692a552f4788306abf61b9f"
+    },
+    {
+      "path": "argon-high-acceptance/code/_meta/brief-gemini-20261016T000640Z.md",
+      "sha256": "841839fd78415edc27e6fe68b763e40bd4098d417533616c7ea1fc8c12b314c9"
+    },
+    {
+      "path": "argon-high-acceptance/code/_meta/review-gemini-20261016T000640Z.json",
+      "sha256": "4b4c24ab0d4e62ab56c19135228bdbc30bcbd484c1cfb0c9bcc94cfacec461b5"
+    },
+    {
+      "path": "argon-high-acceptance/code/2026-10-16-argon-high-acceptance-gemini.md",
+      "sha256": "e3035412b6ee95de31a5bd0169d01a4d35034a15d4a9d7b25202ecda5facfb28"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success"
+}

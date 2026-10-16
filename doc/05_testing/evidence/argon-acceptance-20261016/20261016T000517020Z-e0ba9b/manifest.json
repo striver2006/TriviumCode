@@ -1,0 +1,94 @@
+{
+  "batch": "20261016T000517020Z-e0ba9b",
+  "model": "gemini-4-argon-high",
+  "fixture_root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-argon-acceptance-sHMKsN/repo",
+  "run_root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-argon-acceptance-sHMKsN/runs",
+  "production_thresholds": {
+    "min_tool_calls": {
+      "plan": 5,
+      "code": 5,
+      "bug": 5
+    },
+    "min_project_reads": {
+      "plan": 3,
+      "code": 3,
+      "bug": 3
+    }
+  },
+  "max_model_launch_reservations": 6,
+  "probe_source": ".trivium/config.local.yaml",
+  "probe_source_sha256": "3944883157bd5b330b8af033d331482b9f62272b9516266aef167e91eb1d54e8",
+  "probe": {
+    "entrypoint": "/Users/chenzhenbo/.local/bin/agy",
+    "version": "1.3.6",
+    "version_probe": {
+      "runner": null,
+      "args": [
+        "--version"
+      ],
+      "extract": null
+    },
+    "probed_at": "2026-10-15T23:48:10.487Z",
+    "models": [
+      "gemini-4-argon-medium",
+      "gemini-4-argon-high",
+      "gemini-4-argon-low",
+      "gemini-3.8-flash-high",
+      "gemini-3.8-flash-medium",
+      "gemini-3.8-flash-low",
+      "claude-opus-5-5-low",
+      "claude-opus-5-5-medium",
+      "claude-opus-5-5-high",
+      "claude-sonnet-5-5-low",
+      "claude-sonnet-5-5-medium",
+      "claude-sonnet-5-5-high",
+      "gpt-oss-120b-medium"
+    ],
+    "path_deny": {
+      "supported": false,
+      "rule_syntax": null,
+      "method": "否定对照成立：无路径级 deny 机制时，agy 确实读到了对方产出（哨兵命中）",
+      "attempts": [
+        "permissions.deny 的 grant 语法 action(target)：合法 action 为 command/unsandboxed/mcp/url/read；read 属 GitHub 仓库授权（校验消息 \"invalid grant: org and repo are required\"），无文件系统路径档位",
+        "settings.fileAccessPolicy：枚举 AGENT_SETTING_POLICY_{ALLOW,ASK,DENY,UNSPECIFIED}，作用于整个作用域，会连被审对象一起挡掉，粒度不可用",
+        "allowNonWorkspaceAccess / isWorkspaceOnly：工作区边界控制，而 deny_paths 就在项目根内，边界挡不住",
+        "allow_agent_access_gitignore_files：依赖 .gitignore，但对方产出必须进 Git，不可用",
+        "未尝试：plugin 的 hooks.json（PreToolUse 可返回 deny 决定）——需向用户 plugin 集安装 TriviumCode plugin，留作 M3 候选"
+      ],
+      "coverage_complete": null,
+      "file_shape_verified": null
+    },
+    "scratch_paths": [],
+    "isolation": "shared",
+    "headless_read_ok": true,
+    "json_schema_ok": true,
+    "pty_required": false,
+    "read_strategy": "default",
+    "agent": "trivium-critic"
+  },
+  "agent_sha256": "5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4",
+  "entry_sha256": "827ba22b4aa33557614a57aac2cc13f386e17db6b802febd3932226906ac05ab",
+  "script_sha256": "4f81727900cee8b973f54c4d90539cb0b896d0d43f3b1ce259aef8079dd752a2",
+  "module_sha256": {
+    "adapters/agy.js": "a2c449b7c841b7c4530d8ac4202807070165d43930be224df377ab9c846255c2",
+    "adapters/agy-events.js": "0e917499d31f4684f902bdb0ff8aac56a798142c75ebea260d695e04336df9e8",
+    "parse.js": "756ec62b5dff8d4a446695da666b0da37a3a0c2f01791146c99d99191b472d0a",
+    "util/exec.js": "1b100ae9a0e21532d103db67af4e8544eba907be71598bfd4eea7293269ce836"
+  },
+  "fixture_files": {
+    "README.md": "c29d11fd2ecd498dceb9103bd8d8d2a7ed6d6b5281a85e3673f1ab3005871d9c",
+    "doc/spec.md": "26fd6c9de3997c708555ad60b41e1439c0c560ff45374d15414819e989173ef6",
+    "src/inventory.js": "2d543bb5ebc25572be7ec47b00ba0986ec65443f39814a1bd8b0c5baac424608",
+    "src/orders.js": "8083dce99d4ed6cd7595d994eafcdd5b179d3943ccd20ecc64f056ca860ba1e8",
+    "src/catalog.js": "f9476d532024129de575fcdd12742881185f79ecb53e90236c52b726aff44676",
+    "test/inventory.test.js": "2e431f9fba8f3222d62d13bfd55237a9643c6ce1c45085b103c674154484f4d3",
+    "package.json": "f5b20cc52ea6dbd33a26f41cc1ebd9328930ef33a284ced297172ff2df09830e"
+  },
+  "sentinel_sha256": "c43d20b6828a07ccd75a45a878d898960e52f5c7ba51e101e5107a922bdad9d4",
+  "boundaries": [
+    "独立夹具，不审查本仓业务代码",
+    "单侧是验收配置意图，不是多审背靠背验收",
+    "不执行 approve，不变更生产判据",
+    "原始工具注册表不是 Agent 白名单证明"
+  ]
+}
