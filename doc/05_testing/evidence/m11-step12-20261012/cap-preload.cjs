@@ -16,7 +16,9 @@ core.openBudget=(root,pool)=>{
   const count=p=>fs.readdirSync(path.join(root,'ledger',p)).filter(n=>/^reserved-\d+\.json$/.test(n)).length;
   const used=count(pool),total=count('admission')-plan.baseline.admission.used+count('review')-plan.baseline.review.used;
   const localCap=Number(process.env.M11_BATCH_ABSOLUTE_CAP);
-  if(!Number.isSafeInteger(localCap)||used>=localCap||used>=plan.absolute_step_caps[pool]||total>=80)throw Error('M11第12步本批或本步CLI启动上限已到，拒绝spawn');
+  // 本步总额读计划字段：revision≤3 为 80；收口池（revision 4，用户定不设额度）为 null 即不设，逐次计数照旧。
+  const stepTotal=plan.step_limits.total;
+  if(!Number.isSafeInteger(localCap)||used>=localCap||used>=plan.absolute_step_caps[pool]||(stepTotal!==null&&total>=stepTotal))throw Error('M11第12步本批或本步CLI启动上限已到，拒绝spawn');
   return reserve(meta);
   } finally {fs.rmdirSync(lock);}
  };

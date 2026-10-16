@@ -1,0 +1,20 @@
+{
+  "at": "2026-10-16",
+  "batch": "X1（Codex 主攻 plan，主题 m11-s12-codex）",
+  "run": "20261016T053906Z",
+  "driver_declaration": { "model": "GPT-6", "provider": "OpenAI", "source": "Codex 会话自报" },
+  "verdicts": {
+    "7.1": { "pass": true, "evidence": ["x1-rollout-assessment.json"], "note": "原稿 role: codex / kind: original；裁决件 role: codex / kind: revised" },
+    "7.2": { "pass": true, "evidence": ["x1-assessment.json"], "note": "driver=codex、driver_enabled=true、driver_guard_level=L2，与 QUICKSTART §5.2 Codex 行（L2，没有 Hook）一致" },
+    "7.3": { "pass": true, "evidence": ["x1-assessment.json"], "note": "critics_selected=[gemini, glm]" },
+    "7.4": { "pass": true, "evidence": ["x1-assessment.json"], "note": "task.json drivers.plan.driver=codex" },
+    "7.5": { "pass": true, "evidence": ["验收外壳回执 e13293d1…-completed.json"], "note": "--await-approval CLI 原文：调用写法 $dual-approve，末句「本载体没有 Hook 拦截（L2）」" },
+    "7.7": { "pass": true, "evidence": ["x1-rollout-assessment.json", "x1-codex-rollout.redacted.jsonl"], "note": "入口原文与焦点在 ~/.codex/sessions rollout 中，焦点与 prompt_hint、request.json 逐字一致" },
+    "9.1": { "pass": true, "evidence": ["x1-assessment.json", "approve 回执 cd264e79…-completed.json"], "note": "闸门期 Codex 会话在 src/stack.js 末尾加一行注释，未被任何机制拦下（L2 预期）" },
+    "9.2": { "pass": true, "evidence": ["验收外壳回执 e13293d1…-completed.json"], "note": "停点末句按 Codex 等级措辞，与 QUICKSTART §5.2 表一致" },
+    "9.3": { "pass": true, "evidence": ["验收外壳回执 cd264e79…-completed.json", "x1-after-approval.json"], "note": "Bob 系统终端 approve 退 0，闸门 approved、本轮 1 条审批" },
+    "9.4": { "pass": "第一子句成立", "evidence": ["验收外壳回执 cd264e79…-completed.json"], "note": "审批输出「工作树改动摘要……1 个文件有变化  M  src/stack.js」；第二子句（先提交再审批）留 X2" },
+    "9.5": { "pass": true, "evidence": ["x1-assessment.json", "x1-after-approval.json"], "note": "snapshot.drift.changed=false，审批后未回写" }
+  },
+  "restore": "审批后主会话 git checkout -- src/stack.js 撤销闸门期那一行，夹具回到 a27d869、工作树仅剩未跟踪的 m11-s12-codex 归档"
+}

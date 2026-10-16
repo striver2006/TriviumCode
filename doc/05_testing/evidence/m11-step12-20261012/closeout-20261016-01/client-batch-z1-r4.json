@@ -1,0 +1,46 @@
+{
+  "at": "2026-10-16",
+  "id": "Z1-claude-plan",
+  "fixture": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012",
+  "topics": [
+    "m11-s12-cross"
+  ],
+  "installed_sha256": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+  "before": {
+    "admission": 867,
+    "review": 405
+  },
+  "caps": {
+    "admission": 1839,
+    "review": 1413
+  },
+  "expected": {
+    "admission": 6,
+    "review": 4
+  },
+  "hard": null,
+  "criteria": [
+    "10.2 plan 部分",
+    "10.3～10.7 前置"
+  ],
+  "driver": {
+    "agent": "claude",
+    "model": "claude-sonnet-5-5",
+    "provider": "anthropic",
+    "source": "客户端首条消息自报 Claude Sonnet 5.5（claude-sonnet-5-5），与 239f6026「恢复 Claude 官方路线」一致；r1 沿用 D 批 qwen 声明，已核出不符"
+  },
+  "command": "/dual-review-plan 审查 clear() 的语义边界：返回值、capacity 不变、清空后 push/pop/peek 行为与测试覆盖 --topic m11-s12-cross --goal 为BoundedStack新增clear()：清空元素、capacity不变、返回被清掉的元素个数，并补充测试 --critics gemini,glm --model-gemini gemini-3.8-flash-high --model-glm GLM-5.3 --driver-provider anthropic --driver-model claude-sonnet-5-5",
+  "focus": "审查 clear() 的语义边界：返回值、capacity 不变、清空后 push/pop/peek 行为与测试覆盖",
+  "goal": "为BoundedStack新增clear()：清空元素、capacity不变、返回被清掉的元素个数，并补充测试",
+  "approval_receipt": "approval-z1.json",
+  "stop": "仅执行一次 /dual-approve --topic m11-s12-cross --stage plan（不带附言）；失败即停，不重试；审批后不实现、不启动新审查、不提交",
+  "scope_note": "收口池不设额度（closeout-20261016-01/user-decision-02.json D4），caps 等于全局台账上限、只防失控；夹具基线 70bad55（closeout-20261016-01/fixture-baseline.json）；agy 1.3.6 已刷新（r0-assessment.json）。步骤见 closeout-20261016-01/client-steps-z-draft.md。",
+  "revision": 4,
+  "correction": "r1（closeout-20261016-01/client-batch-z1.json）的 driver 声明为 qwen3.8-flash，客户端按约定停下且未启动任何东西；r2 只改 driver 与入口命令里的两个声明旗标，其余不变",
+  "retry_authorization": {
+    "by": "Bob（AskUserQuestion，2026-10-16）",
+    "answer": "同参数重试一次",
+    "scope": "同一客户端会话复用已写原稿与已认领阶段，正式 preflight 重跑一次，通过则 review --start 一次；再次失败（含 agy 探活超时）立即停，不再重试，改走 Argon 由 Bob 另定",
+    "previous_failure": "closeout-20261016-01/z1-preflight-69-01.json"
+  }
+}

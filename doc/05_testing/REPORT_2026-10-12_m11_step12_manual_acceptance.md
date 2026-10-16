@@ -1,6 +1,6 @@
 # M11 第12步全量手工验收与收口
 
-本轮起点为 `65e0ea6997a848537f83d79a6bfcacfa48f1796c`，main 工作树干净。Codex 主攻，真实客户端剧本按各自 Driver 验证，Codex 仍为 L2。上位依据为获批计划 r3 §4.12 与 CASE 剧本1～11。当前执行中，**尚未满足 M11 完成判据**。
+本轮起点为 `65e0ea6997a848537f83d79a6bfcacfa48f1796c`，main 工作树干净。Codex 主攻，真实客户端剧本按各自 Driver 验证，Codex 仍为 L2。上位依据为获批计划 r3 §4.12 与 CASE 剧本1～11。**2026-10-16 收口：68 格均有本轮实证或用户定的达成边界，M11 完成判据满足**（见末节）；以下各节按时间顺序保留当时的状态措辞。
 
 ## 验收矩阵与分批
 
@@ -371,4 +371,42 @@ Bob 在 Claude Code 会话里对收口计划答复三项，并同意开始 Phase
 
 剩余 20 格的执行方案见[新池提案](./evidence/m11-step12-20261012/closeout-20261016-01/budget-pool-proposal.json)：硬限 admission 32 / review 16，绝对上限 870/417；**未批准、未扩容**。两批草案：[批 Z](./evidence/m11-step12-20261012/closeout-20261016-01/client-steps-z-draft.md)，Claude 主攻 plan → ZCode 主攻 code，覆盖剧本 7 的 ZCode 部分与剧本 10；[批 X](./evidence/m11-step12-20261012/closeout-20261016-01/client-steps-x-draft.md)，Codex 主攻 plan，覆盖剧本 7 的 Codex 部分与 9.1～9.5，9.6 可选。准备中核出四件事：agy 已升到 1.3.6 而夹具探针还是 1.3.5，需先定向刷新一次；codex、zcode 探针过期只告警；夹具有未提交改动，需先提交成基线；夹具里来源不明的 `.codex/hooks.json` 建议原样保留并如实记录，另登记 EV-237。剧本 4 末注的同族终端告警已由 EV-234 并入运行告警，按执笔方判断不另立条目，收口时以实跑 `--wait` 输出核实。
 
-本批未启动厂商 CLI、客户端、审查或审批，预算仍 838/401，未提交推送。M11 未完成；下一停点是用户批准新池、夹具基线提交与 R0 刷新。
+本批未启动厂商 CLI、客户端、审查或审批，预算仍 838/401。M11 未完成；下一停点是用户批准新池、夹具基线提交与 R0 刷新。以上随 `284f1320` 提交推送。
+
+## 2026-10-16：收口池不设额度，两批前置完成，Z1 发布
+
+Bob 第二次答复（[决定](./evidence/m11-step12-20261012/closeout-20261016-01/user-decision-02.json)）：收口池不设额度、该用多少就多少；两批前置由 Claude 自动执行；`.codex/hooks.json` 原样保留；Phase 1 先提交推送。据此：
+
+- 验收外壳的本步总额不再写死 80，改读计划字段：revision≤3 行为不变，revision 4 为 null，即不设。doctor 改为可按批次具名的一次性授权放行。生产代码未改。
+- 用既有 extend 机制把全局上限追加到 admission 1839 / review 1413，`budget-plan.json` 升 revision 4，旧账封存。每次启动仍写预占与完成回执，见[扩容回执](./evidence/m11-step12-20261012/closeout-20261016-01/closeout-pool-extension-receipts.json)。
+- 夹具 `a50caa6` → `70bad55`：现有业务改动与两主题归档提交成新基线，`.codex/hooks.json` 未提交，见[基线记录](./evidence/m11-step12-20261012/closeout-20261016-01/fixture-baseline.json)。
+- R0：经验收外壳执行 `doctor --only agy --json` 一次，admission 838→843。agy 1.3.6 已记入，无头读取与 JSON Schema 两项通过；路径 deny 仍不支持；批次路线 `gemini-3.8-flash-high` 在目录内。doctor 退 69，唯一阻断仍是已知的外壳形态，见[回读](./evidence/m11-step12-20261012/closeout-20261016-01/r0-assessment.json)。
+- `client-batch.json` 已切到 Z1（主题 `m11-s12-cross`，Claude/Qwen 主攻 plan，审核者 gemini、glm），等 Bob 在客户端发起。当前台账 843/401。
+
+## 2026-10-16：收口批 Z / X 与 11.7 实跑，M11 收口
+
+证据统一在 [closeout-20261016-01/](./evidence/m11-step12-20261012/closeout-20261016-01/README.md)。各批批次文件均有具名副本（`client-batch-*.json`），审批均由 Bob 当次决定，批准凭据为 `approval-z1/z2/x1/x3.json`。
+
+**批 Z（剧本 10 与剧本 7 的 ZCode 部分）**
+
+- **Z1**（Claude 主攻 plan，`20261016T015733Z`）：批次 r1 沿用旧的 qwen 声明，客户端自报 Sonnet 5.5 后按约定停下，r2 改正。首次预检退 69：agy 探活用 `gemini-3.8-flash-high` 在 100s 内没答完，被报成「未认证」（[记录](./evidence/m11-step12-20261012/closeout-20261016-01/z1-preflight-69-01.json)，文案问题登记 EV-238）。Bob 授权重试一次后通过，审批生效。偏差照实记录：重试阶段实际起了 2 次预检，第一次中途被打断（[z1-retry-deviation.json](./evidence/m11-step12-20261012/closeout-20261016-01/z1-retry-deviation.json)）。
+- **10.1**：主会话 `topic claim --driver glm` 退 64。
+- **Z2**（ZCode 主攻 code，`20261016T050612Z`）：审核者 gemini、codex(deepseek)，success/full，护栏 L2。7.6 由 Bob 终端造缺件、改件，两次 `approve` 均退 2 并点名路径与 run，恢复后 hash 一致。ZCode 会话记录脱敏存档，7.7、7.8 成立。审批后按 Bob 同意删除夹具 `.codex/hooks.json`（原件已备份）。两条告警都不影响结论：codex 侧命令文本扫描误命中，共同阻断档未执行（EV-239）；codex 3 条意见逐条降级。
+- **10.2～10.7**：`report` 人读与 `--json` 两份输出均成立（[s10-report.json](./evidence/m11-step12-20261012/closeout-20261016-01/s10-report.json)）。批 Z 的逐格判定见 [z-verdicts.json](./evidence/m11-step12-20261012/closeout-20261016-01/z-verdicts.json)。
+
+**批 X（剧本 9 与剧本 7 的 Codex 部分）**
+
+- **X1**（Codex 主攻 plan，`20261016T053906Z`）：Driver 自报 GPT-6 / OpenAI，审核者 gemini、glm，success/full，护栏 L2。停点末句为「本载体没有 Hook 拦截（L2）」。闸门期 Codex 在 `src/stack.js` 加了一行，没被拦。Bob 终端 `approve` 退 0，摘要列出 `src/stack.js`；`drift.changed` 为 false，审批后也没有回写。Codex 会话记录已脱敏存档。
+- **X2**（第 2 轮，`20261016T064348Z`）：首发时 agy 自动升到 1.4.0，预检两次退 69（第二次是 Codex 自行重试），没有执行 `--start`。主会话做了 R0b 定向刷新（[x2-preflight-69.json](./evidence/m11-step12-20261012/closeout-20261016-01/x2-preflight-69.json)）。重跑时 Bob 的监视脚本在 phase=running 后改 `src/stack.js`，`drift = {changed: true, files: [src/stack.js], policy: fail}`。该文件在 `--context` 内，按手册 §5.3 默认 `on_drift_related=fail` 处置，9.6 成立。本轮另因 GLM Gateway Timeout 判 failed/partial，与判据无关。
+- **X3**（第 3 轮，`20261016T080724Z`）：两侧 approve、零意见。Bob 终端先提交闸门期改动（`bae94328`），再 `approve`，摘要照样列出 `src/stack.js`，9.4 后半句成立。
+- 判定见 [x-verdicts.json](./evidence/m11-step12-20261012/closeout-20261016-01/x-verdicts.json) 与 [x2-verdict.json](./evidence/m11-step12-20261012/closeout-20261016-01/x2-verdict.json)。
+
+**11.7（可选）**：主会话在夹具里把档位表 `profiles.default.codex.plan` 临时改为 `{ tier: high }`，不带档位旗标发起一轮（`20261016T093759Z`，Driver claude-opus-5-5）。codex 侧 `tier=high`、`tier_source=profile`，请求 `kimi-for-coding` / effort high / 厂商 profile kimi，与档位条目一致，front-matter 同值（[s117-verdict.json](./evidence/m11-step12-20261012/closeout-20261016-01/s117-verdict.json)）。codex(kimi) 侧 `evidence_ok=false`，与 B1 同形。两条意见逐条接受、写入 r2 计划，`gate --check` 通过。配置已恢复，hash 与备份一致。
+
+**矩阵**：[reconcile-2.mjs](./evidence/m11-step12-20261012/closeout-20261016-01/reconcile-2.mjs) 改判剧本 7、9、10 与 11.7 共 22 格，68 行判据与顺序不变。至此 68 格全部有本轮实证或达成边界，未测 0。
+
+**预算**：收口池从 838/401 起用到 917/423，即 admission +79、review +22。其中两次 agy 定向刷新共 10 次（agy 自动升级到 1.3.6、1.4.0 各一次），预检失败 4 次（含被打断的 1 次）。
+
+**未照 10-08 决定改的一项**：10-08 曾定「剧本 2.3 判据记不成立：agy 不再新起 hub」，并据此回补 CASE 2.1 / 2.3、P-17、RUNBOOK。但第 12 步 A 批（10-12）的进程采样已抓到 hub 的 `--add-dir=<项目根>`，矩阵 2.1～2.3 据此判通过；10-16 的 `ps` 里也有带夹具路径的 agy hub。现有文档与最新实证一致，执笔方没有照旧决定改写，留待 Bob 确认。
+
+**收口文档**：主设计 v1.3.159（16.1 M11 行 ✅ 及达成边界六条、AC-23 / R-4 / FR-30 已达成、文档头 M11 段收尾）；PRD v1.4.28（AC-23 / FR-30 已达成、S8 可用）；演进设计 §14 M11 行回填；BACKLOG EV-107 / 229 / 232 / 234 结案，新登 EV-238、EV-239。纯文档收口，B 档未走双审。

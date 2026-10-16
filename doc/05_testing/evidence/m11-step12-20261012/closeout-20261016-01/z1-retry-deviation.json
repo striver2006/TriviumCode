@@ -1,0 +1,23 @@
+{
+  "at": "2026-10-16",
+  "batch": "Z1-claude-plan r3（retry_authorization：正式 preflight 重跑一次）",
+  "fact": "重试阶段实际发起 2 次 preflight，客户端回报只提 1 次",
+  "calls": [
+    {
+      "load_id": "d2dfcb1f-e115-44b8-9512-ec7d2c96d9d4",
+      "requested_at": "2026-10-16T01:54:03.716Z",
+      "completed_record": null,
+      "admission_reserved": "852～859（8 次）",
+      "launch_records_missing": [856, 857, 859],
+      "note": "外壳无完成回执，3 个预占无 launch 记录，判为中途被打断；核验时（03:0x UTC）无残留 trivium / client-tv 进程。打断原因从回执无法判定"
+    },
+    {
+      "load_id": "70a6fc97-ed9b-4342-9fe8-6f0571390aa1",
+      "requested_at": "2026-10-16T01:56:58.012Z",
+      "exit_code": 0,
+      "admission": "860～867（8 次），全部有 launch 记录"
+    }
+  ],
+  "impact": "收口池不设额度，多耗 admission 8；正式 review --start 只 1 次（fec960da，review 401→405）。不影响本轮运行结论",
+  "disposition": "如实记录为偏差，不改判 Z1 运行结论；后续批次的客户端提示里写明：预检若转入后台，只等通知，不另起一次"
+}

@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-16",
+  "batch": "X2-codex-drift r2",
+  "run": "20261016T064348Z",
+  "verdicts": {
+    "9.6": {
+      "pass": true,
+      "evidence": ["user-x2-watch-result.json", "x2-assessment.json"],
+      "note": "watcher 在 phase=running 后 5s 改 src/stack.js（06:43:53Z）；run.json snapshot.drift = {changed: true, files: [src/stack.js], policy: fail}。src/stack.js 在本轮 --context 内，按 MANUAL §5.3 默认组合属 on_drift_related（默认 fail），与「动了被审范围内的东西 → 结论作废」一致。CASE 9.6 括号「不在被审范围内的文件缺省只告警」描述的是范围外文件，本轮不适用，判据主句（drift.changed=true、policy 与默认组合一致）成立"
+    },
+    "9.4_second_clause": { "pass": null, "note": "本轮 failed，无 awaiting_approval 停点；Bob 定再跑 X3 补测" }
+  },
+  "other_facts": {
+    "status": "failed / partial",
+    "glm": "第 1 次尝试 APICallError: Gateway Timeout，model_effective 未回读，evidence_ok=false；厂商侧偶发，不归入判据",
+    "gemini": "ok，审查件 2026-10-16-m11-s12-codex-r2-gemini.md 保留",
+    "gate_after": "idle（rerun_index 2）",
+    "client": "Codex 本轮 preflight 只跑一次、退 0，未重试",
+    "ledger_after": { "admission": 902, "review": 416 }
+  },
+  "user_decision": "Bob（AskUserQuestion）：再跑一轮 X3 补 9.4 第二句"
+}

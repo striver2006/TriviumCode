@@ -1,0 +1,41 @@
+{
+  "at": "2026-10-16",
+  "id": "X1-codex-plan",
+  "revision": 2,
+  "fixture": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012",
+  "topics": [
+    "m11-s12-codex"
+  ],
+  "installed_sha256": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+  "before": {
+    "admission": 874,
+    "review": 408
+  },
+  "caps": {
+    "admission": 1839,
+    "review": 1413
+  },
+  "expected": {
+    "admission": 8,
+    "review": 4
+  },
+  "hard": null,
+  "criteria": [
+    "7.1～7.5、7.7（Codex 主攻）",
+    "9.1～9.5"
+  ],
+  "driver": {
+    "agent": "codex",
+    "model": null,
+    "provider": null,
+    "source": "Codex 会话第一条回复自报模型与供应商，入口命令的 --driver-model / --driver-provider 原样填自报值；自报不出就停"
+  },
+  "command_template": "$dual-review-plan 审查 size 访问器的只读语义、与 items.length 的一致性及测试覆盖 --topic m11-s12-codex --goal 为BoundedStack新增只读size访问器并补充测试 --critics gemini,glm --model-gemini gemini-3.8-flash-high --model-glm GLM-5.3 --driver-model <自报模型> --driver-provider <自报供应商>",
+  "focus": "审查 size 访问器的只读语义、与 items.length 的一致性及测试覆盖",
+  "goal": "为BoundedStack新增只读size访问器并补充测试",
+  "approval_receipt": "approval-x1.json",
+  "approval_stage": "Bob 在系统终端（夹具根）执行一次 .trivium/bin/trivium approve --topic m11-s12-codex --stage plan（不带附言）；随后撤销闸门期那一行",
+  "stop": "正式 preflight 与 review --start 各一次；预检转入后台时只等通知，不另起一次；首个失败 / 69 / 漂移即停，不自动重试；裁决后停 awaiting_approval；闸门期按步骤改 src/stack.js 一行后停，审批由 Bob 在终端执行",
+  "scope_note": "收口池不设额度（closeout-20261016-01/user-decision-02.json D4）。夹具基线 a27d869（fixture-baseline-2.json），.codex/hooks.json 已于 Z2 后删除。步骤见 closeout-20261016-01/client-steps-x-draft.md「X1」。",
+  "previous_batch": "closeout-20261016-01/client-batch-z2-r2.json"
+}

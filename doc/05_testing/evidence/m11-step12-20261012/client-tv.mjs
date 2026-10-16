@@ -13,7 +13,14 @@ const plan=JSON.parse(fs.readFileSync(here+'/budget-plan.json')),cfg=JSON.parse(
 const args=process.argv.slice(2),pool=args[0]==='preflight'||args[0]==='doctor'?'admission':'review';
 if(process.cwd()!==cfg.fixture)throw Error('只允许在本轮具名独立验收项目运行');
 let refreshAuthorization=null;
-if(args[0]==='doctor'&&!args.includes('--selftest')){
+if(args[0]==='doctor'&&!args.includes('--selftest')&&cfg.refresh_authorization){
+ // 收口池（2026-10-16）：批次具名的刷新授权，只放行其中逐字列出的那一条 doctor 参数，且只能消费一次。
+ const file=path.join(here,cfg.refresh_authorization),a=JSON.parse(fs.readFileSync(file));
+ const consumed=file.replace(/\.json$/,'-consumed.json');
+ if(a.decision!=='approved'||a.fixture!==process.cwd()||!a.user_answer||JSON.stringify(args)!==JSON.stringify(a.command_args)||fs.existsSync(consumed))throw Error('刷新授权不匹配或已消费');
+ saveEvidence(consumed,{at:new Date().toISOString(),approval_sha256:hashFile(file),args});
+ refreshAuthorization={source:file,sha256:hashFile(file),stop:a.stop};
+}else if(args[0]==='doctor'&&!args.includes('--selftest')){
  const file=path.join(here,'agy-refresh-20261015-approval.json');
  if(!fs.existsSync(file))throw Error('本批不授权重新探针');
  const a=JSON.parse(fs.readFileSync(file));

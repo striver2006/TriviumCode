@@ -1,0 +1,28 @@
+{
+  "at": "2026-10-16",
+  "batch": "Z（Z1 Claude 主攻 plan → Z2 ZCode 主攻 code，主题 m11-s12-cross）",
+  "runs": { "plan": "20261016T015733Z", "code": "20261016T050612Z" },
+  "verdicts": {
+    "7.1": { "pass": true, "evidence": ["z2-assessment.json"], "note": "应答件 2026-10-16-m11-s12-cross-response-glm.md，front-matter role: glm、kind: response" },
+    "7.2": { "pass": true, "evidence": ["z2-assessment.json"], "note": "run.driver=glm、driver_enabled=true、driver_guard_level=L2，与 QUICKSTART §5.2 表 ZCode 行（L2）一致" },
+    "7.3": { "pass": true, "evidence": ["z2-assessment.json"], "note": "critics_selected=[gemini, codex]，不含当轮 Driver glm" },
+    "7.4": { "pass": true, "evidence": ["z2-assessment.json"], "note": "task.json drivers.code.driver=glm（CASE 写 plan/bug；ZCode 本批主攻 code 阶段，同字段按阶段记录）" },
+    "7.5": { "pass": true, "evidence": ["z2-assessment.json", "z2-await-stdout：验收外壳调用 72688b5e…-completed.json"], "note": "--await-approval CLI 原文：调用写法 /dual-approve，末句「本载体的 Hook 只作尽力拦截、不兜底（L2）」" },
+    "7.6": { "pass": true, "evidence": ["user-s76-result.json"], "note": "Bob 系统终端：缺件、改件两次 approve 均退 2，点名路径与 run，闸门保持 awaiting_approval、零审批，两份工件恢复原 hash" },
+    "7.7": { "pass": true, "evidence": ["z2-rollout-assessment.json", "z2-zcode-rollout.redacted.jsonl"], "note": "入口原文与焦点在 ZCode rollout 中，焦点与 run.json prompt_hint、request.json 逐字一致，topic=m11-s12-cross" },
+    "7.8": { "pass": true, "evidence": ["z2-rollout-assessment.json"], "note": "rollout 含本轮 review --start 与 run_id；时间窗内无 model-io-sess_subagent_* 文件" },
+    "10.1": { "pass": true, "evidence": ["s10-1-claim-negative.json"], "note": "topic claim --stage plan --driver glm 退 64" },
+    "10.2": { "pass": true, "evidence": ["z1-assessment.json", "z2-assessment.json"], "note": "plan driver=claude，code driver=glm；code critics_selected 不含 glm" },
+    "10.3": { "pass": true, "evidence": ["s10-report.json"], "note": "按 Driver 表：claude/plan、glm/code 两行及各自合计行；无「读不到 Driver」组" },
+    "10.4": { "pass": true, "evidence": ["s10-report.json"], "note": "claude/plan 已裁决 2（接受 2）= revised-claude 裁决表 2 行；glm/code 接受 3 驳回 1 = response-glm 裁决表 4 行" },
+    "10.5": { "pass": true, "evidence": ["s10-report.json"], "note": "两组接受 5、驳回 1、暂缓 0 = 第二节采纳率 5/6" },
+    "10.6": { "pass": true, "evidence": ["s10-report.json"], "note": "按审核者表 glm 入选轮次 1（只算 plan 轮）" },
+    "10.7": { "pass": true, "evidence": ["s10-report.json"], "note": "--json aggregates.byDriver 仅 claude、glm 两组（各含阶段行与 all 行），unknownDriver.rounds=0" }
+  },
+  "boundaries": [
+    "Z1 重试阶段多起一次被打断的 preflight（z1-retry-deviation.json）",
+    "Z2 codex 侧命令文本扫描命中 .trivium 字面（模拟 Hook 的命令），共同阻断档按有效侧 1 家未执行；运行 success/full、两侧 status ok，属误命中（同 B2 形态）",
+    "Z2 codex 3 条意见逐条降级（严重度不合 trivium.review.v1，已知 EV-11 形态），仍逐条裁决",
+    ".codex/hooks.json 按 Bob 同意于 Z2 审批后由 ZCode 删除，原件备份 fixture-codex-hooks.json.bak"
+  ]
+}

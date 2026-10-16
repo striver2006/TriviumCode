@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-16",
+  "batch": "Z1-claude-plan r2",
+  "call": "e066ea49-bcd2-47a7-8fc9-48a29f74eed4-completed.json",
+  "call_at": "2026-10-16T01:49:47.364Z",
+  "exit_code": 69,
+  "ledger": { "admission_before": 843, "admission_after": 851, "review": 401 },
+  "failed_check": {
+    "name": "Antigravity 已认证",
+    "detail": "探活失败（status=SUCCESS）。请先交互登录一次：`agy` 然后完成登录流程。 stderr: [agy] print timeout after 1m40s with turn in progress; returning partial output"
+  },
+  "passed": ["Driver 会话声明 claude-sonnet-5-5 / anthropic", "模型 slug 合法", "档位组合合法", "探针结论新鲜（仅 claude 过期）", "codex 0.162.1 / agy 1.3.6 / zcode 0.16.9 可调用", "只读能力可用", "归档与 git 可用", "ZCode 已认证（10s，bigmodel-coding-plan/GLM-5.3）"],
+  "diagnosis": "agy 认证探活用的是请求组合的模型 gemini-3.8-flash-high（adapters/agy.ts authProbe：combination.model），提示词「只回复 OK」，agy 内部 100s print 超时、turn 未结束。status=SUCCESS 加超时，判为响应超时，不是未登录：同日 R0 doctor 无头读取通过，Argon 验收同一 agy 1.3.6 跑完整代码审查。根因（服务端慢 / 偶发卡住）未验证。文案「请先交互登录」在该情形下误导，可另登 BACKLOG。",
+  "client_side": "客户端按批次停止条件停下，未重试、未 --start；plan 阶段已认领给 claude，原稿已写，无审查运行留痕，无业务改动",
+  "user_decision": "Bob（AskUserQuestion）：同参数重试一次；再超时就停，改走 Argon"
+}

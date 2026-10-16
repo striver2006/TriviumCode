@@ -1,0 +1,46 @@
+{
+  "at": "2026-10-16T05:16:18.932Z",
+  "executor": "Bob 系统终端",
+  "run_id": "20261016T050612Z",
+  "bundle_sha256": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+  "steps": [
+    {
+      "label": "缺件",
+      "exit": 2,
+      "signal": null,
+      "stdout": "本轮登记的审查工件与留痕不符（sha256 抽核，只核本轮）：\n  · 已丢失：m11-s12-cross/code/2026-10-16-m11-s12-cross-gemini.md（run 20261016T050612Z 记录过它，sha256 5ca1be917f03）\n  已落盘的审查工件不得删除或改动。出口按工件在 git 里的状态分两档（这里拿不到 git 状态，两档都写）：\n  · **尚未提交过的（审批停点上的常态）或已丢失的**：没有副本可恢复——`git restore` 对未跟踪路径会直接失败。\n    出口是 `/dual-abandon` 作废这一轮后重跑；重跑按 -r<N> 抬升，既有工件一律不覆盖，不需要先删。\n  · **已提交过的**：可用 `git restore <路径>` 恢复，**这一步请在终端里手动执行**——常规写法在会话里\n    会被 hook-pre-bash 拦下；那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。\n",
+      "stderr": "✗ m11-s12-cross / code（第 1 轮）通过前复核未过，本次不放行，闸门保持等待审批。\n  先恢复上面列出的工件（或 /dual-abandon 作废这一轮）再审批。\n",
+      "gate_after": "awaiting_approval",
+      "approvals_after": 0
+    },
+    {
+      "label": "缺件恢复",
+      "sha256_ok": true
+    },
+    {
+      "label": "改件",
+      "exit": 2,
+      "signal": null,
+      "stdout": "本轮登记的审查工件与留痕不符（sha256 抽核，只核本轮）：\n  · 已被改动：m11-s12-cross/code/2026-10-16-m11-s12-cross-codex.md（run 20261016T050612Z 记录 27b5d4545c48，现为 b73da36fb181）\n  已落盘的审查工件不得删除或改动。出口按工件在 git 里的状态分两档（这里拿不到 git 状态，两档都写）：\n  · **尚未提交过的（审批停点上的常态）或已丢失的**：没有副本可恢复——`git restore` 对未跟踪路径会直接失败。\n    出口是 `/dual-abandon` 作废这一轮后重跑；重跑按 -r<N> 抬升，既有工件一律不覆盖，不需要先删。\n  · **已提交过的**：可用 `git restore <路径>` 恢复，**这一步请在终端里手动执行**——常规写法在会话里\n    会被 hook-pre-bash 拦下；那条判据是按命令形态的启发式、并不完备，但换写法绕过它属于违规，不是出口。\n",
+      "stderr": "✗ m11-s12-cross / code（第 1 轮）通过前复核未过，本次不放行，闸门保持等待审批。\n  先恢复上面列出的工件（或 /dual-abandon 作废这一轮）再审批。\n",
+      "gate_after": "awaiting_approval",
+      "approvals_after": 0
+    },
+    {
+      "label": "改件恢复",
+      "sha256_ok": true
+    }
+  ],
+  "original": {
+    "missing": "5ca1be917f0384a94591481e398d47116c5a7660755608981ab5e6fadba0ed0e",
+    "changed": "27b5d4545c4860785179cb2960c00eb13eaac98c09d08985e43c77297201fef6"
+  },
+  "changed_sha256": "b73da36fb1819d764d1b8d15bd60c0ea650f496a64e162c97cc223a4e66f6fdf",
+  "final": {
+    "missing": true,
+    "changed": true,
+    "gate": "awaiting_approval",
+    "approvals": 0
+  },
+  "finished_at": "2026-10-16T05:16:19.233Z"
+}

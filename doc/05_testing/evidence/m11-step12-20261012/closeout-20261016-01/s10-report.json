@@ -1,0 +1,819 @@
+{
+  "at": "2026-10-16T05:27:00.472Z",
+  "human": {
+    "args": [
+      "report",
+      "--topic",
+      "m11-s12-cross"
+    ],
+    "exit": 0,
+    "signal": null,
+    "stdout": "# 复盘 · m11-s12-cross\n\n- **生成时间**：2026-10-16T05:27:00.230Z\n- **主题创建**：2026-10-16T01:49:35.421Z\n- **当前闸门**：approved（code）\n- **轮次总数**：2\n\n> 数据源只有 `.reviews/`。报告不重新调用任何 Agent，也不依赖本机临时目录——\n> 换一台机器、拿同一份归档，应得出同一份报告（设计原则 P4）。\n\n## 一、时间线\n\n| 阶段 | 轮 | 运行 | 起始 | 状态 | Driver（护栏） | 审核者 | 完成度 | 耗时（较慢侧） |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| plan | r1 | `20261016T015733Z` | 2026-10-16T01:57:33.371Z | success | claude（L1） | gemini、glm | full | 218s |\n| code | r1 | `20261016T050612Z` | 2026-10-16T05:06:12.333Z | success | glm（L2） | gemini、codex | full | 195s |\n\n## 二、每轮意见数、严重度分布与裁决\n\n| 阶段/轮 | codex | gemini | glm | blocker | major | minor | nit | 接受 | 驳回 | 暂缓 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| plan r1 | — | 0 | 2 | 0 | 0 | 0 | 2 | 2 | 0 | 0 |\n| code r1 | 0（另 3 条逐条降级） | 1 | — | 0 | 0 | 0 | 1 | 3 | 1 | 0 |\n\n**采纳率**：5 / 6 = 83%\n\n> 失败或降级侧显示状态而非 `0`：`0` 会被读成「该侧认为没问题」，两者不是一回事。\n\n### 按 Driver 聚合\n\n| Driver | 阶段 | 轮次 | 已裁决 | 未裁决 | 意见数 | 接受 | 驳回 | 暂缓 | 采纳率 | 未进时间线 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| claude | plan | 1 | 1 | 0 | 2 | 2 | 0 | 0 | 100% | 0 |\n| claude | **合计** | 1 | 1 | 0 | 2 | 2 | 0 | 0 | 100% | 0 |\n| glm | code | 1 | 1 | 0 | 1（另 3 条逐条降级） | 3 | 1 | 0 | 75% | 0 |\n| glm | **合计** | 1 | 1 | 0 | 1（另 3 条逐条降级） | 3 | 1 | 0 | 75% | 0 |\n\n> 采纳率 = 接受 ÷（接受 + 驳回 + 暂缓），只算有裁决件的轮次；未裁决轮次的意见计入意见数、不进采纳率。\n> 意见数是各侧合格意见之和，不跨侧去重。\n\n### 按审核者聚合\n\n| 审核者 | 入选轮次 | 产出结论轮次 | 合格意见 | blocker | major | minor | nit | 逐条降级 | 接受 | 驳回 | 暂缓 | 其中整份回退编号 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| codex | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 2 | 1 | 0 | 0 |\n| gemini | 2 | 2 | 1 | 0 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 |\n| glm | 1 | 1 | 2 | 0 | 0 | 0 | 2 | 0 | 2 | 0 | 0 | 0 |\n\n| 审核者 | 失败 | 整份回退 | 逐条降级轮次 | 未进时间线运行中失败 | 生效模型 | 思考等级请求 | 思考等级生效 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| codex | 0 | 0 | 1 | 0 | deepseek-flash ×1 | （未请求） ×1 | **未回读到** ×1 |\n| gemini | 0 | 0 | 0 | 0 | gemini-3.8-flash-high ×2 | high ×2 | high ×2 |\n| glm | 0 | 0 | 0 | 0 | bigmodel-coding-plan/GLM-5.3 ×1 | （未请求） ×1 | （无此概念） ×1 |\n\n> 一条意见按**提出它的审核者**计（裁决行按「来源」，整份回退编号按前缀），重复意见不去重；\n> 意见数来自结论、裁决数来自裁决表，两者可以不等。同一 Agent 可同时出现在 Driver 表与本表（R23：后缀是产出方、driver 是发起方）。\n> 只计有可读 run.json 的轮次；入选轮次只数时间线轮次，未进时间线运行的失败单列。\n\n## 三、被驳回与暂缓的意见\n\n| 阶段/轮 | 编号 | 严重度 | 裁决 | 理由 |\n| :--- | :--- | :--- | :--- | :--- |\n| code r1 | CODEX-03 | nit | 驳回 | 前提不成立:该用例并非「实现细节私自升格为契约」——它出自已人工审批的同主题计划定稿(r2 第 2 轮修正 GLM-01:测试清单新增第 7 条,明文覆盖「原地清空、`this.items` 引用不变」这一自声明不变量；设计段前提「items 为公开字段,重新赋值会让外部持有的引用失同步」亦为计划原文)。codex 因 plan 归档在其禁读清单内而未见到该出处,其「未覆盖范围」自述「实现是否偏离已批准计划只以任务书第 4 节为判据,没有计划原文可比」。「README 无出处」亦非缺口:计划范围外明写「不更新 README(任务目标未要求)」 |\n\n> 这一节是复盘的重点：被驳回的意见与其理由，是下一轮最值得回看的地方。\n\n## 四、生效模型与思考等级（AC-13 / AC-18 / AC-23 核对）\n\nDriver 会话声明（plan r1）：模型 claude-sonnet-5-5，供应商 anthropic。\n\n接入（gemini）：standard / 无 profile；入口 /Users/chenzhenbo/.local/bin/agy；供应商声明 未知，供应商回读 未回读。\n\n接入（glm）：standard / 无 profile；入口 /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs；供应商声明 未知，供应商回读 未回读。\n\nclaude/gemini：different-family（模型族不同：claude / gemini；来源 declared/envelope）。\n\nclaude/glm：different-family（模型族不同：claude / glm；来源 declared/trace）。\n\ngemini/glm：different-family（模型族不同：gemini / glm；来源 envelope/trace）。\n\nDriver 会话声明（code r1）：模型 GLM-5.3，供应商 bigmodel。\n\n接入（gemini）：standard / 无 profile；入口 /Users/chenzhenbo/.local/bin/agy；供应商声明 未知，供应商回读 未回读。\n\n接入（codex）：profile / deepseek；入口 /opt/homebrew/bin/codex；供应商声明 deepseek，供应商回读 deepseek。\n\nglm/gemini：different-family（模型族不同：glm / gemini；来源 declared/envelope）。\n\nglm/codex：different-family（模型族不同：glm / deepseek；来源 declared/trace）。\n\ngemini/codex：different-family（模型族不同：gemini / deepseek；来源 envelope/trace）。\n\n\n| 阶段/轮 | 侧 | 请求 | 实际生效 | 思考等级请求 | 思考等级生效 | 证据 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| plan r1 | gemini | gemini-3.8-flash-high | gemini-3.8-flash-high | high | high | ok |\n| plan r1 | glm | GLM-5.3 | bigmodel-coding-plan/GLM-5.3 | （未请求） | （无此概念） | ok |\n| code r1 | gemini | gemini-3.8-flash-high | gemini-3.8-flash-high | high | high | ok |\n| code r1 | codex | deepseek-flash | deepseek-flash | （未请求） | **未回读到** | ok |\n\n> `未回读到` 表示生效模型或生效思考等级无法核实，一律不用请求值顶替（AC-13、AC-23）。\n> 思考等级的「—」表示该轮留痕早于思考等级字段（缺席）；「（未请求）」「（无此概念）」与加粗的「未回读到」\n> 表示留痕里明确记了空值——两者不是一回事。\n\n## 五、降级、告警与隔离结论\n\n- plan r1：gemini 侧路径级 deny 未生效（第 ③ 道屏蔽降级）\n- plan r1：glm 侧路径级 deny 未生效（第 ③ 道屏蔽降级）\n- code r1：gemini 侧路径级 deny 未生效（第 ③ 道屏蔽降级）\n- code r1：codex 侧路径级 deny 未生效（第 ③ 道屏蔽降级）\n- code r1：codex 侧只读核验不可用（被拒的写不留痕，只读保障从三重降到两重，指纹比对仍有效）\n- code r1：codex 侧路径核验无结构化输入（措施 a 无通道，deny 核验只剩措施 b）\n- code r1：codex 侧有 3 条意见逐条降级（CODEX-01, CODEX-02, CODEX-03），按原编号逐条校验、不参与阻断\n\n## 六、多审退化指标（§9.3）\n\n| 阶段/轮 | 配对 | Jaccard（归一化） | 未归一化 | 共同覆盖 | 仅前者 | 仅后者 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| plan r1 | gemini × glm | 0.00 | 0.00 | 0 | 0 | 2 |\n| code r1 | gemini × codex | 0.00 | 0.00 | 0 | 1 | 0 |\n\n> 位置先归一化再比（行区间重合、章节前缀、路径前缀），否则指标恒为 0——\n> 实测过两侧概念重叠而原始 Jaccard 为 0.00 的情形。\n\n## 七、耗时与 token 汇总\n\n- **墙钟合计**（各轮取较慢侧）：413s\n\n- **gemini token**：cache_read_tokens 538927 ｜ input_tokens 106968 ｜ output_tokens 24731 ｜ thinking_tokens 22161 ｜ total_tokens 131699\n- **glm token**：cacheReadTokens 71552 ｜ cacheWriteTokens 0 ｜ inputTokens 92891 ｜ modelRequestCount 4 ｜ outputTokens 13011 ｜ reasoningTokens 0 ｜ totalTokens 105902 ｜ webFetchRequests 0 ｜ webSearchRequests 0\n\n> 两侧**不合计**：agy 用 `input_tokens` 一套字段名，zcode 用 `inputTokens` 另一套，\n> 相加只会得出一个谁都对不上的数。也只收数值字段，厂商混进来的字符串（如 `source`）一律丢弃。\n\n## 八、编译测试出口\n\n- 尚无 verify 记录\n\n## 九、审批记录\n\n| 时间 | 阶段 | 运行 | 结论 | 理由 |\n| :--- | :--- | :--- | :--- | :--- |\n| 2026-10-16T03:09:39.999Z | plan | `20261016T015733Z` | approved |  |\n| 2026-10-16T05:19:34.362Z | code | `20261016T050612Z` | approved |  |\n\n",
+    "stderr": ""
+  },
+  "json": {
+    "args": [
+      "report",
+      "--topic",
+      "m11-s12-cross",
+      "--json"
+    ],
+    "exit": 0,
+    "signal": null,
+    "stderr": ""
+  },
+  "json_stdout": {
+    "ok": true,
+    "topic": "m11-s12-cross",
+    "generatedAt": "2026-10-16T05:27:00.463Z",
+    "task": {
+      "schema": "trivium.task.v1",
+      "topic": "m11-s12-cross",
+      "goal": "为BoundedStack新增clear()：清空元素、capacity不变、返回被清掉的元素个数，并补充测试",
+      "created_at": "2026-10-16T01:49:35.421Z",
+      "updated_at": "2026-10-16T05:19:34.371Z",
+      "runs": [
+        {
+          "run_id": "20261016T015733Z",
+          "stage": "plan",
+          "rerun_index": 1,
+          "status": "success",
+          "review_mode": "full",
+          "started_at": "2026-10-16T01:57:33.371Z",
+          "driver": "claude"
+        },
+        {
+          "run_id": "20261016T050612Z",
+          "stage": "code",
+          "rerun_index": 1,
+          "status": "success",
+          "review_mode": "full",
+          "started_at": "2026-10-16T05:06:12.333Z",
+          "driver": "glm"
+        }
+      ],
+      "gate": {
+        "stage": "code",
+        "state": "approved",
+        "since": "2026-10-16T05:19:34.362Z",
+        "run_id": "20261016T050612Z"
+      },
+      "approvals": [
+        {
+          "at": "2026-10-16T03:09:39.999Z",
+          "stage": "plan",
+          "run_id": "20261016T015733Z",
+          "decision": "approved",
+          "reason": null,
+          "session_id": null
+        },
+        {
+          "at": "2026-10-16T05:19:34.362Z",
+          "stage": "code",
+          "run_id": "20261016T050612Z",
+          "decision": "approved",
+          "reason": null,
+          "session_id": null
+        }
+      ],
+      "degradations": [],
+      "disputed": false,
+      "disputes": [],
+      "drivers": {
+        "plan": {
+          "driver": "claude",
+          "claimed_at": "2026-10-16T01:49:35.421Z",
+          "claimed_by": "unknown-session"
+        },
+        "code": {
+          "driver": "glm",
+          "claimed_at": "2026-10-16T05:04:10.209Z",
+          "claimed_by": "unknown-session"
+        }
+      },
+      "joint_checks": [
+        {
+          "run_id": "20261016T015733Z",
+          "stage": "plan",
+          "rerun_index": 1,
+          "state": "checked-none",
+          "effective_sides": 2,
+          "at": "2026-10-16T02:01:37.812Z"
+        },
+        {
+          "run_id": "20261016T050612Z",
+          "stage": "code",
+          "rerun_index": 1,
+          "state": "skipped-insufficient-sides",
+          "effective_sides": 1,
+          "reason": "voided",
+          "at": "2026-10-16T05:12:08.019Z"
+        }
+      ]
+    },
+    "rounds": [
+      {
+        "stage": "plan",
+        "rerunIndex": 1,
+        "runId": "20261016T015733Z",
+        "startedAt": "2026-10-16T01:57:33.371Z",
+        "finishedAt": "2026-10-16T02:01:11.318Z",
+        "status": "success",
+        "reviewMode": "full",
+        "criticsSelected": [
+          "gemini",
+          "glm"
+        ],
+        "driver": "claude",
+        "driverSource": "run.v3",
+        "driverUnknownReason": null,
+        "driverGuardLevel": "L1",
+        "degradedReason": null,
+        "sides": [
+          {
+            "critic": "gemini",
+            "status": "ok",
+            "modelEffective": "gemini-3.8-flash-high",
+            "modelRequested": "gemini-3.8-flash-high",
+            "access": {
+              "requested_mode": "standard",
+              "profile": null,
+              "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+              "launcher_effective": "/Users/chenzhenbo/.local/bin/agy",
+              "wrapper_sha256": null,
+              "configuration_sha256": null,
+              "provider_declared": null,
+              "provider_declared_source": null,
+              "provider_effective": null,
+              "provider_effective_source": null
+            },
+            "familyStatus": "different-family",
+            "modelSource": "envelope",
+            "durationS": 126.451,
+            "findings": 0,
+            "findingsDegraded": 0,
+            "evidenceOk": true,
+            "failReason": null,
+            "severity": {
+              "blocker": 0,
+              "major": 0,
+              "minor": 0,
+              "nit": 0
+            },
+            "effortRequested": "high",
+            "effortEffective": "high",
+            "effortEffectiveSource": "envelope",
+            "effortLegacy": "high"
+          },
+          {
+            "critic": "glm",
+            "status": "ok",
+            "modelEffective": "bigmodel-coding-plan/GLM-5.3",
+            "modelRequested": "GLM-5.3",
+            "access": {
+              "requested_mode": "standard",
+              "profile": null,
+              "launcher_requested": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+              "launcher_effective": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+              "wrapper_sha256": null,
+              "configuration_sha256": null,
+              "provider_declared": null,
+              "provider_declared_source": null,
+              "provider_effective": null,
+              "provider_effective_source": null
+            },
+            "familyStatus": "different-family",
+            "modelSource": "trace",
+            "durationS": 217.637,
+            "findings": 2,
+            "findingsDegraded": 0,
+            "evidenceOk": true,
+            "failReason": null,
+            "severity": {
+              "blocker": 0,
+              "major": 0,
+              "minor": 0,
+              "nit": 2
+            },
+            "effortRequested": null,
+            "effortEffective": null,
+            "effortEffectiveSource": null
+          }
+        ],
+        "severity": {
+          "blocker": 0,
+          "major": 0,
+          "minor": 0,
+          "nit": 2
+        },
+        "disposals": {
+          "接受": 2,
+          "驳回": 0,
+          "暂缓": 0
+        },
+        "dispositionUnreadable": false,
+        "disposalsBySource": {
+          "glm": {
+            "接受": 2,
+            "驳回": 0,
+            "暂缓": 0
+          }
+        },
+        "fallbackDisposalsBySource": {},
+        "contested": [],
+        "divergences": [
+          {
+            "a": "gemini",
+            "b": "glm",
+            "jaccard": 0,
+            "rawJaccard": 0,
+            "overlap": [],
+            "onlyA": [],
+            "onlyB": [
+              "计划「设计」节第 2 条（原地清空、不重新赋值 this.items 的理由）与「测试」节第 1-6 条",
+              "计划「测试」节第 4 条（clear() 后 pop() / peek() 返回 undefined）"
+            ],
+            "degenerate": false,
+            "threshold": 0.8
+          }
+        ],
+        "guardFlags": [
+          "gemini 侧路径级 deny 未生效（第 ③ 道屏蔽降级）",
+          "glm 侧路径级 deny 未生效（第 ③ 道屏蔽降级）"
+        ],
+        "tokens": {
+          "gemini": {
+            "input_tokens": 46019,
+            "output_tokens": 9918,
+            "thinking_tokens": 8827,
+            "cache_read_tokens": 219876,
+            "total_tokens": 55937
+          },
+          "glm": {
+            "modelRequestCount": 4,
+            "inputTokens": 92891,
+            "outputTokens": 13011,
+            "totalTokens": 105902,
+            "cacheReadTokens": 71552,
+            "cacheWriteTokens": 0,
+            "reasoningTokens": 0,
+            "webFetchRequests": 0,
+            "webSearchRequests": 0
+          }
+        },
+        "notes": [],
+        "driverDeclaration": {
+          "model": "claude-sonnet-5-5",
+          "provider": "anthropic",
+          "source": "declared"
+        },
+        "familyComparisons": [
+          {
+            "left": "claude",
+            "right": "gemini",
+            "status": "different-family",
+            "left_model": "claude-sonnet-5-5",
+            "right_model": "gemini-3.8-flash-high",
+            "left_source": "declared",
+            "right_source": "envelope",
+            "reason": "模型族不同：claude / gemini"
+          },
+          {
+            "left": "claude",
+            "right": "glm",
+            "status": "different-family",
+            "left_model": "claude-sonnet-5-5",
+            "right_model": "bigmodel-coding-plan/GLM-5.3",
+            "left_source": "declared",
+            "right_source": "trace",
+            "reason": "模型族不同：claude / glm"
+          },
+          {
+            "left": "gemini",
+            "right": "glm",
+            "status": "different-family",
+            "left_model": "gemini-3.8-flash-high",
+            "right_model": "bigmodel-coding-plan/GLM-5.3",
+            "left_source": "envelope",
+            "right_source": "trace",
+            "reason": "模型族不同：gemini / glm"
+          }
+        ],
+        "requestedRoutes": {
+          "gemini": {
+            "model": "gemini-3.8-flash-high",
+            "effort": "high",
+            "tier": null,
+            "tier_source": "override",
+            "access": {
+              "requested_mode": "standard",
+              "profile": null,
+              "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+              "launcher_effective": null,
+              "wrapper_sha256": null,
+              "configuration_sha256": null,
+              "provider_declared": null,
+              "provider_declared_source": null,
+              "provider_effective": null,
+              "provider_effective_source": null
+            }
+          },
+          "glm": {
+            "model": "GLM-5.3",
+            "effort": null,
+            "tier": null,
+            "tier_source": "override",
+            "access": {
+              "requested_mode": "standard",
+              "profile": null,
+              "launcher_requested": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+              "launcher_effective": null,
+              "wrapper_sha256": null,
+              "configuration_sha256": null,
+              "provider_declared": null,
+              "provider_declared_source": null,
+              "provider_effective": null,
+              "provider_effective_source": null
+            }
+          }
+        }
+      },
+      {
+        "stage": "code",
+        "rerunIndex": 1,
+        "runId": "20261016T050612Z",
+        "startedAt": "2026-10-16T05:06:12.333Z",
+        "finishedAt": "2026-10-16T05:09:27.633Z",
+        "status": "success",
+        "reviewMode": "full",
+        "criticsSelected": [
+          "gemini",
+          "codex"
+        ],
+        "driver": "glm",
+        "driverSource": "run.v3",
+        "driverUnknownReason": null,
+        "driverGuardLevel": "L2",
+        "degradedReason": null,
+        "sides": [
+          {
+            "critic": "gemini",
+            "status": "ok",
+            "modelEffective": "gemini-3.8-flash-high",
+            "modelRequested": "gemini-3.8-flash-high",
+            "access": {
+              "requested_mode": "standard",
+              "profile": null,
+              "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+              "launcher_effective": "/Users/chenzhenbo/.local/bin/agy",
+              "wrapper_sha256": null,
+              "configuration_sha256": null,
+              "provider_declared": null,
+              "provider_declared_source": null,
+              "provider_effective": null,
+              "provider_effective_source": null
+            },
+            "familyStatus": "different-family",
+            "modelSource": "envelope",
+            "durationS": 147.994,
+            "findings": 1,
+            "findingsDegraded": 0,
+            "evidenceOk": true,
+            "failReason": null,
+            "severity": {
+              "blocker": 0,
+              "major": 0,
+              "minor": 0,
+              "nit": 1
+            },
+            "effortRequested": "high",
+            "effortEffective": "high",
+            "effortEffectiveSource": "envelope",
+            "effortLegacy": "high"
+          },
+          {
+            "critic": "codex",
+            "status": "ok",
+            "modelEffective": "deepseek-flash",
+            "modelRequested": "deepseek-flash",
+            "access": {
+              "requested_mode": "profile",
+              "profile": "deepseek",
+              "launcher_requested": "/opt/homebrew/bin/codex",
+              "launcher_effective": "/opt/homebrew/bin/codex",
+              "wrapper_sha256": null,
+              "configuration_sha256": "4a28357fbf27a50ba536cab3857fdff043dfe73b677ca9b58e5e0ea8f9ca47d3",
+              "provider_declared": "deepseek",
+              "provider_declared_source": "config",
+              "provider_effective": "deepseek",
+              "provider_effective_source": "trace"
+            },
+            "familyStatus": "different-family",
+            "modelSource": "trace",
+            "durationS": 194.91,
+            "findings": 0,
+            "findingsDegraded": 3,
+            "evidenceOk": true,
+            "failReason": null,
+            "severity": {
+              "blocker": 0,
+              "major": 0,
+              "minor": 0,
+              "nit": 0
+            },
+            "effortRequested": null,
+            "effortEffective": null,
+            "effortEffectiveSource": "unverified"
+          }
+        ],
+        "severity": {
+          "blocker": 0,
+          "major": 0,
+          "minor": 0,
+          "nit": 1
+        },
+        "disposals": {
+          "接受": 3,
+          "驳回": 1,
+          "暂缓": 0
+        },
+        "dispositionUnreadable": false,
+        "disposalsBySource": {
+          "gemini": {
+            "接受": 1,
+            "驳回": 0,
+            "暂缓": 0
+          },
+          "codex": {
+            "接受": 2,
+            "驳回": 1,
+            "暂缓": 0
+          }
+        },
+        "fallbackDisposalsBySource": {},
+        "contested": [
+          {
+            "id": "CODEX-03",
+            "disposal": "驳回",
+            "severity": "nit",
+            "reason": "前提不成立:该用例并非「实现细节私自升格为契约」——它出自已人工审批的同主题计划定稿(r2 第 2 轮修正 GLM-01:测试清单新增第 7 条,明文覆盖「原地清空、`this.items` 引用不变」这一自声明不变量；设计段前提「items 为公开字段,重新赋值会让外部持有的引用失同步」亦为计划原文)。codex 因 plan 归档在其禁读清单内而未见到该出处,其「未覆盖范围」自述「实现是否偏离已批准计划只以任务书第 4 节为判据,没有计划原文可比」。「README 无出处」亦非缺口:计划范围外明写「不更新 README(任务目标未要求)」"
+          }
+        ],
+        "divergences": [
+          {
+            "a": "gemini",
+            "b": "codex",
+            "jaccard": 0,
+            "rawJaccard": 0,
+            "overlap": [],
+            "onlyA": [
+              ".codex/hooks.json:9"
+            ],
+            "onlyB": [],
+            "degenerate": false,
+            "threshold": 0.8
+          }
+        ],
+        "guardFlags": [
+          "gemini 侧路径级 deny 未生效（第 ③ 道屏蔽降级）",
+          "codex 侧路径级 deny 未生效（第 ③ 道屏蔽降级）",
+          "codex 侧只读核验不可用（被拒的写不留痕，只读保障从三重降到两重，指纹比对仍有效）",
+          "codex 侧路径核验无结构化输入（措施 a 无通道，deny 核验只剩措施 b）"
+        ],
+        "tokens": {
+          "gemini": {
+            "input_tokens": 60949,
+            "output_tokens": 14813,
+            "thinking_tokens": 13334,
+            "cache_read_tokens": 319051,
+            "total_tokens": 75762
+          }
+        },
+        "notes": [
+          "codex 侧有 3 条意见逐条降级（CODEX-01, CODEX-02, CODEX-03），按原编号逐条校验、不参与阻断"
+        ],
+        "driverDeclaration": {
+          "model": "GLM-5.3",
+          "provider": "bigmodel",
+          "source": "declared"
+        },
+        "familyComparisons": [
+          {
+            "left": "glm",
+            "right": "gemini",
+            "status": "different-family",
+            "left_model": "GLM-5.3",
+            "right_model": "gemini-3.8-flash-high",
+            "left_source": "declared",
+            "right_source": "envelope",
+            "reason": "模型族不同：glm / gemini"
+          },
+          {
+            "left": "glm",
+            "right": "codex",
+            "status": "different-family",
+            "left_model": "GLM-5.3",
+            "right_model": "deepseek-flash",
+            "left_source": "declared",
+            "right_source": "trace",
+            "reason": "模型族不同：glm / deepseek"
+          },
+          {
+            "left": "gemini",
+            "right": "codex",
+            "status": "different-family",
+            "left_model": "gemini-3.8-flash-high",
+            "right_model": "deepseek-flash",
+            "left_source": "envelope",
+            "right_source": "trace",
+            "reason": "模型族不同：gemini / deepseek"
+          }
+        ],
+        "requestedRoutes": {
+          "gemini": {
+            "model": "gemini-3.8-flash-high",
+            "effort": "high",
+            "tier": null,
+            "tier_source": "override",
+            "access": {
+              "requested_mode": "standard",
+              "profile": null,
+              "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+              "launcher_effective": null,
+              "wrapper_sha256": null,
+              "configuration_sha256": null,
+              "provider_declared": null,
+              "provider_declared_source": null,
+              "provider_effective": null,
+              "provider_effective_source": null
+            }
+          },
+          "codex": {
+            "model": "deepseek-flash",
+            "effort": null,
+            "tier": null,
+            "tier_source": "override",
+            "access": {
+              "requested_mode": "profile",
+              "profile": "deepseek",
+              "launcher_requested": "/opt/homebrew/bin/codex",
+              "launcher_effective": null,
+              "wrapper_sha256": null,
+              "configuration_sha256": "4a28357fbf27a50ba536cab3857fdff043dfe73b677ca9b58e5e0ea8f9ca47d3",
+              "provider_declared": "deepseek",
+              "provider_declared_source": "config",
+              "provider_effective": null,
+              "provider_effective_source": null
+            }
+          }
+        }
+      }
+    ],
+    "unlistedRuns": [],
+    "verify": null,
+    "verifyUnreadable": null,
+    "notes": [],
+    "aggregates": {
+      "byDriver": [
+        {
+          "driver": "claude",
+          "stage": "plan",
+          "rounds": 1,
+          "adjudicatedRounds": 1,
+          "unadjudicatedRounds": 0,
+          "dispositionUnreadableRounds": 0,
+          "findings": 2,
+          "findingsDegraded": 0,
+          "disposals": {
+            "接受": 2,
+            "驳回": 0,
+            "暂缓": 0
+          },
+          "unlistedRuns": 0,
+          "v1Rounds": 0
+        },
+        {
+          "driver": "claude",
+          "stage": "all",
+          "rounds": 1,
+          "adjudicatedRounds": 1,
+          "unadjudicatedRounds": 0,
+          "dispositionUnreadableRounds": 0,
+          "findings": 2,
+          "findingsDegraded": 0,
+          "disposals": {
+            "接受": 2,
+            "驳回": 0,
+            "暂缓": 0
+          },
+          "unlistedRuns": 0,
+          "v1Rounds": 0
+        },
+        {
+          "driver": "glm",
+          "stage": "code",
+          "rounds": 1,
+          "adjudicatedRounds": 1,
+          "unadjudicatedRounds": 0,
+          "dispositionUnreadableRounds": 0,
+          "findings": 1,
+          "findingsDegraded": 3,
+          "disposals": {
+            "接受": 3,
+            "驳回": 1,
+            "暂缓": 0
+          },
+          "unlistedRuns": 0,
+          "v1Rounds": 0
+        },
+        {
+          "driver": "glm",
+          "stage": "all",
+          "rounds": 1,
+          "adjudicatedRounds": 1,
+          "unadjudicatedRounds": 0,
+          "dispositionUnreadableRounds": 0,
+          "findings": 1,
+          "findingsDegraded": 3,
+          "disposals": {
+            "接受": 3,
+            "驳回": 1,
+            "暂缓": 0
+          },
+          "unlistedRuns": 0,
+          "v1Rounds": 0
+        }
+      ],
+      "unknownDriver": {
+        "rounds": 0,
+        "items": []
+      },
+      "byCritic": [
+        {
+          "critic": "codex",
+          "selectedRounds": 1,
+          "concludedRounds": 1,
+          "findings": 0,
+          "severity": {
+            "blocker": 0,
+            "major": 0,
+            "minor": 0,
+            "nit": 0
+          },
+          "findingsDegraded": 3,
+          "disposals": {
+            "接受": 2,
+            "驳回": 1,
+            "暂缓": 0
+          },
+          "fallback": {
+            "ids": 0,
+            "disposals": {
+              "接受": 0,
+              "驳回": 0,
+              "暂缓": 0
+            }
+          },
+          "failed": 0,
+          "parseFallback": 0,
+          "degradedRounds": 1,
+          "unlistedFailed": 0,
+          "models": {
+            "values": {
+              "deepseek-flash": 1
+            },
+            "unverified": 0
+          },
+          "effortRequested": {
+            "values": {},
+            "absent": 0,
+            "unrequested": 1,
+            "legacy": {}
+          },
+          "effortEffective": {
+            "values": {},
+            "absent": 0,
+            "unverified": 1,
+            "noConcept": 0
+          }
+        },
+        {
+          "critic": "gemini",
+          "selectedRounds": 2,
+          "concludedRounds": 2,
+          "findings": 1,
+          "severity": {
+            "blocker": 0,
+            "major": 0,
+            "minor": 0,
+            "nit": 1
+          },
+          "findingsDegraded": 0,
+          "disposals": {
+            "接受": 1,
+            "驳回": 0,
+            "暂缓": 0
+          },
+          "fallback": {
+            "ids": 0,
+            "disposals": {
+              "接受": 0,
+              "驳回": 0,
+              "暂缓": 0
+            }
+          },
+          "failed": 0,
+          "parseFallback": 0,
+          "degradedRounds": 0,
+          "unlistedFailed": 0,
+          "models": {
+            "values": {
+              "gemini-3.8-flash-high": 2
+            },
+            "unverified": 0
+          },
+          "effortRequested": {
+            "values": {
+              "high": 2
+            },
+            "absent": 0,
+            "unrequested": 0,
+            "legacy": {}
+          },
+          "effortEffective": {
+            "values": {
+              "high": 2
+            },
+            "absent": 0,
+            "unverified": 0,
+            "noConcept": 0
+          }
+        },
+        {
+          "critic": "glm",
+          "selectedRounds": 1,
+          "concludedRounds": 1,
+          "findings": 2,
+          "severity": {
+            "blocker": 0,
+            "major": 0,
+            "minor": 0,
+            "nit": 2
+          },
+          "findingsDegraded": 0,
+          "disposals": {
+            "接受": 2,
+            "驳回": 0,
+            "暂缓": 0
+          },
+          "fallback": {
+            "ids": 0,
+            "disposals": {
+              "接受": 0,
+              "驳回": 0,
+              "暂缓": 0
+            }
+          },
+          "failed": 0,
+          "parseFallback": 0,
+          "degradedRounds": 0,
+          "unlistedFailed": 0,
+          "models": {
+            "values": {
+              "bigmodel-coding-plan/GLM-5.3": 1
+            },
+            "unverified": 0
+          },
+          "effortRequested": {
+            "values": {},
+            "absent": 0,
+            "unrequested": 1,
+            "legacy": {}
+          },
+          "effortEffective": {
+            "values": {},
+            "absent": 0,
+            "unverified": 0,
+            "noConcept": 1
+          }
+        }
+      ]
+    }
+  },
+  "machine": {
+    "byDriver_keys": [
+      "0",
+      "1",
+      "2",
+      "3"
+    ],
+    "unknownDriver": {
+      "rounds": 0,
+      "items": []
+    },
+    "disposition_rows": {
+      "plan_revised_claude": 2,
+      "code_response_glm": 4
+    }
+  }
+}

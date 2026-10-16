@@ -1,0 +1,187 @@
+{
+  "at": "2026-10-16T03:17:20.486Z",
+  "run_id": "20261016T015733Z",
+  "run": {
+    "status": "success",
+    "review_mode": "full",
+    "stage": "plan",
+    "driver": "claude",
+    "driver_enabled": true,
+    "driver_guard_level": "L1",
+    "driver_declaration": {
+      "model": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "source": "declared"
+    },
+    "critics_selected": [
+      "gemini",
+      "glm"
+    ],
+    "family_comparisons": [
+      {
+        "left": "claude",
+        "right": "gemini",
+        "status": "different-family",
+        "left_model": "claude-sonnet-5-5",
+        "right_model": "gemini-3.8-flash-high",
+        "left_source": "declared",
+        "right_source": "envelope",
+        "reason": "模型族不同：claude / gemini"
+      },
+      {
+        "left": "claude",
+        "right": "glm",
+        "status": "different-family",
+        "left_model": "claude-sonnet-5-5",
+        "right_model": "bigmodel-coding-plan/GLM-5.3",
+        "left_source": "declared",
+        "right_source": "trace",
+        "reason": "模型族不同：claude / glm"
+      },
+      {
+        "left": "gemini",
+        "right": "glm",
+        "status": "different-family",
+        "left_model": "gemini-3.8-flash-high",
+        "right_model": "bigmodel-coding-plan/GLM-5.3",
+        "left_source": "envelope",
+        "right_source": "trace",
+        "reason": "模型族不同：gemini / glm"
+      }
+    ]
+  },
+  "snapshot_drift": {
+    "changed": false,
+    "files": [],
+    "policy": "warn"
+  },
+  "sides": {
+    "gemini": {
+      "status": "ok",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "effort_requested": "high",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "evidence_ok": true,
+      "tool_calls": {
+        "read": 8,
+        "grep": 0,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 6
+      },
+      "parse_fallback": false,
+      "peer_deny_applied": false
+    },
+    "glm": {
+      "status": "ok",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "evidence_ok": true,
+      "tool_calls": {
+        "read": 7,
+        "grep": 0,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 7
+      },
+      "parse_fallback": false,
+      "peer_deny_applied": false
+    }
+  },
+  "task_driver_plan": {
+    "driver": "claude",
+    "claimed_at": "2026-10-16T01:49:35.421Z",
+    "claimed_by": "unknown-session"
+  },
+  "task_runs": [
+    {
+      "run_id": "20261016T015733Z",
+      "stage": "plan",
+      "status": "success",
+      "rerun_index": 1
+    }
+  ],
+  "approvals_for_run": 1,
+  "gates": {
+    "m11-s12-stack/plan": {
+      "topic": "m11-s12-stack",
+      "stage": "plan",
+      "state": "idle",
+      "run_id": "20261012T125354Z",
+      "rerun_index": 1,
+      "since": "2026-10-12T12:59:21.418Z",
+      "session_id": null
+    },
+    "m11-s12-stack/code": {
+      "topic": "m11-s12-stack",
+      "stage": "code",
+      "state": "approved",
+      "run_id": "20261012T225703Z",
+      "rerun_index": 2,
+      "since": "2026-10-13T13:38:15.672Z",
+      "session_id": null,
+      "driver": "claude"
+    },
+    "m11-s12-capacity/plan": {
+      "topic": "m11-s12-capacity",
+      "stage": "plan",
+      "state": "approved",
+      "run_id": "20261012T154021Z",
+      "rerun_index": 2,
+      "since": "2026-10-12T15:55:54.138Z",
+      "session_id": null,
+      "driver": "claude"
+    },
+    "m11-s12-capacity/bug": {
+      "topic": "m11-s12-capacity",
+      "stage": "bug",
+      "state": "approved",
+      "run_id": "20261015T123051Z",
+      "rerun_index": 1,
+      "since": "2026-10-15T13:03:35.039Z",
+      "session_id": null,
+      "driver": "claude"
+    },
+    "m11-s12-cross/plan": {
+      "topic": "m11-s12-cross",
+      "stage": "plan",
+      "state": "approved",
+      "run_id": "20261016T015733Z",
+      "rerun_index": 1,
+      "since": "2026-10-16T03:09:40.003Z",
+      "session_id": null,
+      "driver": "claude"
+    }
+  },
+  "archive_files": [
+    {
+      "file": "2026-10-16-m11-s12-cross-claude.md",
+      "sha256": "c210901dd2d7e22a766266c2ae8bcaeba5e335b3b9a5afe9df52d7e81f0ba198"
+    },
+    {
+      "file": "2026-10-16-m11-s12-cross-gemini.md",
+      "sha256": "9d7ad0e936d98e92ca79f4e8944995f909ad2ad235768dc7108bc51d17c82f6c"
+    },
+    {
+      "file": "2026-10-16-m11-s12-cross-glm.md",
+      "sha256": "d73beadbd65fc6663c483932a42e8f56a4bc766d6c1ee6a5302ecb29f389398e"
+    },
+    {
+      "file": "2026-10-16-m11-s12-cross-r2-claude.md",
+      "sha256": "bf40ac169a257bc1165728a5e08d1b6bd857a12d9bea172a6222d62f2ab4badf"
+    },
+    {
+      "file": "2026-10-16-m11-s12-cross-revised-claude.md",
+      "sha256": "b7a62aaa8eacc6c937243bbefe851e329ceb904e29048f2d6d3ff72b90484af6"
+    }
+  ],
+  "ledger_now": {
+    "admission": 867,
+    "review": 405
+  }
+}

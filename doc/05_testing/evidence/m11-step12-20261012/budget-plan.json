@@ -1,61 +1,102 @@
 {
-  "at": "2026-10-12T23:03:11.211Z",
-  "authorization": "Bob明确答复：同意44/36，总上限80",
+  "at": "2026-10-16T01:34:13.592Z",
+  "authorization": "Bob：不设额度，该用多少就多少（user-decision-02.json）",
   "baseline": {
     "admission": {
-      "used": 795,
-      "completed": 795,
-      "limit": 815
+      "used": 838,
+      "completed": 838,
+      "limit": 1839
     },
     "review": {
-      "used": 373,
-      "completed": 373,
-      "limit": 398
+      "used": 401,
+      "completed": 401,
+      "limit": 1413
     }
   },
   "budgetRoot": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/budget",
   "step_limits": {
-    "admission": 44,
-    "review": 36,
-    "total": 80
+    "admission": null,
+    "review": null,
+    "total": null
   },
   "absolute_step_caps": {
-    "admission": 839,
-    "review": 409
+    "admission": 1839,
+    "review": 1413
   },
-  "extension": "admission只追加835→839；review全局413不改，本步附加上限409；C批次硬限不变",
+  "extension": "收口池：admission 839→1839，review 413→1413；不设本步总额",
   "batches": [
     {
-      "batch": "C-Claude",
-      "admission": 6,
-      "review": 4,
-      "scope": "命令C与人工闸门；两侧冷缓存",
-      "status": "估算；仅具名client-batch发布后可执行"
+      "batch": "R0-agy-refresh",
+      "criteria": null,
+      "estimate": {
+        "admission": 6,
+        "review": 0
+      },
+      "status": "估算，不作上限；具名 client-batch 发布后才执行"
     },
     {
-      "batch": "D-Claude",
-      "admission": 4,
-      "review": 4,
-      "scope": "命令D与bug归档；需复用仍在TTL的同一路线缓存",
-      "status": "估算；仅具名client-batch发布后可执行"
+      "batch": "Z1-claude-plan",
+      "criteria": [
+        "10.2 plan 部分",
+        "10.3～10.7 前置"
+      ],
+      "estimate": {
+        "admission": 6,
+        "review": 4
+      },
+      "status": "估算，不作上限；具名 client-batch 发布后才执行"
     },
     {
-      "batch": "C-ZCode",
-      "admission": 6,
-      "review": 3,
-      "scope": "实际ZCode主攻与跨Driver；Codex deepseek探活含包装器/native2",
-      "status": "估算；仅具名client-batch发布后可执行"
+      "batch": "Z2-zcode-code",
+      "criteria": [
+        "7.1～7.8（ZCode）",
+        "10.1～10.7"
+      ],
+      "estimate": {
+        "admission": 8,
+        "review": 4
+      },
+      "status": "估算，不作上限；具名 client-batch 发布后才执行"
     },
     {
-      "batch": "B-Codex",
-      "admission": 4,
-      "review": 4,
-      "scope": "实际Codex主攻与L2闸门；需复用仍在TTL的同一路线缓存",
-      "status": "估算；仅具名client-batch发布后可执行"
+      "batch": "X1-codex-plan",
+      "criteria": [
+        "7.1～7.5、7.7（Codex）",
+        "9.1～9.5"
+      ],
+      "estimate": {
+        "admission": 6,
+        "review": 4
+      },
+      "status": "估算，不作上限；具名 client-batch 发布后才执行"
+    },
+    {
+      "batch": "X2-codex-drift（可选 9.6）",
+      "criteria": [
+        "9.6",
+        "9.4 第二子句（先提交再审批）"
+      ],
+      "estimate": {
+        "admission": 6,
+        "review": 4
+      },
+      "status": "估算，不作上限；具名 client-batch 发布后才执行"
     }
   ],
-  "revision": 3,
+  "revision": 4,
   "initial_plan": "budget-plan-initial.json",
-  "decision": "budget-repartition-user-decision-03.json",
-  "previous_plan": "budget-plan-revision-02.json"
+  "decision": "closeout-20261016-01/user-decision-02.json",
+  "previous_plan": "budget-plan-revision-03.json",
+  "sealed_previous": {
+    "plan": "budget-plan-revision-03.json",
+    "ledger_at_seal": {
+      "admission": 838,
+      "review": 401
+    },
+    "step_used": {
+      "admission": 43,
+      "review": 28,
+      "total": 71
+    }
+  }
 }

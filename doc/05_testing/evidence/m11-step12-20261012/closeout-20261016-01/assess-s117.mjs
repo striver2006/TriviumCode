@@ -1,0 +1,21 @@
+/** 11.7 判定：codex 侧 tier / tier_source / 请求值与档位条目一致；front-matter 同值（11.8 口径）。只读，零厂商调用。 */
+import fs from 'node:fs';
+import path from 'node:path';
+import {saveEvidence} from '../../../../../scripts/agent-access-evidence.mjs';
+const here=import.meta.dirname,F='/Users/chenzhenbo/Work/trivium-m11-step12-20261012',RUN=process.argv[2];
+const dir=path.join(F,'.reviews','m11-s12-tier','plan');
+const meta=JSON.parse(fs.readFileSync(path.join(dir,'_'+'meta','run-'+RUN+'.json'),'utf8'));
+const pick=(o,ks)=>Object.fromEntries(ks.map(k=>[k,o?.[k]??null]));
+const keys=['tier','tier_source','model_requested','effort_requested','profile_requested','model_effective','model_effective_source','effort_effective','effort_effective_source','status','evidence_ok'];
+const sides=Object.fromEntries(Object.entries(meta.critics).map(([k,v])=>[k,pick(v,keys)]));
+const fm=f=>{const t=fs.readFileSync(f,'utf8').split('\n');const end=t.indexOf('---',1);return Object.fromEntries(t.slice(1,end).map(l=>l.match(/^([a-z_]+):\s*(.*)$/)).filter(Boolean).map(m=>[m[1],m[2]]));};
+const codexDoc=fs.readdirSync(dir).find(n=>n.endsWith('-'+'codex.md'));
+const front=codexDoc?pick(fm(path.join(dir,codexDoc)),['tier','tier_source','effort_requested','effort_effective','effort_effective_source','profile']):null;
+const c=sides.codex;
+const expect={tier:'high',tier_source:'profile',model_requested:'kimi-for-coding',effort_requested:'high',profile_requested:'kimi'};
+const mismatch=Object.entries(expect).filter(([k,v])=>c[k]!==v).map(([k,v])=>({field:k,expected:v,actual:c[k]}));
+const out={at:new Date().toISOString(),run_id:RUN,status:meta.status,review_mode:meta.review_mode,profile:meta.profile,driver:meta.driver,driver_declaration:meta.driver_declaration,sides,codex_front_matter:front,codex_doc:codexDoc??null,expect,mismatch};
+saveEvidence(path.join(here,'s117-assessment.json'),out);
+const pass=mismatch.length===0;
+saveEvidence(path.join(here,'s117-verdict.json'),{at:out.at,criterion:'11.7',run_id:RUN,pass,note:pass?`档位表 profiles.default.codex.plan = {tier: high}、无档位旗标：codex 侧 tier=high、tier_source=profile，请求 kimi-for-coding / effort high / 厂商 profile kimi 与档位条目一致；运行 ${meta.status}/${meta.review_mode}`:'不一致：'+JSON.stringify(mismatch)});
+console.log(JSON.stringify(out,null,1));

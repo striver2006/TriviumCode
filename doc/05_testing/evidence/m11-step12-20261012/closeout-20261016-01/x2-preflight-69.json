@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-16",
+  "batch": "X2-codex-drift r1",
+  "user_report": "Bob：「我刚才不小心把 2 先执行了」——watcher（步骤 1）未启动就在 Codex 发了入口（步骤 2）",
+  "calls": [
+    { "load_id": "8a4052c2-bc9e-4cbc-a1fa-bb9ef39bf539", "at": "2026-10-16T06:36:06.634Z", "exit_code": 69, "admission": "881→885" },
+    { "load_id": "23ff5ebd-4068-41be-bf1b-0853299986c1", "at": "2026-10-16T06:37:11.209Z", "exit_code": 69, "admission": "885→889" }
+  ],
+  "failed_check": "Antigravity 版本与探针一致：agy 版本已变（探针记录 1.3.6 → 实际 1.4.0）",
+  "cause": "agy 在 X1（05:39Z）之后自动升级到 1.4.0，与先发入口无关",
+  "deviation": "Codex 会话在第一次 69 后自行重跑了一次 preflight（批次写明不自动重试）；两次都在版本检查即停，没有探活、没有 review --start、没有运行留痕",
+  "impact_on_9_6": "第 2 轮审查未开跑，watcher 窗口未错过",
+  "remedy": "主会话按 D5 做 R0b 定向刷新（r0b-agy-refresh-approval.json → r0b-assessment.json：1.4.0，headless_read_ok / json_schema_ok 为 true，批次路线在目录内，admission 889→894）；随后 Bob 先启 watcher、再在 Codex 重发入口一次"
+}

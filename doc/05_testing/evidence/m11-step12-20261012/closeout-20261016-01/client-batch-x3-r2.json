@@ -1,0 +1,39 @@
+{
+  "at": "2026-10-16",
+  "id": "X3-codex-commit-then-approve",
+  "revision": 2,
+  "fixture": "/Users/chenzhenbo/Work/trivium-m11-step12-20261012",
+  "topics": [
+    "m11-s12-codex"
+  ],
+  "installed_sha256": "1737c946fc2aff5af8ebcb5645ddd25b80da3b38d853d96d0b357f7eabf7272e",
+  "before": {
+    "admission": 902,
+    "review": 416
+  },
+  "caps": {
+    "admission": 1839,
+    "review": 1413
+  },
+  "expected": {
+    "admission": 8,
+    "review": 4
+  },
+  "hard": null,
+  "criteria": [
+    "9.4 第二句（闸门期改动先提交再审批，摘要照样列出）"
+  ],
+  "driver": {
+    "agent": "codex",
+    "model": "GPT-6",
+    "provider": "OpenAI",
+    "source": "沿用 X1 同一 Codex 会话自报；新开会话须重新自报，不一致就停"
+  },
+  "command": "$dual-review-plan 第 3 轮：复核 r2 计划的固定数值断言、严格模式文档契约与外部改 length 后的 size/push 行为 --topic m11-s12-codex --goal 为BoundedStack新增只读size访问器并补充测试 --plan-file .reviews/m11-s12-codex/plan/2026-10-16-m11-s12-codex-r2-codex.md --critics gemini,glm --model-gemini gemini-3.8-flash-high --model-glm GLM-5.3 --driver-model GPT-6 --driver-provider OpenAI",
+  "focus": "第 3 轮：复核 r2 计划的固定数值断言、严格模式文档契约与外部改 length 后的 size/push 行为",
+  "goal": "为BoundedStack新增只读size访问器并补充测试",
+  "approval_receipt": "approval-x3.json",
+  "stop": "正式 preflight 与 review --start 各一次，不自行重试；审查进行中任何人不改业务文件；裁决后停 awaiting_approval；之后 Bob 终端跑 user-x2-gate.mjs（先提交），主会话写回执，Bob 终端 approve",
+  "scope_note": "收口池不设额度。X2（20261016T064348Z）因 GLM Gateway Timeout 失败、已证 9.6（x2-verdict.json）；src/stack.js 已恢复审查前 hash a4e47b7c。",
+  "previous_batch": "closeout-20261016-01/client-batch-x2-r2.json"
+}
