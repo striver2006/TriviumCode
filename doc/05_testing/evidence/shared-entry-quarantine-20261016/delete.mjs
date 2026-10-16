@@ -1,0 +1,20 @@
+/** 用户 2026-10-16 定删除隔离目录：先逐文件核对与 result.json 记录一致，再整目录删除，留删除记录。零厂商调用。 */
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import {saveEvidence} from '../../../../scripts/agent-access-evidence.mjs';
+const here=import.meta.dirname;
+const dest=path.join(os.homedir(),'.'+'trivium','evidence','shared-entry-quarantine-20261016');
+const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+const inventory=(dir,rel='')=>fs.readdirSync(path.join(dir,rel)).sort().flatMap(n=>{const p=rel?rel+'/'+n:n,f=path.join(dir,p),s=fs.lstatSync(f);
+ if(s.isSymbolicLink())throw Error('拒绝软链接：'+f);if(s.isDirectory())return inventory(dir,p);return [{path:p,sha256:sha(f),bytes:s.size,mode:s.mode&0o777}];});
+const rec=JSON.parse(fs.readFileSync(path.join(here,'result.json'),'utf8'));
+const names=fs.readdirSync(dest).sort();
+if(JSON.stringify(names)!==JSON.stringify([...rec.moved].sort()))throw Error('隔离目录内容与记录不符：'+JSON.stringify(names));
+for(const m of rec.before.moved)if(JSON.stringify(inventory(path.join(dest,m.name)))!==JSON.stringify(m.files))throw Error('文件与记录不一致：'+m.name);
+const files=rec.before.moved.reduce((a,m)=>a+m.files.length,0);
+fs.rmSync(dest,{recursive:true});
+if(fs.existsSync(dest))throw Error('删除后仍存在');
+saveEvidence(path.join(here,'deletion.json'),{at:new Date().toISOString(),decision:'Bob 2026-10-16：隔离副本直接删除（「要」）',deleted:dest.replace(os.homedir(),'~'),names,files,verified_against:'result.json before.moved（逐文件 path / sha256 / bytes / mode 一致）'});
+console.log(JSON.stringify({deleted:names,files}));
