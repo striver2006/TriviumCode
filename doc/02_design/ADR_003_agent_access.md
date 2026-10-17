@@ -80,3 +80,5 @@ profile入口取本机绝对配置路径，缺省才现场发现可执行包装�
 **不证明什么。** 不证明真实模型不会主动发起被禁工具调用（它们没有可调用的写工具，这一点正是取不到样的原因），不证明任意诱导输入、服务端身份、上游行为或未来 CLI 版本下的行为；档 2 的本地注入不是厂商推理（`actual_provider_inference === false`）。快照之外的任何指纹变化先看重取触发集：CLI 版本、native 或包装器、该组合 profile env、`~/.claude/settings.json` 变化必须重取后才能对外引用。
 
 **10-12 例外的去向。** 10-12 用户批准的受限准入例外绑定 CLI 2.1.296 与 A / C 批冻结清单，本机已是 2.1.301、冻结清单 23 项已变，例外不再适用；本批快照取代它，10-12 的全部文件不改。档 2 仍沿用 `restricted-tool-surface-and-path-v3` 的受控机制，但不继承 10-12 例外的批准。
+
+**采用结果（2026-10-17）。** CLI 2.1.302、构建 `4e58048d` 下取证，五组合受限准入 5 / 0 / 0；用户具名答复「采用 restricted-admission-v1：五组合（qwen-pro、kimi-pro、kimi、deepseek、deepseek-pro）在 CLI 2.1.302、构建 4e58048d、汇总 05e27d69… 快照下受限准入」。采用记录 `doc/05_testing/evidence/m12-restricted-admission-20261017/restricted-admission-acceptance.json`，报告 `doc/05_testing/REPORT_2026-10-17_m12_batch2.md`。

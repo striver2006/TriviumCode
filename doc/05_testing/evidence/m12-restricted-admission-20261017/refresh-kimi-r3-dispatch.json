@@ -1,0 +1,20 @@
+{
+  "at": "2026-10-17T12:08:36.228Z",
+  "label": "refresh-kimi-r3",
+  "code": 0,
+  "signal": null,
+  "timed_out": false,
+  "limit_ms": 2700000,
+  "stdout": "\nTriviumCode 本机能力探测\n────────────────────────────────────────────────────────────\n  node=/opt/homebrew/opt/node/bin/node v25.2.1\n  git=2.54.0 (Apple Git-157)\n  编排器构建标识：4e58048，inputs df3db984a068，构建于 2026-10-17T09:43:38.122Z；本仓模式（按根提交判定）：安装副本与当前工作树一致\n  本机无 GNU coreutils 的 timeout/gtimeout —— 编排器的超时全部在 Node 内实现，不依赖外部命令（这是预期行为，非问题）\n  编译测试命令候选：build=[\"npm run build\"] test=[\"npm run test\"]（仅候选，需人确认后写入 verify 才会执行）\n  [claude] 配置声明模型：kimi-for-coding、k3；不代表完整服务端目录\n  [claude] claude --effort 取值：low, medium, high, xhigh, max\n  [claude] 工具面干净、无未授权工具：Glob、Grep、Read\n  [claude] headless 读文件通过（哨兵命中）；本次成本 $0.019281\n  [claude] stream-json **必须**配 --verbose：负对照退非零且零事件，而同轮正对照跑通。（本机 2.1.273 实测：被拒即不产生 API 调用——本判据的观测面里没有用量，这一句是那次实测的外推）\n  [claude] 只读负对照成立（未落文件）；本次模型没去调写工具，留痕能力无从证实（记未测）\n  [claude] --json-schema 强制结构化输出=true（契约 /Users/chenzhenbo/.claude/skills/dual-critic/schema/review.v1.json，指纹 sha256:e7e5535b6b42；参数取内联 JSON 而非文件路径；result 回来是 JSON 字符串，要再 parse 一次）\n  [claude] 路径级 deny 对 Read **可用**（三家唯一）：Read(./.reviews/probe-topic/plan/**)。⚠️ **但覆盖不完整**：同一规则下 Grep 仍能从被拒目录取到内容（显式写 Grep 规则也拦不住）——第 ③ 道屏蔽**不能**只靠它，事后轨迹核验仍是必需的\n  [claude] scratch_paths=[]：claude 在项目根零污染\n  [claude] --restricted 下项目记忆被阻断=true（受限臂零工具调用且未见哨兵、对照臂见到哨兵——单变量对照成立）\n  [claude] 目录deny逐工具实测：{\"Read\":true,\"Grep\":true,\"Glob\":true}；夹具拓扑范围，未知工具维持逐文件规则\n  探针结论已写入 /Users/chenzhenbo/Work/TriviumCode/.trivium/config.local.yaml\n\n\n✓ 未发现阻断级问题\n\n",
+  "stderr": "· 探测运行环境…\n· 探测 Claude Code（profile:kimi）…\n⚠️  Claude kimi 被拒操作留痕未证实，阴性轨迹不能证明未尝试写；漂移按保守能力归因\n",
+  "budget": {
+    "used": 969,
+    "completed": 966,
+    "limit": 1839,
+    "open": [
+      "reserved-0856.json",
+      "reserved-0857.json",
+      "reserved-0859.json"
+    ]
+  }
+}

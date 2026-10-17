@@ -1,0 +1,20 @@
+{
+  "at": "2026-10-17T10:09:08.297Z",
+  "label": "refresh-kimi",
+  "code": 0,
+  "signal": null,
+  "timed_out": false,
+  "limit_ms": 2700000,
+  "stdout": "\nTriviumCode 本机能力探测\n────────────────────────────────────────────────────────────\n  node=/opt/homebrew/opt/node/bin/node v25.2.1\n  git=2.54.0 (Apple Git-157)\n  编排器构建标识：4e58048，inputs df3db984a068，构建于 2026-10-17T09:43:38.122Z；本仓模式（按根提交判定）：安装副本与当前工作树一致\n  本机无 GNU coreutils 的 timeout/gtimeout —— 编排器的超时全部在 Node 内实现，不依赖外部命令（这是预期行为，非问题）\n  编译测试命令候选：build=[\"npm run build\"] test=[\"npm run test\"]（仅候选，需人确认后写入 verify 才会执行）\n  [claude] 配置声明模型：kimi-for-coding、k3；不代表完整服务端目录\n  [claude] claude --effort 取值：low, medium, high, xhigh, max\n  [claude] 工具面干净、无未授权工具：Glob、Grep、Read\n  [claude] ⚠️ headless 未读到哨兵文件\n  [claude] ⚠️ stream-json 与 --verbose 的绑定**无从证实**：本轮正对照未跑通（未登录 / 断网 / slug 失效时，负对照的失败无从归因到 --verbose）\n  [claude] 只读负对照未跑完，留痕能力未得出结论\n  [claude] --json-schema 强制结构化输出=null（未跑完（撞闸或未获模型答复），需重测）（契约 /Users/chenzhenbo/.claude/skills/dual-critic/schema/review.v1.json，指纹 sha256:e7e5535b6b42；参数取内联 JSON 而非文件路径；result 回来是 JSON 字符串，要再 parse 一次）\n  [claude] 路径级 deny 不可用或未证实：路径级 deny 探测未跑完（超时或进程报错），未得出结论\n  [claude] scratch_paths=[]：claude 在项目根零污染\n  [claude] --restricted 下项目记忆被阻断=null（无从证实：没跑完 / 受限臂调了工具 / **对照臂调了工具（通道不纯）** / 对照臂也没看见——维持 EV-44 原裁定，待复测）\n  [claude] 目录deny逐工具实测：{}；夹具拓扑范围，未知工具维持逐文件规则\n  [claude] 目录臂停止：目录追加臂未完成：spawned=true、timedOut=true、exitCode=143\n  [claude] ⚠️ 读文件探针未得出结论（超时、进程报错，或事件流里没有 result）——这既不是通过也不是失败。常见原因：登录态过期、网络不通，或在新目录首跑时需要人工信任。请重跑 `trivium doctor --only claude`。\n  探针结论已写入 /Users/chenzhenbo/Work/TriviumCode/.trivium/config.local.yaml\n\n\n✓ 未发现阻断级问题\n\n",
+  "stderr": "· 探测运行环境…\n· 探测 Claude Code（profile:kimi）…\n⚠️  Claude kimi 被拒操作留痕未证实，阴性轨迹不能证明未尝试写；漂移按保守能力归因\n⚠️  claude 结构化输出本轮探测未跑完（撞闸或未获模型答复），非模型不合规。\n",
+  "budget": {
+    "used": 943,
+    "completed": 940,
+    "limit": 1839,
+    "open": [
+      "reserved-0856.json",
+      "reserved-0857.json",
+      "reserved-0859.json"
+    ]
+  }
+}

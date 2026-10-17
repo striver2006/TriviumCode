@@ -27,13 +27,13 @@ const[combo,variant]=process.argv.slice(2);if(process.argv.length!==4||!routes[c
 if(!globalThis[Symbol.for('trivium.access.budget.loaded')]||process.env.TRIVIUM_ACCESS_BUDGET_POOL!=='admission')throw Error('必须经admission预算固定入口');
 const budget=openBudget(process.env.TRIVIUM_ACCESS_BUDGET_ROOT,'admission');budget.limit();
 const spec=routes[combo],ctx=await loadCtx(),route=resolveClaudeRoute(ctx.config,spec.profile);
-const batch=JSON.parse(fs.readFileSync(root+'/mechanism-batch.json')),job=batch.jobs.find(j=>j.combination===combo);if(!job||job.model!==spec.model||job.profile!==spec.profile)throw Error('本批实时来源身份不符');
+const batch=JSON.parse(fs.readFileSync(root+'/mechanism-batch-r5b.json')),job=batch.jobs.find(j=>j.combination===combo);if(!job||job.model!==spec.model||job.profile!==spec.profile)throw Error('本批实时来源身份不符');
 const liveDir=path.dirname(job.live_result_ref.path);
 const live=JSON.parse(fs.readFileSync(liveDir+'/result.json')),liveShape=JSON.parse(fs.readFileSync(liveDir+'/production-shape.json'));
 const probe=ctx.config.probe.cli.claude.routes[claudeRouteKey(spec.profile)];
 if(!probe||probe.fingerprint!==route.fingerprint||live.request.model!==spec.model||live.trace.init?.permissionMode!=='default')throw Error('路线/模型/默认权限缺已有原件');
 if(hash(route.bin)!==live.request.fingerprints.entry||hash(route.nativeBin)!==live.request.fingerprints.native_entry||route.configurationSha256!==live.request.fingerprints.profile_config)throw Error('原包装器/native/profile漂移');
-const external=process.env.TRIVIUM_ACCESS_EVIDENCE_ROOT+'/controlled-m12-20261017';fs.mkdirSync(external,{recursive:true});
+const external=process.env.TRIVIUM_ACCESS_EVIDENCE_ROOT+'/controlled-m12-20261017-r5b';fs.mkdirSync(external,{recursive:true});
 const out=external+'/'+combo+'-mechanism-'+variant;fs.mkdirSync(out,{recursive:false});
 const save=(name,v)=>saveEvidence(out+'/'+name,v);
 const observe=p=>{const s=fs.lstatSync(p);if(!s.isFile()||s.isSymbolicLink())throw Error('状态采样非普通文件');const b=fs.readFileSync(p);return{path:p,regular_file:true,symlink:false,bytes:b.length,sha256:crypto.createHash('sha256').update(b).digest('hex')};};

@@ -21,7 +21,7 @@ export function assertMeasuredBatch(c){
  return b.jobs[c.index];
 }
 export async function measureMode3Launch(repo,pool,mode,args){
- assertMode3Arguments(pool,mode,args);const batchFile=root+'/mechanism-batch.json',batch=read(batchFile),authorization=read(root+'/authorization.json');
+ assertMode3Arguments(pool,mode,args);const batchFile=root+'/mechanism-batch-r5b.json',batch=read(batchFile),authorization=read(root+'/authorization.json');
  const index=batch.jobs.findIndex(j=>j.combination===args[0]),job=batch.jobs[index];if(!job)throw Error('批次外组合');
  const authorizationValid=authorization.user_instruction==='允许任何次数的调用'&&authorization.review_waiver===false&&authorization.criteria_adoption_authorized===false&&authorization.formal_approval_record?.plan_run_id==='20261017T085024Z'&&hash(root+'/authorization.json')===batch.authorization_sha256;
  const required=['controlled-fixture.mjs','mechanism-proof.mjs','mechanism-launch-check.mjs','launch-mechanism.mjs','batch.mjs','authorization.json'].map(n=>root+'/'+n);
@@ -33,6 +33,6 @@ export async function measureMode3Launch(repo,pool,mode,args){
  const sourceUsable=hash(job.live_result_ref.path)===job.live_result_ref.sha256&&hash(job.live_shape_ref.path)===job.live_shape_ref.sha256&&live.completed&&live.actual_read&&live.strict_first_word&&live.structured.ok&&live.trace.init?.permissionMode==='default'&&live.trace.init.model===job.model&&live.request.model===job.model&&route.configurationSha256===live.request.fingerprints.profile_config&&hashFile(route.bin)===live.request.fingerprints.entry&&hashFile(route.nativeBin)===live.request.fingerprints.native_entry;
  const budget=openBudget(batch.budget_root,pool),names=fs.readdirSync(budget.dir),previous=[];
  for(const j of batch.jobs.slice(0,index))previous.push(await recomputeMode3Proof(j,schemaFile));
- const facts={batch,index,authorization_valid:authorizationValid,frozen:filesValid&&stamp.dirty===false&&stamp.git_head===batch.git_head&&stamp.inputs_sha256===batch.inputs_sha256,source_usable:sourceUsable,no_open_gate:!(await listOpenGates(ctx.triviumDir)).some(g=>g.topic==='M12-五组合受限准入判据'),output_exists:fs.existsSync(job.output),claim_exists:fs.existsSync(job.claim),batch_finished:fs.existsSync(root+'/mechanism-result.json'),used:names.filter(n=>/^reserved-\d+\.json$/.test(n)).length,completed:names.filter(n=>/^launch-\d+\.json$/.test(n)).length,pool_limit:budget.limit(),previous_proofs:previous};
+ const facts={batch,index,authorization_valid:authorizationValid,frozen:filesValid&&stamp.dirty===false&&stamp.git_head===batch.git_head&&stamp.inputs_sha256===batch.inputs_sha256,source_usable:sourceUsable,no_open_gate:!(await listOpenGates(ctx.triviumDir)).some(g=>g.topic==='M12-五组合受限准入判据'),output_exists:fs.existsSync(job.output),claim_exists:fs.existsSync(job.claim),batch_finished:fs.existsSync(root+'/mechanism-result-r5b.json'),used:names.filter(n=>/^reserved-\d+\.json$/.test(n)).length,completed:names.filter(n=>/^launch-\d+\.json$/.test(n)).length,pool_limit:budget.limit(),previous_proofs:previous};
  assertMeasuredBatch(facts);return{facts,job,batch_ref:{path:batchFile,sha256:hash(batchFile)}};
 }

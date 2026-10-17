@@ -1,0 +1,67 @@
+{
+  "at": "2026-10-17T13:04:35.401Z",
+  "profile": "deepseek",
+  "pass": true,
+  "reasons": [],
+  "version": "2.1.302",
+  "fingerprint": "07fceecf21e0f4a01009de09dad63a8b6acbba0c10c44484b867927d22a11408",
+  "before": {
+    "version": "2.1.296",
+    "fingerprint": "408d430f53b4945151e177299c95f9e447b290437ed2acb3630e7620bd064b75",
+    "conclusions": {
+      "headless_read_ok": true,
+      "tool_surface_checked": true,
+      "readonly_flags": [
+        "--restricted",
+        "--strict-mcp-config",
+        "--tools",
+        "Read,Grep,Glob"
+      ],
+      "readonly_breach": false,
+      "strict_mcp_config_applied": true,
+      "path_deny": {
+        "supported": true,
+        "coverage_complete": false,
+        "file_shape_verified": true,
+        "rule_syntax": "Read(./.reviews/probe-topic/plan/**)",
+        "method": "经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的",
+        "attempts": []
+      },
+      "json_schema_ok": true,
+      "directory_deny_verified": {
+        "Read": true,
+        "Grep": true,
+        "Glob": true
+      },
+      "directory_deny_shape": "ascii-root1-5-depth0-2-v2"
+    }
+  },
+  "after": {
+    "headless_read_ok": true,
+    "tool_surface_checked": true,
+    "readonly_flags": [
+      "--restricted",
+      "--strict-mcp-config",
+      "--tools",
+      "Read,Grep,Glob"
+    ],
+    "readonly_breach": false,
+    "strict_mcp_config_applied": true,
+    "path_deny": {
+      "supported": true,
+      "coverage_complete": false,
+      "file_shape_verified": true,
+      "rule_syntax": "Read(./.reviews/probe-topic/plan/**)",
+      "method": "经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的",
+      "attempts": []
+    },
+    "json_schema_ok": true,
+    "directory_deny_verified": {
+      "Read": true,
+      "Grep": true,
+      "Glob": true
+    },
+    "directory_deny_shape": "ascii-root1-5-depth0-2-v2"
+  },
+  "starts": 18
+}

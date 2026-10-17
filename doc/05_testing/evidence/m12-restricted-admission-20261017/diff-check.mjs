@@ -23,7 +23,9 @@ export const SUBSTITUTIONS = Object.freeze({
   'controlled-fixture.mjs': [
     ['/** 本轮免双审的当前来源绑定；复用r21机制与生产invokeClaude，诊断不采用判据。 */',
       '/** M12批次2具名授权的当前来源绑定；复用r21机制与生产invokeClaude，诊断不采用判据。 */', 1],
-    ["'/controlled-convergence-20261012'", "'/controlled-m12-20261017'", 1],
+    // R5续跑批（r5b）：首次R5在用户终端被locale改变的ps日期格式拒绝，续跑换新批次名，不复用已停止批次的输出与批次文件。
+    ["'/controlled-convergence-20261012'", "'/controlled-m12-20261017-r5b'", 1],
+    ["'/mechanism-batch.json'", "'/mechanism-batch-r5b.json'", 1],
   ],
   'launch-mechanism.mjs': [
     ['/** 本批直接执行固定入口；预算包装器及侧车沿用，授权来源明确为用户免审指令。 */',
@@ -48,7 +50,8 @@ export const SUBSTITUTIONS = Object.freeze({
     ["root+'/mechanism-authorization.json'", "root+'/authorization.json'", 2],
     ["'execute-mechanism.mjs'", "'batch.mjs'", 1],
     ["g.topic==='Agent双模式接入真实准入收口'", `g.topic==='${TOPIC}'`, 1],
-    ["root+'/batch-c-result.json'", "root+'/mechanism-result.json'", 1],
+    ["root+'/batch-c-result.json'", "root+'/mechanism-result-r5b.json'", 1],
+    ["'/mechanism-batch.json'", "'/mechanism-batch-r5b.json'", 1],
   ],
 });
 

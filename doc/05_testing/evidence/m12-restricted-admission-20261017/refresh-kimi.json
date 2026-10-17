@@ -1,0 +1,65 @@
+{
+  "at": "2026-10-17T10:09:08.329Z",
+  "profile": "kimi",
+  "pass": false,
+  "reasons": [
+    "只读结论与刷新前不同"
+  ],
+  "version": "2.1.302",
+  "fingerprint": "8c4876793966317fc923625584b169bd385c26fa9c5391c121c7423d4ae82539",
+  "before": {
+    "version": "2.1.296",
+    "fingerprint": "d80ac31902acd97cbcf2974f3e534985b48eb95d33991f1abe41ea91f6841946",
+    "conclusions": {
+      "headless_read_ok": true,
+      "tool_surface_checked": true,
+      "readonly_flags": [
+        "--restricted",
+        "--strict-mcp-config",
+        "--tools",
+        "Read,Grep,Glob"
+      ],
+      "readonly_breach": false,
+      "strict_mcp_config_applied": true,
+      "path_deny": {
+        "supported": true,
+        "coverage_complete": false,
+        "file_shape_verified": true,
+        "rule_syntax": "Read(./.reviews/probe-topic/plan/**)",
+        "method": "经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的",
+        "attempts": []
+      },
+      "json_schema_ok": true,
+      "directory_deny_verified": {
+        "Read": true,
+        "Grep": true,
+        "Glob": true
+      },
+      "directory_deny_shape": "ascii-root1-5-depth0-2-v2"
+    }
+  },
+  "after": {
+    "headless_read_ok": null,
+    "tool_surface_checked": true,
+    "readonly_flags": [
+      "--restricted",
+      "--strict-mcp-config",
+      "--tools",
+      "Read,Grep,Glob"
+    ],
+    "readonly_breach": null,
+    "strict_mcp_config_applied": true,
+    "path_deny": {
+      "supported": null,
+      "rule_syntax": null,
+      "method": "路径级 deny 探测未跑完（超时或进程报错），未得出结论",
+      "attempts": [],
+      "coverage_complete": null,
+      "file_shape_verified": null
+    },
+    "json_schema_ok": null,
+    "directory_deny_verified": {},
+    "directory_deny_shape": null
+  },
+  "starts": 8
+}

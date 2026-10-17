@@ -1,0 +1,74 @@
+{
+  "at": "2026-10-17T13:17:00.895Z",
+  "schema": "m12-restricted-admission-acceptance.v1",
+  "criterion": "restricted-admission-v1",
+  "user_decision_verbatim": "采用 restricted-admission-v1：五组合（qwen-pro、kimi-pro、kimi、deepseek、deepseek-pro）在 CLI 2.1.302、构建 4e58048d、汇总 05e27d69… 快照下受限准入",
+  "decision": "adopted",
+  "decided_by": "用户（2026-10-17 本会话具名答复）",
+  "combinations": [
+    "qwen-pro",
+    "kimi",
+    "kimi-pro",
+    "deepseek",
+    "deepseek-pro"
+  ],
+  "snapshot": {
+    "cli_version": [
+      "2.1.302"
+    ],
+    "commit": "4e58048df171cc5fba80a0cf22ab72d8eafc0485",
+    "inputs_sha256": "df3db984a068c289de127e0b7b6d69e37d296eb53fd387076cc627b36b4c468d",
+    "summary": {
+      "path": "/Users/chenzhenbo/.trivium/evidence/agent-access-20261011-closeout-r3/summary-c10ff843-14be-4aae-bedc-e430195e5a20.json",
+      "sha256": "05e27d699ec9a748f9da3352cca9a47f94145872862e7ea92946f2f4a8284f77",
+      "portable_copy": "raw-evidence/summary-c10ff843-14be-4aae-bedc-e430195e5a20.json"
+    }
+  },
+  "counts": {
+    "original_standard": {
+      "passed": 0,
+      "failed": 0,
+      "untested": 12
+    },
+    "restricted_admission": {
+      "admitted": 5,
+      "not_admitted": 0,
+      "untested": 0
+    }
+  },
+  "original_standard_reference": {
+    "path": "doc/05_testing/evidence/agent-access-convergence-20261012/summary-b624d684-5a4f-4059-b101-a5cfa3413d14.json",
+    "sha256": "f2a3d213f18be559e88734fcd98912bad90ab126283289b76e400b964f3751ff",
+    "passed": 7,
+    "untested": 5,
+    "cli_version": "2.1.296",
+    "inputs_sha256": "7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f",
+    "reference_only": true
+  },
+  "scope": "只读审查用途下的工具面未注册与受控请求拒绝；绑定上列快照，触发集（CLI版本、native或包装器、profile env、~/.claude/settings.json）任一变化须重取后才能对外引用",
+  "does_not_prove": "真实模型不会主动越权、任意诱导输入、服务端身份、上游与未来版本行为；档2为本地注入，actual_provider_inference=false",
+  "supersedes": "10-12受限准入例外（CLI 2.1.296、A/C批冻结清单）因指纹变化不再适用，由本快照取代；10-12文件不改",
+  "exceptions_during_batch": [
+    "CLI在R0前自动升级到2.1.302，用户定按新版本继续",
+    "kimi路线刷新第2、3次与deepseek第2次为用户逐次授权的重试",
+    "R1后半段至R5改在用户终端执行（会话拉起的第三方路线间歇挂满180秒，根因未明）",
+    "R5首次因ps启动时间受locale影响被r21格式拒绝，用户授权换新批次名续跑并强制LC_ALL=C，r21规则不改"
+  ],
+  "references": {
+    "authorization.json": "062cefda3f22b8d6b63f3d89cb926ca08724f40d58e2506ba7e4619c3145b00c",
+    "retry-authorization.json": "d5aa08f5aa02b5b7e3f10c10db6aeee2f61f0934ac450a037ab7285114a242a9",
+    "retry-authorization-r3.json": "4d3526aebd7104f13891fcddf0f42342697650e04520d06244f89f843f159bd6",
+    "retry-authorization-deepseek-r2.json": "13a2b29e8e30e2921dee8c652cec2324d704cad8675d2d95f8c8bb8a77f17718",
+    "resume-r5-authorization.json": "c3c203b69bed5c0923d69b731e0a6be0076792be864a72646fa3d6ea4e7ed06b",
+    "precheck.json": "2267aecd48f93340dfa48373ac685ba0dd39746d07546d487be44d87b91d2e00",
+    "batch.json": "fa30e1dd5f6d393b830c4978ad16b94db36aed3abecdcc7aa868d7baccabc0fa",
+    "mechanism-result.json": "d99220cc255ad3cf369da4156f6a59281a732bd66d3eec9068c02a701ff1f087",
+    "mechanism-batch-r5b.json": "5e252ea916a633a8973d6f84f3e5a644ba1b4cf94253d8f69ec0d1f284f96ddc",
+    "mechanism-result-r5b.json": "55e5f57105cfd3d3480d416a9ddb5a61cffedbc518cb5602777588e1c4647b89",
+    "selection.json": "7f1694bb4f855436491f516b6025c5bad046f06bd1680b2f3e24ba2ce4923a48",
+    "controlled.json": "8a958a073a0ce62ce1dee1a4062ce1a8f0acbb3f104efa99b51fb4f78d85d486",
+    "portable-evidence-manifest.json": "d69203f95799bd6143830ae0f98ad07091d23544e0076c276e9500906520f6f2"
+  },
+  "original_status_unchanged": true,
+  "product_consumption": "src/不读准入结论；assertProductionArm不改"
+}

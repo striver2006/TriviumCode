@@ -144,6 +144,7 @@
 - [`REPORT_2026-10-16_argon_acceptance.md`](./REPORT_2026-10-16_argon_acceptance.md)：Argon high 专属模型/effort 回读、实际文件读取与完整单侧代码审查夹具通过；无改动观测成立，写工具及命令没有实际尝试，强制拒绝仍未测；原始事件、逐条裁决与工件核验齐备。
 - [`REPORT_2026-10-16_m12_batch0.md`](./REPORT_2026-10-16_m12_batch0.md)：**M12 批次 0 · 零配额收口**（B 档）。EV-193 根因是测试采样竞态（`ps` 的组号与命令行不同时刻取，误采 worker 的组），产品记录无误，新增只认组长的采样判据，I6 单跑 30/30、变异咬住，证据见 [`evidence/ev193-pgid-race-20261016/`](./evidence/ev193-pgid-race-20261016/)；EV-230 失效关闭、EV-231 删承诺、EV-236 成因与流程规矩；M12 立项（主设计 v1.3.160）。
 - [`REPORT_2026-10-17_m12_batch1.md`](./REPORT_2026-10-17_m12_batch1.md)：**M12 批次 1 · 审查期两处误判**（A 档，`/dual-run`）。EV-239：守卫与闸门共用作废谓词 `leakRecordVoids`，两条通道按类别判、旧记录按旧口径；EV-238：agy 探活失败文案分认证 / 超时（有无应答两层）/ 其他三档，判定不变。计划双审 7 条全接受、代码双审零意见、verify 通过；变异 9/9，证据见 [`evidence/m12-batch1-mutation-20261017/`](./evidence/m12-batch1-mutation-20261017/)；主设计 v1.3.161。
+- [`REPORT_2026-10-17_m12_batch2.md`](./REPORT_2026-10-17_m12_batch2.md)：**M12 批次 2 · 五个受限 Claude 组合的受限准入判据（EV-241）**（A 档，`/dual-run`）。档 1 工具面未注册、档 2 受控请求拒绝、档 3 真实写尝试对五组合恒不可取样，两组计数分开。计划双审 6 条、代码双审 2 条全接受；CLI 2.1.302 下取证 92 次台账启动全部闭合，五组合全部受限准入，用户具名采用 `restricted-admission-v1`；执行中暴露会话拉起挂住（EV-243）与 `ps` locale 依赖（EV-244）。证据见 [`evidence/m12-restricted-admission-20261017/`](./evidence/m12-restricted-admission-20261017/)；主设计 v1.3.163。
 
 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
 

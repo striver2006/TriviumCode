@@ -1,0 +1,132 @@
+{
+  "requests": 2,
+  "bodyBytes": 36226,
+  "max_request_bytes": 20830,
+  "started_at": 1792242723811,
+  "finished_at": 1792242724200,
+  "host": "127.0.0.1",
+  "limits": {
+    "requests": 12,
+    "per_request_bytes": 1048576,
+    "total_body_bytes": 8388608,
+    "runtime_ms": 120000
+  },
+  "handlers_finished": true,
+  "server_closed": true,
+  "within_limits": true,
+  "errors": [],
+  "observations": [
+    {
+      "endpoint": "/v1/messages",
+      "tools": [
+        "Glob",
+        "Grep",
+        "Read",
+        "StructuredOutput"
+      ],
+      "model": "deepseek-flash",
+      "paired_results": []
+    },
+    {
+      "endpoint": "/v1/messages",
+      "tools": [
+        "Glob",
+        "Grep",
+        "Read",
+        "StructuredOutput"
+      ],
+      "model": "deepseek-flash",
+      "paired_results": [
+        {
+          "type": "tool_result",
+          "content": "<tool_use_error>Error: No such tool available: Write. Write is disabled for this session, in subagents as well as here.</tool_use_error>",
+          "is_error": true,
+          "tool_use_id": "control_write"
+        },
+        {
+          "type": "tool_result",
+          "content": "<tool_use_error>Error: No such tool available: Bash. Bash is disabled for this session, in subagents as well as here.</tool_use_error>",
+          "is_error": true,
+          "tool_use_id": "control_bash"
+        },
+        {
+          "type": "tool_result",
+          "content": "<tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>",
+          "is_error": true,
+          "tool_use_id": "control_read_0"
+        },
+        {
+          "type": "tool_result",
+          "content": "Permission to read /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-jj9Rkr/.env has been denied.",
+          "is_error": true,
+          "tool_use_id": "control_grep_0"
+        },
+        {
+          "type": "tool_result",
+          "content": "<tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>",
+          "is_error": true,
+          "tool_use_id": "control_read_1"
+        },
+        {
+          "type": "tool_result",
+          "content": "Permission to read /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-jj9Rkr/.reviews/probe-topic/plan/2026-01-01-probe-topic-codex.md has been denied.",
+          "is_error": true,
+          "tool_use_id": "control_grep_1"
+        },
+        {
+          "type": "tool_result",
+          "content": "<tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>",
+          "is_error": true,
+          "tool_use_id": "control_read_2"
+        },
+        {
+          "type": "tool_result",
+          "content": "Permission to read /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-jj9Rkr/.reviews/probe-topic/plan/2026-01-01-probe-topic-gemini.md has been denied.",
+          "is_error": true,
+          "tool_use_id": "control_grep_2"
+        },
+        {
+          "type": "tool_result",
+          "content": "<tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>",
+          "is_error": true,
+          "tool_use_id": "control_read_3"
+        },
+        {
+          "type": "tool_result",
+          "content": "Permission to read /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-jj9Rkr/.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md has been denied.",
+          "is_error": true,
+          "tool_use_id": "control_grep_3"
+        },
+        {
+          "type": "tool_result",
+          "content": "<tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>",
+          "is_error": true,
+          "tool_use_id": "control_read_4"
+        },
+        {
+          "type": "tool_result",
+          "content": "Permission to read /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-jj9Rkr/.reviews/probe-topic/plan/2026-01-01-probe-topic-r2-gemini.md has been denied.",
+          "is_error": true,
+          "tool_use_id": "control_grep_4"
+        },
+        {
+          "type": "tool_result",
+          "content": "<tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>",
+          "is_error": true,
+          "tool_use_id": "control_read_5"
+        },
+        {
+          "type": "tool_result",
+          "content": "Permission to read /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-probe-jj9Rkr/.reviews/probe-topic/plan/2026-01-01-probe-topic-r2-glm.md has been denied.",
+          "is_error": true,
+          "tool_use_id": "control_grep_5"
+        },
+        {
+          "tool_use_id": "control_legal_read",
+          "type": "tool_result",
+          "content": "1\tSENTINEL_OPEN_7f3a2b trivium probe fixture readme\n2\t这是探针夹具仓库，用于实测 CLI 能力。\n3\t"
+        }
+      ]
+    }
+  ]
+}

@@ -135,37 +135,94 @@ async function precheck() {
   console.log(JSON.stringify({ precheck: true, ledger: c, routes: Object.fromEntries(Object.entries(routes).map(([p, r]) => [p, r.version])) }));
 }
 
-async function refresh() {
+/** 一次路线刷新；比对对象恒为precheck记下的刷新前（2.1.296）结论。skipBeforeCheck只给经授权的重试用（当前配置是失败那次写入的结论）。 */
+async function refreshOne(profile, pre, a, out, label, skipBeforeCheck = false) {
+  await assertBuild(a.commit); const before = ledger(); assertLedger(before);
+  if (!skipBeforeCheck && !same(conclusions(await routeProbe(profile)), pre.routes_before[profile].conclusions)) throw Error('刷新前路线结论已变化：' + profile);
+  await dispatch([path.join(repo, launcher), 'admission', `m12-${label}`, 'tv', 'doctor', '--only', 'claude', '--profile-claude', profile],
+    label, { ...process.env }, file(`${label}-dispatch.json`), 45 * 60 * 1000);
+  const ctx = await loadCtx({ cwd: repo }), entry = ctx.config.probe.cli.claude?.routes?.[claudeRouteKey(profile)];
+  const version = ctx.config.probe.cli.claude?.version, after = ledger(), reasons = [];
+  if (!entry || entry.probe.version !== version) reasons.push('路线探针版本不是当前CLI版本');
+  if (!entry || entry.fingerprint !== resolveClaudeRoute(ctx.config, profile, version).fingerprint) reasons.push('路线指纹不等于按当前版本重算');
+  if (!same(conclusions(entry), pre.routes_before[profile].conclusions)) reasons.push('只读结论与刷新前不同');
+  if (after.open.length !== KNOWN_OPEN.length || !same(after.open, [...KNOWN_OPEN])) reasons.push('本次启动未全部闭合');
+  saveEvidence(out, { at: new Date().toISOString(), profile, pass: reasons.length === 0, reasons, version, fingerprint: entry?.fingerprint ?? null,
+    before: pre.routes_before[profile], after: conclusions(entry), starts: after.used - before.used });
+  console.log(JSON.stringify({ refreshed: profile, label, pass: reasons.length === 0, reasons, starts: after.used - before.used }));
+  if (reasons.length) throw Error(`${profile}刷新后停止：${reasons.join('；')}`);
+}
+/** 路线刷新是否已通过：kimi首次失败后只认经用户逐次授权的重试结果（r2、r3）。 */
+const KIMI_RETRIES = ['refresh-kimi-r2.json', 'refresh-kimi-r3.json'];
+const RETRIES = { kimi: KIMI_RETRIES, deepseek: ['refresh-deepseek-r2.json'] };
+function refreshPassed(profile) {
+  if (fs.existsSync(file(`refresh-${profile}.json`)) && read(file(`refresh-${profile}.json`)).pass === true) return true;
+  return (RETRIES[profile] ?? []).some(n => fs.existsSync(file(n)) && read(file(n)).pass === true);
+}
+function refreshContext() {
   const pre = read(file('precheck.json')), a = authorization();
   if (pre.authorization_sha256 !== hash(file('authorization.json'))) throw Error('授权文件在precheck之后变化');
+  return { pre, a };
+}
+
+async function refresh() {
+  const { pre, a } = refreshContext();
   for (const profile of PROFILES) {
+    if (refreshPassed(profile)) { console.log(JSON.stringify({ skipped: profile, reason: '已刷新通过' })); continue; }
     const out = file(`refresh-${profile}.json`);
-    if (fs.existsSync(out)) throw Error('该路线已刷新过，不重试：' + profile);
-    await assertBuild(a.commit); const before = ledger(); assertLedger(before);
-    const entryBefore = await routeProbe(profile);
-    if (!same(conclusions(entryBefore), pre.routes_before[profile].conclusions)) throw Error('刷新前路线结论已变化：' + profile);
-    await dispatch([path.join(repo, launcher), 'admission', `m12-refresh-${profile}`, 'tv', 'doctor', '--only', 'claude', '--profile-claude', profile],
-      `refresh-${profile}`, { ...process.env }, file(`refresh-${profile}-dispatch.json`), 45 * 60 * 1000);
-    const ctx = await loadCtx({ cwd: repo }), entry = ctx.config.probe.cli.claude?.routes?.[claudeRouteKey(profile)];
-    const version = ctx.config.probe.cli.claude?.version, after = ledger(), reasons = [];
-    if (!entry || entry.probe.version !== version) reasons.push('路线探针版本不是当前CLI版本');
-    if (!entry || entry.fingerprint !== resolveClaudeRoute(ctx.config, profile, version).fingerprint) reasons.push('路线指纹不等于按当前版本重算');
-    if (!same(conclusions(entry), pre.routes_before[profile].conclusions)) reasons.push('只读结论与刷新前不同');
-    if (after.open.length !== KNOWN_OPEN.length || !same(after.open, [...KNOWN_OPEN])) reasons.push('本次启动未全部闭合');
-    saveEvidence(out, { at: new Date().toISOString(), profile, pass: reasons.length === 0, reasons, version, fingerprint: entry?.fingerprint ?? null,
-      before: pre.routes_before[profile], after: conclusions(entry), starts: after.used - before.used });
-    console.log(JSON.stringify({ refreshed: profile, pass: reasons.length === 0, reasons, starts: after.used - before.used }));
-    if (reasons.length) throw Error(`${profile}刷新后停止：${reasons.join('；')}`);
+    if (fs.existsSync(out)) throw Error('该路线刷新未通过，不自动重试：' + profile);
+    await refreshOne(profile, pre, a, out, `refresh-${profile}`);
   }
+}
+
+/** 用户2026-10-17在本批停点后明确同意的唯一一次kimi重刷；先落重试授权，再刷，结果另存r2，失败即本批停止。 */
+async function refreshRetry() {
+  if (process.argv[3] === 'deepseek') return refreshRetryDeepseek();
+  if (process.argv[3] !== 'kimi') throw Error('重试入口只认kimi或deepseek');
+  if (process.argv[4] === '3') return refreshRetry3();
+  if (process.argv[4] !== undefined) throw Error('重试次数只认3（第2次不带次数）');
+  const { pre, a } = refreshContext(), failed = file('refresh-kimi.json');
+  if (!fs.existsSync(failed) || read(failed).pass !== false) throw Error('kimi首次刷新不是失败记录，不需要重试');
+  saveEvidence(file('retry-authorization.json'), { at: new Date().toISOString(), schema: 'm12-batch2-retry-authorization.v1', profile: 'kimi', attempt: 2,
+    user_answers_verbatim: ['kimi 账号和网络是正常的', '同意重刷 kimi'],
+    context: 'R1在kimi路线停下（2.1.302下探针臂超时，只读结论落null）后，用户确认账号与网络正常并同意重刷一次；原「失败即停、不重试」对本次重刷例外，仅此一次',
+    failed_record: { path: failed, sha256: hash(failed) }, authorization_sha256: hash(file('authorization.json')) });
+  await refreshOne('kimi', pre, a, file('refresh-kimi-r2.json'), 'refresh-kimi-r2', true);
+}
+
+/** 第3次：第2次失败后只读诊断（用户终端8条手动复现均正常），用户明确同意再刷一次；仍失败即本批停止。 */
+async function refreshRetry3() {
+  const { pre, a } = refreshContext(), failed = file('refresh-kimi-r2.json');
+  if (!fs.existsSync(failed) || read(failed).pass !== false) throw Error('kimi第2次刷新不是失败记录，不需要第3次');
+  saveEvidence(file('retry-authorization-r3.json'), { at: new Date().toISOString(), schema: 'm12-batch2-retry-authorization.v1', profile: 'kimi', attempt: 3,
+    user_answers_verbatim: ['同意第 3 次重刷 kimi'],
+    context: 'kimi第2次刷新同样12次挂满180秒；只读诊断后用户在终端按探针形态手动复现8条均正常返回，疑为当时kimi服务端时间窗问题；用户明确同意第3次，仅此一次',
+    failed_record: { path: failed, sha256: hash(failed) }, previous_retry_authorization_sha256: hash(file('retry-authorization.json')),
+    authorization_sha256: hash(file('authorization.json')) });
+  await refreshOne('kimi', pre, a, file('refresh-kimi-r3.json'), 'refresh-kimi-r3', true);
+}
+
+/** deepseek第2次：首次从会话拉起时每次调用挂满180秒；用户终端按探针形态手动复现正常，疑为会话拉起路径的间歇问题；
+ * 用户同意重刷一次并改在用户终端执行剩余取证。仍失败即本批停止。 */
+async function refreshRetryDeepseek() {
+  const { pre, a } = refreshContext(), failed = file('refresh-deepseek.json');
+  if (process.argv[4] !== undefined) throw Error('deepseek只许第2次，不带次数');
+  if (!fs.existsSync(failed) || read(failed).pass !== false) throw Error('deepseek首次刷新不是失败记录，不需要重试');
+  saveEvidence(file('retry-authorization-deepseek-r2.json'), { at: new Date().toISOString(), schema: 'm12-batch2-retry-authorization.v1', profile: 'deepseek', attempt: 2,
+    user_answers_verbatim: ['同意'],
+    question_summary: '两项一并确认：1 授权deepseek再刷一次；2 剩余取证（deepseek重刷、prepare、run）改在用户终端执行，不从会话拉起',
+    launched_from: process.env.CLAUDE_CODE_SESSION_ID ? 'claude-code-session' : 'user-terminal',
+    failed_record: { path: failed, sha256: hash(failed) }, authorization_sha256: hash(file('authorization.json')) });
+  await refreshOne('deepseek', pre, a, file('refresh-deepseek-r2.json'), 'refresh-deepseek-r2', true);
 }
 
 async function prepare() {
   const a = authorization(), stamp = await assertBuild(a.commit);
-  for (const p of PROFILES) if (read(file(`refresh-${p}.json`)).pass !== true) throw Error('路线刷新未全部通过：' + p);
+  for (const p of PROFILES) if (!refreshPassed(p)) throw Error('路线刷新未全部通过：' + p);
   const c = ledger(); assertLedger(c);
   const prev = read(path.join(prior, 'batch-a.json')).files, files = {};
   for (const f of [...Object.keys(prev), ...R21, ...CONTROLLERS, file('authorization.json'), file('precheck.json'), installedBundle,
-    ...PROFILES.map(p => file(`refresh-${p}.json`)), path.join(os.homedir(), '.claude/profiles/qwen.env'),
+    ...PROFILES.map(p => file(`refresh-${p}.json`)), ...[...KIMI_RETRIES, ...RETRIES.deepseek, 'retry-authorization.json', 'retry-authorization-r3.json', 'retry-authorization-deepseek-r2.json'].map(file).filter(f => fs.existsSync(f)), path.join(os.homedir(), '.claude/profiles/qwen.env'),
     path.join(os.homedir(), '.claude/profiles/kimi.env'), path.join(os.homedir(), '.claude/profiles/deepseek.env')]) files[f] = hashFile(f);
   if (Object.values(files).some(h => h === null)) throw Error('冻结清单有不可读文件');
   const allocated = new Set(fs.readdirSync(path.join(evidenceRoot, 'routes'))), jobs = [];
@@ -280,7 +337,83 @@ async function run() {
   if (failed) process.exitCode = 1;
 }
 
-const commands = { authorize, precheck, refresh, prepare, run };
+/**
+ * R5续跑（r5b）：首次run的R1～R4全部通过，R5首项qwen-pro夹具自报通过、清理完整，但复算因ps启动时间按用户终端locale输出为
+ * 「日 月」顺序被r21映像格式拒绝。用户明确同意只续跑R5：复用本批R4读臂（冻结窗口内、逐项复核），换新批次名、强制LC_ALL=C，
+ * r21校验规则不变。原run的run-started.json与mechanism-result.json保留，run不可再跑。
+ */
+const R5B = { batch: 'mechanism-batch-r5b.json', result: 'mechanism-result-r5b.json', external: path.join(evidenceRoot, 'controlled-m12-20261017-r5b') };
+/** 首次run之后为续跑而改动的控制器：它们的新hash单独核对（diff-check + 续跑授权绑定），其余冻结文件必须一字不变。 */
+const R5B_CHANGED = new Set(['batch.mjs', 'diff-check.mjs', 'controlled-fixture.mjs', 'mechanism-launch-check.mjs'].map(file));
+async function resumeR5() {
+  const b = read(file('batch.json')), first = read(file('mechanism-result.json'));
+  if (!fs.existsSync(file('run-started.json')) || first.failed?.error !== 'mode3-previous-full-proof-rejected' || first.mechanisms.length !== 0 ||
+    first.positives.length !== b.jobs.length || first.positives.some(p => p.pass !== true)) throw Error('首次run不是「R1～R4通过、R5首项复算拒绝」的停点，不续跑');
+  if (fs.existsSync(file('r5b-started.json'))) throw Error('R5续跑已启动过，不重试、不恢复');
+  for (const [f, h] of Object.entries(b.files)) if (!R5B_CHANGED.has(f) && hashFile(f) !== h) throw Error('冻结来源变化：' + f);
+  const copies = checkCopies(); if (!copies.ok) throw Error('复制件差异超出登记批次参数：' + JSON.stringify(copies.results));
+  if (hash(file('authorization.json')) !== b.authorization_sha256) throw Error('授权变化');
+  const stamp = await assertBuild(b.commit); if (stamp.inputs_sha256 !== b.inputs_sha256) throw Error('生产输入变化');
+  const c = ledger(); assertLedger(c, b.batch_stop);
+  saveEvidence(file('resume-r5-authorization.json'), { at: new Date().toISOString(), schema: 'm12-batch2-resume-authorization.v1',
+    user_answers_verbatim: ['同意续跑 R5'],
+    context: '首次run的R5首项qwen-pro：夹具mechanism_pass=true、清理完整；复算只因bridge映像lstart为「Sat 17 Oct …」（用户终端locale）不满足r21「Sat Oct 17 …」格式而拒绝。续跑复用本批R4读臂，换新批次名，强制LC_ALL=C，r21规则不改',
+    first_result: { path: file('mechanism-result.json'), sha256: hash(file('mechanism-result.json')) },
+    first_dispatch: { path: file('mechanism-qwen-pro-dispatch.json'), sha256: hash(file('mechanism-qwen-pro-dispatch.json')) },
+    changed_controllers: Object.fromEntries([...R5B_CHANGED].map(f => [path.basename(f), hash(f)])), copies, authorization_sha256: b.authorization_sha256 });
+  saveEvidence(file('r5b-started.json'), { at: new Date().toISOString(), batch_sha256: hash(file('batch.json')), ledger: c });
+  const files = Object.fromEntries(Object.entries(b.files).map(([f, h]) => [f, R5B_CHANGED.has(f) ? hash(f) : h]));
+  for (const n of ['batch.json', 'resume-r5-authorization.json', ...b.jobs.map(j => `${j.name}-proof.json`)]) files[file(n)] = hash(file(n));
+  const positives = b.jobs.filter(j => j.combination).map(j => read(file(`${j.name}-proof.json`)));
+  const jobs = READS.map(([combination, model, profile]) => {
+    const p = positives.find(x => x.combination === combination && x.model === model && x.pass === true), live = read(path.join(p.directory, 'result.json'));
+    for (const n of fs.readdirSync(p.directory)) { const f = path.join(p.directory, n); if (fs.statSync(f).isFile()) files[f] = hash(f); }
+    return { combination, model, profile, variant: '3', expected_starts: 2, hard_starts: 3, output: path.join(R5B.external, `${combination}-mechanism-3`),
+      claim: file(`mechanism-${combination}-r5b-claim.json`), live_cli_version: live.request.cli_version_observed,
+      live_result_ref: { path: path.join(p.directory, 'result.json'), sha256: hash(path.join(p.directory, 'result.json')) },
+      live_shape_ref: { path: path.join(p.directory, 'production-shape.json'), sha256: hash(path.join(p.directory, 'production-shape.json')) },
+      sentinels: [SENTINEL_PEER, SENTINEL_SECRET] };
+  });
+  saveEvidence(file(R5B.batch), { at: new Date().toISOString(), schema: 'm12-mechanism-batch.v1', criteria_adopted: false,
+    formal_plan_run_id: PLAN_RUN_ID, review_waived: false, authorization_sha256: b.authorization_sha256, git_head: b.git_head,
+    inputs_sha256: b.inputs_sha256, before: c.used, expected_starts: 10, hard_starts: 15, batch_stop: c.used + 15, pool_limit: POOL_LIMIT,
+    budget_root: budgetRoot, files, jobs, resumes: { path: file('mechanism-result.json'), sha256: hash(file('mechanism-result.json')) } });
+  const batchFile = file(R5B.batch), env = { ...process.env, LC_ALL: 'C', LANG: 'C', TZ: 'UTC' };
+  const { measureMode3Launch, schemaFile } = await import('./mechanism-launch-check.mjs');
+  const { recomputeMode3Proof } = await import('./mechanism-proof.mjs');
+  const mechanisms = []; let failed = null;
+  try {
+    await measureMode3Launch(repo, 'admission', 'fixture', [READS[0][0], '3']);
+    for (const j of jobs) {
+      await measureMode3Launch(repo, 'admission', 'fixture', [j.combination, '3']);
+      const before = ledger();
+      console.log(JSON.stringify({ starting: 'mechanism-r5b-' + j.combination, budget: before }));
+      await dispatch([path.join(here, 'launch-mechanism.mjs'), 'admission', 'm12-mechanism-r5b-' + j.combination, 'fixture', j.combination, '3'],
+        'mechanism-r5b-' + j.combination, env, file(`mechanism-${j.combination}-r5b-dispatch.json`));
+      const proof = await recomputeMode3Proof(j, schemaFile), now = ledger();
+      if (now.used - before.used > j.hard_starts) throw Error('单任务超过公布硬上限');
+      assertLedger(now, b.batch_stop);
+      saveEvidence(file(`mechanism-${j.combination}-r5b-proof.json`), proof); mechanisms.push(proof);
+      console.log(JSON.stringify({ finished: 'mechanism-r5b-' + j.combination, recomputed_pass: proof.recomputed_pass, budget: now }));
+    }
+  } catch (e) { failed = { error: e.message }; }
+  const end = ledger(), outputs = {};
+  if (!failed) {
+    const routes = Object.fromEntries(positives.map(p => [p.job, p.reference]));
+    const versions = Object.fromEntries(b.jobs.filter(j => !j.combination).map(j => [j.name, read(file(`${j.name}-proof.json`)).reference]));
+    saveEvidence(file('selection.json'), { schema: 'trivium.access.selection.v1', routes, versions });
+    saveEvidence(file('controlled.json'), { schema: 'trivium.access.restricted-controlled.v1',
+      proof_module: { path: file('mechanism-proof.mjs'), sha256: hash(file('mechanism-proof.mjs')) },
+      schema_file: { path: schemaFile, sha256: hash(schemaFile) }, batch: { path: batchFile, sha256: hash(batchFile) } });
+    outputs.summary_command = ['node', 'scripts/agent-access-closeout-summary.mjs', evidenceRoot, file('selection.json'), file('controlled.json')];
+  }
+  saveEvidence(file(R5B.result), { at: new Date().toISOString(), failed, mechanisms, budget: end, new_starts: end.used - c.used,
+    ledger_closed: same(end.open, [...KNOWN_OPEN]), criteria_adopted: false, actual_provider_inference_in_mechanisms: false, ...outputs });
+  console.log(JSON.stringify({ finished: true, failed, mechanisms: mechanisms.length, budget: end, ...outputs }));
+  if (failed) process.exitCode = 1;
+}
+
+const commands = { authorize, precheck, refresh, 'refresh-retry': refreshRetry, prepare, run, 'resume-r5': resumeR5 };
 const command = commands[process.argv[2]];
-if (!command) throw Error('用法：authorize --code-run <id> | precheck | refresh | prepare | run');
+if (!command) throw Error('用法：authorize --code-run <id> | precheck | refresh | refresh-retry kimi | prepare | run');
 await command();
