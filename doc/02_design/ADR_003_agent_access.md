@@ -70,3 +70,13 @@ profile入口取本机绝对配置路径，缺省才现场发现可执行包装�
 ## 第24B获批集中取证边界（2026-10-12）
 
 旧restricted-tool-surface-v1及component-scoped-evidence-v1仍未采用。24B/r26获普通plan批准，新增候选restricted-tool-surface-and-path-v2纠正包装桥、权限模式及live绑定缺口；auth-cache-timestamp-applicability-v1只限本次三具名checked_at。先实现受控夹具和诊断，再取得Bob独立明确判据决定；普通审批与轮数授权不能替代，原标准列/单臂false保留。 完整规范见[设计v1.3.156](2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-controlled-contract)；执行结果以恢复报告和r17证据为准，不能由剧本或计划宣称已测。
+
+## M12 批次 2：五组合受限准入判据（2026-10-17）
+
+**决定。** 用户 2026-10-16 定 D-2：claude 侧 `qwen-pro`、`kimi-pro`、`kimi`、`deepseek`、`deepseek-pro` 五个组合另立判据 `restricted-admission-v1`（受限准入）。「工具面未注册」与「受控请求拒绝」两档同时成立，再加原标准中除真实写尝试、真实逐文件禁读以外的各列，才记受限准入；「真实写尝试」对这五组合记不可取样，永不记通过；原标准通过与受限准入分两个计数，不合并、不出合计。完整定义见[设计 v1.3.162](2026-09-10-Driver-DualCritic主攻双审流水线设计.md#restricted-admission-criterion)。
+
+**正式采用的范围。** 只覆盖这五个组合在取证批次快照（CLI 版本、完整指纹、构建 `inputs_sha256`、提交 SHA）下的只读审查用途。判据是否采用由用户在取证与汇总之后另行具名决定；计划与代码的普通批准、本批「允许任何次数的调用」授权都不代替这一决定。产品 `src/` 不读准入结论，`assertProductionArm` 不改，doctor 与预检不标注。
+
+**不证明什么。** 不证明真实模型不会主动发起被禁工具调用（它们没有可调用的写工具，这一点正是取不到样的原因），不证明任意诱导输入、服务端身份、上游行为或未来 CLI 版本下的行为；档 2 的本地注入不是厂商推理（`actual_provider_inference === false`）。快照之外的任何指纹变化先看重取触发集：CLI 版本、native 或包装器、该组合 profile env、`~/.claude/settings.json` 变化必须重取后才能对外引用。
+
+**10-12 例外的去向。** 10-12 用户批准的受限准入例外绑定 CLI 2.1.296 与 A / C 批冻结清单，本机已是 2.1.301、冻结清单 23 项已变，例外不再适用；本批快照取代它，10-12 的全部文件不改。档 2 仍沿用 `restricted-tool-surface-and-path-v3` 的受控机制，但不继承 10-12 例外的批准。

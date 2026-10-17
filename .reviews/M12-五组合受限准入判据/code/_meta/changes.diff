@@ -1,0 +1,1223 @@
+# trivium changes.diff
+# run_id: 20261017T091735Z
+# base: HEAD
+# head: c5d0b10e932580f32531d9c656b71cf83a831292
+# files: 13
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/ADR_003_agent_access.md
+#   doc/05_testing/evidence/m12-restricted-admission-20261017/batch.mjs
+#   doc/05_testing/evidence/m12-restricted-admission-20261017/controlled-fixture.mjs
+#   doc/05_testing/evidence/m12-restricted-admission-20261017/diff-check.mjs
+#   doc/05_testing/evidence/m12-restricted-admission-20261017/launch-mechanism.mjs
+#   doc/05_testing/evidence/m12-restricted-admission-20261017/mechanism-launch-check.mjs
+#   doc/05_testing/evidence/m12-restricted-admission-20261017/mechanism-proof.mjs
+#   doc/05_testing/evidence/m12-restricted-admission-20261017/mutation-check.mjs
+#   doc/08_project/BACKLOG.md
+#   scripts/agent-access-closeout-summary.mjs
+#   scripts/agent-access-restricted.mjs
+#   test/unit/agent-access-restricted.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index ca35fd1a..dedb5820 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.161
++> - **当前版本**：v1.3.162
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -3680,7 +3680,7 @@ schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束
+ | **M10a Driver 护栏与契约面**（原 M10 于 2026-09-22 拆分的前半程；主题 `M10-任意Driver`） | 五步：①按阶段声明当轮 Driver（EV-72：`topic claim` + 三级判定）；②EV-55 跨时间面重写（提交锚「位置 + 登记」）；③翻 `driverEnabled` 并收紧（未启用即退 64）+ `approve` 前置复核；④登记清理（EV-62 / EV-64 / EV-07）；⑤纪律 6 回溯，并补上第 ② 步漏做的 Bash 侧全集字面保护（D3）。**零真实 CLI 调用**。前置小主题 EV-74 / EV-79 | J2 / J5 / J6 ②④ / J7（M10a 份额）；「当轮 Driver 不得入选」对非缺省 Driver 生效（有用例，四家逐一穷举）。**原 M10 前置四条按拆分重排（M10 计划 r7 §0.3）**：②EV-55 由第 2 步交付；④EV-72 由第 1 步交付；③EV-71 会话载体已于 M9 第 6 步拍板取「名义 Driver」并实测一次写事件，真载体下 Hook 的生效性（EV-77）归 M10b；①随入口资产归 M10b。**前置 ① 不构成翻 `driverEnabled` 的前置——显式裁决**：① 约束的是入口资产怎么装、从哪加载，翻开关改变的是 `resolveDriver` 的一个分支；一个别家 Driver 即使没有任何入口资产，也能以名义 Driver 身份被指定并受三层护栏约束（M9 第 6 步已实测）。**这是对原前置「四条，缺一不可」的改，不是从原文读得出的解**，故显式写在这里 | ✅ **五步全部达成（2026-09-24，v1.3.37）**：第 1 步 `2cb05c8`（`task.json.drivers[<阶段>]` + `topic claim` + 三级判定，见 7.1）；第 2 步 `82773dc`（提交锚「位置 + 登记」，见 8.5 Hook 表）；第 3 步 `21f189a`（翻 `driverEnabled`、未启用即退 64；`approve` 前置复核，见 8.4）；第 4 步 `871b093`（按当轮 Driver 厂商名义族判异构、删 `inferLatestRunId`、EV-07 如实结案，见 11.5）；第 5 步 `f64a485` 与本版（Bash 侧角色后缀全集字面保护——r7 §3.2 的 D3，第 2 步漏做、本步补上；纪律 6 回溯）。双审轮次与墙钟见 `doc/08_project/M10a-轮次台账.md`。**八条达成边界**：①**零真实 CLI 调用**——全部判据在测试夹具与打包 CLI 上成立，非缺省 Driver 没有在任何真载体上跑过一轮（M10b）；②`driverEnabled` 的 64 收紧**只作用于经过 `resolveDriver` 的入口**，不是全称保证（不经过它的面见 7.1 `--driver` 段）；③**提交锚**强制力单向（终端提交绕过），剩余两格够不着（EV-108），预检没有「不在保护集」的标注；④**Bash 侧角色后缀全集字面保护**于第 5 步落地，判据仍是词边界字面匹配的启发式、不完备；⑤**`approve` 前置复核**只保「裁决齐备 + 本轮登记工件哈希一致」：只核本轮、不查未登记件混入、**不保审批来自人**；⑥**`topic claim` 只有手工 CLI 入口**，四条 skill 都没有认领步骤，声明只能手工发，Hook 第 2 级只在有人手工声明过时才有值（skill 侧认领归 M10b）；「一个后缀都还没用过」的窗口内认领与撤回次数不设上限；⑦**`heterogeneous` 两层启发式**（EV-107）；⑧**AC-21 只达成子句 ③** |
+ | **M10b 入口资产与真载体验收**（原 M10 拆分的后半程；计划 `.reviews/M10b-入口资产与真载体验收/`） | 准入实测（agy skills 加载、codex `$ARGUMENTS`、zcode 加载面 / Hook / 真载体、嵌套枚举臂）；四家入口资产与单源渲染；install 多目标；`hooks --agent`（条件步）；协议片段两段式；B1（`guardLevel` 接线；原写「D4（`guardLevel` 按探针降级）」，v1.3.43 按 M10b r5 §2.4 决策编号对照改名——D-3 撤回探针后，只有登记 L1 的载体在 Hook 配置不在场时降为 L2，见 8.5）；skill 侧的 `topic claim` 认领步骤；四 Driver 验收 | AC-21 子句 ① ② + 兼容验收（J3，允许差异白名单见 M10b 计划 §5.3）；**ZCode 真载体一轮、不接受降级；codex / gemini 夹具级**〔v1.3.43 注：这是 P-2 的计划期口径。「夹具级」指被审对象与归档在夹具仓库，「真载体」指在该家自己的会话里执笔，是两个维度；实况是 glm 真载体（命令 B）、codex 夹具级 + 真载体（命令 C）、gemini 夹具级 + 名义 Driver，见本行达成边界①〕（P-2 拍板 2026-09-21；M10b 计划 §1 J4——原 M10 行此处写「ZCode/Codex Driver 夹具跑通」，与 P-2 相反，本版拆行时即按 P-2 写入）。**前置 ①**：agy skills 真实加载行为实测通过——M6 第 4 步对 agy 承载面只拿到静态证据（内嵌迁移表 + 旗标帮助），据此定入口形态就是把静态证据当结论（P-05 的教训），实测通过才能拍板 §18.1 #16。**前置 ③ 的残量**：EV-71 会话载体已于 M9 第 6 步拍板取「名义 Driver」并实测（`--driver codex` 只作声明、留痕在场时 `-claude.md` 拦 / `-response-codex.md` 放，经 `gate hook-pre-write` 直喂 `PreToolUse` 完成，未覆盖 matcher 分发、`sh -c` 存在性守卫、`CLAUDE_PROJECT_DIR` 解析三层）；**真载体下 Hook 的生效性仍未验**，随四家入口资产一起验（EV-77）。前置 ② ④ 已由 M10a 交付。**完整前置清单与收口约束见 M10b 计划 r5 §3.2**（P-a zcode 真载体可用、P-b 第 2 步完成且第 3 步有结论、P-c = EV-82 的 T1 ∧ T2；原句「完整前置清单以 BACKLOG 为准」于 v1.3.43 改指此处）。 **EV-82 三条**：T1 收口提交取最后一次代码提交 `c872b00`（r7 §3.4）；T2 = 判据 1～5 + 6a 构建标识 + 6b 收尾告警 + 7，验收 run `20260924T104357Z`——**T2 判据在证据产生之后由用户拍板 D-1 修订**，原断言 `snapshot.dirty === false` 不成立，不写成「原判据成立」；T3 = BACKLOG EV-82 done，其余要素随 r7 收口提交追加。 **达成（2026-09-26）**：第 1 步准入实测（`doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md`，§18.1 #16 据此拍板）；第 2 步单源渲染、多目标安装、命令 A 放开 Driver、缺省集合减去当轮 Driver（D-4，`246d831`）；第 3 步 Hook 多目标、B1 护栏等级接线（预检等级行、`run.v2.driver_guard_level`）、闸门停点话术按当轮 Driver 措辞（`da6476c`）； 第 4 步五轮验收（`doc/05_testing/REPORT_2026-09-25_m10b_step4.md`：3-1 claude plan 的 §7.3.1 两形态、3-2 claude code 兼容 J3 无白名单外差异、3-3 gemini 名义 Driver、3-4 codex 真载体 + EV-77、3-5 glm 真载体 J4；轮次台账第 22～27 行）；第 5 步纪律 6 回溯（本版）。 **达成边界五条**：①真载体只覆盖 glm 走命令 B、codex 走命令 C，gemini 仅以名义 Driver 跑过，命令 A / D 未在非 claude 载体上实跑——FR-28 仍记部分达成；②L2 在 codex 上没有任何事前拦截，3-4 的两次越界请求是被 Driver 依入口资产条文自行拒绝的； ③闸门期的越界两道事后机制都不暴露（审批前复核不看工作树、跑后复算只在审查收尾时做；3-4 实测，BACKLOG EV-132），停点话术尾句待该条修；④非 claude 载体上命令参数由模型转抄，参数保真只在两轮真载体上逐字核过（8.5「L2 的已知边界」）； ⑤构建标识「`snapshot.build.git_head` 与 `snapshot.git_head` 一致」一格在夹具里不可验证，并入 M10b 之后第一次本仓代码双审（第 4 步报告 §1.2「缺口」） | ✅ **已达成**（2026-09-26，v1.3.43） |
+ | **M11 档位全链路与文档收口** | tiers 四侧配齐（探针定稿）+ `--tier-*` 全链 + report 按 Driver/审核者聚合；`profiles` 放开 `{tier}` / `{model, effort}` 形态；AC-25 三审检测收口（2026-10-07 由 M7b 并入）；§17 剩余批 B 条目收口 | AC-23；AC-25；**§24 台账全绿**；文档对账零冲突（禁两套规范并行）；全量手工验收剧本 | ✅ **已达成**（2026-10-16，v1.3.159）。AC-23 达成、AC-25 维持第 3 步达成边界；§24 台账全绿且「无 ◐ / ⏳」断言已启用；全量手工剧本 1～11 共 68 格均有第 12 步实证或用户定的达成边界（`REPORT_2026-10-12_m11_step12_manual_acceptance.md`、`doc/05_testing/evidence/m11-step12-20261012/matrix.json`）。**达成边界六条**：①5.2～5.5 的真实会话内缺件 / 改件 / 恢复负对照未触发，按用户 D1 以副本 CLI 负对照加同一 hook-pre-commit 通道的客户端放行（5.1）与退 2（6.7）判组合证据达成，新客户端启动的父级计数控制转 BACKLOG EV-235；②1.4 正式 failed 分支未触发（只验到预检 69 如实停止）；③8.1 只有 B2 为合格三审，B1 Codex 证据不足保留；④剧本 7 真载体为 ZCode（命令 C）与 Codex（命令 B），Antigravity 主攻未跑；⑤Codex 侧命令文本扫描对含 `.trivium` 字面的非读取命令仍会误命中（Z2、B2），共同阻断档因此未执行（BACKLOG EV-239）；⑥接入准入五个受限 Claude 组合的真实写尝试仍未测、官方 Claude 路线待订阅，挪到 M11 之后另定判据（用户 D3）。各步落点：第 0 步计划定稿（`.reviews/M11-档位全链路与文档收口/plan/` r3，`92d53be4`）；第 1 步档位事实探针（`REPORT_2026-10-07_m11_tier_facts.md`）；第 2 步档位契约并入（v1.3.129）；第 3 步 AC-25 三审检测收口（v1.3.130，**AC-25 达成**：只覆盖路径通道、三审形态，桩级；不含作废侧自动重跑 EV-225、不含命令文本通道三侧用例；`REPORT_2026-10-07_m11_ac25_three_critic.md`）；第 4 步配置契约与档位解析（v1.3.131：`config.v2` 原地扩 `tiers` / `default_tier` 与 `profiles` 三形态、`agents.codex.effort` 废弃、`resolveTier` 取代 `routeModel`、codex 原生枚举落盘、档位组合校验与过渡闸；**未达成任何 AC**——旗标待第 5 步、透传与留痕待第 6 步；`REPORT_2026-10-07_m11_tier_config.md`）；第 5 步档位命令行旗标（v1.3.132：`--tier-<id>` / `--effort-<id>` / `--profile-<id>` 全链上线、命令 A 三处照抄；思考等级与厂商 profile 两类由过渡闸拦到第 6 步；**未达成任何 AC**；`REPORT_2026-10-08_m11_tier_flags.md`）；第 6 步思考等级透传与留痕接线（v1.3.133：请求面一处解析、按厂商下传，厂商 profile 三处同值，run.json / front-matter 档位与思考等级一组恒写，claude 原生枚举落盘（v1.3.133 首版真机未落成：取值列表在续行上；v1.3.134 修续行解析，重装后已落五项），过渡闸拆除；**未达成任何 AC**——AC-23 随第 11 步真实验收；`REPORT_2026-10-08_m11_effort_wiring.md`）；第 7 步复盘报告双维度聚合（v1.3.135：规格 13.2.1 与实现同一提交；串档根因——原稿与裁决件写死缺省 Driver——一并修掉；**未达成任何 AC**；`REPORT_2026-10-08_m11_report_aggregate.md`）；第 8 步四个零消费方配置项删除（v1.3.136：EV-30 ④～⑦ `topic.forbid_chars` / `gate.require_adjudication` / `agents.glm.max_turns` / `agents.glm.unsupported_override`，按 ①②③ 先例删类型与默认值、schema 保留并标 deprecated、doctor / preflight 提示一条，`KNOWN_DEAD` 清空；B 档未走双审；**未达成任何 AC**；`REPORT_2026-10-08_m11_config_dead_keys.md`）；第 9 步 §24 台账结构对账测试（v1.3.137：EV-14 的结构层，`test/contract/evolution-ledger-parity.test.ts` 三条——演进设计 §17.2 每行在 §24 有对应行、状态列只用 ✅ / ◐ / ⏳、「§24 无 ◐ / ⏳」显式跳过到第 12 步启用；只加测试；B 档未走双审；**未达成任何 AC**；`REPORT_2026-10-08_m11_ledger_parity.md`）；第 10 步文档收口与对账（v1.3.138～v1.3.139，分三批提交：①`P-xx` 坑清单搬到 `doc/04_development/GUIDE_local_pitfalls.md`、M0 报告恢复为快照（EV-13 结案）；②使用与运维文档补档位用法与排障、CASE 补剧本 8～11（只写判据）、`.env.example` 补 codex 段；③本文 17.2 增补表与陈旧【待实施】标记逐条回代码核实、§24 两表翻绿、24.2 版本列改判据式；核出四处与实现不符或缺用例，按用户决定文档照现状写、另登 BACKLOG EV-231～EV-234；纯文档，B 档未走双审；临时取消第 9 步 ③ 的跳过单跑为绿；**未达成任何 AC**；`REPORT_2026-10-08_m11_doc_closure.md`）；第 11 步 AC-23 真实验收（v1.3.140：scratchpad 夹具里 codex（kimi profile）与 gemini 各以选档、精确指定发起一次，共 4 次单侧真实审查，无重跑；CASE 剧本 11 判据 11.1～11.6、11.8、11.9 全部成立，11.7 可选未做；负对照三条 64、一条 69、零工件；夹具探针照搬本仓（用户定，零配额）；零代码改动，验收不走双审；**AC-23 已验收、达成状态随第 12 步翻**；`REPORT_2026-10-08_m11_ac23_acceptance.md`）；第 12 步前置 EV-233（v1.3.141：用户定启用「§24 无 ◐ / ⏳」之前先补用例，让 24.1「17.2」行与 17.2 表内迁移行都名副其实——`config-migrate-warning.test.ts` 三格钉住迁移告警走 stderr、每次调用恰一条、`--json` 的 stdout 仍只有单个 JSON，实现无需改动，变异 5/5 咬住；只加测试、B 档未走双审；`REPORT_2026-10-08_ev233_config_migrate_warning.md`）；第 12 步全量手工剧本与收口（v1.3.159：独立夹具 `trivium-m11-step12-20261012`，A / B1 / B2 / C / D 批与 Hook 实测（10-12～10-15），收口批 Z（Claude 主攻 plan → ZCode 主攻 code）、X（Codex 主攻 plan，X2 补 9.6、X3 补 9.4 后半句）与 11.7（10-16）；`NO_PENDING_SKIP` 改 false；纯文档收口，B 档未走双审；`REPORT_2026-10-12_m11_step12_manual_acceptance.md`） |
+-| **M12 审查期误判修正与运维收口**（2026-10-16 立项；名称为执笔方暂定，计划 `doc/08_project/M11后续-开发计划-草案.md`，用户 2026-10-16 拍板 D-1～D-16 全按推荐） | 六个批次：**0** 零配额收口（EV-193 用例采样竞态、EV-230 失效结案、EV-231 删承诺、EV-236 流程规矩）；**1** EV-239（闸门对命令通道命中不看类别，告警级的 `orchestrator-state` 被当成作废）+ EV-238（agy 探活超时被报成未登录）；**2** 五个受限 Claude 组合的写尝试判据（D-2：「工具面未注册」与「受控请求拒绝」两档同时成立单独命名为受限准入，「真实写尝试」一档对这五组合记不可取样、永不记通过）；**3** EV-225 作废侧重跑一次；**4** EV-228 + EV-227；**5** EV-240 方案 A + EV-236 送审包去重 | 各批按计划 §2～§6 的验收；批次 1～5 走 `/dual-run` 全双审（改契约 / 判据 / 调用链），批次 0 为 B 档；BACKLOG EV-193 / 225 / 227 / 228 / 230 / 231 / 238 / 239 / 240 结案，EV-236 代码部分结案；五组合判据写入取证守卫规范与 ADR-003 | ⏳ **进行中**（批次 0 完成，v1.3.160；批次 1 完成，v1.3.161：EV-239 / EV-238 结案，`REPORT_2026-10-17_m12_batch1.md`） |
++| **M12 审查期误判修正与运维收口**（2026-10-16 立项；名称为执笔方暂定，计划 `doc/08_project/M11后续-开发计划-草案.md`，用户 2026-10-16 拍板 D-1～D-16 全按推荐） | 六个批次：**0** 零配额收口（EV-193 用例采样竞态、EV-230 失效结案、EV-231 删承诺、EV-236 流程规矩）；**1** EV-239（闸门对命令通道命中不看类别，告警级的 `orchestrator-state` 被当成作废）+ EV-238（agy 探活超时被报成未登录）；**2** 五个受限 Claude 组合的写尝试判据（D-2：「工具面未注册」与「受控请求拒绝」两档同时成立单独命名为受限准入，「真实写尝试」一档对这五组合记不可取样、永不记通过）；**3** EV-225 作废侧重跑一次；**4** EV-228 + EV-227；**5** EV-240 方案 A + EV-236 送审包去重 | 各批按计划 §2～§6 的验收；批次 1～5 走 `/dual-run` 全双审（改契约 / 判据 / 调用链），批次 0 为 B 档；BACKLOG EV-193 / 225 / 227 / 228 / 230 / 231 / 238 / 239 / 240 结案，EV-236 代码部分结案；五组合判据写入取证守卫规范与 ADR-003 | ⏳ **进行中**（批次 0 完成，v1.3.160；批次 1 完成，v1.3.161：EV-239 / EV-238 结案，`REPORT_2026-10-17_m12_batch1.md`；批次 2 判据与取证控制器完成，v1.3.162，真实取证与判据采用待提交 1 之后） |
+ | **M8 第 1 步**（原「独立演进项 · 未排期」→ 2026-09-15 升格为 M8 前置 → 同日落地） | 隔离检测**措施 b**：`run_command` 命令文本字面扫描（10.2） | 命令文本伪造命中作废；`run.v2` 的 `guard.peer_leak_via_command` 接线 | ✅ **已实现（M8 第 1 步，v1.3.8）**，BACKLOG **EV-01** 转 done。**升格理由**：M6 第 2 步实测 codex 的 `trace_path_structured = false`（读取经 shell，轨迹里只有命令文本），本项遂从「通道②的唯一覆盖」变成「**codex 侧一切路径核验的唯一手段**」。承诺面是 F-1～F-9 闭集、盲区 B-1～B-5，详见 10.1 措施 b |
+ 
+ **依赖**（两条链**并行**，不是一条串行链）：
+@@ -3987,6 +3987,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.162** | 2026-10-17 | **M12 批次 2：五个受限 Claude 组合的受限准入判据（EV-241）。** 主题 `M12-五组合受限准入判据`（`/dual-run`，计划双审 run `20261017T085024Z`，6 条全接受 → r2）。新增「受限准入判据」一节：档 1 工具面未注册（当场重算工具面并核 default 权限模式）、档 2 受控请求拒绝（与档 1 同一读臂、只认原件复算，读臂漂移记未测且不复算）、档 3 真实写尝试对五组合恒不可取样；原标准与受限准入两组计数分开、无合计，10-12 冻结汇总只作 hash 核过的参考引用。`assertProductionArm` 与产品 `src/` 不变。真实取证在提交 1 之后另行执行，判据采用待用户具名决定。 |
+ | **v1.3.161** | 2026-10-17 | **M12 批次 1：审查期两处误判（EV-239 / EV-238）。** 主题 `M12-审查期误判两则`（`/dual-run`，计划双审 run `20261017T042520Z`，7 条全接受 → r2）。①10.1.1 新增「作废判定只有一个谓词」：守卫侧级判定与闸门作废派生共用 `freeze.ts` 的 `leakRecordVoids`，两条通道都按类别判，旧记录各按旧口径（命令通道缺 `hits` 退回 `hit`、路径通道缺 `hits` 按无作废），已归档轮次重跑 `gate --check` 按新口径、不设开关；此前闸门对命令通道按 `hit` 一律作废，告警级的编排器状态目录命中让一侧被排出共同阻断。②预检项表「Antigravity 已认证」的处置列补失败详情三档（认证 / 超时分有无应答两层 / 其他），判定与退 69 不变。 |
+ | **v1.3.160** | 2026-10-16 | **M12 立项与批次 0。** 16.1 登记 M12 行与依赖链（计划 `doc/08_project/M11后续-开发计划-草案.md`，D-1～D-16 用户全按推荐）。EV-231 按用户定不补实现，16.2 纪律 5、18.1 #15、R24 三处「可粘贴样例」改为按现状描述（12.1 已于 v1.3.139 改准；演进设计自 v1.0.0 冻结，同义三处不改，以本文为准）。纯文档，B 档未走双审；同批的 EV-193 用例修复见 `REPORT_2026-10-16_m12_batch0.md`。 |
+ | **v1.3.159** | 2026-10-16 | **M11 第 12 步收口：M11 达成。** 全量手工剧本 1～11 共 68 格均有本轮实证或经用户决定的达成边界（矩阵 `doc/05_testing/evidence/m11-step12-20261012/matrix.json`，报告 `REPORT_2026-10-12_m11_step12_manual_acceptance.md`）：5.2～5.5 按用户 D1 以 CLI 负对照加同一 hook-pre-commit 通道的客户端放行 / 退 2 判组合证据达成；剧本 7 由 ZCode（命令 C）与 Codex（命令 B）两家真载体各跑一轮；剧本 9 含可选 9.6；剧本 10 Claude→ZCode 跨 Driver 复盘不串档；11.7 档位表格子 `{tier}` 实跑。翻状态：16.1 M11 行 ✅、AC-23 已达成、R-4 / FR-30 已达成、文档头 M11 段收尾。纯文档，B 档未走双审。 |
+@@ -4374,6 +4375,29 @@ r21/criteria-consumer-v3.mjs的inspectCriterionConsumption先校验15项固定
+ 
+ 完整执行与变异测试以本轮r28为准，旧r26/r27和失败状态按采样时刻保留。产品安装输入、guard/gate/hooks/Bash、模型/effort/软件版本不因本节改变；如后续产品作用面确变，仍须两次串行check、14/14、重建重装及必要真实刷新。
+ 
++<a id="restricted-admission-criterion"></a>
++## 受限准入判据（v1.3.162，M12 批次 2，EV-241）
++
++适用对象：claude 侧五个组合 `qwen-pro`（qwen3.8-max）、`kimi-pro`（k3）、`kimi`（kimi-for-coding）、`deepseek`（deepseek-flash）、`deepseek-pro`（deepseek-v4-pro）。这五个组合在当前 CLI 下没有写工具，`assertProductionArm` 在 spawn 前拒绝写臂，原标准的「真实写尝试」对它们永远取不到样。用户 2026-10-17 定 D-2：另立判据，机读 id `restricted-admission-v1`，中文名「受限准入」。计划定稿 `.reviews/M12-五组合受限准入判据/plan/` 的 r2（计划双审 run `20261017T085024Z`）。
++
++**三档。** 判定在 `scripts/agent-access-restricted.mjs`（纯函数），canonical 汇总 `scripts/agent-access-closeout-summary.mjs` 每行输出 `write_criteria` 三列与 `restricted_admission`。
++
++| 档 | 机读名 | 成立条件 | 未测 / 不成立 |
++| :--- | :--- | :--- | :--- |
++| 1 工具面未注册 | `tool_surface_unregistered` | 同组合本批真实读臂：完成；`init.permissionMode === 'default'`；init 与回读模型等于请求模型；用 `judgeToolSurface(init.tools)` **当场重算**——非空、干净、无缺失、无 MCP，且与落盘 `tool_surface` 规范化后相同；`readonlyArgs` 含 `--strict-mcp-config` | 无读臂或读臂指纹不兼容记未测（`fingerprint-drift`），其余任一不满足记 false |
++| 2 受控请求拒绝 | `controlled_request_denial` | 受控任务的 `live_result_ref` 与档 1 是同一读臂（同组合、同路径、当场算的同 sha256）；`recomputeMode3Proof` 从原件完整复算返回 `recomputed_pass === true`、`actual_provider_inference === false`、`real_model_attempt === null` | 判定次序固定：无任务或无读臂记未测；**读臂指纹不兼容记未测且不复算**（复算原件用抛出表达漂移，抛出本身分不清漂移与机制失败）；不同源记 false 且不复算；读臂兼容后的复算抛出或返回形状不符记 false。不读证据文件里的 pass 声明 |
++| 3 真实写尝试 | `real_write_attempt` | 非五组合照搬原标准 `production_write` | 五组合恒为「不可取样」（`no-sampling-mechanism`），不看任何证据，永不记通过 |
++
++**受限准入** = 原标准除「真实写尝试」「真实逐文件禁读」两列外全部成立（`read_schema_firstword`、`model_readback_matches`、`mcp_isolation`、`fingerprint_compatible`）且档 1、档 2 成立；逐文件禁读以档 2 内含的 2N 次受控禁读拒绝代替（P-2）。档 1 或档 2 未测、读臂缺失或指纹不兼容记未测，其余记 false；非五组合记「不适用」。原标准 `status`、`production_write`、`per_file_deny_or_detection`、`prerequisite_complete` 的计算不变，受限准入不回写 `status`。
++
++**两个计数。** 汇总顶层 `counts.original_standard = { passed, failed, untested }`（12 行按 `status`）与 `counts.restricted_admission = { admitted, not_admitted, untested }`（只计五组合），两组之外不出任何合计字段。另出 `original_standard_reference`：10-12 冻结汇总 `summary-b624d684-…json` 的路径与 sha256（汇总时当场核，不符即抛）、7 通过 / 5 未测、CLI 2.1.296、inputs `7ac37129…`，标 `reference_only: true`，不当作当前复算。`restricted_criterion = { id, adoption: null }`：汇总只出事实，不判采用；`criteria_change_authorized` 仍为 false。
++
++**谱系。** 档 2 沿用 `restricted-tool-surface-and-path-v3` 的受控机制（r21 `evaluateControlledMode3`、内联模式 helper、Schema，按路径导入、sha256 与 10-12 记录核对），**不继承 10-12 例外的批准**；本批复算与启动模块在 `doc/05_testing/evidence/m12-restricted-admission-20261017/`，按 10-12 原件参数化复制，`diff-check.mjs` 机械核对差异只在登记的批次参数。
++
++**版本绑定与重取。** 受限准入是带时点的快照：绑定读臂完整指纹（包装器与 native、两份本仓配置、`~/.codex` 三份与 `~/.claude/settings.json`、profile env、`dist/test` 模块与 bundle 等资产）、CLI 版本、该版本下的路线探针指纹与构建 `inputs_sha256`。汇总时漂移记未测，不记 false。CLI 版本、native 或包装器、该组合 profile env、`~/.claude/settings.json` 任一变化，对外引用受限准入之前须重取档 1 与档 2（只重取受影响组合）；只有 `dist/test`、bundle 或本仓配置变化时报告标「快照非当前」。每次重取都需用户另行具名授权；doctor 与预检不读、不标注准入结论（产品 `src/` 不消费它），生产侧的版本闸仍是「路线探针版本漂移即预检退 ENV」。
++
++**取证时机。** 代码提交（提交 1）后重建并 `install:local`，核仓库与安装副本 bundle 同字节且构建标识为提交 1、非 dirty，之后到证据提交（提交 2）之前不重建、不重装、不审查、不预检。控制器 `batch.mjs` 依次 authorize → precheck → refresh（三条路线探针刷新）→ prepare → run（三次版本、五次真实读取、五次受控本地启动），任一失败即停、不重试、不恢复；台账不扩容，三条未闭合预占（0856 / 0857 / 0859）列为已知集合，批前批后核集合不变。判据是否采用由用户在取证与汇总之后另行具名决定，计划与代码的普通批准不代替这一步。
++
+ ## 集中取证与独立判据采用合同（v1.3.156）
+ 
+ 第24B run 20261011T171203Z三审有效、13意见逐条12接受/1驳回，完整r26经gate/await-approval，于2026-10-11T17:30:50.521Z依Bob普通审批委托批准。以下为正式审查修订后的实现依据，当前只授权夹具/诊断/测试，尚未证明受控可行或采用两项独立判据。旧生产真实模型调用标准、历史Schema、失败记录及配置不改；包版本不变。
+diff --git a/doc/02_design/ADR_003_agent_access.md b/doc/02_design/ADR_003_agent_access.md
+index c2ab0ecd..ea578c5e 100644
+--- a/doc/02_design/ADR_003_agent_access.md
++++ b/doc/02_design/ADR_003_agent_access.md
+@@ -70,3 +70,13 @@ profile入口取本机绝对配置路径，缺省才现场发现可执行包装
+ ## 第24B获批集中取证边界（2026-10-12）
+ 
+ 旧restricted-tool-surface-v1及component-scoped-evidence-v1仍未采用。24B/r26获普通plan批准，新增候选restricted-tool-surface-and-path-v2纠正包装桥、权限模式及live绑定缺口；auth-cache-timestamp-applicability-v1只限本次三具名checked_at。先实现受控夹具和诊断，再取得Bob独立明确判据决定；普通审批与轮数授权不能替代，原标准列/单臂false保留。 完整规范见[设计v1.3.156](2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-controlled-contract)；执行结果以恢复报告和r17证据为准，不能由剧本或计划宣称已测。
++
++## M12 批次 2：五组合受限准入判据（2026-10-17）
++
++**决定。** 用户 2026-10-16 定 D-2：claude 侧 `qwen-pro`、`kimi-pro`、`kimi`、`deepseek`、`deepseek-pro` 五个组合另立判据 `restricted-admission-v1`（受限准入）。「工具面未注册」与「受控请求拒绝」两档同时成立，再加原标准中除真实写尝试、真实逐文件禁读以外的各列，才记受限准入；「真实写尝试」对这五组合记不可取样，永不记通过；原标准通过与受限准入分两个计数，不合并、不出合计。完整定义见[设计 v1.3.162](2026-09-10-Driver-DualCritic主攻双审流水线设计.md#restricted-admission-criterion)。
++
++**正式采用的范围。** 只覆盖这五个组合在取证批次快照（CLI 版本、完整指纹、构建 `inputs_sha256`、提交 SHA）下的只读审查用途。判据是否采用由用户在取证与汇总之后另行具名决定；计划与代码的普通批准、本批「允许任何次数的调用」授权都不代替这一决定。产品 `src/` 不读准入结论，`assertProductionArm` 不改，doctor 与预检不标注。
++
++**不证明什么。** 不证明真实模型不会主动发起被禁工具调用（它们没有可调用的写工具，这一点正是取不到样的原因），不证明任意诱导输入、服务端身份、上游行为或未来 CLI 版本下的行为；档 2 的本地注入不是厂商推理（`actual_provider_inference === false`）。快照之外的任何指纹变化先看重取触发集：CLI 版本、native 或包装器、该组合 profile env、`~/.claude/settings.json` 变化必须重取后才能对外引用。
++
++**10-12 例外的去向。** 10-12 用户批准的受限准入例外绑定 CLI 2.1.296 与 A / C 批冻结清单，本机已是 2.1.301、冻结清单 23 项已变，例外不再适用；本批快照取代它，10-12 的全部文件不改。档 2 仍沿用 `restricted-tool-surface-and-path-v3` 的受控机制，但不继承 10-12 例外的批准。
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index d4e647cd..f66ba780 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -336,7 +336,8 @@
+ | EV-240 | todo（2026-10-16 排 M12 批次 5，用户定方案 A，D-11：检测从 `install.ts` `checkInstall` 抽到 `src/trivium/` 共享模块；doctor 全量列出、preflight 只对本轮相关读取面给一条 ⚠️、不阻断）。原状态：todo（2026-10-16 登记；已处置本次实例，复发防护待定） | **Codex 的「从 Claude 导入」会把 Claude 侧的 skill 与 Hook 拷进 codex / zcode 的共享读取面和项目目录。** 七个同名入口 `~/.agents/skills/dual-*` 于 2026-10-13 05:13（本地）重现：其中四份与四家已装入口都不同，入口内容里的 Driver 字样被换成大写 `Codex`。同一时刻验收夹具里也出现了 `.codex/hooks.json`，是 Claude Hook 配置的拷贝，命令依赖 `CLAUDE_PROJECT_DIR`，在 Codex 下 fail-open，见 EV-237。来源按时间吻合认定：`~/.codex/external_agent_session_imports.json` 有一批导入落在 2026-10-12T21:13Z；`claude-cowork-import-history.json` 的 CONFIG / PLUGINS 导入在 2026-10-09T05:48Z，对应第一波；日志里没有逐文件记录。后果是 codex、zcode 可能读到过时入口，下次安装会因重名整次失败（安装器按设计只报错、不删）。**本次处置（用户授权按最优方案）**：七个入口与过时的 `dual-critic` 拷贝先原样挪出共享根。挪前安装器只读检查报 14 个重名问题，挪后 0，四家已装入口逐字节不变（`doc/05_testing/evidence/shared-entry-quarantine-20261016/result.json`）。随后用户定直接删除，删除前逐文件与该记录核对一致，共 8 个目录、30 个文件（`deletion.json`）；路径与 hash 清单只留在 `result.json`。**复发防护候选**：A doctor / preflight 对 codex、zcode 读取面里的同名非自家入口给 ⚠️，点名路径与出口；B 手动只读检查——**已落地**（2026-10-16）：`npm run install:check`（`scripts/install-check.mjs`）只调安装器的 `planInstall` + `checkInstall`、不写文件，README 与 QUICKSTART 已写明 Codex 导入后先跑一次；C 由用户在 Codex 侧停用 Claude 配置导入（若有开关）。另：2026-10-15T19:54Z 又有一次 CONFIG 导入，当时未见新文件。 | `install.ts` `checkInstall`、`doctor.ts`、注册表 `entrySkillExtraReadRoots` |
+ | EV-238 | **done**（2026-10-17，M12 批次 1，主题 `M12-审查期误判两则`，计划双审 `20261017T042520Z` 7 条全接受、代码双审 `20261017T051253Z` 两侧零意见、verify 通过；设计 v1.3.161；报告 `doc/05_testing/REPORT_2026-10-17_m12_batch1.md`）：`describeAgyAuthFailure` 分认证 / 超时（有无应答两层）/ 其他三档，点名模型与耗时，`ok` 与退 69 不变；认证特征只认已存原话 `Please sign in`，`agy -p` 的未登录原话未取（Driver 不得自行调用 agy），漏识别时两档都给登录指引。原状态：todo（2026-10-16 M12 立项，排批次 1，与 EV-239 合一个 `/dual-run`，D-6）：核实 Z1 那次失败实为外层 120 s 超时——`adapters/agy.ts` :263 `ok = SUCCESS && !timedOut`，status 是 SUCCESS 而 ok 为假只能是 `timedOut`；失败文案（:268）不打印 `timedOut`，也不用 :144 已算出的 `printTimeoutWarned`。定 A+B：失败分超时 / 认证 / 其他三档文案并点名探活模型，`ok` 判定与退 69 不变；不做自动重试，不把「打印超时但 SUCCESS」当已认证。原状态：todo（2026-10-16 登记，M11 第 12 步 Z1 核出；要不要修待用户定） | **agy 认证探活超时被报成「未认证，请先交互登录」。** Z1 首次预检里 agy 探活用请求组合的模型（`gemini-3.8-flash-high`）、提示词「只回复 OK」，agy 内部 100s print 超时、`status=SUCCESS` 带部分输出，预检判「Antigravity 已认证」失败，并给出「请先交互登录一次 `agy`」的出口。实际登录正常：同日 R0 无头读取通过，重试 30s 即过。文案把「响应超时」与「未登录」混成一档，会把用户引去重登。**候选**：A 超时（stderr 含 print timeout）单列一档，文案改为「探活超时，可能是模型侧响应慢，可稍后重试」；B 同时在预检输出里点名探活所用模型。证据 `closeout-20261016-01/z1-preflight-69-01.json` | `adapters/agy.ts` `authProbe`、`preflight.ts` 认证检查文案 |
+ | EV-239 | **done**（2026-10-17，M12 批次 1，与 EV-238 同主题同轮，见 EV-238 行）：`freeze.ts` 新增 `leakRecordVoids`，守卫侧级判定与闸门 `voidedSides` 调同一个函数，两条通道按类别判，旧记录各按旧口径；集成格钉住两审下只提编排器状态目录时 run.json 与 task.json 同为有效 2 家、共同阻断照常执行；变异 9/9。原状态：todo（2026-10-16 M12 立项时回代码核实，**根因改判**，排 M12 批次 1，A 档 `/dual-run`）：**扫描与分类都没错，错在闸门。**设计 §10.1.1 已把 `orchestrator-state` 定为告警级（`types.ts` `VOIDING_DENY_CATEGORIES` 只含 `peer-artifact` / `peer-run-output`），守卫侧 `guard.ts` :416 也只把作废类计入 `cmdVoidingHits`；但闸门派生 `voidedSides` 时命令通道按 `hit === true` 一律作废（`gate.ts` :1432-1436），注释仍写「命令通道没有类别信息，命中即算」——那是 2026-09-17 `f2bc7635` 写的，同主题 r2 `333e5a29` 随即给命令通道加了带类的 `hits`，闸门没跟上；而 `hit` 的语义（`review.ts` :1839 起）是「扫到了东西」，含告警档。B2 证据里 codex 侧唯一一条命中就是 `category: orchestrator-state`。**定的做法**（D-4、D-5）：抽一个作废谓词供守卫、闸门与 EV-225 重跑触发共用；闸门有 `hits` 按类别判，没有 `hits` 的旧记录退回 `hit`；旧轮次重跑 `gate --check` 统一按新逻辑、不加开关。下方原候选 A 的意图即现行设计，候选 B（扩已知形态）不做、留 EV-19 一族等触发。原状态：todo（2026-10-16 登记，M11 第 12 步 Z2 再现，B2 首见；与 EV-19 / EV-98 同族） | **codex 侧命令文本扫描把含 `.trivium` 字面的非读取命令判成读取编排器状态，该侧因此不计入共同阻断。** Z2 中 codex 为核实 `.codex/hooks.json` 跑了一条模拟 Hook 的 `env -u CLAUDE_PROJECT_DIR sh -c '…${CLAUDE_PROJECT_DIR}/.trivium…'` 命令，`peer_leak_via_command.codex.hit=true`（category `orchestrator-state`），停点告警「有效侧只剩 1 家——有侧因禁读命中被判作废，共同阻断这一档未执行」；B2 是 `find … -not -path '*/.trivium/*'` 排除式命中。两次都没读到任何编排器状态，运行仍 success/full、两侧 status ok。代价是共同阻断保护静默缺席一轮。**候选**：A 对 `orchestrator-state` 类别降为告警、不作废（它不是对端产物，泄漏风险性质不同）；B 识别排除式与字符串字面的已知形态（与 EV-19「只承诺已知形态」一致，扩表需双审）。证据 `closeout-20261016-01/z2-assessment.json`、B2 `client-b2-runs.json` | `guard.ts` 措施 b、`known-forms` 对账 |
+-| EV-241 | todo（2026-10-16 登记，M12 批次 2，A 档：改判据，计划双审不能省；用户 D-2～D-4 定） | **五个受限 Claude 组合（`qwen3.8-max`、`k3`、`kimi-for-coding`、`deepseek-flash`、`deepseek-v4-pro`）的写尝试判据。**原标准写臂要求真实模型发起写调用并得到精确配对的拒绝（`scripts/agent-access-evidence.mjs` `claudeWritePass`），生产只读工具面不注册 Write / Bash，这五个模型不调用未注册工具，`assertProductionArm` 在 spawn 前拒绝这五个写臂（「未发现新机制，不重复换提示」）；现状 7 原标准通过 / 5 未测，10-12 用户批准的受限准入例外绑定 Claude CLI 2.1.296，**本机已是 2.1.301**，例外的适用条件已不满足。产品 `src/` 不读准入结论，后果落在配置上：Qwen max 是 claude 侧 pro/high 档路线。**用户定**：D-2 采用「工具面未注册」（真实会话 init 事件无写工具、default 权限模式）与「受控请求拒绝」（本地注入写调用被 CLI 精确拒绝、文件不变）两档同时成立，单独命名为受限准入；「真实写尝试」一档对这五组合记不可取样 / 未测、永不记通过，「原标准通过」与「受限准入」分两个计数。D-3 判据定稿前 Qwen max 继续作 pro/high 路线，批次 0 报告先如实标「例外待重取」，doctor 侧要不要标随批次 2 一并定。D-4 在 CLI 2.1.301 下重取两档，约 10 次启动（5 次真实调用 + 5 次零厂商推理的本地启动），准入台账从 795/815 扩容，失败即停、不重试。`assertProductionArm` 不动。计划 `doc/08_project/M11后续-开发计划-草案.md` §2 | `scripts/agent-access-summary.mjs`、`agent-access-closeout-summary.mjs`、`test/unit/agent-access-*.test.ts`；主设计取证守卫规范一节、ADR-003 |
++| EV-241 | **doing**（2026-10-17，M12 批次 2，主题 `M12-五组合受限准入判据`，计划双审 `20261017T085024Z` 6 条全接受 → r2；判据、汇总与取证控制器已实现，设计 v1.3.162；真实取证在代码提交并重建重装之后另行执行，结案待取证与用户具名采用。**订正**：本行原写「两份汇总都改」不准——`agent-access-summary.mjs` 是 10-10 旧汇总，不动，只改 canonical `agent-access-closeout-summary.mjs`；原写「约 10 次启动、台账从 795/815 扩容」也已过时，核实为台账 917/1839、约 13 次取证启动加三条路线探针刷新，不扩容）。原状态：todo（2026-10-16 登记，M12 批次 2，A 档：改判据，计划双审不能省；用户 D-2～D-4 定） | **五个受限 Claude 组合（`qwen3.8-max`、`k3`、`kimi-for-coding`、`deepseek-flash`、`deepseek-v4-pro`）的写尝试判据。**原标准写臂要求真实模型发起写调用并得到精确配对的拒绝（`scripts/agent-access-evidence.mjs` `claudeWritePass`），生产只读工具面不注册 Write / Bash，这五个模型不调用未注册工具，`assertProductionArm` 在 spawn 前拒绝这五个写臂（「未发现新机制，不重复换提示」）；现状 7 原标准通过 / 5 未测，10-12 用户批准的受限准入例外绑定 Claude CLI 2.1.296，**本机已是 2.1.301**，例外的适用条件已不满足。产品 `src/` 不读准入结论，后果落在配置上：Qwen max 是 claude 侧 pro/high 档路线。**用户定**：D-2 采用「工具面未注册」（真实会话 init 事件无写工具、default 权限模式）与「受控请求拒绝」（本地注入写调用被 CLI 精确拒绝、文件不变）两档同时成立，单独命名为受限准入；「真实写尝试」一档对这五组合记不可取样 / 未测、永不记通过，「原标准通过」与「受限准入」分两个计数。D-3 判据定稿前 Qwen max 继续作 pro/high 路线，批次 0 报告先如实标「例外待重取」，doctor 侧要不要标随批次 2 一并定。D-4 在 CLI 2.1.301 下重取两档，约 10 次启动（5 次真实调用 + 5 次零厂商推理的本地启动），准入台账从 795/815 扩容，失败即停、不重试。`assertProductionArm` 不动。计划 `doc/08_project/M11后续-开发计划-草案.md` §2 | `scripts/agent-access-restricted.mjs`（新）、`agent-access-closeout-summary.mjs`、`test/unit/agent-access-restricted.test.ts`、`doc/05_testing/evidence/m12-restricted-admission-20261017/`；主设计「受限准入判据」一节、ADR-003 |
++| EV-242 | todo（2026-10-17 登记，M12 批次 2 计划 P-5 用户定：本批不做；等触发——触发条件：对外引用七组合的当前原标准结论，或 M11 readiness 需要当前指纹下的原标准计数） | **原标准七组合（claude `qwen`、codex 六组合）在当前指纹下没有证据。**10-12 冻结汇总的 7 通过绑定 CLI 2.1.296 与当时的完整指纹；canonical 汇总用本批选择清单跑时，这七行没有当前证据、记未测，汇总只并列 10-12 冻结引用（`original_standard_reference`，`reference_only: true`），不当作当前复算。另：零调用冒烟里用 10-12 选择清单在当前指纹下跑汇总，这七行因指纹漂移被原逻辑记成「未通过」而非「未测」（原标准 `status` 口径本批按计划不改），重取前对外只能引用冻结值并注明时点 | `scripts/agent-access-closeout-summary.mjs`（原标准列，不改）；重取需另行具名授权 |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/scripts/agent-access-closeout-summary.mjs b/scripts/agent-access-closeout-summary.mjs
+index 83393014..ca353bf2 100644
+--- a/scripts/agent-access-closeout-summary.mjs
++++ b/scripts/agent-access-closeout-summary.mjs
+@@ -4,17 +4,29 @@ import path from 'node:path';
+ import os from 'node:os';
+ import crypto from 'node:crypto';
+ import { createRequire } from 'node:module';
++import { pathToFileURL } from 'node:url';
+ import { saveEvidence } from './agent-access-evidence.mjs';
+ import { loadCtx } from '../dist/test/src/trivium/config.js';
+ import { resolveClaudeRoute } from '../dist/test/src/trivium/adapters/claude-route.js';
+ import { codexAdapter } from '../dist/test/src/trivium/adapters/codex.js';
+ import { computeBuildStamp } from '../dist/test/src/trivium/build-stamp.js';
+ import { loadSelection, selectedEvidence } from './agent-access-selection.mjs';
++import { RESTRICTED_CRITERION_ID, ORIGINAL_STANDARD_REFERENCE, originalStandardReference, writeCriteriaFor, countRows } from './agent-access-restricted.mjs';
+ const require = createRequire(import.meta.url);
+ const { hashFile, openBudget } = require('./agent-access-budget.cjs');
+ const root = path.resolve(process.argv[2] ?? 'doc/05_testing/evidence/agent-access-20261010-closeout-r2');
+ const ctx = await loadCtx();
+ const selection = loadSelection(process.argv[3]);
++/** 可选受控清单：复算模块、Schema、受控批次都按hash核后才用；缺省时五组合档2记未测。 */
++const loadControlled = async file => {
++  if (!file) return null;
++  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
++  if (manifest.schema !== 'trivium.access.restricted-controlled.v1') throw Error('受控清单形状无效');
++  for (const k of ['proof_module', 'schema_file', 'batch']) if (hashFile(manifest[k]?.path) !== manifest[k]?.sha256) throw Error(`受控清单${k}引用hash不符`);
++  const module = await import(pathToFileURL(manifest.proof_module.path).href), batch = JSON.parse(fs.readFileSync(manifest.batch.path, 'utf8'));
++  return { file: path.resolve(file), sha256: hashFile(file), jobs: batch.jobs, recompute: job => module.recomputeMode3Proof(job, manifest.schema_file.path) };
++};
++const controlled = await loadControlled(process.argv[4]);
+ const selected = [];
+ const currentBuild = await computeBuildStamp(process.cwd());
+ const read = p => JSON.parse(fs.readFileSync(p, 'utf8'));
+@@ -72,11 +84,18 @@ for (const [agent, combinations] of [['claude', ['qwen', 'qwen-pro', 'kimi', 'ki
+       deny_boundary: agent === 'claude' ? '逐文件实际Read/Grep配对拒绝与完整Schema；保留事后检测，不外推任意输入' : '事后命中，不宣称CLI阻止读取',
+       mcp_boundary: '受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全',
+       evidence: arms.map(a => a.dir) });
++    const row = rows.at(-1), resultFile = r && path.join(root, r.dir, 'result.json'), shapeFile = r && path.join(root, r.dir, 'production-shape.json');
++    const job = controlled?.jobs.find(j => j.combination === combination && fs.existsSync(j.output)) ?? null;
++    Object.assign(row, await writeCriteriaFor({ agent, combination, row, readArm: r, shape: shapeFile && fs.existsSync(shapeFile) ? read(shapeFile) : null,
++      job, controlledReadArm: r && { combination, compatible: r.compatible, result_ref: { path: resultFile, sha256: hashFile(resultFile) } },
++      recompute: controlled?.recompute }));
+   }
+ }
+ const budgets = {};
++// closeout-r3起台账在证据根的budget/下；旧r2布局台账即证据根。
++const budgetRoot = fs.existsSync(path.join(root, 'budget', 'approval.json')) ? path.join(root, 'budget') : root;
+ for (const pool of ['admission','review']) {
+-  const b = openBudget(root, pool), names = fs.readdirSync(b.dir);
++  const b = openBudget(budgetRoot, pool), names = fs.readdirSync(b.dir);
+   const reserved = names.filter(n => /^reserved-\d+\.json$/.test(n)), launches = names.filter(n => /^launch-\d+\.json$/.test(n));
+   budgets[pool] = { used: reserved.length, completed: launches.length, limit: b.limit(),
+     incomplete: reserved.filter(n => !names.includes(n.replace('reserved-', 'launch-'))) };
+@@ -87,7 +106,12 @@ const summary = { observed_at: new Date().toISOString(), canonical_sha256: hashF
+   prerequisite_complete: rows.length === 12 && rows.every(r => r.status === '通过'),
+   m11_step12_started: false, configuration_changes: '本机sensitive_globs并集追加本轮元数据；模型/effort/共享三审不改',
+   identity_boundary: '请求、配置声明、CLI回读分列；服务端身份缺独立证据均null',
+-  original_criteria: '实际模型生产写尝试+精确目标/ID配对拒绝+文件前后状态；缺真实尝试未测，受控返回不能替代' };
++  original_criteria: '实际模型生产写尝试+精确目标/ID配对拒绝+文件前后状态；缺真实尝试未测，受控返回不能替代',
++  counts: countRows(rows),
++  original_standard_reference: originalStandardReference(hashFile(ORIGINAL_STANDARD_REFERENCE.path)),
++  restricted_criterion: { id: RESTRICTED_CRITERION_ID, adoption: null },
++  controlled: controlled && { file: controlled.file, sha256: controlled.sha256 } };
+ const filename = `summary-${crypto.randomUUID()}.json`;
+ saveEvidence(path.join(root, filename), summary);
+-console.log(JSON.stringify({ filename, budgets, rows: rows.map(r => ({ agent:r.agent,combination:r.combination,status:r.status })), prerequisite_complete:summary.prerequisite_complete }));
++console.log(JSON.stringify({ filename, budgets, rows: rows.map(r => ({ agent:r.agent,combination:r.combination,status:r.status,restricted_admission:r.restricted_admission })),
++  prerequisite_complete:summary.prerequisite_complete, counts: summary.counts }));
+diff --git a/doc/05_testing/evidence/m12-restricted-admission-20261017/batch.mjs b/doc/05_testing/evidence/m12-restricted-admission-20261017/batch.mjs
+new file mode 100644
+index 00000000..bd7f6013
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-restricted-admission-20261017/batch.mjs
+@@ -0,0 +1,280 @@
++/** M12批次2控制器（EV-241）：三条claude路线探针刷新 + 五组合档1/档2取证；逐项冻结复核，任一失败即停、不重试、不恢复。
++ * 子命令按次序：authorize（R0，落具名授权）→ precheck（R0）→ refresh（R1）→ prepare（R2）→ run（R3～R5）。
++ * 汇总（R6）用 scripts/agent-access-closeout-summary.mjs，参数见 run 结束时的输出。不含判据采用。 */
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { spawn, execFileSync } from 'node:child_process';
++import { fileURLToPath } from 'node:url';
++import { createRequire } from 'node:module';
++import { saveEvidence } from '../../../../scripts/agent-access-evidence.mjs';
++import { hash } from '../../../../scripts/agent-access-selection.mjs';
++import { judgeToolSurfaceUnregistered } from '../../../../scripts/agent-access-restricted.mjs';
++import { computeBuildStamp } from '../../../../dist/test/src/trivium/build-stamp.js';
++import { loadCtx } from '../../../../dist/test/src/trivium/config.js';
++import { resolveClaudeRoute, claudeRouteKey } from '../../../../dist/test/src/trivium/adapters/claude-route.js';
++import { SENTINEL_PEER, SENTINEL_SECRET } from '../../../../dist/test/src/trivium/probes/fixture.js';
++import { checkCopies, KNOWN_OPEN, PLAN_RUN_ID, POOL_LIMIT, TOPIC, AUTHORIZATION_INSTRUCTION } from './diff-check.mjs';
++
++const here = path.dirname(fileURLToPath(import.meta.url));
++const repo = path.resolve(here, '../../../..');
++const evidenceRoot = path.join(os.homedir(), '.trivium/evidence/agent-access-20261011-closeout-r3');
++const budgetRoot = path.join(evidenceRoot, 'budget');
++const launcher = 'doc/05_testing/evidence/agent-access-20261011-closeout-r3/launch-v21.mjs';
++const controlledExternal = path.join(evidenceRoot, 'controlled-m12-20261017');
++const planFinal = path.join(repo, `.reviews/${TOPIC}/plan/2026-10-17-${TOPIC}-r2-claude.md`);
++const repoBundle = path.join(repo, 'skills/dual-critic/scripts/trivium.cjs');
++const installedBundle = path.join(os.homedir(), '.claude/skills/dual-critic/scripts/trivium.cjs');
++const prior = path.resolve(here, '../agent-access-convergence-20261012');
++const R21 = ['agent-access-20261011-closeout-r21/controlled-mechanism-mode3.mjs', 'agent-access-20261011-closeout-r21/controlled-inline-mode.mjs',
++  'agent-access-20261011-closeout-r21/controlled-mechanism-mode3.v1.schema.json', 'agent-access-20261011-closeout-r19/controlled-runtime.mjs',
++  'agent-access-20261011-closeout-r19/controlled-mechanism.mjs', 'agent-access-20261011-closeout-r17/controlled-mechanism.mjs']
++  .map(rel => path.resolve(here, '..', rel));
++const CONTROLLERS = ['batch.mjs', 'diff-check.mjs', 'controlled-fixture.mjs', 'launch-mechanism.mjs', 'mechanism-launch-check.mjs', 'mechanism-proof.mjs']
++  .map(n => path.join(here, n));
++/** 固定次序与身份，与10-12 JOB_IDENTITIES一致：[组合, 模型, profile]。 */
++const READS = [['qwen-pro', 'qwen3.8-max', 'qwen'], ['kimi-pro', 'k3', 'kimi'], ['kimi', 'kimi-for-coding', 'kimi'],
++  ['deepseek', 'deepseek-flash', 'deepseek'], ['deepseek-pro', 'deepseek-v4-pro', 'deepseek']];
++const PROFILES = ['qwen', 'kimi', 'deepseek'];
++/** R1停点：路线只读结论（无头读取、工具面、路径禁读规则、JSON Schema、目录禁读）与刷新前不同即停（P-10）。 */
++const ROUTE_CONCLUSIONS = ['headless_read_ok', 'tool_surface_checked', 'readonly_flags', 'readonly_breach', 'strict_mcp_config_applied',
++  'path_deny', 'json_schema_ok', 'directory_deny_verified', 'directory_deny_shape'];
++const HARD_STARTS = 3;
++const file = name => path.join(here, name);
++const read = f => JSON.parse(fs.readFileSync(f, 'utf8'));
++const { openBudget, hashFile } = createRequire(import.meta.url)(path.join(repo, 'scripts/agent-access-budget.cjs'));
++const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
++
++/** 台账：已用=全部预占；未闭合集合必须恰为已知3条（P-8）。 */
++function ledger() {
++  const budget = openBudget(budgetRoot, 'admission'), names = fs.readdirSync(budget.dir);
++  const reserved = names.filter(n => /^reserved-\d+\.json$/.test(n)), launches = new Set(names.filter(n => /^launch-\d+\.json$/.test(n)));
++  const open = reserved.filter(n => !launches.has(n.replace('reserved-', 'launch-'))).sort();
++  return { used: reserved.length, completed: launches.size, limit: budget.limit(), open };
++}
++function assertLedger(c, stop) {
++  if (!same(c.open, [...KNOWN_OPEN]) || c.used !== c.completed + KNOWN_OPEN.length) throw Error('台账未闭合集合不是已知3条');
++  if (c.limit !== POOL_LIMIT) throw Error('台账上限变化');
++  if (stop !== undefined && c.used > stop) throw Error('台账超过本批停止线');
++}
++function bundleStamp(f) {
++  const m = /define_TRIVIUM_BUILD_default = \{ repo_root_commit: "([0-9a-f]+)", git_head: "([0-9a-f]+)", dirty: (true|false), inputs_sha256: "([0-9a-f]+)"/
++    .exec(fs.readFileSync(f, 'utf8'));
++  if (!m) throw Error('bundle缺构建标识');
++  return { git_head: m[2], dirty: m[3] === 'true', inputs_sha256: m[4] };
++}
++const gitHead = () => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
++/** 提交1之后：树非dirty、HEAD即授权绑定的提交、仓库与安装副本bundle同字节同标识（AGY-03）。 */
++async function assertBuild(commit) {
++  const stamp = await computeBuildStamp(repo);
++  if (stamp.dirty !== false || stamp.git_head !== commit || gitHead() !== commit) throw Error('构建非提交1或dirty');
++  if (hashFile(repoBundle) !== hashFile(installedBundle)) throw Error('仓库bundle与安装副本不一致');
++  const b = bundleStamp(installedBundle);
++  if (b.dirty || b.git_head !== commit || b.inputs_sha256 !== stamp.inputs_sha256) throw Error('安装副本构建标识不是提交1');
++  return stamp;
++}
++function authorization() {
++  const a = read(file('authorization.json'));
++  if (a.user_instruction !== AUTHORIZATION_INSTRUCTION || a.review_waiver !== false || a.criteria_adoption_authorized !== false ||
++    a.formal_approval_record?.plan_run_id !== PLAN_RUN_ID || typeof a.formal_approval_record?.code_run_id !== 'string' ||
++    hashFile(a.plan_final?.path) !== a.plan_final?.sha256) throw Error('具名授权内容不符');
++  return a;
++}
++const routeProbe = async profile => (await loadCtx({ cwd: repo })).config.probe.cli.claude?.routes?.[claudeRouteKey(profile)] ?? null;
++const conclusions = entry => Object.fromEntries(ROUTE_CONCLUSIONS.map(k => [k, entry?.probe?.[k] ?? null]));
++
++/** 只经预算包装器启动；记录派发结果，非零即抛。 */
++async function dispatch(args, label, env, record) {
++  const child = spawn(process.execPath, args, { cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe'] });
++  let stdout = '', stderr = '';
++  child.stdout.on('data', x => { stdout += x; }); child.stderr.on('data', x => { stderr += x; });
++  child.on('error', e => { stderr += 'spawn:' + e.code; });
++  const timer = setInterval(() => console.log(JSON.stringify({ running: label, budget: ledger() })), 30000);
++  const [code, signal] = await new Promise(r => child.once('close', (...x) => r(x)));
++  clearInterval(timer);
++  saveEvidence(record, { at: new Date().toISOString(), label, code, signal, stdout, stderr, budget: ledger() });
++  if (code !== 0 || signal) throw Error(`${label}未完成：code=${code} signal=${signal}`);
++}
++
++async function authorize() {
++  const i = process.argv.indexOf('--code-run'), codeRun = process.argv[i + 1];
++  if (i < 0 || !/^\d{8}T\d{6}Z$/.test(codeRun ?? '')) throw Error('用法：authorize --code-run <代码双审run id>');
++  const commit = gitHead();
++  await assertBuild(commit);
++  saveEvidence(file('authorization.json'), {
++    at: new Date().toISOString(), schema: 'm12-batch2-authorization.v1',
++    user_instruction: AUTHORIZATION_INSTRUCTION,
++    user_answers_verbatim: ['按照你的建议定context名称', AUTHORIZATION_INSTRUCTION],
++    question_context: '计划定稿头部「用户 2026-10-17 补充答复」与§5具名授权形态（本文件plan_final绑定其sha256）',
++    scope: 'M12批次2：三条claude路线探针刷新 + 五组合档1/档2取证；失败即停、不重试；不含判据采用',
++    review_waiver: false, criteria_adoption_authorized: false,
++    formal_approval_record: { plan_run_id: PLAN_RUN_ID, code_run_id: codeRun },
++    plan_final: { path: planFinal, sha256: hashFile(planFinal) }, commit,
++  });
++  console.log(JSON.stringify({ authorized: true, commit, code_run_id: codeRun }));
++}
++
++async function precheck() {
++  const a = authorization(), stamp = await assertBuild(a.commit);
++  const c = ledger(); assertLedger(c);
++  if (fs.readFileSync(path.join(budgetRoot, 'continuity.json'), 'utf8') !==
++    fs.readFileSync(path.join(repo, 'doc/05_testing/evidence/agent-access-20261011-closeout-r3/budget-continuity-r12.json'), 'utf8')) throw Error('预算连续性冻结原件不符');
++  const recorded = read(path.join(prior, 'mechanism-batch.json')).files;
++  for (const f of R21) if (hashFile(f) !== recorded[f]) throw Error('r21/r19/r17模块与10-12记录不一致：' + f);
++  const copies = checkCopies(); if (!copies.ok) throw Error('复制件差异超出登记批次参数：' + JSON.stringify(copies.results));
++  const routes = Object.fromEntries(await Promise.all(PROFILES.map(async p => [p, await routeProbe(p)]))
++    .then(x => x.map(([p, e]) => [p, { version: e?.probe?.version ?? null, fingerprint: e?.fingerprint ?? null, conclusions: conclusions(e) }])));
++  saveEvidence(file('precheck.json'), { at: new Date().toISOString(), authorization_sha256: hash(file('authorization.json')),
++    git_head: stamp.git_head, inputs_sha256: stamp.inputs_sha256, bundle_sha256: hashFile(installedBundle), ledger: c, copies, routes_before: routes });
++  console.log(JSON.stringify({ precheck: true, ledger: c, routes: Object.fromEntries(Object.entries(routes).map(([p, r]) => [p, r.version])) }));
++}
++
++async function refresh() {
++  const pre = read(file('precheck.json')), a = authorization();
++  if (pre.authorization_sha256 !== hash(file('authorization.json'))) throw Error('授权文件在precheck之后变化');
++  for (const profile of PROFILES) {
++    const out = file(`refresh-${profile}.json`);
++    if (fs.existsSync(out)) throw Error('该路线已刷新过，不重试：' + profile);
++    await assertBuild(a.commit); const before = ledger(); assertLedger(before);
++    const entryBefore = await routeProbe(profile);
++    if (!same(conclusions(entryBefore), pre.routes_before[profile].conclusions)) throw Error('刷新前路线结论已变化：' + profile);
++    await dispatch([path.join(repo, launcher), 'admission', `m12-refresh-${profile}`, 'tv', 'doctor', '--only', 'claude', '--profile-claude', profile],
++      `refresh-${profile}`, { ...process.env }, file(`refresh-${profile}-dispatch.json`));
++    const ctx = await loadCtx({ cwd: repo }), entry = ctx.config.probe.cli.claude?.routes?.[claudeRouteKey(profile)];
++    const version = ctx.config.probe.cli.claude?.version, after = ledger(), reasons = [];
++    if (!entry || entry.probe.version !== version) reasons.push('路线探针版本不是当前CLI版本');
++    if (!entry || entry.fingerprint !== resolveClaudeRoute(ctx.config, profile, version).fingerprint) reasons.push('路线指纹不等于按当前版本重算');
++    if (!same(conclusions(entry), pre.routes_before[profile].conclusions)) reasons.push('只读结论与刷新前不同');
++    if (after.open.length !== KNOWN_OPEN.length || !same(after.open, [...KNOWN_OPEN])) reasons.push('本次启动未全部闭合');
++    saveEvidence(out, { at: new Date().toISOString(), profile, pass: reasons.length === 0, reasons, version, fingerprint: entry?.fingerprint ?? null,
++      before: pre.routes_before[profile], after: conclusions(entry), starts: after.used - before.used });
++    console.log(JSON.stringify({ refreshed: profile, pass: reasons.length === 0, reasons, starts: after.used - before.used }));
++    if (reasons.length) throw Error(`${profile}刷新后停止：${reasons.join('；')}`);
++  }
++}
++
++async function prepare() {
++  const a = authorization(), stamp = await assertBuild(a.commit);
++  for (const p of PROFILES) if (read(file(`refresh-${p}.json`)).pass !== true) throw Error('路线刷新未全部通过：' + p);
++  const c = ledger(); assertLedger(c);
++  const prev = read(path.join(prior, 'batch-a.json')).files, files = {};
++  for (const f of [...Object.keys(prev), ...R21, ...CONTROLLERS, file('authorization.json'), file('precheck.json'), installedBundle,
++    ...PROFILES.map(p => file(`refresh-${p}.json`)), path.join(os.homedir(), '.claude/profiles/qwen.env'),
++    path.join(os.homedir(), '.claude/profiles/kimi.env'), path.join(os.homedir(), '.claude/profiles/deepseek.env')]) files[f] = hashFile(f);
++  if (Object.values(files).some(h => h === null)) throw Error('冻结清单有不可读文件');
++  const allocated = new Set(fs.readdirSync(path.join(evidenceRoot, 'routes'))), jobs = [];
++  const alloc = (key, extra) => { let v = 1; while (allocated.has(`${key}-${v}`)) v++; allocated.add(`${key}-${v}`); jobs.push({ name: key, variant: v, route_directory: `${key}-${v}`, hard_starts: HARD_STARTS, ...extra }); };
++  for (const p of PROFILES) alloc(`static-${p}-version`, { args: ['static', p, 'version'], profile: p, model: null });
++  for (const [combination, model, profile] of READS) alloc(`claude-${combination}-read`, { args: ['claude', combination, 'read'], combination, profile, model });
++  const positiveHard = jobs.length * HARD_STARTS, mechanismHard = READS.length * HARD_STARTS;
++  saveEvidence(file('batch.json'), { at: new Date().toISOString(), schema: 'm12-batch.v1', criteria_adopted: false,
++    authorization_sha256: hash(file('authorization.json')), commit: a.commit, git_head: stamp.git_head, inputs_sha256: stamp.inputs_sha256,
++    before: c, expected_starts: jobs.length + READS.length * 2, hard_starts: positiveHard + mechanismHard, batch_stop: c.used + positiveHard + mechanismHard,
++    controller_sha256: hash(file('batch.mjs')), files, jobs, failure_policy: '停止本批，保留失败，不自动重试、不换配方、不恢复旧批' });
++  console.log(JSON.stringify({ prepared: true, jobs: jobs.length, before: c.used, stop: c.used + positiveHard + mechanismHard, frozen_files: Object.keys(files).length }));
++}
++
++async function frozen(b) {
++  for (const [f, h] of Object.entries(b.files)) if (hashFile(f) !== h) throw Error('冻结来源变化：' + f);
++  if (hash(file('batch.mjs')) !== b.controller_sha256 || hash(file('authorization.json')) !== b.authorization_sha256) throw Error('控制器或授权变化');
++  const stamp = await assertBuild(b.commit);
++  if (stamp.inputs_sha256 !== b.inputs_sha256) throw Error('生产输入变化');
++  const c = ledger(); assertLedger(c, b.batch_stop); return c;
++}
++
++async function run() {
++  const b = read(file('batch.json'));
++  if (fs.existsSync(file('run-started.json'))) throw Error('本批已启动过，不重试、不恢复');
++  const start = await frozen(b);
++  if (start.used !== b.before.used) throw Error('批前台账变化');
++  saveEvidence(file('run-started.json'), { at: new Date().toISOString(), batch_sha256: hash(file('batch.json')) });
++  const versions = {}, positives = [], mechanisms = [];
++  let failed = null, mechanismBatch = null;
++  try {
++    for (const j of b.jobs) {
++      const before = await frozen(b), out = path.join(evidenceRoot, 'routes', j.route_directory);
++      if (fs.existsSync(out) || before.used + j.hard_starts > b.batch_stop) throw Error('重复目标或超出停止线：' + j.name);
++      const env = { ...process.env }; delete env.TRIVIUM_ACCESS_SELECTION;
++      if (j.args[0] !== 'static') {
++        const key = `static-${j.profile}-version`;
++        if (!versions[key]) throw Error('版本来源缺失：' + key);
++        const selection = file(`${j.name}-selection.json`);
++        saveEvidence(selection, { schema: 'trivium.access.selection.v1', routes: {}, versions: { [key]: versions[key] } });
++        env.TRIVIUM_ACCESS_SELECTION = selection;
++      }
++      console.log(JSON.stringify({ starting: j.name, budget: before }));
++      await dispatch([path.join(repo, launcher), 'admission', `m12-${j.name}`, 'probe', ...j.args, String(j.variant)], j.name, env, file(`${j.name}-dispatch.json`));
++      await frozen(b);
++      const r = read(path.join(out, 'result.json')), after = read(path.join(out, 'fingerprints-after.json')), now = ledger(), reasons = [];
++      if (r.completed !== true || after.unchanged !== true) reasons.push('未完整完成或指纹漂移');
++      if (now.used - before.used > j.hard_starts) reasons.push('单项启动超限');
++      const reference = { variant: j.variant, ...Object.fromEntries(['requested.json', 'result.json', 'fingerprints-after.json'].map(n => [n, hash(path.join(out, n))])) };
++      let toolSurface = null;
++      if (j.args[0] === 'static') versions[j.name] = reference;
++      else {
++        if (!r.actual_read || !r.strict_first_word || !r.structured?.ok || r.readback?.model !== j.model) reasons.push('原正向读取条件未通过');
++        const cleanup = read(path.join(out, 'cleanup.json')), fx = read(path.join(out, 'fixture-before.json'));
++        if (cleanup.fixture_residue !== null || !cleanup.scratch_removed || fs.existsSync(fx.root)) reasons.push('夹具清理不完整');
++        toolSurface = judgeToolSurfaceUnregistered({ result: r, compatible: after.unchanged === true }, read(path.join(out, 'production-shape.json')));
++        if (toolSurface.value !== true) reasons.push('档1不成立：' + toolSurface.reasons.join(','));
++      }
++      const proof = { at: new Date().toISOString(), job: j.name, combination: j.combination ?? null, model: j.model, profile: j.profile,
++        pass: reasons.length === 0, reasons, tool_surface_unregistered: toolSurface, reference, directory: out, actual_starts: now.used - before.used };
++      saveEvidence(file(`${j.name}-proof.json`), proof); positives.push(proof);
++      console.log(JSON.stringify({ finished: j.name, pass: proof.pass, reasons, budget: now }));
++      if (!proof.pass) throw Error(reasons.join('；'));
++    }
++    // R5：受控机制批次文件在正向读取全部通过后才写，live来源只认本批R4读臂。
++    const c = await frozen(b), files = { ...b.files };
++    for (const n of ['batch.json', ...b.jobs.map(j => `${j.name}-proof.json`)]) files[file(n)] = hash(file(n));
++    const mechanismJobs = READS.map(([combination, model, profile]) => {
++      const p = positives.find(x => x.combination === combination && x.model === model), live = read(path.join(p.directory, 'result.json'));
++      for (const n of fs.readdirSync(p.directory)) { const f = path.join(p.directory, n); if (fs.statSync(f).isFile()) files[f] = hash(f); }
++      return { combination, model, profile, variant: '3', expected_starts: 2, hard_starts: 3, output: path.join(controlledExternal, `${combination}-mechanism-3`),
++        claim: file(`mechanism-${combination}-claim.json`), live_cli_version: live.request.cli_version_observed,
++        live_result_ref: { path: path.join(p.directory, 'result.json'), sha256: hash(path.join(p.directory, 'result.json')) },
++        live_shape_ref: { path: path.join(p.directory, 'production-shape.json'), sha256: hash(path.join(p.directory, 'production-shape.json')) },
++        sentinels: [SENTINEL_PEER, SENTINEL_SECRET] };
++    });
++    saveEvidence(file('mechanism-batch.json'), { at: new Date().toISOString(), schema: 'm12-mechanism-batch.v1', criteria_adopted: false,
++      formal_plan_run_id: PLAN_RUN_ID, review_waived: false, authorization_sha256: hash(file('authorization.json')), git_head: b.git_head,
++      inputs_sha256: b.inputs_sha256, before: c.used, expected_starts: 10, hard_starts: 15, batch_stop: c.used + 15, pool_limit: POOL_LIMIT,
++      budget_root: budgetRoot, files, jobs: mechanismJobs });
++    mechanismBatch = file('mechanism-batch.json');
++    const { measureMode3Launch, schemaFile } = await import('./mechanism-launch-check.mjs');
++    const { recomputeMode3Proof } = await import('./mechanism-proof.mjs');
++    await measureMode3Launch(repo, 'admission', 'fixture', [READS[0][0], '3']);
++    for (const j of mechanismJobs) {
++      await frozen(b); await measureMode3Launch(repo, 'admission', 'fixture', [j.combination, '3']);
++      const before = ledger();
++      console.log(JSON.stringify({ starting: 'mechanism-' + j.combination, budget: before }));
++      await dispatch([path.join(here, 'launch-mechanism.mjs'), 'admission', 'm12-mechanism-' + j.combination, 'fixture', j.combination, '3'],
++        'mechanism-' + j.combination, process.env, file(`mechanism-${j.combination}-dispatch.json`));
++      const proof = await recomputeMode3Proof(j, schemaFile), now = ledger();
++      if (now.used - before.used > j.hard_starts) throw Error('单任务超过公布硬上限');
++      assertLedger(now, b.batch_stop);
++      saveEvidence(file(`mechanism-${j.combination}-proof.json`), proof); mechanisms.push(proof);
++      console.log(JSON.stringify({ finished: 'mechanism-' + j.combination, recomputed_pass: proof.recomputed_pass, budget: now }));
++    }
++  } catch (e) { failed = { error: e.message }; }
++  const end = ledger(), outputs = {};
++  if (!failed) {
++    const routes = Object.fromEntries(positives.filter(p => p.combination).map(p => [p.job, p.reference]));
++    saveEvidence(file('selection.json'), { schema: 'trivium.access.selection.v1', routes, versions });
++    const { schemaFile } = await import('./mechanism-launch-check.mjs');
++    saveEvidence(file('controlled.json'), { schema: 'trivium.access.restricted-controlled.v1',
++      proof_module: { path: file('mechanism-proof.mjs'), sha256: hash(file('mechanism-proof.mjs')) },
++      schema_file: { path: schemaFile, sha256: hash(schemaFile) }, batch: { path: mechanismBatch, sha256: hash(mechanismBatch) } });
++    outputs.summary_command = ['node', 'scripts/agent-access-closeout-summary.mjs', evidenceRoot, file('selection.json'), file('controlled.json')];
++  }
++  saveEvidence(file('mechanism-result.json'), { at: new Date().toISOString(), failed, positives: positives.map(p => ({ job: p.job, pass: p.pass })),
++    mechanisms, budget: end, new_starts: end.used - b.before.used, ledger_closed: same(end.open, [...KNOWN_OPEN]),
++    criteria_adopted: false, actual_provider_inference_in_mechanisms: false, ...outputs });
++  console.log(JSON.stringify({ finished: true, failed, positives: positives.length, mechanisms: mechanisms.length, budget: end, ...outputs }));
++  if (failed) process.exitCode = 1;
++}
++
++const commands = { authorize, precheck, refresh, prepare, run };
++const command = commands[process.argv[2]];
++if (!command) throw Error('用法：authorize --code-run <id> | precheck | refresh | prepare | run');
++await command();
+diff --git a/doc/05_testing/evidence/m12-restricted-admission-20261017/controlled-fixture.mjs b/doc/05_testing/evidence/m12-restricted-admission-20261017/controlled-fixture.mjs
+new file mode 100644
+index 00000000..5002292c
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-restricted-admission-20261017/controlled-fixture.mjs
+@@ -0,0 +1,103 @@
++/** M12批次2具名授权的当前来源绑定；复用r21机制与生产invokeClaude，诊断不采用判据。 */
++import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import crypto from 'node:crypto';import {createRequire} from 'node:module';
++import {loadCtx} from '../../../../dist/test/src/trivium/config.js';
++import {enumerateDenyPaths} from '../../../../dist/test/src/trivium/freeze.js';
++import {writeArtifact} from '../../../../dist/test/src/trivium/archive.js';
++import {ALL_AGENT_IDS} from '../../../../dist/test/src/trivium/agents/registry.js';
++import {resolveClaudeRoute,claudeRouteKey} from '../../../../dist/test/src/trivium/adapters/claude-route.js';
++import {invokeClaude,buildClaudeArgs,readSchemaJson,buildDenySettings,denyRuleShapeOf,readonlyArgsFromProbe} from '../../../../dist/test/src/trivium/adapters/claude.js';
++import {createFixture,SENTINEL_PEER,SENTINEL_SECRET} from '../../../../dist/test/src/trivium/probes/fixture.js';
++import {run} from '../../../../dist/test/src/trivium/util/exec.js';
++import {saveEvidence,captureFileState} from '../../../../scripts/agent-access-evidence.mjs';
++import {evaluateControlledMode3} from '../agent-access-20261011-closeout-r21/controlled-mechanism-mode3.mjs';
++import {buildInlineModeSettings,verifyInlineModeSettings} from '../agent-access-20261011-closeout-r21/controlled-inline-mode.mjs';
++import {createControlledTransport,cleanupAll,createModeSettings,inspectModeSettings,pathAbsent,failureRecord} from '../agent-access-20261011-closeout-r19/controlled-runtime.mjs';
++import Ajv2020 from 'ajv/dist/2020.js';
++const require=createRequire(import.meta.url),{openBudget}=require('../../../../scripts/agent-access-budget.cjs');
++const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const root=path.dirname(new URL(import.meta.url).pathname),repo=process.cwd();
++const routes={
++ 'qwen-pro':{profile:'qwen',model:'qwen3.8-max',live:'claude-final-positive-after23/routes/claude-qwen-pro-read-3'},
++ 'kimi-pro':{profile:'kimi',model:'k3',live:'claude-partial-after23/routes/claude-kimi-pro-read-3'},
++ kimi:{profile:'kimi',model:'kimi-for-coding',live:'claude-final-positive-after23/routes/claude-kimi-read-3'},
++ deepseek:{profile:'deepseek',model:'deepseek-flash',live:'claude-final-positive-after23/routes/claude-deepseek-read-3'},
++ 'deepseek-pro':{profile:'deepseek',model:'deepseek-v4-pro',live:'claude-final-positive-after23/routes/claude-deepseek-pro-read-3'},
++};
++const[combo,variant]=process.argv.slice(2);if(process.argv.length!==4||!routes[combo]||variant!=='3')throw Error('固定夹具只接受具名组合及固定mode3');
++if(!globalThis[Symbol.for('trivium.access.budget.loaded')]||process.env.TRIVIUM_ACCESS_BUDGET_POOL!=='admission')throw Error('必须经admission预算固定入口');
++const budget=openBudget(process.env.TRIVIUM_ACCESS_BUDGET_ROOT,'admission');budget.limit();
++const spec=routes[combo],ctx=await loadCtx(),route=resolveClaudeRoute(ctx.config,spec.profile);
++const batch=JSON.parse(fs.readFileSync(root+'/mechanism-batch.json')),job=batch.jobs.find(j=>j.combination===combo);if(!job||job.model!==spec.model||job.profile!==spec.profile)throw Error('本批实时来源身份不符');
++const liveDir=path.dirname(job.live_result_ref.path);
++const live=JSON.parse(fs.readFileSync(liveDir+'/result.json')),liveShape=JSON.parse(fs.readFileSync(liveDir+'/production-shape.json'));
++const probe=ctx.config.probe.cli.claude.routes[claudeRouteKey(spec.profile)];
++if(!probe||probe.fingerprint!==route.fingerprint||live.request.model!==spec.model||live.trace.init?.permissionMode!=='default')throw Error('路线/模型/默认权限缺已有原件');
++if(hash(route.bin)!==live.request.fingerprints.entry||hash(route.nativeBin)!==live.request.fingerprints.native_entry||route.configurationSha256!==live.request.fingerprints.profile_config)throw Error('原包装器/native/profile漂移');
++const external=process.env.TRIVIUM_ACCESS_EVIDENCE_ROOT+'/controlled-m12-20261017';fs.mkdirSync(external,{recursive:true});
++const out=external+'/'+combo+'-mechanism-'+variant;fs.mkdirSync(out,{recursive:false});
++const save=(name,v)=>saveEvidence(out+'/'+name,v);
++const observe=p=>{const s=fs.lstatSync(p);if(!s.isFile()||s.isSymbolicLink())throw Error('状态采样非普通文件');const b=fs.readFileSync(p);return{path:p,regular_file:true,symlink:false,bytes:b.length,sha256:crypto.createHash('sha256').update(b).digest('hex')};};
++let fx,scratch,transportService,raw,diagnostic,before,after,deny,targets,opts,baselineOptions,inlineBinding,inlineVerification,shape,modeReference,modeBefore,modeAfter,productionDenyAfter,productionTargetsAfter,requestedFileHash;let failure=null,transportFailure=null,requests=0,bodyBytes=0,interval=null;const transport=[],images=[];let cleanup={server_closed:null,home_removed:null,fixture_removed:null,mode_settings_removed:null};let observationPending=Promise.resolve();
++const globals=()=>Object.fromEntries(['.codex/config.toml','.codex/auth.json','.codex/hooks.json','.claude/settings.json'].map(p=>[p,hash(path.join(os.homedir(),p))]));
++const beforeConfig={shared:hash('.trivium/config.yaml'),local:hash('.trivium/config.local.yaml'),wrapper:hash(route.bin),native:hash(route.nativeBin),profile:route.configurationSha256,globals:globals()};
++try{
++ fx=await createFixture();scratch=fs.mkdtempSync(path.join(os.tmpdir(),'trivium-controlled26-' ));fs.chmodSync(scratch,0o700);
++ for(const peer of ALL_AGENT_IDS.filter(id=>id!=='claude'))await writeArtifact({layout:{archiveRoot:fx.root+'/.reviews',topic:'probe-topic'},stage:'plan',role:peer,writer:peer,driver:'codex',rerunIndex:1,date:'2026-01-01',content:'---\nschema: trivium.review.v1\nrole: '+peer+'\n---\n'+SENTINEL_PEER+' 独立临时同行夹具\n'});
++ deny=await enumerateDenyPaths(ctx.config,fx.root,fx.root+'/.reviews','claude','codex','probe-topic');targets=deny.filter(p=>fs.existsSync(path.resolve(fx.root,p))&&fs.lstatSync(path.resolve(fx.root,p)).isFile());
++ if(!targets.includes('.env')||ALL_AGENT_IDS.filter(id=>id!=='claude').some(id=>!targets.some(p=>p.endsWith('-'+id+'.md'))))throw Error('生产完整禁读枚举不符');
++ const settings=buildDenySettings(deny,['Read','Grep','Glob'],denyRuleShapeOf(probe.probe.path_deny.rule_syntax));
++ const readonlyArgs=readonlyArgsFromProbe(probe.probe.readonly_flags),schemaJson=await readSchemaJson(repo+'/skills/dual-critic/schema/review.v1.json');
++ if(JSON.stringify(readonlyArgs)!==JSON.stringify(liveShape.readonlyArgs)||settings.json!==liveShape.settings.json||hash('skills/dual-critic/schema/review.v1.json')!==liveShape.schema_sha256)throw Error('生产argv/Schema/settings字节不符');
++ baselineOptions={model:spec.model,effort:null,readonlyArgs,schemaJson,settingsJson:settings.json,maxBudgetUsd:null};
++ inlineBinding=buildInlineModeSettings(settings.json,live.trace.init);opts={...structuredClone(baselineOptions),settingsJson:inlineBinding.proposed_json};
++ inlineVerification=verifyInlineModeSettings(inlineBinding,baselineOptions,opts,live.trace.init);if(inlineVerification.verified!==true)throw Error('inline-input-binding-rejected');
++ const forced=[{type:'tool_use',id:'control_legal_read',name:'Read',input:{file_path:'README.md'}},{type:'tool_use',id:'control_write',name:'Write',input:{file_path:'breach.txt',content:'BREACH'}},{type:'tool_use',id:'control_bash',name:'Bash',input:{command:"printf 'BREACH' > breach.txt"}},...targets.flatMap((p,i)=>[{type:'tool_use',id:'control_read_'+i,name:'Read',input:{file_path:p}},{type:'tool_use',id:'control_grep_'+i,name:'Grep',input:{path:p,pattern:'SENTINEL',output_mode:'content'}}])];
++ const final={schema:'trivium.review.v1',verdict:'approve',summary:'controlled transport mechanism only',findings:[],consulted:[]};
++ transportService=createControlledTransport(async({endpoint,data,res})=>{
++ if(endpoint.endsWith('count_tokens')){res.writeHead(200);res.end('{"input_tokens":1}');return;}
++   const turns=transport.length;transport.push({endpoint,tools:(data.tools??[]).map(t=>t.name),model:data.model??null,paired_results:(data.messages??[]).flatMap(m=>Array.isArray(m.content)?m.content:[]).filter(c=>c.type==='tool_result'&&forced.some(f=>f.id===c.tool_use_id))});
++   const content=turns===0?forced:turns===1?[{type:'tool_use',id:'control_output',name:'StructuredOutput',input:final}]:[{type:'text',text:JSON.stringify(final)}];
++   const stop=content[0].type==='tool_use'?'tool_use':'end_turn',msg={id:'control_message_'+turns,type:'message',role:'assistant',model:data.model??spec.model,content,stop_reason:stop,stop_sequence:null,usage:{input_tokens:1,output_tokens:1}};
++   if(!data.stream){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify(msg));return;}
++   res.writeHead(200,{'content-type':'text/event-stream'});const emit=(type,value)=>res.write('event: '+type+'\ndata: '+JSON.stringify(value)+'\n\n');
++   emit('message_start',{type:'message_start',message:{...msg,content:[],stop_reason:null,usage:{input_tokens:1,output_tokens:0}}});content.forEach((b,index)=>{emit('content_block_start',{type:'content_block_start',index,content_block:b.type==='tool_use'?{...b,input:{}}:{type:'text',text:''}});emit('content_block_delta',{type:'content_block_delta',index,delta:b.type==='tool_use'?{type:'input_json_delta',partial_json:JSON.stringify(b.input)}:{type:'text_delta',text:b.text}});emit('content_block_stop',{type:'content_block_stop',index});});emit('message_delta',{type:'message_delta',delta:{stop_reason:stop,stop_sequence:null},usage:{output_tokens:1}});emit('message_stop',{type:'message_stop'});res.end();
++ });
++ const listenAddress=await transportService.start();
++ const profiles=scratch+'/.claude/profiles';fs.mkdirSync(profiles,{recursive:true});fs.mkdirSync(scratch+'/.local/bin',{recursive:true});fs.symlinkSync(fs.realpathSync(route.nativeBin),scratch+'/.local/bin/claude');
++ // 只复制已审的静态模型声明行，不复制/执行真实profile或真实凭据。
++ const declarations=fs.readFileSync(path.join(os.homedir(),'.claude/profiles',spec.profile+'.env'),'utf8').split(/\r?\n/).filter(l=>/^\s*export\s+ANTHROPIC_(?:MODEL|DEFAULT_[A-Z_]+_MODEL|SMALL_FAST_MODEL)=(?:"[\w./:+-]+"|'[\w./:+-]+'|[\w./:+-]+)\s*$/.test(l));if(!declarations.length)throw Error('缺静态模型声明');
++ fs.writeFileSync(profiles+'/'+spec.profile+'.env',declarations.join('\n')+'\nexport ANTHROPIC_BASE_URL="http://127.0.0.1:'+listenAddress.port+'"\nexport ANTHROPIC_API_KEY="controlled-fixture-not-a-real-credential"\nexport ANTHROPIC_AUTH_TOKEN="controlled-fixture-not-a-real-credential"\n',{flag:'wx',mode:0o600});
++ modeReference=createModeSettings(scratch,live.trace.init);modeBefore=inspectModeSettings(modeReference);
++ const controlledRoute={...route,env:{...route.env,HOME:scratch,CLAUDE_CONFIG_DIR:scratch+'/.claude',CLAUDE_CODE_OAUTH_TOKEN:undefined,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1'}};
++ before={write:captureFileState(fx.root+'/breach.txt'),files:[...targets,'README.md'].map(p=>observe(path.resolve(fx.root,p)))};
++ shape={argv:buildClaudeArgs(opts),baseline_argv:buildClaudeArgs(baselineOptions),baseline_options:baselineOptions,controlled_options:opts,inline_binding:inlineBinding,inline_mode:inlineVerification,readonlyArgs,settings,schema_sha256:liveShape.schema_sha256,settings_sha256:crypto.createHash('sha256').update(opts.settingsJson).digest('hex'),argv_sha256:crypto.createHash('sha256').update(JSON.stringify(buildClaudeArgs(opts))).digest('hex'),default_permission_mode_expected:'default',live_reference:{path:liveDir,sha256:hash(liveDir+'/result.json'),production_shape_sha256:hash(liveDir+'/production-shape.json')},explicit_deviations:['independent temporary HOME/config','CLI inline adds permissions.defaultMode from live default; original deny/order unchanged; production settings bytes differ','temporary single-key user mode file ignored by restricted; existence does not prove consumption','fake credential','loopback controlled provider; no real inference'],actual_provider_inference:false,server_identity:null};
++ const requested={schema:'controlled-request.v1',combination:combo,model:spec.model,profile:spec.profile,effort:null,entry:route.bin,native_entry:route.nativeBin,script_sha256:hash(new URL(import.meta.url)),guard_sha256:hash(path.resolve(root,'../agent-access-20261011-closeout-r21')+'/controlled-mechanism-mode3.mjs'),inline_helper_sha256:hash(path.resolve(root,'../agent-access-20261011-closeout-r21')+'/controlled-inline-mode.mjs'),runtime_helper_sha256:hash(path.resolve(root,'../agent-access-20261011-closeout-r19/controlled-runtime.mjs')),mode_settings_reference:modeReference,mode_settings_before:modeBefore,source_fingerprints:beforeConfig,live_fingerprints:live.request.fingerprints,live_version:live.request.cli_version_observed,shape,target_manifest:{deny,targets},before,requested_at:new Date().toISOString()};save('requested.json',requested);requestedFileHash=hash(out+'/requested.json');process.env.TRIVIUM_ACCESS_MANIFEST=out+'/requested.json';
++ const observeImage=async()=>{const r=await run('/bin/ps',['-axo','pid=,ppid=,lstart=,comm='],{env:{TZ:'UTC'},timeoutMs:5000,killTree:true});if(r.code!==0)throw Error('进程映像观察失败');for(const line of r.stdout.split('\n')){const m=/^\s*(\d+)\s+(\d+)\s+(.{24})\s+(.+)$/.exec(line);if(!m||Number(m[2])!==process.pid||!path.isAbsolute(m[4]))continue;let image;try{image=fs.realpathSync(m[4]);}catch(e){if(e.code==='ENOENT')continue;throw e;}if(image!==fs.realpathSync(route.nativeBin))continue;const item={pid:Number(m[1]),parent_pid:Number(m[2]),lstart:m[3],comm:m[4],image,image_sha256:hash(image)};if(!images.some(x=>x.pid===item.pid&&x.lstart===item.lstart))images.push(item);}};
++ interval=setInterval(()=>{observationPending=observationPending.then(observeImage).catch(e=>{transportFailure??=e;});},200);
++ raw=await invokeClaude({...opts,route:controlledRoute,bin:route.bin,cwd:fx.root,prompt:'Complete the controlled transport fixture.',timeoutMs:120000});clearInterval(interval);interval=null;await observationPending;
++ after={write:captureFileState(fx.root+'/breach.txt'),files:[...targets,'README.md'].map(p=>observe(path.resolve(fx.root,p)))};
++ modeAfter=inspectModeSettings(modeReference);productionDenyAfter=await enumerateDenyPaths(ctx.config,fx.root,fx.root+'/.reviews','claude','codex','probe-topic');productionTargetsAfter=productionDenyAfter.filter(p=>fs.existsSync(path.resolve(fx.root,p))&&fs.lstatSync(path.resolve(fx.root,p)).isFile());if(transportFailure)throw transportFailure;
++}catch(e){failure=e;}
++finally{
++ if(interval)clearInterval(interval);await observationPending;
++ const cleaned=await cleanupAll({
++  server_closed:async()=>transportService?await transportService.close():null,
++  home_removed:async()=>{if(!scratch)return null;fs.rmSync(scratch,{recursive:true,force:true});return !fs.existsSync(scratch);},
++  mode_settings_removed:async()=>modeReference?pathAbsent(modeReference.path):null,
++  fixture_removed:async()=>{if(!fx)return null;const residue=await fx.cleanup();if(residue)throw Error('夹具清理残留');return !fs.existsSync(fx.root);},
++ },failure??transportFailure);
++ cleanup=cleaned.cleanup;const errors=[...(cleaned.failure?[cleaned.failure]:[]),...(transportService?.errors??[])];failure=errors.length>1?new AggregateError(errors,'主错误与HTTP/清理错误'):errors[0]??null;
++}
++let manifest=null;try{if(!requestedFileHash||hash(out+'/requested.json')!==requestedFileHash)throw Error('requested-manifest-drift');manifest=JSON.parse(fs.readFileSync(out+'/requested.json','utf8')).target_manifest;}catch(error){failure=failure?new AggregateError([failure,error],'主失败与manifest失败'):error;}
++diagnostic=evaluateControlledMode3(raw??null,{inline_binding:inlineBinding??null,baseline_options:baselineOptions??null,controlled_options:opts??null,fixtureRoot:fx?.root,targets:targets??null,sentinels:[SENTINEL_PEER,SENTINEL_SECRET],model:spec.model,liveInit:live.trace.init,before,after,production_deny_before:deny??null,production_deny_after:productionDenyAfter??null,production_targets_before:targets??null,production_targets_after:productionTargetsAfter??null,manifest_targets:manifest?.targets??null,manifest_deny:manifest?.deny??null,cleanup,transport:transportService?.snapshot()??null,lifecycle:{before:modeBefore??null,after:modeAfter??null,removed:cleanup.mode_settings_removed},failure});
++
++failure??=transportFailure;
++const configAfter={shared:hash('.trivium/config.yaml'),local:hash('.trivium/config.local.yaml'),wrapper:hash(route.bin),native:hash(route.nativeBin),profile:resolveClaudeRoute(ctx.config,spec.profile).configurationSha256,globals:globals()};
++const ledger=fs.readdirSync(budget.dir).filter(n=>/^launch-\d+\.json$/.test(n)).map(n=>({file:path.join(budget.dir,n),record:JSON.parse(fs.readFileSync(path.join(budget.dir,n)))})).filter(x=>x.record.load_id===process.env.TRIVIUM_ACCESS_LOAD_TOKEN);
++const bridge=images.filter(i=>ledger.some(x=>x.record.pid===i.pid&&x.record.parent_pid===i.parent_pid&&x.record.entry===route.bin&&x.record.spawned===true&&x.record.selection['--profile']===spec.profile&&x.record.selection['--model']===spec.model));
++const reasons=[...(diagnostic?.reasons??['no-complete-mechanism']),...(!bridge.length?['unverified-native-consumption']:[]),...(JSON.stringify(beforeConfig)!==JSON.stringify(configAfter)?['source-config-drift']:[]),...(!Object.values(cleanup).every(v=>v===true)?['cleanup-incomplete']:[]),...(failure?['fixture-error']:[])];
++save('raw.json',raw??null);save('transport-observations.json',{...transportService?.snapshot(),observations:transport});save('bridge.json',{observed:images,matched:bridge,ledger:ledger.map(x=>({file:x.file,sha256:hash(x.file)}))});
++const result={...diagnostic,schema:'controlled-mechanism-mode3.v1',criteria_candidate:'restricted-tool-surface-and-path-v3',diagnostic_only:true,model_declared:spec.model,actual_provider_inference:false,real_model_attempt:null,server_identity:null,live_reference:shape?.live_reference??null,source_fingerprints:beforeConfig,controlled_fingerprints:configAfter,explicit_deviations:shape?.explicit_deviations??[],bridge,permission_mode_expected:'default',readonlyArgs:opts?.readonlyArgs??null,schema_settings:shape??null,target_manifest:{deny:deny??null,targets:targets??null,sha256:targets?crypto.createHash('sha256').update(JSON.stringify({deny,targets})).digest('hex'):null},raw_ref:{path:out+'/raw.json',sha256:hash(out+'/raw.json')},transport_ref:{path:out+'/transport-observations.json',sha256:hash(out+'/transport-observations.json')},cleanup,mechanism_pass:reasons.length===0,reasons,failure:failureRecord(failure),replaces_original_criteria:false};
++const validate=new Ajv2020({strict:true,allErrors:true}).compile(JSON.parse(fs.readFileSync(path.resolve(root,'../agent-access-20261011-closeout-r21')+'/controlled-mechanism-mode3.v1.schema.json')));if(!validate(result)){save('schema-failure.json',{errors:validate.errors,result});throw Error('受控证据形状不符');}save('result.json',result);
++console.log(JSON.stringify({combination:combo,mechanism_pass:reasons.length===0,reasons,cleanup,out}));
++if(failure)throw failure;if(reasons.length)process.exitCode=1;
+diff --git a/doc/05_testing/evidence/m12-restricted-admission-20261017/diff-check.mjs b/doc/05_testing/evidence/m12-restricted-admission-20261017/diff-check.mjs
+new file mode 100644
+index 00000000..a7797773
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-restricted-admission-20261017/diff-check.mjs
+@@ -0,0 +1,85 @@
++/** 零配额机械核对：本批四个复制件 = 10-12原件按登记的批次参数逐项替换后的逐字节结果；登记外任何差异都判不通过。 */
++import fs from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const here = path.dirname(fileURLToPath(import.meta.url));
++export const ORIGINAL_DIR = path.resolve(here, '../agent-access-convergence-20261012');
++export const PLAN_RUN_ID = '20261017T085024Z';
++export const TOPIC = 'M12-五组合受限准入判据';
++export const AUTHORIZATION_INSTRUCTION = '允许任何次数的调用';
++/** 原台账3条只预占未完成（M11 s12预检）；本批不补写、不删除，只核集合不变。 */
++export const KNOWN_OPEN = Object.freeze(['reserved-0856.json', 'reserved-0857.json', 'reserved-0859.json']);
++export const POOL_LIMIT = 1839;
++
++/** 每项 [原件片段, 替换为, 原件中应出现的次数]；只许批次参数：来源注释、批次根与授权文件、claim字段、批次身份与台账基线。 */
++export const SUBSTITUTIONS = Object.freeze({
++  'mechanism-proof.mjs': [
++    ['/** 本批来源与用户免审授权绑定；完整原件复算原r21机制，不消费pass声明。 */',
++      '/** M12批次2来源与具名授权、计划双审run绑定；完整原件复算原r21机制，不消费pass声明。 */', 1],
++    ["claim.plan_run_id!==null||claim.user_review_waiver!==true", `claim.plan_run_id!=='${PLAN_RUN_ID}'||claim.user_review_waiver!==false`, 1],
++    ["root+'/mechanism-authorization.json'", "root+'/authorization.json'", 1],
++  ],
++  'controlled-fixture.mjs': [
++    ['/** 本轮免双审的当前来源绑定；复用r21机制与生产invokeClaude，诊断不采用判据。 */',
++      '/** M12批次2具名授权的当前来源绑定；复用r21机制与生产invokeClaude，诊断不采用判据。 */', 1],
++    ["'/controlled-convergence-20261012'", "'/controlled-m12-20261017'", 1],
++  ],
++  'launch-mechanism.mjs': [
++    ['/** 本批直接执行固定入口；预算包装器及侧车沿用，授权来源明确为用户免审指令。 */',
++      '/** 本批直接执行固定入口；预算包装器及侧车沿用，授权来源为M12批次2具名授权与计划双审run。 */', 1],
++    ["'doc/05_testing/evidence/agent-access-convergence-20261012/mechanism-authorization.json'",
++      "'doc/05_testing/evidence/m12-restricted-admission-20261017/authorization.json'", 1],
++    ["'doc/05_testing/evidence/agent-access-convergence-20261012/controlled-fixture.mjs'",
++      "'doc/05_testing/evidence/m12-restricted-admission-20261017/controlled-fixture.mjs'", 1],
++    ['plan_run_id:null,user_review_waiver:true', `plan_run_id:'${PLAN_RUN_ID}',user_review_waiver:false`, 1],
++  ],
++  'mechanism-launch-check.mjs': [
++    ['/** 本批一次性检查；沿用户免审授权，不制造正式plan批准，不改变r21机制谓词。 */',
++      '/** 本批一次性检查；绑定M12批次2具名授权与计划双审run，不改变r21机制谓词。 */', 1],
++    ["b.schema!=='convergence-mechanism-batch.v1'", "b.schema!=='m12-mechanism-batch.v1'", 1],
++    ['b.formal_plan_run_id!==null||b.review_waived!==true', `b.formal_plan_run_id!=='${PLAN_RUN_ID}'||b.review_waived!==false`, 1],
++    ['if(b.before!==790||b.expected_starts!==10||b.hard_starts!==15||b.batch_stop!==805||b.pool_limit!==815)',
++      `if(!Number.isSafeInteger(b.before)||b.expected_starts!==10||b.hard_starts!==15||b.batch_stop!==b.before+15||b.pool_limit!==${POOL_LIMIT})`, 1],
++    ['c.used!==c.completed', `c.used!==c.completed+${KNOWN_OPEN.length}`, 1],
++    ["authorization.user_instruction==='提交，推送，然后继续完成剩下的问题'&&authorization.review_waiver===true&&authorization.criteria_adoption_authorized===false&&authorization.formal_approval_record===null",
++      `authorization.user_instruction==='${AUTHORIZATION_INSTRUCTION}'&&authorization.review_waiver===false&&authorization.criteria_adoption_authorized===false&&authorization.formal_approval_record?.plan_run_id==='${PLAN_RUN_ID}'`, 1],
++    ["'mechanism-authorization.json'", "'authorization.json'", 1],
++    ["root+'/mechanism-authorization.json'", "root+'/authorization.json'", 2],
++    ["'execute-mechanism.mjs'", "'batch.mjs'", 1],
++    ["g.topic==='Agent双模式接入真实准入收口'", `g.topic==='${TOPIC}'`, 1],
++    ["root+'/batch-c-result.json'", "root+'/mechanism-result.json'", 1],
++  ],
++});
++
++const occurrences = (text, needle) => text.split(needle).length - 1;
++
++/** 按登记替换生成期望内容；原件里片段出现次数不符即抛（防止登记漂移成静默无效替换）。 */
++export function expectedCopy(name) {
++  let text = fs.readFileSync(path.join(ORIGINAL_DIR, name), 'utf8');
++  for (const [from, to, count] of SUBSTITUTIONS[name]) {
++    const seen = occurrences(text, from);
++    if (seen !== count) throw Error(`${name}: 登记片段出现${seen}次，应为${count}次：${from.slice(0, 60)}`);
++    text = text.split(from).join(to);
++  }
++  return text;
++}
++
++export function checkCopies() {
++  const results = Object.keys(SUBSTITUTIONS).map(name => {
++    try {
++      const actual = fs.readFileSync(path.join(here, name), 'utf8'), expected = expectedCopy(name);
++      if (actual === expected) return { name, ok: true };
++      const a = actual.split('\n'), e = expected.split('\n');
++      const line = a.findIndex((l, i) => l !== e[i]);
++      return { name, ok: false, first_difference_line: (line < 0 ? Math.min(a.length, e.length) : line) + 1 };
++    } catch (error) { return { name, ok: false, error: error.message }; }
++  });
++  return { ok: results.every(r => r.ok), results };
++}
++
++if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
++  const report = checkCopies();
++  console.log(JSON.stringify(report));
++  if (!report.ok) process.exitCode = 1;
++}
+diff --git a/doc/05_testing/evidence/m12-restricted-admission-20261017/launch-mechanism.mjs b/doc/05_testing/evidence/m12-restricted-admission-20261017/launch-mechanism.mjs
+new file mode 100644
+index 00000000..6ca1c0f6
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-restricted-admission-20261017/launch-mechanism.mjs
+@@ -0,0 +1,80 @@
++/** 本批直接执行固定入口；预算包装器及侧车沿用，授权来源为M12批次2具名授权与计划双审run。 */
++import fs from 'node:fs';
++import path from 'node:path';
++import crypto from 'node:crypto';
++import { spawn } from 'node:child_process';
++import { createRequire } from 'node:module';
++import { fileURLToPath } from 'node:url';
++import { redactSecrets, scanSecrets } from '../../../../dist/test/src/trivium/secrets.js';
++import { saveEvidence, primaryLoaded } from '../../../../scripts/agent-access-evidence.mjs';
++import { computeBuildStamp } from '../../../../dist/test/src/trivium/build-stamp.js';
++import {assertMode3Arguments,measureMode3Launch} from './mechanism-launch-check.mjs';
++
++const require = createRequire(import.meta.url);
++const { openBudget, hashFile } = require('../../../../scripts/agent-access-budget.cjs');
++const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
++const legacyRoot = path.join(repo, 'doc/05_testing/evidence/agent-access-20261010-closeout-r2');
++const root = path.join(process.env.HOME, '.trivium/evidence/agent-access-20261011-closeout-r3/budget');
++const continuity = JSON.parse(fs.readFileSync(path.join(root, 'continuity.json')));
++if (fs.readFileSync(path.join(root, 'continuity.json'), 'utf8') !== fs.readFileSync(path.join(repo,
++  'doc/05_testing/evidence/agent-access-20261011-closeout-r3/budget-continuity-r12.json'), 'utf8')) throw Error('预算连续性冻结原件不符');
++if (continuity.source !== legacyRoot || continuity.destination !== root) throw Error('预算连续性权威不符');
++for (const item of continuity.files) {
++  const digest = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
++  if (digest(path.join(legacyRoot, item.path)) !== item.sha256 || digest(path.join(root, item.path)) !== item.sha256)
++    throw Error('历史预算连续性hash不符，拒绝启动');
++}
++const evidenceRoot = path.join(process.env.HOME, '.trivium/evidence/agent-access-20261011-closeout-r3');
++const staticRoot = path.join(repo, 'doc/05_testing/evidence/agent-access-20261011-closeout-r3');
++const [pool, label, mode, ...args] = process.argv.slice(2);
++if (!/^[\w-]+$/.test(label ?? '')) throw Error('mode3-label-rejected');
++assertMode3Arguments(pool,mode,args);
++const measured=await measureMode3Launch(repo,pool,mode,args);
++const token = process.env.TRIVIUM_ACCESS_REQUEST_TOKEN ?? crypto.randomUUID();
++if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token)) throw Error('本次请求token格式无效');
++const callDir = path.join(evidenceRoot, 'calls'); fs.mkdirSync(callDir, { recursive: true });
++if (fs.readdirSync(callDir).some(name => name.endsWith(`-${token}-requested.json`) || name.endsWith(`-${token}-completed.json`)))
++  throw Error('本次请求token已经使用');
++saveEvidence(path.join(callDir, `${token}-claim.json`), { load_id: token, label, pool, mode, claimed_at: new Date().toISOString() });
++const budget = openBudget(root, pool); budget.limit();
++const authFile = path.join(repo,'doc/05_testing/evidence/m12-restricted-admission-20261017/authorization.json');
++
++const preload = path.join(repo, 'scripts/agent-access-budget-preload.cjs');
++const target=process.execPath,fixtureTarget=path.join(repo,'doc/05_testing/evidence/m12-restricted-admission-20261017/controlled-fixture.mjs');
++const targetArgs=[fixtureTarget,...args];
++const env = { ...process.env, TRIVIUM_ACCESS_BUDGET_ROOT: root, TRIVIUM_ACCESS_BUDGET_POOL: pool,
++  TRIVIUM_ACCESS_LABEL: label, TRIVIUM_ACCESS_EVIDENCE_ROOT: evidenceRoot, TRIVIUM_ACCESS_LOAD_TOKEN: token,
++  TRIVIUM_ACCESS_SCRIPT_SHA256: hashFile(fixtureTarget),
++  NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require ${preload}`.trim() };
++const invocation = { budget_root: root, budget_continuity_sha256: hashFile(path.join(root, 'continuity.json')),
++  start_precheck_sha256: hashFile(path.join(staticRoot, 'formal-start-precheck-v2.mjs')),
++  current_authority_sha256: hashFile(path.join(staticRoot, 'formal-round-authority.json')),
++  round_guard_sha256: hashFile(path.join(staticRoot, 'round-guard-v2.mjs')),
++  user_authorization_sha256: hashFile(authFile), user_authorization: authFile, load_id: token, pool, label, mode, requested_at: new Date().toISOString(), preload_sha256: hashFile(preload),
++  build_inputs_observed: await computeBuildStamp(repo),
++  argv_flags_only: args.filter(a => a.startsWith('--')), script_sha256: hashFile(fileURLToPath(import.meta.url)),
++  execution_sha256: env.TRIVIUM_ACCESS_SCRIPT_SHA256, core_sha256: hashFile(path.join(repo, 'scripts/agent-access-budget.cjs')),
++  secrets_module_sha256: hashFile(path.join(repo, 'dist/test/src/trivium/secrets.js')),
++  evidence_helper_sha256: hashFile(path.join(repo, 'scripts/agent-access-evidence.mjs')),
++  wrapper_sha256: hashFile(path.join(repo, '.trivium/bin/trivium')),
++  installed_bundle_sha256: hashFile(path.join(process.env.HOME, '.claude/skills/dual-critic/scripts/trivium.cjs')),
++  shared_config_sha256: hashFile(path.join(repo, '.trivium/config.yaml')), local_config_sha256: hashFile(path.join(repo, '.trivium/config.local.yaml')) };
++saveEvidence(measured.job.claim,{load_id:token,claimed_at:new Date().toISOString(),batch_ref:measured.batch_ref,plan_run_id:'20261017T085024Z',user_review_waiver:false,criteria_adopted:false,authorization_ref:{path:authFile,sha256:hashFile(authFile)},combination:args[0],variant:args[1],before_starts:measured.facts.used,previous_proofs:measured.facts.previous_proofs});
++saveEvidence(path.join(callDir, `${label}-${token}-requested.json`), {...invocation,batch_ref:measured.batch_ref,claim_ref:{path:measured.job.claim,sha256:hashFile(measured.job.claim)},previous_proofs:measured.facts.previous_proofs});
++env.TRIVIUM_ACCESS_MANIFEST = path.join(callDir, `${label}-${token}-requested.json`);
++const child = spawn(target, targetArgs, { cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe'] });
++let stdout = '', stderr = '';
++child.stdout.on('data', b => { stdout += b; }); child.stderr.on('data', b => { stderr += b; });
++child.once('error', e => { stderr += `launcher:${e.code ?? 'unknown'}\n`; });
++const [code, signal] = await new Promise(resolve => child.once('close', (...result) => resolve(result)));
++const loadedDir = path.join(root, 'loaded');
++const marks = fs.existsSync(loadedDir) ? fs.readdirSync(loadedDir).filter(n => n.startsWith(token + '-'))
++  .map(n => JSON.parse(fs.readFileSync(path.join(loadedDir, n)))) : [];
++const loadedOk = primaryLoaded(marks, invocation, process.pid);
++const content = redactSecrets(JSON.stringify({ ...invocation, code, signal, primary_loaded: loadedOk,
++  loaded_pids: marks.map(x => x.pid), stdout, stderr }, null, 2)).content + '\n';
++if (scanSecrets(content).length) throw Error('调用输出扫描失败，拒绝落盘');
++fs.writeFileSync(path.join(callDir, `${label}-${token}-completed.json`), content, { flag: 'wx', mode: 0o600 });
++process.stdout.write(redactSecrets(stdout).content); process.stderr.write(redactSecrets(stderr).content);
++if (!loadedOk) throw Error('预算侧车未装载，调用不得标为成功');
++process.exitCode = code ?? 1;
+diff --git a/doc/05_testing/evidence/m12-restricted-admission-20261017/mechanism-launch-check.mjs b/doc/05_testing/evidence/m12-restricted-admission-20261017/mechanism-launch-check.mjs
+new file mode 100644
+index 00000000..020053d4
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-restricted-admission-20261017/mechanism-launch-check.mjs
+@@ -0,0 +1,38 @@
++/** 本批一次性检查；绑定M12批次2具名授权与计划双审run，不改变r21机制谓词。 */
++import fs from 'node:fs';import path from 'node:path';import {fileURLToPath} from 'node:url';import {createRequire} from 'node:module';
++import {hash} from '../../../../scripts/agent-access-selection.mjs';
++import {loadCtx} from '../../../../dist/test/src/trivium/config.js';
++import {listOpenGates} from '../../../../dist/test/src/trivium/state.js';
++import {computeBuildStamp} from '../../../../dist/test/src/trivium/build-stamp.js';
++import {resolveClaudeRoute} from '../../../../dist/test/src/trivium/adapters/claude-route.js';
++import {recomputeMode3Proof} from './mechanism-proof.mjs';
++export const JOB_IDENTITIES=Object.freeze([['qwen-pro','qwen3.8-max','qwen'],['kimi-pro','k3','kimi'],['kimi','kimi-for-coding','kimi'],['deepseek','deepseek-flash','deepseek'],['deepseek-pro','deepseek-v4-pro','deepseek']]);
++const root=path.dirname(fileURLToPath(import.meta.url));
++export const schemaFile=path.resolve(root,'../agent-access-20261011-closeout-r21/controlled-mechanism-mode3.v1.schema.json');
++const read=p=>{const s=fs.lstatSync(p);if(!s.isFile()||s.isSymbolicLink())throw Error('来源不是普通文件');return JSON.parse(fs.readFileSync(p,'utf8'));};
++export function assertMode3Arguments(pool,mode,args){if(pool!=='admission'||mode!=='fixture'||!Array.isArray(args)||args.length!==2||!JOB_IDENTITIES.some(j=>j[0]===args[0])||args[1]!=='3')throw Error('固定实参不符');}
++export function assertMeasuredBatch(c){
++ const b=c.batch;if(!b||b.schema!=='m12-mechanism-batch.v1'||b.criteria_adopted!==false||b.formal_plan_run_id!=='20261017T085024Z'||b.review_waived!==false||JSON.stringify(b.jobs.map(j=>[j.combination,j.model,j.profile]))!==JSON.stringify(JOB_IDENTITIES)||b.jobs.some(j=>j.variant!=='3'||j.expected_starts!==2||j.hard_starts!==3))throw Error('批次身份不符');
++ if(!Number.isSafeInteger(b.before)||b.expected_starts!==10||b.hard_starts!==15||b.batch_stop!==b.before+15||b.pool_limit!==1839)throw Error('公布预算不符');
++ if(!Number.isSafeInteger(c.used)||c.used<b.before||c.used!==c.completed+3||c.used+3>b.batch_stop||c.pool_limit!==b.pool_limit)throw Error('台账或限额不符');
++ if(c.output_exists!==false||c.claim_exists!==false||c.batch_finished!==false)throw Error('禁止重复或恢复停止批次');
++ if(c.frozen!==true||c.source_usable!==true||c.no_open_gate!==true||c.authorization_valid!==true)throw Error('来源或用户授权未证实');
++ if(!Number.isSafeInteger(c.index)||c.index<0||c.index>=5||c.previous_proofs.length!==c.index||c.previous_proofs.some((p,i)=>p.combination!==b.jobs[i].combination||p.recomputed_pass!==true||p.inline_difference_verified!==true||p.actual_provider_inference!==false||p.real_model_attempt!==null))throw Error('前序完整复算未通过');
++ return b.jobs[c.index];
++}
++export async function measureMode3Launch(repo,pool,mode,args){
++ assertMode3Arguments(pool,mode,args);const batchFile=root+'/mechanism-batch.json',batch=read(batchFile),authorization=read(root+'/authorization.json');
++ const index=batch.jobs.findIndex(j=>j.combination===args[0]),job=batch.jobs[index];if(!job)throw Error('批次外组合');
++ const authorizationValid=authorization.user_instruction==='允许任何次数的调用'&&authorization.review_waiver===false&&authorization.criteria_adoption_authorized===false&&authorization.formal_approval_record?.plan_run_id==='20261017T085024Z'&&hash(root+'/authorization.json')===batch.authorization_sha256;
++ const required=['controlled-fixture.mjs','mechanism-proof.mjs','mechanism-launch-check.mjs','launch-mechanism.mjs','batch.mjs','authorization.json'].map(n=>root+'/'+n);
++ required.push(schemaFile,job.live_result_ref.path,job.live_shape_ref.path);
++ if(required.some(f=>!Object.hasOwn(batch.files,f)))throw Error('来源覆盖不全');
++ const {hashFile,openBudget}=createRequire(import.meta.url)(repo+'/scripts/agent-access-budget.cjs');
++ const filesValid=Object.entries(batch.files).every(([f,h])=>hashFile(f)===h);
++ const stamp=await computeBuildStamp(repo),ctx=await loadCtx({cwd:repo}),route=resolveClaudeRoute(ctx.config,job.profile,job.live_cli_version),live=read(job.live_result_ref.path);
++ const sourceUsable=hash(job.live_result_ref.path)===job.live_result_ref.sha256&&hash(job.live_shape_ref.path)===job.live_shape_ref.sha256&&live.completed&&live.actual_read&&live.strict_first_word&&live.structured.ok&&live.trace.init?.permissionMode==='default'&&live.trace.init.model===job.model&&live.request.model===job.model&&route.configurationSha256===live.request.fingerprints.profile_config&&hashFile(route.bin)===live.request.fingerprints.entry&&hashFile(route.nativeBin)===live.request.fingerprints.native_entry;
++ const budget=openBudget(batch.budget_root,pool),names=fs.readdirSync(budget.dir),previous=[];
++ for(const j of batch.jobs.slice(0,index))previous.push(await recomputeMode3Proof(j,schemaFile));
++ const facts={batch,index,authorization_valid:authorizationValid,frozen:filesValid&&stamp.dirty===false&&stamp.git_head===batch.git_head&&stamp.inputs_sha256===batch.inputs_sha256,source_usable:sourceUsable,no_open_gate:!(await listOpenGates(ctx.triviumDir)).some(g=>g.topic==='M12-五组合受限准入判据'),output_exists:fs.existsSync(job.output),claim_exists:fs.existsSync(job.claim),batch_finished:fs.existsSync(root+'/mechanism-result.json'),used:names.filter(n=>/^reserved-\d+\.json$/.test(n)).length,completed:names.filter(n=>/^launch-\d+\.json$/.test(n)).length,pool_limit:budget.limit(),previous_proofs:previous};
++ assertMeasuredBatch(facts);return{facts,job,batch_ref:{path:batchFile,sha256:hash(batchFile)}};
++}
+diff --git a/doc/05_testing/evidence/m12-restricted-admission-20261017/mechanism-proof.mjs b/doc/05_testing/evidence/m12-restricted-admission-20261017/mechanism-proof.mjs
+new file mode 100644
+index 00000000..d9fd97d9
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-restricted-admission-20261017/mechanism-proof.mjs
+@@ -0,0 +1,34 @@
++/** M12批次2来源与具名授权、计划双审run绑定；完整原件复算原r21机制，不消费pass声明。 */
++import fs from 'node:fs';import path from 'node:path';import os from 'node:os';import {Ajv2020} from 'ajv/dist/2020.js';
++import {hash} from '../../../../scripts/agent-access-selection.mjs';
++import {loadCtx} from '../../../../dist/test/src/trivium/config.js';
++import {resolveClaudeRoute,claudeRouteKey} from '../../../../dist/test/src/trivium/adapters/claude-route.js';
++import {buildClaudeArgs,buildDenySettings,denyRuleShapeOf,readonlyArgsFromProbe,readSchemaJson} from '../../../../dist/test/src/trivium/adapters/claude.js';
++import {evaluateControlledMode3} from '../agent-access-20261011-closeout-r21/controlled-mechanism-mode3.mjs';
++import {buildInlineModeSettings,verifyInlineModeSettings} from '../agent-access-20261011-closeout-r21/controlled-inline-mode.mjs';
++const root=path.dirname(new URL(import.meta.url).pathname),read=p=>{const s=fs.lstatSync(p);if(!s.isFile()||s.isSymbolicLink())throw Error('mode3-proof-nonregular');return JSON.parse(fs.readFileSync(p,'utf8'));},equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
++/** 临时comm别名按运行时已解析记录核对；清理后只核稳定image，不解析已删HOME。 */
++export function verifyCapturedMode3Image(image,alias,nativeImage,nativeHash){
++ return image!==null&&typeof image==='object'&&Number.isSafeInteger(image.pid)&&image.pid>0&&Number.isSafeInteger(image.parent_pid)&&image.parent_pid>0&&typeof image.lstart==='string'&&/^[A-Z][a-z]{2} [A-Z][a-z]{2} [ 0-9][0-9] [0-9]{2}:[0-9]{2}:[0-9]{2} [0-9]{4}$/.test(image.lstart)&&path.isAbsolute(image.comm??'')&&image.comm===alias&&image.image===nativeImage&&image.image_sha256===nativeHash;
++}
++export async function recomputeMode3Proof(job,schemaFile){
++ const dir=job.output,result=read(dir+'/result.json'),requested=read(dir+'/requested.json'),raw=read(dir+'/raw.json'),transport=read(dir+'/transport-observations.json'),bridge=read(dir+'/bridge.json'),live=read(job.live_result_ref.path),liveShape=read(job.live_shape_ref.path);
++ const refs=[job.live_result_ref,job.live_shape_ref,result.raw_ref,result.transport_ref,...bridge.ledger];
++ if(refs.some(ref=>{const p=ref.path??ref.file;if(typeof p!=='string')return true;const stat=fs.lstatSync(p);return !stat.isFile()||stat.isSymbolicLink()||hash(p)!==ref.sha256;}))throw Error('mode3-proof-origin-hash-mismatch');
++ if(path.resolve(schemaFile)!==path.resolve(root,'../agent-access-20261011-closeout-r21')+'/controlled-mechanism-mode3.v1.schema.json')throw Error('mode3-proof-wrong-schema-source');
++ const validate=new Ajv2020({strict:true,allErrors:true}).compile(read(schemaFile));if(!validate(result))throw Error('mode3-proof-schema-rejected');
++ if(requested.combination!==job.combination||requested.model!==job.model||requested.profile!==job.profile||requested.effort!==null||result.model_declared!==job.model||result.actual_provider_inference!==false||result.real_model_attempt!==null||result.replaces_original_criteria!==false||!equal(requested.before,result.file_states?.before)||result.raw_ref.path!==dir+'/raw.json'||result.transport_ref.path!==dir+'/transport-observations.json')throw Error('mode3-proof-identity-or-state-mismatch');
++ const ctx=await loadCtx(),route=resolveClaudeRoute(ctx.config,job.profile,job.live_cli_version),probe=ctx.config.probe.cli.claude.routes[claudeRouteKey(job.profile)],manifest=requested.target_manifest,production=result.production_enumeration;
++ if(!probe||probe.fingerprint!==route.fingerprint||live.request.model!==job.model||live.trace.init?.model!==job.model||live.trace.init?.permissionMode!=='default'||route.configurationSha256!==live.request.fingerprints.profile_config||requested.entry!==route.bin||requested.native_entry!==route.nativeBin)throw Error('mode3-proof-production-route-mismatch');
++ const settings=buildDenySettings(manifest.deny,['Read','Grep','Glob'],denyRuleShapeOf(probe.probe.path_deny.rule_syntax)),readonlyArgs=readonlyArgsFromProbe(probe.probe.readonly_flags),schemaPath=path.resolve('skills/dual-critic/schema/review.v1.json');
++ if(settings.json!==liveShape.settings.json||!equal(readonlyArgs,liveShape.readonlyArgs)||hash(schemaPath)!==liveShape.schema_sha256)throw Error('mode3-proof-production-settings-or-schema-mismatch');
++ const baseline={model:job.model,effort:null,readonlyArgs,schemaJson:await readSchemaJson(schemaPath),settingsJson:settings.json,maxBudgetUsd:null},binding=buildInlineModeSettings(settings.json,live.trace.init),controlled={...structuredClone(baseline),settingsJson:binding.proposed_json},inline=verifyInlineModeSettings(binding,baseline,controlled,live.trace.init),shape=requested.shape;
++ if(!equal(shape?.baseline_options,baseline)||!equal(shape?.controlled_options,controlled)||!equal(shape?.inline_binding,binding)||!equal(shape?.inline_mode,inline)||!equal(shape?.baseline_argv,buildClaudeArgs(baseline))||!equal(shape?.argv,buildClaudeArgs(controlled))||!equal(result.inline_mode,inline)||!equal(result.schema_settings,shape)||shape.settings_sha256!==binding.proposed_sha256||requested.script_sha256!==hash(root+'/controlled-fixture.mjs')||requested.guard_sha256!==hash(path.resolve(root,'../agent-access-20261011-closeout-r21')+'/controlled-mechanism-mode3.mjs')||requested.inline_helper_sha256!==hash(path.resolve(root,'../agent-access-20261011-closeout-r21')+'/controlled-inline-mode.mjs')||requested.runtime_helper_sha256!==hash(path.resolve(root,'../agent-access-20261011-closeout-r19/controlled-runtime.mjs')))throw Error('mode3-proof-inline-or-helper-binding-mismatch');
++ const evaluated=evaluateControlledMode3(raw,{inline_binding:binding,baseline_options:baseline,controlled_options:controlled,fixtureRoot:path.dirname(requested.before.write.path),targets:manifest.targets,sentinels:job.sentinels,model:job.model,liveInit:live.trace.init,before:result.file_states.before,after:result.file_states.after,production_deny_before:production?.before?.deny,production_deny_after:production?.after?.deny,production_targets_before:production?.before?.targets,production_targets_after:production?.after?.targets,manifest_targets:manifest.targets,manifest_deny:manifest.deny,cleanup:result.cleanup,transport,lifecycle:result.mode_settings,failure:result.failure});
++ const current={shared:hash('.trivium/config.yaml'),local:hash('.trivium/config.local.yaml'),wrapper:hash(route.bin),native:hash(route.nativeBin),profile:route.configurationSha256,globals:Object.fromEntries(['.codex/config.toml','.codex/auth.json','.codex/hooks.json','.claude/settings.json'].map(p=>[p,hash(path.join(os.homedir(),p))]))};
++ const claim=read(job.claim),alias=path.join(path.dirname(path.dirname(requested.mode_settings_reference.path)),'.local/bin/claude');
++ if(claim.combination!==job.combination||claim.variant!=='3'||typeof claim.load_id!=='string'||claim.plan_run_id!=='20261017T085024Z'||claim.user_review_waiver!==false||claim.criteria_adopted!==false||claim.authorization_ref?.path!==root+'/authorization.json'||hash(claim.authorization_ref.path)!==claim.authorization_ref.sha256||!claim.batch_ref||hash(claim.batch_ref.path)!==claim.batch_ref.sha256)throw Error('mode3-proof-claim-origin-mismatch');
++ const match=Array.isArray(bridge.matched)&&bridge.matched.length>0&&equal(bridge.matched,result.bridge)&&bridge.matched.every(image=>verifyCapturedMode3Image(image,alias,fs.realpathSync(route.nativeBin),current.native)&&bridge.observed?.some(observed=>equal(observed,image))&&bridge.ledger.some(ref=>{const record=read(ref.file);return record.pid===image.pid&&record.parent_pid===image.parent_pid&&record.load_id===claim.load_id&&record.fingerprint_manifest===dir+'/requested.json'&&record.execution_script_sha256===requested.script_sha256&&record.pool==='admission'&&record.code===0&&record.spawned===true&&record.entry===requested.entry&&record.entry_sha256===requested.source_fingerprints.wrapper&&record.selection?.['--profile']===job.profile&&record.selection?.['--model']===job.model;})&&image.image_sha256===current.native);
++ if(result.mechanism_pass!==true||!evaluated.mechanism_pass||!match||!equal(result.source_fingerprints,result.controlled_fingerprints)||!equal(result.source_fingerprints,current)||!equal(result.target_manifest.deny,manifest.deny)||!equal(result.target_manifest.targets,manifest.targets))throw Error('mode3-previous-full-proof-rejected');
++ return {combination:job.combination,result_ref:{path:dir+'/result.json',sha256:hash(dir+'/result.json')},requested_ref:{path:dir+'/requested.json',sha256:hash(dir+'/requested.json')},recomputed_pass:true,inline_difference_verified:true,actual_provider_inference:false,real_model_attempt:null};
++}
+diff --git a/doc/05_testing/evidence/m12-restricted-admission-20261017/mutation-check.mjs b/doc/05_testing/evidence/m12-restricted-admission-20261017/mutation-check.mjs
+new file mode 100644
+index 00000000..2a64ea5e
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-restricted-admission-20261017/mutation-check.mjs
+@@ -0,0 +1,48 @@
++/** 零配额变异预跑（计划§7第2条）：scripts/*.mjs 不经TS构建，正式变异装置只认.ts目标，故逐条改源→单跑新测试文件→恢复原字节。
++ * 用法：仓库根目录 node <本文件>；需先 node scripts/build.mjs --tests-only。每条须由预期用例变红，任何一条存活即退1。 */
++import fs from 'node:fs';
++import path from 'node:path';
++import { spawnSync } from 'node:child_process';
++import { fileURLToPath } from 'node:url';
++
++const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
++const target = path.join(repo, 'scripts/agent-access-restricted.mjs');
++const testFile = path.join(repo, 'dist/test/test/unit/agent-access-restricted.test.js');
++/** [编号, 说明, [[原片段, 变异片段]...], 预期变红的用例名前缀] */
++const MUTANTS = [
++  ['M1', '档1去掉权限模式判定', [["  if (init?.permissionMode !== 'default') reasons.push('permission-mode-not-default');\n", '']], '档1：完整样本成立'],
++  ['M2', '档1改信落盘tool_surface', [['const surface = judgeToolSurface(tools ?? []);', 'const surface = result.tool_surface ?? judgeToolSurface(tools ?? []);']], '档1：不信落盘'],
++  ['M3', '空工具面算干净', [["  if (surface.empty) reasons.push('tool-surface-empty');\n", '']], '档1：当场重算工具面'],
++  ['M4', '去掉mcpCount判定', [["  if (surface.mcpCount !== 0) reasons.push('mcp-tools-registered');\n", '']], '档1：当场重算工具面'],
++  ['M5', '读臂兼容下档2抛出映射成未测', [["catch (error) { return { value: false, reasons: ['recompute-rejected'", "catch (error) { return { value: UNTESTED, reasons: ['recompute-rejected'"]], '档2：复算通过才成立'],
++  ['M6', '档2改读proof的pass声明', [['try { proof = await recompute(job); }', 'try { if (job.recomputed_pass === true) return { value: true, reasons: [] }; proof = await recompute(job); }']], '档2：不读证据文件'],
++  ['M7', '档2不核live_result_ref', [["return { value: false, reasons: ['live-source-mismatch'] };", '{}']], '档2：与档1读臂不同源'],
++  ['M8', '五组合有写证据时档3记通过', [['if (isRestricted(agent, combination)) return { value: UNSAMPLEABLE', 'if (isRestricted(agent, combination) && productionWrite !== true) return { value: UNSAMPLEABLE']], '档3'],
++  ['M9', '受限准入去掉档2', [['    toolSurface.value, controlled.value];', '    toolSurface.value];']], '受限准入'],
++  ['M10', '受限准入计入原标准通过数', [["if (r.status === '通过') original_standard.passed++;", "if (r.status === '通过' || r.restricted_admission === true) original_standard.passed++;"]], '两组计数'],
++  ['M11', '五组合常量少一项', [["Object.freeze(['qwen-pro', 'kimi', 'kimi-pro', 'deepseek', 'deepseek-pro'])", "Object.freeze(['qwen-pro', 'kimi', 'kimi-pro', 'deepseek'])"]], '五组合常量'],
++  ['M12', '指纹不兼容仍判受限准入', [['row.mcp_isolation, row.fingerprint_compatible,', 'row.mcp_isolation,'], ['||\n    row.fingerprint_compatible !== true) return UNTESTED;', ') return UNTESTED;']], '受限准入'],
++  ['M13', '档2读臂不兼容仍复算', [["  if (readArm.compatible !== true) return { value: UNTESTED, reasons: ['fingerprint-drift'] };\n", '']], '档2：读臂指纹不兼容'],
++];
++
++const original = fs.readFileSync(target);
++const report = [];
++try {
++  for (const [id, label, pairs, expected] of MUTANTS) {
++    let text = original.toString('utf8');
++    for (const [from, to] of pairs) {
++      if (text.split(from).length !== 2) throw Error(`${id}: 变异片段不唯一或不存在：${from.slice(0, 50)}`);
++      text = text.replace(from, to);
++    }
++    fs.writeFileSync(target, text);
++    const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', testFile], { cwd: repo, encoding: 'utf8' });
++    fs.writeFileSync(target, original);
++    const failed = [...r.stdout.matchAll(/^\s*✖ (.+?) \(\d/gm)].map(m => m[1]).filter((v, i, a) => a.indexOf(v) === i);
++    const killed = r.status !== 0 && failed.some(name => name.startsWith(expected));
++    report.push({ id, label, killed, expected, failed });
++    console.log(JSON.stringify({ id, killed, failed }));
++  }
++} finally { fs.writeFileSync(target, original); }
++const survived = report.filter(r => !r.killed);
++console.log(JSON.stringify({ total: report.length, killed: report.length - survived.length, survived: survived.map(r => r.id) }));
++if (survived.length) process.exitCode = 1;
+diff --git a/scripts/agent-access-restricted.mjs b/scripts/agent-access-restricted.mjs
+new file mode 100644
+index 00000000..190f2ee8
+--- /dev/null
++++ b/scripts/agent-access-restricted.mjs
+@@ -0,0 +1,117 @@
++/** 五个受限claude组合的受限准入判据（restricted-admission-v1）；纯判定与组合，不读文件、不spawn。
++ * 档1工具面未注册与档2受控请求拒绝同时成立才记受限准入；档3真实写尝试对五组合恒不可取样，永不记通过。
++ * 受限准入不回写原标准status，两组计数分开、不出合计。 */
++import { judgeToolSurface } from '../dist/test/src/trivium/probes/claude.js';
++
++export const RESTRICTED_CRITERION_ID = 'restricted-admission-v1';
++/** 与 agent-access-recipes.mjs 的 assertProductionArm 名单逐项一致（单测对账）。 */
++export const RESTRICTED_COMBINATIONS = Object.freeze(['qwen-pro', 'kimi', 'kimi-pro', 'deepseek', 'deepseek-pro']);
++export const WRITE_TOOLS = Object.freeze(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash']);
++const UNTESTED = '未测', UNSAMPLEABLE = '不可取样', NOT_APPLICABLE = '不适用';
++/** 与10-12 mechanism-proof.mjs 的 equal 同口径：规范化后比内容，不比对象引用。 */
++const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
++
++export const isRestricted = (agent, combination) => agent === 'claude' && RESTRICTED_COMBINATIONS.includes(combination);
++
++/** 10-12冻结汇总只作参考引用；sha256由调用方当场算出传入，不符即抛。 */
++export const ORIGINAL_STANDARD_REFERENCE = Object.freeze({
++  path: 'doc/05_testing/evidence/agent-access-convergence-20261012/summary-b624d684-5a4f-4059-b101-a5cfa3413d14.json',
++  sha256: 'f2a3d213f18be559e88734fcd98912bad90ab126283289b76e400b964f3751ff',
++  passed: 7, untested: 5, cli_version: '2.1.296',
++  inputs_sha256: '7ac37129cdfcf3700c34b24b6e87c76359b4997a4fc7480b53f06762a3d45f4f',
++  reference_only: true,
++});
++export function originalStandardReference(observedSha256) {
++  if (observedSha256 !== ORIGINAL_STANDARD_REFERENCE.sha256) throw Error('10-12冻结汇总hash不符，拒绝引用');
++  return { ...ORIGINAL_STANDARD_REFERENCE };
++}
++
++/**
++ * 档1：readArm 是汇总 route() 选中的同组合本批读臂 { dir, result, compatible }，shape 是同目录 production-shape.json。
++ * 工具面用 judgeToolSurface(init.tools) 当场重算，不信落盘 tool_surface；指纹漂移记未测而不是失败（P-3）。
++ */
++export function judgeToolSurfaceUnregistered(readArm, shape) {
++  if (!readArm) return { value: UNTESTED, reasons: ['missing-read-arm'], write_tools_present: null };
++  if (readArm.compatible !== true) return { value: UNTESTED, reasons: ['fingerprint-drift'], write_tools_present: null };
++  const result = readArm.result ?? {}, init = result.trace?.init, model = result.request?.model, reasons = [];
++  if (result.completed !== true) reasons.push('read-arm-incomplete');
++  if (!init || typeof init !== 'object') reasons.push('missing-init');
++  if (init?.permissionMode !== 'default') reasons.push('permission-mode-not-default');
++  if (typeof model !== 'string' || !model || init?.model !== model || result.readback?.model !== model) reasons.push('model-readback-mismatch');
++  const tools = Array.isArray(init?.tools) && init.tools.every(t => typeof t === 'string') ? init.tools : null;
++  if (!tools) reasons.push('init-tools-missing');
++  const surface = judgeToolSurface(tools ?? []);
++  if (surface.empty) reasons.push('tool-surface-empty');
++  if (!surface.clean) reasons.push('tool-surface-not-clean');
++  if (surface.missing.length !== 0) reasons.push('tool-surface-missing');
++  if (surface.mcpCount !== 0) reasons.push('mcp-tools-registered');
++  if (!same(surface, result.tool_surface)) reasons.push('stored-surface-mismatch');
++  if (!Array.isArray(shape?.readonlyArgs) || !shape.readonlyArgs.includes('--strict-mcp-config')) reasons.push('strict-mcp-config-missing');
++  return { value: reasons.length === 0, reasons, write_tools_present: tools ? WRITE_TOOLS.filter(t => tools.includes(t)) : null };
++}
++
++/**
++ * 档2：readArm 是档1用的同一读臂 { combination, compatible, result_ref: { path, sha256 } }（sha256由调用方当场算）；
++ * recompute(job) 从原件完整复算，返回值才算数，不读proof文件里的pass声明。
++ * 次序固定：读臂不兼容即未测且不复算（复算原件用抛出表达漂移，分不清漂移与机制失败）；
++ * 与档1不同源即false且不复算；读臂兼容后的抛出按机制失败记false。
++ */
++export async function judgeControlledRequestDenial(job, readArm, recompute) {
++  if (!job || typeof job.output !== 'string') return { value: UNTESTED, reasons: ['missing-controlled-job'] };
++  if (!readArm) return { value: UNTESTED, reasons: ['missing-read-arm'] };
++  if (readArm.compatible !== true) return { value: UNTESTED, reasons: ['fingerprint-drift'] };
++  const ref = job.live_result_ref;
++  if (job.combination !== readArm.combination || typeof ref?.path !== 'string' || ref.path !== readArm.result_ref?.path ||
++    typeof ref.sha256 !== 'string' || ref.sha256 !== readArm.result_ref?.sha256) return { value: false, reasons: ['live-source-mismatch'] };
++  let proof;
++  try { proof = await recompute(job); }
++  catch (error) { return { value: false, reasons: ['recompute-rejected', String(error?.message ?? error).slice(0, 120)] }; }
++  if (!proof || typeof proof !== 'object' || proof.combination !== job.combination || proof.recomputed_pass !== true ||
++    proof.actual_provider_inference !== false || proof.real_model_attempt !== null) return { value: false, reasons: ['malformed-proof'] };
++  return { value: true, reasons: [] };
++}
++
++/** 档3：五组合恒不可取样、不看任何证据；其余组合照搬原标准 production_write。 */
++export function judgeRealWriteAttempt(agent, combination, productionWrite) {
++  if (isRestricted(agent, combination)) return { value: UNSAMPLEABLE, reasons: ['no-sampling-mechanism'] };
++  return { value: productionWrite, reasons: [] };
++}
++
++/** 受限准入：原标准除真实写、真实逐文件禁读两列外全部成立，再加档1与档2（P-2）。 */
++export function judgeRestrictedAdmission(agent, combination, row, toolSurface, controlled) {
++  if (!isRestricted(agent, combination)) return NOT_APPLICABLE;
++  const required = [row.read_schema_firstword, row.model_readback_matches, row.mcp_isolation, row.fingerprint_compatible,
++    toolSurface.value, controlled.value];
++  if (required.every(v => v === true)) return true;
++  if (toolSurface.value === UNTESTED || controlled.value === UNTESTED || row.read_schema_firstword === UNTESTED ||
++    row.fingerprint_compatible !== true) return UNTESTED;
++  return false;
++}
++
++/** 每行三列与受限准入；非五组合的档1/档2不适用。 */
++export async function writeCriteriaFor({ agent, combination, row, readArm, shape, job, controlledReadArm, recompute }) {
++  const restricted = isRestricted(agent, combination);
++  const toolSurface = restricted ? judgeToolSurfaceUnregistered(readArm, shape)
++    : { value: NOT_APPLICABLE, reasons: ['not-restricted'], write_tools_present: null };
++  const controlled = restricted ? await judgeControlledRequestDenial(job, controlledReadArm, recompute)
++    : { value: NOT_APPLICABLE, reasons: ['not-restricted'] };
++  const realWrite = judgeRealWriteAttempt(agent, combination, row.production_write);
++  return {
++    write_criteria: { tool_surface_unregistered: toolSurface, controlled_request_denial: controlled, real_write_attempt: realWrite },
++    restricted_admission: judgeRestrictedAdmission(agent, combination, row, toolSurface, controlled),
++  };
++}
++
++/** 两组计数各自独立；不出任何合计字段。 */
++export function countRows(rows) {
++  const original_standard = { passed: 0, failed: 0, untested: 0 };
++  const restricted_admission = { admitted: 0, not_admitted: 0, untested: 0 };
++  for (const r of rows) {
++    if (r.status === '通过') original_standard.passed++; else if (r.status === '未通过') original_standard.failed++; else original_standard.untested++;
++    if (!isRestricted(r.agent, r.combination)) continue;
++    if (r.restricted_admission === true) restricted_admission.admitted++;
++    else if (r.restricted_admission === false) restricted_admission.not_admitted++;
++    else restricted_admission.untested++;
++  }
++  return { original_standard, restricted_admission };
++}
+diff --git a/test/unit/agent-access-restricted.test.ts b/test/unit/agent-access-restricted.test.ts
+new file mode 100644
+index 00000000..bffe8f54
+--- /dev/null
++++ b/test/unit/agent-access-restricted.test.ts
+@@ -0,0 +1,205 @@
++/** M12批次2受限准入判据（EV-241）：档1当场重算工具面、档2只认复算且与档1同源、档3五组合恒不可取样、两组计数无合计。 */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import path from 'node:path';
++import crypto from 'node:crypto';
++import { pathToFileURL } from 'node:url';
++import { judgeToolSurface } from '../../src/trivium/probes/claude.js';
++
++const mod = async (): Promise<any> => import(pathToFileURL(path.resolve('scripts/agent-access-restricted.mjs')).href);
++const TOOLS = ['Read', 'Grep', 'Glob', 'StructuredOutput'];
++const RESULT_PATH = '/evidence/routes/claude-kimi-read-7/result.json', RESULT_SHA = 'a'.repeat(64);
++
++function readArm(tools: string[] = TOOLS, patch: (r: any) => void = () => {}) {
++  const result: any = { completed: true, request: { model: 'kimi-for-coding' }, readback: { model: 'kimi-for-coding' },
++    trace: { init: { tools: [...tools], permissionMode: 'default', model: 'kimi-for-coding' } },
++    tool_surface: JSON.parse(JSON.stringify(judgeToolSurface(tools))) };
++  patch(result);
++  return { dir: 'routes/claude-kimi-read-7', result, compatible: true };
++}
++const shape = { readonlyArgs: ['--restricted', '--strict-mcp-config', '--tools', 'Read,Grep,Glob'] };
++const job = (patch: Record<string, unknown> = {}) => ({ combination: 'kimi', output: '/evidence/controlled/kimi-mechanism-3',
++  live_result_ref: { path: RESULT_PATH, sha256: RESULT_SHA }, ...patch });
++const controlledArm = (patch: Record<string, unknown> = {}) => ({ combination: 'kimi', compatible: true, result_ref: { path: RESULT_PATH, sha256: RESULT_SHA }, ...patch });
++function stub(behaviour: 'pass' | 'throw' | ((j: any) => any) = 'pass') {
++  const calls: any[] = [];
++  const fn = async (j: any) => {
++    calls.push(j);
++    if (behaviour === 'throw') throw Error('mode3-previous-full-proof-rejected');
++    if (typeof behaviour === 'function') return behaviour(j);
++    return { combination: j.combination, recomputed_pass: true, inline_difference_verified: true, actual_provider_inference: false, real_model_attempt: null };
++  };
++  return { fn, calls };
++}
++
++test('档1：完整样本成立；权限模式非default或缺字段一律不成立', async () => {
++  const h = await mod();
++  const ok = h.judgeToolSurfaceUnregistered(readArm(), shape);
++  assert.equal(ok.value, true); assert.deepEqual(ok.reasons, []); assert.deepEqual(ok.write_tools_present, []);
++  for (const mode of ['plan', 'acceptEdits', 'bypassPermissions', undefined]) {
++    const r = h.judgeToolSurfaceUnregistered(readArm(TOOLS, x => { if (mode === undefined) delete x.trace.init.permissionMode; else x.trace.init.permissionMode = mode; }), shape);
++    assert.equal(r.value, false, String(mode)); assert.ok(r.reasons.includes('permission-mode-not-default'));
++  }
++  const noInit = h.judgeToolSurfaceUnregistered(readArm(TOOLS, x => { delete x.trace.init; }), shape);
++  assert.equal(noInit.value, false); assert.ok(noInit.reasons.includes('missing-init'));
++});
++
++test('档1：当场重算工具面，多出写工具或MCP、空集、缺Read均不成立', async () => {
++  const h = await mod();
++  for (const extra of ['Write', 'Bash', 'mcp__evil__exfiltrate']) {
++    const tools = [...TOOLS, extra];
++    // 落盘值也按同一组工具算好：判定靠重算本身，不靠落盘与重算不一致
++    const r = h.judgeToolSurfaceUnregistered(readArm(tools), shape);
++    assert.equal(r.value, false, extra); assert.ok(r.reasons.includes('tool-surface-not-clean'), extra);
++    if (extra.startsWith('mcp__')) assert.ok(r.reasons.includes('mcp-tools-registered'));
++    else assert.deepEqual(r.write_tools_present, [extra]);
++  }
++  const empty = h.judgeToolSurfaceUnregistered(readArm([]), shape);
++  assert.equal(empty.value, false); assert.ok(empty.reasons.includes('tool-surface-empty'));
++  const noRead = h.judgeToolSurfaceUnregistered(readArm(['Grep', 'Glob', 'StructuredOutput']), shape);
++  assert.equal(noRead.value, false); assert.ok(noRead.reasons.includes('tool-surface-missing'));
++});
++
++test('档1：不信落盘tool_surface；内容相同而对象不同仍成立（AGY-04）', async () => {
++  const h = await mod();
++  const lying = h.judgeToolSurfaceUnregistered(readArm([...TOOLS, 'Write'], x => { x.tool_surface = judgeToolSurface(TOOLS); }), shape);
++  assert.equal(lying.value, false); assert.ok(lying.reasons.includes('stored-surface-mismatch'));
++  const fresh = readArm(TOOLS, x => { x.tool_surface = structuredClone(judgeToolSurface([...TOOLS].reverse())); });
++  assert.notEqual(fresh.result.tool_surface, judgeToolSurface(TOOLS));
++  assert.equal(h.judgeToolSurfaceUnregistered(fresh, shape).value, true);
++});
++
++test('档1：缺--strict-mcp-config、模型回读不符不成立；无读臂与指纹漂移记未测', async () => {
++  const h = await mod();
++  const noStrict = h.judgeToolSurfaceUnregistered(readArm(), { readonlyArgs: ['--restricted', '--tools', 'Read,Grep,Glob'] });
++  assert.equal(noStrict.value, false); assert.ok(noStrict.reasons.includes('strict-mcp-config-missing'));
++  assert.equal(h.judgeToolSurfaceUnregistered(readArm(), null).value, false);
++  const wrongModel = h.judgeToolSurfaceUnregistered(readArm(TOOLS, x => { x.readback.model = 'other'; }), shape);
++  assert.equal(wrongModel.value, false); assert.ok(wrongModel.reasons.includes('model-readback-mismatch'));
++  assert.deepEqual(h.judgeToolSurfaceUnregistered(null, shape), { value: '未测', reasons: ['missing-read-arm'], write_tools_present: null });
++  const drift = h.judgeToolSurfaceUnregistered({ ...readArm(), compatible: false }, shape);
++  assert.equal(drift.value, '未测'); assert.deepEqual(drift.reasons, ['fingerprint-drift']);
++});
++
++test('档2：复算通过才成立，复算恰调用一次；读臂兼容后的抛出记false', async () => {
++  const h = await mod();
++  const pass = stub();
++  assert.deepEqual(await h.judgeControlledRequestDenial(job(), controlledArm(), pass.fn), { value: true, reasons: [] });
++  assert.equal(pass.calls.length, 1);
++  const thrown = stub('throw'), r = await h.judgeControlledRequestDenial(job(), controlledArm(), thrown.fn);
++  assert.equal(r.value, false); assert.equal(r.reasons[0], 'recompute-rejected'); assert.equal(thrown.calls.length, 1);
++  for (const bad of [{ actual_provider_inference: true }, { real_model_attempt: { model: 'x' } }, { recomputed_pass: false }, { combination: 'deepseek' }]) {
++    const s = stub(j => ({ combination: j.combination, recomputed_pass: true, actual_provider_inference: false, real_model_attempt: null, ...bad }));
++    assert.deepEqual(await h.judgeControlledRequestDenial(job(), controlledArm(), s.fn), { value: false, reasons: ['malformed-proof'] }, JSON.stringify(bad));
++  }
++  const nothing = stub(() => undefined);
++  assert.equal((await h.judgeControlledRequestDenial(job(), controlledArm(), nothing.fn)).value, false);
++});
++
++test('档2：读臂指纹不兼容记未测且不复算（AGY-01、GLM-01）', async () => {
++  const h = await mod();
++  for (const behaviour of ['pass', 'throw'] as const) {
++    const s = stub(behaviour);
++    assert.deepEqual(await h.judgeControlledRequestDenial(job(), controlledArm({ compatible: false }), s.fn), { value: '未测', reasons: ['fingerprint-drift'] });
++    assert.equal(s.calls.length, 0);
++  }
++});
++
++test('档2：与档1读臂不同源记false且不复算（AGY-02）；无任务、无读臂记未测', async () => {
++  const h = await mod();
++  for (const [j, arm] of [[job({ live_result_ref: { path: '/elsewhere/result.json', sha256: RESULT_SHA } }), controlledArm()],
++    [job({ live_result_ref: { path: RESULT_PATH, sha256: 'b'.repeat(64) } }), controlledArm()],
++    [job({ combination: 'deepseek' }), controlledArm()], [job({ live_result_ref: undefined }), controlledArm()]] as const) {
++    const s = stub();
++    assert.deepEqual(await h.judgeControlledRequestDenial(j, arm, s.fn), { value: false, reasons: ['live-source-mismatch'] });
++    assert.equal(s.calls.length, 0);
++  }
++  const s = stub();
++  assert.deepEqual(await h.judgeControlledRequestDenial(null, controlledArm(), s.fn), { value: '未测', reasons: ['missing-controlled-job'] });
++  assert.deepEqual(await h.judgeControlledRequestDenial(job(), null, s.fn), { value: '未测', reasons: ['missing-read-arm'] });
++  assert.equal(s.calls.length, 0);
++});
++
++test('档2：不读证据文件里的pass声明，只认复算返回', async () => {
++  const h = await mod();
++  const s = stub('throw'), claimed = { ...job(), recomputed_pass: true, mechanism_pass: true, pass: true };
++  assert.equal((await h.judgeControlledRequestDenial(claimed, controlledArm(), s.fn)).value, false);
++  assert.equal(s.calls.length, 1);
++});
++
++test('档3：五组合即便注入写臂通过也恒为不可取样；其余照搬production_write', async () => {
++  const h = await mod();
++  for (const c of h.RESTRICTED_COMBINATIONS) {
++    for (const productionWrite of [true, false, '未测']) assert.deepEqual(h.judgeRealWriteAttempt('claude', c, productionWrite), { value: '不可取样', reasons: ['no-sampling-mechanism'] });
++  }
++  for (const [agent, c] of [['claude', 'qwen'], ['codex', 'kimi'], ['codex', 'native-sol']]) {
++    for (const productionWrite of [true, false, '未测']) assert.deepEqual(h.judgeRealWriteAttempt(agent, c, productionWrite), { value: productionWrite, reasons: [] });
++  }
++});
++
++test('受限准入：两档与原标准其余各列同时成立才成立；未测与不适用分开', async () => {
++  const h = await mod();
++  const row = { read_schema_firstword: true, model_readback_matches: true, mcp_isolation: true, fingerprint_compatible: true, production_write: '未测' };
++  const T = { value: true }, F = { value: false }, U = { value: '未测' };
++  assert.equal(h.judgeRestrictedAdmission('claude', 'kimi', row, T, T), true);
++  assert.equal(h.judgeRestrictedAdmission('claude', 'kimi', row, T, F), false);
++  assert.equal(h.judgeRestrictedAdmission('claude', 'kimi', row, F, T), false);
++  assert.equal(h.judgeRestrictedAdmission('claude', 'kimi', { ...row, mcp_isolation: false }, T, T), false);
++  assert.equal(h.judgeRestrictedAdmission('claude', 'kimi', row, U, T), '未测');
++  assert.equal(h.judgeRestrictedAdmission('claude', 'kimi', row, T, U), '未测');
++  assert.equal(h.judgeRestrictedAdmission('claude', 'kimi', { ...row, fingerprint_compatible: false }, T, T), '未测');
++  assert.equal(h.judgeRestrictedAdmission('claude', 'qwen', row, T, T), '不适用');
++  assert.equal(h.judgeRestrictedAdmission('codex', 'kimi', row, T, T), '不适用');
++  const codex = await h.writeCriteriaFor({ agent: 'codex', combination: 'kimi', row: { ...row, production_write: true }, readArm: null, shape: null, job: null, controlledReadArm: null, recompute: null });
++  assert.equal(codex.restricted_admission, '不适用'); assert.equal(codex.write_criteria.real_write_attempt.value, true);
++  assert.equal(codex.write_criteria.tool_surface_unregistered.value, '不适用'); assert.equal(codex.write_criteria.controlled_request_denial.value, '不适用');
++  const s = stub(), full = await h.writeCriteriaFor({ agent: 'claude', combination: 'kimi', row, readArm: readArm(), shape, job: job(), controlledReadArm: controlledArm(), recompute: s.fn });
++  assert.equal(full.restricted_admission, true); assert.equal(full.write_criteria.real_write_attempt.value, '不可取样');
++});
++
++test('两组计数各自独立、无合计；受限准入不进原标准通过数', async () => {
++  const h = await mod();
++  const rows = [{ agent: 'claude', combination: 'qwen', status: '通过', restricted_admission: '不适用' },
++    ...h.RESTRICTED_COMBINATIONS.map((c: string, i: number) => ({ agent: 'claude', combination: c, status: '未测', restricted_admission: [true, true, false, '未测', true][i] })),
++    { agent: 'codex', combination: 'kimi', status: '未通过', restricted_admission: '不适用' }];
++  const counts = h.countRows(rows);
++  assert.deepEqual(counts, { original_standard: { passed: 1, failed: 1, untested: 5 }, restricted_admission: { admitted: 3, not_admitted: 1, untested: 1 } });
++  assert.deepEqual(Object.keys(counts), ['original_standard', 'restricted_admission']);
++  const summary = fs.readFileSync('scripts/agent-access-closeout-summary.mjs', 'utf8');
++  assert.match(summary, /counts: countRows\(rows\)/);
++  assert.ok(!/total|combined|合计/.test(summary.slice(summary.indexOf('counts: countRows'))), '汇总顶层不得出合计字段');
++});
++
++test('10-12冻结汇总只作参考引用：hash当场核，篡改即抛', async () => {
++  const h = await mod();
++  const ref = h.ORIGINAL_STANDARD_REFERENCE;
++  assert.equal(crypto.createHash('sha256').update(fs.readFileSync(ref.path)).digest('hex'), ref.sha256);
++  assert.equal(ref.reference_only, true);
++  assert.deepEqual(h.originalStandardReference(ref.sha256), { ...ref });
++  assert.throws(() => h.originalStandardReference('0'.repeat(64)), /hash不符/);
++  assert.throws(() => h.originalStandardReference(null), /hash不符/);
++  const frozen = JSON.parse(fs.readFileSync(ref.path, 'utf8'));
++  assert.equal(frozen.rows.filter((r: any) => r.status === '通过').length, ref.passed);
++  assert.equal(frozen.rows.filter((r: any) => r.status === '未测').length, ref.untested);
++  const summary = fs.readFileSync('scripts/agent-access-closeout-summary.mjs', 'utf8');
++  assert.match(summary, /original_standard_reference: originalStandardReference\(hashFile\(ORIGINAL_STANDARD_REFERENCE\.path\)\)/);
++  assert.match(summary, /restricted_criterion: \{ id: RESTRICTED_CRITERION_ID, adoption: null \}/);
++  assert.match(summary, /criteria_change_authorized: false/);
++});
++
++test('五组合常量与assertProductionArm名单逐项一致', async () => {
++  const h = await mod();
++  const { assertProductionArm } = await import(pathToFileURL(path.resolve('scripts/agent-access-recipes.mjs')).href);
++  for (const c of h.RESTRICTED_COMBINATIONS) assert.throws(() => assertProductionArm('claude', c, 'write'), c);
++  for (const c of ['qwen']) assert.doesNotThrow(() => assertProductionArm('claude', c, 'write'));
++  assert.equal(h.RESTRICTED_COMBINATIONS.length, 5);
++  assert.equal(h.isRestricted('codex', 'kimi'), false);
++});
++
++test('本批复制件与10-12原件的差异只在登记的批次参数', async () => {
++  const dc = await import(pathToFileURL(path.resolve('doc/05_testing/evidence/m12-restricted-admission-20261017/diff-check.mjs')).href);
++  const report = dc.checkCopies();
++  assert.equal(report.ok, true, JSON.stringify(report.results));
++  assert.deepEqual(report.results.map((r: any) => r.name).sort(), ['controlled-fixture.mjs', 'launch-mechanism.mjs', 'mechanism-launch-check.mjs', 'mechanism-proof.mjs']);
++});

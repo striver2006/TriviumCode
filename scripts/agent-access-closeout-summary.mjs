@@ -4,17 +4,29 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { saveEvidence } from './agent-access-evidence.mjs';
 import { loadCtx } from '../dist/test/src/trivium/config.js';
 import { resolveClaudeRoute } from '../dist/test/src/trivium/adapters/claude-route.js';
 import { codexAdapter } from '../dist/test/src/trivium/adapters/codex.js';
 import { computeBuildStamp } from '../dist/test/src/trivium/build-stamp.js';
 import { loadSelection, selectedEvidence } from './agent-access-selection.mjs';
+import { RESTRICTED_CRITERION_ID, ORIGINAL_STANDARD_REFERENCE, originalStandardReference, writeCriteriaFor, countRows } from './agent-access-restricted.mjs';
 const require = createRequire(import.meta.url);
 const { hashFile, openBudget } = require('./agent-access-budget.cjs');
 const root = path.resolve(process.argv[2] ?? 'doc/05_testing/evidence/agent-access-20261010-closeout-r2');
 const ctx = await loadCtx();
 const selection = loadSelection(process.argv[3]);
+/** 可选受控清单：复算模块、Schema、受控批次都按hash核后才用；缺省时五组合档2记未测。 */
+const loadControlled = async file => {
+  if (!file) return null;
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (manifest.schema !== 'trivium.access.restricted-controlled.v1') throw Error('受控清单形状无效');
+  for (const k of ['proof_module', 'schema_file', 'batch']) if (hashFile(manifest[k]?.path) !== manifest[k]?.sha256) throw Error(`受控清单${k}引用hash不符`);
+  const module = await import(pathToFileURL(manifest.proof_module.path).href), batch = JSON.parse(fs.readFileSync(manifest.batch.path, 'utf8'));
+  return { file: path.resolve(file), sha256: hashFile(file), jobs: batch.jobs, recompute: job => module.recomputeMode3Proof(job, manifest.schema_file.path) };
+};
+const controlled = await loadControlled(process.argv[4]);
 const selected = [];
 const currentBuild = await computeBuildStamp(process.cwd());
 const read = p => JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -72,11 +84,19 @@ for (const [agent, combinations] of [['claude', ['qwen', 'qwen-pro', 'kimi', 'ki
       deny_boundary: agent === 'claude' ? '逐文件实际Read/Grep配对拒绝与完整Schema；保留事后检测，不外推任意输入' : '事后命中，不宣称CLI阻止读取',
       mcp_boundary: '受测只读参数/隔离副本及实际轨迹，不证明恶意外部服务全面安全',
       evidence: arms.map(a => a.dir) });
+    const row = rows.at(-1), resultFile = r && path.join(root, r.dir, 'result.json'), shapeFile = r && path.join(root, r.dir, 'production-shape.json');
+    // 受控任务只属claude侧五组合；codex同名组合不得绑上（代码双审GLM-01）。
+    const job = agent === 'claude' ? controlled?.jobs.find(j => j.combination === combination && fs.existsSync(j.output)) ?? null : null;
+    Object.assign(row, await writeCriteriaFor({ agent, combination, row, readArm: r, shape: shapeFile && fs.existsSync(shapeFile) ? read(shapeFile) : null,
+      job, controlledReadArm: r && { combination, compatible: r.compatible, result_ref: { path: resultFile, sha256: hashFile(resultFile) } },
+      recompute: controlled?.recompute }));
   }
 }
 const budgets = {};
+// closeout-r3起台账在证据根的budget/下；旧r2布局台账即证据根。
+const budgetRoot = fs.existsSync(path.join(root, 'budget', 'approval.json')) ? path.join(root, 'budget') : root;
 for (const pool of ['admission','review']) {
-  const b = openBudget(root, pool), names = fs.readdirSync(b.dir);
+  const b = openBudget(budgetRoot, pool), names = fs.readdirSync(b.dir);
   const reserved = names.filter(n => /^reserved-\d+\.json$/.test(n)), launches = names.filter(n => /^launch-\d+\.json$/.test(n));
   budgets[pool] = { used: reserved.length, completed: launches.length, limit: b.limit(),
     incomplete: reserved.filter(n => !names.includes(n.replace('reserved-', 'launch-'))) };
@@ -87,7 +107,12 @@ const summary = { observed_at: new Date().toISOString(), canonical_sha256: hashF
   prerequisite_complete: rows.length === 12 && rows.every(r => r.status === '通过'),
   m11_step12_started: false, configuration_changes: '本机sensitive_globs并集追加本轮元数据；模型/effort/共享三审不改',
   identity_boundary: '请求、配置声明、CLI回读分列；服务端身份缺独立证据均null',
-  original_criteria: '实际模型生产写尝试+精确目标/ID配对拒绝+文件前后状态；缺真实尝试未测，受控返回不能替代' };
+  original_criteria: '实际模型生产写尝试+精确目标/ID配对拒绝+文件前后状态；缺真实尝试未测，受控返回不能替代',
+  counts: countRows(rows),
+  original_standard_reference: originalStandardReference(hashFile(ORIGINAL_STANDARD_REFERENCE.path)),
+  restricted_criterion: { id: RESTRICTED_CRITERION_ID, adoption: null },
+  controlled: controlled && { file: controlled.file, sha256: controlled.sha256 } };
 const filename = `summary-${crypto.randomUUID()}.json`;
 saveEvidence(path.join(root, filename), summary);
-console.log(JSON.stringify({ filename, budgets, rows: rows.map(r => ({ agent:r.agent,combination:r.combination,status:r.status })), prerequisite_complete:summary.prerequisite_complete }));
+console.log(JSON.stringify({ filename, budgets, rows: rows.map(r => ({ agent:r.agent,combination:r.combination,status:r.status,restricted_admission:r.restricted_admission })),
+  prerequisite_complete:summary.prerequisite_complete, counts: summary.counts }));
