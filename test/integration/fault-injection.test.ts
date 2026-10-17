@@ -1022,6 +1022,50 @@ test(
 );
 
 test(
+  'EV-239 两审 · 命令里只提到编排器状态目录 → 不作废：run.json 与闸门同口径，共同阻断照常执行',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    /*
+     * M11 第 12 步 Z2 / B2 的形态：审核者的命令文本里出现编排器状态目录（排除式 find、--exclude-dir），
+     * 没读任何编排器状态。守卫与 run.json 一直把它判告警级；闸门曾对命令通道一律按 hit 作废，
+     * 两审形态下有效侧只剩一家、报 joint_check_degraded，同一轮两份留痕给出不同的有效侧数。
+     */
+    const TWO: CriticId[] = ['gemini', 'glm'];
+    const r = await runInjected(stubOf(TWO, { gemini: { mode: 'peer_leak_via_command', note: 'orchestrator-state' } }));
+
+    const viaCmd = r.meta.guard.peer_leak_via_command?.gemini;
+    assert.equal(viaCmd?.hit, true, `前提：命令通道扫到了编排器状态目录。实得：${JSON.stringify(viaCmd)}`);
+    assert.ok((viaCmd?.hits?.length ?? 0) > 0, '前提：命中逐条带类');
+    assert.ok(
+      viaCmd!.hits!.every((h) => h.category === 'orchestrator-state'),
+      `两条命令都只碰编排器状态目录，命中应全是告警级：${JSON.stringify(viaCmd?.hits)}`,
+    );
+    assert.equal(r.meta.guard.peer_artifact_read, false, '守卫：告警级命中不判作废');
+    assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 2 }, 'run.json：两家都有效');
+
+    // 闸门：两条 -01 blocker 同位且都被驳回 —— 有效侧是两家，共同阻断真的执行并报出来
+    await writeNextPlan(r.stageDir, TWO.map((c) => `${prefixOf(c)}-02`));
+    await writeThreeDisposition(r, TWO, TWO);
+    const g = await gateCheck(r.root);
+    assert.equal(g.ok, true, `裁决齐备后闸门应通过：${JSON.stringify(g.failures)}`);
+    assert.ok(
+      !g.warnings.some((w) => w.code === 'joint_check_degraded'),
+      `告警级命中不该让一侧被排出共同阻断：${JSON.stringify(g.warnings)}`,
+    );
+    assert.ok(
+      g.warnings.some((w) => w.code === 'joint_blocker_rejected'),
+      `两家同位 blocker 都被驳回，共同阻断应执行并报出：${JSON.stringify(g.warnings)}`,
+    );
+    const jc = await jointCheckEntry(r.root, r.meta.run_id);
+    assert.deepEqual(
+      jc && { state: jc.state, effective_sides: jc.effective_sides },
+      { state: 'checked-found', effective_sides: 2 },
+      'task.json 与 run.json 记同一个有效侧数',
+    );
+  },
+);
+
+test(
   'AC-25 三审 · Driver 轮换：Driver=glm、claude 当审核者读另两方产出 → 只有 claude 作废，glm 原稿不在任何命中里',
   { skip: bundleMissing && bundleSkipReason },
   async () => {

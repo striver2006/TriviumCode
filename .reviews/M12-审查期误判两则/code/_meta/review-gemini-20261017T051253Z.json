@@ -1,0 +1,40 @@
+{
+  "agreed": [
+    "作废谓词抽象到位：categoriesVoid、hitsVoid、leakRecordVoids 三层抽象清晰，守卫侧级判定与闸门作废派生严格共用 leakRecordVoids，入参与落盘字段同构，彻底消除了守卫与闸门在作废判定上的双重标准。",
+    "旧记录回退口径严密：命令通道缺 hits 时退回 cmd.hit === true，路径通道缺 hits 时按无作废，未执行侧或读不到记录时安全返回 false，保持历史轮次口径不变，不追溯改判。",
+    "agy 探活失败分类分层审慎：正则优先识别未登录特征；超时档细分有无应答两层，通过 printTimeoutWarned、parsed.status === 'SUCCESS' 与 conversationId 严格限定「不必重登」的范围，静默超时与未识别失败均给出交互登录指引，杜绝将真实未登录误导为仅重试。",
+    "测试与变异验证充分：leak-predicate.test.ts 采用组合穷举表比对守卫历史逻辑，fault-injection.test.ts 端到端验证告警级命中不破坏共同阻断，变异测试全部 9 个变异点均成功拦截。"
+  ],
+  "consulted": [
+    ".reviews/M12-审查期误判两则/code/_meta/changes-20261017T051253Z.diff",
+    ".reviews/M12-审查期误判两则/plan/2026-10-17-M12-审查期误判两则-r2-claude.md",
+    "src/trivium/freeze.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts",
+    "src/trivium/types.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/preflight.ts",
+    "doc/08_project/M11后续-开发计划-草案.md",
+    "test/unit/leak-predicate.test.ts",
+    "test/unit/agy-auth-failure.test.ts",
+    "test/unit/gate.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "作为独立审查员工作在无执行权限的沙箱环境中，未实际执行 npm test 或真实调起 agy CLI 模拟超时/鉴权失败，相关判定依赖静态代码与已有测试用例断言推演。",
+    "未覆盖真实 agy CLI 在特定极端网络异常（如 DNS 解析挂死、TLS 握手卡死）下可能出现的未识别 stderr 报错文案形态。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "总体判断：代码变更实现严密且与计划 r2 完全吻合，准予通过（approve）。\n重点核对的三处均无问题：\n1. 作废谓词 leakRecordVoids 真实被守卫与闸门共用，调用入参与落盘记录同构，两边语义完全一致；\n2. 旧记录回退逻辑精确复现了历史口径（命令通道无 hits 退回 hit，路径通道无 hits 不作废）；\n3. agy 探活三档分类中，未登录特征优先判定，超时档仅在确有应答证据（print timeout / SUCCESS / 会话 id）时才提示不必重登，静默超时明确提示可能在等交互登录，不会将真实未登录误报为单纯超时。",
+  "verdict": "approve"
+}

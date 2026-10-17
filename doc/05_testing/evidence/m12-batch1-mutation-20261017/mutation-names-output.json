@@ -1,0 +1,119 @@
+[
+  {
+    "id": "M1",
+    "desc": "闸门退回命令通道按 hit 一律作废（EV-239 原缺陷）",
+    "suite": "dist/test/test/unit/gate.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M1b",
+    "desc": "同 M1，期望集成格变红（run.json 与闸门两份留痕一致）",
+    "suite": "dist/test/test/integration/fault-injection.test.js",
+    "fail": 0,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [],
+    "firstLines": [],
+    "elapsed_s": 105
+  },
+  {
+    "id": "M2",
+    "desc": "leakRecordVoids 去掉命令通道旧记录回退 hit 的口径",
+    "suite": "dist/test/test/unit/gate.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M3",
+    "desc": "categoriesVoid 把告警级 orchestrator-state 当作废",
+    "suite": "dist/test/test/unit/leak-predicate.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-239 ①：categoriesVoid / hitsVoid 只对 peer-artifact、peer-run-output 为真",
+      "EV-239 ②：leakRecordVoids 与守卫改动前的侧级口径逐格一致（两条通道 × 全部类别组合）",
+      "EV-239 ③：只命中告警级的命令通道（M11 第 12 步 B2 形态）不作废"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M4",
+    "desc": "守卫侧级判定不喂带类 hits（退回 hit 口径）",
+    "suite": "dist/test/test/integration/fault-injection.test.js",
+    "fail": 0,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [],
+    "firstLines": [],
+    "elapsed_s": 105
+  },
+  {
+    "id": "M5",
+    "desc": "认证档让位给超时档（超时时不再报未登录）",
+    "suite": "dist/test/test/unit/agy-auth-failure.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-238：未登录原话 ⇒ 认证档；超时时也优先报未登录"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M6",
+    "desc": "超时档去掉有无应答证据的分层（一律报模型侧慢）",
+    "suite": "dist/test/test/unit/agy-auth-failure.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-238：静默超时（无任何应答证据）⇒ 以「可能在等交互登录」打头"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M7",
+    "desc": "超时档触发去掉 printTimeoutWarned（只看外层超时）",
+    "suite": "dist/test/test/unit/agy-auth-failure.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-238：自报 print timeout、未到外层超时、status 非 SUCCESS ⇒ 仍落超时档（与上位计划一致）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M8",
+    "desc": "超时档文案退回登录指引",
+    "suite": "dist/test/test/unit/agy-auth-failure.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-238：Z1 原话（status=SUCCESS、外层超时、自报 print timeout）⇒ 超时档「已开始应答」层，不引去重登",
+      "EV-238：只拿到会话 id 的超时也算已开始应答",
+      "EV-238：自报 print timeout、未到外层超时、status 非 SUCCESS ⇒ 仍落超时档（与上位计划一致）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  }
+]

@@ -8,7 +8,8 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { agentById, DEFAULT_DRIVER, entryCommandOf, findingPrefixAlternation, type AgentId } from './agents/registry.js';
-import { DEFAULT_CRITICS, describeDriftUnknown, VOIDING_DENY_CATEGORIES, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type SnapshotMeta, type Stage } from './types.js';
+import { leakRecordVoids } from './freeze.js';
+import { DEFAULT_CRITICS, describeDriftUnknown, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type SnapshotMeta, type Stage } from './types.js';
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
 import { checkRecordedArtifacts, isReviewArtifact, listStageArtifacts, metaDir, stageDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
 import { EXIT, TriviumError } from './exit-codes.js';
@@ -1427,13 +1428,25 @@ export async function loadRoundReviews(
    * 读不到 run 元数据时返回空数组：那是旧归档，当时的口径是「命中即作废」、
    * 无从区分哪几侧因哪一类命中，按「无作废侧」处理即维持旧行为，不追溯改判。
    */
+  /*
+   * **两条通道都按类别判，与守卫的侧级判定调同一个 `leakRecordVoids`**（BACKLOG EV-239，M12 批次 1）。
+   *
+   * 这里原先对命令通道写的是 `viaCmd?.hit === true` 即作废，注释称「命令通道没有类别信息，命中即算」。
+   * 那句是 2026-09-17 `f2bc7635`（代码双审 r1 修复）写的；同主题 r2 的 `333e5a29` 随即给命令通道补了
+   * 逐条带类的 `hits`，这里没跟上。而 `hit` 的语义是「这条通道扫到了东西」，含告警档——
+   * 只命中编排器状态目录的一侧（告警级）在守卫与 run.json 看来有效、在这里却被作废，
+   * 两审形态下共同阻断这一档静默不执行（M11 第 12 步 Z2 / B2 实测）。
+   *
+   * 旧记录各按旧口径（命令通道缺 `hits` 退回 `hit`、路径通道缺 `hits` 按无作废），见 `leakRecordVoids`。
+   * 有 `hits` 的已归档轮次重跑 `gate --check` 一律按新口径派生，不加开关（用户 2026-10-16 D-5）。
+   */
   const voidedSides: CriticId[] = [];
   for (const c of criticsOf(runMeta)) {
-    const viaPath = runMeta?.guard?.peer_leak_via_path?.[c]?.hits ?? [];
-    const viaCmd = runMeta?.guard?.peer_leak_via_command?.[c];
-    // 路径通道逐条带类，只有作废类才算；命令通道没有类别信息，命中即算
-    const pathVoiding = viaPath.some((h) => VOIDING_DENY_CATEGORIES.includes(h.category));
-    if (pathVoiding || viaCmd?.hit === true) voidedSides.push(c);
+    const voided = leakRecordVoids({
+      path: runMeta?.guard?.peer_leak_via_path?.[c],
+      command: runMeta?.guard?.peer_leak_via_command?.[c],
+    });
+    if (voided) voidedSides.push(c);
   }
 
   const breachFiles = [...(runMeta?.guard?.breached_files ?? [])];

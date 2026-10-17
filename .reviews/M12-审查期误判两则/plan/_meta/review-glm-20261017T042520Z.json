@@ -1,0 +1,85 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "对照源码与证据逐点核实：EV-239 的诊断完全成立（gate.ts:1434-1436 命令通道按 hit 一律作废、注释自称无类别信息；守卫侧 guard.ts:416/:485 只认作废类；run.json 的 hit 语义含告警档；b2-assessment.json 里 codex 侧唯一命中即 orchestrator-state，且同一归档 run.json 记 effective_sides=3、task.json 记 2，两份留痕矛盾当场可见），共用谓词方案与测试等价式核对无误，旧记录回退口径与任务目标一致，生产代码中该两字段唯一读者就是闸门派生处，改动面无遗漏。EV-238 的行号引用与现状全部核实，认证档优先于超时档是对焦点第 3 条的正确解法。发现的问题集中在三档描述的两处口径不精确与一句未被保留判定保证的断言，均为文案级、不改变方向，故 approve-with-nits。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/M12-审查期误判两则/plan/2026-10-17-M12-审查期误判两则-claude.md §2.3（样本口径的已知局限段）",
+      "problem": "计划断言「取不到特征的未登录情形落到『其他档』」，但按同节三档定义，未识别出登录特征的真实未登录有两种形态：快速失败（不超时、status 非 SUCCESS）才落其他档；挂起直到外层超时的那种落超时档——后者恰是焦点第 3 条担心的形态。缓解其实已设计在超时档文案里（后半句给登录兜底），但这句风险自评把归属写窄了，而 §6 要求把三档同步进主设计 §12.1，照抄会把不准确的口径写进设计文档。",
+      "evidence": "被审计划 §2.3 三档定义与已知局限段；src/trivium/adapters/agy.ts:260（120s 外层超时）与 :263（ok = SUCCESS && !timedOut）——只按 timedOut 分档时，挂起型未登录必然先落超时档，落不到其他档",
+      "suggestion": "把该句改为「取不到特征的未登录：快速失败落其他档、挂起到超时落超时档，两档文案都带登录指引」，并按此口径同步主设计 §12.1。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "被审计划 §2.3 第 2 档；上位 doc/08_project/M11后续-开发计划-草案.md §4.2（:143）",
+      "problem": "上位计划 §4.2 的超时档触发写的是「timedOut 或 printTimeoutWarned」，被审计划收窄为仅 timedOut，printTimeoutWarned 降级为文案里的一个从句，且未声明这一偏离。可达角落：内层 print timeout（外层减 20s，约 100s）触发后 agy 在外层 120s 前自行收尾退出（timedOut=false）且 status 非 SUCCESS——按计划落「其他档·原因未识别」，失去上位推荐的「多半是模型侧响应慢，可稍后重试」这条更可操作的指引，只剩 stderr 摘要能看出 print timeout。",
+      "evidence": "doc/08_project/M11后续-开发计划-草案.md:143（原文：timedOut 或 printTimeoutWarned ⇒ 探活超时文案）；被审计划 §2.3 第 2 档；src/trivium/adapters/agy.ts:118-119（内层 print-timeout 取外层减 20s）、:144（printTimeoutWarned）、:138（timedOut 只反映外层 run() 是否超时）",
+      "suggestion": "要么按上位口径把 printTimeoutWarned 也纳入超时档触发（仍置于认证档之后），要么在计划里写明收窄的理由，避免对上位推荐的无声明偏离。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "被审计划 §2.3 末段（ok 的判定…不变；不把「打印超时但有部分输出」当作已认证）",
+      "problem": "该断言与保留不变的 ok 判定矛盾：ok = status==='SUCCESS' && !timedOut。当内层 print timeout 触发、agy 带部分输出在 120s 内自行退出（timedOut=false）而流状态仍为 SUCCESS 时 ok 为真、探活判通过——Z1 样本恰恰证明 print timeout 与 status=SUCCESS 可以并存（那次 ok 为假只因外层超时）。计划不改 ok 却宣称不把这种形态当作已认证：若这是期望属性，改动清单里缺一条；若不是，这句会原样进主设计 §12.1 成为不成立的承诺。",
+      "evidence": "src/trivium/adapters/agy.ts:263（ok 判定）与 :144（printTimeoutWarned）；doc/08_project/M11后续-开发计划-草案.md:23（Z1：status=SUCCESS 而 ok 为假只能是 timedOut，即 print timeout 与 SUCCESS 并存的实证）；被审计划 §2.3",
+      "suggestion": "把该句限定为「不因打印超时而放宽 ok」的不做项表述，或明确 ok 在此角落的现状并如实接受；不要让主设计 §12.1 抄入一条未被判定保证的性质。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "被审计划 §4（gate.test.ts 一组「现有 ③ 保留不改」）；test/unit/gate.test.ts:1052",
+      "problem": "现有用例 ③ 的行内注释写「命令通道命中 → 作废（该通道没有类别信息，命中即算）」——EV-239 修完后这句理由不再成立（新记录带类别；该格作废的真实理由是旧记录缺 hits 回退 hit 口径）。计划只安排删 gate.ts:1434 的过时注释，没提测试里这句同源注释，留着会与闸门新注释互相矛盾。",
+      "evidence": "test/unit/gate.test.ts:1052-1057（③ 的断言与行内理由注释）；被审计划 §2.1（删过时注释）与 §4（③ 保留不改）",
+      "suggestion": "「保留不改」明确为断言不变，行内理由注释同步改为「旧记录无 hits，回退 hit 口径（旧口径）」。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "EV-239 诊断逐点核实成立：gate.ts:1434-1436 命令通道 viaCmd?.hit === true 即作废且注释自称「没有类别信息」；守卫侧 guard.ts:416 只认作废类、:485 的 peerArtifactRead 同口径；run.json 的 hit 语义是「扫到了东西」、包含告警档（review.ts:1843-1851）。",
+    "B2 证据坐实：codex 侧 peer_leak_via_command.hit=true 而唯一命中 category=orchestrator-state（find 排除式），且同一归档里 run.json 记 joint_check effective_sides=3、task.json 的 joint_checks 记 effective_sides=2，「两份留痕互相矛盾」当场可见。",
+    "共用谓词放 freeze.ts isVoidingCategory 旁合理；测试 ② 的守卫口径等价式（hitsVoid(路径 hits) || hitsVoid(命令 hits)）与 guard.ts:485 严格等价——peerHits 是 typedHits 的作废子集、cmdVoiding 非空当且仅当 typedCommandHits 含作废类，逐项核对过。",
+    "旧记录回退口径与任务目标一致：命令通道缺 hits 回退 hit===true、路径通道缺 hits 按无作废，正是现行 gate.ts:1432 的行为；全仓 grep 确认这两字段的生产读者只有闸门派生一处，改动面（freeze 新谓词 + 守卫/闸门改调 + stub 注入 + 测试）无遗漏。",
+    "认证档优先于超时档是对焦点第 3 条的正确解法：带特征的真实未登录即使挂起到超时也报未登录；样本出处核实无误（REPORT_2026-09-24_m10b_driver_entry_probe.md:45，空 HOME 下 agy models 的 Please sign in 原话）。",
+    "agy 现状引用全部核实：authProbe 在 agy.ts:240-272、120s 外层超时 :260、ok 判定 :263、一律登录文案 :268、printTimeoutWarned :144 已算出未用、模型取值链 combination?.model ?? models[0] ?? null 在 :257；预检只透传 detail（preflight.ts:916 一带），不改 preflight 是对的。",
+    "不扩命令文本已知形态表（留 EV-19 一族）、不动 run.v2 schema、review.ts peerLeakOf 渲染层不动——范围边界收得对，与任务目标的「不做」清单一致。",
+    "测试与变异设计可测且咬得住实现点：Z1 原话用例锚定超时档、run.json 与闸门双留痕一致性由集成格同时断言；scripts/mutation-check.mjs 存在，五条变异各有对应红点。"
+  ],
+  "not_covered": [
+    "Z1/Z2 收口证据文件（closeout-20261016-01/z1-preflight-69-01.json 等）未打开：Z2 出现 joint_check_degraded、Z1 的 stderr 原话取自计划与上位文档的转述，未从原始证据复核。",
+    "注释出处提交 f2bc7635 / 333e5a29 未用 git 历史核对，只核了当前代码状态与描述一致。",
+    "主设计 §10.1.1 / §12.1 现行原文未读，计划的文档同步与现有段落是否冲突未核。",
+    "「已审批的阶段不会再被闸门复查」这一前提未沿审批路径代码核实，按计划的风险自评采信。",
+    "mutation-check.mjs 仅确认存在，其逐条预跑流程未审。",
+    "BACKLOG EV-238 / EV-239 原条目未读，结案措辞是否覆盖未核。",
+    "全部结论基于只读源码与证据文件，未运行任何命令（含测试、git 与探活），涉及运行才能确认的部分均为推理。"
+  ],
+  "consulted": [
+    "src/trivium/guard.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/types.ts",
+    "src/trivium/review.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/preflight.ts",
+    "test/unit/gate.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "doc/08_project/M11后续-开发计划-草案.md",
+    "doc/05_testing/evidence/m11-step12-20261012/b2-assessment.json",
+    "doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md"
+  ]
+}

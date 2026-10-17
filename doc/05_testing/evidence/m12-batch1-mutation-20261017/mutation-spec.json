@@ -1,0 +1,83 @@
+{
+  "targets": ["src/trivium/gate.ts", "src/trivium/freeze.ts", "src/trivium/guard.ts", "src/trivium/adapters/agy.ts"],
+  "suites": [
+    "dist/test/test/unit/gate.test.js",
+    "dist/test/test/unit/leak-predicate.test.js",
+    "dist/test/test/unit/agy-auth-failure.test.js",
+    "dist/test/test/integration/fault-injection.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "闸门退回命令通道按 hit 一律作废（EV-239 原缺陷）",
+      "file": "src/trivium/gate.ts",
+      "find": "if (voided) voidedSides.push(c);",
+      "replace": "if (voided || runMeta?.guard?.peer_leak_via_command?.[c]?.hit === true) voidedSides.push(c);",
+      "expect": "dist/test/test/unit/gate.test.js"
+    },
+    {
+      "id": "M1b",
+      "desc": "同 M1，期望集成格变红（run.json 与闸门两份留痕一致）",
+      "file": "src/trivium/gate.ts",
+      "find": "if (voided) voidedSides.push(c);",
+      "replace": "if (voided || runMeta?.guard?.peer_leak_via_command?.[c]?.hit === true) voidedSides.push(c);",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "leakRecordVoids 去掉命令通道旧记录回退 hit 的口径",
+      "file": "src/trivium/freeze.ts",
+      "find": ": cmd.hits !== undefined ? hitsVoid(cmd.hits) : cmd.hit === true;",
+      "replace": ": hitsVoid(cmd.hits ?? []);",
+      "expect": "dist/test/test/unit/gate.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "categoriesVoid 把告警级 orchestrator-state 当作废",
+      "file": "src/trivium/freeze.ts",
+      "find": "return cats.some((c) => isVoidingCategory(c));",
+      "replace": "return cats.some((c) => isVoidingCategory(c) || c === 'orchestrator-state');",
+      "expect": "dist/test/test/unit/leak-predicate.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "守卫侧级判定不喂带类 hits（退回 hit 口径）",
+      "file": "src/trivium/guard.ts",
+      "find": "command: { hit: cmdTypedHits.length > 0, hits: cmdTypedHits },",
+      "replace": "command: { hit: cmdTypedHits.length > 0 },",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "认证档让位给超时档（超时时不再报未登录）",
+      "file": "src/trivium/adapters/agy.ts",
+      "find": "if (/please sign in/i.test(said)) {",
+      "replace": "if (/please sign in/i.test(said) && !out.timedOut) {",
+      "expect": "dist/test/test/unit/agy-auth-failure.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "超时档去掉有无应答证据的分层（一律报模型侧慢）",
+      "file": "src/trivium/adapters/agy.ts",
+      "find": "if (answered) {",
+      "replace": "if (answered || out.timedOut) {",
+      "expect": "dist/test/test/unit/agy-auth-failure.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "超时档触发去掉 printTimeoutWarned（只看外层超时）",
+      "file": "src/trivium/adapters/agy.ts",
+      "find": "if (out.timedOut || out.printTimeoutWarned) {",
+      "replace": "if (out.timedOut) {",
+      "expect": "dist/test/test/unit/agy-auth-failure.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "超时档文案退回登录指引",
+      "file": "src/trivium/adapters/agy.ts",
+      "find": "agy 已开始应答但没答完，多半是模型侧响应慢，可稍后重试，不必重新登录。",
+      "replace": "请先交互登录一次。",
+      "expect": "dist/test/test/unit/agy-auth-failure.test.js"
+    }
+  ]
+}

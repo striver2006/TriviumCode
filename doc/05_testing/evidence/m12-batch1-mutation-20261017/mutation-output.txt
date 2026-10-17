@@ -1,0 +1,70 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  M1 ✓ 咬住（fail=1）
+  M1b ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=3）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=3）
+{
+  "总数": 9,
+  "咬住": 9,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "闸门退回命令通道按 hit 一律作废（EV-239 原缺陷）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M1b",
+      "desc": "同 M1，期望集成格变红（run.json 与闸门两份留痕一致）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "leakRecordVoids 去掉命令通道旧记录回退 hit 的口径",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "categoriesVoid 把告警级 orchestrator-state 当作废",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M4",
+      "desc": "守卫侧级判定不喂带类 hits（退回 hit 口径）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "认证档让位给超时档（超时时不再报未登录）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "超时档去掉有无应答证据的分层（一律报模型侧慢）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "超时档触发去掉 printTimeoutWarned（只看外层超时）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "超时档文案退回登录指引",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    }
+  ]
+}

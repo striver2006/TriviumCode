@@ -24,9 +24,11 @@ import { checkReviewIntegrity } from './parse.js';
 import {
   judgeDrift,
   driftAction,
+  categoriesVoid,
   classifyDenyPath,
   isVoidingCategory,
   isOrchestratorReadable,
+  leakRecordVoids,
   type DriftVerdict,
   type Snapshot,
 } from './freeze.js';
@@ -413,7 +415,7 @@ export function judgeSide(
      * 一条命令可以同时撞上多个条目（`diff <己方材料> <对端产出>`），
      * 按**最重档**处置那条命令：有一个作废类就作废。
      */
-    if (typed.some((c) => isVoidingCategory(c))) cmdVoidingHits.push(m.command);
+    if (categoriesVoid(typed)) cmdVoidingHits.push(m.command);
     else {
       cmdNotedHits.push(m.command);
       /*
@@ -481,8 +483,16 @@ export function judgeSide(
      * **只有作废类的命中才置真**（r1 三侧阻断）。
      * 初版用两条通道的原始 leaked 做或运算，于是告警档命中一样让该侧作废——
      * 分档等于没做。现在它等价于「过滤掉放行与告警档之后还剩命中」。
+     *
+     * **与闸门的作废派生调同一个 `leakRecordVoids`**（EV-239）：喂的是与 run.json
+     * `peer_leak_via_path` / `peer_leak_via_command` 单侧值同形的记录（`hit` 取「扫到了东西」，
+     * 与 review.ts 落盘处同口径）。结果与原先的 `peerHits` / `cmdVoiding.hits` 非空判断等价——
+     * 前者是 `typedHits` 的作废子集，后者非空当且仅当 `cmdTypedHits` 含作废类。
      */
-    peerArtifactRead: peerHits.length > 0 || cmdVoiding.hits.length > 0,
+    peerArtifactRead: leakRecordVoids({
+      path: { hits: typedHits },
+      command: { hit: cmdTypedHits.length > 0, hits: cmdTypedHits },
+    }),
     peerHits,
     peerCommandHits: cmdVoiding.hits,
     notedCategories,

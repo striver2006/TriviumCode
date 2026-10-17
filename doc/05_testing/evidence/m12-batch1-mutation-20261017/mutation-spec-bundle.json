@@ -1,0 +1,32 @@
+{
+  "targets": [
+    "src/trivium/gate.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/adapters/agy.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/gate.test.js",
+    "dist/test/test/unit/leak-predicate.test.js",
+    "dist/test/test/unit/agy-auth-failure.test.js",
+    "dist/test/test/integration/fault-injection.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1b",
+      "desc": "同 M1，期望集成格变红（run.json 与闸门两份留痕一致）",
+      "file": "src/trivium/gate.ts",
+      "find": "if (voided) voidedSides.push(c);",
+      "replace": "if (voided || runMeta?.guard?.peer_leak_via_command?.[c]?.hit === true) voidedSides.push(c);",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "守卫侧级判定不喂带类 hits（退回 hit 口径）",
+      "file": "src/trivium/guard.ts",
+      "find": "command: { hit: cmdTypedHits.length > 0, hits: cmdTypedHits },",
+      "replace": "command: { hit: cmdTypedHits.length > 0 },",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    }
+  ]
+}

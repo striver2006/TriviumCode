@@ -37,6 +37,7 @@ import {
 } from './base.js';
 import { warn } from '../util/log.js';
 import { run } from '../util/exec.js';
+import { TRIVIUM_DIR } from '../config.js';
 
 export const STUB_ENV_VAR = 'TRIVIUM_STUB_CRITIC';
 
@@ -645,6 +646,23 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
               tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 1 },
               read_paths: [],
               command_texts: [`cat ${path.join(req.out_dir, 'result.json')}`],
+            };
+          }
+          /*
+           * `note: 'orchestrator-state'` 时发两条**只提到编排器状态目录**的命令（BACKLOG EV-239）：
+           * M11 第 12 步 B2 的排除式 `find` 原样一条，再加一条 `--exclude-dir` 的字符串字面。
+           * 两条都没读编排器状态，只是文本里出现了那个目录——命中应落告警级，不判作废；
+           * 闸门曾对命令通道不看类别、一律作废，两审形态下共同阻断因此静默不执行。
+           */
+          if (spec.note === 'orchestrator-state') {
+            return {
+              ...baseResult(critic, req, spec),
+              tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 2 },
+              read_paths: [],
+              command_texts: [
+                `find . -name "*.js" -not -path "./.git/*" -not -path "./${TRIVIUM_DIR}/*" -not -path "./node_modules/*"`,
+                `grep -rn "capacity" src --exclude-dir=${TRIVIUM_DIR}`,
+              ],
             };
           }
           return {

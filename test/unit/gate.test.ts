@@ -1049,7 +1049,7 @@ test('voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线
     '读编排器状态文件不损害独立性——这一族正是四次实测误伤的全部',
   );
 
-  // ③ 命令通道命中 → 作废（该通道没有类别信息，命中即算）
+  // ③ 命令通道的旧记录（没有 hits）→ 作废：回退 hit 口径（旧口径，2026-09-17 之前的 run.json 只有 commands）
   const l3 = await layout();
   const m3 = newRunMeta({ ...base, runId: 'RV3' });
   m3.guard.peer_leak_via_command = { glm: { hit: true, commands: ['cat .reviews/peer-review.md'] } };
@@ -1060,6 +1060,52 @@ test('voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线
   const l4 = await layout();
   await writeRunMeta(l4, 'plan', newRunMeta({ ...base, runId: 'RV4' }));
   assert.deepEqual((await loadRoundReviews(l4, 'plan', 'RV4')).voidedSides, []);
+
+  /*
+   * ⑤～⑦ 命令通道带逐条类别时按类别判（BACKLOG EV-239）。
+   * 闸门曾对命令通道一律按 hit 作废，⑤ 这种只提到编排器状态目录的命令（M11 第 12 步 B2 原样）
+   * 因此让该侧作废，两审形态下共同阻断静默不执行。
+   */
+  const b2Command = 'find . -name "*.js" -not -path "./.trivium/*"';
+  // ⑤ 命令通道 hits 只有告警类 → 不作废
+  const l5 = await layout();
+  const m5 = newRunMeta({ ...base, runId: 'RV5' });
+  m5.guard.peer_leak_via_command = {
+    glm: { hit: true, commands: [b2Command], hits: [{ command: b2Command, path: '.trivium', category: 'orchestrator-state' }] },
+  };
+  await writeRunMeta(l5, 'plan', m5);
+  assert.deepEqual(
+    (await loadRoundReviews(l5, 'plan', 'RV5')).voidedSides,
+    [],
+    '命令里只提到编排器状态目录：hit 为真只说明扫到了东西，类别是告警级，不判作废',
+  );
+
+  // ⑥ 命令通道 hits 含作废类 → 作废
+  const l6 = await layout();
+  const m6 = newRunMeta({ ...base, runId: 'RV6' });
+  const peerCmd = 'git show HEAD:.reviews/t/plan/x-gemini.md';
+  m6.guard.peer_leak_via_command = {
+    glm: { hit: true, commands: [peerCmd], hits: [{ command: peerCmd, path: '.reviews/t/plan/x-gemini.md', category: 'peer-artifact' }] },
+  };
+  await writeRunMeta(l6, 'plan', m6);
+  assert.deepEqual((await loadRoundReviews(l6, 'plan', 'RV6')).voidedSides, ['glm']);
+
+  // ⑦ 同一条命令同时撞告警类与作废类 → 作废（取最重档）
+  const l7 = await layout();
+  const m7 = newRunMeta({ ...base, runId: 'RV7' });
+  const mixed = 'diff .trivium/lock/x runs/p/r/gemini/out/result.json';
+  m7.guard.peer_leak_via_command = {
+    gemini: {
+      hit: true,
+      commands: [mixed],
+      hits: [
+        { command: mixed, path: '.trivium/lock/x', category: 'orchestrator-state' },
+        { command: mixed, path: 'runs/p/r/gemini/out/result.json', category: 'peer-run-output' },
+      ],
+    },
+  };
+  await writeRunMeta(l7, 'plan', m7);
+  assert.deepEqual((await loadRoundReviews(l7, 'plan', 'RV7')).voidedSides, ['gemini']);
 });
 
 test('loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推', async () => {

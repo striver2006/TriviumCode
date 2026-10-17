@@ -167,6 +167,51 @@ export function isVoidingCategory(c: DenyCategory): boolean {
   return VOIDING_DENY_CATEGORIES.includes(c);
 }
 
+/*
+ * ── 作废谓词：守卫与闸门共用（BACKLOG EV-239，M12 批次 1）──
+ *
+ * 作废判定曾有三个派生点：守卫的侧级判定、run.json 的共同阻断运行期三态（读守卫的结果）、
+ * 闸门的 `voidedSides`。前两处只认作废类；闸门那处对命令通道按 `hit === true` 一律作废，
+ * 注释写着「命令通道没有类别信息，命中即算」——那句是 2026-09-17 `f2bc7635` 写的，
+ * 同主题 r2 的 `333e5a29` 随即给命令通道补了逐条带类的 `hits`，闸门没跟上。
+ * 后果是只命中编排器状态目录（告警级）的一侧在守卫看来有效、在闸门看来作废，
+ * 两审形态下共同阻断这一档静默不执行，同一次运行的 run.json 与 task.json 记着不同的有效侧数
+ * （M11 第 12 步 Z2 / B2 实测）。
+ *
+ * 现在守卫的侧级判定与闸门的作废派生**调同一个 `leakRecordVoids`**：前者喂内存里的命中，
+ * 后者喂落盘的同形记录。M12 批次 3 的作废侧重跑（EV-225）也要从这里取判定，别再另写一份。
+ */
+
+/** 一组类别里有没有作废类（守卫逐条命令分档时手上是裸类别数组） */
+export function categoriesVoid(cats: readonly DenyCategory[]): boolean {
+  return cats.some((c) => isVoidingCategory(c));
+}
+
+/** 一组带类命中里有没有作废类 */
+export function hitsVoid(hits: readonly { category: DenyCategory }[]): boolean {
+  return categoriesVoid(hits.map((h) => h.category));
+}
+
+/**
+ * 一侧的两条泄漏通道记录是否判该侧作废。形状与 run.json `guard.peer_leak_via_path` /
+ * `peer_leak_via_command` 的单侧值相同，守卫在落盘前就用同形的内存记录调它。
+ *
+ * **旧记录各按旧口径，不追溯改判**：
+ * - 路径通道缺 `hits`（早于按侧留痕的接线）⇒ 按无作废——那时无从区分哪一类命中；
+ * - 命令通道缺 `hits`（2026-09-17 之前的 run.json 只有 `commands`）⇒ 退回 `hit === true`，
+ *   即当时「命中即作废」的口径。
+ * 有 `hits` 时一律按类别判：`hit` 的语义是「这条通道扫到了东西」，含告警档，不能拿来判作废。
+ */
+export function leakRecordVoids(rec: {
+  path?: { hits?: readonly { category: DenyCategory }[] } | undefined;
+  command?: { hit: boolean; hits?: readonly { category: DenyCategory }[] } | undefined;
+}): boolean {
+  const pathVoids = hitsVoid(rec.path?.hits ?? []);
+  const cmd = rec.command;
+  const commandVoids = cmd === undefined ? false : cmd.hits !== undefined ? hitsVoid(cmd.hits) : cmd.hit === true;
+  return pathVoids || commandVoids;
+}
+
 /**
  * 命中的这条路径是否落在编排器目录的**具名放行清单**里。
  *

@@ -1,0 +1,1149 @@
+# trivium changes.diff
+# run_id: 20261017T051253Z
+# base: HEAD
+# head: 02f9c0e143a9b2cd3ff57261821912665abc4a49
+# files: 19
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle-log.txt
+#   doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle-output.json
+#   doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle.mjs
+#   doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-log.txt
+#   doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-output.json
+#   doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names.mjs
+#   doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-output.txt
+#   doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-spec-bundle.json
+#   doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-spec.json
+#   src/trivium/adapters/agy.ts
+#   src/trivium/adapters/stub.ts
+#   src/trivium/freeze.ts
+#   src/trivium/gate.ts
+#   src/trivium/guard.ts
+#   test/integration/fault-injection.test.ts
+#   test/unit/agy-auth-failure.test.ts
+#   test/unit/gate.test.ts
+#   test/unit/leak-predicate.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index e5e496b4..6a69e8e9 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.160
++> - **当前版本**：v1.3.161
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -1743,7 +1743,7 @@ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起
+ | :--- | :--- | :--- |
+ | 探针结论存在且未过期 | `probe.generated_at` 在 `probe_ttl_days`（默认 7）内，且 CLI 版本未变 | 自动触发一次 `doctor`；仍失败则中止 |
+ | Antigravity 可调用 | `agy --version` 成功 | 中止 |
+-| Antigravity 已认证 | 最小 headless 探活任务返回 `status: SUCCESS`；结论带短 TTL 缓存（`preflight.auth_cache_ttl_h`，默认 1h，写 `config.local.yaml` 的 `probe.auth.agy`，形状见 13.1），TTL 内跳过探活以省时省配额。缓存除 `checked_at` 外还记 `cli_version` 与凭据 `fingerprint`：CLI 升级或凭据轮换后必须重新探活，否则缓存会盖住一个已经失效的结论 | 中止（提示先交互登录一次） |
++| Antigravity 已认证 | 最小 headless 探活任务返回 `status: SUCCESS`；结论带短 TTL 缓存（`preflight.auth_cache_ttl_h`，默认 1h，写 `config.local.yaml` 的 `probe.auth.agy`，形状见 13.1），TTL 内跳过探活以省时省配额。缓存除 `checked_at` 外还记 `cli_version` 与凭据 `fingerprint`：CLI 升级或凭据轮换后必须重新探活，否则缓存会盖住一个已经失效的结论 | 中止（退 69）。失败详情分三档、都点名探活模型与耗时（2026-10-17，M12 批次 1，EV-238；判定本身不变）：①输出含未登录原话（`Please sign in`，只认已存原始样本）⇒ 提示交互登录，优先于超时；②外层超时或 agy 自报 print timeout ⇒ 有已开始应答的证据（print timeout、流状态 SUCCESS、会话 id 任一）报「模型侧慢、可重试、不必重登」，没有则以「可能在等交互登录」打头；③其他 ⇒ 原因未识别、仍给登录指引。未识别原话的未登录：快速失败落 ③，挂起到超时落 ② 的无应答一层。已知角落：内层 print timeout 后在外层超时前带部分输出退出且流状态为 SUCCESS 时判通过（现行判定，未改） |
+ | ZCode 可调用 | `node <entry> version` 成功 | 中止 |
+ | ZCode 已认证 | 最小 headless 探活任务返回非鉴权错误；同样带 TTL 缓存 | 中止（提示凭据格式 `<id>.<secret>`） |
+ | 模型 slug 合法 | 在该侧探针记录的模型目录内（**按 `cliName` 通用消费 `CommonProbe.models`**，M8 第 3 步收敛；厂商特有的 slug 归一下沉到适配器的 `normalizeModelForCatalog`）。**只校验本次入选侧** | 中止并列出可用值；有侧无目录可比或回落基底目录时通过但带 `warn`（v1.3.41） |
+@@ -2329,6 +2329,17 @@ Hook 行为约定：
+ 把 `hit` 挂在只含作废类的数组上，会让告警档命中落盘成 `hit: false` + 非空明细，
+ 同一条留痕自相矛盾。
+ 
++**作废判定只有一个谓词：守卫的侧级判定与闸门的作废派生都调 `freeze.ts` 的 `leakRecordVoids`**
++（2026-10-17，M12 批次 1，BACKLOG EV-239）。守卫喂内存里的带类命中，闸门喂 run.json 里同形的单侧记录；
++共同阻断的运行期三态（run.json `joint_check`）读守卫的判定，校验期三态（`task.json.joint_checks`）读闸门的派生，
++两者因此必然同数。规则：两条通道都按类别判，只有 ① ② 作废。**旧记录各按旧口径，不追溯改判**：
++命令通道缺 `hits`（2026-09-17 之前的 run.json 只有 `commands`）退回 `hit`，即当时「命中即作废」；
++路径通道缺 `hits` 按无作废。有 `hits` 的已归档轮次重跑 `gate --check` 一律按本规则派生，不设开关（用户 2026-10-16 D-5）。
++
++> 此前闸门对命令通道按 `hit === true` 一律作废，注释称「命令通道没有类别信息」——那句写于带类留痕补上之前的一轮，
++> 补上之后闸门没跟上。只提到编排器状态目录的命令（排除式 `find`、`--exclude-dir` 一类，M11 第 12 步 Z2 / B2 实测）
++> 在守卫看来是 ③ 告警级、在闸门看来作废，两审形态下共同阻断这一档静默不执行，同一轮 run.json 与 task.json 记着不同的有效侧数。
++
+ **人读措辞按通道分开**：措施 a 说「**读到**了」，措施 b 说「命令文本里**提到**了」。
+ 处置相同（提到即作废——经 git 对象库等方式取值不留文件系统痕迹，证明不了没读到），
+ 但留痕不得把判据说成比它实际更强的事实：事后复盘的人据此写裁决。
+@@ -3976,6 +3987,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.161** | 2026-10-17 | **M12 批次 1：审查期两处误判（EV-239 / EV-238）。** 主题 `M12-审查期误判两则`（`/dual-run`，计划双审 run `20261017T042520Z`，7 条全接受 → r2）。①10.1.1 新增「作废判定只有一个谓词」：守卫侧级判定与闸门作废派生共用 `freeze.ts` 的 `leakRecordVoids`，两条通道都按类别判，旧记录各按旧口径（命令通道缺 `hits` 退回 `hit`、路径通道缺 `hits` 按无作废），已归档轮次重跑 `gate --check` 按新口径、不设开关；此前闸门对命令通道按 `hit` 一律作废，告警级的编排器状态目录命中让一侧被排出共同阻断。②预检项表「Antigravity 已认证」的处置列补失败详情三档（认证 / 超时分有无应答两层 / 其他），判定与退 69 不变。 |
+ | **v1.3.160** | 2026-10-16 | **M12 立项与批次 0。** 16.1 登记 M12 行与依赖链（计划 `doc/08_project/M11后续-开发计划-草案.md`，D-1～D-16 用户全按推荐）。EV-231 按用户定不补实现，16.2 纪律 5、18.1 #15、R24 三处「可粘贴样例」改为按现状描述（12.1 已于 v1.3.139 改准；演进设计自 v1.0.0 冻结，同义三处不改，以本文为准）。纯文档，B 档未走双审；同批的 EV-193 用例修复见 `REPORT_2026-10-16_m12_batch0.md`。 |
+ | **v1.3.159** | 2026-10-16 | **M11 第 12 步收口：M11 达成。** 全量手工剧本 1～11 共 68 格均有本轮实证或经用户决定的达成边界（矩阵 `doc/05_testing/evidence/m11-step12-20261012/matrix.json`，报告 `REPORT_2026-10-12_m11_step12_manual_acceptance.md`）：5.2～5.5 按用户 D1 以 CLI 负对照加同一 hook-pre-commit 通道的客户端放行 / 退 2 判组合证据达成；剧本 7 由 ZCode（命令 C）与 Codex（命令 B）两家真载体各跑一轮；剧本 9 含可选 9.6；剧本 10 Claude→ZCode 跨 Driver 复盘不串档；11.7 档位表格子 `{tier}` 实跑。翻状态：16.1 M11 行 ✅、AC-23 已达成、R-4 / FR-30 已达成、文档头 M11 段收尾。纯文档，B 档未走双审。 |
+ | **v1.3.156** | 2026-10-12 | 第24B获批集中取证合同：受控包装器/native实证、default及工具面、混合工具唯一配对、局部证据Schema、三具名认证时间戳诊断与独立判据批准/撤销；原标准及旧列保留，两个候选尚未采用。新增v13及v9至v12具名测试，不改安装输入。 |
+diff --git a/src/trivium/adapters/agy.ts b/src/trivium/adapters/agy.ts
+index 52d53e58..6125e21d 100644
+--- a/src/trivium/adapters/agy.ts
++++ b/src/trivium/adapters/agy.ts
+@@ -193,6 +193,53 @@ export function resolveAgyAgent(
+   return { agent: probe.agent, reason: null };
+ }
+ 
++/**
++ * agy 认证探活失败时的详情文案（BACKLOG EV-238，M12 批次 1）。
++ *
++ * 原先失败一律写「请先交互登录一次」。M11 第 12 步 Z1 的那次失败实为外层 120 s 超时
++ * （status=SUCCESS 而 ok 为假，只能是 `timedOut`；stderr 是 agy 自报的 print timeout），
++ * 登录正常——文案把用户引去重登。现在按三档、超时档再分两层，**判定本身（ok）不变**，只换说法：
++ *
++ * 1. **认证档**：输出含未登录原话。只认仓库里存过的原始样本 `Please sign in`
++ *    （`REPORT_2026-09-24_m10b_driver_entry_probe.md`，空 HOME 下 `agy models` 的原话）；
++ *    不凭猜测扩词——`auth`、`login` 一类宽词会命中正常 stderr。优先于超时档：出现原话就报未登录。
++ * 2. **超时档**：外层超时或 agy 自报 print timeout。按有无「已开始应答」的证据分两层：
++ *    有（自报 print timeout、流状态 SUCCESS、拿到会话 id，任一）⇒ 模型侧慢，可重试；
++ *    没有 ⇒ 以「可能在等交互登录」打头——未识别原话的未登录若表现为挂起到超时，落在这一层。
++ * 3. **其他档**：以上都不是。原因未识别，仍给登录指引（快速失败的未登录落在这里）。
++ *
++ * 三档都点名探活所用的模型与耗时。已知角落：内层 print timeout 触发、agy 在外层超时前带部分输出退出
++ * 且流状态仍为 SUCCESS 时，ok 为真、根本不进这里——那是现行判定，本次不改。
++ */
++export function describeAgyAuthFailure(out: AgyInvokeOutcome, model: string | null): string {
++  const secs = Math.round(out.durationMs / 1000);
++  const where = `模型 ${model ?? '缺省'}，${secs}s`;
++  const tail = out.stderr.trim() ? `\n  stderr: ${out.stderr.slice(0, 200)}` : '';
++  const said = `${out.stdout}\n${out.stderr}`;
++
++  if (/please sign in/i.test(said)) {
++    return `探活失败：agy 提示未登录（${where}）。请交互运行一次 \`agy\` 完成登录后重试。${tail}`;
++  }
++  if (out.timedOut || out.printTimeoutWarned) {
++    const answered = out.printTimeoutWarned || out.parsed.status === 'SUCCESS' || out.parsed.conversationId !== null;
++    if (answered) {
++      return (
++        `探活超时（${where}）：agy 已开始应答但没答完，多半是模型侧响应慢，可稍后重试，不必重新登录。` +
++        (out.printTimeoutWarned ? 'agy 自报 print timeout。' : '') +
++        tail
++      );
++    }
++    return (
++      `探活超时（${where}），且没有收到任何应答：可能是在等交互登录，请交互运行一次 \`agy\` 确认；` +
++      `已登录的话，也可能是网络或服务端无响应。${tail}`
++    );
++  }
++  return (
++    `探活失败（status=${out.parsed.status}，${where}）：原因未识别。` +
++    `若近期未登录过，请交互运行一次 \`agy\`；否则请看 stderr 摘要。${tail}`
++  );
++}
++
+ export const agyAdapter: CriticAdapter = {
+   critic: 'gemini',
+   /*
+@@ -250,11 +297,13 @@ export const agyAdapter: CriticAdapter = {
+       async probe() {
+         const bin = cfg.probe.cli.agy?.entrypoint ?? null;
+         if (!bin) return { ok: false, detail: 'agy 路径未记录' };
++        // 失败文案要点名探活所用的模型：与调用共用这一个取值，不各写一份取值链
++        const model = combination?.model ?? cfg.probe.cli.agy?.models[0] ?? null;
+         const out = await invokeAgy({
+           bin,
+           cwd: projectRoot,
+           prompt: '只回复 OK 两个字母，不要调用任何工具。',
+-          model: combination?.model ?? cfg.probe.cli.agy?.models[0] ?? null,
++          model,
+           effort: combination?.effort ?? null,
+           agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
+           timeoutMs: 120_000,
+@@ -265,8 +314,7 @@ export const agyAdapter: CriticAdapter = {
+           ok,
+           detail: ok
+             ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
+-            : `探活失败（status=${out.parsed.status}）。请先交互登录一次：\`agy\` 然后完成登录流程。\n` +
+-              `  stderr: ${out.stderr.slice(0, 200)}`,
++            : describeAgyAuthFailure(out, model),
+         };
+       },
+     };
+diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts
+index 125663d8..4add81b2 100644
+--- a/src/trivium/adapters/stub.ts
++++ b/src/trivium/adapters/stub.ts
+@@ -37,6 +37,7 @@ import {
+ } from './base.js';
+ import { warn } from '../util/log.js';
+ import { run } from '../util/exec.js';
++import { TRIVIUM_DIR } from '../config.js';
+ 
+ export const STUB_ENV_VAR = 'TRIVIUM_STUB_CRITIC';
+ 
+@@ -647,6 +648,23 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
+               command_texts: [`cat ${path.join(req.out_dir, 'result.json')}`],
+             };
+           }
++          /*
++           * `note: 'orchestrator-state'` 时发两条**只提到编排器状态目录**的命令（BACKLOG EV-239）：
++           * M11 第 12 步 B2 的排除式 `find` 原样一条，再加一条 `--exclude-dir` 的字符串字面。
++           * 两条都没读编排器状态，只是文本里出现了那个目录——命中应落告警级，不判作废；
++           * 闸门曾对命令通道不看类别、一律作废，两审形态下共同阻断因此静默不执行。
++           */
++          if (spec.note === 'orchestrator-state') {
++            return {
++              ...baseResult(critic, req, spec),
++              tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 2 },
++              read_paths: [],
++              command_texts: [
++                `find . -name "*.js" -not -path "./.git/*" -not -path "./${TRIVIUM_DIR}/*" -not -path "./node_modules/*"`,
++                `grep -rn "capacity" src --exclude-dir=${TRIVIUM_DIR}`,
++              ],
++            };
++          }
+           return {
+             ...baseResult(critic, req, spec),
+             tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 1 },
+diff --git a/src/trivium/freeze.ts b/src/trivium/freeze.ts
+index a5fb9c4b..befcc874 100644
+--- a/src/trivium/freeze.ts
++++ b/src/trivium/freeze.ts
+@@ -167,6 +167,51 @@ export function isVoidingCategory(c: DenyCategory): boolean {
+   return VOIDING_DENY_CATEGORIES.includes(c);
+ }
+ 
++/*
++ * ── 作废谓词：守卫与闸门共用（BACKLOG EV-239，M12 批次 1）──
++ *
++ * 作废判定曾有三个派生点：守卫的侧级判定、run.json 的共同阻断运行期三态（读守卫的结果）、
++ * 闸门的 `voidedSides`。前两处只认作废类；闸门那处对命令通道按 `hit === true` 一律作废，
++ * 注释写着「命令通道没有类别信息，命中即算」——那句是 2026-09-17 `f2bc7635` 写的，
++ * 同主题 r2 的 `333e5a29` 随即给命令通道补了逐条带类的 `hits`，闸门没跟上。
++ * 后果是只命中编排器状态目录（告警级）的一侧在守卫看来有效、在闸门看来作废，
++ * 两审形态下共同阻断这一档静默不执行，同一次运行的 run.json 与 task.json 记着不同的有效侧数
++ * （M11 第 12 步 Z2 / B2 实测）。
++ *
++ * 现在守卫的侧级判定与闸门的作废派生**调同一个 `leakRecordVoids`**：前者喂内存里的命中，
++ * 后者喂落盘的同形记录。M12 批次 3 的作废侧重跑（EV-225）也要从这里取判定，别再另写一份。
++ */
++
++/** 一组类别里有没有作废类（守卫逐条命令分档时手上是裸类别数组） */
++export function categoriesVoid(cats: readonly DenyCategory[]): boolean {
++  return cats.some((c) => isVoidingCategory(c));
++}
++
++/** 一组带类命中里有没有作废类 */
++export function hitsVoid(hits: readonly { category: DenyCategory }[]): boolean {
++  return categoriesVoid(hits.map((h) => h.category));
++}
++
++/**
++ * 一侧的两条泄漏通道记录是否判该侧作废。形状与 run.json `guard.peer_leak_via_path` /
++ * `peer_leak_via_command` 的单侧值相同，守卫在落盘前就用同形的内存记录调它。
++ *
++ * **旧记录各按旧口径，不追溯改判**：
++ * - 路径通道缺 `hits`（早于按侧留痕的接线）⇒ 按无作废——那时无从区分哪一类命中；
++ * - 命令通道缺 `hits`（2026-09-17 之前的 run.json 只有 `commands`）⇒ 退回 `hit === true`，
++ *   即当时「命中即作废」的口径。
++ * 有 `hits` 时一律按类别判：`hit` 的语义是「这条通道扫到了东西」，含告警档，不能拿来判作废。
++ */
++export function leakRecordVoids(rec: {
++  path?: { hits?: readonly { category: DenyCategory }[] } | undefined;
++  command?: { hit: boolean; hits?: readonly { category: DenyCategory }[] } | undefined;
++}): boolean {
++  const pathVoids = hitsVoid(rec.path?.hits ?? []);
++  const cmd = rec.command;
++  const commandVoids = cmd === undefined ? false : cmd.hits !== undefined ? hitsVoid(cmd.hits) : cmd.hit === true;
++  return pathVoids || commandVoids;
++}
++
+ /**
+  * 命中的这条路径是否落在编排器目录的**具名放行清单**里。
+  *
+diff --git a/src/trivium/gate.ts b/src/trivium/gate.ts
+index 6d3122fe..a95301f7 100644
+--- a/src/trivium/gate.ts
++++ b/src/trivium/gate.ts
+@@ -8,7 +8,8 @@
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import { agentById, DEFAULT_DRIVER, entryCommandOf, findingPrefixAlternation, type AgentId } from './agents/registry.js';
+-import { DEFAULT_CRITICS, describeDriftUnknown, VOIDING_DENY_CATEGORIES, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type SnapshotMeta, type Stage } from './types.js';
++import { leakRecordVoids } from './freeze.js';
++import { DEFAULT_CRITICS, describeDriftUnknown, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type SnapshotMeta, type Stage } from './types.js';
+ import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
+ import { checkRecordedArtifacts, isReviewArtifact, listStageArtifacts, metaDir, stageDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
+ import { EXIT, TriviumError } from './exit-codes.js';
+@@ -1427,13 +1428,25 @@ export async function loadRoundReviews(
+    * 读不到 run 元数据时返回空数组：那是旧归档，当时的口径是「命中即作废」、
+    * 无从区分哪几侧因哪一类命中，按「无作废侧」处理即维持旧行为，不追溯改判。
+    */
++  /*
++   * **两条通道都按类别判，与守卫的侧级判定调同一个 `leakRecordVoids`**（BACKLOG EV-239，M12 批次 1）。
++   *
++   * 这里原先对命令通道写的是 `viaCmd?.hit === true` 即作废，注释称「命令通道没有类别信息，命中即算」。
++   * 那句是 2026-09-17 `f2bc7635`（代码双审 r1 修复）写的；同主题 r2 的 `333e5a29` 随即给命令通道补了
++   * 逐条带类的 `hits`，这里没跟上。而 `hit` 的语义是「这条通道扫到了东西」，含告警档——
++   * 只命中编排器状态目录的一侧（告警级）在守卫与 run.json 看来有效、在这里却被作废，
++   * 两审形态下共同阻断这一档静默不执行（M11 第 12 步 Z2 / B2 实测）。
++   *
++   * 旧记录各按旧口径（命令通道缺 `hits` 退回 `hit`、路径通道缺 `hits` 按无作废），见 `leakRecordVoids`。
++   * 有 `hits` 的已归档轮次重跑 `gate --check` 一律按新口径派生，不加开关（用户 2026-10-16 D-5）。
++   */
+   const voidedSides: CriticId[] = [];
+   for (const c of criticsOf(runMeta)) {
+-    const viaPath = runMeta?.guard?.peer_leak_via_path?.[c]?.hits ?? [];
+-    const viaCmd = runMeta?.guard?.peer_leak_via_command?.[c];
+-    // 路径通道逐条带类，只有作废类才算；命令通道没有类别信息，命中即算
+-    const pathVoiding = viaPath.some((h) => VOIDING_DENY_CATEGORIES.includes(h.category));
+-    if (pathVoiding || viaCmd?.hit === true) voidedSides.push(c);
++    const voided = leakRecordVoids({
++      path: runMeta?.guard?.peer_leak_via_path?.[c],
++      command: runMeta?.guard?.peer_leak_via_command?.[c],
++    });
++    if (voided) voidedSides.push(c);
+   }
+ 
+   const breachFiles = [...(runMeta?.guard?.breached_files ?? [])];
+diff --git a/src/trivium/guard.ts b/src/trivium/guard.ts
+index 5e21e764..7f56767b 100644
+--- a/src/trivium/guard.ts
++++ b/src/trivium/guard.ts
+@@ -24,9 +24,11 @@ import { checkReviewIntegrity } from './parse.js';
+ import {
+   judgeDrift,
+   driftAction,
++  categoriesVoid,
+   classifyDenyPath,
+   isVoidingCategory,
+   isOrchestratorReadable,
++  leakRecordVoids,
+   type DriftVerdict,
+   type Snapshot,
+ } from './freeze.js';
+@@ -413,7 +415,7 @@ export function judgeSide(
+      * 一条命令可以同时撞上多个条目（`diff <己方材料> <对端产出>`），
+      * 按**最重档**处置那条命令：有一个作废类就作废。
+      */
+-    if (typed.some((c) => isVoidingCategory(c))) cmdVoidingHits.push(m.command);
++    if (categoriesVoid(typed)) cmdVoidingHits.push(m.command);
+     else {
+       cmdNotedHits.push(m.command);
+       /*
+@@ -481,8 +483,16 @@ export function judgeSide(
+      * **只有作废类的命中才置真**（r1 三侧阻断）。
+      * 初版用两条通道的原始 leaked 做或运算，于是告警档命中一样让该侧作废——
+      * 分档等于没做。现在它等价于「过滤掉放行与告警档之后还剩命中」。
++     *
++     * **与闸门的作废派生调同一个 `leakRecordVoids`**（EV-239）：喂的是与 run.json
++     * `peer_leak_via_path` / `peer_leak_via_command` 单侧值同形的记录（`hit` 取「扫到了东西」，
++     * 与 review.ts 落盘处同口径）。结果与原先的 `peerHits` / `cmdVoiding.hits` 非空判断等价——
++     * 前者是 `typedHits` 的作废子集，后者非空当且仅当 `cmdTypedHits` 含作废类。
+      */
+-    peerArtifactRead: peerHits.length > 0 || cmdVoiding.hits.length > 0,
++    peerArtifactRead: leakRecordVoids({
++      path: { hits: typedHits },
++      command: { hit: cmdTypedHits.length > 0, hits: cmdTypedHits },
++    }),
+     peerHits,
+     peerCommandHits: cmdVoiding.hits,
+     notedCategories,
+diff --git a/test/integration/fault-injection.test.ts b/test/integration/fault-injection.test.ts
+index 211ae770..958d9b6e 100644
+--- a/test/integration/fault-injection.test.ts
++++ b/test/integration/fault-injection.test.ts
+@@ -1021,6 +1021,50 @@ test(
+   },
+ );
+ 
++test(
++  'EV-239 两审 · 命令里只提到编排器状态目录 → 不作废：run.json 与闸门同口径，共同阻断照常执行',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    /*
++     * M11 第 12 步 Z2 / B2 的形态：审核者的命令文本里出现编排器状态目录（排除式 find、--exclude-dir），
++     * 没读任何编排器状态。守卫与 run.json 一直把它判告警级；闸门曾对命令通道一律按 hit 作废，
++     * 两审形态下有效侧只剩一家、报 joint_check_degraded，同一轮两份留痕给出不同的有效侧数。
++     */
++    const TWO: CriticId[] = ['gemini', 'glm'];
++    const r = await runInjected(stubOf(TWO, { gemini: { mode: 'peer_leak_via_command', note: 'orchestrator-state' } }));
++
++    const viaCmd = r.meta.guard.peer_leak_via_command?.gemini;
++    assert.equal(viaCmd?.hit, true, `前提：命令通道扫到了编排器状态目录。实得：${JSON.stringify(viaCmd)}`);
++    assert.ok((viaCmd?.hits?.length ?? 0) > 0, '前提：命中逐条带类');
++    assert.ok(
++      viaCmd!.hits!.every((h) => h.category === 'orchestrator-state'),
++      `两条命令都只碰编排器状态目录，命中应全是告警级：${JSON.stringify(viaCmd?.hits)}`,
++    );
++    assert.equal(r.meta.guard.peer_artifact_read, false, '守卫：告警级命中不判作废');
++    assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 2 }, 'run.json：两家都有效');
++
++    // 闸门：两条 -01 blocker 同位且都被驳回 —— 有效侧是两家，共同阻断真的执行并报出来
++    await writeNextPlan(r.stageDir, TWO.map((c) => `${prefixOf(c)}-02`));
++    await writeThreeDisposition(r, TWO, TWO);
++    const g = await gateCheck(r.root);
++    assert.equal(g.ok, true, `裁决齐备后闸门应通过：${JSON.stringify(g.failures)}`);
++    assert.ok(
++      !g.warnings.some((w) => w.code === 'joint_check_degraded'),
++      `告警级命中不该让一侧被排出共同阻断：${JSON.stringify(g.warnings)}`,
++    );
++    assert.ok(
++      g.warnings.some((w) => w.code === 'joint_blocker_rejected'),
++      `两家同位 blocker 都被驳回，共同阻断应执行并报出：${JSON.stringify(g.warnings)}`,
++    );
++    const jc = await jointCheckEntry(r.root, r.meta.run_id);
++    assert.deepEqual(
++      jc && { state: jc.state, effective_sides: jc.effective_sides },
++      { state: 'checked-found', effective_sides: 2 },
++      'task.json 与 run.json 记同一个有效侧数',
++    );
++  },
++);
++
+ test(
+   'AC-25 三审 · Driver 轮换：Driver=glm、claude 当审核者读另两方产出 → 只有 claude 作废，glm 原稿不在任何命中里',
+   { skip: bundleMissing && bundleSkipReason },
+diff --git a/test/unit/gate.test.ts b/test/unit/gate.test.ts
+index abfcbdb9..7e867e83 100644
+--- a/test/unit/gate.test.ts
++++ b/test/unit/gate.test.ts
+@@ -1049,7 +1049,7 @@ test('voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线
+     '读编排器状态文件不损害独立性——这一族正是四次实测误伤的全部',
+   );
+ 
+-  // ③ 命令通道命中 → 作废（该通道没有类别信息，命中即算）
++  // ③ 命令通道的旧记录（没有 hits）→ 作废：回退 hit 口径（旧口径，2026-09-17 之前的 run.json 只有 commands）
+   const l3 = await layout();
+   const m3 = newRunMeta({ ...base, runId: 'RV3' });
+   m3.guard.peer_leak_via_command = { glm: { hit: true, commands: ['cat .reviews/peer-review.md'] } };
+@@ -1060,6 +1060,52 @@ test('voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线
+   const l4 = await layout();
+   await writeRunMeta(l4, 'plan', newRunMeta({ ...base, runId: 'RV4' }));
+   assert.deepEqual((await loadRoundReviews(l4, 'plan', 'RV4')).voidedSides, []);
++
++  /*
++   * ⑤～⑦ 命令通道带逐条类别时按类别判（BACKLOG EV-239）。
++   * 闸门曾对命令通道一律按 hit 作废，⑤ 这种只提到编排器状态目录的命令（M11 第 12 步 B2 原样）
++   * 因此让该侧作废，两审形态下共同阻断静默不执行。
++   */
++  const b2Command = 'find . -name "*.js" -not -path "./.trivium/*"';
++  // ⑤ 命令通道 hits 只有告警类 → 不作废
++  const l5 = await layout();
++  const m5 = newRunMeta({ ...base, runId: 'RV5' });
++  m5.guard.peer_leak_via_command = {
++    glm: { hit: true, commands: [b2Command], hits: [{ command: b2Command, path: '.trivium', category: 'orchestrator-state' }] },
++  };
++  await writeRunMeta(l5, 'plan', m5);
++  assert.deepEqual(
++    (await loadRoundReviews(l5, 'plan', 'RV5')).voidedSides,
++    [],
++    '命令里只提到编排器状态目录：hit 为真只说明扫到了东西，类别是告警级，不判作废',
++  );
++
++  // ⑥ 命令通道 hits 含作废类 → 作废
++  const l6 = await layout();
++  const m6 = newRunMeta({ ...base, runId: 'RV6' });
++  const peerCmd = 'git show HEAD:.reviews/t/plan/x-gemini.md';
++  m6.guard.peer_leak_via_command = {
++    glm: { hit: true, commands: [peerCmd], hits: [{ command: peerCmd, path: '.reviews/t/plan/x-gemini.md', category: 'peer-artifact' }] },
++  };
++  await writeRunMeta(l6, 'plan', m6);
++  assert.deepEqual((await loadRoundReviews(l6, 'plan', 'RV6')).voidedSides, ['glm']);
++
++  // ⑦ 同一条命令同时撞告警类与作废类 → 作废（取最重档）
++  const l7 = await layout();
++  const m7 = newRunMeta({ ...base, runId: 'RV7' });
++  const mixed = 'diff .trivium/lock/x runs/p/r/gemini/out/result.json';
++  m7.guard.peer_leak_via_command = {
++    gemini: {
++      hit: true,
++      commands: [mixed],
++      hits: [
++        { command: mixed, path: '.trivium/lock/x', category: 'orchestrator-state' },
++        { command: mixed, path: 'runs/p/r/gemini/out/result.json', category: 'peer-run-output' },
++      ],
++    },
++  };
++  await writeRunMeta(l7, 'plan', m7);
++  assert.deepEqual((await loadRoundReviews(l7, 'plan', 'RV7')).voidedSides, ['gemini']);
+ });
+ 
+ test('loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推', async () => {
+diff --git a/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle-log.txt b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle-log.txt
+new file mode 100644
+index 00000000..05552d24
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle-log.txt
+@@ -0,0 +1,2 @@
++M1b：fail=1 cancelled=0 108s ⇒ EV-239 两审 · 命令里只提到编排器状态目录 → 不作废：run.json 与闸门同口径，共同阻断照常执行
++M4：fail=1 cancelled=0 106s ⇒ EV-239 两审 · 命令里只提到编排器状态目录 → 不作废：run.json 与闸门同口径，共同阻断照常执行
+diff --git a/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle-output.json b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle-output.json
+new file mode 100644
+index 00000000..2d844aaa
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle-output.json
+@@ -0,0 +1,28 @@
++[
++  {
++    "id": "M1b",
++    "desc": "同 M1，期望集成格变红（run.json 与闸门两份留痕一致）",
++    "suite": "dist/test/test/integration/fault-injection.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-239 两审 · 命令里只提到编排器状态目录 → 不作废：run.json 与闸门同口径，共同阻断照常执行"
++    ],
++    "firstLines": [],
++    "elapsed_s": 108
++  },
++  {
++    "id": "M4",
++    "desc": "守卫侧级判定不喂带类 hits（退回 hit 口径）",
++    "suite": "dist/test/test/integration/fault-injection.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-239 两审 · 命令里只提到编排器状态目录 → 不作废：run.json 与闸门同口径，共同阻断照常执行"
++    ],
++    "firstLines": [],
++    "elapsed_s": 106
++  }
++]
+diff --git a/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle.mjs b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle.mjs
+new file mode 100644
+index 00000000..167ce08e
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-bundle.mjs
+@@ -0,0 +1,57 @@
++// M12 批次 1 变体：集成套件调的是打包产物（test/helpers/fixture.ts 的 BUNDLE），--tests-only 不重打 bundle，
++// 变异进不了被测产物。这里改为 --with-tests 同时重打 bundle 与测试产物；其余与原脚本逐字相同。
++// 逐条变异、带超时跑期望套件，存下**失败用例名与首行断言文案**（变异装置只记 fail 数、且不给套件加超时）。
++// 照搬 evidence/cancel-cli-reach-20260928/mutation-names.mjs 的形态，另加 --test-timeout：
++// 首轮装置跑到 M4 时 U12① 的等待没有超时、挂死一小时被强制终止（报告 §3），这里先逐条确认不挂。
++// 逐条：备份 → 变异（find 须唯一）→ 只重建测试产物 → 跑期望套件 → 恢复并逐字节核对；收尾重建一次。
++// 用法（在仓库根，变异装置与全量检查都不在跑）：node mutation-names.mjs <规格路径> [输出 JSON 路径]
++import { execFileSync, spawnSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const spec = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
++const OUT = process.argv[3] ?? null;
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--with-tests'], { stdio: 'ignore' });
++const runSuite = (suite) => {
++  const t0 = Date.now();
++  const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-timeout=60000', suite], {
++    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000,
++  });
++  const out = (r.stdout ?? '') + (r.stderr ?? '');
++  const body = out.split('✖ failing tests:')[0];
++  const red = [...new Set([...body.matchAll(/^✖ (.+?) \(\d/gm)].map((m) => m[1]))];
++  const msgs = [...body.matchAll(/^✖ .+?\(\d[^\n]*\n(?:[^\n]*\n){0,3}?\s*([^\n]*Error[^\n]*)/gm)].map((m) => m[1].trim().slice(0, 200));
++  return {
++    fail: Number(/ℹ fail (\d+)/.exec(out)?.[1] ?? (r.status === 0 ? 0 : -1)),
++    timed_out: r.error?.code === 'ETIMEDOUT',
++    cancelled: Number(/ℹ cancelled (\d+)/.exec(out)?.[1] ?? 0),
++    red,
++    firstLines: [...new Set(msgs)].slice(0, 8),
++    elapsed_s: Math.round((Date.now() - t0) / 1000),
++  };
++};
++
++const base = Object.fromEntries(spec.targets.map((f) => [f, fs.readFileSync(f, 'utf8')]));
++const baseHash = Object.fromEntries(spec.targets.map((f) => [f, sha(f)]));
++const results = [];
++try {
++  for (const c of spec.cases) {
++    const src = base[c.file];
++    if (src.split(c.find).length - 1 !== 1) throw new Error(`${c.id} 的 find 不唯一`);
++    fs.writeFileSync(c.file, src.replace(c.find, c.replace));
++    try {
++      build();
++      const r = runSuite(c.expect);
++      results.push({ id: c.id, desc: c.desc, suite: c.expect, ...r });
++      console.error(`${c.id}：fail=${r.fail} cancelled=${r.cancelled} ${r.elapsed_s}s ⇒ ${r.red.join(' ｜ ')}`);
++    } finally {
++      fs.writeFileSync(c.file, src);
++      if (sha(c.file) !== baseHash[c.file]) throw new Error(`恢复 ${c.file} 后哈希不符，停下人工处理`);
++    }
++  }
++} finally {
++  for (const f of spec.targets) if (sha(f) !== baseHash[f]) fs.writeFileSync(f, base[f]);
++  build();
++}
++if (OUT) fs.writeFileSync(OUT, JSON.stringify(results, null, 2) + '\n');
+diff --git a/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-log.txt b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-log.txt
+new file mode 100644
+index 00000000..8c05d2bc
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-log.txt
+@@ -0,0 +1,9 @@
++M1：fail=1 cancelled=0 0s ⇒ voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）
++M1b：fail=0 cancelled=0 105s ⇒ 
++M2：fail=1 cancelled=0 0s ⇒ voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）
++M3：fail=3 cancelled=0 0s ⇒ EV-239 ①：categoriesVoid / hitsVoid 只对 peer-artifact、peer-run-output 为真 ｜ EV-239 ②：leakRecordVoids 与守卫改动前的侧级口径逐格一致（两条通道 × 全部类别组合） ｜ EV-239 ③：只命中告警级的命令通道（M11 第 12 步 B2 形态）不作废
++M4：fail=0 cancelled=0 105s ⇒ 
++M5：fail=1 cancelled=0 0s ⇒ EV-238：未登录原话 ⇒ 认证档；超时时也优先报未登录
++M6：fail=1 cancelled=0 0s ⇒ EV-238：静默超时（无任何应答证据）⇒ 以「可能在等交互登录」打头
++M7：fail=1 cancelled=0 0s ⇒ EV-238：自报 print timeout、未到外层超时、status 非 SUCCESS ⇒ 仍落超时档（与上位计划一致）
++M8：fail=3 cancelled=0 0s ⇒ EV-238：Z1 原话（status=SUCCESS、外层超时、自报 print timeout）⇒ 超时档「已开始应答」层，不引去重登 ｜ EV-238：只拿到会话 id 的超时也算已开始应答 ｜ EV-238：自报 print timeout、未到外层超时、status 非 SUCCESS ⇒ 仍落超时档（与上位计划一致）
+diff --git a/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-output.json b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-output.json
+new file mode 100644
+index 00000000..fabddd7d
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names-output.json
+@@ -0,0 +1,119 @@
++[
++  {
++    "id": "M1",
++    "desc": "闸门退回命令通道按 hit 一律作废（EV-239 原缺陷）",
++    "suite": "dist/test/test/unit/gate.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M1b",
++    "desc": "同 M1，期望集成格变红（run.json 与闸门两份留痕一致）",
++    "suite": "dist/test/test/integration/fault-injection.test.js",
++    "fail": 0,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [],
++    "firstLines": [],
++    "elapsed_s": 105
++  },
++  {
++    "id": "M2",
++    "desc": "leakRecordVoids 去掉命令通道旧记录回退 hit 的口径",
++    "suite": "dist/test/test/unit/gate.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线，不是纯函数）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M3",
++    "desc": "categoriesVoid 把告警级 orchestrator-state 当作废",
++    "suite": "dist/test/test/unit/leak-predicate.test.js",
++    "fail": 3,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-239 ①：categoriesVoid / hitsVoid 只对 peer-artifact、peer-run-output 为真",
++      "EV-239 ②：leakRecordVoids 与守卫改动前的侧级口径逐格一致（两条通道 × 全部类别组合）",
++      "EV-239 ③：只命中告警级的命令通道（M11 第 12 步 B2 形态）不作废"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M4",
++    "desc": "守卫侧级判定不喂带类 hits（退回 hit 口径）",
++    "suite": "dist/test/test/integration/fault-injection.test.js",
++    "fail": 0,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [],
++    "firstLines": [],
++    "elapsed_s": 105
++  },
++  {
++    "id": "M5",
++    "desc": "认证档让位给超时档（超时时不再报未登录）",
++    "suite": "dist/test/test/unit/agy-auth-failure.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-238：未登录原话 ⇒ 认证档；超时时也优先报未登录"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M6",
++    "desc": "超时档去掉有无应答证据的分层（一律报模型侧慢）",
++    "suite": "dist/test/test/unit/agy-auth-failure.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-238：静默超时（无任何应答证据）⇒ 以「可能在等交互登录」打头"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M7",
++    "desc": "超时档触发去掉 printTimeoutWarned（只看外层超时）",
++    "suite": "dist/test/test/unit/agy-auth-failure.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-238：自报 print timeout、未到外层超时、status 非 SUCCESS ⇒ 仍落超时档（与上位计划一致）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M8",
++    "desc": "超时档文案退回登录指引",
++    "suite": "dist/test/test/unit/agy-auth-failure.test.js",
++    "fail": 3,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-238：Z1 原话（status=SUCCESS、外层超时、自报 print timeout）⇒ 超时档「已开始应答」层，不引去重登",
++      "EV-238：只拿到会话 id 的超时也算已开始应答",
++      "EV-238：自报 print timeout、未到外层超时、status 非 SUCCESS ⇒ 仍落超时档（与上位计划一致）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  }
++]
+diff --git a/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names.mjs b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names.mjs
+new file mode 100644
+index 00000000..99b7ddcf
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-names.mjs
+@@ -0,0 +1,55 @@
++// 逐条变异、带超时跑期望套件，存下**失败用例名与首行断言文案**（变异装置只记 fail 数、且不给套件加超时）。
++// 照搬 evidence/cancel-cli-reach-20260928/mutation-names.mjs 的形态，另加 --test-timeout：
++// 首轮装置跑到 M4 时 U12① 的等待没有超时、挂死一小时被强制终止（报告 §3），这里先逐条确认不挂。
++// 逐条：备份 → 变异（find 须唯一）→ 只重建测试产物 → 跑期望套件 → 恢复并逐字节核对；收尾重建一次。
++// 用法（在仓库根，变异装置与全量检查都不在跑）：node mutation-names.mjs <规格路径> [输出 JSON 路径]
++import { execFileSync, spawnSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const spec = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
++const OUT = process.argv[3] ?? null;
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--tests-only'], { stdio: 'ignore' });
++const runSuite = (suite) => {
++  const t0 = Date.now();
++  const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-timeout=60000', suite], {
++    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000,
++  });
++  const out = (r.stdout ?? '') + (r.stderr ?? '');
++  const body = out.split('✖ failing tests:')[0];
++  const red = [...new Set([...body.matchAll(/^✖ (.+?) \(\d/gm)].map((m) => m[1]))];
++  const msgs = [...body.matchAll(/^✖ .+?\(\d[^\n]*\n(?:[^\n]*\n){0,3}?\s*([^\n]*Error[^\n]*)/gm)].map((m) => m[1].trim().slice(0, 200));
++  return {
++    fail: Number(/ℹ fail (\d+)/.exec(out)?.[1] ?? (r.status === 0 ? 0 : -1)),
++    timed_out: r.error?.code === 'ETIMEDOUT',
++    cancelled: Number(/ℹ cancelled (\d+)/.exec(out)?.[1] ?? 0),
++    red,
++    firstLines: [...new Set(msgs)].slice(0, 8),
++    elapsed_s: Math.round((Date.now() - t0) / 1000),
++  };
++};
++
++const base = Object.fromEntries(spec.targets.map((f) => [f, fs.readFileSync(f, 'utf8')]));
++const baseHash = Object.fromEntries(spec.targets.map((f) => [f, sha(f)]));
++const results = [];
++try {
++  for (const c of spec.cases) {
++    const src = base[c.file];
++    if (src.split(c.find).length - 1 !== 1) throw new Error(`${c.id} 的 find 不唯一`);
++    fs.writeFileSync(c.file, src.replace(c.find, c.replace));
++    try {
++      build();
++      const r = runSuite(c.expect);
++      results.push({ id: c.id, desc: c.desc, suite: c.expect, ...r });
++      console.error(`${c.id}：fail=${r.fail} cancelled=${r.cancelled} ${r.elapsed_s}s ⇒ ${r.red.join(' ｜ ')}`);
++    } finally {
++      fs.writeFileSync(c.file, src);
++      if (sha(c.file) !== baseHash[c.file]) throw new Error(`恢复 ${c.file} 后哈希不符，停下人工处理`);
++    }
++  }
++} finally {
++  for (const f of spec.targets) if (sha(f) !== baseHash[f]) fs.writeFileSync(f, base[f]);
++  build();
++}
++if (OUT) fs.writeFileSync(OUT, JSON.stringify(results, null, 2) + '\n');
+diff --git a/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-output.txt b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-output.txt
+new file mode 100644
+index 00000000..8628c756
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-output.txt
+@@ -0,0 +1,70 @@
++✓ 工作树干净、基线全绿（4 个套件）
++  M1 ✓ 咬住（fail=1）
++  M1b ✓ 咬住（fail=1）
++  M2 ✓ 咬住（fail=1）
++  M3 ✓ 咬住（fail=3）
++  M4 ✓ 咬住（fail=1）
++  M5 ✓ 咬住（fail=1）
++  M6 ✓ 咬住（fail=1）
++  M7 ✓ 咬住（fail=1）
++  M8 ✓ 咬住（fail=3）
++{
++  "总数": 9,
++  "咬住": 9,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "闸门退回命令通道按 hit 一律作废（EV-239 原缺陷）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M1b",
++      "desc": "同 M1，期望集成格变红（run.json 与闸门两份留痕一致）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M2",
++      "desc": "leakRecordVoids 去掉命令通道旧记录回退 hit 的口径",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M3",
++      "desc": "categoriesVoid 把告警级 orchestrator-state 当作废",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M4",
++      "desc": "守卫侧级判定不喂带类 hits（退回 hit 口径）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M5",
++      "desc": "认证档让位给超时档（超时时不再报未登录）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M6",
++      "desc": "超时档去掉有无应答证据的分层（一律报模型侧慢）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M7",
++      "desc": "超时档触发去掉 printTimeoutWarned（只看外层超时）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M8",
++      "desc": "超时档文案退回登录指引",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-spec-bundle.json b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-spec-bundle.json
+new file mode 100644
+index 00000000..74607487
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-spec-bundle.json
+@@ -0,0 +1,32 @@
++{
++  "targets": [
++    "src/trivium/gate.ts",
++    "src/trivium/freeze.ts",
++    "src/trivium/guard.ts",
++    "src/trivium/adapters/agy.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/gate.test.js",
++    "dist/test/test/unit/leak-predicate.test.js",
++    "dist/test/test/unit/agy-auth-failure.test.js",
++    "dist/test/test/integration/fault-injection.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1b",
++      "desc": "同 M1，期望集成格变红（run.json 与闸门两份留痕一致）",
++      "file": "src/trivium/gate.ts",
++      "find": "if (voided) voidedSides.push(c);",
++      "replace": "if (voided || runMeta?.guard?.peer_leak_via_command?.[c]?.hit === true) voidedSides.push(c);",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "守卫侧级判定不喂带类 hits（退回 hit 口径）",
++      "file": "src/trivium/guard.ts",
++      "find": "command: { hit: cmdTypedHits.length > 0, hits: cmdTypedHits },",
++      "replace": "command: { hit: cmdTypedHits.length > 0 },",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    }
++  ]
++}
+\ No newline at end of file
+diff --git a/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-spec.json b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-spec.json
+new file mode 100644
+index 00000000..372ed55f
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch1-mutation-20261017/mutation-spec.json
+@@ -0,0 +1,83 @@
++{
++  "targets": ["src/trivium/gate.ts", "src/trivium/freeze.ts", "src/trivium/guard.ts", "src/trivium/adapters/agy.ts"],
++  "suites": [
++    "dist/test/test/unit/gate.test.js",
++    "dist/test/test/unit/leak-predicate.test.js",
++    "dist/test/test/unit/agy-auth-failure.test.js",
++    "dist/test/test/integration/fault-injection.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "闸门退回命令通道按 hit 一律作废（EV-239 原缺陷）",
++      "file": "src/trivium/gate.ts",
++      "find": "if (voided) voidedSides.push(c);",
++      "replace": "if (voided || runMeta?.guard?.peer_leak_via_command?.[c]?.hit === true) voidedSides.push(c);",
++      "expect": "dist/test/test/unit/gate.test.js"
++    },
++    {
++      "id": "M1b",
++      "desc": "同 M1，期望集成格变红（run.json 与闸门两份留痕一致）",
++      "file": "src/trivium/gate.ts",
++      "find": "if (voided) voidedSides.push(c);",
++      "replace": "if (voided || runMeta?.guard?.peer_leak_via_command?.[c]?.hit === true) voidedSides.push(c);",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "leakRecordVoids 去掉命令通道旧记录回退 hit 的口径",
++      "file": "src/trivium/freeze.ts",
++      "find": ": cmd.hits !== undefined ? hitsVoid(cmd.hits) : cmd.hit === true;",
++      "replace": ": hitsVoid(cmd.hits ?? []);",
++      "expect": "dist/test/test/unit/gate.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "categoriesVoid 把告警级 orchestrator-state 当作废",
++      "file": "src/trivium/freeze.ts",
++      "find": "return cats.some((c) => isVoidingCategory(c));",
++      "replace": "return cats.some((c) => isVoidingCategory(c) || c === 'orchestrator-state');",
++      "expect": "dist/test/test/unit/leak-predicate.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "守卫侧级判定不喂带类 hits（退回 hit 口径）",
++      "file": "src/trivium/guard.ts",
++      "find": "command: { hit: cmdTypedHits.length > 0, hits: cmdTypedHits },",
++      "replace": "command: { hit: cmdTypedHits.length > 0 },",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "认证档让位给超时档（超时时不再报未登录）",
++      "file": "src/trivium/adapters/agy.ts",
++      "find": "if (/please sign in/i.test(said)) {",
++      "replace": "if (/please sign in/i.test(said) && !out.timedOut) {",
++      "expect": "dist/test/test/unit/agy-auth-failure.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "超时档去掉有无应答证据的分层（一律报模型侧慢）",
++      "file": "src/trivium/adapters/agy.ts",
++      "find": "if (answered) {",
++      "replace": "if (answered || out.timedOut) {",
++      "expect": "dist/test/test/unit/agy-auth-failure.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "超时档触发去掉 printTimeoutWarned（只看外层超时）",
++      "file": "src/trivium/adapters/agy.ts",
++      "find": "if (out.timedOut || out.printTimeoutWarned) {",
++      "replace": "if (out.timedOut) {",
++      "expect": "dist/test/test/unit/agy-auth-failure.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "超时档文案退回登录指引",
++      "file": "src/trivium/adapters/agy.ts",
++      "find": "agy 已开始应答但没答完，多半是模型侧响应慢，可稍后重试，不必重新登录。",
++      "replace": "请先交互登录一次。",
++      "expect": "dist/test/test/unit/agy-auth-failure.test.js"
++    }
++  ]
++}
+diff --git a/test/unit/agy-auth-failure.test.ts b/test/unit/agy-auth-failure.test.ts
+new file mode 100644
+index 00000000..15ea3e53
+--- /dev/null
++++ b/test/unit/agy-auth-failure.test.ts
+@@ -0,0 +1,90 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { describeAgyAuthFailure, type AgyInvokeOutcome } from '../../src/trivium/adapters/agy.js';
++import { parseAgyStream, type AgyStreamResult } from '../../src/trivium/adapters/agy-events.js';
++
++/**
++ * agy 认证探活失败文案（BACKLOG EV-238，M12 批次 1）。
++ *
++ * 原先失败一律「请先交互登录一次」，M11 第 12 步 Z1 实为外层超时、登录正常。
++ * 现在三档（认证 / 超时 / 其他），超时档按有无「已开始应答」的证据再分两层；判定（ok）不变，只验文案。
++ */
++
++const Z1_STDERR = '[agy] print timeout after 1m40s with turn in progress; returning partial output';
++const LOGIN_AGAIN = '请先交互登录一次';
++
++function outcome(over: Partial<Omit<AgyInvokeOutcome, 'parsed'>> & { parsed?: Partial<AgyStreamResult> } = {}): AgyInvokeOutcome {
++  const { parsed, ...rest } = over;
++  return {
++    parsed: { ...parseAgyStream(''), ...parsed },
++    exitCode: 0,
++    timedOut: false,
++    stdout: '',
++    stderr: '',
++    commandLine: 'agy -p …',
++    durationMs: 0,
++    printTimeoutWarned: false,
++    ...rest,
++  };
++}
++
++function assertNamesModelAndTime(text: string, model: string, secs: number): void {
++  assert.ok(text.includes(`模型 ${model}`), `文案应点名探活模型：${text}`);
++  assert.ok(text.includes(`${secs}s`), `文案应带耗时：${text}`);
++}
++
++test('EV-238：Z1 原话（status=SUCCESS、外层超时、自报 print timeout）⇒ 超时档「已开始应答」层，不引去重登', () => {
++  const t = describeAgyAuthFailure(
++    outcome({ timedOut: true, printTimeoutWarned: true, stderr: Z1_STDERR, durationMs: 120_400, parsed: { status: 'SUCCESS' } }),
++    'gemini-3.8-flash-high',
++  );
++  assert.match(t, /^探活超时/);
++  assert.match(t, /已开始应答/);
++  assert.match(t, /不必重新登录/);
++  assert.match(t, /print timeout/);
++  assert.ok(!t.includes(LOGIN_AGAIN), `Z1 不是未登录，不该出现旧文案：${t}`);
++  assertNamesModelAndTime(t, 'gemini-3.8-flash-high', 120);
++});
++
++test('EV-238：静默超时（无任何应答证据）⇒ 以「可能在等交互登录」打头', () => {
++  const t = describeAgyAuthFailure(outcome({ timedOut: true, durationMs: 120_000, parsed: { status: null } }), 'm1');
++  assert.match(t, /^探活超时/);
++  assert.match(t, /没有收到任何应答：可能是在等交互登录/);
++  assert.ok(!t.includes('已开始应答'), t);
++  assertNamesModelAndTime(t, 'm1', 120);
++});
++
++test('EV-238：只拿到会话 id 的超时也算已开始应答', () => {
++  const t = describeAgyAuthFailure(
++    outcome({ timedOut: true, durationMs: 121_000, parsed: { status: null, conversationId: '2e38b1a1-0000' } }),
++    'm1',
++  );
++  assert.match(t, /已开始应答/);
++});
++
++test('EV-238：自报 print timeout、未到外层超时、status 非 SUCCESS ⇒ 仍落超时档（与上位计划一致）', () => {
++  const t = describeAgyAuthFailure(
++    outcome({ printTimeoutWarned: true, stderr: Z1_STDERR, durationMs: 101_000, parsed: { status: 'ERROR' } }),
++    'm1',
++  );
++  assert.match(t, /^探活超时/);
++  assert.match(t, /已开始应答/);
++});
++
++test('EV-238：未登录原话 ⇒ 认证档；超时时也优先报未登录', () => {
++  const said = 'Error: Please sign in to view available models. Launch the CLI without arguments to sign in.';
++  for (const timedOut of [false, true]) {
++    const t = describeAgyAuthFailure(outcome({ timedOut, stderr: said, durationMs: 3_000, parsed: { status: null } }), 'm1');
++    assert.match(t, /^探活失败：agy 提示未登录/, `timedOut=${timedOut}：${t}`);
++    assertNamesModelAndTime(t, 'm1', 3);
++  }
++  // 原话出现在 stdout 也认
++  assert.match(describeAgyAuthFailure(outcome({ stdout: 'please sign in' }), null), /提示未登录/);
++});
++
++test('EV-238：其他档——未超时、无原话、status 非 SUCCESS ⇒ 原因未识别，仍给登录指引', () => {
++  const t = describeAgyAuthFailure(outcome({ stderr: 'boom', durationMs: 2_000, parsed: { status: 'ERROR' } }), null);
++  assert.match(t, /^探活失败（status=ERROR，模型 缺省，2s）：原因未识别/);
++  assert.match(t, /交互运行一次 `agy`/);
++  assert.match(t, /stderr: boom/);
++});
+diff --git a/test/unit/leak-predicate.test.ts b/test/unit/leak-predicate.test.ts
+new file mode 100644
+index 00000000..d3384edd
+--- /dev/null
++++ b/test/unit/leak-predicate.test.ts
+@@ -0,0 +1,81 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { categoriesVoid, hitsVoid, leakRecordVoids } from '../../src/trivium/freeze.js';
++import type { DenyCategory } from '../../src/trivium/types.js';
++
++/**
++ * 作废谓词（BACKLOG EV-239，M12 批次 1）：守卫的侧级判定与闸门的作废派生调同一个 `leakRecordVoids`。
++ *
++ * 闸门曾对命令通道按 `hit === true` 一律作废（注释称「命令通道没有类别信息」，而带类的 `hits` 早已落盘），
++ * 只命中编排器状态目录的一侧在守卫看来有效、在闸门看来作废。这里钉三件事：
++ * ①只有两类作废类让谓词为真；②`leakRecordVoids` 与守卫改动前的口径逐格一致；③旧记录各按旧口径。
++ */
++
++const ALL: readonly DenyCategory[] = ['peer-artifact', 'peer-run-output', 'own-run-material', 'orchestrator-state', 'sensitive'];
++const VOIDING = new Set<DenyCategory>(['peer-artifact', 'peer-run-output']);
++
++/** 守卫改动前的侧级口径，照 `guard.ts` 原逻辑另写一份做参照：路径命中里有作废类，或某条命令撞上作废类 */
++function guardBefore(pathCats: readonly DenyCategory[], cmdCatsPerCommand: readonly (readonly DenyCategory[])[]): boolean {
++  const peerHits = pathCats.filter((c) => VOIDING.has(c));
++  const cmdVoidingHits = cmdCatsPerCommand.filter((cats) => cats.length > 0 && cats.some((c) => VOIDING.has(c)));
++  return peerHits.length > 0 || cmdVoidingHits.length > 0;
++}
++
++/** 0～2 个类别的全部组合（含空、含重复类别的两元组） */
++function combos(): DenyCategory[][] {
++  const out: DenyCategory[][] = [[]];
++  for (const a of ALL) out.push([a]);
++  for (const a of ALL) for (const b of ALL) out.push([a, b]);
++  return out;
++}
++
++test('EV-239 ①：categoriesVoid / hitsVoid 只对 peer-artifact、peer-run-output 为真', () => {
++  for (const c of ALL) {
++    assert.equal(categoriesVoid([c]), VOIDING.has(c), c);
++    assert.equal(hitsVoid([{ category: c }]), VOIDING.has(c), c);
++  }
++  assert.equal(categoriesVoid([]), false);
++  assert.equal(hitsVoid([]), false);
++  assert.equal(categoriesVoid(['orchestrator-state', 'sensitive', 'own-run-material']), false, '告警档与己方材料怎么叠都不作废');
++  assert.equal(categoriesVoid(['orchestrator-state', 'peer-run-output']), true, '有一个作废类就作废（取最重档）');
++});
++
++test('EV-239 ②：leakRecordVoids 与守卫改动前的侧级口径逐格一致（两条通道 × 全部类别组合）', () => {
++  let cells = 0;
++  for (const pathCats of combos()) {
++    for (const cmdA of combos()) {
++      for (const cmdB of [[], ['orchestrator-state']] as DenyCategory[][]) {
++        const commands = [cmdA, cmdB];
++        const cmdHits = commands.flatMap((cats, i) => cats.map((category) => ({ command: `c${i}`, path: `p${i}`, category })));
++        const got = leakRecordVoids({
++          path: { hits: pathCats.map((category, i) => ({ path: `f${i}`, category })) },
++          command: { hit: cmdHits.length > 0, hits: cmdHits },
++        });
++        assert.equal(got, guardBefore(pathCats, commands), `path=${JSON.stringify(pathCats)} cmd=${JSON.stringify(commands)}`);
++        cells++;
++      }
++    }
++  }
++  assert.ok(cells > 1000, `组合数不足，表没铺开：${cells}`);
++});
++
++test('EV-239 ③：只命中告警级的命令通道（M11 第 12 步 B2 形态）不作废', () => {
++  const cmd = 'find . -name "*.js" -not -path "./.trivium/*"';
++  // run.json 落盘的命令通道命中带 command / path 两个字段，谓词只读 category
++  const hits = [{ command: cmd, path: '.trivium', category: 'orchestrator-state' as const }];
++  assert.equal(
++    leakRecordVoids({ command: { hit: true, hits } }),
++    false,
++    'hit 为真只说明扫到了东西；类别是告警级',
++  );
++});
++
++test('EV-239 ④：旧记录各按旧口径——命令通道缺 hits 退回 hit，路径通道缺 hits 按无作废', () => {
++  assert.equal(leakRecordVoids({ command: { hit: true } }), true, '2026-09-17 之前的 run.json 只有 commands：命中即作废');
++  assert.equal(leakRecordVoids({ command: { hit: false } }), false);
++  assert.equal(leakRecordVoids({ path: {} }), false, '路径通道缺 hits：无从区分类别，按无作废');
++  assert.equal(leakRecordVoids({}), false, '两条通道都没记：那一侧没扫');
++  assert.equal(leakRecordVoids({ path: undefined, command: undefined }), false);
++  // 有 hits 时不看 hit：空 hits 配 hit 为真（不应出现，但真出现也按类别判）
++  assert.equal(leakRecordVoids({ command: { hit: true, hits: [] } }), false);
++});

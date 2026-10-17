@@ -193,6 +193,53 @@ export function resolveAgyAgent(
   return { agent: probe.agent, reason: null };
 }
 
+/**
+ * agy 认证探活失败时的详情文案（BACKLOG EV-238，M12 批次 1）。
+ *
+ * 原先失败一律写「请先交互登录一次」。M11 第 12 步 Z1 的那次失败实为外层 120 s 超时
+ * （status=SUCCESS 而 ok 为假，只能是 `timedOut`；stderr 是 agy 自报的 print timeout），
+ * 登录正常——文案把用户引去重登。现在按三档、超时档再分两层，**判定本身（ok）不变**，只换说法：
+ *
+ * 1. **认证档**：输出含未登录原话。只认仓库里存过的原始样本 `Please sign in`
+ *    （`REPORT_2026-09-24_m10b_driver_entry_probe.md`，空 HOME 下 `agy models` 的原话）；
+ *    不凭猜测扩词——`auth`、`login` 一类宽词会命中正常 stderr。优先于超时档：出现原话就报未登录。
+ * 2. **超时档**：外层超时或 agy 自报 print timeout。按有无「已开始应答」的证据分两层：
+ *    有（自报 print timeout、流状态 SUCCESS、拿到会话 id，任一）⇒ 模型侧慢，可重试；
+ *    没有 ⇒ 以「可能在等交互登录」打头——未识别原话的未登录若表现为挂起到超时，落在这一层。
+ * 3. **其他档**：以上都不是。原因未识别，仍给登录指引（快速失败的未登录落在这里）。
+ *
+ * 三档都点名探活所用的模型与耗时。已知角落：内层 print timeout 触发、agy 在外层超时前带部分输出退出
+ * 且流状态仍为 SUCCESS 时，ok 为真、根本不进这里——那是现行判定，本次不改。
+ */
+export function describeAgyAuthFailure(out: AgyInvokeOutcome, model: string | null): string {
+  const secs = Math.round(out.durationMs / 1000);
+  const where = `模型 ${model ?? '缺省'}，${secs}s`;
+  const tail = out.stderr.trim() ? `\n  stderr: ${out.stderr.slice(0, 200)}` : '';
+  const said = `${out.stdout}\n${out.stderr}`;
+
+  if (/please sign in/i.test(said)) {
+    return `探活失败：agy 提示未登录（${where}）。请交互运行一次 \`agy\` 完成登录后重试。${tail}`;
+  }
+  if (out.timedOut || out.printTimeoutWarned) {
+    const answered = out.printTimeoutWarned || out.parsed.status === 'SUCCESS' || out.parsed.conversationId !== null;
+    if (answered) {
+      return (
+        `探活超时（${where}）：agy 已开始应答但没答完，多半是模型侧响应慢，可稍后重试，不必重新登录。` +
+        (out.printTimeoutWarned ? 'agy 自报 print timeout。' : '') +
+        tail
+      );
+    }
+    return (
+      `探活超时（${where}），且没有收到任何应答：可能是在等交互登录，请交互运行一次 \`agy\` 确认；` +
+      `已登录的话，也可能是网络或服务端无响应。${tail}`
+    );
+  }
+  return (
+    `探活失败（status=${out.parsed.status}，${where}）：原因未识别。` +
+    `若近期未登录过，请交互运行一次 \`agy\`；否则请看 stderr 摘要。${tail}`
+  );
+}
+
 export const agyAdapter: CriticAdapter = {
   critic: 'gemini',
   /*
@@ -250,11 +297,13 @@ export const agyAdapter: CriticAdapter = {
       async probe() {
         const bin = cfg.probe.cli.agy?.entrypoint ?? null;
         if (!bin) return { ok: false, detail: 'agy 路径未记录' };
+        // 失败文案要点名探活所用的模型：与调用共用这一个取值，不各写一份取值链
+        const model = combination?.model ?? cfg.probe.cli.agy?.models[0] ?? null;
         const out = await invokeAgy({
           bin,
           cwd: projectRoot,
           prompt: '只回复 OK 两个字母，不要调用任何工具。',
-          model: combination?.model ?? cfg.probe.cli.agy?.models[0] ?? null,
+          model,
           effort: combination?.effort ?? null,
           agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
           timeoutMs: 120_000,
@@ -265,8 +314,7 @@ export const agyAdapter: CriticAdapter = {
           ok,
           detail: ok
             ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
-            : `探活失败（status=${out.parsed.status}）。请先交互登录一次：\`agy\` 然后完成登录流程。\n` +
-              `  stderr: ${out.stderr.slice(0, 200)}`,
+            : describeAgyAuthFailure(out, model),
         };
       },
     };
