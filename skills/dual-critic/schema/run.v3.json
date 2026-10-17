@@ -1016,6 +1016,62 @@
         },
         "access": {
           "$ref": "#/$defs/access"
+        },
+        "attempts": {
+          "type": "array",
+          "minItems": 2,
+          "description": "该侧这一轮的逐次尝试（2026-10-17 新增，BACKLOG EV-225，设计 10.1.1「作废侧重跑」）。【已实现 · M12 批次 3】**只在该侧发生过作废重跑时写**，内容是该侧全部尝试（含瞬时重试）；没发生过不写——不泄漏的运行逐字不变。缺席的两种来源（旧记录、这一侧没有作废过）处置相同：只有一次有效尝试。分层记法：条目的 status / fail_reason 恒记适配器层结果（二次命中那一条是 ok），voided 记这一条的泄漏判定；因泄漏判该侧失败只发生在侧级（status: failed、fail_reason 以 peer_leak 起头）。闸门与 status 不读本字段：作废侧只看最终尝试，最终尝试写在 guard.peer_leak_via_*。voided 与两通道明细的一致性（voided ⟺ 明细含作废类）由单测核，不进 schema",
+          "items": {
+            "type": "object",
+            "required": ["n", "started_at", "duration_s", "status", "voided", "fail_reason"],
+            "additionalProperties": false,
+            "properties": {
+              "n": { "type": "integer", "minimum": 1, "description": "第几次尝试，从 1 起（含瞬时重试）" },
+              "started_at": { "type": "string", "minLength": 1 },
+              "duration_s": { "type": "number", "minimum": 0 },
+              "status": { "enum": ["ok", "failed", "timeout"], "description": "适配器层结果，不是侧级改判" },
+              "voided": { "type": ["boolean", "null"], "description": "这一条的泄漏判定；status 非 ok 时为 null（没判）" },
+              "peer_leak_via_path": {
+                "type": "object",
+                "required": ["hit", "hits"],
+                "additionalProperties": false,
+                "description": "与 guard.peer_leak_via_path 的单侧值同形；只在判过时写",
+                "properties": {
+                  "hit": { "type": "boolean" },
+                  "hits": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["path", "category"],
+                      "additionalProperties": false,
+                      "properties": { "path": { "type": "string" }, "category": { "enum": ["peer-artifact", "peer-run-output", "own-run-material", "orchestrator-state", "sensitive"] } }
+                    }
+                  }
+                }
+              },
+              "peer_leak_via_command": {
+                "type": "object",
+                "required": ["hit", "commands", "hits"],
+                "additionalProperties": false,
+                "description": "与 guard.peer_leak_via_command 的单侧值同形；只在判过时写",
+                "properties": {
+                  "hit": { "type": "boolean" },
+                  "commands": { "type": "array", "items": { "type": "string" } },
+                  "hits": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["command", "path", "category"],
+                      "additionalProperties": false,
+                      "properties": { "command": { "type": "string" }, "path": { "type": "string" }, "category": { "enum": ["peer-artifact", "peer-run-output", "own-run-material", "orchestrator-state", "sensitive"] } }
+                    }
+                  }
+                }
+              },
+              "output_dir": { "type": ["string", "null"], "description": "被作废、挪出该侧子树的原始输出位置（运行目录相对，形如 voided/〈侧〉/attempt-〈n〉）；只在挪过的那次写，挪失败为 null。只在运行目录里，不进归档" },
+              "fail_reason": { "type": ["string", "null"] }
+            }
+          }
         }
       }
     },

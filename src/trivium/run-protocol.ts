@@ -19,7 +19,7 @@ import {
   acquireLock, inspectLock, lockPathFor, reclaimStaleLock, workerLockContent, type LockHandle, type ReclaimedLock,
 } from './lock.js';
 import {
-  cliRecordsOf, computeMaxWaits, interpretStatus, isTerminal, judgeCliGroup, lostOf, newStatus, patchStatus, rawCliOf, readStatus,
+  budgetForStatus, cliRecordsOf, computeMaxWaits, interpretStatus, isTerminal, judgeCliGroup, lostOf, newStatus, patchStatus, rawCliOf, readStatus,
   renderProgress, renderProgressBrief, progressViewOf, scrubAdmission, scrubHoldWhy, staleThresholdWithinHeartbeat, syncCliRecords,
   workerConfirmedGone, workerStartOf, writeStatus, WORKER_HEARTBEAT_MS,
   type CliGroupRecord, type CliGroupVerdict, type ProgressBudget, type ProgressView, type RunStatus, type WorkerLostRecord,
@@ -1196,6 +1196,8 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
         if (p.attempt !== undefined) side.attempt = p.attempt;
         if (p.elapsed_s !== undefined) side.elapsed_s = p.elapsed_s;
         if (p.note !== undefined) side.note = p.note;
+        // 作废重跑（EV-225）：只置真、不清，等待预算据它追加一份
+        if (p.voidRerun === true) side.void_rerun = true;
       });
     };
 
@@ -1360,13 +1362,15 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
       const code = reading.status.exit_code ?? EXIT.OK;
       // 同一刻算出文字与字段，两者不会在秒边界互相打架
       const at = Date.now();
+      // 预算按刚读到的 status 现算：某侧作废重跑时追加一份（EV-225）
+      const b = budgetForStatus(budget, reading.status);
       return {
         exitCode: code,
         status: reading.status,
-        progress: renderProgress(reading.status, at, budget),
-        progressBrief: renderProgressBrief(reading.status, at, budget),
-        budget,
-        view: progressViewOf(reading.status, at, budget),
+        progress: renderProgress(reading.status, at, b),
+        progressBrief: renderProgressBrief(reading.status, at, b),
+        budget: b,
+        view: progressViewOf(reading.status, at, b),
       };
     }
     if (reading.kind === 'worker_lost') {
@@ -1492,13 +1496,14 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
       // 本次窗口用尽但运行仍在继续：这是**预期**返回，不是失败
       const starting = `运行 ${runId} 仍在启动中（尚无有效心跳）`;
       const at = Date.now();
+      const b = budgetForStatus(budget, last);
       return {
         exitCode: EXIT.STILL_RUNNING,
         status: last,
-        progress: last ? renderProgress(last, at, budget) : starting,
-        progressBrief: last ? renderProgressBrief(last, at, budget) : starting,
-        budget,
-        view: last ? progressViewOf(last, at, budget) : null,
+        progress: last ? renderProgress(last, at, b) : starting,
+        progressBrief: last ? renderProgressBrief(last, at, b) : starting,
+        budget: b,
+        view: last ? progressViewOf(last, at, b) : null,
       };
     }
     await new Promise((r) => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
@@ -1546,7 +1551,8 @@ export async function statusRun(
    * 显示成两个样子（审查意见 AGY-03）。budget 的两项数据 `ctx.config` 与
    * `s.stage` 都在手上，没有拿不到的问题。
    */
-  const budget = budgetFor(ctx.config, s.stage);
+  // 与 `--wait` 同口径：某侧作废重跑时追加一份（EV-225）
+  const budget = budgetForStatus(budgetFor(ctx.config, s.stage), s);
   const at = Date.now();
   return {
     exitCode: code,

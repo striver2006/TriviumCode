@@ -1412,6 +1412,38 @@ export interface CriticRunMeta {
   deny_skipped?: number;
   deny_rule_count?: number;
   deny_bytes?: number;
+  /**
+   * 该侧这一轮的逐次尝试（BACKLOG EV-225，M12 批次 3，设计 10.1.1「作废侧重跑」）。
+   *
+   * **只在该侧发生过作废重跑时写**，内容是该侧全部尝试（含瞬时重试）；没发生过就不写——
+   * 不泄漏的运行 run.json 逐字不变。缺席的两种来源（旧记录、这一侧没有作废过）对读者处置相同：
+   * 只有一次有效尝试。闸门、status 都不读它：作废侧只看最终尝试，而最终尝试写在 `guard.peer_leak_via_*`。
+   */
+  attempts?: AttemptRecord[];
+}
+
+/**
+ * `critics.<侧>.attempts` 的一条（EV-225）。
+ *
+ * **分层记法**（计划双审 GLM-04）：`status` / `fail_reason` 恒记适配器层结果——二次命中那一条是 `status: ok`；
+ * `voided` 记这一条的泄漏判定。「因泄漏判该侧失败」只发生在侧级（`critics.<侧>.status: failed`、
+ * `fail_reason` 以 `peer_leak` 起头），两层各看各的。
+ */
+export interface AttemptRecord {
+  /** 第几次尝试，从 1 起（含瞬时重试） */
+  n: number;
+  started_at: string;
+  duration_s: number;
+  status: 'ok' | 'failed' | 'timeout';
+  /** 泄漏判定：`status` 非 `ok` 时为 null（没判） */
+  voided: boolean | null;
+  /** 与 `guard.peer_leak_via_path` 的单侧值同形；只在判过时写 */
+  peer_leak_via_path?: { hit: boolean; hits: { path: string; category: DenyCategory }[] };
+  /** 与 `guard.peer_leak_via_command` 的单侧值同形；只在判过时写 */
+  peer_leak_via_command?: { hit: boolean; commands: string[]; hits: { command: string; path: string; category: DenyCategory }[] };
+  /** 被作废、挪出该侧子树的原始输出位置（运行目录相对）；只在挪过的那次写，挪失败为 null */
+  output_dir?: string | null;
+  fail_reason: string | null;
 }
 
 /**
@@ -1695,8 +1727,9 @@ export interface RunMeta {
      * 若不记这个字段，「查过、没有共同项」与「有效侧不足、这一项根本没做」
      * 在留痕里完全一样，三态纪律第四次复发。
      *
-     * **这是过渡处置**：它只保证失效可见，不恢复交叉验证。
-     * 真正的补偿是「作废侧重跑一次」——从未实现，设计 v1.3.129 移出 AC-25、另立 BACKLOG EV-225。
+     * 它只保证失效可见，不恢复交叉验证。补偿是「作废侧重跑一次」（EV-225，M12 批次 3）：
+     * 新运行里作废侧要么重跑干净、重新计入有效侧，要么二次命中判失败——「作废但计入裁决」只剩旧记录
+     * 与判定器异常的回落出口（`runner.ts` 的 `judgeLeak` 抛异常）。
      */
     joint_check?: {
       /**

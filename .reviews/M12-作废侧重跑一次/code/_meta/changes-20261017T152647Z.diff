@@ -1,0 +1,3320 @@
+# trivium changes.diff
+# run_id: 20261017T152647Z
+# base: HEAD
+# head: 014c04fffc4cec7b9f9430c92b43f96647b8cdbe
+# files: 45
+#   doc/01_requirements/PRD_driver_dual_critic.md
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-10-17_m12_batch3.md
+#   doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle-log.txt
+#   doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle-output.json
+#   doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle.mjs
+#   doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-log.txt
+#   doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-output.json
+#   doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names.mjs
+#   doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-output-bundle.txt
+#   doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-output.txt
+#   doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-spec-bundle.json
+#   doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-spec.json
+#   doc/08_project/BACKLOG.md
+#   skills-src/partials/review/body.md
+#   skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
+#   skills/dual-critic/entry/codex/dual-review-code/SKILL.md
+#   skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
+#   skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
+#   skills/dual-critic/entry/glm/dual-review-code/SKILL.md
+#   skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
+#   skills/dual-critic/schema/run.v3.json
+#   skills/dual-review-bug/SKILL.md
+#   skills/dual-review-code/SKILL.md
+#   skills/dual-review-plan/SKILL.md
+#   src/trivium/adapters/stub.ts
+#   src/trivium/brief.ts
+#   src/trivium/guard.ts
+#   src/trivium/meta.ts
+#   src/trivium/report.ts
+#   src/trivium/review.ts
+#   src/trivium/run-files.ts
+#   src/trivium/run-protocol.ts
+#   src/trivium/runner.ts
+#   src/trivium/scrub.ts
+#   src/trivium/status.ts
+#   src/trivium/types.ts
+#   test/integration/fault-injection.test.ts
+#   test/unit/run-files-parity.test.ts
+#   test/unit/void-rerun.test.ts
+diff --git a/doc/01_requirements/PRD_driver_dual_critic.md b/doc/01_requirements/PRD_driver_dual_critic.md
+index f0fe2b6a..dbb76dc3 100644
+--- a/doc/01_requirements/PRD_driver_dual_critic.md
++++ b/doc/01_requirements/PRD_driver_dual_critic.md
+@@ -2,10 +2,10 @@
+ 
+ > - **作者 / 负责人**：Chen Zhenbo（依据原始需求整理）
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.4.28
++> - **当前版本**：v1.4.29
+ > - **状态**：**基线已实现、演进需求待实施(Baseline implemented, evolution pending)**
+ > - **来源**：[原始需求.txt](./原始需求.txt)；演进需求来源见 3.2 小节「多 Agent 演进需求」
+-> - **文档版本**：v1.4.28
++> - **文档版本**：v1.4.29
+ > - **⚠️ 实现状态**：FR-01～FR-26 与 AC-01～AC-19 是**已实现基线**；
+ >   **FR-27～FR-31 与 AC-20～AC-25 是演进需求**（各条标注了实现里程碑）：截至本版
+ >   **AC-20 已达成**（M8 第 4 步）、**AC-22 部分达成**（1／2／3 侧分支均可真跑，
+@@ -33,6 +33,7 @@
+ >   以及 M7b 六步（`run.v2`、`config.v2` 与其内存迁移、适配器接线收敛、多审退化逐对计算、
+ >   第 5 步的 `--critics` 入口——**这一步开始改变对外行为**——与第 6 步的接入套件验收装置）。
+ >   **不得据 FR-27～FR-31 判定系统现有能力，也不得把内部改动读成需求达成。**
++> - **变更说明**：v1.4.29（2026-10-17）随主设计 v1.3.164（M12 批次 3：作废侧重跑一次，BACKLOG EV-225）同步。**改 AC-25 的 Then 与达成边界**，不新增需求：作废类命中后该侧在同一次运行内重跑一次（任务书顶部点名上一次碰到的位置），重跑干净则以重跑结论参与；二次命中该侧判失败（`peer_leak`），严格策略下整次失败、显式允许降级时降级继续。v1.4.20 定稿的「不自动重跑、严格策略下不因作废中止」是 EV-225 之前的现行行为，随之改写；达成边界 ③ 由「不含作废侧自动重跑」改为「作废侧重跑为桩级验收，真实厂商调用只做不泄漏回归」。点名方式按设计 10.1.1：命令通道只点程序名与位置、不回显命令参数（对用户 D-7「点名路径或命令」的落点收紧）。
+ > - **变更说明**：v1.4.28（2026-10-16）随主设计 v1.3.159（M11 第 12 步：全量手工剧本收口，M11 达成）同步。**不改需求、不改判据，只翻达成状态**：AC-23 由「已验收」转为**已达成**（剧本 11 九格在第 12 步两轮三审中重跑成立，可选 11.7 以档位表格子 `{tier}` 实跑，见 `doc/05_testing/REPORT_2026-10-12_m11_step12_manual_acceptance.md`）；FR-30 转为**已达成**（达成边界同 AC-23：生效思考等级只在 gemini 侧可回读，codex、claude 如实记空，ZCode 无此概念）；S8 转为可用。FR-27 / FR-28 / FR-29 / FR-31 的部分达成口径不变。
+ > - **变更说明**：v1.4.27（2026-10-08）随主设计 v1.3.140（M11 第 11 步：AC-23 真实验收）同步。**不改需求、不改判据、不翻任何达成状态**（FR-30 / S8 / AC-23 的状态随 M11 第 12 步收口），只改 FR-30 进度句里「AC-23 的真实验收随第 11 步」这一处将来时：codex、gemini 各以「选档」与「精确指定」发起一次、共 4 次真实审查，档位名与来源、请求与生效的思考等级在运行记录、审查文档头与复盘报告三处一致，生效值 gemini 侧取回读、codex 侧如实记空（见 `doc/05_testing/REPORT_2026-10-08_m11_ac23_acceptance.md`）。
+ > - **变更说明**：v1.4.25（2026-10-08）随主设计 v1.3.139（M11 第 10 步：文档收口与对账）同步。**不改需求、不改判据、不翻任何达成状态**（FR-30 / S8 / AC-23 的状态随 M11 第 12 步收口），只改三处与实现对不上的断言：①FR-27「本项目只探测并展示可粘贴样例」——代码里没有配置样例输出，预检与 `doctor` 只点名该补的文件与 `[model_providers.〈家族〉]` 段，条目末尾的进度句如实补记（BACKLOG EV-231，用户定「按现状改准」）；②AC-20 末条「给出可粘贴的配置指引」同理补一句达成边界，Given / Then 原文不动；③AC-20 下「本条达成 ≠ FR-27 达成」的注记仍写「换家族仍须改两处配置、无单次覆盖入口（EV-22）」，M11 第 5～6 步已补齐单次覆盖入口、EV-22 结案，改为现状。
+@@ -562,14 +563,15 @@ sequenceDiagram
+ 25. **AC-25 N 方隔离与路径通道检测收口**（FR-29 / FR-10）〔**已达成 · M11 第 3 步**（2026-10-07），含达成边界〕（原标 M7b、未达成，2026-10-07 并入 M11）
+     Given 三审运行中某一侧伪造读取另两方的任一产物——**包括归档元数据目录下的结构化意见原文
+     与项目外运行目录中的本轮输出**（M7a 之前这两条是检测盲区）——
+-    Then 该侧判定为泄漏、结论作废（不参与共同阻断判定，**不自动重跑**），命中按侧留痕可复核；作废侧的意见仍须逐条裁决；作废后有效侧不足两家时，共同阻断记为「未执行」并告警，不得与「查过、未发现」混同；**严格策略下不因作废而整次中止**——作废侧照常落盘，运行状态与退出码不变，整次中止只由失败或超时侧触发（设计 12.1）。
++    Then 该侧判定为泄漏、该次结论作废，并**在同一次运行内重跑一次**（任务书顶部点名上一次碰到的位置并重申禁读，正文不变）：重跑干净则以重跑结论参与、计入共同阻断；**二次命中该侧判失败（`peer_leak`）**，之后按失败侧规则——严格策略下整次失败，显式允许降级时降级继续；首次命中与重跑按侧逐次留痕可复核，归档只放最终那次的审查件；有效侧不足两家时，共同阻断记为「未执行」并告警，不得与「查过、未发现」混同（设计 10.1.1、12.1）。
+     **v1.4.19 改写**：原 Then 为「作废重跑一次，二次命中即该侧失败；严格策略下整次中止」。「重跑一次」在两侧形态下也从未实现，用户 2026-10-07 定移出本条、另立 BACKLOG EV-225。
+     **v1.4.20 定稿**：严格策略那一句按源码现行行为定稿（M11 第 3 步核实：判定作废与判定中止是两条互不读取的路径，作废不改该侧状态）；原设想的「二次命中即该侧失败、严格策略下整次中止」以重跑为前提，随 EV-225 一并定。
++    **v1.4.29 改写**：EV-225 随 M12 批次 3 实现，Then 改为「作废并重跑一次、二次命中判失败」（见上），v1.4.20 那句现行行为随之过时。
+     **实现状态**：**已达成**。两侧形态下的路径检测随 M7a 实现（含结构化意见与运行目录、提示语与核验同源生成）；
+     三审形态由 M11 第 3 步补齐：禁读矩阵覆盖「三审 × 四种当轮 Driver」并含两个方向的跨轮角色翻转，
+     桩用例让每一侧分别伪造读取另两方的审查件正文、结构化意见与运行目录内的本轮输出，变异验证确认用例咬住判定（设计 15.3）。
+     **达成边界**：①只覆盖**路径通道、三审形态**；②**桩级验收**——证明编排器的禁读枚举、命中分档、按侧留痕与闸门处置在三审下成立，
+-    不证明真实审查员 CLI 的轨迹采集覆盖这些读取；③不含作废侧自动重跑（EV-225）。
++    不证明真实审查员 CLI 的轨迹采集覆盖这些读取；③作废侧重跑一次（EV-225，M12 批次 3）为**桩级验收**——真实泄漏难以稳定诱发，真实厂商调用只做不泄漏回归。
+     **命令文本通道**（经 git 对象库等不产生文件系统读取的方式获取对方产物）的验收
+     随独立演进项交付，**暂不排 AC 号**。
+ 
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 780c066e..b0d55eda 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.163
++> - **当前版本**：v1.3.164
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -1299,6 +1299,11 @@ v1.3.88 前本句写「任务目标原文」，与实现不符，EV-210）。`go
+ > 既有 `profile_requested` 的来源由一层扩为三层。**写侧恒写（null 也写）**：字段缺席只表示 M11 第 6 步之前的旧留痕，`null` 表示该侧没有这项事实，两态不合流；
+ > 本步之前的 `run.v2.json` 校验新留痕照样通过（`test/unit/effort-wiring.test.ts` C3）。
+ >
++> **逐侧 `attempts` 于 M12 批次 3（v1.3.164，EV-225）加在当前写形 `run.v3.json` 的 `$defs.critic`**（同为 `additionalProperties: true`、不升版本；`run.v2.json` 不动——新运行只写 v3）：
++> 该侧这一轮的逐次尝试，**只在发生过作废重跑时写**（`minItems: 2`），不泄漏的运行逐字不变。条目：`n`、`started_at`、`duration_s`、`status`（适配器层 `ok` / `failed` / `timeout`）、
++> `voided`（没判为 null）、`peer_leak_via_path?` / `peer_leak_via_command?`（与 `guard` 单侧值同形）、`output_dir?`（被挪走的首次输出，运行目录相对）、`fail_reason`；条目不许多余键。
++> 分层记法：条目只记适配器层结果，「因泄漏判该侧失败」只在侧级（`status: failed`、`fail_reason` 以 `peer_leak` 起头）。闸门、`status` 不读它；语义见 10.1.1「作废侧在同一次运行内重跑一次」。
++>
+ > 原先并列的第四个字段 `profile`（厂商 profile）**已于 M8 第 4 步接线并改名
+ > `profile_requested`**，同时新增成对的回读字段 `model_provider`。两处偏离要记在这里：
+ > ①**提前接线**——AC-20 的 J6 点名要它而 AC-20 排在 M8，分期表与验收条对同一字段给了
+@@ -2340,6 +2345,31 @@ Hook 行为约定：
+ > 补上之后闸门没跟上。只提到编排器状态目录的命令（排除式 `find`、`--exclude-dir` 一类，M11 第 12 步 Z2 / B2 实测）
+ > 在守卫看来是 ③ 告警级、在闸门看来作废，两审形态下共同阻断这一档静默不执行，同一轮 run.json 与 task.json 记着不同的有效侧数。
+ 
++**作废侧在同一次运行内重跑一次**（2026-10-17，M12 批次 3，BACKLOG EV-225；计划定稿 `.reviews/M12-作废侧重跑一次/plan/` 的 r2）。
++一侧刚跑完、还没解析，就用与终判同一个谓词判它这次有没有作废类命中（`guard.ts` 的 `makeSideLeakJudge`：直接调 `judgeSide`，
++入参装配与 `judgeRun` 共用一份）。判出 ① ② ⇒ 该侧在自己的 promise 里重拉一次，另一侧不读、不等、不改任何共享状态；
++③ ④ 与 ②′ 绝不触发。规则：
++
++- **至多 1 次**（用户 D-7 定死，不做配置）。重跑用完整单侧超时；瞬时重试额度整侧共用、不因重跑重置。
++- **二次命中** ⇒ 该侧侧级判 `failed`、`fail_reason` 以 `peer_leak` 起头，不进瞬时重试；之后按现有失败侧规则走：
++  strict 整次失败（退 75），`--allow-single` 下降级继续（`review_mode: partial`）。判失败的一侧终判跳过（`guard.peer_leak_via_*` 无它的键）、只留 `.failed.json`、不产审查件。
++- **重跑侧任务书**：原任务书最前面插一段点名（标题常量 `VOID_RERUN_BANNER_HEADING`），原文逐字跟在后面；这段原文落 `_meta/brief-<侧>-<run>.rerun.md`、进保护集。
++  点名内容本身不得成为新的泄漏面，三条约束：①命令通道只点名程序名（命令首个词的末段，收窄字符集与长度）与它碰到的位置，命令其余文本一个字不进——
++  泄漏之后该侧敲的命令可能夹带刚读到的对端原文；这是对 D-7「点名路径或命令」的落点收紧（计划 r2 §0 第 2 条，计划双审 GLM-02）；
++  ②位置收敛到禁读条目（项目内）或运行目录第三段那一层（运行根下），段里出现的每个位置都已以「条目」或「条目所在目录」的形态出现在第 8 段里；
++  ③过一遍 `redactSecrets`、截断到 200 字符。只列作废类命中。
++- **首次原始输出**挪到 `<运行目录>/voided/<侧>/attempt-<n>/`（`run-files.ts` 的 `VOIDED_ATTEMPTS_DIR`，刻意不进运行目录层文件清单、不得与 Agent id 同名）。
++  不能留在 `<侧>/` 里：那是 ②′ 己方子树、整个不算命中，重跑侧读一眼上一次的结果就能把对端内容间接带回来。挪到 `voided/` 后第三段不是侧名，
++  按本节规则落 ②——对端与重跑侧自己读到它都判作废。挪之前该次尝试的凭据抹除已做完；挪失败时对编排器算出的 `out` 这一个路径尽力整删，
++  删也失败则告警「可能残留在己方子树」，无论哪种都照样重跑。会话启动清扫另扫 `voided/` 下的日志（只脱敏）。首次输出不进归档，随运行目录的保留期删除。
++- **留痕**：run.v3 逐侧可选 `attempts`（6.7.1），只在该侧发生过作废重跑时写，不泄漏的运行逐字不变。条目的 `status` / `fail_reason` 恒记适配器层结果，
++  `voided` 记这一条的判定；「因泄漏判该侧失败」只在侧级。终判（`guard.*`、`joint_check`）与闸门 `voidedSides` **只看最终尝试**——闸门不读 `attempts`，代码不改。
++  `peer_artifact_read` 因此在「首次泄漏、重跑干净」的一轮里为假，运行摘要、report 旗标与本轮告警另亮「作废重跑」。
++  终判与重跑判据同函数同输入，真不等时以终判为准并告警。
++- **等待**：`status.json` 逐侧 `void_rerun` 置真后不清；`--wait` / `--status` 每次按刚读到的 status 现算预算，任一侧重跑过即 `max_waits` 追加 `ceil(单侧超时 / 等待窗口)`（只加一份：各侧并行，两侧同时重跑只是重叠）。
++  `--start` 返回的是初值，skill 以最近一次 `--wait` 的 `max_waits` 为准。进度摘要在该侧状态后标「（作废重跑）」，重跑后的终态事件显式清掉「作废重跑中」的 note。
++- **判定器异常**：按「未判出作废」收口、不重跑并告警；终判照常，确实作废就落回旧的「作废但 ok」处置——这是新运行里唯一能出现该处置的出口，闸门仍按 `voidedSides` 把它排出共同阻断。
++
+ **人读措辞按通道分开**：措施 a 说「**读到**了」，措施 b 说「命令文本里**提到**了」。
+ 处置相同（提到即作废——经 git 对象库等方式取值不留文件系统痕迹，证明不了没读到），
+ 但留痕不得把判据说成比它实际更强的事实：事后复盘的人据此写裁决。
+@@ -3154,9 +3184,9 @@ v1/v2先按原Schema严格校验再转统一内存接口，原工件与Schema不
+ | 审查结果为零条意见 | 视为该侧「无问题」 | 文件照常落盘，元数据 `empty_review: true`；**不得删除该侧文件** | FR-13 / NFR-05 |
+ | 审查阶段写入业务文件 | `readonly_breach: true`，告警；该次审查不得标为干净完成；列出受影响的调用。跑后复算确证改动则裁决不得进入审批，未确证降为告警放行并点明盲区（v1.3.127，EV-223） | `guard.readonly_breach: true`；`gate --check` 的 `readonly_breach`（failure）或 `readonly_breach_unconfirmed`（warning） | FR-15 / AC-08 |
+ | 审查期间工作树漂移（开发者手改） | 被审对象被改 → 整次运行作废 `failed(subject_drift)`；相关文件被改 → 按 `on_drift_related`（默认 fail）；无关文件 → 按 `on_drift`（默认 warn）并列出文件；比不了改了哪些文件（送审快照的 tree 被清理、git 出错或超时）→ 按 `on_drift_related`（v1.3.70，EV-139） | `snapshot.drift`（比不了另记 `unknown_reason`）、审查文档 front-matter `drift: true` | FR-16 / AC-17 |
+-| 读取到对方产出（轨迹命中 `deny_paths` 的**第①②类**，见 10.1.1） | 该侧结论**作废**，**不自动重跑**；作废侧不参与共同阻断判定，有效侧不足时按下一行处置；**strict 下不因作废整次中止**：作废侧照常落盘、意见仍须逐条裁决，该侧 `status` 仍为 `ok`，运行状态与退出码不变（`decideMode` 只看失败 / 超时侧，作废与否不进它的判据，降级策略同理）——`failure_policy: strict` 的整次中止只由失败或超时侧触发（上方「一侧失败（严格模式）」行）；原设想的「二次命中 `failed(peer_leak)`、strict 下整次中止」以重跑为前提，随 EV-225 一并定（M11 第 3 步核实并以用例钉住，v1.3.130）。原写「作废并重跑一次（BRIEF 追加更醒目的禁读提示），仍命中则 `failed(peer_leak)`，strict 下整次中止」——「重跑一次」从未实现，v1.3.129 移出 AC-25、另立 BACKLOG EV-225 | `guard.peer_artifact_read: true`、`guard.peer_leak_via_path`（按侧、逐条带类）、`peer_deny_applied` | FR-10 / AC-04 |
++| 读取到对方产出（轨迹命中 `deny_paths` 的**第①②类**，见 10.1.1） | 该次结论**作废**，该侧**在同一次运行内重跑一次**（v1.3.164，M12 批次 3，EV-225）：该侧刚跑完就判，在自己的 promise 里重拉，另一侧不受影响；重跑任务书最前面点名上一次碰到的位置（命令通道只点程序名，不回显参数）、正文不变；重跑用完整单侧超时，`max_waits` 追加一份；首次原始输出挪到运行目录的 `voided/<侧>/attempt-<n>/`、不进归档。**重跑干净** ⇒ 以重跑结论参与，计入共同阻断。**二次命中** ⇒ 该侧侧级判 `failed`、`fail_reason` 以 `peer_leak` 起头，之后按上方失败侧规则：strict 整次中止（退 75），`--allow-single` 下降级继续。③④ 与 ②′ 不触发。作废判定与终判、闸门共用 `leakRecordVoids`，终判与闸门只看最终尝试。细则见 10.1.1「作废侧在同一次运行内重跑一次」。v1.3.130～v1.3.163 的现行处置是「作废不重跑、strict 下不因作废中止」（M11 第 3 步核实），旧记录里「作废但 ok」的侧闸门仍按 `voidedSides` 排出共同阻断；新运行里只剩判定器异常这一个回落出口 | `critics.<侧>.attempts`（只在重跑过的侧写，逐次命中明细与时长）、`guard.peer_leak_via_path` / `peer_leak_via_command`（最终尝试）、`guard.peer_artifact_read`、`_meta/brief-<侧>-<run>.rerun.md`、`peer_deny_applied` | FR-10 / AC-04 / AC-25 |
+ | 命中 `deny_paths` 的②′／③／④类（己方运行时材料／编排器状态／凭据文件） | **不判作废**：②′ 不计入泄漏；③降告警级；④走安全告警线。分档理由与实测依据见 10.1.1 | `guard.peer_leak_via_path` 记类别与路径 | FR-10 |
+-| 作废侧被排除后，共同阻断的有效侧不足两家 | **不得静默返回空集**：落三态字段区分「查过、无共同项」「有效侧不足、该项未做」「查过、有共同项」，`run.json` 与审查文档头部同时可见，并出具名告警。**这是「重跑一次」（EV-225）就绪前的现行处置，不是充分机制**——它不恢复交叉验证，只保证失效可见。**写侧分两段（2026-09-17）**：运行期只写它知道的那一半——`skipped-insufficient-sides`（侧数不够）或 `pending`（够、等裁决表），落 `run.json`；最终三态由 `gate --check` 判、落 `task.json.joint_checks`（每轮一条、按 `run_id` 覆盖）。运行期写 `checked-none` 是伪阴性：那一刻这一档还没查。没有这个持久面时 `checked-found` **永久不可达**，三态在留痕面上塌回两态。两处的「有效侧」分母须一致：**未作废且有结构化结论** | `run.json` 的 `guard.joint_check` + `task.json.joint_checks` | FR-10 / 6.6 规则 7 |
++| 作废侧被排除后，共同阻断的有效侧不足两家 | **不得静默返回空集**：落三态字段区分「查过、无共同项」「有效侧不足、该项未做」「查过、有共同项」，`run.json` 与审查文档头部同时可见，并出具名告警。它不恢复交叉验证，只保证失效可见；补偿是 v1.3.164 起的作废侧重跑一次（EV-225，上一行）——新运行里作废侧要么重跑干净、重新计入，要么二次命中判失败按失败侧计，这一行在新运行里只由失败 / 超时侧或判定器异常的回落出口触发，旧记录照旧可见。**写侧分两段（2026-09-17）**：运行期只写它知道的那一半——`skipped-insufficient-sides`（侧数不够）或 `pending`（够、等裁决表），落 `run.json`；最终三态由 `gate --check` 判、落 `task.json.joint_checks`（每轮一条、按 `run_id` 覆盖）。运行期写 `checked-none` 是伪阴性：那一刻这一档还没查。没有这个持久面时 `checked-found` **永久不可达**，三态在留痕面上塌回两态。两处的「有效侧」分母须一致：**未作废且有结构化结论** | `run.json` 的 `guard.joint_check` + `task.json.joint_checks` | FR-10 / 6.6 规则 7 |
+ | 无 Agent 执行证据 / 未读项目文件 | 重试一次；仍不足则该侧不合格 | `evidence_ok: false`、`tool_calls.project_reads` | FR-02 / AC-05 / AC-11 |
+ | 命令 A 编译或测试失败 | 全流程状态 `failed`；已产生工件全部保留 | `verify` 记录含命令与退出码 | FR-21 / AC-10 |
+ | B/C/D 缺提示语 | 拒绝启动（退出 64） | 无工件 | FR-20 |
+@@ -3174,7 +3204,7 @@ v1/v2先按原Schema严格校验再转统一内存接口，原工件与Schema不
+ | N 审中部分审核者失败，`failure_policy: strict` | 整次中止（同现状两侧逻辑） | `review_mode` 不落 `full` | FR-29 | 【已实现 · M7b】 |
+ | N 审中部分审核者失败，显式允许降级 | 续跑，记 `review_mode: partial` + `degraded_reason`。**选 1 审不走此路径**——那是配置意图，记 `full` | `run.json` | FR-29 | 【已实现 · M7b】 |
+ | 选用的模型所属家族未在厂商侧完成 provider 配置 | **预检即拦截**并给出指引（只展示不写入，遵 16.2 纪律 5）。指引点名该补的文件与 `[model_providers.〈家族〉]` 段；原写「可粘贴的配置样例」，代码里没有样例输出，M11 第 10 步按现状改准（BACKLOG EV-231） | 无工件 | FR-27 | 【已实现 · M8 第 3 步】（逐家族 provider 探活随 codex 接入落地，AC-20 验收覆盖） |
+-| 审核者读到任一其他审核者产物（轨迹读取路径或命令文本命中 deny 集的**第①②类**） | 该侧结论作废、不自动重跑（同上方基线行；「重跑一次」另立 EV-225）。演进设计 §12 :648 原句「作废重跑一次，二次命中 `failed(peer_leak)`；strict 中止」随之过时，冻结正文不改，以本行为准 | `guard.peer_artifact_read`、`guard.peer_leak_via_path` | FR-10 | **分档与按侧留痕【已实现 · 2026-09-16】（见 10.1.1）；三审形态验收【已实现 · M11 第 3 步，v1.3.130】（AC-25，路径通道）** |
++| 审核者读到任一其他审核者产物（轨迹读取路径或命令文本命中 deny 集的**第①②类**） | 该次结论作废、该侧在同一次运行内重跑一次，二次命中 `failed(peer_leak)`，之后按失败侧规则（同上方基线行）。演进设计 §12 :648 原句「作废重跑一次，二次命中 `failed(peer_leak)`；strict 中止」与本行一致；冻结正文不改，细则以本行与 10.1.1 为准 | `critics.<侧>.attempts`、`guard.peer_artifact_read`、`guard.peer_leak_via_path` | FR-10 | **分档与按侧留痕【已实现 · 2026-09-16】（见 10.1.1）；三审形态验收【已实现 · M11 第 3 步，v1.3.130】（AC-25，路径通道）；作废侧重跑一次【已实现 · M12 批次 3，v1.3.164】（EV-225，桩级验收）** |
+ | `--tier-<id>` 或档位表 / `default_tier` 引用了该 Agent 未定义的档；`--effort-<id>` 或档位里的 effort 不在该模型原生枚举内；没有思考等级概念的侧（glm）给了 effort；支持 profile 的侧，其 CLI、档位或 Agent 配置的 profile 不在现场文件名单；档位模型不在该 profile 的模型目录中 | 拒绝启动（退出 64），列出可用值；原生枚举或名单为空、取不到时跳过该项校验并点名（v1.3.141 起预检与准备阶段均先校参数，明确不存在的 profile 退 64；凭据或能力不可用退 69，EV-232） | 无工件 | FR-30 / FR-27 | 配置来源【已实现 · M11 第 4 步，v1.3.131】（`checkModelSlugs` 报档名与目录、`checkTierCombos` 报枚举 / 概念 / 名单，预检与 `review` 准备阶段两处）；`--tier-<id>` / `--effort-<id>` / `--profile-<id>` 旗标来源【已实现 · M11 第 5 步，v1.3.132】（形状层在入口 `tier-flags.ts` 退 64：未入选侧、档名不在三档、没有厂商 profile 概念的侧、写了不给值） |
+ | 某审核者经命令行、档位表与 Agent 默认档都解析不出模型 | 拒绝启动（**退出 64**） | 无工件 | FR-30 | 【已实现 · M11 第 4 步，v1.3.131】与「profile 未定义该阶段模型」同一出口。v1.3.129 写「退出 69」是误记：该出口一直在 slug 校验处以 64 拦下，`review.ts` 路由处的 69 对同一输入不可达（计划 P-4，用户 2026-10-07 定维持 64） |
+ | 精确值覆盖了档位提供的字段；gemini 的 slug 已带档位又给了 `--effort-gemini`（或档位 / 格子的 effort） | 告警、不阻断 | 预检与 `--start` 的 `warnings`；`tier` / `tier_source` 按 11.5 记 | FR-30 | 解析与告警【已实现 · M11 第 4 步】（命令行一级以参数注入单测）；旗标来源【已实现 · M11 第 5 步】；`tier` / `tier_source` 写入 run.json【已实现 · M11 第 6 步，v1.3.133】 |
+@@ -3199,7 +3229,7 @@ v1/v2先按原Schema严格校验再转统一内存接口，原工件与Schema不
+ 
+ ### 12.3 重试策略（NFR-02）
+ 
+-仅对**瞬时故障**重试一次：空输出、非 TTY 丢 stdout、429/网络抖动、schema 校验失败、工具证据不足。业务性失败（认证失败、模型非法、只读失守、读到对方产出且二次命中）不重试。结果缓存键为 `(snapshot_hash, brief_hash, critic, model, effort)`，其中 `brief_hash` 为渲染后 `BRIEF.md` 全文的 sha256（含提示语、镜头、输出契约），因此**换提示语必定重审**（AC-09）；全部相同才复用既有结果并在命令输出与 `run.json` 记 `cache_hit: true` 与来源 `run_id`，重跑加 `--force` 穿透。缓存默认关闭（`review.cache: false`），属 NFR-06 的可选优化。
++仅对**瞬时故障**重试一次：空输出、非 TTY 丢 stdout、429/网络抖动、schema 校验失败、工具证据不足。业务性失败（认证失败、模型非法、只读失守）不重试。读到对方产出走另一条通道：第一次命中作废类即在同一次运行内重跑一次、二次命中判 `failed(peer_leak)`（10.1.1，v1.3.164）；瞬时重试额度在整侧内共用，不因作废重跑而重置。结果缓存键为 `(snapshot_hash, brief_hash, critic, model, effort)`，其中 `brief_hash` 为渲染后 `BRIEF.md` 全文的 sha256（含提示语、镜头、输出契约），因此**换提示语必定重审**（AC-09）；全部相同才复用既有结果并在命令输出与 `run.json` 记 `cache_hit: true` 与来源 `run_id`，重跑加 `--force` 穿透。缓存默认关闭（`review.cache: false`），属 NFR-06 的可选优化。
+ 
+ ### 12.4 失败策略配置
+ 
+@@ -3680,7 +3710,7 @@ schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束
+ | **M10a Driver 护栏与契约面**（原 M10 于 2026-09-22 拆分的前半程；主题 `M10-任意Driver`） | 五步：①按阶段声明当轮 Driver（EV-72：`topic claim` + 三级判定）；②EV-55 跨时间面重写（提交锚「位置 + 登记」）；③翻 `driverEnabled` 并收紧（未启用即退 64）+ `approve` 前置复核；④登记清理（EV-62 / EV-64 / EV-07）；⑤纪律 6 回溯，并补上第 ② 步漏做的 Bash 侧全集字面保护（D3）。**零真实 CLI 调用**。前置小主题 EV-74 / EV-79 | J2 / J5 / J6 ②④ / J7（M10a 份额）；「当轮 Driver 不得入选」对非缺省 Driver 生效（有用例，四家逐一穷举）。**原 M10 前置四条按拆分重排（M10 计划 r7 §0.3）**：②EV-55 由第 2 步交付；④EV-72 由第 1 步交付；③EV-71 会话载体已于 M9 第 6 步拍板取「名义 Driver」并实测一次写事件，真载体下 Hook 的生效性（EV-77）归 M10b；①随入口资产归 M10b。**前置 ① 不构成翻 `driverEnabled` 的前置——显式裁决**：① 约束的是入口资产怎么装、从哪加载，翻开关改变的是 `resolveDriver` 的一个分支；一个别家 Driver 即使没有任何入口资产，也能以名义 Driver 身份被指定并受三层护栏约束（M9 第 6 步已实测）。**这是对原前置「四条，缺一不可」的改，不是从原文读得出的解**，故显式写在这里 | ✅ **五步全部达成（2026-09-24，v1.3.37）**：第 1 步 `2cb05c8`（`task.json.drivers[<阶段>]` + `topic claim` + 三级判定，见 7.1）；第 2 步 `82773dc`（提交锚「位置 + 登记」，见 8.5 Hook 表）；第 3 步 `21f189a`（翻 `driverEnabled`、未启用即退 64；`approve` 前置复核，见 8.4）；第 4 步 `871b093`（按当轮 Driver 厂商名义族判异构、删 `inferLatestRunId`、EV-07 如实结案，见 11.5）；第 5 步 `f64a485` 与本版（Bash 侧角色后缀全集字面保护——r7 §3.2 的 D3，第 2 步漏做、本步补上；纪律 6 回溯）。双审轮次与墙钟见 `doc/08_project/M10a-轮次台账.md`。**八条达成边界**：①**零真实 CLI 调用**——全部判据在测试夹具与打包 CLI 上成立，非缺省 Driver 没有在任何真载体上跑过一轮（M10b）；②`driverEnabled` 的 64 收紧**只作用于经过 `resolveDriver` 的入口**，不是全称保证（不经过它的面见 7.1 `--driver` 段）；③**提交锚**强制力单向（终端提交绕过），剩余两格够不着（EV-108），预检没有「不在保护集」的标注；④**Bash 侧角色后缀全集字面保护**于第 5 步落地，判据仍是词边界字面匹配的启发式、不完备；⑤**`approve` 前置复核**只保「裁决齐备 + 本轮登记工件哈希一致」：只核本轮、不查未登记件混入、**不保审批来自人**；⑥**`topic claim` 只有手工 CLI 入口**，四条 skill 都没有认领步骤，声明只能手工发，Hook 第 2 级只在有人手工声明过时才有值（skill 侧认领归 M10b）；「一个后缀都还没用过」的窗口内认领与撤回次数不设上限；⑦**`heterogeneous` 两层启发式**（EV-107）；⑧**AC-21 只达成子句 ③** |
+ | **M10b 入口资产与真载体验收**（原 M10 拆分的后半程；计划 `.reviews/M10b-入口资产与真载体验收/`） | 准入实测（agy skills 加载、codex `$ARGUMENTS`、zcode 加载面 / Hook / 真载体、嵌套枚举臂）；四家入口资产与单源渲染；install 多目标；`hooks --agent`（条件步）；协议片段两段式；B1（`guardLevel` 接线；原写「D4（`guardLevel` 按探针降级）」，v1.3.43 按 M10b r5 §2.4 决策编号对照改名——D-3 撤回探针后，只有登记 L1 的载体在 Hook 配置不在场时降为 L2，见 8.5）；skill 侧的 `topic claim` 认领步骤；四 Driver 验收 | AC-21 子句 ① ② + 兼容验收（J3，允许差异白名单见 M10b 计划 §5.3）；**ZCode 真载体一轮、不接受降级；codex / gemini 夹具级**〔v1.3.43 注：这是 P-2 的计划期口径。「夹具级」指被审对象与归档在夹具仓库，「真载体」指在该家自己的会话里执笔，是两个维度；实况是 glm 真载体（命令 B）、codex 夹具级 + 真载体（命令 C）、gemini 夹具级 + 名义 Driver，见本行达成边界①〕（P-2 拍板 2026-09-21；M10b 计划 §1 J4——原 M10 行此处写「ZCode/Codex Driver 夹具跑通」，与 P-2 相反，本版拆行时即按 P-2 写入）。**前置 ①**：agy skills 真实加载行为实测通过——M6 第 4 步对 agy 承载面只拿到静态证据（内嵌迁移表 + 旗标帮助），据此定入口形态就是把静态证据当结论（P-05 的教训），实测通过才能拍板 §18.1 #16。**前置 ③ 的残量**：EV-71 会话载体已于 M9 第 6 步拍板取「名义 Driver」并实测（`--driver codex` 只作声明、留痕在场时 `-claude.md` 拦 / `-response-codex.md` 放，经 `gate hook-pre-write` 直喂 `PreToolUse` 完成，未覆盖 matcher 分发、`sh -c` 存在性守卫、`CLAUDE_PROJECT_DIR` 解析三层）；**真载体下 Hook 的生效性仍未验**，随四家入口资产一起验（EV-77）。前置 ② ④ 已由 M10a 交付。**完整前置清单与收口约束见 M10b 计划 r5 §3.2**（P-a zcode 真载体可用、P-b 第 2 步完成且第 3 步有结论、P-c = EV-82 的 T1 ∧ T2；原句「完整前置清单以 BACKLOG 为准」于 v1.3.43 改指此处）。 **EV-82 三条**：T1 收口提交取最后一次代码提交 `c872b00`（r7 §3.4）；T2 = 判据 1～5 + 6a 构建标识 + 6b 收尾告警 + 7，验收 run `20260924T104357Z`——**T2 判据在证据产生之后由用户拍板 D-1 修订**，原断言 `snapshot.dirty === false` 不成立，不写成「原判据成立」；T3 = BACKLOG EV-82 done，其余要素随 r7 收口提交追加。 **达成（2026-09-26）**：第 1 步准入实测（`doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md`，§18.1 #16 据此拍板）；第 2 步单源渲染、多目标安装、命令 A 放开 Driver、缺省集合减去当轮 Driver（D-4，`246d831`）；第 3 步 Hook 多目标、B1 护栏等级接线（预检等级行、`run.v2.driver_guard_level`）、闸门停点话术按当轮 Driver 措辞（`da6476c`）； 第 4 步五轮验收（`doc/05_testing/REPORT_2026-09-25_m10b_step4.md`：3-1 claude plan 的 §7.3.1 两形态、3-2 claude code 兼容 J3 无白名单外差异、3-3 gemini 名义 Driver、3-4 codex 真载体 + EV-77、3-5 glm 真载体 J4；轮次台账第 22～27 行）；第 5 步纪律 6 回溯（本版）。 **达成边界五条**：①真载体只覆盖 glm 走命令 B、codex 走命令 C，gemini 仅以名义 Driver 跑过，命令 A / D 未在非 claude 载体上实跑——FR-28 仍记部分达成；②L2 在 codex 上没有任何事前拦截，3-4 的两次越界请求是被 Driver 依入口资产条文自行拒绝的； ③闸门期的越界两道事后机制都不暴露（审批前复核不看工作树、跑后复算只在审查收尾时做；3-4 实测，BACKLOG EV-132），停点话术尾句待该条修；④非 claude 载体上命令参数由模型转抄，参数保真只在两轮真载体上逐字核过（8.5「L2 的已知边界」）； ⑤构建标识「`snapshot.build.git_head` 与 `snapshot.git_head` 一致」一格在夹具里不可验证，并入 M10b 之后第一次本仓代码双审（第 4 步报告 §1.2「缺口」） | ✅ **已达成**（2026-09-26，v1.3.43） |
+ | **M11 档位全链路与文档收口** | tiers 四侧配齐（探针定稿）+ `--tier-*` 全链 + report 按 Driver/审核者聚合；`profiles` 放开 `{tier}` / `{model, effort}` 形态；AC-25 三审检测收口（2026-10-07 由 M7b 并入）；§17 剩余批 B 条目收口 | AC-23；AC-25；**§24 台账全绿**；文档对账零冲突（禁两套规范并行）；全量手工验收剧本 | ✅ **已达成**（2026-10-16，v1.3.159）。AC-23 达成、AC-25 维持第 3 步达成边界；§24 台账全绿且「无 ◐ / ⏳」断言已启用；全量手工剧本 1～11 共 68 格均有第 12 步实证或用户定的达成边界（`REPORT_2026-10-12_m11_step12_manual_acceptance.md`、`doc/05_testing/evidence/m11-step12-20261012/matrix.json`）。**达成边界六条**：①5.2～5.5 的真实会话内缺件 / 改件 / 恢复负对照未触发，按用户 D1 以副本 CLI 负对照加同一 hook-pre-commit 通道的客户端放行（5.1）与退 2（6.7）判组合证据达成，新客户端启动的父级计数控制转 BACKLOG EV-235；②1.4 正式 failed 分支未触发（只验到预检 69 如实停止）；③8.1 只有 B2 为合格三审，B1 Codex 证据不足保留；④剧本 7 真载体为 ZCode（命令 C）与 Codex（命令 B），Antigravity 主攻未跑；⑤Codex 侧命令文本扫描对含 `.trivium` 字面的非读取命令仍会误命中（Z2、B2），共同阻断档因此未执行（BACKLOG EV-239）；⑥接入准入五个受限 Claude 组合的真实写尝试仍未测、官方 Claude 路线待订阅，挪到 M11 之后另定判据（用户 D3）。各步落点：第 0 步计划定稿（`.reviews/M11-档位全链路与文档收口/plan/` r3，`92d53be4`）；第 1 步档位事实探针（`REPORT_2026-10-07_m11_tier_facts.md`）；第 2 步档位契约并入（v1.3.129）；第 3 步 AC-25 三审检测收口（v1.3.130，**AC-25 达成**：只覆盖路径通道、三审形态，桩级；不含作废侧自动重跑 EV-225、不含命令文本通道三侧用例；`REPORT_2026-10-07_m11_ac25_three_critic.md`）；第 4 步配置契约与档位解析（v1.3.131：`config.v2` 原地扩 `tiers` / `default_tier` 与 `profiles` 三形态、`agents.codex.effort` 废弃、`resolveTier` 取代 `routeModel`、codex 原生枚举落盘、档位组合校验与过渡闸；**未达成任何 AC**——旗标待第 5 步、透传与留痕待第 6 步；`REPORT_2026-10-07_m11_tier_config.md`）；第 5 步档位命令行旗标（v1.3.132：`--tier-<id>` / `--effort-<id>` / `--profile-<id>` 全链上线、命令 A 三处照抄；思考等级与厂商 profile 两类由过渡闸拦到第 6 步；**未达成任何 AC**；`REPORT_2026-10-08_m11_tier_flags.md`）；第 6 步思考等级透传与留痕接线（v1.3.133：请求面一处解析、按厂商下传，厂商 profile 三处同值，run.json / front-matter 档位与思考等级一组恒写，claude 原生枚举落盘（v1.3.133 首版真机未落成：取值列表在续行上；v1.3.134 修续行解析，重装后已落五项），过渡闸拆除；**未达成任何 AC**——AC-23 随第 11 步真实验收；`REPORT_2026-10-08_m11_effort_wiring.md`）；第 7 步复盘报告双维度聚合（v1.3.135：规格 13.2.1 与实现同一提交；串档根因——原稿与裁决件写死缺省 Driver——一并修掉；**未达成任何 AC**；`REPORT_2026-10-08_m11_report_aggregate.md`）；第 8 步四个零消费方配置项删除（v1.3.136：EV-30 ④～⑦ `topic.forbid_chars` / `gate.require_adjudication` / `agents.glm.max_turns` / `agents.glm.unsupported_override`，按 ①②③ 先例删类型与默认值、schema 保留并标 deprecated、doctor / preflight 提示一条，`KNOWN_DEAD` 清空；B 档未走双审；**未达成任何 AC**；`REPORT_2026-10-08_m11_config_dead_keys.md`）；第 9 步 §24 台账结构对账测试（v1.3.137：EV-14 的结构层，`test/contract/evolution-ledger-parity.test.ts` 三条——演进设计 §17.2 每行在 §24 有对应行、状态列只用 ✅ / ◐ / ⏳、「§24 无 ◐ / ⏳」显式跳过到第 12 步启用；只加测试；B 档未走双审；**未达成任何 AC**；`REPORT_2026-10-08_m11_ledger_parity.md`）；第 10 步文档收口与对账（v1.3.138～v1.3.139，分三批提交：①`P-xx` 坑清单搬到 `doc/04_development/GUIDE_local_pitfalls.md`、M0 报告恢复为快照（EV-13 结案）；②使用与运维文档补档位用法与排障、CASE 补剧本 8～11（只写判据）、`.env.example` 补 codex 段；③本文 17.2 增补表与陈旧【待实施】标记逐条回代码核实、§24 两表翻绿、24.2 版本列改判据式；核出四处与实现不符或缺用例，按用户决定文档照现状写、另登 BACKLOG EV-231～EV-234；纯文档，B 档未走双审；临时取消第 9 步 ③ 的跳过单跑为绿；**未达成任何 AC**；`REPORT_2026-10-08_m11_doc_closure.md`）；第 11 步 AC-23 真实验收（v1.3.140：scratchpad 夹具里 codex（kimi profile）与 gemini 各以选档、精确指定发起一次，共 4 次单侧真实审查，无重跑；CASE 剧本 11 判据 11.1～11.6、11.8、11.9 全部成立，11.7 可选未做；负对照三条 64、一条 69、零工件；夹具探针照搬本仓（用户定，零配额）；零代码改动，验收不走双审；**AC-23 已验收、达成状态随第 12 步翻**；`REPORT_2026-10-08_m11_ac23_acceptance.md`）；第 12 步前置 EV-233（v1.3.141：用户定启用「§24 无 ◐ / ⏳」之前先补用例，让 24.1「17.2」行与 17.2 表内迁移行都名副其实——`config-migrate-warning.test.ts` 三格钉住迁移告警走 stderr、每次调用恰一条、`--json` 的 stdout 仍只有单个 JSON，实现无需改动，变异 5/5 咬住；只加测试、B 档未走双审；`REPORT_2026-10-08_ev233_config_migrate_warning.md`）；第 12 步全量手工剧本与收口（v1.3.159：独立夹具 `trivium-m11-step12-20261012`，A / B1 / B2 / C / D 批与 Hook 实测（10-12～10-15），收口批 Z（Claude 主攻 plan → ZCode 主攻 code）、X（Codex 主攻 plan，X2 补 9.6、X3 补 9.4 后半句）与 11.7（10-16）；`NO_PENDING_SKIP` 改 false；纯文档收口，B 档未走双审；`REPORT_2026-10-12_m11_step12_manual_acceptance.md`） |
+-| **M12 审查期误判修正与运维收口**（2026-10-16 立项；名称为执笔方暂定，计划 `doc/08_project/M11后续-开发计划-草案.md`，用户 2026-10-16 拍板 D-1～D-16 全按推荐） | 六个批次：**0** 零配额收口（EV-193 用例采样竞态、EV-230 失效结案、EV-231 删承诺、EV-236 流程规矩）；**1** EV-239（闸门对命令通道命中不看类别，告警级的 `orchestrator-state` 被当成作废）+ EV-238（agy 探活超时被报成未登录）；**2** 五个受限 Claude 组合的写尝试判据（D-2：「工具面未注册」与「受控请求拒绝」两档同时成立单独命名为受限准入，「真实写尝试」一档对这五组合记不可取样、永不记通过）；**3** EV-225 作废侧重跑一次；**4** EV-228 + EV-227；**5** EV-240 方案 A + EV-236 送审包去重 | 各批按计划 §2～§6 的验收；批次 1～5 走 `/dual-run` 全双审（改契约 / 判据 / 调用链），批次 0 为 B 档；BACKLOG EV-193 / 225 / 227 / 228 / 230 / 231 / 238 / 239 / 240 结案，EV-236 代码部分结案；五组合判据写入取证守卫规范与 ADR-003 | ⏳ **进行中**（批次 0 完成，v1.3.160；批次 1 完成，v1.3.161：EV-239 / EV-238 结案，`REPORT_2026-10-17_m12_batch1.md`；批次 2 完成，v1.3.163：EV-241 结案，五组合受限准入并经用户具名采用，`REPORT_2026-10-17_m12_batch2.md`） |
++| **M12 审查期误判修正与运维收口**（2026-10-16 立项；名称为执笔方暂定，计划 `doc/08_project/M11后续-开发计划-草案.md`，用户 2026-10-16 拍板 D-1～D-16 全按推荐） | 六个批次：**0** 零配额收口（EV-193 用例采样竞态、EV-230 失效结案、EV-231 删承诺、EV-236 流程规矩）；**1** EV-239（闸门对命令通道命中不看类别，告警级的 `orchestrator-state` 被当成作废）+ EV-238（agy 探活超时被报成未登录）；**2** 五个受限 Claude 组合的写尝试判据（D-2：「工具面未注册」与「受控请求拒绝」两档同时成立单独命名为受限准入，「真实写尝试」一档对这五组合记不可取样、永不记通过）；**3** EV-225 作废侧重跑一次；**4** EV-228 + EV-227；**5** EV-240 方案 A + EV-236 送审包去重 | 各批按计划 §2～§6 的验收；批次 1～5 走 `/dual-run` 全双审（改契约 / 判据 / 调用链），批次 0 为 B 档；BACKLOG EV-193 / 225 / 227 / 228 / 230 / 231 / 238 / 239 / 240 结案，EV-236 代码部分结案；五组合判据写入取证守卫规范与 ADR-003 | ⏳ **进行中**（批次 0 完成，v1.3.160；批次 1 完成，v1.3.161：EV-239 / EV-238 结案，`REPORT_2026-10-17_m12_batch1.md`；批次 2 完成，v1.3.163：EV-241 结案，五组合受限准入并经用户具名采用，`REPORT_2026-10-17_m12_batch2.md`；批次 3 完成，v1.3.164：EV-225 结案，作废侧在同一次运行内重跑一次，`REPORT_2026-10-17_m12_batch3.md`） |
+ | **M8 第 1 步**（原「独立演进项 · 未排期」→ 2026-09-15 升格为 M8 前置 → 同日落地） | 隔离检测**措施 b**：`run_command` 命令文本字面扫描（10.2） | 命令文本伪造命中作废；`run.v2` 的 `guard.peer_leak_via_command` 接线 | ✅ **已实现（M8 第 1 步，v1.3.8）**，BACKLOG **EV-01** 转 done。**升格理由**：M6 第 2 步实测 codex 的 `trace_path_structured = false`（读取经 shell，轨迹里只有命令文本），本项遂从「通道②的唯一覆盖」变成「**codex 侧一切路径核验的唯一手段**」。承诺面是 F-1～F-9 闭集、盲区 B-1～B-5，详见 10.1 措施 b |
+ 
+ **依赖**（两条链**并行**，不是一条串行链）：
+@@ -3987,6 +4017,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.164** | 2026-10-17 | **M12 批次 3：作废侧在同一次运行内重跑一次（EV-225）。** 主题 `M12-作废侧重跑一次`（`/dual-run`，计划双审 run `20261017T133619Z`，7 条全接受 → r2）。10.1.1 新增「作废侧在同一次运行内重跑一次」：该侧刚跑完即以与终判、闸门同一个谓词（`leakRecordVoids`）判，作废类命中则在该侧自己的 promise 内重拉一次，另一侧不受影响；③④ 与 ②′ 不触发；至多 1 次、完整单侧超时、`max_waits` 按当前 status 追加一份；重跑任务书最前面点名上次碰到的位置（命令通道只点程序名、不回显参数——对 D-7「路径或命令」的落点收紧）、正文不变；首次原始输出挪到运行目录 `voided/<侧>/attempt-<n>/`（不在己方子树，重跑侧读它同样作废）、不进归档；二次命中侧级 `failed(peer_leak)`，按失败侧规则走。12.1 基线行与演进增补行改写、「有效侧不足」行去掉「EV-225 就绪前」措辞，12.3 同步；6.7.1 记 run.v3 逐侧可选 `attempts`（只在重跑过的侧写，条目分层记法）。闸门代码不改（只读最终尝试）。`fault-injection` 的 AC-25 三审 8 格与两侧分档 3 格按新行为改断言，另补 EV-225 组 6 格与 `void-rerun` 单测 16 条。 |
+ | **v1.3.163** | 2026-10-17 | **M12 批次 2 取证与采用。** 「受限准入判据」一节补采用段：CLI 2.1.302、构建 `4e58048d` 下五组合受限准入 5 / 0 / 0，用户具名采用 `restricted-admission-v1`；16.1 M12 行批次 2 标完成；执行中暴露的会话拉起挂住与 `ps` 日期格式依赖登记 EV-243 / EV-244。报告 `REPORT_2026-10-17_m12_batch2.md`。纯文档与证据，判据与代码不变。 |
+ | **v1.3.162** | 2026-10-17 | **M12 批次 2：五个受限 Claude 组合的受限准入判据（EV-241）。** 主题 `M12-五组合受限准入判据`（`/dual-run`，计划双审 run `20261017T085024Z`，6 条全接受 → r2）。新增「受限准入判据」一节：档 1 工具面未注册（当场重算工具面并核 default 权限模式）、档 2 受控请求拒绝（与档 1 同一读臂、只认原件复算，读臂漂移记未测且不复算）、档 3 真实写尝试对五组合恒不可取样；原标准与受限准入两组计数分开、无合计，10-12 冻结汇总只作 hash 核过的参考引用。`assertProductionArm` 与产品 `src/` 不变。真实取证在提交 1 之后另行执行，判据采用待用户具名决定。 |
+ | **v1.3.161** | 2026-10-17 | **M12 批次 1：审查期两处误判（EV-239 / EV-238）。** 主题 `M12-审查期误判两则`（`/dual-run`，计划双审 run `20261017T042520Z`，7 条全接受 → r2）。①10.1.1 新增「作废判定只有一个谓词」：守卫侧级判定与闸门作废派生共用 `freeze.ts` 的 `leakRecordVoids`，两条通道都按类别判，旧记录各按旧口径（命令通道缺 `hits` 退回 `hit`、路径通道缺 `hits` 按无作废），已归档轮次重跑 `gate --check` 按新口径、不设开关；此前闸门对命令通道按 `hit` 一律作废，告警级的编排器状态目录命中让一侧被排出共同阻断。②预检项表「Antigravity 已认证」的处置列补失败详情三档（认证 / 超时分有无应答两层 / 其他），判定与退 69 不变。 |
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index b9235c6d..97add3a8 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -217,11 +217,19 @@ codex 侧不传 `--output-schema`：本机 qwen provider 实测静默不生效
+ 禁读条目上**：运行根是一棵混合树，同一个条目下 ②′ 与 ② 并存，按条目分档等于
+ 把整棵判成最重的那一类——那正是 2026-09-16／17 连续两轮代码双审判为阻断的形态。
+ 
+-两条通道逐侧记于 `run.v2` 的 `guard.peer_leak_via_path` / `guard.peer_leak_via_command`
++两条通道逐侧记于 run.json（当前写形 `run.v3`，历史 `run.v2` 同构）的 `guard.peer_leak_via_path` / `guard.peer_leak_via_command`
+ （键缺 = 该侧没扫 ／ `hit:false` = 扫过没命中 ／ `hit:true` = 扫到了东西，**未必作废**——
+ 作废与否看 `peer_artifact_read`）。两个字段的 `hits` 逐条带类，命令通道的 `hits`
+ 还带命令原文与该命令碰到的那个路径。
+ 
++**作废侧在同一次运行内重跑一次**（M12 批次 3，EV-225，设计 10.1.1）：一侧首次判出作废类命中，即在同一次运行内重拉一次、
++二次命中判 `failed`（`fail_reason` 以 `peer_leak` 起头）。上面两个 `guard` 字段与 `peer_artifact_read` **只记最终尝试**，
++闸门也只读它们；逐次明细在 run.json 的逐侧 `critics.<侧>.attempts`（只在重跑过的侧写，至少两条）：
++每条 `n`、`started_at`、`duration_s`、`status`（适配器层 `ok` / `failed` / `timeout`）、`voided`（没判为 null）、
++与上面同形的 `peer_leak_via_path` / `peer_leak_via_command`（判过才写）、`output_dir`（被挪到运行目录 `voided/<侧>/attempt-<n>/` 的首次输出）、`fail_reason`。
++条目只记适配器层结果，因泄漏判该侧失败只在侧级。重跑时插在任务书最前面的点名段原文落 `_meta/brief-<侧>-<run>.rerun.md`。
++`status.json` 的逐侧 `void_rerun: true` 标记该侧重跑过，`--wait` / `--status` 据它追加 `max_waits`。
++
+ 措施 b 的承诺面是「已知形态必检」的闭集而非不可绕过，形态与盲区清单见设计 §10.1 措施 b。
+ 它判的是「命令文本里**提到**了禁读条目」——提到即作废（经 git 对象库等方式取值
+ 不留文件系统痕迹，证明不了没读到），但留痕措辞与措施 a 的「读到」分开，
+@@ -334,7 +342,8 @@ trivium review --start --stage <s> --topic <t> --focus <hint> --json
+     （子进程诞生之后失败：先按进程组终止工作进程并以子进程句柄确认退出，再回收闸门、收尾为 failed，
+       termination.by = post_spawn_exception、status.json 已终态不动、放锁；确认不了退出则一概不回收，设计 v1.3.51）
+ 
+-循环（至多 max_waits 次，每次的 Bash 工具超时必须设为 bash_timeout_ms）：
++循环（上限取最近一次 --wait 返回的 max_waits——--start 给的是初值，某侧作废重跑时追加一个单侧超时的份额；
++      每次的 Bash 工具超时必须设为 bash_timeout_ms）：
+   trivium review --wait <run_id> --timeout <wait_timeout_s>
+     → 73 表示仍在跑，打印进度后继续；0/非 73 表示终态
+ ```
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index 428fbe16..4a06fa0c 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -145,6 +145,7 @@
+ - [`REPORT_2026-10-16_m12_batch0.md`](./REPORT_2026-10-16_m12_batch0.md)：**M12 批次 0 · 零配额收口**（B 档）。EV-193 根因是测试采样竞态（`ps` 的组号与命令行不同时刻取，误采 worker 的组），产品记录无误，新增只认组长的采样判据，I6 单跑 30/30、变异咬住，证据见 [`evidence/ev193-pgid-race-20261016/`](./evidence/ev193-pgid-race-20261016/)；EV-230 失效关闭、EV-231 删承诺、EV-236 成因与流程规矩；M12 立项（主设计 v1.3.160）。
+ - [`REPORT_2026-10-17_m12_batch1.md`](./REPORT_2026-10-17_m12_batch1.md)：**M12 批次 1 · 审查期两处误判**（A 档，`/dual-run`）。EV-239：守卫与闸门共用作废谓词 `leakRecordVoids`，两条通道按类别判、旧记录按旧口径；EV-238：agy 探活失败文案分认证 / 超时（有无应答两层）/ 其他三档，判定不变。计划双审 7 条全接受、代码双审零意见、verify 通过；变异 9/9，证据见 [`evidence/m12-batch1-mutation-20261017/`](./evidence/m12-batch1-mutation-20261017/)；主设计 v1.3.161。
+ - [`REPORT_2026-10-17_m12_batch2.md`](./REPORT_2026-10-17_m12_batch2.md)：**M12 批次 2 · 五个受限 Claude 组合的受限准入判据（EV-241）**（A 档，`/dual-run`）。档 1 工具面未注册、档 2 受控请求拒绝、档 3 真实写尝试对五组合恒不可取样，两组计数分开。计划双审 6 条、代码双审 2 条全接受；CLI 2.1.302 下取证 92 次台账启动全部闭合，五组合全部受限准入，用户具名采用 `restricted-admission-v1`；执行中暴露会话拉起挂住（EV-243）与 `ps` locale 依赖（EV-244）。证据见 [`evidence/m12-restricted-admission-20261017/`](./evidence/m12-restricted-admission-20261017/)；主设计 v1.3.163。
++- [`REPORT_2026-10-17_m12_batch3.md`](./REPORT_2026-10-17_m12_batch3.md)：**M12 批次 3 · 作废侧在同一次运行内重跑一次（EV-225）**（A 档，`/dual-run`）。作废类命中后该侧在自己的 promise 内重拉一次、另一侧不受影响，二次命中 `failed(peer_leak)` 按失败侧规则走；重跑任务书最前面点名上次碰到的位置（命令只点程序名）；首次输出挪到运行目录 `voided/`、不进归档；run.v3 逐侧 `attempts`。计划双审 7 条全接受；AC-25 三审 8 格按新行为改断言，另补 EV-225 组 6 格与单测 16 格；变异 16/16。证据见 [`evidence/m12-batch3-mutation-20261017/`](./evidence/m12-batch3-mutation-20261017/)；主设计 v1.3.164。
+ 
+ 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
+ 
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index b36ebaf7..f5c1741d 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -320,7 +320,7 @@
+ | EV-222 | **done**（2026-10-06，主题 `补丁排除钉住pathspec解释`，设计 v1.3.126、LLD v1.1.48；**用户定（2026-10-06）**：按建议取候选 A 修；**未走双审**：用户回「按照你的建议：修」，由执笔方直接开发，提交前自审补丁）；原状态：todo（2026-10-06 登记，EV-221 实施时实测撞见；本批未走双审；要不要修待用户定） | **用户环境带 `GIT_LITERAL_PATHSPECS=1` 时，code 阶段补丁的排除静默失效，已跟踪的归档根改动与敏感文件会进被审补丁。**`util/git.ts` `diffAgainst` 用 `:(exclude)<前缀>/**` 与 `:(exclude,glob)<glob>` 剔除归档根、`.trivium/`、`.git` 与 `review.sensitive_globs`；`GIT_LITERAL_PATHSPECS=1` 让 git 把整串当字面路径，`git diff` 对不匹配的 pathspec 不报错、照常退 0，于是排除不生效（实测 `doc/05_testing/evidence/worktree-hash-concurrency-20261006/diff-literal-env.txt`：同一改动，不设变量时补丁只有 `src/a.ts`，设了之后多出 `.reviews/t/x.md`）。未跟踪文件走 JS 侧的 `excluded()` 过滤，不受影响。后果与 `diffExcludePrefixes` 注释写的同形：对方产出或敏感文件内容经**被审对象本身**进 BRIEF 与 argv，禁读清单与轨迹核验都绕过。触发前提是用户全局设了这个变量（少见）。EV-221 的工作树哈希已在 `add` 那一步钉 `GIT_LITERAL_PATHSPECS=0`。**候选**：A 照 EV-221 在 `diffAgainst` 的 `git diff` 调用环境里钉 `GIT_LITERAL_PATHSPECS=0`（一行改动 + 用例），并顺查其余带魔法 pathspec 的 git 调用；B 冻结补丁后再按 `excluded()` 逐文件核一遍补丁头，命中即拒跑（兜底、不依赖环境）；C 维持现状、在手册写明不支持该变量。**建议 A**（与 EV-221 同一手法、改动最小；B 可作纵深防御另议）<br>**落地记要（2026-10-06，候选 A）**：①**顺查**（`doc/05_testing/evidence/diff-pathspec-env-20261006/env-matrix.txt`）：四个 pathspec 变量逐个设 1——LITERAL 三类排除全失效；**NOGLOB 也让前缀排除失效**（`/**` 被当字面，敏感 glob 带显式 `glob` 魔法仍有效），登记时只写了 LITERAL；GLOB / ICASE 对现有写法无影响（ICASE=1 会让排除不分大小写，排除写 `Docs`、目录叫 `docs` 时观测得到）；普通前缀的 `status --porcelain -- <路径>` 与 `deletedOrModifiedTracked` 四个变量下都不变。②**复现**：code 阶段经真实 CLI，`LITERAL=1` 时冻结补丁多出 `.env`、归档原稿、`.trivium/config.yaml`，`NOGLOB=1` 时多出后两者。③**修法**：`util/git.ts` 新增 `PATHSPEC_ENV_DEFAULTS`（四个变量取 `0`），`diffAgainst` 的已跟踪 `git diff` 无条件带、`workTreeHash` 有排除时的 `add` 由单钉 LITERAL 改为带它；pathspec 写法与默认环境下的补丁、哈希逐字节不变。④**用例**：单测 `diff-pathspec-env` 7 格（P1 四个变量逐个设 1 补丁逐字不变、P2 ICASE 补丁、H1 / H2 工作树哈希、H3 常量、G1 / G2 源码护栏登记含魔法 pathspec 的字面量：`util/git.ts` 3、`worktree-summary.ts` 1 豁免）；集成 `diff-pathspec-env` 2 格（LITERAL / NOGLOB 各跑一轮 code 阶段，冻结补丁只含业务文件、跑后复算无漂移）；变异 5/5。读数见 `doc/05_testing/REPORT_2026-10-06_diff_pathspec_env.md`。⑤**残余**：审批摘要打印给人复制的完整列表命令（`worktree-summary.ts` `fullListCommand`）在用户自己的 shell 里跑、不改——用户全局设了 LITERAL / NOGLOB 时它会多列出被排除的文件，只影响人读；候选 B（冻结后按 `excluded()` 核补丁头）未做 | `src/trivium/util/git.ts` `diffAgainst` |
+ | EV-223 | **done**（2026-10-06，主题 `只读失守未确证改动放行`，设计 v1.3.127、LLD v1.1.49、PRD v1.4.18；来源：原始需求 20261005 第 1 条；用户 2026-10-06 定判据取最宽档「只有确证改动才拦」，走 `/dual-run`：计划双审 run `20261006T153526Z` 8 条全接受；代码双审 run `20261006T165356Z`：codex / gemini `approve` 零意见、glm 1 条 nit 接受（登记 EV-224）） | **只读失守一律挡审批，误报轮只能作废。**审查员轨迹里只要出现写事件（`guard.ts` `judgeSide` 的 `write_events` 非空），`gate.ts` `checkAdjudication` 就对 `readonlyBreach.hit` 无条件判 failure `readonly_breach`，`gate --check` / `--await-approval` / `approve` 三个出口都退 2；待裁决时 `review --start` 又拒绝重跑，唯一出口是作废。EV-98 r2 因此丢掉 22 条已齐备的裁决（跑后复算无变化、人工核为误报）。**落地**：`gate.ts` 新增 `classifyReadonlyBreach`（单点判据，`checkAdjudication` 与 Hook 的 `roundBreach` 共用）——`snapshot.drift.changed` 为 true 且无 `unknown_reason` 照旧判 failure；复算无变化或比不了降为告警 `readonly_breach_unconfirmed`、结论照常进审批，告警分两种说法、列调用记录、逐条点明复算盲区（被 .gitignore 忽略的文件、归档根与 `.trivium/`、改了又改回、写到项目外、MCP 执行型调用的任意写；scratch 白名单内的写入同样看不见，不在用户清单、告警不点名）。`readonlyBreach` 入参改判别联合（`hit: true` 必带 `drift`）；未确证的失守轮在两处 Hook 里按普通轮出原文案；运行时告警与任务书 MCP 执行工具那句改准（删「该侧结论作废」——失守从不作废某侧）；桩新增 `write_breach_applied`（真落盘）。**不改**：guard 判定、run.v2 契约（不触发 EV-75 ②）、退出码与 `meta.status`、待裁决拒绝重跑、`on_drift*`。**接受的代价**：盲区里的真写会被放行，由审批人按告警斟酌；复算确证的改动也可能来自审查期间别处的手改，照拦、不做归因。读数见 `doc/05_testing/REPORT_2026-10-06_breach_unconfirmed_release.md` | `src/trivium/gate.ts` `classifyReadonlyBreach` / `checkAdjudication`；`src/trivium/hooks.ts` `roundBreach`；`src/trivium/guard.ts` `renderGuardWarnings`；`src/trivium/brief.ts` `mcpExecBanLine` |
+ | EV-224 | **done**（2026-10-07，取 A；设计 v1.3.128、LLD v1.1.50；**未走双审**：用户 2026-10-07 授权直接改、提交前由执笔方自审补丁；读数见 `doc/05_testing/REPORT_2026-10-07_breach_flag_split.md`）；原状态：todo（2026-10-06 登记，EV-223 代码双审 run `20261006T165356Z` GLM-01；要不要做待用户定） | **复盘面分不出只读失守的一轮是拦了还是放了。**EV-223 起只读失守分两档：跑后复算确证改动的判 failure `readonly_breach`，未确证（复算无变化或比不了）降为告警 `readonly_breach_unconfirmed` 放行。但 `report.ts` 的 guardFlags（:288）与 `meta.ts` `summarizeRun`（:1063）只出「只读失守」，复算无变化的放行轮连漂移行也没有，读复盘的人容易把放行轮的旗标误读成应当被拦。**候选**：A 两处按同轮 `snapshot.drift` 复用 `gate.ts` 的 `classifyReadonlyBreach` 分说「只读失守（复算确证）」与「只读失守（未确证放行）」；B 维持现状（区分看 `gate --check` 的失败码 / 告警码与 `snapshot.drift`，设计 10.3 已记一句）。EV-223 用户决策六只要求同步这两处的「拦截措辞」，它们没有，所以当时未改。<br>**落地记要（2026-10-07，取 A）**：`gate.ts` 新增 `readonlyBreachLabel`（按 `classifyReadonlyBreach` 三档给字：「只读失守（复算确证改动：裁决不得进入审批）」「只读失守（复算无变化：告警放行，复算有盲区）」「只读失守（复算比不了：告警放行）」），`report.ts` 旗标与 `meta.ts` `summarizeRun` 改调它，前缀不变；新单测 report 三档 + 对照、标签逐字与 summarizeRun 三档，mcp-detect I2 收紧到具体档位；变异 3/3 咬住 | `src/trivium/report.ts` guardFlags；`src/trivium/meta.ts` `summarizeRun` |
+-| EV-225 | todo（2026-10-16 排 M12 批次 3，A 档，硬依赖 EV-239 的共用作废谓词；用户 D-7 定五个子项全按计划 §3.2 推荐：只在作废类命中时触发、每侧至多重跑 1 次且用完整单侧超时并追加 `max_waits`、重跑 BRIEF 顶部点名上次命中的路径或命令、二次命中该侧 `failed` / `peer_leak` 后按现有失败侧规则走、run.v2 原地扩可选 `attempts` 且只归档最终那次；另加 1 轮正常真实审查作回归）。原状态：todo（2026-10-07 登记，M11 第 0 步 D-10；用户定移出 AC-25） | **审核者泄漏对端产物后「作废并重跑一次」从未实现。** 设计 12.1 与 PRD AC-25 原写「该侧作废重跑一次（BRIEF 追加更醒目的禁读提示），二次命中 `failed(peer_leak)`；strict 中止」，两侧形态下也没有实现：现行处置是该侧结论作废、不参与共同阻断判定，有效侧不足时三态可见（`guard.joint_check`）。M11 第 0 步对账核出后，用户定 AC-25 只收检测、把「重跑一次」移出、另立本条（设计 v1.3.129、PRD v1.4.19）。**为什么不在 M11 做**：它是运行流程改动（同一次运行内对单侧重拉、重跑留痕要原地扩 run.v2、配额可能翻倍），与档位无关，挂在 AC-25 上会让一个检测验收卡在一项流程特性上。**做之前要先定**：重跑是否计入 `max_waits` 与阶段预算、重跑侧的 BRIEF 加什么、二次命中后 strict 与 `--allow-partial` 各怎么走、run.json 怎么记两次尝试。**M11 第 3 步核实（2026-10-07，设计 v1.3.130 / PRD v1.4.20 已据此定稿）**：strict 下作废侧**不触发整次中止**。判定作废与判定中止是两条互不读取的路径——泄漏判定不改该侧 `status`（仍为 `ok`），`decideMode`（`runner.ts`）只按 `ok/parse_fallback` 与 `failed/timeout/缺席` 分档，`effectivePolicy` 只喂给它；终态分支（`review.ts`）只认 `subject_drift`、`driftAction === 'fail'`、`mode.abort`；全仓无 `failed(peer_leak)` 写入点。作废侧照常落盘、意见仍须逐条裁决，只在 `gate.ts` 的 `voidedSides` 里被排出共同阻断计算。原设想的「二次命中 `failed(peer_leak)`、strict 中止」以重跑为前提，**本条实施时一并定**（见上方「做之前要先定」）。现行行为由 `test/integration/fault-injection.test.ts` 的「AC-25 三审」用例钉住（严格策略下退出 0、`success`、`review_mode: full`），本条落地时那几条断言要跟着改 | `src/trivium/review.ts`、`src/trivium/guard.ts`、`src/trivium/gate.ts` 的 `voidedSides`、设计 12.1、PRD AC-25 |
++| EV-225 | **done**（2026-10-17，M12 批次 3，主题 `M12-作废侧重跑一次`，计划双审 `20261017T133619Z` 7 条全接受 → r2；代码双审与 verify 见 `doc/05_testing/REPORT_2026-10-17_m12_batch3.md`）：作废类命中后该侧在同一次运行内重跑一次——该侧刚跑完即以与终判、闸门同一个谓词判（`guard.ts` `makeSideLeakJudge`），在自己的 promise 内重拉，另一侧不受影响；告警级与己方材料不触发；至多 1 次、完整单侧超时、`max_waits` 按 status 追加一份；重跑任务书最前面点名上次碰到的位置（命令通道只点程序名、不回显参数，对 D-7 文字的落点收紧，计划 r2 §0）；首次输出挪到运行目录 `voided/<侧>/attempt-<n>/`、不进归档；二次命中侧级 `failed(peer_leak)`；run.v3 逐侧可选 `attempts`（只在重跑过的侧写）；闸门不改（只读最终尝试）。原状态：todo（2026-10-16 排 M12 批次 3，A 档，硬依赖 EV-239 的共用作废谓词；用户 D-7 定五个子项全按计划 §3.2 推荐：只在作废类命中时触发、每侧至多重跑 1 次且用完整单侧超时并追加 `max_waits`、重跑 BRIEF 顶部点名上次命中的路径或命令、二次命中该侧 `failed` / `peer_leak` 后按现有失败侧规则走、run.v2 原地扩可选 `attempts` 且只归档最终那次；另加 1 轮正常真实审查作回归）。原状态：todo（2026-10-07 登记，M11 第 0 步 D-10；用户定移出 AC-25） | **审核者泄漏对端产物后「作废并重跑一次」从未实现。** 设计 12.1 与 PRD AC-25 原写「该侧作废重跑一次（BRIEF 追加更醒目的禁读提示），二次命中 `failed(peer_leak)`；strict 中止」，两侧形态下也没有实现：现行处置是该侧结论作废、不参与共同阻断判定，有效侧不足时三态可见（`guard.joint_check`）。M11 第 0 步对账核出后，用户定 AC-25 只收检测、把「重跑一次」移出、另立本条（设计 v1.3.129、PRD v1.4.19）。**为什么不在 M11 做**：它是运行流程改动（同一次运行内对单侧重拉、重跑留痕要原地扩 run.v2、配额可能翻倍），与档位无关，挂在 AC-25 上会让一个检测验收卡在一项流程特性上。**做之前要先定**：重跑是否计入 `max_waits` 与阶段预算、重跑侧的 BRIEF 加什么、二次命中后 strict 与 `--allow-partial` 各怎么走、run.json 怎么记两次尝试。**M11 第 3 步核实（2026-10-07，设计 v1.3.130 / PRD v1.4.20 已据此定稿）**：strict 下作废侧**不触发整次中止**。判定作废与判定中止是两条互不读取的路径——泄漏判定不改该侧 `status`（仍为 `ok`），`decideMode`（`runner.ts`）只按 `ok/parse_fallback` 与 `failed/timeout/缺席` 分档，`effectivePolicy` 只喂给它；终态分支（`review.ts`）只认 `subject_drift`、`driftAction === 'fail'`、`mode.abort`；全仓无 `failed(peer_leak)` 写入点。作废侧照常落盘、意见仍须逐条裁决，只在 `gate.ts` 的 `voidedSides` 里被排出共同阻断计算。原设想的「二次命中 `failed(peer_leak)`、strict 中止」以重跑为前提，**本条实施时一并定**（见上方「做之前要先定」）。现行行为由 `test/integration/fault-injection.test.ts` 的「AC-25 三审」用例钉住（严格策略下退出 0、`success`、`review_mode: full`），本条落地时那几条断言要跟着改 | `src/trivium/review.ts`、`src/trivium/guard.ts`、`src/trivium/gate.ts` 的 `voidedSides`、设计 12.1、PRD AC-25 |
+ | EV-226 | **done**（2026-10-07，M11 第 4 步，主题 `M11-配置契约与档位解析`，设计 v1.3.131：`routeModel` 整个删除，`review.ts` / `preflight.ts` / `adapters/zcode.ts` 三个调用点迁到 `resolveTier`，`zcode.ts` 注释残留提法清掉；计划三审 run `20261007T130746Z`）；原状态：todo（2026-10-07 登记，M11 第 0 步 D-8；随 M11 第 4 步落地即结案） | **四级路由的第二级「主题级 `task.json` 覆盖」规范有、实现从未接线。** 设计 11.5 原写「命令行参数 > 主题级 `task.json` 覆盖 > `profile` > 阶段默认值」；`routeModel`（`adapters/base.ts:1833`）收 `overrides.topic` 参数，但三个调用点——`review.ts:1131`、`preflight.ts:346`（只传 `cli`）、`adapters/zcode.ts:961`（探活代表模型，不传覆盖）——都不传，全仓也没有任何写入主题级覆盖的地方。用户定从规范删除这一级（设计 v1.3.129 已删），M11 第 4 步删参数、迁三个调用点到档位解析函数，并清掉 `adapters/zcode.ts:1121` 注释里的残留提法。演进设计 :271 / :660 的「四级」冻结不改，以主设计为准 | `src/trivium/adapters/base.ts` `routeModel`、三个调用点、设计 11.5、LLD |
+ | EV-227 | todo（2026-10-16 排 M12 批次 4，与 EV-228 合一个 `/dual-run`，用户 D-8 选 A；核实：废弃键表的通配走查对任意键生效（`config.ts` :474），`['profiles','*','*','effort']` 与阶段格子里的 `effort` 差一层、不冲突）。原状态：todo（2026-10-07 登记，M11 第 4 步顺带核出；要不要做待用户定） | **`profiles.<表>.<id>` 下的 Agent 级 `effort` 键无读取点，且与新形态 `{model, effort}` 同名不同层。** schema `config.v2.json` 的 `profiles` 格子在 `plan/code/bug` 之外还收一个 Agent 级 `effort`（`low/medium/high` 枚举，`types.ts` `ProfileEntry.effort`），`config.ts` 的注释早写明「无任何读取点」；它不在默认值里，`config-consumers` 主对账看不见（只扫默认值），M11 第 4 步补的 schema 论域对账（U12）按键名判活，又被别处的 `.effort` 掩护。M11 第 4 步之后格子可写 `{model, effort}`，同一张表里出现两种 `effort`：阶段格子里的那个是思考等级（第 6 步下传），Agent 级的这个什么都不做——读配置的人容易以为后者是前者的缺省。**候选**：A 照 EV-30 ①②③ 标 deprecated、进废弃键表（精确路径 `['profiles', '*', '*', 'effort']`）；B 维持现状、只在 13.1.1 写一句。**本条未走双审** | `skills/dual-critic/schema/config.v2.json` 的 `profiles`、`types.ts` `ProfileEntry`、`config.ts` `DEPRECATED_CONFIG_KEYS` |
+ | EV-229 | **done**（2026-10-16，M11 第 12 步真实路线验收：B1 kimi、B2 / Z2 deepseek、11.7 kimi 三条 codex 厂商 profile 路线与 gemini 各模型均按组合独立探活入预算台账；Z1 同组合探活超时后重跑重新探活、未复用失败结论；见 `doc/05_testing/REPORT_2026-10-12_m11_step12_manual_acceptance.md`） | 探活按 Agent/模式/profile/模型/effort 去重，认证缓存按组合隔离；指纹变更重新探活 | `preflight.ts`、`access-modes.test.ts` |
+diff --git a/skills-src/partials/review/body.md b/skills-src/partials/review/body.md
+index bca13584..6ca00309 100644
+--- a/skills-src/partials/review/body.md
++++ b/skills-src/partials/review/body.md
+@@ -163,12 +163,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md b/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
+index ead1db48..aaf5ef71 100644
+--- a/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
+@@ -209,12 +209,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-critic/entry/codex/dual-review-code/SKILL.md b/skills/dual-critic/entry/codex/dual-review-code/SKILL.md
+index 6b328e72..62fd9c68 100644
+--- a/skills/dual-critic/entry/codex/dual-review-code/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-review-code/SKILL.md
+@@ -193,12 +193,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md b/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
+index 1a50c2ac..b34c8bf5 100644
+--- a/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
+@@ -209,12 +209,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md b/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
+index 57cf69c3..fb5fbf4d 100644
+--- a/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
+@@ -209,12 +209,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md b/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
+index 15f1a96b..bee67e7b 100644
+--- a/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
+@@ -193,12 +193,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md b/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
+index 68b2b6c2..a4e7e1c5 100644
+--- a/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
+@@ -209,12 +209,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md b/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
+index e460da0e..7588ec77 100644
+--- a/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
+@@ -217,12 +217,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-critic/entry/glm/dual-review-code/SKILL.md b/skills/dual-critic/entry/glm/dual-review-code/SKILL.md
+index 25eac0bf..67d99958 100644
+--- a/skills/dual-critic/entry/glm/dual-review-code/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-review-code/SKILL.md
+@@ -201,12 +201,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md b/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
+index b4721182..e031cb0a 100644
+--- a/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
+@@ -217,12 +217,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-critic/schema/run.v3.json b/skills/dual-critic/schema/run.v3.json
+index 911c7468..ff10a134 100644
+--- a/skills/dual-critic/schema/run.v3.json
++++ b/skills/dual-critic/schema/run.v3.json
+@@ -1016,6 +1016,62 @@
+         },
+         "access": {
+           "$ref": "#/$defs/access"
++        },
++        "attempts": {
++          "type": "array",
++          "minItems": 2,
++          "description": "该侧这一轮的逐次尝试（2026-10-17 新增，BACKLOG EV-225，设计 10.1.1「作废侧重跑」）。【已实现 · M12 批次 3】**只在该侧发生过作废重跑时写**，内容是该侧全部尝试（含瞬时重试）；没发生过不写——不泄漏的运行逐字不变。缺席的两种来源（旧记录、这一侧没有作废过）处置相同：只有一次有效尝试。分层记法：条目的 status / fail_reason 恒记适配器层结果（二次命中那一条是 ok），voided 记这一条的泄漏判定；因泄漏判该侧失败只发生在侧级（status: failed、fail_reason 以 peer_leak 起头）。闸门与 status 不读本字段：作废侧只看最终尝试，最终尝试写在 guard.peer_leak_via_*。voided 与两通道明细的一致性（voided ⟺ 明细含作废类）由单测核，不进 schema",
++          "items": {
++            "type": "object",
++            "required": ["n", "started_at", "duration_s", "status", "voided", "fail_reason"],
++            "additionalProperties": false,
++            "properties": {
++              "n": { "type": "integer", "minimum": 1, "description": "第几次尝试，从 1 起（含瞬时重试）" },
++              "started_at": { "type": "string", "minLength": 1 },
++              "duration_s": { "type": "number", "minimum": 0 },
++              "status": { "enum": ["ok", "failed", "timeout"], "description": "适配器层结果，不是侧级改判" },
++              "voided": { "type": ["boolean", "null"], "description": "这一条的泄漏判定；status 非 ok 时为 null（没判）" },
++              "peer_leak_via_path": {
++                "type": "object",
++                "required": ["hit", "hits"],
++                "additionalProperties": false,
++                "description": "与 guard.peer_leak_via_path 的单侧值同形；只在判过时写",
++                "properties": {
++                  "hit": { "type": "boolean" },
++                  "hits": {
++                    "type": "array",
++                    "items": {
++                      "type": "object",
++                      "required": ["path", "category"],
++                      "additionalProperties": false,
++                      "properties": { "path": { "type": "string" }, "category": { "enum": ["peer-artifact", "peer-run-output", "own-run-material", "orchestrator-state", "sensitive"] } }
++                    }
++                  }
++                }
++              },
++              "peer_leak_via_command": {
++                "type": "object",
++                "required": ["hit", "commands", "hits"],
++                "additionalProperties": false,
++                "description": "与 guard.peer_leak_via_command 的单侧值同形；只在判过时写",
++                "properties": {
++                  "hit": { "type": "boolean" },
++                  "commands": { "type": "array", "items": { "type": "string" } },
++                  "hits": {
++                    "type": "array",
++                    "items": {
++                      "type": "object",
++                      "required": ["command", "path", "category"],
++                      "additionalProperties": false,
++                      "properties": { "command": { "type": "string" }, "path": { "type": "string" }, "category": { "enum": ["peer-artifact", "peer-run-output", "own-run-material", "orchestrator-state", "sensitive"] } }
++                    }
++                  }
++                }
++              },
++              "output_dir": { "type": ["string", "null"], "description": "被作废、挪出该侧子树的原始输出位置（运行目录相对，形如 voided/〈侧〉/attempt-〈n〉）；只在挪过的那次写，挪失败为 null。只在运行目录里，不进归档" },
++              "fail_reason": { "type": ["string", "null"] }
++            }
++          }
+         }
+       }
+     },
+diff --git a/skills/dual-review-bug/SKILL.md b/skills/dual-review-bug/SKILL.md
+index fb0f73d1..ee86349d 100644
+--- a/skills/dual-review-bug/SKILL.md
++++ b/skills/dual-review-bug/SKILL.md
+@@ -195,12 +195,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-review-code/SKILL.md b/skills/dual-review-code/SKILL.md
+index 3e632478..39da9ca9 100644
+--- a/skills/dual-review-code/SKILL.md
++++ b/skills/dual-review-code/SKILL.md
+@@ -179,12 +179,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/skills/dual-review-plan/SKILL.md b/skills/dual-review-plan/SKILL.md
+index f5c41750..64406d13 100644
+--- a/skills/dual-review-plan/SKILL.md
++++ b/skills/dual-review-plan/SKILL.md
+@@ -195,12 +195,13 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 只打印不等于反馈。内容用返回里的 `progress_brief`，原样念一行即可：不要改写、
+ 不要合并、不要「等下一次一起说」。退出码 `73` 与 `0` 都要说。
+ 
+-若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`），
++若两侧状态较上次有变化（`running`→`ok`、`attempt` 增加、出现 `note`、某侧进入作废重跑），
+ 在那一行后面补一句说明变化。**状态不变时不要补**——每次都写只会淹掉真正的变化。
+ 
+ 退出码含义：`73` 仍在运行（播报后继续等）；`0` 两份审查文档与元数据已落盘
+ （播报总耗时与两份文档路径后进下一步）；其它按原样转述并停止。
+-循环次数上限为返回的 `max_waits`，超限则停下求助人工。
++循环次数上限以**最近一次** `--wait` 返回的 `max_waits` 为准（`--start` 给的是初值；某侧读到对端产物、
++作废重跑时，编排器会追加一个单侧超时的份额），超限则停下求助人工。
+ 
+ ### 4. 完整读取两份审查文档
+ 
+diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts
+index 4add81b2..07c3186d 100644
+--- a/src/trivium/adapters/stub.ts
++++ b/src/trivium/adapters/stub.ts
+@@ -38,6 +38,8 @@ import {
+ import { warn } from '../util/log.js';
+ import { run } from '../util/exec.js';
+ import { TRIVIUM_DIR } from '../config.js';
++import { VOID_RERUN_BANNER_HEADING } from '../brief.js';
++import { VOIDED_ATTEMPTS_DIR } from '../run-files.js';
+ 
+ export const STUB_ENV_VAR = 'TRIVIUM_STUB_CRITIC';
+ 
+@@ -234,8 +236,17 @@ export interface StubSpec {
+    * 只为集成用例咬住证据不可信的五面留痕。
+    */
+   mcpUntrustedTools?: string[];
++  /**
++   * 作废重跑那一次改用的规格（BACKLOG EV-225）：请求的任务书以 `VOID_RERUN_BANNER_HEADING` 开头时生效。
++   * 这样「第一次泄漏、第二次干净」能在同一侧注入，**顺带核了点名段真的插在最前面、真的送到了适配器**。
++   * 不给 ⇒ 重跑与首次同形（二次命中那几格）。
++   */
++  rerun?: StubSpec;
+ }
+ 
++/** 这几种形态会被判作废、触发重跑：桩在 `out/` 留一份标记，挪首次输出那一步才有东西可挪（EV-225） */
++const LEAK_MODES: readonly StubMode[] = ['peer_leak', 'run_material_leak', 'peer_leak_via_command'];
++
+ /** 桩注入的 MCP 调用总次数：执行型 n 次 + 名单外每个名字 1 次 */
+ function stubMcpTotal(spec: StubSpec): number {
+   return (spec.mcpExecCalls ?? 0) + (spec.mcpUntrustedTools?.length ?? 0);
+@@ -426,6 +437,13 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
+       ? { modelOverrideSource: () => spec.modelOverrideSource as string }
+       : {}),
+     async run(_ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
++      // 单测会只给部分字段的请求（如 prune_objects 只给 project_root），缺任务书按非重跑
++      const isRerun = (req.brief_text ?? '').startsWith(VOID_RERUN_BANNER_HEADING);
++      if (spec.rerun && isRerun) return makeStubAdapter(critic, spec.rerun).run(_ctx, req);
++      if (spec.rerun || isRerun || LEAK_MODES.includes(spec.mode)) {
++        await fsp.mkdir(req.out_dir, { recursive: true });
++        await fsp.writeFile(path.join(req.out_dir, 'result.json'), JSON.stringify({ critic, mode: spec.mode, rerun: isRerun }) + '\n', 'utf8');
++      }
+       switch (spec.mode) {
+         case 'hang':
+           await new Promise((r) => setTimeout(r, 600_000));
+@@ -586,6 +604,12 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
+           let extra: string[];
+           if (which === 'own') {
+             extra = [path.join(req.out_dir, 'result.json'), path.join(runDir, 'request.json')];
++          } else if (which === 'voided') {
++            /*
++             * 读**本侧**上一次被作废、挪走的输出（EV-225，`run-files.ts` 的 `VOIDED_ATTEMPTS_DIR`）：
++             * 它不在己方子树里，按现行规则判对端运行输出——重跑侧读它即二次命中。
++             */
++            extra = [path.join(runDir, VOIDED_ATTEMPTS_DIR, critic, 'attempt-1', 'result.json')];
+           } else if (which.startsWith('peer:')) {
+             /*
+              * **对端必须点名**（M11 第 3 步，AC-25 三审形态）。
+@@ -612,7 +636,7 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
+           } else {
+             return failedResult(critic, {
+               status: 'failed',
+-              reason: `桩的 run_material_leak 不认 note=${JSON.stringify(spec.note)}（只收 'own' 或 'peer:<id>[,<id>…]'）`,
++              reason: `桩的 run_material_leak 不认 note=${JSON.stringify(spec.note)}（只收 'own'、'voided' 或 'peer:<id>[,<id>…]'）`,
+               exitCode: 1,
+             });
+           }
+diff --git a/src/trivium/brief.ts b/src/trivium/brief.ts
+index 5be469a4..da8cb80e 100644
+--- a/src/trivium/brief.ts
++++ b/src/trivium/brief.ts
+@@ -27,7 +27,9 @@ import {
+ } from './freeze.js';
+ import { TRIVIUM_DIR, runRoot } from './config.js';
+ import { expandHomeSpellings, normalizeAbs, isUnder, type CommandExecution } from './adapters/base.js';
+-import { RUN_DIR_FILE_NAMES } from './run-files.js';
++import { RUN_DIR_FILE_NAMES, VOIDED_ATTEMPTS_DIR } from './run-files.js';
++import { redactSecrets } from './secrets.js';
++import { isAgentId } from './agents/registry.js';
+ 
+ /**
+  * 第 4 段任务目标摘要的上限：显式 `--goal` 折叠空白后超过它就截断加「…」（设计 §9.4）。
+@@ -848,3 +850,107 @@ export function excerptSubject(text: string, maxLines = 400): string {
+     ...tail,
+   ].join('\n');
+ }
++
++/*
++ * ── 作废重跑的点名段（BACKLOG EV-225，M12 批次 3，设计 10.1.1「作废侧重跑」）──
++ *
++ * 一侧首次尝试读到对端产物（作废类命中）后，同一次运行内重跑一次；重跑的任务书在**最前面**插这一段，
++ * 原任务书逐字不变跟在后面。桩按段首标题认出重跑请求，所以标题是导出常量、不得改成运行时拼接。
++ *
++ * **点名内容本身不得成为新的泄漏面**（计划 r2 §3.3），三条约束：
++ * 1. 命令通道只点名程序名与它碰到的位置，命令其余文本一个字不进——泄漏之后该侧敲的命令可能夹带
++ *    刚读到的对端原文（`grep "<对端意见里的一句话>" …`），回显就是把对端内容抄进重跑侧的任务书。
++ *    这是对 D-7「点名路径或命令」的落点收紧（计划 r2 §0 第 2 条）。
++ * 2. 位置收敛到禁读条目或运行目录第三段那一层：段里出现的每个位置，都已以「条目」或「条目所在目录」的
++ *    形态出现在原任务书第 8 段里——只告诉它「你碰的是其中这几个」，不引入新信息。
++ * 3. 位置过一遍 `redactSecrets`、截断到 200 字符。
++ */
++
++/** 重跑任务书的段首标题。桩据它认出重跑请求（`adapters/stub.ts` 的 `rerun`） */
++export const VOID_RERUN_BANNER_HEADING = '## 重跑须知：你上一次的审查已作废（编排器追加，先读这一段）';
++
++/** 点名段最多列几条，其余写「另有 N 条」 */
++export const VOID_RERUN_BANNER_MAX_ITEMS = 10;
++
++/** 程序名的合法形态：只取命令首个词的末段，字符集与长度都收窄，不合就不写 */
++const PROGRAM_NAME = /^[A-Za-z0-9._-]{1,32}$/;
++
++/** 命令首个词的末段（`/usr/bin/git` → `git`）；取不到或不合形态返回 null */
++export function commandProgramName(command: string): string | null {
++  const first = command.trim().split(/\s+/)[0] ?? '';
++  const base = first.slice(first.lastIndexOf('/') + 1);
++  return PROGRAM_NAME.test(base) ? base : null;
++}
++
++export interface VoidRerunBannerInput {
++  path: { hits: readonly { path: string; category: DenyCategory }[] };
++  command: { hits: readonly { command: string; path: string; category: DenyCategory }[] };
++}
++
++/**
++ * 把一条命中收敛成可以点名的位置（约束 2）。
++ *
++ * 运行根下的命中只显示到 `<运行根>/<项目槽>/<runId>/<第三段>/`；项目内的命中显示罩住它的那条禁读条目
++ * （取最长的那条，即最具体的）。找不到罩住它的条目（不该发生：它是命中）就只写类别，不写路径。
++ */
++function bannerLocation(
++  hit: string,
++  ctx: { projectRoot: string; runRoot: string; denyPaths: readonly string[] },
++): { where: string; what: string | null } | null {
++  const abs = normalizeAbs(hit, ctx.projectRoot);
++  const rootAbs = normalizeAbs(ctx.runRoot, ctx.projectRoot);
++  if (isUnder(abs, rootAbs)) {
++    const rel = path.relative(rootAbs, abs);
++    const seg = rel === '' ? [] : rel.split(path.sep);
++    if (seg.length < 3) return { where: ctx.runRoot, what: null };
++    const dir = path.join(ctx.runRoot, seg[0]!, seg[1]!, seg[2]!) + path.sep;
++    if (seg[2] === VOIDED_ATTEMPTS_DIR) return { where: dir, what: '运行目录里被作废的上一次输出' };
++    if (isAgentId(seg[2]!)) return { where: dir, what: `运行目录里 ${seg[2]} 侧的本轮输出` };
++    return { where: dir, what: null };
++  }
++  let best: string | null = null;
++  for (const e of ctx.denyPaths) {
++    const eAbs = normalizeAbs(expandHomeSpellings(e), ctx.projectRoot);
++    if (!isUnder(abs, eAbs)) continue;
++    if (best === null || eAbs.length > normalizeAbs(expandHomeSpellings(best), ctx.projectRoot).length) best = e;
++  }
++  return best === null ? null : { where: best, what: null };
++}
++
++/** 点名段原文。只列作废类命中——它们才是「再碰一次就判失败」的那几项 */
++export function renderVoidRerunBanner(
++  leak: VoidRerunBannerInput,
++  ctx: { projectRoot: string; runRoot: string; denyPaths: readonly string[] },
++): string {
++  const items = new Map<string, string>();
++  const add = (loc: { where: string; what: string | null } | null, category: DenyCategory, program: string | null | undefined): void => {
++    const where = loc === null ? '（禁读条目）' : `\`${redactSecrets(loc.where).content.slice(0, 200)}\``;
++    const what = loc?.what ? `（${loc.what}）` : '';
++    const via = program === undefined ? '' : program === null ? '经命令碰到 ' : `经命令 \`${program}\` 碰到 `;
++    const line = `- ${via}${where}${what}——${DENY_CATEGORY_LABEL[category]}`;
++    if (!items.has(line)) items.set(line, line);
++  };
++  for (const h of leak.path.hits) {
++    if (isVoidingCategory(h.category)) add(bannerLocation(h.path, ctx), h.category, undefined);
++  }
++  for (const h of leak.command.hits) {
++    if (isVoidingCategory(h.category)) add(bannerLocation(h.path, ctx), h.category, commandProgramName(h.command));
++  }
++  const lines = [...items.values()];
++  const shown = lines.slice(0, VOID_RERUN_BANNER_MAX_ITEMS);
++  const more = lines.length - shown.length;
++  return [
++    VOID_RERUN_BANNER_HEADING,
++    '',
++    '你这一侧上一次审查的工具轨迹里出现了对**另一位审查员产出**的读取。那次结论已作废，不会交给 Driver。',
++    '这是同一份任务书的重跑，**只有这一次**：再碰到下列任何一项，本侧直接判失败，本轮不再重跑。',
++    '',
++    '上一次碰到的：',
++    '',
++    ...shown,
++    ...(more > 0 ? [`- 另有 ${more} 条`] : []),
++    '',
++    '这些位置与下文第 8 段 8.1 的清单同属禁读；上一次尝试的原始输出已移出你的运行目录，同样禁读。',
++    '不要为了「核对」再打开其中任何一项。本段只列位置，不含任何内容；下文是原任务书，一字未改。',
++  ].join('\n');
++}
+diff --git a/src/trivium/guard.ts b/src/trivium/guard.ts
+index 7f56767b..4d7aee8c 100644
+--- a/src/trivium/guard.ts
++++ b/src/trivium/guard.ts
+@@ -649,6 +649,88 @@ export interface JudgeRunInput {
+   capabilities?: Partial<Record<CriticId, TraceCapability>>;
+ }
+ 
++/**
++ * 给 `judgeSide` 拼逐侧入参（`degraded` 除外）。`judgeRun` 与 `makeSideLeakJudge` **共用这一份**（EV-225）：
++ * 重跑判据与终判按同一组根、同一个能力声明判，不会出现「重跑按 A 根算、终判按 B 根算」。
++ */
++async function sideJudgeOptions(
++  input: Pick<JudgeRunInput, 'cfg' | 'projectRoot' | 'archiveRootAbs' | 'triviumDirRel' | 'capabilities'>,
++): Promise<(c: CriticId) => Omit<Parameters<typeof judgeSide>[5], 'degraded'>> {
++  /*
++   * consulted 归一化的根别名：realpath 取不到（合成根、ENOENT）就只用 projectRoot，
++   * 与 `judgeSide` 缺省一致；取到了也不替换 projectRoot，只多一个别名。
++   */
++  let projectRoots: readonly string[] = [input.projectRoot];
++  try {
++    const real = await fs.realpath(input.projectRoot);
++    if (real !== input.projectRoot) projectRoots = [input.projectRoot, real];
++  } catch {
++    /* 合成根或不可解析：只按字面根归一 */
++  }
++  return (c) => {
++    const cap = input.capabilities?.[c];
++    return {
++      archiveRootAbs: input.archiveRootAbs,
++      projectRoot: input.projectRoot,
++      projectRoots,
++      /*
++       * 分类与具名放行要这两个根（设计 §10.1.1）。
++       * `triviumDirRel` 是可选的（旧调用没传），缺省按约定目录名拼——
++       * 拼错的后果是那一类命中被归成「对端产物」而判作废，方向保守。
++       */
++      triviumDir: nodePath.resolve(input.projectRoot, input.triviumDirRel ?? TRIVIUM_DIR),
++      runRoot: expandHome(input.cfg.runtime.run_root),
++      ...(cap ? { capability: cap } : {}),
++    };
++  };
++}
++
++/**
++ * 单侧泄漏判定（BACKLOG EV-225，M12 批次 3）：该侧刚跑完、还没解析时就判，供 runner 决定是否作废重跑。
++ *
++ * 形状与 run.json `guard.peer_leak_via_path` / `peer_leak_via_command` 的单侧值相同；
++ * `voided` 就是 `judgeSide` 的 `peerArtifactRead`，即 `leakRecordVoids` 的结果——
++ * 重跑判据、终判（`judgeRun`）、闸门（`gate.ts` 的 `voidedSides`）三处读同一个谓词。
++ */
++export interface SideLeakVerdict {
++  voided: boolean;
++  path: { hit: boolean; hits: { path: string; category: DenyCategory }[] };
++  command: { hit: boolean; commands: string[]; hits: { command: string; path: string; category: DenyCategory }[] };
++}
++
++/**
++ * 造一个单侧泄漏判定器。async 只为一次性取 realpath 别名；返回的判定器是同步纯函数。
++ *
++ * **直接调 `judgeSide`**（`review` 传 null、`degraded` 传 []）：泄漏判定只读 `read_paths` /
++ * `search_hit_paths` / `command_texts` 与 `deny_paths`，不读解析结果，所以「先判泄漏、后解析」
++ * 与 `judgeRun` 对同一份结果给出同一结论。失败 / 超时的结果返回 null，与 `judgeRun` 跳过失败侧同口径。
++ */
++export async function makeSideLeakJudge(
++  input: Pick<JudgeRunInput, 'cfg' | 'projectRoot' | 'archiveRootAbs' | 'triviumDirRel' | 'capabilities' | 'requests'>,
++): Promise<(critic: CriticId, result: CriticResult) => SideLeakVerdict | null> {
++  const sideOpts = await sideJudgeOptions(input);
++  return (critic, result) => {
++    const req = input.requests[critic];
++    if (!req) return null;
++    if (result.status === 'timeout' || result.status === 'failed') return null;
++    const v = judgeSide(input.cfg, critic, result, null, req, { ...sideOpts(critic), degraded: [] });
++    return sideLeakOf(v);
++  };
++}
++
++/** 从侧级判定取出与 run.json 同形的两条通道记录（`hit` 取「扫到了东西」，与 `review.ts` 落盘处同口径） */
++export function sideLeakOf(v: SideVerdict): SideLeakVerdict {
++  return {
++    voided: v.peerArtifactRead,
++    path: { hit: v.typedHits.length > 0, hits: v.typedHits },
++    command: {
++      hit: v.typedCommandHits.length > 0,
++      commands: [...new Set(v.typedCommandHits.map((h) => h.command))],
++      hits: v.typedCommandHits,
++    },
++  };
++}
++
+ /** 整次运行的判定 */
+ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
+   const { cfg, results, reviews, requests } = input;
+@@ -682,17 +764,7 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
+     ...(input.triviumDirRel ? { triviumDirRel: input.triviumDirRel } : {}),
+   });
+ 
+-  /*
+-   * consulted 归一化的根别名：realpath 取不到（合成根、ENOENT）就只用 projectRoot，
+-   * 与 `judgeSide` 缺省一致；取到了也不替换 projectRoot，只多一个别名。
+-   */
+-  let projectRoots: readonly string[] = [input.projectRoot];
+-  try {
+-    const real = await fs.realpath(input.projectRoot);
+-    if (real !== input.projectRoot) projectRoots = [input.projectRoot, real];
+-  } catch {
+-    /* 合成根或不可解析：只按字面根归一 */
+-  }
++  const sideOpts = await sideJudgeOptions(input);
+ 
+   const sides: Partial<Record<CriticId, SideVerdict>> = {};
+   for (const c of Object.keys(results) as CriticId[]) {
+@@ -708,21 +780,7 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
+      * 失败原因由 runner 的 fail_reason 与 decideMode 的 degraded_reason 负责。
+      */
+     if (r.status === 'timeout' || r.status === 'failed') continue;
+-    const cap = input.capabilities?.[c];
+-    sides[c] = judgeSide(cfg, c, r, reviews[c] ?? null, q, {
+-      archiveRootAbs: input.archiveRootAbs,
+-      projectRoot: input.projectRoot,
+-      projectRoots,
+-      /*
+-       * 分类与具名放行要这两个根（设计 §10.1.1）。
+-       * `triviumDirRel` 是可选的（旧调用没传），缺省按约定目录名拼——
+-       * 拼错的后果是那一类命中被归成「对端产物」而判作废，方向保守。
+-       */
+-      triviumDir: nodePath.resolve(input.projectRoot, input.triviumDirRel ?? TRIVIUM_DIR),
+-      runRoot: expandHome(cfg.runtime.run_root),
+-      ...(cap ? { capability: cap } : {}),
+-      degraded: input.degraded[c] ?? [],
+-    });
++    sides[c] = judgeSide(cfg, c, r, reviews[c] ?? null, q, { ...sideOpts(c), degraded: input.degraded[c] ?? [] });
+   }
+ 
+   const breachedFiles = Object.values(sides).flatMap((s) => s?.breachEvidence ?? []);
+diff --git a/src/trivium/meta.ts b/src/trivium/meta.ts
+index d4d6972f..67796cd0 100644
+--- a/src/trivium/meta.ts
++++ b/src/trivium/meta.ts
+@@ -1087,5 +1087,8 @@ export function summarizeRun(meta: RunMeta): string {
+   // 按跑后复算分档说，与 report 旗标同一来源（EV-224）
+   if (meta.guard.readonly_breach) lines.push(`  ⚠️ ${readonlyBreachLabel(meta.snapshot.drift)}`);
+   if (meta.guard.peer_artifact_read) lines.push('  ⚠️ 读到对方产出');
++  // 作废重跑（EV-225），与 report 旗标同一判据：有 attempts 即重跑过
++  const reran = Object.entries(meta.critics).filter(([, m]) => m?.attempts !== undefined).map(([c]) => c);
++  if (reran.length > 0) lines.push(`  ⚠️ 作废重跑：${reran.join('、')}（首次尝试读到对端产物，明细见 critics.<侧>.attempts）`);
+   return lines.join('\n');
+ }
+diff --git a/src/trivium/report.ts b/src/trivium/report.ts
+index 015428d8..bd63e16b 100644
+--- a/src/trivium/report.ts
++++ b/src/trivium/report.ts
+@@ -502,6 +502,12 @@ async function buildRound(
+   // 按跑后复算分档说（EV-224）：只说「只读失守」分不出那一轮是被挡了还是告警放行了
+   if (meta.guard.readonly_breach) base.guardFlags.push(readonlyBreachLabel(meta.snapshot.drift));
+   if (meta.guard.peer_artifact_read) base.guardFlags.push('读到对方产出');
++  /*
++   * 作废重跑（EV-225）：`peer_artifact_read` 按最终尝试写，「首次泄漏、重跑干净」的一轮在它上面是假——
++   * 不另亮一格，复盘时看不出这一轮发生过泄漏。只判有无 `attempts`，不读里面的明细。
++   */
++  const reran = Object.entries(meta.critics).filter(([, m]) => m?.attempts !== undefined).map(([c]) => c);
++  if (reran.length > 0) base.guardFlags.push(`作废重跑（${reran.join('、')}）`);
+   /*
+    * `guard.forged_role_file` 不读（EV-137）：它是保留字段，写侧恒 false，全仓没有检测去置它。
+    * 据它打「角色后缀伪造」旗标，这一格永远不会亮，却让读报告的人以为检测过。
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index 0a3e7f8c..87a91a91 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -42,6 +42,7 @@ import {
+   renderBrief,
+   renderContextConflicts,
+   renderPrunedWarnings,
++  renderVoidRerunBanner,
+   TASK_GOAL_MAX,
+   WARNING_MARK,
+   type MustReadSource,
+@@ -50,7 +51,8 @@ import {
+ } from './brief.js';
+ import { parseReview, checkReviewIntegrity, enumerateFallbackFindings } from './parse.js';
+ import { decideMode, runBothSides, type SideProgress } from './runner.js';
+-import { judgeRun, renderGuardWarnings, type SideVerdict } from './guard.js';
++import { VOIDED_ATTEMPTS_DIR } from './run-files.js';
++import { judgeRun, makeSideLeakJudge, renderGuardWarnings, type SideVerdict } from './guard.js';
+ import { FALLBACK_CAUSE_LABEL, renderReviewDoc, type RenderInput } from './render.js';
+ import { resolveTopicReadOnly, locateSubject } from './topic.js';
+ import { parseArtifactName, shellQuoteArg } from './naming.js';
+@@ -77,7 +79,7 @@ import { measureAllPairs, renderDivergence } from './divergence.js';
+ import { resolveAssetRoot, resolveReviewSchemaPath, runRoot } from './config.js';
+ import { resolveCriticSelection } from './critics.js';
+ import { releaseRunningGateEntry, setGateChecked } from './state.js';
+-import { ensureDir, sha256, sha256File } from './util/fsx.js';
++import { ensureDir, sha256, sha256File, tryRemoveTempDir } from './util/fsx.js';
+ import { workTreeHash } from './util/git.js';
+ import {
+   EXIT,
+@@ -1441,9 +1443,34 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+   const startedAt = new Date().toISOString();
+   say(`开始双审：${sides.map((c) => `${c}(${requests[c]!.model})`).join(' ‖ ')}，单侧上限 ${cfg.review.timeout_s[stage]}s`);
+ 
++  /*
++   * 逐侧能力声明从适配器表取——**这是它唯一的起源**，`judgeRun` 自己拿不到。
++   * 漏传会让 `command-trace` 侧按结构化轨迹判定，证据恒不达标（响亮失败），
++   * 不会静默放行；但那种失败的原因与现象离得很远，所以这一行不能省。
++   * 作废重跑的单侧判定（EV-225）与终判用的是**同一份**。
++   */
++  const capabilities = Object.fromEntries(
++    sides.flatMap((c) => {
++      const adapter = adapters[c];
++      const cap = adapter?.capabilityFor?.(cfg, requests[c]?.profile_requested ?? null) ?? adapter?.capability;
++      return cap ? [[c, cap] as const] : [];
++    }),
++  );
++  const archiveRootRel = path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root;
++  const triviumDirRel = path.relative(ctx.projectRoot, ctx.triviumDir) || '.trivium';
++  /*
++   * 作废重跑（BACKLOG EV-225，M12 批次 3）：单侧判定器与终判共用入参装配（`guard.ts` 的 `sideJudgeOptions`），
++   * 谓词同为 `leakRecordVoids`。挪首次输出、渲染点名段两个钩子也在这里装好。
++   */
++  const judgeLeak = await makeSideLeakJudge({
++    cfg, projectRoot: ctx.projectRoot, archiveRootAbs: ctx.archiveRoot, triviumDirRel, requests, capabilities,
++  });
++  /** 挪动或兜底整删出问题时的告警：并进本轮 warnings（run 的 message 与人读输出都看得见） */
++  const stashWarnings: string[] = [];
++
+   /** 重试时追加进 BRIEF 的提示。归档里的 brief-* 是第一次那份，追加内容也要留痕，否则审计材料与实际送审不符 */
+   const retryHints: Partial<Record<CriticId, string[]>> = {};
+-  const { results, attempts } = await runBothSides({
++  const { results, attempts, attemptLog, rerunBanners } = await runBothSides({
+     ctx: adapterCtx,
+     adapters,
+     requests,
+@@ -1455,6 +1482,14 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+     },
+     // 等待期的逐侧进展回写。只有工作进程会传它；同步路径不传，行为不变（AGY-01）
+     onSideProgress: rc.onSideProgress,
++    judgeLeak,
++    stashVoided: (critic, attemptNo) => stashVoidedOutput(rc.runDirBase, critic, attemptNo, stashWarnings),
++    voidRerunBanner: (critic, leak) =>
++      renderVoidRerunBanner(leak, {
++        projectRoot: ctx.projectRoot,
++        runRoot: runRoot(cfg),
++        denyPaths: requests[critic]?.deny_paths ?? [],
++      }),
+   });
+   const finishedAt = new Date().toISOString();
+ 
+@@ -1563,8 +1598,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+     cfg,
+     projectRoot: ctx.projectRoot,
+     archiveRootAbs: ctx.archiveRoot,
+-    archiveRootRel: path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root,
+-    triviumDirRel: path.relative(ctx.projectRoot, ctx.triviumDir) || '.trivium',
++    archiveRootRel,
++    triviumDirRel,
+     before: primarySnap,
+     afterTreeHash,
+     afterSubjectSha256: afterSubjectSha,
+@@ -1572,18 +1607,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+     relatedPaths: [...opts.contextPaths, ...diffFiles],
+     results, reviews, requests,
+     degraded: Object.fromEntries(sides.map((c) => [c, degraded[c] ?? []])),
+-    /*
+-     * 逐侧能力声明从适配器表取——**这是它唯一的起源**，`judgeRun` 自己拿不到。
+-     * 漏传会让 `command-trace` 侧按结构化轨迹判定，证据恒不达标（响亮失败），
+-     * 不会静默放行；但那种失败的原因与现象离得很远，所以这一行不能省。
+-     */
+-    capabilities: Object.fromEntries(
+-      sides.flatMap((c) => {
+-        const adapter = adapters[c];
+-        const cap = adapter?.capabilityFor?.(cfg, requests[c]?.profile_requested ?? null) ?? adapter?.capability;
+-        return cap ? [[c, cap] as const] : [];
+-      }),
+-    ),
++    capabilities,
+   });
+ 
+   /*
+@@ -1599,6 +1623,27 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+    * 工作进程重建的上下文里它是 `[]`（已随 `--start` 返回），这里不会重复。
+    */
+   const warnings = [...rc.mustReadPruned.map((w) => plainWarningText(w.detail)), ...renderGuardWarnings(verdict)];
++  /*
++   * 作废重跑的告警（EV-225）。`peer_artifact_read` 按最终尝试写，一轮「首次泄漏、重跑干净」的运行在它上面是假——
++   * 这两句与 report / 运行摘要的「作废重跑」旗标一起，让「这一轮发生过泄漏」照样看得见。
++   *
++   * 终判与重跑判据的一致性自检：同一函数、同一输入，理论上不可达；真不等时以终判为准、如实告警。
++   */
++  for (const c of sides) {
++    const log = attemptLog[c];
++    if (!log) continue;
++    const lastRec = log[log.length - 1];
++    if (results[c]?.status === 'failed' && (results[c]?.fail_reason ?? '').startsWith('peer_leak')) {
++      warnings.push(`${c} 侧重跑后仍读到对端产物，该侧判失败（peer_leak）；两次尝试的命中明细见 run.json 的 critics.${c}.attempts`);
++    } else {
++      warnings.push(`${c} 侧首次尝试读到对端产物，该次结论已作废，同一次运行内重跑一次（最终尝试：${results[c]?.status ?? '无结果'}）`);
++    }
++    const finalSide = verdict.sides[c];
++    if (finalSide && lastRec && lastRec.voided !== null && lastRec.voided !== finalSide.peerArtifactRead) {
++      warnings.push(`${c} 侧作废判定前后不一致：重跑判据记 ${String(lastRec.voided)}、终判为 ${String(finalSide.peerArtifactRead)}，以终判为准`);
++    }
++  }
++  warnings.push(...stashWarnings);
+   /*
+    * 凭据副本抹除失败要进 warnings（EV-20）：它随 `ReviewOutcome.warnings` 落进
+    * `status.json.message`，`--wait` 的终态返回会原样透出——哨兵在无人读的目录里，
+@@ -1663,6 +1708,19 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+       metaPaths.push(w.absPath);
+       protectedMeta.push({ path: w.relPath, sha256: w.sha256 });
+     }
++    /*
++     * 作废重跑时插在任务书最前面的点名段（EV-225），与上面的 `.retry.md` 同一做法：归档里的 brief-* 是第一次那份，
++     * 实际送审多了这一段，不留痕审计材料就与送审不符。点名段只含位置与类别标签，不含任何内容（`brief.ts`）。
++     */
++    const banner = rerunBanners[c];
++    if (banner) {
++      const w = await writeMeta(
++        ref.layout, stage, `brief-${c}-${runId}.rerun.md`,
++        `# ${c} 侧作废重跑时插在任务书最前面的内容\n\n${banner}\n`,
++      );
++      metaPaths.push(w.absPath);
++      protectedMeta.push({ path: w.relPath, sha256: w.sha256 });
++    }
+     const r = results[c];
+     if (!r) continue;
+     // 失败侧不产出审查文档，改在 _meta/ 记 failed.json——绝不改名冒充对方（AC-06）
+@@ -2035,6 +2093,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
+       deny_skipped: r.deny_skipped,
+       deny_rule_count: r.deny_rule_count,
+       deny_bytes: r.deny_bytes,
++      // 逐次尝试（EV-225）：只在该侧发生过作废重跑时写，不泄漏的运行 run.json 逐字不变
++      ...(attemptLog[c] ? { attempts: attemptLog[c] } : {}),
+     };
+   }
+   /*
+@@ -2316,4 +2376,48 @@ function buildRetryHint(critic: CriticId, prev: CriticResult): string {
+   return `## 上一次尝试失败\n\n${critic} 侧上一次的失败原因：${reason}`;
+ }
+ 
++/**
++ * 把被作废的那次尝试的原始输出挪出该侧子树（BACKLOG EV-225，计划 r2 §3.4）：
++ * `<运行目录>/<侧>/out` → `<运行目录>/voided/<侧>/attempt-<n>/`，返回运行目录相对的新位置。
++ *
++ * 为什么不能留在 `<侧>/` 里：那是己方子树，禁读分类整个不算命中，重跑侧读一眼上一次的结果就能把对端内容带回来，
++ * 守卫还看不见。挪到 `voided/` 下，对端与重跑侧自己读到它都判作废（`run-files.ts` 的 `VOIDED_ATTEMPTS_DIR`）。
++ *
++ * 调用时该次尝试的凭据抹除已经做完（`runner.ts`：`adapter.run` → `scrubSideDir` → 判泄漏 → 挪），
++ * 载体在侧目录根、不在 `out/` 里，不随之挪走。
++ *
++ * **不抛**：挪失败就对编排器自己算出的 `out` 这一个路径尽力整删一次（计划双审 GLM-03），删也失败再告警；
++ * 无论哪种都照样重跑——不因挪不动就让作废侧以污染结论收场。三家适配器写进 `out/` 的都是固定文件名，
++ * 删不掉时重跑的同名输出也会覆盖它们。
++ */
++export async function stashVoidedOutput(
++  runDir: string,
++  critic: CriticId,
++  attemptNo: number,
++  warnings: string[],
++): Promise<string | null> {
++  const outDir = path.join(runDir, critic, 'out');
++  const rel = path.join(VOIDED_ATTEMPTS_DIR, critic, `attempt-${attemptNo}`);
++  const target = path.join(runDir, rel);
++  try {
++    // 目标父目录首次必然不存在，rename 不会替我们建（计划双审 AGY-01）
++    await fs.mkdir(path.dirname(target), { recursive: true });
++    await fs.rename(outDir, target);
++    return rel;
++  } catch (e) {
++    const why = (e as NodeJS.ErrnoException).code === 'ENOENT' ? '该次尝试没有留下 out 目录' : (e as Error).message;
++    warn(`[${critic}] 被作废的第 ${attemptNo} 次输出没能挪出该侧子树：${why}`);
++    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
++    // 走统一的不抛删除助手（EV-204）：只删这一个由 out_dir 派生的路径
++    const left = await tryRemoveTempDir(outDir, []);
++    if (left) {
++      warnings.push(
++        `${critic} 侧被作废的第 ${attemptNo} 次输出既没挪走也没删掉（${left.code}），` +
++          '可能残留在己方子树、守卫看不见；重跑照常进行',
++      );
++    }
++    return null;
++  }
++}
++
+ export { TriviumError };
+diff --git a/src/trivium/run-files.ts b/src/trivium/run-files.ts
+index 9b5dec5d..192ad295 100644
+--- a/src/trivium/run-files.ts
++++ b/src/trivium/run-files.ts
+@@ -35,6 +35,17 @@ export const RUN_DIR_FILES = {
+ 
+ export const RUN_DIR_FILE_NAMES: readonly string[] = Object.values(RUN_DIR_FILES);
+ 
++/**
++ * 被作废的那次尝试的原始输出挪去的子目录：`<运行目录>/voided/<侧>/attempt-<n>/`（BACKLOG EV-225，M12 批次 3）。
++ *
++ * **刻意不进 `RUN_DIR_FILE_NAMES`，也不得与任何 Agent id 同名**（`test/unit/void-rerun.test.ts` 钉住）：
++ * 禁读分类对运行目录第三段是本侧名或运行目录层文件的路径判「己方材料」、整个不算命中
++ * （`freeze.ts` 的 `classifyDenyPath`）。首次输出是被污染的结论——留在己方子树或被认成运行目录层文件，
++ * 重跑侧读一眼自己上一次的结果就能把对端内容间接带回来，守卫还看不见。
++ * 放在这里，第三段是 `voided`，按现行规则落「对端运行输出」：对端读它作废，重跑侧自己读它同样作废。
++ */
++export const VOIDED_ATTEMPTS_DIR = 'voided';
++
+ /**
+  * `writeAtomic` 的临时文件后缀（`<目标名>.tmp-<pid>-<毫秒>`）。
+  *
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index 39a9fd3e..39bbb0c2 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -19,7 +19,7 @@ import {
+   acquireLock, inspectLock, lockPathFor, reclaimStaleLock, workerLockContent, type LockHandle, type ReclaimedLock,
+ } from './lock.js';
+ import {
+-  cliRecordsOf, computeMaxWaits, interpretStatus, isTerminal, judgeCliGroup, lostOf, newStatus, patchStatus, rawCliOf, readStatus,
++  budgetForStatus, cliRecordsOf, computeMaxWaits, interpretStatus, isTerminal, judgeCliGroup, lostOf, newStatus, patchStatus, rawCliOf, readStatus,
+   renderProgress, renderProgressBrief, progressViewOf, scrubAdmission, scrubHoldWhy, staleThresholdWithinHeartbeat, syncCliRecords,
+   workerConfirmedGone, workerStartOf, writeStatus, WORKER_HEARTBEAT_MS,
+   type CliGroupRecord, type CliGroupVerdict, type ProgressBudget, type ProgressView, type RunStatus, type WorkerLostRecord,
+@@ -1196,6 +1196,8 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
+         if (p.attempt !== undefined) side.attempt = p.attempt;
+         if (p.elapsed_s !== undefined) side.elapsed_s = p.elapsed_s;
+         if (p.note !== undefined) side.note = p.note;
++        // 作废重跑（EV-225）：只置真、不清，等待预算据它追加一份
++        if (p.voidRerun === true) side.void_rerun = true;
+       });
+     };
+ 
+@@ -1360,13 +1362,15 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
+       const code = reading.status.exit_code ?? EXIT.OK;
+       // 同一刻算出文字与字段，两者不会在秒边界互相打架
+       const at = Date.now();
++      // 预算按刚读到的 status 现算：某侧作废重跑时追加一份（EV-225）
++      const b = budgetForStatus(budget, reading.status);
+       return {
+         exitCode: code,
+         status: reading.status,
+-        progress: renderProgress(reading.status, at, budget),
+-        progressBrief: renderProgressBrief(reading.status, at, budget),
+-        budget,
+-        view: progressViewOf(reading.status, at, budget),
++        progress: renderProgress(reading.status, at, b),
++        progressBrief: renderProgressBrief(reading.status, at, b),
++        budget: b,
++        view: progressViewOf(reading.status, at, b),
+       };
+     }
+     if (reading.kind === 'worker_lost') {
+@@ -1492,13 +1496,14 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
+       // 本次窗口用尽但运行仍在继续：这是**预期**返回，不是失败
+       const starting = `运行 ${runId} 仍在启动中（尚无有效心跳）`;
+       const at = Date.now();
++      const b = budgetForStatus(budget, last);
+       return {
+         exitCode: EXIT.STILL_RUNNING,
+         status: last,
+-        progress: last ? renderProgress(last, at, budget) : starting,
+-        progressBrief: last ? renderProgressBrief(last, at, budget) : starting,
+-        budget,
+-        view: last ? progressViewOf(last, at, budget) : null,
++        progress: last ? renderProgress(last, at, b) : starting,
++        progressBrief: last ? renderProgressBrief(last, at, b) : starting,
++        budget: b,
++        view: last ? progressViewOf(last, at, b) : null,
+       };
+     }
+     await new Promise((r) => setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
+@@ -1546,7 +1551,8 @@ export async function statusRun(
+    * 显示成两个样子（审查意见 AGY-03）。budget 的两项数据 `ctx.config` 与
+    * `s.stage` 都在手上，没有拿不到的问题。
+    */
+-  const budget = budgetFor(ctx.config, s.stage);
++  // 与 `--wait` 同口径：某侧作废重跑时追加一份（EV-225）
++  const budget = budgetForStatus(budgetFor(ctx.config, s.stage), s);
+   const at = Date.now();
+   return {
+     exitCode: code,
+diff --git a/src/trivium/runner.ts b/src/trivium/runner.ts
+index 9d83a63e..71cf27e3 100644
+--- a/src/trivium/runner.ts
++++ b/src/trivium/runner.ts
+@@ -6,7 +6,8 @@
+  */
+ import path from 'node:path';
+ import type { AdapterTable, AdapterContext } from './adapters/base.js';
+-import type { CriticId, CriticRequest, CriticResult, ReviewMode, ScrubOutcome } from './types.js';
++import type { AttemptRecord, CriticId, CriticRequest, CriticResult, ReviewMode, ScrubOutcome } from './types.js';
++import type { SideLeakVerdict } from './guard.js';
+ import { clearScrubSentinel, describeScrubFailure, scrubSideDir } from './scrub.js';
+ import { step, warn } from './util/log.js';
+ import { withTreeTag } from './util/exec.js';
+@@ -57,8 +58,19 @@ export interface SideProgress {
+   /** 本侧已耗时（秒） */
+   elapsed_s?: number;
+   note?: string | null;
++  /**
++   * 该侧这一轮发生了作废重跑（EV-225）。只会置真、不会清：等待预算要一直把重跑那一段算进去
++   * （`status.ts` 的 `budgetFor`）。
++   */
++  voidRerun?: true;
+ }
+ 
++/** 每侧每次运行至多作废重跑几次（用户 D-7 定死 1 次，不做成配置） */
++export const MAX_VOID_RERUNS = 1;
++
++/** 作废重跑期间该侧的进度说明 */
++export const VOID_RERUN_NOTE = '上一次尝试读到对端产物，作废重跑中';
++
+ export interface RunnerInput {
+   ctx: AdapterContext;
+   adapters: AdapterTable;
+@@ -71,12 +83,31 @@ export interface RunnerInput {
+    */
+   onSideProgress?: (critic: CriticId, patch: SideProgress) => void;
+   maxTransientRetries: number;
++  /*
++   * ── 作废重跑的三个钩子（BACKLOG EV-225，M12 批次 3）──
++   *
++   * 作废判定挪到「该侧刚跑完」那一刻、在该侧自己的 promise 里决定重跑：另一侧不读、不等、不改任何共享状态。
++   * 三个都不传时行为与本步之前逐值相同（单测直接调 runBothSides 时多半不传）。
++   */
++  /** 单侧泄漏判定（`guard.ts` 的 `makeSideLeakJudge`）。返回 null = 没判（失败 / 超时） */
++  judgeLeak?: (critic: CriticId, result: CriticResult) => SideLeakVerdict | null;
++  /** 把这次的原始输出挪出该侧子树；返回新位置（运行目录相对），挪失败返回 null。不得抛 */
++  stashVoided?: (critic: CriticId, attemptNo: number) => Promise<string | null>;
++  /** 重跑任务书最前面的点名段（`brief.ts` 的 `renderVoidRerunBanner`） */
++  voidRerunBanner?: (critic: CriticId, verdict: SideLeakVerdict) => string;
+ }
+ 
+ export interface RunnerOutput {
+   results: Partial<Record<CriticId, CriticResult>>;
+   /** 每侧实际尝试次数，写进元数据便于审计 */
+   attempts: Partial<Record<CriticId, number>>;
++  /**
++   * 每侧的逐次尝试记录（EV-225）。**只有发生过作废重跑的侧有键**：没发生时 run.json 逐字不变。
++   * 记法分层见 `AttemptRecord`。
++   */
++  attemptLog: Partial<Record<CriticId, AttemptRecord[]>>;
++  /** 每侧最后一次重跑时追加在任务书最前面的点名段原文（要落盘进 `_meta/`，审计材料与实际送审一致） */
++  rerunBanners: Partial<Record<CriticId, string>>;
+ }
+ 
+ /**
+@@ -103,7 +134,7 @@ async function runOneSide(
+   input: RunnerInput,
+   critic: CriticId,
+   req: CriticRequest,
+-): Promise<{ result: CriticResult; attempts: number }> {
++): Promise<{ result: CriticResult; attempts: number; attemptLog: AttemptRecord[] | null; rerunBanner: string | null }> {
+   const adapter = input.adapters[critic];
+   // 查表可缺（见 AdapterTable 的说明）。缺了就在这里说清是谁缺，
+   // 而不是让 `adapter.run` 崩出一条与原因无关的 TypeError。
+@@ -112,6 +143,19 @@ async function runOneSide(
+   const elapsed = () => Math.round((Date.now() - startedAt) / 1000);
+   let attempts = 0;
+   let last: CriticResult;
++  /*
++   * 瞬时重试用独立计数（EV-225）。原判据是 `attempts > maxTransientRetries`；没有作废重跑时
++   * `transientUsed === attempts - 1`，两者逐值等价。有作废重跑时瞬时额度在整侧内共用、不因重跑而重置——
++   * 等待预算（`computeMaxWaits` 的基础值 + 一份重跑）正是按这条链算的。
++   */
++  let transientUsed = 0;
++  let voidReruns = 0;
++  /** 逐次尝试记录；只在发生过作废重跑时交出去 */
++  const log: AttemptRecord[] = [];
++  let rerunBanner: string | null = null;
++  /** 发生过作废重跑之后，终态事件要显式带 note，否则「作废重跑中」会一直挂在 status.json 上（计划双审 AGY-02） */
++  const finalNote = (n: string | null): { note?: string | null } => (voidReruns > 0 ? { note: n } : {});
++  const out = (r: CriticResult) => ({ result: r, attempts, attemptLog: voidReruns > 0 ? log : null, rerunBanner });
+ 
+   /*
+    * 凭据抹除的挂载点 ①（BACKLOG EV-20，`scrub.ts` 文件头）。
+@@ -139,6 +183,7 @@ async function runOneSide(
+     let thrown: unknown;
+     let hasThrown = false;
+     let attemptResult: CriticResult | undefined;
++    const attemptStartedAt = new Date().toISOString();
+     try {
+       // 侧归属（EV-154）：适配器在这里面以 killTree 拉起的 CLI 带上侧名，worker 据此写 status.json 的 sides[c].cli
+       attemptResult = await withTreeTag(critic, () => adapter.run(input.ctx, req));
+@@ -159,17 +204,73 @@ async function runOneSide(
+     }
+     last = attemptResult!;
+     last.scrub = scrub;
++    const rec: AttemptRecord = {
++      n: attempts,
++      started_at: attemptStartedAt,
++      duration_s: last.duration_s,
++      // 适配器层结果（分层记法）：二次命中那一条也记 ok，侧级改判在下面另写
++      status: last.status === 'ok' ? 'ok' : last.status === 'timeout' ? 'timeout' : 'failed',
++      voided: null,
++      fail_reason: last.fail_reason,
++    };
++    log.push(rec);
+ 
+     if (last.status === 'ok') {
++      /*
++       * ── 作废判定（EV-225）：该侧刚跑完、还没解析就判 ──
++       *
++       * 与终判（`judgeRun`）、闸门调同一个谓词（`judgeSide` → `leakRecordVoids`）。判定器抛异常按「未判出作废」
++       * 收口、不重跑：那是编程错误，不该把一次真实审查判成失败；终判仍会照常判，确实作废就落回旧的「作废但 ok」处置，
++       * 闸门照样把它排出共同阻断，且这条告警会跟着 worker 日志走。
++       */
++      let leak: SideLeakVerdict | null = null;
++      try {
++        leak = input.judgeLeak?.(critic, last) ?? null;
++      } catch (e) {
++        warn(`[${critic}] 作废判定抛出，本次不重跑（终判照常）：${(e as Error).message}`);
++      }
++      if (leak) {
++        rec.voided = leak.voided;
++        rec.peer_leak_via_path = { hit: leak.path.hit, hits: [...leak.path.hits] };
++        rec.peer_leak_via_command = { hit: leak.command.hit, commands: [...leak.command.commands], hits: [...leak.command.hits] };
++      }
++      if (leak?.voided && voidReruns < MAX_VOID_RERUNS) {
++        voidReruns++;
++        rec.output_dir = input.stashVoided ? await input.stashVoided(critic, attempts) : null;
++        warn(`[${critic}] 第 ${attempts} 次尝试读到对端产物，该次结论作废，同一次运行内重跑一次（上限 ${req.timeout_s}s）`);
++        emitProgress(input, critic, {
++          state: 'running', attempt: attempts, elapsed_s: elapsed(), note: VOID_RERUN_NOTE, voidRerun: true,
++        });
++        const banner = input.voidRerunBanner?.(critic, leak) ?? null;
++        if (banner) {
++          rerunBanner = banner;
++          // 点名段插在**最前面**，原任务书逐字跟在后面；瞬时重试的提示仍追加在末尾，两者不冲突
++          req = { ...req, brief_text: `${banner}\n\n---\n\n${req.brief_text}` };
++        }
++        continue;
++      }
++      if (leak?.voided) {
++        /*
++         * 二次命中：**侧级**改判失败，之后按现有失败侧规则走（strict 整次失败、显式允许降级时 partial）。
++         * 不进瞬时重试判定——读到对方产出不是瞬时故障。条目里仍记适配器层的 ok（分层记法，计划双审 GLM-04）。
++         */
++        const n = leak.path.hits.length + leak.command.hits.length;
++        last.status = 'failed';
++        last.fail_reason = `peer_leak：重跑后仍读到对端产物（${n} 处命中）`;
++        warn(`[${critic}] ${last.fail_reason}，该侧判失败`);
++        emitProgress(input, critic, { state: 'failed', attempt: attempts, elapsed_s: elapsed(), note: last.fail_reason });
++        return out(last);
++      }
+       // 本侧收口：另一侧还在跑时，这一刻的「已完成」正是用户最想看到的变化
+-      emitProgress(input, critic, { state: 'ok', attempt: attempts, elapsed_s: elapsed() });
+-      return { result: last, attempts };
++      emitProgress(input, critic, { state: 'ok', attempt: attempts, elapsed_s: elapsed(), ...finalNote(null) });
++      return out(last);
+     }
+-    if (attempts > input.maxTransientRetries) break;
++    if (transientUsed >= input.maxTransientRetries) break;
+     if (!isTransientFailure(last)) {
+       step(`[${critic}] 失败原因判定为业务性，不重试：${last.fail_reason}`);
+       break;
+     }
++    transientUsed++;
+ 
+     warn(`[${critic}] 瞬时故障，重试一次：${last.fail_reason}`);
+     emitProgress(input, critic, {
+@@ -191,7 +292,7 @@ async function runOneSide(
+     elapsed_s: elapsed(),
+     note: last.fail_reason ?? null,
+   });
+-  return { result: last, attempts };
++  return out(last);
+ }
+ 
+ /**
+@@ -209,12 +310,16 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
+ 
+   const results: Partial<Record<CriticId, CriticResult>> = {};
+   const attempts: Partial<Record<CriticId, number>> = {};
++  const attemptLog: Partial<Record<CriticId, AttemptRecord[]>> = {};
++  const rerunBanners: Partial<Record<CriticId, string>> = {};
+ 
+   settled.forEach((s, i) => {
+     const critic = sides[i]!;
+     if (s.status === 'fulfilled') {
+       results[critic] = s.value.result;
+       attempts[critic] = s.value.attempts;
++      if (s.value.attemptLog) attemptLog[critic] = s.value.attemptLog;
++      if (s.value.rerunBanner) rerunBanners[critic] = s.value.rerunBanner;
+     } else {
+       // 适配器本身抛异常（不该发生，但不能因此丢掉另一侧）
+       results[critic] = {
+@@ -260,7 +365,7 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
+     }
+   });
+ 
+-  return { results, attempts };
++  return { results, attempts, attemptLog, rerunBanners };
+ }
+ 
+ export interface ModeDecision {
+diff --git a/src/trivium/scrub.ts b/src/trivium/scrub.ts
+index 6e75fd6c..eb59dce1 100644
+--- a/src/trivium/scrub.ts
++++ b/src/trivium/scrub.ts
+@@ -63,7 +63,7 @@ import { promises as fs } from 'node:fs';
+ import type { CriticId, ScrubOutcome } from './types.js';
+ import type { CarrierScrub, CriticAdapter } from './adapters/base.js';
+ import { ALL_AGENT_IDS } from './agents/registry.js';
+-import { RUN_DIR_FILE_NAMES } from './run-files.js';
++import { RUN_DIR_FILE_NAMES, VOIDED_ATTEMPTS_DIR } from './run-files.js';
+ import { redactSecrets, scanSecrets } from './secrets.js';
+ import { exists, writeAtomic } from './util/fsx.js';
+ 
+@@ -492,9 +492,42 @@ export async function scrubRunDir(
+     }
+     sides[name as CriticId] = await scrubSideDir(lookup(name), sideDir, opts);
+   }
++  await redactVoidedAttempts(runDirAbs, runDir, opts.sizeCap ?? SCAN_SIZE_CAP);
+   return { sides, runDir };
+ }
+ 
++/**
++ * 被作废的那次尝试挪去的 `voided/<侧>/attempt-<n>/`（BACKLOG EV-225，`run-files.ts` 的 `VOIDED_ATTEMPTS_DIR`）。
++ *
++ * 那就是该次尝试原来的 `out/`，挪之前已经过那次尝试的强制抹除；这里补一遍只为覆盖「那次抹除失败」的情形。
++ * 只脱敏、不删，结果并进运行目录层的上报（不写哨兵：本模块不往运行目录那一层写任何文件）。
++ */
++async function redactVoidedAttempts(runDirAbs: string, layer: RunDirLayerScrub, cap: number): Promise<void> {
++  const root = path.join(runDirAbs, VOIDED_ATTEMPTS_DIR);
++  let sideNames: string[];
++  try {
++    sideNames = await fs.readdir(root);
++  } catch {
++    return; // 没有作废重跑过：常态
++  }
++  for (const side of sideNames) {
++    let attempts: string[];
++    try {
++      attempts = await fs.readdir(path.join(root, side));
++    } catch {
++      continue;
++    }
++    for (const a of attempts) {
++      const rel = path.join(VOIDED_ATTEMPTS_DIR, side, a);
++      const r = await redactLogs(path.join(runDirAbs, rel), ORCHESTRATOR_LOG_FILES, cap);
++      for (const [k, v] of Object.entries(r.redacted)) layer.redacted[path.join(rel, k)] = v;
++      layer.warnings.push(...r.warnings.map((w) => `${rel}：${w}`));
++      layer.errors.push(...r.errors.map((e) => `${rel}：${e}`));
++      layer.skipped += r.skipped;
++    }
++  }
++}
++
+ /** 人读一句：哪几侧失败、首个原因——供 status note 与会话启动待办共用 */
+ export function describeScrubFailure(o: ScrubOutcome): string | null {
+   if (o.ok) return null;
+diff --git a/src/trivium/status.ts b/src/trivium/status.ts
+index d42d3b4c..c58f01a5 100644
+--- a/src/trivium/status.ts
++++ b/src/trivium/status.ts
+@@ -41,6 +41,11 @@ export interface SideStatus {
+    * CLI 退出时清成 null。缺席（旧版 worker 写的）与 null 读者一律当「没有记录」；旧版读者忽略这个键。
+    */
+   cli?: CliGroupRecord | null;
++  /**
++   * 该侧这一轮发生过作废重跑（BACKLOG EV-225，M12 批次 3）。worker 在决定重跑的那一刻置真，**此后不清**：
++   * 等待预算要一直把重跑那一段算进去（`budgetForStatus`）。缺席 = 没重跑，或旧版 worker 写的；旧版读者忽略这个键。
++   */
++  void_rerun?: boolean;
+ }
+ 
+ /** 一侧审查员 CLI 的进程组记录（EV-154） */
+@@ -709,7 +714,7 @@ export function renderProgressBrief(
+     : `已用 ${fmtDuration(elapsed)}`;
+   const sides = Object.entries(s.sides)
+     .filter(([, side]) => side)
+-    .map(([c, side]) => `${c} ${SIDE_STATE_CN[side!.state] ?? side!.state}`)
++    .map(([c, side]) => `${c} ${SIDE_STATE_CN[side!.state] ?? side!.state}${side!.void_rerun ? '（作废重跑）' : ''}`)
+     .join(' · ');
+   return sides ? `${head} ｜ ${span} ｜ ${sides}` : `${head} ｜ ${span}`;
+ }
+@@ -720,6 +725,19 @@ export function renderProgressBrief(
+  * 总上限 = 单侧超时 × (1 + 重试次数)，再按每次 `--wait` 的窗口切分，加 2 次余量
+  * 覆盖启动与收尾。
+  */
++/**
++ * 按当前 status 追加作废重跑那一份（BACKLOG EV-225，M12 批次 3）：任一侧 `void_rerun` 为真时，
++ * `maxWaits += ceil(单侧超时 / 每次等待窗口)`。
++ *
++ * **只加一份**：各侧并行，最坏路径是单侧链条「1 次 + 瞬时重试 + 1 次作废重跑」，`computeMaxWaits` 的基础值已含前两段；
++ * 两侧同时重跑只是这一段重叠，不叠加。`--start` 返回的是初值，`--wait` / `--status` 每次按刚读到的 status 现算。
++ */
++export function budgetForStatus(b: ProgressBudget, s: Pick<RunStatus, 'sides'> | null): ProgressBudget {
++  const rerun = s !== null && Object.values(s.sides).some((side) => side?.void_rerun === true);
++  if (!rerun) return b;
++  return { ...b, maxWaits: b.maxWaits + Math.ceil(b.stageTimeoutS / Math.max(1, b.waitTimeoutS)) };
++}
++
+ export function computeMaxWaits(
+   stageTimeoutS: number,
+   waitTimeoutS: number,
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index 0029e0b0..bb2047e6 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -1412,6 +1412,38 @@ export interface CriticRunMeta {
+   deny_skipped?: number;
+   deny_rule_count?: number;
+   deny_bytes?: number;
++  /**
++   * 该侧这一轮的逐次尝试（BACKLOG EV-225，M12 批次 3，设计 10.1.1「作废侧重跑」）。
++   *
++   * **只在该侧发生过作废重跑时写**，内容是该侧全部尝试（含瞬时重试）；没发生过就不写——
++   * 不泄漏的运行 run.json 逐字不变。缺席的两种来源（旧记录、这一侧没有作废过）对读者处置相同：
++   * 只有一次有效尝试。闸门、status 都不读它：作废侧只看最终尝试，而最终尝试写在 `guard.peer_leak_via_*`。
++   */
++  attempts?: AttemptRecord[];
++}
++
++/**
++ * `critics.<侧>.attempts` 的一条（EV-225）。
++ *
++ * **分层记法**（计划双审 GLM-04）：`status` / `fail_reason` 恒记适配器层结果——二次命中那一条是 `status: ok`；
++ * `voided` 记这一条的泄漏判定。「因泄漏判该侧失败」只发生在侧级（`critics.<侧>.status: failed`、
++ * `fail_reason` 以 `peer_leak` 起头），两层各看各的。
++ */
++export interface AttemptRecord {
++  /** 第几次尝试，从 1 起（含瞬时重试） */
++  n: number;
++  started_at: string;
++  duration_s: number;
++  status: 'ok' | 'failed' | 'timeout';
++  /** 泄漏判定：`status` 非 `ok` 时为 null（没判） */
++  voided: boolean | null;
++  /** 与 `guard.peer_leak_via_path` 的单侧值同形；只在判过时写 */
++  peer_leak_via_path?: { hit: boolean; hits: { path: string; category: DenyCategory }[] };
++  /** 与 `guard.peer_leak_via_command` 的单侧值同形；只在判过时写 */
++  peer_leak_via_command?: { hit: boolean; commands: string[]; hits: { command: string; path: string; category: DenyCategory }[] };
++  /** 被作废、挪出该侧子树的原始输出位置（运行目录相对）；只在挪过的那次写，挪失败为 null */
++  output_dir?: string | null;
++  fail_reason: string | null;
+ }
+ 
+ /**
+@@ -1695,8 +1727,9 @@ export interface RunMeta {
+      * 若不记这个字段，「查过、没有共同项」与「有效侧不足、这一项根本没做」
+      * 在留痕里完全一样，三态纪律第四次复发。
+      *
+-     * **这是过渡处置**：它只保证失效可见，不恢复交叉验证。
+-     * 真正的补偿是「作废侧重跑一次」——从未实现，设计 v1.3.129 移出 AC-25、另立 BACKLOG EV-225。
++     * 它只保证失效可见，不恢复交叉验证。补偿是「作废侧重跑一次」（EV-225，M12 批次 3）：
++     * 新运行里作废侧要么重跑干净、重新计入有效侧，要么二次命中判失败——「作废但计入裁决」只剩旧记录
++     * 与判定器异常的回落出口（`runner.ts` 的 `judgeLeak` 抛异常）。
+      */
+     joint_check?: {
+       /**
+diff --git a/test/integration/fault-injection.test.ts b/test/integration/fault-injection.test.ts
+index 958d9b6e..9050240b 100644
+--- a/test/integration/fault-injection.test.ts
++++ b/test/integration/fault-injection.test.ts
+@@ -563,8 +563,12 @@ test(
+      * 之后不再变。放晚了它不会进 deny_paths，用例会以「命中里没有对端产物」失败——
+      * 那种失败看起来像判定坏了，其实是夹具没摆好，排查起来很费时间。
+      */
+-    const { meta } = await runInjected(
+-      { gemini: { mode: 'peer_leak', note: '-glm.md' }, glm: { mode: 'ok' } },
++    /*
++     * EV-225 起作废侧在同一次运行内重跑一次：首次命中的明细落在 `critics.gemini.attempts[0]`，
++     * 终判（`guard.*`）只记最终那次。注入 `rerun: ok` 让重跑干净，strict 下照常退 0。
++     */
++    const { meta, exitCode } = await runInjected(
++      { gemini: { mode: 'peer_leak', note: '-glm.md', rerun: { mode: 'ok' } }, glm: { mode: 'ok' } },
+       [],
+       [],
+       async (root) => {
+@@ -588,16 +592,14 @@ test(
+       },
+     );
+ 
+-    assert.equal(
+-      meta.guard.peer_artifact_read,
+-      true,
+-      '读到对端产出必须作废——这一档是三层屏蔽的存在理由',
+-    );
+-    const viaPath = meta.guard.peer_leak_via_path?.gemini;
++    const first = meta.critics.gemini?.attempts?.[0];
++    assert.equal(first?.voided, true, `读到对端产出必须作废——这一档是三层屏蔽的存在理由：${JSON.stringify(meta.critics.gemini?.attempts)}`);
+     assert.ok(
+-      viaPath?.hits.some((h) => h.category === 'peer-artifact'),
+-      `命中里必须有对端产物那一类，实得：${JSON.stringify(viaPath?.hits)}`,
++      first?.peer_leak_via_path?.hits.some((h) => h.category === 'peer-artifact'),
++      `首次命中里必须有对端产物那一类，实得：${JSON.stringify(first?.peer_leak_via_path?.hits)}`,
+     );
++    assert.equal(exitCode, EXIT.OK, '重跑干净后照常收口');
++    assert.equal(meta.guard.peer_artifact_read, false, '终判只看最终尝试：重跑干净，全局作废位为假');
+   },
+ );
+ 
+@@ -644,18 +646,14 @@ test(
+      * 照样判作废（第三段不是己方），一直是绿的，测的却不是「读到真正参审的对端」。
+      */
+     const { meta } = await runInjected({
+-      gemini: { mode: 'run_material_leak', note: 'peer:glm' },
++      gemini: { mode: 'run_material_leak', note: 'peer:glm', rerun: { mode: 'ok' } },
+       glm: { mode: 'ok' },
+     });
+-    assert.equal(
+-      meta.guard.peer_artifact_read,
+-      true,
+-      '对方本轮的原始输出实时写在运行目录里，读到它就是背靠背失效',
+-    );
+-    const viaPath = meta.guard.peer_leak_via_path?.gemini;
++    const first = meta.critics.gemini?.attempts?.[0];
++    assert.equal(first?.voided, true, '对方本轮的原始输出实时写在运行目录里，读到它就是背靠背失效');
+     assert.ok(
+-      viaPath?.hits.some((h) => h.category === 'peer-run-output'),
+-      `命中要落在对端运行输出那一类，实得：${JSON.stringify(viaPath?.hits)}`,
++      first?.peer_leak_via_path?.hits.some((h) => h.category === 'peer-run-output'),
++      `首次命中要落在对端运行输出那一类，实得：${JSON.stringify(first?.peer_leak_via_path?.hits)}`,
+     );
+   },
+ );
+@@ -674,38 +672,41 @@ test(
+      * 这是本项目第五次「绿测试证明不了任何事」。判据函数测得再细，
+      * 也不能替代「它真的被接上了」这条断言。
+      */
++    // EV-225：首次命中的明细在 attempts[0]，`rerun: ok` 让重跑干净（终判只记最终那次）
+     const { meta } = await runInjected({
+-      gemini: { mode: 'peer_leak_via_command' },
++      gemini: { mode: 'peer_leak_via_command', rerun: { mode: 'ok' } },
+       glm: { mode: 'ok' },
+     });
+     assert.ok(meta.deny_paths.length > 0, '禁读清单不该是空的');
+-    const viaCmd = meta.guard.peer_leak_via_command;
+-    assert.equal(viaCmd?.gemini?.hit, true, '命令通道必须命中');
++    const first = meta.critics.gemini?.attempts?.[0];
++    const viaCmd = first?.peer_leak_via_command;
++    assert.equal(viaCmd?.hit, true, '命令通道必须命中');
+     assert.ok(
+-      (viaCmd?.gemini?.commands.length ?? 0) > 0,
++      (viaCmd?.commands.length ?? 0) > 0,
+       '要留下命中的命令原文，否则排查时看不出是经哪条通道漏的',
+     );
+     assert.match(
+-      viaCmd?.gemini?.commands[0] ?? '', /^git show HEAD:/,
++      viaCmd?.commands[0] ?? '', /^git show HEAD:/,
+       '桩走的是 git 对象库形态（F-3）——措施 a 看不见的那条',
+     );
+     /*
+      * 逐侧留痕（GLM-06）：另一侧正常跑完、扫过、没命中——它必须有自己的键且 hit=false。
+      * 合并成一个布尔时这条断言写不出来：两侧的结论会被压成一个值。
+      */
+-    assert.equal(viaCmd?.glm?.hit, false, '对侧扫过没命中，要单独记而不是被合并掉');
++    assert.equal(meta.guard.peer_leak_via_command?.glm?.hit, false, '对侧扫过没命中，要单独记而不是被合并掉');
+     assert.equal(
+-      meta.guard.peer_artifact_read, true,
+-      '与路径命中**同等处置**：措施 b 单独命中也要把该侧判作废',
++      first?.voided, true,
++      '与路径命中**同等处置**：措施 b 单独命中也要把该侧判作废（并触发重跑）',
+     );
++    assert.equal(first?.peer_leak_via_path?.hit, false, '本格只走命令通道，路径通道不该亮');
+     /*
+      * 命中逐条带类，与路径通道同构（r2 AGY-04 ≡ GLM-05）。
+      * 补这个之前，命令通道只落命令原文：分档结果一个字都不进留痕，
+      * 而命令通道是 `command-trace` 一族**唯一**的通道。
+      */
+     assert.ok(
+-      (viaCmd?.gemini?.hits?.length ?? 0) > 0,
+-      `命令通道的命中也要带类，实得：${JSON.stringify(viaCmd?.gemini?.hits)}`,
++      (viaCmd?.hits.length ?? 0) > 0,
++      `命令通道的命中也要带类，实得：${JSON.stringify(viaCmd?.hits)}`,
+     );
+   },
+ );
+@@ -753,9 +754,9 @@ test(
+  * **期望一律从种子清单与注入配置推出**，不从 `run.json.deny_paths` 或判定输出反推：
+  * 禁读集漏一条时，桩会少读一条——期望若也取自禁读集，就跟着少一条，用例永绿。
+  *
+- * **严格策略钉住的是现行行为**（计划 r2 §1.4）：作废不改各侧 `status`，`decideMode` 只看失败 / 超时，
+- * 于是 strict 下一侧作废，运行照常 `success`、退出 0。原设想的「二次命中 `failed(peer_leak)`、
+- * strict 下整次中止」以重跑为前提，随 BACKLOG EV-225 一并定——那时这几条断言要跟着改。
++ * **EV-225（M12 批次 3）起作废侧在同一次运行内重跑一次**：本组注入一律带 `rerun: ok`，首次命中的明细落在
++ * `critics.<侧>.attempts[0]`、终判（`guard.*`）只记最终那次。于是作废侧重跑干净、重新计入有效侧，
++ * strict 下照常 `success`、退出 0；二次命中判 `failed(peer_leak)` 的那几格在本文件末尾的 EV-225 组里。
+  *
+  * 种下的上一轮审查件会把本轮抬成第 2 轮（`resolveRerunIndex` 取非 Driver 产出的最大轮次加 1），
+  * 正是「同主题重跑」的真实形态；裁决件名与审查文档名按 `run.json` 取，不写死。
+@@ -799,11 +800,19 @@ async function seedPriorRound(root: string, sides: readonly CriticId[]): Promise
+   }
+ }
+ 
+-/** 三侧都桩两条意见（第 1 条恒为 `blocker@src/stub.ts:10`，三侧同位——共同阻断才有料），再叠加本格的注入 */
++/**
++ * 三侧都桩两条意见（第 1 条恒为 `blocker@src/stub.ts:10`，三侧同位——共同阻断才有料），再叠加本格的注入。
++ * 有注入的侧一律带 `rerun: ok`（同样两条意见）：EV-225 起作废侧重跑一次，重跑干净才走得到闸门主路径。
++ */
+ function stubOf(sides: readonly CriticId[], inject: Partial<Record<CriticId, Pick<StubSpec, 'mode' | 'note'>>>): StubConfig {
+-  return Object.fromEntries(sides.map((c) => [c, { mode: 'ok', ...inject[c], findings: 2 }])) as StubConfig;
++  return Object.fromEntries(
++    sides.map((c) => [c, { mode: 'ok', ...inject[c], findings: 2, ...(inject[c] ? { rerun: { mode: 'ok', findings: 2 } } : {}) }]),
++  ) as StubConfig;
+ }
+ 
++/** 某侧首次尝试（被作废的那次）的路径通道命中；没有 attempts 时为 [] */
++const firstPathHits = (meta: RunMeta, c: CriticId) => meta.critics[c]?.attempts?.[0]?.peer_leak_via_path?.hits ?? [];
++
+ /** 本轮某侧审查文档的归档相对路径，取自 `run.json.artifacts[]`（实际落盘名，不按日期现拼） */
+ function reviewDocOf(meta: RunMeta, c: CriticId): string {
+   const p = meta.artifacts.map((a) => a.path).find((x) => !x.includes('/_meta/') && x.endsWith(`-${c}.md`));
+@@ -825,37 +834,44 @@ async function assertStrictRunUnaffected(
+   assert.equal(ctx.config.gate.joint_blocker_policy, 'warn', '前置：共同阻断被驳回只告警——闸门通过那条断言依赖它');
+   assert.ok(!extraArgs.includes('--allow-single'), '前置：本格不得传 --allow-single，否则测的是降级策略');
+ 
+-  assert.equal(r.exitCode, EXIT.OK, `strict 下一侧作废不触发整次中止（作废不改 status，中止只由失败 / 超时触发）：\n${r.waitOut}`);
++  assert.equal(r.exitCode, EXIT.OK, `strict 下作废侧重跑干净，不触发整次中止：\n${r.waitOut}`);
+   assert.equal(r.meta.status, 'success');
+-  assert.equal(r.meta.review_mode, 'full', '作废侧不是失败侧，review_mode 不降级');
++  assert.equal(r.meta.review_mode, 'full', '作废侧重跑干净，不是失败侧，review_mode 不降级');
+   assert.equal(r.meta.degraded_reason, null);
+   for (const c of sides) {
+     assert.equal(r.meta.critics[c]?.cli_version, 'stub/0.0.0', `${c} 侧必须带桩指纹——证明 worker 真的用了桩`);
+-    assert.equal(r.meta.critics[c]?.status, 'ok', `${c} 侧 status 应仍为 ok：作废是结论层面的处置，不是该侧失败`);
++    assert.equal(r.meta.critics[c]?.status, 'ok', `${c} 侧最终尝试应为 ok`);
+   }
+ }
+ 
+-/** 按侧留痕：只有 `voided` 里的侧路径通道命中、审查文档带 peer_leak 与作废横幅；命令通道三侧都没亮 */
++/**
++ * 按侧留痕（EV-225 起）：只有 `voided` 里的侧有 `attempts`，首条作废、路径通道命中，次条干净；
++ * 终判（`guard.*`）三侧都没命中、归档的审查文档都是最终那次——不带 peer_leak、没有作废横幅；命令通道三侧都没亮。
++ */
+ async function assertOnlyVoided(
+   r: { root: string; meta: RunMeta },
+   sides: readonly CriticId[],
+   voided: readonly CriticId[],
+ ): Promise<void> {
+-  assert.equal(r.meta.guard.peer_artifact_read, true, '有侧读到对端产出，全局作废位必须为真');
++  assert.equal(r.meta.guard.peer_artifact_read, false, '终判只看最终尝试：作废侧重跑干净，全局作废位为假');
+   for (const c of sides) {
+     const viaPath = r.meta.guard.peer_leak_via_path?.[c];
+     const viaCmd = r.meta.guard.peer_leak_via_command?.[c];
+     assert.equal(viaCmd?.hit, false, `${c} 侧：本组只走路径通道，命令通道不该亮——两条通道要分得开`);
++    assert.equal(viaPath?.hit, false, `${c} 侧最终尝试没有读取禁读面：${JSON.stringify(viaPath?.hits)}`);
+     const doc = await fs.readFile(path.join(r.root, '.reviews', reviewDocOf(r.meta, c)), 'utf8');
+     const fm = doc.slice(0, doc.indexOf('\n---', 4));
++    assert.doesNotMatch(fm, /^peer_leak:/m, `${c} 侧归档的是最终那次的审查件，不该带 peer_leak`);
++    assert.ok(!doc.includes('本侧结论作废'), `${c} 侧归档的是最终那次的审查件，不该有作废横幅`);
++    const attempts = r.meta.critics[c]?.attempts;
+     if (voided.includes(c)) {
+-      assert.equal(viaPath?.hit, true, `${c} 侧伪造了读取，路径通道必须命中`);
+-      assert.match(fm, /^peer_leak:/m, `${c} 侧审查文档的 front-matter 必须带 peer_leak 明细`);
+-      assert.ok(doc.includes('本侧结论作废'), `${c} 侧审查文档必须有「本侧结论作废」横幅`);
++      assert.equal(attempts?.length, 2, `${c} 侧伪造了读取，应恰好两次尝试：${JSON.stringify(attempts)}`);
++      assert.equal(attempts![0]!.voided, true, `${c} 侧首次尝试必须判作废`);
++      assert.equal(attempts![0]!.peer_leak_via_path?.hit, true, `${c} 侧首次尝试路径通道必须命中`);
++      assert.equal(attempts![0]!.peer_leak_via_command?.hit, false, `${c} 侧首次尝试命令通道不该亮`);
++      assert.equal(attempts![1]!.voided, false, `${c} 侧重跑那次应干净`);
+     } else {
+-      assert.equal(viaPath?.hit, false, `${c} 侧没有伪造读取，不得被另一侧牵连：${JSON.stringify(viaPath?.hits)}`);
+-      assert.doesNotMatch(fm, /^peer_leak:/m, `${c} 侧审查文档不该带 peer_leak`);
+-      assert.ok(!doc.includes('本侧结论作废'), `${c} 侧审查文档不该有作废横幅`);
++      assert.equal(attempts, undefined, `${c} 侧没有伪造读取，不得被另一侧牵连成重跑：${JSON.stringify(attempts)}`);
+     }
+   }
+ }
+@@ -905,7 +921,7 @@ async function jointCheckEntry(root: string, runId: string): Promise<{ state: st
+ 
+ for (const x of THREE) {
+   test(
+-    `AC-25 三审 · 归档通道：${x} 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算`,
++    `AC-25 三审 · 归档通道：${x} 侧读另两方的审查件正文与结构化意见 → 只有它作废并重跑；重跑干净后它重新计入有效侧、闸门差集仍含它的编号`,
+     { skip: bundleMissing && bundleSkipReason },
+     async () => {
+       const others = THREE.filter((c) => c !== x);
+@@ -916,8 +932,8 @@ for (const x of THREE) {
+       await assertStrictRunUnaffected(r, THREE, args);
+       assert.equal(r.meta.rerun_index, 2, '前置：种下的上一轮审查件让本轮成为第 2 轮');
+ 
+-      // ① 命中逐条：恰为另两家上一轮的 1 份审查件正文 + 4 件 _meta（共 10 条），全部是第①类
+-      const hits = r.meta.guard.peer_leak_via_path?.[x]?.hits ?? [];
++      // ① 首次命中逐条：恰为另两家上一轮的 1 份审查件正文 + 4 件 _meta（共 10 条），全部是第①类
++      const hits = firstPathHits(r.meta, x);
+       assert.deepEqual(
+         hits.map((h) => relHit(r.root, h.path)).sort(),
+         others.flatMap(priorRoundOf).sort(),
+@@ -925,11 +941,11 @@ for (const x of THREE) {
+       );
+       assert.ok(hits.every((h) => h.category === 'peer-artifact'), `每条命中都应是第①类（对端产物，作废档）：${JSON.stringify(hits)}`);
+ 
+-      // ② ④ 按侧留痕：只有 x 作废，另两侧不受牵连
++      // ② ④ 按侧留痕：只有 x 作废并重跑，另两侧不受牵连
+       await assertOnlyVoided(r, THREE, [x]);
+ 
+-      // ③ 运行期只到 pending：有效侧（未作废且有结构化结论）还剩两家
+-      assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 2 });
++      // ③ 运行期只到 pending：x 重跑干净，有效侧（判过、未作废且有结构化结论）是三家
++      assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 3 });
+ 
+       // ⑥ 闸门差集：漏裁作废侧的两条照样拦——作废是「不可采信」，不是「不用裁」
+       await writeNextPlan(r.stageDir, THREE.map((c) => `${prefixOf(c)}-02`));
+@@ -944,27 +960,27 @@ for (const x of THREE) {
+         '闸门期望集必须覆盖三家前缀，作废侧不例外',
+       );
+ 
+-      // ⑦ 共同阻断按有效侧算：三条 -01 全驳回，告警只点另两家的
++      // ⑦ 共同阻断按有效侧算：x 重跑干净、重新计入（闸门只看最终尝试，不读 attempts），三条 -01 全驳回，告警点三家
+       await writeThreeDisposition(r, THREE, THREE);
+       const g2 = await gateCheck(r.root);
+       assert.equal(g2.ok, true, `裁决齐备后闸门应通过：${JSON.stringify(g2.failures)}`);
+       const joint = g2.warnings.find((w) => w.code === 'joint_blocker_rejected');
+-      assert.ok(joint, `三家同位 blocker 全被驳回，有效的两家应报共同阻断：${JSON.stringify(g2.warnings)}`);
++      assert.ok(joint, `三家同位 blocker 全被驳回，应报共同阻断：${JSON.stringify(g2.warnings)}`);
+       assert.deepEqual(
+         [...(joint.ids ?? [])].sort(),
+-        others.map((c) => `${prefixOf(c)}-01`).sort(),
+-        `作废侧的 blocker 不得计入「两家」：${JSON.stringify(joint)}`,
++        THREE.map((c) => `${prefixOf(c)}-01`).sort(),
++        `重跑干净的 ${x} 侧应重新计入共同阻断：${JSON.stringify(joint)}`,
+       );
+-      assert.ok(!g2.warnings.some((w) => w.code === 'joint_check_degraded'), '有效侧还剩两家，共同阻断这一档做了，不该报未执行');
++      assert.ok(!g2.warnings.some((w) => w.code === 'joint_check_degraded'), '有效侧三家，共同阻断这一档做了，不该报未执行');
+       const jc = await jointCheckEntry(r.root, r.meta.run_id);
+-      assert.deepEqual(jc && { state: jc.state, effective_sides: jc.effective_sides }, { state: 'checked-found', effective_sides: 2 });
++      assert.deepEqual(jc && { state: jc.state, effective_sides: jc.effective_sides }, { state: 'checked-found', effective_sides: 3 });
+     },
+   );
+ }
+ 
+ for (const x of THREE) {
+   test(
+-    `AC-25 三审 · 运行根通道：${x} 侧读另两方本轮的原始输出 → 只有它作废（第②类）`,
++    `AC-25 三审 · 运行根通道：${x} 侧读另两方本轮的原始输出 → 只有它作废（第②类）并重跑`,
+     { skip: bundleMissing && bundleSkipReason },
+     async () => {
+       const others = THREE.filter((c) => c !== x);
+@@ -977,8 +993,8 @@ for (const x of THREE) {
+         `前置：运行根应作为整棵目录条目在禁读集里——命中要经它判出：${JSON.stringify(r.meta.deny_paths)}`,
+       );
+ 
+-      // 命中恰为另两家各自的 out/result.json（运行根下 〈项目槽〉/〈runId〉/〈侧〉/out/result.json）
+-      const hits = r.meta.guard.peer_leak_via_path?.[x]?.hits ?? [];
++      // 首次命中恰为另两家各自的 out/result.json（运行根下 〈项目槽〉/〈runId〉/〈侧〉/out/result.json）
++      const hits = firstPathHits(r.meta, x);
+       const segs = hits.map((h) => path.relative(r.runRoot, h.path).split(path.sep));
+       assert.equal(hits.length, 2, `应恰好两条命中：${JSON.stringify(hits)}`);
+       for (const s of segs) {
+@@ -988,13 +1004,13 @@ for (const x of THREE) {
+       assert.ok(hits.every((h) => h.category === 'peer-run-output'), `运行根下对端输出是第②类：${JSON.stringify(hits)}`);
+ 
+       await assertOnlyVoided(r, THREE, [x]);
+-      assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 2 });
++      assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 3 });
+     },
+   );
+ }
+ 
+ test(
+-  'AC-25 三审 · 两侧作废：有效侧只剩一家，共同阻断记「未执行」并告警，严格策略下仍不中止',
++  'AC-25 三审 · 两侧同时作废：两侧各自重跑、互不牵连，重跑干净后有效侧回到三家，共同阻断照常执行',
+   { skip: bundleMissing && bundleSkipReason },
+   async () => {
+     const voided: CriticId[] = ['codex', 'gemini'];
+@@ -1006,18 +1022,20 @@ test(
+ 
+     await assertStrictRunUnaffected(r, THREE, args);
+     await assertOnlyVoided(r, THREE, voided);
+-    assert.deepEqual(r.meta.guard.joint_check, { state: 'skipped-insufficient-sides', effective_sides: 1 });
++    /*
++     * EV-225 之前这一格是「有效侧只剩一家、共同阻断记未执行」——那正是「作废不重跑」的过渡处置。
++     * 现在两侧各自重跑干净，有效侧回到三家：过渡处置在新运行里不再出现。
++     */
++    assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 3 });
+ 
+     await writeNextPlan(r.stageDir, THREE.map((c) => `${prefixOf(c)}-02`));
+     await writeThreeDisposition(r, THREE, THREE);
+     const g = await gateCheck(r.root);
+     assert.equal(g.ok, true, `裁决齐备后闸门应通过：${JSON.stringify(g.failures)}`);
+-    assert.ok(g.warnings.some((w) => w.code === 'joint_check_degraded'), `有效侧不足两家必须明说「没查」：${JSON.stringify(g.warnings)}`);
+-    assert.ok(!g.warnings.some((w) => w.code === 'joint_blocker_rejected'), '只剩一家有效侧，不可能有「两家同时提出」');
++    assert.ok(!g.warnings.some((w) => w.code === 'joint_check_degraded'), `有效侧三家，不该报未执行：${JSON.stringify(g.warnings)}`);
++    assert.ok(g.warnings.some((w) => w.code === 'joint_blocker_rejected'), '三家同位 blocker 全被驳回，应报共同阻断');
+     const jc = await jointCheckEntry(r.root, r.meta.run_id);
+-    assert.deepEqual(jc && { state: jc.state, effective_sides: jc.effective_sides, reason: jc.reason }, {
+-      state: 'skipped-insufficient-sides', effective_sides: 1, reason: 'voided',
+-    });
++    assert.deepEqual(jc && { state: jc.state, effective_sides: jc.effective_sides }, { state: 'checked-found', effective_sides: 3 });
+   },
+ );
+ 
+@@ -1082,7 +1100,7 @@ test(
+     });
+ 
+     await assertStrictRunUnaffected(r, sides, args);
+-    const hits = r.meta.guard.peer_leak_via_path?.claude?.hits ?? [];
++    const hits = firstPathHits(r.meta, 'claude');
+     assert.deepEqual(
+       hits.map((h) => relHit(r.root, h.path)).sort(),
+       (['codex', 'gemini'] as const).flatMap((c) => priorRoundOf(c)).sort(),
+@@ -1090,7 +1108,7 @@ test(
+     );
+     for (const c of sides) {
+       assert.ok(
+-        !(r.meta.guard.peer_leak_via_path?.[c]?.hits ?? []).some((h) => relHit(r.root, h.path) === draftRel),
++        ![...(r.meta.guard.peer_leak_via_path?.[c]?.hits ?? []), ...firstPathHits(r.meta, c)].some((h) => relHit(r.root, h.path) === draftRel),
+         `${c} 侧的命中里出现了当轮 Driver 原稿——它被误放进了禁读集`,
+       );
+     }
+@@ -1098,6 +1116,182 @@ test(
+   },
+ );
+ 
++/*
++ * ── EV-225：作废侧在同一次运行内重跑一次（M12 批次 3，计划 r2 §4.2）──
++ *
++ * 首次作废类命中 → 该侧在自己的 promise 里重拉一次（任务书最前面插点名段）→ 重跑干净以重跑结论参与；
++ * 二次命中 → 侧级判失败（`peer_leak`），之后按现有失败侧规则走。告警级、己方材料不触发。
++ * 首次输出挪到运行目录的 `voided/<侧>/attempt-<n>/`、不进归档；重跑侧再读它同样判作废。
++ */
++
++/** 本轮运行目录：`<运行根>/<项目槽>/<runId>`。项目槽是哈希后缀名，按 runId 找 */
++async function runDirOf(r: { runRoot: string; meta: RunMeta }): Promise<string> {
++  for (const slot of await fs.readdir(r.runRoot)) {
++    const d = path.join(r.runRoot, slot, r.meta.run_id);
++    if (await fs.stat(d).then((s) => s.isDirectory(), () => false)) return d;
++  }
++  assert.fail(`运行根下找不到运行目录 ${r.meta.run_id}`);
++}
++
++/** 读终态 status.json（worker 写的逐侧状态） */
++async function statusOf(r: { runRoot: string; meta: RunMeta }): Promise<{ message: string | null; sides: Record<string, { attempt: number; note?: string | null; void_rerun?: boolean }> }> {
++  return JSON.parse(await fs.readFile(path.join(await runDirOf(r), 'status.json'), 'utf8'));
++}
++
++test(
++  'EV-225 R1 · 首次读到对端运行输出、重跑干净：以重跑结论参与，首次输出留在运行目录的 voided/ 下、不进归档',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const r = await runInjected({
++      gemini: { mode: 'run_material_leak', note: 'peer:glm', findings: 2, rerun: { mode: 'ok', findings: 2 } },
++      glm: { mode: 'ok', findings: 2 },
++    });
++    assert.equal(r.exitCode, EXIT.OK, r.waitOut);
++    assert.equal(r.meta.status, 'success');
++    assert.equal(r.meta.review_mode, 'full');
++
++    const att = r.meta.critics.gemini?.attempts;
++    assert.equal(att?.length, 2, `gemini 应恰好两次尝试：${JSON.stringify(att)}`);
++    assert.deepEqual(att!.map((a) => [a.n, a.status, a.voided]), [[1, 'ok', true], [2, 'ok', false]]);
++    assert.ok(att![0]!.peer_leak_via_path?.hits.every((h) => h.category === 'peer-run-output'), JSON.stringify(att![0]));
++    assert.equal(att![0]!.output_dir, path.join('voided', 'gemini', 'attempt-1'), '首次输出的去处要记下');
++    assert.equal(att![1]!.output_dir, undefined, '只在挪过的那次写 output_dir');
++    assert.equal(r.meta.critics.glm?.attempts, undefined, '没作废的一侧不写 attempts：不泄漏时 run.json 逐字不变');
++
++    // 终判只看最终尝试
++    assert.equal(r.meta.guard.peer_leak_via_path?.gemini?.hit, false);
++    assert.equal(r.meta.guard.peer_artifact_read, false);
++    assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 2 });
++
++    // 首次输出：在运行目录的 voided/ 下（桩留了标记文件），不在该侧子树里
++    const runDir = await runDirOf(r);
++    const stashed = JSON.parse(await fs.readFile(path.join(runDir, 'voided', 'gemini', 'attempt-1', 'result.json'), 'utf8')) as { rerun: boolean };
++    assert.equal(stashed.rerun, false, '挪走的是首次那份');
++    const live = JSON.parse(await fs.readFile(path.join(runDir, 'gemini', 'out', 'result.json'), 'utf8')) as { rerun: boolean };
++    assert.equal(live.rerun, true, '该侧子树里留的是重跑那份');
++
++    // 归档：只有最终那次的审查件，首次输出的任何文件都不进去；点名段原文进 _meta/
++    const files = await listFiles(r.stageDir);
++    assert.equal(files.filter((f) => !f.includes('_meta') && f.endsWith('-gemini.md')).length, 1, JSON.stringify(files));
++    assert.ok(!files.some((f) => f.includes('voided') || f.includes('attempt-1')), `首次输出不得进归档：${JSON.stringify(files)}`);
++    const banner = await fs.readFile(path.join(r.stageDir, '_meta', `brief-gemini-${r.meta.run_id}.rerun.md`), 'utf8');
++    assert.ok(banner.includes('重跑须知'), '点名段原文要留痕');
++    assert.ok(r.meta.artifacts.some((a) => a.path.endsWith(`brief-gemini-${r.meta.run_id}.rerun.md`)), '点名段进保护集');
++    const doc = await fs.readFile(path.join(r.root, '.reviews', reviewDocOf(r.meta, 'gemini')), 'utf8');
++    assert.ok(!doc.includes('本侧结论作废'), '归档的是重跑那次的审查件');
++
++    // status.json：重跑标记保留、终态 note 不残留「重跑中」（计划双审 AGY-02）；另一侧不受影响
++    const st = await statusOf(r);
++    assert.equal(st.sides.gemini?.void_rerun, true);
++    assert.ok(!(st.sides.gemini?.note ?? '').includes('重跑中'), `终态 note 不该残留重跑中：${JSON.stringify(st.sides.gemini)}`);
++    assert.equal(st.sides.gemini?.attempt, 2);
++    assert.equal(st.sides.glm?.attempt, 1, 'glm 只跑了一次');
++    assert.equal(st.sides.glm?.void_rerun, undefined, 'glm 不该带重跑标记');
++    // 告警进本轮 warnings → status.json 的 message（`--wait --json` 原样带出）
++    assert.match(st.message ?? '', /gemini 侧首次尝试读到对端产物/, '告警要说出发生过作废重跑');
++  },
++);
++
++test(
++  'EV-225 R2 · 重跑后仍读到对端产物（strict）：该侧判 failed(peer_leak)，整次失败、不产审查件',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const r = await runInjected({
++      gemini: { mode: 'run_material_leak', note: 'peer:glm' },
++      glm: { mode: 'ok' },
++    });
++    assert.equal(r.exitCode, EXIT.STRICT_ABORT, r.waitOut);
++    assert.equal(r.meta.status, 'failed');
++    assert.equal(r.meta.review_mode, 'partial');
++    assert.equal(r.meta.critics.gemini?.status, 'failed');
++    assert.match(r.meta.critics.gemini?.fail_reason ?? '', /^peer_leak/);
++    // 分层记法：条目记适配器层的 ok，改判只在侧级（计划双审 GLM-04）
++    assert.deepEqual(r.meta.critics.gemini?.attempts?.map((a) => [a.status, a.voided, a.fail_reason]), [['ok', true, null], ['ok', true, null]]);
++    assert.equal(r.meta.guard.peer_leak_via_path?.gemini, undefined, '判失败的一侧终判跳过，键缺 = 没判');
++    const files = await listFiles(r.stageDir);
++    assert.ok(!files.some((f) => !f.includes('_meta') && f.endsWith('-gemini.md')), `判失败的一侧不产审查件：${JSON.stringify(files)}`);
++    assert.ok(files.some((f) => f.endsWith(`review-gemini-${r.meta.run_id}.failed.json`)), '失败侧留 .failed.json');
++  },
++);
++
++test(
++  'EV-225 R3 · 重跑后仍读到对端产物（--allow-single）：该侧失败、降级继续，幸存侧照常落盘',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const r = await runInjected({
++      gemini: { mode: 'run_material_leak', note: 'peer:glm' },
++      glm: { mode: 'ok' },
++    }, ['--allow-single']);
++    assert.equal(r.exitCode, EXIT.OK, r.waitOut);
++    assert.equal(r.meta.status, 'success');
++    assert.equal(r.meta.review_mode, 'partial');
++    assert.match(r.meta.degraded_reason ?? '', /gemini: failed（peer_leak/);
++    const files = await listFiles(r.stageDir);
++    assert.ok(files.some((f) => !f.includes('_meta') && f.endsWith('-glm.md')), '幸存侧照常落盘');
++  },
++);
++
++test(
++  'EV-225 R4/R5 · 告警级与己方材料命中绝不触发重跑：没有 attempts、只跑一次、没有重跑标记',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    for (const spec of [
++      { mode: 'peer_leak_via_command', note: 'orchestrator-state' },
++      { mode: 'peer_leak', note: '.env' },
++      { mode: 'run_material_leak', note: 'own' },
++      { mode: 'peer_leak_via_command', note: 'own-run' },
++    ] as const) {
++      const r = await runInjected({ gemini: { ...spec }, glm: { mode: 'ok' } });
++      const tag = JSON.stringify(spec);
++      assert.equal(r.exitCode, EXIT.OK, `${tag}\n${r.waitOut}`);
++      assert.equal(r.meta.critics.gemini?.attempts, undefined, `${tag} 不该触发重跑`);
++      const st = await statusOf(r);
++      assert.equal(st.sides.gemini?.attempt, 1, `${tag} 只该跑一次`);
++      assert.equal(st.sides.gemini?.void_rerun, undefined, `${tag} 不该带重跑标记`);
++    }
++  },
++);
++
++test(
++  'EV-225 R6 · 重跑侧去读自己上一次被作废的输出：同样判作废，二次命中判失败',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const r = await runInjected({
++      gemini: { mode: 'run_material_leak', note: 'peer:glm', rerun: { mode: 'run_material_leak', note: 'voided' } },
++      glm: { mode: 'ok' },
++    });
++    assert.equal(r.exitCode, EXIT.STRICT_ABORT, r.waitOut);
++    assert.match(r.meta.critics.gemini?.fail_reason ?? '', /^peer_leak/);
++    const second = r.meta.critics.gemini?.attempts?.[1];
++    assert.equal(second?.voided, true, '首次输出不是己方材料：重跑侧读它即作废');
++    assert.ok(
++      second?.peer_leak_via_path?.hits.some((h) => h.category === 'peer-run-output' && h.path.includes(`${path.sep}voided${path.sep}gemini${path.sep}`)),
++      JSON.stringify(second),
++    );
++  },
++);
++
++test(
++  'EV-225 R8 · 等待预算：某侧作废重跑后 --wait 的 max_waits 追加一个单侧超时的份额，进度标出「作废重跑」',
++  { skip: bundleMissing && bundleSkipReason },
++  async () => {
++    const r = await runInjected({
++      gemini: { mode: 'run_material_leak', note: 'peer:glm', rerun: { mode: 'ok' } },
++      glm: { mode: 'ok' },
++    });
++    const ctx = await loadCtx({ cwd: r.root });
++    const stageTimeout = ctx.config.review.timeout_s.plan;
++    const w = await cli(r.root, ['review', '--wait', r.meta.run_id, '--timeout', '5', '--json']);
++    const cand = extractJsonCandidate(w.stdout);
++    assert.ok(cand, w.stdout + w.stderr);
++    const j = JSON.parse(cand.json) as { max_waits: number; progress_brief: string };
++    const base = Math.ceil((stageTimeout * (1 + ctx.config.review.retry.transient_max)) / 5) + 2;
++    assert.equal(j.max_waits, base + Math.ceil(stageTimeout / 5), `max_waits 应为初值 + 一份单侧超时：${JSON.stringify(j)}`);
++    assert.match(j.progress_brief, /gemini 已完成（作废重跑）/);
++    assert.doesNotMatch(j.progress_brief, /glm [^·]*（作废重跑）/);
++  },
++);
++
+ test('回读到的生效模型与请求不符时如实记录（AC-13）', { skip: bundleMissing && bundleSkipReason }, async () => {
+   const { meta } = await runInjected({
+     gemini: { mode: 'ok', modelEffective: '别的模型-不是请求的那个' },
+diff --git a/test/unit/run-files-parity.test.ts b/test/unit/run-files-parity.test.ts
+index bba6569d..da65f6e8 100644
+--- a/test/unit/run-files-parity.test.ts
++++ b/test/unit/run-files-parity.test.ts
+@@ -36,7 +36,12 @@ import {
+ const SRC = path.join(REPO_ROOT, 'src/trivium');
+ 
+ /** 写运行目录那一层的模块。新增这类模块时要同步加进来（本文件末尾有守它的用例） */
+-const WRITER_MODULES = ['run-protocol.ts', 'status.ts'];
++/*
++ * `review.ts` 自 EV-225（M12 批次 3）起在运行目录那一层建 `voided/`（被作废那次尝试的输出去处）。
++ * 它刻意**不进** `RUN_DIR_FILES`（进了会被判成己方材料，见 `run-files.ts` 的 `VOIDED_ATTEMPTS_DIR`），
++ * 只经常量拼接，所以不会被下面的字面量反向对账抓到；登记在这里是让「谁在写那一层」这件事可见。
++ */
++const WRITER_MODULES = ['run-protocol.ts', 'status.ts', 'review.ts'];
+ 
+ /** `path.join(runDir, '…')` / `path.join(dir, '…')` 里的字面量文件名 */
+ const JOIN_LITERAL = /path\.join\(\s*(?:runDir|dir)\s*,\s*'([^']+)'\s*\)/g;
+diff --git a/doc/05_testing/REPORT_2026-10-17_m12_batch3.md b/doc/05_testing/REPORT_2026-10-17_m12_batch3.md
+new file mode 100644
+index 00000000..f17e5f8d
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-10-17_m12_batch3.md
+@@ -0,0 +1,62 @@
++# M12 批次 3：作废侧在同一次运行内重跑一次（EV-225）
++
++- **日期**：2026-10-17
++- **执笔**：Claude Code（当轮 Driver）
++- **主题**：`M12-作废侧重跑一次`，命令 A（`/dual-run`，用户发起），A 档
++- **上位**：[`doc/08_project/M11后续-开发计划-草案.md`](../08_project/M11后续-开发计划-草案.md) §3；主题计划定稿 `.reviews/M12-作废侧重跑一次/plan/` r2；用户 D-7 五个子项全按推荐，加 1 轮真实回归
++- **厂商配额**：本主题双审（每轮 gemini、glm 各 1 次，另预检认证探活各 1 次）+ 真实回归 1 轮（见 §6）
++
++## 1. 审查经过
++
++| 阶段 | run | 结论 | 处置 |
++| :--- | :--- | :--- | :--- |
++| 计划双审 | `20261017T133619Z`（20m34s） | gemini `approve-with-nits`（3 nit）、glm `approve-with-nits`（2 minor、2 nit） | 7 条全部接受，合入 r2：挪动前先建父目录（AGY-01）、重跑后的终态事件显式清 note（AGY-02）、挪动逻辑留在 `review.ts` 只经常量拼接（AGY-03）、协议文档同步（GLM-01）、显式声明对 D-7「点名路径或命令」的落点收紧并改为点名程序名（GLM-02）、改名失败时整删兜底（GLM-03）、`attempts` 条目分层记法（GLM-04） |
++| 代码双审 | 待填 | | |
++| verify | 待填 | | |
++
++预检与计划双审都有一条告警：「Driver 模型未声明，模型族比较为 unknown」——本会话未声明 Driver 模型，不影响结论。
++
++**与上位文字不一致的三处**（计划 r2 §0，汇报时请用户确认第 2 条）：①上位写「run.v2 原地扩 attempts」，现行写形是 `run.v3`，扩在 v3 的逐侧节点上；②D-7「点名上一次命中的具体路径或命令」，命令通道只点程序名与位置、不回显命令参数——泄漏之后该侧敲的命令可能夹带对端原文；③任务目标里的 `--allow-partial` 即 CLI 的 `--allow-single`。
++
++## 2. 改动
++
++**触发与重拉**（`runner.ts`、`guard.ts`）：
++
++- `guard.ts` 新增 `makeSideLeakJudge`（直接调 `judgeSide`，`review` 传 null）与内部 `sideJudgeOptions`（`judgeRun` 与它共用一份入参装配）。单侧判定的 `voided` 即 `peerArtifactRead`，即 `leakRecordVoids`——重跑判据、终判、闸门三处同一个谓词。
++- `runner.ts` 的 `runOneSide`：结果为 ok 时立刻判；作废类命中且本侧未重跑过 ⇒ 挪走输出、任务书最前面插点名段、`continue` 重拉（`timeout_s` 不变，适配器每次重新计时）；二次命中 ⇒ 侧级 `failed`、`fail_reason` 以 `peer_leak` 起头，不进瞬时重试。瞬时重试改独立计数 `transientUsed`（无重跑时与原判据逐值等价，额度整侧共用）。判定器抛异常按未判出作废收口。发生过重跑的一侧收口时显式清 note。
++- `RunnerOutput` 加 `attemptLog`（只有重跑过的侧有键）与 `rerunBanners`。
++
++**点名段**（`brief.ts`）：`renderVoidRerunBanner` 与段首标题常量 `VOID_RERUN_BANNER_HEADING`。只列作废类命中；命令通道只点程序名（首个词末段、`[A-Za-z0-9._-]{1,32}`）；位置收敛到罩住命中的禁读条目（项目内）或运行目录第三段那一层（运行根下）；`redactSecrets` 后截 200 字符；至多 10 条。
++
++**首次输出**（`review.ts`、`run-files.ts`、`scrub.ts`）：`stashVoidedOutput` 把 `<运行目录>/<侧>/out` 挪到 `<运行目录>/voided/<侧>/attempt-<n>/`（`VOIDED_ATTEMPTS_DIR`，不进运行目录层文件清单）；改名失败经 `tryRemoveTempDir` 整删兜底，删也失败告警。挪到这里第三段不是侧名，对端与重跑侧自己读到都判对端运行输出。`scrubRunDir` 另扫 `voided/` 下的日志。
++
++**留痕与收尾**（`review.ts`、`types.ts`、`run.v3.json`、`report.ts`、`meta.ts`）：逐侧 `attempts`（只在重跑过的侧写，`minItems: 2`，条目 `additionalProperties: false`）；`_meta/brief-<侧>-<run>.rerun.md` 进保护集；本轮 warnings 加「首次读到对端产物已作废重跑」「重跑后仍读到判失败」与终判一致性自检；report 旗标与运行摘要加「作废重跑」。闸门代码不改——它读的 `guard.peer_leak_via_*` 本来就只写最终尝试。
++
++**等待**（`status.ts`、`run-protocol.ts`、skill）：`SideStatus.void_rerun`（只置不清）；`budgetForStatus` 任一侧重跑过即 `max_waits` 加 `ceil(单侧超时 / 窗口)`；`--wait` 两个出口与 `--status` 按刚读到的 status 现算；进度摘要标「（作废重跑）」；skill 循环上限改读最近一次 `--wait` 的 `max_waits`（重新渲染四载体入口）。
++
++**桩**（`adapters/stub.ts`）：`StubSpec.rerun`（任务书以点名段标题开头时改用它，顺带核了点名段确实置顶送达）；泄漏形态在 `out/` 留 `result.json` 标记；`run_material_leak` 新增 `note: 'voided'`。
++
++## 3. 用例
++
++- `test/integration/fault-injection.test.ts`：AC-25 三审 8 格与两侧分档作废类 3 格按新行为改断言（注入加 `rerun: ok`，命中明细改读 `attempts[0]`，终判、共同阻断有效侧由 2 / 1 家变为 3 家）；新增 EV-225 组 6 格：R1 首次命中重跑干净（`attempts` 两条、首次输出在 `voided/`、不进归档、点名段原文进 `_meta/`、终态 note 已清、另一侧只跑一次）、R2 二次命中 strict 退 75、R3 二次命中 `--allow-single` 降级、R4/R5 告警级与己方材料四种形态都不触发、R6 重跑侧读自己上一次的输出判二次命中、R8 `--wait --json` 的 `max_waits` 追加一份。计划 r2 的 R7（另一侧不受影响）并进 R1 的断言与单测，没有单列带延迟的集成格。
++- `test/unit/void-rerun.test.ts` 16 格：runner 六格（无钩子逐值等价、重拉与点名段置顶、二次命中、重跑后瞬时重试、判定器异常、另一侧调用与进度事件不变）、单侧判定与 `judgeSide` / `leakRecordVoids` 同结论七种形态、`VOIDED_ATTEMPTS_DIR` 分类、`stashVoidedOutput` 两格、点名段两格、预算、schema 两格、会话启动清扫。
++- 护栏同步：`run-files-parity` 的写模块清单加 `review.ts`（它在运行目录那一层建 `voided/`）。
++
++## 4. 变异
++
++[`evidence/m12-batch3-mutation-20261017/`](./evidence/m12-batch3-mutation-20261017/)。正式装置 `scripts/mutation-check.mjs` 两份规格 **16/16 咬住**（单测类 11 条、集成类 5 条，基线全绿、源文件逐字节恢复）：触发改成任何命中、去掉至多 1 次、二次命中不判失败、首次输出留在侧子树、预算不追加、点名段回显命令全文、瞬时计数退回 `attempts`、重跑后不清 note、点名段放末尾、单侧判定改按「扫到了东西」、运行根命中点到文件；集成类：任何命中都重跑、`--wait` 只算一次预算、worker 不写 `void_rerun`、run.json 不写 `attempts`、点名段不落 `_meta`。逐条预跑时单测规格的 M1（期望集成套件）读数为 0——预跑脚本用 `--tests-only` 不重打 bundle，已知假阴性（坑清单），同一变异在集成规格里作 B1 咬住、正式装置里 M1 也咬住。
++
++## 5. 文档同步
++
++- 主设计 v1.3.164：10.1.1 新增「作废侧在同一次运行内重跑一次」；12.1 基线行与演进增补行改写、「有效侧不足」行去掉「EV-225 就绪前」措辞；12.3 同步；6.7.1 记 run.v3 逐侧 `attempts`；16.1 M12 行记批次 3。
++- PRD v1.4.29：AC-25 Then 与达成边界 ③ 改写。
++- 协议文档：泄漏留痕段改指当前写形 run.v3、补 `attempts` 与 `void_rerun`；`--wait` 循环上限改读最近一次的 `max_waits`。
++- BACKLOG：EV-225 结案。
++
++## 6. 真实回归
++
++待填（用户定：临时夹具里跑带模型调用的 `doctor --only` 准备探针，再用本仓新 bundle 跑一轮 gemini、glm 的 plan 审查）。
++
++## 7. 全量检查
++
++代码双审前：tests 3673 / pass 3671 / fail 0 / skipped 2，退出码 0。首轮全量（改用例之后、补护栏之前）红 4 格，都是本批引出的：渲染产物未重出、桩对只给部分字段的请求取 `brief_text.startsWith`、`run-files-parity` 写模块清单未登记 `review.ts`、递归删除豁免表多一处（改用 `tryRemoveTempDir`），修后全绿。
+diff --git a/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle-log.txt b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle-log.txt
+new file mode 100644
+index 00000000..a4f37b11
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle-log.txt
+@@ -0,0 +1,5 @@
++B1：fail=2 cancelled=0 122s ⇒ EV-239 两审 · 命令里只提到编排器状态目录 → 不作废：run.json 与闸门同口径，共同阻断照常执行 ｜ EV-225 R4/R5 · 告警级与己方材料命中绝不触发重跑：没有 attempts、只跑一次、没有重跑标记
++B2：fail=1 cancelled=0 127s ⇒ EV-225 R8 · 等待预算：某侧作废重跑后 --wait 的 max_waits 追加一个单侧超时的份额，进度标出「作废重跑」
++B3：fail=2 cancelled=0 127s ⇒ EV-225 R1 · 首次读到对端运行输出、重跑干净：以重跑结论参与，首次输出留在运行目录的 voided/ 下、不进归档 ｜ EV-225 R8 · 等待预算：某侧作废重跑后 --wait 的 max_waits 追加一个单侧超时的份额，进度标出「作废重跑」
++B4：fail=14 cancelled=0 126s ⇒ 读到对端审查产出 → 判作废（分档：会作废的那一档） ｜ 读对端那一侧的运行输出 → 判作废（分档：② 对端输出） ｜ 命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01） ｜ AC-25 三审 · 归档通道：codex 侧读另两方的审查件正文与结构化意见 → 只有它作废并重跑；重跑干净后它重新计入有效侧、闸门差集仍含它的编号 ｜ AC-25 三审 · 归档通道：gemini 侧读另两方的审查件正文与结构化意见 → 只有它作废并重跑；重跑干净后它重新计入有效侧、闸门差集仍含它的编号 ｜ AC-25 三审 · 归档通道：glm 侧读另两方的审查件正文与结构化意见 → 只有它作废并重跑；重跑干净后它重新计入有效侧、闸门差集仍含它的编号 ｜ AC-25 三审 · 运行根通道：codex 侧读另两方本轮的原始输出 → 只有它作废（第②类）并重跑 ｜ AC-25 三审 · 运行根通道：gemini 侧读另两方本轮的原始输出 → 只有它作废（第②类）并重跑 ｜ AC-25 三审 · 运行根通道：glm 侧读另两方本轮的原始输出 → 只有它作废（第②类）并重跑 ｜ AC-25 三审 · 两侧同时作废：两侧各自重跑、互不牵连，重跑干净后有效侧回到三家，共同阻断照常执行 ｜ AC-25 三审 · Driver 轮换：Driver=glm、claude 当审核者读另两方产出 → 只有 claude 作废，glm 原稿不在任何命中里 ｜ EV-225 R1 · 首次读到对端运行输出、重跑干净：以重跑结论参与，首次输出留在运行目录的 voided/ 下、不进归档 ｜ EV-225 R2 · 重跑后仍读到对端产物（strict）：该侧判 failed(peer_leak)，整次失败、不产审查件 ｜ EV-225 R6 · 重跑侧去读自己上一次被作废的输出：同样判作废，二次命中判失败
++B5：fail=1 cancelled=0 127s ⇒ EV-225 R1 · 首次读到对端运行输出、重跑干净：以重跑结论参与，首次输出留在运行目录的 voided/ 下、不进归档
+diff --git a/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle-output.json b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle-output.json
+new file mode 100644
+index 00000000..c15ab78e
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle-output.json
+@@ -0,0 +1,82 @@
++[
++  {
++    "id": "B1",
++    "desc": "触发判据改成「任何命中」（告警级、己方材料也重跑）——集成格 R4/R5",
++    "suite": "dist/test/test/integration/fault-injection.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-239 两审 · 命令里只提到编排器状态目录 → 不作废：run.json 与闸门同口径，共同阻断照常执行",
++      "EV-225 R4/R5 · 告警级与己方材料命中绝不触发重跑：没有 attempts、只跑一次、没有重跑标记"
++    ],
++    "firstLines": [],
++    "elapsed_s": 122
++  },
++  {
++    "id": "B2",
++    "desc": "--wait 退回只在循环前算一次预算（终态出口不追加）",
++    "suite": "dist/test/test/integration/fault-injection.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-225 R8 · 等待预算：某侧作废重跑后 --wait 的 max_waits 追加一个单侧超时的份额，进度标出「作废重跑」"
++    ],
++    "firstLines": [],
++    "elapsed_s": 127
++  },
++  {
++    "id": "B3",
++    "desc": "worker 不写 status.json 的 void_rerun",
++    "suite": "dist/test/test/integration/fault-injection.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-225 R1 · 首次读到对端运行输出、重跑干净：以重跑结论参与，首次输出留在运行目录的 voided/ 下、不进归档",
++      "EV-225 R8 · 等待预算：某侧作废重跑后 --wait 的 max_waits 追加一个单侧超时的份额，进度标出「作废重跑」"
++    ],
++    "firstLines": [],
++    "elapsed_s": 127
++  },
++  {
++    "id": "B4",
++    "desc": "run.json 不写逐侧 attempts",
++    "suite": "dist/test/test/integration/fault-injection.test.js",
++    "fail": 14,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "读到对端审查产出 → 判作废（分档：会作废的那一档）",
++      "读对端那一侧的运行输出 → 判作废（分档：② 对端输出）",
++      "命令里提到禁读条目、文件系统无对应读取 → 措施 b 命中（§10.1 / EV-01）",
++      "AC-25 三审 · 归档通道：codex 侧读另两方的审查件正文与结构化意见 → 只有它作废并重跑；重跑干净后它重新计入有效侧、闸门差集仍含它的编号",
++      "AC-25 三审 · 归档通道：gemini 侧读另两方的审查件正文与结构化意见 → 只有它作废并重跑；重跑干净后它重新计入有效侧、闸门差集仍含它的编号",
++      "AC-25 三审 · 归档通道：glm 侧读另两方的审查件正文与结构化意见 → 只有它作废并重跑；重跑干净后它重新计入有效侧、闸门差集仍含它的编号",
++      "AC-25 三审 · 运行根通道：codex 侧读另两方本轮的原始输出 → 只有它作废（第②类）并重跑",
++      "AC-25 三审 · 运行根通道：gemini 侧读另两方本轮的原始输出 → 只有它作废（第②类）并重跑",
++      "AC-25 三审 · 运行根通道：glm 侧读另两方本轮的原始输出 → 只有它作废（第②类）并重跑",
++      "AC-25 三审 · 两侧同时作废：两侧各自重跑、互不牵连，重跑干净后有效侧回到三家，共同阻断照常执行",
++      "AC-25 三审 · Driver 轮换：Driver=glm、claude 当审核者读另两方产出 → 只有 claude 作废，glm 原稿不在任何命中里",
++      "EV-225 R1 · 首次读到对端运行输出、重跑干净：以重跑结论参与，首次输出留在运行目录的 voided/ 下、不进归档",
++      "EV-225 R2 · 重跑后仍读到对端产物（strict）：该侧判 failed(peer_leak)，整次失败、不产审查件",
++      "EV-225 R6 · 重跑侧去读自己上一次被作废的输出：同样判作废，二次命中判失败"
++    ],
++    "firstLines": [],
++    "elapsed_s": 126
++  },
++  {
++    "id": "B5",
++    "desc": "点名段原文不落 _meta",
++    "suite": "dist/test/test/integration/fault-injection.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-225 R1 · 首次读到对端运行输出、重跑干净：以重跑结论参与，首次输出留在运行目录的 voided/ 下、不进归档"
++    ],
++    "firstLines": [],
++    "elapsed_s": 127
++  }
++]
+diff --git a/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle.mjs b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle.mjs
+new file mode 100644
+index 00000000..167ce08e
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-bundle.mjs
+@@ -0,0 +1,57 @@
++// M12 批次 1 变体：集成套件调的是打包产物（test/helpers/fixture.ts 的 BUNDLE），--tests-only 不重打 bundle，
++// 变异进不了被测产物。这里改为 --with-tests 同时重打 bundle 与测试产物；其余与原脚本逐字相同。
++// 逐条变异、带超时跑期望套件，存下**失败用例名与首行断言文案**（变异装置只记 fail 数、且不给套件加超时）。
++// 照搬 evidence/cancel-cli-reach-20260928/mutation-names.mjs 的形态，另加 --test-timeout：
++// 首轮装置跑到 M4 时 U12① 的等待没有超时、挂死一小时被强制终止（报告 §3），这里先逐条确认不挂。
++// 逐条：备份 → 变异（find 须唯一）→ 只重建测试产物 → 跑期望套件 → 恢复并逐字节核对；收尾重建一次。
++// 用法（在仓库根，变异装置与全量检查都不在跑）：node mutation-names.mjs <规格路径> [输出 JSON 路径]
++import { execFileSync, spawnSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const spec = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
++const OUT = process.argv[3] ?? null;
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--with-tests'], { stdio: 'ignore' });
++const runSuite = (suite) => {
++  const t0 = Date.now();
++  const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-timeout=60000', suite], {
++    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000,
++  });
++  const out = (r.stdout ?? '') + (r.stderr ?? '');
++  const body = out.split('✖ failing tests:')[0];
++  const red = [...new Set([...body.matchAll(/^✖ (.+?) \(\d/gm)].map((m) => m[1]))];
++  const msgs = [...body.matchAll(/^✖ .+?\(\d[^\n]*\n(?:[^\n]*\n){0,3}?\s*([^\n]*Error[^\n]*)/gm)].map((m) => m[1].trim().slice(0, 200));
++  return {
++    fail: Number(/ℹ fail (\d+)/.exec(out)?.[1] ?? (r.status === 0 ? 0 : -1)),
++    timed_out: r.error?.code === 'ETIMEDOUT',
++    cancelled: Number(/ℹ cancelled (\d+)/.exec(out)?.[1] ?? 0),
++    red,
++    firstLines: [...new Set(msgs)].slice(0, 8),
++    elapsed_s: Math.round((Date.now() - t0) / 1000),
++  };
++};
++
++const base = Object.fromEntries(spec.targets.map((f) => [f, fs.readFileSync(f, 'utf8')]));
++const baseHash = Object.fromEntries(spec.targets.map((f) => [f, sha(f)]));
++const results = [];
++try {
++  for (const c of spec.cases) {
++    const src = base[c.file];
++    if (src.split(c.find).length - 1 !== 1) throw new Error(`${c.id} 的 find 不唯一`);
++    fs.writeFileSync(c.file, src.replace(c.find, c.replace));
++    try {
++      build();
++      const r = runSuite(c.expect);
++      results.push({ id: c.id, desc: c.desc, suite: c.expect, ...r });
++      console.error(`${c.id}：fail=${r.fail} cancelled=${r.cancelled} ${r.elapsed_s}s ⇒ ${r.red.join(' ｜ ')}`);
++    } finally {
++      fs.writeFileSync(c.file, src);
++      if (sha(c.file) !== baseHash[c.file]) throw new Error(`恢复 ${c.file} 后哈希不符，停下人工处理`);
++    }
++  }
++} finally {
++  for (const f of spec.targets) if (sha(f) !== baseHash[f]) fs.writeFileSync(f, base[f]);
++  build();
++}
++if (OUT) fs.writeFileSync(OUT, JSON.stringify(results, null, 2) + '\n');
+diff --git a/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-log.txt b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-log.txt
+new file mode 100644
+index 00000000..a7c9c40a
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-log.txt
+@@ -0,0 +1,11 @@
++M1：fail=0 cancelled=0 130s ⇒ 
++M2：fail=1 cancelled=0 0s ⇒ runner：二次命中——侧级判 failed(peer_leak)，不进瞬时重试，至多重跑 MAX_VOID_RERUNS 次
++M3：fail=1 cancelled=0 0s ⇒ runner：二次命中——侧级判 failed(peer_leak)，不进瞬时重试，至多重跑 MAX_VOID_RERUNS 次
++M4：fail=1 cancelled=0 0s ⇒ stashVoidedOutput：父目录不存在也挪得过去；目标已占用时整删 out 兜底；没有 out 时静默返回 null
++M5：fail=1 cancelled=0 0s ⇒ budgetForStatus：任一侧 void_rerun 为真时追加一份单侧超时，两侧都重跑也只加一份
++M6：fail=1 cancelled=0 0s ⇒ 点名段：标题在第一行；只列作废类；命令只点程序名、不回显参数；位置收敛到禁读条目或第三段目录
++M7：fail=1 cancelled=0 0s ⇒ runner：重跑那次遇瞬时故障照样可重试（额度整侧共用），条目逐次都记
++M8：fail=1 cancelled=0 0s ⇒ runner：一侧重拉期间另一侧不受影响——调用次数、任务书、进度事件都与不注入时相同
++M9：fail=1 cancelled=0 0s ⇒ runner：首次作废、重跑干净——重拉一次，点名段插在最前面、原任务书逐字跟随，首次输出挪走
++M10：fail=1 cancelled=0 0s ⇒ makeSideLeakJudge 与 judgeSide 对同一份结果给同一结论；告警级 / 己方材料不判作废；首次输出对两侧都是对端输出
++M11：fail=1 cancelled=0 0s ⇒ 点名段：标题在第一行；只列作废类；命令只点程序名、不回显参数；位置收敛到禁读条目或第三段目录
+diff --git a/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-output.json b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-output.json
+new file mode 100644
+index 00000000..5c2bd6c2
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names-output.json
+@@ -0,0 +1,143 @@
++[
++  {
++    "id": "M1",
++    "desc": "触发判据改成「任何命中」（告警级、己方材料也重跑）",
++    "suite": "dist/test/test/integration/fault-injection.test.js",
++    "fail": 0,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [],
++    "firstLines": [],
++    "elapsed_s": 130
++  },
++  {
++    "id": "M2",
++    "desc": "去掉「至多 1 次」",
++    "suite": "dist/test/test/unit/void-rerun.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "runner：二次命中——侧级判 failed(peer_leak)，不进瞬时重试，至多重跑 MAX_VOID_RERUNS 次"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M3",
++    "desc": "二次命中不判失败",
++    "suite": "dist/test/test/unit/void-rerun.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "runner：二次命中——侧级判 failed(peer_leak)，不进瞬时重试，至多重跑 MAX_VOID_RERUNS 次"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M4",
++    "desc": "首次输出留在该侧子树（不进 voided/）",
++    "suite": "dist/test/test/unit/void-rerun.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "stashVoidedOutput：父目录不存在也挪得过去；目标已占用时整删 out 兜底；没有 out 时静默返回 null"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M5",
++    "desc": "等待预算不追加",
++    "suite": "dist/test/test/unit/void-rerun.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "budgetForStatus：任一侧 void_rerun 为真时追加一份单侧超时，两侧都重跑也只加一份"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M6",
++    "desc": "点名段回显命令全文",
++    "suite": "dist/test/test/unit/void-rerun.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "点名段：标题在第一行；只列作废类；命令只点程序名、不回显参数；位置收敛到禁读条目或第三段目录"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M7",
++    "desc": "瞬时重试计数退回 attempts（重跑之后的瞬时故障不再重试）",
++    "suite": "dist/test/test/unit/void-rerun.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "runner：重跑那次遇瞬时故障照样可重试（额度整侧共用），条目逐次都记"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M8",
++    "desc": "重跑后收口不清「作废重跑中」的 note",
++    "suite": "dist/test/test/unit/void-rerun.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "runner：一侧重拉期间另一侧不受影响——调用次数、任务书、进度事件都与不注入时相同"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M9",
++    "desc": "点名段放到任务书末尾",
++    "suite": "dist/test/test/unit/void-rerun.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "runner：首次作废、重跑干净——重拉一次，点名段插在最前面、原任务书逐字跟随，首次输出挪走"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M10",
++    "desc": "单侧判定的 voided 改按「扫到了东西」（不再与终判同谓词）",
++    "suite": "dist/test/test/unit/void-rerun.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "makeSideLeakJudge 与 judgeSide 对同一份结果给同一结论；告警级 / 己方材料不判作废；首次输出对两侧都是对端输出"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M11",
++    "desc": "点名段把运行根下的命中点到文件（不收敛到第三段目录）",
++    "suite": "dist/test/test/unit/void-rerun.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "点名段：标题在第一行；只列作废类；命令只点程序名、不回显参数；位置收敛到禁读条目或第三段目录"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  }
++]
+diff --git a/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names.mjs b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names.mjs
+new file mode 100644
+index 00000000..99b7ddcf
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-names.mjs
+@@ -0,0 +1,55 @@
++// 逐条变异、带超时跑期望套件，存下**失败用例名与首行断言文案**（变异装置只记 fail 数、且不给套件加超时）。
++// 照搬 evidence/cancel-cli-reach-20260928/mutation-names.mjs 的形态，另加 --test-timeout：
++// 首轮装置跑到 M4 时 U12① 的等待没有超时、挂死一小时被强制终止（报告 §3），这里先逐条确认不挂。
++// 逐条：备份 → 变异（find 须唯一）→ 只重建测试产物 → 跑期望套件 → 恢复并逐字节核对；收尾重建一次。
++// 用法（在仓库根，变异装置与全量检查都不在跑）：node mutation-names.mjs <规格路径> [输出 JSON 路径]
++import { execFileSync, spawnSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const spec = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
++const OUT = process.argv[3] ?? null;
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--tests-only'], { stdio: 'ignore' });
++const runSuite = (suite) => {
++  const t0 = Date.now();
++  const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-timeout=60000', suite], {
++    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000,
++  });
++  const out = (r.stdout ?? '') + (r.stderr ?? '');
++  const body = out.split('✖ failing tests:')[0];
++  const red = [...new Set([...body.matchAll(/^✖ (.+?) \(\d/gm)].map((m) => m[1]))];
++  const msgs = [...body.matchAll(/^✖ .+?\(\d[^\n]*\n(?:[^\n]*\n){0,3}?\s*([^\n]*Error[^\n]*)/gm)].map((m) => m[1].trim().slice(0, 200));
++  return {
++    fail: Number(/ℹ fail (\d+)/.exec(out)?.[1] ?? (r.status === 0 ? 0 : -1)),
++    timed_out: r.error?.code === 'ETIMEDOUT',
++    cancelled: Number(/ℹ cancelled (\d+)/.exec(out)?.[1] ?? 0),
++    red,
++    firstLines: [...new Set(msgs)].slice(0, 8),
++    elapsed_s: Math.round((Date.now() - t0) / 1000),
++  };
++};
++
++const base = Object.fromEntries(spec.targets.map((f) => [f, fs.readFileSync(f, 'utf8')]));
++const baseHash = Object.fromEntries(spec.targets.map((f) => [f, sha(f)]));
++const results = [];
++try {
++  for (const c of spec.cases) {
++    const src = base[c.file];
++    if (src.split(c.find).length - 1 !== 1) throw new Error(`${c.id} 的 find 不唯一`);
++    fs.writeFileSync(c.file, src.replace(c.find, c.replace));
++    try {
++      build();
++      const r = runSuite(c.expect);
++      results.push({ id: c.id, desc: c.desc, suite: c.expect, ...r });
++      console.error(`${c.id}：fail=${r.fail} cancelled=${r.cancelled} ${r.elapsed_s}s ⇒ ${r.red.join(' ｜ ')}`);
++    } finally {
++      fs.writeFileSync(c.file, src);
++      if (sha(c.file) !== baseHash[c.file]) throw new Error(`恢复 ${c.file} 后哈希不符，停下人工处理`);
++    }
++  }
++} finally {
++  for (const f of spec.targets) if (sha(f) !== baseHash[f]) fs.writeFileSync(f, base[f]);
++  build();
++}
++if (OUT) fs.writeFileSync(OUT, JSON.stringify(results, null, 2) + '\n');
+diff --git a/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-output-bundle.txt b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-output-bundle.txt
+new file mode 100644
+index 00000000..c8a3ef65
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-output-bundle.txt
+@@ -0,0 +1,42 @@
++✓ 工作树干净、基线全绿（1 个套件）
++  B1 ✓ 咬住（fail=2）
++  B2 ✓ 咬住（fail=1）
++  B3 ✓ 咬住（fail=2）
++  B4 ✓ 咬住（fail=14）
++  B5 ✓ 咬住（fail=1）
++{
++  "总数": 5,
++  "咬住": 5,
++  "逐条": [
++    {
++      "id": "B1",
++      "desc": "触发判据改成「任何命中」（告警级、己方材料也重跑）——集成格 R4/R5",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "B2",
++      "desc": "--wait 退回只在循环前算一次预算（终态出口不追加）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "B3",
++      "desc": "worker 不写 status.json 的 void_rerun",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "B4",
++      "desc": "run.json 不写逐侧 attempts",
++      "verdict": "✓ 咬住（fail=14）",
++      "fail": 14
++    },
++    {
++      "id": "B5",
++      "desc": "点名段原文不落 _meta",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-output.txt b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-output.txt
+new file mode 100644
+index 00000000..165e5480
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-output.txt
+@@ -0,0 +1,84 @@
++✓ 工作树干净、基线全绿（2 个套件）
++  M1 ✓ 咬住（fail=2）
++  M2 ✓ 咬住（fail=1）
++  M3 ✓ 咬住（fail=1）
++  M4 ✓ 咬住（fail=1）
++  M5 ✓ 咬住（fail=1）
++  M6 ✓ 咬住（fail=1）
++  M7 ✓ 咬住（fail=1）
++  M8 ✓ 咬住（fail=1）
++  M9 ✓ 咬住（fail=1）
++  M10 ✓ 咬住（fail=1）
++  M11 ✓ 咬住（fail=1）
++{
++  "总数": 11,
++  "咬住": 11,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "触发判据改成「任何命中」（告警级、己方材料也重跑）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M2",
++      "desc": "去掉「至多 1 次」",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M3",
++      "desc": "二次命中不判失败",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M4",
++      "desc": "首次输出留在该侧子树（不进 voided/）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M5",
++      "desc": "等待预算不追加",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M6",
++      "desc": "点名段回显命令全文",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M7",
++      "desc": "瞬时重试计数退回 attempts（重跑之后的瞬时故障不再重试）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M8",
++      "desc": "重跑后收口不清「作废重跑中」的 note",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M9",
++      "desc": "点名段放到任务书末尾",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M10",
++      "desc": "单侧判定的 voided 改按「扫到了东西」（不再与终判同谓词）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M11",
++      "desc": "点名段把运行根下的命中点到文件（不收敛到第三段目录）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-spec-bundle.json b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-spec-bundle.json
+new file mode 100644
+index 00000000..95afb2eb
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-spec-bundle.json
+@@ -0,0 +1,46 @@
++{
++  "targets": ["src/trivium/runner.ts", "src/trivium/run-protocol.ts", "src/trivium/review.ts"],
++  "suites": ["dist/test/test/integration/fault-injection.test.js"],
++  "cases": [
++    {
++      "id": "B1",
++      "desc": "触发判据改成「任何命中」（告警级、己方材料也重跑）——集成格 R4/R5",
++      "file": "src/trivium/runner.ts",
++      "find": "if (leak?.voided && voidReruns < MAX_VOID_RERUNS) {",
++      "replace": "if ((leak?.voided || leak?.path.hit || leak?.command.hit) && voidReruns < MAX_VOID_RERUNS) {",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    },
++    {
++      "id": "B2",
++      "desc": "--wait 退回只在循环前算一次预算（终态出口不追加）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "      const b = budgetForStatus(budget, reading.status);",
++      "replace": "      const b = budget;",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    },
++    {
++      "id": "B3",
++      "desc": "worker 不写 status.json 的 void_rerun",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "        if (p.voidRerun === true) side.void_rerun = true;",
++      "replace": "        if (p.voidRerun === true) void 0;",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    },
++    {
++      "id": "B4",
++      "desc": "run.json 不写逐侧 attempts",
++      "file": "src/trivium/review.ts",
++      "find": "      ...(attemptLog[c] ? { attempts: attemptLog[c] } : {}),",
++      "replace": "      ...({}),",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    },
++    {
++      "id": "B5",
++      "desc": "点名段原文不落 _meta",
++      "file": "src/trivium/review.ts",
++      "find": "    const banner = rerunBanners[c];\n    if (banner) {",
++      "replace": "    const banner = rerunBanners[c];\n    if (banner && false) {",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-spec.json b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-spec.json
+new file mode 100644
+index 00000000..dd99b0ab
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch3-mutation-20261017/mutation-spec.json
+@@ -0,0 +1,97 @@
++{
++  "targets": ["src/trivium/runner.ts", "src/trivium/review.ts", "src/trivium/status.ts", "src/trivium/brief.ts", "src/trivium/guard.ts"],
++  "suites": [
++    "dist/test/test/unit/void-rerun.test.js",
++    "dist/test/test/integration/fault-injection.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "触发判据改成「任何命中」（告警级、己方材料也重跑）",
++      "file": "src/trivium/runner.ts",
++      "find": "if (leak?.voided && voidReruns < MAX_VOID_RERUNS) {",
++      "replace": "if ((leak?.voided || leak?.path.hit || leak?.command.hit) && voidReruns < MAX_VOID_RERUNS) {",
++      "expect": "dist/test/test/integration/fault-injection.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "去掉「至多 1 次」",
++      "file": "src/trivium/runner.ts",
++      "find": "if (leak?.voided && voidReruns < MAX_VOID_RERUNS) {",
++      "replace": "if (leak?.voided && voidReruns < MAX_VOID_RERUNS + 2) {",
++      "expect": "dist/test/test/unit/void-rerun.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "二次命中不判失败",
++      "file": "src/trivium/runner.ts",
++      "find": "        last.status = 'failed';\n        last.fail_reason = `peer_leak：",
++      "replace": "        last.status = 'ok';\n        last.fail_reason = `peer_leak：",
++      "expect": "dist/test/test/unit/void-rerun.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "首次输出留在该侧子树（不进 voided/）",
++      "file": "src/trivium/review.ts",
++      "find": "const rel = path.join(VOIDED_ATTEMPTS_DIR, critic, `attempt-${attemptNo}`);",
++      "replace": "const rel = path.join(critic, `attempt-${attemptNo}`);",
++      "expect": "dist/test/test/unit/void-rerun.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "等待预算不追加",
++      "file": "src/trivium/status.ts",
++      "find": "  if (!rerun) return b;",
++      "replace": "  if (!rerun || rerun) return b;",
++      "expect": "dist/test/test/unit/void-rerun.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "点名段回显命令全文",
++      "file": "src/trivium/brief.ts",
++      "find": "add(bannerLocation(h.path, ctx), h.category, commandProgramName(h.command));",
++      "replace": "add(bannerLocation(h.path, ctx), h.category, h.command);",
++      "expect": "dist/test/test/unit/void-rerun.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "瞬时重试计数退回 attempts（重跑之后的瞬时故障不再重试）",
++      "file": "src/trivium/runner.ts",
++      "find": "if (transientUsed >= input.maxTransientRetries) break;",
++      "replace": "if (attempts > input.maxTransientRetries) break;",
++      "expect": "dist/test/test/unit/void-rerun.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "重跑后收口不清「作废重跑中」的 note",
++      "file": "src/trivium/runner.ts",
++      "find": "emitProgress(input, critic, { state: 'ok', attempt: attempts, elapsed_s: elapsed(), ...finalNote(null) });",
++      "replace": "emitProgress(input, critic, { state: 'ok', attempt: attempts, elapsed_s: elapsed() });",
++      "expect": "dist/test/test/unit/void-rerun.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "点名段放到任务书末尾",
++      "file": "src/trivium/runner.ts",
++      "find": "req = { ...req, brief_text: `${banner}\\n\\n---\\n\\n${req.brief_text}` };",
++      "replace": "req = { ...req, brief_text: `${req.brief_text}\\n\\n---\\n\\n${banner}` };",
++      "expect": "dist/test/test/unit/void-rerun.test.js"
++    },
++    {
++      "id": "M10",
++      "desc": "单侧判定的 voided 改按「扫到了东西」（不再与终判同谓词）",
++      "file": "src/trivium/guard.ts",
++      "find": "    voided: v.peerArtifactRead,",
++      "replace": "    voided: v.typedHits.length > 0 || v.typedCommandHits.length > 0,",
++      "expect": "dist/test/test/unit/void-rerun.test.js"
++    },
++    {
++      "id": "M11",
++      "desc": "点名段把运行根下的命中点到文件（不收敛到第三段目录）",
++      "file": "src/trivium/brief.ts",
++      "find": "    if (isAgentId(seg[2]!)) return { where: dir, what: `运行目录里 ${seg[2]} 侧的本轮输出` };",
++      "replace": "    if (isAgentId(seg[2]!)) return { where: hit, what: `运行目录里 ${seg[2]} 侧的本轮输出` };",
++      "expect": "dist/test/test/unit/void-rerun.test.js"
++    }
++  ]
++}
+diff --git a/test/unit/void-rerun.test.ts b/test/unit/void-rerun.test.ts
+new file mode 100644
+index 00000000..4804aaa0
+--- /dev/null
++++ b/test/unit/void-rerun.test.ts
+@@ -0,0 +1,390 @@
++/**
++ * 作废侧在同一次运行内重跑一次（BACKLOG EV-225，M12 批次 3，计划 r2 §4.3）。
++ *
++ * 端到端的形态（桩 + worker + 归档 + 闸门）在 `test/integration/fault-injection.test.ts` 的 EV-225 组与 AC-25 组；
++ * 这里钉住各零件自己的契约：runner 的重拉与计数、单侧判定与终判同源、点名段不成为新泄漏面、
++ * 首次输出的去处与分类、等待预算、schema、会话启动清扫。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { MAX_VOID_RERUNS, VOID_RERUN_NOTE, runBothSides, type SideProgress } from '../../src/trivium/runner.js';
++import { TOOL_TRACE_CAPABILITY, type AdapterContext, type CriticAdapter } from '../../src/trivium/adapters/base.js';
++import { defaultConfig } from '../../src/trivium/config.js';
++import { judgeSide, makeSideLeakJudge, type SideLeakVerdict } from '../../src/trivium/guard.js';
++import { classifyDenyPath, leakRecordVoids } from '../../src/trivium/freeze.js';
++import {
++  VOID_RERUN_BANNER_HEADING, VOID_RERUN_BANNER_MAX_ITEMS, commandProgramName, renderVoidRerunBanner,
++} from '../../src/trivium/brief.js';
++import { RUN_DIR_FILE_NAMES, VOIDED_ATTEMPTS_DIR, isRunDirFile } from '../../src/trivium/run-files.js';
++import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
++import { stashVoidedOutput } from '../../src/trivium/review.js';
++import { budgetForStatus, computeMaxWaits, type RunStatus } from '../../src/trivium/status.js';
++import { newRunMeta } from '../../src/trivium/meta.js';
++import { validateRunMeta } from '../../src/trivium/schemas.js';
++import { scrubRunDir } from '../../src/trivium/scrub.js';
++import { CRITICS, type CriticId, type CriticRequest, type CriticResult, type DenyCategory, type RunMeta } from '../../src/trivium/types.js';
++import { scratchDir } from '../helpers/scratch.js';
++
++// ── runner ──
++
++function okResult(critic: CriticId, over: Partial<CriticResult> = {}): CriticResult {
++  return {
++    critic, status: 'ok', exit_code: 0, duration_s: 10,
++    raw_stdout_path: '/runs/out', trace_path: '/runs/trace', review_json: null,
++    raw_response_text: '{}', model_effective: 'M', model_effective_source: 'envelope',
++    model_provider: null, profile_requested: null,
++    tool_calls: { read: 6 }, read_paths: ['/proj/src/a.ts'], search_hit_paths: null, write_events: [], command_texts: [],
++    evidence_ok: true, fail_reason: null, session_id: 'S', cli_version: '1',
++    peer_deny_applied: false, deny_skipped: 0, deny_rule_count: 0, deny_bytes: 0, command_line: 'x', ...over,
++  };
++}
++
++const failedTransient = (critic: CriticId): CriticResult =>
++  okResult(critic, { status: 'failed', fail_reason: '空输出', raw_response_text: null });
++
++const CTX: AdapterContext = { cfg: defaultConfig(), nodePath: '/usr/bin/node' };
++
++function req(critic: CriticId): CriticRequest {
++  return {
++    run_id: 'R1', topic: 't', stage: 'plan', critic,
++    project_root: '/proj', subject_path: '/proj/s.md', deny_paths: [],
++    out_dir: `/runs/x/${critic}/out`, brief_path: '/proj/b.md', brief_text: 'BRIEF',
++    model: 'M', timeout_s: 900, schema_path: '/s.json',
++    min_tool_calls: 5, profile_requested: null, min_project_reads: 3, tier: null, tier_source: null,
++  };
++}
++
++/** 按脚本依次返回结果、记录每次收到的任务书的桩适配器 */
++function scripted(critic: CriticId, script: CriticResult[]): CriticAdapter & { briefs: string[] } {
++  const briefs: string[] = [];
++  let i = 0;
++  return {
++    critic, briefs,
++    capability: TOOL_TRACE_CAPABILITY, commandExecution: 'none',
++    availability: () => ({ ok: true }),
++    effortReadback: () => ({ effective: null, source: null }),
++    async run(_ctx, r) {
++      briefs.push(r.brief_text);
++      return script[Math.min(i++, script.length - 1)]!;
++    },
++  } as CriticAdapter & { briefs: string[] };
++}
++
++/** 读到 `/peer` 的结果判作废——单测里的判定器只认这个标记，形状与 `makeSideLeakJudge` 的产出同 */
++const LEAKY = (c: CriticId) => okResult(c, { read_paths: ['/peer/review.md'] });
++const fakeJudge = (_c: CriticId, r: CriticResult): SideLeakVerdict | null => {
++  if (r.status !== 'ok') return null;
++  const hits = r.read_paths.filter((p) => p.startsWith('/peer')).map((p) => ({ path: p, category: 'peer-artifact' as DenyCategory }));
++  return { voided: hits.length > 0, path: { hit: hits.length > 0, hits }, command: { hit: false, commands: [], hits: [] } };
++};
++
++test('runner：不传作废钩子时与原先逐值相同——瞬时重试照旧，不写逐次记录', async () => {
++  const g = scripted('gemini', [failedTransient('gemini'), okResult('gemini')]);
++  const out = await runBothSides({ ctx: CTX, adapters: { gemini: g }, requests: { gemini: req('gemini') }, maxTransientRetries: 1 });
++  assert.equal(out.attempts.gemini, 2);
++  assert.equal(out.results.gemini?.status, 'ok');
++  assert.deepEqual(out.attemptLog, {}, '没发生作废重跑就不交逐次记录');
++  const g2 = scripted('gemini', [failedTransient('gemini')]);
++  const out2 = await runBothSides({ ctx: CTX, adapters: { gemini: g2 }, requests: { gemini: req('gemini') }, maxTransientRetries: 1 });
++  assert.equal(out2.attempts.gemini, 2, '瞬时重试额度 1：共两次，与原判据「attempts > max」等价');
++  const g3 = scripted('gemini', [failedTransient('gemini')]);
++  const out3 = await runBothSides({ ctx: CTX, adapters: { gemini: g3 }, requests: { gemini: req('gemini') }, maxTransientRetries: 0 });
++  assert.equal(out3.attempts.gemini, 1);
++});
++
++test('runner：首次作废、重跑干净——重拉一次，点名段插在最前面、原任务书逐字跟随，首次输出挪走', async () => {
++  const g = scripted('gemini', [LEAKY('gemini'), okResult('gemini')]);
++  const stashed: [CriticId, number][] = [];
++  const out = await runBothSides({
++    ctx: CTX, adapters: { gemini: g }, requests: { gemini: req('gemini') }, maxTransientRetries: 1,
++    judgeLeak: fakeJudge,
++    stashVoided: async (c, n) => { stashed.push([c, n]); return `voided/${c}/attempt-${n}`; },
++    voidRerunBanner: () => `${VOID_RERUN_BANNER_HEADING}\n点名`,
++  });
++  assert.equal(out.results.gemini?.status, 'ok');
++  assert.equal(out.attempts.gemini, 2);
++  assert.deepEqual(stashed, [['gemini', 1]]);
++  assert.equal(g.briefs[0], 'BRIEF');
++  assert.equal(g.briefs[1], `${VOID_RERUN_BANNER_HEADING}\n点名\n\n---\n\nBRIEF`, '点名段在前、原任务书逐字在后');
++  const log = out.attemptLog.gemini!;
++  assert.deepEqual(log.map((a) => [a.n, a.status, a.voided, a.output_dir]), [[1, 'ok', true, 'voided/gemini/attempt-1'], [2, 'ok', false, undefined]]);
++  assert.equal(leakRecordVoids({ path: log[0]!.peer_leak_via_path, command: log[0]!.peer_leak_via_command }), true, '条目的 voided 与明细同谓词');
++  assert.equal(out.rerunBanners.gemini, `${VOID_RERUN_BANNER_HEADING}\n点名`);
++});
++
++test('runner：二次命中——侧级判 failed(peer_leak)，不进瞬时重试，至多重跑 MAX_VOID_RERUNS 次', async () => {
++  assert.equal(MAX_VOID_RERUNS, 1);
++  const g = scripted('gemini', [LEAKY('gemini')]);
++  const out = await runBothSides({
++    ctx: CTX, adapters: { gemini: g }, requests: { gemini: req('gemini') }, maxTransientRetries: 3,
++    judgeLeak: fakeJudge, stashVoided: async () => null, voidRerunBanner: () => 'B',
++  });
++  assert.equal(out.attempts.gemini, 2, '首次 + 一次重跑，瞬时额度再多也不再跑');
++  assert.equal(out.results.gemini?.status, 'failed');
++  assert.match(out.results.gemini?.fail_reason ?? '', /^peer_leak/);
++  // 分层记法：条目记适配器层的 ok
++  assert.deepEqual(out.attemptLog.gemini!.map((a) => [a.status, a.voided, a.fail_reason]), [['ok', true, null], ['ok', true, null]]);
++});
++
++test('runner：重跑那次遇瞬时故障照样可重试（额度整侧共用），条目逐次都记', async () => {
++  const g = scripted('gemini', [LEAKY('gemini'), failedTransient('gemini'), okResult('gemini')]);
++  const out = await runBothSides({
++    ctx: CTX, adapters: { gemini: g }, requests: { gemini: req('gemini') }, maxTransientRetries: 1,
++    judgeLeak: fakeJudge, stashVoided: async () => null, voidRerunBanner: () => 'B',
++  });
++  assert.equal(out.results.gemini?.status, 'ok');
++  assert.deepEqual(out.attemptLog.gemini!.map((a) => [a.n, a.status, a.voided]), [[1, 'ok', true], [2, 'failed', null], [3, 'ok', false]]);
++});
++
++test('runner：判定器抛异常——不重跑，按未判出作废收口（终判照常）', async () => {
++  const g = scripted('gemini', [LEAKY('gemini'), okResult('gemini')]);
++  const out = await runBothSides({
++    ctx: CTX, adapters: { gemini: g }, requests: { gemini: req('gemini') }, maxTransientRetries: 1,
++    judgeLeak: () => { throw new Error('判定器坏了'); }, stashVoided: async () => null, voidRerunBanner: () => 'B',
++  });
++  assert.equal(out.attempts.gemini, 1);
++  assert.equal(out.results.gemini?.status, 'ok');
++  assert.deepEqual(out.attemptLog, {});
++});
++
++test('runner：一侧重拉期间另一侧不受影响——调用次数、任务书、进度事件都与不注入时相同', async () => {
++  const g = scripted('gemini', [LEAKY('gemini'), okResult('gemini')]);
++  const l = scripted('glm', [okResult('glm')]);
++  const events: [CriticId, SideProgress][] = [];
++  const out = await runBothSides({
++    ctx: CTX, adapters: { gemini: g, glm: l }, requests: { gemini: req('gemini'), glm: req('glm') }, maxTransientRetries: 1,
++    onSideProgress: (c, p) => events.push([c, p]),
++    judgeLeak: fakeJudge, stashVoided: async () => null, voidRerunBanner: () => 'B',
++  });
++  assert.equal(l.briefs.length, 1);
++  assert.equal(l.briefs[0], 'BRIEF');
++  assert.equal(out.attempts.glm, 1);
++  assert.equal(out.attemptLog.glm, undefined);
++  const glmEvents = events.filter(([c]) => c === 'glm').map(([, p]) => p);
++  assert.ok(glmEvents.every((p) => p.voidRerun === undefined), 'glm 不得带重跑标记');
++  assert.ok(!('note' in glmEvents[glmEvents.length - 1]!), '没重跑的一侧收口事件照旧不带 note');
++
++  const gemEvents = events.filter(([c]) => c === 'gemini').map(([, p]) => p);
++  assert.ok(gemEvents.some((p) => p.voidRerun === true && p.note === VOID_RERUN_NOTE), '决定重跑时报重跑标记与说明');
++  const last = gemEvents[gemEvents.length - 1]!;
++  assert.equal(last.state, 'ok');
++  assert.equal(last.note, null, '重跑后收口显式清掉「重跑中」（计划双审 AGY-02）');
++});
++
++// ── 单侧判定与终判同源 ──
++
++test('makeSideLeakJudge 与 judgeSide 对同一份结果给同一结论；告警级 / 己方材料不判作废；首次输出对两侧都是对端输出', async () => {
++  const proj = await scratchDir('trivium-void-proj-');
++  const runRoot = path.join(proj, 'runs');
++  const cfg = defaultConfig();
++  cfg.runtime.run_root = runRoot;
++  const peerDoc = path.join('.reviews', 't', 'plan', '2026-01-01-t-glm.md');
++  const triviumDir = path.join(proj, '.trivium');
++  const r0: CriticRequest = { ...req('gemini'), project_root: proj, deny_paths: [peerDoc, runRoot, triviumDir] };
++  const judge = await makeSideLeakJudge({
++    cfg, projectRoot: proj, archiveRootAbs: path.join(proj, '.reviews'), triviumDirRel: '.trivium',
++    requests: { gemini: r0 }, capabilities: {},
++  });
++  const runDir = path.join(runRoot, 'slot', 'R1');
++  const cases: [string, Partial<CriticResult>, boolean | null][] = [
++    ['对端审查件', { read_paths: [path.join(proj, peerDoc)] }, true],
++    ['对端运行输出', { read_paths: [path.join(runDir, 'glm', 'out', 'result.json')] }, true],
++    ['本侧被作废的上一次输出', { read_paths: [path.join(runDir, VOIDED_ATTEMPTS_DIR, 'gemini', 'attempt-1', 'result.json')] }, true],
++    ['命令通道读对端审查件', { command_texts: [`git show HEAD:${peerDoc}`] }, true],
++    ['编排器状态目录', { read_paths: [path.join(triviumDir, 'state.json')] }, false],
++    ['己方运行材料', { read_paths: [path.join(runDir, 'gemini', 'out', 'result.json'), path.join(runDir, 'request.json')] }, false],
++    ['失败侧不判', { status: 'failed' }, null],
++  ];
++  for (const [name, over, want] of cases) {
++    const r = okResult('gemini', { read_paths: [], ...over });
++    const got = judge('gemini', r);
++    if (want === null) {
++      assert.equal(got, null, name);
++      continue;
++    }
++    assert.equal(got?.voided, want, name);
++    const ref = judgeSide(cfg, 'gemini', r, null, r0, {
++      archiveRootAbs: path.join(proj, '.reviews'), projectRoot: proj, projectRoots: [proj, await fs.realpath(proj)],
++      triviumDir, runRoot, degraded: [],
++    });
++    assert.equal(got!.voided, ref.peerArtifactRead, `${name}：与 judgeSide 同结论`);
++    assert.equal(leakRecordVoids({ path: got!.path, command: got!.command }), got!.voided, `${name}：与闸门的谓词同结论`);
++  }
++  const noted = judge('gemini', okResult('gemini', { read_paths: [path.join(triviumDir, 'state.json')] }))!;
++  assert.equal(noted.path.hit, true, '告警级命中照样记明细，只是不作废');
++});
++
++// ── 首次输出的去处 ──
++
++test('VOIDED_ATTEMPTS_DIR 不是 Agent id、不是运行目录层文件；其下路径对本侧与对端都判对端运行输出', () => {
++  assert.ok(!(ALL_AGENT_IDS as readonly string[]).includes(VOIDED_ATTEMPTS_DIR));
++  assert.ok(!RUN_DIR_FILE_NAMES.includes(VOIDED_ATTEMPTS_DIR));
++  assert.equal(isRunDirFile(VOIDED_ATTEMPTS_DIR), false);
++  const ctx = (critic: CriticId) => ({ projectRoot: '/proj', triviumDir: '/proj/.trivium', runRoot: '/runs', critic, sensitiveGlobs: [] });
++  const p = path.join('/runs', 'slot', 'R1', VOIDED_ATTEMPTS_DIR, 'gemini', 'attempt-1', 'result.json');
++  assert.equal(classifyDenyPath(p, ctx('gemini')), 'peer-run-output', '重跑侧读自己上一次的输出：同样作废');
++  assert.equal(classifyDenyPath(p, ctx('glm')), 'peer-run-output');
++});
++
++test('stashVoidedOutput：父目录不存在也挪得过去；目标已占用时整删 out 兜底；没有 out 时静默返回 null', async () => {
++  const run = await scratchDir('trivium-void-stash-');
++  await fs.mkdir(path.join(run, 'gemini', 'out'), { recursive: true });
++  await fs.writeFile(path.join(run, 'gemini', 'out', 'result.json'), '{"n":1}');
++  const w: string[] = [];
++  assert.equal(await stashVoidedOutput(run, 'gemini', 1, w), path.join('voided', 'gemini', 'attempt-1'));
++  assert.equal(await fs.readFile(path.join(run, 'voided', 'gemini', 'attempt-1', 'result.json'), 'utf8'), '{"n":1}');
++  await assert.rejects(fs.access(path.join(run, 'gemini', 'out')), 'out 已挪走');
++
++  // 目标被占用（非空目录）：改名失败 → 整删 out 兜底，不留污染输出在己方子树
++  await fs.mkdir(path.join(run, 'gemini', 'out'), { recursive: true });
++  await fs.writeFile(path.join(run, 'gemini', 'out', 'result.json'), '{"n":2}');
++  assert.equal(await stashVoidedOutput(run, 'gemini', 1, w), null);
++  await assert.rejects(fs.access(path.join(run, 'gemini', 'out')), '兜底整删了 out');
++  assert.deepEqual(w, [], '整删成功不告警');
++
++  assert.equal(await stashVoidedOutput(run, 'glm', 1, w), null, '该次尝试没留下 out');
++  assert.deepEqual(w, []);
++});
++
++test('stashVoidedOutput：挪不走也删不掉时告警「可能残留」，不抛', async () => {
++  const run = await scratchDir('trivium-void-stash-');
++  const side = path.join(run, 'gemini');
++  await fs.mkdir(path.join(side, 'out'), { recursive: true });
++  await fs.writeFile(path.join(side, 'out', 'result.json'), '{}');
++  const w: string[] = [];
++  try {
++    await fs.chmod(side, 0o555); // 侧目录只读：out 既改不了名也删不掉
++    assert.equal(await stashVoidedOutput(run, 'gemini', 1, w), null);
++  } finally {
++    await fs.chmod(side, 0o755);
++  }
++  assert.equal(w.length, 1, JSON.stringify(w));
++  assert.match(w[0]!, /可能残留在己方子树/);
++});
++
++// ── 点名段 ──
++
++test('点名段：标题在第一行；只列作废类；命令只点程序名、不回显参数；位置收敛到禁读条目或第三段目录', () => {
++  const runRoot = '/runs';
++  const deny = ['.reviews/t/plan/2026-01-01-t-glm.md', '.reviews/t/plan/_meta', runRoot];
++  const MARK = '对端意见里的一句话QZX';
++  const text = renderVoidRerunBanner({
++    path: {
++      hits: [
++        { path: '/proj/.reviews/t/plan/2026-01-01-t-glm.md', category: 'peer-artifact' },
++        { path: '/proj/.reviews/t/plan/_meta/review-glm-R0.json', category: 'peer-artifact' },
++        { path: '/runs/slot/R1/glm/out/result.json', category: 'peer-run-output' },
++        { path: `/runs/slot/R1/${VOIDED_ATTEMPTS_DIR}/gemini/attempt-1/result.json`, category: 'peer-run-output' },
++        { path: '/proj/.trivium/state.json', category: 'orchestrator-state' },
++      ],
++    },
++    command: {
++      hits: [
++        { command: `/usr/bin/grep -rn "${MARK}" .reviews`, path: '/proj/.reviews/t/plan/2026-01-01-t-glm.md', category: 'peer-artifact' },
++        { command: `FOO=bar cat ${MARK}`, path: '/runs/slot/R1/glm/out/result.json', category: 'peer-run-output' },
++      ],
++    },
++  }, { projectRoot: '/proj', runRoot, denyPaths: deny });
++  assert.equal(text.split('\n')[0], VOID_RERUN_BANNER_HEADING);
++  assert.ok(!text.includes(MARK), '命令参数一个字都不进点名段');
++  assert.ok(text.includes('经命令 `grep` 碰到'), '程序名取首个词的末段');
++  assert.ok(text.includes('经命令碰到'), '首个词不合形态（环境变量赋值）就只写「经命令」');
++  assert.ok(text.includes('`.reviews/t/plan/2026-01-01-t-glm.md`'), '项目内命中显示禁读条目');
++  assert.ok(text.includes('`.reviews/t/plan/_meta`'), '_meta 下的命中显示罩住它的那条目录条目，不点到文件');
++  assert.ok(!text.includes('review-glm-R0.json'));
++  assert.ok(text.includes("`/runs/slot/R1/glm/`（运行目录里 glm 侧的本轮输出）"), "运行根下只到第三段");
++  assert.ok(!text.includes('result.json'), '运行根下的文件名不点名');
++  assert.ok(text.includes('运行目录里被作废的上一次输出'));
++  assert.ok(!text.includes('state.json'), '告警级命中不列');
++});
++
++test('点名段：条数封顶，其余写「另有 N 条」；程序名形态收窄', () => {
++  const hits = Array.from({ length: VOID_RERUN_BANNER_MAX_ITEMS + 3 }, (_, i) => ({ path: `/proj/d${i}.md`, category: 'peer-artifact' as DenyCategory }));
++  const text = renderVoidRerunBanner(
++    { path: { hits }, command: { hits: [] } },
++    { projectRoot: '/proj', runRoot: '/runs', denyPaths: hits.map((h) => h.path) },
++  );
++  assert.ok(text.includes('- 另有 3 条'));
++  assert.equal(commandProgramName('/opt/homebrew/bin/git show HEAD:x'), 'git');
++  assert.equal(commandProgramName('  cat a'), 'cat');
++  assert.equal(commandProgramName('FOO=bar cat a'), null);
++  assert.equal(commandProgramName(`${'a'.repeat(33)} x`), null);
++  assert.equal(commandProgramName(''), null);
++});
++
++// ── 等待预算 ──
++
++test('budgetForStatus：任一侧 void_rerun 为真时追加一份单侧超时，两侧都重跑也只加一份', () => {
++  const b = { stageTimeoutS: 900, waitTimeoutS: 180, maxWaits: computeMaxWaits(900, 180, 1) };
++  const st = (sides: RunStatus['sides']) => ({ sides });
++  assert.deepEqual(budgetForStatus(b, null), b);
++  assert.deepEqual(budgetForStatus(b, st({ gemini: { state: 'running', model: null, attempt: 1, elapsed_s: 1 } })), b);
++  const one = budgetForStatus(b, st({ gemini: { state: 'running', model: null, attempt: 2, elapsed_s: 1, void_rerun: true } }));
++  assert.equal(one.maxWaits, b.maxWaits + 5);
++  const both = budgetForStatus(b, st({
++    gemini: { state: 'running', model: null, attempt: 2, elapsed_s: 1, void_rerun: true },
++    glm: { state: 'running', model: null, attempt: 2, elapsed_s: 1, void_rerun: true },
++  }));
++  assert.equal(both.maxWaits, one.maxWaits);
++});
++
++// ── run.v3 的 attempts ──
++
++function metaWithAttempts(attempts: unknown): RunMeta {
++  const m = newRunMeta({
++    runId: 'R1', topic: '作废重跑', stage: 'plan', rerunIndex: 1, command: 'x',
++    promptHint: null, taskGoal: null, criticsSelected: CRITICS,
++    treeHash: 'h', gitHead: null, dirty: false, subjectSha256: 's', denyPaths: [], driftPolicy: 'warn',
++  });
++  // 合法的 v3 逐侧记录（同 run-meta.test.ts 的 sideMeta），再叠 attempts
++  (m.critics as Record<string, unknown>)['gemini'] = {
++    vendor: 'antigravity', cli_version: '1.0',
++    model_requested: 'm', model_effective: 'm', model_effective_source: 'envelope',
++    profile_requested: null, model_provider: null,
++    access: { requested_mode: 'standard', profile: null, launcher_requested: null, launcher_effective: null,
++      wrapper_sha256: null, configuration_sha256: null, provider_declared: null, provider_declared_source: null,
++      provider_effective: null, provider_effective_source: null },
++    status: 'ok', exit_code: 0, duration_s: 10, tool_calls: {}, evidence_ok: true, heterogeneous: 'unknown',
++    ...(attempts === undefined ? {} : { attempts }),
++  };
++  return m;
++}
++
++const A1 = {
++  n: 1, started_at: '2026-10-17T00:00:00.000Z', duration_s: 5, status: 'ok', voided: true,
++  peer_leak_via_path: { hit: true, hits: [{ path: '/runs/s/R1/glm/out/result.json', category: 'peer-run-output' }] },
++  peer_leak_via_command: { hit: false, commands: [], hits: [] },
++  output_dir: 'voided/gemini/attempt-1', fail_reason: null,
++};
++const A2 = { n: 2, started_at: '2026-10-17T00:01:00.000Z', duration_s: 6, status: 'ok', voided: false,
++  peer_leak_via_path: { hit: false, hits: [] }, peer_leak_via_command: { hit: false, commands: [], hits: [] }, fail_reason: null };
++
++test('run.v3：合法 attempts 通过；没有 attempts 的旧形态照常通过', () => {
++  assert.equal(metaWithAttempts(undefined).schema, 'trivium.run.v3', '前提：新运行写 v3');
++  assert.deepEqual(validateRunMeta(metaWithAttempts([A1, A2])), []);
++  assert.deepEqual(validateRunMeta(metaWithAttempts(undefined)), []);
++  assert.deepEqual(validateRunMeta(metaWithAttempts([A1, { ...A2, status: 'timeout', voided: null }])), [], '没判的条目 voided 为 null');
++});
++
++test('run.v3：attempts 至少两条、条目不许多余键、status 只认适配器层三值', () => {
++  assert.ok(validateRunMeta(metaWithAttempts([A1])).length > 0, '只在发生过作废重跑时写，至少两条');
++  assert.ok(validateRunMeta(metaWithAttempts([A1, { ...A2, extra: 1 }])).length > 0);
++  assert.ok(validateRunMeta(metaWithAttempts([A1, { ...A2, status: 'parse_fallback' }])).length > 0);
++  assert.ok(validateRunMeta(metaWithAttempts([A1, { ...A2, n: 0 }])).length > 0);
++  assert.ok(validateRunMeta(metaWithAttempts([{ ...A1, peer_leak_via_path: { hit: true, hits: [{ path: 'x', category: 'nope' }] } }, A2])).length > 0);
++});
++
++// ── 会话启动清扫 ──
++
++test('scrubRunDir：voided/ 下被挪走的首次输出也就地脱敏，结果并进运行目录层', async () => {
++  const FAKE = ['Qx7mZp2L', 'k9Rt4Wv1', 'Ab3Cd5Ef', '7Gh9Jk2M'].join('');
++  const run = await scratchDir('trivium-void-scrub-');
++  const log = path.join(run, VOIDED_ATTEMPTS_DIR, 'gemini', 'attempt-1', 'stdout.jsonl');
++  await fs.mkdir(path.dirname(log), { recursive: true });
++  await fs.writeFile(log, `{"r":"token = \\"${FAKE}\\""}\n`);
++  const r = await scrubRunDir(run, () => undefined);
++  assert.ok(!(await fs.readFile(log, 'utf8')).includes(FAKE), '首次输出里的凭据也要抹');
++  assert.equal(r.runDir.redacted[path.join(VOIDED_ATTEMPTS_DIR, 'gemini', 'attempt-1', 'stdout.jsonl')], 1);
++});

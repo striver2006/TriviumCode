@@ -63,7 +63,7 @@ import { promises as fs } from 'node:fs';
 import type { CriticId, ScrubOutcome } from './types.js';
 import type { CarrierScrub, CriticAdapter } from './adapters/base.js';
 import { ALL_AGENT_IDS } from './agents/registry.js';
-import { RUN_DIR_FILE_NAMES } from './run-files.js';
+import { RUN_DIR_FILE_NAMES, VOIDED_ATTEMPTS_DIR } from './run-files.js';
 import { redactSecrets, scanSecrets } from './secrets.js';
 import { exists, writeAtomic } from './util/fsx.js';
 
@@ -492,7 +492,40 @@ export async function scrubRunDir(
     }
     sides[name as CriticId] = await scrubSideDir(lookup(name), sideDir, opts);
   }
+  await redactVoidedAttempts(runDirAbs, runDir, opts.sizeCap ?? SCAN_SIZE_CAP);
   return { sides, runDir };
+}
+
+/**
+ * 被作废的那次尝试挪去的 `voided/<侧>/attempt-<n>/`（BACKLOG EV-225，`run-files.ts` 的 `VOIDED_ATTEMPTS_DIR`）。
+ *
+ * 那就是该次尝试原来的 `out/`，挪之前已经过那次尝试的强制抹除；这里补一遍只为覆盖「那次抹除失败」的情形。
+ * 只脱敏、不删，结果并进运行目录层的上报（不写哨兵：本模块不往运行目录那一层写任何文件）。
+ */
+async function redactVoidedAttempts(runDirAbs: string, layer: RunDirLayerScrub, cap: number): Promise<void> {
+  const root = path.join(runDirAbs, VOIDED_ATTEMPTS_DIR);
+  let sideNames: string[];
+  try {
+    sideNames = await fs.readdir(root);
+  } catch {
+    return; // 没有作废重跑过：常态
+  }
+  for (const side of sideNames) {
+    let attempts: string[];
+    try {
+      attempts = await fs.readdir(path.join(root, side));
+    } catch {
+      continue;
+    }
+    for (const a of attempts) {
+      const rel = path.join(VOIDED_ATTEMPTS_DIR, side, a);
+      const r = await redactLogs(path.join(runDirAbs, rel), ORCHESTRATOR_LOG_FILES, cap);
+      for (const [k, v] of Object.entries(r.redacted)) layer.redacted[path.join(rel, k)] = v;
+      layer.warnings.push(...r.warnings.map((w) => `${rel}：${w}`));
+      layer.errors.push(...r.errors.map((e) => `${rel}：${e}`));
+      layer.skipped += r.skipped;
+    }
+  }
 }
 
 /** 人读一句：哪几侧失败、首个原因——供 status note 与会话启动待办共用 */

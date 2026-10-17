@@ -41,6 +41,11 @@ export interface SideStatus {
    * CLI 退出时清成 null。缺席（旧版 worker 写的）与 null 读者一律当「没有记录」；旧版读者忽略这个键。
    */
   cli?: CliGroupRecord | null;
+  /**
+   * 该侧这一轮发生过作废重跑（BACKLOG EV-225，M12 批次 3）。worker 在决定重跑的那一刻置真，**此后不清**：
+   * 等待预算要一直把重跑那一段算进去（`budgetForStatus`）。缺席 = 没重跑，或旧版 worker 写的；旧版读者忽略这个键。
+   */
+  void_rerun?: boolean;
 }
 
 /** 一侧审查员 CLI 的进程组记录（EV-154） */
@@ -709,7 +714,7 @@ export function renderProgressBrief(
     : `已用 ${fmtDuration(elapsed)}`;
   const sides = Object.entries(s.sides)
     .filter(([, side]) => side)
-    .map(([c, side]) => `${c} ${SIDE_STATE_CN[side!.state] ?? side!.state}`)
+    .map(([c, side]) => `${c} ${SIDE_STATE_CN[side!.state] ?? side!.state}${side!.void_rerun ? '（作废重跑）' : ''}`)
     .join(' · ');
   return sides ? `${head} ｜ ${span} ｜ ${sides}` : `${head} ｜ ${span}`;
 }
@@ -720,6 +725,19 @@ export function renderProgressBrief(
  * 总上限 = 单侧超时 × (1 + 重试次数)，再按每次 `--wait` 的窗口切分，加 2 次余量
  * 覆盖启动与收尾。
  */
+/**
+ * 按当前 status 追加作废重跑那一份（BACKLOG EV-225，M12 批次 3）：任一侧 `void_rerun` 为真时，
+ * `maxWaits += ceil(单侧超时 / 每次等待窗口)`。
+ *
+ * **只加一份**：各侧并行，最坏路径是单侧链条「1 次 + 瞬时重试 + 1 次作废重跑」，`computeMaxWaits` 的基础值已含前两段；
+ * 两侧同时重跑只是这一段重叠，不叠加。`--start` 返回的是初值，`--wait` / `--status` 每次按刚读到的 status 现算。
+ */
+export function budgetForStatus(b: ProgressBudget, s: Pick<RunStatus, 'sides'> | null): ProgressBudget {
+  const rerun = s !== null && Object.values(s.sides).some((side) => side?.void_rerun === true);
+  if (!rerun) return b;
+  return { ...b, maxWaits: b.maxWaits + Math.ceil(b.stageTimeoutS / Math.max(1, b.waitTimeoutS)) };
+}
+
 export function computeMaxWaits(
   stageTimeoutS: number,
   waitTimeoutS: number,

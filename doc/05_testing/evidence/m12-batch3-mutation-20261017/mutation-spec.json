@@ -1,0 +1,97 @@
+{
+  "targets": ["src/trivium/runner.ts", "src/trivium/review.ts", "src/trivium/status.ts", "src/trivium/brief.ts", "src/trivium/guard.ts"],
+  "suites": [
+    "dist/test/test/unit/void-rerun.test.js",
+    "dist/test/test/integration/fault-injection.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "触发判据改成「任何命中」（告警级、己方材料也重跑）",
+      "file": "src/trivium/runner.ts",
+      "find": "if (leak?.voided && voidReruns < MAX_VOID_RERUNS) {",
+      "replace": "if ((leak?.voided || leak?.path.hit || leak?.command.hit) && voidReruns < MAX_VOID_RERUNS) {",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "去掉「至多 1 次」",
+      "file": "src/trivium/runner.ts",
+      "find": "if (leak?.voided && voidReruns < MAX_VOID_RERUNS) {",
+      "replace": "if (leak?.voided && voidReruns < MAX_VOID_RERUNS + 2) {",
+      "expect": "dist/test/test/unit/void-rerun.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "二次命中不判失败",
+      "file": "src/trivium/runner.ts",
+      "find": "        last.status = 'failed';\n        last.fail_reason = `peer_leak：",
+      "replace": "        last.status = 'ok';\n        last.fail_reason = `peer_leak：",
+      "expect": "dist/test/test/unit/void-rerun.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "首次输出留在该侧子树（不进 voided/）",
+      "file": "src/trivium/review.ts",
+      "find": "const rel = path.join(VOIDED_ATTEMPTS_DIR, critic, `attempt-${attemptNo}`);",
+      "replace": "const rel = path.join(critic, `attempt-${attemptNo}`);",
+      "expect": "dist/test/test/unit/void-rerun.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "等待预算不追加",
+      "file": "src/trivium/status.ts",
+      "find": "  if (!rerun) return b;",
+      "replace": "  if (!rerun || rerun) return b;",
+      "expect": "dist/test/test/unit/void-rerun.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "点名段回显命令全文",
+      "file": "src/trivium/brief.ts",
+      "find": "add(bannerLocation(h.path, ctx), h.category, commandProgramName(h.command));",
+      "replace": "add(bannerLocation(h.path, ctx), h.category, h.command);",
+      "expect": "dist/test/test/unit/void-rerun.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "瞬时重试计数退回 attempts（重跑之后的瞬时故障不再重试）",
+      "file": "src/trivium/runner.ts",
+      "find": "if (transientUsed >= input.maxTransientRetries) break;",
+      "replace": "if (attempts > input.maxTransientRetries) break;",
+      "expect": "dist/test/test/unit/void-rerun.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "重跑后收口不清「作废重跑中」的 note",
+      "file": "src/trivium/runner.ts",
+      "find": "emitProgress(input, critic, { state: 'ok', attempt: attempts, elapsed_s: elapsed(), ...finalNote(null) });",
+      "replace": "emitProgress(input, critic, { state: 'ok', attempt: attempts, elapsed_s: elapsed() });",
+      "expect": "dist/test/test/unit/void-rerun.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "点名段放到任务书末尾",
+      "file": "src/trivium/runner.ts",
+      "find": "req = { ...req, brief_text: `${banner}\\n\\n---\\n\\n${req.brief_text}` };",
+      "replace": "req = { ...req, brief_text: `${req.brief_text}\\n\\n---\\n\\n${banner}` };",
+      "expect": "dist/test/test/unit/void-rerun.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "单侧判定的 voided 改按「扫到了东西」（不再与终判同谓词）",
+      "file": "src/trivium/guard.ts",
+      "find": "    voided: v.peerArtifactRead,",
+      "replace": "    voided: v.typedHits.length > 0 || v.typedCommandHits.length > 0,",
+      "expect": "dist/test/test/unit/void-rerun.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "点名段把运行根下的命中点到文件（不收敛到第三段目录）",
+      "file": "src/trivium/brief.ts",
+      "find": "    if (isAgentId(seg[2]!)) return { where: dir, what: `运行目录里 ${seg[2]} 侧的本轮输出` };",
+      "replace": "    if (isAgentId(seg[2]!)) return { where: hit, what: `运行目录里 ${seg[2]} 侧的本轮输出` };",
+      "expect": "dist/test/test/unit/void-rerun.test.js"
+    }
+  ]
+}

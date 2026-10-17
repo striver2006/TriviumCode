@@ -1,0 +1,42 @@
+✓ 工作树干净、基线全绿（1 个套件）
+  B1 ✓ 咬住（fail=2）
+  B2 ✓ 咬住（fail=1）
+  B3 ✓ 咬住（fail=2）
+  B4 ✓ 咬住（fail=14）
+  B5 ✓ 咬住（fail=1）
+{
+  "总数": 5,
+  "咬住": 5,
+  "逐条": [
+    {
+      "id": "B1",
+      "desc": "触发判据改成「任何命中」（告警级、己方材料也重跑）——集成格 R4/R5",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "B2",
+      "desc": "--wait 退回只在循环前算一次预算（终态出口不追加）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "B3",
+      "desc": "worker 不写 status.json 的 void_rerun",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "B4",
+      "desc": "run.json 不写逐侧 attempts",
+      "verdict": "✓ 咬住（fail=14）",
+      "fail": 14
+    },
+    {
+      "id": "B5",
+      "desc": "点名段原文不落 _meta",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

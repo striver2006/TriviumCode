@@ -649,6 +649,88 @@ export interface JudgeRunInput {
   capabilities?: Partial<Record<CriticId, TraceCapability>>;
 }
 
+/**
+ * 给 `judgeSide` 拼逐侧入参（`degraded` 除外）。`judgeRun` 与 `makeSideLeakJudge` **共用这一份**（EV-225）：
+ * 重跑判据与终判按同一组根、同一个能力声明判，不会出现「重跑按 A 根算、终判按 B 根算」。
+ */
+async function sideJudgeOptions(
+  input: Pick<JudgeRunInput, 'cfg' | 'projectRoot' | 'archiveRootAbs' | 'triviumDirRel' | 'capabilities'>,
+): Promise<(c: CriticId) => Omit<Parameters<typeof judgeSide>[5], 'degraded'>> {
+  /*
+   * consulted 归一化的根别名：realpath 取不到（合成根、ENOENT）就只用 projectRoot，
+   * 与 `judgeSide` 缺省一致；取到了也不替换 projectRoot，只多一个别名。
+   */
+  let projectRoots: readonly string[] = [input.projectRoot];
+  try {
+    const real = await fs.realpath(input.projectRoot);
+    if (real !== input.projectRoot) projectRoots = [input.projectRoot, real];
+  } catch {
+    /* 合成根或不可解析：只按字面根归一 */
+  }
+  return (c) => {
+    const cap = input.capabilities?.[c];
+    return {
+      archiveRootAbs: input.archiveRootAbs,
+      projectRoot: input.projectRoot,
+      projectRoots,
+      /*
+       * 分类与具名放行要这两个根（设计 §10.1.1）。
+       * `triviumDirRel` 是可选的（旧调用没传），缺省按约定目录名拼——
+       * 拼错的后果是那一类命中被归成「对端产物」而判作废，方向保守。
+       */
+      triviumDir: nodePath.resolve(input.projectRoot, input.triviumDirRel ?? TRIVIUM_DIR),
+      runRoot: expandHome(input.cfg.runtime.run_root),
+      ...(cap ? { capability: cap } : {}),
+    };
+  };
+}
+
+/**
+ * 单侧泄漏判定（BACKLOG EV-225，M12 批次 3）：该侧刚跑完、还没解析时就判，供 runner 决定是否作废重跑。
+ *
+ * 形状与 run.json `guard.peer_leak_via_path` / `peer_leak_via_command` 的单侧值相同；
+ * `voided` 就是 `judgeSide` 的 `peerArtifactRead`，即 `leakRecordVoids` 的结果——
+ * 重跑判据、终判（`judgeRun`）、闸门（`gate.ts` 的 `voidedSides`）三处读同一个谓词。
+ */
+export interface SideLeakVerdict {
+  voided: boolean;
+  path: { hit: boolean; hits: { path: string; category: DenyCategory }[] };
+  command: { hit: boolean; commands: string[]; hits: { command: string; path: string; category: DenyCategory }[] };
+}
+
+/**
+ * 造一个单侧泄漏判定器。async 只为一次性取 realpath 别名；返回的判定器是同步纯函数。
+ *
+ * **直接调 `judgeSide`**（`review` 传 null、`degraded` 传 []）：泄漏判定只读 `read_paths` /
+ * `search_hit_paths` / `command_texts` 与 `deny_paths`，不读解析结果，所以「先判泄漏、后解析」
+ * 与 `judgeRun` 对同一份结果给出同一结论。失败 / 超时的结果返回 null，与 `judgeRun` 跳过失败侧同口径。
+ */
+export async function makeSideLeakJudge(
+  input: Pick<JudgeRunInput, 'cfg' | 'projectRoot' | 'archiveRootAbs' | 'triviumDirRel' | 'capabilities' | 'requests'>,
+): Promise<(critic: CriticId, result: CriticResult) => SideLeakVerdict | null> {
+  const sideOpts = await sideJudgeOptions(input);
+  return (critic, result) => {
+    const req = input.requests[critic];
+    if (!req) return null;
+    if (result.status === 'timeout' || result.status === 'failed') return null;
+    const v = judgeSide(input.cfg, critic, result, null, req, { ...sideOpts(critic), degraded: [] });
+    return sideLeakOf(v);
+  };
+}
+
+/** 从侧级判定取出与 run.json 同形的两条通道记录（`hit` 取「扫到了东西」，与 `review.ts` 落盘处同口径） */
+export function sideLeakOf(v: SideVerdict): SideLeakVerdict {
+  return {
+    voided: v.peerArtifactRead,
+    path: { hit: v.typedHits.length > 0, hits: v.typedHits },
+    command: {
+      hit: v.typedCommandHits.length > 0,
+      commands: [...new Set(v.typedCommandHits.map((h) => h.command))],
+      hits: v.typedCommandHits,
+    },
+  };
+}
+
 /** 整次运行的判定 */
 export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
   const { cfg, results, reviews, requests } = input;
@@ -682,17 +764,7 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
     ...(input.triviumDirRel ? { triviumDirRel: input.triviumDirRel } : {}),
   });
 
-  /*
-   * consulted 归一化的根别名：realpath 取不到（合成根、ENOENT）就只用 projectRoot，
-   * 与 `judgeSide` 缺省一致；取到了也不替换 projectRoot，只多一个别名。
-   */
-  let projectRoots: readonly string[] = [input.projectRoot];
-  try {
-    const real = await fs.realpath(input.projectRoot);
-    if (real !== input.projectRoot) projectRoots = [input.projectRoot, real];
-  } catch {
-    /* 合成根或不可解析：只按字面根归一 */
-  }
+  const sideOpts = await sideJudgeOptions(input);
 
   const sides: Partial<Record<CriticId, SideVerdict>> = {};
   for (const c of Object.keys(results) as CriticId[]) {
@@ -708,21 +780,7 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
      * 失败原因由 runner 的 fail_reason 与 decideMode 的 degraded_reason 负责。
      */
     if (r.status === 'timeout' || r.status === 'failed') continue;
-    const cap = input.capabilities?.[c];
-    sides[c] = judgeSide(cfg, c, r, reviews[c] ?? null, q, {
-      archiveRootAbs: input.archiveRootAbs,
-      projectRoot: input.projectRoot,
-      projectRoots,
-      /*
-       * 分类与具名放行要这两个根（设计 §10.1.1）。
-       * `triviumDirRel` 是可选的（旧调用没传），缺省按约定目录名拼——
-       * 拼错的后果是那一类命中被归成「对端产物」而判作废，方向保守。
-       */
-      triviumDir: nodePath.resolve(input.projectRoot, input.triviumDirRel ?? TRIVIUM_DIR),
-      runRoot: expandHome(cfg.runtime.run_root),
-      ...(cap ? { capability: cap } : {}),
-      degraded: input.degraded[c] ?? [],
-    });
+    sides[c] = judgeSide(cfg, c, r, reviews[c] ?? null, q, { ...sideOpts(c), degraded: input.degraded[c] ?? [] });
   }
 
   const breachedFiles = Object.values(sides).flatMap((s) => s?.breachEvidence ?? []);

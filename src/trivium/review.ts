@@ -42,6 +42,7 @@ import {
   renderBrief,
   renderContextConflicts,
   renderPrunedWarnings,
+  renderVoidRerunBanner,
   TASK_GOAL_MAX,
   WARNING_MARK,
   type MustReadSource,
@@ -50,7 +51,8 @@ import {
 } from './brief.js';
 import { parseReview, checkReviewIntegrity, enumerateFallbackFindings } from './parse.js';
 import { decideMode, runBothSides, type SideProgress } from './runner.js';
-import { judgeRun, renderGuardWarnings, type SideVerdict } from './guard.js';
+import { VOIDED_ATTEMPTS_DIR } from './run-files.js';
+import { judgeRun, makeSideLeakJudge, renderGuardWarnings, type SideVerdict } from './guard.js';
 import { FALLBACK_CAUSE_LABEL, renderReviewDoc, type RenderInput } from './render.js';
 import { resolveTopicReadOnly, locateSubject } from './topic.js';
 import { parseArtifactName, shellQuoteArg } from './naming.js';
@@ -77,7 +79,7 @@ import { measureAllPairs, renderDivergence } from './divergence.js';
 import { resolveAssetRoot, resolveReviewSchemaPath, runRoot } from './config.js';
 import { resolveCriticSelection } from './critics.js';
 import { releaseRunningGateEntry, setGateChecked } from './state.js';
-import { ensureDir, sha256, sha256File } from './util/fsx.js';
+import { ensureDir, sha256, sha256File, tryRemoveTempDir } from './util/fsx.js';
 import { workTreeHash } from './util/git.js';
 import {
   EXIT,
@@ -1441,9 +1443,34 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   const startedAt = new Date().toISOString();
   say(`开始双审：${sides.map((c) => `${c}(${requests[c]!.model})`).join(' ‖ ')}，单侧上限 ${cfg.review.timeout_s[stage]}s`);
 
+  /*
+   * 逐侧能力声明从适配器表取——**这是它唯一的起源**，`judgeRun` 自己拿不到。
+   * 漏传会让 `command-trace` 侧按结构化轨迹判定，证据恒不达标（响亮失败），
+   * 不会静默放行；但那种失败的原因与现象离得很远，所以这一行不能省。
+   * 作废重跑的单侧判定（EV-225）与终判用的是**同一份**。
+   */
+  const capabilities = Object.fromEntries(
+    sides.flatMap((c) => {
+      const adapter = adapters[c];
+      const cap = adapter?.capabilityFor?.(cfg, requests[c]?.profile_requested ?? null) ?? adapter?.capability;
+      return cap ? [[c, cap] as const] : [];
+    }),
+  );
+  const archiveRootRel = path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root;
+  const triviumDirRel = path.relative(ctx.projectRoot, ctx.triviumDir) || '.trivium';
+  /*
+   * 作废重跑（BACKLOG EV-225，M12 批次 3）：单侧判定器与终判共用入参装配（`guard.ts` 的 `sideJudgeOptions`），
+   * 谓词同为 `leakRecordVoids`。挪首次输出、渲染点名段两个钩子也在这里装好。
+   */
+  const judgeLeak = await makeSideLeakJudge({
+    cfg, projectRoot: ctx.projectRoot, archiveRootAbs: ctx.archiveRoot, triviumDirRel, requests, capabilities,
+  });
+  /** 挪动或兜底整删出问题时的告警：并进本轮 warnings（run 的 message 与人读输出都看得见） */
+  const stashWarnings: string[] = [];
+
   /** 重试时追加进 BRIEF 的提示。归档里的 brief-* 是第一次那份，追加内容也要留痕，否则审计材料与实际送审不符 */
   const retryHints: Partial<Record<CriticId, string[]>> = {};
-  const { results, attempts } = await runBothSides({
+  const { results, attempts, attemptLog, rerunBanners } = await runBothSides({
     ctx: adapterCtx,
     adapters,
     requests,
@@ -1455,6 +1482,14 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     },
     // 等待期的逐侧进展回写。只有工作进程会传它；同步路径不传，行为不变（AGY-01）
     onSideProgress: rc.onSideProgress,
+    judgeLeak,
+    stashVoided: (critic, attemptNo) => stashVoidedOutput(rc.runDirBase, critic, attemptNo, stashWarnings),
+    voidRerunBanner: (critic, leak) =>
+      renderVoidRerunBanner(leak, {
+        projectRoot: ctx.projectRoot,
+        runRoot: runRoot(cfg),
+        denyPaths: requests[critic]?.deny_paths ?? [],
+      }),
   });
   const finishedAt = new Date().toISOString();
 
@@ -1563,8 +1598,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     cfg,
     projectRoot: ctx.projectRoot,
     archiveRootAbs: ctx.archiveRoot,
-    archiveRootRel: path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root,
-    triviumDirRel: path.relative(ctx.projectRoot, ctx.triviumDir) || '.trivium',
+    archiveRootRel,
+    triviumDirRel,
     before: primarySnap,
     afterTreeHash,
     afterSubjectSha256: afterSubjectSha,
@@ -1572,18 +1607,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     relatedPaths: [...opts.contextPaths, ...diffFiles],
     results, reviews, requests,
     degraded: Object.fromEntries(sides.map((c) => [c, degraded[c] ?? []])),
-    /*
-     * 逐侧能力声明从适配器表取——**这是它唯一的起源**，`judgeRun` 自己拿不到。
-     * 漏传会让 `command-trace` 侧按结构化轨迹判定，证据恒不达标（响亮失败），
-     * 不会静默放行；但那种失败的原因与现象离得很远，所以这一行不能省。
-     */
-    capabilities: Object.fromEntries(
-      sides.flatMap((c) => {
-        const adapter = adapters[c];
-        const cap = adapter?.capabilityFor?.(cfg, requests[c]?.profile_requested ?? null) ?? adapter?.capability;
-        return cap ? [[c, cap] as const] : [];
-      }),
-    ),
+    capabilities,
   });
 
   /*
@@ -1599,6 +1623,27 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
    * 工作进程重建的上下文里它是 `[]`（已随 `--start` 返回），这里不会重复。
    */
   const warnings = [...rc.mustReadPruned.map((w) => plainWarningText(w.detail)), ...renderGuardWarnings(verdict)];
+  /*
+   * 作废重跑的告警（EV-225）。`peer_artifact_read` 按最终尝试写，一轮「首次泄漏、重跑干净」的运行在它上面是假——
+   * 这两句与 report / 运行摘要的「作废重跑」旗标一起，让「这一轮发生过泄漏」照样看得见。
+   *
+   * 终判与重跑判据的一致性自检：同一函数、同一输入，理论上不可达；真不等时以终判为准、如实告警。
+   */
+  for (const c of sides) {
+    const log = attemptLog[c];
+    if (!log) continue;
+    const lastRec = log[log.length - 1];
+    if (results[c]?.status === 'failed' && (results[c]?.fail_reason ?? '').startsWith('peer_leak')) {
+      warnings.push(`${c} 侧重跑后仍读到对端产物，该侧判失败（peer_leak）；两次尝试的命中明细见 run.json 的 critics.${c}.attempts`);
+    } else {
+      warnings.push(`${c} 侧首次尝试读到对端产物，该次结论已作废，同一次运行内重跑一次（最终尝试：${results[c]?.status ?? '无结果'}）`);
+    }
+    const finalSide = verdict.sides[c];
+    if (finalSide && lastRec && lastRec.voided !== null && lastRec.voided !== finalSide.peerArtifactRead) {
+      warnings.push(`${c} 侧作废判定前后不一致：重跑判据记 ${String(lastRec.voided)}、终判为 ${String(finalSide.peerArtifactRead)}，以终判为准`);
+    }
+  }
+  warnings.push(...stashWarnings);
   /*
    * 凭据副本抹除失败要进 warnings（EV-20）：它随 `ReviewOutcome.warnings` 落进
    * `status.json.message`，`--wait` 的终态返回会原样透出——哨兵在无人读的目录里，
@@ -1659,6 +1704,19 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
         ref.layout, stage, `brief-${c}-${runId}.retry.md`,
         `# ${c} 侧重试时追加进 BRIEF 的内容（共 ${hints.length} 次）\n\n` +
           hints.map((h, i) => `## 第 ${i + 2} 次尝试追加\n\n${h}\n`).join('\n'),
+      );
+      metaPaths.push(w.absPath);
+      protectedMeta.push({ path: w.relPath, sha256: w.sha256 });
+    }
+    /*
+     * 作废重跑时插在任务书最前面的点名段（EV-225），与上面的 `.retry.md` 同一做法：归档里的 brief-* 是第一次那份，
+     * 实际送审多了这一段，不留痕审计材料就与送审不符。点名段只含位置与类别标签，不含任何内容（`brief.ts`）。
+     */
+    const banner = rerunBanners[c];
+    if (banner) {
+      const w = await writeMeta(
+        ref.layout, stage, `brief-${c}-${runId}.rerun.md`,
+        `# ${c} 侧作废重跑时插在任务书最前面的内容\n\n${banner}\n`,
       );
       metaPaths.push(w.absPath);
       protectedMeta.push({ path: w.relPath, sha256: w.sha256 });
@@ -2035,6 +2093,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       deny_skipped: r.deny_skipped,
       deny_rule_count: r.deny_rule_count,
       deny_bytes: r.deny_bytes,
+      // 逐次尝试（EV-225）：只在该侧发生过作废重跑时写，不泄漏的运行 run.json 逐字不变
+      ...(attemptLog[c] ? { attempts: attemptLog[c] } : {}),
     };
   }
   /*
@@ -2314,6 +2374,50 @@ function buildRetryHint(critic: CriticId, prev: CriticResult): string {
     );
   }
   return `## 上一次尝试失败\n\n${critic} 侧上一次的失败原因：${reason}`;
+}
+
+/**
+ * 把被作废的那次尝试的原始输出挪出该侧子树（BACKLOG EV-225，计划 r2 §3.4）：
+ * `<运行目录>/<侧>/out` → `<运行目录>/voided/<侧>/attempt-<n>/`，返回运行目录相对的新位置。
+ *
+ * 为什么不能留在 `<侧>/` 里：那是己方子树，禁读分类整个不算命中，重跑侧读一眼上一次的结果就能把对端内容带回来，
+ * 守卫还看不见。挪到 `voided/` 下，对端与重跑侧自己读到它都判作废（`run-files.ts` 的 `VOIDED_ATTEMPTS_DIR`）。
+ *
+ * 调用时该次尝试的凭据抹除已经做完（`runner.ts`：`adapter.run` → `scrubSideDir` → 判泄漏 → 挪），
+ * 载体在侧目录根、不在 `out/` 里，不随之挪走。
+ *
+ * **不抛**：挪失败就对编排器自己算出的 `out` 这一个路径尽力整删一次（计划双审 GLM-03），删也失败再告警；
+ * 无论哪种都照样重跑——不因挪不动就让作废侧以污染结论收场。三家适配器写进 `out/` 的都是固定文件名，
+ * 删不掉时重跑的同名输出也会覆盖它们。
+ */
+export async function stashVoidedOutput(
+  runDir: string,
+  critic: CriticId,
+  attemptNo: number,
+  warnings: string[],
+): Promise<string | null> {
+  const outDir = path.join(runDir, critic, 'out');
+  const rel = path.join(VOIDED_ATTEMPTS_DIR, critic, `attempt-${attemptNo}`);
+  const target = path.join(runDir, rel);
+  try {
+    // 目标父目录首次必然不存在，rename 不会替我们建（计划双审 AGY-01）
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.rename(outDir, target);
+    return rel;
+  } catch (e) {
+    const why = (e as NodeJS.ErrnoException).code === 'ENOENT' ? '该次尝试没有留下 out 目录' : (e as Error).message;
+    warn(`[${critic}] 被作废的第 ${attemptNo} 次输出没能挪出该侧子树：${why}`);
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    // 走统一的不抛删除助手（EV-204）：只删这一个由 out_dir 派生的路径
+    const left = await tryRemoveTempDir(outDir, []);
+    if (left) {
+      warnings.push(
+        `${critic} 侧被作废的第 ${attemptNo} 次输出既没挪走也没删掉（${left.code}），` +
+          '可能残留在己方子树、守卫看不见；重跑照常进行',
+      );
+    }
+    return null;
+  }
 }
 
 export { TriviumError };

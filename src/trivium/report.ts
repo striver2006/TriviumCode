@@ -503,6 +503,12 @@ async function buildRound(
   if (meta.guard.readonly_breach) base.guardFlags.push(readonlyBreachLabel(meta.snapshot.drift));
   if (meta.guard.peer_artifact_read) base.guardFlags.push('读到对方产出');
   /*
+   * 作废重跑（EV-225）：`peer_artifact_read` 按最终尝试写，「首次泄漏、重跑干净」的一轮在它上面是假——
+   * 不另亮一格，复盘时看不出这一轮发生过泄漏。只判有无 `attempts`，不读里面的明细。
+   */
+  const reran = Object.entries(meta.critics).filter(([, m]) => m?.attempts !== undefined).map(([c]) => c);
+  if (reran.length > 0) base.guardFlags.push(`作废重跑（${reran.join('、')}）`);
+  /*
    * `guard.forged_role_file` 不读（EV-137）：它是保留字段，写侧恒 false，全仓没有检测去置它。
    * 据它打「角色后缀伪造」旗标，这一格永远不会亮，却让读报告的人以为检测过。
    * 这件事实际由写入前 Hook、`gate --check-artifacts` 的未登记审查件判据与提交锚承担。

@@ -217,10 +217,18 @@ codex 侧不传 `--output-schema`：本机 qwen provider 实测静默不生效�
 禁读条目上**：运行根是一棵混合树，同一个条目下 ②′ 与 ② 并存，按条目分档等于
 把整棵判成最重的那一类——那正是 2026-09-16／17 连续两轮代码双审判为阻断的形态。
 
-两条通道逐侧记于 `run.v2` 的 `guard.peer_leak_via_path` / `guard.peer_leak_via_command`
+两条通道逐侧记于 run.json（当前写形 `run.v3`，历史 `run.v2` 同构）的 `guard.peer_leak_via_path` / `guard.peer_leak_via_command`
 （键缺 = 该侧没扫 ／ `hit:false` = 扫过没命中 ／ `hit:true` = 扫到了东西，**未必作废**——
 作废与否看 `peer_artifact_read`）。两个字段的 `hits` 逐条带类，命令通道的 `hits`
 还带命令原文与该命令碰到的那个路径。
+
+**作废侧在同一次运行内重跑一次**（M12 批次 3，EV-225，设计 10.1.1）：一侧首次判出作废类命中，即在同一次运行内重拉一次、
+二次命中判 `failed`（`fail_reason` 以 `peer_leak` 起头）。上面两个 `guard` 字段与 `peer_artifact_read` **只记最终尝试**，
+闸门也只读它们；逐次明细在 run.json 的逐侧 `critics.<侧>.attempts`（只在重跑过的侧写，至少两条）：
+每条 `n`、`started_at`、`duration_s`、`status`（适配器层 `ok` / `failed` / `timeout`）、`voided`（没判为 null）、
+与上面同形的 `peer_leak_via_path` / `peer_leak_via_command`（判过才写）、`output_dir`（被挪到运行目录 `voided/<侧>/attempt-<n>/` 的首次输出）、`fail_reason`。
+条目只记适配器层结果，因泄漏判该侧失败只在侧级。重跑时插在任务书最前面的点名段原文落 `_meta/brief-<侧>-<run>.rerun.md`。
+`status.json` 的逐侧 `void_rerun: true` 标记该侧重跑过，`--wait` / `--status` 据它追加 `max_waits`。
 
 措施 b 的承诺面是「已知形态必检」的闭集而非不可绕过，形态与盲区清单见设计 §10.1 措施 b。
 它判的是「命令文本里**提到**了禁读条目」——提到即作废（经 git 对象库等方式取值
@@ -334,7 +342,8 @@ trivium review --start --stage <s> --topic <t> --focus <hint> --json
     （子进程诞生之后失败：先按进程组终止工作进程并以子进程句柄确认退出，再回收闸门、收尾为 failed，
       termination.by = post_spawn_exception、status.json 已终态不动、放锁；确认不了退出则一概不回收，设计 v1.3.51）
 
-循环（至多 max_waits 次，每次的 Bash 工具超时必须设为 bash_timeout_ms）：
+循环（上限取最近一次 --wait 返回的 max_waits——--start 给的是初值，某侧作废重跑时追加一个单侧超时的份额；
+      每次的 Bash 工具超时必须设为 bash_timeout_ms）：
   trivium review --wait <run_id> --timeout <wait_timeout_s>
     → 73 表示仍在跑，打印进度后继续；0/非 73 表示终态
 ```

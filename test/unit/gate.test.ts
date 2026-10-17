@@ -1106,6 +1106,40 @@ test('voidedSides 从 run 元数据的两条泄漏通道派生（守的是接线
   };
   await writeRunMeta(l7, 'plan', m7);
   assert.deepEqual((await loadRoundReviews(l7, 'plan', 'RV7')).voidedSides, ['gemini']);
+
+  /*
+   * ⑧ 作废侧重跑（EV-225，代码双审 GLM-01）：闸门只看最终尝试——
+   * gemini 的 `attempts[0]` 作废、最终尝试干净（`guard` 记的是最终那次）⇒ 不排出；
+   * glm 最终 `guard` 作废、没有 `attempts`（旧记录形态）⇒ 照旧排出。闸门若改去读 `attempts`，这格当场红。
+   */
+  const l8 = await layout();
+  const m8 = newRunMeta({ ...base, runId: 'RV8' });
+  const side = {
+    vendor: 'antigravity', cli_version: '1.0',
+    model_requested: 'm', model_effective: 'm', model_effective_source: 'envelope',
+    profile_requested: null, model_provider: null,
+    access: { requested_mode: 'standard', profile: null, launcher_requested: null, launcher_effective: null,
+      wrapper_sha256: null, configuration_sha256: null, provider_declared: null, provider_declared_source: null,
+      provider_effective: null, provider_effective_source: null },
+    status: 'ok', exit_code: 0, duration_s: 1, tool_calls: {}, evidence_ok: true, heterogeneous: 'unknown',
+  };
+  const voidedHit = { path: 'runs/p/r/glm/out/result.json', category: 'peer-run-output' as const };
+  (m8.critics as Record<string, unknown>)['gemini'] = {
+    ...side,
+    attempts: [
+      { n: 1, started_at: 't1', duration_s: 1, status: 'ok', voided: true,
+        peer_leak_via_path: { hit: true, hits: [voidedHit] }, peer_leak_via_command: { hit: false, commands: [], hits: [] },
+        output_dir: 'voided/gemini/attempt-1', fail_reason: null },
+      { n: 2, started_at: 't2', duration_s: 1, status: 'ok', voided: false,
+        peer_leak_via_path: { hit: false, hits: [] }, peer_leak_via_command: { hit: false, commands: [], hits: [] }, fail_reason: null },
+    ],
+  };
+  m8.guard.peer_leak_via_path = {
+    gemini: { hit: false, hits: [] },
+    glm: { hit: true, hits: [{ path: '.reviews/t/plan/x-gemini.md', category: 'peer-artifact' }] },
+  };
+  await writeRunMeta(l8, 'plan', m8);
+  assert.deepEqual((await loadRoundReviews(l8, 'plan', 'RV8')).voidedSides, ['glm'], '闸门只看最终尝试，不读 attempts');
 });
 
 test('loadRoundReviews 的 degraded 取自 run 元数据的 degraded_reason，不从 reviews 反推', async () => {

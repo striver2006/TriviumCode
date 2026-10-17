@@ -27,7 +27,9 @@ import {
 } from './freeze.js';
 import { TRIVIUM_DIR, runRoot } from './config.js';
 import { expandHomeSpellings, normalizeAbs, isUnder, type CommandExecution } from './adapters/base.js';
-import { RUN_DIR_FILE_NAMES } from './run-files.js';
+import { RUN_DIR_FILE_NAMES, VOIDED_ATTEMPTS_DIR } from './run-files.js';
+import { redactSecrets } from './secrets.js';
+import { isAgentId } from './agents/registry.js';
 
 /**
  * 第 4 段任务目标摘要的上限：显式 `--goal` 折叠空白后超过它就截断加「…」（设计 §9.4）。
@@ -846,5 +848,109 @@ export function excerptSubject(text: string, maxLines = 400): string {
     `… （此处省略 ${lines.length - head.length - tail.length} 行，请读真实路径获取全文）…`,
     '',
     ...tail,
+  ].join('\n');
+}
+
+/*
+ * ── 作废重跑的点名段（BACKLOG EV-225，M12 批次 3，设计 10.1.1「作废侧重跑」）──
+ *
+ * 一侧首次尝试读到对端产物（作废类命中）后，同一次运行内重跑一次；重跑的任务书在**最前面**插这一段，
+ * 原任务书逐字不变跟在后面。桩按段首标题认出重跑请求，所以标题是导出常量、不得改成运行时拼接。
+ *
+ * **点名内容本身不得成为新的泄漏面**（计划 r2 §3.3），三条约束：
+ * 1. 命令通道只点名程序名与它碰到的位置，命令其余文本一个字不进——泄漏之后该侧敲的命令可能夹带
+ *    刚读到的对端原文（`grep "<对端意见里的一句话>" …`），回显就是把对端内容抄进重跑侧的任务书。
+ *    这是对 D-7「点名路径或命令」的落点收紧（计划 r2 §0 第 2 条）。
+ * 2. 位置收敛到禁读条目或运行目录第三段那一层：段里出现的每个位置，都已以「条目」或「条目所在目录」的
+ *    形态出现在原任务书第 8 段里——只告诉它「你碰的是其中这几个」，不引入新信息。
+ * 3. 位置过一遍 `redactSecrets`、截断到 200 字符。
+ */
+
+/** 重跑任务书的段首标题。桩据它认出重跑请求（`adapters/stub.ts` 的 `rerun`） */
+export const VOID_RERUN_BANNER_HEADING = '## 重跑须知：你上一次的审查已作废（编排器追加，先读这一段）';
+
+/** 点名段最多列几条，其余写「另有 N 条」 */
+export const VOID_RERUN_BANNER_MAX_ITEMS = 10;
+
+/** 程序名的合法形态：只取命令首个词的末段，字符集与长度都收窄，不合就不写 */
+const PROGRAM_NAME = /^[A-Za-z0-9._-]{1,32}$/;
+
+/** 命令首个词的末段（`/usr/bin/git` → `git`）；取不到或不合形态返回 null */
+export function commandProgramName(command: string): string | null {
+  const first = command.trim().split(/\s+/)[0] ?? '';
+  const base = first.slice(first.lastIndexOf('/') + 1);
+  return PROGRAM_NAME.test(base) ? base : null;
+}
+
+export interface VoidRerunBannerInput {
+  path: { hits: readonly { path: string; category: DenyCategory }[] };
+  command: { hits: readonly { command: string; path: string; category: DenyCategory }[] };
+}
+
+/**
+ * 把一条命中收敛成可以点名的位置（约束 2）。
+ *
+ * 运行根下的命中只显示到 `<运行根>/<项目槽>/<runId>/<第三段>/`；项目内的命中显示罩住它的那条禁读条目
+ * （取最长的那条，即最具体的）。找不到罩住它的条目（不该发生：它是命中）就只写类别，不写路径。
+ */
+function bannerLocation(
+  hit: string,
+  ctx: { projectRoot: string; runRoot: string; denyPaths: readonly string[] },
+): { where: string; what: string | null } | null {
+  const abs = normalizeAbs(hit, ctx.projectRoot);
+  const rootAbs = normalizeAbs(ctx.runRoot, ctx.projectRoot);
+  if (isUnder(abs, rootAbs)) {
+    const rel = path.relative(rootAbs, abs);
+    const seg = rel === '' ? [] : rel.split(path.sep);
+    if (seg.length < 3) return { where: ctx.runRoot, what: null };
+    const dir = path.join(ctx.runRoot, seg[0]!, seg[1]!, seg[2]!) + path.sep;
+    if (seg[2] === VOIDED_ATTEMPTS_DIR) return { where: dir, what: '运行目录里被作废的上一次输出' };
+    if (isAgentId(seg[2]!)) return { where: dir, what: `运行目录里 ${seg[2]} 侧的本轮输出` };
+    return { where: dir, what: null };
+  }
+  let best: string | null = null;
+  for (const e of ctx.denyPaths) {
+    const eAbs = normalizeAbs(expandHomeSpellings(e), ctx.projectRoot);
+    if (!isUnder(abs, eAbs)) continue;
+    if (best === null || eAbs.length > normalizeAbs(expandHomeSpellings(best), ctx.projectRoot).length) best = e;
+  }
+  return best === null ? null : { where: best, what: null };
+}
+
+/** 点名段原文。只列作废类命中——它们才是「再碰一次就判失败」的那几项 */
+export function renderVoidRerunBanner(
+  leak: VoidRerunBannerInput,
+  ctx: { projectRoot: string; runRoot: string; denyPaths: readonly string[] },
+): string {
+  const items = new Map<string, string>();
+  const add = (loc: { where: string; what: string | null } | null, category: DenyCategory, program: string | null | undefined): void => {
+    const where = loc === null ? '（禁读条目）' : `\`${redactSecrets(loc.where).content.slice(0, 200)}\``;
+    const what = loc?.what ? `（${loc.what}）` : '';
+    const via = program === undefined ? '' : program === null ? '经命令碰到 ' : `经命令 \`${program}\` 碰到 `;
+    const line = `- ${via}${where}${what}——${DENY_CATEGORY_LABEL[category]}`;
+    if (!items.has(line)) items.set(line, line);
+  };
+  for (const h of leak.path.hits) {
+    if (isVoidingCategory(h.category)) add(bannerLocation(h.path, ctx), h.category, undefined);
+  }
+  for (const h of leak.command.hits) {
+    if (isVoidingCategory(h.category)) add(bannerLocation(h.path, ctx), h.category, commandProgramName(h.command));
+  }
+  const lines = [...items.values()];
+  const shown = lines.slice(0, VOID_RERUN_BANNER_MAX_ITEMS);
+  const more = lines.length - shown.length;
+  return [
+    VOID_RERUN_BANNER_HEADING,
+    '',
+    '你这一侧上一次审查的工具轨迹里出现了对**另一位审查员产出**的读取。那次结论已作废，不会交给 Driver。',
+    '这是同一份任务书的重跑，**只有这一次**：再碰到下列任何一项，本侧直接判失败，本轮不再重跑。',
+    '',
+    '上一次碰到的：',
+    '',
+    ...shown,
+    ...(more > 0 ? [`- 另有 ${more} 条`] : []),
+    '',
+    '这些位置与下文第 8 段 8.1 的清单同属禁读；上一次尝试的原始输出已移出你的运行目录，同样禁读。',
+    '不要为了「核对」再打开其中任何一项。本段只列位置，不含任何内容；下文是原任务书，一字未改。',
   ].join('\n');
 }

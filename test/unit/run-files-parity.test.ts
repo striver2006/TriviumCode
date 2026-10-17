@@ -36,7 +36,12 @@ import {
 const SRC = path.join(REPO_ROOT, 'src/trivium');
 
 /** 写运行目录那一层的模块。新增这类模块时要同步加进来（本文件末尾有守它的用例） */
-const WRITER_MODULES = ['run-protocol.ts', 'status.ts'];
+/*
+ * `review.ts` 自 EV-225（M12 批次 3）起在运行目录那一层建 `voided/`（被作废那次尝试的输出去处）。
+ * 它刻意**不进** `RUN_DIR_FILES`（进了会被判成己方材料，见 `run-files.ts` 的 `VOIDED_ATTEMPTS_DIR`），
+ * 只经常量拼接，所以不会被下面的字面量反向对账抓到；登记在这里是让「谁在写那一层」这件事可见。
+ */
+const WRITER_MODULES = ['run-protocol.ts', 'status.ts', 'review.ts'];
 
 /** `path.join(runDir, '…')` / `path.join(dir, '…')` 里的字面量文件名 */
 const JOIN_LITERAL = /path\.join\(\s*(?:runDir|dir)\s*,\s*'([^']+)'\s*\)/g;

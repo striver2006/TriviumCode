@@ -36,6 +36,17 @@ export const RUN_DIR_FILES = {
 export const RUN_DIR_FILE_NAMES: readonly string[] = Object.values(RUN_DIR_FILES);
 
 /**
+ * 被作废的那次尝试的原始输出挪去的子目录：`<运行目录>/voided/<侧>/attempt-<n>/`（BACKLOG EV-225，M12 批次 3）。
+ *
+ * **刻意不进 `RUN_DIR_FILE_NAMES`，也不得与任何 Agent id 同名**（`test/unit/void-rerun.test.ts` 钉住）：
+ * 禁读分类对运行目录第三段是本侧名或运行目录层文件的路径判「己方材料」、整个不算命中
+ * （`freeze.ts` 的 `classifyDenyPath`）。首次输出是被污染的结论——留在己方子树或被认成运行目录层文件，
+ * 重跑侧读一眼自己上一次的结果就能把对端内容间接带回来，守卫还看不见。
+ * 放在这里，第三段是 `voided`，按现行规则落「对端运行输出」：对端读它作废，重跑侧自己读它同样作废。
+ */
+export const VOIDED_ATTEMPTS_DIR = 'voided';
+
+/**
  * `writeAtomic` 的临时文件后缀（`<目标名>.tmp-<pid>-<毫秒>`）。
  *
  * **判定必须认得它**：`status.json` 每次心跳都经原子写落盘，那一瞬间运行目录里

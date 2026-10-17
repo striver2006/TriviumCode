@@ -1,0 +1,91 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "计划与仓库现状高度一致：我抽查的全部行号引用（runner.ts:168/316、guard.ts:228/492/710、freeze.ts:86-151/205、gate.ts:1443-1450、review.ts:127/1562/1655-1677、status.ts:723-730、run-protocol.ts:1191-1200/1347/1549、meta.ts:425、fault-injection.test.ts:525-663/906-1010）逐一核实无误，§1.1 的现行行为描述与源码吻合。焦点四组问题均核实成立：其一，makeSideLeakJudge 复用 judgeSide（guard.ts:338-342/398 的泄漏判定只读轨迹与 deny_paths，review 传 null 不改变 peerArtifactRead，degraded 在 review 为 null 时不参与）、judgeRun 与 gate.ts:1443-1450 三处确实收敛到同一 leakRecordVoids，且「闸门只读终判字段、不改闸门代码」的论证成立；其二，重拉发生在该侧自己的 runOneSide 内、Promise.allSettled 结构不变，patchStatus 按 runDir 串行化（run-protocol.ts:1186-1189 注释证实），computeMaxWaits 基础值确含「1+瞬时重试」两段，追加一份 ceil(T/W) 后覆盖 T(2+R) 的单侧链，两侧并行取 max 故只加一份正确；其三，voided/ 目录的分类论证成立——classifyDenyPath 对运行根第三段非侧名且不在 RUN_DIR_FILE_NAMES（已核仅四个文件名）的路径判 peer-run-output，R6 预期正确；点名段三条约束（不回显命令原文、位置收敛到既有禁读条目、redactSecrets+截断）不引入原任务书没有的信息；其四，run.v3 的 $defs.critic 本就 additionalProperties: true（run.v3.json:711），旧构建读带 attempts 的新记录不拒、闸门与状态不读 attempts，「不泄漏时 run.json 逐字不变」是回归的最强形态。瞬时重试改 transientUsed 与现行判据逐值等价（attempts 从 1 起算已核）；--allow-single 旗标名正确（cli.ts:252，任务目标原文的 --allow-partial 是上位计划笔误）。四条意见均非阻断：PROTOCOL 文档同步遗漏（minor）、点名段对上位决策文字的收紧未声明（minor）、挪失败分支的残留文件（nit）、二次命中条目 status 记法两读（nit）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划 §5 文档清单（对照 doc/03_api/PROTOCOL_dual_critic_relay.md:220/330/337）",
+      "problem": "文档同步清单漏了 PROTOCOL_dual_critic_relay.md。仓库改动同步清单（AGENTS.md）规定 JSON Schema 变更必须同步该文档，本计划给 run.v3.json 加 attempts 却未列此项；更实质的是 §3.5 把 max_waits 从固定值改为「以最近一次 --wait 为准」，而 PROTOCOL 330/337 行的 skill 循环协议写的正是旧语义（「至多 max_waits 次」，max_waits 取 --start 返回值）——不同步的话，按协议文档实现的消费方仍会在初值处停下，这正是计划风险 1 想避免的行为。另该文档 220 行至今写「run.v2 的 guard.peer_leak_via_*」，本次改 schema 是顺带修正滞后的时机。",
+      "evidence": "grep doc/03_api/PROTOCOL_dual_critic_relay.md 命中 :220「两条通道逐侧记于 run.v2 的 guard.peer_leak_via_path / peer_leak_via_command」、:330「→ { run_id, max_waits, … }」、:337「循环（至多 max_waits 次…）」；计划 §5 仅列主设计、PRD、BACKLOG、测试报告与 skill 渲染，未提 PROTOCOL；AGENTS.md 改动同步清单「JSON Schema（含新增一份）→ … PROTOCOL 文档 …」。",
+      "suggestion": "在 §5 文档清单补一行 PROTOCOL_dual_critic_relay.md：同步 max_waits 的动态语义（330/337 行的循环协议描述）与 run.v3 逐侧 attempts 字段，顺带把 220 行的 run.v2 滞后措辞修正。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "requirement",
+      "kind": "contract",
+      "location": "计划 §3.3 约束 1（对照 doc/08_project/M11后续-开发计划-草案.md §3.2 第三子项、任务目标原文）",
+      "problem": "上位计划 §3.2 与任务目标原文对该子项的拍板文字均为「点名上一次命中的具体路径**或命令**」，而计划的实现是命令通道只显示命令碰到的路径、命令文本一字不进点名段。这个收紧的安全论证我认可（泄漏发生后该侧敲的命令可能夹带刚读到的对端原文，回显命令等于把对端内容抄进重跑侧任务书），且 §5 的 PRD Then 文案已统一为「点名上一次碰到的位置」，内部自洽；但它是对用户 D-7 已拍板子项文字的实质改写，计划只用 §0 声明了 run.v2→v3 一处文字不一致，没有把这一处偏离同样显式声明出来。按「对照被审计划核对是否忠实于决策」的要求，这类偏离应留声明痕迹供裁决确认，避免后续文档改写时把「点名命令」的措辞又写回去。",
+      "evidence": "doc/08_project/M11后续-开发计划-草案.md §3.2 第三子项「上一次命中的具体路径或命令，并重申禁读」；任务目标原文「顶部醒目点名上一次命中的具体路径或命令」；计划 §3.3 约束 1「命令文本一个字都不进点名段」；§0 仅声明 run.v2/v3 一处不一致。",
+      "suggestion": "在 §0 或 §3.3 加一句显式声明：对上位「或命令」的落点收紧为「命令只给碰到的路径」及理由，供裁决时向用户确认；PRD/设计 10.1.1 改写时与此口径保持一致。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §3.4 挪失败分支（「照样重跑（适配器会 ensureDir(out)，新输出覆盖旧文件）」）",
+      "problem": "挪失败时 out 目录不被清空，「新输出覆盖旧文件」只覆盖同名文件：若适配器输出含文件名不固定的产物（带序号/时间戳的轨迹或日志），第一次尝试的被污染输出会残留在己方子树里，而守卫对己方子树整个不算命中、看不见这部分残留。影响有限（归档只渲染最终结果、残留随保留期清理），但这是失败路径上的一个已知未处理面，计划未提及。",
+      "evidence": "计划 §3.4「挪失败（目录不存在、改名报错）：warn 一条、output_dir 记 null，照样重跑（适配器会 ensureDir(out)，新输出覆盖旧文件）」；freeze.ts:131 对 seg[2]===critic 判 own-run-material（己方子树不算命中）；run-files.ts:25-34 的 RUN_DIR_FILE_NAMES 与 out/ 内文件清单一事未见适配器输出文件名恒固定的说明。",
+      "suggestion": "挪失败分支补一个尽力而为的兜底（如 rename 失败后尝试清空 out 再重跑，或至少在 warnings 里写明「首次输出可能残留于己方子树」），并在实施时核一次三家适配器 out/ 输出文件名是否固定，把「覆盖式复用」的前提写实。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划 §3.2 第 2/3 步与 §3.6 attempts 条目字段（status 的记法）",
+      "problem": "AttemptRecord 的 status 定义为「取适配器结果的 ok/failed/timeout」，而二次命中时 runner 把结果改判为 status: 'failed'、fail_reason: 'peer_leak：…'——最后一条 attempt 的 status 究竟记改判前的 ok 还是改判后的 failed、fail_reason 是否同条落盘，字面上可两读（「适配器层结果」字面是 ok，但该条同时携带 fail_reason）。同一侧 run.json 里 critics.<侧>.status 恒为 failed，若条目 status 记 ok 则同一份留痕里两个 status 不同值，实施时随手二选一会让事后对账的人困惑。",
+      "evidence": "计划 §3.2 第 2 步「status 取适配器结果的 ok/failed/timeout」、第 3 步「把结果改成 status: 'failed'、fail_reason: 'peer_leak：…'」、§3.6「status（ok/failed/timeout，适配器层结果）… fail_reason」；R2 断言只核「attempts 两条都 voided: true」未核 status。",
+      "suggestion": "在 §3.6 的条目字段表里写明二次命中条目的记法（例如明确 status 记适配器层 ok、fail_reason 记 peer_leak 前缀原因，与 critics.status 的改判形成可对账的分层；或统一记改判后 failed），并让 R2 用例顺手断言该记法。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§3.1 的同源设计成立：makeSideLeakJudge 直接调 judgeSide（review 传 null 时 consulted 核对短路，guard.ts:450-461；泄漏输入只有 result.read_paths/search_hit_paths/command_texts 与 req.deny_paths，guard.ts:338-342/398），与 judgeRun 终判、gate.ts:1443-1450 闸门三处收敛到同一 leakRecordVoids（freeze.ts:205-213）——「同一谓词」核实无误；status failed/timeout 返回 null 与 judgeRun 跳过失败侧（guard.ts:710）同口径。",
+    "§3.4 voided/ 的分类论证成立：classifyDenyPath（freeze.ts:130-139）对运行根下第三段既非侧名、又不在 RUN_DIR_FILE_NAMES（run-files.ts:25-34，仅四个文件名）的路径判 peer-run-output，对本侧与对端都作废，R6 用例的预期正确；两条护栏（不与 Agent id 同名、不进 RUN_DIR_FILE_NAMES）配单测是正确的防漂移手段。",
+    "§3.5 预算论证成立：computeMaxWaits（status.ts:723-730）基础值 = ceil(T*(1+R)/W)+2 确含「1 次+瞬时重试」两段，追加一份 ceil(T/W) 覆盖第 3 段；两侧自 t=0 并行、每侧链长上界 T(2+R)，总时长取 max，只加一份正确。budgetFor 现址 run-protocol.ts:1311、waitRun 循环前一次预算在 :1347、statusRun 在 :1549，与计划所述一致。",
+    "瞬时重试改 transientUsed 与现行判据逐值等价（runner.ts:168 的 attempts > maxTransientRetries，attempts 从 1 起算已核）；作废重跑不重置瞬时额度、二次命中不进瞬时重试的分支设计自洽。",
+    "§3.6「闸门不改代码」论证成立：gate.ts:1443-1450 读的 guard.peer_leak_via_* 只由终判写；配「attempts[0] 作废、最终干净 ⇒ voidedSides 为空」的钉防单测是好做法。二次命中走现有失败侧规则（decideMode runner.ts:316-378、渲染 review.ts:1669-1677 写 .failed.json 不产审查文档）与共同阻断分母（jointCheckRunState，review.ts:127-152：判过且未作废且有结构化结论）自洽，重跑干净侧重新计入有效侧的推演正确。",
+    "§3.3 点名段三条约束（不回显命令原文、位置收敛到禁读条目或侧目录层、redactSecrets+200 截断）在「不引入原任务书没有的信息」意义下成立，DENY_CATEGORY_LABEL（brief.ts:670）与 redactSecrets（secrets.ts:283）均已存在；§4.1 桩以段首标题判重跑请求，顺带核了点名段确实置顶送达。",
+    "§0 的 run.v3 落点判断正确（meta.ts:425 现行写 trivium.run.v3；run.v3.json $defs.critic additionalProperties: true），「只在发生过作废重跑时写 attempts ⇒ 不泄漏时 run.json 逐字不变」是回归的最强形态；status.json 的 void_rerun 对旧版读者只是未知键。",
+    "--allow-single 旗标名正确（cli.ts:252；受 review.allow_partial_flag 约束）——任务目标原文的「--allow-partial」是上位计划自身的笔误，计划采用的是与 CLI 一致的名字。",
+    "§3.2「同步路径与 worker 路径都由 executeRun 传入」可行：worker 内 workerMain → executeRun（run-protocol.ts:1202）与同步路径共用同一段装配；patchStatus 按 runDir 串行化（run-protocol.ts:1186-1189 注释、status.ts patchQueues）证实「另一侧不读不等不改共享状态」的收窄成立。"
+  ],
+  "not_covered": [
+    "我是只读审查员，未执行任何命令或测试：computeMaxWaits/budgetFor 的数值行为、R1-R8 用例的可跑性与 flaky 面、npm run check 全量结果均属静态核对加推理，未经运行验证。",
+    "review.ts:1843/1879 的 guard.peer_leak_via_* 落盘原文未直接读，hit 口径的判断以 guard.ts:492-495 注释与 run.v3.json 的字段描述佐证。",
+    "三家真实适配器 out/ 输出文件名是否固定未逐一核实（GLM-03 的前提），stub.ts 只核了 StubSpec 结构与 rerun 扩展的可行性。",
+    "fault-injection.test.ts 只读了 :500-620 与 :900-1010 区段，:637/:663/:713 三格与 :1100 之后的用例未逐行读；计划 §1.1 称「AC-25 三审五格」，我在已读区段数出归档通道 3 格+运行根通道 3 格+两侧作废 1 格（至少 7 格），未进一步清点全部格数——若确有出入，改断言时漏格会被测试红灯兜住，不构成静默风险。",
+    "skills-src/partials/review/body.md:171 原文与 entry 渲染四载体产物未读（skill 文案改动以计划自述与改动同步清单为据）；meta.ts:528-529、schemas.ts:245 的历史契约读取代码未直接读，v1/v2 只读的判断以 run.v3.json 描述与上位计划佐证。",
+    "PRD AC-25 与主设计 10.1.1/12.1/12.3/6.7.1 的现行原文未核对，文档改写面（§5）是否完整以计划自述为据；BACKLOG 的 EV-225 条目原文未读。"
+  ],
+  "consulted": [
+    ".reviews/M12-作废侧重跑一次/plan/2026-10-17-M12-作废侧重跑一次-claude.md",
+    "src/trivium/runner.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/run-files.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts",
+    "src/trivium/status.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/scrub.ts",
+    "src/trivium/secrets.ts",
+    "src/trivium/brief.ts",
+    "skills/dual-critic/schema/run.v3.json",
+    "test/integration/fault-injection.test.ts",
+    "doc/08_project/M11后续-开发计划-草案.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md"
+  ]
+}

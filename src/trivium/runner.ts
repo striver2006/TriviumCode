@@ -6,7 +6,8 @@
  */
 import path from 'node:path';
 import type { AdapterTable, AdapterContext } from './adapters/base.js';
-import type { CriticId, CriticRequest, CriticResult, ReviewMode, ScrubOutcome } from './types.js';
+import type { AttemptRecord, CriticId, CriticRequest, CriticResult, ReviewMode, ScrubOutcome } from './types.js';
+import type { SideLeakVerdict } from './guard.js';
 import { clearScrubSentinel, describeScrubFailure, scrubSideDir } from './scrub.js';
 import { step, warn } from './util/log.js';
 import { withTreeTag } from './util/exec.js';
@@ -57,7 +58,18 @@ export interface SideProgress {
   /** 本侧已耗时（秒） */
   elapsed_s?: number;
   note?: string | null;
+  /**
+   * 该侧这一轮发生了作废重跑（EV-225）。只会置真、不会清：等待预算要一直把重跑那一段算进去
+   * （`status.ts` 的 `budgetFor`）。
+   */
+  voidRerun?: true;
 }
+
+/** 每侧每次运行至多作废重跑几次（用户 D-7 定死 1 次，不做成配置） */
+export const MAX_VOID_RERUNS = 1;
+
+/** 作废重跑期间该侧的进度说明 */
+export const VOID_RERUN_NOTE = '上一次尝试读到对端产物，作废重跑中';
 
 export interface RunnerInput {
   ctx: AdapterContext;
@@ -71,12 +83,31 @@ export interface RunnerInput {
    */
   onSideProgress?: (critic: CriticId, patch: SideProgress) => void;
   maxTransientRetries: number;
+  /*
+   * ── 作废重跑的三个钩子（BACKLOG EV-225，M12 批次 3）──
+   *
+   * 作废判定挪到「该侧刚跑完」那一刻、在该侧自己的 promise 里决定重跑：另一侧不读、不等、不改任何共享状态。
+   * 三个都不传时行为与本步之前逐值相同（单测直接调 runBothSides 时多半不传）。
+   */
+  /** 单侧泄漏判定（`guard.ts` 的 `makeSideLeakJudge`）。返回 null = 没判（失败 / 超时） */
+  judgeLeak?: (critic: CriticId, result: CriticResult) => SideLeakVerdict | null;
+  /** 把这次的原始输出挪出该侧子树；返回新位置（运行目录相对），挪失败返回 null。不得抛 */
+  stashVoided?: (critic: CriticId, attemptNo: number) => Promise<string | null>;
+  /** 重跑任务书最前面的点名段（`brief.ts` 的 `renderVoidRerunBanner`） */
+  voidRerunBanner?: (critic: CriticId, verdict: SideLeakVerdict) => string;
 }
 
 export interface RunnerOutput {
   results: Partial<Record<CriticId, CriticResult>>;
   /** 每侧实际尝试次数，写进元数据便于审计 */
   attempts: Partial<Record<CriticId, number>>;
+  /**
+   * 每侧的逐次尝试记录（EV-225）。**只有发生过作废重跑的侧有键**：没发生时 run.json 逐字不变。
+   * 记法分层见 `AttemptRecord`。
+   */
+  attemptLog: Partial<Record<CriticId, AttemptRecord[]>>;
+  /** 每侧最后一次重跑时追加在任务书最前面的点名段原文（要落盘进 `_meta/`，审计材料与实际送审一致） */
+  rerunBanners: Partial<Record<CriticId, string>>;
 }
 
 /**
@@ -103,7 +134,7 @@ async function runOneSide(
   input: RunnerInput,
   critic: CriticId,
   req: CriticRequest,
-): Promise<{ result: CriticResult; attempts: number }> {
+): Promise<{ result: CriticResult; attempts: number; attemptLog: AttemptRecord[] | null; rerunBanner: string | null }> {
   const adapter = input.adapters[critic];
   // 查表可缺（见 AdapterTable 的说明）。缺了就在这里说清是谁缺，
   // 而不是让 `adapter.run` 崩出一条与原因无关的 TypeError。
@@ -112,6 +143,19 @@ async function runOneSide(
   const elapsed = () => Math.round((Date.now() - startedAt) / 1000);
   let attempts = 0;
   let last: CriticResult;
+  /*
+   * 瞬时重试用独立计数（EV-225）。原判据是 `attempts > maxTransientRetries`；没有作废重跑时
+   * `transientUsed === attempts - 1`，两者逐值等价。有作废重跑时瞬时额度在整侧内共用、不因重跑而重置——
+   * 等待预算（`computeMaxWaits` 的基础值 + 一份重跑）正是按这条链算的。
+   */
+  let transientUsed = 0;
+  let voidReruns = 0;
+  /** 逐次尝试记录；只在发生过作废重跑时交出去 */
+  const log: AttemptRecord[] = [];
+  let rerunBanner: string | null = null;
+  /** 发生过作废重跑之后，终态事件要显式带 note，否则「作废重跑中」会一直挂在 status.json 上（计划双审 AGY-02） */
+  const finalNote = (n: string | null): { note?: string | null } => (voidReruns > 0 ? { note: n } : {});
+  const out = (r: CriticResult) => ({ result: r, attempts, attemptLog: voidReruns > 0 ? log : null, rerunBanner });
 
   /*
    * 凭据抹除的挂载点 ①（BACKLOG EV-20，`scrub.ts` 文件头）。
@@ -139,6 +183,7 @@ async function runOneSide(
     let thrown: unknown;
     let hasThrown = false;
     let attemptResult: CriticResult | undefined;
+    const attemptStartedAt = new Date().toISOString();
     try {
       // 侧归属（EV-154）：适配器在这里面以 killTree 拉起的 CLI 带上侧名，worker 据此写 status.json 的 sides[c].cli
       attemptResult = await withTreeTag(critic, () => adapter.run(input.ctx, req));
@@ -155,21 +200,84 @@ async function runOneSide(
     if (hasThrown) {
       // 适配器抛异常这条出口上，抹除结果也要跟着结果走到终态 message（代码双审 r1 GLM-04）
       const err = thrown instanceof Error ? thrown : new Error(String(thrown));
-      throw Object.assign(err, { scrub });
+      /*
+       * 作废重跑之后才抛的（EV-225 代码双审 GLM-02）：逐次记录与已送出的点名段同款挂在错误上带出去，
+       * 否则 status.json 记着重跑过、run.json 一字不提，点名段也进不了 `_meta/`。抛异常的那次补一条 failed 条目。
+       */
+      if (voidReruns > 0) {
+        log.push({ n: attempts, started_at: attemptStartedAt, duration_s: elapsed(), status: 'failed', voided: null, fail_reason: `适配器异常：${err.message}` });
+      }
+      throw Object.assign(err, { scrub, attemptLog: voidReruns > 0 ? log : null, rerunBanner });
     }
     last = attemptResult!;
     last.scrub = scrub;
+    const rec: AttemptRecord = {
+      n: attempts,
+      started_at: attemptStartedAt,
+      duration_s: last.duration_s,
+      // 适配器层结果（分层记法）：二次命中那一条也记 ok，侧级改判在下面另写
+      status: last.status === 'ok' ? 'ok' : last.status === 'timeout' ? 'timeout' : 'failed',
+      voided: null,
+      fail_reason: last.fail_reason,
+    };
+    log.push(rec);
 
     if (last.status === 'ok') {
+      /*
+       * ── 作废判定（EV-225）：该侧刚跑完、还没解析就判 ──
+       *
+       * 与终判（`judgeRun`）、闸门调同一个谓词（`judgeSide` → `leakRecordVoids`）。判定器抛异常按「未判出作废」
+       * 收口、不重跑：那是编程错误，不该把一次真实审查判成失败；终判仍会照常判，确实作废就落回旧的「作废但 ok」处置，
+       * 闸门照样把它排出共同阻断，且这条告警会跟着 worker 日志走。
+       */
+      let leak: SideLeakVerdict | null = null;
+      try {
+        leak = input.judgeLeak?.(critic, last) ?? null;
+      } catch (e) {
+        warn(`[${critic}] 作废判定抛出，本次不重跑（终判照常）：${(e as Error).message}`);
+      }
+      if (leak) {
+        rec.voided = leak.voided;
+        rec.peer_leak_via_path = { hit: leak.path.hit, hits: [...leak.path.hits] };
+        rec.peer_leak_via_command = { hit: leak.command.hit, commands: [...leak.command.commands], hits: [...leak.command.hits] };
+      }
+      if (leak?.voided && voidReruns < MAX_VOID_RERUNS) {
+        voidReruns++;
+        rec.output_dir = input.stashVoided ? await input.stashVoided(critic, attempts) : null;
+        warn(`[${critic}] 第 ${attempts} 次尝试读到对端产物，该次结论作废，同一次运行内重跑一次（上限 ${req.timeout_s}s）`);
+        emitProgress(input, critic, {
+          state: 'running', attempt: attempts, elapsed_s: elapsed(), note: VOID_RERUN_NOTE, voidRerun: true,
+        });
+        const banner = input.voidRerunBanner?.(critic, leak) ?? null;
+        if (banner) {
+          rerunBanner = banner;
+          // 点名段插在**最前面**，原任务书逐字跟在后面；瞬时重试的提示仍追加在末尾，两者不冲突
+          req = { ...req, brief_text: `${banner}\n\n---\n\n${req.brief_text}` };
+        }
+        continue;
+      }
+      if (leak?.voided) {
+        /*
+         * 二次命中：**侧级**改判失败，之后按现有失败侧规则走（strict 整次失败、显式允许降级时 partial）。
+         * 不进瞬时重试判定——读到对方产出不是瞬时故障。条目里仍记适配器层的 ok（分层记法，计划双审 GLM-04）。
+         */
+        const n = leak.path.hits.length + leak.command.hits.length;
+        last.status = 'failed';
+        last.fail_reason = `peer_leak：重跑后仍读到对端产物（${n} 处命中）`;
+        warn(`[${critic}] ${last.fail_reason}，该侧判失败`);
+        emitProgress(input, critic, { state: 'failed', attempt: attempts, elapsed_s: elapsed(), note: last.fail_reason });
+        return out(last);
+      }
       // 本侧收口：另一侧还在跑时，这一刻的「已完成」正是用户最想看到的变化
-      emitProgress(input, critic, { state: 'ok', attempt: attempts, elapsed_s: elapsed() });
-      return { result: last, attempts };
+      emitProgress(input, critic, { state: 'ok', attempt: attempts, elapsed_s: elapsed(), ...finalNote(null) });
+      return out(last);
     }
-    if (attempts > input.maxTransientRetries) break;
+    if (transientUsed >= input.maxTransientRetries) break;
     if (!isTransientFailure(last)) {
       step(`[${critic}] 失败原因判定为业务性，不重试：${last.fail_reason}`);
       break;
     }
+    transientUsed++;
 
     warn(`[${critic}] 瞬时故障，重试一次：${last.fail_reason}`);
     emitProgress(input, critic, {
@@ -191,7 +299,7 @@ async function runOneSide(
     elapsed_s: elapsed(),
     note: last.fail_reason ?? null,
   });
-  return { result: last, attempts };
+  return out(last);
 }
 
 /**
@@ -209,12 +317,16 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
 
   const results: Partial<Record<CriticId, CriticResult>> = {};
   const attempts: Partial<Record<CriticId, number>> = {};
+  const attemptLog: Partial<Record<CriticId, AttemptRecord[]>> = {};
+  const rerunBanners: Partial<Record<CriticId, string>> = {};
 
   settled.forEach((s, i) => {
     const critic = sides[i]!;
     if (s.status === 'fulfilled') {
       results[critic] = s.value.result;
       attempts[critic] = s.value.attempts;
+      if (s.value.attemptLog) attemptLog[critic] = s.value.attemptLog;
+      if (s.value.rerunBanner) rerunBanners[critic] = s.value.rerunBanner;
     } else {
       // 适配器本身抛异常（不该发生，但不能因此丢掉另一侧）
       results[critic] = {
@@ -257,10 +369,17 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
         ...((s.reason as { scrub?: ScrubOutcome } | null)?.scrub ? { scrub: (s.reason as { scrub: ScrubOutcome }).scrub } : {}),
       };
       attempts[critic] = 1;
+      // 作废重跑之后才抛的：逐次记录与点名段照样交回（与 fulfilled 分支同口径，只在发生过重跑时有键）
+      const carried = s.reason as { attemptLog?: AttemptRecord[] | null; rerunBanner?: string | null } | null;
+      if (carried?.attemptLog) {
+        attemptLog[critic] = carried.attemptLog;
+        attempts[critic] = carried.attemptLog.length;
+      }
+      if (carried?.rerunBanner) rerunBanners[critic] = carried.rerunBanner;
     }
   });
 
-  return { results, attempts };
+  return { results, attempts, attemptLog, rerunBanners };
 }
 
 export interface ModeDecision {

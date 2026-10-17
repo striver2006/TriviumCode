@@ -38,6 +38,8 @@ import {
 import { warn } from '../util/log.js';
 import { run } from '../util/exec.js';
 import { TRIVIUM_DIR } from '../config.js';
+import { VOID_RERUN_BANNER_HEADING } from '../brief.js';
+import { VOIDED_ATTEMPTS_DIR } from '../run-files.js';
 
 export const STUB_ENV_VAR = 'TRIVIUM_STUB_CRITIC';
 
@@ -234,7 +236,16 @@ export interface StubSpec {
    * 只为集成用例咬住证据不可信的五面留痕。
    */
   mcpUntrustedTools?: string[];
+  /**
+   * 作废重跑那一次改用的规格（BACKLOG EV-225）：请求的任务书以 `VOID_RERUN_BANNER_HEADING` 开头时生效。
+   * 这样「第一次泄漏、第二次干净」能在同一侧注入，**顺带核了点名段真的插在最前面、真的送到了适配器**。
+   * 不给 ⇒ 重跑与首次同形（二次命中那几格）。
+   */
+  rerun?: StubSpec;
 }
+
+/** 这几种形态会被判作废、触发重跑：桩在 `out/` 留一份标记，挪首次输出那一步才有东西可挪（EV-225） */
+const LEAK_MODES: readonly StubMode[] = ['peer_leak', 'run_material_leak', 'peer_leak_via_command'];
 
 /** 桩注入的 MCP 调用总次数：执行型 n 次 + 名单外每个名字 1 次 */
 function stubMcpTotal(spec: StubSpec): number {
@@ -426,6 +437,13 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
       ? { modelOverrideSource: () => spec.modelOverrideSource as string }
       : {}),
     async run(_ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
+      // 单测会只给部分字段的请求（如 prune_objects 只给 project_root），缺任务书按非重跑
+      const isRerun = (req.brief_text ?? '').startsWith(VOID_RERUN_BANNER_HEADING);
+      if (spec.rerun && isRerun) return makeStubAdapter(critic, spec.rerun).run(_ctx, req);
+      if (spec.rerun || isRerun || LEAK_MODES.includes(spec.mode)) {
+        await fsp.mkdir(req.out_dir, { recursive: true });
+        await fsp.writeFile(path.join(req.out_dir, 'result.json'), JSON.stringify({ critic, mode: spec.mode, rerun: isRerun }) + '\n', 'utf8');
+      }
       switch (spec.mode) {
         case 'hang':
           await new Promise((r) => setTimeout(r, 600_000));
@@ -586,6 +604,12 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
           let extra: string[];
           if (which === 'own') {
             extra = [path.join(req.out_dir, 'result.json'), path.join(runDir, 'request.json')];
+          } else if (which === 'voided') {
+            /*
+             * 读**本侧**上一次被作废、挪走的输出（EV-225，`run-files.ts` 的 `VOIDED_ATTEMPTS_DIR`）：
+             * 它不在己方子树里，按现行规则判对端运行输出——重跑侧读它即二次命中。
+             */
+            extra = [path.join(runDir, VOIDED_ATTEMPTS_DIR, critic, 'attempt-1', 'result.json')];
           } else if (which.startsWith('peer:')) {
             /*
              * **对端必须点名**（M11 第 3 步，AC-25 三审形态）。
@@ -612,7 +636,7 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
           } else {
             return failedResult(critic, {
               status: 'failed',
-              reason: `桩的 run_material_leak 不认 note=${JSON.stringify(spec.note)}（只收 'own' 或 'peer:<id>[,<id>…]'）`,
+              reason: `桩的 run_material_leak 不认 note=${JSON.stringify(spec.note)}（只收 'own'、'voided' 或 'peer:<id>[,<id>…]'）`,
               exitCode: 1,
             });
           }

@@ -1,0 +1,143 @@
+[
+  {
+    "id": "M1",
+    "desc": "触发判据改成「任何命中」（告警级、己方材料也重跑）",
+    "suite": "dist/test/test/integration/fault-injection.test.js",
+    "fail": 0,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [],
+    "firstLines": [],
+    "elapsed_s": 130
+  },
+  {
+    "id": "M2",
+    "desc": "去掉「至多 1 次」",
+    "suite": "dist/test/test/unit/void-rerun.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "runner：二次命中——侧级判 failed(peer_leak)，不进瞬时重试，至多重跑 MAX_VOID_RERUNS 次"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M3",
+    "desc": "二次命中不判失败",
+    "suite": "dist/test/test/unit/void-rerun.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "runner：二次命中——侧级判 failed(peer_leak)，不进瞬时重试，至多重跑 MAX_VOID_RERUNS 次"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M4",
+    "desc": "首次输出留在该侧子树（不进 voided/）",
+    "suite": "dist/test/test/unit/void-rerun.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "stashVoidedOutput：父目录不存在也挪得过去；目标已占用时整删 out 兜底；没有 out 时静默返回 null"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M5",
+    "desc": "等待预算不追加",
+    "suite": "dist/test/test/unit/void-rerun.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "budgetForStatus：任一侧 void_rerun 为真时追加一份单侧超时，两侧都重跑也只加一份"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M6",
+    "desc": "点名段回显命令全文",
+    "suite": "dist/test/test/unit/void-rerun.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "点名段：标题在第一行；只列作废类；命令只点程序名、不回显参数；位置收敛到禁读条目或第三段目录"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M7",
+    "desc": "瞬时重试计数退回 attempts（重跑之后的瞬时故障不再重试）",
+    "suite": "dist/test/test/unit/void-rerun.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "runner：重跑那次遇瞬时故障照样可重试（额度整侧共用），条目逐次都记"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M8",
+    "desc": "重跑后收口不清「作废重跑中」的 note",
+    "suite": "dist/test/test/unit/void-rerun.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "runner：一侧重拉期间另一侧不受影响——调用次数、任务书、进度事件都与不注入时相同"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M9",
+    "desc": "点名段放到任务书末尾",
+    "suite": "dist/test/test/unit/void-rerun.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "runner：首次作废、重跑干净——重拉一次，点名段插在最前面、原任务书逐字跟随，首次输出挪走"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M10",
+    "desc": "单侧判定的 voided 改按「扫到了东西」（不再与终判同谓词）",
+    "suite": "dist/test/test/unit/void-rerun.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "makeSideLeakJudge 与 judgeSide 对同一份结果给同一结论；告警级 / 己方材料不判作废；首次输出对两侧都是对端输出"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M11",
+    "desc": "点名段把运行根下的命中点到文件（不收敛到第三段目录）",
+    "suite": "dist/test/test/unit/void-rerun.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "点名段：标题在第一行；只列作废类；命令只点程序名、不回显参数；位置收敛到禁读条目或第三段目录"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  }
+]

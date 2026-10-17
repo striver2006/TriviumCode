@@ -1,0 +1,79 @@
+{
+  "agreed": [
+    "共用作废谓词：makeSideLeakJudge 直接复用 judgeSide 与 leakRecordVoids，入参装配抽为公共内部函数，彻底杜绝了重跑判据、终判与闸门判据不一致的隐患。",
+    "单侧隔离与预算追加：重跑决策限制在该侧自己的 Promise 内执行，对端审查并行度与产物完全不受干扰；max_waits 追加与 status 增量更新机制保持了对状态查看者的自洽性。",
+    "防二次泄漏设计：重跑点名 banner 严格禁止回填命令全文，路径严格限定在 deny_paths 声明或侧目录下并实施脱敏与截断，杜绝了点名内容反向泄漏对端隐私的风险。",
+    "契约与归档兼容：attempts 仅在 run.v3.json 的 $defs.critic 扩增可选字段，对 v1/v2 历史契约及无 attempts 记录完全向后兼容；作废输出移至 voided/ 目录且归档仅打包最终有效输出。",
+    "阻断与三态逻辑自洽：二次命中后该侧按 status: failed / fail_reason: peer_leak 收口，使下游 judgeRun 与 gate 自动将其按失败侧收敛，strict 下整次阻断，--allow-single 下退化为 partial，逻辑无缝闭环。"
+  ],
+  "consulted": [
+    ".reviews/M12-作废侧重跑一次/plan/2026-10-17-M12-作废侧重跑一次-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/08_project/M11后续-开发计划-草案.md",
+    "skills/dual-critic/schema/run.v3.json",
+    "skills-src/partials/review/body.md",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-files.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/scrub.ts",
+    "src/trivium/status.ts",
+    "src/trivium/types.ts",
+    "test/contract/entry-render-parity.test.ts",
+    "test/contract/orchestrator-logs-parity.test.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/unit/run-files-parity.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "计划 §3.4 说明「首次输出保留在运行目录下 voided/<critic>/attempt-<n>/（由 stashVoided 移动）」，并在末尾提示「重跑前确保该侧的 out/ 重新 mkdir（否则适配器写输出可能报错）」，但未提及移动目标路径的父目录 path.join(runDir, VOIDED_ATTEMPTS_DIR, critic) 是否预先 ensureDir。Node.js 的 fs.rename 在目标目录的父路径不存在时会抛出 ENOENT。",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": ".reviews/M12-作废侧重跑一次/plan/2026-10-17-M12-作废侧重跑一次-claude.md:228-232",
+      "problem": "stashVoided 中将目录重命名至 voided/<critic>/attempt-<n> 时未显式要求创建目标父目录 voided/<critic>。fs.rename 在目标路径父目录不存在时直接失败抛出 ENOENT。",
+      "severity": "nit",
+      "suggestion": "在计划 §3.4 和具体实现中明确：stashVoided 在调用 fs.rename 之前，应先 await fs.mkdir(path.dirname(targetDir), { recursive: true }) 确保父目录存在，防止重跑移出首次输出时意外落入 catch。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "计划 §3.2 描述作废重跑触发时 emitProgress 报 { state: 'running', attempt, note: '上一次尝试读到对端产物，作废重跑中', voidRerun: true }；而重跑成功收口时（§3.2 步骤 3 的判定为 voided: false）仅提及「照原样收口返回」，现有 runOneSide 正常成功时 emitProgress({ state: 'ok', duration_s }) 并未传入 note。查阅 src/trivium/run-protocol.ts:98 的 patchStatus 逻辑，若 ev.note === undefined，side.note 会保留原值。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": ".reviews/M12-作废侧重跑一次/plan/2026-10-17-M12-作废侧重跑一次-claude.md:160-164",
+      "problem": "作废重跑触发时向 emitProgress 派发了 running 状态及重跑说明 note，但在该侧重跑成功收口时未显式清除 note，可能导致 status.json 中已完成的侧残留「作废重跑中」说明。",
+      "severity": "nit",
+      "suggestion": "在计划 §3.2 中补充：重跑尝试收口（无论 ok、failed 还是 timeout）向 emitProgress 派发终态事件时，应显式将 note 覆写为 null 或当前终态说明，防止状态视图中已完成的侧残留中间态 note。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "test/unit/run-files-parity.test.ts:40-42 扫描 src/trivium/ 下所有除 WRITER_MODULES 以外的文件，若直接出现 path.join(runDir, '...') 会触发断言失败。计划 §3.4 提到由 review.ts 提供 stashVoided 钩子，而 review.ts 原本已在 WRITER_MODULES 中；但若提取辅助函数到其他模块或在 runner 内部拼接目录，需遵循该测试的写模块白名单规范。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "plan",
+      "location": ".reviews/M12-作废侧重跑一次/plan/2026-10-17-M12-作废侧重跑一次-claude.md:228-232",
+      "problem": "src/trivium/run-files.ts 补充 VOIDED_ATTEMPTS_DIR = 'voided' 常量及 RUN_DIR_FILES / RUN_DIR_FILE_NAMES 时，需警惕 test/unit/run-files-parity.test.ts 的静态正则检查。",
+      "severity": "nit",
+      "suggestion": "在实施中确保 stashVoided 的路径操作和目录创建保持在 review.ts 内或将相关辅助函数显式纳入契约白名单，并在运行契约测试时一并核验 run-files-parity.test.ts。"
+    }
+  ],
+  "not_covered": [
+    "外部厂商真实 CLI（claude / antigravity / zcode / codex）在收到点名 banner 后的实际遵循表现（本轮基于设计与桩测试逻辑评审，需在后续实测与回归中验证模型对 banner 的注意力反应）。",
+    "在高并发或极端磁盘满载场景下 fs.rename 将大体积输出移动到 voided/ 的极端 I/O 异常处理（依赖实施阶段的防御性编码）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "方案整体架构设计缜密严谨，四个审查重点与既有设计纪律完全契合，准予通过（approve-with-nits）。\n最主要需注意的细节是 stashVoided 在重命名移至 voided/<critic>/attempt-<n> 时必须确保父目录存在，避免因 fs.rename 遇不存在的父目录直接抛 ENOENT。\n守卫判定抽离单侧函数 makeSideLeakJudge 复用 judgeSide，确保重跑、终判与闸门三处使用的是同一 leakRecordVoids 谓词，无二次分叉风险。\n单侧重跑完全封装于独立 promise 内部，配额、预算和超时追加均严格隔离，对端审查不受任何时序与状态影响。\nBRIEF 的重跑点名段采用严密的路径脱敏与截断策略，且禁止带入命令全文，有效避免了点名内容成为二次泄露面。\nattempts 扩展在 run.v3 中作为可选属性保留了完备的向后兼容性，且首次作废输出严格隔离在运行目录之下，不入归档。\n状态机进度上报建议在重跑终态时显式覆写清除「重跑中」note，避免已完成侧残留进行中提示。",
+  "verdict": "approve-with-nits"
+}

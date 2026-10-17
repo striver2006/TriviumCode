@@ -1,0 +1,25 @@
+{
+  "targets": ["src/trivium/runner.ts", "src/trivium/gate.ts"],
+  "suites": [
+    "dist/test/test/unit/void-rerun.test.js",
+    "dist/test/test/unit/gate.test.js"
+  ],
+  "cases": [
+    {
+      "id": "C1",
+      "desc": "代码双审 GLM-02：重跑之后适配器抛异常时不带出逐次记录与点名段",
+      "file": "src/trivium/runner.ts",
+      "find": "throw Object.assign(err, { scrub, attemptLog: voidReruns > 0 ? log : null, rerunBanner });",
+      "replace": "throw Object.assign(err, { scrub });",
+      "expect": "dist/test/test/unit/void-rerun.test.js"
+    },
+    {
+      "id": "C2",
+      "desc": "代码双审 GLM-01：闸门改去读 attempts（任一次作废即排出）",
+      "file": "src/trivium/gate.ts",
+      "find": "if (voided) voidedSides.push(c);",
+      "replace": "if (voided || (runMeta?.critics[c]?.attempts ?? []).some((a) => a.voided === true)) voidedSides.push(c);",
+      "expect": "dist/test/test/unit/gate.test.js"
+    }
+  ]
+}

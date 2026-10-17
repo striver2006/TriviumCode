@@ -1,0 +1,46 @@
+{
+  "targets": ["src/trivium/runner.ts", "src/trivium/run-protocol.ts", "src/trivium/review.ts"],
+  "suites": ["dist/test/test/integration/fault-injection.test.js"],
+  "cases": [
+    {
+      "id": "B1",
+      "desc": "触发判据改成「任何命中」（告警级、己方材料也重跑）——集成格 R4/R5",
+      "file": "src/trivium/runner.ts",
+      "find": "if (leak?.voided && voidReruns < MAX_VOID_RERUNS) {",
+      "replace": "if ((leak?.voided || leak?.path.hit || leak?.command.hit) && voidReruns < MAX_VOID_RERUNS) {",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "B2",
+      "desc": "--wait 退回只在循环前算一次预算（终态出口不追加）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "      const b = budgetForStatus(budget, reading.status);",
+      "replace": "      const b = budget;",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "B3",
+      "desc": "worker 不写 status.json 的 void_rerun",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        if (p.voidRerun === true) side.void_rerun = true;",
+      "replace": "        if (p.voidRerun === true) void 0;",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "B4",
+      "desc": "run.json 不写逐侧 attempts",
+      "file": "src/trivium/review.ts",
+      "find": "      ...(attemptLog[c] ? { attempts: attemptLog[c] } : {}),",
+      "replace": "      ...({}),",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    },
+    {
+      "id": "B5",
+      "desc": "点名段原文不落 _meta",
+      "file": "src/trivium/review.ts",
+      "find": "    const banner = rerunBanners[c];\n    if (banner) {",
+      "replace": "    const banner = rerunBanners[c];\n    if (banner && false) {",
+      "expect": "dist/test/test/integration/fault-injection.test.js"
+    }
+  ]
+}

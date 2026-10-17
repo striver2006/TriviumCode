@@ -1087,5 +1087,8 @@ export function summarizeRun(meta: RunMeta): string {
   // 按跑后复算分档说，与 report 旗标同一来源（EV-224）
   if (meta.guard.readonly_breach) lines.push(`  ⚠️ ${readonlyBreachLabel(meta.snapshot.drift)}`);
   if (meta.guard.peer_artifact_read) lines.push('  ⚠️ 读到对方产出');
+  // 作废重跑（EV-225），与 report 旗标同一判据：有 attempts 即重跑过
+  const reran = Object.entries(meta.critics).filter(([, m]) => m?.attempts !== undefined).map(([c]) => c);
+  if (reran.length > 0) lines.push(`  ⚠️ 作废重跑：${reran.join('、')}（首次尝试读到对端产物，明细见 critics.<侧>.attempts）`);
   return lines.join('\n');
 }

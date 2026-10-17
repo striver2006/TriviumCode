@@ -563,8 +563,12 @@ test(
      * 之后不再变。放晚了它不会进 deny_paths，用例会以「命中里没有对端产物」失败——
      * 那种失败看起来像判定坏了，其实是夹具没摆好，排查起来很费时间。
      */
-    const { meta } = await runInjected(
-      { gemini: { mode: 'peer_leak', note: '-glm.md' }, glm: { mode: 'ok' } },
+    /*
+     * EV-225 起作废侧在同一次运行内重跑一次：首次命中的明细落在 `critics.gemini.attempts[0]`，
+     * 终判（`guard.*`）只记最终那次。注入 `rerun: ok` 让重跑干净，strict 下照常退 0。
+     */
+    const { meta, exitCode } = await runInjected(
+      { gemini: { mode: 'peer_leak', note: '-glm.md', rerun: { mode: 'ok' } }, glm: { mode: 'ok' } },
       [],
       [],
       async (root) => {
@@ -588,16 +592,14 @@ test(
       },
     );
 
-    assert.equal(
-      meta.guard.peer_artifact_read,
-      true,
-      '读到对端产出必须作废——这一档是三层屏蔽的存在理由',
-    );
-    const viaPath = meta.guard.peer_leak_via_path?.gemini;
+    const first = meta.critics.gemini?.attempts?.[0];
+    assert.equal(first?.voided, true, `读到对端产出必须作废——这一档是三层屏蔽的存在理由：${JSON.stringify(meta.critics.gemini?.attempts)}`);
     assert.ok(
-      viaPath?.hits.some((h) => h.category === 'peer-artifact'),
-      `命中里必须有对端产物那一类，实得：${JSON.stringify(viaPath?.hits)}`,
+      first?.peer_leak_via_path?.hits.some((h) => h.category === 'peer-artifact'),
+      `首次命中里必须有对端产物那一类，实得：${JSON.stringify(first?.peer_leak_via_path?.hits)}`,
     );
+    assert.equal(exitCode, EXIT.OK, '重跑干净后照常收口');
+    assert.equal(meta.guard.peer_artifact_read, false, '终判只看最终尝试：重跑干净，全局作废位为假');
   },
 );
 
@@ -644,18 +646,14 @@ test(
      * 照样判作废（第三段不是己方），一直是绿的，测的却不是「读到真正参审的对端」。
      */
     const { meta } = await runInjected({
-      gemini: { mode: 'run_material_leak', note: 'peer:glm' },
+      gemini: { mode: 'run_material_leak', note: 'peer:glm', rerun: { mode: 'ok' } },
       glm: { mode: 'ok' },
     });
-    assert.equal(
-      meta.guard.peer_artifact_read,
-      true,
-      '对方本轮的原始输出实时写在运行目录里，读到它就是背靠背失效',
-    );
-    const viaPath = meta.guard.peer_leak_via_path?.gemini;
+    const first = meta.critics.gemini?.attempts?.[0];
+    assert.equal(first?.voided, true, '对方本轮的原始输出实时写在运行目录里，读到它就是背靠背失效');
     assert.ok(
-      viaPath?.hits.some((h) => h.category === 'peer-run-output'),
-      `命中要落在对端运行输出那一类，实得：${JSON.stringify(viaPath?.hits)}`,
+      first?.peer_leak_via_path?.hits.some((h) => h.category === 'peer-run-output'),
+      `首次命中要落在对端运行输出那一类，实得：${JSON.stringify(first?.peer_leak_via_path?.hits)}`,
     );
   },
 );
@@ -674,38 +672,41 @@ test(
      * 这是本项目第五次「绿测试证明不了任何事」。判据函数测得再细，
      * 也不能替代「它真的被接上了」这条断言。
      */
+    // EV-225：首次命中的明细在 attempts[0]，`rerun: ok` 让重跑干净（终判只记最终那次）
     const { meta } = await runInjected({
-      gemini: { mode: 'peer_leak_via_command' },
+      gemini: { mode: 'peer_leak_via_command', rerun: { mode: 'ok' } },
       glm: { mode: 'ok' },
     });
     assert.ok(meta.deny_paths.length > 0, '禁读清单不该是空的');
-    const viaCmd = meta.guard.peer_leak_via_command;
-    assert.equal(viaCmd?.gemini?.hit, true, '命令通道必须命中');
+    const first = meta.critics.gemini?.attempts?.[0];
+    const viaCmd = first?.peer_leak_via_command;
+    assert.equal(viaCmd?.hit, true, '命令通道必须命中');
     assert.ok(
-      (viaCmd?.gemini?.commands.length ?? 0) > 0,
+      (viaCmd?.commands.length ?? 0) > 0,
       '要留下命中的命令原文，否则排查时看不出是经哪条通道漏的',
     );
     assert.match(
-      viaCmd?.gemini?.commands[0] ?? '', /^git show HEAD:/,
+      viaCmd?.commands[0] ?? '', /^git show HEAD:/,
       '桩走的是 git 对象库形态（F-3）——措施 a 看不见的那条',
     );
     /*
      * 逐侧留痕（GLM-06）：另一侧正常跑完、扫过、没命中——它必须有自己的键且 hit=false。
      * 合并成一个布尔时这条断言写不出来：两侧的结论会被压成一个值。
      */
-    assert.equal(viaCmd?.glm?.hit, false, '对侧扫过没命中，要单独记而不是被合并掉');
+    assert.equal(meta.guard.peer_leak_via_command?.glm?.hit, false, '对侧扫过没命中，要单独记而不是被合并掉');
     assert.equal(
-      meta.guard.peer_artifact_read, true,
-      '与路径命中**同等处置**：措施 b 单独命中也要把该侧判作废',
+      first?.voided, true,
+      '与路径命中**同等处置**：措施 b 单独命中也要把该侧判作废（并触发重跑）',
     );
+    assert.equal(first?.peer_leak_via_path?.hit, false, '本格只走命令通道，路径通道不该亮');
     /*
      * 命中逐条带类，与路径通道同构（r2 AGY-04 ≡ GLM-05）。
      * 补这个之前，命令通道只落命令原文：分档结果一个字都不进留痕，
      * 而命令通道是 `command-trace` 一族**唯一**的通道。
      */
     assert.ok(
-      (viaCmd?.gemini?.hits?.length ?? 0) > 0,
-      `命令通道的命中也要带类，实得：${JSON.stringify(viaCmd?.gemini?.hits)}`,
+      (viaCmd?.hits.length ?? 0) > 0,
+      `命令通道的命中也要带类，实得：${JSON.stringify(viaCmd?.hits)}`,
     );
   },
 );
@@ -753,9 +754,9 @@ test(
  * **期望一律从种子清单与注入配置推出**，不从 `run.json.deny_paths` 或判定输出反推：
  * 禁读集漏一条时，桩会少读一条——期望若也取自禁读集，就跟着少一条，用例永绿。
  *
- * **严格策略钉住的是现行行为**（计划 r2 §1.4）：作废不改各侧 `status`，`decideMode` 只看失败 / 超时，
- * 于是 strict 下一侧作废，运行照常 `success`、退出 0。原设想的「二次命中 `failed(peer_leak)`、
- * strict 下整次中止」以重跑为前提，随 BACKLOG EV-225 一并定——那时这几条断言要跟着改。
+ * **EV-225（M12 批次 3）起作废侧在同一次运行内重跑一次**：本组注入一律带 `rerun: ok`，首次命中的明细落在
+ * `critics.<侧>.attempts[0]`、终判（`guard.*`）只记最终那次。于是作废侧重跑干净、重新计入有效侧，
+ * strict 下照常 `success`、退出 0；二次命中判 `failed(peer_leak)` 的那几格在本文件末尾的 EV-225 组里。
  *
  * 种下的上一轮审查件会把本轮抬成第 2 轮（`resolveRerunIndex` 取非 Driver 产出的最大轮次加 1），
  * 正是「同主题重跑」的真实形态；裁决件名与审查文档名按 `run.json` 取，不写死。
@@ -799,10 +800,18 @@ async function seedPriorRound(root: string, sides: readonly CriticId[]): Promise
   }
 }
 
-/** 三侧都桩两条意见（第 1 条恒为 `blocker@src/stub.ts:10`，三侧同位——共同阻断才有料），再叠加本格的注入 */
+/**
+ * 三侧都桩两条意见（第 1 条恒为 `blocker@src/stub.ts:10`，三侧同位——共同阻断才有料），再叠加本格的注入。
+ * 有注入的侧一律带 `rerun: ok`（同样两条意见）：EV-225 起作废侧重跑一次，重跑干净才走得到闸门主路径。
+ */
 function stubOf(sides: readonly CriticId[], inject: Partial<Record<CriticId, Pick<StubSpec, 'mode' | 'note'>>>): StubConfig {
-  return Object.fromEntries(sides.map((c) => [c, { mode: 'ok', ...inject[c], findings: 2 }])) as StubConfig;
+  return Object.fromEntries(
+    sides.map((c) => [c, { mode: 'ok', ...inject[c], findings: 2, ...(inject[c] ? { rerun: { mode: 'ok', findings: 2 } } : {}) }]),
+  ) as StubConfig;
 }
+
+/** 某侧首次尝试（被作废的那次）的路径通道命中；没有 attempts 时为 [] */
+const firstPathHits = (meta: RunMeta, c: CriticId) => meta.critics[c]?.attempts?.[0]?.peer_leak_via_path?.hits ?? [];
 
 /** 本轮某侧审查文档的归档相对路径，取自 `run.json.artifacts[]`（实际落盘名，不按日期现拼） */
 function reviewDocOf(meta: RunMeta, c: CriticId): string {
@@ -825,37 +834,44 @@ async function assertStrictRunUnaffected(
   assert.equal(ctx.config.gate.joint_blocker_policy, 'warn', '前置：共同阻断被驳回只告警——闸门通过那条断言依赖它');
   assert.ok(!extraArgs.includes('--allow-single'), '前置：本格不得传 --allow-single，否则测的是降级策略');
 
-  assert.equal(r.exitCode, EXIT.OK, `strict 下一侧作废不触发整次中止（作废不改 status，中止只由失败 / 超时触发）：\n${r.waitOut}`);
+  assert.equal(r.exitCode, EXIT.OK, `strict 下作废侧重跑干净，不触发整次中止：\n${r.waitOut}`);
   assert.equal(r.meta.status, 'success');
-  assert.equal(r.meta.review_mode, 'full', '作废侧不是失败侧，review_mode 不降级');
+  assert.equal(r.meta.review_mode, 'full', '作废侧重跑干净，不是失败侧，review_mode 不降级');
   assert.equal(r.meta.degraded_reason, null);
   for (const c of sides) {
     assert.equal(r.meta.critics[c]?.cli_version, 'stub/0.0.0', `${c} 侧必须带桩指纹——证明 worker 真的用了桩`);
-    assert.equal(r.meta.critics[c]?.status, 'ok', `${c} 侧 status 应仍为 ok：作废是结论层面的处置，不是该侧失败`);
+    assert.equal(r.meta.critics[c]?.status, 'ok', `${c} 侧最终尝试应为 ok`);
   }
 }
 
-/** 按侧留痕：只有 `voided` 里的侧路径通道命中、审查文档带 peer_leak 与作废横幅；命令通道三侧都没亮 */
+/**
+ * 按侧留痕（EV-225 起）：只有 `voided` 里的侧有 `attempts`，首条作废、路径通道命中，次条干净；
+ * 终判（`guard.*`）三侧都没命中、归档的审查文档都是最终那次——不带 peer_leak、没有作废横幅；命令通道三侧都没亮。
+ */
 async function assertOnlyVoided(
   r: { root: string; meta: RunMeta },
   sides: readonly CriticId[],
   voided: readonly CriticId[],
 ): Promise<void> {
-  assert.equal(r.meta.guard.peer_artifact_read, true, '有侧读到对端产出，全局作废位必须为真');
+  assert.equal(r.meta.guard.peer_artifact_read, false, '终判只看最终尝试：作废侧重跑干净，全局作废位为假');
   for (const c of sides) {
     const viaPath = r.meta.guard.peer_leak_via_path?.[c];
     const viaCmd = r.meta.guard.peer_leak_via_command?.[c];
     assert.equal(viaCmd?.hit, false, `${c} 侧：本组只走路径通道，命令通道不该亮——两条通道要分得开`);
+    assert.equal(viaPath?.hit, false, `${c} 侧最终尝试没有读取禁读面：${JSON.stringify(viaPath?.hits)}`);
     const doc = await fs.readFile(path.join(r.root, '.reviews', reviewDocOf(r.meta, c)), 'utf8');
     const fm = doc.slice(0, doc.indexOf('\n---', 4));
+    assert.doesNotMatch(fm, /^peer_leak:/m, `${c} 侧归档的是最终那次的审查件，不该带 peer_leak`);
+    assert.ok(!doc.includes('本侧结论作废'), `${c} 侧归档的是最终那次的审查件，不该有作废横幅`);
+    const attempts = r.meta.critics[c]?.attempts;
     if (voided.includes(c)) {
-      assert.equal(viaPath?.hit, true, `${c} 侧伪造了读取，路径通道必须命中`);
-      assert.match(fm, /^peer_leak:/m, `${c} 侧审查文档的 front-matter 必须带 peer_leak 明细`);
-      assert.ok(doc.includes('本侧结论作废'), `${c} 侧审查文档必须有「本侧结论作废」横幅`);
+      assert.equal(attempts?.length, 2, `${c} 侧伪造了读取，应恰好两次尝试：${JSON.stringify(attempts)}`);
+      assert.equal(attempts![0]!.voided, true, `${c} 侧首次尝试必须判作废`);
+      assert.equal(attempts![0]!.peer_leak_via_path?.hit, true, `${c} 侧首次尝试路径通道必须命中`);
+      assert.equal(attempts![0]!.peer_leak_via_command?.hit, false, `${c} 侧首次尝试命令通道不该亮`);
+      assert.equal(attempts![1]!.voided, false, `${c} 侧重跑那次应干净`);
     } else {
-      assert.equal(viaPath?.hit, false, `${c} 侧没有伪造读取，不得被另一侧牵连：${JSON.stringify(viaPath?.hits)}`);
-      assert.doesNotMatch(fm, /^peer_leak:/m, `${c} 侧审查文档不该带 peer_leak`);
-      assert.ok(!doc.includes('本侧结论作废'), `${c} 侧审查文档不该有作废横幅`);
+      assert.equal(attempts, undefined, `${c} 侧没有伪造读取，不得被另一侧牵连成重跑：${JSON.stringify(attempts)}`);
     }
   }
 }
@@ -905,7 +921,7 @@ async function jointCheckEntry(root: string, runId: string): Promise<{ state: st
 
 for (const x of THREE) {
   test(
-    `AC-25 三审 · 归档通道：${x} 侧读另两方的审查件正文与结构化意见 → 只有它作废；闸门差集仍含它的编号、共同阻断只按另两侧算`,
+    `AC-25 三审 · 归档通道：${x} 侧读另两方的审查件正文与结构化意见 → 只有它作废并重跑；重跑干净后它重新计入有效侧、闸门差集仍含它的编号`,
     { skip: bundleMissing && bundleSkipReason },
     async () => {
       const others = THREE.filter((c) => c !== x);
@@ -916,8 +932,8 @@ for (const x of THREE) {
       await assertStrictRunUnaffected(r, THREE, args);
       assert.equal(r.meta.rerun_index, 2, '前置：种下的上一轮审查件让本轮成为第 2 轮');
 
-      // ① 命中逐条：恰为另两家上一轮的 1 份审查件正文 + 4 件 _meta（共 10 条），全部是第①类
-      const hits = r.meta.guard.peer_leak_via_path?.[x]?.hits ?? [];
+      // ① 首次命中逐条：恰为另两家上一轮的 1 份审查件正文 + 4 件 _meta（共 10 条），全部是第①类
+      const hits = firstPathHits(r.meta, x);
       assert.deepEqual(
         hits.map((h) => relHit(r.root, h.path)).sort(),
         others.flatMap(priorRoundOf).sort(),
@@ -925,11 +941,11 @@ for (const x of THREE) {
       );
       assert.ok(hits.every((h) => h.category === 'peer-artifact'), `每条命中都应是第①类（对端产物，作废档）：${JSON.stringify(hits)}`);
 
-      // ② ④ 按侧留痕：只有 x 作废，另两侧不受牵连
+      // ② ④ 按侧留痕：只有 x 作废并重跑，另两侧不受牵连
       await assertOnlyVoided(r, THREE, [x]);
 
-      // ③ 运行期只到 pending：有效侧（未作废且有结构化结论）还剩两家
-      assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 2 });
+      // ③ 运行期只到 pending：x 重跑干净，有效侧（判过、未作废且有结构化结论）是三家
+      assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 3 });
 
       // ⑥ 闸门差集：漏裁作废侧的两条照样拦——作废是「不可采信」，不是「不用裁」
       await writeNextPlan(r.stageDir, THREE.map((c) => `${prefixOf(c)}-02`));
@@ -944,27 +960,27 @@ for (const x of THREE) {
         '闸门期望集必须覆盖三家前缀，作废侧不例外',
       );
 
-      // ⑦ 共同阻断按有效侧算：三条 -01 全驳回，告警只点另两家的
+      // ⑦ 共同阻断按有效侧算：x 重跑干净、重新计入（闸门只看最终尝试，不读 attempts），三条 -01 全驳回，告警点三家
       await writeThreeDisposition(r, THREE, THREE);
       const g2 = await gateCheck(r.root);
       assert.equal(g2.ok, true, `裁决齐备后闸门应通过：${JSON.stringify(g2.failures)}`);
       const joint = g2.warnings.find((w) => w.code === 'joint_blocker_rejected');
-      assert.ok(joint, `三家同位 blocker 全被驳回，有效的两家应报共同阻断：${JSON.stringify(g2.warnings)}`);
+      assert.ok(joint, `三家同位 blocker 全被驳回，应报共同阻断：${JSON.stringify(g2.warnings)}`);
       assert.deepEqual(
         [...(joint.ids ?? [])].sort(),
-        others.map((c) => `${prefixOf(c)}-01`).sort(),
-        `作废侧的 blocker 不得计入「两家」：${JSON.stringify(joint)}`,
+        THREE.map((c) => `${prefixOf(c)}-01`).sort(),
+        `重跑干净的 ${x} 侧应重新计入共同阻断：${JSON.stringify(joint)}`,
       );
-      assert.ok(!g2.warnings.some((w) => w.code === 'joint_check_degraded'), '有效侧还剩两家，共同阻断这一档做了，不该报未执行');
+      assert.ok(!g2.warnings.some((w) => w.code === 'joint_check_degraded'), '有效侧三家，共同阻断这一档做了，不该报未执行');
       const jc = await jointCheckEntry(r.root, r.meta.run_id);
-      assert.deepEqual(jc && { state: jc.state, effective_sides: jc.effective_sides }, { state: 'checked-found', effective_sides: 2 });
+      assert.deepEqual(jc && { state: jc.state, effective_sides: jc.effective_sides }, { state: 'checked-found', effective_sides: 3 });
     },
   );
 }
 
 for (const x of THREE) {
   test(
-    `AC-25 三审 · 运行根通道：${x} 侧读另两方本轮的原始输出 → 只有它作废（第②类）`,
+    `AC-25 三审 · 运行根通道：${x} 侧读另两方本轮的原始输出 → 只有它作废（第②类）并重跑`,
     { skip: bundleMissing && bundleSkipReason },
     async () => {
       const others = THREE.filter((c) => c !== x);
@@ -977,8 +993,8 @@ for (const x of THREE) {
         `前置：运行根应作为整棵目录条目在禁读集里——命中要经它判出：${JSON.stringify(r.meta.deny_paths)}`,
       );
 
-      // 命中恰为另两家各自的 out/result.json（运行根下 〈项目槽〉/〈runId〉/〈侧〉/out/result.json）
-      const hits = r.meta.guard.peer_leak_via_path?.[x]?.hits ?? [];
+      // 首次命中恰为另两家各自的 out/result.json（运行根下 〈项目槽〉/〈runId〉/〈侧〉/out/result.json）
+      const hits = firstPathHits(r.meta, x);
       const segs = hits.map((h) => path.relative(r.runRoot, h.path).split(path.sep));
       assert.equal(hits.length, 2, `应恰好两条命中：${JSON.stringify(hits)}`);
       for (const s of segs) {
@@ -988,13 +1004,13 @@ for (const x of THREE) {
       assert.ok(hits.every((h) => h.category === 'peer-run-output'), `运行根下对端输出是第②类：${JSON.stringify(hits)}`);
 
       await assertOnlyVoided(r, THREE, [x]);
-      assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 2 });
+      assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 3 });
     },
   );
 }
 
 test(
-  'AC-25 三审 · 两侧作废：有效侧只剩一家，共同阻断记「未执行」并告警，严格策略下仍不中止',
+  'AC-25 三审 · 两侧同时作废：两侧各自重跑、互不牵连，重跑干净后有效侧回到三家，共同阻断照常执行',
   { skip: bundleMissing && bundleSkipReason },
   async () => {
     const voided: CriticId[] = ['codex', 'gemini'];
@@ -1006,18 +1022,20 @@ test(
 
     await assertStrictRunUnaffected(r, THREE, args);
     await assertOnlyVoided(r, THREE, voided);
-    assert.deepEqual(r.meta.guard.joint_check, { state: 'skipped-insufficient-sides', effective_sides: 1 });
+    /*
+     * EV-225 之前这一格是「有效侧只剩一家、共同阻断记未执行」——那正是「作废不重跑」的过渡处置。
+     * 现在两侧各自重跑干净，有效侧回到三家：过渡处置在新运行里不再出现。
+     */
+    assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 3 });
 
     await writeNextPlan(r.stageDir, THREE.map((c) => `${prefixOf(c)}-02`));
     await writeThreeDisposition(r, THREE, THREE);
     const g = await gateCheck(r.root);
     assert.equal(g.ok, true, `裁决齐备后闸门应通过：${JSON.stringify(g.failures)}`);
-    assert.ok(g.warnings.some((w) => w.code === 'joint_check_degraded'), `有效侧不足两家必须明说「没查」：${JSON.stringify(g.warnings)}`);
-    assert.ok(!g.warnings.some((w) => w.code === 'joint_blocker_rejected'), '只剩一家有效侧，不可能有「两家同时提出」');
+    assert.ok(!g.warnings.some((w) => w.code === 'joint_check_degraded'), `有效侧三家，不该报未执行：${JSON.stringify(g.warnings)}`);
+    assert.ok(g.warnings.some((w) => w.code === 'joint_blocker_rejected'), '三家同位 blocker 全被驳回，应报共同阻断');
     const jc = await jointCheckEntry(r.root, r.meta.run_id);
-    assert.deepEqual(jc && { state: jc.state, effective_sides: jc.effective_sides, reason: jc.reason }, {
-      state: 'skipped-insufficient-sides', effective_sides: 1, reason: 'voided',
-    });
+    assert.deepEqual(jc && { state: jc.state, effective_sides: jc.effective_sides }, { state: 'checked-found', effective_sides: 3 });
   },
 );
 
@@ -1082,7 +1100,7 @@ test(
     });
 
     await assertStrictRunUnaffected(r, sides, args);
-    const hits = r.meta.guard.peer_leak_via_path?.claude?.hits ?? [];
+    const hits = firstPathHits(r.meta, 'claude');
     assert.deepEqual(
       hits.map((h) => relHit(r.root, h.path)).sort(),
       (['codex', 'gemini'] as const).flatMap((c) => priorRoundOf(c)).sort(),
@@ -1090,11 +1108,187 @@ test(
     );
     for (const c of sides) {
       assert.ok(
-        !(r.meta.guard.peer_leak_via_path?.[c]?.hits ?? []).some((h) => relHit(r.root, h.path) === draftRel),
+        ![...(r.meta.guard.peer_leak_via_path?.[c]?.hits ?? []), ...firstPathHits(r.meta, c)].some((h) => relHit(r.root, h.path) === draftRel),
         `${c} 侧的命中里出现了当轮 Driver 原稿——它被误放进了禁读集`,
       );
     }
     await assertOnlyVoided(r, sides, ['claude']);
+  },
+);
+
+/*
+ * ── EV-225：作废侧在同一次运行内重跑一次（M12 批次 3，计划 r2 §4.2）──
+ *
+ * 首次作废类命中 → 该侧在自己的 promise 里重拉一次（任务书最前面插点名段）→ 重跑干净以重跑结论参与；
+ * 二次命中 → 侧级判失败（`peer_leak`），之后按现有失败侧规则走。告警级、己方材料不触发。
+ * 首次输出挪到运行目录的 `voided/<侧>/attempt-<n>/`、不进归档；重跑侧再读它同样判作废。
+ */
+
+/** 本轮运行目录：`<运行根>/<项目槽>/<runId>`。项目槽是哈希后缀名，按 runId 找 */
+async function runDirOf(r: { runRoot: string; meta: RunMeta }): Promise<string> {
+  for (const slot of await fs.readdir(r.runRoot)) {
+    const d = path.join(r.runRoot, slot, r.meta.run_id);
+    if (await fs.stat(d).then((s) => s.isDirectory(), () => false)) return d;
+  }
+  assert.fail(`运行根下找不到运行目录 ${r.meta.run_id}`);
+}
+
+/** 读终态 status.json（worker 写的逐侧状态） */
+async function statusOf(r: { runRoot: string; meta: RunMeta }): Promise<{ message: string | null; sides: Record<string, { attempt: number; note?: string | null; void_rerun?: boolean }> }> {
+  return JSON.parse(await fs.readFile(path.join(await runDirOf(r), 'status.json'), 'utf8'));
+}
+
+test(
+  'EV-225 R1 · 首次读到对端运行输出、重跑干净：以重跑结论参与，首次输出留在运行目录的 voided/ 下、不进归档',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    const r = await runInjected({
+      gemini: { mode: 'run_material_leak', note: 'peer:glm', findings: 2, rerun: { mode: 'ok', findings: 2 } },
+      glm: { mode: 'ok', findings: 2 },
+    });
+    assert.equal(r.exitCode, EXIT.OK, r.waitOut);
+    assert.equal(r.meta.status, 'success');
+    assert.equal(r.meta.review_mode, 'full');
+
+    const att = r.meta.critics.gemini?.attempts;
+    assert.equal(att?.length, 2, `gemini 应恰好两次尝试：${JSON.stringify(att)}`);
+    assert.deepEqual(att!.map((a) => [a.n, a.status, a.voided]), [[1, 'ok', true], [2, 'ok', false]]);
+    assert.ok(att![0]!.peer_leak_via_path?.hits.every((h) => h.category === 'peer-run-output'), JSON.stringify(att![0]));
+    assert.equal(att![0]!.output_dir, path.join('voided', 'gemini', 'attempt-1'), '首次输出的去处要记下');
+    assert.equal(att![1]!.output_dir, undefined, '只在挪过的那次写 output_dir');
+    assert.equal(r.meta.critics.glm?.attempts, undefined, '没作废的一侧不写 attempts：不泄漏时 run.json 逐字不变');
+
+    // 终判只看最终尝试
+    assert.equal(r.meta.guard.peer_leak_via_path?.gemini?.hit, false);
+    assert.equal(r.meta.guard.peer_artifact_read, false);
+    assert.deepEqual(r.meta.guard.joint_check, { state: 'pending', effective_sides: 2 });
+
+    // 首次输出：在运行目录的 voided/ 下（桩留了标记文件），不在该侧子树里
+    const runDir = await runDirOf(r);
+    const stashed = JSON.parse(await fs.readFile(path.join(runDir, 'voided', 'gemini', 'attempt-1', 'result.json'), 'utf8')) as { rerun: boolean };
+    assert.equal(stashed.rerun, false, '挪走的是首次那份');
+    const live = JSON.parse(await fs.readFile(path.join(runDir, 'gemini', 'out', 'result.json'), 'utf8')) as { rerun: boolean };
+    assert.equal(live.rerun, true, '该侧子树里留的是重跑那份');
+
+    // 归档：只有最终那次的审查件，首次输出的任何文件都不进去；点名段原文进 _meta/
+    const files = await listFiles(r.stageDir);
+    assert.equal(files.filter((f) => !f.includes('_meta') && f.endsWith('-gemini.md')).length, 1, JSON.stringify(files));
+    assert.ok(!files.some((f) => f.includes('voided') || f.includes('attempt-1')), `首次输出不得进归档：${JSON.stringify(files)}`);
+    const banner = await fs.readFile(path.join(r.stageDir, '_meta', `brief-gemini-${r.meta.run_id}.rerun.md`), 'utf8');
+    assert.ok(banner.includes('重跑须知'), '点名段原文要留痕');
+    assert.ok(r.meta.artifacts.some((a) => a.path.endsWith(`brief-gemini-${r.meta.run_id}.rerun.md`)), '点名段进保护集');
+    const doc = await fs.readFile(path.join(r.root, '.reviews', reviewDocOf(r.meta, 'gemini')), 'utf8');
+    assert.ok(!doc.includes('本侧结论作废'), '归档的是重跑那次的审查件');
+
+    // status.json：重跑标记保留、终态 note 不残留「重跑中」（计划双审 AGY-02）；另一侧不受影响
+    const st = await statusOf(r);
+    assert.equal(st.sides.gemini?.void_rerun, true);
+    assert.ok(!(st.sides.gemini?.note ?? '').includes('重跑中'), `终态 note 不该残留重跑中：${JSON.stringify(st.sides.gemini)}`);
+    assert.equal(st.sides.gemini?.attempt, 2);
+    assert.equal(st.sides.glm?.attempt, 1, 'glm 只跑了一次');
+    assert.equal(st.sides.glm?.void_rerun, undefined, 'glm 不该带重跑标记');
+    // 告警进本轮 warnings → status.json 的 message（`--wait --json` 原样带出）
+    assert.match(st.message ?? '', /gemini 侧首次尝试读到对端产物/, '告警要说出发生过作废重跑');
+  },
+);
+
+test(
+  'EV-225 R2 · 重跑后仍读到对端产物（strict）：该侧判 failed(peer_leak)，整次失败、不产审查件',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    const r = await runInjected({
+      gemini: { mode: 'run_material_leak', note: 'peer:glm' },
+      glm: { mode: 'ok' },
+    });
+    assert.equal(r.exitCode, EXIT.STRICT_ABORT, r.waitOut);
+    assert.equal(r.meta.status, 'failed');
+    assert.equal(r.meta.review_mode, 'partial');
+    assert.equal(r.meta.critics.gemini?.status, 'failed');
+    assert.match(r.meta.critics.gemini?.fail_reason ?? '', /^peer_leak/);
+    // 分层记法：条目记适配器层的 ok，改判只在侧级（计划双审 GLM-04）
+    assert.deepEqual(r.meta.critics.gemini?.attempts?.map((a) => [a.status, a.voided, a.fail_reason]), [['ok', true, null], ['ok', true, null]]);
+    assert.equal(r.meta.guard.peer_leak_via_path?.gemini, undefined, '判失败的一侧终判跳过，键缺 = 没判');
+    const files = await listFiles(r.stageDir);
+    assert.ok(!files.some((f) => !f.includes('_meta') && f.endsWith('-gemini.md')), `判失败的一侧不产审查件：${JSON.stringify(files)}`);
+    assert.ok(files.some((f) => f.endsWith(`review-gemini-${r.meta.run_id}.failed.json`)), '失败侧留 .failed.json');
+  },
+);
+
+test(
+  'EV-225 R3 · 重跑后仍读到对端产物（--allow-single）：该侧失败、降级继续，幸存侧照常落盘',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    const r = await runInjected({
+      gemini: { mode: 'run_material_leak', note: 'peer:glm' },
+      glm: { mode: 'ok' },
+    }, ['--allow-single']);
+    assert.equal(r.exitCode, EXIT.OK, r.waitOut);
+    assert.equal(r.meta.status, 'success');
+    assert.equal(r.meta.review_mode, 'partial');
+    assert.match(r.meta.degraded_reason ?? '', /gemini: failed（peer_leak/);
+    const files = await listFiles(r.stageDir);
+    assert.ok(files.some((f) => !f.includes('_meta') && f.endsWith('-glm.md')), '幸存侧照常落盘');
+  },
+);
+
+test(
+  'EV-225 R4/R5 · 告警级与己方材料命中绝不触发重跑：没有 attempts、只跑一次、没有重跑标记',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    for (const spec of [
+      { mode: 'peer_leak_via_command', note: 'orchestrator-state' },
+      { mode: 'peer_leak', note: '.env' },
+      { mode: 'run_material_leak', note: 'own' },
+      { mode: 'peer_leak_via_command', note: 'own-run' },
+    ] as const) {
+      const r = await runInjected({ gemini: { ...spec }, glm: { mode: 'ok' } });
+      const tag = JSON.stringify(spec);
+      assert.equal(r.exitCode, EXIT.OK, `${tag}\n${r.waitOut}`);
+      assert.equal(r.meta.critics.gemini?.attempts, undefined, `${tag} 不该触发重跑`);
+      const st = await statusOf(r);
+      assert.equal(st.sides.gemini?.attempt, 1, `${tag} 只该跑一次`);
+      assert.equal(st.sides.gemini?.void_rerun, undefined, `${tag} 不该带重跑标记`);
+    }
+  },
+);
+
+test(
+  'EV-225 R6 · 重跑侧去读自己上一次被作废的输出：同样判作废，二次命中判失败',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    const r = await runInjected({
+      gemini: { mode: 'run_material_leak', note: 'peer:glm', rerun: { mode: 'run_material_leak', note: 'voided' } },
+      glm: { mode: 'ok' },
+    });
+    assert.equal(r.exitCode, EXIT.STRICT_ABORT, r.waitOut);
+    assert.match(r.meta.critics.gemini?.fail_reason ?? '', /^peer_leak/);
+    const second = r.meta.critics.gemini?.attempts?.[1];
+    assert.equal(second?.voided, true, '首次输出不是己方材料：重跑侧读它即作废');
+    assert.ok(
+      second?.peer_leak_via_path?.hits.some((h) => h.category === 'peer-run-output' && h.path.includes(`${path.sep}voided${path.sep}gemini${path.sep}`)),
+      JSON.stringify(second),
+    );
+  },
+);
+
+test(
+  'EV-225 R8 · 等待预算：某侧作废重跑后 --wait 的 max_waits 追加一个单侧超时的份额，进度标出「作废重跑」',
+  { skip: bundleMissing && bundleSkipReason },
+  async () => {
+    const r = await runInjected({
+      gemini: { mode: 'run_material_leak', note: 'peer:glm', rerun: { mode: 'ok' } },
+      glm: { mode: 'ok' },
+    });
+    const ctx = await loadCtx({ cwd: r.root });
+    const stageTimeout = ctx.config.review.timeout_s.plan;
+    const w = await cli(r.root, ['review', '--wait', r.meta.run_id, '--timeout', '5', '--json']);
+    const cand = extractJsonCandidate(w.stdout);
+    assert.ok(cand, w.stdout + w.stderr);
+    const j = JSON.parse(cand.json) as { max_waits: number; progress_brief: string };
+    const base = Math.ceil((stageTimeout * (1 + ctx.config.review.retry.transient_max)) / 5) + 2;
+    assert.equal(j.max_waits, base + Math.ceil(stageTimeout / 5), `max_waits 应为初值 + 一份单侧超时：${JSON.stringify(j)}`);
+    assert.match(j.progress_brief, /gemini 已完成（作废重跑）/);
+    assert.doesNotMatch(j.progress_brief, /glm [^·]*（作废重跑）/);
   },
 );
 
