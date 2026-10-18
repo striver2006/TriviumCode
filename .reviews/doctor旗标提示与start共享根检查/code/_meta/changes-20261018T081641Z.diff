@@ -1,0 +1,1977 @@
+# trivium changes.diff
+# run_id: 20261018T081641Z
+# base: HEAD
+# head: 7fc1f38aa2ed743a56aca8b99ee5f0e3965efded
+# files: 24
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-10-18_doctor_flags_start_shared_root.md
+#   doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/a-readings-output.json
+#   doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/a-readings.mjs
+#   doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/gen-spec.mjs
+#   doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-bundle.mjs
+#   doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-log.txt
+#   doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-output.json
+#   doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-output.txt
+#   doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-spec.json
+#   doc/07_manuals/MANUAL_user.md
+#   doc/08_project/BACKLOG.md
+#   src/trivium/cli.ts
+#   src/trivium/doctor.ts
+#   src/trivium/entry-collisions.ts
+#   src/trivium/preflight.ts
+#   src/trivium/run-protocol.ts
+#   test/integration/shared-root-start.test.ts
+#   test/integration/tier-flags-cli.test.ts
+#   test/unit/doctor-unused-overrides.test.ts
+#   test/unit/entry-collisions.test.ts
+#   test/unit/entry-scan-isolation.test.ts
+#   test/unit/preflight.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 29bd3389..890b8996 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.168
++> - **当前版本**：v1.3.169
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -1468,8 +1468,12 @@ v1 → 内存 v2 的映射：`dual → full`、`single → partial`、`driver` 
+ > 与三类档位旗标同一判定、同一文案（`tier-flags.ts` 的 `assertFlagValuesGiven`，先键判定再空值，`--〈前缀〉-〈id〉 需要一个值，但没有给出。`）。
+ > 此前 `topic resolve` 对三种形态都按真假过滤、当成没写，模型覆盖无声消失（命令 A 随后照抄 resolve 输出，配置档位悄悄顶上）；
+ > `review` / `preflight` / `doctor` 对后两种形态早已由 `flagString` 退 64（文案不变），只有 `--model-<id>=` 一种被静默丢弃。改后原先被静默忽略的写法一律在发起前报错、零工件；
+-> 正常写法与完全不写的解析结果逐值不变。`doctor` 仍不判模型覆盖的键（现状，不在本条范围）。跨入口的「紧跟旗标 / 末尾」两形态文案不同（`topic resolve` 记空串走上面那条，
++> 正常写法与完全不写的解析结果逐值不变。`doctor` 当时仍不判模型覆盖的键（v1.3.169 起已判，见下一条）。跨入口的「紧跟旗标 / 末尾」两形态文案不同（`topic resolve` 记空串走上面那条，
+ > 其余入口走 `flagString` 那条）是两个解析器的既有差异；同一入口内模型旗标与档位旗标逐字同源。
++> **`doctor` 的覆盖旗标**【已实现 · v1.3.169，EV-245】：`doctor` 没有「本轮入选」，`--model-<id>` 补上与三类档位旗标同一份判键（`assertCriticFlagKeys`，`picked` 取全部审核者、`driver` 取 `--driver`，两类共用同一次解析），
++> 对现注册表全部放行，只在「登记了、未启用为审核者」的一家上退 64。doctor 只在 Codex、Claude Code 两段读覆盖值（`runDoctor` 的 `overridesFor` 是唯一读点，读的同时记下这一家用上了）；
++> 写了却没用上的覆盖在末尾给**一条提示**（`describeUnusedOverrides`），按运行期记录分三种原因、不写家名：该段跑了但不读覆盖（Antigravity、ZCode 的探测用各自固定的口径——agy 是固定的只读 Agent，zcode 按配置 plan 阶段的档位取探测模型）、被 `--only` 滤掉、doctor 尚无该家的探针。
++> 提示只进 `warnings`、只列旗标名不列取值；退出码不变，`--json` 既有字段（`ok` / `probe` / `notes` / `blockers` / `warnings`，及条件出现的 `directoryEvidence`）不变。
+ >
+ > 旧旗标 `--only` / `--model-gemini` / `--model-glm` / `--allow-single` **长期保留为别名**
+ > （目标项目里的旧 SKILL.md 可能未同步升级，18.1 #7）；`--only` 是 `--critics` 的
+@@ -1626,7 +1630,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
+   安装器装前按各家读取面查重名（`checkInstall`），读取面里有同名的第三方或他处的自家入口即拒装，不覆盖。
+   **v1.3.166 起（M12 批次 5，EV-240 方案 A）**判定本身（`isOurEntry`、三类 `residue` / `third-party` / `foreign-entry`）在 `src/trivium/entry-collisions.ts`，安装器（`dist/install.cjs`）与编排器（`trivium.cjs`）两个产物引用同一份实现；安装器的入口名单仍取仓库里的渲染产物，判定输入、报错文案与退出码不变。
+   编排器侧另有两处只告警的出口：`doctor` 全量列出各家**额外读取根**（注册表 `entrySkillExtraReadRoots`，今天即 `~/.agents/skills`）里的同名入口并给出口（先在仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走），只进 `warnings`、不影响退出码、与 `--only` 无关；
+-  `preflight` 只对本轮 Driver ∪ 入选审核者里读这些根的家给一条「共享读取面同名入口」警告（见 8.1 预检表）。两处都只扫额外读取根、不扫安装根，安装根顶层的 `residue` 归安装器与 `install:check`。
++  `preflight` 只对本轮 Driver ∪ 入选审核者里读这些根的家给一条「共享读取面同名入口」警告（见 8.1 预检表）；**v1.3.169 起（EV-246）`review --start` 派生前用同一个函数、同一口径再查一次**，只有正文结尾的场合词换成「本次运行」（见 8.1「`--start` 返回 `warnings`」一段）。三处都只扫额外读取根、不扫安装根，安装根顶层的 `residue` 归安装器与 `install:check`。
+   扫描用的家目录只有一个来源：注入口 → 环境变量 `TRIVIUM_ENTRY_SCAN_HOME` → `os.homedir()`。该变量只为测试隔离与诊断，只改这一处只读扫描，安装器不读它。
+   **v1.3.167 起（主题 `M12-共享根残留检测`，EV-240 残余）共享根也判历史形态残留**，新类别 `shared-residue`，安装器、`install:check`、doctor、preflight 四处同一份判定：
+   只在**额外读取根**里看 `dual-critic`、`entry` 两个名字，且要**按内容认定**是本产品的——①运行时根拷贝：`SKILL.md` 首行起是运行时身份行（`---` + `name: dual-critic`）且带 `schema/` 目录（历来每个版本的运行时根都有）；或 ②含入口子树：它本身或它下面的 `entry/` 里有 `〈载体〉/〈入口〉/` 形态、`isOurEntry` 判真的入口。别家叫 `entry` / `dual-critic` 的 skill 不判。
+@@ -1727,9 +1731,10 @@ stdout。由此得到本节的第一条硬事实：
+ 等于让它随配置漂移成错误播报。
+ 
+ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起前按**当轮入选侧**复查出的只警告项，
+-形状与预检的 `warnings` 相同（`{ name, detail }[]`）。来源三个，按序：`checkModelOverrideSource`（EV-123）、
+-`checkHeartbeatThreshold` 的「失联阈值」（v1.3.57，EV-160），以及准备阶段从各侧任务书第 4 段剔除的自动条目「必读清单剔除」
+-（v1.3.73，EV-02，见 10.1.1 末节）。
++形状与预检的 `warnings` 相同（`{ name, detail }[]`）。来源按序：`checkModelOverrideSource`（EV-123）、
++`checkHeartbeatThreshold` 的「失联阈值」（v1.3.57，EV-160）、`checkTierCombos` 的档位组合告警（M11 第 4 步；准备阶段已判过不阻断项，这里只把告警念出来——此前本段漏列了这一项）、
++`checkSharedReadRoots` 的「共享读取面同名入口」（v1.3.169，EV-246：与预检同一个函数，看当轮 Driver ∪ 入选审核者，正文结尾的场合词为「本次运行」；共享根没有问题时不出项，输出与此前逐字节相同），
++以及准备阶段从各侧任务书第 4 段剔除的自动条目「必读清单剔除」（v1.3.73，EV-02，见 10.1.1 末节）。
+ `finished_inline` 时不计算、为 `[]`（没有审查员会被拉起）；同步 `review --stage` 是手工调试入口，**不做前两项复查**——它的 `--json` 另有**既有**的 `warnings: string[]`（运行期告警，以及准备阶段的必读剔除告警——后者由 `executeRun` 并入、不带 `⚠️` 前缀），与 `--start` 的 `warnings` **同键不同形**，不要按 `detail` 读它。
+ 人读模式下逐条打印 `detail`。
+ 
+@@ -1775,7 +1780,7 @@ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起
+ | 模型覆盖副本源 | 入选侧的适配器实现了 `modelOverrideSource()` 且该文件不在（EV-123，v1.3.41）；按能力判侧，不写厂商字面量。`review --start` 按当轮入选侧再调一次同一个函数 | 只警告、不中止（`warn`，进 `warnings`） |
+ | 探活已跳过 | 带 `--skip-auth-check` 时替代两侧「已认证」项（v1.3.41 补行） | 只警告、不中止（`warn`，进 `warnings`） |
+ | 失联阈值 | `review.heartbeat_stale_s` 不大于工作进程心跳间隔 30 s（`staleThresholdWithinHeartbeat`，与 `--wait` 报错那一句同一判据；v1.3.57，EV-160）；只读配置、与 scope 无关，排在副本源之后、探活之前。`review --start` 在派生前与副本源复查同一次汇总（FR-23 跳过分支仍为 `[]`）；同步 `review --stage` 不做（没有 worker 与 `--wait`） | 只警告、不中止（`warn`，进 `warnings`） |
+-| 共享读取面同名入口 | 本轮 Driver ∪ 入选审核者里登记了额外读取根的家（今天是 codex、glm 的 `~/.agents/skills`），其额外读取根里有同名入口（v1.3.166，EV-240 方案 A）或按内容认定的本产品历史拷贝（v1.3.167，`shared-residue`）；判定与安装器同一份实现（7.4.1），一行点名根与条数（两类分别计数）、让人跑 doctor 看全量；扫描出错也只退化为一条警告。排在已废弃配置键之后、归档与 git 之前；`review --start` 不做 | 只警告、不中止（`warn`，进 `warnings`） |
++| 共享读取面同名入口 | 本轮 Driver ∪ 入选审核者里登记了额外读取根的家（今天是 codex、glm 的 `~/.agents/skills`），其额外读取根里有同名入口（v1.3.166，EV-240 方案 A）或按内容认定的本产品历史拷贝（v1.3.167，`shared-residue`）；判定与安装器同一份实现（7.4.1），一行点名根与条数（两类分别计数）、让人跑 doctor 看全量；扫描出错也只退化为一条警告。排在已废弃配置键之后、归档与 git 之前；`review --start` 派生前用同一函数复查（v1.3.169，EV-246：当轮 Driver ∪ 入选审核者，结尾场合词「本次运行」，预检侧仍是「本次预检」、输出不变） | 只警告、不中止（`warn`，进 `warnings`） |
+ 
+ **警告这一级（v1.3.41，EV-123）。** `CheckResult` 的 `warn?: true` 标出「通过，但本次有一部分没检查到 / 没按请求做到」的项；
+ `PreflightResult.warnings` 是它们的汇总，`--json` 输出**恒带**该键（无警告时为 `[]`），`checks[]` 单项在 `warn` 为真时带 `warn: true`。
+@@ -3736,7 +3741,7 @@ schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束
+ | **M10a Driver 护栏与契约面**（原 M10 于 2026-09-22 拆分的前半程；主题 `M10-任意Driver`） | 五步：①按阶段声明当轮 Driver（EV-72：`topic claim` + 三级判定）；②EV-55 跨时间面重写（提交锚「位置 + 登记」）；③翻 `driverEnabled` 并收紧（未启用即退 64）+ `approve` 前置复核；④登记清理（EV-62 / EV-64 / EV-07）；⑤纪律 6 回溯，并补上第 ② 步漏做的 Bash 侧全集字面保护（D3）。**零真实 CLI 调用**。前置小主题 EV-74 / EV-79 | J2 / J5 / J6 ②④ / J7（M10a 份额）；「当轮 Driver 不得入选」对非缺省 Driver 生效（有用例，四家逐一穷举）。**原 M10 前置四条按拆分重排（M10 计划 r7 §0.3）**：②EV-55 由第 2 步交付；④EV-72 由第 1 步交付；③EV-71 会话载体已于 M9 第 6 步拍板取「名义 Driver」并实测一次写事件，真载体下 Hook 的生效性（EV-77）归 M10b；①随入口资产归 M10b。**前置 ① 不构成翻 `driverEnabled` 的前置——显式裁决**：① 约束的是入口资产怎么装、从哪加载，翻开关改变的是 `resolveDriver` 的一个分支；一个别家 Driver 即使没有任何入口资产，也能以名义 Driver 身份被指定并受三层护栏约束（M9 第 6 步已实测）。**这是对原前置「四条，缺一不可」的改，不是从原文读得出的解**，故显式写在这里 | ✅ **五步全部达成（2026-09-24，v1.3.37）**：第 1 步 `2cb05c8`（`task.json.drivers[<阶段>]` + `topic claim` + 三级判定，见 7.1）；第 2 步 `82773dc`（提交锚「位置 + 登记」，见 8.5 Hook 表）；第 3 步 `21f189a`（翻 `driverEnabled`、未启用即退 64；`approve` 前置复核，见 8.4）；第 4 步 `871b093`（按当轮 Driver 厂商名义族判异构、删 `inferLatestRunId`、EV-07 如实结案，见 11.5）；第 5 步 `f64a485` 与本版（Bash 侧角色后缀全集字面保护——r7 §3.2 的 D3，第 2 步漏做、本步补上；纪律 6 回溯）。双审轮次与墙钟见 `doc/08_project/M10a-轮次台账.md`。**八条达成边界**：①**零真实 CLI 调用**——全部判据在测试夹具与打包 CLI 上成立，非缺省 Driver 没有在任何真载体上跑过一轮（M10b）；②`driverEnabled` 的 64 收紧**只作用于经过 `resolveDriver` 的入口**，不是全称保证（不经过它的面见 7.1 `--driver` 段）；③**提交锚**强制力单向（终端提交绕过），剩余两格够不着（EV-108），预检没有「不在保护集」的标注；④**Bash 侧角色后缀全集字面保护**于第 5 步落地，判据仍是词边界字面匹配的启发式、不完备；⑤**`approve` 前置复核**只保「裁决齐备 + 本轮登记工件哈希一致」：只核本轮、不查未登记件混入、**不保审批来自人**；⑥**`topic claim` 只有手工 CLI 入口**，四条 skill 都没有认领步骤，声明只能手工发，Hook 第 2 级只在有人手工声明过时才有值（skill 侧认领归 M10b）；「一个后缀都还没用过」的窗口内认领与撤回次数不设上限；⑦**`heterogeneous` 两层启发式**（EV-107）；⑧**AC-21 只达成子句 ③** |
+ | **M10b 入口资产与真载体验收**（原 M10 拆分的后半程；计划 `.reviews/M10b-入口资产与真载体验收/`） | 准入实测（agy skills 加载、codex `$ARGUMENTS`、zcode 加载面 / Hook / 真载体、嵌套枚举臂）；四家入口资产与单源渲染；install 多目标；`hooks --agent`（条件步）；协议片段两段式；B1（`guardLevel` 接线；原写「D4（`guardLevel` 按探针降级）」，v1.3.43 按 M10b r5 §2.4 决策编号对照改名——D-3 撤回探针后，只有登记 L1 的载体在 Hook 配置不在场时降为 L2，见 8.5）；skill 侧的 `topic claim` 认领步骤；四 Driver 验收 | AC-21 子句 ① ② + 兼容验收（J3，允许差异白名单见 M10b 计划 §5.3）；**ZCode 真载体一轮、不接受降级；codex / gemini 夹具级**〔v1.3.43 注：这是 P-2 的计划期口径。「夹具级」指被审对象与归档在夹具仓库，「真载体」指在该家自己的会话里执笔，是两个维度；实况是 glm 真载体（命令 B）、codex 夹具级 + 真载体（命令 C）、gemini 夹具级 + 名义 Driver，见本行达成边界①〕（P-2 拍板 2026-09-21；M10b 计划 §1 J4——原 M10 行此处写「ZCode/Codex Driver 夹具跑通」，与 P-2 相反，本版拆行时即按 P-2 写入）。**前置 ①**：agy skills 真实加载行为实测通过——M6 第 4 步对 agy 承载面只拿到静态证据（内嵌迁移表 + 旗标帮助），据此定入口形态就是把静态证据当结论（P-05 的教训），实测通过才能拍板 §18.1 #16。**前置 ③ 的残量**：EV-71 会话载体已于 M9 第 6 步拍板取「名义 Driver」并实测（`--driver codex` 只作声明、留痕在场时 `-claude.md` 拦 / `-response-codex.md` 放，经 `gate hook-pre-write` 直喂 `PreToolUse` 完成，未覆盖 matcher 分发、`sh -c` 存在性守卫、`CLAUDE_PROJECT_DIR` 解析三层）；**真载体下 Hook 的生效性仍未验**，随四家入口资产一起验（EV-77）。前置 ② ④ 已由 M10a 交付。**完整前置清单与收口约束见 M10b 计划 r5 §3.2**（P-a zcode 真载体可用、P-b 第 2 步完成且第 3 步有结论、P-c = EV-82 的 T1 ∧ T2；原句「完整前置清单以 BACKLOG 为准」于 v1.3.43 改指此处）。 **EV-82 三条**：T1 收口提交取最后一次代码提交 `c872b00`（r7 §3.4）；T2 = 判据 1～5 + 6a 构建标识 + 6b 收尾告警 + 7，验收 run `20260924T104357Z`——**T2 判据在证据产生之后由用户拍板 D-1 修订**，原断言 `snapshot.dirty === false` 不成立，不写成「原判据成立」；T3 = BACKLOG EV-82 done，其余要素随 r7 收口提交追加。 **达成（2026-09-26）**：第 1 步准入实测（`doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md`，§18.1 #16 据此拍板）；第 2 步单源渲染、多目标安装、命令 A 放开 Driver、缺省集合减去当轮 Driver（D-4，`246d831`）；第 3 步 Hook 多目标、B1 护栏等级接线（预检等级行、`run.v2.driver_guard_level`）、闸门停点话术按当轮 Driver 措辞（`da6476c`）； 第 4 步五轮验收（`doc/05_testing/REPORT_2026-09-25_m10b_step4.md`：3-1 claude plan 的 §7.3.1 两形态、3-2 claude code 兼容 J3 无白名单外差异、3-3 gemini 名义 Driver、3-4 codex 真载体 + EV-77、3-5 glm 真载体 J4；轮次台账第 22～27 行）；第 5 步纪律 6 回溯（本版）。 **达成边界五条**：①真载体只覆盖 glm 走命令 B、codex 走命令 C，gemini 仅以名义 Driver 跑过，命令 A / D 未在非 claude 载体上实跑——FR-28 仍记部分达成；②L2 在 codex 上没有任何事前拦截，3-4 的两次越界请求是被 Driver 依入口资产条文自行拒绝的； ③闸门期的越界两道事后机制都不暴露（审批前复核不看工作树、跑后复算只在审查收尾时做；3-4 实测，BACKLOG EV-132），停点话术尾句待该条修；④非 claude 载体上命令参数由模型转抄，参数保真只在两轮真载体上逐字核过（8.5「L2 的已知边界」）； ⑤构建标识「`snapshot.build.git_head` 与 `snapshot.git_head` 一致」一格在夹具里不可验证，并入 M10b 之后第一次本仓代码双审（第 4 步报告 §1.2「缺口」） | ✅ **已达成**（2026-09-26，v1.3.43） |
+ | **M11 档位全链路与文档收口** | tiers 四侧配齐（探针定稿）+ `--tier-*` 全链 + report 按 Driver/审核者聚合；`profiles` 放开 `{tier}` / `{model, effort}` 形态；AC-25 三审检测收口（2026-10-07 由 M7b 并入）；§17 剩余批 B 条目收口 | AC-23；AC-25；**§24 台账全绿**；文档对账零冲突（禁两套规范并行）；全量手工验收剧本 | ✅ **已达成**（2026-10-16，v1.3.159）。AC-23 达成、AC-25 维持第 3 步达成边界；§24 台账全绿且「无 ◐ / ⏳」断言已启用；全量手工剧本 1～11 共 68 格均有第 12 步实证或用户定的达成边界（`REPORT_2026-10-12_m11_step12_manual_acceptance.md`、`doc/05_testing/evidence/m11-step12-20261012/matrix.json`）。**达成边界六条**：①5.2～5.5 的真实会话内缺件 / 改件 / 恢复负对照未触发，按用户 D1 以副本 CLI 负对照加同一 hook-pre-commit 通道的客户端放行（5.1）与退 2（6.7）判组合证据达成，新客户端启动的父级计数控制转 BACKLOG EV-235；②1.4 正式 failed 分支未触发（只验到预检 69 如实停止）；③8.1 只有 B2 为合格三审，B1 Codex 证据不足保留；④剧本 7 真载体为 ZCode（命令 C）与 Codex（命令 B），Antigravity 主攻未跑；⑤Codex 侧命令文本扫描对含 `.trivium` 字面的非读取命令仍会误命中（Z2、B2），共同阻断档因此未执行（BACKLOG EV-239）；⑥接入准入五个受限 Claude 组合的真实写尝试仍未测、官方 Claude 路线待订阅，挪到 M11 之后另定判据（用户 D3）。各步落点：第 0 步计划定稿（`.reviews/M11-档位全链路与文档收口/plan/` r3，`92d53be4`）；第 1 步档位事实探针（`REPORT_2026-10-07_m11_tier_facts.md`）；第 2 步档位契约并入（v1.3.129）；第 3 步 AC-25 三审检测收口（v1.3.130，**AC-25 达成**：只覆盖路径通道、三审形态，桩级；不含作废侧自动重跑 EV-225、不含命令文本通道三侧用例；`REPORT_2026-10-07_m11_ac25_three_critic.md`）；第 4 步配置契约与档位解析（v1.3.131：`config.v2` 原地扩 `tiers` / `default_tier` 与 `profiles` 三形态、`agents.codex.effort` 废弃、`resolveTier` 取代 `routeModel`、codex 原生枚举落盘、档位组合校验与过渡闸；**未达成任何 AC**——旗标待第 5 步、透传与留痕待第 6 步；`REPORT_2026-10-07_m11_tier_config.md`）；第 5 步档位命令行旗标（v1.3.132：`--tier-<id>` / `--effort-<id>` / `--profile-<id>` 全链上线、命令 A 三处照抄；思考等级与厂商 profile 两类由过渡闸拦到第 6 步；**未达成任何 AC**；`REPORT_2026-10-08_m11_tier_flags.md`）；第 6 步思考等级透传与留痕接线（v1.3.133：请求面一处解析、按厂商下传，厂商 profile 三处同值，run.json / front-matter 档位与思考等级一组恒写，claude 原生枚举落盘（v1.3.133 首版真机未落成：取值列表在续行上；v1.3.134 修续行解析，重装后已落五项），过渡闸拆除；**未达成任何 AC**——AC-23 随第 11 步真实验收；`REPORT_2026-10-08_m11_effort_wiring.md`）；第 7 步复盘报告双维度聚合（v1.3.135：规格 13.2.1 与实现同一提交；串档根因——原稿与裁决件写死缺省 Driver——一并修掉；**未达成任何 AC**；`REPORT_2026-10-08_m11_report_aggregate.md`）；第 8 步四个零消费方配置项删除（v1.3.136：EV-30 ④～⑦ `topic.forbid_chars` / `gate.require_adjudication` / `agents.glm.max_turns` / `agents.glm.unsupported_override`，按 ①②③ 先例删类型与默认值、schema 保留并标 deprecated、doctor / preflight 提示一条，`KNOWN_DEAD` 清空；B 档未走双审；**未达成任何 AC**；`REPORT_2026-10-08_m11_config_dead_keys.md`）；第 9 步 §24 台账结构对账测试（v1.3.137：EV-14 的结构层，`test/contract/evolution-ledger-parity.test.ts` 三条——演进设计 §17.2 每行在 §24 有对应行、状态列只用 ✅ / ◐ / ⏳、「§24 无 ◐ / ⏳」显式跳过到第 12 步启用；只加测试；B 档未走双审；**未达成任何 AC**；`REPORT_2026-10-08_m11_ledger_parity.md`）；第 10 步文档收口与对账（v1.3.138～v1.3.139，分三批提交：①`P-xx` 坑清单搬到 `doc/04_development/GUIDE_local_pitfalls.md`、M0 报告恢复为快照（EV-13 结案）；②使用与运维文档补档位用法与排障、CASE 补剧本 8～11（只写判据）、`.env.example` 补 codex 段；③本文 17.2 增补表与陈旧【待实施】标记逐条回代码核实、§24 两表翻绿、24.2 版本列改判据式；核出四处与实现不符或缺用例，按用户决定文档照现状写、另登 BACKLOG EV-231～EV-234；纯文档，B 档未走双审；临时取消第 9 步 ③ 的跳过单跑为绿；**未达成任何 AC**；`REPORT_2026-10-08_m11_doc_closure.md`）；第 11 步 AC-23 真实验收（v1.3.140：scratchpad 夹具里 codex（kimi profile）与 gemini 各以选档、精确指定发起一次，共 4 次单侧真实审查，无重跑；CASE 剧本 11 判据 11.1～11.6、11.8、11.9 全部成立，11.7 可选未做；负对照三条 64、一条 69、零工件；夹具探针照搬本仓（用户定，零配额）；零代码改动，验收不走双审；**AC-23 已验收、达成状态随第 12 步翻**；`REPORT_2026-10-08_m11_ac23_acceptance.md`）；第 12 步前置 EV-233（v1.3.141：用户定启用「§24 无 ◐ / ⏳」之前先补用例，让 24.1「17.2」行与 17.2 表内迁移行都名副其实——`config-migrate-warning.test.ts` 三格钉住迁移告警走 stderr、每次调用恰一条、`--json` 的 stdout 仍只有单个 JSON，实现无需改动，变异 5/5 咬住；只加测试、B 档未走双审；`REPORT_2026-10-08_ev233_config_migrate_warning.md`）；第 12 步全量手工剧本与收口（v1.3.159：独立夹具 `trivium-m11-step12-20261012`，A / B1 / B2 / C / D 批与 Hook 实测（10-12～10-15），收口批 Z（Claude 主攻 plan → ZCode 主攻 code）、X（Codex 主攻 plan，X2 补 9.6、X3 补 9.4 后半句）与 11.7（10-16）；`NO_PENDING_SKIP` 改 false；纯文档收口，B 档未走双审；`REPORT_2026-10-12_m11_step12_manual_acceptance.md`） |
+-| **M12 审查期误判修正与运维收口**（2026-10-16 立项；名称为执笔方暂定，计划 `doc/08_project/M11后续-开发计划-草案.md`，用户 2026-10-16 拍板 D-1～D-16 全按推荐） | 六个批次：**0** 零配额收口（EV-193 用例采样竞态、EV-230 失效结案、EV-231 删承诺、EV-236 流程规矩）；**1** EV-239（闸门对命令通道命中不看类别，告警级的 `orchestrator-state` 被当成作废）+ EV-238（agy 探活超时被报成未登录）；**2** 五个受限 Claude 组合的写尝试判据（D-2：「工具面未注册」与「受控请求拒绝」两档同时成立单独命名为受限准入，「真实写尝试」一档对这五组合记不可取样、永不记通过）；**3** EV-225 作废侧重跑一次；**4** EV-228 + EV-227；**5** EV-240 方案 A + EV-236 送审包去重 | 各批按计划 §2～§6 的验收；批次 1～5 走 `/dual-run` 全双审（改契约 / 判据 / 调用链），批次 0 为 B 档；BACKLOG EV-193 / 225 / 227 / 228 / 230 / 231 / 238 / 239 / 240 结案，EV-236 代码部分结案；五组合判据写入取证守卫规范与 ADR-003 | ✅ **已达成**（2026-10-18，v1.3.168）。验收列所列 EV 全部处置：EV-193 / 225 / 227 / 228 / 238 / 239 / 240 done，EV-230 已关闭（失效），EV-231 按用户 D-10 不修、删承诺，EV-236 代码部分 A2 结案（A1 暂缓，故该条仍为 doing）；五组合判据写入本文「受限准入判据」一节与 ADR-003（EV-241 done）。各批落点：批次 0 完成，v1.3.160，`REPORT_2026-10-16_m12_batch0.md`；批次 1 完成，v1.3.161：EV-239 / EV-238 结案，`REPORT_2026-10-17_m12_batch1.md`；批次 2 完成，v1.3.163：EV-241 结案，五组合受限准入并经用户具名采用，`REPORT_2026-10-17_m12_batch2.md`；批次 3 完成，v1.3.164：EV-225 结案，作废侧在同一次运行内重跑一次，`REPORT_2026-10-17_m12_batch3.md`；批次 4 完成，v1.3.165：EV-228 / EV-227 结案，`--model-<id>` 写了不给值退 64、档位表 Agent 级 `effort` 进废弃键表，`REPORT_2026-10-18_m12_batch4.md`；批次 5 完成，v1.3.166：EV-240 方案 A（共享读取面同名入口告警，安装器与编排器同源）、EV-236 A2（交接文件冻结补丁只存一份），`REPORT_2026-10-18_m12_batch5.md`；计划外追加一题，v1.3.167：主题 `M12-共享根残留检测`（批次 5 后用户定把残留检测扩到共享读取面，新类别 `shared-residue`），`REPORT_2026-10-18_m12_shared_residue.md`。**达成边界与残余四条**：①EV-236 A1（大文件省略正文）暂缓、B（清扫哨兵）不做，按用户 D-12；②`review --start` 不跑共享读取面检查（批次 5 计划 T-5），转 BACKLOG EV-246；③`doctor` 不判 `--model-<id>` 的键（批次 4 现状，档位旗标已判），转 BACKLOG EV-245；④被改名的共享根拷贝不判（共享根残留检测按内容与目录名认定） |
++| **M12 审查期误判修正与运维收口**（2026-10-16 立项；名称为执笔方暂定，计划 `doc/08_project/M11后续-开发计划-草案.md`，用户 2026-10-16 拍板 D-1～D-16 全按推荐） | 六个批次：**0** 零配额收口（EV-193 用例采样竞态、EV-230 失效结案、EV-231 删承诺、EV-236 流程规矩）；**1** EV-239（闸门对命令通道命中不看类别，告警级的 `orchestrator-state` 被当成作废）+ EV-238（agy 探活超时被报成未登录）；**2** 五个受限 Claude 组合的写尝试判据（D-2：「工具面未注册」与「受控请求拒绝」两档同时成立单独命名为受限准入，「真实写尝试」一档对这五组合记不可取样、永不记通过）；**3** EV-225 作废侧重跑一次；**4** EV-228 + EV-227；**5** EV-240 方案 A + EV-236 送审包去重 | 各批按计划 §2～§6 的验收；批次 1～5 走 `/dual-run` 全双审（改契约 / 判据 / 调用链），批次 0 为 B 档；BACKLOG EV-193 / 225 / 227 / 228 / 230 / 231 / 238 / 239 / 240 结案，EV-236 代码部分结案；五组合判据写入取证守卫规范与 ADR-003 | ✅ **已达成**（2026-10-18，v1.3.168）。验收列所列 EV 全部处置：EV-193 / 225 / 227 / 228 / 238 / 239 / 240 done，EV-230 已关闭（失效），EV-231 按用户 D-10 不修、删承诺，EV-236 代码部分 A2 结案（A1 暂缓，故该条仍为 doing）；五组合判据写入本文「受限准入判据」一节与 ADR-003（EV-241 done）。各批落点：批次 0 完成，v1.3.160，`REPORT_2026-10-16_m12_batch0.md`；批次 1 完成，v1.3.161：EV-239 / EV-238 结案，`REPORT_2026-10-17_m12_batch1.md`；批次 2 完成，v1.3.163：EV-241 结案，五组合受限准入并经用户具名采用，`REPORT_2026-10-17_m12_batch2.md`；批次 3 完成，v1.3.164：EV-225 结案，作废侧在同一次运行内重跑一次，`REPORT_2026-10-17_m12_batch3.md`；批次 4 完成，v1.3.165：EV-228 / EV-227 结案，`--model-<id>` 写了不给值退 64、档位表 Agent 级 `effort` 进废弃键表，`REPORT_2026-10-18_m12_batch4.md`；批次 5 完成，v1.3.166：EV-240 方案 A（共享读取面同名入口告警，安装器与编排器同源）、EV-236 A2（交接文件冻结补丁只存一份），`REPORT_2026-10-18_m12_batch5.md`；计划外追加一题，v1.3.167：主题 `M12-共享根残留检测`（批次 5 后用户定把残留检测扩到共享读取面，新类别 `shared-residue`），`REPORT_2026-10-18_m12_shared_residue.md`。**达成边界与残余四条**：①EV-236 A1（大文件省略正文）暂缓、B（清扫哨兵）不做，按用户 D-12；②`review --start` 不跑共享读取面检查（批次 5 计划 T-5），转 BACKLOG EV-246（**v1.3.169 已修**）；③`doctor` 不判 `--model-<id>` 的键（批次 4 现状，档位旗标已判），转 BACKLOG EV-245（**v1.3.169 已修**，并对 doctor 不读的覆盖给提示）；④被改名的共享根拷贝不判（共享根残留检测按内容与目录名认定） |
+ | **M8 第 1 步**（原「独立演进项 · 未排期」→ 2026-09-15 升格为 M8 前置 → 同日落地） | 隔离检测**措施 b**：`run_command` 命令文本字面扫描（10.2） | 命令文本伪造命中作废；`run.v2` 的 `guard.peer_leak_via_command` 接线 | ✅ **已实现（M8 第 1 步，v1.3.8）**，BACKLOG **EV-01** 转 done。**升格理由**：M6 第 2 步实测 codex 的 `trace_path_structured = false`（读取经 shell，轨迹里只有命令文本），本项遂从「通道②的唯一覆盖」变成「**codex 侧一切路径核验的唯一手段**」。承诺面是 F-1～F-9 闭集、盲区 B-1～B-5，详见 10.1 措施 b |
+ 
+ **依赖**（两条链**并行**，不是一条串行链）：
+@@ -3871,6 +3876,8 @@ schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束
+ | 配置里出现废弃键 `agents.codex.effort` | doctor / preflight 提示一条；`agents.gemini.effort` 不提示 | ✅ M11 第 4 步（`config-consumers.test.ts` U11） |
+ | 配置里出现档位表 Agent 级 `effort`（`profiles.<表>.<id>.effort`） | doctor / preflight 提示一条；阶段格子 `{model, effort}` 不提示、思考等级照常下传；schema 仍接受、枚举不放宽 | ✅ M12 批次 4（`config-consumers.test.ts` U14、`config-schema.test.ts` V9、`preflight.test.ts` U5″ / U6′、`tier-resolve.test.ts` R12） |
+ | `--model-<id>` 写了不给值（`=` 空 / 紧跟已知旗标 / 位于末尾） | 四个入口退 64、零工件；同一入口内与档位旗标逐字同文案；正常写法与不写逐值不变 | ✅ M12 批次 4（`topic-args.test.ts` EV-228 四格、`tier-flags.test.ts` K8、`tier-flags-cli.test.ts` T6～T8） |
++| `doctor` 收到写给它不读覆盖的家（或被 `--only` 滤掉、尚无探针的家）的 `--model-<id>` / `--tier-<id>` / `--effort-<id>` | 模型旗标与档位旗标同一份判键；末尾一条提示（三种原因、只列旗标名），进 `warnings`；退出码与 `--json` 既有字段不变；读了覆盖的段不报 | ✅ v1.3.169，EV-245（`doctor-unused-overrides.test.ts` U1～U5、`tier-flags-cli.test.ts` T9；变异 13 条中 M1～M7） |
++| `review --start` 时共享读取面有同名入口或本产品历史拷贝 | 派生前同一函数复查、只看当轮 Driver ∪ 入选审核者，一项告警、结尾「本次运行」，不阻断；没有问题时输出与此前逐字节相同 | ✅ v1.3.169，EV-246（`shared-root-start.test.ts` S1～S6、`entry-collisions.test.ts` U4、`preflight.test.ts` U6；变异 M8～M13） |
+ 
+ ### 17.3 手工验收剧本（对应 PRD 场景 S1～S5）
+ 
+@@ -4045,6 +4052,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.169** | 2026-10-18 | **M12 残余两条修复：doctor 覆盖旗标提示（EV-245）与 `--start` 共享根检查（EV-246）。** 主题 `doctor旗标提示与start共享根检查`（`/dual-run`，计划双审 run `20261018T072932Z`：gemini `approve`、glm `approve-with-nits` 1 条 nit 接受 → r2）。**一、EV-245**（7.1 档位旗标节）：`doctor` 的 `--model-<id>` 补上与档位旗标同一份判键（`picked` 取全部审核者，对现注册表全部放行）；`runDoctor` 的 `overridesFor` 成为覆盖值唯一读点，写了却没用上的覆盖按运行期记录分三种原因给一条提示，只进 `warnings`，退出码与 `--json` 既有字段不变。**二、EV-246**（8.1 预检表、`--start` 返回 `warnings` 一段、7.4.1）：`startRun` 的告警复查在档位组合之后、必读剔除之前追加 `checkSharedReadRoots`（当轮 Driver ∪ 入选审核者），场合词「本次运行」；预检侧缺省场合词不变。顺带补上 `--start` 来源清单此前漏列的档位组合一项。17.2 加两行。验收：变异预跑与正式装置均 13/13；新旧对照 8 格全部符合预期（共享根干净时 `--start` 人读与 `--json` 规范化后逐字节相同）。16.1 M12 行残余 ②③ 标注已修。报告 `REPORT_2026-10-18_doctor_flags_start_shared_root.md`。 |
+ | **v1.3.168** | 2026-10-18 | **M12 收口。** 16.1 M12 行翻为已达成：批次 5（v1.3.166）与计划外追加的共享根残留检测（v1.3.167）补进状态列，验收列所列 EV 逐条写明处置，列出达成边界与残余四条；文档头状态段补 M12 一句。两条残余登记 BACKLOG：EV-245（`doctor` 不判 `--model-<id>` 的键）、EV-246（`review --start` 不跑共享读取面检查）。纯文档，B 档未走双审。 |
+ | **v1.3.167** | 2026-10-18 | **共享根历史形态残留检测（EV-240 残余）。** 主题 `M12-共享根残留检测`（`/dual-run`，计划三审 run `20261018T023000Z`：三侧 `approve-with-nits`，6 条全接受，r2 定稿）。新类别 `shared-residue`：额外读取根里的 `dual-critic` / `entry` 按内容认定为本产品（运行时身份行 + `schema/`，或含入口子树）才判，别家同名不判；安装器与 `install:check` 整次拒装，doctor 全量列出、preflight 对本轮相关的家给一条警告，四处同一份实现；当前运行时根放在共享根里时按真实路径豁免（编排器另豁免自身产物所在的运行时根）；共享根无残留时四处输出与 v1.3.166 逐字节相同，安装根 `residue` 不变（7.4.1、8.1）。代码三审 run `20261018T031358Z`：glm / gemini `approve`，codex 1 条 minor 接受（A-2 验收子进程补 HOME 隔离后重取）。验收：安装器新旧 13 格符合预期（无残留 10 格逐字相同，有残留 3 格新产物拒装且一个文件都不写），doctor / preflight 新旧 16 格，变异预跑 15/15、正式装置 14/14，全量 3730 / 3728 / 0 / 2。报告 `REPORT_2026-10-18_m12_shared_residue.md`。 |
+ | **v1.3.166** | 2026-10-18 | **M12 批次 5：共享读取面同名入口告警（EV-240 方案 A）与送审请求文件去重（EV-236 A2）。** 主题 `M12-运维防护`（`/dual-run`，计划三审 run `20261018T002634Z`：codex `request-changes`、glm / gemini `approve-with-nits`，7 条全接受，r2 定稿）。**一、EV-240**：读取面判定（`isOurEntry`、三类）搬进 `src/trivium/entry-collisions.ts`，安装器与编排器两个产物同源，安装器名单与文案退出码不变（7.4.1）；doctor 全量列出额外读取根里的同名入口（只进 warnings），preflight 新增只告警项「共享读取面同名入口」（8.1，只看本轮 Driver ∪ 入选审核者）；扫描家目录单一来源，新环境变量 `TRIVIUM_ENTRY_SCAN_HOME` 只为测试隔离与诊断。**二、EV-236 A2**：交接文件 `frozen_diff` 一份、各侧按引用还原，schema 名不变，新格式坏了 envError（11.6 run.v3 段后）。代码三审 run `20261018T010929Z`：codex / gemini `approve`，glm 3 条 nit 全接受（`install:check` 遇旧产物明确退 2、U8 直调判据放宽、实现差异补记）。验收：安装器新旧 9 格逐字相同，送审任务书与补丁新旧规范化后逐字相同，变异预跑与正式装置均 14/14。报告 `REPORT_2026-10-18_m12_batch5.md`。 |
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index a04db706..b7a051d6 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -146,6 +146,7 @@
+ - [`REPORT_2026-10-17_m12_batch1.md`](./REPORT_2026-10-17_m12_batch1.md)：**M12 批次 1 · 审查期两处误判**（A 档，`/dual-run`）。EV-239：守卫与闸门共用作废谓词 `leakRecordVoids`，两条通道按类别判、旧记录按旧口径；EV-238：agy 探活失败文案分认证 / 超时（有无应答两层）/ 其他三档，判定不变。计划双审 7 条全接受、代码双审零意见、verify 通过；变异 9/9，证据见 [`evidence/m12-batch1-mutation-20261017/`](./evidence/m12-batch1-mutation-20261017/)；主设计 v1.3.161。
+ - [`REPORT_2026-10-17_m12_batch2.md`](./REPORT_2026-10-17_m12_batch2.md)：**M12 批次 2 · 五个受限 Claude 组合的受限准入判据（EV-241）**（A 档，`/dual-run`）。档 1 工具面未注册、档 2 受控请求拒绝、档 3 真实写尝试对五组合恒不可取样，两组计数分开。计划双审 6 条、代码双审 2 条全接受；CLI 2.1.302 下取证 92 次台账启动全部闭合，五组合全部受限准入，用户具名采用 `restricted-admission-v1`；执行中暴露会话拉起挂住（EV-243）与 `ps` locale 依赖（EV-244）。证据见 [`evidence/m12-restricted-admission-20261017/`](./evidence/m12-restricted-admission-20261017/)；主设计 v1.3.163。
+ - [`REPORT_2026-10-17_m12_batch3.md`](./REPORT_2026-10-17_m12_batch3.md)：**M12 批次 3 · 作废侧在同一次运行内重跑一次（EV-225）**（A 档，`/dual-run`）。作废类命中后该侧在自己的 promise 内重拉一次、另一侧不受影响，二次命中 `failed(peer_leak)` 按失败侧规则走；重跑任务书最前面点名上次碰到的位置（命令只点程序名）；首次输出挪到运行目录 `voided/`、不进归档；run.v3 逐侧 `attempts`。计划双审 7 条全接受；代码双审 2 条全接受；AC-25 三审 8 格按新行为改断言，另补 EV-225 组 6 格、单测 17 格与闸门直测；变异 18/18；1 轮真实回归确认不泄漏时行为不变。证据见 [`evidence/m12-batch3-mutation-20261017/`](./evidence/m12-batch3-mutation-20261017/)、[`evidence/m12-batch3-regress-20261017/`](./evidence/m12-batch3-regress-20261017/)；主设计 v1.3.164。
++- [`REPORT_2026-10-18_doctor_flags_start_shared_root.md`](./REPORT_2026-10-18_doctor_flags_start_shared_root.md)：**doctor 覆盖旗标提示与 `--start` 共享根检查（EV-245 / EV-246）**（A 档，`/dual-run`，主题 `doctor旗标提示与start共享根检查`）。doctor 的 `--model-<id>` 与档位旗标同一份判键；写了却没用上的覆盖按运行期记录（`overridesFor` 唯一读点）分三种原因给一条提示，只进 `warnings`，退出码与 `--json` 既有字段不变。`review --start` 派生前用预检同一个 `checkSharedReadRoots` 复查共享读取面（当轮 Driver ∪ 入选审核者），只告警、结尾「本次运行」；共享根干净时 `--start` 新旧规范化后逐字节相同。变异预跑与正式装置均 13/13，新旧对照 8 格符合预期。证据 [`evidence/doctor-flags-start-shared-root-20261018/`](./evidence/doctor-flags-start-shared-root-20261018/)。
+ - [`REPORT_2026-10-18_m12_batch4.md`](./REPORT_2026-10-18_m12_batch4.md)：**M12 批次 4 · 模型覆盖旗标空值退 64（EV-228）与档位表 Agent 级 effort 废弃（EV-227）**（A 档，`/dual-run`）。`--model-<id>` 写了不给值（`=` 空、紧跟已知旗标、位于末尾）由静默丢弃改为退 64，与档位旗标共用一份判定与文案（行为变化；`cli.ts` 的 `=` 空一格超出 D-8 字面面、待用户追认）；`profiles.<表>.<id>.effort` 进废弃键表、schema 标 deprecated、类型删字段，阶段格子 `{model, effort}` 不受影响。计划双审、代码双审各 1 条 nit 接受；变异预跑 14/14、正式装置 12/12；桩级验收新旧构建对照 8/8。证据见 [`evidence/m12-batch4-20261018/`](./evidence/m12-batch4-20261018/)；主设计 v1.3.165。
+ - [`REPORT_2026-10-18_m12_batch5.md`](./REPORT_2026-10-18_m12_batch5.md)：**M12 批次 5 · 共享读取面同名入口告警（EV-240 方案 A）与送审请求文件去重（EV-236 A2）**（A 档，`/dual-run`）。读取面判定搬进 `src/trivium/entry-collisions.ts`，安装器与编排器两个产物同源，安装器 9 格新旧对照逐字相同；doctor 全量列出、preflight 只对本轮相关的家告警、都不阻断，扫描家目录单一来源、测试全程隔离；`request.json` 冻结补丁只存一份、worker 按引用还原，审核者所见逐字不变、旧格式照读。计划三审 7 条全接受；代码三审 codex / gemini `approve`、glm 3 条 nit 全接受；变异预跑与正式装置均 14/14。证据见 [`evidence/m12-batch5-20261018/`](./evidence/m12-batch5-20261018/)；主设计 v1.3.166。
+ - [`REPORT_2026-10-18_m12_shared_residue.md`](./REPORT_2026-10-18_m12_shared_residue.md)：**共享根历史形态残留检测（EV-240 残余）**（A 档，`/dual-run`，主题 `M12-共享根残留检测`）。新类别 `shared-residue`：额外读取根里的 `dual-critic` / `entry` 按内容认定为本产品（运行时身份行 + `schema/`，或含入口子树）才判，别家同名不判；安装器与 `install:check` 整次拒装、doctor 全量列出、preflight 对本轮相关的家告警，四处同一份实现；当前运行时根放在共享根里时按真实路径豁免。安装器新旧 13 格、doctor / preflight 新旧 16 格（子进程 HOME 隔离）符合预期（无残留时逐字相同）；计划三审 6 条全接受；代码三审 glm / gemini `approve`、codex 1 条 minor 接受（A-2 补 HOME 隔离后重取）；变异预跑 15/15、正式装置 14/14；全量 3730 / 3728 / 0 / 2。证据见 [`evidence/m12-shared-residue-20261018/`](./evidence/m12-shared-residue-20261018/)；主设计 v1.3.167。
+diff --git a/doc/07_manuals/MANUAL_user.md b/doc/07_manuals/MANUAL_user.md
+index f6a31a25..448583a4 100644
+--- a/doc/07_manuals/MANUAL_user.md
++++ b/doc/07_manuals/MANUAL_user.md
+@@ -4,7 +4,7 @@
+ 
+ > - **作者 / 负责人**：Driver（Claude）
+ > - **创建日期**：2026-09-13
+-> - **当前版本**：v1.0.46
++> - **当前版本**：v1.0.47
+ > - **状态**：草稿(Draft)
+ >
+ > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
+@@ -523,6 +523,10 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ 对后两种写法沿用原有的「后面跟的是另一个旗标（或什么都没有）」那句）。**这是行为变化**：此前 `/dual-*` 的解析步骤对这三种写法都当成没写，
+ 模型覆盖无声消失、配置里的档位顶上；`review` / `preflight` / `doctor` 对 `--model-glm=` 也是如此。正常写法与不写时不受影响。
+ 
++**`doctor` 只在 Codex、Claude Code 两段用这些覆盖值**（v1.0.47 起，设计 v1.3.169）：`doctor` 没有「本轮入选」，`--model-<审核者 id>` 与三类档位旗标都按全部审核者判键。
++写给 Antigravity、ZCode 的覆盖（它们的探测用各自固定的口径，不读命令行覆盖），被 `--only` 滤掉的，或 doctor 还没有探针的那一家，
++doctor 末尾会给一条「以下命令行覆盖本次没有用上」的提示，点名旗标与原因；退出码不变，`--json` 里是 `warnings` 多一条。此前这些值静默不生效。
++
+ ### 5.5 闸门
+ 
+ | 字段 | 默认 | 说明 |
+@@ -896,6 +900,7 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
+ | 某侧被判「证据不足」 | 该侧读的项目文件数或工具调用数没达下限。看 `_meta/run-*.json` 的 `tool_calls` |
+ | 一侧超时 | 默认 strict 会中止。调大 `review.timeout_s`，或临时 `--allow-single` 降级 |
+ | 发起前退 64，说档位未定义、思考等级不在可选值里、某侧不支持思考等级；或厂商 profile 不在本机名单（预检此时退 69） | 按报错里列出的可用值改配置或旗标（§5.4）；逐条处置见 RUNBOOK §五「档位、思考等级与厂商 profile」 |
++| 预检或开场播报里有「共享读取面 ~/.agents/skills 有 N 个同名入口 / 份本产品的历史拷贝」 | 别的工具（如 Codex 的「从 Claude 导入」）把入口或运行时拷进了 Codex、ZCode 共同读取的目录。只告警、不拦截；跑 `trivium doctor` 看完整清单，在 TriviumCode 仓库根 `npm run install:check` 只读核对后手工挪走。v1.0.47 起（设计 v1.3.169）`review --start` 也会念这一条，结尾是「不影响本次运行」 |
+ | 主题被锁但没有运行在跑 | 遗留锁会自动回收（四条判据取任一）。真卡住用 `review --cancel <run_id>` |
+ | 每次工具调用都报 hook 错误 | wrapper 里写死的 node 路径失效了（`brew upgrade node` 之后）。重跑 `init` |
+ | `gate` 退 65，说「最新的 N 份运行元数据读不出来」，可读的最新一份是更早的某个 run | 该阶段最新那一轮的 `_meta/run-*.json` 读不出（v1.0.36 起，设计 v1.3.114，EV-73；此前 `gate` 会静默改按上一轮判）。按文案里「本次判定」与三档成因处置，不要删改那份文件；只想查看上一轮的，用 `gate --run-id <文案里点名的那一份>` 钉住 |
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 6800d629..a9d1ef08 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -340,8 +340,8 @@
+ | EV-242 | todo（2026-10-17 登记，M12 批次 2 计划 P-5 用户定：本批不做；等触发——触发条件：对外引用七组合的当前原标准结论，或 M11 readiness 需要当前指纹下的原标准计数） | **原标准七组合（claude `qwen`、codex 六组合）在当前指纹下没有证据。**10-12 冻结汇总的 7 通过绑定 CLI 2.1.296 与当时的完整指纹；canonical 汇总用本批选择清单跑时，这七行没有当前证据、记未测，汇总只并列 10-12 冻结引用（`original_standard_reference`，`reference_only: true`），不当作当前复算。另：零调用冒烟里用 10-12 选择清单在当前指纹下跑汇总，这七行因指纹漂移被原逻辑记成「未通过」而非「未测」（原标准 `status` 口径本批按计划不改），重取前对外只能引用冻结值并注明时点 | `scripts/agent-access-closeout-summary.mjs`（原标准列，不改）；重取需另行具名授权 |
+ | EV-243 | todo（2026-10-17 登记，M12 批次 2 取证中暴露；等触发——触发条件：claude 作审核者或执笔者走 kimi / deepseek 等第三方 profile 路线做生产审查之前，或该路线在会话内再次超时） | **从 Claude Code 会话里拉起的第三方 claude 路线间歇性挂满 180 秒。**kimi 两次、deepseek 一次路线刷新时每次模型调用都被 180 秒探针超时杀掉（退出码 143）；同形态（受限旗标、成本闸、`opus` + `effort medium`、新目录、空 stdin）在用户终端手动跑均 2～13 秒返回，同一会话里 qwen 与 kimi 第 3 次正常，改在用户终端执行后全部一次通过。思考等级、别名、CLI 2.1.302 已排除；最可疑的是会话继承给子进程的 `CLAUDE_CODE_*` 会话变量（子会话标记、消息 socket 等），**未证实**。可用性问题，不是安全问题（挂住只会超时判失败） | `src/trivium/adapters/claude-route.ts`（`claudeRouteEnv` 清理集）、`src/trivium/probes/claude.ts`；台账 `launch-0938～0943`、`0946～0951`、`0972～0977`；报告 `REPORT_2026-10-17_m12_batch2.md` §4.1 |
+ | EV-244 | todo（2026-10-17 登记，M12 批次 2；等触发——触发条件：下一次受控机制批开工前） | **r21 映像校验依赖 `ps` 日期格式随 locale 变。**`verifyCapturedMode3Image` 要求 `lstart` 为 `Sat Oct 17 …`（月在前），受控夹具调 `ps` 只设 `TZ=UTC`，用户终端 locale 下输出 `Sat 17 Oct …`，首次 R5 因此被复算拒绝；续跑由控制器强制 `LC_ALL=C` 绕开，r21 规则未改。改夹具的 `ps` 调用或放宽格式都属取证守卫变更，须走正式流程 | `doc/05_testing/evidence/agent-access-convergence-20261012/controlled-fixture.mjs` 与本批复制件；报告 §4.2 |
+-| EV-245 | todo（2026-10-18 登记，M12 收口；来源：M12 批次 4 报告 §2.2 记的残余不对称，用户记入 `原始需求.txt` 20261018Bug 第 1 条；动判据，修时走 `/dual-run`） | **`doctor` 不判 `--model-<id>` 的键，写给不消费它的家时静默不起作用。**同一入口里档位旗标按全部审核者判键（`cmdDoctor` 调 `assertTierFlags(…, CRITIC_AGENT_IDS)`），模型旗标只判空值（批次 4 补的 `assertFlagValuesGiven`），键不判；而 `runDoctor` 只消费 codex / claude 两家的模型覆盖（`doctor.ts` 的 Codex、Claude 两段），`doctor --model-gemini X`、`--model-glm X` 照常退 0、覆盖值不生效也不提示。`review` / `preflight` 早已经 `assertModelOverrideKeys` 按本轮入选判键、未入选退 64。修之前要先定口径：`doctor` 不收 `--critics`、没有「本轮入选」，候选是与档位旗标同口径（按全部审核者判键）、只对 doctor 不消费的家给提示，或维持现状只在帮助文本写明 | `src/trivium/cli.ts`（`cmdDoctor`：`collectModelOverrides` 之后只有 `assertFlagValuesGiven`）；`src/trivium/doctor.ts`（`opts.modelOverrides` 只读 codex / claude）；`src/trivium/critics.ts`（`assertModelOverrideKeys`） |
+-| EV-246 | todo（2026-10-18 登记，M12 收口；来源：EV-240 残余，M12 批次 5 计划 T-5 定「不跑，只进 preflight」，用户记入 `原始需求.txt` 20261018Bug 第 2 条；动调用链，修时走 `/dual-run`） | **`review --start` 不跑共享读取面检查（同名入口与 `shared-residue`）。**这项检查现在只在安装器、`install:check`、`doctor`、`preflight` 四处跑；`review --start` 自带的入口校验只补了模型 slug 与档位组合（`review.ts` 注释写明「终端直接跑 `--start` 就绕过了」预检），共享读取面这一项没有补，终端直接跑 `--start` 或 skill 漏跑预检时看不到告警。T-5 当时不跑的理由：任务目标只点了 preflight，`--start` 的 warnings 通道有 `deepEqual(warnings, [])` 一类既有断言、加进去会牵动更多用例，且收益与预检重复。修法候选：`--start` 的 warnings 复查补一行告警（不阻断，口径同 preflight：只看本轮 Driver ∪ 入选审核者） | `src/trivium/review.ts`（`--start` 入口校验段）；`src/trivium/preflight.ts`（共享读取面同名入口一项）；`src/trivium/entry-collisions.ts` |
++| EV-245 | **done**（2026-10-18，主题 `doctor旗标提示与start共享根检查`，主设计 v1.3.169）：`cmdDoctor` 的 `--model-<id>` 补上与档位旗标同一份判键（`assertModelOverrideKeys(…, CRITIC_AGENT_IDS)`，对现注册表全部放行）；`runDoctor` 的 `overridesFor` 成为覆盖值唯一读点，写了却没用上的覆盖按运行期记录分三种原因（该段不读覆盖 / 被 `--only` 滤掉 / 尚无探针）在末尾给一条提示，只进 `warnings`，退出码与 `--json` 既有字段不变；措辞用「固定的探测口径」而非「固定探测模型」（zcode 按配置 plan 档取探测模型、并非写死）。报告 `doc/05_testing/REPORT_2026-10-18_doctor_flags_start_shared_root.md`。原状态：todo（2026-10-18 登记，M12 收口；来源：M12 批次 4 报告 §2.2 记的残余不对称，用户记入 `原始需求.txt` 20261018Bug 第 1 条；动判据，修时走 `/dual-run`；**口径 2026-10-18 用户定：提示一条、退出码不变**） | **`doctor` 收到写给它不消费的家的覆盖旗标时静默不起作用。**`runDoctor` 只把覆盖值用在 codex / claude 两家的探测（`doctor.ts` 的 Codex、Claude 两段 `resolveTier`），gemini / glm 的探测用各自固定的探测模型，于是 `doctor --model-gemini X`、`--tier-glm high`、`--effort-gemini …` 一类照常退 0、覆盖值不生效也不提示。键判定上：档位类旗标经 `assertTierFlags(…, CRITIC_AGENT_IDS)` 判键，但已登记的四家都是审核者，实际全部放行；模型旗标只判空值（批次 4 补的 `assertFlagValuesGiven`），键不判——批次 4 报告记的「不对称」是名义上的，真正的缺口是两类旗标对 gemini / glm 都静默。`review` / `preflight` 早已按本轮入选判键、未入选退 64。用户定的修法：模型旗标补上与档位旗标同一份判键；写给 doctor 不消费的家的覆盖值在 doctor 输出里给一条提示，说明这两家用固定探测模型、这些值没用上，退出码不变 | `src/trivium/cli.ts`（`cmdDoctor`：`collectModelOverrides` 之后只有 `assertFlagValuesGiven`）；`src/trivium/doctor.ts`（`opts.modelOverrides` 只读 codex / claude）；`src/trivium/critics.ts`（`assertModelOverrideKeys`） |
++| EV-246 | **done**（2026-10-18，同上主题，主设计 v1.3.169）：`startRun` 的告警复查在档位组合之后、必读剔除之前追加 `checkSharedReadRoots([当轮 Driver, ...入选审核者])`，与预检同一函数、同一口径，只告警不阻断；`checkSharedReadRoots` / `summarizeSharedRootProblems` 加可选场合参数，`--start` 传「本次运行」，预检侧缺省「本次预检」输出不变。共享根干净时 `--start` 人读与 `--json` 新旧规范化后逐字节相同（报告同上 §6）。测试隔离：U8 对账论域扩到 `startRun` 与自己 spawn 产物跑 `--start` 的文件。原状态：todo（2026-10-18 登记，M12 收口；来源：EV-240 残余，M12 批次 5 计划 T-5 定「不跑，只进 preflight」，用户记入 `原始需求.txt` 20261018Bug 第 2 条；动调用链，修时走 `/dual-run`） | **`review --start` 不跑共享读取面检查（同名入口与 `shared-residue`）。**这项检查现在只在安装器、`install:check`、`doctor`、`preflight` 四处跑；`review --start` 自带的入口校验只补了模型 slug 与档位组合（`review.ts` 注释写明「终端直接跑 `--start` 就绕过了」预检），共享读取面这一项没有补，终端直接跑 `--start` 或 skill 漏跑预检时看不到告警。T-5 当时不跑的理由：任务目标只点了 preflight，`--start` 的 warnings 通道有 `deepEqual(warnings, [])` 一类既有断言、加进去会牵动更多用例，且收益与预检重复。修法候选：`--start` 的 warnings 复查补一行告警（不阻断，口径同 preflight：只看本轮 Driver ∪ 入选审核者） | `src/trivium/review.ts`（`--start` 入口校验段）；`src/trivium/preflight.ts`（共享读取面同名入口一项）；`src/trivium/entry-collisions.ts` |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index 33a996e4..6432e7cb 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -812,10 +812,17 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
+     );
+   }
+ 
+-  const tierFlags = assertTierFlags(ctx.config, resolveDriver(flagString(args, 'driver')).driver, collectTierFlags(tierFlagGetter(args)), CRITIC_AGENT_IDS);
+-  // doctor 不判模型覆盖的键（现状，不在 EV-228 范围）；空值照样退 64，与档位旗标同文案
+-  const modelOverrides = collectModelOverrides(args);
+-  assertFlagValuesGiven('model', modelOverrides);
++  /*
++   * doctor 没有「本轮入选」：模型旗标与档位旗标同一份判键、同一个 picked（全部审核者）、同一个 driver（EV-245）。
++   * 写给 doctor 不消费的那几家不退 64——runDoctor 末尾给一条提示（`describeUnusedOverrides`），退出码不变。
++   */
++  const driver = resolveDriver(flagString(args, 'driver')).driver;
++  const tierFlags = assertTierFlags(ctx.config, driver, collectTierFlags(tierFlagGetter(args)), CRITIC_AGENT_IDS);
++  const modelRaw = collectModelOverrides(args);
++  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), CRITIC_AGENT_IDS);
++  assertFlagValuesGiven('model', modelRaw); // 先键后值，与档位旗标同序同文案（EV-228）
++  // 判定通过 ⇒ 键集必然是审核者，这里才收窄（收集面见 collectModelOverrides）
++  const modelOverrides = modelRaw as Partial<Record<CriticId, string>>;
+   const report = await runDoctor({
+     projectRoot: ctx.projectRoot,
+     triviumDir: ctx.triviumDir,
+diff --git a/src/trivium/doctor.ts b/src/trivium/doctor.ts
+index b9cc7358..84a86f84 100644
+--- a/src/trivium/doctor.ts
++++ b/src/trivium/doctor.ts
+@@ -19,7 +19,7 @@ import { probeZcode, ZCODE_HEADLESS_UNREFRESHED, type ZcodeHeadlessUnrefreshed }
+ import { probeCodex } from './probes/codex.js';
+ import { probeClaude, withClaudeProbeRoute, type StructuredArmCause } from './probes/claude.js';
+ import { claudeProbeForRoute, claudeRouteKey, resolveClaudeRoute, type ClaudeRoute } from './adapters/claude-route.js';
+-import { resolveTier } from './adapters/base.js';
++import { resolveTier, type TierOverrides } from './adapters/base.js';
+ import type { TierFlagValues } from './tier-flags.js';
+ import { ProbeFixtureError } from './probes/fixture.js';
+ import type { ClaudeProbe, CodexProbe, Config, CriticId, ProbeSection } from './types.js';
+@@ -27,7 +27,7 @@ import { realAdapters } from './adapters/index.js';
+ // 同源文案：blocker 与 `availability()` 对同一现象只能有一种说法（r2 AGY-04）
+ import { ZCODE_HEADLESS_NOT_OK_HINT, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT, zcodeProbeModel } from './adapters/zcode.js';
+ import type { TraceCapability } from './adapters/base.js';
+-import { AGENTS, ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
++import { AGENTS, ALL_CLI_NAMES, agentByCliName, type AgentDescriptor } from './agents/registry.js';
+ import {
+   describeSharedRootProblems, entryScanEnv, scanEntryCollisions, sharedReadRootTargets, type EntryScanEnv,
+ } from './entry-collisions.js';
+@@ -87,6 +87,72 @@ export function isDoctorOnly(v: string): boolean {
+   return doctorOnlyChoices().includes(v);
+ }
+ 
++/** {@link describeUnusedOverrides} 的入参：用户写了什么、本次哪几家的覆盖被读过、哪几段跑过 */
++export interface UnusedOverridesInput {
++  tierFlags?: Partial<Record<CriticId, TierFlagValues>>;
++  modelOverrides?: Partial<Record<CriticId, string>>;
++  /** 覆盖被读过的 Agent id（`runDoctor` 的 `overridesFor` 记下） */
++  consumed: ReadonlySet<string>;
++  /** 本次跑过的段（cliName）：探完的，加上夹具没建起来的 */
++  ran: ReadonlySet<string>;
++  only: string | null;
++  /** 只为可测性（第五家的桩描述符），生产路径不传 */
++  agents?: readonly AgentDescriptor[];
++}
++
++/** 一家写了哪些覆盖旗标，按 `--model` / `--tier` / `--effort` / `--profile` / `--native` 的顺序 */
++function overrideFlagNames(id: string, input: UnusedOverridesInput): string[] {
++  const tf = input.tierFlags?.[id as CriticId];
++  return [
++    ...(input.modelOverrides?.[id as CriticId] !== undefined ? [`--model-${id}`] : []),
++    ...(tf?.tier !== undefined ? [`--tier-${id}`] : []),
++    ...(tf?.effort !== undefined ? [`--effort-${id}`] : []),
++    ...(typeof tf?.vendorProfile === 'string' ? [`--profile-${id}`] : []),
++    ...(tf?.vendorProfile === null ? [`--native-${id}`] : []),
++  ];
++}
++
++/**
++ * 写了却没用上的命令行覆盖（EV-245）：返回一条提示，全部用上时返回 `null`。**只提示**，调用方放进 warnings、
++ * 不进 blockers——退出码与探测结论都不受影响（用户 2026-10-18 定）。
++ *
++ * 「用上没有」按运行期记录判，不维护「哪几家消费覆盖」的清单、不写任何 Agent id：哪一段经 `overridesFor`
++ * 读了覆盖，那一家就算用上。没用上的按下列次序归因，先中先归（计划 r2 D-3）：
++ *   ② `--only` 滤掉了该家的段；① 该段跑了但不读覆盖（探测用的是固定口径）；③ 其余——doctor 里还没有这一家的段。
++ * 第五家登记之后落进哪一格，由它在 doctor 里有没有段、段里经不经 `overridesFor` 决定，这里不用改。
++ */
++export function describeUnusedOverrides(input: UnusedOverridesInput): string | null {
++  const groups: Record<'fixed' | 'filtered' | 'noProbe', { flags: string[]; agents: AgentDescriptor[] }> = {
++    fixed: { flags: [], agents: [] },
++    filtered: { flags: [], agents: [] },
++    noProbe: { flags: [], agents: [] },
++  };
++  for (const a of input.agents ?? AGENTS) {
++    if (input.consumed.has(a.id)) continue;
++    const flags = overrideFlagNames(a.id, input);
++    if (flags.length === 0) continue;
++    const g =
++      input.only !== null && input.only !== a.cliName ? groups.filtered
++        : input.ran.has(a.cliName) ? groups.fixed
++          : groups.noProbe;
++    g.flags.push(...flags);
++    g.agents.push(a);
++  }
++  const names = (as: readonly AgentDescriptor[]): string => as.map((a) => a.display).join('、');
++  const lines: string[] = [];
++  if (groups.fixed.flags.length > 0) {
++    lines.push(`  · ${groups.fixed.flags.join('、')}：${names(groups.fixed.agents)} 的探测不读命令行覆盖值，用的是各自固定的探测口径`);
++  }
++  if (groups.filtered.flags.length > 0) {
++    lines.push(`  · ${groups.filtered.flags.join('、')}：本次 --only ${input.only}，没有探测 ${names(groups.filtered.agents)}`);
++  }
++  if (groups.noProbe.flags.length > 0) {
++    lines.push(`  · ${groups.noProbe.flags.join('、')}：doctor 尚无 ${names(groups.noProbe.agents)} 的探针`);
++  }
++  if (lines.length === 0) return null;
++  return ['以下命令行覆盖本次没有用上（只是提示，退出码与探测结论不受影响）：', ...lines].join('\n');
++}
++
+ export interface DoctorReport {
+   /** 新目录臂的脱敏原始证据，随doctor既有输出出口落盘，不嵌入配置。 */
+   directoryEvidence?: Awaited<ReturnType<typeof probeClaude>>['directoryEvidence'];
+@@ -549,6 +615,17 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+       fixtureFailed.add(cli);
+       blockers.push(blocker);
+     });
++  /**
++   * 命令行覆盖（模型、档位、思考等级、厂商 profile）的**唯一读点**（EV-245）：读的同时记下这一家的覆盖用上了，
++   * 末尾据此给 `describeUnusedOverrides` 提示。各段不得绕过它直接读 `opts.tierFlags` / `opts.modelOverrides`——
++   * 绕过了，用上的覆盖会被报成没用上（`doctor-unused-overrides` 按源码守着）。
++   */
++  const consumedOverrides = new Set<string>();
++  const overridesFor = (id: CriticId): TierOverrides => {
++    consumedOverrides.add(id);
++    const model = opts.modelOverrides?.[id];
++    return { ...opts.tierFlags?.[id], ...(model ? { model } : {}) };
++  };
+ 
+   // ── 环境 ────────────────────────────────────────────────────────────
+   step('探测运行环境…');
+@@ -758,8 +835,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+   // ── Codex ───────────────────────────────────────────────────────────
+   if (only === null || only === 'codex') {
+     step('探测 Codex（codex exec）…');
+-    const selected = resolveTier(opts.config, 'codex', 'code', {
+-      ...opts.tierFlags?.codex, ...(opts.modelOverrides?.codex ? { model: opts.modelOverrides.codex } : {}) });
++    const selected = resolveTier(opts.config, 'codex', 'code', overridesFor('codex'));
+     const r = await guard('codex', () =>
+       probeCodex(opts.probeBins?.codex ?? (opts.config.agents.codex?.vendor === 'openai' ? opts.config.agents.codex.bin ?? null : null), {
+         skipModelCalls: opts.skipModelCalls ?? false,
+@@ -800,8 +876,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+ 
+   // ── Claude Code ─────────────────────────────────────────────────────
+   if (only === null || only === 'claude') {
+-    const selected = resolveTier(opts.config, 'claude', 'code', {
+-      ...opts.tierFlags?.claude, ...(opts.modelOverrides?.claude ? { model: opts.modelOverrides.claude } : {}) });
++    const selected = resolveTier(opts.config, 'claude', 'code', overridesFor('claude'));
+     const canProbeModel = !opts.skipModelCalls && selected.model !== null;
+     if (selected.model === null) notes.push('[claude] 未解析出本轮模型，跳过付费能力探针，不写路线准入结论');
+     step(`探测 Claude Code（${selected.vendorProfile === null ? '原生' : `profile:${selected.vendorProfile}`}）…`);
+@@ -894,6 +969,16 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+     );
+   }
+ 
++  // 写了却没用上的命令行覆盖（EV-245）：只进 warnings，退出码不变。跑过的段 = 探完的 + 夹具没建起来的
++  const unusedOverrides = describeUnusedOverrides({
++    tierFlags: opts.tierFlags,
++    modelOverrides: opts.modelOverrides,
++    consumed: consumedOverrides,
++    ran: new Set([...probedSections, ...fixtureFailed]),
++    only,
++  });
++  if (unusedOverrides !== null) warnings.push(unusedOverrides);
++
+   probe.generated_at = new Date().toISOString();
+ 
+   /*
+diff --git a/src/trivium/entry-collisions.ts b/src/trivium/entry-collisions.ts
+index 3ea6287d..1080d76a 100644
+--- a/src/trivium/entry-collisions.ts
++++ b/src/trivium/entry-collisions.ts
+@@ -332,8 +332,15 @@ export function describeSharedRootProblems(problems: readonly EntryCollisionProb
+   return lines.join('\n');
+ }
+ 
+-/** preflight 用：一行。无问题返回 null */
+-export function summarizeSharedRootProblems(problems: readonly EntryCollisionProblem[], home: string): string | null {
++/**
++ * preflight 与 `review --start` 用：一行。无问题返回 null。
++ * `occasion` 只换结尾括号里的场合词（`--start` 传「本次运行」，EV-246）；缺省即预检的原文，逐字不变
++ */
++export function summarizeSharedRootProblems(
++  problems: readonly EntryCollisionProblem[],
++  home: string,
++  occasion = '本次预检',
++): string | null {
+   if (problems.length === 0) return null;
+   const { groups, entries, residues } = splitGroups(problems);
+   const roots = [...new Set(groups.map((g) => displayHomePath(path.dirname(g.path), home)))];
+@@ -344,6 +351,6 @@ export function summarizeSharedRootProblems(problems: readonly EntryCollisionPro
+   ];
+   return (
+     `⚠️ 共享读取面 ${roots.join('、')} 有 ${counts.join('、')}，本轮的 ${agents.map(displayOf).join('、')} 会读到；` +
+-    '跑 doctor 看完整清单与出口（不影响本次预检）'
++    `跑 doctor 看完整清单与出口（不影响${occasion}）`
+   );
+ }
+diff --git a/src/trivium/preflight.ts b/src/trivium/preflight.ts
+index 25529313..03897e1b 100644
+--- a/src/trivium/preflight.ts
++++ b/src/trivium/preflight.ts
+@@ -819,8 +819,9 @@ export function checkHeartbeatThreshold(cfg: Config): CheckResult | null {
+  * 正文与判定的唯一来源是 `config.ts` 的 `deprecatedConfigNotice`（doctor 用同一个）；正文不带 ⚠️，
+  * 这里按本文件其它 warn 项的惯例补上。只读配置，不花配额、不读盘。
+  *
+- * **只在预检与 doctor 出**：`review --start` 不复用它——那里复用的两项（副本源、失联阈值）都有运行期后果，
+- * 这一条没有；其余命令也不打，避免每条命令都刷一遍（用户决策 二）。
++ * **只在预检与 doctor 出**：`review --start` 不复用它——那里复用的几项（副本源、失联阈值有运行期后果，
++ * 共享读取面是本轮相关的家读得到的环境，EV-246）都与「这一轮」有关，这一条只说配置本身；其余命令也不打，
++ * 避免每条命令都刷一遍（用户决策 二）。
+  *
+  * **预检前面有失败项时不出**（与 ④′～④‴ 同一短路，有意为之，代码双审 r1 GLM-02）：那时用户要先处理失败项，
+  * 多念一条「可以删两行配置」只会稀释注意力。兜底出口是 doctor——它在环境段无条件提示，与 `--only` 无关。
+@@ -838,20 +839,25 @@ export function checkDeprecatedConfigKeys(cfg: Config): CheckResult | null {
+  * Driver 载体从这些根加载入口 skill，审核者 CLI 也把它们列进模型可见清单；别的家读不到，与本轮无关。
+  * 判定与安装器同一份实现（`entry-collisions.ts`）；完整清单与出口由 doctor 给，这里只一行。
+  * 扫描出错也只退化为一条告警：这一项不能把预检变成失败。
++ *
++ * 两个调用点用的是**同一个函数**：预检 ④⁵（按预检自己的选侧）与 `startRun`（派生之前，按当轮 Driver ∪ `sides`，
++ * 与副本源、失联阈值复查同一次汇总，EV-246）。`occasion` 只换正文结尾的场合词：缺省「本次预检」，预检侧输出逐字不变；
++ * `--start` 传「本次运行」。共享根没有问题时两处都返回 null、什么都不追加。
+  */
+ export async function checkSharedReadRoots(
+   relevant: readonly AgentId[],
+   inject?: EntryScanEnv,
++  occasion = '本次预检',
+ ): Promise<CheckResult | null> {
+   const name = '共享读取面同名入口';
+   const agents = [...new Set(relevant)].map((id) => agentById(id)).filter((a) => a !== null);
+   if (agents.every((a) => a.entrySkillExtraReadRoots.length === 0)) return null;
+   const se = entryScanEnv(inject);
+   try {
+-    const detail = summarizeSharedRootProblems(await scanEntryCollisions(sharedReadRootTargets(agents, se)), se.home);
++    const detail = summarizeSharedRootProblems(await scanEntryCollisions(sharedReadRootTargets(agents, se)), se.home, occasion);
+     return detail === null ? null : { name, ok: true, warn: true, detail };
+   } catch (e) {
+-    return { name, ok: true, warn: true, detail: `⚠️ 共享读取面检查没做成（不影响本次预检）：${thrownText(e)}` };
++    return { name, ok: true, warn: true, detail: `⚠️ 共享读取面检查没做成（不影响${occasion}）：${thrownText(e)}` };
+   }
+ }
+ 
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index 2094bf60..5b2735d3 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -49,6 +49,7 @@ import { fail, say, step, warn } from './util/log.js';
+ import {
+   checkHeartbeatThreshold,
+   checkModelOverrideSource,
++  checkSharedReadRoots,
+   checkTierCombos,
+   collectWarnings,
+   type PreflightWarning,
+@@ -409,7 +410,7 @@ export interface StartOutcome {
+   /** finishedInline 时的人读说明 */
+   inlineNotice?: string;
+   /**
+-   * 拉起前按**当轮入选侧**复查出的只警告项（EV-123），**恒存在**；
++   * 拉起前按**当轮入选侧**复查出的只警告项（EV-123；共享读取面一项另含当轮 Driver，EV-246），**恒存在**；
+    * 末尾另追加准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02，`RunContext.mustReadPruned`）。
+    * 在派生**之后**才随返回值交到调用方——拦不住拉起，价值是开场播报时就能看到、可以立即 `--cancel`。
+    * `finishedInline` 时不计算（没有审查员会被拉起），为 `[]`。
+@@ -569,6 +570,9 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
+    *
+    * **失联阈值（EV-160）同一次汇总**：与预检 ④‴ 同一个 `checkHeartbeatThreshold`，顺序与预检相同（副本源在前、阈值在后）。
+    * 只读配置、不抛。FR-23 跳过分支（上方 `finishedInline`）不走这里：那一支没有 worker、没有 `--wait`，`warnings` 仍为 `[]`。
++   *
++   * **共享读取面（EV-246）同一次汇总**，排在档位组合之后、必读剔除之前：与预检 ④⁵ 同一个 `checkSharedReadRoots`，
++   * 看当轮 Driver ∪ `sides`，正文结尾的场合词换成「本次运行」。
+    */
+   let warnings: PreflightWarning[];
+   /*
+@@ -592,11 +596,18 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
+     const heartbeatWarn = checkHeartbeatThreshold(cfg);
+     // 档位组合的告警（M11 第 4 步）：准备阶段已判过 ok（不 ok 早已退 64），这里只为把告警念出来；纯函数、不抛
+     const tierCombos = checkTierCombos(cfg, rc.stage, rc.opts.modelOverrides, rc.sides, rc.opts.tierFlags);
++    /*
++     * 共享读取面（EV-246）：与预检 ④⁵ 同一个函数、同一口径（当轮 Driver ∪ 入选审核者），只告警、不阻断；
++     * 终端直接跑 `--start` 或 skill 漏跑预检时也看得到。没有问题时返回 null、不追加，输出与此前逐字节相同。
++     * 扫描异常在函数内吞成一条告警，不会走到主 `catch`。
++     */
++    const sharedRoots = await checkSharedReadRoots([rc.meta.driver, ...rc.sides], undefined, '本次运行');
+     warnings = [
+       ...collectWarnings([
+         ...(await checkModelOverrideSource(rc.sides, rc.adapters)),
+         ...(heartbeatWarn ? [heartbeatWarn] : []),
+         tierCombos,
++        ...(sharedRoots ? [sharedRoots] : []),
+       ]),
+       // 准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02），追加在后、既有两项顺序不变
+       ...rc.mustReadPruned,
+diff --git a/test/integration/tier-flags-cli.test.ts b/test/integration/tier-flags-cli.test.ts
+index ebddf03b..5bdf858d 100644
+--- a/test/integration/tier-flags-cli.test.ts
++++ b/test/integration/tier-flags-cli.test.ts
+@@ -170,3 +170,29 @@ test('T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境
+   const runs = (await fs.readdir(metaDir).catch(() => [] as string[])).filter((n) => n.startsWith('run-'));
+   assert.deepEqual(runs, [], '退 64 在冻结之前，不留运行记录');
+ });
++
++test('T9 doctor：写给 doctor 不消费的家的覆盖 ⇒ 退 0、JSON 顶层键集合不变、warnings 恰多末尾一条提示；人读模式同样出现（EV-245）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const base = ['doctor', '--only', 'env', '--no-model-calls'];
++  const flags = ['--model-gemini', 'x', '--tier-glm', 'high', '--effort-glm', 'high'];
++  const plain = await cli(fx.root, [...base, '--json']);
++  const hinted = await cli(fx.root, [...base, ...flags, '--json']);
++  assert.equal(plain.code, EXIT.OK, out(plain));
++  assert.equal(hinted.code, EXIT.OK, out(hinted));
++  type DoctorJson = { ok: boolean; warnings: string[]; blockers: string[] } & Record<string, unknown>;
++  const p = parse<DoctorJson>(plain.stdout);
++  const h = parse<DoctorJson>(hinted.stdout);
++  // 不写死键数：directoryEvidence 只在跑过 Claude 目录探针时出现（计划双审 GLM-01）
++  assert.deepEqual(Object.keys(h).sort(), Object.keys(p).sort(), '--json 顶层字段不变');
++  assert.equal(h.ok, p.ok);
++  assert.deepEqual(h.blockers, p.blockers);
++  assert.deepEqual(h.warnings.slice(0, -1), p.warnings, '其余告警逐项不变');
++  const hint = h.warnings.at(-1)!;
++  assert.ok(hint.startsWith('以下命令行覆盖本次没有用上'), hint);
++  assert.match(hint, /--model-gemini、--tier-glm、--effort-glm：本次 --only env/);
++
++  const human = await cli(fx.root, [...base, ...flags]);
++  assert.equal(human.code, EXIT.OK, out(human));
++  assert.match(out(human), /以下命令行覆盖本次没有用上/);
++  assert.doesNotMatch(out(await cli(fx.root, base)), /以下命令行覆盖本次没有用上/);
++});
+diff --git a/test/unit/entry-collisions.test.ts b/test/unit/entry-collisions.test.ts
+index 8f586118..176037c0 100644
+--- a/test/unit/entry-collisions.test.ts
++++ b/test/unit/entry-collisions.test.ts
+@@ -293,6 +293,11 @@ test('U4 渲染：只有同名入口时与 M12 批次 5 的文案逐字相同（
+     summarizeSharedRootProblems(problems, home),
+     `⚠️ 共享读取面 ${rel} 有 1 个同名入口，本轮的 ${who} 会读到；跑 doctor 看完整清单与出口（不影响本次预检）`,
+   );
++  // `review --start` 的场合词（EV-246）：只有结尾括号里的词不同，其余逐字相同
++  assert.equal(
++    summarizeSharedRootProblems(problems, home, '本次运行'),
++    `⚠️ 共享读取面 ${rel} 有 1 个同名入口，本轮的 ${who} 会读到；跑 doctor 看完整清单与出口（不影响本次运行）`,
++  );
+ });
+ 
+ test('U4 渲染：只有残留、残留加同名入口；出口只出现一次，preflight 恒一行', async () => {
+diff --git a/test/unit/entry-scan-isolation.test.ts b/test/unit/entry-scan-isolation.test.ts
+index d60de0a8..1e1bc419 100644
+--- a/test/unit/entry-scan-isolation.test.ts
++++ b/test/unit/entry-scan-isolation.test.ts
+@@ -16,7 +16,7 @@ isolateEntryScanHome();
+  * 测试不读真实家目录的共享读取面（EV-240，M12 批次 5；计划双审 CODEX-01 / GLM-01，计划 r2 §4 U8、U9）。
+  *
+  * doctor 的扫描与 `--only` 无关、preflight 的扫描排在多数只告警项之后，凡能跑到 `runDoctor` / `runPreflight`
+- * 的旧用例都会顺带扫一次。隔离靠单一来源（`entryScanEnv()`）+ 两个测试侧入口，本文件守住两件事：
++ * 的旧用例都会顺带扫一次；EV-246 起 `review --start`（`startRun`）派生前也扫一次，论域随之并入。隔离靠单一来源（`entryScanEnv()`）+ 两个测试侧入口，本文件守住两件事：
+  * U8 名单对账——没走隔离的调用方当场红；U9 读源证明——设了变量，读的就是变量指的那个目录。
+  */
+ 
+@@ -40,6 +40,11 @@ const SPAWN_REVIEWED: Readonly<Record<string, string>> = {
+   'test/unit/agent-access-task-launch.test.ts': '只校验静默启动器的参数形态，产品 spawn 计数断言为 0',
+   'test/unit/agent-access-recovery.test.ts': '只把 preflight 写进 argv 交给形态校验器，不执行',
+   'test/integration/access-v3.test.ts': '自己 spawn 的只有 gate hook-pre-commit；preflight 都经 cli()',
++  // ↓ EV-246 起 `review --start` 也扫共享读取面，论域并入 '--start' 后新命中的四个文件
++  'test/integration/override-source-start.test.ts': 'cliAt 显式设 HOME 为夹具家目录，os.homedir() 即夹具',
++  'test/integration/code-stage.test.ts': '自己 spawn 的只有 gate hook-pre-commit；--start 都经 cli()',
++  'test/integration/bug-stage.test.ts': '自己 spawn 的只有 gate hook-pre-write；--start 都经 cli()',
++  'test/integration/gate-loop.test.ts': '自己 spawn 的是 gate 钩子、approve 与同步 review（不扫描）；--start 都经 cli()',
+ };
+ 
+ /*
+@@ -49,9 +54,9 @@ const SPAWN_REVIEWED: Readonly<Record<string, string>> = {
+  * 经变量拼出命令名再 spawn 打包产物。这两类的兜底是 `cli()` 缺省隔离与单一来源 `entryScanEnv()`。
+  */
+ const IMPORTS_ENTRY = [
+-  /import\s*\{[^}]*\brun(Doctor|Preflight)\b[^}]*\}\s*from/,
+-  /\{[^}]*\brun(Doctor|Preflight)\b[^}]*\}\s*=\s*await\s+import\(/,
+-  /\brun(Doctor|Preflight)\s*\(/,
++  /import\s*\{[^}]*\b(runDoctor|runPreflight|startRun)\b[^}]*\}\s*from/,
++  /\{[^}]*\b(runDoctor|runPreflight|startRun)\b[^}]*\}\s*=\s*await\s+import\(/,
++  /\b(runDoctor|runPreflight|startRun)\s*\(/,
+ ];
+ 
+ test('U8 对账：直调 runDoctor / runPreflight 的测试文件都调了 isolateEntryScanHome()；cli() 缺省设隔离变量', async () => {
+@@ -63,7 +68,7 @@ test('U8 对账：直调 runDoctor / runPreflight 的测试文件都调了 isola
+     const text = await fs.readFile(f, 'utf8');
+     if (IMPORTS_ENTRY.some((re) => re.test(text)) && !text.includes('isolateEntryScanHome()')) missing.push(rel);
+     const spawnsBundle = /\[\s*(BUNDLE|k\.bundle)\s*,/.test(text) || /spawnSync\(/.test(text);
+-    if (spawnsBundle && /'(doctor|preflight)'/.test(text) && !(rel in SPAWN_REVIEWED)) unreviewedSpawn.push(rel);
++    if (spawnsBundle && /'(doctor|preflight|--start)'/.test(text) && !(rel in SPAWN_REVIEWED)) unreviewedSpawn.push(rel);
+   }
+   assert.deepEqual(missing, [], '这些文件直调了 doctor / preflight 却没钉扫描家目录');
+   assert.deepEqual(unreviewedSpawn, [], '这些文件自己 spawn 了 doctor / preflight：要么改走 cli()，要么登记理由');
+diff --git a/test/unit/preflight.test.ts b/test/unit/preflight.test.ts
+index 41984829..6549d13b 100644
+--- a/test/unit/preflight.test.ts
++++ b/test/unit/preflight.test.ts
+@@ -1185,6 +1185,8 @@ test('U6 checkSharedReadRoots：相关家都不读共享根 ⇒ null；有一家
+   assert.equal(hit.exitCode, undefined);
+   assert.equal(hit.name, '共享读取面同名入口');
+   assert.ok(hit.detail.startsWith('⚠️ 共享读取面 ~/'), hit.detail);
++  // 预检侧不传场合词，结尾仍是「本次预检」（EV-246 给 `--start` 加了场合参数，缺省值不能漂）
++  assert.ok(hit.detail.endsWith('（不影响本次预检）'), hit.detail);
+   assert.ok(hit.detail.includes(sharedReader.display), hit.detail);
+   assert.ok(!hit.detail.includes(dirty), hit.detail);
+   assert.equal(await checkSharedReadRoots([DEFAULT_DRIVER, sharedReader.id], { home: clean, env: {} }), null);
+diff --git a/doc/05_testing/REPORT_2026-10-18_doctor_flags_start_shared_root.md b/doc/05_testing/REPORT_2026-10-18_doctor_flags_start_shared_root.md
+new file mode 100644
+index 00000000..56db71f5
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-10-18_doctor_flags_start_shared_root.md
+@@ -0,0 +1,131 @@
++# doctor 覆盖旗标提示与 `--start` 共享根检查（EV-245 / EV-246）
++
++- **日期**：2026-10-18
++- **执笔**：Claude Code（当轮 Driver）
++- **主题**：`doctor旗标提示与start共享根检查`（`/dual-run`，A 档）
++- **上位**：BACKLOG EV-245、EV-246（M12 收口时登记，主设计 16.1 M12 行残余 ②③）；口径由用户 2026-10-18 定
++- **起点**：`7fc1f38a`（工作树只有 BACKLOG EV-245 一行口径改动未提交，属本主题）
++- **配额**：零真实模型调用（双审本身除外）。单测里 agy / codex 两段用只会报版本号的假入口，验收不碰任何厂商 CLI
++- **证据**：[`evidence/doctor-flags-start-shared-root-20261018/`](./evidence/doctor-flags-start-shared-root-20261018/)。只存脚本与读数
++
++---
++
++## 1. 结论
++
++| 项 | 结果 |
++| :--- | :--- |
++| EV-245 判键 | `doctor` 的 `--model-<id>` 补上与三类档位旗标同一份判键（`assertModelOverrideKeys(…, CRITIC_AGENT_IDS)`，与 `assertTierFlags` 同一个 `driver`、同一个 `picked`），先键后值。对现注册表全部放行，只在「登记了、未启用为审核者」的一家上退 64（桩注册表用例 U5） |
++| EV-245 提示 | 写了却没用上的覆盖，doctor 末尾给一条提示，只进 `warnings`。「用上没有」按运行期记录判：`runDoctor` 的 `overridesFor` 是唯一读点，源码里不写家名。原因分三种：该段跑了但不读覆盖、被 `--only` 滤掉、doctor 尚无该家的探针（`--only` 优先）。退出码与 `--json` 既有字段不变（A-1） |
++| EV-246 | `review --start` 派生前的告警复查追加「共享读取面同名入口」一项：与预检同一个函数、同一口径（当轮 Driver ∪ 入选审核者），只告警不阻断，结尾场合词「本次运行」；预检侧仍是「本次预检」 |
++| 共享根干净时逐字节相同 | `--start` 人读与 `--json` 两格新旧规范化后逐字节相同；doctor 不带覆盖两格同样相同（A-1 / A-2，§6） |
++| 变异 | 逐条预跑 13/13、正式装置 13/13 咬住（§5） |
++| 计划双审 | run `20261018T072932Z`：gemini `approve`，glm `approve-with-nits` 1 条 nit，接受，r2 定稿 |
++| 代码双审 | 见 §3.2 |
++| 全量 `npm run check` | 3748 / 3746 / 0 / 2（tests / pass / fail / skipped），比上一主题多 18 条，均为本主题新增用例（§4） |
++
++---
++
++## 2. 改动
++
++### 2.1 EV-245（`cli.ts`、`doctor.ts`）
++
++- `cmdDoctor`：`resolveDriver` 只解析一次，档位旗标与模型旗标共用；`collectModelOverrides` 之后补 `assertModelOverrideKeys(ctx.config, driver, keys, CRITIC_AGENT_IDS)`，再 `assertFlagValuesGiven`。删掉了「doctor 不判模型覆盖的键」那句注释。
++- `runDoctor`：新增 `overridesFor(id)`，Codex、Claude 两段改经它取覆盖值（合并结果与原先的内联写法逐值相同），它顺手记下这一家的覆盖已读。全部段跑完后，用 `describeUnusedOverrides` 算出没用上的那些，非空则推进 `warnings`。「跑过的段」取 `probedSections ∪ fixtureFailed`。
++- `describeUnusedOverrides`（导出的纯函数）：按注册表顺序遍历；每家列出写了的旗标名（`--model` / `--tier` / `--effort` / `--profile` / `--native` 的顺序），不列取值；同一原因归成一行。首行固定为「以下命令行覆盖本次没有用上（只是提示，退出码与探测结论不受影响）：」。
++- 措辞用「各自固定的探测口径」，没有照抄「固定探测模型」：agy 段用的是固定的只读 Agent，zcode 段按**配置**里 plan 阶段的档位取探测模型（`zcodeProbeModel`），两者都不随命令行覆盖变，但 zcode 的模型并非写死（计划 r2 D-4）。
++
++### 2.2 EV-246（`entry-collisions.ts`、`preflight.ts`、`run-protocol.ts`）
++
++- `summarizeSharedRootProblems(problems, home, occasion = '本次预检')`、`checkSharedReadRoots(relevant, inject?, occasion = '本次预检')`：只换结尾括号里的场合词，扫描出错那句同样取它。
++- `startRun`：告警汇总在 `checkTierCombos` 之后、`mustReadPruned` 之前追加 `checkSharedReadRoots([rc.meta.driver, ...rc.sides], undefined, '本次运行')` 的结果，`null` 不追加。函数内部已把扫描异常吞成告警，走不到主 `catch`。`finished_inline` 分支不走这里；同步 `review --stage` 不加（与副本源、失联阈值两项复查同口径）。
++- 文档块：`startRun` 复查注释、`StartOutcome.warnings`、`checkSharedReadRoots`（写明两个调用点）、`checkDeprecatedConfigKeys`（「复用的两项」改为「复用的几项」，已废弃配置键仍不进 `--start`）。
++
++### 2.3 不做
++
++- 已废弃配置键不进 `--start`（用户决策 二）；同步 `review --stage` 不加共享根检查；doctor 不新增「本轮入选」概念，Antigravity / ZCode 段不改为读覆盖值。
++
++---
++
++## 3. 双审
++
++### 3.1 计划双审（run `20261018T072932Z`）
++
++gemini `approve`（0 条）；glm `approve-with-nits`，1 条 nit：doctor `--json` 顶层还有条件出现的 `directoryEvidence`，r1 的「五个字段」在全量 doctor 下不成立。接受，r2 改准现状陈述，U4 / A-1 判据维持「顶层键集合与不带覆盖时相同」、不写死键数。另据 glm「未覆盖范围」写死了原因②优先于原因③。
++
++### 3.2 代码双审
++
++（S6～S8 完成后补记。）
++
++---
++
++## 4. 测试
++
++新增与改动的用例：
++
++| 文件 | 用例 | 守的是 |
++| :--- | :--- | :--- |
++| `test/unit/doctor-unused-overrides.test.ts`（新） | U1 ①～⑤（6 格） | 纯函数：全部消费为 null；三种原因各自成行、`--only` 优先、组内注册表顺序；不回显取值；第五家用桩描述符 |
++| | U2（2 格） | 经 `runDoctor`：`--only env` 下提示在 `warnings` 末项、blockers 不变、不写覆盖时逐项相同；agy 段跑了（假入口）⇒ 原因①；codex 段读了（假入口）⇒ 不提示；`--only codex` 时写给 agy 的 ⇒ 原因② |
++| | U3 | 源码护栏：`doctor.ts` 里 `opts.tierFlags` / `opts.modelOverrides` 只出现在 `overridesFor` 与交给提示的入参里 |
++| | U5（2 格） | `cmdDoctor` 判键接线（同一 `driver`、`CRITIC_AGENT_IDS`、先键后值、`resolveDriver` 只一次）；行为面：桩注册表里未启用为审核者的一家退 64 |
++| `test/integration/tier-flags-cli.test.ts` | T9 | 打包产物：退 0、`--json` 顶层键集合不变、`warnings` 恰多末尾一条提示、人读模式同样出现 |
++| `test/integration/shared-root-start.test.ts`（新） | S1～S6 | 打包产物 + 桩：脏扫描家目录下缺省入选恰一项、结尾「本次运行」、worker 照常拉起；人读同一行；Driver 与审核者都不读共享根 ⇒ 无此项；只有 Driver 读 ⇒ 有此项；空家目录 ⇒ `[]`；与失联阈值、必读清单剔除同时出现时排在中间 |
++| `test/unit/entry-collisions.test.ts` | U4（补一句） | 传「本次运行」时只有结尾括号里的词不同 |
++| `test/unit/preflight.test.ts` | U6（补一句） | 预检侧不传场合词，结尾仍是「本次预检」 |
++| `test/unit/entry-scan-isolation.test.ts` | U8（扩论域） | 直调判据加 `startRun`；spawn 判据把 `'--start'` 并进来，新命中的 4 个文件逐个核过、登记理由（都不在自己 spawn 的那几处跑 `--start`，或已钉 `HOME`） |
++
++既有「`warnings` 为空」一类断言（如 `heartbeat-threshold-warning.test.ts` I2、`mustread-deny.test.ts` C5）经 `cli()` 跑、扫描家目录是空夹具，全部照旧通过，断言一条没改。
++
++全量 `npm run check`（前台单条，开跑前无残留 `node --test` 进程）：3748 / 3746 / 0 / 2，约 6 分钟。
++
++---
++
++## 5. 变异
++
++规格 `mutation-spec.json` 由 `gen-spec.mjs` 生成（逐条核 find 唯一、replace 不含特殊替换模式），13 条、5 个目标文件、5 个套件。逐条预跑用 `mutation-names-bundle.mjs`（`--with-tests` 重打 bundle，集成类变异才进得了被测产物），读数 `mutation-names-output.json` / `mutation-names-log.txt`；正式装置 `scripts/mutation-check.mjs`，读数 `mutation-output.txt`。两者都是 13/13 咬住，跑完 `src/` 逐字节复原。
++
++| # | 变异 | 预跑变红 | 装置 fail |
++| :--- | :--- | :--- | :--- |
++| M1 | Codex 段绕过 `overridesFor` | U2 段跑了、U3 | 2 |
++| M2 | `overridesFor` 不记消费 | U2 段跑了 | 1 |
++| M3 | 提示推进 blockers | U2 两格 | 2 |
++| M4 | `--only` 滤掉的不归原因② | U1 ③ ④′、U2 两格 | 4 |
++| M5 | 没有段的家归到原因① | U1 ④ ④′ ⑤ | 3 |
++| M6 | `cmdDoctor` 不判模型键 | U5 接线 | 1 |
++| M7 | 判模型键的 `picked` 写成空集 | T8、T9 | 2 |
++| M8 | `startRun` 不追加共享根项 | S1、S2、S4、S6 | 4 |
++| M9 | `relevant` 只传入选审核者 | S4 | 1 |
++| M10 | 共享根项挪到必读剔除之后 | S6 | 1 |
++| M11 | `--start` 不传场合词 | S1、S2 | 2 |
++| M12 | `summarize` 缺省场合词漂移 | U4 | 1 |
++| M13 | `checkSharedReadRoots` 缺省场合词漂移 | preflight U6 | 1 |
++
++M10 与计划 r2 的写法不同：r2 写「挪到 `mustReadPruned` 之后」由 U6 ① 守，但 U6 ① 的夹具里没有剔除条目、守不住位置。实现时补了 S6：照 `mustread-deny` A1 的夹具造出「必读清单剔除」一项，再配 2 秒失联阈值，三项同时出现时核顺序；M13 是实现时补的（预检侧缺省场合词原先没有断言钉住，补了 `preflight.test.ts` U6 的一句）。
++
++---
++
++## 6. 新旧对照验收（零真实调用）
++
++旧构建是把 `git archive 7fc1f38a` 导出到会话 scratchpad、软链 `node_modules` 后构建的；新构建是当前工作树。bundle sha256：旧 `29011967…`、新 `b53ad048…`，脚本断言两者不同。所有子进程共用一份隔离环境：`HOME` 指向夹具里单独的 `home-cli/`，`TRIVIUM_ASSET_ROOT`、`TRIVIUM_STUB_CRITIC`、`CODEX_HOME`、`ZCODE_HOME`、`XDG_*` 一律删掉、按格再设；共享根扫描另经 `TRIVIUM_ENTRY_SCAN_HOME` 指向各格的夹具家目录。脚本 `a-readings.mjs`，读数 `a-readings-output.json`，读数里没有真实家目录与系统临时目录路径。规范化覆盖夹具路径、run_id、pid、ISO 时间戳、构建标识，以及运行根下按项目根路径取哈希的目录名（新旧各用一个夹具，`repo-〈哈希〉` 必然不同；首跑时这是唯一的差异，补进规范化后重跑）。
++
++8 格全部符合预期（`all_as_expected: true`）：
++
++| 格 | 旧 ⇒ 新 |
++| :--- | :--- |
++| doctor `--json`，不带覆盖 | 逐字节相同 |
++| doctor `--json`，带 `--model-gemini x --tier-glm high --effort-glm high` | 都退 0；顶层键集合相同；`warnings` 0 条 ⇒ 1 条（「…`--model-gemini`、`--tier-glm`、`--effort-glm`：本次 --only env，没有探测 Antigravity、ZCode」），其余逐字节相同 |
++| doctor 人读，不带覆盖 | 逐字节相同 |
++| doctor 人读，带覆盖 | 都退 0；新版只多出提示两行，旧版行一条不少 |
++| `--start --json`，扫描家目录干净 | 规范化后逐字节相同（焦点 4） |
++| `--start --json`，扫描家目录有别家同名入口 | 旧 `warnings: []` ⇒ 新恰一项「共享读取面同名入口」（「…本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次运行）」），其余相同 |
++| `--start` 人读，干净 | 规范化后逐字节相同 |
++| `--start` 人读，有同名入口 | 新版恰多一行告警，其余行相同 |
++
++带覆盖的 doctor 格用的是 `--only env`，三个旗标都归原因②；原因①（段跑了但不读覆盖）由单测 U2 用假 agy 入口覆盖，验收不碰真实 CLI。
++
++---
++
++## 7. 发现与提醒
++
++- 主设计「`--start` 返回 `warnings`」一段原先只列了三个来源，漏了 M11 第 4 步加进来的档位组合告警；本次顺带补上（v1.3.169）。
++- 本机安装副本仍是此前的构建；提交推送之后需要重建、再由用户重装，`/dual-*` 的真实流水线才会用上本次改动。
+diff --git a/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/a-readings-output.json b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/a-readings-output.json
+new file mode 100644
+index 00000000..2d1289b9
+--- /dev/null
++++ b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/a-readings-output.json
+@@ -0,0 +1,113 @@
++{
++  "bundles": {
++    "old": "290119679bcec62e41445f1a345d857b7ef2fbf9584db0cb11fa75ee2dab64d9",
++    "new": "b53ad048f72e4d8fea575cf3b347b11161db52ef940d0196bbe97b04cc7700f6"
++  },
++  "isolation": {
++    "HOME": "<FX>/home-cli",
++    "removed": [
++      "TRIVIUM_ASSET_ROOT",
++      "TRIVIUM_ENTRY_SCAN_HOME",
++      "TRIVIUM_STUB_CRITIC",
++      "CODEX_HOME",
++      "ZCODE_HOME",
++      "XDG_*"
++    ]
++  },
++  "a1": [
++    {
++      "cell": "doctor --json 不带覆盖",
++      "old_code": 0,
++      "new_code": 0,
++      "identical": true,
++      "expect": "逐字节相同",
++      "as_expected": true
++    },
++    {
++      "cell": "doctor --json 带覆盖",
++      "old_code": 0,
++      "new_code": 0,
++      "keys_same": true,
++      "old_warnings": 0,
++      "new_warnings": 1,
++      "rest_identical": true,
++      "hint": "以下命令行覆盖本次没有用上（只是提示，退出码与探测结论不受影响）：\n  · --model-gemini、--tier-glm、--effort-glm：本次 --only env，没有探测 Antigravity、ZCode",
++      "expect": "退出码相同、顶层键相同、warnings 恰多末尾一条提示、其余逐字节相同",
++      "as_expected": true
++    },
++    {
++      "cell": "doctor 人读 不带覆盖",
++      "old_code": 0,
++      "new_code": 0,
++      "identical": true,
++      "expect": "逐字节相同",
++      "as_expected": true
++    },
++    {
++      "cell": "doctor 人读 带覆盖",
++      "old_code": 0,
++      "new_code": 0,
++      "lines_only_in_new": [
++        "⚠️  以下命令行覆盖本次没有用上（只是提示，退出码与探测结论不受影响）：",
++        "  · --model-gemini、--tier-glm、--effort-glm：本次 --only env，没有探测 Antigravity、ZCode"
++      ],
++      "lines_only_in_old": [],
++      "expect": "退出码相同；新版多出的只有提示几行（及其后的空行），旧版行一条不少",
++      "as_expected": true
++    }
++  ],
++  "a2": [
++    {
++      "cell": "--start --json 扫描家目录干净",
++      "old_code": 0,
++      "new_code": 0,
++      "old_wait": 0,
++      "new_wait": 0,
++      "identical": true,
++      "expect": "规范化后逐字节相同（焦点 4）",
++      "as_expected": true
++    },
++    {
++      "cell": "--start --json 扫描家目录有同名入口",
++      "old_code": 0,
++      "new_code": 0,
++      "old_wait": 0,
++      "new_wait": 0,
++      "old_warnings": [],
++      "new_warnings": [
++        {
++          "name": "共享读取面同名入口",
++          "detail": "⚠️ 共享读取面 ~/.agents/skills 有 1 个同名入口，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次运行）"
++        }
++      ],
++      "rest_identical": true,
++      "expect": "旧版无此项；新版恰一项「共享读取面同名入口」，结尾「本次运行」；其余相同",
++      "as_expected": true
++    },
++    {
++      "cell": "--start 人读 扫描家目录干净",
++      "old_code": 0,
++      "new_code": 0,
++      "old_wait": 0,
++      "new_wait": 0,
++      "identical": true,
++      "expect": "规范化后逐字节相同（焦点 4）",
++      "as_expected": true
++    },
++    {
++      "cell": "--start 人读 扫描家目录有同名入口",
++      "old_code": 0,
++      "new_code": 0,
++      "old_wait": 0,
++      "new_wait": 0,
++      "lines_only_in_new": [
++        "  ⚠️ 共享读取面 ~/.agents/skills 有 1 个同名入口，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次运行）"
++      ],
++      "lines_only_in_old": [],
++      "expect": "新版恰多一行告警，其余行相同",
++      "as_expected": true
++    }
++  ],
++  "starts": 8,
++  "all_as_expected": true
++}
+diff --git a/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/a-readings.mjs b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/a-readings.mjs
+new file mode 100644
+index 00000000..323c8250
+--- /dev/null
++++ b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/a-readings.mjs
+@@ -0,0 +1,165 @@
++// 新旧对照验收（主题 doctor旗标提示与start共享根检查，计划 r2 §4）。形态照搬 evidence/m12-shared-residue-20261018/a2-readings.mjs。
++// 零真实模型调用：doctor 只跑 --only env --no-model-calls；review --start 走桩审查员（TRIVIUM_STUB_CRITIC）。
++// 全部子进程共用一份隔离环境：HOME 指向夹具里单独的 home-cli/，家目录覆盖类变量一律删掉；
++// 共享根扫描另经 TRIVIUM_ENTRY_SCAN_HOME 指向各格的夹具家目录。不读真实家目录。
++// 用法：node a-readings.mjs <旧仓库导出目录> <新仓库根> <输出 JSON>
++import fs from 'node:fs';
++import path from 'node:path';
++import { createHash } from 'node:crypto';
++import { spawnSync } from 'node:child_process';
++
++const [OLD, NEW, OUT] = process.argv.slice(2);
++const T = (p) => path.join(NEW, 'dist/test', p);
++const { makeFixture } = await import(T('test/helpers/fixture.js'));
++const { encodeStubConfig, STUB_ENV_VAR } = await import(T('src/trivium/adapters/stub.js'));
++
++const assetOf = (repo) => path.join(repo, 'skills/dual-critic');
++const bundleIn = (asset) => path.join(asset, 'scripts/trivium.cjs');
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const SCAN_ENV = 'TRIVIUM_ENTRY_SCAN_HOME';
++const STUB = encodeStubConfig({ gemini: { mode: 'ok' }, glm: { mode: 'ok' } });
++
++let CLI_HOME = null;
++const baseEnv = () => {
++  const e = { ...process.env, HOME: CLI_HOME };
++  for (const k of ['TRIVIUM_ASSET_ROOT', SCAN_ENV, STUB_ENV_VAR, 'CODEX_HOME', 'ZCODE_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_STATE_HOME']) delete e[k];
++  return e;
++};
++function tv(repo, cwd, args, extra = {}) {
++  const r = spawnSync(process.execPath, [bundleIn(assetOf(repo)), ...args], {
++    cwd, encoding: 'utf8', timeout: 240_000, env: { ...baseEnv(), TRIVIUM_ASSET_ROOT: assetOf(repo), ...extra },
++  });
++  return { code: r.status, stdout: r.stdout, stderr: r.stderr };
++}
++const lastJson = (s) => JSON.parse(s.slice(s.indexOf('{')));
++
++const out = {
++  bundles: { old: sha(bundleIn(assetOf(OLD))), new: sha(bundleIn(assetOf(NEW))) },
++  isolation: { HOME: '<FX>/home-cli', removed: ['TRIVIUM_ASSET_ROOT', SCAN_ENV, STUB_ENV_VAR, 'CODEX_HOME', 'ZCODE_HOME', 'XDG_*'] },
++};
++if (out.bundles.old === out.bundles.new) throw new Error('新旧 bundle 哈希相同：对照无效');
++
++// 扫描家目录：干净、摆了别家同名入口（codex / glm 读的 ~/.agents/skills）
++async function homes(base) {
++  const clean = path.join(base, 'scan-clean');
++  const dirty = path.join(base, 'scan-dirty');
++  fs.mkdirSync(path.join(clean, '.agents/skills'), { recursive: true });
++  fs.mkdirSync(path.join(dirty, '.agents/skills/dual-approve'), { recursive: true });
++  fs.writeFileSync(path.join(dirty, '.agents/skills/dual-approve/SKILL.md'), '---\nname: dual-approve\n---\n别家的\n');
++  return { clean, dirty };
++}
++
++// 规范化：夹具路径、run_id、pid、ISO 时间戳、构建标识（新旧必然不同，单列比对之外）
++const norm = (s, fx) => s
++  .split(fx).join('<FX>')
++  .replace(/\d{8}T\d{6}Z/g, '<RUN>')
++  // 运行根下的项目目录名按项目根路径取哈希（新旧各用一个夹具，必然不同）
++  .replace(/\/runs\/repo-[0-9a-f]{8}\//g, '/runs/repo-<HASH>/')
++  .replace(/("worker_pid":\s*)\d+/g, '$1"<PID>"')
++  .replace(/工作进程 pid \d+/g, '工作进程 pid <PID>')
++  .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g, '<TS>')
++  .replace(/编排器构建标识[^\n"]*/g, '编排器构建标识<STAMP>');
++
++// ── A-1 doctor ──────────────────────────────────────────────────────
++const HINT = '以下命令行覆盖本次没有用上';
++const FLAGS = ['--model-gemini', 'x', '--tier-glm', 'high', '--effort-glm', 'high'];
++const a1 = [];
++{
++  const fx = await makeFixture({ topic: 'A1', draft: false });
++  const FX = path.dirname(fx.root);
++  CLI_HOME = path.join(FX, 'home-cli');
++  fs.mkdirSync(CLI_HOME, { recursive: true });
++  const { clean } = await homes(FX);
++  const doc = (repo, extra, json) => {
++    const r = tv(repo, fx.root, ['doctor', '--only', 'env', '--no-model-calls', ...extra, ...(json ? ['--json'] : [])], { [SCAN_ENV]: clean });
++    return { code: r.code, stdout: norm(r.stdout, FX), stderr: norm(r.stderr, FX) };
++  };
++  for (const json of [true, false]) {
++    for (const withFlags of [false, true]) {
++      const o = doc(OLD, withFlags ? FLAGS : [], json);
++      const n = doc(NEW, withFlags ? FLAGS : [], json);
++      const cell = { cell: `doctor ${json ? '--json' : '人读'} ${withFlags ? '带覆盖' : '不带覆盖'}`, old_code: o.code, new_code: n.code };
++      if (!withFlags) {
++        cell.identical = o.code === n.code && o.stdout === n.stdout && o.stderr === n.stderr;
++        cell.expect = '逐字节相同';
++        cell.as_expected = cell.identical;
++      } else if (json) {
++        const oj = lastJson(o.stdout), nj = lastJson(n.stdout);
++        const hint = nj.warnings.at(-1);
++        cell.keys_same = JSON.stringify(Object.keys(oj).sort()) === JSON.stringify(Object.keys(nj).sort());
++        cell.old_warnings = oj.warnings.length;
++        cell.new_warnings = nj.warnings.length;
++        cell.rest_identical = JSON.stringify({ ...oj, warnings: oj.warnings }) === JSON.stringify({ ...nj, warnings: nj.warnings.slice(0, -1) });
++        cell.hint = hint;
++        cell.expect = '退出码相同、顶层键相同、warnings 恰多末尾一条提示、其余逐字节相同';
++        cell.as_expected = o.code === n.code && cell.keys_same && cell.rest_identical && typeof hint === 'string' && hint.startsWith(HINT);
++      } else {
++        const ol = (o.stdout + o.stderr).split('\n'), nl = (n.stdout + n.stderr).split('\n');
++        const extra = nl.filter((l) => !ol.includes(l));
++        const missing = ol.filter((l) => !nl.includes(l));
++        cell.lines_only_in_new = extra;
++        cell.lines_only_in_old = missing;
++        cell.expect = '退出码相同；新版多出的只有提示几行（及其后的空行），旧版行一条不少';
++        cell.as_expected = o.code === n.code && missing.length === 0 && extra.length > 0 && extra.some((l) => l.includes(HINT))
++          && extra.every((l) => l.includes(HINT) || l.startsWith('  · ') || l.trim() === '');
++      }
++      a1.push(cell);
++    }
++  }
++}
++out.a1 = a1;
++
++// ── A-2 review --start（桩）──────────────────────────────────────────
++const a2 = [];
++let n = 0;
++async function startCell(repo, json, scan) {
++  const topic = 'A2';
++  const fx = await makeFixture({ topic });
++  const FX = path.dirname(fx.root);
++  CLI_HOME = path.join(FX, 'home-cli');
++  fs.mkdirSync(CLI_HOME, { recursive: true });
++  const h = await homes(FX);
++  const extra = { [SCAN_ENV]: h[scan], [STUB_ENV_VAR]: STUB };
++  const r = tv(repo, fx.root, ['review', '--start', '--stage', 'plan', '--topic', topic, '--focus', 'x', ...(json ? ['--json'] : [])], extra);
++  const runId = json ? lastJson(r.stdout).run_id : /已启动运行 (\S+)（/.exec(r.stdout)?.[1];
++  // 等到终态，别让 worker 留在后台
++  let code = 73;
++  for (let i = 0; i < 12 && code === 73; i++) code = tv(repo, fx.root, ['review', '--wait', runId, '--timeout', '20'], extra).code;
++  n++;
++  return { code: r.code, wait_code: code, stdout: norm(r.stdout, FX), stderr: norm(r.stderr, FX) };
++}
++for (const json of [true, false]) {
++  for (const scan of ['clean', 'dirty']) {
++    const o = await startCell(OLD, json, scan);
++    const nw = await startCell(NEW, json, scan);
++    const cell = { cell: `--start ${json ? '--json' : '人读'} 扫描家目录${scan === 'clean' ? '干净' : '有同名入口'}`, old_code: o.code, new_code: nw.code, old_wait: o.wait_code, new_wait: nw.wait_code };
++    if (scan === 'clean') {
++      cell.identical = o.code === nw.code && o.stdout === nw.stdout && o.stderr === nw.stderr;
++      cell.expect = '规范化后逐字节相同（焦点 4）';
++      cell.as_expected = cell.identical;
++      if (!cell.identical) cell.diff = { old: o, new: nw };
++    } else if (json) {
++      const oj = lastJson(o.stdout), nj = lastJson(nw.stdout);
++      cell.old_warnings = oj.warnings;
++      cell.new_warnings = nj.warnings;
++      cell.rest_identical = JSON.stringify({ ...oj, warnings: [] }) === JSON.stringify({ ...nj, warnings: [] }) && o.stderr === nw.stderr;
++      cell.expect = '旧版无此项；新版恰一项「共享读取面同名入口」，结尾「本次运行」；其余相同';
++      cell.as_expected = o.code === nw.code && oj.warnings.length === 0 && nj.warnings.length === 1
++        && nj.warnings[0].name === '共享读取面同名入口' && nj.warnings[0].detail.endsWith('（不影响本次运行）') && cell.rest_identical;
++    } else {
++      const ol = o.stdout.split('\n'), nl = nw.stdout.split('\n');
++      cell.lines_only_in_new = nl.filter((l) => !ol.includes(l));
++      cell.lines_only_in_old = ol.filter((l) => !nl.includes(l));
++      cell.expect = '新版恰多一行告警，其余行相同';
++      cell.as_expected = o.code === nw.code && cell.lines_only_in_old.length === 0 && cell.lines_only_in_new.length === 1
++        && cell.lines_only_in_new[0].startsWith('  ⚠️ 共享读取面') && o.stderr === nw.stderr;
++    }
++    a2.push(cell);
++  }
++}
++out.a2 = a2;
++out.starts = n;
++out.all_as_expected = [...a1, ...a2].every((c) => c.as_expected);
++fs.writeFileSync(OUT, JSON.stringify(out, null, 2) + '\n');
++console.log(`all_as_expected=${out.all_as_expected}（A-1 ${a1.length} 格、A-2 ${a2.length} 格）`);
++for (const c of [...a1, ...a2]) console.log(`${c.as_expected ? '✓' : '✗'} ${c.cell}`);
+diff --git a/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/gen-spec.mjs b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/gen-spec.mjs
+new file mode 100644
+index 00000000..4ee8fd31
+--- /dev/null
++++ b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/gen-spec.mjs
+@@ -0,0 +1,58 @@
++// 生成「doctor旗标提示与start共享根检查」的变异规格：逐条核 find 在目标文件中恰好命中一处、replace 不含特殊替换模式。
++// 形态照搬 evidence/m12-shared-residue-20261018/gen-spec.mjs。目标全是 .ts，逐条预跑与正式装置共用一份规格。
++// 用法（仓库根）：node gen-spec.mjs <规格 JSON>
++import fs from 'node:fs';
++const D = 'src/trivium/doctor.ts', C = 'src/trivium/cli.ts', R = 'src/trivium/run-protocol.ts';
++const EC = 'src/trivium/entry-collisions.ts', P = 'src/trivium/preflight.ts';
++const U = (n) => `dist/test/test/unit/${n}.test.js`;
++const I = (n) => `dist/test/test/integration/${n}.test.js`;
++const KEYS = '  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), CRITIC_AGENT_IDS);';
++const SCAN = "checkSharedReadRoots([rc.meta.driver, ...rc.sides], undefined, '本次运行')";
++const PRUNED = '      // 准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02），追加在后、既有两项顺序不变\n      ...rc.mustReadPruned,';
++const cases = [
++  ['M1', 'Codex 段绕过 overridesFor、改回内联合并', D,
++    "    const selected = resolveTier(opts.config, 'codex', 'code', overridesFor('codex'));",
++    "    const selected = resolveTier(opts.config, 'codex', 'code', { ...opts.tierFlags?.codex, ...(opts.modelOverrides?.codex ? { model: opts.modelOverrides.codex } : {}) });",
++    U('doctor-unused-overrides')],
++  ['M2', 'overridesFor 不记消费', D, '    consumedOverrides.add(id);', '    void consumedOverrides;', U('doctor-unused-overrides')],
++  ['M3', '提示推进 blockers', D,
++    '  if (unusedOverrides !== null) warnings.push(unusedOverrides);',
++    '  if (unusedOverrides !== null) blockers.push(unusedOverrides);',
++    U('doctor-unused-overrides')],
++  ['M4', '--only 滤掉的不归原因②', D,
++    '      input.only !== null && input.only !== a.cliName ? groups.filtered',
++    '      false ? groups.filtered',
++    U('doctor-unused-overrides')],
++  ['M5', '没有段的家归到原因①', D, '        : input.ran.has(a.cliName) ? groups.fixed', '        : true ? groups.fixed', U('doctor-unused-overrides')],
++  ['M6', 'cmdDoctor 不判模型键', C, KEYS, '  void modelRaw;', U('doctor-unused-overrides')],
++  ['M7', 'cmdDoctor 判模型键的 picked 写成空集', C, KEYS,
++    '  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), []);',
++    I('tier-flags-cli')],
++  ['M8', 'startRun 不追加共享根项', R, '        ...(sharedRoots ? [sharedRoots] : []),', '        ...(sharedRoots ? [] : []),', I('shared-root-start')],
++  ['M9', 'relevant 只传入选审核者', R, SCAN, "checkSharedReadRoots([...rc.sides], undefined, '本次运行')", I('shared-root-start')],
++  ['M10', '共享根项挪到必读剔除之后', R,
++    `        ...(sharedRoots ? [sharedRoots] : []),\n      ]),\n${PRUNED}`,
++    `      ]),\n${PRUNED}\n      ...collectWarnings(sharedRoots ? [sharedRoots] : []),`,
++    I('shared-root-start')],
++  ['M11', '--start 不传场合词', R, SCAN, 'checkSharedReadRoots([rc.meta.driver, ...rc.sides])', I('shared-root-start')],
++  ['M12', 'summarize 的缺省场合词漂成「本次运行」', EC,
++    "  occasion = '本次预检',\n): string | null {",
++    "  occasion = '本次运行',\n): string | null {",
++    U('entry-collisions')],
++  ['M13', 'checkSharedReadRoots 的缺省场合词漂成「本次运行」', P,
++    "  occasion = '本次预检',\n): Promise<CheckResult | null> {",
++    "  occasion = '本次运行',\n): Promise<CheckResult | null> {",
++    U('preflight')],
++];
++for (const [id, , file, find] of cases) {
++  const n = fs.readFileSync(file, 'utf8').split(find).length - 1;
++  if (n !== 1) throw new Error(`${id} find 命中 ${n} 处`);
++}
++for (const c of cases) if (/\$[$&`'0-9<]/.test(c[4])) throw new Error(`${c[0]} replace 含特殊替换模式`);
++const spec = {
++  targets: [...new Set(cases.map((c) => c[2]))],
++  suites: [...new Set(cases.map((c) => c[5]))],
++  cases: cases.map(([id, desc, file, find, replace, expect]) => ({ id, desc, file, find, replace, expect })),
++};
++fs.writeFileSync(process.argv[2], JSON.stringify(spec, null, 2) + '\n');
++console.log(`ok ${cases.length} 条`);
+diff --git a/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-bundle.mjs b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-bundle.mjs
+new file mode 100644
+index 00000000..a0d64f6d
+--- /dev/null
++++ b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-bundle.mjs
+@@ -0,0 +1,58 @@
++// 主题 doctor旗标提示与start共享根检查 照搬自 evidence/m12-shared-residue-20261018/（逐字相同，只改本行）。
++// M12 批次 1 变体：集成套件调的是打包产物（test/helpers/fixture.ts 的 BUNDLE），--tests-only 不重打 bundle，
++// 变异进不了被测产物。这里改为 --with-tests 同时重打 bundle 与测试产物；其余与原脚本逐字相同。
++// 逐条变异、带超时跑期望套件，存下**失败用例名与首行断言文案**（变异装置只记 fail 数、且不给套件加超时）。
++// 照搬 evidence/cancel-cli-reach-20260928/mutation-names.mjs 的形态，另加 --test-timeout：
++// 首轮装置跑到 M4 时 U12① 的等待没有超时、挂死一小时被强制终止（报告 §3），这里先逐条确认不挂。
++// 逐条：备份 → 变异（find 须唯一）→ 只重建测试产物 → 跑期望套件 → 恢复并逐字节核对；收尾重建一次。
++// 用法（在仓库根，变异装置与全量检查都不在跑）：node mutation-names.mjs <规格路径> [输出 JSON 路径]
++import { execFileSync, spawnSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const spec = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
++const OUT = process.argv[3] ?? null;
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--with-tests'], { stdio: 'ignore' });
++const runSuite = (suite) => {
++  const t0 = Date.now();
++  const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-timeout=60000', suite], {
++    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000,
++  });
++  const out = (r.stdout ?? '') + (r.stderr ?? '');
++  const body = out.split('✖ failing tests:')[0];
++  const red = [...new Set([...body.matchAll(/^✖ (.+?) \(\d/gm)].map((m) => m[1]))];
++  const msgs = [...body.matchAll(/^✖ .+?\(\d[^\n]*\n(?:[^\n]*\n){0,3}?\s*([^\n]*Error[^\n]*)/gm)].map((m) => m[1].trim().slice(0, 200));
++  return {
++    fail: Number(/ℹ fail (\d+)/.exec(out)?.[1] ?? (r.status === 0 ? 0 : -1)),
++    timed_out: r.error?.code === 'ETIMEDOUT',
++    cancelled: Number(/ℹ cancelled (\d+)/.exec(out)?.[1] ?? 0),
++    red,
++    firstLines: [...new Set(msgs)].slice(0, 8),
++    elapsed_s: Math.round((Date.now() - t0) / 1000),
++  };
++};
++
++const base = Object.fromEntries(spec.targets.map((f) => [f, fs.readFileSync(f, 'utf8')]));
++const baseHash = Object.fromEntries(spec.targets.map((f) => [f, sha(f)]));
++const results = [];
++try {
++  for (const c of spec.cases) {
++    const src = base[c.file];
++    if (src.split(c.find).length - 1 !== 1) throw new Error(`${c.id} 的 find 不唯一`);
++    fs.writeFileSync(c.file, src.replace(c.find, c.replace));
++    try {
++      build();
++      const r = runSuite(c.expect);
++      results.push({ id: c.id, desc: c.desc, suite: c.expect, ...r });
++      console.error(`${c.id}：fail=${r.fail} cancelled=${r.cancelled} ${r.elapsed_s}s ⇒ ${r.red.join(' ｜ ')}`);
++    } finally {
++      fs.writeFileSync(c.file, src);
++      if (sha(c.file) !== baseHash[c.file]) throw new Error(`恢复 ${c.file} 后哈希不符，停下人工处理`);
++    }
++  }
++} finally {
++  for (const f of spec.targets) if (sha(f) !== baseHash[f]) fs.writeFileSync(f, base[f]);
++  build();
++}
++if (OUT) fs.writeFileSync(OUT, JSON.stringify(results, null, 2) + '\n');
+diff --git a/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-log.txt b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-log.txt
+new file mode 100644
+index 00000000..168dbbfd
+--- /dev/null
++++ b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-log.txt
+@@ -0,0 +1,13 @@
++M1：fail=2 cancelled=0 3s ⇒ U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示 ｜ U3 doctor.ts 里覆盖值只经 overridesFor 读（另一处是交给提示的入参），段内不得直接读 opts.tierFlags / opts.modelOverrides
++M2：fail=1 cancelled=0 2s ⇒ U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示
++M3：fail=2 cancelled=0 1s ⇒ U2 --only env：写了覆盖 ⇒ warnings 末项是提示（原因②）、blockers 不变；不写 ⇒ warnings 与不传逐项相同 ｜ U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示
++M4：fail=4 cancelled=0 2s ⇒ U1 ③ 被 --only 滤掉的段 ⇒ 原因②，点名 --only 的取值 ｜ U1 ④′ 同一家：--only 别的值 ⇒ 原因②优先；--only 恰为它 ⇒ 仍是原因③ ｜ U2 --only env：写了覆盖 ⇒ warnings 末项是提示（原因②）、blockers 不变；不写 ⇒ warnings 与不传逐项相同 ｜ U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示
++M5：fail=3 cancelled=0 2s ⇒ U1 ④ 已登记、doctor 里尚无该段、不带 --only ⇒ 原因③（尚无探针） ｜ U1 ④′ 同一家：--only 别的值 ⇒ 原因②优先；--only 恰为它 ⇒ 仍是原因③ ｜ U1 ⑤ 三种原因同时出现：按「固定口径 → --only → 尚无探针」分行，组内按注册表顺序
++M6：fail=1 cancelled=0 1s ⇒ U5 cmdDoctor：模型旗标与档位旗标同一份判键——同一个 driver、同一个 picked（CRITIC_AGENT_IDS），先键后值
++M7：fail=2 cancelled=0 8s ⇒ T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行） ｜ T9 doctor：写给 doctor 不消费的家的覆盖 ⇒ 退 0、JSON 顶层键集合不变、warnings 恰多末尾一条提示；人读模式同样出现（EV-245）
++M8：fail=4 cancelled=0 12s ⇒ S1 脏家目录 + 缺省入选（含读共享根的家）⇒ 恰一项「共享读取面同名入口」，结尾是「本次运行」，worker 照常拉起 ｜ S2 人读模式：同一行照样打印 ｜ S4 Driver 读共享根、入选审核者都不读 ⇒ 仍出这一项（口径含当轮 Driver） ｜ S6 位置：与失联阈值、必读清单剔除同时出现时，排在复查项之后、剔除条目之前
++M9：fail=1 cancelled=0 18s ⇒ S4 Driver 读共享根、入选审核者都不读 ⇒ 仍出这一项（口径含当轮 Driver）
++M10：fail=1 cancelled=0 15s ⇒ S6 位置：与失联阈值、必读清单剔除同时出现时，排在复查项之后、剔除条目之前
++M11：fail=2 cancelled=0 12s ⇒ S1 脏家目录 + 缺省入选（含读共享根的家）⇒ 恰一项「共享读取面同名入口」，结尾是「本次运行」，worker 照常拉起 ｜ S2 人读模式：同一行照样打印
++M12：fail=1 cancelled=0 0s ⇒ U4 渲染：只有同名入口时与 M12 批次 5 的文案逐字相同（不混入残留段与残留计数）
++M13：fail=1 cancelled=0 31s ⇒ U6 checkSharedReadRoots：相关家都不读共享根 ⇒ null；有一家读 ⇒ 一条 warn、ok 为真、无退出码；干净 ⇒ null
+diff --git a/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-output.json b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-output.json
+new file mode 100644
+index 00000000..261b6c37
+--- /dev/null
++++ b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-names-output.json
+@@ -0,0 +1,183 @@
++[
++  {
++    "id": "M1",
++    "desc": "Codex 段绕过 overridesFor、改回内联合并",
++    "suite": "dist/test/test/unit/doctor-unused-overrides.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示",
++      "U3 doctor.ts 里覆盖值只经 overridesFor 读（另一处是交给提示的入参），段内不得直接读 opts.tierFlags / opts.modelOverrides"
++    ],
++    "firstLines": [],
++    "elapsed_s": 3
++  },
++  {
++    "id": "M2",
++    "desc": "overridesFor 不记消费",
++    "suite": "dist/test/test/unit/doctor-unused-overrides.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示"
++    ],
++    "firstLines": [],
++    "elapsed_s": 2
++  },
++  {
++    "id": "M3",
++    "desc": "提示推进 blockers",
++    "suite": "dist/test/test/unit/doctor-unused-overrides.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U2 --only env：写了覆盖 ⇒ warnings 末项是提示（原因②）、blockers 不变；不写 ⇒ warnings 与不传逐项相同",
++      "U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M4",
++    "desc": "--only 滤掉的不归原因②",
++    "suite": "dist/test/test/unit/doctor-unused-overrides.test.js",
++    "fail": 4,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U1 ③ 被 --only 滤掉的段 ⇒ 原因②，点名 --only 的取值",
++      "U1 ④′ 同一家：--only 别的值 ⇒ 原因②优先；--only 恰为它 ⇒ 仍是原因③",
++      "U2 --only env：写了覆盖 ⇒ warnings 末项是提示（原因②）、blockers 不变；不写 ⇒ warnings 与不传逐项相同",
++      "U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示"
++    ],
++    "firstLines": [],
++    "elapsed_s": 2
++  },
++  {
++    "id": "M5",
++    "desc": "没有段的家归到原因①",
++    "suite": "dist/test/test/unit/doctor-unused-overrides.test.js",
++    "fail": 3,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U1 ④ 已登记、doctor 里尚无该段、不带 --only ⇒ 原因③（尚无探针）",
++      "U1 ④′ 同一家：--only 别的值 ⇒ 原因②优先；--only 恰为它 ⇒ 仍是原因③",
++      "U1 ⑤ 三种原因同时出现：按「固定口径 → --only → 尚无探针」分行，组内按注册表顺序"
++    ],
++    "firstLines": [],
++    "elapsed_s": 2
++  },
++  {
++    "id": "M6",
++    "desc": "cmdDoctor 不判模型键",
++    "suite": "dist/test/test/unit/doctor-unused-overrides.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U5 cmdDoctor：模型旗标与档位旗标同一份判键——同一个 driver、同一个 picked（CRITIC_AGENT_IDS），先键后值"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M7",
++    "desc": "cmdDoctor 判模型键的 picked 写成空集",
++    "suite": "dist/test/test/integration/tier-flags-cli.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）",
++      "T9 doctor：写给 doctor 不消费的家的覆盖 ⇒ 退 0、JSON 顶层键集合不变、warnings 恰多末尾一条提示；人读模式同样出现（EV-245）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 8
++  },
++  {
++    "id": "M8",
++    "desc": "startRun 不追加共享根项",
++    "suite": "dist/test/test/integration/shared-root-start.test.js",
++    "fail": 4,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S1 脏家目录 + 缺省入选（含读共享根的家）⇒ 恰一项「共享读取面同名入口」，结尾是「本次运行」，worker 照常拉起",
++      "S2 人读模式：同一行照样打印",
++      "S4 Driver 读共享根、入选审核者都不读 ⇒ 仍出这一项（口径含当轮 Driver）",
++      "S6 位置：与失联阈值、必读清单剔除同时出现时，排在复查项之后、剔除条目之前"
++    ],
++    "firstLines": [],
++    "elapsed_s": 12
++  },
++  {
++    "id": "M9",
++    "desc": "relevant 只传入选审核者",
++    "suite": "dist/test/test/integration/shared-root-start.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S4 Driver 读共享根、入选审核者都不读 ⇒ 仍出这一项（口径含当轮 Driver）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 18
++  },
++  {
++    "id": "M10",
++    "desc": "共享根项挪到必读剔除之后",
++    "suite": "dist/test/test/integration/shared-root-start.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S6 位置：与失联阈值、必读清单剔除同时出现时，排在复查项之后、剔除条目之前"
++    ],
++    "firstLines": [],
++    "elapsed_s": 15
++  },
++  {
++    "id": "M11",
++    "desc": "--start 不传场合词",
++    "suite": "dist/test/test/integration/shared-root-start.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S1 脏家目录 + 缺省入选（含读共享根的家）⇒ 恰一项「共享读取面同名入口」，结尾是「本次运行」，worker 照常拉起",
++      "S2 人读模式：同一行照样打印"
++    ],
++    "firstLines": [],
++    "elapsed_s": 12
++  },
++  {
++    "id": "M12",
++    "desc": "summarize 的缺省场合词漂成「本次运行」",
++    "suite": "dist/test/test/unit/entry-collisions.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U4 渲染：只有同名入口时与 M12 批次 5 的文案逐字相同（不混入残留段与残留计数）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M13",
++    "desc": "checkSharedReadRoots 的缺省场合词漂成「本次运行」",
++    "suite": "dist/test/test/unit/preflight.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U6 checkSharedReadRoots：相关家都不读共享根 ⇒ null；有一家读 ⇒ 一条 warn、ok 为真、无退出码；干净 ⇒ null"
++    ],
++    "firstLines": [],
++    "elapsed_s": 31
++  }
++]
+diff --git a/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-output.txt b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-output.txt
+new file mode 100644
+index 00000000..9ff0012f
+--- /dev/null
++++ b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-output.txt
+@@ -0,0 +1,98 @@
++✓ 工作树干净、基线全绿（5 个套件）
++  M1 ✓ 咬住（fail=2）
++  M2 ✓ 咬住（fail=1）
++  M3 ✓ 咬住（fail=2）
++  M4 ✓ 咬住（fail=4）
++  M5 ✓ 咬住（fail=3）
++  M6 ✓ 咬住（fail=1）
++  M7 ✓ 咬住（fail=2）
++  M8 ✓ 咬住（fail=4）
++  M9 ✓ 咬住（fail=1）
++  M10 ✓ 咬住（fail=1）
++  M11 ✓ 咬住（fail=2）
++  M12 ✓ 咬住（fail=1）
++  M13 ✓ 咬住（fail=1）
++{
++  "总数": 13,
++  "咬住": 13,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "Codex 段绕过 overridesFor、改回内联合并",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M2",
++      "desc": "overridesFor 不记消费",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M3",
++      "desc": "提示推进 blockers",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M4",
++      "desc": "--only 滤掉的不归原因②",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M5",
++      "desc": "没有段的家归到原因①",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M6",
++      "desc": "cmdDoctor 不判模型键",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M7",
++      "desc": "cmdDoctor 判模型键的 picked 写成空集",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M8",
++      "desc": "startRun 不追加共享根项",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M9",
++      "desc": "relevant 只传入选审核者",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M10",
++      "desc": "共享根项挪到必读剔除之后",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M11",
++      "desc": "--start 不传场合词",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M12",
++      "desc": "summarize 的缺省场合词漂成「本次运行」",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M13",
++      "desc": "checkSharedReadRoots 的缺省场合词漂成「本次运行」",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-spec.json b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-spec.json
+new file mode 100644
+index 00000000..200f7b20
+--- /dev/null
++++ b/doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-spec.json
+@@ -0,0 +1,122 @@
++{
++  "targets": [
++    "src/trivium/doctor.ts",
++    "src/trivium/cli.ts",
++    "src/trivium/run-protocol.ts",
++    "src/trivium/entry-collisions.ts",
++    "src/trivium/preflight.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/doctor-unused-overrides.test.js",
++    "dist/test/test/integration/tier-flags-cli.test.js",
++    "dist/test/test/integration/shared-root-start.test.js",
++    "dist/test/test/unit/entry-collisions.test.js",
++    "dist/test/test/unit/preflight.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "Codex 段绕过 overridesFor、改回内联合并",
++      "file": "src/trivium/doctor.ts",
++      "find": "    const selected = resolveTier(opts.config, 'codex', 'code', overridesFor('codex'));",
++      "replace": "    const selected = resolveTier(opts.config, 'codex', 'code', { ...opts.tierFlags?.codex, ...(opts.modelOverrides?.codex ? { model: opts.modelOverrides.codex } : {}) });",
++      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "overridesFor 不记消费",
++      "file": "src/trivium/doctor.ts",
++      "find": "    consumedOverrides.add(id);",
++      "replace": "    void consumedOverrides;",
++      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "提示推进 blockers",
++      "file": "src/trivium/doctor.ts",
++      "find": "  if (unusedOverrides !== null) warnings.push(unusedOverrides);",
++      "replace": "  if (unusedOverrides !== null) blockers.push(unusedOverrides);",
++      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "--only 滤掉的不归原因②",
++      "file": "src/trivium/doctor.ts",
++      "find": "      input.only !== null && input.only !== a.cliName ? groups.filtered",
++      "replace": "      false ? groups.filtered",
++      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "没有段的家归到原因①",
++      "file": "src/trivium/doctor.ts",
++      "find": "        : input.ran.has(a.cliName) ? groups.fixed",
++      "replace": "        : true ? groups.fixed",
++      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "cmdDoctor 不判模型键",
++      "file": "src/trivium/cli.ts",
++      "find": "  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), CRITIC_AGENT_IDS);",
++      "replace": "  void modelRaw;",
++      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "cmdDoctor 判模型键的 picked 写成空集",
++      "file": "src/trivium/cli.ts",
++      "find": "  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), CRITIC_AGENT_IDS);",
++      "replace": "  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), []);",
++      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "startRun 不追加共享根项",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "        ...(sharedRoots ? [sharedRoots] : []),",
++      "replace": "        ...(sharedRoots ? [] : []),",
++      "expect": "dist/test/test/integration/shared-root-start.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "relevant 只传入选审核者",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "checkSharedReadRoots([rc.meta.driver, ...rc.sides], undefined, '本次运行')",
++      "replace": "checkSharedReadRoots([...rc.sides], undefined, '本次运行')",
++      "expect": "dist/test/test/integration/shared-root-start.test.js"
++    },
++    {
++      "id": "M10",
++      "desc": "共享根项挪到必读剔除之后",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "        ...(sharedRoots ? [sharedRoots] : []),\n      ]),\n      // 准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02），追加在后、既有两项顺序不变\n      ...rc.mustReadPruned,",
++      "replace": "      ]),\n      // 准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02），追加在后、既有两项顺序不变\n      ...rc.mustReadPruned,\n      ...collectWarnings(sharedRoots ? [sharedRoots] : []),",
++      "expect": "dist/test/test/integration/shared-root-start.test.js"
++    },
++    {
++      "id": "M11",
++      "desc": "--start 不传场合词",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "checkSharedReadRoots([rc.meta.driver, ...rc.sides], undefined, '本次运行')",
++      "replace": "checkSharedReadRoots([rc.meta.driver, ...rc.sides])",
++      "expect": "dist/test/test/integration/shared-root-start.test.js"
++    },
++    {
++      "id": "M12",
++      "desc": "summarize 的缺省场合词漂成「本次运行」",
++      "file": "src/trivium/entry-collisions.ts",
++      "find": "  occasion = '本次预检',\n): string | null {",
++      "replace": "  occasion = '本次运行',\n): string | null {",
++      "expect": "dist/test/test/unit/entry-collisions.test.js"
++    },
++    {
++      "id": "M13",
++      "desc": "checkSharedReadRoots 的缺省场合词漂成「本次运行」",
++      "file": "src/trivium/preflight.ts",
++      "find": "  occasion = '本次预检',\n): Promise<CheckResult | null> {",
++      "replace": "  occasion = '本次运行',\n): Promise<CheckResult | null> {",
++      "expect": "dist/test/test/unit/preflight.test.js"
++    }
++  ]
++}
+diff --git a/test/integration/shared-root-start.test.ts b/test/integration/shared-root-start.test.ts
+new file mode 100644
+index 00000000..be282f78
+--- /dev/null
++++ b/test/integration/shared-root-start.test.ts
+@@ -0,0 +1,139 @@
++/**
++ * `review --start` 的告警复查补上共享读取面一项（EV-246，计划 r2 §2.2、§2.3 U6）。
++ *
++ * 真实打包 CLI 子进程 + 桩适配器（零配额）。扫描家目录经 `TRIVIUM_ENTRY_SCAN_HOME` 指到本文件自己的夹具：
++ * 摆了同名入口的「脏」家目录与空家目录各一份。口径与预检 ④⁵ 同一个函数：只看当轮 Driver ∪ 入选审核者里
++ * 登记了额外读取根的家；只告警、不阻断；结尾的场合词是「本次运行」。共享根没有问题时 warnings 与此前逐项相同。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { bundleMissing, bundleSkipReason, cli, makeFixture, today, type Fixture } from '../helpers/fixture.js';
++import { scratchDir } from '../helpers/scratch.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++import { extractJsonCandidate } from '../../src/trivium/parse.js';
++import { AGENTS, DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
++import { ENTRY_SCAN_HOME_ENV } from '../../src/trivium/entry-collisions.js';
++import type { StubConfig } from '../../src/trivium/adapters/stub.js';
++
++const skip = bundleMissing && bundleSkipReason;
++const STUB: StubConfig = { gemini: { mode: 'ok' }, glm: { mode: 'ok' } };
++const NAME = '共享读取面同名入口';
++
++type Warning = { name: string; detail: string };
++type StartJson = { run_id: string; worker_pid?: number; warnings: Warning[] };
++const parse = <T>(stdout: string): T => JSON.parse(extractJsonCandidate(stdout)!.json) as T;
++
++/** 读共享根的家与不读的家（由注册表派生，不写死 id） */
++const READERS = AGENTS.filter((a) => a.entrySkillExtraReadRoots.length > 0).map((a) => a.id);
++const NON_READERS = AGENTS.filter((a) => a.entrySkillExtraReadRoots.length === 0).map((a) => a.id);
++const SHARED_REL = AGENTS.find((a) => a.entrySkillExtraReadRoots.length > 0)!.entrySkillExtraReadRoots[0]!;
++
++/** 一个摆了别家同名入口的扫描家目录 */
++async function dirtyHome(): Promise<string> {
++  const home = await scratchDir('trivium-start-escan-dirty-');
++  await fs.mkdir(path.join(home, SHARED_REL, 'dual-approve'), { recursive: true });
++  await fs.writeFile(path.join(home, SHARED_REL, 'dual-approve/SKILL.md'), '---\nname: dual-approve\n---\n别家的\n');
++  return home;
++}
++
++const startArgs = (topic: string, ...extra: string[]) =>
++  ['review', '--start', '--stage', 'plan', '--topic', topic, '--focus', 'x', ...extra];
++
++/** `--start` 之后把运行等到终态，别让 worker 留在后台 */
++async function finish(fx: Fixture, runId: string): Promise<void> {
++  let code: number = EXIT.STILL_RUNNING;
++  for (let i = 0; i < 12 && code === EXIT.STILL_RUNNING; i++) {
++    code = (await cli(fx.root, ['review', '--wait', runId, '--timeout', '20'], STUB)).code ?? EXIT.FAIL;
++  }
++  assert.equal(code, EXIT.OK, `运行 ${runId} 没有成功收尾（退 ${code}）`);
++}
++
++async function startJson(fx: Fixture, topic: string, home: string, ...extra: string[]): Promise<StartJson> {
++  const r = await cli(fx.root, [...startArgs(topic, ...extra), '--json'], STUB, 120_000, { [ENTRY_SCAN_HOME_ENV]: home });
++  assert.equal(r.code, EXIT.OK, `--start 失败：\n${r.stdout}\n${r.stderr}`);
++  const js = parse<StartJson>(r.stdout);
++  await finish(fx, js.run_id);
++  return js;
++}
++
++test('S1 脏家目录 + 缺省入选（含读共享根的家）⇒ 恰一项「共享读取面同名入口」，结尾是「本次运行」，worker 照常拉起', { skip }, async () => {
++  assert.ok(READERS.length > 0 && NON_READERS.length > 0, '注册表里要同时有读与不读共享根的家');
++  const topic = 'srs-default';
++  const fx = await makeFixture({ topic });
++  const js = await startJson(fx, topic, await dirtyHome());
++  assert.equal(typeof js.worker_pid, 'number', '只告警、不阻断');
++  assert.equal(js.warnings.length, 1, JSON.stringify(js.warnings));
++  const [w] = js.warnings;
++  assert.equal(w!.name, NAME);
++  assert.ok(w!.detail.startsWith(`⚠️ 共享读取面 ~/${SHARED_REL} 有 1 个同名入口，本轮的 `), w!.detail);
++  assert.ok(w!.detail.endsWith('跑 doctor 看完整清单与出口（不影响本次运行）'), w!.detail);
++  assert.ok(!w!.detail.includes('预检'), '--start 里不该说「不影响本次预检」');
++});
++
++test('S2 人读模式：同一行照样打印', { skip }, async () => {
++  const topic = 'srs-human';
++  const fx = await makeFixture({ topic });
++  const r = await cli(fx.root, startArgs(topic), STUB, 120_000, { [ENTRY_SCAN_HOME_ENV]: await dirtyHome() });
++  assert.equal(r.code, EXIT.OK, `${r.stdout}\n${r.stderr}`);
++  const runId = /已启动运行 (\S+)（/.exec(r.stdout)![1]!;
++  assert.match(r.stdout, /\n {2}⚠️ 共享读取面 .*（不影响本次运行）\n/);
++  await finish(fx, runId);
++});
++
++test('S3 只看本轮相关的家：Driver 与入选审核者都不读共享根 ⇒ 脏家目录也不出这一项', { skip }, async () => {
++  assert.ok(!READERS.includes(DEFAULT_DRIVER), '本格前提：缺省 Driver 不读共享根');
++  const critic = NON_READERS.find((id) => id !== DEFAULT_DRIVER && id in STUB)!;
++  assert.ok(critic, '要有一家不读共享根、又有桩的审核者');
++  const topic = 'srs-irrelevant';
++  const fx = await makeFixture({ topic });
++  const js = await startJson(fx, topic, await dirtyHome(), '--critics', critic);
++  assert.deepEqual(js.warnings, []);
++});
++
++test('S4 Driver 读共享根、入选审核者都不读 ⇒ 仍出这一项（口径含当轮 Driver）', { skip }, async () => {
++  const driver = READERS.find((id) => id in STUB)!;
++  const critic = NON_READERS.find((id) => id !== driver && id in STUB)!;
++  assert.ok(driver && critic, '要有一家读共享根的 Driver 与一家不读的审核者');
++  const topic = 'srs-driver';
++  const fx = await makeFixture({ topic });
++  // 换了 Driver 就要补一份它的原稿（被审对象按当轮 Driver 的后缀定位）
++  await fs.writeFile(path.join(fx.stageDir, `${today()}-${topic}-${driver}.md`), '# 待审计划\n\n换 Driver 的原稿。\n');
++  const js = await startJson(fx, topic, await dirtyHome(), '--driver', driver, '--critics', critic);
++  assert.deepEqual(js.warnings.map((w) => w.name), [NAME], JSON.stringify(js.warnings));
++});
++
++test('S5 空家目录 ⇒ warnings 为空数组（与改前逐项相同）', { skip }, async () => {
++  const topic = 'srs-clean';
++  const fx = await makeFixture({ topic });
++  const js = await startJson(fx, topic, await scratchDir('trivium-start-escan-clean-'));
++  assert.deepEqual(js.warnings, []);
++});
++
++/** 一份 glm 侧审查件：对 gemini 侧是禁读（对端审查件），用来造出「必读清单剔除」一项（照 mustread-deny A1 的夹具） */
++async function writePeerReview(abs: string, topic: string): Promise<void> {
++  await fs.mkdir(path.dirname(abs), { recursive: true });
++  await fs.writeFile(
++    abs,
++    ['---', 'schema: trivium.review.v1', `topic: ${topic}`, 'stage: plan', 'role: glm', 'verdict: approve', '---', '', '# 审查', ''].join('\n'),
++  );
++}
++
++test('S6 位置：与失联阈值、必读清单剔除同时出现时，排在复查项之后、剔除条目之前', { skip }, async () => {
++  const topic = 'srs-order';
++  const fx = await makeFixture({ topic, draft: false, extraReview: ['heartbeat_stale_s: 2'] });
++  await fs.appendFile(path.join(fx.root, '.trivium/config.yaml'), 'archive_root: doc/reviews\n');
++  const stageDir = path.join(fx.root, 'doc/reviews', topic, 'plan');
++  const peer = `doc/reviews/${topic}/plan/${today()}-${topic}-glm.md`;
++  await writePeerReview(path.join(fx.root, peer), topic);
++  await fs.writeFile(path.join(stageDir, `${today()}-${topic}-claude.md`), `# 待审计划\n\n参考 ${peer} 与 src/a.ts。\n`);
++
++  const r = await cli(fx.root, [...startArgs(topic), '--json'], STUB, 120_000, { [ENTRY_SCAN_HOME_ENV]: await dirtyHome() });
++  assert.equal(r.code, EXIT.OK, `${r.stdout}\n${r.stderr}`);
++  const js = parse<StartJson>(r.stdout);
++  // 2 s 阈值下 --wait 会判失联：不等，直接 --cancel 收尾（照 heartbeat-threshold-warning 的做法）
++  const c = await cli(fx.root, ['review', '--cancel', js.run_id], STUB);
++  assert.equal(c.code, EXIT.OK, `${c.stdout}\n${c.stderr}`);
++  assert.deepEqual(js.warnings.map((w) => w.name), ['失联阈值', NAME, '必读清单剔除'], JSON.stringify(js.warnings));
++});
+diff --git a/test/unit/doctor-unused-overrides.test.ts b/test/unit/doctor-unused-overrides.test.ts
+new file mode 100644
+index 00000000..90b51b2f
+--- /dev/null
++++ b/test/unit/doctor-unused-overrides.test.ts
+@@ -0,0 +1,248 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { describeUnusedOverrides, runDoctor, type UnusedOverridesInput } from '../../src/trivium/doctor.js';
++import { TRIVIUM_DIR, agentConfigOf, defaultConfig } from '../../src/trivium/config.js';
++import { AGENTS, type AgentDescriptor } from '../../src/trivium/agents/registry.js';
++import { assertModelOverrideKeys } from '../../src/trivium/critics.js';
++import { EXIT, TriviumError } from '../../src/trivium/exit-codes.js';
++import { REPO_ROOT } from '../helpers/fixture.js';
++import { scratchDir } from '../helpers/scratch.js';
++import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
++
++isolateEntryScanHome();
++
++/*
++ * doctor 收到写给它不消费的家的覆盖旗标时给一条提示（EV-245，计划 r2 §2.1、§2.3 U1～U3、U5）。
++ * 「用上没有」按 runDoctor 的运行期记录判（`overridesFor`），提示只进 warnings、退出码不变。
++ */
++
++const HEAD = '以下命令行覆盖本次没有用上';
++const byCli = (cli: string): AgentDescriptor => AGENTS.find((a) => a.cliName === cli)!;
++const AGY = byCli('agy');
++const ZCODE = byCli('zcode');
++const CODEX = byCli('codex');
++const CLAUDE = byCli('claude');
++
++function input(over: Partial<UnusedOverridesInput>): UnusedOverridesInput {
++  return { consumed: new Set(), ran: new Set(), only: null, ...over };
++}
++
++// ── U1 纯函数 ──────────────────────────────────────────────────────────
++
++test('U1 ① 写了的覆盖全部被读过 ⇒ null；什么都没写 ⇒ null', () => {
++  assert.equal(describeUnusedOverrides(input({})), null);
++  assert.equal(
++    describeUnusedOverrides(input({
++      modelOverrides: { [CODEX.id]: 'm' },
++      tierFlags: { [CLAUDE.id]: { tier: 'high' } },
++      consumed: new Set([CODEX.id, CLAUDE.id]),
++      ran: new Set([CODEX.cliName, CLAUDE.cliName]),
++    })),
++    null,
++  );
++});
++
++test('U1 ② 段跑了却没读覆盖 ⇒ 一条提示，点名旗标与显示名，原因是固定的探测口径；不回显取值', () => {
++  const s = describeUnusedOverrides(input({
++    modelOverrides: { [AGY.id]: 'secret-looking-model-value' },
++    tierFlags: { [ZCODE.id]: { tier: 'high', effort: 'max' } },
++    ran: new Set([AGY.cliName, ZCODE.cliName, CODEX.cliName, CLAUDE.cliName]),
++    consumed: new Set([CODEX.id, CLAUDE.id]),
++  }));
++  assert.ok(s);
++  const lines = s.split('\n');
++  assert.ok(lines[0]!.startsWith(HEAD), s);
++  assert.match(lines[0]!, /退出码与探测结论不受影响/);
++  assert.equal(lines.length, 2, '同一原因归成一行');
++  assert.equal(
++    lines[1],
++    `  · --model-${AGY.id}、--tier-${ZCODE.id}、--effort-${ZCODE.id}：${AGY.display}、${ZCODE.display} 的探测不读命令行覆盖值，用的是各自固定的探测口径`,
++  );
++  assert.ok(!s.includes('secret-looking-model-value'), '只列旗标名、不列取值');
++  assert.ok(!s.includes('max'), '只列旗标名、不列取值');
++});
++
++test('U1 ③ 被 --only 滤掉的段 ⇒ 原因②，点名 --only 的取值', () => {
++  const s = describeUnusedOverrides(input({
++    modelOverrides: { [CODEX.id]: 'm' },
++    tierFlags: { [CODEX.id]: { vendorProfile: null } },
++    only: AGY.cliName,
++    ran: new Set([AGY.cliName]),
++  }));
++  assert.equal(s?.split('\n')[1], `  · --model-${CODEX.id}、--native-${CODEX.id}：本次 --only ${AGY.cliName}，没有探测 ${CODEX.display}`);
++});
++
++/** 第五家：已登记、doctor 里没有它的段（桩描述符，不依赖真实注册表长什么样） */
++const FIFTH: AgentDescriptor = { ...CODEX, id: 'fifth' as AgentDescriptor['id'], cliName: 'fifthcli', display: 'Fifth' };
++const WITH_FIFTH = [...AGENTS, FIFTH];
++
++test('U1 ④ 已登记、doctor 里尚无该段、不带 --only ⇒ 原因③（尚无探针）', () => {
++  const s = describeUnusedOverrides(input({
++    agents: WITH_FIFTH,
++    modelOverrides: { fifth: 'm' } as UnusedOverridesInput['modelOverrides'],
++    ran: new Set(AGENTS.map((a) => a.cliName)),
++    consumed: new Set([CODEX.id, CLAUDE.id]),
++  }));
++  assert.equal(s?.split('\n')[1], '  · --model-fifth：doctor 尚无 Fifth 的探针');
++});
++
++test('U1 ④′ 同一家：--only 别的值 ⇒ 原因②优先；--only 恰为它 ⇒ 仍是原因③', () => {
++  const base = { agents: WITH_FIFTH, modelOverrides: { fifth: 'm' } as UnusedOverridesInput['modelOverrides'] };
++  const other = describeUnusedOverrides(input({ ...base, only: AGY.cliName, ran: new Set([AGY.cliName]) }));
++  assert.equal(other?.split('\n')[1], `  · --model-fifth：本次 --only ${AGY.cliName}，没有探测 Fifth`);
++  const self = describeUnusedOverrides(input({ ...base, only: 'fifthcli' }));
++  assert.equal(self?.split('\n')[1], '  · --model-fifth：doctor 尚无 Fifth 的探针');
++});
++
++test('U1 ⑤ 三种原因同时出现：按「固定口径 → --only → 尚无探针」分行，组内按注册表顺序', () => {
++  const s = describeUnusedOverrides(input({
++    agents: WITH_FIFTH,
++    // 故意倒序写入：顺序取注册表，不取写入序
++    modelOverrides: { fifth: 'm', [ZCODE.id]: 'm', [AGY.id]: 'm' } as UnusedOverridesInput['modelOverrides'],
++    tierFlags: { [CODEX.id]: { tier: 'low' } },
++    only: null,
++    ran: new Set([AGY.cliName, ZCODE.cliName]),
++  }));
++  const lines = s!.split('\n');
++  assert.equal(lines.length, 3, s!);
++  const order = AGENTS.filter((a) => a.id === AGY.id || a.id === ZCODE.id).map((a) => `--model-${a.id}`).join('、');
++  assert.ok(lines[1]!.startsWith(`  · ${order}：`), s!);
++  // codex 的段这一格没跑、也没被 --only 滤掉 ⇒ 与第五家同属原因③（这一格没有原因②，不出空行）
++  assert.equal(lines[2], `  · --tier-${CODEX.id}、--model-fifth：doctor 尚无 ${CODEX.display}、Fifth 的探针`);
++});
++
++// ── U2 经 runDoctor ──────────────────────────────────────────────────
++
++/** 只会报版本号的假入口：agy / codex 段在 skipModelCalls 下走得到、零配额 */
++async function fakeBin(dir: string, name: string): Promise<string> {
++  const p = path.join(dir, name);
++  await fs.writeFile(p, `#!${process.execPath}\nconsole.log('${name} 0.0.1');\n`, { mode: 0o755 });
++  return p;
++}
++
++async function doctorWorld() {
++  const root = await scratchDir('trivium-unused-ovr-');
++  const triviumDir = path.join(root, TRIVIUM_DIR);
++  await fs.mkdir(triviumDir, { recursive: true });
++  const bin = path.join(root, 'bin');
++  await fs.mkdir(bin);
++  const cfg = defaultConfig();
++  agentConfigOf(cfg, 'gemini', 'antigravity').bin = await fakeBin(bin, 'agy');
++  return { root, triviumDir, cfg, codexBin: await fakeBin(bin, 'codex') };
++}
++
++/** 段里会读家目录的探针（agy 的 Agent 文件、codex 的 CODEX_HOME）一律钉到夹具，不读真实家目录 */
++async function withPinnedHome<T>(home: string, fn: () => Promise<T>): Promise<T> {
++  const saved = { HOME: process.env['HOME'], CODEX_HOME: process.env['CODEX_HOME'] };
++  process.env['HOME'] = home;
++  process.env['CODEX_HOME'] = path.join(home, '.codex');
++  try {
++    return await fn();
++  } finally {
++    for (const [k, v] of Object.entries(saved)) {
++      if (v === undefined) delete process.env[k];
++      else process.env[k] = v;
++    }
++  }
++}
++
++const hintsOf = (ws: readonly string[]): string[] => ws.filter((w) => w.startsWith(HEAD));
++
++test('U2 --only env：写了覆盖 ⇒ warnings 末项是提示（原因②）、blockers 不变；不写 ⇒ warnings 与不传逐项相同', async () => {
++  const w = await doctorWorld();
++  const run = (extra: Partial<Parameters<typeof runDoctor>[0]>) =>
++    runDoctor({ config: w.cfg, projectRoot: w.root, triviumDir: w.triviumDir, only: 'env', skipModelCalls: true, ...extra });
++  const plain = await run({});
++  const empty = await run({ modelOverrides: {}, tierFlags: {} });
++  assert.deepEqual(empty.warnings, plain.warnings);
++  assert.deepEqual(empty.blockers, plain.blockers);
++
++  const hinted = await run({ modelOverrides: { [AGY.id]: 'x' } as never, tierFlags: { [ZCODE.id]: { tier: 'high' } } as never });
++  assert.deepEqual(hinted.blockers, plain.blockers, '提示不进 blockers——退出码由 blockers 定');
++  assert.deepEqual(hinted.warnings.slice(0, -1), plain.warnings, '其余告警逐项不变');
++  const last = hinted.warnings.at(-1)!;
++  assert.ok(last.startsWith(HEAD), last);
++  assert.match(last, new RegExp(`--model-${AGY.id}、--tier-${ZCODE.id}：本次 --only env`));
++});
++
++test('U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示', async () => {
++  const w = await doctorWorld();
++  await withPinnedHome(path.join(w.root, 'home'), async () => {
++    const agy = await runDoctor({
++      config: w.cfg, projectRoot: w.root, triviumDir: w.triviumDir, only: AGY.cliName, skipModelCalls: true,
++      modelOverrides: { [AGY.id]: 'x' } as never,
++    });
++    const h = hintsOf(agy.warnings);
++    assert.equal(h.length, 1, agy.warnings.join('\n---\n'));
++    assert.match(h[0]!, new RegExp(`--model-${AGY.id}：${AGY.display} 的探测不读命令行覆盖值`));
++
++    const codex = await runDoctor({
++      config: w.cfg, projectRoot: w.root, triviumDir: w.triviumDir, only: CODEX.cliName, skipModelCalls: true,
++      probeBins: { codex: w.codexBin },
++      modelOverrides: { [CODEX.id]: 'x' } as never,
++    });
++    assert.deepEqual(hintsOf(codex.warnings), [], 'codex 段读了它的覆盖，不该被报成没用上');
++
++    // 同一次 --only codex 里写给 agy 的覆盖：原因②，且 codex 自己的不出现
++    const mixed = await runDoctor({
++      config: w.cfg, projectRoot: w.root, triviumDir: w.triviumDir, only: CODEX.cliName, skipModelCalls: true,
++      probeBins: { codex: w.codexBin },
++      modelOverrides: { [CODEX.id]: 'x', [AGY.id]: 'y' } as never,
++    });
++    const m = hintsOf(mixed.warnings);
++    assert.equal(m.length, 1);
++    assert.equal(m[0]!.split('\n')[1], `  · --model-${AGY.id}：本次 --only ${CODEX.cliName}，没有探测 ${AGY.display}`);
++  });
++});
++
++// ── U3 源码护栏 ──────────────────────────────────────────────────────
++
++test('U3 doctor.ts 里覆盖值只经 overridesFor 读（另一处是交给提示的入参），段内不得直接读 opts.tierFlags / opts.modelOverrides', async () => {
++  const src = await fs.readFile(path.join(REPO_ROOT, 'src/trivium/doctor.ts'), 'utf8');
++  const cut = (text: string, start: string, end: string): string => {
++    const i = text.indexOf(start);
++    assert.ok(i >= 0, `锚点不在：${start}`);
++    const j = text.indexOf(end, i);
++    assert.ok(j > i, `收尾锚点不在：${end}`);
++    return text.slice(0, i) + text.slice(j + end.length);
++  };
++  let rest = cut(src, 'const overridesFor = ', '\n  };');
++  rest = cut(rest, 'describeUnusedOverrides({\n', '\n  });');
++  const isComment = (l: string): boolean => /^\s*(\*|\/\/|\/\*)/.test(l);
++  const left = rest.split('\n').filter((l) => !isComment(l) && /opts\.(tierFlags|modelOverrides)\b/.test(l));
++  assert.deepEqual(left, [], '这些行绕过了 overridesFor：用上的覆盖会被报成没用上');
++  // 守住两段确实经助手：读覆盖的段数与 overridesFor( 调用数相同（今天是两段）
++  const calls = src.split('overridesFor(').length - 1;
++  assert.ok(calls >= 2, `overridesFor 调用只有 ${calls} 处`);
++});
++
++// ── U5 判键接线 ──────────────────────────────────────────────────────
++
++test('U5 cmdDoctor：模型旗标与档位旗标同一份判键——同一个 driver、同一个 picked（CRITIC_AGENT_IDS），先键后值', async () => {
++  const src = await fs.readFile(path.join(REPO_ROOT, 'src/trivium/cli.ts'), 'utf8');
++  const start = src.indexOf('async function cmdDoctor(');
++  const end = src.indexOf('\nasync function ', start + 1);
++  const body = src.slice(start, end);
++  const tier = body.indexOf('assertTierFlags(ctx.config, driver, collectTierFlags(tierFlagGetter(args)), CRITIC_AGENT_IDS)');
++  const keys = body.indexOf('assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), CRITIC_AGENT_IDS)');
++  const values = body.indexOf("assertFlagValuesGiven('model', modelRaw)");
++  assert.ok(tier > 0, '档位旗标判键不在原处');
++  assert.ok(keys > tier, '模型旗标判键缺失，或不在档位之后');
++  assert.ok(values > keys, '先键后值');
++  assert.equal(body.split('resolveDriver(').length - 1, 1, 'driver 只解析一次、两处共用');
++});
++
++test('U5 行为面：picked 取全部审核者时，已登记却未启用为审核者的一家 ⇒ 退 64（doctor 的口径，桩注册表）', () => {
++  const target = AGY.id;
++  const registry = AGENTS.map((a) => ({ ...a, criticEnabled: a.id !== target }));
++  const picked = registry.filter((a) => a.criticEnabled).map((a) => a.id);
++  const cfg = defaultConfig();
++  assert.throws(
++    () => assertModelOverrideKeys(cfg, CLAUDE.id, [target], picked, registry),
++    (e: unknown) => e instanceof TriviumError && e.code === EXIT.USAGE && e.message.includes(`--model-${target}：${target} 本轮不是可用审核者`),
++  );
++  // 启用了的照常放行（今天的注册表就是这一格）
++  assertModelOverrideKeys(cfg, CLAUDE.id, [CODEX.id, AGY.id], AGENTS.filter((a) => a.criticEnabled).map((a) => a.id));
++});

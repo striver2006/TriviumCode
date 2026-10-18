@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "doctor旗标提示与start共享根检查",
+  "goal": "修 BACKLOG 两条残余（M12 收口时登记）。EV-245：doctor 收到写给它不消费的家（gemini / glm）的 --model / --tier / --effort 覆盖旗标时，现在静默不生效、照常退 0。用户定的口径：模型旗标补上与档位旗标同一份判键（assertCriticFlagKeys）；写给 doctor 不消费的家的覆盖值，在 doctor 输出里给一条提示，说明…",
+  "created_at": "2026-10-18T07:23:14.643Z",
+  "updated_at": "2026-10-18T08:36:11.528Z",
+  "runs": [
+    {
+      "run_id": "20261018T072932Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-18T07:29:55.936Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261018T081641Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-18T08:16:47.301Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261018T083021Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-18T08:36:11.528Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-18T07:23:14.643Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-18T07:45:39.026Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261018T072932Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-10-18T07:45:36.200Z"
+    },
+    {
+      "run_id": "20261018T081641Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-10-18T08:22:54.707Z"
+    }
+  ]
+}

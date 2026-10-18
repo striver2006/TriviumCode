@@ -1,0 +1,49 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "逐项核过四个审查焦点，实现与已批准计划 r2 一致、质量过硬。焦点 1（doctor 提示按实际消费判、不写家名、第五家正确）：describeUnusedOverrides 按注册表顺序遍历、三原因全部由运行期集合（consumedOverrides / probedSections ∪ fixtureFailed / only）推出，源码不写任何 Agent id；overridesFor 是覆盖值唯一读点，U3 源码护栏加 M1/M2 变异咬住绕过路径；第五家用桩描述符在 U1 ④/④′/⑤ 三格验证（无段归原因③、被 --only 滤掉归原因②且②优先），第五家未来接上经 overridesFor 的段即自然消音，提示代码无需改。焦点 2（不改退出码与 --json 形状）：提示只 push 进 warnings、在全部段之后，退出码仍由 blockers 定；T9 钉住顶层键集合（不写死键数）、ok、blockers 逐项相同与 warnings 恰多末尾一条，A-1 新旧对照显示不带覆盖时逐字节相同。焦点 3（--start 与 preflight 同源、只看本轮、不破坏空断言）：startRun 调的是同一个 checkSharedReadRoots，relevant 含当轮 Driver（S3/S4 双向验证，M9 咬住），位置在档位组合之后、必读剔除之前（S6、M10）；cli() 缺省把扫描家目录钉到空夹具（fixture.ts:193），U8 论域扩展把直调 startRun 与自跑 --start 的文件纳入对账并逐个登记理由，既有 warnings 为空的断言一条没改。焦点 4（干净时逐字节相同）：无问题时函数返回 null 什么都不追加，A-2 规范化后逐字节相同。唯一意见是一条 nit 级测试缺口：checkSharedReadRoots 的扫描出错分支（catch 臂）里本次新加的 occasion 插值没有任何用例钉住，详见 GLM-01。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/preflight.ts:860（checkSharedReadRoots 的 catch 分支）；对照测试 test/unit/preflight.test.ts:1176-1192（U6）",
+      "problem": "本补丁给 checkSharedReadRoots 加 occasion 参数时，扫描出错退化为告警的 catch 分支也改成了插值（共享读取面检查没做成（不影响${occasion}）），但这条分支两侧都没有测试：preflight.test.ts 的 U6 只断言三条正常路径（不读共享根 ⇒ null、脏家目录 ⇒ 一行 warn、干净 ⇒ null），全 test 目录对 checkSharedReadRoots 的直调仅此几格；doctor-shared-roots.test.ts:59 测的是 runDoctor 自己的那份内联 catch，不是这个函数。变异 M11/M13 也只咬正常分支的场合词。日后若有人只动错误分支（例如把那一处的 occasion 写死成「本次预检」），测试全绿，review --start 在扫描出错时会念出「不影响本次预检」的错场合词——错话虽只在罕见路径出现，但这正是本次给预检文案加场合参数要避免的那类混淆。",
+      "evidence": "src/trivium/preflight.ts:847-862（860 行 catch 分支插值 occasion）；test/unit/preflight.test.ts:1176-1192（U6 仅正常路径）；test/unit/doctor-shared-roots.test.ts:59（runDoctor 的内联 catch，另一条路径）；doc/05_testing/evidence/doctor-flags-start-shared-root-20261018/mutation-spec.json 的 M11、M13 均只改正常分支取值",
+      "suggestion": "补一格错误分支用例：给 checkSharedReadRoots 传一个会让 scanEntryCollisions 抛错的注入口（例如把 home 指向一个以普通文件形式存在的路径，readdir 会抛 ENOTDIR），断言缺省调用的 detail 含「不影响本次预检」、传「本次运行」时含「不影响本次运行」。不阻断合入，可随后续批次补。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "EV-245 判键：cmdDoctor 的模型旗标与档位旗标同一份判键（assertModelOverrideKeys 与 assertTierFlags 同一个 driver、同一个 CRITIC_AGENT_IDS，resolveDriver 只解析一次），先键后值；对现注册表全部放行、只在登记未启用为审核者的一家退 64（U5 桩注册表验证），与计划 D-5 一致",
+    "EV-245 提示按运行期记录判：overridesFor 是唯一读点（读的同时记消费），describeUnusedOverrides 不维护消费家清单、不写任何 Agent id，三原因先②后①后③的次序按计划 D-3 落实且 U1 ④′ 钉住②优先于③；第五家登记后落哪一格由它有没有段、段读不读覆盖自然决定",
+    "提示只进 warnings 不进 blockers、只列旗标名不列取值、末尾一条；退出码与 --json 顶层键集合由 T9（不写死键数，容纳条件出现的 directoryEvidence）与 A-1 新旧对照守住",
+    "措辞用「固定的探测口径」而非「固定探测模型」，与 zcode 按配置 plan 档取探测模型的事实相符（计划 D-4）",
+    "EV-246：startRun 与预检 ④⁵ 用同一个 checkSharedReadRoots，relevant 含当轮 Driver（S4、变异 M9 咬住），只告警不阻断，worker 照常拉起（S1 断言 worker_pid）；场合词经参数替换、缺省值双向钉住（M12/M13 变异 + entry-collisions U4 / preflight U6 补句），预检侧输出逐字不变",
+    "共享根干净时 --start 不追加任何项、人读与 --json 规范化后逐字节相同（S5 与 A-2 四格读数 all_as_expected=true），焦点 4 成立",
+    "测试隔离收口：cli() 缺省钉 TRIVIUM_ENTRY_SCAN_HOME 到空夹具，U8 对账论域扩到 startRun 与自跑 --start 的文件并逐个登记理由；变异预跑与正式装置均 13/13、全量 3748/3746/0/2（报告转述）",
+    "文档同步齐备：主设计 v1.3.169（7.1、7.4.1、8.1、17.2 两行、16.1 残余②③标注、修订记录）、BACKLOG EV-245/246 翻 done、MANUAL_user v1.0.47、测试报告与 doc/05_testing/README 索引、证据目录脚本与读数齐备；顺带补上 --start 来源清单此前漏列的档位组合一项，是诚实的文档修正"
+  ],
+  "not_covered": [
+    "本侧为只读审查、未执行任何命令：全量 npm run check 3748/3746/0/2、变异 13/13、新旧对照 8 格全部取自报告与证据文件的读数，未独立复跑",
+    "doctor 各探针段在真实厂商 CLI 上的行为未看（验收全部走假入口与桩，符合零配额口径）；agy/zcode 段在真机上的提示表现是推断",
+    "overridesFor 在 guard 之前调用的边界格：codex/claude 段探针夹具建不起来时消费已先行记下、该家不出提示——读代码推断此时已有 blocker 指路、语义可接受，未实测",
+    "安装器 dist/install.cjs 侧未复核（本补丁对 entry-collisions.ts 只加带缺省值的可选参数，判定与文案不变，推断向后兼容）；CLAUDE.md、README.md、doc/README.md、doc/01_requirements/README.md、doc/02_design/README.md 等必读清单中的指南类文件未逐份通读，仅按需查证了设计文档相关段落",
+    "checkSharedReadRoots 出错分支在真实扫描异常下的文案（见 GLM-01）"
+  ],
+  "consulted": [
+    ".reviews/doctor旗标提示与start共享根检查/code/_meta/changes-20261018T081641Z.diff",
+    ".reviews/doctor旗标提示与start共享根检查/plan/2026-10-18-doctor旗标提示与start共享根检查-r2-claude.md",
+    "src/trivium/doctor.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/entry-collisions.ts",
+    "src/trivium/agents/registry.ts",
+    "test/helpers/fixture.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/doctor-shared-roots.test.ts"
+  ]
+}
