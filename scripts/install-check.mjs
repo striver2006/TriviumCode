@@ -29,7 +29,8 @@ if (!KIND || typeof KIND !== 'object') {
 }
 try {
   const plan = await planInstall(repo, defaultInstallEnv());
-  const problems = await checkInstall(plan.targets);
+  // 补传运行时根：它恰好放在共享根里时不当残留报，与真装的豁免口径一致（主题 M12-共享根残留检测）
+  const problems = await checkInstall(plan.targets, plan.runtimeRoot);
   if (problems.length === 0) {
     console.log(`✓ 无重名、无残留（已查 ${plan.targets.map((t) => t.agent).join('、')} 的安装根与额外读取面）`);
     process.exit(0);

@@ -1,0 +1,358 @@
+{
+  "isolation": {
+    "HOME": "<FX>/home-cli",
+    "removed": [
+      "TRIVIUM_ASSET_ROOT",
+      "TRIVIUM_ENTRY_SCAN_HOME",
+      "CODEX_HOME",
+      "ZCODE_HOME",
+      "XDG_*"
+    ]
+  },
+  "agy_version_fixture": {
+    "probe": "1.4.2",
+    "installed": "1.4.2"
+  },
+  "cells": [
+    {
+      "kind": "doctor",
+      "home": "clean",
+      "identical": true,
+      "old": {
+        "code": 0,
+        "blockers": 0,
+        "shared_warnings": []
+      },
+      "new": {
+        "code": 0,
+        "blockers": 0,
+        "shared_warnings": []
+      }
+    },
+    {
+      "kind": "doctor",
+      "home": "entries",
+      "identical": true,
+      "old": {
+        "code": 0,
+        "blockers": 0,
+        "shared_warnings": [
+          "共享读取面里有 2 个同名入口（这些根会被多家 CLI 读到：同名时 Codex 的显式调用会失效、ZCode 两份都进模型清单，而且它带的 --driver 可能是别家）：\n  · ~/.agents/skills/dual-run  别家的同名 skill（Codex、ZCode 会读到）\n  · ~/.agents/skills/dual-status  本产品的入口出现在不该装的位置（如被别的工具拷进共享根）（Codex、ZCode 会读到）\n  出口：在 TriviumCode 仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走；安装器与 doctor 都不删这些路径。"
+        ]
+      },
+      "new": {
+        "code": 0,
+        "blockers": 0,
+        "shared_warnings": [
+          "共享读取面里有 2 个同名入口（这些根会被多家 CLI 读到：同名时 Codex 的显式调用会失效、ZCode 两份都进模型清单，而且它带的 --driver 可能是别家）：\n  · ~/.agents/skills/dual-run  别家的同名 skill（Codex、ZCode 会读到）\n  · ~/.agents/skills/dual-status  本产品的入口出现在不该装的位置（如被别的工具拷进共享根）（Codex、ZCode 会读到）\n  出口：在 TriviumCode 仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走；安装器与 doctor 都不删这些路径。"
+        ]
+      }
+    },
+    {
+      "kind": "doctor",
+      "home": "residue",
+      "identical": false,
+      "old": {
+        "code": 0,
+        "blockers": 0,
+        "shared_warnings": []
+      },
+      "new": {
+        "code": 0,
+        "blockers": 0,
+        "shared_warnings": [
+          "共享读取面里有 1 份本产品的历史拷贝（运行时根或入口子树，不随安装更新；带入口子树时会把别家的入口调出来）：\n  · ~/.agents/skills/dual-critic  本产品运行时或入口子树的整棵拷贝，多半是别的工具导入时带进来的（Codex、ZCode 会读到）\n  出口：在 TriviumCode 仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走；安装器与 doctor 都不删这些路径。"
+        ]
+      }
+    },
+    {
+      "kind": "doctor",
+      "home": "mixed",
+      "identical": false,
+      "old": {
+        "code": 0,
+        "blockers": 0,
+        "shared_warnings": [
+          "共享读取面里有 1 个同名入口（这些根会被多家 CLI 读到：同名时 Codex 的显式调用会失效、ZCode 两份都进模型清单，而且它带的 --driver 可能是别家）：\n  · ~/.agents/skills/dual-run  别家的同名 skill（Codex、ZCode 会读到）\n  出口：在 TriviumCode 仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走；安装器与 doctor 都不删这些路径。"
+        ]
+      },
+      "new": {
+        "code": 0,
+        "blockers": 0,
+        "shared_warnings": [
+          "共享读取面里有 1 个同名入口（这些根会被多家 CLI 读到：同名时 Codex 的显式调用会失效、ZCode 两份都进模型清单，而且它带的 --driver 可能是别家）：\n  · ~/.agents/skills/dual-run  别家的同名 skill（Codex、ZCode 会读到）\n共享读取面里有 1 份本产品的历史拷贝（运行时根或入口子树，不随安装更新；带入口子树时会把别家的入口调出来）：\n  · ~/.agents/skills/dual-critic  本产品运行时或入口子树的整棵拷贝，多半是别的工具导入时带进来的（Codex、ZCode 会读到）\n  出口：在 TriviumCode 仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走；安装器与 doctor 都不删这些路径。"
+        ]
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "clean",
+      "args": "--critics gemini",
+      "identical": true,
+      "old": {
+        "args": "--critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      },
+      "new": {
+        "args": "--critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "clean",
+      "args": "--critics glm",
+      "identical": true,
+      "old": {
+        "args": "--critics glm",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      },
+      "new": {
+        "args": "--critics glm",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "clean",
+      "args": "--driver glm --critics gemini",
+      "identical": true,
+      "old": {
+        "args": "--driver glm --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      },
+      "new": {
+        "args": "--driver glm --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "clean",
+      "args": "--driver codex --critics gemini",
+      "identical": true,
+      "old": {
+        "args": "--driver codex --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      },
+      "new": {
+        "args": "--driver codex --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "entries",
+      "args": "--critics gemini",
+      "identical": true,
+      "old": {
+        "args": "--critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      },
+      "new": {
+        "args": "--critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "entries",
+      "args": "--critics glm",
+      "identical": true,
+      "old": {
+        "args": "--critics glm",
+        "code": 0,
+        "ok": true,
+        "shared": [
+          "⚠️ 共享读取面 ~/.agents/skills 有 2 个同名入口，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
+        ],
+        "failed": []
+      },
+      "new": {
+        "args": "--critics glm",
+        "code": 0,
+        "ok": true,
+        "shared": [
+          "⚠️ 共享读取面 ~/.agents/skills 有 2 个同名入口，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
+        ],
+        "failed": []
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "entries",
+      "args": "--driver glm --critics gemini",
+      "identical": true,
+      "old": {
+        "args": "--driver glm --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [
+          "⚠️ 共享读取面 ~/.agents/skills 有 2 个同名入口，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
+        ],
+        "failed": []
+      },
+      "new": {
+        "args": "--driver glm --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [
+          "⚠️ 共享读取面 ~/.agents/skills 有 2 个同名入口，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
+        ],
+        "failed": []
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "entries",
+      "args": "--driver codex --critics gemini",
+      "identical": true,
+      "old": {
+        "args": "--driver codex --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [
+          "⚠️ 共享读取面 ~/.agents/skills 有 2 个同名入口，本轮的 Codex 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
+        ],
+        "failed": []
+      },
+      "new": {
+        "args": "--driver codex --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [
+          "⚠️ 共享读取面 ~/.agents/skills 有 2 个同名入口，本轮的 Codex 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
+        ],
+        "failed": []
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "residue",
+      "args": "--critics gemini",
+      "identical": true,
+      "old": {
+        "args": "--critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      },
+      "new": {
+        "args": "--critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "residue",
+      "args": "--critics glm",
+      "identical": false,
+      "old": {
+        "args": "--critics glm",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      },
+      "new": {
+        "args": "--critics glm",
+        "code": 0,
+        "ok": true,
+        "shared": [
+          "⚠️ 共享读取面 ~/.agents/skills 有 1 份本产品的历史拷贝，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
+        ],
+        "failed": []
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "residue",
+      "args": "--driver glm --critics gemini",
+      "identical": false,
+      "old": {
+        "args": "--driver glm --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      },
+      "new": {
+        "args": "--driver glm --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [
+          "⚠️ 共享读取面 ~/.agents/skills 有 1 份本产品的历史拷贝，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
+        ],
+        "failed": []
+      }
+    },
+    {
+      "kind": "preflight",
+      "home": "residue",
+      "args": "--driver codex --critics gemini",
+      "identical": false,
+      "old": {
+        "args": "--driver codex --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      },
+      "new": {
+        "args": "--driver codex --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [
+          "⚠️ 共享读取面 ~/.agents/skills 有 1 份本产品的历史拷贝，本轮的 Codex 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
+        ],
+        "failed": []
+      }
+    }
+  ],
+  "self_root": {
+    "from_shared_copy": {
+      "code": 0,
+      "shared_warnings": []
+    },
+    "from_repo_bundle": {
+      "code": 0,
+      "shared_warnings": [
+        "共享读取面里有 1 份本产品的历史拷贝（运行时根或入口子树，不随安装更新；带入口子树时会把别家的入口调出来）：\n  · ~/.agents/skills/dual-critic  本产品运行时或入口子树的整棵拷贝，多半是别的工具导入时带进来的（Codex、ZCode 会读到）\n  出口：在 TriviumCode 仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走；安装器与 doctor 都不删这些路径。"
+      ]
+    }
+  }
+}

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { existsSync, promises as fs } from 'node:fs';
 import { planInstall } from '../../src/install.js';
-import { ENTRY_SKILL_NAMES } from '../../src/trivium/entry-collisions.js';
+import { ENTRY_SKILL_NAMES, RESIDUE_DIR_NAMES, RUNTIME_ROOT_NAME } from '../../src/trivium/entry-collisions.js';
+import { ENTRY_OUT_DIR } from '../../src/entry-render.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { scratchDir } from '../helpers/scratch.js';
 
@@ -67,4 +68,23 @@ test('U4 名单对账：ENTRY_SKILL_NAMES = 命令契约 name 全集 = 安装器
   for (const t of plan.targets) {
     assert.deepEqual(t.sources.map((s) => s.name).sort(), expected, `${t.agent} 的安装名单与编排器侧不一致`);
   }
+});
+
+// ─────────────── 共享根残留（主题 M12-共享根残留检测，计划 r2 §4 U6） ───────────────
+
+test('U6 两份产物里运行时身份行与残留拷贝判据各恰有一份实现；安装器源码不再自带身份行', { skip: BUNDLES.some((b) => !existsSync(path.join(REPO_ROOT, b))) && '先 npm run build' }, async () => {
+  for (const b of BUNDLES) {
+    const text = await fs.readFile(path.join(REPO_ROOT, b), 'utf8');
+    assert.equal(text.split('async function hasRuntimeIdentity(').length - 1, 1, `${b} 里 hasRuntimeIdentity 应恰有一份实现`);
+    assert.equal(text.split('async function isResidueCopy(').length - 1, 1, `${b} 里 isResidueCopy 应恰有一份实现`);
+  }
+  const src = await fs.readFile(path.join(REPO_ROOT, 'src/install.ts'), 'utf8');
+  assert.ok(!src.includes('RUNTIME_IDENTITY'), 'install.ts 不得再定义运行时身份行');
+  assert.ok(!src.includes("readFile(path.join(dir, 'SKILL.md')"), 'install.ts 不得再自读 SKILL.md 判身份');
+});
+
+test('U6 名单对账：RESIDUE_DIR_NAMES / RUNTIME_ROOT_NAME 与安装器从 ENTRY_OUT_DIR 派生的值一致', () => {
+  const runtimeName = path.basename(path.dirname(ENTRY_OUT_DIR));
+  assert.equal(RUNTIME_ROOT_NAME, runtimeName);
+  assert.deepEqual([...RESIDUE_DIR_NAMES], [runtimeName, path.basename(ENTRY_OUT_DIR)]);
 });

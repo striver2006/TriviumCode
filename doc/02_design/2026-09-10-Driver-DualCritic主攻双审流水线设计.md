@@ -3,7 +3,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.166
+> - **当前版本**：v1.3.167
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -1626,8 +1626,13 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
   安装器装前按各家读取面查重名（`checkInstall`），读取面里有同名的第三方或他处的自家入口即拒装，不覆盖。
   **v1.3.166 起（M12 批次 5，EV-240 方案 A）**判定本身（`isOurEntry`、三类 `residue` / `third-party` / `foreign-entry`）在 `src/trivium/entry-collisions.ts`，安装器（`dist/install.cjs`）与编排器（`trivium.cjs`）两个产物引用同一份实现；安装器的入口名单仍取仓库里的渲染产物，判定输入、报错文案与退出码不变。
   编排器侧另有两处只告警的出口：`doctor` 全量列出各家**额外读取根**（注册表 `entrySkillExtraReadRoots`，今天即 `~/.agents/skills`）里的同名入口并给出口（先在仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走），只进 `warnings`、不影响退出码、与 `--only` 无关；
-  `preflight` 只对本轮 Driver ∪ 入选审核者里读这些根的家给一条「共享读取面同名入口」警告（见 8.1 预检表）。两处都只扫额外读取根、不扫安装根、不判残留；共享根里的 `dual-critic` 拷贝与安装器一样不判。
+  `preflight` 只对本轮 Driver ∪ 入选审核者里读这些根的家给一条「共享读取面同名入口」警告（见 8.1 预检表）。两处都只扫额外读取根、不扫安装根，安装根顶层的 `residue` 归安装器与 `install:check`。
   扫描用的家目录只有一个来源：注入口 → 环境变量 `TRIVIUM_ENTRY_SCAN_HOME` → `os.homedir()`。该变量只为测试隔离与诊断，只改这一处只读扫描，安装器不读它。
+  **v1.3.167 起（主题 `M12-共享根残留检测`，EV-240 残余）共享根也判历史形态残留**，新类别 `shared-residue`，安装器、`install:check`、doctor、preflight 四处同一份判定：
+  只在**额外读取根**里看 `dual-critic`、`entry` 两个名字，且要**按内容认定**是本产品的——①运行时根拷贝：`SKILL.md` 首行起是运行时身份行（`---` + `name: dual-critic`）且带 `schema/` 目录（历来每个版本的运行时根都有）；或 ②含入口子树：它本身或它下面的 `entry/` 里有 `〈载体〉/〈入口〉/` 形态、`isOurEntry` 判真的入口。别家叫 `entry` / `dual-critic` 的 skill 不判。
+  当前运行时根恰好放在共享根里时豁免（按真实路径比对）：安装器与 `install:check` 取本次的 `plan.runtimeRoot`；编排器取按扫描环境求值的 `resolveAssetRoot()` 与当前进程自身产物所在的运行时根（`process.argv[1]` 形如 `〈根〉/scripts/trivium.cjs`）。剩下的边界：一份不是当前进程所在、扫描时也没有 `TRIVIUM_ASSET_ROOT` 指向的运行时放在共享根里，doctor / preflight 会把它报成残留（只告警）。
+  安装器对新类别整次拒装（退 1，只报错、不删除），文案与安装根的 `residue` 分开写；安装根原有的 `residue`（见名即判）判定、文案、退出码不变。运行时身份行的判据（原 `isOurRuntime`）随之挪进共享模块（`hasRuntimeIdentity`），`runtime-foreign` 等三处调用判据逐字不变。
+  不判的：被改了名的拷贝（要遍历共享根逐个读内容）；卸载也不删共享根里的残留。
 - **参数**：claude 目标写 `$ARGUMENTS`、由 CLI 逐字替换；另三家的 CLI 都不替换占位符，正文改写为「用户随本命令给出的全部文本就是参数」，并附转抄规约（逐字、不增删、空参数不编造、正文进单引号、旗标在引号外）。保真边界见 8.5。
 - **提到即注入**（M10b 第 4 步 3-4 实测）：codex 会话里一条消息只要**提到** `$dual-review-code`，该 skill 全文就注入上下文，即使那条消息本意不是调用。约束只剩 skill 首段「只在用户显式调用本命令时执行」——3-4 里 codex 读到后照条文办事，没有提前执行。
 - **命令 B / D / A 的认领步骤**与 `--driver` 写死见 7.1「M10b 第 2 步的变化」。
@@ -1770,7 +1775,7 @@ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起�
 | 模型覆盖副本源 | 入选侧的适配器实现了 `modelOverrideSource()` 且该文件不在（EV-123，v1.3.41）；按能力判侧，不写厂商字面量。`review --start` 按当轮入选侧再调一次同一个函数 | 只警告、不中止（`warn`，进 `warnings`） |
 | 探活已跳过 | 带 `--skip-auth-check` 时替代两侧「已认证」项（v1.3.41 补行） | 只警告、不中止（`warn`，进 `warnings`） |
 | 失联阈值 | `review.heartbeat_stale_s` 不大于工作进程心跳间隔 30 s（`staleThresholdWithinHeartbeat`，与 `--wait` 报错那一句同一判据；v1.3.57，EV-160）；只读配置、与 scope 无关，排在副本源之后、探活之前。`review --start` 在派生前与副本源复查同一次汇总（FR-23 跳过分支仍为 `[]`）；同步 `review --stage` 不做（没有 worker 与 `--wait`） | 只警告、不中止（`warn`，进 `warnings`） |
-| 共享读取面同名入口 | 本轮 Driver ∪ 入选审核者里登记了额外读取根的家（今天是 codex、glm 的 `~/.agents/skills`），其额外读取根里有同名入口（v1.3.166，EV-240 方案 A）；判定与安装器同一份实现（7.4.1），一行点名根与条数、让人跑 doctor 看全量；扫描出错也只退化为一条警告。排在已废弃配置键之后、归档与 git 之前；`review --start` 不做 | 只警告、不中止（`warn`，进 `warnings`） |
+| 共享读取面同名入口 | 本轮 Driver ∪ 入选审核者里登记了额外读取根的家（今天是 codex、glm 的 `~/.agents/skills`），其额外读取根里有同名入口（v1.3.166，EV-240 方案 A）或按内容认定的本产品历史拷贝（v1.3.167，`shared-residue`）；判定与安装器同一份实现（7.4.1），一行点名根与条数（两类分别计数）、让人跑 doctor 看全量；扫描出错也只退化为一条警告。排在已废弃配置键之后、归档与 git 之前；`review --start` 不做 | 只警告、不中止（`warn`，进 `warnings`） |
 
 **警告这一级（v1.3.41，EV-123）。** `CheckResult` 的 `warn?: true` 标出「通过，但本次有一部分没检查到 / 没按请求做到」的项；
 `PreflightResult.warnings` 是它们的汇总，`--json` 输出**恒带**该键（无警告时为 `[]`），`checks[]` 单项在 `warn` 为真时带 `warn: true`。
@@ -4040,6 +4045,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.167** | 2026-10-18 | **共享根历史形态残留检测（EV-240 残余）。** 主题 `M12-共享根残留检测`（`/dual-run`，计划三审 run `20261018T023000Z`：三侧 `approve-with-nits`，6 条全接受，r2 定稿）。新类别 `shared-residue`：额外读取根里的 `dual-critic` / `entry` 按内容认定为本产品（运行时身份行 + `schema/`，或含入口子树）才判，别家同名不判；安装器与 `install:check` 整次拒装，doctor 全量列出、preflight 对本轮相关的家给一条警告，四处同一份实现；当前运行时根放在共享根里时按真实路径豁免（编排器另豁免自身产物所在的运行时根）；共享根无残留时四处输出与 v1.3.166 逐字节相同，安装根 `residue` 不变（7.4.1、8.1）。代码三审 run `20261018T031358Z`：glm / gemini `approve`，codex 1 条 minor 接受（A-2 验收子进程补 HOME 隔离后重取）。验收：安装器新旧 13 格符合预期（无残留 10 格逐字相同，有残留 3 格新产物拒装且一个文件都不写），doctor / preflight 新旧 16 格，变异预跑 15/15、正式装置 14/14，全量 3730 / 3728 / 0 / 2。报告 `REPORT_2026-10-18_m12_shared_residue.md`。 |
 | **v1.3.166** | 2026-10-18 | **M12 批次 5：共享读取面同名入口告警（EV-240 方案 A）与送审请求文件去重（EV-236 A2）。** 主题 `M12-运维防护`（`/dual-run`，计划三审 run `20261018T002634Z`：codex `request-changes`、glm / gemini `approve-with-nits`，7 条全接受，r2 定稿）。**一、EV-240**：读取面判定（`isOurEntry`、三类）搬进 `src/trivium/entry-collisions.ts`，安装器与编排器两个产物同源，安装器名单与文案退出码不变（7.4.1）；doctor 全量列出额外读取根里的同名入口（只进 warnings），preflight 新增只告警项「共享读取面同名入口」（8.1，只看本轮 Driver ∪ 入选审核者）；扫描家目录单一来源，新环境变量 `TRIVIUM_ENTRY_SCAN_HOME` 只为测试隔离与诊断。**二、EV-236 A2**：交接文件 `frozen_diff` 一份、各侧按引用还原，schema 名不变，新格式坏了 envError（11.6 run.v3 段后）。代码三审 run `20261018T010929Z`：codex / gemini `approve`，glm 3 条 nit 全接受（`install:check` 遇旧产物明确退 2、U8 直调判据放宽、实现差异补记）。验收：安装器新旧 9 格逐字相同，送审任务书与补丁新旧规范化后逐字相同，变异预跑与正式装置均 14/14。报告 `REPORT_2026-10-18_m12_batch5.md`。 |
 | **v1.3.165** | 2026-10-18 | **M12 批次 4：模型覆盖旗标空值退 64（EV-228）与档位表 Agent 级 effort 废弃（EV-227）。** 主题 `M12-参数与配置小修`（`/dual-run`，计划双审 run `20261017T164003Z`：gemini `approve` 零意见、glm `approve-with-nits` 1 nit 接受 → r2）。**一、EV-228（行为变化）**：`topic resolve` 收集 `--model-<id>` 改为按键存在判定，`=` 空、紧跟已知旗标、位于末尾三种形态由静默丢弃改为退 64；空值判定抽成 `tier-flags.ts` 的 `assertFlagValuesGiven`，模型与三类档位旗标共用、先键后值、文案逐字同源；`cli.ts` 的 `review` / `preflight` / `doctor` 对 `--model-<id>=` 同样由静默丢弃改为退 64（另两种形态早已由 `flagString` 退 64、文案不变）——这一格超出上位计划 D-8 字面改动面，计划双审两侧均支持纳入，请用户追认。正常写法与不写逐值不变；`critics` 与两轮共用同一组的语义不变。7.1 补说明，USAGE 与 PROTOCOL 同步。**二、EV-227**：`DEPRECATED_CONFIG_KEYS` 补 `['profiles', '*', '*', 'effort']`（两层通配只命中 Agent 级，阶段格子 `{model, effort}` 在下一层、照常下传、不报）；`types.ts` `ProfileEntry` 删该字段（`tsc` 通过，印证无读取点）；config.v2 该属性标 `deprecated` 并加描述、枚举不放宽；doctor / preflight 沿既有通道提示一条。13.1.1「已废弃键」补一段，17.2 追溯表补两行，§24「13.1 → config.v2」行补收口；PROTOCOL 已废弃键一段补登 v1.3.136 四键（此前漏登）与本条。用户手册 v1.0.46。读数见 `doc/05_testing/REPORT_2026-10-18_m12_batch4.md`。 |
 | **v1.3.164** | 2026-10-17 | **M12 批次 3：作废侧在同一次运行内重跑一次（EV-225）。** 主题 `M12-作废侧重跑一次`（`/dual-run`，计划双审 run `20261017T133619Z`，7 条全接受 → r2）。10.1.1 新增「作废侧在同一次运行内重跑一次」：该侧刚跑完即以与终判、闸门同一个谓词（`leakRecordVoids`）判，作废类命中则在该侧自己的 promise 内重拉一次，另一侧不受影响；③④ 与 ②′ 不触发；至多 1 次、完整单侧超时、`max_waits` 按当前 status 追加一份；重跑任务书最前面点名上次碰到的位置（命令通道只点程序名、不回显参数——对 D-7「路径或命令」的落点收紧）、正文不变；首次原始输出挪到运行目录 `voided/<侧>/attempt-<n>/`（不在己方子树，重跑侧读它同样作废）、不进归档；二次命中侧级 `failed(peer_leak)`，按失败侧规则走。12.1 基线行与演进增补行改写、「有效侧不足」行去掉「EV-225 就绪前」措辞，12.3 同步；6.7.1 记 run.v3 逐侧可选 `attempts`（只在重跑过的侧写，条目分层记法）。闸门代码不改（只读最终尝试）。`fault-injection` 的 AC-25 三审 8 格与两侧分档 3 格按新行为改断言，另补 EV-225 组 6 格与 `void-rerun` 单测 16 条。 |

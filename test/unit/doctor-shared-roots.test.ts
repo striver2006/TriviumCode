@@ -59,3 +59,37 @@ test('U5 扫描出错 ⇒ 退化为一条告警，doctor 不失败、阻断不�
   assert.ok(r.warnings.some((w) => w.startsWith('共享读取面检查没做成：')), JSON.stringify(r.warnings));
   assert.deepEqual(r.blockers, base.blockers);
 });
+
+// ─────────────── 共享根残留（主题 M12-共享根残留检测，计划 r2 §4 U7） ───────────────
+
+async function plantResidue(home: string): Promise<void> {
+  const d = path.join(home, SHARED_REL, 'dual-critic');
+  await fs.mkdir(path.join(d, 'schema'), { recursive: true });
+  await fs.mkdir(path.join(d, 'scripts'), { recursive: true });
+  await fs.writeFile(path.join(d, 'SKILL.md'), '---\nname: dual-critic\ndescription: 过时的拷贝\n---\n');
+}
+
+test('U7 共享根只有残留 ⇒ warnings 恰多一条（残留段），残留加同名入口 ⇒ 仍只多一条（两段）；blockers 不变', async () => {
+  const clean = await scratchDir('trivium-doc-home-');
+  const base = await doctorWith({ home: clean, env: {} });
+
+  const home = await scratchDir('trivium-doc-home-');
+  await plantResidue(home);
+  const r = await doctorWith({ home, env: {} });
+  const hits = r.warnings.filter(isShared);
+  assert.equal(hits.length, 1, JSON.stringify(r.warnings));
+  assert.equal(r.warnings.length, base.warnings.length + 1);
+  assert.match(hits[0]!, /^共享读取面里有 1 份本产品的历史拷贝/);
+  assert.ok(hits[0]!.includes(`~/${SHARED_REL}/dual-critic`), hits[0]);
+  assert.ok(hits[0]!.endsWith(SHARED_ROOT_EXIT_HINT), hits[0]);
+  assert.deepEqual(r.blockers, base.blockers);
+
+  await fs.mkdir(path.join(home, SHARED_REL, 'dual-run'), { recursive: true });
+  await fs.writeFile(path.join(home, SHARED_REL, 'dual-run/SKILL.md'), '---\nname: dual-run\n---\n别家的\n');
+  const both = await doctorWith({ home, env: {} });
+  const w = both.warnings.filter(isShared);
+  assert.equal(w.length, 1);
+  assert.match(w[0]!, /^共享读取面里有 1 个同名入口/);
+  assert.ok(w[0]!.includes('\n共享读取面里有 1 份本产品的历史拷贝'), w[0]);
+  assert.deepEqual(both.blockers, base.blockers);
+});

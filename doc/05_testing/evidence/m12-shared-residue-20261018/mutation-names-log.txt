@@ -1,0 +1,15 @@
+M1：fail=1 cancelled=0 0s ⇒ U2 scanEntryCollisions：共享根残留只在额外读取根按内容判，次序在安装根残留之后、同名入口之前
+M2：fail=4 cancelled=0 0s ⇒ U2 sharedReadRootTargets：只出登记了额外读取根的家，读取根只含额外根，不查残留；CODEX_HOME 不影响共享根 ｜ U1 isResidueCopy：运行时根拷贝（身份行 + schema/）或含入口子树才判真，别家同名一律判假 ｜ U1 isResidueCopy：不可读的子目录当「否」、不抛 ｜ U2 scanEntryCollisions：共享根残留只在额外读取根按内容判，次序在安装根残留之后、同名入口之前
+M3：fail=1 cancelled=0 0s ⇒ U1 isResidueCopy：运行时根拷贝（身份行 + schema/）或含入口子树才判真，别家同名一律判假
+M4：fail=2 cancelled=0 0s ⇒ U1 isResidueCopy：运行时根拷贝（身份行 + schema/）或含入口子树才判真，别家同名一律判假 ｜ U4 渲染：只有残留、残留加同名入口；出口只出现一次，preflight 恒一行
+M5：fail=1 cancelled=0 0s ⇒ U1 isResidueCopy：运行时根拷贝（身份行 + schema/）或含入口子树才判真，别家同名一律判假
+M6：fail=2 cancelled=0 0s ⇒ U2 scanEntryCollisions：豁免按真实路径比对（经软链、未规范化写法都认） ｜ U3 sharedReadRootTargets：查共享根残留、豁免按扫描环境求值的运行时根与自身所在的运行时根
+M7：fail=2 cancelled=0 0s ⇒ U3 sharedReadRootTargets：查共享根残留、豁免按扫描环境求值的运行时根与自身所在的运行时根 ｜ U4 渲染：只有残留、残留加同名入口；出口只出现一次，preflight 恒一行
+M8：fail=2 cancelled=0 1s ⇒ 共享根有 10-16 形态的运行时拷贝：整次拒装，读到共享根的两家各报一条，一个文件都不写 ｜ 运行时根就放在共享根里（TRIVIUM_ASSET_ROOT）：豁免，不当残留；checkInstall 不传运行时根时不豁免
+M9：fail=1 cancelled=0 0s ⇒ U4 渲染：只有残留、残留加同名入口；出口只出现一次，preflight 恒一行
+M10：fail=1 cancelled=0 0s ⇒ U4 渲染：只有同名入口时与 M12 批次 5 的文案逐字相同（不混入残留段与残留计数）
+M11：fail=1 cancelled=0 0s ⇒ U9 运行时根就放在共享根里（TRIVIUM_ASSET_ROOT 指向它）⇒ 豁免、退 0，与真装口径一致
+M12：fail=1 cancelled=0 0s ⇒ U1 isResidueCopy：运行时根拷贝（身份行 + schema/）或含入口子树才判真，别家同名一律判假
+M13：fail=2 cancelled=0 0s ⇒ U2 scanEntryCollisions：豁免按真实路径比对（经软链、未规范化写法都认） ｜ U3 sharedReadRootTargets：查共享根残留、豁免按扫描环境求值的运行时根与自身所在的运行时根
+M14：fail=1 cancelled=0 0s ⇒ U3 sharedReadRootTargets：查共享根残留、豁免按扫描环境求值的运行时根与自身所在的运行时根
+M15：fail=1 cancelled=0 1s ⇒ 运行时根就放在共享根里（TRIVIUM_ASSET_ROOT）：豁免，不当残留；checkInstall 不传运行时根时不豁免

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { install, uninstall, planInstall, parseInstallArgs, syncDir, InstallConflictError, type InstallEnv } from '../../src/install.js';
+import {
+  install, uninstall, planInstall, parseInstallArgs, syncDir, checkInstall, InstallConflictError, type InstallEnv,
+} from '../../src/install.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { AGENTS, agentById, entrySkillRootOf } from '../../src/trivium/agents/registry.js';
 import { resolveAssetRoot } from '../../src/trivium/asset-root.js';
@@ -421,4 +423,85 @@ test('抽出共享实现后：冲突列表、次序与报错全文与改造前�
     return true;
   });
   assert.equal(await fs.readFile(path.join(rt, 'keep.txt'), 'utf8'), '别人的东西');
+});
+
+// ─────────────── 共享根残留（主题 M12-共享根残留检测，计划 r2 §4 U5） ───────────────
+
+/** 目录下全部条目的相对路径（含目录），排序后用于「装前装后一个文件都没写」 */
+async function treeList(dir: string, base = ''): Promise<string[]> {
+  const out: string[] = [];
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const rel = base ? `${base}/${e.name}` : e.name;
+    out.push(rel);
+    if (e.isDirectory()) out.push(...(await treeList(path.join(dir, e.name), rel)));
+  }
+  return out.sort();
+}
+
+/** 10-16 形态的运行时根拷贝：身份行 + `schema/` + `scripts/`，不含 `entry/` */
+async function plantRuntimeCopy(dir: string): Promise<void> {
+  await fs.mkdir(path.join(dir, 'schema'), { recursive: true });
+  await fs.mkdir(path.join(dir, 'scripts'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'SKILL.md'), '---\nname: dual-critic\ndescription: 过时的拷贝\n---\n');
+}
+
+const SHARED_RESIDUE_WHY =
+  '共享读取面里有本产品运行时根或入口子树的整棵拷贝（多半是别的工具导入时带进来的）：它不随安装更新，' +
+  'codex、zcode 都会读到；带入口子树时还会把别家的入口调出来';
+
+test('共享根有 10-16 形态的运行时拷贝：整次拒装，读到共享根的两家各报一条，一个文件都不写', async () => {
+  const root = await fakeRepo();
+  const ie = await fakeHome();
+  const shared = path.join(ie.home, '.agents/skills');
+  await plantRuntimeCopy(path.join(shared, 'dual-critic'));
+  const before = await treeList(ie.home);
+
+  await assert.rejects(install(root, ie), (e: Error) => {
+    assert.ok(e instanceof InstallConflictError);
+    assert.equal(e.message, [
+      '安装前检查未通过，**一个文件都没有写**。以下路径需要你手工处理（安装器不删用户目录里的东西）：',
+      `  · [codex] ${path.join(shared, 'dual-critic')}\n      ${SHARED_RESIDUE_WHY}`,
+      `  · [glm] ${path.join(shared, 'dual-critic')}\n      ${SHARED_RESIDUE_WHY}`,
+      '处理完再重跑安装。',
+    ].join('\n'));
+    assert.deepEqual(e.problems.map((p) => `${p.agent}:${p.kind}`), ['codex:shared-residue', 'glm:shared-residue']);
+    return true;
+  });
+  assert.deepEqual(await treeList(ie.home), before, '各家安装根、运行时根、共享根都没有被写');
+});
+
+test('共享根里别家的 entry / dual-critic skill：不判，照常安装', async () => {
+  const root = await fakeRepo();
+  const ie = await fakeHome();
+  const shared = path.join(ie.home, '.agents/skills');
+  await fs.mkdir(path.join(shared, 'entry'), { recursive: true });
+  await fs.writeFile(path.join(shared, 'entry/SKILL.md'), '---\nname: entry\ndescription: 别家的\n---\n');
+  await fs.mkdir(path.join(shared, 'dual-critic'), { recursive: true });
+  await fs.writeFile(path.join(shared, 'dual-critic/SKILL.md'), '---\nname: dual-critic\ndescription: 别家的，没有 schema/\n---\n');
+  const r = await install(root, ie);
+  assert.ok(r.targets.some((t) => t.agent === 'codex' && t.status === 'installed'));
+  assert.equal(await fs.readFile(path.join(shared, 'entry/SKILL.md'), 'utf8'), '---\nname: entry\ndescription: 别家的\n---\n');
+});
+
+test('运行时根就放在共享根里（TRIVIUM_ASSET_ROOT）：豁免，不当残留；checkInstall 不传运行时根时不豁免', async () => {
+  const root = await fakeRepo();
+  const ie = await fakeHome();
+  const rt = path.join(ie.home, '.agents/skills/dual-critic');
+  await plantRuntimeCopy(rt);
+  const env = { TRIVIUM_ASSET_ROOT: rt };
+
+  // 向后兼容：不传运行时根 ⇒ 豁免为空，照常报出
+  const plan = await planInstall(root, { home: ie.home, env });
+  const legacy = await checkInstall(plan.targets);
+  assert.deepEqual(legacy.map((p) => `${p.agent}:${p.kind}`), ['codex:shared-residue', 'glm:shared-residue']);
+  assert.deepEqual(await checkInstall(plan.targets, plan.runtimeRoot), []);
+
+  const r = await install(root, { home: ie.home, env });
+  assert.equal(r.runtime.dir, rt);
 });

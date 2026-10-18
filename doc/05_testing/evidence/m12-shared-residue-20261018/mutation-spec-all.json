@@ -1,0 +1,134 @@
+{
+  "targets": [
+    "src/trivium/entry-collisions.ts",
+    "src/install.ts",
+    "scripts/install-check.mjs"
+  ],
+  "suites": [
+    "dist/test/test/unit/entry-collisions.test.js",
+    "dist/test/test/unit/install.test.js",
+    "dist/test/test/unit/install-check-script.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "共享根残留循环不排除安装根",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "        if (r === t.skillsRoot) continue;",
+      "replace": "        if (r === '') continue;",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "isResidueCopy 恒真（见名即判）",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "export async function isResidueCopy(dir: string, entryNames: readonly string[] = ENTRY_SKILL_NAMES): Promise<boolean> {",
+      "replace": "export async function isResidueCopy(dir: string, entryNames: readonly string[] = ENTRY_SKILL_NAMES): Promise<boolean> {\n  if (dir) return true;",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "去掉 schema/ 判据",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "  if ((await hasRuntimeIdentity(dir, RUNTIME_ROOT_NAME)) && (await isDir(path.join(dir, 'schema')))) return true;",
+      "replace": "  if ((await hasRuntimeIdentity(dir, RUNTIME_ROOT_NAME)) && (await isDir(dir))) return true;",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "去掉入口子树判据",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "        if (await isOurEntry(path.join(e, c, n), n)) return true;",
+      "replace": "        void n;",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "入口子树只查 D、不查 D/entry",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "  for (const e of [dir, path.join(dir, 'entry')]) {",
+      "replace": "  for (const e of [dir]) {",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "去掉豁免",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "          if (exempt.has(await realpathOr(p))) continue;",
+      "replace": "          void exempt;",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "sharedReadRootTargets 传空共享根残留名单",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "      sharedResidueNames: RESIDUE_DIR_NAMES,",
+      "replace": "      sharedResidueNames: [],",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "安装器传空共享根残留名单",
+      "file": "src/install.ts",
+      "find": "      sharedResidueNames: RESIDUE_NAMES,",
+      "replace": "      sharedResidueNames: [],",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "describe 漏掉残留段的逐行",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "    for (const g of residues) lines.push(groupLine(g, home));",
+      "replace": "    void residues;",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "summarize 无残留时也带残留短语",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "    ...(residues.length > 0 ? [`${residues.length} 份本产品的历史拷贝`] : []),",
+      "replace": "    ...[`${residues.length} 份本产品的历史拷贝`],",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "install-check 不传运行时根",
+      "file": "scripts/install-check.mjs",
+      "find": "  const problems = await checkInstall(plan.targets, plan.runtimeRoot);",
+      "replace": "  const problems = await checkInstall(plan.targets);",
+      "expect": "dist/test/test/unit/install-check-script.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "hasRuntimeIdentity 不要求 front-matter 起始",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "    return (await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8')).startsWith(`---\\nname: ${runtimeName}\\n`);",
+      "replace": "    return (await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8')).includes(`name: ${runtimeName}\\n`);",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "豁免比对不取真实路径",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "      const exempt = new Set(await Promise.all((t.exemptPaths ?? []).map(realpathOr)));",
+      "replace": "      const exempt = new Set(t.exemptPaths ?? []);",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "sharedReadRootTargets 漏放自身所在的运行时根",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "  const exemptPaths = [resolveAssetRoot(undefined, se.env, se.home), ...(self === null ? [] : [self])];",
+      "replace": "  const exemptPaths = [resolveAssetRoot(undefined, se.env, se.home)];",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "install() 不传运行时根",
+      "file": "src/install.ts",
+      "find": "  problems.push(...(await checkInstall(selected, plan.runtimeRoot)));",
+      "replace": "  problems.push(...(await checkInstall(selected)));",
+      "expect": "dist/test/test/unit/install.test.js"
+    }
+  ]
+}

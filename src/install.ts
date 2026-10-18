@@ -37,7 +37,7 @@ import { promises as fs } from 'node:fs';
 import { agentById, entrySkillRootOf, isAgentId, type AgentId } from './trivium/agents/registry.js';
 import { resolveAssetRoot } from './trivium/asset-root.js';
 import {
-  ENTRY_PROBLEM_LABELS, isOurEntry, scanEntryCollisions, type EntryCollisionKind,
+  ENTRY_PROBLEM_LABELS, hasRuntimeIdentity, isOurEntry, scanEntryCollisions, type EntryCollisionKind,
 } from './trivium/entry-collisions.js';
 import { ENTRY_OUT_DIR, loadCarriers, type Carrier } from './entry-render.js';
 
@@ -124,9 +124,6 @@ function within(a: string, b: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
-/** 运行时根 `SKILL.md` 的身份行：front-matter 首个键是本产品运行时的名字 */
-const RUNTIME_IDENTITY = `---\nname: ${path.basename(RUNTIME_SRC)}\n`;
-
 /**
  * 运行时根能不能写、能不能删（代码双审 CODEX-01 / GLM-01）。
  *
@@ -159,13 +156,12 @@ async function checkRuntimeRoot(root: string, runtimeRoot: string): Promise<Inst
   return (await isOurRuntime(runtimeRoot)) ? null : { agent: null, kind: 'runtime-foreign', path: runtimeRoot };
 }
 
-/** 目录里的 `SKILL.md` 带本产品运行时的身份行（读不到即否） */
-async function isOurRuntime(dir: string): Promise<boolean> {
-  try {
-    return (await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8')).startsWith(RUNTIME_IDENTITY);
-  } catch {
-    return false;
-  }
+/**
+ * 目录里的 `SKILL.md` 带本产品运行时的身份行（读不到即否）：front-matter 首个键是本产品运行时的名字。
+ * 判据在共享模块（`hasRuntimeIdentity`，与共享根残留的运行时拷贝判据同一份）；名字仍从 `RUNTIME_SRC` 派生。
+ */
+function isOurRuntime(dir: string): Promise<boolean> {
+  return hasRuntimeIdentity(dir, path.basename(RUNTIME_SRC));
 }
 
 /** 一个目录下带 `SKILL.md` 的直接子目录名（排序），可再排除若干名字 */
@@ -265,8 +261,12 @@ export interface InstallProblem {
  *
  * 判定本身在 `entry-collisions.ts`（M12 批次 5 起与编排器的 doctor / preflight 共用同一份实现，EV-240）；
  * 这里只把安装目标映射成扫描目标，**入口名单仍取仓库里的渲染产物**（`t.sources`），判定输入与改造前逐字相同。
+ *
+ * 共享根残留（`shared-residue`，主题 `M12-共享根残留检测`）：额外读取根里按内容认定的本产品历史拷贝，
+ * 名单与安装根残留同一份派生值，**对每个目标都传**——它只看额外读取根，与 `layout` 无关。
+ * `runtimeRoot` 给了就豁免它（当前运行时根恰好放在共享根里时，计划 r2 D-6）；不给则不豁免（向后兼容）。
  */
-export async function checkInstall(selected: readonly EntryTarget[]): Promise<InstallProblem[]> {
+export async function checkInstall(selected: readonly EntryTarget[], runtimeRoot?: string): Promise<InstallProblem[]> {
   return scanEntryCollisions(
     selected.map((t) => ({
       agent: t.agent,
@@ -281,6 +281,8 @@ export async function checkInstall(selected: readonly EntryTarget[]): Promise<In
        * 由 `install()` 在报告里提示（开发机上设过这个变量是常态，阻断会让每次调试安装都先撞墙）。
        */
       residueNames: t.layout === 'entry' ? RESIDUE_NAMES : [],
+      sharedResidueNames: RESIDUE_NAMES,
+      exemptPaths: runtimeRoot === undefined ? [] : [runtimeRoot],
     })),
   );
 }
@@ -294,6 +296,9 @@ export class InstallConflictError extends Error {
 function describeProblems(problems: readonly InstallProblem[]): string {
   const why: Record<InstallProblem['kind'], string> = {
     residue: '目标根顶层有本产品历史形态的目录（整树搬运的残留）：codex 会递归枚举它，把别家的入口调出来',
+    'shared-residue':
+      '共享读取面里有本产品运行时根或入口子树的整棵拷贝（多半是别的工具导入时带进来的）：它不随安装更新，' +
+      'codex、zcode 都会读到；带入口子树时还会把别家的入口调出来',
     'third-party': '读取面里已有同名 skill，且不是本产品的：不覆盖用户的 skill',
     'foreign-entry': '共享读取面里有本产品的同名入口：两份同名时 codex 显式调用会失效、zcode 两份都进模型清单，而且它带的 --driver 可能是别家',
     'missing-family': '指定要装这一家，但它的家根不存在（本机未安装该 CLI，或 CODEX_HOME 指错）',
@@ -362,7 +367,7 @@ export async function install(root: string, ie: InstallEnv, opts: InstallOptions
   }
   const rtProblem = await checkRuntimeRoot(root, plan.runtimeRoot);
   if (rtProblem) problems.push(rtProblem);
-  problems.push(...(await checkInstall(selected)));
+  problems.push(...(await checkInstall(selected, plan.runtimeRoot)));
   if (problems.length > 0) throw new InstallConflictError(problems);
 
   // ── 运行时根：必装，不随任何一家目标走（r2 §3.2.1）──

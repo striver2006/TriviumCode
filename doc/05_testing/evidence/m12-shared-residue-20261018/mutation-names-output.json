@@ -1,0 +1,205 @@
+[
+  {
+    "id": "M1",
+    "desc": "共享根残留循环不排除安装根",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U2 scanEntryCollisions：共享根残留只在额外读取根按内容判，次序在安装根残留之后、同名入口之前"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M2",
+    "desc": "isResidueCopy 恒真（见名即判）",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 4,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U2 sharedReadRootTargets：只出登记了额外读取根的家，读取根只含额外根，不查残留；CODEX_HOME 不影响共享根",
+      "U1 isResidueCopy：运行时根拷贝（身份行 + schema/）或含入口子树才判真，别家同名一律判假",
+      "U1 isResidueCopy：不可读的子目录当「否」、不抛",
+      "U2 scanEntryCollisions：共享根残留只在额外读取根按内容判，次序在安装根残留之后、同名入口之前"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M3",
+    "desc": "去掉 schema/ 判据",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U1 isResidueCopy：运行时根拷贝（身份行 + schema/）或含入口子树才判真，别家同名一律判假"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M4",
+    "desc": "去掉入口子树判据",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U1 isResidueCopy：运行时根拷贝（身份行 + schema/）或含入口子树才判真，别家同名一律判假",
+      "U4 渲染：只有残留、残留加同名入口；出口只出现一次，preflight 恒一行"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M5",
+    "desc": "入口子树只查 D、不查 D/entry",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U1 isResidueCopy：运行时根拷贝（身份行 + schema/）或含入口子树才判真，别家同名一律判假"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M6",
+    "desc": "去掉豁免",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U2 scanEntryCollisions：豁免按真实路径比对（经软链、未规范化写法都认）",
+      "U3 sharedReadRootTargets：查共享根残留、豁免按扫描环境求值的运行时根与自身所在的运行时根"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M7",
+    "desc": "sharedReadRootTargets 传空共享根残留名单",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U3 sharedReadRootTargets：查共享根残留、豁免按扫描环境求值的运行时根与自身所在的运行时根",
+      "U4 渲染：只有残留、残留加同名入口；出口只出现一次，preflight 恒一行"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M8",
+    "desc": "安装器传空共享根残留名单",
+    "suite": "dist/test/test/unit/install.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "共享根有 10-16 形态的运行时拷贝：整次拒装，读到共享根的两家各报一条，一个文件都不写",
+      "运行时根就放在共享根里（TRIVIUM_ASSET_ROOT）：豁免，不当残留；checkInstall 不传运行时根时不豁免"
+    ],
+    "firstLines": [],
+    "elapsed_s": 1
+  },
+  {
+    "id": "M9",
+    "desc": "describe 漏掉残留段的逐行",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U4 渲染：只有残留、残留加同名入口；出口只出现一次，preflight 恒一行"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M10",
+    "desc": "summarize 无残留时也带残留短语",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U4 渲染：只有同名入口时与 M12 批次 5 的文案逐字相同（不混入残留段与残留计数）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M11",
+    "desc": "install-check 不传运行时根",
+    "suite": "dist/test/test/unit/install-check-script.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U9 运行时根就放在共享根里（TRIVIUM_ASSET_ROOT 指向它）⇒ 豁免、退 0，与真装口径一致"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M12",
+    "desc": "hasRuntimeIdentity 不要求 front-matter 起始",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U1 isResidueCopy：运行时根拷贝（身份行 + schema/）或含入口子树才判真，别家同名一律判假"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M13",
+    "desc": "豁免比对不取真实路径",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U2 scanEntryCollisions：豁免按真实路径比对（经软链、未规范化写法都认）",
+      "U3 sharedReadRootTargets：查共享根残留、豁免按扫描环境求值的运行时根与自身所在的运行时根"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M14",
+    "desc": "sharedReadRootTargets 漏放自身所在的运行时根",
+    "suite": "dist/test/test/unit/entry-collisions.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U3 sharedReadRootTargets：查共享根残留、豁免按扫描环境求值的运行时根与自身所在的运行时根"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M15",
+    "desc": "install() 不传运行时根",
+    "suite": "dist/test/test/unit/install.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "运行时根就放在共享根里（TRIVIUM_ASSET_ROOT）：豁免，不当残留；checkInstall 不传运行时根时不豁免"
+    ],
+    "firstLines": [],
+    "elapsed_s": 1
+  }
+]

@@ -1216,3 +1216,45 @@ test('U6 预检：缺省 Driver + 只选不读共享根的审核者 ⇒ 共享�
   assert.equal(r.ok, true);
   assert.equal(r.checks.some((c) => c.name === '共享读取面同名入口'), false);
 });
+
+// ─────────────── 共享根残留（主题 M12-共享根残留检测，计划 r2 §4 U8） ───────────────
+
+/** 共享根里只有 10-16 形态的运行时拷贝、没有同名入口 */
+async function residueSharedHome(): Promise<string> {
+  const home = await scratchDir('trivium-pf-shared-');
+  const d = path.join(home, sharedReader.entrySkillExtraReadRoots[0]!, 'dual-critic');
+  await fs.mkdir(path.join(d, 'schema'), { recursive: true });
+  await fs.mkdir(path.join(d, 'scripts'), { recursive: true });
+  await fs.writeFile(path.join(d, 'SKILL.md'), '---\nname: dual-critic\ndescription: 过时的拷贝\n---\n');
+  return home;
+}
+
+test('U8 共享根只有残留：只看本轮相关的家，出项时只告警、ok 为真、无退出码', async () => {
+  const home = await residueSharedHome();
+  assert.equal(await checkSharedReadRoots([DEFAULT_DRIVER, nonReader.id], { home, env: {} }), null,
+    '本轮没有读共享根的家：不出项');
+  const hit = await checkSharedReadRoots([DEFAULT_DRIVER, sharedReader.id], { home, env: {} });
+  assert.ok(hit);
+  assert.equal(hit.ok, true);
+  assert.equal(hit.warn, true);
+  assert.equal(hit.exitCode, undefined);
+  assert.ok(hit.detail.includes('份本产品的历史拷贝'), hit.detail);
+  assert.ok(!hit.detail.includes('同名入口，'), hit.detail);
+  assert.ok(!hit.detail.includes(home), hit.detail);
+  assert.ok(await checkSharedReadRoots([sharedReader.id, nonReader.id], { home, env: {} }), 'Driver 读共享根同样算相关');
+});
+
+test('U8 预检：共享根只有残留、本轮 Driver 读它 ⇒ 照常通过、退出码不变、进 warnings', async () => {
+  const home = await residueSharedHome();
+  const ctx = await fakeCtx(withStale(120));
+  const r = await runPreflight({
+    ctx, scope: 'plan', skipAuthCheck: true, critics: [nonReader.id as CriticId], adapters: {},
+    driver: sharedReader.id, entryScanEnv: { home, env: {} },
+  });
+  assert.equal(r.ok, true, '只警告、不拒跑');
+  assert.equal(r.exitCode, EXIT.OK);
+  const w = r.warnings.find((x) => x.name === '共享读取面同名入口');
+  assert.ok(w, r.warnings.map((x) => x.name).join('、'));
+  assert.ok(w.detail.includes('份本产品的历史拷贝'), w.detail);
+  assertWarnInvariant(r);
+});

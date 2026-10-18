@@ -1,0 +1,105 @@
+✓ 工作树干净、基线全绿（2 个套件）
+  M1 ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=4）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=2）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=2）
+  M7 ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=2）
+  M14 ✓ 咬住（fail=1）
+  M15 ✓ 咬住（fail=1）
+{
+  "总数": 14,
+  "咬住": 14,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "共享根残留循环不排除安装根",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "isResidueCopy 恒真（见名即判）",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M3",
+      "desc": "去掉 schema/ 判据",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "去掉入口子树判据",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M5",
+      "desc": "入口子树只查 D、不查 D/entry",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "去掉豁免",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M7",
+      "desc": "sharedReadRootTargets 传空共享根残留名单",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "安装器传空共享根残留名单",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "describe 漏掉残留段的逐行",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "summarize 无残留时也带残留短语",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "hasRuntimeIdentity 不要求 front-matter 起始",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "豁免比对不取真实路径",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M14",
+      "desc": "sharedReadRootTargets 漏放自身所在的运行时根",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M15",
+      "desc": "install() 不传运行时根",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
