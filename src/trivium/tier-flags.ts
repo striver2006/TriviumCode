@@ -72,6 +72,17 @@ export function collectTierFlags(get: (name: string) => string | undefined): Raw
 }
 
 /**
+ * 逐审核者取值旗标「写了没给值」的判定，**`--model-〈id〉` 与三类档位旗标共用这一份**（M12 批次 4，EV-228）：
+ * 文案同源靠结构保证，不靠两处字面碰巧相同。`raw` 的键是 Agent id、值为空串表示写了没给值；
+ * 按插入序（收集方按注册表序收）报第一个。调用方先做键判定再调它（先键后值）。
+ */
+export function assertFlagValuesGiven(prefix: Exclude<CriticFlagPrefix, 'native'>, raw: Readonly<Record<string, string>>): void {
+  for (const [id, v] of Object.entries(raw)) {
+    if (v === '') throw usageError(`--${prefix}-${id} 需要一个值，但没有给出。`);
+  }
+}
+
+/**
  * 键校验 + 取值的形状校验，通过即返回逐入选侧的精确值。全部退 64、在任何落盘之前。
  *
  * 次序：①键（与 `--model-〈id〉` 同一判定）；②`--profile-〈id〉` 的该侧有没有厂商 profile 概念；
@@ -101,11 +112,7 @@ export function assertTierFlags(
     if (raw.profile[id] !== undefined) throw usageError(`--native-${id} 与 --profile-${id} 不能同时指定。`);
   }
 
-  for (const k of KINDS) {
-    for (const [id, v] of Object.entries(raw[k])) {
-      if (v === '') throw usageError(`--${k}-${id} 需要一个值，但没有给出。`);
-    }
-  }
+  for (const k of KINDS) assertFlagValuesGiven(k, raw[k]);
 
   for (const [id, v] of Object.entries(raw.tier)) {
     if (!(TIER_NAMES as readonly string[]).includes(v)) {

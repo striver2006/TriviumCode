@@ -14,7 +14,7 @@ import { promises as fs } from 'node:fs';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, entryCommandOf, type AgentId } from './agents/registry.js';
 import type { CriticId, Ctx, Stage } from './types.js';
 import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
-import { assertTierFlags, collectTierFlags, nativeFlagNames, tierFlagNames } from './tier-flags.js';
+import { assertFlagValuesGiven, assertTierFlags, collectTierFlags, nativeFlagNames, tierFlagNames } from './tier-flags.js';
 import { validateTopic, parseArtifactName } from './naming.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { exists } from './util/fsx.js';
@@ -634,15 +634,24 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
    * **M10b 第 2 步代码双审 CODEX-02 再收紧一档**：判据从「本轮能入选谁」改为「本轮实际入选了谁」
    * （上面刚解析出的 `critics`）。「能入选但没入选」那一家的覆盖同样会被丢弃（原 EV-67）；
    * 缺省集合减去 Driver 之后，它在非 claude Driver 的缺省路径上成了常规形态。
+   *
+   * **按「键在不在」判写了没写**（M12 批次 4，EV-228）：取值旗标缺值（`=` 空、紧跟另一个已知旗标、位于末尾）
+   * 时 `splitArguments` 记的是空串，此前按真假过滤把它当成没写——不报错、不退非零，模型覆盖无声消失。
+   * 现与档位旗标同口径：先键判定，再由 `assertFlagValuesGiven` 对空串退 64（文案与档位旗标同一份）。
    */
-  const written = ALL_AGENT_IDS.filter((id) => named[`model-${id}`]);
-  assertModelOverrideKeys(ctx.config, driver, written, critics);
-  for (const id of written) models[id] = named[`model-${id}`]!;
+  const modelRaw: Record<string, string> = {};
+  for (const id of ALL_AGENT_IDS) {
+    const v = named[`model-${id}`];
+    if (v !== undefined) modelRaw[id] = v;
+  }
+  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), critics);
+  assertFlagValuesGiven('model', modelRaw);
+  for (const [id, v] of Object.entries(modelRaw)) models[id as CriticId] = v;
 
   /*
    * 档位旗标（M11 第 5 步）：收集与判定与 cli.ts 的 review / preflight 同一份（tier-flags.ts）。
    * **按「键在不在」判写了没写**（计划三审 AGY-02）：取值旗标缺值时上面记的是空串，按真假过滤会把它静默丢掉；
-   * 空串照传给判定函数退 64。既有 `--model-〈id〉` 的同一缺口另登记 BACKLOG，本步不改。
+   * 空串照传给判定函数退 64。既有 `--model-〈id〉` 的同一缺口已随 M12 批次 4（EV-228）收口，见上。
    */
   const tierFlags = assertTierFlags(
     ctx.config,

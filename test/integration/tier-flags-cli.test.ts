@@ -124,3 +124,49 @@ test('T4 resolve 输出照抄进 review --start：能启动、请求模型取自
     await cli(fx.root, ['review', '--cancel', js.run_id], STUB);
   }
 });
+
+/*
+ * **EV-228（M12 批次 4）：`--model-〈id〉` 写了不给值，四个入口都退 64**。
+ * `topic resolve` 三种形态（`=` 空、紧跟已知旗标、位于末尾）此前静默丢弃；`review` / `preflight` / `doctor`
+ * 此前只有 `=` 空一种被静默丢弃（另两种 `flagString` 早已退 64，文案不变）。同一入口内与档位旗标逐字同源。
+ */
+const out = (r: { stdout: string; stderr: string }) => r.stdout + r.stderr;
+
+test('T6 resolve：--model-glm 三种空值形态都退 64，文案与 --tier-glm 同形态同源', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const forms: [string, string[]][] = [['=', []], ['', ['--critics', 'gemini,glm']], ['', []]];
+  for (const [suffix, rest] of forms) {
+    const model = await resolve(fx.root, [`--model-glm${suffix}`, ...rest]);
+    assert.equal(model.r.code, EXIT.USAGE, out(model.r));
+    assert.match(out(model.r), /--model-glm 需要一个值，但没有给出。/);
+    const tier = await resolve(fx.root, [`--tier-glm${suffix}`, ...rest]);
+    assert.equal(tier.r.code, EXIT.USAGE, out(tier.r));
+    assert.match(out(tier.r), /--tier-glm 需要一个值，但没有给出。/, '同形态的档位旗标同一条文案');
+  }
+});
+
+test('T7 preflight：--model-glm= 退 64、与 --tier-glm= 同文案；紧跟旗标仍是 flagString 的文案（不变）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const model = await cli(fx.root, ['preflight', '--stage', 'plan', '--model-glm=', '--json']);
+  assert.equal(model.code, EXIT.USAGE, out(model));
+  assert.match(out(model), /--model-glm 需要一个值，但没有给出。/);
+  const tier = await cli(fx.root, ['preflight', '--stage', 'plan', '--tier-glm=', '--json']);
+  assert.equal(tier.code, EXIT.USAGE, out(tier));
+  assert.match(out(tier), /--tier-glm 需要一个值，但没有给出。/);
+  const followed = await cli(fx.root, ['preflight', '--stage', 'plan', '--model-glm', '--json']);
+  assert.equal(followed.code, EXIT.USAGE, out(followed));
+  assert.match(out(followed), /--model-glm 需要一个值，但它后面跟的是另一个旗标（或什么都没有）/);
+});
+
+test('T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const doc = await cli(fx.root, ['doctor', '--only', 'env', '--no-model-calls', '--model-glm=', '--json']);
+  assert.equal(doc.code, EXIT.USAGE, out(doc));
+  assert.match(out(doc), /--model-glm 需要一个值，但没有给出。/);
+  const start = await cli(fx.root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--model-glm=', '--json'], STUB);
+  assert.equal(start.code, EXIT.USAGE, out(start));
+  assert.match(out(start), /--model-glm 需要一个值，但没有给出。/);
+  const metaDir = path.join(fx.stageDir, '_meta');
+  const runs = (await fs.readdir(metaDir).catch(() => [] as string[])).filter((n) => n.startsWith('run-'));
+  assert.deepEqual(runs, [], '退 64 在冻结之前，不留运行记录');
+});

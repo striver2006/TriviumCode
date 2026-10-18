@@ -689,7 +689,8 @@ test('对账：两个入口的 --model-<id> 收集面都必须是 ALL_AGENT_IDS�
    */
   for (const [file, anchor] of [
     ['src/trivium/cli.ts', /function collectModelOverrides\(/],
-    ['src/trivium/topic-args.ts', /const written = /],
+    // M12 批次 4（EV-228）收集处由 `const written = …filter` 改为按键存在收进 `modelRaw`，锚点随之改；判据不变
+    ['src/trivium/topic-args.ts', /const modelRaw: /],
   ] as const) {
     const src = await stripped(file);
     const at = src.search(anchor);

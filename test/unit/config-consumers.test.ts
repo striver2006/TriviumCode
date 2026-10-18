@@ -491,3 +491,51 @@ test('U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / age
   const notice = deprecatedConfigNotice(asCfg(all));
   assert.ok(notice !== null && notice.includes(`已废弃的键：${want.join('、')}。`), String(notice));
 });
+
+/*
+ * **U14 EV-227（M12 批次 4）：档位表 Agent 级 effort 出现即报，阶段格子里的同名 effort 不报**（设计 13.1.1「已废弃键」）。
+ *
+ * 路径 `['profiles', '*', '*', 'effort']` 两层通配依次匹配表名与 Agent id；阶段格子 `{model, effort}` 的 effort 在下一层、
+ * 有真实消费方（思考等级下传）——路径多一层 `'*'` 会把它误报，少一层会漏报 Agent 级，这里两头都钉住。
+ */
+test('U14 profiles.〈表〉.〈id〉.effort 出现即报、按表名再按 Agent id 排序；阶段格子 {model, effort} 不报', () => {
+  type Loose = { gate: Record<string, unknown>; review: Record<string, unknown>; profiles: Record<string, Record<string, Record<string, unknown>>> };
+  const base = () => structuredClone(defaultConfig()) as unknown as Loose;
+  const asCfg = (c: Loose) => c as unknown as Config;
+
+  const d = base();
+  for (const [t, tbl] of Object.entries(d.profiles)) {
+    for (const [id, entry] of Object.entries(tbl)) assert.ok(!('effort' in entry), `默认值里不该有 profiles.${t}.${id}.effort`);
+  }
+  assert.deepEqual(deprecatedConfigKeysIn(asCfg(d)), []);
+
+  const one = base();
+  one.profiles['default']!['gemini']!['effort'] = 'high';
+  assert.deepEqual(deprecatedConfigKeysIn(asCfg(one)), ['profiles.default.gemini.effort']);
+  const notice = deprecatedConfigNotice(asCfg(one));
+  assert.ok(notice !== null && notice.includes('已废弃的键：profiles.default.gemini.effort。'), String(notice));
+
+  // 阶段格子里的思考等级不报（多一层 '*' 这里会红）
+  const cell = base();
+  cell.profiles['default']!['codex'] = { plan: { model: 'qwen3.8-flash', effort: 'high' }, code: { tier: 'high' }, bug: 'qwen3.8-flash' };
+  assert.deepEqual(deprecatedConfigKeysIn(asCfg(cell)), [], '阶段格子的 effort 有真实消费方');
+
+  // 两张表 × 两侧：按表名排序、表内按 Agent id 排序；与阶段格子同在时只报 Agent 级
+  const many = base();
+  many.profiles['zeta'] = { glm: { plan: 'GLM-5.3', effort: 'low' }, gemini: { plan: 'g', effort: 'medium' } };
+  many.profiles['default']!['glm']!['effort'] = 'low';
+  many.profiles['default']!['codex'] = { plan: { model: 'qwen3.8-flash', effort: 'high' }, effort: 'high' };
+  assert.deepEqual(deprecatedConfigKeysIn(asCfg(many)), [
+    'profiles.default.codex.effort', 'profiles.default.glm.effort', 'profiles.zeta.gemini.effort', 'profiles.zeta.glm.effort',
+  ]);
+
+  // 与既有废弃键同在：按表序排在最后，正文逐个点名
+  const all = base();
+  all.gate['max_check_retries'] = 3;
+  all.review['parallel'] = true;
+  all.profiles['default']!['gemini']!['effort'] = 'high';
+  const want = ['gate.max_check_retries', 'review.parallel', 'profiles.default.gemini.effort'];
+  assert.deepEqual(deprecatedConfigKeysIn(asCfg(all)), want, '按表序列出');
+  const n = deprecatedConfigNotice(asCfg(all));
+  assert.ok(n !== null && n.includes(`已废弃的键：${want.join('、')}。`), String(n));
+});

@@ -1,0 +1,1691 @@
+# trivium changes.diff
+# run_id: 20261017T170929Z
+# base: HEAD
+# head: 79d2dd57a11d5c0163706a9352d7d51e2a8e5133
+# files: 26
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/05_testing/evidence/m12-batch4-20261018/acceptance-output.json
+#   doc/05_testing/evidence/m12-batch4-20261018/acceptance-stderr.txt
+#   doc/05_testing/evidence/m12-batch4-20261018/acceptance.mjs
+#   doc/05_testing/evidence/m12-batch4-20261018/mutation-names-bundle.mjs
+#   doc/05_testing/evidence/m12-batch4-20261018/mutation-names-log.txt
+#   doc/05_testing/evidence/m12-batch4-20261018/mutation-names-output.json
+#   doc/05_testing/evidence/m12-batch4-20261018/mutation-output.txt
+#   doc/05_testing/evidence/m12-batch4-20261018/mutation-spec-ts.json
+#   doc/05_testing/evidence/m12-batch4-20261018/mutation-spec.json
+#   doc/07_manuals/MANUAL_user.md
+#   skills/dual-critic/schema/config.v2.json
+#   src/trivium/cli.ts
+#   src/trivium/config.ts
+#   src/trivium/tier-flags.ts
+#   src/trivium/topic-args.ts
+#   src/trivium/types.ts
+#   test/integration/tier-flags-cli.test.ts
+#   test/unit/config-consumers.test.ts
+#   test/unit/config-schema.test.ts
+#   test/unit/driver-wiring.test.ts
+#   test/unit/preflight.test.ts
+#   test/unit/tier-flags.test.ts
+#   test/unit/tier-resolve.test.ts
+#   test/unit/topic-args.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index b0d55eda..a0dc0330 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.164
++> - **当前版本**：v1.3.165
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -1464,6 +1464,13 @@ v1 → 内存 v2 的映射：`dual → full`、`single → partial`、`driver` 
+ > 与 trivium 自身的 `--profile <档位表名>` 是两个命名空间。三条旗标都进了入口资产的参数提示（`src/entry-render.ts` 的派生变量）与 `skill-flag-parity` 对账（S0.6 / S2 / S6 逐段点名）。
+ > **`--profile-<id>` 按注册表能力声明派生**：适配器契约测试核对 `vendorProfilesFor` 与 `accessFor`，目前 Claude、Codex 支持；无能力侧退 64。同侧可用 `--native-<id>` 显式切换原生，与 profile 参数互斥。
+ > v3 的 `override_reason` 记录与 Driver 的模型族比较依据和原因，三态均可写；档位来源另记 tier_source。v1/v2 仍按旧名义族语义显示，不回算。
++> **`--model-<id>` 写了不给值退 64**【已实现 · v1.3.165，M12 批次 4，EV-228；**行为变化**】：`=` 空、后面紧跟另一个已知旗标、位于末尾三种形态，
++> 与三类档位旗标同一判定、同一文案（`tier-flags.ts` 的 `assertFlagValuesGiven`，先键判定再空值，`--〈前缀〉-〈id〉 需要一个值，但没有给出。`）。
++> 此前 `topic resolve` 对三种形态都按真假过滤、当成没写，模型覆盖无声消失（命令 A 随后照抄 resolve 输出，配置档位悄悄顶上）；
++> `review` / `preflight` / `doctor` 对后两种形态早已由 `flagString` 退 64（文案不变），只有 `--model-<id>=` 一种被静默丢弃。改后原先被静默忽略的写法一律在发起前报错、零工件；
++> 正常写法与完全不写的解析结果逐值不变。`doctor` 仍不判模型覆盖的键（现状，不在本条范围）。跨入口的「紧跟旗标 / 末尾」两形态文案不同（`topic resolve` 记空串走上面那条，
++> 其余入口走 `flagString` 那条）是两个解析器的既有差异；同一入口内模型旗标与档位旗标逐字同源。
++>
+ > 旧旗标 `--only` / `--model-gemini` / `--model-glm` / `--allow-single` **长期保留为别名**
+ > （目标项目里的旧 SKILL.md 可能未同步升级，18.1 #7）；`--only` 是 `--critics` 的
+ > 单元素写法，**两者同时给退 64**——任选其一执行都会让另一个意图无声消失。
+@@ -3387,13 +3394,17 @@ profiles 裸 slug 包装、`allow_single_flag→allow_partial_flag`）并**在 s
+ > `util/log.ts` 的铁律是「机读模式 stdout 只允许出现一个 JSON、`warn` 恒走 stderr」。
+ > 迁移告警若写 stdout 会破坏 Hook 读取 CLI 输出的协议。
+ 
+-**已废弃键**【已实现 · v1.3.72，EV-30 ① / EV-15；v1.3.122 补 EV-30 ②③；v1.3.136 补 EV-30 ④～⑦】：`gate.max_check_retries` 与 `agents.<id>.readonly_commands`（只在 antigravity 一支），以及 v1.3.122 起的 `review.parallel`（审查各侧恒并行，单侧调试用 `--critics`）与 `isolation.deny_via_cli`（路径级 deny 注不注入只看探针实测 `path_deny.supported`），
++**已废弃键**【已实现 · v1.3.72，EV-30 ① / EV-15；v1.3.122 补 EV-30 ②③；v1.3.136 补 EV-30 ④～⑦；v1.3.165 补 EV-227】：`gate.max_check_retries` 与 `agents.<id>.readonly_commands`（只在 antigravity 一支），以及 v1.3.122 起的 `review.parallel`（审查各侧恒并行，单侧调试用 `--critics`）与 `isolation.deny_via_cli`（路径级 deny 注不注入只看探针实测 `path_deny.supported`），
+ 以及 v1.3.136 起（M11 第 8 步）的四个：`topic.forbid_chars`（主题名校验是 `naming.ts` `validateTopic` 的独立实现，6.1；若接线，会允许把 `/`、`..` 移出禁止集）、
+ `gate.require_adjudication`（闸门恒强制逐条裁决；若接线，等于给闸门核心判据加一个关闭开关）、
+ `agents.glm.max_turns`（zcode 0.16.5 拒绝 `--max-turns`，M0 坑清单 C-01，无处可接）、
+ `agents.glm.unsupported_override`（`annotate` 的「放行并标注」语义已由 `model_unenforced` 播报承担，见 11.3；AC-23 要的是生效值回读可核对，不是强制生效，`reject` 不再实现）
+ 都是类型、默认值、文档承诺齐全而**从未被任何代码读取**，删了类型与默认值，`init` 因此不再写它们。
+ 后四个与 M11 第 4 步的 `agents.codex.effort` 一样按**精确路径**登记（不用 `'*'`：两个 agents 键只属于 zcode 分支，通配会把别家日后接上线的同名键误报成废弃）。
++v1.3.165 起（M12 批次 4，EV-227）另收**档位表 Agent 级 `effort`**（`profiles.<表>.<id>.effort`，v1 遗留，`low/medium/high`）：档位表只按阶段取格子（`resolveTier`），它从未被读取，
++又与阶段格子 `{model, effort}` 里的思考等级同名不同层，读配置的人容易误以为它是后者的缺省。路径写两层 `'*'`（`['profiles', '*', '*', 'effort']`，依次匹配表名与 Agent id）——
++与上面坚持精确路径的理由不冲突：同名的阶段格子 `effort` 在下一层（`profiles.<表>.<id>.<阶段>.effort`），走查按段数精确匹配，只命中 Agent 级这一层；阶段格子的思考等级照常下传、不报。
++v1 配置迁移后带着它同样会被提示（迁移不删内容）。
+ 至此 EV-30 抓出的七个零消费方配置项全部收口，`config-consumers` 对账测试的 `KNOWN_DEAD` 为空。
+ schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束不放宽——topic、gate、review、isolation 段与 antigravity、zcode 分支都是
+ `additionalProperties: false`，直接删属性会让带着它们的旧配置升级后退 69。判定看合并结果（默认值不再带，
+@@ -3710,7 +3721,7 @@ schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束
+ | **M10a Driver 护栏与契约面**（原 M10 于 2026-09-22 拆分的前半程；主题 `M10-任意Driver`） | 五步：①按阶段声明当轮 Driver（EV-72：`topic claim` + 三级判定）；②EV-55 跨时间面重写（提交锚「位置 + 登记」）；③翻 `driverEnabled` 并收紧（未启用即退 64）+ `approve` 前置复核；④登记清理（EV-62 / EV-64 / EV-07）；⑤纪律 6 回溯，并补上第 ② 步漏做的 Bash 侧全集字面保护（D3）。**零真实 CLI 调用**。前置小主题 EV-74 / EV-79 | J2 / J5 / J6 ②④ / J7（M10a 份额）；「当轮 Driver 不得入选」对非缺省 Driver 生效（有用例，四家逐一穷举）。**原 M10 前置四条按拆分重排（M10 计划 r7 §0.3）**：②EV-55 由第 2 步交付；④EV-72 由第 1 步交付；③EV-71 会话载体已于 M9 第 6 步拍板取「名义 Driver」并实测一次写事件，真载体下 Hook 的生效性（EV-77）归 M10b；①随入口资产归 M10b。**前置 ① 不构成翻 `driverEnabled` 的前置——显式裁决**：① 约束的是入口资产怎么装、从哪加载，翻开关改变的是 `resolveDriver` 的一个分支；一个别家 Driver 即使没有任何入口资产，也能以名义 Driver 身份被指定并受三层护栏约束（M9 第 6 步已实测）。**这是对原前置「四条，缺一不可」的改，不是从原文读得出的解**，故显式写在这里 | ✅ **五步全部达成（2026-09-24，v1.3.37）**：第 1 步 `2cb05c8`（`task.json.drivers[<阶段>]` + `topic claim` + 三级判定，见 7.1）；第 2 步 `82773dc`（提交锚「位置 + 登记」，见 8.5 Hook 表）；第 3 步 `21f189a`（翻 `driverEnabled`、未启用即退 64；`approve` 前置复核，见 8.4）；第 4 步 `871b093`（按当轮 Driver 厂商名义族判异构、删 `inferLatestRunId`、EV-07 如实结案，见 11.5）；第 5 步 `f64a485` 与本版（Bash 侧角色后缀全集字面保护——r7 §3.2 的 D3，第 2 步漏做、本步补上；纪律 6 回溯）。双审轮次与墙钟见 `doc/08_project/M10a-轮次台账.md`。**八条达成边界**：①**零真实 CLI 调用**——全部判据在测试夹具与打包 CLI 上成立，非缺省 Driver 没有在任何真载体上跑过一轮（M10b）；②`driverEnabled` 的 64 收紧**只作用于经过 `resolveDriver` 的入口**，不是全称保证（不经过它的面见 7.1 `--driver` 段）；③**提交锚**强制力单向（终端提交绕过），剩余两格够不着（EV-108），预检没有「不在保护集」的标注；④**Bash 侧角色后缀全集字面保护**于第 5 步落地，判据仍是词边界字面匹配的启发式、不完备；⑤**`approve` 前置复核**只保「裁决齐备 + 本轮登记工件哈希一致」：只核本轮、不查未登记件混入、**不保审批来自人**；⑥**`topic claim` 只有手工 CLI 入口**，四条 skill 都没有认领步骤，声明只能手工发，Hook 第 2 级只在有人手工声明过时才有值（skill 侧认领归 M10b）；「一个后缀都还没用过」的窗口内认领与撤回次数不设上限；⑦**`heterogeneous` 两层启发式**（EV-107）；⑧**AC-21 只达成子句 ③** |
+ | **M10b 入口资产与真载体验收**（原 M10 拆分的后半程；计划 `.reviews/M10b-入口资产与真载体验收/`） | 准入实测（agy skills 加载、codex `$ARGUMENTS`、zcode 加载面 / Hook / 真载体、嵌套枚举臂）；四家入口资产与单源渲染；install 多目标；`hooks --agent`（条件步）；协议片段两段式；B1（`guardLevel` 接线；原写「D4（`guardLevel` 按探针降级）」，v1.3.43 按 M10b r5 §2.4 决策编号对照改名——D-3 撤回探针后，只有登记 L1 的载体在 Hook 配置不在场时降为 L2，见 8.5）；skill 侧的 `topic claim` 认领步骤；四 Driver 验收 | AC-21 子句 ① ② + 兼容验收（J3，允许差异白名单见 M10b 计划 §5.3）；**ZCode 真载体一轮、不接受降级；codex / gemini 夹具级**〔v1.3.43 注：这是 P-2 的计划期口径。「夹具级」指被审对象与归档在夹具仓库，「真载体」指在该家自己的会话里执笔，是两个维度；实况是 glm 真载体（命令 B）、codex 夹具级 + 真载体（命令 C）、gemini 夹具级 + 名义 Driver，见本行达成边界①〕（P-2 拍板 2026-09-21；M10b 计划 §1 J4——原 M10 行此处写「ZCode/Codex Driver 夹具跑通」，与 P-2 相反，本版拆行时即按 P-2 写入）。**前置 ①**：agy skills 真实加载行为实测通过——M6 第 4 步对 agy 承载面只拿到静态证据（内嵌迁移表 + 旗标帮助），据此定入口形态就是把静态证据当结论（P-05 的教训），实测通过才能拍板 §18.1 #16。**前置 ③ 的残量**：EV-71 会话载体已于 M9 第 6 步拍板取「名义 Driver」并实测（`--driver codex` 只作声明、留痕在场时 `-claude.md` 拦 / `-response-codex.md` 放，经 `gate hook-pre-write` 直喂 `PreToolUse` 完成，未覆盖 matcher 分发、`sh -c` 存在性守卫、`CLAUDE_PROJECT_DIR` 解析三层）；**真载体下 Hook 的生效性仍未验**，随四家入口资产一起验（EV-77）。前置 ② ④ 已由 M10a 交付。**完整前置清单与收口约束见 M10b 计划 r5 §3.2**（P-a zcode 真载体可用、P-b 第 2 步完成且第 3 步有结论、P-c = EV-82 的 T1 ∧ T2；原句「完整前置清单以 BACKLOG 为准」于 v1.3.43 改指此处）。 **EV-82 三条**：T1 收口提交取最后一次代码提交 `c872b00`（r7 §3.4）；T2 = 判据 1～5 + 6a 构建标识 + 6b 收尾告警 + 7，验收 run `20260924T104357Z`——**T2 判据在证据产生之后由用户拍板 D-1 修订**，原断言 `snapshot.dirty === false` 不成立，不写成「原判据成立」；T3 = BACKLOG EV-82 done，其余要素随 r7 收口提交追加。 **达成（2026-09-26）**：第 1 步准入实测（`doc/05_testing/REPORT_2026-09-24_m10b_driver_entry_probe.md`，§18.1 #16 据此拍板）；第 2 步单源渲染、多目标安装、命令 A 放开 Driver、缺省集合减去当轮 Driver（D-4，`246d831`）；第 3 步 Hook 多目标、B1 护栏等级接线（预检等级行、`run.v2.driver_guard_level`）、闸门停点话术按当轮 Driver 措辞（`da6476c`）； 第 4 步五轮验收（`doc/05_testing/REPORT_2026-09-25_m10b_step4.md`：3-1 claude plan 的 §7.3.1 两形态、3-2 claude code 兼容 J3 无白名单外差异、3-3 gemini 名义 Driver、3-4 codex 真载体 + EV-77、3-5 glm 真载体 J4；轮次台账第 22～27 行）；第 5 步纪律 6 回溯（本版）。 **达成边界五条**：①真载体只覆盖 glm 走命令 B、codex 走命令 C，gemini 仅以名义 Driver 跑过，命令 A / D 未在非 claude 载体上实跑——FR-28 仍记部分达成；②L2 在 codex 上没有任何事前拦截，3-4 的两次越界请求是被 Driver 依入口资产条文自行拒绝的； ③闸门期的越界两道事后机制都不暴露（审批前复核不看工作树、跑后复算只在审查收尾时做；3-4 实测，BACKLOG EV-132），停点话术尾句待该条修；④非 claude 载体上命令参数由模型转抄，参数保真只在两轮真载体上逐字核过（8.5「L2 的已知边界」）； ⑤构建标识「`snapshot.build.git_head` 与 `snapshot.git_head` 一致」一格在夹具里不可验证，并入 M10b 之后第一次本仓代码双审（第 4 步报告 §1.2「缺口」） | ✅ **已达成**（2026-09-26，v1.3.43） |
+ | **M11 档位全链路与文档收口** | tiers 四侧配齐（探针定稿）+ `--tier-*` 全链 + report 按 Driver/审核者聚合；`profiles` 放开 `{tier}` / `{model, effort}` 形态；AC-25 三审检测收口（2026-10-07 由 M7b 并入）；§17 剩余批 B 条目收口 | AC-23；AC-25；**§24 台账全绿**；文档对账零冲突（禁两套规范并行）；全量手工验收剧本 | ✅ **已达成**（2026-10-16，v1.3.159）。AC-23 达成、AC-25 维持第 3 步达成边界；§24 台账全绿且「无 ◐ / ⏳」断言已启用；全量手工剧本 1～11 共 68 格均有第 12 步实证或用户定的达成边界（`REPORT_2026-10-12_m11_step12_manual_acceptance.md`、`doc/05_testing/evidence/m11-step12-20261012/matrix.json`）。**达成边界六条**：①5.2～5.5 的真实会话内缺件 / 改件 / 恢复负对照未触发，按用户 D1 以副本 CLI 负对照加同一 hook-pre-commit 通道的客户端放行（5.1）与退 2（6.7）判组合证据达成，新客户端启动的父级计数控制转 BACKLOG EV-235；②1.4 正式 failed 分支未触发（只验到预检 69 如实停止）；③8.1 只有 B2 为合格三审，B1 Codex 证据不足保留；④剧本 7 真载体为 ZCode（命令 C）与 Codex（命令 B），Antigravity 主攻未跑；⑤Codex 侧命令文本扫描对含 `.trivium` 字面的非读取命令仍会误命中（Z2、B2），共同阻断档因此未执行（BACKLOG EV-239）；⑥接入准入五个受限 Claude 组合的真实写尝试仍未测、官方 Claude 路线待订阅，挪到 M11 之后另定判据（用户 D3）。各步落点：第 0 步计划定稿（`.reviews/M11-档位全链路与文档收口/plan/` r3，`92d53be4`）；第 1 步档位事实探针（`REPORT_2026-10-07_m11_tier_facts.md`）；第 2 步档位契约并入（v1.3.129）；第 3 步 AC-25 三审检测收口（v1.3.130，**AC-25 达成**：只覆盖路径通道、三审形态，桩级；不含作废侧自动重跑 EV-225、不含命令文本通道三侧用例；`REPORT_2026-10-07_m11_ac25_three_critic.md`）；第 4 步配置契约与档位解析（v1.3.131：`config.v2` 原地扩 `tiers` / `default_tier` 与 `profiles` 三形态、`agents.codex.effort` 废弃、`resolveTier` 取代 `routeModel`、codex 原生枚举落盘、档位组合校验与过渡闸；**未达成任何 AC**——旗标待第 5 步、透传与留痕待第 6 步；`REPORT_2026-10-07_m11_tier_config.md`）；第 5 步档位命令行旗标（v1.3.132：`--tier-<id>` / `--effort-<id>` / `--profile-<id>` 全链上线、命令 A 三处照抄；思考等级与厂商 profile 两类由过渡闸拦到第 6 步；**未达成任何 AC**；`REPORT_2026-10-08_m11_tier_flags.md`）；第 6 步思考等级透传与留痕接线（v1.3.133：请求面一处解析、按厂商下传，厂商 profile 三处同值，run.json / front-matter 档位与思考等级一组恒写，claude 原生枚举落盘（v1.3.133 首版真机未落成：取值列表在续行上；v1.3.134 修续行解析，重装后已落五项），过渡闸拆除；**未达成任何 AC**——AC-23 随第 11 步真实验收；`REPORT_2026-10-08_m11_effort_wiring.md`）；第 7 步复盘报告双维度聚合（v1.3.135：规格 13.2.1 与实现同一提交；串档根因——原稿与裁决件写死缺省 Driver——一并修掉；**未达成任何 AC**；`REPORT_2026-10-08_m11_report_aggregate.md`）；第 8 步四个零消费方配置项删除（v1.3.136：EV-30 ④～⑦ `topic.forbid_chars` / `gate.require_adjudication` / `agents.glm.max_turns` / `agents.glm.unsupported_override`，按 ①②③ 先例删类型与默认值、schema 保留并标 deprecated、doctor / preflight 提示一条，`KNOWN_DEAD` 清空；B 档未走双审；**未达成任何 AC**；`REPORT_2026-10-08_m11_config_dead_keys.md`）；第 9 步 §24 台账结构对账测试（v1.3.137：EV-14 的结构层，`test/contract/evolution-ledger-parity.test.ts` 三条——演进设计 §17.2 每行在 §24 有对应行、状态列只用 ✅ / ◐ / ⏳、「§24 无 ◐ / ⏳」显式跳过到第 12 步启用；只加测试；B 档未走双审；**未达成任何 AC**；`REPORT_2026-10-08_m11_ledger_parity.md`）；第 10 步文档收口与对账（v1.3.138～v1.3.139，分三批提交：①`P-xx` 坑清单搬到 `doc/04_development/GUIDE_local_pitfalls.md`、M0 报告恢复为快照（EV-13 结案）；②使用与运维文档补档位用法与排障、CASE 补剧本 8～11（只写判据）、`.env.example` 补 codex 段；③本文 17.2 增补表与陈旧【待实施】标记逐条回代码核实、§24 两表翻绿、24.2 版本列改判据式；核出四处与实现不符或缺用例，按用户决定文档照现状写、另登 BACKLOG EV-231～EV-234；纯文档，B 档未走双审；临时取消第 9 步 ③ 的跳过单跑为绿；**未达成任何 AC**；`REPORT_2026-10-08_m11_doc_closure.md`）；第 11 步 AC-23 真实验收（v1.3.140：scratchpad 夹具里 codex（kimi profile）与 gemini 各以选档、精确指定发起一次，共 4 次单侧真实审查，无重跑；CASE 剧本 11 判据 11.1～11.6、11.8、11.9 全部成立，11.7 可选未做；负对照三条 64、一条 69、零工件；夹具探针照搬本仓（用户定，零配额）；零代码改动，验收不走双审；**AC-23 已验收、达成状态随第 12 步翻**；`REPORT_2026-10-08_m11_ac23_acceptance.md`）；第 12 步前置 EV-233（v1.3.141：用户定启用「§24 无 ◐ / ⏳」之前先补用例，让 24.1「17.2」行与 17.2 表内迁移行都名副其实——`config-migrate-warning.test.ts` 三格钉住迁移告警走 stderr、每次调用恰一条、`--json` 的 stdout 仍只有单个 JSON，实现无需改动，变异 5/5 咬住；只加测试、B 档未走双审；`REPORT_2026-10-08_ev233_config_migrate_warning.md`）；第 12 步全量手工剧本与收口（v1.3.159：独立夹具 `trivium-m11-step12-20261012`，A / B1 / B2 / C / D 批与 Hook 实测（10-12～10-15），收口批 Z（Claude 主攻 plan → ZCode 主攻 code）、X（Codex 主攻 plan，X2 补 9.6、X3 补 9.4 后半句）与 11.7（10-16）；`NO_PENDING_SKIP` 改 false；纯文档收口，B 档未走双审；`REPORT_2026-10-12_m11_step12_manual_acceptance.md`） |
+-| **M12 审查期误判修正与运维收口**（2026-10-16 立项；名称为执笔方暂定，计划 `doc/08_project/M11后续-开发计划-草案.md`，用户 2026-10-16 拍板 D-1～D-16 全按推荐） | 六个批次：**0** 零配额收口（EV-193 用例采样竞态、EV-230 失效结案、EV-231 删承诺、EV-236 流程规矩）；**1** EV-239（闸门对命令通道命中不看类别，告警级的 `orchestrator-state` 被当成作废）+ EV-238（agy 探活超时被报成未登录）；**2** 五个受限 Claude 组合的写尝试判据（D-2：「工具面未注册」与「受控请求拒绝」两档同时成立单独命名为受限准入，「真实写尝试」一档对这五组合记不可取样、永不记通过）；**3** EV-225 作废侧重跑一次；**4** EV-228 + EV-227；**5** EV-240 方案 A + EV-236 送审包去重 | 各批按计划 §2～§6 的验收；批次 1～5 走 `/dual-run` 全双审（改契约 / 判据 / 调用链），批次 0 为 B 档；BACKLOG EV-193 / 225 / 227 / 228 / 230 / 231 / 238 / 239 / 240 结案，EV-236 代码部分结案；五组合判据写入取证守卫规范与 ADR-003 | ⏳ **进行中**（批次 0 完成，v1.3.160；批次 1 完成，v1.3.161：EV-239 / EV-238 结案，`REPORT_2026-10-17_m12_batch1.md`；批次 2 完成，v1.3.163：EV-241 结案，五组合受限准入并经用户具名采用，`REPORT_2026-10-17_m12_batch2.md`；批次 3 完成，v1.3.164：EV-225 结案，作废侧在同一次运行内重跑一次，`REPORT_2026-10-17_m12_batch3.md`） |
++| **M12 审查期误判修正与运维收口**（2026-10-16 立项；名称为执笔方暂定，计划 `doc/08_project/M11后续-开发计划-草案.md`，用户 2026-10-16 拍板 D-1～D-16 全按推荐） | 六个批次：**0** 零配额收口（EV-193 用例采样竞态、EV-230 失效结案、EV-231 删承诺、EV-236 流程规矩）；**1** EV-239（闸门对命令通道命中不看类别，告警级的 `orchestrator-state` 被当成作废）+ EV-238（agy 探活超时被报成未登录）；**2** 五个受限 Claude 组合的写尝试判据（D-2：「工具面未注册」与「受控请求拒绝」两档同时成立单独命名为受限准入，「真实写尝试」一档对这五组合记不可取样、永不记通过）；**3** EV-225 作废侧重跑一次；**4** EV-228 + EV-227；**5** EV-240 方案 A + EV-236 送审包去重 | 各批按计划 §2～§6 的验收；批次 1～5 走 `/dual-run` 全双审（改契约 / 判据 / 调用链），批次 0 为 B 档；BACKLOG EV-193 / 225 / 227 / 228 / 230 / 231 / 238 / 239 / 240 结案，EV-236 代码部分结案；五组合判据写入取证守卫规范与 ADR-003 | ⏳ **进行中**（批次 0 完成，v1.3.160；批次 1 完成，v1.3.161：EV-239 / EV-238 结案，`REPORT_2026-10-17_m12_batch1.md`；批次 2 完成，v1.3.163：EV-241 结案，五组合受限准入并经用户具名采用，`REPORT_2026-10-17_m12_batch2.md`；批次 3 完成，v1.3.164：EV-225 结案，作废侧在同一次运行内重跑一次，`REPORT_2026-10-17_m12_batch3.md`；批次 4 完成，v1.3.165：EV-228 / EV-227 结案，`--model-<id>` 写了不给值退 64、档位表 Agent 级 `effort` 进废弃键表，`REPORT_2026-10-18_m12_batch4.md`） |
+ | **M8 第 1 步**（原「独立演进项 · 未排期」→ 2026-09-15 升格为 M8 前置 → 同日落地） | 隔离检测**措施 b**：`run_command` 命令文本字面扫描（10.2） | 命令文本伪造命中作废；`run.v2` 的 `guard.peer_leak_via_command` 接线 | ✅ **已实现（M8 第 1 步，v1.3.8）**，BACKLOG **EV-01** 转 done。**升格理由**：M6 第 2 步实测 codex 的 `trace_path_structured = false`（读取经 shell，轨迹里只有命令文本），本项遂从「通道②的唯一覆盖」变成「**codex 侧一切路径核验的唯一手段**」。承诺面是 F-1～F-9 闭集、盲区 B-1～B-5，详见 10.1 措施 b |
+ 
+ **依赖**（两条链**并行**，不是一条串行链）：
+@@ -3843,6 +3854,8 @@ schema 里**保留属性**、标 `deprecated`、移出 `required`，类型约束
+ | `--tier-<id>` / `--effort-<id>` / `--profile-codex` 指向未入选侧，或 `--profile-codex` 不在名单 | 退 64，零工件；名单为空跳过；resolve 输出照抄进 `--start` 能启动 | ✅ M11 第 5 步（`tier-flags.test.ts` K1～K7、`tier-resolve.test.ts` F1～F6、`tier-flags-cli.test.ts` T1～T5、`no-artifacts.test.ts` 档位旗标四格） |
+ | 桩回报「请求值 ≠ 生效值」；codex / claude 侧 | `effort_requested` 与 `effort_effective` 分记；codex / claude 侧 `effort_effective` 恒 `null`、来源 `unverified`；旧字段 `effort` 与 `effort_requested` 同值 | ✅ M11 第 6 步（`effort-wiring.test.ts` 单测 E 组与集成 S1 / S2；`codex-effort-profile.test.ts` X1 / X4） |
+ | 配置里出现废弃键 `agents.codex.effort` | doctor / preflight 提示一条；`agents.gemini.effort` 不提示 | ✅ M11 第 4 步（`config-consumers.test.ts` U11） |
++| 配置里出现档位表 Agent 级 `effort`（`profiles.<表>.<id>.effort`） | doctor / preflight 提示一条；阶段格子 `{model, effort}` 不提示、思考等级照常下传；schema 仍接受、枚举不放宽 | ✅ M12 批次 4（`config-consumers.test.ts` U14、`config-schema.test.ts` V9、`preflight.test.ts` U5″ / U6′、`tier-resolve.test.ts` R12） |
++| `--model-<id>` 写了不给值（`=` 空 / 紧跟已知旗标 / 位于末尾） | 四个入口退 64、零工件；同一入口内与档位旗标逐字同文案；正常写法与不写逐值不变 | ✅ M12 批次 4（`topic-args.test.ts` EV-228 四格、`tier-flags.test.ts` K8、`tier-flags-cli.test.ts` T6～T8） |
+ 
+ ### 17.3 手工验收剧本（对应 PRD 场景 S1～S5）
+ 
+@@ -4017,6 +4030,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.165** | 2026-10-18 | **M12 批次 4：模型覆盖旗标空值退 64（EV-228）与档位表 Agent 级 effort 废弃（EV-227）。** 主题 `M12-参数与配置小修`（`/dual-run`，计划双审 run `20261017T164003Z`：gemini `approve` 零意见、glm `approve-with-nits` 1 nit 接受 → r2）。**一、EV-228（行为变化）**：`topic resolve` 收集 `--model-<id>` 改为按键存在判定，`=` 空、紧跟已知旗标、位于末尾三种形态由静默丢弃改为退 64；空值判定抽成 `tier-flags.ts` 的 `assertFlagValuesGiven`，模型与三类档位旗标共用、先键后值、文案逐字同源；`cli.ts` 的 `review` / `preflight` / `doctor` 对 `--model-<id>=` 同样由静默丢弃改为退 64（另两种形态早已由 `flagString` 退 64、文案不变）——这一格超出上位计划 D-8 字面改动面，计划双审两侧均支持纳入，请用户追认。正常写法与不写逐值不变；`critics` 与两轮共用同一组的语义不变。7.1 补说明，USAGE 与 PROTOCOL 同步。**二、EV-227**：`DEPRECATED_CONFIG_KEYS` 补 `['profiles', '*', '*', 'effort']`（两层通配只命中 Agent 级，阶段格子 `{model, effort}` 在下一层、照常下传、不报）；`types.ts` `ProfileEntry` 删该字段（`tsc` 通过，印证无读取点）；config.v2 该属性标 `deprecated` 并加描述、枚举不放宽；doctor / preflight 沿既有通道提示一条。13.1.1「已废弃键」补一段，17.2 追溯表补两行，§24「13.1 → config.v2」行补收口；PROTOCOL 已废弃键一段补登 v1.3.136 四键（此前漏登）与本条。用户手册 v1.0.46。读数见 `doc/05_testing/REPORT_2026-10-18_m12_batch4.md`。 |
+ | **v1.3.164** | 2026-10-17 | **M12 批次 3：作废侧在同一次运行内重跑一次（EV-225）。** 主题 `M12-作废侧重跑一次`（`/dual-run`，计划双审 run `20261017T133619Z`，7 条全接受 → r2）。10.1.1 新增「作废侧在同一次运行内重跑一次」：该侧刚跑完即以与终判、闸门同一个谓词（`leakRecordVoids`）判，作废类命中则在该侧自己的 promise 内重拉一次，另一侧不受影响；③④ 与 ②′ 不触发；至多 1 次、完整单侧超时、`max_waits` 按当前 status 追加一份；重跑任务书最前面点名上次碰到的位置（命令通道只点程序名、不回显参数——对 D-7「路径或命令」的落点收紧）、正文不变；首次原始输出挪到运行目录 `voided/<侧>/attempt-<n>/`（不在己方子树，重跑侧读它同样作废）、不进归档；二次命中侧级 `failed(peer_leak)`，按失败侧规则走。12.1 基线行与演进增补行改写、「有效侧不足」行去掉「EV-225 就绪前」措辞，12.3 同步；6.7.1 记 run.v3 逐侧可选 `attempts`（只在重跑过的侧写，条目分层记法）。闸门代码不改（只读最终尝试）。`fault-injection` 的 AC-25 三审 8 格与两侧分档 3 格按新行为改断言，另补 EV-225 组 6 格与 `void-rerun` 单测 16 条。 |
+ | **v1.3.163** | 2026-10-17 | **M12 批次 2 取证与采用。** 「受限准入判据」一节补采用段：CLI 2.1.302、构建 `4e58048d` 下五组合受限准入 5 / 0 / 0，用户具名采用 `restricted-admission-v1`；16.1 M12 行批次 2 标完成；执行中暴露的会话拉起挂住与 `ps` 日期格式依赖登记 EV-243 / EV-244。报告 `REPORT_2026-10-17_m12_batch2.md`。纯文档与证据，判据与代码不变。 |
+ | **v1.3.162** | 2026-10-17 | **M12 批次 2：五个受限 Claude 组合的受限准入判据（EV-241）。** 主题 `M12-五组合受限准入判据`（`/dual-run`，计划双审 run `20261017T085024Z`，6 条全接受 → r2）。新增「受限准入判据」一节：档 1 工具面未注册（当场重算工具面并核 default 权限模式）、档 2 受控请求拒绝（与档 1 同一读臂、只认原件复算，读臂漂移记未测且不复算）、档 3 真实写尝试对五组合恒不可取样；原标准与受限准入两组计数分开、无合计，10-12 冻结汇总只作 hash 核过的参考引用。`assertProductionArm` 与产品 `src/` 不变。真实取证在提交 1 之后另行执行，判据采用待用户具名决定。 |
+@@ -4314,7 +4328,7 @@ EV-05 的成本描述多记一个文件（`config.v2.json` 的 `probe` 段本就
+ | 11.1 适配层契约泛化 | **B-契约** | **M8 / M9 / M11** | ✅ 已并入（M11 第 10 步核对 11.1 正文已无待实施项后翻绿；分步：能力声明与判定分档，M8 第 2 步；**写判据两档与厂商旗标收敛，M8 第 3 步**；**`model_provider` / `profile_requested` 进结果契约、模型目录钩子 `catalogModelsFor` 按逐 profile 校验，M8 第 4 步**；**旗标归属判据三条 + 会红的契约测试，M9 工前并入 v1.3.17，EV-12 结案**；**claude 侧 `event-stream` 族的写事件判据、输出通道豁免与 Grep 命中三态 `search_hit_paths`，M9 第 3～6 步**）；**思考等级透传与回读规格已并入 v1.3.129**（11.1「思考等级透传与回读」），实现 ✅ M11 第 6 步（v1.3.133；生效值由钩子 `effortReadback` 派生，偏离原 `CriticResult` 表已在 11.1 改写） | 11.1「轨迹能力与判定分档」「`command-trace` 族的写判据两档」「生效目录随配置分层」「旗标归属判据」+ 3.7.1 + `registry-parity` 第 6 条 |
+ | 11.5 档位路由 | **B-契约** | **M11** | ✅ **规格已并入 v1.3.129**（数据模型、厂商 profile、两段式路由、`tier` / `tier_source` 取值、原生枚举校验；删去从未接线的主题级覆盖）；✅ **配置契约、解析、校验与过渡闸已实现 v1.3.131**（M11 第 4 步；取值规则统一、退出码改准为 64）；✅ 旗标 v1.3.132（第 5 步）；✅ 透传与留痕 v1.3.133（第 6 步，过渡闸拆除） | 11.5 引言块 |
+ | 12.1 异常矩阵增行 | A | 第零步 | ✅ 已并入 v1.3.0 | 12.1「演进增补行」表 |
+-| 13.1 → config.v2 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0；**实现 ✅ 已落地（M7b 第 4 步，2026-09-14）**；零消费方配置项收口 ✅（EV-30 七条与 EV-15 全部删除、schema 按已废弃接受：①v1.3.72、②③v1.3.122、④～⑦ v1.3.136 即 M11 第 8 步） | **13.1.1**（并排追加，v1 基线保留；「已废弃键」段）；`schema/config.v2.json`、`config.ts` 的 `migrateConfigV1` 与 `agentConfigOf`、`init.ts` 的一次性改写 |
++| 13.1 → config.v2 | A | 第零步（规格）/ M7b（实现） | ✅ 规格已并入 v1.3.0；**实现 ✅ 已落地（M7b 第 4 步，2026-09-14）**；零消费方配置项收口 ✅（EV-30 七条与 EV-15 全部删除、schema 按已废弃接受：①v1.3.72、②③v1.3.122、④～⑦ v1.3.136 即 M11 第 8 步；档位表 Agent 级 `effort` v1.3.165 即 M12 批次 4，EV-227） | **13.1.1**（并排追加，v1 基线保留；「已废弃键」段）；`schema/config.v2.json`、`config.ts` 的 `migrateConfigV1` 与 `agentConfigOf`、`init.ts` 的一次性改写 |
+ | **13.2 复盘的双维度聚合（R23 / 演进设计 §12 切换 Driver 行与 §13.3 第 4 条，原清单未列）** | **B** | **M11** | ✅ **规格与实现同一提交并入 v1.3.135**（M11 第 7 步，纪律 6b）：按 Driver / 按审核者两维聚合与口径、第四节思考等级两列、`report --json` 新增字段；串档根因（原稿与裁决件写死缺省 Driver）一并修掉。§13.3 第 4 条的手工验收随第 10 步 | **13.2 / 13.2.1**；`report.ts`、`meta.ts` 的 `sourceSchema` |
+ | 15.1 增 FR-27～31 | A | 第零步 | ✅ 已并入 v1.3.0 | 15.1 |
+ | 15.3 增 AC-20～25 | A | 第零步 | ✅ 已并入 v1.3.0 | 15.3 |
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index 97add3a8..2337a8b1 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -106,7 +106,9 @@ YAML 往返会丢注释，原注释保留在备份中）。三条跨字段规则
+ 
+ **已废弃键**（机制在 `config.ts` 的 `DEPRECATED_CONFIG_KEYS`，按路径登记）：`gate.max_check_retries`（设计 v1.3.72，EV-30 ①）、
+ `agents.<id>.readonly_commands`（antigravity 一支，v1.3.72，EV-15）、`review.parallel` 与 `isolation.deny_via_cli`（v1.3.122，EV-30 ②③；
+-此前本段漏登这两条）、`agents.codex.effort`（v1.3.131，M11 第 4 步；**精确路径**——`agents.gemini.effort` 同名却有消费方，不报）
++此前本段漏登这两条）、`agents.codex.effort`（v1.3.131，M11 第 4 步；**精确路径**——`agents.gemini.effort` 同名却有消费方，不报）、
++`topic.forbid_chars` / `gate.require_adjudication` / `agents.glm.max_turns` / `agents.glm.unsupported_override`（v1.3.136，EV-30 ④～⑦；此前本段漏登这四条）、
++`profiles.<表>.<id>.effort`（档位表 Agent 级，v1.3.165，M12 批次 4，EV-227；路径两层 `'*'`，只命中 Agent 级——阶段格子 `{model, effort}` 里的思考等级在下一层、照常下传、不报）
+ 从未被读取，已删类型与默认值；schema 仍接受（标 `deprecated`、不在 `required`、类型约束照旧），
+ 带着它们的旧配置升级后照常通过。出现时只有 `doctor`（`warnings`，不影响退出码）与 `preflight`
+ （名为「已废弃配置键」的只警告项，进 `warnings`）各提示一条，其余命令不打任何东西。
+@@ -444,9 +446,9 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一
+ | `doctor` | 逐项实测设计 §3.5 的本机能力探针清单，回填 `probe:` 段 |
+ | `doctor --selftest` | 临时夹具里真跑整条流水线，14 步核对（桩适配器，零配额） |
+ | `preflight --stage plan\|code\|bug\|all [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--tier-<id> <档>] [--effort-<id> <值>] [--profile-<id> <名>]` | 设计 §8.1 的启动预检，fail-fast，失败零工件。档位旗标（M11 第 5 步）按「档位组合合法」一格校验，口径同配置来源，见上方现状句。`--critics` 指定本次要用哪几侧——只读能力、模型 slug、探活都只查这几侧，缺省取 `review.default_critics`（M8 第 3 步）。**命令 B / C / D 的第 1 步不传它**：那时 `topic resolve` 还没跑、选侧尚未解析出来；选了非缺省侧时，该侧的可用性由 `review --start` 在拉起 CLI 之前的 `availability()` 兜住（AC-20 末条的落点），但探活不在其中。**命令 A 自 EV-125 起在解析之后预检**（S0.6）：带上 `topic resolve` 输出的 `critics`，以及非空时的 `--profile` / `--model-<id>`，三个阶段入选各侧的 slug 与探活都在开跑前查——命令 A 漏查的 code 阶段 slug 要到 S6（编码之后）才会暴露。`--critics` 也供用户显式预检时用。**只警告项**（EV-123，设计 8.1「警告这一级」）：`--json` 输出恒带 `warnings`（`{ name, detail }[]`，无警告时为 `[]`），`checks[]` 单项在 `warn` 为真时带 `warn: true`；`warn` 不影响 `ok` 与退出码，skill 在通过时逐条念给用户后继续 |
+-| `topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。M11 第 5 步起输出另含 `tiers` / `efforts` / `vendor_profiles`（逐入选侧、恒存在、没写为 `{}`），skill 照抄进预检与 `--start`；档位旗标写了不给值退 64。`--stage` 也接受 `all`（命令 A 用）。`--` 之后按 argv 逐个 token 解析、不再分词（EV-18）：正文整段放进一个单引号参数，旗标放在引号之外；`--topic` 字样被包进正文而未显式给主题时退 64。`--args` 传法已删 |
++| `topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。M11 第 5 步起输出另含 `tiers` / `efforts` / `vendor_profiles`（逐入选侧、恒存在、没写为 `{}`），skill 照抄进预检与 `--start`；档位旗标写了不给值退 64，`--model-<id>` 自 v1.3.165（M12 批次 4，EV-228）起同样退 64、文案同一份（此前 `=` 空、紧跟已知旗标、位于末尾三种形态被静默丢弃）。`--stage` 也接受 `all`（命令 A 用）。`--` 之后按 argv 逐个 token 解析、不再分词（EV-18）：正文整段放进一个单引号参数，旗标放在引号之外；`--topic` 字样被包进正文而未显式给主题时退 64。`--args` 传法已删 |
+ | `topic claim --topic <主题> --stage <s> --driver <id> [--session-id <id>]` | 为该**阶段**声明当轮 Driver（M10a 第 1 步，EV-72）。plan / bug 原稿写在 `review --start` 之前，那一刻该阶段零留痕、判定回落缺省 Driver，非缺省 Driver 写不出自己的原稿。`--stage` **必填不默认**：声明直接决定 Write / Edit 侧的保护集。判定顺序自上而下：**留痕优先**——该阶段已有运行留痕且与 `--driver` 不同 ⇒ 退 64（出口是新开主题或换阶段）；已声明同值 ⇒ 幂等退 0 且**不刷新** `claimed_at`；该阶段子树里已存在**他家角色后缀**的文件 ⇒ 退 64（那些文件可能是撤回前的旧声明留下的，也可能是尚无声明时写下、仍在使用的原稿；出口是由用户确认去留、在终端处理后重试。不在会话里删它们来换回认领——这条限制防的正是会话自己反复翻转声明，见设计 7.1 `topic claim` 段）；其余合法认领放行。撤回的旧声明整条追加进 `drivers[<阶段>].history`，不覆盖。`--session-id` 落进 `claimed_by`，与 `approvals[].session_id` 同一个用途：自声明边界要让事后对得上账 |
+-| `review --stage <s> [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--tier-<id> <档>] [--effort-<id> <值>] [--profile-<id> <名>]` | 同步跑一次双审（手工调试用）。模型与档位旗标口径同 `preflight` 那一行：键必须是本轮入选审核者，`--tier-<id>` 只收 `low` / `medium` / `high`，`--profile-<id>` 目前支持 `--profile-codex` 与 `--profile-claude`；同侧可用 `--native-<id>` 显式清空；三类旗标写了不给值、档名未在 `agents.<id>.tiers` 定义、思考等级不在该模型原生枚举里、该侧没有思考等级概念却给了、厂商 profile 不在本机名单，都在准备阶段（冻结与任何落盘之前）退 64。预检与准备阶段均先校参数：明确不存在的 profile 退 64；凭据、入口、服务或只读能力不可用退 69（EV-232）路由两段式与 `tier` / `tier_source` 的取值见设计 11.5 |
++| `review --stage <s> [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--tier-<id> <档>] [--effort-<id> <值>] [--profile-<id> <名>]` | 同步跑一次双审（手工调试用）。模型与档位旗标口径同 `preflight` 那一行：键必须是本轮入选审核者，`--tier-<id>` 只收 `low` / `medium` / `high`，`--profile-<id>` 目前支持 `--profile-codex` 与 `--profile-claude`；同侧可用 `--native-<id>` 显式清空；模型与三类旗标写了不给值（`--model-<id>=` 一格 v1.3.165 起，此前静默丢弃）、档名未在 `agents.<id>.tiers` 定义、思考等级不在该模型原生枚举里、该侧没有思考等级概念却给了、厂商 profile 不在本机名单，都在准备阶段（冻结与任何落盘之前）退 64。预检与准备阶段均先校参数：明确不存在的 profile 退 64；凭据、入口、服务或只读能力不可用退 69（EV-232）路由两段式与 `tier` / `tier_source` 的取值见设计 11.5 |
+ | `review --start / --wait / --status / --cancel` | 分段协议。`--start` 收的模型与档位旗标同 `review --stage`。`--start` 的返回恒带 `warnings`（EV-123）：拉起前按**当轮入选侧**复用预检的判定函数 `checkModelOverrideSource` 查出的只警告项，以及 `checkHeartbeatThreshold` 的「失联阈值」（`heartbeat_stale_s` 不大于工作进程心跳间隔 30 s 时出；只读配置、与入选侧无关；设计 v1.3.57，EV-160），两者同一次汇总，形状同预检；其后追加准备阶段从各侧任务书第 4 段剔除的自动条目「必读清单剔除」（按条目一条；设计 v1.3.73，EV-02，见设计 10.1.1 末节），代码阶段计划阶段留痕读不出、没能列入计划定稿时在它之前另有一条「必读清单未列计划定稿」（至多一条、不计入剔除封顶；设计 v1.3.88，EV-210）；在派生之后随返回值到达（拦不住拉起，skill 在开场播报里念出并提示可 `--cancel`）；`finished_inline` 时为 `[]`；同步 `review --stage` 不做前两项复查，它的 `--json` 另有既有的 `warnings: string[]`（运行期告警，以及准备阶段的必读剔除告警，后者不带 `⚠️` 前缀），与 `--start` **同键不同形**，不要按 `detail` 读。`--start` 与同步 `review --stage` 在 `--context` 与本轮任一侧禁读集相交时退 64、零工件（设计 v1.3.73）。`--cancel`：向工作进程组发 SIGTERM，工作进程先按组终止它以 `killTree` 拉起的审查员 CLI（宽限 2 s → SIGKILL，真实 CLI 对 SIGTERM 的处置未实测）再以 SIGTERM 退出；5 s 内没退出即升级 SIGKILL、之后至多再等 5 s 确认退出（设计 v1.3.67 起；此前不等）——宽限期满最后一次仍取不到工作进程的启动时刻时不升级 SIGKILL，发 SIGTERM 之前就取不到则一个信号都不发，工作进程未确认退出时不收尾、以 69 退出（EV-176）；升级 SIGKILL 或宽限期满判不了而扣下 SIGKILL 时、以及工作进程此前已不在时（含 status 已被 `--wait` 判失联写成 failed、走终态早退分支的情形），按 status.json 的逐侧 CLI 进程组记录逐组结束审查员 CLI（组长活着且规范化启动时刻相符、或组长已退出但组号下还有非僵尸成员时都发信号，宽限链同上，v1.3.60 起后者同样按组结束，EV-165；终态分支只结束进程、不写 status.json（`gone` 格自 EV-159 起补收归档 run.json / task.json，见下方「失联后仍挂着的工作进程」段末句，status.json 仍不写）；判不了、记录读不懂、成员计数取不到、没有记录时 stderr 如实提示；设计 v1.3.53，EV-154）；CLI 先于工作进程退出后遗留的子进程、CLI 自己脱离进程组的后代也够不到，这两格不打提示（设计 7.5「工作进程的信号语义」）。`--wait --json` 的 `sides` 与 `--status --json` 的 `status.sides` 每侧多一个 `cli` 键（`{ pgid, started_at }` 或 null，设计 v1.3.53；加法，旧调用方忽略）；status 另多一个 `worker_started_at_canonical` 键（字符串或 null，设计 v1.3.55，EV-158；加法，旧调用方忽略）。（EV-128，设计 v1.3.47）工作进程确认退出后，把仍为 `running` 的归档 run.json（run.v2 或 run.v3，保持原 schema）收尾为 `cancelled`（只改 `status` / `finished_at` / `gate.state`，`artifacts[]` 原样）并同步 `task.json` 登记（run.json 不是 cancelled、登记里找不到、登记已不是 running 时跳过），再把 status.json 标 `cancelled`、回收锁与闸门；没确认退出或 run.json 已是终态时不写，输出写明原因；单步写失败只告警、没有第二次机会，告警要求人工核对。**失联后仍挂着的工作进程**（设计 v1.3.54，EV-146）：`--wait` 判 `worker_lost` 时在 status.json 记 `lost = { reason, at }`（`--wait --json` / `--status --json` 的 `status` 因此多出 `lost` 键，对外 JSON 形状的加法，旧调用方忽略）；`heartbeat_stale` 的报错先列判定依据再给 `--cancel` 出口。之后 `--cancel` 在 status.json 为 failed、`lost.reason` 为 `heartbeat_stale`、工作进程仍是同一进程时，按组结束它（宽限 5 s → SIGKILL → 至多再等 5 s 确认）、按记录结束审查员 CLI、把仍为 `running` 的 run.json 与登记补收为 `failed`（`termination` 同 `--wait`）、按 run_id + pid 回收锁；status.json 不写、闸门不动、凭据副本不抹；确认不了退出时 run.json 与锁不动；身份判不上（`mismatch`）时连记录里的审查员 CLI 也不结束，身份缺失（`no_identity`）时 CLI 沿用 EV-154 终态分支自己的判断；两格 stdout 都说「未对工作进程……发信号」而不是「无需取消」；一个信号都没发就判已不在时说「未及发信号」。确认退出（含下面的 `gone` 格）与「无需取消」退 0；以 69 退出的有两种：按组结束之后未能确认工作进程退出（仍是同一进程、判不了身份、首检即判不了），与主路径同口径（设计 v1.3.105，EV-177 ②），以及身份判不上（`mismatch`）、身份缺失（`no_identity`）两格（设计 v1.3.115，EV-177 ② 补）——都是「这次没做收尾、状态原样、可重试」；此前都退 0，stderr 与 stdout 的文字不变。**`gone` 格补收**（设计 v1.3.56，EV-159 第一形态）：`worker_pid` 上已没有活进程时（含「两种启动时刻都缺失」这一收窄进来的子情形），`--cancel` 与 `alive` 格一样按 EV-142 的前提把仍为 `running` 的 run.json 与登记补收为 `failed`（`termination` 同 `worker_lost` / `heartbeat_stale`）、按 run_id + pid 回收锁；status.json 不写、闸门不动、凭据不抹；stdout 说「工作进程 N 已不在」，不说「无需取消」，也不复述归档补收的结果（只说「见上方输出」，那两行由前面的收尾步骤播报）；已是终态或归档缺失时按前提跳过、如实说明，可重入。`mismatch` 与「两种启动时刻都缺失但进程还在」的 `no_identity` 不在此列，一律不补收。**判不了工作进程的身份**（设计 v1.3.66，EV-175）：主路径上工作进程活着而本进程取不到它的启动时刻（`ps` 派生失败或超时）时，`--cancel` 不发信号、不写 status.json、不回收锁与闸门、不抹凭据、不补收归档，stderr 报「取不到工作进程 N 的启动时刻……本次不取消……请稍后重试」并给出手工出路，**退出码 69**；同一原因下 `--wait` 不判 `pid_gone`（心跳新鲜仍退 73，过期判 `heartbeat_stale`），抹凭据准入与会话启动清扫把它当仍在。**凭据副本的准入**（设计 v1.3.58，EV-157）：`--cancel` 主路径与 `--wait` 判失联抹凭据副本之前，与会话启动清扫 / `scrub` 同一判据——工作进程确认已不在，且 status.json 记录里的审查员 CLI 进程组没有仍在、判不了或读不懂的（`--cancel` 判的是按记录结束之后的事实）；被 CLI 挡住时不抹，`--cancel` 的 stderr、`--wait` 的报错正文各多一行「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧〉…留给会话启动清扫」，退出码、归档收尾与其余输出不变；工作进程一半未过时那一行的文字与此前相同。`--wait` 在阻挡项里有判「仍在」或「组长已退出、组员仍在」（`orphaned`，v1.3.60 起，EV-165）的组时再多一行 `--cancel` 出口（`--cancel` 的终态分支会按记录结束它们；判不了 / 读不懂时不给，代码双审 r1 CODEX-02） |
+ | `review --worker <run_id>` | 工作进程入口，由 `--start` 派生。**不应由人直接调用** |
+ | `gate --check` / `--check-artifacts` / `--await-approval` | 裁决完整性 / 最低工件集 / 置人工闸门。立停点时（`--await-approval`，以及命令 B / C / D 的 `--check` 通过后自动立）追加打印工作树改动摘要，`--await-approval --json` 带 `worktree_summary` 键；只告知，不参与判定、不改退出码 |
+diff --git a/doc/07_manuals/MANUAL_user.md b/doc/07_manuals/MANUAL_user.md
+index b2b17367..f6a31a25 100644
+--- a/doc/07_manuals/MANUAL_user.md
++++ b/doc/07_manuals/MANUAL_user.md
+@@ -4,7 +4,7 @@
+ 
+ > - **作者 / 负责人**：Driver（Claude）
+ > - **创建日期**：2026-09-13
+-> - **当前版本**：v1.0.45
++> - **当前版本**：v1.0.46
+ > - **状态**：草稿(Draft)
+ >
+ > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
+@@ -518,6 +518,11 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ 并提示用 `--critics` 把它加进来。这条报错是刻意的：此前那类写法会被当成正文吞进审查焦点，
+ 模型覆盖无声丢失，而留痕里看不出你曾经指定过。
+ 
++**`--model-<审核者 id>` 写了却没给值也会退 64**（v1.0.46 起，设计 v1.3.165）：`--model-glm=`、`--model-glm` 后面紧跟另一个旗标、
++或它写在最后，都报「`--model-glm 需要一个值，但没有给出。`」（与 `--tier-glm` 等档位旗标同一句；`review` / `preflight` / `doctor`
++对后两种写法沿用原有的「后面跟的是另一个旗标（或什么都没有）」那句）。**这是行为变化**：此前 `/dual-*` 的解析步骤对这三种写法都当成没写，
++模型覆盖无声消失、配置里的档位顶上；`review` / `preflight` / `doctor` 对 `--model-glm=` 也是如此。正常写法与不写时不受影响。
++
+ ### 5.5 闸门
+ 
+ | 字段 | 默认 | 说明 |
+@@ -542,7 +547,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ 
+ #### 已废弃的键
+ 
+-v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3.122）又删除了其后两个，v1.0.41 起（设计 v1.3.131）删除了 `agents.codex.effort`，v1.0.44 起（设计 v1.3.136）删除了最后四个：它们写在配置里、文档里，却从来没有任何代码读过——改了不会有任何效果。
++v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3.122）又删除了其后两个，v1.0.41 起（设计 v1.3.131）删除了 `agents.codex.effort`，v1.0.44 起（设计 v1.3.136）删除了其后四个，v1.0.46 起（设计 v1.3.165）删除了档位表里 Agent 级的 `effort`：它们写在配置里、文档里，却从来没有任何代码读过——改了不会有任何效果。
+ 
+ | 字段 | 原来写的 | 实际情况 |
+ | :--- | :--- | :--- |
+@@ -554,6 +559,7 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
+ | `topic.forbid_chars` | 「主题名禁止的字符」 | 主题名校验是固定规则，从未读过这个列表；若真按它来，把 `/`、`..` 从列表里去掉就能让主题名逃出归档目录，所以不接、删掉 |
+ | `gate.require_adjudication` | 「是否强制逐条裁决」 | 闸门恒强制逐条裁决，设 `false` 不放松任何检查；若真按它来，等于给闸门的核心判据加一个关闭开关，所以不接、删掉 |
+ | `agents.glm.max_turns` | 「ZCode 的最大轮数」 | ZCode 拒绝轮数参数（实测 `--max-turns` 被拒），无处可接 |
++| `profiles.<表>.<id>.effort`（直接写在 Agent 那一层，不在 `plan` / `code` / `bug` 格子里） | 本手册没写过；配置 schema 一直收它（`low` / `medium` / `high`），看起来像「该 Agent 在这张表里的思考等级」 | 从未被读取——档位表只按阶段取格子。真正生效的思考等级写在阶段格子里，如 `plan: { model: …, effort: high }`，那个照常下传、不报废弃。两者同名不同层，容易把前者当成后者的缺省 |
+ | `agents.glm.unsupported_override` | 「模型覆盖落到全局档时拒绝还是标注」 | 设 `reject` 从未拒跑。「标注」这一半已经有了：模型没换成功、实际跑的模型与请求不同时，run.json 记 `model_unenforced`，终端播报一句，不阻断。档位验收要的是事后能核对实际用了什么模型，不是强行拦下 |
+ 
+ 旧配置里留着它们**不会报错**，升级后照常能跑。配置里出现时，`trivium doctor` 与预检各提示一条「已废弃、从未生效，可从配置里去掉」，其余命令不提示。从 `.trivium/config.yaml`（或 `config.local.yaml`）里删掉这几行即可，删了不改变任何行为。新 `trivium init` 出来的配置不再带它们。
+diff --git a/skills/dual-critic/schema/config.v2.json b/skills/dual-critic/schema/config.v2.json
+index 1c44e8f4..9d7c972e 100644
+--- a/skills/dual-critic/schema/config.v2.json
++++ b/skills/dual-critic/schema/config.v2.json
+@@ -516,7 +516,7 @@
+       "additionalProperties": {
+         "type": "object",
+         "minProperties": 1,
+-        "description": "档位表，键是 Agent id。逐阶段的值有三形态（设计 11.5，M11 第 4 步放开）：裸 slug ｜ {tier} ｜ {model, effort}，见 $defs/stageModel。M7b 只收裸 slug，理由是当时拿不到模型的形态「schema 合法、运行期必然失败」；放开后由预检与 review 准备阶段的「档位组合合法」与「模型 slug 合法」两格守住（未定义的档、原生枚举外的 effort 等退 64、零工件；解析不出模型同样退 64——v1.3.131 前此处误记为 69）。Agent 级 effort 键无读取点，见 BACKLOG。",
++        "description": "档位表，键是 Agent id。逐阶段的值有三形态（设计 11.5，M11 第 4 步放开）：裸 slug ｜ {tier} ｜ {model, effort}，见 $defs/stageModel。M7b 只收裸 slug，理由是当时拿不到模型的形态「schema 合法、运行期必然失败」；放开后由预检与 review 准备阶段的「档位组合合法」与「模型 slug 合法」两格守住（未定义的档、原生枚举外的 effort 等退 64、零工件；解析不出模型同样退 64——v1.3.131 前此处误记为 69）。Agent 级 effort 键已废弃（v1.3.165，EV-227），见该属性的说明。",
+         "additionalProperties": {
+           "type": "object",
+           "additionalProperties": false,
+@@ -535,7 +535,9 @@
+                 "low",
+                 "medium",
+                 "high"
+-              ]
++              ],
++              "deprecated": true,
++              "description": "已废弃（2026-10-18，M12 批次 4，EV-227）：Agent 级 effort 是 v1 遗留，从未被读取——档位表只按阶段取格子；它与阶段格子 {model, effort} 里的思考等级同名不同层，后者才会下传。保留属性与原类型约束只为带着它的旧配置照常通过校验；出现时 doctor / preflight 提示一条，可从配置里去掉。"
+             }
+           }
+         }
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index d4a2a19c..33a996e4 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -42,7 +42,7 @@ import {
+ import { resolveTopicArgs } from './topic-args.js';
+ import { shellQuoteArg } from './naming.js';
+ import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
+-import { assertTierFlags, collectTierFlags, nativeFlagNames, vendorProfileAgents } from './tier-flags.js';
++import { assertFlagValuesGiven, assertTierFlags, collectTierFlags, nativeFlagNames, vendorProfileAgents } from './tier-flags.js';
+ import { scrubAllRunRoot } from './retention.js';
+ import { wiredAdapter } from './adapters/index.js';
+ import { COMMAND_ENTRIES, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
+@@ -221,7 +221,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
+       --base <ref>  仅 code 阶段：diff 比较基线，默认 HEAD
+       ${CRITIC_AGENT_IDS.map((id) => `--model-${id}`).join(' / ')} <模型>
+                   本次模型覆盖（取值清单随注册表；只对本轮入选的审核者有效，
+-                  给没入选的一家指定模型退 64，不静默丢弃）
++                  给没入选的一家指定模型退 64，不静默丢弃；写了不给值同样退 64）
+       ${CRITIC_AGENT_IDS.map((id) => `--tier-${id}`).join(' / ')} low|medium|high
+                   本次为该侧选档（取该 Agent 在 agents.<id>.tiers 里定义的档；只对本轮入选的审核者有效，
+                   未入选或档未定义退 64）。档位里的思考等级与厂商 profile 随请求下传给该侧，
+@@ -397,8 +397,14 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
+ function collectModelOverrides(args: ParsedArgs): Record<string, string> {
+   const out: Record<string, string> = {};
+   for (const id of ALL_AGENT_IDS) {
+-    const v = flagString(args, `model-${id}`);
+-    if (v) out[id] = v;
++    const name = `model-${id}`;
++    if (!args.flags.has(name)) continue;
++    /*
++     * `--model-x=` 记空串、不跳过（M12 批次 4，EV-228）：此前 `flagString` 对空串返回 null、这里 `if (v)` 跳过，
++     * 模型覆盖无声消失，而同文件的 `tierFlagGetter` 对档位旗标的同一形态早已退 64。空串由调用方在键判定之后
++     * 交 `assertFlagValuesGiven` 退 64；没取到值（`true`）仍由 `flagString` 退 64。
++     */
++    out[id] = flagString(args, name) ?? '';
+   }
+   return out;
+ }
+@@ -676,6 +682,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
+    * 判定共用 `critics.ts` 的那一份，不在此处复制；入选集合就是上面刚解析出的 `critics`。
+    */
+   assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);
++  assertFlagValuesGiven('model', modelOverrides); // 先键后值，与档位旗标同序同文案（EV-228）
+   // 判定通过 ⇒ 键集必然是本轮入选的审核者，这里才收窄（收集面见 collectModelOverrides）
+   const models = modelOverrides as Partial<Record<CriticId, string>>;
+   // 档位旗标（M11 第 5 步）：收集与判定与 topic resolve、preflight 同一份（tier-flags.ts）
+@@ -805,14 +812,18 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
+     );
+   }
+ 
++  const tierFlags = assertTierFlags(ctx.config, resolveDriver(flagString(args, 'driver')).driver, collectTierFlags(tierFlagGetter(args)), CRITIC_AGENT_IDS);
++  // doctor 不判模型覆盖的键（现状，不在 EV-228 范围）；空值照样退 64，与档位旗标同文案
++  const modelOverrides = collectModelOverrides(args);
++  assertFlagValuesGiven('model', modelOverrides);
+   const report = await runDoctor({
+     projectRoot: ctx.projectRoot,
+     triviumDir: ctx.triviumDir,
+     config: ctx.config,
+     skipModelCalls: args.flags.get('no-model-calls') === true,
+     only,
+-    tierFlags: assertTierFlags(ctx.config, resolveDriver(flagString(args, 'driver')).driver, collectTierFlags(tierFlagGetter(args)), CRITIC_AGENT_IDS),
+-    modelOverrides: collectModelOverrides(args),
++    tierFlags,
++    modelOverrides,
+   });
+ 
+   if (isJsonMode()) {
+@@ -865,6 +876,7 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
+    * `critics`——只修一个入口，剩下那个就是下一次的「改一漏二」。
+    */
+   assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);
++  assertFlagValuesGiven('model', modelOverrides); // 先键后值，与档位旗标同序同文案（EV-228）
+   // 判定通过 ⇒ 键集必然是本轮入选的审核者，这里才收窄（收集面见 collectModelOverrides）
+   const models = modelOverrides as Partial<Record<CriticId, string>>;
+   const tierFlags = assertTierFlags(ctx.config, driver, collectTierFlags(tierFlagGetter(args)), critics);
+diff --git a/src/trivium/config.ts b/src/trivium/config.ts
+index b633bcdd..bea8386a 100644
+--- a/src/trivium/config.ts
++++ b/src/trivium/config.ts
+@@ -347,7 +347,7 @@ export function defaultConfig(): Config {
+       claude: { vendor: 'anthropic' },
+     },
+     // 两档的差异只在 GLM 侧用不用 Flash——gemini 侧两档相同。
+-    // 不写 profile 级 effort：该字段无任何读取点，且 slug 自带后缀时 effort 本就不生效。
++    // 不写 Agent 级 effort：该字段从未被读取，已废弃（EV-227，见 DEPRECATED_CONFIG_KEYS）；思考等级写在阶段格子 {model, effort} 里。
+     profiles: {
+       default: {
+         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
+@@ -427,7 +427,7 @@ export function defaultConfig(): Config {
+ 
+ /**
+  * 已废弃、但 schema 仍接受的配置键（2026-10-01，EV-30 ① / EV-15；2026-10-06 补 EV-30 ②③ 两条；
+- * 2026-10-07 补 agents.codex.effort；2026-10-08 补 EV-30 ④～⑦ 四条）。
++ * 2026-10-07 补 agents.codex.effort；2026-10-08 补 EV-30 ④～⑦ 四条；2026-10-18 补 EV-227 档位表 Agent 级 effort）。
+  *
+  * 每一条都是「类型 + 默认值 + 文档承诺」齐全而**从未被任何代码读取**，删了类型与默认值；
+  * schema 里保留属性（标 `deprecated`、去掉 `required`），只为带着它们的旧配置升级后照常通过校验——
+@@ -438,7 +438,8 @@ export function defaultConfig(): Config {
+  * 判定看**合并结果**就够：默认值不再带这些键，合并结果里出现 ⇔ 某个磁盘源写了它。
+  * 代价是分不出是 `config.yaml` 还是 `config.local.yaml`，所以正文两个文件都点名。
+  *
+- * 路径里的 `'*'` 匹配 `agents` 下任一 Agent id（不写死 id：Agent 身份的唯一来源是注册表）。
++ * 路径里的 `'*'` 匹配当层任一键：`agents` 下是任一 Agent id（不写死 id：Agent 身份的唯一来源是注册表），
++ * `profiles` 下依次是档位表名与 Agent id。
+  * 出处写在注释里而不是字段里：没有代码读的字段，正是这一族要清掉的东西。
+  */
+ export const DEPRECATED_CONFIG_KEYS: readonly { path: readonly string[] }[] = [
+@@ -461,6 +462,13 @@ export const DEPRECATED_CONFIG_KEYS: readonly { path: readonly string[] }[] = [
+   { path: ['gate', 'require_adjudication'] }, // ⑤ 闸门恒强制逐条裁决；接线等于给核心判据加关闭开关
+   { path: ['agents', 'glm', 'max_turns'] }, // ⑥ zcode 0.16.5 无处可接（M0 坑清单 C-01：--max-turns 被拒）
+   { path: ['agents', 'glm', 'unsupported_override'] }, // ⑦ annotate 语义已由 model_unenforced 播报承担
++  /*
++   * EV-227（2026-10-18，M12 批次 4）：档位表里 Agent 级的 `effort`（`profiles.<表>.<id>.effort`，v1 遗留），从未被读取。
++   * **两层 `'*'` 不会误伤**（与上面几条坚持精确路径的理由不同）：同名的阶段格子思考等级在下一层
++   * （`profiles.<表>.<id>.<阶段>.effort`，有真实消费方），走查按段数精确匹配，只命中 Agent 级这一层。
++   * v1 配置迁移后带着它也会被提示（迁移不删内容）。
++   */
++  { path: ['profiles', '*', '*', 'effort'] },
+ ];
+ 
+ /** 合并后的配置里实际出现的已废弃键（点分路径；按表序，同一条里 `'*'` 展开的按键名排序） */
+diff --git a/src/trivium/tier-flags.ts b/src/trivium/tier-flags.ts
+index 01df3135..51dff407 100644
+--- a/src/trivium/tier-flags.ts
++++ b/src/trivium/tier-flags.ts
+@@ -71,6 +71,17 @@ export function collectTierFlags(get: (name: string) => string | undefined): Raw
+   return out;
+ }
+ 
++/**
++ * 逐审核者取值旗标「写了没给值」的判定，**`--model-〈id〉` 与三类档位旗标共用这一份**（M12 批次 4，EV-228）：
++ * 文案同源靠结构保证，不靠两处字面碰巧相同。`raw` 的键是 Agent id、值为空串表示写了没给值；
++ * 按插入序（收集方按注册表序收）报第一个。调用方先做键判定再调它（先键后值）。
++ */
++export function assertFlagValuesGiven(prefix: Exclude<CriticFlagPrefix, 'native'>, raw: Readonly<Record<string, string>>): void {
++  for (const [id, v] of Object.entries(raw)) {
++    if (v === '') throw usageError(`--${prefix}-${id} 需要一个值，但没有给出。`);
++  }
++}
++
+ /**
+  * 键校验 + 取值的形状校验，通过即返回逐入选侧的精确值。全部退 64、在任何落盘之前。
+  *
+@@ -101,11 +112,7 @@ export function assertTierFlags(
+     if (raw.profile[id] !== undefined) throw usageError(`--native-${id} 与 --profile-${id} 不能同时指定。`);
+   }
+ 
+-  for (const k of KINDS) {
+-    for (const [id, v] of Object.entries(raw[k])) {
+-      if (v === '') throw usageError(`--${k}-${id} 需要一个值，但没有给出。`);
+-    }
+-  }
++  for (const k of KINDS) assertFlagValuesGiven(k, raw[k]);
+ 
+   for (const [id, v] of Object.entries(raw.tier)) {
+     if (!(TIER_NAMES as readonly string[]).includes(v)) {
+diff --git a/src/trivium/topic-args.ts b/src/trivium/topic-args.ts
+index 15d0cf8c..2182ae76 100644
+--- a/src/trivium/topic-args.ts
++++ b/src/trivium/topic-args.ts
+@@ -14,7 +14,7 @@ import { promises as fs } from 'node:fs';
+ import { ALL_AGENT_IDS, DEFAULT_DRIVER, entryCommandOf, type AgentId } from './agents/registry.js';
+ import type { CriticId, Ctx, Stage } from './types.js';
+ import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
+-import { assertTierFlags, collectTierFlags, nativeFlagNames, tierFlagNames } from './tier-flags.js';
++import { assertFlagValuesGiven, assertTierFlags, collectTierFlags, nativeFlagNames, tierFlagNames } from './tier-flags.js';
+ import { validateTopic, parseArtifactName } from './naming.js';
+ import { EXIT, TriviumError } from './exit-codes.js';
+ import { exists } from './util/fsx.js';
+@@ -634,15 +634,24 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
+    * **M10b 第 2 步代码双审 CODEX-02 再收紧一档**：判据从「本轮能入选谁」改为「本轮实际入选了谁」
+    * （上面刚解析出的 `critics`）。「能入选但没入选」那一家的覆盖同样会被丢弃（原 EV-67）；
+    * 缺省集合减去 Driver 之后，它在非 claude Driver 的缺省路径上成了常规形态。
++   *
++   * **按「键在不在」判写了没写**（M12 批次 4，EV-228）：取值旗标缺值（`=` 空、紧跟另一个已知旗标、位于末尾）
++   * 时 `splitArguments` 记的是空串，此前按真假过滤把它当成没写——不报错、不退非零，模型覆盖无声消失。
++   * 现与档位旗标同口径：先键判定，再由 `assertFlagValuesGiven` 对空串退 64（文案与档位旗标同一份）。
+    */
+-  const written = ALL_AGENT_IDS.filter((id) => named[`model-${id}`]);
+-  assertModelOverrideKeys(ctx.config, driver, written, critics);
+-  for (const id of written) models[id] = named[`model-${id}`]!;
++  const modelRaw: Record<string, string> = {};
++  for (const id of ALL_AGENT_IDS) {
++    const v = named[`model-${id}`];
++    if (v !== undefined) modelRaw[id] = v;
++  }
++  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), critics);
++  assertFlagValuesGiven('model', modelRaw);
++  for (const [id, v] of Object.entries(modelRaw)) models[id as CriticId] = v;
+ 
+   /*
+    * 档位旗标（M11 第 5 步）：收集与判定与 cli.ts 的 review / preflight 同一份（tier-flags.ts）。
+    * **按「键在不在」判写了没写**（计划三审 AGY-02）：取值旗标缺值时上面记的是空串，按真假过滤会把它静默丢掉；
+-   * 空串照传给判定函数退 64。既有 `--model-〈id〉` 的同一缺口另登记 BACKLOG，本步不改。
++   * 空串照传给判定函数退 64。既有 `--model-〈id〉` 的同一缺口已随 M12 批次 4（EV-228）收口，见上。
+    */
+   const tierFlags = assertTierFlags(
+     ctx.config,
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index bb2047e6..bb6c8960 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -1129,7 +1129,13 @@ export interface GateConfig {
+  */
+ export type StageModel = string | { tier: TierName } | { model: string; effort: string };
+ 
+-export type ProfileEntry = Partial<Record<Stage, StageModel>> & { effort?: 'low' | 'medium' | 'high' };
++/*
++ * 原有 Agent 级 `effort`（`profiles.<表>.<id>.effort`，v1 遗留），2026-10-18 删除（M12 批次 4，BACKLOG EV-227）：
++ * 从未被读取——档位表只按阶段取格子（`adapters/base.ts` 的 `resolveTier`），而它与阶段格子 `{model, effort}` 里的
++ * 思考等级同名不同层，读配置的人容易误以为它是后者的缺省。schema 仍接受它（标 deprecated），见 `config.ts` 的
++ * `DEPRECATED_CONFIG_KEYS`。不要加回来。
++ */
++export type ProfileEntry = Partial<Record<Stage, StageModel>>;
+ export type Profile = Partial<Record<CriticId, ProfileEntry>>;
+ 
+ export interface Config {
+diff --git a/test/integration/tier-flags-cli.test.ts b/test/integration/tier-flags-cli.test.ts
+index b93469cc..ebddf03b 100644
+--- a/test/integration/tier-flags-cli.test.ts
++++ b/test/integration/tier-flags-cli.test.ts
+@@ -124,3 +124,49 @@ test('T4 resolve 输出照抄进 review --start：能启动、请求模型取自
+     await cli(fx.root, ['review', '--cancel', js.run_id], STUB);
+   }
+ });
++
++/*
++ * **EV-228（M12 批次 4）：`--model-〈id〉` 写了不给值，四个入口都退 64**。
++ * `topic resolve` 三种形态（`=` 空、紧跟已知旗标、位于末尾）此前静默丢弃；`review` / `preflight` / `doctor`
++ * 此前只有 `=` 空一种被静默丢弃（另两种 `flagString` 早已退 64，文案不变）。同一入口内与档位旗标逐字同源。
++ */
++const out = (r: { stdout: string; stderr: string }) => r.stdout + r.stderr;
++
++test('T6 resolve：--model-glm 三种空值形态都退 64，文案与 --tier-glm 同形态同源', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const forms: [string, string[]][] = [['=', []], ['', ['--critics', 'gemini,glm']], ['', []]];
++  for (const [suffix, rest] of forms) {
++    const model = await resolve(fx.root, [`--model-glm${suffix}`, ...rest]);
++    assert.equal(model.r.code, EXIT.USAGE, out(model.r));
++    assert.match(out(model.r), /--model-glm 需要一个值，但没有给出。/);
++    const tier = await resolve(fx.root, [`--tier-glm${suffix}`, ...rest]);
++    assert.equal(tier.r.code, EXIT.USAGE, out(tier.r));
++    assert.match(out(tier.r), /--tier-glm 需要一个值，但没有给出。/, '同形态的档位旗标同一条文案');
++  }
++});
++
++test('T7 preflight：--model-glm= 退 64、与 --tier-glm= 同文案；紧跟旗标仍是 flagString 的文案（不变）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const model = await cli(fx.root, ['preflight', '--stage', 'plan', '--model-glm=', '--json']);
++  assert.equal(model.code, EXIT.USAGE, out(model));
++  assert.match(out(model), /--model-glm 需要一个值，但没有给出。/);
++  const tier = await cli(fx.root, ['preflight', '--stage', 'plan', '--tier-glm=', '--json']);
++  assert.equal(tier.code, EXIT.USAGE, out(tier));
++  assert.match(out(tier), /--tier-glm 需要一个值，但没有给出。/);
++  const followed = await cli(fx.root, ['preflight', '--stage', 'plan', '--model-glm', '--json']);
++  assert.equal(followed.code, EXIT.USAGE, out(followed));
++  assert.match(out(followed), /--model-glm 需要一个值，但它后面跟的是另一个旗标（或什么都没有）/);
++});
++
++test('T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const doc = await cli(fx.root, ['doctor', '--only', 'env', '--no-model-calls', '--model-glm=', '--json']);
++  assert.equal(doc.code, EXIT.USAGE, out(doc));
++  assert.match(out(doc), /--model-glm 需要一个值，但没有给出。/);
++  const start = await cli(fx.root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--model-glm=', '--json'], STUB);
++  assert.equal(start.code, EXIT.USAGE, out(start));
++  assert.match(out(start), /--model-glm 需要一个值，但没有给出。/);
++  const metaDir = path.join(fx.stageDir, '_meta');
++  const runs = (await fs.readdir(metaDir).catch(() => [] as string[])).filter((n) => n.startsWith('run-'));
++  assert.deepEqual(runs, [], '退 64 在冻结之前，不留运行记录');
++});
+diff --git a/test/unit/config-consumers.test.ts b/test/unit/config-consumers.test.ts
+index c362fe65..49399bd1 100644
+--- a/test/unit/config-consumers.test.ts
++++ b/test/unit/config-consumers.test.ts
+@@ -491,3 +491,51 @@ test('U13 EV-30 ④～⑦：topic.forbid_chars / gate.require_adjudication / age
+   const notice = deprecatedConfigNotice(asCfg(all));
+   assert.ok(notice !== null && notice.includes(`已废弃的键：${want.join('、')}。`), String(notice));
+ });
++
++/*
++ * **U14 EV-227（M12 批次 4）：档位表 Agent 级 effort 出现即报，阶段格子里的同名 effort 不报**（设计 13.1.1「已废弃键」）。
++ *
++ * 路径 `['profiles', '*', '*', 'effort']` 两层通配依次匹配表名与 Agent id；阶段格子 `{model, effort}` 的 effort 在下一层、
++ * 有真实消费方（思考等级下传）——路径多一层 `'*'` 会把它误报，少一层会漏报 Agent 级，这里两头都钉住。
++ */
++test('U14 profiles.〈表〉.〈id〉.effort 出现即报、按表名再按 Agent id 排序；阶段格子 {model, effort} 不报', () => {
++  type Loose = { gate: Record<string, unknown>; review: Record<string, unknown>; profiles: Record<string, Record<string, Record<string, unknown>>> };
++  const base = () => structuredClone(defaultConfig()) as unknown as Loose;
++  const asCfg = (c: Loose) => c as unknown as Config;
++
++  const d = base();
++  for (const [t, tbl] of Object.entries(d.profiles)) {
++    for (const [id, entry] of Object.entries(tbl)) assert.ok(!('effort' in entry), `默认值里不该有 profiles.${t}.${id}.effort`);
++  }
++  assert.deepEqual(deprecatedConfigKeysIn(asCfg(d)), []);
++
++  const one = base();
++  one.profiles['default']!['gemini']!['effort'] = 'high';
++  assert.deepEqual(deprecatedConfigKeysIn(asCfg(one)), ['profiles.default.gemini.effort']);
++  const notice = deprecatedConfigNotice(asCfg(one));
++  assert.ok(notice !== null && notice.includes('已废弃的键：profiles.default.gemini.effort。'), String(notice));
++
++  // 阶段格子里的思考等级不报（多一层 '*' 这里会红）
++  const cell = base();
++  cell.profiles['default']!['codex'] = { plan: { model: 'qwen3.8-flash', effort: 'high' }, code: { tier: 'high' }, bug: 'qwen3.8-flash' };
++  assert.deepEqual(deprecatedConfigKeysIn(asCfg(cell)), [], '阶段格子的 effort 有真实消费方');
++
++  // 两张表 × 两侧：按表名排序、表内按 Agent id 排序；与阶段格子同在时只报 Agent 级
++  const many = base();
++  many.profiles['zeta'] = { glm: { plan: 'GLM-5.3', effort: 'low' }, gemini: { plan: 'g', effort: 'medium' } };
++  many.profiles['default']!['glm']!['effort'] = 'low';
++  many.profiles['default']!['codex'] = { plan: { model: 'qwen3.8-flash', effort: 'high' }, effort: 'high' };
++  assert.deepEqual(deprecatedConfigKeysIn(asCfg(many)), [
++    'profiles.default.codex.effort', 'profiles.default.glm.effort', 'profiles.zeta.gemini.effort', 'profiles.zeta.glm.effort',
++  ]);
++
++  // 与既有废弃键同在：按表序排在最后，正文逐个点名
++  const all = base();
++  all.gate['max_check_retries'] = 3;
++  all.review['parallel'] = true;
++  all.profiles['default']!['gemini']!['effort'] = 'high';
++  const want = ['gate.max_check_retries', 'review.parallel', 'profiles.default.gemini.effort'];
++  assert.deepEqual(deprecatedConfigKeysIn(asCfg(all)), want, '按表序列出');
++  const n = deprecatedConfigNotice(asCfg(all));
++  assert.ok(n !== null && n.includes(`已废弃的键：${want.join('、')}。`), String(n));
++});
+diff --git a/test/unit/config-schema.test.ts b/test/unit/config-schema.test.ts
+index fa2eae5c..eb33d543 100644
+--- a/test/unit/config-schema.test.ts
++++ b/test/unit/config-schema.test.ts
+@@ -676,3 +676,41 @@ test('V8 EV-30 ④～⑦：磁盘 config.yaml 带着四键时 loadCtx 照常加
+   assert.equal(merged.agents['glm']!['max_turns'], 7);
+   assert.equal(merged.agents['glm']!['unsupported_override'], 'annotate');
+ });
++
++/*
++ * **V9 EV-227（M12 批次 4）：档位表 Agent 级 effort 标 deprecated、枚举不放宽；阶段格子的 effort 不受影响**（设计 13.1.1）。
++ * 同 T5 / V7 的口径：废弃只为旧配置照常通过，不等于放宽——原枚举外的值照旧被拒。
++ */
++test('V9 EV-227：profiles 格子的 Agent 级 effort 标 deprecated、枚举不变；带它的配置通过校验并原样载入；stageModel 的 effort 不废弃', async () => {
++  const schema = JSON.parse(
++    await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'), 'utf8'),
++  ) as {
++    properties: { profiles: { additionalProperties: { additionalProperties: { properties: Record<string, { deprecated?: boolean; enum?: string[]; description?: string }> } } } };
++    $defs: Record<string, unknown>;
++  };
++  const agentLevel = schema.properties.profiles.additionalProperties.additionalProperties.properties['effort']!;
++  assert.equal(agentLevel.deprecated, true);
++  assert.deepEqual(agentLevel.enum, ['low', 'medium', 'high'], '类型约束不放宽');
++  assert.match(agentLevel.description ?? '', /EV-227/);
++  assert.ok(!JSON.stringify(schema.$defs['stageModel']).includes('"deprecated"'), '阶段格子的 effort 不得一并废弃');
++
++  for (const v of ['low', 'medium', 'high']) {
++    assert.deepEqual(validateConfig(cfgWith((c) => { c.profiles['default']!['gemini']!['effort'] = v; })), [], `Agent 级 effort: ${v} 照常通过`);
++  }
++  assert.ok(validateConfig(cfgWith((c) => { c.profiles['default']!['gemini']!['effort'] = 'max'; })).length > 0, '原枚举外的值照旧被拒');
++  assert.deepEqual(
++    validateConfig(cfgWith((c) => { c.profiles['default']!['codex'] = { plan: { model: 'qwen3.8-flash', effort: 'high' }, effort: 'low' }; })),
++    [], '与阶段格子同在照常通过',
++  );
++
++  const root = await projectWith([
++    'schema: trivium.config.v2',
++    'profiles:',
++    '  default:',
++    '    gemini: { plan: gemini-3.8-flash-high, code: gemini-3.8-flash-high, bug: gemini-3.8-flash-high, effort: high }',
++    '',
++  ].join('\n'));
++  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
++  const merged = ctx.config as unknown as { profiles: Record<string, Record<string, Loose>> };
++  assert.equal(merged.profiles['default']!['gemini']!['effort'], 'high', '废弃键原样留在合并结果里');
++});
+diff --git a/test/unit/driver-wiring.test.ts b/test/unit/driver-wiring.test.ts
+index 520fc562..8c742179 100644
+--- a/test/unit/driver-wiring.test.ts
++++ b/test/unit/driver-wiring.test.ts
+@@ -689,7 +689,8 @@ test('对账：两个入口的 --model-<id> 收集面都必须是 ALL_AGENT_IDS
+    */
+   for (const [file, anchor] of [
+     ['src/trivium/cli.ts', /function collectModelOverrides\(/],
+-    ['src/trivium/topic-args.ts', /const written = /],
++    // M12 批次 4（EV-228）收集处由 `const written = …filter` 改为按键存在收进 `modelRaw`，锚点随之改；判据不变
++    ['src/trivium/topic-args.ts', /const modelRaw: /],
+   ] as const) {
+     const src = await stripped(file);
+     const at = src.search(anchor);
+diff --git a/test/unit/preflight.test.ts b/test/unit/preflight.test.ts
+index 906ae6f7..d2050e35 100644
+--- a/test/unit/preflight.test.ts
++++ b/test/unit/preflight.test.ts
+@@ -1118,3 +1118,37 @@ test('U6 doctor：带两键 ⇒ warnings 含正文、阻断不受影响；只带
+   assert.ok(n1.includes('已废弃的键：gate.max_check_retries。'), n1);
+   assert.ok(!n1.includes('readonly_commands'), `没写的键不得出现：${n1}`);
+ });
++
++/** EV-227（M12 批次 4）：档位表 Agent 级 effort；`cell` 同时放一个阶段格子 {model, effort}（不该被报） */
++const withAgentLevelEffort = (cell: boolean) => (c: Config): void => {
++  const raw = c as unknown as { profiles: Record<string, Record<string, Record<string, unknown>>> };
++  raw.profiles['default']!['gemini']!['effort'] = 'high';
++  if (cell) raw.profiles['default']!['glm']!['plan'] = { model: 'GLM-5.3', effort: 'high' };
++};
++
++test('U5″ 预检：带档位表 Agent 级 effort（EV-227）⇒ 照常通过、退出码不变，「已废弃配置键」点名它、不点名阶段格子', async () => {
++  const ctx = await fakeCtx((c) => {
++    withStale(120)(c);
++    withAgentLevelEffort(false)(c);
++  });
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {} });
++  assert.equal(r.ok, true, '只警告、不拒跑');
++  assert.equal(r.exitCode, EXIT.OK);
++  const w = r.warnings.find((x) => x.name === '已废弃配置键');
++  assert.ok(w, r.warnings.map((x) => x.name).join('、'));
++  assert.ok(w.detail.startsWith('⚠️ '), w.detail);
++  assert.ok(w.detail.includes('已废弃的键：profiles.default.gemini.effort。'), w.detail);
++  assertWarnInvariant(r);
++});
++
++test('U6′ doctor：带档位表 Agent 级 effort（EV-227）⇒ 恰一条提示、只点名 Agent 级、阻断不变', async () => {
++  const base = await doctorEnvOnly(defaultConfig());
++  const cfg = defaultConfig();
++  withAgentLevelEffort(true)(cfg);
++  const r = await doctorEnvOnly(cfg);
++  const n = r.warnings.filter((w) => w.includes('已废弃的键'));
++  assert.equal(n.length, 1, '只提示一条');
++  assert.ok(n[0]!.includes('已废弃的键：profiles.default.gemini.effort。'), n[0]);
++  assert.ok(!n[0]!.includes('glm'), `阶段格子的 effort 不得出现：${n[0]}`);
++  assert.deepEqual(r.blockers, base.blockers, '提示不得改变阻断项');
++});
+diff --git a/test/unit/tier-flags.test.ts b/test/unit/tier-flags.test.ts
+index e85709a8..297e0aac 100644
+--- a/test/unit/tier-flags.test.ts
++++ b/test/unit/tier-flags.test.ts
+@@ -6,6 +6,7 @@ import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
+ import { assertModelOverrideKeys } from '../../src/trivium/critics.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import {
++  assertFlagValuesGiven,
+   assertTierFlags,
+   collectTierFlags,
+   mergeCliOverrides,
+@@ -101,3 +102,26 @@ test('K7 三档清单只有一份：旗标层用的就是 base.ts 导出的 TIER
+     assert.deepEqual(assertTierFlags(defaultConfig(), 'claude', raw({ tier: { glm: t } }), PICKED), { glm: { tier: t } });
+   }
+ });
++
++/*
++ * **K8 空值判定只此一份：`--model-〈id〉` 与三类档位旗标共用 `assertFlagValuesGiven`**（M12 批次 4，EV-228）。
++ * 文案同源的可判形式：同一侧、同一空值，换前缀后逐字相等——不是各对一条正则。
++ */
++test('K8 assertFlagValuesGiven：四个前缀文案逐字同构；无空值不抛；多侧空值按插入序报第一个', () => {
++  const msg = (fn: () => unknown): string => {
++    try { fn(); } catch (e) { assert.equal((e as { code?: number }).code, EXIT.USAGE); return (e as Error).message; }
++    assert.fail('应当抛出');
++  };
++  for (const id of ['gemini', 'glm', 'codex']) {
++    const model = msg(() => assertFlagValuesGiven('model', { [id]: '' }));
++    assert.equal(model, `--model-${id} 需要一个值，但没有给出。`);
++    for (const k of ['tier', 'effort', 'profile'] as const) {
++      assert.equal(msg(() => assertFlagValuesGiven(k, { [id]: '' })), model.replace('--model-', `--${k}-`));
++    }
++    // 与 assertTierFlags 的实际出口逐字一致（它内部调的是同一个函数）
++    assert.equal(msg(() => assertTierFlags(defaultConfig(), 'claude', raw({ tier: { [id]: '' } }), PICKED)), model.replace('--model-', '--tier-'));
++  }
++  assertFlagValuesGiven('model', {});
++  assertFlagValuesGiven('model', { gemini: 'g', glm: 'GLM-5.3' });
++  assert.equal(msg(() => assertFlagValuesGiven('model', { gemini: 'g', glm: '', codex: '' })), '--model-glm 需要一个值，但没有给出。');
++});
+diff --git a/test/unit/tier-resolve.test.ts b/test/unit/tier-resolve.test.ts
+index ac5de889..d9aa32ac 100644
+--- a/test/unit/tier-resolve.test.ts
++++ b/test/unit/tier-resolve.test.ts
+@@ -204,6 +204,33 @@ test('R10 gemini 思考等级回落只对裸 slug：档位与 {model, effort} 
+   assert.equal(resolveTier(legacyCodex, 'codex', 'plan').origin.effort, null);
+ });
+ 
++/*
++ * **R12 EV-227（M12 批次 4）：档位表 Agent 级 effort 不参与解析，阶段格子 {model, effort} 照常下传**。
++ * 两者同名不同层；前者已废弃（从未被读取），这里钉住「写了它也什么都不改」，以及阶段格子的思考等级不受废弃波及。
++ */
++test('R12 Agent 级 effort（已废弃）不参与解析；阶段格子 {model, effort} 照常给出思考等级', () => {
++  const withAgentLevel = (c: Config, v: string): void => {
++    ((c.profiles[c.active_profile] as Record<string, Record<string, unknown>>)['codex'] ??= {})['effort'] = v;
++  };
++  const plain = cfgOf((cfg) => {
++    setCell(cfg, 'codex', 'plan', { model: 'm-cell', effort: 'high' });
++    setCell(cfg, 'codex', 'code', 'm-slug');
++  });
++  const both = cfgOf((cfg) => {
++    setCell(cfg, 'codex', 'plan', { model: 'm-cell', effort: 'high' });
++    setCell(cfg, 'codex', 'code', 'm-slug');
++    withAgentLevel(cfg, 'low');
++  });
++  for (const stage of ['plan', 'code'] as const) {
++    assert.deepEqual(pick(resolveTier(both, 'codex', stage)), pick(resolveTier(plain, 'codex', stage)), `${stage}：写了 Agent 级 effort 也逐值不变`);
++  }
++  assert.deepEqual(pick(resolveTier(both, 'codex', 'plan')), { model: 'm-cell', effort: 'high', vendorProfile: 'qwen', tier: null, tierSource: 'profile' });
++  assert.equal(resolveTier(both, 'codex', 'code').effort, null, '裸 slug 格子不回落 Agent 级 effort');
++  // gemini 裸 slug 的思考等级回落的是 agents.gemini.effort（阶段级），不是档位表 Agent 级
++  const gem = cfgOf((cfg) => { ((cfg.profiles[cfg.active_profile] as Record<string, Record<string, unknown>>)['gemini']!)['effort'] = 'low'; });
++  assert.equal(resolveTier(gem, 'gemini', 'code').effort, resolveTier(cfgOf(), 'gemini', 'code').effort);
++});
++
+ /*
+  * **裸 slug 行为逐字不变**：旧 routeModel 对裸 slug 返回的就是格子字符串本身。对内置默认与本仓 config.yaml 的
+  * 每张档位表 × 每个 Agent × 每个阶段，解析出的模型都等于格子原值、来源 legacy（旧函数已删，这里以格子原值为旧结果表）。
+diff --git a/test/unit/topic-args.test.ts b/test/unit/topic-args.test.ts
+index 21dc42ea..169d5a9c 100644
+--- a/test/unit/topic-args.test.ts
++++ b/test/unit/topic-args.test.ts
+@@ -862,3 +862,73 @@ test('命令 A 缺省路径：换了 Driver 后缺省集合外的那一家（原
+     },
+   );
+ });
++
++/*
++ * ── EV-228（M12 批次 4）：`--model-〈id〉` 按「键在不在」判写了没写 ──
++ *
++ * 此前按真假过滤，空串（`=` 空、紧跟另一个已知旗标、位于末尾三种形态都记空串）被当成没写，模型覆盖无声消失。
++ * 改后先键判定、再空值退 64，文案与档位旗标同一份（`tier-flags.ts` 的 `assertFlagValuesGiven`）。
++ * 「同源」的可判形式：同一入口、同一形态，`--model-` 换成 `--tier-` 后逐字相等。
++ */
++async function usageMessage(p: Promise<unknown>): Promise<string> {
++  let message: string | null = null;
++  await assert.rejects(p, (e: { code?: number; message: string }) => {
++    assert.equal(e.code, EXIT.USAGE, e.message);
++    message = e.message;
++    return true;
++  });
++  return message!;
++}
++
++test('EV-228 写了不给值的三种形态 × 两侧都退 64，文案与同形态的档位旗标逐字同源', async () => {
++  const ctx = await fakeCtx();
++  const forms: [string, (flag: string) => string[]][] = [
++    ['= 空', (f) => [`--${f}=`]],
++    ['紧跟另一个已知旗标', (f) => [`--${f}`, '--focus', '看']],
++    ['位于末尾', (f) => [`--${f}`]],
++  ];
++  for (const id of ['gemini', 'glm']) {
++    for (const [name, build] of forms) {
++      const model = await usageMessage(resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', ...build(`model-${id}`)] }));
++      assert.equal(model, `--model-${id} 需要一个值，但没有给出。`, `${id} · ${name}`);
++      const tier = await usageMessage(resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', ...build(`tier-${id}`)] }));
++      assert.equal(model.replace('--model-', '--tier-'), tier, `${id} · ${name}：与档位旗标同源`);
++    }
++  }
++});
++
++test('EV-228 正常写法与完全不写：解析结果逐字段不变', async () => {
++  const ctx = await fakeCtx();
++  const pick = (r: Awaited<ReturnType<typeof resolveTopicArgs>>) => ({
++    models: r.models, tiers: r.tiers, efforts: r.efforts, vendor_profiles: r.vendor_profiles,
++    critics: r.critics, prompt_hint: r.prompt_hint, task_goal: r.task_goal, topic: r.topic,
++  });
++  const none = pick(await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T'] }));
++  assert.ok(none.critics.length > 0, '前提：缺省集合非空');
++  assert.deepEqual(none, {
++    models: {}, tiers: {}, efforts: {}, vendor_profiles: {},
++    critics: none.critics, prompt_hint: null, task_goal: '做个功能', topic: 'T',
++  });
++  const normal = pick(await resolveTopicArgs({
++    ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', '--model-glm', 'GLM-5.3', '--model-gemini=g-x', '--focus', '看'],
++  }));
++  assert.deepEqual(normal, {
++    models: { gemini: 'g-x', glm: 'GLM-5.3' }, tiers: {}, efforts: {}, vendor_profiles: {},
++    critics: none.critics, prompt_hint: '看', task_goal: '做个功能', topic: 'T',
++  }, '入选集合与不写时同一组');
++});
++
++test('EV-228 先键后值：给 Driver 自己写空值，报的是键判定那条（与档位旗标同序）', async () => {
++  const ctx = await fakeCtx();
++  const model = await usageMessage(resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', `--model-${DEFAULT_DRIVER}`] }));
++  assert.match(model, new RegExp(`^--model-${DEFAULT_DRIVER}：它是本轮的 Driver`), model);
++  assert.ok(!model.includes('需要一个值'), model);
++  const tier = await usageMessage(resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', `--tier-${DEFAULT_DRIVER}`] }));
++  assert.match(tier, new RegExp(`^--tier-${DEFAULT_DRIVER}：它是本轮的 Driver`), tier);
++});
++
++test('EV-228 紧跟一个未知的 --xxx：照旧当成值（只有已知旗标才截断取值）', async () => {
++  const ctx = await fakeCtx();
++  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', '--model-glm', '--not-a-flag'] });
++  assert.deepEqual(r.models, { glm: '--not-a-flag' });
++});
+diff --git a/doc/05_testing/evidence/m12-batch4-20261018/acceptance-output.json b/doc/05_testing/evidence/m12-batch4-20261018/acceptance-output.json
+new file mode 100644
+index 00000000..3c7bfc76
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch4-20261018/acceptance-output.json
+@@ -0,0 +1,133 @@
++{
++  "old_rev": "79d2dd57",
++  "bundle_sha256": {
++    "old": "aa27f79182a59b13a139fa7c243efd883e041dd611ab0cf541110459a544c334",
++    "new": "7399f51f4e66b3fe5ac431629bd6583531ff803c42c7f3e5b5fdeef49d33d9ed"
++  },
++  "resolve": {
++    "none": {
++      "old": {
++        "code": 0,
++        "models": {}
++      },
++      "new": {
++        "code": 0,
++        "models": {},
++        "message": null
++      },
++      "stdout_identical": true
++    },
++    "normal": {
++      "old": {
++        "code": 0,
++        "models": {
++          "glm": "GLM-5.3"
++        }
++      },
++      "new": {
++        "code": 0,
++        "models": {
++          "glm": "GLM-5.3"
++        },
++        "message": null
++      },
++      "stdout_identical": true
++    },
++    "normal_eq": {
++      "old": {
++        "code": 0,
++        "models": {
++          "glm": "GLM-5.3"
++        }
++      },
++      "new": {
++        "code": 0,
++        "models": {
++          "glm": "GLM-5.3"
++        },
++        "message": null
++      },
++      "stdout_identical": true
++    },
++    "empty_eq": {
++      "old": {
++        "code": 0,
++        "models": {}
++      },
++      "new": {
++        "code": 64,
++        "models": null,
++        "message": "✗ --model-glm 需要一个值，但没有给出。"
++      },
++      "stdout_identical": false
++    },
++    "empty_followed": {
++      "old": {
++        "code": 0,
++        "models": {}
++      },
++      "new": {
++        "code": 64,
++        "models": null,
++        "message": "✗ --model-glm 需要一个值，但没有给出。"
++      },
++      "stdout_identical": false
++    },
++    "empty_end": {
++      "old": {
++        "code": 0,
++        "models": {}
++      },
++      "new": {
++        "code": 64,
++        "models": null,
++        "message": "✗ --model-glm 需要一个值，但没有给出。"
++      },
++      "stdout_identical": false
++    }
++  },
++  "doctor": {
++    "model_empty_eq": {
++      "old": {
++        "code": 0
++      },
++      "new": {
++        "code": 64,
++        "has_message": true
++      }
++    },
++    "env_plain": {
++      "old": {
++        "code": 0,
++        "deprecated_warnings": []
++      },
++      "new": {
++        "code": 0,
++        "deprecated_warnings": []
++      }
++    },
++    "env_deprecated": {
++      "old": {
++        "code": 0,
++        "deprecated_warnings": []
++      },
++      "new": {
++        "code": 0,
++        "deprecated_warnings": [
++          "配置里有已废弃的键：profiles.default.gemini.effort。它们从未生效（没有任何代码读取），现已删除；schema 仍接受只为旧配置照常通过校验。可从 .trivium/config.yaml（或 config.local.yaml）里去掉，去掉不改变任何行为。"
++        ]
++      }
++    }
++  },
++  "checks": {
++    "A1_none_normal_identical": true,
++    "A2_empty_old_silently_dropped": true,
++    "A3_empty_new_usage_64": true,
++    "B1_doctor_eq_old_ok_new_64": true,
++    "C1_plain_no_notice_both": true,
++    "C2_old_no_notice": true,
++    "C3_new_one_notice_agent_level_only": true,
++    "C4_exit_codes_unchanged": true
++  },
++  "all_pass": true
++}
+diff --git a/doc/05_testing/evidence/m12-batch4-20261018/acceptance-stderr.txt b/doc/05_testing/evidence/m12-batch4-20261018/acceptance-stderr.txt
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/doc/05_testing/evidence/m12-batch4-20261018/acceptance.mjs b/doc/05_testing/evidence/m12-batch4-20261018/acceptance.mjs
+new file mode 100644
+index 00000000..88242205
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch4-20261018/acceptance.mjs
+@@ -0,0 +1,126 @@
++// M12 批次 4 桩级验收（计划 r2 §6）：同一组输入分别喂旧构建（固定提交 79d2dd57）与新构建（工作树），比对读数。
++// 只读脚本：只往本脚本 mkdtemp 出来的目录里写；不调任何审查员 CLI、不花配额（doctor 只跑环境段且 --no-model-calls）。
++// 用法（仓库根，先 node scripts/build.mjs；变异装置与全量检查都不在跑）：node acceptance.mjs [输出 JSON 路径]
++import { execFileSync, spawnSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++
++const OLD_REV = '79d2dd57';
++const REPO = process.cwd();
++const OUT = process.argv[2] ?? null;
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++
++const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'trivium-m12b4-accept-')));
++try {
++  // ── 旧构建：git archive 固定提交（带 .reviews/ 无妨），node_modules 软链工作树，原地构建 ──
++  const oldSrc = path.join(work, 'old');
++  fs.mkdirSync(oldSrc);
++  const tar = path.join(work, 'old.tar');
++  execFileSync('git', ['archive', '--format=tar', '-o', tar, OLD_REV], { cwd: REPO });
++  execFileSync('tar', ['-xf', tar, '-C', oldSrc]);
++  fs.symlinkSync(path.join(REPO, 'node_modules'), path.join(oldSrc, 'node_modules'));
++  execFileSync(process.execPath, ['scripts/build.mjs'], { cwd: oldSrc, stdio: 'ignore' });
++
++  const builds = {
++    old: { bundle: path.join(oldSrc, 'skills/dual-critic/scripts/trivium.cjs'), assets: path.join(oldSrc, 'skills/dual-critic') },
++    new: { bundle: path.join(REPO, 'skills/dual-critic/scripts/trivium.cjs'), assets: path.join(REPO, 'skills/dual-critic') },
++  };
++  const hashes = { old: sha(builds.old.bundle), new: sha(builds.new.bundle) };
++  if (hashes.old === hashes.new) throw new Error('新旧 bundle 哈希相同：比对没有意义');
++
++  // ── 夹具：最小项目，钉两侧、运行根放进本目录；extra 追加在配置末尾 ──
++  const fixture = (name, extra = []) => {
++    const root = path.join(work, name);
++    fs.mkdirSync(path.join(root, '.trivium'), { recursive: true });
++    fs.writeFileSync(path.join(root, 'README.md'), '# 验收夹具\n');
++    fs.writeFileSync(path.join(root, '.trivium/config.yaml'), [
++      'runtime:', `  run_root: ${path.join(work, name + '-runs')}`,
++      'review:', '  default_critics: [gemini, glm]',
++      'verify:', '  build: []', '  test: []',
++      ...extra, '',
++    ].join('\n'));
++    for (const a of [['init', '-q'], ['add', 'README.md'], ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init']]) {
++      execFileSync('git', a, { cwd: root });
++    }
++    return root;
++  };
++  const run = (which, root, args) => {
++    const r = spawnSync(process.execPath, [builds[which].bundle, ...args], {
++      cwd: root, encoding: 'utf8', timeout: 120_000,
++      env: { ...process.env, TRIVIUM_ASSET_ROOT: builds[which].assets, NODE_TEST_CONTEXT: undefined },
++    });
++    const norm = (s) => (s ?? '').split(work).join('<WORK>').split(REPO).join('<REPO>');
++    return { code: r.status, stdout: norm(r.stdout), stderr: norm(r.stderr) };
++  };
++
++  const plain = fixture('plain');
++  // --stage all（命令 A 的 S0.5）：夹具里不放原稿，plan 阶段会先因找不到被审对象退 65（首跑撞过）
++  const resolveArgs = (extra) => ['topic', 'resolve', '--stage', 'all', '--json', '--', '做个功能', '--topic', 'T', '--focus', '看', ...extra];
++  const cases = {
++    none: [],
++    normal: ['--model-glm', 'GLM-5.3'],
++    normal_eq: ['--model-glm=GLM-5.3'],
++    empty_eq: ['--model-glm='],
++    empty_followed: ['--model-glm', '--critics', 'gemini,glm'],
++    empty_end: ['--model-glm'],
++  };
++  const out = { old_rev: OLD_REV, bundle_sha256: hashes, resolve: {}, doctor: {} };
++  for (const [name, extra] of Object.entries(cases)) {
++    const o = run('old', plain, resolveArgs(extra));
++    const n = run('new', plain, resolveArgs(extra));
++    const models = (r) => { try { return JSON.parse(r.stdout).models; } catch { return null; } };
++    out.resolve[name] = {
++      old: { code: o.code, models: models(o) },
++      new: { code: n.code, models: models(n), message: n.code === 0 ? null : (n.stdout + n.stderr).trim().split('\n').find((l) => l.includes('--model-glm')) ?? null },
++      stdout_identical: o.stdout === n.stdout,
++    };
++  }
++
++  // cli.ts 侧的 `=` 空：doctor 只跑环境段，不调模型
++  const doctorArgs = (extra) => ['doctor', '--only', 'env', '--no-model-calls', '--json', ...extra];
++  for (const [name, extra] of Object.entries({ model_empty_eq: ['--model-glm='] })) {
++    const o = run('old', plain, doctorArgs(extra));
++    const n = run('new', plain, doctorArgs(extra));
++    out.doctor[name] = { old: { code: o.code }, new: { code: n.code, has_message: (n.stdout + n.stderr).includes('--model-glm 需要一个值，但没有给出。') } };
++  }
++
++  // EV-227：带档位表 Agent 级 effort 与阶段格子 {model, effort}
++  const dep = fixture('deprecated', [
++    'profiles:', '  default:',
++    '    gemini: { plan: gemini-3.8-flash-high, code: gemini-3.8-flash-high, bug: gemini-3.8-flash-high, effort: high }',
++    '    glm: { plan: { model: GLM-5.3, effort: high }, code: GLM-5.3, bug: GLM-5.3 }',
++  ]);
++  const warnings = (r) => { try { return JSON.parse(r.stdout).warnings.filter((w) => w.includes('已废弃的键')); } catch { return null; } };
++  for (const [name, root] of Object.entries({ plain, deprecated: dep })) {
++    const o = run('old', root, doctorArgs([]));
++    const n = run('new', root, doctorArgs([]));
++    out.doctor[`env_${name}`] = { old: { code: o.code, deprecated_warnings: warnings(o) }, new: { code: n.code, deprecated_warnings: warnings(n) } };
++  }
++
++  // ── 判据 ──
++  const r = out.resolve;
++  const d = out.doctor;
++  const msg = '--model-glm 需要一个值，但没有给出。';
++  const checks = {
++    A1_none_normal_identical: ['none', 'normal', 'normal_eq'].every((k) => r[k].stdout_identical && r[k].old.code === 0 && r[k].new.code === 0),
++    A2_empty_old_silently_dropped: ['empty_eq', 'empty_followed', 'empty_end'].every((k) => r[k].old.code === 0 && JSON.stringify(r[k].old.models) === '{}'),
++    A3_empty_new_usage_64: ['empty_eq', 'empty_followed', 'empty_end'].every((k) => r[k].new.code === 64 && (r[k].new.message ?? '').includes(msg)),
++    B1_doctor_eq_old_ok_new_64: d.model_empty_eq.old.code === 0 && d.model_empty_eq.new.code === 64 && d.model_empty_eq.new.has_message,
++    C1_plain_no_notice_both: JSON.stringify(d.env_plain.old.deprecated_warnings) === '[]' && JSON.stringify(d.env_plain.new.deprecated_warnings) === '[]',
++    C2_old_no_notice: JSON.stringify(d.env_deprecated.old.deprecated_warnings) === '[]',
++    C3_new_one_notice_agent_level_only: (d.env_deprecated.new.deprecated_warnings ?? []).length === 1
++      && d.env_deprecated.new.deprecated_warnings[0].includes('已废弃的键：profiles.default.gemini.effort。')
++      && !d.env_deprecated.new.deprecated_warnings[0].includes('glm'),
++    C4_exit_codes_unchanged: d.env_deprecated.old.code === d.env_deprecated.new.code && d.env_plain.old.code === d.env_plain.new.code,
++  };
++  out.checks = checks;
++  out.all_pass = Object.values(checks).every(Boolean);
++  const text = JSON.stringify(out, null, 2) + '\n';
++  if (OUT) fs.writeFileSync(OUT, text);
++  process.stdout.write(text);
++  process.exitCode = out.all_pass ? 0 : 1;
++} finally {
++  fs.rmSync(work, { recursive: true, force: true });
++}
+diff --git a/doc/05_testing/evidence/m12-batch4-20261018/mutation-names-bundle.mjs b/doc/05_testing/evidence/m12-batch4-20261018/mutation-names-bundle.mjs
+new file mode 100644
+index 00000000..18303974
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch4-20261018/mutation-names-bundle.mjs
+@@ -0,0 +1,58 @@
++// M12 批次 4 照搬自 evidence/m12-batch3-mutation-20261017/（逐字相同，只改本行）。
++// M12 批次 1 变体：集成套件调的是打包产物（test/helpers/fixture.ts 的 BUNDLE），--tests-only 不重打 bundle，
++// 变异进不了被测产物。这里改为 --with-tests 同时重打 bundle 与测试产物；其余与原脚本逐字相同。
++// 逐条变异、带超时跑期望套件，存下**失败用例名与首行断言文案**（变异装置只记 fail 数、且不给套件加超时）。
++// 照搬 evidence/cancel-cli-reach-20260928/mutation-names.mjs 的形态，另加 --test-timeout：
++// 首轮装置跑到 M4 时 U12① 的等待没有超时、挂死一小时被强制终止（报告 §3），这里先逐条确认不挂。
++// 逐条：备份 → 变异（find 须唯一）→ 只重建测试产物 → 跑期望套件 → 恢复并逐字节核对；收尾重建一次。
++// 用法（在仓库根，变异装置与全量检查都不在跑）：node mutation-names.mjs <规格路径> [输出 JSON 路径]
++import { execFileSync, spawnSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const spec = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
++const OUT = process.argv[3] ?? null;
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--with-tests'], { stdio: 'ignore' });
++const runSuite = (suite) => {
++  const t0 = Date.now();
++  const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-timeout=60000', suite], {
++    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000,
++  });
++  const out = (r.stdout ?? '') + (r.stderr ?? '');
++  const body = out.split('✖ failing tests:')[0];
++  const red = [...new Set([...body.matchAll(/^✖ (.+?) \(\d/gm)].map((m) => m[1]))];
++  const msgs = [...body.matchAll(/^✖ .+?\(\d[^\n]*\n(?:[^\n]*\n){0,3}?\s*([^\n]*Error[^\n]*)/gm)].map((m) => m[1].trim().slice(0, 200));
++  return {
++    fail: Number(/ℹ fail (\d+)/.exec(out)?.[1] ?? (r.status === 0 ? 0 : -1)),
++    timed_out: r.error?.code === 'ETIMEDOUT',
++    cancelled: Number(/ℹ cancelled (\d+)/.exec(out)?.[1] ?? 0),
++    red,
++    firstLines: [...new Set(msgs)].slice(0, 8),
++    elapsed_s: Math.round((Date.now() - t0) / 1000),
++  };
++};
++
++const base = Object.fromEntries(spec.targets.map((f) => [f, fs.readFileSync(f, 'utf8')]));
++const baseHash = Object.fromEntries(spec.targets.map((f) => [f, sha(f)]));
++const results = [];
++try {
++  for (const c of spec.cases) {
++    const src = base[c.file];
++    if (src.split(c.find).length - 1 !== 1) throw new Error(`${c.id} 的 find 不唯一`);
++    fs.writeFileSync(c.file, src.replace(c.find, c.replace));
++    try {
++      build();
++      const r = runSuite(c.expect);
++      results.push({ id: c.id, desc: c.desc, suite: c.expect, ...r });
++      console.error(`${c.id}：fail=${r.fail} cancelled=${r.cancelled} ${r.elapsed_s}s ⇒ ${r.red.join(' ｜ ')}`);
++    } finally {
++      fs.writeFileSync(c.file, src);
++      if (sha(c.file) !== baseHash[c.file]) throw new Error(`恢复 ${c.file} 后哈希不符，停下人工处理`);
++    }
++  }
++} finally {
++  for (const f of spec.targets) if (sha(f) !== baseHash[f]) fs.writeFileSync(f, base[f]);
++  build();
++}
++if (OUT) fs.writeFileSync(OUT, JSON.stringify(results, null, 2) + '\n');
+diff --git a/doc/05_testing/evidence/m12-batch4-20261018/mutation-names-log.txt b/doc/05_testing/evidence/m12-batch4-20261018/mutation-names-log.txt
+new file mode 100644
+index 00000000..5fc15548
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch4-20261018/mutation-names-log.txt
+@@ -0,0 +1,14 @@
++M1：fail=2 cancelled=0 3s ⇒ EV-228 写了不给值的三种形态 × 两侧都退 64，文案与同形态的档位旗标逐字同源 ｜ EV-228 先键后值：给 Driver 自己写空值，报的是键判定那条（与档位旗标同序）
++M2：fail=1 cancelled=0 3s ⇒ EV-228 写了不给值的三种形态 × 两侧都退 64，文案与同形态的档位旗标逐字同源
++M3：fail=1 cancelled=0 3s ⇒ EV-228 先键后值：给 Driver 自己写空值，报的是键判定那条（与档位旗标同序）
++M4：fail=1 cancelled=0 3s ⇒ EV-228 写了不给值的三种形态 × 两侧都退 64，文案与同形态的档位旗标逐字同源
++M5：fail=2 cancelled=0 6s ⇒ T7 preflight：--model-glm= 退 64、与 --tier-glm= 同文案；紧跟旗标仍是 flagString 的文案（不变） ｜ T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）
++M6：fail=1 cancelled=0 6s ⇒ T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）
++M7：fail=1 cancelled=0 6s ⇒ T7 preflight：--model-glm= 退 64、与 --tier-glm= 同文案；紧跟旗标仍是 flagString 的文案（不变）
++M8：fail=1 cancelled=0 6s ⇒ T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）
++M9：fail=1 cancelled=0 0s ⇒ K8 assertFlagValuesGiven：四个前缀文案逐字同构；无空值不抛；多侧空值按插入序报第一个
++M10：fail=1 cancelled=0 0s ⇒ U14 profiles.〈表〉.〈id〉.effort 出现即报、按表名再按 Agent id 排序；阶段格子 {model, effort} 不报
++M11：fail=1 cancelled=0 0s ⇒ U14 profiles.〈表〉.〈id〉.effort 出现即报、按表名再按 Agent id 排序；阶段格子 {model, effort} 不报
++M12：fail=1 cancelled=0 0s ⇒ U14 profiles.〈表〉.〈id〉.effort 出现即报、按表名再按 Agent id 排序；阶段格子 {model, effort} 不报
++S1：fail=1 cancelled=0 0s ⇒ V9 EV-227：profiles 格子的 Agent 级 effort 标 deprecated、枚举不变；带它的配置通过校验并原样载入；stageModel 的 effort 不废弃
++S2：fail=1 cancelled=0 0s ⇒ V9 EV-227：profiles 格子的 Agent 级 effort 标 deprecated、枚举不变；带它的配置通过校验并原样载入；stageModel 的 effort 不废弃
+diff --git a/doc/05_testing/evidence/m12-batch4-20261018/mutation-names-output.json b/doc/05_testing/evidence/m12-batch4-20261018/mutation-names-output.json
+new file mode 100644
+index 00000000..443be2dd
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch4-20261018/mutation-names-output.json
+@@ -0,0 +1,186 @@
++[
++  {
++    "id": "M1",
++    "desc": "topic-args 恢复按真假过滤（EV-228 原状）",
++    "suite": "dist/test/test/unit/topic-args.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-228 写了不给值的三种形态 × 两侧都退 64，文案与同形态的档位旗标逐字同源",
++      "EV-228 先键后值：给 Driver 自己写空值，报的是键判定那条（与档位旗标同序）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 3
++  },
++  {
++    "id": "M2",
++    "desc": "topic-args 去掉空值判定（空串直接进 models）",
++    "suite": "dist/test/test/unit/topic-args.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-228 写了不给值的三种形态 × 两侧都退 64，文案与同形态的档位旗标逐字同源"
++    ],
++    "firstLines": [],
++    "elapsed_s": 3
++  },
++  {
++    "id": "M3",
++    "desc": "topic-args 空值判定挪到键判定之前（先值后键）",
++    "suite": "dist/test/test/unit/topic-args.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-228 先键后值：给 Driver 自己写空值，报的是键判定那条（与档位旗标同序）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 3
++  },
++  {
++    "id": "M4",
++    "desc": "topic-args 模型旗标改用自写文案（不与档位旗标共用函数）",
++    "suite": "dist/test/test/unit/topic-args.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "EV-228 写了不给值的三种形态 × 两侧都退 64，文案与同形态的档位旗标逐字同源"
++    ],
++    "firstLines": [],
++    "elapsed_s": 3
++  },
++  {
++    "id": "M5",
++    "desc": "cli collectModelOverrides 恢复跳过空串（--model-x= 静默丢弃）",
++    "suite": "dist/test/test/integration/tier-flags-cli.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "T7 preflight：--model-glm= 退 64、与 --tier-glm= 同文案；紧跟旗标仍是 flagString 的文案（不变）",
++      "T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 6
++  },
++  {
++    "id": "M6",
++    "desc": "review --start 不做模型空值判定",
++    "suite": "dist/test/test/integration/tier-flags-cli.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 6
++  },
++  {
++    "id": "M7",
++    "desc": "preflight 不做模型空值判定",
++    "suite": "dist/test/test/integration/tier-flags-cli.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "T7 preflight：--model-glm= 退 64、与 --tier-glm= 同文案；紧跟旗标仍是 flagString 的文案（不变）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 6
++  },
++  {
++    "id": "M8",
++    "desc": "doctor 不做模型空值判定",
++    "suite": "dist/test/test/integration/tier-flags-cli.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 6
++  },
++  {
++    "id": "M9",
++    "desc": "共用函数文案改动（模型与档位同变，同源仍成立；逐字锁要红）",
++    "suite": "dist/test/test/unit/tier-flags.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "K8 assertFlagValuesGiven：四个前缀文案逐字同构；无空值不抛；多侧空值按插入序报第一个"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M10",
++    "desc": "废弃键表删掉 EV-227 新增条",
++    "suite": "dist/test/test/unit/config-consumers.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U14 profiles.〈表〉.〈id〉.effort 出现即报、按表名再按 Agent id 排序；阶段格子 {model, effort} 不报"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M11",
++    "desc": "废弃键路径多一层通配（误报阶段格子 effort）",
++    "suite": "dist/test/test/unit/config-consumers.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U14 profiles.〈表〉.〈id〉.effort 出现即报、按表名再按 Agent id 排序；阶段格子 {model, effort} 不报"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M12",
++    "desc": "废弃键路径少一层通配（漏报 Agent 级）",
++    "suite": "dist/test/test/unit/config-consumers.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U14 profiles.〈表〉.〈id〉.effort 出现即报、按表名再按 Agent id 排序；阶段格子 {model, effort} 不报"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "S1",
++    "desc": "schema 去掉 Agent 级 effort 的 deprecated 标记",
++    "suite": "dist/test/test/unit/config-schema.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "V9 EV-227：profiles 格子的 Agent 级 effort 标 deprecated、枚举不变；带它的配置通过校验并原样载入；stageModel 的 effort 不废弃"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "S2",
++    "desc": "schema 放宽 Agent 级 effort 枚举（加 max）",
++    "suite": "dist/test/test/unit/config-schema.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "V9 EV-227：profiles 格子的 Agent 级 effort 标 deprecated、枚举不变；带它的配置通过校验并原样载入；stageModel 的 effort 不废弃"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  }
++]
+diff --git a/doc/05_testing/evidence/m12-batch4-20261018/mutation-output.txt b/doc/05_testing/evidence/m12-batch4-20261018/mutation-output.txt
+new file mode 100644
+index 00000000..9d68cd6a
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch4-20261018/mutation-output.txt
+@@ -0,0 +1,91 @@
++✓ 工作树干净、基线全绿（4 个套件）
++  M1 ✓ 咬住（fail=2）
++  M2 ✓ 咬住（fail=1）
++  M3 ✓ 咬住（fail=1）
++  M4 ✓ 咬住（fail=1）
++  M5 ✓ 咬住（fail=2）
++  M6 ✓ 咬住（fail=1）
++  M7 ✓ 咬住（fail=1）
++  M8 ✓ 咬住（fail=1）
++  M9 ✓ 咬住（fail=1）
++  M10 ✓ 咬住（fail=1）
++  M11 ✓ 咬住（fail=1）
++  M12 ✓ 咬住（fail=1）
++{
++  "总数": 12,
++  "咬住": 12,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "topic-args 恢复按真假过滤（EV-228 原状）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M2",
++      "desc": "topic-args 去掉空值判定（空串直接进 models）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M3",
++      "desc": "topic-args 空值判定挪到键判定之前（先值后键）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M4",
++      "desc": "topic-args 模型旗标改用自写文案（不与档位旗标共用函数）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M5",
++      "desc": "cli collectModelOverrides 恢复跳过空串（--model-x= 静默丢弃）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M6",
++      "desc": "review --start 不做模型空值判定",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M7",
++      "desc": "preflight 不做模型空值判定",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M8",
++      "desc": "doctor 不做模型空值判定",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M9",
++      "desc": "共用函数文案改动（模型与档位同变，同源仍成立；逐字锁要红）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M10",
++      "desc": "废弃键表删掉 EV-227 新增条",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M11",
++      "desc": "废弃键路径多一层通配（误报阶段格子 effort）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M12",
++      "desc": "废弃键路径少一层通配（漏报 Agent 级）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m12-batch4-20261018/mutation-spec-ts.json b/doc/05_testing/evidence/m12-batch4-20261018/mutation-spec-ts.json
+new file mode 100644
+index 00000000..29a63d66
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch4-20261018/mutation-spec-ts.json
+@@ -0,0 +1,112 @@
++{
++  "targets": [
++    "src/trivium/topic-args.ts",
++    "src/trivium/cli.ts",
++    "src/trivium/tier-flags.ts",
++    "src/trivium/config.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/topic-args.test.js",
++    "dist/test/test/integration/tier-flags-cli.test.js",
++    "dist/test/test/unit/tier-flags.test.js",
++    "dist/test/test/unit/config-consumers.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "topic-args 恢复按真假过滤（EV-228 原状）",
++      "file": "src/trivium/topic-args.ts",
++      "find": "    if (v !== undefined) modelRaw[id] = v;",
++      "replace": "    if (v) modelRaw[id] = v;",
++      "expect": "dist/test/test/unit/topic-args.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "topic-args 去掉空值判定（空串直接进 models）",
++      "file": "src/trivium/topic-args.ts",
++      "find": "  assertFlagValuesGiven('model', modelRaw);",
++      "replace": "  void modelRaw;",
++      "expect": "dist/test/test/unit/topic-args.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "topic-args 空值判定挪到键判定之前（先值后键）",
++      "file": "src/trivium/topic-args.ts",
++      "find": "  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), critics);\n  assertFlagValuesGiven('model', modelRaw);",
++      "replace": "  assertFlagValuesGiven('model', modelRaw);\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), critics);",
++      "expect": "dist/test/test/unit/topic-args.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "topic-args 模型旗标改用自写文案（不与档位旗标共用函数）",
++      "file": "src/trivium/topic-args.ts",
++      "find": "  assertFlagValuesGiven('model', modelRaw);",
++      "replace": "  for (const [id, v] of Object.entries(modelRaw)) if (v === '') throw new TriviumError(EXIT.USAGE, `--model-${id} 需要一个值。`);",
++      "expect": "dist/test/test/unit/topic-args.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "cli collectModelOverrides 恢复跳过空串（--model-x= 静默丢弃）",
++      "file": "src/trivium/cli.ts",
++      "find": "    out[id] = flagString(args, name) ?? '';",
++      "replace": "    const v = flagString(args, name);\n    if (v) out[id] = v;",
++      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "review --start 不做模型空值判定",
++      "file": "src/trivium/cli.ts",
++      "find": "入选集合就是上面刚解析出的 `critics`。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  assertFlagValuesGiven('model', modelOverrides);",
++      "replace": "入选集合就是上面刚解析出的 `critics`。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  void 0;",
++      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "preflight 不做模型空值判定",
++      "file": "src/trivium/cli.ts",
++      "find": "「改一漏二」。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  assertFlagValuesGiven('model', modelOverrides);",
++      "replace": "「改一漏二」。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  void 0;",
++      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "doctor 不做模型空值判定",
++      "file": "src/trivium/cli.ts",
++      "find": "  assertFlagValuesGiven('model', modelOverrides);\n  const report = await runDoctor({",
++      "replace": "  const report = await runDoctor({",
++      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "共用函数文案改动（模型与档位同变，同源仍成立；逐字锁要红）",
++      "file": "src/trivium/tier-flags.ts",
++      "find": "需要一个值，但没有给出。`);\n  }\n}",
++      "replace": "需要一个值。`);\n  }\n}",
++      "expect": "dist/test/test/unit/tier-flags.test.js"
++    },
++    {
++      "id": "M10",
++      "desc": "废弃键表删掉 EV-227 新增条",
++      "file": "src/trivium/config.ts",
++      "find": "  { path: ['profiles', '*', '*', 'effort'] },\n",
++      "replace": "",
++      "expect": "dist/test/test/unit/config-consumers.test.js"
++    },
++    {
++      "id": "M11",
++      "desc": "废弃键路径多一层通配（误报阶段格子 effort）",
++      "file": "src/trivium/config.ts",
++      "find": "  { path: ['profiles', '*', '*', 'effort'] },",
++      "replace": "  { path: ['profiles', '*', '*', '*', 'effort'] },",
++      "expect": "dist/test/test/unit/config-consumers.test.js"
++    },
++    {
++      "id": "M12",
++      "desc": "废弃键路径少一层通配（漏报 Agent 级）",
++      "file": "src/trivium/config.ts",
++      "find": "  { path: ['profiles', '*', '*', 'effort'] },",
++      "replace": "  { path: ['profiles', '*', 'effort'] },",
++      "expect": "dist/test/test/unit/config-consumers.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m12-batch4-20261018/mutation-spec.json b/doc/05_testing/evidence/m12-batch4-20261018/mutation-spec.json
+new file mode 100644
+index 00000000..dfcedf25
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch4-20261018/mutation-spec.json
+@@ -0,0 +1,130 @@
++{
++  "targets": [
++    "src/trivium/topic-args.ts",
++    "src/trivium/cli.ts",
++    "src/trivium/tier-flags.ts",
++    "src/trivium/config.ts",
++    "skills/dual-critic/schema/config.v2.json"
++  ],
++  "suites": [
++    "dist/test/test/unit/topic-args.test.js",
++    "dist/test/test/unit/tier-flags.test.js",
++    "dist/test/test/unit/config-consumers.test.js",
++    "dist/test/test/unit/config-schema.test.js",
++    "dist/test/test/integration/tier-flags-cli.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "topic-args 恢复按真假过滤（EV-228 原状）",
++      "file": "src/trivium/topic-args.ts",
++      "find": "    if (v !== undefined) modelRaw[id] = v;",
++      "replace": "    if (v) modelRaw[id] = v;",
++      "expect": "dist/test/test/unit/topic-args.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "topic-args 去掉空值判定（空串直接进 models）",
++      "file": "src/trivium/topic-args.ts",
++      "find": "  assertFlagValuesGiven('model', modelRaw);",
++      "replace": "  void modelRaw;",
++      "expect": "dist/test/test/unit/topic-args.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "topic-args 空值判定挪到键判定之前（先值后键）",
++      "file": "src/trivium/topic-args.ts",
++      "find": "  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), critics);\n  assertFlagValuesGiven('model', modelRaw);",
++      "replace": "  assertFlagValuesGiven('model', modelRaw);\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), critics);",
++      "expect": "dist/test/test/unit/topic-args.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "topic-args 模型旗标改用自写文案（不与档位旗标共用函数）",
++      "file": "src/trivium/topic-args.ts",
++      "find": "  assertFlagValuesGiven('model', modelRaw);",
++      "replace": "  for (const [id, v] of Object.entries(modelRaw)) if (v === '') throw new TriviumError(EXIT.USAGE, `--model-${id} 需要一个值。`);",
++      "expect": "dist/test/test/unit/topic-args.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "cli collectModelOverrides 恢复跳过空串（--model-x= 静默丢弃）",
++      "file": "src/trivium/cli.ts",
++      "find": "    out[id] = flagString(args, name) ?? '';",
++      "replace": "    const v = flagString(args, name);\n    if (v) out[id] = v;",
++      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "review --start 不做模型空值判定",
++      "file": "src/trivium/cli.ts",
++      "find": "入选集合就是上面刚解析出的 `critics`。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  assertFlagValuesGiven('model', modelOverrides);",
++      "replace": "入选集合就是上面刚解析出的 `critics`。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  void 0;",
++      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "preflight 不做模型空值判定",
++      "file": "src/trivium/cli.ts",
++      "find": "「改一漏二」。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  assertFlagValuesGiven('model', modelOverrides);",
++      "replace": "「改一漏二」。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  void 0;",
++      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "doctor 不做模型空值判定",
++      "file": "src/trivium/cli.ts",
++      "find": "  assertFlagValuesGiven('model', modelOverrides);\n  const report = await runDoctor({",
++      "replace": "  const report = await runDoctor({",
++      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "共用函数文案改动（模型与档位同变，同源仍成立；逐字锁要红）",
++      "file": "src/trivium/tier-flags.ts",
++      "find": "需要一个值，但没有给出。`);\n  }\n}",
++      "replace": "需要一个值。`);\n  }\n}",
++      "expect": "dist/test/test/unit/tier-flags.test.js"
++    },
++    {
++      "id": "M10",
++      "desc": "废弃键表删掉 EV-227 新增条",
++      "file": "src/trivium/config.ts",
++      "find": "  { path: ['profiles', '*', '*', 'effort'] },\n",
++      "replace": "",
++      "expect": "dist/test/test/unit/config-consumers.test.js"
++    },
++    {
++      "id": "M11",
++      "desc": "废弃键路径多一层通配（误报阶段格子 effort）",
++      "file": "src/trivium/config.ts",
++      "find": "  { path: ['profiles', '*', '*', 'effort'] },",
++      "replace": "  { path: ['profiles', '*', '*', '*', 'effort'] },",
++      "expect": "dist/test/test/unit/config-consumers.test.js"
++    },
++    {
++      "id": "M12",
++      "desc": "废弃键路径少一层通配（漏报 Agent 级）",
++      "file": "src/trivium/config.ts",
++      "find": "  { path: ['profiles', '*', '*', 'effort'] },",
++      "replace": "  { path: ['profiles', '*', 'effort'] },",
++      "expect": "dist/test/test/unit/config-consumers.test.js"
++    },
++    {
++      "id": "S1",
++      "desc": "schema 去掉 Agent 级 effort 的 deprecated 标记",
++      "file": "skills/dual-critic/schema/config.v2.json",
++      "find": "              ],\n              \"deprecated\": true,\n              \"description\": \"已废弃（2026-10-18",
++      "replace": "              ],\n              \"description\": \"已废弃（2026-10-18",
++      "expect": "dist/test/test/unit/config-schema.test.js"
++    },
++    {
++      "id": "S2",
++      "desc": "schema 放宽 Agent 级 effort 枚举（加 max）",
++      "file": "skills/dual-critic/schema/config.v2.json",
++      "find": "                \"high\"\n              ],\n              \"deprecated\": true,\n              \"description\": \"已废弃（2026-10-18",
++      "replace": "                \"high\",\n                \"max\"\n              ],\n              \"deprecated\": true,\n              \"description\": \"已废弃（2026-10-18",
++      "expect": "dist/test/test/unit/config-schema.test.js"
++    }
++  ]
++}

@@ -347,7 +347,7 @@ export function defaultConfig(): Config {
       claude: { vendor: 'anthropic' },
     },
     // 两档的差异只在 GLM 侧用不用 Flash——gemini 侧两档相同。
-    // 不写 profile 级 effort：该字段无任何读取点，且 slug 自带后缀时 effort 本就不生效。
+    // 不写 Agent 级 effort：该字段从未被读取，已废弃（EV-227，见 DEPRECATED_CONFIG_KEYS）；思考等级写在阶段格子 {model, effort} 里。
     profiles: {
       default: {
         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
@@ -427,7 +427,7 @@ export function defaultConfig(): Config {
 
 /**
  * 已废弃、但 schema 仍接受的配置键（2026-10-01，EV-30 ① / EV-15；2026-10-06 补 EV-30 ②③ 两条；
- * 2026-10-07 补 agents.codex.effort；2026-10-08 补 EV-30 ④～⑦ 四条）。
+ * 2026-10-07 补 agents.codex.effort；2026-10-08 补 EV-30 ④～⑦ 四条；2026-10-18 补 EV-227 档位表 Agent 级 effort）。
  *
  * 每一条都是「类型 + 默认值 + 文档承诺」齐全而**从未被任何代码读取**，删了类型与默认值；
  * schema 里保留属性（标 `deprecated`、去掉 `required`），只为带着它们的旧配置升级后照常通过校验——
@@ -438,7 +438,8 @@ export function defaultConfig(): Config {
  * 判定看**合并结果**就够：默认值不再带这些键，合并结果里出现 ⇔ 某个磁盘源写了它。
  * 代价是分不出是 `config.yaml` 还是 `config.local.yaml`，所以正文两个文件都点名。
  *
- * 路径里的 `'*'` 匹配 `agents` 下任一 Agent id（不写死 id：Agent 身份的唯一来源是注册表）。
+ * 路径里的 `'*'` 匹配当层任一键：`agents` 下是任一 Agent id（不写死 id：Agent 身份的唯一来源是注册表），
+ * `profiles` 下依次是档位表名与 Agent id。
  * 出处写在注释里而不是字段里：没有代码读的字段，正是这一族要清掉的东西。
  */
 export const DEPRECATED_CONFIG_KEYS: readonly { path: readonly string[] }[] = [
@@ -461,6 +462,13 @@ export const DEPRECATED_CONFIG_KEYS: readonly { path: readonly string[] }[] = [
   { path: ['gate', 'require_adjudication'] }, // ⑤ 闸门恒强制逐条裁决；接线等于给核心判据加关闭开关
   { path: ['agents', 'glm', 'max_turns'] }, // ⑥ zcode 0.16.5 无处可接（M0 坑清单 C-01：--max-turns 被拒）
   { path: ['agents', 'glm', 'unsupported_override'] }, // ⑦ annotate 语义已由 model_unenforced 播报承担
+  /*
+   * EV-227（2026-10-18，M12 批次 4）：档位表里 Agent 级的 `effort`（`profiles.<表>.<id>.effort`，v1 遗留），从未被读取。
+   * **两层 `'*'` 不会误伤**（与上面几条坚持精确路径的理由不同）：同名的阶段格子思考等级在下一层
+   * （`profiles.<表>.<id>.<阶段>.effort`，有真实消费方），走查按段数精确匹配，只命中 Agent 级这一层。
+   * v1 配置迁移后带着它也会被提示（迁移不删内容）。
+   */
+  { path: ['profiles', '*', '*', 'effort'] },
 ];
 
 /** 合并后的配置里实际出现的已废弃键（点分路径；按表序，同一条里 `'*'` 展开的按键名排序） */

@@ -205,6 +205,33 @@ test('R10 gemini 思考等级回落只对裸 slug：档位与 {model, effort} �
 });
 
 /*
+ * **R12 EV-227（M12 批次 4）：档位表 Agent 级 effort 不参与解析，阶段格子 {model, effort} 照常下传**。
+ * 两者同名不同层；前者已废弃（从未被读取），这里钉住「写了它也什么都不改」，以及阶段格子的思考等级不受废弃波及。
+ */
+test('R12 Agent 级 effort（已废弃）不参与解析；阶段格子 {model, effort} 照常给出思考等级', () => {
+  const withAgentLevel = (c: Config, v: string): void => {
+    ((c.profiles[c.active_profile] as Record<string, Record<string, unknown>>)['codex'] ??= {})['effort'] = v;
+  };
+  const plain = cfgOf((cfg) => {
+    setCell(cfg, 'codex', 'plan', { model: 'm-cell', effort: 'high' });
+    setCell(cfg, 'codex', 'code', 'm-slug');
+  });
+  const both = cfgOf((cfg) => {
+    setCell(cfg, 'codex', 'plan', { model: 'm-cell', effort: 'high' });
+    setCell(cfg, 'codex', 'code', 'm-slug');
+    withAgentLevel(cfg, 'low');
+  });
+  for (const stage of ['plan', 'code'] as const) {
+    assert.deepEqual(pick(resolveTier(both, 'codex', stage)), pick(resolveTier(plain, 'codex', stage)), `${stage}：写了 Agent 级 effort 也逐值不变`);
+  }
+  assert.deepEqual(pick(resolveTier(both, 'codex', 'plan')), { model: 'm-cell', effort: 'high', vendorProfile: 'qwen', tier: null, tierSource: 'profile' });
+  assert.equal(resolveTier(both, 'codex', 'code').effort, null, '裸 slug 格子不回落 Agent 级 effort');
+  // gemini 裸 slug 的思考等级回落的是 agents.gemini.effort（阶段级），不是档位表 Agent 级
+  const gem = cfgOf((cfg) => { ((cfg.profiles[cfg.active_profile] as Record<string, Record<string, unknown>>)['gemini']!)['effort'] = 'low'; });
+  assert.equal(resolveTier(gem, 'gemini', 'code').effort, resolveTier(cfgOf(), 'gemini', 'code').effort);
+});
+
+/*
  * **裸 slug 行为逐字不变**：旧 routeModel 对裸 slug 返回的就是格子字符串本身。对内置默认与本仓 config.yaml 的
  * 每张档位表 × 每个 Agent × 每个阶段，解析出的模型都等于格子原值、来源 legacy（旧函数已删，这里以格子原值为旧结果表）。
  */

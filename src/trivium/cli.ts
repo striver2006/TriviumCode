@@ -42,7 +42,7 @@ import {
 import { resolveTopicArgs } from './topic-args.js';
 import { shellQuoteArg } from './naming.js';
 import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
-import { assertTierFlags, collectTierFlags, nativeFlagNames, vendorProfileAgents } from './tier-flags.js';
+import { assertFlagValuesGiven, assertTierFlags, collectTierFlags, nativeFlagNames, vendorProfileAgents } from './tier-flags.js';
 import { scrubAllRunRoot } from './retention.js';
 import { wiredAdapter } from './adapters/index.js';
 import { COMMAND_ENTRIES, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
@@ -221,7 +221,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --base <ref>  仅 code 阶段：diff 比较基线，默认 HEAD
       ${CRITIC_AGENT_IDS.map((id) => `--model-${id}`).join(' / ')} <模型>
                   本次模型覆盖（取值清单随注册表；只对本轮入选的审核者有效，
-                  给没入选的一家指定模型退 64，不静默丢弃）
+                  给没入选的一家指定模型退 64，不静默丢弃；写了不给值同样退 64）
       ${CRITIC_AGENT_IDS.map((id) => `--tier-${id}`).join(' / ')} low|medium|high
                   本次为该侧选档（取该 Agent 在 agents.<id>.tiers 里定义的档；只对本轮入选的审核者有效，
                   未入选或档未定义退 64）。档位里的思考等级与厂商 profile 随请求下传给该侧，
@@ -397,8 +397,14 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
 function collectModelOverrides(args: ParsedArgs): Record<string, string> {
   const out: Record<string, string> = {};
   for (const id of ALL_AGENT_IDS) {
-    const v = flagString(args, `model-${id}`);
-    if (v) out[id] = v;
+    const name = `model-${id}`;
+    if (!args.flags.has(name)) continue;
+    /*
+     * `--model-x=` 记空串、不跳过（M12 批次 4，EV-228）：此前 `flagString` 对空串返回 null、这里 `if (v)` 跳过，
+     * 模型覆盖无声消失，而同文件的 `tierFlagGetter` 对档位旗标的同一形态早已退 64。空串由调用方在键判定之后
+     * 交 `assertFlagValuesGiven` 退 64；没取到值（`true`）仍由 `flagString` 退 64。
+     */
+    out[id] = flagString(args, name) ?? '';
   }
   return out;
 }
@@ -676,6 +682,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
    * 判定共用 `critics.ts` 的那一份，不在此处复制；入选集合就是上面刚解析出的 `critics`。
    */
   assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);
+  assertFlagValuesGiven('model', modelOverrides); // 先键后值，与档位旗标同序同文案（EV-228）
   // 判定通过 ⇒ 键集必然是本轮入选的审核者，这里才收窄（收集面见 collectModelOverrides）
   const models = modelOverrides as Partial<Record<CriticId, string>>;
   // 档位旗标（M11 第 5 步）：收集与判定与 topic resolve、preflight 同一份（tier-flags.ts）
@@ -805,14 +812,18 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
     );
   }
 
+  const tierFlags = assertTierFlags(ctx.config, resolveDriver(flagString(args, 'driver')).driver, collectTierFlags(tierFlagGetter(args)), CRITIC_AGENT_IDS);
+  // doctor 不判模型覆盖的键（现状，不在 EV-228 范围）；空值照样退 64，与档位旗标同文案
+  const modelOverrides = collectModelOverrides(args);
+  assertFlagValuesGiven('model', modelOverrides);
   const report = await runDoctor({
     projectRoot: ctx.projectRoot,
     triviumDir: ctx.triviumDir,
     config: ctx.config,
     skipModelCalls: args.flags.get('no-model-calls') === true,
     only,
-    tierFlags: assertTierFlags(ctx.config, resolveDriver(flagString(args, 'driver')).driver, collectTierFlags(tierFlagGetter(args)), CRITIC_AGENT_IDS),
-    modelOverrides: collectModelOverrides(args),
+    tierFlags,
+    modelOverrides,
   });
 
   if (isJsonMode()) {
@@ -865,6 +876,7 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
    * `critics`——只修一个入口，剩下那个就是下一次的「改一漏二」。
    */
   assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);
+  assertFlagValuesGiven('model', modelOverrides); // 先键后值，与档位旗标同序同文案（EV-228）
   // 判定通过 ⇒ 键集必然是本轮入选的审核者，这里才收窄（收集面见 collectModelOverrides）
   const models = modelOverrides as Partial<Record<CriticId, string>>;
   const tierFlags = assertTierFlags(ctx.config, driver, collectTierFlags(tierFlagGetter(args)), critics);

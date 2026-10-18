@@ -1,0 +1,186 @@
+[
+  {
+    "id": "M1",
+    "desc": "topic-args 恢复按真假过滤（EV-228 原状）",
+    "suite": "dist/test/test/unit/topic-args.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-228 写了不给值的三种形态 × 两侧都退 64，文案与同形态的档位旗标逐字同源",
+      "EV-228 先键后值：给 Driver 自己写空值，报的是键判定那条（与档位旗标同序）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 3
+  },
+  {
+    "id": "M2",
+    "desc": "topic-args 去掉空值判定（空串直接进 models）",
+    "suite": "dist/test/test/unit/topic-args.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-228 写了不给值的三种形态 × 两侧都退 64，文案与同形态的档位旗标逐字同源"
+    ],
+    "firstLines": [],
+    "elapsed_s": 3
+  },
+  {
+    "id": "M3",
+    "desc": "topic-args 空值判定挪到键判定之前（先值后键）",
+    "suite": "dist/test/test/unit/topic-args.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-228 先键后值：给 Driver 自己写空值，报的是键判定那条（与档位旗标同序）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 3
+  },
+  {
+    "id": "M4",
+    "desc": "topic-args 模型旗标改用自写文案（不与档位旗标共用函数）",
+    "suite": "dist/test/test/unit/topic-args.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "EV-228 写了不给值的三种形态 × 两侧都退 64，文案与同形态的档位旗标逐字同源"
+    ],
+    "firstLines": [],
+    "elapsed_s": 3
+  },
+  {
+    "id": "M5",
+    "desc": "cli collectModelOverrides 恢复跳过空串（--model-x= 静默丢弃）",
+    "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "T7 preflight：--model-glm= 退 64、与 --tier-glm= 同文案；紧跟旗标仍是 flagString 的文案（不变）",
+      "T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 6
+  },
+  {
+    "id": "M6",
+    "desc": "review --start 不做模型空值判定",
+    "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 6
+  },
+  {
+    "id": "M7",
+    "desc": "preflight 不做模型空值判定",
+    "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "T7 preflight：--model-glm= 退 64、与 --tier-glm= 同文案；紧跟旗标仍是 flagString 的文案（不变）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 6
+  },
+  {
+    "id": "M8",
+    "desc": "doctor 不做模型空值判定",
+    "suite": "dist/test/test/integration/tier-flags-cli.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 6
+  },
+  {
+    "id": "M9",
+    "desc": "共用函数文案改动（模型与档位同变，同源仍成立；逐字锁要红）",
+    "suite": "dist/test/test/unit/tier-flags.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "K8 assertFlagValuesGiven：四个前缀文案逐字同构；无空值不抛；多侧空值按插入序报第一个"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M10",
+    "desc": "废弃键表删掉 EV-227 新增条",
+    "suite": "dist/test/test/unit/config-consumers.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U14 profiles.〈表〉.〈id〉.effort 出现即报、按表名再按 Agent id 排序；阶段格子 {model, effort} 不报"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M11",
+    "desc": "废弃键路径多一层通配（误报阶段格子 effort）",
+    "suite": "dist/test/test/unit/config-consumers.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U14 profiles.〈表〉.〈id〉.effort 出现即报、按表名再按 Agent id 排序；阶段格子 {model, effort} 不报"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M12",
+    "desc": "废弃键路径少一层通配（漏报 Agent 级）",
+    "suite": "dist/test/test/unit/config-consumers.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U14 profiles.〈表〉.〈id〉.effort 出现即报、按表名再按 Agent id 排序；阶段格子 {model, effort} 不报"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "S1",
+    "desc": "schema 去掉 Agent 级 effort 的 deprecated 标记",
+    "suite": "dist/test/test/unit/config-schema.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "V9 EV-227：profiles 格子的 Agent 级 effort 标 deprecated、枚举不变；带它的配置通过校验并原样载入；stageModel 的 effort 不废弃"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "S2",
+    "desc": "schema 放宽 Agent 级 effort 枚举（加 max）",
+    "suite": "dist/test/test/unit/config-schema.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "V9 EV-227：profiles 格子的 Agent 级 effort 标 deprecated、枚举不变；带它的配置通过校验并原样载入；stageModel 的 effort 不废弃"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  }
+]

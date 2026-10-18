@@ -1,0 +1,133 @@
+{
+  "old_rev": "79d2dd57",
+  "bundle_sha256": {
+    "old": "aa27f79182a59b13a139fa7c243efd883e041dd611ab0cf541110459a544c334",
+    "new": "7399f51f4e66b3fe5ac431629bd6583531ff803c42c7f3e5b5fdeef49d33d9ed"
+  },
+  "resolve": {
+    "none": {
+      "old": {
+        "code": 0,
+        "models": {}
+      },
+      "new": {
+        "code": 0,
+        "models": {},
+        "message": null
+      },
+      "stdout_identical": true
+    },
+    "normal": {
+      "old": {
+        "code": 0,
+        "models": {
+          "glm": "GLM-5.3"
+        }
+      },
+      "new": {
+        "code": 0,
+        "models": {
+          "glm": "GLM-5.3"
+        },
+        "message": null
+      },
+      "stdout_identical": true
+    },
+    "normal_eq": {
+      "old": {
+        "code": 0,
+        "models": {
+          "glm": "GLM-5.3"
+        }
+      },
+      "new": {
+        "code": 0,
+        "models": {
+          "glm": "GLM-5.3"
+        },
+        "message": null
+      },
+      "stdout_identical": true
+    },
+    "empty_eq": {
+      "old": {
+        "code": 0,
+        "models": {}
+      },
+      "new": {
+        "code": 64,
+        "models": null,
+        "message": "✗ --model-glm 需要一个值，但没有给出。"
+      },
+      "stdout_identical": false
+    },
+    "empty_followed": {
+      "old": {
+        "code": 0,
+        "models": {}
+      },
+      "new": {
+        "code": 64,
+        "models": null,
+        "message": "✗ --model-glm 需要一个值，但没有给出。"
+      },
+      "stdout_identical": false
+    },
+    "empty_end": {
+      "old": {
+        "code": 0,
+        "models": {}
+      },
+      "new": {
+        "code": 64,
+        "models": null,
+        "message": "✗ --model-glm 需要一个值，但没有给出。"
+      },
+      "stdout_identical": false
+    }
+  },
+  "doctor": {
+    "model_empty_eq": {
+      "old": {
+        "code": 0
+      },
+      "new": {
+        "code": 64,
+        "has_message": true
+      }
+    },
+    "env_plain": {
+      "old": {
+        "code": 0,
+        "deprecated_warnings": []
+      },
+      "new": {
+        "code": 0,
+        "deprecated_warnings": []
+      }
+    },
+    "env_deprecated": {
+      "old": {
+        "code": 0,
+        "deprecated_warnings": []
+      },
+      "new": {
+        "code": 0,
+        "deprecated_warnings": [
+          "配置里有已废弃的键：profiles.default.gemini.effort。它们从未生效（没有任何代码读取），现已删除；schema 仍接受只为旧配置照常通过校验。可从 .trivium/config.yaml（或 config.local.yaml）里去掉，去掉不改变任何行为。"
+        ]
+      }
+    }
+  },
+  "checks": {
+    "A1_none_normal_identical": true,
+    "A2_empty_old_silently_dropped": true,
+    "A3_empty_new_usage_64": true,
+    "B1_doctor_eq_old_ok_new_64": true,
+    "C1_plain_no_notice_both": true,
+    "C2_old_no_notice": true,
+    "C3_new_one_notice_agent_level_only": true,
+    "C4_exit_codes_unchanged": true
+  },
+  "all_pass": true
+}

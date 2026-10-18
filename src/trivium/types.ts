@@ -1129,7 +1129,13 @@ export interface GateConfig {
  */
 export type StageModel = string | { tier: TierName } | { model: string; effort: string };
 
-export type ProfileEntry = Partial<Record<Stage, StageModel>> & { effort?: 'low' | 'medium' | 'high' };
+/*
+ * 原有 Agent 级 `effort`（`profiles.<表>.<id>.effort`，v1 遗留），2026-10-18 删除（M12 批次 4，BACKLOG EV-227）：
+ * 从未被读取——档位表只按阶段取格子（`adapters/base.ts` 的 `resolveTier`），而它与阶段格子 `{model, effort}` 里的
+ * 思考等级同名不同层，读配置的人容易误以为它是后者的缺省。schema 仍接受它（标 deprecated），见 `config.ts` 的
+ * `DEPRECATED_CONFIG_KEYS`。不要加回来。
+ */
+export type ProfileEntry = Partial<Record<Stage, StageModel>>;
 export type Profile = Partial<Record<CriticId, ProfileEntry>>;
 
 export interface Config {

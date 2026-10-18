@@ -1,0 +1,39 @@
+{
+  "agreed": [
+    "认可将 cli.ts 中 --model-<id>= 空值的改动一并纳入（§0 / §2.3）：消除了两个入口对 = 空值行为分叉的隐患，彻底闭环了 EV-53 同族收敛缺口。",
+    "认可抽取 assertFlagValuesGiven(prefix, raw) 实现文案同源：由单一共享函数保证前缀替换后文案逐字一致，次序上严格保持「先键后值」（先调 assertModelOverrideKeys 再判空值）。",
+    "认可 DEPRECATED_CONFIG_KEYS 追加四层路径 ['profiles', '*', '*', 'effort']：精准命中 Agent 级废弃键，通过层级与键名差异自然规避对阶段格子思考等级 {model, effort} 的误伤；config.v2.json 标 deprecated 但不放宽枚举与 additionalProperties，保持了严格契约校验。",
+    "认可变异测试与对账保护方案：针对键判定次序、文案同源、路径层级、枚举约束等关键路径设计了 9 条变异，且没有放宽任何既有测试的断言。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/M12-参数与配置小修/plan/2026-10-18-M12-参数与配置小修-claude.md",
+    "src/trivium/topic-args.ts",
+    "src/trivium/tier-flags.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/config.ts",
+    "src/trivium/types.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/adapters/base.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "test/unit/topic-args.test.ts",
+    "test/unit/config-consumers.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/config-schema.test.ts",
+    "test/integration/tier-flags-cli.test.ts",
+    "doc/08_project/M11后续-开发计划-草案.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "审查员无写权限与命令执行权限，未在当前工作树实际执行 npm test、npm run check 或桩级验收脚本，所有验证基于源码与设计规范的静态推演。",
+    "未实测第三方厂商 CLI（agy / zcode / codex）在真实模型调用下的运行期行为，依赖编排器现有的单测与桩夹具逻辑。",
+    "未覆盖非 macOS 开发环境（本项目仅支持 macOS + VS Code）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "实施计划方案严密周全，完全覆盖审查焦点的三处核心要求。模型旗标的三种缺值形态在 topic resolve 与 cli.ts 两大入口均能正确退 64 且文案与档位旗标严格同源，正常写法逐值不变，两轮双审共用语义不受影响；废弃键路径以四层通配精确定位 Agent 级 effort，与第五层阶段格子的思考等级自然隔离，提示口径与既有废弃键完全一致；测试与文档改动未放宽任何既有判据，变异用例设计扎实，同意实施。",
+  "verdict": "approve"
+}

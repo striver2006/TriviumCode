@@ -676,3 +676,41 @@ test('V8 EV-30 ④～⑦：磁盘 config.yaml 带着四键时 loadCtx 照常加�
   assert.equal(merged.agents['glm']!['max_turns'], 7);
   assert.equal(merged.agents['glm']!['unsupported_override'], 'annotate');
 });
+
+/*
+ * **V9 EV-227（M12 批次 4）：档位表 Agent 级 effort 标 deprecated、枚举不放宽；阶段格子的 effort 不受影响**（设计 13.1.1）。
+ * 同 T5 / V7 的口径：废弃只为旧配置照常通过，不等于放宽——原枚举外的值照旧被拒。
+ */
+test('V9 EV-227：profiles 格子的 Agent 级 effort 标 deprecated、枚举不变；带它的配置通过校验并原样载入；stageModel 的 effort 不废弃', async () => {
+  const schema = JSON.parse(
+    await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/config.v2.json'), 'utf8'),
+  ) as {
+    properties: { profiles: { additionalProperties: { additionalProperties: { properties: Record<string, { deprecated?: boolean; enum?: string[]; description?: string }> } } } };
+    $defs: Record<string, unknown>;
+  };
+  const agentLevel = schema.properties.profiles.additionalProperties.additionalProperties.properties['effort']!;
+  assert.equal(agentLevel.deprecated, true);
+  assert.deepEqual(agentLevel.enum, ['low', 'medium', 'high'], '类型约束不放宽');
+  assert.match(agentLevel.description ?? '', /EV-227/);
+  assert.ok(!JSON.stringify(schema.$defs['stageModel']).includes('"deprecated"'), '阶段格子的 effort 不得一并废弃');
+
+  for (const v of ['low', 'medium', 'high']) {
+    assert.deepEqual(validateConfig(cfgWith((c) => { c.profiles['default']!['gemini']!['effort'] = v; })), [], `Agent 级 effort: ${v} 照常通过`);
+  }
+  assert.ok(validateConfig(cfgWith((c) => { c.profiles['default']!['gemini']!['effort'] = 'max'; })).length > 0, '原枚举外的值照旧被拒');
+  assert.deepEqual(
+    validateConfig(cfgWith((c) => { c.profiles['default']!['codex'] = { plan: { model: 'qwen3.8-flash', effort: 'high' }, effort: 'low' }; })),
+    [], '与阶段格子同在照常通过',
+  );
+
+  const root = await projectWith([
+    'schema: trivium.config.v2',
+    'profiles:',
+    '  default:',
+    '    gemini: { plan: gemini-3.8-flash-high, code: gemini-3.8-flash-high, bug: gemini-3.8-flash-high, effort: high }',
+    '',
+  ].join('\n'));
+  const ctx = await loadCtx({ cwd: root, allowUninitialized: true });
+  const merged = ctx.config as unknown as { profiles: Record<string, Record<string, Loose>> };
+  assert.equal(merged.profiles['default']!['gemini']!['effort'], 'high', '废弃键原样留在合并结果里');
+});

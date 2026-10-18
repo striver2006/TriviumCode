@@ -1,0 +1,42 @@
+{
+  "agreed": [
+    "--model-<id> 旗标在 = 空、紧跟已知旗标、位于参数末尾三种形态下，均由 topic-args.ts 与 cli.ts 经统一的 assertFlagValuesGiven('model', ...) 拦截并退出 64；报错文案「--model-<id> 需要一个值，但没有给出。」与档位旗标实现字面同源且先键判定后空值；正常指定模型与完全不写时的解析结果完全保持不变，计划审与代码审共用同一组覆盖的语义不受影响。",
+    "新增已废弃配置项 profiles.<表>.<id>.effort（EV-227）段数精确限定在 Agent 级，deprecatedConfigKeysIn 不会下探到第 4 级阶段格子（{model, effort}），阶段思考等级照常由 resolveTier 下传；旧配置读取兼容性良好，config.v2.json schema 仅标 deprecated: true 且未放宽 enum 约束，提示口径与既有废弃键一致。",
+    "全量对账测试与测试用例完备：driver-wiring.test.ts 虽更新了源码锚点正则但未放宽全 Agent 与全 CRITICS 集合匹配；config-consumers.test.ts 验证全仓无未知死配置键；集成与单元测试及 12 个变异规约用例严守行为不变形。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/07_manuals/MANUAL_user.md",
+    ".reviews/M12-参数与配置小修/code/_meta/changes-20261017T170929Z.diff",
+    ".reviews/M12-参数与配置小修/plan/2026-10-18-M12-参数与配置小修-r2-claude.md",
+    "skills/dual-critic/schema/config.v2.json",
+    "src/trivium/cli.ts",
+    "src/trivium/config.ts",
+    "src/trivium/tier-flags.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/types.ts",
+    "test/unit/driver-wiring.test.ts",
+    "test/unit/topic-args.test.ts",
+    "test/contract/doc-archive-index.test.ts",
+    "test/contract/facade-version-pointers.test.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/parse.ts",
+    "skills/dual-critic/agents/trivium-critic.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "独立二次审查员运行在只读受限环境中，未直接调用各厂商真实远程 CLI API 发起审查，未消耗外部大模型额度。",
+    "依据源码静态追踪、单元与集成测试套件断言核验，以及 doc/05_testing/evidence/m12-batch4-20261018/ 下记录的 12 项变异规约与测试证据进行综合验证。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "整体判断为 approve。本次审查焦点涉及的模型覆盖旗标空值校验（EV-228）与档位表废弃键治理（EV-227）实现严密完整：\n1. --model-<id> 在空值（=）、紧跟另一旗标、位于参数末尾三种形态下均在发起前由 assertFlagValuesGiven 统一拦截并以退出码 64 退出，报错文案与档位旗标严格同源；正常指定与完全不写的解析结果逐值不变；计划审与代码审两轮共用同一组覆盖的语义完全不受影响。\n2. 废弃键 ['profiles', '*', '*', 'effort'] 通过段数精确匹配 Agent 层级，deprecatedConfigKeysIn 不会误触第 4 层的阶段思考等级配置，阶段格子 {model, effort} 照常下传；旧配置读取、schema 校验与 doctor/preflight 告警文案保持一致。\n3. driver-wiring.test.ts 锚点微调保持了既有严格断言，未放宽任何测试判据；设计文档、用户手册与协议文档同步齐备。",
+  "verdict": "approve"
+}

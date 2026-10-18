@@ -6,6 +6,7 @@ import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
 import { assertModelOverrideKeys } from '../../src/trivium/critics.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import {
+  assertFlagValuesGiven,
   assertTierFlags,
   collectTierFlags,
   mergeCliOverrides,
@@ -100,4 +101,27 @@ test('K7 三档清单只有一份：旗标层用的就是 base.ts 导出的 TIER
   for (const t of TIER_NAMES) {
     assert.deepEqual(assertTierFlags(defaultConfig(), 'claude', raw({ tier: { glm: t } }), PICKED), { glm: { tier: t } });
   }
+});
+
+/*
+ * **K8 空值判定只此一份：`--model-〈id〉` 与三类档位旗标共用 `assertFlagValuesGiven`**（M12 批次 4，EV-228）。
+ * 文案同源的可判形式：同一侧、同一空值，换前缀后逐字相等——不是各对一条正则。
+ */
+test('K8 assertFlagValuesGiven：四个前缀文案逐字同构；无空值不抛；多侧空值按插入序报第一个', () => {
+  const msg = (fn: () => unknown): string => {
+    try { fn(); } catch (e) { assert.equal((e as { code?: number }).code, EXIT.USAGE); return (e as Error).message; }
+    assert.fail('应当抛出');
+  };
+  for (const id of ['gemini', 'glm', 'codex']) {
+    const model = msg(() => assertFlagValuesGiven('model', { [id]: '' }));
+    assert.equal(model, `--model-${id} 需要一个值，但没有给出。`);
+    for (const k of ['tier', 'effort', 'profile'] as const) {
+      assert.equal(msg(() => assertFlagValuesGiven(k, { [id]: '' })), model.replace('--model-', `--${k}-`));
+    }
+    // 与 assertTierFlags 的实际出口逐字一致（它内部调的是同一个函数）
+    assert.equal(msg(() => assertTierFlags(defaultConfig(), 'claude', raw({ tier: { [id]: '' } }), PICKED)), model.replace('--model-', '--tier-'));
+  }
+  assertFlagValuesGiven('model', {});
+  assertFlagValuesGiven('model', { gemini: 'g', glm: 'GLM-5.3' });
+  assert.equal(msg(() => assertFlagValuesGiven('model', { gemini: 'g', glm: '', codex: '' })), '--model-glm 需要一个值，但没有给出。');
 });

@@ -862,3 +862,73 @@ test('命令 A 缺省路径：换了 Driver 后缺省集合外的那一家（原
     },
   );
 });
+
+/*
+ * ── EV-228（M12 批次 4）：`--model-〈id〉` 按「键在不在」判写了没写 ──
+ *
+ * 此前按真假过滤，空串（`=` 空、紧跟另一个已知旗标、位于末尾三种形态都记空串）被当成没写，模型覆盖无声消失。
+ * 改后先键判定、再空值退 64，文案与档位旗标同一份（`tier-flags.ts` 的 `assertFlagValuesGiven`）。
+ * 「同源」的可判形式：同一入口、同一形态，`--model-` 换成 `--tier-` 后逐字相等。
+ */
+async function usageMessage(p: Promise<unknown>): Promise<string> {
+  let message: string | null = null;
+  await assert.rejects(p, (e: { code?: number; message: string }) => {
+    assert.equal(e.code, EXIT.USAGE, e.message);
+    message = e.message;
+    return true;
+  });
+  return message!;
+}
+
+test('EV-228 写了不给值的三种形态 × 两侧都退 64，文案与同形态的档位旗标逐字同源', async () => {
+  const ctx = await fakeCtx();
+  const forms: [string, (flag: string) => string[]][] = [
+    ['= 空', (f) => [`--${f}=`]],
+    ['紧跟另一个已知旗标', (f) => [`--${f}`, '--focus', '看']],
+    ['位于末尾', (f) => [`--${f}`]],
+  ];
+  for (const id of ['gemini', 'glm']) {
+    for (const [name, build] of forms) {
+      const model = await usageMessage(resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', ...build(`model-${id}`)] }));
+      assert.equal(model, `--model-${id} 需要一个值，但没有给出。`, `${id} · ${name}`);
+      const tier = await usageMessage(resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', ...build(`tier-${id}`)] }));
+      assert.equal(model.replace('--model-', '--tier-'), tier, `${id} · ${name}：与档位旗标同源`);
+    }
+  }
+});
+
+test('EV-228 正常写法与完全不写：解析结果逐字段不变', async () => {
+  const ctx = await fakeCtx();
+  const pick = (r: Awaited<ReturnType<typeof resolveTopicArgs>>) => ({
+    models: r.models, tiers: r.tiers, efforts: r.efforts, vendor_profiles: r.vendor_profiles,
+    critics: r.critics, prompt_hint: r.prompt_hint, task_goal: r.task_goal, topic: r.topic,
+  });
+  const none = pick(await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T'] }));
+  assert.ok(none.critics.length > 0, '前提：缺省集合非空');
+  assert.deepEqual(none, {
+    models: {}, tiers: {}, efforts: {}, vendor_profiles: {},
+    critics: none.critics, prompt_hint: null, task_goal: '做个功能', topic: 'T',
+  });
+  const normal = pick(await resolveTopicArgs({
+    ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', '--model-glm', 'GLM-5.3', '--model-gemini=g-x', '--focus', '看'],
+  }));
+  assert.deepEqual(normal, {
+    models: { gemini: 'g-x', glm: 'GLM-5.3' }, tiers: {}, efforts: {}, vendor_profiles: {},
+    critics: none.critics, prompt_hint: '看', task_goal: '做个功能', topic: 'T',
+  }, '入选集合与不写时同一组');
+});
+
+test('EV-228 先键后值：给 Driver 自己写空值，报的是键判定那条（与档位旗标同序）', async () => {
+  const ctx = await fakeCtx();
+  const model = await usageMessage(resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', `--model-${DEFAULT_DRIVER}`] }));
+  assert.match(model, new RegExp(`^--model-${DEFAULT_DRIVER}：它是本轮的 Driver`), model);
+  assert.ok(!model.includes('需要一个值'), model);
+  const tier = await usageMessage(resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', `--tier-${DEFAULT_DRIVER}`] }));
+  assert.match(tier, new RegExp(`^--tier-${DEFAULT_DRIVER}：它是本轮的 Driver`), tier);
+});
+
+test('EV-228 紧跟一个未知的 --xxx：照旧当成值（只有已知旗标才截断取值）', async () => {
+  const ctx = await fakeCtx();
+  const r = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做个功能', '--topic', 'T', '--model-glm', '--not-a-flag'] });
+  assert.deepEqual(r.models, { glm: '--not-a-flag' });
+});

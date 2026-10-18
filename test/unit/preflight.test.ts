@@ -1118,3 +1118,37 @@ test('U6 doctor：带两键 ⇒ warnings 含正文、阻断不受影响；只带
   assert.ok(n1.includes('已废弃的键：gate.max_check_retries。'), n1);
   assert.ok(!n1.includes('readonly_commands'), `没写的键不得出现：${n1}`);
 });
+
+/** EV-227（M12 批次 4）：档位表 Agent 级 effort；`cell` 同时放一个阶段格子 {model, effort}（不该被报） */
+const withAgentLevelEffort = (cell: boolean) => (c: Config): void => {
+  const raw = c as unknown as { profiles: Record<string, Record<string, Record<string, unknown>>> };
+  raw.profiles['default']!['gemini']!['effort'] = 'high';
+  if (cell) raw.profiles['default']!['glm']!['plan'] = { model: 'GLM-5.3', effort: 'high' };
+};
+
+test('U5″ 预检：带档位表 Agent 级 effort（EV-227）⇒ 照常通过、退出码不变，「已废弃配置键」点名它、不点名阶段格子', async () => {
+  const ctx = await fakeCtx((c) => {
+    withStale(120)(c);
+    withAgentLevelEffort(false)(c);
+  });
+  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'], adapters: {} });
+  assert.equal(r.ok, true, '只警告、不拒跑');
+  assert.equal(r.exitCode, EXIT.OK);
+  const w = r.warnings.find((x) => x.name === '已废弃配置键');
+  assert.ok(w, r.warnings.map((x) => x.name).join('、'));
+  assert.ok(w.detail.startsWith('⚠️ '), w.detail);
+  assert.ok(w.detail.includes('已废弃的键：profiles.default.gemini.effort。'), w.detail);
+  assertWarnInvariant(r);
+});
+
+test('U6′ doctor：带档位表 Agent 级 effort（EV-227）⇒ 恰一条提示、只点名 Agent 级、阻断不变', async () => {
+  const base = await doctorEnvOnly(defaultConfig());
+  const cfg = defaultConfig();
+  withAgentLevelEffort(true)(cfg);
+  const r = await doctorEnvOnly(cfg);
+  const n = r.warnings.filter((w) => w.includes('已废弃的键'));
+  assert.equal(n.length, 1, '只提示一条');
+  assert.ok(n[0]!.includes('已废弃的键：profiles.default.gemini.effort。'), n[0]);
+  assert.ok(!n[0]!.includes('glm'), `阶段格子的 effort 不得出现：${n[0]}`);
+  assert.deepEqual(r.blockers, base.blockers, '提示不得改变阻断项');
+});

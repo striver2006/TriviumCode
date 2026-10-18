@@ -1,0 +1,130 @@
+{
+  "targets": [
+    "src/trivium/topic-args.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/tier-flags.ts",
+    "src/trivium/config.ts",
+    "skills/dual-critic/schema/config.v2.json"
+  ],
+  "suites": [
+    "dist/test/test/unit/topic-args.test.js",
+    "dist/test/test/unit/tier-flags.test.js",
+    "dist/test/test/unit/config-consumers.test.js",
+    "dist/test/test/unit/config-schema.test.js",
+    "dist/test/test/integration/tier-flags-cli.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "topic-args 恢复按真假过滤（EV-228 原状）",
+      "file": "src/trivium/topic-args.ts",
+      "find": "    if (v !== undefined) modelRaw[id] = v;",
+      "replace": "    if (v) modelRaw[id] = v;",
+      "expect": "dist/test/test/unit/topic-args.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "topic-args 去掉空值判定（空串直接进 models）",
+      "file": "src/trivium/topic-args.ts",
+      "find": "  assertFlagValuesGiven('model', modelRaw);",
+      "replace": "  void modelRaw;",
+      "expect": "dist/test/test/unit/topic-args.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "topic-args 空值判定挪到键判定之前（先值后键）",
+      "file": "src/trivium/topic-args.ts",
+      "find": "  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), critics);\n  assertFlagValuesGiven('model', modelRaw);",
+      "replace": "  assertFlagValuesGiven('model', modelRaw);\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), critics);",
+      "expect": "dist/test/test/unit/topic-args.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "topic-args 模型旗标改用自写文案（不与档位旗标共用函数）",
+      "file": "src/trivium/topic-args.ts",
+      "find": "  assertFlagValuesGiven('model', modelRaw);",
+      "replace": "  for (const [id, v] of Object.entries(modelRaw)) if (v === '') throw new TriviumError(EXIT.USAGE, `--model-${id} 需要一个值。`);",
+      "expect": "dist/test/test/unit/topic-args.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "cli collectModelOverrides 恢复跳过空串（--model-x= 静默丢弃）",
+      "file": "src/trivium/cli.ts",
+      "find": "    out[id] = flagString(args, name) ?? '';",
+      "replace": "    const v = flagString(args, name);\n    if (v) out[id] = v;",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "review --start 不做模型空值判定",
+      "file": "src/trivium/cli.ts",
+      "find": "入选集合就是上面刚解析出的 `critics`。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  assertFlagValuesGiven('model', modelOverrides);",
+      "replace": "入选集合就是上面刚解析出的 `critics`。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  void 0;",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "preflight 不做模型空值判定",
+      "file": "src/trivium/cli.ts",
+      "find": "「改一漏二」。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  assertFlagValuesGiven('model', modelOverrides);",
+      "replace": "「改一漏二」。\n   */\n  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelOverrides), critics);\n  void 0;",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "doctor 不做模型空值判定",
+      "file": "src/trivium/cli.ts",
+      "find": "  assertFlagValuesGiven('model', modelOverrides);\n  const report = await runDoctor({",
+      "replace": "  const report = await runDoctor({",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "共用函数文案改动（模型与档位同变，同源仍成立；逐字锁要红）",
+      "file": "src/trivium/tier-flags.ts",
+      "find": "需要一个值，但没有给出。`);\n  }\n}",
+      "replace": "需要一个值。`);\n  }\n}",
+      "expect": "dist/test/test/unit/tier-flags.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "废弃键表删掉 EV-227 新增条",
+      "file": "src/trivium/config.ts",
+      "find": "  { path: ['profiles', '*', '*', 'effort'] },\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "废弃键路径多一层通配（误报阶段格子 effort）",
+      "file": "src/trivium/config.ts",
+      "find": "  { path: ['profiles', '*', '*', 'effort'] },",
+      "replace": "  { path: ['profiles', '*', '*', '*', 'effort'] },",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "废弃键路径少一层通配（漏报 Agent 级）",
+      "file": "src/trivium/config.ts",
+      "find": "  { path: ['profiles', '*', '*', 'effort'] },",
+      "replace": "  { path: ['profiles', '*', 'effort'] },",
+      "expect": "dist/test/test/unit/config-consumers.test.js"
+    },
+    {
+      "id": "S1",
+      "desc": "schema 去掉 Agent 级 effort 的 deprecated 标记",
+      "file": "skills/dual-critic/schema/config.v2.json",
+      "find": "              ],\n              \"deprecated\": true,\n              \"description\": \"已废弃（2026-10-18",
+      "replace": "              ],\n              \"description\": \"已废弃（2026-10-18",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    },
+    {
+      "id": "S2",
+      "desc": "schema 放宽 Agent 级 effort 枚举（加 max）",
+      "file": "skills/dual-critic/schema/config.v2.json",
+      "find": "                \"high\"\n              ],\n              \"deprecated\": true,\n              \"description\": \"已废弃（2026-10-18",
+      "replace": "                \"high\",\n                \"max\"\n              ],\n              \"deprecated\": true,\n              \"description\": \"已废弃（2026-10-18",
+      "expect": "dist/test/test/unit/config-schema.test.js"
+    }
+  ]
+}
