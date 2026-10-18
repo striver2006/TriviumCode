@@ -33,7 +33,12 @@ import {
 import { enumerateDenyPaths } from '../../src/trivium/freeze.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 
-const ROOT = '/proj';
+import { IS_WIN } from '../helpers/platform.js';
+
+// Windows 移植：win32 的 path.isAbsolute 不认 '/proj' 这类盘相对形态；引号串里的 POSIX 绝对路径统一补 ${ABS} 盘符根（macOS 上为空串，字面不变）
+const ABS = IS_WIN ? 'D:' : '';
+
+const ROOT = `${ABS}/proj`;
 const RUNS = '/runs';
 const PEER_MD = '.reviews/T/plan/2026-10-02-T-glm.md';
 const PEER_JSON = '.reviews/T/plan/_meta/review-glm-20261002T000000Z.json';
@@ -64,7 +69,8 @@ test('under · 作废类：对端审查件按五种写法都判命中，类别 p
     `./${PEER_MD}`,
     `src/../${PEER_MD}`,
     `${ROOT}/${PEER_MD}`,
-    `/private${ROOT}/${PEER_MD}`, // macOS 的 /private 前缀与机器判定同口径抹平
+    // macOS 的 /private 前缀与机器判定同口径抹平；win32 无该形态，跳过这一写法
+    ...(IS_WIN ? [] : [`/private${ROOT}/${PEER_MD}`]),
   ]) {
     const got = findDenyConflicts(entry, DENY, ctx());
     assert.deepEqual(shape(got), [{ category: 'peer-artifact', direction: 'under', denyEntry: PEER_MD }], entry);

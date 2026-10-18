@@ -25,6 +25,12 @@ import type { AdapterTable, CriticAdapter } from '../../src/trivium/adapters/bas
 import type { Config, CriticId, Ctx } from '../../src/trivium/types.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 
+// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
+} else {
+
 const ROOT = process.getuid?.() === 0;
 const tmp = (p: string) => fs.mkdtemp(path.join(os.tmpdir(), p));
 
@@ -314,3 +320,5 @@ test('R3 agy 真实适配器：agent.md 不可读（EACCES）——预检不崩�
   assert.ok(!o.result.detail.includes(home), o.result.detail);
   assert.equal(o.cache, null);
 });
+
+}

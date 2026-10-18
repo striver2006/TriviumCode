@@ -22,6 +22,12 @@ import assert from 'node:assert/strict';
 import { bundleMissing, bundleSkipReason, cli, makeFixture, seedFakeProbes } from '../helpers/fixture.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 const TOPIC = 'codex接线';
 let root = '';
 
@@ -144,3 +150,5 @@ test('preflight --json：warnings 键恒在，warn 项在 checks[] 里带 warn �
   );
   for (const c of out.checks.filter((x) => !x.warn)) assert.equal('warn' in c, false, `「${c.name}」不该带 warn 键`);
 });
+
+}

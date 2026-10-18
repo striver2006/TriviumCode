@@ -23,18 +23,29 @@ export const FIXTURE_STEP_KEYS = ['init', 'config.user.email', 'config.user.name
 
 /** 模块加载时从 `PATH` 解析出的真实 git 绝对路径（用例随后会改 `PATH`） */
 export const REAL_GIT: string = (() => {
+  // win32 下真实 git 是 git.exe（CreateProcess 只认 PE 扩展名；垫片机制本身见下方说明）
+  const names = process.platform === 'win32' ? ['git.exe', 'git'] : ['git'];
   for (const dir of (process.env['PATH'] ?? '').split(path.delimiter)) {
     if (!dir) continue;
-    const p = path.join(dir, 'git');
-    try {
-      accessSync(p, constants.X_OK);
-      return p;
-    } catch {
-      // 下一个
+    for (const name of names) {
+      const p = path.join(dir, name);
+      try {
+        accessSync(p, constants.X_OK);
+        return p;
+      } catch {
+        // 下一个
+      }
     }
   }
   throw new Error('fake-git：PATH 里找不到真实 git，本组用例的前提不成立');
 })();
+
+/*
+ * Windows 边界：`writeFakeGit` 的机制是把带 node shebang 的脚本垫进 PATH —— win32 的
+ * CreateProcess 不认 shebang、也只按 PE 扩展名搜索，该垫片无法生效。用例在 win32 上
+ * 按用例级 skip 跳过（依赖它的失败注入用例属 POSIX 机制用例）；本函数在 win32 仍写出
+ * 文件以保持形状，但没有任何调用方会在 win32 走到它（skip 先行）。
+ */
 
 const body = (realGit: string): string => `
 const fs = require('node:fs');

@@ -27,6 +27,12 @@ import { scrubRunDir } from '../../src/trivium/scrub.js';
 import { CRITICS, type CriticId, type CriticRequest, type CriticResult, type DenyCategory, type RunMeta } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
+} else {
+
 // ── runner ──
 
 function okResult(critic: CriticId, over: Partial<CriticResult> = {}): CriticResult {
@@ -414,3 +420,5 @@ test('scrubRunDir：voided/ 下被挪走的首次输出也就地脱敏，结果�
   assert.ok(!(await fs.readFile(log, 'utf8')).includes(FAKE), '首次输出里的凭据也要抹');
   assert.equal(r.runDir.redacted[path.join(VOIDED_ATTEMPTS_DIR, 'gemini', 'attempt-1', 'stdout.jsonl')], 1);
 });
+
+}

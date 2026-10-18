@@ -16,6 +16,12 @@ import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { Ctx } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
+} else {
+
 /**
  * 编译测试出口（设计 §14）。
  *
@@ -259,3 +265,5 @@ test('verify 的 run.json 用独立 schema 标识，不冒充 trivium.run.v1（A
   assert.notEqual(runJson.schema, 'trivium.run.v1');
   assert.equal(runJson.stage, 'verify');
 });
+
+}

@@ -9,6 +9,12 @@ import { invokeClaude } from '../../src/trivium/adapters/claude.js';
 import { resolveClaudeRoute, claudeProbeForRoute } from '../../src/trivium/adapters/claude-route.js';
 import { claudeAdapter } from '../../src/trivium/adapters/claude.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 test('Claude 包装器收到长profile、print、模型、effort和stdin；认证清理且指纹轮换失效', async () => {
   const root = await scratchDir('trivium-cld-fixture-');
   const old = { HOME: process.env.HOME, ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
@@ -109,3 +115,5 @@ test('不同路线版本互不作废，未测或证伪的拒绝轨迹能力保�
     assert.equal(claudeProbeForRoute(cfg,'qwen'), undefined);
   } finally { if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome; }
 });
+
+}

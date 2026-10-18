@@ -3,10 +3,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { scratchDirSync } from '../helpers/scratch.js';
 import { parseClaudeEvents } from '../../src/trivium/adapters/claude-trace.js';
+
+// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
+} else {
 const require = createRequire(import.meta.url);
 const core = require(path.resolve('scripts/agent-access-budget.cjs')) as {
   vendorOf(bin: string, args?: unknown): string | null;
@@ -57,7 +64,7 @@ test('原生codex边界卸下NODE_OPTIONS，Node包装器保留', () => {
   const f = fixture(); try {
     const fake = path.join(f.root, 'codex');
     // 拷贝现成系统原生env二进制，避免任意两字节脚本被shell回退造成假证据。
-    fs.copyFileSync('/usr/bin/env', fake); fs.chmodSync(fake, 0o700);
+    fs.copyFileSync(process.platform === 'win32' ? process.execPath : '/usr/bin/env', fake); fs.chmodSync(fake, 0o700);
     const env = { ...process.env, TRIVIUM_ACCESS_BUDGET_ROOT: f.root, TRIVIUM_ACCESS_BUDGET_POOL: 'admission',
       TRIVIUM_ACCESS_LOAD_TOKEN: 'native-test', NODE_OPTIONS: `--require ${path.resolve('scripts/agent-access-budget-preload.cjs')}` };
     const r = spawnSync(process.execPath, ['-e', `const c=require('node:child_process').spawn(${JSON.stringify(fake)},[],{stdio:['ignore','pipe','inherit']});let s='';c.stdout.on('data',b=>s+=b);c.on('close',()=>process.stdout.write(String(s.split('\\n').some(x=>x.startsWith('NODE_OPTIONS=')))));`], { env, encoding: 'utf8' });
@@ -99,7 +106,7 @@ test('厂商spawn显式env保留隔离语义，不重新注入调用者删除的
   } finally { f.cleanup(); }
 });
 test('写负对照只认实际cwd下精确目标、注册层配对错误及前后文件状态', async () => {
-  const helper = await import(path.resolve('scripts/agent-access-evidence.mjs'));
+  const helper = await import(pathToFileURL(path.resolve('scripts/agent-access-evidence.mjs')).href);
   const use = { name: 'Write', id: 'x', input: { file_path: 'breach.txt', content: 'BREACH' } };
   const raw = (id = 'x', text = 'No such tool available: Write. Write is disabled for this session, in subagents as well as here.') =>
     JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content: text }] } });
@@ -146,7 +153,7 @@ test('写负对照只认实际cwd下精确目标、注册层配对错误及前�
   assert.equal(helper.codexWriteAttemptDenied({ ...codex, rawItems: [{ ...item, command: item.command.replace('/bin/zsh', '/bin/bash') }] }, context), false);
 });
 test('旧Qwen和V4 pro真实录制样本重算：相对路径不漏判，原件不改写', async () => {
-  const helper = await import(path.resolve('scripts/agent-access-evidence.mjs'));
+  const helper = await import(pathToFileURL(path.resolve('scripts/agent-access-evidence.mjs')).href);
   for (const name of ['claude-qwen-write-full-1', 'claude-deepseek-pro-write-full-1']) {
     const dir = path.resolve('doc/05_testing/evidence/agent-access-20261010-claude-three-providers/routes', name);
     const read = (file: string) => JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
@@ -159,7 +166,7 @@ test('旧Qwen和V4 pro真实录制样本重算：相对路径不漏判，原件�
   }
 });
 test('文件状态不把悬空链接当作未生成', async () => {
-  const helper = await import(path.resolve('scripts/agent-access-evidence.mjs'));
+  const helper = await import(pathToFileURL(path.resolve('scripts/agent-access-evidence.mjs')).href);
   const f = fixture(); try {
     const target = path.join(f.root, 'breach.txt');
     assert.equal(helper.captureFileState(target).exists, false);
@@ -169,7 +176,7 @@ test('文件状态不把悬空链接当作未生成', async () => {
   } finally { f.cleanup(); }
 });
 test('脱敏失效拒绝落盘；装载绑定PID、token与两份脚本哈希', async () => {
-  const helper = await import(path.resolve('scripts/agent-access-evidence.mjs'));
+  const helper = await import(pathToFileURL(path.resolve('scripts/agent-access-evidence.mjs')).href);
   const f = fixture(); try {
     const target = path.join(f.root, 'unsafe.json');
     // 人工假凭据，故意模拟redactor失效；scanner必须挡住，不落文件。
@@ -184,3 +191,5 @@ test('脱敏失效拒绝落盘；装载绑定PID、token与两份脚本哈希', 
     assert.equal(helper.primaryLoaded([mark], call, 43), false);
   } finally { f.cleanup(); }
 });
+
+}

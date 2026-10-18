@@ -6,6 +6,12 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {scratchDir} from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物');
+} else {
+
 async function helpers(){return import(pathToFileURL(path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r19/controlled-runtime.mjs')).href);}
 const limits={requests:4,per_request_bytes:128,total_body_bytes:512,runtime_ms:2000};
 async function request(port:number,body='{}',endpoint='/v1/messages'){
@@ -60,3 +66,5 @@ test('临时模式settings仅单键/0600/固定hash，变异权限、键、类�
  await fs.rm(reference.path);await fs.writeFile(home+'/other','{}');await fs.symlink(home+'/other',reference.path);assert.equal(inspectModeSettings(reference).valid,false);
  await fs.rm(reference.path);assert.equal(pathAbsent(reference.path),true);assert.equal(inspectModeSettings(reference).valid,false);assert.throws(()=>createModeSettings(home,{permissionMode:'auto'}),/source-not-default/);
 });
+
+}

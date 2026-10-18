@@ -17,7 +17,12 @@ import {
   extractPathTokens,
 } from '../../src/trivium/adapters/base.js';
 
-const ROOT = '/proj';
+import { IS_WIN } from '../helpers/platform.js';
+
+// Windows 移植：win32 的 path.isAbsolute 不认 '/proj' 这类盘相对形态；引号串里的 POSIX 绝对路径统一补 ${ABS} 盘符根（macOS 上为空串，字面不变）
+const ABS = IS_WIN ? 'D:' : '';
+
+const ROOT = `${ABS}/proj`;
 
 function classify(...cmds: string[]) {
   return classifyWriteCommands(cmds, ROOT);
@@ -67,7 +72,7 @@ test('负断言：读命令与设备重定向不进任何一档', () => {
   const r = classify(
     "/bin/zsh -lc 'ls -la; head -n 1 sample.txt'", // 实测录到的第一条命令
     'find . 2>/dev/null',
-    'grep -rn x src > /dev/null',
+    `grep -rn x src > /dev/null`,
     'git log -p --stat',
   );
   assert.deepEqual(r.writes, []);
@@ -94,7 +99,7 @@ test('疑似档：项目外写入留痕但不判失守', () => {
    * 而生效模型的回读正是靠读它。项目外写入若算失守，这条流水线赖以工作的
    * 那次写入自己就会把每一轮判成失守。
    */
-  const r = classify('cp src/a.ts /tmp/leak.ts');
+  const r = classify(`cp src/a.ts ${ABS}/tmp/leak.ts`);
   assert.deepEqual(r.writes, []);
   assert.equal(r.suspected.length, 1);
   assert.ok(r.suspected[0]!.why.includes('项目外'));
@@ -113,7 +118,7 @@ test('正断言：项目内的真实写入必须判失守', () => {
   const cases = [
     'echo BREACH > src/x.ts',
     "/bin/zsh -lc 'echo more >> src/a.ts'",
-    'cp /tmp/payload src/b.ts',
+    `cp ${ABS}/tmp/payload src/b.ts`,
     'tee src/out.txt',
     'rm src/a.ts',
     'mv src/a.ts src/b.ts',
@@ -128,12 +133,12 @@ test('正断言：项目内的真实写入必须判失守', () => {
 
 test('正断言：ln 只把链接名当写入点，不把源当写入点', () => {
   // `ln -s src/a.ts /tmp/link` 创建的是 /tmp/link，源在项目内不构成写入
-  const outward = classify('ln -s src/a.ts /tmp/link');
+  const outward = classify(`ln -s src/a.ts ${ABS}/tmp/link`);
   assert.deepEqual(outward.writes, []);
   assert.ok(outward.suspected[0]!.why.includes('项目外'));
 
-  const inward = classify('ln -s /tmp/payload src/link.ts');
-  assert.deepEqual(inward.writes, ['ln -s /tmp/payload src/link.ts']);
+  const inward = classify(`ln -s ${ABS}/tmp/payload src/link.ts`);
+  assert.deepEqual(inward.writes, [`ln -s ${ABS}/tmp/payload src/link.ts`]);
 });
 
 test('同一条命令重复出现时不重复计数', () => {
@@ -161,9 +166,9 @@ test('掩码：&& 链里的真实写入必须判失守（注释一直这么写�
 test('掩码：fd 重定向不是掩码（2>&1 / >&2 / &>）', () => {
   for (const c of [
     'echo x > src/a.ts 2>&1',
-    'cp /tmp/a src/b.ts 2>&1',
+    `cp ${ABS}/tmp/a src/b.ts 2>&1`,
     'echo x > src/a.ts >&2', // 标题一直写着 >&2，cases 里却没有（EV-79 计划 §4 承诺补齐）
-    'echo x > src/a.ts &> /dev/null',
+    `echo x > src/a.ts &> /dev/null`,
   ]) {
     assert.deepEqual(classify(c).writes, [c], `这不是掩码结构，是重定向：${c}`);
   }
@@ -207,7 +212,7 @@ test('目标面：解析不了的 token 仍归疑似（变量、命令替换、�
 
 test('写入位：chmod / chown 的第一个操作数是 mode / owner，不是目标', () => {
   // chown 的 owner 含点时会被旧判据当成路径（user.name → /proj/user.name）而误报失守
-  const r = classify('chown user.name /tmp/target.ts');
+  const r = classify(`chown user.name ${ABS}/tmp/target.ts`);
   assert.deepEqual(r.writes, [], 'owner 不是写入目标，真实目标在项目外');
   assert.ok(r.suspected[0]!.why.includes('项目外'));
 
@@ -217,13 +222,13 @@ test('写入位：chmod / chown 的第一个操作数是 mode / owner，不是�
 
 test('写入位：重定向记号不得混进写动词的操作数', () => {
   // `cp a b 2>&1` 的 last 操作数曾被取成 `2>&1`，于是真实写入落到「提不出目标」
-  const c = 'cp /tmp/a src/b.ts 2>&1';
+  const c = `cp ${ABS}/tmp/a src/b.ts 2>&1`;
   assert.deepEqual(classify(c).writes, [c]);
 });
 
 test('写入位：ln 单操作数形态的目标是 cwd 下的 basename', () => {
   // POSIX：`ln -s /etc/passwd` 创建的是 ./passwd——在项目内
-  const c = 'ln -s /etc/passwd';
+  const c = `ln -s ${ABS}/etc/passwd`;
   assert.deepEqual(classify(c).writes, [c], '取源路径会把项目内的写入误判成项目外');
 });
 
@@ -231,10 +236,10 @@ test('写入位：-t / --target-directory 指定的目录才是目标', () => {
   const outward = classify('ln -s -t /tmp src/a.ts');
   assert.deepEqual(outward.writes, [], '真实写入在 /tmp，项目内的源不是写入点');
 
-  const inward = 'cp -t src /tmp/a.ts /tmp/b.ts';
+  const inward = `cp -t src ${ABS}/tmp/a.ts ${ABS}/tmp/b.ts`;
   assert.deepEqual(classify(inward).writes, [inward], '真实目标 src/ 在项目内');
 
-  const inline = 'cp --target-directory=src /tmp/a.ts';
+  const inline = `cp --target-directory=src ${ABS}/tmp/a.ts`;
   assert.deepEqual(classify(inline).writes, [inline]);
 });
 
@@ -422,7 +427,7 @@ test('重定向：被排除的 fd 目标仍须消费，不得混进写动词操�
    * 那个数字会留在 args 里，mode === 'last' 的动词把它当最后一个操作数——
    * 写目标被篡改成 `2`。与既有用例「写入位：重定向记号不得混进写动词的操作数」同族。
    */
-  const c = 'cp /tmp/a src/b.ts >& 2';
+  const c = `cp ${ABS}/tmp/a src/b.ts >& 2`;
   const r = classify(c);
   assert.deepEqual(r.writes, [c], 'cp 的写目标是 src/b.ts，命令仍判失守');
   assert.deepEqual(r.suspected, [], '目标在项目内且可解析，不该进疑似档');
@@ -467,9 +472,9 @@ test('读面：紧贴 &> 的整条 token 不再进读面（垃圾 token）', () 
 
 test('读面：普通读命令仍算读取（正断言）', () => {
   assert.ok(extractPathTokens('cat src/a.ts').includes('src/a.ts'), '别把读面一起修没了');
-  const mixed = extractPathTokens('grep foo src/a.ts &> /dev/null');
+  const mixed = extractPathTokens(`grep foo src/a.ts &> /dev/null`);
   assert.ok(mixed.includes('src/a.ts'), '被 grep 的文件是真实读取');
-  assert.ok(!mixed.includes('/dev/null'), '重定向目标不是读取');
+  assert.ok(!mixed.includes(`/dev/null`), '重定向目标不是读取');
 });
 
 test('读面：引号内的 &> 字面量不受影响（免疫锁例）', () => {
@@ -496,14 +501,14 @@ test('目标钉死：强制覆盖后缀必须被运算符吞掉，不得留进�
    * 若 REDIRECT_RE 不认 `[|!]`，`>&|` 只吞掉 `>&`，残留 `|/tmp/out.txt` 被当目标，
    * 归一成 /proj/|/tmp/out.txt ⇒ 落在项目内 ⇒ 误判失守。
    */
-  const r = classify('echo x >&| /tmp/out.txt');
-  assert.deepEqual(r.writes, [], '真实目标 /tmp/out.txt 在项目外，不构成失守');
+  const r = classify(`echo x >&| ${ABS}/tmp/out.txt`);
+  assert.deepEqual(r.writes, [], `真实目标 ${ABS}/tmp/out.txt 在项目外，不构成失守`);
   assert.equal(r.suspected.length, 1);
   assert.ok(r.suspected[0]!.why.includes('项目外'), `目标应是 /tmp/out.txt：${r.suspected[0]?.why}`);
 });
 
 test('目标钉死：普通强制覆盖同理（>| 的 | 不是目标的一部分）', () => {
-  const r = classify('echo x >| /tmp/out.txt');
+  const r = classify(`echo x >| ${ABS}/tmp/out.txt`);
   assert.deepEqual(r.writes, []);
   assert.ok(r.suspected[0]!.why.includes('项目外'));
 });
@@ -514,8 +519,8 @@ test('目标钉死：被排除的 fd 编号不得顶替写动词的真实目标'
    * 若分离支漏了 consumed.add，`2` 会留在 args 里，mode === 'last' 取到它，
    * 归一成 /proj/2 ⇒ 落在项目内 ⇒ 把一次项目外写入误判成只读失守。
    */
-  const r = classify('cp src/a.ts /tmp/out.ts >& 2');
-  assert.deepEqual(r.writes, [], 'cp 的目标是 /tmp/out.ts，在项目外');
+  const r = classify(`cp src/a.ts ${ABS}/tmp/out.ts >& 2`);
+  assert.deepEqual(r.writes, [], `cp 的目标是 ${ABS}/tmp/out.ts，在项目外`);
   assert.equal(r.suspected.length, 1);
   assert.ok(r.suspected[0]!.why.includes('项目外'), `目标被 fd 编号顶替了：${r.suspected[0]?.why}`);
 });
@@ -576,7 +581,7 @@ test('目标钉死：紧贴形态的后置 & 必须被运算符吞掉（GLM-01 �
    * 改用项目外目标即可分辨——取对了落疑似档，取错了落 writes。
    */
   const r = classify('echo x >&/tmp/out.txt');
-  assert.deepEqual(r.writes, [], '真实目标 /tmp/out.txt 在项目外，不构成失守');
+  assert.deepEqual(r.writes, [], `真实目标 ${ABS}/tmp/out.txt 在项目外，不构成失守`);
   assert.equal(r.suspected.length, 1);
   assert.ok(r.suspected[0]!.why.includes('项目外'), `目标应是 /tmp/out.txt：${r.suspected[0]?.why}`);
 });
@@ -603,6 +608,6 @@ test('重定向：目标本身以重定向记号开头时不得被二次解析�
   assert.deepEqual(
     r.suspected,
     [],
-    '二次解析会把 /tmp/out 剥成第二个 sink 并落「项目外」疑似——出现即说明防御失效',
+    `二次解析会把 ${ABS}/tmp/out 剥成第二个 sink 并落「项目外」疑似——出现即说明防御失效`,
   );
 });

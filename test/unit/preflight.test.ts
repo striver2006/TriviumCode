@@ -18,6 +18,12 @@ import { REPO_ROOT } from '../helpers/fixture.js';
 import { scratchDir } from '../helpers/scratch.js';
 import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
 
+// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
+} else {
+
 // doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
 isolateEntryScanHome();
 
@@ -1277,3 +1283,5 @@ test('U8 预检：共享根只有残留、本轮 Driver 读它 ⇒ 照常通过�
   assert.ok(w.detail.includes('份本产品的历史拷贝'), w.detail);
   assertWarnInvariant(r);
 });
+
+}

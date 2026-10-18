@@ -12,6 +12,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
+import path from 'node:path';
 import {
   checkEvidence,
   effectiveReadPaths,
@@ -25,7 +26,12 @@ import { TRIVIUM_DIR, defaultConfig } from '../../src/trivium/config.js';
 import type { CriticRequest, CriticResult, Review } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
 
-const ROOT = '/proj';
+import { IS_WIN } from '../helpers/platform.js';
+
+// Windows 移植：win32 的 path.isAbsolute 不认 '/proj' 这类盘相对形态；引号串里的 POSIX 绝对路径统一补 ${ABS} 盘符根（macOS 上为空串，字面不变）
+const ABS = IS_WIN ? 'D:' : '';
+
+const ROOT = `${ABS}/proj`;
 const COMMAND_TRACE: TraceCapability = { traceShape: 'command-trace', rejectionRecorded: false };
 
 const REQ: CriticRequest = {
@@ -86,7 +92,7 @@ function result(over: Partial<CriticResult> = {}): CriticResult {
 
 // ── 提取口径（r3 blocker 的四组裁定）────────────────────────────────
 
-test('提取：剥掉 /bin/zsh -lc 子 shell 封装后才拿得到路径（r3 blocker）', () => {
+test(`提取：剥掉 /bin/zsh -lc 子 shell 封装后才拿得到路径（r3 blocker）`, () => {
   // 不剥这一层，整段子命令会塌成一个引号 token，路径一个都提不出来
   assert.deepEqual(extractPathTokens(`/bin/zsh -lc 'head -n 1 ${ROOT}/src/a.ts'`), [`${ROOT}/src/a.ts`]);
   assert.deepEqual(extractPathTokens(`/bin/bash -c "cat src/b.ts"`), ['src/b.ts']);
@@ -136,9 +142,9 @@ test('提取：写动词按命令段判定，不跨管道与分号（r6 GLM-02b�
 
 test('提取：动词取 basename，绝对路径动词同样生效（r6 AGY-01）', () => {
   assert.deepEqual(
-    extractPathTokens('/bin/cp src/a.ts dst/b.ts'),
+    extractPathTokens(`/bin/cp src/a.ts dst/b.ts`),
     ['src/a.ts'],
-    '按全路径查表会整条漏掉，且 /bin/cp 自身含 / 会被当成读取路径',
+    `按全路径查表会整条漏掉，且 /bin/cp 自身含 / 会被当成读取路径`,
   );
 });
 
@@ -207,7 +213,7 @@ test('command-trace 的有效路径 = read_paths ∪ 命令提取，裸相对按
   const r = result({ read_paths: [`${ROOT}/src/a.ts`], command_texts: ['cat src/b.ts'] });
   const eff = effectiveReadPaths(r, COMMAND_TRACE, ROOT);
   assert.ok(eff.includes(`${ROOT}/src/a.ts`), '原有结构化路径保留');
-  assert.ok(eff.includes(`${ROOT}/src/b.ts`), '裸相对按 projectRoot 归一后进入');
+  assert.ok(eff.includes(path.normalize(`${ROOT}/src/b.ts`)), '裸相对按 projectRoot 归一后进入');
 });
 
 test('回填：~ / $HOME 在归一前展开，否则 consulted 交叉核对必然对不上（r6 AGY-05）', () => {
@@ -215,10 +221,10 @@ test('回填：~ / $HOME 在归一前展开，否则 consulted 交叉核对必�
   const r = result({ read_paths: [], command_texts: [`cat ~/Work/x/a.ts`, `cat $HOME/y/b.ts`] });
   const eff = effectiveReadPaths(r, COMMAND_TRACE, ROOT);
   assert.ok(
-    eff.some((p) => p === `${home}/Work/x/a.ts`),
+    eff.some((p) => p === path.join(home, 'Work/x/a.ts')),
     'path.resolve 会把 ~/x 当裸相对路径解析成 <projectRoot>/~/x——那条路径根本不存在',
   );
-  assert.ok(eff.some((p) => p === `${home}/y/b.ts`));
+  assert.ok(eff.some((p) => p === path.join(home, 'y/b.ts')));
   assert.ok(!eff.some((p) => p.includes('/~/')), '归一结果里不得残留未展开的 ~');
 });
 
@@ -366,7 +372,7 @@ function judge(over: Partial<CriticResult>, cap?: TraceCapability, review: Revie
     archiveRootAbs: OPTS.archiveRootAbs,
     projectRoot: ROOT,
     triviumDir: `${ROOT}/${TRIVIUM_DIR}`,
-    runRoot: '/tmp/runs',
+    runRoot: `${ABS}/tmp/runs`,
     ...(cap ? { capability: cap } : {}),
   });
 }

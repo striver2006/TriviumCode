@@ -22,6 +22,12 @@ import { headSha } from '../../src/trivium/util/git.js';
 import { setGate } from '../../src/trivium/state.js';
 import type { Ctx } from '../../src/trivium/types.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 /**
  * 故障注入（设计 §17.2，修订版 M3 计划 §5 与 §7）。
  *
@@ -1746,3 +1752,5 @@ test('构建标识告警经收尾接线落进 run.json 的 gate.warnings，gate 
       `gate --check 必须转述构建标识告警：${JSON.stringify(js.warnings)}`,
     );
   });
+
+}

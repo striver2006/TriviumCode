@@ -8,6 +8,12 @@ import { ENTRY_PROBLEM_LABELS } from '../../src/trivium/entry-collisions.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
+} else {
+
 /*
  * `npm run install:check`（`scripts/install-check.mjs`）对共享根残留的读数（主题 M12-共享根残留检测，计划 r2 §4 U9）。
  *
@@ -73,3 +79,5 @@ test('U9 共享根只有别家的 entry skill ⇒ 退 0、✓ 行照旧', { skip
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /^✓ 无重名、无残留（已查 .+ 的安装根与额外读取面）\n$/);
 });
+
+}

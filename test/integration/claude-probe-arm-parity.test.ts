@@ -16,6 +16,12 @@ import { promises as fs } from 'node:fs';
 import { probeClaude } from '../../src/trivium/probes/claude.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 let work = '';
 let fakeBin = '';
 
@@ -82,3 +88,5 @@ test('EV-47 ① 端到端：逐文件第三臂注入的规则含生产形态的�
   assert.equal(subtree.length, 3, `每个读工具一条子树规则（此前第三臂没有这一类）：${JSON.stringify(deny)}`);
   for (const r of exact) assert.ok(subtree.includes(r.replace(/\)$/, '/**)')), `精确与子树成对：${r}`);
 });
+
+}

@@ -37,6 +37,12 @@ import { ZCODE_BUILTIN_PROVIDER_ENV, type ZcodeInvokeOptions, type ZcodeInvokeOu
 import type { Config } from '../../src/trivium/types.js';
 import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
 
+// WIN_FILE_SKIP（Windows 移植）：依赖 POSIX 专属机制（shebang 假 CLI / PATH 垫片 / ps 故障注入）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 依赖 POSIX 专属机制（shebang 假 CLI / PATH 垫片 / ps 故障注入）');
+} else {
+
 // doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
 isolateEntryScanHome();
 
@@ -619,3 +625,5 @@ test('D10 doctor --only codex（EV-25）：负对照判不了 ⇒ 出未判定 w
     });
   }
 });
+
+}

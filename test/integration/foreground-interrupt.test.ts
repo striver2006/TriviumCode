@@ -19,6 +19,12 @@ import { groupsWithMark, killGroup, leaderGroupsWithMark } from '../helpers/proc
 import { encodeStubConfig, STUB_ENV_VAR } from '../../src/trivium/adapters/stub.js';
 import { stripNonCode } from '../helpers/strip-non-code.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 const T = { timeout: 120_000 };
 const RP = path.join(REPO_ROOT, 'dist/test/src/trivium/run-protocol.js');
 const EX = path.join(REPO_ROOT, 'dist/test/src/trivium/util/exec.js');
@@ -174,3 +180,5 @@ test('EV-155 G1（源码护栏）：doctor、preflight 入口与 review 的 work
   const worker = review.indexOf('return workerMain(');
   assert.ok(install > worker && worker >= 0, 'cmdReview 应在 worker 分支之后装（worker 有自己的处理器）');
 });
+
+}

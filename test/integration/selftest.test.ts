@@ -10,6 +10,12 @@ import { STUB_ENV_VAR } from '../../src/trivium/adapters/stub.js';
 import { DEFAULT_CRITICS } from '../../src/trivium/types.js';
 import { FAKE_GIT_STDERR, writeFakeGit } from '../helpers/fake-git.js';
 
+// WIN_FILE_SKIP（Windows 移植）：依赖 POSIX 专属机制（shebang 假 CLI / PATH 垫片 / ps 故障注入）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 依赖 POSIX 专属机制（shebang 假 CLI / PATH 垫片 / ps 故障注入）');
+} else {
+
 /**
  * `doctor --selftest` 本身的回归（交付物 8）。
  *
@@ -285,3 +291,5 @@ test('EV-209 S2 PATH 里没有 git：「创建夹具仓库」失败、原因是�
     await dropPrivateTmp(w.base);
   }
 });
+
+}

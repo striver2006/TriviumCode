@@ -37,6 +37,12 @@ import { runDoctor } from '../../src/trivium/doctor.js';
 import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
 import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
 
+// WIN_FILE_SKIP（Windows 移植）：zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）');
+} else {
+
 // doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
 isolateEntryScanHome();
 
@@ -986,3 +992,5 @@ test('runtime_selection 接线：判不出（置首支恒等）⇒ 不覆盖旧�
   assert.ok(notes.some((n) => n.startsWith('runtime_selection=未判定') && n.includes('"reorder_needed"') && n.includes('identity')));
   assert.ok(notes.some((n) => n.includes('⚠️ 同形臂') && n.includes(RUNTIME_WARN)), '判不出时运行期 ⚠️ 照旧出');
 });
+
+}

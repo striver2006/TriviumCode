@@ -35,6 +35,12 @@ import { agentConfigOf, defaultConfig } from '../../src/trivium/config.js';
 import type { ZcodeProbe } from '../../src/trivium/types.js';
 import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
 
+// WIN_FILE_SKIP（Windows 移植）：zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）');
+} else {
+
 // doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
 isolateEntryScanHome();
 
@@ -778,3 +784,5 @@ test('D17 既有结论 response_field 为 null 时 blocker 照出、warning 也�
     await cleanup(w);
   }
 });
+
+}

@@ -1,6 +1,9 @@
 /**
- * 生成可搬到其他 Mac 的预构建安装包；只从白名单复制，不打包账号、探针、运行记录和审查原件。
+ * 生成可搬到其他主机的预构建安装包；只从白名单复制，不打包账号、探针、运行记录和审查原件。
  * 先 npm run build；正式包要求干净的 Git 工作树，--candidate 明确标成候选包。
+ *
+ * 1.1.0 起按构建主机平台出包（设计 §7.1/§8）：macOS 出 tar.gz + `.command` 快捷入口，
+ * Windows 出 zip + `.cmd` 快捷入口；Linux 仍拒绝。跨平台打包不做（包内 launcher 与文档文案随平台）。
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -19,15 +22,16 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--out' && args[i + 1] && !args[i + 1].startsWith('--')) out = path.resolve(args[++i]);
   else throw new Error('用法：node scripts/package-release.mjs [--candidate] [--out <目录>]');
 }
-if (process.platform !== 'darwin') throw new Error('本版本仅发布 macOS 安装包；Windows 原生与 Linux 尚未验收。');
+const PLATFORM = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : null;
+if (PLATFORM === null) throw new Error('本脚本仅发布 macOS 与 Windows 安装包；Linux/WSL 尚未验收。');
 const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
 if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) throw new Error('正式产品版本须为 x.y.z。');
-const git = async (...argv) => (await execFile('git', ['-c', 'core.quotePath=false', ...argv], { cwd: root })).stdout.trim();
+const git = async (...argv) => (await execFile('git', ['-c', 'core.quotePath=false', ...argv], { cwd: root, windowsHide: true })).stdout.trim();
 const head = await git('rev-parse', 'HEAD');
 const dirty = (await git('status', '--porcelain=v1', '--untracked-files=all')) !== '';
 if (dirty && !candidate) throw new Error('工作树未提交，不能生成正式包。先完成提交；预览可显式加 --candidate。');
 const cli = 'skills/dual-critic/scripts/trivium.cjs';
-const version = (await execFile(process.execPath, [path.join(root, cli), '--version'])).stdout.trim();
+const version = (await execFile(process.execPath, [path.join(root, cli), '--version'], { windowsHide: true })).stdout.trim();
 if (version !== pkg.version) throw new Error(`CLI ${version} 与 package.json ${pkg.version} 不一致，请重新构建。`);
 // 安装器执行时还读取 carriers；只拷两个 CJS 文件会导致异机安装失败。
 const files = ['README.md', 'LICENSE', 'package.json', 'dist/install.cjs', 'scripts/install-check.mjs'];
@@ -55,9 +59,9 @@ for (const e of await fs.readdir(path.join(root, 'doc'), { withFileTypes: true }
 const { build } = await import('esbuild');
 await fs.mkdir(out, { recursive: true });
 const scratch = await fs.mkdtemp(path.join(out, '.package-'));
-const name = `TriviumCode-${pkg.version}-macos${candidate ? '-candidate' : ''}`;
+const name = `TriviumCode-${pkg.version}-${PLATFORM === 'windows' ? 'windows-x64' : 'macos'}${candidate ? '-candidate' : ''}`;
 const dest = path.join(out, name);
-const archive = `${dest}.tar.gz`;
+const archive = PLATFORM === 'windows' ? `${dest}.zip` : `${dest}.tar.gz`;
 for (const p of [dest, archive, `${archive}.sha256`]) {
   try { await fs.lstat(p); throw new Error(`不覆盖已有发布物：${p}`); }
   catch (e) { if (e.code !== 'ENOENT') { await fs.rm(scratch, { recursive: true, force: true }); throw e; } }
@@ -90,19 +94,34 @@ try {
     licenses.push(`${location} ${entry.version}\n${license}`);
   }
   await fs.writeFile(path.join(staged, '第三方许可.txt'), licenses.join('\n\n' + '='.repeat(60) + '\n\n'));
-  const launchers = { '安装.command': ['dist/install.cjs'], '安装前检查.command': ['scripts/install-check.mjs'],
-    '卸载.command': ['dist/install.cjs', '--uninstall'] };
-  for (const [file, argv] of Object.entries(launchers)) {
-    await fs.writeFile(path.join(staged, file), `#!/bin/sh\nset -eu\ncd "$(dirname "$0")"\nif [ "$(uname -s)" != Darwin ]; then\n  echo '本包只支持 macOS。Windows 原生支持尚未实现。' >&2\n  exit 1\nfi\nnode -e 'if (Number(process.versions.node.split(".")[0]) < 18) { console.error("需要 Node.js 18 或以上"); process.exit(1); }'\nnode ${argv.join(' ')} "$@"\n`, { mode: 0o755 });
+  if (PLATFORM === 'windows') {
+    // Windows 快捷入口：.cmd 按 OEM 代码页读取，文案一律 ASCII（中文在 开始使用.md 里，UTF-8 无碍）
+    const launchers = { '安装.cmd': ['dist\\install.cjs'], '安装前检查.cmd': ['scripts\\install-check.mjs'],
+      '卸载.cmd': ['dist\\install.cjs', '--uninstall'] };
+    for (const [file, argv] of Object.entries(launchers)) {
+      await fs.writeFile(path.join(staged, file),
+        `@echo off\r\nsetlocal\r\ncd /d "%~dp0"\r\n` +
+        `node -e "if (Number(process.versions.node.split('.')[0]) < 18) { console.error('Node.js 18 or above is required.'); process.exit(1); }"\r\n` +
+        `node ${argv.join(' ')} %*\r\n`, { mode: 0o755 });
+    }
+  } else {
+    const launchers = { '安装.command': ['dist/install.cjs'], '安装前检查.command': ['scripts/install-check.mjs'],
+      '卸载.command': ['dist/install.cjs', '--uninstall'] };
+    for (const [file, argv] of Object.entries(launchers)) {
+      await fs.writeFile(path.join(staged, file), `#!/bin/sh\nset -eu\ncd "$(dirname "$0")"\nif [ "$(uname -s)" != Darwin ]; then\n  echo '本包只支持 macOS；Windows 请使用对应的 windows-x64 安装包。' >&2\n  exit 1\nfi\nnode -e 'if (Number(process.versions.node.split(".")[0]) < 18) { console.error("需要 Node.js 18 或以上"); process.exit(1); }'\nnode ${argv.join(' ')} "$@"\n`, { mode: 0o755 });
+    }
   }
-  await fs.writeFile(path.join(staged, '开始使用.md'), `# TriviumCode ${pkg.version}\n\n${candidate ? '候选安装包，尚未作为正式版本交付。' : 'macOS 稳定版安装包。'}\n\n先安装 Node.js 18 或以上、Git 2.20 或以上，以及需要的 Agent CLI 并登录。目标机无需 npm install，也无需编译。\n\n在终端进入本目录：\n\n\`\`\`sh\nnode scripts/install-check.mjs\nnode dist/install.cjs\nnode ~/.claude/skills/dual-critic/scripts/trivium.cjs doctor --selftest\n\`\`\`\n\n也可运行本目录的安装前检查.command、安装.command。检查脚本只查读取面重名与残留，安装器另查运行时身份与源目录重叠。\n\n详细步骤见 doc/06_deployment/稳定版部署手册.md；日常操作见 doc/07_manuals/稳定版使用手册.md；限制见 doc/08_project/现存Bug与未完成工作清单.md。\n\n文件校验.json 列出除自身外全部文件的 SHA-256。源码与历史测试原始证据不在此安装包内，代码路径和 evidence 链接请到源码仓库查阅。包不含 Node、Git、厂商程序、登录信息和任何本机配置。\n`);
+  const platformBrief = PLATFORM === 'windows'
+    ? 'Windows 安装包（需 Git for Windows；详见 doc/06_deployment/稳定版部署手册.md 的 Windows 章节）。'
+    : 'macOS 稳定版安装包。';
+  await fs.writeFile(path.join(staged, '开始使用.md'), `# TriviumCode ${pkg.version}\n\n${candidate ? '候选安装包，尚未作为正式版本交付。' : platformBrief}\n\n先安装 Node.js 18 或以上、Git 2.20 或以上（Windows 为 Git for Windows），以及需要的 Agent CLI 并登录。目标机无需 npm install，也无需编译。\n\n${PLATFORM === 'windows' ? '在 cmd / PowerShell / Git Bash 进入本目录：' : '在终端进入本目录：'}\n\n\`\`\`sh\nnode scripts/install-check.mjs\nnode dist/install.cjs\nnode ~/.claude/skills/dual-critic/scripts/trivium.cjs doctor --selftest\n\`\`\`\n\n${PLATFORM === 'windows' ? '也可运行本目录的 安装前检查.cmd、安装.cmd。' : '也可运行本目录的安装前检查.command、安装.command。'}检查脚本只查读取面重名与残留，安装器另查运行时身份与源目录重叠。\n\n详细步骤见 doc/06_deployment/稳定版部署手册.md；日常操作见 doc/07_manuals/稳定版使用手册.md；限制见 doc/08_project/现存Bug与未完成工作清单.md。\n\n文件校验.json 列出除自身外全部文件的 SHA-256。源码与历史测试原始证据不在此安装包内，代码路径和 evidence 链接请到源码仓库查阅。包不含 Node、Git、厂商程序、登录信息和任何本机配置。\n`);
   await fs.writeFile(path.join(staged, '发布信息.json'), JSON.stringify({ product: pkg.name, version: pkg.version,
     release_state: candidate ? 'candidate' : 'stable', source_commit: head, source_dirty: dirty,
     source_snapshot: { repo_root_commit: stamp.repo_root_commit, git_head: stamp.git_head, dirty: stamp.dirty,
       inputs_sha256: stamp.inputs_sha256, computed_at: stamp.built_at },
     cli_sha256: createHash('sha256').update(bundleText).digest('hex'),
-    platform: 'macos', native_windows_supported: false,
-    runtime: 'Node.js >=18, Git >=2.20; external Agent CLIs required', created_at: new Date().toISOString() }, null, 2) + '\n');
+    platform: PLATFORM, native_windows_supported: true,
+    runtime: 'Node.js >=18, Git >=2.20 (Windows: Git for Windows); external Agent CLIs required', created_at: new Date().toISOString() }, null, 2) + '\n');
   async function manifest(dir, prefix = '') {
     const entries = [];
     for (const e of (await fs.readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -113,14 +132,25 @@ try {
     return entries;
   }
   await fs.writeFile(path.join(staged, '文件校验.json'), JSON.stringify(await manifest(staged), null, 2) + '\n');
-  await execFile('/usr/bin/tar', ['-czf', path.join(scratch, `${name}.tar.gz`), '-C', scratch, name],
-    { env: { ...process.env, COPYFILE_DISABLE: '1' } });
-  const sum = createHash('sha256').update(await fs.readFile(path.join(scratch, `${name}.tar.gz`))).digest('hex');
+  if (PLATFORM === 'windows') {
+    // Windows 10+ 自带 bsdtar（System32\tar.exe），按扩展名出 zip（-a）；不可用时退 PowerShell Compress-Archive
+    try {
+      await execFile('tar.exe', ['--force-local', '-a', '-cf', path.join(scratch, `${name}.zip`), '-C', scratch, name], { windowsHide: true });
+    } catch {
+      await execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        `Compress-Archive -Path ${JSON.stringify(path.join(scratch, name))} -DestinationPath ${JSON.stringify(path.join(scratch, `${name}.zip`))} -Force`]);
+    }
+  } else {
+    await execFile('/usr/bin/tar', ['-czf', path.join(scratch, `${name}.tar.gz`), '-C', scratch, name],
+      { env: { ...process.env, COPYFILE_DISABLE: '1' } });
+  }
+  const packedArchive = PLATFORM === 'windows' ? path.join(scratch, `${name}.zip`) : path.join(scratch, `${name}.tar.gz`);
+  const sum = createHash('sha256').update(await fs.readFile(packedArchive)).digest('hex');
   // 打包期间若有修改，不能把变化混入发布；构建输入还需与构建前一致。
   if ((await git('rev-parse', 'HEAD')) !== head || (!candidate && await git('status', '--porcelain=v1', '--untracked-files=all')) ||
       (await computeBuildStamp(root))?.inputs_sha256 !== stamp.inputs_sha256) throw new Error('打包期间源树变化，请在工作树稳定后重试。');
   await fs.rename(staged, dest);
-  await fs.rename(path.join(scratch, `${name}.tar.gz`), archive);
+  await fs.rename(packedArchive, archive);
   await fs.writeFile(`${archive}.sha256`, `${sum}  ${path.basename(archive)}\n`, { flag: 'wx' });
   console.log(JSON.stringify({ directory: dest, archive, sha256: sum, candidate, version: pkg.version }, null, 2));
 } finally {

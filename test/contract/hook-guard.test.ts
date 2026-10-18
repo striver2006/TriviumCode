@@ -6,6 +6,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { scratchDir } from '../helpers/scratch.js';
+import { IS_WIN, SH } from '../helpers/platform.js';
 
 const run = promisify(execFile);
 
@@ -64,7 +65,8 @@ async function fakeProject(opts: { initialized: boolean; wrapper: 'ok' | 'missin
 
 async function sh(command: string, cwd: string): Promise<number> {
   try {
-    await run('sh', ['-c', command], { cwd, env: { ...process.env, CLAUDE_PROJECT_DIR: cwd } });
+    // SH：POSIX 为 /bin/sh，win32 为 Git for Windows 的 sh.exe（Claude Code 在 Windows 上也以它执行 hook）
+    await run(SH, ['-c', command], { cwd, env: { ...process.env, CLAUDE_PROJECT_DIR: cwd }, windowsHide: true });
     return 0;
   } catch (e) {
     return (e as { code?: number }).code ?? -1;
@@ -83,7 +85,9 @@ test('未初始化的项目（无 config.yaml）：守卫静默放行，不打�
 
 test('AGY-03：已初始化但 wrapper 被删或去掉执行位 → 拦截型 Hook 必须 exit 2，不得永真放行', async () => {
   const cmds = loadHookCommands();
-  for (const wrapper of ['missing', 'noexec'] as const) {
+  // noexec 格依赖 chmod 执行位语义（win32 无对应物，MSYS noacl 挂载下 test -x 恒真）——只在 POSIX 跑
+  const states = (IS_WIN ? ['missing'] : ['missing', 'noexec']) as Array<'missing' | 'noexec'>;
+  for (const wrapper of states) {
     const root = await fakeProject({ initialized: true, wrapper });
     for (const name of BLOCKING) {
       const cmd = cmds.get(name)!;
@@ -126,7 +130,8 @@ test('session-start 不是拦截型：任何情形都不得阻断会话', async 
   const cmds = loadHookCommands();
   const cmd = cmds.get('session-start');
   assert.ok(cmd);
-  for (const wrapper of ['missing', 'noexec', 'ok'] as const) {
+  const states = (IS_WIN ? ['missing', 'ok'] : ['missing', 'noexec', 'ok']) as Array<'missing' | 'noexec' | 'ok'>;
+  for (const wrapper of states) {
     const root = await fakeProject({ initialized: true, wrapper });
     assert.equal(await sh(cmd, root), 0, `session-start（wrapper=${wrapper}）不该阻断`);
   }

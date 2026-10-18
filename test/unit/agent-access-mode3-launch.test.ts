@@ -1,5 +1,11 @@
 /** 26B批准的敏感固定启动守卫；纯样本与实际Node拒绝均不启动供应商。 */
 import {test} from 'node:test';import assert from 'node:assert/strict';import path from 'node:path';import {pathToFileURL} from 'node:url';import {run} from '../../src/trivium/util/exec.js';
+
+// WIN_FILE_SKIP（Windows 移植）：断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物');
+} else {
 async function guard(){return import(pathToFileURL(path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r21/mode3-launch-guard.mjs')).href);}
 async function sample(){
  const {PLAN26,APPROVAL_SCOPE_TOKENS}=await guard(),final=path.resolve('.reviews',PLAN26.topic,'plan',PLAN26.basename),job=(combination:string,model:string,profile:string)=>({combination,model,profile,variant:'3',route:'claude',expected_starts:2,hard_starts:3});
@@ -25,3 +31,5 @@ for(const[name,mutate]of Object.entries(mutations))test('模式3独立启动拒�
 for(const[description,pool,mode,...args]of [['错误池','review','fixture','qwen-pro','3'],['未知组合','admission','fixture','unknown','3'],['旧模式','admission','fixture','qwen-pro','1'],['多参数','admission','fixture','qwen-pro','3','extra']] as const)test('实际Node固定入口零CLI拒绝：'+description,async()=>{
  const launcher=path.resolve('doc/05_testing/evidence/agent-access-20261011-closeout-r21/launch-controlled-mode3.mjs'),r=await run(process.execPath,[launcher,pool,'mode3-zero-cli-'+pool+'-'+args.length,mode,...args],{cwd:process.cwd(),timeoutMs:15000,killTree:true});assert.notEqual(r.code,0);assert.equal(r.timedOut,false);assert.match(r.stderr,/mode3-fixed-arguments-rejected/);
 });
+
+}

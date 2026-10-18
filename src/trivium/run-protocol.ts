@@ -40,6 +40,7 @@ import { resolveAdapters } from './adapters/stub.js';
 import { realAdapters, wiredAdapter } from './adapters/index.js';
 import { scrubRunDir } from './scrub.js';
 import { ensureDir, exists, sha256 } from './util/fsx.js';
+import { IS_WIN } from './util/platform.js';
 import {
   canonicalStartOf, processAlive, processGroupMemberCount, processMatchesRecord, processStartTime, processStartTimes,
   shutdownTrackedTrees, spawnDetached, terminateProcessGroup, trackedTrees, watchTrackedTrees, type DetachedChildWatch,
@@ -86,6 +87,21 @@ export const runDirFor = (cfg: Config, projectRoot: string, runId: string): stri
 const requestPath = (runDir: string): string => path.join(runDir, RUN_DIR_FILES.request);
 const workerPidPath = (runDir: string): string => path.join(runDir, RUN_DIR_FILES.workerPid);
 const workerLogPath = (runDir: string): string => path.join(runDir, RUN_DIR_FILES.workerLog);
+const cancelRequestPath = (runDir: string): string => path.join(runDir, RUN_DIR_FILES.cancelRequest);
+
+/**
+ * 写 Windows 的 worker 优雅取消标记（设计 §7.1）。POSIX 上是 no-op——SIGTERM 本身可达，
+ * macOS 行为零变化。写在终止阶梯的软步**之前**：worker 轮询到标记即走 `shutdownTrackedTrees`
+ * 后按 143 退出，宽限期内通常无需升级硬步。写失败只告警不阻断——硬步（`taskkill /T /F`）仍在后面兜底。
+ */
+async function requestWorkerCancel(runDir: string): Promise<void> {
+  if (!IS_WIN) return;
+  try {
+    await fs.writeFile(cancelRequestPath(runDir), `${new Date().toISOString()}\n`, 'utf8');
+  } catch (e) {
+    warn(`写取消标记失败（${(e as Error)?.message ?? e}）：worker 的优雅收尾可能走不到，宽限期满将直接强杀`);
+  }
+}
 
 // ─────────────────────── 交接结构 ───────────────────────
 
@@ -816,7 +832,8 @@ export async function settleOrphanedStart(i: OrphanedStartInput): Promise<void> 
     }
   };
 
-  // 1. 终止并确认
+  // 1. 终止并确认（Windows：先写取消标记，刚派生的 worker 若已装上 watcher 即走优雅收尾，设计 §7.1）
+  await requestWorkerCancel(i.runDir);
   let t: { gone: boolean; escalated: boolean; signals: NodeJS.Signals[] } | null;
   try {
     t = await (i.terminate ?? (() => terminateProcessGroup(born.pid, {
@@ -1131,43 +1148,105 @@ function settledCliSides(r: RecordedCliOutcome | null): Map<CriticId, number> {
  * 可先行——今天（缺省动作）这段窗口为零，落在归档终态写入最后一步上时归档可能不是 cancelled（计划 r2 §4.4 a″，如实保留）。
  * worker 被 SIGKILL、崩溃或事件循环堵住时处理器跑不到（覆盖矩阵 b / c / d 格）。
  */
-export function installWorkerSigtermForwarding(): () => void {
+/**
+ * worker 优雅取消的公共主体（Windows 移植自 `installWorkerSigtermForwarding` 抽出，设计 §7.1）：
+ * 只处理第一次、起看门狗、`shutdownTrackedTrees` 按组终止登记的 CLI（按父进程句柄判退出）、
+ * 结果写 worker.log、随后以 143 形态退出。POSIX 由 SIGTERM 处理器触发；Windows 由取消标记 watcher 触发
+ * （win32 跨进程发不出可捕获 SIGTERM，TerminateProcess 即强杀，处理器跑不到）。
+ *
+ * `detach` 在退出前调用（SIGTERM 形态必须先摘掉自己的监听器——监听器还在时 `kill(self, SIGTERM)`
+ * 只会再次进本控制器并被 `handling` 挡住，缺省处置不恢复、进程死不掉；原实现里这是 exitOnce 的第一步）。
+ * 两个入口各自构造一份，一次性状态互不干扰；`began()` 供卸载判据用（原 `handling` 标志的等价物）。
+ */
+function makeWorkerShutdownController(o: { detach: () => void }): { began(): boolean; begin(trigger: string): void } {
   let handling = false;
   let exiting = false;
+  let detached = false;
   let watchdog: NodeJS.Timeout | undefined;
+  const detachOnce = (): void => {
+    if (detached) return;
+    detached = true;
+    o.detach();
+  };
   const exitOnce = (): void => {
     if (exiting) return;
     exiting = true;
     if (watchdog) clearTimeout(watchdog);
-    process.removeListener('SIGTERM', onTerm);
+    if (IS_WIN) {
+      // Windows 无信号式终止：直接以 143 退出（POSIX 侧先重发 SIGTERM 走缺省处置、退出形态为信号终止）
+      process.exit(143);
+    }
+    detachOnce();
     process.kill(process.pid, 'SIGTERM');
     // 病态兜底：移除最后一个监听后缺省处置应已恢复、上一行即结束进程（计划 r2 §2.5 实测）；不同步调用
     setTimeout(() => process.exit(143), 1000);
   };
-  const onTerm = (): void => {
-    if (handling) return;
-    handling = true;
-    watchdog = setTimeout(exitOnce, WORKER_TREE_GRACE_MS + WORKER_TREE_KILL_WAIT_MS + 500);
-    void (async () => {
-      try {
-        const r = await shutdownTrackedTrees({ graceMs: WORKER_TREE_GRACE_MS, killWaitMs: WORKER_TREE_KILL_WAIT_MS });
-        if (r.groups.length === 0) {
-          process.stderr.write('[worker] 收到 SIGTERM：没有在跑的审查员 CLI\n');
-        } else {
-          const seq = r.groups.map((g) => `${g}（${(r.signals[g] ?? []).join('、') || '无'}）`).join('，');
-          process.stderr.write(`[worker] 收到 SIGTERM：已按组终止审查员 CLI ${seq}\n`);
-          if (r.remaining.length > 0) process.stderr.write(`[worker] 未能确认退出：${r.remaining.join('，')}\n`);
+  return {
+    began: () => handling,
+    begin(trigger: string): void {
+      if (handling) return;
+      handling = true;
+      watchdog = setTimeout(exitOnce, WORKER_TREE_GRACE_MS + WORKER_TREE_KILL_WAIT_MS + 500);
+      void (async () => {
+        try {
+          const r = await shutdownTrackedTrees({ graceMs: WORKER_TREE_GRACE_MS, killWaitMs: WORKER_TREE_KILL_WAIT_MS });
+          if (r.groups.length === 0) {
+            process.stderr.write(`[worker] 收到 ${trigger}：没有在跑的审查员 CLI\n`);
+          } else {
+            const seq = r.groups.map((g) => `${g}（${(r.signals[g] ?? []).join('、') || '无'}）`).join('，');
+            process.stderr.write(`[worker] 收到 ${trigger}：已按组终止审查员 CLI ${seq}\n`);
+            if (r.remaining.length > 0) process.stderr.write(`[worker] 未能确认退出：${r.remaining.join('，')}\n`);
+          }
+        } catch (e) {
+          process.stderr.write(`[worker] 转发 ${trigger} 出错：${(e as Error)?.message ?? String(e)}\n`);
+        } finally {
+          exitOnce();
         }
-      } catch (e) {
-        process.stderr.write(`[worker] 转发 SIGTERM 出错：${(e as Error)?.message ?? String(e)}\n`);
-      } finally {
-        exitOnce();
-      }
-    })();
+      })();
+    },
   };
+}
+
+export function installWorkerSigtermForwarding(): () => void {
+  const onTerm = (): void => shutdown.begin('SIGTERM');
+  const shutdown = makeWorkerShutdownController({ detach: () => process.removeListener('SIGTERM', onTerm) });
   process.on('SIGTERM', onTerm);
   return () => {
-    if (!handling) process.removeListener('SIGTERM', onTerm);
+    if (!shutdown.began()) process.removeListener('SIGTERM', onTerm);
+  };
+}
+
+/**
+ * Windows 的 worker 取消标记 watcher（设计 §7.1）：250 ms 轮询 `<runDir>/cancel.requested`，
+ * 出现即触发与 SIGTERM 同一条优雅取消链。POSIX 上不装——SIGTERM 可达，多一层轮询只会
+ * 改变 macOS 行为。返回卸载函数。
+ *
+ * **只认比自己启动更晚写入的标记**：`--cancel` 写下的标记不随运行清除，而
+ * `review --worker <id>` 可被人工对同一 run 重启——陈旧标记必须忽略，否则重启的 worker
+ * 不跑业务逻辑、一律以 143 收场（access-v3 提前取消用例钉住这一格）。合法写入场
+ * （`--cancel` 主路径、失联取消、派生失败收尾）都在 worker 诞生**之后**落笔，无需回看窗口；
+ * 同毫秒写入按「新」计（`mtimeMs >= 启动时刻`）。
+ */
+export function installWorkerCancelFlagWatcher(runDir: string): () => void {
+  let stopped = false;
+  const startedAtMs = Date.now();
+  const timer = setInterval(() => {
+    if (stopped) return;
+    void fs.stat(cancelRequestPath(runDir)).then((st) => {
+      if (stopped) return;
+      if (st.mtimeMs < startedAtMs) return;
+      stopped = true;
+      shutdown.begin('取消标记（cancel.requested）');
+    }).catch(() => undefined);
+  }, 250);
+  timer.unref();
+  const shutdown = makeWorkerShutdownController({ detach: () => {
+    stopped = true;
+    clearInterval(timer);
+  } });
+  return () => {
+    stopped = true;
+    clearInterval(timer);
   };
 }
 
@@ -1238,6 +1317,8 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
   // 第一件事装 SIGTERM 处理器（EV-152）：此后以 killTree 拉起的 CLI 都在它的登记里
   const uninstallSigterm = installWorkerSigtermForwarding();
   const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
+  // Windows：跨进程 SIGTERM 到不了 worker，取消改由标记文件触发（设计 §7.1）；POSIX 上不装
+  const uninstallCancelWatch = IS_WIN ? installWorkerCancelFlagWatcher(runDir) : null;
   /*
    * CLI 进程组记录（EV-154，CLI进程组记录计划 r2 §4.3）：liveTrees 一变（派生、取到启动时刻、退出）就把它的投影写进
    * status.json 的 sides[c].cli。必须在任何 CLI 派生之前装上；投影在 mutate 里现取，写下去的总是那一刻的登记。
@@ -1350,6 +1431,7 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
   } finally {
     // 收到 SIGTERM 且有 CLI 在跑时本函数被冻结、走不到这里；没有 CLI 时进程在处理器的微任务里就结束了——卸载不会抢在转发之前
     uninstallSigterm();
+    uninstallCancelWatch?.();
     unwatchTrees();
     clearInterval(heartbeat);
     const st = await readStatus(runDir);
@@ -1921,7 +2003,8 @@ async function cancelLostWorker(
     warn('失联判定之后工作进程又写过 status.json，它可能只是心跳慢；仍按取消结束它');
   }
 
-  // 2. 按组结束工作进程并确认退出
+  // 2. 按组结束工作进程并确认退出（Windows：先写取消标记让 worker 走优雅收尾，设计 §7.1）
+  await requestWorkerCancel(runDir);
   let t: TerminateResult | null;
   try {
     t = await (o.terminateWorker ?? ((p: number, r: RecordedStart) => terminateProcessGroup(p, {
@@ -1930,7 +2013,9 @@ async function cancelLostWorker(
       graceMs: WORKER_TERM_GRACE_MS,
       killWaitMs: ORPHAN_KILL_CONFIRM_MS,
       pollMs: 250,
-      onEscalate: () => warn(`工作进程组 ${p} 未响应 SIGTERM（事件循环被堵住时处理器跑不到），发送 SIGKILL`),
+      onEscalate: () => warn(IS_WIN
+        ? `工作进程 ${p} 未退出（事件循环被堵住时标记 watcher 跑不到），强制结束其进程树（taskkill /T /F）`
+        : `工作进程组 ${p} 未响应 SIGTERM（事件循环被堵住时处理器跑不到），发送 SIGKILL`),
     })))(pid, rec);
   } catch (err) {
     warn(`结束工作进程组 ${pid} 时出错：${String((err as Error)?.message ?? err).split('\n')[0]}`);
@@ -2173,14 +2258,20 @@ export async function cancelRun(ctx: Ctx, runId: string, o: CancelOptions = {}):
        * - **未确认退出（仍是同一进程或判不了）⇒ 69、不收尾**：不抹、不补收归档、不写 status.json、不回收锁与闸门。
        *   退出码与入口判不了同码（计划 r2 D4）：「这次没做收尾、状态原样、可重试」对两者都成立，形态差异写在正文里。
        */
+      // Windows：先写取消标记，worker 的 watcher 据此走优雅收尾（软步的 WM_CLOSE 对控制台进程常无效，设计 §7.1）；POSIX 上 no-op
+      await requestWorkerCancel(runDir);
       const t = await terminateProcessGroup(pid, {
         isGone: () => workerGoneForCancel(pid, rec),
         graceMs: WORKER_TERM_GRACE_MS,
         killWaitMs: ORPHAN_KILL_CONFIRM_MS,
         pollMs: 250,
-        onTerm: () => step(`向工作进程组 ${pid} 发送 SIGTERM`),
+        onTerm: () => step(IS_WIN
+          ? `向工作进程 ${pid} 发送关闭请求（taskkill /T；已先写取消标记，worker 将自行收尾）`
+          : `向工作进程组 ${pid} 发送 SIGTERM`),
         onEscalate: () =>
-          warn(`工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI`),
+          warn(IS_WIN
+            ? `工作进程 ${pid} 未退出，强制结束其进程树（taskkill /T /F）——随后按 status.json 的记录结束它拉起的审查员 CLI`
+            : `工作进程组 ${pid} 未响应 SIGTERM，发送 SIGKILL——随后按 status.json 的记录结束它拉起的审查员 CLI`),
       });
       // 零信号格：首检即判不了（不可能是别的——首检判已退出时 gone 为真）
       if (!t.gone && t.signals.length === 0) throw envError(unverifiableCancelMessage(pid, runId));

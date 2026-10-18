@@ -26,6 +26,12 @@ import { readScrubSentinel, scrubSideDir } from '../../src/trivium/scrub.js';
 import type { CriticResult } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）');
+} else {
+
 const tmp = () => scratchDir('trivium-ev112-');
 const SID = 'sess_ev112';
 const FAKE_MODEL = 'p/fake-model';
@@ -301,3 +307,5 @@ test('守卫：半采纳（rollout 缺）出落点播报、点名 rollout；泄�
     assert.equal(w.some((n) => n.includes(LANDING) || n.includes(LEAK)), false, JSON.stringify(c));
   }
 });
+
+}

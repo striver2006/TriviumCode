@@ -14,6 +14,12 @@ import { emptyTask, newRunMeta, writeRunMeta } from '../../src/trivium/meta.js';
 import { claudeDirectoryFingerprint, claudeSensitiveGlobsHash, CLAUDE_DIRECTORY_SHAPE } from '../../src/trivium/adapters/claude.js';
 import { resolveClaudeRoute } from '../../src/trivium/adapters/claude-route.js';
 import { READONLY_INVARIANTS } from '../../src/trivium/probes/claude.js';
+
+// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
+} else {
 const relative = 'doc/05_testing/evidence/agent-access-20261011-closeout-r3';
 const sha = (bytes: string | Buffer) => createHash('sha256').update(bytes).digest('hex');
 
@@ -364,3 +370,5 @@ test('当前authority唯一launcher引用直接执行，换载体仍覆盖而不
   assert.equal(matches.length, 1, '当前指针只对应一份实际launcher');
   for (const round of current.new_rounds) await exerciseCarrier(matches[0]!, round.ordinal, round.stage);
 });
+
+}

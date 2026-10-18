@@ -2,6 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { run } from '../../src/trivium/util/exec.js';
 
+// WIN_FILE_SKIP（Windows 移植）：活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）');
+} else {
+
 /*
  * 子进程超时与收尾的两个真实缺陷（审核 M8）：
  *   · 超时只杀直接子进程，真正烧配额的孙进程被遗弃给 init；
@@ -43,3 +49,5 @@ test('子进程已退出但孙进程还占着管道：exit 兜底让 run 在两�
   assert.equal(r.code, 0);
   assert.ok(took < 5_000, `等了 ${took}ms——说明还在等 close，孙进程一天不退 Promise 一天不 resolve`);
 });
+
+}

@@ -22,6 +22,12 @@ import { wiredAdapter } from '../../src/trivium/adapters/index.js';
 import { ENV_R, ENV_W, assertEnvPairDistinct, withEnv } from '../helpers/start-env.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）');
+} else {
+
 const SELF = process.pid;
 /** 一个与本进程规范化启动时刻不同、形状合法的时刻（k 格：pid 复用或手改） */
 const OTHER_CANONICAL = 'Thu Jan  1 00:00:00 1970';
@@ -258,3 +264,5 @@ test('EV-158 U6 ②④（workerStillAlive + admitScrub，C3）：W 下写、R �
   await assert.rejects(fs.access(old.carrier), 'd 格：今天的行为');
   await assert.rejects(fs.access(reused.carrier), 'k 格');
 });
+
+}

@@ -5,6 +5,12 @@ import { REPO_ROOT } from '../helpers/fixture.js';
 import { tsFiles } from '../helpers/recursive-rm.js';
 import { stripNonCode } from '../helpers/strip-non-code.js';
 
+// WIN_FILE_SKIP（Windows 移植）：断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物');
+} else {
+
 /**
  * EV-208：`test/` 下建临时目录的调用只许经 `test/helpers/scratch.ts`（登记 + 测试文件进程退出时删）。
  *
@@ -99,3 +105,5 @@ test('G1 test/ 下建临时目录的调用只剩豁免表里的那几处，其�
       '新增的改调 test/helpers/scratch.ts 的 scratchDir（登记 + 进程退出时删）；确属自带可靠收尾的在豁免表登记理由；豁免项已改掉的从表里删去',
   );
 });
+
+}

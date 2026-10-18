@@ -772,8 +772,9 @@ function extractFromSegment(segTokens: string[], out: string[]): void {
      */
     if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(t) || t.startsWith('//')) continue;
 
-    // 口径 3：git 对象语法 `HEAD:<path>` / `<sha>:<path>`
-    const gitObj = /^[A-Za-z0-9_./^~@{}-]+:(.+)$/.exec(t);
+    // 口径 3：git 对象语法 `HEAD:<path>` / `<sha>:<path>`。
+    // Windows 移植：`D:/x` 形态的盘符前缀（冒号前恰是一个盘符字母）不是 git 对象语法，不得剥
+    const gitObj = /^(?![A-Za-z]:)[A-Za-z0-9_./^~@{}-]+:(.+)$/.exec(t);
     if (gitObj) t = gitObj[1]!;
 
     // 版本号与版本区间：`git log v1.3.8..v1.3.9` 的 `.9` 会命中扩展名判据
@@ -1487,7 +1488,7 @@ function prefixIsOnlyDotHops(token: string, hitStart: number): boolean {
    */
   return nodePath
     .normalize(prefix)
-    .split('/')
+    .split(nodePath.sep === '\\' ? /[\\/]/ : '/')
     .filter((seg) => seg !== '' && seg !== '.')
     .every((seg) => seg === '..');
 }
@@ -1518,19 +1519,27 @@ function spellingsOf(denyPath: string, projectRoot: string): string[] {
    * 漏它等于该通道在命令侧根本没接上。
    */
   const home = normalizeAbs('.', os.homedir());
-  if (abs.startsWith(`${home}/`)) {
-    const suffix = abs.slice(home.length); // 含前导 `/`
-    out.add(`~${suffix}`);
-    out.add(`$HOME${suffix}`);
-    out.add(`\${HOME}${suffix}`);
+  if (abs.startsWith(`${home}${nodePath.sep}`)) {
+    // Windows 移植：已归一路径在 win32 用反斜杠，命令文本里 `~/.trivium/...` 的正斜杠写法也要认——
+    // 两种变体一并派生（macOS 上两变体相同，Set 去重无痕）
+    const suffix = abs.slice(home.length); // 含前导分隔符
+    const suffixPosix = nodePath.sep === '\\' ? suffix.replace(/\\/g, '/') : suffix;
+    for (const sf of new Set([suffix, suffixPosix])) {
+      out.add(`~${sf}`);
+      out.add(`$HOME${sf}`);
+      out.add(`\${HOME}${sf}`);
+    }
   }
 
   if (abs === root) return [...out];
   if (abs.startsWith(`${root}${nodePath.sep}`)) {
-    const rel = abs.slice(root.length + 1);
+    // Windows 移植：命令文本里的路径恒为正斜杠（shell 域），派生拼写统一转 posix 形态；
+    // macOS 上本就是 `/`，转换无痕
+    const relRaw = abs.slice(root.length + 1);
+    const rel = nodePath.sep === '\\' ? relRaw.replace(/\\/g, '/') : relRaw;
     if (rel.length > 0) {
       out.add(rel);
-      out.add(`.${nodePath.sep}${rel}`);
+      out.add(`./${rel}`);
     }
   }
   return [...out];
@@ -1567,7 +1576,7 @@ function scanCommandsForEntry(
     if (expanded === null) return null;
     if (nodePath.isAbsolute(expanded)) return normalizeAbs(expanded, projectRoot);
     const asProjectRel = normalizeAbs(expanded, projectRoot);
-    if (denyAbs.some((d) => asProjectRel === d || asProjectRel.startsWith(`${d}/`))) {
+    if (denyAbs.some((d) => asProjectRel === d || asProjectRel.startsWith(`${d}${nodePath.sep}`))) {
       return asProjectRel;
     }
     /*
@@ -1582,7 +1591,7 @@ function scanCommandsForEntry(
   /** 归一后的 token 是否就是某个 deny 条目、或落在它之下 */
   const resolvesIntoDeny = (token: string): boolean => {
     const a = normalizeAbs(token, projectRoot);
-    return denyAbs.some((d) => a === d || a.startsWith(`${d}/`));
+    return denyAbs.some((d) => a === d || a.startsWith(`${d}${nodePath.sep}`));
   };
 
   const hitsAt = (cmd: string, s: string, i: number): { resolved: string | null } | null => {
@@ -1733,7 +1742,7 @@ function scanCommandsForEntry(
     for (const m of cmd.matchAll(TILDE_USER)) {
       const suffix = m[1]!;
       const asIfHome = normalizeAbs(`${homeAbs}${suffix}`, projectRoot);
-      if (denyAbs.some((d) => asIfHome === d || asIfHome.startsWith(`${d}/`))) {
+      if (denyAbs.some((d) => asIfHome === d || asIfHome.startsWith(`${d}${nodePath.sep}`))) {
         /*
          * `~someone` 指向谁解析不了，但**后缀的层级是确定的**，而分档看的正是层级：
          * `~someone/.trivium/runs/<id>/<本侧>` 照样是己方材料的形状。
@@ -1889,10 +1898,13 @@ export function normalizeAbs(p: string, projectRoot: string): string {
   return abs.startsWith('/private/') ? abs.slice('/private'.length) : abs;
 }
 
-/** `abs` 是否等于 `root` 或落在它之下。两侧都先抹平 `/private` 前缀 */
+/** `abs` 是否等于 `root` 或落在它之下。两侧都先抹平 `/private` 前缀；win32 另把分隔符归一（调用方常给正斜杠根 + 反斜杠绝对路径的混合形态） */
 export function isUnder(abs: string, root: string): boolean {
-  const r = root.startsWith('/private/') ? root.slice('/private'.length) : root;
-  return abs === r || abs.startsWith(r.endsWith('/') ? r : `${r}/`);
+  const stripPrivate = (p: string): string => (p.startsWith('/private/') ? p.slice('/private'.length) : p);
+  const norm = (p: string): string => (nodePath.sep === '\\' ? stripPrivate(p).replace(/\\/g, '/') : stripPrivate(p));
+  const a = norm(abs);
+  const r = norm(root);
+  return a === r || a.startsWith(r.endsWith('/') ? r : `${r}/`);
 }
 
 /**
@@ -1910,7 +1922,9 @@ export function toProjectRelative(p: string, roots: readonly string[]): string |
     const r = normalizeAbs(root, '/');
     if (!isUnder(abs, r)) continue;
     const rel = nodePath.relative(r, abs);
-    return rel === '' ? '.' : rel.replace(/^\.\//, '');
+    // Windows 移植：项目相对路径是命令/留痕域的形态，恒用 `/`（win32 的 relative 产出反斜杠）
+    const relPosix = nodePath.sep === '\\' ? rel.replace(/\\/g, '/') : rel;
+    return relPosix === '' ? '.' : relPosix.replace(/^\.\//, '');
   }
   return null;
 }

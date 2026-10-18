@@ -21,6 +21,12 @@ import { codexAdapter, codexTempDirResidueText } from '../../src/trivium/adapter
 import { codexCredentialCopies, isCredentialCarrier, prepareCodexHome } from '../../src/trivium/adapters/codex-home.js';
 import { tryRemoveTempDir } from '../../src/trivium/util/fsx.js';
 
+// WIN_FILE_SKIP（Windows 移植）：断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物');
+} else {
+
 const tmp = (p: string) => fs.mkdtemp(path.join(os.tmpdir(), p));
 const ROOT = process.getuid?.() === 0;
 
@@ -312,3 +318,5 @@ test('F1 tryRemoveTempDir：删成功返回 null；失败时 ENOENT 不算在、
     await fs.rm(d, { recursive: true, force: true });
   }
 });
+
+}

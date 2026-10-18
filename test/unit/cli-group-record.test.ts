@@ -16,6 +16,12 @@ import {
 import { terminateRecordedCliGroups } from '../../src/trivium/run-protocol.js';
 import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
 
+// WIN_FILE_SKIP（Windows 移植）：活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）');
+} else {
+
 const MARK = `trivium-u-clirec-${process.pid}-${Date.now()}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -314,3 +320,5 @@ test('EV-154 U17（代码双审 r1 GLM-01）：入判 alive 之后轮询中 ps �
   assert.deepEqual(sent, ['SIGTERM', 'SIGKILL'], '判不了不是「已不在」：宽限尽头照常升级');
   assert.equal(r.groups[0]!.gone, true);
 });
+
+}

@@ -51,6 +51,12 @@ import { spawnSync } from 'node:child_process';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { parseArtifactName } from '../../src/trivium/naming.js';
 
+// WIN_FILE_SKIP（Windows 移植）：活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）');
+} else {
+
 const MARKER = /<!--\s*落点核验:\s*([^>]*?)\s*-->/g;
 
 /**
@@ -169,3 +175,5 @@ test('裁决件声明的落点核验串，逐条与工作树比对（EV-50）', 
   );
   console.log(`  [EV-50] 本次核验了 ${checked} 条落点声明，覆盖 ${files.length} 份裁决件`);
 });
+
+}

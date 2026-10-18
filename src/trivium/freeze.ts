@@ -324,6 +324,9 @@ async function classifyArtifact(
  * 逐个列出真实路径而非给 glob，是为了让轨迹核验与提示语之间可以逐条对账——
  * BRIEF 第 8 段的禁读清单与 `checkPeerLeak` 的机器集合由**同一份**返回值生成。
  */
+/** 项目相对路径转 BRIEF/命令匹配域形态：恒用 `/`（win32 的 path.relative 产出反斜杠，须归一；macOS 无痕） */
+const toDomainRel = (p: string): string => (path.sep === '\\' ? p.replace(/\\/g, '/') : p);
+
 export async function enumerateDenyPaths(
   cfg: Config,
   projectRoot: string,
@@ -379,7 +382,7 @@ export async function enumerateDenyPaths(
       const metaHit = /^review-([a-z]+)-.+\.(?:json|md)$/.exec(e.name);
       if (metaHit) {
         const owner = metaHit[1]!;
-        if (owner !== critic && isAgentId(owner)) out.add(rel);
+        if (owner !== critic && isAgentId(owner)) out.add(toDomainRel(rel));
         continue;
       }
 
@@ -389,7 +392,8 @@ export async function enumerateDenyPaths(
       if (!matchesAnyGlob(rel, artifactGlobs)) continue;
 
       const verdict = await classifyArtifact(abs, parsed.role, parsed.kind, driver);
-      if (verdict === 'peer-review' || verdict === 'indeterminate') out.add(rel);
+      // 禁读条目是 BRIEF/命令匹配域的项目相对形态，恒用 `/`（win32 的 relative 产出反斜杠）
+      if (verdict === 'peer-review' || verdict === 'indeterminate') out.add(toDomainRel(rel));
     }
   };
   await walk(scanRoot);
@@ -425,7 +429,7 @@ export async function enumerateDenyPaths(
         await walkSensitive(abs, depth + 1);
         continue;
       }
-      if (matchesAnyGlob(rel, cfg.review.sensitive_globs)) out.add(rel);
+      if (matchesAnyGlob(rel, cfg.review.sensitive_globs)) out.add(toDomainRel(rel));
     }
   };
   await walkSensitive(projectRoot, 0);

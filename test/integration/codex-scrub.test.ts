@@ -25,6 +25,12 @@ import { defaultConfig } from '../../src/trivium/config.js';
 import { readScrubSentinel } from '../../src/trivium/scrub.js';
 import type { Config, CriticRequest } from '../../src/trivium/types.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 // 运行时拼接、不叫 token：本文件会进送审包，归档侧密钥扫描扫 diff 原文（见 credential-scrub.test.ts 头注释）
 const FAKE_CRED = ['Qx7mZp2L', 'k9Rt4Wv1', 'Ab3Cd5Ef', '7Gh9Jk2M'].join('');
 let work = '';
@@ -176,3 +182,5 @@ test('瞬时故障重试：第二次重新准备的副本同样被抹（CODEX-02
   assert.equal(out.results.codex?.status, 'ok');
   await assertScrubbed(sideDir, home);
 });
+
+}

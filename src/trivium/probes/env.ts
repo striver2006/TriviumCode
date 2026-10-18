@@ -5,6 +5,7 @@
  */
 import os from 'node:os';
 import { run, tryRun } from '../util/exec.js';
+import { IS_WIN } from '../util/platform.js';
 import { gitVersion } from '../util/git.js';
 import { exists } from '../util/fsx.js';
 import { stableNodePath } from '../init.js';
@@ -26,8 +27,9 @@ async function resolveNodePath(): Promise<string | null> {
   // 首选当前进程自己的解释器：它一定可执行，且与编排器同版本；
   // Homebrew 下换成 opt/ 稳定入口，免得 brew upgrade 后 wrapper 里的路径失效
   if (process.execPath && (await exists(process.execPath))) return stableNodePath(process.execPath);
-  const which = await tryRun('/usr/bin/which', ['node']);
-  return which.ok ? which.stdout.trim() : null;
+  const which = IS_WIN ? await tryRun('where.exe', ['node']) : await tryRun('/usr/bin/which', ['node']);
+  const first = which.ok ? which.stdout.trim().split(/\r?\n/)[0] ?? '' : '';
+  return first.length > 0 ? first : null;
 }
 
 export async function probeEnv(): Promise<EnvProbeResult> {
@@ -45,8 +47,11 @@ export async function probeEnv(): Promise<EnvProbeResult> {
     gitMajorMinor.length === 2 &&
     (gitMajorMinor[0]! > 2 || (gitMajorMinor[0] === 2 && gitMajorMinor[1]! >= 20));
 
-  const timeoutBin = await tryRun('/usr/bin/which', ['timeout']);
-  const gtimeoutBin = await tryRun('/usr/bin/which', ['gtimeout']);
+  // timeout 探测只入档不判据（超时一律在 Node 内实现，P-01）；Windows 上 System32\timeout.exe 不是 GNU timeout，
+  // 如实记 where 结果即可——该字段在两个平台都不 gate 任何行为
+  const whichBin = IS_WIN ? 'where.exe' : '/usr/bin/which';
+  const timeoutBin = await tryRun(whichBin, ['timeout']);
+  const gtimeoutBin = await tryRun(whichBin, ['gtimeout']);
 
   return {
     nodePath,

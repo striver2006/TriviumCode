@@ -21,6 +21,12 @@ import {
 } from '../../src/trivium/adapters/codex-trace.js';
 import { trimCodexToml, rewriteHomePaths, prepareCodexHome } from '../../src/trivium/adapters/codex-home.js';
 
+// WIN_FILE_SKIP（Windows 移植）：断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物');
+} else {
+
 // ─────────────────────────── argv 构造 ───────────────────────────
 
 test('argv：只读旗标一律由探针结论构造，不写死', () => {
@@ -667,3 +673,5 @@ test('provider：base_url 归一到 host，userinfo 与 query 一律不入库', 
   const bad = '[model_providers.weird]\nbase_url = "not a url"';
   assert.equal(providerBaseUrl(bad, 'weird'), null, '解析不出 host 就整串丢弃，不做尽力截取');
 });
+
+}

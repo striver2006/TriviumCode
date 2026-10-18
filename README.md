@@ -1,6 +1,6 @@
 # TriviumCode（三方智鉴）
 
-面向 macOS 的「主攻 + 多方独立审查」编程 Agent 流水线。当前产品版本 **1.0.0**，支持 Claude Code、Codex、Antigravity、ZCode 四家 Agent 担任 Driver 或审核者；每轮选择 1～3 家审核者，Driver 不审自己的变更。
+面向 macOS 与 Windows 的「主攻 + 多方独立审查」编程 Agent 流水线。当前产品版本 **1.1.0**（1.1.0 新增 Windows 原生支持），支持 Claude Code、Codex、Antigravity、ZCode 四家 Agent 担任 Driver 或审核者；每轮选择 1～3 家审核者，Driver 不审自己的变更。
 
 Driver 负责起草、代码和逐条裁决；本地 Node 编排器负责预检、后台调度、证据核验、归档、闸门和真实编译测试。审查在工作树中进行，采用检测与留痕机制；护栏按载体分为 L1/L2，具体边界见使用手册。
 
@@ -20,7 +20,7 @@ Driver 负责起草、代码和逐条裁决；本地 Node 编排器负责预检�
 
 ## 安装与首次启用
 
-运行需要 macOS、Node.js ≥18、Git ≥2.20，以及实际选用的 Agent CLI 和登录。源码构建与测试使用 Node.js ≥22。**Windows 原生支持尚未实现**，列入后续工作；Linux、WSL 本版未验收。
+运行需要 macOS 或 Windows（10/11，Git for Windows 为硬前置）、Node.js ≥18、Git ≥2.20，以及实际选用的 Agent CLI 和登录。源码构建与测试使用 Node.js ≥22。Windows 侧进程身份/终止走系统 PowerShell 与 taskkill，`trivium init` 同时生成 sh 与 `.cmd` 两种入口 wrapper；边界与残余见 Bug 清单「Windows 移植残余」。Linux、WSL 本版未验收。
 
 收到预构建包时，核对 `.sha256`、完整解压后运行：
 

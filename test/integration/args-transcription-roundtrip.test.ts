@@ -27,6 +27,7 @@ import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import { run } from '../../src/trivium/util/exec.js';
 import { encodeStubConfig, STUB_ENV_VAR, type StubConfig } from '../../src/trivium/adapters/stub.js';
 import { DEFAULT_DRIVER } from '../../src/trivium/agents/registry.js';
+import { SH } from '../helpers/platform.js';
 
 const TOPIC = '转抄往返';
 const STUB: StubConfig = { gemini: { mode: 'ok' }, glm: { mode: 'ok' } };
@@ -42,7 +43,8 @@ const INPUTS = {
 };
 
 async function sh(root: string, cmd: string, stub: StubConfig | null) {
-  return run('/bin/sh', ['-c', cmd], {
+  // SH：POSIX 为 /bin/sh，win32 为 Git Bash 的 sh.exe（转抄测试的命令文法是 POSIX shell）
+  return run(SH, ['-c', cmd], {
     cwd: root,
     env: { TRIVIUM_ASSET_ROOT: ASSET_ROOT, [STUB_ENV_VAR]: stub ? encodeStubConfig(stub) : undefined },
     timeoutMs: 120_000,

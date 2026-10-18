@@ -7,6 +7,12 @@ import { pathToFileURL } from 'node:url';
 import { KEEP_FIXTURES_ENV, REPO_ROOT } from '../helpers/fixture.js';
 import { run } from '../../src/trivium/util/exec.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 /**
  * EV-207：`makeFixture` 的夹具收尾（行为级）。
  *
@@ -193,3 +199,5 @@ test('FC4 建到一半抛出也删：mkdtemp 一返回就登记，退出时照�
     await drop(c.base);
   }
 });
+
+}

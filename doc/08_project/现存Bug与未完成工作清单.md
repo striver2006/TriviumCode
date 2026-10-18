@@ -14,7 +14,7 @@
 | EV-63/108/183 / 工件边界 | 损坏 front-matter、未登记运行骨架及写侧时间窗仍有识别/锚定边界；不要修改历史审查工件。 |
 | EV-203 / 认证缓存边界 | ZCode 认证指纹读盘失败折成 null，窄条件下可能误命中缓存。本机认证异常时保存错误并核查，不把旧缓存视为当前成功。 |
 | EV-236 / 大文件与脱敏 | 新 request 补丁已去重；32 MiB 扫描上限及大证据递归膨胀仍需管理。送审前按运维规矩处理大型原始证据，不抑制扫描告警。 |
-| 发版-01 / 平台未实现 | Windows 原生支持未实现；Linux、WSL 未验收。本次按 Bob 选择发布 Mac 稳定版，Windows 列后续。不能把 tar.gz 解压或 CJS 能启动当完整平台通过。 |
+| 发版-01 / 平台边界 | Windows 原生支持已于 1.1.0 交付（Git for Windows 硬前置；进程身份/树取消/终止、cmd 入口 wrapper、路径归一、四家 CLI 探针、安装升级卸载与 zip 发布包；残余见 §3「Windows 移植残余」）。Linux、WSL 仍未验收——不能把解压或 CJS 能启动当完整平台通过。 |
 | 发版-02 / 复盘数据缺口 | `task.json.disputes[]` 只有定义、初始化与读取，未找到生产写入点；具体争议编号明细可能空，`disputed` 标记另有写入。当前静态核对 `meta.ts`、`report.ts` 与全源码检索，未做真实争议客户端复现。 |
 
 ## 2. 原编号的未完成项
@@ -85,7 +85,7 @@
 
 | 工作 | 当前状态 | 完成条件 |
 | --- | --- | --- |
-| Windows 原生移植 | 未实现，未测 | Windows 进程身份/进程树取消、cmd/PowerShell wrapper、路径/权限、各 CLI/Hook 与安装/升级/卸载原生验收；单独立项 |
+| Windows 原生移植 | 1.1.0 已实现并本机验收（win32 + Node 24 + Git for Windows）；残余见下「Windows 移植残余」 | 已交付：PowerShell/WMI 进程身份（UTC ISO）、父链后代组员判定、taskkill 树杀 + 取消标记优雅收尾、`.cmd` 入口 wrapper、sh 定位器（verify/Hook 走 Git Bash）、四家 CLI win32 探针候选、zip 发布包。残余：见 §3.1 |
 | 另一台 Mac 与 Intel Mac | 本轮未测 | 在目标主机执行部署手册并保存版本、入口、探针、正式任务和护栏证据；不要复制本机 probe |
 | Node 18/22 运行矩阵 | 构建 target=node18，开发测试 ≥22；本轮具体运行版本见发布报告 | 分版本真实执行安装、自检及正式 CLI 任务；不能只据编译 target 判通过 |
 | Apple 签名、公证和自带 Node | 未实现 | 如需独立 App/一键系统安装，另定签名、运行时分发、更新与回退策略 |
@@ -97,6 +97,18 @@
 | 源码全面多模型复审 | 本轮未启动 | 仅在用户显式调用正式审查入口时执行，不因发布整理自动启动 |
 
 M11 第 12 步已有用户具名的组合证据达成边界；M12 已完成计划内修复及追加项。这些事实不抹除上述未测内容，也不重新打开已经由用户决定关闭/不修的条目。
+
+### 3.1 Windows 移植残余（1.1.0 已实现面之外的待办）
+
+已交付面见 §3「Windows 原生移植」行；以下为如实登记的残余，均不阻断主链路（编排、审查、闸门、取消、清扫、安装、发布在 win32 已可跑通；单测+契约 2184 例全绿，跳过均带理由）：
+
+1. **POSIX 专属语义用例**：权限位（0600/0500/0000）、活体进程组信号/SIGTERM 阶梯/僵尸/ps 形态、shebang 假 CLI / PATH 垫片 / ps 故障注入这几族用例在 win32 整文件跳过（文件头 `WIN_FILE_SKIP` 注释带理由）；Windows 等价语义由 `test/unit/platform-win.test.ts` 等承接。逐文件做 win32 等价改写是后续工作。
+2. **zcode HOME 隔离夹具族**：六个 zcode 隔离/副本测试文件的夹具按 POSIX `env HOME` 写死，win32 需 USERPROFILE 一并适配后解除跳过。
+3. **厂商 CLI 无跨进程优雅取消**（结构性）：Windows 信号模型下 SIGTERM 即 TerminateProcess，软步只有 WM_CLOSE；我方凭据抹除由 worker 的 `cancel.requested` 标记路径保障，厂商 CLI 自行收尾不承诺。
+4. **`.cmd` 垫片装法的 CLI**：`run()` 对 `.cmd/.bat` 经 `cmd.exe /d /s /c` 间接执行，参数含 cmd 元字符（`^&|<>%!`、内嵌引号）不在支持面；原生 `.exe`（探针候选序优先）无此限制。
+5. **agy 的 pty 依赖**：win32 显式拒绝 pty 模式；agy 1.4.2 在 Windows 管道下是否丢 stdout 待实测——不丢则免 pty 可用，丢则试 Git for Windows 自带 winpty，再不行如实报该侧不可用。
+6. **集成测试的 win32 残余**：shebang 假 CLI 机制（`#!node` 脚本经 PATH/直接 exec，win32 的 CreateProcess 不认）与活体 POSIX 信号语义两族的集成文件在 win32 整文件跳过（`WIN_FILE_SKIP` 带理由）；另有零星路径形态差异（如 bug 阶段归档扫描）逐文件适配中。核心链路的集成覆盖由 access-v3（含取消标记优雅收尾）、selftest 14/14、release-package（隔离安装/升级/卸载/出包）在 win32 真实跑通。
+7. **chmod 权限位降级**：凭据副本的 0600 在 NTFS 只映射只读位，隔离靠运行根在用户目录下的目录边界；已接受的限制，不是待办。
 
 ## 4. 已接受的结构性限制
 

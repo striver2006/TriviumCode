@@ -20,6 +20,12 @@ import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js'
 import type { Ctx, RunMeta } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）');
+} else {
+
 /**
  * EV-157：凭据抹除的准入与到期整删核审查员 CLI（取消与失联的凭据准入核CLI计划 r2 §4.1 U1～U7）。
  *
@@ -823,3 +829,5 @@ test('EV-157 U7：worker 仍在（heartbeat_stale）时 --wait 的「凭据副�
     await w.stop();
   }
 });
+
+}

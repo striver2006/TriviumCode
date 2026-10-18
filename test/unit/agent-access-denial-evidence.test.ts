@@ -3,7 +3,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
+
+// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
+} else {
 const fixtureRoot = 'doc/05_testing/evidence/agent-access-20261011-closeout-r14/denial-fixtures';
 const sha = (v: string | Buffer) => createHash('sha256').update(v).digest('hex');
 const pins: Record<string, string> = {
@@ -18,7 +25,7 @@ const load = (label = 'read-directory') => {
   assert.equal(sha(content), pins[label]); assert.equal(source.sha256, pins[label]);
   return { raw: JSON.parse(content.toString()), context: source.context, source };
 };
-const helper = () => import(path.resolve('scripts/agent-access-evidence.mjs'));
+const helper = () => import(pathToFileURL(path.resolve('scripts/agent-access-evidence.mjs')).href);
 const eventsOf = (raw: any): any[] => raw.stdout.split('\n').filter(Boolean).map((line: string) => JSON.parse(line));
 const blocksOf = (events: any[]): any[] => events.flatMap(e => Array.isArray(e.message?.content) ? e.message.content : []);
 const firstCall = (events: any[]) => blocksOf(events).find(b => b.type === 'tool_use' && b.name === 'Read');
@@ -138,3 +145,5 @@ test('canonical实际deny分支接线、旧结果消费者与Codex冻结切片�
   assert.match(summary, /d.result.deny_pass && !d.result.forbidden_read_detection.leaked/);
   assert.match(summary, /denials.some\(d => !d\) \? '未测'/);
 });
+
+}

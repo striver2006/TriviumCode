@@ -12,6 +12,12 @@ import { AGENTS, agentById, entrySkillRootOf } from '../../src/trivium/agents/re
 import { displayHomePath } from '../../src/trivium/util/fsx.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物');
+} else {
+
 /*
  * 读取面同名入口检测的共享实现（EV-240 方案 A，M12 批次 5；计划 r2 §2.1 / §4 U1、U2）。
  * 家目录一律是 `scratchDir` 的夹具，不读真实家目录。
@@ -333,3 +339,5 @@ test('U4 渲染：只有残留、残留加同名入口；出口只出现一次�
   assert.ok(mixedLine.includes('有 1 个同名入口、2 份本产品的历史拷贝，'), mixedLine);
   assert.ok(!mixedLine.includes('\n'));
 });
+
+}

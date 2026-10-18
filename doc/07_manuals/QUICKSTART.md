@@ -39,7 +39,7 @@ Driver 可传 `--driver-model <model>` 和 `--driver-provider <provider>` 声明
 
 | 项 | 要求 | 怎么确认 |
 | :--- | :--- | :--- |
-| 操作系统 | **macOS**（一级平台）。Linux / Windows 未验证 | — |
+| 操作系统 | **macOS 与 Windows 原生**（Windows 硬前置 Git for Windows，见部署手册 §1a）。Linux / WSL 未验证 | Windows 上 `npm test`/`trivium` 命令可在 Git Bash 或 cmd/PowerShell 中运行（`.trivium/bin/trivium.cmd`）；项目内路径示例按 POSIX 写法时在 Git Bash 里执行 |
 | Node.js | ≥ 18 | `node --version` |
 | git | 任意近期版本 | `git --version` |
 | Claude Code | 已安装并能用 | — |

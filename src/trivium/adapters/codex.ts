@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto';
 import type { CriticRequest, CriticResult, CodexCriticConfig } from '../types.js';
 import { run } from '../util/exec.js';
 import { ensureDir, exists, sha256File, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
+import { IS_WIN } from '../util/platform.js';
 import { agentConfigOf } from '../config.js';
 import {
   parseCodexEvents,
@@ -125,9 +126,23 @@ export interface CodexInvokeOutcome {
 /** **唯一**执行 codex 的地方 */
 export async function invokeCodex(opts: CodexInvokeOptions): Promise<CodexInvokeOutcome> {
   const args = buildCodexArgs(opts);
+  /*
+   * Windows：HOME 之外并设 USERPROFILE、清 HOMEDRIVE/HOMEPATH（设计 §7.1）——codex 在 win32
+   * 若按 USERPROFILE 一族定家目录，只改 HOME 隔离不住凭据与指令面。POSIX 上行为不变。
+   */
+  const isolationEnv: Record<string, string | undefined> = {
+    ...(await codexRouteEnv(opts.codexHome, opts.profile)),
+    CODEX_HOME: opts.codexHome,
+    HOME: opts.fakeHome,
+  };
+  if (IS_WIN) {
+    isolationEnv['USERPROFILE'] = opts.fakeHome;
+    isolationEnv['HOMEDRIVE'] = undefined;
+    isolationEnv['HOMEPATH'] = undefined;
+  }
   const r = await run(opts.bin, args, {
     cwd: opts.cwd,
-    env: { ...(await codexRouteEnv(opts.codexHome, opts.profile)), CODEX_HOME: opts.codexHome, HOME: opts.fakeHome },
+    env: isolationEnv,
     /*
      * stdin 必须显式给：codex 在 argv 已带 prompt 时**仍然读 stdin**
      * （stderr 恒打印 `Reading additional input from stdin...`）。

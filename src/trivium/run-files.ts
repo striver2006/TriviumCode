@@ -31,6 +31,12 @@ export const RUN_DIR_FILES = {
   workerLog: 'worker.log',
   /** 心跳与两侧进展 */
   status: 'status.json',
+  /**
+   * Windows 的 worker 优雅取消标记（设计 §7.1）：win32 跨进程发不出可捕获 SIGTERM，
+   * `--cancel` / 派生失败收尾 / 失联后取消在终止之前写它，worker 侧轮询到即走
+   * `shutdownTrackedTrees` 后按 143 退出。POSIX 上不写不读（SIGTERM 本身可达）。
+   */
+  cancelRequest: 'cancel.requested',
 } as const;
 
 export const RUN_DIR_FILE_NAMES: readonly string[] = Object.values(RUN_DIR_FILES);

@@ -12,6 +12,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import { run, tryRun } from '../util/exec.js';
+import { IS_WIN } from '../util/platform.js';
 import { workTreeHash, statusPorcelain, diffTrees } from '../util/git.js';
 import { exists } from '../util/fsx.js';
 import { readPaths } from '../adapters/agy-events.js';
@@ -35,9 +36,14 @@ export function agyAgentPath(agentName: string): string {
 export async function probeAgyBin(configured: string | null): Promise<{ bin: string | null; version: string | null }> {
   const candidates = [
     configured,
-    path.join(os.homedir(), '.local/bin/agy'),
-    '/usr/local/bin/agy',
-    '/opt/homebrew/bin/agy',
+    // Windows：实测布局 %LOCALAPPDATA%\agy\bin\agy.exe（1.4.2，2026-10-18）；Electron 壳在 Programs\antigravity 但 CLI 不在其内
+    ...(IS_WIN
+      ? [path.join(process.env['LOCALAPPDATA'] ?? path.join(os.homedir(), 'AppData', 'Local'), 'agy', 'bin', 'agy.exe')]
+      : [
+          path.join(os.homedir(), '.local/bin/agy'),
+          '/usr/local/bin/agy',
+          '/opt/homebrew/bin/agy',
+        ]),
   ].filter((c): c is string => Boolean(c));
 
   let bin: string | null = null;
@@ -48,8 +54,9 @@ export async function probeAgyBin(configured: string | null): Promise<{ bin: str
     }
   }
   if (!bin) {
-    const which = await tryRun('/usr/bin/which', ['agy']);
-    if (which.ok) bin = which.stdout.trim();
+    const which = IS_WIN ? await tryRun('where.exe', ['agy']) : await tryRun('/usr/bin/which', ['agy']);
+    if (which.ok) bin = IS_WIN ? (which.stdout.trim().split(/\r?\n/)[0] ?? '') : which.stdout.trim();
+    if (bin === '') bin = null;
   }
   if (!bin) return { bin: null, version: null };
 

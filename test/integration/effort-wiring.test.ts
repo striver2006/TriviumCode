@@ -18,6 +18,12 @@ import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import { repoId } from '../../src/trivium/review.js';
 import type { StubConfig } from '../../src/trivium/adapters/stub.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 const TOPIC = '思考等级接线端到端';
 const parse = <T>(stdout: string): T => JSON.parse(extractJsonCandidate(stdout)!.json) as T;
 
@@ -176,3 +182,5 @@ test('P3 --start：交接文件里发起用的厂商 profile / 模型 / 思考�
   }).requests['codex']!;
   assert.deepEqual([req2.profile_requested, req2.model, req2.effort, req2.tier], ['qwen', 'qwen3.8-max', 'max', 'high']);
 });
+
+}

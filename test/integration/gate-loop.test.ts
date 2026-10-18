@@ -16,6 +16,12 @@ import type { StubConfig } from '../../src/trivium/adapters/stub.js';
 import { assertUnreadableExit } from '../helpers/unreadable-exit.js';
 import { ADOPT_PRECREATED_RUN_DIR_ENV } from '../../src/trivium/meta.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 /**
  * 闸门闭环（AC-01 / AC-02 / AC-12 / 设计 §8.5）：
  * 双审完成 → 两个 Hook 拦住提交与收工 → 裁决齐备 → 闸门放行 → Hook 放行。
@@ -3817,3 +3823,5 @@ test('EV-151 G2：同步 review 被强杀后再跑同步 review ⇒ 锁里补写
     for (const g of groupsWithMark(mark)) killGroup(g);
   }
 });
+
+}

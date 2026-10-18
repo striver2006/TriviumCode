@@ -34,6 +34,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { run, tryRun } from '../util/exec.js';
+import { IS_WIN } from '../util/platform.js';
 import { exists, sha256 } from '../util/fsx.js';
 import {
   createFixture,
@@ -650,9 +651,14 @@ export async function probeClaudeBin(
   if (configured && !(await exists(configured))) return { bin: null, version: null };
   const candidates = [
     configured,
-    path.join(os.homedir(), '.local/bin/claude'),
-    '/opt/homebrew/bin/claude',
-    '/usr/local/bin/claude',
+    // Windows：原生安装器布局（2026-10-18 实测 %USERPROFILE%\.local\bin\claude.exe）；npm 的 .cmd 垫片不在首选（设计 §7.1 边界）
+    ...(IS_WIN
+      ? [path.join(os.homedir(), '.local', 'bin', 'claude.exe')]
+      : [
+          path.join(os.homedir(), '.local/bin/claude'),
+          '/opt/homebrew/bin/claude',
+          '/usr/local/bin/claude',
+        ]),
   ].filter((c): c is string => Boolean(c));
 
   let bin: string | null = null;
@@ -663,8 +669,10 @@ export async function probeClaudeBin(
     }
   }
   if (!bin) {
-    const which = await tryRun('/usr/bin/which', ['claude']);
-    if (which.ok) bin = which.stdout.trim();
+    // Windows 兜底用 where（/usr/bin/which 不存在；where 多行输出取第一条）
+    const which = IS_WIN ? await tryRun('where.exe', ['claude']) : await tryRun('/usr/bin/which', ['claude']);
+    if (which.ok) bin = IS_WIN ? (which.stdout.trim().split(/\r?\n/)[0] ?? '') : which.stdout.trim();
+    if (bin === '') bin = null;
   }
   if (!bin) return { bin: null, version: null };
 

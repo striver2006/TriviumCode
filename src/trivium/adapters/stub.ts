@@ -24,6 +24,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { agentById, DEFAULT_DRIVER } from '../agents/registry.js';
+import { IS_WIN } from '../util/platform.js';
 import { CRITICS, type CriticId, type CriticRequest, type CriticResult } from '../types.js';
 import {
   EFFORT_UNVERIFIED,
@@ -454,12 +455,20 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
           });
         case 'hang_cli': {
           // 标记走 `$0`（sh -c 的第一个位置参数），进 argv、不经 shell 解析路径
-          const sleepS = Number.isFinite(spec.sleepS) && (spec.sleepS as number) > 0 ? spec.sleepS : 600;
-          const body = `${spec.ignoreTerm ? "trap '' TERM; " : ''}sleep ${sleepS}; : "$0"`;
-          const pending = run('/bin/sh', ['-c', body, `trivium-stub-cli:${req.out_dir}`], {
-            killTree: true,
-            timeoutMs: 610_000,
-          });
+          const sleepS: number = Number.isFinite(spec.sleepS) && (spec.sleepS as number) > 0 ? (spec.sleepS as number) : 600;
+          /*
+           * Windows（设计 §7.1）：无 /bin/sh。等价桩 = 本 node 起定时循环、标记走 argv（Win32_Process 的
+           * CommandLine 里可见，等价 POSIX 侧 ps 里的 $0）。`ignoreTerm` 无对应物——跨进程 TERM 到不了
+           * Windows 进程，取消本就只靠 worker 标记路径与 taskkill /T /F 硬步，桩不需要再模拟「忽略软信号」。
+           */
+          const pending = IS_WIN
+            ? run(process.execPath,
+              ['-e', `setInterval(()=>{}, ${Math.min(sleepS * 1000, 3_600_000)})`, `trivium-stub-cli:${req.out_dir}`],
+              { killTree: true, timeoutMs: 610_000 })
+            : run('/bin/sh', ['-c', `${spec.ignoreTerm ? "trap '' TERM; " : ''}sleep ${sleepS}; : "$0"`, `trivium-stub-cli:${req.out_dir}`], {
+              killTree: true,
+              timeoutMs: 610_000,
+            });
           if (spec.blockAfterMs !== undefined) {
             /*
              * 同步点（代码双审 r1 CODEX-03）：先等本运行 status.json 里全部侧的 cli.started_at 都已落盘（至多 10 s），

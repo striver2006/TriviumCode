@@ -317,7 +317,8 @@ test('三审 × 四种当轮 Driver：每个审核者的禁读集与期望逐元
         const expected = [
           ...critics.filter((c) => c !== critic).flatMap((c) => Object.keys(ownedBy(c))),
           ...Object.keys(driverFlipA),
-        ].map((rel) => path.join('.reviews', rel));
+          // 禁读条目是 BRIEF/命令匹配域的项目相对形态（恒用 `/`）；win32 的 path.join 产出反斜杠，须归一
+        ].map((rel) => (path.sep === '\\' ? path.join('.reviews', rel).replace(/\\/g, '/') : path.join('.reviews', rel)));
         expected.push('.trivium', runRoot);
 
         const actual = await deny(f, critic, driver, T);

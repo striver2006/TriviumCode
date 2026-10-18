@@ -17,6 +17,12 @@ import { agentById } from '../../src/trivium/agents/registry.js';
 import type { CriticAdapter } from '../../src/trivium/adapters/base.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
+} else {
+
 async function withHome<T>(populate: boolean, fn: (home: string) => Promise<T>): Promise<T> {
   const home = await scratchDir('trivium-ovr-home-');
   if (populate) {
@@ -108,3 +114,5 @@ test('displayHomePath：家目录之下显示为 ~/，之外原样', async () =>
     assert.equal(displayHomePath(`${home}-sibling/x`), `${home}-sibling/x`, '同前缀的兄弟目录不算家目录之下');
   });
 });
+
+}

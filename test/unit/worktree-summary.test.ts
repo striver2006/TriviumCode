@@ -14,6 +14,12 @@ import {
 } from '../../src/trivium/worktree-summary.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
+} else {
+
 /**
  * 审批时的工作树改动摘要（EV-132 候选 ② 折中版；计划 `.reviews/审批前工作树摘要/plan/` r2 §3.1）。
  *
@@ -334,3 +340,5 @@ test('r1 CODEX-03：总预算是真上界，被杀的 git 按进程组收尾（�
   const ps = await run('/bin/sh', ['-c', `ps -axo command | grep -F "sleep ${marker}" | grep -v grep || true`], { timeoutMs: 10_000 });
   assert.equal(ps.stdout.trim(), '', `过滤器子进程成了孤儿：\n${ps.stdout}`);
 });
+
+}

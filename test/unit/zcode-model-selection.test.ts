@@ -37,6 +37,12 @@ import {
 } from '../../src/trivium/probes/zcode.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）');
+} else {
+
 const tmp = () => scratchDir('trivium-zcode-model-');
 
 /** 一份形态与本机一致的 `cli/config.json`（凭据位用假值） */
@@ -948,3 +954,5 @@ test('守卫：model_unenforced 缺席 ⇒ 不出声；覆盖没落实那句也�
   assert.equal(notes.some((n) => n.includes('本次没有做模型覆盖')), false);
   assert.equal((await warningsFor(false)).some((n) => n.includes('本次没有做模型覆盖')), false);
 });
+
+}

@@ -1,5 +1,7 @@
 import { test } from 'node:test';
+import path from 'node:path';
 import { modelEncodesEffort } from '../../src/trivium/adapters/agy.js';
+import { IS_WIN } from '../helpers/platform.js';
 import assert from 'node:assert/strict';
 import {
   checkEvidence,
@@ -20,21 +22,30 @@ import {
   type AgentVendor,
 } from '../../src/trivium/agents/registry.js';
 
+/*
+ * Windows 移植：归一化判据（resolve / 分隔符 / 根前缀）以平台原生语义为准。
+ * POSIX 形态的假路径在 win32 会解析成「当前盘 + 该路径」，与原生根串不匹配——
+ * 那测的就不是归一化本身。P() 把 POSIX 假路径按平台转成原生绝对形态；macOS 上恒等。
+ */
+const NATIVE_SEP = path.sep;
+const P = (posixPath: string): string =>
+  IS_WIN ? posixPath.replace(/^\//, path.parse(process.cwd()).root).replace(/\//g, NATIVE_SEP) : posixPath;
+
 const REQ = {
   min_tool_calls: 5,
   min_project_reads: 3,
-  subject_path: '/proj/.reviews/t/plan/2026-09-10-t-claude.md',
-  brief_path: '/proj/.reviews/t/plan/_meta/brief-gemini-R1.md',
-  project_root: '/proj',
+  subject_path: P('/proj/.reviews/t/plan/2026-09-10-t-claude.md'),
+  brief_path: P('/proj/.reviews/t/plan/_meta/brief-gemini-R1.md'),
+  project_root: P('/proj'),
 };
-const OPTS = { archiveRootAbs: '/proj/.reviews' };
+const OPTS = { archiveRootAbs: P('/proj/.reviews') };
 
 test('项目文件读取只算项目根之内的：读 ~/ 下的无关文件不能凑数（AC-11）', () => {
   const r = checkEvidence(
     {
       tool_calls: { read: 6, grep: 2 },
-      read_paths: ['/Users/x/.zshrc', '/etc/hosts', '/proj/src/a.ts', './src/b.ts', REQ.subject_path],
-      trace_path: '/runs/trace.jsonl',
+      read_paths: [P('/Users/x/.zshrc'), P('/etc/hosts'), P('/proj/src/a.ts'), './src/b.ts', REQ.subject_path],
+      trace_path: P('/runs/trace.jsonl'),
       command_texts: [],
     },
     REQ,
@@ -46,21 +57,22 @@ test('项目文件读取只算项目根之内的：读 ~/ 下的无关文件不�
 test('禁读核对做路径归一化：./ 前缀、.. 与 macOS 的 /private 前缀都能命中', () => {
   const deny = ['.reviews/t/plan/2026-09-10-t-glm.md'];
   const r = checkPeerLeak(
-    ['./.reviews/t/plan/2026-09-10-t-glm.md', '/private/proj/src/../.reviews/t/plan/2026-09-10-t-glm.md'],
+    ['./.reviews/t/plan/2026-09-10-t-glm.md', ...(IS_WIN ? [] : ['/private/proj/src/../.reviews/t/plan/2026-09-10-t-glm.md'])],
     deny,
-    '/proj',
+    P('/proj'),
   );
   assert.equal(r.leaked, true);
-  assert.equal(r.hits.length, 2);
-  assert.equal(checkPeerLeak(['/proj/src/a.ts'], deny, '/proj').leaked, false);
+  // macOS 专有的 /private 前缀归一化在 win32 无对应输入形态，只测 ./ 与 .. 两类
+  assert.equal(r.hits.length, IS_WIN ? 1 : 2);
+  assert.equal(checkPeerLeak([P('/proj/src/a.ts')], deny, P('/proj')).leaked, false);
 });
 
 test('证据充分时通过', () => {
   const r = checkEvidence(
     {
       tool_calls: { read: 6, grep: 2 },
-      read_paths: ['/proj/src/a.ts', '/proj/src/b.ts', '/proj/doc/x.md', REQ.subject_path],
-      trace_path: '/runs/trace.jsonl',
+      read_paths: [P('/proj/src/a.ts'), P('/proj/src/b.ts'), P('/proj/doc/x.md'), REQ.subject_path],
+      trace_path: P('/runs/trace.jsonl'),
       command_texts: [],
     },
     REQ,
@@ -82,7 +94,7 @@ test('零工具调用判 no_trace（Antigravity 软拒绝的表现，AC-05 落�
 
 test('工具调用数不足下限判 insufficient_evidence', () => {
   const r = checkEvidence(
-    { tool_calls: { read: 2 }, read_paths: ['/proj/src/a.ts'], trace_path: 't', command_texts: [] },
+    { tool_calls: { read: 2 }, read_paths: [P('/proj/src/a.ts')], trace_path: 't', command_texts: [] },
     REQ,
     OPTS,
   );
@@ -111,9 +123,9 @@ test('归档根内的文件不计入项目上下文', () => {
     {
       tool_calls: { read: 8 },
       read_paths: [
-        '/proj/.reviews/t/plan/2026-09-10-t-gemini.md',
-        '/proj/.reviews/t/task.json',
-        '/proj/src/only-one.ts',
+        P('/proj/.reviews/t/plan/2026-09-10-t-gemini.md'),
+        P('/proj/.reviews/t/task.json'),
+        P('/proj/src/only-one.ts'),
       ],
       trace_path: 't',
       command_texts: [],
@@ -126,20 +138,20 @@ test('归档根内的文件不计入项目上下文', () => {
 
 test('轨迹核验：绝对路径与相对路径两种形态都能命中禁读清单（AC-04）', () => {
   const deny = ['.reviews/t/plan/2026-09-10-t-glm.md', '.env'];
-  const abs = checkPeerLeak(['/proj/.reviews/t/plan/2026-09-10-t-glm.md'], deny, '/proj');
+  const abs = checkPeerLeak([P('/proj/.reviews/t/plan/2026-09-10-t-glm.md')], deny, P('/proj'));
   assert.equal(abs.leaked, true);
-  assert.deepEqual(abs.hits, ['/proj/.reviews/t/plan/2026-09-10-t-glm.md']);
+  assert.deepEqual(abs.hits, [P('/proj/.reviews/t/plan/2026-09-10-t-glm.md')]);
 
-  const rel = checkPeerLeak(['.env'], deny, '/proj');
+  const rel = checkPeerLeak(['.env'], deny, P('/proj'));
   assert.equal(rel.leaked, true);
 });
 
 test('轨迹核验：读己方产出不算泄漏', () => {
   const deny = ['.reviews/t/plan/2026-09-10-t-glm.md'];
   const r = checkPeerLeak(
-    ['/proj/.reviews/t/plan/2026-09-10-t-gemini.md', '/proj/src/a.ts'],
+    [P('/proj/.reviews/t/plan/2026-09-10-t-gemini.md'), P('/proj/src/a.ts')],
     deny,
-    '/proj',
+    P('/proj'),
   );
   assert.equal(r.leaked, false);
 });

@@ -10,6 +10,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PTY_EOF_ECHO, ptyOutputNormalizer, run } from '../../src/trivium/util/exec.js';
 
+// WIN_FILE_SKIP（Windows 移植）：活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）');
+} else {
+
 const feed = (chunks: string[]): string => {
   const n = ptyOutputNormalizer();
   return chunks.map((c) => n.push(c)).join('') + n.flush();
@@ -66,3 +72,5 @@ test('EV-156 R4（macOS）：输出以孤立的 \\r 收尾——收尾时吐回�
   assert.equal(r.code, 0, `stderr=${r.stderr}`);
   assert.equal(r.stdout, 'a\r');
 });
+
+}

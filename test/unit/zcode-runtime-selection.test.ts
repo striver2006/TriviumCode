@@ -23,6 +23,12 @@ import {
 } from '../../src/trivium/probes/zcode.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）');
+} else {
+
 const tmp = () => scratchDir('trivium-runtimesel-test-');
 const EVENT = 'bootstrap.app.startup.runtime_config.completed';
 
@@ -519,3 +525,5 @@ test('同形臂：doctor 的两支——原样支 variant 由臂自行合成，�
   assert.equal(moved.variant?.kind, 'applied');
   assert.equal(judgeRuntimeSelection(asIs, moved).value, 'reorder_needed', '本机形态（E2）');
 });
+
+}

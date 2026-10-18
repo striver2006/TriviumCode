@@ -12,19 +12,29 @@ import { scratchDir } from '../helpers/scratch.js';
 import { planInstall, install, uninstall } from '../../src/install.js';
 
 const execFile = promisify(execFileCallback);
+const IS_WIN = process.platform === 'win32';
 
 test('发布包真解压：白名单与哈希、四家28入口、隔离安装升级、14步桩自检与卸载',
-  { skip: process.platform !== 'darwin', timeout: 180_000 }, async () => {
+  // Linux/WSL 不在支持面（设计 §7.1）；macOS 与 Windows 各自在本平台出包并解包验收
+  { skip: process.platform !== 'darwin' && process.platform !== 'win32' ? '只在 macOS 与 Windows 上跑' : false, timeout: 240_000 },
+  async () => {
     const temp = await scratchDir('trivium-release-');
     try {
       const out = path.join(temp, 'out');
       const r = await execFile(process.execPath, ['scripts/package-release.mjs', '--candidate', '--out', out],
-        { cwd: REPO_ROOT, timeout: 90_000 });
+        { cwd: REPO_ROOT, timeout: 120_000 });
       const release = JSON.parse(r.stdout) as { archive: string; sha256: string; version: string };
       assert.equal(createHash('sha256').update(await fs.readFile(release.archive)).digest('hex'), release.sha256);
       const extracted = path.join(temp, 'extracted');
       await fs.mkdir(extracted);
-      await execFile('/usr/bin/tar', ['-xzf', release.archive, '-C', extracted]);
+      // win32 包是 zip（bsdtar 可解）；macOS 包是 tar.gz。
+      // bsdtar 会把 `C:\...` 当远程主机语法（--force-local 只护 -f 操作数），-C 也用相对路径
+      if (IS_WIN) {
+        await execFile('tar.exe', ['--force-local', '-xf', path.relative(temp, release.archive), '-C', path.relative(temp, extracted)],
+          { cwd: temp, windowsHide: true });
+      } else {
+        await execFile('/usr/bin/tar', ['-xzf', release.archive, '-C', extracted]);
+      }
       const [name] = await fs.readdir(extracted);
       const root = path.join(extracted, name!);
       const manifest = JSON.parse(await fs.readFile(path.join(root, '文件校验.json'), 'utf8')) as { path: string; sha256: string }[];
@@ -37,7 +47,8 @@ test('发布包真解压：白名单与哈希、四家28入口、隔离安装升
       assert.ok(manifest.some((f) => f.path.endsWith('稳定版部署手册.md')));
       const metadata = JSON.parse(await fs.readFile(path.join(root, '发布信息.json'), 'utf8'));
       assert.equal(metadata.release_state, 'candidate');
-      assert.equal(metadata.native_windows_supported, false);
+      assert.equal(metadata.platform, IS_WIN ? 'windows' : 'macos');
+      assert.equal(metadata.native_windows_supported, true);
       assert.equal(metadata.cli_sha256, manifest.find((f) => f.path === 'skills/dual-critic/scripts/trivium.cjs')?.sha256);
       assert.equal(metadata.source_snapshot.git_head, metadata.source_commit);
       // 实际执行解压出来的安装器，而不是从源码调用替代它。

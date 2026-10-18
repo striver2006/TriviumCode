@@ -16,6 +16,12 @@ import { ProbeFixtureError } from '../../src/trivium/probes/fixture.js';
 import { run, LaunchBudgetExceeded } from '../../src/trivium/util/exec.js';
 import { pathToFileURL } from 'node:url';
 
+// WIN_FILE_SKIP（Windows 移植）：断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物');
+} else {
+
 test('目录只能来自严格字面配置；相邻前缀/非法坐标/有glob的目录不压缩', () => {
   const paths = ['calls/a', 'calls/sub/b', 'calls_extra/a', 'calls', '/calls/a', 'calls/../other', 'calls//a', '中文 空格/a', 'x[1]/a'];
   const copy = [...paths];
@@ -292,3 +298,5 @@ test('目录臂返回启动失败/超时/非零退出：停止追加，清空tru
     assert.equal(result.cleanup, null); await assert.rejects(fs.stat(root), { code: 'ENOENT' });
   }
 });
+
+}

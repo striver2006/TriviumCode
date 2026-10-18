@@ -26,6 +26,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import { run, tryRun, type RunResult } from '../util/exec.js';
+import { IS_WIN } from '../util/platform.js';
 import { exists, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
 import { createFixture, SENTINEL_OPEN, type Fixture } from './fixture.js';
 import { probeScratchPaths } from './agy.js';
@@ -68,9 +69,17 @@ export async function probeCodexBin(
 ): Promise<{ bin: string | null; version: string | null }> {
   const candidates = [
     configured,
-    '/opt/homebrew/bin/codex',
-    path.join(os.homedir(), '.local/bin/codex'),
-    '/usr/local/bin/codex',
+    // Windows：原生安装器布局（2026-10-18 实测 %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe）；npm 的 .cmd 垫片不在首选（设计 §7.1 边界）
+    ...(IS_WIN
+      ? [
+          path.join(process.env['LOCALAPPDATA'] ?? path.join(os.homedir(), 'AppData', 'Local'), 'Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe'),
+          path.join(os.homedir(), '.local', 'bin', 'codex.exe'),
+        ]
+      : [
+          '/opt/homebrew/bin/codex',
+          path.join(os.homedir(), '.local/bin/codex'),
+          '/usr/local/bin/codex',
+        ]),
   ].filter((c): c is string => Boolean(c));
 
   let bin: string | null = null;
@@ -81,8 +90,9 @@ export async function probeCodexBin(
     }
   }
   if (!bin) {
-    const which = await tryRun('/usr/bin/which', ['codex']);
-    if (which.ok) bin = which.stdout.trim();
+    const which = IS_WIN ? await tryRun('where.exe', ['codex']) : await tryRun('/usr/bin/which', ['codex']);
+    if (which.ok) bin = IS_WIN ? (which.stdout.trim().split(/\r?\n/)[0] ?? '') : which.stdout.trim();
+    if (bin === '') bin = null;
   }
   if (!bin) return { bin: null, version: null };
 

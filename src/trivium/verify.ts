@@ -17,6 +17,7 @@
 import path from 'node:path';
 import { run } from './util/exec.js';
 import { sha256 } from './util/fsx.js';
+import { IS_WIN, resolvePosixShellSync } from './util/platform.js';
 import { writeMeta, writeVerifyRecord, type ArchiveLayout } from './archive.js';
 import { updateTask, type TaskLock } from './meta.js';
 import { localDate } from './naming.js';
@@ -122,8 +123,14 @@ export async function runVerify(opts: VerifyOptions): Promise<VerifyOutcome> {
      * 克隆一个陌生仓库后跑 verify 就是执行对方写进配置的 shell。威胁模型假定你信任
      * 所在仓库（与 npm test 同级），编排器**不做**任何确认环节；doctor --suggest-verify
      * 只展示候选，写进配置的是人。
+     *
+     * Windows（设计 §7.1）：命令是 POSIX 写法，统一经 Git for Windows 的 sh.exe 执行
+     * （`resolvePosixShellSync`，硬前置 Git for Windows）；POSIX 平台仍为 /bin/sh，行为不变。
      */
-    const r = await run('/bin/sh', ['-c', cmd], {
+    if (IS_WIN && resolvePosixShellSync() === null) {
+      throw usageError('无法定位 sh：Windows 上执行 verify 命令需要 Git for Windows（硬前置）。请安装 Git for Windows 后重试');
+    }
+    const r = await run(resolvePosixShellSync()!, ['-c', cmd], {
       cwd: ctx.projectRoot,
       ...(opts.timeoutS && opts.timeoutS > 0 ? { timeoutMs: opts.timeoutS * 1000 } : {}),
       maxBufferBytes: 4 * 1024 * 1024,

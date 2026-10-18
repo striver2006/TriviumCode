@@ -10,6 +10,7 @@ import { existsSync } from 'node:fs';
 import YAML from 'yaml';
 import { fileURLToPath } from 'node:url';
 import { run } from '../../src/trivium/util/exec.js';
+import { IS_WIN } from '../../src/trivium/util/platform.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { encodeStubConfig, STUB_ENV_VAR, type StubConfig } from '../../src/trivium/adapters/stub.js';
 import { scratchDir } from './scratch.js';
@@ -136,19 +137,21 @@ export async function makeFixture(opts: FixtureOptions): Promise<Fixture> {
   );
 
   if (opts.probeModels) {
+    // win32 没有 /bin/echo：probeModels 只需要「存在的可执行文件」，用本机 node 路径（YAML 里反斜杠要引号）
+    const fakeBin = IS_WIN ? JSON.stringify(process.execPath) : '/bin/echo';
     await fs.writeFile(
       path.join(root, '.trivium/config.local.yaml'),
       [
         'probe:',
         `  generated_at: '${new Date().toISOString()}'`,
         '  agy:',
-        "    bin: /bin/echo",
+        `    bin: ${fakeBin}`,
         "    version: 'stub/0.0.0'",
         '    models:',
         ...opts.probeModels.gemini.map((m) => `      - '${m}'`),
         '    headless_read_ok: true',
         '  zcode:',
-        "    entry: /bin/echo",
+        `    entry: ${fakeBin}`,
         "    version: 'stub/0.0.0'",
         '    models:',
         ...opts.probeModels.glm.map((m) => `      - '${m}'`),
@@ -232,12 +235,13 @@ export const FAKE_CLI_VERSION = '9.9.9';
 export async function seedFakeProbes(root: string, over: Record<string, unknown> = {}): Promise<void> {
   const fakeDir = path.join(root, 'fake');
   await fs.mkdir(fakeDir, { recursive: true });
-  const fakeAgy = path.join(fakeDir, 'agy');
-  await fs.writeFile(fakeAgy, `#!/bin/sh\necho ${FAKE_CLI_VERSION}\n`, { mode: 0o755 });
+  // win32 无 shebang 执行：假 CLI 写 .cmd 垫片（编排器的 run() 对 .cmd/.bat 经 cmd.exe 间接执行，设计 §7.1）
+  const fakeAgy = IS_WIN ? path.join(fakeDir, 'agy.cmd') : path.join(fakeDir, 'agy');
+  await fs.writeFile(fakeAgy, IS_WIN ? `@echo ${FAKE_CLI_VERSION}\r\n` : `#!/bin/sh\necho ${FAKE_CLI_VERSION}\n`, { mode: 0o755 });
   const fakeZcode = path.join(fakeDir, 'zcode.js');
   await fs.writeFile(fakeZcode, `console.log('zcode ${FAKE_CLI_VERSION}');\n`, 'utf8');
-  const fakeCodex = path.join(fakeDir, 'codex');
-  await fs.writeFile(fakeCodex, `#!/bin/sh\necho codex-cli ${FAKE_CLI_VERSION}\n`, { mode: 0o755 });
+  const fakeCodex = IS_WIN ? path.join(fakeDir, 'codex.cmd') : path.join(fakeDir, 'codex');
+  await fs.writeFile(fakeCodex, IS_WIN ? `@echo codex-cli ${FAKE_CLI_VERSION}\r\n` : `#!/bin/sh\necho codex-cli ${FAKE_CLI_VERSION}\n`, { mode: 0o755 });
 
   const now = new Date().toISOString();
   const common = (entrypoint: string) => ({

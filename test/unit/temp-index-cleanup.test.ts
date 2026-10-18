@@ -34,6 +34,12 @@ import { GitTimeoutError, indexResidueText, initFixtureRepo, workTreeHash } from
 import { renderSelftest, runSelftest, selftestResidueText } from '../../src/trivium/selftest.js';
 import { run } from '../../src/trivium/util/exec.js';
 
+// WIN_FILE_SKIP（Windows 移植）：断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物');
+} else {
+
 const SYSTEM_TMP = os.tmpdir();
 const ROOT = process.getuid?.() === 0;
 const LOCK_CODES = new Set(['EACCES', 'EPERM']);
@@ -341,3 +347,5 @@ test('W src/ 全树的递归删除只剩豁免表里的那几处，其余一律�
       '新增的改调 util/fsx.ts 的 tryRemoveTempDir；确属有意保留的在豁免表登记理由；豁免项已改掉的从表里删去',
   );
 });
+
+}

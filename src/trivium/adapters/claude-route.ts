@@ -4,6 +4,7 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { accessSync, constants, readFileSync, readdirSync } from 'node:fs';
 import type { ClaudeProbe, Config } from '../types.js';
+import { IS_WIN } from '../util/platform.js';
 
 export interface ClaudeRoute {
   mode: 'native' | 'profile';
@@ -56,9 +57,15 @@ export function executableFile(file: string | null): boolean {
 }
 
 function wrapperPath(): string | null {
-  for (const file of [path.join(os.homedir(), '.local', 'bin', 'cld'),
-    ...(process.env['PATH'] ?? '').split(path.delimiter).filter(Boolean).map(dir => path.join(dir, 'cld'))]) {
-    if (executableFile(file)) return file;
+  // Windows：可选路由包装器的 cmd 形态；win32 下 X_OK 近似可读检查，存在性即判据
+  const names = IS_WIN ? ['cld.cmd', 'cld.exe'] : ['cld'];
+  const candidates: string[] = [path.join(os.homedir(), '.local', 'bin'),
+    ...(process.env['PATH'] ?? '').split(path.delimiter).filter(Boolean)];
+  for (const name of names) {
+    for (const dir of candidates) {
+      const file = path.join(dir, name);
+      if (executableFile(file)) return file;
+    }
   }
   return null;
 }

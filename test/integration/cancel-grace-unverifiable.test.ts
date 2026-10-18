@@ -33,6 +33,12 @@ import type { Ctx } from '../../src/trivium/types.js';
 import { stubPsFailure, type PsStub } from '../helpers/ps-stub.js';
 import { fakeCtx } from '../helpers/run-ctx.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 const TOPIC = '取消宽限期用例';
 const DEAD_PID = 999_994;
 const T = { timeout: 90_000 };
@@ -720,3 +726,5 @@ test('EV-177 L2：失联后取消，入格之后首检即判不了 ⇒ 一个信
     assert.ok(isAlive(w.pid), '工作进程应仍活着');
   });
 });
+
+}

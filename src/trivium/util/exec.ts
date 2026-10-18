@@ -8,6 +8,8 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { dirname } from 'node:path';
+import { IS_WIN, winProcessCreation, winTaskkillTree, winTreeMemberCount } from './platform.js';
 
 export interface RunOptions {
   cwd?: string;
@@ -267,7 +269,31 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
       ? ['-q', '-c', formatCommand(bin, args), '/dev/null']
       : ['-q', '/dev/null', bin, ...args]
     : [...args];
-  const commandLine = formatCommand(realBin, realArgs);
+  // Windows：.cmd/.bat 垫片（npm 全局装法的 CLI 与测试夹具）经 cmd.exe 间接执行——
+  // CVE-2024-27980 起 Node 拒绝无 shell 直接 spawn 该类文件。参数在 /c 之后原样拼接；
+  // 含 cmd 元字符（^&|<>%!、内嵌引号）的参数不在支持面——真实 CLI 走原生 .exe（探针候选序保证），
+  // 垫片是兼容层（设计 §7.1 边界）。killTree 语义不变：被登记的是 cmd.exe 的 pid，/T 树杀连带其 node 子进程。
+  const cmdShim = IS_WIN && /\.(cmd|bat)$/i.test(bin);
+  const spawnBin = cmdShim ? 'cmd.exe' : realBin;
+  const spawnArgs = cmdShim ? ['/d', '/s', '/c', bin, ...realArgs] : realArgs;
+  const commandLine = formatCommand(spawnBin, spawnArgs);
+
+  /*
+   * Windows 无 BSD `script`（也没有它的 pty 等价物；零依赖约束排除了 node-pty 一类原生模块）。
+   * 显式拒绝而不是误入 BSD 分支去 spawn 一个不存在的 `script`：报错正文说明成因，
+   * 依赖 pty 的那侧 CLI（agy 的 probe.agy.pty_required）在 Windows 上会以本错误落「不可用」。
+   */
+  if (pty && IS_WIN) {
+    const result: RunResult = {
+      code: null, signal: null, stdout: '', durationMs: 0,
+      stderr: '[spawn error] Windows 不支持 pty 模式：本机没有 BSD script，也没有零依赖的 pty 等价物；需要 pty 的 CLI 在 Windows 上不可用',
+      timedOut: false, earlyStopped: false, truncated: false, commandLine, spawned: false,
+    };
+    if (launchIndex !== null && quota?.budget.onComplete) {
+      return Promise.resolve(quota.budget.onComplete(launchIndex, bin, result)).then(() => result);
+    }
+    return Promise.resolve(result);
+  }
 
   const childEnv: NodeJS.ProcessEnv = { ...process.env };
   for (const [k, v] of Object.entries(env ?? {})) {
@@ -281,11 +307,17 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     // BSD script 在管道 stdin 下拉不起命令（EV-156），给 /dev/null
     stdio: [bsdPty ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     ...(killTree ? { detached: true } : {}),
+    /*
+     * Windows：父进程在 Git Bash/mintty 等伪终端下没有真控制台时，每个控制台子进程
+     * 都会被分配一个新的**可见**控制台窗口——轮询类调用（每 400 ms 的进程枚举）会
+     * 变成持续弹窗。POSIX 上 libuv 忽略本选项，行为零变化。
+     */
+    windowsHide: true,
   };
 
   const pending = new Promise<RunResult>((resolve) => {
     const startedAt = Date.now();
-    const child = spawn(realBin, realArgs, spawnOpts);
+    const child = spawn(spawnBin, spawnArgs, spawnOpts);
     let spawned = false;
     child.once('spawn', () => { spawned = true; });
     // 登记与派生之间插不进别的 JS（spawn 是同步的），所以 SIGTERM 处理器看得到每一个已派生的组
@@ -522,6 +554,8 @@ export async function spawnDetached(
       env: childEnv,
       detached: true,
       stdio: ['ignore', handle.fd, handle.fd],
+      // Windows：脱离的 worker 不带 windowsHide 会得到一个可见控制台窗口（同 run() 的注释）
+      windowsHide: true,
     });
     /*
      * spawn 失败时 Node 会**异步**再发一次 'error'；没有监听者就是未捕获异常，
@@ -574,8 +608,8 @@ export async function spawnDetached(
 
 /** 避免为一个 dirname 引入 node:path 的顶层依赖（本文件其余部分不需要它） */
 function pathDirname(p: string): string {
-  const i = p.lastIndexOf('/');
-  return i <= 0 ? '/' : p.slice(0, i);
+  // Windows 移植：logFile 是 path.join 产物（win32 为反斜杠），手写 lastIndexOf('/') 会找不到分隔符
+  return dirname(p);
 }
 
 /**
@@ -625,8 +659,13 @@ export async function processAlive(
  * （`worker_started_at_canonical`、`pid_started_at_canonical`、`sides[c].cli.started_at`），新读者「有就只比它」。
  * 就地改这组旗标或环境（换 `-o` 字段、换 `LC_ALL` / `TZ`、改 trim），旧版规范化写下、新版读的记录会**同环境也全判
  * 不是同一进程**——方向是最坏的一侧（抹凭据、回收活锁）。任何变更必须换新字段名，禁止就地改。
+ *
+ * **Windows（设计 §7.1）**：走 `util/platform.ts` 的 WMI CreationDate（UTC ISO，显式格式化、与环境无关），
+ * canonical 与缺省形态同值、`o.canonical` 无作用。字段名与 macOS 复用同一组——记录不跨机器/平台，Windows 上
+ * 不存在 `ps lstart` 形态的旧记录，写读两端同平台同形态，不触碰上述盘上契约；macOS 的取法与形态逐字不变。
  */
 export async function processStartTime(pid: number, o: { canonical?: boolean } = {}): Promise<string | null> {
+  if (IS_WIN) return winProcessCreation(pid);
   const r = await run('/bin/ps', ['-p', String(pid), '-o', 'lstart='], {
     timeoutMs: 10_000,
     ...(o.canonical ? { env: { LC_ALL: 'C', TZ: 'UTC0' } } : {}),
@@ -757,6 +796,8 @@ export async function processMatchesRecord(
  * `--cancel` 按记录结束 CLI 之后用它如实报「组长已退出而组员还在」（EV-154，计划双审 r1 GLM-01）。
  */
 export async function processGroupMemberCount(pgid: number): Promise<number | null> {
+  // Windows：无进程组概念，按父链后代闭包等价计数（设计 §7.1，`util/platform.ts` 的 `winTreeMemberCount`）
+  if (IS_WIN) return winTreeMemberCount(pgid);
   const r = await run('/bin/ps', ['-axo', 'pgid=,stat='], { timeoutMs: 10_000 });
   if (r.code !== 0) return null;
   return countLiveGroupMembers(r.stdout, pgid);
@@ -797,6 +838,11 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals): boolean {
   if (!Number.isInteger(pid) || pid <= 1) return false;
   // 绝不对自己发组信号：`kill(-pid)` 以 pid 为组号，pid 等于自身时就是自杀
   if (pid === process.pid) return false;
+
+  // Windows（设计 §7.1）：taskkill /T 树杀。SIGKILL 位映射 /T /F（硬杀整棵树）；其余信号映射软步（WM_CLOSE，
+  // 控制台进程常无效——宽限期内靠 worker 的取消标记路径完成优雅收尾，期满升级硬步）。worker 活着时其
+  // detached 子进程父链完整，/T 能连带清理，POSIX 侧「组长死后组员过继 init」的盲区在 Windows 天然不存在。
+  if (IS_WIN) return winTaskkillTree(pid, signal === 'SIGKILL');
 
   try {
     process.kill(-pid, signal); // 负数 = 整个进程组

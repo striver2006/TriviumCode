@@ -12,6 +12,12 @@ import { resolveClaudeRoute } from '../../src/trivium/adapters/claude-route.js';
 import { READONLY_INVARIANTS } from '../../src/trivium/probes/claude.js';
 import type { CriticRequest } from '../../src/trivium/types.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 test('生产适配器大集合经过目录投影实际递入argv/stdin；失败出口仍有投影与规模', async () => {
   const root = await scratchDir('trivium-directory-adapter-');
   const capture = path.join(root, 'capture.json');
@@ -81,3 +87,5 @@ test('生产适配器大集合经过目录投影实际递入argv/stdin；失败�
   assert.equal(changedTrace.denySettings.directoryGuard.observedFingerprint, null);
   assert.ok(changedTrace.denySettings.directoryGuard.recordedProjectHash !== changedTrace.denySettings.directoryGuard.observedProjectHash);
 });
+
+}

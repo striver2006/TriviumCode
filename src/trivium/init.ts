@@ -19,6 +19,7 @@ import { AGENTS, type AgentDescriptor } from './agents/registry.js';
 import type { Ctx } from './types.js';
 import { CONFIG_SCHEMA_ID, CONFIG_SCHEMA_ID_V1, defaultConfig, migrateConfigV1, resolveAssetRoot } from './config.js';
 import { createExclusive, ensureDir, exists, writeAtomic } from './util/fsx.js';
+import { IS_WIN } from './util/platform.js';
 import { say, step, warn } from './util/log.js';
 import { hookNamesOf, loadHookSource, mergeAgentHooks } from './hook-config.js';
 
@@ -336,13 +337,27 @@ export async function stableNodePath(
  */
 export async function checkWrapper(triviumDir: string): Promise<string[]> {
   const p = path.join(triviumDir, 'bin/trivium');
-  if (!(await exists(p))) return [];
-  const script = await fs.readFile(p, 'utf8');
-  const m = /^exec "([^"]+)" "([^"]+)"/m.exec(script);
-  if (!m) return [`${p} 不是 trivium init 生成的 wrapper 形态，请重跑 trivium init`];
   const problems: string[] = [];
-  if (!(await exists(m[1]!))) problems.push(`wrapper 写死的 node 已不存在：${m[1]}（brew upgrade node 之后常见）。请重跑 trivium init`);
-  if (!(await exists(m[2]!))) problems.push(`wrapper 指向的 bundle 已不存在：${m[2]}。请重新安装 skill 后重跑 trivium init`);
+  if (await exists(p)) {
+    const script = await fs.readFile(p, 'utf8');
+    const m = /^exec "([^"]+)" "([^"]+)"/m.exec(script);
+    if (!m) {
+      problems.push(`${p} 不是 trivium init 生成的 wrapper 形态，请重跑 trivium init`);
+    } else {
+      if (!(await exists(m[1]!))) problems.push(`wrapper 写死的 node 已不存在：${m[1]!}（brew upgrade node 之后常见）。请重跑 trivium init`);
+      if (!(await exists(m[2]!))) problems.push(`wrapper 指向的 bundle 已不存在：${m[2]!}。请重新安装 skill 后重跑 trivium init`);
+    }
+  }
+  // Windows：再核 .cmd 入口（cmd/PowerShell 用；Hook 守卫与 Git Bash 走上面的 sh 形态）
+  if (IS_WIN) {
+    const cmdPath = path.join(triviumDir, 'bin/trivium.cmd');
+    if (await exists(cmdPath)) {
+      const script = await fs.readFile(cmdPath, 'utf8');
+      const m = /^"([^"]+)" "([^"]+)" %\*$/m.exec(script);
+      if (!m) problems.push(`${cmdPath} 不是 trivium init 生成的 wrapper 形态，请重跑 trivium init`);
+      else if (!(await exists(m[1]!))) problems.push(`wrapper 写死的 node 已不存在：${m[1]!}。请重跑 trivium init`);
+    }
+  }
   return problems;
 }
 
@@ -367,6 +382,22 @@ export async function writeWrapper(
     await fs.chmod(p, 0o755);
   }
   (had ? report.updated : report.created).push(p);
+  /*
+   * Windows（设计 §7.1）：cmd/PowerShell 的入口形态。sh 形态照写（Hook 守卫与 Git Bash 会话都走它——
+   * Claude Code 在 Windows 上以 Git Bash 执行 hook 命令，`test -x` 在 MSYS 的 noacl 挂载下对普通文件成立）；
+   * `.cmd` 给 cmd/PowerShell 里的人用，CRLF 是 cmd 的规范行尾。二者都指向同一 node 与 bundle。
+   */
+  if (IS_WIN) {
+    const cmdPath = path.join(triviumDir, 'bin/trivium.cmd');
+    const hadCmd = await exists(cmdPath);
+    const cmdScript =
+      `@echo off\r\n` +
+      `REM 由 \`trivium init\` 生成。node 路径写死是刻意的：\r\n` +
+      `REM GUI 进程（VS Code）不读用户 shell 配置，依赖 PATH 会在插件里失效（设计 §10.5）。\r\n` +
+      `"${nodePath}" "${path.join(assetRoot, 'scripts/trivium.cjs')}" %*\r\n`;
+    if (!dryRun) await writeAtomic(cmdPath, cmdScript);
+    (hadCmd ? report.updated : report.created).push(cmdPath);
+  }
 }
 
 /**

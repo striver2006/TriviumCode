@@ -18,6 +18,12 @@ import { defaultConfig } from '../../src/trivium/config.js';
 import { ZCODE_PERSONAL_PROVIDER_ENV, zcodeAdapter, zcodeTempDirResidueText, type ZcodeTempDirCopyKind } from '../../src/trivium/adapters/zcode.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 断言 POSIX 权限位语义（0600/0500/0000），NTFS 无对应物');
+} else {
+
 const tmp = (p: string) => scratchDir(p);
 
 const OBSERVE_ENTRY = (exitCode: number, stderrLine = 'Error: Model creation failed (traceId: fake)') => `
@@ -328,3 +334,5 @@ test('A4 退路支（档位无模型）+ 删不掉：没有副本就不说「含
   assert.doesNotMatch(r.detail, /含真实凭据/);
   assert.ok(r.detail.endsWith(`；${want(null)}`), r.detail);
 });
+
+}

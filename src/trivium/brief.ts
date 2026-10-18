@@ -538,9 +538,11 @@ export async function buildMustReadList(
   planFinal: string | null,
 ): Promise<MustReadEntry[]> {
   const out: MustReadEntry[] = [];
+  // 必读列表的 path 是 BRIEF/留痕域的项目相对形态，恒用 `/`（win32 的 path.join 产出反斜杠，须归一）
   const push = async (rel: string, source: MustReadSource) => {
-    if (out.some((e) => e.path === rel)) return;
-    if (await exists(path.join(projectRoot, rel))) out.push({ path: rel, source });
+    const relPosix = path.sep === '\\' ? rel.replace(/\\/g, '/') : rel;
+    if (out.some((e) => e.path === relPosix)) return;
+    if (await exists(path.join(projectRoot, relPosix))) out.push({ path: relPosix, source });
   };
 
   // 1) 项目公约与文档入口

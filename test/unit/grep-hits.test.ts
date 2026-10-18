@@ -34,8 +34,13 @@ import { READONLY_INVARIANTS } from '../../src/trivium/probes/claude.js';
 import { readonlyToolsFromProbe } from '../../src/trivium/adapters/claude.js';
 import type { CriticRequest, CriticResult, Review } from '../../src/trivium/types.js';
 
+import { IS_WIN } from '../helpers/platform.js';
+
+// Windows 移植：win32 的 path.isAbsolute 不认 '/proj' 这类盘相对形态；引号串里的 POSIX 绝对路径统一补 ${ABS} 盘符根（macOS 上为空串，字面不变）
+const ABS = IS_WIN ? 'D:' : '';
+
 const FIXTURES = path.join(REPO_ROOT, 'test/fixtures/claude-events');
-const FAKE_ROOT = '/proj/m9-acceptance';
+const FAKE_ROOT = `${ABS}/proj/m9-acceptance`;
 
 async function loadTrace(name: string, root = FAKE_ROOT) {
   const raw = await fs.readFile(path.join(FIXTURES, name), 'utf8');
@@ -241,15 +246,18 @@ test('T10 兜底：凡 grep-*.jsonl 夹具，content 命中或 listed 至少一�
 
 // ── T11：归一化 ───────────────────────────────────────────────────────
 
-test('T11 toProjectRelative：/tmp 与 /private/tmp、./、绝对写法互相匹配；同名前缀与项目外为 null', () => {
-  const roots = ['/tmp/repo', '/private/tmp/repo'];
-  assert.equal(toProjectRelative('/private/tmp/repo/src/a.ts', roots), 'src/a.ts');
-  assert.equal(toProjectRelative('/tmp/repo/src/a.ts', roots), 'src/a.ts');
+test(`T11 toProjectRelative：/tmp 与 ${ABS}/private/tmp、./、绝对写法互相匹配；同名前缀与项目外为 null`, () => {
+  // /private 双形态是 macOS 专属语义（resolve 前的符号链接前缀）；win32 上只测正根一侧
+  const roots = IS_WIN
+    ? [`${ABS}/tmp/repo`]
+    : [`${ABS}/tmp/repo`, `${ABS}/private/tmp/repo`];
+  if (!IS_WIN) assert.equal(toProjectRelative(`${ABS}/private/tmp/repo/src/a.ts`, roots), 'src/a.ts');
+  assert.equal(toProjectRelative(`${ABS}/tmp/repo/src/a.ts`, roots), 'src/a.ts');
   assert.equal(toProjectRelative('./src/a.ts', roots), 'src/a.ts');
   assert.equal(toProjectRelative('src/a.ts', roots), 'src/a.ts');
-  assert.equal(toProjectRelative('/tmp/repository/src/a.ts', roots), null, '分隔符边界：/repo 不是 /repository 的前缀（AGY-04）');
-  assert.equal(toProjectRelative('/etc/passwd', roots), null);
-  const m = matchConsulted(['src/a.ts', 'doc/x.md'], ['/private/tmp/repo/src/a.ts'], roots);
+  assert.equal(toProjectRelative(`${ABS}/tmp/repository/src/a.ts`, roots), null, '分隔符边界：/repo 不是 /repository 的前缀（AGY-04）');
+  assert.equal(toProjectRelative(`${ABS}/etc/passwd`, roots), null);
+  const m = matchConsulted(['src/a.ts', 'doc/x.md'], [`${ABS}${IS_WIN ? '' : '/private'}/tmp/repo/src/a.ts`], roots);
   assert.deepEqual(m, { matched: ['src/a.ts'], missing: ['doc/x.md'] });
 });
 
@@ -306,7 +314,7 @@ test('T13 符号链接根：projectRoots 带 realpath 别名时，物理形态�
    * 恒不命中。judgeSide 现在先经 projectRoots 别名把项目内路径折成相对形态再送入。
    */
   const t = await loadTrace('read-sentinel.jsonl');
-  const LINK = '/Users/someone/link/repo';
+  const LINK = `${ABS}/Users/someone/link/repo`;
   const REAL = '/Volumes/data/repo';
   const req = { ...REQ, project_root: LINK, deny_paths: ['.reviews/T/plan/2026-09-19-T-glm.md'] } as CriticRequest;
   const opts = (roots?: readonly string[]) => ({

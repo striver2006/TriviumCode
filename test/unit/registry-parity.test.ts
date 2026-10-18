@@ -14,6 +14,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+
+/**
+ * 相对路径统一成 posix 形态再比较/输出：allowlist 与归属判据写的都是正斜杠相对路径，
+ * `path.relative` 在 win32 产出反斜杠，不归一会把全部白名单条目判成未命中（Windows 移植）。
+ */
+const toPosixRel = (p: string): string => p.split(path.sep).join('/');
 import {
   AGENTS,
   ALL_AGENT_IDS,
@@ -540,7 +546,7 @@ test('grep 对账：白名单外的模块不得出现 Agent id / 前缀字面量
 
   const offenders: string[] = [];
   for (const abs of files) {
-    const rel = path.relative(srcRoot, abs);
+    const rel = toPosixRel(path.relative(srcRoot, abs));
     if (LITERAL_ALLOWLIST.some((w) => rel === w.file || rel.endsWith(`/${w.file}`))) continue;
 
     const src = await fs.readFile(abs, 'utf8');
@@ -622,7 +628,7 @@ test('grep 对账（属性访问形态）：白名单外不得出现 .<id> / <id
 
   const offenders: string[] = [];
   for (const abs of files) {
-    const rel = path.relative(srcRoot, abs);
+    const rel = toPosixRel(path.relative(srcRoot, abs));
     if (LITERAL_ALLOWLIST.some((w) => rel === w.file || rel.endsWith(`/${w.file}`))) continue;
 
     const src = await fs.readFile(abs, 'utf8');
@@ -1586,7 +1592,7 @@ test('架构契约：adapters/ 不得字面重建探针的安全不变量', asyn
   const offenders: string[] = [];
   for (const abs of adapterFiles) {
     const raw = await fs.readFile(abs, 'utf8');
-    const rel = path.relative(REPO_ROOT, abs);
+    const rel = toPosixRel(path.relative(REPO_ROOT, abs));
     const cliOfFile = [...PROBE_RECIPE_BY_CLI.keys()].find((c) => ownsAdapterFile(c, rel)) ?? null;
 
     for (const { token, line } of quotedTokens(stripCommentsKeepStrings(raw))) {
@@ -1726,7 +1732,7 @@ test('架构契约：黑名单两族各自的防空转判据', async () => {
    * 变成可核的，而不是靠人记得**。
    */
   const adapterRels = (await collectSourceFiles(path.join(REPO_ROOT, 'src/trivium/adapters')))
-    .map((abs) => path.relative(REPO_ROOT, abs));
+    .map((abs) => toPosixRel(path.relative(REPO_ROOT, abs)));
   for (const cli of PROBE_RECIPE_BY_CLI.keys()) {
     assert.ok(
       adapterRels.some((rel) => ownsAdapterFile(cli, rel)),

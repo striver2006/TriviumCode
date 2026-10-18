@@ -29,6 +29,7 @@ import { promises as fs } from 'node:fs';
 import type { CriticRequest, CriticResult, ModelUnenforcedCause } from '../types.js';
 import { run } from '../util/exec.js';
 import { ensureDir, exists, sha256File, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
+import { IS_WIN } from '../util/platform.js';
 import {
   parseZcodeEnvelope,
   parseZcodeRollout,
@@ -501,7 +502,15 @@ export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvoke
   // 先清后设（EV-112 计划 r3 §4.4）：上面已把全部目录 / 路径键与开关键清成 undefined，这里再覆盖三个落点键。
   // 顺序反过来，编排器的值会被清掉、子进程退回 HOME 缺省（变异 M2）
   if (opts.storageRedirectRoot) Object.assign(env, zcodeStorageRedirectEnv(opts.storageRedirectRoot));
-  if (opts.homeDir) env['HOME'] = opts.homeDir;
+  if (opts.homeDir) {
+    env['HOME'] = opts.homeDir;
+    // Windows：CLI 若按 USERPROFILE / HOMEDRIVE+HOMEPATH 定家目录，只改 HOME 隔离不住（设计 §7.1）——三者并设
+    if (IS_WIN) {
+      env['USERPROFILE'] = opts.homeDir;
+      env['HOMEDRIVE'] = undefined;
+      env['HOMEPATH'] = undefined;
+    }
+  }
 
   const r = await run(opts.node, args, { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, killTree: true });
 

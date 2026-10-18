@@ -22,6 +22,12 @@ import {
   ZCODE_PROBE_SENTINEL_KEY,
 } from '../../src/trivium/probes/zcode.js';
 
+// WIN_FILE_SKIP（Windows 移植）：zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）');
+} else {
+
 /*
  * 本文件建的临时目录全部记下、文件跑完整删（EV-198 代码双审 r1 CODEX-03）：此前从不清理，系统临时目录里
  * `trivium-fullcopy-test-*` 越积越多。`force` 且不抛——收尾失败不该把已跑完的用例变红。
@@ -575,3 +581,5 @@ test('listPersonalProviderIds：只返回 provider 键名，不返回任何值',
   assert.equal(JSON.stringify(out).includes('SECRET'), false);
   assert.deepEqual(await listPersonalProviderIds(path.join(dir, 'missing.json')), { present: false, ids: [] });
 });
+
+}

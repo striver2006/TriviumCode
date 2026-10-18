@@ -15,6 +15,12 @@ import { readState, setGate } from '../../src/trivium/state.js';
 import { psStubWorks, stubPsFailure } from '../helpers/ps-stub.js';
 import { scratchDir } from '../helpers/scratch.js';
 
+// WIN_FILE_SKIP（Windows 移植）：活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）');
+} else {
+
 async function tmpTrivium(): Promise<string> {
   return scratchDir('trivium-lock-');
 }
@@ -1149,3 +1155,5 @@ test('EV-153 U3：跨进程——活着的别的进程持运行锁，规范化 p
     await within(exited, 10_000, '子进程退出').catch(() => undefined);
   }
 });
+
+}

@@ -47,6 +47,12 @@ import { LaunchBudgetExceeded } from '../../src/trivium/util/exec.js';
 import { scratchDir } from '../helpers/scratch.js';
 import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
 
+// WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）');
+} else {
+
 // doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
 isolateEntryScanHome();
 
@@ -285,3 +291,5 @@ test('doctor目录后置预期失败不丢主probe：真实假CLI、持久化及
     only: 'claude', probeBins: { claude: fakeBin }, modelOverrides: { claude: 'stub/0.0.0' },
     claudeDirectoryProbe: async () => { throw new TypeError('undefined-internal-error'); } }), TypeError);
 });
+
+}

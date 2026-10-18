@@ -31,6 +31,12 @@ import { scratchDir } from '../helpers/scratch.js';
 import { FAKE_GIT_STDERR, writeFakeGit } from '../helpers/fake-git.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 
+// WIN_FILE_SKIP（Windows 移植）：依赖 POSIX 专属机制（shebang 假 CLI / PATH 垫片 / ps 故障注入）
+// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+if (process.platform === 'win32') {
+  console.log('skip（win32）: 依赖 POSIX 专属机制（shebang 假 CLI / PATH 垫片 / ps 故障注入）');
+} else {
+
 const EX = diffExcludePrefixes('.reviews');
 
 /** 夹具仓库：业务文件、归档里一份已跟踪的计划、`.trivium/config.yaml`，全部提交 */
@@ -406,3 +412,5 @@ test('EV-221 G2（源码护栏）：src/ 里的 workTreeHash 调用点与登记�
   await walk(root);
   assert.deepEqual(seen, REGISTERED, 'workTreeHash 调用点与登记表不一致——新增调用点要登记，送审、复算、摘要、构建标识四处要传同源排除');
 });
+
+}

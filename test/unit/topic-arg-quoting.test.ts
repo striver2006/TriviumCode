@@ -18,6 +18,7 @@ import { shellQuoteArg, validateTopic } from '../../src/trivium/naming.js';
 import { claimCommand } from '../../src/trivium/driver-claim.js';
 import { approveForkRecovery } from '../../src/trivium/gate.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { SH } from '../helpers/platform.js';
 
 test('EV-195 Q1：白名单内的主题原样返回（含中文、数字、- _ .）', () => {
   for (const t of ['闸门闭环', 'M10b-第3步', 'run_id避让', 'v1.2.3', 'abc', '失联取消两格退69', 'ÉtéÜber']) {
@@ -39,7 +40,8 @@ test('EV-195 Q3：这些主题名确实能过 validateTopic（校验不收紧）
   const { run } = await import('../../src/trivium/util/exec.js');
   for (const t of ['a;b', 'x$(id)', 'a`b`', "it's", '主题（草稿）', '闸门闭环']) {
     assert.equal(validateTopic(t).ok, true, `${t} 应仍合法（本题不收紧校验）`);
-    const r = await run('/bin/sh', ['-c', `printf '%s' ${shellQuoteArg(t)}`], { timeoutMs: 10_000 });
+    // SH：POSIX 为 /bin/sh，win32 为 Git Bash 的 sh.exe（shellQuoteArg 是 POSIX 单引号文法，语义随 sh）
+    const r = await run(SH, ['-c', `printf '%s' ${shellQuoteArg(t)}`], { timeoutMs: 10_000 });
     assert.equal(r.code, 0, r.stderr);
     assert.equal(r.stdout, t, `${t} 经 shell 还原不一致`);
   }

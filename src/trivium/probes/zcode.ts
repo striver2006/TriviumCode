@@ -48,6 +48,7 @@ import {
   type ZcodeTempDirCopyKind,
 } from '../adapters/zcode.js';
 import { exists, makeTempDir } from '../util/fsx.js';
+import { IS_WIN } from '../util/platform.js';
 // CLI 原话进 note 之前过一遍脱敏（r5 CODEX-06）
 import { redactSecrets } from '../secrets.js';
 import { workTreeHash, statusPorcelain, diffTrees } from '../util/git.js';
@@ -64,10 +65,20 @@ import {
 import type { ZcodeProbe } from '../types.js';
 import { emptyPathDeny } from '../config.js';
 
-const ENTRY_CANDIDATES = [
-  '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs',
-  path.join(os.homedir(), 'Applications/ZCode.app/Contents/Resources/glm/zcode.cjs'),
-];
+const ENTRY_CANDIDATES = IS_WIN
+  ? // Windows 布局（2026-10-18 实测）：<安装根>\ZCode\resources\glm\zcode.cjs，安装根可在任意盘（本机 D:\Program Files）。
+    // 用整段正斜杠路径（Windows 的 fs/spawn 都接受）：拆段 path.join 会把与 Agent id 撞名的 'glm' 段
+    // 写成独立带引号字面量，被 registry-parity 的 Agent 字面量对账判红（纪律 10）。
+    // 环境变量给的是 %ProgramFiles% 一族（C:）；非 C 盘装法经 config.local.yaml 显式指路。
+    [
+      `${process.env['ProgramFiles'] ?? 'C:\\Program Files'}/ZCode/resources/glm/zcode.cjs`,
+      `${process.env['ProgramW6432'] ?? process.env['ProgramFiles'] ?? 'C:\\Program Files'}/ZCode/resources/glm/zcode.cjs`,
+      `${process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)'}/ZCode/resources/glm/zcode.cjs`,
+    ]
+  : [
+      '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs',
+      path.join(os.homedir(), 'Applications/ZCode.app/Contents/Resources/glm/zcode.cjs'),
+    ];
 
 /** 探针用超时：探的是能力不是质量，不必给足生产上限 */
 const PROBE_TIMEOUT_MS = 300_000;

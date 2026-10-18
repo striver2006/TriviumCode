@@ -12,9 +12,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
+import path from 'node:path';
 import { checkPeerLeakViaCommand } from '../../src/trivium/adapters/base.js';
 
-const ROOT = '/Users/x/proj';
+import { IS_WIN } from '../helpers/platform.js';
+
+// Windows 移植：win32 的 path.isAbsolute 不认 '/proj' 这类盘相对形态；引号串里的 POSIX 绝对路径统一补 ${ABS} 盘符根（macOS 上为空串，字面不变）
+const ABS = IS_WIN ? 'D:' : '';
+
+const ROOT = `${ABS}/Users/x/proj`;
 /** 典型 deny 条目：一份对端产物（文件）与一个运行目录（目录） */
 const DENY = [
   `${ROOT}/.reviews/t/code/2026-01-01-t-gemini.md`,
@@ -135,7 +141,8 @@ test('[F-7] 家目录写法：deny 是展开后的绝对路径，命令写 ~ 或
    * r1 双审前 `ls ~/.trivium/runs` 漏检（AGY-03 ≡ GLM-02）——
    * 而 EV-01 明写措施 b 是**通道③在检测侧的唯一覆盖**。
    */
-  const runRoot = `${os.homedir()}/.trivium/runs`;
+  // Windows 移植：家目录拼接走 path.join（win32 反斜杠；正斜杠写法由 spellings 的 posix 变体覆盖）
+  const runRoot = path.join(os.homedir(), '.trivium/runs');
   const deny = [runRoot];
   const h2 = (c: string): boolean => checkPeerLeakViaCommand([c], deny, ROOT).leaked;
   assert.equal(h2(`ls ${runRoot}`), true, '展开态');
@@ -155,7 +162,7 @@ test('[F-7] 家目录写法：deny 是展开后的绝对路径，命令写 ~ 或
    */
   assert.equal(h2('ls ~someone/.trivium/runs'), true, '他人家目录：解析不了，保守命中');
   assert.equal(
-    h2(`ls ~${os.homedir().split('/').pop()}/.trivium/runs/abc`), true,
+    h2(`ls ~${os.homedir().split(/[\\/]/).pop()}/.trivium/runs/abc`), true,
     '自查登录名：由同一条兜底覆盖，不必另派生拼写',
   );
   assert.equal(h2('ls ~someone/.config/nvim'), false, '后缀落不到 deny 之下的，不得误命中');
@@ -238,11 +245,11 @@ test('【误报】同前缀的兄弟目录不得命中', () => {
 });
 
 test('【误报】同名文件在别的仓库里，不得因项目相对写法命中', () => {
-  assert.equal(hit('cat /Users/other/repo/.reviews/t/code/2026-01-01-t-gemini.md'), false);
+  assert.equal(hit(`cat ${ABS}/Users/other/repo/.reviews/t/code/2026-01-01-t-gemini.md`), false);
 });
 
 test('【误报】文件名是更长路径的一段尾巴，不得命中', () => {
-  assert.equal(hit('cat /tmp/backup-.reviews/t/code/2026-01-01-t-gemini.md'), false);
+  assert.equal(hit(`cat ${ABS}/tmp/backup-.reviews/t/code/2026-01-01-t-gemini.md`), false);
 });
 
 test('读自己的产出不算泄漏', () => {
@@ -263,7 +270,7 @@ test('项目根带 /private 前缀时，项目相对写法仍要能命中', () =
    * 上面那 17 条全绿——因为它们用的是干净的 `/Users/x/proj`，两边都不带 `/private`，
    * 恰好绕开了差异。**测试数据的「干净」本身就能藏 bug。**
    */
-  const privRoot = '/private/var/folders/ab/T/trivium-fx-XYZ';
+  const privRoot = `${ABS}/private/var/folders/ab/T/trivium-fx-XYZ`;
   const deny = ['.env', '.trivium'];
   const cmds = deny.map((p) => `git show HEAD:${p}`);
   const r = checkPeerLeakViaCommand(cmds, deny, privRoot);
@@ -272,7 +279,7 @@ test('项目根带 /private 前缀时，项目相对写法仍要能命中', () =
 });
 
 test('deny 条目本身带 /private 的绝对路径，命令照原样写也要命中', () => {
-  const privRoot = '/private/var/folders/ab/T/trivium-fx-XYZ';
+  const privRoot = `${ABS}/private/var/folders/ab/T/trivium-fx-XYZ`;
   const denyAbs = `${privRoot}-runs`;
   assert.equal(
     checkPeerLeakViaCommand([`ls ${denyAbs}`], [denyAbs], privRoot).leaked, true,
@@ -309,7 +316,7 @@ test('命中要带上**是哪个条目、命令里那个路径归一到哪**', (
   assert.equal(matches[0]!.hits.length, 1);
   assert.equal(
     matches[0]!.hits[0]!.resolved,
-    `${ROOT}/.reviews/t/code/2026-01-01-t-gemini.md`,
+    path.normalize(`${ROOT}/.reviews/t/code/2026-01-01-t-gemini.md`),
     'resolved 要是命令里那个路径本身，不是条目',
   );
 });
@@ -425,7 +432,8 @@ test('[F-9] 删掉引号再扫一遍：拼写被引号打断的形态', () => {
    *
    * **反引号不动**——删它会改变命令替换的语义，那才真是另一套穷举面。
    */
-  const runRoot = `${os.homedir()}/.trivium/runs`;
+  // Windows 移植：家目录拼接走 path.join（win32 反斜杠；正斜杠写法由 spellings 的 posix 变体覆盖）
+  const runRoot = path.join(os.homedir(), '.trivium/runs');
   const h = (c: string): boolean => checkPeerLeakViaCommand([c], [runRoot], ROOT).leaked;
   assert.equal(h('ls "$HOME"/.trivium/runs/abc'), true, '双引号切分');
   assert.equal(h("ls '$HOME'/.trivium/runs/abc"), true, '单引号切分');
@@ -445,12 +453,12 @@ test('[F-9] 删引号不得冲垮既有的误报防线', () => {
    * 二次扫描是「只增不减」的，所以要确认它没把那四条负例变成命中。
    */
   assert.equal(hit('ls .trivium-backup/'), false, '同前缀兄弟目录');
-  assert.equal(hit('cat /Users/other/repo/.reviews/t/code/2026-01-01-t-gemini.md'), false, '他库同名');
+  assert.equal(hit(`cat ${ABS}/Users/other/repo/.reviews/t/code/2026-01-01-t-gemini.md`), false, '他库同名');
   assert.equal(
     hit('cat "/Users/other/repo/.reviews/t/code/2026-01-01-t-gemini.md"'), false,
     '他库同名 + 引号：删引号后仍在项目外',
   );
-  assert.equal(hit('cat /tmp/backup-.reviews/t/code/2026-01-01-t-gemini.md'), false, '路径尾巴');
+  assert.equal(hit(`cat ${ABS}/tmp/backup-.reviews/t/code/2026-01-01-t-gemini.md`), false, '路径尾巴');
 });
 
 test('【已知盲区 B-4】编码/间接：反斜杠转义检测不到', () => {
