@@ -1,0 +1,132 @@
+{
+  "targets": [
+    "src/trivium/entry-collisions.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/run-protocol.ts",
+    "src/install.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/install.test.js",
+    "dist/test/test/unit/entry-collisions.test.js",
+    "dist/test/test/unit/doctor-shared-roots.test.js",
+    "dist/test/test/unit/preflight.test.js",
+    "dist/test/test/unit/handoff-pack.test.js",
+    "dist/test/test/unit/entry-scan-isolation.test.js",
+    "dist/test/test/integration/handoff-dedupe.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "安装根里的自家同名不再放行",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "        if (r === t.skillsRoot && ours) continue; // 安装根里的自家同名：上一次安装，升级覆盖",
+      "replace": "        if (r === t.skillsRoot && ours && name === '') continue;",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "isOurEntry 去掉 wrapper 子串判据",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "  return md.startsWith(`---\\nname: ${name}\\n`) && md.includes('.trivium/bin/trivium');",
+      "replace": "  return md.startsWith(`---\\nname: ${name}\\n`);",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "doctor 把共享读取面告警推进 blockers",
+      "file": "src/trivium/doctor.ts",
+      "find": "      if (listed !== null) warnings.push(listed);",
+      "replace": "      if (listed !== null) blockers.push(listed);",
+      "expect": "dist/test/test/unit/doctor-shared-roots.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "preflight 共享读取面项 ok 置 false",
+      "file": "src/trivium/preflight.ts",
+      "find": "    return detail === null ? null : { name, ok: true, warn: true, detail };",
+      "replace": "    return detail === null ? null : { name, ok: false, warn: true, detail };",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "preflight 相关集去掉 Driver",
+      "file": "src/trivium/preflight.ts",
+      "find": "    const s = await checkSharedReadRoots([driver, ...selected], opts.entryScanEnv);",
+      "replace": "    const s = await checkSharedReadRoots([...selected], opts.entryScanEnv);",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "共享读取面目标把安装根也放进读取根",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "      readRoots: roots.readRoots.filter((r) => r !== roots.skillsRoot),",
+      "replace": "      readRoots: roots.readRoots,",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "packSnapshots 不置 null（仍存 N 份）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  for (const c of sides) packed[c] = { ...snapshots[c]!, diffText: null };",
+      "replace": "  for (const c of sides) packed[c] = { ...snapshots[c]! };",
+      "expect": "dist/test/test/unit/handoff-pack.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "unpackSnapshots 不核正文 sha",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  if (sha256(fd.text) !== fd.sha256) throw bad('冻结补丁的正文与它的 sha256 对不上');",
+      "replace": "  void sha256;",
+      "expect": "dist/test/test/unit/handoff-pack.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "unpackSnapshots 漏还原首侧",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    out[c] = { ...snap, diffText: fd.text };",
+      "replace": "    out[c] = c === sides[0] ? snap : { ...snap, diffText: fd.text };",
+      "expect": "dist/test/test/unit/handoff-pack.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "旧格式误判为新格式丢正文",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    if (h.stage === 'code' && sides.some((c) => h.snapshots[c]?.diffText === null)) {",
+      "replace": "    if (h.stage === 'code') {",
+      "expect": "dist/test/test/unit/handoff-pack.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "entryScanEnv 忽略环境变量",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "  const fromEnv = process.env[ENTRY_SCAN_HOME_ENV];",
+      "replace": "  const fromEnv = undefined as string | undefined;",
+      "expect": "dist/test/test/unit/entry-scan-isolation.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "unpackSnapshots 去掉非 code 阶段拒绝",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "  if (h.stage !== 'code') throw bad(`${h.stage} 阶段不该带冻结补丁`);",
+      "replace": "  void 0;",
+      "expect": "dist/test/test/unit/handoff-pack.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "安装器对 top 布局也查残留",
+      "file": "src/install.ts",
+      "find": "      residueNames: t.layout === 'entry' ? RESIDUE_NAMES : [],",
+      "replace": "      residueNames: RESIDUE_NAMES,",
+      "expect": "dist/test/test/unit/install.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "writeHandoff 不写 frozen_diff（正文丢失）",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "    ...(packed.frozen_diff ? { frozen_diff: packed.frozen_diff } : {}),",
+      "replace": "    ...({}),",
+      "expect": "dist/test/test/integration/handoff-dedupe.test.js"
+    }
+  ]
+}

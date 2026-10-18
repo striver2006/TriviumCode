@@ -33,6 +33,10 @@ import { probeZcode, ZCODE_HEADLESS_UNREFRESHED, type ZcodeHeadlessUnrefreshedBr
 import { runDoctor, zcodeHeadlessUnrefreshedWarning } from '../../src/trivium/doctor.js';
 import { agentConfigOf, defaultConfig } from '../../src/trivium/config.js';
 import type { ZcodeProbe } from '../../src/trivium/types.js';
+import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
+
+// doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
+isolateEntryScanHome();
 
 /** 模块加载时的系统临时目录：各用例的私有根建在它下面，用例里的 `os.tmpdir()` 则被钉到私有根 */
 const SYSTEM_TMP = os.tmpdir();

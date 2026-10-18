@@ -1,0 +1,106 @@
+✓ 工作树干净、基线全绿（7 个套件）
+  M1 ✓ 咬住（fail=4）
+  M2 ✓ 咬住（fail=3）
+  M3 ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=2）
+  M5 ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=2）
+  M7 ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=1）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=1）
+  M13 ✓ 咬住（fail=3）
+  M14 ✓ 咬住（fail=1）
+{
+  "总数": 14,
+  "咬住": 14,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "安装根里的自家同名不再放行",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M2",
+      "desc": "isOurEntry 去掉 wrapper 子串判据",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M3",
+      "desc": "doctor 把共享读取面告警推进 blockers",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "preflight 共享读取面项 ok 置 false",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M5",
+      "desc": "preflight 相关集去掉 Driver",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "共享读取面目标把安装根也放进读取根",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M7",
+      "desc": "packSnapshots 不置 null（仍存 N 份）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "unpackSnapshots 不核正文 sha",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "unpackSnapshots 漏还原首侧",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M10",
+      "desc": "旧格式误判为新格式丢正文",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "entryScanEnv 忽略环境变量",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "unpackSnapshots 去掉非 code 阶段拒绝",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13",
+      "desc": "安装器对 top 布局也查残留",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M14",
+      "desc": "writeHandoff 不写 frozen_diff（正文丢失）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0

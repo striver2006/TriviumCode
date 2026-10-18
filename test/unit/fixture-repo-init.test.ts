@@ -35,6 +35,10 @@ import { codexReadonlyIndeterminateWarning, guardFixture, memoryFixtureWarning, 
 import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
 import { ZCODE_BUILTIN_PROVIDER_ENV, type ZcodeInvokeOptions, type ZcodeInvokeOutcome } from '../../src/trivium/adapters/zcode.js';
 import type { Config } from '../../src/trivium/types.js';
+import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
+
+// doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
+isolateEntryScanHome();
 
 const ROOT = process.getuid?.() === 0;
 const ORIG_PATH = process.env['PATH'] ?? '';

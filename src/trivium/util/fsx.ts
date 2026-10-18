@@ -130,6 +130,18 @@ export function tildeHome(text: string, home: string = os.homedir()): string {
   return text.split(home).join('~');
 }
 
+/**
+ * 路径在用户家目录之下时显示为 `~/…`：预检输出常被抄进 evidence，不必带出用户名。
+ *
+ * M12 批次 5 起自 `preflight.ts` 挪来（安装器产物经共享读取面检测也要用它，而它不该引 preflight），
+ * 并加可选的 `home`：隔离夹具下按扫描所用的家目录折叠（计划双审 AGY-01）。不传时行为同原来。
+ */
+export function displayHomePath(p: string, home: string = os.homedir()): string {
+  const rel = path.relative(home, p);
+  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return `~/${rel.split(path.sep).join('/')}`;
+  return p;
+}
+
 /** 临时目录删除失败时的现场：错误码，与调用方给的位置里删除失败后仍在（或查不了）的那些 */
 export interface TempDirLeftover {
   code: string;

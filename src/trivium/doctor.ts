@@ -27,7 +27,10 @@ import { realAdapters } from './adapters/index.js';
 // 同源文案：blocker 与 `availability()` 对同一现象只能有一种说法（r2 AGY-04）
 import { ZCODE_HEADLESS_NOT_OK_HINT, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT, zcodeProbeModel } from './adapters/zcode.js';
 import type { TraceCapability } from './adapters/base.js';
-import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
+import { AGENTS, ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
+import {
+  describeSharedRootProblems, entryScanEnv, scanEntryCollisions, sharedReadRootTargets, type EntryScanEnv,
+} from './entry-collisions.js';
 import { say, step, warn } from './util/log.js';
 
 export interface DoctorOptions {
@@ -65,6 +68,11 @@ export interface DoctorOptions {
   probeBins?: { codex?: string; claude?: string };
   /** 目录后置臂失败回归的注入口；生产路径不传。 */
   claudeDirectoryProbe?: NonNullable<Parameters<typeof probeClaude>[1]>['directoryProbe'];
+  /**
+   * 共享读取面检查（EV-240）读哪个家目录。**只为可测性**，生产路径不传，
+   * 由 `entryScanEnv()` 取 `TRIVIUM_ENTRY_SCAN_HOME` 或 `os.homedir()`。
+   */
+  entryScanEnv?: EntryScanEnv;
 }
 
 /** `--only` 的合法取值：全部已登记 CLI，外加环境段 */
@@ -566,6 +574,20 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
    */
   const deprecatedNotice = deprecatedConfigNotice(opts.config);
   if (deprecatedNotice !== null) warnings.push(deprecatedNotice);
+  /*
+   * 共享读取面里的同名入口（EV-240 方案 A，用户 D-11）：全量列出、给出口，**只进 warnings、不进 blockers**，
+   * 退出码不受影响。与 `--only` 无关（同上一条：说的是本机环境）。判定与安装器同一份实现（`entry-collisions.ts`），
+   * 只扫各家的额外读取根，不扫安装根（计划 r2 T-3）。扫描出错也只记一条告警。
+   */
+  {
+    const se = entryScanEnv(opts.entryScanEnv);
+    try {
+      const listed = describeSharedRootProblems(await scanEntryCollisions(sharedReadRootTargets(AGENTS, se)), se.home);
+      if (listed !== null) warnings.push(listed);
+    } catch (e) {
+      warnings.push(`共享读取面检查没做成：${(e as Error).message}`);
+    }
+  }
   if (!env.nodeOk) blockers.push('Node.js 不可用或版本低于 18');
   if (!env.gitOk) blockers.push('git 不可用或版本过低');
   // wrapper 自身在、里面写死的 node / bundle 却没了：每次 Hook 都会报 127

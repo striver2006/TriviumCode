@@ -1,0 +1,86 @@
+{
+  "a2": {
+    "agy_version_fixture": {
+      "probe": "1.4.0",
+      "installed": "1.4.2"
+    },
+    "doctor_dirty": {
+      "code": 0,
+      "blockers": 0,
+      "shared_warnings": [
+        "共享读取面里有 2 个同名入口（这些根会被多家 CLI 读到：同名时 Codex 的显式调用会失效、ZCode 两份都进模型清单，而且它带的 --driver 可能是别家）：\n  · ~/.agents/skills/dual-run  别家的同名 skill（Codex、ZCode 会读到）\n  · ~/.agents/skills/dual-status  本产品的入口出现在不该装的位置（如被别的工具拷进共享根）（Codex、ZCode 会读到）\n  出口：在 TriviumCode 仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走；安装器与 doctor 都不删这些路径。"
+      ]
+    },
+    "doctor_clean": {
+      "code": 0,
+      "blockers": 0,
+      "shared_warnings": []
+    },
+    "preflight": [
+      {
+        "args": "--critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      },
+      {
+        "args": "--critics codex,glm",
+        "code": 0,
+        "ok": true,
+        "shared": [
+          "⚠️ 共享读取面 ~/.agents/skills 有 2 个同名入口，本轮的 Codex、ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
+        ],
+        "failed": []
+      },
+      {
+        "args": "--driver glm --critics gemini",
+        "code": 0,
+        "ok": true,
+        "shared": [
+          "⚠️ 共享读取面 ~/.agents/skills 有 2 个同名入口，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
+        ],
+        "failed": []
+      },
+      {
+        "args": "--critics codex,glm",
+        "code": 0,
+        "ok": true,
+        "shared": [],
+        "failed": []
+      }
+    ]
+  },
+  "a3": {
+    "old": {
+      "code": 0,
+      "status": "success",
+      "request_bytes": 99962,
+      "sides": [
+        "gemini",
+        "glm"
+      ],
+      "snapshot_copies": 2
+    },
+    "new": {
+      "code": 0,
+      "status": "success",
+      "request_bytes": 76862,
+      "has_frozen_diff": true,
+      "snapshot_copies": 0
+    },
+    "briefs_and_diff_identical_after_normalization": true,
+    "compared_files": [
+      "brief-gemini-<RUN>.md",
+      "brief-glm-<RUN>.md",
+      "changes-<RUN>.diff"
+    ],
+    "run_json_snapshot_fields_identical_after_normalization": true,
+    "diff_json_bytes": 22923,
+    "request_bytes_saved": 23100,
+    "request_bytes_saved_excluding_asset_paths": 22796,
+    "new_worker_reads_old_format_unchanged": true,
+    "new_format_unpacks_to_frozen_text": true,
+    "brief_text_equals_archive_new": true
+  }
+}

@@ -19,7 +19,14 @@ if (!fs.existsSync(bundle)) {
 }
 
 // 安装器产物带 require.main 守卫：在这里 require 不会触发安装
-const { planInstall, checkInstall, defaultInstallEnv } = createRequire(import.meta.url)(bundle);
+// 三类短标签与 doctor / preflight 同一份（`src/trivium/entry-collisions.ts`，经安装器产物再导出；M12 批次 5）
+const { planInstall, checkInstall, defaultInstallEnv, ENTRY_PROBLEM_LABELS: KIND } = createRequire(import.meta.url)(bundle);
+// 拉了新代码却没重跑 build 时产物里没有这张表：直说「产物过旧」，不要等到有冲突时抛 TypeError、
+// 被当成「检查失败」吞掉冲突清单（代码三审 GLM-01）。退出码沿用 2（产物缺失或运行出错）
+if (!KIND || typeof KIND !== 'object') {
+  console.error(`✗ ${path.relative(repo, bundle)} 过旧（不含三类标签表），先在仓库根跑一次 \`npm run build\`。`);
+  process.exit(2);
+}
 try {
   const plan = await planInstall(repo, defaultInstallEnv());
   const problems = await checkInstall(plan.targets);
@@ -27,11 +34,6 @@ try {
     console.log(`✓ 无重名、无残留（已查 ${plan.targets.map((t) => t.agent).join('、')} 的安装根与额外读取面）`);
     process.exit(0);
   }
-  const KIND = {
-    'foreign-entry': '本产品的入口出现在不该装的位置（如被别的工具拷进共享根）',
-    'third-party': '别家的同名 skill',
-    residue: '旧版安装的残留',
-  };
   console.log(`✗ ${problems.length} 个问题（安装会因此整次拒装）：`);
   for (const p of problems) console.log(`  · ${p.agent}  ${p.path}\n      ${KIND[p.kind] ?? p.kind}`);
   console.log('  安装器只报错、不删除这些路径：确认无用后自行挪走或删除，再跑一次本检查。');

@@ -11,7 +11,6 @@
  * 无处告知也无从等待；而完整 `doctor` 会击穿 600s 工具超时，
  * 届时配额已烧而探针一字未落盘。
  */
-import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { promises as fs, constants as fsConstants } from 'node:fs';
@@ -40,7 +39,10 @@ import {
   type TierResolution,
 } from './adapters/base.js';
 import { mergeCliOverrides, type TierFlagValues } from './tier-flags.js';
-import { exists, tildeHome } from './util/fsx.js';
+import { displayHomePath, exists, tildeHome } from './util/fsx.js';
+import {
+  entryScanEnv, scanEntryCollisions, sharedReadRootTargets, summarizeSharedRootProblems, type EntryScanEnv,
+} from './entry-collisions.js';
 import { isGitRepo } from './util/git.js';
 import { run } from './util/exec.js';
 import { step } from './util/log.js';
@@ -124,6 +126,11 @@ export interface PreflightOptions {
    * 新用例若忘了 `skipAuthCheck`，⑧ 会真去探活、消耗配额（代码双审 r1 codex 的提醒）。
    */
   adapters?: AdapterTable;
+  /**
+   * 共享读取面检查（EV-240）读哪个家目录。**只为可测性**，生产路径不传，
+   * 由 `entryScanEnv()` 取 `TRIVIUM_ENTRY_SCAN_HOME` 或 `os.homedir()`。
+   */
+  entryScanEnv?: EntryScanEnv;
 }
 
 // ─────────────────────── 各项检查 ───────────────────────
@@ -742,13 +749,8 @@ export function checkZcodeRuntimeSelection(cfg: Config, selected: readonly Criti
   return null;
 }
 
-/** 路径在当前用户家目录之下时显示为 `~/…`：预检输出常被抄进 evidence，不必带出用户名 */
-export function displayHomePath(p: string): string {
-  const home = os.homedir();
-  const rel = path.relative(home, p);
-  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return `~/${rel.split(path.sep).join('/')}`;
-  return p;
-}
+/** 路径在当前用户家目录之下时显示为 `~/…`。M12 批次 5 起实现挪到 `util/fsx.ts`，这里再导出、调用点不变 */
+export { displayHomePath };
 
 /**
  * 做模型覆盖要读的副本源不在时给警告（EV-123）。**只警告、不拒跑**。
@@ -827,6 +829,30 @@ export function checkDeprecatedConfigKeys(cfg: Config): CheckResult | null {
   const notice = deprecatedConfigNotice(cfg);
   if (notice === null) return null;
   return { name: '已废弃配置键', ok: true, warn: true, detail: `⚠️ ${notice}` };
+}
+
+/**
+ * 共享读取面里的同名入口（EV-240 方案 A，用户 D-11）：**只告警、不阻断**（`ok: true`，不带 `exitCode`）。
+ *
+ * 只看本轮相关的那几家：当轮 Driver ∪ 本轮入选审核者里登记了额外读取根的（计划 r2 T-4）——
+ * Driver 载体从这些根加载入口 skill，审核者 CLI 也把它们列进模型可见清单；别的家读不到，与本轮无关。
+ * 判定与安装器同一份实现（`entry-collisions.ts`）；完整清单与出口由 doctor 给，这里只一行。
+ * 扫描出错也只退化为一条告警：这一项不能把预检变成失败。
+ */
+export async function checkSharedReadRoots(
+  relevant: readonly AgentId[],
+  inject?: EntryScanEnv,
+): Promise<CheckResult | null> {
+  const name = '共享读取面同名入口';
+  const agents = [...new Set(relevant)].map((id) => agentById(id)).filter((a) => a !== null);
+  if (agents.every((a) => a.entrySkillExtraReadRoots.length === 0)) return null;
+  const se = entryScanEnv(inject);
+  try {
+    const detail = summarizeSharedRootProblems(await scanEntryCollisions(sharedReadRootTargets(agents, se)), se.home);
+    return detail === null ? null : { name, ok: true, warn: true, detail };
+  } catch (e) {
+    return { name, ok: true, warn: true, detail: `⚠️ 共享读取面检查没做成（不影响本次预检）：${thrownText(e)}` };
+  }
 }
 
 /** `warn` 项的汇总：预检与 `--start` 同形（EV-123） */
@@ -1069,6 +1095,11 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
   if (checks.every((c) => c.ok)) {
     const d = checkDeprecatedConfigKeys(cfg);
     if (d) checks.push(d);
+  }
+  // ④⁵ 共享读取面同名入口（EV-240）：只警告、不拒跑；只看本轮 Driver 与入选审核者
+  if (checks.every((c) => c.ok)) {
+    const s = await checkSharedReadRoots([driver, ...selected], opts.entryScanEnv);
+    if (s) checks.push(s);
   }
   // 参数检查已在函数开头先行执行（模型slug、档位与接入组合）。
   // ⑥ 归档与 git（无残留探测）

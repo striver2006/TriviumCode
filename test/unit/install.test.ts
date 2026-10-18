@@ -374,3 +374,51 @@ test('命令行只认 --targets 与 --uninstall：拼错、多余、卸载时带
   assert.throws(() => parseInstallArgs(['--targets', 'nobody']), /取值不合法/);
   assert.throws(() => parseInstallArgs(['--targets', 'claude', '--targets', 'glm']), /写了多次/);
 });
+
+/*
+ * M12 批次 5（EV-240 方案 A，计划 r2 §4 U3）：读取面判定搬进 `src/trivium/entry-collisions.ts` 之后，
+ * 安装器的冲突列表、次序与报错全文必须与改造前逐字相同。期望文案照改造前 `describeProblems` 原样写死——
+ * 判定或文案任何一处漂了，这一格都会红。
+ */
+test('抽出共享实现后：冲突列表、次序与报错全文与改造前逐字相同（运行时根一格 + 残留 + 两类同名）', async () => {
+  const root = await fakeRepo();
+  const ie = await fakeHome();
+  const rt = path.join(await scratchDir('trivium-install-foreign-rt-'), 'rt');
+  await fs.mkdir(rt, { recursive: true });
+  await fs.writeFile(path.join(rt, 'keep.txt'), '别人的东西');
+  const env = { TRIVIUM_ASSET_ROOT: rt };
+  const codexRoot = skillsRootOf({ home: ie.home, env }, 'codex');
+  await fs.mkdir(path.join(codexRoot, 'dual-critic'), { recursive: true });
+  const shared = path.join(ie.home, '.agents/skills');
+  await fs.mkdir(path.join(shared, 'dual-run'), { recursive: true });
+  await fs.writeFile(path.join(shared, 'dual-run/SKILL.md'), '---\nname: dual-run\ndescription: 用户自己的\n---\n');
+  await fs.cp(path.join(root, ENTRY_OUT_DIR, 'glm/dual-status'), path.join(shared, 'dual-status'), { recursive: true });
+
+  const why = {
+    residue: '目标根顶层有本产品历史形态的目录（整树搬运的残留）：codex 会递归枚举它，把别家的入口调出来',
+    third: '读取面里已有同名 skill，且不是本产品的：不覆盖用户的 skill',
+    foreign: '共享读取面里有本产品的同名入口：两份同名时 codex 显式调用会失效、zcode 两份都进模型清单，而且它带的 --driver 可能是别家',
+    rtForeign: '运行时根已存在、非空，但不是本产品的运行时（SKILL.md 身份行对不上）：安装要整树同步它，会删掉里面的东西。' +
+      '请检查 TRIVIUM_ASSET_ROOT 是否指错',
+  };
+  const expected = [
+    '安装前检查未通过，**一个文件都没有写**。以下路径需要你手工处理（安装器不删用户目录里的东西）：',
+    `  · [运行时根] ${rt}\n      ${why.rtForeign}`,
+    `  · [codex] ${path.join(codexRoot, 'dual-critic')}\n      ${why.residue}`,
+    `  · [codex] ${path.join(shared, 'dual-run')}\n      ${why.third}`,
+    `  · [codex] ${path.join(shared, 'dual-status')}\n      ${why.foreign}`,
+    `  · [glm] ${path.join(shared, 'dual-run')}\n      ${why.third}`,
+    `  · [glm] ${path.join(shared, 'dual-status')}\n      ${why.foreign}`,
+    '处理完再重跑安装。',
+  ].join('\n');
+
+  await assert.rejects(install(root, { home: ie.home, env }), (e: Error) => {
+    assert.ok(e instanceof InstallConflictError);
+    assert.equal(e.message, expected);
+    assert.deepEqual(e.problems.map((p) => `${p.agent}:${p.kind}`), [
+      'null:runtime-foreign', 'codex:residue', 'codex:third-party', 'codex:foreign-entry', 'glm:third-party', 'glm:foreign-entry',
+    ]);
+    return true;
+  });
+  assert.equal(await fs.readFile(path.join(rt, 'keep.txt'), 'utf8'), '别人的东西');
+});

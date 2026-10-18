@@ -36,7 +36,13 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { agentById, entrySkillRootOf, isAgentId, type AgentId } from './trivium/agents/registry.js';
 import { resolveAssetRoot } from './trivium/asset-root.js';
+import {
+  ENTRY_PROBLEM_LABELS, isOurEntry, scanEntryCollisions, type EntryCollisionKind,
+} from './trivium/entry-collisions.js';
 import { ENTRY_OUT_DIR, loadCarriers, type Carrier } from './entry-render.js';
+
+/** `npm run install:check` 从本产物取三类短标签：与 doctor / preflight 同一份（M12 批次 5） */
+export { ENTRY_PROBLEM_LABELS };
 
 /** 安装面对的用户环境。**测试一律注入临时 home**（r2 §3.2.3），生产取 `os.homedir()` 与 `process.env` */
 export interface InstallEnv {
@@ -246,60 +252,37 @@ export async function syncDir(
   return { copied, removed };
 }
 
-/**
- * 一个同名目录是不是**本产品**的入口 skill：`SKILL.md` 的 front-matter 名字对得上、
- * 正文调用 `.trivium/bin/trivium`。
- *
- * 它决定三件事：两种撞名的报错措辞、安装根内的升级放行（判真即覆盖），以及**卸载的删除面**
- * （判真即整目录删除，代码双审 GLM-04）。判据的边界：用户从本产品 fork 出来、保留原名、
- * 仍调用 wrapper 的 skill 也会判真——安装会覆盖它、卸载会删掉它。不在卸载侧另设更严的判据：
- * 那样会出现「装得上、卸不掉」的不对称，而改比 description 又会在跨版本改过措辞时误判。
- */
-async function isOurEntry(dir: string, name: string): Promise<boolean> {
-  let md: string;
-  try {
-    md = await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8');
-  } catch {
-    return false;
-  }
-  return md.startsWith(`---\nname: ${name}\n`) && md.includes('.trivium/bin/trivium');
-}
-
 export interface InstallProblem {
   /** 哪一家的目标；运行时根不属于任何一家，为 null */
   agent: AgentId | null;
-  kind: 'residue' | 'third-party' | 'foreign-entry' | 'missing-family' | 'runtime-overlap' | 'runtime-foreign';
+  /** 读取面三类由共享模块判（`entry-collisions.ts`），另三类只在安装器里产生 */
+  kind: EntryCollisionKind | 'missing-family' | 'runtime-overlap' | 'runtime-foreign';
   path: string;
 }
 
-/** 装前检查：只读，不写任何东西。返回全部问题，调用方决定是否继续 */
+/**
+ * 装前检查：只读，不写任何东西。返回全部问题，调用方决定是否继续。
+ *
+ * 判定本身在 `entry-collisions.ts`（M12 批次 5 起与编排器的 doctor / preflight 共用同一份实现，EV-240）；
+ * 这里只把安装目标映射成扫描目标，**入口名单仍取仓库里的渲染产物**（`t.sources`），判定输入与改造前逐字相同。
+ */
 export async function checkInstall(selected: readonly EntryTarget[]): Promise<InstallProblem[]> {
-  const problems: InstallProblem[] = [];
-  for (const t of selected) {
-    /*
-     * 残留检测只查另三家，claude 目标根豁免：**前提是缺省时运行时根就落在它下面**，
-     * 那里的 `dual-critic/` 是自家产物，不是残留（代码双审 r2 CODEX-05）。
-     * 运行时根被 `TRIVIUM_ASSET_ROOT` 指到别处时，缺省位置可能留着上一版的运行时——
-     * 它不再更新，但也不是嵌套入口（历次安装都排除了 `entry/`）。那一格不在这里阻断，
-     * 由 `install()` 在报告里提示（开发机上设过这个变量是常态，阻断会让每次调试安装都先撞墙）。
-     */
-    if (t.layout === 'entry') {
-      for (const n of RESIDUE_NAMES) {
-        const p = path.join(t.skillsRoot, n);
-        if (await exists(p)) problems.push({ agent: t.agent, kind: 'residue', path: p });
-      }
-    }
-    for (const { name } of t.sources) {
-      for (const r of t.readRoots) {
-        const p = path.join(r, name);
-        if (!(await exists(p))) continue;
-        const ours = await isOurEntry(p, name);
-        if (r === t.skillsRoot && ours) continue; // 安装根里的自家同名：上一次安装，升级覆盖
-        problems.push({ agent: t.agent, kind: ours ? 'foreign-entry' : 'third-party', path: p });
-      }
-    }
-  }
-  return problems;
+  return scanEntryCollisions(
+    selected.map((t) => ({
+      agent: t.agent,
+      skillsRoot: t.skillsRoot,
+      readRoots: t.readRoots,
+      names: t.sources.map((s) => s.name),
+      /*
+       * 残留检测只查另三家，claude 目标根豁免：**前提是缺省时运行时根就落在它下面**，
+       * 那里的 `dual-critic/` 是自家产物，不是残留（代码双审 r2 CODEX-05）。
+       * 运行时根被 `TRIVIUM_ASSET_ROOT` 指到别处时，缺省位置可能留着上一版的运行时——
+       * 它不再更新，但也不是嵌套入口（历次安装都排除了 `entry/`）。那一格不在这里阻断，
+       * 由 `install()` 在报告里提示（开发机上设过这个变量是常态，阻断会让每次调试安装都先撞墙）。
+       */
+      residueNames: t.layout === 'entry' ? RESIDUE_NAMES : [],
+    })),
+  );
 }
 
 export class InstallConflictError extends Error {

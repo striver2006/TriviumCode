@@ -35,6 +35,10 @@ import {
 import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type FullCopyOverrideProbe, type ModelOverrideProbe, type RuntimeSelectionReadback, type VariantOutcome } from '../../src/trivium/probes/zcode.js';
 import { runDoctor } from '../../src/trivium/doctor.js';
 import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
+import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
+
+// doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
+isolateEntryScanHome();
 
 const REAL_ENTRY = '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs';
 

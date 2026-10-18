@@ -39,7 +39,7 @@ import type { AdapterContext } from './adapters/base.js';
 import { resolveAdapters } from './adapters/stub.js';
 import { realAdapters, wiredAdapter } from './adapters/index.js';
 import { scrubRunDir } from './scrub.js';
-import { ensureDir, exists } from './util/fsx.js';
+import { ensureDir, exists, sha256 } from './util/fsx.js';
 import {
   canonicalStartOf, processAlive, processGroupMemberCount, processMatchesRecord, processStartTime, processStartTimes,
   shutdownTrackedTrees, spawnDetached, terminateProcessGroup, trackedTrees, watchTrackedTrees, type DetachedChildWatch,
@@ -104,7 +104,14 @@ interface Handoff {
   run_dir: string;
   sides: CriticId[];
   requests: Partial<Record<CriticId, CriticRequest>>;
+  /** 落盘形态：code 阶段各侧 `diffText` 为 null、正文在 {@link Handoff.frozen_diff}（EV-236 A2）；读回经 `unpackSnapshots` 还原 */
   snapshots: PreparedRun['snapshots'];
+  /**
+   * code 阶段冻结补丁的**唯一一份**（EV-236 A2，M12 批次 5）。**可选**：旧交接文件没有它，
+   * 那时各侧快照各带一份 `diffText`，原样读出。schema 名不变（计划 r2 T-7）：各侧 `diffText`
+   * 冻结之后没有读者，旧版 worker 读新文件只是拿到 null。
+   */
+  frozen_diff?: FrozenDiff;
   meta_paths: string[];
   /** 重建 ReviewOptions 所需的字段（ctx 由工作进程自己 loadCtx 得到） */
   options: {
@@ -144,7 +151,73 @@ interface Handoff {
   };
 }
 
+/** 交接文件里那一份冻结补丁 */
+export interface FrozenDiff {
+  sha256: string;
+  text: string;
+}
+
+type Snapshots = PreparedRun['snapshots'];
+
+/**
+ * 写交接文件前把各侧同一份补丁收成一份（EV-236 A2）。
+ *
+ * code 阶段 `prepareRun` 只算一次补丁、逐侧透传给 `freeze`，于是每侧快照的 `diffText` 都是同一份正文，
+ * 原样写盘就是 N 份（10-11 那份 148.8 MB 的 `request.json` 里快照占了 145.4 MB）。
+ * 只在**侧数 ≥ 1、首侧有正文、各侧逐字相同**时收（计划双审 AGY-03）；否则（plan / bug 全为 null，
+ * 或防御性地出现不一致）原样返回、不出 `frozen_diff`。**不改入参**：`--start` 同进程后面看到的仍是原对象。
+ */
+export function packSnapshots(snapshots: Snapshots): { snapshots: Snapshots; frozen_diff?: FrozenDiff } {
+  const sides = Object.keys(snapshots) as CriticId[];
+  const first = sides.length > 0 ? snapshots[sides[0]!]?.diffText : null;
+  if (typeof first !== 'string' || !sides.every((c) => snapshots[c]?.diffText === first)) return { snapshots };
+  const packed: Snapshots = {};
+  for (const c of sides) packed[c] = { ...snapshots[c]!, diffText: null };
+  return { snapshots: packed, frozen_diff: { sha256: sha256(first), text: first } };
+}
+
+/**
+ * worker 读回交接文件时按引用还原各侧补丁（EV-236 A2）。按序判，任一不过即 `envError`（交接文件坏了，拒绝执行）：
+ *
+ * 1. 没有 `frozen_diff`：code 阶段却有一侧 `diffText` 为 null ⇒ 新格式丢了正文；否则是旧格式，**原样返回**；
+ * 2. 有 `frozen_diff` 而不是 code 阶段（计划双审 AGY-02）；
+ * 3. `frozen_diff` 形态不合：不是对象、`text` / `sha256` 不是字符串（AGY-02）；
+ * 4. 正文与自带的 sha256 对不上；
+ * 5. 某侧 `diffText` 不是 null，或该侧 `subjectSha256` 与这份补丁对不上；
+ *
+ * 然后把各侧 `diffText` 还原为同一份正文——与去重前的内存对象逐字段相等。
+ * 这些拒绝只作用于新格式，旧格式（各侧各带正文、没有 `frozen_diff`）一条都不受，没有放宽任何既有判据。
+ */
+export function unpackSnapshots(
+  h: { stage: Stage; snapshots: Snapshots; frozen_diff?: unknown },
+  runId: string,
+): Snapshots {
+  const sides = Object.keys(h.snapshots) as CriticId[];
+  const bad = (why: string): TriviumError => envError(`运行 ${runId} 的交接文件已损坏：${why}，拒绝执行`);
+  if (h.frozen_diff === undefined) {
+    if (h.stage === 'code' && sides.some((c) => h.snapshots[c]?.diffText === null)) {
+      throw bad('code 阶段有一侧快照没有补丁正文，也没有共享的那一份');
+    }
+    return h.snapshots;
+  }
+  if (h.stage !== 'code') throw bad(`${h.stage} 阶段不该带冻结补丁`);
+  const fd = h.frozen_diff as Partial<FrozenDiff> | null;
+  if (fd === null || typeof fd !== 'object' || typeof fd.text !== 'string' || typeof fd.sha256 !== 'string') {
+    throw bad('冻结补丁的形态不对');
+  }
+  if (sha256(fd.text) !== fd.sha256) throw bad('冻结补丁的正文与它的 sha256 对不上');
+  const out: Snapshots = {};
+  for (const c of sides) {
+    const snap = h.snapshots[c]!;
+    if (snap.diffText !== null) throw bad(`${c} 侧快照既带补丁正文、又有共享的那一份`);
+    if (snap.subjectSha256 !== fd.sha256) throw bad(`${c} 侧快照的被审对象哈希与冻结补丁对不上`);
+    out[c] = { ...snap, diffText: fd.text };
+  }
+  return out;
+}
+
 async function writeHandoff(rc: RunContext): Promise<void> {
+  const packed = packSnapshots(rc.snapshots);
   const h: Handoff = {
     schema: 'trivium.handoff.v1',
     run_id: rc.runId,
@@ -155,7 +228,8 @@ async function writeHandoff(rc: RunContext): Promise<void> {
     run_dir: rc.runDirBase,
     sides: rc.sides,
     requests: rc.requests,
-    snapshots: rc.snapshots,
+    snapshots: packed.snapshots,
+    ...(packed.frozen_diff ? { frozen_diff: packed.frozen_diff } : {}),
     meta_paths: rc.metaPaths,
     options: {
       promptHint: rc.opts.promptHint,
@@ -243,7 +317,9 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
     nodePath: ctx.config.runtime.node ?? process.execPath,
   };
 
-  const primary = h.snapshots[h.sides[0]!];
+  // 新格式按引用还原各侧补丁、旧格式原样（EV-236 A2）；之后的逻辑看到的快照与去重前逐字段相同
+  const snapshots = unpackSnapshots(h, runId);
+  const primary = snapshots[h.sides[0]!];
   if (!primary) throw envError(`交接文件缺少 ${h.sides[0]} 侧的快照`);
 
   return {
@@ -282,7 +358,7 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
     subjectPath: h.subject_path,
     runDirBase: h.run_dir,
     requests: h.requests,
-    snapshots: h.snapshots,
+    snapshots,
     primarySnap: primary,
     metaPaths: h.meta_paths,
     meta,

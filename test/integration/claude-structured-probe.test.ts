@@ -45,6 +45,10 @@ import { probeClaudeDirectories } from '../../src/trivium/probes/claude-director
 import { ProbeFixtureError } from '../../src/trivium/probes/fixture.js';
 import { LaunchBudgetExceeded } from '../../src/trivium/util/exec.js';
 import { scratchDir } from '../helpers/scratch.js';
+import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
+
+// doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
+isolateEntryScanHome();
 
 let work = '';
 let fakeBin = '';

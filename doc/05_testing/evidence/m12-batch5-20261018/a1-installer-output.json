@@ -1,0 +1,185 @@
+{
+  "old": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b6ec4e32-9540-45a8-8c77-43e81c5ec78e/scratchpad/old",
+  "new": "/Users/chenzhenbo/Work/TriviumCode",
+  "cases": 9,
+  "all_identical": true,
+  "results": [
+    {
+      "case": "clean-install",
+      "identical": true,
+      "codes": [
+        "install ⇒ 0"
+      ],
+      "fingerprints": [
+        {
+          "step": "install",
+          "stdout": "987B dcd574506c659fc7",
+          "stderr": "0B e3b0c44298fc1c14"
+        }
+      ],
+      "tree_files": 52
+    },
+    {
+      "case": "reinstall-upgrade",
+      "identical": true,
+      "codes": [
+        "install ⇒ 0",
+        "install ⇒ 0"
+      ],
+      "fingerprints": [
+        {
+          "step": "install",
+          "stdout": "987B dcd574506c659fc7",
+          "stderr": "0B e3b0c44298fc1c14"
+        },
+        {
+          "step": "install",
+          "stdout": "987B dcd574506c659fc7",
+          "stderr": "0B e3b0c44298fc1c14"
+        }
+      ],
+      "tree_files": 52
+    },
+    {
+      "case": "three-kinds",
+      "identical": true,
+      "codes": [
+        "check ⇒ 1",
+        "install ⇒ 1"
+      ],
+      "fingerprints": [
+        {
+          "step": "check",
+          "stdout": "418B a504dc957bdd19e9",
+          "stderr": "0B e3b0c44298fc1c14"
+        },
+        {
+          "step": "install",
+          "stdout": "76B 3c792d94f7b8dde7",
+          "stderr": "601B bd78e3b37f3eb8d2"
+        }
+      ],
+      "tree_files": 2
+    },
+    {
+      "case": "install-root-third-party",
+      "identical": true,
+      "codes": [
+        "check ⇒ 1",
+        "install ⇒ 1"
+      ],
+      "fingerprints": [
+        {
+          "step": "check",
+          "stdout": "191B f3fd414ef577c7b6",
+          "stderr": "0B e3b0c44298fc1c14"
+        },
+        {
+          "step": "install",
+          "stdout": "76B 3c792d94f7b8dde7",
+          "stderr": "261B 728cef654be9de39"
+        }
+      ],
+      "tree_files": 1
+    },
+    {
+      "case": "targets-missing-family",
+      "identical": true,
+      "codes": [
+        "install --targets gemini ⇒ 1",
+        "install --targets claude,glm ⇒ 0"
+      ],
+      "fingerprints": [
+        {
+          "step": "install --targets gemini",
+          "stdout": "76B 3c792d94f7b8dde7",
+          "stderr": "146B d8240d35a35c0a4e"
+        },
+        {
+          "step": "install --targets claude,glm",
+          "stdout": "928B ac5ecb216afd2c11",
+          "stderr": "0B e3b0c44298fc1c14"
+        }
+      ],
+      "tree_files": 37
+    },
+    {
+      "case": "runtime-foreign",
+      "identical": true,
+      "codes": [
+        "install ⇒ 1"
+      ],
+      "fingerprints": [
+        {
+          "step": "install",
+          "stdout": "76B 3c792d94f7b8dde7",
+          "stderr": "182B 899abd711f571f76"
+        }
+      ],
+      "tree_files": 1
+    },
+    {
+      "case": "runtime-overlap",
+      "identical": true,
+      "codes": [
+        "install ⇒ 1",
+        "uninstall ⇒ 0"
+      ],
+      "fingerprints": [
+        {
+          "step": "install",
+          "stdout": "76B 3c792d94f7b8dde7",
+          "stderr": "183B 4ff4f63e79aa80a6"
+        },
+        {
+          "step": "uninstall",
+          "stdout": "357B 4005bf463ce99bbc",
+          "stderr": "0B e3b0c44298fc1c14"
+        }
+      ],
+      "tree_files": 0
+    },
+    {
+      "case": "codex-home-elsewhere",
+      "identical": true,
+      "codes": [
+        "check ⇒ 1",
+        "install ⇒ 1"
+      ],
+      "fingerprints": [
+        {
+          "step": "check",
+          "stdout": "250B 2d38b9d5c58c3a07",
+          "stderr": "0B e3b0c44298fc1c14"
+        },
+        {
+          "step": "install",
+          "stdout": "76B 3c792d94f7b8dde7",
+          "stderr": "345B 7de6d7a7e6bf1262"
+        }
+      ],
+      "tree_files": 1
+    },
+    {
+      "case": "install-then-uninstall",
+      "identical": true,
+      "codes": [
+        "install --targets claude,glm,gemini ⇒ 0",
+        "uninstall ⇒ 0"
+      ],
+      "fingerprints": [
+        {
+          "step": "install --targets claude,glm,gemini",
+          "stdout": "957B 92f973b8f0e48051",
+          "stderr": "0B e3b0c44298fc1c14"
+        },
+        {
+          "step": "uninstall",
+          "stdout": "1420B aee7009dea3ca44f",
+          "stderr": "0B e3b0c44298fc1c14"
+        }
+      ],
+      "tree_files": 1
+    }
+  ]
+}

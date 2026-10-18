@@ -5,17 +5,21 @@ import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import {
   parsePreflightScope, checkModelSlugs, runPreflight, commitAuthCache, renderPreflight, checkZcodeRuntimeSelection,
-  checkHeartbeatThreshold, checkDeprecatedConfigKeys, type PreflightResult } from '../../src/trivium/preflight.js';
+  checkHeartbeatThreshold, checkDeprecatedConfigKeys, checkSharedReadRoots, type PreflightResult } from '../../src/trivium/preflight.js';
 import type { CriticAdapter } from '../../src/trivium/adapters/base.js';
 import { DEFAULT_HEARTBEAT_STALE_S, TRIVIUM_DIR, defaultConfig, patchProbe } from '../../src/trivium/config.js';
 import { runDoctor } from '../../src/trivium/doctor.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
-import type { Config, Ctx, ProbeSection } from '../../src/trivium/types.js';
+import type { Config, CriticId, Ctx, ProbeSection } from '../../src/trivium/types.js';
 import { AGENTS, DEFAULT_DRIVER, guardProfileOf } from '../../src/trivium/agents/registry.js';
 import { mergeHooks, type InitReport } from '../../src/trivium/init.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { scratchDir } from '../helpers/scratch.js';
+import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
+
+// doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
+isolateEntryScanHome();
 
 const emptyReport = (): InitReport => ({ created: [], updated: [], skipped: [], notes: [] });
 
@@ -1151,4 +1155,64 @@ test('U6′ doctor：带档位表 Agent 级 effort（EV-227）⇒ 恰一条提�
   assert.ok(n[0]!.includes('已废弃的键：profiles.default.gemini.effort。'), n[0]);
   assert.ok(!n[0]!.includes('glm'), `阶段格子的 effort 不得出现：${n[0]}`);
   assert.deepEqual(r.blockers, base.blockers, '提示不得改变阻断项');
+});
+
+/*
+ * EV-240 方案 A（M12 批次 5，用户 D-11；计划 r2 §2.3 / §4 U6）：共享读取面同名入口只告警、不阻断，
+ * 只看本轮 Driver ∪ 入选审核者里登记了额外读取根的那几家。家目录一律注入夹具。
+ * 读/不读共享根的家经注册表派生，不写死是哪几家。
+ */
+const sharedReader = AGENTS.find((a) => a.entrySkillExtraReadRoots.length > 0 && a.driverEnabled && a.criticEnabled)!;
+const nonReader = AGENTS.find((a) => a.entrySkillExtraReadRoots.length === 0 && a.criticEnabled && a.id !== DEFAULT_DRIVER)!;
+
+async function dirtySharedHome(): Promise<string> {
+  const home = await scratchDir('trivium-pf-shared-');
+  const d = path.join(home, sharedReader.entrySkillExtraReadRoots[0]!, 'dual-run');
+  await fs.mkdir(d, { recursive: true });
+  await fs.writeFile(path.join(d, 'SKILL.md'), '---\nname: dual-run\n---\n别家的\n');
+  return home;
+}
+
+test('U6 checkSharedReadRoots：相关家都不读共享根 ⇒ null；有一家读 ⇒ 一条 warn、ok 为真、无退出码；干净 ⇒ null', async () => {
+  const dirty = await dirtySharedHome();
+  const clean = await scratchDir('trivium-pf-shared-');
+  assert.equal(await checkSharedReadRoots([DEFAULT_DRIVER, nonReader.id], { home: dirty, env: {} }), null,
+    '本轮没有读共享根的家：与本轮无关，不出项');
+  const hit = await checkSharedReadRoots([DEFAULT_DRIVER, sharedReader.id], { home: dirty, env: {} });
+  assert.ok(hit);
+  assert.equal(hit.ok, true);
+  assert.equal(hit.warn, true);
+  assert.equal(hit.exitCode, undefined);
+  assert.equal(hit.name, '共享读取面同名入口');
+  assert.ok(hit.detail.startsWith('⚠️ 共享读取面 ~/'), hit.detail);
+  assert.ok(hit.detail.includes(sharedReader.display), hit.detail);
+  assert.ok(!hit.detail.includes(dirty), hit.detail);
+  assert.equal(await checkSharedReadRoots([DEFAULT_DRIVER, sharedReader.id], { home: clean, env: {} }), null);
+});
+
+test('U6 预检：Driver 读共享根而审核者不读 ⇒ 照样出一项（Driver 算相关）；照常通过、退出码不变、进 warnings', async () => {
+  const dirty = await dirtySharedHome();
+  const ctx = await fakeCtx(withStale(120));
+  const r = await runPreflight({
+    ctx, scope: 'plan', skipAuthCheck: true, critics: [nonReader.id as CriticId], adapters: {},
+    driver: sharedReader.id, entryScanEnv: { home: dirty, env: {} },
+  });
+  assert.equal(r.ok, true, '只警告、不拒跑');
+  assert.equal(r.exitCode, EXIT.OK);
+  assert.ok(r.warnings.some((w) => w.name === '共享读取面同名入口'), r.warnings.map((w) => w.name).join('、'));
+  const idx = (name: string) => r.checks.findIndex((c) => c.name === name);
+  assert.ok(idx('失联阈值') < idx('共享读取面同名入口'), '排在只告警项之后');
+  assert.ok(idx('共享读取面同名入口') < idx('归档与 git 可用'), '排在 ⑥ 之前');
+  assertWarnInvariant(r);
+});
+
+test('U6 预检：缺省 Driver + 只选不读共享根的审核者 ⇒ 共享根再脏也不出项', async () => {
+  const dirty = await dirtySharedHome();
+  const ctx = await fakeCtx(withStale(120));
+  const r = await runPreflight({
+    ctx, scope: 'plan', skipAuthCheck: true, critics: [nonReader.id as CriticId], adapters: {},
+    entryScanEnv: { home: dirty, env: {} },
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.checks.some((c) => c.name === '共享读取面同名入口'), false);
 });

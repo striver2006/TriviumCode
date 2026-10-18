@@ -1,0 +1,15 @@
+M1：fail=4 cancelled=0 1s ⇒ 安装根里的同名：自家的升级覆盖，别人的判冲突 ｜ 升级：目标里源已不存在的文件被裁剪，运行时根里的 entry/ 也裁掉；用户目录里的其它 skill 不动 ｜ 运行时根的放行格：不存在、空目录、被打断的上一次安装（只落了 SKILL.md）都照装 ｜ 运行时根换了位置、缺省位置留着旧运行时：提示，不删、不阻断（代码双审 r2 CODEX-05）
+M2：fail=3 cancelled=0 0s ⇒ U1 isOurEntry：名字对得上且调用 wrapper 才判真；名字不符、缺 wrapper、读不到都判假 ｜ U1 scanEntryCollisions：三类判定与次序（残留在前、再按名单 × 读取根），安装根里的自家同名放行 ｜ U2 渲染：按路径归并、~ 折叠到扫描所用的家目录、带出口；preflight 一行；无问题返回 null
+M3：fail=1 cancelled=0 0s ⇒ U5 无同名入口 ⇒ 不出告警；有 ⇒ warnings 恰多一条、按路径归并、~ 折叠、带出口，blockers 不变
+M4：fail=2 cancelled=0 26s ⇒ U6 checkSharedReadRoots：相关家都不读共享根 ⇒ null；有一家读 ⇒ 一条 warn、ok 为真、无退出码；干净 ⇒ null ｜ U6 预检：Driver 读共享根而审核者不读 ⇒ 照样出一项（Driver 算相关）；照常通过、退出码不变、进 warnings
+M5：fail=1 cancelled=0 26s ⇒ U6 预检：Driver 读共享根而审核者不读 ⇒ 照样出一项（Driver 算相关）；照常通过、退出码不变、进 warnings
+M6：fail=2 cancelled=0 0s ⇒ U2 sharedReadRootTargets：只出登记了额外读取根的家，读取根只含额外根，不查残留；CODEX_HOME 不影响共享根 ｜ U2 渲染：按路径归并、~ 折叠到扫描所用的家目录、带出口；preflight 一行；无问题返回 null
+M7：fail=2 cancelled=0 0s ⇒ U7 code 阶段三侧：落盘后快照里正文零份、frozen_diff 一份；往返与原对象逐字段相等；入参不被改 ｜ U7 新格式被改坏：各种篡改一律 envError，指名运行
+M8：fail=1 cancelled=0 0s ⇒ U7 新格式被改坏：各种篡改一律 envError，指名运行
+M9：fail=1 cancelled=0 0s ⇒ U7 code 阶段三侧：落盘后快照里正文零份、frozen_diff 一份；往返与原对象逐字段相等；入参不被改
+M10：fail=1 cancelled=0 0s ⇒ U7 旧格式（各侧各带正文、无 frozen_diff）原样读出
+M11：fail=1 cancelled=0 0s ⇒ U9 读源证明：变量指向摆了同名入口的夹具 ⇒ 告警里的路径落在夹具里；指向空夹具 ⇒ 无告警
+M12：fail=1 cancelled=0 0s ⇒ U7 新格式被改坏：各种篡改一律 envError，指名运行
+M13：fail=3 cancelled=0 1s ⇒ 安装根里的同名：自家的升级覆盖，别人的判冲突 ｜ 升级：目标里源已不存在的文件被裁剪，运行时根里的 entry/ 也裁掉；用户目录里的其它 skill 不动 ｜ 运行时根换了位置、缺省位置留着旧运行时：提示，不删、不阻断（代码双审 r2 CODEX-05）
+M14：fail=1 cancelled=0 3s ⇒ 交接文件：各侧快照不带补丁正文、frozen_diff 恰一份且等于归档补丁；brief 与归档逐字相同；worker 照常收尾
+exit=0

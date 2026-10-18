@@ -72,7 +72,7 @@ node dist/install.cjs  # 装到用户级目录；只装部分家：--targets cla
 > **跨产品副作用**：本机没装 Claude Code 时，核心 skill 仍会新建在 `~/.claude/skills/dual-critic/`（编排器本体在那里）。
 > 日后装上 Claude Code，它会把这个目录当成一个已安装的 skill（其 `SKILL.md` 标了不可调用），安装器会打印这条提示。
 >
-> **别往 `~/.agents/skills` 里装同名 skill**：Codex 与 ZCode 都会读那里，同名时 Codex 的 `$dual-…` 调用会直接失效且不报错。安装器装前会查重名，撞上就拒装。只想查、不想装时，在仓库根跑 `npm run install:check`：只读，逐行列出哪家、哪个路径撞名，退出码 0 / 1 / 2 分别表示无问题、有问题、产物缺失或运行出错。Codex 的「从 Claude 导入」会把 Claude 侧的 skill 拷进这个目录，导入之后先跑一次（BACKLOG EV-240）。
+> **别往 `~/.agents/skills` 里装同名 skill**：Codex 与 ZCode 都会读那里，同名时 Codex 的 `$dual-…` 调用会直接失效且不报错。安装器装前会查重名，撞上就拒装。只想查、不想装时，在仓库根跑 `npm run install:check`：只读，逐行列出哪家、哪个路径撞名，退出码 0 / 1 / 2 分别表示无问题、有问题、产物缺失或运行出错。Codex 的「从 Claude 导入」会把 Claude 侧的 skill 拷进这个目录，导入之后先跑一次（BACKLOG EV-240）。`trivium doctor` 也会列出这个目录里的全部同名入口；预检在本轮用到 Codex 或 ZCode 时给一条 ⚠️。两处都只提示、不阻断，也都不删文件。
 
 > `trivium` **不在 PATH 上**，这是有意的。项目内一律用 `.trivium/bin/trivium`
 > （下一步由 `init` 生成，内含 node 绝对路径——GUI 启动的进程不读你的 `~/.zshrc`）。
