@@ -49,6 +49,7 @@ import { fail, say, step, warn } from './util/log.js';
 import {
   checkHeartbeatThreshold,
   checkModelOverrideSource,
+  checkSharedReadRoots,
   checkTierCombos,
   collectWarnings,
   type PreflightWarning,
@@ -409,7 +410,7 @@ export interface StartOutcome {
   /** finishedInline 时的人读说明 */
   inlineNotice?: string;
   /**
-   * 拉起前按**当轮入选侧**复查出的只警告项（EV-123），**恒存在**；
+   * 拉起前按**当轮入选侧**复查出的只警告项（EV-123；共享读取面一项另含当轮 Driver，EV-246），**恒存在**；
    * 末尾另追加准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02，`RunContext.mustReadPruned`）。
    * 在派生**之后**才随返回值交到调用方——拦不住拉起，价值是开场播报时就能看到、可以立即 `--cancel`。
    * `finishedInline` 时不计算（没有审查员会被拉起），为 `[]`。
@@ -569,6 +570,9 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
    *
    * **失联阈值（EV-160）同一次汇总**：与预检 ④‴ 同一个 `checkHeartbeatThreshold`，顺序与预检相同（副本源在前、阈值在后）。
    * 只读配置、不抛。FR-23 跳过分支（上方 `finishedInline`）不走这里：那一支没有 worker、没有 `--wait`，`warnings` 仍为 `[]`。
+   *
+   * **共享读取面（EV-246）同一次汇总**，排在档位组合之后、必读剔除之前：与预检 ④⁵ 同一个 `checkSharedReadRoots`，
+   * 看当轮 Driver ∪ `sides`，正文结尾的场合词换成「本次运行」。
    */
   let warnings: PreflightWarning[];
   /*
@@ -592,11 +596,18 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
     const heartbeatWarn = checkHeartbeatThreshold(cfg);
     // 档位组合的告警（M11 第 4 步）：准备阶段已判过 ok（不 ok 早已退 64），这里只为把告警念出来；纯函数、不抛
     const tierCombos = checkTierCombos(cfg, rc.stage, rc.opts.modelOverrides, rc.sides, rc.opts.tierFlags);
+    /*
+     * 共享读取面（EV-246）：与预检 ④⁵ 同一个函数、同一口径（当轮 Driver ∪ 入选审核者），只告警、不阻断；
+     * 终端直接跑 `--start` 或 skill 漏跑预检时也看得到。没有问题时返回 null、不追加，输出与此前逐字节相同。
+     * 扫描异常在函数内吞成一条告警，不会走到主 `catch`。
+     */
+    const sharedRoots = await checkSharedReadRoots([rc.meta.driver, ...rc.sides], undefined, '本次运行');
     warnings = [
       ...collectWarnings([
         ...(await checkModelOverrideSource(rc.sides, rc.adapters)),
         ...(heartbeatWarn ? [heartbeatWarn] : []),
         tierCombos,
+        ...(sharedRoots ? [sharedRoots] : []),
       ]),
       // 准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02），追加在后、既有两项顺序不变
       ...rc.mustReadPruned,

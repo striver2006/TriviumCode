@@ -1,0 +1,113 @@
+{
+  "bundles": {
+    "old": "290119679bcec62e41445f1a345d857b7ef2fbf9584db0cb11fa75ee2dab64d9",
+    "new": "b53ad048f72e4d8fea575cf3b347b11161db52ef940d0196bbe97b04cc7700f6"
+  },
+  "isolation": {
+    "HOME": "<FX>/home-cli",
+    "removed": [
+      "TRIVIUM_ASSET_ROOT",
+      "TRIVIUM_ENTRY_SCAN_HOME",
+      "TRIVIUM_STUB_CRITIC",
+      "CODEX_HOME",
+      "ZCODE_HOME",
+      "XDG_*"
+    ]
+  },
+  "a1": [
+    {
+      "cell": "doctor --json 不带覆盖",
+      "old_code": 0,
+      "new_code": 0,
+      "identical": true,
+      "expect": "逐字节相同",
+      "as_expected": true
+    },
+    {
+      "cell": "doctor --json 带覆盖",
+      "old_code": 0,
+      "new_code": 0,
+      "keys_same": true,
+      "old_warnings": 0,
+      "new_warnings": 1,
+      "rest_identical": true,
+      "hint": "以下命令行覆盖本次没有用上（只是提示，退出码与探测结论不受影响）：\n  · --model-gemini、--tier-glm、--effort-glm：本次 --only env，没有探测 Antigravity、ZCode",
+      "expect": "退出码相同、顶层键相同、warnings 恰多末尾一条提示、其余逐字节相同",
+      "as_expected": true
+    },
+    {
+      "cell": "doctor 人读 不带覆盖",
+      "old_code": 0,
+      "new_code": 0,
+      "identical": true,
+      "expect": "逐字节相同",
+      "as_expected": true
+    },
+    {
+      "cell": "doctor 人读 带覆盖",
+      "old_code": 0,
+      "new_code": 0,
+      "lines_only_in_new": [
+        "⚠️  以下命令行覆盖本次没有用上（只是提示，退出码与探测结论不受影响）：",
+        "  · --model-gemini、--tier-glm、--effort-glm：本次 --only env，没有探测 Antigravity、ZCode"
+      ],
+      "lines_only_in_old": [],
+      "expect": "退出码相同；新版多出的只有提示几行（及其后的空行），旧版行一条不少",
+      "as_expected": true
+    }
+  ],
+  "a2": [
+    {
+      "cell": "--start --json 扫描家目录干净",
+      "old_code": 0,
+      "new_code": 0,
+      "old_wait": 0,
+      "new_wait": 0,
+      "identical": true,
+      "expect": "规范化后逐字节相同（焦点 4）",
+      "as_expected": true
+    },
+    {
+      "cell": "--start --json 扫描家目录有同名入口",
+      "old_code": 0,
+      "new_code": 0,
+      "old_wait": 0,
+      "new_wait": 0,
+      "old_warnings": [],
+      "new_warnings": [
+        {
+          "name": "共享读取面同名入口",
+          "detail": "⚠️ 共享读取面 ~/.agents/skills 有 1 个同名入口，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次运行）"
+        }
+      ],
+      "rest_identical": true,
+      "expect": "旧版无此项；新版恰一项「共享读取面同名入口」，结尾「本次运行」；其余相同",
+      "as_expected": true
+    },
+    {
+      "cell": "--start 人读 扫描家目录干净",
+      "old_code": 0,
+      "new_code": 0,
+      "old_wait": 0,
+      "new_wait": 0,
+      "identical": true,
+      "expect": "规范化后逐字节相同（焦点 4）",
+      "as_expected": true
+    },
+    {
+      "cell": "--start 人读 扫描家目录有同名入口",
+      "old_code": 0,
+      "new_code": 0,
+      "old_wait": 0,
+      "new_wait": 0,
+      "lines_only_in_new": [
+        "  ⚠️ 共享读取面 ~/.agents/skills 有 1 个同名入口，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次运行）"
+      ],
+      "lines_only_in_old": [],
+      "expect": "新版恰多一行告警，其余行相同",
+      "as_expected": true
+    }
+  ],
+  "starts": 8,
+  "all_as_expected": true
+}

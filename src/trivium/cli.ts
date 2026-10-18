@@ -812,10 +812,17 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
     );
   }
 
-  const tierFlags = assertTierFlags(ctx.config, resolveDriver(flagString(args, 'driver')).driver, collectTierFlags(tierFlagGetter(args)), CRITIC_AGENT_IDS);
-  // doctor 不判模型覆盖的键（现状，不在 EV-228 范围）；空值照样退 64，与档位旗标同文案
-  const modelOverrides = collectModelOverrides(args);
-  assertFlagValuesGiven('model', modelOverrides);
+  /*
+   * doctor 没有「本轮入选」：模型旗标与档位旗标同一份判键、同一个 picked（全部审核者）、同一个 driver（EV-245）。
+   * 写给 doctor 不消费的那几家不退 64——runDoctor 末尾给一条提示（`describeUnusedOverrides`），退出码不变。
+   */
+  const driver = resolveDriver(flagString(args, 'driver')).driver;
+  const tierFlags = assertTierFlags(ctx.config, driver, collectTierFlags(tierFlagGetter(args)), CRITIC_AGENT_IDS);
+  const modelRaw = collectModelOverrides(args);
+  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), CRITIC_AGENT_IDS);
+  assertFlagValuesGiven('model', modelRaw); // 先键后值，与档位旗标同序同文案（EV-228）
+  // 判定通过 ⇒ 键集必然是审核者，这里才收窄（收集面见 collectModelOverrides）
+  const modelOverrides = modelRaw as Partial<Record<CriticId, string>>;
   const report = await runDoctor({
     projectRoot: ctx.projectRoot,
     triviumDir: ctx.triviumDir,

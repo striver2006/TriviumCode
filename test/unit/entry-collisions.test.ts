@@ -293,6 +293,11 @@ test('U4 渲染：只有同名入口时与 M12 批次 5 的文案逐字相同（
     summarizeSharedRootProblems(problems, home),
     `⚠️ 共享读取面 ${rel} 有 1 个同名入口，本轮的 ${who} 会读到；跑 doctor 看完整清单与出口（不影响本次预检）`,
   );
+  // `review --start` 的场合词（EV-246）：只有结尾括号里的词不同，其余逐字相同
+  assert.equal(
+    summarizeSharedRootProblems(problems, home, '本次运行'),
+    `⚠️ 共享读取面 ${rel} 有 1 个同名入口，本轮的 ${who} 会读到；跑 doctor 看完整清单与出口（不影响本次运行）`,
+  );
 });
 
 test('U4 渲染：只有残留、残留加同名入口；出口只出现一次，preflight 恒一行', async () => {

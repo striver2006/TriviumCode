@@ -1,0 +1,14 @@
+M1：fail=2 cancelled=0 2s ⇒ U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示 ｜ U3 doctor.ts 里覆盖值只经 overridesFor 读（另一处是交给提示的入参），段内不得直接读 opts.tierFlags / opts.modelOverrides
+M2：fail=1 cancelled=0 1s ⇒ U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示
+M3：fail=2 cancelled=0 1s ⇒ U2 --only env：写了覆盖 ⇒ warnings 末项是提示（原因②）、blockers 不变；不写 ⇒ warnings 与不传逐项相同 ｜ U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示
+M4：fail=4 cancelled=0 1s ⇒ U1 ③ 被 --only 滤掉的段 ⇒ 原因②，点名 --only 的取值 ｜ U1 ④′ 同一家：--only 别的值 ⇒ 原因②优先；--only 恰为它 ⇒ 仍是原因③ ｜ U2 --only env：写了覆盖 ⇒ warnings 末项是提示（原因②）、blockers 不变；不写 ⇒ warnings 与不传逐项相同 ｜ U2 段跑了：agy 段不读覆盖 ⇒ 原因①；codex 段经 overridesFor 读了 ⇒ 不提示
+M5：fail=3 cancelled=0 1s ⇒ U1 ④ 已登记、doctor 里尚无该段、不带 --only ⇒ 原因③（尚无探针） ｜ U1 ④′ 同一家：--only 别的值 ⇒ 原因②优先；--only 恰为它 ⇒ 仍是原因③ ｜ U1 ⑤ 三种原因同时出现：按「固定口径 → --only → 尚无探针」分行，组内按注册表顺序
+M6：fail=1 cancelled=0 1s ⇒ U5 cmdDoctor：模型旗标与档位旗标同一份判键——同一个 driver、同一个 picked（CRITIC_AGENT_IDS），先键后值
+M7：fail=2 cancelled=0 7s ⇒ T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境段、不调模型；--start 不起运行） ｜ T9 doctor：写给 doctor 不消费的家的覆盖 ⇒ 退 0、JSON 顶层键集合不变、warnings 恰多末尾一条提示；人读模式同样出现（EV-245）
+M8：fail=4 cancelled=0 12s ⇒ S1 脏家目录 + 缺省入选（含读共享根的家）⇒ 恰一项「共享读取面同名入口」，结尾是「本次运行」，worker 照常拉起 ｜ S2 人读模式：同一行照样打印 ｜ S4 Driver 读共享根、入选审核者都不读 ⇒ 仍出这一项（口径含当轮 Driver） ｜ S6 位置：与失联阈值、必读清单剔除同时出现时，排在复查项之后、剔除条目之前
+M9：fail=1 cancelled=0 14s ⇒ S4 Driver 读共享根、入选审核者都不读 ⇒ 仍出这一项（口径含当轮 Driver）
+M10：fail=1 cancelled=0 14s ⇒ S6 位置：与失联阈值、必读清单剔除同时出现时，排在复查项之后、剔除条目之前
+M11：fail=2 cancelled=0 11s ⇒ S1 脏家目录 + 缺省入选（含读共享根的家）⇒ 恰一项「共享读取面同名入口」，结尾是「本次运行」，worker 照常拉起 ｜ S2 人读模式：同一行照样打印
+M12：fail=1 cancelled=0 0s ⇒ U4 渲染：只有同名入口时与 M12 批次 5 的文案逐字相同（不混入残留段与残留计数）
+M13：fail=2 cancelled=0 30s ⇒ U6 checkSharedReadRoots：相关家都不读共享根 ⇒ null；有一家读 ⇒ 一条 warn、ok 为真、无退出码；干净 ⇒ null ｜ U6c checkSharedReadRoots：扫描出错 ⇒ 退化为一条告警，场合词同样取参数（缺省「本次预检」，`--start` 传「本次运行」）
+M14：fail=1 cancelled=0 29s ⇒ U6c checkSharedReadRoots：扫描出错 ⇒ 退化为一条告警，场合词同样取参数（缺省「本次预检」，`--start` 传「本次运行」）

@@ -170,3 +170,29 @@ test('T8 doctor 与 review --start：--model-glm= 退 64（doctor 只跑环境�
   const runs = (await fs.readdir(metaDir).catch(() => [] as string[])).filter((n) => n.startsWith('run-'));
   assert.deepEqual(runs, [], '退 64 在冻结之前，不留运行记录');
 });
+
+test('T9 doctor：写给 doctor 不消费的家的覆盖 ⇒ 退 0、JSON 顶层键集合不变、warnings 恰多末尾一条提示；人读模式同样出现（EV-245）', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const base = ['doctor', '--only', 'env', '--no-model-calls'];
+  const flags = ['--model-gemini', 'x', '--tier-glm', 'high', '--effort-glm', 'high'];
+  const plain = await cli(fx.root, [...base, '--json']);
+  const hinted = await cli(fx.root, [...base, ...flags, '--json']);
+  assert.equal(plain.code, EXIT.OK, out(plain));
+  assert.equal(hinted.code, EXIT.OK, out(hinted));
+  type DoctorJson = { ok: boolean; warnings: string[]; blockers: string[] } & Record<string, unknown>;
+  const p = parse<DoctorJson>(plain.stdout);
+  const h = parse<DoctorJson>(hinted.stdout);
+  // 不写死键数：directoryEvidence 只在跑过 Claude 目录探针时出现（计划双审 GLM-01）
+  assert.deepEqual(Object.keys(h).sort(), Object.keys(p).sort(), '--json 顶层字段不变');
+  assert.equal(h.ok, p.ok);
+  assert.deepEqual(h.blockers, p.blockers);
+  assert.deepEqual(h.warnings.slice(0, -1), p.warnings, '其余告警逐项不变');
+  const hint = h.warnings.at(-1)!;
+  assert.ok(hint.startsWith('以下命令行覆盖本次没有用上'), hint);
+  assert.match(hint, /--model-gemini、--tier-glm、--effort-glm：本次 --only env/);
+
+  const human = await cli(fx.root, [...base, ...flags]);
+  assert.equal(human.code, EXIT.OK, out(human));
+  assert.match(out(human), /以下命令行覆盖本次没有用上/);
+  assert.doesNotMatch(out(await cli(fx.root, base)), /以下命令行覆盖本次没有用上/);
+});

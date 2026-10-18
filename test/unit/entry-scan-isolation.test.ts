@@ -16,7 +16,7 @@ isolateEntryScanHome();
  * 测试不读真实家目录的共享读取面（EV-240，M12 批次 5；计划双审 CODEX-01 / GLM-01，计划 r2 §4 U8、U9）。
  *
  * doctor 的扫描与 `--only` 无关、preflight 的扫描排在多数只告警项之后，凡能跑到 `runDoctor` / `runPreflight`
- * 的旧用例都会顺带扫一次。隔离靠单一来源（`entryScanEnv()`）+ 两个测试侧入口，本文件守住两件事：
+ * 的旧用例都会顺带扫一次；EV-246 起 `review --start`（`startRun`）派生前也扫一次，论域随之并入。隔离靠单一来源（`entryScanEnv()`）+ 两个测试侧入口，本文件守住两件事：
  * U8 名单对账——没走隔离的调用方当场红；U9 读源证明——设了变量，读的就是变量指的那个目录。
  */
 
@@ -40,6 +40,11 @@ const SPAWN_REVIEWED: Readonly<Record<string, string>> = {
   'test/unit/agent-access-task-launch.test.ts': '只校验静默启动器的参数形态，产品 spawn 计数断言为 0',
   'test/unit/agent-access-recovery.test.ts': '只把 preflight 写进 argv 交给形态校验器，不执行',
   'test/integration/access-v3.test.ts': '自己 spawn 的只有 gate hook-pre-commit；preflight 都经 cli()',
+  // ↓ EV-246 起 `review --start` 也扫共享读取面，论域并入 '--start' 后新命中的四个文件
+  'test/integration/override-source-start.test.ts': 'cliAt 显式设 HOME 为夹具家目录，os.homedir() 即夹具',
+  'test/integration/code-stage.test.ts': '自己 spawn 的只有 gate hook-pre-commit；--start 都经 cli()',
+  'test/integration/bug-stage.test.ts': '自己 spawn 的只有 gate hook-pre-write；--start 都经 cli()',
+  'test/integration/gate-loop.test.ts': '自己 spawn 的是 gate 钩子、approve 与同步 review（不扫描）；--start 都经 cli()',
 };
 
 /*
@@ -49,9 +54,9 @@ const SPAWN_REVIEWED: Readonly<Record<string, string>> = {
  * 经变量拼出命令名再 spawn 打包产物。这两类的兜底是 `cli()` 缺省隔离与单一来源 `entryScanEnv()`。
  */
 const IMPORTS_ENTRY = [
-  /import\s*\{[^}]*\brun(Doctor|Preflight)\b[^}]*\}\s*from/,
-  /\{[^}]*\brun(Doctor|Preflight)\b[^}]*\}\s*=\s*await\s+import\(/,
-  /\brun(Doctor|Preflight)\s*\(/,
+  /import\s*\{[^}]*\b(runDoctor|runPreflight|startRun)\b[^}]*\}\s*from/,
+  /\{[^}]*\b(runDoctor|runPreflight|startRun)\b[^}]*\}\s*=\s*await\s+import\(/,
+  /\b(runDoctor|runPreflight|startRun)\s*\(/,
 ];
 
 test('U8 对账：直调 runDoctor / runPreflight 的测试文件都调了 isolateEntryScanHome()；cli() 缺省设隔离变量', async () => {
@@ -63,7 +68,7 @@ test('U8 对账：直调 runDoctor / runPreflight 的测试文件都调了 isola
     const text = await fs.readFile(f, 'utf8');
     if (IMPORTS_ENTRY.some((re) => re.test(text)) && !text.includes('isolateEntryScanHome()')) missing.push(rel);
     const spawnsBundle = /\[\s*(BUNDLE|k\.bundle)\s*,/.test(text) || /spawnSync\(/.test(text);
-    if (spawnsBundle && /'(doctor|preflight)'/.test(text) && !(rel in SPAWN_REVIEWED)) unreviewedSpawn.push(rel);
+    if (spawnsBundle && /'(doctor|preflight|--start)'/.test(text) && !(rel in SPAWN_REVIEWED)) unreviewedSpawn.push(rel);
   }
   assert.deepEqual(missing, [], '这些文件直调了 doctor / preflight 却没钉扫描家目录');
   assert.deepEqual(unreviewedSpawn, [], '这些文件自己 spawn 了 doctor / preflight：要么改走 cli()，要么登记理由');

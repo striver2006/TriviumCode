@@ -1,0 +1,130 @@
+{
+  "targets": [
+    "src/trivium/doctor.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/entry-collisions.ts",
+    "src/trivium/preflight.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/doctor-unused-overrides.test.js",
+    "dist/test/test/integration/tier-flags-cli.test.js",
+    "dist/test/test/integration/shared-root-start.test.js",
+    "dist/test/test/unit/entry-collisions.test.js",
+    "dist/test/test/unit/preflight.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "Codex 段绕过 overridesFor、改回内联合并",
+      "file": "src/trivium/doctor.ts",
+      "find": "    const selected = resolveTier(opts.config, 'codex', 'code', overridesFor('codex'));",
+      "replace": "    const selected = resolveTier(opts.config, 'codex', 'code', { ...opts.tierFlags?.codex, ...(opts.modelOverrides?.codex ? { model: opts.modelOverrides.codex } : {}) });",
+      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "overridesFor 不记消费",
+      "file": "src/trivium/doctor.ts",
+      "find": "    consumedOverrides.add(id);",
+      "replace": "    void consumedOverrides;",
+      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "提示推进 blockers",
+      "file": "src/trivium/doctor.ts",
+      "find": "  if (unusedOverrides !== null) warnings.push(unusedOverrides);",
+      "replace": "  if (unusedOverrides !== null) blockers.push(unusedOverrides);",
+      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "--only 滤掉的不归原因②",
+      "file": "src/trivium/doctor.ts",
+      "find": "      input.only !== null && input.only !== a.cliName ? groups.filtered",
+      "replace": "      false ? groups.filtered",
+      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "没有段的家归到原因①",
+      "file": "src/trivium/doctor.ts",
+      "find": "        : input.ran.has(a.cliName) ? groups.fixed",
+      "replace": "        : true ? groups.fixed",
+      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "cmdDoctor 不判模型键",
+      "file": "src/trivium/cli.ts",
+      "find": "  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), CRITIC_AGENT_IDS);",
+      "replace": "  void modelRaw;",
+      "expect": "dist/test/test/unit/doctor-unused-overrides.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "cmdDoctor 判模型键的 picked 写成空集",
+      "file": "src/trivium/cli.ts",
+      "find": "  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), CRITIC_AGENT_IDS);",
+      "replace": "  assertModelOverrideKeys(ctx.config, driver, Object.keys(modelRaw), []);",
+      "expect": "dist/test/test/integration/tier-flags-cli.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "startRun 不追加共享根项",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        ...(sharedRoots ? [sharedRoots] : []),",
+      "replace": "        ...(sharedRoots ? [] : []),",
+      "expect": "dist/test/test/integration/shared-root-start.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "relevant 只传入选审核者",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "checkSharedReadRoots([rc.meta.driver, ...rc.sides], undefined, '本次运行')",
+      "replace": "checkSharedReadRoots([...rc.sides], undefined, '本次运行')",
+      "expect": "dist/test/test/integration/shared-root-start.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "共享根项挪到必读剔除之后",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "        ...(sharedRoots ? [sharedRoots] : []),\n      ]),\n      // 准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02），追加在后、既有两项顺序不变\n      ...rc.mustReadPruned,",
+      "replace": "      ]),\n      // 准备阶段从各侧任务书第 4 段剔除的自动条目（EV-02），追加在后、既有两项顺序不变\n      ...rc.mustReadPruned,\n      ...collectWarnings(sharedRoots ? [sharedRoots] : []),",
+      "expect": "dist/test/test/integration/shared-root-start.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "--start 不传场合词",
+      "file": "src/trivium/run-protocol.ts",
+      "find": "checkSharedReadRoots([rc.meta.driver, ...rc.sides], undefined, '本次运行')",
+      "replace": "checkSharedReadRoots([rc.meta.driver, ...rc.sides])",
+      "expect": "dist/test/test/integration/shared-root-start.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "summarize 的缺省场合词漂成「本次运行」",
+      "file": "src/trivium/entry-collisions.ts",
+      "find": "  occasion = '本次预检',\n): string | null {",
+      "replace": "  occasion = '本次运行',\n): string | null {",
+      "expect": "dist/test/test/unit/entry-collisions.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "checkSharedReadRoots 的缺省场合词漂成「本次运行」",
+      "file": "src/trivium/preflight.ts",
+      "find": "  occasion = '本次预检',\n): Promise<CheckResult | null> {",
+      "replace": "  occasion = '本次运行',\n): Promise<CheckResult | null> {",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "扫描出错分支的场合词写死",
+      "file": "src/trivium/preflight.ts",
+      "find": "    return { name, ok: true, warn: true, detail: `⚠️ 共享读取面检查没做成（不影响${occasion}）：${thrownText(e)}` };",
+      "replace": "    return { name, ok: true, warn: true, detail: `⚠️ 共享读取面检查没做成（不影响本次预检）：${thrownText(e)}` };",
+      "expect": "dist/test/test/unit/preflight.test.js"
+    }
+  ]
+}

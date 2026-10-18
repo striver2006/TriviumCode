@@ -332,8 +332,15 @@ export function describeSharedRootProblems(problems: readonly EntryCollisionProb
   return lines.join('\n');
 }
 
-/** preflight 用：一行。无问题返回 null */
-export function summarizeSharedRootProblems(problems: readonly EntryCollisionProblem[], home: string): string | null {
+/**
+ * preflight 与 `review --start` 用：一行。无问题返回 null。
+ * `occasion` 只换结尾括号里的场合词（`--start` 传「本次运行」，EV-246）；缺省即预检的原文，逐字不变
+ */
+export function summarizeSharedRootProblems(
+  problems: readonly EntryCollisionProblem[],
+  home: string,
+  occasion = '本次预检',
+): string | null {
   if (problems.length === 0) return null;
   const { groups, entries, residues } = splitGroups(problems);
   const roots = [...new Set(groups.map((g) => displayHomePath(path.dirname(g.path), home)))];
@@ -344,6 +351,6 @@ export function summarizeSharedRootProblems(problems: readonly EntryCollisionPro
   ];
   return (
     `⚠️ 共享读取面 ${roots.join('、')} 有 ${counts.join('、')}，本轮的 ${agents.map(displayOf).join('、')} 会读到；` +
-    '跑 doctor 看完整清单与出口（不影响本次预检）'
+    `跑 doctor 看完整清单与出口（不影响${occasion}）`
   );
 }

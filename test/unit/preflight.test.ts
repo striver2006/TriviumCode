@@ -1185,9 +1185,28 @@ test('U6 checkSharedReadRoots：相关家都不读共享根 ⇒ null；有一家
   assert.equal(hit.exitCode, undefined);
   assert.equal(hit.name, '共享读取面同名入口');
   assert.ok(hit.detail.startsWith('⚠️ 共享读取面 ~/'), hit.detail);
+  // 预检侧不传场合词，结尾仍是「本次预检」（EV-246 给 `--start` 加了场合参数，缺省值不能漂）
+  assert.ok(hit.detail.endsWith('（不影响本次预检）'), hit.detail);
   assert.ok(hit.detail.includes(sharedReader.display), hit.detail);
   assert.ok(!hit.detail.includes(dirty), hit.detail);
   assert.equal(await checkSharedReadRoots([DEFAULT_DRIVER, sharedReader.id], { home: clean, env: {} }), null);
+});
+
+test('U6c checkSharedReadRoots：扫描出错 ⇒ 退化为一条告警，场合词同样取参数（缺省「本次预检」，`--start` 传「本次运行」）', async () => {
+  /*
+   * 代码双审 GLM-01：catch 分支也插值了场合词，此前没有用例走到它。扫描对文件系统异常很宽容（`exists`、`readdir` 都吞错），
+   * 造不出抛错；注入口的 `home` 传非字符串时，`sharedReadRootTargets` 在 try 之内拼路径就抛 TypeError，稳定走到 catch。
+   */
+  const broken = { home: 42 as unknown as string, env: {} };
+  for (const [occasion, args] of [['本次预检', []], ['本次运行', ['本次运行']]] as const) {
+    const r = await checkSharedReadRoots([DEFAULT_DRIVER, sharedReader.id], broken, ...args);
+    assert.ok(r);
+    assert.equal(r.ok, true, '扫描出错不能把预检 / --start 变成失败');
+    assert.equal(r.warn, true);
+    assert.equal(r.exitCode, undefined);
+    assert.equal(r.name, '共享读取面同名入口');
+    assert.ok(r.detail.startsWith(`⚠️ 共享读取面检查没做成（不影响${occasion}）：`), r.detail);
+  }
 });
 
 test('U6 预检：Driver 读共享根而审核者不读 ⇒ 照样出一项（Driver 算相关）；照常通过、退出码不变、进 warnings', async () => {

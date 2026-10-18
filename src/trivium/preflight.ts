@@ -819,8 +819,9 @@ export function checkHeartbeatThreshold(cfg: Config): CheckResult | null {
  * 正文与判定的唯一来源是 `config.ts` 的 `deprecatedConfigNotice`（doctor 用同一个）；正文不带 ⚠️，
  * 这里按本文件其它 warn 项的惯例补上。只读配置，不花配额、不读盘。
  *
- * **只在预检与 doctor 出**：`review --start` 不复用它——那里复用的两项（副本源、失联阈值）都有运行期后果，
- * 这一条没有；其余命令也不打，避免每条命令都刷一遍（用户决策 二）。
+ * **只在预检与 doctor 出**：`review --start` 不复用它——那里复用的几项（副本源、失联阈值有运行期后果，
+ * 共享读取面是本轮相关的家读得到的环境，EV-246）都与「这一轮」有关，这一条只说配置本身；其余命令也不打，
+ * 避免每条命令都刷一遍（用户决策 二）。
  *
  * **预检前面有失败项时不出**（与 ④′～④‴ 同一短路，有意为之，代码双审 r1 GLM-02）：那时用户要先处理失败项，
  * 多念一条「可以删两行配置」只会稀释注意力。兜底出口是 doctor——它在环境段无条件提示，与 `--only` 无关。
@@ -838,20 +839,25 @@ export function checkDeprecatedConfigKeys(cfg: Config): CheckResult | null {
  * Driver 载体从这些根加载入口 skill，审核者 CLI 也把它们列进模型可见清单；别的家读不到，与本轮无关。
  * 判定与安装器同一份实现（`entry-collisions.ts`）；完整清单与出口由 doctor 给，这里只一行。
  * 扫描出错也只退化为一条告警：这一项不能把预检变成失败。
+ *
+ * 两个调用点用的是**同一个函数**：预检 ④⁵（按预检自己的选侧）与 `startRun`（派生之前，按当轮 Driver ∪ `sides`，
+ * 与副本源、失联阈值复查同一次汇总，EV-246）。`occasion` 只换正文结尾的场合词：缺省「本次预检」，预检侧输出逐字不变；
+ * `--start` 传「本次运行」。共享根没有问题时两处都返回 null、什么都不追加。
  */
 export async function checkSharedReadRoots(
   relevant: readonly AgentId[],
   inject?: EntryScanEnv,
+  occasion = '本次预检',
 ): Promise<CheckResult | null> {
   const name = '共享读取面同名入口';
   const agents = [...new Set(relevant)].map((id) => agentById(id)).filter((a) => a !== null);
   if (agents.every((a) => a.entrySkillExtraReadRoots.length === 0)) return null;
   const se = entryScanEnv(inject);
   try {
-    const detail = summarizeSharedRootProblems(await scanEntryCollisions(sharedReadRootTargets(agents, se)), se.home);
+    const detail = summarizeSharedRootProblems(await scanEntryCollisions(sharedReadRootTargets(agents, se)), se.home, occasion);
     return detail === null ? null : { name, ok: true, warn: true, detail };
   } catch (e) {
-    return { name, ok: true, warn: true, detail: `⚠️ 共享读取面检查没做成（不影响本次预检）：${thrownText(e)}` };
+    return { name, ok: true, warn: true, detail: `⚠️ 共享读取面检查没做成（不影响${occasion}）：${thrownText(e)}` };
   }
 }
 

@@ -19,7 +19,7 @@ import { probeZcode, ZCODE_HEADLESS_UNREFRESHED, type ZcodeHeadlessUnrefreshed }
 import { probeCodex } from './probes/codex.js';
 import { probeClaude, withClaudeProbeRoute, type StructuredArmCause } from './probes/claude.js';
 import { claudeProbeForRoute, claudeRouteKey, resolveClaudeRoute, type ClaudeRoute } from './adapters/claude-route.js';
-import { resolveTier } from './adapters/base.js';
+import { resolveTier, type TierOverrides } from './adapters/base.js';
 import type { TierFlagValues } from './tier-flags.js';
 import { ProbeFixtureError } from './probes/fixture.js';
 import type { ClaudeProbe, CodexProbe, Config, CriticId, ProbeSection } from './types.js';
@@ -27,7 +27,7 @@ import { realAdapters } from './adapters/index.js';
 // 同源文案：blocker 与 `availability()` 对同一现象只能有一种说法（r2 AGY-04）
 import { ZCODE_HEADLESS_NOT_OK_HINT, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT, zcodeProbeModel } from './adapters/zcode.js';
 import type { TraceCapability } from './adapters/base.js';
-import { AGENTS, ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
+import { AGENTS, ALL_CLI_NAMES, agentByCliName, type AgentDescriptor } from './agents/registry.js';
 import {
   describeSharedRootProblems, entryScanEnv, scanEntryCollisions, sharedReadRootTargets, type EntryScanEnv,
 } from './entry-collisions.js';
@@ -85,6 +85,72 @@ export function doctorOnlyChoices(): string[] {
 
 export function isDoctorOnly(v: string): boolean {
   return doctorOnlyChoices().includes(v);
+}
+
+/** {@link describeUnusedOverrides} 的入参：用户写了什么、本次哪几家的覆盖被读过、哪几段跑过 */
+export interface UnusedOverridesInput {
+  tierFlags?: Partial<Record<CriticId, TierFlagValues>>;
+  modelOverrides?: Partial<Record<CriticId, string>>;
+  /** 覆盖被读过的 Agent id（`runDoctor` 的 `overridesFor` 记下） */
+  consumed: ReadonlySet<string>;
+  /** 本次跑过的段（cliName）：探完的，加上夹具没建起来的 */
+  ran: ReadonlySet<string>;
+  only: string | null;
+  /** 只为可测性（第五家的桩描述符），生产路径不传 */
+  agents?: readonly AgentDescriptor[];
+}
+
+/** 一家写了哪些覆盖旗标，按 `--model` / `--tier` / `--effort` / `--profile` / `--native` 的顺序 */
+function overrideFlagNames(id: string, input: UnusedOverridesInput): string[] {
+  const tf = input.tierFlags?.[id as CriticId];
+  return [
+    ...(input.modelOverrides?.[id as CriticId] !== undefined ? [`--model-${id}`] : []),
+    ...(tf?.tier !== undefined ? [`--tier-${id}`] : []),
+    ...(tf?.effort !== undefined ? [`--effort-${id}`] : []),
+    ...(typeof tf?.vendorProfile === 'string' ? [`--profile-${id}`] : []),
+    ...(tf?.vendorProfile === null ? [`--native-${id}`] : []),
+  ];
+}
+
+/**
+ * 写了却没用上的命令行覆盖（EV-245）：返回一条提示，全部用上时返回 `null`。**只提示**，调用方放进 warnings、
+ * 不进 blockers——退出码与探测结论都不受影响（用户 2026-10-18 定）。
+ *
+ * 「用上没有」按运行期记录判，不维护「哪几家消费覆盖」的清单、不写任何 Agent id：哪一段经 `overridesFor`
+ * 读了覆盖，那一家就算用上。没用上的按下列次序归因，先中先归（计划 r2 D-3）：
+ *   ② `--only` 滤掉了该家的段；① 该段跑了但不读覆盖（探测用的是固定口径）；③ 其余——doctor 里还没有这一家的段。
+ * 第五家登记之后落进哪一格，由它在 doctor 里有没有段、段里经不经 `overridesFor` 决定，这里不用改。
+ */
+export function describeUnusedOverrides(input: UnusedOverridesInput): string | null {
+  const groups: Record<'fixed' | 'filtered' | 'noProbe', { flags: string[]; agents: AgentDescriptor[] }> = {
+    fixed: { flags: [], agents: [] },
+    filtered: { flags: [], agents: [] },
+    noProbe: { flags: [], agents: [] },
+  };
+  for (const a of input.agents ?? AGENTS) {
+    if (input.consumed.has(a.id)) continue;
+    const flags = overrideFlagNames(a.id, input);
+    if (flags.length === 0) continue;
+    const g =
+      input.only !== null && input.only !== a.cliName ? groups.filtered
+        : input.ran.has(a.cliName) ? groups.fixed
+          : groups.noProbe;
+    g.flags.push(...flags);
+    g.agents.push(a);
+  }
+  const names = (as: readonly AgentDescriptor[]): string => as.map((a) => a.display).join('、');
+  const lines: string[] = [];
+  if (groups.fixed.flags.length > 0) {
+    lines.push(`  · ${groups.fixed.flags.join('、')}：${names(groups.fixed.agents)} 的探测不读命令行覆盖值，用的是各自固定的探测口径`);
+  }
+  if (groups.filtered.flags.length > 0) {
+    lines.push(`  · ${groups.filtered.flags.join('、')}：本次 --only ${input.only}，没有探测 ${names(groups.filtered.agents)}`);
+  }
+  if (groups.noProbe.flags.length > 0) {
+    lines.push(`  · ${groups.noProbe.flags.join('、')}：doctor 尚无 ${names(groups.noProbe.agents)} 的探针`);
+  }
+  if (lines.length === 0) return null;
+  return ['以下命令行覆盖本次没有用上（只是提示，退出码与探测结论不受影响）：', ...lines].join('\n');
 }
 
 export interface DoctorReport {
@@ -549,6 +615,17 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
       fixtureFailed.add(cli);
       blockers.push(blocker);
     });
+  /**
+   * 命令行覆盖（模型、档位、思考等级、厂商 profile）的**唯一读点**（EV-245）：读的同时记下这一家的覆盖用上了，
+   * 末尾据此给 `describeUnusedOverrides` 提示。各段不得绕过它直接读 `opts.tierFlags` / `opts.modelOverrides`——
+   * 绕过了，用上的覆盖会被报成没用上（`doctor-unused-overrides` 按源码守着）。
+   */
+  const consumedOverrides = new Set<string>();
+  const overridesFor = (id: CriticId): TierOverrides => {
+    consumedOverrides.add(id);
+    const model = opts.modelOverrides?.[id];
+    return { ...opts.tierFlags?.[id], ...(model ? { model } : {}) };
+  };
 
   // ── 环境 ────────────────────────────────────────────────────────────
   step('探测运行环境…');
@@ -758,8 +835,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   // ── Codex ───────────────────────────────────────────────────────────
   if (only === null || only === 'codex') {
     step('探测 Codex（codex exec）…');
-    const selected = resolveTier(opts.config, 'codex', 'code', {
-      ...opts.tierFlags?.codex, ...(opts.modelOverrides?.codex ? { model: opts.modelOverrides.codex } : {}) });
+    const selected = resolveTier(opts.config, 'codex', 'code', overridesFor('codex'));
     const r = await guard('codex', () =>
       probeCodex(opts.probeBins?.codex ?? (opts.config.agents.codex?.vendor === 'openai' ? opts.config.agents.codex.bin ?? null : null), {
         skipModelCalls: opts.skipModelCalls ?? false,
@@ -800,8 +876,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
 
   // ── Claude Code ─────────────────────────────────────────────────────
   if (only === null || only === 'claude') {
-    const selected = resolveTier(opts.config, 'claude', 'code', {
-      ...opts.tierFlags?.claude, ...(opts.modelOverrides?.claude ? { model: opts.modelOverrides.claude } : {}) });
+    const selected = resolveTier(opts.config, 'claude', 'code', overridesFor('claude'));
     const canProbeModel = !opts.skipModelCalls && selected.model !== null;
     if (selected.model === null) notes.push('[claude] 未解析出本轮模型，跳过付费能力探针，不写路线准入结论');
     step(`探测 Claude Code（${selected.vendorProfile === null ? '原生' : `profile:${selected.vendorProfile}`}）…`);
@@ -893,6 +968,16 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
         '本次未产生任何结论——这是确定答复而非失败。探针随 M6 第 2 / 3 步接入。',
     );
   }
+
+  // 写了却没用上的命令行覆盖（EV-245）：只进 warnings，退出码不变。跑过的段 = 探完的 + 夹具没建起来的
+  const unusedOverrides = describeUnusedOverrides({
+    tierFlags: opts.tierFlags,
+    modelOverrides: opts.modelOverrides,
+    consumed: consumedOverrides,
+    ran: new Set([...probedSections, ...fixtureFailed]),
+    only,
+  });
+  if (unusedOverrides !== null) warnings.push(unusedOverrides);
 
   probe.generated_at = new Date().toISOString();
 
