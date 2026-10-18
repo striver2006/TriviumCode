@@ -10,8 +10,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
-const repo = path.resolve(import.meta.dirname, '..');
+// 安装检查随预构建包分发，须与运行时一样兼容 Node 18。
+const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bundle = path.join(repo, 'dist', 'install.cjs');
 if (!fs.existsSync(bundle)) {
   console.error(`✗ 找不到 ${path.relative(repo, bundle)}，先在仓库根跑一次 \`npm run build\`。`);

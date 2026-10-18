@@ -1,7 +1,7 @@
 {
   "name": "triviumcode",
-  "version": "0.1.0",
-  "description": "Driver-DualCritic 主攻双审流水线编排器：Claude Code 主攻 + Antigravity/ZCode 背靠背双审",
+  "version": "1.0.0",
+  "description": "主攻与多方独立审查流水线编排器，支持四家 Agent、动态选侧与审计留痕",
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
@@ -17,7 +17,8 @@
     "test:unit": "node --test \"dist/test/test/unit/**/*.test.js\"",
     "check": "npm run typecheck && npm run build && npm test",
     "install:local": "node dist/install.cjs",
-    "install:check": "node scripts/install-check.mjs"
+    "install:check": "node scripts/install-check.mjs",
+    "release": "npm run build && node scripts/package-release.mjs"
   },
   "dependencies": {
     "ajv": "^8.17.1",

@@ -485,9 +485,9 @@ export async function uninstall(root: string, ie: InstallEnv): Promise<Uninstall
     removed.push(plan.agentTarget);
   }
   notes.push(
-    '各项目内的 .trivium/（config.yaml、wrapper）与 .claude/settings.json 里的 Hook 未动：',
-    '  它们随仓库分发；如需清理请在项目里删除 .trivium/ 并从 settings.json 移除 gate hook-* 条目。',
-    '  settings.json 里的 Hook 命令带存在性守卫，wrapper 不在时会自动 no-op，不会报错。',
+    '各项目内的 .trivium/（config.yaml、wrapper）与已合并的项目 Hook 未动：',
+    '  如需彻底移除项目集成，先确认没有运行中的审查，再移除本产品的 Hook 条目与 .trivium/；保留其他 Hook。',
+    '  config.yaml 仍在而 wrapper 缺失或不可执行时，Hook 会阻断；没有 config.yaml 时才自动 no-op。',
   );
   return { removed, notes };
 }

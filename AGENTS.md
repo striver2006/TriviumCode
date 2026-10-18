@@ -69,7 +69,7 @@ Node ≥ 18（开发建议 ≥ 22）。
   `prompts/` `lenses.yaml/`、`hooks/`）。其中 7 份 `skills/dual-*/SKILL.md` 与
   `skills/dual-critic/entry/**` 是 `skills-src/` 的**渲染产物**（进 Git、不手改，漂移由契约测试拦）
 - `test/{unit,contract,integration}/` — 分层测试，共享夹具在 `test/helpers/fixture.ts`
-- `doc/` — 工程文档（八个一级子目录，**单层扁平**，文件名带前缀）
+- `doc/` — 工程文档（八个一级子目录，**单层扁平**，文件名带前缀；稳定版交付文档按用户要求采用中文名）
 - `.reviews/` — 流水线审计留痕（进 Git）
 
 ## 本仓开发会话（Codex）
@@ -210,3 +210,7 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
 
 改敏感区域（适配层、guard/gate、hooks、schema）前，先读对应设计章节与
 `doc/04_development/GUIDE_env_setup.md`。
+
+## 稳定版发布文档
+
+当前产品发布基线见 [稳定版需求说明书](doc/01_requirements/稳定版需求说明书.md)与[稳定版系统设计说明书](doc/02_design/稳定版系统设计说明书.md)。旧需求、主设计、协议和审查工件保留；新文档是实现导读，不另设与既有规范冲突的规则。预构建包用 `npm run release` 生成，正式包须干净工作树；Mac 支持边界和 Windows 待办见中文部署手册及 Bug 清单。
