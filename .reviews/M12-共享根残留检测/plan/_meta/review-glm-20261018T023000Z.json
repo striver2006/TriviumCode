@@ -1,0 +1,58 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "对照仓库源码逐条核实了计划的现状陈述与取舍：scanEntryCollisions 的判定次序（entry-collisions.ts:90-108）、安装器 RESIDUE_NAMES 派生（install.ts:62）、isOurRuntime 身份行（install.ts:128,163-169）、checkInstall 门控（install.ts:269-287）、doctor（doctor.ts:585,816）与 preflight（preflight.ts:842-856,1101）调用点、registry 里 codex 与 glm（ZCode）登记 .agents/skills 额外读取根而 claude/gemini 为空——计划 §1 的行号与陈述全部准确。审查焦点四条均覆盖：焦点一（误伤）由 D-2 内容判据（身份行+schema/ 或 isOurEntry 入口子树）加 U1 矩阵④⑤⑥、U5 ②、A-1 对应格守住，焦点二（安装根不变）由 D-5 显式排除 skillsRoot 加变异①与 U2 ③守住，焦点三（同一份实现、preflight 只告警只看本轮）与调用点不改的方案自洽，焦点四（夹具隔离 HOME、新旧对照双情形）在 §4/§5 落实。另核实了 registry-parity 对账面（EXTRA_SCANNED 含 src/install.ts，但带引号扫描只匹配紧贴引号的字面量，新文案里嵌在中文串中的 codex/zcode 不会命中）。发现两条 minor：一是 EntryScanTarget 新字段定为必填会让既有测试里手写的 target 字面量编译失败，与「既有用例一条不改」的承诺冲突，需在计划里定清口径；二是 D-6 豁免按扫描时环境求值存在时序性误报边界（安装时设了 TRIVIUM_ASSET_ROOT 指向共享根、之后在不带该变量的 shell 跑 doctor 时活运行时会被误报），建议登记为已知边界。两条都不动摇方向。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.1（EntryScanTarget 新增字段）与 §3.1（既有用例一条不改）；对照 test/unit/entry-collisions.test.ts:49-52、61-63",
+      "problem": "计划把 sharedResidueNames 定为必填字段（未写问号，与同段的 exemptPaths? 形成对照），但既有用例 test/unit/entry-collisions.test.ts 第 49-52 行与 61-63 行手写了 EntryScanTarget 字面量、不含该字段。仓库用 tsc --strict 做静态检查，对象字面量缺必填属性会直接编译失败，实施时这两处既有用例必须补 sharedResidueNames: []——这与 §3.1「既有用例一条不改」（也是任务目标「既有用例逐条不变」的落点）字面冲突。断言本身确实不受影响（两处都是构造输入而非断言），但计划没有说明「补字段不算改用例」，代码审阶段会对这条承诺是否兑现产生争议。",
+      "evidence": "test/unit/entry-collisions.test.ts:49-52 手写目标 { agent: 'codex', skillsRoot: install, readRoots: [install, shared], names: […], residueNames: ['dual-critic', 'entry'] }，61-63 行另一处同样手写且 residueNames 为空；计划 §2.1 写「sharedResidueNames: readonly string[]」无可选标记、「exemptPaths?: readonly string[]」有可选标记；AGENTS.md 常用命令节写明 npm run typecheck 是 tsc --noEmit（strict），缺必填属性的测试文件过不了这道闸。",
+      "suggestion": "在计划里二选一定清：把 sharedResidueNames 也设为可选（缺省按空数组处理，不查），或在 §3.1 明确「既有用例仅补 sharedResidueNames: [] 这类构造字段、断言一条不动」不算改用例。两个方向都行，但要写下来，避免实施与代码审对「逐条不变」的口径各执一词。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §0 D-6、§2.1（exemptPaths 求值）；对照 src/trivium/asset-root.ts:17-23 与 doctor.ts:583-586",
+      "problem": "豁免路径按扫描当下的 env/home 求值（resolveAssetRoot(undefined, se.env, se.home)），存在一个时序性误报边界：用户安装时设了 TRIVIUM_ASSET_ROOT 指到共享根下的 dual-critic（正是 D-6 列举要保护的场景），之后在不带该变量的 shell 里跑 doctor 或 preflight 时，豁免求值为缺省位置 ~/.claude/skills/dual-critic，共享根里那份正在服役的活运行时（doctor 进程本身就是从它跑起来的）会被报成 shared-residue 残留。只进 warnings 不阻断，但告警内容失真（那份随安装更新，并非「不随安装更新的历史拷贝」）。A-1/A-2 的「TRIVIUM_ASSET_ROOT 指到共享根下的 dual-critic」格都在同一进程内设变量再跑，暴露不出这个差异。",
+      "evidence": "src/trivium/asset-root.ts:17-23 的求值序是 override ?? env['TRIVIUM_ASSET_ROOT'] ?? 缺省位置，环境变量不在时回落 ~/.claude/skills/dual-critic；entry-collisions.ts 的 entryScanEnv（:128-132）生产取 process.env 与 os.homedir()，shell 未设该变量时 D-6 的豁免即与安装时的 plan.runtimeRoot 错位；计划 §5 A-1/A-2 的对应格均为子进程内显式设置变量后运行，不存在跨 shell 的时序差。",
+      "suggestion": "不必为此改实现（读 wrapper 指向之类的解法复杂度不成比例），但应在 §7 判据边界里登记这条：豁免按扫描时环境求值，安装时装了 TRIVIUM_ASSET_ROOT、扫描时未设的 shell 里活运行时会被误报为残留（仅告警、不阻断、不影响安装器——安装器在安装场景内 env 一致）。如愿意，可顺手在 A-2 加一格「变量只在安装时设、doctor 不带变量」的读数，把边界的实际表现留痕。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "D-2 的内容判据设计：身份行加 schema/ 目录、或复用 isOurEntry 认入口子树，两条都要求本产品特有结构，配 U1 矩阵与 §7 边界声明，对别家同名 entry skill 的误伤面控制得住（审查焦点一）。",
+    "D-5 只作用于额外读取根、scanEntryCollisions 新循环显式排除 skillsRoot，配变异①与 U2 ③，安装根见名即判的 residue 口径与既有用例不动（审查焦点二）；我核实 claude、gemini 在 registry 里 entrySkillExtraReadRoots 为空（registry.ts:284、366），「传了也不查」的前提成立。",
+    "三处共用同一份 scanEntryCollisions、doctor.ts:585 与 preflight.ts:851 调用点不改、新判定经 sharedReadRootTargets 进入，预检仍恒 ok:true 且只扫当轮 Driver ∪ 入选审核者（preflight.ts:1101）——与任务目标「同一份判定、只告警不阻断、只看本轮相关的家」逐条对得上（审查焦点三）。",
+    "D-7 双名单各留原源、U6 对账用例守 RESIDUE_DIR_NAMES 与安装器派生值一致，与批次 5 的 ENTRY_SKILL_NAMES 对账同构，未破坏「安装器判定输入逐字不变」。",
+    "§3.3 无残留时逐字节相同的承诺加 A-1/A-2 新旧产物对照（无残留组应逐字相同、有残留组应不同、新产物拒装时装前后目录树清单相同）——验收标准可测且双向（审查焦点四）；U9 子进程整份构造环境并断言输出路径落在夹具内，隔离设计周密。",
+    "计划 §1 的现状陈述与行号引用经我逐一核实全部准确（install.ts:62/128/159/163-169/269-287/365/377/466、entry-collisions.ts:90-108/140-154、doctor.ts:585/816、preflight.ts:851）。",
+    "新文案里嵌在中文串中的 codex、zcode 不会踩 registry-parity 的带引号字面量扫描（该扫描只匹配紧贴引号的形态，我已读 test/unit/registry-parity.test.ts:531-566 核实），编排器侧渲染继续用 displayOf 动态拼接显示名，两侧各有先例。"
+  ],
+  "not_covered": [
+    "我是只读审查、未运行任何命令：A-1/A-2 的实测可行性是从源码与既有测试形态推断的，npm run check 全绿与否、变异装置实际能否打死对应分支，本侧无法验证。",
+    "未读 BACKLOG EV-240 原文与 doc/05_testing/REPORT_2026-10-18_m12_batch5.md §7、批次 5 计划 r2，计划引用的「10-16 实例 14 个问题全是同名入口」「T-3/T-4/T-5 的既有约定」按计划自述采信。",
+    "未核实 doctor 侧确实不存在会传入覆盖的 --asset-root 旗标路径（计划 D-6 的断言「旗标只在 init/review 等子命令上」未查 CLI 参数表）；不过 sharedReadRootTargets 设计为取 resolveAssetRoot(undefined,…) 即不用覆盖，该断言即使有偏差也不影响本方案。",
+    "test/unit/doctor-shared-roots.test.ts、preflight.test.ts、install.test.ts 只核对了调用形态与 checkInstall 无直调点，未逐条通读既有断言；install.test.ts 之外两个文件里若有其它手写 EntryScanTarget 的位置，GLM-01 的影响面以我读到的两处为准。",
+    "CLAUDE.md、README.md、doc/01_requirements、doc/02_design 的 README 未通读，以 AGENTS.md 与任务书附录的任务目标原文为对照基准。"
+  ],
+  "consulted": [
+    "src/trivium/entry-collisions.ts",
+    "src/install.ts",
+    "src/trivium/asset-root.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/preflight.ts",
+    "scripts/install-check.mjs",
+    "test/unit/entry-collisions.test.ts",
+    "test/unit/entry-collisions-bundles.test.ts",
+    "test/unit/install.test.ts",
+    "test/unit/registry-parity.test.ts"
+  ]
+}

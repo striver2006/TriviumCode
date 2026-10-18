@@ -1,0 +1,54 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "计划总体符合任务目标：共享根按内容识别、安装根保留原判定、三处共用实现，预检保持只告警；新旧对照也覆盖有残留与无残留两组。发现一处接口兼容性矛盾：新增必填字段会使承诺不修改的既有测试无法通过类型检查。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划 §2.1 EntryScanTarget、§3.1 既有用例不改",
+      "problem": "sharedResidueNames 被设计为新增必填字段，但既有测试直接构造 EntryScanTarget 时没有这个字段。按计划实施会产生类型错误；即使跳过类型检查，新循环直接遍历缺失字段也会抛错，与“既有用例一条不改”的承诺冲突。",
+      "evidence": "静态推理，未执行测试：test/unit/entry-collisions.test.ts 的两个 scanEntryCollisions 调用直接传入对象，均只有 residueNames，没有 sharedResidueNames；src/trivium/entry-collisions.ts 的参数类型为 readonly EntryScanTarget[]；tsconfig.json 启用了 strict，并将 test/**/*.ts 纳入检查。被审计划 §2.1 将新增字段声明为 sharedResidueNames: readonly string[]，§3.1 则要求这些既有用例不改。",
+      "suggestion": "将新增字段设为可选，扫描时缺省为空数组；安装器和共享根目标构造函数显式传入名单。追加缺省字段的兼容性断言，保留既有调用和断言。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "共享根不采用见名即判，运行时身份行结合 schema 目录、入口子树复用 isOurEntry，可以避免普通同名 entry skill 被直接拒装；剩余识别边界已明确记录。",
+    "新增 shared-residue 类别并只在额外读取根启用，能够保留安装根 residue 的判定、文案和退出码。",
+    "运行时根按真实路径豁免，且安装器与编排器使用同源的资产根求值规则，考虑了自定义运行时位置和软链。",
+    "保留 doctor 的 warnings 路径及 preflight 的相关家筛选和 ok: true 语义；隔离夹具、新旧产物对照和零真实调用的验证方向合理。"
+  ],
+  "not_covered": [
+    "本次仅做只读源码与计划核对，未执行构建、测试、变异或新旧安装器对照；计划尚未实施，验证结果须在代码阶段确认。",
+    "未实测外部 CLI 对共享根和软链的枚举行为，沿用仓库已记录的读取面事实。",
+    "未读取真实家目录、凭据、本机覆盖配置或其他审查员产出；未验证未来实现对不可读目录和真实路径解析失败的具体处理。"
+  ],
+  "consulted": [
+    ".reviews/M12-共享根残留检测/plan/2026-10-18-M12-共享根残留检测-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/REPORT_2026-10-18_m12_batch5.md",
+    "src/install.ts",
+    "src/trivium/entry-collisions.ts",
+    "src/trivium/asset-root.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/preflight.ts",
+    "scripts/install-check.mjs",
+    "test/unit/install.test.ts",
+    "test/unit/entry-collisions.test.ts",
+    "test/unit/entry-collisions-bundles.test.ts",
+    "test/unit/entry-scan-isolation.test.ts",
+    "test/unit/doctor-shared-roots.test.ts",
+    "test/unit/preflight.test.ts",
+    "tsconfig.json"
+  ]
+}

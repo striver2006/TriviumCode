@@ -1,0 +1,51 @@
+{
+  "agreed": [
+    "共享根内容判定精准防御：isResidueCopy 通过「身份行 + schema/ 目录」及「入口子树内 wrapper 调用 isOurEntry」双重特征识别本产品历史形态，从根本上杜绝了对通用名（如 entry、dual-critic）第三方 skill 的误伤。",
+    "根域严格隔离：在 scanEntryCollisions 中通过 if (r === t.skillsRoot) continue 明确阻断共享根残留逻辑污染安装根，确保安装根原有的见名即判语义、文案、退出码及用例逐字不变。",
+    "单一真实源与统一消费：安装器、编排器（doctor/preflight）与 install:check 全部消费 entry-collisions.ts 共享实现；预检按计划仅告警不阻断（ok: true, warn: true, 无 exitCode）且仅针对本轮 Driver ∪ Critics 涉及的额外读取根。",
+    "双重真实路径豁免：针对活运行时恰好部署在共享根的情况，通过 plan.runtimeRoot / resolveAssetRoot 与当前进程自身祖父目录 selfRuntimeRoot 经 realpathOr 规范化比对，避免了跨 shell 或环境变量缺失时的误报。",
+    "严格的测试与 HOME 隔离：所有新增单元测试与子进程验证均构造独立的 scratchDir 夹具并拦截环境变量，新旧安装器 13 格对照与 15 项变异测试覆盖严密。"
+  ],
+  "consulted": [
+    ".reviews/M12-共享根残留检测/plan/2026-10-18-M12-共享根残留检测-r2-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-18_m12_shared_residue.md",
+    "doc/05_testing/evidence/m12-shared-residue-20261018/a1-installer.mjs",
+    "doc/05_testing/evidence/m12-shared-residue-20261018/a1-installer-output.json",
+    "doc/05_testing/evidence/m12-shared-residue-20261018/a2-readings.mjs",
+    "doc/05_testing/evidence/m12-shared-residue-20261018/mutation-spec.json",
+    "doc/07_manuals/QUICKSTART.md",
+    "doc/08_project/BACKLOG.md",
+    "scripts/install-check.mjs",
+    "src/install.ts",
+    "src/entry-render.ts",
+    "src/trivium/entry-collisions.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/asset-root.ts",
+    "src/trivium/util/fsx.ts",
+    "test/contract/doc-archive-index.test.ts",
+    "test/unit/entry-collisions.test.ts",
+    "test/unit/install.test.ts",
+    "test/unit/entry-collisions-bundles.test.ts",
+    "test/unit/install-check-script.test.ts",
+    "test/unit/doctor-shared-roots.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/registry-parity.test.ts"
+  ],
+  "findings": [],
+  "not_covered": [
+    "受审查员只读与无命令执行权限约束，未在本地执行命令重跑完整的 npm run check、npm test 或正式变异测试脚本，结论基于静态代码推演、测试代码断言核对及已归档测试读数验证。",
+    "未在真实多载体 CLI（如真实外部导入触发的 Codex CLI 或 ZCode 真实导入环境）中实跑真实模型会话，仅依托夹具环境与模拟读数确认逻辑表现。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "共享根残留检测（shared-residue）实现严格对齐计划 r2，内容判定（运行时身份行 + schema/ 目录，或含本产品 wrapper 入口子树）有效隔离别家同名 skill，通用名 entry 与别家 dual-critic 不会被误伤。\n安装根原有判定（见名即判）、文案、退出码及既有用例逐条不变，新增判定只作用于额外读取根。\n安装器、doctor、preflight 与 install:check 统一消费 entry-collisions.ts；预检仅告警不阻断，且仅看本轮相关家。\n真实路径比对（realpathOr）与双重豁免（环境 assetRoot 及进程自身所在的 selfRuntimeRoot）可靠放行活运行时。\n测试与验证全程隔离 HOME，新旧安装器 13 格对照与 15 项变异测试咬合严密，未发现契约漂移或阻断性问题。",
+  "verdict": "approve"
+}

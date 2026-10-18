@@ -1,0 +1,79 @@
+{
+  "agreed": [
+    "D-1 & D-2 对共享根通用名（entry/dual-critic）采用「运行时身份行 + schema 目录」与「入口子树 isOurEntry」严格双特征判定，既能有效识别 Codex 导入等外部工具遗留的运行时整棵拷贝，又能完全避免误伤别家同名 skill。",
+    "D-3 & D-4 新增 shared-residue 独立问题类别与文案，严格保持安装根原有 residue 判定逻辑、文案与退出码逐字不变，无残留时输出与基线字节级一致。",
+    "单核复用架构：安装器、doctor 与 preflight 统一复用 scanEntryCollisions 核心实现，preflight 维持非阻断告警且仅扫描当前轮次涉及的载体。",
+    "夹具环境隔离全面：全量测试套件严格隔离 HOME（使用 tempHome 夹具与隔离单测 entry-scan-isolation.test.ts 守卫），老版本与新版本安装器在共享根干净/有残留双场景下对照覆盖。"
+  ],
+  "consulted": [
+    ".reviews/M12-共享根残留检测/plan/2026-10-18-M12-共享根残留检测-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/05_testing/REPORT_2026-10-18_m12_batch5.md",
+    "src/trivium/entry-collisions.ts",
+    "src/install.ts",
+    "src/trivium/asset-root.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/util/fsx.ts",
+    "scripts/install-check.mjs",
+    "skills/dual-critic/SKILL.md",
+    "test/unit/entry-collisions.test.ts",
+    "test/unit/install.test.ts",
+    "test/unit/entry-collisions-bundles.test.ts",
+    "test/unit/doctor-shared-roots.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/entry-scan-isolation.test.ts",
+    "test/contract/doc-archive-index.test.ts",
+    "test/contract/entry-render-parity.test.ts",
+    "test/helpers/fixture.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "src/trivium/entry-collisions.ts:34-44 目前 EntryScanTarget 包含 skillsRoot, readRoots, residueNames 等字段；test/unit/entry-collisions.test.ts:49-52 与 61-63 等多处夹具直接字面量构造 EntryScanTarget。若按计划 §2.1 设为必选且按 §3.1 既有用例一条不改，tsc --noEmit 必红。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "src/trivium/entry-collisions.ts:34-44 (plan §2.1)",
+      "problem": "计划 §2.1 将 EntryScanTarget 的 sharedResidueNames 声明为必选字段 (readonly string[])，但现有单测中大量裸构造 EntryScanTarget 的夹具并未传递该字段，会直接破坏既有用例的类型检查。",
+      "severity": "minor",
+      "suggestion": "在 EntryScanTarget 中将 sharedResidueNames 声明为可选字段 sharedResidueNames?: readonly string[]，并在 scanEntryCollisions 内部按 t.sharedResidueNames ?? [] 保守兜底。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "计划 §2.1 与 §4 U1 中规划了 isResidueCopy 的多项子用例；src/trivium/entry-collisions.ts:53-61 已有 ENTRY_SKILL_NAMES 常量定义。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "src/trivium/entry-collisions.ts (plan §2.1)",
+      "problem": "新辅助函数 isResidueCopy(dir, entryNames) 签名未指定 entryNames 缺省值，而计划 §4 U1 规划了直接对 isResidueCopy 的多分支单测，若不设缺省值将增加单测构造样板代码及未来调用分叉。",
+      "severity": "nit",
+      "suggestion": "为 isResidueCopy 的 entryNames 参数增加缺省值 entryNames: readonly string[] = ENTRY_SKILL_NAMES，调用方可按需覆盖。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "计划 §2.1 声明「真实路径与其中任一相同的候选目录不判」；§4 U2 ④ 明确包含软链指向同一真实路径场景；在 macOS 环境中 os.tmpdir() 默认位于 /var/folders 符号链接下。",
+      "id": "AGY-03",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "src/trivium/entry-collisions.ts (plan §2.1 / §4 U2)",
+      "problem": "计划 §2.1 与 §4 U2 ④ 提出 exemptPaths 豁免「含软链指向同一真实路径」，但未明确保留平台软链（如 macOS /var/folders 与 /private/var/folders）下的真实路径规范化策略。若仅用普通路径比对，软链比对可能失效。",
+      "severity": "nit",
+      "suggestion": "在 scanEntryCollisions 中比对 exemptPaths 时，明确对候选目录与 exemptPaths 均使用 fs.realpath（或 fsx.realpathSafe）规范化后比对，避免在测试与实际运行中因符号链接前缀不一致导致豁免漏判。"
+    }
+  ],
+  "not_covered": [
+    "非 macOS 平台的符号链接与路径规范化行为（本项目官方仅支持 macOS）。",
+    "在真实多 Agent 运行环境下的并发或实际网络调用（本次审查遵循只读及离线桩级原则）。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "计划整体设计周密且纪律严格，四处审查焦点均得到清晰论证与夹具隔离，准予通过（附带细微建议）。\n最需注意的隐患是 §2.1 将 EntryScanTarget.sharedResidueNames 拟为必选字段，与 §3.1「既有用例一条不改」直接冲突，会导致既有测试字面量构造报 TypeScript 类型错误，须改为可选属性并加兜底。\n此外，isResidueCopy 的 entryNames 建议缺省赋值 ENTRY_SKILL_NAMES 提升自包含性；exemptPaths 在处理符号链接（如 macOS /var -> /private/var）时应明确使用 fs.realpath 规范化后再比对真实路径。\n方案对 entry 通用名的双重特征校验、安装根行为与文案的零破坏、doctor/preflight/install 的单核复用以及测试夹具对真实 HOME 的彻底隔离均论证充分，测试分层完备。",
+  "verdict": "approve-with-nits"
+}
