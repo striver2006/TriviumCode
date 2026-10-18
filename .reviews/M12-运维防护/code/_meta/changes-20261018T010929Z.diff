@@ -1,0 +1,2924 @@
+# trivium changes.diff
+# run_id: 20261018T010929Z
+# base: HEAD
+# head: 8c4d359faddc2f7246a41b6fe37cbee76a2b11fc
+# files: 38
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-10-18_m12_batch5.md
+#   doc/05_testing/evidence/m12-batch5-20261018/a1-installer-output.json
+#   doc/05_testing/evidence/m12-batch5-20261018/a1-installer.mjs
+#   doc/05_testing/evidence/m12-batch5-20261018/a23-readings-output.json
+#   doc/05_testing/evidence/m12-batch5-20261018/a23-readings.mjs
+#   doc/05_testing/evidence/m12-batch5-20261018/gen-spec.mjs
+#   doc/05_testing/evidence/m12-batch5-20261018/mutation-names-bundle.mjs
+#   doc/05_testing/evidence/m12-batch5-20261018/mutation-names-log.txt
+#   doc/05_testing/evidence/m12-batch5-20261018/mutation-names-output.json
+#   doc/05_testing/evidence/m12-batch5-20261018/mutation-output.txt
+#   doc/05_testing/evidence/m12-batch5-20261018/mutation-spec.json
+#   doc/06_deployment/RUNBOOK_pipeline_ops.md
+#   doc/07_manuals/QUICKSTART.md
+#   doc/08_project/BACKLOG.md
+#   doc/08_project/M11后续-开发计划-草案.md
+#   scripts/install-check.mjs
+#   src/install.ts
+#   src/trivium/doctor.ts
+#   src/trivium/entry-collisions.ts
+#   src/trivium/preflight.ts
+#   src/trivium/run-protocol.ts
+#   src/trivium/util/fsx.ts
+#   test/helpers/entry-scan-home.ts
+#   test/helpers/fixture.ts
+#   test/integration/claude-structured-probe.test.ts
+#   test/integration/handoff-dedupe.test.ts
+#   test/unit/doctor-shared-roots.test.ts
+#   test/unit/entry-collisions-bundles.test.ts
+#   test/unit/entry-collisions.test.ts
+#   test/unit/entry-scan-isolation.test.ts
+#   test/unit/fixture-repo-init.test.ts
+#   test/unit/handoff-pack.test.ts
+#   test/unit/install.test.ts
+#   test/unit/preflight.test.ts
+#   test/unit/zcode-doctor-probe-home.test.ts
+#   test/unit/zcode-provider-env.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index a0dc0330..e0fa52b6 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -3,7 +3,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.165
++> - **当前版本**：v1.3.166
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -1624,6 +1624,10 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
+ - **`entry/` 不进运行时根**：claude 目标的运行时根 `~/.claude/skills/dual-critic/` 同步时排除 `entry/` 子树。codex 会递归枚举 skill 根下的 `SKILL.md`（第 1 步报告 §5），嵌套落点会让别家入口出现在 codex 的列表里、还能被调起。
+ - **`~/.agents/skills` 禁装**：codex 与 zcode 都读它。同名时 codex 的显式调用直接失效且无告警，zcode 由 `~/.zcode/skills` 胜出、同样不告警（第 1 步报告 §2.3、§3.6）。
+   安装器装前按各家读取面查重名（`checkInstall`），读取面里有同名的第三方或他处的自家入口即拒装，不覆盖。
++  **v1.3.166 起（M12 批次 5，EV-240 方案 A）**判定本身（`isOurEntry`、三类 `residue` / `third-party` / `foreign-entry`）在 `src/trivium/entry-collisions.ts`，安装器（`dist/install.cjs`）与编排器（`trivium.cjs`）两个产物引用同一份实现；安装器的入口名单仍取仓库里的渲染产物，判定输入、报错文案与退出码不变。
++  编排器侧另有两处只告警的出口：`doctor` 全量列出各家**额外读取根**（注册表 `entrySkillExtraReadRoots`，今天即 `~/.agents/skills`）里的同名入口并给出口（先在仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走），只进 `warnings`、不影响退出码、与 `--only` 无关；
++  `preflight` 只对本轮 Driver ∪ 入选审核者里读这些根的家给一条「共享读取面同名入口」警告（见 8.1 预检表）。两处都只扫额外读取根、不扫安装根、不判残留；共享根里的 `dual-critic` 拷贝与安装器一样不判。
++  扫描用的家目录只有一个来源：注入口 → 环境变量 `TRIVIUM_ENTRY_SCAN_HOME` → `os.homedir()`。该变量只为测试隔离与诊断，只改这一处只读扫描，安装器不读它。
+ - **参数**：claude 目标写 `$ARGUMENTS`、由 CLI 逐字替换；另三家的 CLI 都不替换占位符，正文改写为「用户随本命令给出的全部文本就是参数」，并附转抄规约（逐字、不增删、空参数不编造、正文进单引号、旗标在引号外）。保真边界见 8.5。
+ - **提到即注入**（M10b 第 4 步 3-4 实测）：codex 会话里一条消息只要**提到** `$dual-review-code`，该 skill 全文就注入上下文，即使那条消息本意不是调用。约束只剩 skill 首段「只在用户显式调用本命令时执行」——3-4 里 codex 读到后照条文办事，没有提前执行。
+ - **命令 B / D / A 的认领步骤**与 `--driver` 写死见 7.1「M10b 第 2 步的变化」。
+@@ -1766,12 +1770,13 @@ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起
+ | 模型覆盖副本源 | 入选侧的适配器实现了 `modelOverrideSource()` 且该文件不在（EV-123，v1.3.41）；按能力判侧，不写厂商字面量。`review --start` 按当轮入选侧再调一次同一个函数 | 只警告、不中止（`warn`，进 `warnings`） |
+ | 探活已跳过 | 带 `--skip-auth-check` 时替代两侧「已认证」项（v1.3.41 补行） | 只警告、不中止（`warn`，进 `warnings`） |
+ | 失联阈值 | `review.heartbeat_stale_s` 不大于工作进程心跳间隔 30 s（`staleThresholdWithinHeartbeat`，与 `--wait` 报错那一句同一判据；v1.3.57，EV-160）；只读配置、与 scope 无关，排在副本源之后、探活之前。`review --start` 在派生前与副本源复查同一次汇总（FR-23 跳过分支仍为 `[]`）；同步 `review --stage` 不做（没有 worker 与 `--wait`） | 只警告、不中止（`warn`，进 `warnings`） |
++| 共享读取面同名入口 | 本轮 Driver ∪ 入选审核者里登记了额外读取根的家（今天是 codex、glm 的 `~/.agents/skills`），其额外读取根里有同名入口（v1.3.166，EV-240 方案 A）；判定与安装器同一份实现（7.4.1），一行点名根与条数、让人跑 doctor 看全量；扫描出错也只退化为一条警告。排在已废弃配置键之后、归档与 git 之前；`review --start` 不做 | 只警告、不中止（`warn`，进 `warnings`） |
+ 
+ **警告这一级（v1.3.41，EV-123）。** `CheckResult` 的 `warn?: true` 标出「通过，但本次有一部分没检查到 / 没按请求做到」的项；
+ `PreflightResult.warnings` 是它们的汇总，`--json` 输出**恒带**该键（无警告时为 `[]`），`checks[]` 单项在 `warn` 为真时带 `warn: true`。
+ `warn` **不影响 `ok` 与退出码**，由产出该项的代码置位、不看文案（`⚠️` 只是展示）。四条 skill 的预检步骤负责把它念给用户、然后继续。
+ 口径**按判据定、不是封闭清单**：通过项在说「**本次入选侧**有一部分没检查到 / 没按请求做到」时标 `warn`。已知各项：
+-**标**——上表五行（「失联阈值」v1.3.57 补入：它说的不是「没检查到」，而是「本次配置会让健康的运行被判失联、失联报错又会推荐 `--cancel`」——口径随之补一类「本次配置会误导后续判定」），以及「模型 slug 合法」在有侧未实际校验或回落基底目录时；
++**标**——上表五行与「共享读取面同名入口」（v1.3.166 补入，口径属「本次入选侧读得到的环境里有会误导调用的东西」）（「失联阈值」v1.3.57 补入：它说的不是「没检查到」，而是「本次配置会让健康的运行被判失联、失联报错又会推荐 `--cancel`」——口径随之补一类「本次配置会误导后续判定」），以及「模型 slug 合法」在有侧未实际校验或回落基底目录时；
+ **不标**——各「X 可调用」的「入口在位（版本未校验）」（已由覆盖面项汇总，再念是重复）、**未入选侧**的可调用 / 版本提示（detail 缀「本次未选用该侧，仅提示」：本次不用它，不是本次的缺口）、
+ 「探针结论新鲜」的部分过期 / 未探行（过期侧 ②③ 照查；未探的入选侧由 ④ 只读能力判不可用、预检整体失败）、「当轮 Driver」（信息，不是缺口）、「该侧未实现探活」（四家真实适配器都实现 `authProbe`，只在桩模式可达）。
+ 今后新增只警告项按上述判据定，由产出它的代码置位；用例里有一条机器断言兜底：凡通过项 detail 任一行以 ⚠️ 起头，必带 `warn`（代码双审 r1 CODEX-02、GLM-02）。
+@@ -3166,6 +3171,11 @@ Claude 原生入口取bin再取探针entrypoint，profile入口取profile_bin再
+ 
+ run.v3 的 requested_routes 在执行前按入选侧记录 model、effort、tier、tier_source、access。取消与 worker 启动失败不丢请求；worker 与交接逐项比对后执行，报告保留无结果侧的请求注记。历史 v1/v2 不补写。
+ 
++**交接文件里的冻结补丁只存一份**（v1.3.166，M12 批次 5，EV-236 A2）。code 阶段各侧快照的 `diffText` 是同一份补丁，原先在 `request.json` 里按侧各存一遍（10-11 一份 148.8 MB）。
++现在 `writeHandoff` 把它收成顶层可选字段 `frozen_diff: { sha256, text }`，各侧快照的 `diffText` 落盘为 `null`；worker 的 `rebuildContext` 经 `unpackSnapshots` 按引用还原，结果与去重前的内存对象逐字段相等。
++各侧快照的 `diffText` 冻结之后本就没有读者——任务书、归档补丁 `changes-<run_id>.diff`、`subject_sha256`、`run.json` 的快照字段都不经过它，所以审核者看到的字节不变；任务书节选里的补丁正文（400 行内即全文）是送审内容，不去重。
++schema 名仍是 `trivium.handoff.v1`：没有 `frozen_diff` 的旧文件原样读出；新格式在形态不合、正文与 sha256 不符、某侧仍带正文或哈希对不上、非 code 阶段带 `frozen_diff`、code 阶段丢了正文时一律 `envError` 拒绝执行（只作用于新格式，不放宽任何既有判据）。
++
+ --driver-model/--driver-provider仅是用户会话声明，不从审核者配置或载体注入默认模型；旗标缺席合法，在场缺值退64。保守模型标识解析集中维护，Opus/Sonnet等可跨供应商映射的别名为unknown。Driver缺声明、有效回读缺失、标识未知均unknown；不同Agent或provider不能证明异构。比较Driver与每侧及审核者两两组合，同族/未知均告警继续，同因告警聚合、不进入闸门、不自动换模型。运行中进度明确显示请求模型。
+ 
+ v1/v2先按原Schema严格校验再转统一内存接口，原工件与Schema不改。旧bool保留并显示「旧版名义族判定」，requested来源显示「旧版请求回填」，旧记录不生成新比较矩阵；sourceSchema保留。verify仍用自身契约，提交锚/gate/Hook按原阶段分发。
+@@ -4030,6 +4040,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.166** | 2026-10-18 | **M12 批次 5：共享读取面同名入口告警（EV-240 方案 A）与送审请求文件去重（EV-236 A2）。** 主题 `M12-运维防护`（`/dual-run`，计划三审 run `20261018T002634Z`：codex `request-changes`、glm / gemini `approve-with-nits`，7 条全接受，r2 定稿）。**一、EV-240**：读取面判定（`isOurEntry`、三类）搬进 `src/trivium/entry-collisions.ts`，安装器与编排器两个产物同源，安装器名单与文案退出码不变（7.4.1）；doctor 全量列出额外读取根里的同名入口（只进 warnings），preflight 新增只告警项「共享读取面同名入口」（8.1，只看本轮 Driver ∪ 入选审核者）；扫描家目录单一来源，新环境变量 `TRIVIUM_ENTRY_SCAN_HOME` 只为测试隔离与诊断。**二、EV-236 A2**：交接文件 `frozen_diff` 一份、各侧按引用还原，schema 名不变，新格式坏了 envError（11.6 run.v3 段后）。验收：安装器新旧 9 格逐字相同，送审任务书与补丁新旧规范化后逐字相同，变异预跑 14/14。报告 `REPORT_2026-10-18_m12_batch5.md`。 |
+ | **v1.3.165** | 2026-10-18 | **M12 批次 4：模型覆盖旗标空值退 64（EV-228）与档位表 Agent 级 effort 废弃（EV-227）。** 主题 `M12-参数与配置小修`（`/dual-run`，计划双审 run `20261017T164003Z`：gemini `approve` 零意见、glm `approve-with-nits` 1 nit 接受 → r2）。**一、EV-228（行为变化）**：`topic resolve` 收集 `--model-<id>` 改为按键存在判定，`=` 空、紧跟已知旗标、位于末尾三种形态由静默丢弃改为退 64；空值判定抽成 `tier-flags.ts` 的 `assertFlagValuesGiven`，模型与三类档位旗标共用、先键后值、文案逐字同源；`cli.ts` 的 `review` / `preflight` / `doctor` 对 `--model-<id>=` 同样由静默丢弃改为退 64（另两种形态早已由 `flagString` 退 64、文案不变）——这一格超出上位计划 D-8 字面改动面，计划双审两侧均支持纳入，请用户追认。正常写法与不写逐值不变；`critics` 与两轮共用同一组的语义不变。7.1 补说明，USAGE 与 PROTOCOL 同步。**二、EV-227**：`DEPRECATED_CONFIG_KEYS` 补 `['profiles', '*', '*', 'effort']`（两层通配只命中 Agent 级，阶段格子 `{model, effort}` 在下一层、照常下传、不报）；`types.ts` `ProfileEntry` 删该字段（`tsc` 通过，印证无读取点）；config.v2 该属性标 `deprecated` 并加描述、枚举不放宽；doctor / preflight 沿既有通道提示一条。13.1.1「已废弃键」补一段，17.2 追溯表补两行，§24「13.1 → config.v2」行补收口；PROTOCOL 已废弃键一段补登 v1.3.136 四键（此前漏登）与本条。用户手册 v1.0.46。读数见 `doc/05_testing/REPORT_2026-10-18_m12_batch4.md`。 |
+ | **v1.3.164** | 2026-10-17 | **M12 批次 3：作废侧在同一次运行内重跑一次（EV-225）。** 主题 `M12-作废侧重跑一次`（`/dual-run`，计划双审 run `20261017T133619Z`，7 条全接受 → r2）。10.1.1 新增「作废侧在同一次运行内重跑一次」：该侧刚跑完即以与终判、闸门同一个谓词（`leakRecordVoids`）判，作废类命中则在该侧自己的 promise 内重拉一次，另一侧不受影响；③④ 与 ②′ 不触发；至多 1 次、完整单侧超时、`max_waits` 按当前 status 追加一份；重跑任务书最前面点名上次碰到的位置（命令通道只点程序名、不回显参数——对 D-7「路径或命令」的落点收紧）、正文不变；首次原始输出挪到运行目录 `voided/<侧>/attempt-<n>/`（不在己方子树，重跑侧读它同样作废）、不进归档；二次命中侧级 `failed(peer_leak)`，按失败侧规则走。12.1 基线行与演进增补行改写、「有效侧不足」行去掉「EV-225 就绪前」措辞，12.3 同步；6.7.1 记 run.v3 逐侧可选 `attempts`（只在重跑过的侧写，条目分层记法）。闸门代码不改（只读最终尝试）。`fault-injection` 的 AC-25 三审 8 格与两侧分档 3 格按新行为改断言，另补 EV-225 组 6 格与 `void-rerun` 单测 16 条。 |
+ | **v1.3.163** | 2026-10-17 | **M12 批次 2 取证与采用。** 「受限准入判据」一节补采用段：CLI 2.1.302、构建 `4e58048d` 下五组合受限准入 5 / 0 / 0，用户具名采用 `restricted-admission-v1`；16.1 M12 行批次 2 标完成；执行中暴露的会话拉起挂住与 `ps` 日期格式依赖登记 EV-243 / EV-244。报告 `REPORT_2026-10-17_m12_batch2.md`。纯文档与证据，判据与代码不变。 |
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index 91c25f13..1f0092d2 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -147,6 +147,7 @@
+ - [`REPORT_2026-10-17_m12_batch2.md`](./REPORT_2026-10-17_m12_batch2.md)：**M12 批次 2 · 五个受限 Claude 组合的受限准入判据（EV-241）**（A 档，`/dual-run`）。档 1 工具面未注册、档 2 受控请求拒绝、档 3 真实写尝试对五组合恒不可取样，两组计数分开。计划双审 6 条、代码双审 2 条全接受；CLI 2.1.302 下取证 92 次台账启动全部闭合，五组合全部受限准入，用户具名采用 `restricted-admission-v1`；执行中暴露会话拉起挂住（EV-243）与 `ps` locale 依赖（EV-244）。证据见 [`evidence/m12-restricted-admission-20261017/`](./evidence/m12-restricted-admission-20261017/)；主设计 v1.3.163。
+ - [`REPORT_2026-10-17_m12_batch3.md`](./REPORT_2026-10-17_m12_batch3.md)：**M12 批次 3 · 作废侧在同一次运行内重跑一次（EV-225）**（A 档，`/dual-run`）。作废类命中后该侧在自己的 promise 内重拉一次、另一侧不受影响，二次命中 `failed(peer_leak)` 按失败侧规则走；重跑任务书最前面点名上次碰到的位置（命令只点程序名）；首次输出挪到运行目录 `voided/`、不进归档；run.v3 逐侧 `attempts`。计划双审 7 条全接受；代码双审 2 条全接受；AC-25 三审 8 格按新行为改断言，另补 EV-225 组 6 格、单测 17 格与闸门直测；变异 18/18；1 轮真实回归确认不泄漏时行为不变。证据见 [`evidence/m12-batch3-mutation-20261017/`](./evidence/m12-batch3-mutation-20261017/)、[`evidence/m12-batch3-regress-20261017/`](./evidence/m12-batch3-regress-20261017/)；主设计 v1.3.164。
+ - [`REPORT_2026-10-18_m12_batch4.md`](./REPORT_2026-10-18_m12_batch4.md)：**M12 批次 4 · 模型覆盖旗标空值退 64（EV-228）与档位表 Agent 级 effort 废弃（EV-227）**（A 档，`/dual-run`）。`--model-<id>` 写了不给值（`=` 空、紧跟已知旗标、位于末尾）由静默丢弃改为退 64，与档位旗标共用一份判定与文案（行为变化；`cli.ts` 的 `=` 空一格超出 D-8 字面面、待用户追认）；`profiles.<表>.<id>.effort` 进废弃键表、schema 标 deprecated、类型删字段，阶段格子 `{model, effort}` 不受影响。计划双审、代码双审各 1 条 nit 接受；变异预跑 14/14、正式装置 12/12；桩级验收新旧构建对照 8/8。证据见 [`evidence/m12-batch4-20261018/`](./evidence/m12-batch4-20261018/)；主设计 v1.3.165。
++- [`REPORT_2026-10-18_m12_batch5.md`](./REPORT_2026-10-18_m12_batch5.md)：**M12 批次 5 · 共享读取面同名入口告警（EV-240 方案 A）与送审请求文件去重（EV-236 A2）**（A 档，`/dual-run`）。读取面判定搬进 `src/trivium/entry-collisions.ts`，安装器与编排器两个产物同源，安装器 9 格新旧对照逐字相同；doctor 全量列出、preflight 只对本轮相关的家告警、都不阻断，扫描家目录单一来源、测试全程隔离；`request.json` 冻结补丁只存一份、worker 按引用还原，审核者所见逐字不变、旧格式照读。计划三审 7 条全接受；变异预跑 14/14。证据见 [`evidence/m12-batch5-20261018/`](./evidence/m12-batch5-20261018/)；主设计 v1.3.166。
+ 
+ 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
+ 
+diff --git a/doc/06_deployment/RUNBOOK_pipeline_ops.md b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+index 99253f17..e7870b0d 100644
+--- a/doc/06_deployment/RUNBOOK_pipeline_ops.md
++++ b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+@@ -345,6 +345,9 @@ code 阶段的被审对象是工作树相对基线的整份 diff，**未提交
+ - **不要把送审任务书、请求文件的原件拷进仓库内的证据目录**；要留存就只记 sha256 与路径，原件放仓库外。
+ - 已经出现的超大 `request.json`：先用生产 `scanSecrets` 只读全文扫一遍确认零命中，再等
+   `retention.run_dir_days` 到期整删，或人工确认后自行删除那个运行目录。
++- M12 批次 5（EV-236 A2）起，`request.json` 里的冻结补丁只存一份（顶层 `frozen_diff`），不再按侧各存一遍。
++  各侧任务书里的补丁节选（400 行以内即全文）照旧各有一份，所以大改动仍会让它变大，上面两条规矩照样要守。
++  worker 读到形态不对或哈希对不上的 `request.json` 会以「交接文件已损坏」退 69：那是文件被改坏了，重跑这一轮即可，不要手工修它。
+ 
+ ### 提交被拦下，说「归档留痕不完整」
+ 
+diff --git a/doc/07_manuals/QUICKSTART.md b/doc/07_manuals/QUICKSTART.md
+index 75ca3e86..b6cc0c18 100644
+--- a/doc/07_manuals/QUICKSTART.md
++++ b/doc/07_manuals/QUICKSTART.md
+@@ -72,7 +72,7 @@ node dist/install.cjs  # 装到用户级目录；只装部分家：--targets cla
+ > **跨产品副作用**：本机没装 Claude Code 时，核心 skill 仍会新建在 `~/.claude/skills/dual-critic/`（编排器本体在那里）。
+ > 日后装上 Claude Code，它会把这个目录当成一个已安装的 skill（其 `SKILL.md` 标了不可调用），安装器会打印这条提示。
+ >
+-> **别往 `~/.agents/skills` 里装同名 skill**：Codex 与 ZCode 都会读那里，同名时 Codex 的 `$dual-…` 调用会直接失效且不报错。安装器装前会查重名，撞上就拒装。只想查、不想装时，在仓库根跑 `npm run install:check`：只读，逐行列出哪家、哪个路径撞名，退出码 0 / 1 / 2 分别表示无问题、有问题、产物缺失或运行出错。Codex 的「从 Claude 导入」会把 Claude 侧的 skill 拷进这个目录，导入之后先跑一次（BACKLOG EV-240）。
++> **别往 `~/.agents/skills` 里装同名 skill**：Codex 与 ZCode 都会读那里，同名时 Codex 的 `$dual-…` 调用会直接失效且不报错。安装器装前会查重名，撞上就拒装。只想查、不想装时，在仓库根跑 `npm run install:check`：只读，逐行列出哪家、哪个路径撞名，退出码 0 / 1 / 2 分别表示无问题、有问题、产物缺失或运行出错。Codex 的「从 Claude 导入」会把 Claude 侧的 skill 拷进这个目录，导入之后先跑一次（BACKLOG EV-240）。`trivium doctor` 也会列出这个目录里的全部同名入口；预检在本轮用到 Codex 或 ZCode 时给一条 ⚠️。两处都只提示、不阻断，也都不删文件。
+ 
+ > `trivium` **不在 PATH 上**，这是有意的。项目内一律用 `.trivium/bin/trivium`
+ > （下一步由 `init` 生成，内含 node 绝对路径——GUI 启动的进程不读你的 `~/.zshrc`）。
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 194ca052..afcea666 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -331,9 +331,9 @@
+ | EV-233 | **done**（2026-10-08，M11 第 12 步前置，设计 v1.3.141；用户定启用「§24 无 ◐ / ⏳」之前先补用例；新增 `test/integration/config-migrate-warning.test.ts` 三格，首跑即绿、实现未改，变异 5/5 咬住；只加测试，**未走双审**，提交前由执笔方自审补丁；读数见 `doc/05_testing/REPORT_2026-10-08_ev233_config_migrate_warning.md`）；原状态：todo（2026-10-08 登记，M11 第 10 步第三批核 17.2 增补表时核出；用户定「拆开标、补用例另起题」） | **config v1 迁移告警「走 stderr、每次调用恰一次、stdout 仍只有单个 JSON」没有用例。**主设计 17.2「演进增补用例」表「config v1 输入 → 内存迁移」一行写这三点为期望；迁移本身与行为等价有 `config-migrate.test.ts` 守着（「loadCtx：v1 配置里的自定义值真的生效」「loadCtx：config.local.yaml 的 v1 覆盖片段同样生效」「loadCtx：磁盘文件不被改动」），但告警文案（「检测到 trivium.config.v1 形态的配置，已在内存中按……迁移」）在 `test/` 下零命中，输出通道与次数只有代码审读：`config.ts` `loadConfig` 末段两个源合并成一条、经 `warn()` 走 stderr（设计 13.1.1 方框）。**已做**：17.2 该行拆开标 ◐。**候选**：补一条集成用例——v1 配置的夹具里跑一条带 `--json` 的命令，断言 stderr 恰一条迁移告警、stdout 恰一个可解析的 JSON；`config.yaml` 与 `config.local.yaml` 都是 v1 时仍只一条。**本条未走双审** | `src/trivium/config.ts` `loadConfig`、`test/unit/config-migrate.test.ts`；主设计 17.2 |
+ | EV-234 | **done**（2026-10-16，M11 第 12 步：B1 / B2 / C / D 与收口批 Z1 / Z2 / X1 / X3 / 11.7 的 `family_comparisons` 均含审核者之间的配对，来源按 declared / envelope / trace 分记；**边界**：本轮真实运行全为 different-family，同族与 unknown 两支的告警只由单测覆盖；剧本 4 末注「同族终端告警」随运行告警走 `--wait` 出口，不另立条目） | v3 所有参与者两两比较；同族及未知告警继续。跨工具/跨供应商不作为异构证据 | `model-family.ts`、`review.ts`、`access-modes.test.ts` |
+ | EV-235 | todo（2026-10-16 登记，M11 第 12 步收口用户定 D1；等触发——触发条件：确需由会话自动拉起新客户端做真实客户端验收） | **新客户端启动的父级预算计数控制未实现，剧本 5.2～5.5 真实会话内负对照因此未触发。** 现有预算侧车只覆盖 Hook 安装 bundle 及其后代，覆盖不到 VS Code 扩展宿主 / SDK 拉起的 Driver；扩展宿主与 SDK 启动子进程前都会清掉 `NODE_OPTIONS`，首个 SessionStart 与外部会话绑定还有时序依赖。10-16 已做零配额准备：只读核定启动链，跑过 15 项多进程本地替身实验，起草 v2 未激活候选与 P0～P5 草案。用户定 5.2～5.5 按组合证据判达成（CLI 负对照 + 同一 hook-pre-commit 通道的客户端放行 5.1 与退 2 6.7），这条线不再阻塞 M11。 | `doc/05_testing/evidence/m11-step12-20261012/zero-controls-20261015-01/{client-start-readonly,parent-budget-prep,delivery-plan}-20261016-01/` |
+-| EV-236 | **doing**（2026-10-16，M12：成因已查清，流程规矩已落，代码部分排 M12 批次 5）：最大一份 `request.json`（run `20261011T212239Z`，148.8 MB）里 `snapshots` 占 145.4 MB——同一份 `frozenDiffText` 按侧存了三遍（`review.ts` :898-913 → :1049，各约 48.5 MB）；diff 本体 45.7 MB / 2140 个文件，大头是当时**未提交的** `doc/05_testing/evidence/agent-access-20261011-closeout-r*`，含历次送审任务书原件（`review*-originals/brief-*.md`，单份约 0.57 MB）。原件里带着上一轮的 diff，又被下一轮送审，逐轮滚大；另有 `denyPaths` 4358 条（每侧 0.5 MB）。统计只取键名、字节数与路径，未输出内容。用户定（D-12）：**P** 流程规矩——code 阶段送审前大证据先提交或放 `~/.trivium/evidence/`，送审任务书原件不拷进仓库内证据目录（已写入 `RUNBOOK_pipeline_ops.md`「六、留痕相关」；`GUIDE_local_pitfalls` 的 `P-xx` 只收厂商 CLI 实测坑，不放这条）；**A2** `request.json` 同一份 diff 只存一次（批次 5，A 档）；**A1** 大文件省略正文暂缓；**B** 清扫哨兵不做（提示正是这类问题的报警器）；7 个旧运行目录等 `retention.run_dir_days` 自动清理。原状态：todo（2026-10-16 登记，M11 第 12 步收口准备核出；成因待查） | **送审包膨胀到超过脱敏扫描上限。** 本仓运行目录里 16 份 `request.json` 在 9.5～149 MB 之间（2026-09-30 起，10-11 接入准入主题逐轮上涨），超出 `redactLogs` 的大小上限后被跳过，会话启动于是反复提示「抹除后仍有文件未扫描、未脱敏」。只读全文扫描 16 份**零命中**（`closeout-20261016-01/oversized-requests-scan.json`），所以眼下不是凭据泄漏，但有两个代价：送审成本被抬高；提示每次会话都出现，掩盖真问题。**疑似成因**：证据目录（`doc/05_testing/evidence/**`）的大文件进了 code 阶段的送审 diff。**候选**：A 查清成因后在冻结侧排除或截断大证据文件；B 让清扫对已全文扫过零命中的超大日志记哨兵、不再重复提示。 | `scrub.ts` `redactLogs`、`freeze` / 送审包构造 |
++| EV-236 | **doing**（2026-10-18 更新：**代码部分 A2 已完成**，M12 批次 5 主题 `M12-运维防护`——`request.json` 的冻结补丁收成顶层 `frozen_diff` 一份，各侧快照 `diffText` 落盘为 null、worker 按引用还原，旧格式原样可读、新格式坏了 envError；审核者看到的任务书与补丁新旧对照规范化后逐字相同，两侧、600 行补丁的夹具上，扣除运行时根路径长度差后交接文件少 22,796 B（一份补丁 22,923 B，差额是 `frozen_diff` 外壳与 sha256）。剩 **A1 暂缓**，故仍为 doing；**B** 不做。报告 `REPORT_2026-10-18_m12_batch5.md`）。原状态：**doing**（2026-10-16，M12：成因已查清，流程规矩已落，代码部分排 M12 批次 5）：最大一份 `request.json`（run `20261011T212239Z`，148.8 MB）里 `snapshots` 占 145.4 MB——同一份 `frozenDiffText` 按侧存了三遍（`review.ts` :898-913 → :1049，各约 48.5 MB）；diff 本体 45.7 MB / 2140 个文件，大头是当时**未提交的** `doc/05_testing/evidence/agent-access-20261011-closeout-r*`，含历次送审任务书原件（`review*-originals/brief-*.md`，单份约 0.57 MB）。原件里带着上一轮的 diff，又被下一轮送审，逐轮滚大；另有 `denyPaths` 4358 条（每侧 0.5 MB）。统计只取键名、字节数与路径，未输出内容。用户定（D-12）：**P** 流程规矩——code 阶段送审前大证据先提交或放 `~/.trivium/evidence/`，送审任务书原件不拷进仓库内证据目录（已写入 `RUNBOOK_pipeline_ops.md`「六、留痕相关」；`GUIDE_local_pitfalls` 的 `P-xx` 只收厂商 CLI 实测坑，不放这条）；**A2** `request.json` 同一份 diff 只存一次（批次 5，A 档）；**A1** 大文件省略正文暂缓；**B** 清扫哨兵不做（提示正是这类问题的报警器）；7 个旧运行目录等 `retention.run_dir_days` 自动清理。原状态：todo（2026-10-16 登记，M11 第 12 步收口准备核出；成因待查） | **送审包膨胀到超过脱敏扫描上限。** 本仓运行目录里 16 份 `request.json` 在 9.5～149 MB 之间（2026-09-30 起，10-11 接入准入主题逐轮上涨），超出 `redactLogs` 的大小上限后被跳过，会话启动于是反复提示「抹除后仍有文件未扫描、未脱敏」。只读全文扫描 16 份**零命中**（`closeout-20261016-01/oversized-requests-scan.json`），所以眼下不是凭据泄漏，但有两个代价：送审成本被抬高；提示每次会话都出现，掩盖真问题。**疑似成因**：证据目录（`doc/05_testing/evidence/**`）的大文件进了 code 阶段的送审 diff。**候选**：A 查清成因后在冻结侧排除或截断大证据文件；B 让清扫对已全文扫过零命中的超大日志记哨兵、不再重复提示。 | `scrub.ts` `redactLogs`、`freeze` / 送审包构造 |
+ | EV-237 | todo（2026-10-16 登记，M11 第 12 步收口准备核出；等触发——触发条件：剧本 9 实跑出现 Codex 侧 Hook 事件，或 Codex CLI 文档确认支持项目级 Hook） | **验收夹具里出现来源不明的 `.codex/hooks.json`，Codex 是否读取项目级 Hook 未核。** 该文件 2026-10-13 05:13 出现（与七个共享同名入口重现同一时刻），内容是 Claude Hook 配置的拷贝，命令依赖 `CLAUDE_PROJECT_DIR`。注册表把 Codex 定为 L2（没有 Hook）。若 codex-cli 0.162.x 已支持项目级 Hook，L2 分级与 QUICKSTART §5.2 的停点话术就可能过时；若不支持，这份文件就是无效残留，应查清是谁写的。剧本 9 按「原样保留、如实记录」处理。**后续（2026-10-16）**：Z2 两侧审核者独立指出它是 fail-open 的过时拷贝，Bob 同意后于 Z2 审批后删除（原件 `closeout-20261016-01/fixture-codex-hooks.json.bak`）；X1 闸门期改动未被拦，与 L2 一致，但该文件当时已删，Codex 是否读项目级 Hook 仍未核。 | 验收夹具 `.codex/hooks.json`；注册表 Codex 护栏等级 |
+-| EV-240 | todo（2026-10-16 排 M12 批次 5，用户定方案 A，D-11：检测从 `install.ts` `checkInstall` 抽到 `src/trivium/` 共享模块；doctor 全量列出、preflight 只对本轮相关读取面给一条 ⚠️、不阻断）。原状态：todo（2026-10-16 登记；已处置本次实例，复发防护待定） | **Codex 的「从 Claude 导入」会把 Claude 侧的 skill 与 Hook 拷进 codex / zcode 的共享读取面和项目目录。** 七个同名入口 `~/.agents/skills/dual-*` 于 2026-10-13 05:13（本地）重现：其中四份与四家已装入口都不同，入口内容里的 Driver 字样被换成大写 `Codex`。同一时刻验收夹具里也出现了 `.codex/hooks.json`，是 Claude Hook 配置的拷贝，命令依赖 `CLAUDE_PROJECT_DIR`，在 Codex 下 fail-open，见 EV-237。来源按时间吻合认定：`~/.codex/external_agent_session_imports.json` 有一批导入落在 2026-10-12T21:13Z；`claude-cowork-import-history.json` 的 CONFIG / PLUGINS 导入在 2026-10-09T05:48Z，对应第一波；日志里没有逐文件记录。后果是 codex、zcode 可能读到过时入口，下次安装会因重名整次失败（安装器按设计只报错、不删）。**本次处置（用户授权按最优方案）**：七个入口与过时的 `dual-critic` 拷贝先原样挪出共享根。挪前安装器只读检查报 14 个重名问题，挪后 0，四家已装入口逐字节不变（`doc/05_testing/evidence/shared-entry-quarantine-20261016/result.json`）。随后用户定直接删除，删除前逐文件与该记录核对一致，共 8 个目录、30 个文件（`deletion.json`）；路径与 hash 清单只留在 `result.json`。**复发防护候选**：A doctor / preflight 对 codex、zcode 读取面里的同名非自家入口给 ⚠️，点名路径与出口；B 手动只读检查——**已落地**（2026-10-16）：`npm run install:check`（`scripts/install-check.mjs`）只调安装器的 `planInstall` + `checkInstall`、不写文件，README 与 QUICKSTART 已写明 Codex 导入后先跑一次；C 由用户在 Codex 侧停用 Claude 配置导入（若有开关）。另：2026-10-15T19:54Z 又有一次 CONFIG 导入，当时未见新文件。 | `install.ts` `checkInstall`、`doctor.ts`、注册表 `entrySkillExtraReadRoots` |
++| EV-240 | **done**（2026-10-18，M12 批次 5，主题 `M12-运维防护`，方案 A）：判定（`isOurEntry` 与三类 `residue` / `third-party` / `foreign-entry`）搬进 `src/trivium/entry-collisions.ts`，安装器与编排器两个产物引用同一份实现，安装器名单仍取渲染产物、判定输入与文案退出码不变（新旧产物 9 格 HOME 隔离对照逐字相同）；`doctor` 全量列出额外读取根里的同名入口并给出口（只进 warnings），`preflight` 只对本轮 Driver ∪ 入选审核者里读这些根的家给一条 ⚠️、不阻断；扫描家目录单一来源（注入口 → `TRIVIUM_ENTRY_SCAN_HOME` → `os.homedir()`），测试全程隔离。**残余**：共享根里的 `dual-critic` 历史拷贝安装器与 doctor 都不判（计划 r2 §7，是否扩判待用户定）；`review --start` 不跑这条。报告 `doc/05_testing/REPORT_2026-10-18_m12_batch5.md`。原状态：todo（2026-10-16 排 M12 批次 5，用户定方案 A，D-11：检测从 `install.ts` `checkInstall` 抽到 `src/trivium/` 共享模块；doctor 全量列出、preflight 只对本轮相关读取面给一条 ⚠️、不阻断）。原状态：todo（2026-10-16 登记；已处置本次实例，复发防护待定） | **Codex 的「从 Claude 导入」会把 Claude 侧的 skill 与 Hook 拷进 codex / zcode 的共享读取面和项目目录。** 七个同名入口 `~/.agents/skills/dual-*` 于 2026-10-13 05:13（本地）重现：其中四份与四家已装入口都不同，入口内容里的 Driver 字样被换成大写 `Codex`。同一时刻验收夹具里也出现了 `.codex/hooks.json`，是 Claude Hook 配置的拷贝，命令依赖 `CLAUDE_PROJECT_DIR`，在 Codex 下 fail-open，见 EV-237。来源按时间吻合认定：`~/.codex/external_agent_session_imports.json` 有一批导入落在 2026-10-12T21:13Z；`claude-cowork-import-history.json` 的 CONFIG / PLUGINS 导入在 2026-10-09T05:48Z，对应第一波；日志里没有逐文件记录。后果是 codex、zcode 可能读到过时入口，下次安装会因重名整次失败（安装器按设计只报错、不删）。**本次处置（用户授权按最优方案）**：七个入口与过时的 `dual-critic` 拷贝先原样挪出共享根。挪前安装器只读检查报 14 个重名问题，挪后 0，四家已装入口逐字节不变（`doc/05_testing/evidence/shared-entry-quarantine-20261016/result.json`）。随后用户定直接删除，删除前逐文件与该记录核对一致，共 8 个目录、30 个文件（`deletion.json`）；路径与 hash 清单只留在 `result.json`。**复发防护候选**：A doctor / preflight 对 codex、zcode 读取面里的同名非自家入口给 ⚠️，点名路径与出口；B 手动只读检查——**已落地**（2026-10-16）：`npm run install:check`（`scripts/install-check.mjs`）只调安装器的 `planInstall` + `checkInstall`、不写文件，README 与 QUICKSTART 已写明 Codex 导入后先跑一次；C 由用户在 Codex 侧停用 Claude 配置导入（若有开关）。另：2026-10-15T19:54Z 又有一次 CONFIG 导入，当时未见新文件。 | `install.ts` `checkInstall`、`doctor.ts`、注册表 `entrySkillExtraReadRoots` |
+ | EV-238 | **done**（2026-10-17，M12 批次 1，主题 `M12-审查期误判两则`，计划双审 `20261017T042520Z` 7 条全接受、代码双审 `20261017T051253Z` 两侧零意见、verify 通过；设计 v1.3.161；报告 `doc/05_testing/REPORT_2026-10-17_m12_batch1.md`）：`describeAgyAuthFailure` 分认证 / 超时（有无应答两层）/ 其他三档，点名模型与耗时，`ok` 与退 69 不变；认证特征只认已存原话 `Please sign in`，`agy -p` 的未登录原话未取（Driver 不得自行调用 agy），漏识别时两档都给登录指引。原状态：todo（2026-10-16 M12 立项，排批次 1，与 EV-239 合一个 `/dual-run`，D-6）：核实 Z1 那次失败实为外层 120 s 超时——`adapters/agy.ts` :263 `ok = SUCCESS && !timedOut`，status 是 SUCCESS 而 ok 为假只能是 `timedOut`；失败文案（:268）不打印 `timedOut`，也不用 :144 已算出的 `printTimeoutWarned`。定 A+B：失败分超时 / 认证 / 其他三档文案并点名探活模型，`ok` 判定与退 69 不变；不做自动重试，不把「打印超时但 SUCCESS」当已认证。原状态：todo（2026-10-16 登记，M11 第 12 步 Z1 核出；要不要修待用户定） | **agy 认证探活超时被报成「未认证，请先交互登录」。** Z1 首次预检里 agy 探活用请求组合的模型（`gemini-3.8-flash-high`）、提示词「只回复 OK」，agy 内部 100s print 超时、`status=SUCCESS` 带部分输出，预检判「Antigravity 已认证」失败，并给出「请先交互登录一次 `agy`」的出口。实际登录正常：同日 R0 无头读取通过，重试 30s 即过。文案把「响应超时」与「未登录」混成一档，会把用户引去重登。**候选**：A 超时（stderr 含 print timeout）单列一档，文案改为「探活超时，可能是模型侧响应慢，可稍后重试」；B 同时在预检输出里点名探活所用模型。证据 `closeout-20261016-01/z1-preflight-69-01.json` | `adapters/agy.ts` `authProbe`、`preflight.ts` 认证检查文案 |
+ | EV-239 | **done**（2026-10-17，M12 批次 1，与 EV-238 同主题同轮，见 EV-238 行）：`freeze.ts` 新增 `leakRecordVoids`，守卫侧级判定与闸门 `voidedSides` 调同一个函数，两条通道按类别判，旧记录各按旧口径；集成格钉住两审下只提编排器状态目录时 run.json 与 task.json 同为有效 2 家、共同阻断照常执行；变异 9/9。原状态：todo（2026-10-16 M12 立项时回代码核实，**根因改判**，排 M12 批次 1，A 档 `/dual-run`）：**扫描与分类都没错，错在闸门。**设计 §10.1.1 已把 `orchestrator-state` 定为告警级（`types.ts` `VOIDING_DENY_CATEGORIES` 只含 `peer-artifact` / `peer-run-output`），守卫侧 `guard.ts` :416 也只把作废类计入 `cmdVoidingHits`；但闸门派生 `voidedSides` 时命令通道按 `hit === true` 一律作废（`gate.ts` :1432-1436），注释仍写「命令通道没有类别信息，命中即算」——那是 2026-09-17 `f2bc7635` 写的，同主题 r2 `333e5a29` 随即给命令通道加了带类的 `hits`，闸门没跟上；而 `hit` 的语义（`review.ts` :1839 起）是「扫到了东西」，含告警档。B2 证据里 codex 侧唯一一条命中就是 `category: orchestrator-state`。**定的做法**（D-4、D-5）：抽一个作废谓词供守卫、闸门与 EV-225 重跑触发共用；闸门有 `hits` 按类别判，没有 `hits` 的旧记录退回 `hit`；旧轮次重跑 `gate --check` 统一按新逻辑、不加开关。下方原候选 A 的意图即现行设计，候选 B（扩已知形态）不做、留 EV-19 一族等触发。原状态：todo（2026-10-16 登记，M11 第 12 步 Z2 再现，B2 首见；与 EV-19 / EV-98 同族） | **codex 侧命令文本扫描把含 `.trivium` 字面的非读取命令判成读取编排器状态，该侧因此不计入共同阻断。** Z2 中 codex 为核实 `.codex/hooks.json` 跑了一条模拟 Hook 的 `env -u CLAUDE_PROJECT_DIR sh -c '…${CLAUDE_PROJECT_DIR}/.trivium…'` 命令，`peer_leak_via_command.codex.hit=true`（category `orchestrator-state`），停点告警「有效侧只剩 1 家——有侧因禁读命中被判作废，共同阻断这一档未执行」；B2 是 `find … -not -path '*/.trivium/*'` 排除式命中。两次都没读到任何编排器状态，运行仍 success/full、两侧 status ok。代价是共同阻断保护静默缺席一轮。**候选**：A 对 `orchestrator-state` 类别降为告警、不作废（它不是对端产物，泄漏风险性质不同）；B 识别排除式与字符串字面的已知形态（与 EV-19「只承诺已知形态」一致，扩表需双审）。证据 `closeout-20261016-01/z2-assessment.json`、B2 `client-b2-runs.json` | `guard.ts` 措施 b、`known-forms` 对账 |
+ | EV-241 | **done**（2026-10-17，M12 批次 2，主题 `M12-五组合受限准入判据`，计划双审 `20261017T085024Z` 6 条全接受 → r2，代码双审 `20261017T091735Z` 2 条 nit 接受，verify 通过；提交 1 `4e58048d`。CLI 2.1.302 下取证 92 次台账启动全部闭合，五组合全部受限准入，汇总 `summary-c10ff843-…`（sha256 `05e27d69…`）；用户具名采用 `restricted-admission-v1`，记录见 `evidence/m12-restricted-admission-20261017/restricted-admission-acceptance.json`；报告 `doc/05_testing/REPORT_2026-10-17_m12_batch2.md`；设计 v1.3.163。执行中的四处用户授权例外与两个新问题见报告 §3～§5、EV-243 / EV-244）。前状态：doing（2026-10-17，判据、汇总与取证控制器已实现，设计 v1.3.162）。**订正**：本行原写「两份汇总都改」不准——`agent-access-summary.mjs` 是 10-10 旧汇总，不动，只改 canonical `agent-access-closeout-summary.mjs`；原写「约 10 次启动、台账从 795/815 扩容」也已过时，核实为台账 917/1839、约 13 次取证启动加三条路线探针刷新，不扩容）。原状态：todo（2026-10-16 登记，M12 批次 2，A 档：改判据，计划双审不能省；用户 D-2～D-4 定） | **五个受限 Claude 组合（`qwen3.8-max`、`k3`、`kimi-for-coding`、`deepseek-flash`、`deepseek-v4-pro`）的写尝试判据。**原标准写臂要求真实模型发起写调用并得到精确配对的拒绝（`scripts/agent-access-evidence.mjs` `claudeWritePass`），生产只读工具面不注册 Write / Bash，这五个模型不调用未注册工具，`assertProductionArm` 在 spawn 前拒绝这五个写臂（「未发现新机制，不重复换提示」）；现状 7 原标准通过 / 5 未测，10-12 用户批准的受限准入例外绑定 Claude CLI 2.1.296，**本机已是 2.1.301**，例外的适用条件已不满足。产品 `src/` 不读准入结论，后果落在配置上：Qwen max 是 claude 侧 pro/high 档路线。**用户定**：D-2 采用「工具面未注册」（真实会话 init 事件无写工具、default 权限模式）与「受控请求拒绝」（本地注入写调用被 CLI 精确拒绝、文件不变）两档同时成立，单独命名为受限准入；「真实写尝试」一档对这五组合记不可取样 / 未测、永不记通过，「原标准通过」与「受限准入」分两个计数。D-3 判据定稿前 Qwen max 继续作 pro/high 路线，批次 0 报告先如实标「例外待重取」，doctor 侧要不要标随批次 2 一并定。D-4 在 CLI 2.1.301 下重取两档，约 10 次启动（5 次真实调用 + 5 次零厂商推理的本地启动），准入台账从 795/815 扩容，失败即停、不重试。`assertProductionArm` 不动。计划 `doc/08_project/M11后续-开发计划-草案.md` §2 | `scripts/agent-access-restricted.mjs`（新）、`agent-access-closeout-summary.mjs`、`test/unit/agent-access-restricted.test.ts`、`doc/05_testing/evidence/m12-restricted-admission-20261017/`；主设计「受限准入判据」一节、ADR-003 |
+diff --git a/doc/08_project/M11后续-开发计划-草案.md b/doc/08_project/M11后续-开发计划-草案.md
+index ea55036d..9986a29f 100644
+--- a/doc/08_project/M11后续-开发计划-草案.md
++++ b/doc/08_project/M11后续-开发计划-草案.md
+@@ -1,7 +1,7 @@
+ # M11 之后的下一阶段开发计划（草案 r1，待拍板）
+ 
+ - **起草**：2026-10-16，Claude Code（执笔方）；起点 HEAD `18c17bcc`，工作树干净，origin 唯一 remote
+-- **状态**：**已拍板**（2026-10-16，用户答复「按照你的建议做」：D-1～D-16 全按 §8 推荐项）。阶段名暂定 M12，已登记主设计 16.1（v1.3.160）；批次 0 已完成，见 [`REPORT_2026-10-16_m12_batch0.md`](../05_testing/REPORT_2026-10-16_m12_batch0.md)
++- **状态**：**已拍板**（2026-10-16，用户答复「按照你的建议做」：D-1～D-16 全按 §8 推荐项）。阶段名暂定 M12，已登记主设计 16.1（v1.3.160）；批次 0 已完成，见 [`REPORT_2026-10-16_m12_batch0.md`](../05_testing/REPORT_2026-10-16_m12_batch0.md)；批次 5（§6.1 EV-240 方案 A、§6.2 EV-236 A2）2026-10-18 实施完成，见 [`REPORT_2026-10-18_m12_batch5.md`](../05_testing/REPORT_2026-10-18_m12_batch5.md)
+ - **拍板后的两处落点调整**（执笔方在批次 0 中发现，不改决定本身）：①EV-231 的 6 处承诺只改了主设计 3 处，演进设计自 v1.0.0 冻结、正文不改，以主设计为准；②EV-236 的流程规矩落在 `RUNBOOK_pipeline_ops.md`，不放 `GUIDE_local_pitfalls`（`P-xx` 只收厂商 CLI 实测坑）
+ - 起草时的状态：只出计划，未改业务代码、未发起任何 `/dual-*`、未调用厂商 CLI（只跑了零配额的 `--version`）
+ 
+diff --git a/scripts/install-check.mjs b/scripts/install-check.mjs
+index 2eeb7dcc..707b6e04 100644
+--- a/scripts/install-check.mjs
++++ b/scripts/install-check.mjs
+@@ -19,7 +19,8 @@ if (!fs.existsSync(bundle)) {
+ }
+ 
+ // 安装器产物带 require.main 守卫：在这里 require 不会触发安装
+-const { planInstall, checkInstall, defaultInstallEnv } = createRequire(import.meta.url)(bundle);
++// 三类短标签与 doctor / preflight 同一份（`src/trivium/entry-collisions.ts`，经安装器产物再导出；M12 批次 5）
++const { planInstall, checkInstall, defaultInstallEnv, ENTRY_PROBLEM_LABELS: KIND } = createRequire(import.meta.url)(bundle);
+ try {
+   const plan = await planInstall(repo, defaultInstallEnv());
+   const problems = await checkInstall(plan.targets);
+@@ -27,11 +28,6 @@ try {
+     console.log(`✓ 无重名、无残留（已查 ${plan.targets.map((t) => t.agent).join('、')} 的安装根与额外读取面）`);
+     process.exit(0);
+   }
+-  const KIND = {
+-    'foreign-entry': '本产品的入口出现在不该装的位置（如被别的工具拷进共享根）',
+-    'third-party': '别家的同名 skill',
+-    residue: '旧版安装的残留',
+-  };
+   console.log(`✗ ${problems.length} 个问题（安装会因此整次拒装）：`);
+   for (const p of problems) console.log(`  · ${p.agent}  ${p.path}\n      ${KIND[p.kind] ?? p.kind}`);
+   console.log('  安装器只报错、不删除这些路径：确认无用后自行挪走或删除，再跑一次本检查。');
+diff --git a/src/install.ts b/src/install.ts
+index a5f132cd..010e6869 100644
+--- a/src/install.ts
++++ b/src/install.ts
+@@ -36,8 +36,14 @@ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import { agentById, entrySkillRootOf, isAgentId, type AgentId } from './trivium/agents/registry.js';
+ import { resolveAssetRoot } from './trivium/asset-root.js';
++import {
++  ENTRY_PROBLEM_LABELS, isOurEntry, scanEntryCollisions, type EntryCollisionKind,
++} from './trivium/entry-collisions.js';
+ import { ENTRY_OUT_DIR, loadCarriers, type Carrier } from './entry-render.js';
+ 
++/** `npm run install:check` 从本产物取三类短标签：与 doctor / preflight 同一份（M12 批次 5） */
++export { ENTRY_PROBLEM_LABELS };
++
+ /** 安装面对的用户环境。**测试一律注入临时 home**（r2 §3.2.3），生产取 `os.homedir()` 与 `process.env` */
+ export interface InstallEnv {
+   home: string;
+@@ -246,60 +252,37 @@ export async function syncDir(
+   return { copied, removed };
+ }
+ 
+-/**
+- * 一个同名目录是不是**本产品**的入口 skill：`SKILL.md` 的 front-matter 名字对得上、
+- * 正文调用 `.trivium/bin/trivium`。
+- *
+- * 它决定三件事：两种撞名的报错措辞、安装根内的升级放行（判真即覆盖），以及**卸载的删除面**
+- * （判真即整目录删除，代码双审 GLM-04）。判据的边界：用户从本产品 fork 出来、保留原名、
+- * 仍调用 wrapper 的 skill 也会判真——安装会覆盖它、卸载会删掉它。不在卸载侧另设更严的判据：
+- * 那样会出现「装得上、卸不掉」的不对称，而改比 description 又会在跨版本改过措辞时误判。
+- */
+-async function isOurEntry(dir: string, name: string): Promise<boolean> {
+-  let md: string;
+-  try {
+-    md = await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8');
+-  } catch {
+-    return false;
+-  }
+-  return md.startsWith(`---\nname: ${name}\n`) && md.includes('.trivium/bin/trivium');
+-}
+-
+ export interface InstallProblem {
+   /** 哪一家的目标；运行时根不属于任何一家，为 null */
+   agent: AgentId | null;
+-  kind: 'residue' | 'third-party' | 'foreign-entry' | 'missing-family' | 'runtime-overlap' | 'runtime-foreign';
++  /** 读取面三类由共享模块判（`entry-collisions.ts`），另三类只在安装器里产生 */
++  kind: EntryCollisionKind | 'missing-family' | 'runtime-overlap' | 'runtime-foreign';
+   path: string;
+ }
+ 
+-/** 装前检查：只读，不写任何东西。返回全部问题，调用方决定是否继续 */
++/**
++ * 装前检查：只读，不写任何东西。返回全部问题，调用方决定是否继续。
++ *
++ * 判定本身在 `entry-collisions.ts`（M12 批次 5 起与编排器的 doctor / preflight 共用同一份实现，EV-240）；
++ * 这里只把安装目标映射成扫描目标，**入口名单仍取仓库里的渲染产物**（`t.sources`），判定输入与改造前逐字相同。
++ */
+ export async function checkInstall(selected: readonly EntryTarget[]): Promise<InstallProblem[]> {
+-  const problems: InstallProblem[] = [];
+-  for (const t of selected) {
+-    /*
+-     * 残留检测只查另三家，claude 目标根豁免：**前提是缺省时运行时根就落在它下面**，
+-     * 那里的 `dual-critic/` 是自家产物，不是残留（代码双审 r2 CODEX-05）。
+-     * 运行时根被 `TRIVIUM_ASSET_ROOT` 指到别处时，缺省位置可能留着上一版的运行时——
+-     * 它不再更新，但也不是嵌套入口（历次安装都排除了 `entry/`）。那一格不在这里阻断，
+-     * 由 `install()` 在报告里提示（开发机上设过这个变量是常态，阻断会让每次调试安装都先撞墙）。
+-     */
+-    if (t.layout === 'entry') {
+-      for (const n of RESIDUE_NAMES) {
+-        const p = path.join(t.skillsRoot, n);
+-        if (await exists(p)) problems.push({ agent: t.agent, kind: 'residue', path: p });
+-      }
+-    }
+-    for (const { name } of t.sources) {
+-      for (const r of t.readRoots) {
+-        const p = path.join(r, name);
+-        if (!(await exists(p))) continue;
+-        const ours = await isOurEntry(p, name);
+-        if (r === t.skillsRoot && ours) continue; // 安装根里的自家同名：上一次安装，升级覆盖
+-        problems.push({ agent: t.agent, kind: ours ? 'foreign-entry' : 'third-party', path: p });
+-      }
+-    }
+-  }
+-  return problems;
++  return scanEntryCollisions(
++    selected.map((t) => ({
++      agent: t.agent,
++      skillsRoot: t.skillsRoot,
++      readRoots: t.readRoots,
++      names: t.sources.map((s) => s.name),
++      /*
++       * 残留检测只查另三家，claude 目标根豁免：**前提是缺省时运行时根就落在它下面**，
++       * 那里的 `dual-critic/` 是自家产物，不是残留（代码双审 r2 CODEX-05）。
++       * 运行时根被 `TRIVIUM_ASSET_ROOT` 指到别处时，缺省位置可能留着上一版的运行时——
++       * 它不再更新，但也不是嵌套入口（历次安装都排除了 `entry/`）。那一格不在这里阻断，
++       * 由 `install()` 在报告里提示（开发机上设过这个变量是常态，阻断会让每次调试安装都先撞墙）。
++       */
++      residueNames: t.layout === 'entry' ? RESIDUE_NAMES : [],
++    })),
++  );
+ }
+ 
+ export class InstallConflictError extends Error {
+diff --git a/src/trivium/doctor.ts b/src/trivium/doctor.ts
+index c5b9756c..b9cc7358 100644
+--- a/src/trivium/doctor.ts
++++ b/src/trivium/doctor.ts
+@@ -27,7 +27,10 @@ import { realAdapters } from './adapters/index.js';
+ // 同源文案：blocker 与 `availability()` 对同一现象只能有一种说法（r2 AGY-04）
+ import { ZCODE_HEADLESS_NOT_OK_HINT, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT, zcodeProbeModel } from './adapters/zcode.js';
+ import type { TraceCapability } from './adapters/base.js';
+-import { ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
++import { AGENTS, ALL_CLI_NAMES, agentByCliName } from './agents/registry.js';
++import {
++  describeSharedRootProblems, entryScanEnv, scanEntryCollisions, sharedReadRootTargets, type EntryScanEnv,
++} from './entry-collisions.js';
+ import { say, step, warn } from './util/log.js';
+ 
+ export interface DoctorOptions {
+@@ -65,6 +68,11 @@ export interface DoctorOptions {
+   probeBins?: { codex?: string; claude?: string };
+   /** 目录后置臂失败回归的注入口；生产路径不传。 */
+   claudeDirectoryProbe?: NonNullable<Parameters<typeof probeClaude>[1]>['directoryProbe'];
++  /**
++   * 共享读取面检查（EV-240）读哪个家目录。**只为可测性**，生产路径不传，
++   * 由 `entryScanEnv()` 取 `TRIVIUM_ENTRY_SCAN_HOME` 或 `os.homedir()`。
++   */
++  entryScanEnv?: EntryScanEnv;
+ }
+ 
+ /** `--only` 的合法取值：全部已登记 CLI，外加环境段 */
+@@ -566,6 +574,20 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+    */
+   const deprecatedNotice = deprecatedConfigNotice(opts.config);
+   if (deprecatedNotice !== null) warnings.push(deprecatedNotice);
++  /*
++   * 共享读取面里的同名入口（EV-240 方案 A，用户 D-11）：全量列出、给出口，**只进 warnings、不进 blockers**，
++   * 退出码不受影响。与 `--only` 无关（同上一条：说的是本机环境）。判定与安装器同一份实现（`entry-collisions.ts`），
++   * 只扫各家的额外读取根，不扫安装根（计划 r2 T-3）。扫描出错也只记一条告警。
++   */
++  {
++    const se = entryScanEnv(opts.entryScanEnv);
++    try {
++      const listed = describeSharedRootProblems(await scanEntryCollisions(sharedReadRootTargets(AGENTS, se)), se.home);
++      if (listed !== null) warnings.push(listed);
++    } catch (e) {
++      warnings.push(`共享读取面检查没做成：${(e as Error).message}`);
++    }
++  }
+   if (!env.nodeOk) blockers.push('Node.js 不可用或版本低于 18');
+   if (!env.gitOk) blockers.push('git 不可用或版本过低');
+   // wrapper 自身在、里面写死的 node / bundle 却没了：每次 Hook 都会报 127
+diff --git a/src/trivium/preflight.ts b/src/trivium/preflight.ts
+index ea9883fb..25529313 100644
+--- a/src/trivium/preflight.ts
++++ b/src/trivium/preflight.ts
+@@ -11,7 +11,6 @@
+  * 无处告知也无从等待；而完整 `doctor` 会击穿 600s 工具超时，
+  * 届时配额已烧而探针一字未落盘。
+  */
+-import os from 'node:os';
+ import path from 'node:path';
+ import { createHash } from 'node:crypto';
+ import { promises as fs, constants as fsConstants } from 'node:fs';
+@@ -40,7 +39,10 @@ import {
+   type TierResolution,
+ } from './adapters/base.js';
+ import { mergeCliOverrides, type TierFlagValues } from './tier-flags.js';
+-import { exists, tildeHome } from './util/fsx.js';
++import { displayHomePath, exists, tildeHome } from './util/fsx.js';
++import {
++  entryScanEnv, scanEntryCollisions, sharedReadRootTargets, summarizeSharedRootProblems, type EntryScanEnv,
++} from './entry-collisions.js';
+ import { isGitRepo } from './util/git.js';
+ import { run } from './util/exec.js';
+ import { step } from './util/log.js';
+@@ -124,6 +126,11 @@ export interface PreflightOptions {
+    * 新用例若忘了 `skipAuthCheck`，⑧ 会真去探活、消耗配额（代码双审 r1 codex 的提醒）。
+    */
+   adapters?: AdapterTable;
++  /**
++   * 共享读取面检查（EV-240）读哪个家目录。**只为可测性**，生产路径不传，
++   * 由 `entryScanEnv()` 取 `TRIVIUM_ENTRY_SCAN_HOME` 或 `os.homedir()`。
++   */
++  entryScanEnv?: EntryScanEnv;
+ }
+ 
+ // ─────────────────────── 各项检查 ───────────────────────
+@@ -742,13 +749,8 @@ export function checkZcodeRuntimeSelection(cfg: Config, selected: readonly Criti
+   return null;
+ }
+ 
+-/** 路径在当前用户家目录之下时显示为 `~/…`：预检输出常被抄进 evidence，不必带出用户名 */
+-export function displayHomePath(p: string): string {
+-  const home = os.homedir();
+-  const rel = path.relative(home, p);
+-  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return `~/${rel.split(path.sep).join('/')}`;
+-  return p;
+-}
++/** 路径在当前用户家目录之下时显示为 `~/…`。M12 批次 5 起实现挪到 `util/fsx.ts`，这里再导出、调用点不变 */
++export { displayHomePath };
+ 
+ /**
+  * 做模型覆盖要读的副本源不在时给警告（EV-123）。**只警告、不拒跑**。
+@@ -829,6 +831,30 @@ export function checkDeprecatedConfigKeys(cfg: Config): CheckResult | null {
+   return { name: '已废弃配置键', ok: true, warn: true, detail: `⚠️ ${notice}` };
+ }
+ 
++/**
++ * 共享读取面里的同名入口（EV-240 方案 A，用户 D-11）：**只告警、不阻断**（`ok: true`，不带 `exitCode`）。
++ *
++ * 只看本轮相关的那几家：当轮 Driver ∪ 本轮入选审核者里登记了额外读取根的（计划 r2 T-4）——
++ * Driver 载体从这些根加载入口 skill，审核者 CLI 也把它们列进模型可见清单；别的家读不到，与本轮无关。
++ * 判定与安装器同一份实现（`entry-collisions.ts`）；完整清单与出口由 doctor 给，这里只一行。
++ * 扫描出错也只退化为一条告警：这一项不能把预检变成失败。
++ */
++export async function checkSharedReadRoots(
++  relevant: readonly AgentId[],
++  inject?: EntryScanEnv,
++): Promise<CheckResult | null> {
++  const name = '共享读取面同名入口';
++  const agents = [...new Set(relevant)].map((id) => agentById(id)).filter((a) => a !== null);
++  if (agents.every((a) => a.entrySkillExtraReadRoots.length === 0)) return null;
++  const se = entryScanEnv(inject);
++  try {
++    const detail = summarizeSharedRootProblems(await scanEntryCollisions(sharedReadRootTargets(agents, se)), se.home);
++    return detail === null ? null : { name, ok: true, warn: true, detail };
++  } catch (e) {
++    return { name, ok: true, warn: true, detail: `⚠️ 共享读取面检查没做成（不影响本次预检）：${thrownText(e)}` };
++  }
++}
++
+ /** `warn` 项的汇总：预检与 `--start` 同形（EV-123） */
+ export function collectWarnings(checks: readonly CheckResult[]): PreflightWarning[] {
+   return checks.filter((c) => c.warn).map((c) => ({ name: c.name, detail: c.detail }));
+@@ -1070,6 +1096,11 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
+     const d = checkDeprecatedConfigKeys(cfg);
+     if (d) checks.push(d);
+   }
++  // ④⁵ 共享读取面同名入口（EV-240）：只警告、不拒跑；只看本轮 Driver 与入选审核者
++  if (checks.every((c) => c.ok)) {
++    const s = await checkSharedReadRoots([driver, ...selected], opts.entryScanEnv);
++    if (s) checks.push(s);
++  }
+   // 参数检查已在函数开头先行执行（模型slug、档位与接入组合）。
+   // ⑥ 归档与 git（无残留探测）
+   if (checks.every((c) => c.ok)) checks.push(await checkArchiveAndGit(ctx));
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index 39bbb0c2..2094bf60 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -39,7 +39,7 @@ import type { AdapterContext } from './adapters/base.js';
+ import { resolveAdapters } from './adapters/stub.js';
+ import { realAdapters, wiredAdapter } from './adapters/index.js';
+ import { scrubRunDir } from './scrub.js';
+-import { ensureDir, exists } from './util/fsx.js';
++import { ensureDir, exists, sha256 } from './util/fsx.js';
+ import {
+   canonicalStartOf, processAlive, processGroupMemberCount, processMatchesRecord, processStartTime, processStartTimes,
+   shutdownTrackedTrees, spawnDetached, terminateProcessGroup, trackedTrees, watchTrackedTrees, type DetachedChildWatch,
+@@ -104,7 +104,14 @@ interface Handoff {
+   run_dir: string;
+   sides: CriticId[];
+   requests: Partial<Record<CriticId, CriticRequest>>;
++  /** 落盘形态：code 阶段各侧 `diffText` 为 null、正文在 {@link Handoff.frozen_diff}（EV-236 A2）；读回经 `unpackSnapshots` 还原 */
+   snapshots: PreparedRun['snapshots'];
++  /**
++   * code 阶段冻结补丁的**唯一一份**（EV-236 A2，M12 批次 5）。**可选**：旧交接文件没有它，
++   * 那时各侧快照各带一份 `diffText`，原样读出。schema 名不变（计划 r2 T-7）：各侧 `diffText`
++   * 冻结之后没有读者，旧版 worker 读新文件只是拿到 null。
++   */
++  frozen_diff?: FrozenDiff;
+   meta_paths: string[];
+   /** 重建 ReviewOptions 所需的字段（ctx 由工作进程自己 loadCtx 得到） */
+   options: {
+@@ -144,7 +151,73 @@ interface Handoff {
+   };
+ }
+ 
++/** 交接文件里那一份冻结补丁 */
++export interface FrozenDiff {
++  sha256: string;
++  text: string;
++}
++
++type Snapshots = PreparedRun['snapshots'];
++
++/**
++ * 写交接文件前把各侧同一份补丁收成一份（EV-236 A2）。
++ *
++ * code 阶段 `prepareRun` 只算一次补丁、逐侧透传给 `freeze`，于是每侧快照的 `diffText` 都是同一份正文，
++ * 原样写盘就是 N 份（10-11 那份 148.8 MB 的 `request.json` 里快照占了 145.4 MB）。
++ * 只在**侧数 ≥ 1、首侧有正文、各侧逐字相同**时收（计划双审 AGY-03）；否则（plan / bug 全为 null，
++ * 或防御性地出现不一致）原样返回、不出 `frozen_diff`。**不改入参**：`--start` 同进程后面看到的仍是原对象。
++ */
++export function packSnapshots(snapshots: Snapshots): { snapshots: Snapshots; frozen_diff?: FrozenDiff } {
++  const sides = Object.keys(snapshots) as CriticId[];
++  const first = sides.length > 0 ? snapshots[sides[0]!]?.diffText : null;
++  if (typeof first !== 'string' || !sides.every((c) => snapshots[c]?.diffText === first)) return { snapshots };
++  const packed: Snapshots = {};
++  for (const c of sides) packed[c] = { ...snapshots[c]!, diffText: null };
++  return { snapshots: packed, frozen_diff: { sha256: sha256(first), text: first } };
++}
++
++/**
++ * worker 读回交接文件时按引用还原各侧补丁（EV-236 A2）。按序判，任一不过即 `envError`（交接文件坏了，拒绝执行）：
++ *
++ * 1. 没有 `frozen_diff`：code 阶段却有一侧 `diffText` 为 null ⇒ 新格式丢了正文；否则是旧格式，**原样返回**；
++ * 2. 有 `frozen_diff` 而不是 code 阶段（计划双审 AGY-02）；
++ * 3. `frozen_diff` 形态不合：不是对象、`text` / `sha256` 不是字符串（AGY-02）；
++ * 4. 正文与自带的 sha256 对不上；
++ * 5. 某侧 `diffText` 不是 null，或该侧 `subjectSha256` 与这份补丁对不上；
++ *
++ * 然后把各侧 `diffText` 还原为同一份正文——与去重前的内存对象逐字段相等。
++ * 这些拒绝只作用于新格式，旧格式（各侧各带正文、没有 `frozen_diff`）一条都不受，没有放宽任何既有判据。
++ */
++export function unpackSnapshots(
++  h: { stage: Stage; snapshots: Snapshots; frozen_diff?: unknown },
++  runId: string,
++): Snapshots {
++  const sides = Object.keys(h.snapshots) as CriticId[];
++  const bad = (why: string): TriviumError => envError(`运行 ${runId} 的交接文件已损坏：${why}，拒绝执行`);
++  if (h.frozen_diff === undefined) {
++    if (h.stage === 'code' && sides.some((c) => h.snapshots[c]?.diffText === null)) {
++      throw bad('code 阶段有一侧快照没有补丁正文，也没有共享的那一份');
++    }
++    return h.snapshots;
++  }
++  if (h.stage !== 'code') throw bad(`${h.stage} 阶段不该带冻结补丁`);
++  const fd = h.frozen_diff as Partial<FrozenDiff> | null;
++  if (fd === null || typeof fd !== 'object' || typeof fd.text !== 'string' || typeof fd.sha256 !== 'string') {
++    throw bad('冻结补丁的形态不对');
++  }
++  if (sha256(fd.text) !== fd.sha256) throw bad('冻结补丁的正文与它的 sha256 对不上');
++  const out: Snapshots = {};
++  for (const c of sides) {
++    const snap = h.snapshots[c]!;
++    if (snap.diffText !== null) throw bad(`${c} 侧快照既带补丁正文、又有共享的那一份`);
++    if (snap.subjectSha256 !== fd.sha256) throw bad(`${c} 侧快照的被审对象哈希与冻结补丁对不上`);
++    out[c] = { ...snap, diffText: fd.text };
++  }
++  return out;
++}
++
+ async function writeHandoff(rc: RunContext): Promise<void> {
++  const packed = packSnapshots(rc.snapshots);
+   const h: Handoff = {
+     schema: 'trivium.handoff.v1',
+     run_id: rc.runId,
+@@ -155,7 +228,8 @@ async function writeHandoff(rc: RunContext): Promise<void> {
+     run_dir: rc.runDirBase,
+     sides: rc.sides,
+     requests: rc.requests,
+-    snapshots: rc.snapshots,
++    snapshots: packed.snapshots,
++    ...(packed.frozen_diff ? { frozen_diff: packed.frozen_diff } : {}),
+     meta_paths: rc.metaPaths,
+     options: {
+       promptHint: rc.opts.promptHint,
+@@ -243,7 +317,9 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
+     nodePath: ctx.config.runtime.node ?? process.execPath,
+   };
+ 
+-  const primary = h.snapshots[h.sides[0]!];
++  // 新格式按引用还原各侧补丁、旧格式原样（EV-236 A2）；之后的逻辑看到的快照与去重前逐字段相同
++  const snapshots = unpackSnapshots(h, runId);
++  const primary = snapshots[h.sides[0]!];
+   if (!primary) throw envError(`交接文件缺少 ${h.sides[0]} 侧的快照`);
+ 
+   return {
+@@ -282,7 +358,7 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
+     subjectPath: h.subject_path,
+     runDirBase: h.run_dir,
+     requests: h.requests,
+-    snapshots: h.snapshots,
++    snapshots,
+     primarySnap: primary,
+     metaPaths: h.meta_paths,
+     meta,
+diff --git a/src/trivium/util/fsx.ts b/src/trivium/util/fsx.ts
+index 89024916..2be1c0ab 100644
+--- a/src/trivium/util/fsx.ts
++++ b/src/trivium/util/fsx.ts
+@@ -130,6 +130,18 @@ export function tildeHome(text: string, home: string = os.homedir()): string {
+   return text.split(home).join('~');
+ }
+ 
++/**
++ * 路径在用户家目录之下时显示为 `~/…`：预检输出常被抄进 evidence，不必带出用户名。
++ *
++ * M12 批次 5 起自 `preflight.ts` 挪来（安装器产物经共享读取面检测也要用它，而它不该引 preflight），
++ * 并加可选的 `home`：隔离夹具下按扫描所用的家目录折叠（计划双审 AGY-01）。不传时行为同原来。
++ */
++export function displayHomePath(p: string, home: string = os.homedir()): string {
++  const rel = path.relative(home, p);
++  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return `~/${rel.split(path.sep).join('/')}`;
++  return p;
++}
++
+ /** 临时目录删除失败时的现场：错误码，与调用方给的位置里删除失败后仍在（或查不了）的那些 */
+ export interface TempDirLeftover {
+   code: string;
+diff --git a/test/helpers/fixture.ts b/test/helpers/fixture.ts
+index 02e23801..c3986782 100644
+--- a/test/helpers/fixture.ts
++++ b/test/helpers/fixture.ts
+@@ -13,6 +13,8 @@ import { run } from '../../src/trivium/util/exec.js';
+ import { initFixtureRepo } from '../../src/trivium/util/git.js';
+ import { encodeStubConfig, STUB_ENV_VAR, type StubConfig } from '../../src/trivium/adapters/stub.js';
+ import { scratchDir } from './scratch.js';
++import { ENTRY_SCAN_HOME_ENV } from '../../src/trivium/entry-collisions.js';
++import { emptyEntryScanHome } from './entry-scan-home.js';
+ 
+ /**
+  * 运行时本文件位于 `dist/test/test/helpers/`，源码位于 `test/helpers/`，
+@@ -187,6 +189,8 @@ export async function cli(
+   const env: Record<string, string | undefined> = {
+     TRIVIUM_ASSET_ROOT: ASSET_ROOT,
+     [STUB_ENV_VAR]: stub ? encodeStubConfig(stub) : undefined,
++    // doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01）
++    [ENTRY_SCAN_HOME_ENV]: emptyEntryScanHome(),
+     ...extraEnv,
+   };
+   return run(process.execPath, [BUNDLE, ...args], { cwd: root, env, timeoutMs });
+diff --git a/test/integration/claude-structured-probe.test.ts b/test/integration/claude-structured-probe.test.ts
+index 992ec90a..dd8085ae 100644
+--- a/test/integration/claude-structured-probe.test.ts
++++ b/test/integration/claude-structured-probe.test.ts
+@@ -45,6 +45,10 @@ import { probeClaudeDirectories } from '../../src/trivium/probes/claude-director
+ import { ProbeFixtureError } from '../../src/trivium/probes/fixture.js';
+ import { LaunchBudgetExceeded } from '../../src/trivium/util/exec.js';
+ import { scratchDir } from '../helpers/scratch.js';
++import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
++
++// doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
++isolateEntryScanHome();
+ 
+ let work = '';
+ let fakeBin = '';
+diff --git a/test/unit/fixture-repo-init.test.ts b/test/unit/fixture-repo-init.test.ts
+index 84829317..cb77ea85 100644
+--- a/test/unit/fixture-repo-init.test.ts
++++ b/test/unit/fixture-repo-init.test.ts
+@@ -35,6 +35,10 @@ import { codexReadonlyIndeterminateWarning, guardFixture, memoryFixtureWarning,
+ import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
+ import { ZCODE_BUILTIN_PROVIDER_ENV, type ZcodeInvokeOptions, type ZcodeInvokeOutcome } from '../../src/trivium/adapters/zcode.js';
+ import type { Config } from '../../src/trivium/types.js';
++import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
++
++// doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
++isolateEntryScanHome();
+ 
+ const ROOT = process.getuid?.() === 0;
+ const ORIG_PATH = process.env['PATH'] ?? '';
+diff --git a/test/unit/install.test.ts b/test/unit/install.test.ts
+index 807fa326..747cf886 100644
+--- a/test/unit/install.test.ts
++++ b/test/unit/install.test.ts
+@@ -374,3 +374,51 @@ test('命令行只认 --targets 与 --uninstall：拼错、多余、卸载时带
+   assert.throws(() => parseInstallArgs(['--targets', 'nobody']), /取值不合法/);
+   assert.throws(() => parseInstallArgs(['--targets', 'claude', '--targets', 'glm']), /写了多次/);
+ });
++
++/*
++ * M12 批次 5（EV-240 方案 A，计划 r2 §4 U3）：读取面判定搬进 `src/trivium/entry-collisions.ts` 之后，
++ * 安装器的冲突列表、次序与报错全文必须与改造前逐字相同。期望文案照改造前 `describeProblems` 原样写死——
++ * 判定或文案任何一处漂了，这一格都会红。
++ */
++test('抽出共享实现后：冲突列表、次序与报错全文与改造前逐字相同（运行时根一格 + 残留 + 两类同名）', async () => {
++  const root = await fakeRepo();
++  const ie = await fakeHome();
++  const rt = path.join(await scratchDir('trivium-install-foreign-rt-'), 'rt');
++  await fs.mkdir(rt, { recursive: true });
++  await fs.writeFile(path.join(rt, 'keep.txt'), '别人的东西');
++  const env = { TRIVIUM_ASSET_ROOT: rt };
++  const codexRoot = skillsRootOf({ home: ie.home, env }, 'codex');
++  await fs.mkdir(path.join(codexRoot, 'dual-critic'), { recursive: true });
++  const shared = path.join(ie.home, '.agents/skills');
++  await fs.mkdir(path.join(shared, 'dual-run'), { recursive: true });
++  await fs.writeFile(path.join(shared, 'dual-run/SKILL.md'), '---\nname: dual-run\ndescription: 用户自己的\n---\n');
++  await fs.cp(path.join(root, ENTRY_OUT_DIR, 'glm/dual-status'), path.join(shared, 'dual-status'), { recursive: true });
++
++  const why = {
++    residue: '目标根顶层有本产品历史形态的目录（整树搬运的残留）：codex 会递归枚举它，把别家的入口调出来',
++    third: '读取面里已有同名 skill，且不是本产品的：不覆盖用户的 skill',
++    foreign: '共享读取面里有本产品的同名入口：两份同名时 codex 显式调用会失效、zcode 两份都进模型清单，而且它带的 --driver 可能是别家',
++    rtForeign: '运行时根已存在、非空，但不是本产品的运行时（SKILL.md 身份行对不上）：安装要整树同步它，会删掉里面的东西。' +
++      '请检查 TRIVIUM_ASSET_ROOT 是否指错',
++  };
++  const expected = [
++    '安装前检查未通过，**一个文件都没有写**。以下路径需要你手工处理（安装器不删用户目录里的东西）：',
++    `  · [运行时根] ${rt}\n      ${why.rtForeign}`,
++    `  · [codex] ${path.join(codexRoot, 'dual-critic')}\n      ${why.residue}`,
++    `  · [codex] ${path.join(shared, 'dual-run')}\n      ${why.third}`,
++    `  · [codex] ${path.join(shared, 'dual-status')}\n      ${why.foreign}`,
++    `  · [glm] ${path.join(shared, 'dual-run')}\n      ${why.third}`,
++    `  · [glm] ${path.join(shared, 'dual-status')}\n      ${why.foreign}`,
++    '处理完再重跑安装。',
++  ].join('\n');
++
++  await assert.rejects(install(root, { home: ie.home, env }), (e: Error) => {
++    assert.ok(e instanceof InstallConflictError);
++    assert.equal(e.message, expected);
++    assert.deepEqual(e.problems.map((p) => `${p.agent}:${p.kind}`), [
++      'null:runtime-foreign', 'codex:residue', 'codex:third-party', 'codex:foreign-entry', 'glm:third-party', 'glm:foreign-entry',
++    ]);
++    return true;
++  });
++  assert.equal(await fs.readFile(path.join(rt, 'keep.txt'), 'utf8'), '别人的东西');
++});
+diff --git a/test/unit/preflight.test.ts b/test/unit/preflight.test.ts
+index d2050e35..641c2522 100644
+--- a/test/unit/preflight.test.ts
++++ b/test/unit/preflight.test.ts
+@@ -5,17 +5,21 @@ import { promises as fs } from 'node:fs';
+ import YAML from 'yaml';
+ import {
+   parsePreflightScope, checkModelSlugs, runPreflight, commitAuthCache, renderPreflight, checkZcodeRuntimeSelection,
+-  checkHeartbeatThreshold, checkDeprecatedConfigKeys, type PreflightResult } from '../../src/trivium/preflight.js';
++  checkHeartbeatThreshold, checkDeprecatedConfigKeys, checkSharedReadRoots, type PreflightResult } from '../../src/trivium/preflight.js';
+ import type { CriticAdapter } from '../../src/trivium/adapters/base.js';
+ import { DEFAULT_HEARTBEAT_STALE_S, TRIVIUM_DIR, defaultConfig, patchProbe } from '../../src/trivium/config.js';
+ import { runDoctor } from '../../src/trivium/doctor.js';
+ import { initFixtureRepo } from '../../src/trivium/util/git.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+-import type { Config, Ctx, ProbeSection } from '../../src/trivium/types.js';
++import type { Config, CriticId, Ctx, ProbeSection } from '../../src/trivium/types.js';
+ import { AGENTS, DEFAULT_DRIVER, guardProfileOf } from '../../src/trivium/agents/registry.js';
+ import { mergeHooks, type InitReport } from '../../src/trivium/init.js';
+ import { REPO_ROOT } from '../helpers/fixture.js';
+ import { scratchDir } from '../helpers/scratch.js';
++import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
++
++// doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
++isolateEntryScanHome();
+ 
+ const emptyReport = (): InitReport => ({ created: [], updated: [], skipped: [], notes: [] });
+ 
+@@ -1152,3 +1156,63 @@ test('U6′ doctor：带档位表 Agent 级 effort（EV-227）⇒ 恰一条提
+   assert.ok(!n[0]!.includes('glm'), `阶段格子的 effort 不得出现：${n[0]}`);
+   assert.deepEqual(r.blockers, base.blockers, '提示不得改变阻断项');
+ });
++
++/*
++ * EV-240 方案 A（M12 批次 5，用户 D-11；计划 r2 §2.3 / §4 U6）：共享读取面同名入口只告警、不阻断，
++ * 只看本轮 Driver ∪ 入选审核者里登记了额外读取根的那几家。家目录一律注入夹具。
++ * 读/不读共享根的家经注册表派生，不写死是哪几家。
++ */
++const sharedReader = AGENTS.find((a) => a.entrySkillExtraReadRoots.length > 0 && a.driverEnabled && a.criticEnabled)!;
++const nonReader = AGENTS.find((a) => a.entrySkillExtraReadRoots.length === 0 && a.criticEnabled && a.id !== DEFAULT_DRIVER)!;
++
++async function dirtySharedHome(): Promise<string> {
++  const home = await scratchDir('trivium-pf-shared-');
++  const d = path.join(home, sharedReader.entrySkillExtraReadRoots[0]!, 'dual-run');
++  await fs.mkdir(d, { recursive: true });
++  await fs.writeFile(path.join(d, 'SKILL.md'), '---\nname: dual-run\n---\n别家的\n');
++  return home;
++}
++
++test('U6 checkSharedReadRoots：相关家都不读共享根 ⇒ null；有一家读 ⇒ 一条 warn、ok 为真、无退出码；干净 ⇒ null', async () => {
++  const dirty = await dirtySharedHome();
++  const clean = await scratchDir('trivium-pf-shared-');
++  assert.equal(await checkSharedReadRoots([DEFAULT_DRIVER, nonReader.id], { home: dirty, env: {} }), null,
++    '本轮没有读共享根的家：与本轮无关，不出项');
++  const hit = await checkSharedReadRoots([DEFAULT_DRIVER, sharedReader.id], { home: dirty, env: {} });
++  assert.ok(hit);
++  assert.equal(hit.ok, true);
++  assert.equal(hit.warn, true);
++  assert.equal(hit.exitCode, undefined);
++  assert.equal(hit.name, '共享读取面同名入口');
++  assert.ok(hit.detail.startsWith('⚠️ 共享读取面 ~/'), hit.detail);
++  assert.ok(hit.detail.includes(sharedReader.display), hit.detail);
++  assert.ok(!hit.detail.includes(dirty), hit.detail);
++  assert.equal(await checkSharedReadRoots([DEFAULT_DRIVER, sharedReader.id], { home: clean, env: {} }), null);
++});
++
++test('U6 预检：Driver 读共享根而审核者不读 ⇒ 照样出一项（Driver 算相关）；照常通过、退出码不变、进 warnings', async () => {
++  const dirty = await dirtySharedHome();
++  const ctx = await fakeCtx(withStale(120));
++  const r = await runPreflight({
++    ctx, scope: 'plan', skipAuthCheck: true, critics: [nonReader.id as CriticId], adapters: {},
++    driver: sharedReader.id, entryScanEnv: { home: dirty, env: {} },
++  });
++  assert.equal(r.ok, true, '只警告、不拒跑');
++  assert.equal(r.exitCode, EXIT.OK);
++  assert.ok(r.warnings.some((w) => w.name === '共享读取面同名入口'), r.warnings.map((w) => w.name).join('、'));
++  const idx = (name: string) => r.checks.findIndex((c) => c.name === name);
++  assert.ok(idx('失联阈值') < idx('共享读取面同名入口'), '排在只告警项之后');
++  assert.ok(idx('共享读取面同名入口') < idx('归档与 git 可用'), '排在 ⑥ 之前');
++  assertWarnInvariant(r);
++});
++
++test('U6 预检：缺省 Driver + 只选不读共享根的审核者 ⇒ 共享根再脏也不出项', async () => {
++  const dirty = await dirtySharedHome();
++  const ctx = await fakeCtx(withStale(120));
++  const r = await runPreflight({
++    ctx, scope: 'plan', skipAuthCheck: true, critics: [nonReader.id as CriticId], adapters: {},
++    entryScanEnv: { home: dirty, env: {} },
++  });
++  assert.equal(r.ok, true);
++  assert.equal(r.checks.some((c) => c.name === '共享读取面同名入口'), false);
++});
+diff --git a/test/unit/zcode-doctor-probe-home.test.ts b/test/unit/zcode-doctor-probe-home.test.ts
+index c09dcc67..64639046 100644
+--- a/test/unit/zcode-doctor-probe-home.test.ts
++++ b/test/unit/zcode-doctor-probe-home.test.ts
+@@ -33,6 +33,10 @@ import { probeZcode, ZCODE_HEADLESS_UNREFRESHED, type ZcodeHeadlessUnrefreshedBr
+ import { runDoctor, zcodeHeadlessUnrefreshedWarning } from '../../src/trivium/doctor.js';
+ import { agentConfigOf, defaultConfig } from '../../src/trivium/config.js';
+ import type { ZcodeProbe } from '../../src/trivium/types.js';
++import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
++
++// doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
++isolateEntryScanHome();
+ 
+ /** 模块加载时的系统临时目录：各用例的私有根建在它下面，用例里的 `os.tmpdir()` 则被钉到私有根 */
+ const SYSTEM_TMP = os.tmpdir();
+diff --git a/test/unit/zcode-provider-env.test.ts b/test/unit/zcode-provider-env.test.ts
+index 6deacd11..7d2c8f8d 100644
+--- a/test/unit/zcode-provider-env.test.ts
++++ b/test/unit/zcode-provider-env.test.ts
+@@ -35,6 +35,10 @@ import {
+ import { probeReadonlyFlags, probeZcode, probeZcodeEntry, type FullCopyOverrideProbe, type ModelOverrideProbe, type RuntimeSelectionReadback, type VariantOutcome } from '../../src/trivium/probes/zcode.js';
+ import { runDoctor } from '../../src/trivium/doctor.js';
+ import { agentConfigOf, defaultConfig, defaultProbe } from '../../src/trivium/config.js';
++import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
++
++// doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
++isolateEntryScanHome();
+ 
+ const REAL_ENTRY = '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs';
+ 
+diff --git a/doc/05_testing/REPORT_2026-10-18_m12_batch5.md b/doc/05_testing/REPORT_2026-10-18_m12_batch5.md
+new file mode 100644
+index 00000000..7a960a7e
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-10-18_m12_batch5.md
+@@ -0,0 +1,172 @@
++# M12 批次 5：共享读取面同名入口告警（EV-240 方案 A）与送审请求文件去重（EV-236 A2）
++
++- **日期**：2026-10-18
++- **执笔**：Claude Code（当轮 Driver）
++- **主题**：`M12-运维防护`（`/dual-run`，A 档）
++- **上位**：`doc/08_project/M11后续-开发计划-草案.md` §6.1、§6.2；用户 D-11、D-12
++- **起点**：`8c4d359f`（工作树干净）
++- **配额**：零真实模型调用（双审本身除外）。验收只跑了各家 CLI 的 `--version`
++- **证据**：[`evidence/m12-batch5-20261018/`](./evidence/m12-batch5-20261018/)。只存读数、脚本与 sha256，不存任务书或请求文件原件
++
++---
++
++## 1. 结论
++
++| 项 | 结果 |
++| :--- | :--- |
++| EV-240 方案 A | 已实现。判定逻辑搬进 `src/trivium/entry-collisions.ts`，安装器与编排器两个打包产物引用同一份实现。doctor 全量列出共享读取面里的同名入口（只告警），preflight 对本轮相关的家给一条 ⚠️（不阻断） |
++| 安装器行为不变 | 新旧安装器在 9 格 HOME 隔离夹具上对照（A-1），stdout、stderr、退出码与安装后目录树逐字相同；原有 17 条用例未改动，全部通过 |
++| EV-236 A2 | 已实现。`request.json` 里的冻结补丁只存一份（顶层 `frozen_diff`），各侧按引用还原。新旧对照（A-3）规范化后，任务书与被审补丁逐字相同；旧格式运行目录照常可读 |
++| 全量 `npm run check` | 第一遍 3711 / 3709 / 0 / 2（tests / pass / fail / skipped），比批次 4 多 24 条，均为新增用例 |
++| 变异 | 逐条预跑 14/14、正式装置 14/14 咬住（§5） |
++| 计划三审 | run `20261018T002634Z`，7 条全部接受，r2 定稿 |
++| 代码三审 | 见 §3 |
++
++---
++
++## 2. 改动
++
++### 2.1 EV-240：共享读取面同名入口
++
++- **新模块 `src/trivium/entry-collisions.ts`**：从 `src/install.ts` 原样搬来 `isOurEntry` 与判定核心（`scanEntryCollisions`，三类：`residue` / `third-party` / `foreign-entry`）。问题类型在这里声明，`src/trivium/` 不反向依赖安装器。另有编排器侧使用的入口名单常量 `ENTRY_SKILL_NAMES`、三类短标签（与 `install:check` 原文相同）、共享读取面的目标构造与两种文案。
++- **安装器**：`checkInstall` 的签名与导出不变，函数体改为调用共享判定。入口名单仍然取仓库里的渲染产物，判定输入、`describeProblems` 文案与 `main()` 退出码都不变。`install-check.mjs` 改为从安装器产物取三类标签，输出逐字不变。
++- **doctor**：在环境段调用共享判定，只扫各家的额外读取根（注册表 `entrySkillExtraReadRoots`，今天是 codex 与 glm 共读的 `~/.agents/skills`）。有问题时按路径归并列出，给出出口：先在仓库根跑 `npm run install:check` 只读核对，确认后手工挪走。结果只进 `warnings`，不进 `blockers`，不影响退出码，与 `--only` 无关。
++- **preflight**：新增只告警项「共享读取面同名入口」。只看本轮 Driver 和入选审核者中登记了额外读取根的那几家，输出一行，`ok` 恒为真。位置在已废弃配置键之后、归档与 git 检查之前。`review --start` 不跑这一项。
++- **扫描用的家目录**：只有一个来源，依次是注入口、环境变量 `TRIVIUM_ENTRY_SCAN_HOME`、`os.homedir()`。这个变量只为测试隔离和诊断而设，只影响这一处只读扫描，安装器不读它。
++- `displayHomePath` 从 `preflight.ts` 挪到 `util/fsx.ts`，加了可选的 `home` 参数。不传时行为同原来；preflight 再导出它，原有调用点不变。
++
++### 2.2 EV-236 A2：交接文件去重
++
++- `run-protocol.ts` 新增两个纯函数。`packSnapshots` 只在侧数 ≥ 1、首侧有正文、各侧正文逐字相同时把补丁收成一份，不改入参。`unpackSnapshots` 按序校验后还原。
++- `writeHandoff` 写出 `frozen_diff: { sha256, text }`，各侧快照的 `diffText` 落盘为 null。`rebuildContext` 经 `unpackSnapshots` 还原，结果与去重前的内存对象逐字段相等。
++- schema 名仍是 `trivium.handoff.v1`：各侧快照的 `diffText` 冻结之后本来就没有读者，旧版 worker 读到 null 不受影响。
++- 新格式出现以下任一情况时报 `envError`（退 69）：形态不对、正文与 sha256 不符、某侧仍带正文、某侧哈希对不上、非 code 阶段带 `frozen_diff`、code 阶段丢了正文。这些检查只作用于新格式，旧格式原样通过。
++
++### 2.3 测试侧的 HOME 隔离（计划双审 CODEX-01 / GLM-01）
++
++- `test/helpers/entry-scan-home.ts`：`isolateEntryScanHome()` 把本进程的扫描家目录钉到一个空夹具。
++- `fixture.ts` 的 `cli()` 在缺省环境里加上这个变量。直接调用 doctor / preflight 的 5 个测试文件，顶部各加一行调用，不改任何断言。
++- `entry-scan-isolation.test.ts` 的 U8 做对账：直接调用 doctor / preflight 却没走隔离的文件会当场红；自己 spawn 产物的文件要逐个登记理由。U9 证明设了变量后，读的就是变量指向的目录。
++
++---
++
++## 3. 双审
++
++### 3.1 计划三审（run `20261018T002634Z`）
++
++- codex `request-changes`：1 major、1 minor。glm `approve-with-nits`：1 minor。gemini `approve-with-nits`：2 minor、2 nit。
++- 7 条全部接受，裁决件 `plan/2026-10-18-M12-运维防护-revised-claude.md`，r2 定稿。要点：
++  - 隔离面从「做精确断言的旧用例」扩大到「凡能跑到新扫描的测试」，并改为单一来源加对账（CODEX-01、GLM-01）；
++  - I1 / A-3 不再数整份 `request.json` 里的哨兵：任务书节选在 400 行内就是全文（CODEX-02）；
++  - 告警路径按扫描所用的家目录折叠成 `~/…`（AGY-01）；
++  - 坏形态的交接文件给受控 `envError`（AGY-02）；
++  - 空快照不提取补丁（AGY-03）；
++  - 问题类型在共享模块里独立声明（AGY-04）。
++
++### 3.2 代码三审
++
++（代码三审完成后补记。）
++
++---
++
++## 4. 测试
++
++| 文件 | 新增 | 内容 |
++| :--- | :--- | :--- |
++| `test/unit/entry-collisions.test.ts` | 6 | 三类判定与次序、`isOurEntry` 边界、共享读取面目标、渲染与 `~` 折叠、扫描家目录来源、`displayHomePath` |
++| `test/unit/entry-collisions-bundles.test.ts` | 4 | 两份产物都含共享模块标记且各只有一份实现；安装器源码无判定实现；`src/trivium/` 不 import 安装器；名单三方对账 |
++| `test/unit/doctor-shared-roots.test.ts` | 2 | 只进 warnings、按路径归并、带出口、blockers 不变；扫描出错退化为一条告警 |
++| `test/unit/preflight.test.ts`（追加） | 3 | 相关性：Driver 算相关、不读共享根的家不出项、干净不出项；`ok` 为真、退出码不变 |
++| `test/unit/handoff-pack.test.ts` | 5 | 往返逐字段相等、入参不被改、plan / 空快照 / 不一致时原样、旧格式原样、六类篡改都报 envError |
++| `test/unit/entry-scan-isolation.test.ts` | 2 | U8 对账、U9 读源证明 |
++| `test/unit/install.test.ts`（追加） | 1 | 报错全文、问题次序与改造前逐字相同（期望文案照原 `describeProblems` 写死） |
++| `test/integration/handoff-dedupe.test.ts` | 1 | 打包产物跑 code 阶段：快照不带正文、`frozen_diff` 等于归档补丁、brief 与归档逐字相同、worker 照常收尾 |
++
++全量 `npm run check`：第一遍 3711 / 3709 / 0 / 2。
++
++---
++
++## 5. 变异
++
++规格见 `evidence/m12-batch5-20261018/mutation-spec.json`（由同目录的 `gen-spec.mjs` 生成，逐条核对 find 只命中一处）。
++
++- **逐条预跑**（`mutation-names-bundle.mjs`，`--with-tests` 重打 bundle）：14/14 咬住，读数在 `mutation-names-output.json`。
++- **正式装置**（`scripts/mutation-check.mjs`）：工作树干净、基线全绿（7 个套件），14/14 咬住，每条的失败数与预跑相同，读数在 `mutation-output.txt`。
++
++| # | 变异 | 咬住的用例（摘） |
++| :--- | :--- | :--- |
++| M1 | 安装根里的自家同名不再放行 | install：升级覆盖、裁剪、运行时根放行格（4） |
++| M2 | `isOurEntry` 去掉 wrapper 判据 | entry-collisions U1、U2 渲染（3） |
++| M3 | doctor 把告警推进 blockers | doctor-shared-roots U5 |
++| M4 | preflight 该项 `ok` 置 false | preflight U6 两格 |
++| M5 | preflight 相关集去掉 Driver | preflight U6「Driver 算相关」 |
++| M6 | 共享读取面目标包含安装根 | entry-collisions U2 两格 |
++| M7 | pack 不置 null | handoff-pack 往返、篡改两格 |
++| M8 | unpack 不核正文 sha | handoff-pack 篡改 |
++| M9 | unpack 漏还原首侧 | handoff-pack 往返 |
++| M10 | 旧格式被误判为新格式 | handoff-pack 旧格式 |
++| M11 | 忽略 `TRIVIUM_ENTRY_SCAN_HOME` | entry-scan-isolation U9 |
++| M12 | 去掉非 code 阶段拒绝 | handoff-pack 篡改 |
++| M13 | 安装器对 top 布局也查残留 | install 三格 |
++| M14 | `writeHandoff` 不写 `frozen_diff` | handoff-dedupe（worker 拒绝执行） |
++
++**测不到的一处**：如果 `rebuildContext` 不调用 `unpackSnapshots`、直接使用落盘的快照（各侧 `diffText` 为 null），目前没有用例会红。原因是各侧 `diffText` 冻结之后本来就没有读者，计划 §1.2 已经核实过这一点。还原的意义在于保持内存对象与去重前一致，以及在 worker 侧做完整性校验。后者由 M8、M12、M14 间接守住：去掉还原就等于去掉了校验，但校验失败只在交接文件被改坏时才会发生，用例构造不出 worker 读之前篡改文件的时序。如实记为测试缺口，不登记 BACKLOG。
++
++---
++
++## 6. 桩级验收（零真实调用）
++
++旧构建：`git archive 8c4d359f` 导出到会话 scratchpad，软链 `node_modules` 后构建；新构建：当前工作树。夹具一律在临时目录，HOME 隔离。
++脚本在会话 scratchpad 里执行，证据目录里存的是副本。`a1-installer.mjs` 把夹具建在脚本所在目录下的 `a1/`，重放时请先把它拷到临时目录再跑，不要在证据目录里直接执行。
++
++### 6.1 A-1 安装器新旧对照
++
++脚本 `a1-installer.mjs`，读数 `a1-installer-output.json`。9 格逐字相同（`all_identical: true`），每格都记了规范化输出的长度与 sha256，以证明对照的不是空输出：
++
++| 格 | 步骤与退出码 |
++| :--- | :--- |
++| clean-install | install ⇒ 0（52 个文件） |
++| reinstall-upgrade | install ⇒ 0；install ⇒ 0 |
++| three-kinds | check ⇒ 1；install ⇒ 1 |
++| install-root-third-party | check ⇒ 1；install ⇒ 1 |
++| targets-missing-family | `--targets gemini` ⇒ 1；`--targets claude,glm` ⇒ 0 |
++| runtime-foreign | install ⇒ 1 |
++| runtime-overlap | install ⇒ 1；uninstall ⇒ 0 |
++| codex-home-elsewhere | check ⇒ 1；install ⇒ 1 |
++| install-then-uninstall | `--targets claude,glm,gemini` ⇒ 0；uninstall ⇒ 0 |
++
++### 6.2 A-2 doctor / preflight 读数（新产物）
++
++脚本 `a23-readings.mjs`，读数 `a23-readings-output.json` 的 `a2` 段。夹具项目照搬本仓本机层的 `probe.cli` / `probe.host`（不拷 `probe.auth`），`TRIVIUM_ENTRY_SCAN_HOME` 指向夹具。
++
++- `doctor --only env --no-model-calls`：夹具有同名入口时退 0、blockers 0，恰 1 条共享读取面告警，路径折叠成 `~/.agents/skills/…`；干净时 0 条。
++- `preflight --skip-auth-check`：
++
++  | 入选 | 退出码 | 共享读取面项 |
++  | :--- | :--- | :--- |
++  | `--critics gemini`（缺省 Driver） | 0 | 不出 |
++  | `--critics codex,glm` | 0 | 出 1 条 |
++  | `--driver glm --critics gemini` | 0 | 出 1 条 |
++  | `--critics codex,glm`，家目录干净 | 0 | 不出 |
++
++- **夹具调整**：本机 agy 在本会话期间自动升级（探针记录 1.4.0，安装为 1.4.2）。不调整的话，只选 gemini 的两格会先在「Antigravity 版本与探针一致」退 69，走不到本批的检查项。因此夹具里按 `agy --version` 的当前值改写了版本号（零配额，读数里记了 `agy_version_fixture`），没有改本仓的探针。这一漂移与本批无关，但会影响下一次带 gemini 的真实审查，见 §7。
++
++### 6.3 A-3 送审请求文件新旧对照
++
++`a23-readings-output.json` 的 `a3` 段。同一组桩（gemini、glm 两侧），同一形态的夹具，改动 600 多行（超过任务书 400 行的节选上限）。
++
++- 旧产物与新产物都退 0、`success`。
++- 规范化运行 id、时间戳、哈希、夹具路径与运行时根路径后，两侧 brief 与 `changes-<run_id>.diff` 逐字相同，`run.json` 快照字段相同（构建标识 `build` 除外：旧导出没有 `.git`，记为 null，与本批无关）。
++- `request.json`：旧 99,962 B，新 76,862 B。扣除运行时根路径长度差后少 22,796 B；一份补丁在 JSON 里占 22,923 B，差额是 `frozen_diff` 外壳与 sha256。旧格式各侧快照带正文 2 份，新格式 0 份。
++- 新版 `unpackSnapshots` 读旧格式：原样返回，与旧文件里的快照逐字段相同。读新格式：各侧还原出的补丁等于归档补丁。新格式各侧 `brief_text` 与归档 brief 逐字相同。
++
++---
++
++## 7. 发现与提醒
++
++- **agy 版本漂移**：本机 agy 已从 1.4.0 自动升到 1.4.2，本仓探针未刷新。下一次带 gemini 的真实审查，预检会在「版本与探针一致」退 69，需要先跑 `doctor --only agy`，会花少量配额，由用户决定。本批验收没有改本仓探针。
++- **残余**（计划 r2 §7）：
++  - 共享根里的 `dual-critic` 历史拷贝，安装器和 doctor 都不判，是否扩大判定范围由用户决定；
++  - `review --start` 不跑新检查；
++  - 任务书节选里的补丁正文仍是各侧各一份（这是送给审核者的内容）；
++  - A1 暂缓、B 不做（D-12）。
+diff --git a/doc/05_testing/evidence/m12-batch5-20261018/a1-installer-output.json b/doc/05_testing/evidence/m12-batch5-20261018/a1-installer-output.json
+new file mode 100644
+index 00000000..6d926c37
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch5-20261018/a1-installer-output.json
+@@ -0,0 +1,185 @@
++{
++  "old": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/b6ec4e32-9540-45a8-8c77-43e81c5ec78e/scratchpad/old",
++  "new": "/Users/chenzhenbo/Work/TriviumCode",
++  "cases": 9,
++  "all_identical": true,
++  "results": [
++    {
++      "case": "clean-install",
++      "identical": true,
++      "codes": [
++        "install ⇒ 0"
++      ],
++      "fingerprints": [
++        {
++          "step": "install",
++          "stdout": "987B dcd574506c659fc7",
++          "stderr": "0B e3b0c44298fc1c14"
++        }
++      ],
++      "tree_files": 52
++    },
++    {
++      "case": "reinstall-upgrade",
++      "identical": true,
++      "codes": [
++        "install ⇒ 0",
++        "install ⇒ 0"
++      ],
++      "fingerprints": [
++        {
++          "step": "install",
++          "stdout": "987B dcd574506c659fc7",
++          "stderr": "0B e3b0c44298fc1c14"
++        },
++        {
++          "step": "install",
++          "stdout": "987B dcd574506c659fc7",
++          "stderr": "0B e3b0c44298fc1c14"
++        }
++      ],
++      "tree_files": 52
++    },
++    {
++      "case": "three-kinds",
++      "identical": true,
++      "codes": [
++        "check ⇒ 1",
++        "install ⇒ 1"
++      ],
++      "fingerprints": [
++        {
++          "step": "check",
++          "stdout": "418B a504dc957bdd19e9",
++          "stderr": "0B e3b0c44298fc1c14"
++        },
++        {
++          "step": "install",
++          "stdout": "76B 3c792d94f7b8dde7",
++          "stderr": "601B bd78e3b37f3eb8d2"
++        }
++      ],
++      "tree_files": 2
++    },
++    {
++      "case": "install-root-third-party",
++      "identical": true,
++      "codes": [
++        "check ⇒ 1",
++        "install ⇒ 1"
++      ],
++      "fingerprints": [
++        {
++          "step": "check",
++          "stdout": "191B f3fd414ef577c7b6",
++          "stderr": "0B e3b0c44298fc1c14"
++        },
++        {
++          "step": "install",
++          "stdout": "76B 3c792d94f7b8dde7",
++          "stderr": "261B 728cef654be9de39"
++        }
++      ],
++      "tree_files": 1
++    },
++    {
++      "case": "targets-missing-family",
++      "identical": true,
++      "codes": [
++        "install --targets gemini ⇒ 1",
++        "install --targets claude,glm ⇒ 0"
++      ],
++      "fingerprints": [
++        {
++          "step": "install --targets gemini",
++          "stdout": "76B 3c792d94f7b8dde7",
++          "stderr": "146B d8240d35a35c0a4e"
++        },
++        {
++          "step": "install --targets claude,glm",
++          "stdout": "928B ac5ecb216afd2c11",
++          "stderr": "0B e3b0c44298fc1c14"
++        }
++      ],
++      "tree_files": 37
++    },
++    {
++      "case": "runtime-foreign",
++      "identical": true,
++      "codes": [
++        "install ⇒ 1"
++      ],
++      "fingerprints": [
++        {
++          "step": "install",
++          "stdout": "76B 3c792d94f7b8dde7",
++          "stderr": "182B 899abd711f571f76"
++        }
++      ],
++      "tree_files": 1
++    },
++    {
++      "case": "runtime-overlap",
++      "identical": true,
++      "codes": [
++        "install ⇒ 1",
++        "uninstall ⇒ 0"
++      ],
++      "fingerprints": [
++        {
++          "step": "install",
++          "stdout": "76B 3c792d94f7b8dde7",
++          "stderr": "183B 4ff4f63e79aa80a6"
++        },
++        {
++          "step": "uninstall",
++          "stdout": "357B 4005bf463ce99bbc",
++          "stderr": "0B e3b0c44298fc1c14"
++        }
++      ],
++      "tree_files": 0
++    },
++    {
++      "case": "codex-home-elsewhere",
++      "identical": true,
++      "codes": [
++        "check ⇒ 1",
++        "install ⇒ 1"
++      ],
++      "fingerprints": [
++        {
++          "step": "check",
++          "stdout": "250B 2d38b9d5c58c3a07",
++          "stderr": "0B e3b0c44298fc1c14"
++        },
++        {
++          "step": "install",
++          "stdout": "76B 3c792d94f7b8dde7",
++          "stderr": "345B 7de6d7a7e6bf1262"
++        }
++      ],
++      "tree_files": 1
++    },
++    {
++      "case": "install-then-uninstall",
++      "identical": true,
++      "codes": [
++        "install --targets claude,glm,gemini ⇒ 0",
++        "uninstall ⇒ 0"
++      ],
++      "fingerprints": [
++        {
++          "step": "install --targets claude,glm,gemini",
++          "stdout": "957B 92f973b8f0e48051",
++          "stderr": "0B e3b0c44298fc1c14"
++        },
++        {
++          "step": "uninstall",
++          "stdout": "1420B aee7009dea3ca44f",
++          "stderr": "0B e3b0c44298fc1c14"
++        }
++      ],
++      "tree_files": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/m12-batch5-20261018/a1-installer.mjs b/doc/05_testing/evidence/m12-batch5-20261018/a1-installer.mjs
+new file mode 100644
+index 00000000..89c6ce85
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch5-20261018/a1-installer.mjs
+@@ -0,0 +1,111 @@
++// A-1 安装器新旧对照（M12 批次 5，计划 r2 §5）。只写 SP/a1 下的夹具家目录，不读写真实家目录。
++// 用法：node a1-installer.mjs <旧仓库导出目录> <新仓库根> <输出 JSON>
++import fs from 'node:fs';
++import path from 'node:path';
++import { spawnSync } from 'node:child_process';
++import crypto from 'node:crypto';
++
++const [OLD, NEW, OUT] = process.argv.slice(2);
++const SP = path.dirname(new URL(import.meta.url).pathname);
++const WORK = path.join(SP, 'a1');
++const AGENT_HOMES = ['.claude', '.codex', '.gemini', '.zcode'];
++
++function freshHome(name, missing = []) {
++  const home = path.join(WORK, name, 'home');
++  fs.rmSync(path.join(WORK, name), { recursive: true, force: true }); // 只删本脚本在 SP/a1 下建的
++  fs.mkdirSync(home, { recursive: true });
++  for (const h of AGENT_HOMES) if (!missing.includes(h)) fs.mkdirSync(path.join(home, h), { recursive: true });
++  return home;
++}
++const ours = (repo, agent, name) => fs.readFileSync(path.join(repo, 'skills/dual-critic/entry', agent, name, 'SKILL.md'), 'utf8');
++function plant(dir, md) {
++  fs.mkdirSync(dir, { recursive: true });
++  if (md !== null) fs.writeFileSync(path.join(dir, 'SKILL.md'), md);
++}
++function tree(dir) {
++  const out = [];
++  const walk = (d, rel) => {
++    let es;
++    try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
++    for (const e of es.sort((a, b) => a.name.localeCompare(b.name))) {
++      const p = path.join(d, e.name), r = rel ? `${rel}/${e.name}` : e.name;
++      if (e.isDirectory()) walk(p, r);
++      // 运行时根里的编排器产物新旧本就不同（本批改了它），只比在不在；其余文件比内容
++      else if (r.endsWith('scripts/trivium.cjs')) out.push(`${r} <bundle>`);
++      else out.push(`${r} ${crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex').slice(0, 16)}`);
++    }
++  };
++  walk(dir, '');
++  return out;
++}
++
++// 每格：setup(home, repo) 摆夹具并返回额外环境；steps 为依次执行的命令
++const CASES = [
++  { name: 'clean-install', setup: () => ({}), steps: [['install']] },
++  { name: 'reinstall-upgrade', setup: () => ({}), steps: [['install'], ['install']] },
++  { name: 'three-kinds', setup: (home, repo) => {
++      plant(path.join(home, '.codex/skills/dual-critic'), null);
++      plant(path.join(home, '.agents/skills/dual-run'), '---\nname: dual-run\ndescription: 用户自己的\n---\n');
++      plant(path.join(home, '.agents/skills/dual-status'), ours(repo, 'glm', 'dual-status'));
++      return {};
++    }, steps: [['check'], ['install']] },
++  { name: 'install-root-third-party', setup: (home) => {
++      plant(path.join(home, '.zcode/skills/dual-approve'), '---\nname: dual-approve\n---\n别人的\n');
++      plant(path.join(home, '.gemini/config/skills/entry'), null);
++      return {};
++    }, steps: [['check'], ['install']] },
++  { name: 'targets-missing-family', missing: ['.gemini'], setup: () => ({}), steps: [['install', '--targets', 'gemini'], ['install', '--targets', 'claude,glm']] },
++  { name: 'runtime-foreign', setup: (home) => {
++      const rt = path.join(home, '..', 'foreign-rt');
++      fs.mkdirSync(rt, { recursive: true });
++      fs.writeFileSync(path.join(rt, 'keep.txt'), 'x');
++      return { TRIVIUM_ASSET_ROOT: rt };
++    }, steps: [['install']] },
++  { name: 'runtime-overlap', setup: (_home, repo) => ({ TRIVIUM_ASSET_ROOT: path.join(repo, 'skills/dual-critic') }), steps: [['install'], ['uninstall']] },
++  { name: 'codex-home-elsewhere', setup: (home) => {
++      const ch = path.join(home, '..', 'codexhome');
++      plant(path.join(ch, 'skills/entry'), null);
++      plant(path.join(home, '.agents/skills/dual-approve'), '---\nname: dual-approve\n---\n');
++      return { CODEX_HOME: ch };
++    }, steps: [['check'], ['install']] },
++  { name: 'install-then-uninstall', setup: (home) => {
++      plant(path.join(home, '.codex/skills/dual-run'), '---\nname: dual-run\n---\n别人的\n');
++      return {};
++    }, steps: [['install', '--targets', 'claude,glm,gemini'], ['uninstall']] },
++];
++
++function runOne(repo, home, extraEnv, step) {
++  const [cmd, ...args] = step;
++  const script = cmd === 'check' ? path.join(repo, 'scripts/install-check.mjs') : path.join(repo, 'dist/install.cjs');
++  const argv = cmd === 'uninstall' ? ['--uninstall'] : cmd === 'install' ? args : [];
++  const r = spawnSync(process.execPath, [script, ...argv], {
++    cwd: repo, encoding: 'utf8',
++    env: { PATH: process.env.PATH, HOME: home, ...extraEnv },
++  });
++  const norm = (s) => s.split(repo).join('<REPO>').split(path.dirname(home)).join('<CASE>');
++  return { step: step.join(' '), code: r.status, stdout: norm(r.stdout), stderr: norm(r.stderr) };
++}
++
++const results = [];
++for (const c of CASES) {
++  const sides = {};
++  for (const [label, repo] of [['old', OLD], ['new', NEW]]) {
++    const home = freshHome(c.name, c.missing ?? []);
++    const extraEnv = c.setup(home, repo);
++    const norm = (v) => String(v).split(repo).join('<REPO>');
++    const steps = c.steps.map((s) => runOne(repo, home, extraEnv, s));
++    sides[label] = { env: Object.fromEntries(Object.entries(extraEnv).map(([k, v]) => [k, norm(v).split(path.dirname(home)).join('<CASE>')])), steps, tree: tree(path.dirname(home)) };
++  }
++  const same = JSON.stringify(sides.old) === JSON.stringify(sides.new);
++  const h = (t) => crypto.createHash('sha256').update(t).digest('hex').slice(0, 16);
++  results.push({
++    case: c.name, identical: same, codes: sides.new.steps.map((s) => `${s.step} ⇒ ${s.code}`),
++    // 一致时也留指纹：证明比的不是两份空输出
++    fingerprints: sides.new.steps.map((s) => ({ step: s.step, stdout: `${s.stdout.length}B ${h(s.stdout)}`, stderr: `${s.stderr.length}B ${h(s.stderr)}` })),
++    tree_files: sides.new.tree.length,
++    ...(same ? {} : { old: sides.old, new: sides.new }),
++  });
++}
++fs.rmSync(WORK, { recursive: true, force: true });
++fs.writeFileSync(OUT, JSON.stringify({ old: OLD, new: NEW, cases: results.length, all_identical: results.every((r) => r.identical), results }, null, 2) + '\n');
++console.log(results.map((r) => `${r.identical ? '✓' : '✗'} ${r.case}  ${r.codes.join(' ; ')}`).join('\n'));
+diff --git a/doc/05_testing/evidence/m12-batch5-20261018/a23-readings-output.json b/doc/05_testing/evidence/m12-batch5-20261018/a23-readings-output.json
+new file mode 100644
+index 00000000..f0cd927e
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch5-20261018/a23-readings-output.json
+@@ -0,0 +1,86 @@
++{
++  "a2": {
++    "agy_version_fixture": {
++      "probe": "1.4.0",
++      "installed": "1.4.2"
++    },
++    "doctor_dirty": {
++      "code": 0,
++      "blockers": 0,
++      "shared_warnings": [
++        "共享读取面里有 2 个同名入口（这些根会被多家 CLI 读到：同名时 Codex 的显式调用会失效、ZCode 两份都进模型清单，而且它带的 --driver 可能是别家）：\n  · ~/.agents/skills/dual-run  别家的同名 skill（Codex、ZCode 会读到）\n  · ~/.agents/skills/dual-status  本产品的入口出现在不该装的位置（如被别的工具拷进共享根）（Codex、ZCode 会读到）\n  出口：在 TriviumCode 仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走；安装器与 doctor 都不删这些路径。"
++      ]
++    },
++    "doctor_clean": {
++      "code": 0,
++      "blockers": 0,
++      "shared_warnings": []
++    },
++    "preflight": [
++      {
++        "args": "--critics gemini",
++        "code": 0,
++        "ok": true,
++        "shared": [],
++        "failed": []
++      },
++      {
++        "args": "--critics codex,glm",
++        "code": 0,
++        "ok": true,
++        "shared": [
++          "⚠️ 共享读取面 ~/.agents/skills 有 2 个同名入口，本轮的 Codex、ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
++        ],
++        "failed": []
++      },
++      {
++        "args": "--driver glm --critics gemini",
++        "code": 0,
++        "ok": true,
++        "shared": [
++          "⚠️ 共享读取面 ~/.agents/skills 有 2 个同名入口，本轮的 ZCode 会读到；跑 doctor 看完整清单与出口（不影响本次预检）"
++        ],
++        "failed": []
++      },
++      {
++        "args": "--critics codex,glm",
++        "code": 0,
++        "ok": true,
++        "shared": [],
++        "failed": []
++      }
++    ]
++  },
++  "a3": {
++    "old": {
++      "code": 0,
++      "status": "success",
++      "request_bytes": 99962,
++      "sides": [
++        "gemini",
++        "glm"
++      ],
++      "snapshot_copies": 2
++    },
++    "new": {
++      "code": 0,
++      "status": "success",
++      "request_bytes": 76862,
++      "has_frozen_diff": true,
++      "snapshot_copies": 0
++    },
++    "briefs_and_diff_identical_after_normalization": true,
++    "compared_files": [
++      "brief-gemini-<RUN>.md",
++      "brief-glm-<RUN>.md",
++      "changes-<RUN>.diff"
++    ],
++    "run_json_snapshot_fields_identical_after_normalization": true,
++    "diff_json_bytes": 22923,
++    "request_bytes_saved": 23100,
++    "request_bytes_saved_excluding_asset_paths": 22796,
++    "new_worker_reads_old_format_unchanged": true,
++    "new_format_unpacks_to_frozen_text": true,
++    "brief_text_equals_archive_new": true
++  }
++}
+diff --git a/doc/05_testing/evidence/m12-batch5-20261018/a23-readings.mjs b/doc/05_testing/evidence/m12-batch5-20261018/a23-readings.mjs
+new file mode 100644
+index 00000000..9d99354a
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch5-20261018/a23-readings.mjs
+@@ -0,0 +1,136 @@
++// A-2 doctor / preflight 读数 + A-3 送审请求文件新旧对照（M12 批次 5，计划 r2 §5）。零真实模型调用：
++// 审核者全部走桩；预检跳过探活（--skip-auth-check），只会跑各家 CLI 的 --version。
++// 用法：node a23-readings.mjs <旧仓库导出目录> <新仓库根> <输出 JSON>
++import fs from 'node:fs';
++import path from 'node:path';
++import { spawnSync } from 'node:child_process';
++import { createRequire } from 'node:module';
++import { isDeepStrictEqual } from 'node:util';
++
++const [OLD, NEW, OUT] = process.argv.slice(2);
++const T = (p) => path.join(NEW, 'dist/test', p);
++const { makeFixture } = await import(T('test/helpers/fixture.js'));
++const { encodeStubConfig, STUB_ENV_VAR } = await import(T('src/trivium/adapters/stub.js'));
++const { unpackSnapshots } = await import(T('src/trivium/run-protocol.js'));
++const { repoId } = await import(T('src/trivium/review.js'));
++const YAML = createRequire(path.join(NEW, 'package.json'))('yaml');
++
++const bundleOf = (repo) => path.join(repo, 'skills/dual-critic/scripts/trivium.cjs');
++const assetOf = (repo) => path.join(repo, 'skills/dual-critic');
++const STUB = encodeStubConfig({ gemini: { mode: 'ok' }, glm: { mode: 'ok' } });
++const SCAN_ENV = 'TRIVIUM_ENTRY_SCAN_HOME';
++
++function tv(repo, cwd, args, extra = {}) {
++  const r = spawnSync(process.execPath, [bundleOf(repo), ...args], {
++    cwd, encoding: 'utf8', timeout: 240_000,
++    env: { ...process.env, TRIVIUM_ASSET_ROOT: assetOf(repo), ...extra },
++  });
++  return { code: r.status, stdout: r.stdout, stderr: r.stderr };
++}
++const lastJson = (s) => JSON.parse(s.slice(s.indexOf('{')));
++
++const out = { a2: {}, a3: {} };
++
++// ── A-2：doctor / preflight 读数（新产物）──
++{
++  const fx = await makeFixture({ topic: 'A2', draft: false });
++  // 照搬本仓本机层的探针结论（只取 cli / host / generated_at，不拷 auth 与其它段），让预检走得到只告警项
++  const local = YAML.parse(fs.readFileSync(path.join(NEW, '.trivium/config.local.yaml'), 'utf8'));
++  const probe = { generated_at: local.probe.generated_at, host: local.probe.host, cli: local.probe.cli };
++  // 本机 agy 会话中自动升级（1.4.0 → 1.4.2），本仓探针未刷新；夹具里按 `agy --version` 现值改写版本号（零配额），
++  // 否则只选 gemini 的格子在「版本与探针一致」先失败、走不到本批的只告警项。只改夹具，不碰本仓探针
++  const agyNow = spawnSync(probe.cli.agy.entrypoint, ['--version'], { encoding: 'utf8' }).stdout.trim().split('\n')[0];
++  out.a2.agy_version_fixture = { probe: probe.cli.agy.version, installed: agyNow };
++  probe.cli.agy.version = agyNow;
++  fs.writeFileSync(path.join(fx.root, '.trivium/config.local.yaml'), YAML.stringify({ probe }));
++  const dirty = fs.mkdtempSync(path.join(path.dirname(fx.root), 'home-dirty-'));
++  const clean = fs.mkdtempSync(path.join(path.dirname(fx.root), 'home-clean-'));
++  for (const [n, md] of [['dual-run', '---\nname: dual-run\n---\n别家的\n'], ['dual-status', '---\nname: dual-status\n---\n./.trivium/bin/trivium\n']]) {
++    fs.mkdirSync(path.join(dirty, '.agents/skills', n), { recursive: true });
++    fs.writeFileSync(path.join(dirty, '.agents/skills', n, 'SKILL.md'), md);
++  }
++  const shared = (ws) => (ws ?? []).filter((w) => (typeof w === 'string' ? w : w.name).includes('共享读取面'));
++  const doc = (home) => {
++    const r = tv(NEW, fx.root, ['doctor', '--only', 'env', '--no-model-calls', '--json'], { [SCAN_ENV]: home });
++    const js = lastJson(r.stdout);
++    return { code: r.code, blockers: js.blockers.length, shared_warnings: shared(js.warnings).map((w) => w.split(dirty).join('<DIRTY>')) };
++  };
++  const pf = (home, args) => {
++    const r = tv(NEW, fx.root, ['preflight', '--stage', 'plan', '--skip-auth-check', '--json', ...args], { [SCAN_ENV]: home });
++    const js = lastJson(r.stdout);
++    return { args: args.join(' '), code: r.code, ok: js.ok, shared: shared(js.warnings).map((w) => w.detail),
++      failed: (js.checks ?? []).filter((c) => !c.ok).map((c) => c.name) };
++  };
++  out.a2 = {
++    ...out.a2,
++    doctor_dirty: doc(dirty),
++    doctor_clean: doc(clean),
++    preflight: [
++      pf(dirty, ['--critics', 'gemini']),
++      pf(dirty, ['--critics', 'codex,glm']),
++      pf(dirty, ['--driver', 'glm', '--critics', 'gemini']),
++      pf(clean, ['--critics', 'codex,glm']),
++    ],
++  };
++}
++
++// ── A-3：同一组桩、同一形态的夹具，旧产物与新产物各跑一次 code 阶段 ──
++async function codeRun(repo) {
++  const fx = await makeFixture({ topic: 'A3', draft: false });
++  // 超过任务书节选上限（400 行）的改动：节选不再是全文，体积差只来自快照里的正文份数（计划双审 CODEX-02）
++  const big = Array.from({ length: 600 }, (_, i) => `export const v${i} = ${i}; // 行 ${i}`).join('\n') + '\n';
++  fs.writeFileSync(path.join(fx.root, 'src/big.ts'), big);
++  fs.writeFileSync(path.join(fx.root, 'src/a.ts'), 'export const a = 4242;\n');
++  const s = tv(repo, fx.root, ['review', '--start', '--stage', 'code', '--topic', 'A3', '--focus', '看变更', '--json'], { [STUB_ENV_VAR]: STUB });
++  if (s.code !== 0) throw new Error(`--start 失败 ${repo}\n${s.stdout}\n${s.stderr}`);
++  const runId = lastJson(s.stdout).run_id;
++  const reqPath = path.join(fx.runRoot, repoId(fx.root), runId, 'request.json');
++  const reqText = fs.readFileSync(reqPath, 'utf8');
++  let code = 73;
++  for (let i = 0; i < 12 && code === 73; i++) code = tv(repo, fx.root, ['review', '--wait', runId, '--timeout', '20'], { [STUB_ENV_VAR]: STUB }).code;
++  const meta = path.join(fx.archiveRoot, 'A3/code', '_' + 'meta');
++  const files = fs.readdirSync(meta).filter((f) => f.startsWith('brief-') || f.startsWith(`changes-${runId}`)).sort();
++  const runJson = JSON.parse(fs.readFileSync(path.join(meta, `run-${runId}.json`), 'utf8'));
++  // 运行时根（任务书里的 schema 路径）新旧各指各的产物，归一成 <ASSET>
++  const norm = (t) => t.split(assetOf(repo)).join('<ASSET>').split(fx.root).join('<ROOT>').split(path.dirname(fx.root)).join('<FX>').split(runId).join('<RUN>')
++    .replace(/\b[0-9a-f]{64}\b/g, '<SHA256>').replace(/\b[0-9a-f]{40}\b/g, '<SHA1>').replace(/\b[0-9a-f]{12}\b/g, '<SHA12>')
++    .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g, '<TS>');
++  return {
++    code, status: runJson.status, reqBytes: Buffer.byteLength(reqText), req: JSON.parse(reqText),
++    // 体积差里与本批无关的部分：运行时根路径（新旧各指各的产物）在交接文件里的出现次数与字节数
++    assetBytes: reqText.split(assetOf(repo)).length - 1 > 0 ? (reqText.split(assetOf(repo)).length - 1) * Buffer.byteLength(assetOf(repo)) : 0,
++    files: Object.fromEntries(files.map((f) => [norm(f), norm(fs.readFileSync(path.join(meta, f), 'utf8'))])),
++    // build 是构建标识：旧产物从 git archive 导出、没有 .git，记 null；与本批改动无关，不进比对
++    snapshotFields: norm(JSON.stringify({ ...runJson.snapshot, taken_at: undefined, build: undefined })),
++    diffText: fs.readFileSync(path.join(meta, files.find((f) => f.startsWith('changes-'))), 'utf8'),
++  };
++}
++{
++  const o = await codeRun(OLD);
++  const n = await codeRun(NEW);
++  const sides = Object.keys(o.req.snapshots);
++  const sameFiles = isDeepStrictEqual(o.files, n.files);
++  // 新 worker 的读路径对旧格式：原样返回、与旧文件里的快照逐字段相同
++  const oldReadByNew = unpackSnapshots(o.req, 'old');
++  const newUnpacked = unpackSnapshots(n.req, 'new');
++  out.a3 = {
++    old: { code: o.code, status: o.status, request_bytes: o.reqBytes, sides, snapshot_copies: sides.filter((c) => typeof o.req.snapshots[c].diffText === 'string').length },
++    new: { code: n.code, status: n.status, request_bytes: n.reqBytes, has_frozen_diff: !!n.req.frozen_diff,
++      snapshot_copies: sides.filter((c) => typeof n.req.snapshots[c].diffText === 'string').length },
++    briefs_and_diff_identical_after_normalization: sameFiles,
++    compared_files: Object.keys(n.files),
++    run_json_snapshot_fields_identical_after_normalization: o.snapshotFields === n.snapshotFields,
++    // 一份补丁在 JSON 里的**字节**数（补丁含中文，按字符数算会少算）
++    diff_json_bytes: Buffer.byteLength(JSON.stringify(n.diffText)),
++    request_bytes_saved: o.reqBytes - n.reqBytes,
++    // 扣掉运行时根路径长度差之后的节省量，应约等于去掉的那一份补丁（减去 frozen_diff 外壳与两处 null）
++    request_bytes_saved_excluding_asset_paths: (o.reqBytes - o.assetBytes) - (n.reqBytes - n.assetBytes),
++    new_worker_reads_old_format_unchanged: isDeepStrictEqual(oldReadByNew, o.req.snapshots),
++    new_format_unpacks_to_frozen_text: sides.every((c) => newUnpacked[c].diffText === n.diffText),
++    brief_text_equals_archive_new: sides.every((c) => n.req.requests[c].brief_text === fs.readFileSync(n.req.requests[c].brief_path, 'utf8')),
++  };
++  if (!sameFiles) out.a3.first_mismatch = Object.keys(n.files).find((k) => o.files[k] !== n.files[k]) ?? 'key-set-differs';
++}
++
++fs.writeFileSync(OUT, JSON.stringify(out, null, 2) + '\n');
++console.log(JSON.stringify(out, null, 2));
+diff --git a/doc/05_testing/evidence/m12-batch5-20261018/gen-spec.mjs b/doc/05_testing/evidence/m12-batch5-20261018/gen-spec.mjs
+new file mode 100644
+index 00000000..a6c4c707
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch5-20261018/gen-spec.mjs
+@@ -0,0 +1,36 @@
++// 生成 M12 批次 5 的变异规格：逐条核 find 在目标文件中恰好命中一处、replace 不含特殊替换模式。
++// 用法（仓库根）：node gen-spec.mjs <输出 JSON>
++import fs from 'node:fs';
++const EC = 'src/trivium/entry-collisions.ts', IN = 'src/install.ts', DO = 'src/trivium/doctor.ts', PF = 'src/trivium/preflight.ts', RP = 'src/trivium/run-protocol.ts';
++const U = (n) => `dist/test/test/unit/${n}.test.js`;
++const I = (n) => `dist/test/test/integration/${n}.test.js`;
++const WRAPPER = ['.trivium', 'bin', 'trivium'].join('/');
++const cases = [
++  ['M1', '安装根里的自家同名不再放行', EC, "        if (r === t.skillsRoot && ours) continue; // 安装根里的自家同名：上一次安装，升级覆盖", "        if (r === t.skillsRoot && ours && name === '') continue;", U('install')],
++  ['M2', 'isOurEntry 去掉 wrapper 子串判据', EC, "  return md.startsWith(`---\\nname: ${name}\\n`) && md.includes('" + WRAPPER + "');", "  return md.startsWith(`---\\nname: ${name}\\n`);", U('entry-collisions')],
++  ['M3', 'doctor 把共享读取面告警推进 blockers', DO, "      if (listed !== null) warnings.push(listed);", "      if (listed !== null) blockers.push(listed);", U('doctor-shared-roots')],
++  ['M4', 'preflight 共享读取面项 ok 置 false', PF, "    return detail === null ? null : { name, ok: true, warn: true, detail };", "    return detail === null ? null : { name, ok: false, warn: true, detail };", U('preflight')],
++  ['M5', 'preflight 相关集去掉 Driver', PF, "    const s = await checkSharedReadRoots([driver, ...selected], opts.entryScanEnv);", "    const s = await checkSharedReadRoots([...selected], opts.entryScanEnv);", U('preflight')],
++  ['M6', '共享读取面目标把安装根也放进读取根', EC, "      readRoots: roots.readRoots.filter((r) => r !== roots.skillsRoot),", "      readRoots: roots.readRoots,", U('entry-collisions')],
++  ['M7', 'packSnapshots 不置 null（仍存 N 份）', RP, "  for (const c of sides) packed[c] = { ...snapshots[c]!, diffText: null };", "  for (const c of sides) packed[c] = { ...snapshots[c]! };", U('handoff-pack')],
++  ['M8', 'unpackSnapshots 不核正文 sha', RP, "  if (sha256(fd.text) !== fd.sha256) throw bad('冻结补丁的正文与它的 sha256 对不上');", "  void sha256;", U('handoff-pack')],
++  ['M9', 'unpackSnapshots 漏还原首侧', RP, "    out[c] = { ...snap, diffText: fd.text };", "    out[c] = c === sides[0] ? snap : { ...snap, diffText: fd.text };", U('handoff-pack')],
++  ['M10', '旧格式误判为新格式丢正文', RP, "    if (h.stage === 'code' && sides.some((c) => h.snapshots[c]?.diffText === null)) {", "    if (h.stage === 'code') {", U('handoff-pack')],
++  ['M11', 'entryScanEnv 忽略环境变量', EC, "  const fromEnv = process.env[ENTRY_SCAN_HOME_ENV];", "  const fromEnv = undefined as string | undefined;", U('entry-scan-isolation')],
++  ['M12', 'unpackSnapshots 去掉非 code 阶段拒绝', RP, "  if (h.stage !== 'code') throw bad(`${h.stage} 阶段不该带冻结补丁`);", "  void 0;", U('handoff-pack')],
++  ['M13', '安装器对 top 布局也查残留', IN, "      residueNames: t.layout === 'entry' ? RESIDUE_NAMES : [],", "      residueNames: RESIDUE_NAMES,", U('install')],
++  ['M14', 'writeHandoff 不写 frozen_diff（正文丢失）', RP, "    ...(packed.frozen_diff ? { frozen_diff: packed.frozen_diff } : {}),", "    ...({}),", I('handoff-dedupe')],
++];
++const targets = [...new Set(cases.map((c) => c[2]))];
++for (const [id, , file, find] of cases) {
++  const n = fs.readFileSync(file, 'utf8').split(find).length - 1;
++  if (n !== 1) throw new Error(`${id} find 命中 ${n} 处`);
++}
++for (const c of cases) if (/\$[$&`'0-9<]/.test(c[4])) throw new Error(`${c[0]} replace 含特殊替换模式`);
++const spec = {
++  targets,
++  suites: [...new Set(cases.map((c) => c[5]))],
++  cases: cases.map(([id, desc, file, find, replace, expect]) => ({ id, desc, file, find, replace, expect })),
++};
++fs.writeFileSync(process.argv[2], JSON.stringify(spec, null, 2) + '\n');
++console.log(`ok ${cases.length} cases, ${targets.length} targets`);
+diff --git a/doc/05_testing/evidence/m12-batch5-20261018/mutation-names-bundle.mjs b/doc/05_testing/evidence/m12-batch5-20261018/mutation-names-bundle.mjs
+new file mode 100644
+index 00000000..cf9cd87a
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch5-20261018/mutation-names-bundle.mjs
+@@ -0,0 +1,58 @@
++// M12 批次 5 照搬自 evidence/m12-batch4-20261018/（逐字相同，只改本行）。
++// M12 批次 1 变体：集成套件调的是打包产物（test/helpers/fixture.ts 的 BUNDLE），--tests-only 不重打 bundle，
++// 变异进不了被测产物。这里改为 --with-tests 同时重打 bundle 与测试产物；其余与原脚本逐字相同。
++// 逐条变异、带超时跑期望套件，存下**失败用例名与首行断言文案**（变异装置只记 fail 数、且不给套件加超时）。
++// 照搬 evidence/cancel-cli-reach-20260928/mutation-names.mjs 的形态，另加 --test-timeout：
++// 首轮装置跑到 M4 时 U12① 的等待没有超时、挂死一小时被强制终止（报告 §3），这里先逐条确认不挂。
++// 逐条：备份 → 变异（find 须唯一）→ 只重建测试产物 → 跑期望套件 → 恢复并逐字节核对；收尾重建一次。
++// 用法（在仓库根，变异装置与全量检查都不在跑）：node mutation-names.mjs <规格路径> [输出 JSON 路径]
++import { execFileSync, spawnSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const spec = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
++const OUT = process.argv[3] ?? null;
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--with-tests'], { stdio: 'ignore' });
++const runSuite = (suite) => {
++  const t0 = Date.now();
++  const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-timeout=60000', suite], {
++    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000,
++  });
++  const out = (r.stdout ?? '') + (r.stderr ?? '');
++  const body = out.split('✖ failing tests:')[0];
++  const red = [...new Set([...body.matchAll(/^✖ (.+?) \(\d/gm)].map((m) => m[1]))];
++  const msgs = [...body.matchAll(/^✖ .+?\(\d[^\n]*\n(?:[^\n]*\n){0,3}?\s*([^\n]*Error[^\n]*)/gm)].map((m) => m[1].trim().slice(0, 200));
++  return {
++    fail: Number(/ℹ fail (\d+)/.exec(out)?.[1] ?? (r.status === 0 ? 0 : -1)),
++    timed_out: r.error?.code === 'ETIMEDOUT',
++    cancelled: Number(/ℹ cancelled (\d+)/.exec(out)?.[1] ?? 0),
++    red,
++    firstLines: [...new Set(msgs)].slice(0, 8),
++    elapsed_s: Math.round((Date.now() - t0) / 1000),
++  };
++};
++
++const base = Object.fromEntries(spec.targets.map((f) => [f, fs.readFileSync(f, 'utf8')]));
++const baseHash = Object.fromEntries(spec.targets.map((f) => [f, sha(f)]));
++const results = [];
++try {
++  for (const c of spec.cases) {
++    const src = base[c.file];
++    if (src.split(c.find).length - 1 !== 1) throw new Error(`${c.id} 的 find 不唯一`);
++    fs.writeFileSync(c.file, src.replace(c.find, c.replace));
++    try {
++      build();
++      const r = runSuite(c.expect);
++      results.push({ id: c.id, desc: c.desc, suite: c.expect, ...r });
++      console.error(`${c.id}：fail=${r.fail} cancelled=${r.cancelled} ${r.elapsed_s}s ⇒ ${r.red.join(' ｜ ')}`);
++    } finally {
++      fs.writeFileSync(c.file, src);
++      if (sha(c.file) !== baseHash[c.file]) throw new Error(`恢复 ${c.file} 后哈希不符，停下人工处理`);
++    }
++  }
++} finally {
++  for (const f of spec.targets) if (sha(f) !== baseHash[f]) fs.writeFileSync(f, base[f]);
++  build();
++}
++if (OUT) fs.writeFileSync(OUT, JSON.stringify(results, null, 2) + '\n');
+diff --git a/doc/05_testing/evidence/m12-batch5-20261018/mutation-names-log.txt b/doc/05_testing/evidence/m12-batch5-20261018/mutation-names-log.txt
+new file mode 100644
+index 00000000..046baaf2
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch5-20261018/mutation-names-log.txt
+@@ -0,0 +1,15 @@
++M1：fail=4 cancelled=0 1s ⇒ 安装根里的同名：自家的升级覆盖，别人的判冲突 ｜ 升级：目标里源已不存在的文件被裁剪，运行时根里的 entry/ 也裁掉；用户目录里的其它 skill 不动 ｜ 运行时根的放行格：不存在、空目录、被打断的上一次安装（只落了 SKILL.md）都照装 ｜ 运行时根换了位置、缺省位置留着旧运行时：提示，不删、不阻断（代码双审 r2 CODEX-05）
++M2：fail=3 cancelled=0 0s ⇒ U1 isOurEntry：名字对得上且调用 wrapper 才判真；名字不符、缺 wrapper、读不到都判假 ｜ U1 scanEntryCollisions：三类判定与次序（残留在前、再按名单 × 读取根），安装根里的自家同名放行 ｜ U2 渲染：按路径归并、~ 折叠到扫描所用的家目录、带出口；preflight 一行；无问题返回 null
++M3：fail=1 cancelled=0 0s ⇒ U5 无同名入口 ⇒ 不出告警；有 ⇒ warnings 恰多一条、按路径归并、~ 折叠、带出口，blockers 不变
++M4：fail=2 cancelled=0 26s ⇒ U6 checkSharedReadRoots：相关家都不读共享根 ⇒ null；有一家读 ⇒ 一条 warn、ok 为真、无退出码；干净 ⇒ null ｜ U6 预检：Driver 读共享根而审核者不读 ⇒ 照样出一项（Driver 算相关）；照常通过、退出码不变、进 warnings
++M5：fail=1 cancelled=0 26s ⇒ U6 预检：Driver 读共享根而审核者不读 ⇒ 照样出一项（Driver 算相关）；照常通过、退出码不变、进 warnings
++M6：fail=2 cancelled=0 0s ⇒ U2 sharedReadRootTargets：只出登记了额外读取根的家，读取根只含额外根，不查残留；CODEX_HOME 不影响共享根 ｜ U2 渲染：按路径归并、~ 折叠到扫描所用的家目录、带出口；preflight 一行；无问题返回 null
++M7：fail=2 cancelled=0 0s ⇒ U7 code 阶段三侧：落盘后快照里正文零份、frozen_diff 一份；往返与原对象逐字段相等；入参不被改 ｜ U7 新格式被改坏：各种篡改一律 envError，指名运行
++M8：fail=1 cancelled=0 0s ⇒ U7 新格式被改坏：各种篡改一律 envError，指名运行
++M9：fail=1 cancelled=0 0s ⇒ U7 code 阶段三侧：落盘后快照里正文零份、frozen_diff 一份；往返与原对象逐字段相等；入参不被改
++M10：fail=1 cancelled=0 0s ⇒ U7 旧格式（各侧各带正文、无 frozen_diff）原样读出
++M11：fail=1 cancelled=0 0s ⇒ U9 读源证明：变量指向摆了同名入口的夹具 ⇒ 告警里的路径落在夹具里；指向空夹具 ⇒ 无告警
++M12：fail=1 cancelled=0 0s ⇒ U7 新格式被改坏：各种篡改一律 envError，指名运行
++M13：fail=3 cancelled=0 1s ⇒ 安装根里的同名：自家的升级覆盖，别人的判冲突 ｜ 升级：目标里源已不存在的文件被裁剪，运行时根里的 entry/ 也裁掉；用户目录里的其它 skill 不动 ｜ 运行时根换了位置、缺省位置留着旧运行时：提示，不删、不阻断（代码双审 r2 CODEX-05）
++M14：fail=1 cancelled=0 3s ⇒ 交接文件：各侧快照不带补丁正文、frozen_diff 恰一份且等于归档补丁；brief 与归档逐字相同；worker 照常收尾
++exit=0
+diff --git a/doc/05_testing/evidence/m12-batch5-20261018/mutation-names-output.json b/doc/05_testing/evidence/m12-batch5-20261018/mutation-names-output.json
+new file mode 100644
+index 00000000..8815eef2
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch5-20261018/mutation-names-output.json
+@@ -0,0 +1,200 @@
++[
++  {
++    "id": "M1",
++    "desc": "安装根里的自家同名不再放行",
++    "suite": "dist/test/test/unit/install.test.js",
++    "fail": 4,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "安装根里的同名：自家的升级覆盖，别人的判冲突",
++      "升级：目标里源已不存在的文件被裁剪，运行时根里的 entry/ 也裁掉；用户目录里的其它 skill 不动",
++      "运行时根的放行格：不存在、空目录、被打断的上一次安装（只落了 SKILL.md）都照装",
++      "运行时根换了位置、缺省位置留着旧运行时：提示，不删、不阻断（代码双审 r2 CODEX-05）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M2",
++    "desc": "isOurEntry 去掉 wrapper 子串判据",
++    "suite": "dist/test/test/unit/entry-collisions.test.js",
++    "fail": 3,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U1 isOurEntry：名字对得上且调用 wrapper 才判真；名字不符、缺 wrapper、读不到都判假",
++      "U1 scanEntryCollisions：三类判定与次序（残留在前、再按名单 × 读取根），安装根里的自家同名放行",
++      "U2 渲染：按路径归并、~ 折叠到扫描所用的家目录、带出口；preflight 一行；无问题返回 null"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M3",
++    "desc": "doctor 把共享读取面告警推进 blockers",
++    "suite": "dist/test/test/unit/doctor-shared-roots.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U5 无同名入口 ⇒ 不出告警；有 ⇒ warnings 恰多一条、按路径归并、~ 折叠、带出口，blockers 不变"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M4",
++    "desc": "preflight 共享读取面项 ok 置 false",
++    "suite": "dist/test/test/unit/preflight.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U6 checkSharedReadRoots：相关家都不读共享根 ⇒ null；有一家读 ⇒ 一条 warn、ok 为真、无退出码；干净 ⇒ null",
++      "U6 预检：Driver 读共享根而审核者不读 ⇒ 照样出一项（Driver 算相关）；照常通过、退出码不变、进 warnings"
++    ],
++    "firstLines": [],
++    "elapsed_s": 26
++  },
++  {
++    "id": "M5",
++    "desc": "preflight 相关集去掉 Driver",
++    "suite": "dist/test/test/unit/preflight.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U6 预检：Driver 读共享根而审核者不读 ⇒ 照样出一项（Driver 算相关）；照常通过、退出码不变、进 warnings"
++    ],
++    "firstLines": [],
++    "elapsed_s": 26
++  },
++  {
++    "id": "M6",
++    "desc": "共享读取面目标把安装根也放进读取根",
++    "suite": "dist/test/test/unit/entry-collisions.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U2 sharedReadRootTargets：只出登记了额外读取根的家，读取根只含额外根，不查残留；CODEX_HOME 不影响共享根",
++      "U2 渲染：按路径归并、~ 折叠到扫描所用的家目录、带出口；preflight 一行；无问题返回 null"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M7",
++    "desc": "packSnapshots 不置 null（仍存 N 份）",
++    "suite": "dist/test/test/unit/handoff-pack.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U7 code 阶段三侧：落盘后快照里正文零份、frozen_diff 一份；往返与原对象逐字段相等；入参不被改",
++      "U7 新格式被改坏：各种篡改一律 envError，指名运行"
++    ],
++    "firstLines": [
++      "✖ U7 新格式被改坏：各种篡改一律 envError，指名运行 (0.6505ms)"
++    ],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M8",
++    "desc": "unpackSnapshots 不核正文 sha",
++    "suite": "dist/test/test/unit/handoff-pack.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U7 新格式被改坏：各种篡改一律 envError，指名运行"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M9",
++    "desc": "unpackSnapshots 漏还原首侧",
++    "suite": "dist/test/test/unit/handoff-pack.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U7 code 阶段三侧：落盘后快照里正文零份、frozen_diff 一份；往返与原对象逐字段相等；入参不被改"
++    ],
++    "firstLines": [
++      "✔ U7 新格式被改坏：各种篡改一律 envError，指名运行 (0.582209ms)"
++    ],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M10",
++    "desc": "旧格式误判为新格式丢正文",
++    "suite": "dist/test/test/unit/handoff-pack.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U7 旧格式（各侧各带正文、无 frozen_diff）原样读出"
++    ],
++    "firstLines": [
++      "✔ U7 新格式被改坏：各种篡改一律 envError，指名运行 (0.417417ms)"
++    ],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M11",
++    "desc": "entryScanEnv 忽略环境变量",
++    "suite": "dist/test/test/unit/entry-scan-isolation.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U9 读源证明：变量指向摆了同名入口的夹具 ⇒ 告警里的路径落在夹具里；指向空夹具 ⇒ 无告警"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M12",
++    "desc": "unpackSnapshots 去掉非 code 阶段拒绝",
++    "suite": "dist/test/test/unit/handoff-pack.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U7 新格式被改坏：各种篡改一律 envError，指名运行"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M13",
++    "desc": "安装器对 top 布局也查残留",
++    "suite": "dist/test/test/unit/install.test.js",
++    "fail": 3,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "安装根里的同名：自家的升级覆盖，别人的判冲突",
++      "升级：目标里源已不存在的文件被裁剪，运行时根里的 entry/ 也裁掉；用户目录里的其它 skill 不动",
++      "运行时根换了位置、缺省位置留着旧运行时：提示，不删、不阻断（代码双审 r2 CODEX-05）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M14",
++    "desc": "writeHandoff 不写 frozen_diff（正文丢失）",
++    "suite": "dist/test/test/integration/handoff-dedupe.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "交接文件：各侧快照不带补丁正文、frozen_diff 恰一份且等于归档补丁；brief 与归档逐字相同；worker 照常收尾"
++    ],
++    "firstLines": [],
++    "elapsed_s": 3
++  }
++]
+diff --git a/doc/05_testing/evidence/m12-batch5-20261018/mutation-output.txt b/doc/05_testing/evidence/m12-batch5-20261018/mutation-output.txt
+new file mode 100644
+index 00000000..f9a49427
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch5-20261018/mutation-output.txt
+@@ -0,0 +1,106 @@
++✓ 工作树干净、基线全绿（7 个套件）
++  M1 ✓ 咬住（fail=4）
++  M2 ✓ 咬住（fail=3）
++  M3 ✓ 咬住（fail=1）
++  M4 ✓ 咬住（fail=2）
++  M5 ✓ 咬住（fail=1）
++  M6 ✓ 咬住（fail=2）
++  M7 ✓ 咬住（fail=2）
++  M8 ✓ 咬住（fail=1）
++  M9 ✓ 咬住（fail=1）
++  M10 ✓ 咬住（fail=1）
++  M11 ✓ 咬住（fail=1）
++  M12 ✓ 咬住（fail=1）
++  M13 ✓ 咬住（fail=3）
++  M14 ✓ 咬住（fail=1）
++{
++  "总数": 14,
++  "咬住": 14,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "安装根里的自家同名不再放行",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M2",
++      "desc": "isOurEntry 去掉 wrapper 子串判据",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M3",
++      "desc": "doctor 把共享读取面告警推进 blockers",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M4",
++      "desc": "preflight 共享读取面项 ok 置 false",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M5",
++      "desc": "preflight 相关集去掉 Driver",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M6",
++      "desc": "共享读取面目标把安装根也放进读取根",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M7",
++      "desc": "packSnapshots 不置 null（仍存 N 份）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M8",
++      "desc": "unpackSnapshots 不核正文 sha",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M9",
++      "desc": "unpackSnapshots 漏还原首侧",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M10",
++      "desc": "旧格式误判为新格式丢正文",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M11",
++      "desc": "entryScanEnv 忽略环境变量",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M12",
++      "desc": "unpackSnapshots 去掉非 code 阶段拒绝",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M13",
++      "desc": "安装器对 top 布局也查残留",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M14",
++      "desc": "writeHandoff 不写 frozen_diff（正文丢失）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
++exit=0
+diff --git a/doc/05_testing/evidence/m12-batch5-20261018/mutation-spec.json b/doc/05_testing/evidence/m12-batch5-20261018/mutation-spec.json
+new file mode 100644
+index 00000000..03c81e35
+--- /dev/null
++++ b/doc/05_testing/evidence/m12-batch5-20261018/mutation-spec.json
+@@ -0,0 +1,132 @@
++{
++  "targets": [
++    "src/trivium/entry-collisions.ts",
++    "src/trivium/doctor.ts",
++    "src/trivium/preflight.ts",
++    "src/trivium/run-protocol.ts",
++    "src/install.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/install.test.js",
++    "dist/test/test/unit/entry-collisions.test.js",
++    "dist/test/test/unit/doctor-shared-roots.test.js",
++    "dist/test/test/unit/preflight.test.js",
++    "dist/test/test/unit/handoff-pack.test.js",
++    "dist/test/test/unit/entry-scan-isolation.test.js",
++    "dist/test/test/integration/handoff-dedupe.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "安装根里的自家同名不再放行",
++      "file": "src/trivium/entry-collisions.ts",
++      "find": "        if (r === t.skillsRoot && ours) continue; // 安装根里的自家同名：上一次安装，升级覆盖",
++      "replace": "        if (r === t.skillsRoot && ours && name === '') continue;",
++      "expect": "dist/test/test/unit/install.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "isOurEntry 去掉 wrapper 子串判据",
++      "file": "src/trivium/entry-collisions.ts",
++      "find": "  return md.startsWith(`---\\nname: ${name}\\n`) && md.includes('.trivium/bin/trivium');",
++      "replace": "  return md.startsWith(`---\\nname: ${name}\\n`);",
++      "expect": "dist/test/test/unit/entry-collisions.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "doctor 把共享读取面告警推进 blockers",
++      "file": "src/trivium/doctor.ts",
++      "find": "      if (listed !== null) warnings.push(listed);",
++      "replace": "      if (listed !== null) blockers.push(listed);",
++      "expect": "dist/test/test/unit/doctor-shared-roots.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "preflight 共享读取面项 ok 置 false",
++      "file": "src/trivium/preflight.ts",
++      "find": "    return detail === null ? null : { name, ok: true, warn: true, detail };",
++      "replace": "    return detail === null ? null : { name, ok: false, warn: true, detail };",
++      "expect": "dist/test/test/unit/preflight.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "preflight 相关集去掉 Driver",
++      "file": "src/trivium/preflight.ts",
++      "find": "    const s = await checkSharedReadRoots([driver, ...selected], opts.entryScanEnv);",
++      "replace": "    const s = await checkSharedReadRoots([...selected], opts.entryScanEnv);",
++      "expect": "dist/test/test/unit/preflight.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "共享读取面目标把安装根也放进读取根",
++      "file": "src/trivium/entry-collisions.ts",
++      "find": "      readRoots: roots.readRoots.filter((r) => r !== roots.skillsRoot),",
++      "replace": "      readRoots: roots.readRoots,",
++      "expect": "dist/test/test/unit/entry-collisions.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "packSnapshots 不置 null（仍存 N 份）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "  for (const c of sides) packed[c] = { ...snapshots[c]!, diffText: null };",
++      "replace": "  for (const c of sides) packed[c] = { ...snapshots[c]! };",
++      "expect": "dist/test/test/unit/handoff-pack.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "unpackSnapshots 不核正文 sha",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "  if (sha256(fd.text) !== fd.sha256) throw bad('冻结补丁的正文与它的 sha256 对不上');",
++      "replace": "  void sha256;",
++      "expect": "dist/test/test/unit/handoff-pack.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "unpackSnapshots 漏还原首侧",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "    out[c] = { ...snap, diffText: fd.text };",
++      "replace": "    out[c] = c === sides[0] ? snap : { ...snap, diffText: fd.text };",
++      "expect": "dist/test/test/unit/handoff-pack.test.js"
++    },
++    {
++      "id": "M10",
++      "desc": "旧格式误判为新格式丢正文",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "    if (h.stage === 'code' && sides.some((c) => h.snapshots[c]?.diffText === null)) {",
++      "replace": "    if (h.stage === 'code') {",
++      "expect": "dist/test/test/unit/handoff-pack.test.js"
++    },
++    {
++      "id": "M11",
++      "desc": "entryScanEnv 忽略环境变量",
++      "file": "src/trivium/entry-collisions.ts",
++      "find": "  const fromEnv = process.env[ENTRY_SCAN_HOME_ENV];",
++      "replace": "  const fromEnv = undefined as string | undefined;",
++      "expect": "dist/test/test/unit/entry-scan-isolation.test.js"
++    },
++    {
++      "id": "M12",
++      "desc": "unpackSnapshots 去掉非 code 阶段拒绝",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "  if (h.stage !== 'code') throw bad(`${h.stage} 阶段不该带冻结补丁`);",
++      "replace": "  void 0;",
++      "expect": "dist/test/test/unit/handoff-pack.test.js"
++    },
++    {
++      "id": "M13",
++      "desc": "安装器对 top 布局也查残留",
++      "file": "src/install.ts",
++      "find": "      residueNames: t.layout === 'entry' ? RESIDUE_NAMES : [],",
++      "replace": "      residueNames: RESIDUE_NAMES,",
++      "expect": "dist/test/test/unit/install.test.js"
++    },
++    {
++      "id": "M14",
++      "desc": "writeHandoff 不写 frozen_diff（正文丢失）",
++      "file": "src/trivium/run-protocol.ts",
++      "find": "    ...(packed.frozen_diff ? { frozen_diff: packed.frozen_diff } : {}),",
++      "replace": "    ...({}),",
++      "expect": "dist/test/test/integration/handoff-dedupe.test.js"
++    }
++  ]
++}
+diff --git a/src/trivium/entry-collisions.ts b/src/trivium/entry-collisions.ts
+new file mode 100644
+index 00000000..dec62290
+--- /dev/null
++++ b/src/trivium/entry-collisions.ts
+@@ -0,0 +1,201 @@
++/**
++ * 读取面同名入口检测（EV-240 方案 A，M12 批次 5）。
++ *
++ * 判定原先只在安装器里（`src/install.ts` 的 `checkInstall` 与 `isOurEntry`）。本批原样搬到这里，
++ * **安装器与编排器两个打包产物引用同一份实现**：
++ *
++ *   src/install.ts      → dist/install.cjs                          安装前检查、卸载的删除面、`npm run install:check`
++ *   src/trivium/cli.ts  → skills/dual-critic/scripts/trivium.cjs    doctor 全量列出、preflight 对本轮相关家告警
++ *
++ * 安装器的判定输入（入口名单取仓库里的渲染产物）、报错文案与退出码都不变；这里只放判定本身。
++ * 编排器装在运行时根，读不到仓库里的渲染产物与 `skills-src/`，入口名单取 {@link ENTRY_SKILL_NAMES}，
++ * 由对账用例守它与命令契约、安装器名单三者一致。
++ *
++ * **本模块不得 import `src/install.ts` 或 `src/entry-render.ts`**：编排器产物不该反向依赖安装器（计划双审 AGY-04）。
++ *
++ * 只读：任何一个函数都不写、不删。处置一律交给人（安装器「只报错、不删除」的同一条纪律，2026-09-20 事故 R1 / R8）。
++ */
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import { agentById, entrySkillRootOf, type AgentDescriptor, type AgentId } from './agents/registry.js';
++import { displayHomePath, exists } from './util/fsx.js';
++
++/** 三类读取面问题。安装器另有三类（缺家、运行时根重叠 / 外来），只在安装器里产生 */
++export type EntryCollisionKind = 'residue' | 'third-party' | 'foreign-entry';
++
++export interface EntryCollisionProblem {
++  agent: AgentId;
++  kind: EntryCollisionKind;
++  path: string;
++}
++
++/** 一家的扫描目标 */
++export interface EntryScanTarget {
++  agent: AgentId;
++  /** 安装根：其中的自家同名视为上一次安装、放行 */
++  skillsRoot: string;
++  /** 要查同名的读取根（安装器传完整读取面，doctor / preflight 只传额外读取根） */
++  readRoots: readonly string[];
++  /** 要查的入口名 */
++  names: readonly string[];
++  /** 在安装根顶层出现即判「历史形态残留」的名字；空数组表示这一家不查残留 */
++  residueNames: readonly string[];
++}
++
++/**
++ * 本产品的入口 skill 名单（编排器侧用）。
++ *
++ * 安装器**不用**它：安装器的名单取仓库里的渲染产物，判定输入逐字不变（计划 r2 T-2）。
++ * 加删命令时要同步这里——`entry-collisions-bundles` 的对账用例会把它与 `skills-src/commands/` 的契约名、
++ * `planInstall` 给每家算出的名单逐一比对，不一致即红。
++ */
++export const ENTRY_SKILL_NAMES: readonly string[] = [
++  'dual-abandon',
++  'dual-approve',
++  'dual-review-bug',
++  'dual-review-code',
++  'dual-review-plan',
++  'dual-run',
++  'dual-status',
++];
++
++/** 三类问题的短标签：`npm run install:check`、doctor、preflight 共用（取自 install-check 原有的那份，逐字不变） */
++export const ENTRY_PROBLEM_LABELS: Readonly<Record<EntryCollisionKind, string>> = {
++  'foreign-entry': '本产品的入口出现在不该装的位置（如被别的工具拷进共享根）',
++  'third-party': '别家的同名 skill',
++  residue: '旧版安装的残留',
++};
++
++/**
++ * 一个同名目录是不是**本产品**的入口 skill：`SKILL.md` 的 front-matter 名字对得上、
++ * 正文调用 `.trivium/bin/trivium`。
++ *
++ * 它决定三件事：两种撞名的报错措辞、安装根内的升级放行（判真即覆盖），以及**卸载的删除面**
++ * （判真即整目录删除，代码双审 GLM-04）。判据的边界：用户从本产品 fork 出来、保留原名、
++ * 仍调用 wrapper 的 skill 也会判真——安装会覆盖它、卸载会删掉它。不在卸载侧另设更严的判据：
++ * 那样会出现「装得上、卸不掉」的不对称，而改比 description 又会在跨版本改过措辞时误判。
++ */
++export async function isOurEntry(dir: string, name: string): Promise<boolean> {
++  let md: string;
++  try {
++    md = await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8');
++  } catch {
++    return false;
++  }
++  return md.startsWith(`---\nname: ${name}\n`) && md.includes('.trivium/bin/trivium');
++}
++
++/** 读取面检查：只读，不写任何东西。返回全部问题，调用方决定怎么处置 */
++export async function scanEntryCollisions(targets: readonly EntryScanTarget[]): Promise<EntryCollisionProblem[]> {
++  const problems: EntryCollisionProblem[] = [];
++  for (const t of targets) {
++    for (const n of t.residueNames) {
++      const p = path.join(t.skillsRoot, n);
++      if (await exists(p)) problems.push({ agent: t.agent, kind: 'residue', path: p });
++    }
++    for (const name of t.names) {
++      for (const r of t.readRoots) {
++        const p = path.join(r, name);
++        if (!(await exists(p))) continue;
++        const ours = await isOurEntry(p, name);
++        if (r === t.skillsRoot && ours) continue; // 安装根里的自家同名：上一次安装，升级覆盖
++        problems.push({ agent: t.agent, kind: ours ? 'foreign-entry' : 'third-party', path: p });
++      }
++    }
++  }
++  return problems;
++}
++
++// ─────────────────────── 编排器侧：共享读取面 ───────────────────────
++
++/** 扫描用的用户环境。测试注入临时家目录；生产缺省见 {@link entryScanEnv} */
++export interface EntryScanEnv {
++  home: string;
++  env: Readonly<Record<string, string | undefined>>;
++}
++
++/**
++ * 只为隔离测试与诊断：指定共享读取面扫描读哪个家目录（计划双审 CODEX-01）。
++ * 只改这一处只读扫描，安装器不读它。
++ */
++export const ENTRY_SCAN_HOME_ENV = 'TRIVIUM_ENTRY_SCAN_HOME';
++
++/**
++ * doctor 与 preflight 扫描所用家目录的**唯一来源**：注入口 → `TRIVIUM_ENTRY_SCAN_HOME` → `os.homedir()`。
++ * 两处都经它取，不各自读 `os.homedir()`——否则测试隔离要逐个调用点去补，补漏一处就读到真实家目录。
++ */
++export function entryScanEnv(inject?: EntryScanEnv): EntryScanEnv {
++  if (inject) return inject;
++  const fromEnv = process.env[ENTRY_SCAN_HOME_ENV];
++  return { home: fromEnv && fromEnv.length > 0 ? fromEnv : os.homedir(), env: process.env };
++}
++
++/**
++ * 共享读取面的扫描目标：登记了额外读取根的每一家，只查额外读取根，不查残留（计划 r2 T-3）。
++ *
++ * 安装根不在这里查：那里的自家同名是正常的升级对象，安装根的问题归安装器与 `install:check`。
++ * 额外读取根与安装器同一个求值函数（`entrySkillRootOf`），`CODEX_HOME` 只影响安装根。
++ */
++export function sharedReadRootTargets(agents: readonly AgentDescriptor[], se: EntryScanEnv): EntryScanTarget[] {
++  const out: EntryScanTarget[] = [];
++  for (const a of agents) {
++    if (a.entrySkillExtraReadRoots.length === 0) continue;
++    const roots = entrySkillRootOf(a, se.home, se.env);
++    out.push({
++      agent: a.id,
++      skillsRoot: roots.skillsRoot,
++      readRoots: roots.readRoots.filter((r) => r !== roots.skillsRoot),
++      names: ENTRY_SKILL_NAMES,
++      residueNames: [],
++    });
++  }
++  return out;
++}
++
++/** 按路径归并：同一个共享根被几家读到，同一个同名目录就有几条问题 */
++function groupByPath(problems: readonly EntryCollisionProblem[]): { path: string; kind: EntryCollisionKind; agents: AgentId[] }[] {
++  const byPath = new Map<string, { path: string; kind: EntryCollisionKind; agents: AgentId[] }>();
++  for (const p of problems) {
++    const g = byPath.get(p.path);
++    if (g) {
++      if (!g.agents.includes(p.agent)) g.agents.push(p.agent);
++    } else {
++      byPath.set(p.path, { path: p.path, kind: p.kind, agents: [p.agent] });
++    }
++  }
++  return [...byPath.values()];
++}
++
++const displayOf = (id: AgentId): string => agentById(id)?.display ?? id;
++
++/** doctor 的出口句：先只读核对，确认后由人挪走 */
++export const SHARED_ROOT_EXIT_HINT =
++  '出口：在 TriviumCode 仓库根跑 `npm run install:check` 只读核对，确认无用后手工挪走；安装器与 doctor 都不删这些路径。';
++
++/** doctor 用：全部问题，按路径归并、逐行列出，末尾给出口。无问题返回 null */
++export function describeSharedRootProblems(problems: readonly EntryCollisionProblem[], home: string): string | null {
++  if (problems.length === 0) return null;
++  const groups = groupByPath(problems);
++  const lines = [
++    `共享读取面里有 ${groups.length} 个同名入口（这些根会被多家 CLI 读到：同名时 Codex 的显式调用会失效、ZCode 两份都进模型清单，` +
++      '而且它带的 --driver 可能是别家）：',
++  ];
++  for (const g of groups) {
++    lines.push(`  · ${displayHomePath(g.path, home)}  ${ENTRY_PROBLEM_LABELS[g.kind]}（${g.agents.map(displayOf).join('、')} 会读到）`);
++  }
++  lines.push(`  ${SHARED_ROOT_EXIT_HINT}`);
++  return lines.join('\n');
++}
++
++/** preflight 用：一行。无问题返回 null */
++export function summarizeSharedRootProblems(problems: readonly EntryCollisionProblem[], home: string): string | null {
++  if (problems.length === 0) return null;
++  const groups = groupByPath(problems);
++  const roots = [...new Set(groups.map((g) => displayHomePath(path.dirname(g.path), home)))];
++  const agents = [...new Set(groups.flatMap((g) => g.agents))];
++  return (
++    `⚠️ 共享读取面 ${roots.join('、')} 有 ${groups.length} 个同名入口，本轮的 ${agents.map(displayOf).join('、')} 会读到；` +
++    '跑 doctor 看完整清单与出口（不影响本次预检）'
++  );
++}
+diff --git a/test/helpers/entry-scan-home.ts b/test/helpers/entry-scan-home.ts
+new file mode 100644
+index 00000000..afe4f5f9
+--- /dev/null
++++ b/test/helpers/entry-scan-home.ts
+@@ -0,0 +1,29 @@
++/**
++ * 共享读取面检查（EV-240）的测试隔离：让 doctor / preflight 的那一次只读扫描读空夹具，不读真实家目录
++ * （M12 批次 5，计划双审 CODEX-01 / GLM-01）。
++ *
++ * 扫描的家目录只有一个来源（`entryScanEnv()`：注入口 → `TRIVIUM_ENTRY_SCAN_HOME` → `os.homedir()`），
++ * 所以隔离也只在一处做：
++ *
++ * - 经 `fixture.ts` 的 `cli()` 跑打包产物：`cli()` 缺省就把该变量指向本进程的空夹具；
++ * - 进程内直调 `runDoctor` / `runPreflight` 的测试文件：在文件顶部调一次 {@link isolateEntryScanHome}。
++ *
++ * `entry-scan-isolation` 的对账用例守这两条：直调却没调本函数的文件当场红。
++ */
++import { ENTRY_SCAN_HOME_ENV } from '../../src/trivium/entry-collisions.js';
++import { scratchDirSync } from './scratch.js';
++
++let empty: string | null = null;
++
++/** 本测试进程的空家目录夹具（惰性建一次，测试文件进程退出时随 `scratchDir` 登记删除） */
++export function emptyEntryScanHome(): string {
++  empty ??= scratchDirSync('trivium-escan-');
++  return empty;
++}
++
++/** 把本进程的扫描家目录钉到空夹具；返回夹具路径。进程内直调与本进程派生的子进程都继承它 */
++export function isolateEntryScanHome(): string {
++  const home = emptyEntryScanHome();
++  process.env[ENTRY_SCAN_HOME_ENV] = home;
++  return home;
++}
+diff --git a/test/integration/handoff-dedupe.test.ts b/test/integration/handoff-dedupe.test.ts
+new file mode 100644
+index 00000000..5172e9e1
+--- /dev/null
++++ b/test/integration/handoff-dedupe.test.ts
+@@ -0,0 +1,59 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { bundleMissing, bundleSkipReason, cli, makeFixture } from '../helpers/fixture.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++import { extractJsonCandidate } from '../../src/trivium/parse.js';
++import { repoId } from '../../src/trivium/review.js';
++import { RUN_DIR_FILES } from '../../src/trivium/run-files.js';
++import type { RunMeta } from '../../src/trivium/types.js';
++import type { StubConfig } from '../../src/trivium/adapters/stub.js';
++
++/*
++ * EV-236 A2（M12 批次 5；计划 r2 §4 I1）：交接文件里冻结补丁只存一份，worker 按引用还原后照常跑完。
++ * 只数快照结构里的正文份数（计划双审 CODEX-02：任务书节选在 400 行内就是全文，`brief_text` 本来各有一份，不在去重范围）。
++ */
++
++const TOPIC = '交接去重';
++const STUB: StubConfig = { gemini: { mode: 'ok' }, glm: { mode: 'ok' } };
++
++test('交接文件：各侧快照不带补丁正文、frozen_diff 恰一份且等于归档补丁；brief 与归档逐字相同；worker 照常收尾', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC, draft: false });
++  const codeDir = path.join(fx.archiveRoot, TOPIC, 'code');
++  await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 4242;\n', 'utf8');
++
++  const started = await cli(fx.root, ['review', '--start', '--stage', 'code', '--topic', TOPIC, '--focus', '看变更', '--json'], STUB);
++  assert.equal(started.code, EXIT.OK, `--start 失败：\n${started.stdout}\n${started.stderr}`);
++  const cand = extractJsonCandidate(started.stdout);
++  assert.ok(cand);
++  const runId = (JSON.parse(cand.json) as { run_id: string }).run_id;
++
++  // 先读交接文件：收尾的清扫会就地改写它（脱敏），在它之前取原样
++  const handoff = JSON.parse(await fs.readFile(path.join(fx.runRoot, repoId(fx.root), runId, RUN_DIR_FILES.request), 'utf8')) as {
++    snapshots: Record<string, { diffText: string | null; subjectSha256: string }>;
++    frozen_diff?: { sha256: string; text: string };
++    requests: Record<string, { brief_text: string; brief_path: string }>;
++  };
++
++  let exitCode: number = EXIT.STILL_RUNNING;
++  for (let i = 0; i < 12 && exitCode === EXIT.STILL_RUNNING; i++) {
++    exitCode = (await cli(fx.root, ['review', '--wait', runId, '--timeout', '20'], STUB, 60_000)).code ?? EXIT.FAIL;
++  }
++  assert.equal(exitCode, EXIT.OK, '双审应成功（worker 读回新格式交接文件）');
++  const meta = JSON.parse(await fs.readFile(path.join(codeDir, '_meta', `run-${runId}.json`), 'utf8')) as RunMeta;
++  assert.equal(meta.status, 'success');
++
++  const diff = await fs.readFile(path.join(codeDir, '_meta', `changes-${runId}.diff`), 'utf8');
++  assert.ok(handoff.frozen_diff, '新格式要带 frozen_diff');
++  assert.equal(handoff.frozen_diff.text, diff, '那一份就是送审的补丁原文');
++  assert.equal(handoff.frozen_diff.sha256, meta.snapshot.subject_sha256);
++  const sides = Object.keys(handoff.snapshots);
++  assert.equal(sides.length, 2);
++  for (const c of sides) {
++    assert.equal(handoff.snapshots[c]!.diffText, null, `${c} 侧快照不该再带一份正文`);
++    assert.equal(handoff.snapshots[c]!.subjectSha256, meta.snapshot.subject_sha256);
++    const onDisk = await fs.readFile(handoff.requests[c]!.brief_path, 'utf8');
++    assert.equal(handoff.requests[c]!.brief_text, onDisk, `${c} 侧交给审核者的任务书与归档逐字相同`);
++  }
++});
+diff --git a/test/unit/doctor-shared-roots.test.ts b/test/unit/doctor-shared-roots.test.ts
+new file mode 100644
+index 00000000..ccb2d3a7
+--- /dev/null
++++ b/test/unit/doctor-shared-roots.test.ts
+@@ -0,0 +1,61 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { runDoctor } from '../../src/trivium/doctor.js';
++import { TRIVIUM_DIR, defaultConfig } from '../../src/trivium/config.js';
++import { AGENTS } from '../../src/trivium/agents/registry.js';
++import { SHARED_ROOT_EXIT_HINT, type EntryScanEnv } from '../../src/trivium/entry-collisions.js';
++import { scratchDir } from '../helpers/scratch.js';
++import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
++
++// 本文件每个用例都显式注入夹具家目录；进程级再钉一次，防止漏传时读到真实家目录
++isolateEntryScanHome();
++
++/*
++ * doctor 全量列出共享读取面里的同名入口（EV-240 方案 A，用户 D-11；计划 r2 §2.2 / §4 U5）：
++ * 只进 warnings、不进 blockers，与 --only 无关，扫描出错也只记一条告警。
++ */
++
++const SHARED_REL = AGENTS.find((a) => a.entrySkillExtraReadRoots.length > 0)!.entrySkillExtraReadRoots[0]!;
++
++async function doctorWith(se: EntryScanEnv) {
++  const root = await scratchDir('trivium-doc-shared-');
++  const triviumDir = path.join(root, TRIVIUM_DIR);
++  await fs.mkdir(triviumDir, { recursive: true });
++  return runDoctor({ config: defaultConfig(), projectRoot: root, triviumDir, only: 'env', skipModelCalls: true, entryScanEnv: se });
++}
++
++const isShared = (w: string): boolean => w.startsWith('共享读取面');
++
++test('U5 无同名入口 ⇒ 不出告警；有 ⇒ warnings 恰多一条、按路径归并、~ 折叠、带出口，blockers 不变', async () => {
++  const clean = await scratchDir('trivium-doc-home-');
++  const base = await doctorWith({ home: clean, env: {} });
++  assert.equal(base.warnings.filter(isShared).length, 0);
++
++  const dirty = await scratchDir('trivium-doc-home-');
++  const shared = path.join(dirty, SHARED_REL);
++  await fs.mkdir(path.join(shared, 'dual-run'), { recursive: true });
++  await fs.writeFile(path.join(shared, 'dual-run/SKILL.md'), '---\nname: dual-run\n---\n别家的\n');
++  await fs.mkdir(path.join(shared, 'dual-status'), { recursive: true });
++  await fs.writeFile(path.join(shared, 'dual-status/SKILL.md'), '---\nname: dual-status\n---\n./.trivium/bin/trivium\n');
++  const r = await doctorWith({ home: dirty, env: {} });
++  const hits = r.warnings.filter(isShared);
++  assert.equal(hits.length, 1, JSON.stringify(r.warnings));
++  assert.equal(r.warnings.length, base.warnings.length + 1, '只多这一条');
++  const w = hits[0]!;
++  assert.match(w, /^共享读取面里有 2 个同名入口/);
++  assert.ok(w.includes(`~/${SHARED_REL}/dual-run`) && w.includes(`~/${SHARED_REL}/dual-status`), w);
++  assert.ok(!w.includes(dirty), `不得露出夹具绝对路径：${w}`);
++  assert.ok(w.includes(SHARED_ROOT_EXIT_HINT), w);
++  assert.deepEqual(r.blockers, base.blockers, '告警不得进入阻断项');
++});
++
++test('U5 扫描出错 ⇒ 退化为一条告警，doctor 不失败、阻断不变', async () => {
++  const clean = await scratchDir('trivium-doc-home-');
++  const base = await doctorWith({ home: clean, env: {} });
++  // 家目录取值不是字符串：path.join 抛错，模拟扫描内部失败
++  const r = await doctorWith({ home: null as unknown as string, env: {} });
++  assert.ok(r.warnings.some((w) => w.startsWith('共享读取面检查没做成：')), JSON.stringify(r.warnings));
++  assert.deepEqual(r.blockers, base.blockers);
++});
+diff --git a/test/unit/entry-collisions-bundles.test.ts b/test/unit/entry-collisions-bundles.test.ts
+new file mode 100644
+index 00000000..25ccec59
+--- /dev/null
++++ b/test/unit/entry-collisions-bundles.test.ts
+@@ -0,0 +1,70 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { existsSync, promises as fs } from 'node:fs';
++import { planInstall } from '../../src/install.js';
++import { ENTRY_SKILL_NAMES } from '../../src/trivium/entry-collisions.js';
++import { REPO_ROOT } from '../helpers/fixture.js';
++import { scratchDir } from '../helpers/scratch.js';
++
++/*
++ * 两个打包产物用的是同一份实现，不是各抄一份（EV-240 方案 A，M12 批次 5；计划 r2 §2.4 / §4 U4）。
++ *
++ * 三条证据：①两份产物都带 esbuild 给共享模块打的模块标记；②安装器源码里不再有判定实现；
++ * ③`src/trivium/` 不反向依赖安装器（计划双审 AGY-04）。另对账编排器侧的入口名单。
++ */
++
++const MARK = '// src/trivium/entry-collisions.ts';
++const BUNDLES = ['dist/install.cjs', 'skills/dual-critic/scripts/trivium.cjs'];
++
++test('U4 两份打包产物都含共享模块（同一个源文件的模块标记）', { skip: BUNDLES.some((b) => !existsSync(path.join(REPO_ROOT, b))) && '先 npm run build' }, async () => {
++  for (const b of BUNDLES) {
++    const text = await fs.readFile(path.join(REPO_ROOT, b), 'utf8');
++    assert.ok(text.includes(MARK), `${b} 里找不到 ${MARK}`);
++    assert.equal(text.split('async function isOurEntry(').length - 1, 1, `${b} 里 isOurEntry 应恰有一份实现`);
++    assert.equal(text.split('async function scanEntryCollisions(').length - 1, 1, `${b} 里判定核心应恰有一份实现`);
++  }
++});
++
++test('U4 安装器源码里没有判定实现，只经共享模块调用', async () => {
++  const src = await fs.readFile(path.join(REPO_ROOT, 'src/install.ts'), 'utf8');
++  assert.ok(!/function\s+isOurEntry\s*\(/.test(src), 'install.ts 不得再定义 isOurEntry');
++  assert.ok(!src.includes("kind: ours ? 'foreign-entry' : 'third-party'"), 'install.ts 不得再有判定循环');
++  assert.ok(src.includes("from './trivium/entry-collisions.js'"), 'install.ts 要从共享模块取判定');
++});
++
++test('U4 src/trivium/ 不 import 安装器或入口渲染（编排器不反向依赖安装器）', async () => {
++  const offenders: string[] = [];
++  const walk = async (dir: string): Promise<void> => {
++    for (const e of await fs.readdir(dir, { withFileTypes: true })) {
++      const p = path.join(dir, e.name);
++      if (e.isDirectory()) await walk(p);
++      else if (e.name.endsWith('.ts')) {
++        const text = await fs.readFile(p, 'utf8');
++        if (/from\s+'(\.\.\/)+(install|entry-render)\.js'/.test(text)) offenders.push(path.relative(REPO_ROOT, p));
++      }
++    }
++  };
++  await walk(path.join(REPO_ROOT, 'src/trivium'));
++  assert.deepEqual(offenders, []);
++});
++
++test('U4 名单对账：ENTRY_SKILL_NAMES = 命令契约 name 全集 = 安装器给每一家算出的名单', async () => {
++  const dir = path.join(REPO_ROOT, 'skills-src/commands');
++  const contractNames: string[] = [];
++  for (const f of await fs.readdir(dir)) {
++    if (!f.endsWith('.contract.md')) continue;
++    const m = /^---\nname: (\S+)\n/.exec(await fs.readFile(path.join(dir, f), 'utf8'));
++    assert.ok(m, `${f} 的 front-matter 首键应为 name`);
++    contractNames.push(m[1]!);
++  }
++  const expected = [...ENTRY_SKILL_NAMES].sort();
++  assert.deepEqual([...contractNames].sort(), expected, '改了命令要同步 entry-collisions.ts 的 ENTRY_SKILL_NAMES');
++
++  const home = await scratchDir('trivium-ecol-plan-');
++  const plan = await planInstall(REPO_ROOT, { home, env: {} });
++  assert.ok(plan.targets.length > 0);
++  for (const t of plan.targets) {
++    assert.deepEqual(t.sources.map((s) => s.name).sort(), expected, `${t.agent} 的安装名单与编排器侧不一致`);
++  }
++});
+diff --git a/test/unit/entry-collisions.test.ts b/test/unit/entry-collisions.test.ts
+new file mode 100644
+index 00000000..a1af33ac
+--- /dev/null
++++ b/test/unit/entry-collisions.test.ts
+@@ -0,0 +1,135 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import {
++  ENTRY_PROBLEM_LABELS, ENTRY_SKILL_NAMES, SHARED_ROOT_EXIT_HINT, describeSharedRootProblems, entryScanEnv,
++  ENTRY_SCAN_HOME_ENV, isOurEntry, scanEntryCollisions, sharedReadRootTargets, summarizeSharedRootProblems,
++} from '../../src/trivium/entry-collisions.js';
++import { AGENTS, agentById, entrySkillRootOf } from '../../src/trivium/agents/registry.js';
++import { displayHomePath } from '../../src/trivium/util/fsx.js';
++import { scratchDir } from '../helpers/scratch.js';
++
++/*
++ * 读取面同名入口检测的共享实现（EV-240 方案 A，M12 批次 5；计划 r2 §2.1 / §4 U1、U2）。
++ * 家目录一律是 `scratchDir` 的夹具，不读真实家目录。
++ */
++
++const ourSkill = (name: string): string =>
++  `---\nname: ${name}\ndescription: x\n---\n\n跑 \`./.trivium/bin/trivium review --start …\`\n`;
++
++async function plant(dir: string, md: string | null): Promise<void> {
++  await fs.mkdir(dir, { recursive: true });
++  if (md !== null) await fs.writeFile(path.join(dir, 'SKILL.md'), md);
++}
++
++test('U1 isOurEntry：名字对得上且调用 wrapper 才判真；名字不符、缺 wrapper、读不到都判假', async () => {
++  const home = await scratchDir('trivium-ecol-');
++  const d = path.join(home, 'x');
++  await plant(path.join(d, 'ok'), ourSkill('dual-run'));
++  await plant(path.join(d, 'wrong-name'), ourSkill('dual-status'));
++  await plant(path.join(d, 'no-wrapper'), '---\nname: dual-run\n---\n别人的\n');
++  await plant(path.join(d, 'no-md'), null);
++  assert.equal(await isOurEntry(path.join(d, 'ok'), 'dual-run'), true);
++  assert.equal(await isOurEntry(path.join(d, 'wrong-name'), 'dual-run'), false);
++  assert.equal(await isOurEntry(path.join(d, 'no-wrapper'), 'dual-run'), false);
++  assert.equal(await isOurEntry(path.join(d, 'no-md'), 'dual-run'), false);
++});
++
++test('U1 scanEntryCollisions：三类判定与次序（残留在前、再按名单 × 读取根），安装根里的自家同名放行', async () => {
++  const home = await scratchDir('trivium-ecol-');
++  const install = path.join(home, 'inst');
++  const shared = path.join(home, 'shared');
++  await plant(path.join(install, 'dual-critic'), null); // 残留
++  await plant(path.join(install, 'dual-run'), ourSkill('dual-run')); // 安装根里的自家：放行
++  await plant(path.join(install, 'dual-status'), '---\nname: dual-status\n---\n'); // 安装根里的别家：third-party
++  await plant(path.join(shared, 'dual-run'), ourSkill('dual-run')); // 共享根里的自家：foreign-entry
++  await plant(path.join(shared, 'dual-approve'), '---\nname: dual-approve\n---\n'); // 共享根里的别家：third-party
++
++  const problems = await scanEntryCollisions([{
++    agent: 'codex', skillsRoot: install, readRoots: [install, shared],
++    names: ['dual-approve', 'dual-run', 'dual-status'], residueNames: ['dual-critic', 'entry'],
++  }]);
++  assert.deepEqual(problems, [
++    { agent: 'codex', kind: 'residue', path: path.join(install, 'dual-critic') },
++    { agent: 'codex', kind: 'third-party', path: path.join(shared, 'dual-approve') },
++    { agent: 'codex', kind: 'foreign-entry', path: path.join(shared, 'dual-run') },
++    { agent: 'codex', kind: 'third-party', path: path.join(install, 'dual-status') },
++  ]);
++
++  // 不查残留的目标（安装器的 top 布局、共享读取面）：同一个家里的残留不报
++  const noResidue = await scanEntryCollisions([{
++    agent: 'codex', skillsRoot: install, readRoots: [install], names: [], residueNames: [],
++  }]);
++  assert.deepEqual(noResidue, []);
++});
++
++test('U2 sharedReadRootTargets：只出登记了额外读取根的家，读取根只含额外根，不查残留；CODEX_HOME 不影响共享根', async () => {
++  const home = await scratchDir('trivium-ecol-');
++  const codexHome = await scratchDir('trivium-ecol-ch-');
++  const targets = sharedReadRootTargets(AGENTS, { home, env: { CODEX_HOME: codexHome } });
++  const withExtra = AGENTS.filter((a) => a.entrySkillExtraReadRoots.length > 0).map((a) => a.id);
++  assert.ok(withExtra.length > 0, '注册表里至少有一家登记了额外读取根');
++  assert.deepEqual(targets.map((t) => t.agent), withExtra);
++  for (const t of targets) {
++    const a = agentById(t.agent)!;
++    assert.deepEqual(t.readRoots, a.entrySkillExtraReadRoots.map((r) => path.join(home, r)));
++    assert.equal(t.skillsRoot, entrySkillRootOf(a, home, { CODEX_HOME: codexHome }).skillsRoot);
++    assert.ok(!t.readRoots.includes(t.skillsRoot), '安装根不在扫描面里');
++    assert.deepEqual(t.residueNames, []);
++    assert.deepEqual(t.names, ENTRY_SKILL_NAMES);
++  }
++  // 共享根里的 dual-critic 拷贝不判（与安装器口径一致，计划 r2 T-3 / §7）
++  for (const r of new Set(targets.flatMap((t) => t.readRoots))) await plant(path.join(r, 'dual-critic'), null);
++  assert.deepEqual(await scanEntryCollisions(targets), []);
++});
++
++test('U2 渲染：按路径归并、~ 折叠到扫描所用的家目录、带出口；preflight 一行；无问题返回 null', async () => {
++  const home = await scratchDir('trivium-ecol-');
++  const targets = sharedReadRootTargets(AGENTS, { home, env: {} });
++  const root = targets[0]!.readRoots[0]!;
++  await plant(path.join(root, 'dual-run'), ourSkill('dual-run'));
++  await plant(path.join(root, 'dual-status'), '---\nname: dual-status\n---\n');
++  const problems = await scanEntryCollisions(targets);
++  // 共享根被几家读到，同一个目录就报几次
++  assert.equal(problems.length, 2 * targets.length);
++
++  const text = describeSharedRootProblems(problems, home)!;
++  const rel = displayHomePath(root, home);
++  assert.ok(rel.startsWith('~/'), rel);
++  assert.ok(!text.includes(home), `不得露出夹具的绝对路径：${text}`);
++  assert.match(text, /^共享读取面里有 2 个同名入口/);
++  assert.ok(text.includes(`· ${rel}/dual-run  ${ENTRY_PROBLEM_LABELS['foreign-entry']}`), text);
++  assert.ok(text.includes(`· ${rel}/dual-status  ${ENTRY_PROBLEM_LABELS['third-party']}`), text);
++  for (const t of targets) assert.ok(text.includes(agentById(t.agent)!.display), text);
++  assert.ok(text.endsWith(SHARED_ROOT_EXIT_HINT), text);
++
++  const line = summarizeSharedRootProblems(problems, home)!;
++  assert.ok(!line.includes('\n'), '预检只给一行');
++  assert.ok(line.startsWith('⚠️ 共享读取面 ~/'), line);
++  assert.ok(line.includes('2 个同名入口'), line);
++  assert.ok(!line.includes(home), line);
++
++  assert.equal(describeSharedRootProblems([], home), null);
++  assert.equal(summarizeSharedRootProblems([], home), null);
++});
++
++test('U2 entryScanEnv：注入口优先，其次环境变量，最后 os.homedir()', () => {
++  const saved = process.env[ENTRY_SCAN_HOME_ENV];
++  try {
++    process.env[ENTRY_SCAN_HOME_ENV] = '/from-env';
++    assert.equal(entryScanEnv({ home: '/inject', env: {} }).home, '/inject');
++    assert.equal(entryScanEnv().home, '/from-env');
++    process.env[ENTRY_SCAN_HOME_ENV] = '';
++    assert.notEqual(entryScanEnv().home, '', '空值不算设置');
++  } finally {
++    if (saved === undefined) delete process.env[ENTRY_SCAN_HOME_ENV];
++    else process.env[ENTRY_SCAN_HOME_ENV] = saved;
++  }
++});
++
++test('U2 displayHomePath：不传 home 时行为同原来；传 home 时按它折叠', () => {
++  assert.equal(displayHomePath('/a/b/c', '/a'), '~/b/c');
++  assert.equal(displayHomePath('/x/y', '/a'), '/x/y');
++  assert.equal(displayHomePath('/a', '/a'), '/a', '家目录本身不折叠（原行为）');
++});
+diff --git a/test/unit/entry-scan-isolation.test.ts b/test/unit/entry-scan-isolation.test.ts
+new file mode 100644
+index 00000000..5095b33c
+--- /dev/null
++++ b/test/unit/entry-scan-isolation.test.ts
+@@ -0,0 +1,86 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { runDoctor } from '../../src/trivium/doctor.js';
++import { TRIVIUM_DIR, defaultConfig } from '../../src/trivium/config.js';
++import { AGENTS } from '../../src/trivium/agents/registry.js';
++import { ENTRY_SCAN_HOME_ENV } from '../../src/trivium/entry-collisions.js';
++import { REPO_ROOT } from '../helpers/fixture.js';
++import { scratchDir } from '../helpers/scratch.js';
++import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
++
++isolateEntryScanHome();
++
++/*
++ * 测试不读真实家目录的共享读取面（EV-240，M12 批次 5；计划双审 CODEX-01 / GLM-01，计划 r2 §4 U8、U9）。
++ *
++ * doctor 的扫描与 `--only` 无关、preflight 的扫描排在多数只告警项之后，凡能跑到 `runDoctor` / `runPreflight`
++ * 的旧用例都会顺带扫一次。隔离靠单一来源（`entryScanEnv()`）+ 两个测试侧入口，本文件守住两件事：
++ * U8 名单对账——没走隔离的调用方当场红；U9 读源证明——设了变量，读的就是变量指的那个目录。
++ */
++
++async function listTestFiles(dir: string): Promise<string[]> {
++  const out: string[] = [];
++  for (const e of await fs.readdir(dir, { withFileTypes: true })) {
++    const p = path.join(dir, e.name);
++    if (e.isDirectory()) out.push(...(await listTestFiles(p)));
++    else if (e.name.endsWith('.test.ts')) out.push(p);
++  }
++  return out;
++}
++
++/**
++ * 不经 `cli()`、自己 spawn 打包产物跑 doctor / preflight 的文件，逐个登记理由。新出现的未登记即红。
++ * （提到命令名但不真正执行它的，例如只校验参数形态的启动器用例，也登记在这里。）
++ */
++const SPAWN_REVIEWED: Readonly<Record<string, string>> = {
++  'test/integration/selftest.test.ts': '`doctor --selftest` 走 selftestCommand，不进 runDoctor，跑不到扫描',
++  'test/integration/stub-agent-kit.test.ts': 'cliIn 显式设 HOME 为夹具家目录，os.homedir() 即夹具',
++  'test/unit/agent-access-task-launch.test.ts': '只校验静默启动器的参数形态，产品 spawn 计数断言为 0',
++  'test/unit/agent-access-recovery.test.ts': '只把 preflight 写进 argv 交给形态校验器，不执行',
++  'test/integration/access-v3.test.ts': '自己 spawn 的只有 gate hook-pre-commit；preflight 都经 cli()',
++};
++
++test('U8 对账：直调 runDoctor / runPreflight 的测试文件都调了 isolateEntryScanHome()；cli() 缺省设隔离变量', async () => {
++  const files = await listTestFiles(path.join(REPO_ROOT, 'test'));
++  const missing: string[] = [];
++  const unreviewedSpawn: string[] = [];
++  for (const f of files) {
++    const rel = path.relative(REPO_ROOT, f).split(path.sep).join('/');
++    const text = await fs.readFile(f, 'utf8');
++    if (/\brun(Doctor|Preflight)\s*\(/.test(text) && !text.includes('isolateEntryScanHome()')) missing.push(rel);
++    const spawnsBundle = /\[\s*(BUNDLE|k\.bundle)\s*,/.test(text) || /spawnSync\(/.test(text);
++    if (spawnsBundle && /'(doctor|preflight)'/.test(text) && !(rel in SPAWN_REVIEWED)) unreviewedSpawn.push(rel);
++  }
++  assert.deepEqual(missing, [], '这些文件直调了 doctor / preflight 却没钉扫描家目录');
++  assert.deepEqual(unreviewedSpawn, [], '这些文件自己 spawn 了 doctor / preflight：要么改走 cli()，要么登记理由');
++
++  const fixture = await fs.readFile(path.join(REPO_ROOT, 'test/helpers/fixture.ts'), 'utf8');
++  assert.match(fixture, /\[ENTRY_SCAN_HOME_ENV\]: emptyEntryScanHome\(\)/, 'cli() 的缺省环境要把扫描家目录钉到空夹具');
++});
++
++test('U9 读源证明：变量指向摆了同名入口的夹具 ⇒ 告警里的路径落在夹具里；指向空夹具 ⇒ 无告警', async () => {
++  const saved = process.env[ENTRY_SCAN_HOME_ENV];
++  const root = await scratchDir('trivium-escan-proj-');
++  const triviumDir = path.join(root, TRIVIUM_DIR);
++  await fs.mkdir(triviumDir, { recursive: true });
++  const dirty = await scratchDir('trivium-escan-dirty-');
++  const rel = AGENTS.find((a) => a.entrySkillExtraReadRoots.length > 0)!.entrySkillExtraReadRoots[0]!;
++  await fs.mkdir(path.join(dirty, rel, 'dual-approve'), { recursive: true });
++  await fs.writeFile(path.join(dirty, rel, 'dual-approve/SKILL.md'), '---\nname: dual-approve\n---\n');
++  try {
++    process.env[ENTRY_SCAN_HOME_ENV] = dirty;
++    const hit = await runDoctor({ config: defaultConfig(), projectRoot: root, triviumDir, only: 'env', skipModelCalls: true });
++    const w = hit.warnings.find((x) => x.startsWith('共享读取面'));
++    assert.ok(w, '变量指向的夹具里有同名入口，必须报');
++    assert.ok(w.includes(`~/${rel}/dual-approve`), w);
++
++    process.env[ENTRY_SCAN_HOME_ENV] = await scratchDir('trivium-escan-clean-');
++    const none = await runDoctor({ config: defaultConfig(), projectRoot: root, triviumDir, only: 'env', skipModelCalls: true });
++    assert.equal(none.warnings.some((x) => x.startsWith('共享读取面')), false);
++  } finally {
++    if (saved === undefined) delete process.env[ENTRY_SCAN_HOME_ENV];
++    else process.env[ENTRY_SCAN_HOME_ENV] = saved;
++  }
++});
+diff --git a/test/unit/handoff-pack.test.ts b/test/unit/handoff-pack.test.ts
+new file mode 100644
+index 00000000..7af8af1f
+--- /dev/null
++++ b/test/unit/handoff-pack.test.ts
+@@ -0,0 +1,103 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { packSnapshots, unpackSnapshots } from '../../src/trivium/run-protocol.js';
++import { EXIT, exitCodeOf } from '../../src/trivium/exit-codes.js';
++import { sha256 } from '../../src/trivium/util/fsx.js';
++import type { Snapshot } from '../../src/trivium/freeze.js';
++import type { CriticId } from '../../src/trivium/types.js';
++
++/*
++ * 交接文件里的冻结补丁只存一份（EV-236 A2，M12 批次 5；计划 r2 §3 / §4 U7）。
++ * 往返后与去重前逐字段相等；旧格式原样读出；新格式坏了一律受控 envError（计划双审 AGY-02 / AGY-03）。
++ */
++
++const DIFF = 'diff --git a/x.ts b/x.ts\n+SENTINEL_DIFF_LINE_8d1c\n'.repeat(3);
++const SIDES: CriticId[] = ['codex', 'glm', 'gemini'];
++
++function snap(diffText: string | null, over: Partial<Snapshot> = {}): Snapshot {
++  return {
++    gitHead: 'a'.repeat(40), treeHash: 'b'.repeat(40), dirty: true,
++    subjectSha256: diffText === null ? 'c'.repeat(64) : sha256(diffText),
++    subjectPath: '/p/.reviews/T/code/_meta/changes-1.diff', denyPaths: ['.env'], diffText, takenAt: 't', ...over,
++  };
++}
++
++const codeSnaps = (): Record<string, Snapshot> => Object.fromEntries(SIDES.map((c) => [c, snap(DIFF)]));
++const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
++
++function assertEnvError(fn: () => unknown, re: RegExp): void {
++  assert.throws(fn, (e: unknown) => {
++    assert.equal(exitCodeOf(e), EXIT.ENV);
++    assert.match((e as Error).message, re);
++    return true;
++  });
++}
++
++test('U7 code 阶段三侧：落盘后快照里正文零份、frozen_diff 一份；往返与原对象逐字段相等；入参不被改', () => {
++  const original = codeSnaps();
++  const before = structuredClone(original);
++  const packed = packSnapshots(original);
++  assert.deepEqual(original, before, 'pack 不得改入参：--start 同进程后面看到的仍是原对象');
++  assert.ok(packed.frozen_diff);
++  assert.equal(packed.frozen_diff.sha256, sha256(DIFF));
++  const onDisk = JSON.parse(JSON.stringify({ stage: 'code', snapshots: packed.snapshots, frozen_diff: packed.frozen_diff }));
++  assert.equal(count(JSON.stringify(onDisk.snapshots), 'SENTINEL_DIFF_LINE_8d1c'), 0);
++  assert.equal(count(JSON.stringify(onDisk), 'SENTINEL_DIFF_LINE_8d1c'), 3, '只剩 frozen_diff 那一份（正文里本就重复 3 行）');
++  for (const c of SIDES) assert.equal(onDisk.snapshots[c].diffText, null);
++  assert.deepEqual(unpackSnapshots(onDisk, 'R'), before);
++});
++
++test('U7 plan 阶段（各侧 diffText 为 null）与空快照：原样，不出 frozen_diff', () => {
++  const plan = Object.fromEntries(SIDES.map((c) => [c, snap(null)]));
++  const p = packSnapshots(plan);
++  assert.equal(p.frozen_diff, undefined);
++  assert.equal(p.snapshots, plan);
++  assert.deepEqual(unpackSnapshots({ stage: 'plan', snapshots: plan }, 'R'), plan);
++  const empty = packSnapshots({});
++  assert.equal(empty.frozen_diff, undefined, '空快照不得提取（AGY-03）');
++});
++
++test('U7 各侧正文不一致（防御）：不收，原样写', () => {
++  const s = codeSnaps();
++  s['glm'] = snap(DIFF + 'x');
++  const p = packSnapshots(s);
++  assert.equal(p.frozen_diff, undefined);
++  assert.equal(p.snapshots, s);
++});
++
++test('U7 旧格式（各侧各带正文、无 frozen_diff）原样读出', () => {
++  const old = codeSnaps();
++  assert.equal(unpackSnapshots({ stage: 'code', snapshots: old }, 'R'), old);
++});
++
++test('U7 新格式被改坏：各种篡改一律 envError，指名运行', () => {
++  const good = () => {
++    const p = packSnapshots(codeSnaps());
++    return JSON.parse(JSON.stringify({ stage: 'code', snapshots: p.snapshots, frozen_diff: p.frozen_diff }));
++  };
++  let h = good();
++  h.frozen_diff.text += 'tampered';
++  assertEnvError(() => unpackSnapshots(h, 'R1'), /运行 R1 的交接文件已损坏：冻结补丁的正文与它的 sha256 对不上/);
++
++  h = good();
++  h.snapshots.glm.diffText = DIFF;
++  assertEnvError(() => unpackSnapshots(h, 'R'), /glm 侧快照既带补丁正文/);
++
++  h = good();
++  h.snapshots.gemini.subjectSha256 = 'f'.repeat(64);
++  assertEnvError(() => unpackSnapshots(h, 'R'), /gemini 侧快照的被审对象哈希与冻结补丁对不上/);
++
++  for (const bad of [null, 'text', 42, { text: 1, sha256: 'x' }, { text: 'x' }]) {
++    h = good();
++    h.frozen_diff = bad;
++    assertEnvError(() => unpackSnapshots(h, 'R'), /冻结补丁的形态不对/);
++  }
++
++  h = good();
++  h.stage = 'plan';
++  assertEnvError(() => unpackSnapshots(h, 'R'), /plan 阶段不该带冻结补丁/);
++
++  h = good();
++  delete h.frozen_diff;
++  assertEnvError(() => unpackSnapshots(h, 'R'), /code 阶段有一侧快照没有补丁正文/);
++});

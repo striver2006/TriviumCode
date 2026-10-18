@@ -1,0 +1,81 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "三个审查焦点全部核实通过。①安装器判定、文案、退出码逐条不变：checkInstall 对 scanEntryCollisions 的映射逐字段等价（每个目标残留在前、再按名单×读取根的次序、安装根里的自家同名放行，均与改造前一致），入口名单仍取渲染产物 t.sources，describeProblems 与 main() 未动；A-1 新旧产物 9 格 stdout/stderr/退出码逐字相同，install.test.ts 把改造前报错全文写死，M1/M13 变异咬住；两产物同源由 U4 双向钉住（两份 bundle 各恰一份 isOurEntry/scanEntryCollisions、install.ts 源码无判定实现、src/trivium 不反向依赖安装器）。②doctor 新扫描在 runDoctor 顶层执行、只 push warnings、异常退化为一条告警，不进 blockers、与 --only 无关；preflight 新项恒 ok:true 不带 exitCode，相关性只取 Driver ∪ 入选审核者中登记了额外读取根的家（注册表派生，codex 与 glm 共读 ~/.agents/skills），排位在已废弃配置键之后、归档与 git 之前；家目录单一来源（注入口→TRIVIUM_ENTRY_SCAN_HOME→os.homedir()），cli() 缺省注入空夹具、5 个直调文件顶部钉夹具、U8 对账加 U9 读源证明，安装器 defaultInstallEnv 不读该变量。③frozen_diff 去重：grep 全 src 核实 diffText 只有 freeze 产线与 pack/unpack 两个读者，任务书、归档补丁、subjectSha256、run.json 快照字段都不经过它；code 阶段 freeze 恒写字符串正文（freeze.ts:507-512），故「code 阶段有 null 却无 frozen_diff」的拒绝分支在合法旧文件上不可达，旧格式原样返回、没有放宽任何既有判据；pack 不改入参，作废重跑用的内存对象不受影响；A-3 归一化后两侧 brief 与 changes diff 逐字相同。三条 nit 均不影响行为正确性。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "scripts/install-check.mjs:23",
+      "problem": "install:check 改从安装器产物解构 ENTRY_PROBLEM_LABELS 后，对「旧构建产物」的降级变了：若 dist/install.cjs 是批次 5 之前构建的（新脚本配旧产物，例如拉了新代码没重跑 build），解构得到 KIND 为 undefined，有问题时 KIND[p.kind] 抛 TypeError，被外层 catch 接住后打「检查失败：Cannot read properties of undefined…」并退 2——用户本该看到冲突清单与退 1。旧脚本的三类标签在本地，产物新旧不影响这一步。退出码 2 的语义（产物缺失或运行出错）勉强能兜住，但文案误导且场景（本机恰好有同名入口 + 旧产物）正是这个脚本的典型使用时机。",
+      "evidence": "scripts/install-check.mjs:23-38（解构在 try 外、KIND[p.kind] 在 try 内，TypeError 会走 catch 退 2）；src/install.ts:53-55（defaultInstallEnv 与导出面）；对照补丁中 scripts/install-check.mjs 改造前的本地 KIND 定义。",
+      "suggestion": "改为 KIND?.[p.kind] ?? p.kind，并在解构后对 undefined 给一句「产物过旧，先 npm run build」的显式提示（可仍退 2），把「标签缺失」与「检查出错」分开。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/entry-scan-isolation.test.ts:52",
+      "problem": "U8 对账是隔离网的关键一环，但直调识别用字面正则匹配 run(Doctor|Preflight)( ：以别名导入（例如 import { runDoctor as rd } 后写 rd(...)）即可让一个未隔离的直调文件逃过对账；spawn 侧的判据（BUNDLE/k.bundle 数组字面或 spawnSync）同样是启发式。按本仓「对账不靠记性」的纪律，这一网的已知缝隙最好收窄或在用例注释里写明「这是启发式、已知绕过形态」。",
+      "evidence": "test/unit/entry-scan-isolation.test.ts:52-57（正则与两条断言）；test/helpers/entry-scan-home.ts 的说明段（宣称 U8 守住直调却没调本函数的文件）。",
+      "suggestion": "对账时先从 import 声明里提取被别名的 runDoctor/runPreflight 局部名再查调用（或把「import 了这两个符号」本身作为对账条件，宁可误报），至少在 SPAWN_REVIEWED 注释旁写明正则的局限。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/entry-collisions.ts:128",
+      "problem": "实现与已批准计划 r2 的三处细目漂移未见记录：计划 §2.5 的 entryScanHome() 实现为 entryScanEnv()；§2.1 的 summarizeSharedRootProblems(problems, agents, home) 三参实现为两参（agents 改为从 problems 派生，行为等价）；§4.1 点名 6 个直调文件，实际只改 5 个（codex-wiring.test.ts 只在注释里提到 runPreflight、并无直调，报告 §2.3 写「5 个测试文件」算半显式订正）。行为与设计文档 v1.3.166 均无冲突，纯记录问题，但后人拿计划文本对代码会对不上。",
+      "evidence": ".reviews/M12-运维防护/plan/2026-10-18-M12-运维防护-r2-claude.md §2.1/§2.5/§4.1；src/trivium/entry-collisions.ts:128、:192；test/integration/codex-wiring.test.ts:50,113（仅注释提及）；doc/05_testing/REPORT_2026-10-18_m12_batch5.md §2.3。",
+      "suggestion": "在报告或裁决件里补一句「函数名与签名相对计划 r2 有如下调整、codex-wiring 经核实无需隔离」，免得下一次有人按计划逐条核对时误判为实现跑偏。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "安装器行为不变有三层独立证据：映射逐字段等价（残留在前、名单×读取根次序、安装根自家放行逐字相同）；A-1 新旧产物 9 格 stdout/stderr/退出码/目录树逐字相同；install.test.ts 把改造前 describeProblems 全文写死并断言问题次序，M1/M13 变异咬住。",
+    "两个打包产物同源不是各抄一份：U4 断言两份 bundle 各恰一份 isOurEntry 与 scanEntryCollisions 实现、install.ts 源码不再有判定循环、src/trivium 无指向安装器的 import；ENTRY_SKILL_NAMES 常量配「契约名全集 = planInstall 名单」三方对账，符合本仓不靠记性的纪律。",
+    "doctor 只进 warnings（插入点在 runDoctor 顶层、不受 --only 门控，已亲读 doctor.ts:577-590 核实）、扫描异常只退化为一条告警、blockers 与退出码不变；preflight 新项恒 ok:true、无 exitCode、相关性只取 Driver ∪ 入选审核者中登记了额外读取根的家，全部由注册表派生、无 Agent id 字面量。",
+    "测试隔离的机制选型正确：扫描家目录单一来源（注入口→环境变量→os.homedir()），fixture.ts 的 cli() 缺省注入空夹具、5 个直调文件顶部钉夹具、U8 对账挡新增漏网、U9 读源证明读的确实是指定目录；安装器 defaultInstallEnv 不读 TRIVIUM_ENTRY_SCAN_HOME，核实不受影响。",
+    "frozen_diff 方案安全：grep 全 src 核实 diffText 除 freeze 产线外只有 pack/unpack 两个读者；code 阶段 freeze 恒写字符串正文，故旧格式拒绝分支在合法旧文件上不可达，六类新格式篡改全部受控 envError（含 sha 校验与非 code 阶段拒绝）；pack 不改入参（--start 同进程与作废重跑用的内存对象不受影响）；A-3 归一化后 brief 与 changes diff 逐字相同、新 worker 读旧格式原样返回。",
+    "entry-collisions 模块头部写明不 import 安装器/渲染器、全函数只读不写，与「安装器只报错、不删除」的既有纪律一致；共享根里的 dual-critic 拷贝不判，与安装器口径保持同频并如实登记为残余。"
+  ],
+  "not_covered": [
+    "本侧只读未执行任何命令：npm run check 全绿（3711/3709）、变异 14/14、A-1～A-3 均未复跑，读数取自报告与 evidence 文件，结论基于源码与用例文本的静态核实。",
+    "真实 ~/.trivium/runs 下旧运行目录的实际可读性未验证（该树在禁读清单）；「旧格式原样读出」结论基于 unpackSnapshots 单测、A-3 桩级对照与 freeze 源码推证。",
+    "review --start 不跑新检查、同步 --stage 路径不写 request.json 的断言基于源码与计划 §1.2/§3.3 阅读，未做集成复测。",
+    "doctor 在 --only 各取值下的表现只核了插入位置（顶层、无门控）与 U5 的 only: 'env' 用例，未逐取值复测。",
+    "清扫就地脱敏若命中 frozen_diff.text 会造成 sha256 与正文不符：按代码推证收尾后没有再读者、与旧格式 subjectSha256 的既有不对称同族，未实测构造该时序。",
+    "未复核 scripts/build.mjs 的打包配置本身（U4 的模块标记断言已代为覆盖同源证明）；QUICKSTART/RUNBOOK/README 等文档联动只抽读了补丁内改动段，未全文校对。"
+  ],
+  "consulted": [
+    ".reviews/M12-运维防护/code/_meta/changes-20261018T010929Z.diff",
+    ".reviews/M12-运维防护/plan/2026-10-18-M12-运维防护-r2-claude.md",
+    "src/trivium/entry-collisions.ts",
+    "src/install.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/scrub.ts",
+    "scripts/install-check.mjs",
+    "test/unit/entry-scan-isolation.test.ts",
+    "test/integration/codex-wiring.test.ts",
+    "test/helpers/entry-scan-home.ts",
+    "test/unit/entry-collisions.test.ts",
+    "test/unit/entry-collisions-bundles.test.ts",
+    "test/unit/doctor-shared-roots.test.ts",
+    "test/unit/handoff-pack.test.ts",
+    "test/integration/handoff-dedupe.test.ts",
+    "test/unit/install.test.ts",
+    "test/unit/preflight.test.ts",
+    "doc/05_testing/REPORT_2026-10-18_m12_batch5.md"
+  ]
+}
