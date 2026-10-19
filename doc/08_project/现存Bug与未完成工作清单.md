@@ -107,7 +107,7 @@ M11 第 12 步已有用户具名的组合证据达成边界；M12 已完成计�
 2. **zcode HOME 隔离夹具族**：六个 zcode 隔离/副本测试文件的夹具按 POSIX `env HOME` 写死，win32 需 USERPROFILE 一并适配后解除跳过。
 3. **厂商 CLI 无跨进程优雅取消**（结构性）：Windows 信号模型下 SIGTERM 即 TerminateProcess，软步只有 WM_CLOSE；我方凭据抹除由 worker 的 `cancel.requested` 标记路径保障，厂商 CLI 自行收尾不承诺。
 4. **`.cmd` 垫片装法的 CLI**：`run()` 对 `.cmd/.bat` 经 `cmd.exe /d /s /c` 间接执行，参数含 cmd 元字符（`^&|<>%!`、内嵌引号）不在支持面；原生 `.exe`（探针候选序优先）无此限制。
-5. **agy 的 pty 依赖**：win32 显式拒绝 pty 模式；agy 1.4.2 在 Windows 管道下是否丢 stdout 待实测——不丢则免 pty 可用，丢则试 Git for Windows 自带 winpty，再不行如实报该侧不可用。
+5. **agy 的 pty 依赖**：win32 显式拒绝 pty 模式。2026-10-19 实测（agy 1.4.2）：Windows 管道下 stdout 不丢、headless 读哨兵命中、`pty_required=false`——免 pty 可用，探针无 blocker；预检 `--critics claude,gemini` 整体通过（Windows 线双侧双审可用组合为 claude+gemini）。
 6. **集成测试的 win32 残余**：shebang 假 CLI 机制（`#!node` 脚本经 PATH/直接 exec，win32 的 CreateProcess 不认）与活体 POSIX 信号语义两族的集成文件在 win32 整文件跳过（`WIN_FILE_SKIP` 带理由）；另有零星路径形态差异（如 bug 阶段归档扫描）逐文件适配中。核心链路的集成覆盖由 access-v3（含取消标记优雅收尾）、selftest 14/14、release-package（隔离安装/升级/卸载/出包）在 win32 真实跑通。
 7. **chmod 权限位降级**：凭据副本的 0600 在 NTFS 只映射只读位，隔离靠运行根在用户目录下的目录边界；已接受的限制，不是待办。
 8. **codex 的只读沙箱在 Windows 不拦截（上游缺口，1.2.0 实测登记）**：win32 + codex 0.163.0（CC Switch 网关、qwen 模型载体）下，只读负对照真实执行且 `-s read-only` 中写命令报告写入成功——探针按 fail-closed 清空 readonly_flags、该侧判不可用，这是编排器的正确行为，不是误报。claude 侧不受影响（只读走 `--restricted` + `--settings` deny，已验证）。Windows 线在 codex 修复沙箱的 Windows 实现前，审查侧只有 claude 可入选；不得以放宽只读换可用。
