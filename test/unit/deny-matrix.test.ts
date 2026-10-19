@@ -20,7 +20,7 @@ import { checkPeerLeak } from '../../src/trivium/adapters/base.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { ALL_AGENT_IDS } from '../../src/trivium/agents/registry.js';
 import { CRITICS, type AgentId, type CriticId } from '../../src/trivium/types.js';
-import { expandHome } from '../../src/trivium/util/fsx.js';
+import { expandHome, matchesAnyGlob } from '../../src/trivium/util/fsx.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { scratchDir } from '../helpers/scratch.js';
 
@@ -527,4 +527,34 @@ test('调用链：freeze() 的真实调用点必须传 topic（不只是函数�
     'freeze() 的实参块里没有真实传值的 driver（注释里的不算）——' +
       '禁读集会按缺省 Driver 剪枝，非 Claude Driver 的被审原稿进禁读集即 peer_leak、该侧结论作废',
   );
+});
+
+// ───────────── 9. 带目录段的 glob 在 win32 反斜杠路径上仍须命中（路径域归一的匹配侧） ─────────────
+
+test('敏感 glob 的目录段：win32 的项目相对反斜杠形态仍须命中，禁读条目恒为 posix 形态', async () => {
+  /*
+   * 路径域归一（设计 §7.1）曾只做在禁读条目的**输出**侧（toDomainRel）；
+   * 决定「什么进集合」的 matchesAnyGlob 拿 win32 path.relative 的反斜杠原形去匹配
+   * 显式含 `/` 的 glob——任意层级的 `*.pem`、`.env*` 在 win32 全部失配，嵌套敏感文件
+   * 整体漏出禁读集与 peer_leak 核验（doctor 目录探针的 fail-closed 自检抓到的就是这一类）。
+   * 根级无目录段的 `*-id.md` 靠 `[^/]*` 吃掉反斜杠碰巧仍命中——侥幸不是依据，
+   * 所以锚点必须用带目录段的条目。
+   */
+  const f = await makeFixture({});
+  try {
+    await fs.mkdir(path.join(f.root, 'secrets'), { recursive: true });
+    await fs.writeFile(path.join(f.root, 'secrets', 'api.pem'), 'FAKE_PEM', 'utf8');
+    await fs.mkdir(path.join(f.root, 'sub'), { recursive: true });
+    await fs.writeFile(path.join(f.root, 'sub', '.env'), 'FAKE_ENV', 'utf8');
+
+    const paths = await deny(f, 'gemini', 'claude');
+    assert.ok(paths.includes('secrets/api.pem'), '嵌套 *.pem 没进 deny 集合：带目录段的 sensitive glob 在 win32 失配');
+    assert.ok(paths.includes('sub/.env'), '嵌套 .env 没进 deny 集合：**/.env* 在 win32 失配');
+
+    // 匹配函数自身的域契约：反斜杠输入归一到 `/` 域后再匹配（本条在两平台上都直接可判）
+    assert.ok(matchesAnyGlob('secrets\\api.pem', ['**/*.pem']), 'matchesAnyGlob 须把反斜杠归一到 / 域再匹配');
+    assert.ok(!matchesAnyGlob('secrets\\api.pem', ['**/*.key']), '归一不能放大匹配面：不相关的 glob 仍不得命中');
+  } finally {
+    await f.cleanup();
+  }
 });

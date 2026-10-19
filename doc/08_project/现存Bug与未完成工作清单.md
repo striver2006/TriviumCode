@@ -102,6 +102,7 @@ M11 第 12 步已有用户具名的组合证据达成边界；M12 已完成计�
 
 已交付面见 §3「Windows 原生移植」行；以下为如实登记的残余，均不阻断主链路（编排、审查、闸门、取消、清扫、安装、发布在 win32 已可跑通；单测+契约 2184 例全绿，跳过均带理由）：
 
+0. **claude 第三方网关与只读不变量不兼容（跨平台，win32 上无出口）**：`--restricted` 按官方语义忽略 user/project/local settings 文件（含 CC Switch 写入的网关 env 段），回落官方端点即报「未登录」。2026-10-19 在 win32 + claude 2.1.302 + CC Switch（api.kimi.com）实测：网关 env 以**进程变量**形态给到时受限模式鉴权正常——但编排器按隔离纪律剥掉 claude 子进程的 `ANTHROPIC_*` 环境变量（`claudeRouteEnv`），正门是 profile 路线的 `cld` 包装器；win32 上 `.cmd` 垫片经 `cmd.exe /d /s /c` 间接执行、含引号/元字符的探针臂参数不在支持面（见下第 4 条），managed settings 的 env 段实测也不被受限模式采用。**当前出路**：claude 侧官方登录（native 路线完整支持）；或做路线级增强——把网关 env 并入 `--settings` 内联载荷（受限模式对它仍然生效，官方文档背书），属新能力、须走设计评审。
 1. **POSIX 专属语义用例**：权限位（0600/0500/0000）、活体进程组信号/SIGTERM 阶梯/僵尸/ps 形态、shebang 假 CLI / PATH 垫片 / ps 故障注入这几族用例在 win32 整文件跳过（文件头 `WIN_FILE_SKIP` 注释带理由）；Windows 等价语义由 `test/unit/platform-win.test.ts` 等承接。逐文件做 win32 等价改写是后续工作。
 2. **zcode HOME 隔离夹具族**：六个 zcode 隔离/副本测试文件的夹具按 POSIX `env HOME` 写死，win32 需 USERPROFILE 一并适配后解除跳过。
 3. **厂商 CLI 无跨进程优雅取消**（结构性）：Windows 信号模型下 SIGTERM 即 TerminateProcess，软步只有 WM_CLOSE；我方凭据抹除由 worker 的 `cancel.requested` 标记路径保障，厂商 CLI 自行收尾不承诺。
@@ -123,5 +124,7 @@ M11 第 12 步已有用户具名的组合证据达成边界；M12 已完成计�
 - 安装前检查脚本改用 `fileURLToPath(import.meta.url)` 定位，去掉 Node 18 不具备的 `import.meta.dirname`；Node 18 真运行仍须按矩阵验证。
 - 修正卸载输出：config 仍在且 wrapper 缺失时 Hook 会阻断，不能误导为自动 no-op。
 - 版本号、锁文件与 CLI 统一为产品版本，增加发布包版本/构建输入一致性检查。
+- 修复 win32 上带目录段 glob 整体失配（1.1.1）：`matchesAnyGlob` 匹配前未把 `path.relative` 的反斜杠归一到 `/` 域，缺省 `sensitive_globs` 的 `**/*.pem`、`**/.env*` 等在 Windows 上命不中嵌套文件，敏感文件漏出禁读集与 peer_leak 机器核验；根级 `**/*-<id>.md` 靠 `[^/]*` 吃掉反斜杠侥幸仍命中，1.1.0 移植批单测因此全绿，由 doctor 目录探针的 fail-closed 自检（「生产禁读枚举漏目录夹具」）暴露。修复为匹配输入侧单点归一，deny 矩阵补带目录段回归锚点；同批把锁文件版本对齐产品版本。
+- 修复 claude 探针段的首跑引导（1.1.1）：目录追加臂按 config 重建路线（`resolveClaudeRoute` 读盘上 `probe.cli.claude.entrypoint`），而该值要等本段成功落盘后才存在——没有历史探针结论的机器（全新安装）首跑时目录臂拿 null bin 去 spawn，直接 TypeError（「The "file" argument must be of type string」），探针段整段崩掉、entrypoint 永远落不了盘，死锁在首跑。此前 macOS 机器靠既有结论掩盖了这条路径。修复为目录臂解析路线前把本段新鲜探针对象同步进内存 config。
 - 修正首页、手册及 gate 注释中的“档位未实现”“作废侧重跑未实现”等过时说明；旧历史原文与证据保留。
 - 新增预构建包，包含安装器运行时读取的 carriers、核心资产和全部入口；文件清单、依赖许可和校验值随包交付。

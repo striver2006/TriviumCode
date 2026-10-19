@@ -109,7 +109,13 @@ export function globToRegExp(glob: string): RegExp {
 }
 
 export function matchesAnyGlob(relPath: string, globs: readonly string[]): boolean {
-  const norm = relPath.replace(/^\.\//, '');
+  /*
+   * 匹配域恒用 `/`（与禁读条目的 toDomainRel 同域）：win32 的 path.relative 产出反斜杠，
+   * 不归一的话**带目录段**的 glob（任意层级的 `*.pem`、`calls` 整棵子树）一条都命中不了——
+   * 根级无目录段的 `*-x.md` 靠 `[^/]*` 吃掉反斜杠是碰巧成立，不作依据。归一必须在匹配输入侧：
+   * 输出侧的 toDomainRel 只管落盘形态，救不了「什么进集合」的判定。
+   */
+  const norm = relPath.replace(/^\.\//, '').replace(/\\/g, '/');
   return globs.some((g) => globToRegExp(g).test(norm));
 }
 

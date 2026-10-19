@@ -1727,6 +1727,12 @@ export async function probeClaude(
   const selectedRoute = routeContext.getStore();
   if (opts.config && directorySchemaPath && selectedRoute?.model && probe.readonly_flags.length > 0) {
     try {
+      /*
+       * 首跑引导：目录臂按 config 重建路线（resolveClaudeRoute 读 cfg.probe.cli.claude.entrypoint），
+       * 而盘上那份要等本段成功落盘后才有值——不同步的话没有历史结论的机器（全新安装）首跑必为
+       * null，目录臂拿 null bin 去 spawn 直接 TypeError。前面的臂不受影响：它们用本段传入的 bin。
+       */
+      opts.config.probe.cli.claude = probe;
       const route = resolveClaudeRoute(opts.config, selectedRoute.route.profile, probe.version);
       // 在夹具复制并替换sensitive_globs之前绑定真实项目配置。
       const projectHash = claudeSensitiveGlobsHash(opts.config.review.sensitive_globs);
