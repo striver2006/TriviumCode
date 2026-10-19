@@ -111,6 +111,7 @@ M11 第 12 步已有用户具名的组合证据达成边界；M12 已完成计�
 6. **集成测试的 win32 残余**：shebang 假 CLI 机制（`#!node` 脚本经 PATH/直接 exec，win32 的 CreateProcess 不认）与活体 POSIX 信号语义两族的集成文件在 win32 整文件跳过（`WIN_FILE_SKIP` 带理由）；另有零星路径形态差异（如 bug 阶段归档扫描）逐文件适配中。核心链路的集成覆盖由 access-v3（含取消标记优雅收尾）、selftest 14/14、release-package（隔离安装/升级/卸载/出包）在 win32 真实跑通。
 7. **chmod 权限位降级**：凭据副本的 0600 在 NTFS 只映射只读位，隔离靠运行根在用户目录下的目录边界；已接受的限制，不是待办。
 8. **codex 的只读沙箱在 Windows 不拦截（上游缺口，1.2.0 实测登记）**：win32 + codex 0.163.0（CC Switch 网关、qwen 模型载体）下，只读负对照真实执行且 `-s read-only` 中写命令报告写入成功——探针按 fail-closed 清空 readonly_flags、该侧判不可用，这是编排器的正确行为，不是误报。claude 侧不受影响（只读走 `--restricted` + `--settings` deny，已验证）。Windows 线在 codex 修复沙箱的 Windows 实现前，审查侧只有 claude 可入选；不得以放宽只读换可用。
+9. **zcode（glm 审核者）在 Windows 探针链路已通、待机器侧一次性 CLI 初始化（2026-10-20 实测）**：D: 盘装法经 `agents.glm.entry` 指路后，探针拿到 0.16.9、只读旗标（`--mode plan` + `--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash`）、home_copy 隔离与 trace 落点；headless 卡「Model creation failed / Select a model」——真实环境与隔离副本同错，根因是本机 `~/.zcode/cli/config.json` 只有 mcp 键、从未初始化模型选择（桌面端配置独立）。解除：交互式跑一次 zcode（TUI 内 `/model` 选模型，必要时 `zcode login`）后复测 `trivium doctor --only zcode`。另注：glm 作为 Driver 的轮次本就不能入选审核者（不审自己的变更），其可用性只影响别家 Driver 的轮次。
 
 ## 4. 已接受的结构性限制
 
