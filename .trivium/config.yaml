@@ -168,9 +168,13 @@ agents:
   codex:
     vendor: openai
     bin: null
-    # 显式 null 选择官方 native，覆盖内置供应商默认；第三方须单次显式选择 profile 和匹配模型。
-    profile: null
+    # CC Switch（Windows 线）：基底 config.toml 由 CC Switch 管理（qwen 家族），原生路线判据
+    # 拒绝静默第三方——经 ~/.codex/ccswitch.config.toml（仅一行家族声明、无凭据）显式选择。
+    profile: ccswitch
     # 各档 effort 在 profiles 中显式请求，生效值仍须独立回读。
+    # 只读降级（Windows 线）：上游 -s read-only 不拦截写（Bug 清单 §3.1-8），按提示语约束 +
+    # 事后轨迹/漂移核验放行；预检带降级注记，写入一旦检出该侧作废。macOS 线不要开这个。
+    readonly_enforcement: prompt-only
   # Claude 默认走官方 native；模型别名与实际模型、供应商回读分别记录。
   # Windows 线（CC Switch 支撑，无官方账号）：网关 env 经 --settings 内联注入——受限模式
   # 忽略 settings 文件但仍认内联，这是第三方网关下保住 --restricted 只读不变量的通道；

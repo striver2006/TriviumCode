@@ -688,7 +688,7 @@ function checkReadonlyCapability(
       .filter((r) => !r.missingTier && r.model)
       .map((r) => r.vendorProfile);
     const v = a.availability(actx, { vendorProfiles });
-    if (v.ok) oks.push(agentById(id)?.display ?? id);
+    if (v.ok) oks.push((agentById(id)?.display ?? id) + (v.note ? `（${v.note}）` : ''));
     else problems.push(`${agentById(id)?.display ?? id}：${v.reason ?? '不可用（未给出原因）'}`);
   }
 

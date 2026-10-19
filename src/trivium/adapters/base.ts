@@ -148,7 +148,7 @@ export interface CriticAdapter {
    * 按 Agent 配置段自己的 profile 判——接口保留的旧行为，现役生产调用方（预检、`review` 准备阶段）都传（代码三审 CODEX-01）。
    * 传了就逐个判、跳过 `null`。
    */
-  availability(ctx: AdapterContext, opts?: { vendorProfiles?: readonly (string | null)[] }): { ok: boolean; reason?: string };
+  availability(ctx: AdapterContext, opts?: { vendorProfiles?: readonly (string | null)[] }): { ok: boolean; reason?: string; note?: string };
   /**
    * **从回读结果派生思考等级生效值**（M11 第 6 步，设计 11.1「思考等级透传与回读」/ 6.7.1）。**必填**。
    *

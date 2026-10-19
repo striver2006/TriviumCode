@@ -464,6 +464,14 @@
               },
               "default_tier": {
                 "$ref": "#/$defs/tierName"
+              },
+              "readonly_enforcement": {
+                "type": "string",
+                "enum": [
+                  "required",
+                  "prompt-only"
+                ],
+                "description": "只读执法策略：required（缺省）= 负对照失败即该侧不可用；prompt-only = 负对照失败时保留 -s read-only 旗标、记 readonly_enforced=false，预检以降级注记放行（补偿控制：提示语约束 + 事后轨迹/漂移核验）。对上游「Windows 无只读沙箱」缺口的显式取舍。"
               }
             }
           },

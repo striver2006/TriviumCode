@@ -122,3 +122,36 @@ test('EV-25 R5：doctor 的未判定 warning 两种说法', () => {
   assert.match(first, /未判定（W），且没有上一次的结论：readonly_flags 为空，该侧仍不可用/);
   assert.match(first, /这是「未判定」，不是「沙箱失守」/);
 });
+
+// ─────────────────── readonly_enforcement=prompt-only 的降级分支（1.2.1，Windows 线） ───────────────────
+
+test('P1 prompt-only：breached 保留旗标、记 readonly_enforced=false，注记是降级而不是「不可用」', () => {
+  const p = probe(['-s', 'read-only']);
+  const r = applyReadonlyControl(p, { kind: 'breached', why: '写命令的输出报告写入成功' }, 'prompt-only');
+  assert.deepEqual(p.readonly_flags, [...CODEX_READONLY_INVARIANTS], '旗标照传：-s read-only 在提示层面继续声明只读');
+  assert.equal(p.readonly_enforced, false, '执法结论独立记：OS 级不成立这一事实不得塌缩进旗标');
+  assert.equal(r.indeterminate, null);
+  assert.match(r.note, /prompt-only\s*降级放行/);
+  assert.match(r.note, /事后轨迹\/漂移核验全开/);
+});
+
+test('P2 required（缺省）行为逐字不变；held 在两种策略下都记 readonly_enforced=true', () => {
+  const a = probe(['-s', 'read-only']);
+  const ra = applyReadonlyControl(a, { kind: 'breached', why: 'X' });
+  assert.deepEqual(a.readonly_flags, [], 'required 下 breached 仍清旗标、该侧不可用——缺省零变化');
+  assert.equal(a.readonly_enforced, false);
+  assert.match(ra.note, /该侧不可用于审查/);
+  assert.ok(!ra.note.includes('prompt-only'), '缺省注记不得混入降级措辞');
+
+  const b = probe([]);
+  applyReadonlyControl(b, { kind: 'held' }, 'prompt-only');
+  assert.deepEqual(b.readonly_flags, [...CODEX_READONLY_INVARIANTS]);
+  assert.equal(b.readonly_enforced, true);
+  const c = probe([]);
+  applyReadonlyControl(c, { kind: 'held' });
+  assert.equal(c.readonly_enforced, true, '策略只影响 breached 分支，held 的执法结论与策略无关');
+
+  const d = probe(['-s', 'read-only']);
+  applyReadonlyControl(d, { kind: 'indeterminate', why: 'W' }, 'prompt-only');
+  assert.equal(d.readonly_enforced, undefined, '未判定不动执法结论（与不动旗标同一纪律）');
+});

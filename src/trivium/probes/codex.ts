@@ -653,13 +653,28 @@ export function judgeReadonlyControl(
  * 把判据结论落到探针上：`held` / `breached` 照旧写 `readonly_flags`；`indeterminate` **不动它**——
  * 保留上一次的结论（仿 zcode P-29 的 `flagsIndeterminate`），成因经返回值带出、不落盘。
  * 首次探测就判不了时上一次的结论是空集，该侧仍不可用，但 doctor 说的是「未判定」而不是「失守」。
+ *
+ * `policy`（1.2.1）：`required`（缺省）行为不变——breached 清旗标、该侧不可用；
+ * `prompt-only` 下 breached **保留旗标**（`-s read-only` 仍传，提示层面继续声明只读）、
+ * 记 `readonly_enforced: false`，由 availability 以降级注记放行。
  */
 export function applyReadonlyControl(
   probe: CodexProbe,
   verdict: ReadonlyControlVerdict,
+  policy: 'required' | 'prompt-only' = 'required',
 ): { note: string; indeterminate: string | null } {
   switch (verdict.kind) {
     case 'breached':
+      probe.readonly_enforced = false;
+      if (policy === 'prompt-only') {
+        probe.readonly_flags = [...CODEX_READONLY_INVARIANTS];
+        return {
+          note:
+            `⚠️ 只读沙箱负对照**失败**：-s read-only 下${verdict.why}。按 readonly_enforcement=prompt-only ` +
+            '降级放行：旗标照传（提示层面声明只读），OS 级拦截不成立，事后轨迹/漂移核验全开——写入一旦检出，该侧作废',
+          indeterminate: null,
+        };
+      }
       probe.readonly_flags = [];
       return {
         note: `⚠️ 只读沙箱负对照**失败**：-s read-only 下${verdict.why}，该侧不可用于审查`,
@@ -667,6 +682,7 @@ export function applyReadonlyControl(
       };
     case 'held':
       probe.readonly_flags = [...CODEX_READONLY_INVARIANTS];
+      probe.readonly_enforced = true;
       return {
         note: `只读负对照成立（带正对照）：写命令确实执行、输出显示写入失败，${READONLY_CONTROL_FILE} 未创建`,
         indeterminate: null,
@@ -842,7 +858,7 @@ async function judgeCodexIsolation(bin: string, dir: string): Promise<ProbeIsola
 
 export async function probeCodex(
   configuredBin: string | null,
-  opts: { skipModelCalls?: boolean; existing?: CodexProbe; selected?: { vendorProfile: string | null; model: string | null; effort: string | null } } = {},
+  opts: { skipModelCalls?: boolean; existing?: CodexProbe; selected?: { vendorProfile: string | null; model: string | null; effort: string | null }; readonlyPolicy?: 'required' | 'prompt-only' } = {},
 ): Promise<{
   probe: CodexProbe;
   notes: string[];
@@ -1078,7 +1094,7 @@ export async function probeCodex(
 
     // ── 只读负对照：钉死写命令，写入必须失败且有正对照（EV-25）────────────
     const control = await runReadonlyControl(bin, fx, probeProfile, probeModel);
-    const applied = applyReadonlyControl(probe, control.verdict);
+    const applied = applyReadonlyControl(probe, control.verdict, opts.readonlyPolicy ?? 'required');
     readonlyIndeterminate = applied.indeterminate;
     notes.push(applied.note);
     /*

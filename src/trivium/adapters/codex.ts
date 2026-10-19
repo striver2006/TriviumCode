@@ -486,6 +486,17 @@ export const codexAdapter: CriticAdapter = {
       return { ok: false, reason: '探针未找到 codex 可执行文件，请先运行 trivium doctor' };
     }
     if (p.readonly_flags.length === 0) {
+      /*
+       * prompt-only 降级（1.2.1）：负对照实测 OS 级不拦截时探针已记 readonly_enforced=false。
+       * 旗标仍空说明探针是在旧策略（required）下跑的——降级放行但提示重探，
+       * 让旗标落盘（运行时才有 -s read-only 的提示层声明）。
+       */
+      if (codexConfig(ctx).readonly_enforcement === 'prompt-only' && p.readonly_enforced === false) {
+        return {
+          ok: true,
+          note: '只读降级（prompt-only）：负对照实测 -s read-only 不拦截写，旗标未落盘（旧策略下探测）——重跑 doctor --only codex 后旗标照传',
+        };
+      }
       return {
         ok: false,
         reason:
@@ -544,6 +555,16 @@ export const codexAdapter: CriticAdapter = {
             '  编排器不代写凭据、也不改你的全局配置（纪律 5）。',
         };
       }
+    }
+    /*
+     * prompt-only 降级注记（1.2.1）：旗标在（运行时照传 -s read-only），但 OS 级拦截实测不成立。
+     * 补偿控制：BRIEF 既有只读措辞（写即失守、跑后复算整轮作废）+ 事后轨迹/漂移核验，全开不动。
+     */
+    if (codexConfig(ctx).readonly_enforcement === 'prompt-only' && p.readonly_enforced === false) {
+      return {
+        ok: true,
+        note: '只读降级（prompt-only）：-s read-only 照传但 OS 级拦截不成立（上游 Windows 缺口），靠提示语约束 + 事后轨迹/漂移核验兜底',
+      };
     }
     return { ok: true };
   },

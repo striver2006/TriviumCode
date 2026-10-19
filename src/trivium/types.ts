@@ -423,6 +423,13 @@ export interface CodexProbe extends CommonProbe {
    */
   exec_headless_read_ok: boolean | null;
   /**
+   * 只读沙箱负对照的**执法结论**（1.2.1）：true = 写入确实被沙箱拦下；false = 负对照真实执行且
+   * 写入成功（OS 级只读不成立）；null = 未判定或没跑。与 `readonly_flags` 分开记——flags 承载
+   * 「调用时要传什么」，本字段承载「传了之后系统层拦不拦」。缺省缺席（旧结论文件）视同 null。
+   * **消费方**：`readonly_enforcement: prompt-only` 下的 `availability()` 降级注记与文档留痕。
+   */
+  readonly_enforced?: boolean | null;
+  /**
    * `--json` 事件流里出现过的**顶层事件类型**（`thread.started` / `turn.completed` …）。
    * **消费方**：M8 的轨迹解析器；新类型出现时提示重录样本。
    */
@@ -1039,6 +1046,14 @@ export interface CodexCriticConfig extends TierFields {
   bin: string | null;
   /** 厂商 profile 名，对应 `$CODEX_HOME/<name>.config.toml`（0.154.0 的 `-p` 是文件分层） */
   profile: string | null;
+  /**
+   * 只读执法策略（1.2.1，Windows 线）：`required`（缺省）= 负对照失败即该侧不可用；
+   * `prompt-only` = 负对照失败时保留 `-s read-only` 旗标（其本身就让 CLI 在提示层面
+   * 告知模型只读）、探针记 `readonly_enforced: false`，预检以**降级注记**放行——补偿控制
+   * 是 BRIEF 既有的只读措辞（写即失守、跑后复算整轮作废）与事后轨迹/漂移核验，全开不动。
+   * 这是对上游「Windows 无只读沙箱」缺口的显式取舍，留痕可见，不是静默放水。
+   */
+  readonly_enforcement?: 'required' | 'prompt-only';
   /*
    * 原有 `effort`（阶段级、枚举 low/medium/high），2026-10-07 删除（M11 第 4 步，设计 11.5）：
    * 从未被读取（M11 第 6 步之前的 `effortFor` 只给 antigravity 取值），且枚举违反 11.5 禁令 ①。

@@ -674,4 +674,29 @@ test('provider：base_url 归一到 host，userinfo 与 query 一律不入库', 
   assert.equal(providerBaseUrl(bad, 'weird'), null, '解析不出 host 就整串丢弃，不做尽力截取');
 });
 
+// ─────────────────── readonly_enforcement=prompt-only 的降级放行（1.2.1，Windows 线） ───────────────────
+
+test('可用性：prompt-only 且负对照失败（旗标在、readonly_enforced=false）→ 降级放行并带注记', () => {
+  const cfg = probeWith({ readonly_enforced: false });
+  (cfg.agents.codex as { readonly_enforcement?: string }).readonly_enforcement = 'prompt-only';
+  const v = codexAdapter.availability(AVAIL_CTX(cfg));
+  assert.equal(v.ok, true, '降级放行：上游 Windows 无只读沙箱时的显式取舍');
+  assert.match(v.note!, /OS 级拦截不成立/);
+  assert.match(v.note!, /事后轨迹\/漂移核验/);
+});
+
+test('可用性：prompt-only 但旗标空（旧策略下探测）→ 放行并提示重探让旗标落盘', () => {
+  const cfg = probeWith({ readonly_flags: [], readonly_enforced: false });
+  (cfg.agents.codex as { readonly_enforcement?: string }).readonly_enforcement = 'prompt-only';
+  const v = codexAdapter.availability(AVAIL_CTX(cfg));
+  assert.equal(v.ok, true);
+  assert.match(v.note!, /重跑 doctor --only codex/);
+});
+
+test('可用性：required（缺省）下同样的探针事实仍拒——降级必须显式配置，不是静默放水', () => {
+  const cfg = probeWith({ readonly_flags: [], readonly_enforced: false });
+  const v = codexAdapter.availability(AVAIL_CTX(cfg));
+  assert.equal(v.ok, false, '不开 prompt-only 就维持 fail-closed');
+  assert.match(v.reason!, /该侧不可用/);
+});
 }

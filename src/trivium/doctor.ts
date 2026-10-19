@@ -836,11 +836,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   if (only === null || only === 'codex') {
     step('探测 Codex（codex exec）…');
     const selected = resolveTier(opts.config, 'codex', 'code', overridesFor('codex'));
+    const codexAgent = opts.config.agents.codex;
     const r = await guard('codex', () =>
-      probeCodex(opts.probeBins?.codex ?? (opts.config.agents.codex?.vendor === 'openai' ? opts.config.agents.codex.bin ?? null : null), {
+      probeCodex(opts.probeBins?.codex ?? (codexAgent?.vendor === 'openai' ? codexAgent.bin ?? null : null), {
         skipModelCalls: opts.skipModelCalls ?? false,
         existing: probe.cli.codex,
         selected,
+        readonlyPolicy: codexAgent?.vendor === 'openai' && codexAgent.readonly_enforcement === 'prompt-only' ? 'prompt-only' : 'required',
       }),
     );
     if (r) {
