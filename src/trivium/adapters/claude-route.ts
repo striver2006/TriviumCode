@@ -18,6 +18,32 @@ export interface ClaudeRoute {
   providerDeclared: string | null;
   modelsDeclared: string[];
   env: Record<string, string | undefined>;
+  /*
+   * 第三方网关 env（CC Switch 支撑，win32 实测 2026-10-19）：`--restricted` 按官方语义忽略
+   * user/project/local settings 文件——CC Switch 恰好把网关配置写在用户级 settings.json 的
+   * env 段，受限模式一开就回落官方端点报「未登录」。出路是 `--settings` 内联载荷（受限模式
+   * 仍生效）：调用时从 settings.json 提取 env 段、并入每次调用的 `--settings`。值只在内存，
+   * 指纹只记 sha256；commandLine 侧由 invokeClaude 逐值替换成占位符。
+   */
+  settingsEnv: Record<string, string>;
+  settingsEnvNote: string | null;
+}
+
+/** 从用户级 settings.json 文本提取可注入的 env 段：只收 `ANTHROPIC_`/`CLAUDE_` 前缀的非空字符串值 */
+export function extractSettingsEnv(text: string): Record<string, string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return {};
+  }
+  const env = parsed && typeof parsed === 'object' ? (parsed as { env?: unknown }).env : undefined;
+  const out: Record<string, string> = {};
+  if (!env || typeof env !== 'object') return out;
+  for (const [k, v] of Object.entries(env)) {
+    if (/^(ANTHROPIC_|CLAUDE_)/.test(k) && typeof v === 'string' && v.length > 0) out[k] = v;
+  }
+  return out;
 }
 
 export function claudeProfilesDir(): string {
@@ -90,14 +116,34 @@ export function resolveClaudeRoute(cfg: Config, profile: string | null, version?
     modelsDeclared = claudeProfileMetadata(content).models;
     if (bin) wrapperSha256 = createHash('sha256').update(readFileSync(bin)).digest('hex');
   }
+  /*
+   * 第三方网关 env（见 ClaudeRoute.settingsEnv 的说明）：只在 settings_env_source 显式开启时
+   * 读取用户级 settings.json，键值不落任何留痕——指纹只进 sha256，commandLine 由 invokeClaude 逐值替换。
+   */
+  const settingsEnvSource = c?.settings_env_source ?? null;
+  let settingsEnv: Record<string, string> = {};
+  let settingsEnvNote: string | null = null;
+  if (settingsEnvSource === 'user_settings') {
+    try {
+      settingsEnv = extractSettingsEnv(readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf8'));
+      if (Object.keys(settingsEnv).length === 0) {
+        settingsEnvNote = 'settings_env_source=user_settings：用户级 settings.json 的 env 段没有可注入键（ANTHROPIC_/CLAUDE_ 前缀）。官方登录机器属正常；第三方网关机器请检查 CC Switch 是否写入';
+      }
+    } catch (e) {
+      settingsEnvNote = `settings_env_source=user_settings：读不到 ~/.claude/settings.json（${(e as NodeJS.ErrnoException).code ?? '未知错误'}），本次不注入网关 env`;
+    }
+  }
+  const settingsEnvSha256 = settingsEnvSource === 'user_settings'
+    ? createHash('sha256').update(Object.keys(settingsEnv).sort().map((k) => `${k}=${settingsEnv[k]!}`).join('\n')).digest('hex')
+    : null;
   const fingerprint = createHash('sha256').update(JSON.stringify({
     profile, nativeBin, bin, version: version === undefined
       ? (probe?.routes?.[claudeRouteKey(profile)]?.probe.version ?? probe?.version ?? null) : version,
-    wrapperSha256, configurationSha256,
+    wrapperSha256, configurationSha256, settingsEnvSha256,
   })).digest('hex');
   return { mode: profile === null ? 'native' : 'profile', profile, nativeBin, bin,
     prefix: profile === null ? [] : ['--profile', profile], fingerprint, wrapperSha256, configurationSha256,
-    providerDeclared: profile, modelsDeclared, env: claudeRouteEnv(profile) };
+    providerDeclared: profile, modelsDeclared, env: claudeRouteEnv(profile), settingsEnv, settingsEnvNote };
 }
 
 /** 新profile只认同指纹路线结论；原生旧结论继续读取，版本新鲜度由预检校验。 */

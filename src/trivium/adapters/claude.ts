@@ -84,6 +84,11 @@ export interface ClaudeInvokeOptions {
   schemaJson: string | null;
   /** 内联 settings JSON（`permissions.deny`），由 `buildDenySettings` 产出；null 即不注入 */
   settingsJson: string | null;
+  /**
+   * 第三方网关 env（CC Switch 支撑）：非空时并入 `--settings` 载荷的 `env` 段（见
+   * `mergeSettingsEnv`）。生产路径由 `invokeClaude` 从 `route.settingsEnv` 带入，调用方不手填。
+   */
+  settingsEnv?: Record<string, string>;
   timeoutMs: number;
   /**
    * **仅准入脚本使用**的成本硬闸。生产路径恒为 null。
@@ -93,6 +98,37 @@ export interface ClaudeInvokeOptions {
    * 那是**纯追加、不改被测行为**的偏差——脚本文件头与实测报告各记一次。
    */
   maxBudgetUsd?: string | null;
+}
+
+/**
+ * 把网关 env 并进 `--settings` 内联载荷（第三方网关支撑，见 `ClaudeRoute.settingsEnv`）。
+ *
+ * 纯函数。三件事：
+ * - 已有 settings（deny 规则）时**合并不替换**——deny 通道与网关鉴权共存于同一份载荷；
+ * - settings 为 null 而 env 非空时新建 `{"env":…}`；
+ * - env 为空对象时**原样返回**（含 null）——关闭或未配网关的机器上一个字节都不变。
+ *
+ * 解析失败的 settings 原样返回：本函数不是校验层，坏载荷交给 CLI 拒绝并走既有失败出口。
+ */
+export function mergeSettingsEnv(
+  settingsJson: string | null,
+  env: Record<string, string> | undefined,
+): string | null {
+  if (!env || Object.keys(env).length === 0) return settingsJson;
+  let obj: Record<string, unknown>;
+  if (settingsJson === null) {
+    obj = {};
+  } else {
+    try {
+      const parsed: unknown = JSON.parse(settingsJson);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return settingsJson;
+      obj = { ...(parsed as Record<string, unknown>) };
+    } catch {
+      return settingsJson;
+    }
+  }
+  obj['env'] = { ...(typeof obj['env'] === 'object' && obj['env'] !== null ? obj['env'] as Record<string, string> : {}), ...env };
+  return JSON.stringify(obj);
 }
 
 /**
@@ -114,9 +150,11 @@ export interface ClaudeInvokeOptions {
  * 两者实测等价，取 A 是因为依赖面更小。
  */
 export function buildClaudeArgs(
-  opts: Pick<ClaudeInvokeOptions, 'model' | 'readonlyArgs' | 'schemaJson' | 'settingsJson' | 'maxBudgetUsd'> &
+  opts: Pick<ClaudeInvokeOptions, 'model' | 'readonlyArgs' | 'schemaJson' | 'settingsJson' | 'maxBudgetUsd' | 'settingsEnv'> &
     Partial<Pick<ClaudeInvokeOptions, 'effort'>>,
 ): string[] {
+  // 网关 env 与 deny 规则合并进同一份载荷：受限模式忽略 settings 文件、仍认这里的内联
+  const settingsPayload = mergeSettingsEnv(opts.settingsJson ?? null, opts.settingsEnv);
   return [
     '--print',
     '--output-format', 'stream-json',
@@ -144,7 +182,7 @@ export function buildClaudeArgs(
      * 不是因为今天真有调用方绕过。
      */
     ...(opts.schemaJson ? ['--json-schema', stripMetaSchemaRef(opts.schemaJson)] : []),
-    ...(opts.settingsJson ? ['--settings', opts.settingsJson] : []),
+    ...(settingsPayload ? ['--settings', settingsPayload] : []),
     ...(opts.maxBudgetUsd ? ['--max-budget-usd', opts.maxBudgetUsd] : []),
   ];
 }
@@ -523,7 +561,7 @@ export interface ClaudeInvokeOutcome {
  * codex 侧踩过「继承了一个不会 EOF 的 stdin、进程挂到超时被杀」，此处同理显式给定。
  */
 export async function invokeClaude(opts: ClaudeInvokeOptions): Promise<ClaudeInvokeOutcome> {
-  const args = [...(opts.route?.prefix ?? []), ...buildClaudeArgs(opts)];
+  const args = [...(opts.route?.prefix ?? []), ...buildClaudeArgs({ ...opts, settingsEnv: opts.settingsEnv ?? opts.route?.settingsEnv })];
   const r = await run(opts.route?.bin ?? opts.bin, args, {
     env: opts.route?.env,
     cwd: opts.cwd,
@@ -531,12 +569,24 @@ export async function invokeClaude(opts: ClaudeInvokeOptions): Promise<ClaudeInv
     timeoutMs: opts.timeoutMs,
     killTree: true,
   });
+  /*
+   * 网关 env 注入后，commandLine（进留痕与 guard 证据）与子进程输出都可能携带凭据。
+   * 逐值替换成占位符——值是唯一子串，替换不受外层引号形态影响；再叠一层模式脱敏兜底，
+   * 不赌规则命中。极短值（<8 字符）跳过：替换面过宽会误伤普通文本。
+   */
+  const scrub = (text: string): string => {
+    let out = text;
+    for (const v of Object.values(opts.route?.settingsEnv ?? {})) {
+      if (v.length >= 8) out = out.split(v).join('<redacted-env>');
+    }
+    return redactSecrets(out).content;
+  };
   return {
-    stdout: redactSecrets(r.stdout).content,
-    stderr: redactSecrets(r.stderr).content,
+    stdout: scrub(r.stdout),
+    stderr: scrub(r.stderr),
     exitCode: r.code,
     timedOut: r.timedOut,
-    commandLine: r.commandLine,
+    commandLine: scrub(r.commandLine),
     spawned: r.spawned,
     durationMs: r.durationMs,
   };

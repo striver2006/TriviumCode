@@ -1085,7 +1085,8 @@ test('源序：EV-44 的探测臂排在主夹具 cleanup 之后（独立夹具�
     1,
     '对照臂的旋钮只该在 projectMemoryArmArgs 里拨一处；调用点另拨一次说明又在手拼 argv',
   );
-  const armsIdx = src.indexOf('projectMemoryArmArgs(askMemory)');
+  // 前缀匹配：第二参（网关 env，CC Switch 支撑）自 1.2.0 起存在，接线契约不变
+  const armsIdx = src.indexOf('projectMemoryArmArgs(askMemory');
   assert.ok(armsIdx > memCreate, '探测臂要从 projectMemoryArmArgs 取两臂 argv（记忆夹具创建之后）');
   for (const call of ['execArgv(bin, memFx, arms.restricted)', 'execArgv(bin, memFx, arms.control)']) {
     const idx = src.indexOf(call);
@@ -1140,4 +1141,23 @@ test('EV-47 ②：judgeDeniedToolInTrace 三分——配上 ⇒ true、配不上
     '只有白名单内的调用：模型没去试，记未测',
   );
   assert.equal(judgeDeniedToolInTrace({ toolUses: [], erroredToolUseIds: errored, allowedTools }), null);
+});
+
+// ─────────────────── probeArgs 的网关 env 并入（CC Switch 支撑，Windows 线） ───────────────────
+
+test('probeArgs：settingsEnv 并进 --settings 载荷；缺席时配方逐字节不变', () => {
+  const gw = { ANTHROPIC_BASE_URL: 'https://gw.example', ANTHROPIC_API_KEY: 'sk-gw-1234567890' };
+  const withEnv = probeArgs({ prompt: 'p', settings: '{"permissions":{"deny":[]}}', settingsEnv: gw });
+  const i = withEnv.indexOf('--settings');
+  assert.notEqual(i, -1);
+  const payload = JSON.parse(withEnv[i + 1]!) as { permissions: unknown; env: Record<string, string> };
+  assert.deepEqual(payload.permissions, { deny: [] }, 'deny 规则与网关 env 共存');
+  assert.deepEqual(payload.env, gw);
+  // 缺席时零变化：与不带 settingsEnv 的产出逐项相等
+  assert.deepEqual(probeArgs({ prompt: 'p' }), probeArgs({ prompt: 'p', settingsEnv: undefined }));
+  // env 单独在场（无 deny）也要出 --settings
+  const only = probeArgs({ prompt: 'p', settingsEnv: gw });
+  const j = only.indexOf('--settings');
+  assert.notEqual(j, -1, '受限模式下网关鉴权只认 --settings 内联');
+  assert.deepEqual(JSON.parse(only[j + 1]!).env, gw);
 });

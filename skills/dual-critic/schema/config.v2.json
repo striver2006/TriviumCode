@@ -503,6 +503,17 @@
                   "null"
                 ],
                 "minLength": 1
+              },
+              "settings_env_source": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "user_settings",
+                  null
+                ],
+                "description": "第三方网关支撑：user_settings = 每次调用读用户级 ~/.claude/settings.json 的 env 段并经 --settings 内联注入（受限模式忽略 settings 文件但仍认内联）。缺省 null 关闭。"
               }
             },
             "description": "支持原生订阅/登录与包装器profile路线；路径覆盖有实际执行和探针消费方，接入方式独立于模型和effort。"

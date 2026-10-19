@@ -885,6 +885,10 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
       const route = resolveClaudeRoute(opts.config, selected.vendorProfile);
       routeBefore = route;
       notes.push(`[claude] 配置声明模型：${route.modelsDeclared.join('、') || '未声明'}；不代表完整服务端目录`);
+      if (route.settingsEnvNote) notes.push(`[claude] ${route.settingsEnvNote}`);
+      else if (Object.keys(route.settingsEnv).length > 0) {
+        notes.push(`[claude] 网关 env 经 --settings 内联注入（${Object.keys(route.settingsEnv).length} 键，值不落留痕）：受限模式在第三方网关下保住鉴权`);
+      }
       return withClaudeProbeRoute(route, selected.model, selected.effort, () => probeClaude(opts.probeBins?.claude ?? route.nativeBin, {
         skipModelCalls: !canProbeModel,
         existing: claudeProbeForRoute(opts.config, selected.vendorProfile),

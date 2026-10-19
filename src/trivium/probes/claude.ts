@@ -70,6 +70,7 @@ import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents, type ClaudeTrace } from '../ada
 import { buildDenySettings, claudeDirectoryFingerprint, claudeSensitiveGlobsHash, CLAUDE_DIRECTORY_SHAPE,
   denyRuleShapeOf, readSchemaJson } from '../adapters/claude.js';
 import { claudeRouteEnv, resolveClaudeRoute, type ClaudeRoute } from '../adapters/claude-route.js';
+import { mergeSettingsEnv } from '../adapters/claude.js';
 import { probeClaudeDirectories, expectedDirectoryFailure, directoryFailureText } from './claude-directory.js';
 
 const routeContext = new AsyncLocalStorage<{ route: ClaudeRoute; model: string | null; effort: string | null }>();
@@ -152,6 +153,8 @@ export function probeArgs(opts: {
   jsonSchema?: string;
   /** 内联 settings JSON，用于注入 permissions.deny */
   settings?: string;
+  /** 第三方网关 env（CC Switch 支撑）：并入 settings 载荷的 env 段，见 ClaudeRoute.settingsEnv */
+  settingsEnv?: Record<string, string>;
   outputFormat?: 'text' | 'json' | 'stream-json';
   /**
    * **只给 EV-40 的负对照用**：刻意不传 `--verbose`，看 CLI 认不认。
@@ -187,6 +190,8 @@ export function probeArgs(opts: {
    * 都是 argv 形态下的结论**，EV-40 那格尤其。
    */
   const fmt = opts.outputFormat ?? 'stream-json';
+  // 网关 env 与 deny 规则合并进同一份载荷（受限模式忽略 settings 文件、仍认内联）
+  const settingsPayload = mergeSettingsEnv(opts.settings ?? null, opts.settingsEnv);
   return [
     '-p',
     '--output-format', fmt,
@@ -202,7 +207,7 @@ export function probeArgs(opts: {
     '--max-budget-usd', opts.budgetUsdOverride ?? PROBE_BUDGET_USD,
     '--model', PROBE_MODEL,
     ...(opts.jsonSchema ? ['--json-schema', opts.jsonSchema] : []),
-    ...(opts.settings ? ['--settings', opts.settings] : []),
+    ...(settingsPayload ? ['--settings', settingsPayload] : []),
     opts.prompt,
   ];
 }
@@ -554,10 +559,10 @@ export function projectMemoryControlArgs(readonlyFlags: readonly string[]): stri
  * 「两臂逐字相同、只差一条旗标」这个单变量前提没有任何东西守着。现在两臂都经 `probeArgs` 构造，
  * 对照臂只在 `readonlyFlags` 上不同；用例断言 `control` 恰为 `restricted` 去掉 `--restricted`。
  */
-export function projectMemoryArmArgs(prompt: string): { restricted: string[]; control: string[] } {
+export function projectMemoryArmArgs(prompt: string, settingsEnv?: Record<string, string>): { restricted: string[]; control: string[] } {
   return {
-    restricted: probeArgs({ prompt }),
-    control: probeArgs({ prompt, readonlyFlags: projectMemoryControlArgs(READONLY_INVARIANTS) }),
+    restricted: probeArgs({ prompt, settingsEnv }),
+    control: probeArgs({ prompt, readonlyFlags: projectMemoryControlArgs(READONLY_INVARIANTS), settingsEnv }),
   };
 }
 
@@ -765,7 +770,8 @@ async function execProbe(
   } = {},
 ): Promise<ClaudeTrace & { timedOut: boolean; raw: string; exitCode: number | null; stderr: string }> {
   const { overrideBudgetUsd, overrideTimeoutMs, ...argOpts } = extra;
-  return execArgv(bin, fx, probeArgs({ prompt, ...argOpts, budgetUsdOverride: overrideBudgetUsd }), overrideTimeoutMs);
+  return execArgv(bin, fx, probeArgs({ prompt, ...argOpts, budgetUsdOverride: overrideBudgetUsd,
+    settingsEnv: routeContext.getStore()?.route.settingsEnv }), overrideTimeoutMs);
 }
 
 /**
@@ -1679,7 +1685,7 @@ export async function probeClaude(
       `如果你看不到任何项目指令文件，请回答 ${MEMORY_NEGATIVE}。`;
 
     // 两臂的完整 argv 同出 `projectMemoryArmArgs`，只差 `--restricted` 一条（EV-46）
-    const arms = projectMemoryArmArgs(askMemory);
+    const arms = projectMemoryArmArgs(askMemory, routeContext.getStore()?.route.settingsEnv);
     const restricted = await execArgv(bin, memFx, arms.restricted);
     const restrictedSaw = restricted.raw.includes(SENTINEL_MEMORY);
 

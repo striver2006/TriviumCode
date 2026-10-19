@@ -1064,6 +1064,13 @@ export interface ClaudeCriticConfig extends TierFields {
   profile?: string | null;
   bin?: string | null;
   profile_bin?: string | null;
+  /**
+   * 第三方网关支撑（win32 + CC Switch 实测，2026-10-19）：`'user_settings'` = 每次调用时读
+   * 用户级 `~/.claude/settings.json` 的 env 段，经 `--settings` 内联注入——受限模式忽略
+   * settings 文件但仍认 `--settings`，这是第三方网关下保住 `--restricted` 只读不变量的
+   * 唯一通道。缺省 null 关闭，行为零变化；键值不落留痕（指纹仅 sha256）。
+   */
+  settings_env_source?: 'user_settings' | null;
 }
 
 /**

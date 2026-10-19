@@ -19,6 +19,7 @@ import {
   claudeAdapter,
   buildDenySettings,
   denyRuleShapeOf,
+  mergeSettingsEnv,
   readonlyArgsFromProbe,
   readonlyToolsFromProbe,
   readSchemaJson,
@@ -743,4 +744,58 @@ test('A31 契约金丝雀：送给 claude 的 review.v1.json 不用 2020-12 独�
   // 自证二：数组位也要下降（第 2 轮 GLM-03）——items / allOf / anyOf 里的关键字不能漏
   assert.ok(keywordsUsed({ allOf: [{ $anchor: 'x' }] }).has('$anchor'), '扫描器必须下降到数组位');
   assert.ok(keywordsUsed({ items: [{ prefixItems: [] }] }).has('prefixItems'));
+});
+
+// ─────────────────── 网关 env 经 --settings 内联注入（CC Switch 支撑，Windows 线） ───────────────────
+
+/*
+ * 受限模式按官方语义忽略 user/project/local settings 文件——CC Switch 恰好把网关配置
+ * （ANTHROPIC_BASE_URL / API_KEY 等）写在用户级 settings.json 的 env 段，`--restricted`
+ * 一开就回落官方端点报「未登录」（win32 + claude 2.1.302 + api.kimi.com 实测）。
+ * 唯一双活的通道是 `--settings` 内联：受限模式仍认它，且 claude.exe 是原生可执行、
+ * argv 不经 cmd.exe 垫片。这一族守三件事：env 并进载荷、关闭时零变化、值不外泄。
+ */
+import { extractSettingsEnv } from '../../src/trivium/adapters/claude-route.js';
+
+const GW = { ANTHROPIC_BASE_URL: 'https://gw.example', ANTHROPIC_API_KEY: 'sk-gw-1234567890' };
+
+test('G1 mergeSettingsEnv：env 并入 settings 载荷的 env 段，deny 规则原样共存', () => {
+  const deny = JSON.stringify({ permissions: { deny: ['Read(./x)'] } });
+  const merged = JSON.parse(mergeSettingsEnv(deny, GW)!) as { permissions: unknown; env: Record<string, string> };
+  assert.deepEqual(merged.permissions, { deny: ['Read(./x)'] }, 'deny 通道与网关鉴权共存于同一份载荷，合并不得替换');
+  assert.equal(merged.env['ANTHROPIC_BASE_URL'], 'https://gw.example');
+  assert.equal(merged.env['ANTHROPIC_API_KEY'], 'sk-gw-1234567890');
+});
+
+test('G2 mergeSettingsEnv：settings 为 null 而 env 非空时新建；env 空对象时原样返回（含 null）', () => {
+  const made = JSON.parse(mergeSettingsEnv(null, GW)!) as { env: Record<string, string> };
+  assert.deepEqual(made.env, GW);
+  assert.equal(mergeSettingsEnv(null, {}), null, '未配网关的机器上不得凭空多出一个 --settings');
+  const deny = '{"permissions":{"deny":[]}}';
+  assert.equal(mergeSettingsEnv(deny, {}), deny, '关闭或空 env 时载荷逐字节不变');
+  assert.equal(mergeSettingsEnv(null, undefined), null);
+});
+
+test('G3 mergeSettingsEnv：坏 JSON 原样返回，不做校验层', () => {
+  assert.equal(mergeSettingsEnv('not json', GW), 'not json', '坏载荷交给 CLI 拒绝并走既有失败出口');
+});
+
+test('G4 buildClaudeArgs：settingsEnv 在场时 --settings 值含 env 段；缺席时与旧配方逐字节相同', () => {
+  const withEnv = buildClaudeArgs({ ...base, settingsEnv: GW });
+  const i = withEnv.indexOf('--settings');
+  assert.notEqual(i, -1, '网关 env 必须走 --settings 内联，不能靠环境变量（会被隔离剥掉）');
+  assert.deepEqual(JSON.parse(withEnv[i + 1]!).env, GW);
+  // 缺席时零变化：与不带 settingsEnv 的产出完全一致
+  assert.deepEqual(buildClaudeArgs({ ...base, settingsJson: null }), buildClaudeArgs({ ...base, settingsJson: null, settingsEnv: undefined }));
+  const noSettings = buildClaudeArgs(base);
+  assert.ok(!noSettings.includes('--settings'), '没有 deny 也没有网关 env 时不得出现 --settings');
+});
+
+test('G5 extractSettingsEnv：只收 ANTHROPIC_/CLAUDE_ 前缀的非空字符串值；坏 JSON 与缺失 env 段得空对象', () => {
+  const env = extractSettingsEnv(JSON.stringify({
+    env: { ANTHROPIC_BASE_URL: 'https://gw', CLAUDE_CODE_SUBAGENT_MODEL: 'm', PATH: 'leak', EMPTY: '', N: 1 },
+  }));
+  assert.deepEqual(env, { ANTHROPIC_BASE_URL: 'https://gw', CLAUDE_CODE_SUBAGENT_MODEL: 'm' }, 'PATH 一类无关键不得带进载荷');
+  assert.deepEqual(extractSettingsEnv('not json'), {});
+  assert.deepEqual(extractSettingsEnv('{"noEnv":1}'), {});
 });

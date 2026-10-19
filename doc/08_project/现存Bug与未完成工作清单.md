@@ -102,7 +102,7 @@ M11 第 12 步已有用户具名的组合证据达成边界；M12 已完成计�
 
 已交付面见 §3「Windows 原生移植」行；以下为如实登记的残余，均不阻断主链路（编排、审查、闸门、取消、清扫、安装、发布在 win32 已可跑通；单测+契约 2184 例全绿，跳过均带理由）：
 
-0. **claude 第三方网关与只读不变量不兼容（跨平台，win32 上无出口）**：`--restricted` 按官方语义忽略 user/project/local settings 文件（含 CC Switch 写入的网关 env 段），回落官方端点即报「未登录」。2026-10-19 在 win32 + claude 2.1.302 + CC Switch（api.kimi.com）实测：网关 env 以**进程变量**形态给到时受限模式鉴权正常——但编排器按隔离纪律剥掉 claude 子进程的 `ANTHROPIC_*` 环境变量（`claudeRouteEnv`），正门是 profile 路线的 `cld` 包装器；win32 上 `.cmd` 垫片经 `cmd.exe /d /s /c` 间接执行、含引号/元字符的探针臂参数不在支持面（见下第 4 条），managed settings 的 env 段实测也不被受限模式采用。**当前出路**：claude 侧官方登录（native 路线完整支持）；或做路线级增强——把网关 env 并入 `--settings` 内联载荷（受限模式对它仍然生效，官方文档背书），属新能力、须走设计评审。
+0. **claude 第三方网关与只读不变量（1.2.0 已修，Windows 线）**：`--restricted` 按官方语义忽略 user/project/local settings 文件（含 CC Switch 写入的网关 env 段），回落官方端点即报「未登录」。2026-10-19 在 win32 + claude 2.1.302 + CC Switch（api.kimi.com）实测定通道：进程变量形态可用但被编排器按隔离剥掉、`.cmd` 包装器撞垫片参数限制、managed settings 的 env 段不被采用——**`--settings` 内联可用**（受限模式仍生效）。1.2.0 落地为 `agents.claude.settings_env_source: user_settings`：路线解析时读用户级 settings.json 的 env 段、并入每次调用的 `--settings` 载荷（与 deny 规则共存），键值不落留痕（指纹仅 sha256、commandLine 逐值替换）。本仓 Windows 线 config 已开启；官方登录机器 env 段为空即无操作。macOS 线（1.0.0 基线）不带此能力。
 1. **POSIX 专属语义用例**：权限位（0600/0500/0000）、活体进程组信号/SIGTERM 阶梯/僵尸/ps 形态、shebang 假 CLI / PATH 垫片 / ps 故障注入这几族用例在 win32 整文件跳过（文件头 `WIN_FILE_SKIP` 注释带理由）；Windows 等价语义由 `test/unit/platform-win.test.ts` 等承接。逐文件做 win32 等价改写是后续工作。
 2. **zcode HOME 隔离夹具族**：六个 zcode 隔离/副本测试文件的夹具按 POSIX `env HOME` 写死，win32 需 USERPROFILE 一并适配后解除跳过。
 3. **厂商 CLI 无跨进程优雅取消**（结构性）：Windows 信号模型下 SIGTERM 即 TerminateProcess，软步只有 WM_CLOSE；我方凭据抹除由 worker 的 `cancel.requested` 标记路径保障，厂商 CLI 自行收尾不承诺。
@@ -110,6 +110,7 @@ M11 第 12 步已有用户具名的组合证据达成边界；M12 已完成计�
 5. **agy 的 pty 依赖**：win32 显式拒绝 pty 模式；agy 1.4.2 在 Windows 管道下是否丢 stdout 待实测——不丢则免 pty 可用，丢则试 Git for Windows 自带 winpty，再不行如实报该侧不可用。
 6. **集成测试的 win32 残余**：shebang 假 CLI 机制（`#!node` 脚本经 PATH/直接 exec，win32 的 CreateProcess 不认）与活体 POSIX 信号语义两族的集成文件在 win32 整文件跳过（`WIN_FILE_SKIP` 带理由）；另有零星路径形态差异（如 bug 阶段归档扫描）逐文件适配中。核心链路的集成覆盖由 access-v3（含取消标记优雅收尾）、selftest 14/14、release-package（隔离安装/升级/卸载/出包）在 win32 真实跑通。
 7. **chmod 权限位降级**：凭据副本的 0600 在 NTFS 只映射只读位，隔离靠运行根在用户目录下的目录边界；已接受的限制，不是待办。
+8. **codex 的只读沙箱在 Windows 不拦截（上游缺口，1.2.0 实测登记）**：win32 + codex 0.163.0（CC Switch 网关、qwen 模型载体）下，只读负对照真实执行且 `-s read-only` 中写命令报告写入成功——探针按 fail-closed 清空 readonly_flags、该侧判不可用，这是编排器的正确行为，不是误报。claude 侧不受影响（只读走 `--restricted` + `--settings` deny，已验证）。Windows 线在 codex 修复沙箱的 Windows 实现前，审查侧只有 claude 可入选；不得以放宽只读换可用。
 
 ## 4. 已接受的结构性限制
 
