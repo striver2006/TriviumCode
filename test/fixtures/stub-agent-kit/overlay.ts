@@ -350,7 +350,9 @@ export async function hashTree(root: string): Promise<Map<string, string>> {
   const walk = async (dir: string): Promise<void> => {
     for (const e of await fs.readdir(dir, { withFileTypes: true })) {
       const abs = path.join(dir, e.name);
-      const rel = path.relative(root, abs);
+      // 键域恒用 `/`（1.2.7）：win32 的 path.relative 出反斜杠，而 overlay 自报与白名单都是
+      // posix 形态——两域不齐时「自报=差集」的验收在 win32 必红
+      const rel = path.relative(root, abs).replace(/\\/g, '/');
       if (e.isSymbolicLink()) {
         out.set(rel, SYMLINK_MARK + (await fs.readlink(abs)));
         continue;

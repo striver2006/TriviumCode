@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { ASSET_ROOT, BUNDLE, bundleMissing, bundleSkipReason, cli, makeFixture } from '../helpers/fixture.js';
 import { groupsWithMark, killGroup } from '../helpers/proc.js';
+import { SH } from '../helpers/platform.js';
 import { newStatus, writeStatus } from '../../src/trivium/status.js';
 import { processStartTime, run } from '../../src/trivium/util/exec.js';
 import { repoId } from '../../src/trivium/review.js';
@@ -38,7 +39,7 @@ const MALFORMED = { pgid: 'not-a-number' };
 
 /** 一个已退出的 worker pid，连同它生前的两种启动时刻 */
 async function deadWorker(): Promise<{ pid: number; legacy: string | null; canonical: string | null }> {
-  const c = spawn('/bin/sh', ['-c', 'sleep 30'], { stdio: 'ignore' });
+  const c = spawn(SH, ['-c', 'sleep 30'], { stdio: 'ignore' });
   const exited = new Promise<void>((r) => c.once('exit', () => r()));
   const pid = c.pid!;
   const legacy = await processStartTime(pid);
@@ -100,7 +101,7 @@ async function scene(cells: Cell[]): Promise<Scene> {
     for (const cell of cells) {
       let cliRec: unknown = null;
       if (cell === 'A') {
-        const g = spawn('/bin/sh', ['-c', 'sleep 600; : "$0"', tag], { detached: true, stdio: 'ignore' });
+        const g = spawn(SH, ['-c', 'sleep 600; : "$0"', tag], { detached: true, stdio: 'ignore' });
         held.exited = new Promise<void>((r) => g.once('exit', () => r()));
         held.pgid = g.pid!;
         const startedAt = await processStartTime(held.pgid, { canonical: true });

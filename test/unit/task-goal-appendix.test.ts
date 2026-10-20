@@ -169,7 +169,8 @@ const reviewDoc = (role: string) =>
 const disposition = ['---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan', 'role: claude', 'kind: revised', '---', ''].join('\n');
 
 const rel = (root: string, layout: ArchiveLayout, name: string) =>
-  path.relative(root, path.join(stageDir(layout, 'plan'), name));
+  // 报告域恒 `/`（1.2.7）：resolvePlanFinal 的 path 已归一，期望值同域比对
+  path.relative(root, path.join(stageDir(layout, 'plan'), name)).replace(/\\/g, '/');
 
 test('U7 · resolvePlanFinal：r1 + r2 取 r2；只有 r1 取 r1；裁决件与审查件不入选', async () => {
   const both = await layoutWithPlan({

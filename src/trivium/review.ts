@@ -311,7 +311,8 @@ export async function resolvePlanFinal(
     const planStageRef = { topic: ref.topic, layout: ref.layout, stage: 'plan' as const,
       stageDirAbs: stageDir(ref.layout, 'plan') };
     const abs = await locateSubject(planStageRef, null, projectRoot, resolution.driver);
-    return { path: path.relative(projectRoot, abs), warning: null };
+    // 报告域恒用 `/`（1.2.7）：这个 path 进告警正文与测试比对，win32 的 path.relative 出反斜杠
+    return { path: path.relative(projectRoot, abs).replace(/\\/g, '/'), warning: null };
   } catch {
     /*
      * 阶段目录 `readdir` 失败也落到这里：`locateSubject` 把它当空目录、随后抛 65，与「没有计划阶段」同归一处

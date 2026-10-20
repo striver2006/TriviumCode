@@ -16,6 +16,7 @@ import { encodeStubConfig, STUB_ENV_VAR, type StubConfig } from '../../src/trivi
 import { scratchDir } from './scratch.js';
 import { ENTRY_SCAN_HOME_ENV } from '../../src/trivium/entry-collisions.js';
 import { emptyEntryScanHome } from './entry-scan-home.js';
+import { fixtureCodexHome } from './codex-home-fixture.js';
 
 /**
  * 运行时本文件位于 `dist/test/test/helpers/`，源码位于 `test/helpers/`，
@@ -194,6 +195,8 @@ export async function cli(
     [STUB_ENV_VAR]: stub ? encodeStubConfig(stub) : undefined,
     // doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01）
     [ENTRY_SCAN_HOME_ENV]: emptyEntryScanHome(),
+    // codex 的 profile 名单与原生路线判据读夹具家，不读真实 ~/.codex（1.2.7，与上一条同族泄漏）
+    CODEX_HOME: fixtureCodexHome(),
     ...extraEnv,
   };
   return run(process.execPath, [BUNDLE, ...args], { cwd: root, env, timeoutMs });

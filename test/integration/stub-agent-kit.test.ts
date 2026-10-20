@@ -36,6 +36,7 @@ import { run } from '../../src/trivium/util/exec.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { encodeStubConfig, STUB_ENV_VAR } from '../../src/trivium/adapters/stub.js';
+import { IS_WIN } from '../../src/trivium/util/platform.js';
 import {
   KIT_WHITELIST,
   STUB_ID,
@@ -196,7 +197,8 @@ test('接入套件 ②：加桩之后类型层依然自洽（tsc --noEmit）', {
    * 一个都不会暴露，而它们恰恰是「新增一家就编译不过」的主要形态
    * （计划双审 GLM-03 的原话：零改动验收会被自己的判据打红）。
    */
-  const tsc = path.join(k.root, 'node_modules/.bin/tsc');
+  // win32：.bin/tsc 是无扩展名的 sh 脚本（CreateProcess 不认），取 .cmd 垫片（参数无元字符，§7.1 支持面内）
+  const tsc = path.join(k.root, IS_WIN ? 'node_modules/.bin/tsc.cmd' : 'node_modules/.bin/tsc');
   const r = await run(tsc, ['--noEmit', '-p', path.join(k.root, 'tsconfig.json')], {
     cwd: k.root,
     timeoutMs: 170_000,
@@ -409,9 +411,10 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
    * 另有一条用例专门覆盖「旧盘迁移后走第三态」，见文件末尾——
    * 两条各守一边：这条守版本比对真的发生，那条守第三态真的被点名。
    */
-  const fakeAgy = path.join(root, 'fake/agy');
+  const fakeAgy = IS_WIN ? path.join(root, 'fake/agy.cmd') : path.join(root, 'fake/agy');
   await fs.mkdir(path.dirname(fakeAgy), { recursive: true });
-  await fs.writeFile(fakeAgy, `#!/bin/sh\necho ${FAKE_CLI_VERSION}\n`, { mode: 0o755 });
+  // win32 无 shebang 执行：写 .cmd 垫片（run() 对 .cmd 经 cmd.exe 间接执行，设计 §7.1）
+  await fs.writeFile(fakeAgy, IS_WIN ? `@echo ${FAKE_CLI_VERSION}\r\n` : `#!/bin/sh\necho ${FAKE_CLI_VERSION}\n`, { mode: 0o755 });
   const fakeZcode = path.join(root, 'fake/zcode.js');
   await fs.writeFile(fakeZcode, `console.log('zcode ${FAKE_CLI_VERSION}');\n`, 'utf8');
 
