@@ -15,11 +15,8 @@ import {
 import { run } from '../../src/trivium/util/exec.js';
 import { scratchDir } from '../helpers/scratch.js';
 
-// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
-// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
-if (process.platform === 'win32') {
-  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
-} else {
+// 2026-10-20 试验性解除 win32 整文件跳过（第三批适配）：git 快照夹具跨平台，实测后按结果定去留。macOS/Linux 行为零变化。
+{
 
 async function repo(): Promise<string> {
   const dir = await scratchDir('trivium-drift-');
@@ -70,10 +67,12 @@ test('敏感枚举父深度：批准上限7，相邻6/7入列、8仍是未覆盖
   const nonmatching = fileAt(SENSITIVE_SCAN_MAX_PARENT_DEPTH, 'public.txt');
   await fs.writeFile(path.join(dir, nonmatching), 'public\n');
   const deny = await enumerateDenyPaths(defaultConfig(), dir, path.join(dir, '.reviews'), 'gemini');
+  // 禁读条目为落盘域（恒 `/`）；期望值经 path.join 拼出，win32 下带反斜杠——同域后再比
+  const domain = (p: string) => p.replace(/\\/g, '/');
   for (const depth of depths) {
-    assert.equal(deny.includes(fileAt(depth, 'fixture.key')), depth <= SENSITIVE_SCAN_MAX_PARENT_DEPTH, `父深度${depth}`);
+    assert.equal(deny.includes(domain(fileAt(depth, 'fixture.key'))), depth <= SENSITIVE_SCAN_MAX_PARENT_DEPTH, `父深度${depth}`);
   }
-  assert.equal(deny.includes(nonmatching), false);
+  assert.equal(deny.includes(domain(nonmatching)), false);
   assert.ok(deny.includes('.trivium'), '扫描深度整改不得丢失编排器目录规则');
 });
 
@@ -345,7 +344,7 @@ test('EV-139 U6：核对对象时 git 也出错（非 git 目录）⇒ git_error
   assert.doesNotMatch(u.detail, /第二行不要/);
 });
 
-test('EV-139 U7：文件名含制表符的文件被改 ⇒ related（严格比对走 -z，路径原样；旧调用带引号、误落 unrelated）', async () => {
+test('EV-139 U7：文件名含制表符的文件被改 ⇒ related（严格比对走 -z，路径原样；旧调用带引号、误落 unrelated）', { skip: process.platform === 'win32' && '制表符（0x09）在 Windows 文件名禁用的控制字符区内，夹具物理不可构造' }, async () => {
   const dir = await repo();
   const odd = 'src/a\tb.ts';
   const before = await workTreeHash(dir);

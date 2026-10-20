@@ -688,9 +688,15 @@ export async function judgeDrift(input: DriftInput): Promise<DriftVerdict> {
   if (changed.length === 0) return { kind: 'none' };
 
   // 3.c 与 --context / diff 涉及文件相交 → 相关漂移
-  const relatedSet = new Set(relatedPaths.map((p) => path.normalize(p)));
+  /*
+   * related 比对域恒用 `/`（1.2.5，win32 解除 freeze-drift 跳过后暴露的真缺陷）：
+   * git 产出的路径是正斜杠，`path.normalize` 在 win32 归一成反斜杠——`startsWith('src/')`
+   * 对 `src\a.ts` 永远不成立，--context 相关漂移在 win32 全部落 unrelated。两侧同归一到
+   * 匹配域再比，与 matchesAnyGlob/toDomainRel 同一条纪律。
+   */
+  const relatedSet = new Set(relatedPaths.map((p) => path.normalize(p).replace(/\\/g, '/')));
   const related = changed.filter((f) => {
-    const n = path.normalize(f);
+    const n = path.normalize(f).replace(/\\/g, '/');
     for (const r of relatedSet) {
       if (n === r || n.startsWith(r.endsWith('/') ? r : `${r}/`)) return true;
     }

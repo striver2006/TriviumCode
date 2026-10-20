@@ -13,12 +13,10 @@ import {
   summarizeWorkTree, summaryBudget, unavailableSummary, type WorkTreeSummary,
 } from '../../src/trivium/worktree-summary.js';
 import { scratchDir } from '../helpers/scratch.js';
+import { SH } from '../helpers/platform.js';
 
-// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
-// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
-if (process.platform === 'win32') {
-  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
-} else {
+// 2026-10-20 试验性解除 win32 整文件跳过（第三批适配）：实测后按结果定去留。macOS/Linux 行为零变化。
+{
 
 /**
  * 审批时的工作树改动摘要（EV-132 候选 ② 折中版；计划 `.reviews/审批前工作树摘要/plan/` r2 §3.1）。
@@ -110,7 +108,8 @@ test('4：闸门期提交过的改动同样列出——基线与当前都按工�
 test('5：路径含空格、双引号、中文 ⇒ 原样（-z 成对解析，不加引号）', async () => {
   const dir = await repo();
   const base = await workTreeHash(dir);
-  const names = ['有 空格.ts', 'quote"d.ts', '中文/文件.ts'];
+  // win32 文件名禁用双引号——用同样会触发 -z 成对解析的形态（空格/中文/单引号）替代
+  const names = process.platform === 'win32' ? ['有 空格.ts', "quote'd.ts", '中文/文件.ts'] : ['有 空格.ts', 'quote"d.ts', '中文/文件.ts'];
   await fs.mkdir(path.join(dir, '中文'), { recursive: true });
   for (const n of names) await fs.writeFile(path.join(dir, n), 'x\n');
   const s = await summarize(dir, base);
@@ -148,7 +147,7 @@ test('照抄命令真能跑，且列出的条数与摘要 total 相同', async (
   await fs.mkdir(path.join(dir, '.reviews'), { recursive: true });
   await fs.writeFile(path.join(dir, '.reviews/x.md'), 'd\n');
   const s = await summarize(dir, base);
-  const r = await run('/bin/sh', ['-c', fullListCommand(s)], { cwd: dir, timeoutMs: 60_000 });
+  const r = await run(SH, ['-c', fullListCommand(s)], { cwd: dir, timeoutMs: 60_000 });
   assert.equal(r.code, 0, r.stderr);
   assert.equal(r.stdout.trim().split('\n').filter(Boolean).length, s.total);
 });
@@ -284,7 +283,7 @@ test('r1 CODEX-01：照抄命令两个 tree 值也加引号；路径含单引号
   const s = await summarize(dir, base);
   const cmd = fullListCommand(s);
   assert.ok(cmd.includes(`'${s.baseline_tree}' '${s.current_tree}'`), cmd);
-  const r = await run('/bin/sh', ['-c', cmd], { cwd: dir, timeoutMs: 60_000 });
+  const r = await run(SH, ['-c', cmd], { cwd: dir, timeoutMs: 60_000 });
   assert.equal(r.code, 0, r.stderr);
   assert.equal(r.stdout.trim().split('\n').filter(Boolean).length, s.total);
   assert.ok(s.files.some((f) => f.path === "it's.ts"));
@@ -337,7 +336,7 @@ test('r1 CODEX-03：总预算是真上界，被杀的 git 按进程组收尾（�
   assert.ok(elapsed < 800 + 400, `整体截止应在预算附近返回，实际 ${elapsed} ms`);
   // 收尾宽限（500 ms）过后，按进程组杀掉的过滤器不应还活着
   await new Promise((r) => setTimeout(r, 1500));
-  const ps = await run('/bin/sh', ['-c', `ps -axo command | grep -F "sleep ${marker}" | grep -v grep || true`], { timeoutMs: 10_000 });
+  const ps = await run(SH, ['-c', `ps -axo command | grep -F "sleep ${marker}" | grep -v grep || true`], { timeoutMs: 10_000 });
   assert.equal(ps.stdout.trim(), '', `过滤器子进程成了孤儿：\n${ps.stdout}`);
 });
 

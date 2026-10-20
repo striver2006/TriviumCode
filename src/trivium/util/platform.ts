@@ -43,6 +43,11 @@ export function cachedEnumRows(cache: { at: number; rows: WinProcRow[] } | null,
   if (!cache || now - cache.at >= ENUM_STALE_MAX_MS) return null;
   return cache.rows;
 }
+
+/** 测试专用：清枚举缓存。ps 桩要模拟「取不到」，TTL 缓存会让装好的桩仍命中旧表（1.2.5） */
+export function resetEnumCacheForTest(): void {
+  enumCache = null;
+}
 const ENUM_COMMAND =
   'Get-CimInstance Win32_Process | ForEach-Object { ' +
   "$c = if ($_.CreationDate) { $_.CreationDate.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.ffffffZ') } else { '' }; " +

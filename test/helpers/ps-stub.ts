@@ -25,6 +25,7 @@
 import cp from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import { processStartTime } from '../../src/trivium/util/exec.js';
+import { resetEnumCacheForTest } from '../../src/trivium/util/platform.js';
 
 export type PsForm = 'canonical' | 'legacy' | 'both';
 
@@ -62,8 +63,16 @@ export function stubPsFailure(
   const state = { blocked: 0, allowed: 0, restored: false, armed: o.startArmed ?? true, skipLeft: o.allowFirst ?? 0 };
   const pids = o.pids ? new Set(o.pids) : null;
   const stub = function (this: unknown, bin: string, args?: readonly string[], opts?: cp.SpawnOptions) {
-    if (bin === '/bin/ps' && targetsBlockedPid(args, pids)) {
-      const canonical = isCanonicalEnv(opts?.env as NodeJS.ProcessEnv | undefined);
+    /*
+     * win32（1.2.5）：身份路径不走 /bin/ps 而走 powershell.exe（util/platform.ts 的
+     * enumerateWinProcesses）——不拦它，「规范化 ps 取不到」的桩在 win32 全部落空。
+     * PowerShell 侧没有 canonical/legacy 两形态（唯一路径、恒 UTC ISO），故任何请求形态
+     * 都按拦截处置；args 里没有 -p 取值，pid 过滤在 win32 不适用（调用方按全量用）。
+     */
+    const isWinPs = process.platform === 'win32' && bin === 'powershell.exe';
+    if ((bin === '/bin/ps' || isWinPs) && (isWinPs || targetsBlockedPid(args, pids))) {
+      // win32 唯一路径无两形态：按请求侧声明形态，使 canonical/legacy/both 三种桩都拦得住
+      const canonical = isWinPs ? which !== 'legacy' : isCanonicalEnv(opts?.env as NodeJS.ProcessEnv | undefined);
       if (which === 'both' || (which === 'canonical') === canonical) {
         if (!state.armed || state.skipLeft > 0) {
           if (state.armed) state.skipLeft--;
@@ -78,6 +87,8 @@ export function stubPsFailure(
   } as typeof cp.spawn;
   cp.spawn = stub;
   syncBuiltinESMExports();
+  // win32：装桩即清枚举缓存——TTL 内的旧表会让桩形同虚设（同 psStubWorks 里的那次）
+  resetEnumCacheForTest();
   return {
     get blocked() {
       return state.blocked;
@@ -110,6 +121,7 @@ export async function psStubWorks(which: PsForm, pid: number = process.pid): Pro
   }
   const forms = which === 'both' ? ['canonical', 'legacy'] as const : [which];
   for (const f of forms) {
+    resetEnumCacheForTest();
     const t = await processStartTime(pid, f === 'canonical' ? { canonical: true } : {});
     if (t !== null) return `桩未生效：${f} 形态仍取到 pid ${pid} 的启动时刻「${t}」（Node ${process.version} 未把 spawn 的改动同步进具名导入，或 pid 不在拦截集里）`;
   }

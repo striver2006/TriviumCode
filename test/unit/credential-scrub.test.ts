@@ -16,11 +16,8 @@ import {
 } from '../../src/trivium/scrub.js';
 import { scratchDir } from '../helpers/scratch.js';
 
-// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
-// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
-if (process.platform === 'win32') {
-  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
-} else {
+// 2026-10-20 试验性解除 win32 整文件跳过（第三批适配）：实测后按结果定去留。macOS/Linux 行为零变化。
+{
 
 /**
  * 假凭据：形态与真实一致（高熵），值是编造的。
@@ -68,14 +65,14 @@ test('scrubCodexHome：三份载体整删；sessions/ 就地脱敏不删；cache
   await kept(session);
   await clean(session);
   assert.ok((await fs.readFile(session, 'utf8')).startsWith('{"type":"session_meta"'), '脱敏不得破坏首行结构');
-  assert.equal(r.redacted[path.join('codexhome', 'sessions/2026/09/17/rollout-x.jsonl')], 1);
+  assert.equal(r.redacted['codexhome/sessions/2026/09/17/rollout-x.jsonl'], 1);
 
   // cache/ plugins/：不碰（里面的假 token 还在，证明确实没扫）
   await kept(path.join(home, 'cache/remote_plugin_catalog/big.json'));
   assert.ok((await fs.readFile(path.join(home, 'plugins/x/index.js'), 'utf8')).includes(FAKE_CRED));
 
   await gone(path.join(home, 'fakehome/.cache/leak.txt'));
-  assert.deepEqual(r.removedOnHit, [path.join('codexhome', 'fakehome/.cache/leak.txt')]);
+  assert.deepEqual(r.removedOnHit, ['codexhome/fakehome/.cache/leak.txt']);
   assert.deepEqual(r.errors, []);
   assert.deepEqual(r.warnings, []);
 
@@ -109,7 +106,7 @@ test('scrubZcodeHome：config.json 副本整删；rollout/ log/ 就地脱敏；p
   await write(path.join(home, '.zcode/settings.json'), '{"theme":"dark"}');
 
   const r = await scrubZcodeHome(home);
-  assert.deepEqual(r.deleted, [path.join('home', '.zcode/cli', 'config.json')]);
+  assert.deepEqual(r.deleted, ['home/.zcode/cli/config.json']);
   await gone(path.join(cli, 'config.json'));
   await kept(path.join(cli, 'rollout/model-io-sess_1.jsonl'));
   await clean(path.join(cli, 'rollout/model-io-sess_1.jsonl'));
@@ -373,11 +370,11 @@ test('scrubCodexHome：自有 sqlite 状态库整删且单列一格，skills/.sy
 
   const r = await scrubCodexHome(home);
 
-  assert.deepEqual(r.deleted, [path.join('codexhome', 'config.toml')], '凭据载体只此一份，另两类不能混进来');
+  assert.deepEqual(r.deleted, ['codexhome/config.toml'], '凭据载体只此一份，另两类不能混进来');
   assert.deepEqual(
     [...r.unscannableDeleted].sort(),
     ['goals_1.sqlite', 'state_5.sqlite-shm', 'thread_history_1.sqlite-wal']
-      .map((n) => path.join('codexhome', n)).sort(),
+      .map((n) => `codexhome/${n}`).sort(),
     'sqlite 记在另一格：删除理由与凭据载体不同，混在一起哨兵就说了假话',
   );
   for (const n of ['goals_1.sqlite', 'state_5.sqlite-shm', 'thread_history_1.sqlite-wal']) {
@@ -399,7 +396,7 @@ test('scrubSideDir：codex 侧扫得完 → complete 为真 → 非 force 的下
 
   const first = await scrubSideDir(codexAdapter, side, { force: true });
   assert.equal(first.complete, true, 'sqlite 已整删，没有跳过项');
-  assert.deepEqual(first.unscannable_deleted, [path.join('codexhome', 'goals_1.sqlite')]);
+  assert.deepEqual(first.unscannable_deleted, ['codexhome/goals_1.sqlite']);
   assert.equal(first.ok, true);
 
   const again = await scrubSideDir(codexAdapter, side);

@@ -12,11 +12,8 @@ import { readScrubSentinel } from '../../src/trivium/scrub.js';
 import { TOOL_TRACE_CAPABILITY, failedResult, type CriticAdapter } from '../../src/trivium/adapters/base.js';
 import { scratchDir } from '../helpers/scratch.js';
 
-// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
-// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
-if (process.platform === 'win32') {
-  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
-} else {
+// 2026-10-20 试验性解除 win32 整文件跳过（第三批适配）：实测后按结果定去留。macOS/Linux 行为零变化。
+{
 
 const DAY = 86_400_000;
 
@@ -381,13 +378,13 @@ test('scrubAllRunRoot：准入未过而 status 读得到的目录进 deferred，
   assert.equal(r.visited, r.alive + r.deferred.length + r.unknown.length + r.eligible.length + r.settled);
 });
 
-test('scrubAllRunRoot：项目桶读不了要记账，不能整棵静默跳过（CODEX-01）', async () => {
+test('scrubAllRunRoot：项目桶读不了要记账，不能整棵静默跳过（CODEX-01）', { skip: process.platform === 'win32' && '「目录在而 readdir 失败」在 NTFS 无纯 fs 构造（isDirectory 前置跳过吞掉文件占位；icacls 改 ACL 超出测试面）' }, async () => {
   const { cfg, runRoot, mine } = await twoBuckets();
   await runDirWith(mine, 'R-a', 'success');
-  // 桶位置上放一个普通文件：readdir 会 ENOTDIR，走的正是那条 catch
+  // 桶位置上放一个普通文件：readdir 会 ENOTDIR，走的正是那条 catch（win32 上 chmod 0 不拦 readdir，
+  // 文件占位是两平台同形的「读不了」构造——注释里本来写的就是这个办法）
   const brokenBucket = path.join(runRoot, 'broken-bucket');
-  await fs.mkdir(brokenBucket);
-  await fs.chmod(brokenBucket, 0o000);
+  await fs.writeFile(brokenBucket, 'not a directory');
 
   const r = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
 
@@ -425,7 +422,8 @@ const CLI_MARK = `trivium-u14-${process.pid}-${Date.now()}`;
 /** 起一个 detached 的活进程组（sh + sleep），返回组号、规范化启动时刻与结束函数 */
 async function liveCliGroup(tag: string) {
   const { spawn } = await import('node:child_process');
-  const child = spawn('/bin/sh', ['-c', 'sleep 600; : "$0"', `${CLI_MARK}-${tag}`], { detached: true, stdio: 'ignore' });
+  const { SH, IS_WIN } = await import('../helpers/platform.js');
+  const child = spawn(SH, ['-c', 'sleep 600; : "$0"', `${CLI_MARK}-${tag}`], { detached: true, stdio: 'ignore' });
   const exited = new Promise<void>((r) => child.once('exit', () => r()));
   const pgid = child.pid!;
   const startedAt = await processStartTime(pgid, { canonical: true });
@@ -434,7 +432,13 @@ async function liveCliGroup(tag: string) {
     startedAt,
     stop: async () => {
       try {
-        process.kill(-pgid, 'SIGKILL');
+        if (IS_WIN) {
+          // win32 无负 pgid 信号：经生产同款 taskkill 树杀收尾（util/platform.ts）
+          const { winTaskkillTree } = await import('../../src/trivium/util/platform.js');
+          winTaskkillTree(pgid, true);
+        } else {
+          process.kill(-pgid, 'SIGKILL');
+        }
       } catch {
         /* 已不在 */
       }
@@ -531,7 +535,7 @@ async function lockCarrierDir(carrier: string): Promise<void> {
   await fs.chmod(path.dirname(carrier), 0o500);
 }
 
-test('EV-204 R1 到期目录删不掉：记进 removeFailed、落回凭据抹除，后面的目录照常整删、未到期的照常抹', { skip: IS_ROOT && 'root 下只读目录锁不住' }, async () => {
+test('EV-204 R1 到期目录删不掉：记进 removeFailed、落回凭据抹除，后面的目录照常整删、未到期的照常抹', { skip: (IS_ROOT && 'root 下只读目录锁不住') || (process.platform === 'win32' && 'chmod 0o555 在 NTFS 不拦删除（§3.1-1 残余族）') }, async () => {
   const { cfg, projectRoot, b } = await bucket();
   try {
     const expired: { d: string; carrier: string }[] = [];

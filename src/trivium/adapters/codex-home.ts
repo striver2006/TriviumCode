@@ -239,7 +239,9 @@ export async function scrubCodexHome(codexHome: string, opts: { sizeCap?: number
     if (!isCredentialCarrier(name)) continue;
     try {
       await fs.rm(path.join(codexHome, name), { force: true });
-      out.deleted.push(path.join(dirName, name));
+      // 报告域恒用 `/`（与禁读条目/漂移比对同一纪律）：win32 的 path.join 出反斜杠，
+      // 留痕与断言两侧不该随平台换形（1.2.5，win32 解除 credential-scrub 跳过后暴露）
+      out.deleted.push(`${dirName}/${name}`);
     } catch (e) {
       out.errors.push(`删不掉 ${name}：${(e as Error).message}`);
     }
@@ -248,9 +250,11 @@ export async function scrubCodexHome(codexHome: string, opts: { sizeCap?: number
     exclude: SKIP_AFTER_RUN, redactUnder: REDACT_AFTER_RUN, sizeCap: opts.sizeCap,
   });
   out.scanned = scan.scanned;
-  out.removedOnHit = scan.removed.map((p) => path.join(dirName, p));
-  out.unscannableDeleted = scan.unscannableRemoved.map((p) => path.join(dirName, p));
-  for (const [rel, n] of Object.entries(scan.redacted)) out.redacted[path.join(dirName, rel)] = n;
+  // 报告域恒用 `/`（同上）：win32 的 path.join 出反斜杠，留痕与断言不随平台换形
+  const domainJoin = (a: string, b: string): string => `${a}/${b.replace(/\\/g, '/')}`;
+  out.removedOnHit = scan.removed.map((p) => domainJoin(dirName, p));
+  out.unscannableDeleted = scan.unscannableRemoved.map((p) => domainJoin(dirName, p));
+  for (const [rel, n] of Object.entries(scan.redacted)) out.redacted[domainJoin(dirName, rel)] = n;
   out.warnings.push(...scan.warnings);
   out.skipped = scan.skipped;
   out.errors.push(...scan.errors);

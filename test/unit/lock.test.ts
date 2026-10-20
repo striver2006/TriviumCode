@@ -15,11 +15,8 @@ import { readState, setGate } from '../../src/trivium/state.js';
 import { psStubWorks, stubPsFailure } from '../helpers/ps-stub.js';
 import { scratchDir } from '../helpers/scratch.js';
 
-// WIN_FILE_SKIP（Windows 移植）：活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）
-// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
-if (process.platform === 'win32') {
-  console.log('skip（win32）: 活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）');
-} else {
+// 2026-10-20 试验性解除 win32 整文件跳过（第三批适配）：实测后按结果定去留。macOS/Linux 行为零变化。
+{
 
 async function tmpTrivium(): Promise<string> {
   return scratchDir('trivium-lock-');
@@ -1059,7 +1056,9 @@ test('EV-153 U1c / U1d：取不到启动时刻时其余判据照常——持有�
 });
 
 test('EV-153 U1e：ps 正常而规范化启动时刻不符 ⇒ 仍判 pid_reused（D1 不放过真复用）', async () => {
-  const lock = await selfLock({ pid_started_at_canonical: 'Thu Jan  1 00:00:00 1970' });
+  // 「不符」的值须是本平台形态：异平台形态按 1.2.2 契约判 unverifiable（canonical-crossform.test.ts 守那格）
+  const mismatched = process.platform === 'win32' ? '1970-01-01T00:00:00.000000Z' : 'Thu Jan  1 00:00:00 1970';
+  const lock = await selfLock({ pid_started_at_canonical: mismatched });
   assert.equal(await judgeStale(lock, { heartbeatStaleMs: STALE_MS }), 'pid_reused');
 });
 

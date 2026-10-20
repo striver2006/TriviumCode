@@ -10,11 +10,9 @@ import { validateRunMeta } from '../../src/trivium/schemas.js';
 import type { RunMeta } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
 
-// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
-// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
-if (process.platform === 'win32') {
-  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
-} else {
+// 2026-10-20 试验性解除 win32 整文件跳过（第三批适配）：主体是取消收尾的元数据判定与
+// 临时目录夹具，实测后按结果定去留。macOS/Linux 行为零变化。
+{
 
 /**
  * EV-128：`review --cancel` 的归档侧收尾（计划 r2 §3.2 / §4.1 R1～R7）。
@@ -191,7 +189,7 @@ test('R6：工作进程未确认退出 ⇒ 不写 run.json（可能还有写者�
   assert.equal(r.task.kind, 'skipped', 'run.json 没变成 cancelled，登记也不能先改');
 });
 
-test('R7：写失败（_meta 目录只读）⇒ 函数不抛，第一步转成带异常首行的 skipped', { skip: process.getuid?.() === 0 && 'root 下只读目录拦不住写入' }, async () => {
+test('R7：写失败（_meta 目录只读）⇒ 函数不抛，第一步转成带异常首行的 skipped', { skip: (process.getuid?.() === 0 && 'root 下只读目录拦不住写入') || (process.platform === 'win32' && 'chmod 0o555 在 NTFS 不拦写入（§3.1-1 残余族）') }, async () => {
   const env = await setup();
   await seed(env);
   const dir = path.dirname(env.runJson);

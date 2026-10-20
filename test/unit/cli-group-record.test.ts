@@ -16,10 +16,11 @@ import {
 import { terminateRecordedCliGroups } from '../../src/trivium/run-protocol.js';
 import { groupMemberCount, groupsWithMark, killGroup } from '../helpers/proc.js';
 
-// WIN_FILE_SKIP（Windows 移植）：活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）
-// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+// 2026-10-20 试验后维持 win32 整文件跳过（第三批复盘）：本文件是活体进程组语义族——/bin/sh 硬编码、
+// 负 pgid 组信号（process.kill(-pgid)）、SIGTERM→SIGKILL 升级阶梯，win32 需按 §7.1 等价改写
+// （taskkill 树杀 + 父链闭包）而非形态适配，属 §3.1-1/6 重改写族，登记后续批次。
 if (process.platform === 'win32') {
-  console.log('skip（win32）: 活体 POSIX 进程语义（进程组信号/SIGTERM 阶梯/僵尸/ps 形态）');
+  console.log('skip（win32）: 活体 POSIX 进程组语义（负 pgid 信号/SIGTERM 升级阶梯），需等价改写非形态适配');
 } else {
 
 const MARK = `trivium-u-clirec-${process.pid}-${Date.now()}`;
