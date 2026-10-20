@@ -22,11 +22,9 @@ import { run } from '../../src/trivium/util/exec.js';
 import { assertUnreadableExit } from '../helpers/unreadable-exit.js';
 import { scratchDir } from '../helpers/scratch.js';
 
-// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
-// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
-if (process.platform === 'win32') {
-  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
-} else {
+// 2026-10-20 试验性解除 win32 整文件跳过（第二批适配）：主体是守卫逻辑的纯函数与经 Git Bash
+// 跑的 hook 子进程，实测后按结果定去留。macOS/Linux 行为零变化。
+{
 
 /** deny 的理由正文（`hookSpecificOutput.permissionDecisionReason`）；不是 deny 时为空串 */
 function denyReason(r: { json?: unknown }): string {
@@ -2056,7 +2054,7 @@ test('D3 · M1：拦截文案列出的后缀与判据同源（全集四家，含
 
 // ── 会话启动：到期运行目录删不掉（EV-204）──
 
-test('session-start：到期运行目录删不掉单列一行（目录与错误码），不再报「清扫本身失败」', { skip: process.getuid?.() === 0 && 'root 下只读目录锁不住' }, async () => {
+test('session-start：到期运行目录删不掉单列一行（目录与错误码），不再报「清扫本身失败」', { skip: (process.getuid?.() === 0 && 'root 下只读目录锁不住') || (process.platform === 'win32' && 'POSIX 权限位构造的「删不掉」在 NTFS 不成立（§3.1-1 残余族）') }, async () => {
   const ctx = await fakeCtx();
   const { repoId } = await import('../../src/trivium/review.js');
   const { newStatus, writeStatus } = await import('../../src/trivium/status.js');
@@ -2102,7 +2100,7 @@ test('removeFailedLine：最多列三个，超出写「等 N 个」', async () =
   assert.doesNotMatch(removeFailedLine(four.slice(0, 3)), /等 \d+ 个/);
 });
 
-test('session-start：删不掉是唯一一项待办时也要注入（锁在载体之外，落回的抹除无事可做），不能早退成静默', { skip: process.getuid?.() === 0 && 'root 下只读目录锁不住' }, async () => {
+test('session-start：删不掉是唯一一项待办时也要注入（锁在载体之外，落回的抹除无事可做），不能早退成静默', { skip: (process.getuid?.() === 0 && 'root 下只读目录锁不住') || (process.platform === 'win32' && 'POSIX 权限位构造的「删不掉」在 NTFS 不成立（§3.1-1 残余族）') }, async () => {
   const ctx = await fakeCtx();
   const { repoId } = await import('../../src/trivium/review.js');
   const { newStatus, writeStatus } = await import('../../src/trivium/status.js');

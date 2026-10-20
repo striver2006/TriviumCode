@@ -18,11 +18,23 @@ import { REPO_ROOT } from '../helpers/fixture.js';
 import { scratchDir } from '../helpers/scratch.js';
 import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
 
-// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
-// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
-if (process.platform === 'win32') {
-  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
-} else {
+// 2026-10-20 试验性解除 win32 整文件跳过（第二批适配）：主体是 preflight 检查项的纯逻辑与
+// 临时目录夹具，实测后按结果定去留。macOS/Linux 行为零变化。
+//
+// CODEX_HOME 隔离：`vendorProfilesFor` 读**真实** ~/.codex 的 <name>.config.toml 名单
+// （profileNamesAuthoritative），而 defaultConfig 把 codex profile 钉在 qwen——不隔离的话，
+// 「名单里有没有 qwen」取决于开发机（作者机器恰好有 qwen.config.toml 才绿）。这里给测试进程
+// 指一个只含 qwen 空壳的临时 CODEX_HOME，名单恒为 ['qwen']，与机器状态解耦。
+const isolatedCodexHome = await (async () => {
+  const { mkdtemp, writeFile } = await import('node:fs/promises');
+  const osMod = await import('node:os');
+  const dir = await mkdtemp(path.join(osMod.tmpdir(), 'trivium-pf-codexhome-'));
+  await writeFile(path.join(dir, 'qwen.config.toml'), '# preflight 测试隔离名单（空壳）\n');
+  process.env['CODEX_HOME'] = dir;
+  return dir;
+})();
+void isolatedCodexHome;
+{
 
 // doctor / preflight 的共享读取面扫描读空夹具，不读真实家目录（EV-240，计划双审 CODEX-01 / GLM-01）
 isolateEntryScanHome();
