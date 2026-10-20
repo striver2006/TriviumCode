@@ -550,6 +550,12 @@ test('敏感 glob 的目录段：win32 的项目相对反斜杠形态仍须命�
     const paths = await deny(f, 'gemini', 'claude');
     assert.ok(paths.includes('secrets/api.pem'), '嵌套 *.pem 没进 deny 集合：带目录段的 sensitive glob 在 win32 失配');
     assert.ok(paths.includes('sub/.env'), '嵌套 .env 没进 deny 集合：**/.env* 在 win32 失配');
+    // 落盘域锚点（1.2.2，审查 CLAUDE-07 首批）：项目相对条目（非绝对路径者）不得出现反斜杠——
+    // toDomainRel 的输出域契约在 win32 上同样成立
+    assert.ok(
+      paths.filter((p) => !path.isAbsolute(p)).every((p) => !p.includes('\\')),
+      `项目相对禁读条目混入反斜杠形态：${paths.filter((p) => p.includes('\\') && !path.isAbsolute(p)).join('、')}`,
+    );
 
     // 匹配函数自身的域契约：反斜杠输入归一到 `/` 域后再匹配（本条在两平台上都直接可判）
     assert.ok(matchesAnyGlob('secrets\\api.pem', ['**/*.pem']), 'matchesAnyGlob 须把反斜杠归一到 / 域再匹配');

@@ -16,11 +16,10 @@ import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { Ctx } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
 
-// WIN_FILE_SKIP（Windows 移植）：夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）
-// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
-if (process.platform === 'win32') {
-  console.log('skip（win32）: 夹具/断言仍按 POSIX 形态写死（登记 Windows 移植残余清单，待逐文件适配）');
-} else {
+// 2026-10-20 解除 win32 整文件跳过（审查 CLAUDE-07 首批锚点）：本文件夹具本就跨平台
+// （真命令 true/false/echo 经 Git for Windows 的 sh 执行、scratchDir 通用），实测全绿后留常驻——
+// 它正是「verify 命令在 win32 经 sh 分发」这一本批改动面的直接锚点。macOS/Linux 行为零变化。
+{
 
 /**
  * 编译测试出口（设计 §14）。
@@ -145,9 +144,12 @@ test('走 shell 执行，管道与 && 语义保留', async () => {
 });
 
 test('在项目根执行，而不是在编排器的工作目录', async () => {
-  const ctx = await ctxWith([], ['pwd']);
+  // win32 用 pwd -W（Git Bash 的 Windows 形态输出）：裸 pwd 会被 MSYS 把 TEMP 挂载映射成 /tmp，
+  // 字符串归一救不回；-W 给的就是 C:/… 形态，切斜杠+小写后与 realpath 精确可比
+  const ctx = await ctxWith([], [process.platform === 'win32' ? 'pwd -W' : 'pwd']);
   const out = await runVerify({ ctx, layout: layoutFor(ctx), runId: 'R7' });
-  assert.equal(out.record.commands[0]!.stdout_tail.trim(), ctx.projectRoot);
+  const norm = (s: string) => process.platform === 'win32' ? s.replace(/\//g, '\\').toLowerCase() : s;
+  assert.equal(norm(out.record.commands[0]!.stdout_tail.trim()), norm(ctx.projectRoot));
   assert.equal(out.record.project_root, ctx.projectRoot);
 });
 
