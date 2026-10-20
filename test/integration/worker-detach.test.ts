@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { groupsWithMark, killGroup } from '../helpers/proc.js';
 import {
   killProcessTree, spawnDetached, processAlive, run, terminateProcessGroup, type DetachedChildWatch,
@@ -21,7 +21,8 @@ import { scratchDir } from '../helpers/scratch.js';
 
 /** 本测试文件编译后位于 dist/test/test/integration/，据此定位同构的 src 产物 */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const EXEC_MODULE = path.resolve(HERE, '../../src/trivium/util/exec.js');
+// win32 的 ESM import 不认盘符绝对路径——模块定位一律 file:// URL（macOS 上 file:// 同样合法）
+const EXEC_MODULE = pathToFileURL(path.resolve(HERE, '../../src/trivium/util/exec.js')).href;
 
 async function tmpDir(): Promise<string> {
   return scratchDir('trivium-detach-');
@@ -117,7 +118,7 @@ test('R-A 断言②：派生调用秒级返回，不等 worker 结束', async ()
   }
 });
 
-test('派生的 worker 脱离父进程的进程组（detached 即 setsid）', async () => {
+test('派生的 worker 脱离父进程的进程组（detached 即 setsid）', { skip: process.platform === 'win32' && 'POSIX 进程组语义（setsid/pgid 组信号/SIGTERM 升级阶梯）——win32 按 §7.1 走父链闭包+taskkill 等价路径，需等价改写非形态适配（§3.1-6 重改写族）' }, async () => {
   const dir = await tmpDir();
   const workerScript = path.join(dir, 'w.mjs');
   await fs.writeFile(workerScript, 'setTimeout(() => process.exit(0), 5000);', 'utf8');
@@ -344,7 +345,7 @@ async function spawnWatched(ignoreTerm = false): Promise<{ pid: number; watch: D
   return { pid: r.pid, watch: g.watch, argPid: g.pid };
 }
 
-test('EV-150 U3：onSpawned 的第二个参数——杀之前 hasExited 为假；按组 SIGTERM 后 exited 兑现、signal 为 SIGTERM、hasExited 为真', async () => {
+test('EV-150 U3：onSpawned 的第二个参数——杀之前 hasExited 为假；按组 SIGTERM 后 exited 兑现、signal 为 SIGTERM、hasExited 为真', { skip: process.platform === 'win32' && 'POSIX 进程组语义（setsid/pgid 组信号/SIGTERM 升级阶梯）——win32 按 §7.1 走父链闭包+taskkill 等价路径，需等价改写非形态适配（§3.1-6 重改写族）' }, async () => {
   const { pid, watch, argPid } = await spawnWatched();
   try {
     assert.equal(argPid, pid, '第一个参数仍是返回的 pid');
@@ -359,7 +360,7 @@ test('EV-150 U3：onSpawned 的第二个参数——杀之前 hasExited 为假�
   }
 });
 
-test('EV-150 U4①：terminateProcessGroup——普通子进程 SIGTERM 即退，不升级', async () => {
+test('EV-150 U4①：terminateProcessGroup——普通子进程 SIGTERM 即退，不升级', { skip: process.platform === 'win32' && 'POSIX 进程组语义（setsid/pgid 组信号/SIGTERM 升级阶梯）——win32 按 §7.1 走父链闭包+taskkill 等价路径，需等价改写非形态适配（§3.1-6 重改写族）' }, async () => {
   const { pid, watch } = await spawnWatched();
   try {
     let escalations = 0;
@@ -467,7 +468,7 @@ async function runScenario(body: string): Promise<ShutdownScenario> {
   }
 }
 
-test('EV-152 U7①：shutdownTrackedTrees——killTree 拉起的静默子进程被按组终止（组空），那个 run() 此后不兑现（冻结）', async () => {
+test('EV-152 U7①：shutdownTrackedTrees——killTree 拉起的静默子进程被按组终止（组空），那个 run() 此后不兑现（冻结）', { skip: process.platform === 'win32' && 'POSIX 进程组语义（setsid/pgid 组信号/SIGTERM 升级阶梯）——win32 按 §7.1 走父链闭包+taskkill 等价路径，需等价改写非形态适配（§3.1-6 重改写族）' }, async () => {
   const r = await runScenario([
     "const p = tree('a', false);",
     'let resolved = false; p.then(() => { resolved = true; });',
@@ -487,7 +488,7 @@ test('EV-152 U7①：shutdownTrackedTrees——killTree 拉起的静默子进程
   assert.equal(r['resolved'], false, '冻结之后被杀子进程的 run() 不得兑现（否则 runner 会往下走、抢先写归档终态）');
 });
 
-test('EV-152 U7②：shutdownTrackedTrees——忽略 SIGTERM 的组在宽限后升级 SIGKILL，组空', async () => {
+test('EV-152 U7②：shutdownTrackedTrees——忽略 SIGTERM 的组在宽限后升级 SIGKILL，组空', { skip: process.platform === 'win32' && 'POSIX 进程组语义（setsid/pgid 组信号/SIGTERM 升级阶梯）——win32 按 §7.1 走父链闭包+taskkill 等价路径，需等价改写非形态适配（§3.1-6 重改写族）' }, async () => {
   const r = await runScenario([
     "tree('b', true);",
     "const pgid = await leader('b');",
@@ -527,7 +528,7 @@ test('EV-152 U7④：登记为空——立即返回，一个信号都不发', as
   assert.ok((r['ms'] as number) < 500, `应立即返回，实为 ${String(r['ms'])} ms`);
 });
 
-test('EV-152 U7⑤：不带 killTree 的 run() 不进登记', async () => {
+test('EV-152 U7⑤：不带 killTree 的 run() 不进登记', { skip: process.platform === 'win32' && 'POSIX 进程组语义（setsid/pgid 组信号/SIGTERM 升级阶梯）——win32 按 §7.1 走父链闭包+taskkill 等价路径，需等价改写非形态适配（§3.1-6 重改写族）' }, async () => {
   const r = await runScenario([
     "run('/bin/sh', ['-c', 'sleep 600; : \"$0\"', MARK + '-plain'], { timeoutMs: 600000 });",
     "tree('d', false);",
@@ -541,7 +542,7 @@ test('EV-152 U7⑤：不带 killTree 的 run() 不进登记', async () => {
   assert.deepEqual(r.groups, [r['pgid']], '登记里只应有 killTree 那一组');
 });
 
-test('EV-152 U7⑥：两组都忽略 SIGTERM——并行终止，总耗时在单组预算之内（串行会约翻倍）', async () => {
+test('EV-152 U7⑥：两组都忽略 SIGTERM——并行终止，总耗时在单组预算之内（串行会约翻倍）', { skip: process.platform === 'win32' && 'POSIX 进程组语义（setsid/pgid 组信号/SIGTERM 升级阶梯）——win32 按 §7.1 走父链闭包+taskkill 等价路径，需等价改写非形态适配（§3.1-6 重改写族）' }, async () => {
   const r = await runScenario([
     "tree('e1', true); tree('e2', true);",
     "const g1 = await leader('e1'); const g2 = await leader('e2');",

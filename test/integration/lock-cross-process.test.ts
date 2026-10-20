@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { run, processAlive, spawnDetached } from '../../src/trivium/util/exec.js';
 import { inspectLock, acquireLock } from '../../src/trivium/lock.js';
 import { scratchDir } from '../helpers/scratch.js';
@@ -24,7 +24,8 @@ import { scratchDir } from '../helpers/scratch.js';
 
 /** 本测试文件编译后位于 dist/test/test/integration/，据此定位同构的 src 产物 */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const LOCK_MODULE = path.resolve(HERE, '../../src/trivium/lock.js');
+// win32 的 ESM import 不认盘符绝对路径——模块定位一律 file:// URL
+const LOCK_MODULE = pathToFileURL(path.resolve(HERE, '../../src/trivium/lock.js')).href;
 
 const STALE_MS = 120_000;
 const TOPIC = '跨进程抢锁';

@@ -117,9 +117,19 @@ export function enumerateWinProcesses(o: { fresh?: boolean } = {}): Promise<WinP
 /**
  * 进程创建时刻（`processStartTime` 的 Windows 实现）：UTC ISO，天然环境无关，
  * canonical 与缺省形态同值。进程不在或枚举失败返回 null。
+ *
+ * **缓存命中但 pid 缺席时强制重枚举一次**（1.2.6 实测缺陷）：TTL 缓存的快照拍在派生之前时，
+ * 刚 spawn 的进程对身份判定不可见（0ms 即 null）——spawn 后立刻核对身份的场景（测试夹具、
+ * 派生后记录）会被判「判不了」。缺席先重枚举，仍在才判不在；真不在的 pid 每次付一次
+ * 真枚举的代价，换来「不在」结论的可信。
  */
 export async function winProcessCreation(pid: number): Promise<string | null> {
-  const rows = await enumerateWinProcesses();
+  let rows = await enumerateWinProcesses();
+  if (rows) {
+    const hit = rows.find((r) => r.pid === pid)?.creation;
+    if (hit && hit.length > 0) return hit;
+    rows = (await enumerateWinProcesses({ fresh: true })) ?? null;
+  }
   if (!rows) return null;
   const c = rows.find((r) => r.pid === pid)?.creation;
   return c && c.length > 0 ? c : null;

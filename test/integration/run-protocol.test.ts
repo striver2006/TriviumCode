@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as childProcess from 'node:child_process';
 import {
   bashTimeoutFor, cancelRun, classifyLostCancel, lostWorkerGoneFrom, runDirFor, settleOrphanedStart, statusRun, waitRun,
@@ -354,7 +354,7 @@ test('EV-128 E3：工作进程未确认退出（运行中却拿不到 worker_pid
   }
 });
 
-test('EV-128 E6：归档侧写失败（_meta 只读）不连坐锁与闸门回收：退 0、锁已回收、status.json 为 cancelled、告警写明原因', { skip: process.getuid?.() === 0 && 'root 下只读目录拦不住写入' }, async () => {
+test('EV-128 E6：归档侧写失败（_meta 只读）不连坐锁与闸门回收：退 0、锁已回收、status.json 为 cancelled、告警写明原因', { skip: (process.getuid?.() === 0 && 'root 下只读目录拦不住写入') || (process.platform === 'win32' && 'chmod 只读在 NTFS 不拦写入（§3.1-1 残余族）') }, async () => {
   const ctx = await fakeCtx();
   const { pid, runDir } = await seedRun(ctx, 'R-ROFS');
   const a = await seedArchive(ctx, 'R-ROFS');
@@ -707,8 +707,9 @@ test('EV-152 U8：worker 处理器的预算落在取消宽限之内（转发宽�
 });
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const RP_MODULE = path.resolve(HERE, '../../src/trivium/run-protocol.js');
-const EXEC_MODULE = path.resolve(HERE, '../../src/trivium/util/exec.js');
+const RP_MODULE = pathToFileURL(path.resolve(HERE, '../../src/trivium/run-protocol.js')).href;
+// win32 的 ESM import 不认盘符绝对路径——模块定位一律 file:// URL
+const EXEC_MODULE = pathToFileURL(path.resolve(HERE, '../../src/trivium/util/exec.js')).href;
 
 /**
  * 在子进程里装处理器，父进程发 SIGTERM（可连发两次），观察子进程的退出形态。
@@ -760,14 +761,14 @@ async function sigtermScenario(withTree: boolean, twice: boolean) {
   }
 }
 
-test('EV-152 U9①：处理器——登记为空时收到 SIGTERM 即以 signal: SIGTERM 退出（退出形态与今天相同，不是 exit(143)）', async () => {
+test('EV-152 U9①：处理器——登记为空时收到 SIGTERM 即以 signal: SIGTERM 退出（退出形态与今天相同，不是 exit(143)）', { skip: process.platform === 'win32' && 'POSIX 信号形态断言（signal:SIGTERM 退出/组升级 SIGKILL）——win32 走取消标记+taskkill 等价路径，需 §7.1 等价改写（§3.1-6 重改写族）' }, async () => {
   const r = await sigtermScenario(false, false);
   assert.ok(r.ev, '8 s 内应观察到退出');
   assert.deepEqual(r.ev, { code: null, signal: 'SIGTERM' }, '计划双审 r1 CODEX-06 ≡ AGY-02：重新自杀的退出形态');
   assert.match(r.stderr, /没有在跑的审查员 CLI/);
 });
 
-test('EV-152 U9②：处理器——连发两次 SIGTERM 只处理第一次：忽略 SIGTERM 的 CLI 组被升级 SIGKILL 结束（组空），worker 仍以 signal: SIGTERM 在宽限内退出', async () => {
+test('EV-152 U9②：处理器——连发两次 SIGTERM 只处理第一次：忽略 SIGTERM 的 CLI 组被升级 SIGKILL 结束（组空），worker 仍以 signal: SIGTERM 在宽限内退出', { skip: process.platform === 'win32' && 'POSIX 信号形态断言（signal:SIGTERM 退出/组升级 SIGKILL）——win32 走取消标记+taskkill 等价路径，需 §7.1 等价改写（§3.1-6 重改写族）' }, async () => {
   const r = await sigtermScenario(true, true);
   assert.ok(r.ev, '8 s 内应观察到退出');
   assert.deepEqual(r.ev, { code: null, signal: 'SIGTERM' });
@@ -879,7 +880,7 @@ test('EV-160 R1：--wait 那一句、共享判据、预检告警三者对同一�
   }
 });
 
-test('EV-146 K3：本格主线——结束 worker、补收 run.json 与登记（worker_lost / heartbeat_stale）、按 run_id + pid 回收锁；status.json 逐字节不变、闸门不动', async () => {
+test('EV-146 K3：本格主线——结束 worker、补收 run.json 与登记（worker_lost / heartbeat_stale）、按 run_id + pid 回收锁；status.json 逐字节不变、闸门不动', { skip: process.platform === 'win32' && 'POSIX 信号形态断言（signal:SIGTERM 退出/组升级 SIGKILL）——win32 走取消标记+taskkill 等价路径，需 §7.1 等价改写（§3.1-6 重改写族）' }, async () => {
   const ctx = await fakeCtx();
   const r = await lostScenario(ctx, 'R-K3');
   try {
@@ -1157,7 +1158,7 @@ test('EV-159 N2：alive 格成功之后再跑一次 --cancel ⇒ worker 已不�
   }
 });
 
-test('EV-146 K9：本格的归档写失败（归档元数据目录只读）⇒ 告警带本格自己的「没有第二次机会」半句，不是主路径那句；锁照常回收', { skip: process.getuid?.() === 0 && 'root 下只读目录拦不住写入' }, async () => {
+test('EV-146 K9：本格的归档写失败（归档元数据目录只读）⇒ 告警带本格自己的「没有第二次机会」半句，不是主路径那句；锁照常回收', { skip: (process.getuid?.() === 0 && 'root 下只读目录拦不住写入') || (process.platform === 'win32' && 'chmod 只读在 NTFS 不拦写入（§3.1-1 残余族）') }, async () => {
   const ctx = await fakeCtx();
   const r = await lostScenario(ctx, 'R-K9');
   const dir = path.dirname(r.a.runJson);
@@ -1226,7 +1227,7 @@ test('EV-159 N3：gone 格下锁已不归本运行的 worker（run_id 相同而 
   }
 });
 
-test('EV-159 N4：gone 格归档写失败（归档元数据目录只读）⇒ 告警带「可以再跑一次 --cancel 重试」的措辞，不是「没有第二次机会」；锁照常回收', { skip: process.getuid?.() === 0 && 'root 下只读目录拦不住写入' }, async () => {
+test('EV-159 N4：gone 格归档写失败（归档元数据目录只读）⇒ 告警带「可以再跑一次 --cancel 重试」的措辞，不是「没有第二次机会」；锁照常回收', { skip: (process.getuid?.() === 0 && 'root 下只读目录拦不住写入') || (process.platform === 'win32' && 'chmod 只读在 NTFS 不拦写入（§3.1-1 残余族）') }, async () => {
   const ctx = await fakeCtx();
   const r = await lostScenario(ctx, 'R-N4');
   killQuietly(r.pid);
@@ -1344,7 +1345,7 @@ async function seedRunUnderW(ctx: Ctx, runId: string, o: { legacyOnly?: boolean 
   return r;
 }
 
-test('EV-158 C5 / C6：--cancel 主路径在与 --start 不同的环境里——新版记录 ⇒ 向活 worker 发 SIGTERM 并确认退出、收尾 cancelled；旧版记录 ⇒ 仍当它已不存在（今天的行为）', async () => {
+test('EV-158 C5 / C6：--cancel 主路径在与 --start 不同的环境里——新版记录 ⇒ 向活 worker 发 SIGTERM 并确认退出、收尾 cancelled；旧版记录 ⇒ 仍当它已不存在（今天的行为）', { skip: process.platform === 'win32' && 'POSIX 信号形态断言（signal:SIGTERM 退出/组升级 SIGKILL）——win32 走取消标记+taskkill 等价路径，需 §7.1 等价改写（§3.1-6 重改写族）' }, async () => {
   const ctx = await fakeCtx();
   const r = await seedRunUnderW(ctx, 'R-C158-CANCEL');
   try {

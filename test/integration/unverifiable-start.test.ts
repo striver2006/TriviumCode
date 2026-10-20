@@ -17,6 +17,7 @@ import * as childProcess from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { cancelRun, runDirFor, waitRun } from '../../src/trivium/run-protocol.js';
+import { winTaskkillTree } from '../../src/trivium/util/platform.js';
 import {
   interpretStatus, newStatus, readStatus, scrubAdmission, scrubHoldWhy, workerConfirmedGone, type RunStatus,
 } from '../../src/trivium/status.js';
@@ -32,7 +33,8 @@ import { psStubWorks, stubPsFailure, type PsForm } from '../helpers/ps-stub.js';
 import { fakeCtx } from '../helpers/run-ctx.js';
 
 const TOPIC = '判不了用例';
-const OTHER_CANONICAL = 'Thu Jan  1 00:00:00 1970';
+// 「不符」的值须是本平台形态：异平台形态按 1.2.2 契约判 unverifiable（canonical-crossform.test.ts 守那格）
+const OTHER_CANONICAL = process.platform === 'win32' ? '1970-01-01T00:00:00.000000Z' : 'Thu Jan  1 00:00:00 1970';
 const DEAD_PID = 999_995;
 const T = { timeout: 90_000 };
 
@@ -100,10 +102,15 @@ async function fixtureRecord(pid: number): Promise<{ legacy: string; canonical: 
 
 /** 按组 SIGKILL 并等 exit；超时不静默（代码双审 r1 CODEX-02）：再补一次组信号，仍活着就抛错列出 pid */
 async function killAll(owned: Proc[]): Promise<void> {
+  // win32 无负 pgid 组信号：经生产同款 taskkill 树杀收尾（util/platform.ts，1.2.6 集成第四批）
   const killGroups = () => {
     for (const p of owned) {
       try {
-        process.kill(-p.pid, 'SIGKILL');
+        if (process.platform === 'win32') {
+          winTaskkillTree(p.pid, true);
+        } else {
+          process.kill(-p.pid, 'SIGKILL');
+        }
       } catch {
         // 已不在
       }
