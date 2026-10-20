@@ -11,8 +11,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { winOnly } from '../helpers/platform.js';
 import {
-  enumerateWinProcesses, resolvePosixShellSync, winProcessCreation, winTaskkillTree, winTreeMemberCount,
+  cachedEnumRows, enumerateWinProcesses, resolvePosixShellSync, winProcessCreation, winTaskkillTree, winTreeMemberCount,
 } from '../../src/trivium/util/platform.js';
+import { CANCEL_FLAG_BASELINE_BACKOFF_MS, installWorkerCancelFlagWatcher } from '../../src/trivium/run-protocol.js';
 import { killProcessTree, processStartTime } from '../../src/trivium/util/exec.js';
 
 /**
@@ -136,3 +137,42 @@ test('init 双形态 wrapper：win32 同时写 sh 形态与 .cmd，checkWrapper 
       await fs.rm(dir, { recursive: true, force: true });
     }
   });
+
+// ─────────────────── 1.2.2 审查修复的 win32 锚点 ───────────────────
+
+test('cachedEnumRows：失败兜底只认显式龄期内的缓存（CLAUDE-03——无龄期旧表是另一种猜）', () => {
+  const rows = [{ pid: 1, ppid: 0, creation: '2026-10-20T00:00:00.000000Z' }];
+  const now = Date.now();
+  assert.deepEqual(cachedEnumRows({ at: now - 500, rows }, now), rows, '数秒内的表可作失败兜底');
+  assert.equal(cachedEnumRows({ at: now - 4_000, rows }, now), null, '超龄旧表不得回给调用方——pid 复用下会误判同一进程');
+  assert.equal(cachedEnumRows(null, now), null, '从无缓存就是 null');
+});
+
+test('取消旗标基线：回退量覆盖模块加载窗口与 FAT 粒度；陈旧旗标只记痕迹不触发收尾（CLAUDE-02）', async () => {
+  assert.ok(CANCEL_FLAG_BASELINE_BACKOFF_MS >= 15_000, '回退量不得小于 15 秒');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-cancelbase-'));
+  try {
+    const flag = path.join(dir, 'cancel.requested');
+    await fs.writeFile(flag, '');
+    const stale = new Date(Date.now() - 60_000);
+    await fs.utimes(flag, stale, stale);
+    let noted = false;
+    const orig = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: unknown, cb?: (err?: Error) => void) => {
+      if (typeof chunk === 'string' && chunk.includes('按陈旧忽略')) { noted = true; return cb?.() ?? true; }
+      return orig(chunk as never, cb as never);
+    }) as typeof process.stderr.write;
+    const uninstall = installWorkerCancelFlagWatcher(dir);
+    try {
+      await new Promise((r) => setTimeout(r, 700));
+    } finally {
+      process.stderr.write = orig;
+      uninstall();
+    }
+    assert.ok(noted, '陈旧旗标必须留痕（worker.log 收集），旗标被吞不再无从排查');
+    // 触发路径（新旗标 → shutdown.begin）不在测试里跑：那会真起收尾链杀测试进程；
+    // 触发判据（mtime ≥ 安装时刻−回退量）由回退量断言与 run-meta-cancel 的取消标记用例合守。
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

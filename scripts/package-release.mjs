@@ -138,7 +138,8 @@ try {
       await execFile('tar.exe', ['--force-local', '-a', '-cf', path.join(scratch, `${name}.zip`), '-C', scratch, name], { windowsHide: true });
     } catch {
       await execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-        `Compress-Archive -Path ${JSON.stringify(path.join(scratch, name))} -DestinationPath ${JSON.stringify(path.join(scratch, `${name}.zip`))} -Force`]);
+        `Compress-Archive -Path ${JSON.stringify(path.join(scratch, name))} -DestinationPath ${JSON.stringify(path.join(scratch, `${name}.zip`))} -Force`],
+        { windowsHide: true });
     }
   } else {
     await execFile('/usr/bin/tar', ['-czf', path.join(scratch, `${name}.tar.gz`), '-C', scratch, name],

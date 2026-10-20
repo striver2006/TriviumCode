@@ -70,7 +70,7 @@ import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents, type ClaudeTrace } from '../ada
 import { buildDenySettings, claudeDirectoryFingerprint, claudeSensitiveGlobsHash, CLAUDE_DIRECTORY_SHAPE,
   denyRuleShapeOf, readSchemaJson } from '../adapters/claude.js';
 import { claudeRouteEnv, resolveClaudeRoute, type ClaudeRoute } from '../adapters/claude-route.js';
-import { mergeSettingsEnv } from '../adapters/claude.js';
+import { mergeSettingsEnv, scrubGatewayEnv } from '../adapters/claude.js';
 import { probeClaudeDirectories, expectedDirectoryFailure, directoryFailureText } from './claude-directory.js';
 
 const routeContext = new AsyncLocalStorage<{ route: ClaudeRoute; model: string | null; effort: string | null }>();
@@ -792,7 +792,15 @@ async function execArgv(
     stdin: '',
     killTree: true,
   });
-  const trace = parseClaudeEvents(r.stdout);
+  /*
+   * 网关 env 逐值脱敏（1.2.2，审查 CLAUDE-06）：与 invokeClaude 同一 scrub，探针臂不留暗角。
+   * GLM-03 的「raw 必须透传」针对的是哨兵与泄漏判据——哨兵串不是注入值，脱敏不影响判据；
+   * trace 也从脱敏后的文本解析，命令文本里若回显了网关值，落盘的同样只能是占位符。
+   */
+  const gatewayEnv = routeContext.getStore()?.route.settingsEnv;
+  const stdout = scrubGatewayEnv(r.stdout, gatewayEnv);
+  const stderr = scrubGatewayEnv(r.stderr, gatewayEnv);
+  const trace = parseClaudeEvents(stdout);
   /*
    * `raw` 必须透传（审查意见 GLM-03）：泄漏判据要查的是**原始输出**。
    * `parseClaudeEvents` 只保留 `is_error` 的 tool_result，
@@ -805,9 +813,9 @@ async function execArgv(
     ...trace,
     completed: trace.completed && !r.timedOut,
     timedOut: r.timedOut,
-    raw: r.stdout,
+    raw: stdout,
     exitCode: r.code,
-    stderr: r.stderr,
+    stderr,
   };
 }
 
@@ -824,8 +832,10 @@ async function execArgv(
  * 与把 `coverage_complete` 改必填同一条思路：**能让类型或结构保证的，
  * 就不要留给「记得写对」**。这一族我在 r1～r3 连错三轮。
  */
-export function verboseNegativeControlArgs(): string[] {
-  return probeArgs({ prompt: '只回复 OK 两个字母，不要调用任何工具。', omitVerbose: true });
+export function verboseNegativeControlArgs(settingsEnv?: Record<string, string>): string[] {
+  // settingsEnv 与 execProbe 同源（1.2.2，审查 CLAUDE-04）：网关机器上阴性对照的失败
+  // 只能是「缺 verbose 绑定」这种语义原因，不能是认证失败——否则 vacuous true 毁掉回归哨兵。
+  return probeArgs({ prompt: '只回复 OK 两个字母，不要调用任何工具。', omitVerbose: true, settingsEnv });
 }
 
 /**
@@ -871,7 +881,7 @@ async function probeStreamVerboseBinding(
    */
   if (!positiveControlOk) return null;
 
-  const invocation = routeInvocation(bin, verboseNegativeControlArgs());
+  const invocation = routeInvocation(bin, verboseNegativeControlArgs(routeContext.getStore()?.route.settingsEnv));
   const r = await run(invocation.bin, invocation.argv, {
     env: invocation.env,
     timeoutMs: PROBE_TIMEOUT_MS, cwd: fx.root, stdin: '', killTree: true,

@@ -421,19 +421,25 @@ export async function prepareCodexHome(
    * 基底 config 引用的模型目录文件（win32 + CC Switch 实测，2026-10-20）：`model_catalog_json`
    * 以**裸文件名**引用 CODEX_HOME 下的目录文件，`rewriteHomePaths` 只追 `~/` 前缀、追不到它。
    * 副本缺这份文件时 codex 以裸 ENOENT（os error 2）当场死掉且不报路径——探活/审查全灭。
-   * 目录是机器配置数据（模型清单），不含凭据；`~/` 前缀形态已由上面的重写步覆盖，这里只补裸相对名。
+   * 目录是机器配置数据（模型清单），不含凭据；`~/` 前缀形态已由上面的重写步覆盖。
+   * 只收**裸文件名**（审查 CLAUDE-05）：含 `/`、`\`、`..` 的取值会把拷贝目标落到 codexHome
+   * 之外，逃出 scrubCodexHome 的作用域——那是自伤配置，但出口必须收窄到「同目录兄弟文件」。
    */
   const baseToml = await fs.readFile(path.join(codexHome, 'config.toml'), 'utf8').catch(() => '');
   const catalogRef = /^\s*model_catalog_json\s*=\s*["']([^"']+)["']/m.exec(baseToml)?.[1];
   if (catalogRef && !catalogRef.startsWith('~') && !path.isAbsolute(catalogRef)) {
-    const from = path.join(src, catalogRef);
-    if (await exists(from)) {
-      await prepStep('拷入 model_catalog_json 引用件', async () => {
-        await fs.copyFile(from, path.join(codexHome, catalogRef));
-      });
-      prep.copiedFiles.push(catalogRef);
+    if (/[\\/]/.test(catalogRef) || catalogRef.includes('..')) {
+      prep.warnings.push(`config.toml 的 model_catalog_json 引用「${catalogRef}」不是裸文件名，拒绝拷出副本目录——codex 可能因缺该文件拒跑`);
     } else {
-      prep.warnings.push(`config.toml 引用的 ${catalogRef} 不在 ${src}——codex 可能以 ENOENT 拒跑`);
+      const from = path.join(src, catalogRef);
+      if (await exists(from)) {
+        await prepStep('拷入 model_catalog_json 引用件', async () => {
+          await fs.copyFile(from, path.join(codexHome, catalogRef));
+        });
+        prep.copiedFiles.push(catalogRef);
+      } else {
+        prep.warnings.push(`config.toml 引用的 ${catalogRef} 不在 ${src}——codex 可能以 ENOENT 拒跑`);
+      }
     }
   }
 

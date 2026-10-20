@@ -1223,18 +1223,31 @@ export function installWorkerSigtermForwarding(): () => void {
  *
  * **只认比自己启动更晚写入的标记**：`--cancel` 写下的标记不随运行清除，而
  * `review --worker <id>` 可被人工对同一 run 重启——陈旧标记必须忽略，否则重启的 worker
- * 不跑业务逻辑、一律以 143 收场（access-v3 提前取消用例钉住这一格）。合法写入场
- * （`--cancel` 主路径、失联取消、派生失败收尾）都在 worker 诞生**之后**落笔，无需回看窗口；
- * 同毫秒写入按「新」计（`mtimeMs >= 启动时刻`）。
+ * 不跑业务逻辑、一律以 143 收场（access-v3 提前取消用例钉住这一格）。
+ *
+ * 基线取「安装时刻 − 保守回退量」（1.2.2，审查 CLAUDE-02）：spawn（onSpawned 记诞生）到
+ * 本函数安装之间隔着模块全量加载，窗口内写入的旗标（`--start` 派生失败收尾、极快的
+ * `--cancel`）按安装时刻判旧会被永久忽略，worker 丢优雅收尾只剩硬杀；回退量同时覆盖
+ * FAT/exFAT 的 2 秒级 mtime 粒度。判旧的旗标留一条 stderr 痕迹（worker.log 收集），
+ * 「旗标被吞」不再无从排查。
  */
+export const CANCEL_FLAG_BASELINE_BACKOFF_MS = 15_000;
+
 export function installWorkerCancelFlagWatcher(runDir: string): () => void {
   let stopped = false;
-  const startedAtMs = Date.now();
+  const baselineMs = Date.now() - CANCEL_FLAG_BASELINE_BACKOFF_MS;
+  let staleNoted = false;
   const timer = setInterval(() => {
     if (stopped) return;
     void fs.stat(cancelRequestPath(runDir)).then((st) => {
       if (stopped) return;
-      if (st.mtimeMs < startedAtMs) return;
+      if (st.mtimeMs < baselineMs) {
+        if (!staleNoted) {
+          staleNoted = true;
+          process.stderr.write(`[worker] 取消旗标存在但 mtime 早于基线（回退量 ${CANCEL_FLAG_BASELINE_BACKOFF_MS}ms），按陈旧忽略\n`);
+        }
+        return;
+      }
       stopped = true;
       shutdown.begin('取消标记（cancel.requested）');
     }).catch(() => undefined);

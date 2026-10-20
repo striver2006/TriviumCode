@@ -390,11 +390,20 @@ export async function writeWrapper(
   if (IS_WIN) {
     const cmdPath = path.join(triviumDir, 'bin/trivium.cmd');
     const hadCmd = await exists(cmdPath);
+    const cjs = path.join(assetRoot, 'scripts/trivium.cjs');
+    /*
+     * 引号已护住空格与 `&` 一类分词；`%` 护不住——批处理对双引号内的 % 照样做变量展开
+     * （审查 CODEX-04）。含 % 的路径生成的是会被静默篡改的坏垫片，宁可显式拒绝：
+     * sh 形态照写（它不受影响），.cmd 报错让用户把项目或 Node 挪到无 % 的路径。
+     */
+    if (nodePath.includes('%') || cjs.includes('%')) {
+      throw new Error(`bin/trivium.cmd 未生成：路径含 %（cmd 批处理会做变量展开，引号拦不住）——${nodePath.includes('%') ? nodePath : cjs}。请把相关目录挪到不含 % 的路径后重跑 init`);
+    }
     const cmdScript =
       `@echo off\r\n` +
       `REM 由 \`trivium init\` 生成。node 路径写死是刻意的：\r\n` +
       `REM GUI 进程（VS Code）不读用户 shell 配置，依赖 PATH 会在插件里失效（设计 §10.5）。\r\n` +
-      `"${nodePath}" "${path.join(assetRoot, 'scripts/trivium.cjs')}" %*\r\n`;
+      `"${nodePath}" "${cjs}" %*\r\n`;
     if (!dryRun) await writeAtomic(cmdPath, cmdScript);
     (hadCmd ? report.updated : report.created).push(cmdPath);
   }

@@ -36,7 +36,9 @@ import type { ZcodeProbe } from '../../src/trivium/types.js';
 import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
 
 // WIN_FILE_SKIP（Windows 移植）：zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）
-// macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
+// macOS/Linux 行为零变化。Windows 侧【无等价物】：本文件守的是 HOME 隔离夹具下的文件级语义
+// （凭据值不出现在输出、选模落实、provider env 剥离），platform-win.test.ts 只覆盖平台原语、
+// 覆盖不了这些——残余登记 Bug 清单 §3.1-2/6，适配前不要引用本文件作为 Windows 的覆盖证据。
 if (process.platform === 'win32') {
   console.log('skip（win32）: zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）');
 } else {

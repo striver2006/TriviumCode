@@ -555,6 +555,21 @@ export interface ClaudeInvokeOutcome {
 }
 
 /**
+ * 网关 env 值的逐值脱敏（1.2.2，审查 CLAUDE-06）：对注入值先原串替换 `<redacted-env>`，再过模式脱敏。
+ * `invokeClaude` 与探针臂（execArgv）共用——「注入值永不落盘」的威胁模型在运行与探针两条路径上对称成立。
+ * 极短值（<8 字符）跳过替换（替换面过宽会误伤普通文本），仍交模式脱敏兜底。
+ */
+export function scrubGatewayEnv(text: string, env: Record<string, string> | undefined): string {
+  let out = text;
+  if (env) {
+    for (const v of Object.values(env)) {
+      if (v.length >= 8) out = out.split(v).join('<redacted-env>');
+    }
+  }
+  return redactSecrets(out).content;
+}
+
+/**
  * **唯一**执行 claude 的地方。
  *
  * `stdin` 必须显式给：prompt 走的就是这条路（形态 A，argv 里没有位置参数）。
@@ -569,18 +584,7 @@ export async function invokeClaude(opts: ClaudeInvokeOptions): Promise<ClaudeInv
     timeoutMs: opts.timeoutMs,
     killTree: true,
   });
-  /*
-   * 网关 env 注入后，commandLine（进留痕与 guard 证据）与子进程输出都可能携带凭据。
-   * 逐值替换成占位符——值是唯一子串，替换不受外层引号形态影响；再叠一层模式脱敏兜底，
-   * 不赌规则命中。极短值（<8 字符）跳过：替换面过宽会误伤普通文本。
-   */
-  const scrub = (text: string): string => {
-    let out = text;
-    for (const v of Object.values(opts.route?.settingsEnv ?? {})) {
-      if (v.length >= 8) out = out.split(v).join('<redacted-env>');
-    }
-    return redactSecrets(out).content;
-  };
+  const scrub = (text: string): string => scrubGatewayEnv(text, opts.route?.settingsEnv);
   return {
     stdout: scrub(r.stdout),
     stderr: scrub(r.stderr),

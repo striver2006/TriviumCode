@@ -709,6 +709,19 @@ export interface RecordedStart {
 }
 
 /**
+ * 记录的规范化启动时刻是不是**本平台**的形态（1.2.2，审查 CLAUDE-08 ≡ CODEX-02）。
+ * win32 写 UTC ISO（`yyyy-MM-ddTHH:mm:ss.ffffffZ`）、POSIX 写 `ps lstart` 形态——「记录不跨平台」
+ * 这条论证对跨平台共享 checkout（exFAT 移动盘、云同步目录）不成立：异平台形态若按字符串比对，
+ * 永远不等、判成「不同一进程」，方向恰是最坏侧（抹活 worker 凭据、回收活锁）。读到异平台形态
+ * 一律 `unverifiable`，不猜。
+ */
+export function isNativeCanonicalStartForm(value: string): boolean {
+  return IS_WIN
+    ? /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value)
+    : /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) {1,2}\d{1,2} \d{2}:\d{2}:\d{2} \d{4}$/.test(value);
+}
+
+/**
  * 与记录比对的三态结论（EV-175，取不到启动时刻当不在计划 r2 §3 D1）：同一进程 / 不是同一进程（含已不在）/
  * 判不了（活着、记录里有期望值、而本次取不到启动时刻——满载下 `ps` 派生失败或 10 s 超时）。
  */
@@ -780,6 +793,10 @@ export async function processMatchesRecord(
   } catch (e) {
     // EPERM 表示进程存在但不属于当前用户——仍算存活（与 processAlive 同）
     alive = (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+  // 异平台形态的记录（跨平台共享 checkout 的反例）：判不了，不按「不同一进程」处置（见 isNativeCanonicalStartForm）
+  if (!isNativeCanonicalStartForm(expected)) {
+    return withIdentity({ alive, sameProcess: false, startedAt: null, expected, basis: 'canonical' });
   }
   if (!alive) return withIdentity({ alive: false, sameProcess: false, startedAt: null, expected, basis: 'canonical' });
   const startedAt = await (o.canonicalStartTimeOf ?? ((p: number) => processStartTime(p, { canonical: true })))(pid).catch(

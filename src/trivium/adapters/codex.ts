@@ -487,21 +487,17 @@ export const codexAdapter: CriticAdapter = {
     }
     if (p.readonly_flags.length === 0) {
       /*
-       * prompt-only 降级（1.2.1）：负对照实测 OS 级不拦截时探针已记 readonly_enforced=false。
-       * 旗标仍空说明探针是在旧策略（required）下跑的——降级放行但提示重探，
-       * 让旗标落盘（运行时才有 -s read-only 的提示层声明）。
+       * fail-closed（1.2.2，审查 CLAUDE-01）：旗标为空一律不可用，prompt-only 也不例外——
+       * 运行时 readonlyArgs 取自同一份旗标，空集意味着连 `-s read-only` 的提示层声明都不传，
+       * 降级所宣称的最弱保障不存在。豁免只覆盖「有旗标 + readonly_enforced=false」的形态
+       * （见下方 ok 分支的降级注记）；旧策略下探测出的空旗标，重跑 doctor 落盘后再启用。
        */
-      if (codexConfig(ctx).readonly_enforcement === 'prompt-only' && p.readonly_enforced === false) {
-        return {
-          ok: true,
-          note: '只读降级（prompt-only）：负对照实测 -s read-only 不拦截写，旗标未落盘（旧策略下探测）——重跑 doctor --only codex 后旗标照传',
-        };
-      }
       return {
         ok: false,
         reason:
           '探针未实测到可用的只读旗标——**这包括只读沙箱负对照失败的情形**' +
-          '（read-only 下文件仍被创建时探针会把该字段清空）。无法保障审查员只读，该侧不可用。',
+          '（read-only 下文件仍被创建时探针会把该字段清空）。无法保障审查员只读，该侧不可用。' +
+          '（prompt-only 降级也要求旗标已落盘：请重跑 trivium doctor --only codex）',
       };
     }
     if (p.exec_headless_read_ok === false) {

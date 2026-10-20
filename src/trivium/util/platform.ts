@@ -30,6 +30,19 @@ export interface WinProcRow {
  */
 const ENUM_TTL_MS = 400;
 const ENUM_TIMEOUT_MS = 15_000;
+/*
+ * 失败路径的陈旧兜底上限（1.2.2，审查 CLAUDE-03）：超时 / error / 解析失败原先回退
+ * 「上一次成功的表」且无龄期约束——pid 复用叠加旧表 CreationDate 恰好吻合时，身份判定
+ * 会把复用 pid 判成「同一进程」，进而 taskkill 无辜进程树。陈旧缓存不是 null，是另一种猜；
+ * 只接受数秒内的表（400ms TTL 服务吞吐，这里服务失败兜底，两者量级分开）。
+ */
+const ENUM_STALE_MAX_MS = 3_000;
+
+/** 失败路径唯一可用的兜底：缓存存在且在显式龄期内才回给调用方，否则视同失败（null） */
+export function cachedEnumRows(cache: { at: number; rows: WinProcRow[] } | null, now: number = Date.now()): WinProcRow[] | null {
+  if (!cache || now - cache.at >= ENUM_STALE_MAX_MS) return null;
+  return cache.rows;
+}
 const ENUM_COMMAND =
   'Get-CimInstance Win32_Process | ForEach-Object { ' +
   "$c = if ($_.CreationDate) { $_.CreationDate.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.ffffffZ') } else { '' }; " +
@@ -68,23 +81,23 @@ export function enumerateWinProcesses(o: { fresh?: boolean } = {}): Promise<WinP
     let out = '';
     const timer = setTimeout(() => {
       child.kill();
-      finish(enumCache?.rows ?? null);
+      finish(cachedEnumRows(enumCache));
     }, ENUM_TIMEOUT_MS);
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (c: string) => { out += c; });
     child.on('error', () => {
       clearTimeout(timer);
-      finish(enumCache?.rows ?? null);
+      finish(cachedEnumRows(enumCache));
     });
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code !== 0 || out.length === 0) {
-        finish(enumCache?.rows ?? null);
+        finish(cachedEnumRows(enumCache));
         return;
       }
       const rows = parseEnumOutput(out);
       if (rows.length === 0) {
-        finish(enumCache?.rows ?? null);
+        finish(cachedEnumRows(enumCache));
         return;
       }
       enumCache = { at: Date.now(), rows };

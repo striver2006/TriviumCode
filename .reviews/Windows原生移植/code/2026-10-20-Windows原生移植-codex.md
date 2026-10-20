@@ -1,0 +1,238 @@
+---
+schema: trivium.review.v1
+topic: Windows原生移植
+stage: code
+role: codex
+vendor: openai
+agent_cli: codex/0.163.0
+model_requested: qwen3.8-flash
+model_effective: qwen3.8-flash
+model_effective_source: trace
+effort: medium
+effort_requested: medium
+effort_effective: null
+effort_effective_source: unverified
+tier: null
+tier_source: profile
+model_route: config_copy
+run_id: 20261020T074334Z
+rerun_index: 1
+snapshot_hash: sha256:3e31d3487b6b27804573af909bd19740488cba8986f15eac9c7fa523884d30ce
+blind: true
+started_at: 2026-10-20T07:43:46.294Z
+finished_at: 2026-10-20T07:59:54.359Z
+duration_s: 256
+tool_calls:
+  run_command: 0
+  project_reads: 0
+evidence_ok: false
+verdict: request-changes
+findings_count:
+  blocker: 0
+  major: 3
+  minor: 3
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+readonly_verification: unavailable
+path_verification: unavailable
+heterogeneous: unknown
+access:
+  requested_mode: profile
+  profile: ccswitch
+  launcher_requested: C:\Users\k_bo\AppData\Local\Programs\OpenAI\Codex\bin\codex.exe
+  launcher_effective: C:\Users\k_bo\AppData\Local\Programs\OpenAI\Codex\bin\codex.exe
+  wrapper_sha256: null
+  configuration_sha256: 4376d8ac88e8ed87c11f165e4792f1cf068aabe841c28c68e2d7d9b755c71577
+  provider_declared: custom
+  provider_declared_source: config
+  provider_effective: custom
+  provider_effective_source: trace
+family_comparisons:
+  - left: glm
+    right: codex
+    status: unknown
+    left_model: null
+    right_model: qwen3.8-flash
+    left_source: null
+    right_source: trace
+    reason: 左侧模型信息缺失
+  - left: claude
+    right: codex
+    status: different-family
+    left_model: k3-256k
+    right_model: qwen3.8-flash
+    left_source: envelope
+    right_source: trace
+    reason: 模型族不同：kimi / qwen
+override_reason: 左侧模型信息缺失
+session_id: 01a15844-31ec-7060-8e8a-0b84c047af6a
+---
+
+# 代码审查：Windows原生移植
+
+> Critic-C · OpenAI Codex ｜ 回读模型 `qwen3.8-flash` ｜ 请求模型 `qwen3.8-flash`
+> ｜ 运行 `20261020T074334Z`
+> ｜ 本轮审核者 claude、codex
+
+> ⚠️ **Agent 执行证据不足**：本侧不得计为合格双审的一半。
+>
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **路径核验无结构化输入**：本侧读取路径只存在于命令文本里，措施 a 无通道可扫，禁读核验完全由措施 b（命令文本字面扫描）承担——已知形态必检，非完备。
+>
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+先如实报告工具面事实：本会话内 exec_command 被沙箱策略全量拒绝（依次实际尝试 whoami、dir、git log、Get-Content、cmd /c type，均返回 blocked by policy），编排器提供的 changes.diff 真实路径无法打开，任务书内嵌的 diff 又被截断（省略 5175 行）。因此本次审查仅基于任务书内可见的两段实文：文档面变更（含设计说明书 §7.1 全文、需求说明书、README、.gitattributes）与补丁尾部的 5 个 zcode 测试 WIN_FILE_SKIP 包裹块，以及系统指令中的 AGENTS.md 全文。必读清单里 exec.ts、platform.ts、run-protocol.ts、fsx.ts、init.ts、verify.ts、adapters、probes、package-release.mjs 的正文均未能读取，焦点①（POSIX 分支逐字比对）、④（windowsHide 全量覆盖）、⑦（逐个跳过用例的实现核对）、⑧（发布链）、⑫（codex 隔离副本）无法覆盖——按任务书口径本审查证据不足，建议重跑并恢复只读 shell 或投喂完整 diff。在此约束下，仍从可见文本查实一条高置信问题（zcode 整族 skip 的注释声称等价覆盖但明显不成立），并对焦点②③⑤⑩⑥各给出一条明确标注为推理的攻击点，供 Driver 逐条裁决。
+
+**结论**：`request-changes`
+
+## 审查意见（共 7 条：重要 3 ｜ 次要 3 ｜ 吹毛求疵 1）
+
+### CODEX-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/zcode-doctor-probe-home.test.ts、zcode-full-copy-arm.test.ts、zcode-model-selection.test.ts、zcode-provider-env.test.ts、zcode-runtime-selection.test.ts 的 WIN_FILE_SKIP 包裹块（被审 diff 尾部）` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：五个 zcode 测试文件被同一模板块整档跳过，Windows 侧由此对 zcode 的凭据不外泄（如 listPersonalProviderIds 只回键名不回值）、runtime_selection 判定、模型覆盖落实、provider env 剥离整族零覆盖。更糟的是每个文件注释都逐字声称「Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例」——platform-win.test.ts 顾名思义只覆盖平台原语，对「凭据值不出现在输出」这类文件级语义不可能等价成立。这正是焦点⑦警示的「借跳过掩盖真缺陷 + 注释虚报覆盖」形态；跳过理由本身（隔离夹具按 POSIX HOME 写死）也印证焦点⑨的 USERPROFILE 适配仍未落地，却只落在括号里的「登记残余清单」。
+
+**依据**：被审 changes.diff 尾部五个文件的整档 if(process.platform==='win32') console.log('skip…') / else 包裹与完全相同的两行注释（本会话实际可见的原文）；注释所指等价用例所在文件因沙箱拒绝命令未能打开对照，「不等价」部分为基于文件语义的推理。
+
+**建议**：对每个被跳过用例逐条登记其 win32 等价物：确无等价物的把注释改成「无等价，残余编号 xx」，不要用模板块统一声称等价；把 test/helpers 的家目录隔离夹具（HOME + USERPROFILE + HOMEDRIVE/HOMEPATH）适配提到残余清单优先级首位，并给 scripts/win-test-skip.mjs 的清单加「注释声称的等价落点必须真实存在」的人工核对条目。
+
+### CODEX-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/稳定版系统设计说明书.md §7.1「进程身份」段；src/trivium/util/platform.ts 的规范化启动时刻读写` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：「记录不跨机器/平台，Windows 上不存在旧形态记录，故复用同名字段不违反盘上契约纪律」这条论证的攻击反例：项目目录整体跨平台流转——工程放云同步文件夹（Windows 上 OneDrive 是默认形态）、或调试时把含 .trivium/runs 的运行目录整树拷到另一平台。此时 Windows 读侧会拿到 POSIX ps lstart 形态串。若解析失败路径不是 fail-closed（判 unverifiable）而是落入某种缺省/宽松分支，PID 复用误判就可能发生；反方向（macOS 读 ISO 串）同理。设计文字只论证了「本机不存在」，没有登记「解析失败一律不可核验」这条真正的兜底。
+
+**依据**：被审 diff 中 §7.1「进程身份」段原文（「盘上字段名与 macOS 复用同一组——记录不跨机器/平台……故不违反」）；platform.ts 与 start-canonical.test.ts 因沙箱拒绝未能读取，「现实现可能未兜住」为推理，本条只主张论证与文档不完备。
+
+**建议**：把论证从「本机上不存在旧形态」改为「两形态互斥且解析失败/形态不认识一律 unverifiable，不猜测」，并在测试面补一格交叉形态用例（win32 解析 lstart 串、macOS 解析 ISO 串均须落 unverifiable）；若实现已如此，请在 §7.1 用一句话写明该兜底，让论证自足。
+
+### CODEX-03 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/稳定版系统设计说明书.md §7.1「worker 优雅取消」段；src/trivium/run-protocol.ts 的 250 ms 轮询 watcher 与 beginWorkerShutdown` |
+| 类别 | concurrency ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：watcher「只认比自己更晚写入的标记」以 mtime 对墙上时钟基线做零回看，有三个未登记的时序形态：(a) 标记写入后系统时钟回拨（Windows 时间同步常见），标记 mtime 早于 watcher 基线，新标记被永久忽略——worker 只剩 taskkill /T 软步（对控制台进程常无效）加 /T /F 强杀，而设计明说「我方凭据抹除由 worker 代码执行，受此路径保护」，强杀恰好绕过该保护，凭据副本残留运行根；(b) 标记写在末次轮询与进程死亡之间，软硬两步之间是否有最后补读一次未写明；(c) --start 派生失败收尾与 cancelLostWorker 的先后，决定收尾方是「读标记」还是「删标记后杀」——零回看防陈旧误读的方向是对的，但代价全押在 (a)(b) 的漏读后果上。
+
+**依据**：被审 diff 中 §7.1「worker 优雅取消」段原文（cancel.requested 于软步之前写入、250 ms 轮询、凭据抹除受该路径保护）与「如实边界」段；run-protocol.ts 实现未能读取，全部为基于设计文字的推理。
+
+**建议**：新标记判据不依赖墙上 mtime：改以本 run 元数据里的 watcher 启动代际（如进程内 monotonic 基线 + 标记首次可见时刻）为准；明确「错过优雅收尾被强杀」时凭据抹除由谁兜底并写进 §7.1 与残余清单；补两格用例：时钟回拨、标记落在末次轮询之后。
+
+### CODEX-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/稳定版系统设计说明书.md §7.1「shell 与 wrapper」段；src/trivium/init.ts 生成 bin/trivium.cmd` |
+| 类别 | security ｜ 层次 code |
+| 置信度 | low |
+
+**问题**：cmd 垫片内容为「@echo off + node 绝对路径」。Windows 安装路径可合法含空格、括号、&、引号乃至 % 字符（用户名即含这些字符并不罕见），批处理对未加引号的 % 变量展开与元字符重新分词：路径含 & 时垫片可能把路径后半段当命令执行（静默注入面，焦点⑤），含 % 时路径被变量展开篡改。§7.1 只登记了生成格式，未登记引号/转义口径与针对元字符路径的用例。
+
+**依据**：被审 diff 中 §7.1 原文（trivium.cmd 为 @echo off + node 绝对路径，CRLF）；init.ts 未能读取，是否已加引号与转义属未知，本条为推理并要求核实。
+
+**建议**：读 init.ts 核实路径的引号与 % 处理口径：已处理则在设计补一句归属并登记含元字符路径用例；未处理则 init 对含 %、引号的目标路径显式报错，不静默生成坏垫片。
+
+### CODEX-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/01_requirements/稳定版需求说明书.md（版本头 1.1.0）与 doc/02_design/稳定版系统设计说明书.md（版本头 1.2.1）` |
+| 类别 | contract ｜ 层次 requirement |
+| 置信度 | medium |
+
+**问题**：设计说明书已升到 1.2.1 并写入两项改变承诺边界的行为：受限模式读取用户级 settings 的 env 段注入第三方网关（1.2.0）、codex 侧 readonly_enforcement 可配置为 prompt-only 即事前拦截放弃（1.2.1）。需求说明书仍停在 1.1.0 基线，其第 2/4 节的「审核者只读」与验收边界没有这两项的落点。后来者只读需求侧会以为只读是硬承诺。AGENTS.md 同步清单要求行为先回补设计——设计做了，但需求基线跨了两个补丁版本未动，两份「稳定版」文档的口径正在分叉。
+
+**依据**：被审 diff 中两份文档的版本头行（需求侧「产品版本：1.1.0」对设计侧「产品版本：1.2.1」）及 §7.1 的 1.2.0/1.2.1 两段原文；两文件其余章节未读取。
+
+**建议**：收口批次在需求说明书补两小段（网关注入的凭据不落留痕边界、prompt-only 降级的适用条件与「不应在 OS 级只读可用的平台开启」），或在需求侧版本头显式声明「1.2.x 行为承诺以设计说明书 §7.1 为准」。
+
+### CODEX-06 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/稳定版系统设计说明书.md §7.1「第三方网关」段；src/trivium/adapters/claude.ts 的 invokeClaude 逐值替换` |
+| 类别 | security ｜ 层次 code |
+| 置信度 | low |
+
+**问题**：「键值不落任何留痕」的保护是：指纹仅 sha256 + 对 commandLine 与输出做 env 值的逐值替换，再过模式脱敏。逐值替换按原串匹配，厂商 CLI 输出中密钥可能以截断（sk-abc…xyz）、换行折断或再编码形态出现，原串替换会漏；此时兜底只剩「模式脱敏」，而模式脱敏的既有覆盖面对非标准形态的第三方网关 key 是否有效，正是本仓在 claude 官方形态下已知的漏报区（焦点⑩的静默注入/外泄面）。§7.1 把「不落留痕」写成断言，未登记替换口径与已知残余。
+
+**依据**：被审 diff 中 §7.1 原文（「invokeClaude 对 commandLine 与输出逐值替换 redacted-env 后再过模式脱敏」）；claude.ts 与 credential-scrub.test.ts 未能读取，形态变体是否已被替换逻辑覆盖为推理。
+
+**建议**：设计口径改为「原串逐值替换 + 模式脱敏，变形泄漏面登记于残余（与既有脱敏口径同一）」；至少加一格负对照用例：密钥仅以截断/折行形态出现在桩输出中，断言不落留痕或如实登记检不出。
+
+### CODEX-07 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/02_design/稳定版系统设计说明书.md §7.1「路径域」段` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：路径域段完整登记了分隔符归一（匹配输入侧 + 落盘输出侧）与 glob 侥幸修复，但对链接语义零着墨：任务书焦点⑥点名「/private 语义在 win 分支是否保留」，段内既没说 macOS 分支的 /private 解析是否逐字保留，也没说 Windows 侧 junction/符号链接是否参与 isUnder 的规范化。禁读判定如果两平台的 canonicalize 强度不同，「两平台同配」的结论就只成立于分隔符维度。
+
+**依据**：被审 diff 中「路径域」段全文（无任何链接/private 字样）；fsx.ts 未能读取。
+
+**建议**：该段补一句两平台链接规范化策略：做（写到什么强度）或不做（归入「不承诺抵御蓄意规避」的既有边界），让读者不必猜。
+
+## 认为正确的部分
+
+- .gitattributes 统一 eol=lf 的动机与注释准确：entry-render-parity 逐字节比对确实会被 core.autocrlf 打穿，且 text=auto 下二进制内容不经换行转换、无需额外 binary 规则。
+- readonly_enforced 独立成字段、不塌缩进「旗标空集」的做法正确，符合 AGENTS.md 纪律 12「事实不抄第二份、结论不塞判别式」的精神。
+- 路径域「归一必须落在匹配输入侧，只归一输出救不了什么进禁读集的判定」是 1.1.1 修复的正确落点，根级 glob 不再依赖 [^/]* 吃掉反斜杠的侥幸。
+- 进程枚举 ~400ms TTL 缓存并写明实测单价（PowerShell 单查 ~0.7-0.9 s），把吞吐事实写进设计而不是藏进代码，符合纪律 1。
+- taskkill 软步（WM_CLOSE）对控制台进程常无效被如实保留而非假装等价 SIGTERM，以及「不承诺厂商 CLI 自行收尾」的措辞，诚实到位。
+- 取消标记零回看防「陈旧标记误读新 worker」的方向是对的；chmod 位、agy pty、身份吞吐等「如实边界」段的登记方式值得肯定。
+- WIN_FILE_SKIP 经 scripts/win-test-skip.mjs / win-test-prefix.mjs 统一闸口而非散写 skip()，机制本身可审计（问题在注释内容，见 CODEX-01）。
+
+## 未覆盖范围（本侧盲区）
+
+- 本会话 exec_command 全量被沙箱拒绝（实际尝试：Get-ChildItem 两文件、git log、git log -C、dir、type via cmd、node --version、Get-Content，均 blocked by policy），无法打开 changes.diff 真实路径与被截断的正文（任务书内嵌版省略 5175 行）。
+- 焦点①：exec.ts 与 util/platform.ts 的 POSIX 分支是否逐字保留、win32 判据会否漏到 POSIX 路径——未读实现，未覆盖。
+- 焦点④：windowsHide 是否覆盖全部 spawn 点——未做全仓 spawn 清点。
+- 焦点⑦/⑬：除补丁尾部 5 个 zcode 文件外，WIN_FILE_SKIP 完整清单及其余被跳文件（含 hooks、freeze、gate 相关）未逐一核对跳过理由。
+- 焦点⑧：package-release.mjs 的 --force-local 与相对路径解压、platform 字段实现未读取。
+- 焦点⑨：init.ts/doctor.ts/probes 中 HOME 来源的完整清点未做（USERPROFILE/HOMEDRIVE/HOMEPATH/APPDATA 等）。
+- 焦点⑫：codex-home.ts 隔离副本的 model_catalog 引用件拷贝未读取。
+- schema/config.v2.json 变更、run.v3 相关、adapters/base.ts 与 stub.ts 的平台分派细节均未见到。
+- 本审查未达任务书「至少读 3 个项目文件」下限（consulted 所列仅经由被审 diff 的变更块读到，非全文），按任务书口径应判证据不足重跑。
+
+## 实际查阅的项目文件
+
+- `AGENTS.md`
+- `.gitattributes`
+- `README.md`
+- `doc/01_requirements/稳定版需求说明书.md`
+- `doc/02_design/稳定版系统设计说明书.md`
+- `doc/04_development/GUIDE_local_pitfalls.md`
+- `test/unit/zcode-doctor-probe-home.test.ts`
+- `test/unit/zcode-full-copy-arm.test.ts`
+- `test/unit/zcode-model-selection.test.ts`
+- `test/unit/zcode-provider-env.test.ts`
+- `test/unit/zcode-runtime-selection.test.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"run_command":0,"project_reads":0}
+
+---
+
+*本文档由 TriviumCode 编排器从 `codex` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

@@ -1,0 +1,322 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "glm",
+      "right": "claude",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "k3-256k",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "glm",
+      "right": "codex",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "qwen3.8-flash",
+      "left_source": null,
+      "right_source": "trace",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "claude",
+      "right": "codex",
+      "status": "different-family",
+      "left_model": "k3-256k",
+      "right_model": "qwen3.8-flash",
+      "left_source": "envelope",
+      "right_source": "trace",
+      "reason": "模型族不同：kimi / qwen"
+    }
+  ],
+  "run_id": "20261020T074334Z",
+  "topic": "Windows原生移植",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重点审 Windows 原生移植批次（1.1.0 提交 f21f4f40 起，含 1.1.1/1.2.0/1.2.1 后续修复）的平台面正确性与回归风险：① exec.ts 与 util/platform.ts 的平台分派对「macOS 行为零变化」的兑现——POSIX 分支是否逐字保留、win32 判据有没有可能漏到 POSIX 路径上；② 进程身份盘上契约：Windows 上规范化启动时刻改写为 UTC ISO 却复用同名字段，请攻击「记录不跨平台所以安全」这条论证，找反例；③ 取消标记时序：watcher 只认比自己更晚写入的标记（mtime 零回看），在时钟/文件系统粒度、cancelLostWorker 与 --start 派生失败收尾的先后关系上是否有漏——陈旧标记被误忽略或新标记被误漏各是什么后果；④ windowsHide 是否覆盖了全部 spawn 点，还有没有会弹新控制台窗口的入口；⑤ .cmd 垫片经 cmd.exe /d /s /c 间接执行的参数边界（元字符、内嵌引号）是否如实登记、有没有静默注入面；⑥ 路径域归一的完备性：isUnder/spellingsOf/toProjectRelative/禁读条目/必读列表之外，还有没有漏改的分隔符硬编码或未归一的 posix 产出点，/private 语义在 win 分支是否保留；⑦ WIN_FILE_SKIP 各文件的跳过理由是否成立——抽查被跳过用例对应的实现是否确属 POSIX 专属，警惕借跳过掩盖 win32 真缺陷；⑧ 发布链 --force-local 与相对路径解压的正确性、发布信息 platform 字段；⑨ USERPROFILE/HOMEDRIVE/HOMEPATH 隔离是否还有漏的家目录来源；⑩ 1.2.0 第三方网关注入（settings_env_source 与 --settings）：凭据是否绝不落留痕（指纹仅 sha256、commandLine 与输出逐值替换）、mergeSettingsEnv 与 deny 规则共存合并的边界（坏 JSON、空 env 零变化）、官方登录机器是否自动无操作；⑪ 1.2.1 只读降级（prompt-only）：降级注记与 readonly_enforced 事实的留痕完备性、required 缺省行为逐字不变的兑现、补偿控制（BRIEF 只读措辞加事后轨迹与漂移核验）是否如实成立；⑫ codex 隔离副本的 model_catalog 引用件拷贝与 ccswitch 家族声明层：拷贝面是否引入新的凭据外泄面、警告路径是否可读；⑬ 集成测试在 win32 的残余失败族（worker 生命周期、锁、信号、ESM URL）与 WIN_FILE_SKIP 的适配优先级是否被低估。",
+  "task_goal": null,
+  "entry": "C",
+  "driver": "glm",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "profile": "default",
+  "critics_selected": [
+    "claude",
+    "codex"
+  ],
+  "snapshot": {
+    "git_head": "85908e2d3393082cb39b677739387861eacdfd61",
+    "tree_hash": "ec4e976f97e1a85945b3a416f53564462953fe05",
+    "dirty": false,
+    "subject_sha256": "3e31d3487b6b27804573af909bd19740488cba8986f15eac9c7fa523884d30ce",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "e0588e8c05ebc50be20bd3e9685451a3b13c1672",
+      "dirty": true,
+      "inputs_sha256": "dc877bc8abecd6025ed6851b9c2c1d16d442cc611c077329ec22400f823d3527",
+      "built_at": "2026-10-19T18:32:29.205Z"
+    },
+    "after_tree_hash": "ec4e976f97e1a85945b3a416f53564462953fe05"
+  },
+  "started_at": "2026-10-20T07:43:45.874Z",
+  "finished_at": "2026-10-20T07:59:54.359Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "claude": {
+      "vendor": "anthropic",
+      "cli_version": "2.1.302",
+      "model_requested": "opus",
+      "model_effective": "k3-256k",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "medium",
+      "effort_requested": "medium",
+      "effort_effective": null,
+      "effort_effective_source": "unverified",
+      "tier": null,
+      "tier_source": "profile",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 967.021,
+      "tool_calls": {
+        "read": 17,
+        "grep": 9,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 10
+      },
+      "evidence_ok": true,
+      "usage": {
+        "cost_usd": 2.8567350000000005
+      },
+      "access": {
+        "requested_mode": "native",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+        "launcher_effective": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "cf4727a8-de3f-4088-954f-302c6a3e3b35",
+      "peer_deny_applied": true,
+      "deny_skipped": 1,
+      "deny_rule_count": 12,
+      "deny_bytes": 296
+    },
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.163.0",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "ccswitch",
+      "model_provider": "custom",
+      "model_route": "config_copy",
+      "effort": "medium",
+      "effort_requested": "medium",
+      "effort_effective": null,
+      "effort_effective_source": "unverified",
+      "tier": null,
+      "tier_source": "profile",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 256.372,
+      "tool_calls": {
+        "run_command": 0,
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "access": {
+        "requested_mode": "profile",
+        "profile": "ccswitch",
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+        "launcher_effective": "C:\\Users\\k_bo\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+        "wrapper_sha256": null,
+        "configuration_sha256": "4376d8ac88e8ed87c11f165e4792f1cf068aabe841c28c68e2d7d9b755c71577",
+        "provider_declared": "custom",
+        "provider_declared_source": "config",
+        "provider_effective": "custom",
+        "provider_effective_source": "trace"
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a15844-31ec-7060-8e8a-0b84c047af6a",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "requested_routes": {
+    "claude": {
+      "model": "opus",
+      "effort": "medium",
+      "tier": null,
+      "tier_source": "profile",
+      "access": {
+        "requested_mode": "native",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    },
+    "codex": {
+      "model": "qwen3.8-flash",
+      "effort": "medium",
+      "tier": null,
+      "tier_source": "profile",
+      "access": {
+        "requested_mode": "profile",
+        "profile": "ccswitch",
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": "4376d8ac88e8ed87c11f165e4792f1cf068aabe841c28c68e2d7d9b755c71577",
+        "provider_declared": "custom",
+        "provider_declared_source": "config",
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".env.example",
+    ".trivium",
+    "C:\\Users\\k_bo\\.trivium\\runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "claude": true,
+      "codex": false
+    },
+    "deny_skipped": {
+      "claude": 1,
+      "codex": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "claude": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "claude": {
+        "hit": false,
+        "hits": []
+      },
+      "codex": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "claude": {
+        "readonly": "unavailable",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "Windows原生移植\\code\\_meta\\changes-20261020T074334Z.diff",
+      "sha256": "3e31d3487b6b27804573af909bd19740488cba8986f15eac9c7fa523884d30ce"
+    },
+    {
+      "path": "Windows原生移植\\code\\_meta\\brief-claude-20261020T074334Z.md",
+      "sha256": "87e2dae62216b975b0d8898d2d36fc14713d4a04506696806424ab791d75c9b7"
+    },
+    {
+      "path": "Windows原生移植\\code\\_meta\\brief-codex-20261020T074334Z.md",
+      "sha256": "6545fc5ba89f65f9249c95cb4faf8d60514f275d19e97007aff682cb2ba7bfd0"
+    },
+    {
+      "path": "Windows原生移植\\code\\_meta\\review-claude-20261020T074334Z.json",
+      "sha256": "20cbb1ff5b4d45ebc7e0b47b2b082028de9f34ea076206f8a7a6fc8a46ffba9d"
+    },
+    {
+      "path": "Windows原生移植\\code\\_meta\\review-codex-20261020T074334Z.json",
+      "sha256": "ecee664d8d5ebfc93ded2e126e0969e05679e1011ad5c36c81e35ed06523abbf"
+    },
+    {
+      "path": "Windows原生移植\\code\\2026-10-20-Windows原生移植-claude.md",
+      "sha256": "673ae4d99adda04c1c6727ae6bfcb420b8d2abc096f947239c41d2abbe6c6792"
+    },
+    {
+      "path": "Windows原生移植\\code\\2026-10-20-Windows原生移植-codex.md",
+      "sha256": "e2db439f878f14fb0c48c34f458973999b7031d73815cb4d98dc6f035b79b258"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "构建时工作树有未提交改动：安装副本不对应任何一个提交"
+    ]
+  },
+  "status": "success"
+}

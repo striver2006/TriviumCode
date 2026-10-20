@@ -685,12 +685,12 @@ test('可用性：prompt-only 且负对照失败（旗标在、readonly_enforced
   assert.match(v.note!, /事后轨迹\/漂移核验/);
 });
 
-test('可用性：prompt-only 但旗标空（旧策略下探测）→ 放行并提示重探让旗标落盘', () => {
+test('可用性：prompt-only 但旗标空（旧策略下探测）→ 仍拒——豁免以旗标落盘为前提（CLAUDE-01）', () => {
   const cfg = probeWith({ readonly_flags: [], readonly_enforced: false });
   (cfg.agents.codex as { readonly_enforcement?: string }).readonly_enforcement = 'prompt-only';
   const v = codexAdapter.availability(AVAIL_CTX(cfg));
-  assert.equal(v.ok, true);
-  assert.match(v.note!, /重跑 doctor --only codex/);
+  assert.equal(v.ok, false, '空旗标下运行时连 -s read-only 都不传，prompt-only 的最弱保障不存在，必须 fail-closed');
+  assert.match(v.reason!, /重跑 trivium doctor --only codex/);
 });
 
 test('可用性：required（缺省）下同样的探针事实仍拒——降级必须显式配置，不是静默放水', () => {
