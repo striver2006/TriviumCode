@@ -95,7 +95,23 @@ export const VOIDING_DENY_CATEGORIES: readonly DenyCategory[] = ['peer-artifact'
 
 export type Severity = 'blocker' | 'major' | 'minor' | 'nit';
 export type Confidence = 'high' | 'medium' | 'low';
-export type Verdict = 'approve' | 'approve-with-nits' | 'request-changes' | 'block';
+/**
+ * 审查结论的整体判断（review.v2 起三值：通过 / 修改后通过 / 不通过）。
+ * v1 的四枚举见 `LegacyVerdict`——历史留痕只读校验用，新运行不再产出。
+ */
+export type Verdict = 'approve' | 'approve-after-changes' | 'reject';
+/** review.v1 的四枚举：仅作历史留痕的只读校验保留（2026-10-22 起由三值取代） */
+export type LegacyVerdict = 'approve' | 'approve-with-nits' | 'request-changes' | 'block';
+/**
+ * 一轮评审的**整体三态判定**（2026-10-22 多轮评审特性）。
+ *
+ * 由编排器按各有效侧 verdict 聚合（fail-closed：reject ≥50% 优先；三档皆不达 50%
+ * 时取剩余两档更保守的 pass_after_changes，不烧轮次），Driver 不得手写：
+ * - `fail` 且轮次未用尽 → 修订后重发评审（新轮次自然抬升）；
+ * - `fail` 且轮次用尽 → 停下人工审批（awaiting_approval，含命令 A）；
+ * - `pass` / `pass_after_changes` → 按逐条裁决修订后进实施。
+ */
+export type RoundDecision = 'pass' | 'pass_after_changes' | 'fail';
 
 export const STAGES: readonly Stage[] = ['plan', 'code', 'bug'];
 
@@ -965,6 +981,13 @@ export interface ReviewConfig {
   default_critics: CriticId[];
   /** 单次运行可选审核者的基数上限（FR-29：1～3） */
   max_critics: number;
+  /**
+   * 计划阶段多轮评审的轮次上限（CLI `--plan-rounds` 当次覆盖，1～10 硬顶）。
+   * 整体判定不通过且轮次未用尽 → 修订重审；用尽仍不通过 → 人工审批停点。
+   */
+  plan_rounds: number;
+  /** 代码阶段多轮评审的轮次上限（CLI `--code-rounds`），语义同 `plan_rounds`；bug 阶段不设 */
+  code_rounds: number;
   timeout_s: Record<Stage, number>;
   wait_timeout_s: number;
   heartbeat_stale_s: number;
@@ -1223,7 +1246,12 @@ export interface Finding {
 }
 
 export interface Review {
-  schema: 'trivium.review.v1';
+  /**
+   * 写侧恒为 v2（2026-10-22 起）；v1 是历史留痕的只读形态——`parse.ts` 的 legacy 分派
+   * 会把过 v1 校验的历史原文断言成本类型（schema 值仍是 v1 字面），与 `verdict` 同款
+   * 的类型取舍：聚合只对带 `review_rounds` 的运行发生，那些运行写侧恒为 v2。
+   */
+  schema: 'trivium.review.v2';
   verdict: Verdict;
   summary: string;
   findings: Finding[];
@@ -1643,6 +1671,15 @@ export interface RunMeta {
    * **可选**：与 `driver_enabled` / `driver_guard_level` 同一口径，缺失不等于任何取值。
    */
   plan_final_check?: PlanFinalCheck;
+  /**
+   * 本轮运行的评审轮次上限（2026-10-22 多轮评审，plan/code 阶段）。
+   *
+   * **只在 plan / code 阶段**写入；bug 阶段与早于本特性的留痕缺席。
+   * `limit` 是生效上限（1～10），`source` 记来源——flag 为当次 `--plan-rounds` / `--code-rounds`
+   * 覆盖，config 为取配置缺省。闸门读它做整体三态判定与轮次用尽停点；上限拦截发生在
+   * 新运行发起时（`prepareRun`），与本字段无关。缺席即「本轮按旧规则收口」，不追溯。
+   */
+  review_rounds?: { limit: number; source: 'flag' | 'config' };
   /**
    * 本轮实际使用的**档位表名**（`--profile` 覆盖后的 `active_profile`，设计 6.7.1，M11 第 6 步）。
    *

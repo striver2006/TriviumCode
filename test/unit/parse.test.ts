@@ -11,8 +11,8 @@ import type { Review } from '../../src/trivium/types.js';
 
 function validReview(over: Partial<Review> = {}): Review {
   return {
-    schema: 'trivium.review.v1',
-    verdict: 'request-changes',
+    schema: 'trivium.review.v2',
+    verdict: 'approve-after-changes',
     summary: '最危险的一条：并发回滚未覆盖，可能造成数据不一致。',
     findings: [
       {
@@ -281,7 +281,7 @@ test('结论之后追加的噪声对象顶不掉真正的结论', () => {
 test('全都不合格时如实报走得最远那一格的校验错误', () => {
   const r = parseReview('{"a":1}\n{"b":2}');
   assert.equal(r.ok, false);
-  assert.match(r.ok ? '' : r.reason, /不符合 trivium\.review\.v1/);
+  assert.match(r.ok ? '' : r.reason, /不符合 trivium\.review\.v2/);
 });
 
 test('extractJsonCandidates 去重并保序', () => {

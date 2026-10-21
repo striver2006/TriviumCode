@@ -21,13 +21,19 @@ import { FINDING_FIELDS, VENDOR_NOISE_KEYS } from './parse.js';
 export const FALLBACK_CAUSE_LABEL: Record<FallbackCause, string> = {
   no_json_object: '回答里没有 JSON 对象',
   json_syntax: 'JSON 语法错误，按字面还原非法转义后仍无法解析',
-  root_invalid: 'JSON 根对象不符合 trivium.review.v1（缺必填字段、取值不合，或带了不属于结论的字段）',
+  root_invalid: 'JSON 根对象不符合 trivium.review.v2（缺必填字段、取值不合，或带了不属于结论的字段）',
   finding_unaddressable: '有意见的编号不可用（缺 id、形状不合或不是对象），无法逐条降级',
   foreign_prefix: '意见编号前缀不属于本侧',
 };
 
-const SEVERITY_ORDER: readonly Severity[] = ['blocker', 'major', 'minor', 'nit'];
-const SEVERITY_LABEL: Record<Severity, string> = {
+/** verdict 三值的人读名（review.v2，2026-10-22）。表外值（历史 v1 件的四枚举）原样显示 */
+const VERDICT_LABEL: Record<string, string> = {
+  'approve': '通过',
+  'approve-after-changes': '修改后通过',
+  'reject': '不通过',
+};
+
+const SEVERITY_ORDER: readonly Severity[] = ['blocker', 'major', 'minor', 'nit'];const SEVERITY_LABEL: Record<Severity, string> = {
   blocker: '阻断',
   major: '重要',
   minor: '次要',
@@ -170,7 +176,7 @@ export function renderFrontMatter(input: RenderInput): string {
   const parseFallback = input.review === null;
 
   const fm: Record<string, unknown> = {
-    schema: 'trivium.review.v1',
+    schema: 'trivium.review.v2',
     topic: input.topic,
     stage: input.stage,
     role: input.critic,
@@ -203,7 +209,7 @@ export function renderFrontMatter(input: RenderInput): string {
     duration_s: Math.round(input.result.duration_s),
     tool_calls: { ...input.result.tool_calls, project_reads: input.projectReads },
     evidence_ok: input.evidenceOk,
-    verdict: input.review?.verdict ?? 'request-changes',
+    verdict: input.review?.verdict ?? 'reject',
     // 只数合格意见；逐条降级的条数另记在 findings_degraded（它们的 severity 可能正是不合格的那个字段）
     findings_count: countSeverities(input.review),
     /*
@@ -453,7 +459,7 @@ ${'```'}`);
 
 ${review.summary.trim()}
 
-**结论**：\`${review.verdict}\``);
+**结论**：\`${VERDICT_LABEL[review.verdict] ?? review.verdict}\`（\`${review.verdict}\`）`);
 
   if (review.findings.length === 0 && nDegraded > 0) {
     // 交了意见、只是全部降级：不能说「未发现问题」（解析回退逐条降级计划 r2 §3.5）
@@ -541,7 +547,7 @@ function renderDegradedSection(items: readonly DegradedFinding[]): string {
   const out: string[] = [
     `## 不合格意见（逐条降级，共 ${items.length} 条）
 
-> 下列意见不合 \`trivium.review.v1\`：保留原编号、**仍须逐条裁决**（接受要写落点），
+> 下列意见不合 \`trivium.review.v2\`：保留原编号、**仍须逐条裁决**（接受要写落点），
 > 但**不参与阻断与共同阻断判定**——其中声称 blocker 的，被驳回也不会触发共同阻断告警。`,
   ];
   for (const d of items) {

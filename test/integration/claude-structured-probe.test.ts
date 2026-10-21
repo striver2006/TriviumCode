@@ -108,7 +108,7 @@ before(async () => {
       "  let text;",
       "  if (mode === 'parse-fail') text = 'not json';",
       "  else if (mode === 'missing-key') text = JSON.stringify({ other: 1 });",
-      "  else text = JSON.stringify({ schema: 'trivium.review.v1', verdict: 'approve', summary: 'fake summary', findings: [] });",
+      "  else text = JSON.stringify({ schema: 'trivium.review.v2', verdict: 'approve', summary: 'fake summary', findings: [] });",
       "  emit({ type: 'result', subtype: 'success', is_error: false, result: text, total_cost_usd: 0.001, session_id: 'fake-session' });",
       '  process.exit(0);',
       '});',

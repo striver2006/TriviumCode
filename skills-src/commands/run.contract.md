@@ -1,7 +1,7 @@
 ---
 name: dual-run
 description: 全流程双审：出方案 → 双审 → 修订 → 编码 → 双审 → 应答 → 改码 → 真实执行编译测试（命令 A）
-argument-hint: <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] {{MODEL_HINT}} {{TIER_HINT}} {{EFFORT_HINT}}{{VENDOR_PROFILE_HINT}} [--critics <id,…>] [--only {{ONLY_CHOICES}}] [--allow-single]
+argument-hint: <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] {{MODEL_HINT}} {{TIER_HINT}} {{EFFORT_HINT}}{{VENDOR_PROFILE_HINT}} [--critics <id,…>] [--only {{ONLY_CHOICES}}] [--allow-single] [--plan-rounds <1~10>] [--code-rounds <1~10>]
 disable-model-invocation: true
 allowed-tools: Bash(.trivium/bin/trivium:*), Bash, Read, Write, Edit, Glob, Grep
 @ARG_KIND: text
@@ -47,6 +47,9 @@ S0 这个标签不再使用。
 - `critics`：本轮**入选的审核者集合，计划审与代码审两轮共用这一组**。S0.6、S2、S6 都把 resolve 输出的 `critics`
   用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；
 - `allow_single`：为 true 时 S2、S6 都加 `--allow-single`（用户显式要求的降级：一侧失败时不中止，§12.4）。
+- `plan_rounds` / `code_rounds`：计划 / 代码阶段多轮评审的轮次上限（已含缺省回落；`*_rounds_source` 记来源
+  flag / config）。S2 把 `plan_rounds` 照抄进 `--plan-rounds`、S6 把 `code_rounds` 照抄进 `--code-rounds`，
+  **无条件传**——漏传时当次指定的上限就此消失，「用尽停下人工审批」会提前或推迟触发（三态判定，2026-10-22）。
 
 用户写的 `--only` 已被 resolve 并进 `critics`、输出的 `only` 恒为 null——**任何一步都不要传 `--only`**。
 
@@ -100,6 +103,7 @@ Driver 会话声明使用 S0.5 的 `driver_model` / `driver_provider`，非空�
 - `--focus` 传 S0.5 的 `prompt_hint`，为空则不传；`--context` 传 `context_paths`；
 - `--profile` 传 S0.5 的 `profile`，为空则不传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`； 接入字段缺席表示继承；vendor_profiles 中显式 null 必须传 --native-<审核者 id>，非空传 --profile-<审核者 id>，同侧不同时传。
 - `--critics` 传 S0.5 的 `critics`（逗号连接），**无条件传**；`allow_single` 为 true 时加 `--allow-single`；
+  `--plan-rounds` 传 S0.5 的 `plan_rounds`，**无条件传**（三态判定，2026-10-22）；
   **不要传 `--only`**（理由见 S0.5）：两个旗标同时递给 `--start` 会被判互斥退 64；
 - **`--driver {{DRIVER}}` 照带**（与 S0.5 / S0.6 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
 
@@ -127,9 +131,23 @@ Driver 会话声明使用 S0.5 的 `driver_model` / `driver_provider`，非空�
 
 S5 编码依据的「已批准的修订计划」就是这份新一轮计划（没有接受项时是上一轮计划）。
 
-### S4 裁决校验
+### S4 裁决校验与整体判定
 `TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐后重跑本步；
 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
+
+校验通过且输出含 `round_verdict` 时，按其 `decision` 分支（三态判定，2026-10-22）：
+
+- **`fail` 且 `round < limit`**：整体判不通过、轮次未用尽。S3 写出的新一轮计划就是
+  下一轮的被审对象——**回到 S2** 再发起一轮计划双审（新轮次自动抬升；S2 的透传旗标
+  保持同一组，含 `--plan-rounds`），随后新一轮的 S3、S4 照此循环，直至判定不再是
+  `fail` 或轮次用尽。
+- **`fail` 且 `round ≥ limit`**：轮次已用尽，编排器已把闸门置为等待人工审批——
+  把停点话术原样转述给用户后**停下**：通过＝放行按最后一轮修订进 S5，拒绝＝终止。
+  **审批的发起权在用户手里，不要代跑。**审批通过后若要再审，由用户显式提高
+  `--plan-rounds` 重发，不要自行发起。
+- **`pass` / `pass_after_changes`**：按 S3 的裁决与新一轮计划进 S5。
+  `pass_after_changes`（含三档皆不达 50% 时的兜底取保守档）意为「按意见修订后进实施、
+  不再重审」。
 
 {{> run/claim-code}}
 
@@ -140,6 +158,7 @@ S5 编码依据的「已批准的修订计划」就是这份新一轮计划（�
 Driver 会话声明继续使用 S0.5 的 `driver_model` / `driver_provider`，逐项透传 `--driver-model` / `--driver-provider`；null 不传。
 同 S2（`--entry A`、`--driver {{DRIVER}}`，含 `--goal` / `--focus` / `--context` / `--profile` / `--critics` / `--allow-single` / 模型覆盖 / 档位旗标（`--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`）的透传——
 入选集合用的仍是 S0.5 那一组，S2 里某侧失败过也照样传它），但 `--stage code`，
+并把 S0.5 的 `code_rounds` 照抄进 `--code-rounds`（**无条件传**；`--plan-rounds` 是计划阶段的，本步不传），
 按 `{{cmd:dual-review-code}}` 的第 3 步执行。被审对象是 `git diff`，不是文档。
 比较基线默认 `HEAD`，即「尚未提交的全部改动」；S5 若已经提交过，
 要按 `{{cmd:dual-review-code}}` 第 3 步的说明显式给出 `--base`，否则补丁为空会退 65。
@@ -148,12 +167,25 @@ Driver 会话声明继续使用 S0.5 的 `driver_model` / `driver_provider`，�
 写 `…-response-<当轮 Driver>.md`（后缀与 `role` 都填你自己的 Agent id），
 逐条「接受/驳回/暂缓 + 理由 + 修改计划」。
 
-### S8 裁决校验
+### S8 裁决校验与整体判定
 `TV gate --stage code --topic <主题> --check --json`。有缺口则回到 S7 补齐后重跑本步；
 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
 
+校验通过且输出含 `round_verdict` 时，按其 `decision` 分支（三态判定，2026-10-22）：
+
+- **`fail` 且 `round < limit`**：整体判不通过、轮次未用尽。先按 S7 的裁决修改代码
+  （含被驳回意见的处置说明；改完的 diff 就是下一轮的被审对象），**回到 S6** 再发起
+  一轮代码双审（透传旗标保持同一组，含 `--code-rounds`；若上一轮已提交过、基线变了，
+  显式给 `--base`），随后新一轮的 S7、S8 照此循环，直至判定不再是 `fail` 或轮次用尽。
+- **`fail` 且 `round ≥ limit`**：轮次已用尽，编排器已把闸门置为等待人工审批——
+  把停点话术原样转述给用户后**停下**：通过＝放行按最后一轮裁决进 S9→S10，拒绝＝终止。
+  **审批的发起权在用户手里，不要代跑。**
+- **`pass` / `pass_after_changes`**：进 S9。`pass_after_changes`（含兜底取保守档）意为
+  「按裁决修改后收尾、不再重审」。
+
 ### S9 按已接受项改代码
-**只改已接受的项。** 驳回与暂缓的不要动。
+**只改已接受的项。** 驳回与暂缓的不要动。（S8 判 `fail` 未用尽回到 S6 的那一支，
+同样只按裁决修改——驳回项的处置是「在裁决件里说明理由」，不是改码。）
 
 ### S10 编译测试（出口）
 `TV verify --topic <主题>`。它**真实执行** `.trivium/config.yaml` 里显式配置的命令。

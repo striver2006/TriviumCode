@@ -29,7 +29,7 @@ function finding(id: string, over: Loose = {}, drop: string[] = []): Loose {
 
 function review(findings: Loose[], over: Loose = {}): Loose {
   return {
-    schema: 'trivium.review.v1', verdict: 'request-changes', summary: '最危险的一条在前。',
+    schema: 'trivium.review.v2', verdict: 'approve-after-changes', summary: '最危险的一条在前。',
     findings, not_covered: ['前端'], consulted: ['src/a.ts'], ...over,
   };
 }

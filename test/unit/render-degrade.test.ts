@@ -17,7 +17,7 @@ const RESULT: CriticResult = {
 };
 
 const REVIEW: Review = {
-  schema: 'trivium.review.v1', verdict: 'request-changes', summary: '最危险的一条在前。',
+  schema: 'trivium.review.v2', verdict: 'approve-after-changes', summary: '最危险的一条在前。',
   findings: [{
     id: 'CODEX-01', severity: 'major', layer: 'code', kind: 'correctness', location: 'src/a.ts:1',
     problem: '合格意见', evidence: '读了 src/a.ts', suggestion: '改', confidence: 'high',

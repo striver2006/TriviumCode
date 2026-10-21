@@ -174,6 +174,14 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
 - v3 在执行前保存 `requested_routes` 请求快照；worker 必须与交接逐项比对。取消或启动失败不得丢失请求路线，历史件不补写该字段。
   接入能力从注册表派生；请求、配置声明与运行回读分开记录。Driver 模型仅来自本轮声明，
   模型族逐对三态比较；同族与未知告警继续，不作为闸门条件。真实路线准入之前不得恢复三审或宣称完成。
+- **整体三态判定与多轮评审（2026-10-22，1.3.0）**：审查结论新写 `trivium.review.v2`
+  （verdict 三值 approve / approve-after-changes / reject；v1 四枚举只读保留）。
+  plan/code 阶段每侧 verdict 由闸门按 fail-closed 规则聚合成整体判定（reject ≥50% → 不通过；
+  否则 approve-after-changes ≥50% → 修改后通过；否则 approve ≥50% → 通过；三档皆不达取保守档
+  「修改后通过」，不烧轮）——判不通过且轮次未用尽 → 修订后重审；用尽仍不通过 → 停下人工审批
+  （含命令 A）；通过 / 修改后通过 → 按裁决修订后进实施。轮次上限 `--plan-rounds` / `--code-rounds`
+  （1～10，缺省 3），超上限重发在 `prepareRun` 机械拦截；判定非「通过」的计划轮即使零接受项
+  也必须有新一轮完整计划。run.v3 记 `review_rounds`、task.json 记 `round_verdicts`，缺席即旧留痕按旧规则收口。
 
 - **契约层守跨文件对账**：改了 `hooks.json` / SKILL.md 的 `argument-hint` / CLI 旗标，
   必须同步另一侧，否则 `test/contract/` 红。

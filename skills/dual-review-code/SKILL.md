@@ -1,7 +1,7 @@
 ---
 name: dual-review-code
 description: 对已有代码变更做背靠背双审，并产出逐条应答与修改方案（命令 C）
-argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--base <ref>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]
+argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--base <ref>] [--code-rounds <1~10>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]
 disable-model-invocation: true
 allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 ---
@@ -90,7 +90,7 @@ TV preflight --stage code --driver claude --critics <critics> [--profile <名称
 先运行：
 
 ```
-TV review --start --entry C --stage code --topic <主题> --driver claude --focus <提示语> [--goal <任务目标>] [--base <ref>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
+TV review --start --entry C --stage code --topic <主题> --driver claude --focus <提示语> [--goal <任务目标>] [--base <ref>] [--code-rounds <1~10>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
 ```
 
 `--entry C` 标记本次运行由命令 C 发起，记入 run.json 留痕；它也让 CLI 按 B/C/D 规则
@@ -115,6 +115,11 @@ resolve 总是输出该字段（用户没传时它就是 `HEAD`），而显式�
 （含已暂存、未暂存、未跟踪文件），不是 merge-base 语义。
 **漏传不会报错，只会静默错审**：补丁悄悄退回 `git diff HEAD`，两侧审查员读到的变更范围
 与用户以为送审的对不上，而留痕里记的 base 看起来一切正常。
+
+**轮次上限无条件传**：resolve 输出的 `code_rounds` 已含缺省回落（`code_rounds_source` 记来源
+flag / config），照抄进 `--code-rounds`。漏传不会报错——`--start` 会自己回落配置缺省——
+但当次指定的上限就此消失，多轮循环的「用尽停下人工审批」会提前或推迟触发，
+用户看不出参数曾被给过。
 
 **把 resolve 输出的 `critics` 数组用逗号连接后传给 `--critics`，无条件传。**
 它是本轮**入选的审核者集合**，resolve 已经解析并校验完：默认值回落、旧旗标 `--only`
@@ -210,7 +215,24 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
 仍不通过则向用户说明缺口并停下，交给用户处理。
 
+校验通过且输出含 `round_verdict` 时，按其 `decision` 分支（三态判定，2026-10-22）：
+
+- **`fail` 且 `round < limit`**：本轮整体判不通过、轮次未用尽。按第 5 步的裁决修订
+  代码变更（驳回的意见也要在裁决理由里说明为何不吸收；计划阶段还须产出
+  新一轮完整计划，见第 5 步的说明），
+  然后**回到第 3 步**再发起一轮双审——新轮次自动抬升，透传的旗标（含轮次上限）保持同一组。
+  如此循环，直至判定不再是 `fail`、或轮次用尽。
+- **`fail` 且 `round ≥ limit`**：轮次已用尽。编排器已把闸门置为等待人工审批——
+  把停点话术原样转述给用户后**停下**，等用户走 `/dual-approve`：
+  通过＝放行按最后一轮的裁决继续，拒绝＝终止。**审批的发起权在用户手里，不要代跑。**
+- **`pass` / `pass_after_changes`**：进入第 7 步。`pass_after_changes`（含三档皆不达 50%
+  时的兜底取保守档）意为「按意见修订后即可收尾、不再重审」——修订内容以第 5 步裁决为准。
+
+> `round_verdict` 为 `null`（历史轮次或 bug 阶段）时无三态分支，按原有单趟流程走第 7 步。
+
 ### 7. 停点
+
+仅在整体判定**不是**「`fail` 且轮次未用尽」时执行本步（那一格在第 6 步已回到循环里）。
 
 运行 `TV gate --stage code --topic <主题> --await-approval`，
 把它输出的停点话术与三份文档路径转述给用户，然后**停止**。

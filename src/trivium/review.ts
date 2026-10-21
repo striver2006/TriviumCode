@@ -539,6 +539,14 @@ export interface ReviewOptions {
    */
   allowSingle?: boolean;
   /**
+   * 多轮评审轮次上限（2026-10-22 三态判定特性）。
+   *
+   * `{ limit, source }`：limit 1～10，source 记 flag（当次旗标覆盖）或 config（配置缺省）。
+   * 由 `cli.ts` 解析后传入；null / 缺席表示 bug 阶段或手工调用（测试、selftest）——
+   * `prepareRun` 不拦上限，run.json 不写 `review_rounds`，gate 按旧规则收口。
+   */
+  roundsLimit?: { limit: number; source: 'flag' | 'config' } | null;
+  /**
    * `prepareRun` 分配完 run_id、写骨架 run.json 之前调用（EV-151，同步路径扩展）。
    *
    * 只有同步路径传：它借此把 run_id 写进自己持有的主题锁（与 worker 锁同形），进程被 SIGKILL / Ctrl-C 中断之后，
@@ -873,6 +881,24 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
    * 而是骨架运行元数据短暂记错轮次 + 必然触发一次抬升告警。
    */
   const rerunIndex = await resolveRerunIndex(ref.layout, stage, driver);
+  /*
+   * ── 轮次上限拦截（2026-10-22 多轮评审）──
+   *
+   * 新一轮轮次超出上限即拒绝发起。gate --check 的「不通过且用尽」停点靠话术引导，
+   * 但 skill 失控或人工直调可能照样重发——这里是最后一道机械闸。放在 `allocateRunId`
+   * 之前：不占运行目录、不留任何半套工件（守 GLM-04 的口径）。
+   *
+   * 历史高轮次主题（本特性之前无上限，归档里存在 r12 一类）重发同样被拦——
+   * 逃生门是显式提高旗标（≤10）或调配置，行为变化在部署手册明示。
+   */
+  if (opts.roundsLimit && rerunIndex > opts.roundsLimit.limit) {
+    throw new TriviumError(
+      EXIT.GATE_BLOCK,
+      `主题 ${ref.topic} 的 ${stage} 阶段评审轮次已用尽：上限 ${opts.roundsLimit.limit} 轮，再发将是第 ${rerunIndex} 轮。\n` +
+        '  出口：人工审批放行或放弃（dual-approve / dual-abandon）；\n' +
+        `  确要再审：显式提高上限（--${stage === 'plan' ? 'plan' : 'code'}-rounds <1~10>）或调配置 review.${stage}_rounds。`,
+    );
+  }
   /*
    * 分配 run_id 的同时排他占下运行目录（EV-218）：运行目录按仓库分桶、不按主题分，两个主题同一秒起跑会分到同一个 id。
    * 占到的目录记进 claim，落盘段之前失败由外层 `prepareRun` 删掉（守 GLM-04 的零工件）。
@@ -1312,6 +1338,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
        */
       ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),
       ...(planFinalCheck ? { planFinalCheck } : {}),
+      reviewRounds: opts.roundsLimit ?? null,
       treeHash: primarySnap.treeHash,
       gitHead: primarySnap.gitHead,
       dirty: primarySnap.dirty,
@@ -1576,7 +1603,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       repairs[c] = p.repairs;
       if (p.degraded.length > 0) {
         warn(
-          `${c} 侧有 ${p.degraded.length} 条意见不合 trivium.review.v1，逐条降级（仍须逐条裁决，不参与阻断）：` +
+          `${c} 侧有 ${p.degraded.length} 条意见不合 trivium.review.v2，逐条降级（仍须逐条裁决，不参与阻断）：` +
             p.degraded.map((d) => `${d.id}[${d.problems.map((x) => `${x.field}:${x.kind}`).join(',')}]`).join('、'),
         );
       }

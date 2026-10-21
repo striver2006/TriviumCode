@@ -256,7 +256,8 @@ test('A5 · 纯文档跳过轮（代码双审 CODEX-03 / GLM-01）：不播报�
 
 test('A6 · 剔除超过 5 条（代码双审 CODEX-06）：--start 的 warnings 封顶 5 条（末条是汇总），run.json 存全量', { skip }, async () => {
   const topic = 'mrd-many';
-  const fx = await makeFixture({ topic, draft: false });
+  // 夹具预写 r2～r6 的审查件把 resolveRerunIndex 推到第 7 轮——抬高级内上限，别让 2026-10-22 的轮次拦截（缺省 3）挡住本用例
+  const fx = await makeFixture({ topic, draft: false, extraReview: ['plan_rounds: 10'] });
   await fs.appendFile(path.join(fx.root, '.trivium/config.yaml'), 'archive_root: doc/reviews\n');
   const stageDir = path.join(fx.root, 'doc/reviews', topic, 'plan');
   const peers = ['', '-r2', '-r3', '-r4', '-r5', '-r6'].map((r) => `doc/reviews/${topic}/plan/${today()}-${topic}${r}-glm.md`);

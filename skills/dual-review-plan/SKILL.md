@@ -1,7 +1,7 @@
 ---
 name: dual-review-plan
 description: 对已有计划做背靠背双审，并产出逐条裁决的修订计划（命令 B）
-argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--plan-file <路径>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]
+argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--plan-file <路径>] [--plan-rounds <1~10>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]
 disable-model-invocation: true
 allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 ---
@@ -108,7 +108,7 @@ TV preflight --stage plan --driver claude --critics <critics> [--profile <名称
 先运行：
 
 ```
-TV review --start --entry B --stage plan --topic <主题> --driver claude --focus <提示语> [--goal <任务目标>] [--plan-file <路径>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
+TV review --start --entry B --stage plan --topic <主题> --driver claude --focus <提示语> [--goal <任务目标>] [--plan-file <路径>] [--plan-rounds <1~10>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
 ```
 
 `--entry B` 标记本次运行由命令 B 发起，记入 run.json 留痕；它也让 CLI 按 B/C/D 规则
@@ -131,6 +131,11 @@ Driver 会话声明从 resolve 输出的 driver_model / driver_provider 逐项�
 resolve 用它定位被审对象，而 `--start` 会**重新定位一次**——不传就自动取
 `plan/` 下最新的一份原稿，用户显式指定的那份会被静默换掉，
 而 resolve 阶段的存在性校验反倒让一切看起来正常。
+
+**轮次上限无条件传**：resolve 输出的 `plan_rounds` 已含缺省回落（`plan_rounds_source` 记来源
+flag / config），照抄进 `--plan-rounds`。漏传不会报错——`--start` 会自己回落配置缺省——
+但当次指定的上限就此消失，多轮循环的「用尽停下人工审批」会提前或推迟触发，
+用户看不出参数曾被给过。
 
 **把 resolve 输出的 `critics` 数组用逗号连接后传给 `--critics`，无条件传。**
 它是本轮**入选的审核者集合**，resolve 已经解析并校验完：默认值回落、旧旗标 `--only`
@@ -220,14 +225,17 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 - 三种裁决**都**要有非空理由；**接受**必须写明落点；
 - 禁止静默忽略任何一条（FR-14）。即使全部驳回也必须产出本件并写明「无修改及原因」。
 
-**裁决件里有「接受」时，同时写一份新一轮计划**（§6.6 规则 9，EV-214）：
+**裁决件里有「接受」、或本轮整体判定不为「通过」时，同时写一份新一轮计划**
+（§6.6 规则 9，EV-214；三态判定强化 2026-10-22）：
 
 - 文件名 `…-r<N>-<当轮 Driver>.md`，与原稿同目录；N 比本轮被审对象的轮次大 1（第 1 轮即 `r2`），后缀同样是**你自己的 Agent id**；
 - 开头列「相对上一轮的改动」，**逐条引用**被接受意见的编号（整份回退侧的 `<前缀>-F<n>` 也要写），再给出合入后的完整计划；
 - 它就是代码阶段送审的「本主题计划定稿」——代码审查员读的是轮次最大的那份计划，没有它读到的是未修订的原稿。写完之后不要再另写更高轮次的计划而不送审；
-- 全部驳回或全部暂缓时不写，上一轮计划即为定稿。
+- 整体判定为 `pass_after_changes`（修改后通过）或 `fail`（不通过）时，**即使零接受项也必须写**：
+  判定要求按意见修订，驳回的意见也要在裁决理由里说明为何不吸收、计划相应演进；
+  全部驳回且判定为 `pass` 时才可不写，上一轮计划即为定稿。
 
-闸门对带 `plan_final_check` 标记的轮次核两件事：这份文件存在，每个被接受的编号在其中整词逐字出现；缺了判 `missing_next_plan` / `next_plan_missing_ids`，并给出应写的文件名或缺的编号。它只核字面，不核合得对不对。
+闸门对带 `plan_final_check` 标记的轮次核两件事：这份文件存在（判定非 `pass` 时零接受项也核），每个被接受的编号在其中整词逐字出现；缺了判 `missing_next_plan` / `next_plan_missing_ids`，并给出应写的文件名或缺的编号。它只核字面，不核合得对不对。
 
 ### 6. 校验裁决完整性
 
@@ -235,7 +243,24 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
 仍不通过则向用户说明缺口并停下，交给用户处理。
 
+校验通过且输出含 `round_verdict` 时，按其 `decision` 分支（三态判定，2026-10-22）：
+
+- **`fail` 且 `round < limit`**：本轮整体判不通过、轮次未用尽。按第 5 步的裁决修订
+  计划（驳回的意见也要在裁决理由里说明为何不吸收；计划阶段还须产出
+  新一轮完整计划，见第 5 步的说明），
+  然后**回到第 3 步**再发起一轮双审——新轮次自动抬升，透传的旗标（含轮次上限）保持同一组。
+  如此循环，直至判定不再是 `fail`、或轮次用尽。
+- **`fail` 且 `round ≥ limit`**：轮次已用尽。编排器已把闸门置为等待人工审批——
+  把停点话术原样转述给用户后**停下**，等用户走 `/dual-approve`：
+  通过＝放行按最后一轮的裁决继续，拒绝＝终止。**审批的发起权在用户手里，不要代跑。**
+- **`pass` / `pass_after_changes`**：进入第 7 步。`pass_after_changes`（含三档皆不达 50%
+  时的兜底取保守档）意为「按意见修订后即可收尾、不再重审」——修订内容以第 5 步裁决为准。
+
+> `round_verdict` 为 `null`（历史轮次或 bug 阶段）时无三态分支，按原有单趟流程走第 7 步。
+
 ### 7. 停点
+
+仅在整体判定**不是**「`fail` 且轮次未用尽」时执行本步（那一格在第 6 步已回到循环里）。
 
 运行 `TV gate --stage plan --topic <主题> --await-approval`，
 把它输出的停点话术与三份文档路径转述给用户，然后**停止**。

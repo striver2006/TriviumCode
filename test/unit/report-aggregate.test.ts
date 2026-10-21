@@ -71,8 +71,8 @@ function disposition(stage: Stage, driver: AgentId, kind: 'revised' | 'response'
 
 function review(prefix: string, items: [string, string][]): Review {
   return {
-    schema: 'trivium.review.v1',
-    verdict: 'request-changes',
+    schema: 'trivium.review.v2',
+    verdict: 'approve-after-changes',
     summary: 's',
     findings: items.map(([location, severity], i) => ({
       id: `${prefix}-${String(i + 1).padStart(2, '0')}`,

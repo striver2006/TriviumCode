@@ -81,7 +81,7 @@ function review(locations: string[]): Review {
     suggestion: 's',
     confidence: 'high',
   })) as unknown as Finding[];
-  return { schema: 'trivium.review.v1', verdict: 'request-changes', summary: 's', findings } as Review;
+  return { schema: 'trivium.review.v2', verdict: 'approve-after-changes', summary: 's', findings } as Review;
 }
 
 test('归一化把 0.00 的原始 Jaccard 救回真实重合度', () => {

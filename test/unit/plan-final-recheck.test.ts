@@ -40,7 +40,7 @@ async function layout(): Promise<ArchiveLayout> {
 
 function review(ids: string[]): Review {
   return {
-    schema: 'trivium.review.v1', verdict: 'request-changes',
+    schema: 'trivium.review.v2', verdict: 'approve-after-changes',
     summary: '总判断若干字，足够长以通过完整性检查。',
     findings: ids.map((id): Finding => ({
       id, severity: 'major', layer: 'plan', kind: 'correctness',
@@ -342,6 +342,7 @@ test('R12 闸门等价：同一布局上 checkAdjudication 与 recheckPlanFinal 
       cfg, layout: l, stage: 'plan', rerunIndex: 1, reviews: lr.reviews, degraded: false,
       expectedFallbackIds: lr.expectedFallbackIds, expectedDegradedIds: lr.expectedDegradedIds,
       reviewDocs: null, planFinal: lr.planFinal, runId,
+      roundVerdict: null,
     });
     const gateNew = g.failures.filter((f) => f.code === 'missing_next_plan' || f.code === 'next_plan_missing_ids');
     const rc = await recheckPlanFinal(l, planName(c.final));

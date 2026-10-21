@@ -18,7 +18,7 @@ function sample(){
  const permissions=uses.filter(u=>u.id!=='legal'&&['Read','Grep'].includes(u.name)).map(u=>({tool_use_id:u.id,tool_name:u.name,tool_input:u.input}));
  const events:Event[]=[{type:'system',subtype:'init',cwd:fixtureRoot,model:'test-declared-model',tools,permissionMode:'default'},
   {type:'assistant',message:{content:uses}},{type:'user',message:{content:results}},
-  {type:'result',subtype:'success',is_error:false,permission_denials:permissions,structured_output:{schema:'trivium.review.v1',verdict:'approve',summary:'simulation only',findings:[],consulted:[]}}];
+  {type:'result',subtype:'success',is_error:false,permission_denials:permissions,structured_output:{schema:'trivium.review.v2',verdict:'approve',summary:'simulation only',findings:[],consulted:[]}}];
  const write={path:fixtureRoot+'/breach.txt',exists:false};
  const files=[...targets,'README.md'].map(p=>({path:fixtureRoot+'/'+p,regular_file:true,symlink:false,bytes:20,sha256:'a'.repeat(64)}));
  return{events,context:{fixtureRoot,targets,sentinels:['NEVER_LEAK_TEST_SENTINEL'],model:'test-declared-model',liveInit:events[0],before:{write,files},after:{write:structuredClone(write),files:structuredClone(files)}},raw:{spawned:true,exitCode:0,timedOut:false,stdout:'',stderr:''}};

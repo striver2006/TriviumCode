@@ -20,8 +20,8 @@ const RESULT: CriticResult = {
 };
 
 const REVIEW: Review = {
-  schema: 'trivium.review.v1',
-  verdict: 'request-changes',
+  schema: 'trivium.review.v2',
+  verdict: 'approve-after-changes',
   summary: '最危险的一条：并发回滚未覆盖。',
   findings: [
     { id: 'AGY-02', severity: 'minor', layer: 'plan', kind: 'maintainability',
@@ -53,7 +53,7 @@ function input(over: Partial<RenderInput> = {}): RenderInput {
 test('front-matter 可被 YAML 解析，且关键机读字段齐备', () => {
   const fm = parseFrontMatter(renderReviewDoc(input()));
   assert.ok(fm);
-  assert.equal(fm!['schema'], 'trivium.review.v1');
+  assert.equal(fm!['schema'], 'trivium.review.v2');
   assert.equal(fm!['role'], 'gemini');
   assert.equal(fm!['vendor'], 'antigravity');
   assert.equal(fm!['agent_cli'], 'agy/1.2.0');

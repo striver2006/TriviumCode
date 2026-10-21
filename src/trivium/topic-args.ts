@@ -16,6 +16,7 @@ import type { CriticId, Ctx, Stage } from './types.js';
 import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
 import { assertFlagValuesGiven, assertTierFlags, collectTierFlags, nativeFlagNames, tierFlagNames } from './tier-flags.js';
 import { validateTopic, parseArtifactName } from './naming.js';
+import { MAX_REVIEW_ROUNDS } from './config.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { exists } from './util/fsx.js';
 import { isReviewArtifact } from './archive.js';
@@ -36,6 +37,8 @@ const STATIC_FLAGS = [
   'only', 'allow-single', 'session-id', 'critics',
   // M9 第 5 步：不认识它就会被当正文压进 restParts，与 `--base` 那次同形
   'driver', 'driver-model', 'driver-provider',
+  // 多轮评审轮次上限（2026-10-22）：同族理由——不认识就静默进正文
+  'plan-rounds', 'code-rounds',
 ] as const;
 type StaticFlag = (typeof STATIC_FLAGS)[number];
 
@@ -291,6 +294,17 @@ export interface TopicResolution {
    * 必须被识别——否则会被当成正文吞进审查焦点。原样回显，供上层决定要不要透传。
    */
   session_id: string | null;
+  /**
+   * 计划阶段多轮评审的轮次上限（`--plan-rounds <N>`，1～10；缺席回落 `review.plan_rounds`）。
+   * `plan_rounds_source` 记来源——flag 表示用户当次指定，config 表示取配置缺省。
+   * 命令 A 与命令 B 都输出；S2 / 第 3 步把它透传给 `review --start --plan-rounds`。
+   * bug 阶段不做轮次判定，字段照常输出（恒为 config 回落值）、下游不消费。
+   */
+  plan_rounds: number;
+  plan_rounds_source: 'flag' | 'config';
+  /** 代码阶段轮次上限（`--code-rounds <N>`），语义同 `plan_rounds` */
+  code_rounds: number;
+  code_rounds_source: 'flag' | 'config';
   /** 主题是否由编排器推导而来（skill 需回显给用户确认） */
   topic_inferred: boolean;
   notes: string[];
@@ -673,6 +687,49 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     .map((c) => c.trim())
     .filter(Boolean);
 
+  /*
+   * ── 多轮评审轮次上限（2026-10-22 三态判定特性）──
+   *
+   * `--plan-rounds` / `--code-rounds`：整数 1～10，缺席回落 `review.plan_rounds` / `review.code_rounds`。
+   * 校验在这里当场做（与 `--only` 同理）：留到 `review --start` 才报错，用户要多等一整轮解析。
+   * 缺值（空串）与表外值同报 64——「解析成功、随后被丢弃」正是本文件头部那族缺口的形状。
+   *
+   * 按本次解析范围收旗标：命令 A（all）两支都收；B/C 只收对应那支；
+   * bug 不设轮次判定，两支都不收——给了就退 64，不静默忽略。
+   */
+  const ROUND_FLAGS: readonly ('plan-rounds' | 'code-rounds')[] = ['plan-rounds', 'code-rounds'];
+  const acceptedRoundsFlags: readonly ('plan-rounds' | 'code-rounds')[] =
+    scope === 'all' ? ROUND_FLAGS
+    : scope === 'plan' ? ['plan-rounds']
+    : scope === 'code' ? ['code-rounds']
+    : [];
+  const parseRoundsFlag = (flag: 'plan-rounds' | 'code-rounds', raw: string | undefined): number | null => {
+    if (raw === undefined) return null;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > MAX_REVIEW_ROUNDS) {
+      throw new TriviumError(
+        EXIT.USAGE,
+        `--${flag} 需要 1～${MAX_REVIEW_ROUNDS} 的整数（轮次上限），收到「${raw}」。`,
+      );
+    }
+    return n;
+  };
+  for (const flag of ROUND_FLAGS) {
+    if (named[flag] !== undefined && !acceptedRoundsFlags.includes(flag)) {
+      throw new TriviumError(
+        EXIT.USAGE,
+        `--${flag} 不适用于本次解析范围（scope=${scope}）：` +
+          (scope === 'bug'
+            ? 'bug 阶段不设多轮评审轮次判定。'
+            : `该范围只接受 ${acceptedRoundsFlags.length > 0 ? acceptedRoundsFlags.map((f) => `--${f}`).join(' ') : '（无轮次旗标）'}。`),
+      );
+    }
+  }
+  const planRoundsFlag = parseRoundsFlag('plan-rounds', named['plan-rounds']);
+  const codeRoundsFlag = parseRoundsFlag('code-rounds', named['code-rounds']);
+  const planRounds = planRoundsFlag ?? ctx.config.review.plan_rounds;
+  const codeRounds = codeRoundsFlag ?? ctx.config.review.code_rounds;
+
   // ── 按 stage 定位被审对象（纯只读，目录不存在时容忍）──
   let subjectPath: string | null = null;
   let base: string | null = null;
@@ -723,6 +780,10 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     driver_model: named['driver-model'] ?? null,
     driver_provider: named['driver-provider'] ?? null,
     session_id: named['session-id']?.trim() || null,
+    plan_rounds: planRounds,
+    plan_rounds_source: planRoundsFlag !== null ? 'flag' : 'config',
+    code_rounds: codeRounds,
+    code_rounds_source: codeRoundsFlag !== null ? 'flag' : 'config',
     topic_inferred: inferred,
     notes,
   };

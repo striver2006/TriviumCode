@@ -14,7 +14,8 @@
 // 的元 schema，用它会报 no schema with key or ref "…/draft/2020-12/schema"。
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { ErrorObject, ValidateFunction } from 'ajv';
-import reviewSchema from '../../skills/dual-critic/schema/review.v1.json' with { type: 'json' };
+import reviewSchema from '../../skills/dual-critic/schema/review.v2.json' with { type: 'json' };
+import reviewSchemaV1 from '../../skills/dual-critic/schema/review.v1.json' with { type: 'json' };
 import type { CriticId, DegradedFinding, FallbackCause, ParseRepairs, Review } from './types.js';
 import { CRITIC_PREFIX } from './types.js';
 
@@ -35,13 +36,19 @@ export type ParseOutcome =
     }
   | { ok: false; cause: Exclude<FallbackCause, 'foreign_prefix'>; reason: string; errors: string[]; rawText: string };
 
-let cachedValidators: { full: ValidateFunction<Review>; item: ValidateFunction } | undefined;
+let cachedValidators: { full: ValidateFunction<Review>; item: ValidateFunction; legacy: ValidateFunction } | undefined;
 
 /**
- * 整份与单条两个校验器，**同一个 ajv 实例、同一份 `review.v1.json`**——单条那个取自
+ * 整份与单条两个校验器，**同一个 ajv 实例、同一份 `review.v2.json`**——单条那个取自
  * `properties.findings.items`，不在代码里抄第二份意见 schema。
+ *
+ * `legacy` 是 review.v1 的整份校验器（2026-10-22 三态判定升版）：**只读历史留痕**——
+ * 新运行的厂商约束送的是 v2，产出恒为 v2；唯一会带着 v1 常量进来的是
+ * `loadRoundReviews` 对 parse_fallback 侧历史原文的重试。v1 的 verdict 四枚举不映射
+ * （历史只读，不改值）：它直接断言成 `Review`，但聚合（`aggregateRoundVerdict`）只对
+ * 带 `review_rounds` 的运行发生，而那类运行的写侧恒为 v2，四值 verdict 到不了聚合。
  */
-function getValidators(): { full: ValidateFunction<Review>; item: ValidateFunction } {
+function getValidators(): { full: ValidateFunction<Review>; item: ValidateFunction; legacy: ValidateFunction } {
   if (cachedValidators) return cachedValidators;
   // allErrors：一次把所有问题告诉模型，重试时才能一次改对（§12.3 只重试一次）
   const ajv = new Ajv2020({ allErrors: true, strict: false });
@@ -49,8 +56,14 @@ function getValidators(): { full: ValidateFunction<Review>; item: ValidateFuncti
   cachedValidators = {
     full: ajv.compile<Review>(reviewSchema as object),
     item: ajv.compile(schema.properties.findings.items),
+    legacy: ajv.compile(reviewSchemaV1 as object),
   };
   return cachedValidators;
+}
+
+/** 历史只读分派：带 `trivium.review.v1` 常量且过 v1 校验的，视为整份合格（不映射字段值） */
+function passesLegacyReview(cleaned: Record<string, unknown>): boolean {
+  return cleaned['schema'] === 'trivium.review.v1' && getValidators().legacy(cleaned);
 }
 
 /** 把 ajv 错误渲染成可回喂给模型的可读文本 */
@@ -315,21 +328,21 @@ function evaluateCandidate(json: string): CandidateVerdict {
   const { cleaned, stripped } = stripKnownRootKeys(obj as Record<string, unknown>);
   const repairs: ParseRepairs = { stripped_fields: stripped, unescaped_backslashes: unescaped };
 
-  // ③ 整份合格
-  if (full(cleaned)) {
+  // ③ 整份合格（v2；v1 常量的历史件走 legacy 只读分派）
+  if (full(cleaned) || passesLegacyReview(cleaned)) {
     const review = cleaned as unknown as Review;
     return { stage: 'ok', review, degraded: [], repairs, ids: review.findings.map((f) => f.id) };
   }
 
   // ④ 根：findings 是数组，且把它换成 [] 后整份合格
   const findings = cleaned['findings'];
-  const rootOk = full({ ...cleaned, findings: [] });
+  const rootOk = full({ ...cleaned, findings: [] }) || passesLegacyReview({ ...cleaned, findings: [] });
   if (!Array.isArray(findings) || !rootOk) {
     const errors = [
       ...(Array.isArray(findings) ? [] : ['/findings 不是数组']),
       ...(rootOk ? [] : formatSchemaErrors(full.errors)),
     ];
-    return { stage: 'fail', rank: 2, cause: 'root_invalid', reason: 'JSON 根对象不符合 trivium.review.v1', errors };
+    return { stage: 'fail', rank: 2, cause: 'root_invalid', reason: 'JSON 根对象不符合 trivium.review.v2', errors };
   }
 
   // ⑤ 逐条：合格的留在 review 里，不合格的降级；降级意见的编号必须可用

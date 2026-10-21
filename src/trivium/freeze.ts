@@ -298,7 +298,8 @@ async function classifyArtifact(
   }
 
   const schema = typeof fm?.['schema'] === 'string' ? (fm['schema'] as string) : null;
-  if (schema === 'trivium.review.v1') return 'peer-review';
+  // v2 起写侧恒为 v2；v1 随历史留痕只读保留，两版都判审查件（2026-10-22 升版）
+  if (schema === 'trivium.review.v2' || schema === 'trivium.review.v1') return 'peer-review';
   if (schema === 'trivium.disposition.v1') return 'own-or-driver';
 
   /*

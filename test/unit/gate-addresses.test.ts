@@ -28,7 +28,7 @@ async function layout(): Promise<ArchiveLayout> {
 }
 
 const review = (id: string): Review => ({
-  schema: 'trivium.review.v1', verdict: 'approve-with-nits', summary: '总判断若干字，足够长以通过完整性检查。',
+  schema: 'trivium.review.v2', verdict: 'approve', summary: '总判断若干字，足够长以通过完整性检查。',
   findings: [{ id, severity: 'minor', layer: 'plan', kind: 'correctness', location: 'plan §1', problem: 'p', evidence: 'e', suggestion: 's', confidence: 'high' }],
   not_covered: ['x'], consulted: ['src/a.ts'],
 });
@@ -53,6 +53,7 @@ async function check(addresses: string[], reviewDocs: readonly string[] | null) 
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review('AGY-01'), glm: review('GLM-01') },
     degraded: false, reviewDocs,
+    roundVerdict: null,
   });
 }
 

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { agentById, DEFAULT_DRIVER, entryCommandOf, findingPrefixAlternation, type AgentId } from './agents/registry.js';
 import { leakRecordVoids } from './freeze.js';
-import { DEFAULT_CRITICS, describeDriftUnknown, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type SnapshotMeta, type Stage } from './types.js';
+import { DEFAULT_CRITICS, describeDriftUnknown, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RoundDecision, type RunMeta, type SnapshotMeta, type Stage, type Verdict } from './types.js';
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
 import { checkRecordedArtifacts, isReviewArtifact, listStageArtifacts, metaDir, stageDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
 import { EXIT, TriviumError } from './exit-codes.js';
@@ -199,6 +199,75 @@ export interface GateCheckResult {
     effective_sides: number;
     reason?: 'voided' | 'no-structured-review' | 'both';
   };
+  /**
+   * 本轮整体三态判定（2026-10-22 多轮评审）。可缺席：本轮 run.json 没有 `review_rounds`
+   * （bug 阶段 / 早于本特性的留痕）即无从判定，调用方按旧规则收口。
+   */
+  roundVerdict?: RoundVerdictInfo;
+}
+
+/**
+ * 一轮评审的整体三态判定结果（2026-10-22 多轮评审，设计 §6.6 轮次判定）。
+ *
+ * 聚合输入是**各有效侧**的 `verdict`（review.v2 三值）；分母剔除作废侧（与共同阻断
+ * 的 `effective_sides` 同款：作废侧的结论不可信，既不当通过也不当不通过）。
+ * verdict 不可读的侧（parse_fallback / 结论读不到）**计入分母且计为 reject**
+ * ——fail-closed：说不出「这侧通过了」就当它没通过。
+ */
+export interface RoundVerdictInfo {
+  tallies: { approve: number; approve_after_changes: number; reject: number };
+  effective_sides: number;
+  decision: RoundDecision;
+  /** 本轮轮次与生效上限（rerun_index 来自 run.json，limit 来自 review_rounds） */
+  round: number;
+  limit: number;
+  /** verdict 不可读、被保守计为 reject 的侧（parse_fallback 或结论读不到） */
+  unreadable_as_reject: CriticId[];
+}
+
+/**
+ * 整体三态判定（纯函数）。优先级（fail-closed，整数比较避免浮点）：
+ *
+ * 1. `reject ≥50%` → `fail`；2. `approve-after-changes ≥50%` → `pass_after_changes`；
+ * 3. `approve ≥50%` → `pass`；4. 三档皆不达（此时 reject 必 <50%，如 3 家 1:1:1）
+ * → `pass_after_changes`——取剩下两档中**更保守**的那个：按意见修订后进实施、不烧轮次
+ * （用户 2026-10-21 拍板，取代初版「兜底判 fail」）。有效侧为 0 时第 1 条恒成立（0≥0）→ fail。
+ */
+export function aggregateRoundVerdict(i: {
+  reviews: Partial<Record<CriticId, Review | null>>;
+  missingSides: readonly CriticId[];
+  voidedSides: readonly CriticId[];
+  rerunIndex: number;
+  limit: number;
+}): RoundVerdictInfo {
+  const voided = new Set(i.voidedSides);
+  const tally = (c: CriticId, verdict: Verdict | null): void => {
+    if (voided.has(c)) return;
+    effective++;
+    if (verdict === 'approve') t.approve++;
+    else if (verdict === 'approve-after-changes') t.approve_after_changes++;
+    else {
+      t.reject++;
+      if (verdict === null) unreadable.push(c);
+    }
+  };
+  const t = { approve: 0, approve_after_changes: 0, reject: 0 };
+  let effective = 0;
+  const unreadable: CriticId[] = [];
+  for (const c of Object.keys(i.reviews) as CriticId[]) tally(c, i.reviews[c]?.verdict ?? null);
+  for (const c of i.missingSides) {
+    if (!(c in i.reviews)) tally(c, null);
+  }
+  const half = (n: number): boolean => n * 2 >= effective;
+  const decision: RoundDecision =
+    half(t.reject) ? 'fail'
+    : half(t.approve_after_changes) ? 'pass_after_changes'
+    : half(t.approve) ? 'pass'
+    : 'pass_after_changes';
+  return {
+    tallies: t, effective_sides: effective, decision,
+    round: i.rerunIndex, limit: i.limit, unreadable_as_reject: unreadable,
+  };
 }
 
 /** 空洞理由词表（§6.6 规则 5）。命中且无其它内容才算空洞 */
@@ -316,6 +385,15 @@ export interface GateCheckInput {
    * 只在 `stage === 'plan'` 时消费；其余阶段传了也不看。
    */
   planFinal: PlanFinalInput | null;
+  /**
+   * 本轮整体三态判定（2026-10-22 多轮评审），由 `loadRoundReviews` 派生。
+   *
+   * **必填、可为 null**——与 `planFinal` / `reviewDocs` 同一个教训：做成可选参数，
+   * 漏传就静默退回「不做判定」，`checkNextPlan` 的强化（判定非 pass 时零接受项也要求
+   * 新一轮计划）与停点分叉都会静默失效，闸门照绿。null 表示本轮 run.json 没有
+   * `review_rounds`（bug 阶段 / 早于本特性的留痕），按旧规则收口。
+   */
+  roundVerdict: RoundVerdictInfo | null;
 }
 
 export async function checkAdjudication(input: GateCheckInput): Promise<GateCheckResult> {
@@ -725,7 +803,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     warnings.push({
       code: 'degraded_findings',
       message:
-        '下列意见不合 trivium.review.v1，已逐条降级：仍须逐条裁决，但不参与阻断与共同阻断判定' +
+        '下列意见不合 trivium.review.v2，已逐条降级：仍须逐条裁决，但不参与阻断与共同阻断判定' +
         '——其中声称 blocker 的，被驳回不会触发共同阻断告警',
       ids: [...degradedIds].sort(),
     });
@@ -745,7 +823,10 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     const acceptedIds = acceptedIdsForNextPlan({
       reviews, expectedDegradedIds: input.expectedDegradedIds, expectedFallbackIds: expectedFallback, rows,
     });
-    const np = await checkNextPlan({ layout, driver, rerunIndex, acceptedIds, planFinal: input.planFinal });
+    const np = await checkNextPlan({
+      layout, driver, rerunIndex, acceptedIds, planFinal: input.planFinal,
+      decision: input.roundVerdict?.decision ?? null,
+    });
     failures.push(...np.failures);
     warnings.push(...np.warnings);
   }
@@ -760,6 +841,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     dispositionPath,
     rows,
     jointCheck: jc,
+    ...(input.roundVerdict ? { roundVerdict: input.roundVerdict } : {}),
   };
 }
 
@@ -846,10 +928,17 @@ export async function checkNextPlan(i: {
   /** 本轮被接受、且属于期望集的编号（已去重排序） */
   acceptedIds: readonly string[];
   planFinal: PlanFinalInput | null;
+  /**
+   * 本轮整体三态判定（2026-10-22 强化）：`pass_after_changes` / `fail` 时，**零接受项也必须
+   * 有新一轮计划**——判定要求按意见修订（驳回的意见也须在裁决理由里说明为何不吸收），
+   * 「全驳回、计划原样」只在判定为 `pass` 时成立。null = 本轮无轮次判定（旧留痕），维持原口径。
+   */
+  decision?: RoundDecision | null;
 }): Promise<{ failures: GateFailure[]; warnings: GateWarning[] }> {
   const failures: GateFailure[] = [];
   const warnings: GateWarning[] = [];
-  if (i.acceptedIds.length === 0) return { failures, warnings };
+  const verdictDriven = i.decision === 'pass_after_changes' || i.decision === 'fail';
+  if (i.acceptedIds.length === 0 && !verdictDriven) return { failures, warnings };
   const ids = [...i.acceptedIds];
   if (!i.planFinal) {
     warnings.push({
@@ -879,10 +968,13 @@ export async function checkNextPlan(i: {
     );
     failures.push({
       code: 'missing_next_plan',
-      message:
-        `本轮有 ${ids.length} 条意见被接受，但找不到执笔方的新一轮计划（轮次须高于本轮被审对象的 r${base}）。` +
-        `请写 ${expected}：开头列「相对上一轮的改动」，逐条引用下列被接受意见的编号——` +
-        '它就是代码阶段送审的计划定稿，没有它代码审查员读到的是未修订的原稿。全部驳回或暂缓时不要求（§6.6 规则 9）',
+      message: i.acceptedIds.length > 0
+        ? `本轮有 ${ids.length} 条意见被接受，但找不到执笔方的新一轮计划（轮次须高于本轮被审对象的 r${base}）。` +
+            `请写 ${expected}：开头列「相对上一轮的改动」，逐条引用下列被接受意见的编号——` +
+            '它就是代码阶段送审的计划定稿，没有它代码审查员读到的是未修订的原稿。全部驳回或暂缓时不要求（§6.6 规则 9）'
+        : `本轮整体判定为${i.decision === 'fail' ? '不通过' : '修改后通过'}，即使没有接受项也必须产出新一轮完整计划` +
+            `（轮次须高于本轮被审对象的 r${base}）。请写 ${expected}：按意见修订原稿——` +
+            '驳回的意见也要在裁决理由里说明为何不吸收，计划本身相应演进（2026-10-22 判定强化）',
       ids,
     });
     return { failures, warnings };
@@ -1003,11 +1095,16 @@ export async function recheckPlanFinal(layout: ArchiveLayout, finalFileName: str
         expectedFallbackIds: round.expectedFallbackIds,
         rows: parseDisposition(md).rows,
       });
-      if (acceptedIds.length === 0) return { kind: 'skipped' };
+      // 判定强化（2026-10-22）：零接受但判定非 pass 的一轮，next-plan 同样要核
+      const decision = round.roundVerdict?.decision ?? null;
+      if (acceptedIds.length === 0 && decision !== 'pass_after_changes' && decision !== 'fail') {
+        return { kind: 'skipped' };
+      }
 
       const np = await checkNextPlan({
         layout, driver, rerunIndex: m.rerun_index, acceptedIds,
         planFinal: { subjectRerunIndex: mark.subject_rerun_index, laterSubjectRerunIndexes: [] },
+        decision,
       });
       const failure = np.failures[0];
       return failure
@@ -1322,6 +1419,13 @@ export async function loadRoundReviews(
    * 在这里派生而不是让调用方读——理由同 `voidedSides`：三个调用点各自去读就会各自漏。
    */
   planFinal: PlanFinalInput | null;
+  /**
+   * 本轮整体三态判定（2026-10-22 多轮评审）；本轮 run.json 没有 `review_rounds`
+   * （bug 阶段 / 早于本特性的留痕）时为 null，调用方按旧规则收口。
+   * 在这里派生——理由同 `voidedSides`：`--check` 与审批前复核的调用点各自去算就会各自漏，
+   * 停点分叉随之静默失效。
+   */
+  roundVerdict: RoundVerdictInfo | null;
 }> {
   const reviews: Partial<Record<CriticId, Review | null>> = {};
   const notes: string[] = [];
@@ -1466,9 +1570,22 @@ export async function loadRoundReviews(
       }
     : null;
 
+  /*
+   * 整体三态判定：只对带 `review_rounds` 的运行生效（plan / code 新运行恒写；
+   * bug 阶段与旧留痕缺席 → null，不追溯）。轮次取 run.json 自己记的 `rerun_index`，
+   * 不取调用方手上那份——`--run-id` 钉住旧轮校验时两者可能不同，判定属于那一轮。
+   */
+  const rounds = runMeta?.review_rounds ?? null;
+  const roundVerdict: RoundVerdictInfo | null = rounds && runMeta
+    ? aggregateRoundVerdict({
+        reviews, missingSides, voidedSides,
+        rerunIndex: runMeta.rerun_index, limit: rounds.limit,
+      })
+    : null;
+
   return {
     reviews, notes, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs,
-    planFinal,
+    planFinal, roundVerdict,
   };
 }
 
@@ -1672,7 +1789,7 @@ export async function verifyRoundForApproval(i: ApprovalCheckInput): Promise<App
   }
   const runMeta = read.meta;
 
-  const { reviews, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs, planFinal } =
+  const { reviews, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs, planFinal, roundVerdict } =
     await loadRoundReviews(layout, stage, runId);
   const result = await checkAdjudication({
     cfg, layout, stage, rerunIndex: runMeta.rerun_index, reviews,
@@ -1680,6 +1797,7 @@ export async function verifyRoundForApproval(i: ApprovalCheckInput): Promise<App
     runIdPinned: i.runIdPinned,
     degraded, voidedSides, readonlyBreach, runWarnings,
     expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs, planFinal,
+    roundVerdict,
   });
   const tampered = await checkRecordedArtifacts(layout, [
     { run_id: runId, stage, artifacts: runMeta.artifacts },

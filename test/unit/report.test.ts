@@ -37,8 +37,8 @@ async function archive(): Promise<ArchiveLayout & { root: string }> {
  */
 function review(locations: string[], severities: string[] = [], prefix = 'AGY'): Review {
   return {
-    schema: 'trivium.review.v1',
-    verdict: 'request-changes',
+    schema: 'trivium.review.v2',
+    verdict: 'approve-after-changes',
     summary: 's',
     findings: locations.map((location, i) => ({
       id: `${prefix}-${String(i + 1).padStart(2, '0')}`,

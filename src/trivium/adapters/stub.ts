@@ -171,6 +171,14 @@ export interface StubSpec {
   mode: StubMode;
   /** `ok` / `no_project_reads` 等模式下要产出的意见数 */
   findings?: number;
+  /**
+   * 注入 verdict 三态（2026-10-22 多轮评审）：给了 ⇒ 结论的 `verdict` 用它；
+   * 不给 ⇒ `approve`。缺省从旧四值的 `n>0?'request-changes':'approve'` 改成
+   * 恒 `approve`——verdict 现在驱动整体判定与停点分叉，缺省值保持「判定通过」
+   * 才与既有集成用例的期望（B/C 立停点、A 回 idle、全驳回不要求新一轮计划）等价；
+   * 要验三态行为的用例显式注入本字段。
+   */
+  verdict?: 'approve' | 'approve-after-changes' | 'reject';
   /** 覆盖回读到的生效模型，用于 AC-13 的用例 */
   modelEffective?: string;
   /**
@@ -272,7 +280,7 @@ export function readStubConfig(env: NodeJS.ProcessEnv = process.env): StubConfig
 /** 序列化，供测试设置环境变量 */
 export const encodeStubConfig = (c: StubConfig): string => JSON.stringify(c);
 
-function sampleReview(critic: CriticId, n: number, prefixOverride?: string): string {
+function sampleReview(critic: CriticId, n: number, prefixOverride?: string, verdict?: StubSpec['verdict']): string {
   /*
    * 前缀取自注册表，不用三目兜底（与 A-1 同一形态）。
    *
@@ -294,8 +302,8 @@ function sampleReview(critic: CriticId, n: number, prefixOverride?: string): str
     confidence: 'high',
   }));
   return JSON.stringify({
-    schema: 'trivium.review.v1',
-    verdict: n > 0 ? 'request-changes' : 'approve',
+    schema: 'trivium.review.v2',
+    verdict: verdict ?? 'approve',
     summary: '桩适配器产出的结论，仅用于故障注入测试。',
     findings,
     agreed: [],
@@ -324,11 +332,11 @@ function partialSchemaReview(critic: CriticId, allDegraded: boolean): string {
     return base;
   };
   const json = JSON.stringify({
-    schema: 'trivium.review.v1',
+    schema: 'trivium.review.v2',
     topic: '桩回显的主题',
     stage: 'plan',
     run_id: 'ECHOED',
-    verdict: 'request-changes',
+    verdict: 'reject',
     summary: '桩适配器产出的部分合格结论：表格写法 a PIPE_ESC b。',
     findings: [f(1, {}), f(2, {}), f(3, {}, ['confidence']), f(4, { severity: 'medium' })],
     agreed: [],
@@ -349,7 +357,7 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
     raw_stdout_path: `${req.out_dir}/stub-stdout.json`,
     trace_path: `${req.out_dir}/stub-trace.json`,
     review_json: null,
-    raw_response_text: sampleReview(critic, n),
+    raw_response_text: sampleReview(critic, n, undefined, spec.verdict),
     model_effective: spec.modelEffective ?? req.model,
     model_effective_source: 'envelope',
     // 与真适配器同一条口径：不给就**缺席**，不写 null（缺席与 null 是两件事）
@@ -790,7 +798,7 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
           const fallbackPrefix = others[0] ? (agentById(others[0])?.findingPrefix ?? 'OTHER') : 'OTHER';
           return {
             ...baseResult(critic, req, spec),
-            raw_response_text: sampleReview(critic, spec.findings ?? 1, spec.note ?? fallbackPrefix),
+            raw_response_text: sampleReview(critic, spec.findings ?? 1, spec.note ?? fallbackPrefix, spec.verdict),
           };
         }
         case 'ok':

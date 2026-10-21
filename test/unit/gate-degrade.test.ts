@@ -33,7 +33,7 @@ function finding(over: Partial<Finding> & { id: string }): Finding {
 
 function review(ids: (Partial<Finding> & { id: string })[]): Review {
   return {
-    schema: 'trivium.review.v1', verdict: 'request-changes',
+    schema: 'trivium.review.v2', verdict: 'approve-after-changes',
     summary: '总判断若干字，足够长以通过完整性检查。',
     findings: ids.map(finding),
     not_covered: ['x'], consulted: ['src/a.ts'],
@@ -52,6 +52,7 @@ async function putDisposition(l: ArchiveLayout, rows: string[], runId = 'R1'): P
 
 const base = {
   cfg: defaultConfig(), stage: 'plan' as const, rerunIndex: 1, degraded: false, reviewDocs: null,
+  roundVerdict: null,
 };
 
 test('G1 降级编号没有裁决 ⇒ missing_findings 点名它', async () => {

@@ -34,7 +34,7 @@ async function layout(): Promise<ArchiveLayout> {
 
 function review(ids: string[]): Review {
   return {
-    schema: 'trivium.review.v1', verdict: 'request-changes',
+    schema: 'trivium.review.v2', verdict: 'approve-after-changes',
     summary: '总判断若干字，足够长以通过完整性检查。',
     findings: ids.map((id): Finding => ({
       id, severity: 'major', layer: 'plan', kind: 'correctness',
@@ -103,6 +103,7 @@ async function check(
   return checkAdjudication({
     cfg, layout: l, stage: o.stage ?? 'plan', rerunIndex: o.rerunIndex ?? 1,
     reviews: o.reviews, degraded: false, expectedDegradedIds: [], reviewDocs: null,
+    roundVerdict: null,
     driver: o.driver, planFinal: o.planFinal,
     ...(o.expectedFallbackIds ? { expectedFallbackIds: o.expectedFallbackIds } : {}),
   });

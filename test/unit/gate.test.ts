@@ -35,7 +35,7 @@ function finding(over: Partial<Finding> & { id: string }): Finding {
 
 function review(ids: (Partial<Finding> & { id: string })[]): Review {
   return {
-    schema: 'trivium.review.v1', verdict: 'request-changes',
+    schema: 'trivium.review.v2', verdict: 'approve-after-changes',
     summary: '总判断若干字，足够长以通过完整性检查。',
     findings: ids.map(finding),
     not_covered: ['x'], consulted: ['src/a.ts'],
@@ -77,6 +77,7 @@ test('全部裁决齐备 → 通过', async () => {
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]), glm: review([{ id: 'GLM-01', severity: 'minor' }]) },
     degraded: false,
@@ -90,6 +91,7 @@ test('缺裁决件 → missing_disposition，并提示即使全驳回也要产�
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
   });
@@ -106,6 +108,7 @@ test('删掉一条裁决 → missing_findings 并列出编号（AC-12）', async
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }, { id: 'AGY-02' }]) }, degraded: false,
   });
@@ -128,6 +131,7 @@ test('EV-30 ⑤：旧配置里 gate.require_adjudication: false 不放松逐条�
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg, layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }, { id: 'AGY-02' }]) }, degraded: false,
   });
@@ -144,6 +148,7 @@ test('裁决了不存在的编号 → unknown_findings', async () => {
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
   });
@@ -161,6 +166,7 @@ test('AGY-04 的关键点：fallback 虚拟编号不被判「多余 id」', asyn
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     // glm 侧 parse_fallback，没有结构化 findings
     reviews: { gemini: review([{ id: 'AGY-01' }]), glm: null }, degraded: false,
@@ -186,6 +192,7 @@ test('fallback 单元少裁一条 → missing_findings 点名 <前缀>-F<n>', as
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { glm: null }, degraded: false,
     expectedFallbackIds: ['GLM-F01', 'GLM-F02', 'GLM-F03'],
@@ -201,6 +208,7 @@ test('关键用例：两侧都 parse_fallback 时空裁决表不得通过', asyn
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: null, glm: null }, degraded: false,
     expectedFallbackIds: ['AGY-F01', 'GLM-F01'],
@@ -219,6 +227,7 @@ test('裁了清单之外的 fallback 编号 → unknown_findings', async () => {
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { glm: null }, degraded: false, expectedFallbackIds: ['GLM-F01'],
   });
@@ -233,6 +242,7 @@ test('run.json 记录已产出结论、结构化结论却读不到 → missing_r
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
     missingSides: ['glm'],
@@ -259,6 +269,7 @@ test('run.json 的 gate.warnings 作为 run_warning 透传，缺裁决件的早�
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
     runWarnings: [notice],
@@ -272,6 +283,7 @@ test('run.json 的 gate.warnings 作为 run_warning 透传，缺裁决件的早�
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
     runWarnings: [notice],
@@ -288,6 +300,7 @@ test('AGY-04 的关键点：fallback 侧只要求有裁决与理由，不要求�
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { glm: null }, degraded: false, expectedFallbackIds: ['GLM-F01'],
   });
@@ -302,6 +315,7 @@ test('AGY-04 的关键点：findings 为空数组显式合法', async () => {
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([]), glm: review([]) }, degraded: false,
   });
@@ -317,6 +331,7 @@ test('理由为空 → empty_reason（三种裁决都要理由）', async () => 
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
   });
@@ -331,6 +346,7 @@ test('接受但无落点 → missing_action', async () => {
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
   });
@@ -345,6 +361,7 @@ test('驳回不要求落点', async () => {
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
   });
@@ -360,6 +377,7 @@ test('空洞理由默认只 warn（reason_policy=warn）', async () => {
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg, layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
   });
@@ -377,6 +395,7 @@ test('reason_policy=hard 时空洞理由升级为失败', async () => {
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg, layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
   });
@@ -393,6 +412,7 @@ test('allow_defer=false 时「暂缓」被拒', async () => {
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg, layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
   });
@@ -407,6 +427,7 @@ test('裁决件的 run_id 与本轮不符 → bad_front_matter（不得复用上
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R2',
   });
@@ -439,6 +460,7 @@ ${HEAD}
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
   });
@@ -510,6 +532,7 @@ test('N-2：文件名后缀是当轮 Driver、front-matter 的 role 是另一个
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
   });
@@ -532,6 +555,7 @@ test('N-2 正例：非缺省 Driver 诚实写自己的 id → 通过（EV-66 的
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
   });
@@ -564,6 +588,7 @@ test('N-2 边界：role 是未登记的 id → bad_front_matter（闸门层 fail
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1, driver: 'codex',
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, runId: 'R1',
   });
@@ -694,6 +719,7 @@ test('joint_blocker_policy=hard 时升级为失败', async () => {
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg, layout: l, stage: 'plan', rerunIndex: 1,
     reviews: {
       gemini: review([{ id: 'AGY-01', severity: 'blocker', location: 'src/a.ts:88' }]),
@@ -723,6 +749,7 @@ test('渲染结果在失败时列出编号，便于 Driver 直接照着补', asy
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }, { id: 'AGY-02' }, { id: 'AGY-03' }]) },
     degraded: false,
@@ -749,6 +776,7 @@ test('降级轮次出 warning 而非 failure：闸门仍放行，但审计面上
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) },
     degraded: true,
@@ -774,6 +802,7 @@ test('非降级轮次不得凭空冒出 degraded_round 警告', async () => {
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) },
     degraded: false,
@@ -824,6 +853,7 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l1, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, readonlyBreach: rb1,
   });
@@ -853,6 +883,7 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
   await putDisposition(l1b, table);
   const r1b = await checkAdjudication({
     planFinal: null, expectedDegradedIds: [], reviewDocs: null,
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l1b, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, readonlyBreach: rb1b,
   });
@@ -888,6 +919,7 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l2, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false, readonlyBreach: rb2,
   });
@@ -899,6 +931,7 @@ test('readonly_breach 从 run 元数据带出并进 gate --check 失败面（AD-
     planFinal: null, // 与计划定稿无关的用例（EV-214）
     expectedDegradedIds: [],
     reviewDocs: null, // 与 addresses 无关的用例：只核非空（EV-134）
+    roundVerdict: null,
     cfg: defaultConfig(), layout: l2, stage: 'plan', rerunIndex: 1,
     reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
   });
@@ -951,6 +984,7 @@ test('只读失守三档的 gate --check 文案：确证判失败；复算无变
   const run = (drift: { changed: boolean; files: string[]; unknown_reason?: { cause: 'timeout'; detail: string } }) =>
     checkAdjudication({
       planFinal: null, expectedDegradedIds: [], reviewDocs: null,
+      roundVerdict: null,
       cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
       reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
       readonlyBreach: { hit: true, files: ['W(x)'], drift },
@@ -1007,6 +1041,7 @@ test('U15 readonly_breach（确证）的 message 逐字（截断与空记录两�
     const r = await checkAdjudication({
       planFinal: null, // 与计划定稿无关的用例（EV-214）
       expectedDegradedIds: [], reviewDocs: null,
+      roundVerdict: null,
       cfg: defaultConfig(), layout: l, stage: 'plan', rerunIndex: 1,
       reviews: { gemini: review([{ id: 'AGY-01' }]) }, degraded: false,
       readonlyBreach: { hit: true, files: [...files], drift: { changed: true, files: ['src/a.ts', 'src/b.ts'] } },

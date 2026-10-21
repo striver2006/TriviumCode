@@ -17,7 +17,7 @@ import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import type { Config, CriticId, DenyCategory, Stage } from './types.js';
 import { CRITIC_PREFIX, CRITIC_VENDOR } from './types.js';
-import reviewSchema from '../../skills/dual-critic/schema/review.v1.json' with { type: 'json' };
+import reviewSchema from '../../skills/dual-critic/schema/review.v2.json' with { type: 'json' };
 import { exists } from './util/fsx.js';
 import {
   classifyDenyPath,
@@ -88,12 +88,13 @@ function renderOutputContract(schemaPath: string, prefix: string, critic: Critic
     CRITIC_VENDOR[critic] === 'zcode'
       ? '\n- **不要调用 ExitPlanMode**，直接在最终回复里输出完整 JSON。以该工具收尾时回合就此结束，结论不会输出。'
       : '';
+  const schemaId = root.properties['schema']?.const ?? 'trivium.review.v2';
   return `## 6. 输出契约
 
-严格输出符合 \`trivium.review.v1\` 的 JSON，schema 在：\`${schemaPath}\`
+严格输出符合 \`${schemaId}\` 的 JSON，schema 在：\`${schemaPath}\`
 
 - **结论是一个裸 JSON 对象**：最终回复只输出这个对象本身，不要代码围栏、不要前后说明文字；
-- 根字段 ${code(root.required)} 必填（\`schema\` 固定为 \`${root.properties['schema']?.const ?? 'trivium.review.v1'}\`，\`verdict\` 取 ${code(root.properties['verdict']?.enum ?? [])} 之一）；
+- 根字段 ${code(root.required)} 必填（\`schema\` 固定为 \`${schemaId}\`，\`verdict\` 取 ${code(root.properties['verdict']?.enum ?? [])} 之一——通过 / 修改后通过 / 不通过三态，它会被编排器聚合成本轮整体判定、驱动多轮评审）；
   可选根字段 ${optionalLine}；**不要添加 schema 之外的字段**——\`topic\` / \`stage\` / \`role\` / \`run_id\` 这类由编排器填写；
 - 意见编号前缀固定为 \`${prefix}-\`，序号从 01 起（如 \`${prefix}-01\`）；
 - 每条意见**${item.required.length} 个字段全部必填**：${code(item.required)}；缺一即不合格。四个枚举字段只能取下列值：

@@ -163,7 +163,8 @@ export async function isReviewArtifact(absPath: string): Promise<boolean> {
   } catch {
     return false;
   }
-  return fm?.['schema'] === 'trivium.review.v1';
+  // v2 起写侧恒为 v2；v1 是历史留痕的只读形态，两版都认（2026-10-22 升版）
+  return fm?.['schema'] === 'trivium.review.v2' || fm?.['schema'] === 'trivium.review.v1';
 }
 
 export interface WriteArtifactInput {

@@ -608,9 +608,10 @@ test('A25 判定面：跳过条数与规则数进 CriticResult（不再只躺在
  * 路径走 `ASSET_ROOT`（`fileURLToPath` + 向上找 package.json），与其它 schema 用例同源；
  * `URL.pathname` 是百分号编码片段，仓库路径带中文即 ENOENT（代码双审 CODEX-05）。
  */
-const REVIEW_SCHEMA_PATH = path.join(ASSET_ROOT, 'schema/review.v1.json');
+// 2026-10-22 起送给 claude 的是 review.v2（resolveReviewSchemaPath 已切）；v1 已停写，不再是送出物
+const REVIEW_SCHEMA_PATH = path.join(ASSET_ROOT, 'schema/review.v2.json');
 
-test('A26 schema：真实 review.v1.json 带 2020-12 的 $schema，剥离后只少这一键', async () => {
+test('A26 schema：真实 review.v2.json 带 2020-12 的 $schema，剥离后只少这一键', async () => {
   const raw = await (await import('node:fs/promises')).readFile(REVIEW_SCHEMA_PATH, 'utf8');
   const before = JSON.parse(raw) as Record<string, unknown>;
   assert.equal(
@@ -648,7 +649,7 @@ test('A29 写事件：StructuredOutput 不算写——它是 --json-schema 下 C
     { type: 'tool_use', id: 'r1', name: 'Read', input: { file_path: '/p/a.ts' } },
     ...[...CLAUDE_OUTPUT_TOOLS].flatMap((name, i) => [
       { type: 'tool_use', id: `s${i}a`, name, input: { schema: '{"verdict":"approve"}' } },
-      { type: 'tool_use', id: `s${i}b`, name, input: { schema: 'trivium.review.v1', verdict: 'approve' } },
+      { type: 'tool_use', id: `s${i}b`, name, input: { schema: 'trivium.review.v2', verdict: 'approve' } },
     ]),
   ];
   const r = buildClaudeResult(traceOf({ uses }), OUT, PATHS, PROBE_OK, TOOLS, NO_DENY);
@@ -717,7 +718,7 @@ function keywordsUsed(node: unknown, out = new Set<string>()): Set<string> {
   return out;
 }
 
-test('A31 契约金丝雀：送给 claude 的 review.v1.json 不用 2020-12 独有关键字', async () => {
+test('A31 契约金丝雀：送给 claude 的 review.v2.json 不用 2020-12 独有关键字', async () => {
   const sent = await readSchemaJson(REVIEW_SCHEMA_PATH);
   const doc = JSON.parse(sent) as Record<string, unknown>;
   const used = keywordsUsed(doc);
@@ -734,7 +735,7 @@ test('A31 契约金丝雀：送给 claude 的 review.v1.json 不用 2020-12 独�
   assert.deepEqual(
     offending,
     [],
-    `review.v1.json 用了 2020-12 独有关键字 ${offending.join('、')}：剥掉 $schema 后 claude CLI 会静默忽略或拒绝它，` +
+    `review.v2.json 用了 2020-12 独有关键字 ${offending.join('、')}：剥掉 $schema 后 claude CLI 会静默忽略或拒绝它，` +
       '生成侧约束与 parse 侧 Ajv2020 从此分叉。要么别用，要么同步改适配层策略（设计 §3.7 json_schema_ok 行）',
   );
   // 自证一：在**真实产物**的深拷贝里注入，扫描器必须报出来（不再用脱机小对象自证）

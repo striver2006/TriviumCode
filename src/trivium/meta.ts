@@ -216,6 +216,23 @@ export interface TaskMeta {
     at: string;
   }[];
   /**
+   * 每轮的整体三态判定（2026-10-22 多轮评审），由 `gate --check` 落——与 `joint_checks`
+   * 同一个分工理由：聚合要等两侧 review JSON 齐了才判得了，run.json 那份是运行期事实、
+   * 只写一次。每轮一条，按 `run_id` 覆盖（`--check` 可反复跑，同一轮以最后一次为准）。
+   */
+  round_verdicts?: {
+    run_id: string;
+    stage: Stage;
+    rerun_index: number;
+    decision: 'pass' | 'pass_after_changes' | 'fail';
+    tallies: { approve: number; approve_after_changes: number; reject: number };
+    effective_sides: number;
+    limit: number;
+    /** verdict 不可读、被保守计为 reject 的侧（parse_fallback 或结论读不到） */
+    unreadable_as_reject?: string[];
+    at: string;
+  }[];
+  /**
    * **按阶段**的 Driver 声明（M10a 第 1 步，EV-72）。**可选**：缺该字段 = 「未声明」。
    *
    * ## 为什么需要它
@@ -415,6 +432,11 @@ export interface NewRunMetaInput {
   subjectSha256: string;
   denyPaths: string[];
   driftPolicy: 'warn' | 'fail';
+  /**
+   * 评审轮次上限（2026-10-22 多轮评审）：plan / code 阶段由 `prepareRun` 恒传，
+   * bug 阶段与手工构造的测试调用传 null（即缺席——历史留痕同形）。
+   */
+  reviewRounds?: { limit: number; source: 'flag' | 'config' } | null;
   /** 编排器自带的构建标识（`build-stamp.ts` 的 `embeddedBuildStamp()`）；缺省按 null 记 */
   build?: BuildStamp | null;
 }
@@ -440,6 +462,7 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     driver_enabled: i.driverEnabled ?? true,
     ...(i.driverGuardLevel !== undefined ? { driver_guard_level: i.driverGuardLevel } : {}),
     ...(i.planFinalCheck !== undefined ? { plan_final_check: { subject_rerun_index: i.planFinalCheck.subject_rerun_index } } : {}),
+    ...(i.reviewRounds ? { review_rounds: { limit: i.reviewRounds.limit, source: i.reviewRounds.source } } : {}),
     ...(i.profile !== undefined ? { profile: i.profile } : {}),
     critics_selected: [...i.criticsSelected],
     snapshot: {

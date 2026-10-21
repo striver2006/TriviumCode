@@ -100,6 +100,28 @@
       },
       "description": "计划定稿校验的标记（EV-214，设计 §6.6 规则 9）。只在计划阶段、由 EV-214 之后的编排器写入；代码与 bug 阶段不写。存在即「本轮按 EV-214 的规则跑」：闸门只对带它的轮次要求有接受项时存在执笔方的新一轮计划；缺失即「无从得知」，有接受项时 gate 出 next_plan_unchecked 告警、不判失败（不追溯历史轮次）。subject_rerun_index 是本轮被审对象的轮次：位于本主题 plan/ 根、文件名可解析、后缀为当轮 Driver、无 -revised/-response 中缀时取其轮次，否则（归档外的 --plan-file、名字不合规）为 null，此时闸门的基准轮次退回 rerun_index"
     },
+    "review_rounds": {
+      "type": "object",
+      "required": [
+        "limit",
+        "source"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "source": {
+          "enum": [
+            "flag",
+            "config"
+          ]
+        }
+      },
+      "description": "本轮运行的评审轮次上限（plan/code 阶段，2026-10-22 多轮评审）：limit 是生效上限，source 记来源——flag 表示当次 --plan-rounds / --code-rounds 覆盖，config 表示取配置缺省。写侧恒写（与 requested_routes 同款「只增不减」）；字段缺席＝该轮早于本特性或为 bug 阶段：gate 不做整体三态判定与轮次用尽停点，按旧规则收口（不追溯历史轮次）。上限拦截发生在新运行发起时，与本字段无关"
+    },
     "driver_guard_level": {
       "enum": [
         "L1",

@@ -8,7 +8,7 @@ import path from 'node:path';
 import { exists } from './util/fsx.js';
 import { promises as fsp } from 'node:fs';
 import { EXIT, TriviumError, usageError, missingArtifact as missingArtifactError } from './exit-codes.js';
-import { applyProfileOverride, loadCtx, resolveAssetRoot, runRoot } from './config.js';
+import { applyProfileOverride, loadCtx, resolveAssetRoot, runRoot, MAX_REVIEW_ROUNDS } from './config.js';
 import {
   AGENTS, ALL_AGENT_IDS, CRITIC_AGENT_IDS, DEFAULT_DRIVER, DRIVER_AGENT_IDS, agentById, entryCommandOf,
 } from './agents/registry.js';
@@ -52,7 +52,7 @@ import {
   type RenderOptions, type WorkTreeSummary,
 } from './worktree-summary.js';
 
-const VERSION = '1.2.9';
+const VERSION = '1.3.0';
 
 interface ParsedArgs {
   command: string;
@@ -251,6 +251,13 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                   它决定谁不得入选（自己不能审自己）与原稿是谁的后缀
       --allow-single  一侧失败时不中止，产出单审结果并留痕（§12.4）。
                       受配置 review.allow_partial_flag 约束（旧名 allow_single_flag 仍可用）；默认 strict
+      --plan-rounds <1~10> / --code-rounds <1~10>
+                      多轮评审轮次上限，按 --stage 只认对应那支（plan↔plan-rounds、
+                      code↔code-rounds，bug 不设），传错组合退 64。缺省取
+                      review.plan_rounds / code_rounds（默认 3）。每侧审查结论按三态聚合出
+                      整体判定：不通过且轮次未用尽 → 修订后重审；用尽仍不通过 →
+                      停下人工审批；通过 / 修改后通过 → 按裁决修订后进实施。
+                      超上限的重发会被拦（退 2），逃生门是显式提高本旗标或调配置
 
   trivium review --start --entry <A|B|C|D> --stage <s> --topic <主题> --focus <提示语> [同上选项] [--json]
       冻结送审包 → 派生工作进程 → **立即返回** run_id 与 max_waits。
@@ -335,8 +342,10 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                           改为校验该阶段最低工件集（§6.3）。审核者集合取自该轮
                           run.json 的实际登记，单侧轮次不会被误报缺件
       --await-approval    置闸门为 awaiting_approval 并输出停点话术
-      校验通过后闸门去哪由 run.json 的 entry 决定：B/C/D 直接立起 awaiting_approval
-      （停点是这三条命令的定义），A 与无 entry 的调用回 idle。
+      校验通过后闸门去向：B/C/D 直接立起 awaiting_approval（停点是这三条命令的定义）；
+      整体三态判定为「不通过」且轮次用尽时，**任何 entry**（含 A）都立起 awaiting_approval
+      停下人工审批；其余情况（A 与无 entry 的调用）回 idle。判定与轮次进度见输出的
+      round_verdict 字段。
 
   trivium gate hook-pre-write | hook-pre-bash | hook-pre-commit | hook-stop | hook-session-start
       Claude Code Hook 入口，从 stdin 读事件。**不应由人直接调用。**
@@ -688,6 +697,44 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   // 档位旗标（M11 第 5 步）：收集与判定与 topic resolve、preflight 同一份（tier-flags.ts）
   const tierFlags = assertTierFlags(ctx.config, driver, collectTierFlags(tierFlagGetter(args)), critics);
 
+  /*
+   * ── 多轮评审轮次上限（2026-10-22 三态判定特性）──
+   *
+   * 按当前 stage 只认对应那支：`--stage plan` ↔ `--plan-rounds`，`--stage code` ↔ `--code-rounds`；
+   * bug 阶段不设轮次判定，两支都不认。传了不匹配的旗标当场退 64，不静默忽略——
+   * 「解析成功、随后被丢弃」正是 `--base` 那族缺口的形状。缺席回落配置缺省（source=config）。
+   */
+  const roundsFlagOf: Record<Stage, 'plan-rounds' | 'code-rounds' | null> = {
+    plan: 'plan-rounds', code: 'code-rounds', bug: null,
+  };
+  const roundsFlagName = roundsFlagOf[stage];
+  for (const f of ['plan-rounds', 'code-rounds'] as const) {
+    if (args.flags.has(f) && f !== roundsFlagName) {
+      throw usageError(
+        `--${f} 与 --stage ${stage} 不匹配：plan 阶段认 --plan-rounds、code 阶段认 --code-rounds、` +
+          'bug 阶段不设轮次判定。',
+      );
+    }
+  }
+  let roundsLimit: { limit: number; source: 'flag' | 'config' } | null = null;
+  if (roundsFlagName) {
+    if (args.flags.has(roundsFlagName)) {
+      // 先键后值（EV-228 同款）：`--plan-rounds=`（空值）按「写了」报错，不静默回落配置缺省
+      const raw = flagString(args, roundsFlagName);
+      if (!raw) throw usageError(`--${roundsFlagName} 需要一个 1～${MAX_REVIEW_ROUNDS} 的整数（轮次上限）。`);
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < 1 || n > MAX_REVIEW_ROUNDS) {
+        throw usageError(`--${roundsFlagName} 需要 1～${MAX_REVIEW_ROUNDS} 的整数（轮次上限），收到「${raw}」。`);
+      }
+      roundsLimit = { limit: n, source: 'flag' };
+    } else {
+      roundsLimit = {
+        limit: stage === 'plan' ? ctx.config.review.plan_rounds : ctx.config.review.code_rounds,
+        source: 'config',
+      };
+    }
+  }
+
   const reviewOpts = {
     ctx,
     stage,
@@ -709,6 +756,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     // 写锁按「本会话」保守处理（state.ts GateEntry.session_id）
     sessionId: flagString(args, 'session-id') ?? process.env['CLAUDE_SESSION_ID'] ?? null,
     allowSingle: args.flags.get('allow-single') === true,
+    roundsLimit,
   };
 
   // ── --start：派生后立即返回 ──
@@ -1482,7 +1530,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       `找不到 ${stage} 阶段的运行元数据。请先跑一次双审，或用 --run-id 指定。`,
     );
   }
-  const { reviews, notes, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs, planFinal } =
+  const { reviews, notes, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs, planFinal, roundVerdict } =
     await loadRoundReviews(ref.layout, stage, runId);
   for (const n of notes) step(n);
 
@@ -1492,6 +1540,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     runIdPinned: Boolean(pinnedId),
     degraded, voidedSides, readonlyBreach, runWarnings,
     expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs, planFinal,
+    roundVerdict,
   });
 
   if (isJsonMode()) {
@@ -1504,6 +1553,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       fallback_ids: result.fallbackIds,
       degraded_ids: result.degradedIds,
       disposition: result.dispositionPath,
+      round_verdict: result.roundVerdict ?? null,
     });
   } else {
     say(renderGateResult(result));
@@ -1545,6 +1595,29 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     }, taskOpts);
   }
 
+  /*
+   * 整体三态判定落持久面（2026-10-22，照 joint_checks 的先例）：聚合只在
+   * `--check` 这一刻发生（读的是两侧 review JSON + 裁决件），不落盘的话
+   * 本轮判了什么、比例多少，事后只在本次进程的内存里。同一轮重跑覆盖。
+   */
+  if (result.roundVerdict) {
+    const rv = result.roundVerdict;
+    await updateTask(ref.layout, (t) => {
+      const entry = {
+        run_id: runId,
+        stage,
+        rerun_index: rv.round,
+        decision: rv.decision,
+        tallies: rv.tallies,
+        effective_sides: rv.effective_sides,
+        limit: rv.limit,
+        ...(rv.unreadable_as_reject.length > 0 ? { unreadable_as_reject: rv.unreadable_as_reject } : {}),
+        at: new Date().toISOString(),
+      };
+      t.round_verdicts = [...(t.round_verdicts ?? []).filter((x) => x.run_id !== runId), entry];
+    }, taskOpts);
+  }
+
   if (result.warnings.some((w) => w.code === 'joint_blocker_rejected')) {
     await updateTask(ref.layout, (t) => {
       t.disputed = true;
@@ -1569,7 +1642,23 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    *     这条路径上没人声称过有停点，不能凭空造一个出来拦住用户。
    */
   const entry = result.ok ? (await readRunMeta(ref.layout, stage, runId))?.entry ?? null : null;
-  const stopsForApproval = entry === 'B' || entry === 'C' || entry === 'D';
+  /*
+   * ── 整体三态判定驱动闸门去向（2026-10-22 多轮评审）──
+   *
+   *   · 判定 fail 且轮次用尽 → **任何 entry**（含 A）都立 awaiting_approval：
+   *     这是轮次用尽的人工停点（修订 PRD 4.4 的「A 不设人工闸门」——那一节的
+   *     语义是「不设常规人审」，轮次用尽的兜底人审是需求明确要求的）。
+   *   · 判定 fail 且轮次未用尽 → **都不停**（含 B/C/D）：回 idle，让 Driver
+   *     修订后重发评审，新一轮轮次自然抬升。
+   *   · 判定 pass / pass_after_changes → B/C/D 停（现状，停点是它们的定义）；
+   *     A 与无 entry 回 idle（现状）。
+   */
+  const roundV = result.roundVerdict ?? null;
+  const failUnexhausted = result.ok && roundV?.decision === 'fail' && roundV.round < roundV.limit;
+  const failExhausted = result.ok && roundV?.decision === 'fail' && roundV.round >= roundV.limit;
+  const stopsForApproval = failExhausted || (
+    (entry === 'B' || entry === 'C' || entry === 'D') && !failUnexhausted
+  );
 
   /*
    * 本轮人已经表过态了就**不推进状态**——`--check` 是校验命令，没资格撤销审批。
@@ -1634,8 +1723,15 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     if (!g.applied && g.entry) {
       warn(`裁决已通过，但闸门未推进到等待审批：${g.skipped}。该闸门属于另一次运行，本次不动它。`);
     } else {
+      const verdictLine = failExhausted
+        ? `本轮整体判定：不通过（reject 占比 ≥50%）——轮次已用尽（第 ${roundV!.round}/${roundV!.limit} 轮），停下人工审核。\n`
+        : '';
       const msg =
         `裁决齐备，已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
+        (verdictLine
+          ? `  ${verdictLine}` +
+            `  人工通过＝放行按最后一轮修订进入实施；拒绝＝终止本阶段。审批后确要再审，可显式提高轮次上限重发。\n`
+          : '') +
         `  停点话术：trivium gate --stage ${stage} --topic ${shellQuoteArg(topic)} --await-approval\n` +
         `  ${await holdNoticeFor(ctx.projectRoot, gateDriver)}`;
       if (!isJsonMode()) {
@@ -1677,6 +1773,17 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     });
     if (!g.applied && g.entry) {
       warn(`裁决已通过，但闸门未放行：${g.skipped}。该闸门属于另一次运行，本次不动它。`);
+    }
+    /*
+     * 判定 fail 且轮次未用尽（2026-10-22）：闸门回 idle 就是给「修订后重发」让路，
+     * 这里把走向念出来——不念的话 skill 只能从 JSON 的 round_verdict 里猜，
+     * 老话术会让 Driver 误以为校验通过就该进实施阶段。
+     */
+    if (g.applied && failUnexhausted && roundV && !isJsonMode()) {
+      say(
+        `本轮整体判定：不通过（reject 占比 ≥50%），轮次 ${roundV.round}/${roundV.limit} 未用尽。\n` +
+        '  出路：按裁决修订原稿（驳回的意见也要在裁决理由里说明为何不吸收），再发起一轮双审——新轮次自动抬升。',
+      );
     }
     // 阻断计数只在审批时归零会跨轮累积：走 --check 放行的轮次不归零，下一轮首次 Stop 就超限放行
     if (g.applied) {
