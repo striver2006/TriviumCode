@@ -73,7 +73,9 @@ interface Proc {
 
 /** 另起一个对 SIGTERM 不设防的 detached 进程（自成一组）；跑完还活着即没收到信号 */
 async function spawnMarked(mark: string, owned: Proc[]): Promise<Proc> {
-  const child = childProcess.spawn(process.execPath, ['-e', 'setInterval(() => {}, 1e6)', `trivium-ev175-test:${mark}`], {
+  // 自毁兜底（1.2.8）：常驻桩在测试运行被外部强杀时无人收尾（Windows 子进程不随父进程死，实测单机累积 63 个
+  // trivium-ev175-test 残留，全部来自被强杀的历史运行）。10 分钟远超任何单测上界，只兜「收尾代码没机会跑」的形态。
+  const child = childProcess.spawn(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 600_000); setInterval(() => {}, 1e6)', `trivium-ev175-test:${mark}`], {
     detached: true, stdio: 'ignore',
   });
   const exited = new Promise((r) => child.once('exit', r));

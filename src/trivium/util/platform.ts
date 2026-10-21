@@ -55,6 +55,8 @@ const ENUM_COMMAND =
 
 let enumCache: { at: number; rows: WinProcRow[] } | null = null;
 let enumInflight: Promise<WinProcRow[] | null> | null = null;
+/** 在飞那趟的启程时刻（spawn 同一拍记下）：fresh 请求据此判断它能不能搭这趟 */
+let enumInflightSince = 0;
 
 function parseEnumOutput(out: string): WinProcRow[] {
   const rows: WinProcRow[] = [];
@@ -68,11 +70,23 @@ function parseEnumOutput(out: string): WinProcRow[] {
 /**
  * 全量枚举 Windows 进程表（含内核侧条目）。失败（PowerShell 不可用、超时、解析为空）返回 null——
  * 调用方按「判不了」处置，与 POSIX 侧 `ps` 失败返回 null 同口径。
+ *
+ * 在飞枚举有单飞去重，`fresh` 请求的搭车判据是**启程时刻**（1.2.8）：在飞那趟启程不早于本次请求 ⇒
+ * 它拍的表不早于本次请求，对本次已是新表，直接搭（省一趟 PowerShell——`processStartTimes` 两形态并发取值
+ * 时两路 fresh 共享同一趟，这正是缺省路径的时序）；启程更早的那趟可能拍在关注进程派生之前（1.2.6 的场景），
+ * 等它落地后自起一趟，期间别家起了更新的就搭那趟。非 fresh 一律搭在飞的那趟（吞吐优先）。
  */
-export function enumerateWinProcesses(o: { fresh?: boolean } = {}): Promise<WinProcRow[] | null> {
+export async function enumerateWinProcesses(o: { fresh?: boolean } = {}): Promise<WinProcRow[] | null> {
   if (!IS_WIN) return Promise.resolve(null);
-  if (!o.fresh && enumCache && Date.now() - enumCache.at < ENUM_TTL_MS) return Promise.resolve(enumCache.rows);
-  if (enumInflight) return enumInflight;
+  const t0 = Date.now();
+  if (!o.fresh && enumCache && t0 - enumCache.at < ENUM_TTL_MS) return enumCache.rows;
+  if (enumInflight) {
+    const prev = enumInflight;
+    if (!o.fresh || enumInflightSince >= t0) return prev;
+    await prev;
+    if (enumInflight && enumInflight !== prev) return enumInflight;
+  }
+  enumInflightSince = Date.now();
   enumInflight = new Promise<WinProcRow[] | null>((resolve) => {
     let settled = false;
     const finish = (rows: WinProcRow[] | null): void => {

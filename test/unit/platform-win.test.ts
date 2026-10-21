@@ -5,13 +5,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { winOnly } from '../helpers/platform.js';
 import {
-  cachedEnumRows, enumerateWinProcesses, resolvePosixShellSync, winProcessCreation, winTaskkillTree, winTreeMemberCount,
+  cachedEnumRows, enumerateWinProcesses, resetEnumCacheForTest, resolvePosixShellSync, winProcessCreation, winTaskkillTree, winTreeMemberCount,
 } from '../../src/trivium/util/platform.js';
 import { CANCEL_FLAG_BASELINE_BACKOFF_MS, installWorkerCancelFlagWatcher } from '../../src/trivium/run-protocol.js';
 import { killProcessTree, processStartTime } from '../../src/trivium/util/exec.js';
@@ -147,6 +148,82 @@ test('cachedEnumRows：失败兜底只认显式龄期内的缓存（CLAUDE-03—
   assert.equal(cachedEnumRows({ at: now - 4_000, rows }, now), null, '超龄旧表不得回给调用方——pid 复用下会误判同一进程');
   assert.equal(cachedEnumRows(null, now), null, '从无缓存就是 null');
 });
+
+// ─────────────────── 1.2.8 修复的 win32 锚点 ───────────────────
+
+/** 可控的假枚举子进程：测试按需喂数据并 close，钉住「一趟枚举」的生命周期（不真跑 PowerShell） */
+class FakeEnumChild extends EventEmitter {
+  readonly stdout = Object.assign(new EventEmitter(), {
+    setEncoding(_e: string): void { /* 形态对齐即可 */ },
+  });
+  kill(): void { this.emit('close', 1); }
+}
+
+test('enumerateWinProcesses：fresh 的搭车判据是启程时刻——拒绝启程更早的在飞趟、同拍启程的共享一趟（1.2.8）',
+  { skip: winOnly('只在 Windows 上跑'), timeout: 30_000 }, async () => {
+    const { syncBuiltinESMExports } = await import('node:module');
+    const cp = (await import('node:child_process')).default;
+    const trips = new Array<{ child: FakeEnumChild; feed: (line: string) => void; close: () => void }>();
+    const orig = cp.spawn;
+    cp.spawn = (() => {
+      const child = new FakeEnumChild();
+      trips.push({
+        child,
+        feed: (line) => child.stdout.emit('data', line),
+        close: () => child.emit('close', 0),
+      });
+      return child as unknown as import('node:child_process').ChildProcess;
+    }) as typeof cp.spawn;
+    syncBuiltinESMExports();
+    resetEnumCacheForTest();
+    /** 自旋到当前毫秒刚翻过：之后的同步调用背靠背落进同一个新毫秒窗，时序判定才确定 */
+    const spinPastMsBoundary = (): void => {
+      const b = Date.now();
+      while (Date.now() === b) { /* 自旋等翻毫秒 */ }
+    };
+    try {
+      // ── 场景一：在飞趟启程早于 fresh 请求 ⇒ 不搭它（1.2.6 的强制重枚举不能拿旧表充数），等它落地后自起一趟 ──
+      const first = enumerateWinProcesses();
+      spinPastMsBoundary(); // fresh 的请求时刻严格晚于第一趟的启程时刻
+      const fresh = enumerateWinProcesses({ fresh: true });
+      let freshSettled = false;
+      void fresh.then(() => { freshSettled = true; });
+      await new Promise((r) => setTimeout(r, 50));
+      assert.equal(trips.length, 1, 'fresh 不得为启程更早的在飞趟抢跑兑现');
+      assert.equal(freshSettled, false, '旧枚举未落地，fresh 不得兑现');
+      // 旧枚举落地：表里只有 pid 424241（没有 fresh 关心的 424242）
+      trips[0]!.feed('424241,0,2026-01-01T00:00:00.000000Z\n');
+      trips[0]!.close();
+      const old = await first;
+      assert.ok(old && old.some((r) => r.pid === 424241));
+      await new Promise((r) => setTimeout(r, 20));
+      assert.equal(trips.length, 2, '旧枚举落地后 fresh 应自起一趟新枚举');
+      assert.equal(freshSettled, false, '新枚举未落地，fresh 仍不得兑现');
+      trips[1]!.feed('424242,0,2026-01-01T00:00:00.000000Z\n');
+      trips[1]!.close();
+      const rows = await fresh;
+      assert.ok(rows?.some((r) => r.pid === 424242), `fresh 兑现的应是含 424242 的新表，实测 ${JSON.stringify(rows)}`);
+
+      // ── 场景二：在飞趟启程不早于 fresh 请求（同拍）⇒ 直接搭它，不自起——processStartTimes 两形态并发取值
+      //    共享同一趟是缺省路径的时序前提（1.2.8 实测回归的钉子：多付一趟枚举会把 --start 的收尾拖进
+      //    worker 已完成的窗口，触发终态被碾压的竞态） ──
+      resetEnumCacheForTest();
+      trips.length = 0;
+      spinPastMsBoundary();
+      const f1 = enumerateWinProcesses({ fresh: true });
+      const f2 = enumerateWinProcesses({ fresh: true });
+      await new Promise((r) => setTimeout(r, 30));
+      assert.equal(trips.length, 1, '同拍的两个 fresh 应共享同一趟枚举，不得串行自起两趟');
+      trips[0]!.feed('424243,0,2026-01-01T00:00:00.000000Z\n');
+      trips[0]!.close();
+      const [r1, r2] = await Promise.all([f1, f2]);
+      assert.ok(r1?.some((r) => r.pid === 424243) && r2?.some((r) => r.pid === 424243), '两个 fresh 都应从共享的那趟拿到表');
+    } finally {
+      cp.spawn = orig;
+      syncBuiltinESMExports();
+      resetEnumCacheForTest();
+    }
+  });
 
 test('取消旗标基线：回退量覆盖模块加载窗口与 FAT 粒度；陈旧旗标只记痕迹不触发收尾（CLAUDE-02）', async () => {
   assert.ok(CANCEL_FLAG_BASELINE_BACKOFF_MS >= 15_000, '回退量不得小于 15 秒');

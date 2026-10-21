@@ -13,6 +13,7 @@ import { EXIT } from '../../src/trivium/exit-codes.js';
 import { spawn } from 'node:child_process';
 import { readState, setGate } from '../../src/trivium/state.js';
 import { psStubWorks, stubPsFailure } from '../helpers/ps-stub.js';
+import { winTaskkillTree } from '../../src/trivium/util/platform.js';
 import { scratchDir } from '../helpers/scratch.js';
 
 // 2026-10-20 试验性解除 win32 整文件跳过（第三批适配）：实测后按结果定去留。macOS/Linux 行为零变化。
@@ -217,6 +218,10 @@ test('锁文件一出现就是完整内容：并发争抢从不观察到空文�
 test('不可解析但刚写下的锁文件：不抢，先当活锁重试', async () => {
   const dir = await tmpTrivium();
   await fs.mkdir(path.join(dir, 'lock'), { recursive: true });
+  // 先暖进程身份缓存再写锁文件（1.2.8）：满载下冷枚举一次可上秒级，acquireLock 构造锁内容的
+  // processStartTime 会把「刚写下」的 2 s 判龄窗口跑穿——本进程活锁被按 unparsable 回收、
+  // 用例等不到 70。暖缓存后内容构造命中 400 ms TTL，判龄窗口在握；这是夹具时序修复，不改变被测行为。
+  await processStartTime(process.pid);
   await fs.writeFile(lockFile(dir), '');
   await assert.rejects(
     acquireLock({ triviumDir: dir, topic: TOPIC, heartbeatStaleMs: STALE_MS, retries: 1, retryDelayMs: 5 }),
@@ -1110,8 +1115,10 @@ test('EV-153 U2：同进程并发 8 个 setGate，规范化 ps 全部取不到�
 
 test('EV-153 U3：跨进程——活着的别的进程持运行锁，规范化 ps 取不到 ⇒ 不回收、抛 70、锁文件原样', async () => {
   const dir = await tmpTrivium();
-  // 常驻子进程自成一组（argv 带标记），收尾按进程组结束
-  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1e6)', 'trivium-ev153-u3-holder'], {
+  // 常驻子进程自成一组（argv 带标记），收尾按进程组结束。
+  // 自毁兜底（1.2.8）：常驻桩在测试运行被外部强杀时无人收尾（Windows 子进程不随父进程死，实测单机累积 77 个残留）；
+  // 10 分钟远超本用例任何等待上界（within 均 ≤ 120 s），只兜「收尾代码没机会跑」的形态。
+  const child = spawn(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 600_000); setInterval(() => {}, 1e6)', 'trivium-ev153-u3-holder'], {
     detached: true, stdio: 'ignore',
   });
   const pid = child.pid!;
@@ -1147,7 +1154,12 @@ test('EV-153 U3：跨进程——活着的别的进程持运行锁，规范化 p
   } finally {
     stub.s?.restore();
     try {
-      process.kill(-pid, 'SIGKILL');
+      // win32 无负 pgid 组信号（1.2.8 实测：抛 ESRCH 且进程仍活，holder 每跑必漏）：经生产同款 taskkill 树杀收尾
+      if (process.platform === 'win32') {
+        winTaskkillTree(pid, true);
+      } else {
+        process.kill(-pid, 'SIGKILL');
+      }
     } catch {
       // 已不在
     }

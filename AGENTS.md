@@ -96,7 +96,7 @@ Node ≥ 18（开发建议 ≥ 22）。
 npm run typecheck                 # tsc --noEmit（strict + noUncheckedIndexedAccess + noUnused*）
 npm run build                     # esbuild 出两个 bundle（会重建 skills/ 下产物）
 npm run render                    # skills-src/ → 入口 SKILL.md（缺省构建故意不重写它们）
-npm test                          # pretest 自动全量构建（含测试），再 node --test dist/test
+npm test                          # pretest 自动全量构建（含测试），再经 scripts/run-tests.mjs 起 node --test（带 --test-timeout，1.2.8）
 npm run check                     # typecheck + build + test，提交前的完整闸门
 node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文件
 ```

@@ -682,7 +682,10 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
       s.worker_pid = spawned.pid;
       s.worker_started_at = workerStartedAt;
       s.worker_started_at_canonical = workerStartedAtCanonical;
-      s.phase = 'running';
+      // 终态不得碾压（1.2.8 实测竞态）：桩侧极快时 worker 可能在本条身份记录落地之前就已完成并写下终态
+      // （success/failed）——身份字段照补（--wait 与清扫此后都读它们），phase 若已终态就不再改回 running，
+      // 否则刚完成的运行会被 --wait 按「running + 进程已退」判成 worker_lost（pid_gone）。
+      if (!isTerminal(s.phase)) s.phase = 'running';
     });
 
     const waitTimeoutS = cfg.review.wait_timeout_s;
