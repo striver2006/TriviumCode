@@ -15,5 +15,6 @@
 | 版本 | 日期 | 平台 | 包 | 手册 |
 | :--- | :--- | :--- | :--- | :--- |
 | 1.2.7 | 2026-10-21 | windows-x64 | `TriviumCode-1.2.7-windows-x64.zip`（sha256 `2997f740…b34f6`） | `TriviumCode-1.2.7-完整手册.pdf`（51 页） |
+| 1.2.9 | 2026-10-21 | windows-x64 | 正式包待出（工作树提交后 `npm run release`） | `TriviumCode-1.2.9-完整手册.pdf`（48 页，四部分含一键安装；管线固化为 `scripts/build-manual-pdf.mjs`） |
 
 > 历史版本（1.1.0 candidate、1.2.2）不入库；需要时由对应标签重新 `npm run release`。
