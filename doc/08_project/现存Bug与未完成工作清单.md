@@ -1,6 +1,6 @@
 # 现存 Bug 与未完成工作清单
 
-适用产品：1.2.8。核对日期：2026-10-21。本文是单独可读的残余清单；旧 [BACKLOG](./BACKLOG.md)、LLD、ADR 和测试原件保留，原 EV 编号不变。
+适用产品：1.2.9。核对日期：2026-10-21。本文是单独可读的残余清单；旧 [BACKLOG](./BACKLOG.md)、LLD、ADR 和测试原件保留，原 EV 编号不变。
 
 本轮检查了代码结构、CLI、安装路径、现有登记、测试与发布包；下表历史缺陷未逐项重新动态复现，不把历史复现说成本轮复现。自动化通过不代表每条缺陷已修复。“待办/触发式”沿用历史决定，不自动授权修复或付费模型补测；修复前仍核对原项的范围与触发条件。
 
@@ -113,6 +113,7 @@ M11 第 12 步已有用户具名的组合证据达成边界；M12 已完成计�
 8. **codex 的只读沙箱在 Windows 不拦截（上游缺口，1.2.0 实测登记；1.2.1 起可显式降级放行）**：win32 + codex 0.163.0（CC Switch 网关、qwen 模型载体）下，只读负对照真实执行且 `-s read-only` 中写命令报告写入成功——探针按 fail-closed 清空 readonly_flags、该侧判不可用，这是编排器的正确行为，不是误报。1.2.1 新增 `agents.codex.readonly_enforcement: prompt-only`（本仓 Windows 线 config 已开启）：负对照失败时保留旗标、记 `readonly_enforced: false`，预检以降级注记放行——补偿控制是 BRIEF 只读措辞 + 事后轨迹/漂移核验（全开不动），防线从「事前阻止」换为「事后必查」。**1.2.1 实测 Windows 线 `--critics claude,codex` 预检整体通过（含降级注记）**。OS 级只读可用的平台不应开启；claude 侧不受影响（只读走 `--restricted` + `--settings` deny，已验证）。另注：codex 原生路线判据拒绝基底第三方 provider 的静默使用，CC Switch 布局经 `~/.codex/ccswitch.config.toml`（仅一行 `model_provider` 声明、无凭据）+ `agents.codex.profile: ccswitch` 显式选择。
 9. **zcode（glm 审核者）在 Windows 已可用（2026-10-20 闭合）**：D: 盘装法经 `agents.glm.entry` 指路（config.local.yaml）；`~/.zcode/cli/config.json` 按注册表真实规则收敛为最小自定义 provider（id 不得带 `builtin:`/`account:` 前缀、`source: custom`、`kind: anthropic`、options.apiKey+baseURL、`model.main` 用 `自定义id/模型名` 字符串；凭据与端点实测 200）后，探针全绿——headless 哨兵命中、只读旗标（`--mode plan` + `--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash`）、home_copy 隔离、零 blocker。残余：**带桌面环境变量的裸终端 headless 仍报 Model creation failed**（`configSourceEnv:false`，zcode CLI 0.16.9 的装配问题，不影响编排器的隔离拉起形态）；glm 作为 Driver 的轮次本就不能入选审核者（不审自己的变更）。
 10. **隔离环境的 APPDATA/LOCALAPPDATA 残余通道（1.2.2 审查 CLAUDE-11 登记）**：win32 隔离重定向了 USERPROFILE 并删 HOMEDRIVE/HOMEPATH，但未动 APPDATA/LOCALAPPDATA——第三方工具按 %APPDATA% 回退时写穿到宿主（污染面，非凭据泄漏面）。重定向可能破坏厂商 CLI 既有行为，评估后再动，不盲改。
+11. **Windows 一键安装脚本（1.2.9 交付）**：发布包新增 `一键安装.cmd`（后端 `scripts/quick-install.mjs`，模板与清单在 `scripts/release-launchers.mjs`、由契约测试 `release-cmd-template.test.ts` 同源对账），链路为 Git 前置检测 → 安装前检查（复用安装器判定，只读）→ 安装（与 安装.cmd 同一命令、参数透传、子进程剥离 TRIVIUM_ASSET_ROOT）→ 装后版本核对 → `doctor --selftest` 14 步零配额自检；退出码 0/1/2/3 分层。**连带修复 .cmd 模板两处历史缺陷**：① 版本闸门失效——`node -e` 检查后不判 errorlevel，历史包里 Node<18 仍会继续跑安装器；② node 不在 PATH 时报两次系统级 9009 裸错且双击窗口瞬逝——补 `where node` 指引与按 `%cmdcmdline%` 判定的条件 pause。**边界**：本项是脚本级串联，§3「签名、公证和自带 Node」那条登记的一键**系统**安装（签名、运行时分发、更新与回退策略）不在本项范围、仍未实现；一键链路本身未做异机真实验收（§3 的异机未测口径不变），首次异机使用按部署手册 §1a 的前置清单人工核对一遍。
 
 ## 4. 已接受的结构性限制
 

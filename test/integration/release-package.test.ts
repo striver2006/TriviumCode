@@ -45,6 +45,15 @@ test('发布包真解压：白名单与哈希、四家28入口、隔离安装升
       }
       assert.ok(manifest.some((f) => f.path.startsWith('skills-src/carriers/')));
       assert.ok(manifest.some((f) => f.path.endsWith('稳定版部署手册.md')));
+      if (IS_WIN) {
+        // 1.2.9：一键安装链路进包——入口 .cmd 与其后端脚本都在，且入口带齐三道闸门（存在性/版本/条件 pause）
+        assert.ok(manifest.some((f) => f.path === '一键安装.cmd'), 'zip 须含 一键安装.cmd');
+        assert.ok(manifest.some((f) => f.path === 'scripts/quick-install.mjs'), 'zip 须含 scripts/quick-install.mjs');
+        const oneClick = await fs.readFile(path.join(root, '一键安装.cmd'), 'utf8');
+        assert.ok(oneClick.includes('where node'), 'node 存在性检测在位');
+        assert.ok(/if errorlevel 1 goto end\r?\nnode scripts\\quick-install\.mjs/.test(oneClick), '版本闸门后不得直接落到目标命令');
+        assert.ok(oneClick.includes('pause') && oneClick.includes('%cmdcmdline%'), '双击场景须保留窗口');
+      }
       const metadata = JSON.parse(await fs.readFile(path.join(root, '发布信息.json'), 'utf8'));
       assert.equal(metadata.release_state, 'candidate');
       assert.equal(metadata.platform, IS_WIN ? 'windows' : 'macos');

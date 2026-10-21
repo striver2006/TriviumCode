@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
+import { WINDOWS_LAUNCHERS, windowsLauncherBody } from './release-launchers.mjs';
 
 const execFile = promisify(execFileCallback);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -34,7 +35,8 @@ const cli = 'skills/dual-critic/scripts/trivium.cjs';
 const version = (await execFile(process.execPath, [path.join(root, cli), '--version'], { windowsHide: true })).stdout.trim();
 if (version !== pkg.version) throw new Error(`CLI ${version} 与 package.json ${pkg.version} 不一致，请重新构建。`);
 // 安装器执行时还读取 carriers；只拷两个 CJS 文件会导致异机安装失败。
-const files = ['README.md', 'LICENSE', 'package.json', 'dist/install.cjs', 'scripts/install-check.mjs'];
+// quick-install.mjs 是 一键安装.cmd 的链路后端（1.2.9）：环境检测 → 前检 → 安装 → 版本核对 → 零配额自检。
+const files = ['README.md', 'LICENSE', 'package.json', 'dist/install.cjs', 'scripts/install-check.mjs', 'scripts/quick-install.mjs'];
 async function walk(dir) {
   const result = [];
   for (const e of (await fs.readdir(path.join(root, dir), { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -95,14 +97,10 @@ try {
   }
   await fs.writeFile(path.join(staged, '第三方许可.txt'), licenses.join('\n\n' + '='.repeat(60) + '\n\n'));
   if (PLATFORM === 'windows') {
-    // Windows 快捷入口：.cmd 按 OEM 代码页读取，文案一律 ASCII（中文在 开始使用.md 里，UTF-8 无碍）
-    const launchers = { '安装.cmd': ['dist\\install.cjs'], '安装前检查.cmd': ['scripts\\install-check.mjs'],
-      '卸载.cmd': ['dist\\install.cjs', '--uninstall'] };
-    for (const [file, argv] of Object.entries(launchers)) {
-      await fs.writeFile(path.join(staged, file),
-        `@echo off\r\nsetlocal\r\ncd /d "%~dp0"\r\n` +
-        `node -e "if (Number(process.versions.node.split('.')[0]) < 18) { console.error('Node.js 18 or above is required.'); process.exit(1); }"\r\n` +
-        `node ${argv.join(' ')} %*\r\n`, { mode: 0o755 });
+    // Windows 快捷入口：模板与清单在 release-launchers.mjs（与契约测试同源）。
+    // .cmd 内容必须纯 ASCII（OEM 代码页）；中文说明在 开始使用.md 与 quick-install.mjs 的 Node 侧输出。
+    for (const [file, argv] of Object.entries(WINDOWS_LAUNCHERS)) {
+      await fs.writeFile(path.join(staged, file), windowsLauncherBody(argv), { mode: 0o755 });
     }
   } else {
     const launchers = { '安装.command': ['dist/install.cjs'], '安装前检查.command': ['scripts/install-check.mjs'],
@@ -114,7 +112,7 @@ try {
   const platformBrief = PLATFORM === 'windows'
     ? 'Windows 安装包（需 Git for Windows；详见 doc/06_deployment/稳定版部署手册.md 的 Windows 章节）。'
     : 'macOS 稳定版安装包。';
-  await fs.writeFile(path.join(staged, '开始使用.md'), `# TriviumCode ${pkg.version}\n\n${candidate ? '候选安装包，尚未作为正式版本交付。' : platformBrief}\n\n先安装 Node.js 18 或以上、Git 2.20 或以上（Windows 为 Git for Windows），以及需要的 Agent CLI 并登录。目标机无需 npm install，也无需编译。\n\n${PLATFORM === 'windows' ? '在 cmd / PowerShell / Git Bash 进入本目录：' : '在终端进入本目录：'}\n\n\`\`\`sh\nnode scripts/install-check.mjs\nnode dist/install.cjs\nnode ~/.claude/skills/dual-critic/scripts/trivium.cjs doctor --selftest\n\`\`\`\n\n${PLATFORM === 'windows' ? '也可运行本目录的 安装前检查.cmd、安装.cmd。' : '也可运行本目录的安装前检查.command、安装.command。'}检查脚本只查读取面重名与残留，安装器另查运行时身份与源目录重叠。\n\n详细步骤见 doc/06_deployment/稳定版部署手册.md；日常操作见 doc/07_manuals/稳定版使用手册.md；限制见 doc/08_project/现存Bug与未完成工作清单.md。\n\n文件校验.json 列出除自身外全部文件的 SHA-256。源码与历史测试原始证据不在此安装包内，代码路径和 evidence 链接请到源码仓库查阅。包不含 Node、Git、厂商程序、登录信息和任何本机配置。\n`);
+  await fs.writeFile(path.join(staged, '开始使用.md'), `# TriviumCode ${pkg.version}\n\n${candidate ? '候选安装包，尚未作为正式版本交付。' : platformBrief}\n\n先安装 Node.js 18 或以上、Git 2.20 或以上（Windows 为 Git for Windows），以及需要的 Agent CLI 并登录。目标机无需 npm install，也无需编译。\n\n${PLATFORM === 'windows' ? '**推荐：在 cmd / PowerShell / Git Bash 进入本目录，运行 一键安装.cmd**（双击也可）。它会依次完成：Git 前置检测 → 安装前检查 → 安装 → 版本核对 → 零配额自检（doctor --selftest，14 步，桩适配器、不调真实厂商）。任一步失败都会停在对应输出上。\n\n也可分步执行：' : '在终端进入本目录：'}\n\n\`\`\`sh\nnode scripts/install-check.mjs\nnode dist/install.cjs\nnode ~/.claude/skills/dual-critic/scripts/trivium.cjs doctor --selftest\n\`\`\`\n\n${PLATFORM === 'windows' ? '分步入口：安装前检查.cmd、安装.cmd、卸载.cmd。' : '也可运行本目录的安装前检查.command、安装.command。'}检查脚本只查读取面重名与残留，安装器另查运行时身份与源目录重叠。\n\n详细步骤见 doc/06_deployment/稳定版部署手册.md；日常操作见 doc/07_manuals/稳定版使用手册.md；限制见 doc/08_project/现存Bug与未完成工作清单.md。\n\n文件校验.json 列出除自身外全部文件的 SHA-256。源码与历史测试原始证据不在此安装包内，代码路径和 evidence 链接请到源码仓库查阅。包不含 Node、Git、厂商程序、登录信息和任何本机配置。\n`);
   await fs.writeFile(path.join(staged, '发布信息.json'), JSON.stringify({ product: pkg.name, version: pkg.version,
     release_state: candidate ? 'candidate' : 'stable', source_commit: head, source_dirty: dirty,
     source_snapshot: { repo_root_commit: stamp.repo_root_commit, git_head: stamp.git_head, dirty: stamp.dirty,
