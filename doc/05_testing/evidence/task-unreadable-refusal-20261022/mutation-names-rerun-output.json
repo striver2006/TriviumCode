@@ -1,0 +1,28 @@
+[
+  {
+    "id": "M10",
+    "desc": "gate --await-approval 读不出时改回退 0",
+    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I12 · gate --await-approval 读不出 ⇒ 退 2、ok:false、闸门不变（计划双审 AGY-01）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 27
+  },
+  {
+    "id": "M11b",
+    "desc": "同 M11，期望集成格变红（I13 形状不对退 2 而不是 1）",
+    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I13 · 正本是合法 JSON 但形状不对（{}）⇒ approve 与 gate --check 都退 2 而不是 1（计划双审 AGY-02）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 28
+  }
+]

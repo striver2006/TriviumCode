@@ -18,9 +18,9 @@ import path from 'node:path';
 import { run } from './util/exec.js';
 import { sha256 } from './util/fsx.js';
 import { writeMeta, writeVerifyRecord, type ArchiveLayout } from './archive.js';
-import { updateTask, type TaskLock } from './meta.js';
+import { isTaskUnreadableError, updateTask, type TaskLock } from './meta.js';
 import { localDate } from './naming.js';
-import { EXIT, usageError } from './exit-codes.js';
+import { EXIT, TriviumError, usageError } from './exit-codes.js';
 import type { Config, Ctx } from './types.js';
 
 /** 单条命令的执行记录 */
@@ -222,7 +222,26 @@ export async function runVerify(opts: VerifyOptions): Promise<VerifyOutcome> {
       2,
     ) + '\n',
   );
-  await registerVerifyRun(layout, runId, written.effectiveRerunIndex, record.status, { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 });
+  try {
+    await registerVerifyRun(layout, runId, written.effectiveRerunIndex, record.status, { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 });
+  } catch (e) {
+    /*
+     * 命令已跑完、登记时正本才读不出（EV-248 计划 r2 §三.4，开跑前 `cmdVerify` 已判过可读）：
+     * 验证记录是真实执行的结果，保留不删（FR-21）；但它没进留痕护栏，这一轮不能当收口，所以退 2 盖过 0 / 1。
+     * 文案写明命令结论本身，不因退 2 把失败说成别的，也不把通过说成已收口。
+     */
+    if (!isTaskUnreadableError(e)) throw e;
+    const verdict = record.unconfigured
+      ? '未配置任何命令，什么也没执行'
+      : record.selected_empty ? `--only ${record.selected_empty} 选中的一组为空，什么也没执行`
+        : failed ? '有命令失败' : '全部命令通过';
+    throw new TriviumError(
+      e.code,
+      `编译测试已执行完（结论：${verdict}），记录保留在 ${written.absPath}，但没能登记进审批正本，这一轮不能当作收口。\n` +
+        e.message,
+      e.details,
+    );
+  }
 
   const exitCode = record.unconfigured ? EXIT.USAGE : failed ? EXIT.FAIL : EXIT.OK;
   return { record, exitCode, artifactPath: written.absPath, metaPath: meta.absPath };

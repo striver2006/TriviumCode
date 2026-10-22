@@ -87,9 +87,12 @@ test('EV-195 Q5（扫描器自测）：裸拼、经转义、注释与普通字�
   assert.deepEqual(r.bare, ['1: t', '3: o.topic']);
 });
 
-/** 登记表：各文件里经 shellQuoteArg 的建议命令处数（EV-195 改造时 `--topic ${` 字面核出 20 处） */
+/**
+ * 登记表：各文件里经 shellQuoteArg 的建议命令处数（EV-195 改造时 `--topic ${` 字面核出 20 处）。
+ * approval.ts 2 → 4：EV-248 审批补偿的两句「请 `trivium status --topic …` 核对」。
+ */
 const REGISTERED: Record<string, number> = {
-  'trivium/approval.ts': 2,
+  'trivium/approval.ts': 4,
   'trivium/cli.ts': 6,
   'trivium/driver-claim.ts': 1,
   'trivium/gate.ts': 1,

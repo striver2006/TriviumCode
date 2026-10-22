@@ -336,13 +336,19 @@ test('L10 · 上一轮停在人工审核、审批正本读不出 ⇒ 拒跑，�
   }
   assert.deepEqual(await runIds(fx, 'plan'), before, '拒跑不留运行留痕');
 
-  // 停点命令照旧按已表态保守处理，但不说「有人表过态」（代码双审 r3 GLM-03）。
-  // 不用 `--check` 断言：它在判定之前就经宽松读写了一次正本（joint_checks），坏件已被覆盖（EV-248）
+  // 停点命令照旧按已表态保守处理，但不说「有人表过态」（代码双审 r3 GLM-03）；停点没立起来，退 2（EV-248 计划双审 AGY-01）
   const c = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--await-approval']);
   const out = `${c.stdout}${c.stderr}`;
+  assert.equal(c.code, EXIT.GATE_BLOCK, out);
   assert.match(out, /审批正本 task\.json 读不出，按已表态保守处理/);
   assert.doesNotMatch(out, /已有人工审批记录/);
   await assert.rejects(fs.access(path.join(fx.root, '.trivium', 'state.json')), '闸门状态保持不变：不立停点');
+
+  // `--check` 同样不写、不推进（EV-248）：原先它在判定之前就经宽松读写了一次正本，坏件被覆盖
+  const k = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--check', '--json']);
+  assert.equal(k.code, EXIT.GATE_BLOCK, `${k.stdout}${k.stderr}`);
+  assert.equal(await fs.readFile(path.join(fx.archiveRoot, fx.topic, 'task.json'), 'utf8'), '{', '坏件原样');
+  await assert.rejects(fs.access(path.join(fx.root, '.trivium', 'state.json')), '闸门仍未立');
 });
 
 test('L11 · 两侧都整份回退 ⇒ 有效结论不足、停下人工审核，未表态时拒绝起链', { skip }, async () => {

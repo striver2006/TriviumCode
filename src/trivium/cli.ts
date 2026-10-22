@@ -32,9 +32,11 @@ import {
 import { checkStageArtifacts, listRecordedRuns, resolveRerunIndex } from './archive.js';
 import { readHookInput, runHook, type HookName } from './hooks.js';
 import { getGate, listOpenGates, setGateChecked } from './state.js';
-import { assertGateDecidable, recordApproval } from './approval.js';
+import { assertGateDecidable, assertTaskWritableForApproval, recordApproval } from './approval.js';
 import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
-import { allocateRunId, describeRunMetaCause, latestRunMeta, readTask, readRunMeta, readRunMetaDetailed } from './meta.js';
+import {
+  allocateRunId, describeRunMetaCause, latestRunMeta, readTask, readTaskStrict, readRunMeta, readRunMetaDetailed, taskUnreadableError,
+} from './meta.js';
 import { mergeAllHooks, runInit, renderInitReport, type InitReport } from './init.js';
 import {
   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
@@ -1493,14 +1495,22 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
      * 已放行的闸门打回等待。与 `--check` 那两个分支是同一缺陷的三处落点，
      * 判据同样以归档里的审批记录为正本。
      */
-    const { humanDecision, TASK_UNREADABLE_HOLD } = await import('./approval.js');
-    const decision = await humanDecision(ref.layout, stage, runId);
-    if (decision !== 'undecided') {
+    const { humanDecisionDetailed, taskUnreadableHold } = await import('./approval.js');
+    const hd = await humanDecisionDetailed(ref.layout, stage, runId);
+    if (hd.decision === 'unreadable') {
+      /*
+       * 读不出 ≠ 已表态（EV-248，计划双审 AGY-01）：这条命令的职责是立停点，判不了本轮是否已表态，
+       * 停点就没立起来——报 `ok: true` 退 0 会让调用方以为停点已就位。与写入口拒写同口径退 2。
+       */
+      const msg = taskUnreadableHold(ref.layout, hd.error);
+      if (isJsonMode()) emitJson({ ok: false, state: 'unchanged', stage, rerun_index: rerunIndex, message: msg });
+      else fail(msg);
+      return EXIT.GATE_BLOCK;
+    }
+    if (hd.decision === 'decided') {
       const msg =
-        decision === 'unreadable'
-          ? TASK_UNREADABLE_HOLD
-          : `本轮（第 ${rerunIndex} 轮）已有人工审批记录，闸门状态保持不变。\n` +
-            `  要重新走停点，请先对本轮重新表态，或另起一轮审查。`;
+        `本轮（第 ${rerunIndex} 轮）已有人工审批记录，闸门状态保持不变。\n` +
+        `  要重新走停点，请先对本轮重新表态，或另起一轮审查。`;
       if (isJsonMode()) emitJson({ ok: true, state: 'unchanged', stage, rerun_index: rerunIndex, message: msg });
       else say(msg);
       return EXIT.OK;
@@ -1575,6 +1585,30 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   });
 
   /*
+   * ── 正本读不出：先判、不写、不推进（EV-248）──
+   *
+   * 下面的共同阻断三态与争议标记都写正本，而且写在「本轮是否已表态」的判定之前。原先写入口宽松读，
+   * 正本坏了照写：坏件被覆盖、`approvals[]` 清空，随后判成未表态、闸门照常推进——已表态判定的保守处理
+   * 在这条路径上形同虚设。所以在任何写之前、**结果输出之前**判一次（计划双审 GLM-03：判在输出之后，
+   * 失败项就进不了已打印的结果）：读不出则把它记成一条失败项，只输出这一次，直接以 2 返回。
+   * 校验通过也退 2：共同阻断三态这一笔是 `--check` 每次都要落的，落不了，本轮的校验就没完成。
+   * 完整出口段整段进失败项、不另打 `warn`（代码双审 GLM-02 记下的对计划 r2 §三.1 的简化）：只输出一份，
+   * JSON 里机读可见；另打一遍就是双份输出。
+   */
+  const taskRead = await readTaskStrict(ref.layout);
+  const taskUnreadable = taskRead.state === 'unreadable';
+  if (taskUnreadable) {
+    const { taskUnreadableExit } = await import('./meta.js');
+    result.failures.push({
+      code: 'task_unreadable',
+      message:
+        '审批正本 task.json 读不出：这不是裁决缺口，补裁决件无济于事。本次未落共同阻断结论、闸门不动。\n' +
+        taskUnreadableExit(ref.layout, taskRead.error),
+    });
+    result.ok = false;
+  }
+
+  /*
    * 轮次链与计票（EV-247）：随校验结果一起给，skill 据 `next_action` 决定重审、进入下一阶段还是停下。
    * 只在校验通过时有意义——裁决没齐，哪一步都不该走——但键恒在，未通过时照样给出，方便播报。
    */
@@ -1596,6 +1630,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     say(renderGateResult(result));
     if (loop.round_line) say(`· ${loop.round_line}`);
   }
+  if (taskUnreadable) return EXIT.GATE_BLOCK;
 
   /*
    * 双方共同 blocker 被驳回且策略为 warn：设计 §6.6 规则 7 / §8.6 判据 g 要求
@@ -1676,12 +1711,17 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    * 两处都只带 `expect: { runId }`，只挂一个，重跑 `--check` 仍会把已放行的闸门
    * 改写成 idle。判据以归档里的审批记录为正本，理由见 `humanDecidedThisRound`。
    */
-  const { humanDecision, TASK_UNREADABLE_HOLD } = await import('./approval.js');
-  const decision = result.ok ? await humanDecision(ref.layout, stage, runId) : 'undecided';
+  const { humanDecisionDetailed, taskUnreadableHold } = await import('./approval.js');
+  const hd = result.ok ? await humanDecisionDetailed(ref.layout, stage, runId) : { decision: 'undecided' as const };
+  const decision = hd.decision;
   const alreadyDecided = decision !== 'undecided';
   if (decision === 'unreadable') {
-    // 不接下面的对账：那几句都以「归档记着本轮已审批」开头，这一格并不成立（代码双审 r3 GLM-03）
-    warn(TASK_UNREADABLE_HOLD);
+    /*
+     * 上面已先判过可读，到这里只剩竞态：先判之后、这次再读之前正本被搅坏（EV-248）。与先判同口径：不推进、退 2。
+     * 不接下面的对账：那几句都以「归档记着本轮已审批」开头，这一格并不成立（代码双审 r3 GLM-03）
+     */
+    warn(taskUnreadableHold(ref.layout, 'error' in hd ? hd.error : undefined));
+    return EXIT.GATE_BLOCK;
   } else if (alreadyDecided) {
     say('· 本轮已有人工审批记录，闸门状态保持不变（校验命令不撤销审批）');
     /*
@@ -1843,6 +1883,12 @@ async function cmdApproval(
   }
 
   /*
+   * 正本读不出就一道闸门都不动（EV-248）：一个主题一份正本，放弃多个阶段也只判这一次——
+   * 判在复核与工作树摘要之前，不让人先看完一屏复核结果再被拒。`recordApproval` 自己还会再判一次。
+   */
+  await assertTaskWritableForApproval((await resolveTopicReadOnly(ctx, topic, stages[0]!)).layout);
+
+  /*
    * ── 通过前复核（M10a 第 3 步，M10 计划 r7 §4.3 / §4.4，演进设计 §9.4）──
    *
    * 只对 approved 做；拒绝与放弃不复核、也不加确认码（v1.2.3 ② 撤销过，见 approval.ts 头注释）。
@@ -1982,6 +2028,14 @@ async function cmdVerify(args: ParsedArgs): Promise<number> {
       throw usageError(`--timeout 需要一个正数秒数，收到「${timeoutStr}」。`);
     }
     timeoutS = n;
+  }
+  /*
+   * 正本读不出就一条命令都不跑（EV-248）：跑完才在登记时被拒，留下的是一份没进留痕护栏的验证记录。
+   * 判在分配 run_id 之前，零工件。跑完之后才坏的那一格由 `runVerify` 改写文案（计划 r2 §三.4）。
+   */
+  const taskRead = await readTaskStrict(ref.layout);
+  if (taskRead.state === 'unreadable') {
+    throw taskUnreadableError(ref.layout, taskRead.error, '未执行任何编译测试命令，未写验证记录');
   }
   const runId = await allocateRunId(ref.layout);
   const out = await runVerify({

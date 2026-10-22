@@ -20,7 +20,8 @@ import { withTopicLock } from './lock.js';
 import { validateRunMeta, validateRunMetaV1 } from './schemas.js';
 import { DEFAULT_DRIVER, type GuardLevel } from './agents/registry.js';
 import { warn } from './util/log.js';
-import { envError } from './exit-codes.js';
+import { EXIT, TriviumError, envError } from './exit-codes.js';
+import { shellQuoteArg } from './naming.js';
 
 /** `updateTask` 的短临界区参数 */
 export interface TaskLock {
@@ -293,6 +294,10 @@ export function emptyTask(topic: string, now = new Date().toISOString()): TaskMe
  *     核对失去全部对象，删掉或搅坏它就能整枝绕过。
  *
  * 我上一批刚修掉「清单来自被核对对象自身」，却让新加的锚重蹈了同样的覆辙。
+ *
+ * **形状也要判**（EV-248，计划双审 AGY-02）：只防语法错时，`null`、数组、`{}`、`approvals` 不是数组这类
+ * 合法 JSON 会判 `ok`，随后写入口与读侧在属性访问处抛 TypeError、以 1 退出，绕过受控的拒写出口；
+ * `hook-pre-commit` 锚 ② 也会把它们当作可读放行。见 {@link taskShapeProblem}。
  */
 export async function readTaskStrict(
   l: ArchiveLayout,
@@ -305,11 +310,72 @@ export async function readTaskStrict(
     if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'missing' };
     return { task: emptyTask(l.topic), state: 'unreadable', error: (e as Error).message };
   }
+  let parsed: unknown;
   try {
-    return { task: JSON.parse(raw) as TaskMeta, state: 'ok' };
+    parsed = JSON.parse(raw);
   } catch (e) {
     return { task: emptyTask(l.topic), state: 'unreadable', error: (e as Error).message };
   }
+  const problem = taskShapeProblem(parsed);
+  if (problem !== null) return { task: emptyTask(l.topic), state: 'unreadable', error: problem };
+  return { task: parsed as TaskMeta, state: 'ok' };
+}
+
+/** 正本必有的四个数组字段（`emptyTask` 起就有，写入口与读侧都直接按数组用） */
+const TASK_ARRAY_FIELDS = ['runs', 'approvals', 'degradations', 'disputes'] as const;
+
+/**
+ * 解析出来的值像不像一份 task.json：不像就返回哪一项不对，像就返回 null。
+ *
+ * 只判顶层：对象、`schema`、四个数组字段。可选字段（`joint_checks`、`drivers`）缺失即「没有」；
+ * 各条记录的内部形状由各读点自己的判读兜着——收紧到逐条校验会把历史留痕判坏。
+ */
+export function taskShapeProblem(v: unknown): string | null {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) {
+    return `内容不是一个 JSON 对象（是 ${v === null ? 'null' : Array.isArray(v) ? '数组' : typeof v}）`;
+  }
+  const o = v as Record<string, unknown>;
+  if (o['schema'] !== 'trivium.task.v1') {
+    return `schema 不是 trivium.task.v1（是 ${JSON.stringify(o['schema'] ?? null)}）`;
+  }
+  for (const k of TASK_ARRAY_FIELDS) {
+    if (!Array.isArray(o[k])) return `${k} ${k in o ? '不是数组' : '缺失'}`;
+  }
+  return null;
+}
+
+/**
+ * 审批正本读不出时的共用出口段（EV-248）：写入口拒写、续链判定、校验 / 停点的保守处理三处共用一份，
+ * 文案与退出码（2）同口径。恢复命令那一句对齐运行留痕读不出的出口段（计划双审 AGY-03）。
+ */
+export function taskUnreadableExit(l: ArchiveLayout, error: string | undefined): string {
+  const p = taskPath(l);
+  const cause = (error ?? '未知原因').split('\n')[0];
+  return (
+    `  审批正本 ${p} 读不出（${cause}）。\n` +
+    '  读不出时写回会把它整份覆盖成空正本，审批记录（approvals）随之丢失，所以本次不写。\n' +
+    '  从 Git 找回：\n' +
+    `    · 看历史：git log --oneline -- ${shellQuoteArg(p)}\n` +
+    `    · 看当前改动：git diff -- ${shellQuoteArg(p)}\n` +
+    `    · 恢复到最近一次提交：git restore --source=HEAD -- ${shellQuoteArg(p)}（未提交过的改动会丢，先看 diff）\n` +
+    '  恢复命令请由用户在终端执行；在会话里执行会被 TriviumCode Hook 拦下。恢复后重跑本命令。'
+  );
+}
+
+/** 写入口拒写抛的受控错误：`what` 说清本次没做成什么，其后接共用出口段 */
+export function taskUnreadableError(l: ArchiveLayout, error: string | undefined, what: string): TriviumError {
+  return new TriviumError(
+    EXIT.GATE_BLOCK,
+    `${what}：${l.topic} 的审批正本 task.json 读不出。\n${taskUnreadableExit(l, error)}`,
+    { kind: TASK_UNREADABLE_KIND },
+  );
+}
+
+const TASK_UNREADABLE_KIND = 'task_unreadable';
+
+/** 是不是写入口的拒写错误（调用方要在竞态下改写文案时用，如 verify 已执行完命令才被拒） */
+export function isTaskUnreadableError(e: unknown): e is TriviumError {
+  return e instanceof TriviumError && (e.details as { kind?: unknown } | undefined)?.kind === TASK_UNREADABLE_KIND;
 }
 
 /** 宽松版：读不到就当空。只给「缺数据也能继续」的调用方用（如 report） */
@@ -344,6 +410,11 @@ export async function updateTask(
  *
  * **`mutate` 返回 `false` 表示「不写盘」**：幂等档与被拒档都需要「读了、判了、不改」，
  * 而在锁外先判一次再决定要不要进锁，等于把判据又挪回锁外。
+ *
+ * **正本读不出就拒写**（EV-248）：原先锁内用宽松的 `readTask`，读不出回落 `emptyTask`、改完照常写回——
+ * 坏件被整份覆盖，`approvals[]` 随之清空，而 `humanDecision` 的 fail-closed 要的正是那份坏件还在。
+ * 现在 `unreadable` 抛 `taskUnreadableError`（退 2），不调 `mutate`；`missing` 仍是新主题、从空正本起写。
+ * 调用方各自在第一次落盘之前先判一次，这里是兜底，不是唯一判定点（计划 r2 §三）。
  */
 export async function updateTaskAsync(
   l: ArchiveLayout,
@@ -353,7 +424,9 @@ export async function updateTaskAsync(
   return withTopicLock(
     { triviumDir: lock.triviumDir, topic: taskLockName(l.topic), heartbeatStaleMs: lock.heartbeatStaleMs },
     async () => {
-      const t = await readTask(l);
+      const read = await readTaskStrict(l);
+      if (read.state === 'unreadable') throw taskUnreadableError(l, read.error, '本次未写入');
+      const t = read.task;
       const r = await mutate(t);
       if (r === false) return t;
       t.updated_at = new Date().toISOString();

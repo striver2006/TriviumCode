@@ -73,7 +73,7 @@ import { collectBuildStampNotices, embeddedBuildStamp } from './build-stamp.js';
 import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
 import {
   RUN_ID_MAX_BUMPS, allocateRunId, finalizeFailedRunMeta, finalizeLines, newRunMeta, readRunMeta, readTask, readTaskStrict, registerRun, summarizeRun,
-  writeRunMeta,
+  taskUnreadableError, taskUnreadableExit, writeRunMeta,
   type TaskLock,
 } from './meta.js';
 import { acquireLock, type LockHandle } from './lock.js';
@@ -311,7 +311,7 @@ async function previousRoundFacts(layout: ArchiveLayout, stage: Stage): Promise<
       EXIT.GATE_BLOCK,
       `无法判定轮次链：${layout.topic} 的审批正本 task.json 读不出来（${t.error ?? '未知原因'}）。\n` +
         '  这里**不**按「各轮都已表态」新起一链——那会越过人工审核的停点，并把轮次与上限静默重置。\n' +
-        '  请先用 git 查看或恢复这份文件，再重新送审。',
+        taskUnreadableExit(layout, t.error),
     );
   }
   for (const id of ids) {
@@ -961,6 +961,16 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
   const rerunIndex = await resolveRerunIndex(ref.layout, stage, driver);
   // 轮次链（EV-247）：在分配 run_id 之前判，链中途改上限之类的拒绝不留任何东西
   const reviewLoop = await resolveReviewLoop(ref.layout, stage, opts.maxRounds ?? null);
+  /*
+   * 审批正本读不出就不开跑（EV-248 计划 r2 §三.5）：下面的骨架登记、任务目标落盘、纯文档跳过的收尾都写正本，
+   * 写入口会拒写，但那时闸门、brief、骨架与运行目录都已落下。判在分配 run_id 之前，零工件。
+   * 排在轮次链之后：有前序轮次时 `previousRoundFacts` 已按续链语境报过（它读不出也退 2）；
+   * 新阶段的第一轮它不读正本，由这里兜住。
+   */
+  const taskRead = await readTaskStrict(ref.layout);
+  if (taskRead.state === 'unreadable') {
+    throw taskUnreadableError(ref.layout, taskRead.error, '未开始本轮审查，没有留下任何工件');
+  }
   /*
    * 分配 run_id 的同时排他占下运行目录（EV-218）：运行目录按仓库分桶、不按主题分，两个主题同一秒起跑会分到同一个 id。
    * 占到的目录记进 claim，落盘段之前失败由外层 `prepareRun` 删掉（守 GLM-04 的零工件）。

@@ -129,7 +129,9 @@ export type GateFailureCode =
   /** 计划阶段有接受项，却没有执笔方的新一轮计划（EV-214，§6.6 规则 9） */
   | 'missing_next_plan'
   /** 新一轮计划在，但有被接受的编号没有整词逐字出现（EV-214，§6.6 规则 9） */
-  | 'next_plan_missing_ids';
+  | 'next_plan_missing_ids'
+  /** 审批正本 task.json 读不出：不是裁决缺口，`gate --check` 据此不写、不推进、退 2（EV-248） */
+  | 'task_unreadable';
 
 export interface GateFailure {
   code: GateFailureCode;
