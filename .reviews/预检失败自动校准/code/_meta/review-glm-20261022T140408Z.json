@@ -1,0 +1,85 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "本轮焦点（缺省时限 480 改 900、取值上限放宽到 900、doctor 工具超时单独按时限加 60 秒至多 960 秒、--wait 的工具超时不变）逐项核实成立：config.ts:421 缺省 recalibrate_deadline_s 为 900；schema config.v2.json 与 cli.ts parseDeadlineFlag（经 doctor-deadline.ts 的 DEADLINE_MIN_S=30 / DEADLINE_MAX_S=900）两侧上限一致；doctorToolTimeoutMs 实现 Math.min(960000, 时限×1000+60000)，bashTimeoutFor 仍在 run-protocol.ts:387 且封顶 600000 不变、两处 --wait 调用点未动；测试覆盖到位——单测 U3 断言 900→960000「不再按 --wait 的 600 s 封顶」、doctorToolTimeoutMs(5000) 封顶 960000、bashTimeoutFor(900) 仍 600000，U2 断言缺省 args 带 --deadline-s 900，集成 I5 经真实打包 CLI 断言 deadline_s=900 与 bash_timeout_ms=960000；与计划 r2（缺省 480、上限 540、共用公式）的偏差在设计 v1.3.173 台账与测试报告第一节、第六节均显式登记，属显式偏离；Claude Code 缺省 600 s 会先杀 900 s doctor 的取舍有手册显著提示与 BACKLOG 残余①登记，skill 对任何退出码继续、由重跑预检判成败，fail-safe。60 s 余量（启动+按组结束+兜底 20 s+收尾三步至多 15 s，各步经 bounded 限时）与代码注释自洽。三条意见均为文档与对账收尾级：BACKLOG EV-251 残留计划时代旧上限 540 与实现矛盾；schema maximum 与 DEADLINE_MAX_S 两份字面量无对账测试；测试报告第一节对 bashTimeoutFor 归属的描述与第六节矛盾。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "doc/08_project/BACKLOG.md:349（EV-251 登记条目，「doctor --deadline-s（30～540）」一处）",
+      "problem": "EV-251 的 done 登记里写「doctor --deadline-s（30～540）」，这是计划 r2 时代的旧上限：同一条目后半句已随用户决定更新为「配置键 preflight.recalibrate_deadline_s（缺省 900 即 15 分钟……至多 960 s）」，而实现（cli.ts parseDeadlineFlag 按 DEADLINE_MIN_S/DEADLINE_MAX_S 即 30～900）、设计 v1.3.173 §8.1 ③、PROTOCOL 命令表、USAGE 文案全部是 30～900。同一条目自相矛盾：未来维护者查 EV-251 台账核对取值范围时会被 540 误导，BACKLOG 正是这类对账的第一落点。",
+      "evidence": "doc/08_project/BACKLOG.md:349（grep 确认工作树现状为「doctor --deadline-s（30～540）」且同条目含「缺省 900 即 15 分钟」）；.reviews/预检失败自动校准/plan/2026-10-22-预检失败自动校准-r2-claude.md:119（计划原文「取值 30～540」）；src/trivium/cli.ts:937-943 与 src/trivium/doctor-deadline.ts:39-40（DEADLINE_MIN_S=30、DEADLINE_MAX_S=900）；diff 中设计 §8.1 ③「取值 30～900」与 PROTOCOL「--deadline-s <秒>（30～900，EV-251）」",
+      "suggestion": "把 EV-251 条目里的「（30～540）」更正为「（30～900）」，与同条目后半句及实现一致。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "skills/dual-critic/schema/config.v2.json（preflight.recalibrate_deadline_s 的 minimum/maximum）与 src/trivium/doctor-deadline.ts:39-40（DEADLINE_MIN_S/DEADLINE_MAX_S）",
+      "problem": "取值范围 30～900 现在是两份独立字面量：schema 判配置键、TS 常量判 CLI 旗标并给 USAGE 插值，两者之间没有任何对账测试（config-schema.test.ts 对账 vendor 形态、config-consumers.test.ts 对账消费方存在性，grep 全部测试无一处同时引用该 schema 键与 DEADLINE_MAX_S）。漂移的后果具体：schema 侧将来放宽而 CLI 侧漏改时，配置值合法通过 validateConfig、进 invocations 的 args 带 --deadline-s 照抄执行退 64，整轮自动校准每条调用白跑、只能靠用户读 64 报错发现；且 doctorToolTimeoutMs 的 960 s 封顶也钉在 DEADLINE_MAX_S 上，两侧不一致时工具超时与时限的 60 s 余量关系随之失真。这正是本仓库「靠记性的同步要换成不依赖记性的机制」反复踩过的同一事实两份实现形态，而 U3″（段次序常量对账）已给出现成形态。",
+      "evidence": "skills/dual-critic/schema/config.v2.json（diff 中新增 recalibrate_deadline_s：minimum 30、maximum 900）；src/trivium/doctor-deadline.ts:39-40、49-50（DEADLINE_MIN_S/DEADLINE_MAX_S 与 doctorToolTimeoutMs 封顶取它）；test/unit/config-consumers.test.ts:1-38（职责为「配置项必须有消费方」，不做数值对账）；grep test/ 全目录确认无对账用例；对照 test/unit/doctor-unused-overrides.test.ts U3″（源码对账的既有形态）",
+      "suggestion": "在 config-schema.test.ts 或 preflight-recalibrate.test.ts 加一条对账：读 config.v2.json，断言 preflight.recalibrate_deadline_s 的 minimum/maximum 分别等于 DEADLINE_MIN_S/DEADLINE_MAX_S（方向上至少断言 schema maximum 不大于 DEADLINE_MAX_S）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md:16（第一节表格「util/exec.ts」行）",
+      "problem": "第一节改动表写「bashTimeoutFor 自 run-protocol 挪来」，第六节收口读数又写「--wait 的 bashTimeoutFor 撤回 run-protocol 原处、不变」；工作树 grep 确认该函数只在 run-protocol.ts（util/exec.ts 无定义）。第一节描述的是实施中途的中间形态（曾挪去共用、终态另立 doctorToolTimeoutMs 并撤回），撤回后未回头更新，归档审计材料内部前后矛盾，后来者按第一节去 exec.ts 找 bashTimeoutFor 会扑空。",
+      "evidence": "doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md:16 与 :81（两处表述相反）；grep src/ 确认 bashTimeoutFor 仅存在于 src/trivium/run-protocol.ts:387-388",
+      "suggestion": "第一节该句更正为终态表述（如「实施中曾将 bashTimeoutFor 挪至 exec.ts 共用，终态撤回 run-protocol 原处不变，doctor 另立 doctorToolTimeoutMs」），与第六节一致。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "焦点四要素全部落实且各有断言：缺省 900（src/trivium/config.ts:421 与 U2/I5 断言）、CLI 与 schema 上限 30～900、doctorToolTimeoutMs 时限加 60 秒封顶 960 秒（test/unit/preflight-recalibrate.test.ts:176-178 逐值断言）、--wait 的 bashTimeoutFor 原样封顶 600 秒（run-protocol.ts:387-388，U3:179 断言 bashTimeoutFor(900) 仍 600000）",
+    "doctorToolTimeoutMs 与 bashTimeoutFor 分离是正确取舍：--wait 窗口仍受 Bash 缺省 600 s 约束，doctor 的时限可到 900 s，共用一个公式会把 doctor 也压回 600 s",
+    "与计划 r2（缺省 480、上限 540、min(600000,…) 封顶共用）的偏差在设计 v1.3.173 台账、报告第一节与第六节均显式登记（用户 2026-10-22 拍板），属显式偏离而非跑偏",
+    "Claude Code 缺省 600 s 上限会先于 900 s 时限杀掉 doctor 的取舍如实暴露：MANUAL §3.4 显著提示框给出 BASH_MAX_TIMEOUT_MS=960000 与调低配置键两条出路、BACKLOG EV-251 残余①登记、skill 片段对任何退出码继续下一条并由重跑预检判成败，fail-safe",
+    "60 秒余量的构成（进程启动、按组结束、兜底 20 秒、收尾三步各按剩余预算限时且每步至少 5 秒）在 doctor-deadline.ts 注释与 bounded/limited 实现之间自洽，到点后总时长封在余量内",
+    "I5 经真实打包 CLI 端到端断言 deadline_s=900 与 bash_timeout_ms=960000，U2 断言缺省 invocations 的 args 逐字带 --deadline-s 900，焦点改动不是只改常量、连输出面一起验证了"
+  ],
+  "not_covered": [
+    "本侧只读审查、未运行任何命令：npm run check 全量读数（3885/3883/0/2）、变异 M1～M14 读数、selftest 均采信报告与 evidence 目录留痕，未复跑",
+    "另三家载体（codex、agy、zcode 作为 Driver 时）的 Bash 工具能否按 bash_timeout_ms 设 960 秒级单次超时未核实——属 BACKLOG EV-251 残余①，实测需真实会话与配额",
+    "真实配额下的端到端（会话里让一家探针过期、走一次 /dual-review-plan 完整自动校准）未验证，报告第五节亦如实承认",
+    "报告所称「用户级 ~/.claude/settings.json 已设 BASH_MAX_TIMEOUT_MS=960000」未核实（属本机用户配置，本轮未读取）",
+    "DeadlineController 计时与宽限链（WORKER_TREE_GRACE_MS/WORKER_TREE_KILL_WAIT_MS 的实际数值与交互）只做了静态推理，未动态复测"
+  ],
+  "consulted": [
+    ".reviews/预检失败自动校准/code/_meta/changes-20261022T140408Z.diff",
+    "src/trivium/config.ts",
+    "src/trivium/doctor-deadline.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/types.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/util/fsx.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills-src/partials/preflight/recalibrate.md",
+    "test/unit/preflight-recalibrate.test.ts",
+    "test/unit/preflight.test.ts",
+    "test/unit/doctor-deadline.test.ts",
+    "test/unit/probe-section.test.ts",
+    "test/unit/config-consumers.test.ts",
+    "test/integration/doctor-deadline-cli.test.ts",
+    "test/contract/skill-recalibrate.test.ts",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    ".reviews/预检失败自动校准/plan/2026-10-22-预检失败自动校准-r2-claude.md",
+    ".reviews/预检失败自动校准/code/2026-10-22-预检失败自动校准-glm.md",
+    ".reviews/预检失败自动校准/code/2026-10-22-预检失败自动校准-response-claude.md"
+  ]
+}
