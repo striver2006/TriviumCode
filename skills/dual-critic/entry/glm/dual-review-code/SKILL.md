@@ -4,7 +4,7 @@ description: 对已有代码变更做背靠背双审，并产出逐条应答与�
 ---
 
 参数：本载体**不替换**参数占位符。参数就是用户随本命令给出的全部文本（跟在命令名后面，或被载体标成「User request」的那一段）；
-下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-gemini <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-gemini <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-gemini <值>] [--profile-claude <名>] [--native-claude] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--base <ref>] [--critics <id,…>] [--only claude|codex|gemini] [--allow-single]`
+下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-gemini <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-gemini <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-gemini <值>] [--profile-claude <名>] [--native-claude] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--base <ref>] [--max-rounds <n>] [--critics <id,…>] [--only claude|codex|gemini] [--allow-single]`
 
 **只在用户显式调用本命令时执行。** 本载体没有「禁止模型自行调用」的开关：你若是自己读到这份说明、
 而用户并没有调用本命令，不要执行其中任何一步。
@@ -112,7 +112,7 @@ TV preflight --stage code --driver glm --critics <critics> [--profile <名称>] 
 先运行：
 
 ```
-TV review --start --entry C --stage code --topic <主题> --driver glm --focus <提示语> [--goal <任务目标>] [--base <ref>] [--model-claude <模型>] [--model-codex <模型>] [--model-gemini <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-gemini <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-gemini <值>] [--profile-claude <名>] [--native-claude] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
+TV review --start --entry C --stage code --topic <主题> --driver glm --focus <提示语> [--goal <任务目标>] [--base <ref>] [--max-rounds <n>] [--model-claude <模型>] [--model-codex <模型>] [--model-gemini <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-gemini <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-gemini <值>] [--profile-claude <名>] [--native-claude] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
 ```
 
 `--entry C` 标记本次运行由命令 C 发起，记入 run.json 留痕；它也让 CLI 按 B/C/D 规则
@@ -154,6 +154,12 @@ resolve 总是输出该字段（用户没传时它就是 `HEAD`），而显式�
 允许一侧失败时不中止、产出结果并留痕（§12.4）。
 **漏传的后果是静默忽略用户的要求**——一侧失败就整次失败，
 而留痕里看不出用户曾经要求过降级。
+
+**多轮评审循环（EV-247）**：每个审核者给出「通过 / 修改后通过 / 不通过」三档结论，编排器按侧计票——
+不通过占半数及以上即本轮判不通过，你按裁决改完代码后**自动重审**（见第 6.5 步），直到通过或到最大轮次。
+resolve 输出的 `max_rounds.code` 非空时传 `--max-rounds <它的值>`，为 null 则不传（缺省 3 轮，上限 10）；
+重审的各轮照传同一个值——轮次链中途改上限会退 64。`--start` 返回的 `review_loop` 给出本轮是第几轮、最多几轮，
+开场播报里一并念出「评审循环第 k/N 轮」。
 
 若 resolve 输出的 `models` 字段非空，把其中的模型覆盖逐个原样传给对应的
 `--model-<审核者 id>`（`models` 的键就是审核者 id：`--model-claude` / `--model-codex` / `--model-gemini`）。
@@ -226,11 +232,32 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 - 三种裁决**都**要有非空理由；**接受**必须写明落点；
 - 禁止静默忽略任何一条（FR-14）。即使全部驳回也必须产出本件并写明「无修改及原因」。
 
+### 5.5 按裁决改代码
+
+写完应答件之后**直接按裁决改代码**（EV-247：代码审每一轮都是「裁决 → 改码」，不另写修订文档）：
+**只改已接受的项**，驳回与暂缓的不要动。改码放在第 6 步校验**之前**——校验通过后闸门要么转去重审、
+要么立起人工停点，停点期间业务写入会被拦下。
+
+改完先自查能编译、相关用例能过：用项目的常规构建 / 测试命令（本命令为此放行了 Bash）。
+Bash 只在这一步用来自查；审查进行中（第 3 步拉起之后、第 4 步之前）不得用它改业务文件，Hook 同样会拦。
+这一步不送审，下一轮重审或人工审批看的就是改后的代码。
+
 ### 6. 校验裁决完整性
 
 运行 `TV gate --stage code --topic <主题> --check --json`。
 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
 仍不通过则向用户说明缺口并停下，交给用户处理。
+
+### 6.5 按计票结论分支（多轮评审循环，EV-247）
+
+第 6 步通过后，先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+
+- **`rerun`**（本轮不通过、还有轮次）：闸门已回 idle，**不要**跑第 7 步停点。代码已在第 5.5 步按裁决改好，
+  回到第 3 步重新 `--start`，旗标与本轮同一组（同一个 `--max-rounds`、同一个 `--base`）——新一轮的补丁含改后的全部变更。
+  每一轮照常读全文、写应答件、改码、校验。
+- **`proceed`**（通过或修改后通过）：进第 7 步停点，审批的是已按裁决改好的代码。
+- **`human_review`**（已到最大轮次仍不通过，或本轮有效结论不足：有效票不到入选侧数的一半）：进第 7 步停点，停点话术会注明需人工审核。
+- `next_action` 为 null（本轮不在循环里，如旧版编排器）：照旧进第 7 步。
 
 ### 7. 停点
 
@@ -240,4 +267,4 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 **审批的发起权在用户手里。** 转述完就停下等他，不要自己去跑 `approve`——
 技术上你做得到（`approve` 不校验调用来源），正因如此这句才写在这里。
 
-**此后不得自动改代码、不得合入。** 等用户 `/dual-approve` 之后才能继续。
+**代码已在第 5.5 步按裁决改好；此后不得再改代码、不得合入。** 等用户 `/dual-approve` 之后才能继续。

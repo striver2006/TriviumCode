@@ -1527,8 +1527,8 @@ export async function probeClaude(
       const structured = await execProbe(
         bin,
         fx,
-        `对 ${fx.openFile} 做一次最小审查：schema 字段固定为 "trivium.review.v1"、` +
-          'verdict 给 "approve"、summary 用一句话概括文件内容，findings 留空数组即可。',
+        `对 ${fx.openFile} 做一次最小审查：schema 字段固定为 "trivium.review.v2"、` +
+          'verdict 给 "pass"、summary 用一句话概括文件内容，findings 留空数组即可。',
         { jsonSchema: schemaJson },
       );
       const judged = judgeJsonSchema({

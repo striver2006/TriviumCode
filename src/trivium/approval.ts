@@ -7,7 +7,7 @@
  */
 import type { Ctx, Stage } from './types.js';
 import { setGateChecked, getGate, type GateState } from './state.js';
-import { updateTask, readTaskStrict, type ApprovalRecord } from './meta.js';
+import { updateTask, readTaskStrict, type ApprovalRecord, type TaskMeta } from './meta.js';
 import type { ArchiveLayout } from './archive.js';
 import { resolveTopic } from './topic.js';
 import { resetStopBlockCount } from './lock.js';
@@ -106,19 +106,45 @@ const HUMAN_DECIDED: readonly GateState[] = ['approved', 'rejected', 'abandoned'
  * `missing` 与 `unreadable` 分开，就是为了这里：走宽松读会把「锚被搅坏」当成
  * 「没有审批记录」，于是已审批的闸门照旧被打回——**恰是本函数要修的缺陷，
  * 换个触发条件重现**。`missing` 则是真的没有记录（新主题），返回 false。
+ *
+ * 这个 fail-closed 只对「推不推进闸门」成立。轮次链判定（`review.ts previousRoundFacts`）
+ * 不经本函数判读不出：在那里「已表态」意味着断链、新起一链，方向恰好反过来（代码双审 r2 GLM-01），
+ * 它自己读正本、读不出就拒跑，再用 `decidedInTask` 判每一轮。
  */
 export async function humanDecidedThisRound(
   layout: ArchiveLayout,
   stage: Stage,
   runId: string,
 ): Promise<boolean> {
+  return (await humanDecision(layout, stage, runId)) !== 'undecided'; // unreadable 按已表态：fail-closed，理由见上
+}
+
+/**
+ * 同 {@link humanDecidedThisRound}，但把「读不出」单独报出来，供调用方给对的文案：
+ * 读不出时说「有人表过态」是不实陈述，会把排查引向错误方向（代码双审 r3 GLM-03）。
+ */
+export async function humanDecision(
+  layout: ArchiveLayout,
+  stage: Stage,
+  runId: string,
+): Promise<'decided' | 'undecided' | 'unreadable'> {
   // 空 run_id 不能当通配：`recordApproval` 在 gate.run_id 为 null 时写的就是空串
-  if (!runId) return false;
+  if (!runId) return 'undecided';
 
   const { task, state } = await readTaskStrict(layout);
-  if (state === 'unreadable') return true; // fail-closed，理由见上
-  if (state === 'missing') return false;
+  if (state === 'unreadable') return 'unreadable';
+  if (state === 'missing') return 'undecided';
 
+  return decidedInTask(task, stage, runId) ? 'decided' : 'undecided';
+}
+
+/** 审批正本读不出时，校验 / 停点命令按已表态保守处理的那句话（`--check` 与 `--await-approval` 共用） */
+export const TASK_UNREADABLE_HOLD =
+  '审批正本 task.json 读不出，按已表态保守处理：闸门状态保持不变。请先用 git 查看或恢复这份文件，再重跑本命令。';
+
+/** 已读到的正本里，该轮是否有人工表态（批准、拒绝或作废）。读不出怎么办由调用方按语境决定 */
+export function decidedInTask(task: TaskMeta, stage: Stage, runId: string): boolean {
+  if (!runId) return false;
   return (task.approvals ?? []).some(
     (a) =>
       a.stage === stage &&

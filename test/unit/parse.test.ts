@@ -7,12 +7,12 @@ import {
   checkReviewIntegrity,
   enumerateFallbackFindings,
 } from '../../src/trivium/parse.js';
-import type { Review } from '../../src/trivium/types.js';
+import type { ReviewV2 } from '../../src/trivium/types.js';
 
-function validReview(over: Partial<Review> = {}): Review {
+function validReview(over: Partial<ReviewV2> = {}): ReviewV2 {
   return {
-    schema: 'trivium.review.v1',
-    verdict: 'request-changes',
+    schema: 'trivium.review.v2',
+    verdict: 'pass-after-changes',
     summary: '最危险的一条：并发回滚未覆盖，可能造成数据不一致。',
     findings: [
       {
@@ -63,7 +63,7 @@ test('配平扫描不被字符串内的花括号骗到', () => {
 test('findings 为空数组合法（表示无问题）', () => {
   const r = parseReview(JSON.stringify(validReview({
     findings: [],
-    verdict: 'approve',
+    verdict: 'pass',
     summary: '通读计划与相关代码后未发现阻断性问题。',
     not_covered: ['未审查性能'],
   })));
@@ -281,7 +281,7 @@ test('结论之后追加的噪声对象顶不掉真正的结论', () => {
 test('全都不合格时如实报走得最远那一格的校验错误', () => {
   const r = parseReview('{"a":1}\n{"b":2}');
   assert.equal(r.ok, false);
-  assert.match(r.ok ? '' : r.reason, /不符合 trivium\.review\.v1/);
+  assert.match(r.ok ? '' : r.reason, /不符合 trivium\.review\.v2/);
 });
 
 test('extractJsonCandidates 去重并保序', () => {

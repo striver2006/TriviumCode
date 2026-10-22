@@ -6,7 +6,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.48
+> - **当前版本**：v1.0.49
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -255,15 +255,24 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 /dual-run <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>]
           [--profile <名称>] [--model-<审核者 id> <模型>]
           [--tier-<审核者 id> <档>] [--effort-<审核者 id> <值>] [--profile-<审核者 id> <名>]
+          [--max-rounds <n>] [--max-rounds-plan <n>] [--max-rounds-code <n>]
           [--critics <id,…>] [--only <一侧>] [--allow-single]
 ```
 
-出方案 → 双审 → 修订 → 编码 → 双审 → 应答 → 改码 → 真实执行编译测试。
+出方案 → 多轮双审与修订 → 编码 → 多轮双审、应答与改码 → 真实执行编译测试。
+
+**多轮评审循环**（v1.0.49 起，设计 v1.3.170 / 8.2.1）：每个审核者给出「通过 / 修改后通过 / 不通过」三档结论，编排器按侧计票——
+不通过占半数及以上即本轮判不通过，Driver 按裁决修改后自动重审；否则修改后通过占半数及以上判修改后通过，否则通过占半数及以上判通过，
+三档都不到半数（如三家各投一档）判修改后通过。后两种都是按意见修改后进入下一阶段。失败、超时、结论解析不出、读到对端产物而作废的一侧不计票。
+每个阶段最多几轮缺省 3、上限 10：`--max-rounds-plan` / `--max-rounds-code` 分别指定计划审与代码审，`--max-rounds` 同时指定两个阶段（两种写法并用时阶段专属的优先）。
+最后一轮仍判不通过（或有效结论不足：给出有效结论的审核者不到本轮入选的一半，比如三家里两家失败或作废）就停下来等你人工审核：`/dual-approve` 通过后让 Claude Code 接着往下走，拒绝或放弃即到此为止。
+计划审每一轮除了裁决件，还会写一份新版本的完整计划（`…-r<N>-claude.md`，全部驳回时开头写明「本轮无改动」），下一轮重审或编码阶段用的都是它；
+代码审每一轮只写裁决件，然后直接按接受的意见改代码，再进下一轮或进编译测试。
 
 `--critics` / `--only` / `--allow-single` 的含义见 4.7；在 `/dual-run` 里**计划审与代码审两轮共用同一组**。
 写了 `--critics` 时，开跑前的预检查的就是这几家（三个阶段的模型与登录都在开跑前查）。
 
-**A 是唯一不设人工闸门的命令**——它跑完整条链，中途不停。正文是**任务目标**（这次要达成什么），`--focus` 是可选补充。
+**A 是唯一平常不设人工闸门的命令**——它跑完整条链，中途不停；唯一的例外是上面那条「最后一轮仍判不通过」，那时停下等你审核。正文是**任务目标**（这次要达成什么），`--focus` 是可选补充。
 
 任务目标在审查员的任务书里只占一行、只取前 200 字（空白折成一个空格）。正文更长时（v1.0.28 起，设计 v1.3.88）：
 计划审查员的任务书末尾另有一段「附录：任务目标原文」，逐字给出你写的全文，让他们对照其中的现状与决策核对计划是否忠实；
@@ -279,7 +288,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
                   [--context <路径,…>] [--profile <名称>]
                   [--model-<审核者 id> <模型>]
                   [--tier-<审核者 id> <档>] [--effort-<审核者 id> <值>] [--profile-<审核者 id> <名>]
-                  [--plan-file <路径>] [--critics <id,…>] [--only <一侧>] [--allow-single]
+                  [--plan-file <路径>] [--max-rounds <n>] [--critics <id,…>] [--only <一侧>] [--allow-single]
 ```
 
 **对「已有」计划做双审**——所以先得有一份草稿落在 `.reviews/<主题>/plan/<日期>-<主题>-claude.md`。让 Claude Code 写好再发这条命令。
@@ -289,6 +298,10 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 ```
 /dual-review-code <审查焦点提示语> [--base <ref>] [其余同上]
 ```
+
+`/dual-review-plan` 与 `/dual-review-code` 同样走多轮评审循环（规则见 4.1，上限只用 `--max-rounds <n>` 一个旗标）：
+判不通过的中间轮**不停**，Claude Code 改完计划（或改完代码）直接重审；循环结束的那一轮（通过、修改后通过，或到上限仍不通过）才停在人工审批。
+`/dual-review-code` 每一轮写完应答件就按接受的意见改代码，所以停下来时你审批的是**已经改好**的代码。`/dual-review-bug` 不进循环。
 
 被审对象是 `git diff <base>`（默认 `HEAD`）+ 未跟踪文件。补丁**只算一次**后透传给两侧——逐侧各自 diff 会让两侧审的不是同一段变更。
 
@@ -621,7 +634,7 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | `evidence_ok: false` | **证据不足：本侧不得计为合格双审的一半** |
 | `drift: true` | 审查期间工作树变动过 |
 
-然后看 `verdict`：`approve` / `approve-with-nits` / `request-changes` / `block`。
+然后看 `verdict`：`pass`（通过）/ `pass-after-changes`（修改后通过）/ `reject`（不通过），正文「结论」一行同时写中文。v1.0.49（契约 `trivium.review.v2`）之前的旧审查件是四值 `approve` / `approve-with-nits` / `request-changes` / `block`，旧值不参与计票。本轮计票结果在 `_meta/run-<run_id>.json` 的 `round_verdict` 里，`gate --check --json` 与 `review --wait --json` 的 `round_line` 是它的一行摘要。
 
 每条意见有九个字段，其中 `evidence`（证据）和 `confidence`（置信度）最值得看——`confidence: low` 的意见不必当真，但也不该静默忽略。
 

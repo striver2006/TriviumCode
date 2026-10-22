@@ -5,7 +5,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.169
+> - **当前版本**：v1.3.170
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -1017,14 +1017,14 @@ TriviumCode/
 
 跳过时仍须在 `code/_meta/run-<run_id>.json` 写 `skipped: true` 与命中的规则，并在命令输出中明示；**不得**因跳过而生成任何伪造的审查文档。
 
-### 6.5 审查文档 schema（`trivium.review.v1`）
+### 6.5 审查文档 schema（`trivium.review.v2`；旧归档 `trivium.review.v1`）
 
-两侧共用。Agent 的最终回答必须是符合该 schema 的 JSON（`agy` 用 `--json-schema` 强制，`zcode` 用提示词约定 + 解析器校验）。
+全体审查员共用。Agent 的最终回答必须是符合该 schema 的 JSON（`agy` 用 `--json-schema` 强制，`zcode` 用提示词约定 + 解析器校验）。
 
 ```json
 {
-  "schema": "trivium.review.v1",
-  "verdict": "approve | approve-with-nits | request-changes | block",
+  "schema": "trivium.review.v2",
+  "verdict": "pass | pass-after-changes | reject",
   "summary": "不超过 8 行的总判断，先说最危险的一条",
   "findings": [
     {
@@ -1044,6 +1044,8 @@ TriviumCode/
   "consulted": ["src/auth/oidc.ts", "doc/01_requirements/PRD_x.md", "..."]
 }
 ```
+
+**v2 与三档结论（v1.3.170 起，EV-247）**：v2 只改根字段 `verdict`，由 v1 的四值（`approve` / `approve-with-nits` / `request-changes` / `block`）改为三档——`pass`（通过：可直接按它实施，意见只是建议）、`pass-after-changes`（修改后通过：按意见修改后即可实施、无需再审）、`reject`（不通过：必须修改后重新评审）；意见形状与 v1 完全相同。编排器据此按侧计票、判本轮整体结论并决定是否自动重审（8.2.1）。三档的判法写进任务书第 6 节输出契约（`round-verdict.ts` 的 `VERDICT_MEANING`，与 schema 的 `description` 同义）。**兼容**：v1 文件保留；审查员的**新产出**只认 v2（`review.ts` 显式 `parseReview(…, { accept: 'current' })`，v1 形态按根不合走既有重试与回退），重读归档与取证重放走缺省口径、两版都认。「这是审查件」的判据统一为 `isReviewSchemaId`（v1 ∪ v2），被审对象硬拒、禁读矩阵的对端产物判定、报告的轮次枚举都经它——漏认 v2 时对端的新审查件会落进「后缀等于 Driver 即放行」的分支，禁读静默失效。整份回退侧的 front-matter `verdict` 写 `null`（v1 时代补 `request-changes`，v2 起结论要计票，不再伪造）。
 
 `consulted`（可选但强烈要求）：审查员**实际读过**的项目文件相对路径清单，用于与工具轨迹交叉核对（11.4）、支撑 AC-11「结合整个项目评审」的验证（15.3）。`evidence` 字段引用的文件必须出现在 `consulted` 中。
 编排器对这一条的核对只是告警、不改判定，且只抽取**整段以九个常见根目录起头**（`src/ lib/ app/ test/ tests/ doc/ docs/ packages/ scripts/`，容许前导 `./`）的 ASCII 路径：
@@ -1205,7 +1207,7 @@ addresses:               # 本件应答的审查文档文件名，不是意见�
    **「双方」这个措辞随 N 审泛化为「两家」**：阈值 2 的语义是「至少两个独立来源指出同一处」，与入选总数无关——三家里的两家仍是两个独立来源，故 N=3 时阈值不上调。
    **按 10.1.1 判作废的一侧不计入独立来源**：它作为「第二只眼」的身份已不可采信，与它每条意见是否属实无关。排除后有效侧不足两家时，按 12.1 落三态字段并告警，**不得静默返回空集**。
 8. `parse_fallback` 侧（AD-08）的原文意见同样必须逐条进入裁决表：Driver 自行按 `<前缀>-F<序号>` 编号并标 `来源: fallback`；`gate` 对该侧只校验「每条被编号的意见均有裁决与理由」，不参与规则 7 的共同阻断判定。**v1.3.68 起 `<前缀>-F<n>` 只属于整份回退**（6.5.1）；逐条降级的意见按**原编号**裁决，与合格意见同一套逐行校验（接受要写落点），但同样不参与规则 7——`gate --check` 出 `degraded_findings` 告警点名它们。
-9. **计划阶段有接受项 ⇒ 必须有执笔方的新一轮计划**（v1.3.89 起，EV-214）。动因：代码阶段必读清单列的「本主题计划定稿」取执笔方最新一轮计划（9.4 第 4 条，`resolvePlanFinal`），Driver 没写新一轮计划时送去的是未修订的原稿——已接受的修改落进代码会被看成偏离计划，漏改了也查不出。判据落在 `checkAdjudication`（`checkNextPlan`），排在全部既有失败项之后、照常一次全报；`gate --check`、`--await-approval` 与 `approve` 的审批前复核共用，命令 A 与 B 同时生效。**只在 `stage === plan` 时执行**，代码与 bug 阶段不适用。
+9. **计划阶段有接受项 ⇒ 必须有执笔方的新一轮计划**（v1.3.89 起，EV-214；v1.3.170 起带轮次链的轮次**每轮都要**，见下）。动因：代码阶段必读清单列的「本主题计划定稿」取执笔方最新一轮计划（9.4 第 4 条，`resolvePlanFinal`），Driver 没写新一轮计划时送去的是未修订的原稿——已接受的修改落进代码会被看成偏离计划，漏改了也查不出。判据落在 `checkAdjudication`（`checkNextPlan`），排在全部既有失败项之后、照常一次全报；`gate --check`、`--await-approval` 与 `approve` 的审批前复核共用，命令 A 与 B 同时生效。**只在 `stage === plan` 时执行**，代码与 bug 阶段不适用。**多轮评审循环（v1.3.170，EV-247）**：run.json 带 `review_loop` 的轮次无论有无接受项都要求这份新一轮计划存在（全部驳回 / 暂缓时开头写「本轮无改动」及原因，再给完整计划），缺了判 `missing_next_plan`（`ids` 为空、文案点名应写的文件名）；逐号引用仍只核接受项。判据入口是 `PlanFinalInput.alwaysRequired`，由 `loadRoundReviews` 与代码阶段复核 `recheckPlanFinal` 按该轮 `review_loop` 在不在派生；不带它的旧轮次照旧「有接受项才要求」。
    - **何时要求**：本轮裁决件里有**期望集内**的编号被裁为「接受」（合格 ∪ 逐条降级 ∪ 整份回退的 `<前缀>-F<n>`——给了 `.fallback-items.md` 时按清单，否则按表里出现的虚拟编号行）。期望集外的接受行只由 `unknown_findings` 报，不进本条。全部驳回、全部暂缓、零意见时不要求，上一轮计划即为定稿。
    - **新一轮计划**：`plan/` 根下、文件名可解析、主题相同、后缀为当轮 Driver、无 `-revised` / `-response` 中缀、不是审查件（`isReviewArtifact`，与 `locateSubject` 同一道剔除），轮次**大于基准轮次**。**基准轮次 = 本轮被审对象的轮次**（run.json `plan_final_check.subject_rerun_index`，6.7.1），被审对象在归档外、没有轮次时才取 `rerun_index`——不取两者的 max：`rerun_index` 只数审核者工件，上一轮全部驳回后复审未修订的原稿时它是 2 而被审对象仍是 r1，取 max 会要求 r3、与流程说明「被审对象轮次 + 1」自相矛盾（计划双审 GLM-01）。
    - **核对哪一份**：本轮**已被后续运行接手**（本阶段 run_id 更晚的某次运行，其标记里的被审对象轮次高于基准）时核候选中轮次最小的一份，即紧随本轮的那份——多轮主题逐轮各核其后一份，`--run-id` 回看早期轮次不因定稿只引用最后一轮编号而转红；否则本轮就是在用的一轮，核轮次最大的一份，即代码阶段会读的定稿（计划双审 AGY-01、GLM-03）。
@@ -1347,6 +1349,8 @@ v1.3.88 前本句写「任务目标原文」，与实现不符，EV-210）。`go
 | `snapshot.drift.unknown_reason` | 跑后复算**比不了**改了哪些文件时才写（9.2 第 3.a′ 步）：`{ cause, detail }`，`cause` ∈ `object_gone`（送审快照或跑后复算的 tree 已不在对象库）/ `git_error`（其余 git 失败，含 tree 值不是合法对象名）/ `timeout`（git 调用超时），枚举唯一来源是 `types.ts` 的 `DRIFT_UNKNOWN_CAUSES`；`detail` 是单行事实（报错首行，截 300 字符，不回显不合形状的 tree 值）；对象 `additionalProperties: false`。此时既有三字段含义不变：`changed` 为 true（结论不是 `none`，与 `subject_drift` 同形）、`files` 为空、`policy` 取本轮实际适用的 `on_drift_related`。**只取加法**：`drift` 子对象本身不禁额外键，旧版本读新留痕照过、只看到「changed 真、0 个文件」；缺席 = 比对成功或本字段之前的旧留痕 | **可选** | 【已实现 · v1.3.70，EV-139】`src/trivium/freeze.ts`、`src/trivium/review.ts` |
 | `termination` | 这一次终态由哪条事后收尾写的（6.7 注记）：`{ by, exit_code }`（`by` 取 `worker_exception` / `prepare_exception` / `sync_exception` / `post_spawn_exception`）或 `{ by: "worker_lost", reason }`，两个形状各自 `additionalProperties: false`。`worker_exception` 由 worker 异常分支写、`worker_lost` 由 `--wait` 判失联且确认工作进程已退出时写（或由 `review --cancel` 在 `--wait` 判 `heartbeat_stale` 之后结束仍挂着的工作进程并确认退出时照写，v1.3.54，EV-146）、`prepare_exception` 由准备阶段写完骨架之后失败（含 `startRun` 在子进程诞生之前失败）时本进程写、`sync_exception` 由同步路径 `executeRun` 抛错时本进程写（后两者 v1.3.50，EV-145）、`post_spawn_exception` 由 `--start` 在子进程诞生之后失败、终止工作进程并确认退出之后本进程写（v1.3.51，EV-150）；缺席 = 正常收尾、取消轮（`status: cancelled` 已说明来路）或本字段之前的留痕。**只存结构化字段、不存异常原文**：原文会把本机绝对路径带进会提交的归档，还可能撞上密钥扫描、让整次终态写入跳过。第一个形状的 `by` 与 `types.ts` 的 `EXCEPTION_TERMINATION_BY`、`reason` 与 `status.ts` 的 `WORKER_LOST_REASONS` 逐项相等，由用例守住。**只增不减**：schema 在构建期内嵌进 bundle，旧 bundle 读不懂新取值（读成 null，当轮 Driver 判定随之判坏）；回滚代码时保留「取值面」——本 schema、`EXCEPTION_TERMINATION_BY`、`report` 的说明与对应用例——只回退行为代码，重建并重装（派生后失败的孤儿worker计划 r2 §6.3，零配额验收 A7 演练过；只留 schema 会让单一来源用例 S3 / V9 变红） | **可选** | 【已实现 · v1.3.48，EV-142；扩值 v1.3.50，EV-145；扩值 v1.3.51，EV-150】`src/trivium/meta.ts`、`src/trivium/run-protocol.ts`、`src/trivium/review.ts` |
 | `plan_final_check` | 计划定稿校验的标记（EV-214，§6.6 规则 9）：`{ subject_rerun_index }`，`additionalProperties: false`。**只在计划阶段**、由 v1.3.89 起的编排器在骨架里写入，代码与 bug 阶段不写。**存在即「本轮按规则 9 判」**：闸门只对带它的轮次要求有接受项时存在执笔方的新一轮计划；缺席 = 本字段之前的旧留痕，有接受项时 `gate --check` 出 `next_plan_unchecked` 告警、不判失败（不追溯历史，与 `driver_enabled` 同一「缺失即无从得知」口径）。`subject_rerun_index` 是本轮被审对象的轮次：位于本主题 `plan/` 根、文件名可解析、后缀为当轮 Driver、无中缀时取其轮次，否则（归档外的 `--plan-file`、名字不合规）为 `null`、闸门的基准轮次退回 `rerun_index`。run.json 此前不记被审对象的路径或轮次，基准轮次只能由它给出 | **可选** | 【已实现 · v1.3.89，EV-214】 |
+| `review_loop` | 轮次链位置（EV-247，8.2.1）：`{ round, max_rounds }`，均为 1～10 的整数，`additionalProperties: false`。**只在计划与代码阶段**、由 `review --start` 在骨架里写入；bug 阶段与纯文档跳过轮不写（跳过轮不消耗轮次、不打断轮次链，8.2.1）。**存在即「本轮按多轮评审循环的规则跑」**：闸门据 `round_verdict.next_action` 定闸门去向，计划阶段每轮都要求新一轮计划（6.6 规则 9）。缺席 = 本字段之前的旧留痕，闸门完全按旧规则判 | **可选** | 【已实现 · v1.3.170，EV-247】 |
+| `round_verdict` | 本轮按侧计票（EV-247，8.2.1）：`{ sides, excluded, counts, outcome, next_action }`。`sides` 计了票的侧及三档结论；`excluded` 入选而不计票的侧及原因（`failed` / `parse_fallback` / `voided` / `legacy_schema` / `missing`）；`outcome` 为三档之一或 `undetermined`（一票有效结论都没有）；`next_action` 为 `rerun` / `proceed` / `human_review`。带 `review_loop` 且跑成了的运行在收尾时一次写入；失败、取消、跳过的运行缺席，闸门此时不推断下一步 | **可选** | 【已实现 · v1.3.170，EV-247】 |
 
 `effort_effective` 必须**回读**而非采信请求值：部分厂商存在请求值归并映射
 （如 DeepSeek 的 `medium/high/xhigh → high`），「请求 medium 实际生效 high」。
@@ -1807,13 +1811,17 @@ stateDiagram-v2
     S2_计划双审 --> S3_修订计划: 两份意见齐备
     S3_修订计划 --> S4_裁决校验
     S4_裁决校验 --> S3_修订计划: 有缺裁决编号
-    S4_裁决校验 --> S5_编码实现
+    S4_裁决校验 --> S2_计划双审: 计票不通过且还有轮次（rerun）
+    S4_裁决校验 --> HOLD_人工审核: 到上限仍不通过或有效结论不足（human_review）
+    S4_裁决校验 --> S5_编码实现: 通过或修改后通过（proceed）
     S5_编码实现 --> S6_代码双审: 冻结 diff
     S6_代码双审 --> S7_应答确认
-    S7_应答确认 --> S8_裁决校验
-    S8_裁决校验 --> S7_应答确认: 有缺裁决编号
-    S8_裁决校验 --> S9_按接受项改代码
-    S9_按接受项改代码 --> S10_编译测试
+    S7_应答确认 --> S8_按接受项改代码
+    S8_按接受项改代码 --> S9_裁决校验
+    S9_裁决校验 --> S7_应答确认: 有缺裁决编号
+    S9_裁决校验 --> S6_代码双审: 计票不通过且还有轮次（rerun）
+    S9_裁决校验 --> HOLD_人工审核: 到上限仍不通过或有效结论不足（human_review）
+    S9_裁决校验 --> S10_编译测试: 通过或修改后通过（proceed）
     S10_编译测试 --> [*]: 成功或失败均落盘
     S2_计划双审 --> FAIL_严格中止: 单侧失败且 strict
     S6_代码双审 --> FAIL_严格中止: 单侧失败且 strict
@@ -1827,20 +1835,31 @@ stateDiagram-v2
 | S0.6 | `trivium preflight --stage all --critics …` | — | 见 8.1；**在解析之后**，带上 S0.5 的入选、档位与模型覆盖，查全部三个阶段入选各侧的 slug 与探活——用户显式加进来的一家不在这里查，就要到 S6 才暴露（EV-125 前为 S0，排在解析之前、只查缺省集合）；通过时念 `warnings`（v1.3.41）；推导出的主题在本步通过后才回显确认 |
 | S1 | Driver | `plan/<日期>-<主题>-claude.md` | 由 Driver 用 Write 落盘；`archive` 事后校验命名合规与非覆盖 |
 | S2 | `trivium review --stage plan` | 两份审查文档 + `_meta/` | 见第 9、10、11 章；`--start` 返回的 `warnings` 在开场播报里念出（v1.3.41） |
-| S3 | Driver | `plan/…-revised-claude.md` | 必须逐条裁决（6.6） |
-| S4 | `trivium gate --stage plan --check` | 通过/缺口清单 | 不通过时把缺失编号回喂 Driver |
+| S3 | Driver | `plan/…-revised-claude.md` + 新一轮完整计划 `-r<N+1>-` | 必须逐条裁决（6.6）；v1.3.170 起每轮都写新一轮完整计划（6.6 规则 9） |
+| S4 | `trivium gate --stage plan --check` | 通过/缺口清单 + 计票（`next_action`） | 不通过时把缺失编号回喂 Driver；通过后按 `next_action` 分支：`rerun` 回 S2、`proceed` 进 S4.5、`human_review` 立人工停点并停止（8.2.1） |
 | S5 | Driver | 业务代码变更 | 唯一写代码者 |
 | S6 | `trivium review --stage code` | 两份审查文档 + `_meta/changes.diff` | diff 冻结见 9.2；纯文档 diff 按 6.4 判定 |
-| S7 | Driver | `code/…-response-claude.md` | 逐条「接受/驳回/暂缓 + 理由 + 修改计划」 |
-| S8 | `trivium gate --stage code --check` | 同 S4 | — |
-| S9 | Driver | 代码修改 | 仅按已接受项修改 |
+| S7 | Driver | `code/…-response-claude.md` | 逐条「接受/驳回/暂缓 + 理由 + 修改计划」；代码审只写这份裁决件 |
+| S8 | Driver | 代码修改 | 仅按已接受项修改；v1.3.170 起放在校验**之前**（校验后闸门可能立起停点、锁业务写入） |
+| S9 | `trivium gate --stage code --check` | 同 S4 | 通过后按 `next_action` 分支：`rerun` 回 S6、`proceed` 进 S10、`human_review` 立人工停点并停止 |
 | S10 | `trivium verify` | `verify/<日期>-<主题>-verify.md` + JSON | **真实执行**，失败则全流程状态为 `failed`（AC-10） |
 
-**命令 A 不设人工闸门**（PRD 4.4），但仍受 Hook 的「审查期禁写」与「裁决未完成不得收工」两条护栏约束。
+**命令 A 平常不设人工闸门**（PRD 4.4），但仍受 Hook 的「审查期禁写」与「裁决未完成不得收工」两条护栏约束。唯一的例外是评审循环到上限仍判不通过（v1.3.170，8.2.1 的 `human_review`）。
+
+#### 8.2.1 多轮评审循环（v1.3.170，EV-247）
+
+计划审与代码审各是一个循环，三条命令（A / B / C）同一套规则；bug 审不进循环。
+
+- **三档结论与计票**（`round-verdict.ts`，纯函数）：每个审核者在 review.v2 里给 `pass` / `pass-after-changes` / `reject`（6.5）。分母只收给出了有效结构化结论且未作废的侧（失败 / 超时、整份回退、作废、旧契约 v1、读不到都列进 `excluded`）。整数比较 `2k ≥ n`：不通过 ≥ 50% ⇒ 不通过；否则修改后通过 ≥ 50% ⇒ 修改后通过；否则通过 ≥ 50% ⇒ 通过；三档都不到半数（如三家各投一档）⇒ 修改后通过；**有效票 × 2 < 入选侧数**（含一票都没有）⇒ `undetermined`，即「有效结论不足」，先于上面四条判（计划 r2 D-5，用户 2026-10-22 确认：双审剩一票仍可定论，三审及以上剩一票不行）。`round_verdict` 两组键由 `schemas.ts checkAgentIdentities` 按注册表与入选集合校验，同一侧不得同时计票又列为不计票。计票只看结构化结论，不看 Driver 的裁决：裁决决定改什么，结论决定还要不要再审。
+- **下一步**：不通过且本轮 < 上限 ⇒ `rerun`；不通过且已到上限、或 `undetermined` ⇒ `human_review`；通过两档 ⇒ `proceed`。
+- **轮次链与上限**：`review --start --max-rounds <n>`（1～10，缺省 3；常量不进配置）。本阶段最近一次**算数**的运行判了 `rerun` 且没被人工表态 / 作废（`humanDecidedThisRound`，含 abandoned）即续链：轮次 +1、上限沿用链首（「算数」= 从新到旧跳过带轮次链、没有计票、也没被表态的运行——失败、超时、取消的那次不消耗轮次，重试仍是同一轮；纯文档跳过轮（`skipped: true`）同样跳过、不打断链，`previousRoundFacts`）；续链时显式给了不同的上限退 64。上一轮判 `human_review` 且未表态 ⇒ 退 64，不新起一链——「停下人工审核」由归档正本把守，不只靠本机闸门状态的比较-交换（槽位缺失时它放行）。往旧处走时遇到读不出的运行留痕 ⇒ `EXIT.GATE_BLOCK` 拒跑，不折成「没有上一轮」（入口的 Driver 判定只挡得住比最新可读份更新的坏件）。本阶段已有运行而审批正本 `task.json` 读不出 ⇒ 同样 `EXIT.GATE_BLOCK` 拒跑：`humanDecidedThisRound` 读不出时判「已表态」是闸门推进语境的 fail-closed，搬到轮次链里每一轮都成了已表态，失败轮不再被跳过、`human_review` 的拒绝不再触发，结果是静默新起一链；所以 `previousRoundFacts` 自己读一次正本、读不出就拒跑，再用 `decidedInTask` 逐轮判（代码双审 r2 GLM-01）。其余情形新起一链（第 1 轮）。以上拒绝都在分配 run_id 之前，零工件。bug 阶段给 `--max-rounds` 退 64。`topic resolve` 输出 `max_rounds: { plan, code }`：命令 A 收 `--max-rounds-plan` / `--max-rounds-code` 分别指定、`--max-rounds` 同时作用（专属的优先）；B / C 只认 `--max-rounds`，写了阶段专属旗标退 64。
+- **留痕与透出**：骨架写 `review_loop`，收尾写 `round_verdict`（6.7.1）；`--start` 返回 `review_loop`，`--wait` / `--status` 成功收尾时与 `gate --check --json` 一样给 `review_loop` / `round_verdict` / `next_action` / `round_line`（一行播报）。
+- **闸门去向**（`gate --check` 通过后，盖过 entry 的分流）：`rerun` ⇒ 一律回 idle（B / C 中间轮也不立人工停点，否则续轮被 `review --start` 的比较-交换拦下）；`human_review` ⇒ 一律立 `awaiting_approval`（命令 A 的唯一停点），`--await-approval` 的停点话术注明「需人工审核」；`proceed` ⇒ 照旧按 entry（A 回 idle、B / C 立停点）。没有计票的运行完全按旧规则。
+- **每轮产出**：计划审每轮写裁决件 + 新一轮完整计划（6.6 规则 9），重审的被审对象自动取轮次最大的那份；代码审每轮只写裁决件，然后**在校验之前**按接受项改码（命令 C 最后一轮也是先改码再立审批停点，用户 2026-10-22 定）。
 
 ### 8.3 命令 B / C / D 流程
 
-三条命令同构，差异见下表；共同点：**必须带提示语**、**双审后写裁决件**、**在裁决校验通过后停在人工审批**。
+三条命令同构，差异见下表；共同点：**必须带提示语**、**双审后写裁决件**、**在裁决校验通过后停在人工审批**。v1.3.170 起 B / C 进多轮评审循环（8.2.1）：计票判 `rerun` 的中间轮不立人工停点、改后直接续轮，只有循环结束的那一轮（`proceed` 或 `human_review`）才停在人工审批；C 每轮写完应答件即按接受项改码（第 5.5 步，放在校验之前）。D 不进循环。
 
 | 项 | B（plan） | C（code） | D（bug） |
 | :--- | :--- | :--- | :--- |
@@ -4054,6 +4073,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.170** | 2026-10-22 | **多轮评审循环与三档结论计票（EV-247）。** 用户新需求：计划审与代码审每个审核者给「通过 / 修改后通过 / 不通过」，按比例判整体结论，不通过即改后自动重审，最大轮次缺省 3、可指定、上限 10，最后一轮仍不通过停下人工审核；/dual-run 两阶段可分别指定上限；计划审每轮另出完整新计划，代码审每轮裁决后直接改码；/dual-review-plan、/dual-review-code 同样适用。拍板：契约升 review.v2（三值）、三档都不到半数判修改后通过、命令 C 最后一轮先改码再停审批、由 Driver 直接实施后走代码双审。**一、契约**（6.5）：新增 `review.v2.json`，`isReviewSchemaId` 统一读取侧判据（含禁读矩阵与被审对象硬拒），新产出只认 v2、归档两版都认，回退侧 front-matter `verdict` 写 null。**二、计票与轮次链**（8.2.1）：新模块 `round-verdict.ts`；run.v3 补可选 `review_loop` / `round_verdict`（6.7.1，不升契约版本）；`review --start --max-rounds`、`topic resolve` 三个轮次旗标。**三、闸门**：`rerun` 回 idle、`human_review` 立停点（含命令 A）、`proceed` 照旧；计划阶段带轮次链的轮次每轮要求新一轮计划（6.6 规则 9）。**四、skill**：/dual-run S2～S4、S6～S9 改为循环（S8 改码挪到 S9 校验之前），B / C 第 6.5 步按 `next_action` 分支、C 第 5.5 步裁决后直接改码。测试新增 `round-verdict` 单测 17 条、`review-loop` 集成 11 条、`plan-final-gate` I8 一条，三条 EV-214 用例改按新语义或改成旧运行形态。**五、代码双审 r2**（run `20261022T005651Z`：gemini `approve` 零意见、glm `approve-with-nits` 2 条全接受）：审批正本读不出时续链判定拒跑（GLM-01，`previousRoundFacts` 自读正本、`approval.ts` 抽出 `decidedInTask`；与计划 r2 §四.4「读不出判已表态 ⇒ 新链」相反，用户 2026-10-22 定直接改码、偏差登记在 BACKLOG EV-247），集成 L10；两侧整份回退 ⇒ `undetermined` ⇒ 人工审核的端到端用例 L11（GLM-02）。r2 应答件 GLM-01 落点里的「设计 6.7.1 补一句」是笔误，实际补在 8.2.1（r3 GLM-02 指出，在 r3 应答件订正）。**六、代码双审 r3**（run `20261022T023850Z`，评审循环第 1/3 轮：两侧 `pass`，计票通过；glm 3 条 nit 全接受）：L11 补闸门立停点断言（GLM-01）；`approval.ts` 新增三态的 `humanDecision`，`--await-approval` 与 `--check` 在正本读不出时改说「按已表态保守处理」，不再说「已有人工审批记录」、`--check` 也不接本机状态对账（GLM-03）。改码时实测发现 `updateTask` 会静默覆盖读不出的正本、`gate --check` 在判定前就会写一次，早于本主题，登记 EV-248。 |
 | **v1.3.169** | 2026-10-18 | **M12 残余两条修复：doctor 覆盖旗标提示（EV-245）与 `--start` 共享根检查（EV-246）。** 主题 `doctor旗标提示与start共享根检查`（`/dual-run`，计划双审 run `20261018T072932Z`：gemini `approve`、glm `approve-with-nits` 1 条 nit 接受 → r2）。**一、EV-245**（7.1 档位旗标节）：`doctor` 的 `--model-<id>` 补上与档位旗标同一份判键（`picked` 取全部审核者，对现注册表全部放行）；`runDoctor` 的 `overridesFor` 成为覆盖值唯一读点，写了却没用上的覆盖按运行期记录分三种原因给一条提示，只进 `warnings`，退出码与 `--json` 既有字段不变。**二、EV-246**（8.1 预检表、`--start` 返回 `warnings` 一段、7.4.1）：`startRun` 的告警复查在档位组合之后、必读剔除之前追加 `checkSharedReadRoots`（当轮 Driver ∪ 入选审核者），场合词「本次运行」；预检侧缺省场合词不变。顺带补上 `--start` 来源清单此前漏列的档位组合一项。17.2 加两行。代码双审 run `20261018T081641Z`：gemini `approve`，glm `approve-with-nits` 1 条 nit 接受（扫描出错分支的场合词补用例与变异）。验收：变异预跑与正式装置均 14/14；新旧对照 8 格全部符合预期（共享根干净时 `--start` 人读与 `--json` 规范化后逐字节相同）。16.1 M12 行残余 ②③ 标注已修。报告 `REPORT_2026-10-18_doctor_flags_start_shared_root.md`。 |
 | **v1.3.168** | 2026-10-18 | **M12 收口。** 16.1 M12 行翻为已达成：批次 5（v1.3.166）与计划外追加的共享根残留检测（v1.3.167）补进状态列，验收列所列 EV 逐条写明处置，列出达成边界与残余四条；文档头状态段补 M12 一句。两条残余登记 BACKLOG：EV-245（`doctor` 不判 `--model-<id>` 的键）、EV-246（`review --start` 不跑共享读取面检查）。纯文档，B 档未走双审。 |
 | **v1.3.167** | 2026-10-18 | **共享根历史形态残留检测（EV-240 残余）。** 主题 `M12-共享根残留检测`（`/dual-run`，计划三审 run `20261018T023000Z`：三侧 `approve-with-nits`，6 条全接受，r2 定稿）。新类别 `shared-residue`：额外读取根里的 `dual-critic` / `entry` 按内容认定为本产品（运行时身份行 + `schema/`，或含入口子树）才判，别家同名不判；安装器与 `install:check` 整次拒装，doctor 全量列出、preflight 对本轮相关的家给一条警告，四处同一份实现；当前运行时根放在共享根里时按真实路径豁免（编排器另豁免自身产物所在的运行时根）；共享根无残留时四处输出与 v1.3.166 逐字节相同，安装根 `residue` 不变（7.4.1、8.1）。代码三审 run `20261018T031358Z`：glm / gemini `approve`，codex 1 条 minor 接受（A-2 验收子进程补 HOME 隔离后重取）。验收：安装器新旧 13 格符合预期（无残留 10 格逐字相同，有残留 3 格新产物拒装且一个文件都不写），doctor / preflight 新旧 16 格，变异预跑 15/15、正式装置 14/14，全量 3730 / 3728 / 0 / 2。报告 `REPORT_2026-10-18_m12_shared_residue.md`。 |

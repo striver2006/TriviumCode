@@ -91,14 +91,14 @@ export async function locateSubject(
      * 静默换成别的就是那族「解析成功、随后被悄悄替换」的缺口。而把一份审查意见
      * 当原稿送审，产出的是「对意见的意见」，留痕上看不出审错了东西。
      *
-     * 判据只认 `trivium.review.v1`（见 `isReviewArtifact`）：没有 front-matter 的
+     * 判据只认审查契约 v1 ∪ v2（见 `isReviewArtifact`）：没有 front-matter 的
      * 手写原稿、以及 Driver 的裁决件，一律放行。后者是有意的——用户显式指定裁决件
      * 属明确意图，而自动候选按 `kind === null` 过滤，裁决件本就选不上。
      */
     if (await isReviewArtifact(abs)) {
       throw missingArtifact(
         `指定的被审对象是一份**审查件**，不是原稿：${explicitPath}\n` +
-          '  它的 front-matter 是 schema: trivium.review.v1，由编排器从审查员的结构化输出渲染而成。\n' +
+          '  它的 front-matter 是 schema: trivium.review.v2（旧归档为 v1），由编排器从审查员的结构化输出渲染而成。\n' +
           '  拿它当被审对象会让这一轮审的是「对意见的意见」。请指向原稿。',
       );
     }

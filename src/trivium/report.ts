@@ -249,7 +249,7 @@ const bump = (m: ValueCounts, k: string): void => {
  * 同一阶段换成 codex 当 Driver 后，codex 的新一轮计划 `…-r3-codex.md` 被当审查文档、定义出幽灵轮次，
  * 而 claude 作为审核者写的审查文档反被当原稿排除——闸门侧早已按当轮 driver 定位（`gate.ts`），报告是唯一没跟上的读侧。
  *
- * 没有可读 run.json 的轮次号拿不到当轮 driver，先看内容：front-matter 为 `trivium.review.v1` 即审查文档
+ * 没有可读 run.json 的轮次号拿不到当轮 driver，先看内容：front-matter 为审查契约（v1 ∪ v2）即审查文档
  * （`isReviewArtifact`，计划三审 AGY-01）；为假再按后缀兜底——后缀不属于「本阶段记过的 driver ∪ 缺省 Driver」才算。
  * 兜底不能省：front-matter 缺失 / 损坏的真审查件内容谓词判假（EV-63），「有工件就得出现」要靠它。
  * 这一规则只用于枚举，该轮 Driver 记为读不到（`buildRound`）。

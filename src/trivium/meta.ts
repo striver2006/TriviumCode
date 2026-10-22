@@ -8,7 +8,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type {
-  AgentId, CriticId, LegacyReviewMode, PlanFinalCheck, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
+  AgentId, CriticId, LegacyReviewMode, PlanFinalCheck, ReviewLoop, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
 } from './types.js';
 import { describeDriftUnknown } from './types.js';
 // gate.ts 的静态依赖闭包不含本文件（EV-224 编码时核过），不成环
@@ -402,6 +402,11 @@ export interface NewRunMetaInput {
    */
   planFinalCheck?: PlanFinalCheck;
   /**
+   * 轮次链位置（EV-247）：计划与代码阶段由 `prepareRun` 传入，bug 阶段与跳过轮不传、不写。
+   * 理由同 `planFinalCheck`：缺失即「这一轮不按多轮循环的规则判」，不在这里按阶段补默认值。
+   */
+  reviewLoop?: ReviewLoop;
+  /**
    * 本轮实际使用的档位表名（`--profile` 覆盖后的 `active_profile`，M11 第 6 步，设计 6.7.1 顶层 `profile`）。
    * `review` 的准备阶段恒传；可选只是为了不逼几十处只关心别的字段的测试夹具一起改——
    * 生产写侧不存在「没传」这条路，所以缺席仍只表示 M11 第 6 步之前的旧留痕。
@@ -440,6 +445,7 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     driver_enabled: i.driverEnabled ?? true,
     ...(i.driverGuardLevel !== undefined ? { driver_guard_level: i.driverGuardLevel } : {}),
     ...(i.planFinalCheck !== undefined ? { plan_final_check: { subject_rerun_index: i.planFinalCheck.subject_rerun_index } } : {}),
+    ...(i.reviewLoop !== undefined ? { review_loop: { round: i.reviewLoop.round, max_rounds: i.reviewLoop.max_rounds } } : {}),
     ...(i.profile !== undefined ? { profile: i.profile } : {}),
     critics_selected: [...i.criticsSelected],
     snapshot: {

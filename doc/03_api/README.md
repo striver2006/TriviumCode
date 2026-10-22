@@ -31,5 +31,5 @@
   > 与 PRD FR-08 及设计 §6.2 冲突，勿再沿用。
 - 工件数据字段统一用**蛇形命名法**（snake_case），与四份 JSON Schema 一致；
   TypeScript 源码内部的局部变量用驼峰，两者在适配边界转换。
-- 协议一律带 `schema` 字段做版本标识（`trivium.review.v1` 等），
+- 协议一律带 `schema` 字段做版本标识（`trivium.review.v2` 等），
   解析方先校验 `schema` 再校验结构。

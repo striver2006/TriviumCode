@@ -1,7 +1,7 @@
 /**
  * 任务书第 6 节输出契约（设计 §9.4；计划 r2 §3.7、§5.1 B 组；EV-113、EV-124）。
  *
- * 枚举取值与必填字段**从 review.v1.json 读**再比对，不在用例里写死第二份——schema 改了，这里跟着变。
+ * 枚举取值与必填字段**从现行契约 review.v2.json 读**再比对，不在用例里写死第二份——schema 改了，这里跟着变。
  * 名字带〔回归〕的格在改前构建上也必须绿。
  */
 import { test } from 'node:test';
@@ -11,7 +11,7 @@ import { defaultConfig } from '../../src/trivium/config.js';
 import { buildCodexArgs } from '../../src/trivium/adapters/codex.js';
 import { CRITIC_VENDOR, CRITICS, type CriticId } from '../../src/trivium/types.js';
 import type { Snapshot } from '../../src/trivium/freeze.js';
-import reviewSchema from '../../skills/dual-critic/schema/review.v1.json' with { type: 'json' };
+import reviewSchema from '../../skills/dual-critic/schema/review.v2.json' with { type: 'json' };
 
 const SNAP: Snapshot = {
   gitHead: null, treeHash: 't', dirty: false, subjectSha256: 's',
@@ -43,7 +43,7 @@ type Schema = {
 };
 const S = reviewSchema as unknown as Schema;
 
-test('B1 四个枚举字段的合法取值逐项列出，且与 review.v1.json 一致', () => {
+test('B1 四个枚举字段的合法取值逐项列出，且与 review.v2.json 一致', () => {
   const s6 = section6(brief('codex'));
   for (const k of ['severity', 'layer', 'kind', 'confidence']) {
     const values = S.properties.findings.items.properties[k]!.enum!;

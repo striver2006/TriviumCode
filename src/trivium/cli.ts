@@ -24,7 +24,7 @@ import { selftestCommand } from './selftest.js';
 import { runReview } from './review.js';
 import { collectCommands, runVerify, summarizeVerify } from './verify.js';
 import { buildTopicReport, renderTopicReport } from './report.js';
-import { cancelRun, installForegroundInterruptForwarding, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
+import { cancelRun, installForegroundInterruptForwarding, readRoundFacts, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
 import {
   approveForkRecovery, awaitApprovalRecovery, checkAdjudication, loadRoundReviews, renderGateResult,
   renderTamperedArtifacts, verifyRoundForApproval,
@@ -45,7 +45,8 @@ import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from '
 import { assertFlagValuesGiven, assertTierFlags, collectTierFlags, nativeFlagNames, vendorProfileAgents } from './tier-flags.js';
 import { scrubAllRunRoot } from './retention.js';
 import { wiredAdapter } from './adapters/index.js';
-import { COMMAND_ENTRIES, STAGES, type CommandEntry, type CriticId, type Stage } from './types.js';
+import { COMMAND_ENTRIES, STAGES, type CommandEntry, type CriticId, type Ctx, type NextAction, type ReviewLoop, type RoundVerdict, type RunMeta, type Stage } from './types.js';
+import { renderRoundLine } from './round-verdict.js';
 import { emitJson, fail, isJsonMode, say, setOutputMode, step, warn } from './util/log.js';
 import {
   renderWorkTreeSummary, summarizeWorkTree, summaryBudget, unavailableSummary,
@@ -219,6 +220,9 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
                   与本轮禁读集相交则拒跑（退 64）
       --plan-file / --rca-file  显式指定被审对象
       --base <ref>  仅 code 阶段：diff 比较基线，默认 HEAD
+      --max-rounds <n>  仅 plan / code 阶段：本阶段评审循环的最大轮次（1～10，缺省 3，EV-247）。
+                  本轮按侧计票判不通过且还有轮次时，闸门回 idle、Driver 改后重跑即续链；
+                  续链沿用链首的上限，中途给不同的值退 64；bug 阶段给了也退 64
       ${CRITIC_AGENT_IDS.map((id) => `--model-${id}`).join(' / ')} <模型>
                   本次模型覆盖（取值清单随注册表；只对本轮入选的审核者有效，
                   给没入选的一家指定模型退 64，不静默丢弃；写了不给值同样退 64）
@@ -259,6 +263,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
   trivium review --wait <run_id> [--timeout <秒>] [--json]
       轮询到完成或本次窗口用尽。退出码 73 表示仍在运行（**不是失败**），
       打印进度后继续下一次 --wait。
+      运行成功结束时另给 review_loop / round_verdict / next_action / round_line（轮次链与计票，EV-247）。
 
   trivium review --status <run_id> [--json]    只读一次状态，不等待
   trivium review --cancel <run_id>             取消运行、回收主题锁与闸门；工作进程确认退出后，
@@ -337,6 +342,9 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
       --await-approval    置闸门为 awaiting_approval 并输出停点话术
       校验通过后闸门去哪由 run.json 的 entry 决定：B/C/D 直接立起 awaiting_approval
       （停点是这三条命令的定义），A 与无 entry 的调用回 idle。
+      带轮次链的运行（EV-247）先看计票的 next_action：rerun（不通过且还有轮次）一律回 idle 以便重审，
+      human_review（到上限仍不通过或有效结论不足）连 A 也立 awaiting_approval；proceed 照上面按 entry。
+      --json 另给 review_loop / round_verdict / next_action / round_line。
 
   trivium gate hook-pre-write | hook-pre-bash | hook-pre-commit | hook-stop | hook-session-start
       Claude Code Hook 入口，从 stdin 读事件。**不应由人直接调用。**
@@ -486,6 +494,27 @@ function progressFields(out: {
   };
 }
 
+/**
+ * 轮次链与计票（EV-247）的透出字段，`--wait` 与 `--status` 共用（同 `progressFields` 的理由：两条命令同一组字段）。
+ *
+ * 只在运行**已结束且成功**（退出码 0）时去读归档 run.json——计票在收尾时才落；运行中读它只会读到骨架。
+ * 三个键恒在：读不到或本轮不在循环里时为 null，skill 据 `next_action` 是否为 null 判「本轮按不按循环走」。
+ */
+async function roundFields(ctx: Ctx, runId: string, exitCode: number): Promise<{
+  review_loop: ReviewLoop | null; round_verdict: RoundVerdict | null; next_action: NextAction | null; round_line: string | null;
+}> {
+  const none = { review_loop: null, round_verdict: null, next_action: null, round_line: null };
+  if (exitCode !== EXIT.OK) return none;
+  const facts = await readRoundFacts(ctx, runId).catch(() => null);
+  if (!facts?.review_loop || !facts.round_verdict) return { ...none, review_loop: facts?.review_loop ?? null };
+  return {
+    review_loop: facts.review_loop,
+    round_verdict: facts.round_verdict,
+    next_action: facts.round_verdict.next_action,
+    round_line: renderRoundLine(facts.review_loop, facts.round_verdict),
+  };
+}
+
 async function cmdReview(args: ParsedArgs): Promise<number> {
   const ctx = await loadCtx();
 
@@ -515,6 +544,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
       timeoutS = n;
     }
     const out = await waitRun(ctx, waitId, timeoutS);
+    const round = await roundFields(ctx, waitId, out.exitCode);
     if (isJsonMode()) {
       emitJson({
         ok: out.exitCode === EXIT.OK,
@@ -524,9 +554,11 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
         artifacts: out.status?.artifacts ?? [],
         message: out.status?.message ?? null,
         ...progressFields(out),
+        ...round,
       });
     } else {
       say(out.progress);
+      if (round.round_line) say(round.round_line);
     }
     return out.exitCode;
   }
@@ -534,6 +566,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   const statusId = flagString(args, 'status');
   if (statusId) {
     const out = await statusRun(ctx, statusId);
+    const round = await roundFields(ctx, statusId, out.exitCode);
     if (isJsonMode()) {
       emitJson({
         ok: out.exitCode === EXIT.OK,
@@ -541,9 +574,11 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
         phase: out.status?.phase ?? null,
         status: out.status,
         ...progressFields(out),
+        ...round,
       });
     } else {
       say(out.progress);
+      if (round.round_line) say(round.round_line);
     }
     return out.exitCode;
   }
@@ -688,6 +723,17 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
   // 档位旗标（M11 第 5 步）：收集与判定与 topic resolve、preflight 同一份（tier-flags.ts）
   const tierFlags = assertTierFlags(ctx.config, driver, collectTierFlags(tierFlagGetter(args)), critics);
 
+  /*
+   * 评审循环的最大轮次（EV-247）：只校形状与范围（1～10），阶段适用性（bug 阶段不收）与续链一致性在 `prepareRun` 判——
+   * 那里才读得到上一轮，两类拒绝都在分配 run_id 之前，不留工件。
+   */
+  const maxRoundsRaw = flagString(args, 'max-rounds');
+  if (maxRoundsRaw !== null) {
+    const { maxRoundsProblem } = await import('./round-verdict.js');
+    const problem = maxRoundsProblem(maxRoundsRaw, '--max-rounds');
+    if (problem) throw usageError(problem);
+  }
+
   const reviewOpts = {
     ctx,
     stage,
@@ -697,6 +743,7 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
     entry,
     contextPaths: contextRaw ? contextRaw.split(',').map((c) => c.trim()).filter(Boolean) : [],
     subjectFile: flagString(args, 'plan-file') ?? flagString(args, 'rca-file'),
+    maxRounds: maxRoundsRaw === null ? null : Number.parseInt(maxRoundsRaw, 10),
     diffBase: flagString(args, 'base'),
     modelOverrides: models,
     tierFlags,
@@ -723,6 +770,8 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
           max_waits: 0, skipped: true, notice: st.inlineNotice ?? '',
           // 键恒在：没有审查员会被拉起，不计算（EV-123）
           warnings: st.warnings,
+          // 键恒在（EV-247）：纯文档跳过轮不进轮次链，恒为 null
+          review_loop: null,
         });
       } else {
         say(st.inlineNotice ?? `运行 ${st.runId} 已在同步窗口内完成，无需 --wait。`);
@@ -745,9 +794,12 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
         run_dir: st.runDir,
         // 拉起前按当轮入选侧复查的只警告项，键恒在；skill 在开场播报里逐条念出（EV-123）
         warnings: st.warnings,
+        // 轮次链位置（EV-247），键恒在：bug 阶段为 null；skill 在开场播报里念「第 k/N 轮」
+        review_loop: st.reviewLoop,
       });
     } else {
       say(`已启动运行 ${st.runId}（工作进程 pid ${st.workerPid}）`);
+      if (st.reviewLoop) say(`  评审循环第 ${st.reviewLoop.round}/${st.reviewLoop.max_rounds} 轮`);
       // detail 自带 ⚠️ 前缀（与预检同一个函数产出），这里不再叠一个符号
       for (const w of st.warnings) say(`  ${w.detail}`);
       say(`  请循环调用：trivium review --wait ${st.runId} --timeout ${st.waitTimeoutS}`);
@@ -1159,6 +1211,28 @@ const HOOK_NAMES: readonly HookName[] = [
   'hook-pre-write', 'hook-pre-bash', 'hook-pre-commit', 'hook-stop', 'hook-session-start',
 ];
 
+/** 计票判「停下人工审核」时停点上的说明（EV-247） */
+const HUMAN_REVIEW_REASON =
+  '评审循环已到最大轮次仍判不通过（或本轮有效结论不足：有效票不到入选侧数的一半），按规则停下人工审核：' +
+  '通过即按最新一版计划 / 代码继续，拒绝或放弃即停止；要再审一轮，先表态再重新发起';
+
+/**
+ * run.json → 轮次链与计票的透出字段（EV-247），`gate --check` 与 `--await-approval` 共用。
+ * 没有计票（旧运行、bug 阶段、没跑成）时 `next_action` 与 `round_line` 为 null。
+ */
+function roundFactsOfMeta(m: RunMeta | null): {
+  review_loop: ReviewLoop | null; round_verdict: RoundVerdict | null; next_action: NextAction | null; round_line: string | null;
+} {
+  const loop = m?.review_loop ?? null;
+  const rv = loop ? m?.round_verdict ?? null : null;
+  return {
+    review_loop: loop,
+    round_verdict: rv,
+    next_action: rv?.next_action ?? null,
+    round_line: loop && rv ? renderRoundLine(loop, rv) : null,
+  };
+}
+
 async function cmdGate(args: ParsedArgs): Promise<number> {
   // ── Hook 入口 ──
   const sub = args.sub[0];
@@ -1419,11 +1493,14 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
      * 已放行的闸门打回等待。与 `--check` 那两个分支是同一缺陷的三处落点，
      * 判据同样以归档里的审批记录为正本。
      */
-    const { humanDecidedThisRound } = await import('./approval.js');
-    if (await humanDecidedThisRound(ref.layout, stage, runId)) {
+    const { humanDecision, TASK_UNREADABLE_HOLD } = await import('./approval.js');
+    const decision = await humanDecision(ref.layout, stage, runId);
+    if (decision !== 'undecided') {
       const msg =
-        `本轮（第 ${rerunIndex} 轮）已有人工审批记录，闸门状态保持不变。\n` +
-        `  要重新走停点，请先对本轮重新表态，或另起一轮审查。`;
+        decision === 'unreadable'
+          ? TASK_UNREADABLE_HOLD
+          : `本轮（第 ${rerunIndex} 轮）已有人工审批记录，闸门状态保持不变。\n` +
+            `  要重新走停点，请先对本轮重新表态，或另起一轮审查。`;
       if (isJsonMode()) emitJson({ ok: true, state: 'unchanged', stage, rerun_index: rerunIndex, message: msg });
       else say(msg);
       return EXIT.OK;
@@ -1452,8 +1529,11 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
      * 此前写死 `/dual-approve` 与「（Hook 会拦下）」，对 L2 载体后半句不成立。
      */
     const approveCmd = entryCommandOf(gateDriver, 'dual-approve');
+    const holdLoop = roundFactsOfMeta(await readRunMeta(ref.layout, stage, runId));
     const msg =
       `已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
+      (holdLoop.round_line ? `  ${holdLoop.round_line}\n` : '') +
+      (holdLoop.next_action === 'human_review' ? `  ${HUMAN_REVIEW_REASON}\n` : '') +
       `  通过：${approveCmd} --topic ${shellQuoteArg(topic)} --stage ${stage} [--reason <附言>]\n` +
       `  拒绝：${approveCmd} --topic ${shellQuoteArg(topic)} --stage ${stage} --reject --reason <理由>\n` +
       `  放弃：${entryCommandOf(gateDriver, 'dual-abandon')} --topic ${shellQuoteArg(topic)}\n` +
@@ -1494,6 +1574,12 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs, planFinal,
   });
 
+  /*
+   * 轮次链与计票（EV-247）：随校验结果一起给，skill 据 `next_action` 决定重审、进入下一阶段还是停下。
+   * 只在校验通过时有意义——裁决没齐，哪一步都不该走——但键恒在，未通过时照样给出，方便播报。
+   */
+  const roundMeta = await readRunMeta(ref.layout, stage, runId);
+  const loop = roundFactsOfMeta(roundMeta);
   if (isJsonMode()) {
     emitJson({
       ok: result.ok,
@@ -1504,9 +1590,11 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       fallback_ids: result.fallbackIds,
       degraded_ids: result.degradedIds,
       disposition: result.dispositionPath,
+      ...loop,
     });
   } else {
     say(renderGateResult(result));
+    if (loop.round_line) say(`· ${loop.round_line}`);
   }
 
   /*
@@ -1568,8 +1656,18 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    *   · 读不到 entry（旧 run.json、或手工调用）→ 同样回 idle，保持向后兼容：
    *     这条路径上没人声称过有停点，不能凭空造一个出来拦住用户。
    */
-  const entry = result.ok ? (await readRunMeta(ref.layout, stage, runId))?.entry ?? null : null;
-  const stopsForApproval = entry === 'B' || entry === 'C' || entry === 'D';
+  const entry = result.ok ? roundMeta?.entry ?? null : null;
+  /*
+   * 带轮次链的运行（EV-247）按计票的下一步分流，盖过 entry：
+   *   · `rerun`：中间轮，闸门回 idle——B/C 也不立人工停点，否则 `review --start` 的比较-交换会拦下重审；
+   *   · `human_review`：已到上限仍不通过、或没有有效结论——A 也立 `awaiting_approval`（命令 A 唯一的人工停点）；
+   *   · `proceed`：照旧按 entry。
+   * 没有计票（旧运行、或骨架之后没跑成）时 `next_action` 为 null，完全按 entry 判。
+   */
+  const stopsForApproval =
+    loop.next_action === 'rerun' ? false
+      : loop.next_action === 'human_review' ? true
+        : entry === 'B' || entry === 'C' || entry === 'D';
 
   /*
    * 本轮人已经表过态了就**不推进状态**——`--check` 是校验命令，没资格撤销审批。
@@ -1578,9 +1676,13 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    * 两处都只带 `expect: { runId }`，只挂一个，重跑 `--check` 仍会把已放行的闸门
    * 改写成 idle。判据以归档里的审批记录为正本，理由见 `humanDecidedThisRound`。
    */
-  const { humanDecidedThisRound } = await import('./approval.js');
-  const alreadyDecided = result.ok ? await humanDecidedThisRound(ref.layout, stage, runId) : false;
-  if (alreadyDecided) {
+  const { humanDecision, TASK_UNREADABLE_HOLD } = await import('./approval.js');
+  const decision = result.ok ? await humanDecision(ref.layout, stage, runId) : 'undecided';
+  const alreadyDecided = decision !== 'undecided';
+  if (decision === 'unreadable') {
+    // 不接下面的对账：那几句都以「归档记着本轮已审批」开头，这一格并不成立（代码双审 r3 GLM-03）
+    warn(TASK_UNREADABLE_HOLD);
+  } else if (alreadyDecided) {
     say('· 本轮已有人工审批记录，闸门状态保持不变（校验命令不撤销审批）');
     /*
      * **对账本机状态，不一致就如实报告**（上一轮裁决件 §2.2 #12 承诺、未兑现，
@@ -1636,6 +1738,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     } else {
       const msg =
         `裁决齐备，已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
+        (loop.next_action === 'human_review' ? `  ${HUMAN_REVIEW_REASON}\n` : '') +
         `  停点话术：trivium gate --stage ${stage} --topic ${shellQuoteArg(topic)} --await-approval\n` +
         `  ${await holdNoticeFor(ctx.projectRoot, gateDriver)}`;
       if (!isJsonMode()) {
@@ -1650,7 +1753,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   }
 
   /*
-   * 以下是 entry A 与无 entry 的路径：校验通过即把闸门从
+   * 以下是 entry A、无 entry、以及计票判 `rerun` 的中间轮（不分 entry，EV-247）的路径：校验通过即把闸门从
    * `review_done_awaiting_disposition` 放行回 idle。
    *
    * 不这样做的话，`hook-pre-commit` / `hook-stop` 会在裁决**已经补齐之后**

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { recordApproval, humanDecidedThisRound } from '../../src/trivium/approval.js';
+import { recordApproval, humanDecidedThisRound, humanDecision } from '../../src/trivium/approval.js';
 import { setGate, getGate } from '../../src/trivium/state.js';
 import { readTask } from '../../src/trivium/meta.js';
 import { defaultConfig } from '../../src/trivium/config.js';
@@ -163,6 +163,21 @@ test('EV-29：正本损坏时 fail-closed —— 不推进，而不是当成没�
     true,
     '读不出正本时必须保守——宁可不推进，也不能凭「读不到」去撤销人的审批',
   );
+});
+
+test('代码双审 r3 GLM-03：humanDecision 把「读不出」与「确已表态」分开报', async () => {
+  const ctx = await fakeCtx();
+  const layout = { archiveRoot: ctx.archiveRoot, topic: TOPIC };
+  assert.equal(await humanDecision(layout, 'plan', 'R1'), 'undecided', '没有正本');
+  await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: 'R1', heartbeatStaleMs: STALE });
+  await recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision: 'approved', verifiedRunId: 'R1' });
+  assert.equal(await humanDecision(layout, 'plan', 'R1'), 'decided');
+  assert.equal(await humanDecision(layout, 'plan', 'R2'), 'undecided');
+  assert.equal(await humanDecision(layout, 'plan', ''), 'undecided', '空串不当通配');
+
+  await fs.writeFile(path.join(ctx.archiveRoot, TOPIC, TASK_FILE), '{ 这不是合法 JSON', 'utf8');
+  assert.equal(await humanDecision(layout, 'plan', 'R1'), 'unreadable');
+  assert.equal(await humanDecision(layout, 'plan', 'R2'), 'unreadable', '读不出时与哪一轮无关');
 });
 
 /*

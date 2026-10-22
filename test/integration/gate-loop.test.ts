@@ -130,6 +130,8 @@ test('双方共同 blocker 被驳回 → task.json 记 disputed，status 显示�
     ].join('\n'),
     'utf8',
   );
+  // 带轮次链的计划轮全部驳回也要写新一轮完整计划（EV-247），否则闸门先判 missing_next_plan
+  await writeNextPlan(fx.stageDir, 2, []);
   const g = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
   assert.equal(g.code, EXIT.OK, `默认 warn 策略下不阻断：\n${g.stdout}${g.stderr}`);
   assert.match(g.stdout, /joint_blocker_rejected/);

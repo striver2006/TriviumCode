@@ -1,10 +1,10 @@
 ---
 name: dual-run
-description: 全流程双审：出方案 → 双审 → 修订 → 编码 → 双审 → 应答 → 改码 → 真实执行编译测试（命令 A）
+description: 全流程双审：出方案 → 多轮双审与修订 → 编码 → 多轮双审、应答与改码 → 真实执行编译测试（命令 A）
 ---
 
 参数：本载体**不替换**参数占位符。参数就是用户随本命令给出的全部文本（跟在命令名后面，或被载体标成「User request」的那一段）；
-下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-gemini <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-gemini <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-gemini <值>] [--profile-claude <名>] [--native-claude] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--critics <id,…>] [--only claude|codex|gemini] [--allow-single]`
+下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-gemini <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-gemini <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-gemini <值>] [--profile-claude <名>] [--native-claude] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--max-rounds <n>] [--max-rounds-plan <n>] [--max-rounds-code <n>] [--critics <id,…>] [--only claude|codex|gemini] [--allow-single]`
 
 **只在用户显式调用本命令时执行。** 本载体没有「禁止模型自行调用」的开关：你若是自己读到这份说明、
 而用户并没有调用本命令，不要执行其中任何一步。
@@ -28,7 +28,7 @@ description: 全流程双审：出方案 → 双审 → 修订 → 编码 → �
 **你不得自行调用 `agy` 或 `zcode`。** 并行、超时、指纹、轨迹核验、防覆盖命名、
 裁决校验全部在编排器内（设计 §16.2 纪律 4）。
 
-**命令 A 不设人工闸门**（PRD 4.4），但仍受两条护栏约束：审查期禁写业务文件、
+**命令 A 平常不设人工闸门**（PRD 4.4）——唯一的例外是评审循环到最大轮次仍判不通过（EV-247，见 S4 / S9 的 `human_review`），那时停下人工审核。它仍受两条护栏约束：审查期禁写业务文件、
 裁决未完成不得收工。本载体的 Hook 只作尽力拦截、不兜底（护栏等级 L2），这两条仍要**靠你自觉**。
 审查期越界由跑后漂移复算发现（分档同下面的护栏段）；裁决未齐就收工只有尽力的 Stop 拦截、不兜底（生效前提见 QUICKSTART §5.2）——命令 A 没有审批这一步。
 本命令保留 Bash 是给 S5 编码用的（跑构建、跑测试）；审查期内**不要**用它改业务文件——
@@ -73,6 +73,9 @@ S0 这个标签不再使用。
 - `critics`：本轮**入选的审核者集合，计划审与代码审两轮共用这一组**。S0.6、S2、S6 都把 resolve 输出的 `critics`
   用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；
 - `allow_single`：为 true 时 S2、S6 都加 `--allow-single`（用户显式要求的降级：一侧失败时不中止，§12.4）。
+- `max_rounds`：`{ plan, code }`，两个阶段各自的评审循环最大轮次（EV-247）。用户可用 `--max-rounds-plan` / `--max-rounds-code`
+  分别指定、用 `--max-rounds` 同时指定两阶段（专属的优先），取值 1～10；null 表示不指定（缺省 3 轮）。
+  `plan` 非空时 S2 的每一轮都传 `--max-rounds <plan>`，`code` 非空时 S6 的每一轮都传 `--max-rounds <code>`；null 不传。
 
 用户写的 `--only` 已被 resolve 并进 `critics`、输出的 `only` 恒为 null——**任何一步都不要传 `--only`**。
 
@@ -110,6 +113,9 @@ TV preflight --stage all --driver glm --critics <critics> [--profile <名称>] [
 与本步所用不同时才重跑本步。`driver` 不在比对之列：S0.5 的命令恒显式带上本载体自己的 id 作为 Driver，输出的 `driver` 恒等于它，
 新主题的留痕或声明与之冲突时解析会退 64，而不是换一个 Driver。
 
+S0.6 通过后（与主题回显同一条消息），告诉用户本次两个阶段的评审循环上限：「计划审最多 P 轮、代码审最多 C 轮」，
+P / C 取 `max_rounds` 的对应项，null 时写 3（缺省）。
+
 ### S0.8 认领 plan 阶段
 `TV topic claim --topic <主题> --stage plan --driver glm --json`（`<主题>` 取 S0.5 输出的 `topic`）
 
@@ -133,7 +139,12 @@ Driver 会话声明使用 S0.5 的 `driver_model` / `driver_provider`，非空�
 - `--profile` 传 S0.5 的 `profile`，为空则不传；`models` 非空时逐个传对应的 `--model-<审核者 id>`；`tiers` / `efforts` / `vendor_profiles` 非空时逐个传对应的 `--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`； 接入字段缺席表示继承；vendor_profiles 中显式 null 必须传 --native-<审核者 id>，非空传 --profile-<审核者 id>，同侧不同时传。
 - `--critics` 传 S0.5 的 `critics`（逗号连接），**无条件传**；`allow_single` 为 true 时加 `--allow-single`；
   **不要传 `--only`**（理由见 S0.5）：两个旗标同时递给 `--start` 会被判互斥退 64；
-- **`--driver glm` 照带**（与 S0.5 / S0.6 同一个值）：它决定原稿按谁的后缀定位、谁不得入选。
+- **`--driver glm` 照带**（与 S0.5 / S0.6 同一个值）：它决定原稿按谁的后缀定位、谁不得入选；
+- `--max-rounds` 传 S0.5 的 `max_rounds.plan`，为 null 则不传；S2～S4 重审的每一轮传同一个值（轮次链中途改上限退 64）。
+
+**多轮评审循环（EV-247）**：每个审核者给出「通过 / 修改后通过 / 不通过」三档结论，编排器按侧计票；
+S2～S4 是一个循环——不通过占半数及以上且还有轮次时，按裁决改完计划回到 S2 重审，直到通过或到最大轮次。
+`--start` 返回的 `review_loop` 给出本轮是第几轮、最多几轮，开场播报里念出「计划审第 k/N 轮」。
 
 **每次 `--wait` 的 Bash 调用工具超时设为返回的 `bash_timeout_ms`。**
 
@@ -152,23 +163,32 @@ Driver 会话声明使用 S0.5 的 `driver_model` / `driver_provider`，非空�
 事后都看不出用户曾经指定过。开场播报念出的 `models` 以本轮入选侧为键——侧名与用户要求的不符，就是漏传了。
 
 ### S3 修订计划
-读两份审查全文，写 `…-revised-<当轮 Driver>.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
+读全部审查全文，写 `…-revised-<当轮 Driver>.md`，逐条裁决（接受/驳回/暂缓 + 理由，接受写落点）。
 后缀与 front-matter 的 `role` 都填**你自己的 Agent id**，不是固定的 `claude`。
 
-**裁决件里有「接受」时，同时写一份新一轮计划**（§6.6 规则 9，EV-214）：
+**每一轮都同时写一份新版本的完整计划**（§6.6 规则 9，EV-214；EV-247 起不再只在有「接受」时才写）：
 
-- 文件名 `…-r<N>-<当轮 Driver>.md`，与原稿同目录；N 比本轮被审对象的轮次大 1（第 1 轮即 `r2`），后缀同样是**你自己的 Agent id**；
+- 文件名 `…-r<N>-<当轮 Driver>.md`，写在本主题的 `.reviews/<主题>/plan/` 下——原稿经 `--plan-file` 来自归档外时也一样（闸门与代码阶段只在那里找新一轮计划）；N 比本轮被审对象的轮次大 1（第 1 轮即 `r2`），后缀同样是**你自己的 Agent id**；
 - 开头列「相对上一轮的改动」，**逐条引用**被接受意见的编号（整份回退侧的 `<前缀>-F<n>` 也要写），再给出合入后的完整计划；
-- 它就是代码阶段送审的「本主题计划定稿」——代码审查员读的是轮次最大的那份计划，没有它读到的是未修订的原稿。写完之后不要再另写更高轮次的计划而不送审；
-- 全部驳回或全部暂缓时不写，上一轮计划即为定稿。
+  全部驳回或全部暂缓时，开头写明「本轮无改动」及原因，再照抄完整计划——不能省略这份文件；
+- 本轮判不通过、要重审时，下一轮送审的就是它；判通过 / 修改后通过时，它就是代码阶段送审的「本主题计划定稿」——代码审查员读的是轮次最大的那份计划。写完之后不要再另写更高轮次的计划而不送审。
 
-闸门对带 `plan_final_check` 标记的轮次核两件事：这份文件存在，每个被接受的编号在其中整词逐字出现；缺了判 `missing_next_plan` / `next_plan_missing_ids`，并给出应写的文件名或缺的编号。它只核字面，不核合得对不对。
+闸门对带轮次链（`review_loop`）的轮次核两件事：这份文件存在（不论有无接受项），每个被接受的编号在其中整词逐字出现；缺了判 `missing_next_plan` / `next_plan_missing_ids`，并给出应写的文件名或缺的编号。它只核字面，不核合得对不对。早于 EV-247 的旧轮次仍按「有接受项才要求」判。
 
-S5 编码依据的「已批准的修订计划」就是这份新一轮计划（没有接受项时是上一轮计划）。
+S5 编码依据的「已批准的修订计划」就是循环最后一轮写的那份新一轮计划。
 
-### S4 裁决校验
+### S4 裁决校验与分支
 `TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐后重跑本步；
 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
+
+通过后先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+- **`rerun`**（本轮不通过、还有轮次）：回到 S2 重审，旗标与上一轮同一组；被审对象自动取 S3 刚写的新一轮计划（不传 `--plan-file`）。
+- **`proceed`**（通过或修改后通过）：进 S4.5，按 S3 刚写的新一轮计划实施。
+- **`human_review`**（已到最大轮次仍不通过，或本轮有效结论不足：有效票不到入选侧数的一半）：闸门已立起人工停点。运行
+  `TV gate --stage plan --topic <主题> --await-approval`，把停点话术与文档路径转述给用户，然后**停止**——
+  不得进 S4.5、不得编写业务代码。用户 `/dual-approve` 通过后，按他的指示从 S4.5 继续；拒绝或放弃则到此为止。
+  **审批的发起权在用户手里**，不要自己去跑 `approve`。
+- `next_action` 为 null（本轮不在循环里，如旧版编排器）：照旧进 S4.5。
 
 ### S4.5 认领 code 阶段
 `TV topic claim --topic <主题> --stage code --driver glm --json`
@@ -182,21 +202,34 @@ S5 编码依据的「已批准的修订计划」就是这份新一轮计划（�
 ### S6 代码双审
 Driver 会话声明继续使用 S0.5 的 `driver_model` / `driver_provider`，逐项透传 `--driver-model` / `--driver-provider`；null 不传。
 同 S2（`--entry A`、`--driver glm`，含 `--goal` / `--focus` / `--context` / `--profile` / `--critics` / `--allow-single` / 模型覆盖 / 档位旗标（`--tier-<审核者 id>` / `--effort-<审核者 id>` / `--profile-<审核者 id>`）的透传——
-入选集合用的仍是 S0.5 那一组，S2 里某侧失败过也照样传它），但 `--stage code`，
+入选集合用的仍是 S0.5 那一组，S2 里某侧失败过也照样传它），但 `--stage code`，`--max-rounds` 传 S0.5 的 `max_rounds.code`（null 不传），
 按 `/dual-review-code` 的第 3 步执行。被审对象是 `git diff`，不是文档。
 比较基线默认 `HEAD`，即「尚未提交的全部改动」；S5 若已经提交过，
 要按 `/dual-review-code` 第 3 步的说明显式给出 `--base`，否则补丁为空会退 65。
 
+S6～S9 同样是一个循环（EV-247）：不通过占半数及以上且还有轮次时，按裁决改完代码回到 S6 重审（同一组旗标、同一个 `--base`），
+直到通过或到最大轮次。开场播报里念出「代码审第 k/N 轮」。
+
 ### S7 应答确认
 写 `…-response-<当轮 Driver>.md`（后缀与 `role` 都填你自己的 Agent id），
-逐条「接受/驳回/暂缓 + 理由 + 修改计划」。
+逐条「接受/驳回/暂缓 + 理由 + 修改计划」。代码审只写这份裁决件，不另写修订文档。
 
-### S8 裁决校验
+### S8 按已接受项改代码
+写完应答件**直接改代码**：**只改已接受的项**，驳回与暂缓的不要动。改码放在 S9 校验之前——
+校验通过后闸门可能立起人工停点，停点期间业务写入会被拦下。
+
+### S9 裁决校验与分支
 `TV gate --stage code --topic <主题> --check --json`。有缺口则回到 S7 补齐后重跑本步；
 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
 
-### S9 按已接受项改代码
-**只改已接受的项。** 驳回与暂缓的不要动。
+通过后先把返回里的 `round_line` 原样念给用户，再按 `next_action` 走：
+- **`rerun`**（本轮不通过、还有轮次）：回到 S6 重审，新一轮的补丁含 S8 改后的全部变更。
+- **`proceed`**（通过或修改后通过）：进 S10。
+- **`human_review`**（已到最大轮次仍不通过，或本轮有效结论不足：有效票不到入选侧数的一半）：闸门已立起人工停点。运行
+  `TV gate --stage code --topic <主题> --await-approval`，把停点话术与文档路径转述给用户，然后**停止**——
+  不得再改代码、不得进 S10。用户 `/dual-approve` 通过后，按他的指示从 S10 继续；拒绝或放弃则到此为止。
+  **审批的发起权在用户手里**，不要自己去跑 `approve`。
+- `next_action` 为 null（本轮不在循环里，如旧版编排器）：照旧进 S10。
 
 ### S10 编译测试（出口）
 `TV verify --topic <主题>`。它**真实执行** `.trivium/config.yaml` 里显式配置的命令。

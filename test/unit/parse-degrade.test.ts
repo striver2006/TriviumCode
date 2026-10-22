@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import * as P from '../../src/trivium/parse.js';
 import { renderFrontMatter, type RenderInput } from '../../src/trivium/render.js';
 import { CRITICS, type CriticResult, type Review } from '../../src/trivium/types.js';
-import reviewSchema from '../../skills/dual-critic/schema/review.v1.json' with { type: 'json' };
+import reviewSchema from '../../skills/dual-critic/schema/review.v2.json' with { type: 'json' };
 
 type Loose = Record<string, unknown>;
 
@@ -29,7 +29,7 @@ function finding(id: string, over: Loose = {}, drop: string[] = []): Loose {
 
 function review(findings: Loose[], over: Loose = {}): Loose {
   return {
-    schema: 'trivium.review.v1', verdict: 'request-changes', summary: '最危险的一条在前。',
+    schema: 'trivium.review.v2', verdict: 'pass-after-changes', summary: '最危险的一条在前。',
     findings, not_covered: ['前端'], consulted: ['src/a.ts'], ...over,
   };
 }
@@ -165,7 +165,7 @@ test('P8 降级意见编号不可用（缺 id / 形状畸形 / 不是对象）�
   assert.equal(failCause(P.parseReview(JSON.stringify(review([finding('AGY-01'), '一句话意见' as unknown as Loose])))), 'finding_unaddressable');
 });
 
-test('P9 回显清单 = 全开分支 renderFrontMatter 的键集 − review.v1 根属性（逐项相等，不许放宽成子集）', () => {
+test('P9 回显清单 = 全开分支 renderFrontMatter 的键集 − 审查契约根属性（逐项相等，不许放宽成子集）', () => {
   const RESULT: CriticResult = {
     critic: 'glm', status: 'ok', exit_code: 0, duration_s: 1,
     raw_stdout_path: '/o', trace_path: '/t', review_json: null, raw_response_text: '{}',
@@ -224,7 +224,7 @@ function repoRoot(): string {
   throw new Error('找不到仓库根');
 }
 
-test('P9′ 回显清单 = render.ts 源码里 renderFrontMatter 能写出的键 − review.v1 根属性（源码静态枚举）', () => {
+test('P9′ 回显清单 = render.ts 源码里 renderFrontMatter 能写出的键 − 审查契约根属性（源码静态枚举）', () => {
   const src = readFileSync(path.join(repoRoot(), 'src/trivium/render.ts'), 'utf8');
   const start = src.indexOf('  const fm: Record<string, unknown> = {\n');
   const end = src.indexOf('\n  };\n', start);

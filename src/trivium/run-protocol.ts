@@ -11,7 +11,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { Config, CriticId, CriticRequest, Ctx, Stage, CommandEntry } from './types.js';
+import type { Config, CriticId, CriticRequest, Ctx, Stage, CommandEntry, ReviewLoop, RoundVerdict } from './types.js';
 import { EXIT, TriviumError, envError, exitCodeOf, missingArtifact } from './exit-codes.js';
 import { runRoot } from './config.js';
 import { RUN_DIR_FILES } from './run-files.js';
@@ -416,6 +416,8 @@ export interface StartOutcome {
    * `finishedInline` 时不计算（没有审查员会被拉起），为 `[]`。
    */
   warnings: PreflightWarning[];
+  /** 本轮在轮次链里的位置（EV-247）；bug 阶段与纯文档跳过轮为 null */
+  reviewLoop: ReviewLoop | null;
 }
 
 /**
@@ -550,6 +552,7 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
         finishedInline: true,
         inlineNotice: out.warnings.join('\n'),
         warnings: [],
+        reviewLoop: null,
       };
     } finally {
       await lock.release(); // 没有 worker 接手，锁必须在这里还
@@ -694,6 +697,7 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
           .filter(([, r]) => r)
           .map(([c, r]) => [c, r!.model]),
       ) as Partial<Record<CriticId, string>>,
+      reviewLoop: rc.meta.review_loop ?? null,
     };
   } catch (e) {
     /*
@@ -1670,6 +1674,25 @@ async function readHandoffIdentity(runDir: string): Promise<{ topic: string; sta
   } catch {
     return null;
   }
+}
+
+/**
+ * 本次运行的轮次链位置与计票结果（EV-247），给 `--wait` / `--status` 透出，skill 据此播报与分支。
+ *
+ * 取自归档 run.json（计票只在那里落），主题与阶段取自交接文件。任何一步读不到都返回 null——
+ * 透出层把 null 照写成字段值，「没有」与「读不到」由调用方按 `review_loop` 在不在区分，这里不猜。
+ */
+export async function readRoundFacts(
+  ctx: Ctx,
+  runId: string,
+): Promise<{ review_loop: ReviewLoop | null; round_verdict: RoundVerdict | null } | null> {
+  const id = await readHandoffIdentity(runDirFor(ctx.config, ctx.projectRoot, runId));
+  if (!id) return null;
+  const { resolveTopicReadOnly } = await import('./topic.js');
+  const ref = await resolveTopicReadOnly(ctx, id.topic, id.stage);
+  const meta = await readRunMeta(ref.layout, id.stage, runId);
+  if (!meta) return null;
+  return { review_loop: meta.review_loop ?? null, round_verdict: meta.round_verdict ?? null };
 }
 
 /**

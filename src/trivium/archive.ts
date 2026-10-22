@@ -15,7 +15,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
-import { DEFAULT_CRITICS, type CriticId, type Stage, type StageOrVerify } from './types.js';
+import { DEFAULT_CRITICS, isReviewSchemaId, type CriticId, type Stage, type StageOrVerify } from './types.js';
 import {
   buildArtifactName,
   buildVerifyName,
@@ -163,7 +163,8 @@ export async function isReviewArtifact(absPath: string): Promise<boolean> {
   } catch {
     return false;
   }
-  return fm?.['schema'] === 'trivium.review.v1';
+  // v1 ∪ v2（EV-247）：只认现行版的话，v2 审查件会被当成原稿送审
+  return isReviewSchemaId(fm?.['schema']);
 }
 
 export interface WriteArtifactInput {

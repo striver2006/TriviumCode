@@ -40,13 +40,13 @@ export const TRIVIUM_DIR = '.trivium';
 export { resolveAssetRoot } from './asset-root.js';
 
 /**
- * 契约 schema（`review.v1.json`）相对资产根的路径——**唯一拼接处**（EV-74 计划 §3.2.2）。
+ * 契约 schema（现行 `review.v2.json`，EV-247；旧版 v1 文件只留给归档读取）相对资产根的路径——**唯一拼接处**（EV-74 计划 §3.2.2）。
  *
  * 此前只有 `review.ts:497` 一处运行期拼接；探针与准入脚本改喂真实契约后各自还要
  * 拼一次，不把这半句也收进共用出口，就是把「同一事实两份实现」从资产根搬到相对路径。
  */
 export function resolveReviewSchemaPath(assetRoot: string): string {
-  return path.join(assetRoot, 'schema/review.v1.json');
+  return path.join(assetRoot, 'schema/review.v2.json');
 }
 
 /**

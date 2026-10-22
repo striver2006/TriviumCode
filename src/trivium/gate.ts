@@ -166,11 +166,14 @@ export interface GateWarning {
  *
  * - `subjectRerunIndex`：本轮 `run.json.plan_final_check.subject_rerun_index`；
  * - `laterSubjectRerunIndexes`：本阶段 run_id 晚于本轮、且带标记的各次运行的被审对象轮次（null 不收），
- *   供「本轮是否已被后续运行接手」的判定（计划 r2 §2.4）。
+ *   供「本轮是否已被后续运行接手」的判定（计划 r2 §2.4）；
+ * - `alwaysRequired`：本轮带轮次链（run.json `review_loop`，EV-247）——每轮都要写新一轮完整计划，
+ *   全部驳回 / 暂缓也不例外（需求 3）。缺省 false，即 EV-214 的「有接受项才要求」。
  */
 export interface PlanFinalInput {
   subjectRerunIndex: number | null;
   laterSubjectRerunIndexes: readonly number[];
+  alwaysRequired?: boolean;
 }
 
 export interface GateCheckResult {
@@ -725,7 +728,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     warnings.push({
       code: 'degraded_findings',
       message:
-        '下列意见不合 trivium.review.v1，已逐条降级：仍须逐条裁决，但不参与阻断与共同阻断判定' +
+        '下列意见不合审查契约（trivium.review.v2；旧轮为 v1），已逐条降级：仍须逐条裁决，但不参与阻断与共同阻断判定' +
         '——其中声称 blocker 的，被驳回不会触发共同阻断告警',
       ids: [...degradedIds].sort(),
     });
@@ -849,7 +852,8 @@ export async function checkNextPlan(i: {
 }): Promise<{ failures: GateFailure[]; warnings: GateWarning[] }> {
   const failures: GateFailure[] = [];
   const warnings: GateWarning[] = [];
-  if (i.acceptedIds.length === 0) return { failures, warnings };
+  const always = i.planFinal?.alwaysRequired === true;
+  if (i.acceptedIds.length === 0 && !always) return { failures, warnings };
   const ids = [...i.acceptedIds];
   if (!i.planFinal) {
     warnings.push({
@@ -879,10 +883,14 @@ export async function checkNextPlan(i: {
     );
     failures.push({
       code: 'missing_next_plan',
-      message:
-        `本轮有 ${ids.length} 条意见被接受，但找不到执笔方的新一轮计划（轮次须高于本轮被审对象的 r${base}）。` +
-        `请写 ${expected}：开头列「相对上一轮的改动」，逐条引用下列被接受意见的编号——` +
-        '它就是代码阶段送审的计划定稿，没有它代码审查员读到的是未修订的原稿。全部驳回或暂缓时不要求（§6.6 规则 9）',
+      message: ids.length > 0
+        ? `本轮有 ${ids.length} 条意见被接受，但找不到执笔方的新一轮计划（轮次须高于本轮被审对象的 r${base}）。` +
+          `请写 ${expected}：开头列「相对上一轮的改动」，逐条引用下列被接受意见的编号——` +
+          '它就是代码阶段送审的计划定稿，没有它代码审查员读到的是未修订的原稿。' +
+          (always ? '本轮按多轮评审循环跑，每轮都要写（EV-247）' : '全部驳回或暂缓时不要求（§6.6 规则 9）')
+        : `本轮按多轮评审循环跑（EV-247），每轮都要输出一份新版本的完整计划，全部驳回或暂缓也不例外；` +
+          `找不到执笔方的新一轮计划（轮次须高于本轮被审对象的 r${base}）。请写 ${expected}：` +
+          '开头写明「本轮无改动」及原因，再给出完整计划——下一轮重审或代码阶段读的都是它',
       ids,
     });
     return { failures, warnings };
@@ -1003,11 +1011,12 @@ export async function recheckPlanFinal(layout: ArchiveLayout, finalFileName: str
         expectedFallbackIds: round.expectedFallbackIds,
         rows: parseDisposition(md).rows,
       });
-      if (acceptedIds.length === 0) return { kind: 'skipped' };
+      const alwaysRequired = m.review_loop !== undefined;
+      if (acceptedIds.length === 0 && !alwaysRequired) return { kind: 'skipped' };
 
       const np = await checkNextPlan({
         layout, driver, rerunIndex: m.rerun_index, acceptedIds,
-        planFinal: { subjectRerunIndex: mark.subject_rerun_index, laterSubjectRerunIndexes: [] },
+        planFinal: { subjectRerunIndex: mark.subject_rerun_index, laterSubjectRerunIndexes: [], alwaysRequired },
       });
       const failure = np.failures[0];
       return failure
@@ -1348,6 +1357,7 @@ export async function loadRoundReviews(
         | Review
         | { parse_fallback: true; raw: string | null };
       if ('parse_fallback' in raw && raw.parse_fallback) {
+        // 归档重读两版都认（缺省口径）：旧轮当时按 v1 产出，口径不因契约升级而变（EV-247）
         const retry = raw.raw ? parseReview(raw.raw) : null;
         /*
          * 重试结果三分（解析回退逐条降级计划 r2 §3.6）：
@@ -1463,6 +1473,8 @@ export async function loadRoundReviews(
     ? {
         subjectRerunIndex: planCheck.subject_rerun_index,
         laterSubjectRerunIndexes: await laterPlanSubjectRerunIndexes(layout, runId, readRunMeta),
+        // 带轮次链的轮次每轮必写新计划（EV-247）
+        alwaysRequired: runMeta?.review_loop !== undefined,
       }
     : null;
 

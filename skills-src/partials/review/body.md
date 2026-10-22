@@ -79,7 +79,7 @@ TV preflight --stage {{STAGE}} --driver {{DRIVER}} --critics <critics> [--profil
 先运行：
 
 ```
-TV review --start --entry {{ENTRY}} --stage {{STAGE}} --topic <主题> --driver {{DRIVER}} --focus <提示语> [--goal <任务目标>] {{SUBJECT_SLOT}} {{MODEL_HINT}} {{TIER_HINT}} {{EFFORT_HINT}}{{VENDOR_PROFILE_HINT}} [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
+TV review --start --entry {{ENTRY}} --stage {{STAGE}} --topic <主题> --driver {{DRIVER}} --focus <提示语> [--goal <任务目标>] {{SUBJECT_SLOT}}{{> review/rounds-slot@STAGE}} {{MODEL_HINT}} {{TIER_HINT}} {{EFFORT_HINT}}{{VENDOR_PROFILE_HINT}} [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
 ```
 
 `--entry {{ENTRY}}` 标记本次运行由命令 {{ENTRY}} 发起，记入 run.json 留痕；它也让 CLI 按 B/C/D 规则
@@ -116,6 +116,8 @@ Driver 会话声明从 resolve 输出的 driver_model / driver_provider 逐项�
 允许一侧失败时不中止、产出结果并留痕（§12.4）。
 **漏传的后果是静默忽略用户的要求**——一侧失败就整次失败，
 而留痕里看不出用户曾经要求过降级。
+
+{{> review/rounds-pass@STAGE}}
 
 若 resolve 输出的 `models` 字段非空，把其中的模型覆盖逐个原样传给对应的
 `--model-<审核者 id>`（`models` 的键就是审核者 id：{{MODEL_FLAGS}}）。
@@ -190,11 +192,15 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 
 {{> review/next-plan@STAGE}}
 
+{{> review/apply@STAGE}}
+
 ### 6. 校验裁决完整性
 
 运行 `TV gate --stage {{STAGE}} --topic <主题> --check --json`。
 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
 仍不通过则向用户说明缺口并停下，交给用户处理。
+
+{{> review/loop@STAGE}}
 
 ### 7. 停点
 

@@ -14,9 +14,18 @@
 // 的元 schema，用它会报 no schema with key or ref "…/draft/2020-12/schema"。
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import type { ErrorObject, ValidateFunction } from 'ajv';
-import reviewSchema from '../../skills/dual-critic/schema/review.v1.json' with { type: 'json' };
+import reviewSchemaV1 from '../../skills/dual-critic/schema/review.v1.json' with { type: 'json' };
+import reviewSchema from '../../skills/dual-critic/schema/review.v2.json' with { type: 'json' };
 import type { CriticId, DegradedFinding, FallbackCause, ParseRepairs, Review } from './types.js';
 import { CRITIC_PREFIX } from './types.js';
+
+/**
+ * 校验所用的契约版本（EV-247）。审查员的**新产出**（`review.ts` 收结论那一处）显式按现行 v2 严格校验——
+ * v1 形态（四值 verdict）判根不合、走既有的重试与回退；其余调用方缺省两版都认：重读归档（`gate` 对
+ * parse_fallback 轮的重试）与取证脚本重放的都是 v1 时代的真实输出，不能因为契约升级就把它们的口径改掉。
+ */
+export type ReviewSchemaVersion = 'v1' | 'v2';
+const SCHEMA_BY_VERSION: Record<ReviewSchemaVersion, object> = { v1: reviewSchemaV1, v2: reviewSchema };
 
 /**
  * 解析结果（设计 §6.5「解析与降级」）。
@@ -35,23 +44,28 @@ export type ParseOutcome =
     }
   | { ok: false; cause: Exclude<FallbackCause, 'foreign_prefix'>; reason: string; errors: string[]; rawText: string };
 
-let cachedValidators: { full: ValidateFunction<Review>; item: ValidateFunction } | undefined;
+const cachedValidators: Partial<Record<ReviewSchemaVersion, { full: ValidateFunction<Review>; item: ValidateFunction }>> = {};
 
 /**
- * 整份与单条两个校验器，**同一个 ajv 实例、同一份 `review.v1.json`**——单条那个取自
- * `properties.findings.items`，不在代码里抄第二份意见 schema。
+ * 整份与单条两个校验器，**同一个 ajv 实例、同一份契约文件**——单条那个取自
+ * `properties.findings.items`，不在代码里抄第二份意见 schema。每个版本一组，两版不共用 ajv 实例（`$id` 不同，互不干扰）。
  */
-function getValidators(): { full: ValidateFunction<Review>; item: ValidateFunction } {
-  if (cachedValidators) return cachedValidators;
+function getValidators(version: ReviewSchemaVersion): { full: ValidateFunction<Review>; item: ValidateFunction } {
+  const hit = cachedValidators[version];
+  if (hit) return hit;
   // allErrors：一次把所有问题告诉模型，重试时才能一次改对（§12.3 只重试一次）
   const ajv = new Ajv2020({ allErrors: true, strict: false });
-  const schema = reviewSchema as { properties: { findings: { items: object } } };
-  cachedValidators = {
-    full: ajv.compile<Review>(reviewSchema as object),
+  const source = SCHEMA_BY_VERSION[version];
+  const schema = source as { properties: { findings: { items: object } } };
+  const made = {
+    full: ajv.compile<Review>(source),
     item: ajv.compile(schema.properties.findings.items),
   };
-  return cachedValidators;
+  cachedValidators[version] = made;
+  return made;
 }
+
+const schemaIdOf = (version: ReviewSchemaVersion): string => `trivium.review.${version}`;
 
 /** 把 ajv 错误渲染成可回喂给模型的可读文本 */
 export function formatSchemaErrors(errors: readonly ErrorObject[] | null | undefined): string[] {
@@ -166,7 +180,7 @@ export const VENDOR_NOISE_KEYS = ['toolAction', 'toolSummary'] as const;
 
 /**
  * 编排器**自己会写进审查文档 front-matter** 的键（`render.ts` 的 `renderFrontMatter`，含全部条件分支），
- * 减去 `review.v1` 的根属性（`schema` / `verdict` 与 schema 同名同义，不剥）。
+ * 减去审查契约的根属性（`schema` / `verdict` 与 schema 同名同义，不剥）。
  *
  * 审查员照着落盘文档的形态反推、以为结论 JSON 也该带这些键（EV-10：glm 侧反复带
  * `topic` / `stage` / `role` / `run_id` / `rerun_index` / `evidence_ok`），撞 `additionalProperties: false`
@@ -286,8 +300,8 @@ type CandidateVerdict =
       ids: string[];
     };
 
-function evaluateCandidate(json: string): CandidateVerdict {
-  const { full, item } = getValidators();
+function evaluateCandidate(json: string, version: ReviewSchemaVersion): CandidateVerdict {
+  const { full, item } = getValidators(version);
 
   // ① 语法；失败才试还原非法转义
   let obj: unknown;
@@ -329,7 +343,7 @@ function evaluateCandidate(json: string): CandidateVerdict {
       ...(Array.isArray(findings) ? [] : ['/findings 不是数组']),
       ...(rootOk ? [] : formatSchemaErrors(full.errors)),
     ];
-    return { stage: 'fail', rank: 2, cause: 'root_invalid', reason: 'JSON 根对象不符合 trivium.review.v1', errors };
+    return { stage: 'fail', rank: 2, cause: 'root_invalid', reason: `JSON 根对象不符合 ${schemaIdOf(version)}`, errors };
   }
 
   // ⑤ 逐条：合格的留在 review 里，不合格的降级；降级意见的编号必须可用
@@ -353,7 +367,7 @@ function evaluateCandidate(json: string): CandidateVerdict {
   if (unaddressable.length > 0) {
     return {
       stage: 'fail', rank: 3, cause: 'finding_unaddressable',
-      reason: 'JSON 不符合 trivium.review.v1：有意见的编号不可用，无法逐条降级',
+      reason: `JSON 不符合 ${schemaIdOf(version)}：有意见的编号不可用，无法逐条降级`,
       errors: unaddressable,
     };
   }
@@ -381,8 +395,20 @@ function evaluateCandidate(json: string): CandidateVerdict {
  * `repairs` 与 `degraded` **只随所选候选**（计划双审 r1 GLM-03）；未入选候选的修复不留痕。
  * 一个根合格候选都没有时整份回退，成因取**走得最远**的那一格（编号不可用 > 根不合 > 语法错 >
  * 没有 JSON 对象）——改前取的是最后一个候选的错误，逐行候选常把更有信息量的围栏候选盖掉。
+ *
+ * `accept`（EV-247）：`'current'` 只认现行 v2——审查员的新产出必须显式走这一档（`review.ts`）。
+ * 缺省 `'any'`：先按 v2，整份不成立再按 v1 整套重来（两版各自一轮选取，不在候选之间混用版本）；
+ * 都不成立时报 v2 那一轮的成因。缺省取宽松一档，是因为其余调用方读的都是既成事实（归档、取证重放），
+ * 而唯一要收紧的入口只有一处、由集成用例守着（桩产出 v1 形态 ⇒ 该侧整份回退）。
  */
-export function parseReview(text: string): ParseOutcome {
+export function parseReview(text: string, opts: { accept?: 'current' | 'any' } = {}): ParseOutcome {
+  const current = parseReviewAs(text, 'v2');
+  if (current.ok || opts.accept === 'current') return current;
+  const legacy = parseReviewAs(text, 'v1');
+  return legacy.ok ? legacy : current;
+}
+
+function parseReviewAs(text: string, version: ReviewSchemaVersion): ParseOutcome {
   const candidates = extractJsonCandidates(text);
   if (candidates.length === 0) {
     return { ok: false, cause: 'no_json_object', reason: '回答中找不到 JSON 对象', errors: [], rawText: text };
@@ -392,7 +418,7 @@ export function parseReview(text: string): ParseOutcome {
   let deepest: Extract<CandidateVerdict, { stage: 'fail' }> | null = null;
 
   for (const cand of candidates) {
-    const v = evaluateCandidate(cand.json);
+    const v = evaluateCandidate(cand.json, version);
     if (v.stage === 'skip') continue;
     if (v.stage === 'fail') {
       if (!deepest || v.rank > deepest.rank) deepest = v;

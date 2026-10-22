@@ -54,11 +54,12 @@
 ## 一、六份 JSON Schema
 
 机读契约的唯一真理来源在 `skills/dual-critic/schema/`，ajv（draft 2020-12）强校验。
-`review.v1` 由 `parse` 持有（要把错误回喂给模型），其余集中在 `schemas.ts`。
+`review.v2` / `review.v1` 由 `parse` 持有（要把错误回喂给模型），其余集中在 `schemas.ts`。
 
 | Schema | 文件 | 生产者 | 校验落点 |
 | :--- | :--- | :--- | :--- |
-| `trivium.review.v1` | `review.v1.json` | 各入选审查员（最终回答即该 JSON） | `parse`（失败即 parse_fallback） |
+| `trivium.review.v2` | `review.v2.json` | 各入选审查员（最终回答即该 JSON；EV-247 起的现行写契约） | `parse` 新产出只认 v2（失败即 parse_fallback） |
+| `trivium.review.v1` | `review.v1.json` | **已停写**（EV-247 之前的审查员产出） | 只读：重读归档与取证重放两版都认；「是不是审查件」的判据认 v1 ∪ v2 |
 | `trivium.disposition.v1` | `disposition.v1.json` | Driver（裁决件 front-matter；表格由 gate 单独解析） | `gate --check` 的 bad_front_matter |
 | `trivium.run.v3` | `run.v3.json` | 编排器（当前审查写契约） | `writeRunMeta` 写前校验；含请求路线、回读来源与模型族三态，留痕核对拒绝不合契约的工件 |
 | `trivium.run.v2` | `run.v2.json` | **已停写**（历史审查契约） | 按原 schema 严格校验后读取；旧布尔值只显示为旧版名义族判定 |
@@ -119,7 +120,9 @@ YAML 往返会丢注释，原注释保留在备份中）。三条跨字段规则
 （原生枚举、无思考等级概念、厂商 profile 名单；不合法退 64、零工件）。思考等级与厂商 profile 自 M11 第 6 步起随请求下传（claude 的取值集合由探针解析 `--help` 落盘），
 第 4、5 步时档位里写了思考等级、或档位 profile 与 `agents.codex.profile` 不同即发起前退 64 的过渡闸已拆除。
 
-### `trivium.review.v1` 的硬约束
+### `trivium.review.v2` 的硬约束（v1 相同，只差 `verdict`）
+
+- **`verdict` 三档**（EV-247）：`pass`（通过）/ `pass-after-changes`（修改后通过）/ `reject`（不通过）。编排器按侧计票、判本轮结论，结果记入 run.json `round_verdict`，下一步（`rerun` / `proceed` / `human_review`）决定闸门去向（设计 8.2.1）。v1 的四值不参与计票。
 
 - **意见编号前缀逐侧固定，但不由 schema 枚举**：Antigravity 为 `AGY-`、ZCode 为 `GLM-`，各侧不冲突；
   schema 的 pattern 只校**形状**——`^[A-Z][A-Z0-9]*-(r[0-9]+-)?[0-9]{2,}$`

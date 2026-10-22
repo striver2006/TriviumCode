@@ -12,7 +12,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { ALL_AGENT_IDS, DEFAULT_DRIVER, isAgentId, type AgentId } from './agents/registry.js';
 import type { Config, CriticId, DenyCategory, DriftUnknownReason, Stage } from './types.js';
-import { VOIDING_DENY_CATEGORIES } from './types.js';
+import { isReviewSchemaId, VOIDING_DENY_CATEGORIES } from './types.js';
 import { parseArtifactName, type DispositionKind, type Role } from './naming.js';
 import { parseFrontMatter } from './render.js';
 import {
@@ -298,7 +298,8 @@ async function classifyArtifact(
   }
 
   const schema = typeof fm?.['schema'] === 'string' ? (fm['schema'] as string) : null;
-  if (schema === 'trivium.review.v1') return 'peer-review';
+  // v1 ∪ v2（EV-247）：漏认 v2，对端的新审查件就落进下面「后缀等于 Driver 即放行」的分支——禁读静默失效
+  if (isReviewSchemaId(schema)) return 'peer-review';
   if (schema === 'trivium.disposition.v1') return 'own-or-driver';
 
   /*
