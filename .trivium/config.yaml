@@ -17,7 +17,7 @@ isolation:
   context_max_docs: 12
 review:
   # 本仓开发会话由 Codex 主攻；它不参与自己的审查。产品内置默认集合保持不变。
-  default_critics: [claude, gemini, glm]
+  default_critics: [codex, gemini, glm]
   failure_policy: strict
   timeout_s:
     # plan 2700：codex 侧曾三次撞满 plan 预算致整轮作废（台账第 4、9、18 行）。成因是核查面随稿子
@@ -77,14 +77,14 @@ profiles:
       bug: GLM-5.3
     # Codex 默认走官方 Sol，显式请求 medium，避免继承本机基底的 high。
     codex:
-      plan: { model: gpt-6.1-sol, effort: medium }
-      code: { model: gpt-6.1-sol, effort: medium }
-      bug: { model: gpt-6.1-sol, effort: medium }
+      plan: { model: gpt-6.1-sol, effort: high }
+      code: { model: gpt-6.1-sol, effort: high }
+      bug: { model: gpt-6.1-sol, effort: high }
     # Claude 默认档走官方 Opus，显式请求 medium；实际模型与 effort 以运行回读为准。
     claude:
-      plan: { model: opus, effort: medium }
-      code: { model: opus, effort: medium }
-      bug: { model: opus, effort: medium }
+      plan: { model: opus, effort: high }
+      code: { model: opus, effort: high }
+      bug: { model: opus, effort: high }
   flash:
     # medium 档以模型名后缀承载强度，不继承 Agent 的旧 high 补全值。
     gemini:
