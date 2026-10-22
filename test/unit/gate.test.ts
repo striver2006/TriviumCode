@@ -4,7 +4,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import {
   APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID,
-  checkAdjudication, classifyReadonlyBreach, findJointRejectedBlockers, readonlyBreachLabel, jointCheckState, isHollowReason, loadRoundReviews, renderGateResult,
+  checkAdjudication, classifyReadonlyBreach, findJointRejectedBlockers, formatJointGroups, readonlyBreachLabel, jointCheckState, isHollowReason, loadRoundReviews, renderGateResult,
   verifyRoundForApproval,
 } from '../../src/trivium/gate.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
@@ -702,6 +702,52 @@ test('joint_blocker_policy=hard 时升级为失败', async () => {
     degraded: false,
   });
   assert.ok(r.failures.some((x) => x.code === 'joint_blocker_rejected'), renderGateResult(r));
+  assert.equal(r.disputedJointBlockers, undefined, 'hard 阻断不放行，不给要写进争议明细的那一组（发版-02）');
+});
+
+// ── 被放行的共同驳回（发版-02）──
+
+test('formatJointGroups：组内 + 连接、组间「；」连接', () => {
+  assert.equal(
+    formatJointGroups([
+      { location: 'src/a.ts:1', ids: ['AGY-01', 'GLM-01'] },
+      { location: 'src/b.ts:2', ids: ['CODEX-02', 'GLM-03', 'AGY-04'] },
+    ]),
+    'AGY-01+GLM-01@src/a.ts:1；CODEX-02+GLM-03+AGY-04@src/b.ts:2',
+  );
+  assert.equal(formatJointGroups([]), '');
+});
+
+async function jointRun(disposals: [string, string], policy: 'warn' | 'hard' = 'warn') {
+  const l = await layout();
+  await putDisposition(l, `${HEAD}
+| AGY-01 | gemini | blocker | ${disposals[0]} | 我不同意这条 | ${disposals[0] === '接受' ? '§1' : ''} |
+| GLM-01 | glm | blocker | ${disposals[1]} | 我也不同意 | ${disposals[1] === '接受' ? '§1' : ''} |`);
+  const cfg = defaultConfig();
+  cfg.gate.joint_blocker_policy = policy;
+  return checkAdjudication({
+    planFinal: null,
+    expectedDegradedIds: [],
+    reviewDocs: null,
+    cfg, layout: l, stage: 'plan', rerunIndex: 1,
+    reviews: {
+      gemini: review([{ id: 'AGY-01', severity: 'blocker', location: 'src/a.ts:88' }]),
+      glm: review([{ id: 'GLM-01', severity: 'blocker', location: 'src/a.ts:88' }]),
+    },
+    degraded: false,
+  });
+}
+
+test('warn 下共同驳回 ⇒ disputedJointBlockers 给出分组，告警文案与 note 同一写法', async () => {
+  const r = await jointRun(['驳回', '驳回']);
+  assert.deepEqual(r.disputedJointBlockers, [{ location: 'src/a.ts:88', ids: ['AGY-01', 'GLM-01'] }]);
+  const w = r.warnings.find((x) => x.code === 'joint_blocker_rejected');
+  assert.ok(w?.message.endsWith('AGY-01+GLM-01@src/a.ts:88'), w?.message);
+});
+
+test('没有共同驳回 ⇒ disputedJointBlockers 缺席', async () => {
+  const r = await jointRun(['接受', '驳回']);
+  assert.equal(r.disputedJointBlockers, undefined);
 });
 
 // ── 空洞理由词表 ──

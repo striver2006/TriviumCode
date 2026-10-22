@@ -190,6 +190,15 @@ export interface GateCheckResult {
   dispositionPath: string | null;
   rows: DispositionRow[];
   /**
+   * 被放行的共同驳回：两家同时提出、被驳回的 blocker，按 location 分组（发版-02）。
+   *
+   * **只在 `joint_blocker_policy: warn`**、即共同驳回进了 `warnings` 被放行时给出——
+   * 它是 `gate --check` 要写进 `task.json.disputes` 的那一组。`hard` 阻断时缺席
+   * （那时的编号在 `failures` 里，本轮没有「带着争议往前走」的事实），没有共同驳回时也缺席。
+   * 名字不叫 `jointRejected`：`hard` 下这些项同样被驳回，只是没被放行（计划双审 AGY-02）。
+   */
+  disputedJointBlockers?: { location: string; ids: string[] }[];
+  /**
    * 共同阻断这一档的**最终三态**（§6.6 规则 7 / §12.1）。
    *
    * 返回给调用方是为了让它落进 `task.json.joint_checks`：run.json 只到 `pending`
@@ -676,10 +685,9 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
    * 与入选总数无关（设计 §6.6 规则 7）。被判作废的侧不计入独立来源。
    */
   const joint = findJointRejectedBlockers(reviews, structuredRows, voidedSides);
+  let disputedJointBlockers: GateCheckResult['disputedJointBlockers'];
   if (joint.length > 0) {
-    const msg =
-      '下列 blocker 被**两家**同时提出却被驳回：' +
-      joint.map((j) => `${j.ids.join('+')}@${j.location}`).join('；');
+    const msg = '下列 blocker 被**两家**同时提出却被驳回：' + formatJointGroups(joint);
     if (cfg.gate.joint_blocker_policy === 'hard') {
       failures.push({
         code: 'joint_blocker_rejected',
@@ -692,6 +700,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
         message: msg,
         ids: joint.flatMap((j) => j.ids),
       });
+      disputedJointBlockers = joint;
     }
   }
 
@@ -764,6 +773,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
     degradedIds,
     dispositionPath,
     rows,
+    ...(disputedJointBlockers ? { disputedJointBlockers } : {}),
     jointCheck: jc,
   };
 }
@@ -1075,6 +1085,17 @@ export function findJointRejectedBlockers(
     }
   }
   return out;
+}
+
+/**
+ * 共同驳回的分组写法：`AGY-01+GLM-01@src/x.ts:10`，多组用「；」连接。
+ *
+ * 告警 `message` 冒号之后那一段与 `task.json.disputes[].note` 共用这一个函数，两处口径不会漂（发版-02）。
+ * 只存分组不存整段告警：前缀是固定文案、带加粗，报告里已有「争议项」字样；
+ * 也不只存位置：`finding_ids` 是拍平的，多组时丢了「哪几个编号对应哪个位置」。
+ */
+export function formatJointGroups(joint: readonly { location: string; ids: string[] }[]): string {
+  return joint.map((j) => `${j.ids.join('+')}@${j.location}`).join('；');
 }
 
 /**

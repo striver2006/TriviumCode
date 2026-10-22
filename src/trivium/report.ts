@@ -1100,6 +1100,33 @@ function renderAggregates(L: string[], r: TopicReport): void {
   );
 }
 
+/**
+ * 第五节的争议项行（发版-02）。
+ *
+ * 明细**无条件**列出，不以 `disputed` 为前提：明细在就该显示，`disputed` 为假而明细非空只可能是手改，照实列出。
+ * `disputed` 为真而明细为空时补一行如实说「有标记、无明细」——原先整段包在 `if (disputed)` 里只循环明细，
+ * 旧正本（明细从来没写过）在报告上整段静默，看不出这个主题曾有争议。两种成因在留痕上分不开，并列写出、不择一。
+ *
+ * 正本形状判据只判顶层数组（`taskShapeProblem`），逐条字段由这里兜：手改的空编号、空说明不拼出悬空的「：——」（计划双审 AGY-03）。
+ */
+function renderDisputes(r: TopicReport): string[] {
+  const out: string[] = [];
+  for (const dp of r.task.disputes) {
+    const round = r.rounds.find((d) => d.runId === dp.run_id);
+    const where = round ? `${round.stage} r${round.rerunIndex}，run ${dp.run_id}` : `run ${dp.run_id}`;
+    const named = Array.isArray(dp.finding_ids)
+      ? dp.finding_ids.filter((x): x is string => typeof x === 'string' && x.length > 0)
+      : [];
+    const ids = named.length > 0 ? named.join('、') : '（无编号）';
+    const note = typeof dp.note === 'string' && dp.note.length > 0 ? dp.note : '（无说明）';
+    out.push(`争议项（${where}）：${ids}——${note}`);
+  }
+  if (r.task.disputed && r.task.disputes.length === 0) {
+    out.push('争议项：task.json 记有争议标记，但没有留下明细（早于明细写入的旧记录，或该轮争议在重跑校验后已撤回）');
+  }
+  return out;
+}
+
 export function renderTopicReport(r: TopicReport): string {
   const L: string[] = [
     `# 复盘 · ${r.topic}`,
@@ -1285,11 +1312,7 @@ export function renderTopicReport(r: TopicReport): string {
     for (const n of d.notes) alerts.push(`${d.stage} r${d.rerunIndex}：${n}`);
   }
   for (const dg of r.task.degradations) alerts.push(`task.json 记录的降级：${dg.stage} ${dg.run_id}——${dg.reason}`);
-  if (r.task.disputed) {
-    for (const dp of r.task.disputes) {
-      alerts.push(`争议项：${dp.finding_ids.join('、')}——${dp.note}`);
-    }
-  }
+  alerts.push(...renderDisputes(r));
   L.push(alerts.length === 0 ? '（无）' : alerts.map((a) => `- ${a}`).join('\n'), '');
 
   // ── 六、多审退化 ──

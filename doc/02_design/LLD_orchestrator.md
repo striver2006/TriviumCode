@@ -693,7 +693,7 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 
 | 缺口 | 证据 | 影响 |
 | :--- | :--- | :--- |
-| **`task.json.disputes[]` 无任何写入点** | 全仓仅 `meta.ts:88`（类型）、`meta.ts:105`（初始化为 `[]`）、`report.ts:441`（读取），无一处 push | 只有 `disputed` 布尔位被写（`cli.ts:701`）。`report` 的「争议项：编号——说明」分支**永远打印不出具体编号** |
+| ~~**`task.json.disputes[]` 无任何写入点**~~ | ~~全仓仅类型、初始化为 `[]`、`report` 读取，无一处 push~~ | **已解决（2026-10-22，EV-250，主设计 v1.3.172）**：`gate --check` 与 `joint_checks` 同一次写入，`warn` 放行共同驳回时按 `run_id` 覆盖写一条（`finding_ids` 拍平、`note` 为 `formatJointGroups` 的分组写法），`hard` 阻断不记；`report` 第五节无条件列明细，`disputed` 真而明细空时如实写「没有留下明细」。残余：`disputed` 只增不减，争议撤回后 `status` 仍显示有争议项 |
 | ~~**`block_severities` 无消费方**~~ | ~~类型、默认值、schema 校验齐全，业务逻辑零引用~~ | **已解决（2026-09-16）**：该键连同 schema 定义一并删除，不做历史兼容（项目负责人明示接受）。防复发机制见配置键与消费方的对账测试 |
 | ~~**`cancelRun` 不回写 `run.json`**~~ | ~~函数体内 `writeRunMeta` 零出现~~ | **已解决（2026-09-26，EV-128）**：工作进程确认退出后由 `finalizeCancelledRunMeta` 收尾为 `cancelled`。同形的 worker 异常与 `worker_lost` 已于 2026-09-27 修（EV-142，`finalizeFailedRunMeta`，工作进程确认退出才写）；准备阶段与同步路径的本进程收尾同日修（EV-145）；`--start` 派生后失败同日修（EV-150，`settleOrphanedStart`）；worker 猝死、同步路径被中断 v1.1.43 起由新一轮回收遗留锁时收（EV-151，见 4.3） |
 | **worker 被 SIGKILL / 崩溃 / 事件循环堵住时，`--cancel` 够不到它拉起的厂商 CLI**（v1.1.11 起已覆盖：按 CLI 进程组记录另行结束，见 4.2 `cancelRun` 引述块；「组长已退出而组员还在」一格 v1.1.18 起已收口（EV-165）；余项：派生到记录落盘之间被 SIGKILL、启动时刻未取到、`setsid` 出去的后代，均如实提示或如实保留） | `run()` 在 `killTree: true` 时以 `detached` 派生，CLI 自成一组；`cancelRun` / `terminateProcessGroup` 只按 worker 的组发信号。EV-152（v1.1.10）起常态格由 worker 的 SIGTERM 处理器转发，但处理器在这几格跑不到。零配额验收（`evidence/cancel-cli-reach-20260928/` A3）：按组 SIGKILL worker 后两组桩 CLI 都活着、组长 ppid = 1 | 静默阶段的 CLI 会一直跑、配额照烧；`--cancel` 在升级 SIGKILL 与「worker 已不在」两格只打如实提示；凭据副本的清扫准入只核 worker（EV-38）。行为修复见 BACKLOG EV-154（与 EV-146 / EV-38 共用 CLI 进程组记录） |

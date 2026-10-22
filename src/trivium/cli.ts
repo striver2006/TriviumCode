@@ -26,7 +26,7 @@ import { collectCommands, runVerify, summarizeVerify } from './verify.js';
 import { buildTopicReport, renderTopicReport } from './report.js';
 import { cancelRun, installForegroundInterruptForwarding, readRoundFacts, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
 import {
-  approveForkRecovery, awaitApprovalRecovery, checkAdjudication, loadRoundReviews, renderGateResult,
+  approveForkRecovery, awaitApprovalRecovery, checkAdjudication, formatJointGroups, loadRoundReviews, renderGateResult,
   renderTamperedArtifacts, verifyRoundForApproval,
 } from './gate.js';
 import { checkStageArtifacts, listRecordedRuns, resolveRerunIndex } from './archive.js';
@@ -1633,18 +1633,20 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   if (taskUnreadable) return EXIT.GATE_BLOCK;
 
   /*
-   * 双方共同 blocker 被驳回且策略为 warn：设计 §6.6 规则 7 / §8.6 判据 g 要求
-   * 「输出警告**并在 task.json 记 disputed: true**」。原先只 push 进 warnings，
-   * disputed 初始化为 false 后再无写入点，status / report 的「有争议项」永不触发。
-   */
-  /*
    * 共同阻断三态落持久面（r2 代码双审 GLM-02 ≡ CODEX-04）。
    *
    * run.json 只到 `pending`——运行期读不到裁决表。最终结论在这里产生，
    * 不落盘的话 `checked-found` 永久只存在于本次进程的内存里。
+   * 三态**每次 check 都要写**——「查过、没有共同项」同样是要留的结论。
    *
-   * 与下面的 `disputed` 分开写：那一条只在「共同项被驳回」时才写，
-   * 而三态**每次 check 都要写**——「查过、没有共同项」同样是要留的结论。
+   * 争议明细并进同一次写（发版-02）。双方共同 blocker 被驳回且策略为 warn：设计 §6.6 规则 7 /
+   * §8.6 判据 g 要求「输出警告**并在 task.json 记 disputed: true**」，原先只置布尔位，
+   * 告警里的编号与位置被丢掉，`disputes[]` 没有任何写入点，report 的「争议项」打印不出编号。
+   * 两者生命周期相同：都只在 `jointCheck` 存在时有意义、都按 run_id 覆盖。
+   *   · 先删本轮旧条目、再按本次结论决定是否追加：同一轮重跑不堆积，争议撤回（改成接受）
+   *     或改成 hard 被拦时本轮条目随之消失；别的轮次原样保留。
+   *   · hard 阻断不记：本轮没被放行，编号在 `failures` 里，`joint_checks` 记了 `checked-found`。
+   *   · `disputed` 只增不减：旧正本的标记归属不到哪一轮，明细删空就清零会抹掉旧主题的标记。
    */
   const { updateTask } = await import('./meta.js');
   const taskOpts = {
@@ -1652,6 +1654,10 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
   };
   const jc = result.jointCheck;
+  const dj = result.disputedJointBlockers ?? [];
+  const dispute = dj.length > 0
+    ? { run_id: runId, finding_ids: dj.flatMap((j) => j.ids), note: formatJointGroups(dj) }
+    : null;
   if (jc) {
     await updateTask(ref.layout, (t) => {
       const entry = {
@@ -1665,14 +1671,18 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       };
       // 同一轮重跑 --check 覆盖，不堆积
       t.joint_checks = [...(t.joint_checks ?? []).filter((x) => x.run_id !== runId), entry];
+      t.disputes = [
+        ...t.disputes.filter((d) => d.run_id !== runId),
+        ...(dispute ? [dispute] : []),
+      ];
+      if (dispute) t.disputed = true;
     }, taskOpts);
-  }
-
-  if (result.warnings.some((w) => w.code === 'joint_blocker_rejected')) {
-    await updateTask(ref.layout, (t) => {
-      t.disputed = true;
-    }, taskOpts);
-    warn('双方共同提出的 blocker 被驳回：已在 task.json 记为有争议项（disputed），status / report 会显示');
+    if (dispute) {
+      warn(
+        '双方共同提出的 blocker 被驳回：已在 task.json 记为有争议项（disputed）并写入明细：' +
+          `${dispute.finding_ids.join('、')}，status / report 会显示`,
+      );
+    }
   }
 
   /*

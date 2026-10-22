@@ -190,7 +190,17 @@ export interface TaskMeta {
   approvals: ApprovalRecord[];
   /** 降级事件（§12.4 要求 task.json 记录） */
   degradations: { run_id: string; stage: Stage; reason: string; at: string }[];
-  /** 双方共同 blocker 被驳回等争议项（§6.6 规则 7） */
+  /**
+   * 双方共同 blocker 被驳回、在 `warn` 策略下放行的争议项（§6.6 规则 7）。
+   *
+   * 由 `gate --check` 与 `joint_checks` 同一次写入落（发版-02）：每轮至多一条，按 `run_id` 覆盖——
+   * 同一轮重跑先删旧条目再按本次结论决定是否追加，争议撤回或改 `hard` 被拦时本轮条目消失。
+   * `finding_ids` 是被驳回的共同 blocker 编号（拍平），`note` 是分组写法 `AGY-01+GLM-01@位置`
+   * （`formatJointGroups`，多组用「；」连接），不存整段告警。
+   *
+   * `disputed` **只增不减**：早于明细写入的旧正本只有布尔位、归属不到哪一轮，明细删空即清零会抹掉它。
+   * 所以 `disputed` 为真而明细为空是合法形态（旧记录，或该轮争议已撤回），report 如实写「没有留下明细」。
+   */
   disputed: boolean;
   disputes: { run_id: string; finding_ids: string[]; note: string }[];
   /**
