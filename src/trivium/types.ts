@@ -1171,7 +1171,11 @@ export interface Config {
   profiles: Record<string, Profile>;
   active_profile: string;
   gate: GateConfig;
-  preflight: { auth_cache_ttl_h: number };
+  /**
+   * `recalibrate_deadline_s`（EV-251）：预检退 69 时自动校准跑的每次 doctor 的总时限（秒），
+   * skill 的 Bash 工具超时由它按 `doctorToolTimeoutMs` 推出（加 60 s）
+   */
+  preflight: { auth_cache_ttl_h: number; recalibrate_deadline_s: number };
   verify: { build: string[]; test: string[] };
   retention: { run_dir_days: number };
   probe: ProbeSection;

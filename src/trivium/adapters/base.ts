@@ -147,8 +147,15 @@ export interface CriticAdapter {
    * 只对有厂商 profile 概念的侧有意义（今天是 codex），别家照收、忽略。**不传 = 旧行为**：
    * 按 Agent 配置段自己的 profile 判——接口保留的旧行为，现役生产调用方（预检、`review` 准备阶段）都传（代码三审 CODEX-01）。
    * 传了就逐个判、跳过 `null`。
+   *
+   * `fix: 'doctor'`（EV-251，预检失败自动校准计划 r2 D1）：不可用的原因是「落盘的探针结论缺失、过期或没跑完」，
+   * 重跑 doctor 就会写入新结论——预检据此把该项标为可自动校准。**缺省即不能修**：探针已实测到的否定结论
+   * （读不到、只读失守）与环境、配置、凭据问题都不标，重探只会再测出同一个否定、白花配额。拿不准的不标。
    */
-  availability(ctx: AdapterContext, opts?: { vendorProfiles?: readonly (string | null)[] }): { ok: boolean; reason?: string };
+  availability(
+    ctx: AdapterContext,
+    opts?: { vendorProfiles?: readonly (string | null)[] },
+  ): { ok: boolean; reason?: string; fix?: 'doctor' };
   /**
    * **从回读结果派生思考等级生效值**（M11 第 6 步，设计 11.1「思考等级透传与回读」/ 6.7.1）。**必填**。
    *

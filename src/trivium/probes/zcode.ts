@@ -1587,7 +1587,8 @@ export async function probeZcode(
      * headless 与 path_deny 共用这一份；回读从落点根读；探完只删 mkdtemp 的返回值（副本里有真实凭据，
      * 2026-09-20 事故后的规矩：不拼路径、不走别的变量）。
      */
-    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-zcode-doctor-'));
+    // 走 makeTempDir（EV-251）：带时限的 doctor 经它把目录记进台账，宿主硬杀时由下一次 doctor 补删
+    const runDir = await makeTempDir('trivium-zcode-doctor');
     try {
       const invoke = opts.invoke ?? invokeZcode;
       let prep: ZcodeHomePrep;

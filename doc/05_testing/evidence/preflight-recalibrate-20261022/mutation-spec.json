@@ -1,0 +1,99 @@
+{
+  "targets": [
+    "src/trivium/preflight.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/config.ts"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "计划 r2 D1：eligible 改成「任一失败项可修即可」（应为全部可修）",
+      "file": "src/trivium/preflight.ts",
+      "find": "const blocker = failed.find((c) => c.recalibrate?.fixable !== true);",
+      "replace": "const blocker = failed.every((c) => c.recalibrate?.fixable !== true) ? failed[0] : undefined;",
+      "expect": "dist/test/test/unit/preflight-recalibrate.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "计划 r2 D3 第 4 条：中止派生之后返回的段照常落盘（应作废）",
+      "file": "src/trivium/doctor.ts",
+      "find": "return aborted() ? ABORTED : r;",
+      "replace": "return r;",
+      "expect": "dist/test/test/unit/doctor-deadline.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "计划 r2 D3 第 4 条：中止之后段内 run() 仍然派生",
+      "file": "src/trivium/util/exec.ts",
+      "find": "if (section?.abort.aborted) {",
+      "replace": "if (section?.abort.aborted && Date.now() < 0) {",
+      "expect": "dist/test/test/unit/probe-section.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "计划三审 CODEX-02：段作用域内不再强制按进程组派生",
+      "file": "src/trivium/util/exec.ts",
+      "find": "const killTree = (opts.killTree ?? false) || section !== undefined;",
+      "replace": "const killTree = opts.killTree ?? false;",
+      "expect": "dist/test/test/unit/probe-section.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "计划三审 CODEX-01：组长已退出即判整组已不在（不再看非僵尸成员数）",
+      "file": "src/trivium/util/exec.ts",
+      "find": "const n = await count(g.pgid);",
+      "replace": "const n: number | null = 0;",
+      "expect": "dist/test/test/unit/probe-section.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "计划 r2 D3：到点不再退 76（落回 blockers 的 0 / 69）",
+      "file": "src/trivium/cli.ts",
+      "find": "const code = report.deadline?.hit ? EXIT.DOCTOR_PARTIAL :",
+      "replace": "const code = report.deadline?.hit && Date.now() < 0 ? EXIT.DOCTOR_PARTIAL :",
+      "expect": "dist/test/test/integration/doctor-deadline-cli.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "计划三审 GLM-02：新鲜度改看全局 generated_at（doctor 收尾会刷新它）",
+      "file": "src/trivium/config.ts",
+      "find": "return withinTtl(cfg.probe.cli[cliName]?.probed_at, cfg.probe_ttl_days);",
+      "replace": "return withinTtl(cfg.probe.generated_at, cfg.probe_ttl_days);",
+      "expect": "dist/test/test/unit/doctor-deadline.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "计划 r2 D2：没标 recalibrate 的失败项缺省补成可修（应为不能修，fail-closed）",
+      "file": "src/trivium/preflight.ts",
+      "find": "for (const c of checks) if (!c.ok && !c.recalibrate) c.recalibrate = { fixable: false };",
+      "replace": "for (const c of checks) if (!c.ok && !c.recalibrate) c.recalibrate = { fixable: true, targets: [] };",
+      "expect": "dist/test/test/unit/preflight-recalibrate.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "计划三审 AGY-03 驳回理由的落点：全部过期时目标不按入选侧过滤",
+      "file": "src/trivium/preflight.ts",
+      "find": "selected.filter((c) => staleSet.has(agentById(c)?.cliName ?? '')).flatMap((c) => recalTargets(cfg, c, opts)),",
+      "replace": "(['codex', 'gemini', 'glm', 'claude'] as CriticId[]).filter((c) => staleSet.has(agentById(c)?.cliName ?? '')).flatMap((c) => recalTargets(cfg, c, opts)),",
+      "expect": "dist/test/test/unit/preflight-recalibrate.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "计划三审 AGY-04：只读能力一格混有不能修的侧时仍判可修",
+      "file": "src/trivium/preflight.ts",
+      "find": "recalibrate: unfixable",
+      "replace": "recalibrate: false",
+      "expect": "dist/test/test/unit/preflight-recalibrate.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "计划 r2 D3：--deadline-s 下限不校验",
+      "file": "src/trivium/cli.ts",
+      "find": "if (!Number.isInteger(s) || s < DEADLINE_MIN_S || s > DEADLINE_MAX_S) {",
+      "replace": "if (!Number.isInteger(s) || s > DEADLINE_MAX_S) {",
+      "expect": "dist/test/test/integration/doctor-deadline-cli.test.js"
+    }
+  ]
+}

@@ -465,10 +465,11 @@ export const codexAdapter: CriticAdapter = {
     // 两态判据同另两家：以 probed_at 区分「没探过」与「探过没找到」
     const p = ctx.cfg.probe.cli.codex;
     if (!p?.probed_at) {
-      return { ok: false, reason: 'codex 尚未探测，请先运行 trivium doctor --only codex' };
+      return { ok: false, reason: 'codex 尚未探测，请先运行 trivium doctor --only codex', fix: 'doctor' };
     }
     if (!p.entrypoint) {
-      return { ok: false, reason: '探针未找到 codex 可执行文件，请先运行 trivium doctor' };
+      // 入口可能挪了；真卸载了 doctor 会给出「未找到可执行文件」的明确结论（EV-251 计划 r2 D1）
+      return { ok: false, reason: '探针未找到 codex 可执行文件，请先运行 trivium doctor', fix: 'doctor' };
     }
     if (p.readonly_flags.length === 0) {
       return {
@@ -488,6 +489,7 @@ export const codexAdapter: CriticAdapter = {
       return {
         ok: false,
         reason: '探针尚未实测 codex 的 headless 读取能力（上次探测没跑完），请重跑 trivium doctor --only codex',
+        fix: 'doctor',
       };
     }
 
@@ -518,6 +520,7 @@ export const codexAdapter: CriticAdapter = {
           reason:
             `本轮的 codex 厂商 profile「${wanted}」没有对应的有效探针结论。已探测到的：${known}。\n` +
             `  存在性以现场文件名单为准；请运行 trivium doctor --only codex --profile-codex ${wanted} 复核该路线。`,
+          fix: 'doctor',
         };
       }
       if (!hit.credentialed) {

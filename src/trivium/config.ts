@@ -417,7 +417,8 @@ export function defaultConfig(): Config {
       reason_policy: 'warn',
       joint_blocker_policy: 'warn',
     },
-    preflight: { auth_cache_ttl_h: 1 },
+    // recalibrate_deadline_s：缺省 15 分钟（用户 2026-10-22 定，EV-251）；工具超时 960 s，载体要把 Bash 上限抬到这么高
+    preflight: { auth_cache_ttl_h: 1, recalibrate_deadline_s: 900 },
     verify: { build: [], test: [] },
     retention: { run_dir_days: 30 },
     probe: defaultProbe(),

@@ -333,9 +333,10 @@ export const agyAdapter: CriticAdapter = {
     */
     const p = ctx.cfg.probe.cli.agy;
     if (!p?.probed_at) {
-      return { ok: false, reason: 'agy 尚未探测，请先运行 trivium doctor --only agy' };
+      return { ok: false, reason: 'agy 尚未探测，请先运行 trivium doctor --only agy', fix: 'doctor' };
     }
-    if (!p.entrypoint) return { ok: false, reason: '探针未找到 agy 可执行文件，请先运行 trivium doctor' };
+    // 入口可能挪了；真卸载了 doctor 会给出「未找到可执行文件」的明确结论（EV-251 计划 r2 D1）
+    if (!p.entrypoint) return { ok: false, reason: '探针未找到 agy 可执行文件，请先运行 trivium doctor', fix: 'doctor' };
     if (p.headless_read_ok === false) {
       return {
         ok: false,
@@ -345,7 +346,7 @@ export const agyAdapter: CriticAdapter = {
       };
     }
     if (p.headless_read_ok === null) {
-      return { ok: false, reason: '探针尚未实测 agy headless 读取能力，请先运行 trivium doctor' };
+      return { ok: false, reason: '探针尚未实测 agy headless 读取能力，请先运行 trivium doctor', fix: 'doctor' };
     }
     const agent = resolveAgyAgent(p, agentConfigOf(ctx.cfg, 'gemini', 'antigravity').agent);
     if (agent.reason) return { ok: false, reason: agent.reason };

@@ -32,6 +32,41 @@ import {
   describeSharedRootProblems, entryScanEnv, scanEntryCollisions, sharedReadRootTargets, type EntryScanEnv,
 } from './entry-collisions.js';
 import { say, step, warn } from './util/log.js';
+import { formatCommand, newProbeSection, withProbeSection, type ProbeSectionScope } from './util/exec.js';
+import { observeTempDirs } from './util/fsx.js';
+import {
+  DEADLINE_UNWIND_MS, DeadlineController, TempDirLedger, sweepDoctorLedgers, unfinishedSectionNote,
+  type DeadlineSectionState, type DoctorDeadline,
+} from './doctor-deadline.js';
+
+/** `doctor --deadline-s` 的接线（EV-251，预检失败自动校准计划 r2 D3） */
+export interface DoctorDeadlineOptions {
+  /** 总时限（毫秒） */
+  ms: number;
+  /** 到点后等段退出来的兜底时长，缺省 `DEADLINE_UNWIND_MS`；只为可测性 */
+  unwindMs?: number;
+  /** 按组结束的宽限链：cli 传 worker 处理器那一组常量（doctor 不引 run-protocol） */
+  graceMs: number;
+  killWaitMs: number;
+  /** 接管 SIGINT / SIGTERM（CLI 传 true） */
+  handleSignals: boolean;
+  /** 只为可测性：拿到控制器（用例借它模拟信号） */
+  onController?: (c: DeadlineController) => void;
+}
+
+/**
+ * doctor 里经 `overridesFor` 读命令行覆盖的段（cliName）。预检据此决定自动校准的调用带不带
+ * `--model-<id>` / `--effort-<id>` / 路线旗标：不读覆盖的段带了只会换来末尾一条「覆盖没用上」（EV-245）。
+ * 与下面各段是否调 `overridesFor` 由 `doctor-override-sections` 测试按源码对账。
+ */
+const OVERRIDE_CONSUMING_SECTIONS: ReadonlySet<string> = new Set(['codex', 'claude']);
+
+export function doctorSectionConsumesOverrides(cliName: string): boolean {
+  return OVERRIDE_CONSUMING_SECTIONS.has(cliName);
+}
+
+/** doctor 的段次序（与 `runDoctor` 里各段的先后一致） */
+const DOCTOR_SECTION_ORDER: readonly string[] = ['agy', 'zcode', 'codex', 'claude'];
 
 export interface DoctorOptions {
   tierFlags?: Partial<Record<CriticId, TierFlagValues>>;
@@ -73,6 +108,18 @@ export interface DoctorOptions {
    * 由 `entryScanEnv()` 取 `TRIVIUM_ENTRY_SCAN_HOME` 或 `os.homedir()`。
    */
   entryScanEnv?: EntryScanEnv;
+  /** 总时限（EV-251）：不给时行为逐字不变 */
+  deadline?: DoctorDeadlineOptions;
+  /**
+   * 临时目录台账所在目录（`run_root` 展开后，EV-251）。给了就在启动时补删已退出的 doctor 留下的台账条目（每次都做，
+   * 与带不带时限无关，代码三审 CODEX-04 ≡ GLM-03）；带时限时本进程的临时目录也记进这里。不给不碰台账。
+   */
+  ledgerDir?: string | null;
+  /**
+   * 只为可测性（EV-251）：给了时段作用域内、探针之前先等它（环境段传 `env`，各家传 cliName）。用例借它造
+   * 「段卡在不经 `run()` 的 await 上」（兜底路径）与「段内不带 killTree 的派生」。生产路径不传。
+   */
+  sectionPrelude?: (cli: string) => Promise<void>;
 }
 
 /** `--only` 的合法取值：全部已登记 CLI，外加环境段 */
@@ -169,7 +216,32 @@ export interface DoctorReport {
    * 「无可用只读旗标」会把他引向升级 ZCode。
    */
   warnings: string[];
+  /** 只在给了 `--deadline-s` 时出现（EV-251） */
+  deadline?: DoctorDeadline;
 }
+
+/**
+ * 给用户在终端（项目根）复制的重跑命令（EV-251）：`--only` 加该段读的那几个覆盖旗标，原样取自本次收到的值；
+ * 不带 `--deadline-s` 与 `--json`（终端里不受工具超时约束）。
+ */
+export function doctorRerunCommand(cli: string, opts: Pick<DoctorOptions, 'tierFlags' | 'modelOverrides'>): string {
+  const args = ['doctor', '--only', cli];
+  const id = agentByCliName(cli)?.id as CriticId | undefined;
+  if (id && doctorSectionConsumesOverrides(cli)) {
+    const model = opts.modelOverrides?.[id];
+    const tf = opts.tierFlags?.[id];
+    if (typeof tf?.vendorProfile === 'string') args.push(`--profile-${id}`, tf.vendorProfile);
+    if (tf?.vendorProfile === null) args.push(`--native-${id}`);
+    if (model !== undefined) args.push(`--model-${id}`, model);
+    if (tf?.tier !== undefined) args.push(`--tier-${id}`, tf.tier);
+    if (tf?.effort !== undefined) args.push(`--effort-${id}`, tf.effort);
+  }
+  // 前缀是项目里的入口：`trivium` 有意不在 PATH 上，照抄 `trivium …` 会 command not found（代码三审 GLM-02）
+  return formatCommand(DOCTOR_RERUN_ENTRY, args);
+}
+
+/** 终端重跑命令的入口，与用户手册里终端命令的写法同形 */
+export const DOCTOR_RERUN_ENTRY = '.trivium/bin/trivium';
 
 /** 一条诊断结论：进 blockers 还是只进 notes */
 export interface SeverityLine {
@@ -586,7 +658,38 @@ export async function guardFixture<T>(
   }
 }
 
+/** 本体与外层竞速之间的接头（EV-251）：本体把收尾函数与控制器交出来，兜底路径据此出结果 */
+interface DoctorCoreHooks {
+  finalize?: (stuck?: boolean) => Promise<DoctorReport>;
+  controller?: DeadlineController;
+  ready?: () => void;
+}
+
+/**
+ * 不给 `deadline` 时就是本体本身。给了时与控制器的兜底竞速（计划三审 AGY-02）：到点后段在兜底时长内没退出来，
+ * 不等挂住的 await，按控制器记的段状态收尾、出结果（`deadline.stuck: true`）；调用方随后须自行结束进程。
+ */
 export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+  if (!opts.deadline) return runDoctorCore(opts, null);
+  const hooks: DoctorCoreHooks = {};
+  const ready = new Promise<void>((r) => {
+    hooks.ready = r;
+  });
+  // 本体抛出（内部错误）时停掉计时器与信号接管、卸下台账观察者，否则计时器会把进程拖到时限
+  const core = runDoctorCore(opts, hooks).catch((e: unknown) => {
+    hooks.controller?.stop();
+    observeTempDirs(null);
+    throw e;
+  });
+  const stuck = (async (): Promise<DoctorReport> => {
+    await ready;
+    await hooks.controller!.stuck;
+    return hooks.finalize!(true);
+  })();
+  return Promise.race([core, stuck]);
+}
+
+async function runDoctorCore(opts: DoctorOptions, hooks: DoctorCoreHooks | null): Promise<DoctorReport> {
   // 以**已落盘的探针结论**为基线，只覆盖本次真正探测过的段落。
   // 否则 `--only zcode` 会把上一轮的 agy 结论一并清空（探针结论是增量积累的）。
   const base = defaultProbe();
@@ -610,11 +713,71 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   const only = opts.only ?? null;
   /** 本轮探针夹具没建起来的侧（EV-209）：末尾「尚无探针实现」那一圈要跳过它们，否则 blocker 之外再收一句自相矛盾的 note */
   const fixtureFailed = new Set<string>();
+  /** 本次 doctor 已到点或收到信号（EV-251）：读控制器的中止令牌，不给时限时恒为假 */
+  const aborted = (): boolean => dl?.token.aborted === true;
   const guard = <T>(cli: string, fn: () => Promise<T>): Promise<T | null> =>
     guardFixture(cli, fn, (blocker) => {
+      // 中止派生之后夹具建不起来是我们打断的，不是本机环境问题（EV-251）：不记 blocker，该段按未探完交代
+      if (aborted()) return;
       fixtureFailed.add(cli);
       blockers.push(blocker);
     });
+
+  /*
+   * ── 总时限（EV-251，计划 r2 D3）──
+   * 不给 `deadline` 时下面这些一概不启用，各段照旧直接调用，行为逐字不变。
+   */
+  const dlo = opts.deadline ?? null;
+  const dl = dlo
+    ? new DeadlineController({
+        ms: dlo.ms,
+        unwindMs: dlo.unwindMs ?? DEADLINE_UNWIND_MS,
+        graceMs: dlo.graceMs,
+        killWaitMs: dlo.killWaitMs,
+        handleSignals: dlo.handleSignals,
+      })
+    : null;
+  // 本进程的台账只在带时限时记；补删（扫已退出进程的台账）每次 doctor 都做，见交出接头之后（代码三审 CODEX-04 ≡ GLM-03）
+  const ledger = dlo && opts.ledgerDir ? new TempDirLedger(opts.ledgerDir) : null;
+  let sweepResidue: string[] = [];
+  /** 环境段跑完并落盘了；到点时还没跑完（含挂在不经 `run()` 的 await 上），收尾时写进 residue（代码三审 CODEX-02） */
+  let envDone = false;
+  ledger?.install();
+  /** 本次要探的每一段的状态，`deadline.sections` 由它给出 */
+  const sectionStates = new Map<string, { state: DeadlineSectionState; scope: ProbeSectionScope | null }>(
+    DOCTOR_SECTION_ORDER.filter((cli) => only === null || only === cli).map((cli) => [cli, { state: 'not_started', scope: null }]),
+  );
+  const ABORTED = Symbol('aborted');
+  /**
+   * 段包装：在段作用域里跑 fn（作用域内派生一律自成一组、记进段）。中止派生之后返回的结果作废——
+   * 合成结果与被杀的调用会被探针读成各种否定结论，落盘就是把「被我们打断」写成「能力缺失」；
+   * 这时段里抛出的任何异常也接住（计划三审 AGY-01），未中止时原样重抛。
+   */
+  const inSection = async <T>(cli: string, fn: () => Promise<T>): Promise<T | typeof ABORTED> => {
+    if (!dl) return fn();
+    if (aborted()) return ABORTED;
+    const scope = newProbeSection(cli, dl.token);
+    dl.scopes.push(scope);
+    sectionStates.set(cli, { state: 'in_progress', scope });
+    try {
+      const r = await withProbeSection(scope, async () => {
+        await opts.sectionPrelude?.(cli);
+        return fn();
+      });
+      return aborted() ? ABORTED : r;
+    } catch (e) {
+      if (aborted()) return ABORTED;
+      throw e;
+    }
+  };
+  const markFinished = (cli: string): void => {
+    const s = sectionStates.get(cli);
+    if (s) s.state = 'finished';
+  };
+  if (dl) {
+    dlo?.onController?.(dl);
+    dl.start();
+  }
   /**
    * 命令行覆盖（模型、档位、思考等级、厂商 profile）的**唯一读点**（EV-245）：读的同时记下这一家的覆盖用上了，
    * 末尾据此给 `describeUnusedOverrides` 提示。各段不得绕过它直接读 `opts.tierFlags` / `opts.modelOverrides`——
@@ -626,66 +789,6 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     const model = opts.modelOverrides?.[id];
     return { ...opts.tierFlags?.[id], ...(model ? { model } : {}) };
   };
-
-  // ── 环境 ────────────────────────────────────────────────────────────
-  step('探测运行环境…');
-  const env = await probeEnv();
-  probe.host = {
-    platform: env.platform,
-    arch: env.arch,
-    has_timeout_bin: env.hasTimeoutBin,
-    git_version: env.gitVersion,
-  };
-  notes.push(`node=${env.nodePath ?? '未找到'} ${env.nodeVersion ?? ''}`.trim());
-  notes.push(`git=${env.gitVersion ?? '未找到'}`);
-  // 构建标识（EV-82 小主题第一段）：只读、出错不影响 doctor
-  try {
-    const { describeBuildStamp } = await import('./build-stamp.js');
-    notes.push(await describeBuildStamp(opts.projectRoot));
-  } catch (e) {
-    notes.push(`编排器构建标识：读取失败（${(e as Error).message}）`);
-  }
-  /*
-   * 已废弃配置键（EV-30 ① / EV-15）：只告警、不影响退出码。放在环境段，与 `--only` 无关——
-   * 它说的是配置本身，哪一段都该看见。正文与判定和预检同源（`deprecatedConfigNotice`），不带 ⚠️（`warn()` 自带）。
-   */
-  const deprecatedNotice = deprecatedConfigNotice(opts.config);
-  if (deprecatedNotice !== null) warnings.push(deprecatedNotice);
-  /*
-   * 共享读取面里的同名入口（EV-240 方案 A，用户 D-11）：全量列出、给出口，**只进 warnings、不进 blockers**，
-   * 退出码不受影响。与 `--only` 无关（同上一条：说的是本机环境）。判定与安装器同一份实现（`entry-collisions.ts`），
-   * 只扫各家的额外读取根，不扫安装根（计划 r2 T-3）。扫描出错也只记一条告警。
-   */
-  {
-    const se = entryScanEnv(opts.entryScanEnv);
-    try {
-      const listed = describeSharedRootProblems(await scanEntryCollisions(sharedReadRootTargets(AGENTS, se)), se.home);
-      if (listed !== null) warnings.push(listed);
-    } catch (e) {
-      warnings.push(`共享读取面检查没做成：${(e as Error).message}`);
-    }
-  }
-  if (!env.nodeOk) blockers.push('Node.js 不可用或版本低于 18');
-  if (!env.gitOk) blockers.push('git 不可用或版本过低');
-  // wrapper 自身在、里面写死的 node / bundle 却没了：每次 Hook 都会报 127
-  const { checkWrapper } = await import('./init.js');
-  for (const w of await checkWrapper(opts.triviumDir)) blockers.push(w);
-  if (!env.hasTimeoutBin) {
-    notes.push(
-      '本机无 GNU coreutils 的 timeout/gtimeout —— 编排器的超时全部在 Node 内实现，' +
-        '不依赖外部命令（这是预期行为，非问题）',
-    );
-  }
-
-  // 落盘契约保持 {build, test}：candidates 只活在内存里供 --suggest-verify 展示来源
-  const sug = await probeVerifyCommands(opts.projectRoot);
-  probe.verify_suggestion = { build: sug.build, test: sug.test };
-  notes.push(
-    `编译测试命令候选：build=${JSON.stringify(sug.build)} ` +
-      `test=${JSON.stringify(sug.test)}（仅候选，需人确认后写入 verify 才会执行）`,
-  );
-  notes.push(...sug.notes.map((n) => `[verify-probe] ${n}`));
-  if (sug.truncated) notes.push('[verify-probe] 候选数已达上限，可能有子项目未列出');
 
   /*
    * ── 分段落盘（审查意见 GLM-08）──
@@ -712,6 +815,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
    *   只把已探过的段与 `generated_at` 再落一次（末尾补写用）。
    */
   const checkpoint = async (label: string | null): Promise<void> => {
+    if (!dl) return writeCheckpoint(label);
+    // 到点收尾要等在写的这一次写完（EV-251）
+    const p = writeCheckpoint(label);
+    dl.track(p);
+    return p;
+  };
+  const writeCheckpoint = async (label: string | null): Promise<void> => {
     if (label !== null) probedSections.add(label);
     try {
       /*
@@ -744,18 +854,198 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
       );
     }
   };
-  await checkpoint(DOCTOR_ONLY_ENV);
+  /**
+   * 收尾（只执行一次）：正常路径在各段之后调；带时限时兜底路径也调它（EV-251），那时段可能还挂着，
+   * 这里只读已记下的状态，不等段。
+   */
+  let finalized: Promise<DoctorReport> | null = null;
+  const finalize = (stuck = false): Promise<DoctorReport> => (finalized ??= (async (): Promise<DoctorReport> => {
+    /*
+     * 带时限时收尾的每一步都限时（代码三审 CODEX-03）：预算是控制器的剩余预算（到点后是「到点时刻 + 兜底时长」，
+     * 未到点是「总时限 + 兜底时长」），兜底路径进来时预算已近于零，给每步至少 FINALIZE_STEP_FLOOR_MS——
+     * 合计仍在 skill 的工具超时（总时限加 60 s）之内。没做完的如实写进 residue，台账保留给下一次 doctor。
+     * 控制器在收尾末尾才停：收尾途中到点照样能出兜底结果。
+     */
+    const residueLate: string[] = [];
+    const limited = async <T>(p: Promise<T>, what: string): Promise<T | undefined> => {
+      if (!dl) return p;
+      // 与兜底竞速：正常收尾进行中收到信号时，正在等的这一步不按旧预算等下去（代码审第 2 轮 CODEX-01）
+      const r = await dl.limitStep(p);
+      if (r.ok) return r.value;
+      residueLate.push(`${what}在时限内没做完`);
+      return undefined;
+    };
+    const term = dl?.termination ? await limited(dl.termination, '按组结束本次拉起的子进程') : null;
+
+    // 写了却没用上的命令行覆盖（EV-245）：只进 warnings，退出码不变。跑过的段 = 探完的 + 夹具没建起来的
+    const unusedOverrides = describeUnusedOverrides({
+      tierFlags: opts.tierFlags,
+      modelOverrides: opts.modelOverrides,
+      consumed: consumedOverrides,
+      ran: new Set([...probedSections, ...fixtureFailed]),
+      only,
+    });
+    if (unusedOverrides !== null) warnings.push(unusedOverrides);
+
+    probe.generated_at = new Date().toISOString();
+
+    /*
+     * 末尾再写一次，只为补上 generated_at 并确保前面每一段都落了盘。
+     * 走 patchProbe（锁内读-改-写）而不是 persistProbe（整体替换）——
+     * 后者会把并发的另一次 doctor（例如 `--only` 另一侧）的结论覆盖掉。
+     *
+     * **传 null，不借用任何厂商标签**（审查意见 GLM-03）。原实现写的是
+     * `checkpoint(only === null ? 'zcode' : only === 'agy' ? 'agy' : 'zcode')`：
+     * `--only env` 时那个三元会落到 `'zcode'` 上，于是把本次**根本没探过**的
+     * zcode 段按起点 clone 整段写回——与 checkpoint 自己「没探过的段一个字节都不碰」
+     * 的注释直接矛盾，并发 doctor 下会丢更新。
+     *
+     * 到点时作废的段不在 probedSections 里，这一次不会写它；被作废那一家下一次预检仍按路线探针新鲜度退 69，
+     * 因为 `cliProbeIsFresh` 按各家自己的 probed_at 判、不看全局 generated_at（EV-251，计划三审 GLM-02）。
+     */
+    await limited(checkpoint(null), '末次落盘（补 generated_at）');
+    const written = path.join(opts.triviumDir, 'config.local.yaml');
+    notes.push(`探针结论已写入 ${written}`);
+
+    let deadline: DoctorDeadline | undefined;
+    if (dlo && dl) {
+      const ledgerResidue = ledger ? await limited(ledger.finish(), '探针临时目录收尾（台账保留，下一次 doctor 启动时补删）') : [];
+      const residue = [
+        ...sweepResidue,
+        ...(dl.reason !== null && !envDone ? ['环境段在时限内没跑完：本次没有刷新环境结论，也没有据它报阻断项'] : []),
+        ...(term?.remaining ?? []).map((g) => `进程组 ${g} 在宽限链之后仍未确认结束（或成员数取不到）`),
+        ...(term?.reused ?? []).map((g) => `进程组 ${g} 的组长已退出、组号已被别的进程复用，没有对它发信号`),
+        ...(ledgerResidue ?? []),
+        ...residueLate,
+      ];
+      deadline = {
+        limit_s: Math.round(dlo.ms / 1000),
+        hit: dl.reason !== null,
+        reason: dl.reason,
+        // 兜底触发过就记 stuck，不论是哪条路径先调的收尾（正常收尾途中被兜底打断也算）
+        stuck: stuck || dl.stuckFired,
+        sections: [...sectionStates].map(([cli, s]) => {
+          const launches = s.scope?.launches ?? 0;
+          return {
+            only: cli,
+            state: s.state,
+            launches,
+            notes: notes.filter((n) => n.startsWith(`[${cli}] `)),
+            rerun: doctorRerunCommand(cli, opts),
+            ...(s.state === 'finished' ? {} : { note: unfinishedSectionNote(launches) }),
+          };
+        }),
+        residue,
+      };
+    }
+    dl?.stop();
+    return { probe, notes, blockers, warnings, directoryEvidence, ...(deadline ? { deadline } : {}) };
+  })());
+  if (hooks) {
+    hooks.finalize = finalize;
+    if (dl) hooks.controller = dl;
+    hooks.ready?.();
+  }
+  // ↑ 收尾函数与控制器在第一个 await 之前交出：之后任何一步挂住，到点都能由兜底出结果（代码三审 CODEX-02）
+
+  if (opts.ledgerDir) {
+    sweepResidue = await sweepDoctorLedgers(opts.ledgerDir);
+    // 不带时限时没有 deadline 段可放，残留进 warnings（不影响退出码）
+    if (!dl) warnings.push(...sweepResidue);
+  }
+
+  // ── 环境 ────────────────────────────────────────────────────────────
+  /*
+   * 带时限时环境段也在段作用域里跑（代码三审 CODEX-02）：构建标识、版本探测里的 git / node 子进程到点同样按组结束。
+   * 它不进 `deadline.sections`（那是「该跑哪一家」的清单）；到点时环境段的结论不落盘、它产出的阻断项撤回，残留里记一句。
+   */
+  const blockersBeforeEnv = blockers.length;
+  const envScope = dl ? newProbeSection(DOCTOR_ONLY_ENV, dl.token) : null;
+  if (dl && envScope) dl.scopes.push(envScope);
+  const inEnv = <T>(fn: () => Promise<T>): Promise<T> => (envScope ? withProbeSection(envScope, fn) : fn());
+  step('探测运行环境…');
+  const env = await inEnv(async () => {
+    await opts.sectionPrelude?.(DOCTOR_ONLY_ENV);
+    return probeEnv();
+  });
+  probe.host = {
+    platform: env.platform,
+    arch: env.arch,
+    has_timeout_bin: env.hasTimeoutBin,
+    git_version: env.gitVersion,
+  };
+  notes.push(`node=${env.nodePath ?? '未找到'} ${env.nodeVersion ?? ''}`.trim());
+  notes.push(`git=${env.gitVersion ?? '未找到'}`);
+  // 构建标识（EV-82 小主题第一段）：只读、出错不影响 doctor
+  try {
+    const { describeBuildStamp } = await import('./build-stamp.js');
+    notes.push(await inEnv(() => describeBuildStamp(opts.projectRoot)));
+  } catch (e) {
+    notes.push(`编排器构建标识：读取失败（${(e as Error).message}）`);
+  }
+  /*
+   * 已废弃配置键（EV-30 ① / EV-15）：只告警、不影响退出码。放在环境段，与 `--only` 无关——
+   * 它说的是配置本身，哪一段都该看见。正文与判定和预检同源（`deprecatedConfigNotice`），不带 ⚠️（`warn()` 自带）。
+   */
+  const deprecatedNotice = deprecatedConfigNotice(opts.config);
+  if (deprecatedNotice !== null) warnings.push(deprecatedNotice);
+  /*
+   * 共享读取面里的同名入口（EV-240 方案 A，用户 D-11）：全量列出、给出口，**只进 warnings、不进 blockers**，
+   * 退出码不受影响。与 `--only` 无关（同上一条：说的是本机环境）。判定与安装器同一份实现（`entry-collisions.ts`），
+   * 只扫各家的额外读取根，不扫安装根（计划 r2 T-3）。扫描出错也只记一条告警。
+   */
+  {
+    const se = entryScanEnv(opts.entryScanEnv);
+    try {
+      const listed = describeSharedRootProblems(await scanEntryCollisions(sharedReadRootTargets(AGENTS, se)), se.home);
+      if (listed !== null) warnings.push(listed);
+    } catch (e) {
+      warnings.push(`共享读取面检查没做成：${(e as Error).message}`);
+    }
+  }
+  if (!env.nodeOk) blockers.push('Node.js 不可用或版本低于 18');
+  if (!env.gitOk) blockers.push('git 不可用或版本过低');
+  // wrapper 自身在、里面写死的 node / bundle 却没了：每次 Hook 都会报 127
+  const { checkWrapper } = await import('./init.js');
+  for (const w of await inEnv(() => checkWrapper(opts.triviumDir))) blockers.push(w);
+  if (!env.hasTimeoutBin) {
+    notes.push(
+      '本机无 GNU coreutils 的 timeout/gtimeout —— 编排器的超时全部在 Node 内实现，' +
+        '不依赖外部命令（这是预期行为，非问题）',
+    );
+  }
+
+  // 落盘契约保持 {build, test}：candidates 只活在内存里供 --suggest-verify 展示来源
+  const sug = await inEnv(() => probeVerifyCommands(opts.projectRoot));
+  probe.verify_suggestion = { build: sug.build, test: sug.test };
+  notes.push(
+    `编译测试命令候选：build=${JSON.stringify(sug.build)} ` +
+      `test=${JSON.stringify(sug.test)}（仅候选，需人确认后写入 verify 才会执行）`,
+  );
+  notes.push(...sug.notes.map((n) => `[verify-probe] ${n}`));
+  if (sug.truncated) notes.push('[verify-probe] 候选数已达上限，可能有子项目未列出');
+
+  if (aborted()) {
+    // 环境段在时限内没跑完：被打断的调用会读成「node / git 不可用」之类，不据它报阻断、不落盘
+    blockers.length = blockersBeforeEnv;
+  } else {
+    await checkpoint(DOCTOR_ONLY_ENV);
+    envDone = true;
+  }
 
   // ── Antigravity ─────────────────────────────────────────────────────
   if (only === null || only === 'agy') {
     step('探测 Antigravity（agy）…');
     // 夹具没建起来时 r 为 null（EV-209）：该侧不赋值、不 checkpoint，blocker 已由 guard 推入
-    const r = await guard('agy', () =>
+    const got = await inSection('agy', () => guard('agy', () =>
       probeAgy(agentConfigOf(opts.config, 'gemini', 'antigravity').bin, agentConfigOf(opts.config, 'gemini', 'antigravity').agent, {
         skipModelCalls: opts.skipModelCalls ?? false,
         existing: probe.cli.agy,
       }),
-    );
+    ));
+    // 中止派生之后返回的段作废、一个字节都不落（EV-251）
+    const r = got === ABORTED ? null : got;
+    if (got !== ABORTED) markFinished('agy');
     if (r) {
       probe.cli.agy = r.probe;
       notes.push(...r.notes.map((n) => `[agy] ${n}`));
@@ -773,7 +1063,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   // ── ZCode ───────────────────────────────────────────────────────────
   if (only === null || only === 'zcode') {
     step('探测 ZCode（zcode.cjs）…');
-    const r = await guard('zcode', () =>
+    const got = await inSection('zcode', () => guard('zcode', () =>
       probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {
         skipModelCalls: opts.skipModelCalls ?? false,
         existing: probe.cli.zcode,
@@ -781,7 +1071,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
         launchModel: zcodeProbeModel(opts.config),
         ...(opts.zcodeProbe ?? {}),
       }),
-    );
+    ));
+    const r = got === ABORTED ? null : got;
+    if (got !== ABORTED) markFinished('zcode');
     if (r) {
       probe.cli.zcode = r.probe;
       notes.push(...r.notes.map((n) => `[zcode] ${n}`));
@@ -836,13 +1128,15 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   if (only === null || only === 'codex') {
     step('探测 Codex（codex exec）…');
     const selected = resolveTier(opts.config, 'codex', 'code', overridesFor('codex'));
-    const r = await guard('codex', () =>
+    const got = await inSection('codex', () => guard('codex', () =>
       probeCodex(opts.probeBins?.codex ?? (opts.config.agents.codex?.vendor === 'openai' ? opts.config.agents.codex.bin ?? null : null), {
         skipModelCalls: opts.skipModelCalls ?? false,
         existing: probe.cli.codex,
         selected,
       }),
-    );
+    ));
+    const r = got === ABORTED ? null : got;
+    if (got !== ABORTED) markFinished('codex');
     if (r) {
       probe.cli.codex = r.probe;
       notes.push(...r.notes.map((n) => `[codex] ${n}`));
@@ -881,7 +1175,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     if (selected.model === null) notes.push('[claude] 未解析出本轮模型，跳过付费能力探针，不写路线准入结论');
     step(`探测 Claude Code（${selected.vendorProfile === null ? '原生' : `profile:${selected.vendorProfile}`}）…`);
     let routeBefore: ClaudeRoute | undefined;
-    const r = await guard('claude', async () => {
+    const got = await inSection('claude', () => guard('claude', async () => {
       const route = resolveClaudeRoute(opts.config, selected.vendorProfile);
       routeBefore = route;
       notes.push(`[claude] 配置声明模型：${route.modelsDeclared.join('、') || '未声明'}；不代表完整服务端目录`);
@@ -892,7 +1186,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
         config: opts.config,
         directoryProbe: opts.claudeDirectoryProbe,
       }));
-    });
+    }));
+    const r = got === ABORTED ? null : got;
+    if (got !== ABORTED) markFinished('claude');
     if (r) {
       const routes = { ...probe.cli.claude?.routes };
       directoryEvidence = r.directoryEvidence;
@@ -960,6 +1256,8 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
   for (const name of ALL_CLI_NAMES) {
     if (probedSections.has(name)) continue; // 本次刚探过
     if (fixtureFailed.has(name)) continue; // 本次探了、夹具没建起来：已有 blocker，不是「尚无探针实现」（EV-209）
+    // 到点时没探完或没开始的段：由 deadline.sections 交代，不是「尚无探针实现」（EV-251）
+    if (dl?.reason && sectionStates.has(name) && sectionStates.get(name)!.state !== 'finished') continue;
     if (only !== null && only !== name) continue; // 用户没点名这一侧
     if (probe.cli[name]?.probed_at) continue; // 盘上有旧结论，不是「无实现」
     const agent = agentByCliName(name);
@@ -969,34 +1267,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
     );
   }
 
-  // 写了却没用上的命令行覆盖（EV-245）：只进 warnings，退出码不变。跑过的段 = 探完的 + 夹具没建起来的
-  const unusedOverrides = describeUnusedOverrides({
-    tierFlags: opts.tierFlags,
-    modelOverrides: opts.modelOverrides,
-    consumed: consumedOverrides,
-    ran: new Set([...probedSections, ...fixtureFailed]),
-    only,
-  });
-  if (unusedOverrides !== null) warnings.push(unusedOverrides);
-
-  probe.generated_at = new Date().toISOString();
-
-  /*
-   * 末尾再写一次，只为补上 generated_at 并确保前面每一段都落了盘。
-   * 走 patchProbe（锁内读-改-写）而不是 persistProbe（整体替换）——
-   * 后者会把并发的另一次 doctor（例如 `--only` 另一侧）的结论覆盖掉。
-   *
-   * **传 null，不借用任何厂商标签**（审查意见 GLM-03）。原实现写的是
-   * `checkpoint(only === null ? 'zcode' : only === 'agy' ? 'agy' : 'zcode')`：
-   * `--only env` 时那个三元会落到 `'zcode'` 上，于是把本次**根本没探过**的
-   * zcode 段按起点 clone 整段写回——与 checkpoint 自己「没探过的段一个字节都不碰」
-   * 的注释直接矛盾，并发 doctor 下会丢更新。
-   */
-  await checkpoint(null);
-  const written = path.join(opts.triviumDir, 'config.local.yaml');
-  notes.push(`探针结论已写入 ${written}`);
-
-  return { probe, notes, blockers, warnings, directoryEvidence };
+  return finalize();
 }
 
 /** 人读渲染 */
@@ -1016,6 +1287,18 @@ export function renderDoctorReport(report: DoctorReport): void {
     for (const b of report.blockers) warn(b);
   }
   say('');
+  const d = report.deadline;
+  if (d) {
+    const done = d.sections.filter((s) => s.state === 'finished').map((s) => s.only);
+    const left = d.sections.filter((s) => s.state !== 'finished');
+    say(
+      `本次时限 ${d.limit_s} 秒，${d.hit ? (d.reason === 'signal' ? '收到信号' : '已到点') : '未到点'}` +
+        `：已探完 ${done.join('、') || '无'}；未探完 ${left.map((s) => s.only).join('、') || '无'}`,
+    );
+    for (const s of left) say(`  请在终端单独跑：${s.rerun}`);
+    for (const r of d.residue) warn(r);
+    say('');
+  }
 }
 
 /**

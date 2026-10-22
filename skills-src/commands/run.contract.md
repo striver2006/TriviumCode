@@ -77,7 +77,7 @@ TV preflight --stage all --driver {{DRIVER}} --critics <critics> [--profile <名
 并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
 跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
 
-失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
+{{> preflight/recalibrate}}
 
 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
 

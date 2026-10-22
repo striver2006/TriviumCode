@@ -213,7 +213,7 @@ test('profile 缺该阶段模型时报不合格', async () => {
 
 // ── 探针新鲜度：快速失败，不拉 doctor（AGY-03 / GLM-08）──
 
-test('从未探针 → 退 69，且明确说明不自动拉起 doctor', async () => {
+test('从未探针 → 退 69，终端里手动跑 doctor；/dual-* 里按入选各侧自动校准（EV-251）', async () => {
   const ctx = await fakeCtx((c) => {
     c.probe.generated_at = null;
   });
@@ -222,7 +222,11 @@ test('从未探针 → 退 69，且明确说明不自动拉起 doctor', async ()
   assert.equal(r.exitCode, EXIT.ENV);
   const c = r.checks.find((x) => !x.ok)!;
   assert.match(c.detail, /手动运行 `trivium doctor`/);
-  assert.match(c.detail, /刻意\*\*不\*\*自动拉起/);
+  assert.match(c.detail, /自动校准/);
+  // 旧说法（「配额已烧而结论未落盘」）已过时：doctor 每探完一段就落盘
+  assert.doesNotMatch(c.detail, /结论未落盘/);
+  assert.equal(c.recalibrate?.fixable, true);
+  assert.equal(r.recalibration?.eligible, true);
 });
 
 test('探针过期 → 退 69 并指引手动执行', async () => {

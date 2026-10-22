@@ -24,7 +24,11 @@ import { selftestCommand } from './selftest.js';
 import { runReview } from './review.js';
 import { collectCommands, runVerify, summarizeVerify } from './verify.js';
 import { buildTopicReport, renderTopicReport } from './report.js';
-import { cancelRun, installForegroundInterruptForwarding, readRoundFacts, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
+import {
+  WORKER_TREE_GRACE_MS, WORKER_TREE_KILL_WAIT_MS, cancelRun, installForegroundInterruptForwarding, readRoundFacts, startRun, statusRun,
+  waitRun, workerMain,
+} from './run-protocol.js';
+import { DEADLINE_MAX_S, DEADLINE_MIN_S } from './doctor-deadline.js';
 import {
   approveForkRecovery, awaitApprovalRecovery, checkAdjudication, formatJointGroups, loadRoundReviews, renderGateResult,
   renderTamperedArtifacts, verifyRoundForApproval,
@@ -192,10 +196,12 @@ function rejectExtraPositionals(args: ParsedArgs): void {
 const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编排器
 
 用法：
-  trivium doctor [--json] [--no-model-calls] [--only ${doctorOnlyChoices().join('|')}] [--profile-<id> <名> | --native-<id>] [--model-<id> <模型>] [--effort-<id> <值>]
+  trivium doctor [--json] [--no-model-calls] [--only ${doctorOnlyChoices().join('|')}] [--profile-<id> <名> | --native-<id>] [--model-<id> <模型>] [--effort-<id> <值>] [--deadline-s <秒>]
       本机能力探针。实测各家 CLI 的真实能力并回填 .trivium/config.local.yaml 的 probe: 段。
       --no-model-calls  只做静态探测，不消耗厂商配额
       --only            只探测指定一侧（取值随注册表登记的 CLI 自动扩展）
+      --deadline-s      总时限（${DEADLINE_MIN_S}～${DEADLINE_MAX_S} 秒）：到点或收到 SIGINT / SIGTERM 时按组结束本次拉起的探针子进程、
+                        删掉探针临时目录，已探完的段照常落盘，没探完的段在 JSON 的 deadline.sections 里点名，退 76
       每段探完即中途落盘：那几步已经烧过配额，中断不该让它白费
       已登记但尚无探针实现的 CLI 会明确报「登记了、本轮无结论」，不是失败
 
@@ -832,8 +838,13 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
 }
 
 async function cmdDoctor(args: ParsedArgs): Promise<number> {
+  /*
+   * 总时限（EV-251）：给了就由 doctor 自己的时限控制器接 SIGINT / SIGTERM、走协作式收尾——
+   * 前台中断转发走的是冻结式 `shutdownTrackedTrees`，探针 finally 不跑、凭据副本目录留在盘上（计划三审 CODEX-03）。
+   */
+  const deadlineS = parseDeadlineFlag(args);
   // 前台探针以 killTree 拉起子进程，Ctrl-C 够不到它们：装中断转发（EV-155）
-  installForegroundInterruptForwarding();
+  if (deadlineS === null) installForegroundInterruptForwarding();
   /*
    * --selftest 不读当前项目的配置：它在自己的临时夹具里跑。
    * 因此放在 loadCtx 之前——装完还没 init 的项目里也该能自检，
@@ -885,6 +896,18 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
     only,
     tierFlags,
     modelOverrides,
+    // 台账补删每次都做（代码三审 CODEX-04 ≡ GLM-03）：用户照 rerun 在终端跑的普通 doctor 也要清掉强杀留下的凭据副本目录
+    ledgerDir: runRoot(ctx.config),
+    ...(deadlineS !== null
+      ? {
+          deadline: {
+            ms: deadlineS * 1000,
+            graceMs: WORKER_TREE_GRACE_MS,
+            killWaitMs: WORKER_TREE_KILL_WAIT_MS,
+            handleSignals: true,
+          },
+        }
+      : {}),
   });
 
   if (isJsonMode()) {
@@ -895,12 +918,31 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
       blockers: report.blockers,
       warnings: report.warnings,
       directoryEvidence: report.directoryEvidence,
+      ...(report.deadline ? { deadline: report.deadline } : {}),
     });
   } else {
     renderDoctorReport(report);
   }
 
-  return report.blockers.length === 0 ? EXIT.OK : EXIT.ENV;
+  // 到点或收到信号：没探完的段优先于 blockers 的 69（「没探完」不是「探完了有问题」，EV-251）
+  const code = report.deadline?.hit ? EXIT.DOCTOR_PARTIAL : report.blockers.length === 0 ? EXIT.OK : EXIT.ENV;
+  if (report.deadline?.hit) {
+    // 时限要兑现：挂住的段与确认不了的子进程句柄会让事件循环不退，等 stdout 写完就主动结束
+    await new Promise<void>((r) => process.stdout.write('', () => r()));
+    process.exit(code);
+  }
+  return code;
+}
+
+/** `doctor --deadline-s <秒>`：整数，取值见 `DEADLINE_MIN_S` / `DEADLINE_MAX_S`；不给返回 null（EV-251） */
+function parseDeadlineFlag(args: ParsedArgs): number | null {
+  const raw = args.flags.get('deadline-s');
+  if (raw === undefined) return null;
+  const s = typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : NaN;
+  if (!Number.isInteger(s) || s < DEADLINE_MIN_S || s > DEADLINE_MAX_S) {
+    throw usageError(`--deadline-s 只接受 ${DEADLINE_MIN_S}～${DEADLINE_MAX_S} 的整数秒，收到：${String(raw)}`);
+  }
+  return s;
 }
 
 async function cmdPreflight(args: ParsedArgs): Promise<number> {
@@ -962,10 +1004,19 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
       ok: r.ok,
       scope: r.scope,
       // `warn` 只在为真时带上：与既有输出逐字兼容（EV-123）
-      checks: r.checks.map((c) => ({ name: c.name, ok: c.ok, ...(c.warn ? { warn: true } : {}), detail: c.detail })),
+      checks: r.checks.map((c) => ({
+        name: c.name,
+        ok: c.ok,
+        ...(c.warn ? { warn: true } : {}),
+        detail: c.detail,
+        // 只在失败项上出现（EV-251）：skill 不读它，读下面的汇总；留给人与用例核对逐项判定
+        ...(c.recalibrate ? { recalibrate: c.recalibrate } : {}),
+      })),
       // 恒在（无警告时为 []）：skill 按它转述，键缺席会让转述句静默不触发
       warnings: r.warnings,
       exit_code: r.exitCode,
+      // 失败时恒在（EV-251）：skill 只照抄 invocations[*].args；键缺席按「不自动校准」处理
+      ...(r.recalibration ? { recalibration: r.recalibration } : {}),
     });
   } else {
     say(renderPreflight(r));

@@ -1,0 +1,13 @@
+{
+  "targets": ["src/trivium/doctor-deadline.ts"],
+  "cases": [
+    {
+      "id": "M15",
+      "desc": "代码审第 2 轮 CODEX-01：收尾的一步不与兜底竞速（收到信号后仍按开始等待时的旧预算等）",
+      "file": "src/trivium/doctor-deadline.ts",
+      "find": "      : Promise.race([p.then((v) => ({ v })), this.stuck.then(() => null)]);",
+      "replace": "      : p.then((v) => ({ v }));",
+      "expect": "dist/test/test/unit/doctor-deadline.test.js"
+    }
+  ]
+}

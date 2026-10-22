@@ -5,7 +5,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.172
+> - **当前版本**：v1.3.173
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -724,7 +724,7 @@ sequenceDiagram
 | :--- | :--- | :--- | :--- | :--- |
 | `cli` | 子命令解析、退出码约定、人类可读输出与 `--json` 机读输出 | argv | 退出码 + stdout | 任何业务判定 |
 | `config` | 加载/合并/校验配置（默认 → 项目 `config.yaml` → `config.local.yaml` → 命令行参数），暴露只读配置对象 | 文件 + argv | Config | 探针实测 |
-| `doctor` | 本机能力探针（3.5 节清单），回填 `probe:` 段 | 环境 | probe 结论 | 流程编排 |
+| `doctor` | 本机能力探针（3.5 节清单），回填 `probe:` 段；`--deadline-s` 见 8.1 末段（v1.3.173） | 环境 | probe 结论 | 流程编排 |
 | `preflight` | 启动预检：两侧可调用 + 已认证 + 模型 slug 合法 + git 可用 + 归档根可写 | Config | pass/fail + 原因 | 修复环境 |
 | `topic` | 主题名解析、合法性校验、slug 化、阶段目录创建、重跑版本号计算 | 命令参数/任务目标 | TopicRef | 起名（缺省时由 Driver 给出候选） |
 | `freeze` | 计算快照：临时索引 `write-tree` 得 `tree_hash`、记录被审对象 sha256、生成 code 阶段 diff；跑后复算并判定漂移；枚举对方历史产出生成禁读清单 | TopicRef + 阶段 + 被审对象 | Snapshot（含 `deny_paths`） | 决定审查内容、复制文件 |
@@ -1587,7 +1587,7 @@ SKILL.md 要求执行者把正文整段放进**一个**单引号参数、旗标�
 | 归档根不可写 / 非 git 仓库 | 报错，退出码 `69` | — |
 | 该阶段上一轮审查意见尚未裁决（闸门 `review_done_awaiting_disposition` / `awaiting_approval`） | 退 `2`，给出 `gate --check` 与 `abandon` 两条出路；零工件——闸门在任何落盘之前判定（v1.3.49） | GLM-r2-01 ③ / EV-109 |
 
-退出码约定：`0` 成功；`1` 一般失败；`2` 闸门阻断（供 Hook 使用，Hook 子命令以 wrapper 保证只返回 `0`/`2`，内部异常一律 `1`）；`64` 参数错误；`65` 前置产物缺失；`69` 环境/预检失败；`70` 同主题已有运行持锁（12.6）；`73` 运行仍在进行（仅 `review --wait`）；`75` 超时或单侧失败且为严格模式。
+退出码约定：`0` 成功；`1` 一般失败；`2` 闸门阻断（供 Hook 使用，Hook 子命令以 wrapper 保证只返回 `0`/`2`，内部异常一律 `1`）；`64` 参数错误；`65` 前置产物缺失；`69` 环境/预检失败；`70` 同主题已有运行持锁（12.6）；`73` 运行仍在进行（仅 `review --wait`）；`75` 超时或单侧失败且为严格模式；`76` 只有 `doctor --deadline-s`：到点或收到信号时还有段没探完（v1.3.173，EV-251，见 8.1 末段）。
 
 ### 7.4 入口 skill 的结构（`~/.claude/skills/dual-review-plan/SKILL.md`）
 
@@ -1786,7 +1786,7 @@ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起�
 
 | 检查 | 判定 | 失败处理 |
 | :--- | :--- | :--- |
-| 探针结论存在且未过期 | `probe.generated_at` 在 `probe_ttl_days`（默认 7）内，且 CLI 版本未变 | 自动触发一次 `doctor`；仍失败则中止 |
+| 探针结论存在且未过期 | `probe.generated_at` 在 `probe_ttl_days`（默认 7）内，且 CLI 版本未变 | 中止（退 69）。预检自身不拉起 `doctor`；v1.3.173 起由 skill 按失败项上的 `recalibrate` 自动校准一轮（见本节末段「自动校准」），仍失败则中止。此前本格写的「自动触发一次 `doctor`」从未实现：预检实现时为避开 600 s 工具超时改成快速失败（AGY-03 / GLM-08），本格未同步 |
 | Antigravity 可调用 | `agy --version` 成功 | 中止 |
 | Antigravity 已认证 | 最小 headless 探活任务返回 `status: SUCCESS`；结论带短 TTL 缓存（`preflight.auth_cache_ttl_h`，默认 1h，写 `config.local.yaml` 的 `probe.auth.agy`，形状见 13.1），TTL 内跳过探活以省时省配额。缓存除 `checked_at` 外还记 `cli_version` 与凭据 `fingerprint`：CLI 升级或凭据轮换后必须重新探活，否则缓存会盖住一个已经失效的结论 | 中止（退 69）。失败详情分三档、都点名探活模型与耗时（2026-10-17，M12 批次 1，EV-238；判定本身不变）：①输出含未登录原话（`Please sign in`，只认已存原始样本）⇒ 提示交互登录，优先于超时；②外层超时或 agy 自报 print timeout ⇒ 有已开始应答的证据（print timeout、流状态 SUCCESS、会话 id 任一）报「模型侧慢、可重试、不必重登」，没有则以「可能在等交互登录」打头；③其他 ⇒ 原因未识别、仍给登录指引。未识别原话的未登录：快速失败落 ③，挂起到超时落 ② 的无应答一层。已知角落：内层 print timeout 后在外层超时前带部分输出退出且流状态为 SUCCESS 时判通过（现行判定，未改） |
 | ZCode 可调用 | `node <entry> version` 成功 | 中止 |
@@ -1812,6 +1812,14 @@ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起�
 人读输出里 `warn` 项行首为 `⚠`，末行「✓ 预检通过」后追加「（含 N 条警告）」。
 
 **关键约束**：预检失败时**不得**创建主题目录、不得写任何 `_meta/`、不得产生任何双审标记（AC-16）。
+
+**自动校准（v1.3.173，EV-251，用户 2026-10-22 需求第 1 条）。** 预检退 69 时，四条命令的 skill 不再一律原样转述后停下，而是对 doctor 能修好的失败项自动跑 doctor、再重跑同一条预检，全程不向用户确认。
+①**判哪些能修由预检给，skill 不判**：失败项带 `recalibrate`（`{ fixable, targets? }`），由产出该项的代码置位、不看文案；没置位的失败项在 `runPreflight` 末尾补成 `{ fixable: false }`（fail-closed）。判据是「失败说的是落盘的探针结论缺失、过期或与现场对不上」：探针结论存在 / 未过期（目标只取入选侧）、路线探针缺失或过期、入口不在、版本漂移、只读能力一格里适配器 `availability()` 标了 `fix: 'doctor'` 的分支（没探过、没找到入口、读取能力没跑完、路线没有探针结论；每个不可用侧都标了才可修）。探针实测到的否定结论（读不到、只读失守）、取版本失败、认证失败、归档与 git、编译测试命令未配置、路线配置读不了，一律不能修。
+②**目标是本轮组合**：入选侧 × 本次 scope 各阶段，经与预检同一次的 `resolveTier` 解析出（模型、思考等级、厂商 profile），按侧去重；doctor 里读覆盖的段（codex、claude，`doctorSectionConsumesOverrides`，源码对账）带路线旗标（null 带显式 `--native-<id>`）与 `--model-<id>` / `--effort-<id>`，不读覆盖的段只给 `--only`。
+③**汇总** `recalibration`（失败时恒在）：`eligible` 当且仅当退 69、每个失败项都可修、调用清单非空；`invocations[]` 每条 `{ only, args, deadline_s, bash_timeout_ms }`，按（`only`、旗标）去重、按 `ALL_CLI_NAMES` 排序。`deadline_s` 取 `preflight.recalibrate_deadline_s`（缺省 900，即 15 分钟，用户 2026-10-22 定；取值 30～900），`bash_timeout_ms` 按 `doctorToolTimeoutMs` 推出（时限加 60 s，至多 960 s；与 `--wait` 的 `bashTimeoutFor` 分开，后者仍封顶 600 s）。960 s 超过 Claude Code Bash 工具缺省的 600 s 上限，载体须设 `BASH_MAX_TIMEOUT_MS=960000`，否则把配置键调到 540 以下；另三家载体的上限未实测，统一取值、配置键可调。
+④**skill**（公共片段 `partials/preflight/recalibrate.md`）：照抄 `args` 逐条前台调用（不后台、不拆发起与等待），每条后播报一行，任何退出码都继续下一条；跑完用逐字相同的旗标重跑预检一次，通过即继续，仍失败就停下并转述两次预检、各次 doctor 的结论与各段 `rerun`；每次预检至多一轮。
+⑤**doctor 的总时限** `--deadline-s`（`doctor-deadline.ts`）：每段在段作用域里跑（`withProbeSection`，段内 `run()` 一律自成进程组并记进段级记录，含 git 辅助调用；组长退出也不删）。到点或收到 SIGINT / SIGTERM（带时限时不装前台中断转发，由控制器接管）时置本次的中止令牌：段内 `run()` 不再派生、立即兑现合成结果（不用冻结——冻结会让探针 `finally` 不跑、凭据副本目录留在盘上）；按组结束段内派生过、还在的组（组长活着，或组长已退出、进程表里没有 pid 等于组号的进程而非僵尸成员数大于 0；有 pid 等于组号的进程即判组号已被复用、不发信号，代码三审 CODEX-01），宽限链同 worker 处理器；限时等在写的 checkpoint；兜底计时器到点即起算，给段至多 20 s 沿 `finally` 退出来，等不到时控制器按已记状态出结果（`stuck`）；收尾的每一步按剩余预算限时、每步至少 5 s（CODEX-03）。收尾函数与控制器在第一个 await 之前交出，环境段也在段作用域里跑，到点时它的阻断项撤回、不落盘（CODEX-02）。台账补删每次 doctor 启动都做，与带不带时限无关（CODEX-04）。在跑那一段作废、不落盘，已探完的照常落盘；`cliProbeIsFresh` 按各家自己的 `probed_at` 判，所以被作废那一家下一次预检仍退 69。段内 `makeTempDir` 建的目录同步记进 `<run_root>/doctor-temp-<pid>.json`，删成功即注销，下一次 doctor 启动时补删已退出进程留下的条目（只删台账里、真实路径在系统临时目录下、形态相符的）。`--json` 多一个 `deadline` 键（`sections[]` 每段 `state` / `launches` / `notes` / `rerun`，没探完的带 EV-243 先例的 `note`），到点退 76（优先于 blockers 的 69）。
+已知边界（BACKLOG EV-251）：另三家载体工具时限未实测；宿主直接 SIGKILL 时子进程组成为孤儿、临时目录留到下一次 doctor；`config.local.yaml` 非原子写；同步代码堵住事件循环时控制器打断不了；不跨命令冷却。
 
 ### 8.2 命令 A（全流程）状态机
 
@@ -4087,6 +4095,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.173** | 2026-10-22 | **预检失败自动校准（EV-251，用户原始需求 2026-10-22 第 1 条）。** 主题 `预检失败自动校准`（`/dual-run`，计划三审 run `20261022T120111Z` 第 1/3 轮：codex `reject`、gemini `pass-after-changes`、glm `pass`，计票修改后通过；13 条接受 12、驳回 1（AGY-03：「全部过期」失败即入选各家必在过期之列，目标本就只取入选侧），定稿 r2）。预检退 69 时四条命令的 skill 对 doctor 能修好的失败项自动跑带时限的 doctor、再重跑同一条预检，至多一轮、全程不向用户确认；认证失败、归档与 git、编译测试命令未配置等照旧原样转述并停下。**一、预检**：失败项带机读 `recalibrate`（缺省不能修），汇总 `recalibration`（`eligible` / `why` / `invocations[]`），目标按本轮组合展开（CODEX-04 / CODEX-05），只读能力一格按侧聚合（AGY-04）。**二、doctor `--deadline-s`**：段作用域内派生一律自成进程组并记进段级记录（CODEX-02）；到点或收到信号时置按次的中止令牌、按「组长活着或非僵尸成员数大于 0」逐组结束（CODEX-01）、等在写的 checkpoint、兜底 20 s 后由控制器出结果（AGY-02）；中止后段内异常接住、正常返回同样作废（AGY-01）；临时目录台账供下一次 doctor 补删（CODEX-03、GLM-01）；`deadline.sections` 每段 `notes` 与 `rerun`（CODEX-06）；退 76。**三、配置** `preflight.recalibrate_deadline_s`（AGY-05；计划 r2 定缺省 480，审后用户改为 900 即 15 分钟，取值上限随之放到 900，doctor 的工具超时改按 `doctorToolTimeoutMs` 加 60 s、至多 960 s，Claude Code 须设 `BASH_MAX_TIMEOUT_MS=960000`）。**四、skill** 公共片段 `partials/preflight/recalibrate.md`。实现与计划 r2 的偏差：进程级中止标志改为按次的中止令牌（同一进程先后跑几次 doctor 时前一次到点连累后一次）。代码三审（run `20261022T131835Z`，第 1/3 轮：codex `reject`、gemini `pass`、glm `pass-after-changes`，计票修改后通过，11 条全接受）：组长已退出且有 pid 等于组号的活进程时判复用、不发信号（CODEX-01）；收尾函数与控制器在第一个 await 前交出、环境段也进段作用域（CODEX-02）；到点即起兜底计时器、收尾每步按剩余预算限时（CODEX-03）；台账补删每次 doctor 都做（CODEX-04 ≡ GLM-03）；`rerun` 前缀改 `.trivium/bin/trivium`（GLM-02）；段次序常量对账（GLM-01）；带旗标的调用经 CLI 照抄执行的集成用例（GLM-04）。见 7.3、8.1 末段。报告 `doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md`。 |
 | **v1.3.172** | 2026-10-22 | **争议明细写入（发版-02，EV-250）。** 主题 `争议明细写入`（`/dual-run`，计划三审 run `20261022T101659Z` 第 1/3 轮：codex、glm `pass`，gemini `pass-after-changes`，3 条全接受，定稿 r2）。`gate --check` 在 `warn` 策略下放行共同驳回时，除置 `disputed` 外把编号与分组按 `run_id` 覆盖写进 `task.json.disputes`，与 `joint_checks` 同一次写入：先删本轮旧条目、再按本次结论追加，同一轮重跑不堆积，争议撤回（改成接受）或改 `hard` 被拦时本轮条目随之删掉，他轮条目保留。`hard` 阻断不记争议（本轮未放行，编号在 `failures`，`joint_checks` 记 `checked-found`）。`note` 只存分组写法 `编号+编号@location`（`formatJointGroups`，告警文案共用），不存整段告警。`GateCheckResult` 新增可选 `disputedJointBlockers`，只在 `warn` 放行时给出（AGY-02）。`disputed` 只增不减：旧正本的标记归属不到哪一轮。`report` 第五节无条件列出明细（带阶段、轮次与 run_id，找不到对应轮次时只写 run_id），`disputed` 为真而明细为空时如实写「没有留下明细」，空编号、空说明各有兜底（AGY-03）；手册两处缺口说明同步改写（AGY-01）。见规则 7、8.6 判据 g。代码三审（run `20261022T105628Z`，第 1/3 轮：codex `pass`，gemini、glm `pass-after-changes`，6 条全接受）：编号兜底同时滤掉空串（AGY-03）、补测试报告与登记（AGY-02 ≡ GLM-01）、证据脚本用法行订正（GLM-03）；工作树里与本主题无关的需求改动不进本主题提交（AGY-01 ≡ GLM-02）。报告 `doc/05_testing/REPORT_2026-10-22_dispute_detail.md`。 |
 | **v1.3.171** | 2026-10-22 | **审批正本读不出拒写（EV-248）。** 主题 `审批正本读不出拒写`（`/dual-run`，计划双审 run `20261022T041612Z` 第 1/5 轮：gemini、glm 均 `pass-after-changes`，8 条全接受，定稿 r2）。**一、写入口**：`updateTask` / `updateTaskAsync` 锁内改严格读，读不出抛退 2 的受控错误、不调回调、正本原样；不存在照旧起写。`readTaskStrict` 加形状判据（AGY-02）。**二、调用方先判**（见 6.7 末段）：`gate --check` 在结果输出之前判、读不出时只出一份带 `task_unreadable` 的结果后退 2，不写、不推进；`gate --await-approval` 读不出改退 2、`ok: false`（AGY-01，此前退 0）；`approve` / `abandon` 复核之前判，`recordApproval` 写闸门之前再判，竞态由比较-交换回退闸门；`verify` 执行命令之前判；`review` 准备阶段在分配 run_id 之前判。**三、出口**：`taskUnreadableExit` 三处共用（写入口、续链判定、`taskUnreadableHold`），统一退 2。**四、skill**：认领、`gate --check`、停点、S10、审批 / 放弃补退 2 的处置句。**五、文档**：PROTOCOL §五 退出码表与五个命令行。测试：单测 `meta-task-write` 25 条、集成 `task-unreadable-refusal` 14 条，L10 补 `--check` 断言，`run-id-alloc` 夹具补齐完整形态；变异 15 条全部咬住。**六、代码双审**（run `20261022T081726Z`，第 1/5 轮：两侧 `pass`，计票通过；glm 2 条全接受）：补 `verify` 登记时才坏的集成 I14 与变异 M12（GLM-01）；`gate --check` 把完整出口段放进失败项、不另打 `warn` 是对计划 r2 §三.1 的有意简化，记进测试报告与代码注释，PROTOCOL §五 的出口位置订正为「`gate` 两条命令在 stdout，其余在 stderr」（GLM-02）。 |
 | **v1.3.170** | 2026-10-22 | **多轮评审循环与三档结论计票（EV-247）。** 用户新需求：计划审与代码审每个审核者给「通过 / 修改后通过 / 不通过」，按比例判整体结论，不通过即改后自动重审，最大轮次缺省 3、可指定、上限 10，最后一轮仍不通过停下人工审核；/dual-run 两阶段可分别指定上限；计划审每轮另出完整新计划，代码审每轮裁决后直接改码；/dual-review-plan、/dual-review-code 同样适用。拍板：契约升 review.v2（三值）、三档都不到半数判修改后通过、命令 C 最后一轮先改码再停审批、由 Driver 直接实施后走代码双审。**一、契约**（6.5）：新增 `review.v2.json`，`isReviewSchemaId` 统一读取侧判据（含禁读矩阵与被审对象硬拒），新产出只认 v2、归档两版都认，回退侧 front-matter `verdict` 写 null。**二、计票与轮次链**（8.2.1）：新模块 `round-verdict.ts`；run.v3 补可选 `review_loop` / `round_verdict`（6.7.1，不升契约版本）；`review --start --max-rounds`、`topic resolve` 三个轮次旗标。**三、闸门**：`rerun` 回 idle、`human_review` 立停点（含命令 A）、`proceed` 照旧；计划阶段带轮次链的轮次每轮要求新一轮计划（6.6 规则 9）。**四、skill**：/dual-run S2～S4、S6～S9 改为循环（S8 改码挪到 S9 校验之前），B / C 第 6.5 步按 `next_action` 分支、C 第 5.5 步裁决后直接改码。测试新增 `round-verdict` 单测 17 条、`review-loop` 集成 11 条、`plan-final-gate` I8 一条，三条 EV-214 用例改按新语义或改成旧运行形态。**五、代码双审 r2**（run `20261022T005651Z`：gemini `approve` 零意见、glm `approve-with-nits` 2 条全接受）：审批正本读不出时续链判定拒跑（GLM-01，`previousRoundFacts` 自读正本、`approval.ts` 抽出 `decidedInTask`；与计划 r2 §四.4「读不出判已表态 ⇒ 新链」相反，用户 2026-10-22 定直接改码、偏差登记在 BACKLOG EV-247），集成 L10；两侧整份回退 ⇒ `undetermined` ⇒ 人工审核的端到端用例 L11（GLM-02）。r2 应答件 GLM-01 落点里的「设计 6.7.1 补一句」是笔误，实际补在 8.2.1（r3 GLM-02 指出，在 r3 应答件订正）。**六、代码双审 r3**（run `20261022T023850Z`，评审循环第 1/3 轮：两侧 `pass`，计票通过；glm 3 条 nit 全接受）：L11 补闸门立停点断言（GLM-01）；`approval.ts` 新增三态的 `humanDecision`，`--await-approval` 与 `--check` 在正本读不出时改说「按已表态保守处理」，不再说「已有人工审批记录」、`--check` 也不接本机状态对账（GLM-03）。改码时实测发现 `updateTask` 会静默覆盖读不出的正本、`gate --check` 在判定前就会写一次，早于本主题，登记 EV-248。 |

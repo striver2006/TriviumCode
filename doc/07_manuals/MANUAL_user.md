@@ -190,7 +190,15 @@ node ~/.claude/skills/dual-critic/scripts/trivium.cjs doctor   # 约 2~4 分钟�
 CLAUDE.md / AGENTS.md     追加带标记的协议片段
 ```
 
-**`doctor` 必须在终端里跑，不要在 Claude Code 里跑。** 它需要 2~4 分钟，会击穿 Bash 工具的 600s 超时——届时配额已烧而结论未落盘。
+**首次的全量 `doctor` 在终端里跑。** 四家一起要 2~4 分钟，会消耗少量配额。它每探完一家就落盘，中途被打断只丢正在探的那一家。
+
+**在 `/dual-*` 命令里，预检退 69 会自动校准**（设计 v1.3.173，EV-251）：探针过期、版本漂移、路线没有探针结论这一类 doctor 能修好的失败，
+skill 不再停下等你，而是照预检给出的清单逐家在前台跑带时限的 `doctor --only <家> --deadline-s <秒>`（每家结束播报一行），
+再重跑同一条预检；通过就继续双审，全程不问你。每次预检至多自动校准一轮，重跑仍失败就停下，把两次预检与 doctor 的结论一并告诉你，
+没探完的那一家请你在终端单独跑（结论里给出完整命令）。认证失败、归档或 git 不可用、编译测试命令未配置这类 doctor 修不好的，照旧原样转述并停下。
+自动校准会花少量配额，只跑失败项点名的那几家；时限由 `preflight.recalibrate_deadline_s`（缺省 900 秒，即 15 分钟）决定，见 §5.6。
+
+> **用 Claude Code 当 Driver 时，要把 Bash 工具上限抬到 960 秒**：skill 给每次 doctor 设的工具超时是时限加 60 秒（缺省 960 秒），而 Claude Code 的 Bash 工具缺省上限是 600 秒——不抬高，doctor 跑到第 10 分钟就会被宿主杀掉，来不及自己收尾（探针子进程成孤儿，临时目录要等下一次 doctor 才补删）。在 `~/.claude/settings.json` 的 `env` 里加 `"BASH_MAX_TIMEOUT_MS": "960000"`；不想抬高就把 `preflight.recalibrate_deadline_s` 调到 540 以下。另三家载体的上限没实测过，同理处理。
 
 ### 3.5 必须补一步：配置编译测试命令
 
@@ -395,7 +403,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 这些没有 skill 包装，在终端里跑：
 
 ```bash
-.trivium/bin/trivium doctor [--selftest|--suggest-verify|--no-model-calls|--only <cli>|env]
+.trivium/bin/trivium doctor [--selftest|--suggest-verify|--no-model-calls|--only <cli>|env] [--deadline-s <秒>]
 .trivium/bin/trivium preflight --stage plan|code|bug|all
 .trivium/bin/trivium verify --topic <主题> [--only build|test]
 .trivium/bin/trivium report --topic <主题> [--out <路径>]
@@ -561,6 +569,7 @@ doctor 末尾会给一条「以下命令行覆盖本次没有用上」的提示�
 | 字段 | 默认 | 说明 |
 | :--- | :--- | :--- |
 | `preflight.auth_cache_ttl_h` | 1 | 认证探活缓存 |
+| `preflight.recalibrate_deadline_s` | 900 | 预检退 69 自动校准时，每次 `doctor` 的总时限（30～900 秒）。skill 的工具超时按它加 60 秒（缺省 960 秒）。载体的工具超时上限要不低于它加 60 秒：Claude Code 缺省 600 秒，须设 `BASH_MAX_TIMEOUT_MS=960000`（§3.4），否则调到 540 以下（v1.3.173 起，EV-251） |
 | `probe_ttl_days` | **7** | 探针保质期。**过期即预检硬失败，不是降级** |
 | `verify.build` / `verify.test` | `[]` | 必须手工配 |
 
@@ -901,7 +910,8 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | `2` | 闸门阻断 | **否**，护栏按预期工作。stdout 里是待修补清单 |
 | `64` | 参数错误 | 是，改命令。**不会产生任何工件** |
 | `65` | 前置产物缺失 | 是，先补工件 |
-| `69` | 环境或预检失败 | 是，跑 `doctor` / `preflight` |
+| `69` | 环境或预检失败 | 是，跑 `doctor` / `preflight`。`/dual-*` 里 doctor 能修的那类会自动校准一轮（§3.4） |
+| `76` | 只有 `doctor --deadline-s`：到点或收到信号时还有家没探完 | 是，看 JSON `deadline.sections` 里没探完的那几家，按 `rerun` 在终端单独跑。已探完的照常落盘 |
 | `70` | 主题被锁 | 是，同主题已有运行 |
 | `73` | 运行仍在进行 | **否**，不是超时，是还没跑完 |
 | `75` | 严格模式中止 | 是，一侧失败且 `failure_policy: strict` |
@@ -913,7 +923,8 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | 症状 | 先看这个 |
 | :--- | :--- |
 | 命令没反应 / 提示未初始化 | `.trivium/config.yaml` 在不在？Hook 检测不到它一律放行 |
-| 预检报探针过期 | 探针 7 天 TTL 且**过期即硬失败**。在终端里跑 `trivium doctor` 重新校准 |
+| 预检报探针过期 | 探针 7 天 TTL 且**过期即硬失败**。`/dual-*` 里会自动校准一轮（§3.4）；直接调 CLI 时在终端里跑 `trivium doctor` 重新校准 |
+| 自动校准后仍停下，说某家「在时限内没探完」 | 按结论里的 `rerun` 在终端单独跑那一家。会话里拉起的厂商 CLI 有过间歇挂满单次探针超时的先例（EV-243），终端里通常能跑完 |
 | 某侧报不可用 | `trivium preflight --stage plan`，它会指出是探针过期、CLI 不可调用还是未认证 |
 | 某侧被判「证据不足」 | 该侧读的项目文件数或工具调用数没达下限。看 `_meta/run-*.json` 的 `tool_calls` |
 | 一侧超时 | 默认 strict 会中止。调大 `review.timeout_s`，或临时 `--allow-single` 降级 |
@@ -942,7 +953,9 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | **配置与协议片段不会自动升级** | 见 §3.6 | 需手工同步 |
 | ~~**`block_severities` 是死配置**~~ | 已于 2026-09-16 删除 | 该键不再存在；若你的配置文件里还留着它，删掉那三行（保留会被 schema 判为未知键） |
 | ~~**报告的「争议项」无法显示编号**~~ | v1.3.172 起已写入明细 | 旧主题报告里写「记有争议标记，但没有留下明细」：那时还不记编号，或该轮争议已撤回；编号要回原轮的裁决件里找 |
-| **`doctor` 必须在终端跑** | 2~4 分钟，会击穿 Bash 工具 600s 超时 | 预检刻意不自动拉起它 |
+| ~~**`doctor` 必须在终端跑**~~ | v1.3.173 起（EV-251）预检退 69 时由 skill 在会话里跑带时限的 `doctor --only`（到点按组结束探针子进程、删掉探针临时目录、已探完的照常落盘） | 首次的全量 doctor 仍建议在终端跑；没探完的那一家也回终端单独跑 |
+| **自动校准不跨命令记账** | 连发同一条命令、每次都卡在同一个被判为可修而实际修不好的失败上时，每次各花一轮 doctor 配额 | 预检对拿不准的一律判不可修，作为主防线 |
+| **载体工具时限未实测** | 只有 Claude Code 的 Bash 上限（缺省 600 秒，可经 `BASH_MAX_TIMEOUT_MS` 抬高）有登记，另三家载体没有实测；doctor 缺省时限 900 秒要求载体上限至少 960 秒 | Claude Code 设 `BASH_MAX_TIMEOUT_MS=960000`；做不到的载体把 `preflight.recalibrate_deadline_s` 调到上限减 60 秒以下。载体直接强杀 doctor 时，本次探针临时目录由下一次 doctor 启动时补删 |
 
 ---
 

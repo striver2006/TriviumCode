@@ -319,6 +319,7 @@ deny 核验完全由措施 b 承担。这一降级逐侧记于 `guard.verificati
 | `70` | 主题被锁 | 同主题已有运行在跑，看 `--status` |
 | `73` | **运行仍在进行**（不是失败） | 继续下一次 `--wait` |
 | `75` | 严格模式中止 | 一侧失败且 `failure_policy: strict` |
+| `76` | doctor 没探完 | 只有 `doctor --deadline-s`：到点或收到 SIGINT / SIGTERM 时还有段没探完；已探完的照常落盘，`--json` 的 `deadline.sections` 点名并给终端重跑命令（设计 v1.3.173，EV-251） |
 
 `2` 与 `73` 是最容易被误处理的两个：`2` 不是崩溃而是**有话要说**，
 stdout 里就是待修补的清单；`73` 不是超时而是**还没跑完**。
@@ -446,7 +447,8 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 
 | 命令 | 作用 |
 | :--- | :--- |
-| `doctor` | 逐项实测设计 §3.5 的本机能力探针清单，回填 `probe:` 段 |
+| `doctor` | 逐项实测设计 §3.5 的本机能力探针清单，回填 `probe:` 段。`--deadline-s <秒>`（30～900，EV-251）：到点或收到 SIGINT / SIGTERM 时按组结束段内派生的子进程、删掉探针临时目录，没探完的段作废不落盘，`--json` 多一个 `deadline` 键（`limit_s` / `hit` / `reason` / `stuck` / `sections[]` / `residue[]`），到点退 76 |
+| `preflight --json` 的自动校准字段 | 失败项带 `recalibrate`（`{ fixable, targets? }`，缺省即不能修）；失败时顶层恒带 `recalibration`（`{ eligible, why, invocations[] }`，每条 `{ only, args, deadline_s, bash_timeout_ms }`）。skill 只照抄 `args`、按 `bash_timeout_ms`（时限加 60 s，缺省 960 000）设工具超时，至多一轮（EV-251）。加法，旧调用方忽略 |
 | `doctor --selftest` | 临时夹具里真跑整条流水线，14 步核对（桩适配器，零配额） |
 | `preflight --stage plan\|code\|bug\|all [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--tier-<id> <档>] [--effort-<id> <值>] [--profile-<id> <名>]` | 设计 §8.1 的启动预检，fail-fast，失败零工件。档位旗标（M11 第 5 步）按「档位组合合法」一格校验，口径同配置来源，见上方现状句。`--critics` 指定本次要用哪几侧——只读能力、模型 slug、探活都只查这几侧，缺省取 `review.default_critics`（M8 第 3 步）。**命令 B / C / D 的第 1 步不传它**：那时 `topic resolve` 还没跑、选侧尚未解析出来；选了非缺省侧时，该侧的可用性由 `review --start` 在拉起 CLI 之前的 `availability()` 兜住（AC-20 末条的落点），但探活不在其中。**命令 A 自 EV-125 起在解析之后预检**（S0.6）：带上 `topic resolve` 输出的 `critics`，以及非空时的 `--profile` / `--model-<id>`，三个阶段入选各侧的 slug 与探活都在开跑前查——命令 A 漏查的 code 阶段 slug 要到 S6（编码之后）才会暴露。`--critics` 也供用户显式预检时用。**只警告项**（EV-123，设计 8.1「警告这一级」）：`--json` 输出恒带 `warnings`（`{ name, detail }[]`，无警告时为 `[]`），`checks[]` 单项在 `warn` 为真时带 `warn: true`；`warn` 不影响 `ok` 与退出码，skill 在通过时逐条念给用户后继续 |
 | `topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。M11 第 5 步起输出另含 `tiers` / `efforts` / `vendor_profiles`（逐入选侧、恒存在、没写为 `{}`），skill 照抄进预检与 `--start`；档位旗标写了不给值退 64，`--model-<id>` 自 v1.3.165（M12 批次 4，EV-228）起同样退 64、文案同一份（此前 `=` 空、紧跟已知旗标、位于末尾三种形态被静默丢弃）。`--stage` 也接受 `all`（命令 A 用）。`--` 之后按 argv 逐个 token 解析、不再分词（EV-18）：正文整段放进一个单引号参数，旗标放在引号之外；`--topic` 字样被包进正文而未显式给主题时退 64。`--args` 传法已删 |

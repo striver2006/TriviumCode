@@ -240,7 +240,7 @@ graph TD
 
 **探针的时效**：`probeIsFresh()`（[config.ts:330-335](../../src/trivium/config.ts#L330-L335)）纯算术比较 `Date.now() - generated_at < probe_ttl_days × 86400000`，默认 7 天。过期后 `checkProbeFreshness()`（[preflight.ts:112](../../src/trivium/preflight.ts#L112)）返回 `EXIT.ENV`(69)，**硬失败而非降级**，且**没有临近预警**。
 
-预检刻意**不自动拉起** `doctor`（`preflight.ts:119-120`）：doctor 需 2~4 分钟，会击穿 Bash 工具的 600s 超时，届时配额已烧而结论未落盘。
+预检自己**不拉起** `doctor`。v1.3.173 起（EV-251）由 skill 校准：失败项带机读的 `recalibrate`（能不能由 doctor 修、目标是哪几侧的哪个组合），汇总成 `recalibration.invocations`；skill 照抄在前台跑带时限的 `doctor --only <家> --deadline-s <秒>`（`doctor-deadline.ts`：到点或收到信号时置本次的中止令牌、按组结束段内派生过的进程组、等探针沿 `finally` 删掉临时目录，已探完的段照常落盘，没探完的在 `deadline.sections` 点名、退 76），再重跑同一条预检，至多一轮。原先「配额已烧而结论未落盘」的说法早已不成立：doctor 每探完一段就落盘，丢的只会是撞上时限的那一段。
 
 ### 3.3 `review --start` / `--wait`：一次双审的完整生命周期
 

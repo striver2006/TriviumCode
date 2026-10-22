@@ -70,7 +70,7 @@ TV preflight --stage {{STAGE}} --driver {{DRIVER}} --critics <critics> [--profil
 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
 不带 `--critics` 就查不到，要等拉起之后才失败。
 
-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
+{{> preflight/recalibrate}}
 
 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
 

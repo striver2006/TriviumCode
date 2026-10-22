@@ -839,7 +839,7 @@ export const claudeAdapter: CriticAdapter = {
       catch { return { ok: false, reason: 'Claude 路线指纹读取失败，请检查入口和配置权限' }; }
       const result = claudeAvailability(p);
       if (!result.ok) return { ok: false, reason: `${result.reason}；所选路线请运行 trivium doctor --only claude ${
-        profile === null ? '--native-claude' : `--profile-claude ${profile}`}` };
+        profile === null ? '--native-claude' : `--profile-claude ${profile}`}`, ...(result.fix ? { fix: result.fix } : {}) };
       if (!executableFile(route.bin)) return { ok: false, reason: 'Claude 所选路线入口不可执行' };
     }
     return { ok: true };
@@ -887,13 +887,14 @@ export const claudeAdapter: CriticAdapter = {
   },
 };
 
-function claudeAvailability(p: ClaudeProbe | undefined): { ok: boolean; reason?: string } {
+function claudeAvailability(p: ClaudeProbe | undefined): { ok: boolean; reason?: string; fix?: 'doctor' } {
     // 两态判据同另三家：以 probed_at 区分「没探过」与「探过没找到」
     if (!p?.probed_at) {
-      return { ok: false, reason: 'claude 尚未探测，请先运行 trivium doctor --only claude' };
+      return { ok: false, reason: 'claude 尚未探测，请先运行 trivium doctor --only claude', fix: 'doctor' };
     }
     if (!p.entrypoint) {
-      return { ok: false, reason: '探针未找到 claude 可执行文件，请先运行 trivium doctor' };
+      // 入口可能挪了；真卸载了 doctor 会给出「未找到可执行文件」的明确结论（EV-251 计划 r2 D1）
+      return { ok: false, reason: '探针未找到 claude 可执行文件，请先运行 trivium doctor', fix: 'doctor' };
     }
     if (p.readonly_flags.length === 0) {
       return {
@@ -929,6 +930,7 @@ function claudeAvailability(p: ClaudeProbe | undefined): { ok: boolean; reason?:
       return {
         ok: false,
         reason: '探针尚未实测 claude 的 headless 读取能力（上次探测没跑完），请重跑 trivium doctor --only claude',
+        fix: 'doctor',
       };
     }
     if (p.tool_surface_checked !== true) {

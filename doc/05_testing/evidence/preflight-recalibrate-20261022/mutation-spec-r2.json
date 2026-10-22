@@ -1,0 +1,13 @@
+{
+  "targets": ["src/trivium/doctor.ts"],
+  "cases": [
+    {
+      "id": "M2r2",
+      "desc": "计划 r2 D3 第 4 条：中止派生之后正常返回的段照常落盘（应作废）；首轮 I2 走的是抛出分支、没咬住，I6 补断言后重跑",
+      "file": "src/trivium/doctor.ts",
+      "find": "return aborted() ? ABORTED : r;",
+      "replace": "return r;",
+      "expect": "dist/test/test/unit/doctor-deadline.test.js"
+    }
+  ]
+}
