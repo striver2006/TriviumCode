@@ -1,0 +1,77 @@
+{
+  "agreed": [
+    "D2 对焦点 1（hard 策略阻断）的裁决准确：hard 策略下被驳回共同 blocker 升级为 failure 阻断闸门，流水线未带着争议前行，故不追加争议明细且不置 disputed=true；重跑时按 run_id 过滤清空旧记录，防止此前在 warn 策略下写入的条目残留，符合设计 §6.6 规则 7 与 §8.6 判据 g。",
+    "D4 对焦点 2（旧任务文件呈现）的设计考虑周全：先无条件渲染已有的 disputes 明细，当 disputed=true 且明细为空时显式输出「task.json 记有争议标记，但没有留下明细（早于明细写入的旧记录，或该轮争议在重跑校验后已撤回）」，如实呈现事实，解决了原先在 if (disputed) 下整段静默的问题，且带出 stage 与 rerunIndex。",
+    "D1 对焦点 3（防堆积）的实现路径优雅：复用 gate --check 现有的 joint_checks 写入点，同一事物合在同一次 updateTask 临界区内完成落盘，先删本轮旧条目再按本次结论决定追加，既做到了同轮重跑覆盖不堆积，又天然承接了 EV-248 读不出拒写的安全保护。",
+    "D3 对焦点 4（note 存储粒度）的选择权衡充分：note 存「分组编号@位置」（如 AGY-01+GLM-01@src/stub.ts:10），既剥离了告警中的加粗与固定文案，避免了报告渲染时的冗余嵌套与文案版本漂移，又保留了拍平 finding_ids 所无法表达的跨审核者编号与代码位置归属关系。",
+    "测试覆盖设计全面严密：T1~T6 覆盖了 warn 写入、重跑不堆积、改裁决撤回清理、hard 阻断不记与清理、跨轮次条目保留，单元测试 R1~R3 与五项变异测试靶向清晰，回归保护到位。"
+  ],
+  "consulted": [
+    ".reviews/争议明细写入/plan/2026-10-22-争议明细写入-claude.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/稳定版需求说明书.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/README.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/现存Bug与未完成工作清单.md",
+    "doc/README.md",
+    "skills/dual-critic/schema/review.v2.json",
+    "src/trivium/cli.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/report.ts",
+    "test/contract/bash-recovery-wording.test.ts",
+    "test/contract/facade-version-pointers.test.ts",
+    "test/contract/orchestrator-logs-parity.test.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/task-unreadable-refusal.test.ts",
+    "test/unit/report.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 doc/07_manuals/MANUAL_user.md 第 687 行（「⚠️ 已知缺口：报告里的『争议项』只会显示一个布尔标记，永远打印不出具体编号——disputes[] 数组在代码里没有任何写入点」）与第 941 行常见问题表（「报告的『争议项』无法显示编号」）；对比被审文档 .reviews/争议明细写入/plan/2026-10-22-争议明细写入-claude.md 第二节第 6 行文档清单，漏列了 MANUAL_user.md。",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "doc/07_manuals/MANUAL_user.md:687",
+      "problem": "实施计划第二节第 6 项文档更新中枚举了主设计 §6.6/§8.6、LLD §7 缺口表、现存Bug清单发版-02 与 BACKLOG，但遗漏了用户手册 doc/07_manuals/MANUAL_user.md 中两处对该缺口的明确记载。若实施完成时不一并更新，用户手册中将残留该缺口仍未解决的过期说明。",
+      "severity": "minor",
+      "suggestion": "在计划第二节改动清单第 6 项中补入 doc/07_manuals/MANUAL_user.md 第 687 行与第 941 行，在实施完成后一并修改为已解决。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "被审文档 D2、D3 及第二节改动清单 1 约定在 GateCheckResult 增加 jointRejected?: { location: string; ids: string[] }[]，并在 D3 注明「只在走 warn 分支、即进了 warnings 时给出，hard 分支不给」；查阅 src/trivium/gate.ts:181 GateCheckResult 接口与第 678-696 行，hard 策略下 joint 实际已被检出并驳回，仅流向 failures。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "src/trivium/gate.ts:181",
+      "problem": "GateCheckResult 扩展字段 jointRejected 字面语义为「被驳回的共同阻断项」，在 hard 策略阻断时这些项客观上同样被驳回；计划将其限定为「仅在 warn 策略下给出、hard 下缺席」使得该通用结果字段承载了隐式的业务策略分流语义，调用方仅依字段类型易误解 hard 下没有共同项被驳回。",
+      "severity": "minor",
+      "suggestion": "在 GateCheckResult 声明 jointRejected 时添加清晰的 docblock，说明其仅在 warn 策略下携带待写入 task.json 的争议放行项、hard 阻断时缺席；或考虑将该字段命名为语义更聚焦的名称（如 disputedJointBlockers）。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "阅读被审文档 D4 说明及 src/trivium/report.ts:1288-1292 代码；D4 明确说明要承载各种边缘或手改留痕形态（如 R3: disputed 为假而明细非空），但格式化字符串未对空数组或空字段做兜底。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "src/trivium/report.ts:1288",
+      "problem": "计划 D4 规定在 report.ts 渲染争议项为「争议项（<阶段> r<轮次>，run <run_id>）：<finding_ids 以『、』连接>——<note>」。对于历史异常数据或手工编辑的 task.json，若条目中 finding_ids 为空数组或 note 为空串，直接拼接会导致输出行中出现「：——<note>」或「……——」等符号悬空。",
+      "severity": "nit",
+      "suggestion": "在 report.ts 拼接单条争议明细时做简单防御：finding_ids 为空数组时回退显示「（无编号）」，note 为空时省略破折号或提示「（无说明）」，保持报告排版稳健。"
+    }
+  ],
+  "not_covered": [
+    "依赖真实厂商 CLI（antigravity、zcode、codex、claude）进行完整子进程拉起的端到端多轮执行与真实配额/耗时开销验证（受审查员只读与无执行权限约束，未跑真实命令，结论基于静态源码逻辑与设计对账推导）。",
+    "跨多进程并发竞争主题任务锁时的文件系统互斥（全仓已知技术债 BACKLOG M21）。",
+    "超大正本或畸变 task.json 下 JSON.parse 与严格校验的极端内存与性能表现。"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "本计划对四个审查焦点（hard 策略阻断处理、旧任务呈现、防堆积覆盖、note 存储粒度）做出了精准且一致的设计，D1~D5 逻辑闭环，测试与变异方案完备。\n主要改进点在于：用户手册 doc/07_manuals/MANUAL_user.md 中有两处明确登记了争议明细缺失的已知缺口，计划改动清单第 6 项遗漏了对该手册的同步更新（AGY-01）；此外 GateCheckResult.jointRejected 仅在 warn 时填充的隐式约定建议完善注释说明（AGY-02）；report.ts 拼接明细时建议增加空数组/空串防御（AGY-03）。\n整体方案架构良好，按意见补充文档与接口注释后即可直接实施，无需重新评审。",
+  "verdict": "pass-after-changes"
+}

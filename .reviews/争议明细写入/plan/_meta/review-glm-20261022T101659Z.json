@@ -1,0 +1,40 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass",
+  "summary": "按四个审查焦点逐项对照源码与文档核实，未发现会变成返工的问题，计划可直接实施。核实结论：(1) 现状陈述全部属实——grep 确认 disputes 全源码仅类型定义（meta.ts:195）、初始化（283）、形状判据（325）与 report 读取（1289），无任何写入点；disputed 仅在 cli.ts:1671-1676 置布尔；gate.ts:678-695 的告警已带 ids 与分组 message，明细在 cli 侧被丢掉；report.ts:1288-1292 被 if (r.task.disputed) 包裹，disputed 真而明细空时整段静默。(2) 焦点一（hard 不记争议）：D2 的立场站得住——hard 下共同驳回进 failures、闸门不放行，不存在「带着争议往前走」的事实，且同一次写入里 joint_checks 落 checked-found、failures 带编号，留痕不缺；「仍先删本轮旧条目」处理了 warn→hard 策略迁移的残留，判据不读配置而看结果分流（策略分流确已在 gate.ts:683 做完），避免双处判据漂移。(3) 焦点二（旧文件呈现）：D4 的两段式（无条件列明细 + disputed 真而空时补兜底行）诚实且可测；RoundReport 自带 runId 字段（report.ts:50），按 run_id 反查阶段轮次可行，反查失败的回退有 R2 守。(4) 焦点三（不堆积）：D1 的先删后加与 joint_checks 现行覆盖语义（cli.ts:1667）同构，同一轮幂等；合并进同一次 updateTask 安全——joint 非空必然意味着 jointCheck 存在（findJointRejectedBlockers 需两个独立来源，故 jointCheckState 的 effective_sides ≥ 2、不会落 skipped），EV-248 的读不出拒写（cli.ts:1598-1609）在写入之前，I3 的文件级 deepEqual 断言在合并后仍守同一条路径。(5) 焦点四（note 存什么）：D3 的分组+位置形态与 findJointRejectedBlockers 的返回值结构完全同构（代码按精确 location 分组，相似度合并未实现），formatJointGroups 两处共用保证告警 message 与 note 不漂移；不存整段前缀、不只存位置的理由成立。(6) D5（disputed 只增不减）核实为既有语义而非新引入——全源码确无置 false 的写入点，残余已在计划内登记 BACKLOG。(7) 测试网密实：T1-T6 的期望值与夹具吻合（桩侧 AGY-01/GLM-01、location src/stub.ts:10，见 gate-loop.test.ts:117）；T3 对改裁决后的连锁（落点、新一轮计划引用）有预判；五条变异分别被 T2/T3/T4/T1/R1/R3 钉住。(8) 文档同步清单齐备：主设计 §6.6 规则 7（1206 行）、LLD 缺口表第一行、Bug 清单发版-02、BACKLOG.md 均实际存在且与计划描述一致；schema 目录无 task.v1.json（task 形状判据在 meta.ts 代码），「schema 仍是 trivium.task.v1」成立，不触发 AGENTS.md 改动同步清单任何一行。",
+  "findings": [],
+  "agreed": [
+    "现状陈述逐条属实：disputes 无写入点、disputed 只置布尔（cli.ts:1671-1676）、告警明细被丢弃、report 的 if(disputed) 包裹致空明细静默——均经独立 grep 与读码核实",
+    "D1 合并进 joint_checks 那一次 updateTask 安全：joint 非空必 ⇒ jointCheck 存在（gate.ts:1055-1078 的判据需两个独立来源，jointCheckState 据此不会返回 skipped），两条件在第 5 步 g 处同源；先删后加与 cli.ts:1667 的 joint_checks 覆盖语义同构，同轮幂等",
+    "D2 不读 cfg.gate.joint_blocker_policy、以结果分流为判据正确：策略分流确在 gate.ts:683 完成，cli 侧复用避免双处判据；hard 下 joint_checks 落 checked-found + failures 带编号，留痕不缺",
+    "D3 的 jointRejected 结构与 findJointRejectedBlockers 返回值（gate.ts:1055 的 { location; ids }[]）完全同构；formatJointGroups 共用格式化使 message 与 note 不会漂移；代码按精确 location 分组（相似度合并未实现），note 的分组形态假设与现状一致",
+    "D4 的 runId 反查可行（RoundReport.runId，report.ts:50，另有读不到 run_id 的占位与 R2 回退覆盖）；disputed 假而明细非空时照实列出比静默更诚实",
+    "D5 成立：全源码确无置 disputed=false 的写入点，「只增不减」是既有语义；代价（撤回后 status 仍显 ⚠️）已如实登记 BACKLOG 残余",
+    "测试期望与夹具吻合：gate-loop.test.ts:117 确认桩两侧 blocker 的 location 均为 src/stub.ts:10、编号 AGY-01/GLM-01，T1 的 note 精确断言可测；I3 的整文件 deepEqual 断言在写入点合并后仍守同一条 EV-248 拒写路径",
+    "文档同步清单覆盖到位且落点真实存在：主设计 §6.6 规则 7（1206 行）、LLD 第七节缺口表第一行、Bug 清单发版-02、doc/08_project/BACKLOG.md 均核实存在；skills/dual-critic/schema/ 下无 task.v1.json，task 形状判据在 meta.ts 代码，「schema 仍是 trivium.task.v1、不升版」成立，也不触发 AGENTS.md 改动同步清单的任何一行"
+  ],
+  "not_covered": [
+    "只读审查：未运行任何测试或命令，全部行为推断基于源码静态阅读；T1-T6 的实际可跑性未验证",
+    "未核实 test/helpers/fixture.ts 是否已有配置覆盖钩子——T4/T5 需要在两次 --check 之间改夹具的 joint_blocker_policy，若夹具无现成机制需实现时补一个改配置的辅助（工作量小，不影响方向）",
+    "主设计 §8.6 判据 g 的原文未逐字核对（§6.6 规则 7 已逐字核对；§8.6 判据 g 的存在性由 gate.ts 多处注释引用佐证）",
+    "--run-id 固定旧轮重跑时按 run_id 覆盖的直接测试路径未在计划中列出（T2+T6 已从本轮覆盖与他轮保留两个方向钉住键控语义，且 --run-id 与 latest 汇入同一个 runId 变量，代码路径同一处；若想完全钉死可补一条，属可选加固）",
+    "report 第五节 alerts 中新争议行与既有降级/告警行合并渲染的视觉效果未逐字推演（纯文案层面，无结构冲突）"
+  ],
+  "consulted": [
+    "src/trivium/meta.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/report.ts",
+    "test/integration/gate-loop.test.ts",
+    "test/integration/task-unreadable-refusal.test.ts",
+    "test/unit/report.test.ts",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/README.md",
+    "doc/08_project/现存Bug与未完成工作清单.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "CLAUDE.md",
+    "README.md"
+  ]
+}
