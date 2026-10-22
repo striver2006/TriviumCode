@@ -1,0 +1,76 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "approve-with-nits",
+  "summary": "最要紧一条：task.json 读不出时 humanDecidedThisRound 按 fail-closed 判「已表态」，会使本轮新补的两道归档守卫同时失效——human_review 未表态的拒绝起链不触发、失败/跳过轮不再被跳过，并静默新起一链（GLM-01，minor）；这与本轮刚立的「读不出的 run 留痕硬失败」口径不对称。其余焦点逐项核对均与 r2 计划一致：D-5 有效票下限在双审/三审/四审的边界正确（双审剩一票可定论、三审剩一票停、四审恰好半数可定论），收尾分母确为入选侧数；拒绝起链覆盖本机闸门状态缺失与显式给上限两种形态（R19/L7）；读不出 run 留痕在分配 run_id 之前抛 GATE_BLOCK 且零工件（L8）；纯文档跳过轮不写 review_loop、不打断轮次链（L9）；round_verdict 两组键按注册表与入选集合两段式校验（R20）；命令 C 放开 Bash 与命令 A 同一护栏面、用途限定在第 5.5 步自查；r2 计划 §二～§六逐条有落点。另有一条 nit：undetermined ⇒ human_review 缺端到端集成用例。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/approval.ts:103-119（unreadable 判已表态）、src/trivium/review.ts:314-321（closed 进跳过谓词并随 prev 返回）、src/trivium/round-verdict.ts:162-166（open 要求非 closed，human_review 拒绝仅在该格触发）",
+      "problem": "task.json 读不出时 humanDecidedThisRound 返回 true（判已表态）。这个「closed」在轮次链推导的语境里方向反转：其一，上一轮 next_action=human_review 且实际未表态时，closed=true 使 deriveReviewLoop 的 open 谓词为假，本轮新补的「已停在人工审核、拒绝起链」守卫不触发，静默新起一链（第 1 轮、上限还可显式给新值）——正是 r1 GLM-01 要堵的洞换了个触发条件重现；其二，walk 对失败轮/跳过轮的跳过谓词要求非 closed，task.json 读不出时失败轮会被当作最近一次算数的运行返回，链断、上限重置。这与本轮刚立的「读不出的留痕硬失败」口径不对称：run-*.json 读不出硬失败拒跑，task.json 读不出却静默放行。计划 r2 §四.4 明文写了「task.json 读不出时 fail-closed 判已表态 ⇒ 新链」，但该取舍是在闸门推进语境（fail-closed＝不推进审批）下定的，搬到轮次链语境对新守卫恰是 fail-open。触发前提是 git 跟踪的 task.json 被搅坏（readTaskStrict 的 unreadable 含锚/形状不合），概率低且 git 可见，故评 minor。",
+      "evidence": "src/trivium/approval.ts:103-119（注释自述 fail-closed 的语境是「已审批的闸门照旧被打回」，state 为 unreadable 时 return true）；src/trivium/review.ts:304-313（硬失败只覆盖 readRunMeta 读不出的 run-*.json）与 314-321（closed 取自 humanDecidedThisRound，参与「非 closed 才跳过」的谓词并随 prev 返回）；src/trivium/round-verdict.ts:162-166（open 需要 !prev.closed，human_review 拒绝与 rerun 续链都只在该格成立）；.reviews/多轮评审循环/plan/2026-10-22-多轮评审循环-r2-claude.md §四.4。",
+      "suggestion": "让 task.json 读不出在 previousRoundFacts 里与 run-*.json 读不出同口径硬失败（GATE_BLOCK、点名 task.json、仍零工件），或让 humanDecidedThisRound 把「读不出」与「确已表态」区分开、deriveReviewLoop 的 human_review 一格不因读不出而放行；并补一格用例（human_review 未表态 + task.json 写坏 ⇒ 拒跑）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/integration/review-loop.test.ts:103-329（L1–L9）",
+      "problem": "D-5 新规则「有效票 × 2 < 入选侧数 ⇒ undetermined ⇒ human_review ⇒ 立 awaiting_approval」没有端到端集成用例：L 系只覆盖 reject 到上限的 human_review（L1/L2/L7），undetermined 只在纯函数层（R8/R18）钉住。若收尾计票到 cli 分流/透出之间的接线回归（如 round_verdict 落盘或 roundFields 读取），单测照绿。桩已支持两侧 legacySchema，构造两侧整份回退即得 n=0 的 undetermined，成本低。",
+      "evidence": "test/unit/round-verdict.test.ts:93-114（R8/R18 只在纯函数层断言）；test/integration/review-loop.test.ts:103-329（L1–L9 无 undetermined 形态，L5 两侧仍可定论）；src/trivium/review.ts:2218-2230（收尾计票接线）。",
+      "suggestion": "集成补一格：双审两侧均 legacySchema ⇒ 两项 parse_fallback、outcome=undetermined、gate 立 awaiting_approval、--wait 透出 next_action=human_review。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "D-5 有效票下限实现正确：decideOutcome 先判 2n < selected 再按 2k ≥ n 整数比较（round-verdict.ts:76-84；R18 覆盖双审一票可定、三审一票停、四审恰好半数可定）；收尾 ballots 对每个入选侧各有一项（有票或不计票原因），分母确为入选侧数（review.ts:2218-2227）",
+    "上一轮停在人工审核未表态的拒绝起链由归档正本把守，本机闸门状态缺失（删 state.json）与显式给上限两种形态都有覆盖且零工件（round-verdict.ts:163；R19 requested 取 null/3/5；L7）",
+    "续链回溯遇读不出的 run 留痕在分配 run_id 之前抛 GATE_BLOCK、点名 run_id、零工件（review.ts:307-313 与 948-957 的先后序；L8）",
+    "纯文档跳过轮骨架不写 review_loop（review.ts:1392-1393，--start 返回 null），walk 以 skipped 显式跳过、不打断链（review.ts:315；L9 端到端）",
+    "round_verdict 两组键按注册表与入选集合两段式校验、同一侧不得两处都有，schema 不枚举 Agent 身份（schemas.ts:272-279；R20），与纪律 12 一致",
+    "命令 C 放开 Bash 与命令 A 同写法（review-code.contract.md 与 run.contract.md 的 allowed-tools 逐字相同），apply.code.md 限定仅第 5.5 步自查、审查中不得改业务文件；残余风险在计划 §十如实登记",
+    "review.v2 读取侧判据贯通：写侧只认 v2（review.ts:1616），缺省两版都认且不混用版本（parse.ts:404-409），isReviewSchemaId（v1∪v2）贯通被审对象硬拒与禁读矩阵（archive.ts:167、freeze.ts:302），R14 连顶当轮 Driver 后缀的 v2 审查件都钉住",
+    "r2 计划 §二～§六逐条有落点（resolveReviewSchemaPath 指 v2、渲染回退 verdict 写 null、桩 verdict/legacySchema 旗标、topic-args 三旗标、cli 分流与四键透出、next-plan 归档内落点），验收清单 R18/R19/R20 与 L7/L8/L9 齐备，计划 §九如实列出未做项"
+  ],
+  "not_covered": [
+    "只读审查：未实测任何命令，全部结论来自源码与既有测试断言的通读；GLM-01 的触发前提（task.json 写坏）未构造验证，属代码路径推理",
+    "被审 diff 全文约 5.4 万 token，未整份线性读完：中段以任务书节选加按焦点定向读当前源码核实，doc/ 全部文档与 skills 渲染产物的 diff 段未逐一复核",
+    "全量 npm run check、变异测试与真实审查员产出 v2 的端到端未做（计划 §九自列）",
+    "skills/ 四家渲染产物与 skills-src/ 的零漂移未逐字比对，按 entry-render-parity 契约测试采信",
+    "plan-final-gate I8、parse-degrade、brief-output-contract 等既有用例的改动只经文件名与 diff 尾部采信，未逐条读断言",
+    "worker 交接（request.json 透传 reviewLoop）与 --start/--wait 之外的状态机细节只经检索采信",
+    "proceed 未表态维持新链按计划 §四.3 的明文取舍未再质疑；r1 已裁决事项未重复提出"
+  ],
+  "consulted": [
+    "src/trivium/round-verdict.ts",
+    "src/trivium/review.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/types.ts",
+    "src/trivium/config.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/render.ts",
+    "skills/dual-critic/schema/review.v2.json",
+    "skills/dual-critic/schema/run.v3.json",
+    "skills-src/commands/review-code.contract.md",
+    "skills-src/commands/run.contract.md",
+    "skills-src/partials/review/apply.code.md",
+    "skills-src/partials/review/loop.code.md",
+    "skills-src/partials/review/next-plan.plan.md",
+    "test/unit/round-verdict.test.ts",
+    "test/integration/review-loop.test.ts",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    ".reviews/多轮评审循环/plan/2026-10-22-多轮评审循环-r2-claude.md",
+    ".reviews/多轮评审循环/code/2026-10-22-多轮评审循环-glm.md",
+    ".reviews/多轮评审循环/code/2026-10-22-多轮评审循环-response-claude.md"
+  ]
+}
