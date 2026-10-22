@@ -1,0 +1,41 @@
+{
+  "agreed": [
+    "写入口锁内严格读拦截彻底：updateTask 与 updateTaskAsync 在短临界区持锁内采用 readTaskStrict，读不出直接抛出受控错误并跳过 mutate 回调，完全杜绝了宽松读静默回落覆盖损坏正本导致审批记录丢失的根因。",
+    "形状判据完备：readTaskStrict 补充 taskShapeProblem 校验顶层对象、schema 以及 runs/approvals/degradations/disputes 四个必需数组字段，防止合法非预期 JSON 绕过语法校验并在后续属性访问中抛出未经受控的 TypeError。",
+    "调用方零落盘与半截状态兜底严密：gate --check、gate --await-approval、approve/abandon、verify、review 均在首次物理写盘前完成严格读先判；recordApproval 辅以比较-交换补偿回退，彻底避免了闸门状态推进但正本未记录的半截态。",
+    "退出码与出口引导同口径：所有读不出出口统一收敛为退出码 2（GATE_BLOCK），共用 taskUnreadableExit 明确给出绝对路径、Git 恢复命令及必须在终端执行的提示，避免在会话中触发 Hook 误拦截。",
+    "新主题首次写入不受影响：严格读对 ENOENT 明确返回 state: missing 与 emptyTask，写入口仅拦截 unreadable，新主题首次写入建出完整正本的契约完全保留。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/审批正本读不出拒写/plan/2026-10-22-审批正本读不出拒写-r2-claude.md",
+    ".reviews/审批正本读不出拒写/code/_meta/changes.diff",
+    "src/trivium/meta.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/review.ts",
+    "src/trivium/verify.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/hooks.ts",
+    "test/unit/meta-task-write.test.ts",
+    "test/integration/task-unreadable-refusal.test.ts",
+    "doc/05_testing/REPORT_2026-10-22_task_unreadable_refusal.md",
+    "doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-spec.json",
+    ".reviews/M12-运维防护/task.json"
+  ],
+  "findings": [],
+  "not_covered": [
+    "审查员处于严格只读环境，无法在宿主机终端实际执行构建、全量测试套件或变异验证脚本；全部用例与变异咬合情况依据源码逻辑推导与归档测试报告核验。",
+    "单测中对文件权限 000 的拒写断言在非 root 环境下成立，但在跨平台或特权运行环境下的文件系统权限边界未进行真实底层调用复测。",
+    "worker 运行中途正本损坏留下「run.json 终态、正本未登记」场景依赖提交钩子拦截，运行收尾阶段正本损坏后的自动补登记属于残余边界，未纳入本次实施。"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "代码变更完整落实了计划 r2 对 EV-248 的全部修复要求。\n两个写入口 updateTask/updateTaskAsync 在锁内改用严格读并增加了顶层形状判据，读不出时拒写且不调用改写回调，彻底解决了正本静默覆盖清空审批记录的问题。\n调用方在首次落盘前均前置先判，审批路径补充了原子回退补偿，防止产生闸门已推进但正本未落的半截状态。\n退出码统一为 2，出口文案与既有读不出同口径，新主题首次写入不受影响，变异测试咬住 14/14，整体结论为通过（pass）。",
+  "verdict": "pass"
+}
