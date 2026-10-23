@@ -1,0 +1,37 @@
+{
+  "source": "475a56f1-4a75-4337-b91b-152d18b59d9b.jsonl",
+  "preflight_calls": 2,
+  "criterion_1_announce_before": {
+    "expected": null,
+    "says_between_first_preflight_and_first_doctor": [],
+    "pass": false
+  },
+  "criterion_2_after_pass_first_sentence": {
+    "first_say_after_second_preflight": "plan 审查中 ｜ 已用 3m7s / 预算 15m0s（21%） ｜ codex 已完成 · gemini 已完成 · glm 审查中 ⏎ codex 和 gemini 两侧已出结论，只剩 glm 还在审。",
+    "pass": false
+  },
+  "criterion_3_doctor_verbatim": {
+    "calls": [
+      {
+        "at": "11:18:11",
+        "command": ".trivium/bin/trivium doctor --only agy --deadline-s 900 --json",
+        "exact": true,
+        "timeout": 960000,
+        "background": false,
+        "blocked_by_hook": false,
+        "persisted": true
+      },
+      {
+        "at": "11:19:27",
+        "command": ".trivium/bin/trivium doctor --only zcode --deadline-s 900 --json",
+        "exact": true,
+        "timeout": 960000,
+        "background": false,
+        "blocked_by_hook": false,
+        "persisted": true
+      }
+    ],
+    "pass": true
+  },
+  "first_doctor_output_persisted": true
+}

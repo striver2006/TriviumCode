@@ -55,9 +55,28 @@
 - 零配额干跑（脚本 [`dry-run.mjs`](./evidence/recalibrate-announce-20261023/dry-run.mjs)，读数 [`dry-run-output.json`](./evidence/recalibrate-announce-20261023/dry-run-output.json)）：scratchpad 新建夹具，用仓库刚构建的打包 CLI `init`，照搬本仓本机层的 `probe.cli` / `probe.host` / `generated_at`（不拷 `auth` / `auth_routes`），把 agy、zcode 的记录版本改成 `0.0.0-ev252-drift`，`preflight --skip-auth-check --json`：退 69、两项失败、`eligible: true`、键序如设计、`invocations` 恰为 agy、zcode 两条，`announce_before` 为「预检退 69，以下失败项可由 doctor 重新校准：Antigravity 版本与探针一致、ZCode 版本与探针一致；将依次在前台跑 2 次 doctor（每次至多 900 秒），会消耗少量配额。」。
 - **与计划的偏差**：计划 r2 第二节第 7 步写的是 `npm run install:local` 后干跑；实际没有重装全局副本（重装由用户在提交后自行做，与 EV-251 一致），干跑直接调用仓库内的打包产物，验的是同一份代码。
 
-## 五、残余（BACKLOG EV-252）
+## 五、真实会话验收（2026-10-23，提交 `928b31fa` 从干净 HEAD 重建重装之后）
 
-- **真实会话验收未做**（需用户同意、花配额）：照 D4 末段，夹具同时造 agy、zcode 两家漂移（本报告第四节的干跑已确认会出两条调用），重装后由用户在夹具里新开会话敲 `/dual-review-plan`。判据三条：预检返回与第一次 doctor 调用之间有 `announce_before` 原文；第二次预检返回后的第一条文本以定性句开头；两次 doctor 的命令文本恰好是字面 `.trivium/bin/trivium` 后接 `args`、无 Hook 拦截。记录第一条输出是否被截存，没截存不宣称覆盖「长输出后第二条照抄」。
+夹具 `~/Work/trivium-ev252-accept`（脚本 [`accept-setup.mjs`](./evidence/recalibrate-announce-20261023/accept-setup.mjs)）：新建仓库、全局副本 `init`、照搬本仓本机层的 `probe.cli` / `probe.host` / `generated_at`（不拷 `auth` / `auth_routes`），agy、zcode 记录版本改 `0.0.0-ev252-drift`；零配额干跑确认退 69、两条调用、`announce_before` 已填好。随后用户在夹具里新开 Claude Code 会话敲 `/dual-review-plan --topic 自动校准验收 '看计划是否把缺省问候语与调用方不受影响说清楚'`。时间线与判据由 [`accept-timeline.mjs`](./evidence/recalibrate-announce-20261023/accept-timeline.mjs) 从会话 jsonl 抽出：[`accept-20261023/timeline.txt`](./evidence/recalibrate-announce-20261023/accept-20261023/timeline.txt)、[`criteria.json`](./evidence/recalibrate-announce-20261023/accept-20261023/criteria.json)；夹具留痕 `fixture-reviews/`，盘面 [`disk-and-residue-check.json`](./evidence/recalibrate-announce-20261023/accept-20261023/disk-and-residue-check.json)。
+
+会话载入的是新片段（jsonl 里含「第一个动作是发文本」与定性句原文），第一次预检的 JSON 里有 `announce_before`。
+
+| 判据 | 结果 | 读数 |
+| :--- | :--- | :--- |
+| ① 预检返回与第一次 doctor 调用之间有 `announce_before` 原文 | **未通过** | 11:18:01 预检返回，11:18:11 直接拉起 `doctor --only agy`，其间无任何文本；整段会话里 `announce_before` 一次也没有念 |
+| ② 第二次预检返回后的第一条文本以定性句开头 | **未通过** | 11:22:33 第二次预检通过，11:22:40 直接 `review --start`，接着 `--wait`；第一条文本是 11:25:50 的进度播报。定性句全程没有说，收尾总结里也没有 |
+| ③ 两次 doctor 的命令文本恰好是字面入口加 `args`、无 Hook 拦截 | **通过** | 两条都是 `.trivium/bin/trivium doctor --only 〈家〉 --deadline-s 900 --json`，工具超时 960000、前台、未被拦 |
+
+- **长输出那一格覆盖到了**：两条 doctor 的输出都被截存（29.7 KB、36.5 KB），模型每次另起一条只读命令（`sed … | jq …`）读截存文件取字段，第二条照抄未受影响——正是 EV-251 里诱发改写的场景，这次按条件出口走了。
+- 每条 doctor 后的那一行播报照常发了（「agy：退出码 0，blockers 0 条。」「zcode：……」）。
+- **同一形态的旁证**：`review --start` 返回后的开场播报（命令 B 第 3 步的既有硬要求）这次也跳过了。三处被跳的都是「工具结果回来后、发起下一个调用之前先说一句话」；照做了的每条后播报，前面都有一次读取结果的工具调用。
+- 编排器侧：doctor 两次退 0、`deadline.hit: false`；夹具 agy / zcode 版本刷回 1.4.6 / 0.17.0；运行根下台账 0 个；无残留 doctor 或探针进程。zcode doctor 带 1 条 P-29 警告，与 EV-251 验收同一夹具布局问题，与本主题无关。
+
+**结论**：本主题对第三处偏离（擅自改写调用）有效；对前两处（事前播报、通过后定性句）在 Claude Code 载体上**无效**——现成句子与闸门措辞都没让模型发出这两句。仅靠 skill 文本约束「先说话、再调用」不够，需要机械手段（见第六节）。
+
+## 六、残余（BACKLOG EV-252）
+
+- **事前播报与定性句仍被跳过**（第五节判据 ①②）。候选方向（未开题）：由载体护栏把句子直接送到用户面前，不经模型——Claude Code 的 PostToolUse Hook 在看到预检 JSON 里 `recalibration.eligible` 为真时以 `systemMessage` 显示 `announce_before`；定性句同理需要一个机械触发点。本机 Claude Code 版本下 `systemMessage` 的显示效果未实测。codex / gemini 没有 Hook，只能退回文本约束。
 - 另三家载体作 Driver 时的遵循情况、长输出是否截存未验。
 - 片段里「Bash 工具超时」对 codex / gemini / glm 载体是字面借用，四家同一口径、未改。
 - 注：本次 `/dual-run` 自己的 S0.6 恰好撞上真实的 agy 版本漂移（1.4.5 → 1.4.6）并走了一轮自动校准，当时用的是改动前的全局副本与旧片段；Driver 先发了播报、通过后当即念了定性句，但 doctor 调用前后加了 `cd` 前缀与 `echo "EXIT=$?"`，按新片段属于不合规形态。这是 Driver 自述，不作验收证据。
