@@ -1,0 +1,374 @@
+{
+  "generated_at": "2026-10-23T10:10:59.909Z",
+  "all_red": true,
+  "restored": true,
+  "drift": [],
+  "results": [
+    {
+      "id": "M1",
+      "what": "buildRecalibration 去掉 announce_before",
+      "red": true,
+      "runs": [
+        {
+          "files": [
+            "dist/test/test/unit/preflight-recalibrate.test.js"
+          ],
+          "pattern": null,
+          "tests": 18,
+          "pass": 16,
+          "fail": 2,
+          "failed": [
+            "U5 announce_before：失败项名按 checks 次序以「、」连接，N 为调用条数，秒数取时限",
+            "U5 键序即阅读次序：播报句在调用清单之前、定性句在其后"
+          ],
+          "excerpt": [
+            "✖ U5 announce_before：失败项名按 checks 次序以「、」连接，N 为调用条数，秒数取时限 (0.603833ms)",
+            "✖ U5 键序即阅读次序：播报句在调用清单之前、定性句在其后 (0.47125ms)",
+            "✖ failing tests:",
+            "✖ U5 announce_before：失败项名按 checks 次序以「、」连接，N 为调用条数，秒数取时限 (0.603833ms)",
+            "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+            "✖ U5 键序即阅读次序：播报句在调用清单之前、定性句在其后 (0.47125ms)",
+            "  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "what": "键序：announce_before 挪到 invocations 之后",
+      "red": true,
+      "runs": [
+        {
+          "files": [
+            "dist/test/test/unit/preflight-recalibrate.test.js"
+          ],
+          "pattern": null,
+          "tests": 18,
+          "pass": 17,
+          "fail": 1,
+          "failed": [
+            "U5 键序即阅读次序：播报句在调用清单之前、定性句在其后"
+          ],
+          "excerpt": [
+            "✖ U5 键序即阅读次序：播报句在调用清单之前、定性句在其后 (0.945875ms)",
+            "✖ failing tests:",
+            "✖ U5 键序即阅读次序：播报句在调用清单之前、定性句在其后 (0.945875ms)",
+            "  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+          ]
+        },
+        {
+          "files": [
+            "dist/test/test/integration/doctor-deadline-cli.test.js"
+          ],
+          "pattern": "I5",
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "failed": [
+            "I5 预检 JSON 的 recalibration.invocations[*].args 照抄即可执行；重跑预检不再报探针过期"
+          ],
+          "excerpt": [
+            "✖ I5 预检 JSON 的 recalibration.invocations[*].args 照抄即可执行；重跑预检不再报探针过期 (304.246209ms)",
+            "✖ failing tests:",
+            "✖ I5 预检 JSON 的 recalibration.invocations[*].args 照抄即可执行；重跑预检不再报探针过期 (304.246209ms)",
+            "  AssertionError [ERR_ASSERTION]: {"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "what": "片段：闸门句挪到调用细则之后",
+      "red": true,
+      "runs": [
+        {
+          "files": [
+            "dist/test/test/contract/skill-recalibrate.test.js"
+          ],
+          "pattern": null,
+          "tests": 50,
+          "pass": 34,
+          "fail": 16,
+          "failed": [
+            "skills/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）"
+          ],
+          "excerpt": [
+            "✖ skills/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.289541ms)",
+            "✖ skills/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.046958ms)",
+            "✖ skills/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.06775ms)",
+            "✖ skills/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.034916ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.023542ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.037875ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.034584ms)",
+            "✖ skills/dual-critic/entry/codex/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.031208ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.036792ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.042167ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.034792ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.036625ms)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "what": "只改 codex 载体 dual-run 一份产物（不经渲染）",
+      "red": true,
+      "runs": [
+        {
+          "files": [
+            "dist/test/test/contract/skill-recalibrate.test.js"
+          ],
+          "pattern": null,
+          "tests": 50,
+          "pass": 49,
+          "fail": 1,
+          "failed": [
+            "同一口径：16 份产物的自动校准一节逐字节相同（EV-252）"
+          ],
+          "excerpt": [
+            "✖ 同一口径：16 份产物的自动校准一节逐字节相同（EV-252） (1.815667ms)",
+            "✖ failing tests:",
+            "✖ 同一口径：16 份产物的自动校准一节逐字节相同（EV-252） (1.815667ms)",
+            "  AssertionError [ERR_ASSERTION]: skills/dual-critic/entry/codex/dual-run/SKILL.md 与 skills/dual-review-bug/SKILL.md 的自动校准一节不同"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M5",
+      "what": "片段：删「前后不加任何东西」",
+      "red": true,
+      "runs": [
+        {
+          "files": [
+            "dist/test/test/contract/skill-recalibrate.test.js"
+          ],
+          "pattern": null,
+          "tests": 50,
+          "pass": 34,
+          "fail": 16,
+          "failed": [
+            "skills/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/codex/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/glm/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）"
+          ],
+          "excerpt": [
+            "✖ skills/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.812917ms)",
+            "✖ skills/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.07725ms)",
+            "✖ skills/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.083166ms)",
+            "✖ skills/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.057917ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.073875ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.060584ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.059209ms)",
+            "✖ skills/dual-critic/entry/codex/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.061ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.066375ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.067208ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.059833ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.068041ms)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M6",
+      "what": "buildRecalibration 去掉 announce_after_pass",
+      "red": true,
+      "runs": [
+        {
+          "files": [
+            "dist/test/test/unit/preflight-recalibrate.test.js"
+          ],
+          "pattern": null,
+          "tests": 18,
+          "pass": 16,
+          "fail": 2,
+          "failed": [
+            "U5 announce_after_pass 等于导出常量，常量逐字为定性句",
+            "U5 键序即阅读次序：播报句在调用清单之前、定性句在其后"
+          ],
+          "excerpt": [
+            "✖ U5 announce_after_pass 等于导出常量，常量逐字为定性句 (0.562916ms)",
+            "✖ U5 键序即阅读次序：播报句在调用清单之前、定性句在其后 (0.478208ms)",
+            "✖ failing tests:",
+            "✖ U5 announce_after_pass 等于导出常量，常量逐字为定性句 (0.562916ms)",
+            "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+            "✖ U5 键序即阅读次序：播报句在调用清单之前、定性句在其后 (0.478208ms)",
+            "  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M7",
+      "what": "片段：定性句原文改一个字",
+      "red": true,
+      "runs": [
+        {
+          "files": [
+            "dist/test/test/contract/skill-recalibrate.test.js"
+          ],
+          "pattern": null,
+          "tests": 50,
+          "pass": 34,
+          "fail": 16,
+          "failed": [
+            "skills/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）"
+          ],
+          "excerpt": [
+            "✖ skills/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.306625ms)",
+            "✖ skills/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.050167ms)",
+            "✖ skills/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.070292ms)",
+            "✖ skills/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.040041ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.026166ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.042709ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.035834ms)",
+            "✖ skills/dual-critic/entry/codex/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.033416ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.045125ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.04375ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.037166ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.039375ms)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M8",
+      "what": "片段：删「args 的各项也不改、不增删」",
+      "red": true,
+      "runs": [
+        {
+          "files": [
+            "dist/test/test/contract/skill-recalibrate.test.js"
+          ],
+          "pattern": null,
+          "tests": 50,
+          "pass": 34,
+          "fail": 16,
+          "failed": [
+            "skills/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/codex/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）",
+            "skills/dual-critic/entry/glm/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252）"
+          ],
+          "excerpt": [
+            "✖ skills/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.285625ms)",
+            "✖ skills/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.035792ms)",
+            "✖ skills/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.042791ms)",
+            "✖ skills/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.02675ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.032708ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.037ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.0335ms)",
+            "✖ skills/dual-critic/entry/codex/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.032083ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.037ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-code/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.041667ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.035959ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-run/SKILL.md：照抄调用，命令行前后不加任何东西（EV-252） (0.048625ms)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M9",
+      "what": "片段：删回落句的「同样先发后调」",
+      "red": true,
+      "runs": [
+        {
+          "files": [
+            "dist/test/test/contract/skill-recalibrate.test.js"
+          ],
+          "pattern": null,
+          "tests": 50,
+          "pass": 34,
+          "fail": 16,
+          "failed": [
+            "skills/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/codex/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/gemini/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）",
+            "skills/dual-critic/entry/glm/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252）"
+          ],
+          "excerpt": [
+            "✖ skills/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.292ms)",
+            "✖ skills/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.046958ms)",
+            "✖ skills/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.067875ms)",
+            "✖ skills/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.03625ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.026209ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.04325ms)",
+            "✖ skills/dual-critic/entry/codex/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.036ms)",
+            "✖ skills/dual-critic/entry/codex/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.034709ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.038042ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-code/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.045375ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.036417ms)",
+            "✖ skills/dual-critic/entry/gemini/dual-run/SKILL.md：先播报、后调用，通过后第一句是定性句（EV-252） (0.037834ms)"
+          ]
+        }
+      ]
+    }
+  ]
+}

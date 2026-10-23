@@ -1015,7 +1015,7 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
       // 恒在（无警告时为 []）：skill 按它转述，键缺席会让转述句静默不触发
       warnings: r.warnings,
       exit_code: r.exitCode,
-      // 失败时恒在（EV-251）：skill 只照抄 invocations[*].args；键缺席按「不自动校准」处理
+      // 失败时恒在（EV-251）：skill 先念 announce_before、再照抄 invocations[*].args（EV-252，键序不重排）；键缺席按「不自动校准」处理
       ...(r.recalibration ? { recalibration: r.recalibration } : {}),
     });
   } else {

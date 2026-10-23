@@ -175,6 +175,9 @@ test('I5 预检 JSON 的 recalibration.invocations[*].args 照抄即可执行；
     const inv = j.recalibration.invocations[0]!;
     assert.equal(inv.deadline_s, 900);
     assert.equal(inv.bash_timeout_ms, 960_000);
+    // 打包 CLI 输出的原文里播报句先于调用清单（EV-252）：cli.ts 不重排键序
+    const before = pf.stdout.indexOf('"announce_before"');
+    assert.ok(before !== -1 && before < pf.stdout.indexOf('"invocations"'), pf.stdout);
 
     const doc2 = await cli(fx.root, inv.args, null, 120_000, env);
     assert.notEqual(doc2.code, EXIT.USAGE, `照抄的 args 被判参数错误：${doc2.stderr}`);

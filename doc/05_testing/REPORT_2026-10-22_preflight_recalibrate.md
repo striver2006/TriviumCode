@@ -129,3 +129,5 @@
 3. 第二条 doctor 第一次调用时擅自加了输出重定向，被 Hook 拦下（两次）后改回照抄的原样。
 
 每家 doctor 结束后的那一行播报都发了。三处都不影响结果，但第 1 条恰是「不向用户确认」时用户唯一的事前知情点。
+
+已登记 BACKLOG EV-252 处理（主题 `自动校准播报与照抄`，报告 [`REPORT_2026-10-23_recalibrate_announce.md`](./REPORT_2026-10-23_recalibrate_announce.md)）。

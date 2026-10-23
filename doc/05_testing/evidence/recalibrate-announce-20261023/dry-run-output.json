@@ -1,0 +1,24 @@
+{
+  "fixture": "<scratchpad>/ev252-fx-rnelKu",
+  "bundle": "仓库内 npm run build 产物 skills/dual-critic/scripts/trivium.cjs（未 install:local）",
+  "exit": 69,
+  "failed": [
+    "Antigravity 版本与探针一致",
+    "ZCode 版本与探针一致"
+  ],
+  "recalibration_keys": [
+    "eligible",
+    "why",
+    "announce_before",
+    "invocations",
+    "announce_after_pass"
+  ],
+  "eligible": true,
+  "announce_before": "预检退 69，以下失败项可由 doctor 重新校准：Antigravity 版本与探针一致、ZCode 版本与探针一致；将依次在前台跑 2 次 doctor（每次至多 900 秒），会消耗少量配额。",
+  "invocations": [
+    { "only": "agy", "args": ["doctor", "--only", "agy", "--deadline-s", "900", "--json"], "bash_timeout_ms": 960000 },
+    { "only": "zcode", "args": ["doctor", "--only", "zcode", "--deadline-s", "900", "--json"], "bash_timeout_ms": 960000 }
+  ],
+  "announce_after_pass": "预检首次退 69，已自动校准后通过。",
+  "announce_before_precedes_invocations_in_stdout": true
+}

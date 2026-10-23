@@ -100,11 +100,21 @@ export interface CheckRecalibrate {
   targets?: RecalibrateTarget[];
 }
 
+/** 自动校准后重跑预检通过时的定性句（EV-252）：无槽位，skill 照念片段里的原文，契约用例核两处逐字相等 */
+export const RECAL_ANNOUNCE_AFTER_PASS = '预检首次退 69，已自动校准后通过。';
+
 /** 预检失败时的自动校准计划（EV-251，计划 r2 D2）：skill 只照抄 `invocations[*].args`，不拼、不改、不去重 */
 export interface RecalibrationPlan {
   eligible: boolean;
   why: string;
+  /**
+   * 第一次 doctor 调用之前要原样念给用户的一句（EV-252）：失败项名、调用次数、每次时限已填好。
+   * 只在 `eligible` 时给；键序排在 `invocations` 之前，读到调用清单之前先读到它。
+   */
+  announce_before?: string;
   invocations: Array<{ only: string; args: string[]; deadline_s: number; bash_timeout_ms: number }>;
+  /** 恒为 `RECAL_ANNOUNCE_AFTER_PASS`，只在 `eligible` 时给（EV-252）；skill 不回取它，照念片段原文 */
+  announce_after_pass?: string;
 }
 
 /** 预检与 `review --start` 共用的警告汇总形状（EV-123） */
@@ -229,15 +239,20 @@ export function buildRecalibration(
     const i = (ALL_CLI_NAMES as readonly string[]).indexOf(t.only);
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
+  const invocations = [...targets].sort((a, b) => order(a) - order(b)).map((t) => ({
+    only: t.only,
+    args: ['doctor', '--only', t.only, ...t.flags, '--deadline-s', String(deadlineS), '--json'],
+    deadline_s: deadlineS,
+    bash_timeout_ms: doctorToolTimeoutMs(deadlineS),
+  }));
+  // 键序即阅读次序（EV-252）：播报句在调用清单之前，cli.ts 原样透传
   return {
     eligible: true,
     why: '全部失败项都可由 doctor 重新校准',
-    invocations: [...targets].sort((a, b) => order(a) - order(b)).map((t) => ({
-      only: t.only,
-      args: ['doctor', '--only', t.only, ...t.flags, '--deadline-s', String(deadlineS), '--json'],
-      deadline_s: deadlineS,
-      bash_timeout_ms: doctorToolTimeoutMs(deadlineS),
-    })),
+    announce_before: `预检退 69，以下失败项可由 doctor 重新校准：${failed.map((c) => c.name).join('、')}；`
+      + `将依次在前台跑 ${invocations.length} 次 doctor（每次至多 ${deadlineS} 秒），会消耗少量配额。`,
+    invocations,
+    announce_after_pass: RECAL_ANNOUNCE_AFTER_PASS,
   };
 }
 

@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { buildRecalibration, recalTargets, runPreflight, type CheckResult } from '../../src/trivium/preflight.js';
+import { buildRecalibration, RECAL_ANNOUNCE_AFTER_PASS, recalTargets, runPreflight, type CheckResult } from '../../src/trivium/preflight.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { realAdapters } from '../../src/trivium/adapters/index.js';
 import { ALL_CLI_NAMES } from '../../src/trivium/agents/registry.js';
@@ -192,6 +192,48 @@ test('U3 混入一条不能修（或没标）⇒ 不 eligible，why 点名那一
   assert.match(usage.why, /64/);
   assert.equal(buildRecalibration({ ok: true, exitCode: EXIT.OK, checks: [] }, 480), null);
   assert.equal(buildRecalibration({ ok: false, exitCode: EXIT.ENV, checks: [fail('x', { fixable: true, targets: [] })] }, 480)!.eligible, false);
+});
+
+// ── U5 现成播报句（EV-252，自动校准播报与照抄计划 r2 D1） ──
+
+const drift = (name: string, only: string, flags: string[] = []): CheckResult =>
+  fail(name, { fixable: true, targets: [{ only, flags }] });
+
+test('U5 announce_before：失败项名按 checks 次序以「、」连接，N 为调用条数，秒数取时限', () => {
+  const p = buildRecalibration({
+    ok: false, exitCode: EXIT.ENV, checks: [drift('ZCode 版本与探针一致', 'zcode'), drift('Antigravity 版本与探针一致', 'agy')],
+  }, 900)!;
+  assert.equal(p.announce_before,
+    '预检退 69，以下失败项可由 doctor 重新校准：ZCode 版本与探针一致、Antigravity 版本与探针一致；将依次在前台跑 2 次 doctor（每次至多 900 秒），会消耗少量配额。');
+  // 同一侧两条组合：N = 2，名称只出现一次
+  const two = buildRecalibration({
+    ok: false, exitCode: EXIT.ENV,
+    checks: [fail('Codex 路线探针', { fixable: true, targets: [{ only: 'codex', flags: ['--native-codex'] }, { only: 'codex', flags: ['--profile-codex', 'x'] }] })],
+  }, 300)!;
+  assert.equal(two.invocations.length, 2);
+  assert.equal(two.announce_before,
+    '预检退 69，以下失败项可由 doctor 重新校准：Codex 路线探针；将依次在前台跑 2 次 doctor（每次至多 300 秒），会消耗少量配额。');
+});
+
+test('U5 announce_after_pass 等于导出常量，常量逐字为定性句', () => {
+  assert.equal(RECAL_ANNOUNCE_AFTER_PASS, '预检首次退 69，已自动校准后通过。');
+  const p = buildRecalibration({ ok: false, exitCode: EXIT.ENV, checks: [drift('a', 'agy')] }, 900)!;
+  assert.equal(p.announce_after_pass, RECAL_ANNOUNCE_AFTER_PASS);
+});
+
+test('U5 不 eligible ⇒ 两句播报都缺席，形状仍是 { eligible, why, invocations: [] }；通过仍为 null', () => {
+  const cases = [
+    buildRecalibration({ ok: false, exitCode: EXIT.ENV, checks: [drift('能修', 'agy'), fail('Codex 已认证')] }, 900)!,
+    buildRecalibration({ ok: false, exitCode: EXIT.USAGE, checks: [drift('模型 slug 合法', 'agy')] }, 900)!,
+    buildRecalibration({ ok: false, exitCode: EXIT.ENV, checks: [fail('x', { fixable: true, targets: [] })] }, 900)!,
+  ];
+  for (const p of cases) assert.deepEqual(Object.keys(p), ['eligible', 'why', 'invocations']);
+  assert.equal(buildRecalibration({ ok: true, exitCode: EXIT.OK, checks: [] }, 900), null);
+});
+
+test('U5 键序即阅读次序：播报句在调用清单之前、定性句在其后', () => {
+  const p = buildRecalibration({ ok: false, exitCode: EXIT.ENV, checks: [drift('a', 'agy')] }, 900)!;
+  assert.deepEqual(Object.keys(p), ['eligible', 'why', 'announce_before', 'invocations', 'announce_after_pass']);
 });
 
 test('U3‴ 取值范围两处对账：schema 的 minimum / maximum 等于 DEADLINE_MIN_S / DEADLINE_MAX_S，缺省值落在范围内（代码审第 2 轮 GLM-02）', async () => {
