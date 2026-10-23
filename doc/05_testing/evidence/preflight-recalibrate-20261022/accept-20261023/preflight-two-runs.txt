@@ -1,0 +1,4 @@
+# 两次预检的失败项与校准字段，以及 04:46:55～04:47:05 之间的助手文本（为空即没有播报）
+# 来源：夹具会话 a4d4b17f-48d4-4a78-851a-ccdeb9d29d58.jsonl（~/Work/trivium-ev251-accept，2026-10-23，用户发起 /dual-review-plan）；家目录已归一 ~
+[04:46:58] PREFLIGHT#1 exit=69 failed=[{"name":"Antigravity 版本与探针一致","detail":"agy 版本已变（探针记录 1.4.5 → 实际 1.4.6）。\n  参数与行为可能随版本漂移，请重新运行 `trivium doctor`。","recalibrate":{"fixable":true,"targets":[{"only":"agy","flags":[]}]}},{"name":"ZCode 版本与探针一致","detail":"zcode 版本已变（探针记录 0.0.0-ev251-drift → 实际 0.17.0）。\n  参数与行为可能随版本漂移，请重新运行 `trivium doctor`。","recalibrate":{"fixable":true,"targets":[{"only":"zcode","flags":[]}]}}] recalibration={"eligible":true,"why":"全部失败项都可由 doctor 重新校准","invocations":[{"only":"agy","args":["doctor","--only","agy","--deadline-s","900","--json"],"deadline_s":900,"bash_timeout_ms":960000},{"only":"zcode","args":["doctor","--only","zcode","--deadline-s","900","--json"],"deadline_s":900,"bash_timeout_ms":960000}]}
+[04:50:12] PREFLIGHT#2 exit=0 failed=[] recalibration=null

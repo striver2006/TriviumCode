@@ -1,0 +1,48 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "针对指定焦点核查：计划对「缺省问候语」已说清（明确写出 greeting = 'hello'、缺省仍是 hello，与 src/greet.ts 现状的 hello 前缀一致）；对「调用方不受影响」只写了结论「不改调用方」，没有写清依据（新可选参数需追加在 name 之后才构成向后兼容），且测试一节假设了不存在的测试/构建设施。方向正确、范围克制，补齐这两处澄清与一个未决策项即可实施，无需再审一轮。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "三、测试",
+      "problem": "计划承诺「缺省与自定义问候语各一条断言」，但仓库内没有任何测试或 TypeScript 运行设施：根目录无 package.json、无 tsconfig.json、无任何 .test 文件（实测 find 查询返回空，ls 目录清单确认），src 下仅 greet.ts 一个文件。测试写在哪里、用什么命令跑、是否为此引入测试框架——这是一个外部依赖引入的未决策项，按现计划实施到第三步会卡住并临时补决策，属于返工点。",
+      "evidence": "实测命令：ls -la . src；find . -name package.json -o -name tsconfig.json -o -name *.test.ts（排除 .reviews/node_modules 后无输出）。被审计划第三节仅一句「缺省与自定义问候语各一条断言」。",
+      "suggestion": "在计划中明确测试的执行路径与依赖决策：引入哪个测试框架及配置文件、测试文件落点，或明确本验收不引入框架、以临时脚本/手工断言验证并给出具体命令。二选一都行，但不能留白。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "二、做法",
+      "problem": "「调用方不受影响」只给了结论没给依据。向后兼容成立的前提是新可选参数追加在 name 之后（greet(name: string, greeting = 'hello')）；计划只写「参数 greeting = 'hello'」未写参数次序，若实施者放到 name 之前则现有单参调用点行为会破坏。此外 greet 是导出函数，仓库内实测无任何调用方（grep -rn greet 仅命中定义本身），所以「不受影响」的论证只能靠签名兼容性，更需要把次序写死。",
+      "evidence": "实测命令：grep -rn greet --include=*.ts --include=*.js --include=*.md（排除 .reviews 与 node_modules），仅返回 ./src/greet.ts:1 的函数定义行，无调用方。src/greet.ts 现状为 export function greet(name: string): string。",
+      "suggestion": "把「不改调用方」扩写为兼容依据一句话：新增的 greeting 可选参数位于 name 之后，既有调用点签名与输出均不变；缺省值 'hello' 保证旧行为逐字一致。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "缺省问候语的取值在目标与做法两节都明确写出（缺省仍是 hello / greeting = 'hello'），与 src/greet.ts 现有的 `hello ${name}` 行为逐字对齐，这条焦点本身是合格的。",
+    "改动范围克制：只动 src/greet.ts 一个文件、不扩散到无关重构，符合验收夹具的目标。",
+    "返回格式 `${greeting} ${name}` 与现有字符串拼接结构一致，实施风险低。"
+  ],
+  "not_covered": [
+    "未评审空字符串边界的取舍：greet('Bob', '') 会输出「 Bob」，计划未决策空串是否回退缺省值；判断这属于需求澄清而非本阶段必须修的返工点，故未列为 finding。",
+    "未覆盖另一位审查员的镜头（指定的分侧镜头为依赖/成本/回滚，其余角度如代码风格、并发等本次未见相关风险）。",
+    "本夹具无成本/配额与迁移回滚面可言（单文件纯函数、无数据、无部署），故未就此提出意见；README 显示这是 EV-251 验收夹具，按最小改动口径评审。",
+    "未核验 Driver 侧后续 will 的裁决流程，仅审计划文本与仓库现状。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "GEMINI.md",
+    "README.md",
+    "src/greet.ts",
+    ".gitignore"
+  ]
+}

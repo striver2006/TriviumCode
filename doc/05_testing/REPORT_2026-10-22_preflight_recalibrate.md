@@ -109,3 +109,23 @@
 | GLM-03 | 第一节 `util/exec.ts` 与 `doctor-deadline.ts` 两行改为终态表述 | — |
 
 改码后 `npm run check`（前台、单条）：3887 条，3885 通过、0 失败、2 跳过。
+
+## 九、真实配额验收（2026-10-23，提交 `62c5897d` 重装之后）
+
+夹具 `~/Work/trivium-ev251-accept`：`init` 后照搬本仓本机层的 `probe.cli` / `probe.host` / `generated_at`（不拷 `auth` / `auth_routes`，零配额），把 zcode 的记录版本改成 `0.0.0-ev251-drift` 制造版本漂移；零配额干跑预检确认判退 69、只点名 zcode。随后用户在夹具里新开 Claude Code 会话（`BASH_MAX_TIMEOUT_MS=960000` 已生效）敲 `/dual-review-plan --topic 自动校准验收 '…'`。读数见 [`evidence/preflight-recalibrate-20261022/accept-20261023/`](./evidence/preflight-recalibrate-20261022/accept-20261023/)。
+
+**编排器侧，全部符合预期：**
+
+- 第一次预检退 69，两项可修的版本漂移：除造的 zcode 外，agy 在干跑与真实运行之间自升级（1.4.5 → 1.4.6），真实撞上了需求所指的那一类失败。两项都标 `fixable: true`，`recalibration.invocations` 按 `ALL_CLI_NAMES` 次序给出 agy、zcode 两条，`deadline_s: 900`、`bash_timeout_ms: 960000`。
+- skill 照抄两条调用，前台执行，Bash 工具超时 960000、未用后台、未拆两步。`doctor --only agy` 57 s 退 0（17 次派生），`doctor --only zcode` 84 s 退 0（25 次派生）；两次 `deadline.hit: false`、各段 `finished`、`residue` 为空，`rerun` 是 `.trivium/bin/trivium doctor --only 〈家〉`。
+- 用相同旗标重跑预检退 0，接着照常发起三家计划审查（run `20261023T045024Z`，第 1/3 轮：1 通过 / 2 修改后通过 → 修改后通过）；用户随后 `/dual-abandon` 放弃验收主题。
+- 盘上：夹具的 agy / zcode 版本已刷回 1.4.6 / 0.17.0，`probed_at` 为本次时间；`run_root` 下台账 0 个；本次时段新建的 `trivium-*` 临时目录 0 个；没有残留的 doctor 或探针进程。
+- zcode 的 doctor 带 1 条警告「旗标本轮未判定（3 个候选在参数解析前就退出，P-29）」，`readonly_flags` 沿用照搬来的上一次结论——是夹具的 ZCode 安装布局 / provider 配置定位问题（EV-196 / P-29 的既有形态），与本主题无关。
+
+**skill 侧，有三处没有照规定做（会话里的模型没遵循，不是编排器的问题）：**
+
+1. 跑 doctor 之前没有发「预检退 69，以下失败项可由 doctor 重新校准……会消耗少量配额」那一行（04:46:58 预检返回，04:47:01 直接拉起 doctor，其间无文本）；
+2. 第二次预检通过后没有当即说「预检首次退 69，已自动校准后通过」，到收尾总结里才提；
+3. 第二条 doctor 第一次调用时擅自加了输出重定向，被 Hook 拦下（两次）后改回照抄的原样。
+
+每家 doctor 结束后的那一行播报都发了。三处都不影响结果，但第 1 条恰是「不向用户确认」时用户唯一的事前知情点。
