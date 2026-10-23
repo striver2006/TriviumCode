@@ -76,7 +76,7 @@
 
 ## 六、残余（BACKLOG EV-252）
 
-- **事前播报与定性句仍被跳过**（第五节判据 ①②）。候选方向（未开题）：由载体护栏把句子直接送到用户面前，不经模型——Claude Code 的 PostToolUse Hook 在看到预检 JSON 里 `recalibration.eligible` 为真时以 `systemMessage` 显示 `announce_before`；定性句同理需要一个机械触发点。本机 Claude Code 版本下 `systemMessage` 的显示效果未实测。codex / gemini 没有 Hook，只能退回文本约束。
+- **事前播报与定性句仍被跳过**（第五节判据 ①②）。候选方向（未开题）：由载体护栏把句子直接送到用户面前，不经模型——Claude Code 的 PostToolUse Hook 在看到预检 JSON 里 `recalibration.eligible` 为真时以 `systemMessage` 显示 `announce_before`；定性句同理需要一个机械触发点。本机 Claude Code 版本下 `systemMessage` 的显示效果未实测。**用户 2026-10-24 定不做**，接受现状（结果正确，缺的只是两句知情提示）。codex / gemini 没有 Hook，只能退回文本约束。
 - 另三家载体作 Driver 时的遵循情况、长输出是否截存未验。
 - 片段里「Bash 工具超时」对 codex / gemini / glm 载体是字面借用，四家同一口径、未改。
 - 注：本次 `/dual-run` 自己的 S0.6 恰好撞上真实的 agy 版本漂移（1.4.5 → 1.4.6）并走了一轮自动校准，当时用的是改动前的全局副本与旧片段；Driver 先发了播报、通过后当即念了定性句，但 doctor 调用前后加了 `cd` 前缀与 `echo "EXIT=$?"`，按新片段属于不合规形态。这是 Driver 自述，不作验收证据。
