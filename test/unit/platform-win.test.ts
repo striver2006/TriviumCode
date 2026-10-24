@@ -130,6 +130,10 @@ test('init 双形态 wrapper：win32 同时写 sh 形态与 .cmd，checkWrapper 
       assert.ok(existsSync(cmdWrapper), '.cmd 应写入');
       const content = await fs.readFile(cmdWrapper, 'utf8');
       assert.match(content, /^@echo off\r\n/);
+      // cmd.exe 按系统代码页解析批处理，中文 Windows 是 GBK：UTF-8 中文注释按 GBK 错位解读会把行拆断、
+      // 把注释里的单词当命令执行（实测每次运行报 `'shell' 不是内部或外部命令`，Bug 清单 §3.1 第 13 条）——
+      // .cmd 注释必须只用 ASCII
+      assert.ok(!/[^\x00-\x7f]/.test(content), `.cmd 全文应只含 ASCII，实得：\n${content}`);
       assert.ok(content.includes(`"${process.execPath}"`), '.cmd 内写死本机 node 绝对路径');
       // bundle 路径不存在 → checkWrapper 应核出（写死路径失效是它的职责）
       const problems = await checkWrapper(dir);

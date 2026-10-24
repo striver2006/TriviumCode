@@ -556,9 +556,18 @@ export async function resolveTaskGoal(
 }
 
 
-/** 运行目录按仓库路径哈希分桶，避免不同项目互相覆盖 */
+/**
+ * 运行目录按仓库路径哈希分桶，避免不同项目互相覆盖。
+ *
+ * 输入先经 `path.normalize`（双平台统一时补）：Windows 上 `projectRoot` 来自 `git rev-parse --show-toplevel`
+ * 的**正斜杠**形态，而测试与外部工具按 Node 习惯持**反斜杠**形态——同一仓库两种字符串会哈希出两个桶，
+ * 测试按自己拼的桶名去读产品写的运行目录时 ENOENT（win32 实测，Bug 清单 §3.1 第 13 条）。
+ * POSIX 上 normalize 不改变任何路径，行为零变化。Windows 上旧桶（按正斜杠哈希建的）会失配——
+ * 运行目录按次短存、retention 按目录年龄清扫，升级后旧桶留到过期即净。
+ */
 export function repoId(projectRoot: string): string {
-  return `${path.basename(projectRoot)}-${sha256(projectRoot).slice(0, 8)}`;
+  const p = path.normalize(projectRoot);
+  return `${path.basename(p)}-${sha256(p).slice(0, 8)}`;
 }
 
 export interface ReviewOptions {

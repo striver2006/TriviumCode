@@ -1285,5 +1285,12 @@ async function readCatalogPath(profile: string | null): Promise<string | null> {
  * 而展开既不花钱也把这层依赖去掉了。
  */
 function expandHome(p: string): string {
-  return p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p;
+  if (p.startsWith('~/')) return path.join(os.homedir(), p.slice(2));
+  /*
+   * 相对路径按 CODEX_HOME 归一（win32 实测，Bug 清单 §3.1 第 13 条）：codex 自己读 config.toml 里的
+   * 相对 `model_catalog_json` 时按家目录解析（不带 -c 的 `debug models` 实测成功）；经 `-c` 覆盖传入时
+   * 却按**进程 cwd** 解析——编排器进程的 cwd 与 CODEX_HOME 无关，相对路径原样传去即 os error 2、
+   * 目录采集失败，预检回落基底目录后把 profile 档位的模型全部误拦。显式归一，两边语义就一致了。
+   */
+  return path.isAbsolute(p) ? p : path.join(codexHome(), p);
 }

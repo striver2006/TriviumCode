@@ -473,7 +473,9 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
            */
           const pending = IS_WIN
             ? run(process.execPath,
-              ['-e', `setInterval(()=>{}, ${Math.min(sleepS * 1000, 3_600_000)})`, `trivium-stub-cli:${req.out_dir}`],
+              // setTimeout 到点后没有 keep-alive 句柄，进程自然退出——与 POSIX 侧 `sleep N` 睡完即退同形。
+              // 此前写的是 setInterval：永不退出，`sleepS` 造「CLI 自然结束」的用例在 win32 上全程挂死（Bug 清单 §3.1 第 13 条）。
+              ['-e', `setTimeout(()=>{}, ${Math.min(sleepS * 1000, 3_600_000)})`, `trivium-stub-cli:${req.out_dir}`],
               { killTree: true, timeoutMs: 610_000 })
             : run('/bin/sh', ['-c', `${spec.ignoreTerm ? "trap '' TERM; " : ''}sleep ${sleepS}; : "$0"`, `trivium-stub-cli:${req.out_dir}`], {
               killTree: true,

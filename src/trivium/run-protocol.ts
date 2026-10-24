@@ -1337,7 +1337,14 @@ export async function workerMain(ctx: Ctx, runId: string): Promise<number> {
   // 第一件事装 SIGTERM 处理器（EV-152）：此后以 killTree 拉起的 CLI 都在它的登记里
   const uninstallSigterm = installWorkerSigtermForwarding();
   const runDir = runDirFor(ctx.config, ctx.projectRoot, runId);
-  // Windows：跨进程 SIGTERM 到不了 worker，取消改由标记文件触发（设计 §7.1）；POSIX 上不装
+  /*
+   * Windows：跨进程 SIGTERM 到不了 worker，取消改由标记文件触发（设计 §7.1）；POSIX 上不装。
+   * 安装前先物理清除可能遗留的标记（win32 实测，Bug 清单 §3.1 第 13 条）：`--cancel` 写下的标记不随运行清除，
+   * `review --worker` 对同一 run 人工重启时，仅靠 watcher 的 mtime 回退判新旧的窗口（15 s）在慢机器上不够——
+   * 从上轮取消到本轮重启不足回退量时，陈旧标记被当新标记，重启的 worker 不跑业务逻辑、一律以 143 收场。
+   * 重启语义本就该清场：此刻之前的标记都是对上一轮 worker 的，删掉不影响此后写入的新标记（watcher 仍认得到）。
+   */
+  if (IS_WIN) await fs.rm(cancelRequestPath(runDir), { force: true }).catch(() => undefined);
   const uninstallCancelWatch = IS_WIN ? installWorkerCancelFlagWatcher(runDir) : null;
   /*
    * CLI 进程组记录（EV-154，CLI进程组记录计划 r2 §4.3）：liveTrees 一变（派生、取到启动时刻、退出）就把它的投影写进

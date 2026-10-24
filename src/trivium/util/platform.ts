@@ -139,6 +139,13 @@ export async function enumerateWinProcesses(o: { fresh?: boolean } = {}): Promis
  */
 export async function winProcessCreation(pid: number): Promise<string | null> {
   let rows = await enumerateWinProcesses();
+  /*
+   * 第一趟失败（null）也要 fresh 重试一趟（win32 实测，Bug 清单 §3.1 第 13 条）：PowerShell 在
+   * 子进程风暴下偶发退出非 0 / 空输出，且 3 秒龄的失败兜底缓存常已过期——单趟失败直接判 null 会让
+   * `--cancel` / 心跳 / 失联判定随机「判不了」，集成测试每轮换一批红格。重试只在失败路径上多花
+   * 一个 PowerShell 周期；持续失败仍 null，「判不了」语义不变。
+   */
+  if (!rows) rows = (await enumerateWinProcesses({ fresh: true })) ?? null;
   if (rows) {
     const hit = rows.find((r) => r.pid === pid)?.creation;
     if (hit && hit.length > 0) return hit;

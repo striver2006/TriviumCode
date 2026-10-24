@@ -6,6 +6,7 @@ import { promises as fs } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { KEEP_FIXTURES_ENV, REPO_ROOT } from '../helpers/fixture.js';
 import { run } from '../../src/trivium/util/exec.js';
+import { IS_WIN, skipOnWin } from '../helpers/platform.js';
 
 /**
  * EV-208：通用测试临时目录 helper `test/helpers/scratch.ts` 的收尾（行为级）。
@@ -56,14 +57,17 @@ test('child', async () => {
     await fs.rm(c, { recursive: true, force: true });
     const d = await scratchDir('trivium-sc-d-');
     const e = scratchDirSync('trivium-sc-e-');
-    // 带尾斜杠的 TMPDIR：os.tmpdir() 会去掉尾斜杠，登记的父目录照样对得上
-    process.env.TMPDIR = path.join(tmp, 'inner') + '/';
+    // 带尾斜杠的 TMPDIR：os.tmpdir() 会去掉尾斜杠，登记的父目录照样对得上。
+    // 三个键一起设：win32 的 os.tmpdir() 只认 TMP/TEMP、不认 TMPDIR（Bug 清单 §3.1 第 13 条），POSIX 反之。
+    const setTmpEnv = (v) => { process.env.TMPDIR = v; process.env.TMP = v; process.env.TEMP = v; };
+    setTmpEnv(path.join(tmp, 'inner') + '/');
     const f = await scratchDir('trivium-sc-f-');
     assert.equal(path.dirname(f), path.join(tmp, 'inner'), '前提：目录建在 inner 下');
-    // 相对路径的 TMPDIR：mkdtemp 返回相对路径；随后换 cwd，退出时仍要删的是当初那一个
-    process.env.TMPDIR = 'rel/';
+    // 相对路径的 TMPDIR：mkdtemp 返回相对路径；随后换 cwd，退出时仍要删的是当初那一个。
+    // win32 的 os.tmpdir() 对 TEMP/TMP 做 path.resolve（恒绝对），相对形态结构上测不到——只验建目录，POSIX 保持全断言。
+    setTmpEnv('rel/');
     const g = await scratchDir('trivium-sc-g-');
-    assert.ok(!path.isAbsolute(g), '前提：相对 TMPDIR 下 mkdtemp 返回相对路径——不是的话这一格测不到登记时解析');
+    if (!(${IS_WIN})) assert.ok(!path.isAbsolute(g), '前提：相对 TMPDIR 下 mkdtemp 返回相对路径——不是的话这一格测不到登记时解析');
     const gAbs = path.resolve(g);
     process.chdir(tmp);
     made.push(a, b, c, d, e, f, gAbs);
@@ -130,8 +134,9 @@ async function drop(base: string): Promise<void> {
 async function runChild(c: Cell, mode: string, extraEnv: Record<string, string | undefined> = {}) {
   const r = await run(process.execPath, ['--test', path.join(c.base, 'child.test.mjs')], {
     cwd: c.base,
-    // 去掉 NODE_TEST_CONTEXT：继承下去子进程的 node --test 会判为递归调用、跳过全部文件且退 0（EV-207 撞过）
-    env: { TMPDIR: c.tmp, SC_MODE: mode, SC_REPORT: c.report, NODE_TEST_CONTEXT: undefined, [KEEP_FIXTURES_ENV]: undefined, ...extraEnv },
+    // 去掉 NODE_TEST_CONTEXT：继承下去子进程的 node --test 会判为递归调用、跳过全部文件且退 0（EV-207 撞过）。
+    // TMP 三键齐设：win32 的 os.tmpdir() 只认 TMP/TEMP，单设 TMPDIR 时子进程全建到真实临时目录（Bug 清单 §3.1 第 13 条）
+    env: { TMPDIR: c.tmp, TMP: c.tmp, TEMP: c.tmp, SC_MODE: mode, SC_REPORT: c.report, NODE_TEST_CONTEXT: undefined, [KEEP_FIXTURES_ENV]: undefined, ...extraEnv },
     timeoutMs: 120_000,
   });
   return { code: r.code, out: `${r.stdout}\n${r.stderr}` };
@@ -181,7 +186,12 @@ test('SC2 设保留变量时都还在，并打一行列出路径', async () => {
   }
 });
 
-test('SC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码', { skip: ROOT && 'root 下只读目录锁不住' }, async () => {
+test('SC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码', {
+  skip: (ROOT && 'root 下只读目录锁不住') || skipOnWin(
+    'win32 上无可靠「删不掉」构造（Bug 清单 §3.1 第 13 条）：NTFS + Node 24 的 POSIX 删除语义下，实测只读目录、'
+      + '目录内只读文件、父目录只读、被打开句柄四种形态全部删除成功，chmod(0o555) 锁不住、收尾路径无法触发',
+  ),
+}, async () => {
   const c = await cell('sc3');
   try {
     const r = await runChild(c, 'stuck');

@@ -16,6 +16,7 @@ import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import { STUB_ENV_VAR, encodeStubConfig, type StubConfig } from '../../src/trivium/adapters/stub.js';
 import { run } from '../../src/trivium/util/exec.js';
 import { scratchDir } from '../helpers/scratch.js';
+import { IS_WIN } from '../helpers/platform.js';
 
 const TOPIC = '副本源复查';
 
@@ -31,7 +32,10 @@ async function tmpHome(populate: boolean): Promise<string> {
 function cliAt(root: string, home: string, args: string[], stub: StubConfig) {
   return run(process.execPath, [BUNDLE, ...args], {
     cwd: root,
-    env: { TRIVIUM_ASSET_ROOT: ASSET_ROOT, [STUB_ENV_VAR]: encodeStubConfig(stub), HOME: home },
+    // win32 的 os.homedir() 读 USERPROFILE、不读 HOME（Bug 清单 §3.1 第 13 条）：只设 HOME 时子进程的
+    // 家还是真实的，`~/` 展示与「不碰真实副本源」两个前提都不成立。POSIX 上多带 USERPROFILE 无效果。
+    env: { TRIVIUM_ASSET_ROOT: ASSET_ROOT, [STUB_ENV_VAR]: encodeStubConfig(stub), HOME: home,
+      ...(IS_WIN ? { USERPROFILE: home } : {}) },
     timeoutMs: 120_000,
   });
 }

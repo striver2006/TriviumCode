@@ -46,7 +46,9 @@ async function raceWorkers(
   dir: string,
   body: string,
   count: number,
-  leadMs = 700,
+  // 5 s（win32 实测，Bug 清单 §3.1 第 13 条）：700 ms 只够快机器。Windows 无 fork、node 冷启动 + import
+  // 在满载下可达数秒，起跑差落在赢家持有期内就会出现「第二个赢家合法获取」的构造性失败（区间不重叠那格）。
+  leadMs = 5_000,
 ): Promise<Array<Record<string, unknown>>> {
   const script = path.join(dir, 'worker.mjs');
   await fs.writeFile(
@@ -87,34 +89,46 @@ async function raceWorkers(
   });
 }
 
-test('跨进程：N 个独立进程同抢一把锁，有且只有一个拿到', async () => {
+test('跨进程：N 个独立进程同抢一把锁，任意时刻至多一个持有', async () => {
   const dir = await tmpTrivium();
 
   /*
    * 赢家拿到后要**持有一会儿**再释放，否则它可能在别人还没 link 之前就已经 release，
    * 于是出现两个赢家——那不是竞态失败，是用例自己没构造好。
+   *
+   * 断言按互斥的**本质形式**（持锁区间两两不重叠）而不是「恰一个赢家」（win32 实测，
+   * Bug 清单 §3.1 第 13 条）：Windows 无 fork、node 冷启动 + import 秒级抖动，个别进程晚于
+   * 赢家的持有期到达时**先后合法获取**——互斥没破，但「恰一个」红了。「无重叠 + 输家全 70 +
+   * 释放后无残留」两平台同判据，考察强度不降：区间重叠才是互斥失败。
    */
   const results = await raceWorkers(
     dir,
-    `const h = await lock.acquireLock({
+    `const now = () => performance.timeOrigin + performance.now();
+     const h = await lock.acquireLock({
        triviumDir: dir, topic: ${JSON.stringify(TOPIC)}, runId: 'R-' + id,
        kind: 'run', heartbeatStaleMs: ${STALE_MS}, retries: 0,
      });
+     const acq = now();
      await new Promise((r) => setTimeout(r, 900));
+     const rel = now();
      await h.release();
-     return { ok: true };`,
+     return { ok: true, acq, rel };`,
     6,
   );
 
-  const winners = results.filter((r) => r['ok'] === true);
+  const winners = results.filter((r) => r['ok'] === true) as Array<Record<string, unknown> & { acq: number; rel: number }>;
   const losers = results.filter((r) => r['ok'] !== true);
+  assert.ok(winners.length >= 1, `至少要有一个赢家：${JSON.stringify(results)}`);
 
-  assert.equal(
-    winners.length,
-    1,
-    `6 个进程同抢应只有一个拿到，实际 ${winners.length} 个：${JSON.stringify(results)}`,
-  );
-  assert.equal(losers.length, 5);
+  const overlapping: string[] = [];
+  for (let a = 0; a < winners.length; a++) {
+    for (let b = a + 1; b < winners.length; b++) {
+      if (winners[a]!.acq < winners[b]!.rel && winners[b]!.acq < winners[a]!.rel) {
+        overlapping.push(`${String(winners[a]!['id'])}×${String(winners[b]!['id'])}`);
+      }
+    }
+  }
+  assert.deepEqual(overlapping, [], `任意两段持锁区间不得重叠（互斥失败）：${JSON.stringify(results)}`);
   for (const l of losers) {
     assert.equal(l['code'], 70, `失败者应得退出码 70（EXIT.LOCKED），实际 ${JSON.stringify(l)}`);
   }
@@ -181,13 +195,14 @@ test('跨进程：持锁进程被杀后，遗留锁按 pid_gone 被真实回收'
     logFile: path.join(dir, 'holder.log'),
   });
 
-  // 等它真的把锁拿到手
+  // 等它真的把锁拿到手（win32 实测：满载下 node 冷启动 + import 可达数十秒，5 s 窗口会把后来真起来的
+  // 持锁进程误判成「没起来」，本格红、且留下的活锁污染下一格——Bug 清单 §3.1 第 13 条）
   let holderPid = 0;
-  for (let i = 0; i < 100 && holderPid === 0; i++) {
+  for (let i = 0; i < 200 && holderPid === 0; i++) {
     try {
       holderPid = Number.parseInt(await fs.readFile(pidFile, 'utf8'), 10);
     } catch {
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 250));
     }
   }
   assert.ok(holderPid > 0, '持锁进程没起来，用例前提不成立');
@@ -260,10 +275,13 @@ test('跨进程：多个进程同时回收同一把遗留锁，仍只有一个�
     }
   }
   assert.deepEqual(overlapping, [], `任意两段持锁区间不得重叠（真双持有）：${JSON.stringify(results)}`);
-  assert.equal(
-    winners.length,
-    1,
-    `回收遗留锁的竞争也只应有一个赢家，实际 ${winners.length} 个（区间不重叠 ⇒ 先后合法获取，用例构造问题）：${JSON.stringify(results)}`,
+  /*
+   * 赢家数断「恰一个」改「至少一个」（win32 实测，同上一格的理由）：晚于赢家持有期到达的进程
+   * 先后合法获取第二个 ok，互斥未破。互斥失败由上面的区间重叠断言单独钉住，不靠赢家数。
+   */
+  assert.ok(
+    winners.length >= 1,
+    `回收遗留锁至少要有一个赢家：${JSON.stringify(results)}`,
   );
   const stderr = results.map((r) => String(r['__stderr'])).join('');
   // 这把遗留锁可解析：`unparsable` 只可能来自「锁恰被释放 / 挪走时读到 ENOENT」的误判（EV-173）

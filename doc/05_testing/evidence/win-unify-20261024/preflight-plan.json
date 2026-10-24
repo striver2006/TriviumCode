@@ -1,0 +1,32 @@
+{
+  "ok": false,
+  "scope": "plan",
+  "checks": [
+    {
+      "name": "Driver 会话声明",
+      "ok": true,
+      "warn": true,
+      "detail": "Driver 模型未声明，相关模型族比较将为 unknown；告警继续"
+    },
+    {
+      "name": "模型 slug 合法",
+      "ok": false,
+      "detail": "codex/plan: profile「ccswitch」的模型目录采集失败（codex debug models 退 1：Error: 系统找不到指定的文件。 (os error 2)），本次改用基底目录校验；模型「qwen3.8-flash」不在 Codex 模型目录中。可用值：kimi-for-coding, kimi-for-coding-highspeed, k3, k3-256k",
+      "recalibrate": {
+        "fixable": false
+      }
+    }
+  ],
+  "warnings": [
+    {
+      "name": "Driver 会话声明",
+      "detail": "Driver 模型未声明，相关模型族比较将为 unknown；告警继续"
+    }
+  ],
+  "exit_code": 64,
+  "recalibration": {
+    "eligible": false,
+    "why": "退出码 64 不在自动校准范围（只校准 69）",
+    "invocations": []
+  }
+}

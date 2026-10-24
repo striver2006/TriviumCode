@@ -1,0 +1,499 @@
+{
+  "ok": true,
+  "probe": {
+    "generated_at": "2026-10-24T03:07:44.789Z",
+    "verify_suggestion": {
+      "build": [
+        "npm run build"
+      ],
+      "test": [
+        "npm run test"
+      ]
+    },
+    "cli": {
+      "claude": {
+        "entrypoint": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+        "version": "2.1.302",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+)"
+        },
+        "probed_at": "2026-10-24T02:55:23.226Z",
+        "models": [],
+        "path_deny": {
+          "supported": true,
+          "rule_syntax": "Read(./.reviews/probe-topic/plan/**)",
+          "method": "经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的",
+          "attempts": [],
+          "coverage_complete": false,
+          "file_shape_verified": true
+        },
+        "scratch_paths": [],
+        "isolation": "shared",
+        "headless_read_ok": true,
+        "trace_path_structured": true,
+        "denied_tool_in_trace": true,
+        "readonly_breach": false,
+        "tool_surface_checked": true,
+        "readonly_flags": [
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob"
+        ],
+        "model_flag": false,
+        "json_schema_ok": true,
+        "session_id_source": "每条事件的 session_id 字段（--session-id 可由调用方指定）",
+        "trust_prompt_required": false,
+        "stream_json_requires_verbose": true,
+        "strict_mcp_config_applied": true,
+        "project_memory_blocked": true,
+        "directory_deny_verified": {
+          "Read": true,
+          "Grep": true,
+          "Glob": true
+        },
+        "directory_deny_probed_at": "2026-10-24T03:03:28.379Z",
+        "directory_deny_fingerprint": "2d5db3386c03e77835d423efefcacaf69489dfeb092b9687a4f00668904eed78",
+        "directory_deny_sensitive_globs_sha256": "3c37e95829b763aaf91780b4dfb6c1609cf4ee8a8ed1af4318b2747d9862b478",
+        "directory_deny_shape": "ascii-root1-5-depth0-2-v2",
+        "effort_levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "routes": {
+          "native": {
+            "profile": null,
+            "fingerprint": "e8173bdd9bf6fba69ac5460a3f4a4a818324dd9f3d5661d171966a306b0daa46",
+            "probe": {
+              "entrypoint": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+              "version": "2.1.302",
+              "version_probe": {
+                "runner": null,
+                "args": [
+                  "--version"
+                ],
+                "extract": "(\\d+\\.\\d+\\.\\d+)"
+              },
+              "probed_at": "2026-10-24T02:55:23.226Z",
+              "models": [],
+              "path_deny": {
+                "supported": true,
+                "coverage_complete": false,
+                "file_shape_verified": true,
+                "rule_syntax": "Read(./.reviews/probe-topic/plan/**)",
+                "method": "经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的",
+                "attempts": []
+              },
+              "scratch_paths": [],
+              "isolation": "shared",
+              "headless_read_ok": true,
+              "trace_path_structured": true,
+              "denied_tool_in_trace": true,
+              "readonly_breach": false,
+              "tool_surface_checked": true,
+              "readonly_flags": [
+                "--restricted",
+                "--strict-mcp-config",
+                "--tools",
+                "Read,Grep,Glob"
+              ],
+              "model_flag": false,
+              "json_schema_ok": true,
+              "session_id_source": "每条事件的 session_id 字段（--session-id 可由调用方指定）",
+              "trust_prompt_required": false,
+              "stream_json_requires_verbose": true,
+              "strict_mcp_config_applied": true,
+              "project_memory_blocked": true,
+              "directory_deny_verified": {
+                "Read": true,
+                "Grep": true,
+                "Glob": true
+              },
+              "directory_deny_probed_at": "2026-10-24T03:03:28.379Z",
+              "directory_deny_fingerprint": "2d5db3386c03e77835d423efefcacaf69489dfeb092b9687a4f00668904eed78",
+              "directory_deny_sensitive_globs_sha256": "3c37e95829b763aaf91780b4dfb6c1609cf4ee8a8ed1af4318b2747d9862b478",
+              "directory_deny_shape": "ascii-root1-5-depth0-2-v2",
+              "effort_levels": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ],
+              "route_profile": null
+            }
+          }
+        }
+      },
+      "codex": {
+        "entrypoint": "C:\\Users\\k_bo\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+        "version": "0.163.0",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+(?:-[\\w.-]+)?)"
+        },
+        "probed_at": "2026-10-19T17:42:17.210Z",
+        "models": [
+          "kimi-for-coding",
+          "kimi-for-coding-highspeed",
+          "k3",
+          "k3-256k"
+        ],
+        "path_deny": {
+          "supported": false,
+          "rule_syntax": null,
+          "method": "实跑 codex exec --help 全文扫描 --deny / --disallow / deny_paths / path_deny / denied_paths，零命中（版本见同段的 probe.version，不在此处重复记以免它随版本过期）",
+          "attempts": [
+            "sandbox_permissions：取值为 disk-full-read-access 一类的粗粒度放宽档，方向相反，不能用来收紧"
+          ],
+          "coverage_complete": null,
+          "file_shape_verified": null
+        },
+        "scratch_paths": [],
+        "isolation": "home_copy",
+        "exec_headless_read_ok": true,
+        "json_event_types": [
+          "item.completed",
+          "item.started",
+          "thread.started",
+          "turn.completed",
+          "turn.started"
+        ],
+        "json_item_types": [
+          "agent_message",
+          "command_execution",
+          "reasoning"
+        ],
+        "trace_path_structured": false,
+        "rejected_command_in_trace": null,
+        "readonly_flags": [
+          "-s",
+          "read-only"
+        ],
+        "profile_flag": null,
+        "unknown_profile_rejected": null,
+        "profiles": [
+          "ccswitch"
+        ],
+        "providers": [
+          {
+            "profile": "ccswitch",
+            "provider": "custom",
+            "model": "kimi-for-coding",
+            "credentialed": true,
+            "base_url": "api.kimi.com"
+          }
+        ],
+        "config_override": true,
+        "effort_validated": true,
+        "model_catalog_path": "cc-switch-model-catalog.json",
+        "models_by_profile": {
+          "ccswitch": [
+            "kimi-for-coding",
+            "kimi-for-coding-highspeed",
+            "k3",
+            "k3-256k"
+          ]
+        },
+        "models_visible": [
+          "kimi-for-coding",
+          "kimi-for-coding-highspeed",
+          "k3",
+          "k3-256k"
+        ],
+        "models_by_profile_errors": {},
+        "reasoning_levels": {
+          "base": {
+            "kimi-for-coding": [
+              "low",
+              "high",
+              "max"
+            ],
+            "kimi-for-coding-highspeed": [
+              "high"
+            ],
+            "k3": [
+              "low",
+              "high",
+              "max"
+            ],
+            "k3-256k": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "by_profile": {
+            "ccswitch": {
+              "kimi-for-coding": [
+                "low",
+                "high",
+                "max"
+              ],
+              "kimi-for-coding-highspeed": [
+                "high"
+              ],
+              "k3": [
+                "low",
+                "high",
+                "max"
+              ],
+              "k3-256k": [
+                "low",
+                "high",
+                "max"
+              ]
+            }
+          }
+        },
+        "readonly_enforced": false
+      },
+      "agy": {
+        "entrypoint": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "version": "1.4.6",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": null
+        },
+        "probed_at": "2026-10-24T01:39:49.528Z",
+        "models": [
+          "gemini-4-argon-medium",
+          "gemini-4-argon-high",
+          "gemini-4-argon-low",
+          "gemini-3.8-flash-high",
+          "gemini-3.8-flash-medium",
+          "gemini-3.8-flash-low",
+          "claude-opus-5-5-low",
+          "claude-opus-5-5-medium",
+          "claude-opus-5-5-high",
+          "claude-sonnet-5-5-low",
+          "claude-sonnet-5-5-medium",
+          "claude-sonnet-5-5-high",
+          "gpt-oss-120b-medium"
+        ],
+        "path_deny": {
+          "supported": false,
+          "rule_syntax": null,
+          "method": "否定对照未命中（status=SUCCESS），可能是模型未执行读取而非被拒；结论仍为不支持——因为本机不存在任何可用的路径级 deny 配置项",
+          "attempts": [
+            "permissions.deny 的 grant 语法 action(target)：合法 action 为 command/unsandboxed/mcp/url/read；read 属 GitHub 仓库授权（校验消息 \"invalid grant: org and repo are required\"），无文件系统路径档位",
+            "settings.fileAccessPolicy：枚举 AGENT_SETTING_POLICY_{ALLOW,ASK,DENY,UNSPECIFIED}，作用于整个作用域，会连被审对象一起挡掉，粒度不可用",
+            "allowNonWorkspaceAccess / isWorkspaceOnly：工作区边界控制，而 deny_paths 就在项目根内，边界挡不住",
+            "allow_agent_access_gitignore_files：依赖 .gitignore，但对方产出必须进 Git，不可用",
+            "未尝试：plugin 的 hooks.json（PreToolUse 可返回 deny 决定）——需向用户 plugin 集安装 TriviumCode plugin，留作 M3 候选"
+          ],
+          "coverage_complete": null,
+          "file_shape_verified": null
+        },
+        "scratch_paths": [],
+        "isolation": "shared",
+        "headless_read_ok": true,
+        "json_schema_ok": true,
+        "pty_required": false,
+        "read_strategy": "default",
+        "agent": "trivium-critic"
+      },
+      "zcode": {
+        "entrypoint": "D:/Program Files/ZCode/resources/glm/zcode.cjs",
+        "version": "0.16.9",
+        "version_probe": {
+          "runner": "node",
+          "args": [
+            "version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+)"
+        },
+        "probed_at": "2026-10-24T01:40:25.055Z",
+        "models": [
+          "GLM-5.3",
+          "GLM-5.3-Flash",
+          "bigmodel-plan/GLM-5.3",
+          "bigmodel-plan/GLM-5.3-Flash"
+        ],
+        "path_deny": {
+          "supported": false,
+          "rule_syntax": null,
+          "method": "否定对照成立：即使显式 deny 该路径，模型仍换用其它读工具读到了对方产出（哨兵命中）",
+          "attempts": [
+            "--disallowed-tools \"Read(<绝对路径>)\"：语法被接受，但模型改用 Bash(head -1) 读到了目标文件",
+            "--disallowed-tools \"Read(<路径>) Write Edit MultiEdit ApplyPatch Bash\"：模型改用 Grep 读到了目标文件",
+            "--settings <path>：参数被拒绝（Unknown option），无法注入独立权限配置",
+            "--mode plan：实测**不阻止命令执行**，不能作为只读手段单独使用",
+            "结论：要靠 denylist 挡住单个文件需封掉全部读路径（Read/Grep/Glob/ReadSessionContext/Bash），那样连被审对象也读不了，粒度不可用"
+          ],
+          "coverage_complete": null,
+          "file_shape_verified": null
+        },
+        "scratch_paths": [],
+        "isolation": "home_copy",
+        "readonly_flags": [
+          "--mode plan",
+          "--mode yolo",
+          "--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash"
+        ],
+        "model_override": "global",
+        "trace_source": "C:\\Users\\k_bo\\.zcode\\cli\\log\\zcode-{date}.jsonl",
+        "trace_args_source": "C:\\Users\\k_bo\\.zcode\\cli\\rollout\\model-io-{sessionId}.jsonl",
+        "response_field": "response",
+        "model_id_form": "bigmodel-plan/GLM-5.3",
+        "provider_config": {
+          "builtin_file": "D:\\Program Files\\ZCode\\resources\\config\\provider\\zcode-builtin.json",
+          "personal_file": "C:\\Users\\k_bo\\.zcode\\v2\\provider_config.json"
+        },
+        "model_override_full_copy": "global"
+      }
+    },
+    "auth": {},
+    "host": {
+      "platform": "win32 10.0.26300",
+      "arch": "x64",
+      "has_timeout_bin": true,
+      "git_version": "2.56.0.windows.2"
+    },
+    "auth_routes": {
+      "73cbdc53f585334e8c83c0ce8519a6e67d967891e9bb54364297d058048c77a4": {
+        "checked_at": "2026-10-20T07:40:03.746Z",
+        "cli_version": "2.1.302",
+        "fingerprint": "661e2c7858eb4bbb4297719f467e2af948e660d1fe6c801fb56a98fdc316fe37:1652771428d4d639f65f2f71f27375a1a1f1a36896e2cf68dcc0d2699d9003b4:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "ok": true,
+        "combination": {
+          "critic": "claude",
+          "mode": "native",
+          "profile": null,
+          "model": "opus",
+          "effort": "medium"
+        }
+      },
+      "c9529bd415278c064fc7b5bf8b367870c72b53264d58cfad154af59e59600bd4": {
+        "checked_at": "2026-10-24T02:55:01.625Z",
+        "cli_version": "1.4.6",
+        "fingerprint": "5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4",
+        "ok": true,
+        "combination": {
+          "critic": "gemini",
+          "mode": "standard",
+          "profile": null,
+          "model": "gemini-3.8-flash-high",
+          "effort": "high"
+        }
+      },
+      "b399159944f53590bcf5fe8f04c49af547189bae5307ee4f9ad4b394132971c2": {
+        "checked_at": "2026-10-20T07:40:04.356Z",
+        "cli_version": "0.163.0",
+        "fingerprint": "C:\\Users\\k_bo\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe:0.163.0:f19b96aad2170db56341bfdce25fafa4fabad125a60729cae3a09983ef8a7bd8:db10e279e62bfcbd91dcc054c2be596b05c4824d7f6e483edee8b02484b8b400:6cdfd271da635d491e37a2b4a1044b306e6e9e039aeadee95bb355efadf8cb33",
+        "ok": true,
+        "combination": {
+          "critic": "codex",
+          "mode": "profile",
+          "profile": "ccswitch",
+          "model": "qwen3.8-flash",
+          "effort": "medium"
+        }
+      },
+      "2f8b31dfe67471533d35efc0dd3237523282c0318e5d14b93726ccbc4479c9a4": {
+        "checked_at": "2026-10-24T02:54:02.499Z",
+        "cli_version": "0.163.0",
+        "fingerprint": "C:\\Users\\k_bo\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe:0.163.0:f19b96aad2170db56341bfdce25fafa4fabad125a60729cae3a09983ef8a7bd8:cb106f27b8325598be45763ba5777ea18fde830d8bf6227510b31adcabab319a:6cdfd271da635d491e37a2b4a1044b306e6e9e039aeadee95bb355efadf8cb33",
+        "ok": true,
+        "combination": {
+          "critic": "codex",
+          "mode": "profile",
+          "profile": "ccswitch",
+          "model": "kimi-for-coding",
+          "effort": "high"
+        }
+      },
+      "ce0accbd74848643cf2f4e899d651d442af4410c42e6d185a42cb2a6dc53a671": {
+        "checked_at": "2026-10-24T02:54:06.881Z",
+        "cli_version": "0.16.9",
+        "fingerprint": "d8bf76adc2b90fa53586d91da57d66fdf74903ef9b163473b0709a7cf42db5ff|model=GLM-5.3",
+        "ok": true,
+        "combination": {
+          "critic": "glm",
+          "mode": "standard",
+          "profile": null,
+          "model": "GLM-5.3",
+          "effort": null
+        }
+      },
+      "acfa05bc00a71af16be8e59527c80b0194294c23c456a444f5149eabb5276f82": {
+        "checked_at": "2026-10-24T03:06:22.660Z",
+        "cli_version": "2.1.302",
+        "fingerprint": "e8173bdd9bf6fba69ac5460a3f4a4a818324dd9f3d5661d171966a306b0daa46:1652771428d4d639f65f2f71f27375a1a1f1a36896e2cf68dcc0d2699d9003b4:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "ok": true,
+        "combination": {
+          "critic": "claude",
+          "mode": "native",
+          "profile": null,
+          "model": "opus",
+          "effort": "high"
+        }
+      }
+    }
+  },
+  "notes": [
+    "node=C:\\Program Files\\nodejs\\node.exe v24.19.0",
+    "git=2.56.0.windows.2",
+    "编排器构建标识：c6dd0f3（构建时作用面有未提交改动），inputs 89014998d90b，构建于 2026-10-24T02:43:07.742Z；本仓模式（按根提交判定）：构建时工作树有未提交改动：安装副本不对应任何一个提交",
+    "编译测试命令候选：build=[\"npm run build\"] test=[\"npm run test\"]（仅候选，需人确认后写入 verify 才会执行）",
+    "探针结论已写入 D:\\Work\\TriviumCode\\.trivium\\config.local.yaml"
+  ],
+  "blockers": [],
+  "warnings": [],
+  "deadline": {
+    "limit_s": 60,
+    "hit": true,
+    "reason": "deadline",
+    "stuck": false,
+    "sections": [
+      {
+        "only": "agy",
+        "state": "in_progress",
+        "launches": 13,
+        "notes": [],
+        "rerun": ".\\.trivium\\bin\\trivium.cmd doctor --only agy",
+        "note": "在时限内没探完，本段已拉起 13 次子进程，结论未落盘（其中调用模型的那几次配额已花）。会话里拉起的厂商 CLI 有过间歇挂满单次探针超时的先例（EV-243），请在终端单独跑上面这条命令。"
+      },
+      {
+        "only": "zcode",
+        "state": "not_started",
+        "launches": 0,
+        "notes": [],
+        "rerun": ".\\.trivium\\bin\\trivium.cmd doctor --only zcode",
+        "note": "到点时本段还没有开始，没有拉起子进程、没有花配额。请在终端单独跑上面这条命令。"
+      },
+      {
+        "only": "codex",
+        "state": "not_started",
+        "launches": 0,
+        "notes": [],
+        "rerun": ".\\.trivium\\bin\\trivium.cmd doctor --only codex",
+        "note": "到点时本段还没有开始，没有拉起子进程、没有花配额。请在终端单独跑上面这条命令。"
+      },
+      {
+        "only": "claude",
+        "state": "not_started",
+        "launches": 0,
+        "notes": [],
+        "rerun": ".\\.trivium\\bin\\trivium.cmd doctor --only claude",
+        "note": "到点时本段还没有开始，没有拉起子进程、没有花配额。请在终端单独跑上面这条命令。"
+      }
+    ],
+    "residue": [
+      "进程组 33808 的组长已退出、组号已被别的进程复用，没有对它发信号"
+    ]
+  }
+}

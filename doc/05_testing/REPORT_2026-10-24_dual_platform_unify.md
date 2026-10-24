@@ -71,8 +71,15 @@ windows 线是在 Windows 上开发的，从未在 macOS 上跑过全量；下�
 
 ## 6. 没有验证的部分
 
-- **Windows 上的一切行为**。第 3 批的 win32 分支（树杀组长或孤儿、SIGBREAK、`.cmd` 重跑命令、台账身份核对）在 macOS 上只有类型检查与纯函数用例覆盖。
-  待办：在 Windows 机器上 `npm ci && npm run check`，并跑一次 `doctor --deadline-s 60`，核对到点退 76、无残留进程、临时目录已删。
-- **真实 CLI 与配额**。本次不花配额。合并后 claude 路线指纹多了 `settingsEnvSha256` 键，两平台各需重跑一次 `doctor --only claude`。
-- **后台安全审查的两条**（均在合并进来的 Windows 线代码里）：`.cmd` 垫片参数经 cmd.exe 重新解析可拼出额外命令，已改为含 cmd 元字符即拒绝拉起，判定函数有两平台用例 `cmd-shim-args.test.ts`，拒绝路径本身只在 win32 上走、未实测；claude 网关凭据经 `--settings` 内联进子进程命令行，改法要用真实 claude 验证受限模式，本次只登记（Bug 清单 §3.1 第 14 条）。
-- **`doctor-unused-overrides` U2** 用 shebang 假 CLI，分叉前即如此、windows 线未加跳过，本次未改，在 Windows 上的结果以那边的全量为准。
+> 2026-10-24 晚更新：Windows 侧已实跑收口，详见 Bug 清单 §3.1 第 13 条与
+> `evidence/win-unify-20261024/`（读数文件、doctor/preflight JSON、方案文档）。Windows 全量首跑 15 红，
+> 其中 11 格确定性缺陷按根因修复或带理由跳过（含 `repoId` 路径形态分裂、取消标记遗留、
+> Windows 桩 `setInterval` 语义、`.cmd` 注释 GBK 错位、codex 目录相对路径五项产品修复）；
+> 剩余红格为负载底噪（与 1.2.8 登记的长尾族同族，并发 6 时降至 3 红，红格逐轮不重叠、单跑全绿）。
+> `doctor --deadline-s 30` 已验（退 76、段状态如实、无残留、台账清、`.cmd` 重跑命令 PowerShell 可执行）；
+> macOS 侧需对共享路径改动全量复跑一次确认。
+
+- **Windows 上仍待实测的（2026-10-24 晚二轮收口后仅剩）**：无——`doctor --deadline-s 60` 真实探针中途到点实测通过（退 76、段状态如实、进程零残留、台账清，且 pid 复用判定路径真实触发并被正确处置）；claude 探针已重跑（新指纹含 `settingsEnvSha256`，12 键网关 env 生效、零 blocker，`--driver codex --critics claude` 预检全绿）；网关凭据三形态实测全部生效（env 注入形态兼保只读不变量，定为替换方向，读数见 `evidence/win-unify-20261024/gateway-credential-test.txt`）。**macOS 侧仍需**：全量复跑一次确认共享路径改动（见 Bug 清单 §3.1 第 13 条清单）+ 重跑一次 `doctor --only claude`（指纹键变化）。
+- **真实 CLI 与配额**。本次不花配额。合并后 claude 路线指纹多了 `settingsEnvSha256` 键，两平台各需重跑一次 `doctor --only claude`（macOS 侧亦未做）。
+- **后台安全审查的两条**（均在合并进来的 Windows 线代码里）：`.cmd` 垫片参数经 cmd.exe 重新解析可拼出额外命令，已改为含 cmd 元字符即拒绝拉起，判定函数有两平台用例 `cmd-shim-args.test.ts`；**Windows 实测补充**：本机四家 CLI 全走原生 `.exe`/`.cjs` 入口、无一经垫片，拦截未误伤。claude 网关凭据经 `--settings` 内联进子进程命令行，未改，方案与实测计划已出（Bug 清单 §3.1 第 14 条）。
+- **`doctor-unused-overrides` U2** 用 shebang 假 CLI，分叉前即如此、windows 线未加跳过，本次未改——**2026-10-24 Windows 全量实跑该格绿**，不再列为残余。

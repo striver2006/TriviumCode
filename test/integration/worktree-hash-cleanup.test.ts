@@ -9,6 +9,7 @@ import { EXIT } from '../../src/trivium/exit-codes.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import { repoId } from '../../src/trivium/review.js';
 import { run } from '../../src/trivium/util/exec.js';
+import { skipOnWin } from '../helpers/platform.js';
 import type { RunMeta } from '../../src/trivium/types.js';
 
 /**
@@ -53,7 +54,14 @@ async function unlockAll(base: string): Promise<void> {
   await walk(base);
 }
 
-test('D1 worker 里的漂移复算删不掉临时索引目录：运行照常成功，提示进 worker.log，--start 不受影响', { skip: (bundleMissing && bundleSkipReason) || (ROOT && 'root 下只读目录锁不住') }, async () => {
+test('D1 worker 里的漂移复算删不掉临时索引目录：运行照常成功，提示进 worker.log，--start 不受影响', {
+  skip: (bundleMissing && bundleSkipReason) || (ROOT && 'root 下只读目录锁不住') || skipOnWin(
+    '锁的构造双重依赖 POSIX（Bug 清单 §3.1 第 13 条）：过滤器沿 PPID 用 MSYS ps 找原生 worker 的命令行，'
+      + 'MSYS ps 只见 MSYS 进程、看不到原生 node.exe，判据恒空、锁建不起来；即使建起，chmod 500 的只读目录'
+      + '在 NTFS + Node 24 的 POSIX 删除语义下照样删得掉（实测四形态全不锁）。「删不掉不判 failed」的容错路径'
+      + '本体是跨平台共享逻辑，由 POSIX 侧守住',
+  ),
+}, async () => {
   const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-whc-')));
   CREATED.push(base);
   const home = path.join(base, 'home');

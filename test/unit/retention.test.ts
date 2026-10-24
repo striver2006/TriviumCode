@@ -11,6 +11,7 @@ import { wiredAdapter } from '../../src/trivium/adapters/index.js';
 import { readScrubSentinel } from '../../src/trivium/scrub.js';
 import { TOOL_TRACE_CAPABILITY, failedResult, type CriticAdapter } from '../../src/trivium/adapters/base.js';
 import { scratchDir } from '../helpers/scratch.js';
+import { IS_WIN } from '../helpers/platform.js';
 
 // 2026-10-20 试验性解除 win32 整文件跳过（第三批适配）：实测后按结果定去留。macOS/Linux 行为零变化。
 {
@@ -39,6 +40,15 @@ async function age(dir: string, days: number) {
   for (const f of await fs.readdir(dir)) await fs.utimes(path.join(dir, f), t, t);
   await fs.utimes(dir, t, t);
 }
+
+test('repoId：win32 上 git 正斜杠与 Node 反斜杠两种形态同一桶名（Bug 清单 §3.1 第 13 条回归锚）', () => {
+  // projectRoot 实际来源是 `git rev-parse --show-toplevel`（正斜杠）；测试与外部按 Node 习惯持反斜杠。
+  // 修复前两形态各哈希出一个桶，测试按自己拼的桶名读产品的运行目录 ENOENT。
+  // POSIX 上 normalize 不改变路径、两种形态本就不该相等，这格只考 win32。
+  if (IS_WIN) {
+    assert.equal(repoId('C:/Users/u/x/repo'), repoId('C:\\Users\\u\\x\\repo'));
+  }
+});
 
 test('超过 run_dir_days 的终态运行目录被删，新的保留', async () => {
   const { cfg, projectRoot, b } = await bucket();
@@ -477,6 +487,12 @@ test('EV-154 U14：记录里的 CLI 组还活着 ⇒ 会话启动清扫与 trivi
     await fs.access(carrier);
 
     await g.stop();
+    /*
+     * 组长树杀后等进程表稳定再判（win32 实测间歇红，Bug 清单 §3.1 第 13 条）：taskkill /F 返回、exit 事件兑现
+     * 之后，组内其余成员从进程表消失仍有窗口；立即枚举会撞上「正在消失但还在表里」的尾巴，
+     * 组被误判为还在、放行断言落空。POSIX 上进程组随组长原子消失，多等无效果。
+     */
+    await new Promise((r) => setTimeout(r, 1_000));
     const again = await pruneRunDirs(cfg, projectRoot, { adapters: wiredAdapter });
     assert.deepEqual(again.scrubbed, [d], '组长不在了即放行');
     await assert.rejects(fs.access(carrier));

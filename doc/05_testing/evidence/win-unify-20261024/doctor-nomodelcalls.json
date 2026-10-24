@@ -1,0 +1,409 @@
+· 探测运行环境…
+· 探测 Antigravity（agy）…
+· 探测 ZCode（zcode.cjs）…
+· 探测 Codex（codex exec）…
+· 探测 Claude Code（原生）…
+{
+  "ok": true,
+  "probe": {
+    "generated_at": "2026-10-24T01:41:42.930Z",
+    "verify_suggestion": {
+      "build": [
+        "npm run build"
+      ],
+      "test": [
+        "npm run test"
+      ]
+    },
+    "cli": {
+      "claude": {
+        "entrypoint": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+        "version": "2.1.302",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+)"
+        },
+        "probed_at": null,
+        "models": [],
+        "path_deny": {
+          "supported": null,
+          "rule_syntax": null,
+          "method": null,
+          "attempts": [],
+          "coverage_complete": null,
+          "file_shape_verified": null
+        },
+        "scratch_paths": [],
+        "isolation": "shared",
+        "headless_read_ok": null,
+        "trace_path_structured": null,
+        "denied_tool_in_trace": null,
+        "readonly_breach": null,
+        "tool_surface_checked": null,
+        "readonly_flags": [],
+        "model_flag": null,
+        "json_schema_ok": null,
+        "session_id_source": null,
+        "trust_prompt_required": null,
+        "stream_json_requires_verbose": null,
+        "strict_mcp_config_applied": null,
+        "project_memory_blocked": null,
+        "directory_deny_verified": {},
+        "directory_deny_probed_at": null,
+        "directory_deny_fingerprint": null,
+        "directory_deny_sensitive_globs_sha256": null,
+        "directory_deny_shape": null,
+        "effort_levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "route_profile": null,
+        "routes": {
+          "native": {
+            "profile": null,
+            "fingerprint": "661e2c7858eb4bbb4297719f467e2af948e660d1fe6c801fb56a98fdc316fe37",
+            "probe": {
+              "entrypoint": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+              "version": "2.1.302",
+              "version_probe": {
+                "runner": null,
+                "args": [
+                  "--version"
+                ],
+                "extract": "(\\d+\\.\\d+\\.\\d+)"
+              },
+              "probed_at": "2026-10-19T01:04:49.031Z",
+              "models": [],
+              "path_deny": {
+                "supported": true,
+                "coverage_complete": false,
+                "file_shape_verified": true,
+                "rule_syntax": "Read(./.reviews/probe-topic/plan/**)",
+                "method": "经 --settings 内联注入 permissions.deny，要求读对方产出：哨兵未出现在原始事件流里，且该次尝试记入 result.permission_denials（含 tool_input.file_path）。⚠️ **但 Grep 绕得过**：同一批规则（含显式的 Grep 路径规则）下，Grep 仍从该目录取到了哨兵。**实测到此为止**——「为什么绕得过」未验：一种可能是 Grep 的 deny 匹配单位是搜索 pattern 而非路径，路径形规则对它根本不适用；那只是**假说**，本步没有测过。可确定的是：第 ③ 道屏蔽不能只靠它，事后轨迹核验仍是必需的",
+                "attempts": []
+              },
+              "scratch_paths": [],
+              "isolation": "shared",
+              "headless_read_ok": true,
+              "trace_path_structured": true,
+              "denied_tool_in_trace": null,
+              "readonly_breach": false,
+              "tool_surface_checked": true,
+              "readonly_flags": [
+                "--restricted",
+                "--strict-mcp-config",
+                "--tools",
+                "Read,Grep,Glob"
+              ],
+              "model_flag": false,
+              "json_schema_ok": true,
+              "session_id_source": "每条事件的 session_id 字段（--session-id 可由调用方指定）",
+              "trust_prompt_required": false,
+              "stream_json_requires_verbose": true,
+              "strict_mcp_config_applied": true,
+              "project_memory_blocked": true,
+              "directory_deny_verified": {},
+              "directory_deny_probed_at": null,
+              "directory_deny_fingerprint": null,
+              "directory_deny_sensitive_globs_sha256": null,
+              "directory_deny_shape": null,
+              "effort_levels": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ],
+              "route_profile": null
+            }
+          }
+        }
+      },
+      "codex": {
+        "entrypoint": "C:\\Users\\k_bo\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+        "version": "0.163.0",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+(?:-[\\w.-]+)?)"
+        },
+        "probed_at": "2026-10-19T17:42:17.210Z",
+        "models": [
+          "kimi-for-coding",
+          "kimi-for-coding-highspeed",
+          "k3",
+          "k3-256k"
+        ],
+        "path_deny": {
+          "supported": false,
+          "rule_syntax": null,
+          "method": "实跑 codex exec --help 全文扫描 --deny / --disallow / deny_paths / path_deny / denied_paths，零命中（版本见同段的 probe.version，不在此处重复记以免它随版本过期）",
+          "attempts": [
+            "sandbox_permissions：取值为 disk-full-read-access 一类的粗粒度放宽档，方向相反，不能用来收紧"
+          ],
+          "coverage_complete": null,
+          "file_shape_verified": null
+        },
+        "scratch_paths": [],
+        "isolation": "home_copy",
+        "exec_headless_read_ok": true,
+        "json_event_types": [
+          "item.completed",
+          "item.started",
+          "thread.started",
+          "turn.completed",
+          "turn.started"
+        ],
+        "json_item_types": [
+          "agent_message",
+          "command_execution",
+          "reasoning"
+        ],
+        "trace_path_structured": false,
+        "rejected_command_in_trace": null,
+        "readonly_flags": [
+          "-s",
+          "read-only"
+        ],
+        "profile_flag": null,
+        "unknown_profile_rejected": null,
+        "profiles": [
+          "ccswitch"
+        ],
+        "providers": [
+          {
+            "profile": "ccswitch",
+            "provider": "custom",
+            "model": "kimi-for-coding",
+            "credentialed": true,
+            "base_url": "api.kimi.com"
+          }
+        ],
+        "config_override": true,
+        "effort_validated": true,
+        "model_catalog_path": "cc-switch-model-catalog.json",
+        "models_by_profile": {},
+        "models_visible": [
+          "kimi-for-coding",
+          "kimi-for-coding-highspeed",
+          "k3",
+          "k3-256k"
+        ],
+        "models_by_profile_errors": {
+          "ccswitch": "codex debug models 退 1：Error: 系统找不到指定的文件。 (os error 2)"
+        },
+        "reasoning_levels": {
+          "base": {
+            "kimi-for-coding": [
+              "low",
+              "high",
+              "max"
+            ],
+            "kimi-for-coding-highspeed": [
+              "high"
+            ],
+            "k3": [
+              "low",
+              "high",
+              "max"
+            ],
+            "k3-256k": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "by_profile": {}
+        },
+        "readonly_enforced": false
+      },
+      "agy": {
+        "entrypoint": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "version": "1.4.6",
+        "version_probe": {
+          "runner": null,
+          "args": [
+            "--version"
+          ],
+          "extract": null
+        },
+        "probed_at": "2026-10-24T01:39:49.528Z",
+        "models": [
+          "gemini-4-argon-medium",
+          "gemini-4-argon-high",
+          "gemini-4-argon-low",
+          "gemini-3.8-flash-high",
+          "gemini-3.8-flash-medium",
+          "gemini-3.8-flash-low",
+          "claude-opus-5-5-low",
+          "claude-opus-5-5-medium",
+          "claude-opus-5-5-high",
+          "claude-sonnet-5-5-low",
+          "claude-sonnet-5-5-medium",
+          "claude-sonnet-5-5-high",
+          "gpt-oss-120b-medium"
+        ],
+        "path_deny": {
+          "supported": false,
+          "rule_syntax": null,
+          "method": "否定对照未命中（status=SUCCESS），可能是模型未执行读取而非被拒；结论仍为不支持——因为本机不存在任何可用的路径级 deny 配置项",
+          "attempts": [
+            "permissions.deny 的 grant 语法 action(target)：合法 action 为 command/unsandboxed/mcp/url/read；read 属 GitHub 仓库授权（校验消息 \"invalid grant: org and repo are required\"），无文件系统路径档位",
+            "settings.fileAccessPolicy：枚举 AGENT_SETTING_POLICY_{ALLOW,ASK,DENY,UNSPECIFIED}，作用于整个作用域，会连被审对象一起挡掉，粒度不可用",
+            "allowNonWorkspaceAccess / isWorkspaceOnly：工作区边界控制，而 deny_paths 就在项目根内，边界挡不住",
+            "allow_agent_access_gitignore_files：依赖 .gitignore，但对方产出必须进 Git，不可用",
+            "未尝试：plugin 的 hooks.json（PreToolUse 可返回 deny 决定）——需向用户 plugin 集安装 TriviumCode plugin，留作 M3 候选"
+          ],
+          "coverage_complete": null,
+          "file_shape_verified": null
+        },
+        "scratch_paths": [],
+        "isolation": "shared",
+        "headless_read_ok": true,
+        "json_schema_ok": true,
+        "pty_required": false,
+        "read_strategy": "default",
+        "agent": "trivium-critic"
+      },
+      "zcode": {
+        "entrypoint": "D:/Program Files/ZCode/resources/glm/zcode.cjs",
+        "version": "0.16.9",
+        "version_probe": {
+          "runner": "node",
+          "args": [
+            "version"
+          ],
+          "extract": "(\\d+\\.\\d+\\.\\d+)"
+        },
+        "probed_at": "2026-10-24T01:40:25.055Z",
+        "models": [
+          "GLM-5.3",
+          "GLM-5.3-Flash",
+          "bigmodel-plan/GLM-5.3",
+          "bigmodel-plan/GLM-5.3-Flash"
+        ],
+        "path_deny": {
+          "supported": false,
+          "rule_syntax": null,
+          "method": "否定对照成立：即使显式 deny 该路径，模型仍换用其它读工具读到了对方产出（哨兵命中）",
+          "attempts": [
+            "--disallowed-tools \"Read(<绝对路径>)\"：语法被接受，但模型改用 Bash(head -1) 读到了目标文件",
+            "--disallowed-tools \"Read(<路径>) Write Edit MultiEdit ApplyPatch Bash\"：模型改用 Grep 读到了目标文件",
+            "--settings <path>：参数被拒绝（Unknown option），无法注入独立权限配置",
+            "--mode plan：实测**不阻止命令执行**，不能作为只读手段单独使用",
+            "结论：要靠 denylist 挡住单个文件需封掉全部读路径（Read/Grep/Glob/ReadSessionContext/Bash），那样连被审对象也读不了，粒度不可用"
+          ],
+          "coverage_complete": null,
+          "file_shape_verified": null
+        },
+        "scratch_paths": [],
+        "isolation": "home_copy",
+        "readonly_flags": [
+          "--mode plan",
+          "--mode yolo",
+          "--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash"
+        ],
+        "model_override": "global",
+        "trace_source": "C:\\Users\\k_bo\\.zcode\\cli\\log\\zcode-{date}.jsonl",
+        "trace_args_source": "C:\\Users\\k_bo\\.zcode\\cli\\rollout\\model-io-{sessionId}.jsonl",
+        "response_field": "response",
+        "model_id_form": "bigmodel-plan/GLM-5.3",
+        "provider_config": {
+          "builtin_file": "D:\\Program Files\\ZCode\\resources\\config\\provider\\zcode-builtin.json",
+          "personal_file": "C:\\Users\\k_bo\\.zcode\\v2\\provider_config.json"
+        },
+        "model_override_full_copy": "global"
+      }
+    },
+    "auth": {},
+    "host": {
+      "platform": "win32 10.0.26300",
+      "arch": "x64",
+      "has_timeout_bin": true,
+      "git_version": "2.56.0.windows.2"
+    },
+    "auth_routes": {
+      "73cbdc53f585334e8c83c0ce8519a6e67d967891e9bb54364297d058048c77a4": {
+        "checked_at": "2026-10-20T07:40:03.746Z",
+        "cli_version": "2.1.302",
+        "fingerprint": "661e2c7858eb4bbb4297719f467e2af948e660d1fe6c801fb56a98fdc316fe37:1652771428d4d639f65f2f71f27375a1a1f1a36896e2cf68dcc0d2699d9003b4:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "ok": true,
+        "combination": {
+          "critic": "claude",
+          "mode": "native",
+          "profile": null,
+          "model": "opus",
+          "effort": "medium"
+        }
+      },
+      "c9529bd415278c064fc7b5bf8b367870c72b53264d58cfad154af59e59600bd4": {
+        "checked_at": "2026-10-19T16:56:44.065Z",
+        "cli_version": "1.4.2",
+        "fingerprint": "5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4",
+        "ok": true,
+        "combination": {
+          "critic": "gemini",
+          "mode": "standard",
+          "profile": null,
+          "model": "gemini-3.8-flash-high",
+          "effort": "high"
+        }
+      },
+      "b399159944f53590bcf5fe8f04c49af547189bae5307ee4f9ad4b394132971c2": {
+        "checked_at": "2026-10-20T07:40:04.356Z",
+        "cli_version": "0.163.0",
+        "fingerprint": "C:\\Users\\k_bo\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe:0.163.0:f19b96aad2170db56341bfdce25fafa4fabad125a60729cae3a09983ef8a7bd8:db10e279e62bfcbd91dcc054c2be596b05c4824d7f6e483edee8b02484b8b400:6cdfd271da635d491e37a2b4a1044b306e6e9e039aeadee95bb355efadf8cb33",
+        "ok": true,
+        "combination": {
+          "critic": "codex",
+          "mode": "profile",
+          "profile": "ccswitch",
+          "model": "qwen3.8-flash",
+          "effort": "medium"
+        }
+      }
+    }
+  },
+  "notes": [
+    "node=C:\\Program Files\\nodejs\\node.exe v24.19.0",
+    "git=2.56.0.windows.2",
+    "编排器构建标识：c6dd0f3，inputs 2d262256418e，构建于 2026-10-24T00:40:11.667Z；本仓模式（按根提交判定）：安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装",
+    "编译测试命令候选：build=[\"npm run build\"] test=[\"npm run test\"]（仅候选，需人确认后写入 verify 才会执行）",
+    "[agy] 已跳过需要真实模型调用的探针（--no-model-calls）——headless_read_ok / json_schema_ok / path_deny / scratch_paths 保留上一次的结论",
+    "[zcode] 可用模型 4 个（含短名与全限定形态）：GLM-5.3, GLM-5.3-Flash, bigmodel-plan/GLM-5.3, bigmodel-plan/GLM-5.3-Flash…",
+    "[zcode] trace_source（工具名/模型）=C:\\Users\\k_bo\\.zcode\\cli\\log\\zcode-{date}.jsonl；trace_args_source（工具参数与路径）=C:\\Users\\k_bo\\.zcode\\cli\\rollout\\model-io-{sessionId}.jsonl",
+    "[zcode] provider_config：内置=D:\\Program Files\\ZCode\\resources\\config\\provider\\zcode-builtin.json；个人=C:\\Users\\k_bo\\.zcode\\v2\\provider_config.json（个人那份按用户目录 C:\\Users\\k_bo 取）（拉起时经 ZCODE_*_PROVIDER_CONFIG_FILE 注入，0.16.9 起独立拉起必需）",
+    "[zcode] ⚠️ 宿主环境预置了 ZCODE_BUILTIN_PROVIDER_CONFIG_FILE / ZCODE_PERSONAL_PROVIDER_CONFIG_FILE——**编排器独占这两个变量**，拉起时一律按派生路径注入、派生不到就删除，你设的值不会生效（这是有意的：判据是「子进程拿不到」，否则宿主环境能改变探针行为）。要换 provider 配置位置请调整 ZCode 安装布局",
+    "[zcode] readonly_flags 接受=[\"--mode plan\",\"--mode yolo\",\"--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash\"]；拒绝=[\"--allowed-tools Read,Grep,Glob\",\"--max-turns 40\",\"--permission-mode plan\",\"--settings /nonexistent-probe-settings.json\"]（--help 列出不等于实际接受）",
+    "[zcode] model_override=global / isolation=home_copy：CLI 跑到了模型层，但白名单重建的副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）——可能是 CLI 改了导入流程，也可能是探针裁剪掉了导入需要的键；请先核对 buildProbeCliConfig 的白名单是否仍 ⊇ 导入器必需键（退出码 1：ZCode Built-in skipped (not-due)）（请求 bigmodel-plan/GLM-5.3-Flash，CLI 写出 —；运行期选定读不到：副本 HOME 下没有 CLI 日志目录）。前提：副本 HOME 下不注入个人 provider 配置，CLI 从 cli/config.json 副本 legacy 导入；既无模型旗标也无选型环境变量，`--settings` 被拒",
+    "[zcode] ⚠️ 探针臂判 config_copy 档未生效：若审查运行也如此，模型覆盖会静默落到全局默认（guard 会播报「请求的模型没有生效」）。成因两种都可能：CLI 改了 legacy 导入流程，或探针的白名单副本裁掉了导入需要的键——先核对 buildProbeCliConfig 的白名单，再按 P-31 复核包内字面",
+    "[zcode] model_override_full_copy=global（本轮产出）：CLI 跑到了模型层，但同形副本没有触发 legacy 导入（副本 HOME 下无 v2/provider_config.json）——成因两种都可能：①整份拷贝里有键让配置层结果与白名单副本不同（H2）；②本臂的凭据替换破坏了导入（本轮替换了 1 处：provider.bigmodel-plan.options.apiKey）（退出码 1：ZCode Built-in skipped (not-due)）（请求 bigmodel-plan/GLM-5.3-Flash，CLI 写出 —；替换凭据键 1 处，另对每个 provider 的 apiKey 无条件写哨兵；运行期选定读不到：副本 HOME 下没有 CLI 日志目录）。配置层结论只判配置读取层；运行期选定取自 CLI 启动事件（与审查臂的生效模型同一字段）。零配额的前提是副本里所有凭据都被换掉，拉起前已做残余扫描",
+    "[zcode] ⚠️ 宿主环境预置了 ZCODE_BASE_URL：两条探针臂都清掉了它们，审查运行不清——若两臂与审查运行结论不同，这是一个与副本形态无关的备择成因（GLM-04）",
+    "[zcode] 宿主环境预置了 ZCODE_RUNTIME_ENV / ZCODE_ENV：所有拉起路径都已清掉它们（EV-110 / EV-112）。审查运行的 CLI 日志、rollout、会话库与存储根下的 artifacts / sessions / memories / plugins 由编排器指到运行目录（跑后只自检日志与 rollout 两类）：log / rollout 就地脱敏，db / plugins 整目录排除，其余过命中即删扫描，幸存内容随运行目录保留期整删；认证探活与 doctor 的 headless / path_deny 落点同审查运行、产物随临时目录删除（EV-136 / EV-194），旗标探针与模型覆盖探针臂在各自的临时 HOME 下跑，都不含送审内容",
+    "[zcode] runtime_selection=未判定（保留上一次 null）：原样支运行期选定读不到：副本 HOME 下没有 CLI 日志目录",
+    "[zcode] 跳过需要真实模型调用的 ZCode 探针（配置缺失或已显式跳过）——response_field / path_deny / scratch_paths 保留上一次的结论",
+    "[codex] profile 名单（$CODEX_HOME/<name>.config.toml）：ccswitch",
+    "[codex] provider 家族探活：ccswitch→custom 有可用凭据",
+    "[codex] 模型目录 4 个（可见 4 个）：kimi-for-coding、kimi-for-coding-highspeed、k3、k3-256k…",
+    "[codex] ⚠️ 没有任何 profile 渲染出模型目录",
+    "[codex] ⚠️ profile「ccswitch」的模型目录采集失败：codex debug models 退 1：Error: 系统找不到指定的文件。 (os error 2)（该 profile 的 slug 校验将回落基底目录）",
+    "[codex] 已跳过需要真实模型调用的探针（--no-model-calls）——exec_headless_read_ok / trace_path_structured / rejected_command_in_trace / scratch_paths 保留上一次的结论",
+    "[claude] 配置声明模型：未声明；不代表完整服务端目录",
+    "[claude] 网关 env 经 --settings 内联注入（12 键，值不落留痕）：受限模式在第三方网关下保住鉴权",
+    "[claude] claude --effort 取值：low, medium, high, xhigh, max",
+    "[claude] 已跳过需要真实模型调用的探针（--no-model-calls）——headless_read_ok / trace_path_structured / denied_tool_in_trace / path_deny / scratch_paths / stream_json_requires_verbose / strict_mcp_config_applied / project_memory_blocked 保留上一次的结论",
+    "探针结论已写入 D:\\Work\\TriviumCode\\.trivium\\config.local.yaml"
+  ],
+  "blockers": [],
+  "warnings": [
+    "Claude native 被拒操作留痕未证实，阴性轨迹不能证明未尝试写；漂移按保守能力归因"
+  ]
+}
