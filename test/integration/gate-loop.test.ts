@@ -136,6 +136,8 @@ test('双方共同 blocker 被驳回 → task.json 记 disputed，status 显示�
     ].join('\n'),
     'utf8',
   );
+  // 带轮次链的计划轮全部驳回也要写新一轮完整计划（EV-247），否则闸门先判 missing_next_plan
+  await writeNextPlan(fx.stageDir, 2, []);
   const g = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json']);
   assert.equal(g.code, EXIT.OK, `默认 warn 策略下不阻断：\n${g.stdout}${g.stderr}`);
   assert.match(g.stdout, /joint_blocker_rejected/);
@@ -159,6 +161,131 @@ test('双方共同 blocker 被驳回 → task.json 记 disputed，status 显示�
 
   const st = await cli(fx.root, ['status', '--topic', TOPIC, '--json']);
   assert.match(st.stdout, /"disputed":\s*true/);
+});
+
+// ── 争议明细写入（发版-02）：编号与分组按 run_id 覆盖写进 task.json.disputes ──
+
+type DisputeTask = {
+  disputed: boolean;
+  disputes: { run_id: string; finding_ids: string[]; note: string }[];
+  joint_checks?: { run_id: string; state: string }[];
+};
+const readDisputeTask = async (fx: Fixture) =>
+  JSON.parse(await fs.readFile(path.join(fx.archiveRoot, TOPIC, 'task.json'), 'utf8')) as DisputeTask;
+const JOINT_NOTE = 'AGY-01+GLM-01@src/stub.ts:10';
+
+/** 桩两侧的第 1 条是同 location 的 blocker：`AGY-01` 按给定裁决，`GLM-01` 恒驳回 */
+async function writeJointDisposition(fx: Fixture, runId: string, agy: '驳回' | '接受') {
+  await fs.writeFile(
+    path.join(fx.stageDir, `${today()}-${TOPIC}-revised-claude.md`),
+    [
+      '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
+      'role: claude', 'kind: revised', `run_id: ${runId}`,
+      'addresses:', `  - ${today()}-${TOPIC}-gemini.md`, `  - ${today()}-${TOPIC}-glm.md`,
+      '---', '',
+      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
+      '| :--- | :--- | :--- | :--- | :--- | :--- |',
+      agy === '驳回'
+        ? '| AGY-01 | gemini | blocker | 驳回 | 该路径已被上游 src/x.ts:31 拒绝 | |'
+        : '| AGY-01 | gemini | blocker | 接受 | 确实是缺陷，需要补 | src/a.ts:10 |',
+      '| GLM-01 | glm | blocker | 驳回 | 同上，上游已处理 | |',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  await writeNextPlan(fx.stageDir, 2, agy === '接受' ? ['AGY-01'] : []);
+}
+
+/** 只改 `gate.joint_blocker_policy`：在夹具 config.yaml 末尾放一个 gate 段，重复调用替换掉上一次的 */
+async function setJointPolicy(fx: Fixture, policy: 'warn' | 'hard') {
+  const p = path.join(fx.root, '.trivium', 'config.yaml');
+  const raw = await fs.readFile(p, 'utf8');
+  const at = raw.indexOf('\ngate:\n');
+  const base = at >= 0 ? raw.slice(0, at + 1) : raw;
+  await fs.writeFile(p, `${base}gate:\n  joint_blocker_policy: ${policy}\n`, 'utf8');
+}
+
+const checkPlan = (fx: Fixture, extra: string[] = []) =>
+  cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', ...extra, '--json']);
+
+test('争议明细 T1～T3 · warn 下写一条、同轮重跑不堆积、改成接受后本轮条目删掉而 disputed 不清零', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root);
+  await writeJointDisposition(fx, runId, '驳回');
+
+  const g1 = await checkPlan(fx);
+  assert.equal(g1.code, EXIT.OK, `${g1.stdout}${g1.stderr}`);
+  const t1 = await readDisputeTask(fx);
+  assert.deepEqual(
+    t1.disputes,
+    [{ run_id: runId, finding_ids: ['AGY-01', 'GLM-01'], note: JOINT_NOTE }],
+    'note 只存分组与位置，不存整段告警',
+  );
+  assert.equal(t1.disputed, true);
+  assert.match(g1.stderr, /写入明细：AGY-01、GLM-01/);
+
+  // T2 · 同一轮再跑：覆盖不堆积
+  const g2 = await checkPlan(fx);
+  assert.equal(g2.code, EXIT.OK, `${g2.stdout}${g2.stderr}`);
+  assert.deepEqual((await readDisputeTask(fx)).disputes, t1.disputes);
+
+  // T7 · 显式 --run-id 固定本轮重跑：同一键控
+  const g7 = await checkPlan(fx, ['--run-id', runId]);
+  assert.equal(g7.code, EXIT.OK, `${g7.stdout}${g7.stderr}`);
+  assert.deepEqual((await readDisputeTask(fx)).disputes, t1.disputes);
+
+  // T3 · 改成接受：本轮不再有共同驳回，条目删掉；disputed 只增不减
+  await writeJointDisposition(fx, runId, '接受');
+  const g3 = await checkPlan(fx);
+  assert.equal(g3.code, EXIT.OK, `${g3.stdout}${g3.stderr}`);
+  const t3 = await readDisputeTask(fx);
+  assert.deepEqual(t3.disputes, []);
+  assert.equal(t3.disputed, true, '旧正本的标记归属不到哪一轮，disputed 不随明细删空而清零');
+
+  // 报告随之落到「有标记、无明细」那一行
+  const rp = await cli(fx.root, ['report', '--topic', TOPIC]);
+  assert.match(rp.stdout, /没有留下明细/, `${rp.stdout}${rp.stderr}`);
+});
+
+test('争议明细 T4 · hard 阻断不记争议，三态仍落 checked-found', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root);
+  await writeJointDisposition(fx, runId, '驳回');
+  await setJointPolicy(fx, 'hard');
+
+  const g = await checkPlan(fx);
+  assert.notEqual(g.code, EXIT.OK, `hard 下共同驳回应被拦：\n${g.stdout}${g.stderr}`);
+  assert.match(g.stdout, /joint_blocker_rejected/);
+  const t = await readDisputeTask(fx);
+  assert.deepEqual(t.disputes, []);
+  assert.equal(t.disputed, false);
+  assert.equal(t.joint_checks?.find((x) => x.run_id === runId)?.state, 'checked-found');
+});
+
+test('争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const fx = await makeFixture({ topic: TOPIC });
+  const runId = await runPlan(fx.root);
+  await writeJointDisposition(fx, runId, '驳回');
+
+  // T6 · 预置一条他轮条目：本轮写入不碰它
+  const other = { run_id: '20200101T000000Z', finding_ids: ['AGY-09', 'GLM-09'], note: 'AGY-09+GLM-09@src/old.ts:1' };
+  const taskPath = path.join(fx.archiveRoot, TOPIC, 'task.json');
+  const before = JSON.parse(await fs.readFile(taskPath, 'utf8')) as DisputeTask;
+  before.disputes = [other];
+  await fs.writeFile(taskPath, JSON.stringify(before, null, 2), 'utf8');
+
+  const g1 = await checkPlan(fx);
+  assert.equal(g1.code, EXIT.OK, `${g1.stdout}${g1.stderr}`);
+  assert.deepEqual((await readDisputeTask(fx)).disputes, [
+    other,
+    { run_id: runId, finding_ids: ['AGY-01', 'GLM-01'], note: JOINT_NOTE },
+  ]);
+
+  // T5 · 改 hard 重跑同一轮：被拦，本轮争议不再成立
+  await setJointPolicy(fx, 'hard');
+  const g2 = await checkPlan(fx);
+  assert.notEqual(g2.code, EXIT.OK, `${g2.stdout}${g2.stderr}`);
+  assert.deepEqual((await readDisputeTask(fx)).disputes, [other]);
 });
 
 test('无共同驳回 → 三态落 checked-none；run.json 那一侧只到 pending', { skip: bundleMissing && bundleSkipReason }, async () => {

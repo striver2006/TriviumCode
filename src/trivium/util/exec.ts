@@ -92,6 +92,8 @@ export interface RunResult {
   commandLine: string;
   /** 收到 ChildProcess spawn 事件才为 true，命令字符串不证明启动。 */
   spawned?: boolean;
+  /** doctor 段作用域内、中止派生之后的调用：没有派生，结果是合成的（EV-251，见 `abortProbeSections`） */
+  aborted?: true;
 }
 
 const DEFAULT_MAX_BUFFER = 32 * 1024 * 1024;
@@ -186,6 +188,157 @@ export function watchTrackedTrees(listener: () => void): () => void {
  */
 let treeShutdown = false;
 
+// ─────────────────── doctor 探针段作用域（EV-251） ───────────────────
+
+/** 段内派生过的一个进程组：组长退出也不删，到点时按组号与非僵尸成员数判还要不要结束 */
+interface SectionGroup {
+  pgid: number;
+  child: ChildProcess;
+}
+
+/**
+ * doctor 的一段探针（一家 CLI）在作用域内派生过的东西（预检失败自动校准计划 r2 D3）。
+ *
+ * 与 `liveTrees` 的分工：那份登记在组长 exit 时即删（worker 与前台中断转发按组长句柄判），
+ * 组长服从 SIGTERM 而后代忽略、或组长先退出而后代还在时，按它够不到后代（计划三审 CODEX-01）。
+ * 这里不删，到点时按「组长活着，或非僵尸成员数大于 0」逐组结束。
+ */
+export interface ProbeSectionScope {
+  name: string;
+  groups: SectionGroup[];
+  /** 作用域内 `run()` 的派生次数（含 git 辅助调用）：不区分哪几次调了模型，按上界交代配额 */
+  launches: number;
+  /** 同一次 doctor 的各段共用一枚令牌：置位后这些段内的 `run()` 不再派生 */
+  abort: ProbeAbortToken;
+}
+
+/**
+ * 中止令牌：一次 doctor 一枚，置位后不复位。按令牌而不是进程级全局位——同一进程里先后跑几次 doctor
+ * （测试进程就是这样）时，前一次到点不该连累后一次。
+ */
+export interface ProbeAbortToken {
+  aborted: boolean;
+}
+
+const sectionStore = new AsyncLocalStorage<ProbeSectionScope>();
+
+export function newProbeAbortToken(): ProbeAbortToken {
+  return { aborted: false };
+}
+
+export function newProbeSection(name: string, abort: ProbeAbortToken = newProbeAbortToken()): ProbeSectionScope {
+  return { name, groups: [], launches: 0, abort };
+}
+
+/**
+ * 在段作用域内跑 fn：作用域内的 `run()` **一律**按 `killTree` 派生并记进段，不论调用点写没写 `killTree`——
+ * 不带它的那些（`--version`、git 辅助调用等）与 doctor 同组、不在任何登记里，到点够不到（计划三审 CODEX-02）。
+ */
+export function withProbeSection<T>(scope: ProbeSectionScope, fn: () => Promise<T>): Promise<T> {
+  return sectionStore.run(scope, fn);
+}
+
+/**
+ * 中止这枚令牌下各段的派生（doctor 到点或收到信号时）。与冻结（`treeShutdown`）互不相干：
+ * 冻结让 `run()` 永不兑现、`finally` 不跑，而探针的 `finally` 正是删凭据副本目录的地方；
+ * 这里改为立即兑现一个合成结果，让探针沿自己的错误路径走到 `finally`。作用域外的 `run()` 不受影响。
+ */
+export function abortProbeSections(token: ProbeAbortToken): void {
+  token.aborted = true;
+}
+
+/** 在段作用域之外跑 fn（成员计数的 `ps` 用：中止派生不能拦住结束进程组时的核对） */
+function outsideProbeSection<T>(fn: () => T): T {
+  return sectionStore.exit(fn);
+}
+
+export interface SectionTerminateResult {
+  /** 到点时还要结束的组（组长活着，或组长已退出而组内还有本组的成员） */
+  groups: number[];
+  signals: Record<number, NodeJS.Signals[]>;
+  /** 结束不了或核对不了的组 */
+  remaining: number[];
+  /** 组长已退出、而进程表里有 pid 等于该组号的活进程：组号已被复用，没有发信号（代码三审 CODEX-01） */
+  reused: number[];
+}
+
+/** 一个组号此刻在进程表里的样子：非僵尸成员数，与有没有 pid 等于组号的非僵尸进程 */
+export interface GroupSnapshot {
+  members: number;
+  leaderPresent: boolean;
+}
+
+/** 从 `ps -axo pid=,pgid=,stat=` 的输出里取一个组号的快照（纯函数，便于喂录制样本） */
+export function groupSnapshotFrom(psOutput: string, pgid: number): GroupSnapshot {
+  let members = 0;
+  let leaderPresent = false;
+  for (const line of psOutput.split('\n')) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\S+)/.exec(line);
+    if (!m || m[3]!.startsWith('Z')) continue;
+    if (Number(m[2]) === pgid) members++;
+    if (Number(m[1]) === pgid) leaderPresent = true;
+  }
+  return { members, leaderPresent };
+}
+
+async function groupSnapshot(pgid: number): Promise<GroupSnapshot | null> {
+  const r = await run('/bin/ps', ['-axo', 'pid=,pgid=,stat='], { timeoutMs: 10_000 });
+  return r.code === 0 ? groupSnapshotFrom(r.stdout, pgid) : null;
+}
+
+/**
+ * 按组结束段作用域里派生过、还在的进程组（EV-251，计划 r2 D3 第 2 条）。
+ *
+ * 判「这一组还在吗」：组长未退出（父进程句柄，没被回收，组号不会被复用）⇒ 在。组长已退出 ⇒ 取一次进程表快照：
+ * - 有 pid 等于组号的活进程：我们的组长已经退了，那个进程只能是复用了这个号的别人 ⇒ 判复用、不发信号（代码三审 CODEX-01）；
+ * - 否则非僵尸成员数大于 0：组号仍被本组的后代占着、不会被分配给新进程 ⇒ 照样按组发信号
+ *   （与 `--cancel` 按记录结束 CLI 的「组长已退出但组员还在」一格同源，EV-165）；为 0 即已不在；
+ * - 快照取不到记「判不了」、不发信号。
+ * 分不出的一格（与 EV-165 同一残余）：本组清空、组号被别人复用、复用者自己也退了只剩它的后代——这时既没有 pid 等于组号的进程、
+ * 成员数又大于 0，会被当成本组。宽限链参数由调用方给（doctor 用 worker 处理器那一组）。
+ * 各组并行（核对也并行）；不置冻结位，`run()` 照常兑现，探针得以走到 `finally`。
+ */
+export async function terminateProbeSectionGroups(
+  scopes: readonly ProbeSectionScope[],
+  o: TreeShutdownOptions & { snapshot?: (pgid: number) => Promise<GroupSnapshot | null> },
+): Promise<SectionTerminateResult> {
+  const snap = o.snapshot ?? ((pgid: number) => outsideProbeSection(() => groupSnapshot(pgid)));
+  const reused = new Set<number>();
+  const isGone = async (g: SectionGroup): Promise<GoneJudgment> => {
+    if (g.child.exitCode === null && g.child.signalCode === null) return false;
+    const s = await snap(g.pgid);
+    if (s === null) return 'unverifiable';
+    if (s.leaderPresent) {
+      reused.add(g.pgid);
+      return true;
+    }
+    return s.members === 0;
+  };
+  const groups = scopes.flatMap((s) => s.groups);
+  const judged = await Promise.all(groups.map(async (g) => ({ g, gone: await isGone(g) })));
+  const candidates = judged.filter((x) => x.gone !== true).map((x) => x.g);
+  const signals: Record<number, NodeJS.Signals[]> = {};
+  const outcomes = await Promise.all(
+    candidates.map(async (g) => {
+      const t = await terminateProcessGroup(g.pgid, {
+        isGone: () => isGone(g),
+        graceMs: o.graceMs,
+        killWaitMs: o.killWaitMs,
+        pollMs: o.pollMs ?? 100,
+        ...(o.signal ? { signal: o.signal } : {}),
+      });
+      signals[g.pgid] = t.signals;
+      return { pgid: g.pgid, gone: t.gone };
+    }),
+  );
+  return {
+    groups: candidates.map((g) => g.pgid),
+    signals,
+    remaining: outcomes.filter((x) => !x.gone).map((x) => x.pgid),
+    reused: [...reused],
+  };
+}
+
 /** BSD `script` 读到 stdin 的 EOF 后往伪终端送 EOF，伪终端回显成这 4 个字符（`^`、`D`、两个退格） */
 export const PTY_EOF_ECHO = '^D\b\b';
 
@@ -234,6 +387,15 @@ export function formatCommand(bin: string, args: readonly string[]): string {
 export function run(bin: string, args: readonly string[], opts: RunOptions = {}): Promise<RunResult> {
   // 终止中（EV-152）：不再派生，也不兑现——进程随即退出，悬着的 Promise 无害（见 shutdownTrackedTrees）
   if (treeShutdown) return new Promise<RunResult>(() => {});
+  const section = sectionStore.getStore();
+  // doctor 段作用域内、中止派生之后（EV-251）：不派生，立即兑现合成结果，让探针走到自己的 finally
+  if (section?.abort.aborted) {
+    return Promise.resolve({
+      code: null, signal: null, stdout: '', stderr: '[aborted] doctor 已到点，不再派生', durationMs: 0,
+      timedOut: false, earlyStopped: false, truncated: false, commandLine: formatCommand(bin, args),
+      spawned: false, aborted: true,
+    });
+  }
   const quota = launchBudgetStore.getStore();
   let launchIndex: number | null = null;
   if (quota?.accepts(bin)) {
@@ -258,8 +420,9 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     stopEarly,
     pty = false,
     maxBufferBytes = DEFAULT_MAX_BUFFER,
-    killTree = false,
   } = opts;
+  // 段作用域内一律自成一组并登记（EV-251，计划三审 CODEX-02）
+  const killTree = (opts.killTree ?? false) || section !== undefined;
 
   // BSD script（macOS）：`script -q /dev/null <cmd…>`；util-linux script：`script -q -c "<cmd>" /dev/null`
   const bsdPty = pty && process.platform !== 'linux';
@@ -317,7 +480,9 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
 
   const pending = new Promise<RunResult>((resolve) => {
     const startedAt = Date.now();
+    if (section) section.launches++;
     const child = spawn(spawnBin, spawnArgs, spawnOpts);
+    if (section && child.pid !== undefined) section.groups.push({ pgid: child.pid, child });
     let spawned = false;
     child.once('spawn', () => { spawned = true; });
     // 登记与派生之间插不进别的 JS（spawn 是同步的），所以 SIGTERM 处理器看得到每一个已派生的组

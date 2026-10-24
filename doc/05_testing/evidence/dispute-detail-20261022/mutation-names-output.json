@@ -1,0 +1,83 @@
+[
+  {
+    "id": "M1",
+    "desc": "去掉按 run_id 先删本轮旧条目（同轮重跑会堆积、撤回后旧条目残留）",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "争议明细 T1～T3 · warn 下写一条、同轮重跑不堆积、改成接受后本轮条目删掉而 disputed 不清零",
+      "争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留"
+    ],
+    "firstLines": [],
+    "elapsed_s": 298
+  },
+  {
+    "id": "M2",
+    "desc": "hard 阻断也带出 disputedJointBlockers（hard 下会记争议）",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "争议明细 T4 · hard 阻断不记争议，三态仍落 checked-found",
+      "争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留"
+    ],
+    "firstLines": [],
+    "elapsed_s": 304
+  },
+  {
+    "id": "M3",
+    "desc": "note 改存整段告警文案",
+    "suite": "dist/test/test/integration/gate-loop.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "争议明细 T1～T3 · warn 下写一条、同轮重跑不堆积、改成接受后本轮条目删掉而 disputed 不清零",
+      "争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留"
+    ],
+    "firstLines": [],
+    "elapsed_s": 303
+  },
+  {
+    "id": "M4",
+    "desc": "报告去掉「有标记、无明细」那一行",
+    "suite": "dist/test/test/unit/report.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "R1 · disputed 为真而明细为空 ⇒ 如实写「没有留下明细」，不整段静默"
+    ],
+    "firstLines": [],
+    "elapsed_s": 1
+  },
+  {
+    "id": "M5",
+    "desc": "报告恢复以 disputed 为前提才列明细",
+    "suite": "dist/test/test/unit/report.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "R3 · disputed 为假而明细非空 ⇒ 照实列出"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M6",
+    "desc": "去掉空 finding_ids 的「（无编号）」兜底",
+    "suite": "dist/test/test/unit/report.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "R4 · 明细字段为空 ⇒ 显示「（无编号）」「（无说明）」，不拼出悬空符号"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  }
+]

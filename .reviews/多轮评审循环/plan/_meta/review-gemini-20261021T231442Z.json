@@ -1,0 +1,90 @@
+{
+  "agreed": [
+    "trivium.review.v2 采用三值枚举（pass / pass-after-changes / reject）以及写侧仅认 v2、读侧兼认 v1/v2 的分档策略，契约升版清晰且向后兼容历史留痕。",
+    "isReviewSchemaId 抽象完整收敛了 v1 ∪ v2 的判据，并在 archive.ts、freeze.ts（禁读矩阵防失效）、report.ts 等关键路径彻底替代了零散判定。",
+    "round-verdict.ts 纯函数设计清晰，选票状态（作废优先、缺少结论不计票、非 v2 契约不计票）与半数判定（2k >= n）以及下一步动作派生逻辑严密完整。",
+    "续链与上一轮有效运行提取逻辑健全（跳过无 round_verdict 且未被人工决定的异常运行），确保由于进程中断、超时或作废时重试不浪费轮次配额，且前序已完成 resolveStageDriver 损坏拦截，不会发生脏数据静默重置链。",
+    "计划审自动输出新完整计划、代码审直接修改源码且在最后一轮按裁决改码后再设立人工审批停点（D-3），兼顾了自动化循环与受护栏保护下的可操作性。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/多轮评审循环/plan/2026-10-22-多轮评审循环-claude.md",
+    "doc/01_requirements/稳定版需求说明书.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "src/trivium/round-verdict.ts",
+    "src/trivium/types.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/review.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/driver-claim.ts",
+    "skills/dual-critic/schema/review.v2.json",
+    "skills/dual-critic/schema/run.v3.json",
+    "skills-src/commands/review-code.contract.md",
+    "skills-src/commands/review-plan.contract.md",
+    "skills-src/commands/run.contract.md",
+    "skills-src/partials/review/body.md",
+    "skills-src/partials/review/loop.plan.md",
+    "skills-src/partials/review/loop.code.md",
+    "skills-src/partials/review/apply.code.md",
+    "skills-src/partials/review/next-plan.plan.md",
+    "test/unit/round-verdict.test.ts",
+    "test/integration/review-loop.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/contract/entry-render-parity.test.ts",
+    "test/contract/skill-flag-parity.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查看 skills/dual-critic/schema/run.v3.json 中 round_verdict.sides 与 excluded 的 description 明确写有「计了票的侧及其结论；键为审核者 id，是否已登记由代码层按注册表校验」，但阅读 src/trivium/schemas.ts:257-317 的 checkAgentIdentities 函数，其校验范围仅覆盖 m.driver、m.critics_selected、m.critics、m.requested_routes 与 m.family_comparisons，完全没有对 m.round_verdict.sides 或 excluded 的 key 做 isAgentId/agentById 校验。未经校验的外部或异常 run.json 会绕过身份守卫进入内存。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "code",
+      "location": "src/trivium/schemas.ts:257-317",
+      "problem": "run.v3.json 新增的 round_verdict.sides 与 round_verdict.excluded 声明为字典并承诺由代码层按注册表校验键名（Agent id），但 checkAgentIdentities() 漏校了这两个对象中的键，违反架构纪律 12 的两段式校验约束。",
+      "severity": "major",
+      "suggestion": "在 src/trivium/schemas.ts 的 checkAgentIdentities 中补齐对 m.round_verdict?.sides 与 m.round_verdict?.excluded 所有键的校验，核对键名属于注册表中的有效审核者，并在单元测试中覆盖非法键拦截。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 skills-src/commands/review-code.contract.md:6，allowed-tools 设定为 Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep。而同批引入的 skills-src/partials/review/apply.code.md:5 要求「改完先自查能编译、相关用例能过（走项目的常规构建/测试命令，如 npm test / cargo test / pytest 等）」。对比 skills-src/commands/run.contract.md:7，命令 A 正是通过无约束的 Bash 工具权限支持自查编译与测试。受限的 Bash 导致执笔者在 L1 护栏下载体直接被权限拦截拒跑测试。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "skills-src/commands/review-code.contract.md:6",
+      "problem": "命令 C（dual-review-code）在 EV-247 中增加了步骤 5.5（apply.code.md）要求 Driver 修改业务代码后自查编译与用例，但其 allowed-tools 仍限制 Bash 只能执行 .trivium/bin/trivium:*，导致 L1 载体（Claude Code 等）无法执行任何项目编译或测试命令。",
+      "severity": "major",
+      "suggestion": "按命令 A 的规格将 skills-src/commands/review-code.contract.md 中的 Bash 权限放宽为允许项目常规命令执行，或在 partials 中将编译测试说明修改为条件性提示并明确其在受限载体下的预期行为，随后执行 npm run render 同步入口资产。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "阅读 skills-src/partials/review/next-plan.plan.md:3，其指导 Driver 编写新计划文件时写道「文件名 <日期>-<主题>-r<N>-<当轮 Driver>.md，与原稿同目录」。但结合 src/trivium/review.ts:369 的 resolvePlanFinal 以及 src/trivium/gate.ts:870-880，编排器要求所有阶段评审的输出及下一轮计划文件必须位于 .reviews/<主题>/plan/。如果原稿通过 --plan-file 来自 doc/02_design/，Driver 若按字面指导写入 doc/ 目录，将无法被 resolvePlanFinal 识别，导致续轮或终判直接失败。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "skills-src/partials/review/next-plan.plan.md:3",
+      "problem": "命令 B 的 next-plan.plan.md 指引中「与原稿同目录」的表述在传入外部 --plan-file 时与编排器硬性要求的输出目录冲突。",
+      "severity": "minor",
+      "suggestion": "将 next-plan.plan.md 中的「与原稿同目录」修正为「位于 .reviews/<主题>/plan/ 目录（即便原稿由 --plan-file 从外部引入）」，消除歧义后 npm run render。"
+    }
+  ],
+  "not_covered": [
+    "在真机多厂商 CLI 环境（非桩适配器模式下）多轮循环的实际并发超时与进程管理表现。",
+    "L2 载体（无自动化写入拦截 Hook 时）在多轮循环中人为修改代码导致快照漂移的极端对抗场景。",
+    "极长主题名或超长轮次（如上限 10 轮）下，终端输出进度条与字符布局的极端显示效果。"
+  ],
+  "schema": "trivium.review.v1",
+  "summary": "1. 关键问题：run.v3.json 新增字段 round_verdict.sides 与 excluded 虽声明按注册表校验键，但 schemas.ts:checkAgentIdentities 未补齐对应 Agent 身份校验，违反架构纪律 12。\n2. 权限冲突：命令 C（dual-review-code）在 EV-247 中要求 Driver 改码后自查构建与用例，但 allowed-tools 仍限制 Bash 只能跑 trivium CLI，导致 L1 载体无法执行自查。\n3. 文本歧义：next-plan.plan.md 中「与原稿同目录」与 --plan-file 外部输入时的归档目录硬性要求冲突。\n4. 除上述问题外，多轮评审循环、review.v2 契约演进、三档半数计票与续链机制整体设计精细，单测与集成测试完备。\n5. 整体评价：建议修复上述两项 contract 问题并消除路径文案歧义后通过。",
+  "verdict": "request-changes"
+}

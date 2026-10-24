@@ -6,7 +6,7 @@
 
 > - **作者 / 负责人**：Driver（Claude）
 > - **创建日期**：2026-09-13
-> - **当前版本**：v1.0.48
+> - **当前版本**：v1.0.49
 > - **状态**：草稿(Draft)
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
@@ -190,7 +190,16 @@ node ~/.claude/skills/dual-critic/scripts/trivium.cjs doctor   # 约 2~4 分钟�
 CLAUDE.md / AGENTS.md     追加带标记的协议片段
 ```
 
-**`doctor` 必须在终端里跑，不要在 Claude Code 里跑。** 它需要 2~4 分钟，会击穿 Bash 工具的 600s 超时——届时配额已烧而结论未落盘。
+**首次的全量 `doctor` 在终端里跑。** 四家一起要 2~4 分钟，会消耗少量配额。它每探完一家就落盘，中途被打断只丢正在探的那一家。
+
+**在 `/dual-*` 命令里，预检退 69 会自动校准**（设计 v1.3.173，EV-251）：探针过期、版本漂移、路线没有探针结论这一类 doctor 能修好的失败，
+skill 不再停下等你，而是照预检给出的清单逐家在前台跑带时限的 `doctor --only <家> --deadline-s <秒>`（每家结束播报一行），
+再重跑同一条预检；通过就继续双审，全程不问你。每次预检至多自动校准一轮，重跑仍失败就停下，把两次预检与 doctor 的结论一并告诉你，
+没探完的那一家请你在终端单独跑（结论里给出完整命令）。认证失败、归档或 git 不可用、编译测试命令未配置这类 doctor 修不好的，照旧原样转述并停下。
+开跑之前你会先看到一行播报（v1.3.174，EV-252）：点名哪几项失败、要跑几次 doctor、每次至多多少秒、会消耗少量配额；重跑预检通过后，接下来的第一句是「预检首次退 69，已自动校准后通过。」。
+自动校准会花少量配额，只跑失败项点名的那几家；时限由 `preflight.recalibrate_deadline_s`（缺省 900 秒，即 15 分钟）决定，见 §5.6。
+
+> **用 Claude Code 当 Driver 时，要把 Bash 工具上限抬到 960 秒**：skill 给每次 doctor 设的工具超时是时限加 60 秒（缺省 960 秒），而 Claude Code 的 Bash 工具缺省上限是 600 秒——不抬高，doctor 跑到第 10 分钟就会被宿主杀掉，来不及自己收尾（探针子进程成孤儿，临时目录要等下一次 doctor 才补删）。在 `~/.claude/settings.json` 的 `env` 里加 `"BASH_MAX_TIMEOUT_MS": "960000"`；不想抬高就把 `preflight.recalibrate_deadline_s` 调到 540 以下。另三家载体的上限没实测过，同理处理。
 
 ### 3.5 必须补一步：配置编译测试命令
 
@@ -255,15 +264,24 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 /dual-run <任务目标> [--topic <主题>] [--focus <提示语>] [--context <路径,…>]
           [--profile <名称>] [--model-<审核者 id> <模型>]
           [--tier-<审核者 id> <档>] [--effort-<审核者 id> <值>] [--profile-<审核者 id> <名>]
+          [--max-rounds <n>] [--max-rounds-plan <n>] [--max-rounds-code <n>]
           [--critics <id,…>] [--only <一侧>] [--allow-single]
 ```
 
-出方案 → 双审 → 修订 → 编码 → 双审 → 应答 → 改码 → 真实执行编译测试。
+出方案 → 多轮双审与修订 → 编码 → 多轮双审、应答与改码 → 真实执行编译测试。
+
+**多轮评审循环**（v1.0.49 起，设计 v1.3.170 / 8.2.1）：每个审核者给出「通过 / 修改后通过 / 不通过」三档结论，编排器按侧计票——
+不通过占半数及以上即本轮判不通过，Driver 按裁决修改后自动重审；否则修改后通过占半数及以上判修改后通过，否则通过占半数及以上判通过，
+三档都不到半数（如三家各投一档）判修改后通过。后两种都是按意见修改后进入下一阶段。失败、超时、结论解析不出、读到对端产物而作废的一侧不计票。
+每个阶段最多几轮缺省 3、上限 10：`--max-rounds-plan` / `--max-rounds-code` 分别指定计划审与代码审，`--max-rounds` 同时指定两个阶段（两种写法并用时阶段专属的优先）。
+最后一轮仍判不通过（或有效结论不足：给出有效结论的审核者不到本轮入选的一半，比如三家里两家失败或作废）就停下来等你人工审核：`/dual-approve` 通过后让 Claude Code 接着往下走，拒绝或放弃即到此为止。
+计划审每一轮除了裁决件，还会写一份新版本的完整计划（`…-r<N>-claude.md`，全部驳回时开头写明「本轮无改动」），下一轮重审或编码阶段用的都是它；
+代码审每一轮只写裁决件，然后直接按接受的意见改代码，再进下一轮或进编译测试。
 
 `--critics` / `--only` / `--allow-single` 的含义见 4.7；在 `/dual-run` 里**计划审与代码审两轮共用同一组**。
 写了 `--critics` 时，开跑前的预检查的就是这几家（三个阶段的模型与登录都在开跑前查）。
 
-**A 是唯一不设人工闸门的命令**——它跑完整条链，中途不停。正文是**任务目标**（这次要达成什么），`--focus` 是可选补充。
+**A 是唯一平常不设人工闸门的命令**——它跑完整条链，中途不停；唯一的例外是上面那条「最后一轮仍判不通过」，那时停下等你审核。正文是**任务目标**（这次要达成什么），`--focus` 是可选补充。
 
 任务目标在审查员的任务书里只占一行、只取前 200 字（空白折成一个空格）。正文更长时（v1.0.28 起，设计 v1.3.88）：
 计划审查员的任务书末尾另有一段「附录：任务目标原文」，逐字给出你写的全文，让他们对照其中的现状与决策核对计划是否忠实；
@@ -279,7 +297,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
                   [--context <路径,…>] [--profile <名称>]
                   [--model-<审核者 id> <模型>]
                   [--tier-<审核者 id> <档>] [--effort-<审核者 id> <值>] [--profile-<审核者 id> <名>]
-                  [--plan-file <路径>] [--critics <id,…>] [--only <一侧>] [--allow-single]
+                  [--plan-file <路径>] [--max-rounds <n>] [--critics <id,…>] [--only <一侧>] [--allow-single]
 ```
 
 **对「已有」计划做双审**——所以先得有一份草稿落在 `.reviews/<主题>/plan/<日期>-<主题>-claude.md`。让 Claude Code 写好再发这条命令。
@@ -289,6 +307,10 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 ```
 /dual-review-code <审查焦点提示语> [--base <ref>] [其余同上]
 ```
+
+`/dual-review-plan` 与 `/dual-review-code` 同样走多轮评审循环（规则见 4.1，上限只用 `--max-rounds <n>` 一个旗标）：
+判不通过的中间轮**不停**，Claude Code 改完计划（或改完代码）直接重审；循环结束的那一轮（通过、修改后通过，或到上限仍不通过）才停在人工审批。
+`/dual-review-code` 每一轮写完应答件就按接受的意见改代码，所以停下来时你审批的是**已经改好**的代码。`/dual-review-bug` 不进循环。
 
 被审对象是 `git diff <base>`（默认 `HEAD`）+ 未跟踪文件。补丁**只算一次**后透传给两侧——逐侧各自 diff 会让两侧审的不是同一段变更。
 
@@ -382,7 +404,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 这些没有 skill 包装，在终端里跑：
 
 ```bash
-.trivium/bin/trivium doctor [--selftest|--suggest-verify|--no-model-calls|--only <cli>|env]
+.trivium/bin/trivium doctor [--selftest|--suggest-verify|--no-model-calls|--only <cli>|env] [--deadline-s <秒>]
 .trivium/bin/trivium preflight --stage plan|code|bug|all
 .trivium/bin/trivium verify --topic <主题> [--only build|test]
 .trivium/bin/trivium report --topic <主题> [--out <路径>]
@@ -548,6 +570,7 @@ doctor 末尾会给一条「以下命令行覆盖本次没有用上」的提示�
 | 字段 | 默认 | 说明 |
 | :--- | :--- | :--- |
 | `preflight.auth_cache_ttl_h` | 1 | 认证探活缓存 |
+| `preflight.recalibrate_deadline_s` | 900 | 预检退 69 自动校准时，每次 `doctor` 的总时限（30～900 秒）。skill 的工具超时按它加 60 秒（缺省 960 秒）。载体的工具超时上限要不低于它加 60 秒：Claude Code 缺省 600 秒，须设 `BASH_MAX_TIMEOUT_MS=960000`（§3.4），否则调到 540 以下（v1.3.173 起，EV-251） |
 | `probe_ttl_days` | **7** | 探针保质期。**过期即预检硬失败，不是降级** |
 | `verify.build` / `verify.test` | `[]` | 必须手工配 |
 
@@ -621,7 +644,7 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | `evidence_ok: false` | **证据不足：本侧不得计为合格双审的一半** |
 | `drift: true` | 审查期间工作树变动过 |
 
-然后看 `verdict`：`approve` / `approve-with-nits` / `request-changes` / `block`。
+然后看 `verdict`：`pass`（通过）/ `pass-after-changes`（修改后通过）/ `reject`（不通过），正文「结论」一行同时写中文。v1.0.49（契约 `trivium.review.v2`）之前的旧审查件是四值 `approve` / `approve-with-nits` / `request-changes` / `block`，旧值不参与计票。本轮计票结果在 `_meta/run-<run_id>.json` 的 `round_verdict` 里，`gate --check --json` 与 `review --wait --json` 的 `round_line` 是它的一行摘要。
 
 每条意见有九个字段，其中 `evidence`（证据）和 `confidence`（置信度）最值得看——`confidence: low` 的意见不必当真，但也不该静默忽略。
 
@@ -671,7 +694,10 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 不占轮次号，列在时间线下方的「未进时间线的运行」表里，头部「轮次总数」后会注明「另有 K 次」（v1.0.6 起，EV-144）。
 所以「轮次总数：0」不等于这个阶段没跑过；同一轮次号也可能在上下两张表里各出现一次（失败那次与随后的重跑）。
 
-> **⚠️ 已知缺口**：报告里的「争议项」只会显示一个布尔标记，**永远打印不出具体编号**——`disputes[]` 数组在代码里没有任何写入点。
+报告「降级、告警与隔离结论」一节的「争议项」：两家同时提出的 blocker 被驳回、在 `warn` 策略下放行时，`gate --check` 把这一轮的编号与位置写进 `task.json`
+（每轮一条、重跑覆盖），报告逐条列出「争议项（plan r1，run …）：AGY-01、GLM-01——AGY-01+GLM-01@src/x.ts:10」。
+早于这项记录（v1.3.172）的旧主题只有争议标记、没有明细，报告会写「记有争议标记，但没有留下明细」——同一句也出现在某轮争议重跑校验后已撤回（改成接受）的情形；
+争议标记本身只增不减，`status` 那一行「⚠️ 有争议项」不会因撤回而消失。`hard` 策略下共同驳回直接拦下闸门，不记争议。
 
 ---
 
@@ -885,7 +911,8 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | `2` | 闸门阻断 | **否**，护栏按预期工作。stdout 里是待修补清单 |
 | `64` | 参数错误 | 是，改命令。**不会产生任何工件** |
 | `65` | 前置产物缺失 | 是，先补工件 |
-| `69` | 环境或预检失败 | 是，跑 `doctor` / `preflight` |
+| `69` | 环境或预检失败 | 是，跑 `doctor` / `preflight`。`/dual-*` 里 doctor 能修的那类会自动校准一轮（§3.4） |
+| `76` | 只有 `doctor --deadline-s`：到点或收到信号时还有家没探完 | 是，看 JSON `deadline.sections` 里没探完的那几家，按 `rerun` 在终端单独跑。已探完的照常落盘 |
 | `70` | 主题被锁 | 是，同主题已有运行 |
 | `73` | 运行仍在进行 | **否**，不是超时，是还没跑完 |
 | `75` | 严格模式中止 | 是，一侧失败且 `failure_policy: strict` |
@@ -897,7 +924,8 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | 症状 | 先看这个 |
 | :--- | :--- |
 | 命令没反应 / 提示未初始化 | `.trivium/config.yaml` 在不在？Hook 检测不到它一律放行 |
-| 预检报探针过期 | 探针 7 天 TTL 且**过期即硬失败**。在终端里跑 `trivium doctor` 重新校准 |
+| 预检报探针过期 | 探针 7 天 TTL 且**过期即硬失败**。`/dual-*` 里会自动校准一轮（§3.4）；直接调 CLI 时在终端里跑 `trivium doctor` 重新校准 |
+| 自动校准后仍停下，说某家「在时限内没探完」 | 按结论里的 `rerun` 在终端单独跑那一家。会话里拉起的厂商 CLI 有过间歇挂满单次探针超时的先例（EV-243），终端里通常能跑完 |
 | 某侧报不可用 | `trivium preflight --stage plan`，它会指出是探针过期、CLI 不可调用还是未认证 |
 | 某侧被判「证据不足」 | 该侧读的项目文件数或工具调用数没达下限。看 `_meta/run-*.json` 的 `tool_calls` |
 | 一侧超时 | 默认 strict 会中止。调大 `review.timeout_s`，或临时 `--allow-single` 降级 |
@@ -925,8 +953,10 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 | **Bash 拦截有已知误拦** | 见 §8.1 | 刻意接受的取舍 |
 | **配置与协议片段不会自动升级** | 见 §3.6 | 需手工同步 |
 | ~~**`block_severities` 是死配置**~~ | 已于 2026-09-16 删除 | 该键不再存在；若你的配置文件里还留着它，删掉那三行（保留会被 schema 判为未知键） |
-| **报告的「争议项」无法显示编号** | `disputes[]` 无写入点 | 只有布尔标记生效 |
-| **`doctor` 必须在终端跑** | 2~4 分钟，会击穿 Bash 工具 600s 超时 | 预检刻意不自动拉起它 |
+| ~~**报告的「争议项」无法显示编号**~~ | v1.3.172 起已写入明细 | 旧主题报告里写「记有争议标记，但没有留下明细」：那时还不记编号，或该轮争议已撤回；编号要回原轮的裁决件里找 |
+| ~~**`doctor` 必须在终端跑**~~ | v1.3.173 起（EV-251）预检退 69 时由 skill 在会话里跑带时限的 `doctor --only`（到点按组结束探针子进程、删掉探针临时目录、已探完的照常落盘） | 首次的全量 doctor 仍建议在终端跑；没探完的那一家也回终端单独跑 |
+| **自动校准不跨命令记账** | 连发同一条命令、每次都卡在同一个被判为可修而实际修不好的失败上时，每次各花一轮 doctor 配额 | 预检对拿不准的一律判不可修，作为主防线 |
+| **载体工具时限未实测** | 只有 Claude Code 的 Bash 上限（缺省 600 秒，可经 `BASH_MAX_TIMEOUT_MS` 抬高）有登记，另三家载体没有实测；doctor 缺省时限 900 秒要求载体上限至少 960 秒 | Claude Code 设 `BASH_MAX_TIMEOUT_MS=960000`；做不到的载体把 `preflight.recalibrate_deadline_s` 调到上限减 60 秒以下。载体直接强杀 doctor 时，本次探针临时目录由下一次 doctor 启动时补删 |
 
 ---
 

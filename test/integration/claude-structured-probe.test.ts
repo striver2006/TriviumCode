@@ -46,6 +46,7 @@ import { ProbeFixtureError } from '../../src/trivium/probes/fixture.js';
 import { LaunchBudgetExceeded } from '../../src/trivium/util/exec.js';
 import { scratchDir } from '../helpers/scratch.js';
 import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
+import { ASSET_ROOT } from '../helpers/fixture.js';
 
 // WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
 // macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
@@ -108,7 +109,7 @@ before(async () => {
       "  let text;",
       "  if (mode === 'parse-fail') text = 'not json';",
       "  else if (mode === 'missing-key') text = JSON.stringify({ other: 1 });",
-      "  else text = JSON.stringify({ schema: 'trivium.review.v2', verdict: 'approve', summary: 'fake summary', findings: [] });",
+      "  else text = JSON.stringify({ schema: 'trivium.review.v1', verdict: 'approve', summary: 'fake summary', findings: [] });",
       "  emit({ type: 'result', subtype: 'success', is_error: false, result: text, total_cost_usd: 0.001, session_id: 'fake-session' });",
       '  process.exit(0);',
       '});',
@@ -253,43 +254,54 @@ test('正对照真的取自读探针的 completed，不是恒真常量（代码�
 
 test('doctor目录后置预期失败不丢主probe：真实假CLI、持久化及重新读取', async () => {
   process.env['FAKE_CLAUDE_STRUCTURED_MODE'] = 'success';
-  const cfg = defaultConfig();
-  const agent = cfg.agents.claude; assert.ok(agent?.vendor === 'anthropic'); agent.bin = fakeBin;
-  let directoryCalls = 0;
-  for (const fail of ['create', 'populate', 'append', 'budget', 'caller']) {
-    const projectRoot = await scratchDir('trivium-doctor-directory-');
-    const triviumDir = path.join(projectRoot, '.trivium'); await fs.mkdir(triviumDir);
-    const report = await runDoctor({ projectRoot, triviumDir, config: cfg, only: 'claude', probeBins: { claude: fakeBin },
-      modelOverrides: { claude: 'stub/0.0.0' }, claudeDirectoryProbe: async input => {
-        directoryCalls++;
-        assert.equal(input.cfg.review.sensitive_globs, cfg.review.sensitive_globs);
-        if (fail === 'caller') throw Object.assign(Error('expected-route-read'), { code: 'EACCES' });
-        return probeClaudeDirectories({ ...input,
-          ...(fail === 'create' ? { fixtureFactory: async () => { throw new ProbeFixtureError('main', Error('expected-create'), null); } } : {}),
-          ...(fail === 'populate' ? { schemaPath: '/missing-schema-for-directory-probe' } : {}),
-          invoke: async () => {
-            if (fail === 'budget') throw new LaunchBudgetExceeded({ limit: 0, used: 0, launches: [], exhausted: true });
-            throw Object.assign(Error('expected-append'), { code: 'EACCES' });
-          },
-        });
-      } });
-    const p = report.probe.cli.claude!;
-    assert.equal(p.version, '9.9.9'); assert.equal(p.json_schema_ok, true);
-    assert.deepEqual(p.directory_deny_verified, {});
-    assert.equal(p.directory_deny_fingerprint, null); assert.equal(p.directory_deny_probed_at, null);
-    assert.equal(p.directory_deny_sensitive_globs_sha256, null); assert.equal(p.directory_deny_shape, null);
-    assert.ok(report.directoryEvidence?.failure); assert.equal(report.directoryEvidence?.cleanup, null);
-    await persistProbe(triviumDir, report.probe);
-    const reloaded = await loadCtx({ cwd: projectRoot, allowUninitialized: true });
-    assert.equal(reloaded.config.probe.cli.claude?.json_schema_ok, true);
-    assert.deepEqual(reloaded.config.probe.cli.claude?.directory_deny_verified, {});
+  /*
+   * runDoctor 按 resolveAssetRoot() 取契约文件：不钉住就读全局安装副本，安装副本落后于仓库时
+   * （EV-247 升 review.v2 后、重装之前）结构化臂整格落 asset-root-missing。钉到仓库内资产根，结论只看本仓构建。
+   */
+  const prevAssetRoot = process.env['TRIVIUM_ASSET_ROOT'];
+  process.env['TRIVIUM_ASSET_ROOT'] = ASSET_ROOT;
+  try {
+    const cfg = defaultConfig();
+    const agent = cfg.agents.claude; assert.ok(agent?.vendor === 'anthropic'); agent.bin = fakeBin;
+    let directoryCalls = 0;
+    for (const fail of ['create', 'populate', 'append', 'budget', 'caller']) {
+      const projectRoot = await scratchDir('trivium-doctor-directory-');
+      const triviumDir = path.join(projectRoot, '.trivium'); await fs.mkdir(triviumDir);
+      const report = await runDoctor({ projectRoot, triviumDir, config: cfg, only: 'claude', probeBins: { claude: fakeBin },
+        modelOverrides: { claude: 'stub/0.0.0' }, claudeDirectoryProbe: async input => {
+          directoryCalls++;
+          assert.equal(input.cfg.review.sensitive_globs, cfg.review.sensitive_globs);
+          if (fail === 'caller') throw Object.assign(Error('expected-route-read'), { code: 'EACCES' });
+          return probeClaudeDirectories({ ...input,
+            ...(fail === 'create' ? { fixtureFactory: async () => { throw new ProbeFixtureError('main', Error('expected-create'), null); } } : {}),
+            ...(fail === 'populate' ? { schemaPath: '/missing-schema-for-directory-probe' } : {}),
+            invoke: async () => {
+              if (fail === 'budget') throw new LaunchBudgetExceeded({ limit: 0, used: 0, launches: [], exhausted: true });
+              throw Object.assign(Error('expected-append'), { code: 'EACCES' });
+            },
+          });
+        } });
+      const p = report.probe.cli.claude!;
+      assert.equal(p.version, '9.9.9'); assert.equal(p.json_schema_ok, true);
+      assert.deepEqual(p.directory_deny_verified, {});
+      assert.equal(p.directory_deny_fingerprint, null); assert.equal(p.directory_deny_probed_at, null);
+      assert.equal(p.directory_deny_sensitive_globs_sha256, null); assert.equal(p.directory_deny_shape, null);
+      assert.ok(report.directoryEvidence?.failure); assert.equal(report.directoryEvidence?.cleanup, null);
+      await persistProbe(triviumDir, report.probe);
+      const reloaded = await loadCtx({ cwd: projectRoot, allowUninitialized: true });
+      assert.equal(reloaded.config.probe.cli.claude?.json_schema_ok, true);
+      assert.deepEqual(reloaded.config.probe.cli.claude?.directory_deny_verified, {});
+    }
+    assert.equal(directoryCalls, 5);
+    const unknownRoot = await scratchDir('trivium-doctor-directory-internal-');
+    const unknownDir = path.join(unknownRoot, '.trivium'); await fs.mkdir(unknownDir);
+    await assert.rejects(runDoctor({ projectRoot: unknownRoot, triviumDir: unknownDir, config: cfg,
+      only: 'claude', probeBins: { claude: fakeBin }, modelOverrides: { claude: 'stub/0.0.0' },
+      claudeDirectoryProbe: async () => { throw new TypeError('undefined-internal-error'); } }), TypeError);
+  } finally {
+    if (prevAssetRoot === undefined) delete process.env['TRIVIUM_ASSET_ROOT'];
+    else process.env['TRIVIUM_ASSET_ROOT'] = prevAssetRoot;
   }
-  assert.equal(directoryCalls, 5);
-  const unknownRoot = await scratchDir('trivium-doctor-directory-internal-');
-  const unknownDir = path.join(unknownRoot, '.trivium'); await fs.mkdir(unknownDir);
-  await assert.rejects(runDoctor({ projectRoot: unknownRoot, triviumDir: unknownDir, config: cfg,
-    only: 'claude', probeBins: { claude: fakeBin }, modelOverrides: { claude: 'stub/0.0.0' },
-    claudeDirectoryProbe: async () => { throw new TypeError('undefined-internal-error'); } }), TypeError);
 });
 
 }

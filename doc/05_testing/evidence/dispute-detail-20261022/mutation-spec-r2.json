@@ -1,0 +1,21 @@
+{
+  "targets": ["src/trivium/report.ts"],
+  "cases": [
+    {
+      "id": "M6r2",
+      "desc": "代码三审 AGY-03 改码后的 M6：去掉「（无编号）」兜底（空数组与只有空串都会拼出悬空符号）",
+      "file": "src/trivium/report.ts",
+      "find": "named.length > 0 ?",
+      "replace": "named.length >= 0 ?",
+      "expect": "dist/test/test/unit/report.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "代码三审 AGY-03：不滤空串编号",
+      "file": "src/trivium/report.ts",
+      "find": "typeof x === 'string' && x.length > 0)",
+      "replace": "typeof x === 'string')",
+      "expect": "dist/test/test/unit/report.test.js"
+    }
+  ]
+}

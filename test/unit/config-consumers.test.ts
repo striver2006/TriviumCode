@@ -328,7 +328,7 @@ test('U9「gate --check 重跑几次」的流程约定在各处源文件里是�
   const DESIGN = 'doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md';
   const expected: { file: string; count: number; where: string; cut?: string }[] = [
     { file: 'skills-src/partials/review/body.md', count: 1, where: '第 6 步「校验裁决完整性」' },
-    { file: 'skills-src/commands/run.contract.md', count: 2, where: 'S4 与 S8' },
+    { file: 'skills-src/commands/run.contract.md', count: 2, where: 'S4 与 S9' },
     { file: DESIGN, count: 2, where: '7.4 步骤 6 与 8.6 步骤 6', cut: '\n## 21. 变更记录' },
     { file: 'doc/07_manuals/MANUAL_user.md', count: 1, where: '「已废弃的键」表' },
   ];

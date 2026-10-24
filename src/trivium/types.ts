@@ -3,7 +3,7 @@
  *
  * 与四份 JSON Schema（skills/dual-critic/schema/）一一对应：
  *   trivium.config.v1      → Config
- *   trivium.review.v1      → Review / Finding
+ *   trivium.review.v2      → Review（ReviewV2）/ Finding；旧归档的 trivium.review.v1 → ReviewV1
  *   trivium.disposition.v1 → disposition.ts 的 DispositionFrontMatter（front-matter）/ 本文件的 DispositionRow（表格行）
  *   trivium.run.v3         → RunMeta（v1/v2严格历史读取后转换统一内存形状）
  * Schema 是运行时真理来源（ajv 校验），本文件是编译期的同一份约定。改一处必须改另一处。
@@ -95,23 +95,14 @@ export const VOIDING_DENY_CATEGORIES: readonly DenyCategory[] = ['peer-artifact'
 
 export type Severity = 'blocker' | 'major' | 'minor' | 'nit';
 export type Confidence = 'high' | 'medium' | 'low';
+/** `trivium.review.v1` 的整体判断（四值）。只剩旧归档在用，新产出一律是 {@link ReviewVerdict} */
+export type Verdict = 'approve' | 'approve-with-nits' | 'request-changes' | 'block';
 /**
- * 审查结论的整体判断（review.v2 起三值：通过 / 修改后通过 / 不通过）。
- * v1 的四枚举见 `LegacyVerdict`——历史留痕只读校验用，新运行不再产出。
+ * `trivium.review.v2` 的整体结论（EV-247）：通过 / 修改后通过 / 不通过。
+ * 编排器按侧计票、判本轮整体结论（`round-verdict.ts`），据此决定自动重审还是进入下一阶段。
  */
-export type Verdict = 'approve' | 'approve-after-changes' | 'reject';
-/** review.v1 的四枚举：仅作历史留痕的只读校验保留（2026-10-22 起由三值取代） */
-export type LegacyVerdict = 'approve' | 'approve-with-nits' | 'request-changes' | 'block';
-/**
- * 一轮评审的**整体三态判定**（2026-10-22 多轮评审特性）。
- *
- * 由编排器按各有效侧 verdict 聚合（fail-closed：reject ≥50% 优先；三档皆不达 50%
- * 时取剩余两档更保守的 pass_after_changes，不烧轮次），Driver 不得手写：
- * - `fail` 且轮次未用尽 → 修订后重发评审（新轮次自然抬升）；
- * - `fail` 且轮次用尽 → 停下人工审批（awaiting_approval，含命令 A）；
- * - `pass` / `pass_after_changes` → 按逐条裁决修订后进实施。
- */
-export type RoundDecision = 'pass' | 'pass_after_changes' | 'fail';
+export type ReviewVerdict = 'pass' | 'pass-after-changes' | 'reject';
+export const REVIEW_VERDICTS: readonly ReviewVerdict[] = ['pass', 'pass-after-changes', 'reject'];
 
 export const STAGES: readonly Stage[] = ['plan', 'code', 'bug'];
 
@@ -981,13 +972,6 @@ export interface ReviewConfig {
   default_critics: CriticId[];
   /** 单次运行可选审核者的基数上限（FR-29：1～3） */
   max_critics: number;
-  /**
-   * 计划阶段多轮评审的轮次上限（CLI `--plan-rounds` 当次覆盖，1～10 硬顶）。
-   * 整体判定不通过且轮次未用尽 → 修订重审；用尽仍不通过 → 人工审批停点。
-   */
-  plan_rounds: number;
-  /** 代码阶段多轮评审的轮次上限（CLI `--code-rounds`），语义同 `plan_rounds`；bug 阶段不设 */
-  code_rounds: number;
   timeout_s: Record<Stage, number>;
   wait_timeout_s: number;
   heartbeat_stale_s: number;
@@ -1209,7 +1193,11 @@ export interface Config {
   profiles: Record<string, Profile>;
   active_profile: string;
   gate: GateConfig;
-  preflight: { auth_cache_ttl_h: number };
+  /**
+   * `recalibrate_deadline_s`（EV-251）：预检退 69 时自动校准跑的每次 doctor 的总时限（秒），
+   * skill 的 Bash 工具超时由它按 `doctorToolTimeoutMs` 推出（加 60 s）
+   */
+  preflight: { auth_cache_ttl_h: number; recalibrate_deadline_s: number };
   verify: { build: string[]; test: string[] };
   retention: { run_dir_days: number };
   probe: ProbeSection;
@@ -1229,7 +1217,7 @@ export interface Ctx {
   sources: string[];
 }
 
-// ─────────────────────── 审查结论（trivium.review.v1，§6.5） ───────────────────────
+// ─────────────────── 审查结论（trivium.review.v2，旧归档 v1，§6.5） ───────────────────
 
 export interface Finding {
   id: string;
@@ -1245,14 +1233,7 @@ export interface Finding {
   confidence: Confidence;
 }
 
-export interface Review {
-  /**
-   * 写侧恒为 v2（2026-10-22 起）；v1 是历史留痕的只读形态——`parse.ts` 的 legacy 分派
-   * 会把过 v1 校验的历史原文断言成本类型（schema 值仍是 v1 字面），与 `verdict` 同款
-   * 的类型取舍：聚合只对带 `review_rounds` 的运行发生，那些运行写侧恒为 v2。
-   */
-  schema: 'trivium.review.v2';
-  verdict: Verdict;
+interface ReviewBody {
   summary: string;
   findings: Finding[];
   agreed?: string[];
@@ -1261,8 +1242,36 @@ export interface Review {
   consulted?: string[];
 }
 
+/** 旧契约：EV-247 之前的归档 */
+export interface ReviewV1 extends ReviewBody {
+  schema: 'trivium.review.v1';
+  verdict: Verdict;
+}
+
+/** 现行契约（EV-247）：只有 `verdict` 与 v1 不同 */
+export interface ReviewV2 extends ReviewBody {
+  schema: 'trivium.review.v2';
+  verdict: ReviewVerdict;
+}
+
+/** 两版按 `schema` 判别。新产出恒为 v2；读归档时两版都会遇到 */
+export type Review = ReviewV1 | ReviewV2;
+
+/** 现行写形的 schema 标识 */
+export const REVIEW_SCHEMA_ID = 'trivium.review.v2';
+
 /**
- * 逐条降级的意见（设计 §6.5 解析与降级）：根对象合法、这一条不合 `trivium.review.v1`。
+ * 「这是一份审查件」的唯一 schema 判据：v1 ∪ v2。
+ *
+ * 认审查件的读取侧（被审对象的硬拒、禁读矩阵的对端产物判定、报告的轮次枚举）**都经这里**，
+ * 不各自比字面量：升 v2 时漏改一处，v2 审查件就不再被当作对端产物——禁读静默失效（EV-247 计划 §一）。
+ */
+export function isReviewSchemaId(schema: unknown): boolean {
+  return schema === 'trivium.review.v1' || schema === REVIEW_SCHEMA_ID;
+}
+
+/**
+ * 逐条降级的意见（设计 §6.5 解析与降级）：根对象合法、这一条不合现行审查契约。
  *
  * **不进 `Review.findings`**——那是「失去阻断资格」的全部实现：共同阻断、严重度计数、分歧度量
  * 只读合格意见，一行不改就自动排除它。它另走旁路进裁决期望集（按原编号）与渲染（标出不合格字段）。
@@ -1610,6 +1619,37 @@ export type RunTermination =
   | { by: ExceptionTerminationBy; exit_code: number }
   | { by: 'worker_lost'; reason: WorkerLostReason };
 
+/** run.json `review_loop`：本轮在轮次链里的位置——第 `round` 轮，最多 `max_rounds` 轮（EV-247） */
+export interface ReviewLoop {
+  round: number;
+  max_rounds: number;
+}
+
+/** 本轮整体结论；`undetermined` 是有效结论不足（有效票不到入选侧数的一半，含一票都没有） */
+export type RoundOutcome = ReviewVerdict | 'undetermined';
+
+/**
+ * 本轮之后的下一步（EV-247）：
+ *   - `rerun`：本轮不通过且还有轮次——Driver 按裁决修改后自动重审；
+ *   - `proceed`：通过或修改后通过——按裁决修改后进入下一阶段；
+ *   - `human_review`：已到最大轮次仍不通过，或有效结论不足——停下人工审核。
+ */
+export type NextAction = 'rerun' | 'proceed' | 'human_review';
+
+/** 不计票的原因 */
+export type VerdictExclusion = 'failed' | 'parse_fallback' | 'voided' | 'legacy_schema' | 'missing';
+
+/** run.json `round_verdict`：本轮按侧计票的结果（EV-247，计算见 `round-verdict.ts`） */
+export interface RoundVerdict {
+  /** 计了票的侧及其结论 */
+  sides: Partial<Record<CriticId, ReviewVerdict>>;
+  /** 入选而不计票的侧及原因 */
+  excluded: Partial<Record<CriticId, VerdictExclusion>>;
+  counts: Record<ReviewVerdict, number>;
+  outcome: RoundOutcome;
+  next_action: NextAction;
+}
+
 /** run.json `plan_final_check`：计划阶段的计划定稿校验标记（EV-214，见 `RunMeta.plan_final_check`） */
 export interface PlanFinalCheck {
   /** 本轮被审对象的轮次；被审对象在归档外或名字不合规时为 null */
@@ -1672,14 +1712,18 @@ export interface RunMeta {
    */
   plan_final_check?: PlanFinalCheck;
   /**
-   * 本轮运行的评审轮次上限（2026-10-22 多轮评审，plan/code 阶段）。
+   * 本轮在轮次链里的位置（EV-247）。**只在计划与代码阶段**、由 `review --start` 在骨架里写入。
    *
-   * **只在 plan / code 阶段**写入；bug 阶段与早于本特性的留痕缺席。
-   * `limit` 是生效上限（1～10），`source` 记来源——flag 为当次 `--plan-rounds` / `--code-rounds`
-   * 覆盖，config 为取配置缺省。闸门读它做整体三态判定与轮次用尽停点；上限拦截发生在
-   * 新运行发起时（`prepareRun`），与本字段无关。缺席即「本轮按旧规则收口」，不追溯。
+   * **存在即「本轮按多轮评审循环的规则跑」**：闸门据 `round_verdict.next_action` 决定闸门去向
+   * （中间轮不立人工闸门、最后一轮仍不通过即停下人工审核），计划阶段每轮都要求新一轮计划。
+   * 缺失 = EV-247 之前的旧运行、bug 阶段、或纯文档跳过轮——闸门完全按旧规则判。
    */
-  review_rounds?: { limit: number; source: 'flag' | 'config' };
+  review_loop?: ReviewLoop;
+  /**
+   * 本轮按侧计票的结果（EV-247）。带 `review_loop` 的运行在审查结论落盘时写入，与之同生；
+   * 运行没跑完（失败、取消、跳过）则缺席，闸门此时按「无从得知」处理、不推断下一步。
+   */
+  round_verdict?: RoundVerdict;
   /**
    * 本轮实际使用的**档位表名**（`--profile` 覆盖后的 `active_profile`，设计 6.7.1，M11 第 6 步）。
    *

@@ -24,6 +24,11 @@ export const EXIT = {
   STILL_RUNNING: 73,
   /** 超时或单侧失败且为严格模式 */
   STRICT_ABORT: 75,
+  /**
+   * `doctor --deadline-s` 到点或收到信号时还有段没探完（EV-251）。已探完的段照常落盘；
+   * 与 69 分开：「没探完」不是「探完了有问题」，后者照样列在 blockers 里
+   */
+  DOCTOR_PARTIAL: 76,
 } as const;
 
 export type ExitCode = (typeof EXIT)[keyof typeof EXIT];

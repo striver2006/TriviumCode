@@ -1,0 +1,11 @@
+M1：fail=1 cancelled=0 1s ⇒ U3 混入一条不能修（或没标）⇒ 不 eligible，why 点名那一项；退 64 不在范围；通过返回 null；目标为空不 eligible
+M2：fail=0 cancelled=0 7s ⇒ 
+M3：fail=1 cancelled=0 1s ⇒ U1c 中止派生之后：同一令牌下的段内 run() 立即兑现合成结果、不派生；段外与别的令牌照常
+M4：fail=3 cancelled=0 605s ⇒ U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGKILL，最终组内无成员（计划三审 CODEX-01） ｜ U1b 组长在到点前已自然退出、后代仍在：到点时照样按组结束后代 ｜ U5 段作用域内不带 killTree 的 run() 也自成一组、进段级记录并计数（计划三审 CODEX-02）
+M5：fail=2 cancelled=0 1s ⇒ U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGKILL，最终组内无成员（计划三审 CODEX-01） ｜ U1b 组长在到点前已自然退出、后代仍在：到点时照样按组结束后代
+M6：fail=1 cancelled=0 7s ⇒ I7 带时限运行中收到 SIGTERM：协作式收尾，退 76、reason=signal，假 agy 的进程组已结束、探针临时目录已删
+M7：fail=1 cancelled=0 7s ⇒ I2 模型调用挂住、后代忽略 TERM、吐半截 JSON：到点退 76 的结果，按组结束不留进程、探针临时目录已删、在跑段不落盘；随后重跑预检仍退 69（GLM-02）
+M8：fail=1 cancelled=0 1s ⇒ U2 不能修的失败项（归档不可写之类）补成 fixable: false，汇总不 eligible 并点名
+M9：fail=1 cancelled=0 1s ⇒ U2 全部过期：目标只取入选且过期的侧，未入选的过期家不进清单（计划三审 AGY-03 驳回理由的落点）
+M10：fail=1 cancelled=0 1s ⇒ U4 只读能力一格：每个不可用侧都可修才可修（目标为这几侧）；一侧可修一侧失守 ⇒ 整项不可修（计划三审 AGY-04）
+M11：fail=1 cancelled=0 5s ⇒ I1 --deadline-s 越界或非整数退 64；不给时与原来一样不带 deadline 段

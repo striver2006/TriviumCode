@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { describeUnusedOverrides, runDoctor, type UnusedOverridesInput } from '../../src/trivium/doctor.js';
+import { describeUnusedOverrides, doctorSectionConsumesOverrides, runDoctor, type UnusedOverridesInput } from '../../src/trivium/doctor.js';
 import { TRIVIUM_DIR, agentConfigOf, defaultConfig } from '../../src/trivium/config.js';
-import { AGENTS, type AgentDescriptor } from '../../src/trivium/agents/registry.js';
+import { AGENTS, ALL_CLI_NAMES, type AgentDescriptor } from '../../src/trivium/agents/registry.js';
 import { assertModelOverrideKeys } from '../../src/trivium/critics.js';
 import { EXIT, TriviumError } from '../../src/trivium/exit-codes.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
@@ -209,13 +209,41 @@ test('U3 doctor.ts 里覆盖值只经 overridesFor 读（另一处是交给提�
     return text.slice(0, i) + text.slice(j + end.length);
   };
   let rest = cut(src, 'const overridesFor = ', '\n  };');
-  rest = cut(rest, 'describeUnusedOverrides({\n', '\n  });');
+  // EV-251 起收尾挪进 finalize，多缩进一层
+  rest = cut(rest, 'describeUnusedOverrides({\n', '\n    });');
+  // 终端重跑命令按本次收到的旗标原样拼出（EV-251），不是段内读覆盖、不影响「用上没有」的记录
+  rest = cut(rest, 'export function doctorRerunCommand(', '\n}\n');
   const isComment = (l: string): boolean => /^\s*(\*|\/\/|\/\*)/.test(l);
   const left = rest.split('\n').filter((l) => !isComment(l) && /opts\.(tierFlags|modelOverrides)\b/.test(l));
   assert.deepEqual(left, [], '这些行绕过了 overridesFor：用上的覆盖会被报成没用上');
   // 守住两段确实经助手：读覆盖的段数与 overridesFor( 调用数相同（今天是两段）
   const calls = src.split('overridesFor(').length - 1;
   assert.ok(calls >= 2, `overridesFor 调用只有 ${calls} 处`);
+});
+
+test('U3′ 「读覆盖的段」集合与源码对账（EV-251）：预检据它决定自动校准的调用带不带覆盖旗标', async () => {
+  const src = await fs.readFile(path.join(REPO_ROOT, 'src/trivium/doctor.ts'), 'utf8');
+  // 段边界：`if (only === null || only === '<cli>') {` 到下一段的同形开头（或「已登记但尚无探针实现」那一圈）
+  const heads = [...src.matchAll(/if \(only === null \|\| only === '([a-z]+)'\) \{/g)];
+  assert.ok(heads.length >= 4, `段开头只扫到 ${heads.length} 处`);
+  const consuming: string[] = [];
+  heads.forEach((m, i) => {
+    const end = i + 1 < heads.length ? heads[i + 1]!.index! : src.indexOf('已登记但尚无探针实现', m.index!);
+    if (src.slice(m.index!, end).includes('overridesFor(')) consuming.push(m[1]!);
+  });
+  for (const a of AGENTS) {
+    assert.equal(doctorSectionConsumesOverrides(a.cliName), consuming.includes(a.cliName), a.cliName);
+  }
+});
+
+test('U3″ 段次序常量与源码里各段的出现次序一致，集合等于注册表的 ALL_CLI_NAMES（代码三审 GLM-01）', async () => {
+  const src = await fs.readFile(path.join(REPO_ROOT, 'src/trivium/doctor.ts'), 'utf8');
+  const order = [...src.matchAll(/if \(only === null \|\| only === '([a-z]+)'\) \{/g)].map((m) => m[1]!);
+  const decl = /DOCTOR_SECTION_ORDER: readonly string\[\] = \[([^\]]*)\]/.exec(src);
+  assert.ok(decl, '找不到 DOCTOR_SECTION_ORDER 的声明');
+  const constant = [...decl[1]!.matchAll(/'([a-z]+)'/g)].map((m) => m[1]!);
+  assert.deepEqual(constant, order, '常量要与 runDoctor 里各段的执行次序一致，否则 deadline.sections 会漏段或错序');
+  assert.deepEqual([...constant].sort(), [...ALL_CLI_NAMES].sort(), '新增一家 CLI 时常量要跟着加');
 });
 
 // ── U5 判键接线 ──────────────────────────────────────────────────────

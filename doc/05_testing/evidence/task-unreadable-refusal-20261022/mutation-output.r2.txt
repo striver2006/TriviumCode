@@ -1,0 +1,113 @@
+✓ 工作树干净、基线全绿（2 个套件）
+  M1 ✓ 咬住（fail=16）
+  M2 ✓ 咬住（fail=1）
+  M3a ✓ 咬住（fail=1）
+  M3b ✓ 咬住（fail=1）
+  M4 ✓ 咬住（fail=1）
+  M5 ✓ 咬住（fail=2）
+  M6 ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=3）
+  M7b ✓ 咬住（fail=10）
+  M8 ✓ 咬住（fail=18）
+  M9 ✓ 咬住（fail=4）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=15）
+  M11b ✓ 咬住（fail=1）
+  M12 ✓ 咬住（fail=1）
+{
+  "总数": 15,
+  "咬住": 15,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "写入口改回宽松读（readTask），读不出照写",
+      "verdict": "✓ 咬住（fail=16）",
+      "fail": 16
+    },
+    {
+      "id": "M2",
+      "desc": "gate --check 删去输出前的正本判定（先写后判）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3a",
+      "desc": "cmdApproval 删去复核之前的先判（recordApproval 自己的先判仍在）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3b",
+      "desc": "recordApproval 删去写闸门之前的先判（只剩补偿兜底）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M4",
+      "desc": "删去补偿：闸门已写下决定、正本才坏时不回退",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M5",
+      "desc": "review 准备阶段删去分配 run_id 之前的先判",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M6",
+      "desc": "verify 删去执行命令之前的先判",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "正本不存在也按读不出处理（新主题首次写入被误拒）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M7b",
+      "desc": "同 M7，期望集成格变红（I10 新主题首次写入）",
+      "verdict": "✓ 咬住（fail=10）",
+      "fail": 10
+    },
+    {
+      "id": "M8",
+      "desc": "拒写错误的退出码改成 1",
+      "verdict": "✓ 咬住（fail=18）",
+      "fail": 18
+    },
+    {
+      "id": "M9",
+      "desc": "gate --check 读不出时仍退 0",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M10",
+      "desc": "gate --await-approval 读不出时改回退 0",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "删去形状判据（合法 JSON 一律判可读）",
+      "verdict": "✓ 咬住（fail=15）",
+      "fail": 15
+    },
+    {
+      "id": "M11b",
+      "desc": "同 M11，期望集成格变红（I13 形状不对退 2 而不是 1）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12",
+      "desc": "verify 删去登记被拒时的文案改写（原样上抛，丢掉命令结论；代码双审 GLM-01）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}
+exit=0

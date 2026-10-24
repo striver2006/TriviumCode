@@ -109,10 +109,46 @@ export function groupMemberCount(pgid: number): number {
   return n;
 }
 
-/** 按组号结束（SIGKILL）；组号 ≤ 1 或已不在时静默跳过。Windows：taskkill /T /F 树杀组长 */
+/**
+ * 收尾兜底：按组结束带标记的组，再逐个 SIGKILL 仍带标记的进程（落在本测试进程组里、`killGroup` 跳过的那些）。
+ * 只杀命令行含 `mark` 的进程，不碰本进程。
+ */
+export function killMarked(mark: string): void {
+  for (const g of groupsWithMark(mark)) killGroup(g);
+  // Windows：groupsWithMark 返回的就是带标记的进程号，killGroup 已逐个 taskkill /T /F，没有「本进程组」可落
+  if (IS_WIN) return;
+  const out = execFileSync('/bin/ps', ['-axo', 'pid=,command='], { encoding: 'utf8' });
+  for (const line of out.split('\n')) {
+    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (!m || !m[2]!.includes(mark) || Number(m[1]) === process.pid) continue;
+    try {
+      process.kill(Number(m[1]), 'SIGKILL');
+    } catch {
+      /* 已不在 */
+    }
+  }
+}
+
+let ownGroup: number | null = null;
+
+/** 本测试进程所在的进程组号（取一次缓存） */
+function ownPgid(): number {
+  ownGroup ??= Number(execFileSync('/bin/ps', ['-o', 'pgid=', '-p', String(process.pid)], { encoding: 'utf8' }).trim());
+  return ownGroup;
+}
+
+/**
+ * 按组号结束（SIGKILL）；组号 ≤ 1、是本测试进程自己所在的组、或已不在时静默跳过。Windows：taskkill /T /F 树杀组长
+ *
+ * 不对自己的组发（EV-251 变异预跑撞过）：被测代码一旦不再让子进程自成一组（正是某些变异要造的形态），
+ * 带标记的子进程就落在测试进程的组里，按标记找到的组号即测试运行器、变异脚本乃至外层 shell 所在的组——
+ * 一发 SIGKILL 连变异脚本一起杀掉，它的恢复步骤跑不到，变异留在工作树上。
+ */
 export function killGroup(pgid: number): void {
   if (pgid <= 1) return;
   if (IS_WIN) {
+    // 同 POSIX「不对自己的组发」：Windows 上组号即 pid，不树杀测试进程自己
+    if (pgid === process.pid) return;
     try {
       spawnSync('taskkill.exe', ['/PID', String(pgid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
     } catch {
@@ -120,6 +156,7 @@ export function killGroup(pgid: number): void {
     }
     return;
   }
+  if (pgid === ownPgid()) return;
   try {
     process.kill(-pgid, 'SIGKILL');
   } catch {

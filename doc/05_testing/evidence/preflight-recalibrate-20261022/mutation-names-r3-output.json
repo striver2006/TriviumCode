@@ -1,0 +1,43 @@
+[
+  {
+    "id": "M12",
+    "desc": "代码三审 CODEX-01：组长已退出时不再看有没有 pid 等于组号的进程（复用的组号照样发信号）",
+    "suite": "dist/test/test/unit/probe-section.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U1d 组长已退出、而进程表里有 pid 等于组号的活进程：判组号已被复用，不发信号，列进 reused（代码三审 CODEX-01）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 3
+  },
+  {
+    "id": "M13",
+    "desc": "代码三审 CODEX-03：到点时不立即起兜底计时器",
+    "suite": "dist/test/test/unit/doctor-deadline.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 2,
+    "red": [
+      "I4 兜底：段卡在不经 run() 的 await 上，控制器在兜底时长后按已记状态出结果（stuck），不等挂住的 await（AGY-02）",
+      "I10 环境段挂住（第一个探针段之前）：到点照样由兜底按时出结果，residue 说明环境段没跑完（代码三审 CODEX-02）",
+      "U6 控制器：在写的 checkpoint 永不兑现时，兜底照样在到点后的兜底时长内兑现（代码三审 CODEX-03）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 130
+  },
+  {
+    "id": "M14",
+    "desc": "代码三审 CODEX-04 ≡ GLM-03：台账补删只在带时限时做",
+    "suite": "dist/test/test/unit/doctor-deadline.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I11 不带时限的普通 doctor 也补删已退出进程留下的台账（代码三审 CODEX-04 ≡ GLM-03）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 10
+  }
+]

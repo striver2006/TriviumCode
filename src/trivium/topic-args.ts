@@ -16,9 +16,9 @@ import type { CriticId, Ctx, Stage } from './types.js';
 import { assertModelOverrideKeys, resolveCriticSelection, resolveDriver } from './critics.js';
 import { assertFlagValuesGiven, assertTierFlags, collectTierFlags, nativeFlagNames, tierFlagNames } from './tier-flags.js';
 import { validateTopic, parseArtifactName } from './naming.js';
-import { MAX_REVIEW_ROUNDS } from './config.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { exists } from './util/fsx.js';
+import { maxRoundsProblem } from './round-verdict.js';
 import { isReviewArtifact } from './archive.js';
 import { diffExcludePrefixes } from './code-stage.js';
 import type { PreflightScope } from './preflight.js';
@@ -37,8 +37,8 @@ const STATIC_FLAGS = [
   'only', 'allow-single', 'session-id', 'critics',
   // M9 第 5 步：不认识它就会被当正文压进 restParts，与 `--base` 那次同形
   'driver', 'driver-model', 'driver-provider',
-  // 多轮评审轮次上限（2026-10-22）：同族理由——不认识就静默进正文
-  'plan-rounds', 'code-rounds',
+  // EV-247：评审循环的最大轮次。阶段专属的两个只在命令 A 收，B/C 写了退 64（见 resolveMaxRounds）
+  'max-rounds', 'max-rounds-plan', 'max-rounds-code',
 ] as const;
 type StaticFlag = (typeof STATIC_FLAGS)[number];
 
@@ -271,6 +271,12 @@ export interface TopicResolution {
   /** 一侧失败时不中止，产出单审结果并留痕（§12.4） */
   allow_single: boolean;
   /**
+   * 评审循环的最大轮次（EV-247），按阶段给：null = 不指定（新链缺省 3、续链沿用链首）。
+   * skill 把对应阶段那一项传给该阶段 `review --start` 的 `--max-rounds`，null 不传。
+   * 命令 A 两项都可能有值；B 只有 plan、C 只有 code；bug 两项恒 null。
+   */
+  max_rounds: { plan: number | null; code: number | null };
+  /**
    * 当轮 Driver（`--driver <id>`，M9 第 5 步）。缺省即注册表缺省值。
    *
    * 它决定两件事：**谁不得入选**（自己不能审自己）、**原稿是谁的后缀**。
@@ -294,20 +300,50 @@ export interface TopicResolution {
    * 必须被识别——否则会被当成正文吞进审查焦点。原样回显，供上层决定要不要透传。
    */
   session_id: string | null;
-  /**
-   * 计划阶段多轮评审的轮次上限（`--plan-rounds <N>`，1～10；缺席回落 `review.plan_rounds`）。
-   * `plan_rounds_source` 记来源——flag 表示用户当次指定，config 表示取配置缺省。
-   * 命令 A 与命令 B 都输出；S2 / 第 3 步把它透传给 `review --start --plan-rounds`。
-   * bug 阶段不做轮次判定，字段照常输出（恒为 config 回落值）、下游不消费。
-   */
-  plan_rounds: number;
-  plan_rounds_source: 'flag' | 'config';
-  /** 代码阶段轮次上限（`--code-rounds <N>`），语义同 `plan_rounds` */
-  code_rounds: number;
-  code_rounds_source: 'flag' | 'config';
   /** 主题是否由编排器推导而来（skill 需回显给用户确认） */
   topic_inferred: boolean;
   notes: string[];
+}
+
+/**
+ * 评审循环最大轮次的三个旗标 → 按阶段的值（EV-247，计划 §四）。
+ *
+ * - 命令 A（`all`）：`--max-rounds-plan` / `--max-rounds-code` 分别指定，`--max-rounds` 同时作用两阶段，并用时专属的优先；
+ * - 命令 B / C：只认 `--max-rounds`，作用于本阶段；写了阶段专属旗标退 64——计划审里写 `--max-rounds-code` 会静默无效，
+ *   这一族「解析成功、随后被丢弃」的缺口本文件头部登记过；
+ * - 根因审（`bug`）不进循环，三个都退 64。
+ *
+ * 取值校验与 `review --start` 同一个函数（`maxRoundsProblem`），越界在这里就退 64，不必等到拉起。
+ */
+function resolveMaxRounds(
+  scope: PreflightScope,
+  named: Partial<Record<string, string>>,
+): { plan: number | null; code: number | null } {
+  const read = (flag: 'max-rounds' | 'max-rounds-plan' | 'max-rounds-code'): number | null => {
+    const raw = named[flag]?.trim();
+    if (raw === undefined) return null;
+    const problem = maxRoundsProblem(raw, `--${flag}`);
+    if (problem) throw new TriviumError(EXIT.USAGE, problem);
+    return Number.parseInt(raw, 10);
+  };
+  const both = read('max-rounds');
+  const plan = read('max-rounds-plan');
+  const code = read('max-rounds-code');
+  if (scope === 'bug') {
+    if (both !== null || plan !== null || code !== null) {
+      throw new TriviumError(EXIT.USAGE, '根因审不进多轮评审循环（EV-247），--max-rounds 一类旗标只用于计划审与代码审，请去掉。');
+    }
+    return { plan: null, code: null };
+  }
+  if (scope === 'all') return { plan: plan ?? both, code: code ?? both };
+  const foreign = plan !== null ? '--max-rounds-plan' : code !== null ? '--max-rounds-code' : null;
+  if (foreign) {
+    throw new TriviumError(
+      EXIT.USAGE,
+      `${foreign} 只在全流程（命令 A）里区分阶段；本命令只有一个阶段，请改用 --max-rounds <n>。`,
+    );
+  }
+  return scope === 'plan' ? { plan: both, code: null } : { plan: null, code: both };
 }
 
 /** 从任务目标推导主题候选：取前若干个词，去掉标点 */
@@ -687,49 +723,6 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     .map((c) => c.trim())
     .filter(Boolean);
 
-  /*
-   * ── 多轮评审轮次上限（2026-10-22 三态判定特性）──
-   *
-   * `--plan-rounds` / `--code-rounds`：整数 1～10，缺席回落 `review.plan_rounds` / `review.code_rounds`。
-   * 校验在这里当场做（与 `--only` 同理）：留到 `review --start` 才报错，用户要多等一整轮解析。
-   * 缺值（空串）与表外值同报 64——「解析成功、随后被丢弃」正是本文件头部那族缺口的形状。
-   *
-   * 按本次解析范围收旗标：命令 A（all）两支都收；B/C 只收对应那支；
-   * bug 不设轮次判定，两支都不收——给了就退 64，不静默忽略。
-   */
-  const ROUND_FLAGS: readonly ('plan-rounds' | 'code-rounds')[] = ['plan-rounds', 'code-rounds'];
-  const acceptedRoundsFlags: readonly ('plan-rounds' | 'code-rounds')[] =
-    scope === 'all' ? ROUND_FLAGS
-    : scope === 'plan' ? ['plan-rounds']
-    : scope === 'code' ? ['code-rounds']
-    : [];
-  const parseRoundsFlag = (flag: 'plan-rounds' | 'code-rounds', raw: string | undefined): number | null => {
-    if (raw === undefined) return null;
-    const n = Number(raw);
-    if (!Number.isInteger(n) || n < 1 || n > MAX_REVIEW_ROUNDS) {
-      throw new TriviumError(
-        EXIT.USAGE,
-        `--${flag} 需要 1～${MAX_REVIEW_ROUNDS} 的整数（轮次上限），收到「${raw}」。`,
-      );
-    }
-    return n;
-  };
-  for (const flag of ROUND_FLAGS) {
-    if (named[flag] !== undefined && !acceptedRoundsFlags.includes(flag)) {
-      throw new TriviumError(
-        EXIT.USAGE,
-        `--${flag} 不适用于本次解析范围（scope=${scope}）：` +
-          (scope === 'bug'
-            ? 'bug 阶段不设多轮评审轮次判定。'
-            : `该范围只接受 ${acceptedRoundsFlags.length > 0 ? acceptedRoundsFlags.map((f) => `--${f}`).join(' ') : '（无轮次旗标）'}。`),
-      );
-    }
-  }
-  const planRoundsFlag = parseRoundsFlag('plan-rounds', named['plan-rounds']);
-  const codeRoundsFlag = parseRoundsFlag('code-rounds', named['code-rounds']);
-  const planRounds = planRoundsFlag ?? ctx.config.review.plan_rounds;
-  const codeRounds = codeRoundsFlag ?? ctx.config.review.code_rounds;
-
   // ── 按 stage 定位被审对象（纯只读，目录不存在时容忍）──
   let subjectPath: string | null = null;
   let base: string | null = null;
@@ -775,15 +768,12 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     only,
     critics,
     allow_single: allowSingle,
+    max_rounds: resolveMaxRounds(scope, named),
     driver,
     driver_enabled: enabledAsDriver,
     driver_model: named['driver-model'] ?? null,
     driver_provider: named['driver-provider'] ?? null,
     session_id: named['session-id']?.trim() || null,
-    plan_rounds: planRounds,
-    plan_rounds_source: planRoundsFlag !== null ? 'flag' : 'config',
-    code_rounds: codeRounds,
-    code_rounds_source: codeRoundsFlag !== null ? 'flag' : 'config',
     topic_inferred: inferred,
     notes,
   };
@@ -820,7 +810,7 @@ async function locateSubjectReadOnly(
       throw new TriviumError(
         EXIT.MISSING_ARTIFACT,
         `指定的被审对象是一份**审查件**，不是原稿：${explicit}\n` +
-          '  它的 front-matter 是 schema: trivium.review.v1，由编排器从审查员的结构化输出渲染而成。\n' +
+          '  它的 front-matter 是 schema: trivium.review.v2（旧归档为 v1），由编排器从审查员的结构化输出渲染而成。\n' +
           '  拿它当被审对象会让这一轮审的是「对意见的意见」。请指向原稿。',
       );
     }

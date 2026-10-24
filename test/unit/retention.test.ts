@@ -381,10 +381,11 @@ test('scrubAllRunRoot：准入未过而 status 读得到的目录进 deferred，
 test('scrubAllRunRoot：项目桶读不了要记账，不能整棵静默跳过（CODEX-01）', { skip: process.platform === 'win32' && '「目录在而 readdir 失败」在 NTFS 无纯 fs 构造（isDirectory 前置跳过吞掉文件占位；icacls 改 ACL 超出测试面）' }, async () => {
   const { cfg, runRoot, mine } = await twoBuckets();
   await runDirWith(mine, 'R-a', 'success');
-  // 桶位置上放一个普通文件：readdir 会 ENOTDIR，走的正是那条 catch（win32 上 chmod 0 不拦 readdir，
-  // 文件占位是两平台同形的「读不了」构造——注释里本来写的就是这个办法）
+  // 「目录在而 readdir 失败」：chmod 0 的目录。Windows 线曾改成普通文件占位，但 scrubAllRunRoot 先按 isDirectory
+  // 跳过非目录、走不到那条 catch，POSIX 上这格因此变红（双平台统一时复原）；win32 上 chmod 0 不拦 readdir，整格跳过
   const brokenBucket = path.join(runRoot, 'broken-bucket');
-  await fs.writeFile(brokenBucket, 'not a directory');
+  await fs.mkdir(brokenBucket);
+  await fs.chmod(brokenBucket, 0o000);
 
   const r = await scrubAllRunRoot(cfg, { adapters: wiredAdapter });
 

@@ -183,14 +183,15 @@ test('C4 · 有接受项、没有任何新一轮计划 ⇒ 告警点名应写的
   assert.ok(w[0]!.detail.includes(planRel(fx, `${today()}-${fx.topic}-claude.md`)), '点名代码阶段实际读到的定稿（原稿）');
 });
 
-test('C5 · 第 1 轮接受且 r2 齐、第 2 轮全部驳回，之后写 r3 漏编号 ⇒ 不复核、无告警', { skip }, async () => {
+test('C5 · 第 1 轮接受且 r2 齐、第 2 轮全部驳回并按循环规则写了 r3（无编号可引）⇒ 复核通过、无告警', { skip }, async () => {
   const fx = await makeFixture({ topic: 'pfr-c5' });
   await planPassed(fx);
   const run2 = await runPlan(fx);
   assert.deepEqual((await readRun(fx, 'plan', run2))['plan_final_check'], { subject_rerun_index: 2 });
   await writeDisposition(fx, run2, { r: 2, accept: [] });
-  await planGateOk(fx);
+  // 带轮次链的轮次全部驳回也要写新一轮计划（EV-247），闸门之前就得在
   await writePlan(fx, 3, []);
+  await planGateOk(fx);
   await touchSource(fx);
   const js = await startAndFinish(fx, CODE_ARGS(fx), STUB, ['gemini', 'glm']);
   assert.deepEqual(js.warnings.filter((w) => w.name === RECHECK), [], JSON.stringify(js.warnings));

@@ -1,0 +1,80 @@
+{
+  "agreed": [
+    "预检失败自动校准（EV-251）流程闭环且风控完备：skill 仅照抄预检机读的 recalibration.invocations 前台执行，不自猜文案，重跑预检后至多校准一轮、绝不无限重试，有效遏制配额浪费与工具超时风险。",
+    "进程组管控与协作收尾设计周密：通过段作用域强制 killTree 并维护段级全量进程组记录，组长退出而后代仍在时通过非僵尸成员计数升级 SIGKILL 彻底消灭孤儿；按次中止令牌兑现合成结果，确保探针沿 finally 正常清理凭据副本目录。",
+    "临时目录台账与补删严格恪守安全规范：通过 makeTempDir 观察者将临时目录串行登记于 <run_root>/doctor-temp-<pid>.json，启动时补删已死进程遗留，严格校验真实路径落在临时目录下且符合固定形态（R1 事故规矩），不盲目扫描系统临时目录。",
+    "目标组合展开与覆盖消费按能力分档实现：recalTargets 与 doctorSectionConsumesOverrides 对账联动，仅对消费覆盖的侧传递当前阶段模型与 profile，对固定口径侧仅传 --only 避免 EV-245 提示；只读能力可用需全部不可用侧声明 fix: 'doctor' 才算可修。",
+    "测试分层与变异对账覆盖全面：新增 25 条单测、3 条打包 CLI 集成测试、18 条对账断言与 11 条变异测试（M1~M11），对中止后不落盘、新鲜度独立判定、段内自成组等核心不变量做了严密的回归防护。"
+  ],
+  "consulted": [
+    ".reviews/预检失败自动校准/plan/2026-10-22-预检失败自动校准-r2-claude.md",
+    "src/trivium/doctor-deadline.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/config.ts",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/fixture.ts",
+    "src/trivium/probes/codex.ts",
+    "src/trivium/probes/zcode.ts",
+    "skills-src/partials/preflight/recalibrate.md",
+    "skills-src/commands/run.contract.md",
+    "skills-src/partials/review/body.md",
+    "skills/dual-critic/schema/config.v2.json",
+    "skills/dual-critic/entry/codex/dual-run/SKILL.md",
+    "test/contract/skill-recalibrate.test.ts",
+    "test/integration/doctor-deadline-cli.test.ts",
+    "test/unit/doctor-deadline.test.ts",
+    "test/unit/preflight-recalibrate.test.ts",
+    "test/unit/probe-section.test.ts",
+    "test/unit/entry-scan-isolation.test.ts",
+    "test/unit/doctor-unused-overrides.test.ts",
+    "test/helpers/proc.ts",
+    "doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md"
+  ],
+  "findings": [
+    {
+      "confidence": "medium",
+      "evidence": "src/trivium/doctor-deadline.ts:80-82 与 :93：realTmpRoot 实现为 fs.realpath(os.tmpdir()).catch(() => os.tmpdir())。若发生异常进入 catch 分支，而宿主环境 os.tmpdir() 带有尾随斜杠（macOS 典型路径如 /var/folders/.../T/），由于 path.dirname(real) 不包含尾随斜杠，在 line 93 进行全等比较 path.dirname(real) === root 时会判假，导致合法生成的临时目录被判为 'no' 并记入 residue，无法由补删逻辑清理。",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/doctor-deadline.ts:81",
+      "problem": "realTmpRoot() 异常回退分支直接返回 os.tmpdir()，若包含尾随斜杠可能与 path.dirname(real) 规范化路径不一致导致 deletable 判定失真。",
+      "severity": "nit",
+      "suggestion": "realTmpRoot() 回退分支改用 path.resolve(os.tmpdir()) 或去除末尾分隔符，保证任何分支下与 path.dirname 格式一致。"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "src/trivium/doctor.ts:967 针对所有未完成段统一生成 unfinishedSectionNote(launches)。当段状态为 not_started 且 launches === 0 时，src/trivium/doctor-deadline.ts:65 仍拼出「（其中调用模型的那几次配额已花）」，尽管用户结合前文已拉起 0 次能理解无调用，但对未启动段表述不够精准。",
+      "id": "AGY-02",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "src/trivium/doctor-deadline.ts:63",
+      "problem": "unfinishedSectionNote(launches) 对 state === 'not_started' 的未启动段输出配额已花说明，在 launches === 0 时存在表述违和。",
+      "severity": "nit",
+      "suggestion": "在 unfinishedSectionNote 中根据 launches > 0 判断配额提示文案，或针对 not_started 状态单独给出说明。"
+    }
+  ],
+  "not_covered": [
+    "受独立审查员只读与无命令执行授权限制，未在真实模型配额与网络环境下拉起带时限的真实 doctor 进程验证真实耗时与网络打满情景。",
+    "宿主直接发送 SIGKILL 强杀 doctor 时子进程组成为孤儿的极端情况未做全真模拟，依赖代码逻辑与台账补删机制推导。",
+    "未在所有第三方 Carrier 桌面客户端内实测各宿主外层工具超时的物理硬上限（按计划 r2 D5 与 BACKLOG EV-251 作为已知边界登记）。"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "预检失败自动校准（EV-251）代码实现扎实严谨，严格遵循计划 r2 设计与系统架构纪律，结论判为通过（pass）。\n针对审查焦点逐项核验：\n1. 时限与进程结束：配置 preflight.recalibrate_deadline_s 缺省 480s（30~540s 可调），为 600s Bash 超时预留 60s 缓冲；withProbeSection 强制 killTree 并记录段级全量进程组，到点按组结束且排除僵尸进程，finally 正常执行清理，宿主强杀由台账补删兜底；未探完段作废不落盘、输出 launches 交代配额上界并退 76。\n2. 机读字段与归属：失败项 recalibrate 准确声明，fail-closed 兜底补齐，顶层 recalibration 供 skill 照抄；严格区分探针落盘结论失效（可修）与实测否定/环境故障（不可修）。\n3. 配额收窄与上限：目标精确展开至本轮组合，skill 强约束至多自动校准一轮、失败立即停下，风控严密。\n4. EV-243 挂满转述：未探完段统一通过通用话术与 rerun 交代，不写死 vendor。\n5. 工具超时时限：统一取值加配置键调节，符合纪律 7 与原则 P7。发现 2 处 nit 级可维护性建议，不影响功能实施。",
+  "verdict": "pass"
+}

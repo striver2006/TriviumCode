@@ -100,27 +100,110 @@
       },
       "description": "计划定稿校验的标记（EV-214，设计 §6.6 规则 9）。只在计划阶段、由 EV-214 之后的编排器写入；代码与 bug 阶段不写。存在即「本轮按 EV-214 的规则跑」：闸门只对带它的轮次要求有接受项时存在执笔方的新一轮计划；缺失即「无从得知」，有接受项时 gate 出 next_plan_unchecked 告警、不判失败（不追溯历史轮次）。subject_rerun_index 是本轮被审对象的轮次：位于本主题 plan/ 根、文件名可解析、后缀为当轮 Driver、无 -revised/-response 中缀时取其轮次，否则（归档外的 --plan-file、名字不合规）为 null，此时闸门的基准轮次退回 rerun_index"
     },
-    "review_rounds": {
+    "review_loop": {
       "type": "object",
       "required": [
-        "limit",
-        "source"
+        "round",
+        "max_rounds"
       ],
       "additionalProperties": false,
       "properties": {
-        "limit": {
+        "round": {
           "type": "integer",
           "minimum": 1,
           "maximum": 10
         },
-        "source": {
+        "max_rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        }
+      },
+      "description": "本轮在轮次链里的位置（EV-247）：第 round 轮，最多 max_rounds 轮（缺省 3、上限 10）。只在计划与代码阶段、由 review --start 在骨架里写入。存在即「本轮按多轮评审循环的规则跑」：闸门据 round_verdict.next_action 决定闸门去向，计划阶段每轮都要求新一轮计划。缺失 = EV-247 之前的旧运行、bug 阶段或纯文档跳过轮，闸门完全按旧规则判"
+    },
+    "round_verdict": {
+      "type": "object",
+      "required": [
+        "sides",
+        "excluded",
+        "counts",
+        "outcome",
+        "next_action"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sides": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "pass",
+              "pass-after-changes",
+              "reject"
+            ]
+          },
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "计了票的侧及其结论；键为审核者 id，是否已登记由代码层按注册表校验"
+        },
+        "excluded": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "failed",
+              "parse_fallback",
+              "voided",
+              "legacy_schema",
+              "missing"
+            ]
+          },
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "入选而不计票的侧及原因"
+        },
+        "counts": {
+          "type": "object",
+          "required": [
+            "pass",
+            "pass-after-changes",
+            "reject"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "pass": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "pass-after-changes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "reject": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "outcome": {
           "enum": [
-            "flag",
-            "config"
+            "pass",
+            "pass-after-changes",
+            "reject",
+            "undetermined"
+          ]
+        },
+        "next_action": {
+          "enum": [
+            "rerun",
+            "proceed",
+            "human_review"
           ]
         }
       },
-      "description": "本轮运行的评审轮次上限（plan/code 阶段，2026-10-22 多轮评审）：limit 是生效上限，source 记来源——flag 表示当次 --plan-rounds / --code-rounds 覆盖，config 表示取配置缺省。写侧恒写（与 requested_routes 同款「只增不减」）；字段缺席＝该轮早于本特性或为 bug 阶段：gate 不做整体三态判定与轮次用尽停点，按旧规则收口（不追溯历史轮次）。上限拦截发生在新运行发起时，与本字段无关"
+      "description": "本轮按侧计票的结果（EV-247）：不通过 ≥ 50% 判不通过；否则修改后通过 ≥ 50% 判修改后通过；否则通过 ≥ 50% 判通过；三档都不到半数判修改后通过；有效票 × 2 < 入选侧数（含一票都没有）判 undetermined，即有效结论不足。next_action：不通过且还有轮次为 rerun，通过或修改后通过为 proceed，已到上限仍不通过或 undetermined 为 human_review。带 review_loop 的运行在审查结论落盘时写入；运行没跑完则缺席"
     },
     "driver_guard_level": {
       "enum": [

@@ -261,8 +261,22 @@ function checkAgentIdentities(data: unknown): string[] {
     critics?: Record<string, { vendor?: unknown }>;
     family_comparisons?: { left?: unknown; right?: unknown }[];
     requested_routes?: Record<string, unknown>;
+    round_verdict?: { sides?: Record<string, unknown>; excluded?: Record<string, unknown> };
   };
   const problems: string[] = [];
+
+  /*
+   * `round_verdict` 两组键的跨字段约束（EV-247，计划审 AGY-01）：`run.v3.json` 的描述承诺
+   * 「是否已登记由代码层按注册表校验」。一侧要么计了票、要么列了不计票原因，不能两处都有。
+   */
+  const sideKeys = Object.keys(m.round_verdict?.sides ?? {});
+  for (const [field, keys] of [['sides', sideKeys], ['excluded', Object.keys(m.round_verdict?.excluded ?? {})]] as const) {
+    for (const id of keys) {
+      if (!isAgentId(id) || !agentById(id)?.criticEnabled) problems.push(`round_verdict.${field} 含未登记审核者：${id}`);
+      if (!Array.isArray(m.critics_selected) || !m.critics_selected.includes(id)) problems.push(`round_verdict.${field}.${id} 不在入选集合`);
+      if (field === 'excluded' && sideKeys.includes(id)) problems.push(`round_verdict 里 ${id} 同时计了票又列为不计票`);
+    }
+  }
 
   for (const id of Object.keys(m.requested_routes ?? {})) {
     if (!isAgentId(id) || !agentById(id)?.criticEnabled) problems.push(`requested_routes 含未登记审核者：${id}`);

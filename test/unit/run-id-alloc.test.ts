@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { ADOPT_PRECREATED_RUN_DIR_ENV, RUN_ID_MAX_BUMPS, allocateRunId, newRunId } from '../../src/trivium/meta.js';
+import { ADOPT_PRECREATED_RUN_DIR_ENV, RUN_ID_MAX_BUMPS, allocateRunId, emptyTask, newRunId } from '../../src/trivium/meta.js';
 import { metaDir } from '../../src/trivium/archive.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import type { StageOrVerify } from '../../src/trivium/types.js';
@@ -31,7 +31,8 @@ async function register(l: { archiveRoot: string; topic: string }, ids: string[]
   const runs = ids.map((run_id) => ({
     run_id, stage: 'plan', rerun_index: 1, status: 'success', review_mode: 'full', started_at: NOW.toISOString(), driver: 'claude',
   }));
-  await fs.writeFile(path.join(l.archiveRoot, TOPIC, 'task.json'), JSON.stringify({ topic: TOPIC, runs }, null, 2) + '\n');
+  // 完整形态：EV-248 起 readTaskStrict 判形状，只有 topic + runs 的最小写法会判读不出、登记就不算数
+  await fs.writeFile(path.join(l.archiveRoot, TOPIC, 'task.json'), JSON.stringify({ ...emptyTask(TOPIC), runs }, null, 2) + '\n');
 }
 
 async function plantMeta(l: { archiveRoot: string; topic: string }, stage: StageOrVerify, id: string) {

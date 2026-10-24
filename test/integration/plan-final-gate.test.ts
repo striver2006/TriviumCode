@@ -206,9 +206,21 @@ test('I6 · 非缺省执笔方 codex：应写名为 -r2-codex.md，别家后缀�
   assert.equal((await check(fx)).code, EXIT.OK);
 });
 
-test('I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2', { skip }, async () => {
+/**
+ * 把一次运行改回 EV-247 之前的形态：去掉轮次链与计票。只为让 EV-214 的「全部驳回不写新计划」那一格仍可达——
+ * 带轮次链的新运行每轮都要求新计划（I8），这一格只剩旧运行会走到。同 I5 改写 run.json 的手法。
+ */
+async function asPreLoopRun(fx: Fixture, runId: string): Promise<void> {
+  const meta = await runMeta(fx, runId);
+  delete meta['review_loop'];
+  delete meta['round_verdict'];
+  await fs.writeFile(runJsonPath(fx, runId), JSON.stringify(meta, null, 2) + '\n', 'utf8');
+}
+
+test('I7 · 旧运行第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_index 2、被审对象 r1）有接受 → 要求 r2', { skip }, async () => {
   const fx = await makeFixture({ topic: 'pfg-i7' });
   const run1 = await runPlan(fx, 'A');
+  await asPreLoopRun(fx, run1);
   await writeDisposition(fx, run1, { accept: [] });
   assert.equal((await check(fx)).code, EXIT.OK);
 
@@ -222,5 +234,21 @@ test('I7 · 第 1 轮全部驳回、不写 r2；复审未修订原稿（rerun_in
   assert.ok(f, c1.raw);
   assert.ok(f.message.includes(`${today()}-${fx.topic}-r2-claude.md`), f.message);
   await writePlan(fx, 2, ['GLM-01']);
+  assert.equal((await check(fx)).code, EXIT.OK);
+});
+
+test('I8 · 带轮次链的轮次全部驳回也要写新一轮计划（EV-247）：缺 → missing_next_plan（无编号），写了「本轮无改动」即通过', { skip }, async () => {
+  const fx = await makeFixture({ topic: 'pfg-i8' });
+  const runId = await runPlan(fx, 'B');
+  assert.deepEqual((await runMeta(fx, runId))['review_loop'], { round: 1, max_rounds: 3 });
+  await writeDisposition(fx, runId, { accept: [] });
+  const c1 = await check(fx);
+  assert.notEqual(c1.code, EXIT.OK, c1.raw);
+  const f = failure(c1.js, 'missing_next_plan');
+  assert.ok(f, c1.raw);
+  assert.deepEqual(f.ids, []);
+  const want = [today(), fx.topic, 'r2', 'claude'].join('-') + '.md';
+  assert.ok(f.message.includes(want) && f.message.includes('本轮无改动'), f.message);
+  await writePlan(fx, 2, []);
   assert.equal((await check(fx)).code, EXIT.OK);
 });

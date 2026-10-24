@@ -26,9 +26,9 @@ import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
 // 「名单里有没有 qwen」取决于开发机（作者机器恰好有 qwen.config.toml 才绿）。这里给测试进程
 // 指一个只含 qwen 空壳的临时 CODEX_HOME，名单恒为 ['qwen']，与机器状态解耦。
 const isolatedCodexHome = await (async () => {
-  const { mkdtemp, writeFile } = await import('node:fs/promises');
-  const osMod = await import('node:os');
-  const dir = await mkdtemp(path.join(osMod.tmpdir(), 'trivium-pf-codexhome-'));
+  const { writeFile } = await import('node:fs/promises');
+  // 经 scratchDir 登记、进程退出时删（EV-208 守卫；双平台统一时由裸 mkdtemp 改来）
+  const dir = await scratchDir('trivium-pf-codexhome-');
   await writeFile(path.join(dir, 'qwen.config.toml'), '# preflight 测试隔离名单（空壳）\n');
   process.env['CODEX_HOME'] = dir;
   return dir;
@@ -231,7 +231,7 @@ test('profile 缺该阶段模型时报不合格', async () => {
 
 // ── 探针新鲜度：快速失败，不拉 doctor（AGY-03 / GLM-08）──
 
-test('从未探针 → 退 69，且明确说明不自动拉起 doctor', async () => {
+test('从未探针 → 退 69，终端里手动跑 doctor；/dual-* 里按入选各侧自动校准（EV-251）', async () => {
   const ctx = await fakeCtx((c) => {
     c.probe.generated_at = null;
   });
@@ -240,7 +240,11 @@ test('从未探针 → 退 69，且明确说明不自动拉起 doctor', async ()
   assert.equal(r.exitCode, EXIT.ENV);
   const c = r.checks.find((x) => !x.ok)!;
   assert.match(c.detail, /手动运行 `trivium doctor`/);
-  assert.match(c.detail, /刻意\*\*不\*\*自动拉起/);
+  assert.match(c.detail, /自动校准/);
+  // 旧说法（「配额已烧而结论未落盘」）已过时：doctor 每探完一段就落盘
+  assert.doesNotMatch(c.detail, /结论未落盘/);
+  assert.equal(c.recalibrate?.fixable, true);
+  assert.equal(r.recalibration?.eligible, true);
 });
 
 test('探针过期 → 退 69 并指引手动执行', async () => {

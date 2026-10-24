@@ -1,0 +1,57 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "围绕指定焦点核实了两件事。其一，缺省问候语：计划 §1 声明「缺省仍是 hello」、§2 给出 greeting = 'hello'，与现实现 src/greet.ts 的 `hello ${name}` 字符串逐字一致，且 §3 有缺省断言兜底，这一点说清楚了。其二，调用方不受影响：计划只写了结论「不改调用方」，但没写成立机制——新参数相对 name 的位置未在计划文本中声明（实测 grep 确认现仓库无任何调用方，兼容性论证缺位），属于可一句话补全的含糊，不至返工但正压在焦点上。另按本侧镜头发现一处更实的遗漏：仓库根目录实测没有 package.json / tsconfig / 测试框架（find 与 ls 均确认，src 下仅 greet.ts），而 §3 的两条断言没有声明在什么环境、用什么命令运行——测试方案在当前仓库里不可执行，计划需要补最小运行路径决策。已核对被审件哈希（shasum -a 256 得 cbb0348d…，与任务书一致）与 HEAD（git rev-parse 得 d958d11，与快照一致），工作树中 src/greet.ts 无未提交改动。以上问题均为计划文本补写即可，不需要再审一轮，故给 pass-after-changes。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "§二 做法",
+      "problem": "「不改调用方」只给了结论没给机制：计划未写出新函数的完整签名，尤其没有声明 greeting 排在 name 之后。「调用方不受影响」的直接判据是现有调用 greet(name) 按位参仍然命中、且返回值逐字不变，这一点恰恰是本次焦点，应以一句明确的签名声明（如 greet(name: string, greeting: string = 'hello')）写进计划而不是留给实现推断。",
+      "evidence": "实测读取 src/greet.ts，现签名为 greet(name: string): string；被审计划 §2 仅有「参数 greeting = 'hello'」，无位置声明。补充说明：TS 语言规范中必需参数不能排在可选参数之后，会迫使实现把 greeting 放最后——此为语言知识推理，非本轮实测（仓库无 tsconfig/package.json，无法实际编译验证）。",
+      "suggestion": "在 §2 写一行新签名并注明「新参数位于末位，现有 greet(name) 调用行为逐字不变」，让焦点结论在计划层面自闭环。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "§三 测试",
+      "problem": "两条断言（缺省与自定义）没有声明运行环境与执行方式：计划默认存在某种测试运行器，但当前仓库不具备任何可跑断言的基础设施。按现计划实施到 §3 时会发现「断言往哪跑」是个未决策项，需要临时引入依赖或改写方案，属于本侧镜头（外部依赖与环境假设）下的典型计划遗漏。",
+      "evidence": "实测执行：`find . -maxdepth 2 -name package.json -o -maxdepth 2 -name \"tsconfig*.json\" -o -maxdepth 2 -name \"*.test.ts\"` 返回空；`ls src` 仅 greet.ts；`ls -la` 根目录无 package.json。README.md 表明本仓库是验收夹具，无任何运行脚本可借用。",
+      "suggestion": "在 §3 补一句最小可执行路径的决策：用什么运行时（node/bun/tsc 之一）、断言写在哪个文件、用什么命令执行；若需新增 devDependency，把它列为计划内的显式依赖决策而非隐含前提。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "§二 做法「不改调用方」",
+      "problem": "「不改调用方」在当前仓库是无对象的陈述：不存在任何调用方，计划没有区分它指的是「仓库内调用点（实测为零）」还是「greet 作为 export 的潜在外部消费者」。对本夹具体量不构成返工风险，但焦点既然问「调用方不受影响有没有说清楚」，说清楚应包括说明受影响的调用方集合为何为空或为何兼容。",
+      "evidence": "实测执行 `grep -rn \"greet\" --include=\"*.ts\" --include=\"*.js\" --include=\"*.json\" --include=\"*.md\" .`（排除 .reviews/.trivium），唯一命中是 src/greet.ts:1 的定义行；无其它调用点。",
+      "suggestion": "一句话注明「仓库内无调用方（grep 核实），且新参数为末位可选，对外部 import 亦向后兼容」即可，不必扩写。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "缺省值 'hello' 与 §1 目标自洽，且与现实现 `hello ${name}` 的输出逐字一致，「缺省仍是 hello」这一点在计划和代码之间对得上，说清楚了。",
+    "采用可选参数 + 默认值是达成「不动调用方」的正确最小改动路径，没有借机重构签名或改返回结构，范围纪律好。",
+    "§3 缺省与自定义各一条断言，恰好覆盖新旧行为等价，测试点选得对（缺的只是执行载体，见 CODEX-02）。"
+  ],
+  "not_covered": [
+    "未实测 TypeScript 编译行为（仓库无 tsconfig/package.json 与工具链），CODEX-01 中关于参数顺序受语言约束的说法是语言知识推理。",
+    "未评审 EV-252 夹具中「自动校准播报与照抄」的其余流程内容，仅评本计划与 greet 相关面。",
+    "未核查 .reviews 归档流程、审批闸门等流水线治理问题；未读取禁读清单所列路径。",
+    "另一位审查员的镜头与结论未尝试覆盖或猜测。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "src/greet.ts"
+  ]
+}

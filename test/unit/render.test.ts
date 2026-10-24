@@ -4,7 +4,7 @@ import {
   renderReviewDoc, parseFrontMatter, countSeverities,
 } from '../../src/trivium/render.js';
 import type { RenderInput } from '../../src/trivium/render.js';
-import { CRITICS, type CriticResult, type Review } from '../../src/trivium/types.js';
+import { CRITICS, type CriticResult, type ReviewV2 } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
 
 const RESULT: CriticResult = {
@@ -19,9 +19,9 @@ const RESULT: CriticResult = {
   command_line: 'agy -p …',
 };
 
-const REVIEW: Review = {
+const REVIEW: ReviewV2 = {
   schema: 'trivium.review.v2',
-  verdict: 'approve-after-changes',
+  verdict: 'pass-after-changes',
   summary: '最危险的一条：并发回滚未覆盖。',
   findings: [
     { id: 'AGY-02', severity: 'minor', layer: 'plan', kind: 'maintainability',
@@ -175,7 +175,7 @@ test('同源旗标不写死 Claude 系（EV-62）', () => {
 
 test('零意见时文件照常渲染，并提示这不等于没审（FR-13）', () => {
   const md = renderReviewDoc(input({
-    review: { ...REVIEW, findings: [], verdict: 'approve', summary: '未发现阻断性问题。' },
+    review: { ...REVIEW, findings: [], verdict: 'pass', summary: '未发现阻断性问题。' },
   }));
   assert.ok(md.includes('未发现问题'));
   assert.ok(md.includes('这不等于「没审」'));

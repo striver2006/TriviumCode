@@ -1261,9 +1261,10 @@ export const zcodeAdapter: CriticAdapter = {
     // 同 agy：「未探过」与「探过但没找到」要分开答，判据用 probed_at 而非 `!p`（AGY-01）。
     const p = ctx.cfg.probe.cli.zcode;
     if (!p?.probed_at) {
-      return { ok: false, reason: 'zcode 尚未探测，请先运行 trivium doctor --only zcode' };
+      return { ok: false, reason: 'zcode 尚未探测，请先运行 trivium doctor --only zcode', fix: 'doctor' };
     }
-    if (!p.entrypoint) return { ok: false, reason: '探针未找到 zcode.cjs 入口，请先运行 trivium doctor' };
+    // 入口可能挪了；真卸载了 doctor 会给出「未找到入口」的明确结论（EV-251 计划 r2 D1）
+    if (!p.entrypoint) return { ok: false, reason: '探针未找到 zcode.cjs 入口，请先运行 trivium doctor', fix: 'doctor' };
     /*
      * 布局判据要**先于**旗标判空（r2 CODEX-02 ≡ AGY-04）：内置 provider 配置定位不到时，
      * 参数解析根本没发生（P-29），`readonly_flags` 为空是布局失败的**后果**而不是独立结论。

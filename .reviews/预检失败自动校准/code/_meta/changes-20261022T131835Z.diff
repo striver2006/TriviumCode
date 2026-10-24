@@ -1,0 +1,3973 @@
+# trivium changes.diff
+# run_id: 20261022T131835Z
+# base: HEAD
+# head: 18e6ca384df39da2caaedfb84df22cdbbe244d1a
+# files: 62
+#   doc/01_requirements/原始需求.txt
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/LLD_orchestrator.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md
+#   doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-bundle.mjs
+#   doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-log.txt
+#   doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-output.json
+#   doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-r2-log.txt
+#   doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-r2-output.json
+#   doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-spec-r2.json
+#   doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-spec.json
+#   doc/06_deployment/RUNBOOK_pipeline_ops.md
+#   doc/07_manuals/MANUAL_user.md
+#   doc/08_project/BACKLOG.md
+#   skills-src/commands/run.contract.md
+#   skills-src/partials/preflight/recalibrate.md
+#   skills-src/partials/review/body.md
+#   skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
+#   skills/dual-critic/entry/codex/dual-review-code/SKILL.md
+#   skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
+#   skills/dual-critic/entry/codex/dual-run/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-run/SKILL.md
+#   skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
+#   skills/dual-critic/entry/glm/dual-review-code/SKILL.md
+#   skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
+#   skills/dual-critic/entry/glm/dual-run/SKILL.md
+#   skills/dual-critic/schema/config.v2.json
+#   skills/dual-review-bug/SKILL.md
+#   skills/dual-review-code/SKILL.md
+#   skills/dual-review-plan/SKILL.md
+#   skills/dual-run/SKILL.md
+#   src/trivium/adapters/agy.ts
+#   src/trivium/adapters/base.ts
+#   src/trivium/adapters/claude.ts
+#   src/trivium/adapters/codex.ts
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/cli.ts
+#   src/trivium/config.ts
+#   src/trivium/doctor-deadline.ts
+#   src/trivium/doctor.ts
+#   src/trivium/exit-codes.ts
+#   src/trivium/preflight.ts
+#   src/trivium/probes/codex.ts
+#   src/trivium/probes/zcode.ts
+#   src/trivium/run-protocol.ts
+#   src/trivium/types.ts
+#   src/trivium/util/exec.ts
+#   src/trivium/util/fsx.ts
+#   test/contract/skill-recalibrate.test.ts
+#   test/helpers/proc.ts
+#   test/integration/doctor-deadline-cli.test.ts
+#   test/unit/doctor-deadline.test.ts
+#   test/unit/doctor-unused-overrides.test.ts
+#   test/unit/entry-scan-isolation.test.ts
+#   test/unit/preflight-recalibrate.test.ts
+#   test/unit/preflight.test.ts
+#   test/unit/probe-section.test.ts
+diff --git a/doc/01_requirements/原始需求.txt b/doc/01_requirements/原始需求.txt
+index 6ed7331a..877c3f8a 100644
+--- a/doc/01_requirements/原始需求.txt
++++ b/doc/01_requirements/原始需求.txt
+@@ -41,4 +41,7 @@ ZCode (智谱)生成的审核文档，Claude Code生成的修改后划文档，
+ 1. 一处遗留没处理：doctor 仍然不检查模型旗标写给的是不是本轮入选的审核者，这是现状，不在这次范围内。
+    → 已处理（2026-10-18，EV-245，b3140f04）：doctor 没有「本轮」，改为按全部审核者判键；没用上的覆盖给一条提示，退出码不变。
+ 2. BACKLOG EV-240 残余第一条已标为已做，review --start 仍不跑这条检查（仍记为残余）。
+-   → 已处理（2026-10-18，EV-246，b3140f04）：--start 派生前用预检同一函数复查，只告警。
+\ No newline at end of file
++   → 已处理（2026-10-18，EV-246，b3140f04）：--start 派生前用预检同一函数复查，只告警。
++
++20261022需求：
++1. 预检没通过（退出码 69）：自动运行trivium doctor，然后继续进行双审，无需确认。
+\ No newline at end of file
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 5cdf45fa..7f56211a 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -5,7 +5,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.172
++> - **当前版本**：v1.3.173
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -724,7 +724,7 @@ sequenceDiagram
+ | :--- | :--- | :--- | :--- | :--- |
+ | `cli` | 子命令解析、退出码约定、人类可读输出与 `--json` 机读输出 | argv | 退出码 + stdout | 任何业务判定 |
+ | `config` | 加载/合并/校验配置（默认 → 项目 `config.yaml` → `config.local.yaml` → 命令行参数），暴露只读配置对象 | 文件 + argv | Config | 探针实测 |
+-| `doctor` | 本机能力探针（3.5 节清单），回填 `probe:` 段 | 环境 | probe 结论 | 流程编排 |
++| `doctor` | 本机能力探针（3.5 节清单），回填 `probe:` 段；`--deadline-s` 见 8.1 末段（v1.3.173） | 环境 | probe 结论 | 流程编排 |
+ | `preflight` | 启动预检：两侧可调用 + 已认证 + 模型 slug 合法 + git 可用 + 归档根可写 | Config | pass/fail + 原因 | 修复环境 |
+ | `topic` | 主题名解析、合法性校验、slug 化、阶段目录创建、重跑版本号计算 | 命令参数/任务目标 | TopicRef | 起名（缺省时由 Driver 给出候选） |
+ | `freeze` | 计算快照：临时索引 `write-tree` 得 `tree_hash`、记录被审对象 sha256、生成 code 阶段 diff；跑后复算并判定漂移；枚举对方历史产出生成禁读清单 | TopicRef + 阶段 + 被审对象 | Snapshot（含 `deny_paths`） | 决定审查内容、复制文件 |
+@@ -1587,7 +1587,7 @@ SKILL.md 要求执行者把正文整段放进**一个**单引号参数、旗标
+ | 归档根不可写 / 非 git 仓库 | 报错，退出码 `69` | — |
+ | 该阶段上一轮审查意见尚未裁决（闸门 `review_done_awaiting_disposition` / `awaiting_approval`） | 退 `2`，给出 `gate --check` 与 `abandon` 两条出路；零工件——闸门在任何落盘之前判定（v1.3.49） | GLM-r2-01 ③ / EV-109 |
+ 
+-退出码约定：`0` 成功；`1` 一般失败；`2` 闸门阻断（供 Hook 使用，Hook 子命令以 wrapper 保证只返回 `0`/`2`，内部异常一律 `1`）；`64` 参数错误；`65` 前置产物缺失；`69` 环境/预检失败；`70` 同主题已有运行持锁（12.6）；`73` 运行仍在进行（仅 `review --wait`）；`75` 超时或单侧失败且为严格模式。
++退出码约定：`0` 成功；`1` 一般失败；`2` 闸门阻断（供 Hook 使用，Hook 子命令以 wrapper 保证只返回 `0`/`2`，内部异常一律 `1`）；`64` 参数错误；`65` 前置产物缺失；`69` 环境/预检失败；`70` 同主题已有运行持锁（12.6）；`73` 运行仍在进行（仅 `review --wait`）；`75` 超时或单侧失败且为严格模式；`76` 只有 `doctor --deadline-s`：到点或收到信号时还有段没探完（v1.3.173，EV-251，见 8.1 末段）。
+ 
+ ### 7.4 入口 skill 的结构（`~/.claude/skills/dual-review-plan/SKILL.md`）
+ 
+@@ -1786,7 +1786,7 @@ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起
+ 
+ | 检查 | 判定 | 失败处理 |
+ | :--- | :--- | :--- |
+-| 探针结论存在且未过期 | `probe.generated_at` 在 `probe_ttl_days`（默认 7）内，且 CLI 版本未变 | 自动触发一次 `doctor`；仍失败则中止 |
++| 探针结论存在且未过期 | `probe.generated_at` 在 `probe_ttl_days`（默认 7）内，且 CLI 版本未变 | 中止（退 69）。预检自身不拉起 `doctor`；v1.3.173 起由 skill 按失败项上的 `recalibrate` 自动校准一轮（见本节末段「自动校准」），仍失败则中止。此前本格写的「自动触发一次 `doctor`」从未实现：预检实现时为避开 600 s 工具超时改成快速失败（AGY-03 / GLM-08），本格未同步 |
+ | Antigravity 可调用 | `agy --version` 成功 | 中止 |
+ | Antigravity 已认证 | 最小 headless 探活任务返回 `status: SUCCESS`；结论带短 TTL 缓存（`preflight.auth_cache_ttl_h`，默认 1h，写 `config.local.yaml` 的 `probe.auth.agy`，形状见 13.1），TTL 内跳过探活以省时省配额。缓存除 `checked_at` 外还记 `cli_version` 与凭据 `fingerprint`：CLI 升级或凭据轮换后必须重新探活，否则缓存会盖住一个已经失效的结论 | 中止（退 69）。失败详情分三档、都点名探活模型与耗时（2026-10-17，M12 批次 1，EV-238；判定本身不变）：①输出含未登录原话（`Please sign in`，只认已存原始样本）⇒ 提示交互登录，优先于超时；②外层超时或 agy 自报 print timeout ⇒ 有已开始应答的证据（print timeout、流状态 SUCCESS、会话 id 任一）报「模型侧慢、可重试、不必重登」，没有则以「可能在等交互登录」打头；③其他 ⇒ 原因未识别、仍给登录指引。未识别原话的未登录：快速失败落 ③，挂起到超时落 ② 的无应答一层。已知角落：内层 print timeout 后在外层超时前带部分输出退出且流状态为 SUCCESS 时判通过（现行判定，未改） |
+ | ZCode 可调用 | `node <entry> version` 成功 | 中止 |
+@@ -1813,6 +1813,14 @@ v1.3.41（EV-123）起 `--start` 还返回 `warnings`（**恒在**）：拉起
+ 
+ **关键约束**：预检失败时**不得**创建主题目录、不得写任何 `_meta/`、不得产生任何双审标记（AC-16）。
+ 
++**自动校准（v1.3.173，EV-251，用户 2026-10-22 需求第 1 条）。** 预检退 69 时，四条命令的 skill 不再一律原样转述后停下，而是对 doctor 能修好的失败项自动跑 doctor、再重跑同一条预检，全程不向用户确认。
++①**判哪些能修由预检给，skill 不判**：失败项带 `recalibrate`（`{ fixable, targets? }`），由产出该项的代码置位、不看文案；没置位的失败项在 `runPreflight` 末尾补成 `{ fixable: false }`（fail-closed）。判据是「失败说的是落盘的探针结论缺失、过期或与现场对不上」：探针结论存在 / 未过期（目标只取入选侧）、路线探针缺失或过期、入口不在、版本漂移、只读能力一格里适配器 `availability()` 标了 `fix: 'doctor'` 的分支（没探过、没找到入口、读取能力没跑完、路线没有探针结论；每个不可用侧都标了才可修）。探针实测到的否定结论（读不到、只读失守）、取版本失败、认证失败、归档与 git、编译测试命令未配置、路线配置读不了，一律不能修。
++②**目标是本轮组合**：入选侧 × 本次 scope 各阶段，经与预检同一次的 `resolveTier` 解析出（模型、思考等级、厂商 profile），按侧去重；doctor 里读覆盖的段（codex、claude，`doctorSectionConsumesOverrides`，源码对账）带路线旗标（null 带显式 `--native-<id>`）与 `--model-<id>` / `--effort-<id>`，不读覆盖的段只给 `--only`。
++③**汇总** `recalibration`（失败时恒在）：`eligible` 当且仅当退 69、每个失败项都可修、调用清单非空；`invocations[]` 每条 `{ only, args, deadline_s, bash_timeout_ms }`，按（`only`、旗标）去重、按 `ALL_CLI_NAMES` 排序。`deadline_s` 取 `preflight.recalibrate_deadline_s`（缺省 480，30～540），`bash_timeout_ms` 按 `bashTimeoutFor` 推出（加 60 s、封顶 600 s；载体工具时限只有 Claude Code 有登记，统一取值、配置键可调）。
++④**skill**（公共片段 `partials/preflight/recalibrate.md`）：照抄 `args` 逐条前台调用（不后台、不拆发起与等待），每条后播报一行，任何退出码都继续下一条；跑完用逐字相同的旗标重跑预检一次，通过即继续，仍失败就停下并转述两次预检、各次 doctor 的结论与各段 `rerun`；每次预检至多一轮。
++⑤**doctor 的总时限** `--deadline-s`（`doctor-deadline.ts`）：每段在段作用域里跑（`withProbeSection`，段内 `run()` 一律自成进程组并记进段级记录，含 git 辅助调用；组长退出也不删）。到点或收到 SIGINT / SIGTERM（带时限时不装前台中断转发，由控制器接管）时置本次的中止令牌：段内 `run()` 不再派生、立即兑现合成结果（不用冻结——冻结会让探针 `finally` 不跑、凭据副本目录留在盘上）；按组结束段内派生过、还在的组（组长活着，或组长已退出而非僵尸成员数大于 0），宽限链同 worker 处理器；等在写的 checkpoint；给段至多 20 s 沿 `finally` 退出来，等不到时控制器按已记状态出结果（`stuck`）。在跑那一段作废、不落盘，已探完的照常落盘；`cliProbeIsFresh` 按各家自己的 `probed_at` 判，所以被作废那一家下一次预检仍退 69。段内 `makeTempDir` 建的目录同步记进 `<run_root>/doctor-temp-<pid>.json`，删成功即注销，下一次 doctor 启动时补删已退出进程留下的条目（只删台账里、真实路径在系统临时目录下、形态相符的）。`--json` 多一个 `deadline` 键（`sections[]` 每段 `state` / `launches` / `notes` / `rerun`，没探完的带 EV-243 先例的 `note`），到点退 76（优先于 blockers 的 69）。
++已知边界（BACKLOG EV-251）：另三家载体工具时限未实测；宿主直接 SIGKILL 时子进程组成为孤儿、临时目录留到下一次 doctor；`config.local.yaml` 非原子写；同步代码堵住事件循环时控制器打断不了；不跨命令冷却。
++
+ ### 8.2 命令 A（全流程）状态机
+ 
+ ```mermaid
+@@ -4087,6 +4095,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.173** | 2026-10-22 | **预检失败自动校准（EV-251，用户原始需求 2026-10-22 第 1 条）。** 主题 `预检失败自动校准`（`/dual-run`，计划三审 run `20261022T120111Z` 第 1/3 轮：codex `reject`、gemini `pass-after-changes`、glm `pass`，计票修改后通过；13 条接受 12、驳回 1（AGY-03：「全部过期」失败即入选各家必在过期之列，目标本就只取入选侧），定稿 r2）。预检退 69 时四条命令的 skill 对 doctor 能修好的失败项自动跑带时限的 doctor、再重跑同一条预检，至多一轮、全程不向用户确认；认证失败、归档与 git、编译测试命令未配置等照旧原样转述并停下。**一、预检**：失败项带机读 `recalibrate`（缺省不能修），汇总 `recalibration`（`eligible` / `why` / `invocations[]`），目标按本轮组合展开（CODEX-04 / CODEX-05），只读能力一格按侧聚合（AGY-04）。**二、doctor `--deadline-s`**：段作用域内派生一律自成进程组并记进段级记录（CODEX-02）；到点或收到信号时置按次的中止令牌、按「组长活着或非僵尸成员数大于 0」逐组结束（CODEX-01）、等在写的 checkpoint、兜底 20 s 后由控制器出结果（AGY-02）；中止后段内异常接住、正常返回同样作废（AGY-01）；临时目录台账供下一次 doctor 补删（CODEX-03、GLM-01）；`deadline.sections` 每段 `notes` 与 `rerun`（CODEX-06）；退 76。**三、配置** `preflight.recalibrate_deadline_s`（缺省 480，AGY-05）。**四、skill** 公共片段 `partials/preflight/recalibrate.md`。实现与计划 r2 的偏差：进程级中止标志改为按次的中止令牌（同一进程先后跑几次 doctor 时前一次到点连累后一次）。见 7.3、8.1 末段。报告 `doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md`。 |
+ | **v1.3.172** | 2026-10-22 | **争议明细写入（发版-02，EV-250）。** 主题 `争议明细写入`（`/dual-run`，计划三审 run `20261022T101659Z` 第 1/3 轮：codex、glm `pass`，gemini `pass-after-changes`，3 条全接受，定稿 r2）。`gate --check` 在 `warn` 策略下放行共同驳回时，除置 `disputed` 外把编号与分组按 `run_id` 覆盖写进 `task.json.disputes`，与 `joint_checks` 同一次写入：先删本轮旧条目、再按本次结论追加，同一轮重跑不堆积，争议撤回（改成接受）或改 `hard` 被拦时本轮条目随之删掉，他轮条目保留。`hard` 阻断不记争议（本轮未放行，编号在 `failures`，`joint_checks` 记 `checked-found`）。`note` 只存分组写法 `编号+编号@location`（`formatJointGroups`，告警文案共用），不存整段告警。`GateCheckResult` 新增可选 `disputedJointBlockers`，只在 `warn` 放行时给出（AGY-02）。`disputed` 只增不减：旧正本的标记归属不到哪一轮。`report` 第五节无条件列出明细（带阶段、轮次与 run_id，找不到对应轮次时只写 run_id），`disputed` 为真而明细为空时如实写「没有留下明细」，空编号、空说明各有兜底（AGY-03）；手册两处缺口说明同步改写（AGY-01）。见规则 7、8.6 判据 g。代码三审（run `20261022T105628Z`，第 1/3 轮：codex `pass`，gemini、glm `pass-after-changes`，6 条全接受）：编号兜底同时滤掉空串（AGY-03）、补测试报告与登记（AGY-02 ≡ GLM-01）、证据脚本用法行订正（GLM-03）；工作树里与本主题无关的需求改动不进本主题提交（AGY-01 ≡ GLM-02）。报告 `doc/05_testing/REPORT_2026-10-22_dispute_detail.md`。 |
+ | **v1.3.171** | 2026-10-22 | **审批正本读不出拒写（EV-248）。** 主题 `审批正本读不出拒写`（`/dual-run`，计划双审 run `20261022T041612Z` 第 1/5 轮：gemini、glm 均 `pass-after-changes`，8 条全接受，定稿 r2）。**一、写入口**：`updateTask` / `updateTaskAsync` 锁内改严格读，读不出抛退 2 的受控错误、不调回调、正本原样；不存在照旧起写。`readTaskStrict` 加形状判据（AGY-02）。**二、调用方先判**（见 6.7 末段）：`gate --check` 在结果输出之前判、读不出时只出一份带 `task_unreadable` 的结果后退 2，不写、不推进；`gate --await-approval` 读不出改退 2、`ok: false`（AGY-01，此前退 0）；`approve` / `abandon` 复核之前判，`recordApproval` 写闸门之前再判，竞态由比较-交换回退闸门；`verify` 执行命令之前判；`review` 准备阶段在分配 run_id 之前判。**三、出口**：`taskUnreadableExit` 三处共用（写入口、续链判定、`taskUnreadableHold`），统一退 2。**四、skill**：认领、`gate --check`、停点、S10、审批 / 放弃补退 2 的处置句。**五、文档**：PROTOCOL §五 退出码表与五个命令行。测试：单测 `meta-task-write` 25 条、集成 `task-unreadable-refusal` 14 条，L10 补 `--check` 断言，`run-id-alloc` 夹具补齐完整形态；变异 15 条全部咬住。**六、代码双审**（run `20261022T081726Z`，第 1/5 轮：两侧 `pass`，计票通过；glm 2 条全接受）：补 `verify` 登记时才坏的集成 I14 与变异 M12（GLM-01）；`gate --check` 把完整出口段放进失败项、不另打 `warn` 是对计划 r2 §三.1 的有意简化，记进测试报告与代码注释，PROTOCOL §五 的出口位置订正为「`gate` 两条命令在 stdout，其余在 stderr」（GLM-02）。 |
+ | **v1.3.170** | 2026-10-22 | **多轮评审循环与三档结论计票（EV-247）。** 用户新需求：计划审与代码审每个审核者给「通过 / 修改后通过 / 不通过」，按比例判整体结论，不通过即改后自动重审，最大轮次缺省 3、可指定、上限 10，最后一轮仍不通过停下人工审核；/dual-run 两阶段可分别指定上限；计划审每轮另出完整新计划，代码审每轮裁决后直接改码；/dual-review-plan、/dual-review-code 同样适用。拍板：契约升 review.v2（三值）、三档都不到半数判修改后通过、命令 C 最后一轮先改码再停审批、由 Driver 直接实施后走代码双审。**一、契约**（6.5）：新增 `review.v2.json`，`isReviewSchemaId` 统一读取侧判据（含禁读矩阵与被审对象硬拒），新产出只认 v2、归档两版都认，回退侧 front-matter `verdict` 写 null。**二、计票与轮次链**（8.2.1）：新模块 `round-verdict.ts`；run.v3 补可选 `review_loop` / `round_verdict`（6.7.1，不升契约版本）；`review --start --max-rounds`、`topic resolve` 三个轮次旗标。**三、闸门**：`rerun` 回 idle、`human_review` 立停点（含命令 A）、`proceed` 照旧；计划阶段带轮次链的轮次每轮要求新一轮计划（6.6 规则 9）。**四、skill**：/dual-run S2～S4、S6～S9 改为循环（S8 改码挪到 S9 校验之前），B / C 第 6.5 步按 `next_action` 分支、C 第 5.5 步裁决后直接改码。测试新增 `round-verdict` 单测 17 条、`review-loop` 集成 11 条、`plan-final-gate` I8 一条，三条 EV-214 用例改按新语义或改成旧运行形态。**五、代码双审 r2**（run `20261022T005651Z`：gemini `approve` 零意见、glm `approve-with-nits` 2 条全接受）：审批正本读不出时续链判定拒跑（GLM-01，`previousRoundFacts` 自读正本、`approval.ts` 抽出 `decidedInTask`；与计划 r2 §四.4「读不出判已表态 ⇒ 新链」相反，用户 2026-10-22 定直接改码、偏差登记在 BACKLOG EV-247），集成 L10；两侧整份回退 ⇒ `undetermined` ⇒ 人工审核的端到端用例 L11（GLM-02）。r2 应答件 GLM-01 落点里的「设计 6.7.1 补一句」是笔误，实际补在 8.2.1（r3 GLM-02 指出，在 r3 应答件订正）。**六、代码双审 r3**（run `20261022T023850Z`，评审循环第 1/3 轮：两侧 `pass`，计票通过；glm 3 条 nit 全接受）：L11 补闸门立停点断言（GLM-01）；`approval.ts` 新增三态的 `humanDecision`，`--await-approval` 与 `--check` 在正本读不出时改说「按已表态保守处理」，不再说「已有人工审批记录」、`--check` 也不接本机状态对账（GLM-03）。改码时实测发现 `updateTask` 会静默覆盖读不出的正本、`gate --check` 在判定前就会写一次，早于本主题，登记 EV-248。 |
+diff --git a/doc/02_design/LLD_orchestrator.md b/doc/02_design/LLD_orchestrator.md
+index 79dbeb95..d5cb80d4 100644
+--- a/doc/02_design/LLD_orchestrator.md
++++ b/doc/02_design/LLD_orchestrator.md
+@@ -240,7 +240,7 @@ graph TD
+ 
+ **探针的时效**：`probeIsFresh()`（[config.ts:330-335](../../src/trivium/config.ts#L330-L335)）纯算术比较 `Date.now() - generated_at < probe_ttl_days × 86400000`，默认 7 天。过期后 `checkProbeFreshness()`（[preflight.ts:112](../../src/trivium/preflight.ts#L112)）返回 `EXIT.ENV`(69)，**硬失败而非降级**，且**没有临近预警**。
+ 
+-预检刻意**不自动拉起** `doctor`（`preflight.ts:119-120`）：doctor 需 2~4 分钟，会击穿 Bash 工具的 600s 超时，届时配额已烧而结论未落盘。
++预检自己**不拉起** `doctor`。v1.3.173 起（EV-251）由 skill 校准：失败项带机读的 `recalibrate`（能不能由 doctor 修、目标是哪几侧的哪个组合），汇总成 `recalibration.invocations`；skill 照抄在前台跑带时限的 `doctor --only <家> --deadline-s <秒>`（`doctor-deadline.ts`：到点或收到信号时置本次的中止令牌、按组结束段内派生过的进程组、等探针沿 `finally` 删掉临时目录，已探完的段照常落盘，没探完的在 `deadline.sections` 点名、退 76），再重跑同一条预检，至多一轮。原先「配额已烧而结论未落盘」的说法早已不成立：doctor 每探完一段就落盘，丢的只会是撞上时限的那一段。
+ 
+ ### 3.3 `review --start` / `--wait`：一次双审的完整生命周期
+ 
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index 5d8b6edd..a75c3815 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -319,6 +319,7 @@ deny 核验完全由措施 b 承担。这一降级逐侧记于 `guard.verificati
+ | `70` | 主题被锁 | 同主题已有运行在跑，看 `--status` |
+ | `73` | **运行仍在进行**（不是失败） | 继续下一次 `--wait` |
+ | `75` | 严格模式中止 | 一侧失败且 `failure_policy: strict` |
++| `76` | doctor 没探完 | 只有 `doctor --deadline-s`：到点或收到 SIGINT / SIGTERM 时还有段没探完；已探完的照常落盘，`--json` 的 `deadline.sections` 点名并给终端重跑命令（设计 v1.3.173，EV-251） |
+ 
+ `2` 与 `73` 是最容易被误处理的两个：`2` 不是崩溃而是**有话要说**，
+ stdout 里就是待修补的清单；`73` 不是超时而是**还没跑完**。
+@@ -446,7 +447,8 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一
+ 
+ | 命令 | 作用 |
+ | :--- | :--- |
+-| `doctor` | 逐项实测设计 §3.5 的本机能力探针清单，回填 `probe:` 段 |
++| `doctor` | 逐项实测设计 §3.5 的本机能力探针清单，回填 `probe:` 段。`--deadline-s <秒>`（30～540，EV-251）：到点或收到 SIGINT / SIGTERM 时按组结束段内派生的子进程、删掉探针临时目录，没探完的段作废不落盘，`--json` 多一个 `deadline` 键（`limit_s` / `hit` / `reason` / `stuck` / `sections[]` / `residue[]`），到点退 76 |
++| `preflight --json` 的自动校准字段 | 失败项带 `recalibrate`（`{ fixable, targets? }`，缺省即不能修）；失败时顶层恒带 `recalibration`（`{ eligible, why, invocations[] }`，每条 `{ only, args, deadline_s, bash_timeout_ms }`）。skill 只照抄 `args`、按 `bash_timeout_ms` 设工具超时，至多一轮（EV-251）。加法，旧调用方忽略 |
+ | `doctor --selftest` | 临时夹具里真跑整条流水线，14 步核对（桩适配器，零配额） |
+ | `preflight --stage plan\|code\|bug\|all [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--tier-<id> <档>] [--effort-<id> <值>] [--profile-<id> <名>]` | 设计 §8.1 的启动预检，fail-fast，失败零工件。档位旗标（M11 第 5 步）按「档位组合合法」一格校验，口径同配置来源，见上方现状句。`--critics` 指定本次要用哪几侧——只读能力、模型 slug、探活都只查这几侧，缺省取 `review.default_critics`（M8 第 3 步）。**命令 B / C / D 的第 1 步不传它**：那时 `topic resolve` 还没跑、选侧尚未解析出来；选了非缺省侧时，该侧的可用性由 `review --start` 在拉起 CLI 之前的 `availability()` 兜住（AC-20 末条的落点），但探活不在其中。**命令 A 自 EV-125 起在解析之后预检**（S0.6）：带上 `topic resolve` 输出的 `critics`，以及非空时的 `--profile` / `--model-<id>`，三个阶段入选各侧的 slug 与探活都在开跑前查——命令 A 漏查的 code 阶段 slug 要到 S6（编码之后）才会暴露。`--critics` 也供用户显式预检时用。**只警告项**（EV-123，设计 8.1「警告这一级」）：`--json` 输出恒带 `warnings`（`{ name, detail }[]`，无警告时为 `[]`），`checks[]` 单项在 `warn` 为真时带 `warn: true`；`warn` 不影响 `ok` 与退出码，skill 在通过时逐条念给用户后继续 |
+ | `topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。M11 第 5 步起输出另含 `tiers` / `efforts` / `vendor_profiles`（逐入选侧、恒存在、没写为 `{}`），skill 照抄进预检与 `--start`；档位旗标写了不给值退 64，`--model-<id>` 自 v1.3.165（M12 批次 4，EV-228）起同样退 64、文案同一份（此前 `=` 空、紧跟已知旗标、位于末尾三种形态被静默丢弃）。`--stage` 也接受 `all`（命令 A 用）。`--` 之后按 argv 逐个 token 解析、不再分词（EV-18）：正文整段放进一个单引号参数，旗标放在引号之外；`--topic` 字样被包进正文而未显式给主题时退 64。`--args` 传法已删 |
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index 7c91313b..84798f9f 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -153,6 +153,7 @@
+ - [`REPORT_2026-10-18_m12_batch5.md`](./REPORT_2026-10-18_m12_batch5.md)：**M12 批次 5 · 共享读取面同名入口告警（EV-240 方案 A）与送审请求文件去重（EV-236 A2）**（A 档，`/dual-run`）。读取面判定搬进 `src/trivium/entry-collisions.ts`，安装器与编排器两个产物同源，安装器 9 格新旧对照逐字相同；doctor 全量列出、preflight 只对本轮相关的家告警、都不阻断，扫描家目录单一来源、测试全程隔离；`request.json` 冻结补丁只存一份、worker 按引用还原，审核者所见逐字不变、旧格式照读。计划三审 7 条全接受；代码三审 codex / gemini `approve`、glm 3 条 nit 全接受；变异预跑与正式装置均 14/14。证据见 [`evidence/m12-batch5-20261018/`](./evidence/m12-batch5-20261018/)；主设计 v1.3.166。
+ - [`REPORT_2026-10-18_m12_shared_residue.md`](./REPORT_2026-10-18_m12_shared_residue.md)：**共享根历史形态残留检测（EV-240 残余）**（A 档，`/dual-run`，主题 `M12-共享根残留检测`）。新类别 `shared-residue`：额外读取根里的 `dual-critic` / `entry` 按内容认定为本产品（运行时身份行 + `schema/`，或含入口子树）才判，别家同名不判；安装器与 `install:check` 整次拒装、doctor 全量列出、preflight 对本轮相关的家告警，四处同一份实现；当前运行时根放在共享根里时按真实路径豁免。安装器新旧 13 格、doctor / preflight 新旧 16 格（子进程 HOME 隔离）符合预期（无残留时逐字相同）；计划三审 6 条全接受；代码三审 glm / gemini `approve`、codex 1 条 minor 接受（A-2 补 HOME 隔离后重取）；变异预跑 15/15、正式装置 14/14；全量 3730 / 3728 / 0 / 2。证据见 [`evidence/m12-shared-residue-20261018/`](./evidence/m12-shared-residue-20261018/)；主设计 v1.3.167。
+ - [`REPORT_2026-10-22_dispute_detail.md`](./REPORT_2026-10-22_dispute_detail.md)：**争议明细写入（EV-250 / 发版-02）**（A 档，`/dual-run`，主题 `争议明细写入`）。`gate --check` 在 `warn` 放行共同驳回时，把编号与分组（`编号+编号@location`）按 `run_id` 覆盖写进 `task.json.disputes`，与 `joint_checks` 同一次写入：同轮重跑不堆积，撤回或改 `hard` 被拦时本轮条目删掉，他轮保留；`hard` 阻断不记；`disputed` 只增不减。`report` 无条件列出明细，有标记无明细时如实写「没有留下明细」，空字段兜底。计划三审 3 条、代码三审 6 条全接受；集成新增 3 条、单测新增 7 条；变异 8 条全部咬住。证据见 [`evidence/dispute-detail-20261022/`](./evidence/dispute-detail-20261022/)；主设计 v1.3.172。
++- [`REPORT_2026-10-22_preflight_recalibrate.md`](./REPORT_2026-10-22_preflight_recalibrate.md)：**预检失败自动校准（EV-251）**（A 档，`/dual-run`，主题 `预检失败自动校准`）。预检退 69 时四条命令的 skill 对 doctor 能修好的失败项自动跑带时限的 doctor、再重跑预检，至多一轮、不向用户确认；预检失败项带机读 `recalibrate` 与汇总 `recalibration`；`doctor --deadline-s` 到点或收到信号时按组结束段内派生的子进程、删探针临时目录、在跑段作废、退 76；临时目录台账供下一次 doctor 补删。新增单测 25 条、集成 3 条、对账 18 条；变异 11 条全部咬住（M2 补断言后重跑）。证据见 [`evidence/preflight-recalibrate-20261022/`](./evidence/preflight-recalibrate-20261022/)；主设计 v1.3.173。
+ - [`REPORT_2026-10-22_task_unreadable_refusal.md`](./REPORT_2026-10-22_task_unreadable_refusal.md)：**审批正本读不出拒写（EV-248）**（A 档，`/dual-run`，主题 `审批正本读不出拒写`）。`updateTask` / `updateTaskAsync` 锁内改严格读（含形状判据），读不出退 2、不覆盖；`gate --check` 在输出之前判、不写不推进，`--await-approval` 读不出改退 2；审批 / 放弃、`verify`、`review` 准备阶段在第一次落盘之前先判，审批闸门已写下决定之后正本才坏由比较-交换回退。计划双审 8 条全接受；代码双审两侧 `pass`、glm 2 条全接受（补 verify 登记时才坏的用例与变异，PROTOCOL 出口位置订正）；单测 25 条、集成 14 条；变异 15 条全部咬住。证据见 [`evidence/task-unreadable-refusal-20261022/`](./evidence/task-unreadable-refusal-20261022/)；主设计 v1.3.171。
+ 
+ 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
+diff --git a/doc/06_deployment/RUNBOOK_pipeline_ops.md b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+index aa884c0a..c09018d9 100644
+--- a/doc/06_deployment/RUNBOOK_pipeline_ops.md
++++ b/doc/06_deployment/RUNBOOK_pipeline_ops.md
+@@ -46,6 +46,7 @@ trivium status --json          # 要脚本处理时
+ | `70` | 同主题已被锁 | 是 → 见 §二 |
+ | `73` | 运行仍在进行中（仅 `review --wait`） | **否**，向用户播报进度后继续下一次 `--wait` |
+ | `75` | 严格模式中止（超时或单侧失败） | 是 → 见 §四 |
++| `76` | 只有 `doctor --deadline-s`：到点或收到信号时还有家没探完（已探完的照常落盘） | 是 → 见 §五 |
+ 
+ `2` 和 `73` 最容易被误判成故障。`2` 是闸门在挡你，`73` 是还没跑完。
+ 
+@@ -270,8 +271,14 @@ trivium doctor                  # 重跑 18 项探针
+ trivium doctor --only agy       # 只探一侧，省配额
+ ```
+ 
++**`/dual-*` 里的预检退 69 会先自动校准一轮**（设计 v1.3.173，EV-251）：失败项全是 doctor 能修的（探针缺失或过期、版本漂移、路线没有探针结论、入口挪了、读取能力没跑完）时，
++skill 照预检 JSON 的 `recalibration.invocations` 逐家前台跑 `doctor --only <家> … --deadline-s <秒> --json`，再重跑同一条预检；仍失败就停下转述。
++自己排查时可以直接看 `trivium preflight --stage <s> --json` 里每个失败项的 `recalibrate`（`fixable` 与目标）和汇总的 `recalibration.why`。
++
+ | 现象 | 处置 |
+ | :--- | :--- |
++| 自动校准后停下，doctor 退 76，`deadline.sections` 里某家 `in_progress` | 时限内没探完：按该段的 `rerun` 在终端单独跑。会话里拉起的厂商 CLI 有过间歇挂满单次探针超时的先例（EV-243），终端里通常能跑完。载体工具上限低于 540 秒时把 `preflight.recalibrate_deadline_s` 调小 |
++| doctor 输出 `deadline.residue` 里有「探针临时目录 … 删除失败」或「台账里的 … 不在系统临时目录下」 | 前者按路径手工删（可能有凭据副本）；后者是台账被改过或路径异常，核对后手工处理，编排器不删。台账在 `<run_root>/doctor-temp-<pid>.json`，宿主强杀 doctor 时留下的条目由下一次 doctor 启动时补删 |
+ | 厂商 CLI 升级后行为变了 | 重跑 `trivium doctor`。实现代码只读探针结论、不硬编码设计文档列出的命令行（设计原则 P7），所以重探通常就够 |
+ | 配额打满 | 换模型档位，或 `--allow-single` 单侧跑（记为降级） |
+ | 未认证 | 按厂商自己的登录流程处理。**凭据不经编排器**，配置里只放模型 slug 与路径 |
+diff --git a/doc/07_manuals/MANUAL_user.md b/doc/07_manuals/MANUAL_user.md
+index 68e0c96f..5ec31a87 100644
+--- a/doc/07_manuals/MANUAL_user.md
++++ b/doc/07_manuals/MANUAL_user.md
+@@ -190,7 +190,13 @@ node ~/.claude/skills/dual-critic/scripts/trivium.cjs doctor   # 约 2~4 分钟
+ CLAUDE.md / AGENTS.md     追加带标记的协议片段
+ ```
+ 
+-**`doctor` 必须在终端里跑，不要在 Claude Code 里跑。** 它需要 2~4 分钟，会击穿 Bash 工具的 600s 超时——届时配额已烧而结论未落盘。
++**首次的全量 `doctor` 在终端里跑。** 四家一起要 2~4 分钟，会消耗少量配额。它每探完一家就落盘，中途被打断只丢正在探的那一家。
++
++**在 `/dual-*` 命令里，预检退 69 会自动校准**（设计 v1.3.173，EV-251）：探针过期、版本漂移、路线没有探针结论这一类 doctor 能修好的失败，
++skill 不再停下等你，而是照预检给出的清单逐家在前台跑带时限的 `doctor --only <家> --deadline-s <秒>`（每家结束播报一行），
++再重跑同一条预检；通过就继续双审，全程不问你。每次预检至多自动校准一轮，重跑仍失败就停下，把两次预检与 doctor 的结论一并告诉你，
++没探完的那一家请你在终端单独跑（结论里给出完整命令）。认证失败、归档或 git 不可用、编译测试命令未配置这类 doctor 修不好的，照旧原样转述并停下。
++自动校准会花少量配额，只跑失败项点名的那几家；时限由 `preflight.recalibrate_deadline_s`（缺省 480 秒）决定，见 §5.6。
+ 
+ ### 3.5 必须补一步：配置编译测试命令
+ 
+@@ -395,7 +401,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
+ 这些没有 skill 包装，在终端里跑：
+ 
+ ```bash
+-.trivium/bin/trivium doctor [--selftest|--suggest-verify|--no-model-calls|--only <cli>|env]
++.trivium/bin/trivium doctor [--selftest|--suggest-verify|--no-model-calls|--only <cli>|env] [--deadline-s <秒>]
+ .trivium/bin/trivium preflight --stage plan|code|bug|all
+ .trivium/bin/trivium verify --topic <主题> [--only build|test]
+ .trivium/bin/trivium report --topic <主题> [--out <路径>]
+@@ -561,6 +567,7 @@ doctor 末尾会给一条「以下命令行覆盖本次没有用上」的提示
+ | 字段 | 默认 | 说明 |
+ | :--- | :--- | :--- |
+ | `preflight.auth_cache_ttl_h` | 1 | 认证探活缓存 |
++| `preflight.recalibrate_deadline_s` | 480 | 预检退 69 自动校准时，每次 `doctor` 的总时限（30～540 秒）。skill 的工具超时按它加 60 秒、封顶 600 秒。你的载体工具超时上限低于 540 秒时调小它（v1.3.173 起，EV-251） |
+ | `probe_ttl_days` | **7** | 探针保质期。**过期即预检硬失败，不是降级** |
+ | `verify.build` / `verify.test` | `[]` | 必须手工配 |
+ 
+@@ -901,7 +908,8 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
+ | `2` | 闸门阻断 | **否**，护栏按预期工作。stdout 里是待修补清单 |
+ | `64` | 参数错误 | 是，改命令。**不会产生任何工件** |
+ | `65` | 前置产物缺失 | 是，先补工件 |
+-| `69` | 环境或预检失败 | 是，跑 `doctor` / `preflight` |
++| `69` | 环境或预检失败 | 是，跑 `doctor` / `preflight`。`/dual-*` 里 doctor 能修的那类会自动校准一轮（§3.4） |
++| `76` | 只有 `doctor --deadline-s`：到点或收到信号时还有家没探完 | 是，看 JSON `deadline.sections` 里没探完的那几家，按 `rerun` 在终端单独跑。已探完的照常落盘 |
+ | `70` | 主题被锁 | 是，同主题已有运行 |
+ | `73` | 运行仍在进行 | **否**，不是超时，是还没跑完 |
+ | `75` | 严格模式中止 | 是，一侧失败且 `failure_policy: strict` |
+@@ -913,7 +921,8 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
+ | 症状 | 先看这个 |
+ | :--- | :--- |
+ | 命令没反应 / 提示未初始化 | `.trivium/config.yaml` 在不在？Hook 检测不到它一律放行 |
+-| 预检报探针过期 | 探针 7 天 TTL 且**过期即硬失败**。在终端里跑 `trivium doctor` 重新校准 |
++| 预检报探针过期 | 探针 7 天 TTL 且**过期即硬失败**。`/dual-*` 里会自动校准一轮（§3.4）；直接调 CLI 时在终端里跑 `trivium doctor` 重新校准 |
++| 自动校准后仍停下，说某家「在时限内没探完」 | 按结论里的 `rerun` 在终端单独跑那一家。会话里拉起的厂商 CLI 有过间歇挂满单次探针超时的先例（EV-243），终端里通常能跑完 |
+ | 某侧报不可用 | `trivium preflight --stage plan`，它会指出是探针过期、CLI 不可调用还是未认证 |
+ | 某侧被判「证据不足」 | 该侧读的项目文件数或工具调用数没达下限。看 `_meta/run-*.json` 的 `tool_calls` |
+ | 一侧超时 | 默认 strict 会中止。调大 `review.timeout_s`，或临时 `--allow-single` 降级 |
+@@ -942,7 +951,9 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
+ | **配置与协议片段不会自动升级** | 见 §3.6 | 需手工同步 |
+ | ~~**`block_severities` 是死配置**~~ | 已于 2026-09-16 删除 | 该键不再存在；若你的配置文件里还留着它，删掉那三行（保留会被 schema 判为未知键） |
+ | ~~**报告的「争议项」无法显示编号**~~ | v1.3.172 起已写入明细 | 旧主题报告里写「记有争议标记，但没有留下明细」：那时还不记编号，或该轮争议已撤回；编号要回原轮的裁决件里找 |
+-| **`doctor` 必须在终端跑** | 2~4 分钟，会击穿 Bash 工具 600s 超时 | 预检刻意不自动拉起它 |
++| ~~**`doctor` 必须在终端跑**~~ | v1.3.173 起（EV-251）预检退 69 时由 skill 在会话里跑带时限的 `doctor --only`（到点按组结束探针子进程、删掉探针临时目录、已探完的照常落盘） | 首次的全量 doctor 仍建议在终端跑；没探完的那一家也回终端单独跑 |
++| **自动校准不跨命令记账** | 连发同一条命令、每次都卡在同一个被判为可修而实际修不好的失败上时，每次各花一轮 doctor 配额 | 预检对拿不准的一律判不可修，作为主防线 |
++| **载体工具时限未实测** | 只有 Claude Code 的 Bash 上限（600 秒）有登记，另三家载体没有实测 | 低于 540 秒时把 `preflight.recalibrate_deadline_s` 调小。载体直接强杀 doctor 时，本次探针临时目录由下一次 doctor 启动时补删 |
+ 
+ ---
+ 
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index edbd55c6..664363ce 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -346,6 +346,7 @@
+ | EV-248 | **done**（2026-10-22，主题 `审批正本读不出拒写`，`/dual-run`，主设计 v1.3.171）：写入口 `updateTask` / `updateTaskAsync` 锁内改严格读，读不出抛退 2 的受控错误、不调回调、正本原样，不存在照旧起写；`readTaskStrict` 加形状判据（非对象、`schema` 不对、四个数组字段缺失或不是数组 ⇒ 读不出，计划双审 AGY-02）。逐个调用方在第一次落盘之前先判、判不过零写入退 2：`gate --check` 在结果输出之前判（`failures` 带 `task_unreadable`，不写、不推进闸门、不归零阻断计数）；`gate --await-approval` 读不出改退 2、`ok: false`（计划双审 AGY-01，此前退 0）；`approve` / `abandon` 复核之前判、`recordApproval` 写闸门之前再判，闸门已写下决定之后正本才坏由比较-交换回退闸门；`verify` 执行命令之前判，跑完才在登记时被拒保留记录、文案写明命令结论；`review` 准备阶段在分配 run_id 之前判（零工件，覆盖骨架登记、任务目标与纯文档跳过收尾）；`topic claim` 由写入口锁内判；worker 收尾时才坏走既有异常收尾。三处读不出出口共用 `taskUnreadableExit`（点名绝对路径、Git 找回命令、恢复由用户在终端执行）。计划双审 8 条、代码双审 2 条全接受（报告 `doc/05_testing/REPORT_2026-10-22_task_unreadable_refusal.md`）。残余：worker 运行中正本被搅坏留下「run.json 终态、正本未登记」，已另登 EV-249（「靠提交锚 ② 拦」只在正本恢复之前成立，恢复之后没有兜底，详见该条）。原状态：todo（2026-10-22 登记，EV-247 代码双审 r3 第 5.5 步改码时实测暴露；早于 EV-247 存在，不在该主题范围内，待用户定是否开题） | **审批正本 task.json 读不出时，`updateTask` / `updateTaskAsync` 会把它静默覆盖成一份新正本，审批记录随之丢失。**两者在锁内用宽松的 `readTask` 读正本，读不出就回落 `emptyTask`，改完照常原子写回。`gate --check` 每次通过后都会先写 `joint_checks`（`cli.ts` 共同阻断三态落盘那一段），而这一步在「本轮是否已表态」判定之前，所以正本写坏后跑一次 `--check`：坏件被覆盖、`approvals[]` 清空，随后判成「未表态」并照常立停点——`humanDecidedThisRound` 的 fail-closed 在这条路径上形同虚设。同样经 `updateTask` 写正本的还有 `approve` / `reject` / `abandon`（`approval.ts`）、`topic claim`（`cli.ts`）、`verify`（`verify.ts`）、纯文档跳过收尾（`review.ts`）。正本进 Git，坏件可从 Git 恢复，但覆盖之后再跑别的命令就没人会提示。修法方向：两个写入口改用 `readTaskStrict`，`unreadable` 时拒写并点名 task.json（`missing` 照旧当新主题）；要先逐个看调用方能否接受拒写 | `src/trivium/meta.ts` 的 `updateTask` / `updateTaskAsync`；调用方 `cli.ts`（`gate --check`、`topic claim`）、`approval.ts`、`verify.ts`、`review.ts` |
+ | EV-249 | todo（2026-10-22 登记，EV-248 残余；低优先级，暂不开题，用户 2026-10-22 定先登记。动闸门迁移语义，修时走 `/dual-run`） | **审查运行中审批正本被搅坏：收尾登记被拒后，这一轮在正本里没有登记、闸门被回收成 idle，恢复正本后没有任何机制补回。**触发经过：① `review --start` 准备阶段读得出正本（EV-248 的先判），把本轮以 `running` 登记进 task.json、闸门置 `running`；② 审查期间 task.json 被外部写坏（会话的 Write / Edit 有 Hook 拦，只可能是用户手改、终端切分支或解合并冲突、其他工具）；③ worker 收尾先落两份审查文档与 `run.json`（success），再 `registerRun` 时正本读不出，按 EV-248 拒写、不覆盖；④ worker 异常分支：`finalizeFailedRunMeta` 按「仍为 running 才写」不改已终态的 run.json，同步正本一步报未改，`finally` 的 `releaseRunningGate` 把闸门从 `running` 回收为 `idle`。留下：审查文档与 run.json 都在、正本坏件原样、闸门 `idle`（不是正常收尾的 `review_done_awaiting_disposition`）。正本还坏着时提交被锚 ② 按「主题元数据不可读」拦下；**按出口提示 `git restore --source=HEAD` 恢复之后**：(a) 这一轮在正本里没有登记——恢复的是提交时的版本，准备阶段那条 `running` 登记也一起没了，没有命令会补：`registerRun` 只在收尾时跑，`--wait` / `--cancel` 的事后收尾只处理失败 / 取消目标；(b) 这一轮不再受提交锚保护——`checkRunManifests` 只核「已登记的 run，其 run.json 必须在且可读」一个方向，未登记的 run.json 连同审查文档整组删掉无人拦（两者都在时审查文档被改仍由 run.json 的 sha256 拦）；(c) 「裁决未齐不得收工 / 提交」对这一轮不生效——stop / pre-commit 只在闸门为 `review_done_awaiting_disposition` 时拦，闸门已是 `idle`；(d) 恢复到 HEAD 会丢上次提交之后的正本改动（含审批），出口文案已写「先看 diff」，非新问题。EV-248 报告与 BACKLOG 原写「靠提交锚 ② 拦」只在恢复之前成立，此处订正。**现行应对**：把这一轮当作没跑成，恢复正本后重新 `review --start`；那组未登记的审查文档人工删除或留作参考。**影响评估**：触发窗口只在审查进行的几十分钟内、且须外部写坏正本，正常使用几乎遇不到；后果是护栏对这一轮失效，不丢审批记录。**修法方向**（待定）：`gate --check` 在正本可读时，把该阶段最新一轮「run.json 已终态、正本未登记」的补登记进去（幂等的 `registerRun`），闸门为 `idle` 且 run_id 相同时拉回 `review_done_awaiting_disposition`——这给 `--check` 新开了一条加锁方向的迁移（现只放行），要先定语义；或另设显式的补登记命令 | `src/trivium/review.ts`（`executeRun` 收尾 `registerRun`）；`src/trivium/run-protocol.ts`（worker 异常分支、`releaseRunningGate`）；`src/trivium/meta.ts`（`finalizeFailedRunMeta`）；`src/trivium/archive.ts`（`checkRunManifests`）；`src/trivium/cli.ts`（`gate --check`） |
+ | EV-250 | **done**（2026-10-22，主题 `争议明细写入`，`/dual-run`，主设计 v1.3.172；即发版清单「发版-02」）：`gate --check` 在 `warn` 策略下放行共同驳回时，除置 `disputed` 外把编号与分组按 `run_id` 覆盖写进 `task.json.disputes`，与 `joint_checks` 同一次写入（EV-248 的读不出拒写在它之前先判，不多一处落盘）：先删本轮旧条目、再按本次结论追加——同一轮重跑不堆积，争议撤回（改成接受）或改 `hard` 被拦时本轮条目删掉，他轮条目保留。`hard` 阻断不记争议（本轮未放行；编号在 `failures`，`joint_checks` 记 `checked-found`）。`note` 存分组写法 `编号+编号@location`（`formatJointGroups`，告警文案共用），不存整段告警。`GateCheckResult.disputedJointBlockers` 只在 `warn` 放行时给出（计划三审 AGY-02）。`report` 第五节无条件列出明细（阶段、轮次、run_id；找不到对应轮次只写 run_id），`disputed` 真而明细空时如实写「没有留下明细」，空编号、空说明兜底（AGY-03）；用户手册两处缺口说明改写（AGY-01）。**残余**：`disputed` 只增不减——旧正本的标记归属不到哪一轮，明细删空即清零会抹掉旧主题的标记；代价是某轮争议撤回且主题再无别的争议时，`status` 仍显示「⚠️ 有争议项」，`report` 落到「没有留下明细（…或该轮争议在重跑校验后已撤回）」。要消除得给正本加字段区分旧标记，暂不做 | **`task.json.disputes[]` 无写入点，report 的「争议项」打印不出编号。**告警里已带编号与位置，到 `cli.ts` 只剩置 `disputed` 一个布尔；`report` 又把明细循环包在 `if (disputed)` 里，旧正本有标记无明细时整段静默 | `src/trivium/gate.ts`（`checkAdjudication` 共同阻断段、`formatJointGroups`）；`src/trivium/cli.ts`（`gate --check` 落盘段）；`src/trivium/report.ts`（`renderDisputes`）；`src/trivium/meta.ts`（字段注释） |
++| EV-251 | **done**（2026-10-22，主题 `预检失败自动校准`，`/dual-run`，主设计 v1.3.173；用户原始需求 2026-10-22 第 1 条）：预检退 69 时四条命令的 skill 对 doctor 能修好的失败项自动跑带时限的 doctor、再重跑同一条预检，通过即继续双审，全程不向用户确认；每次预检至多一轮。预检失败项带机读 `recalibrate`（缺省不能修），汇总 `recalibration.invocations`（本轮组合、照抄即可执行）；`doctor --deadline-s`（30～540）到点或收到信号时按组结束段内派生的子进程（含组长已退出而组员还在的组）、探针沿 `finally` 删临时目录，在跑段作废不落盘、退 76；临时目录台账 `<run_root>/doctor-temp-<pid>.json` 供下一次 doctor 补删；配置键 `preflight.recalibrate_deadline_s`（缺省 480）。**残余**：①另三家载体（codex、agy、zcode 作为 Driver 时）的工具超时上限未实测，统一取值靠配置键兜底，实测要在各家载体里起真实会话、花配额；②宿主直接 SIGKILL doctor 时子进程组成为孤儿（无从结束），本次临时目录留到下一次 doctor 启动时才补删；③`config.local.yaml` 的写入不是原子替换（`config.ts` `persistProbeUnlocked`），硬杀落在写入中途可能截断，可重探恢复；④同步代码堵住事件循环时时限控制器的计时器得不到执行；⑤不跨命令冷却：连发同一条命令、每次都卡在被判为可修而实际修不好的失败上时各花一轮配额 | **预检退 69 只能原样转述后停下，让用户自己去终端跑 doctor。**预检失败项没有机读的「能不能修、该跑哪一家」；doctor 没有总时限，会话里被工具超时杀掉时探针子进程组过继给 init、含凭据副本的临时目录留在盘上 | `src/trivium/preflight.ts`（`recalTargets` / `buildRecalibration`）；`src/trivium/doctor.ts`、`src/trivium/doctor-deadline.ts`；`src/trivium/util/exec.ts`（段作用域、中止令牌、按组结束）；`src/trivium/util/fsx.ts`（台账观察者）；四个适配器 `availability()` 的 `fix`；`skills-src/partials/preflight/recalibrate.md` |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/skills-src/commands/run.contract.md b/skills-src/commands/run.contract.md
+index 53ce3c61..fa656949 100644
+--- a/skills-src/commands/run.contract.md
++++ b/skills-src/commands/run.contract.md
+@@ -77,7 +77,7 @@ TV preflight --stage all --driver {{DRIVER}} --critics <critics> [--profile <名
+ 并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
+ 跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
+ 
+-失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
++{{> preflight/recalibrate}}
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills-src/partials/review/body.md b/skills-src/partials/review/body.md
+index 39046224..1e32bbeb 100644
+--- a/skills-src/partials/review/body.md
++++ b/skills-src/partials/review/body.md
+@@ -70,7 +70,7 @@ TV preflight --stage {{STAGE}} --driver {{DRIVER}} --critics <critics> [--profil
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++{{> preflight/recalibrate}}
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md b/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
+index 1fc18cf8..d01824f6 100644
+--- a/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
+@@ -114,7 +114,24 @@ TV preflight --stage bug --driver codex --critics <critics> [--profile <名称>]
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/codex/dual-review-code/SKILL.md b/skills/dual-critic/entry/codex/dual-review-code/SKILL.md
+index 33565ad8..10f284e8 100644
+--- a/skills/dual-critic/entry/codex/dual-review-code/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-review-code/SKILL.md
+@@ -95,7 +95,24 @@ TV preflight --stage code --driver codex --critics <critics> [--profile <名称>
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md b/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
+index 8a0efa3e..93124692 100644
+--- a/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
+@@ -114,7 +114,24 @@ TV preflight --stage plan --driver codex --critics <critics> [--profile <名称>
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/codex/dual-run/SKILL.md b/skills/dual-critic/entry/codex/dual-run/SKILL.md
+index a348d998..b5c36cb4 100644
+--- a/skills/dual-critic/entry/codex/dual-run/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-run/SKILL.md
+@@ -95,7 +95,24 @@ TV preflight --stage all --driver codex --critics <critics> [--profile <名称>]
+ 并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
+ 跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
+ 
+-失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md b/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
+index 69fe4b60..390b9a38 100644
+--- a/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
+@@ -114,7 +114,24 @@ TV preflight --stage bug --driver gemini --critics <critics> [--profile <名称>
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md b/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
+index 0fbde8e5..6ce309d5 100644
+--- a/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
+@@ -95,7 +95,24 @@ TV preflight --stage code --driver gemini --critics <critics> [--profile <名称
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md b/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
+index b8da3059..973d9de1 100644
+--- a/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
+@@ -114,7 +114,24 @@ TV preflight --stage plan --driver gemini --critics <critics> [--profile <名称
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/gemini/dual-run/SKILL.md b/skills/dual-critic/entry/gemini/dual-run/SKILL.md
+index 19b08083..4e251c6f 100644
+--- a/skills/dual-critic/entry/gemini/dual-run/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-run/SKILL.md
+@@ -95,7 +95,24 @@ TV preflight --stage all --driver gemini --critics <critics> [--profile <名称>
+ 并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
+ 跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
+ 
+-失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md b/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
+index 5e28d6e0..6d2db205 100644
+--- a/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
+@@ -122,7 +122,24 @@ TV preflight --stage bug --driver glm --critics <critics> [--profile <名称>] [
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/glm/dual-review-code/SKILL.md b/skills/dual-critic/entry/glm/dual-review-code/SKILL.md
+index 12dbb045..8b61b351 100644
+--- a/skills/dual-critic/entry/glm/dual-review-code/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-review-code/SKILL.md
+@@ -103,7 +103,24 @@ TV preflight --stage code --driver glm --critics <critics> [--profile <名称>]
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md b/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
+index f23d4d01..8afce4da 100644
+--- a/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
+@@ -122,7 +122,24 @@ TV preflight --stage plan --driver glm --critics <critics> [--profile <名称>]
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/entry/glm/dual-run/SKILL.md b/skills/dual-critic/entry/glm/dual-run/SKILL.md
+index 6d0b2cd2..218a6576 100644
+--- a/skills/dual-critic/entry/glm/dual-run/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-run/SKILL.md
+@@ -103,7 +103,24 @@ TV preflight --stage all --driver glm --critics <critics> [--profile <名称>] [
+ 并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
+ 跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
+ 
+-失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-critic/schema/config.v2.json b/skills/dual-critic/schema/config.v2.json
+index 9d7c972e..0b6a8be0 100644
+--- a/skills/dual-critic/schema/config.v2.json
++++ b/skills/dual-critic/schema/config.v2.json
+@@ -620,6 +620,11 @@
+         "auth_cache_ttl_h": {
+           "type": "number",
+           "minimum": 0
++        },
++        "recalibrate_deadline_s": {
++          "type": "integer",
++          "minimum": 30,
++          "maximum": 540
+         }
+       }
+     },
+diff --git a/skills/dual-review-bug/SKILL.md b/skills/dual-review-bug/SKILL.md
+index 3e5fc834..63438991 100644
+--- a/skills/dual-review-bug/SKILL.md
++++ b/skills/dual-review-bug/SKILL.md
+@@ -100,7 +100,24 @@ TV preflight --stage bug --driver claude --critics <critics> [--profile <名称>
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-review-code/SKILL.md b/skills/dual-review-code/SKILL.md
+index f6c914a5..2396382c 100644
+--- a/skills/dual-review-code/SKILL.md
++++ b/skills/dual-review-code/SKILL.md
+@@ -81,7 +81,24 @@ TV preflight --stage code --driver claude --critics <critics> [--profile <名称
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-review-plan/SKILL.md b/skills/dual-review-plan/SKILL.md
+index 7cbe536b..d0ceb6fc 100644
+--- a/skills/dual-review-plan/SKILL.md
++++ b/skills/dual-review-plan/SKILL.md
+@@ -100,7 +100,24 @@ TV preflight --stage plan --driver claude --critics <critics> [--profile <名称
+ 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
+ 不带 `--critics` 就查不到，要等拉起之后才失败。
+ 
+-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/skills/dual-run/SKILL.md b/skills/dual-run/SKILL.md
+index b76782db..bf475fef 100644
+--- a/skills/dual-run/SKILL.md
++++ b/skills/dual-run/SKILL.md
+@@ -81,7 +81,24 @@ TV preflight --stage all --driver claude --critics <critics> [--profile <名称>
+ 并执行「`verify.build` / `verify.test` 皆空则拒绝启动」检查——
+ 跑完全流程却无法收口是不可接受的（§14.1）。跳过单阶段专属项（此时原稿还不存在）。
+ 
+-失败则**原样转述**并停止。预检失败时不会产生任何工件，可以放心重试。
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+ 
+ 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
+ 
+diff --git a/src/trivium/adapters/agy.ts b/src/trivium/adapters/agy.ts
+index 6125e21d..173976b4 100644
+--- a/src/trivium/adapters/agy.ts
++++ b/src/trivium/adapters/agy.ts
+@@ -333,9 +333,10 @@ export const agyAdapter: CriticAdapter = {
+     */
+     const p = ctx.cfg.probe.cli.agy;
+     if (!p?.probed_at) {
+-      return { ok: false, reason: 'agy 尚未探测，请先运行 trivium doctor --only agy' };
++      return { ok: false, reason: 'agy 尚未探测，请先运行 trivium doctor --only agy', fix: 'doctor' };
+     }
+-    if (!p.entrypoint) return { ok: false, reason: '探针未找到 agy 可执行文件，请先运行 trivium doctor' };
++    // 入口可能挪了；真卸载了 doctor 会给出「未找到可执行文件」的明确结论（EV-251 计划 r2 D1）
++    if (!p.entrypoint) return { ok: false, reason: '探针未找到 agy 可执行文件，请先运行 trivium doctor', fix: 'doctor' };
+     if (p.headless_read_ok === false) {
+       return {
+         ok: false,
+@@ -345,7 +346,7 @@ export const agyAdapter: CriticAdapter = {
+       };
+     }
+     if (p.headless_read_ok === null) {
+-      return { ok: false, reason: '探针尚未实测 agy headless 读取能力，请先运行 trivium doctor' };
++      return { ok: false, reason: '探针尚未实测 agy headless 读取能力，请先运行 trivium doctor', fix: 'doctor' };
+     }
+     const agent = resolveAgyAgent(p, agentConfigOf(ctx.cfg, 'gemini', 'antigravity').agent);
+     if (agent.reason) return { ok: false, reason: agent.reason };
+diff --git a/src/trivium/adapters/base.ts b/src/trivium/adapters/base.ts
+index cd544bb8..5fe79fc6 100644
+--- a/src/trivium/adapters/base.ts
++++ b/src/trivium/adapters/base.ts
+@@ -147,8 +147,15 @@ export interface CriticAdapter {
+    * 只对有厂商 profile 概念的侧有意义（今天是 codex），别家照收、忽略。**不传 = 旧行为**：
+    * 按 Agent 配置段自己的 profile 判——接口保留的旧行为，现役生产调用方（预检、`review` 准备阶段）都传（代码三审 CODEX-01）。
+    * 传了就逐个判、跳过 `null`。
++   *
++   * `fix: 'doctor'`（EV-251，预检失败自动校准计划 r2 D1）：不可用的原因是「落盘的探针结论缺失、过期或没跑完」，
++   * 重跑 doctor 就会写入新结论——预检据此把该项标为可自动校准。**缺省即不能修**：探针已实测到的否定结论
++   * （读不到、只读失守）与环境、配置、凭据问题都不标，重探只会再测出同一个否定、白花配额。拿不准的不标。
+    */
+-  availability(ctx: AdapterContext, opts?: { vendorProfiles?: readonly (string | null)[] }): { ok: boolean; reason?: string };
++  availability(
++    ctx: AdapterContext,
++    opts?: { vendorProfiles?: readonly (string | null)[] },
++  ): { ok: boolean; reason?: string; fix?: 'doctor' };
+   /**
+    * **从回读结果派生思考等级生效值**（M11 第 6 步，设计 11.1「思考等级透传与回读」/ 6.7.1）。**必填**。
+    *
+diff --git a/src/trivium/adapters/claude.ts b/src/trivium/adapters/claude.ts
+index 2ca1dd17..de225542 100644
+--- a/src/trivium/adapters/claude.ts
++++ b/src/trivium/adapters/claude.ts
+@@ -839,7 +839,7 @@ export const claudeAdapter: CriticAdapter = {
+       catch { return { ok: false, reason: 'Claude 路线指纹读取失败，请检查入口和配置权限' }; }
+       const result = claudeAvailability(p);
+       if (!result.ok) return { ok: false, reason: `${result.reason}；所选路线请运行 trivium doctor --only claude ${
+-        profile === null ? '--native-claude' : `--profile-claude ${profile}`}` };
++        profile === null ? '--native-claude' : `--profile-claude ${profile}`}`, ...(result.fix ? { fix: result.fix } : {}) };
+       if (!executableFile(route.bin)) return { ok: false, reason: 'Claude 所选路线入口不可执行' };
+     }
+     return { ok: true };
+@@ -887,13 +887,14 @@ export const claudeAdapter: CriticAdapter = {
+   },
+ };
+ 
+-function claudeAvailability(p: ClaudeProbe | undefined): { ok: boolean; reason?: string } {
++function claudeAvailability(p: ClaudeProbe | undefined): { ok: boolean; reason?: string; fix?: 'doctor' } {
+     // 两态判据同另三家：以 probed_at 区分「没探过」与「探过没找到」
+     if (!p?.probed_at) {
+-      return { ok: false, reason: 'claude 尚未探测，请先运行 trivium doctor --only claude' };
++      return { ok: false, reason: 'claude 尚未探测，请先运行 trivium doctor --only claude', fix: 'doctor' };
+     }
+     if (!p.entrypoint) {
+-      return { ok: false, reason: '探针未找到 claude 可执行文件，请先运行 trivium doctor' };
++      // 入口可能挪了；真卸载了 doctor 会给出「未找到可执行文件」的明确结论（EV-251 计划 r2 D1）
++      return { ok: false, reason: '探针未找到 claude 可执行文件，请先运行 trivium doctor', fix: 'doctor' };
+     }
+     if (p.readonly_flags.length === 0) {
+       return {
+@@ -929,6 +930,7 @@ function claudeAvailability(p: ClaudeProbe | undefined): { ok: boolean; reason?:
+       return {
+         ok: false,
+         reason: '探针尚未实测 claude 的 headless 读取能力（上次探测没跑完），请重跑 trivium doctor --only claude',
++        fix: 'doctor',
+       };
+     }
+     if (p.tool_surface_checked !== true) {
+diff --git a/src/trivium/adapters/codex.ts b/src/trivium/adapters/codex.ts
+index 23442873..12548c2c 100644
+--- a/src/trivium/adapters/codex.ts
++++ b/src/trivium/adapters/codex.ts
+@@ -465,10 +465,11 @@ export const codexAdapter: CriticAdapter = {
+     // 两态判据同另两家：以 probed_at 区分「没探过」与「探过没找到」
+     const p = ctx.cfg.probe.cli.codex;
+     if (!p?.probed_at) {
+-      return { ok: false, reason: 'codex 尚未探测，请先运行 trivium doctor --only codex' };
++      return { ok: false, reason: 'codex 尚未探测，请先运行 trivium doctor --only codex', fix: 'doctor' };
+     }
+     if (!p.entrypoint) {
+-      return { ok: false, reason: '探针未找到 codex 可执行文件，请先运行 trivium doctor' };
++      // 入口可能挪了；真卸载了 doctor 会给出「未找到可执行文件」的明确结论（EV-251 计划 r2 D1）
++      return { ok: false, reason: '探针未找到 codex 可执行文件，请先运行 trivium doctor', fix: 'doctor' };
+     }
+     if (p.readonly_flags.length === 0) {
+       return {
+@@ -488,6 +489,7 @@ export const codexAdapter: CriticAdapter = {
+       return {
+         ok: false,
+         reason: '探针尚未实测 codex 的 headless 读取能力（上次探测没跑完），请重跑 trivium doctor --only codex',
++        fix: 'doctor',
+       };
+     }
+ 
+@@ -518,6 +520,7 @@ export const codexAdapter: CriticAdapter = {
+           reason:
+             `本轮的 codex 厂商 profile「${wanted}」没有对应的有效探针结论。已探测到的：${known}。\n` +
+             `  存在性以现场文件名单为准；请运行 trivium doctor --only codex --profile-codex ${wanted} 复核该路线。`,
++          fix: 'doctor',
+         };
+       }
+       if (!hit.credentialed) {
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index 7407b0c5..2d67f809 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -1250,9 +1250,10 @@ export const zcodeAdapter: CriticAdapter = {
+     // 同 agy：「未探过」与「探过但没找到」要分开答，判据用 probed_at 而非 `!p`（AGY-01）。
+     const p = ctx.cfg.probe.cli.zcode;
+     if (!p?.probed_at) {
+-      return { ok: false, reason: 'zcode 尚未探测，请先运行 trivium doctor --only zcode' };
++      return { ok: false, reason: 'zcode 尚未探测，请先运行 trivium doctor --only zcode', fix: 'doctor' };
+     }
+-    if (!p.entrypoint) return { ok: false, reason: '探针未找到 zcode.cjs 入口，请先运行 trivium doctor' };
++    // 入口可能挪了；真卸载了 doctor 会给出「未找到入口」的明确结论（EV-251 计划 r2 D1）
++    if (!p.entrypoint) return { ok: false, reason: '探针未找到 zcode.cjs 入口，请先运行 trivium doctor', fix: 'doctor' };
+     /*
+      * 布局判据要**先于**旗标判空（r2 CODEX-02 ≡ AGY-04）：内置 provider 配置定位不到时，
+      * 参数解析根本没发生（P-29），`readonly_flags` 为空是布局失败的**后果**而不是独立结论。
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index a28b4d34..28430cdb 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -24,7 +24,11 @@ import { selftestCommand } from './selftest.js';
+ import { runReview } from './review.js';
+ import { collectCommands, runVerify, summarizeVerify } from './verify.js';
+ import { buildTopicReport, renderTopicReport } from './report.js';
+-import { cancelRun, installForegroundInterruptForwarding, readRoundFacts, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
++import {
++  WORKER_TREE_GRACE_MS, WORKER_TREE_KILL_WAIT_MS, cancelRun, installForegroundInterruptForwarding, readRoundFacts, startRun, statusRun,
++  waitRun, workerMain,
++} from './run-protocol.js';
++import { DEADLINE_MAX_S, DEADLINE_MIN_S } from './doctor-deadline.js';
+ import {
+   approveForkRecovery, awaitApprovalRecovery, checkAdjudication, formatJointGroups, loadRoundReviews, renderGateResult,
+   renderTamperedArtifacts, verifyRoundForApproval,
+@@ -192,10 +196,12 @@ function rejectExtraPositionals(args: ParsedArgs): void {
+ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编排器
+ 
+ 用法：
+-  trivium doctor [--json] [--no-model-calls] [--only ${doctorOnlyChoices().join('|')}] [--profile-<id> <名> | --native-<id>] [--model-<id> <模型>] [--effort-<id> <值>]
++  trivium doctor [--json] [--no-model-calls] [--only ${doctorOnlyChoices().join('|')}] [--profile-<id> <名> | --native-<id>] [--model-<id> <模型>] [--effort-<id> <值>] [--deadline-s <秒>]
+       本机能力探针。实测各家 CLI 的真实能力并回填 .trivium/config.local.yaml 的 probe: 段。
+       --no-model-calls  只做静态探测，不消耗厂商配额
+       --only            只探测指定一侧（取值随注册表登记的 CLI 自动扩展）
++      --deadline-s      总时限（${DEADLINE_MIN_S}～${DEADLINE_MAX_S} 秒）：到点或收到 SIGINT / SIGTERM 时按组结束本次拉起的探针子进程、
++                        删掉探针临时目录，已探完的段照常落盘，没探完的段在 JSON 的 deadline.sections 里点名，退 76
+       每段探完即中途落盘：那几步已经烧过配额，中断不该让它白费
+       已登记但尚无探针实现的 CLI 会明确报「登记了、本轮无结论」，不是失败
+ 
+@@ -832,8 +838,13 @@ async function cmdReview(args: ParsedArgs): Promise<number> {
+ }
+ 
+ async function cmdDoctor(args: ParsedArgs): Promise<number> {
++  /*
++   * 总时限（EV-251）：给了就由 doctor 自己的时限控制器接 SIGINT / SIGTERM、走协作式收尾——
++   * 前台中断转发走的是冻结式 `shutdownTrackedTrees`，探针 finally 不跑、凭据副本目录留在盘上（计划三审 CODEX-03）。
++   */
++  const deadlineS = parseDeadlineFlag(args);
+   // 前台探针以 killTree 拉起子进程，Ctrl-C 够不到它们：装中断转发（EV-155）
+-  installForegroundInterruptForwarding();
++  if (deadlineS === null) installForegroundInterruptForwarding();
+   /*
+    * --selftest 不读当前项目的配置：它在自己的临时夹具里跑。
+    * 因此放在 loadCtx 之前——装完还没 init 的项目里也该能自检，
+@@ -885,6 +896,17 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
+     only,
+     tierFlags,
+     modelOverrides,
++    ...(deadlineS !== null
++      ? {
++          deadline: {
++            ms: deadlineS * 1000,
++            graceMs: WORKER_TREE_GRACE_MS,
++            killWaitMs: WORKER_TREE_KILL_WAIT_MS,
++            ledgerDir: runRoot(ctx.config),
++            handleSignals: true,
++          },
++        }
++      : {}),
+   });
+ 
+   if (isJsonMode()) {
+@@ -895,12 +917,31 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
+       blockers: report.blockers,
+       warnings: report.warnings,
+       directoryEvidence: report.directoryEvidence,
++      ...(report.deadline ? { deadline: report.deadline } : {}),
+     });
+   } else {
+     renderDoctorReport(report);
+   }
+ 
+-  return report.blockers.length === 0 ? EXIT.OK : EXIT.ENV;
++  // 到点或收到信号：没探完的段优先于 blockers 的 69（「没探完」不是「探完了有问题」，EV-251）
++  const code = report.deadline?.hit ? EXIT.DOCTOR_PARTIAL : report.blockers.length === 0 ? EXIT.OK : EXIT.ENV;
++  if (report.deadline?.hit) {
++    // 时限要兑现：挂住的段与确认不了的子进程句柄会让事件循环不退，等 stdout 写完就主动结束
++    await new Promise<void>((r) => process.stdout.write('', () => r()));
++    process.exit(code);
++  }
++  return code;
++}
++
++/** `doctor --deadline-s <秒>`：整数，取值见 `DEADLINE_MIN_S` / `DEADLINE_MAX_S`；不给返回 null（EV-251） */
++function parseDeadlineFlag(args: ParsedArgs): number | null {
++  const raw = args.flags.get('deadline-s');
++  if (raw === undefined) return null;
++  const s = typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : NaN;
++  if (!Number.isInteger(s) || s < DEADLINE_MIN_S || s > DEADLINE_MAX_S) {
++    throw usageError(`--deadline-s 只接受 ${DEADLINE_MIN_S}～${DEADLINE_MAX_S} 的整数秒，收到：${String(raw)}`);
++  }
++  return s;
+ }
+ 
+ async function cmdPreflight(args: ParsedArgs): Promise<number> {
+@@ -962,10 +1003,19 @@ async function cmdPreflight(args: ParsedArgs): Promise<number> {
+       ok: r.ok,
+       scope: r.scope,
+       // `warn` 只在为真时带上：与既有输出逐字兼容（EV-123）
+-      checks: r.checks.map((c) => ({ name: c.name, ok: c.ok, ...(c.warn ? { warn: true } : {}), detail: c.detail })),
++      checks: r.checks.map((c) => ({
++        name: c.name,
++        ok: c.ok,
++        ...(c.warn ? { warn: true } : {}),
++        detail: c.detail,
++        // 只在失败项上出现（EV-251）：skill 不读它，读下面的汇总；留给人与用例核对逐项判定
++        ...(c.recalibrate ? { recalibrate: c.recalibrate } : {}),
++      })),
+       // 恒在（无警告时为 []）：skill 按它转述，键缺席会让转述句静默不触发
+       warnings: r.warnings,
+       exit_code: r.exitCode,
++      // 失败时恒在（EV-251）：skill 只照抄 invocations[*].args；键缺席按「不自动校准」处理
++      ...(r.recalibration ? { recalibration: r.recalibration } : {}),
+     });
+   } else {
+     say(renderPreflight(r));
+diff --git a/src/trivium/config.ts b/src/trivium/config.ts
+index 1afd8fd8..d2865a9c 100644
+--- a/src/trivium/config.ts
++++ b/src/trivium/config.ts
+@@ -417,7 +417,8 @@ export function defaultConfig(): Config {
+       reason_policy: 'warn',
+       joint_blocker_policy: 'warn',
+     },
+-    preflight: { auth_cache_ttl_h: 1 },
++    // recalibrate_deadline_s：480 给收尾（按组结束、兜底 20 s）与进程启动在 540 s 的工具超时里留空（EV-251 计划 r2 D5）
++    preflight: { auth_cache_ttl_h: 1, recalibrate_deadline_s: 480 },
+     verify: { build: [], test: [] },
+     retention: { run_dir_days: 30 },
+     probe: defaultProbe(),
+diff --git a/src/trivium/doctor.ts b/src/trivium/doctor.ts
+index 84a86f84..d3ed5c30 100644
+--- a/src/trivium/doctor.ts
++++ b/src/trivium/doctor.ts
+@@ -32,6 +32,43 @@ import {
+   describeSharedRootProblems, entryScanEnv, scanEntryCollisions, sharedReadRootTargets, type EntryScanEnv,
+ } from './entry-collisions.js';
+ import { say, step, warn } from './util/log.js';
++import { formatCommand, newProbeSection, withProbeSection, type ProbeSectionScope } from './util/exec.js';
++import { observeTempDirs } from './util/fsx.js';
++import {
++  DEADLINE_UNWIND_MS, DeadlineController, TempDirLedger, sweepDoctorLedgers, unfinishedSectionNote,
++  type DeadlineSectionState, type DoctorDeadline,
++} from './doctor-deadline.js';
++
++/** `doctor --deadline-s` 的接线（EV-251，预检失败自动校准计划 r2 D3） */
++export interface DoctorDeadlineOptions {
++  /** 总时限（毫秒） */
++  ms: number;
++  /** 到点后等段退出来的兜底时长，缺省 `DEADLINE_UNWIND_MS`；只为可测性 */
++  unwindMs?: number;
++  /** 按组结束的宽限链：cli 传 worker 处理器那一组常量（doctor 不引 run-protocol） */
++  graceMs: number;
++  killWaitMs: number;
++  /** 临时目录台账所在目录（run_root 展开后）；null 不落台账 */
++  ledgerDir: string | null;
++  /** 接管 SIGINT / SIGTERM（CLI 传 true） */
++  handleSignals: boolean;
++  /** 只为可测性：拿到控制器（用例借它模拟信号） */
++  onController?: (c: DeadlineController) => void;
++}
++
++/**
++ * doctor 里经 `overridesFor` 读命令行覆盖的段（cliName）。预检据此决定自动校准的调用带不带
++ * `--model-<id>` / `--effort-<id>` / 路线旗标：不读覆盖的段带了只会换来末尾一条「覆盖没用上」（EV-245）。
++ * 与下面各段是否调 `overridesFor` 由 `doctor-override-sections` 测试按源码对账。
++ */
++const OVERRIDE_CONSUMING_SECTIONS: ReadonlySet<string> = new Set(['codex', 'claude']);
++
++export function doctorSectionConsumesOverrides(cliName: string): boolean {
++  return OVERRIDE_CONSUMING_SECTIONS.has(cliName);
++}
++
++/** doctor 的段次序（与 `runDoctor` 里各段的先后一致） */
++const DOCTOR_SECTION_ORDER: readonly string[] = ['agy', 'zcode', 'codex', 'claude'];
+ 
+ export interface DoctorOptions {
+   tierFlags?: Partial<Record<CriticId, TierFlagValues>>;
+@@ -73,6 +110,13 @@ export interface DoctorOptions {
+    * 由 `entryScanEnv()` 取 `TRIVIUM_ENTRY_SCAN_HOME` 或 `os.homedir()`。
+    */
+   entryScanEnv?: EntryScanEnv;
++  /** 总时限（EV-251）：不给时行为逐字不变 */
++  deadline?: DoctorDeadlineOptions;
++  /**
++   * 只为可测性（EV-251）：给了时段作用域内、探针之前先等它。用例借它造「段卡在不经 `run()` 的 await 上」
++   * （兜底路径）与「段内不带 killTree 的派生」。生产路径不传。
++   */
++  sectionPrelude?: (cli: string) => Promise<void>;
+ }
+ 
+ /** `--only` 的合法取值：全部已登记 CLI，外加环境段 */
+@@ -169,6 +213,27 @@ export interface DoctorReport {
+    * 「无可用只读旗标」会把他引向升级 ZCode。
+    */
+   warnings: string[];
++  /** 只在给了 `--deadline-s` 时出现（EV-251） */
++  deadline?: DoctorDeadline;
++}
++
++/**
++ * 给用户在终端复制的重跑命令（EV-251）：`--only` 加该段读的那几个覆盖旗标，原样取自本次收到的值；
++ * 不带 `--deadline-s` 与 `--json`（终端里不受工具超时约束）。
++ */
++export function doctorRerunCommand(cli: string, opts: Pick<DoctorOptions, 'tierFlags' | 'modelOverrides'>): string {
++  const args = ['doctor', '--only', cli];
++  const id = agentByCliName(cli)?.id as CriticId | undefined;
++  if (id && doctorSectionConsumesOverrides(cli)) {
++    const model = opts.modelOverrides?.[id];
++    const tf = opts.tierFlags?.[id];
++    if (typeof tf?.vendorProfile === 'string') args.push(`--profile-${id}`, tf.vendorProfile);
++    if (tf?.vendorProfile === null) args.push(`--native-${id}`);
++    if (model !== undefined) args.push(`--model-${id}`, model);
++    if (tf?.tier !== undefined) args.push(`--tier-${id}`, tf.tier);
++    if (tf?.effort !== undefined) args.push(`--effort-${id}`, tf.effort);
++  }
++  return formatCommand('trivium', args);
+ }
+ 
+ /** 一条诊断结论：进 blockers 还是只进 notes */
+@@ -586,7 +651,38 @@ export async function guardFixture<T>(
+   }
+ }
+ 
++/** 本体与外层竞速之间的接头（EV-251）：本体把收尾函数与控制器交出来，兜底路径据此出结果 */
++interface DoctorCoreHooks {
++  finalize?: (stuck?: boolean) => Promise<DoctorReport>;
++  controller?: DeadlineController;
++  ready?: () => void;
++}
++
++/**
++ * 不给 `deadline` 时就是本体本身。给了时与控制器的兜底竞速（计划三审 AGY-02）：到点后段在兜底时长内没退出来，
++ * 不等挂住的 await，按控制器记的段状态收尾、出结果（`deadline.stuck: true`）；调用方随后须自行结束进程。
++ */
+ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
++  if (!opts.deadline) return runDoctorCore(opts, null);
++  const hooks: DoctorCoreHooks = {};
++  const ready = new Promise<void>((r) => {
++    hooks.ready = r;
++  });
++  // 本体抛出（内部错误）时停掉计时器与信号接管、卸下台账观察者，否则计时器会把进程拖到时限
++  const core = runDoctorCore(opts, hooks).catch((e: unknown) => {
++    hooks.controller?.stop();
++    observeTempDirs(null);
++    throw e;
++  });
++  const stuck = (async (): Promise<DoctorReport> => {
++    await ready;
++    await hooks.controller!.stuck;
++    return hooks.finalize!(true);
++  })();
++  return Promise.race([core, stuck]);
++}
++
++async function runDoctorCore(opts: DoctorOptions, hooks: DoctorCoreHooks | null): Promise<DoctorReport> {
+   // 以**已落盘的探针结论**为基线，只覆盖本次真正探测过的段落。
+   // 否则 `--only zcode` 会把上一轮的 agy 结论一并清空（探针结论是增量积累的）。
+   const base = defaultProbe();
+@@ -610,11 +706,68 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+   const only = opts.only ?? null;
+   /** 本轮探针夹具没建起来的侧（EV-209）：末尾「尚无探针实现」那一圈要跳过它们，否则 blocker 之外再收一句自相矛盾的 note */
+   const fixtureFailed = new Set<string>();
++  /** 本次 doctor 已到点或收到信号（EV-251）：读控制器的中止令牌，不给时限时恒为假 */
++  const aborted = (): boolean => dl?.token.aborted === true;
+   const guard = <T>(cli: string, fn: () => Promise<T>): Promise<T | null> =>
+     guardFixture(cli, fn, (blocker) => {
++      // 中止派生之后夹具建不起来是我们打断的，不是本机环境问题（EV-251）：不记 blocker，该段按未探完交代
++      if (aborted()) return;
+       fixtureFailed.add(cli);
+       blockers.push(blocker);
+     });
++
++  /*
++   * ── 总时限（EV-251，计划 r2 D3）──
++   * 不给 `deadline` 时下面这些一概不启用，各段照旧直接调用，行为逐字不变。
++   */
++  const dlo = opts.deadline ?? null;
++  const dl = dlo
++    ? new DeadlineController({
++        ms: dlo.ms,
++        unwindMs: dlo.unwindMs ?? DEADLINE_UNWIND_MS,
++        graceMs: dlo.graceMs,
++        killWaitMs: dlo.killWaitMs,
++        handleSignals: dlo.handleSignals,
++      })
++    : null;
++  const ledger = dlo?.ledgerDir ? new TempDirLedger(dlo.ledgerDir) : null;
++  const sweepResidue = dlo?.ledgerDir ? await sweepDoctorLedgers(dlo.ledgerDir) : [];
++  ledger?.install();
++  /** 本次要探的每一段的状态，`deadline.sections` 由它给出 */
++  const sectionStates = new Map<string, { state: DeadlineSectionState; scope: ProbeSectionScope | null }>(
++    DOCTOR_SECTION_ORDER.filter((cli) => only === null || only === cli).map((cli) => [cli, { state: 'not_started', scope: null }]),
++  );
++  const ABORTED = Symbol('aborted');
++  /**
++   * 段包装：在段作用域里跑 fn（作用域内派生一律自成一组、记进段）。中止派生之后返回的结果作废——
++   * 合成结果与被杀的调用会被探针读成各种否定结论，落盘就是把「被我们打断」写成「能力缺失」；
++   * 这时段里抛出的任何异常也接住（计划三审 AGY-01），未中止时原样重抛。
++   */
++  const inSection = async <T>(cli: string, fn: () => Promise<T>): Promise<T | typeof ABORTED> => {
++    if (!dl) return fn();
++    if (aborted()) return ABORTED;
++    const scope = newProbeSection(cli, dl.token);
++    dl.scopes.push(scope);
++    sectionStates.set(cli, { state: 'in_progress', scope });
++    try {
++      const r = await withProbeSection(scope, async () => {
++        await opts.sectionPrelude?.(cli);
++        return fn();
++      });
++      return aborted() ? ABORTED : r;
++    } catch (e) {
++      if (aborted()) return ABORTED;
++      throw e;
++    }
++  };
++  const markFinished = (cli: string): void => {
++    const s = sectionStates.get(cli);
++    if (s) s.state = 'finished';
++  };
++  if (dl) {
++    dlo?.onController?.(dl);
++    dl.start();
++  }
+   /**
+    * 命令行覆盖（模型、档位、思考等级、厂商 profile）的**唯一读点**（EV-245）：读的同时记下这一家的覆盖用上了，
+    * 末尾据此给 `describeUnusedOverrides` 提示。各段不得绕过它直接读 `opts.tierFlags` / `opts.modelOverrides`——
+@@ -712,6 +865,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+    *   只把已探过的段与 `generated_at` 再落一次（末尾补写用）。
+    */
+   const checkpoint = async (label: string | null): Promise<void> => {
++    if (!dl) return writeCheckpoint(label);
++    // 到点收尾要等在写的这一次写完（EV-251）
++    const p = writeCheckpoint(label);
++    dl.track(p);
++    return p;
++  };
++  const writeCheckpoint = async (label: string | null): Promise<void> => {
+     if (label !== null) probedSections.add(label);
+     try {
+       /*
+@@ -744,18 +904,95 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+       );
+     }
+   };
++  /**
++   * 收尾（只执行一次）：正常路径在各段之后调；带时限时兜底路径也调它（EV-251），那时段可能还挂着，
++   * 这里只读已记下的状态，不等段。
++   */
++  let finalized: Promise<DoctorReport> | null = null;
++  const finalize = (stuck = false): Promise<DoctorReport> => (finalized ??= (async (): Promise<DoctorReport> => {
++    // 到点时先等按组结束与在写的 checkpoint（控制器里），再停计时器与信号接管
++    const term = dl?.termination ? await dl.termination : null;
++    dl?.stop();
++
++    // 写了却没用上的命令行覆盖（EV-245）：只进 warnings，退出码不变。跑过的段 = 探完的 + 夹具没建起来的
++    const unusedOverrides = describeUnusedOverrides({
++      tierFlags: opts.tierFlags,
++      modelOverrides: opts.modelOverrides,
++      consumed: consumedOverrides,
++      ran: new Set([...probedSections, ...fixtureFailed]),
++      only,
++    });
++    if (unusedOverrides !== null) warnings.push(unusedOverrides);
++
++    probe.generated_at = new Date().toISOString();
++
++    /*
++     * 末尾再写一次，只为补上 generated_at 并确保前面每一段都落了盘。
++     * 走 patchProbe（锁内读-改-写）而不是 persistProbe（整体替换）——
++     * 后者会把并发的另一次 doctor（例如 `--only` 另一侧）的结论覆盖掉。
++     *
++     * **传 null，不借用任何厂商标签**（审查意见 GLM-03）。原实现写的是
++     * `checkpoint(only === null ? 'zcode' : only === 'agy' ? 'agy' : 'zcode')`：
++     * `--only env` 时那个三元会落到 `'zcode'` 上，于是把本次**根本没探过**的
++     * zcode 段按起点 clone 整段写回——与 checkpoint 自己「没探过的段一个字节都不碰」
++     * 的注释直接矛盾，并发 doctor 下会丢更新。
++     *
++     * 到点时作废的段不在 probedSections 里，这一次不会写它；被作废那一家下一次预检仍按路线探针新鲜度退 69，
++     * 因为 `cliProbeIsFresh` 按各家自己的 probed_at 判、不看全局 generated_at（EV-251，计划三审 GLM-02）。
++     */
++    await checkpoint(null);
++    const written = path.join(opts.triviumDir, 'config.local.yaml');
++    notes.push(`探针结论已写入 ${written}`);
++
++    let deadline: DoctorDeadline | undefined;
++    if (dlo && dl) {
++      const residue = [
++        ...sweepResidue,
++        ...(term?.remaining ?? []).map((g) => `进程组 ${g} 在宽限链之后仍未确认结束（或成员数取不到）`),
++        ...(ledger ? await ledger.finish() : []),
++      ];
++      deadline = {
++        limit_s: Math.round(dlo.ms / 1000),
++        hit: dl.reason !== null,
++        reason: dl.reason,
++        stuck,
++        sections: [...sectionStates].map(([cli, s]) => {
++          const launches = s.scope?.launches ?? 0;
++          return {
++            only: cli,
++            state: s.state,
++            launches,
++            notes: notes.filter((n) => n.startsWith(`[${cli}] `)),
++            rerun: doctorRerunCommand(cli, opts),
++            ...(s.state === 'finished' ? {} : { note: unfinishedSectionNote(launches) }),
++          };
++        }),
++        residue,
++      };
++    }
++    return { probe, notes, blockers, warnings, directoryEvidence, ...(deadline ? { deadline } : {}) };
++  })());
++  if (hooks) {
++    hooks.finalize = finalize;
++    if (dl) hooks.controller = dl;
++    hooks.ready?.();
++  }
++
+   await checkpoint(DOCTOR_ONLY_ENV);
+ 
+   // ── Antigravity ─────────────────────────────────────────────────────
+   if (only === null || only === 'agy') {
+     step('探测 Antigravity（agy）…');
+     // 夹具没建起来时 r 为 null（EV-209）：该侧不赋值、不 checkpoint，blocker 已由 guard 推入
+-    const r = await guard('agy', () =>
++    const got = await inSection('agy', () => guard('agy', () =>
+       probeAgy(agentConfigOf(opts.config, 'gemini', 'antigravity').bin, agentConfigOf(opts.config, 'gemini', 'antigravity').agent, {
+         skipModelCalls: opts.skipModelCalls ?? false,
+         existing: probe.cli.agy,
+       }),
+-    );
++    ));
++    // 中止派生之后返回的段作废、一个字节都不落（EV-251）
++    const r = got === ABORTED ? null : got;
++    if (got !== ABORTED) markFinished('agy');
+     if (r) {
+       probe.cli.agy = r.probe;
+       notes.push(...r.notes.map((n) => `[agy] ${n}`));
+@@ -773,7 +1010,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+   // ── ZCode ───────────────────────────────────────────────────────────
+   if (only === null || only === 'zcode') {
+     step('探测 ZCode（zcode.cjs）…');
+-    const r = await guard('zcode', () =>
++    const got = await inSection('zcode', () => guard('zcode', () =>
+       probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {
+         skipModelCalls: opts.skipModelCalls ?? false,
+         existing: probe.cli.zcode,
+@@ -781,7 +1018,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+         launchModel: zcodeProbeModel(opts.config),
+         ...(opts.zcodeProbe ?? {}),
+       }),
+-    );
++    ));
++    const r = got === ABORTED ? null : got;
++    if (got !== ABORTED) markFinished('zcode');
+     if (r) {
+       probe.cli.zcode = r.probe;
+       notes.push(...r.notes.map((n) => `[zcode] ${n}`));
+@@ -836,13 +1075,15 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+   if (only === null || only === 'codex') {
+     step('探测 Codex（codex exec）…');
+     const selected = resolveTier(opts.config, 'codex', 'code', overridesFor('codex'));
+-    const r = await guard('codex', () =>
++    const got = await inSection('codex', () => guard('codex', () =>
+       probeCodex(opts.probeBins?.codex ?? (opts.config.agents.codex?.vendor === 'openai' ? opts.config.agents.codex.bin ?? null : null), {
+         skipModelCalls: opts.skipModelCalls ?? false,
+         existing: probe.cli.codex,
+         selected,
+       }),
+-    );
++    ));
++    const r = got === ABORTED ? null : got;
++    if (got !== ABORTED) markFinished('codex');
+     if (r) {
+       probe.cli.codex = r.probe;
+       notes.push(...r.notes.map((n) => `[codex] ${n}`));
+@@ -881,7 +1122,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+     if (selected.model === null) notes.push('[claude] 未解析出本轮模型，跳过付费能力探针，不写路线准入结论');
+     step(`探测 Claude Code（${selected.vendorProfile === null ? '原生' : `profile:${selected.vendorProfile}`}）…`);
+     let routeBefore: ClaudeRoute | undefined;
+-    const r = await guard('claude', async () => {
++    const got = await inSection('claude', () => guard('claude', async () => {
+       const route = resolveClaudeRoute(opts.config, selected.vendorProfile);
+       routeBefore = route;
+       notes.push(`[claude] 配置声明模型：${route.modelsDeclared.join('、') || '未声明'}；不代表完整服务端目录`);
+@@ -892,7 +1133,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+         config: opts.config,
+         directoryProbe: opts.claudeDirectoryProbe,
+       }));
+-    });
++    }));
++    const r = got === ABORTED ? null : got;
++    if (got !== ABORTED) markFinished('claude');
+     if (r) {
+       const routes = { ...probe.cli.claude?.routes };
+       directoryEvidence = r.directoryEvidence;
+@@ -960,6 +1203,8 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+   for (const name of ALL_CLI_NAMES) {
+     if (probedSections.has(name)) continue; // 本次刚探过
+     if (fixtureFailed.has(name)) continue; // 本次探了、夹具没建起来：已有 blocker，不是「尚无探针实现」（EV-209）
++    // 到点时没探完或没开始的段：由 deadline.sections 交代，不是「尚无探针实现」（EV-251）
++    if (dl?.reason && sectionStates.has(name) && sectionStates.get(name)!.state !== 'finished') continue;
+     if (only !== null && only !== name) continue; // 用户没点名这一侧
+     if (probe.cli[name]?.probed_at) continue; // 盘上有旧结论，不是「无实现」
+     const agent = agentByCliName(name);
+@@ -969,34 +1214,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorReport> {
+     );
+   }
+ 
+-  // 写了却没用上的命令行覆盖（EV-245）：只进 warnings，退出码不变。跑过的段 = 探完的 + 夹具没建起来的
+-  const unusedOverrides = describeUnusedOverrides({
+-    tierFlags: opts.tierFlags,
+-    modelOverrides: opts.modelOverrides,
+-    consumed: consumedOverrides,
+-    ran: new Set([...probedSections, ...fixtureFailed]),
+-    only,
+-  });
+-  if (unusedOverrides !== null) warnings.push(unusedOverrides);
+-
+-  probe.generated_at = new Date().toISOString();
+-
+-  /*
+-   * 末尾再写一次，只为补上 generated_at 并确保前面每一段都落了盘。
+-   * 走 patchProbe（锁内读-改-写）而不是 persistProbe（整体替换）——
+-   * 后者会把并发的另一次 doctor（例如 `--only` 另一侧）的结论覆盖掉。
+-   *
+-   * **传 null，不借用任何厂商标签**（审查意见 GLM-03）。原实现写的是
+-   * `checkpoint(only === null ? 'zcode' : only === 'agy' ? 'agy' : 'zcode')`：
+-   * `--only env` 时那个三元会落到 `'zcode'` 上，于是把本次**根本没探过**的
+-   * zcode 段按起点 clone 整段写回——与 checkpoint 自己「没探过的段一个字节都不碰」
+-   * 的注释直接矛盾，并发 doctor 下会丢更新。
+-   */
+-  await checkpoint(null);
+-  const written = path.join(opts.triviumDir, 'config.local.yaml');
+-  notes.push(`探针结论已写入 ${written}`);
+-
+-  return { probe, notes, blockers, warnings, directoryEvidence };
++  return finalize();
+ }
+ 
+ /** 人读渲染 */
+@@ -1016,6 +1234,18 @@ export function renderDoctorReport(report: DoctorReport): void {
+     for (const b of report.blockers) warn(b);
+   }
+   say('');
++  const d = report.deadline;
++  if (d) {
++    const done = d.sections.filter((s) => s.state === 'finished').map((s) => s.only);
++    const left = d.sections.filter((s) => s.state !== 'finished');
++    say(
++      `本次时限 ${d.limit_s} 秒，${d.hit ? (d.reason === 'signal' ? '收到信号' : '已到点') : '未到点'}` +
++        `：已探完 ${done.join('、') || '无'}；未探完 ${left.map((s) => s.only).join('、') || '无'}`,
++    );
++    for (const s of left) say(`  请在终端单独跑：${s.rerun}`);
++    for (const r of d.residue) warn(r);
++    say('');
++  }
+ }
+ 
+ /**
+diff --git a/src/trivium/exit-codes.ts b/src/trivium/exit-codes.ts
+index f14c6831..3432895a 100644
+--- a/src/trivium/exit-codes.ts
++++ b/src/trivium/exit-codes.ts
+@@ -24,6 +24,11 @@ export const EXIT = {
+   STILL_RUNNING: 73,
+   /** 超时或单侧失败且为严格模式 */
+   STRICT_ABORT: 75,
++  /**
++   * `doctor --deadline-s` 到点或收到信号时还有段没探完（EV-251）。已探完的段照常落盘；
++   * 与 69 分开：「没探完」不是「探完了有问题」，后者照样列在 blockers 里
++   */
++  DOCTOR_PARTIAL: 76,
+ } as const;
+ 
+ export type ExitCode = (typeof EXIT)[keyof typeof EXIT];
+diff --git a/src/trivium/preflight.ts b/src/trivium/preflight.ts
+index 03897e1b..0e3236a2 100644
+--- a/src/trivium/preflight.ts
++++ b/src/trivium/preflight.ts
+@@ -6,10 +6,10 @@
+  *   - 归档根可写性用 `access` 探测；目录不存在时只检查**父目录**权限，严禁创建它；
+  *   - 探活缓存写推迟到**全部检查通过之后**（审查意见 GLM-05）。
+  *
+- * 另一条铁律：探针过期时**快速失败**，不在预检里隐式拉起 `doctor`
+- * （AGY-03 / GLM-08）。预检是被 skill 在**非交互**的 Bash 工具里调用的，
+- * 无处告知也无从等待；而完整 `doctor` 会击穿 600s 工具超时，
+- * 届时配额已烧而探针一字未落盘。
++ * 另一条铁律：探针过期时**快速失败**，预检自己不拉起 `doctor`（AGY-03 / GLM-08）。
++ * EV-251 起校准交给 skill：失败项上带机读的 `recalibrate`（能不能由 doctor 修、目标是哪几侧哪个组合），
++ * 汇总成 `recalibration.invocations`；skill 照抄调用带时限的 doctor（`--deadline-s`，到点按组结束探针子进程、
++ * 已探完的段照常落盘），再重跑同一条预检，至多一轮。doctor 每探完一段就落盘，丢掉的只会是撞上时限的那一段。
+  */
+ import path from 'node:path';
+ import { createHash } from 'node:crypto';
+@@ -38,13 +38,14 @@ import {
+   type ReasoningLevels,
+   type TierResolution,
+ } from './adapters/base.js';
+-import { mergeCliOverrides, type TierFlagValues } from './tier-flags.js';
++import { mergeCliOverrides, vendorProfileAgents, type TierFlagValues } from './tier-flags.js';
++import { doctorSectionConsumesOverrides } from './doctor.js';
+ import { displayHomePath, exists, tildeHome } from './util/fsx.js';
+ import {
+   entryScanEnv, scanEntryCollisions, sharedReadRootTargets, summarizeSharedRootProblems, type EntryScanEnv,
+ } from './entry-collisions.js';
+ import { isGitRepo } from './util/git.js';
+-import { run } from './util/exec.js';
++import { bashTimeoutFor, run } from './util/exec.js';
+ import { step } from './util/log.js';
+ import { describeGuard, effectiveGuardLevel } from './hook-config.js';
+ 
+@@ -78,6 +79,31 @@ export interface CheckResult {
+    * 汇总进 `PreflightResult.warnings`，skill 负责把它念给用户。
+    */
+   warn?: true;
++  /**
++   * 这一失败项能不能由 doctor 重新校准、该跑哪几个目标（EV-251，预检失败自动校准计划 r2 D1 / D2）。
++   * 由产出该项的代码置位，**不看文案**（同 `warn`）。失败项没置位时 `runPreflight` 末尾补成 `{ fixable: false }`：
++   * 缺省即不能修（fail-closed）。通过项不带。
++   */
++  recalibrate?: CheckRecalibrate;
++}
++
++/** 自动校准的一个 doctor 目标：`--only` 的取值，与让 doctor 探到**本轮组合**所需的旗标（EV-251） */
++export interface RecalibrateTarget {
++  only: string;
++  flags: string[];
++}
++
++export interface CheckRecalibrate {
++  fixable: boolean;
++  /** 只在 `fixable` 为真时给 */
++  targets?: RecalibrateTarget[];
++}
++
++/** 预检失败时的自动校准计划（EV-251，计划 r2 D2）：skill 只照抄 `invocations[*].args`，不拼、不改、不去重 */
++export interface RecalibrationPlan {
++  eligible: boolean;
++  why: string;
++  invocations: Array<{ only: string; args: string[]; deadline_s: number; bash_timeout_ms: number }>;
+ }
+ 
+ /** 预检与 `review --start` 共用的警告汇总形状（EV-123） */
+@@ -96,6 +122,8 @@ export interface PreflightResult {
+   exitCode: number;
+   /** 通过后待写入的探活缓存（失败时不写——AC-16） */
+   pendingAuthCache: Record<string, AuthCacheEntry>;
++  /** 失败时恒在、通过时为 null（EV-251） */
++  recalibration: RecalibrationPlan | null;
+ }
+ 
+ export interface PreflightOptions {
+@@ -133,6 +161,85 @@ export interface PreflightOptions {
+   entryScanEnv?: EntryScanEnv;
+ }
+ 
++// ─────────────────────── 自动校准的目标（EV-251） ───────────────────────
++
++/**
++ * 一侧在本次预检里的 doctor 目标：入选侧 × 本次 scope 的各阶段，经与预检同一次的 `resolveTier`（同一组命令行覆盖、
++ * 档位旗标）解析出的组合，去重（计划三审 CODEX-04 / CODEX-05）。
++ *
++ * - doctor 里不读覆盖的段（探测用固定口径）只给 `--only`：带了只会换来末尾一条「覆盖没用上」（EV-245）；
++ * - 读覆盖的段给全组合：有厂商 profile 概念的侧带路线旗标（null 带显式 `--native-<id>`——doctor 自己按 code 阶段解析，
++ *   plan 阶段的原生路线不传就探不到），模型、思考等级非空时带 `--model-<id>` / `--effort-<id>`。
++ * - `profileFilter` 给了时只取解析出该厂商 profile 的阶段（路线探针、版本漂移那几项按路线报）。
++ */
++export function recalTargets(
++  cfg: Config,
++  critic: CriticId,
++  opts: Pick<PreflightOptions, 'scope' | 'modelOverrides' | 'tierFlags'>,
++  profileFilter?: string | null,
++): RecalibrateTarget[] {
++  const cliName = agentById(critic)?.cliName;
++  if (!cliName) return [];
++  if (!doctorSectionConsumesOverrides(cliName)) return [{ only: cliName, flags: [] }];
++  const cli = mergeCliOverrides(opts.modelOverrides ?? {}, opts.tierFlags);
++  const routed = (vendorProfileAgents() as readonly string[]).includes(critic);
++  const out: RecalibrateTarget[] = [];
++  for (const stage of scopeStages(opts.scope)) {
++    const r = resolveTier(cfg, critic, stage, cli[critic] ?? {});
++    if (r.missingTier) continue;
++    if (profileFilter !== undefined && r.vendorProfile !== profileFilter) continue;
++    out.push({
++      only: cliName,
++      flags: [
++        ...(routed ? (r.vendorProfile === null ? [`--native-${critic}`] : [`--profile-${critic}`, r.vendorProfile]) : []),
++        ...(r.model ? [`--model-${critic}`, r.model] : []),
++        ...(r.effort ? [`--effort-${critic}`, r.effort] : []),
++      ],
++    });
++  }
++  return dedupeTargets(out);
++}
++
++function dedupeTargets(ts: readonly RecalibrateTarget[]): RecalibrateTarget[] {
++  const seen = new Map<string, RecalibrateTarget>();
++  for (const t of ts) seen.set(JSON.stringify([t.only, t.flags]), t);
++  return [...seen.values()];
++}
++
++const fixableBy = (targets: readonly RecalibrateTarget[]): CheckRecalibrate => ({ fixable: true, targets: dedupeTargets(targets) });
++
++/**
++ * 预检失败时的自动校准计划（计划 r2 D2）。`eligible` 的充要条件：退出码 69，且每个失败项都可修，且调用清单非空。
++ * 调用按（`only`、`flags`）去重、按 `ALL_CLI_NAMES` 排序；同一侧两个组合就是两次调用。
++ */
++export function buildRecalibration(
++  r: Pick<PreflightResult, 'ok' | 'exitCode' | 'checks'>,
++  deadlineS: number,
++): RecalibrationPlan | null {
++  if (r.ok) return null;
++  const none = (why: string): RecalibrationPlan => ({ eligible: false, why, invocations: [] });
++  if (r.exitCode !== EXIT.ENV) return none(`退出码 ${r.exitCode} 不在自动校准范围（只校准 69）`);
++  const failed = r.checks.filter((c) => !c.ok);
++  const blocker = failed.find((c) => c.recalibrate?.fixable !== true);
++  if (blocker) return none(`「${blocker.name}」不能由 doctor 修复`);
++  const targets = dedupeTargets(failed.flatMap((c) => c.recalibrate?.targets ?? []));
++  if (targets.length === 0) return none('失败项没有给出可校准的目标');
++  const order = (t: RecalibrateTarget): number => {
++    const i = (ALL_CLI_NAMES as readonly string[]).indexOf(t.only);
++    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
++  };
++  return {
++    eligible: true,
++    why: '全部失败项都可由 doctor 重新校准',
++    invocations: [...targets].sort((a, b) => order(a) - order(b)).map((t) => ({
++      only: t.only,
++      args: ['doctor', '--only', t.only, ...t.flags, '--deadline-s', String(deadlineS), '--json'],
++      deadline_s: deadlineS,
++      bash_timeout_ms: bashTimeoutFor(deadlineS),
++    })),
++  };
++}
++
+ // ─────────────────────── 各项检查 ───────────────────────
+ 
+ 
+@@ -158,8 +265,14 @@ function authCacheValid(
+   return { valid: true, reason: `缓存有效（${ageH.toFixed(2)}h 前探活通过）` };
+ }
+ 
+-/** 探针新鲜度。过期即**快速失败**，不隐式拉起 doctor（AGY-03 / GLM-08） */
+-function checkProbeFreshness(cfg: Config): CheckResult {
++/**
++ * 探针新鲜度。过期即**快速失败**，预检自己不拉起 doctor（AGY-03 / GLM-08）：EV-251 起由 skill 按失败项上的
++ * `recalibrate` 在会话里跑带时限的 doctor（`--deadline-s`）、再重跑预检；终端里照旧手动跑 doctor。
++ *
++ * 两项都可由 doctor 修，目标只取入选侧：「全部过期」只在**全部**登记 CLI 都过期时失败，失败即入选各家必在过期之列
++ * （计划三审 AGY-03 的驳回理由）；未入选的过期家不进清单。
++ */
++function checkProbeFreshness(cfg: Config, selected: readonly CriticId[], opts: PreflightOptions): CheckResult {
+   if (cfg.probe.generated_at === null) {
+     return {
+       name: '探针结论存在',
+@@ -167,18 +280,23 @@ function checkProbeFreshness(cfg: Config): CheckResult {
+       exitCode: EXIT.ENV,
+       detail:
+         '尚未运行过探针。请先手动运行 `trivium doctor`（约需 2~4 分钟，会消耗少量厂商配额），然后重试。\n' +
+-        '  预检刻意**不**自动拉起 doctor：它会击穿 Bash 工具的 600s 超时，届时配额已烧而结论未落盘。',
++        '  在 /dual-* 命令里这一项会自动校准：按本轮入选各侧逐家跑带时限的 doctor，再重跑预检。',
++      recalibrate: fixableBy(selected.flatMap((c) => recalTargets(cfg, c, opts))),
+     };
+   }
+   const stale = staleCliProbes(cfg);
+   if (!probeIsFresh(cfg)) {
++    const staleSet = new Set(stale);
+     return {
+       name: '探针结论未过期',
+       ok: false,
+       exitCode: EXIT.ENV,
+       detail:
+         `探针结论已全部过期或从未探过（超过 probe_ttl_days=${cfg.probe_ttl_days}）：${stale.join('、')}。\n` +
+-        '  请手动运行 `trivium doctor` 重新校准后重试。',
++        '  请运行 `trivium doctor` 重新校准后重试（/dual-* 命令里会按本轮入选各侧自动校准）。',
++      recalibrate: fixableBy(
++        selected.filter((c) => staleSet.has(agentById(c)?.cliName ?? '')).flatMap((c) => recalTargets(cfg, c, opts)),
++      ),
+     };
+   }
+   /*
+@@ -299,31 +417,38 @@ async function checkCliVersions(
+       : [null];
+     for (const profile of profiles) {
+     const probe = selected && adapter?.probeFor ? adapter.probeFor(cfg, profile) : rootProbe;
++    /*
++     * 自动校准的目标（EV-251）：只给入选侧，按这一条路线取本轮组合。路线探针缺失 / 过期、入口不在、版本漂移
++     * 都是「落盘结论与现场对不上」，doctor 重探会写入新结论；取版本失败是 CLI 本身跑不起来，不标（计划 r2 D1）。
++     */
++    const recal = (): CheckRecalibrate =>
++      fixableBy(selected && id && opts ? recalTargets(cfg, id as CriticId, opts, adapter?.probeFor ? profile : undefined) : []);
+     if (!probe?.probed_at) {
+       if (!selected || !adapter?.probeFor) continue;
+       out.push({ name: `${cliName} 路线探针`, ok: false, exitCode: EXIT.ENV,
+-        detail: `所选路线 ${profile ?? 'native'} 没有有效探针，请显式指定同一路线重跑 doctor。` });
++        detail: `所选路线 ${profile ?? 'native'} 没有有效探针，请显式指定同一路线重跑 doctor。`, recalibrate: recal() });
+       continue;
+     }
+     if (selected && !cliProbeIsFresh({ ...cfg, probe: { ...cfg.probe,
+       cli: { ...cfg.probe.cli, [cliName]: probe } } }, cliName)) {
+       out.push({ name: `${cliName} 路线探针新鲜度`, ok: false, exitCode: EXIT.ENV,
+-        detail: `所选路线 ${profile ?? 'native'} 的能力探针已过期，请显式指定同一路线重跑 doctor。` });
++        detail: `所选路线 ${profile ?? 'native'} 的能力探针已过期，请显式指定同一路线重跑 doctor。`, recalibrate: recal() });
+       continue;
+     }
+     const invocation = selected ? adapter?.versionInvocationFor?.(cfg, profile) : undefined;
+ 
+     const label = agentByCliName(cliName)?.display ?? cliName;
+     /** 未入选侧的坏消息只报为 note：说出来有价值，但不该让没选它的运行失败 */
+-    const fail = (name: string, detail: string): CheckResult =>
++    const fail = (name: string, detail: string, recalibrate?: CheckRecalibrate): CheckResult =>
+       selected
+-        ? { name, ok: false, exitCode: EXIT.ENV, detail }
++        ? { name, ok: false, exitCode: EXIT.ENV, detail, ...(recalibrate ? { recalibrate } : {}) }
+         : { name, ok: true, detail: `${detail}（本次未选用该侧，仅提示）` };
+ 
+     const entry = invocation ? invocation.bin : probe.entrypoint;
+     if (!entry || !(await exists(entry))) {
++      // 入口可能挪了；真卸载了 doctor 会给出「未找到可执行文件」的明确结论，下一轮预检照样失败、停下
+       out.push(
+-        fail(`${label} 可调用`, `探针记录的 ${cliName} 入口不可用：${entry ?? '(未记录)'}。请重新运行 doctor。`),
++        fail(`${label} 可调用`, `探针记录的 ${cliName} 入口不可用：${entry ?? '(未记录)'}。请重新运行 doctor。`, recal()),
+       );
+       continue;
+     }
+@@ -343,6 +468,7 @@ async function checkCliVersions(
+           `${label} 版本与探针一致`,
+           `${cliName} 版本已变（探针记录 ${probe.version} → 实际 ${v}）。\n` +
+             '  参数与行为可能随版本漂移，请重新运行 `trivium doctor`。',
++          recal(),
+         ),
+       );
+     } else {
+@@ -676,11 +802,18 @@ function checkReadonlyCapability(
+   const actx: AdapterContext = { cfg: ctx.config, nodePath: ctx.config.runtime.node ?? process.execPath };
+   const problems: string[] = [];
+   const oks: string[] = [];
++  /**
++   * 不可用各侧能不能由 doctor 修（EV-251）：按侧收集，**每个**不可用侧都由适配器标了 `fix: 'doctor'` 时整项才可修，
++   * 目标为这几侧；任一侧不可修整项即不可修（计划三审 AGY-04）。不拆检查项：拆了会改检查名、波及既有输出与用例。
++   */
++  const fixable: CriticId[] = [];
++  let unfixable = false;
+ 
+   for (const id of critics) {
+     const a = adapters[id];
+     if (!a) {
+       problems.push(`${agentById(id)?.display ?? id}：注册表启用了它，但 adapters/index.ts 没有接线`);
++      unfixable = true;
+       continue;
+     }
+     const vendorProfiles = scopeStages(scope)
+@@ -689,12 +822,24 @@ function checkReadonlyCapability(
+       .map((r) => r.vendorProfile);
+     const v = a.availability(actx, { vendorProfiles });
+     if (v.ok) oks.push(agentById(id)?.display ?? id);
+-    else problems.push(`${agentById(id)?.display ?? id}：${v.reason ?? '不可用（未给出原因）'}`);
++    else {
++      problems.push(`${agentById(id)?.display ?? id}：${v.reason ?? '不可用（未给出原因）'}`);
++      if (v.fix === 'doctor') fixable.push(id);
++      else unfixable = true;
++    }
+   }
+ 
+   return problems.length === 0
+     ? { name: '只读能力可用', ok: true, detail: `${oks.join('、')} 均报告可用` }
+-    : { name: '只读能力可用', ok: false, exitCode: EXIT.ENV, detail: problems.join('\n  ') };
++    : {
++        name: '只读能力可用',
++        ok: false,
++        exitCode: EXIT.ENV,
++        detail: problems.join('\n  '),
++        recalibrate: unfixable
++          ? { fixable: false }
++          : fixableBy(fixable.flatMap((id) => recalTargets(ctx.config, id, { scope, modelOverrides: overrides, tierFlags }))),
++      };
+ }
+ 
+ /**
+@@ -1080,7 +1225,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
+   }
+ 
+   // ① 探针新鲜度（过期即快速失败，不拉 doctor）
+-  if (checks.every(c => c.ok)) checks.push(checkProbeFreshness(cfg));
++  if (checks.every(c => c.ok)) checks.push(checkProbeFreshness(cfg, selected, opts));
+   // ② ③ CLI 可调用且版本与探针一致
+   if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected, opts)));
+   // ④ 只读能力
+@@ -1133,14 +1278,18 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
+     }
+   }
+ 
++  // 失败项没标 recalibrate 的一律补成不能修（EV-251，fail-closed）：只有产出该项的代码明说能修才算
++  for (const c of checks) if (!c.ok && !c.recalibrate) c.recalibrate = { fixable: false };
+   const failed = checks.find((c) => !c.ok);
++  const exitCode = failed?.exitCode ?? (failed ? EXIT.ENV : EXIT.OK);
+   return {
+     ok: failed === undefined,
+     scope,
+     checks,
+     warnings: collectWarnings(checks),
+-    exitCode: failed?.exitCode ?? (failed ? EXIT.ENV : EXIT.OK),
++    exitCode,
+     pendingAuthCache,
++    recalibration: buildRecalibration({ ok: failed === undefined, exitCode, checks }, cfg.preflight.recalibrate_deadline_s),
+   };
+ }
+ 
+@@ -1174,5 +1323,8 @@ export function renderPreflight(r: PreflightResult): string {
+   lines.push('');
+   const warned = r.warnings.length > 0 ? `（含 ${r.warnings.length} 条警告）` : '';
+   lines.push(r.ok ? `✓ 预检通过${warned}` : `✗ 预检未通过（退出码 ${r.exitCode}）——不会产生任何工件`);
++  if (r.recalibration?.eligible) {
++    lines.push(`  可由 doctor 重新校准：${r.recalibration.invocations.map((i) => `trivium ${i.args.filter((a) => a !== '--json').join(' ')}`).join('；')}`);
++  }
+   return lines.join('\n');
+ }
+diff --git a/src/trivium/probes/codex.ts b/src/trivium/probes/codex.ts
+index a201969d..179e0c68 100644
+--- a/src/trivium/probes/codex.ts
++++ b/src/trivium/probes/codex.ts
+@@ -26,7 +26,7 @@ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import os from 'node:os';
+ import { run, tryRun, type RunResult } from '../util/exec.js';
+-import { exists, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
++import { exists, makeTempDir, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
+ import { createFixture, SENTINEL_OPEN, type Fixture } from './fixture.js';
+ import { probeScratchPaths } from './agy.js';
+ import type { CodexProbe, CodexProviderProbe, PathDenyProbe, ProbeIsolation } from '../types.js';
+@@ -775,7 +775,8 @@ export function codexIsolationResidueText(dir: string, code: string): string {
+  * 结论不因删不掉而改变。目录里没有凭据副本可查，不做删除失败后的现场查。
+  */
+ export async function probeCodexIsolation(bin: string): Promise<CodexIsolationResult> {
+-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-codexhome-'));
++  // 走 makeTempDir（EV-251）：带时限的 doctor 经它把目录记进台账，宿主硬杀时由下一次 doctor 补删
++  const dir = await makeTempDir('trivium-codexhome');
+   let isolation: ProbeIsolation = 'shared';
+   let tempDirResidue: string | null = null;
+   try {
+diff --git a/src/trivium/probes/zcode.ts b/src/trivium/probes/zcode.ts
+index 53fa0a2c..7a2315b2 100644
+--- a/src/trivium/probes/zcode.ts
++++ b/src/trivium/probes/zcode.ts
+@@ -1587,7 +1587,8 @@ export async function probeZcode(
+      * headless 与 path_deny 共用这一份；回读从落点根读；探完只删 mkdtemp 的返回值（副本里有真实凭据，
+      * 2026-09-20 事故后的规矩：不拼路径、不走别的变量）。
+      */
+-    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-zcode-doctor-'));
++    // 走 makeTempDir（EV-251）：带时限的 doctor 经它把目录记进台账，宿主硬杀时由下一次 doctor 补删
++    const runDir = await makeTempDir('trivium-zcode-doctor');
+     try {
+       const invoke = opts.invoke ?? invokeZcode;
+       let prep: ZcodeHomePrep;
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index 0d92e42c..3a9ba1b5 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -41,7 +41,7 @@ import { realAdapters, wiredAdapter } from './adapters/index.js';
+ import { scrubRunDir } from './scrub.js';
+ import { ensureDir, exists, sha256 } from './util/fsx.js';
+ import {
+-  canonicalStartOf, processAlive, processGroupMemberCount, processMatchesRecord, processStartTime, processStartTimes,
++  bashTimeoutFor, canonicalStartOf, processAlive, processGroupMemberCount, processMatchesRecord, processStartTime, processStartTimes,
+   shutdownTrackedTrees, spawnDetached, terminateProcessGroup, trackedTrees, watchTrackedTrees, type DetachedChildWatch,
+   type GoneJudgment, type RecordedStart, type TerminateResult,
+ } from './util/exec.js';
+@@ -376,17 +376,8 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
+ 
+ // ─────────────────────── --start ───────────────────────
+ 
+-/**
+- * 每次 `--wait` 的 Bash 调用应设的工具级超时。
+- *
+- * Bash 工具默认 120s、上限 600s，而 `--wait` 会等满 `waitTimeoutS`——不显式抬高
+- * 就必被工具超时杀掉（审查意见 GLM-02，也是 M2 完成判据 6）。原先固定取上限值，
+- * 但窗口调小后那就成了「卡死也要干等 10 分钟」：改成贴着窗口留 60s 余量，
+- * 余量覆盖进程启动与收尾，与原先 600-540 的余量等价。窗口若仍是 540s，结果不变。
+- */
+-export function bashTimeoutFor(waitTimeoutS: number): number {
+-  return Math.min(600_000, waitTimeoutS * 1000 + 60_000);
+-}
++/** 每次 `--wait` 的 Bash 调用应设的工具级超时。EV-251 起挪到 `util/exec.ts`（预检的自动校准也用），这里再导出 */
++export { bashTimeoutFor };
+ 
+ export interface StartOutcome {
+   runId: string;
+diff --git a/src/trivium/types.ts b/src/trivium/types.ts
+index ae36f10c..09dace05 100644
+--- a/src/trivium/types.ts
++++ b/src/trivium/types.ts
+@@ -1171,7 +1171,11 @@ export interface Config {
+   profiles: Record<string, Profile>;
+   active_profile: string;
+   gate: GateConfig;
+-  preflight: { auth_cache_ttl_h: number };
++  /**
++   * `recalibrate_deadline_s`（EV-251）：预检退 69 时自动校准跑的每次 doctor 的总时限（秒），
++   * skill 的 Bash 工具超时由它按 `bashTimeoutFor` 推出
++   */
++  preflight: { auth_cache_ttl_h: number; recalibrate_deadline_s: number };
+   verify: { build: string[]; test: string[] };
+   retention: { run_dir_days: number };
+   probe: ProbeSection;
+diff --git a/src/trivium/util/exec.ts b/src/trivium/util/exec.ts
+index a8835cb5..2b53a529 100644
+--- a/src/trivium/util/exec.ts
++++ b/src/trivium/util/exec.ts
+@@ -90,6 +90,8 @@ export interface RunResult {
+   commandLine: string;
+   /** 收到 ChildProcess spawn 事件才为 true，命令字符串不证明启动。 */
+   spawned?: boolean;
++  /** doctor 段作用域内、中止派生之后的调用：没有派生，结果是合成的（EV-251，见 `abortProbeSections`） */
++  aborted?: true;
+ }
+ 
+ const DEFAULT_MAX_BUFFER = 32 * 1024 * 1024;
+@@ -184,6 +186,136 @@ export function watchTrackedTrees(listener: () => void): () => void {
+  */
+ let treeShutdown = false;
+ 
++/**
++ * skill 为一次前台调用应设的 Bash 工具级超时：贴着调用自身的时长留 60 s 余量，封顶 600 s。
++ *
++ * Bash 工具默认 120s、上限 600s，而 `--wait` 会等满 `waitTimeoutS`——不显式抬高
++ * 就必被工具超时杀掉（审查意见 GLM-02，也是 M2 完成判据 6）。原先固定取上限值，
++ * 但窗口调小后那就成了「卡死也要干等 10 分钟」：改成贴着窗口留 60s 余量，
++ * 余量覆盖进程启动与收尾，与原先 600-540 的余量等价。窗口若仍是 540s，结果不变。
++ * EV-251 起自 `run-protocol.ts` 挪来：预检的自动校准按同一公式给 doctor 的工具超时。
++ */
++export function bashTimeoutFor(waitTimeoutS: number): number {
++  return Math.min(600_000, waitTimeoutS * 1000 + 60_000);
++}
++
++// ─────────────────── doctor 探针段作用域（EV-251） ───────────────────
++
++/** 段内派生过的一个进程组：组长退出也不删，到点时按组号与非僵尸成员数判还要不要结束 */
++interface SectionGroup {
++  pgid: number;
++  child: ChildProcess;
++}
++
++/**
++ * doctor 的一段探针（一家 CLI）在作用域内派生过的东西（预检失败自动校准计划 r2 D3）。
++ *
++ * 与 `liveTrees` 的分工：那份登记在组长 exit 时即删（worker 与前台中断转发按组长句柄判），
++ * 组长服从 SIGTERM 而后代忽略、或组长先退出而后代还在时，按它够不到后代（计划三审 CODEX-01）。
++ * 这里不删，到点时按「组长活着，或非僵尸成员数大于 0」逐组结束。
++ */
++export interface ProbeSectionScope {
++  name: string;
++  groups: SectionGroup[];
++  /** 作用域内 `run()` 的派生次数（含 git 辅助调用）：不区分哪几次调了模型，按上界交代配额 */
++  launches: number;
++  /** 同一次 doctor 的各段共用一枚令牌：置位后这些段内的 `run()` 不再派生 */
++  abort: ProbeAbortToken;
++}
++
++/**
++ * 中止令牌：一次 doctor 一枚，置位后不复位。按令牌而不是进程级全局位——同一进程里先后跑几次 doctor
++ * （测试进程就是这样）时，前一次到点不该连累后一次。
++ */
++export interface ProbeAbortToken {
++  aborted: boolean;
++}
++
++const sectionStore = new AsyncLocalStorage<ProbeSectionScope>();
++
++export function newProbeAbortToken(): ProbeAbortToken {
++  return { aborted: false };
++}
++
++export function newProbeSection(name: string, abort: ProbeAbortToken = newProbeAbortToken()): ProbeSectionScope {
++  return { name, groups: [], launches: 0, abort };
++}
++
++/**
++ * 在段作用域内跑 fn：作用域内的 `run()` **一律**按 `killTree` 派生并记进段，不论调用点写没写 `killTree`——
++ * 不带它的那些（`--version`、git 辅助调用等）与 doctor 同组、不在任何登记里，到点够不到（计划三审 CODEX-02）。
++ */
++export function withProbeSection<T>(scope: ProbeSectionScope, fn: () => Promise<T>): Promise<T> {
++  return sectionStore.run(scope, fn);
++}
++
++/**
++ * 中止这枚令牌下各段的派生（doctor 到点或收到信号时）。与冻结（`treeShutdown`）互不相干：
++ * 冻结让 `run()` 永不兑现、`finally` 不跑，而探针的 `finally` 正是删凭据副本目录的地方；
++ * 这里改为立即兑现一个合成结果，让探针沿自己的错误路径走到 `finally`。作用域外的 `run()` 不受影响。
++ */
++export function abortProbeSections(token: ProbeAbortToken): void {
++  token.aborted = true;
++}
++
++/** 在段作用域之外跑 fn（成员计数的 `ps` 用：中止派生不能拦住结束进程组时的核对） */
++function outsideProbeSection<T>(fn: () => T): T {
++  return sectionStore.exit(fn);
++}
++
++export interface SectionTerminateResult {
++  /** 到点时还要结束的组（组长活着，或组长已退出而非僵尸成员数大于 0） */
++  groups: number[];
++  signals: Record<number, NodeJS.Signals[]>;
++  /** 结束不了或核对不了的组 */
++  remaining: number[];
++}
++
++/**
++ * 按组结束段作用域里派生过、还在的进程组（EV-251，计划 r2 D3 第 2 条）。
++ *
++ * 判「这一组还在吗」：组长未退出（父进程句柄）⇒ 在；组长已退出 ⇒ 看非僵尸成员数——大于 0 照样按组发信号
++ * （组里还有成员时组号不会被复用，与 `--cancel` 按记录结束 CLI 的「组长已退出但组员还在」一格同源，EV-165），
++ * 为 0 即已不在，取不到记「判不了」、不发信号。宽限链参数由调用方给（doctor 用 worker 处理器那一组）。
++ * 各组并行；不置冻结位，`run()` 照常兑现，探针得以走到 `finally`。
++ */
++export async function terminateProbeSectionGroups(
++  scopes: readonly ProbeSectionScope[],
++  o: TreeShutdownOptions & { memberCount?: (pgid: number) => Promise<number | null> },
++): Promise<SectionTerminateResult> {
++  const count = o.memberCount ?? ((pgid: number) => outsideProbeSection(() => processGroupMemberCount(pgid)));
++  const isGone = async (g: SectionGroup): Promise<GoneJudgment> => {
++    if (g.child.exitCode === null && g.child.signalCode === null) return false;
++    const n = await count(g.pgid);
++    return n === null ? 'unverifiable' : n === 0;
++  };
++  const candidates: SectionGroup[] = [];
++  for (const s of scopes) {
++    for (const g of s.groups) {
++      if ((await isGone(g)) !== true) candidates.push(g);
++    }
++  }
++  const signals: Record<number, NodeJS.Signals[]> = {};
++  const outcomes = await Promise.all(
++    candidates.map(async (g) => {
++      const t = await terminateProcessGroup(g.pgid, {
++        isGone: () => isGone(g),
++        graceMs: o.graceMs,
++        killWaitMs: o.killWaitMs,
++        pollMs: o.pollMs ?? 100,
++        ...(o.signal ? { signal: o.signal } : {}),
++      });
++      signals[g.pgid] = t.signals;
++      return { pgid: g.pgid, gone: t.gone };
++    }),
++  );
++  return {
++    groups: candidates.map((g) => g.pgid),
++    signals,
++    remaining: outcomes.filter((x) => !x.gone).map((x) => x.pgid),
++  };
++}
++
+ /** BSD `script` 读到 stdin 的 EOF 后往伪终端送 EOF，伪终端回显成这 4 个字符（`^`、`D`、两个退格） */
+ export const PTY_EOF_ECHO = '^D\b\b';
+ 
+@@ -232,6 +364,15 @@ export function formatCommand(bin: string, args: readonly string[]): string {
+ export function run(bin: string, args: readonly string[], opts: RunOptions = {}): Promise<RunResult> {
+   // 终止中（EV-152）：不再派生，也不兑现——进程随即退出，悬着的 Promise 无害（见 shutdownTrackedTrees）
+   if (treeShutdown) return new Promise<RunResult>(() => {});
++  const section = sectionStore.getStore();
++  // doctor 段作用域内、中止派生之后（EV-251）：不派生，立即兑现合成结果，让探针走到自己的 finally
++  if (section?.abort.aborted) {
++    return Promise.resolve({
++      code: null, signal: null, stdout: '', stderr: '[aborted] doctor 已到点，不再派生', durationMs: 0,
++      timedOut: false, earlyStopped: false, truncated: false, commandLine: formatCommand(bin, args),
++      spawned: false, aborted: true,
++    });
++  }
+   const quota = launchBudgetStore.getStore();
+   let launchIndex: number | null = null;
+   if (quota?.accepts(bin)) {
+@@ -256,8 +397,9 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
+     stopEarly,
+     pty = false,
+     maxBufferBytes = DEFAULT_MAX_BUFFER,
+-    killTree = false,
+   } = opts;
++  // 段作用域内一律自成一组并登记（EV-251，计划三审 CODEX-02）
++  const killTree = (opts.killTree ?? false) || section !== undefined;
+ 
+   // BSD script（macOS）：`script -q /dev/null <cmd…>`；util-linux script：`script -q -c "<cmd>" /dev/null`
+   const bsdPty = pty && process.platform !== 'linux';
+@@ -285,7 +427,9 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
+ 
+   const pending = new Promise<RunResult>((resolve) => {
+     const startedAt = Date.now();
++    if (section) section.launches++;
+     const child = spawn(realBin, realArgs, spawnOpts);
++    if (section && child.pid !== undefined) section.groups.push({ pgid: child.pid, child });
+     let spawned = false;
+     child.once('spawn', () => { spawned = true; });
+     // 登记与派生之间插不进别的 JS（spawn 是同步的），所以 SIGTERM 处理器看得到每一个已派生的组
+diff --git a/src/trivium/util/fsx.ts b/src/trivium/util/fsx.ts
+index 2be1c0ab..7cd183bb 100644
+--- a/src/trivium/util/fsx.ts
++++ b/src/trivium/util/fsx.ts
+@@ -113,9 +113,32 @@ export function matchesAnyGlob(relPath: string, globs: readonly string[]): boole
+   return globs.some((g) => globToRegExp(g).test(norm));
+ }
+ 
++/**
++ * 临时目录的观察者（EV-251）：带时限的 doctor 装它，把本进程建的临时目录记进落盘台账，
++ * 宿主直接 SIGKILL doctor 时由下一次 doctor 补删（其中 codex、zcode 两家放的是含真实凭据的副本）。
++ * 观察者出错不连累调用方：记不进台账只是少一层兜底，不该让探针失败。
++ */
++export interface TempDirObserver {
++  created(dir: string): Promise<void>;
++  removed(dir: string): Promise<void>;
++}
++
++let tempDirObserver: TempDirObserver | null = null;
++
++/** 装上或卸下观察者（传 null）；同一时刻只有一个 */
++export function observeTempDirs(o: TempDirObserver | null): void {
++  tempDirObserver = o;
++}
++
+ /** 创建一个隔离的临时目录（探针夹具、运行时副本） */
+ export async function makeTempDir(prefix: string): Promise<string> {
+-  return fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
++  const dir = await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
++  try {
++    await tempDirObserver?.created(dir);
++  } catch {
++    /* 见 TempDirObserver */
++  }
++  return dir;
+ }
+ 
+ /**
+@@ -168,6 +191,11 @@ export interface TempDirLeftover {
+ export async function tryRemoveTempDir(dir: string, copies: readonly string[]): Promise<TempDirLeftover | null> {
+   try {
+     await fs.rm(dir, { recursive: true, force: true, maxRetries: 3 });
++    try {
++      await tempDirObserver?.removed(dir);
++    } catch {
++      /* 见 TempDirObserver */
++    }
+     return null;
+   } catch (e) {
+     const remaining: string[] = [];
+diff --git a/test/helpers/proc.ts b/test/helpers/proc.ts
+index c7ff4cf4..dd6455b5 100644
+--- a/test/helpers/proc.ts
++++ b/test/helpers/proc.ts
+@@ -53,9 +53,41 @@ export function groupMemberCount(pgid: number): number {
+   return n;
+ }
+ 
+-/** 按组号结束（SIGKILL）；组号 ≤ 1 或已不在时静默跳过 */
++/**
++ * 收尾兜底：按组结束带标记的组，再逐个 SIGKILL 仍带标记的进程（落在本测试进程组里、`killGroup` 跳过的那些）。
++ * 只杀命令行含 `mark` 的进程，不碰本进程。
++ */
++export function killMarked(mark: string): void {
++  for (const g of groupsWithMark(mark)) killGroup(g);
++  const out = execFileSync('/bin/ps', ['-axo', 'pid=,command='], { encoding: 'utf8' });
++  for (const line of out.split('\n')) {
++    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
++    if (!m || !m[2]!.includes(mark) || Number(m[1]) === process.pid) continue;
++    try {
++      process.kill(Number(m[1]), 'SIGKILL');
++    } catch {
++      /* 已不在 */
++    }
++  }
++}
++
++let ownGroup: number | null = null;
++
++/** 本测试进程所在的进程组号（取一次缓存） */
++function ownPgid(): number {
++  ownGroup ??= Number(execFileSync('/bin/ps', ['-o', 'pgid=', '-p', String(process.pid)], { encoding: 'utf8' }).trim());
++  return ownGroup;
++}
++
++/**
++ * 按组号结束（SIGKILL）；组号 ≤ 1、是本测试进程自己所在的组、或已不在时静默跳过。
++ *
++ * 不对自己的组发（EV-251 变异预跑撞过）：被测代码一旦不再让子进程自成一组（正是某些变异要造的形态），
++ * 带标记的子进程就落在测试进程的组里，按标记找到的组号即测试运行器、变异脚本乃至外层 shell 所在的组——
++ * 一发 SIGKILL 连变异脚本一起杀掉，它的恢复步骤跑不到，变异留在工作树上。
++ */
+ export function killGroup(pgid: number): void {
+-  if (pgid <= 1) return;
++  if (pgid <= 1 || pgid === ownPgid()) return;
+   try {
+     process.kill(-pgid, 'SIGKILL');
+   } catch {
+diff --git a/test/unit/doctor-unused-overrides.test.ts b/test/unit/doctor-unused-overrides.test.ts
+index 90b51b2f..7784ed1a 100644
+--- a/test/unit/doctor-unused-overrides.test.ts
++++ b/test/unit/doctor-unused-overrides.test.ts
+@@ -2,7 +2,7 @@ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+-import { describeUnusedOverrides, runDoctor, type UnusedOverridesInput } from '../../src/trivium/doctor.js';
++import { describeUnusedOverrides, doctorSectionConsumesOverrides, runDoctor, type UnusedOverridesInput } from '../../src/trivium/doctor.js';
+ import { TRIVIUM_DIR, agentConfigOf, defaultConfig } from '../../src/trivium/config.js';
+ import { AGENTS, type AgentDescriptor } from '../../src/trivium/agents/registry.js';
+ import { assertModelOverrideKeys } from '../../src/trivium/critics.js';
+@@ -209,7 +209,10 @@ test('U3 doctor.ts 里覆盖值只经 overridesFor 读（另一处是交给提
+     return text.slice(0, i) + text.slice(j + end.length);
+   };
+   let rest = cut(src, 'const overridesFor = ', '\n  };');
+-  rest = cut(rest, 'describeUnusedOverrides({\n', '\n  });');
++  // EV-251 起收尾挪进 finalize，多缩进一层
++  rest = cut(rest, 'describeUnusedOverrides({\n', '\n    });');
++  // 终端重跑命令按本次收到的旗标原样拼出（EV-251），不是段内读覆盖、不影响「用上没有」的记录
++  rest = cut(rest, 'export function doctorRerunCommand(', '\n}\n');
+   const isComment = (l: string): boolean => /^\s*(\*|\/\/|\/\*)/.test(l);
+   const left = rest.split('\n').filter((l) => !isComment(l) && /opts\.(tierFlags|modelOverrides)\b/.test(l));
+   assert.deepEqual(left, [], '这些行绕过了 overridesFor：用上的覆盖会被报成没用上');
+@@ -218,6 +221,21 @@ test('U3 doctor.ts 里覆盖值只经 overridesFor 读（另一处是交给提
+   assert.ok(calls >= 2, `overridesFor 调用只有 ${calls} 处`);
+ });
+ 
++test('U3′ 「读覆盖的段」集合与源码对账（EV-251）：预检据它决定自动校准的调用带不带覆盖旗标', async () => {
++  const src = await fs.readFile(path.join(REPO_ROOT, 'src/trivium/doctor.ts'), 'utf8');
++  // 段边界：`if (only === null || only === '<cli>') {` 到下一段的同形开头（或「已登记但尚无探针实现」那一圈）
++  const heads = [...src.matchAll(/if \(only === null \|\| only === '([a-z]+)'\) \{/g)];
++  assert.ok(heads.length >= 4, `段开头只扫到 ${heads.length} 处`);
++  const consuming: string[] = [];
++  heads.forEach((m, i) => {
++    const end = i + 1 < heads.length ? heads[i + 1]!.index! : src.indexOf('已登记但尚无探针实现', m.index!);
++    if (src.slice(m.index!, end).includes('overridesFor(')) consuming.push(m[1]!);
++  });
++  for (const a of AGENTS) {
++    assert.equal(doctorSectionConsumesOverrides(a.cliName), consuming.includes(a.cliName), a.cliName);
++  }
++});
++
+ // ── U5 判键接线 ──────────────────────────────────────────────────────
+ 
+ test('U5 cmdDoctor：模型旗标与档位旗标同一份判键——同一个 driver、同一个 picked（CRITIC_AGENT_IDS），先键后值', async () => {
+diff --git a/test/unit/entry-scan-isolation.test.ts b/test/unit/entry-scan-isolation.test.ts
+index 1e1bc419..07e64d3e 100644
+--- a/test/unit/entry-scan-isolation.test.ts
++++ b/test/unit/entry-scan-isolation.test.ts
+@@ -45,6 +45,8 @@ const SPAWN_REVIEWED: Readonly<Record<string, string>> = {
+   'test/integration/code-stage.test.ts': '自己 spawn 的只有 gate hook-pre-commit；--start 都经 cli()',
+   'test/integration/bug-stage.test.ts': '自己 spawn 的只有 gate hook-pre-write；--start 都经 cli()',
+   'test/integration/gate-loop.test.ts': '自己 spawn 的是 gate 钩子、approve 与同步 review（不扫描）；--start 都经 cli()',
++  // EV-251：I7 要拿到子进程句柄发 SIGTERM，cli() 给不出句柄
++  'test/integration/doctor-deadline-cli.test.ts': 'I7 自己 spawn 带时限的 doctor 以便发 SIGTERM，env 里显式设了扫描家目录变量与 HOME；其余都经 cli()',
+ };
+ 
+ /*
+diff --git a/test/unit/preflight.test.ts b/test/unit/preflight.test.ts
+index 20a85f2a..0cc17c32 100644
+--- a/test/unit/preflight.test.ts
++++ b/test/unit/preflight.test.ts
+@@ -213,7 +213,7 @@ test('profile 缺该阶段模型时报不合格', async () => {
+ 
+ // ── 探针新鲜度：快速失败，不拉 doctor（AGY-03 / GLM-08）──
+ 
+-test('从未探针 → 退 69，且明确说明不自动拉起 doctor', async () => {
++test('从未探针 → 退 69，终端里手动跑 doctor；/dual-* 里按入选各侧自动校准（EV-251）', async () => {
+   const ctx = await fakeCtx((c) => {
+     c.probe.generated_at = null;
+   });
+@@ -222,7 +222,11 @@ test('从未探针 → 退 69，且明确说明不自动拉起 doctor', async ()
+   assert.equal(r.exitCode, EXIT.ENV);
+   const c = r.checks.find((x) => !x.ok)!;
+   assert.match(c.detail, /手动运行 `trivium doctor`/);
+-  assert.match(c.detail, /刻意\*\*不\*\*自动拉起/);
++  assert.match(c.detail, /自动校准/);
++  // 旧说法（「配额已烧而结论未落盘」）已过时：doctor 每探完一段就落盘
++  assert.doesNotMatch(c.detail, /结论未落盘/);
++  assert.equal(c.recalibrate?.fixable, true);
++  assert.equal(r.recalibration?.eligible, true);
+ });
+ 
+ test('探针过期 → 退 69 并指引手动执行', async () => {
+diff --git a/doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md b/doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md
+new file mode 100644
+index 00000000..c910322e
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md
+@@ -0,0 +1,78 @@
++# 测试报告 · 预检失败自动校准（EV-251）
++
++- 日期：2026-10-22
++- 主题：`预检失败自动校准`（`/dual-run`，A 档；用户原始需求 2026-10-22 第 1 条）
++- 计划：`.reviews/预检失败自动校准/plan/2026-10-22-预检失败自动校准-r2-claude.md`（计划三审 run `20261022T120111Z`，第 1/3 轮：codex `reject`、gemini `pass-after-changes`、glm `pass`，计票修改后通过；13 条接受 12、驳回 1）
++- 代码三审：见第六节
++- 主设计：v1.3.173（§7.3 退出码、§8.1 末段「自动校准」）；BACKLOG EV-251；LLD 3.2；用户手册 §3.4、§5.6、§9.1、§9.2、§10；RUNBOOK 退出码表与 §五；PROTOCOL 退出码与命令表
++- 证据：[`evidence/preflight-recalibrate-20261022/`](./evidence/preflight-recalibrate-20261022/)
++
++## 一、改了什么
++
++| 面 | 改动 |
++| :--- | :--- |
++| `preflight.ts` | 失败项带 `recalibrate`（`{ fixable, targets? }`，没置位的末尾补成不能修）；`recalTargets` 按本轮组合（入选侧 × scope 各阶段的模型、思考等级、厂商 profile）给 doctor 目标；`buildRecalibration` 汇总 `recalibration`（`eligible` 当且仅当退 69、全部可修、清单非空）；头注释与「探针结论存在 / 未过期」报错正文改写 |
++| 适配器 `availability()` | 返回值加可选 `fix: 'doctor'`：没探过、没找到入口、读取能力没跑完、路线没有探针结论标可修；实测否定与配置、凭据问题不标 |
++| `util/exec.ts` | 段作用域 `withProbeSection`：段内 `run()` 一律自成进程组、记进段级记录（组长退出不删）、计派生次数；按次的中止令牌（置位后段内 `run()` 立即兑现合成结果）；`terminateProbeSectionGroups` 按「组长活着或非僵尸成员数大于 0」逐组结束；`bashTimeoutFor` 自 run-protocol 挪来 |
++| `doctor-deadline.ts`（新） | 时限控制器（计时器、信号接管、等在写的 checkpoint、兜底出结果）；临时目录台账与补删 |
++| `doctor.ts` | `DoctorOptions.deadline`、各段包进段作用域、中止后作废、收尾抽成只执行一次的 `finalize`、外层与兜底竞速；`DoctorReport.deadline`；`doctorSectionConsumesOverrides`、`doctorRerunCommand` |
++| `cli.ts` | `doctor --deadline-s`（30～540）；带时限时不装前台中断转发；到点退 76 并在 stdout 写完后主动结束进程；预检 JSON 输出两层校准字段 |
++| `fsx.ts`、两处探针 | 临时目录观察者；codex 隔离探针与 zcode doctor 运行目录的裸 `mkdtemp` 改走 `makeTempDir` |
++| 配置 | `preflight.recalibrate_deadline_s`（缺省 480）；`config.v2.json` 加该键 |
++| skill | 公共片段 `partials/preflight/recalibrate.md`，四条命令的预检步骤引入；16 份入口产物随构建重渲染 |
++
++## 二、用例
++
++**单测 `test/unit/probe-section.test.ts`（新增 5 条，真实进程）**：U1a 组长服从 SIGTERM、后代忽略 ⇒ 升级 SIGKILL 至组内无成员；U1b 组长先退出、后代仍在 ⇒ 照样按组结束；U1b′ 组内无成员不发信号；U5 段内不带 `killTree` 的派生也自成一组；U1c 中止令牌只管同一令牌的段，段外与别的令牌照常。
++
++**单测 `test/unit/preflight-recalibrate.test.ts`（新增 13 条）**：目标展开（不读覆盖的段只给 `--only`；读覆盖的段在 stage all 下两条路线各带自己的模型与思考等级、显式原生带 `--native-codex`；命令行模型覆盖进目标）；探针从未生成、全部过期（未入选的过期家不进清单）、入口不在、归档不可写、预检通过五个场景的逐项与汇总；汇总判据（排序去重、工具超时换算与封顶、混入不能修、退 64、目标为空）；配置键进 invocations；四个适配器十余个分支的 `fix` 标注；只读能力一格的聚合。
++
++**单测 `test/unit/doctor-deadline.test.ts`（新增 7 条，假 agy）**：I2 模型调用挂住、后代忽略 TERM、吐半截 JSON ⇒ 到点结果、无遗留进程组、临时目录与台账已删、预置的旧 agy 结论一字未动、重跑预检仍退 69；I3 不给 `--only` ⇒ 后三段 `not_started`、不被说成「尚无探针实现」；I4 段卡在不经 `run()` 的 await ⇒ 兜底按时出结果（`stuck`）；I6 段内不带 `killTree` 的派生到点也按组结束、正常返回的段同样作废；I9 未到点、模型调用秒败 ⇒ 各段 `notes` 与 `rerun` 齐全；不给时限不带 `deadline` 段；I8 台账补删（形态相符删、临时目录外不删、活进程的台账不碰）。
++
++**集成 `test/integration/doctor-deadline-cli.test.ts`（新增 3 条，真实打包 CLI）**：I1 `--deadline-s` 越界退 64；I7 运行中发 SIGTERM ⇒ 退 76、`reason: signal`、无遗留、临时目录已删；I5 预检 JSON 的 `invocations[*].args` 照抄执行能跑通，重跑预检不再报探针过期。
++
++**对账**：`test/contract/skill-recalibrate.test.ts`（16 份入口产物各一条，加论域一条）；`doctor-unused-overrides` 新增 U3′（读覆盖的段集合与源码对账）。
++
++**既有用例的调整**：`preflight.test` 一条改按新文案断言（旧句「刻意不自动拉起」随本主题改写）；`doctor-unused-overrides` U3 的源码锚点随收尾挪进 `finalize` 改缩进、把 `doctorRerunCommand` 列为例外；`entry-scan-isolation` 登记 I7 自己 spawn 打包产物的理由。
++
++**计划与实现的偏差**：r2 D3 第 4 条写的是进程级「中止派生」标志；实现时第一遍就红在同一进程先后跑几次 doctor 上（前一次到点连累后一次），改为按次的中止令牌，语义不变、不再有进程级全局状态。r2 第三节 I9 写的是「探针内部超时」，用例用的是模型调用秒败——两者走同一条输出路径（段 `finished`、`hit: false`、各段 `notes` 与 `rerun`），没有为造探针内部超时再开注入口。
++
++## 三、变异验证
++
++逐条预跑脚本（`--with-tests` 变体，集成类变异重打 bundle），规格见证据目录。
++
++| # | 变异 | 期望套件 | 失败数 | 变红的用例 |
++| :-- | :-- | :-- | :-- | :-- |
++| M1 | eligible 改成任一可修 | preflight-recalibrate | 1 | U3 混入不能修 |
++| M2 | 中止后返回的段照常落盘 | doctor-deadline | 0 | —（见下） |
++| M2r2 | 同上，I6 补断言后重跑 | doctor-deadline | 1 | I6 |
++| M3 | 中止后段内仍派生 | probe-section | 1 | U1c |
++| M4 | 段内不强制自成进程组 | probe-section | 3 | U1a、U1b、U5 |
++| M5 | 组长已退出即判整组不在 | probe-section | 2 | U1a、U1b |
++| M6 | 到点不退 76 | doctor-deadline-cli | 1 | I7 |
++| M7 | 新鲜度改看全局 `generated_at` | doctor-deadline | 1 | I2 |
++| M8 | 没标的失败项缺省补成可修 | preflight-recalibrate | 1 | U2 归档不可写 |
++| M9 | 全部过期时目标不按入选侧过滤 | preflight-recalibrate | 1 | U2 全部过期 |
++| M10 | 只读能力一格混有不能修仍判可修 | preflight-recalibrate | 1 | U4 聚合 |
++| M11 | `--deadline-s` 下限不校验 | doctor-deadline-cli | 1 | I1 |
++
++- M2 首轮没咬住：I2 里探针被打断后是抛出退出的，走 catch 分支；正常返回那一支没有断言。I6 的探针在中止后正常返回 null，补「段状态应为 `in_progress`、不落盘」两条断言后重跑（M2r2）变红。
++- 第一次预跑在 M4 处中断：M4 让用例子进程不再自成一组，用例收尾的 `killGroup` 按标记找到的组号就是测试运行器、预跑脚本与外层 shell 所在的组，一发 SIGKILL 连预跑脚本一起结束，它的恢复步骤没跑到，M4 变异留在了 `src/trivium/util/exec.ts`。已手工恢复并逐个核对五个目标文件的锚点（各恰好一处）；`test/helpers/proc.ts` 的 `killGroup` 加了「不对本测试进程所在的组发信号」，另加 `killMarked` 逐个结束落在本组里的带标记进程，新用例的收尾都改用它。重跑时 M4 耗时 605 s（被打断前的挂起用例等满 `--test-timeout`），无遗留进程。
++- 没有跑正式装置 `scripts/mutation-check.mjs`（十一条都已按用例名逐条确认变红）。
++
++## 四、全量
++
++第一遍 `npm run check`（前台、单条）：3878 条，3874 通过、2 失败、2 跳过。两条都是登记类护栏：`entry-scan-isolation` U8（I7 自己 spawn 打包产物未登记理由）与 `scratch-guard` G1（I8 两处裸 `mkdtemp`）。前者补登记，后者改为在夹具里按固定名 `mkdir`。其后读数见第六节。
++
++## 五、残余（BACKLOG EV-251）
++
++- 另三家载体的工具超时上限未实测，统一取值靠配置键兜底；实测要在各家载体里起真实会话、花配额。
++- 宿主直接 SIGKILL doctor 时子进程组成为孤儿，本次临时目录留到下一次 doctor 启动时补删。
++- `config.local.yaml` 的写入不是原子替换，硬杀落在写入中途可能截断，可重探恢复。
++- 同步代码堵住事件循环时，时限控制器的计时器得不到执行。
++- 不跨命令冷却。
++- 真实配额下的端到端验收（会话里让一家探针过期、跑一次 `/dual-review-plan`）未做，需用户同意后再做。
++
++## 六、收口读数
++
++（代码三审与 verify 之后补）
+diff --git a/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-bundle.mjs b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-bundle.mjs
+new file mode 100644
+index 00000000..4c489851
+--- /dev/null
++++ b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-bundle.mjs
+@@ -0,0 +1,59 @@
++// M12 批次 1 变体：集成套件调的是打包产物（test/helpers/fixture.ts 的 BUNDLE），--tests-only 不重打 bundle，
++// 变异进不了被测产物。这里改为 --with-tests 同时重打 bundle 与测试产物；其余与原脚本逐字相同。
++// 逐条变异、带超时跑期望套件，存下**失败用例名与首行断言文案**（变异装置只记 fail 数、且不给套件加超时）。
++// 照搬 evidence/cancel-cli-reach-20260928/mutation-names.mjs 的形态，另加 --test-timeout：
++// 首轮装置跑到 M4 时 U12① 的等待没有超时、挂死一小时被强制终止（报告 §3），这里先逐条确认不挂。
++// 逐条：备份 → 变异（find 须唯一）→ 只重建测试产物 → 跑期望套件 → 恢复并逐字节核对；收尾重建一次。
++// 本目录的副本照搬自 evidence/dispute-detail-20261022/（预检失败自动校准，EV-251），脚本正文未改。
++// 用法（在仓库根，变异装置与全量检查都不在跑）：
++//   node doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-bundle.mjs <规格路径> [输出 JSON 路径]
++import { execFileSync, spawnSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const spec = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
++const OUT = process.argv[3] ?? null;
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--with-tests'], { stdio: 'ignore' });
++const runSuite = (suite) => {
++  const t0 = Date.now();
++  const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-timeout=60000', suite], {
++    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000,
++  });
++  const out = (r.stdout ?? '') + (r.stderr ?? '');
++  const body = out.split('✖ failing tests:')[0];
++  const red = [...new Set([...body.matchAll(/^✖ (.+?) \(\d/gm)].map((m) => m[1]))];
++  const msgs = [...body.matchAll(/^✖ .+?\(\d[^\n]*\n(?:[^\n]*\n){0,3}?\s*([^\n]*Error[^\n]*)/gm)].map((m) => m[1].trim().slice(0, 200));
++  return {
++    fail: Number(/ℹ fail (\d+)/.exec(out)?.[1] ?? (r.status === 0 ? 0 : -1)),
++    timed_out: r.error?.code === 'ETIMEDOUT',
++    cancelled: Number(/ℹ cancelled (\d+)/.exec(out)?.[1] ?? 0),
++    red,
++    firstLines: [...new Set(msgs)].slice(0, 8),
++    elapsed_s: Math.round((Date.now() - t0) / 1000),
++  };
++};
++
++const base = Object.fromEntries(spec.targets.map((f) => [f, fs.readFileSync(f, 'utf8')]));
++const baseHash = Object.fromEntries(spec.targets.map((f) => [f, sha(f)]));
++const results = [];
++try {
++  for (const c of spec.cases) {
++    const src = base[c.file];
++    if (src.split(c.find).length - 1 !== 1) throw new Error(`${c.id} 的 find 不唯一`);
++    fs.writeFileSync(c.file, src.replace(c.find, c.replace));
++    try {
++      build();
++      const r = runSuite(c.expect);
++      results.push({ id: c.id, desc: c.desc, suite: c.expect, ...r });
++      console.error(`${c.id}：fail=${r.fail} cancelled=${r.cancelled} ${r.elapsed_s}s ⇒ ${r.red.join(' ｜ ')}`);
++    } finally {
++      fs.writeFileSync(c.file, src);
++      if (sha(c.file) !== baseHash[c.file]) throw new Error(`恢复 ${c.file} 后哈希不符，停下人工处理`);
++    }
++  }
++} finally {
++  for (const f of spec.targets) if (sha(f) !== baseHash[f]) fs.writeFileSync(f, base[f]);
++  build();
++}
++if (OUT) fs.writeFileSync(OUT, JSON.stringify(results, null, 2) + '\n');
+diff --git a/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-log.txt b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-log.txt
+new file mode 100644
+index 00000000..438cbf9d
+--- /dev/null
++++ b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-log.txt
+@@ -0,0 +1,11 @@
++M1：fail=1 cancelled=0 1s ⇒ U3 混入一条不能修（或没标）⇒ 不 eligible，why 点名那一项；退 64 不在范围；通过返回 null；目标为空不 eligible
++M2：fail=0 cancelled=0 7s ⇒ 
++M3：fail=1 cancelled=0 1s ⇒ U1c 中止派生之后：同一令牌下的段内 run() 立即兑现合成结果、不派生；段外与别的令牌照常
++M4：fail=3 cancelled=0 605s ⇒ U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGKILL，最终组内无成员（计划三审 CODEX-01） ｜ U1b 组长在到点前已自然退出、后代仍在：到点时照样按组结束后代 ｜ U5 段作用域内不带 killTree 的 run() 也自成一组、进段级记录并计数（计划三审 CODEX-02）
++M5：fail=2 cancelled=0 1s ⇒ U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGKILL，最终组内无成员（计划三审 CODEX-01） ｜ U1b 组长在到点前已自然退出、后代仍在：到点时照样按组结束后代
++M6：fail=1 cancelled=0 7s ⇒ I7 带时限运行中收到 SIGTERM：协作式收尾，退 76、reason=signal，假 agy 的进程组已结束、探针临时目录已删
++M7：fail=1 cancelled=0 7s ⇒ I2 模型调用挂住、后代忽略 TERM、吐半截 JSON：到点退 76 的结果，按组结束不留进程、探针临时目录已删、在跑段不落盘；随后重跑预检仍退 69（GLM-02）
++M8：fail=1 cancelled=0 1s ⇒ U2 不能修的失败项（归档不可写之类）补成 fixable: false，汇总不 eligible 并点名
++M9：fail=1 cancelled=0 1s ⇒ U2 全部过期：目标只取入选且过期的侧，未入选的过期家不进清单（计划三审 AGY-03 驳回理由的落点）
++M10：fail=1 cancelled=0 1s ⇒ U4 只读能力一格：每个不可用侧都可修才可修（目标为这几侧）；一侧可修一侧失守 ⇒ 整项不可修（计划三审 AGY-04）
++M11：fail=1 cancelled=0 5s ⇒ I1 --deadline-s 越界或非整数退 64；不给时与原来一样不带 deadline 段
+diff --git a/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-output.json b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-output.json
+new file mode 100644
+index 00000000..842358bf
+--- /dev/null
++++ b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-output.json
+@@ -0,0 +1,146 @@
++[
++  {
++    "id": "M1",
++    "desc": "计划 r2 D1：eligible 改成「任一失败项可修即可」（应为全部可修）",
++    "suite": "dist/test/test/unit/preflight-recalibrate.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U3 混入一条不能修（或没标）⇒ 不 eligible，why 点名那一项；退 64 不在范围；通过返回 null；目标为空不 eligible"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M2",
++    "desc": "计划 r2 D3 第 4 条：中止派生之后返回的段照常落盘（应作废）",
++    "suite": "dist/test/test/unit/doctor-deadline.test.js",
++    "fail": 0,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [],
++    "firstLines": [],
++    "elapsed_s": 7
++  },
++  {
++    "id": "M3",
++    "desc": "计划 r2 D3 第 4 条：中止之后段内 run() 仍然派生",
++    "suite": "dist/test/test/unit/probe-section.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U1c 中止派生之后：同一令牌下的段内 run() 立即兑现合成结果、不派生；段外与别的令牌照常"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M4",
++    "desc": "计划三审 CODEX-02：段作用域内不再强制按进程组派生",
++    "suite": "dist/test/test/unit/probe-section.test.js",
++    "fail": 3,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGKILL，最终组内无成员（计划三审 CODEX-01）",
++      "U1b 组长在到点前已自然退出、后代仍在：到点时照样按组结束后代",
++      "U5 段作用域内不带 killTree 的 run() 也自成一组、进段级记录并计数（计划三审 CODEX-02）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 605
++  },
++  {
++    "id": "M5",
++    "desc": "计划三审 CODEX-01：组长已退出即判整组已不在（不再看非僵尸成员数）",
++    "suite": "dist/test/test/unit/probe-section.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGKILL，最终组内无成员（计划三审 CODEX-01）",
++      "U1b 组长在到点前已自然退出、后代仍在：到点时照样按组结束后代"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M6",
++    "desc": "计划 r2 D3：到点不再退 76（落回 blockers 的 0 / 69）",
++    "suite": "dist/test/test/integration/doctor-deadline-cli.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I7 带时限运行中收到 SIGTERM：协作式收尾，退 76、reason=signal，假 agy 的进程组已结束、探针临时目录已删"
++    ],
++    "firstLines": [],
++    "elapsed_s": 7
++  },
++  {
++    "id": "M7",
++    "desc": "计划三审 GLM-02：新鲜度改看全局 generated_at（doctor 收尾会刷新它）",
++    "suite": "dist/test/test/unit/doctor-deadline.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I2 模型调用挂住、后代忽略 TERM、吐半截 JSON：到点退 76 的结果，按组结束不留进程、探针临时目录已删、在跑段不落盘；随后重跑预检仍退 69（GLM-02）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 7
++  },
++  {
++    "id": "M8",
++    "desc": "计划 r2 D2：没标 recalibrate 的失败项缺省补成可修（应为不能修，fail-closed）",
++    "suite": "dist/test/test/unit/preflight-recalibrate.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U2 不能修的失败项（归档不可写之类）补成 fixable: false，汇总不 eligible 并点名"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M9",
++    "desc": "计划三审 AGY-03 驳回理由的落点：全部过期时目标不按入选侧过滤",
++    "suite": "dist/test/test/unit/preflight-recalibrate.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U2 全部过期：目标只取入选且过期的侧，未入选的过期家不进清单（计划三审 AGY-03 驳回理由的落点）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M10",
++    "desc": "计划三审 AGY-04：只读能力一格混有不能修的侧时仍判可修",
++    "suite": "dist/test/test/unit/preflight-recalibrate.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U4 只读能力一格：每个不可用侧都可修才可修（目标为这几侧）；一侧可修一侧失守 ⇒ 整项不可修（计划三审 AGY-04）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M11",
++    "desc": "计划 r2 D3：--deadline-s 下限不校验",
++    "suite": "dist/test/test/integration/doctor-deadline-cli.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I1 --deadline-s 越界或非整数退 64；不给时与原来一样不带 deadline 段"
++    ],
++    "firstLines": [],
++    "elapsed_s": 5
++  }
++]
+diff --git a/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-r2-log.txt b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-r2-log.txt
+new file mode 100644
+index 00000000..693412d1
+--- /dev/null
++++ b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-r2-log.txt
+@@ -0,0 +1 @@
++M2r2：fail=1 cancelled=0 7s ⇒ I6 段内不带 killTree 的派生（模拟 git 辅助调用）到点也按组结束，按时出结果（CODEX-02）
+diff --git a/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-r2-output.json b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-r2-output.json
+new file mode 100644
+index 00000000..43a7aba0
+--- /dev/null
++++ b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-names-r2-output.json
+@@ -0,0 +1,15 @@
++[
++  {
++    "id": "M2r2",
++    "desc": "计划 r2 D3 第 4 条：中止派生之后正常返回的段照常落盘（应作废）；首轮 I2 走的是抛出分支、没咬住，I6 补断言后重跑",
++    "suite": "dist/test/test/unit/doctor-deadline.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I6 段内不带 killTree 的派生（模拟 git 辅助调用）到点也按组结束，按时出结果（CODEX-02）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 7
++  }
++]
+diff --git a/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-spec-r2.json b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-spec-r2.json
+new file mode 100644
+index 00000000..1dc4cb77
+--- /dev/null
++++ b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-spec-r2.json
+@@ -0,0 +1,13 @@
++{
++  "targets": ["src/trivium/doctor.ts"],
++  "cases": [
++    {
++      "id": "M2r2",
++      "desc": "计划 r2 D3 第 4 条：中止派生之后正常返回的段照常落盘（应作废）；首轮 I2 走的是抛出分支、没咬住，I6 补断言后重跑",
++      "file": "src/trivium/doctor.ts",
++      "find": "return aborted() ? ABORTED : r;",
++      "replace": "return r;",
++      "expect": "dist/test/test/unit/doctor-deadline.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-spec.json b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-spec.json
+new file mode 100644
+index 00000000..8154f1f9
+--- /dev/null
++++ b/doc/05_testing/evidence/preflight-recalibrate-20261022/mutation-spec.json
+@@ -0,0 +1,99 @@
++{
++  "targets": [
++    "src/trivium/preflight.ts",
++    "src/trivium/doctor.ts",
++    "src/trivium/util/exec.ts",
++    "src/trivium/cli.ts",
++    "src/trivium/config.ts"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "计划 r2 D1：eligible 改成「任一失败项可修即可」（应为全部可修）",
++      "file": "src/trivium/preflight.ts",
++      "find": "const blocker = failed.find((c) => c.recalibrate?.fixable !== true);",
++      "replace": "const blocker = failed.every((c) => c.recalibrate?.fixable !== true) ? failed[0] : undefined;",
++      "expect": "dist/test/test/unit/preflight-recalibrate.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "计划 r2 D3 第 4 条：中止派生之后返回的段照常落盘（应作废）",
++      "file": "src/trivium/doctor.ts",
++      "find": "return aborted() ? ABORTED : r;",
++      "replace": "return r;",
++      "expect": "dist/test/test/unit/doctor-deadline.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "计划 r2 D3 第 4 条：中止之后段内 run() 仍然派生",
++      "file": "src/trivium/util/exec.ts",
++      "find": "if (section?.abort.aborted) {",
++      "replace": "if (section?.abort.aborted && Date.now() < 0) {",
++      "expect": "dist/test/test/unit/probe-section.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "计划三审 CODEX-02：段作用域内不再强制按进程组派生",
++      "file": "src/trivium/util/exec.ts",
++      "find": "const killTree = (opts.killTree ?? false) || section !== undefined;",
++      "replace": "const killTree = opts.killTree ?? false;",
++      "expect": "dist/test/test/unit/probe-section.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "计划三审 CODEX-01：组长已退出即判整组已不在（不再看非僵尸成员数）",
++      "file": "src/trivium/util/exec.ts",
++      "find": "const n = await count(g.pgid);",
++      "replace": "const n: number | null = 0;",
++      "expect": "dist/test/test/unit/probe-section.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "计划 r2 D3：到点不再退 76（落回 blockers 的 0 / 69）",
++      "file": "src/trivium/cli.ts",
++      "find": "const code = report.deadline?.hit ? EXIT.DOCTOR_PARTIAL :",
++      "replace": "const code = report.deadline?.hit && Date.now() < 0 ? EXIT.DOCTOR_PARTIAL :",
++      "expect": "dist/test/test/integration/doctor-deadline-cli.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "计划三审 GLM-02：新鲜度改看全局 generated_at（doctor 收尾会刷新它）",
++      "file": "src/trivium/config.ts",
++      "find": "return withinTtl(cfg.probe.cli[cliName]?.probed_at, cfg.probe_ttl_days);",
++      "replace": "return withinTtl(cfg.probe.generated_at, cfg.probe_ttl_days);",
++      "expect": "dist/test/test/unit/doctor-deadline.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "计划 r2 D2：没标 recalibrate 的失败项缺省补成可修（应为不能修，fail-closed）",
++      "file": "src/trivium/preflight.ts",
++      "find": "for (const c of checks) if (!c.ok && !c.recalibrate) c.recalibrate = { fixable: false };",
++      "replace": "for (const c of checks) if (!c.ok && !c.recalibrate) c.recalibrate = { fixable: true, targets: [] };",
++      "expect": "dist/test/test/unit/preflight-recalibrate.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "计划三审 AGY-03 驳回理由的落点：全部过期时目标不按入选侧过滤",
++      "file": "src/trivium/preflight.ts",
++      "find": "selected.filter((c) => staleSet.has(agentById(c)?.cliName ?? '')).flatMap((c) => recalTargets(cfg, c, opts)),",
++      "replace": "(['codex', 'gemini', 'glm', 'claude'] as CriticId[]).filter((c) => staleSet.has(agentById(c)?.cliName ?? '')).flatMap((c) => recalTargets(cfg, c, opts)),",
++      "expect": "dist/test/test/unit/preflight-recalibrate.test.js"
++    },
++    {
++      "id": "M10",
++      "desc": "计划三审 AGY-04：只读能力一格混有不能修的侧时仍判可修",
++      "file": "src/trivium/preflight.ts",
++      "find": "recalibrate: unfixable",
++      "replace": "recalibrate: false",
++      "expect": "dist/test/test/unit/preflight-recalibrate.test.js"
++    },
++    {
++      "id": "M11",
++      "desc": "计划 r2 D3：--deadline-s 下限不校验",
++      "file": "src/trivium/cli.ts",
++      "find": "if (!Number.isInteger(s) || s < DEADLINE_MIN_S || s > DEADLINE_MAX_S) {",
++      "replace": "if (!Number.isInteger(s) || s > DEADLINE_MAX_S) {",
++      "expect": "dist/test/test/integration/doctor-deadline-cli.test.js"
++    }
++  ]
++}
+diff --git a/skills-src/partials/preflight/recalibrate.md b/skills-src/partials/preflight/recalibrate.md
+new file mode 100644
+index 00000000..2a159037
+--- /dev/null
++++ b/skills-src/partials/preflight/recalibrate.md
+@@ -0,0 +1,18 @@
++**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
++
++- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
++  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
++- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面三步自动校准一轮。哪些失败项能修、该跑哪几家、
++  带什么旗标，全由预检给出——你只照抄，不自行判断、不增删。
++
++1. 先发一行文本：「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
++   （每次至多 `deadline_s` 秒），会消耗少量配额」。
++2. 逐条执行 `recalibration.invocations`：命令是 `TV` 后接该条 `args` 的各项（逐个照抄，不改、不增删）。
++   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
++   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
++   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
++3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**：
++   - 通过：照常往下走（`warnings` 照常念），并在同一条消息里说明「预检首次退 69，已自动校准后通过」；
++   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
++     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
++     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
+diff --git a/src/trivium/doctor-deadline.ts b/src/trivium/doctor-deadline.ts
+new file mode 100644
+index 00000000..656d6f79
+--- /dev/null
++++ b/src/trivium/doctor-deadline.ts
+@@ -0,0 +1,266 @@
++/**
++ * `doctor --deadline-s` 的时限控制器与临时目录台账（EV-251，预检失败自动校准计划 r2 D3）。
++ *
++ * 预检退 69 时 skill 会在会话里前台调 doctor，而会话的 Bash 工具有硬上限：工具超时杀掉 doctor 时，
++ * 探针拉起的子进程组够不到、探针 `finally` 里删的临时目录（codex、zcode 两家放的是含真实凭据的副本）留在盘上。
++ * 这里让 doctor 自己在时限内收场：
++ *
++ *   - 控制器是与 `runDoctor` 并行的独立路径（计划三审 AGY-02）：到点或收到信号时置「中止派生」、按组结束段内
++ *     派生过的进程组、等在写的 checkpoint、再给段至多 `unwindMs` 退出来；等不到就由 `stuck` 兑现，调用方按已记的
++ *     段状态出结果，不依赖挂住的 await 返回。事件循环被**同步**代码堵住时计时器得不到执行（已知边界）。
++ *   - 台账：本进程经 `makeTempDir` 建的目录同步记进 `<run_root>/doctor-temp-<pid>.json`（跨桶清扫只进目录、
++ *     跳过普通文件），删成功即注销；收尾时删掉本进程仍在盘上的条目，下一次 doctor 启动时补删已退出进程留下的台账。
++ *     补删只认台账里的路径、且真实路径在系统临时目录下、目录名是 `makeTempDir` 的形态——不按前缀扫系统临时目录
++ *     （2026-09-20 事故规矩 R1：删除类调用只认 mkdtemp 的返回值）。
++ */
++import path from 'node:path';
++import os from 'node:os';
++import { promises as fs } from 'node:fs';
++import {
++  abortProbeSections, newProbeAbortToken, terminateProbeSectionGroups, type ProbeSectionScope, type SectionTerminateResult,
++} from './util/exec.js';
++import { observeTempDirs, tildeHome, tryRemoveTempDir } from './util/fsx.js';
++
++/** 到点后给段退出来的兜底时长（计划 r2 D3 第 5 条） */
++export const DEADLINE_UNWIND_MS = 20_000;
++
++/** `--deadline-s` 的取值范围：下限防误写成毫秒级，上限贴着 Bash 工具 600 s 留 60 s 余量（计划 r2 D5） */
++export const DEADLINE_MIN_S = 30;
++export const DEADLINE_MAX_S = 540;
++
++export type DeadlineSectionState = 'finished' | 'in_progress' | 'not_started';
++
++/** `deadline.sections` 的一项：本次要探的每一段都有（计划三审 CODEX-06） */
++export interface DoctorDeadlineSection {
++  only: string;
++  state: DeadlineSectionState;
++  /** 段作用域内派生的子进程数（含 git 辅助调用）；不区分哪几次调了模型，按上界交代配额 */
++  launches: number;
++  /** 该段的 notes 原文（`[cli]` 前缀那些） */
++  notes: string[];
++  /** 给用户在终端复制的完整命令 */
++  rerun: string;
++  /** 只在未探完的段出现 */
++  note?: string;
++}
++
++export interface DoctorDeadline {
++  limit_s: number;
++  hit: boolean;
++  /** 到点（deadline）还是收到信号（signal）；未到点为 null */
++  reason: 'deadline' | 'signal' | null;
++  /** 兜底触发：到点后段在 `unwindMs` 内没退出来，结果按控制器记的段状态给出 */
++  stuck: boolean;
++  sections: DoctorDeadlineSection[];
++  /** 结束不了的进程组、删不掉或不敢删的临时目录 */
++  residue: string[];
++}
++
++/**
++ * 未探完那一段的说明。EV-243 一句不写 Agent id 或 CLI 名字面量（registry-parity 纪律）：
++ * 它对哪一家都成立，是「会话里拉起」这件事的先例。
++ */
++export function unfinishedSectionNote(launches: number): string {
++  return (
++    `在时限内没探完，本段已拉起 ${launches} 次子进程，结论未落盘（其中调用模型的那几次配额已花）。` +
++    '会话里拉起的厂商 CLI 有过间歇挂满单次探针超时的先例（EV-243），请在终端单独跑上面这条命令。'
++  );
++}
++
++// ─────────────────────── 台账 ───────────────────────
++
++const LEDGER_RE = /^doctor-temp-(\d+)\.json$/;
++/** `makeTempDir(prefix)` 的产物形态：`trivium-…-` 加 mkdtemp 的 6 位后缀 */
++const TEMP_NAME_RE = /^trivium-[A-Za-z0-9-]+-[A-Za-z0-9]{6}$/;
++
++function ledgerFile(dir: string, pid: number): string {
++  return path.join(dir, `doctor-temp-${pid}.json`);
++}
++
++async function realTmpRoot(): Promise<string> {
++  return fs.realpath(os.tmpdir()).catch(() => os.tmpdir());
++}
++
++/** 台账条目能不能删：真实路径在系统临时目录下、目录名是 makeTempDir 的形态。不在盘上返回 'gone' */
++async function deletable(p: string): Promise<'yes' | 'no' | 'gone'> {
++  let real: string;
++  try {
++    real = await fs.realpath(p);
++  } catch (e) {
++    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? 'gone' : 'no';
++  }
++  const root = await realTmpRoot();
++  return path.dirname(real) === root && TEMP_NAME_RE.test(path.basename(real)) ? 'yes' : 'no';
++}
++
++async function removeListed(dirs: readonly string[]): Promise<string[]> {
++  const residue: string[] = [];
++  for (const d of dirs) {
++    const v = await deletable(d);
++    if (v === 'gone') continue;
++    if (v === 'no') {
++      residue.push(`台账里的 ${tildeHome(d)} 不在系统临时目录下或不是探针临时目录的形态，未删，请手工核对`);
++      continue;
++    }
++    const left = await tryRemoveTempDir(d, []);
++    if (left !== null) residue.push(`探针临时目录 ${tildeHome(d)} 删除失败（${left.code}），其中可能有凭据副本，请手工删除`);
++  }
++  return residue;
++}
++
++function pidAlive(pid: number): boolean {
++  try {
++    process.kill(pid, 0);
++    return true;
++  } catch (e) {
++    return (e as NodeJS.ErrnoException).code === 'EPERM';
++  }
++}
++
++/**
++ * 补删已退出的 doctor 留下的台账（宿主直接 SIGKILL 的那一格）。进程还活着（或 pid 被复用、判不了）的台账不碰，
++ * 宁可留到下一次。返回删不掉或不敢删的条目说明。
++ */
++export async function sweepDoctorLedgers(dir: string): Promise<string[]> {
++  let names: string[];
++  try {
++    names = await fs.readdir(dir);
++  } catch {
++    return [];
++  }
++  const residue: string[] = [];
++  for (const name of names.sort()) {
++    const m = LEDGER_RE.exec(name);
++    if (!m) continue;
++    const pid = Number(m[1]);
++    if (pid === process.pid || pidAlive(pid)) continue;
++    const file = path.join(dir, name);
++    let dirs: string[] = [];
++    try {
++      const parsed = JSON.parse(await fs.readFile(file, 'utf8')) as { dirs?: unknown };
++      dirs = Array.isArray(parsed.dirs) ? parsed.dirs.filter((d): d is string => typeof d === 'string') : [];
++    } catch {
++      residue.push(`doctor 临时目录台账 ${tildeHome(file)} 读不懂，未据它删除任何目录`);
++      continue;
++    }
++    residue.push(...(await removeListed(dirs)));
++    await fs.rm(file, { force: true }).catch(() => undefined);
++  }
++  return residue;
++}
++
++/** 本进程的台账：经 `observeTempDirs` 接上 `makeTempDir` / `tryRemoveTempDir` */
++export class TempDirLedger {
++  private readonly dirs = new Set<string>();
++  private readonly file: string;
++  private chain: Promise<void> = Promise.resolve();
++
++  constructor(dir: string) {
++    this.file = ledgerFile(dir, process.pid);
++  }
++
++  install(): void {
++    observeTempDirs({
++      created: (d) => this.update(() => this.dirs.add(d)),
++      removed: (d) => this.update(() => this.dirs.delete(d)),
++    });
++  }
++
++  /** 改内存、串行落盘（临时文件加改名，免得半截台账） */
++  private update(mutate: () => unknown): Promise<void> {
++    mutate();
++    const snapshot = [...this.dirs];
++    this.chain = this.chain.then(async () => {
++      const tmp = `${this.file}.tmp`;
++      await fs.mkdir(path.dirname(this.file), { recursive: true });
++      await fs.writeFile(tmp, JSON.stringify({ pid: process.pid, dirs: snapshot }), 'utf8');
++      await fs.rename(tmp, this.file);
++    }).catch(() => undefined);
++    return this.chain;
++  }
++
++  /** 收尾：卸下观察者，删掉本进程仍在盘上的条目；全部处理完就删台账，否则留给下一次 doctor */
++  async finish(): Promise<string[]> {
++    observeTempDirs(null);
++    await this.chain;
++    const residue = await removeListed([...this.dirs]);
++    this.dirs.clear();
++    if (residue.length === 0) await fs.rm(this.file, { force: true }).catch(() => undefined);
++    return residue;
++  }
++}
++
++// ─────────────────────── 控制器 ───────────────────────
++
++export interface DeadlineControllerOptions {
++  ms: number;
++  unwindMs: number;
++  graceMs: number;
++  killWaitMs: number;
++  /** 接管 SIGINT / SIGTERM（CLI 传 true；经 runDoctor 跑的单测不接管） */
++  handleSignals: boolean;
++}
++
++export class DeadlineController {
++  reason: 'deadline' | 'signal' | null = null;
++  /** 本次 doctor 各段共用的中止令牌（段作用域经 `newProbeSection(name, token)` 带上） */
++  readonly token = newProbeAbortToken();
++  readonly scopes: ProbeSectionScope[] = [];
++  /** 到点后按组结束的结果（含等在写的 checkpoint）；未到点为 null */
++  termination: Promise<SectionTerminateResult> | null = null;
++  /** 到点后段在兜底时长内没退出来时兑现 */
++  readonly stuck: Promise<void>;
++  private resolveStuck: () => void = () => undefined;
++  private timer: NodeJS.Timeout | undefined;
++  private stuckTimer: NodeJS.Timeout | undefined;
++  private inflight: Promise<unknown> | null = null;
++  private readonly onSignal = (sig: NodeJS.Signals): void => {
++    // 第二个信号：用户或宿主坚持要走，立即退出（同前台中断转发的「再按一次」）
++    if (this.reason !== null) process.exit(sig === 'SIGINT' ? 130 : 143);
++    process.stderr.write(`收到 ${sig}：doctor 按到点处置，结束本次拉起的探针子进程并收尾（再发一次立即退出）\n`);
++    this.fire('signal');
++  };
++
++  constructor(private readonly o: DeadlineControllerOptions) {
++    this.stuck = new Promise<void>((r) => {
++      this.resolveStuck = r;
++    });
++  }
++
++  start(): void {
++    this.timer = setTimeout(() => this.fire('deadline'), this.o.ms);
++    if (this.o.handleSignals) for (const s of ['SIGINT', 'SIGTERM'] as const) process.on(s, this.onSignal);
++  }
++
++  /** 记下正在写的 checkpoint：到点收尾要等它写完（`patchProbe` 不经 `run()`，不受中止影响） */
++  track(p: Promise<unknown>): void {
++    this.inflight = p;
++    void p.finally(() => {
++      if (this.inflight === p) this.inflight = null;
++    });
++  }
++
++  fire(reason: 'deadline' | 'signal'): void {
++    if (this.reason !== null) return;
++    this.reason = reason;
++    if (this.timer) clearTimeout(this.timer);
++    abortProbeSections(this.token);
++    this.termination = (async () => {
++      const t = await terminateProbeSectionGroups(this.scopes, { graceMs: this.o.graceMs, killWaitMs: this.o.killWaitMs });
++      await this.inflight?.catch(() => undefined);
++      return t;
++    })();
++    void this.termination.then(() => {
++      if (!this.stopped) this.stuckTimer = setTimeout(() => this.resolveStuck(), this.o.unwindMs);
++    });
++  }
++
++  private stopped = false;
++
++  stop(): void {
++    this.stopped = true;
++    if (this.timer) clearTimeout(this.timer);
++    if (this.stuckTimer) clearTimeout(this.stuckTimer);
++    if (this.o.handleSignals) for (const s of ['SIGINT', 'SIGTERM'] as const) process.removeListener(s, this.onSignal);
++  }
++}
+diff --git a/test/contract/skill-recalibrate.test.ts b/test/contract/skill-recalibrate.test.ts
+new file mode 100644
+index 00000000..5e144000
+--- /dev/null
++++ b/test/contract/skill-recalibrate.test.ts
+@@ -0,0 +1,55 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync, readdirSync, existsSync } from 'node:fs';
++import path from 'node:path';
++import { REPO_ROOT } from '../helpers/fixture.js';
++
++/**
++ * skill 契约：预检退 69 时的自动校准（EV-251，预检失败自动校准计划 r2 D4）。
++ *
++ * 四条命令（/dual-run 与三条 /dual-review-*）× 四家载体的渲染产物同一口径：照抄 `recalibration.invocations`、
++ * 前台调用、按 `bash_timeout_ms` 设工具超时、重跑同一条预检一次、至多一轮、第二次不再校准。
++ * 论域取全目录扫描：凡带 `preflight --stage` 的入口产物都进论域，新加的载体或命令自动覆盖。
++ */
++
++const SKILLS_DIR = path.join(REPO_ROOT, 'skills');
++const ENTRY_DIR = path.join(SKILLS_DIR, 'dual-critic', 'entry');
++
++function entryFiles(): string[] {
++  const out: string[] = [];
++  for (const d of readdirSync(SKILLS_DIR)) {
++    const p = path.join(SKILLS_DIR, d, 'SKILL.md');
++    if (existsSync(p)) out.push(p);
++  }
++  for (const carrier of existsSync(ENTRY_DIR) ? readdirSync(ENTRY_DIR) : []) {
++    for (const cmd of readdirSync(path.join(ENTRY_DIR, carrier))) {
++      const p = path.join(ENTRY_DIR, carrier, cmd, 'SKILL.md');
++      if (existsSync(p)) out.push(p);
++    }
++  }
++  return out;
++}
++
++const withPreflight = entryFiles().filter((p) => /preflight --stage/.test(readFileSync(p, 'utf8')));
++
++test('论域：四条命令 × 四家载体共 16 份入口产物带预检步骤（防止扫描空转）', () => {
++  assert.equal(withPreflight.length, 16, withPreflight.map((p) => path.relative(REPO_ROOT, p)).join('\n'));
++});
++
++for (const p of withPreflight) {
++  const rel = path.relative(REPO_ROOT, p);
++  const md = readFileSync(p, 'utf8');
++  test(`${rel}：预检退 69 时按 recalibration 自动校准一轮`, () => {
++    assert.match(md, /recalibration\.eligible/);
++    assert.match(md, /recalibration\.invocations/);
++    assert.match(md, /\*\*不向用户确认\*\*/);
++    assert.match(md, /\*\*前台调用\*\*，Bash 工具超时设为该条的 `bash_timeout_ms`/);
++    assert.match(md, /不要放到后台，也不要拆成发起与等待两步/);
++    assert.match(md, /用\*\*逐字相同\*\*的旗标重跑同一条预检命令\*\*一次\*\*/);
++    assert.match(md, /即使可校准也\*\*不再\*\*自动校准——每次预检至多一轮/);
++    assert.match(md, /`deadline\.sections` 里各段的 `state`、`notes` 与 `rerun`/);
++    // 「原样转述并停止」只留在不可校准那一支：旧的无条件句不得残留
++    assert.doesNotMatch(md, /^失败则\*\*原样转述\*\*(错误)?并停止/m);
++    assert.match(md, /`recalibration` 键缺席、或 `recalibration\.eligible` 不为 `true`：\*\*原样转述\*\*/);
++  });
++}
+diff --git a/test/integration/doctor-deadline-cli.test.ts b/test/integration/doctor-deadline-cli.test.ts
+new file mode 100644
+index 00000000..239046b2
+--- /dev/null
++++ b/test/integration/doctor-deadline-cli.test.ts
+@@ -0,0 +1,148 @@
++/**
++ * EV-251：经真实打包 CLI 的 `doctor --deadline-s` 与预检的自动校准字段（预检失败自动校准计划 r2；第三节 I1 / I5 / I7）。
++ *
++ * 零配额：agy 入口显式指向本测试写的假 agy（不显式给的话 doctor 会按候选表与 `which` 找到真实 CLI）；
++ * HOME 与 TMPDIR 钉到夹具。真实进程带本次随机标记，`finally` 按组号兜底结束。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { spawn } from 'node:child_process';
++import YAML from 'yaml';
++import { BUNDLE, ASSET_ROOT, cli, makeFixture, seedFakeProbes, bundleMissing, bundleSkipReason } from '../helpers/fixture.js';
++import { scratchDir } from '../helpers/scratch.js';
++import { groupsWithMark, killMarked } from '../helpers/proc.js';
++import { emptyEntryScanHome } from '../helpers/entry-scan-home.js';
++import { ENTRY_SCAN_HOME_ENV } from '../../src/trivium/entry-collisions.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++
++const MARK = `trivium-i-dlcli-${process.pid}-${Date.now()}`;
++const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
++const skip = bundleMissing ? bundleSkipReason : false;
++
++/** 与 doctor-deadline 单测同一个假 agy：模型调用按 FAKE_AGY_MODE 挂住或秒败 */
++async function fakeAgy(dir: string): Promise<string> {
++  const p = path.join(dir, 'agy-hang');
++  await fs.writeFile(p, [
++    `#!${process.execPath}`,
++    "const a = process.argv.slice(2);",
++    "if (a[0] === '--version') { console.log('agy 0.0.1'); process.exit(0); }",
++    "if (a[0] === 'models') { console.log('gemini-3.8-flash-high'); process.exit(0); }",
++    "if (process.env.FAKE_AGY_MODE === 'fail') { console.error('fake model failure'); process.exit(3); }",
++    "require('child_process').spawn('/bin/sh', ['-c', 'trap \"\" TERM; sleep 600; : \"$0\"', process.env.FAKE_AGY_MARK], { stdio: 'ignore' });",
++    'setInterval(() => {}, 1000);',
++    '',
++  ].join('\n'), { mode: 0o755 });
++  return p;
++}
++
++/** 夹具：探针种子 + agy 入口显式指向假 agy；HOME / TMPDIR 各一份 */
++async function project(topic: string) {
++  const fx = await makeFixture({ topic });
++  await seedFakeProbes(fx.root);
++  const side = await scratchDir('trivium-dlcli-side-');
++  for (const d of ['home', 'tmp', 'bin']) await fs.mkdir(path.join(side, d));
++  const agy = await fakeAgy(path.join(side, 'bin'));
++  const p = path.join(fx.root, '.trivium', 'config.local.yaml');
++  const doc = (YAML.parse(await fs.readFile(p, 'utf8')) ?? {}) as Record<string, any>;
++  doc['agents'] = { ...(doc['agents'] ?? {}), gemini: { vendor: 'antigravity', bin: agy, agent: 'trivium-critic' } };
++  doc['runtime'] = { ...(doc['runtime'] ?? {}), run_root: fx.runRoot };
++  await fs.writeFile(p, YAML.stringify(doc), 'utf8');
++  return { fx, home: path.join(side, 'home'), tmp: path.join(side, 'tmp') };
++}
++
++test('I1 --deadline-s 越界或非整数退 64；不给时与原来一样不带 deadline 段', { skip }, async () => {
++  const { fx } = await project('dlcli-i1');
++  for (const bad of ['29', '541', '1.5', 'abc']) {
++    const r = await cli(fx.root, ['doctor', '--only', 'env', '--no-model-calls', '--deadline-s', bad, '--json']);
++    assert.equal(r.code, EXIT.USAGE, `${bad}: ${r.stderr}`);
++    assert.match(r.stderr, /--deadline-s 只接受 30～540 的整数秒/);
++  }
++  const ok = await cli(fx.root, ['doctor', '--only', 'env', '--no-model-calls', '--json']);
++  assert.ok(ok.code === EXIT.OK || ok.code === EXIT.ENV, ok.stderr);
++  assert.equal((JSON.parse(ok.stdout) as { deadline?: unknown }).deadline, undefined);
++  const withDl = await cli(fx.root, ['doctor', '--only', 'env', '--no-model-calls', '--deadline-s', '30', '--json']);
++  const d = (JSON.parse(withDl.stdout) as { deadline: { hit: boolean; sections: unknown[] } }).deadline;
++  assert.equal(d.hit, false);
++  assert.deepEqual(d.sections, [], '--only env 不探任何一家');
++});
++
++test('I7 带时限运行中收到 SIGTERM：协作式收尾，退 76、reason=signal，假 agy 的进程组已结束、探针临时目录已删', { skip }, async () => {
++  const { fx, home, tmp } = await project('dlcli-i7');
++  const mark = `${MARK}-i7`;
++  const child = spawn(process.execPath, [BUNDLE, 'doctor', '--only', 'agy', '--deadline-s', '60', '--json'], {
++    cwd: fx.root,
++    env: {
++      ...process.env, HOME: home, TMPDIR: tmp, FAKE_AGY_MODE: 'hang', FAKE_AGY_MARK: mark,
++      TRIVIUM_ASSET_ROOT: ASSET_ROOT, [ENTRY_SCAN_HOME_ENV]: emptyEntryScanHome(),
++    },
++    stdio: ['ignore', 'pipe', 'pipe'],
++  });
++  let stdout = '';
++  let stderr = '';
++  child.stdout.on('data', (c: Buffer) => (stdout += c.toString()));
++  child.stderr.on('data', (c: Buffer) => (stderr += c.toString()));
++  const exited = new Promise<number | null>((r) => child.once('exit', (code) => r(code)));
++  try {
++    const deadline = Date.now() + 30_000;
++    while (groupsWithMark(mark).length === 0 && Date.now() < deadline) await sleep(100);
++    assert.ok(groupsWithMark(mark).length > 0, `假 agy 的模型调用没起来：${stderr}`);
++    child.kill('SIGTERM');
++    const code = await exited;
++    assert.equal(code, EXIT.DOCTOR_PARTIAL, stderr);
++    const d = (JSON.parse(stdout) as { deadline: { hit: boolean; reason: string; sections: Array<{ only: string; state: string }> } }).deadline;
++    assert.equal(d.hit, true);
++    assert.equal(d.reason, 'signal');
++    assert.deepEqual(d.sections.map((s) => [s.only, s.state]), [['agy', 'in_progress']]);
++    assert.match(stderr, /收到 SIGTERM：doctor 按到点处置/);
++    const until = Date.now() + 3000;
++    while (groupsWithMark(mark).length > 0 && Date.now() < until) await sleep(100);
++    assert.deepEqual(groupsWithMark(mark), [], '假 agy 拉起的后代应已按组结束');
++    assert.deepEqual((await fs.readdir(tmp)).filter((n) => n.startsWith('trivium-')), [], '探针临时目录应已删');
++  } finally {
++    if (child.exitCode === null) child.kill('SIGKILL');
++    killMarked(mark);
++  }
++});
++
++test('I5 预检 JSON 的 recalibration.invocations[*].args 照抄即可执行；重跑预检不再报探针过期', { skip }, async () => {
++  const { fx, home, tmp } = await project('dlcli-i5');
++  const mark = `${MARK}-i5`;
++  // 把 agy 的结论拨旧（全部登记 CLI 都过期才触发「探针结论未过期」）
++  const p = path.join(fx.root, '.trivium', 'config.local.yaml');
++  const doc = YAML.parse(await fs.readFile(p, 'utf8')) as Record<string, any>;
++  const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
++  for (const c of Object.values(doc['probe']['cli'] as Record<string, any>)) c.probed_at = old;
++  await fs.writeFile(p, YAML.stringify(doc), 'utf8');
++
++  const env = { HOME: home, TMPDIR: tmp, FAKE_AGY_MODE: 'fail', FAKE_AGY_MARK: mark };
++  try {
++    const pf = await cli(fx.root, ['preflight', '--stage', 'plan', '--critics', 'gemini', '--skip-auth-check', '--json'], null, 120_000, env);
++    assert.equal(pf.code, EXIT.ENV, pf.stderr);
++    const j = JSON.parse(pf.stdout) as {
++      checks: Array<{ ok: boolean; name: string; recalibrate?: { fixable: boolean } }>;
++      recalibration: { eligible: boolean; invocations: Array<{ only: string; args: string[]; deadline_s: number; bash_timeout_ms: number }> };
++    };
++    assert.equal(j.checks.find((c) => !c.ok)?.name, '探针结论未过期');
++    assert.equal(j.checks.find((c) => !c.ok)?.recalibrate?.fixable, true);
++    assert.equal(j.recalibration.eligible, true);
++    assert.deepEqual(j.recalibration.invocations.map((i) => i.only), ['agy']);
++    const inv = j.recalibration.invocations[0]!;
++    assert.equal(inv.deadline_s, 480);
++    assert.equal(inv.bash_timeout_ms, 540_000);
++
++    const doc2 = await cli(fx.root, inv.args, null, 120_000, env);
++    assert.notEqual(doc2.code, EXIT.USAGE, `照抄的 args 被判参数错误：${doc2.stderr}`);
++    const dj = JSON.parse(doc2.stdout) as { deadline: { hit: boolean; sections: Array<{ state: string; rerun: string }> } };
++    assert.equal(dj.deadline.hit, false);
++    assert.equal(dj.deadline.sections[0]?.state, 'finished');
++    assert.equal(dj.deadline.sections[0]?.rerun, 'trivium doctor --only agy');
++
++    const pf2 = await cli(fx.root, ['preflight', '--stage', 'plan', '--critics', 'gemini', '--skip-auth-check', '--json'], null, 120_000, env);
++    const j2 = JSON.parse(pf2.stdout) as { checks: Array<{ ok: boolean; name: string }> };
++    assert.ok(!j2.checks.some((c) => !c.ok && c.name === '探针结论未过期'), pf2.stdout);
++  } finally {
++    killMarked(mark);
++  }
++});
+diff --git a/test/unit/doctor-deadline.test.ts b/test/unit/doctor-deadline.test.ts
+new file mode 100644
+index 00000000..6f30783b
+--- /dev/null
++++ b/test/unit/doctor-deadline.test.ts
+@@ -0,0 +1,267 @@
++/**
++ * EV-251：doctor 的总时限（预检失败自动校准计划 r2 D3；第三节 I2 / I3 / I4 / I6 / I8 / I9）。
++ *
++ * 零配额：经 `runDoctor` 跑 agy 段，入口是本测试写的假 agy（`--version` / `models` 秒回，模型调用挂住或秒败）。
++ * 家目录钉到夹具（agy 的 Agent 文件读 HOME），系统临时目录经 TMPDIR 钉到夹具（数探针临时目录的残留）。
++ * 真实进程带本次随机标记，`finally` 按组号兜底结束。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { spawnSync } from 'node:child_process';
++import YAML from 'yaml';
++import { runDoctor, type DoctorOptions, type DoctorReport } from '../../src/trivium/doctor.js';
++import { sweepDoctorLedgers } from '../../src/trivium/doctor-deadline.js';
++import { TRIVIUM_DIR, agentConfigOf, defaultConfig } from '../../src/trivium/config.js';
++import { runPreflight } from '../../src/trivium/preflight.js';
++import { run } from '../../src/trivium/util/exec.js';
++import { initFixtureRepo } from '../../src/trivium/util/git.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++import type { Config, ProbeSection } from '../../src/trivium/types.js';
++import { scratchDir } from '../helpers/scratch.js';
++import { groupsWithMark, killMarked } from '../helpers/proc.js';
++import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
++
++isolateEntryScanHome();
++
++const MARK = `trivium-u-dldl-${process.pid}-${Date.now()}`;
++const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
++
++/** 假 agy：`--version` / `models` 秒回；模型调用按 FAKE_AGY_MODE 挂住（拉起一个忽略 TERM 的后代、吐半截 JSON）或秒败 */
++async function fakeAgy(dir: string): Promise<string> {
++  const p = path.join(dir, 'agy');
++  await fs.writeFile(p, [
++    `#!${process.execPath}`,
++    "const a = process.argv.slice(2);",
++    "if (a[0] === '--version') { console.log('agy 0.0.1'); process.exit(0); }",
++    "if (a[0] === 'models') { console.log('gemini-3.8-flash-high'); process.exit(0); }",
++    "if (process.env.FAKE_AGY_MODE === 'fail') { console.error('fake model failure'); process.exit(3); }",
++    "require('child_process').spawn('/bin/sh', ['-c', 'trap \"\" TERM; sleep 600; : \"$0\"', process.env.FAKE_AGY_MARK], { stdio: 'ignore' });",
++    "process.stdout.write('{\"partial\": ');",
++    'setInterval(() => {}, 1000);',
++    '',
++  ].join('\n'), { mode: 0o755 });
++  return p;
++}
++
++interface World {
++  root: string;
++  triviumDir: string;
++  ledgerDir: string;
++  tmp: string;
++  cfg: Config;
++}
++
++async function world(): Promise<World> {
++  const root = await scratchDir('trivium-dldl-');
++  const triviumDir = path.join(root, TRIVIUM_DIR);
++  await fs.mkdir(triviumDir, { recursive: true });
++  for (const d of ['bin', 'home', 'ledger', 'tmp']) await fs.mkdir(path.join(root, d));
++  const cfg = defaultConfig();
++  agentConfigOf(cfg, 'gemini', 'antigravity').bin = await fakeAgy(path.join(root, 'bin'));
++  return { root, triviumDir, ledgerDir: path.join(root, 'ledger'), tmp: path.join(root, 'tmp'), cfg };
++}
++
++/** HOME、TMPDIR 与假 agy 的模式钉到夹具；结束后恢复，并按标记兜底结束遗留进程组 */
++async function pinned<T>(w: World, mode: 'hang' | 'fail', mark: string, fn: () => Promise<T>): Promise<T> {
++  const keys = ['HOME', 'TMPDIR', 'FAKE_AGY_MODE', 'FAKE_AGY_MARK'] as const;
++  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
++  process.env['HOME'] = path.join(w.root, 'home');
++  process.env['TMPDIR'] = w.tmp;
++  process.env['FAKE_AGY_MODE'] = mode;
++  process.env['FAKE_AGY_MARK'] = mark;
++  try {
++    return await fn();
++  } finally {
++    for (const [k, v] of Object.entries(saved)) {
++      if (v === undefined) delete process.env[k];
++      else process.env[k] = v;
++    }
++    killMarked(mark);
++  }
++}
++
++function doctor(w: World, extra: Partial<DoctorOptions> & { ms?: number; unwindMs?: number } = {}): Promise<DoctorReport> {
++  const { ms = 1500, unwindMs, ...rest } = extra;
++  return runDoctor({
++    config: w.cfg, projectRoot: w.root, triviumDir: w.triviumDir, only: 'agy',
++    deadline: { ms, ...(unwindMs !== undefined ? { unwindMs } : {}), graceMs: 300, killWaitMs: 1000, ledgerDir: w.ledgerDir, handleSignals: false },
++    ...rest,
++  });
++}
++
++async function untilNoGroups(mark: string, ms: number): Promise<number[]> {
++  const deadline = Date.now() + ms;
++  while (Date.now() < deadline) {
++    const g = groupsWithMark(mark);
++    if (g.length === 0) return g;
++    await sleep(100);
++  }
++  return groupsWithMark(mark);
++}
++
++async function diskProbe(w: World): Promise<Partial<ProbeSection>> {
++  const raw = await fs.readFile(path.join(w.triviumDir, 'config.local.yaml'), 'utf8');
++  return (YAML.parse(raw) as { probe: Partial<ProbeSection> }).probe;
++}
++
++test('I2 模型调用挂住、后代忽略 TERM、吐半截 JSON：到点退 76 的结果，按组结束不留进程、探针临时目录已删、在跑段不落盘；随后重跑预检仍退 69（GLM-02）', async () => {
++  const w = await world();
++  const mark = `${MARK}-i2`;
++  /*
++   * 预置一份**旧但有效**的 agy 结论（落盘与内存同一份）：若新鲜度改看全局 generated_at（doctor 收尾会刷新它），
++   * 这份旧结论就会被当成新鲜、重跑预检随之放行——下面那条「仍退 69」才咬得住这类重构（GLM-02）。
++   */
++  const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
++  const seededAgy = {
++    entrypoint: agentConfigOf(w.cfg, 'gemini', 'antigravity').bin, version: '0.0.1', probed_at: old,
++    models: ['gemini-3.8-flash-high'], headless_read_ok: true, agent: 'trivium-critic',
++  };
++  Object.assign(w.cfg.probe.cli.agy!, seededAgy);
++  w.cfg.probe.generated_at = old;
++  await fs.writeFile(path.join(w.triviumDir, 'config.local.yaml'), YAML.stringify({ probe: { generated_at: old, cli: { agy: seededAgy } } }));
++  await pinned(w, 'hang', mark, async () => {
++    const r = await doctor(w);
++    const d = r.deadline!;
++    assert.ok(d, 'deadline 段缺席');
++    assert.equal(d.hit, true);
++    assert.equal(d.reason, 'deadline');
++    assert.equal(d.stuck, false, '协作式中止应在兜底之前退出来');
++    assert.equal(d.sections.length, 1);
++    const s = d.sections[0]!;
++    assert.equal(s.only, 'agy');
++    assert.equal(s.state, 'in_progress');
++    assert.ok(s.launches >= 3, `launches=${s.launches}`);
++    assert.equal(s.rerun, 'trivium doctor --only agy');
++    assert.match(s.note!, /EV-243/);
++    assert.match(s.note!, new RegExp(`拉起 ${s.launches} 次子进程`));
++    assert.deepEqual(d.residue, []);
++
++    assert.deepEqual(await untilNoGroups(mark, 3000), [], '假 agy 拉起的后代应已按组结束');
++    const leftTmp = (await fs.readdir(w.tmp)).filter((n) => n.startsWith('trivium-'));
++    assert.deepEqual(leftTmp, [], '探针临时目录应已删');
++    assert.deepEqual((await fs.readdir(w.ledgerDir)).filter((n) => n.startsWith('doctor-temp-')), [], '台账处理完即删');
++
++    const probe = await diskProbe(w);
++    const agyOnDisk = probe.cli?.['agy'] as Record<string, unknown> | undefined;
++    for (const [k, v] of Object.entries(seededAgy)) assert.deepEqual(agyOnDisk?.[k], v, `在跑段作废、盘上 agy.${k} 不得被改`);
++    assert.ok(probe.host, 'env 段照常落盘');
++    assert.ok(probe.generated_at && probe.generated_at !== old, '收尾照常刷新 generated_at');
++
++    // 被作废那一家：新鲜度按各家自己的 probed_at 判，不看刷新过的 generated_at ⇒ 重跑预检仍退 69、点名它
++    const cfg = defaultConfig();
++    cfg.probe = { ...cfg.probe, ...probe, cli: { ...cfg.probe.cli, ...(probe.cli ?? {}) } } as ProbeSection;
++    await initFixtureRepo(w.root).catch(() => undefined);
++    const pf = await runPreflight({
++      ctx: { config: cfg, projectRoot: w.root, archiveRoot: path.join(w.root, '.reviews'), triviumDir: w.triviumDir, sources: ['<test>'] },
++      scope: 'plan', skipAuthCheck: true, critics: ['gemini'],
++    });
++    assert.equal(pf.exitCode, EXIT.ENV);
++    assert.ok(pf.recalibration?.invocations.some((i) => i.only === 'agy'), JSON.stringify(pf.checks.filter((c) => !c.ok)));
++  });
++});
++
++test('I3 不给 --only：第一段到点没探完，后面各段 not_started，且不被说成「尚无探针实现」', async () => {
++  const w = await world();
++  const mark = `${MARK}-i3`;
++  await pinned(w, 'hang', mark, async () => {
++    const r = await doctor(w, { only: null });
++    const states = Object.fromEntries(r.deadline!.sections.map((s) => [s.only, s.state]));
++    assert.equal(states['agy'], 'in_progress');
++    for (const cli of ['zcode', 'codex', 'claude']) assert.equal(states[cli], 'not_started', cli);
++    assert.ok(!r.notes.some((n) => /尚无探针实现/.test(n)), r.notes.join('\n'));
++    for (const s of r.deadline!.sections.filter((x) => x.state === 'not_started')) assert.equal(s.launches, 0);
++    assert.deepEqual(await untilNoGroups(mark, 3000), []);
++  });
++});
++
++test('I4 兜底：段卡在不经 run() 的 await 上，控制器在兜底时长后按已记状态出结果（stuck），不等挂住的 await（AGY-02）', async () => {
++  const w = await world();
++  const mark = `${MARK}-i4`;
++  await pinned(w, 'hang', mark, async () => {
++    const t0 = Date.now();
++    const r = await doctor(w, { ms: 300, unwindMs: 300, sectionPrelude: () => new Promise<void>(() => {}) });
++    assert.ok(Date.now() - t0 < 10_000, '应在时限加兜底之内返回');
++    assert.equal(r.deadline!.hit, true);
++    assert.equal(r.deadline!.stuck, true);
++    assert.equal(r.deadline!.sections[0]!.state, 'in_progress');
++  });
++});
++
++test('I6 段内不带 killTree 的派生（模拟 git 辅助调用）到点也按组结束，按时出结果（CODEX-02）', async () => {
++  const w = await world();
++  const mark = `${MARK}-i6`;
++  await pinned(w, 'hang', mark, async () => {
++    const r = await doctor(w, {
++      ms: 500,
++      sectionPrelude: async () => {
++        await run('/bin/sh', ['-c', `trap "" TERM; sleep 600; : "${mark}"`]);
++      },
++    });
++    assert.equal(r.deadline!.hit, true);
++    assert.equal(r.deadline!.stuck, false);
++    // 中止之后探针是**正常返回**的（不是抛出）：这一支同样要作废，不得记成探完、不得落盘（变异 M2）
++    assert.equal(r.deadline!.sections[0]!.state, 'in_progress');
++    assert.ok(!(await diskProbe(w)).cli?.['agy']?.probed_at, '作废段不落盘');
++    assert.deepEqual(await untilNoGroups(mark, 3000), []);
++  });
++});
++
++test('I9 未到点、模型调用秒败：段 finished、hit false，各段 notes 与 rerun 齐全、不带 note（CODEX-06）', async () => {
++  const w = await world();
++  const mark = `${MARK}-i9`;
++  await pinned(w, 'fail', mark, async () => {
++    const r = await doctor(w, { ms: 60_000 });
++    const d = r.deadline!;
++    assert.equal(d.hit, false);
++    assert.equal(d.reason, null);
++    const s = d.sections[0]!;
++    assert.equal(s.state, 'finished');
++    assert.equal(s.rerun, 'trivium doctor --only agy');
++    assert.equal(s.note, undefined);
++    assert.ok(s.notes.length > 0 && s.notes.every((n) => n.startsWith('[agy] ')), s.notes.join('\n'));
++    assert.ok(s.notes.some((n) => /headless_read_ok=false/.test(n)), s.notes.join('\n'));
++    assert.ok((await diskProbe(w)).cli?.['agy']?.probed_at, '探完的段照常落盘');
++  });
++});
++
++test('不给 deadline：报告不带 deadline 段（行为不变）', async () => {
++  const w = await world();
++  const r = await runDoctor({ config: w.cfg, projectRoot: w.root, triviumDir: w.triviumDir, only: 'env', skipModelCalls: true });
++  assert.equal(r.deadline, undefined);
++});
++
++// ── I8 台账补删（CODEX-03 / GLM-01） ──
++
++test('I8 台账补删：已退出进程的台账里，系统临时目录下、形态相符的目录删掉；不在临时目录下的不删、列进残留；活进程的台账不碰', async () => {
++  const w = await world();
++  const saved = process.env['TMPDIR'];
++  process.env['TMPDIR'] = w.tmp;
++  try {
++    // 夹具里按 makeTempDir 的产物形态起固定名（w.tmp 在 scratchDir 之下，随夹具一起删）
++    const victim = path.join(w.tmp, 'trivium-codexhome-Ab12Cd');
++    await fs.mkdir(victim);
++    await fs.writeFile(path.join(victim, 'auth.json'), '{}');
++    const outside = path.join(w.root, 'trivium-notmp-abcdef');
++    await fs.mkdir(outside);
++    const dead = spawnSync('/usr/bin/true').pid!;
++    await fs.writeFile(path.join(w.ledgerDir, `doctor-temp-${dead}.json`), JSON.stringify({ pid: dead, dirs: [victim, outside] }));
++    // 活进程（本进程的父进程）的台账：不碰
++    const alive = path.join(w.tmp, 'trivium-probe-Zz9Yy8');
++    await fs.mkdir(alive);
++    await fs.writeFile(path.join(w.ledgerDir, `doctor-temp-${process.ppid}.json`), JSON.stringify({ pid: process.ppid, dirs: [alive] }));
++
++    const residue = await sweepDoctorLedgers(w.ledgerDir);
++    await assert.rejects(fs.stat(victim), '形态相符的临时目录应已删');
++    assert.ok((await fs.stat(outside)).isDirectory(), '不在系统临时目录下的不删');
++    assert.equal(residue.length, 1);
++    assert.match(residue[0]!, /不在系统临时目录下/);
++    assert.ok((await fs.stat(alive)).isDirectory(), '活进程的台账不碰');
++    const left = (await fs.readdir(w.ledgerDir)).sort();
++    assert.deepEqual(left, [`doctor-temp-${process.ppid}.json`]);
++  } finally {
++    if (saved === undefined) delete process.env['TMPDIR'];
++    else process.env['TMPDIR'] = saved;
++  }
++});
+diff --git a/test/unit/preflight-recalibrate.test.ts b/test/unit/preflight-recalibrate.test.ts
+new file mode 100644
+index 00000000..3ac1ce62
+--- /dev/null
++++ b/test/unit/preflight-recalibrate.test.ts
+@@ -0,0 +1,256 @@
++/**
++ * EV-251：预检失败项的机读校准字段与汇总（预检失败自动校准计划 r2 D1 / D2 / D5；第三节 U2 / U3 / U4）。
++ *
++ * 零配额：`skipAuthCheck`，入口一律指向不存在的路径或本进程的 node（只判「在不在」、不调）。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { buildRecalibration, recalTargets, runPreflight, type CheckResult } from '../../src/trivium/preflight.js';
++import { defaultConfig } from '../../src/trivium/config.js';
++import { realAdapters } from '../../src/trivium/adapters/index.js';
++import { ALL_CLI_NAMES } from '../../src/trivium/agents/registry.js';
++import { initFixtureRepo } from '../../src/trivium/util/git.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++import type { Config, CriticId, Ctx, Stage, StageModel, TierEntry, TierName } from '../../src/trivium/types.js';
++import { scratchDir } from '../helpers/scratch.js';
++import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
++
++isolateEntryScanHome();
++
++type Agents = Record<string, Record<string, unknown>>;
++
++function setTiers(c: Config, id: string, tiers: Partial<Record<TierName, TierEntry>>, def?: TierName): void {
++  const a = (c.agents as unknown as Agents)[id]!;
++  a['tiers'] = tiers;
++  if (def) a['default_tier'] = def;
++}
++function setCell(c: Config, id: string, stage: Stage, v: StageModel | undefined): void {
++  const row = ((c.profiles[c.active_profile] as Record<string, Record<string, unknown>>)[id] ??= {});
++  if (v === undefined) delete row[stage];
++  else row[stage] = v;
++}
++
++/** 与 preflight.test 的 freshProbe 同形：四家结论新鲜、两家只读能力齐备 */
++function freshProbe(cfg: Config): void {
++  const now = new Date().toISOString();
++  cfg.probe.generated_at = now;
++  const agy = cfg.probe.cli.agy!;
++  Object.assign(agy, {
++    entrypoint: process.execPath, version: '1.2.0', probed_at: now,
++    models: ['gemini-3.1-pro-high', 'gemini-3.8-flash-high', 'gemini-3.8-flash-low'],
++    headless_read_ok: true, agent: 'trivium-critic',
++  });
++  const zcode = cfg.probe.cli.zcode!;
++  Object.assign(zcode, {
++    entrypoint: process.execPath, version: '0.16.5', probed_at: now,
++    models: ['GLM-5.3', 'GLM-5.3-Flash', 'bigmodel/GLM-5.3', 'bigmodel/GLM-5.3-Flash'],
++    model_id_form: 'bigmodel/GLM-5.3', readonly_flags: ['--mode plan', '--disallowed-tools Write,Edit'],
++    response_field: '.response',
++  });
++}
++
++async function ctxOf(mutate?: (c: Config) => void): Promise<Ctx> {
++  const root = await scratchDir('trivium-recal-');
++  await fs.writeFile(path.join(root, 'x.ts'), 'export const x = 1;\n');
++  await initFixtureRepo(root);
++  const cfg = defaultConfig();
++  freshProbe(cfg);
++  mutate?.(cfg);
++  return { config: cfg, projectRoot: root, archiveRoot: path.join(root, '.reviews'), triviumDir: path.join(root, '.trivium'), sources: ['<test>'] };
++}
++
++const failedOf = (checks: readonly CheckResult[]): CheckResult => checks.find((c) => !c.ok)!;
++
++// ── U2 目标展开（计划三审 CODEX-04 / CODEX-05） ──
++
++test('U2 不读覆盖的段只给 --only：agy / zcode 的探测用固定口径', () => {
++  const c = defaultConfig();
++  assert.deepEqual(recalTargets(c, 'gemini', { scope: 'all' }), [{ only: 'agy', flags: [] }]);
++  assert.deepEqual(recalTargets(c, 'glm', { scope: 'all', modelOverrides: { glm: 'GLM-5.3-Flash' } }), [{ only: 'zcode', flags: [] }]);
++});
++
++test('U2 读覆盖的段给全组合：stage all 下 plan / code 两条路线、各带自己的模型与思考等级，显式原生带 --native', () => {
++  const c = defaultConfig();
++  setTiers(c, 'codex', {
++    low: { model: 'native-m', profile: null },
++    high: { model: 'deepseek-v4-pro', effort: 'max', profile: 'deepseek' },
++  });
++  setCell(c, 'codex', 'plan', { tier: 'high' });
++  setCell(c, 'codex', 'code', { tier: 'low' });
++  setCell(c, 'codex', 'bug', { tier: 'low' });
++  const ts = recalTargets(c, 'codex', { scope: 'all' });
++  assert.deepEqual(ts, [
++    { only: 'codex', flags: ['--profile-codex', 'deepseek', '--model-codex', 'deepseek-v4-pro', '--effort-codex', 'max'] },
++    { only: 'codex', flags: ['--native-codex', '--model-codex', 'native-m'] },
++  ], '同侧两个组合是两个目标；bug 与 code 同组合去重');
++  // 只看 plan：只剩那一条
++  assert.equal(recalTargets(c, 'codex', { scope: 'plan' }).length, 1);
++  // 按路线过滤
++  assert.deepEqual(recalTargets(c, 'codex', { scope: 'all' }, null), [ts[1]]);
++  assert.deepEqual(recalTargets(c, 'codex', { scope: 'all' }, 'deepseek'), [ts[0]]);
++});
++
++test('U2 命令行模型覆盖进目标（与预检同一次解析）', () => {
++  const c = defaultConfig();
++  const [t] = recalTargets(c, 'codex', { scope: 'plan', modelOverrides: { codex: 'qwen3.8-flash' } });
++  assert.ok(t);
++  const i = t.flags.indexOf('--model-codex');
++  assert.equal(t.flags[i + 1], 'qwen3.8-flash');
++});
++
++test('U2 探针从未生成：目标是入选各侧，eligible，按 ALL_CLI_NAMES 排序、照抄即可执行的 args', async () => {
++  const ctx = await ctxOf((c) => {
++    c.probe.generated_at = null;
++  });
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['glm', 'gemini'] });
++  assert.equal(r.exitCode, EXIT.ENV);
++  assert.equal(failedOf(r.checks).recalibrate?.fixable, true);
++  assert.equal(r.recalibration?.eligible, true);
++  assert.deepEqual(r.recalibration?.invocations.map((i) => i.only), ['agy', 'zcode']);
++  assert.deepEqual(r.recalibration?.invocations[0]?.args, ['doctor', '--only', 'agy', '--deadline-s', '480', '--json']);
++});
++
++test('U2 全部过期：目标只取入选且过期的侧，未入选的过期家不进清单（计划三审 AGY-03 驳回理由的落点）', async () => {
++  const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
++  const ctx = await ctxOf((c) => {
++    for (const p of Object.values(c.probe.cli)) if (p) p.probed_at = old;
++  });
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'] });
++  assert.equal(failedOf(r.checks).name, '探针结论未过期');
++  assert.deepEqual(r.recalibration?.invocations.map((i) => i.only), ['agy'], '只跑入选的那一家');
++});
++
++test('U2 入口不在：可修，目标是该侧', async () => {
++  const ctx = await ctxOf((c) => {
++    c.probe.cli.agy!.entrypoint = '/nonexistent/agy';
++  });
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'] });
++  const f = failedOf(r.checks);
++  assert.match(f.name, /可调用/);
++  assert.deepEqual(f.recalibrate, { fixable: true, targets: [{ only: 'agy', flags: [] }] });
++  assert.equal(r.recalibration?.eligible, true);
++});
++
++test('U2 不能修的失败项（归档不可写之类）补成 fixable: false，汇总不 eligible 并点名', async () => {
++  const ctx = await ctxOf();
++  ctx.archiveRoot = '/nonexistent-root-for-trivium-test/.reviews';
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'] });
++  const f = failedOf(r.checks);
++  assert.equal(f.name, '归档与 git 可用');
++  assert.deepEqual(f.recalibrate, { fixable: false });
++  assert.equal(r.recalibration?.eligible, false);
++  assert.match(r.recalibration!.why, /归档与 git 可用/);
++  assert.deepEqual(r.recalibration?.invocations, []);
++});
++
++test('U2 预检通过：不出 recalibration', async () => {
++  const ctx = await ctxOf();
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini', 'glm'] });
++  assert.equal(r.ok, true, JSON.stringify(r.checks.filter((c) => !c.ok)));
++  assert.equal(r.recalibration, null);
++  assert.ok(r.checks.every((c) => c.recalibrate === undefined), '通过项不带 recalibrate');
++});
++
++// ── U3 汇总判据 ──
++
++const fail = (name: string, recalibrate?: CheckResult['recalibrate']): CheckResult => ({ name, ok: false, detail: '', exitCode: EXIT.ENV, ...(recalibrate ? { recalibrate } : {}) });
++
++test('U3 全可修 ⇒ eligible，按（only, flags）去重、按 ALL_CLI_NAMES 排序；工具超时按 bashTimeoutFor 推出', () => {
++  const p = buildRecalibration({
++    ok: false, exitCode: EXIT.ENV, checks: [
++      fail('a', { fixable: true, targets: [{ only: 'zcode', flags: [] }, { only: 'codex', flags: ['--native-codex'] }] }),
++      fail('b', { fixable: true, targets: [{ only: 'agy', flags: [] }, { only: 'zcode', flags: [] }] }),
++    ],
++  }, 300)!;
++  assert.equal(p.eligible, true);
++  const order = ALL_CLI_NAMES.filter((n) => ['agy', 'zcode', 'codex'].includes(n));
++  assert.deepEqual(p.invocations.map((i) => i.only), order, '按注册表次序，不按写入序；zcode 只一次');
++  assert.deepEqual(p.invocations.find((i) => i.only === 'codex')!.args, ['doctor', '--only', 'codex', '--native-codex', '--deadline-s', '300', '--json']);
++  assert.equal(p.invocations[0]!.deadline_s, 300);
++  assert.equal(p.invocations[0]!.bash_timeout_ms, 360_000);
++  assert.equal(buildRecalibration({ ok: false, exitCode: EXIT.ENV, checks: [fail('a', { fixable: true, targets: [{ only: 'agy', flags: [] }] })] }, 540)!
++    .invocations[0]!.bash_timeout_ms, 600_000, '封顶 600 s');
++});
++
++test('U3 混入一条不能修（或没标）⇒ 不 eligible，why 点名那一项；退 64 不在范围；通过返回 null；目标为空不 eligible', () => {
++  const mixed = buildRecalibration({
++    ok: false, exitCode: EXIT.ENV,
++    checks: [fail('能修', { fixable: true, targets: [{ only: 'agy', flags: [] }] }), fail('Codex 已认证')],
++  }, 480)!;
++  assert.equal(mixed.eligible, false);
++  assert.match(mixed.why, /「Codex 已认证」不能由 doctor 修复/);
++  const usage = buildRecalibration({ ok: false, exitCode: EXIT.USAGE, checks: [fail('模型 slug 合法', { fixable: true, targets: [] })] }, 480)!;
++  assert.equal(usage.eligible, false);
++  assert.match(usage.why, /64/);
++  assert.equal(buildRecalibration({ ok: true, exitCode: EXIT.OK, checks: [] }, 480), null);
++  assert.equal(buildRecalibration({ ok: false, exitCode: EXIT.ENV, checks: [fail('x', { fixable: true, targets: [] })] }, 480)!.eligible, false);
++});
++
++test('U3 配置键 preflight.recalibrate_deadline_s 进 invocations（计划三审 AGY-05）', async () => {
++  const ctx = await ctxOf((c) => {
++    c.probe.generated_at = null;
++    c.preflight.recalibrate_deadline_s = 300;
++  });
++  const r = await runPreflight({ ctx, scope: 'plan', skipAuthCheck: true, critics: ['gemini'] });
++  assert.equal(r.recalibration?.invocations[0]?.deadline_s, 300);
++  assert.equal(r.recalibration?.invocations[0]?.bash_timeout_ms, 360_000);
++  assert.ok(r.recalibration?.invocations[0]?.args.includes('300'));
++});
++
++// ── U4 适配器 availability() 的 fix 标注与只读能力一格的聚合 ──
++
++test('U4 四个适配器：「没探过 / 没找到入口 / 读取能力没跑完」标 doctor，实测否定与配置问题不标', () => {
++  const a = realAdapters();
++  const ctxFor = (mut: (c: Config) => void) => {
++    const cfg = defaultConfig();
++    freshProbe(cfg);
++    mut(cfg);
++    return { cfg, nodePath: process.execPath };
++  };
++  const cases: Array<[CriticId, (c: Config) => void, 'doctor' | undefined]> = [
++    ['gemini', (c) => { c.probe.cli.agy!.probed_at = null; }, 'doctor'],
++    ['gemini', (c) => { c.probe.cli.agy!.entrypoint = null; }, 'doctor'],
++    ['gemini', (c) => { c.probe.cli.agy!.headless_read_ok = null; }, 'doctor'],
++    ['gemini', (c) => { c.probe.cli.agy!.headless_read_ok = false; }, undefined],
++    ['glm', (c) => { c.probe.cli.zcode!.probed_at = null; }, 'doctor'],
++    ['glm', (c) => { c.probe.cli.zcode!.entrypoint = null; }, 'doctor'],
++    ['glm', (c) => { c.probe.cli.zcode!.readonly_flags = []; }, undefined],
++    ['glm', (c) => { c.probe.cli.zcode!.response_field = null; }, undefined],
++    ['codex', (c) => { c.probe.cli.codex!.probed_at = null; }, 'doctor'],
++    ['claude', (c) => { c.probe.cli.claude!.probed_at = null; }, 'doctor'],
++  ];
++  for (const [id, mut, want] of cases) {
++    // 传一条原生路线：claude 按路线逐条判，传空数组等于一条都不判
++    const v = a[id]!.availability(ctxFor(mut), { vendorProfiles: [null] });
++    assert.equal(v.ok, false, `${id} ${mut.toString()}`);
++    assert.equal(v.fix, want, `${id} ${mut.toString()}：${v.reason}`);
++  }
++  // codex 只读旗标为空（可能是沙箱失守）：不标
++  const codexEmpty = a['codex']!.availability(ctxFor((c) => {
++    Object.assign(c.probe.cli.codex!, { probed_at: new Date().toISOString(), entrypoint: process.execPath, readonly_flags: [] });
++  }), { vendorProfiles: [null] });
++  assert.equal(codexEmpty.ok, false);
++  assert.equal(codexEmpty.fix, undefined);
++});
++
++test('U4 只读能力一格：每个不可用侧都可修才可修（目标为这几侧）；一侧可修一侧失守 ⇒ 整项不可修（计划三审 AGY-04）', async () => {
++  const both = await ctxOf((c) => {
++    c.probe.cli.agy!.headless_read_ok = null;
++  });
++  const r1 = await runPreflight({ ctx: both, scope: 'plan', skipAuthCheck: true, critics: ['gemini', 'glm'] });
++  const f1 = failedOf(r1.checks);
++  assert.equal(f1.name, '只读能力可用');
++  assert.deepEqual(f1.recalibrate, { fixable: true, targets: [{ only: 'agy', flags: [] }] });
++
++  const mixed = await ctxOf((c) => {
++    c.probe.cli.agy!.headless_read_ok = null;
++    c.probe.cli.zcode!.readonly_flags = [];
++  });
++  const r2 = await runPreflight({ ctx: mixed, scope: 'plan', skipAuthCheck: true, critics: ['gemini', 'glm'] });
++  const f2 = failedOf(r2.checks);
++  assert.equal(f2.name, '只读能力可用');
++  assert.deepEqual(f2.recalibrate, { fixable: false });
++  assert.equal(r2.recalibration?.eligible, false);
++});
+diff --git a/test/unit/probe-section.test.ts b/test/unit/probe-section.test.ts
+new file mode 100644
+index 00000000..28d13b78
+--- /dev/null
++++ b/test/unit/probe-section.test.ts
+@@ -0,0 +1,114 @@
++/**
++ * EV-251：doctor 探针段作用域（预检失败自动校准计划 r2 D3 第 1～4 条；第三节 U1a / U1b / U1c / U5）。
++ *
++ * 真实进程一律带本次随机标记，`finally` 按组号兜底结束（`test/helpers/proc.ts`）。
++ * 「中止派生」按令牌（一次 doctor 一枚），不是进程级全局位，所以 U1c 可以在本测试进程里跑。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { spawnSync } from 'node:child_process';
++import {
++  abortProbeSections, countLiveGroupMembers, newProbeAbortToken, newProbeSection, run, terminateProbeSectionGroups, withProbeSection,
++} from '../../src/trivium/util/exec.js';
++import { killMarked } from '../helpers/proc.js';
++
++const MARK = `trivium-u-psec-${process.pid}-${Date.now()}`;
++const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
++const GRACE = { graceMs: 300, killWaitMs: 1000 };
++
++function liveMembers(pgid: number): number {
++  const r = spawnSync('/bin/ps', ['-axo', 'pgid=,stat='], { encoding: 'utf8' });
++  return countLiveGroupMembers(r.stdout, pgid);
++}
++
++async function until(f: () => boolean, ms: number): Promise<boolean> {
++  const deadline = Date.now() + ms;
++  while (Date.now() < deadline) {
++    if (f()) return true;
++    await sleep(50);
++  }
++  return f();
++}
++
++function cleanup(tag: string): void {
++  killMarked(`${MARK}-${tag}`);
++}
++
++test('U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGKILL，最终组内无成员（计划三审 CODEX-01）', async () => {
++  const scope = newProbeSection('u1a');
++  try {
++    // 组长 sh 前台等 sleep；子 shell 忽略 TERM 并拉起 sleep（被忽略的信号跨 exec 保持忽略）
++    const body = `(trap "" TERM; sleep 600; : "${MARK}-u1a") & sleep 600; : "${MARK}-u1a"`;
++    const pending = withProbeSection(scope, () => run('/bin/sh', ['-c', body]));
++    assert.ok(await until(() => scope.groups.length === 1 && liveMembers(scope.groups[0]!.pgid) >= 3, 5000), '组没起来');
++    const pgid = scope.groups[0]!.pgid;
++    const t = await terminateProbeSectionGroups([scope], GRACE);
++    assert.deepEqual(t.groups, [pgid]);
++    assert.deepEqual(t.signals[pgid], ['SIGTERM', 'SIGKILL'], '组长退了而后代还在，必须升级');
++    assert.deepEqual(t.remaining, []);
++    assert.equal(liveMembers(pgid), 0);
++    const r = await pending;
++    assert.equal(r.spawned, true, '被杀的调用照常兑现（不冻结），探针得以走到 finally');
++  } finally {
++    cleanup('u1a');
++  }
++});
++
++test('U1b 组长在到点前已自然退出、后代仍在：到点时照样按组结束后代', async () => {
++  const scope = newProbeSection('u1b');
++  try {
++    const body = `(trap "" TERM; sleep 600; : "${MARK}-u1b") & exit 0`;
++    const pending = withProbeSection(scope, () => run('/bin/sh', ['-c', body]));
++    assert.ok(await until(() => scope.groups.length === 1 && scope.groups[0]!.child.exitCode !== null, 5000), '组长没退出');
++    const pgid = scope.groups[0]!.pgid;
++    assert.ok(liveMembers(pgid) >= 1, '后代应还在组里');
++    const t = await terminateProbeSectionGroups([scope], GRACE);
++    assert.deepEqual(t.groups, [pgid], '组长已退出但成员数大于 0，仍在结束之列');
++    assert.deepEqual(t.signals[pgid], ['SIGTERM', 'SIGKILL']);
++    assert.equal(liveMembers(pgid), 0);
++    await pending;
++  } finally {
++    cleanup('u1b');
++  }
++});
++
++test('U1b′ 组内已无成员的组不发信号（组号可能已被复用）', async () => {
++  const scope = newProbeSection('u1b2');
++  await withProbeSection(scope, () => run('/bin/sh', ['-c', `: "${MARK}-u1b2"`]));
++  const sent: number[] = [];
++  const t = await terminateProbeSectionGroups([scope], { ...GRACE, signal: (p) => (sent.push(p), true) });
++  assert.deepEqual(t.groups, []);
++  assert.deepEqual(sent, []);
++});
++
++test('U5 段作用域内不带 killTree 的 run() 也自成一组、进段级记录并计数（计划三审 CODEX-02）', async () => {
++  const scope = newProbeSection('u5');
++  const r = await withProbeSection(scope, () => run('/bin/sh', ['-c', 'ps -o pgid= -p $$']));
++  assert.equal(scope.launches, 1);
++  assert.equal(scope.groups.length, 1);
++  assert.equal(Number(r.stdout.trim()), scope.groups[0]!.pgid, '子进程是自己那一组的组长');
++  // 作用域外照旧：不进任何段
++  const outside = newProbeSection('u5-out');
++  await run('/bin/sh', ['-c', 'true']);
++  assert.equal(outside.launches, 0);
++});
++
++test('U1c 中止派生之后：同一令牌下的段内 run() 立即兑现合成结果、不派生；段外与别的令牌照常', async () => {
++  const token = newProbeAbortToken();
++  const s = newProbeSection('x', token);
++  abortProbeSections(token);
++  const a = await withProbeSection(s, () => run('/bin/sh', ['-c', 'echo inside']));
++  assert.equal(a.spawned, false);
++  assert.equal(a.aborted, true);
++  assert.equal(a.code, null);
++  assert.equal(a.stdout, '');
++  assert.equal(s.launches, 0, '中止之后不计派生');
++  assert.equal(s.groups.length, 0);
++  const b = await run('/bin/sh', ['-c', 'echo outside']);
++  assert.equal(b.stdout.trim(), 'outside', '段外的 run() 不受中止影响（结束进程组时的成员计数靠它）');
++  // 令牌按次 doctor 分开：前一次到点不连累后一次（同一进程先后跑几次 doctor 时）
++  const other = newProbeSection('y');
++  const c = await withProbeSection(other, () => run('/bin/sh', ['-c', 'echo again']));
++  assert.equal(c.stdout.trim(), 'again');
++  assert.equal(other.launches, 1);
++});

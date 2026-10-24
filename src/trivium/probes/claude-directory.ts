@@ -149,7 +149,7 @@ export async function probeClaudeDirectories(input: {
     result.sourceHash = createHash('sha256').update(JSON.stringify(original)).digest('hex');
     result.denyPaths = original;
     result.settingsJson = settings.json;
-    const schemaPrompt = '完成所有调用后严格交付trivium.review.v1 JSON，verdict=approve、findings=[]、summary说明观察；不得跳过调用或提前作答。';
+    const schemaPrompt = '完成所有调用后严格交付trivium.review.v2 JSON，verdict=pass、findings=[]、summary说明观察；不得跳过调用或提前作答。';
     const invoke = input.invoke ?? invokeClaude;
     const runArm = async (tool: string | null, targets: string[], sentinels: string[], kind: DirectoryArmEvidence['kind']): Promise<DirectoryArmEvidence> => {
       const instruction = kind === 'positive' ? `请逐文件调用Read读取以下允许的正对照：${JSON.stringify(targets)}。` :

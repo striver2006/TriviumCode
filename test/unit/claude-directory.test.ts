@@ -179,7 +179,7 @@ test('目录三态持久化读回；入口内容和版本变化使旧事实失�
   assert.deepEqual(verifiedClaudeDirectories(p, await claudeDirectoryFingerprint(route, 'stub/0.0.0'), 7), {});
 });
 
-const review = JSON.stringify({ schema: 'trivium.review.v2', verdict: 'approve', summary: 'observed', findings: [] });
+const review = JSON.stringify({ schema: 'trivium.review.v1', verdict: 'approve', summary: 'observed', findings: [] });
 function output(root: string, targets: string[], tool = 'Read', denied = true, content = 'OPEN'): ClaudeInvokeOutcome {
   const lines = [{ type: 'system', subtype: 'init', cwd: root, tools: ['Read', 'Grep', 'Glob'], model: 'stub/0.0.0' },
     ...targets.flatMap((target, i) => [{ type: 'assistant', message: { content: [{ type: 'tool_use', id: `id-${i}`, name: tool,
@@ -210,7 +210,7 @@ test('七个异质臂通过同一适配器入口、生产枚举与archive；真�
   const result = await probeClaudeDirectories({ critic: 'claude', cfg, route, model: 'stub/0.0.0', effort: null,
     readonlyFlags: READONLY_INVARIANTS, schemaPath: path.join(ASSET_ROOT, 'schema/review.v1.json'), invoke: async opts => {
       calls++; fixtureRoot = opts.cwd;
-      assert.ok(opts.schemaJson?.includes('trivium.review.v2'));
+      assert.ok(opts.schemaJson?.includes('trivium.review.v1'));
       const targets = JSON.parse(/\[[^\]]*\](?=。)/.exec(opts.prompt)?.[0] ?? '[]') as string[];
       // 方括号文件名会让简单regex歧义，按数组结束后任务分隔符解析。
       const start = opts.prompt.indexOf('['), end = opts.prompt.indexOf('。', start);

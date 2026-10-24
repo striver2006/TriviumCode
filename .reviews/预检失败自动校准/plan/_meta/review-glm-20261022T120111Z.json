@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass",
+  "summary": "按本侧镜头（边界与失败路径、并发与幂等、验收可测性、运维约束）逐项核实了计划对现状的陈述与设计决定：预检各失败分支的行号与判据（preflight.ts:163-183、302-313、324-347、525-527、660-698、869-886）逐条对上；D1 的能修/不能修分类与「拿不准即不能修」的 fail-closed 取向认可；退出码 76 在 exit-codes.ts 全表中未被占用；cli.ts:195 的 doctor --profile-<id>/--native-<id> 旗标已存在；exec.ts 的 shutdownTrackedTrees 结构（先置冻结位再按组终止）支持计划所述拆分，withTreeTag/liveTrees 登记支持按标签计 launches；计划点名的 9 处无 killTree 的 run() 调用经 grep 逐一核实无遗漏（zcode.ts:104 确已带 killTree），doctor 范围内裸 mkdtemp 仅 codex.ts:778 与 zcode.ts:1590 两处（adapters 里两处属探活、在 preflight 进程，确不在本主题范围）；「到点作废的段不落盘、收尾 checkpoint(null) 只补 generated_at」不会被盖成新鲜——cliProbeIsFresh 按各 CLI 自己的 probed_at 判定、刻意不看全局 generated_at（config.ts:991-797），被作废那家在第二次预检会按路线探针新鲜度退 69 停下；bashTimeoutFor 公式（min(600000, s×1000+60000)）与 run.contract.md:117、body.md:156 既有「Bash 工具超时设为 bash_timeout_ms」的先例均核实；carriers 四份 yaml 确无工具超时键，统一取值的论证成立；MANUAL_user.md:193/:945、LLD_orchestrator.md:243、preflight.ts:9-12 与 169-170 的过时句存在且计划已列改写；EV-243 与 20261022 需求第 1 条原文一致；schema/ 目录无 doctor/preflight 输出的机读契约，新增字段不触发 schema 同步。两条 minor 意见分别关于硬杀残余的后果清单完整性（凭据临时目录与配置文件非原子写）与一条端到端测试钉子。未能覆盖的范围见 not_covered。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "security",
+      "location": "计划 D5 第二条（残余：某家载体 Bash 上限低于 540s 时工具超时硬杀 doctor）与改动清单中 BACKLOG 登记 EV-251 一行",
+      "problem": "计划对该残余的后果只写了「子进程过继给 init」，漏了两件同样由硬杀直接造成的后果：① doctor 期间 makeTempDir 登记过、含真实凭据副本的临时目录（codexhome、zcode doctor 副本 HOME）会留在系统临时目录——登记表是进程级的，随进程一起消失，之后没有任何清扫者；② patchProbe 落盘经 persistProbeUnlocked 的 fs.writeFile 直写（config.ts:934），不是临时文件加原子改名，硬杀若落在写入中途会截断 config.local.yaml，下次读盘按空 probe 处理、全部探针结论丢失（可重探恢复，但用户看到的失败形态与真因对不上）。这两件在今天的「终端里 Ctrl+C doctor」路径上同样存在，本计划把 doctor 挪进会话只是提高了暴露频率；设计路径（时限 480s + bash 超时 540s 留 60s 余量）不会触达。",
+      "evidence": "src/trivium/config.ts:934（persistProbeUnlocked 直写 fs.writeFile，无原子替换）；src/trivium/probes/codex.ts:778、probes/zcode.ts:1590 与 :1716（凭据副本目录）；计划 D5 第二条原文只点名「子进程过继给 init」；skills-src/carriers 四份 yaml 经 grep 无任何工具超时键（计划自述属实）。",
+      "suggestion": "BACKLOG 的 EV-251 残余条目把两件后果写全（凭据副本临时目录残留、config.local.yaml 可能截断），与孤儿进程并列；可顺带考虑在 doctor 启动时对 os.tmpdir() 里超龄的 trivium-* 目录做一次只删除 mkdtemp 形态的清扫——这同时覆盖今天 Ctrl+C 路径的同类残留。不改本主题的实现范围也可接受，但登记面应当完整。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §三 集成测试 I2/I3 与 D3.4（在跑段作废、收尾 checkpoint(null) 补 generated_at）",
+      "problem": "「作废的段不落盘 + 收尾 checkpoint(null) 仍刷新全局 generated_at」之所以安全，全靠 cliProbeIsFresh 按各 CLI 自己的 probed_at 判定、不看全局 generated_at 这条既有不变量（config.ts:991-997，注释明言全局时间戳失真历史上真实发生过、被 GLM-03 修掉）。计划隐式依赖这条不变量但未点名，测试清单里也没有一条端到端用例咬住它的下游表现：时限命中后重跑同一条预检必须仍退 69（失败项为被作废那家的路线探针新鲜度），而不是因 generated_at 被刷新而误通过。I2 断言「盘上 codex 段与调用前逐字节相同」能拦住「作废段被落盘」的变异，拦不住「新鲜度判据被改回全局时间戳」这类未来重构。",
+      "evidence": "src/trivium/config.ts:991-997（cliProbeIsFresh 按键判定及其反失真注释）；src/trivium/preflight.ts:308-313（路线探针新鲜度按所选路线的 probed_at 判 69）；src/trivium/doctor.ts:714-746（checkpoint(null) 收尾会写 generated_at）；计划 §三 I2 仅断言盘上段逐字节相同、未覆盖随后的预检结论。",
+      "suggestion": "在 I2 或 I3 里补一条断言：deadline 命中后用与第一次相同的旗标重跑预检，退出码仍为 69 且失败项点名被作废那家（路线探针新鲜度）；变异清单相应加「新鲜度改看全局 generated_at」一格。一行断言的成本，换来把整条「作废不落盘」设计的地基钉住。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "D1 的判据（失败说的是落盘结论缺失/漂移 ⇒ doctor 能修；实测否定与环境损坏 ⇒ 不能修）与 preflight.ts 各失败分支逐条吻合，逐项分类表核对无误；「拿不准即不能修」与混合失败整场不自动校准的 fail-closed 取向正确。",
+    "D2 的两层机读字段（逐项 recalibrate + 汇总 recalibration，含 eligible 充要条件、按 only+route_flags 去重按 ALL_CLI_NAMES 排序、args 由 skill 逐字照抄、键缺席即不自动校准）设计干净且与 EV-123 warn 的「由产出代码置位、不看文案」同一纪律；doctor --profile-<id>/--native-<id> 旗标 cli.ts:195 已支持。",
+    "D3 的协作式中止方向正确：不复用 treeShutdown 冻结（run 永不兑现会让探针 finally 跑不到、凭据副本删不掉）而是独立的停止派生标志加合成结果；shutdownTrackedTrees 拆出 terminateTrackedTrees 与既有结构（置位 + 遍历 liveTrees + terminateProcessGroup）吻合，宽限常量 WORKER_TREE_GRACE_MS=2000/WORKER_TREE_KILL_WAIT_MS=1000 已核；9 处补 killTree 与源码对账测试的覆盖面经 grep 核实无遗漏。",
+    "「在跑段作废、不赋 probe.cli[x]、不 checkpoint、不进 severity；已探完段保留；收尾 checkpoint(null) 照常」的安全性已核：checkpoint 只写本次真正探过的段（doctor.ts:702-746），cliProbeIsFresh 按各 CLI probed_at 判定，被作废那家第二次预检必然按路线探针新鲜度退 69。",
+    "D4 与任务目标原文一致：至多一轮、失败后一并转述两次预检与 doctor 结论、未探完那家请用户终端单独跑、第二次即使 eligible 也不再自动校准；四条命令同一口径的落点（body.md 第 2 步与 run.contract.md S0.6 的「失败则原样转述并停止」两句）已核实存在。",
+    "D5 统一取值 480s/540000ms 沿用 --wait 的 bashTimeoutFor 同一公式与先例（run-protocol.ts:387-389、run.contract.md:117），carriers yaml 确无工具超时登记、按载体取值须先登记未实测事实，取舍论证成立。",
+    "退出码 76 未被占用（exit-codes.ts 全表 0/1/2/64/65/69/70/73/75 已核），76 优先于 69 的分档（没探完与探完有问题分开）合理。",
+    "D7 对 EV-243 两种形态（单次挂满被探针自身超时杀掉 ⇒ doctor 照常收尾按 D4 停下转述；累计撞上限 ⇒ D3 unfinished + rerun + note）的处置与 BACKLOG EV-243 登记内容一致，不写特判、note 不含 Agent id 字面量的约束符合 registry-parity 纪律。",
+    "手册/LLD/预检报错正文三处过时句的存在与位置核实无误（MANUAL_user.md:193、:945，LLD_orchestrator.md:243，preflight.ts:9-12 与 169-170）；「结论未落盘已过时、丢的只是撞上超时那一家」的更正表述与 doctor 分段落盘现状一致。",
+    "schema/ 目录只含 run/review/config/disposition 四族契约，doctor 与 preflight 的 --json 输出无机读 schema，新增 deadline/recalibrate/recalibration 字段不触发 schema 同步义务；20261022 需求第 1 条原文与计划引述逐字一致。"
+  ],
+  "not_covered": [
+    "本侧为只读审查，未运行任何命令：480s 时限下到点处置的真实时序（宽限约 3.5s + 20s 兜底能否在 60s 余量内稳定完成）属推理，依赖实施后 I2~I4 的真实子进程验证。",
+    "四家载体各自的 Bash 工具超时上限是否都 ≥540s 无从实测（计划自己也承认无登记）；D4「Bash 工具超时设为 bash_timeout_ms」在四家载体的可表达性沿用 --wait 先例推断，未逐一验证。",
+    "设计文档 §2 表 206 行、§7.3 退出码表、§8.1 与 PROTOCOL_dual_critic_relay.md 的原文未逐行阅读，改动同步是否完备以计划所列清单与实施时 grep 为准；QUICKSTART §5.2 未读。",
+    "四个适配器 availability() 逐分支的 fix 标注初判（D1 只读能力一格）未逐一读四个适配器源码核对，计划已声明「实施时逐条核对、在测试里钉住」（U4 表驱动）。",
+    "probes/agy.ts:27、probes/codex.ts:58、probes/claude.ts:101、probes/zcode.ts:73 的单次超时常量行号未逐行核对（量级 180/300s 与我读到的 PROBE_TIMEOUT_MS 引用一致）。",
+    "worker 心跳与 patchProbe 共用全局锁在时限收尾路径上的最长阻塞时长未推演（沿用既有行为，非本主题新增面）。"
+  ],
+  "consulted": [
+    "src/trivium/preflight.ts",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/config.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/codex.ts（grep 节选）",
+    "src/trivium/cli.ts（grep 节选）",
+    "src/trivium/run-protocol.ts（grep 节选）",
+    "skills-src/partials/review/body.md",
+    "skills-src/commands/run.contract.md",
+    "skills-src/carriers/*.yaml（grep）",
+    "doc/07_manuals/MANUAL_user.md（grep 节选）",
+    "doc/02_design/LLD_orchestrator.md（节选）",
+    "doc/01_requirements/原始需求.txt",
+    "doc/08_project/BACKLOG.md（grep 节选）",
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "AGENTS.md（任务书随附的仓库指令）"
+  ]
+}

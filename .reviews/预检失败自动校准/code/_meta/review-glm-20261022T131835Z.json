@@ -1,0 +1,103 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "被审补丁实现预检退 69 的自动校准：失败项机读 recalibrate + 汇总 invocations、doctor --deadline-s 的段作用域 / 按次中止令牌 / 按组结束 / 临时目录台账、skill 公共片段与 16 份渲染产物、退出码 76 与文档同步。我顺着调用链核读了 doctor-deadline.ts、doctor.ts、preflight.ts、util/exec.ts、config.ts 的真实源码与四组新增测试：核心并发设计成立——段内 run 一律自成进程组且组长退出不删登记、中止令牌按次不复位、fire 的同步段与 inSection 的 push 之间无竞态窗口、兜底竞速经 finalized ??= 单次收尾、作废段不落盘且新鲜度按各家 probed_at 判（M7 变异与 I2 的『重跑预检仍退 69』断言闭环）、台账补删只认 mkdtemp 形态与临时目录根（符合 2026-09-20 事故规矩 R1）、fail-closed 缺省不可修。staleCliProbes 确认返回 cliName，checkProbeFreshness 的入选侧过滤正确。审查焦点逐项有着落：时限 480/30~540/bashTimeoutFor+60s 封顶 600；未探完段以 launches 上界交代配额并附 EV-243 通用化转述（不写 Agent 字面量，合纪律）；EV-243 转述与统一取值的取舍已登记残余①。发现五条意见：两条 minor 是对外命令不可照抄执行（rerun 前缀在终端 PATH 外）与台账补删的触发条件比文档口径窄（含凭据副本目录可能长留），一条 minor 是 DOCTOR_SECTION_ORDER 硬编码无守护，另两条 nit 是测试缺口与 0 次派生文案。均不需要重新评审一轮。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/doctor.ts:71（DOCTOR_SECTION_ORDER 常量）",
+      "problem": "段次序硬编码为 ['agy','zcode','codex','claude']，与注册表 ALL_CLI_NAMES（agents/registry.ts:412，AGENTS 顺序去重，当前恰好同序同值）重复了一份事实源，且没有对账测试守护：U3′ 只对账 doctorSectionConsumesOverrides，不覆盖这份次序数组。将来新增第五家 CLI、在 runDoctor 里加了段而漏改这个常量时，sectionStates 里没有新家——deadline.sections 静默漏掉它（违背『本次要探的每一段都有』的 CODEX-06 契约），且『尚无探针实现』那一圈的跳过判据 sectionStates.has(name) 对它恒假，到点未探完的新家会被误报成『尚无探针实现』。这与本项目『Agent 差异唯一来源是注册表』的架构纪律方向相悖。",
+      "evidence": "src/trivium/doctor.ts:70-71（DOCTOR_SECTION_ORDER 字面量）；src/trivium/agents/registry.ts:412（ALL_CLI_NAMES 由 AGENTS 派生）；test/unit/doctor-unused-overrides.test.ts 的 U3′（只对账读覆盖段集合，未对账段次序）；diff 中 doctor.ts『已登记但尚无探针实现』圈新增的 skip 判据 dl?.reason && sectionStates.has(name)",
+      "suggestion": "DOCTOR_SECTION_ORDER 直接写 ALL_CLI_NAMES（或 [...new Set(...)] 同形派生）；若担心与 runDoctor 实际段次序脱钩，按 U3′ 的形态加一条源码对账（扫描 if (only === null || only === '<cli>') 的出现序，断言与常量一致）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/doctor.ts 的 doctorRerunCommand 与 doctor-deadline.ts 的 unfinishedSectionNote（『请在终端单独跑上面这条命令』）",
+      "problem": "deadline.sections[].rerun 生成的命令前缀是 trivium（如 'trivium doctor --only agy'），而产品口径明确『trivium 有意不在 PATH 上』（AGENTS.md 已知坑），用户手册里终端命令一律是 .trivium/bin/trivium …（MANUAL_user.md §5.4）。rerun 的受众恰是终端里的用户：skill 片段第 3 步、RUNBOOK §五 现象表、MANUAL §3.4 / §9.1 / §9.2 都让用户『在终端单独跑 rerun』且强调照抄——照抄执行会 command not found。会话内 agent 执行 invocations 不受影响（用 TV 前缀另拼），坏的是用户侧那条。",
+      "evidence": "src/trivium/doctor.ts 的 doctorRerunCommand（formatCommand('trivium', args)）；diff 中 MANUAL_user.md §5.4 的终端命令形式 .trivium/bin/trivium doctor …；skills-src/partials/preflight/recalibrate.md 第 3 步『请用户在终端跑仍失败那几家对应的 rerun』；doc/06_deployment/RUNBOOK_pipeline_ops.md 新增现象行『按该段的 rerun 在终端单独跑』",
+      "suggestion": "rerun 以用户终端可执行的完整形式给出（.trivium/bin/trivium doctor --only <家> …，与手册命令形式一致），或在 note 与各手册处写明把前缀替换为本项目入口。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "security",
+      "location": "src/trivium/doctor.ts 的 runDoctorCore（sweepDoctorLedgers 调用点）",
+      "problem": "台账补删只在给了 deadline 选项时发生（const sweepResidue = dlo?.ledgerDir ? await sweepDoctorLedgers(...) : []），生产路径即只有带 --deadline-s 的 doctor（自动校准）才补删；但 RUNBOOK（『由下一次 doctor 启动时补删』）、MANUAL §10（『由下一次 doctor 启动时补删』）、设计 8.1 与 BACKLOG EV-251 残余②写的都 是『下一次 doctor』，无一带『带时限』限定。宿主强杀的场景（残余②）之后，用户按文档在终端跑一次普通 trivium doctor 期待清理——实际不会清，含真实凭据副本的探针临时目录（codexhome / zcode-doctor 两类）在本机继续留盘，直到某次再次触发自动校准或永不清。",
+      "evidence": "src/trivium/doctor.ts runDoctorCore 内 sweepResidue 一行（dlo 为 opts.deadline ?? null，不带 --deadline-s 时为 null）；src/trivium/cli.ts cmdDoctor 只在 deadlineS !== null 时传 deadline 选项；diff 中 RUNBOOK §五 表格行与 MANUAL_user.md §10 表格行、设计 8.1 末段『下一次 doctor 启动时补删』",
+      "suggestion": "任选其一：把 sweepDoctorLedgers 挪到 cmdDoctor 无条件执行（ledgerDir 常传，无 deadline 时不装控制器、只扫台账）；或四处文档改为『下一次带 --deadline-s 的 doctor（即下一次自动校准）』。前者更符合文档现有口径。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/integration/doctor-deadline-cli.test.ts 的 I5",
+      "problem": "I5 只验证了不带覆盖旗标的目标（agy，args 为 doctor --only agy --deadline-s 480 --json）照抄可执行；读覆盖段的 invocations（codex/claude 的 --profile-<id>/<model>/<effort> 组合，preflight-recalibrate.test.ts U2 断言过形状）没有集成用例把它照抄喂给打包 CLI 验证不退 64 且段按预期探完。形状断言测不到 CLI 参数解析侧的回归（例如旗标拼写与 cli.ts 判键不一致时，单测仍绿）。",
+      "evidence": "test/integration/doctor-deadline-cli.test.ts I5（invocations[0].only 固定为 'agy'）；test/unit/preflight-recalibrate.test.ts U2（带旗标组合只断言 flags/args 形状）",
+      "suggestion": "I5 之外补一条用假 codex（或最小桩）走 --critics codex + 路线配置，把带旗标的 invocations[*].args 照抄执行，断言不退 64。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/doctor-deadline.ts 的 unfinishedSectionNote",
+      "problem": "note 文案对 state 为 not_started 的段（launches 恒 0）同样说『本段已拉起 0 次子进程，结论未落盘（其中调用模型的那几次配额已花）』——0 次派生时『其中调用模型的那几次配额已花』不成立，同一句里自相矛盾，用户读到会困惑这一家到底烧没烧配额。",
+      "evidence": "src/trivium/doctor-deadline.ts:63-68（unfinishedSectionNote 实现，按 launches 拼同一模板）；doctor.ts finalize 里 sections 映射对 state !== 'finished' 一律带 note（含 not_started）",
+      "suggestion": "launches === 0 时换一句（如『本段尚未开始，未消耗配额』），大于 0 时保留现文案。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "按次的中止令牌（相对计划 r2 D3 的进程级标志）是正确偏差并如实登记：同一进程先后跑几次 doctor 时前一次到点不连累后一次，U1c 直接测试了这一点，测试进程内跑被中止路径也因此可行",
+    "段作用域内 run() 一律自成进程组、组长退出也不删登记、按『组长活着或非僵尸成员数大于 0』逐组结束，把『到点不留孤儿』落成机制而非约定；probe-section 的 U1a/U1b/U1b′ 是真实进程测试，变异 M4/M5 咬住",
+    "中止后段内 run() 立即兑现合成结果而非冻结，让探针沿自己的错误路径走到 finally 删凭据副本目录——与前台中断转发的冻结式收尾（探针 finally 不跑）形成对照，取舍理由写进了 cli.ts 注释",
+    "作废段不落盘 + cliProbeIsFresh 按各家自己的 probed_at 判新鲜度，避免收尾刷新 generated_at 把被打断那家『洗新鲜』；M7 变异与 I2 的『重跑预检仍退 69』断言把这个闭环守住",
+    "台账补删的三重校验（只认台账记录、realpath 必须落在系统临时目录根、目录名必须合 makeTempDir 形态）落实了 2026-09-20 事故规矩 R1『删除类调用只认 mkdtemp 返回值』；台账写入走临时文件加改名",
+    "fail-closed 缺省：没标 recalibrate 的失败项一律补成不能修（M8 咬住）；只读能力一格按侧聚合、全可修才可修（AGY-04，M10 咬住）；『全部过期』目标只取入选侧的论证经 staleCliProbes/probeIsFresh 源码核实成立",
+    "killGroup 增加『不对本测试进程所在组发信号』并在注释里写明 M4 预跑把自己杀掉的真实事故、killMarked 补逐进程收尾——测试设施的安全修正与报告披露一致",
+    "变异验证诚实：M2 首轮未咬住如实登记、I6 补断言后重跑 M2r2 变红；证据脚本与规格齐备"
+  ],
+  "not_covered": [
+    "本侧为只读审查，未运行任何命令：npm run check 全量读数、变异装置重放、trivium doctor --selftest 只能采信报告与 evidence 目录的留痕，未复跑",
+    "另三家载体（codex、agy、zcode 作 Driver）会话里 skill 片段的可执行性未核实——特别是 Bash 工具能否按 bash_timeout_ms 设每调用超时；残余①已如实登记未实测",
+    "真实配额下的端到端（会话里让一家探针过期、跑一次 /dual-review-plan 走完自动校准）未验证，报告 §五也承认需用户同意后再做",
+    "claude.ts 路线指纹读取分支的 fix 透传（...(result.fix ? { fix: result.fix } : {})）只读了 diff 上下文，未逐一枚举 claude 各路线组合验证透传完备",
+    "worker 侧 shutdownTrackedTrees / liveTrees 与新段作用域并存时的交互只做了静态推理（worker 不用段作用域，理论无交集），未深入 run-protocol 的全部调用点",
+    "docs/01_requirements/原始需求.txt 的需求原文与实现的对应关系（『无需确认』『自动运行 trivium doctor』）按任务书与设计 8.1 采信，未另行核对用户其它口头约束"
+  ],
+  "consulted": [
+    ".reviews/预检失败自动校准/code/_meta/changes-20261022T131835Z.diff",
+    "src/trivium/doctor-deadline.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/config.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/exit-codes.ts",
+    "src/trivium/agents/registry.ts",
+    "skills-src/partials/preflight/recalibrate.md",
+    "test/unit/probe-section.test.ts",
+    "test/unit/doctor-deadline.test.ts",
+    "test/unit/preflight-recalibrate.test.ts",
+    "test/integration/doctor-deadline-cli.test.ts",
+    "test/contract/skill-recalibrate.test.ts",
+    "test/helpers/proc.ts",
+    "doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "doc/08_project/BACKLOG.md"
+  ]
+}

@@ -1,0 +1,2490 @@
+# trivium changes.diff
+# run_id: 20261022T081726Z
+# base: HEAD
+# head: e34c23d09044f060fde287a9df8747bde9b3ecf6
+# files: 51
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-10-22_task_unreadable_refusal.md
+#   doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-names-output.json
+#   doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-names-rerun-output.json
+#   doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-output.txt
+#   doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-spec.json
+#   doc/08_project/BACKLOG.md
+#   skills-src/commands/abandon.contract.md
+#   skills-src/commands/approve.contract.md
+#   skills-src/commands/run.contract.md
+#   skills-src/partials/review/body.md
+#   skills-src/partials/review/claim.file.md
+#   skills-src/partials/run/claim-code.md
+#   skills-src/partials/run/claim-plan.md
+#   skills/dual-abandon/SKILL.md
+#   skills/dual-approve/SKILL.md
+#   skills/dual-critic/entry/codex/dual-abandon/SKILL.md
+#   skills/dual-critic/entry/codex/dual-approve/SKILL.md
+#   skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
+#   skills/dual-critic/entry/codex/dual-review-code/SKILL.md
+#   skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
+#   skills/dual-critic/entry/codex/dual-run/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-abandon/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-approve/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
+#   skills/dual-critic/entry/gemini/dual-run/SKILL.md
+#   skills/dual-critic/entry/glm/dual-abandon/SKILL.md
+#   skills/dual-critic/entry/glm/dual-approve/SKILL.md
+#   skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
+#   skills/dual-critic/entry/glm/dual-review-code/SKILL.md
+#   skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
+#   skills/dual-critic/entry/glm/dual-run/SKILL.md
+#   skills/dual-review-bug/SKILL.md
+#   skills/dual-review-code/SKILL.md
+#   skills/dual-review-plan/SKILL.md
+#   skills/dual-run/SKILL.md
+#   src/trivium/approval.ts
+#   src/trivium/cli.ts
+#   src/trivium/gate.ts
+#   src/trivium/meta.ts
+#   src/trivium/review.ts
+#   src/trivium/verify.ts
+#   test/integration/review-loop.test.ts
+#   test/integration/task-unreadable-refusal.test.ts
+#   test/unit/meta-task-write.test.ts
+#   test/unit/run-id-alloc.test.ts
+#   test/unit/topic-arg-quoting.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 920e965d..1cdb44c7 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -5,7 +5,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.170
++> - **当前版本**：v1.3.171
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -1290,6 +1290,19 @@ v1.3.88 前本句写「任务目标原文」，与实现不符，EV-210）。`go
+ 任务目标的**全文不落任何元数据**：计划阶段显式目标被截断时，全文只出现在冻结的任务书附录里（§9.4），
+ 归档 `_meta/brief-*.md` 即是它的留痕。
+ 
++**读不出就不写**（v1.3.171，EV-248）。`task.json` 的读分两档：严格读（`readTaskStrict`）区分「不存在」与「读不出」，
++后者含读不了、不是合法 JSON、形状不对（不是对象、`schema` 不是 `trivium.task.v1`、`runs` / `approvals` / `degradations` /
++`disputes` 任一不是数组）；宽松读（`readTask`）把读不出也当空，只给只读不写、缺数据也能继续的调用方（`report`、`status`、
++声明第 2 级判读）。**写入口 `updateTask` / `updateTaskAsync` 走严格读**：读不出即抛退 2 的受控错误、不调改写回调、正本原样；
++不存在照旧从空正本起写（新主题）。此前写入口宽松读，读不出回落空正本再写回，坏件被整份覆盖、`approvals[]` 随之清空；
++`gate --check` 又在「本轮是否已表态」的判定之前写共同阻断三态，于是正本写坏后跑一次 `--check`，已表态判定的保守处理就失效了。
++写入口拒写之外，每个调用方在**第一次落盘之前**先判一次，判不过零写入退 2：`gate --check`（结果输出之前判，`failures` 带
++`task_unreadable`，不写、不推进闸门、不归零阻断计数）、`gate --await-approval`（不立停点、`ok: false`）、`approve` / `abandon`
++（复核之前判；闸门已写下决定之后正本才坏的竞态由比较-交换回退闸门）、`verify`（分配 run_id 与执行命令之前判；命令跑完才在登记时被拒的竞态保留记录、
++文案写明命令结论）、`review` 准备阶段（轮次链判定之后、分配 run_id 之前判，零工件，覆盖骨架登记、任务目标与纯文档跳过收尾）；
++`topic claim` 没有前置落盘，由写入口锁内判；worker 收尾时才坏的竞态走既有异常收尾（闸门回收、正本坏件原样，提交时由锚 ② 拦）。
++出口文案共用 `taskUnreadableExit`：点名绝对路径、给出 Git 找回的命令，并写明恢复由用户在终端执行。
++
+ ### 6.7.1 运行元数据 v2 增量（`trivium.run.v2`）—— 【已实现 · M7b 第 3 步】
+ 
+ > **本节是增量规格，不替换 6.7。** `trivium.run.v2` 自 M7b 第 3 步起是**当前代码唯一写出的形状**；
+@@ -3302,7 +3315,7 @@ review:
+ - 短临界区锁（`state.json` / `task.json` 的读改写，`kind: 'critical'`）的持有超时是 `max(heartbeat_stale_s, 30 s)`（v1.3.62，EV-161）：下限就是 worker 心跳间隔 `WORKER_HEARTBEAT_MS`，落在 `lock.ts` `judgeStale` 一处（`criticalHoldTimeoutMs`）。阈值 ≥ 30 s（含缺省 120）时判定不变；更小的阈值只在锁这一面被抬到 30 s，worker 失联判定仍用原阈值。
+ - **遗留锁的回收流程**（v1.3.64，EV-173 / EV-149）：撞 `EEXIST` 之后读锁时文件已不存在（持有者恰已释放）⇒ 不是遗留锁，立刻重试获取——不判定、不告警、不回收；「不可解析」只指文件**存在**而内容读不出，其「修改不足 2 s 不回收」的年龄取自读内容的同一个文件描述符。回收为「预检 → rename → 复验 → 删除」：rename 之前再读一次，身份（`dev:ino:mtimeNs`，`acquireLock` 传入）或内容（外部调用方）已不是判定的那一份就不动它；复验不符时放回用 `link`（目标已存在即原子失败，不覆盖空档里新建的锁，放不回时告警留痕）；「回收主题…的遗留锁」告警只在真回收之后打，`--cancel` 收尾的「已回收」播报同样按回收结果。同一份遗留锁同一时刻只许一个回收者动手：回收前以 `O_EXCL` 创建按该锁身份命名的**回收认领**，认领到手后再核一次身份（光有预检不够——两个回收者都过了预检时，先 rename 的挪走遗留锁、非回收者立刻 link 进空档、后一个的 rename 挪走的就是活锁，实施期压测约千分之一）；认领只存在于几次系统调用之间，10 s 以上还在按认领者中途死了清掉——这只在同身份的后来者撞上时机会性发生，认领者 / 回收者崩溃留下的 `.reclaim-*`、`.stale-*` 残件没有通用清扫（不会被误读成锁）；创建认领遇 EEXIST 之外的错误时不回收并告警。回收没成（别人先动手、预检不符、认领被占）时隔一个重试间隔再来，不空转；回收路径上清理动作失败只留残件，不改变获取结果的类型。身份判据的适用面是本地文件系统。剩余的「挪走活锁」只可能来自非回收者的删除（被误判的活持有者自己 release 等）、取不到身份而无法认领、或认领者崩溃后的清理竞争，命中时放回失败会告警（BACKLOG EV-174，暂缓）。
+ - **取不到持有者的启动时刻不判复用**（v1.3.65，EV-153）：`pid_reused` 只在持有者活着、**取到了**它的启动时刻且与记录不符时成立。活着而 `ps` 取不到（满载下派生失败、10 s 超时）是「判不了」，原先读成「不是同一进程」而回收一把活锁——同进程两个写者由此同时读改写 `state.json` 丢更新（`state.test`「并发 setGate 不丢更新」偶发红的机理之一），跨进程则是 `--start` 回收活 worker 的运行锁。现在往下走终态与年龄判据：短临界区锁持有超时后仍判 `heartbeat_dead`，运行已终态仍判 `heartbeat_dead`；其余不回收，等待者按原重试预算重试，下一次取到且不符照判复用，耗满预算即 70——本次调用等不到年龄兜底，不另设「连续判不了提前 70」。耗时上界与今天有人正常持锁时相同：`ps` 快速失败约 41 × 重试间隔，`ps` 挂到超时则每次尝试多付两次取值（约 41 × 20 s）。耗满预算抛出的 70 指向 `--cancel`；同一 `ps` 故障下 `--cancel` 主路径自 v1.3.66（EV-175）起同样判「判不了」、什么都不动并以 69 退出，不再只清不杀、放出活 worker 的运行锁（见 :1485 段）；v1.3.67（EV-176）起入口判过同一进程之后才判不了（发 SIGTERM 之前或宽限期里）、以及 SIGKILL 之后未确认退出，同样不回收锁与闸门、以 69 退出。
+-- `state.json` / `task.json` 的写入一律「读 → 改 → 原子替换」，且只在持锁时进行，避免 `-r<N>` 计算与状态更新竞争。
++- `state.json` / `task.json` 的写入一律「读 → 改 → 原子替换」，且只在持锁时进行，避免 `-r<N>` 计算与状态更新竞争。`task.json` 的「读」在锁内走严格读，读不出即拒写退 2、不覆盖（v1.3.171，EV-248，见 6.7 末段）。
+ 
+ ---
+ 
+@@ -4073,6 +4086,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.171** | 2026-10-22 | **审批正本读不出拒写（EV-248）。** 主题 `审批正本读不出拒写`（`/dual-run`，计划双审 run `20261022T041612Z` 第 1/5 轮：gemini、glm 均 `pass-after-changes`，8 条全接受，定稿 r2）。**一、写入口**：`updateTask` / `updateTaskAsync` 锁内改严格读，读不出抛退 2 的受控错误、不调回调、正本原样；不存在照旧起写。`readTaskStrict` 加形状判据（AGY-02）。**二、调用方先判**（见 6.7 末段）：`gate --check` 在结果输出之前判、读不出时只出一份带 `task_unreadable` 的结果后退 2，不写、不推进；`gate --await-approval` 读不出改退 2、`ok: false`（AGY-01，此前退 0）；`approve` / `abandon` 复核之前判，`recordApproval` 写闸门之前再判，竞态由比较-交换回退闸门；`verify` 执行命令之前判；`review` 准备阶段在分配 run_id 之前判。**三、出口**：`taskUnreadableExit` 三处共用（写入口、续链判定、`taskUnreadableHold`），统一退 2。**四、skill**：认领、`gate --check`、停点、S10、审批 / 放弃补退 2 的处置句。**五、文档**：PROTOCOL §五 退出码表与五个命令行。测试：单测 `meta-task-write` 25 条、集成 `task-unreadable-refusal` 13 条，L10 补 `--check` 断言，`run-id-alloc` 夹具补齐完整形态。 |
+ | **v1.3.170** | 2026-10-22 | **多轮评审循环与三档结论计票（EV-247）。** 用户新需求：计划审与代码审每个审核者给「通过 / 修改后通过 / 不通过」，按比例判整体结论，不通过即改后自动重审，最大轮次缺省 3、可指定、上限 10，最后一轮仍不通过停下人工审核；/dual-run 两阶段可分别指定上限；计划审每轮另出完整新计划，代码审每轮裁决后直接改码；/dual-review-plan、/dual-review-code 同样适用。拍板：契约升 review.v2（三值）、三档都不到半数判修改后通过、命令 C 最后一轮先改码再停审批、由 Driver 直接实施后走代码双审。**一、契约**（6.5）：新增 `review.v2.json`，`isReviewSchemaId` 统一读取侧判据（含禁读矩阵与被审对象硬拒），新产出只认 v2、归档两版都认，回退侧 front-matter `verdict` 写 null。**二、计票与轮次链**（8.2.1）：新模块 `round-verdict.ts`；run.v3 补可选 `review_loop` / `round_verdict`（6.7.1，不升契约版本）；`review --start --max-rounds`、`topic resolve` 三个轮次旗标。**三、闸门**：`rerun` 回 idle、`human_review` 立停点（含命令 A）、`proceed` 照旧；计划阶段带轮次链的轮次每轮要求新一轮计划（6.6 规则 9）。**四、skill**：/dual-run S2～S4、S6～S9 改为循环（S8 改码挪到 S9 校验之前），B / C 第 6.5 步按 `next_action` 分支、C 第 5.5 步裁决后直接改码。测试新增 `round-verdict` 单测 17 条、`review-loop` 集成 11 条、`plan-final-gate` I8 一条，三条 EV-214 用例改按新语义或改成旧运行形态。**五、代码双审 r2**（run `20261022T005651Z`：gemini `approve` 零意见、glm `approve-with-nits` 2 条全接受）：审批正本读不出时续链判定拒跑（GLM-01，`previousRoundFacts` 自读正本、`approval.ts` 抽出 `decidedInTask`；与计划 r2 §四.4「读不出判已表态 ⇒ 新链」相反，用户 2026-10-22 定直接改码、偏差登记在 BACKLOG EV-247），集成 L10；两侧整份回退 ⇒ `undetermined` ⇒ 人工审核的端到端用例 L11（GLM-02）。r2 应答件 GLM-01 落点里的「设计 6.7.1 补一句」是笔误，实际补在 8.2.1（r3 GLM-02 指出，在 r3 应答件订正）。**六、代码双审 r3**（run `20261022T023850Z`，评审循环第 1/3 轮：两侧 `pass`，计票通过；glm 3 条 nit 全接受）：L11 补闸门立停点断言（GLM-01）；`approval.ts` 新增三态的 `humanDecision`，`--await-approval` 与 `--check` 在正本读不出时改说「按已表态保守处理」，不再说「已有人工审批记录」、`--check` 也不接本机状态对账（GLM-03）。改码时实测发现 `updateTask` 会静默覆盖读不出的正本、`gate --check` 在判定前就会写一次，早于本主题，登记 EV-248。 |
+ | **v1.3.169** | 2026-10-18 | **M12 残余两条修复：doctor 覆盖旗标提示（EV-245）与 `--start` 共享根检查（EV-246）。** 主题 `doctor旗标提示与start共享根检查`（`/dual-run`，计划双审 run `20261018T072932Z`：gemini `approve`、glm `approve-with-nits` 1 条 nit 接受 → r2）。**一、EV-245**（7.1 档位旗标节）：`doctor` 的 `--model-<id>` 补上与档位旗标同一份判键（`picked` 取全部审核者，对现注册表全部放行）；`runDoctor` 的 `overridesFor` 成为覆盖值唯一读点，写了却没用上的覆盖按运行期记录分三种原因给一条提示，只进 `warnings`，退出码与 `--json` 既有字段不变。**二、EV-246**（8.1 预检表、`--start` 返回 `warnings` 一段、7.4.1）：`startRun` 的告警复查在档位组合之后、必读剔除之前追加 `checkSharedReadRoots`（当轮 Driver ∪ 入选审核者），场合词「本次运行」；预检侧缺省场合词不变。顺带补上 `--start` 来源清单此前漏列的档位组合一项。17.2 加两行。代码双审 run `20261018T081641Z`：gemini `approve`，glm `approve-with-nits` 1 条 nit 接受（扫描出错分支的场合词补用例与变异）。验收：变异预跑与正式装置均 14/14；新旧对照 8 格全部符合预期（共享根干净时 `--start` 人读与 `--json` 规范化后逐字节相同）。16.1 M12 行残余 ②③ 标注已修。报告 `REPORT_2026-10-18_doctor_flags_start_shared_root.md`。 |
+ | **v1.3.168** | 2026-10-18 | **M12 收口。** 16.1 M12 行翻为已达成：批次 5（v1.3.166）与计划外追加的共享根残留检测（v1.3.167）补进状态列，验收列所列 EV 逐条写明处置，列出达成边界与残余四条；文档头状态段补 M12 一句。两条残余登记 BACKLOG：EV-245（`doctor` 不判 `--model-<id>` 的键）、EV-246（`review --start` 不跑共享读取面检查）。纯文档，B 档未走双审。 |
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index fbffebfa..6ee32ec7 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -312,7 +312,7 @@ deny 核验完全由措施 b 承担。这一降级逐侧记于 `guard.verificati
+ | :--- | :--- | :--- |
+ | `0` | 成功 | 继续 |
+ | `1` | 一般失败 | 读 stderr |
+-| `2` | **闸门阻断** | 按 stdout 的缺口清单修补后重试 |
++| `2` | **闸门阻断** | 按 stdout 的缺口清单修补后重试。**审批正本 `task.json` 读不出**（读不了、不是合法 JSON，或形状不对：不是对象、`schema` 不是 `trivium.task.v1`、`runs` / `approvals` / `degradations` / `disputes` 任一不是数组）时，凡要写正本或要据它判「本轮是否已表态」的命令一律退 2、不写正本：`gate --check`（`failures` 带 `task_unreadable`，不落共同阻断三态、不推进闸门）、`gate --await-approval`（`ok: false`、`state: unchanged`）、`approve` / `abandon`（闸门不动）、`topic claim`、`verify`（开跑前判出时一条命令都不跑；已跑完才在登记时被拒时验证记录保留、文案写明命令结论）、`review --start` / 同步 `review`（零工件）。这不是裁决缺口：stderr 点名正本路径、给出 Git 找回的出口，恢复由用户在终端做，恢复后重跑（设计 v1.3.171，EV-248） |
+ | `64` | 参数错误 | 修参数；不会产生任何工件 |
+ | `65` | 前置产物缺失 | 先补工件 |
+ | `69` | 环境或预检失败 | 跑 `doctor` / `preflight`；`review --cancel` 取不到工作进程的启动时刻时也退 69（设计 v1.3.66，EV-175）——什么都没改，稍后重试，持续取不到时按 stderr 的手工出路；发过信号而未确认工作进程退出（宽限期满或 SIGKILL 之后仍取不到启动时刻，或 SIGKILL 之后等 5 s 仍是同一进程）时同样退 69、不收尾（status、锁、闸门、归档、凭据副本都不动，只按记录结束了审查员 CLI；设计 v1.3.67，EV-176） |
+@@ -450,14 +450,14 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一
+ | `doctor --selftest` | 临时夹具里真跑整条流水线，14 步核对（桩适配器，零配额） |
+ | `preflight --stage plan\|code\|bug\|all [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--tier-<id> <档>] [--effort-<id> <值>] [--profile-<id> <名>]` | 设计 §8.1 的启动预检，fail-fast，失败零工件。档位旗标（M11 第 5 步）按「档位组合合法」一格校验，口径同配置来源，见上方现状句。`--critics` 指定本次要用哪几侧——只读能力、模型 slug、探活都只查这几侧，缺省取 `review.default_critics`（M8 第 3 步）。**命令 B / C / D 的第 1 步不传它**：那时 `topic resolve` 还没跑、选侧尚未解析出来；选了非缺省侧时，该侧的可用性由 `review --start` 在拉起 CLI 之前的 `availability()` 兜住（AC-20 末条的落点），但探活不在其中。**命令 A 自 EV-125 起在解析之后预检**（S0.6）：带上 `topic resolve` 输出的 `critics`，以及非空时的 `--profile` / `--model-<id>`，三个阶段入选各侧的 slug 与探活都在开跑前查——命令 A 漏查的 code 阶段 slug 要到 S6（编码之后）才会暴露。`--critics` 也供用户显式预检时用。**只警告项**（EV-123，设计 8.1「警告这一级」）：`--json` 输出恒带 `warnings`（`{ name, detail }[]`，无警告时为 `[]`），`checks[]` 单项在 `warn` 为真时带 `warn: true`；`warn` 不影响 `ok` 与退出码，skill 在通过时逐条念给用户后继续 |
+ | `topic resolve --stage <s> -- '<正文>' [--topic <主题>] [其余旗标]` | 解析主题/提示语/被审对象/模型覆盖，**纯只读**。M11 第 5 步起输出另含 `tiers` / `efforts` / `vendor_profiles`（逐入选侧、恒存在、没写为 `{}`），skill 照抄进预检与 `--start`；档位旗标写了不给值退 64，`--model-<id>` 自 v1.3.165（M12 批次 4，EV-228）起同样退 64、文案同一份（此前 `=` 空、紧跟已知旗标、位于末尾三种形态被静默丢弃）。`--stage` 也接受 `all`（命令 A 用）。`--` 之后按 argv 逐个 token 解析、不再分词（EV-18）：正文整段放进一个单引号参数，旗标放在引号之外；`--topic` 字样被包进正文而未显式给主题时退 64。`--args` 传法已删 |
+-| `topic claim --topic <主题> --stage <s> --driver <id> [--session-id <id>]` | 为该**阶段**声明当轮 Driver（M10a 第 1 步，EV-72）。plan / bug 原稿写在 `review --start` 之前，那一刻该阶段零留痕、判定回落缺省 Driver，非缺省 Driver 写不出自己的原稿。`--stage` **必填不默认**：声明直接决定 Write / Edit 侧的保护集。判定顺序自上而下：**留痕优先**——该阶段已有运行留痕且与 `--driver` 不同 ⇒ 退 64（出口是新开主题或换阶段）；已声明同值 ⇒ 幂等退 0 且**不刷新** `claimed_at`；该阶段子树里已存在**他家角色后缀**的文件 ⇒ 退 64（那些文件可能是撤回前的旧声明留下的，也可能是尚无声明时写下、仍在使用的原稿；出口是由用户确认去留、在终端处理后重试。不在会话里删它们来换回认领——这条限制防的正是会话自己反复翻转声明，见设计 7.1 `topic claim` 段）；其余合法认领放行。撤回的旧声明整条追加进 `drivers[<阶段>].history`，不覆盖。`--session-id` 落进 `claimed_by`，与 `approvals[].session_id` 同一个用途：自声明边界要让事后对得上账 |
++| `topic claim --topic <主题> --stage <s> --driver <id> [--session-id <id>]` | 为该**阶段**声明当轮 Driver（M10a 第 1 步，EV-72）。plan / bug 原稿写在 `review --start` 之前，那一刻该阶段零留痕、判定回落缺省 Driver，非缺省 Driver 写不出自己的原稿。`--stage` **必填不默认**：声明直接决定 Write / Edit 侧的保护集。判定顺序自上而下：**留痕优先**——该阶段已有运行留痕且与 `--driver` 不同 ⇒ 退 64（出口是新开主题或换阶段）；已声明同值 ⇒ 幂等退 0 且**不刷新** `claimed_at`；该阶段子树里已存在**他家角色后缀**的文件 ⇒ 退 64（那些文件可能是撤回前的旧声明留下的，也可能是尚无声明时写下、仍在使用的原稿；出口是由用户确认去留、在终端处理后重试。不在会话里删它们来换回认领——这条限制防的正是会话自己反复翻转声明，见设计 7.1 `topic claim` 段）；其余合法认领放行。撤回的旧声明整条追加进 `drivers[<阶段>].history`，不覆盖。`--session-id` 落进 `claimed_by`，与 `approvals[].session_id` 同一个用途：自声明边界要让事后对得上账。审批正本读不出时退 2、不写（EV-248，见 §五） |
+ | `review --stage <s> [--critics <id,…>] [--profile <名称>] [--model-<id> <模型>] [--tier-<id> <档>] [--effort-<id> <值>] [--profile-<id> <名>]` | 同步跑一次双审（手工调试用）。模型与档位旗标口径同 `preflight` 那一行：键必须是本轮入选审核者，`--tier-<id>` 只收 `low` / `medium` / `high`，`--profile-<id>` 目前支持 `--profile-codex` 与 `--profile-claude`；同侧可用 `--native-<id>` 显式清空；模型与三类旗标写了不给值（`--model-<id>=` 一格 v1.3.165 起，此前静默丢弃）、档名未在 `agents.<id>.tiers` 定义、思考等级不在该模型原生枚举里、该侧没有思考等级概念却给了、厂商 profile 不在本机名单，都在准备阶段（冻结与任何落盘之前）退 64。预检与准备阶段均先校参数：明确不存在的 profile 退 64；凭据、入口、服务或只读能力不可用退 69（EV-232）路由两段式与 `tier` / `tier_source` 的取值见设计 11.5 |
+ | `review --start / --wait / --status / --cancel` | 分段协议。`--start` 收的模型与档位旗标同 `review --stage`。`--start` 的返回恒带 `warnings`（EV-123）：拉起前按**当轮入选侧**复用预检的判定函数 `checkModelOverrideSource` 查出的只警告项，以及 `checkHeartbeatThreshold` 的「失联阈值」（`heartbeat_stale_s` 不大于工作进程心跳间隔 30 s 时出；只读配置、与入选侧无关；设计 v1.3.57，EV-160），两者同一次汇总，形状同预检；其后追加准备阶段从各侧任务书第 4 段剔除的自动条目「必读清单剔除」（按条目一条；设计 v1.3.73，EV-02，见设计 10.1.1 末节），代码阶段计划阶段留痕读不出、没能列入计划定稿时在它之前另有一条「必读清单未列计划定稿」（至多一条、不计入剔除封顶；设计 v1.3.88，EV-210）；在派生之后随返回值到达（拦不住拉起，skill 在开场播报里念出并提示可 `--cancel`）；`finished_inline` 时为 `[]`；同步 `review --stage` 不做前两项复查，它的 `--json` 另有既有的 `warnings: string[]`（运行期告警，以及准备阶段的必读剔除告警，后者不带 `⚠️` 前缀），与 `--start` **同键不同形**，不要按 `detail` 读。`--start` 与同步 `review --stage` 在 `--context` 与本轮任一侧禁读集相交时退 64、零工件（设计 v1.3.73）。`--cancel`：向工作进程组发 SIGTERM，工作进程先按组终止它以 `killTree` 拉起的审查员 CLI（宽限 2 s → SIGKILL，真实 CLI 对 SIGTERM 的处置未实测）再以 SIGTERM 退出；5 s 内没退出即升级 SIGKILL、之后至多再等 5 s 确认退出（设计 v1.3.67 起；此前不等）——宽限期满最后一次仍取不到工作进程的启动时刻时不升级 SIGKILL，发 SIGTERM 之前就取不到则一个信号都不发，工作进程未确认退出时不收尾、以 69 退出（EV-176）；升级 SIGKILL 或宽限期满判不了而扣下 SIGKILL 时、以及工作进程此前已不在时（含 status 已被 `--wait` 判失联写成 failed、走终态早退分支的情形），按 status.json 的逐侧 CLI 进程组记录逐组结束审查员 CLI（组长活着且规范化启动时刻相符、或组长已退出但组号下还有非僵尸成员时都发信号，宽限链同上，v1.3.60 起后者同样按组结束，EV-165；终态分支只结束进程、不写 status.json（`gone` 格自 EV-159 起补收归档 run.json / task.json，见下方「失联后仍挂着的工作进程」段末句，status.json 仍不写）；判不了、记录读不懂、成员计数取不到、没有记录时 stderr 如实提示；设计 v1.3.53，EV-154）；CLI 先于工作进程退出后遗留的子进程、CLI 自己脱离进程组的后代也够不到，这两格不打提示（设计 7.5「工作进程的信号语义」）。`--wait --json` 的 `sides` 与 `--status --json` 的 `status.sides` 每侧多一个 `cli` 键（`{ pgid, started_at }` 或 null，设计 v1.3.53；加法，旧调用方忽略）；status 另多一个 `worker_started_at_canonical` 键（字符串或 null，设计 v1.3.55，EV-158；加法，旧调用方忽略）。（EV-128，设计 v1.3.47）工作进程确认退出后，把仍为 `running` 的归档 run.json（run.v2 或 run.v3，保持原 schema）收尾为 `cancelled`（只改 `status` / `finished_at` / `gate.state`，`artifacts[]` 原样）并同步 `task.json` 登记（run.json 不是 cancelled、登记里找不到、登记已不是 running 时跳过），再把 status.json 标 `cancelled`、回收锁与闸门；没确认退出或 run.json 已是终态时不写，输出写明原因；单步写失败只告警、没有第二次机会，告警要求人工核对。**失联后仍挂着的工作进程**（设计 v1.3.54，EV-146）：`--wait` 判 `worker_lost` 时在 status.json 记 `lost = { reason, at }`（`--wait --json` / `--status --json` 的 `status` 因此多出 `lost` 键，对外 JSON 形状的加法，旧调用方忽略）；`heartbeat_stale` 的报错先列判定依据再给 `--cancel` 出口。之后 `--cancel` 在 status.json 为 failed、`lost.reason` 为 `heartbeat_stale`、工作进程仍是同一进程时，按组结束它（宽限 5 s → SIGKILL → 至多再等 5 s 确认）、按记录结束审查员 CLI、把仍为 `running` 的 run.json 与登记补收为 `failed`（`termination` 同 `--wait`）、按 run_id + pid 回收锁；status.json 不写、闸门不动、凭据副本不抹；确认不了退出时 run.json 与锁不动；身份判不上（`mismatch`）时连记录里的审查员 CLI 也不结束，身份缺失（`no_identity`）时 CLI 沿用 EV-154 终态分支自己的判断；两格 stdout 都说「未对工作进程……发信号」而不是「无需取消」；一个信号都没发就判已不在时说「未及发信号」。确认退出（含下面的 `gone` 格）与「无需取消」退 0；以 69 退出的有两种：按组结束之后未能确认工作进程退出（仍是同一进程、判不了身份、首检即判不了），与主路径同口径（设计 v1.3.105，EV-177 ②），以及身份判不上（`mismatch`）、身份缺失（`no_identity`）两格（设计 v1.3.115，EV-177 ② 补）——都是「这次没做收尾、状态原样、可重试」；此前都退 0，stderr 与 stdout 的文字不变。**`gone` 格补收**（设计 v1.3.56，EV-159 第一形态）：`worker_pid` 上已没有活进程时（含「两种启动时刻都缺失」这一收窄进来的子情形），`--cancel` 与 `alive` 格一样按 EV-142 的前提把仍为 `running` 的 run.json 与登记补收为 `failed`（`termination` 同 `worker_lost` / `heartbeat_stale`）、按 run_id + pid 回收锁；status.json 不写、闸门不动、凭据不抹；stdout 说「工作进程 N 已不在」，不说「无需取消」，也不复述归档补收的结果（只说「见上方输出」，那两行由前面的收尾步骤播报）；已是终态或归档缺失时按前提跳过、如实说明，可重入。`mismatch` 与「两种启动时刻都缺失但进程还在」的 `no_identity` 不在此列，一律不补收。**判不了工作进程的身份**（设计 v1.3.66，EV-175）：主路径上工作进程活着而本进程取不到它的启动时刻（`ps` 派生失败或超时）时，`--cancel` 不发信号、不写 status.json、不回收锁与闸门、不抹凭据、不补收归档，stderr 报「取不到工作进程 N 的启动时刻……本次不取消……请稍后重试」并给出手工出路，**退出码 69**；同一原因下 `--wait` 不判 `pid_gone`（心跳新鲜仍退 73，过期判 `heartbeat_stale`），抹凭据准入与会话启动清扫把它当仍在。**凭据副本的准入**（设计 v1.3.58，EV-157）：`--cancel` 主路径与 `--wait` 判失联抹凭据副本之前，与会话启动清扫 / `scrub` 同一判据——工作进程确认已不在，且 status.json 记录里的审查员 CLI 进程组没有仍在、判不了或读不懂的（`--cancel` 判的是按记录结束之后的事实）；被 CLI 挡住时不抹，`--cancel` 的 stderr、`--wait` 的报错正文各多一行「凭据副本未抹：工作进程 N 已不存在，但审查员 CLI 未确认结束——〈逐侧〉…留给会话启动清扫」，退出码、归档收尾与其余输出不变；工作进程一半未过时那一行的文字与此前相同。`--wait` 在阻挡项里有判「仍在」或「组长已退出、组员仍在」（`orphaned`，v1.3.60 起，EV-165）的组时再多一行 `--cancel` 出口（`--cancel` 的终态分支会按记录结束它们；判不了 / 读不懂时不给，代码双审 r1 CODEX-02） |
+ | `review --worker <run_id>` | 工作进程入口，由 `--start` 派生。**不应由人直接调用** |
+-| `gate --check` / `--check-artifacts` / `--await-approval` | 裁决完整性 / 最低工件集 / 置人工闸门。立停点时（`--await-approval`，以及命令 B / C / D 的 `--check` 通过后自动立）追加打印工作树改动摘要，`--await-approval --json` 带 `worktree_summary` 键；只告知，不参与判定、不改退出码 |
++| `gate --check` / `--check-artifacts` / `--await-approval` | 裁决完整性 / 最低工件集 / 置人工闸门。立停点时（`--await-approval`，以及命令 B / C / D 的 `--check` 通过后自动立）追加打印工作树改动摘要，`--await-approval --json` 带 `worktree_summary` 键；只告知，不参与判定、不改退出码。审批正本读不出时 `--check` 与 `--await-approval` 都退 2、不写不推进（EV-248，见 §五） |
+ | `gate hook-*` | Hook 入口，从 stdin 读事件。**不应由人直接调用** |
+-| `approve` / `abandon` | 人工审批 / 放弃闸门。审批附言走 `--reason`；多余的位置参数退 64（EV-24），布尔旗标（`--reject` 等）不吞下一个 token、`=` 传值只认 true/false。**通过前复核**（M10a 第 3 步）：与 `gate --await-approval` 共用一份判定——本轮裁决齐备 + 本轮 `run.json.artifacts[]` 的 sha256 抽核；不通过退 2，推断不出 run_id 或运行元数据读不出退 65（缺 run_id：abandon 后重跑；读不出：先按成因恢复、恢复后直接重新 approve，恢复不了才 abandon，abandon 之后能否重跑取决于该阶段最新一份留痕可不可读——三档成因见设计 8.4「留痕读不出：成因与出口」）。拒绝与放弃不复核。复核不保证「审批来自人」。**通过时先打印工作树改动摘要**（复核之后、落审批之前）：自审查收尾以来改过的文件，基线 `snapshot.after_tree_hash`；`--json` 带 `worktree_summary`（按阶段，每阶段 `available` / `reason` / `run_id` / `baseline_tree` / `current_tree` / `total` / `truncated` / `files`（最多 200 条）/ `excluded_prefixes` / `budget_ms` / `budget_overridden`）。只告知，不参与判定、不改退出码；取不到时报原因，不报「无改动」 |
+-| `verify --topic <t>` | 执行显式配置的编译测试命令并落盘记录 |
++| `approve` / `abandon` | 人工审批 / 放弃闸门。审批附言走 `--reason`；多余的位置参数退 64（EV-24），布尔旗标（`--reject` 等）不吞下一个 token、`=` 传值只认 true/false。**通过前复核**（M10a 第 3 步）：与 `gate --await-approval` 共用一份判定——本轮裁决齐备 + 本轮 `run.json.artifacts[]` 的 sha256 抽核；不通过退 2，推断不出 run_id 或运行元数据读不出退 65（缺 run_id：abandon 后重跑；读不出：先按成因恢复、恢复后直接重新 approve，恢复不了才 abandon，abandon 之后能否重跑取决于该阶段最新一份留痕可不可读——三档成因见设计 8.4「留痕读不出：成因与出口」）。拒绝与放弃不复核。复核不保证「审批来自人」。**通过时先打印工作树改动摘要**（复核之后、落审批之前）：自审查收尾以来改过的文件，基线 `snapshot.after_tree_hash`；`--json` 带 `worktree_summary`（按阶段，每阶段 `available` / `reason` / `run_id` / `baseline_tree` / `current_tree` / `total` / `truncated` / `files`（最多 200 条）/ `excluded_prefixes` / `budget_ms` / `budget_overridden`）。只告知，不参与判定、不改退出码；取不到时报原因，不报「无改动」。审批正本读不出时三种决定都退 2、闸门不动（判在复核之前；闸门已写下决定之后正本才坏的竞态由比较-交换回退闸门，EV-248，见 §五） |
++| `verify --topic <t>` | 执行显式配置的编译测试命令并落盘记录。审批正本读不出时退 2（EV-248，见 §五） |
+ | `report --topic <t>` | 主题级复盘；没产出审查文档的运行另列「未进时间线的运行」，`--json` 输出多一个 `unlistedRuns` 字段（设计 v1.3.48，EV-144）。第二节末尾按 Driver 与按审核者两维聚合、第四节加思考等级请求 / 生效两列（设计 13.2.1，v1.3.135）；`--json` 只增不改：顶层 `aggregates`（`byDriver` / `unknownDriver` / `byCritic`），`rounds[]` 增 `driverSource` / `driverUnknownReason` / `dispositionUnreadable` / `disposalsBySource` / `fallbackDisposalsBySource`，`aggregates.byDriver[]` 含 `dispositionUnreadableRounds`，`rounds[].sides[]` 增 `severity` 与 `effortRequested` / `effortEffective` / `effortEffectiveSource` / `effortLegacy`（**缺席时不写键**、null 写 null），`unlistedRuns[]` 增 `driver` / `sideStatuses` |
+ | `status` | 闸门、运行、降级与争议 |
+ | `scrub [--dry-run] [--json]` | 对**整个运行根**做一次凭据清扫：遍历全部项目桶，**只抹凭据、一个目录都不删**（整删是 `run_dir_days` 的职责且按项目划界，跨仓删别人的目录是越权）。准入判据与会话启动清扫同源（`admitScrub`）：worker 现势活着的不动，状态读不到一律跳过并计数；worker 已不在而 status.json 记录里的审查员 CLI 进程组仍活着、判不了或记录读不懂的也不动，计入 `deferred` 并在 `--json` 的 `deferred_cli`（`{ dir, detail }[]`）里逐条带成因（设计 v1.3.53，EV-38）。人读输出在这一格之后的提示只给一个出口：「记录读不懂」需把该侧 `cli` 改回 null（到期整删也会保留它）；帮助动机句带同样的限定（设计 v1.3.59，EV-164），且自设计 v1.3.61 起写明到期整删只在该仓库自己的会话启动时跑、不再回到那个仓库就没有任何自动清理（EV-166；此前「副本会一直躺到 retention.run_dir_days 整删」失实）；`--json` 不变。**退出码恒 `0`**，理由见 §五末段。`--dry-run` 只预测**侧层**——运行目录那一层没有哨兵、每轮都复查，有没有活取决于正文是否命中密钥，不读正文答不了（BACKLOG EV-33） |
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index 9430b0e2..820a5bef 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -152,6 +152,7 @@
+ - [`REPORT_2026-10-18_m12_batch4.md`](./REPORT_2026-10-18_m12_batch4.md)：**M12 批次 4 · 模型覆盖旗标空值退 64（EV-228）与档位表 Agent 级 effort 废弃（EV-227）**（A 档，`/dual-run`）。`--model-<id>` 写了不给值（`=` 空、紧跟已知旗标、位于末尾）由静默丢弃改为退 64，与档位旗标共用一份判定与文案（行为变化；`cli.ts` 的 `=` 空一格超出 D-8 字面面、待用户追认）；`profiles.<表>.<id>.effort` 进废弃键表、schema 标 deprecated、类型删字段，阶段格子 `{model, effort}` 不受影响。计划双审、代码双审各 1 条 nit 接受；变异预跑 14/14、正式装置 12/12；桩级验收新旧构建对照 8/8。证据见 [`evidence/m12-batch4-20261018/`](./evidence/m12-batch4-20261018/)；主设计 v1.3.165。
+ - [`REPORT_2026-10-18_m12_batch5.md`](./REPORT_2026-10-18_m12_batch5.md)：**M12 批次 5 · 共享读取面同名入口告警（EV-240 方案 A）与送审请求文件去重（EV-236 A2）**（A 档，`/dual-run`）。读取面判定搬进 `src/trivium/entry-collisions.ts`，安装器与编排器两个产物同源，安装器 9 格新旧对照逐字相同；doctor 全量列出、preflight 只对本轮相关的家告警、都不阻断，扫描家目录单一来源、测试全程隔离；`request.json` 冻结补丁只存一份、worker 按引用还原，审核者所见逐字不变、旧格式照读。计划三审 7 条全接受；代码三审 codex / gemini `approve`、glm 3 条 nit 全接受；变异预跑与正式装置均 14/14。证据见 [`evidence/m12-batch5-20261018/`](./evidence/m12-batch5-20261018/)；主设计 v1.3.166。
+ - [`REPORT_2026-10-18_m12_shared_residue.md`](./REPORT_2026-10-18_m12_shared_residue.md)：**共享根历史形态残留检测（EV-240 残余）**（A 档，`/dual-run`，主题 `M12-共享根残留检测`）。新类别 `shared-residue`：额外读取根里的 `dual-critic` / `entry` 按内容认定为本产品（运行时身份行 + `schema/`，或含入口子树）才判，别家同名不判；安装器与 `install:check` 整次拒装、doctor 全量列出、preflight 对本轮相关的家告警，四处同一份实现；当前运行时根放在共享根里时按真实路径豁免。安装器新旧 13 格、doctor / preflight 新旧 16 格（子进程 HOME 隔离）符合预期（无残留时逐字相同）；计划三审 6 条全接受；代码三审 glm / gemini `approve`、codex 1 条 minor 接受（A-2 补 HOME 隔离后重取）；变异预跑 15/15、正式装置 14/14；全量 3730 / 3728 / 0 / 2。证据见 [`evidence/m12-shared-residue-20261018/`](./evidence/m12-shared-residue-20261018/)；主设计 v1.3.167。
++- [`REPORT_2026-10-22_task_unreadable_refusal.md`](./REPORT_2026-10-22_task_unreadable_refusal.md)：**审批正本读不出拒写（EV-248）**（A 档，`/dual-run`，主题 `审批正本读不出拒写`）。`updateTask` / `updateTaskAsync` 锁内改严格读（含形状判据），读不出退 2、不覆盖；`gate --check` 在输出之前判、不写不推进，`--await-approval` 读不出改退 2；审批 / 放弃、`verify`、`review` 准备阶段在第一次落盘之前先判，审批闸门已写下决定之后正本才坏由比较-交换回退。计划双审 8 条全接受；单测 25 条、集成 13 条；变异预跑与正式装置均 14/14。证据见 [`evidence/task-unreadable-refusal-20261022/`](./evidence/task-unreadable-refusal-20261022/)；主设计 v1.3.171。
+ 
+ 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
+ 
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 8fb4e543..16ebc498 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -343,7 +343,7 @@
+ | EV-245 | **done**（2026-10-18，主题 `doctor旗标提示与start共享根检查`，主设计 v1.3.169）：`cmdDoctor` 的 `--model-<id>` 补上与档位旗标同一份判键（`assertModelOverrideKeys(…, CRITIC_AGENT_IDS)`，对现注册表全部放行）；`runDoctor` 的 `overridesFor` 成为覆盖值唯一读点，写了却没用上的覆盖按运行期记录分三种原因（该段不读覆盖 / 被 `--only` 滤掉 / 尚无探针）在末尾给一条提示，只进 `warnings`，退出码与 `--json` 既有字段不变；措辞用「固定的探测口径」而非「固定探测模型」（zcode 按配置 plan 档取探测模型、并非写死）。报告 `doc/05_testing/REPORT_2026-10-18_doctor_flags_start_shared_root.md`。原状态：todo（2026-10-18 登记，M12 收口；来源：M12 批次 4 报告 §2.2 记的残余不对称，用户记入 `原始需求.txt` 20261018Bug 第 1 条；动判据，修时走 `/dual-run`；**口径 2026-10-18 用户定：提示一条、退出码不变**） | **`doctor` 收到写给它不消费的家的覆盖旗标时静默不起作用。**`runDoctor` 只把覆盖值用在 codex / claude 两家的探测（`doctor.ts` 的 Codex、Claude 两段 `resolveTier`），gemini / glm 的探测用各自固定的探测模型，于是 `doctor --model-gemini X`、`--tier-glm high`、`--effort-gemini …` 一类照常退 0、覆盖值不生效也不提示。键判定上：档位类旗标经 `assertTierFlags(…, CRITIC_AGENT_IDS)` 判键，但已登记的四家都是审核者，实际全部放行；模型旗标只判空值（批次 4 补的 `assertFlagValuesGiven`），键不判——批次 4 报告记的「不对称」是名义上的，真正的缺口是两类旗标对 gemini / glm 都静默。`review` / `preflight` 早已按本轮入选判键、未入选退 64。用户定的修法：模型旗标补上与档位旗标同一份判键；写给 doctor 不消费的家的覆盖值在 doctor 输出里给一条提示，说明这两家用固定探测模型、这些值没用上，退出码不变 | `src/trivium/cli.ts`（`cmdDoctor`：`collectModelOverrides` 之后只有 `assertFlagValuesGiven`）；`src/trivium/doctor.ts`（`opts.modelOverrides` 只读 codex / claude）；`src/trivium/critics.ts`（`assertModelOverrideKeys`） |
+ | EV-246 | **done**（2026-10-18，同上主题，主设计 v1.3.169）：`startRun` 的告警复查在档位组合之后、必读剔除之前追加 `checkSharedReadRoots([当轮 Driver, ...入选审核者])`，与预检同一函数、同一口径，只告警不阻断；`checkSharedReadRoots` / `summarizeSharedRootProblems` 加可选场合参数，`--start` 传「本次运行」，预检侧缺省「本次预检」输出不变。共享根干净时 `--start` 人读与 `--json` 新旧规范化后逐字节相同（报告同上 §6）。测试隔离：U8 对账论域扩到 `startRun` 与自己 spawn 产物跑 `--start` 的文件。原状态：todo（2026-10-18 登记，M12 收口；来源：EV-240 残余，M12 批次 5 计划 T-5 定「不跑，只进 preflight」，用户记入 `原始需求.txt` 20261018Bug 第 2 条；动调用链，修时走 `/dual-run`） | **`review --start` 不跑共享读取面检查（同名入口与 `shared-residue`）。**这项检查现在只在安装器、`install:check`、`doctor`、`preflight` 四处跑；`review --start` 自带的入口校验只补了模型 slug 与档位组合（`review.ts` 注释写明「终端直接跑 `--start` 就绕过了」预检），共享读取面这一项没有补，终端直接跑 `--start` 或 skill 漏跑预检时看不到告警。T-5 当时不跑的理由：任务目标只点了 preflight，`--start` 的 warnings 通道有 `deepEqual(warnings, [])` 一类既有断言、加进去会牵动更多用例，且收益与预检重复。修法候选：`--start` 的 warnings 复查补一行告警（不阻断，口径同 preflight：只看本轮 Driver ∪ 入选审核者） | `src/trivium/review.ts`（`--start` 入口校验段）；`src/trivium/preflight.ts`（共享读取面同名入口一项）；`src/trivium/entry-collisions.ts` |
+ | EV-247 | **done**（2026-10-22，主设计 v1.3.170，用户 2026-10-22 定由 Driver 直接实施、提交前走 `/dual-review-code`）：新增契约 `review.v2`（`verdict` 三值 `pass` / `pass-after-changes` / `reject`），`isReviewSchemaId` 统一读取侧判据（含禁读矩阵）；新模块 `round-verdict.ts` 按侧计票（不通过 ≥ 50% ⇒ 不通过，否则修改后通过 ≥ 50% ⇒ 修改后通过，否则通过 ≥ 50% ⇒ 通过，三档都不到半数 ⇒ 修改后通过，有效票 × 2 < 入选侧数 ⇒ 有效结论不足、人工审核）；续链判定由归档正本把守 `human_review` 未表态（退 64）、读不出的运行留痕拒跑、纯文档跳过轮不打断轮次链（计划 r2 与代码双审 r1 接受项）、审批正本 task.json 读不出拒跑（代码双审 r2 GLM-01；**与计划 r2 §四.4「读不出 fail-closed 判已表态 ⇒ 新链」相反，用户 2026-10-22 定不补 r3 计划、直接改码，此处登记偏差**：那条 fail-closed 只对闸门推进成立，在轮次链里会越过人工审核停点并重置上限）；run.v3 补可选 `review_loop` / `round_verdict`；`review --start --max-rounds`（1～10，缺省 3）与轮次链（续链沿用链首上限、中途改上限退 64）；`topic resolve` 输出 `max_rounds: { plan, code }`（命令 A 可分阶段指定）；`gate --check` 按 `next_action` 定闸门去向（`rerun` 回 idle、`human_review` 立停点含命令 A）；计划阶段带轮次链的轮次每轮必写新一轮完整计划；三条命令的 skill 改为循环，命令 C / A 的代码审裁决后在校验前直接改码。原状态：新需求（2026-10-22，用户粘贴的五条） | **计划审与代码审改为按三档结论计票的多轮评审循环。** 此前 `verdict` 只渲染进审查文档、编排器不汇总，每个阶段只审一轮，是否再审全靠人 | `skills/dual-critic/schema/review.v2.json`；`src/trivium/round-verdict.ts`、`parse.ts`、`review.ts`、`gate.ts`、`cli.ts`、`topic-args.ts`、`run-protocol.ts`；`skills-src/partials/review/`、`skills-src/commands/run.contract.md` |
+-| EV-248 | todo（2026-10-22 登记，EV-247 代码双审 r3 第 5.5 步改码时实测暴露；早于 EV-247 存在，不在该主题范围内，待用户定是否开题） | **审批正本 task.json 读不出时，`updateTask` / `updateTaskAsync` 会把它静默覆盖成一份新正本，审批记录随之丢失。**两者在锁内用宽松的 `readTask` 读正本，读不出就回落 `emptyTask`，改完照常原子写回。`gate --check` 每次通过后都会先写 `joint_checks`（`cli.ts` 共同阻断三态落盘那一段），而这一步在「本轮是否已表态」判定之前，所以正本写坏后跑一次 `--check`：坏件被覆盖、`approvals[]` 清空，随后判成「未表态」并照常立停点——`humanDecidedThisRound` 的 fail-closed 在这条路径上形同虚设。同样经 `updateTask` 写正本的还有 `approve` / `reject` / `abandon`（`approval.ts`）、`topic claim`（`cli.ts`）、`verify`（`verify.ts`）、纯文档跳过收尾（`review.ts`）。正本进 Git，坏件可从 Git 恢复，但覆盖之后再跑别的命令就没人会提示。修法方向：两个写入口改用 `readTaskStrict`，`unreadable` 时拒写并点名 task.json（`missing` 照旧当新主题）；要先逐个看调用方能否接受拒写 | `src/trivium/meta.ts` 的 `updateTask` / `updateTaskAsync`；调用方 `cli.ts`（`gate --check`、`topic claim`）、`approval.ts`、`verify.ts`、`review.ts` |
++| EV-248 | **done**（2026-10-22，主题 `审批正本读不出拒写`，`/dual-run`，主设计 v1.3.171）：写入口 `updateTask` / `updateTaskAsync` 锁内改严格读，读不出抛退 2 的受控错误、不调回调、正本原样，不存在照旧起写；`readTaskStrict` 加形状判据（非对象、`schema` 不对、四个数组字段缺失或不是数组 ⇒ 读不出，计划双审 AGY-02）。逐个调用方在第一次落盘之前先判、判不过零写入退 2：`gate --check` 在结果输出之前判（`failures` 带 `task_unreadable`，不写、不推进闸门、不归零阻断计数）；`gate --await-approval` 读不出改退 2、`ok: false`（计划双审 AGY-01，此前退 0）；`approve` / `abandon` 复核之前判、`recordApproval` 写闸门之前再判，闸门已写下决定之后正本才坏由比较-交换回退闸门；`verify` 执行命令之前判，跑完才在登记时被拒保留记录、文案写明命令结论；`review` 准备阶段在分配 run_id 之前判（零工件，覆盖骨架登记、任务目标与纯文档跳过收尾）；`topic claim` 由写入口锁内判；worker 收尾时才坏走既有异常收尾。三处读不出出口共用 `taskUnreadableExit`（点名绝对路径、Git 找回命令、恢复由用户在终端执行）。残余：worker 运行中正本被搅坏留下「run.json 终态、正本未登记」，恢复后不会补登记，靠提交锚 ② 拦，未开题。原状态：todo（2026-10-22 登记，EV-247 代码双审 r3 第 5.5 步改码时实测暴露；早于 EV-247 存在，不在该主题范围内，待用户定是否开题） | **审批正本 task.json 读不出时，`updateTask` / `updateTaskAsync` 会把它静默覆盖成一份新正本，审批记录随之丢失。**两者在锁内用宽松的 `readTask` 读正本，读不出就回落 `emptyTask`，改完照常原子写回。`gate --check` 每次通过后都会先写 `joint_checks`（`cli.ts` 共同阻断三态落盘那一段），而这一步在「本轮是否已表态」判定之前，所以正本写坏后跑一次 `--check`：坏件被覆盖、`approvals[]` 清空，随后判成「未表态」并照常立停点——`humanDecidedThisRound` 的 fail-closed 在这条路径上形同虚设。同样经 `updateTask` 写正本的还有 `approve` / `reject` / `abandon`（`approval.ts`）、`topic claim`（`cli.ts`）、`verify`（`verify.ts`）、纯文档跳过收尾（`review.ts`）。正本进 Git，坏件可从 Git 恢复，但覆盖之后再跑别的命令就没人会提示。修法方向：两个写入口改用 `readTaskStrict`，`unreadable` 时拒写并点名 task.json（`missing` 照旧当新主题）；要先逐个看调用方能否接受拒写 | `src/trivium/meta.ts` 的 `updateTask` / `updateTaskAsync`；调用方 `cli.ts`（`gate --check`、`topic claim`）、`approval.ts`、`verify.ts`、`review.ts` |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/skills-src/commands/abandon.contract.md b/skills-src/commands/abandon.contract.md
+index c0736330..0ceb0df9 100644
+--- a/skills-src/commands/abandon.contract.md
++++ b/skills-src/commands/abandon.contract.md
+@@ -20,5 +20,6 @@ allowed-tools: Bash(.trivium/bin/trivium:*)
+ 不带 `--stage` 时放弃该主题下全部未关闭闸门，但**跳过 `running` 的那些**：
+ 审查还在跑，闸门不能就地作废。要停掉进行中的审查，先 `.trivium/bin/trivium review --cancel <run_id>`，
+ 再放弃。对 `running` 闸门显式指定 `--stage` 会退 2。
++审批正本 task.json 读不出时也退 2，哪道闸门都不动；恢复由用户在终端做，恢复后再放弃。
+ 放弃会解除业务写锁，但**已有工件一律保留**（PRD 第 10 章）——
+ 放弃的是闸门，不是留痕。
+diff --git a/skills-src/commands/approve.contract.md b/skills-src/commands/approve.contract.md
+index 8cec5f8c..ed3bbb66 100644
+--- a/skills-src/commands/approve.contract.md
++++ b/skills-src/commands/approve.contract.md
+@@ -16,6 +16,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit
+ ```
+ 
+ 把输出原样转述给用户。输出里的工作树改动摘要只告知，不改变审批结论；不得据此改文件、拒绝放行或代替用户判断。
++退 2 且输出点名审批正本 task.json 读不出时，审批没有记录、闸门没有动；恢复由用户在终端做，恢复后再审批。
+ 
+ **批之前想再看一眼改动**：`approve` 没有确认步骤，摘要打印出来时审批已经落下。用户只是想先看改动、
+ 还没决定批不批时，**不要跑 `approve`**，改跑：
+diff --git a/skills-src/commands/run.contract.md b/skills-src/commands/run.contract.md
+index 83fe53c4..53ce3c61 100644
+--- a/skills-src/commands/run.contract.md
++++ b/skills-src/commands/run.contract.md
+@@ -141,6 +141,8 @@ S5 编码依据的「已批准的修订计划」就是循环最后一轮写的
+ ### S4 裁决校验与分支
+ `TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐后重跑本步；
+ 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，不回 S3、不计入重跑次数，
++原样转述后停下，由用户在终端恢复正本后再重跑本步（`--await-approval` 遇到同样情形也退 2，同样处理）。
+ 
+ 通过后先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+ - **`rerun`**（本轮不通过、还有轮次）：回到 S2 重审，旗标与上一轮同一组；被审对象自动取 S3 刚写的新一轮计划（不传 `--plan-file`）。
+@@ -178,6 +180,7 @@ S6～S9 同样是一个循环（EV-247）：不通过占半数及以上且还有
+ ### S9 裁决校验与分支
+ `TV gate --stage code --topic <主题> --check --json`。有缺口则回到 S7 补齐后重跑本步；
+ 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
++`failures` 含 `task_unreadable` 时的处置同 S4。
+ 
+ 通过后先把返回里的 `round_line` 原样念给用户，再按 `next_action` 走：
+ - **`rerun`**（本轮不通过、还有轮次）：回到 S6 重审，新一轮的补丁含 S8 改后的全部变更。
+@@ -194,6 +197,9 @@ S6～S9 同样是一个循环（EV-247）：不通过占半数及以上且还有
+ > **失败不得宣称成功。** 任一命令非零退出 → 全流程状态为 `failed`，
+ > 已产生的全部工件保留（FR-21 / AC-10）。如实向用户报告失败与退出码。
+ 
++**退 2 不是编译测试失败**：审批正本 task.json 读不出。命令可能根本没执行（开跑前判出），也可能已执行完但没登记进正本
++（输出里写明了命令结论）。原样转述后停下，由用户在终端恢复正本再重跑；不当作编译失败去排查，也不宣称已收口。
++
+ ## 遇到 Bug 根因材料时
+ 
+ 命令 A 的链路**不含**独立根因审阶段。若运行中产出了待审的根因材料，
+diff --git a/skills-src/partials/review/body.md b/skills-src/partials/review/body.md
+index fc5eb9f6..39046224 100644
+--- a/skills-src/partials/review/body.md
++++ b/skills-src/partials/review/body.md
+@@ -200,6 +200,9 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ {{> review/loop@STAGE}}
+ 
+ ### 7. 停点
+diff --git a/skills-src/partials/review/claim.file.md b/skills-src/partials/review/claim.file.md
+index 310aec1d..01ab0484 100644
+--- a/skills-src/partials/review/claim.file.md
++++ b/skills-src/partials/review/claim.file.md
+@@ -12,6 +12,7 @@ TV topic claim --topic <主题> --stage {{STAGE}} --driver {{DRIVER}} --json
+ - 本阶段已声明为你自己时它退 0、什么都不改，照常继续；
+ - **退 64 时原样转述并停止**：本阶段已由别家执笔，或阶段目录里已有别家后缀的文件。
+   **不要删那些文件来换回认领**——那是刻意的限制，它们的去留请用户在终端处理；
++- **退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入。恢复由用户在终端做，恢复后再重跑本步；
+ - 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ 认领之后若原稿还没写，用 Write 落盘 `.reviews/<主题>/{{STAGE}}/<日期>-<主题>-<当轮 Driver>.md`，再进第 1 步。
+diff --git a/skills-src/partials/run/claim-code.md b/skills-src/partials/run/claim-code.md
+index 6f968b99..5a5f1159 100644
+--- a/skills-src/partials/run/claim-code.md
++++ b/skills-src/partials/run/claim-code.md
+@@ -2,4 +2,4 @@
+ `TV topic claim --topic <主题> --stage code --driver {{DRIVER}} --json`
+ 
+ 让 code 阶段在 S6 的 `--start` 之前就有权威值：手工补跑的 CLI 调用漏传 `--driver` 时，
+-也不会静默回落到缺省 Driver。退 0 / 退 64 的处置与 S0.8 相同。
++也不会静默回落到缺省 Driver。退 0 / 退 64 / 退 2 的处置与 S0.8 相同。
+diff --git a/skills-src/partials/run/claim-plan.md b/skills-src/partials/run/claim-plan.md
+index 0169fec7..25514c5b 100644
+--- a/skills-src/partials/run/claim-plan.md
++++ b/skills-src/partials/run/claim-plan.md
+@@ -4,4 +4,5 @@
+ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运行留痕，护栏只能按**声明**判定这一阶段归谁写。
+ 本阶段已声明为你自己时它退 0、什么都不改；**退 64 时原样转述并停止**：plan 阶段已由别家执笔，
+ 或阶段目录里已有别家后缀的文件——**不要删那些文件来换回认领**，它们的去留请用户在终端处理。
++**退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入，恢复由用户在终端做。
+ 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+diff --git a/skills/dual-abandon/SKILL.md b/skills/dual-abandon/SKILL.md
+index 6e9d15f8..fbc1bb95 100644
+--- a/skills/dual-abandon/SKILL.md
++++ b/skills/dual-abandon/SKILL.md
+@@ -19,5 +19,6 @@ allowed-tools: Bash(.trivium/bin/trivium:*)
+ 不带 `--stage` 时放弃该主题下全部未关闭闸门，但**跳过 `running` 的那些**：
+ 审查还在跑，闸门不能就地作废。要停掉进行中的审查，先 `.trivium/bin/trivium review --cancel <run_id>`，
+ 再放弃。对 `running` 闸门显式指定 `--stage` 会退 2。
++审批正本 task.json 读不出时也退 2，哪道闸门都不动；恢复由用户在终端做，恢复后再放弃。
+ 放弃会解除业务写锁，但**已有工件一律保留**（PRD 第 10 章）——
+ 放弃的是闸门，不是留痕。
+diff --git a/skills/dual-approve/SKILL.md b/skills/dual-approve/SKILL.md
+index c4016519..a2e115d6 100644
+--- a/skills/dual-approve/SKILL.md
++++ b/skills/dual-approve/SKILL.md
+@@ -15,6 +15,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit
+ ```
+ 
+ 把输出原样转述给用户。输出里的工作树改动摘要只告知，不改变审批结论；不得据此改文件、拒绝放行或代替用户判断。
++退 2 且输出点名审批正本 task.json 读不出时，审批没有记录、闸门没有动；恢复由用户在终端做，恢复后再审批。
+ 
+ **批之前想再看一眼改动**：`approve` 没有确认步骤，摘要打印出来时审批已经落下。用户只是想先看改动、
+ 还没决定批不批时，**不要跑 `approve`**，改跑：
+diff --git a/skills/dual-critic/entry/codex/dual-abandon/SKILL.md b/skills/dual-critic/entry/codex/dual-abandon/SKILL.md
+index f54b7cf8..3ec849e7 100644
+--- a/skills/dual-critic/entry/codex/dual-abandon/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-abandon/SKILL.md
+@@ -29,5 +29,6 @@ description: 放弃未关闭的双审闸门，解除业务写锁；已有工件
+ 不带 `--stage` 时放弃该主题下全部未关闭闸门，但**跳过 `running` 的那些**：
+ 审查还在跑，闸门不能就地作废。要停掉进行中的审查，先 `.trivium/bin/trivium review --cancel <run_id>`，
+ 再放弃。对 `running` 闸门显式指定 `--stage` 会退 2。
++审批正本 task.json 读不出时也退 2，哪道闸门都不动；恢复由用户在终端做，恢复后再放弃。
+ 放弃会解除业务写锁，但**已有工件一律保留**（PRD 第 10 章）——
+ 放弃的是闸门，不是留痕。
+diff --git a/skills/dual-critic/entry/codex/dual-approve/SKILL.md b/skills/dual-critic/entry/codex/dual-approve/SKILL.md
+index 98872728..f863705a 100644
+--- a/skills/dual-critic/entry/codex/dual-approve/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-approve/SKILL.md
+@@ -25,6 +25,7 @@ description: 人工审批双审闸门：通过或拒绝。两种结论均解除
+ ```
+ 
+ 把输出原样转述给用户。输出里的工作树改动摘要只告知，不改变审批结论；不得据此改文件、拒绝放行或代替用户判断。
++退 2 且输出点名审批正本 task.json 读不出时，审批没有记录、闸门没有动；恢复由用户在终端做，恢复后再审批。
+ 
+ **批之前想再看一眼改动**：`approve` 没有确认步骤，摘要打印出来时审批已经落下。用户只是想先看改动、
+ 还没决定批不批时，**不要跑 `approve`**，改跑：
+diff --git a/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md b/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
+index aaf5ef71..1fc18cf8 100644
+--- a/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-review-bug/SKILL.md
+@@ -54,6 +54,7 @@ TV topic claim --topic <主题> --stage bug --driver codex --json
+ - 本阶段已声明为你自己时它退 0、什么都不改，照常继续；
+ - **退 64 时原样转述并停止**：本阶段已由别家执笔，或阶段目录里已有别家后缀的文件。
+   **不要删那些文件来换回认领**——那是刻意的限制，它们的去留请用户在终端处理；
++- **退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入。恢复由用户在终端做，恢复后再重跑本步；
+ - 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ 认领之后若原稿还没写，用 Write 落盘 `.reviews/<主题>/bug/<日期>-<主题>-<当轮 Driver>.md`，再进第 1 步。
+@@ -240,6 +241,9 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 7. 停点
+ 
+ 运行 `TV gate --stage bug --topic <主题> --await-approval`，
+diff --git a/skills/dual-critic/entry/codex/dual-review-code/SKILL.md b/skills/dual-critic/entry/codex/dual-review-code/SKILL.md
+index 61fcd3ce..33565ad8 100644
+--- a/skills/dual-critic/entry/codex/dual-review-code/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-review-code/SKILL.md
+@@ -240,6 +240,9 @@ Bash 只在这一步用来自查；审查进行中（第 3 步拉起之后、第
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 6.5 按计票结论分支（多轮评审循环，EV-247）
+ 
+ 第 6 步通过后，先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+diff --git a/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md b/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
+index 7ddc1966..8a0efa3e 100644
+--- a/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-review-plan/SKILL.md
+@@ -54,6 +54,7 @@ TV topic claim --topic <主题> --stage plan --driver codex --json
+ - 本阶段已声明为你自己时它退 0、什么都不改，照常继续；
+ - **退 64 时原样转述并停止**：本阶段已由别家执笔，或阶段目录里已有别家后缀的文件。
+   **不要删那些文件来换回认领**——那是刻意的限制，它们的去留请用户在终端处理；
++- **退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入。恢复由用户在终端做，恢复后再重跑本步；
+ - 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ 认领之后若原稿还没写，用 Write 落盘 `.reviews/<主题>/plan/<日期>-<主题>-<当轮 Driver>.md`，再进第 1 步。
+@@ -255,6 +256,9 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 6.5 按计票结论分支（多轮评审循环，EV-247）
+ 
+ 第 6 步通过后，先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+diff --git a/skills/dual-critic/entry/codex/dual-run/SKILL.md b/skills/dual-critic/entry/codex/dual-run/SKILL.md
+index 358c23e0..a348d998 100644
+--- a/skills/dual-critic/entry/codex/dual-run/SKILL.md
++++ b/skills/dual-critic/entry/codex/dual-run/SKILL.md
+@@ -114,6 +114,7 @@ P / C 取 `max_rounds` 的对应项，null 时写 3（缺省）。
+ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运行留痕，护栏只能按**声明**判定这一阶段归谁写。
+ 本阶段已声明为你自己时它退 0、什么都不改；**退 64 时原样转述并停止**：plan 阶段已由别家执笔，
+ 或阶段目录里已有别家后缀的文件——**不要删那些文件来换回认领**，它们的去留请用户在终端处理。
++**退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入，恢复由用户在终端做。
+ 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ ### S1 起草计划
+@@ -172,6 +173,8 @@ S5 编码依据的「已批准的修订计划」就是循环最后一轮写的
+ ### S4 裁决校验与分支
+ `TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐后重跑本步；
+ 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，不回 S3、不计入重跑次数，
++原样转述后停下，由用户在终端恢复正本后再重跑本步（`--await-approval` 遇到同样情形也退 2，同样处理）。
+ 
+ 通过后先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+ - **`rerun`**（本轮不通过、还有轮次）：回到 S2 重审，旗标与上一轮同一组；被审对象自动取 S3 刚写的新一轮计划（不传 `--plan-file`）。
+@@ -186,7 +189,7 @@ S5 编码依据的「已批准的修订计划」就是循环最后一轮写的
+ `TV topic claim --topic <主题> --stage code --driver codex --json`
+ 
+ 让 code 阶段在 S6 的 `--start` 之前就有权威值：手工补跑的 CLI 调用漏传 `--driver` 时，
+-也不会静默回落到缺省 Driver。退 0 / 退 64 的处置与 S0.8 相同。
++也不会静默回落到缺省 Driver。退 0 / 退 64 / 退 2 的处置与 S0.8 相同。
+ 
+ ### S5 编码实现
+ 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
+@@ -213,6 +216,7 @@ S6～S9 同样是一个循环（EV-247）：不通过占半数及以上且还有
+ ### S9 裁决校验与分支
+ `TV gate --stage code --topic <主题> --check --json`。有缺口则回到 S7 补齐后重跑本步；
+ 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
++`failures` 含 `task_unreadable` 时的处置同 S4。
+ 
+ 通过后先把返回里的 `round_line` 原样念给用户，再按 `next_action` 走：
+ - **`rerun`**（本轮不通过、还有轮次）：回到 S6 重审，新一轮的补丁含 S8 改后的全部变更。
+@@ -229,6 +233,9 @@ S6～S9 同样是一个循环（EV-247）：不通过占半数及以上且还有
+ > **失败不得宣称成功。** 任一命令非零退出 → 全流程状态为 `failed`，
+ > 已产生的全部工件保留（FR-21 / AC-10）。如实向用户报告失败与退出码。
+ 
++**退 2 不是编译测试失败**：审批正本 task.json 读不出。命令可能根本没执行（开跑前判出），也可能已执行完但没登记进正本
++（输出里写明了命令结论）。原样转述后停下，由用户在终端恢复正本再重跑；不当作编译失败去排查，也不宣称已收口。
++
+ ## 遇到 Bug 根因材料时
+ 
+ 命令 A 的链路**不含**独立根因审阶段。若运行中产出了待审的根因材料，
+diff --git a/skills/dual-critic/entry/gemini/dual-abandon/SKILL.md b/skills/dual-critic/entry/gemini/dual-abandon/SKILL.md
+index f54b7cf8..3ec849e7 100644
+--- a/skills/dual-critic/entry/gemini/dual-abandon/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-abandon/SKILL.md
+@@ -29,5 +29,6 @@ description: 放弃未关闭的双审闸门，解除业务写锁；已有工件
+ 不带 `--stage` 时放弃该主题下全部未关闭闸门，但**跳过 `running` 的那些**：
+ 审查还在跑，闸门不能就地作废。要停掉进行中的审查，先 `.trivium/bin/trivium review --cancel <run_id>`，
+ 再放弃。对 `running` 闸门显式指定 `--stage` 会退 2。
++审批正本 task.json 读不出时也退 2，哪道闸门都不动；恢复由用户在终端做，恢复后再放弃。
+ 放弃会解除业务写锁，但**已有工件一律保留**（PRD 第 10 章）——
+ 放弃的是闸门，不是留痕。
+diff --git a/skills/dual-critic/entry/gemini/dual-approve/SKILL.md b/skills/dual-critic/entry/gemini/dual-approve/SKILL.md
+index 98872728..f863705a 100644
+--- a/skills/dual-critic/entry/gemini/dual-approve/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-approve/SKILL.md
+@@ -25,6 +25,7 @@ description: 人工审批双审闸门：通过或拒绝。两种结论均解除
+ ```
+ 
+ 把输出原样转述给用户。输出里的工作树改动摘要只告知，不改变审批结论；不得据此改文件、拒绝放行或代替用户判断。
++退 2 且输出点名审批正本 task.json 读不出时，审批没有记录、闸门没有动；恢复由用户在终端做，恢复后再审批。
+ 
+ **批之前想再看一眼改动**：`approve` 没有确认步骤，摘要打印出来时审批已经落下。用户只是想先看改动、
+ 还没决定批不批时，**不要跑 `approve`**，改跑：
+diff --git a/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md b/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
+index fb5fbf4d..69fe4b60 100644
+--- a/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-review-bug/SKILL.md
+@@ -54,6 +54,7 @@ TV topic claim --topic <主题> --stage bug --driver gemini --json
+ - 本阶段已声明为你自己时它退 0、什么都不改，照常继续；
+ - **退 64 时原样转述并停止**：本阶段已由别家执笔，或阶段目录里已有别家后缀的文件。
+   **不要删那些文件来换回认领**——那是刻意的限制，它们的去留请用户在终端处理；
++- **退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入。恢复由用户在终端做，恢复后再重跑本步；
+ - 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ 认领之后若原稿还没写，用 Write 落盘 `.reviews/<主题>/bug/<日期>-<主题>-<当轮 Driver>.md`，再进第 1 步。
+@@ -240,6 +241,9 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 7. 停点
+ 
+ 运行 `TV gate --stage bug --topic <主题> --await-approval`，
+diff --git a/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md b/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
+index b227d578..0fbde8e5 100644
+--- a/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-review-code/SKILL.md
+@@ -240,6 +240,9 @@ Bash 只在这一步用来自查；审查进行中（第 3 步拉起之后、第
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 6.5 按计票结论分支（多轮评审循环，EV-247）
+ 
+ 第 6 步通过后，先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+diff --git a/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md b/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
+index f4a15678..b8da3059 100644
+--- a/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-review-plan/SKILL.md
+@@ -54,6 +54,7 @@ TV topic claim --topic <主题> --stage plan --driver gemini --json
+ - 本阶段已声明为你自己时它退 0、什么都不改，照常继续；
+ - **退 64 时原样转述并停止**：本阶段已由别家执笔，或阶段目录里已有别家后缀的文件。
+   **不要删那些文件来换回认领**——那是刻意的限制，它们的去留请用户在终端处理；
++- **退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入。恢复由用户在终端做，恢复后再重跑本步；
+ - 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ 认领之后若原稿还没写，用 Write 落盘 `.reviews/<主题>/plan/<日期>-<主题>-<当轮 Driver>.md`，再进第 1 步。
+@@ -255,6 +256,9 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 6.5 按计票结论分支（多轮评审循环，EV-247）
+ 
+ 第 6 步通过后，先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+diff --git a/skills/dual-critic/entry/gemini/dual-run/SKILL.md b/skills/dual-critic/entry/gemini/dual-run/SKILL.md
+index cac9d765..19b08083 100644
+--- a/skills/dual-critic/entry/gemini/dual-run/SKILL.md
++++ b/skills/dual-critic/entry/gemini/dual-run/SKILL.md
+@@ -114,6 +114,7 @@ P / C 取 `max_rounds` 的对应项，null 时写 3（缺省）。
+ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运行留痕，护栏只能按**声明**判定这一阶段归谁写。
+ 本阶段已声明为你自己时它退 0、什么都不改；**退 64 时原样转述并停止**：plan 阶段已由别家执笔，
+ 或阶段目录里已有别家后缀的文件——**不要删那些文件来换回认领**，它们的去留请用户在终端处理。
++**退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入，恢复由用户在终端做。
+ 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ ### S1 起草计划
+@@ -172,6 +173,8 @@ S5 编码依据的「已批准的修订计划」就是循环最后一轮写的
+ ### S4 裁决校验与分支
+ `TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐后重跑本步；
+ 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，不回 S3、不计入重跑次数，
++原样转述后停下，由用户在终端恢复正本后再重跑本步（`--await-approval` 遇到同样情形也退 2，同样处理）。
+ 
+ 通过后先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+ - **`rerun`**（本轮不通过、还有轮次）：回到 S2 重审，旗标与上一轮同一组；被审对象自动取 S3 刚写的新一轮计划（不传 `--plan-file`）。
+@@ -186,7 +189,7 @@ S5 编码依据的「已批准的修订计划」就是循环最后一轮写的
+ `TV topic claim --topic <主题> --stage code --driver gemini --json`
+ 
+ 让 code 阶段在 S6 的 `--start` 之前就有权威值：手工补跑的 CLI 调用漏传 `--driver` 时，
+-也不会静默回落到缺省 Driver。退 0 / 退 64 的处置与 S0.8 相同。
++也不会静默回落到缺省 Driver。退 0 / 退 64 / 退 2 的处置与 S0.8 相同。
+ 
+ ### S5 编码实现
+ 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
+@@ -213,6 +216,7 @@ S6～S9 同样是一个循环（EV-247）：不通过占半数及以上且还有
+ ### S9 裁决校验与分支
+ `TV gate --stage code --topic <主题> --check --json`。有缺口则回到 S7 补齐后重跑本步；
+ 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
++`failures` 含 `task_unreadable` 时的处置同 S4。
+ 
+ 通过后先把返回里的 `round_line` 原样念给用户，再按 `next_action` 走：
+ - **`rerun`**（本轮不通过、还有轮次）：回到 S6 重审，新一轮的补丁含 S8 改后的全部变更。
+@@ -229,6 +233,9 @@ S6～S9 同样是一个循环（EV-247）：不通过占半数及以上且还有
+ > **失败不得宣称成功。** 任一命令非零退出 → 全流程状态为 `failed`，
+ > 已产生的全部工件保留（FR-21 / AC-10）。如实向用户报告失败与退出码。
+ 
++**退 2 不是编译测试失败**：审批正本 task.json 读不出。命令可能根本没执行（开跑前判出），也可能已执行完但没登记进正本
++（输出里写明了命令结论）。原样转述后停下，由用户在终端恢复正本再重跑；不当作编译失败去排查，也不宣称已收口。
++
+ ## 遇到 Bug 根因材料时
+ 
+ 命令 A 的链路**不含**独立根因审阶段。若运行中产出了待审的根因材料，
+diff --git a/skills/dual-critic/entry/glm/dual-abandon/SKILL.md b/skills/dual-critic/entry/glm/dual-abandon/SKILL.md
+index f54b7cf8..3ec849e7 100644
+--- a/skills/dual-critic/entry/glm/dual-abandon/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-abandon/SKILL.md
+@@ -29,5 +29,6 @@ description: 放弃未关闭的双审闸门，解除业务写锁；已有工件
+ 不带 `--stage` 时放弃该主题下全部未关闭闸门，但**跳过 `running` 的那些**：
+ 审查还在跑，闸门不能就地作废。要停掉进行中的审查，先 `.trivium/bin/trivium review --cancel <run_id>`，
+ 再放弃。对 `running` 闸门显式指定 `--stage` 会退 2。
++审批正本 task.json 读不出时也退 2，哪道闸门都不动；恢复由用户在终端做，恢复后再放弃。
+ 放弃会解除业务写锁，但**已有工件一律保留**（PRD 第 10 章）——
+ 放弃的是闸门，不是留痕。
+diff --git a/skills/dual-critic/entry/glm/dual-approve/SKILL.md b/skills/dual-critic/entry/glm/dual-approve/SKILL.md
+index 98872728..f863705a 100644
+--- a/skills/dual-critic/entry/glm/dual-approve/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-approve/SKILL.md
+@@ -25,6 +25,7 @@ description: 人工审批双审闸门：通过或拒绝。两种结论均解除
+ ```
+ 
+ 把输出原样转述给用户。输出里的工作树改动摘要只告知，不改变审批结论；不得据此改文件、拒绝放行或代替用户判断。
++退 2 且输出点名审批正本 task.json 读不出时，审批没有记录、闸门没有动；恢复由用户在终端做，恢复后再审批。
+ 
+ **批之前想再看一眼改动**：`approve` 没有确认步骤，摘要打印出来时审批已经落下。用户只是想先看改动、
+ 还没决定批不批时，**不要跑 `approve`**，改跑：
+diff --git a/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md b/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
+index 7588ec77..5e28d6e0 100644
+--- a/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-review-bug/SKILL.md
+@@ -62,6 +62,7 @@ TV topic claim --topic <主题> --stage bug --driver glm --json
+ - 本阶段已声明为你自己时它退 0、什么都不改，照常继续；
+ - **退 64 时原样转述并停止**：本阶段已由别家执笔，或阶段目录里已有别家后缀的文件。
+   **不要删那些文件来换回认领**——那是刻意的限制，它们的去留请用户在终端处理；
++- **退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入。恢复由用户在终端做，恢复后再重跑本步；
+ - 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ 认领之后若原稿还没写，用 Write 落盘 `.reviews/<主题>/bug/<日期>-<主题>-<当轮 Driver>.md`，再进第 1 步。
+@@ -248,6 +249,9 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 7. 停点
+ 
+ 运行 `TV gate --stage bug --topic <主题> --await-approval`，
+diff --git a/skills/dual-critic/entry/glm/dual-review-code/SKILL.md b/skills/dual-critic/entry/glm/dual-review-code/SKILL.md
+index c01e74b3..12dbb045 100644
+--- a/skills/dual-critic/entry/glm/dual-review-code/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-review-code/SKILL.md
+@@ -248,6 +248,9 @@ Bash 只在这一步用来自查；审查进行中（第 3 步拉起之后、第
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 6.5 按计票结论分支（多轮评审循环，EV-247）
+ 
+ 第 6 步通过后，先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+diff --git a/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md b/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
+index 48cc437b..f23d4d01 100644
+--- a/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-review-plan/SKILL.md
+@@ -62,6 +62,7 @@ TV topic claim --topic <主题> --stage plan --driver glm --json
+ - 本阶段已声明为你自己时它退 0、什么都不改，照常继续；
+ - **退 64 时原样转述并停止**：本阶段已由别家执笔，或阶段目录里已有别家后缀的文件。
+   **不要删那些文件来换回认领**——那是刻意的限制，它们的去留请用户在终端处理；
++- **退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入。恢复由用户在终端做，恢复后再重跑本步；
+ - 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ 认领之后若原稿还没写，用 Write 落盘 `.reviews/<主题>/plan/<日期>-<主题>-<当轮 Driver>.md`，再进第 1 步。
+@@ -263,6 +264,9 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 6.5 按计票结论分支（多轮评审循环，EV-247）
+ 
+ 第 6 步通过后，先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+diff --git a/skills/dual-critic/entry/glm/dual-run/SKILL.md b/skills/dual-critic/entry/glm/dual-run/SKILL.md
+index 4501a07a..6d0b2cd2 100644
+--- a/skills/dual-critic/entry/glm/dual-run/SKILL.md
++++ b/skills/dual-critic/entry/glm/dual-run/SKILL.md
+@@ -122,6 +122,7 @@ P / C 取 `max_rounds` 的对应项，null 时写 3（缺省）。
+ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运行留痕，护栏只能按**声明**判定这一阶段归谁写。
+ 本阶段已声明为你自己时它退 0、什么都不改；**退 64 时原样转述并停止**：plan 阶段已由别家执笔，
+ 或阶段目录里已有别家后缀的文件——**不要删那些文件来换回认领**，它们的去留请用户在终端处理。
++**退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入，恢复由用户在终端做。
+ 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ ### S1 起草计划
+@@ -180,6 +181,8 @@ S5 编码依据的「已批准的修订计划」就是循环最后一轮写的
+ ### S4 裁决校验与分支
+ `TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐后重跑本步；
+ 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，不回 S3、不计入重跑次数，
++原样转述后停下，由用户在终端恢复正本后再重跑本步（`--await-approval` 遇到同样情形也退 2，同样处理）。
+ 
+ 通过后先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+ - **`rerun`**（本轮不通过、还有轮次）：回到 S2 重审，旗标与上一轮同一组；被审对象自动取 S3 刚写的新一轮计划（不传 `--plan-file`）。
+@@ -194,7 +197,7 @@ S5 编码依据的「已批准的修订计划」就是循环最后一轮写的
+ `TV topic claim --topic <主题> --stage code --driver glm --json`
+ 
+ 让 code 阶段在 S6 的 `--start` 之前就有权威值：手工补跑的 CLI 调用漏传 `--driver` 时，
+-也不会静默回落到缺省 Driver。退 0 / 退 64 的处置与 S0.8 相同。
++也不会静默回落到缺省 Driver。退 0 / 退 64 / 退 2 的处置与 S0.8 相同。
+ 
+ ### S5 编码实现
+ 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
+@@ -221,6 +224,7 @@ S6～S9 同样是一个循环（EV-247）：不通过占半数及以上且还有
+ ### S9 裁决校验与分支
+ `TV gate --stage code --topic <主题> --check --json`。有缺口则回到 S7 补齐后重跑本步；
+ 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
++`failures` 含 `task_unreadable` 时的处置同 S4。
+ 
+ 通过后先把返回里的 `round_line` 原样念给用户，再按 `next_action` 走：
+ - **`rerun`**（本轮不通过、还有轮次）：回到 S6 重审，新一轮的补丁含 S8 改后的全部变更。
+@@ -237,6 +241,9 @@ S6～S9 同样是一个循环（EV-247）：不通过占半数及以上且还有
+ > **失败不得宣称成功。** 任一命令非零退出 → 全流程状态为 `failed`，
+ > 已产生的全部工件保留（FR-21 / AC-10）。如实向用户报告失败与退出码。
+ 
++**退 2 不是编译测试失败**：审批正本 task.json 读不出。命令可能根本没执行（开跑前判出），也可能已执行完但没登记进正本
++（输出里写明了命令结论）。原样转述后停下，由用户在终端恢复正本再重跑；不当作编译失败去排查，也不宣称已收口。
++
+ ## 遇到 Bug 根因材料时
+ 
+ 命令 A 的链路**不含**独立根因审阶段。若运行中产出了待审的根因材料，
+diff --git a/skills/dual-review-bug/SKILL.md b/skills/dual-review-bug/SKILL.md
+index ee86349d..3e5fc834 100644
+--- a/skills/dual-review-bug/SKILL.md
++++ b/skills/dual-review-bug/SKILL.md
+@@ -40,6 +40,7 @@ TV topic claim --topic <主题> --stage bug --driver claude --json
+ - 本阶段已声明为你自己时它退 0、什么都不改，照常继续；
+ - **退 64 时原样转述并停止**：本阶段已由别家执笔，或阶段目录里已有别家后缀的文件。
+   **不要删那些文件来换回认领**——那是刻意的限制，它们的去留请用户在终端处理；
++- **退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入。恢复由用户在终端做，恢复后再重跑本步；
+ - 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ 认领之后若原稿还没写，用 Write 落盘 `.reviews/<主题>/bug/<日期>-<主题>-<当轮 Driver>.md`，再进第 1 步。
+@@ -226,6 +227,9 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 7. 停点
+ 
+ 运行 `TV gate --stage bug --topic <主题> --await-approval`，
+diff --git a/skills/dual-review-code/SKILL.md b/skills/dual-review-code/SKILL.md
+index 28a349ef..f6c914a5 100644
+--- a/skills/dual-review-code/SKILL.md
++++ b/skills/dual-review-code/SKILL.md
+@@ -226,6 +226,9 @@ Bash 只在这一步用来自查；审查进行中（第 3 步拉起之后、第
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 6.5 按计票结论分支（多轮评审循环，EV-247）
+ 
+ 第 6 步通过后，先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+diff --git a/skills/dual-review-plan/SKILL.md b/skills/dual-review-plan/SKILL.md
+index 6871956c..7cbe536b 100644
+--- a/skills/dual-review-plan/SKILL.md
++++ b/skills/dual-review-plan/SKILL.md
+@@ -40,6 +40,7 @@ TV topic claim --topic <主题> --stage plan --driver claude --json
+ - 本阶段已声明为你自己时它退 0、什么都不改，照常继续；
+ - **退 64 时原样转述并停止**：本阶段已由别家执笔，或阶段目录里已有别家后缀的文件。
+   **不要删那些文件来换回认领**——那是刻意的限制，它们的去留请用户在终端处理；
++- **退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入。恢复由用户在终端做，恢复后再重跑本步；
+ - 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ 认领之后若原稿还没写，用 Write 落盘 `.reviews/<主题>/plan/<日期>-<主题>-<当轮 Driver>.md`，再进第 1 步。
+@@ -241,6 +242,9 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
+ 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
+ 仍不通过则向用户说明缺口并停下，交给用户处理。
+ 
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
++也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
++
+ ### 6.5 按计票结论分支（多轮评审循环，EV-247）
+ 
+ 第 6 步通过后，先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+diff --git a/skills/dual-run/SKILL.md b/skills/dual-run/SKILL.md
+index 8581e0b2..b76782db 100644
+--- a/skills/dual-run/SKILL.md
++++ b/skills/dual-run/SKILL.md
+@@ -100,6 +100,7 @@ P / C 取 `max_rounds` 的对应项，null 时写 3（缺省）。
+ S1 的原稿写在 S2 的 `--start` 之前，那一刻 plan 阶段还没有运行留痕，护栏只能按**声明**判定这一阶段归谁写。
+ 本阶段已声明为你自己时它退 0、什么都不改；**退 64 时原样转述并停止**：plan 阶段已由别家执笔，
+ 或阶段目录里已有别家后缀的文件——**不要删那些文件来换回认领**，它们的去留请用户在终端处理。
++**退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入，恢复由用户在终端做。
+ 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
+ 
+ ### S1 起草计划
+@@ -158,6 +159,8 @@ S5 编码依据的「已批准的修订计划」就是循环最后一轮写的
+ ### S4 裁决校验与分支
+ `TV gate --stage plan --topic <主题> --check --json`。有缺口则回到 S3 补齐后重跑本步；
+ 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
++`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，不回 S3、不计入重跑次数，
++原样转述后停下，由用户在终端恢复正本后再重跑本步（`--await-approval` 遇到同样情形也退 2，同样处理）。
+ 
+ 通过后先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+ - **`rerun`**（本轮不通过、还有轮次）：回到 S2 重审，旗标与上一轮同一组；被审对象自动取 S3 刚写的新一轮计划（不传 `--plan-file`）。
+@@ -172,7 +175,7 @@ S5 编码依据的「已批准的修订计划」就是循环最后一轮写的
+ `TV topic claim --topic <主题> --stage code --driver claude --json`
+ 
+ 让 code 阶段在 S6 的 `--start` 之前就有权威值：手工补跑的 CLI 调用漏传 `--driver` 时，
+-也不会静默回落到缺省 Driver。退 0 / 退 64 的处置与 S0.8 相同。
++也不会静默回落到缺省 Driver。退 0 / 退 64 / 退 2 的处置与 S0.8 相同。
+ 
+ ### S5 编码实现
+ 按**已批准的修订计划**改代码。你是唯一有权改业务代码的角色（FR-01）。
+@@ -199,6 +202,7 @@ S6～S9 同样是一个循环（EV-247）：不通过占半数及以上且还有
+ ### S9 裁决校验与分支
+ `TV gate --stage code --topic <主题> --check --json`。有缺口则回到 S7 补齐后重跑本步；
+ 重跑最多 3 次（首次校验不计），仍不通过则向用户说明缺口并停下，交给用户处理。
++`failures` 含 `task_unreadable` 时的处置同 S4。
+ 
+ 通过后先把返回里的 `round_line` 原样念给用户，再按 `next_action` 走：
+ - **`rerun`**（本轮不通过、还有轮次）：回到 S6 重审，新一轮的补丁含 S8 改后的全部变更。
+@@ -215,6 +219,9 @@ S6～S9 同样是一个循环（EV-247）：不通过占半数及以上且还有
+ > **失败不得宣称成功。** 任一命令非零退出 → 全流程状态为 `failed`，
+ > 已产生的全部工件保留（FR-21 / AC-10）。如实向用户报告失败与退出码。
+ 
++**退 2 不是编译测试失败**：审批正本 task.json 读不出。命令可能根本没执行（开跑前判出），也可能已执行完但没登记进正本
++（输出里写明了命令结论）。原样转述后停下，由用户在终端恢复正本再重跑；不当作编译失败去排查，也不宣称已收口。
++
+ ## 遇到 Bug 根因材料时
+ 
+ 命令 A 的链路**不含**独立根因审阶段。若运行中产出了待审的根因材料，
+diff --git a/src/trivium/approval.ts b/src/trivium/approval.ts
+index 14a3aa98..626d8c53 100644
+--- a/src/trivium/approval.ts
++++ b/src/trivium/approval.ts
+@@ -7,7 +7,9 @@
+  */
+ import type { Ctx, Stage } from './types.js';
+ import { setGateChecked, getGate, type GateState } from './state.js';
+-import { updateTask, readTaskStrict, type ApprovalRecord, type TaskMeta } from './meta.js';
++import {
++  updateTask, readTaskStrict, taskUnreadableError, taskUnreadableExit, type ApprovalRecord, type TaskMeta,
++} from './meta.js';
+ import type { ArchiveLayout } from './archive.js';
+ import { resolveTopic } from './topic.js';
+ import { resetStopBlockCount } from './lock.js';
+@@ -65,6 +67,17 @@ export interface ApprovalInput {
+    * 与变异验证守着（M10a 第 3 步测试报告 M1），不靠这个字段。
+    */
+   verifiedRunId?: string | null;
++  /**
++   * **只给单测用的注入点**（EV-248 计划 r2 §五 U5）：闸门已写下本次决定、写正本之前调用。
++   * 用来在这两步之间把正本搅坏，测补偿回退；生产调用方一律不传。
++   */
++  afterGateAppliedForTest?: () => Promise<void>;
++}
++
++/** 审批前先判正本可读（EV-248）：读不出就抛受控错误，闸门不动。`cmdApproval` 与 `recordApproval` 共用 */
++export async function assertTaskWritableForApproval(layout: ArchiveLayout): Promise<void> {
++  const t = await readTaskStrict(layout);
++  if (t.state === 'unreadable') throw taskUnreadableError(layout, t.error, '未记录审批，闸门保持不变');
+ }
+ 
+ /** 放弃可以作用在哪些状态上：除 `running` 之外的全部 */
+@@ -128,19 +141,32 @@ export async function humanDecision(
+   stage: Stage,
+   runId: string,
+ ): Promise<'decided' | 'undecided' | 'unreadable'> {
++  return (await humanDecisionDetailed(layout, stage, runId)).decision;
++}
++
++/** 同 {@link humanDecision}，读不出时另带原因，供 {@link taskUnreadableHold} 点名（EV-248） */
++export async function humanDecisionDetailed(
++  layout: ArchiveLayout,
++  stage: Stage,
++  runId: string,
++): Promise<{ decision: 'decided' | 'undecided' | 'unreadable'; error?: string }> {
+   // 空 run_id 不能当通配：`recordApproval` 在 gate.run_id 为 null 时写的就是空串
+-  if (!runId) return 'undecided';
++  if (!runId) return { decision: 'undecided' };
+ 
+-  const { task, state } = await readTaskStrict(layout);
+-  if (state === 'unreadable') return 'unreadable';
+-  if (state === 'missing') return 'undecided';
++  const { task, state, error } = await readTaskStrict(layout);
++  if (state === 'unreadable') return { decision: 'unreadable', ...(error !== undefined ? { error } : {}) };
++  if (state === 'missing') return { decision: 'undecided' };
+ 
+-  return decidedInTask(task, stage, runId) ? 'decided' : 'undecided';
++  return { decision: decidedInTask(task, stage, runId) ? 'decided' : 'undecided' };
+ }
+ 
+-/** 审批正本读不出时，校验 / 停点命令按已表态保守处理的那句话（`--check` 与 `--await-approval` 共用） */
+-export const TASK_UNREADABLE_HOLD =
+-  '审批正本 task.json 读不出，按已表态保守处理：闸门状态保持不变。请先用 git 查看或恢复这份文件，再重跑本命令。';
++/**
++ * 审批正本读不出时，校验 / 停点命令按已表态保守处理的那段话（`--check` 与 `--await-approval` 共用）。
++ * 后半是写入口拒写的同一段出口（EV-248）：三处同文案、同退出码 2。
++ */
++export function taskUnreadableHold(layout: ArchiveLayout, error: string | undefined): string {
++  return '审批正本 task.json 读不出，按已表态保守处理：闸门状态保持不变。\n' + taskUnreadableExit(layout, error);
++}
+ 
+ /** 已读到的正本里，该轮是否有人工表态（批准、拒绝或作废）。读不出怎么办由调用方按语境决定 */
+ export function decidedInTask(task: TaskMeta, stage: Stage, runId: string): boolean {
+@@ -225,6 +251,13 @@ export async function recordApproval(i: ApprovalInput): Promise<{ message: strin
+     session_id: i.sessionId ?? null,
+   };
+ 
++  /*
++   * 正本读不出就不动闸门（EV-248）：闸门与正本分属两个锁域、没有原子写，先改闸门再发现正本写不进，
++   * 留下的是「闸门已放行、正本没有审批记录」。所以先判；判后写前被搅坏的那一格由下面的补偿兜。
++   */
++  const ref = await resolveTopic(ctx, i.topic, i.stage);
++  await assertTaskWritableForApproval(ref.layout);
++
+   /*
+    * 先做比较-交换：只有闸门仍是我们读到的那一轮（run_id 相同）且状态允许时才写。
+    * 读与写之间若有别的运行接管了槽位（新一轮 --start 把它置成 running），本次审批作废。
+@@ -249,11 +282,33 @@ export async function recordApproval(i: ApprovalInput): Promise<{ message: strin
+     );
+   }
+ 
+-  const ref = await resolveTopic(ctx, i.topic, i.stage);
+-  await updateTask(ref.layout, (t) => {
+-    t.approvals.push(record);
+-    t.gate = { stage: i.stage, state: i.decision, since: record.at, run_id: gate.run_id };
+-  }, { triviumDir: ctx.triviumDir, heartbeatStaleMs });
++  try {
++    if (i.afterGateAppliedForTest) await i.afterGateAppliedForTest();
++    await updateTask(ref.layout, (t) => {
++      t.approvals.push(record);
++      t.gate = { stage: i.stage, state: i.decision, since: record.at, run_id: gate.run_id };
++    }, { triviumDir: ctx.triviumDir, heartbeatStaleMs });
++  } catch (e) {
++    /*
++     * 补偿（EV-248 计划 r2 §三.2）：正本没写进，就把闸门比较-交换回本次之前的状态。
++     * 只回退本次刚写下的那一笔——期望状态是本次的决定、run_id 是本轮，对不上说明闸门已被别人接管，不动它。
++     * 补偿成败都如实追加进原错误的文案，不吞原错误。
++     */
++    let note: string;
++    try {
++      const back = await setGateChecked({
++        triviumDir: ctx.triviumDir, topic: i.topic, stage: i.stage, state: gate.state, heartbeatStaleMs,
++        expect: { state: [i.decision], runId: gate.run_id, allowMissing: false },
++      });
++      note = back.applied
++        ? `  闸门已回退到本次之前的 ${gate.state}。`
++        : `  闸门当前状态已不是本次写下的 ${i.decision}，未回退，请 \`trivium status --topic ${shellQuoteArg(i.topic)}\` 核对。`;
++    } catch (re) {
++      note = `  回退闸门时出错（${(re as Error).message.split('\n')[0]}）：闸门可能仍是 ${i.decision}，请 \`trivium status --topic ${shellQuoteArg(i.topic)}\` 核对。`;
++    }
++    if (e instanceof TriviumError) throw new TriviumError(e.code, `${e.message}\n${note}`, e.details);
++    throw new TriviumError(EXIT.FAIL, `写审批记录时出错：${(e as Error).message}\n${note}`);
++  }
+   // 闸门关闭后阻断计数归零，下一轮重新计
+   await resetStopBlockCount(ctx.triviumDir, i.topic, i.stage);
+ 
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index bffc1242..f7883e0d 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -32,9 +32,11 @@ import {
+ import { checkStageArtifacts, listRecordedRuns, resolveRerunIndex } from './archive.js';
+ import { readHookInput, runHook, type HookName } from './hooks.js';
+ import { getGate, listOpenGates, setGateChecked } from './state.js';
+-import { assertGateDecidable, recordApproval } from './approval.js';
++import { assertGateDecidable, assertTaskWritableForApproval, recordApproval } from './approval.js';
+ import { resolveTopic, resolveTopicReadOnly, listTopics } from './topic.js';
+-import { allocateRunId, describeRunMetaCause, latestRunMeta, readTask, readRunMeta, readRunMetaDetailed } from './meta.js';
++import {
++  allocateRunId, describeRunMetaCause, latestRunMeta, readTask, readTaskStrict, readRunMeta, readRunMetaDetailed, taskUnreadableError,
++} from './meta.js';
+ import { mergeAllHooks, runInit, renderInitReport, type InitReport } from './init.js';
+ import {
+   commitAuthCache, parsePreflightScope, renderPreflight, runPreflight,
+@@ -1493,14 +1495,22 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+      * 已放行的闸门打回等待。与 `--check` 那两个分支是同一缺陷的三处落点，
+      * 判据同样以归档里的审批记录为正本。
+      */
+-    const { humanDecision, TASK_UNREADABLE_HOLD } = await import('./approval.js');
+-    const decision = await humanDecision(ref.layout, stage, runId);
+-    if (decision !== 'undecided') {
++    const { humanDecisionDetailed, taskUnreadableHold } = await import('./approval.js');
++    const hd = await humanDecisionDetailed(ref.layout, stage, runId);
++    if (hd.decision === 'unreadable') {
++      /*
++       * 读不出 ≠ 已表态（EV-248，计划双审 AGY-01）：这条命令的职责是立停点，判不了本轮是否已表态，
++       * 停点就没立起来——报 `ok: true` 退 0 会让调用方以为停点已就位。与写入口拒写同口径退 2。
++       */
++      const msg = taskUnreadableHold(ref.layout, hd.error);
++      if (isJsonMode()) emitJson({ ok: false, state: 'unchanged', stage, rerun_index: rerunIndex, message: msg });
++      else fail(msg);
++      return EXIT.GATE_BLOCK;
++    }
++    if (hd.decision === 'decided') {
+       const msg =
+-        decision === 'unreadable'
+-          ? TASK_UNREADABLE_HOLD
+-          : `本轮（第 ${rerunIndex} 轮）已有人工审批记录，闸门状态保持不变。\n` +
+-            `  要重新走停点，请先对本轮重新表态，或另起一轮审查。`;
++        `本轮（第 ${rerunIndex} 轮）已有人工审批记录，闸门状态保持不变。\n` +
++        `  要重新走停点，请先对本轮重新表态，或另起一轮审查。`;
+       if (isJsonMode()) emitJson({ ok: true, state: 'unchanged', stage, rerun_index: rerunIndex, message: msg });
+       else say(msg);
+       return EXIT.OK;
+@@ -1574,6 +1584,28 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+     expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs, planFinal,
+   });
+ 
++  /*
++   * ── 正本读不出：先判、不写、不推进（EV-248）──
++   *
++   * 下面的共同阻断三态与争议标记都写正本，而且写在「本轮是否已表态」的判定之前。原先写入口宽松读，
++   * 正本坏了照写：坏件被覆盖、`approvals[]` 清空，随后判成未表态、闸门照常推进——已表态判定的保守处理
++   * 在这条路径上形同虚设。所以在任何写之前、**结果输出之前**判一次（计划双审 GLM-03：判在输出之后，
++   * 失败项就进不了已打印的结果）：读不出则把它记成一条失败项，只输出这一次，直接以 2 返回。
++   * 校验通过也退 2：共同阻断三态这一笔是 `--check` 每次都要落的，落不了，本轮的校验就没完成。
++   */
++  const taskRead = await readTaskStrict(ref.layout);
++  const taskUnreadable = taskRead.state === 'unreadable';
++  if (taskUnreadable) {
++    const { taskUnreadableExit } = await import('./meta.js');
++    result.failures.push({
++      code: 'task_unreadable',
++      message:
++        '审批正本 task.json 读不出：这不是裁决缺口，补裁决件无济于事。本次未落共同阻断结论、闸门不动。\n' +
++        taskUnreadableExit(ref.layout, taskRead.error),
++    });
++    result.ok = false;
++  }
++
+   /*
+    * 轮次链与计票（EV-247）：随校验结果一起给，skill 据 `next_action` 决定重审、进入下一阶段还是停下。
+    * 只在校验通过时有意义——裁决没齐，哪一步都不该走——但键恒在，未通过时照样给出，方便播报。
+@@ -1596,6 +1628,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+     say(renderGateResult(result));
+     if (loop.round_line) say(`· ${loop.round_line}`);
+   }
++  if (taskUnreadable) return EXIT.GATE_BLOCK;
+ 
+   /*
+    * 双方共同 blocker 被驳回且策略为 warn：设计 §6.6 规则 7 / §8.6 判据 g 要求
+@@ -1676,12 +1709,17 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+    * 两处都只带 `expect: { runId }`，只挂一个，重跑 `--check` 仍会把已放行的闸门
+    * 改写成 idle。判据以归档里的审批记录为正本，理由见 `humanDecidedThisRound`。
+    */
+-  const { humanDecision, TASK_UNREADABLE_HOLD } = await import('./approval.js');
+-  const decision = result.ok ? await humanDecision(ref.layout, stage, runId) : 'undecided';
++  const { humanDecisionDetailed, taskUnreadableHold } = await import('./approval.js');
++  const hd = result.ok ? await humanDecisionDetailed(ref.layout, stage, runId) : { decision: 'undecided' as const };
++  const decision = hd.decision;
+   const alreadyDecided = decision !== 'undecided';
+   if (decision === 'unreadable') {
+-    // 不接下面的对账：那几句都以「归档记着本轮已审批」开头，这一格并不成立（代码双审 r3 GLM-03）
+-    warn(TASK_UNREADABLE_HOLD);
++    /*
++     * 上面已先判过可读，到这里只剩竞态：先判之后、这次再读之前正本被搅坏（EV-248）。与先判同口径：不推进、退 2。
++     * 不接下面的对账：那几句都以「归档记着本轮已审批」开头，这一格并不成立（代码双审 r3 GLM-03）
++     */
++    warn(taskUnreadableHold(ref.layout, 'error' in hd ? hd.error : undefined));
++    return EXIT.GATE_BLOCK;
+   } else if (alreadyDecided) {
+     say('· 本轮已有人工审批记录，闸门状态保持不变（校验命令不撤销审批）');
+     /*
+@@ -1842,6 +1880,12 @@ async function cmdApproval(
+     );
+   }
+ 
++  /*
++   * 正本读不出就一道闸门都不动（EV-248）：一个主题一份正本，放弃多个阶段也只判这一次——
++   * 判在复核与工作树摘要之前，不让人先看完一屏复核结果再被拒。`recordApproval` 自己还会再判一次。
++   */
++  await assertTaskWritableForApproval((await resolveTopicReadOnly(ctx, topic, stages[0]!)).layout);
++
+   /*
+    * ── 通过前复核（M10a 第 3 步，M10 计划 r7 §4.3 / §4.4，演进设计 §9.4）──
+    *
+@@ -1983,6 +2027,14 @@ async function cmdVerify(args: ParsedArgs): Promise<number> {
+     }
+     timeoutS = n;
+   }
++  /*
++   * 正本读不出就一条命令都不跑（EV-248）：跑完才在登记时被拒，留下的是一份没进留痕护栏的验证记录。
++   * 判在分配 run_id 之前，零工件。跑完之后才坏的那一格由 `runVerify` 改写文案（计划 r2 §三.4）。
++   */
++  const taskRead = await readTaskStrict(ref.layout);
++  if (taskRead.state === 'unreadable') {
++    throw taskUnreadableError(ref.layout, taskRead.error, '未执行任何编译测试命令，未写验证记录');
++  }
+   const runId = await allocateRunId(ref.layout);
+   const out = await runVerify({
+     ctx,
+diff --git a/src/trivium/gate.ts b/src/trivium/gate.ts
+index e7e9bf08..e1dbc7e6 100644
+--- a/src/trivium/gate.ts
++++ b/src/trivium/gate.ts
+@@ -129,7 +129,9 @@ export type GateFailureCode =
+   /** 计划阶段有接受项，却没有执笔方的新一轮计划（EV-214，§6.6 规则 9） */
+   | 'missing_next_plan'
+   /** 新一轮计划在，但有被接受的编号没有整词逐字出现（EV-214，§6.6 规则 9） */
+-  | 'next_plan_missing_ids';
++  | 'next_plan_missing_ids'
++  /** 审批正本 task.json 读不出：不是裁决缺口，`gate --check` 据此不写、不推进、退 2（EV-248） */
++  | 'task_unreadable';
+ 
+ export interface GateFailure {
+   code: GateFailureCode;
+diff --git a/src/trivium/meta.ts b/src/trivium/meta.ts
+index 4465f8be..8acba7cf 100644
+--- a/src/trivium/meta.ts
++++ b/src/trivium/meta.ts
+@@ -20,7 +20,8 @@ import { withTopicLock } from './lock.js';
+ import { validateRunMeta, validateRunMetaV1 } from './schemas.js';
+ import { DEFAULT_DRIVER, type GuardLevel } from './agents/registry.js';
+ import { warn } from './util/log.js';
+-import { envError } from './exit-codes.js';
++import { EXIT, TriviumError, envError } from './exit-codes.js';
++import { shellQuoteArg } from './naming.js';
+ 
+ /** `updateTask` 的短临界区参数 */
+ export interface TaskLock {
+@@ -293,6 +294,10 @@ export function emptyTask(topic: string, now = new Date().toISOString()): TaskMe
+  *     核对失去全部对象，删掉或搅坏它就能整枝绕过。
+  *
+  * 我上一批刚修掉「清单来自被核对对象自身」，却让新加的锚重蹈了同样的覆辙。
++ *
++ * **形状也要判**（EV-248，计划双审 AGY-02）：只防语法错时，`null`、数组、`{}`、`approvals` 不是数组这类
++ * 合法 JSON 会判 `ok`，随后写入口与读侧在属性访问处抛 TypeError、以 1 退出，绕过受控的拒写出口；
++ * `hook-pre-commit` 锚 ② 也会把它们当作可读放行。见 {@link taskShapeProblem}。
+  */
+ export async function readTaskStrict(
+   l: ArchiveLayout,
+@@ -305,11 +310,72 @@ export async function readTaskStrict(
+     if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'missing' };
+     return { task: emptyTask(l.topic), state: 'unreadable', error: (e as Error).message };
+   }
++  let parsed: unknown;
+   try {
+-    return { task: JSON.parse(raw) as TaskMeta, state: 'ok' };
++    parsed = JSON.parse(raw);
+   } catch (e) {
+     return { task: emptyTask(l.topic), state: 'unreadable', error: (e as Error).message };
+   }
++  const problem = taskShapeProblem(parsed);
++  if (problem !== null) return { task: emptyTask(l.topic), state: 'unreadable', error: problem };
++  return { task: parsed as TaskMeta, state: 'ok' };
++}
++
++/** 正本必有的四个数组字段（`emptyTask` 起就有，写入口与读侧都直接按数组用） */
++const TASK_ARRAY_FIELDS = ['runs', 'approvals', 'degradations', 'disputes'] as const;
++
++/**
++ * 解析出来的值像不像一份 task.json：不像就返回哪一项不对，像就返回 null。
++ *
++ * 只判顶层：对象、`schema`、四个数组字段。可选字段（`joint_checks`、`drivers`）缺失即「没有」；
++ * 各条记录的内部形状由各读点自己的判读兜着——收紧到逐条校验会把历史留痕判坏。
++ */
++export function taskShapeProblem(v: unknown): string | null {
++  if (v === null || typeof v !== 'object' || Array.isArray(v)) {
++    return `内容不是一个 JSON 对象（是 ${v === null ? 'null' : Array.isArray(v) ? '数组' : typeof v}）`;
++  }
++  const o = v as Record<string, unknown>;
++  if (o['schema'] !== 'trivium.task.v1') {
++    return `schema 不是 trivium.task.v1（是 ${JSON.stringify(o['schema'] ?? null)}）`;
++  }
++  for (const k of TASK_ARRAY_FIELDS) {
++    if (!Array.isArray(o[k])) return `${k} ${k in o ? '不是数组' : '缺失'}`;
++  }
++  return null;
++}
++
++/**
++ * 审批正本读不出时的共用出口段（EV-248）：写入口拒写、续链判定、校验 / 停点的保守处理三处共用一份，
++ * 文案与退出码（2）同口径。恢复命令那一句对齐运行留痕读不出的出口段（计划双审 AGY-03）。
++ */
++export function taskUnreadableExit(l: ArchiveLayout, error: string | undefined): string {
++  const p = taskPath(l);
++  const cause = (error ?? '未知原因').split('\n')[0];
++  return (
++    `  审批正本 ${p} 读不出（${cause}）。\n` +
++    '  读不出时写回会把它整份覆盖成空正本，审批记录（approvals）随之丢失，所以本次不写。\n' +
++    '  从 Git 找回：\n' +
++    `    · 看历史：git log --oneline -- ${shellQuoteArg(p)}\n` +
++    `    · 看当前改动：git diff -- ${shellQuoteArg(p)}\n` +
++    `    · 恢复到最近一次提交：git restore --source=HEAD -- ${shellQuoteArg(p)}（未提交过的改动会丢，先看 diff）\n` +
++    '  恢复命令请由用户在终端执行；在会话里执行会被 TriviumCode Hook 拦下。恢复后重跑本命令。'
++  );
++}
++
++/** 写入口拒写抛的受控错误：`what` 说清本次没做成什么，其后接共用出口段 */
++export function taskUnreadableError(l: ArchiveLayout, error: string | undefined, what: string): TriviumError {
++  return new TriviumError(
++    EXIT.GATE_BLOCK,
++    `${what}：${l.topic} 的审批正本 task.json 读不出。\n${taskUnreadableExit(l, error)}`,
++    { kind: TASK_UNREADABLE_KIND },
++  );
++}
++
++const TASK_UNREADABLE_KIND = 'task_unreadable';
++
++/** 是不是写入口的拒写错误（调用方要在竞态下改写文案时用，如 verify 已执行完命令才被拒） */
++export function isTaskUnreadableError(e: unknown): e is TriviumError {
++  return e instanceof TriviumError && (e.details as { kind?: unknown } | undefined)?.kind === TASK_UNREADABLE_KIND;
+ }
+ 
+ /** 宽松版：读不到就当空。只给「缺数据也能继续」的调用方用（如 report） */
+@@ -344,6 +410,11 @@ export async function updateTask(
+  *
+  * **`mutate` 返回 `false` 表示「不写盘」**：幂等档与被拒档都需要「读了、判了、不改」，
+  * 而在锁外先判一次再决定要不要进锁，等于把判据又挪回锁外。
++ *
++ * **正本读不出就拒写**（EV-248）：原先锁内用宽松的 `readTask`，读不出回落 `emptyTask`、改完照常写回——
++ * 坏件被整份覆盖，`approvals[]` 随之清空，而 `humanDecision` 的 fail-closed 要的正是那份坏件还在。
++ * 现在 `unreadable` 抛 `taskUnreadableError`（退 2），不调 `mutate`；`missing` 仍是新主题、从空正本起写。
++ * 调用方各自在第一次落盘之前先判一次，这里是兜底，不是唯一判定点（计划 r2 §三）。
+  */
+ export async function updateTaskAsync(
+   l: ArchiveLayout,
+@@ -353,7 +424,9 @@ export async function updateTaskAsync(
+   return withTopicLock(
+     { triviumDir: lock.triviumDir, topic: taskLockName(l.topic), heartbeatStaleMs: lock.heartbeatStaleMs },
+     async () => {
+-      const t = await readTask(l);
++      const read = await readTaskStrict(l);
++      if (read.state === 'unreadable') throw taskUnreadableError(l, read.error, '本次未写入');
++      const t = read.task;
+       const r = await mutate(t);
+       if (r === false) return t;
+       t.updated_at = new Date().toISOString();
+diff --git a/src/trivium/review.ts b/src/trivium/review.ts
+index d410973b..c9ea6af6 100644
+--- a/src/trivium/review.ts
++++ b/src/trivium/review.ts
+@@ -73,7 +73,7 @@ import { collectBuildStampNotices, embeddedBuildStamp } from './build-stamp.js';
+ import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
+ import {
+   RUN_ID_MAX_BUMPS, allocateRunId, finalizeFailedRunMeta, finalizeLines, newRunMeta, readRunMeta, readTask, readTaskStrict, registerRun, summarizeRun,
+-  writeRunMeta,
++  taskUnreadableError, taskUnreadableExit, writeRunMeta,
+   type TaskLock,
+ } from './meta.js';
+ import { acquireLock, type LockHandle } from './lock.js';
+@@ -311,7 +311,7 @@ async function previousRoundFacts(layout: ArchiveLayout, stage: Stage): Promise<
+       EXIT.GATE_BLOCK,
+       `无法判定轮次链：${layout.topic} 的审批正本 task.json 读不出来（${t.error ?? '未知原因'}）。\n` +
+         '  这里**不**按「各轮都已表态」新起一链——那会越过人工审核的停点，并把轮次与上限静默重置。\n' +
+-        '  请先用 git 查看或恢复这份文件，再重新送审。',
++        taskUnreadableExit(layout, t.error),
+     );
+   }
+   for (const id of ids) {
+@@ -961,6 +961,16 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
+   const rerunIndex = await resolveRerunIndex(ref.layout, stage, driver);
+   // 轮次链（EV-247）：在分配 run_id 之前判，链中途改上限之类的拒绝不留任何东西
+   const reviewLoop = await resolveReviewLoop(ref.layout, stage, opts.maxRounds ?? null);
++  /*
++   * 审批正本读不出就不开跑（EV-248 计划 r2 §三.5）：下面的骨架登记、任务目标落盘、纯文档跳过的收尾都写正本，
++   * 写入口会拒写，但那时闸门、brief、骨架与运行目录都已落下。判在分配 run_id 之前，零工件。
++   * 排在轮次链之后：有前序轮次时 `previousRoundFacts` 已按续链语境报过（它读不出也退 2）；
++   * 新阶段的第一轮它不读正本，由这里兜住。
++   */
++  const taskRead = await readTaskStrict(ref.layout);
++  if (taskRead.state === 'unreadable') {
++    throw taskUnreadableError(ref.layout, taskRead.error, '未开始本轮审查，没有留下任何工件');
++  }
+   /*
+    * 分配 run_id 的同时排他占下运行目录（EV-218）：运行目录按仓库分桶、不按主题分，两个主题同一秒起跑会分到同一个 id。
+    * 占到的目录记进 claim，落盘段之前失败由外层 `prepareRun` 删掉（守 GLM-04 的零工件）。
+diff --git a/src/trivium/verify.ts b/src/trivium/verify.ts
+index 3904377e..5750d4d5 100644
+--- a/src/trivium/verify.ts
++++ b/src/trivium/verify.ts
+@@ -18,9 +18,9 @@ import path from 'node:path';
+ import { run } from './util/exec.js';
+ import { sha256 } from './util/fsx.js';
+ import { writeMeta, writeVerifyRecord, type ArchiveLayout } from './archive.js';
+-import { updateTask, type TaskLock } from './meta.js';
++import { isTaskUnreadableError, updateTask, type TaskLock } from './meta.js';
+ import { localDate } from './naming.js';
+-import { EXIT, usageError } from './exit-codes.js';
++import { EXIT, TriviumError, usageError } from './exit-codes.js';
+ import type { Config, Ctx } from './types.js';
+ 
+ /** 单条命令的执行记录 */
+@@ -222,7 +222,26 @@ export async function runVerify(opts: VerifyOptions): Promise<VerifyOutcome> {
+       2,
+     ) + '\n',
+   );
+-  await registerVerifyRun(layout, runId, written.effectiveRerunIndex, record.status, { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 });
++  try {
++    await registerVerifyRun(layout, runId, written.effectiveRerunIndex, record.status, { triviumDir: ctx.triviumDir, heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000 });
++  } catch (e) {
++    /*
++     * 命令已跑完、登记时正本才读不出（EV-248 计划 r2 §三.4，开跑前 `cmdVerify` 已判过可读）：
++     * 验证记录是真实执行的结果，保留不删（FR-21）；但它没进留痕护栏，这一轮不能当收口，所以退 2 盖过 0 / 1。
++     * 文案写明命令结论本身，不因退 2 把失败说成别的，也不把通过说成已收口。
++     */
++    if (!isTaskUnreadableError(e)) throw e;
++    const verdict = record.unconfigured
++      ? '未配置任何命令，什么也没执行'
++      : record.selected_empty ? `--only ${record.selected_empty} 选中的一组为空，什么也没执行`
++        : failed ? '有命令失败' : '全部命令通过';
++    throw new TriviumError(
++      e.code,
++      `编译测试已执行完（结论：${verdict}），记录保留在 ${written.absPath}，但没能登记进审批正本，这一轮不能当作收口。\n` +
++        e.message,
++      e.details,
++    );
++  }
+ 
+   const exitCode = record.unconfigured ? EXIT.USAGE : failed ? EXIT.FAIL : EXIT.OK;
+   return { record, exitCode, artifactPath: written.absPath, metaPath: meta.absPath };
+diff --git a/test/integration/review-loop.test.ts b/test/integration/review-loop.test.ts
+index 3aee811f..74964357 100644
+--- a/test/integration/review-loop.test.ts
++++ b/test/integration/review-loop.test.ts
+@@ -336,13 +336,19 @@ test('L10 · 上一轮停在人工审核、审批正本读不出 ⇒ 拒跑，
+   }
+   assert.deepEqual(await runIds(fx, 'plan'), before, '拒跑不留运行留痕');
+ 
+-  // 停点命令照旧按已表态保守处理，但不说「有人表过态」（代码双审 r3 GLM-03）。
+-  // 不用 `--check` 断言：它在判定之前就经宽松读写了一次正本（joint_checks），坏件已被覆盖（EV-248）
++  // 停点命令照旧按已表态保守处理，但不说「有人表过态」（代码双审 r3 GLM-03）；停点没立起来，退 2（EV-248 计划双审 AGY-01）
+   const c = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--await-approval']);
+   const out = `${c.stdout}${c.stderr}`;
++  assert.equal(c.code, EXIT.GATE_BLOCK, out);
+   assert.match(out, /审批正本 task\.json 读不出，按已表态保守处理/);
+   assert.doesNotMatch(out, /已有人工审批记录/);
+   await assert.rejects(fs.access(path.join(fx.root, '.trivium', 'state.json')), '闸门状态保持不变：不立停点');
++
++  // `--check` 同样不写、不推进（EV-248）：原先它在判定之前就经宽松读写了一次正本，坏件被覆盖
++  const k = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--check', '--json']);
++  assert.equal(k.code, EXIT.GATE_BLOCK, `${k.stdout}${k.stderr}`);
++  assert.equal(await fs.readFile(path.join(fx.archiveRoot, fx.topic, 'task.json'), 'utf8'), '{', '坏件原样');
++  await assert.rejects(fs.access(path.join(fx.root, '.trivium', 'state.json')), '闸门仍未立');
+ });
+ 
+ test('L11 · 两侧都整份回退 ⇒ 有效结论不足、停下人工审核，未表态时拒绝起链', { skip }, async () => {
+diff --git a/test/unit/run-id-alloc.test.ts b/test/unit/run-id-alloc.test.ts
+index cdd6a268..206663a5 100644
+--- a/test/unit/run-id-alloc.test.ts
++++ b/test/unit/run-id-alloc.test.ts
+@@ -8,7 +8,7 @@ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+-import { ADOPT_PRECREATED_RUN_DIR_ENV, RUN_ID_MAX_BUMPS, allocateRunId, newRunId } from '../../src/trivium/meta.js';
++import { ADOPT_PRECREATED_RUN_DIR_ENV, RUN_ID_MAX_BUMPS, allocateRunId, emptyTask, newRunId } from '../../src/trivium/meta.js';
+ import { metaDir } from '../../src/trivium/archive.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+ import type { StageOrVerify } from '../../src/trivium/types.js';
+@@ -31,7 +31,8 @@ async function register(l: { archiveRoot: string; topic: string }, ids: string[]
+   const runs = ids.map((run_id) => ({
+     run_id, stage: 'plan', rerun_index: 1, status: 'success', review_mode: 'full', started_at: NOW.toISOString(), driver: 'claude',
+   }));
+-  await fs.writeFile(path.join(l.archiveRoot, TOPIC, 'task.json'), JSON.stringify({ topic: TOPIC, runs }, null, 2) + '\n');
++  // 完整形态：EV-248 起 readTaskStrict 判形状，只有 topic + runs 的最小写法会判读不出、登记就不算数
++  await fs.writeFile(path.join(l.archiveRoot, TOPIC, 'task.json'), JSON.stringify({ ...emptyTask(TOPIC), runs }, null, 2) + '\n');
+ }
+ 
+ async function plantMeta(l: { archiveRoot: string; topic: string }, stage: StageOrVerify, id: string) {
+diff --git a/test/unit/topic-arg-quoting.test.ts b/test/unit/topic-arg-quoting.test.ts
+index 73a7b9b8..7d3644a0 100644
+--- a/test/unit/topic-arg-quoting.test.ts
++++ b/test/unit/topic-arg-quoting.test.ts
+@@ -87,9 +87,12 @@ test('EV-195 Q5（扫描器自测）：裸拼、经转义、注释与普通字
+   assert.deepEqual(r.bare, ['1: t', '3: o.topic']);
+ });
+ 
+-/** 登记表：各文件里经 shellQuoteArg 的建议命令处数（EV-195 改造时 `--topic ${` 字面核出 20 处） */
++/**
++ * 登记表：各文件里经 shellQuoteArg 的建议命令处数（EV-195 改造时 `--topic ${` 字面核出 20 处）。
++ * approval.ts 2 → 4：EV-248 审批补偿的两句「请 `trivium status --topic …` 核对」。
++ */
+ const REGISTERED: Record<string, number> = {
+-  'trivium/approval.ts': 2,
++  'trivium/approval.ts': 4,
+   'trivium/cli.ts': 6,
+   'trivium/driver-claim.ts': 1,
+   'trivium/gate.ts': 1,
+diff --git a/doc/05_testing/REPORT_2026-10-22_task_unreadable_refusal.md b/doc/05_testing/REPORT_2026-10-22_task_unreadable_refusal.md
+new file mode 100644
+index 00000000..7b870948
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-10-22_task_unreadable_refusal.md
+@@ -0,0 +1,70 @@
++# 测试报告 · 审批正本读不出拒写（EV-248）
++
++- 日期：2026-10-22
++- 主题：`审批正本读不出拒写`（`/dual-run`，A 档）
++- 计划：`.reviews/审批正本读不出拒写/plan/2026-10-22-审批正本读不出拒写-r2-claude.md`（计划双审 run `20261022T041612Z`，第 1/5 轮，gemini / glm 均 `pass-after-changes`，8 条全接受）
++- 主设计：v1.3.171（6.7 末段、12.6）；BACKLOG EV-248；PROTOCOL §五
++- 证据：[`evidence/task-unreadable-refusal-20261022/`](./evidence/task-unreadable-refusal-20261022/)
++
++## 一、改了什么
++
++| 面 | 改动 |
++| :--- | :--- |
++| 写入口 | `updateTask` / `updateTaskAsync` 锁内改严格读：读不出抛退 2 的受控错误、不调回调、正本原样；不存在照旧起写 |
++| 严格读 | `readTaskStrict` 加形状判据：非对象、`schema` 不是 `trivium.task.v1`、`runs` / `approvals` / `degradations` / `disputes` 任一缺失或不是数组 ⇒ 读不出，`error` 点名哪一项 |
++| `gate --check` | 结果输出之前判；读不出时 `failures` 加 `task_unreadable`、只输出一次、退 2，不写共同阻断三态与争议标记、不推进闸门、不归零阻断计数 |
++| `gate --await-approval` | 读不出改 `ok: false`、退 2（此前 `ok: true` 退 0） |
++| `approve` / `abandon` | 复核之前判一次；`recordApproval` 写闸门之前再判；闸门已写下决定之后正本才坏，比较-交换回退闸门 |
++| `verify` | 分配 run_id 与执行命令之前判；跑完才在登记时被拒，记录保留、文案写明命令结论、退 2 |
++| `review` 准备阶段 | 轮次链判定之后、分配 run_id 之前判，零工件（覆盖骨架登记、任务目标、纯文档跳过收尾） |
++| 出口文案 | `taskUnreadableExit` 写入口、续链判定、`taskUnreadableHold` 三处共用：绝对路径、Git 找回命令、「恢复由用户在终端执行」 |
++| skill | 认领、`gate --check`、停点、S10、审批 / 放弃补退 2 的处置句；重渲染四家入口 |
++
++## 二、用例
++
++**单测 `test/unit/meta-task-write.test.ts`（25 条）**：U1 七种读不出形态（截断 JSON、`null`、数组、数字、`{}`、`approvals` 为对象 × 两个写入口；目录；权限 000）断言退 2、不调回调、字节不变，形状五种另断言 `error` 点名；U2 不存在 ⇒ 首次写入完整；U3 可读 ⇒ 字段保留；U4 三处共用出口段；U5 `recordApproval` 先判（不经补偿）、补偿回退、闸门被接管时不回退。
++
++**集成 `test/integration/task-unreadable-refusal.test.ts`（13 条，真实打包 CLI + 桩）**：I1～I3 `gate --check`（B 已审批 / A 未表态 / 争议标记），I4～I5 审批、拒绝、无 `--stage` 放弃，I6 `topic claim`（正本是目录），I7 `verify`（命令未执行、无记录），I8～I9 `review --start` 新阶段第一轮与纯文档跳过（零工件），I10 新主题首次写入照常，I11 worker 收尾时才坏（运行失败、文案点名、闸门回收、坏件不被覆盖），I12 `--await-approval`，I13 `{}` 形状。
++
++**既有用例调整**：`review-loop` L10 补 `--await-approval` 退 2 与 `--check` 不写的断言、删去过期注释；`run-id-alloc` 的 `register` 夹具补成完整形态（只有 `topic` + `runs` 的写法按新判据读不出）；`topic-arg-quoting` 登记表 approval.ts 2 → 4（补偿文案的两处 `--topic`）。
++
++## 三、变异验证
++
++规格 [`mutation-spec.json`](./evidence/task-unreadable-refusal-20261022/mutation-spec.json)，14 条。
++
++- **逐条预跑**（`--with-tests` 变体，集成类变异重打 bundle）：12 条首跑即按预期变红；M10、M11b 两条首跑超过脚本 900 秒上限（1599 s / 939 s），并连带出现与变异无关的 I2 红——期间机器负载异常或挂起，读数作废；单独重跑两条各 27 s、28 s，只红在 I12、I13。读数见 `mutation-names-output.json`（首跑）与 `mutation-names-rerun-output.json`（重跑）。
++- **正式装置** `scripts/mutation-check.mjs`：工作树干净、基线全绿，**14/14 咬住**，恢复逐字节一致，见 `mutation-output.txt`。
++
++| # | 变异 | 期望套件 | 失败数 |
++| :-- | :-- | :-- | :-- |
++| M1 | 写入口改回宽松读 | 单测 | 16 |
++| M2 | `--check` 删去输出前判定 | 集成 | 1（I1） |
++| M3a | `cmdApproval` 删去先判 | 集成 | 1（I4：先看到工作树摘要再被拒） |
++| M3b | `recordApproval` 删去先判 | 单测 | 1（U5：靠补偿兜回，文案带「回退」） |
++| M4 | 删去补偿 | 单测 | 1 |
++| M5 | `review` 准备段删去先判 | 集成 | 2（I8、I9） |
++| M6 | `verify` 删去先判 | 集成 | 1（I7） |
++| M7 / M7b | 不存在也判读不出 | 单测 / 集成 | 3 / 9 |
++| M8 | 拒写退出码改 1 | 单测 | 18 |
++| M9 | `--check` 读不出退 0 | 集成 | 4 |
++| M10 | `--await-approval` 读不出退 0 | 集成 | 1（I12） |
++| M11 / M11b | 删去形状判据 | 单测 / 集成 | 15 / 1（I13） |
++
++M3a / M3b 是双重先判，各自只有一条用例能区分：删掉外层，内层仍拦，区别只在「是否先打印了工作树摘要」；删掉内层，补偿仍会把闸门回退，区别只在错误文案里有没有「回退」。两条鉴别断言是为此补的。
++
++## 四、全量
++
++`npm run check`（前台、一次一条），读数见第六节。
++
++## 五、残余
++
++- worker 运行中正本被搅坏：留下「run.json 终态、正本未登记」，恢复正本后不会补登记，靠 `hook-pre-commit` 锚 ② 在提交时拦。未开题。
++- 每个调用方「先判」与写入口锁内读之间仍有竞态窗口；写入口兜住「不覆盖」，窗口只影响拒写之前已做的几步，收尾方式见计划 r2 §三。
++
++## 六、全量读数
++
++| 遍 | 时间 | 用例 / 通过 / 失败 / 跳过 | 说明 |
++| :-- | :-- | :-- | :-- |
++| 1 | 12:46～12:51 | 3821 / 3818 / 1 / 2 | 红在 `topic-arg-quoting` Q6 源码护栏：补偿文案新增两处 `--topic ${shellQuoteArg(…)}`，登记表未同步；补登记后单跑 6/6 |
++| 2 | 16:05～16:11 | 3821 / 3819 / 0 / 2 | 补鉴别断言、变异、文档之后 |
++| 3 | 16:11～16:17 | 3821 / 3819 / 0 / 2 | 报告补读数之后再跑一遍（测试会读 `doc/`） |
+diff --git a/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-names-output.json b/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-names-output.json
+new file mode 100644
+index 00000000..cbb651c8
+--- /dev/null
++++ b/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-names-output.json
+@@ -0,0 +1,246 @@
++[
++  {
++    "id": "M1",
++    "desc": "写入口改回宽松读（readTask），读不出照写",
++    "suite": "dist/test/test/unit/meta-task-write.test.js",
++    "fail": 16,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U1 · 截断的 JSON × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · 截断的 JSON × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · null × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · null × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数组 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数组 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数字 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数字 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · 空对象 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · 空对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · approvals 是对象 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · approvals 是对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · task.json 的位置是目录：拒写退 2、目录原样",
++      "U1 · 权限 000：拒写退 2、文件原样",
++      "U5 · 闸门已写下决定、正本才坏：比较-交换回原状态，错误原样上抛",
++      "U5 · 补偿前闸门已被别的运行接管：不回退，文案说明未回退"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M2",
++    "desc": "gate --check 删去输出前的正本判定（先写后判）",
++    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I1 · gate --check（B，本轮已审批）读不出 ⇒ 退 2、只出一份带 task_unreadable 的结果、正本与闸门都不动"
++    ],
++    "firstLines": [],
++    "elapsed_s": 27
++  },
++  {
++    "id": "M3a",
++    "desc": "cmdApproval 删去复核之前的先判（recordApproval 自己的先判仍在）",
++    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I4 · approve 读不出 ⇒ 退 2、闸门仍等待审批、正本原样"
++    ],
++    "firstLines": [],
++    "elapsed_s": 27
++  },
++  {
++    "id": "M3b",
++    "desc": "recordApproval 删去写闸门之前的先判（只剩补偿兜底）",
++    "suite": "dist/test/test/unit/meta-task-write.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U5 · 正本先已读不出：approve 退 2，闸门不动、正本原样"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M4",
++    "desc": "删去补偿：闸门已写下决定、正本才坏时不回退",
++    "suite": "dist/test/test/unit/meta-task-write.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U5 · 闸门已写下决定、正本才坏：比较-交换回原状态，错误原样上抛"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M5",
++    "desc": "review 准备阶段删去分配 run_id 之前的先判",
++    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I8 · review --start（新阶段第一轮，没有前序轮次）读不出 ⇒ 退 2、零工件、闸门未置 running",
++      "I9 · 纯文档跳过轮读不出 ⇒ 退 2、不留跳过轮的 run.json"
++    ],
++    "firstLines": [],
++    "elapsed_s": 27
++  },
++  {
++    "id": "M6",
++    "desc": "verify 删去执行命令之前的先判",
++    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I7 · verify 读不出 ⇒ 退 2、一条命令都不跑、不写验证记录"
++    ],
++    "firstLines": [],
++    "elapsed_s": 61
++  },
++  {
++    "id": "M7",
++    "desc": "正本不存在也按读不出处理（新主题首次写入被误拒）",
++    "suite": "dist/test/test/unit/meta-task-write.test.js",
++    "fail": 3,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U2 · 正本不存在：首次写入建出完整正本（新主题不受影响）",
++      "U5 · 闸门已写下决定、正本才坏：比较-交换回原状态，错误原样上抛",
++      "U5 · 补偿前闸门已被别的运行接管：不回退，文案说明未回退"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M7b",
++    "desc": "同 M7，期望集成格变红（I10 新主题首次写入）",
++    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
++    "fail": 9,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I1 · gate --check（B，本轮已审批）读不出 ⇒ 退 2、只出一份带 task_unreadable 的结果、正本与闸门都不动",
++      "I2 · gate --check（A，未表态）读不出 ⇒ 退 2、闸门停在待裁决、阻断计数不归零",
++      "I3 · 共同 blocker 被驳回（争议标记）时读不出 ⇒ 退 2、disputed 没被写进新正本",
++      "I4 · approve 读不出 ⇒ 退 2、闸门仍等待审批、正本原样",
++      "I5 · 拒绝与不带 --stage 的放弃（两个阶段都有开放闸门）读不出 ⇒ 退 2、两道闸门都不动",
++      "I10 · 新主题、正本不存在：topic claim、review、verify 首次写入照常",
++      "I11 · 运行中正本才坏（worker 收尾登记被拒）⇒ 运行失败、文案点名正本、闸门已回收、坏件不被覆盖",
++      "I12 · gate --await-approval 读不出 ⇒ 退 2、ok:false、闸门不变（计划双审 AGY-01）",
++      "I13 · 正本是合法 JSON 但形状不对（{}）⇒ approve 与 gate --check 都退 2 而不是 1（计划双审 AGY-02）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 5
++  },
++  {
++    "id": "M8",
++    "desc": "拒写错误的退出码改成 1",
++    "suite": "dist/test/test/unit/meta-task-write.test.js",
++    "fail": 18,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U1 · 截断的 JSON × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · 截断的 JSON × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · null × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · null × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数组 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数组 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数字 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数字 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · 空对象 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · 空对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · approvals 是对象 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · approvals 是对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · task.json 的位置是目录：拒写退 2、目录原样",
++      "U1 · 权限 000：拒写退 2、文件原样",
++      "U4 · 写入口拒写与停点保守处理共用同一段出口",
++      "U5 · 正本先已读不出：approve 退 2，闸门不动、正本原样",
++      "U5 · 闸门已写下决定、正本才坏：比较-交换回原状态，错误原样上抛",
++      "U5 · 补偿前闸门已被别的运行接管：不回退，文案说明未回退"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M9",
++    "desc": "gate --check 读不出时仍退 0",
++    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
++    "fail": 4,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I1 · gate --check（B，本轮已审批）读不出 ⇒ 退 2、只出一份带 task_unreadable 的结果、正本与闸门都不动",
++      "I2 · gate --check（A，未表态）读不出 ⇒ 退 2、闸门停在待裁决、阻断计数不归零",
++      "I3 · 共同 blocker 被驳回（争议标记）时读不出 ⇒ 退 2、disputed 没被写进新正本",
++      "I13 · 正本是合法 JSON 但形状不对（{}）⇒ approve 与 gate --check 都退 2 而不是 1（计划双审 AGY-02）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 34
++  },
++  {
++    "id": "M10",
++    "desc": "gate --await-approval 读不出时改回退 0",
++    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
++    "fail": -1,
++    "timed_out": true,
++    "cancelled": 0,
++    "red": [
++      "I2 · gate --check（A，未表态）读不出 ⇒ 退 2、闸门停在待裁决、阻断计数不归零",
++      "I10 · 新主题、正本不存在：topic claim、review、verify 首次写入照常",
++      "I12 · gate --await-approval 读不出 ⇒ 退 2、ok:false、闸门不变（计划双审 AGY-01）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1599
++  },
++  {
++    "id": "M11",
++    "desc": "删去形状判据（合法 JSON 一律判可读）",
++    "suite": "dist/test/test/unit/meta-task-write.test.js",
++    "fail": 15,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "U1 · null × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · null × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数组 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数组 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数字 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · 数字 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · 空对象 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · 空对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · approvals 是对象 × updateTask：拒写退 2、不调回调、文件字节不变",
++      "U1 · approvals 是对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
++      "U1 · null：readTaskStrict 判 unreadable 并点名不合的那一项",
++      "U1 · 数组：readTaskStrict 判 unreadable 并点名不合的那一项",
++      "U1 · 数字：readTaskStrict 判 unreadable 并点名不合的那一项",
++      "U1 · 空对象：readTaskStrict 判 unreadable 并点名不合的那一项",
++      "U1 · approvals 是对象：readTaskStrict 判 unreadable 并点名不合的那一项"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M11b",
++    "desc": "同 M11，期望集成格变红（I13 形状不对退 2 而不是 1）",
++    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
++    "fail": -1,
++    "timed_out": true,
++    "cancelled": 0,
++    "red": [
++      "I2 · gate --check（A，未表态）读不出 ⇒ 退 2、闸门停在待裁决、阻断计数不归零"
++    ],
++    "firstLines": [],
++    "elapsed_s": 939
++  }
++]
+diff --git a/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-names-rerun-output.json b/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-names-rerun-output.json
+new file mode 100644
+index 00000000..a7649d82
+--- /dev/null
++++ b/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-names-rerun-output.json
+@@ -0,0 +1,28 @@
++[
++  {
++    "id": "M10",
++    "desc": "gate --await-approval 读不出时改回退 0",
++    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I12 · gate --await-approval 读不出 ⇒ 退 2、ok:false、闸门不变（计划双审 AGY-01）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 27
++  },
++  {
++    "id": "M11b",
++    "desc": "同 M11，期望集成格变红（I13 形状不对退 2 而不是 1）",
++    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "I13 · 正本是合法 JSON 但形状不对（{}）⇒ approve 与 gate --check 都退 2 而不是 1（计划双审 AGY-02）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 28
++  }
++]
+diff --git a/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-output.txt b/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-output.txt
+new file mode 100644
+index 00000000..a0f6e994
+--- /dev/null
++++ b/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-output.txt
+@@ -0,0 +1,106 @@
++✓ 工作树干净、基线全绿（2 个套件）
++  M1 ✓ 咬住（fail=16）
++  M2 ✓ 咬住（fail=1）
++  M3a ✓ 咬住（fail=1）
++  M3b ✓ 咬住（fail=1）
++  M4 ✓ 咬住（fail=1）
++  M5 ✓ 咬住（fail=2）
++  M6 ✓ 咬住（fail=1）
++  M7 ✓ 咬住（fail=3）
++  M7b ✓ 咬住（fail=9）
++  M8 ✓ 咬住（fail=18）
++  M9 ✓ 咬住（fail=4）
++  M10 ✓ 咬住（fail=1）
++  M11 ✓ 咬住（fail=15）
++  M11b ✓ 咬住（fail=1）
++{
++  "总数": 14,
++  "咬住": 14,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "写入口改回宽松读（readTask），读不出照写",
++      "verdict": "✓ 咬住（fail=16）",
++      "fail": 16
++    },
++    {
++      "id": "M2",
++      "desc": "gate --check 删去输出前的正本判定（先写后判）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M3a",
++      "desc": "cmdApproval 删去复核之前的先判（recordApproval 自己的先判仍在）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M3b",
++      "desc": "recordApproval 删去写闸门之前的先判（只剩补偿兜底）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M4",
++      "desc": "删去补偿：闸门已写下决定、正本才坏时不回退",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M5",
++      "desc": "review 准备阶段删去分配 run_id 之前的先判",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M6",
++      "desc": "verify 删去执行命令之前的先判",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M7",
++      "desc": "正本不存在也按读不出处理（新主题首次写入被误拒）",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M7b",
++      "desc": "同 M7，期望集成格变红（I10 新主题首次写入）",
++      "verdict": "✓ 咬住（fail=9）",
++      "fail": 9
++    },
++    {
++      "id": "M8",
++      "desc": "拒写错误的退出码改成 1",
++      "verdict": "✓ 咬住（fail=18）",
++      "fail": 18
++    },
++    {
++      "id": "M9",
++      "desc": "gate --check 读不出时仍退 0",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M10",
++      "desc": "gate --await-approval 读不出时改回退 0",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M11",
++      "desc": "删去形状判据（合法 JSON 一律判可读）",
++      "verdict": "✓ 咬住（fail=15）",
++      "fail": 15
++    },
++    {
++      "id": "M11b",
++      "desc": "同 M11，期望集成格变红（I13 形状不对退 2 而不是 1）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
++exit=0
+diff --git a/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-spec.json b/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-spec.json
+new file mode 100644
+index 00000000..a79c2947
+--- /dev/null
++++ b/doc/05_testing/evidence/task-unreadable-refusal-20261022/mutation-spec.json
+@@ -0,0 +1,126 @@
++{
++  "targets": [
++    "src/trivium/meta.ts",
++    "src/trivium/approval.ts",
++    "src/trivium/cli.ts",
++    "src/trivium/review.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/meta-task-write.test.js",
++    "dist/test/test/integration/task-unreadable-refusal.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "写入口改回宽松读（readTask），读不出照写",
++      "file": "src/trivium/meta.ts",
++      "find": "      const read = await readTaskStrict(l);\n      if (read.state === 'unreadable') throw taskUnreadableError(l, read.error, '本次未写入');\n      const t = read.task;",
++      "replace": "      const t = await readTask(l);",
++      "expect": "dist/test/test/unit/meta-task-write.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "gate --check 删去输出前的正本判定（先写后判）",
++      "file": "src/trivium/cli.ts",
++      "find": "  const taskUnreadable = taskRead.state === 'unreadable';",
++      "replace": "  const taskUnreadable = false;",
++      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
++    },
++    {
++      "id": "M3a",
++      "desc": "cmdApproval 删去复核之前的先判（recordApproval 自己的先判仍在）",
++      "file": "src/trivium/cli.ts",
++      "find": "  await assertTaskWritableForApproval((await resolveTopicReadOnly(ctx, topic, stages[0]!)).layout);",
++      "replace": "",
++      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
++    },
++    {
++      "id": "M3b",
++      "desc": "recordApproval 删去写闸门之前的先判（只剩补偿兜底）",
++      "file": "src/trivium/approval.ts",
++      "find": "  await assertTaskWritableForApproval(ref.layout);",
++      "replace": "",
++      "expect": "dist/test/test/unit/meta-task-write.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "删去补偿：闸门已写下决定、正本才坏时不回退",
++      "file": "src/trivium/approval.ts",
++      "find": "      const back = await setGateChecked({\n        triviumDir: ctx.triviumDir, topic: i.topic, stage: i.stage, state: gate.state, heartbeatStaleMs,\n        expect: { state: [i.decision], runId: gate.run_id, allowMissing: false },\n      });",
++      "replace": "      const back = { applied: false };",
++      "expect": "dist/test/test/unit/meta-task-write.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "review 准备阶段删去分配 run_id 之前的先判",
++      "file": "src/trivium/review.ts",
++      "find": "  if (taskRead.state === 'unreadable') {",
++      "replace": "  if (taskRead.state === 'never') {",
++      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "verify 删去执行命令之前的先判",
++      "file": "src/trivium/cli.ts",
++      "find": "    throw taskUnreadableError(ref.layout, taskRead.error, '未执行任何编译测试命令，未写验证记录');",
++      "replace": "    void 0;",
++      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "正本不存在也按读不出处理（新主题首次写入被误拒）",
++      "file": "src/trivium/meta.ts",
++      "find": "    if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'missing' };",
++      "replace": "    if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'unreadable', error: 'ENOENT' };",
++      "expect": "dist/test/test/unit/meta-task-write.test.js"
++    },
++    {
++      "id": "M7b",
++      "desc": "同 M7，期望集成格变红（I10 新主题首次写入）",
++      "file": "src/trivium/meta.ts",
++      "find": "    if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'missing' };",
++      "replace": "    if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'unreadable', error: 'ENOENT' };",
++      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "拒写错误的退出码改成 1",
++      "file": "src/trivium/meta.ts",
++      "find": "    EXIT.GATE_BLOCK,\n    `${what}",
++      "replace": "    EXIT.FAIL,\n    `${what}",
++      "expect": "dist/test/test/unit/meta-task-write.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "gate --check 读不出时仍退 0",
++      "file": "src/trivium/cli.ts",
++      "find": "  if (taskUnreadable) return EXIT.GATE_BLOCK;",
++      "replace": "  if (taskUnreadable) return EXIT.OK;",
++      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
++    },
++    {
++      "id": "M10",
++      "desc": "gate --await-approval 读不出时改回退 0",
++      "file": "src/trivium/cli.ts",
++      "find": "      else fail(msg);\n      return EXIT.GATE_BLOCK;\n    }\n    if (hd.decision === 'decided') {",
++      "replace": "      else fail(msg);\n      return EXIT.OK;\n    }\n    if (hd.decision === 'decided') {",
++      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
++    },
++    {
++      "id": "M11",
++      "desc": "删去形状判据（合法 JSON 一律判可读）",
++      "file": "src/trivium/meta.ts",
++      "find": "  const problem = taskShapeProblem(parsed);",
++      "replace": "  const problem = null;",
++      "expect": "dist/test/test/unit/meta-task-write.test.js"
++    },
++    {
++      "id": "M11b",
++      "desc": "同 M11，期望集成格变红（I13 形状不对退 2 而不是 1）",
++      "file": "src/trivium/meta.ts",
++      "find": "  const problem = taskShapeProblem(parsed);",
++      "replace": "  const problem = null;",
++      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
++    }
++  ]
++}
+diff --git a/test/integration/task-unreadable-refusal.test.ts b/test/integration/task-unreadable-refusal.test.ts
+new file mode 100644
+index 00000000..7e771edf
+--- /dev/null
++++ b/test/integration/task-unreadable-refusal.test.ts
+@@ -0,0 +1,322 @@
++/**
++ * 审批正本读不出拒写 · 调用链（EV-248，计划 r2 §五 I1～I13）。
++ *
++ * 真实打包 CLI 子进程 + 桩适配器（零配额）。逐个调用方构造「正本读不出」：截断 JSON、位置是目录、形状不对（`{}`），
++ * 断言退 2、正本字节原样、闸门不动、不留半截工件；新主题首次写入不受影响（I10）；
++ * worker 跑到一半正本才坏的竞态（I11）由既有异常收尾兜住、坏件不被覆盖。
++ * 写入口一层与 `recordApproval` 的补偿在 `test/unit/meta-task-write.test.ts`。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { bundleMissing, bundleSkipReason, cli, listFiles, makeFixture, today, type Fixture } from '../helpers/fixture.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++import { extractJsonCandidate } from '../../src/trivium/parse.js';
++import { setGate } from '../../src/trivium/state.js';
++import type { StubConfig } from '../../src/trivium/adapters/stub.js';
++
++const skip = bundleMissing && bundleSkipReason;
++const PASS: StubConfig = { gemini: { mode: 'ok', verdict: 'pass' }, glm: { mode: 'ok', verdict: 'pass-after-changes' } };
++const DRIVER = 'claude';
++const BROKEN = '{ "schema": "trivium.task.v1", "approvals": [';
++
++type Stage = 'plan' | 'code';
++type CheckJson = { ok: boolean; failures: { code: string; message: string }[]; next_action: string | null };
++
++const taskFile = (fx: Fixture) => path.join(fx.archiveRoot, fx.topic, 'task.json');
++const stageDirOf = (fx: Fixture, stage: Stage) => path.join(fx.archiveRoot, fx.topic, stage);
++const json = <T>(stdout: string): T => JSON.parse(extractJsonCandidate(stdout)!.json) as T;
++
++/** 拒写文案的共同部分：点名绝对路径、给 Git 出口 */
++function assertExitText(out: string, fx: Fixture): void {
++  assert.ok(out.includes(taskFile(fx)), `文案应点名正本绝对路径：\n${out}`);
++  assert.match(out, /git restore --source=HEAD/);
++  assert.match(out, /由用户在终端执行/);
++}
++
++async function gateOf(fx: Fixture, stage: Stage): Promise<{ state: string; run_id: string | null } | undefined> {
++  try {
++    const raw = JSON.parse(await fs.readFile(path.join(fx.root, '.trivium', 'state.json'), 'utf8')) as {
++      gates: Record<string, { state: string; run_id: string | null }>;
++    };
++    return raw.gates[`${fx.topic}/${stage}`];
++  } catch {
++    return undefined;
++  }
++}
++
++async function runIdsOf(fx: Fixture, stage: Stage): Promise<string[]> {
++  try {
++    return (await fs.readdir(path.join(stageDirOf(fx, stage), '_meta'))).filter((f) => /^run-.+\.json$/.test(f)).sort();
++  } catch {
++    return [];
++  }
++}
++
++/** 起一轮并等到收尾 */
++async function runRound(fx: Fixture, stage: Stage, entry: 'A' | 'B' | 'C', stub: StubConfig = PASS, extra: string[] = []): Promise<string> {
++  const started = await cli(
++    fx.root, ['review', '--start', '--stage', stage, '--topic', fx.topic, '--focus', 'x', '--entry', entry, ...extra, '--json'], stub,
++  );
++  assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
++  const { run_id } = json<{ run_id: string }>(started.stdout);
++  let code: number = EXIT.STILL_RUNNING;
++  for (let i = 0; i < 12 && code === EXIT.STILL_RUNNING; i++) {
++    const w = await cli(fx.root, ['review', '--wait', run_id, '--timeout', '20', '--json'], stub, 60_000);
++    code = w.code ?? EXIT.FAIL;
++  }
++  assert.equal(code, EXIT.OK, `运行 ${run_id} 没有成功收尾`);
++  return run_id;
++}
++
++/** 合规裁决件；`reject` 为真时两条共同 blocker 都驳回（命中共同阻断被驳回 ⇒ 争议标记） */
++async function writeDisposition(fx: Fixture, stage: Stage, runId: string, reject = false): Promise<void> {
++  const kind = stage === 'plan' ? 'revised' : 'response';
++  const row = (id: string, src: string) =>
++    reject ? `| ${id} | ${src} | blocker | 驳回 | 上游 src/x.ts:31 已拒绝该路径 | |` : `| ${id} | ${src} | blocker | 接受 | 确实漏了这一处 | src/a.ts |`;
++  await fs.writeFile(
++    path.join(stageDirOf(fx, stage), `${today()}-${fx.topic}-${kind}-${DRIVER}.md`),
++    [
++      '---', 'schema: trivium.disposition.v1', `topic: ${fx.topic}`, `stage: ${stage}`,
++      `role: ${DRIVER}`, `kind: ${kind}`, `run_id: ${runId}`,
++      'addresses:', `  - ${today()}-${fx.topic}-gemini.md`, `  - ${today()}-${fx.topic}-glm.md`,
++      '---', '',
++      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 落点 |',
++      '| :--- | :--- | :--- | :--- | :--- | :--- |',
++      row('AGY-01', 'gemini'), row('GLM-01', 'glm'), '',
++    ].join('\n'),
++    'utf8',
++  );
++  if (stage === 'plan') {
++    await fs.writeFile(
++      path.join(stageDirOf(fx, 'plan'), `${today()}-${fx.topic}-r2-${DRIVER}.md`),
++      ['# 计划 r2', '', '相对上一轮的改动：', ...(reject ? ['- 本轮无改动'] : ['- AGY-01：补上', '- GLM-01：补上']), ''].join('\n'),
++      'utf8',
++    );
++  }
++}
++
++/** 跑完一轮计划审、裁决齐，返回 run_id（`--check` 由调用方决定跑不跑） */
++async function adjudicatedPlan(fx: Fixture, entry: 'A' | 'B', reject = false): Promise<string> {
++  const runId = await runRound(fx, 'plan', entry);
++  await writeDisposition(fx, 'plan', runId, reject);
++  return runId;
++}
++
++async function corrupt(fx: Fixture, content = BROKEN): Promise<Buffer> {
++  await fs.writeFile(taskFile(fx), content, 'utf8');
++  return fs.readFile(taskFile(fx));
++}
++
++test('I1 · gate --check（B，本轮已审批）读不出 ⇒ 退 2、只出一份带 task_unreadable 的结果、正本与闸门都不动', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i1' });
++  await adjudicatedPlan(fx, 'B');
++  const c1 = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--check', '--json']);
++  assert.equal(c1.code, EXIT.OK, `${c1.stdout}${c1.stderr}`);
++  const ap = await cli(fx.root, ['approve', '--topic', fx.topic, '--stage', 'plan']);
++  assert.equal(ap.code, EXIT.OK, `${ap.stdout}${ap.stderr}`);
++  assert.match(`${ap.stdout}${ap.stderr}`, /工作树改动/, '前提：正常审批会打印工作树改动摘要（I4 据此判先判的位置）');
++  assert.equal((await gateOf(fx, 'plan'))?.state, 'approved');
++
++  const before = await corrupt(fx);
++  const r = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--check', '--json']);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `${r.stdout}${r.stderr}`);
++  assert.equal((r.stdout.match(/"failures"/g) ?? []).length, 1, `只输出一次结果：\n${r.stdout}`);
++  const js = json<CheckJson>(r.stdout);
++  assert.equal(js.ok, false);
++  const f = js.failures.find((x) => x.code === 'task_unreadable');
++  assert.ok(f, r.stdout);
++  assertExitText(f.message, fx);
++  assert.deepEqual(await fs.readFile(taskFile(fx)), before, '坏件不得被覆盖');
++  assert.equal((await gateOf(fx, 'plan'))?.state, 'approved', '已放行的闸门不得被打回');
++});
++
++test('I2 · gate --check（A，未表态）读不出 ⇒ 退 2、闸门停在待裁决、阻断计数不归零', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i2' });
++  const runId = await adjudicatedPlan(fx, 'A');
++  assert.equal((await gateOf(fx, 'plan'))?.state, 'review_done_awaiting_disposition');
++  // 摆一份阻断计数：放行分支会归零它（删目录），读不出时不该走到那里
++  const counter = path.join(fx.root, '.trivium', 'lock', `stopblock-${fx.topic}-plan`);
++  await fs.mkdir(counter, { recursive: true });
++
++  const before = await corrupt(fx);
++  const r = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--check']);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `${r.stdout}${r.stderr}`);
++  assertExitText(`${r.stdout}${r.stderr}`, fx);
++  assert.deepEqual(await fs.readFile(taskFile(fx)), before);
++  const g = await gateOf(fx, 'plan');
++  assert.equal(g?.state, 'review_done_awaiting_disposition', '不得回 idle');
++  assert.equal(g?.run_id, runId);
++  await fs.access(counter);
++});
++
++test('I3 · 共同 blocker 被驳回（争议标记）时读不出 ⇒ 退 2、disputed 没被写进新正本', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i3' });
++  await adjudicatedPlan(fx, 'A', true);
++  const before = await corrupt(fx);
++  const r = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--check', '--json']);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `${r.stdout}${r.stderr}`);
++  assert.match(r.stdout, /joint_blocker_rejected/, '前提：确实命中了争议判据');
++  assert.deepEqual(await fs.readFile(taskFile(fx)), before);
++});
++
++test('I4 · approve 读不出 ⇒ 退 2、闸门仍等待审批、正本原样', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i4' });
++  await adjudicatedPlan(fx, 'B');
++  assert.equal((await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--check'])).code, EXIT.OK);
++  assert.equal((await gateOf(fx, 'plan'))?.state, 'awaiting_approval');
++
++  const before = await corrupt(fx);
++  const r = await cli(fx.root, ['approve', '--topic', fx.topic, '--stage', 'plan']);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `${r.stdout}${r.stderr}`);
++  assertExitText(r.stderr, fx);
++  assert.match(r.stderr, /未记录审批，闸门保持不变/);
++  // 先判在复核与工作树摘要之前（计划 r2 §三.2）：判在后面的话，人会先看完一屏摘要再被拒
++  assert.doesNotMatch(`${r.stdout}${r.stderr}`, /工作树改动/);
++  assert.equal((await gateOf(fx, 'plan'))?.state, 'awaiting_approval');
++  assert.deepEqual(await fs.readFile(taskFile(fx)), before);
++});
++
++test('I5 · 拒绝与不带 --stage 的放弃（两个阶段都有开放闸门）读不出 ⇒ 退 2、两道闸门都不动', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i5' });
++  const runId = await adjudicatedPlan(fx, 'B');
++  assert.equal((await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--check'])).code, EXIT.OK);
++  await setGate({
++    triviumDir: path.join(fx.root, '.trivium'), topic: fx.topic, stage: 'code',
++    state: 'review_done_awaiting_disposition', runId: 'R-CODE', heartbeatStaleMs: 120_000,
++  });
++  const before = await corrupt(fx);
++
++  const rj = await cli(fx.root, ['approve', '--topic', fx.topic, '--stage', 'plan', '--reject', '--reason', '重来']);
++  assert.equal(rj.code, EXIT.GATE_BLOCK, `${rj.stdout}${rj.stderr}`);
++  const ab = await cli(fx.root, ['abandon', '--topic', fx.topic]);
++  assert.equal(ab.code, EXIT.GATE_BLOCK, `${ab.stdout}${ab.stderr}`);
++  assertExitText(ab.stderr, fx);
++
++  const plan = await gateOf(fx, 'plan');
++  assert.equal(plan?.state, 'awaiting_approval');
++  assert.equal(plan?.run_id, runId);
++  assert.equal((await gateOf(fx, 'code'))?.state, 'review_done_awaiting_disposition');
++  assert.deepEqual(await fs.readFile(taskFile(fx)), before);
++});
++
++test('I6 · topic claim 时正本位置是目录 ⇒ 退 2、目录原样', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i6' });
++  await fs.mkdir(taskFile(fx));
++  await fs.writeFile(path.join(taskFile(fx), 'sentinel'), 'x');
++  const r = await cli(fx.root, ['topic', 'claim', '--topic', fx.topic, '--stage', 'code', '--driver', DRIVER, '--json']);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `${r.stdout}${r.stderr}`);
++  assertExitText(r.stderr, fx);
++  assert.ok((await fs.stat(taskFile(fx))).isDirectory());
++  assert.deepEqual(await fs.readdir(taskFile(fx)), ['sentinel']);
++});
++
++test('I7 · verify 读不出 ⇒ 退 2、一条命令都不跑、不写验证记录', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i7', extraVerify: ['  build:', '    - echo ran > verify-ran', '  test: []'] });
++  const before = await corrupt(fx);
++  const r = await cli(fx.root, ['verify', '--topic', fx.topic]);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `${r.stdout}${r.stderr}`);
++  assertExitText(r.stderr, fx);
++  assert.match(r.stderr, /未执行任何编译测试命令/);
++  await assert.rejects(fs.access(path.join(fx.root, 'verify-ran')), '命令不得被执行');
++  assert.deepEqual(await listFiles(path.join(fx.archiveRoot, fx.topic, 'verify')), []);
++  assert.deepEqual(await fs.readFile(taskFile(fx)), before);
++});
++
++test('I8 · review --start（新阶段第一轮，没有前序轮次）读不出 ⇒ 退 2、零工件、闸门未置 running', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i8' });
++  await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 2;\n');
++  const before = await corrupt(fx);
++  const bucketBefore = await listFiles(fx.runRoot);
++  const r = await cli(fx.root, ['review', '--start', '--stage', 'code', '--topic', fx.topic, '--focus', 'x', '--entry', 'C', '--json'], PASS);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `${r.stdout}${r.stderr}`);
++  assertExitText(r.stderr, fx);
++  assert.match(r.stderr, /未开始本轮审查/);
++  assert.deepEqual(await runIdsOf(fx, 'code'), []);
++  assert.deepEqual(await listFiles(path.join(stageDirOf(fx, 'code'), '_meta')), [], '没有 brief、补丁或骨架');
++  assert.deepEqual(await listFiles(fx.runRoot), bucketBefore, '运行桶里没有新目录');
++  assert.equal(await gateOf(fx, 'code'), undefined);
++  assert.deepEqual(await fs.readFile(taskFile(fx)), before);
++});
++
++test('I9 · 纯文档跳过轮读不出 ⇒ 退 2、不留跳过轮的 run.json', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i9' });
++  await fs.writeFile(path.join(fx.root, 'README.md'), '# 只改了文档\n', 'utf8');
++  const before = await corrupt(fx);
++  const r = await cli(fx.root, ['review', '--start', '--stage', 'code', '--topic', fx.topic, '--focus', 'x', '--entry', 'C', '--json'], PASS);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `${r.stdout}${r.stderr}`);
++  assert.doesNotMatch(r.stdout, /finished_inline/);
++  assert.deepEqual(await runIdsOf(fx, 'code'), []);
++  assert.deepEqual(await fs.readFile(taskFile(fx)), before);
++});
++
++test('I10 · 新主题、正本不存在：topic claim、review、verify 首次写入照常', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i10', extraVerify: ['  build:', '    - "true"', '  test: []'] });
++  await assert.rejects(fs.access(taskFile(fx)), '前提：正本还不存在');
++  const c = await cli(fx.root, ['topic', 'claim', '--topic', fx.topic, '--stage', 'plan', '--driver', DRIVER, '--json']);
++  assert.equal(c.code, EXIT.OK, `${c.stdout}${c.stderr}`);
++  const runId = await runRound(fx, 'plan', 'B');
++  const v = await cli(fx.root, ['verify', '--topic', fx.topic]);
++  assert.equal(v.code, EXIT.OK, `${v.stdout}${v.stderr}`);
++  const t = JSON.parse(await fs.readFile(taskFile(fx), 'utf8')) as {
++    schema: string; drivers?: Record<string, { driver: string }>; runs: { run_id: string; stage: string }[];
++  };
++  assert.equal(t.schema, 'trivium.task.v1');
++  assert.equal(t.drivers?.['plan']?.driver, DRIVER);
++  assert.ok(t.runs.some((x) => x.run_id === runId && x.stage === 'plan'));
++  assert.ok(t.runs.some((x) => x.stage === 'verify'));
++});
++
++test('I11 · 运行中正本才坏（worker 收尾登记被拒）⇒ 运行失败、文案点名正本、闸门已回收、坏件不被覆盖', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i11' });
++  // gemini 起一个 3 秒后自然结束的 CLI（按超时失败），glm 正常；允许单侧降级，运行照常走到收尾登记
++  const stub: StubConfig = { gemini: { mode: 'hang_cli', sleepS: 3 }, glm: { mode: 'ok', verdict: 'pass' } };
++  const started = await cli(
++    fx.root, ['review', '--start', '--stage', 'plan', '--topic', fx.topic, '--focus', 'x', '--entry', 'B', '--allow-single', '--json'], stub,
++  );
++  assert.equal(started.code, EXIT.OK, `${started.stdout}${started.stderr}`);
++  const { run_id } = json<{ run_id: string }>(started.stdout);
++  const before = await corrupt(fx);
++
++  let last = { code: EXIT.STILL_RUNNING as number, stdout: '' };
++  for (let i = 0; i < 12 && last.code === EXIT.STILL_RUNNING; i++) {
++    const w = await cli(fx.root, ['review', '--wait', run_id, '--timeout', '20', '--json'], stub, 60_000);
++    last = { code: w.code ?? EXIT.FAIL, stdout: w.stdout };
++  }
++  assert.notEqual(last.code, EXIT.OK, `收尾登记被拒，运行不得报成功：\n${last.stdout}`);
++  assert.notEqual(last.code, EXIT.STILL_RUNNING);
++  const w = json<{ message: string | null }>(last.stdout);
++  assert.ok((w.message ?? '').includes(taskFile(fx)), `status 的 message 应点名正本：${w.message}`);
++  assert.notEqual((await gateOf(fx, 'plan'))?.state, 'running', '闸门已回收');
++  assert.deepEqual(await fs.readFile(taskFile(fx)), before, '坏件不得被覆盖');
++});
++
++test('I12 · gate --await-approval 读不出 ⇒ 退 2、ok:false、闸门不变（计划双审 AGY-01）', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i12' });
++  const runId = await adjudicatedPlan(fx, 'A');
++  await corrupt(fx);
++  const r = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--await-approval', '--json']);
++  assert.equal(r.code, EXIT.GATE_BLOCK, `${r.stdout}${r.stderr}`);
++  const js = json<{ ok: boolean; state: string; message: string }>(r.stdout);
++  assert.equal(js.ok, false);
++  assert.equal(js.state, 'unchanged');
++  assertExitText(js.message, fx);
++  const g = await gateOf(fx, 'plan');
++  assert.equal(g?.state, 'review_done_awaiting_disposition');
++  assert.equal(g?.run_id, runId);
++});
++
++test('I13 · 正本是合法 JSON 但形状不对（{}）⇒ approve 与 gate --check 都退 2 而不是 1（计划双审 AGY-02）', { skip }, async () => {
++  const fx = await makeFixture({ topic: 'tur-i13' });
++  await adjudicatedPlan(fx, 'B');
++  assert.equal((await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--check'])).code, EXIT.OK);
++  const before = await corrupt(fx, '{}');
++  const a = await cli(fx.root, ['approve', '--topic', fx.topic, '--stage', 'plan']);
++  assert.equal(a.code, EXIT.GATE_BLOCK, `${a.stdout}${a.stderr}`);
++  assert.match(a.stderr, /schema 不是 trivium\.task\.v1/);
++  const c = await cli(fx.root, ['gate', '--stage', 'plan', '--topic', fx.topic, '--check']);
++  assert.equal(c.code, EXIT.GATE_BLOCK, `${c.stdout}${c.stderr}`);
++  assert.equal((await gateOf(fx, 'plan'))?.state, 'awaiting_approval');
++  assert.deepEqual(await fs.readFile(taskFile(fx)), before);
++});
+diff --git a/test/unit/meta-task-write.test.ts b/test/unit/meta-task-write.test.ts
+new file mode 100644
+index 00000000..1241d766
+--- /dev/null
++++ b/test/unit/meta-task-write.test.ts
+@@ -0,0 +1,221 @@
++/**
++ * 审批正本读不出拒写（EV-248，计划 r2 §五 U1～U5）。
++ *
++ * 写入口 `updateTask` / `updateTaskAsync` 原先在锁内宽松读，读不出回落空正本再写回，`approvals[]` 随之丢失。
++ * 现在：读不出（含形状不对）⇒ 抛退 2 的受控错误、不调回调、文件原样；不存在 ⇒ 新主题照旧起写。
++ * U5 测 `recordApproval` 的先判与「闸门已写、正本才坏」的补偿回退。
++ */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import {
++  emptyTask, isTaskUnreadableError, readTask, readTaskStrict, taskUnreadableError, taskUnreadableExit, updateTask, updateTaskAsync,
++  type TaskMeta,
++} from '../../src/trivium/meta.js';
++import { recordApproval, taskUnreadableHold } from '../../src/trivium/approval.js';
++import { getGate, setGate } from '../../src/trivium/state.js';
++import { defaultConfig } from '../../src/trivium/config.js';
++import { EXIT } from '../../src/trivium/exit-codes.js';
++import type { Ctx } from '../../src/trivium/types.js';
++import { scratchDir } from '../helpers/scratch.js';
++
++const TOPIC = '正本拒写';
++const STALE = 120_000;
++/** 审批正本的文件名（`meta.ts` 的 `taskPath` 落点） */
++const TASK_FILE = 'task.json';
++
++async function fakeCtx(): Promise<Ctx> {
++  const root = await scratchDir('trivium-taskwrite-');
++  const triviumDir = path.join(root, '.trivium');
++  await fs.mkdir(triviumDir, { recursive: true });
++  await fs.mkdir(path.join(root, '.reviews', TOPIC), { recursive: true });
++  return { config: defaultConfig(), projectRoot: root, archiveRoot: path.join(root, '.reviews'), triviumDir, sources: ['<test>'] };
++}
++
++const layoutOf = (ctx: Ctx) => ({ archiveRoot: ctx.archiveRoot, topic: TOPIC });
++const taskFileOf = (ctx: Ctx) => path.join(ctx.archiveRoot, TOPIC, TASK_FILE);
++const lockOf = (ctx: Ctx) => ({ triviumDir: ctx.triviumDir, heartbeatStaleMs: STALE });
++
++/** 断言是写入口的拒写错误：退 2、点名绝对路径、给出 Git 出口与「由用户在终端执行」 */
++function assertRefusal(e: unknown, file: string): true {
++  assert.ok(isTaskUnreadableError(e), `应是拒写错误，实际：${String(e)}`);
++  assert.equal(e.code, EXIT.GATE_BLOCK);
++  assert.ok(e.message.includes(file), e.message);
++  assert.match(e.message, /git restore --source=HEAD/);
++  assert.match(e.message, /由用户在终端执行/);
++  return true;
++}
++
++/** 读不出的形态：内容（写成文件）或目录 */
++const SYNTAX_FORMS: Array<{ name: string; content: string }> = [
++  { name: '截断的 JSON', content: '{ "schema": "trivium.task.v1", "approvals": [' },
++];
++/** 形状不对的五种（计划双审 AGY-02）：合法 JSON，但不是一份 task.json；`hint` 是 error 里应点名的那一项 */
++const SHAPE_FORMS: Array<{ name: string; content: string; hint: RegExp }> = [
++  { name: 'null', content: 'null', hint: /不是一个 JSON 对象（是 null）/ },
++  { name: '数组', content: '[]', hint: /不是一个 JSON 对象（是 数组）/ },
++  { name: '数字', content: '123', hint: /不是一个 JSON 对象（是 number）/ },
++  { name: '空对象', content: '{}', hint: /schema 不是 trivium\.task\.v1/ },
++  {
++    name: 'approvals 是对象',
++    content: JSON.stringify({ ...emptyTask(TOPIC), approvals: {} }),
++    hint: /approvals 不是数组/,
++  },
++];
++
++for (const form of [...SYNTAX_FORMS, ...SHAPE_FORMS]) {
++  for (const entry of ['updateTask', 'updateTaskAsync'] as const) {
++    test(`U1 · ${form.name} × ${entry}：拒写退 2、不调回调、文件字节不变`, async () => {
++      const ctx = await fakeCtx();
++      await fs.writeFile(taskFileOf(ctx), form.content, 'utf8');
++      const before = await fs.readFile(taskFileOf(ctx));
++      let calls = 0;
++      const run = entry === 'updateTask'
++        ? updateTask(layoutOf(ctx), () => { calls++; }, lockOf(ctx))
++        : updateTaskAsync(layoutOf(ctx), async () => { calls++; }, lockOf(ctx));
++      await assert.rejects(run, (e) => assertRefusal(e, taskFileOf(ctx)));
++      assert.equal(calls, 0, '读不出时不得调用改写回调');
++      assert.deepEqual(await fs.readFile(taskFileOf(ctx)), before, '坏件必须原样保留');
++    });
++  }
++}
++
++for (const form of SHAPE_FORMS) {
++  test(`U1 · ${form.name}：readTaskStrict 判 unreadable 并点名不合的那一项`, async () => {
++    const ctx = await fakeCtx();
++    await fs.writeFile(taskFileOf(ctx), form.content, 'utf8');
++    const r = await readTaskStrict(layoutOf(ctx));
++    assert.equal(r.state, 'unreadable');
++    assert.match(r.error ?? '', form.hint);
++    // 宽松读照旧当空（读侧口径不变，只是不再在属性访问处抛 TypeError）
++    assert.deepEqual((await readTask(layoutOf(ctx))).approvals, []);
++  });
++}
++
++test('U1 · task.json 的位置是目录：拒写退 2、目录原样', async () => {
++  const ctx = await fakeCtx();
++  await fs.mkdir(taskFileOf(ctx));
++  await fs.writeFile(path.join(taskFileOf(ctx), 'sentinel'), 'x');
++  let calls = 0;
++  await assert.rejects(updateTask(layoutOf(ctx), () => { calls++; }, lockOf(ctx)), (e) => assertRefusal(e, taskFileOf(ctx)));
++  assert.equal(calls, 0);
++  assert.ok((await fs.stat(taskFileOf(ctx))).isDirectory());
++  assert.deepEqual(await fs.readdir(taskFileOf(ctx)), ['sentinel']);
++});
++
++test('U1 · 权限 000：拒写退 2、文件原样', { skip: process.getuid?.() === 0 ? 'root 读得动 000 文件' : false }, async () => {
++  const ctx = await fakeCtx();
++  const t = emptyTask(TOPIC);
++  t.approvals.push({ at: '2026-10-22T00:00:00.000Z', stage: 'plan', run_id: 'R1', decision: 'approved', reason: null });
++  await fs.writeFile(taskFileOf(ctx), JSON.stringify(t), 'utf8');
++  await fs.chmod(taskFileOf(ctx), 0o000);
++  try {
++    await assert.rejects(updateTask(layoutOf(ctx), () => {}, lockOf(ctx)), (e) => assertRefusal(e, taskFileOf(ctx)));
++  } finally {
++    await fs.chmod(taskFileOf(ctx), 0o644);
++  }
++  assert.equal(JSON.parse(await fs.readFile(taskFileOf(ctx), 'utf8')).approvals.length, 1, '审批记录不得被覆盖');
++});
++
++test('U2 · 正本不存在：首次写入建出完整正本（新主题不受影响）', async () => {
++  const ctx = await fakeCtx();
++  await updateTask(layoutOf(ctx), (t) => { t.goal = '首次'; }, lockOf(ctx));
++  const r = await readTaskStrict(layoutOf(ctx));
++  assert.equal(r.state, 'ok', r.error);
++  assert.equal(r.task.schema, 'trivium.task.v1');
++  assert.equal(r.task.topic, TOPIC);
++  assert.equal(r.task.goal, '首次');
++});
++
++test('U3 · 正本可读：既有字段保留、本次改动生效', async () => {
++  const ctx = await fakeCtx();
++  const t: TaskMeta = emptyTask(TOPIC);
++  t.approvals.push({ at: '2026-10-22T00:00:00.000Z', stage: 'plan', run_id: 'R1', decision: 'approved', reason: null });
++  await fs.writeFile(taskFileOf(ctx), JSON.stringify(t), 'utf8');
++  await updateTaskAsync(layoutOf(ctx), async (x) => { x.disputed = true; }, lockOf(ctx));
++  const r = await readTaskStrict(layoutOf(ctx));
++  assert.equal(r.state, 'ok');
++  assert.equal(r.task.approvals.length, 1);
++  assert.equal(r.task.disputed, true);
++});
++
++test('U4 · 写入口拒写与停点保守处理共用同一段出口', () => {
++  const l = { archiveRoot: '/tmp/归档', topic: TOPIC };
++  const exit = taskUnreadableExit(l, 'Unexpected end of JSON input\n第二行不进文案');
++  assert.ok(exit.includes(path.join('/tmp/归档', TOPIC, TASK_FILE)));
++  assert.match(exit, /Unexpected end of JSON input/);
++  assert.ok(!exit.includes('第二行不进文案'), '原因只取首行');
++  assert.match(exit, /由用户在终端执行；在会话里执行会被 TriviumCode Hook 拦下/);
++  assert.ok(taskUnreadableHold(l, 'Unexpected end of JSON input').includes(taskUnreadableExit(l, 'Unexpected end of JSON input')));
++  assert.ok(taskUnreadableError(l, 'Unexpected end of JSON input', '某事').message.includes(taskUnreadableExit(l, 'Unexpected end of JSON input')));
++  assert.equal(taskUnreadableError(l, undefined, '某事').code, EXIT.GATE_BLOCK);
++});
++
++// ── U5 · recordApproval：先判 + 补偿（计划 r2 §三.2）──
++
++test('U5 · 正本先已读不出：approve 退 2，闸门不动、正本原样', async () => {
++  const ctx = await fakeCtx();
++  await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: 'R1', heartbeatStaleMs: STALE });
++  await fs.writeFile(taskFileOf(ctx), '{ 坏', 'utf8');
++  for (const decision of ['approved', 'rejected', 'abandoned'] as const) {
++    await assert.rejects(
++      recordApproval({ ctx, topic: TOPIC, stage: 'plan', decision, reason: '理由', verifiedRunId: 'R1' }),
++      (e) => {
++        assertRefusal(e, taskFileOf(ctx));
++        // 拦在写闸门之前，不是写了再补偿回来（补偿会掩盖先判缺失，计划 r2 §五 M3）
++        assert.doesNotMatch((e as Error).message, /回退/);
++        return true;
++      },
++    );
++    assert.equal((await getGate(ctx.triviumDir, TOPIC, 'plan'))?.state, 'awaiting_approval', `${decision}：闸门不得被改动`);
++  }
++  assert.equal(await fs.readFile(taskFileOf(ctx), 'utf8'), '{ 坏');
++});
++
++test('U5 · 闸门已写下决定、正本才坏：比较-交换回原状态，错误原样上抛', async () => {
++  const ctx = await fakeCtx();
++  await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: 'R1', heartbeatStaleMs: STALE });
++  let gateSeen: string | undefined;
++  await assert.rejects(
++    recordApproval({
++      ctx, topic: TOPIC, stage: 'plan', decision: 'approved', verifiedRunId: 'R1',
++      afterGateAppliedForTest: async () => {
++        gateSeen = (await getGate(ctx.triviumDir, TOPIC, 'plan'))?.state;
++        await fs.writeFile(taskFileOf(ctx), '{ 坏', 'utf8');
++      },
++    }),
++    (e) => {
++      assertRefusal(e, taskFileOf(ctx));
++      assert.match((e as Error).message, /闸门已回退到本次之前的 awaiting_approval/);
++      return true;
++    },
++  );
++  assert.equal(gateSeen, 'approved', '前提：注入点确实在闸门写下之后');
++  const g = await getGate(ctx.triviumDir, TOPIC, 'plan');
++  assert.equal(g?.state, 'awaiting_approval', '补偿必须把闸门回退');
++  assert.equal(g?.run_id, 'R1');
++  assert.equal(await fs.readFile(taskFileOf(ctx), 'utf8'), '{ 坏', '坏件不得被覆盖');
++});
++
++test('U5 · 补偿前闸门已被别的运行接管：不回退，文案说明未回退', async () => {
++  const ctx = await fakeCtx();
++  await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'awaiting_approval', runId: 'R1', heartbeatStaleMs: STALE });
++  await assert.rejects(
++    recordApproval({
++      ctx, topic: TOPIC, stage: 'plan', decision: 'approved', verifiedRunId: 'R1',
++      afterGateAppliedForTest: async () => {
++        await setGate({ triviumDir: ctx.triviumDir, topic: TOPIC, stage: 'plan', state: 'running', runId: 'R9', heartbeatStaleMs: STALE });
++        await fs.writeFile(taskFileOf(ctx), '{ 坏', 'utf8');
++      },
++    }),
++    (e) => {
++      assertRefusal(e, taskFileOf(ctx));
++      assert.match((e as Error).message, /未回退/);
++      return true;
++    },
++  );
++  const g = await getGate(ctx.triviumDir, TOPIC, 'plan');
++  assert.equal(g?.state, 'running', '别的运行的闸门不得被动');
++  assert.equal(g?.run_id, 'R9');
++});

@@ -40,8 +40,7 @@ export const TRIVIUM_DIR = '.trivium';
 export { resolveAssetRoot } from './asset-root.js';
 
 /**
- * 契约 schema（`review.v2.json`，2026-10-22 起；v1 随历史留痕只读保留）相对资产根的路径
- * ——**唯一拼接处**（EV-74 计划 §3.2.2）。
+ * 契约 schema（现行 `review.v2.json`，EV-247；旧版 v1 文件只留给归档读取）相对资产根的路径——**唯一拼接处**（EV-74 计划 §3.2.2）。
  *
  * 此前只有 `review.ts:497` 一处运行期拼接；探针与准入脚本改喂真实契约后各自还要
  * 拼一次，不把这半句也收进共用出口，就是把「同一事实两份实现」从资产根搬到相对路径。
@@ -247,14 +246,6 @@ export function migrateProbeSection(raw: unknown): { probe: unknown; note: strin
 export const DEFAULT_HEARTBEAT_STALE_S = 120;
 
 /**
- * 多轮评审轮次上限的内置缺省与硬顶（`review.plan_rounds` / `review.code_rounds`，
- * CLI 旗标 `--plan-rounds` / `--code-rounds` 同一论域）。硬顶由 config.v2 schema 的
- * `maximum` 与 CLI 旗标校验双重把守；轮次用尽仍判不通过时停下人工审批。
- */
-export const DEFAULT_REVIEW_ROUNDS = 3;
-export const MAX_REVIEW_ROUNDS = 10;
-
-/**
  * 内置默认配置。
  *
  * profiles 的模型 slug 已对照本机 `agy models` 与 ZCode 模型目录校验过存在性；
@@ -295,9 +286,6 @@ export function defaultConfig(): Config {
        */
       default_critics: [...DEFAULT_CRITICS],
       max_critics: DEFAULT_MAX_CRITICS,
-      // 旧配置（升级用户）没有这两键：mergeConfigLayer 深合并自动继承这里的缺省
-      plan_rounds: DEFAULT_REVIEW_ROUNDS,
-      code_rounds: DEFAULT_REVIEW_ROUNDS,
       timeout_s: { plan: 900, code: 1200, bug: 1200 },
       /*
        * 每次 `--wait` 的窗口，同时也是**用户能收到进度的最小间隔**——Bash 工具在
@@ -429,7 +417,8 @@ export function defaultConfig(): Config {
       reason_policy: 'warn',
       joint_blocker_policy: 'warn',
     },
-    preflight: { auth_cache_ttl_h: 1 },
+    // recalibrate_deadline_s：缺省 15 分钟（用户 2026-10-22 定，EV-251）；工具超时 960 s，载体要把 Bash 上限抬到这么高
+    preflight: { auth_cache_ttl_h: 1, recalibrate_deadline_s: 900 },
     verify: { build: [], test: [] },
     retention: { run_dir_days: 30 },
     probe: defaultProbe(),

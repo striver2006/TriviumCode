@@ -1,0 +1,86 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "计划忠实覆盖任务目标（改片段措辞与位置、预检给播报句、照抄约束、16 份产物对账、EV-252 与文档同步、不改判据与 doctor 行为），现状陈述经逐项核实无误：三处偏离与 REPORT_2026-10-22 第九节时间线一致；cli.ts:1019 确为整体透传、键序断言可测；PROTOCOL 451 行、设计 §8.1 末段 ③④ 条与版本表、手册 §3.4（195～199 行）、LLD 243 行、BACKLOG.md 的 EV-251 done 条目与『待双审』段、body.md:75 与 run.contract.md:82 两处外层句的行号与内容全部准确；schema 目录无 preflight 输出的机读契约，加两键不触发 schema 同步义务；16 份入口产物当前都恰好含一次该片段（抽 codex 载体 dual-run 与 skills-src 源逐字一致），『同一口径』截取断言可行。四条意见均为措辞与步骤归因级小修：其中 GLM-01 是将写进四家共用片段的『Hook 会拦』理由句对无 Hook 的 codex / gemini 载体失实，GLM-02 是照抄约束与验收判据对 TV 写法口径不一，改完即可实施，无需再审。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/自动校准播报与照抄/plan/2026-10-23-自动校准播报与照抄-claude.md §D3（说明理由段）",
+      "problem": "D3 要写进公共片段的理由句『命令文本含 .trivium，Hook 见到重定向或写命令形态会整条拦下——加了也跑不成，只会多耗一轮』，对 codex / gemini 两家载体失实：PROTOCOL 的 hooks 命令一节明确『codex / gemini 没有 Hook 机制，退 64 且零写入』，写入拦截 Hook 只为 claude 与 glm 渲染。该片段是四家逐字节同一口径的新增文本，对没有 Hook 的两家，『加了也跑不成』是不成立的机制归因——本次主题目标恰是让四家都不易跳过禁令，给两家的理由是假的会削弱禁令可信度（模型在无 Hook 载体里加了重定向而未被拦时，下一条禁令的理由也会被怀疑）。",
+      "evidence": "doc/03_api/PROTOCOL_dual_critic_relay.md:467（『hooks --agent <id> … codex / gemini 没有 Hook 机制，退 64 且零写入』；只给 claude、glm 渲染）；被审计划 §D3（『说明理由（模型对有理由的禁令遵循度更高……）：命令文本含 .trivium，Hook 见到重定向或写命令形态会整条拦下』）；skills-src/partials/preflight/recalibrate.md 现状（片段四家同一渲染，本次将在其中新增该句）",
+      "suggestion": "理由句限定为对四家都真的表述：删去机制归因只留后果（例如『输出很长也不改调用；加了重定向等只会多耗一轮、还可能被载体护栏拦下』），或明确写成『装有 Hook 的载体（Claude Code、ZCode）会整条拦下』。不要在四家共用片段里写只有两家成立的事实。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/自动校准播报与照抄/plan/2026-10-23-自动校准播报与照抄-claude.md §D3 与 §D4 验收判据三",
+      "problem": "同一条照抄约束在计划里有两份不一致的写法：D3 说『命令文本恰好是 .trivium/bin/trivium 后接该条 args 各项』（字面路径），D4 验收判据三说『两次 doctor 的命令文本与 TV + args 逐字相同』（TV 变量），而片段现状与外层模板的写法是『命令是 TV 后接该条 args 的各项』。模型实际发出的命令可能是 $TV doctor … 也可能是 .trivium/bin/trivium doctor …（EV-251 验收时间线里被拦的改写形态用的就是字面路径），按哪份口径判定『逐字相同』没有定论——验收判据三的通过与失败会因执行者取的口径而异，变异 M5 与新契约断言锚定的也是这份未定口径的措辞。",
+      "evidence": "被审计划 §D3（『命令文本恰好是 .trivium/bin/trivium 后接该条 args 各项』）；被审计划 §D4 末段（验收判据三『两次 doctor 的命令文本与 TV + args 逐字相同、无 Hook 拦截记录』）；skills-src/partials/preflight/recalibrate.md:10（『命令是 TV 后接该条 args 的各项』）",
+      "suggestion": "在 D3 里定一个口径并让 D4 判据三、契约断言措辞与之一致：明确『TV（即 .trivium/bin/trivium）本身或其变量展开形态后接 args 各项』均可接受，或统一要求一种形态；验收判据三按同一口径改写。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/自动校准播报与照抄/plan/2026-10-23-自动校准播报与照抄-claude.md §二 S5 步骤 4",
+      "problem": "S5 步骤 4 写『npm run build 重渲染 16 份入口产物』，与仓库工作约定冲突：AGENTS.md 常用命令注明 npm run build 只出两个 bundle（重建 skills/ 下的打包脚本产物）、入口 SKILL.md『缺省构建故意不重写它们』，改 skills-src 后须显式 npm run render 重出四家产物。照计划字面执行（只跑 build）时 16 份产物不会更新，新契约断言会红、需要回头补 render——步骤归因错误会造成一次返工式排查。",
+      "evidence": "AGENTS.md 常用命令段（『npm run build — esbuild 出两个 bundle（会重建 skills/ 下产物）』与『npm run render — skills-src/ → 入口 SKILL.md（缺省构建故意不重写它们）』并列）；AGENTS.md 改动同步清单（『改 skills-src/ … npm run render 重出四家产物并一起提交』）；被审计划 §二 S5 步骤 4",
+      "suggestion": "把步骤 4 改为『npm run render 重渲染 16 份入口产物，再 npm run build 与 npm run check』，与改动同步清单的既定流程一致。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": ".reviews/自动校准播报与照抄/plan/2026-10-23-自动校准播报与照抄-claude.md §D2 第 4 步与 §D1（announce_after_pass）",
+      "problem": "announce_after_pass 是无槽位常量（『预检首次退 69，已自动校准后通过。』），D2 第 4 步的主路径却要求模型『取第一次预检 JSON 里的那个字段』——第二次预检通过时的工具结果里没有 recalibration，模型必须回翻上文里第一次预检的大 JSON 才能逐字念出。而 D2 自己写的键缺席回落句就是同一句原文，即回取失败与回取成功产出的文本完全相同：这个回取动作没有任何收益，只添一个失败面（模型回取不到时就地改写，恰是本次要治的第二处偏离的复发形态）。对含槽位的 announce_before 从 JSON 取是对的；对常量句，让模型照念片段里就在眼前的原文比回取上文更稳。",
+      "evidence": "被审计划 §D1（announce_after_pass 的值固定为『预检首次退 69，已自动校准后通过。』，无任何待填槽位）；被审计划 §D2 第 4 步（『你在这之后写的第一句话就是 recalibration.announce_after_pass 的原文（取第一次预检 JSON 里的那个字段；第二次预检通过时没有 recalibration）』及『键缺席时说「预检首次退 69，已自动校准后通过」』——回落句与原文相同）；doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md:128（第二处偏离即『没有当即说……到收尾总结里才提』）",
+      "suggestion": "第 4 步改为直接照念片段中给出的常量原文（原文就写在片段里），JSON 里的 announce_after_pass 键可以保留作为对称与单测对象，但模型路径不必经过『回取第一次预检 JSON』这一步；验收判据二不变。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "三处偏离的现状陈述与验收报告第九节逐条吻合（04:46:58 与 04:47:01 之间无文本、定性句推迟到收尾、重定向被 Hook 拦两次后改回），问题定位准确",
+    "D1 取 B（编排器给现成句）并同时做 A 的闸门化改写、放弃 C（预检自拉 doctor 会撑爆任何载体工具上限，与不改时限冲突）与 D（PreToolUse Hook 拿不到 assistant 文本、四家 Hook 能力不一）的论证成立且与仓库事实相符",
+    "cli.ts:1019 确为 recalibration 整体透传，『cli.ts 不需要改、JSON.stringify 保持插入序』属实，I5 补 stdout 键序断言可测且必要",
+    "只在 eligible 分支给两键、none 分支维持 { eligible, why, invocations: [] } 形状不变的加法设计，与既有 U2/U3 用例兼容；schema 目录无 preflight 输出的机读契约，不触发 JSON Schema 同步义务",
+    "D3 把照抄约束从 args 各项扩到命令行前后、并给『输出很长时另起一次只读读取截存文件』的合法出口，对症验收里实际发生的改写形态；不把该规则扩大为全局纪律的边界克制正确",
+    "D4 的断言深度划分诚实且可行：截取『预检退 69 时先看能不能自动校准』到『每次预检至多一轮。』两两相等的前提已核实（16 份产物各恰好含片段一次，抽 codex 载体产物与 skills-src 源逐字一致）；『先发后调、第一句定性、不再改写』只能靠真实会话验收的边界如实写明",
+    "文档落点行号全部核实准确：PROTOCOL 451 行、设计 §8.1 末段 ③④ 条与版本表（v1.3.173 → v1.3.174）、手册 §3.4（195～199 行）、LLD 243 行、BACKLOG.md EV-251 done 条目与『待双审』段、body.md:75 与 run.contract.md:82 的外层句及『主题回显/轮次上限同一条消息』与『第一句是定性句』不冲突的判断",
+    "变异集 M1～M5 与新增断言一一对应（键缺席、键序、闸门句位置、单家产物漂移、禁令句删除），覆盖了新断言的杀伤面"
+  ],
+  "not_covered": [
+    "本侧只读未执行：npm run render/build/check、变异预跑、零配额干跑均未运行，S5 各步骤的可执行性判断基于静态读码与仓库工作约定，非实测",
+    "entry-render.ts 渲染管线源码未读，『片段经引入后四家逐字节相同』依据的是产物抽样比对（codex 载体 dual-run 一份与源逐字一致）加 16 份计数，未逐份比对全部产物",
+    "QUICKSTART §5.2 的四家护栏等级原文未读，GLM-01 中『codex / gemini 无写入拦截 Hook』的依据是 PROTOCOL 467 行与 AGENTS.md 的 Hook 描述，未从 QUICKSTART 交叉核实",
+    "第一次预检 stdout 中 checks[].detail 是否可能含 invocations 字样（影响 I5 新断言的 indexOf 判定）只核对了 preflight.ts 现有 detail 文案，未穷举所有失败分支的组合输出",
+    "announce_before 播报句在多项失败 / 失败项名与调用条数不对应等边界下的措辞自然度只做推理检查，未逐场景推演"
+  ],
+  "consulted": [
+    "skills-src/partials/preflight/recalibrate.md",
+    "src/trivium/preflight.ts",
+    "src/trivium/cli.ts",
+    "test/contract/skill-recalibrate.test.ts",
+    "test/unit/preflight-recalibrate.test.ts",
+    "test/integration/doctor-deadline-cli.test.ts",
+    "doc/05_testing/REPORT_2026-10-22_preflight_recalibrate.md",
+    "skills-src/partials/review/body.md",
+    "skills-src/commands/run.contract.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/07_manuals/MANUAL_user.md",
+    "CLAUDE.md",
+    "skills/dual-critic/entry/codex/dual-run/SKILL.md"
+  ]
+}

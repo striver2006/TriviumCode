@@ -1,0 +1,135 @@
+{
+  "targets": [
+    "src/trivium/meta.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/review.ts",
+    "src/trivium/verify.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/meta-task-write.test.js",
+    "dist/test/test/integration/task-unreadable-refusal.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "写入口改回宽松读（readTask），读不出照写",
+      "file": "src/trivium/meta.ts",
+      "find": "      const read = await readTaskStrict(l);\n      if (read.state === 'unreadable') throw taskUnreadableError(l, read.error, '本次未写入');\n      const t = read.task;",
+      "replace": "      const t = await readTask(l);",
+      "expect": "dist/test/test/unit/meta-task-write.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "gate --check 删去输出前的正本判定（先写后判）",
+      "file": "src/trivium/cli.ts",
+      "find": "  const taskUnreadable = taskRead.state === 'unreadable';",
+      "replace": "  const taskUnreadable = false;",
+      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
+    },
+    {
+      "id": "M3a",
+      "desc": "cmdApproval 删去复核之前的先判（recordApproval 自己的先判仍在）",
+      "file": "src/trivium/cli.ts",
+      "find": "  await assertTaskWritableForApproval((await resolveTopicReadOnly(ctx, topic, stages[0]!)).layout);",
+      "replace": "",
+      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
+    },
+    {
+      "id": "M3b",
+      "desc": "recordApproval 删去写闸门之前的先判（只剩补偿兜底）",
+      "file": "src/trivium/approval.ts",
+      "find": "  await assertTaskWritableForApproval(ref.layout);",
+      "replace": "",
+      "expect": "dist/test/test/unit/meta-task-write.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "删去补偿：闸门已写下决定、正本才坏时不回退",
+      "file": "src/trivium/approval.ts",
+      "find": "      const back = await setGateChecked({\n        triviumDir: ctx.triviumDir, topic: i.topic, stage: i.stage, state: gate.state, heartbeatStaleMs,\n        expect: { state: [i.decision], runId: gate.run_id, allowMissing: false },\n      });",
+      "replace": "      const back = { applied: false };",
+      "expect": "dist/test/test/unit/meta-task-write.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "review 准备阶段删去分配 run_id 之前的先判",
+      "file": "src/trivium/review.ts",
+      "find": "  if (taskRead.state === 'unreadable') {",
+      "replace": "  if (taskRead.state === 'never') {",
+      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "verify 删去执行命令之前的先判",
+      "file": "src/trivium/cli.ts",
+      "find": "    throw taskUnreadableError(ref.layout, taskRead.error, '未执行任何编译测试命令，未写验证记录');",
+      "replace": "    void 0;",
+      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "正本不存在也按读不出处理（新主题首次写入被误拒）",
+      "file": "src/trivium/meta.ts",
+      "find": "    if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'missing' };",
+      "replace": "    if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'unreadable', error: 'ENOENT' };",
+      "expect": "dist/test/test/unit/meta-task-write.test.js"
+    },
+    {
+      "id": "M7b",
+      "desc": "同 M7，期望集成格变红（I10 新主题首次写入）",
+      "file": "src/trivium/meta.ts",
+      "find": "    if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'missing' };",
+      "replace": "    if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'unreadable', error: 'ENOENT' };",
+      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "拒写错误的退出码改成 1",
+      "file": "src/trivium/meta.ts",
+      "find": "    EXIT.GATE_BLOCK,\n    `${what}",
+      "replace": "    EXIT.FAIL,\n    `${what}",
+      "expect": "dist/test/test/unit/meta-task-write.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "gate --check 读不出时仍退 0",
+      "file": "src/trivium/cli.ts",
+      "find": "  if (taskUnreadable) return EXIT.GATE_BLOCK;",
+      "replace": "  if (taskUnreadable) return EXIT.OK;",
+      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "gate --await-approval 读不出时改回退 0",
+      "file": "src/trivium/cli.ts",
+      "find": "      else fail(msg);\n      return EXIT.GATE_BLOCK;\n    }\n    if (hd.decision === 'decided') {",
+      "replace": "      else fail(msg);\n      return EXIT.OK;\n    }\n    if (hd.decision === 'decided') {",
+      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "删去形状判据（合法 JSON 一律判可读）",
+      "file": "src/trivium/meta.ts",
+      "find": "  const problem = taskShapeProblem(parsed);",
+      "replace": "  const problem = null;",
+      "expect": "dist/test/test/unit/meta-task-write.test.js"
+    },
+    {
+      "id": "M11b",
+      "desc": "同 M11，期望集成格变红（I13 形状不对退 2 而不是 1）",
+      "file": "src/trivium/meta.ts",
+      "find": "  const problem = taskShapeProblem(parsed);",
+      "replace": "  const problem = null;",
+      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "verify 删去登记被拒时的文案改写（原样上抛，丢掉命令结论；代码双审 GLM-01）",
+      "file": "src/trivium/verify.ts",
+      "find": "    if (!isTaskUnreadableError(e)) throw e;",
+      "replace": "    throw e;",
+      "expect": "dist/test/test/integration/task-unreadable-refusal.test.js"
+    }
+  ]
+}

@@ -1,0 +1,246 @@
+[
+  {
+    "id": "M1",
+    "desc": "写入口改回宽松读（readTask），读不出照写",
+    "suite": "dist/test/test/unit/meta-task-write.test.js",
+    "fail": 16,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U1 · 截断的 JSON × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · 截断的 JSON × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · null × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · null × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数组 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数组 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数字 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数字 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · 空对象 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · 空对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · approvals 是对象 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · approvals 是对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · task.json 的位置是目录：拒写退 2、目录原样",
+      "U1 · 权限 000：拒写退 2、文件原样",
+      "U5 · 闸门已写下决定、正本才坏：比较-交换回原状态，错误原样上抛",
+      "U5 · 补偿前闸门已被别的运行接管：不回退，文案说明未回退"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M2",
+    "desc": "gate --check 删去输出前的正本判定（先写后判）",
+    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I1 · gate --check（B，本轮已审批）读不出 ⇒ 退 2、只出一份带 task_unreadable 的结果、正本与闸门都不动"
+    ],
+    "firstLines": [],
+    "elapsed_s": 27
+  },
+  {
+    "id": "M3a",
+    "desc": "cmdApproval 删去复核之前的先判（recordApproval 自己的先判仍在）",
+    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I4 · approve 读不出 ⇒ 退 2、闸门仍等待审批、正本原样"
+    ],
+    "firstLines": [],
+    "elapsed_s": 27
+  },
+  {
+    "id": "M3b",
+    "desc": "recordApproval 删去写闸门之前的先判（只剩补偿兜底）",
+    "suite": "dist/test/test/unit/meta-task-write.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U5 · 正本先已读不出：approve 退 2，闸门不动、正本原样"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M4",
+    "desc": "删去补偿：闸门已写下决定、正本才坏时不回退",
+    "suite": "dist/test/test/unit/meta-task-write.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U5 · 闸门已写下决定、正本才坏：比较-交换回原状态，错误原样上抛"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M5",
+    "desc": "review 准备阶段删去分配 run_id 之前的先判",
+    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I8 · review --start（新阶段第一轮，没有前序轮次）读不出 ⇒ 退 2、零工件、闸门未置 running",
+      "I9 · 纯文档跳过轮读不出 ⇒ 退 2、不留跳过轮的 run.json"
+    ],
+    "firstLines": [],
+    "elapsed_s": 27
+  },
+  {
+    "id": "M6",
+    "desc": "verify 删去执行命令之前的先判",
+    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I7 · verify 读不出 ⇒ 退 2、一条命令都不跑、不写验证记录"
+    ],
+    "firstLines": [],
+    "elapsed_s": 61
+  },
+  {
+    "id": "M7",
+    "desc": "正本不存在也按读不出处理（新主题首次写入被误拒）",
+    "suite": "dist/test/test/unit/meta-task-write.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U2 · 正本不存在：首次写入建出完整正本（新主题不受影响）",
+      "U5 · 闸门已写下决定、正本才坏：比较-交换回原状态，错误原样上抛",
+      "U5 · 补偿前闸门已被别的运行接管：不回退，文案说明未回退"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M7b",
+    "desc": "同 M7，期望集成格变红（I10 新主题首次写入）",
+    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
+    "fail": 9,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I1 · gate --check（B，本轮已审批）读不出 ⇒ 退 2、只出一份带 task_unreadable 的结果、正本与闸门都不动",
+      "I2 · gate --check（A，未表态）读不出 ⇒ 退 2、闸门停在待裁决、阻断计数不归零",
+      "I3 · 共同 blocker 被驳回（争议标记）时读不出 ⇒ 退 2、disputed 没被写进新正本",
+      "I4 · approve 读不出 ⇒ 退 2、闸门仍等待审批、正本原样",
+      "I5 · 拒绝与不带 --stage 的放弃（两个阶段都有开放闸门）读不出 ⇒ 退 2、两道闸门都不动",
+      "I10 · 新主题、正本不存在：topic claim、review、verify 首次写入照常",
+      "I11 · 运行中正本才坏（worker 收尾登记被拒）⇒ 运行失败、文案点名正本、闸门已回收、坏件不被覆盖",
+      "I12 · gate --await-approval 读不出 ⇒ 退 2、ok:false、闸门不变（计划双审 AGY-01）",
+      "I13 · 正本是合法 JSON 但形状不对（{}）⇒ approve 与 gate --check 都退 2 而不是 1（计划双审 AGY-02）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 5
+  },
+  {
+    "id": "M8",
+    "desc": "拒写错误的退出码改成 1",
+    "suite": "dist/test/test/unit/meta-task-write.test.js",
+    "fail": 18,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U1 · 截断的 JSON × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · 截断的 JSON × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · null × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · null × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数组 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数组 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数字 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数字 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · 空对象 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · 空对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · approvals 是对象 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · approvals 是对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · task.json 的位置是目录：拒写退 2、目录原样",
+      "U1 · 权限 000：拒写退 2、文件原样",
+      "U4 · 写入口拒写与停点保守处理共用同一段出口",
+      "U5 · 正本先已读不出：approve 退 2，闸门不动、正本原样",
+      "U5 · 闸门已写下决定、正本才坏：比较-交换回原状态，错误原样上抛",
+      "U5 · 补偿前闸门已被别的运行接管：不回退，文案说明未回退"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M9",
+    "desc": "gate --check 读不出时仍退 0",
+    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
+    "fail": 4,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I1 · gate --check（B，本轮已审批）读不出 ⇒ 退 2、只出一份带 task_unreadable 的结果、正本与闸门都不动",
+      "I2 · gate --check（A，未表态）读不出 ⇒ 退 2、闸门停在待裁决、阻断计数不归零",
+      "I3 · 共同 blocker 被驳回（争议标记）时读不出 ⇒ 退 2、disputed 没被写进新正本",
+      "I13 · 正本是合法 JSON 但形状不对（{}）⇒ approve 与 gate --check 都退 2 而不是 1（计划双审 AGY-02）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 34
+  },
+  {
+    "id": "M10",
+    "desc": "gate --await-approval 读不出时改回退 0",
+    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
+    "fail": -1,
+    "timed_out": true,
+    "cancelled": 0,
+    "red": [
+      "I2 · gate --check（A，未表态）读不出 ⇒ 退 2、闸门停在待裁决、阻断计数不归零",
+      "I10 · 新主题、正本不存在：topic claim、review、verify 首次写入照常",
+      "I12 · gate --await-approval 读不出 ⇒ 退 2、ok:false、闸门不变（计划双审 AGY-01）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 1599
+  },
+  {
+    "id": "M11",
+    "desc": "删去形状判据（合法 JSON 一律判可读）",
+    "suite": "dist/test/test/unit/meta-task-write.test.js",
+    "fail": 15,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U1 · null × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · null × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数组 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数组 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数字 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · 数字 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · 空对象 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · 空对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · approvals 是对象 × updateTask：拒写退 2、不调回调、文件字节不变",
+      "U1 · approvals 是对象 × updateTaskAsync：拒写退 2、不调回调、文件字节不变",
+      "U1 · null：readTaskStrict 判 unreadable 并点名不合的那一项",
+      "U1 · 数组：readTaskStrict 判 unreadable 并点名不合的那一项",
+      "U1 · 数字：readTaskStrict 判 unreadable 并点名不合的那一项",
+      "U1 · 空对象：readTaskStrict 判 unreadable 并点名不合的那一项",
+      "U1 · approvals 是对象：readTaskStrict 判 unreadable 并点名不合的那一项"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M11b",
+    "desc": "同 M11，期望集成格变红（I13 形状不对退 2 而不是 1）",
+    "suite": "dist/test/test/integration/task-unreadable-refusal.test.js",
+    "fail": -1,
+    "timed_out": true,
+    "cancelled": 0,
+    "red": [
+      "I2 · gate --check（A，未表态）读不出 ⇒ 退 2、闸门停在待裁决、阻断计数不归零"
+    ],
+    "firstLines": [],
+    "elapsed_s": 939
+  }
+]

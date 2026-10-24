@@ -1,7 +1,7 @@
 /**
  * 任务书第 6 节输出契约（设计 §9.4；计划 r2 §3.7、§5.1 B 组；EV-113、EV-124）。
  *
- * 枚举取值与必填字段**从 review.v2.json 读**再比对，不在用例里写死第二份——schema 改了，这里跟着变。
+ * 枚举取值与必填字段**从现行契约 review.v2.json 读**再比对，不在用例里写死第二份——schema 改了，这里跟着变。
  * 名字带〔回归〕的格在改前构建上也必须绿。
  */
 import { test } from 'node:test';
@@ -22,7 +22,7 @@ function brief(critic: CriticId): string {
   const input: BriefInput = {
     cfg: defaultConfig(), critic, stage: 'plan', topic: 'T', runId: 'R', projectRoot: '/proj', snapshot: SNAP,
     promptHint: null, subjectExcerpt: '# 计划', mustRead: [], suggestedRead: [], ownHistory: [],
-    schemaPath: '/s/review.v2.json', lenses: {}, taskGoal: null, taskGoalAppendix: null, minToolCalls: 5, minProjectReads: 3,
+    schemaPath: '/s/review.v1.json', lenses: {}, taskGoal: null, taskGoalAppendix: null, minToolCalls: 5, minProjectReads: 3,
     commandExecution: 'none', mcpExecPrefixes: [],
   };
   return renderBrief(input);

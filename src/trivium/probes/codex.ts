@@ -27,7 +27,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import { run, tryRun, type RunResult } from '../util/exec.js';
 import { IS_WIN } from '../util/platform.js';
-import { exists, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
+import { exists, makeTempDir, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
 import { createFixture, SENTINEL_OPEN, type Fixture } from './fixture.js';
 import { probeScratchPaths } from './agy.js';
 import type { CodexProbe, CodexProviderProbe, PathDenyProbe, ProbeIsolation } from '../types.js';
@@ -801,7 +801,8 @@ export function codexIsolationResidueText(dir: string, code: string): string {
  * 结论不因删不掉而改变。目录里没有凭据副本可查，不做删除失败后的现场查。
  */
 export async function probeCodexIsolation(bin: string): Promise<CodexIsolationResult> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-codexhome-'));
+  // 走 makeTempDir（EV-251）：带时限的 doctor 经它把目录记进台账，宿主硬杀时由下一次 doctor 补删
+  const dir = await makeTempDir('trivium-codexhome');
   let isolation: ProbeIsolation = 'shared';
   let tempDirResidue: string | null = null;
   try {

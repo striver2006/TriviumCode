@@ -70,7 +70,7 @@ TV preflight --stage {{STAGE}} --driver {{DRIVER}} --critics <critics> [--profil
 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
 不带 `--critics` 就查不到，要等拉起之后才失败。
 
-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
+{{> preflight/recalibrate}}
 
 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
 
@@ -79,7 +79,7 @@ TV preflight --stage {{STAGE}} --driver {{DRIVER}} --critics <critics> [--profil
 先运行：
 
 ```
-TV review --start --entry {{ENTRY}} --stage {{STAGE}} --topic <主题> --driver {{DRIVER}} --focus <提示语> [--goal <任务目标>] {{SUBJECT_SLOT}}{{> review/rounds-flag@STAGE}} {{MODEL_HINT}} {{TIER_HINT}} {{EFFORT_HINT}}{{VENDOR_PROFILE_HINT}} [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
+TV review --start --entry {{ENTRY}} --stage {{STAGE}} --topic <主题> --driver {{DRIVER}} --focus <提示语> [--goal <任务目标>] {{SUBJECT_SLOT}}{{> review/rounds-slot@STAGE}} {{MODEL_HINT}} {{TIER_HINT}} {{EFFORT_HINT}}{{VENDOR_PROFILE_HINT}} [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
 ```
 
 `--entry {{ENTRY}}` 标记本次运行由命令 {{ENTRY}} 发起，记入 run.json 留痕；它也让 CLI 按 B/C/D 规则
@@ -100,8 +100,6 @@ Driver 会话声明从 resolve 输出的 driver_model / driver_provider 逐项�
 
 {{> review/subject@SUBJECT_KIND}}
 
-{{> review/rounds-note@STAGE}}
-
 **把 resolve 输出的 `critics` 数组用逗号连接后传给 `--critics`，无条件传。**
 它是本轮**入选的审核者集合**，resolve 已经解析并校验完：默认值回落、旧旗标 `--only`
 的单元素形态、各项合法性，全都在里面了。照抄即可。
@@ -118,6 +116,8 @@ Driver 会话声明从 resolve 输出的 driver_model / driver_provider 逐项�
 允许一侧失败时不中止、产出结果并留痕（§12.4）。
 **漏传的后果是静默忽略用户的要求**——一侧失败就整次失败，
 而留痕里看不出用户曾经要求过降级。
+
+{{> review/rounds-pass@STAGE}}
 
 若 resolve 输出的 `models` 字段非空，把其中的模型覆盖逐个原样传给对应的
 `--model-<审核者 id>`（`models` 的键就是审核者 id：{{MODEL_FLAGS}}）。
@@ -192,30 +192,20 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 
 {{> review/next-plan@STAGE}}
 
+{{> review/apply@STAGE}}
+
 ### 6. 校验裁决完整性
 
 运行 `TV gate --stage {{STAGE}} --topic <主题> --check --json`。
 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
 仍不通过则向用户说明缺口并停下，交给用户处理。
 
-校验通过且输出含 `round_verdict` 时，按其 `decision` 分支（三态判定，2026-10-22）：
+`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
+也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
 
-- **`fail` 且 `round < limit`**：本轮整体判不通过、轮次未用尽。按第 5 步的裁决修订
-  {{SUBJECT_NOUN}}（驳回的意见也要在裁决理由里说明为何不吸收；计划阶段还须产出
-  新一轮完整计划，见第 5 步的说明），
-  然后**回到第 3 步**再发起一轮双审——新轮次自动抬升，透传的旗标（含轮次上限）保持同一组。
-  如此循环，直至判定不再是 `fail`、或轮次用尽。
-- **`fail` 且 `round ≥ limit`**：轮次已用尽。编排器已把闸门置为等待人工审批——
-  把停点话术原样转述给用户后**停下**，等用户走 `{{cmd:dual-approve}}`：
-  通过＝放行按最后一轮的裁决继续，拒绝＝终止。**审批的发起权在用户手里，不要代跑。**
-- **`pass` / `pass_after_changes`**：进入第 7 步。`pass_after_changes`（含三档皆不达 50%
-  时的兜底取保守档）意为「按意见修订后即可收尾、不再重审」——修订内容以第 5 步裁决为准。
-
-> `round_verdict` 为 `null`（历史轮次或 bug 阶段）时无三态分支，按原有单趟流程走第 7 步。
+{{> review/loop@STAGE}}
 
 ### 7. 停点
-
-仅在整体判定**不是**「`fail` 且轮次未用尽」时执行本步（那一格在第 6 步已回到循环里）。
 
 运行 `TV gate --stage {{STAGE}} --topic <主题> --await-approval`，
 把它输出的停点话术与三份文档路径转述给用户，然后**停止**。

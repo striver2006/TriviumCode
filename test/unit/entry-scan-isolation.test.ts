@@ -45,6 +45,8 @@ const SPAWN_REVIEWED: Readonly<Record<string, string>> = {
   'test/integration/code-stage.test.ts': '自己 spawn 的只有 gate hook-pre-commit；--start 都经 cli()',
   'test/integration/bug-stage.test.ts': '自己 spawn 的只有 gate hook-pre-write；--start 都经 cli()',
   'test/integration/gate-loop.test.ts': '自己 spawn 的是 gate 钩子、approve 与同步 review（不扫描）；--start 都经 cli()',
+  // EV-251：I7 要拿到子进程句柄发 SIGTERM，cli() 给不出句柄
+  'test/integration/doctor-deadline-cli.test.ts': 'I7 自己 spawn 带时限的 doctor 以便发 SIGTERM，env 里显式设了扫描家目录变量与 HOME；其余都经 cli()',
 };
 
 /*

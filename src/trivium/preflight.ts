@@ -6,10 +6,10 @@
  *   - 归档根可写性用 `access` 探测；目录不存在时只检查**父目录**权限，严禁创建它；
  *   - 探活缓存写推迟到**全部检查通过之后**（审查意见 GLM-05）。
  *
- * 另一条铁律：探针过期时**快速失败**，不在预检里隐式拉起 `doctor`
- * （AGY-03 / GLM-08）。预检是被 skill 在**非交互**的 Bash 工具里调用的，
- * 无处告知也无从等待；而完整 `doctor` 会击穿 600s 工具超时，
- * 届时配额已烧而探针一字未落盘。
+ * 另一条铁律：探针过期时**快速失败**，预检自己不拉起 `doctor`（AGY-03 / GLM-08）。
+ * EV-251 起校准交给 skill：失败项上带机读的 `recalibrate`（能不能由 doctor 修、目标是哪几侧哪个组合），
+ * 汇总成 `recalibration.invocations`；skill 照抄调用带时限的 doctor（`--deadline-s`，到点按组结束探针子进程、
+ * 已探完的段照常落盘），再重跑同一条预检，至多一轮。doctor 每探完一段就落盘，丢掉的只会是撞上时限的那一段。
  */
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -38,13 +38,15 @@ import {
   type ReasoningLevels,
   type TierResolution,
 } from './adapters/base.js';
-import { mergeCliOverrides, type TierFlagValues } from './tier-flags.js';
+import { mergeCliOverrides, vendorProfileAgents, type TierFlagValues } from './tier-flags.js';
+import { DOCTOR_RERUN_ENTRY, doctorSectionConsumesOverrides } from './doctor.js';
 import { displayHomePath, exists, tildeHome } from './util/fsx.js';
 import {
   entryScanEnv, scanEntryCollisions, sharedReadRootTargets, summarizeSharedRootProblems, type EntryScanEnv,
 } from './entry-collisions.js';
 import { isGitRepo } from './util/git.js';
 import { run } from './util/exec.js';
+import { doctorToolTimeoutMs } from './doctor-deadline.js';
 import { step } from './util/log.js';
 import { describeGuard, effectiveGuardLevel } from './hook-config.js';
 
@@ -78,6 +80,41 @@ export interface CheckResult {
    * 汇总进 `PreflightResult.warnings`，skill 负责把它念给用户。
    */
   warn?: true;
+  /**
+   * 这一失败项能不能由 doctor 重新校准、该跑哪几个目标（EV-251，预检失败自动校准计划 r2 D1 / D2）。
+   * 由产出该项的代码置位，**不看文案**（同 `warn`）。失败项没置位时 `runPreflight` 末尾补成 `{ fixable: false }`：
+   * 缺省即不能修（fail-closed）。通过项不带。
+   */
+  recalibrate?: CheckRecalibrate;
+}
+
+/** 自动校准的一个 doctor 目标：`--only` 的取值，与让 doctor 探到**本轮组合**所需的旗标（EV-251） */
+export interface RecalibrateTarget {
+  only: string;
+  flags: string[];
+}
+
+export interface CheckRecalibrate {
+  fixable: boolean;
+  /** 只在 `fixable` 为真时给 */
+  targets?: RecalibrateTarget[];
+}
+
+/** 自动校准后重跑预检通过时的定性句（EV-252）：无槽位，skill 照念片段里的原文，契约用例核两处逐字相等 */
+export const RECAL_ANNOUNCE_AFTER_PASS = '预检首次退 69，已自动校准后通过。';
+
+/** 预检失败时的自动校准计划（EV-251，计划 r2 D2）：skill 只照抄 `invocations[*].args`，不拼、不改、不去重 */
+export interface RecalibrationPlan {
+  eligible: boolean;
+  why: string;
+  /**
+   * 第一次 doctor 调用之前要原样念给用户的一句（EV-252）：失败项名、调用次数、每次时限已填好。
+   * 只在 `eligible` 时给；键序排在 `invocations` 之前，读到调用清单之前先读到它。
+   */
+  announce_before?: string;
+  invocations: Array<{ only: string; args: string[]; deadline_s: number; bash_timeout_ms: number }>;
+  /** 恒为 `RECAL_ANNOUNCE_AFTER_PASS`，只在 `eligible` 时给（EV-252）；skill 不回取它，照念片段原文 */
+  announce_after_pass?: string;
 }
 
 /** 预检与 `review --start` 共用的警告汇总形状（EV-123） */
@@ -96,6 +133,8 @@ export interface PreflightResult {
   exitCode: number;
   /** 通过后待写入的探活缓存（失败时不写——AC-16） */
   pendingAuthCache: Record<string, AuthCacheEntry>;
+  /** 失败时恒在、通过时为 null（EV-251） */
+  recalibration: RecalibrationPlan | null;
 }
 
 export interface PreflightOptions {
@@ -133,6 +172,90 @@ export interface PreflightOptions {
   entryScanEnv?: EntryScanEnv;
 }
 
+// ─────────────────────── 自动校准的目标（EV-251） ───────────────────────
+
+/**
+ * 一侧在本次预检里的 doctor 目标：入选侧 × 本次 scope 的各阶段，经与预检同一次的 `resolveTier`（同一组命令行覆盖、
+ * 档位旗标）解析出的组合，去重（计划三审 CODEX-04 / CODEX-05）。
+ *
+ * - doctor 里不读覆盖的段（探测用固定口径）只给 `--only`：带了只会换来末尾一条「覆盖没用上」（EV-245）；
+ * - 读覆盖的段给全组合：有厂商 profile 概念的侧带路线旗标（null 带显式 `--native-<id>`——doctor 自己按 code 阶段解析，
+ *   plan 阶段的原生路线不传就探不到），模型、思考等级非空时带 `--model-<id>` / `--effort-<id>`。
+ * - `profileFilter` 给了时只取解析出该厂商 profile 的阶段（路线探针、版本漂移那几项按路线报）。
+ */
+export function recalTargets(
+  cfg: Config,
+  critic: CriticId,
+  opts: Pick<PreflightOptions, 'scope' | 'modelOverrides' | 'tierFlags'>,
+  profileFilter?: string | null,
+): RecalibrateTarget[] {
+  const cliName = agentById(critic)?.cliName;
+  if (!cliName) return [];
+  if (!doctorSectionConsumesOverrides(cliName)) return [{ only: cliName, flags: [] }];
+  const cli = mergeCliOverrides(opts.modelOverrides ?? {}, opts.tierFlags);
+  const routed = (vendorProfileAgents() as readonly string[]).includes(critic);
+  const out: RecalibrateTarget[] = [];
+  for (const stage of scopeStages(opts.scope)) {
+    const r = resolveTier(cfg, critic, stage, cli[critic] ?? {});
+    if (r.missingTier) continue;
+    if (profileFilter !== undefined && r.vendorProfile !== profileFilter) continue;
+    out.push({
+      only: cliName,
+      flags: [
+        ...(routed ? (r.vendorProfile === null ? [`--native-${critic}`] : [`--profile-${critic}`, r.vendorProfile]) : []),
+        ...(r.model ? [`--model-${critic}`, r.model] : []),
+        ...(r.effort ? [`--effort-${critic}`, r.effort] : []),
+      ],
+    });
+  }
+  return dedupeTargets(out);
+}
+
+function dedupeTargets(ts: readonly RecalibrateTarget[]): RecalibrateTarget[] {
+  const seen = new Map<string, RecalibrateTarget>();
+  for (const t of ts) seen.set(JSON.stringify([t.only, t.flags]), t);
+  return [...seen.values()];
+}
+
+const fixableBy = (targets: readonly RecalibrateTarget[]): CheckRecalibrate => ({ fixable: true, targets: dedupeTargets(targets) });
+
+/**
+ * 预检失败时的自动校准计划（计划 r2 D2）。`eligible` 的充要条件：退出码 69，且每个失败项都可修，且调用清单非空。
+ * 调用按（`only`、`flags`）去重、按 `ALL_CLI_NAMES` 排序；同一侧两个组合就是两次调用。
+ */
+export function buildRecalibration(
+  r: Pick<PreflightResult, 'ok' | 'exitCode' | 'checks'>,
+  deadlineS: number,
+): RecalibrationPlan | null {
+  if (r.ok) return null;
+  const none = (why: string): RecalibrationPlan => ({ eligible: false, why, invocations: [] });
+  if (r.exitCode !== EXIT.ENV) return none(`退出码 ${r.exitCode} 不在自动校准范围（只校准 69）`);
+  const failed = r.checks.filter((c) => !c.ok);
+  const blocker = failed.find((c) => c.recalibrate?.fixable !== true);
+  if (blocker) return none(`「${blocker.name}」不能由 doctor 修复`);
+  const targets = dedupeTargets(failed.flatMap((c) => c.recalibrate?.targets ?? []));
+  if (targets.length === 0) return none('失败项没有给出可校准的目标');
+  const order = (t: RecalibrateTarget): number => {
+    const i = (ALL_CLI_NAMES as readonly string[]).indexOf(t.only);
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const invocations = [...targets].sort((a, b) => order(a) - order(b)).map((t) => ({
+    only: t.only,
+    args: ['doctor', '--only', t.only, ...t.flags, '--deadline-s', String(deadlineS), '--json'],
+    deadline_s: deadlineS,
+    bash_timeout_ms: doctorToolTimeoutMs(deadlineS),
+  }));
+  // 键序即阅读次序（EV-252）：播报句在调用清单之前，cli.ts 原样透传
+  return {
+    eligible: true,
+    why: '全部失败项都可由 doctor 重新校准',
+    announce_before: `预检退 69，以下失败项可由 doctor 重新校准：${failed.map((c) => c.name).join('、')}；`
+      + `将依次在前台跑 ${invocations.length} 次 doctor（每次至多 ${deadlineS} 秒），会消耗少量配额。`,
+    invocations,
+    announce_after_pass: RECAL_ANNOUNCE_AFTER_PASS,
+  };
+}
+
 // ─────────────────────── 各项检查 ───────────────────────
 
 
@@ -158,8 +281,14 @@ function authCacheValid(
   return { valid: true, reason: `缓存有效（${ageH.toFixed(2)}h 前探活通过）` };
 }
 
-/** 探针新鲜度。过期即**快速失败**，不隐式拉起 doctor（AGY-03 / GLM-08） */
-function checkProbeFreshness(cfg: Config): CheckResult {
+/**
+ * 探针新鲜度。过期即**快速失败**，预检自己不拉起 doctor（AGY-03 / GLM-08）：EV-251 起由 skill 按失败项上的
+ * `recalibrate` 在会话里跑带时限的 doctor（`--deadline-s`）、再重跑预检；终端里照旧手动跑 doctor。
+ *
+ * 两项都可由 doctor 修，目标只取入选侧：「全部过期」只在**全部**登记 CLI 都过期时失败，失败即入选各家必在过期之列
+ * （计划三审 AGY-03 的驳回理由）；未入选的过期家不进清单。
+ */
+function checkProbeFreshness(cfg: Config, selected: readonly CriticId[], opts: PreflightOptions): CheckResult {
   if (cfg.probe.generated_at === null) {
     return {
       name: '探针结论存在',
@@ -167,18 +296,23 @@ function checkProbeFreshness(cfg: Config): CheckResult {
       exitCode: EXIT.ENV,
       detail:
         '尚未运行过探针。请先手动运行 `trivium doctor`（约需 2~4 分钟，会消耗少量厂商配额），然后重试。\n' +
-        '  预检刻意**不**自动拉起 doctor：它会击穿 Bash 工具的 600s 超时，届时配额已烧而结论未落盘。',
+        '  在 /dual-* 命令里这一项会自动校准：按本轮入选各侧逐家跑带时限的 doctor，再重跑预检。',
+      recalibrate: fixableBy(selected.flatMap((c) => recalTargets(cfg, c, opts))),
     };
   }
   const stale = staleCliProbes(cfg);
   if (!probeIsFresh(cfg)) {
+    const staleSet = new Set(stale);
     return {
       name: '探针结论未过期',
       ok: false,
       exitCode: EXIT.ENV,
       detail:
         `探针结论已全部过期或从未探过（超过 probe_ttl_days=${cfg.probe_ttl_days}）：${stale.join('、')}。\n` +
-        '  请手动运行 `trivium doctor` 重新校准后重试。',
+        '  请运行 `trivium doctor` 重新校准后重试（/dual-* 命令里会按本轮入选各侧自动校准）。',
+      recalibrate: fixableBy(
+        selected.filter((c) => staleSet.has(agentById(c)?.cliName ?? '')).flatMap((c) => recalTargets(cfg, c, opts)),
+      ),
     };
   }
   /*
@@ -299,31 +433,38 @@ async function checkCliVersions(
       : [null];
     for (const profile of profiles) {
     const probe = selected && adapter?.probeFor ? adapter.probeFor(cfg, profile) : rootProbe;
+    /*
+     * 自动校准的目标（EV-251）：只给入选侧，按这一条路线取本轮组合。路线探针缺失 / 过期、入口不在、版本漂移
+     * 都是「落盘结论与现场对不上」，doctor 重探会写入新结论；取版本失败是 CLI 本身跑不起来，不标（计划 r2 D1）。
+     */
+    const recal = (): CheckRecalibrate =>
+      fixableBy(selected && id && opts ? recalTargets(cfg, id as CriticId, opts, adapter?.probeFor ? profile : undefined) : []);
     if (!probe?.probed_at) {
       if (!selected || !adapter?.probeFor) continue;
       out.push({ name: `${cliName} 路线探针`, ok: false, exitCode: EXIT.ENV,
-        detail: `所选路线 ${profile ?? 'native'} 没有有效探针，请显式指定同一路线重跑 doctor。` });
+        detail: `所选路线 ${profile ?? 'native'} 没有有效探针，请显式指定同一路线重跑 doctor。`, recalibrate: recal() });
       continue;
     }
     if (selected && !cliProbeIsFresh({ ...cfg, probe: { ...cfg.probe,
       cli: { ...cfg.probe.cli, [cliName]: probe } } }, cliName)) {
       out.push({ name: `${cliName} 路线探针新鲜度`, ok: false, exitCode: EXIT.ENV,
-        detail: `所选路线 ${profile ?? 'native'} 的能力探针已过期，请显式指定同一路线重跑 doctor。` });
+        detail: `所选路线 ${profile ?? 'native'} 的能力探针已过期，请显式指定同一路线重跑 doctor。`, recalibrate: recal() });
       continue;
     }
     const invocation = selected ? adapter?.versionInvocationFor?.(cfg, profile) : undefined;
 
     const label = agentByCliName(cliName)?.display ?? cliName;
     /** 未入选侧的坏消息只报为 note：说出来有价值，但不该让没选它的运行失败 */
-    const fail = (name: string, detail: string): CheckResult =>
+    const fail = (name: string, detail: string, recalibrate?: CheckRecalibrate): CheckResult =>
       selected
-        ? { name, ok: false, exitCode: EXIT.ENV, detail }
+        ? { name, ok: false, exitCode: EXIT.ENV, detail, ...(recalibrate ? { recalibrate } : {}) }
         : { name, ok: true, detail: `${detail}（本次未选用该侧，仅提示）` };
 
     const entry = invocation ? invocation.bin : probe.entrypoint;
     if (!entry || !(await exists(entry))) {
+      // 入口可能挪了；真卸载了 doctor 会给出「未找到可执行文件」的明确结论，下一轮预检照样失败、停下
       out.push(
-        fail(`${label} 可调用`, `探针记录的 ${cliName} 入口不可用：${entry ?? '(未记录)'}。请重新运行 doctor。`),
+        fail(`${label} 可调用`, `探针记录的 ${cliName} 入口不可用：${entry ?? '(未记录)'}。请重新运行 doctor。`, recal()),
       );
       continue;
     }
@@ -343,6 +484,7 @@ async function checkCliVersions(
           `${label} 版本与探针一致`,
           `${cliName} 版本已变（探针记录 ${probe.version} → 实际 ${v}）。\n` +
             '  参数与行为可能随版本漂移，请重新运行 `trivium doctor`。',
+          recal(),
         ),
       );
     } else {
@@ -676,11 +818,18 @@ function checkReadonlyCapability(
   const actx: AdapterContext = { cfg: ctx.config, nodePath: ctx.config.runtime.node ?? process.execPath };
   const problems: string[] = [];
   const oks: string[] = [];
+  /**
+   * 不可用各侧能不能由 doctor 修（EV-251）：按侧收集，**每个**不可用侧都由适配器标了 `fix: 'doctor'` 时整项才可修，
+   * 目标为这几侧；任一侧不可修整项即不可修（计划三审 AGY-04）。不拆检查项：拆了会改检查名、波及既有输出与用例。
+   */
+  const fixable: CriticId[] = [];
+  let unfixable = false;
 
   for (const id of critics) {
     const a = adapters[id];
     if (!a) {
       problems.push(`${agentById(id)?.display ?? id}：注册表启用了它，但 adapters/index.ts 没有接线`);
+      unfixable = true;
       continue;
     }
     const vendorProfiles = scopeStages(scope)
@@ -689,12 +838,24 @@ function checkReadonlyCapability(
       .map((r) => r.vendorProfile);
     const v = a.availability(actx, { vendorProfiles });
     if (v.ok) oks.push((agentById(id)?.display ?? id) + (v.note ? `（${v.note}）` : ''));
-    else problems.push(`${agentById(id)?.display ?? id}：${v.reason ?? '不可用（未给出原因）'}`);
+    else {
+      problems.push(`${agentById(id)?.display ?? id}：${v.reason ?? '不可用（未给出原因）'}`);
+      if (v.fix === 'doctor') fixable.push(id);
+      else unfixable = true;
+    }
   }
 
   return problems.length === 0
     ? { name: '只读能力可用', ok: true, detail: `${oks.join('、')} 均报告可用` }
-    : { name: '只读能力可用', ok: false, exitCode: EXIT.ENV, detail: problems.join('\n  ') };
+    : {
+        name: '只读能力可用',
+        ok: false,
+        exitCode: EXIT.ENV,
+        detail: problems.join('\n  '),
+        recalibrate: unfixable
+          ? { fixable: false }
+          : fixableBy(fixable.flatMap((id) => recalTargets(ctx.config, id, { scope, modelOverrides: overrides, tierFlags }))),
+      };
 }
 
 /**
@@ -1080,7 +1241,7 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
   }
 
   // ① 探针新鲜度（过期即快速失败，不拉 doctor）
-  if (checks.every(c => c.ok)) checks.push(checkProbeFreshness(cfg));
+  if (checks.every(c => c.ok)) checks.push(checkProbeFreshness(cfg, selected, opts));
   // ② ③ CLI 可调用且版本与探针一致
   if (checks.every((c) => c.ok)) checks.push(...(await checkCliVersions(cfg, selected, opts)));
   // ④ 只读能力
@@ -1133,14 +1294,18 @@ export async function runPreflight(opts: PreflightOptions): Promise<PreflightRes
     }
   }
 
+  // 失败项没标 recalibrate 的一律补成不能修（EV-251，fail-closed）：只有产出该项的代码明说能修才算
+  for (const c of checks) if (!c.ok && !c.recalibrate) c.recalibrate = { fixable: false };
   const failed = checks.find((c) => !c.ok);
+  const exitCode = failed?.exitCode ?? (failed ? EXIT.ENV : EXIT.OK);
   return {
     ok: failed === undefined,
     scope,
     checks,
     warnings: collectWarnings(checks),
-    exitCode: failed?.exitCode ?? (failed ? EXIT.ENV : EXIT.OK),
+    exitCode,
     pendingAuthCache,
+    recalibration: buildRecalibration({ ok: failed === undefined, exitCode, checks }, cfg.preflight.recalibrate_deadline_s),
   };
 }
 
@@ -1174,5 +1339,8 @@ export function renderPreflight(r: PreflightResult): string {
   lines.push('');
   const warned = r.warnings.length > 0 ? `（含 ${r.warnings.length} 条警告）` : '';
   lines.push(r.ok ? `✓ 预检通过${warned}` : `✗ 预检未通过（退出码 ${r.exitCode}）——不会产生任何工件`);
+  if (r.recalibration?.eligible) {
+    lines.push(`  可由 doctor 重新校准：${r.recalibration.invocations.map((i) => `${DOCTOR_RERUN_ENTRY} ${i.args.filter((a) => a !== '--json').join(' ')}`).join('；')}`);
+  }
   return lines.join('\n');
 }

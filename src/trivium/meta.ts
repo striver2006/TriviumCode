@@ -8,7 +8,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type {
-  AgentId, CriticId, LegacyReviewMode, PlanFinalCheck, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
+  AgentId, CriticId, LegacyReviewMode, PlanFinalCheck, ReviewLoop, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
 } from './types.js';
 import { describeDriftUnknown } from './types.js';
 // gate.ts 的静态依赖闭包不含本文件（EV-224 编码时核过），不成环
@@ -20,7 +20,8 @@ import { withTopicLock } from './lock.js';
 import { validateRunMeta, validateRunMetaV1 } from './schemas.js';
 import { DEFAULT_DRIVER, type GuardLevel } from './agents/registry.js';
 import { warn } from './util/log.js';
-import { envError } from './exit-codes.js';
+import { EXIT, TriviumError, envError } from './exit-codes.js';
+import { shellQuoteArg } from './naming.js';
 
 /** `updateTask` 的短临界区参数 */
 export interface TaskLock {
@@ -189,7 +190,17 @@ export interface TaskMeta {
   approvals: ApprovalRecord[];
   /** 降级事件（§12.4 要求 task.json 记录） */
   degradations: { run_id: string; stage: Stage; reason: string; at: string }[];
-  /** 双方共同 blocker 被驳回等争议项（§6.6 规则 7） */
+  /**
+   * 双方共同 blocker 被驳回、在 `warn` 策略下放行的争议项（§6.6 规则 7）。
+   *
+   * 由 `gate --check` 与 `joint_checks` 同一次写入落（发版-02）：每轮至多一条，按 `run_id` 覆盖——
+   * 同一轮重跑先删旧条目再按本次结论决定是否追加，争议撤回或改 `hard` 被拦时本轮条目消失。
+   * `finding_ids` 是被驳回的共同 blocker 编号（拍平），`note` 是分组写法 `AGY-01+GLM-01@位置`
+   * （`formatJointGroups`，多组用「；」连接），不存整段告警。
+   *
+   * `disputed` **只增不减**：早于明细写入的旧正本只有布尔位、归属不到哪一轮，明细删空即清零会抹掉它。
+   * 所以 `disputed` 为真而明细为空是合法形态（旧记录，或该轮争议已撤回），report 如实写「没有留下明细」。
+   */
   disputed: boolean;
   disputes: { run_id: string; finding_ids: string[]; note: string }[];
   /**
@@ -213,23 +224,6 @@ export interface TaskMeta {
     effective_sides: number;
     /** 有效侧不足时的成因（作废排除 / 无结构化结论 / 两者） */
     reason?: 'voided' | 'no-structured-review' | 'both';
-    at: string;
-  }[];
-  /**
-   * 每轮的整体三态判定（2026-10-22 多轮评审），由 `gate --check` 落——与 `joint_checks`
-   * 同一个分工理由：聚合要等两侧 review JSON 齐了才判得了，run.json 那份是运行期事实、
-   * 只写一次。每轮一条，按 `run_id` 覆盖（`--check` 可反复跑，同一轮以最后一次为准）。
-   */
-  round_verdicts?: {
-    run_id: string;
-    stage: Stage;
-    rerun_index: number;
-    decision: 'pass' | 'pass_after_changes' | 'fail';
-    tallies: { approve: number; approve_after_changes: number; reject: number };
-    effective_sides: number;
-    limit: number;
-    /** verdict 不可读、被保守计为 reject 的侧（parse_fallback 或结论读不到） */
-    unreadable_as_reject?: string[];
     at: string;
   }[];
   /**
@@ -310,6 +304,10 @@ export function emptyTask(topic: string, now = new Date().toISOString()): TaskMe
  *     核对失去全部对象，删掉或搅坏它就能整枝绕过。
  *
  * 我上一批刚修掉「清单来自被核对对象自身」，却让新加的锚重蹈了同样的覆辙。
+ *
+ * **形状也要判**（EV-248，计划双审 AGY-02）：只防语法错时，`null`、数组、`{}`、`approvals` 不是数组这类
+ * 合法 JSON 会判 `ok`，随后写入口与读侧在属性访问处抛 TypeError、以 1 退出，绕过受控的拒写出口；
+ * `hook-pre-commit` 锚 ② 也会把它们当作可读放行。见 {@link taskShapeProblem}。
  */
 export async function readTaskStrict(
   l: ArchiveLayout,
@@ -322,11 +320,72 @@ export async function readTaskStrict(
     if (code === 'ENOENT') return { task: emptyTask(l.topic), state: 'missing' };
     return { task: emptyTask(l.topic), state: 'unreadable', error: (e as Error).message };
   }
+  let parsed: unknown;
   try {
-    return { task: JSON.parse(raw) as TaskMeta, state: 'ok' };
+    parsed = JSON.parse(raw);
   } catch (e) {
     return { task: emptyTask(l.topic), state: 'unreadable', error: (e as Error).message };
   }
+  const problem = taskShapeProblem(parsed);
+  if (problem !== null) return { task: emptyTask(l.topic), state: 'unreadable', error: problem };
+  return { task: parsed as TaskMeta, state: 'ok' };
+}
+
+/** 正本必有的四个数组字段（`emptyTask` 起就有，写入口与读侧都直接按数组用） */
+const TASK_ARRAY_FIELDS = ['runs', 'approvals', 'degradations', 'disputes'] as const;
+
+/**
+ * 解析出来的值像不像一份 task.json：不像就返回哪一项不对，像就返回 null。
+ *
+ * 只判顶层：对象、`schema`、四个数组字段。可选字段（`joint_checks`、`drivers`）缺失即「没有」；
+ * 各条记录的内部形状由各读点自己的判读兜着——收紧到逐条校验会把历史留痕判坏。
+ */
+export function taskShapeProblem(v: unknown): string | null {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) {
+    return `内容不是一个 JSON 对象（是 ${v === null ? 'null' : Array.isArray(v) ? '数组' : typeof v}）`;
+  }
+  const o = v as Record<string, unknown>;
+  if (o['schema'] !== 'trivium.task.v1') {
+    return `schema 不是 trivium.task.v1（是 ${JSON.stringify(o['schema'] ?? null)}）`;
+  }
+  for (const k of TASK_ARRAY_FIELDS) {
+    if (!Array.isArray(o[k])) return `${k} ${k in o ? '不是数组' : '缺失'}`;
+  }
+  return null;
+}
+
+/**
+ * 审批正本读不出时的共用出口段（EV-248）：写入口拒写、续链判定、校验 / 停点的保守处理三处共用一份，
+ * 文案与退出码（2）同口径。恢复命令那一句对齐运行留痕读不出的出口段（计划双审 AGY-03）。
+ */
+export function taskUnreadableExit(l: ArchiveLayout, error: string | undefined): string {
+  const p = taskPath(l);
+  const cause = (error ?? '未知原因').split('\n')[0];
+  return (
+    `  审批正本 ${p} 读不出（${cause}）。\n` +
+    '  读不出时写回会把它整份覆盖成空正本，审批记录（approvals）随之丢失，所以本次不写。\n' +
+    '  从 Git 找回：\n' +
+    `    · 看历史：git log --oneline -- ${shellQuoteArg(p)}\n` +
+    `    · 看当前改动：git diff -- ${shellQuoteArg(p)}\n` +
+    `    · 恢复到最近一次提交：git restore --source=HEAD -- ${shellQuoteArg(p)}（未提交过的改动会丢，先看 diff）\n` +
+    '  恢复命令请由用户在终端执行；在会话里执行会被 TriviumCode Hook 拦下。恢复后重跑本命令。'
+  );
+}
+
+/** 写入口拒写抛的受控错误：`what` 说清本次没做成什么，其后接共用出口段 */
+export function taskUnreadableError(l: ArchiveLayout, error: string | undefined, what: string): TriviumError {
+  return new TriviumError(
+    EXIT.GATE_BLOCK,
+    `${what}：${l.topic} 的审批正本 task.json 读不出。\n${taskUnreadableExit(l, error)}`,
+    { kind: TASK_UNREADABLE_KIND },
+  );
+}
+
+const TASK_UNREADABLE_KIND = 'task_unreadable';
+
+/** 是不是写入口的拒写错误（调用方要在竞态下改写文案时用，如 verify 已执行完命令才被拒） */
+export function isTaskUnreadableError(e: unknown): e is TriviumError {
+  return e instanceof TriviumError && (e.details as { kind?: unknown } | undefined)?.kind === TASK_UNREADABLE_KIND;
 }
 
 /** 宽松版：读不到就当空。只给「缺数据也能继续」的调用方用（如 report） */
@@ -361,6 +420,11 @@ export async function updateTask(
  *
  * **`mutate` 返回 `false` 表示「不写盘」**：幂等档与被拒档都需要「读了、判了、不改」，
  * 而在锁外先判一次再决定要不要进锁，等于把判据又挪回锁外。
+ *
+ * **正本读不出就拒写**（EV-248）：原先锁内用宽松的 `readTask`，读不出回落 `emptyTask`、改完照常写回——
+ * 坏件被整份覆盖，`approvals[]` 随之清空，而 `humanDecision` 的 fail-closed 要的正是那份坏件还在。
+ * 现在 `unreadable` 抛 `taskUnreadableError`（退 2），不调 `mutate`；`missing` 仍是新主题、从空正本起写。
+ * 调用方各自在第一次落盘之前先判一次，这里是兜底，不是唯一判定点（计划 r2 §三）。
  */
 export async function updateTaskAsync(
   l: ArchiveLayout,
@@ -370,7 +434,9 @@ export async function updateTaskAsync(
   return withTopicLock(
     { triviumDir: lock.triviumDir, topic: taskLockName(l.topic), heartbeatStaleMs: lock.heartbeatStaleMs },
     async () => {
-      const t = await readTask(l);
+      const read = await readTaskStrict(l);
+      if (read.state === 'unreadable') throw taskUnreadableError(l, read.error, '本次未写入');
+      const t = read.task;
       const r = await mutate(t);
       if (r === false) return t;
       t.updated_at = new Date().toISOString();
@@ -419,6 +485,11 @@ export interface NewRunMetaInput {
    */
   planFinalCheck?: PlanFinalCheck;
   /**
+   * 轮次链位置（EV-247）：计划与代码阶段由 `prepareRun` 传入，bug 阶段与跳过轮不传、不写。
+   * 理由同 `planFinalCheck`：缺失即「这一轮不按多轮循环的规则判」，不在这里按阶段补默认值。
+   */
+  reviewLoop?: ReviewLoop;
+  /**
    * 本轮实际使用的档位表名（`--profile` 覆盖后的 `active_profile`，M11 第 6 步，设计 6.7.1 顶层 `profile`）。
    * `review` 的准备阶段恒传；可选只是为了不逼几十处只关心别的字段的测试夹具一起改——
    * 生产写侧不存在「没传」这条路，所以缺席仍只表示 M11 第 6 步之前的旧留痕。
@@ -432,11 +503,6 @@ export interface NewRunMetaInput {
   subjectSha256: string;
   denyPaths: string[];
   driftPolicy: 'warn' | 'fail';
-  /**
-   * 评审轮次上限（2026-10-22 多轮评审）：plan / code 阶段由 `prepareRun` 恒传，
-   * bug 阶段与手工构造的测试调用传 null（即缺席——历史留痕同形）。
-   */
-  reviewRounds?: { limit: number; source: 'flag' | 'config' } | null;
   /** 编排器自带的构建标识（`build-stamp.ts` 的 `embeddedBuildStamp()`）；缺省按 null 记 */
   build?: BuildStamp | null;
 }
@@ -462,7 +528,7 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     driver_enabled: i.driverEnabled ?? true,
     ...(i.driverGuardLevel !== undefined ? { driver_guard_level: i.driverGuardLevel } : {}),
     ...(i.planFinalCheck !== undefined ? { plan_final_check: { subject_rerun_index: i.planFinalCheck.subject_rerun_index } } : {}),
-    ...(i.reviewRounds ? { review_rounds: { limit: i.reviewRounds.limit, source: i.reviewRounds.source } } : {}),
+    ...(i.reviewLoop !== undefined ? { review_loop: { round: i.reviewLoop.round, max_rounds: i.reviewLoop.max_rounds } } : {}),
     ...(i.profile !== undefined ? { profile: i.profile } : {}),
     critics_selected: [...i.criticsSelected],
     snapshot: {

@@ -7,12 +7,12 @@ import {
   checkReviewIntegrity,
   enumerateFallbackFindings,
 } from '../../src/trivium/parse.js';
-import type { Review } from '../../src/trivium/types.js';
+import type { ReviewV2 } from '../../src/trivium/types.js';
 
-function validReview(over: Partial<Review> = {}): Review {
+function validReview(over: Partial<ReviewV2> = {}): ReviewV2 {
   return {
     schema: 'trivium.review.v2',
-    verdict: 'approve-after-changes',
+    verdict: 'pass-after-changes',
     summary: '最危险的一条：并发回滚未覆盖，可能造成数据不一致。',
     findings: [
       {
@@ -63,7 +63,7 @@ test('配平扫描不被字符串内的花括号骗到', () => {
 test('findings 为空数组合法（表示无问题）', () => {
   const r = parseReview(JSON.stringify(validReview({
     findings: [],
-    verdict: 'approve',
+    verdict: 'pass',
     summary: '通读计划与相关代码后未发现阻断性问题。',
     not_covered: ['未审查性能'],
   })));

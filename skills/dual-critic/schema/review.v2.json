@@ -2,15 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "trivium.review.v2",
   "title": "TriviumCode 审查结论",
-  "description": "两侧审查员共用的输出契约（设计 §6.5）。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。claude 侧同样以 --json-schema 内联送出，但会剥掉顶层 $schema（该 CLI 不认 2020-12 元 schema 引用），此后由它按自己的方言校验——所以本文件不用 2020-12 独有关键字（$defs / prefixItems / unevaluated* / dependent* 等，由 test/unit/claude-adapter.test.ts 的 A31 守）；draft-07 独有或跨方言语义变化的键（dependencies、tuple 形 items、布尔 exclusiveMinimum、$ref 的兄弟键）不在守卫论域，改本文件时人工核。v2（2026-10-22）：verdict 由四枚举改三枚举，服务轮次三态判定（通过 / 修改后通过 / 不通过，整体判定由编排器按侧聚合，Driver 不得手写）；v1 带旧四枚举，仅作历史留痕的只读校验保留。",
+  "description": "全体审查员共用的输出契约（设计 §6.5）。v2（EV-247）只改根字段 verdict：由 v1 的四值改为三档 pass / pass-after-changes / reject，编排器据此按侧计票、判本轮整体结论并决定是否自动重审；意见形状与 v1 完全相同，v1 文件保留给旧归档读取。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。claude 侧同样以 --json-schema 内联送出，但会剥掉顶层 $schema（该 CLI 不认 2020-12 元 schema 引用），此后由它按自己的方言校验——所以本文件不用 2020-12 独有关键字（$defs / prefixItems / unevaluated* / dependent* 等，由 test/unit/claude-adapter.test.ts 的 A31 守）；draft-07 独有或跨方言语义变化的键（dependencies、tuple 形 items、布尔 exclusiveMinimum、$ref 的兄弟键）不在守卫论域，改本文件时人工核。",
   "type": "object",
   "required": ["schema", "verdict", "summary", "findings"],
   "additionalProperties": false,
   "properties": {
     "schema": { "const": "trivium.review.v2" },
     "verdict": {
-      "enum": ["approve", "approve-after-changes", "reject"],
-      "description": "整体判断（三态）：approve=通过（意见按逐条裁决处理后进实施）；approve-after-changes=修改后通过（必须按意见修改后才可进实施，不再重审）；reject=不通过（须修订后重新送审）。该值由编排器按有效侧聚合成本轮整体判定，驱动多轮评审循环"
+      "enum": ["pass", "pass-after-changes", "reject"],
+      "description": "本侧对被审对象的整体结论，三档：pass＝通过，可直接按它实施（意见只是建议）；pass-after-changes＝修改后通过，按本侧意见修改后即可实施、无需再审；reject＝不通过，必须修改后重新评审。编排器按侧计票：不通过占半数及以上即整轮判不通过并自动重审"
     },
     "summary": {
       "type": "string",
@@ -46,10 +46,7 @@
             "minLength": 1,
             "description": "如 src/auth/oidc.ts:88 或 plan §3.2"
           },
-          "problem": {
-            "type": "string",
-            "minLength": 1
-          },
+          "problem": { "type": "string", "minLength": 1 },
           "evidence": {
             "type": "string",
             "minLength": 1,

@@ -1,0 +1,74 @@
+{
+  "schema": "trivium.review.v1",
+  "verdict": "request-changes",
+  "summary": "最要紧的一条：轮次链的「到上限停下人工审核」只由本机 state.json 把守，归档正本没有拦（GLM-01，major）。其余焦点逐项核对均与稳需-15、设计 8.2.1 一致：计票四条规则与 2k≥n 整数比较、闸门三分去向（rerun 回 idle、human_review 立停点含命令 A、proceed 照旧）实现正确且有会失败的状态迁移断言（L1/L2/L4）；失败/取消轮不消耗轮次由 L6 钉住；review.v2 读取侧判据已收敛到 isReviewSchemaId（v1∪v2），被审对象硬拒、禁读矩阵、报告轮次枚举三处贯通，残留 v1 字面仅剩有意保留的桩旗标与探针夹具；代码审先改码后校验的次序与 Hook 语义自洽（review_done_awaiting_disposition 不加写锁、只拦提交），先改码不破坏审批复核。另有一条次边界：纯文档跳过轮会静默打断轮次链并重置上限（GLM-02，minor）。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/round-verdict.ts:153-157（continues 谓词）、src/trivium/review.ts:287-313（previousRoundFacts）",
+      "problem": "轮次链上限不变量没有用归档正本把守：上一轮 run.json 记着 next_action=human_review 且尚未人工表态时，deriveReviewLoop 判「不续链」而直接新起一链（第 1 轮、上限重置为缺省 3 或显式值）。同一台机器上 review --start 的比较-交换会因 state.json 停在 awaiting_approval 拦下重跑（review.ts:1279 期望态不含 awaiting_approval），但 state.json 是本机副本：跨克隆使用或本机状态被删时该闸门槽位缺失即放行（state.ts:210-214，--start 未传 allowMissing:false），归档里明明有「未表态的 human_review」却照样新起链——「最后一轮仍不通过停下人工审核」这一 EV-247 的核心承诺被静默绕过。cli.ts:1682-1686 的既有注释自己承认 state.json 会与本机/跨机分叉、归档里的审批记录才是正本；而 previousRoundFacts 恰好已经把归档事实（review_loop、round_verdict、closed）读到手，却没有用于这一格。round-verdict.ts:169-176 的「轮次链已到上限」拒绝分支按构造不可达（nextAction 只在 round<max_rounds 时才给 rerun），缺的正是 human_review 未表态这一格。",
+      "evidence": "src/trivium/round-verdict.ts:153-157（continues 只认 next_action==='rerun'，其余一律新链）；round-verdict.ts:82-86 与 169-176（rerun 仅产生于 round<max，故 169 的拒绝分支不可达）；src/trivium/review.ts:287-313（closed 取 approval.ts humanDecidedThisRound，读的是归档审批记录）；src/trivium/review.ts:1272-1288（--start 比较-交换，期望态 ['idle','running','approved','rejected','abandoned']，未传 allowMissing）；src/trivium/state.ts:206-214（prev 不存在且 allowMissing 未显式为 false 即放行）；src/trivium/cli.ts:1682-1686（自认 state.json 分叉、归档为正本）；test/unit/round-verdict.test.ts R10（只测了 proceed/closed/旧运行起新链，无 human_review 未表态一格）。",
+      "suggestion": "deriveReviewLoop 对 prev.review_loop 存在、prev.round_verdict?.next_action==='human_review' 且 !prev.closed 的情形返回 ok:false（文案可沿用 169-176 那段「请人工审核：审批或作废上一轮之后，再决定是否重新起链」），让归档正本独立于 state.json 把住这条不变量；单测在 R10 家族补一格钉住该语义，集成可加「human_review 未表态、删除 state.json 后 review --start 退 64」的用例。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/review.ts:304（previousRoundFacts 的跳过谓词）",
+      "problem": "纯文档跳过轮（§6.4 判 skipped、设计 6.7.1 明确不写 review_loop）不带轮次链字段，于是不会命中「带链、无计票、未表态才跳过」的谓词，会被 previousRoundFacts 当作「最近一次算数的运行」返回，把正在进行的轮次链静默打断、上限重置。具体场景：代码审第 1 轮判 rerun 后，Driver 按裁决把改动收成纯文档 diff（或整体回退只剩文档），下一次 code 审被判 skip、next_action 恒 null；再下一次真有代码改动送审时按新链第 1 轮起算。设计只覆盖了「失败/取消的那次不消耗轮次」，没有覆盖跳过轮这一同样没消耗轮次的形态。",
+      "evidence": "src/trivium/review.ts:304（谓词要求 m.review_loop 为真才 continue，无链的运行一律作为 prev 返回）；被审补丁 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md 6.7.1 新表（「bug 阶段与纯文档跳过轮不写」review_loop）与 8.2 S6 行（「纯文档 diff 按 6.4 判定」）；src/trivium/round-verdict.ts:153-157（prev 无 review_loop 即不续链、新起一链）。",
+      "suggestion": "previousRoundFacts 的跳过条件一并跳过 skipped: true 的运行（它们与失败轮同属「没消耗轮次」），或至少在链条因此被打断时于 resolveReviewLoop 的播报里说明；按选定语义补一条集成或单测用例。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "计票规则与需求逐条一致：decideOutcome 按 不通过≥50% → 修改后通过≥50% → 通过≥50% → 兜底修改后通过 的次序做整数比较 2k≥n，零票判 undetermined（round-verdict.ts:72-80），稳需-15 与设计 8.2.1 的描述与实现、单测 R1-R4 互证。",
+    "闸门去向正确：rerun 一律回 idle（B/C 中间轮也不立停点，否则续轮被比较-交换拦下）、human_review 一律立 awaiting_approval（含命令 A 的唯一停点，停点话术带 HUMAN_REVIEW_REASON）、proceed 与无计票照旧按 entry（cli.ts:1654-1665）；集成 L1/L2/L4 对状态迁移有会失败的断言。",
+    "失败与重试边界处理正确：previousRoundFacts 从新到旧跳过「带链、无计票、未表态」的运行，L6 断言失败轮不消耗轮次、重试仍是同一轮；续链上限沿用链首、中途改上限在分配 run_id 之前退 64 且零工件（L3）。",
+    "review.v2 读取侧判据无遗漏：isReviewSchemaId（v1∪v2）贯通被审对象硬拒（archive.ts:167，topic.ts 与 topic-args.ts 共用）、禁读矩阵对端产物判定（freeze.ts:302）、报告轮次枚举（report.ts:302）；R14 连「顶着当轮 Driver 后缀的 v2 审查件」都钉住；写侧 review.ts:1605 只认 v2，归档重放两版都认（parse.ts:404-406）；源码残留 v1 字面仅 stub 旗标与探针夹具两处，均为有意保留。",
+    "代码审先改码后校验的次序自洽：review_done_awaiting_disposition 是不加写锁的状态（hooks.ts:1122 注释），5.5 步改码写得进去、提交仍被 1391 的裁决未齐备禁提交拦住；改码后 rerun 的新一轮补丁自然含全部变更，proceed/human_review 停点审批的是已改好的代码且复核不受影响（L4 断言 approve 通过）——与用户 2026-10-22 拍板的 D-3 一致。",
+    "回退件不再伪造结论：render.ts:211 整份回退侧 front-matter verdict 写 null，选票侧 ballotOf 把回退判 parse_fallback 不计票，两处口径一致。"
+  ],
+  "not_covered": [
+    "只读审查：未实测任何命令，全部结论来自源码阅读与既有测试断言的结构推断；变异测试与真实审查员产出 v2 的端到端未做（计划 §九自列）。",
+    "previousRoundFacts「读不出的 run.json 当没有上一轮」所依赖的 resolveStageDriver corrupt 拒跑口径未读实现核对（计划 §八.4 自列疑点）。",
+    "round_verdict 收尾写盘的具体持久化路径未逐行追（meta.ts 输入只见 reviewLoop；按 L1 对 run.json 的 deepEqual 断言采信其已落盘）。",
+    "skills/ 下四家渲染产物与 skills-src/ 的零漂移未逐字比对，按 entry-render-parity 契约测试的存在采信。",
+    "--allow-single 或两侧回退时单票定结论是否需另设有效票下限（计划 §八.2）：按现行设计属产品取舍，未作为问题提出；undetermined 一律 human_review（含第 1 轮）视为已拍板的保守取值。",
+    "本 diff 涉及的 probes、report 渲染细节、parse-degrade 与 brief-output-contract 的既有用例改动只经 diff 略读，未逐一复核断言强度。"
+  ],
+  "consulted": [
+    "src/trivium/round-verdict.ts",
+    "src/trivium/review.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/types.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/freeze.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/approval.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/config.ts",
+    "src/trivium/brief.ts",
+    "src/trivium/render.ts",
+    "src/trivium/state.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/hooks.ts",
+    "test/unit/round-verdict.test.ts",
+    "test/integration/review-loop.test.ts",
+    "skills/dual-critic/schema/review.v2.json",
+    "skills/dual-critic/schema/run.v3.json",
+    "skills-src/partials/review/apply.code.md",
+    "skills-src/partials/review/loop.code.md",
+    "skills-src/partials/review/loop.plan.md",
+    "skills-src/partials/review/rounds-pass.plan.md",
+    "skills-src/partials/review/rounds-pass.code.md",
+    ".reviews/多轮评审循环/code/_meta/changes-20261021T233757Z.diff",
+    ".reviews/多轮评审循环/plan/2026-10-22-多轮评审循环-claude.md"
+  ]
+}

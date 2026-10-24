@@ -8,6 +8,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { isNativeCanonicalStartForm, processMatchesRecord } from '../../src/trivium/util/exec.js';
 import { IS_WIN } from '../../src/trivium/util/platform.js';
 
@@ -32,7 +33,10 @@ test('交叉形态：记录是对方平台的形态时判 unverifiable，不按�
 
 test('交叉形态：进程已不在时维持 pid_gone（死亡是文件系统事实，与形态无关）', async () => {
   const foreign = IS_WIN ? LSTART_FORM : ISO_FORM;
-  const m = await processMatchesRecord(-1, { canonical: foreign, legacy: null });
+  // 用一个已经跑完的子进程的 pid，不用 -1：POSIX 上 kill(-1, 0) 指「本用户能发信号的全部进程」、探活恒为真（双平台统一时 macOS 上实测红）
+  const gone = spawnSync(process.execPath, ['-e', ''], { windowsHide: true }).pid;
+  assert.ok(gone > 0, '取到已退出子进程的 pid');
+  const m = await processMatchesRecord(gone, { canonical: foreign, legacy: null });
   assert.equal(m.alive, false);
   assert.equal(m.identity, 'different', 'pid 不在按不在处置，不因形态异常翻成别的结论');
 });

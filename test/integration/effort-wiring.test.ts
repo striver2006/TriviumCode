@@ -17,6 +17,7 @@ import { EXIT } from '../../src/trivium/exit-codes.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import { repoId } from '../../src/trivium/review.js';
 import type { StubConfig } from '../../src/trivium/adapters/stub.js';
+import { fixtureCodexHomeWith } from '../helpers/codex-home-fixture.js';
 
 // WIN_FILE_SKIP（Windows 移植）：shebang 假 CLI / 活体 POSIX 信号语义（登记 Bug 清单 §3.1 集成残余）
 // macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
@@ -35,13 +36,13 @@ async function appendConfig(root: string, yaml: string): Promise<void> {
 }
 
 /** `--start` 后等到终态，返回 run_id */
-async function runToEnd(root: string, args: string[], stub: StubConfig): Promise<string> {
-  const r = await cli(root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', ...args, '--json'], stub);
+async function runToEnd(root: string, args: string[], stub: StubConfig, env: Record<string, string> = {}): Promise<string> {
+  const r = await cli(root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', ...args, '--json'], stub, 120_000, env);
   assert.equal(r.code, EXIT.OK, r.stdout + r.stderr);
   const runId = parse<{ run_id: string }>(r.stdout).run_id;
   let code: number = EXIT.FAIL;
   for (let i = 0; i < 10; i++) {
-    code = (await cli(root, ['review', '--wait', runId, '--timeout', '20'], stub, 60_000)).code ?? EXIT.FAIL;
+    code = (await cli(root, ['review', '--wait', runId, '--timeout', '20'], stub, 60_000, env)).code ?? EXIT.FAIL;
     if (code !== 73) break;
   }
   assert.equal(code, EXIT.OK, `运行没有正常结束（退 ${code}）`);
@@ -109,6 +110,13 @@ test('S2 不注入生效值：effort_effective 为 null、来源 unverified—�
   assert.equal(g['effort_effective_source'], 'unverified');
 });
 
+/*
+ * P 组的 codex 家要同时有 qwen 与 deepseek 两份 profile（vendorProfilesFor 的名单）：fixture.cli() 缺省的隔离家只有 qwen。
+ * 双平台统一时补：这组在 Windows 线被整文件跳过，没撞上 1.2.7 的 CODEX_HOME 隔离；macOS 上原先靠开发机真实 ~/.codex 恰有 deepseek 才绿。
+ */
+let twoProfileHome: Record<string, string> | null = null;
+const TWO = (): Record<string, string> => (twoProfileHome ??= { CODEX_HOME: fixtureCodexHomeWith(['qwen', 'deepseek']) });
+
 /** codex 两个厂商 profile：配置段是 qwen、档位条目是 deepseek，模型只在 deepseek 的目录里 */
 async function codexTwoProfiles(root: string, deepseekCredentialed: boolean): Promise<void> {
   await seedFakeProbes(root, {
@@ -127,19 +135,19 @@ async function codexTwoProfiles(root: string, deepseekCredentialed: boolean): Pr
 test('P2 预检按本轮解析出的厂商 profile 判可用性与目录：通过；解析出的那家没凭据 ⇒ 拒（配置段那家有凭据也不放）', { skip: bundleMissing && bundleSkipReason }, async () => {
   const ok = await makeFixture({ topic: TOPIC });
   await codexTwoProfiles(ok.root, true);
-  const pass = await cli(ok.root, ['preflight', '--stage', 'plan', '--critics', 'codex', '--tier-codex', 'high', '--skip-auth-check', '--json'], null, 180_000);
+  const pass = await cli(ok.root, ['preflight', '--stage', 'plan', '--critics', 'codex', '--tier-codex', 'high', '--skip-auth-check', '--json'], null, 180_000, TWO());
   assert.equal(pass.code, EXIT.OK, pass.stdout + pass.stderr);
   // 负对照：不选档 ⇒ 裸 slug、配置段 qwen ⇒ 照旧按 qwen 判、通过（旧行为不变）
-  const legacy = await cli(ok.root, ['preflight', '--stage', 'plan', '--critics', 'codex', '--skip-auth-check', '--json'], null, 180_000);
+  const legacy = await cli(ok.root, ['preflight', '--stage', 'plan', '--critics', 'codex', '--skip-auth-check', '--json'], null, 180_000, TWO());
   assert.equal(legacy.code, EXIT.OK, legacy.stdout + legacy.stderr);
 
   const bad = await makeFixture({ topic: TOPIC });
   await codexTwoProfiles(bad.root, false);
-  const r = await cli(bad.root, ['preflight', '--stage', 'plan', '--critics', 'codex', '--tier-codex', 'high', '--skip-auth-check', '--json'], null, 180_000);
+  const r = await cli(bad.root, ['preflight', '--stage', 'plan', '--critics', 'codex', '--tier-codex', 'high', '--skip-auth-check', '--json'], null, 180_000, TWO());
   assert.notEqual(r.code, EXIT.OK, r.stdout + r.stderr);
   assert.match(r.stdout + r.stderr, /厂商 profile「deepseek」对应的 provider「deepseek」没有可用凭据|codex profile「deepseek」对应的 provider「deepseek」没有可用凭据/);
   assert.equal(
-    (await cli(bad.root, ['preflight', '--stage', 'plan', '--critics', 'codex', '--skip-auth-check', '--json'], null, 180_000)).code,
+    (await cli(bad.root, ['preflight', '--stage', 'plan', '--critics', 'codex', '--skip-auth-check', '--json'], null, 180_000, TWO())).code,
     EXIT.OK,
     '同一台机器不选档（按配置段 qwen）照旧通过——拒的确实是解析出的那一家',
   );
@@ -152,7 +160,7 @@ test('P2 预检按本轮解析出的厂商 profile 判可用性与目录：通�
 test('P4 --start 的可用性检查按本轮解析出的厂商 profile 判：解析出的那家没凭据 ⇒ 退 69、零工件', { skip: bundleMissing && bundleSkipReason }, async () => {
   const fx = await makeFixture({ topic: TOPIC });
   await codexTwoProfiles(fx.root, false);
-  const r = await cli(fx.root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--critics', 'codex', '--tier-codex', 'high', '--json'], null);
+  const r = await cli(fx.root, ['review', '--start', '--stage', 'plan', '--topic', TOPIC, '--focus', 'x', '--critics', 'codex', '--tier-codex', 'high', '--json'], null, 120_000, TWO());
   assert.equal(r.code, EXIT.ENV, r.stdout + r.stderr);
   assert.match(r.stdout + r.stderr, /codex 侧不可用：codex profile「deepseek」对应的 provider「deepseek」没有可用凭据/);
   const left = await fs.readdir(fx.stageDir).catch(() => [] as string[]);
@@ -163,7 +171,7 @@ test('P3 --start：交接文件里发起用的厂商 profile / 模型 / 思考�
   const fx = await makeFixture({ topic: TOPIC });
   await codexTwoProfiles(fx.root, true);
   const stub: StubConfig = { codex: { mode: 'ok' } };
-  const runId = await runToEnd(fx.root, ['--critics', 'codex', '--tier-codex', 'high'], stub);
+  const runId = await runToEnd(fx.root, ['--critics', 'codex', '--tier-codex', 'high'], stub, TWO());
   const request = JSON.parse(await fs.readFile(path.join(fx.runRoot, repoId(fx.root), runId, 'request.json'), 'utf8')) as {
     requests: Record<string, { profile_requested: string | null; model: string; effort?: string; tier: string | null; tier_source: string | null }>;
   };
@@ -176,7 +184,7 @@ test('P3 --start：交接文件里发起用的厂商 profile / 模型 / 思考�
   // 命令行精确值覆盖档位条目的厂商 profile 与模型：发起值跟着变，档位的思考等级保留 ⇒ 档位名照记
   const fx2 = await makeFixture({ topic: TOPIC });
   await codexTwoProfiles(fx2.root, true);
-  const run2 = await runToEnd(fx2.root, ['--critics', 'codex', '--tier-codex', 'high', '--profile-codex', 'qwen', '--model-codex', 'qwen3.8-max'], stub);
+  const run2 = await runToEnd(fx2.root, ['--critics', 'codex', '--tier-codex', 'high', '--profile-codex', 'qwen', '--model-codex', 'qwen3.8-max'], stub, TWO());
   const req2 = (JSON.parse(await fs.readFile(path.join(fx2.runRoot, repoId(fx2.root), run2, 'request.json'), 'utf8')) as {
     requests: Record<string, { profile_requested: string | null; model: string; effort?: string; tier: string | null }>;
   }).requests['codex']!;

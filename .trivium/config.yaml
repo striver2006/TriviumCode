@@ -17,7 +17,7 @@ isolation:
   context_max_docs: 12
 review:
   # 本仓开发会话由 Codex 主攻；它不参与自己的审查。产品内置默认集合保持不变。
-  default_critics: [claude, gemini, glm]
+  default_critics: [codex, gemini, glm]
   failure_policy: strict
   timeout_s:
     # plan 2700：codex 侧曾三次撞满 plan 预算致整轮作废（台账第 4、9、18 行）。成因是核查面随稿子
@@ -75,17 +75,16 @@ profiles:
       plan: GLM-5.3
       code: GLM-5.3
       bug: GLM-5.3
-    # Windows 线（CC Switch 网关目录）：Sol 不在本机目录，default 档改用 qwen3.8-flash；
-    # 目录以 `trivium doctor --only codex` 实测为准（显式钉住，不靠默认兜底）。
+    # Codex 默认走官方 Sol，显式请求 medium，避免继承本机基底的 high。
     codex:
-      plan: { model: qwen3.8-flash, effort: medium }
-      code: { model: qwen3.8-flash, effort: medium }
-      bug: { model: qwen3.8-flash, effort: medium }
+      plan: { model: gpt-6.1-sol, effort: high }
+      code: { model: gpt-6.1-sol, effort: high }
+      bug: { model: gpt-6.1-sol, effort: high }
     # Claude 默认档走官方 Opus，显式请求 medium；实际模型与 effort 以运行回读为准。
     claude:
-      plan: { model: opus, effort: medium }
-      code: { model: opus, effort: medium }
-      bug: { model: opus, effort: medium }
+      plan: { model: opus, effort: high }
+      code: { model: opus, effort: high }
+      bug: { model: opus, effort: high }
   flash:
     # medium 档以模型名后缀承载强度，不继承 Agent 的旧 high 补全值。
     gemini:
@@ -96,11 +95,11 @@ profiles:
       plan: GLM-5.3-Flash
       code: GLM-5.3-Flash
       bug: GLM-5.3-Flash
-    # Codex flash 走 CC Switch 目录的轻档 qwen3.6-flash，显式请求 medium。
+    # Codex flash 使用官方 Luna，显式请求 medium。
     codex:
-      plan: { model: qwen3.6-flash, effort: medium }
-      code: { model: qwen3.6-flash, effort: medium }
-      bug: { model: qwen3.6-flash, effort: medium }
+      plan: { model: gpt-6-luna, effort: medium }
+      code: { model: gpt-6-luna, effort: medium }
+      bug: { model: gpt-6-luna, effort: medium }
     # Claude flash 档走官方 Sonnet，显式请求 medium。
     claude:
       plan: { model: sonnet, effort: medium }
@@ -120,9 +119,9 @@ profiles:
       code: GLM-5.3
       bug: GLM-5.3
     codex:
-      plan: { model: qwen3.8-max, effort: high }
-      code: { model: qwen3.8-max, effort: high }
-      bug: { model: qwen3.8-max, effort: high }
+      plan: { model: gpt-6-astra, effort: high }
+      code: { model: gpt-6-astra, effort: high }
+      bug: { model: gpt-6-astra, effort: high }
     claude:
       # high 显式绑定官方 native，与 Agent 默认接入保持一致。
       plan: { tier: high }
@@ -168,20 +167,12 @@ agents:
   codex:
     vendor: openai
     bin: null
-    # CC Switch（Windows 线）：基底 config.toml 由 CC Switch 管理（qwen 家族），原生路线判据
-    # 拒绝静默第三方——经 ~/.codex/ccswitch.config.toml（仅一行家族声明、无凭据）显式选择。
-    profile: ccswitch
+    # 显式 null 选择官方 native，覆盖内置供应商默认；第三方须单次显式选择 profile 和匹配模型。
+    profile: null
     # 各档 effort 在 profiles 中显式请求，生效值仍须独立回读。
-    # 只读降级（Windows 线）：上游 -s read-only 不拦截写（Bug 清单 §3.1-8），按提示语约束 +
-    # 事后轨迹/漂移核验放行；预检带降级注记，写入一旦检出该侧作废。macOS 线不要开这个。
-    readonly_enforcement: prompt-only
   # Claude 默认走官方 native；模型别名与实际模型、供应商回读分别记录。
-  # Windows 线（CC Switch 支撑，无官方账号）：网关 env 经 --settings 内联注入——受限模式
-  # 忽略 settings 文件但仍认内联，这是第三方网关下保住 --restricted 只读不变量的通道；
-  # 官方登录机器上 env 段为空即自动无操作（键值不落留痕，指纹仅 sha256）。
   claude:
     vendor: anthropic
     profile: null
-    settings_env_source: user_settings
     tiers:
       high: { model: opus, effort: high, profile: null }

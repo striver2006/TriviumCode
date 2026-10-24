@@ -1,0 +1,844 @@
+# trivium changes.diff
+# run_id: 20261022T105628Z
+# base: HEAD
+# head: 3eb27e40059bde9cb2eb82a25766b9c45597fbe7
+# files: 17
+#   doc/01_requirements/原始需求.txt
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/LLD_orchestrator.md
+#   doc/05_testing/evidence/dispute-detail-20261022/mutation-names-bundle.mjs
+#   doc/05_testing/evidence/dispute-detail-20261022/mutation-names-log.txt
+#   doc/05_testing/evidence/dispute-detail-20261022/mutation-names-output.json
+#   doc/05_testing/evidence/dispute-detail-20261022/mutation-spec.json
+#   doc/07_manuals/MANUAL_user.md
+#   doc/08_project/BACKLOG.md
+#   doc/08_project/现存Bug与未完成工作清单.md
+#   src/trivium/cli.ts
+#   src/trivium/gate.ts
+#   src/trivium/meta.ts
+#   src/trivium/report.ts
+#   test/integration/gate-loop.test.ts
+#   test/unit/gate.test.ts
+#   test/unit/report.test.ts
+diff --git a/doc/01_requirements/原始需求.txt b/doc/01_requirements/原始需求.txt
+index 6ed7331a..877c3f8a 100644
+--- a/doc/01_requirements/原始需求.txt
++++ b/doc/01_requirements/原始需求.txt
+@@ -41,4 +41,7 @@ ZCode (智谱)生成的审核文档，Claude Code生成的修改后划文档，
+ 1. 一处遗留没处理：doctor 仍然不检查模型旗标写给的是不是本轮入选的审核者，这是现状，不在这次范围内。
+    → 已处理（2026-10-18，EV-245，b3140f04）：doctor 没有「本轮」，改为按全部审核者判键；没用上的覆盖给一条提示，退出码不变。
+ 2. BACKLOG EV-240 残余第一条已标为已做，review --start 仍不跑这条检查（仍记为残余）。
+-   → 已处理（2026-10-18，EV-246，b3140f04）：--start 派生前用预检同一函数复查，只告警。
+\ No newline at end of file
++   → 已处理（2026-10-18，EV-246，b3140f04）：--start 派生前用预检同一函数复查，只告警。
++
++20261022需求：
++1. 预检没通过（退出码 69）：自动运行trivium doctor，然后继续进行双审，无需确认。
+\ No newline at end of file
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 0dcae5c2..f9817bb6 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -5,7 +5,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.171
++> - **当前版本**：v1.3.172
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -1203,7 +1203,7 @@ addresses:               # 本件应答的审查文档文件名，不是意见
+ 4. `接受` 必须有非空「落点」（计划/根因阶段指向修订件章节；代码阶段指向文件或修改计划）。
+ 5. `驳回` / `暂缓` 的理由中若**仅**包含空洞措辞（默认词表：「无需修改」「不适用」「已知悉」且无其它内容），按 `gate.reason_policy` 处理：`warn`（默认）输出警告并在 `run.json` 记 `weak_reasons[]`；`hard` 判为失败。
+ 6. 计划/根因阶段：即使全部意见都驳回，也必须产出修订件，并在正文写明「无修改及原因」（对齐 PRD 第 8 章「不得丢弃原稿重写」）。
+-7. **至少两个互相独立的审核者**都提出的同一条 `blocker`（`location` 精确相同，或文本相似度超阈值）被 `驳回` 时，按 `gate.joint_blocker_policy` 处理：`warn`（默认）输出 `joint_blocker_rejected` 警告，要求理由非空并在 `task.json` 记 `disputed: true`，不阻断；`hard` 仅在 `location` 精确相同时判为失败（相似度判定永远只到 warning，避免启发式误判卡死闸门）。
++7. **至少两个互相独立的审核者**都提出的同一条 `blocker`（`location` 精确相同，或文本相似度超阈值）被 `驳回` 时，按 `gate.joint_blocker_policy` 处理：`warn`（默认）输出 `joint_blocker_rejected` 警告，要求理由非空并在 `task.json` 记 `disputed: true`，不阻断——同时把被驳回的编号与分组（`编号+编号@location`，多组用「；」连接）按 `run_id` 覆盖写入 `task.json.disputes`（同一轮重跑先删旧条目再按本次结论追加，不堆积；`disputed` 只增不减，v1.3.172）；`hard` 仅在 `location` 精确相同时判为失败（相似度判定永远只到 warning，避免启发式误判卡死闸门）。
+    **「双方」这个措辞随 N 审泛化为「两家」**：阈值 2 的语义是「至少两个独立来源指出同一处」，与入选总数无关——三家里的两家仍是两个独立来源，故 N=3 时阈值不上调。
+    **按 10.1.1 判作废的一侧不计入独立来源**：它作为「第二只眼」的身份已不可采信，与它每条意见是否属实无关。排除后有效侧不足两家时，按 12.1 落三态字段并告警，**不得静默返回空集**。
+ 8. `parse_fallback` 侧（AD-08）的原文意见同样必须逐条进入裁决表：Driver 自行按 `<前缀>-F<序号>` 编号并标 `来源: fallback`；`gate` 对该侧只校验「每条被编号的意见均有裁决与理由」，不参与规则 7 的共同阻断判定。**v1.3.68 起 `<前缀>-F<n>` 只属于整份回退**（6.5.1）；逐条降级的意见按**原编号**裁决，与合格意见同一套逐行校验（接受要写落点），但同样不参与规则 7——`gate --check` 出 `degraded_findings` 告警点名它们。
+@@ -2065,7 +2065,8 @@ Hook 行为约定：
+    e. 任一理由为空                   → FAIL(empty_reason)
+       理由仅含空洞词表               → reason_policy=warn: WARN(weak_reason) / hard: FAIL
+    f. 接受 且 落点为空               → FAIL(missing_action)
+-   g. 双方共同 blocker 被「驳回」     → joint_blocker_policy=warn: WARN + task.json.disputed=true /
++   g. 双方共同 blocker 被「驳回」     → joint_blocker_policy=warn: WARN + task.json.disputed=true
++                                       + disputes[] 按 run_id 覆盖写明细（hard 阻断不记，v1.3.172） /
+                                        hard 且 location 精确相同: FAIL(joint_blocker_rejected)
+ 6. 通过 → 返回 0（不回写 run 元数据：gate.adjudication_complete 是运行期快照，见 6.7 注记，v1.3.45 / EV-133），
+    并按 run 元数据记录的 entry 分流闸门：
+@@ -4086,6 +4087,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.172** | 2026-10-22 | **争议明细写入（发版-02，EV-250）。** 主题 `争议明细写入`（`/dual-run`，计划三审 run `20261022T101659Z` 第 1/3 轮：codex、glm `pass`，gemini `pass-after-changes`，3 条全接受，定稿 r2）。`gate --check` 在 `warn` 策略下放行共同驳回时，除置 `disputed` 外把编号与分组按 `run_id` 覆盖写进 `task.json.disputes`，与 `joint_checks` 同一次写入：先删本轮旧条目、再按本次结论追加，同一轮重跑不堆积，争议撤回（改成接受）或改 `hard` 被拦时本轮条目随之删掉，他轮条目保留。`hard` 阻断不记争议（本轮未放行，编号在 `failures`，`joint_checks` 记 `checked-found`）。`note` 只存分组写法 `编号+编号@location`（`formatJointGroups`，告警文案共用），不存整段告警。`GateCheckResult` 新增可选 `disputedJointBlockers`，只在 `warn` 放行时给出（AGY-02）。`disputed` 只增不减：旧正本的标记归属不到哪一轮。`report` 第五节无条件列出明细（带阶段、轮次与 run_id，找不到对应轮次时只写 run_id），`disputed` 为真而明细为空时如实写「没有留下明细」，空编号、空说明各有兜底（AGY-03）；手册两处缺口说明同步改写（AGY-01）。见规则 7、8.6 判据 g。 |
+ | **v1.3.171** | 2026-10-22 | **审批正本读不出拒写（EV-248）。** 主题 `审批正本读不出拒写`（`/dual-run`，计划双审 run `20261022T041612Z` 第 1/5 轮：gemini、glm 均 `pass-after-changes`，8 条全接受，定稿 r2）。**一、写入口**：`updateTask` / `updateTaskAsync` 锁内改严格读，读不出抛退 2 的受控错误、不调回调、正本原样；不存在照旧起写。`readTaskStrict` 加形状判据（AGY-02）。**二、调用方先判**（见 6.7 末段）：`gate --check` 在结果输出之前判、读不出时只出一份带 `task_unreadable` 的结果后退 2，不写、不推进；`gate --await-approval` 读不出改退 2、`ok: false`（AGY-01，此前退 0）；`approve` / `abandon` 复核之前判，`recordApproval` 写闸门之前再判，竞态由比较-交换回退闸门；`verify` 执行命令之前判；`review` 准备阶段在分配 run_id 之前判。**三、出口**：`taskUnreadableExit` 三处共用（写入口、续链判定、`taskUnreadableHold`），统一退 2。**四、skill**：认领、`gate --check`、停点、S10、审批 / 放弃补退 2 的处置句。**五、文档**：PROTOCOL §五 退出码表与五个命令行。测试：单测 `meta-task-write` 25 条、集成 `task-unreadable-refusal` 14 条，L10 补 `--check` 断言，`run-id-alloc` 夹具补齐完整形态；变异 15 条全部咬住。**六、代码双审**（run `20261022T081726Z`，第 1/5 轮：两侧 `pass`，计票通过；glm 2 条全接受）：补 `verify` 登记时才坏的集成 I14 与变异 M12（GLM-01）；`gate --check` 把完整出口段放进失败项、不另打 `warn` 是对计划 r2 §三.1 的有意简化，记进测试报告与代码注释，PROTOCOL §五 的出口位置订正为「`gate` 两条命令在 stdout，其余在 stderr」（GLM-02）。 |
+ | **v1.3.170** | 2026-10-22 | **多轮评审循环与三档结论计票（EV-247）。** 用户新需求：计划审与代码审每个审核者给「通过 / 修改后通过 / 不通过」，按比例判整体结论，不通过即改后自动重审，最大轮次缺省 3、可指定、上限 10，最后一轮仍不通过停下人工审核；/dual-run 两阶段可分别指定上限；计划审每轮另出完整新计划，代码审每轮裁决后直接改码；/dual-review-plan、/dual-review-code 同样适用。拍板：契约升 review.v2（三值）、三档都不到半数判修改后通过、命令 C 最后一轮先改码再停审批、由 Driver 直接实施后走代码双审。**一、契约**（6.5）：新增 `review.v2.json`，`isReviewSchemaId` 统一读取侧判据（含禁读矩阵与被审对象硬拒），新产出只认 v2、归档两版都认，回退侧 front-matter `verdict` 写 null。**二、计票与轮次链**（8.2.1）：新模块 `round-verdict.ts`；run.v3 补可选 `review_loop` / `round_verdict`（6.7.1，不升契约版本）；`review --start --max-rounds`、`topic resolve` 三个轮次旗标。**三、闸门**：`rerun` 回 idle、`human_review` 立停点（含命令 A）、`proceed` 照旧；计划阶段带轮次链的轮次每轮要求新一轮计划（6.6 规则 9）。**四、skill**：/dual-run S2～S4、S6～S9 改为循环（S8 改码挪到 S9 校验之前），B / C 第 6.5 步按 `next_action` 分支、C 第 5.5 步裁决后直接改码。测试新增 `round-verdict` 单测 17 条、`review-loop` 集成 11 条、`plan-final-gate` I8 一条，三条 EV-214 用例改按新语义或改成旧运行形态。**五、代码双审 r2**（run `20261022T005651Z`：gemini `approve` 零意见、glm `approve-with-nits` 2 条全接受）：审批正本读不出时续链判定拒跑（GLM-01，`previousRoundFacts` 自读正本、`approval.ts` 抽出 `decidedInTask`；与计划 r2 §四.4「读不出判已表态 ⇒ 新链」相反，用户 2026-10-22 定直接改码、偏差登记在 BACKLOG EV-247），集成 L10；两侧整份回退 ⇒ `undetermined` ⇒ 人工审核的端到端用例 L11（GLM-02）。r2 应答件 GLM-01 落点里的「设计 6.7.1 补一句」是笔误，实际补在 8.2.1（r3 GLM-02 指出，在 r3 应答件订正）。**六、代码双审 r3**（run `20261022T023850Z`，评审循环第 1/3 轮：两侧 `pass`，计票通过；glm 3 条 nit 全接受）：L11 补闸门立停点断言（GLM-01）；`approval.ts` 新增三态的 `humanDecision`，`--await-approval` 与 `--check` 在正本读不出时改说「按已表态保守处理」，不再说「已有人工审批记录」、`--check` 也不接本机状态对账（GLM-03）。改码时实测发现 `updateTask` 会静默覆盖读不出的正本、`gate --check` 在判定前就会写一次，早于本主题，登记 EV-248。 |
+ | **v1.3.169** | 2026-10-18 | **M12 残余两条修复：doctor 覆盖旗标提示（EV-245）与 `--start` 共享根检查（EV-246）。** 主题 `doctor旗标提示与start共享根检查`（`/dual-run`，计划双审 run `20261018T072932Z`：gemini `approve`、glm `approve-with-nits` 1 条 nit 接受 → r2）。**一、EV-245**（7.1 档位旗标节）：`doctor` 的 `--model-<id>` 补上与档位旗标同一份判键（`picked` 取全部审核者，对现注册表全部放行）；`runDoctor` 的 `overridesFor` 成为覆盖值唯一读点，写了却没用上的覆盖按运行期记录分三种原因给一条提示，只进 `warnings`，退出码与 `--json` 既有字段不变。**二、EV-246**（8.1 预检表、`--start` 返回 `warnings` 一段、7.4.1）：`startRun` 的告警复查在档位组合之后、必读剔除之前追加 `checkSharedReadRoots`（当轮 Driver ∪ 入选审核者），场合词「本次运行」；预检侧缺省场合词不变。顺带补上 `--start` 来源清单此前漏列的档位组合一项。17.2 加两行。代码双审 run `20261018T081641Z`：gemini `approve`，glm `approve-with-nits` 1 条 nit 接受（扫描出错分支的场合词补用例与变异）。验收：变异预跑与正式装置均 14/14；新旧对照 8 格全部符合预期（共享根干净时 `--start` 人读与 `--json` 规范化后逐字节相同）。16.1 M12 行残余 ②③ 标注已修。报告 `REPORT_2026-10-18_doctor_flags_start_shared_root.md`。 |
+diff --git a/doc/02_design/LLD_orchestrator.md b/doc/02_design/LLD_orchestrator.md
+index 6f421461..79dbeb95 100644
+--- a/doc/02_design/LLD_orchestrator.md
++++ b/doc/02_design/LLD_orchestrator.md
+@@ -693,7 +693,7 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需
+ 
+ | 缺口 | 证据 | 影响 |
+ | :--- | :--- | :--- |
+-| **`task.json.disputes[]` 无任何写入点** | 全仓仅 `meta.ts:88`（类型）、`meta.ts:105`（初始化为 `[]`）、`report.ts:441`（读取），无一处 push | 只有 `disputed` 布尔位被写（`cli.ts:701`）。`report` 的「争议项：编号——说明」分支**永远打印不出具体编号** |
++| ~~**`task.json.disputes[]` 无任何写入点**~~ | ~~全仓仅类型、初始化为 `[]`、`report` 读取，无一处 push~~ | **已解决（2026-10-22，EV-250，主设计 v1.3.172）**：`gate --check` 与 `joint_checks` 同一次写入，`warn` 放行共同驳回时按 `run_id` 覆盖写一条（`finding_ids` 拍平、`note` 为 `formatJointGroups` 的分组写法），`hard` 阻断不记；`report` 第五节无条件列明细，`disputed` 真而明细空时如实写「没有留下明细」。残余：`disputed` 只增不减，争议撤回后 `status` 仍显示有争议项 |
+ | ~~**`block_severities` 无消费方**~~ | ~~类型、默认值、schema 校验齐全，业务逻辑零引用~~ | **已解决（2026-09-16）**：该键连同 schema 定义一并删除，不做历史兼容（项目负责人明示接受）。防复发机制见配置键与消费方的对账测试 |
+ | ~~**`cancelRun` 不回写 `run.json`**~~ | ~~函数体内 `writeRunMeta` 零出现~~ | **已解决（2026-09-26，EV-128）**：工作进程确认退出后由 `finalizeCancelledRunMeta` 收尾为 `cancelled`。同形的 worker 异常与 `worker_lost` 已于 2026-09-27 修（EV-142，`finalizeFailedRunMeta`，工作进程确认退出才写）；准备阶段与同步路径的本进程收尾同日修（EV-145）；`--start` 派生后失败同日修（EV-150，`settleOrphanedStart`）；worker 猝死、同步路径被中断 v1.1.43 起由新一轮回收遗留锁时收（EV-151，见 4.3） |
+ | **worker 被 SIGKILL / 崩溃 / 事件循环堵住时，`--cancel` 够不到它拉起的厂商 CLI**（v1.1.11 起已覆盖：按 CLI 进程组记录另行结束，见 4.2 `cancelRun` 引述块；「组长已退出而组员还在」一格 v1.1.18 起已收口（EV-165）；余项：派生到记录落盘之间被 SIGKILL、启动时刻未取到、`setsid` 出去的后代，均如实提示或如实保留） | `run()` 在 `killTree: true` 时以 `detached` 派生，CLI 自成一组；`cancelRun` / `terminateProcessGroup` 只按 worker 的组发信号。EV-152（v1.1.10）起常态格由 worker 的 SIGTERM 处理器转发，但处理器在这几格跑不到。零配额验收（`evidence/cancel-cli-reach-20260928/` A3）：按组 SIGKILL worker 后两组桩 CLI 都活着、组长 ppid = 1 | 静默阶段的 CLI 会一直跑、配额照烧；`--cancel` 在升级 SIGKILL 与「worker 已不在」两格只打如实提示；凭据副本的清扫准入只核 worker（EV-38）。行为修复见 BACKLOG EV-154（与 EV-146 / EV-38 共用 CLI 进程组记录） |
+diff --git a/doc/07_manuals/MANUAL_user.md b/doc/07_manuals/MANUAL_user.md
+index e93bc027..68e0c96f 100644
+--- a/doc/07_manuals/MANUAL_user.md
++++ b/doc/07_manuals/MANUAL_user.md
+@@ -684,7 +684,10 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
+ 不占轮次号，列在时间线下方的「未进时间线的运行」表里，头部「轮次总数」后会注明「另有 K 次」（v1.0.6 起，EV-144）。
+ 所以「轮次总数：0」不等于这个阶段没跑过；同一轮次号也可能在上下两张表里各出现一次（失败那次与随后的重跑）。
+ 
+-> **⚠️ 已知缺口**：报告里的「争议项」只会显示一个布尔标记，**永远打印不出具体编号**——`disputes[]` 数组在代码里没有任何写入点。
++报告「降级、告警与隔离结论」一节的「争议项」：两家同时提出的 blocker 被驳回、在 `warn` 策略下放行时，`gate --check` 把这一轮的编号与位置写进 `task.json`
++（每轮一条、重跑覆盖），报告逐条列出「争议项（plan r1，run …）：AGY-01、GLM-01——AGY-01+GLM-01@src/x.ts:10」。
++早于这项记录（v1.3.172）的旧主题只有争议标记、没有明细，报告会写「记有争议标记，但没有留下明细」——同一句也出现在某轮争议重跑校验后已撤回（改成接受）的情形；
++争议标记本身只增不减，`status` 那一行「⚠️ 有争议项」不会因撤回而消失。`hard` 策略下共同驳回直接拦下闸门，不记争议。
+ 
+ ---
+ 
+@@ -938,7 +941,7 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
+ | **Bash 拦截有已知误拦** | 见 §8.1 | 刻意接受的取舍 |
+ | **配置与协议片段不会自动升级** | 见 §3.6 | 需手工同步 |
+ | ~~**`block_severities` 是死配置**~~ | 已于 2026-09-16 删除 | 该键不再存在；若你的配置文件里还留着它，删掉那三行（保留会被 schema 判为未知键） |
+-| **报告的「争议项」无法显示编号** | `disputes[]` 无写入点 | 只有布尔标记生效 |
++| ~~**报告的「争议项」无法显示编号**~~ | v1.3.172 起已写入明细 | 旧主题报告里写「记有争议标记，但没有留下明细」：那时还不记编号，或该轮争议已撤回；编号要回原轮的裁决件里找 |
+ | **`doctor` 必须在终端跑** | 2~4 分钟，会击穿 Bash 工具 600s 超时 | 预检刻意不自动拉起它 |
+ 
+ ---
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 82a150fb..edbd55c6 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -345,6 +345,7 @@
+ | EV-247 | **done**（2026-10-22，主设计 v1.3.170，用户 2026-10-22 定由 Driver 直接实施、提交前走 `/dual-review-code`）：新增契约 `review.v2`（`verdict` 三值 `pass` / `pass-after-changes` / `reject`），`isReviewSchemaId` 统一读取侧判据（含禁读矩阵）；新模块 `round-verdict.ts` 按侧计票（不通过 ≥ 50% ⇒ 不通过，否则修改后通过 ≥ 50% ⇒ 修改后通过，否则通过 ≥ 50% ⇒ 通过，三档都不到半数 ⇒ 修改后通过，有效票 × 2 < 入选侧数 ⇒ 有效结论不足、人工审核）；续链判定由归档正本把守 `human_review` 未表态（退 64）、读不出的运行留痕拒跑、纯文档跳过轮不打断轮次链（计划 r2 与代码双审 r1 接受项）、审批正本 task.json 读不出拒跑（代码双审 r2 GLM-01；**与计划 r2 §四.4「读不出 fail-closed 判已表态 ⇒ 新链」相反，用户 2026-10-22 定不补 r3 计划、直接改码，此处登记偏差**：那条 fail-closed 只对闸门推进成立，在轮次链里会越过人工审核停点并重置上限）；run.v3 补可选 `review_loop` / `round_verdict`；`review --start --max-rounds`（1～10，缺省 3）与轮次链（续链沿用链首上限、中途改上限退 64）；`topic resolve` 输出 `max_rounds: { plan, code }`（命令 A 可分阶段指定）；`gate --check` 按 `next_action` 定闸门去向（`rerun` 回 idle、`human_review` 立停点含命令 A）；计划阶段带轮次链的轮次每轮必写新一轮完整计划；三条命令的 skill 改为循环，命令 C / A 的代码审裁决后在校验前直接改码。原状态：新需求（2026-10-22，用户粘贴的五条） | **计划审与代码审改为按三档结论计票的多轮评审循环。** 此前 `verdict` 只渲染进审查文档、编排器不汇总，每个阶段只审一轮，是否再审全靠人 | `skills/dual-critic/schema/review.v2.json`；`src/trivium/round-verdict.ts`、`parse.ts`、`review.ts`、`gate.ts`、`cli.ts`、`topic-args.ts`、`run-protocol.ts`；`skills-src/partials/review/`、`skills-src/commands/run.contract.md` |
+ | EV-248 | **done**（2026-10-22，主题 `审批正本读不出拒写`，`/dual-run`，主设计 v1.3.171）：写入口 `updateTask` / `updateTaskAsync` 锁内改严格读，读不出抛退 2 的受控错误、不调回调、正本原样，不存在照旧起写；`readTaskStrict` 加形状判据（非对象、`schema` 不对、四个数组字段缺失或不是数组 ⇒ 读不出，计划双审 AGY-02）。逐个调用方在第一次落盘之前先判、判不过零写入退 2：`gate --check` 在结果输出之前判（`failures` 带 `task_unreadable`，不写、不推进闸门、不归零阻断计数）；`gate --await-approval` 读不出改退 2、`ok: false`（计划双审 AGY-01，此前退 0）；`approve` / `abandon` 复核之前判、`recordApproval` 写闸门之前再判，闸门已写下决定之后正本才坏由比较-交换回退闸门；`verify` 执行命令之前判，跑完才在登记时被拒保留记录、文案写明命令结论；`review` 准备阶段在分配 run_id 之前判（零工件，覆盖骨架登记、任务目标与纯文档跳过收尾）；`topic claim` 由写入口锁内判；worker 收尾时才坏走既有异常收尾。三处读不出出口共用 `taskUnreadableExit`（点名绝对路径、Git 找回命令、恢复由用户在终端执行）。计划双审 8 条、代码双审 2 条全接受（报告 `doc/05_testing/REPORT_2026-10-22_task_unreadable_refusal.md`）。残余：worker 运行中正本被搅坏留下「run.json 终态、正本未登记」，已另登 EV-249（「靠提交锚 ② 拦」只在正本恢复之前成立，恢复之后没有兜底，详见该条）。原状态：todo（2026-10-22 登记，EV-247 代码双审 r3 第 5.5 步改码时实测暴露；早于 EV-247 存在，不在该主题范围内，待用户定是否开题） | **审批正本 task.json 读不出时，`updateTask` / `updateTaskAsync` 会把它静默覆盖成一份新正本，审批记录随之丢失。**两者在锁内用宽松的 `readTask` 读正本，读不出就回落 `emptyTask`，改完照常原子写回。`gate --check` 每次通过后都会先写 `joint_checks`（`cli.ts` 共同阻断三态落盘那一段），而这一步在「本轮是否已表态」判定之前，所以正本写坏后跑一次 `--check`：坏件被覆盖、`approvals[]` 清空，随后判成「未表态」并照常立停点——`humanDecidedThisRound` 的 fail-closed 在这条路径上形同虚设。同样经 `updateTask` 写正本的还有 `approve` / `reject` / `abandon`（`approval.ts`）、`topic claim`（`cli.ts`）、`verify`（`verify.ts`）、纯文档跳过收尾（`review.ts`）。正本进 Git，坏件可从 Git 恢复，但覆盖之后再跑别的命令就没人会提示。修法方向：两个写入口改用 `readTaskStrict`，`unreadable` 时拒写并点名 task.json（`missing` 照旧当新主题）；要先逐个看调用方能否接受拒写 | `src/trivium/meta.ts` 的 `updateTask` / `updateTaskAsync`；调用方 `cli.ts`（`gate --check`、`topic claim`）、`approval.ts`、`verify.ts`、`review.ts` |
+ | EV-249 | todo（2026-10-22 登记，EV-248 残余；低优先级，暂不开题，用户 2026-10-22 定先登记。动闸门迁移语义，修时走 `/dual-run`） | **审查运行中审批正本被搅坏：收尾登记被拒后，这一轮在正本里没有登记、闸门被回收成 idle，恢复正本后没有任何机制补回。**触发经过：① `review --start` 准备阶段读得出正本（EV-248 的先判），把本轮以 `running` 登记进 task.json、闸门置 `running`；② 审查期间 task.json 被外部写坏（会话的 Write / Edit 有 Hook 拦，只可能是用户手改、终端切分支或解合并冲突、其他工具）；③ worker 收尾先落两份审查文档与 `run.json`（success），再 `registerRun` 时正本读不出，按 EV-248 拒写、不覆盖；④ worker 异常分支：`finalizeFailedRunMeta` 按「仍为 running 才写」不改已终态的 run.json，同步正本一步报未改，`finally` 的 `releaseRunningGate` 把闸门从 `running` 回收为 `idle`。留下：审查文档与 run.json 都在、正本坏件原样、闸门 `idle`（不是正常收尾的 `review_done_awaiting_disposition`）。正本还坏着时提交被锚 ② 按「主题元数据不可读」拦下；**按出口提示 `git restore --source=HEAD` 恢复之后**：(a) 这一轮在正本里没有登记——恢复的是提交时的版本，准备阶段那条 `running` 登记也一起没了，没有命令会补：`registerRun` 只在收尾时跑，`--wait` / `--cancel` 的事后收尾只处理失败 / 取消目标；(b) 这一轮不再受提交锚保护——`checkRunManifests` 只核「已登记的 run，其 run.json 必须在且可读」一个方向，未登记的 run.json 连同审查文档整组删掉无人拦（两者都在时审查文档被改仍由 run.json 的 sha256 拦）；(c) 「裁决未齐不得收工 / 提交」对这一轮不生效——stop / pre-commit 只在闸门为 `review_done_awaiting_disposition` 时拦，闸门已是 `idle`；(d) 恢复到 HEAD 会丢上次提交之后的正本改动（含审批），出口文案已写「先看 diff」，非新问题。EV-248 报告与 BACKLOG 原写「靠提交锚 ② 拦」只在恢复之前成立，此处订正。**现行应对**：把这一轮当作没跑成，恢复正本后重新 `review --start`；那组未登记的审查文档人工删除或留作参考。**影响评估**：触发窗口只在审查进行的几十分钟内、且须外部写坏正本，正常使用几乎遇不到；后果是护栏对这一轮失效，不丢审批记录。**修法方向**（待定）：`gate --check` 在正本可读时，把该阶段最新一轮「run.json 已终态、正本未登记」的补登记进去（幂等的 `registerRun`），闸门为 `idle` 且 run_id 相同时拉回 `review_done_awaiting_disposition`——这给 `--check` 新开了一条加锁方向的迁移（现只放行），要先定语义；或另设显式的补登记命令 | `src/trivium/review.ts`（`executeRun` 收尾 `registerRun`）；`src/trivium/run-protocol.ts`（worker 异常分支、`releaseRunningGate`）；`src/trivium/meta.ts`（`finalizeFailedRunMeta`）；`src/trivium/archive.ts`（`checkRunManifests`）；`src/trivium/cli.ts`（`gate --check`） |
++| EV-250 | **done**（2026-10-22，主题 `争议明细写入`，`/dual-run`，主设计 v1.3.172；即发版清单「发版-02」）：`gate --check` 在 `warn` 策略下放行共同驳回时，除置 `disputed` 外把编号与分组按 `run_id` 覆盖写进 `task.json.disputes`，与 `joint_checks` 同一次写入（EV-248 的读不出拒写在它之前先判，不多一处落盘）：先删本轮旧条目、再按本次结论追加——同一轮重跑不堆积，争议撤回（改成接受）或改 `hard` 被拦时本轮条目删掉，他轮条目保留。`hard` 阻断不记争议（本轮未放行；编号在 `failures`，`joint_checks` 记 `checked-found`）。`note` 存分组写法 `编号+编号@location`（`formatJointGroups`，告警文案共用），不存整段告警。`GateCheckResult.disputedJointBlockers` 只在 `warn` 放行时给出（计划三审 AGY-02）。`report` 第五节无条件列出明细（阶段、轮次、run_id；找不到对应轮次只写 run_id），`disputed` 真而明细空时如实写「没有留下明细」，空编号、空说明兜底（AGY-03）；用户手册两处缺口说明改写（AGY-01）。**残余**：`disputed` 只增不减——旧正本的标记归属不到哪一轮，明细删空即清零会抹掉旧主题的标记；代价是某轮争议撤回且主题再无别的争议时，`status` 仍显示「⚠️ 有争议项」，`report` 落到「没有留下明细（…或该轮争议在重跑校验后已撤回）」。要消除得给正本加字段区分旧标记，暂不做 | **`task.json.disputes[]` 无写入点，report 的「争议项」打印不出编号。**告警里已带编号与位置，到 `cli.ts` 只剩置 `disputed` 一个布尔；`report` 又把明细循环包在 `if (disputed)` 里，旧正本有标记无明细时整段静默 | `src/trivium/gate.ts`（`checkAdjudication` 共同阻断段、`formatJointGroups`）；`src/trivium/cli.ts`（`gate --check` 落盘段）；`src/trivium/report.ts`（`renderDisputes`）；`src/trivium/meta.ts`（字段注释） |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/doc/08_project/现存Bug与未完成工作清单.md b/doc/08_project/现存Bug与未完成工作清单.md
+index 4d0e8211..4307c1bb 100644
+--- a/doc/08_project/现存Bug与未完成工作清单.md
++++ b/doc/08_project/现存Bug与未完成工作清单.md
+@@ -15,7 +15,7 @@
+ | EV-203 / 认证缓存边界 | ZCode 认证指纹读盘失败折成 null，窄条件下可能误命中缓存。本机认证异常时保存错误并核查，不把旧缓存视为当前成功。 |
+ | EV-236 / 大文件与脱敏 | 新 request 补丁已去重；32 MiB 扫描上限及大证据递归膨胀仍需管理。送审前按运维规矩处理大型原始证据，不抑制扫描告警。 |
+ | 发版-01 / 平台未实现 | Windows 原生支持未实现；Linux、WSL 未验收。本次按 Bob 选择发布 Mac 稳定版，Windows 列后续。不能把 tar.gz 解压或 CJS 能启动当完整平台通过。 |
+-| 发版-02 / 复盘数据缺口 | `task.json.disputes[]` 只有定义、初始化与读取，未找到生产写入点；具体争议编号明细可能空，`disputed` 标记另有写入。当前静态核对 `meta.ts`、`report.ts` 与全源码检索，未做真实争议客户端复现。 |
++| ~~发版-02 / 复盘数据缺口~~ | **已解决（2026-10-22，EV-250，主设计 v1.3.172）**：`gate --check` 在 `warn` 放行共同驳回时按 `run_id` 覆盖写入 `disputes[]`（编号与分组位置），`hard` 阻断不记；`report` 无条件列出明细，旧主题有标记无明细时如实写「没有留下明细」。残余：`disputed` 只增不减，某轮争议撤回后 `status` 仍显示有争议项（见 BACKLOG EV-250）。原记：`task.json.disputes[]` 只有定义、初始化与读取，未找到生产写入点。 |
+ 
+ ## 2. 原编号的未完成项
+ 
+diff --git a/src/trivium/cli.ts b/src/trivium/cli.ts
+index 5e771f2d..a28b4d34 100644
+--- a/src/trivium/cli.ts
++++ b/src/trivium/cli.ts
+@@ -26,7 +26,7 @@ import { collectCommands, runVerify, summarizeVerify } from './verify.js';
+ import { buildTopicReport, renderTopicReport } from './report.js';
+ import { cancelRun, installForegroundInterruptForwarding, readRoundFacts, startRun, statusRun, waitRun, workerMain } from './run-protocol.js';
+ import {
+-  approveForkRecovery, awaitApprovalRecovery, checkAdjudication, loadRoundReviews, renderGateResult,
++  approveForkRecovery, awaitApprovalRecovery, checkAdjudication, formatJointGroups, loadRoundReviews, renderGateResult,
+   renderTamperedArtifacts, verifyRoundForApproval,
+ } from './gate.js';
+ import { checkStageArtifacts, listRecordedRuns, resolveRerunIndex } from './archive.js';
+@@ -1632,19 +1632,21 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+   }
+   if (taskUnreadable) return EXIT.GATE_BLOCK;
+ 
+-  /*
+-   * 双方共同 blocker 被驳回且策略为 warn：设计 §6.6 规则 7 / §8.6 判据 g 要求
+-   * 「输出警告**并在 task.json 记 disputed: true**」。原先只 push 进 warnings，
+-   * disputed 初始化为 false 后再无写入点，status / report 的「有争议项」永不触发。
+-   */
+   /*
+    * 共同阻断三态落持久面（r2 代码双审 GLM-02 ≡ CODEX-04）。
+    *
+    * run.json 只到 `pending`——运行期读不到裁决表。最终结论在这里产生，
+    * 不落盘的话 `checked-found` 永久只存在于本次进程的内存里。
++   * 三态**每次 check 都要写**——「查过、没有共同项」同样是要留的结论。
+    *
+-   * 与下面的 `disputed` 分开写：那一条只在「共同项被驳回」时才写，
+-   * 而三态**每次 check 都要写**——「查过、没有共同项」同样是要留的结论。
++   * 争议明细并进同一次写（发版-02）。双方共同 blocker 被驳回且策略为 warn：设计 §6.6 规则 7 /
++   * §8.6 判据 g 要求「输出警告**并在 task.json 记 disputed: true**」，原先只置布尔位，
++   * 告警里的编号与位置被丢掉，`disputes[]` 没有任何写入点，report 的「争议项」打印不出编号。
++   * 两者生命周期相同：都只在 `jointCheck` 存在时有意义、都按 run_id 覆盖。
++   *   · 先删本轮旧条目、再按本次结论决定是否追加：同一轮重跑不堆积，争议撤回（改成接受）
++   *     或改成 hard 被拦时本轮条目随之消失；别的轮次原样保留。
++   *   · hard 阻断不记：本轮没被放行，编号在 `failures` 里，`joint_checks` 记了 `checked-found`。
++   *   · `disputed` 只增不减：旧正本的标记归属不到哪一轮，明细删空就清零会抹掉旧主题的标记。
+    */
+   const { updateTask } = await import('./meta.js');
+   const taskOpts = {
+@@ -1652,6 +1654,10 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+     heartbeatStaleMs: ctx.config.review.heartbeat_stale_s * 1000,
+   };
+   const jc = result.jointCheck;
++  const dj = result.disputedJointBlockers ?? [];
++  const dispute = dj.length > 0
++    ? { run_id: runId, finding_ids: dj.flatMap((j) => j.ids), note: formatJointGroups(dj) }
++    : null;
+   if (jc) {
+     await updateTask(ref.layout, (t) => {
+       const entry = {
+@@ -1665,14 +1671,18 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
+       };
+       // 同一轮重跑 --check 覆盖，不堆积
+       t.joint_checks = [...(t.joint_checks ?? []).filter((x) => x.run_id !== runId), entry];
++      t.disputes = [
++        ...t.disputes.filter((d) => d.run_id !== runId),
++        ...(dispute ? [dispute] : []),
++      ];
++      if (dispute) t.disputed = true;
+     }, taskOpts);
+-  }
+-
+-  if (result.warnings.some((w) => w.code === 'joint_blocker_rejected')) {
+-    await updateTask(ref.layout, (t) => {
+-      t.disputed = true;
+-    }, taskOpts);
+-    warn('双方共同提出的 blocker 被驳回：已在 task.json 记为有争议项（disputed），status / report 会显示');
++    if (dispute) {
++      warn(
++        '双方共同提出的 blocker 被驳回：已在 task.json 记为有争议项（disputed）并写入明细：' +
++          `${dispute.finding_ids.join('、')}，status / report 会显示`,
++      );
++    }
+   }
+ 
+   /*
+diff --git a/src/trivium/gate.ts b/src/trivium/gate.ts
+index e1dbc7e6..7cbf896f 100644
+--- a/src/trivium/gate.ts
++++ b/src/trivium/gate.ts
+@@ -189,6 +189,15 @@ export interface GateCheckResult {
+   degradedIds: string[];
+   dispositionPath: string | null;
+   rows: DispositionRow[];
++  /**
++   * 被放行的共同驳回：两家同时提出、被驳回的 blocker，按 location 分组（发版-02）。
++   *
++   * **只在 `joint_blocker_policy: warn`**、即共同驳回进了 `warnings` 被放行时给出——
++   * 它是 `gate --check` 要写进 `task.json.disputes` 的那一组。`hard` 阻断时缺席
++   * （那时的编号在 `failures` 里，本轮没有「带着争议往前走」的事实），没有共同驳回时也缺席。
++   * 名字不叫 `jointRejected`：`hard` 下这些项同样被驳回，只是没被放行（计划双审 AGY-02）。
++   */
++  disputedJointBlockers?: { location: string; ids: string[] }[];
+   /**
+    * 共同阻断这一档的**最终三态**（§6.6 规则 7 / §12.1）。
+    *
+@@ -676,10 +685,9 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
+    * 与入选总数无关（设计 §6.6 规则 7）。被判作废的侧不计入独立来源。
+    */
+   const joint = findJointRejectedBlockers(reviews, structuredRows, voidedSides);
++  let disputedJointBlockers: GateCheckResult['disputedJointBlockers'];
+   if (joint.length > 0) {
+-    const msg =
+-      '下列 blocker 被**两家**同时提出却被驳回：' +
+-      joint.map((j) => `${j.ids.join('+')}@${j.location}`).join('；');
++    const msg = '下列 blocker 被**两家**同时提出却被驳回：' + formatJointGroups(joint);
+     if (cfg.gate.joint_blocker_policy === 'hard') {
+       failures.push({
+         code: 'joint_blocker_rejected',
+@@ -692,6 +700,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
+         message: msg,
+         ids: joint.flatMap((j) => j.ids),
+       });
++      disputedJointBlockers = joint;
+     }
+   }
+ 
+@@ -764,6 +773,7 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
+     degradedIds,
+     dispositionPath,
+     rows,
++    ...(disputedJointBlockers ? { disputedJointBlockers } : {}),
+     jointCheck: jc,
+   };
+ }
+@@ -1077,6 +1087,17 @@ export function findJointRejectedBlockers(
+   return out;
+ }
+ 
++/**
++ * 共同驳回的分组写法：`AGY-01+GLM-01@src/x.ts:10`，多组用「；」连接。
++ *
++ * 告警 `message` 冒号之后那一段与 `task.json.disputes[].note` 共用这一个函数，两处口径不会漂（发版-02）。
++ * 只存分组不存整段告警：前缀是固定文案、带加粗，报告里已有「争议项」字样；
++ * 也不只存位置：`finding_ids` 是拍平的，多组时丢了「哪几个编号对应哪个位置」。
++ */
++export function formatJointGroups(joint: readonly { location: string; ids: string[] }[]): string {
++  return joint.map((j) => `${j.ids.join('+')}@${j.location}`).join('；');
++}
++
+ /**
+  * 共同阻断这一档**到底做没做**（设计 §6.6 规则 7 / §12.1）。
+  *
+diff --git a/src/trivium/meta.ts b/src/trivium/meta.ts
+index 8acba7cf..e4f785ba 100644
+--- a/src/trivium/meta.ts
++++ b/src/trivium/meta.ts
+@@ -190,7 +190,17 @@ export interface TaskMeta {
+   approvals: ApprovalRecord[];
+   /** 降级事件（§12.4 要求 task.json 记录） */
+   degradations: { run_id: string; stage: Stage; reason: string; at: string }[];
+-  /** 双方共同 blocker 被驳回等争议项（§6.6 规则 7） */
++  /**
++   * 双方共同 blocker 被驳回、在 `warn` 策略下放行的争议项（§6.6 规则 7）。
++   *
++   * 由 `gate --check` 与 `joint_checks` 同一次写入落（发版-02）：每轮至多一条，按 `run_id` 覆盖——
++   * 同一轮重跑先删旧条目再按本次结论决定是否追加，争议撤回或改 `hard` 被拦时本轮条目消失。
++   * `finding_ids` 是被驳回的共同 blocker 编号（拍平），`note` 是分组写法 `AGY-01+GLM-01@位置`
++   * （`formatJointGroups`，多组用「；」连接），不存整段告警。
++   *
++   * `disputed` **只增不减**：早于明细写入的旧正本只有布尔位、归属不到哪一轮，明细删空即清零会抹掉它。
++   * 所以 `disputed` 为真而明细为空是合法形态（旧记录，或该轮争议已撤回），report 如实写「没有留下明细」。
++   */
+   disputed: boolean;
+   disputes: { run_id: string; finding_ids: string[]; note: string }[];
+   /**
+diff --git a/src/trivium/report.ts b/src/trivium/report.ts
+index 12364dcf..6513c97f 100644
+--- a/src/trivium/report.ts
++++ b/src/trivium/report.ts
+@@ -1100,6 +1100,30 @@ function renderAggregates(L: string[], r: TopicReport): void {
+   );
+ }
+ 
++/**
++ * 第五节的争议项行（发版-02）。
++ *
++ * 明细**无条件**列出，不以 `disputed` 为前提：明细在就该显示，`disputed` 为假而明细非空只可能是手改，照实列出。
++ * `disputed` 为真而明细为空时补一行如实说「有标记、无明细」——原先整段包在 `if (disputed)` 里只循环明细，
++ * 旧正本（明细从来没写过）在报告上整段静默，看不出这个主题曾有争议。两种成因在留痕上分不开，并列写出、不择一。
++ *
++ * 正本形状判据只判顶层数组（`taskShapeProblem`），逐条字段由这里兜：手改的空编号、空说明不拼出悬空的「：——」（计划双审 AGY-03）。
++ */
++function renderDisputes(r: TopicReport): string[] {
++  const out: string[] = [];
++  for (const dp of r.task.disputes) {
++    const round = r.rounds.find((d) => d.runId === dp.run_id);
++    const where = round ? `${round.stage} r${round.rerunIndex}，run ${dp.run_id}` : `run ${dp.run_id}`;
++    const ids = Array.isArray(dp.finding_ids) && dp.finding_ids.length > 0 ? dp.finding_ids.join('、') : '（无编号）';
++    const note = typeof dp.note === 'string' && dp.note.length > 0 ? dp.note : '（无说明）';
++    out.push(`争议项（${where}）：${ids}——${note}`);
++  }
++  if (r.task.disputed && r.task.disputes.length === 0) {
++    out.push('争议项：task.json 记有争议标记，但没有留下明细（早于明细写入的旧记录，或该轮争议在重跑校验后已撤回）');
++  }
++  return out;
++}
++
+ export function renderTopicReport(r: TopicReport): string {
+   const L: string[] = [
+     `# 复盘 · ${r.topic}`,
+@@ -1285,11 +1309,7 @@ export function renderTopicReport(r: TopicReport): string {
+     for (const n of d.notes) alerts.push(`${d.stage} r${d.rerunIndex}：${n}`);
+   }
+   for (const dg of r.task.degradations) alerts.push(`task.json 记录的降级：${dg.stage} ${dg.run_id}——${dg.reason}`);
+-  if (r.task.disputed) {
+-    for (const dp of r.task.disputes) {
+-      alerts.push(`争议项：${dp.finding_ids.join('、')}——${dp.note}`);
+-    }
+-  }
++  alerts.push(...renderDisputes(r));
+   L.push(alerts.length === 0 ? '（无）' : alerts.map((a) => `- ${a}`).join('\n'), '');
+ 
+   // ── 六、多审退化 ──
+diff --git a/test/integration/gate-loop.test.ts b/test/integration/gate-loop.test.ts
+index ff2296be..e930ee3f 100644
+--- a/test/integration/gate-loop.test.ts
++++ b/test/integration/gate-loop.test.ts
+@@ -157,6 +157,131 @@ test('双方共同 blocker 被驳回 → task.json 记 disputed，status 显示
+   assert.match(st.stdout, /"disputed":\s*true/);
+ });
+ 
++// ── 争议明细写入（发版-02）：编号与分组按 run_id 覆盖写进 task.json.disputes ──
++
++type DisputeTask = {
++  disputed: boolean;
++  disputes: { run_id: string; finding_ids: string[]; note: string }[];
++  joint_checks?: { run_id: string; state: string }[];
++};
++const readDisputeTask = async (fx: Fixture) =>
++  JSON.parse(await fs.readFile(path.join(fx.archiveRoot, TOPIC, 'task.json'), 'utf8')) as DisputeTask;
++const JOINT_NOTE = 'AGY-01+GLM-01@src/stub.ts:10';
++
++/** 桩两侧的第 1 条是同 location 的 blocker：`AGY-01` 按给定裁决，`GLM-01` 恒驳回 */
++async function writeJointDisposition(fx: Fixture, runId: string, agy: '驳回' | '接受') {
++  await fs.writeFile(
++    path.join(fx.stageDir, `${today()}-${TOPIC}-revised-claude.md`),
++    [
++      '---', 'schema: trivium.disposition.v1', `topic: ${TOPIC}`, 'stage: plan',
++      'role: claude', 'kind: revised', `run_id: ${runId}`,
++      'addresses:', `  - ${today()}-${TOPIC}-gemini.md`, `  - ${today()}-${TOPIC}-glm.md`,
++      '---', '',
++      '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 修改落点 |',
++      '| :--- | :--- | :--- | :--- | :--- | :--- |',
++      agy === '驳回'
++        ? '| AGY-01 | gemini | blocker | 驳回 | 该路径已被上游 src/x.ts:31 拒绝 | |'
++        : '| AGY-01 | gemini | blocker | 接受 | 确实是缺陷，需要补 | src/a.ts:10 |',
++      '| GLM-01 | glm | blocker | 驳回 | 同上，上游已处理 | |',
++      '',
++    ].join('\n'),
++    'utf8',
++  );
++  await writeNextPlan(fx.stageDir, 2, agy === '接受' ? ['AGY-01'] : []);
++}
++
++/** 只改 `gate.joint_blocker_policy`：在夹具 config.yaml 末尾放一个 gate 段，重复调用替换掉上一次的 */
++async function setJointPolicy(fx: Fixture, policy: 'warn' | 'hard') {
++  const p = path.join(fx.root, '.trivium', 'config.yaml');
++  const raw = await fs.readFile(p, 'utf8');
++  const at = raw.indexOf('\ngate:\n');
++  const base = at >= 0 ? raw.slice(0, at + 1) : raw;
++  await fs.writeFile(p, `${base}gate:\n  joint_blocker_policy: ${policy}\n`, 'utf8');
++}
++
++const checkPlan = (fx: Fixture, extra: string[] = []) =>
++  cli(fx.root, ['gate', '--stage', 'plan', '--topic', TOPIC, '--check', ...extra, '--json']);
++
++test('争议明细 T1～T3 · warn 下写一条、同轮重跑不堆积、改成接受后本轮条目删掉而 disputed 不清零', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const runId = await runPlan(fx.root);
++  await writeJointDisposition(fx, runId, '驳回');
++
++  const g1 = await checkPlan(fx);
++  assert.equal(g1.code, EXIT.OK, `${g1.stdout}${g1.stderr}`);
++  const t1 = await readDisputeTask(fx);
++  assert.deepEqual(
++    t1.disputes,
++    [{ run_id: runId, finding_ids: ['AGY-01', 'GLM-01'], note: JOINT_NOTE }],
++    'note 只存分组与位置，不存整段告警',
++  );
++  assert.equal(t1.disputed, true);
++  assert.match(g1.stderr, /写入明细：AGY-01、GLM-01/);
++
++  // T2 · 同一轮再跑：覆盖不堆积
++  const g2 = await checkPlan(fx);
++  assert.equal(g2.code, EXIT.OK, `${g2.stdout}${g2.stderr}`);
++  assert.deepEqual((await readDisputeTask(fx)).disputes, t1.disputes);
++
++  // T7 · 显式 --run-id 固定本轮重跑：同一键控
++  const g7 = await checkPlan(fx, ['--run-id', runId]);
++  assert.equal(g7.code, EXIT.OK, `${g7.stdout}${g7.stderr}`);
++  assert.deepEqual((await readDisputeTask(fx)).disputes, t1.disputes);
++
++  // T3 · 改成接受：本轮不再有共同驳回，条目删掉；disputed 只增不减
++  await writeJointDisposition(fx, runId, '接受');
++  const g3 = await checkPlan(fx);
++  assert.equal(g3.code, EXIT.OK, `${g3.stdout}${g3.stderr}`);
++  const t3 = await readDisputeTask(fx);
++  assert.deepEqual(t3.disputes, []);
++  assert.equal(t3.disputed, true, '旧正本的标记归属不到哪一轮，disputed 不随明细删空而清零');
++
++  // 报告随之落到「有标记、无明细」那一行
++  const rp = await cli(fx.root, ['report', '--topic', TOPIC]);
++  assert.match(rp.stdout, /没有留下明细/, `${rp.stdout}${rp.stderr}`);
++});
++
++test('争议明细 T4 · hard 阻断不记争议，三态仍落 checked-found', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const runId = await runPlan(fx.root);
++  await writeJointDisposition(fx, runId, '驳回');
++  await setJointPolicy(fx, 'hard');
++
++  const g = await checkPlan(fx);
++  assert.notEqual(g.code, EXIT.OK, `hard 下共同驳回应被拦：\n${g.stdout}${g.stderr}`);
++  assert.match(g.stdout, /joint_blocker_rejected/);
++  const t = await readDisputeTask(fx);
++  assert.deepEqual(t.disputes, []);
++  assert.equal(t.disputed, false);
++  assert.equal(t.joint_checks?.find((x) => x.run_id === runId)?.state, 'checked-found');
++});
++
++test('争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留', { skip: bundleMissing && bundleSkipReason }, async () => {
++  const fx = await makeFixture({ topic: TOPIC });
++  const runId = await runPlan(fx.root);
++  await writeJointDisposition(fx, runId, '驳回');
++
++  // T6 · 预置一条他轮条目：本轮写入不碰它
++  const other = { run_id: '20200101T000000Z', finding_ids: ['AGY-09', 'GLM-09'], note: 'AGY-09+GLM-09@src/old.ts:1' };
++  const taskPath = path.join(fx.archiveRoot, TOPIC, 'task.json');
++  const before = JSON.parse(await fs.readFile(taskPath, 'utf8')) as DisputeTask;
++  before.disputes = [other];
++  await fs.writeFile(taskPath, JSON.stringify(before, null, 2), 'utf8');
++
++  const g1 = await checkPlan(fx);
++  assert.equal(g1.code, EXIT.OK, `${g1.stdout}${g1.stderr}`);
++  assert.deepEqual((await readDisputeTask(fx)).disputes, [
++    other,
++    { run_id: runId, finding_ids: ['AGY-01', 'GLM-01'], note: JOINT_NOTE },
++  ]);
++
++  // T5 · 改 hard 重跑同一轮：被拦，本轮争议不再成立
++  await setJointPolicy(fx, 'hard');
++  const g2 = await checkPlan(fx);
++  assert.notEqual(g2.code, EXIT.OK, `${g2.stdout}${g2.stderr}`);
++  assert.deepEqual((await readDisputeTask(fx)).disputes, [other]);
++});
++
+ test('无共同驳回 → 三态落 checked-none；run.json 那一侧只到 pending', { skip: bundleMissing && bundleSkipReason }, async () => {
+   /*
+    * 与上一条互为对照，守的是**三态没有再塌缩**：
+diff --git a/test/unit/gate.test.ts b/test/unit/gate.test.ts
+index 5a5ddc13..6c02528d 100644
+--- a/test/unit/gate.test.ts
++++ b/test/unit/gate.test.ts
+@@ -4,7 +4,7 @@ import path from 'node:path';
+ import { promises as fs } from 'node:fs';
+ import {
+   APPROVAL_CHECK_META_UNREADABLE, APPROVAL_CHECK_NO_RUN_ID,
+-  checkAdjudication, classifyReadonlyBreach, findJointRejectedBlockers, readonlyBreachLabel, jointCheckState, isHollowReason, loadRoundReviews, renderGateResult,
++  checkAdjudication, classifyReadonlyBreach, findJointRejectedBlockers, formatJointGroups, readonlyBreachLabel, jointCheckState, isHollowReason, loadRoundReviews, renderGateResult,
+   verifyRoundForApproval,
+ } from '../../src/trivium/gate.js';
+ import { EXIT } from '../../src/trivium/exit-codes.js';
+@@ -702,6 +702,52 @@ test('joint_blocker_policy=hard 时升级为失败', async () => {
+     degraded: false,
+   });
+   assert.ok(r.failures.some((x) => x.code === 'joint_blocker_rejected'), renderGateResult(r));
++  assert.equal(r.disputedJointBlockers, undefined, 'hard 阻断不放行，不给要写进争议明细的那一组（发版-02）');
++});
++
++// ── 被放行的共同驳回（发版-02）──
++
++test('formatJointGroups：组内 + 连接、组间「；」连接', () => {
++  assert.equal(
++    formatJointGroups([
++      { location: 'src/a.ts:1', ids: ['AGY-01', 'GLM-01'] },
++      { location: 'src/b.ts:2', ids: ['CODEX-02', 'GLM-03', 'AGY-04'] },
++    ]),
++    'AGY-01+GLM-01@src/a.ts:1；CODEX-02+GLM-03+AGY-04@src/b.ts:2',
++  );
++  assert.equal(formatJointGroups([]), '');
++});
++
++async function jointRun(disposals: [string, string], policy: 'warn' | 'hard' = 'warn') {
++  const l = await layout();
++  await putDisposition(l, `${HEAD}
++| AGY-01 | gemini | blocker | ${disposals[0]} | 我不同意这条 | ${disposals[0] === '接受' ? '§1' : ''} |
++| GLM-01 | glm | blocker | ${disposals[1]} | 我也不同意 | ${disposals[1] === '接受' ? '§1' : ''} |`);
++  const cfg = defaultConfig();
++  cfg.gate.joint_blocker_policy = policy;
++  return checkAdjudication({
++    planFinal: null,
++    expectedDegradedIds: [],
++    reviewDocs: null,
++    cfg, layout: l, stage: 'plan', rerunIndex: 1,
++    reviews: {
++      gemini: review([{ id: 'AGY-01', severity: 'blocker', location: 'src/a.ts:88' }]),
++      glm: review([{ id: 'GLM-01', severity: 'blocker', location: 'src/a.ts:88' }]),
++    },
++    degraded: false,
++  });
++}
++
++test('warn 下共同驳回 ⇒ disputedJointBlockers 给出分组，告警文案与 note 同一写法', async () => {
++  const r = await jointRun(['驳回', '驳回']);
++  assert.deepEqual(r.disputedJointBlockers, [{ location: 'src/a.ts:88', ids: ['AGY-01', 'GLM-01'] }]);
++  const w = r.warnings.find((x) => x.code === 'joint_blocker_rejected');
++  assert.ok(w?.message.endsWith('AGY-01+GLM-01@src/a.ts:88'), w?.message);
++});
++
++test('没有共同驳回 ⇒ disputedJointBlockers 缺席', async () => {
++  const r = await jointRun(['接受', '驳回']);
++  assert.equal(r.disputedJointBlockers, undefined);
+ });
+ 
+ // ── 空洞理由词表 ──
+diff --git a/test/unit/report.test.ts b/test/unit/report.test.ts
+index 7c3ace24..28c99643 100644
+--- a/test/unit/report.test.ts
++++ b/test/unit/report.test.ts
+@@ -391,8 +391,55 @@ test('task.json 的降级与争议项被带进报告', async () => {
+   await fs.writeFile(taskPath, JSON.stringify(task, null, 2));
+ 
+   const md = renderTopicReport(await buildTopicReport(l));
+-  assert.match(md, /双方共同 blocker 被驳回/);
+-  assert.match(md, /X-1、Y-2/);
++  assert.match(md, /争议项（plan r1，run R1）：X-1、Y-2——双方共同 blocker 被驳回/);
++  assert.doesNotMatch(md, /没有留下明细/, '有明细时不该再出兜底行');
++});
++
++// ── 争议明细的呈现（发版-02）──
++
++async function reportWithTask(edit: (t: TaskMeta) => void): Promise<string> {
++  const l = await archive();
++  await seedRound(l, { rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM') });
++  const taskPath = path.join(l.archiveRoot, l.topic, 'task.json');
++  const task = JSON.parse(await fs.readFile(taskPath, 'utf8')) as TaskMeta;
++  edit(task);
++  await fs.writeFile(taskPath, JSON.stringify(task, null, 2));
++  return renderTopicReport(await buildTopicReport(l));
++}
++
++test('R1 · disputed 为真而明细为空 ⇒ 如实写「没有留下明细」，不整段静默', async () => {
++  const md = await reportWithTask((t) => { t.disputed = true; t.disputes = []; });
++  assert.match(md, /争议项：task\.json 记有争议标记，但没有留下明细（早于明细写入的旧记录，或该轮争议在重跑校验后已撤回）/);
++});
++
++test('R2 · 明细的 run_id 找不到对应轮次 ⇒ 只写 run_id，不猜阶段轮次', async () => {
++  const md = await reportWithTask((t) => {
++    t.disputed = true;
++    t.disputes = [{ run_id: 'R9', finding_ids: ['X-1'], note: 'X-1+Y-1@a:1' }];
++  });
++  assert.match(md, /争议项（run R9）：X-1——X-1\+Y-1@a:1/);
++});
++
++test('R3 · disputed 为假而明细非空 ⇒ 照实列出', async () => {
++  const md = await reportWithTask((t) => {
++    t.disputed = false;
++    t.disputes = [{ run_id: 'R1', finding_ids: ['X-1'], note: 'n' }];
++  });
++  assert.match(md, /争议项（plan r1，run R1）：X-1——n/);
++  assert.doesNotMatch(md, /没有留下明细/);
++});
++
++test('R4 · 明细字段为空 ⇒ 显示「（无编号）」「（无说明）」，不拼出悬空符号', async () => {
++  const md = await reportWithTask((t) => {
++    t.disputed = true;
++    t.disputes = [
++      { run_id: 'R1', finding_ids: [], note: 'n' },
++      { run_id: 'R1', finding_ids: ['X-1'], note: '' },
++    ];
++  });
++  assert.match(md, /争议项（plan r1，run R1）：（无编号）——n/);
++  assert.match(md, /争议项（plan r1，run R1）：X-1——（无说明）/);
++  assert.doesNotMatch(md, /：——/);
+ });
+ 
+ // ── 降级纪律：读不到就说读不到（审查意见 GLM-r2-09）──
+diff --git a/doc/05_testing/evidence/dispute-detail-20261022/mutation-names-bundle.mjs b/doc/05_testing/evidence/dispute-detail-20261022/mutation-names-bundle.mjs
+new file mode 100644
+index 00000000..167ce08e
+--- /dev/null
++++ b/doc/05_testing/evidence/dispute-detail-20261022/mutation-names-bundle.mjs
+@@ -0,0 +1,57 @@
++// M12 批次 1 变体：集成套件调的是打包产物（test/helpers/fixture.ts 的 BUNDLE），--tests-only 不重打 bundle，
++// 变异进不了被测产物。这里改为 --with-tests 同时重打 bundle 与测试产物；其余与原脚本逐字相同。
++// 逐条变异、带超时跑期望套件，存下**失败用例名与首行断言文案**（变异装置只记 fail 数、且不给套件加超时）。
++// 照搬 evidence/cancel-cli-reach-20260928/mutation-names.mjs 的形态，另加 --test-timeout：
++// 首轮装置跑到 M4 时 U12① 的等待没有超时、挂死一小时被强制终止（报告 §3），这里先逐条确认不挂。
++// 逐条：备份 → 变异（find 须唯一）→ 只重建测试产物 → 跑期望套件 → 恢复并逐字节核对；收尾重建一次。
++// 用法（在仓库根，变异装置与全量检查都不在跑）：node mutation-names.mjs <规格路径> [输出 JSON 路径]
++import { execFileSync, spawnSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++
++const spec = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
++const OUT = process.argv[3] ?? null;
++const sha = (p) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
++const build = () => execFileSync(process.execPath, ['scripts/build.mjs', '--with-tests'], { stdio: 'ignore' });
++const runSuite = (suite) => {
++  const t0 = Date.now();
++  const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', '--test-timeout=60000', suite], {
++    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000,
++  });
++  const out = (r.stdout ?? '') + (r.stderr ?? '');
++  const body = out.split('✖ failing tests:')[0];
++  const red = [...new Set([...body.matchAll(/^✖ (.+?) \(\d/gm)].map((m) => m[1]))];
++  const msgs = [...body.matchAll(/^✖ .+?\(\d[^\n]*\n(?:[^\n]*\n){0,3}?\s*([^\n]*Error[^\n]*)/gm)].map((m) => m[1].trim().slice(0, 200));
++  return {
++    fail: Number(/ℹ fail (\d+)/.exec(out)?.[1] ?? (r.status === 0 ? 0 : -1)),
++    timed_out: r.error?.code === 'ETIMEDOUT',
++    cancelled: Number(/ℹ cancelled (\d+)/.exec(out)?.[1] ?? 0),
++    red,
++    firstLines: [...new Set(msgs)].slice(0, 8),
++    elapsed_s: Math.round((Date.now() - t0) / 1000),
++  };
++};
++
++const base = Object.fromEntries(spec.targets.map((f) => [f, fs.readFileSync(f, 'utf8')]));
++const baseHash = Object.fromEntries(spec.targets.map((f) => [f, sha(f)]));
++const results = [];
++try {
++  for (const c of spec.cases) {
++    const src = base[c.file];
++    if (src.split(c.find).length - 1 !== 1) throw new Error(`${c.id} 的 find 不唯一`);
++    fs.writeFileSync(c.file, src.replace(c.find, c.replace));
++    try {
++      build();
++      const r = runSuite(c.expect);
++      results.push({ id: c.id, desc: c.desc, suite: c.expect, ...r });
++      console.error(`${c.id}：fail=${r.fail} cancelled=${r.cancelled} ${r.elapsed_s}s ⇒ ${r.red.join(' ｜ ')}`);
++    } finally {
++      fs.writeFileSync(c.file, src);
++      if (sha(c.file) !== baseHash[c.file]) throw new Error(`恢复 ${c.file} 后哈希不符，停下人工处理`);
++    }
++  }
++} finally {
++  for (const f of spec.targets) if (sha(f) !== baseHash[f]) fs.writeFileSync(f, base[f]);
++  build();
++}
++if (OUT) fs.writeFileSync(OUT, JSON.stringify(results, null, 2) + '\n');
+diff --git a/doc/05_testing/evidence/dispute-detail-20261022/mutation-names-log.txt b/doc/05_testing/evidence/dispute-detail-20261022/mutation-names-log.txt
+new file mode 100644
+index 00000000..89bcc4da
+--- /dev/null
++++ b/doc/05_testing/evidence/dispute-detail-20261022/mutation-names-log.txt
+@@ -0,0 +1,6 @@
++M1：fail=2 cancelled=0 298s ⇒ 争议明细 T1～T3 · warn 下写一条、同轮重跑不堆积、改成接受后本轮条目删掉而 disputed 不清零 ｜ 争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留
++M2：fail=2 cancelled=0 304s ⇒ 争议明细 T4 · hard 阻断不记争议，三态仍落 checked-found ｜ 争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留
++M3：fail=2 cancelled=0 303s ⇒ 争议明细 T1～T3 · warn 下写一条、同轮重跑不堆积、改成接受后本轮条目删掉而 disputed 不清零 ｜ 争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留
++M4：fail=1 cancelled=0 1s ⇒ R1 · disputed 为真而明细为空 ⇒ 如实写「没有留下明细」，不整段静默
++M5：fail=1 cancelled=0 0s ⇒ R3 · disputed 为假而明细非空 ⇒ 照实列出
++M6：fail=1 cancelled=0 0s ⇒ R4 · 明细字段为空 ⇒ 显示「（无编号）」「（无说明）」，不拼出悬空符号
+diff --git a/doc/05_testing/evidence/dispute-detail-20261022/mutation-names-output.json b/doc/05_testing/evidence/dispute-detail-20261022/mutation-names-output.json
+new file mode 100644
+index 00000000..800ea5a8
+--- /dev/null
++++ b/doc/05_testing/evidence/dispute-detail-20261022/mutation-names-output.json
+@@ -0,0 +1,83 @@
++[
++  {
++    "id": "M1",
++    "desc": "去掉按 run_id 先删本轮旧条目（同轮重跑会堆积、撤回后旧条目残留）",
++    "suite": "dist/test/test/integration/gate-loop.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "争议明细 T1～T3 · warn 下写一条、同轮重跑不堆积、改成接受后本轮条目删掉而 disputed 不清零",
++      "争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留"
++    ],
++    "firstLines": [],
++    "elapsed_s": 298
++  },
++  {
++    "id": "M2",
++    "desc": "hard 阻断也带出 disputedJointBlockers（hard 下会记争议）",
++    "suite": "dist/test/test/integration/gate-loop.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "争议明细 T4 · hard 阻断不记争议，三态仍落 checked-found",
++      "争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留"
++    ],
++    "firstLines": [],
++    "elapsed_s": 304
++  },
++  {
++    "id": "M3",
++    "desc": "note 改存整段告警文案",
++    "suite": "dist/test/test/integration/gate-loop.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "争议明细 T1～T3 · warn 下写一条、同轮重跑不堆积、改成接受后本轮条目删掉而 disputed 不清零",
++      "争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留"
++    ],
++    "firstLines": [],
++    "elapsed_s": 303
++  },
++  {
++    "id": "M4",
++    "desc": "报告去掉「有标记、无明细」那一行",
++    "suite": "dist/test/test/unit/report.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "R1 · disputed 为真而明细为空 ⇒ 如实写「没有留下明细」，不整段静默"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M5",
++    "desc": "报告恢复以 disputed 为前提才列明细",
++    "suite": "dist/test/test/unit/report.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "R3 · disputed 为假而明细非空 ⇒ 照实列出"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M6",
++    "desc": "去掉空 finding_ids 的「（无编号）」兜底",
++    "suite": "dist/test/test/unit/report.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "R4 · 明细字段为空 ⇒ 显示「（无编号）」「（无说明）」，不拼出悬空符号"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  }
++]
+diff --git a/doc/05_testing/evidence/dispute-detail-20261022/mutation-spec.json b/doc/05_testing/evidence/dispute-detail-20261022/mutation-spec.json
+new file mode 100644
+index 00000000..f716ed2a
+--- /dev/null
++++ b/doc/05_testing/evidence/dispute-detail-20261022/mutation-spec.json
+@@ -0,0 +1,53 @@
++{
++  "targets": ["src/trivium/cli.ts", "src/trivium/gate.ts", "src/trivium/report.ts"],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "去掉按 run_id 先删本轮旧条目（同轮重跑会堆积、撤回后旧条目残留）",
++      "file": "src/trivium/cli.ts",
++      "find": "...t.disputes.filter((d) => d.run_id !== runId),",
++      "replace": "...t.disputes,",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "hard 阻断也带出 disputedJointBlockers（hard 下会记争议）",
++      "file": "src/trivium/gate.ts",
++      "find": "if (cfg.gate.joint_blocker_policy === 'hard') {",
++      "replace": "if (cfg.gate.joint_blocker_policy === 'hard') {\n      disputedJointBlockers = joint;",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "note 改存整段告警文案",
++      "file": "src/trivium/cli.ts",
++      "find": "note: formatJointGroups(dj) }",
++      "replace": "note: result.warnings.find((w) => w.code === 'joint_blocker_rejected')?.message ?? '' }",
++      "expect": "dist/test/test/integration/gate-loop.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "报告去掉「有标记、无明细」那一行",
++      "file": "src/trivium/report.ts",
++      "find": "if (r.task.disputed && r.task.disputes.length === 0) {",
++      "replace": "if (false) {",
++      "expect": "dist/test/test/unit/report.test.js"
++    },
++    {
++      "id": "M5",
++      "desc": "报告恢复以 disputed 为前提才列明细",
++      "file": "src/trivium/report.ts",
++      "find": "for (const dp of r.task.disputes) {",
++      "replace": "for (const dp of r.task.disputed ? r.task.disputes : []) {",
++      "expect": "dist/test/test/unit/report.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "去掉空 finding_ids 的「（无编号）」兜底",
++      "file": "src/trivium/report.ts",
++      "find": "dp.finding_ids.length > 0 ?",
++      "replace": "dp.finding_ids.length >= 0 ?",
++      "expect": "dist/test/test/unit/report.test.js"
++    }
++  ]
++}

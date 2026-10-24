@@ -46,6 +46,7 @@ trivium status --json          # 要脚本处理时
 | `70` | 同主题已被锁 | 是 → 见 §二 |
 | `73` | 运行仍在进行中（仅 `review --wait`） | **否**，向用户播报进度后继续下一次 `--wait` |
 | `75` | 严格模式中止（超时或单侧失败） | 是 → 见 §四 |
+| `76` | 只有 `doctor --deadline-s`：到点或收到信号时还有家没探完（已探完的照常落盘） | 是 → 见 §五 |
 
 `2` 和 `73` 最容易被误判成故障。`2` 是闸门在挡你，`73` 是还没跑完。
 
@@ -270,8 +271,14 @@ trivium doctor                  # 重跑 18 项探针
 trivium doctor --only agy       # 只探一侧，省配额
 ```
 
+**`/dual-*` 里的预检退 69 会先自动校准一轮**（设计 v1.3.173，EV-251）：失败项全是 doctor 能修的（探针缺失或过期、版本漂移、路线没有探针结论、入口挪了、读取能力没跑完）时，
+skill 照预检 JSON 的 `recalibration.invocations` 逐家前台跑 `doctor --only <家> … --deadline-s <秒> --json`，再重跑同一条预检；仍失败就停下转述。
+自己排查时可以直接看 `trivium preflight --stage <s> --json` 里每个失败项的 `recalibrate`（`fixable` 与目标）和汇总的 `recalibration.why`。
+
 | 现象 | 处置 |
 | :--- | :--- |
+| 自动校准后停下，doctor 退 76，`deadline.sections` 里某家 `in_progress` | 时限内没探完：按该段的 `rerun` 在终端单独跑。会话里拉起的厂商 CLI 有过间歇挂满单次探针超时的先例（EV-243），终端里通常能跑完。doctor 若是被载体工具超时杀掉的（没有 JSON 输出、退出码不是 76），看载体上限：Claude Code 缺省 600 秒，须设 `BASH_MAX_TIMEOUT_MS=960000`（缺省时限 900 秒加 60 秒余量），或把 `preflight.recalibrate_deadline_s` 调到上限减 60 秒以下 |
+| doctor 输出 `deadline.residue` 里有「探针临时目录 … 删除失败」或「台账里的 … 不在系统临时目录下」 | 前者按路径手工删（可能有凭据副本）；后者是台账被改过或路径异常，核对后手工处理，编排器不删。台账在 `<run_root>/doctor-temp-<pid>.json`，宿主强杀 doctor 时留下的条目由下一次 doctor 启动时补删 |
 | 厂商 CLI 升级后行为变了 | 重跑 `trivium doctor`。实现代码只读探针结论、不硬编码设计文档列出的命令行（设计原则 P7），所以重探通常就够 |
 | 配额打满 | 换模型档位，或 `--allow-single` 单侧跑（记为降级） |
 | 未认证 | 按厂商自己的登录流程处理。**凭据不经编排器**，配置里只放模型 slug 与路径 |

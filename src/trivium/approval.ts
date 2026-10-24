@@ -7,7 +7,9 @@
  */
 import type { Ctx, Stage } from './types.js';
 import { setGateChecked, getGate, type GateState } from './state.js';
-import { updateTask, readTaskStrict, type ApprovalRecord } from './meta.js';
+import {
+  updateTask, readTaskStrict, taskUnreadableError, taskUnreadableExit, type ApprovalRecord, type TaskMeta,
+} from './meta.js';
 import type { ArchiveLayout } from './archive.js';
 import { resolveTopic } from './topic.js';
 import { resetStopBlockCount } from './lock.js';
@@ -65,6 +67,17 @@ export interface ApprovalInput {
    * 与变异验证守着（M10a 第 3 步测试报告 M1），不靠这个字段。
    */
   verifiedRunId?: string | null;
+  /**
+   * **只给单测用的注入点**（EV-248 计划 r2 §五 U5）：闸门已写下本次决定、写正本之前调用。
+   * 用来在这两步之间把正本搅坏，测补偿回退；生产调用方一律不传。
+   */
+  afterGateAppliedForTest?: () => Promise<void>;
+}
+
+/** 审批前先判正本可读（EV-248）：读不出就抛受控错误，闸门不动。`cmdApproval` 与 `recordApproval` 共用 */
+export async function assertTaskWritableForApproval(layout: ArchiveLayout): Promise<void> {
+  const t = await readTaskStrict(layout);
+  if (t.state === 'unreadable') throw taskUnreadableError(layout, t.error, '未记录审批，闸门保持不变');
 }
 
 /** 放弃可以作用在哪些状态上：除 `running` 之外的全部 */
@@ -106,19 +119,58 @@ const HUMAN_DECIDED: readonly GateState[] = ['approved', 'rejected', 'abandoned'
  * `missing` 与 `unreadable` 分开，就是为了这里：走宽松读会把「锚被搅坏」当成
  * 「没有审批记录」，于是已审批的闸门照旧被打回——**恰是本函数要修的缺陷，
  * 换个触发条件重现**。`missing` 则是真的没有记录（新主题），返回 false。
+ *
+ * 这个 fail-closed 只对「推不推进闸门」成立。轮次链判定（`review.ts previousRoundFacts`）
+ * 不经本函数判读不出：在那里「已表态」意味着断链、新起一链，方向恰好反过来（代码双审 r2 GLM-01），
+ * 它自己读正本、读不出就拒跑，再用 `decidedInTask` 判每一轮。
  */
 export async function humanDecidedThisRound(
   layout: ArchiveLayout,
   stage: Stage,
   runId: string,
 ): Promise<boolean> {
+  return (await humanDecision(layout, stage, runId)) !== 'undecided'; // unreadable 按已表态：fail-closed，理由见上
+}
+
+/**
+ * 同 {@link humanDecidedThisRound}，但把「读不出」单独报出来，供调用方给对的文案：
+ * 读不出时说「有人表过态」是不实陈述，会把排查引向错误方向（代码双审 r3 GLM-03）。
+ */
+export async function humanDecision(
+  layout: ArchiveLayout,
+  stage: Stage,
+  runId: string,
+): Promise<'decided' | 'undecided' | 'unreadable'> {
+  return (await humanDecisionDetailed(layout, stage, runId)).decision;
+}
+
+/** 同 {@link humanDecision}，读不出时另带原因，供 {@link taskUnreadableHold} 点名（EV-248） */
+export async function humanDecisionDetailed(
+  layout: ArchiveLayout,
+  stage: Stage,
+  runId: string,
+): Promise<{ decision: 'decided' | 'undecided' | 'unreadable'; error?: string }> {
   // 空 run_id 不能当通配：`recordApproval` 在 gate.run_id 为 null 时写的就是空串
+  if (!runId) return { decision: 'undecided' };
+
+  const { task, state, error } = await readTaskStrict(layout);
+  if (state === 'unreadable') return { decision: 'unreadable', ...(error !== undefined ? { error } : {}) };
+  if (state === 'missing') return { decision: 'undecided' };
+
+  return { decision: decidedInTask(task, stage, runId) ? 'decided' : 'undecided' };
+}
+
+/**
+ * 审批正本读不出时，校验 / 停点命令按已表态保守处理的那段话（`--check` 与 `--await-approval` 共用）。
+ * 后半是写入口拒写的同一段出口（EV-248）：三处同文案、同退出码 2。
+ */
+export function taskUnreadableHold(layout: ArchiveLayout, error: string | undefined): string {
+  return '审批正本 task.json 读不出，按已表态保守处理：闸门状态保持不变。\n' + taskUnreadableExit(layout, error);
+}
+
+/** 已读到的正本里，该轮是否有人工表态（批准、拒绝或作废）。读不出怎么办由调用方按语境决定 */
+export function decidedInTask(task: TaskMeta, stage: Stage, runId: string): boolean {
   if (!runId) return false;
-
-  const { task, state } = await readTaskStrict(layout);
-  if (state === 'unreadable') return true; // fail-closed，理由见上
-  if (state === 'missing') return false;
-
   return (task.approvals ?? []).some(
     (a) =>
       a.stage === stage &&
@@ -200,6 +252,13 @@ export async function recordApproval(i: ApprovalInput): Promise<{ message: strin
   };
 
   /*
+   * 正本读不出就不动闸门（EV-248）：闸门与正本分属两个锁域、没有原子写，先改闸门再发现正本写不进，
+   * 留下的是「闸门已放行、正本没有审批记录」。所以先判；判后写前被搅坏的那一格由下面的补偿兜。
+   */
+  const ref = await resolveTopic(ctx, i.topic, i.stage);
+  await assertTaskWritableForApproval(ref.layout);
+
+  /*
    * 先做比较-交换：只有闸门仍是我们读到的那一轮（run_id 相同）且状态允许时才写。
    * 读与写之间若有别的运行接管了槽位（新一轮 --start 把它置成 running），本次审批作废。
    */
@@ -223,11 +282,33 @@ export async function recordApproval(i: ApprovalInput): Promise<{ message: strin
     );
   }
 
-  const ref = await resolveTopic(ctx, i.topic, i.stage);
-  await updateTask(ref.layout, (t) => {
-    t.approvals.push(record);
-    t.gate = { stage: i.stage, state: i.decision, since: record.at, run_id: gate.run_id };
-  }, { triviumDir: ctx.triviumDir, heartbeatStaleMs });
+  try {
+    if (i.afterGateAppliedForTest) await i.afterGateAppliedForTest();
+    await updateTask(ref.layout, (t) => {
+      t.approvals.push(record);
+      t.gate = { stage: i.stage, state: i.decision, since: record.at, run_id: gate.run_id };
+    }, { triviumDir: ctx.triviumDir, heartbeatStaleMs });
+  } catch (e) {
+    /*
+     * 补偿（EV-248 计划 r2 §三.2）：正本没写进，就把闸门比较-交换回本次之前的状态。
+     * 只回退本次刚写下的那一笔——期望状态是本次的决定、run_id 是本轮，对不上说明闸门已被别人接管，不动它。
+     * 补偿成败都如实追加进原错误的文案，不吞原错误。
+     */
+    let note: string;
+    try {
+      const back = await setGateChecked({
+        triviumDir: ctx.triviumDir, topic: i.topic, stage: i.stage, state: gate.state, heartbeatStaleMs,
+        expect: { state: [i.decision], runId: gate.run_id, allowMissing: false },
+      });
+      note = back.applied
+        ? `  闸门已回退到本次之前的 ${gate.state}。`
+        : `  闸门当前状态已不是本次写下的 ${i.decision}，未回退，请 \`trivium status --topic ${shellQuoteArg(i.topic)}\` 核对。`;
+    } catch (re) {
+      note = `  回退闸门时出错（${(re as Error).message.split('\n')[0]}）：闸门可能仍是 ${i.decision}，请 \`trivium status --topic ${shellQuoteArg(i.topic)}\` 核对。`;
+    }
+    if (e instanceof TriviumError) throw new TriviumError(e.code, `${e.message}\n${note}`, e.details);
+    throw new TriviumError(EXIT.FAIL, `写审批记录时出错：${(e as Error).message}\n${note}`);
+  }
   // 闸门关闭后阻断计数归零，下一轮重新计
   await resetStopBlockCount(ctx.triviumDir, i.topic, i.stage);
 

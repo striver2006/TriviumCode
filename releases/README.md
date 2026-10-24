@@ -1,20 +1,12 @@
-# releases/ · 预构建发布产物
+# releases/ · 本地发布产物输出目录
 
-本目录存放随版本入库的正式发布包与配套手册（`dist/releases/` 是构建现场，本目录是入库快照）。
+本目录只是 `scripts/build-manual-pdf.mjs` 等脚本的缺省输出位置，**产物不入库**（见根目录 `.gitignore`）。
+`dist/releases/` 是 `npm run release` 的构建现场。
 
-| 文件 | 说明 |
-| :--- | :--- |
-| `TriviumCode-<版本>-windows-x64.zip` | Windows 正式发布包（`npm run release` 于干净工作树产出，`candidate: false`） |
-| `TriviumCode-<版本>-windows-x64.zip.sha256` | 传输校验值 |
-| `TriviumCode-<版本>-完整手册.pdf` | 安装部署 + 用户手册 + 该版增补篇（Edge 无头渲染） |
+正式发布包（macOS `tar.gz`、Windows `windows-x64.zip`）、对应的 `.sha256` 校验值与完整手册 PDF，
+一律作为代码托管平台上对应版本标签的 **Release 附件**发布。
 
 安装步骤见[稳定版部署手册](../doc/06_deployment/稳定版部署手册.md) §2；收到包先核对 `.sha256`。
 
-## 当前条目
-
-| 版本 | 日期 | 平台 | 包 | 手册 |
-| :--- | :--- | :--- | :--- | :--- |
-| 1.2.7 | 2026-10-21 | windows-x64 | `TriviumCode-1.2.7-windows-x64.zip`（sha256 `2997f740…b34f6`） | `TriviumCode-1.2.7-完整手册.pdf`（51 页） |
-| 1.2.9 | 2026-10-21 | windows-x64 | 正式包待出（工作树提交后 `npm run release`） | `TriviumCode-1.2.9-完整手册.pdf`（48 页，四部分含一键安装；管线固化为 `scripts/build-manual-pdf.mjs`） |
-
-> 历史版本（1.1.0 candidate、1.2.2）不入库；需要时由对应标签重新 `npm run release`。
+> 2026-10-24 双平台统一时移除了原先入库的 1.2.7 Windows 包与 1.2.7 / 1.2.9 手册 PDF；
+> 需要时可从 `windows` 分支历史取回，或由对应提交重新 `npm run release`。

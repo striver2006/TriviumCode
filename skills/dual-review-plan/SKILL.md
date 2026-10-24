@@ -1,7 +1,7 @@
 ---
 name: dual-review-plan
 description: 对已有计划做背靠背双审，并产出逐条裁决的修订计划（命令 B）
-argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--plan-file <路径>] [--plan-rounds <1~10>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]
+argument-hint: <审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--plan-file <路径>] [--max-rounds <n>] [--critics <id,…>] [--only codex|gemini|glm] [--allow-single]
 disable-model-invocation: true
 allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 ---
@@ -40,6 +40,7 @@ TV topic claim --topic <主题> --stage plan --driver claude --json
 - 本阶段已声明为你自己时它退 0、什么都不改，照常继续；
 - **退 64 时原样转述并停止**：本阶段已由别家执笔，或阶段目录里已有别家后缀的文件。
   **不要删那些文件来换回认领**——那是刻意的限制，它们的去留请用户在终端处理；
+- **退 2 时同样原样转述并停止**：审批正本 task.json 读不出，本次没有写入。恢复由用户在终端做，恢复后再重跑本步；
 - 认领是**自声明**：它记下「这一阶段由谁执笔」，证明不了你就是那一家；窗口内的认领次数也不设上限（M10a 边界 ⑥）。
 
 认领之后若原稿还没写，用 Write 落盘 `.reviews/<主题>/plan/<日期>-<主题>-<当轮 Driver>.md`，再进第 1 步。
@@ -99,7 +100,34 @@ TV preflight --stage plan --driver claude --critics <critics> [--profile <名称
 预检要查的是本轮实际入选的那几侧：用户用 `--critics` 加进来的一侧没登录或缺本阶段模型，
 不带 `--critics` 就查不到，要等拉起之后才失败。
 
-失败则**原样转述**错误并停止，不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
+**预检退 69 时先看能不能自动校准**（EV-251）。预检失败时 JSON 里有 `recalibration`：
+
+- 退出码不是 69、`recalibration` 键缺席、或 `recalibration.eligible` 不为 `true`：**原样转述**错误（连同 `recalibration.why`）并停止，
+  不要自行猜测修复。预检失败时不会产生任何工件，可以放心重试。
+- 退出码 69 且 `recalibration.eligible` 为 `true`：**不向用户确认**，按下面四步自动校准一轮。哪些失败项能修、该跑哪几家、
+  带什么旗标，全由预检给出——你只照念、照抄，不自行判断、不增删。
+
+1. **第一个动作是发文本，不是调用**（EV-252）：把 `recalibration.announce_before` **原样**作为一条文本发给用户——
+   它点名了失败项、要跑几次 doctor、每次时限，并提醒会消耗配额，是用户在不被询问时唯一的事前知情点。
+   **在这句话出现在对话里之前，不得发起任何 doctor 调用。**
+   （键缺席时——旧版编排器——按格式「预检退 69，以下失败项可由 doctor 重新校准：〈失败项名称〉；将依次在前台跑 N 次 doctor
+   （每次至多 `deadline_s` 秒），会消耗少量配额」自拟，同样先发后调。）
+2. 逐条执行 `recalibration.invocations`。**命令文本恰好是字面的 `.trivium/bin/trivium` 后接该条 `args` 的各项**
+   （以空格连接，含空格或 shell 元字符的项加单引号），**前后不加任何东西**：不加重定向（`>`、`>>`、`2>&1`）、
+   不接管道或 `tee`、不用 `;` / `&&` 接后续命令、不加变量赋值或 `cd` 前缀；`args` 的各项也不改、不增删。
+   改写过的调用与预检给出的不一致，留痕对不上；装有写入护栏的载体还会把带重定向的整条命令拦下、白耗一轮。
+   输出很长（每家数十 KB，含完整探针）也照样不改调用：播报要的字段（退出码、`blockers`、`warnings`、`deadline`）——
+   输出已直接返回时就从返回里取；载体把输出截存成文件时，另起一次只读的读取去读那个文件。退出码以工具结果报告的为准。
+   **前台调用**，Bash 工具超时设为该条的 `bash_timeout_ms`；不要放到后台，也不要拆成发起与等待两步。
+   每条结束后先发一行播报（`only`、退出码、`blockers` 条数；`deadline.hit` 为真时点名 `deadline.sections` 里没探完的段），
+   再发下一条。任何退出码（0 / 69 / 76 / 64 / 1，或被工具超时打断）都**继续下一条**——修好没有由重跑预检判。
+3. 全部跑完后，用**逐字相同**的旗标重跑同一条预检命令**一次**。
+4. 重跑的结果一出来就定性：
+   - 通过：**你在这之后写的第一句话就是「预检首次退 69，已自动校准后通过。」**（原文就在这里，照念，不必回去找第一次预检的 JSON），
+     然后才念 `warnings`、照常往下走；
+   - 仍失败（任何退出码）：**停止**，一并转述：第一次预检的失败项；每次 doctor 的退出码、`blockers`、`warnings`，
+     以及 `deadline.sections` 里各段的 `state`、`notes` 与 `rerun`（没探完的段连同 `note` 原文）；第二次预检的失败项。
+     请用户在终端跑仍失败那几家对应的 `rerun`。第二次预检的 `recalibration` 即使可校准也**不再**自动校准——每次预检至多一轮。
 
 通过时若 `warnings` 非空，把每一条的 `detail` 原样念给用户，**然后继续**，不停下来等确认——警告不阻断，要不要处理由用户决定。
 
@@ -108,7 +136,7 @@ TV preflight --stage plan --driver claude --critics <critics> [--profile <名称
 先运行：
 
 ```
-TV review --start --entry B --stage plan --topic <主题> --driver claude --focus <提示语> [--goal <任务目标>] [--plan-file <路径>] [--plan-rounds <1~10>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
+TV review --start --entry B --stage plan --topic <主题> --driver claude --focus <提示语> [--goal <任务目标>] [--plan-file <路径>] [--max-rounds <n>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--profile <名称>] [--context …] [--critics <id,…>] [--allow-single] [--driver-model <模型>] [--driver-provider <供应商>] --json
 ```
 
 `--entry B` 标记本次运行由命令 B 发起，记入 run.json 留痕；它也让 CLI 按 B/C/D 规则
@@ -132,11 +160,6 @@ resolve 用它定位被审对象，而 `--start` 会**重新定位一次**——
 `plan/` 下最新的一份原稿，用户显式指定的那份会被静默换掉，
 而 resolve 阶段的存在性校验反倒让一切看起来正常。
 
-**轮次上限无条件传**：resolve 输出的 `plan_rounds` 已含缺省回落（`plan_rounds_source` 记来源
-flag / config），照抄进 `--plan-rounds`。漏传不会报错——`--start` 会自己回落配置缺省——
-但当次指定的上限就此消失，多轮循环的「用尽停下人工审批」会提前或推迟触发，
-用户看不出参数曾被给过。
-
 **把 resolve 输出的 `critics` 数组用逗号连接后传给 `--critics`，无条件传。**
 它是本轮**入选的审核者集合**，resolve 已经解析并校验完：默认值回落、旧旗标 `--only`
 的单元素形态、各项合法性，全都在里面了。照抄即可。
@@ -153,6 +176,12 @@ flag / config），照抄进 `--plan-rounds`。漏传不会报错——`--start`
 允许一侧失败时不中止、产出结果并留痕（§12.4）。
 **漏传的后果是静默忽略用户的要求**——一侧失败就整次失败，
 而留痕里看不出用户曾经要求过降级。
+
+**多轮评审循环（EV-247）**：每个审核者给出「通过 / 修改后通过 / 不通过」三档结论，编排器按侧计票——
+不通过占半数及以上即本轮判不通过，你按裁决改完计划后**自动重审**（见第 6.5 步），直到通过或到最大轮次。
+resolve 输出的 `max_rounds.plan` 非空时传 `--max-rounds <它的值>`，为 null 则不传（缺省 3 轮，上限 10）；
+重审的各轮照传同一个值——轮次链中途改上限会退 64。`--start` 返回的 `review_loop` 给出本轮是第几轮、最多几轮，
+开场播报里一并念出「评审循环第 k/N 轮」。
 
 若 resolve 输出的 `models` 字段非空，把其中的模型覆盖逐个原样传给对应的
 `--model-<审核者 id>`（`models` 的键就是审核者 id：`--model-codex` / `--model-gemini` / `--model-glm`）。
@@ -225,17 +254,14 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 - 三种裁决**都**要有非空理由；**接受**必须写明落点；
 - 禁止静默忽略任何一条（FR-14）。即使全部驳回也必须产出本件并写明「无修改及原因」。
 
-**裁决件里有「接受」、或本轮整体判定不为「通过」时，同时写一份新一轮计划**
-（§6.6 规则 9，EV-214；三态判定强化 2026-10-22）：
+**每一轮都同时写一份新版本的完整计划**（§6.6 规则 9，EV-214；EV-247 起不再只在有「接受」时才写）：
 
-- 文件名 `…-r<N>-<当轮 Driver>.md`，与原稿同目录；N 比本轮被审对象的轮次大 1（第 1 轮即 `r2`），后缀同样是**你自己的 Agent id**；
+- 文件名 `…-r<N>-<当轮 Driver>.md`，写在本主题的 `.reviews/<主题>/plan/` 下——原稿经 `--plan-file` 来自归档外时也一样（闸门与代码阶段只在那里找新一轮计划）；N 比本轮被审对象的轮次大 1（第 1 轮即 `r2`），后缀同样是**你自己的 Agent id**；
 - 开头列「相对上一轮的改动」，**逐条引用**被接受意见的编号（整份回退侧的 `<前缀>-F<n>` 也要写），再给出合入后的完整计划；
-- 它就是代码阶段送审的「本主题计划定稿」——代码审查员读的是轮次最大的那份计划，没有它读到的是未修订的原稿。写完之后不要再另写更高轮次的计划而不送审；
-- 整体判定为 `pass_after_changes`（修改后通过）或 `fail`（不通过）时，**即使零接受项也必须写**：
-  判定要求按意见修订，驳回的意见也要在裁决理由里说明为何不吸收、计划相应演进；
-  全部驳回且判定为 `pass` 时才可不写，上一轮计划即为定稿。
+  全部驳回或全部暂缓时，开头写明「本轮无改动」及原因，再照抄完整计划——不能省略这份文件；
+- 本轮判不通过、要重审时，下一轮送审的就是它；判通过 / 修改后通过时，它就是代码阶段送审的「本主题计划定稿」——代码审查员读的是轮次最大的那份计划。写完之后不要再另写更高轮次的计划而不送审。
 
-闸门对带 `plan_final_check` 标记的轮次核两件事：这份文件存在（判定非 `pass` 时零接受项也核），每个被接受的编号在其中整词逐字出现；缺了判 `missing_next_plan` / `next_plan_missing_ids`，并给出应写的文件名或缺的编号。它只核字面，不核合得对不对。
+闸门对带轮次链（`review_loop`）的轮次核两件事：这份文件存在（不论有无接受项），每个被接受的编号在其中整词逐字出现；缺了判 `missing_next_plan` / `next_plan_missing_ids`，并给出应写的文件名或缺的编号。它只核字面，不核合得对不对。早于 EV-247 的旧轮次仍按「有接受项才要求」判。
 
 ### 6. 校验裁决完整性
 
@@ -243,24 +269,21 @@ TV review --wait <run_id> --timeout <wait_timeout_s> --json
 若返回缺失编号，补齐后重跑本步；重跑最多 3 次（首次校验不计），
 仍不通过则向用户说明缺口并停下，交给用户处理。
 
-校验通过且输出含 `round_verdict` 时，按其 `decision` 分支（三态判定，2026-10-22）：
+`failures` 含 `task_unreadable` 时**不是裁决缺口**：审批正本 task.json 读不出，补裁决件无济于事，
+也不计入上面的重跑次数。原样转述后停下，由用户在终端恢复正本后再重跑本步。第 7 步的停点命令遇到同样情形也退 2，照此处理。
 
-- **`fail` 且 `round < limit`**：本轮整体判不通过、轮次未用尽。按第 5 步的裁决修订
-  计划（驳回的意见也要在裁决理由里说明为何不吸收；计划阶段还须产出
-  新一轮完整计划，见第 5 步的说明），
-  然后**回到第 3 步**再发起一轮双审——新轮次自动抬升，透传的旗标（含轮次上限）保持同一组。
-  如此循环，直至判定不再是 `fail`、或轮次用尽。
-- **`fail` 且 `round ≥ limit`**：轮次已用尽。编排器已把闸门置为等待人工审批——
-  把停点话术原样转述给用户后**停下**，等用户走 `/dual-approve`：
-  通过＝放行按最后一轮的裁决继续，拒绝＝终止。**审批的发起权在用户手里，不要代跑。**
-- **`pass` / `pass_after_changes`**：进入第 7 步。`pass_after_changes`（含三档皆不达 50%
-  时的兜底取保守档）意为「按意见修订后即可收尾、不再重审」——修订内容以第 5 步裁决为准。
+### 6.5 按计票结论分支（多轮评审循环，EV-247）
 
-> `round_verdict` 为 `null`（历史轮次或 bug 阶段）时无三态分支，按原有单趟流程走第 7 步。
+第 6 步通过后，先把返回里的 `round_line` 原样念给用户（「第 k/N 轮 · 计票… → 结论 · 下一步」），再按 `next_action` 走：
+
+- **`rerun`**（本轮不通过、还有轮次）：闸门已回 idle，**不要**跑第 7 步停点。回到第 3 步重新 `--start`，
+  旗标与本轮同一组（同一个 `--max-rounds`）；被审对象换成第 5 步刚写的新一轮计划——用户最初没给 `--plan-file` 时
+  **不传它**（自动取轮次最大的那份），给过时改传归档内新一轮计划的路径，不要再传原稿。每一轮照常读全文、裁决、写新一轮计划、校验。
+- **`proceed`**（通过或修改后通过）：进第 7 步停点。第 5 步写的新一轮计划就是定稿，审批后按它实施。
+- **`human_review`**（已到最大轮次仍不通过，或本轮有效结论不足：有效票不到入选侧数的一半）：进第 7 步停点，停点话术会注明需人工审核。
+- `next_action` 为 null（本轮不在循环里，如旧版编排器）：照旧进第 7 步。
 
 ### 7. 停点
-
-仅在整体判定**不是**「`fail` 且轮次未用尽」时执行本步（那一格在第 6 步已回到循环里）。
 
 运行 `TV gate --stage plan --topic <主题> --await-approval`，
 把它输出的停点话术与三份文档路径转述给用户，然后**停止**。

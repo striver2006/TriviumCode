@@ -121,9 +121,32 @@ export function matchesAnyGlob(relPath: string, globs: readonly string[]): boole
   return globs.some((g) => globToRegExp(g).test(norm));
 }
 
+/**
+ * 临时目录的观察者（EV-251）：带时限的 doctor 装它，把本进程建的临时目录记进落盘台账，
+ * 宿主直接 SIGKILL doctor 时由下一次 doctor 补删（其中 codex、zcode 两家放的是含真实凭据的副本）。
+ * 观察者出错不连累调用方：记不进台账只是少一层兜底，不该让探针失败。
+ */
+export interface TempDirObserver {
+  created(dir: string): Promise<void>;
+  removed(dir: string): Promise<void>;
+}
+
+let tempDirObserver: TempDirObserver | null = null;
+
+/** 装上或卸下观察者（传 null）；同一时刻只有一个 */
+export function observeTempDirs(o: TempDirObserver | null): void {
+  tempDirObserver = o;
+}
+
 /** 创建一个隔离的临时目录（探针夹具、运行时副本） */
 export async function makeTempDir(prefix: string): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
+  try {
+    await tempDirObserver?.created(dir);
+  } catch {
+    /* 见 TempDirObserver */
+  }
+  return dir;
 }
 
 /**
@@ -176,6 +199,11 @@ export interface TempDirLeftover {
 export async function tryRemoveTempDir(dir: string, copies: readonly string[]): Promise<TempDirLeftover | null> {
   try {
     await fs.rm(dir, { recursive: true, force: true, maxRetries: 3 });
+    try {
+      await tempDirObserver?.removed(dir);
+    } catch {
+      /* 见 TempDirObserver */
+    }
     return null;
   } catch (e) {
     const remaining: string[] = [];

@@ -1,0 +1,146 @@
+[
+  {
+    "id": "M1",
+    "desc": "计划 r2 D1：eligible 改成「任一失败项可修即可」（应为全部可修）",
+    "suite": "dist/test/test/unit/preflight-recalibrate.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U3 混入一条不能修（或没标）⇒ 不 eligible，why 点名那一项；退 64 不在范围；通过返回 null；目标为空不 eligible"
+    ],
+    "firstLines": [],
+    "elapsed_s": 1
+  },
+  {
+    "id": "M2",
+    "desc": "计划 r2 D3 第 4 条：中止派生之后返回的段照常落盘（应作废）",
+    "suite": "dist/test/test/unit/doctor-deadline.test.js",
+    "fail": 0,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [],
+    "firstLines": [],
+    "elapsed_s": 7
+  },
+  {
+    "id": "M3",
+    "desc": "计划 r2 D3 第 4 条：中止之后段内 run() 仍然派生",
+    "suite": "dist/test/test/unit/probe-section.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U1c 中止派生之后：同一令牌下的段内 run() 立即兑现合成结果、不派生；段外与别的令牌照常"
+    ],
+    "firstLines": [],
+    "elapsed_s": 1
+  },
+  {
+    "id": "M4",
+    "desc": "计划三审 CODEX-02：段作用域内不再强制按进程组派生",
+    "suite": "dist/test/test/unit/probe-section.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGKILL，最终组内无成员（计划三审 CODEX-01）",
+      "U1b 组长在到点前已自然退出、后代仍在：到点时照样按组结束后代",
+      "U5 段作用域内不带 killTree 的 run() 也自成一组、进段级记录并计数（计划三审 CODEX-02）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 605
+  },
+  {
+    "id": "M5",
+    "desc": "计划三审 CODEX-01：组长已退出即判整组已不在（不再看非僵尸成员数）",
+    "suite": "dist/test/test/unit/probe-section.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGKILL，最终组内无成员（计划三审 CODEX-01）",
+      "U1b 组长在到点前已自然退出、后代仍在：到点时照样按组结束后代"
+    ],
+    "firstLines": [],
+    "elapsed_s": 1
+  },
+  {
+    "id": "M6",
+    "desc": "计划 r2 D3：到点不再退 76（落回 blockers 的 0 / 69）",
+    "suite": "dist/test/test/integration/doctor-deadline-cli.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I7 带时限运行中收到 SIGTERM：协作式收尾，退 76、reason=signal，假 agy 的进程组已结束、探针临时目录已删"
+    ],
+    "firstLines": [],
+    "elapsed_s": 7
+  },
+  {
+    "id": "M7",
+    "desc": "计划三审 GLM-02：新鲜度改看全局 generated_at（doctor 收尾会刷新它）",
+    "suite": "dist/test/test/unit/doctor-deadline.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I2 模型调用挂住、后代忽略 TERM、吐半截 JSON：到点退 76 的结果，按组结束不留进程、探针临时目录已删、在跑段不落盘；随后重跑预检仍退 69（GLM-02）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 7
+  },
+  {
+    "id": "M8",
+    "desc": "计划 r2 D2：没标 recalibrate 的失败项缺省补成可修（应为不能修，fail-closed）",
+    "suite": "dist/test/test/unit/preflight-recalibrate.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U2 不能修的失败项（归档不可写之类）补成 fixable: false，汇总不 eligible 并点名"
+    ],
+    "firstLines": [],
+    "elapsed_s": 1
+  },
+  {
+    "id": "M9",
+    "desc": "计划三审 AGY-03 驳回理由的落点：全部过期时目标不按入选侧过滤",
+    "suite": "dist/test/test/unit/preflight-recalibrate.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U2 全部过期：目标只取入选且过期的侧，未入选的过期家不进清单（计划三审 AGY-03 驳回理由的落点）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 1
+  },
+  {
+    "id": "M10",
+    "desc": "计划三审 AGY-04：只读能力一格混有不能修的侧时仍判可修",
+    "suite": "dist/test/test/unit/preflight-recalibrate.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "U4 只读能力一格：每个不可用侧都可修才可修（目标为这几侧）；一侧可修一侧失守 ⇒ 整项不可修（计划三审 AGY-04）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 1
+  },
+  {
+    "id": "M11",
+    "desc": "计划 r2 D3：--deadline-s 下限不校验",
+    "suite": "dist/test/test/integration/doctor-deadline-cli.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "I1 --deadline-s 越界或非整数退 64；不给时与原来一样不带 deadline 段"
+    ],
+    "firstLines": [],
+    "elapsed_s": 5
+  }
+]

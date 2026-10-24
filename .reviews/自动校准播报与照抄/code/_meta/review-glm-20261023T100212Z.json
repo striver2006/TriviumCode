@@ -1,0 +1,42 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass",
+  "summary": "被审补丁把 EV-251 真实验收暴露的三处载体模型偏离（跳过事前播报、推迟定性句、擅自给 doctor 调用加重定向）收敛为三层：预检在 eligible 时给出填好槽位的 announce_before 与常量 announce_after_pass（键序先于 invocations）、公共片段改成带闸门句的四步硬性步骤（字面命令行前后不加任何东西＋条件出口＋通过后第一句是定性句）、对账由 17 条扩到 50 条并新增 16 份入口产物逐字节同一口径。我核实了：buildRecalibration 的键序构造（src/trivium/preflight.ts:249-256）经 cli.ts 整体透传到 emitJson（裸 JSON.stringify，src/trivium/util/log.ts:37-39）不重排，集成 I5 在打包 CLI 的 stdout 原文上钉住此次序；用检索核验 16 份产物中截取起点、终点与外层 warnings 句各恰好出现一次，同一口径与次序断言不会被巧合满足；片段定性句与源码常量由契约逐字互锁（变异 M7 证明咬合）；实现与计划 r2 的 D1～D5 逐项相符，仅有的偏差（干跑未 install:local、变异脚本首版缺陷）已在报告如实披露。审查焦点四问（先播报后调用的两难取舍、照抄约束写法、对账断言边界、四家同一口径）均有落点，且断言不到的部分如实登记为残余、待真实会话验收。唯一意见是契约网有两处照抄子句未锚定，属可补的测试缺口，不阻断实施。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/contract/skill-recalibrate.test.ts:99-108",
+      "problem": "照抄约束的两个关键子句没有被契约网锚定：片段第 2 步末尾的「`args` 的各项也不改、不增删」与键缺席回落句尾的「同样先发后调」，在 50 条契约断言与变异 M1～M7 里都没有对应锚点。「照抄调用」用例只锚定「命令文本恰好是字面的 .trivium/bin/trivium」「前后不加任何东西＋重定向/管道清单」「条件出口句」「护栏理由」。若日后改片段时删掉 args 级不改不增删子句或回落句的先发后调尾注，全部对账仍绿、七条变异仍死，约束静默变弱——这正是本主题要防的「写清楚了但网没兜住」，且计划 r2 D4 的断言清单本身就没列这两句，属计划与实现共有的缺口。",
+      "evidence": "test/contract/skill-recalibrate.test.ts 第 99～108 行（「照抄调用」用例的全部断言，无一条涉及 args 级子句）；skills-src/partials/preflight/recalibrate.md 第 15 行「`args` 的各项也不改、不增删」与第 12 行「同样先发后调」；doc/05_testing/evidence/recalibrate-announce-20261023/mutation-run.mjs 的 MUTATIONS 表（M1～M7 无一以这两句为锚）。",
+      "suggestion": "在「照抄调用」或「先播报、后调用」用例补两条存在性/次序断言，例如：「前后不加任何东西」段之后出现「各项也不改、不增删」，「键缺席时」之后出现「同样先发后调」；可再加一条 M8 变异（删 args 级子句）验证咬合。纯测试补强，不动源码与片段措辞。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "D1 的取舍与落地：预检给现成句（B）＋片段硬性闸门（A）并用，键序 eligible、why、announce_before、invocations、announce_after_pass 按阅读次序构造，cli.ts 整体透传、emitJson 为裸 JSON.stringify 不重排，集成 I5 在打包 CLI stdout 原文上钉住此次序——两种取舍的代价（加键的契约面、文案进源码）在计划里已摆明并接受。",
+    "照抄约束从「args 各项」扩到整条命令行：字面 .trivium/bin/trivium 与 skill 头部 TV 定义（skills/dual-run/SKILL.md:13）及 doctor rerun 前缀同口径；禁止清单（重定向、管道、tee、; / &&、变量赋值、cd 前缀）恰覆盖验收里出现过的形态；理由句对无 Hook 载体成立（不断言必拦），长输出给了条件合法出口，堵住了「模型为挑字段而改写」的动机。",
+    "对账断言深度如实：同一口径条截段的起点、终点与外层「通过时若 `warnings` 非空」在 16 份产物中各恰好出现一次（检索核验），截取无歧义；定性句与源码常量 RECAL_ANNOUNCE_AFTER_PASS 逐字互锁，M7 变异证明其咬合；「对账只能证明该说的说在该说的位置、模型是否照做只能靠真实会话验收」在测试头注与报告第五节都写明，三条验收判据可执行。",
+    "文档同步齐备：主设计 v1.3.174（§8.1 ③④＋版本表）、PROTOCOL preflight 字段行、LLD 3.2、用户手册 §3.4、BACKLOG EV-252 及 EV-251 残余⑦转登、测试报告＋doc/05_testing/README 索引、EV-251 报告末行指向，均与改动同步清单对得上；schema 目录不含 recalibration，本次加键无需 schema 同步。",
+    "报告诚实披露三处：变异脚本首版缺陷与修正重跑、干跑未 install:local 的计划偏差（验的是同一份打包产物）、本轮 /dual-run 自己 S0.6 撞上的自动校准中 Driver 的不合规形态仅作自述不当作验收证据。"
+  ],
+  "not_covered": [
+    "只读审查、未执行任何命令：npm run check（3924 条）、50 条契约、变异 M1～M7、零配额干跑均只核对证据文件与源码推理，未复跑；相关结论以证据留痕为准。",
+    "模型是否真照片段做（先发后调、第一句定性句、不改写命令行）无机械验证手段，只能靠用户发起的真实会话验收（报告第五节已列三条判据），本次未覆盖。",
+    "必读清单中的 CLAUDE.md、README.md、doc/README.md、doc/01_requirements/README.md、doc/02_design/README.md 未逐字读（AGENTS.md 已由会话上下文提供，审查按清单优先级读了其余实质文件）；REPORT_2026-10-22_preflight_recalibrate.md 仅读补丁内改动段与计划引用的第九节内容。",
+    "另三家载体（codex、gemini、glm 作 Driver）的遵循情况、长输出是否截存、「Bash 工具超时」字面借用的影响未验（EV-252 残余②③）。",
+    "未读另一位审查员的任何产出，背靠背独立性保持。"
+  ],
+  "consulted": [
+    ".reviews/自动校准播报与照抄/code/_meta/changes-20261023T100212Z.diff",
+    "skills-src/partials/preflight/recalibrate.md",
+    "src/trivium/preflight.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/util/log.ts",
+    "test/contract/skill-recalibrate.test.ts",
+    "skills/dual-run/SKILL.md",
+    ".reviews/自动校准播报与照抄/plan/2026-10-23-自动校准播报与照抄-r2-claude.md"
+  ]
+}

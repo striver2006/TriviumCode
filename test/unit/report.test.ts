@@ -37,8 +37,8 @@ async function archive(): Promise<ArchiveLayout & { root: string }> {
  */
 function review(locations: string[], severities: string[] = [], prefix = 'AGY'): Review {
   return {
-    schema: 'trivium.review.v2',
-    verdict: 'approve-after-changes',
+    schema: 'trivium.review.v1',
+    verdict: 'request-changes',
     summary: 's',
     findings: locations.map((location, i) => ({
       id: `${prefix}-${String(i + 1).padStart(2, '0')}`,
@@ -391,8 +391,57 @@ test('task.json 的降级与争议项被带进报告', async () => {
   await fs.writeFile(taskPath, JSON.stringify(task, null, 2));
 
   const md = renderTopicReport(await buildTopicReport(l));
-  assert.match(md, /双方共同 blocker 被驳回/);
-  assert.match(md, /X-1、Y-2/);
+  assert.match(md, /争议项（plan r1，run R1）：X-1、Y-2——双方共同 blocker 被驳回/);
+  assert.doesNotMatch(md, /没有留下明细/, '有明细时不该再出兜底行');
+});
+
+// ── 争议明细的呈现（发版-02）──
+
+async function reportWithTask(edit: (t: TaskMeta) => void): Promise<string> {
+  const l = await archive();
+  await seedRound(l, { rerunIndex: 1, runId: 'R1', gemini: review(['a:1']), glm: review(['b:1'], [], 'GLM') });
+  const taskPath = path.join(l.archiveRoot, l.topic, 'task.json');
+  const task = JSON.parse(await fs.readFile(taskPath, 'utf8')) as TaskMeta;
+  edit(task);
+  await fs.writeFile(taskPath, JSON.stringify(task, null, 2));
+  return renderTopicReport(await buildTopicReport(l));
+}
+
+test('R1 · disputed 为真而明细为空 ⇒ 如实写「没有留下明细」，不整段静默', async () => {
+  const md = await reportWithTask((t) => { t.disputed = true; t.disputes = []; });
+  assert.match(md, /争议项：task\.json 记有争议标记，但没有留下明细（早于明细写入的旧记录，或该轮争议在重跑校验后已撤回）/);
+});
+
+test('R2 · 明细的 run_id 找不到对应轮次 ⇒ 只写 run_id，不猜阶段轮次', async () => {
+  const md = await reportWithTask((t) => {
+    t.disputed = true;
+    t.disputes = [{ run_id: 'R9', finding_ids: ['X-1'], note: 'X-1+Y-1@a:1' }];
+  });
+  assert.match(md, /争议项（run R9）：X-1——X-1\+Y-1@a:1/);
+});
+
+test('R3 · disputed 为假而明细非空 ⇒ 照实列出', async () => {
+  const md = await reportWithTask((t) => {
+    t.disputed = false;
+    t.disputes = [{ run_id: 'R1', finding_ids: ['X-1'], note: 'n' }];
+  });
+  assert.match(md, /争议项（plan r1，run R1）：X-1——n/);
+  assert.doesNotMatch(md, /没有留下明细/);
+});
+
+test('R4 · 明细字段为空 ⇒ 显示「（无编号）」「（无说明）」，不拼出悬空符号', async () => {
+  const md = await reportWithTask((t) => {
+    t.disputed = true;
+    t.disputes = [
+      { run_id: 'R1', finding_ids: [], note: 'n' },
+      { run_id: 'R1', finding_ids: ['X-1'], note: '' },
+      { run_id: 'R1', finding_ids: [''], note: 'm' },
+    ];
+  });
+  assert.match(md, /争议项（plan r1，run R1）：（无编号）——n/);
+  assert.match(md, /争议项（plan r1，run R1）：（无编号）——m/, '只有空串编号也算无编号（代码三审 AGY-03）');
+  assert.match(md, /争议项（plan r1，run R1）：X-1——（无说明）/);
+  assert.doesNotMatch(md, /：——/);
 });
 
 // ── 降级纪律：读不到就说读不到（审查意见 GLM-r2-09）──

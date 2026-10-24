@@ -16,8 +16,9 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import type { Config, CriticId, DenyCategory, Stage } from './types.js';
-import { CRITIC_PREFIX, CRITIC_VENDOR } from './types.js';
+import { CRITIC_PREFIX, CRITIC_VENDOR, REVIEW_SCHEMA_ID, REVIEW_VERDICTS } from './types.js';
 import reviewSchema from '../../skills/dual-critic/schema/review.v2.json' with { type: 'json' };
+import { VERDICT_LABEL, VERDICT_MEANING } from './round-verdict.js';
 import { exists } from './util/fsx.js';
 import {
   classifyDenyPath,
@@ -51,7 +52,7 @@ export const TASK_GOAL_APPENDIX_MAX = 16000;
 /**
  * 第 6 节输出契约（设计 §9.4；解析回退逐条降级计划 r2 §3.7）。
  *
- * **枚举取值与必填字段从 `review.v1.json` 读**，不在文案里抄第二份：普查里 137 条不合格意见
+ * **枚举取值与必填字段从现行契约 `review.v2.json` 读**，不在文案里抄第二份：普查里 137 条不合格意见
  * 全是缺字段（缺 `confidence` 97 条）与表外值（`medium` / `docs` / `risk` 一类），而旧文案只写了
  * 「七个字段必填，另需 layer 与 kind」，一个枚举值都没列。抄一份的话 schema 改了这里不会跟。
  *
@@ -88,13 +89,15 @@ function renderOutputContract(schemaPath: string, prefix: string, critic: Critic
     CRITIC_VENDOR[critic] === 'zcode'
       ? '\n- **不要调用 ExitPlanMode**，直接在最终回复里输出完整 JSON。以该工具收尾时回合就此结束，结论不会输出。'
       : '';
-  const schemaId = root.properties['schema']?.const ?? 'trivium.review.v2';
   return `## 6. 输出契约
 
-严格输出符合 \`${schemaId}\` 的 JSON，schema 在：\`${schemaPath}\`
+严格输出符合 \`${REVIEW_SCHEMA_ID}\` 的 JSON，schema 在：\`${schemaPath}\`
 
 - **结论是一个裸 JSON 对象**：最终回复只输出这个对象本身，不要代码围栏、不要前后说明文字；
-- 根字段 ${code(root.required)} 必填（\`schema\` 固定为 \`${schemaId}\`，\`verdict\` 取 ${code(root.properties['verdict']?.enum ?? [])} 之一——通过 / 修改后通过 / 不通过三态，它会被编排器聚合成本轮整体判定、驱动多轮评审）；
+- 根字段 ${code(root.required)} 必填（\`schema\` 固定为 \`${root.properties['schema']?.const ?? REVIEW_SCHEMA_ID}\`，\`verdict\` 取 ${code(root.properties['verdict']?.enum ?? [])} 之一）；
+  \`verdict\` 是你对被审对象的整体结论，三档按下面的判法选：
+${REVIEW_VERDICTS.map((v) => `  - \`${v}\`（${VERDICT_LABEL[v]}）：${VERDICT_MEANING[v]}`).join('\n')}
+  编排器按侧计票：不通过的侧占半数及以上，本轮判不通过、修改后自动重审——有必须改完再看一遍的问题才给 \`reject\`；
   可选根字段 ${optionalLine}；**不要添加 schema 之外的字段**——\`topic\` / \`stage\` / \`role\` / \`run_id\` 这类由编排器填写；
 - 意见编号前缀固定为 \`${prefix}-\`，序号从 01 起（如 \`${prefix}-01\`）；
 - 每条意见**${item.required.length} 个字段全部必填**：${code(item.required)}；缺一即不合格。四个枚举字段只能取下列值：

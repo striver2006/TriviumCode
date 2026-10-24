@@ -1,0 +1,6 @@
+M1：fail=2 cancelled=0 298s ⇒ 争议明细 T1～T3 · warn 下写一条、同轮重跑不堆积、改成接受后本轮条目删掉而 disputed 不清零 ｜ 争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留
+M2：fail=2 cancelled=0 304s ⇒ 争议明细 T4 · hard 阻断不记争议，三态仍落 checked-found ｜ 争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留
+M3：fail=2 cancelled=0 303s ⇒ 争议明细 T1～T3 · warn 下写一条、同轮重跑不堆积、改成接受后本轮条目删掉而 disputed 不清零 ｜ 争议明细 T5 / T6 · 先 warn 记下、改 hard 重跑则本轮条目删掉；他轮条目原样保留
+M4：fail=1 cancelled=0 1s ⇒ R1 · disputed 为真而明细为空 ⇒ 如实写「没有留下明细」，不整段静默
+M5：fail=1 cancelled=0 0s ⇒ R3 · disputed 为假而明细非空 ⇒ 照实列出
+M6：fail=1 cancelled=0 0s ⇒ R4 · 明细字段为空 ⇒ 显示「（无编号）」「（无说明）」，不拼出悬空符号

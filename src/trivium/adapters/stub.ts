@@ -25,7 +25,7 @@ import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { agentById, DEFAULT_DRIVER } from '../agents/registry.js';
 import { IS_WIN } from '../util/platform.js';
-import { CRITICS, type CriticId, type CriticRequest, type CriticResult } from '../types.js';
+import { CRITICS, REVIEW_SCHEMA_ID, type CriticId, type CriticRequest, type CriticResult, type ReviewVerdict } from '../types.js';
 import {
   EFFORT_UNVERIFIED,
   failedResult,
@@ -119,7 +119,7 @@ export type StubMode =
    * 产出**前缀不属于本侧**的结论（`note` = 要冒用的前缀，缺省为「另一侧的前缀」）。
    *
    * 对应两种真实形态：冒名（某侧产出对侧前缀）与未登记前缀（模型自造 `FOO-01`）。
-   * 放开 `review.v1.json` 的前缀枚举之前，这两种都被 ajv 挡在门外；放开之后
+   * 放开审查契约的前缀枚举之前，这两种都被 ajv 挡在门外；放开之后
    * 它们是 schema 合法的结构化结论，必须由注册表判定接住——本模式就是那条
    * 接力是否成立的检验（审查意见 AGY-01 ≡ GLM-02）。
    */
@@ -172,13 +172,15 @@ export interface StubSpec {
   /** `ok` / `no_project_reads` 等模式下要产出的意见数 */
   findings?: number;
   /**
-   * 注入 verdict 三态（2026-10-22 多轮评审）：给了 ⇒ 结论的 `verdict` 用它；
-   * 不给 ⇒ `approve`。缺省从旧四值的 `n>0?'request-changes':'approve'` 改成
-   * 恒 `approve`——verdict 现在驱动整体判定与停点分叉，缺省值保持「判定通过」
-   * 才与既有集成用例的期望（B/C 立停点、A 回 idle、全驳回不要求新一轮计划）等价；
-   * 要验三态行为的用例显式注入本字段。
+   * 结论三档（EV-247）。不给 ⇒ 有意见时 `pass-after-changes`、无意见时 `pass`——缺省**不投不通过**：
+   * 带轮次链的运行里不通过会让闸门转去重审，既有用例的停点因此全部挪位。要测计票与自动重审的用例显式给。
    */
-  verdict?: 'approve' | 'approve-after-changes' | 'reject';
+  verdict?: ReviewVerdict;
+  /**
+   * 产出**旧契约** `trivium.review.v1` 形态的结论（四值 verdict）。只为集成用例守住「审查员的新产出只认 v2」：
+   * 收结论那一处若退回宽松口径，这一侧会被当成合格结论计票，而不是整份回退（EV-247）。
+   */
+  legacySchema?: boolean;
   /** 覆盖回读到的生效模型，用于 AC-13 的用例 */
   modelEffective?: string;
   /**
@@ -280,7 +282,7 @@ export function readStubConfig(env: NodeJS.ProcessEnv = process.env): StubConfig
 /** 序列化，供测试设置环境变量 */
 export const encodeStubConfig = (c: StubConfig): string => JSON.stringify(c);
 
-function sampleReview(critic: CriticId, n: number, prefixOverride?: string, verdict?: StubSpec['verdict']): string {
+function sampleReview(critic: CriticId, n: number, prefixOverride?: string, verdict?: ReviewVerdict, legacy = false): string {
   /*
    * 前缀取自注册表，不用三目兜底（与 A-1 同一形态）。
    *
@@ -302,8 +304,8 @@ function sampleReview(critic: CriticId, n: number, prefixOverride?: string, verd
     confidence: 'high',
   }));
   return JSON.stringify({
-    schema: 'trivium.review.v2',
-    verdict: verdict ?? 'approve',
+    schema: legacy ? 'trivium.review.v1' : REVIEW_SCHEMA_ID,
+    verdict: legacy ? 'request-changes' : verdict ?? (n > 0 ? 'pass-after-changes' : 'pass'),
     summary: '桩适配器产出的结论，仅用于故障注入测试。',
     findings,
     agreed: [],
@@ -332,11 +334,11 @@ function partialSchemaReview(critic: CriticId, allDegraded: boolean): string {
     return base;
   };
   const json = JSON.stringify({
-    schema: 'trivium.review.v2',
+    schema: REVIEW_SCHEMA_ID,
     topic: '桩回显的主题',
     stage: 'plan',
     run_id: 'ECHOED',
-    verdict: 'reject',
+    verdict: 'pass-after-changes',
     summary: '桩适配器产出的部分合格结论：表格写法 a PIPE_ESC b。',
     findings: [f(1, {}), f(2, {}), f(3, {}, ['confidence']), f(4, { severity: 'medium' })],
     agreed: [],
@@ -357,7 +359,7 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
     raw_stdout_path: `${req.out_dir}/stub-stdout.json`,
     trace_path: `${req.out_dir}/stub-trace.json`,
     review_json: null,
-    raw_response_text: sampleReview(critic, n, undefined, spec.verdict),
+    raw_response_text: sampleReview(critic, n, undefined, spec.verdict, spec.legacySchema === true),
     model_effective: spec.modelEffective ?? req.model,
     model_effective_source: 'envelope',
     // 与真适配器同一条口径：不给就**缺席**，不写 null（缺席与 null 是两件事）

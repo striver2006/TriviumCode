@@ -8,9 +8,9 @@ import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { winOnly } from '../helpers/platform.js';
+import { scratchDir } from '../helpers/scratch.js';
 import {
   cachedEnumRows, enumerateWinProcesses, resetEnumCacheForTest, resolvePosixShellSync, winProcessCreation, winTaskkillTree, winTreeMemberCount,
 } from '../../src/trivium/util/platform.js';
@@ -120,7 +120,7 @@ test('取消标记文件：run-files 登记的文件名进白名单（isRunDirFi
 test('init 双形态 wrapper：win32 同时写 sh 形态与 .cmd，checkWrapper 核出失效路径',
   { skip: winOnly('只在 Windows 上跑'), timeout: 30_000 }, async () => {
     const { writeWrapper, checkWrapper } = await import('../../src/trivium/init.js');
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-win-wrap-'));
+    const dir = await scratchDir('trivium-win-wrap-');
     try {
       const report = { created: [] as string[], updated: [] as string[], removed: [] as string[], skipped: [] as string[] };
       await writeWrapper(dir, process.execPath, 'C:\\fake-asset-root', report as never, false);
@@ -227,7 +227,7 @@ test('enumerateWinProcesses：fresh 的搭车判据是启程时刻——拒绝�
 
 test('取消旗标基线：回退量覆盖模块加载窗口与 FAT 粒度；陈旧旗标只记痕迹不触发收尾（CLAUDE-02）', async () => {
   assert.ok(CANCEL_FLAG_BASELINE_BACKOFF_MS >= 15_000, '回退量不得小于 15 秒');
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-cancelbase-'));
+  const dir = await scratchDir('trivium-cancelbase-');
   try {
     const flag = path.join(dir, 'cancel.requested');
     await fs.writeFile(flag, '');

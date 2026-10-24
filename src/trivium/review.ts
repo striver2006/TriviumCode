@@ -15,7 +15,7 @@ import { requestedAccess, effectiveAccess } from './access.js';
 import { promises as fs } from 'node:fs';
 import type {
   Config, CriticId, CriticRequest, CriticResult, Ctx, DenyCategory, Review, Stage, CommandEntry,
-  DegradedFinding, FallbackCause, ParseRepairs,
+  DegradedFinding, FallbackCause, ParseRepairs, ReviewLoop,
 } from './types.js';
 import { CRITIC_PREFIX, CRITIC_VENDOR, VOIDING_DENY_CATEGORIES } from './types.js';
 import { DEFAULT_DRIVER, agentById, type AgentId } from './agents/registry.js';
@@ -50,6 +50,7 @@ import {
   type SideConflicts,
 } from './brief.js';
 import { parseReview, checkReviewIntegrity, enumerateFallbackFindings } from './parse.js';
+import { ballotOf, deriveReviewLoop, renderRoundLine, tallyRound, type PrevRoundFacts } from './round-verdict.js';
 import { decideMode, runBothSides, type SideProgress } from './runner.js';
 import { VOIDED_ATTEMPTS_DIR } from './run-files.js';
 import { judgeRun, makeSideLeakJudge, renderGuardWarnings, type SideVerdict } from './guard.js';
@@ -71,7 +72,8 @@ import { diffAgainst, headSha } from './util/git.js';
 import { collectBuildStampNotices, embeddedBuildStamp } from './build-stamp.js';
 import { firstFreeRerunIndex, resolveRerunIndex, stageDir, writeArtifact, writeMeta, metaDir, type ArchiveLayout } from './archive.js';
 import {
-  RUN_ID_MAX_BUMPS, allocateRunId, finalizeFailedRunMeta, finalizeLines, newRunMeta, readRunMeta, readTask, registerRun, summarizeRun, writeRunMeta,
+  RUN_ID_MAX_BUMPS, allocateRunId, finalizeFailedRunMeta, finalizeLines, newRunMeta, readRunMeta, readTask, readTaskStrict, registerRun, summarizeRun,
+  taskUnreadableError, taskUnreadableExit, writeRunMeta,
   type TaskLock,
 } from './meta.js';
 import { acquireLock, type LockHandle } from './lock.js';
@@ -253,6 +255,86 @@ export function taskGoalAppendix(stage: Stage, rawGoal: string | null | undefine
   if (stage !== 'plan') return null;
   if (foldGoal(rawGoal).length <= TASK_GOAL_MAX) return null;
   return (rawGoal ?? '').replace(/\r\n/g, '\n').trim();
+}
+
+/**
+ * 本轮在轮次链里的位置（EV-247，计划 §二）。bug 阶段不进循环：给了 `--max-rounds` 退 64，否则 undefined。
+ *
+ * 上一轮取本阶段最近一次**算数**的运行（`previousRoundFacts`）；它判了 `rerun` 且没被人工表态 / 作废
+ * （`humanDecidedThisRound`，含 abandoned）才续链。旧一轮未裁决就重跑会在后面的闸门比较-交换处被拦，这里不重复判。
+ */
+async function resolveReviewLoop(layout: ArchiveLayout, stage: Stage, requested: number | null): Promise<ReviewLoop | undefined> {
+  if (stage === 'bug') {
+    if (requested !== null) {
+      throw usageError('--max-rounds 只用于计划审与代码审（多轮评审循环，EV-247）；根因审不进循环，请去掉这个旗标。');
+    }
+    return undefined;
+  }
+  const prev = await previousRoundFacts(layout, stage);
+  const d = deriveReviewLoop(prev, requested);
+  if (!d.ok) throw usageError(d.message);
+  if (d.continued) {
+    say(`· 上一轮（run ${prev!.run_id}）判不通过，本轮是同一条轮次链的第 ${d.loop.round}/${d.loop.max_rounds} 轮`);
+  }
+  return d.loop;
+}
+
+/**
+ * 本阶段最近一次**算数**的运行：从新到旧，跳过没消耗轮次、也没被人工表态的运行——
+ * 「带轮次链、没有计票」的（失败、超时、取消、整轮作废），以及纯文档跳过轮（不写轮次链，代码双审 r1 GLM-02）。
+ * 重试应当还是同一轮，而不是把链打断、上限重置。
+ *
+ * 读不出的留痕**硬失败**（计划审 GLM-02 ≡ 代码审 AGY-01）：`resolveStageDriver` 只挡得住比最新可读份更新的坏件，
+ * 而这里会越过失败轮往旧处走——夹在后面的坏件若折成「没有上一轮」，续链会静默新起、上限重置。
+ *
+ * 审批正本（task.json）读不出同样硬失败（代码双审 r2 GLM-01）：`humanDecidedThisRound` 在读不出时判「已表态」，
+ * 那是闸门推进语境的 fail-closed；搬到这里，每一轮都成了 closed，失败轮不再被跳过、
+ * 「停在人工审核」的拒绝不再触发，结果是静默新起一链。所以这里自己读一次正本，读不出就拒跑。
+ */
+async function previousRoundFacts(layout: ArchiveLayout, stage: Stage): Promise<PrevRoundFacts | null> {
+  let files: string[];
+  try {
+    files = await fs.readdir(metaDir(layout, stage));
+  } catch {
+    return null;
+  }
+  const ids = files
+    .map((f) => /^run-(.+)\.json$/.exec(f)?.[1])
+    .filter((x): x is string => x !== undefined)
+    .sort()
+    .reverse();
+  if (ids.length === 0) return null;
+  const { decidedInTask } = await import('./approval.js');
+  const t = await readTaskStrict(layout);
+  if (t.state === 'unreadable') {
+    throw new TriviumError(
+      EXIT.GATE_BLOCK,
+      `无法判定轮次链：${layout.topic} 的审批正本 task.json 读不出来（${t.error ?? '未知原因'}）。\n` +
+        '  这里**不**按「各轮都已表态」新起一链——那会越过人工审核的停点，并把轮次与上限静默重置。\n' +
+        taskUnreadableExit(layout, t.error),
+    );
+  }
+  for (const id of ids) {
+    const m = await readRunMeta(layout, stage, id);
+    if (!m) {
+      const { unreadableRunMetaExitAt } = await import('./meta.js');
+      throw new TriviumError(
+        EXIT.GATE_BLOCK,
+        `无法判定轮次链：${layout.topic} / ${stage} 的运行留痕 ${id} 读不出来。\n` +
+          '  这里**不**按「没有上一轮」新起一链——那会把轮次与上限静默重置。\n' +
+          unreadableRunMetaExitAt(layout, stage, [id]),
+      );
+    }
+    const closed = t.state === 'ok' && decidedInTask(t.task, stage, id);
+    if (!closed && ((m.review_loop && !m.round_verdict) || m.skipped === true)) continue;
+    return {
+      run_id: id,
+      ...(m.review_loop ? { review_loop: m.review_loop } : {}),
+      ...(m.round_verdict ? { round_verdict: m.round_verdict } : {}),
+      closed,
+    };
+  }
+  return null;
 }
 
 /**
@@ -497,6 +579,11 @@ export interface ReviewOptions {
   contextPaths: string[];
   /** plan/bug 的被审对象显式路径 */
   subjectFile: string | null;
+  /**
+   * 本阶段评审循环的最大轮次（EV-247，`--max-rounds`）。null / 省略 = 新链取缺省 3、续链沿用链首的值。
+   * 只用于计划与代码阶段；bug 阶段给了退 64。取值范围（1～10）由 CLI 入口校验。
+   */
+  maxRounds?: number | null;
   modelOverrides: Partial<Record<CriticId, string>>;
   /**
    * 档位命令行旗标（M11 第 5 步）：`--tier-〈id〉` / `--effort-〈id〉` / `--profile-〈id〉` 的逐侧精确值。
@@ -538,14 +625,6 @@ export interface ReviewOptions {
    * 否则「默认 strict」就成了纸面规定。
    */
   allowSingle?: boolean;
-  /**
-   * 多轮评审轮次上限（2026-10-22 三态判定特性）。
-   *
-   * `{ limit, source }`：limit 1～10，source 记 flag（当次旗标覆盖）或 config（配置缺省）。
-   * 由 `cli.ts` 解析后传入；null / 缺席表示 bug 阶段或手工调用（测试、selftest）——
-   * `prepareRun` 不拦上限，run.json 不写 `review_rounds`，gate 按旧规则收口。
-   */
-  roundsLimit?: { limit: number; source: 'flag' | 'config' } | null;
   /**
    * `prepareRun` 分配完 run_id、写骨架 run.json 之前调用（EV-151，同步路径扩展）。
    *
@@ -881,23 +960,17 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
    * 而是骨架运行元数据短暂记错轮次 + 必然触发一次抬升告警。
    */
   const rerunIndex = await resolveRerunIndex(ref.layout, stage, driver);
+  // 轮次链（EV-247）：在分配 run_id 之前判，链中途改上限之类的拒绝不留任何东西
+  const reviewLoop = await resolveReviewLoop(ref.layout, stage, opts.maxRounds ?? null);
   /*
-   * ── 轮次上限拦截（2026-10-22 多轮评审）──
-   *
-   * 新一轮轮次超出上限即拒绝发起。gate --check 的「不通过且用尽」停点靠话术引导，
-   * 但 skill 失控或人工直调可能照样重发——这里是最后一道机械闸。放在 `allocateRunId`
-   * 之前：不占运行目录、不留任何半套工件（守 GLM-04 的口径）。
-   *
-   * 历史高轮次主题（本特性之前无上限，归档里存在 r12 一类）重发同样被拦——
-   * 逃生门是显式提高旗标（≤10）或调配置，行为变化在部署手册明示。
+   * 审批正本读不出就不开跑（EV-248 计划 r2 §三.5）：下面的骨架登记、任务目标落盘、纯文档跳过的收尾都写正本，
+   * 写入口会拒写，但那时闸门、brief、骨架与运行目录都已落下。判在分配 run_id 之前，零工件。
+   * 排在轮次链之后：有前序轮次时 `previousRoundFacts` 已按续链语境报过（它读不出也退 2）；
+   * 新阶段的第一轮它不读正本，由这里兜住。
    */
-  if (opts.roundsLimit && rerunIndex > opts.roundsLimit.limit) {
-    throw new TriviumError(
-      EXIT.GATE_BLOCK,
-      `主题 ${ref.topic} 的 ${stage} 阶段评审轮次已用尽：上限 ${opts.roundsLimit.limit} 轮，再发将是第 ${rerunIndex} 轮。\n` +
-        '  出口：人工审批放行或放弃（dual-approve / dual-abandon）；\n' +
-        `  确要再审：显式提高上限（--${stage === 'plan' ? 'plan' : 'code'}-rounds <1~10>）或调配置 review.${stage}_rounds。`,
-    );
+  const taskRead = await readTaskStrict(ref.layout);
+  if (taskRead.state === 'unreadable') {
+    throw taskUnreadableError(ref.layout, taskRead.error, '未开始本轮审查，没有留下任何工件');
   }
   /*
    * 分配 run_id 的同时排他占下运行目录（EV-218）：运行目录按仓库分桶、不按主题分，两个主题同一秒起跑会分到同一个 id。
@@ -965,7 +1038,10 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
     ? { subject_rerun_index: planSubjectRerunIndex(ref.layout, subjectPath, driver) }
     : undefined;
 
-  step(`主题 ${ref.topic} ｜ 阶段 ${stage} ｜ 第 ${rerunIndex} 轮 ｜ run ${runId}`);
+  step(
+    `主题 ${ref.topic} ｜ 阶段 ${stage} ｜ 第 ${rerunIndex} 轮 ｜ run ${runId}` +
+      (reviewLoop && !skipVerdict?.skipped ? ` ｜ 评审循环第 ${reviewLoop.round}/${reviewLoop.max_rounds} 轮` : ''),
+  );
   step(`被审对象 ${path.relative(ctx.projectRoot, subjectPath)}`);
   if (stage === 'code' && frozenDiffText) {
     // head 从补丁头部回读，别再传 null——此前摘要里 HEAD 恒显示为「—」
@@ -1338,7 +1414,8 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
        */
       ...(driverAgent ? { driverGuardLevel: (await effectiveGuardLevel(ctx.projectRoot, driverAgent)).level } : {}),
       ...(planFinalCheck ? { planFinalCheck } : {}),
-      reviewRounds: opts.roundsLimit ?? null,
+      // 纯文档跳过轮没有结论可计票，不进轮次链（EV-247）
+      ...(reviewLoop && !skipVerdict?.skipped ? { reviewLoop } : {}),
       treeHash: primarySnap.treeHash,
       gitHead: primarySnap.gitHead,
       dirty: primarySnap.dirty,
@@ -1560,7 +1637,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       reviews[c] = null;
       continue;
     }
-    const p = parseReview(r.raw_response_text);
+    // 新产出只认现行契约（EV-247）：v1 形态的结论没有可计票的三档结论，按根不合走重试与回退
+    const p = parseReview(r.raw_response_text, { accept: 'current' });
     /*
      * 形状过了之后**立刻**验编号前缀归属，不合即按解析失败处置（审查意见 AGY-01 ≡ GLM-02）。
      *
@@ -2153,6 +2231,27 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     exitCode = EXIT.STRICT_ABORT;
   } else {
     meta.status = 'success';
+  }
+
+  /*
+   * ── 计票（EV-247）──
+   *
+   * 只对带轮次链、且跑成了的运行算：作废 / 中止的运行没有可信的结论，留空即「无从得知」，闸门不推断下一步。
+   * 选票口径与闸门侧一致：作废侧（终判读到对端产物）不计，整份回退、失败 / 超时不计——
+   * 回退件的结论是猜的（render 已不再给它补 verdict），失败侧根本没有结论。
+   */
+  if (meta.review_loop && meta.status === 'success') {
+    const ballots = Object.fromEntries(
+      sides.map((c) => {
+        const st = results[c]?.status;
+        if (verdict.sides[c]?.peerArtifactRead) return [c, { excluded: 'voided' as const }];
+        if (st === 'parse_fallback') return [c, { excluded: 'parse_fallback' as const }];
+        if (st !== 'ok') return [c, { excluded: 'failed' as const }];
+        return [c, ballotOf(reviews[c], false)];
+      }),
+    );
+    meta.round_verdict = tallyRound(ballots, meta.review_loop);
+    say(`· ${renderRoundLine(meta.review_loop, meta.round_verdict)}`);
   }
 
   /*

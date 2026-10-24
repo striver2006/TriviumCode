@@ -1,0 +1,29 @@
+{
+  "targets": ["src/trivium/util/exec.ts", "src/trivium/doctor-deadline.ts", "src/trivium/doctor.ts"],
+  "cases": [
+    {
+      "id": "M12",
+      "desc": "代码三审 CODEX-01：组长已退出时不再看有没有 pid 等于组号的进程（复用的组号照样发信号）",
+      "file": "src/trivium/util/exec.ts",
+      "find": "    if (s.leaderPresent) {\n      reused.add(g.pgid);\n      return true;\n    }\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/probe-section.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "代码三审 CODEX-03：到点时不立即起兜底计时器",
+      "file": "src/trivium/doctor-deadline.ts",
+      "find": "    this.stuckTimer = setTimeout(() => this.resolveStuck(), this.o.unwindMs);\n",
+      "replace": "",
+      "expect": "dist/test/test/unit/doctor-deadline.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "代码三审 CODEX-04 ≡ GLM-03：台账补删只在带时限时做",
+      "file": "src/trivium/doctor.ts",
+      "find": "  if (opts.ledgerDir) {\n    sweepResidue = await sweepDoctorLedgers(opts.ledgerDir);",
+      "replace": "  if (opts.ledgerDir && dl) {\n    sweepResidue = await sweepDoctorLedgers(opts.ledgerDir);",
+      "expect": "dist/test/test/unit/doctor-deadline.test.js"
+    }
+  ]
+}

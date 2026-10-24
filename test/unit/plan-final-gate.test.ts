@@ -34,7 +34,7 @@ async function layout(): Promise<ArchiveLayout> {
 
 function review(ids: string[]): Review {
   return {
-    schema: 'trivium.review.v2', verdict: 'approve-after-changes',
+    schema: 'trivium.review.v1', verdict: 'request-changes',
     summary: '总判断若干字，足够长以通过完整性检查。',
     findings: ids.map((id): Finding => ({
       id, severity: 'major', layer: 'plan', kind: 'correctness',
@@ -103,7 +103,6 @@ async function check(
   return checkAdjudication({
     cfg, layout: l, stage: o.stage ?? 'plan', rerunIndex: o.rerunIndex ?? 1,
     reviews: o.reviews, degraded: false, expectedDegradedIds: [], reviewDocs: null,
-    roundVerdict: null,
     driver: o.driver, planFinal: o.planFinal,
     ...(o.expectedFallbackIds ? { expectedFallbackIds: o.expectedFallbackIds } : {}),
   });
@@ -358,7 +357,8 @@ test('loadRoundReviews：带标记的计划阶段给出 planFinal（含更晚运
   await fs.writeFile(path.join(stageDir(l, 'plan'), '_meta', 'run-20261005T050000Z.json'), '{坏'); // 读不出：跳过
 
   const pf = (await loadRoundReviews(l, 'plan', '20261005T010000Z')).planFinal;
-  assert.deepEqual(pf, { subjectRerunIndex: 1, laterSubjectRerunIndexes: [2] });
+  // 骨架不带 review_loop（EV-247 之前的形态）⇒ alwaysRequired 为 false，仍按「有接受项才要求」判
+  assert.deepEqual(pf, { subjectRerunIndex: 1, laterSubjectRerunIndexes: [2], alwaysRequired: false });
   assert.equal((await loadRoundReviews(l, 'plan', '20261005T040000Z')).planFinal, null);
 
   // 代码阶段的运行元数据即使带了标记（构造出来的），也不给 planFinal
