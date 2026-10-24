@@ -22,6 +22,7 @@ import { DEFAULT_DRIVER, type GuardLevel } from './agents/registry.js';
 import { warn } from './util/log.js';
 import { EXIT, TriviumError, envError } from './exit-codes.js';
 import { shellQuoteArg } from './naming.js';
+import { IS_WIN } from './util/platform.js';
 
 /** `updateTask` 的短临界区参数 */
 export interface TaskLock {
@@ -368,6 +369,8 @@ export function taskUnreadableExit(l: ArchiveLayout, error: string | undefined):
     `    · 看历史：git log --oneline -- ${shellQuoteArg(p)}\n` +
     `    · 看当前改动：git diff -- ${shellQuoteArg(p)}\n` +
     `    · 恢复到最近一次提交：git restore --source=HEAD -- ${shellQuoteArg(p)}（未提交过的改动会丢，先看 diff）\n` +
+    // Windows（双平台统一时补）：上面的单引号写法 Git Bash 与 PowerShell 都认，cmd 不认
+    (IS_WIN ? '  以上命令请在 Git Bash 或 PowerShell 里执行（cmd 不认单引号，要改成双引号）。\n' : '') +
     '  恢复命令请由用户在终端执行；在会话里执行会被 TriviumCode Hook 拦下。恢复后重跑本命令。'
   );
 }
@@ -528,7 +531,15 @@ export function newRunMeta(i: NewRunMetaInput): RunMeta {
     driver_enabled: i.driverEnabled ?? true,
     ...(i.driverGuardLevel !== undefined ? { driver_guard_level: i.driverGuardLevel } : {}),
     ...(i.planFinalCheck !== undefined ? { plan_final_check: { subject_rerun_index: i.planFinalCheck.subject_rerun_index } } : {}),
-    ...(i.reviewLoop !== undefined ? { review_loop: { round: i.reviewLoop.round, max_rounds: i.reviewLoop.max_rounds } } : {}),
+    ...(i.reviewLoop !== undefined
+      ? {
+          review_loop: {
+            round: i.reviewLoop.round,
+            max_rounds: i.reviewLoop.max_rounds,
+            ...(i.reviewLoop.max_rounds_source ? { max_rounds_source: i.reviewLoop.max_rounds_source } : {}),
+          },
+        }
+      : {}),
     ...(i.profile !== undefined ? { profile: i.profile } : {}),
     critics_selected: [...i.criticsSelected],
     snapshot: {
@@ -576,8 +587,10 @@ export async function writeRunMeta(
   }
   // 走 archive 是纪律（§16.2 纪律 2），但 run.json 不含审查正文、
   // 且 archive.writeMeta 已含密钥扫描，这里直接复用它
-  const { writeMeta } = await import('./archive.js');
-  const w = await writeMeta(l, stage, runMetaFileName(meta.run_id), JSON.stringify(meta, null, 2) + '\n');
+  const { writeMeta, normalizeArtifactPaths } = await import('./archive.js');
+  // 登记路径一律落成 `/` 形态（双平台统一）：同一份归档两个平台都要读得懂，见 artifactRelPosix
+  const onDisk: RunMeta = { ...meta, artifacts: normalizeArtifactPaths(meta.artifacts) };
+  const w = await writeMeta(l, stage, runMetaFileName(meta.run_id), JSON.stringify(onDisk, null, 2) + '\n');
   return w.absPath;
 }
 
@@ -852,7 +865,7 @@ export async function readRunMetaDetailed(
   stage: Stage,
   runId: string,
 ): Promise<RunMetaReadResult> {
-  const { metaDir } = await import('./archive.js');
+  const { metaDir, normalizeArtifactPaths } = await import('./archive.js');
   const p = path.join(metaDir(l, stage), runMetaFileName(runId));
   let text: string;
   try {
@@ -872,13 +885,16 @@ export async function readRunMetaDetailed(
   const schema = (raw as { schema?: unknown } | null)?.schema;
   const contract = (problems: string[]): RunMetaReadResult =>
     ({ ok: false, cause: { kind: 'contract', detail: causeDetail(problems[0] ?? '校验不过') } });
+  // Windows 线早先登记的反斜杠路径在内存里读成 `/` 形态（盘上原件不改，P6；见 archive.ts 的 artifactRelPosix）
+  const posixArtifacts = (m: RunMeta): RunMeta =>
+    Array.isArray(m.artifacts) ? { ...m, artifacts: normalizeArtifactPaths(m.artifacts) } : m;
   if (schema === 'trivium.run.v2' || schema === 'trivium.run.v3') {
     const problems = validateRunMeta(raw);
-    return problems.length === 0 ? { ok: true, meta: raw as RunMeta, sourceSchema: schema } : contract(problems);
+    return problems.length === 0 ? { ok: true, meta: posixArtifacts(raw as RunMeta), sourceSchema: schema } : contract(problems);
   }
   if (schema === 'trivium.run.v1') {
     const problems = validateRunMetaV1(raw);
-    return problems.length === 0 ? { ok: true, meta: migrateRunMetaV1(raw), sourceSchema: schema } : contract(problems);
+    return problems.length === 0 ? { ok: true, meta: posixArtifacts(migrateRunMetaV1(raw)), sourceSchema: schema } : contract(problems);
   }
   return contract([`schema 字段是 ${causeDetail(JSON.stringify(schema) ?? 'undefined')}，不是 trivium.run.v1 / v2 / v3`]);
 }

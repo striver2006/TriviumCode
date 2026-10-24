@@ -281,6 +281,18 @@
           "minimum": 1,
           "maximum": 3,
           "description": "单次运行可选审核者的基数上限（FR-29：1～3）。"
+        },
+        "plan_rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "计划审多轮评审循环（EV-247）新起一条轮次链时的最大轮次（双平台统一时由 Windows 线吸收）。取值顺序：本次 --max-rounds（命令 A 另有 --max-rounds-plan）→ 本键 → 内置缺省 3；续链沿用链首上限、不读本键。可选键：缺席即用内置缺省，run.json review_loop.max_rounds_source 记来源。"
+        },
+        "code_rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "代码审多轮评审循环新起一条轮次链时的最大轮次，语义同 plan_rounds（命令 A 另有 --max-rounds-code）。根因审不进循环，没有对应键。"
         }
       }
     },

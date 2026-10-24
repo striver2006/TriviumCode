@@ -108,7 +108,7 @@ test('L1 · 命令 B 计划审：不通过 ⇒ rerun、闸门回 idle、续链�
   assert.equal(w1.next_action, 'rerun');
   assert.match(w1.round_line ?? '', /^第 1\/2 轮 · 计票：0 通过 \/ 0 修改后通过 \/ 2 不通过 → 不通过/);
   const m1 = await runMeta(fx, 'plan', w1.run_id);
-  assert.deepEqual(m1['review_loop'], { round: 1, max_rounds: 2 });
+  assert.deepEqual(m1['review_loop'], { round: 1, max_rounds: 2, max_rounds_source: 'flag' });
   assert.deepEqual(
     m1['round_verdict'],
     {
@@ -126,7 +126,7 @@ test('L1 · 命令 B 计划审：不通过 ⇒ rerun、闸门回 idle、续链�
   // 续链：不再给 --max-rounds，上限沿用链首；被审对象自动换成 r2
   const w2 = await runRound(fx, 'plan', 'B', REJECT);
   const m2 = await runMeta(fx, 'plan', w2.run_id);
-  assert.deepEqual(m2['review_loop'], { round: 2, max_rounds: 2 });
+  assert.deepEqual(m2['review_loop'], { round: 2, max_rounds: 2, max_rounds_source: 'flag' });
   assert.deepEqual(m2['plan_final_check'], { subject_rerun_index: 2 });
   assert.equal(w2.next_action, 'human_review');
 
@@ -191,7 +191,7 @@ test('L4 · 命令 C 代码审：第 1 轮不通过、按裁决改码后续轮�
   await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 2;\n');
 
   const w1 = await runRound(fx, 'code', 'C', REJECT);
-  assert.deepEqual((await runMeta(fx, 'code', w1.run_id))['review_loop'], { round: 1, max_rounds: 3 });
+  assert.deepEqual((await runMeta(fx, 'code', w1.run_id))['review_loop'], { round: 1, max_rounds: 3, max_rounds_source: 'default' });
   assert.equal(w1.next_action, 'rerun');
   await writeDisposition(fx, 'code', w1.run_id, 1);
   // 按裁决直接改码：放在校验之前（校验通过后闸门可能立起停点）
@@ -200,7 +200,7 @@ test('L4 · 命令 C 代码审：第 1 轮不通过、按裁决改码后续轮�
   assert.equal(await gateState(fx, 'code'), 'idle');
 
   const w2 = await runRound(fx, 'code', 'C', PASS);
-  assert.deepEqual((await runMeta(fx, 'code', w2.run_id))['review_loop'], { round: 2, max_rounds: 3 });
+  assert.deepEqual((await runMeta(fx, 'code', w2.run_id))['review_loop'], { round: 2, max_rounds: 3, max_rounds_source: 'default' });
   assert.equal(w2.next_action, 'proceed');
   await writeDisposition(fx, 'code', w2.run_id, 2);
   assert.equal((await check(fx, 'code')).next_action, 'proceed');
@@ -232,12 +232,12 @@ test('L6 · 续轮那次运行失败（没有计票）不消耗轮次：重试�
   }
   assert.equal(code, EXIT.STRICT_ABORT);
   const mf = await runMeta(fx, 'plan', failedId);
-  assert.deepEqual(mf['review_loop'], { round: 2, max_rounds: 2 });
+  assert.deepEqual(mf['review_loop'], { round: 2, max_rounds: 2, max_rounds_source: 'flag' });
   assert.equal(mf['round_verdict'], undefined, '没跑成的一轮不计票');
 
   // 重试：仍是第 2/2 轮（跳过失败的那次、续的是第 1 轮的链），不是新链第 1/3 轮
   const w2 = await runRound(fx, 'plan', 'B', REJECT);
-  assert.deepEqual((await runMeta(fx, 'plan', w2.run_id))['review_loop'], { round: 2, max_rounds: 2 });
+  assert.deepEqual((await runMeta(fx, 'plan', w2.run_id))['review_loop'], { round: 2, max_rounds: 2, max_rounds_source: 'flag' });
   assert.equal(w2.next_action, 'human_review');
 });
 
@@ -313,7 +313,7 @@ test('L9 · 纯文档跳过轮不消耗轮次：rerun → 跳过 → 再送审�
   // 再改代码送审：续的仍是第 1 轮那条链
   await fs.writeFile(path.join(fx.root, 'src/a.ts'), 'export const a = 3;\n');
   const w2 = await runRound(fx, 'code', 'C', PASS);
-  assert.deepEqual((await runMeta(fx, 'code', w2.run_id))['review_loop'], { round: 2, max_rounds: 3 });
+  assert.deepEqual((await runMeta(fx, 'code', w2.run_id))['review_loop'], { round: 2, max_rounds: 3, max_rounds_source: 'default' });
 });
 
 test('L10 · 上一轮停在人工审核、审批正本读不出 ⇒ 拒跑，不按「已表态」新起一链（代码双审 r2 GLM-01）', { skip }, async () => {
@@ -388,4 +388,18 @@ test('L5 · 审查员给出旧契约 v1 结论 ⇒ 该侧整份回退、不计�
   assert.deepEqual(rv.excluded, { gemini: 'parse_fallback' });
   assert.deepEqual(rv.counts, { pass: 0, 'pass-after-changes': 0, reject: 1 });
   assert.equal(rv.outcome, 'reject');
+});
+
+test('L12 · 配置 review.plan_rounds 定新链上限并记来源；旗标优先于配置（双平台统一时由 Windows 线吸收）', { skip }, async () => {
+  // 写进本机覆盖层：共享配置里已有 review 段，直接追加会成重复键；本机层覆盖也正是 Windows 机器的用法
+  const fx = await makeFixture({ topic: 'loop-l12' });
+  await fs.appendFile(path.join(fx.root, '.trivium', 'config.local.yaml'), '\nreview:\n  plan_rounds: 2\n', 'utf8');
+  const a = await runRound(fx, 'plan', 'B', REJECT);
+  assert.deepEqual(a.review_loop, { round: 1, max_rounds: 2, max_rounds_source: 'config' });
+  assert.deepEqual((await runMeta(fx, 'plan', a.run_id))['review_loop'], { round: 1, max_rounds: 2, max_rounds_source: 'config' });
+
+  const fx2 = await makeFixture({ topic: 'loop-l12b' });
+  await fs.appendFile(path.join(fx2.root, '.trivium', 'config.local.yaml'), '\nreview:\n  plan_rounds: 2\n', 'utf8');
+  const b = await runRound(fx2, 'plan', 'B', REJECT, ['--max-rounds', '4']);
+  assert.deepEqual(b.review_loop, { round: 1, max_rounds: 4, max_rounds_source: 'flag' });
 });

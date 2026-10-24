@@ -184,6 +184,58 @@ export async function winTreeMemberCount(rootPid: number): Promise<number | null
 }
 
 /**
+ * 派生时刻与进程表 CreationDate 比较时的容差：两者同取系统时钟，CIM 精度到微秒；
+ * 只防 `Date.now()` 取在 spawn 之前那几毫秒与时钟粒度，1 秒足够且不会把早已存在的进程收进来。
+ */
+export const SPAWN_CLOCK_SKEW_MS = 1_000;
+
+/** doctor 探针段一个「组」在 Windows 进程表里的样子（`groupSnapshot` 的 win32 等价，双平台统一时加） */
+export interface WinSectionSnapshot {
+  /** 本组仍在表的成员数：组长在表时按组长计（含组长）；组长不在表时为孤儿后代闭包的大小 */
+  members: number;
+  /** 表里有 pid 等于组号的进程 */
+  leaderPresent: boolean;
+  /** 组长不在表时，认定为本组的直接子进程（逐个树杀它们即结束本组）；组长在表时为空 */
+  orphanRoots: number[];
+}
+
+/**
+ * 从进程表里取 doctor 探针段一个组的快照（纯函数，便于喂录制样本）。
+ *
+ * POSIX 按 PGID 数组员；Windows 没有进程组，`detached` 派生的组长与其后代靠父链相连。组长退出后其子进程的
+ * PPID 仍指向它，但这个号可能已被别的进程复用、复用者又有自己的子进程——所以孤儿只认
+ * 「父 pid 等于组号、且创建不早于我方派生时刻（减 `SPAWN_CLOCK_SKEW_MS`）」的直接子进程及其后代。
+ * 创建时刻取不到（空串）的不认，宁可漏杀不误杀。
+ *
+ * 表里有 pid 等于组号的进程时只报 `leaderPresent`：调用方已按子进程句柄知道我方组长退了，
+ * 这个进程只能是复用者，判复用、不发信号（与 POSIX 侧同一条规则，代码三审 CODEX-01）。
+ */
+export function winSectionSnapshotFrom(rows: readonly WinProcRow[], rootPid: number, spawnedAtMs: number): WinSectionSnapshot {
+  if (rows.some((r) => r.pid === rootPid)) return { members: 1, leaderPresent: true, orphanRoots: [] };
+  const floor = spawnedAtMs - SPAWN_CLOCK_SKEW_MS;
+  const orphanRoots = rows
+    .filter((r) => r.ppid === rootPid && r.creation.length > 0 && Date.parse(r.creation) >= floor)
+    .map((r) => r.pid);
+  const children = new Map<number, number[]>();
+  for (const r of rows) {
+    const list = children.get(r.ppid);
+    if (list) list.push(r.pid);
+    else children.set(r.ppid, [r.pid]);
+  }
+  const seen = new Set<number>(orphanRoots);
+  const queue = [...orphanRoots];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    for (const c of children.get(cur) ?? []) {
+      if (seen.has(c)) continue;
+      seen.add(c);
+      queue.push(c);
+    }
+  }
+  return { members: seen.size, leaderPresent: false, orphanRoots };
+}
+
+/**
  * `killProcessTree` 的 Windows 实现：`taskkill /T` 树杀。
  *
  * `force=false` 是软步（发 WM_CLOSE；控制台进程常无效——如实保留，凭据安全由我方 worker 的

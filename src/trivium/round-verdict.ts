@@ -16,7 +16,7 @@
  * 没有足够的结论不能当成通过（计划 r2 D-5，用户 2026-10-22 确认）：双审剩一票仍可定论，三审及以上剩一票不行。
  */
 import type {
-  CriticId, NextAction, Review, ReviewLoop, ReviewVerdict, RoundOutcome, RoundVerdict, VerdictExclusion,
+  CriticId, MaxRoundsSource, NextAction, Review, ReviewLoop, ReviewVerdict, RoundOutcome, RoundVerdict, VerdictExclusion,
 } from './types.js';
 import { REVIEW_SCHEMA_ID, REVIEW_VERDICTS } from './types.js';
 
@@ -137,6 +137,20 @@ export function maxRoundsProblem(raw: string, flag: string): string | null {
   return null;
 }
 
+/**
+ * 新起一条轮次链时的最大轮次及其来源：本次旗标 → 配置 `review.plan_rounds` / `code_rounds` → 内置缺省 3
+ * （双平台统一时由 Windows 线吸收配置项）。配置值已由 config.v2 schema 限在 1～10。
+ * 命令 A 开场播报的「最多几轮」也取它，与 `review --start` 起链时的取值同一口径。
+ */
+export function newChainMaxRounds(
+  requested: number | null,
+  configured: number | null,
+): { max_rounds: number; max_rounds_source: MaxRoundsSource } {
+  if (requested !== null) return { max_rounds: requested, max_rounds_source: 'flag' };
+  if (configured !== null) return { max_rounds: configured, max_rounds_source: 'config' };
+  return { max_rounds: REVIEW_LOOP_DEFAULT_ROUNDS, max_rounds_source: 'default' };
+}
+
 /** 上一轮（同主题同阶段、最近一次运行）与续链有关的事实 */
 export interface PrevRoundFacts {
   run_id: string;
@@ -153,17 +167,19 @@ export interface PrevRoundFacts {
  * 此时显式给了不同的上限 ⇒ 拒绝（循环中途改上限会让「还剩几轮」失去意义）。
  * 上一轮判了 `human_review` 且没被人工表态 ⇒ 拒绝：「停下人工审核」由归档正本把守，
  * 不只靠本机闸门状态的比较-交换——槽位缺失（跨克隆、本机状态被删）时那道比较会放行（代码双审 r1 GLM-01）。
- * 其余情形（没有上一轮、上一轮是 `proceed`、旧运行没有轮次链、已表态）⇒ 新链：第 1 轮，上限取显式值或缺省 3。
+ * 其余情形（没有上一轮、上一轮是 `proceed`、旧运行没有轮次链、已表态）⇒ 新链：第 1 轮，上限按 `newChainMaxRounds`
+ * 取显式值、配置值或缺省 3。续链不读配置：配置在链中途被改，不影响「还剩几轮」。
  */
 export function deriveReviewLoop(
   prev: PrevRoundFacts | null,
   requested: number | null,
+  configured: number | null = null,
 ): { ok: true; loop: ReviewLoop; continued: boolean } | { ok: false; message: string } {
   const open = prev !== null && !prev.closed && prev.review_loop !== undefined;
   if (open && prev.round_verdict?.next_action === 'human_review') return humanReviewPending(prev.run_id, prev.review_loop!);
   const continues = open && prev.round_verdict?.next_action === 'rerun';
   if (!continues) {
-    return { ok: true, loop: { round: 1, max_rounds: requested ?? REVIEW_LOOP_DEFAULT_ROUNDS }, continued: false };
+    return { ok: true, loop: { round: 1, ...newChainMaxRounds(requested, configured) }, continued: false };
   }
   const head = prev.review_loop!;
   if (requested !== null && requested !== head.max_rounds) {
@@ -178,7 +194,11 @@ export function deriveReviewLoop(
   const round = head.round + 1;
   // 防御：按 `nextAction` 的构造，到上限的那一轮只会给 human_review，走不到这里
   if (round > head.max_rounds) return humanReviewPending(prev.run_id, head);
-  return { ok: true, loop: { round, max_rounds: head.max_rounds }, continued: true };
+  return {
+    ok: true,
+    loop: { round, max_rounds: head.max_rounds, ...(head.max_rounds_source ? { max_rounds_source: head.max_rounds_source } : {}) },
+    continued: true,
+  };
 }
 
 function humanReviewPending(runId: string, loop: ReviewLoop): { ok: false; message: string } {

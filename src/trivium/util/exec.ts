@@ -9,7 +9,9 @@ import { spawn } from 'node:child_process';
 import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { dirname } from 'node:path';
-import { IS_WIN, winProcessCreation, winTaskkillTree, winTreeMemberCount } from './platform.js';
+import {
+  IS_WIN, enumerateWinProcesses, winProcessCreation, winSectionSnapshotFrom, winTaskkillTree, winTreeMemberCount,
+} from './platform.js';
 
 export interface RunOptions {
   cwd?: string;
@@ -194,6 +196,11 @@ let treeShutdown = false;
 interface SectionGroup {
   pgid: number;
   child: ChildProcess;
+  /**
+   * 派生前一刻的 `Date.now()`（双平台统一时加）：Windows 没有进程组，组长退出后按「父 pid 等于组号、
+   * 创建不早于它」认本组孤儿后代（`winSectionSnapshotFrom`）。取它不需要额外枚举进程表，POSIX 上不用。
+   */
+  spawnedAt: number;
 }
 
 /**
@@ -266,6 +273,11 @@ export interface SectionTerminateResult {
 export interface GroupSnapshot {
   members: number;
   leaderPresent: boolean;
+  /**
+   * 仅 Windows：组长不在表时认定为本组的直接子进程（`winSectionSnapshotFrom`）。组长退出后
+   * `taskkill /PID <组长> /T` 找不到根、够不到它们，要逐个树杀；POSIX 按组号发信号，不需要它。
+   */
+  orphanRoots?: number[];
 }
 
 /** 从 `ps -axo pid=,pgid=,stat=` 的输出里取一个组号的快照（纯函数，便于喂录制样本） */
@@ -281,7 +293,12 @@ export function groupSnapshotFrom(psOutput: string, pgid: number): GroupSnapshot
   return { members, leaderPresent };
 }
 
-async function groupSnapshot(pgid: number): Promise<GroupSnapshot | null> {
+async function groupSnapshot(pgid: number, spawnedAt: number): Promise<GroupSnapshot | null> {
+  if (IS_WIN) {
+    // 枚举走 PowerShell 直接 spawn、不经 run()，本就不受段作用域与中止令牌影响（同 outsideProbeSection 的用意）
+    const rows = await enumerateWinProcesses({ fresh: true });
+    return rows ? winSectionSnapshotFrom(rows, pgid, spawnedAt) : null;
+  }
   const r = await run('/bin/ps', ['-axo', 'pid=,pgid=,stat='], { timeoutMs: 10_000 });
   return r.code === 0 ? groupSnapshotFrom(r.stdout, pgid) : null;
 }
@@ -297,17 +314,26 @@ async function groupSnapshot(pgid: number): Promise<GroupSnapshot | null> {
  * 分不出的一格（与 EV-165 同一残余）：本组清空、组号被别人复用、复用者自己也退了只剩它的后代——这时既没有 pid 等于组号的进程、
  * 成员数又大于 0，会被当成本组。宽限链参数由调用方给（doctor 用 worker 处理器那一组）。
  * 各组并行（核对也并行）；不置冻结位，`run()` 照常兑现，探针得以走到 `finally`。
+ *
+ * **Windows**（双平台统一时补）：判据同构——组长句柄未退出即在；退出后取进程表快照（`winSectionSnapshotFrom`），
+ * 表里有同号进程判复用，否则按「父 pid 等于组号、创建不早于派生时刻」的孤儿后代数判。发信号时组长还在就
+ * `taskkill /T` 树杀组长；组长已退就逐个树杀快照里的孤儿直接子进程（按组长树杀找不到根）。软步对控制台进程
+ * 常无效，宽限期满升级 `/F`。分不出的一格与 POSIX 同：复用者自己也退了、只剩它在我方派生之后生的子进程。
  */
 export async function terminateProbeSectionGroups(
   scopes: readonly ProbeSectionScope[],
-  o: TreeShutdownOptions & { snapshot?: (pgid: number) => Promise<GroupSnapshot | null> },
+  o: TreeShutdownOptions & { snapshot?: (pgid: number, spawnedAt: number) => Promise<GroupSnapshot | null> },
 ): Promise<SectionTerminateResult> {
-  const snap = o.snapshot ?? ((pgid: number) => outsideProbeSection(() => groupSnapshot(pgid)));
+  const snap = o.snapshot ?? ((pgid: number, spawnedAt: number) => outsideProbeSection(() => groupSnapshot(pgid, spawnedAt)));
   const reused = new Set<number>();
+  /** 每组最近一次快照：Windows 结束孤儿后代时要用它的 orphanRoots */
+  const lastSnap = new Map<SectionGroup, GroupSnapshot>();
+  const leaderAlive = (g: SectionGroup): boolean => g.child.exitCode === null && g.child.signalCode === null;
   const isGone = async (g: SectionGroup): Promise<GoneJudgment> => {
-    if (g.child.exitCode === null && g.child.signalCode === null) return false;
-    const s = await snap(g.pgid);
+    if (leaderAlive(g)) return false;
+    const s = await snap(g.pgid, g.spawnedAt);
     if (s === null) return 'unverifiable';
+    lastSnap.set(g, s);
     if (s.leaderPresent) {
       reused.add(g.pgid);
       return true;
@@ -320,12 +346,20 @@ export async function terminateProbeSectionGroups(
   const signals: Record<number, NodeJS.Signals[]> = {};
   const outcomes = await Promise.all(
     candidates.map(async (g) => {
+      const winSignal = (pid: number, sig: NodeJS.Signals): boolean => {
+        const force = sig === 'SIGKILL';
+        if (leaderAlive(g)) return winTaskkillTree(pid, force);
+        let sent = false;
+        for (const root of lastSnap.get(g)?.orphanRoots ?? []) sent = winTaskkillTree(root, force) || sent;
+        return sent;
+      };
+      const signal = o.signal ?? (IS_WIN ? winSignal : undefined);
       const t = await terminateProcessGroup(g.pgid, {
         isGone: () => isGone(g),
         graceMs: o.graceMs,
         killWaitMs: o.killWaitMs,
         pollMs: o.pollMs ?? 100,
-        ...(o.signal ? { signal: o.signal } : {}),
+        ...(signal ? { signal } : {}),
       });
       signals[g.pgid] = t.signals;
       return { pgid: g.pgid, gone: t.gone };
@@ -341,6 +375,18 @@ export async function terminateProbeSectionGroups(
 
 /** BSD `script` 读到 stdin 的 EOF 后往伪终端送 EOF，伪终端回显成这 4 个字符（`^`、`D`、两个退格） */
 export const PTY_EOF_ECHO = '^D\b\b';
+
+/**
+ * cmd.exe 在 `/s /c` 之后重新解析整行时会生效的字符（`!` 只在延迟展开下生效，一并拒绝）。
+ * 写成字符清单而不是正则：本目录的源码对账用的简易剥注释器不认含引号的正则字面量。
+ */
+const CMD_META_CHARS: readonly string[] = ['"', '%', '!', '^', '&', '|', '<', '>', '\r', '\n'];
+
+/** 经 .cmd/.bat 垫片调用时第一个含 cmd 元字符的参数序号；都安全返回 null（纯函数，两平台都可测） */
+export function cmdShimUnsafeArgIndex(args: readonly string[]): number | null {
+  const i = args.findIndex((a) => CMD_META_CHARS.some((c) => a.includes(c)));
+  return i < 0 ? null : i;
+}
 
 /**
  * BSD `script` 伪终端输出的还原（EV-156）：去掉**首部恰为** `PTY_EOF_ECHO` 的回显，`\r\n` 还原为 `\n`。
@@ -442,6 +488,26 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
   const commandLine = formatCommand(spawnBin, spawnArgs);
 
   /*
+   * 「不在支持面」要落成 fail-closed（双平台统一时补，后台安全审查 Command Injection）：cmd.exe 会把 /c 之后的
+   * 整行重新解析，任务书一类长文本里的 & | < > ^ % 或内嵌引号就能拼出额外命令。含这些字符的调用不拉起，
+   * 返回派生失败；报错只给参数序号、不回显内容（可能是整份任务书或凭据形态）。
+   */
+  const unsafeAt = cmdShim ? cmdShimUnsafeArgIndex([bin, ...realArgs]) : null;
+  if (unsafeAt !== null) {
+    const result: RunResult = {
+      code: null, signal: null, stdout: '', durationMs: 0,
+      stderr:
+        `[spawn error] 经 .cmd/.bat 垫片调用时第 ${unsafeAt} 个参数（0 为入口路径）含 cmd 元字符，cmd.exe 会重新解析它，拒绝拉起；` +
+        '请改装原生 .exe 版本的 CLI，或在 config.local.yaml 里把该家的 bin 指向原生入口',
+      timedOut: false, earlyStopped: false, truncated: false, commandLine: formatCommand(spawnBin, ['/d', '/s', '/c', bin, '…']), spawned: false,
+    };
+    if (launchIndex !== null && quota?.budget.onComplete) {
+      return Promise.resolve(quota.budget.onComplete(launchIndex, bin, result)).then(() => result);
+    }
+    return Promise.resolve(result);
+  }
+
+  /*
    * Windows 无 BSD `script`（也没有它的 pty 等价物；零依赖约束排除了 node-pty 一类原生模块）。
    * 显式拒绝而不是误入 BSD 分支去 spawn 一个不存在的 `script`：报错正文说明成因，
    * 依赖 pty 的那侧 CLI（agy 的 probe.agy.pty_required）在 Windows 上会以本错误落「不可用」。
@@ -481,8 +547,9 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
   const pending = new Promise<RunResult>((resolve) => {
     const startedAt = Date.now();
     if (section) section.launches++;
+    const spawnedAt = Date.now();
     const child = spawn(spawnBin, spawnArgs, spawnOpts);
-    if (section && child.pid !== undefined) section.groups.push({ pgid: child.pid, child });
+    if (section && child.pid !== undefined) section.groups.push({ pgid: child.pid, child, spawnedAt });
     let spawned = false;
     child.once('spawn', () => { spawned = true; });
     // 登记与派生之间插不进别的 JS（spawn 是同步的），所以 SIGTERM 处理器看得到每一个已派生的组

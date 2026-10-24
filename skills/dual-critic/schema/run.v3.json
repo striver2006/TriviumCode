@@ -117,9 +117,17 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 10
+        },
+        "max_rounds_source": {
+          "enum": [
+            "flag",
+            "config",
+            "default"
+          ],
+          "description": "max_rounds 的来源：本次 --max-rounds、配置 review.plan_rounds / code_rounds、还是内置缺省 3（双平台统一时加）。续链沿用链首的来源；早于本字段的运行没有它"
         }
       },
-      "description": "本轮在轮次链里的位置（EV-247）：第 round 轮，最多 max_rounds 轮（缺省 3、上限 10）。只在计划与代码阶段、由 review --start 在骨架里写入。存在即「本轮按多轮评审循环的规则跑」：闸门据 round_verdict.next_action 决定闸门去向，计划阶段每轮都要求新一轮计划。缺失 = EV-247 之前的旧运行、bug 阶段或纯文档跳过轮，闸门完全按旧规则判"
+      "description": "本轮在轮次链里的位置（EV-247）：第 round 轮，最多 max_rounds 轮（缺省 3、上限 10，可由配置 review.plan_rounds / code_rounds 改缺省）。只在计划与代码阶段、由 review --start 在骨架里写入。存在即「本轮按多轮评审循环的规则跑」：闸门据 round_verdict.next_action 决定闸门去向，计划阶段每轮都要求新一轮计划。缺失 = EV-247 之前的旧运行、bug 阶段或纯文档跳过轮，闸门完全按旧规则判"
     },
     "round_verdict": {
       "type": "object",

@@ -17,9 +17,11 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import {
-  abortProbeSections, newProbeAbortToken, terminateProbeSectionGroups, type ProbeSectionScope, type SectionTerminateResult,
+  abortProbeSections, newProbeAbortToken, processMatchesRecord, processStartTime, terminateProbeSectionGroups,
+  type ProbeSectionScope, type SectionTerminateResult,
 } from './util/exec.js';
 import { observeTempDirs, tildeHome, tryRemoveTempDir } from './util/fsx.js';
+import { IS_WIN } from './util/platform.js';
 
 /** 到点后给段退出来的兜底时长（计划 r2 D3 第 5 条） */
 export const DEADLINE_UNWIND_MS = 20_000;
@@ -115,7 +117,9 @@ async function deletable(p: string): Promise<'yes' | 'no' | 'gone'> {
     return (e as NodeJS.ErrnoException).code === 'ENOENT' ? 'gone' : 'no';
   }
   const root = await realTmpRoot();
-  return path.dirname(real) === root && TEMP_NAME_RE.test(path.basename(real)) ? 'yes' : 'no';
+  // NTFS 路径大小写不敏感，盘符与目录名的大小写可能两处不一（双平台统一时补）；只会让该删的多留一条残余，不会误删
+  const sameDir = IS_WIN ? path.dirname(real).toLowerCase() === root.toLowerCase() : path.dirname(real) === root;
+  return sameDir && TEMP_NAME_RE.test(path.basename(real)) ? 'yes' : 'no';
 }
 
 async function removeListed(dirs: readonly string[]): Promise<string[]> {
@@ -143,10 +147,30 @@ function pidAlive(pid: number): boolean {
 }
 
 /**
- * 补删已退出的 doctor 留下的台账（宿主直接 SIGKILL 的那一格）。进程还活着（或 pid 被复用、判不了）的台账不碰，
- * 宁可留到下一次。返回删不掉或不敢删的条目说明。
+ * 台账的主人还在吗：pid 不在 ⇒ 不在；在而台账记过它的规范化启动时刻、此刻核对确认不是同一进程 ⇒ pid 已被复用、
+ * 主人不在（双平台统一时补：Windows 的 pid 复用快，只看 pid 会让旧台账永远被跳过）；其余（同一进程、判不了、
+ * 旧台账没记启动时刻）⇒ 当它还在，宁可留到下一次。
  */
-export async function sweepDoctorLedgers(dir: string): Promise<string[]> {
+async function ledgerOwnerGone(pid: number, started: string | null, matcher: StartMatcher): Promise<boolean> {
+  if (!pidAlive(pid)) return true;
+  if (started === null) return false;
+  const m = await matcher(pid, started);
+  return m === 'different';
+}
+
+/** 按 pid 与记录的规范化启动时刻判身份：`processMatchesRecord` 的三态结论（测试可注入） */
+export type StartMatcher = (pid: number, started: string) => Promise<'same' | 'different' | 'unverifiable'>;
+
+const defaultStartMatcher: StartMatcher = async (pid, started) => {
+  const m = await processMatchesRecord(pid, { canonical: started, legacy: null });
+  return m.identity ?? (m.sameProcess ? 'same' : 'different');
+};
+
+/**
+ * 补删已退出的 doctor 留下的台账（宿主直接 SIGKILL 的那一格）。进程还活着（或判不了）的台账不碰，
+ * 宁可留到下一次；pid 被复用的按 `ledgerOwnerGone` 识别。返回删不掉或不敢删的条目说明。
+ */
+export async function sweepDoctorLedgers(dir: string, o: { matchStart?: StartMatcher } = {}): Promise<string[]> {
   let names: string[];
   try {
     names = await fs.readdir(dir);
@@ -158,13 +182,21 @@ export async function sweepDoctorLedgers(dir: string): Promise<string[]> {
     const m = LEDGER_RE.exec(name);
     if (!m) continue;
     const pid = Number(m[1]);
-    if (pid === process.pid || pidAlive(pid)) continue;
+    if (pid === process.pid) continue;
     const file = path.join(dir, name);
     let dirs: string[] = [];
+    let started: string | null = null;
+    let parsedOk = true;
     try {
-      const parsed = JSON.parse(await fs.readFile(file, 'utf8')) as { dirs?: unknown };
+      const parsed = JSON.parse(await fs.readFile(file, 'utf8')) as { dirs?: unknown; started?: unknown };
       dirs = Array.isArray(parsed.dirs) ? parsed.dirs.filter((d): d is string => typeof d === 'string') : [];
+      started = typeof parsed.started === 'string' && parsed.started.length > 0 ? parsed.started : null;
     } catch {
+      parsedOk = false;
+    }
+    // 先判主人在不在：读不懂的台账若主人还在（可能正写到一半），不该报残余
+    if (!(await ledgerOwnerGone(pid, started, o.matchStart ?? defaultStartMatcher))) continue;
+    if (!parsedOk) {
       residue.push(`doctor 临时目录台账 ${tildeHome(file)} 读不懂，未据它删除任何目录`);
       continue;
     }
@@ -179,12 +211,16 @@ export class TempDirLedger {
   private readonly dirs = new Set<string>();
   private readonly file: string;
   private chain: Promise<void> = Promise.resolve();
+  /** 本进程的规范化启动时刻：写进台账，供下一次 doctor 识别 pid 复用（取不到为 null，按旧行为处置） */
+  private started: Promise<string | null> = Promise.resolve(null);
 
   constructor(dir: string) {
     this.file = ledgerFile(dir, process.pid);
   }
 
   install(): void {
+    // 在任何探针段之外起取（doctor 在进段前 install）：段内的 run() 会被中止令牌截住
+    this.started = processStartTime(process.pid, { canonical: true }).catch(() => null);
     observeTempDirs({
       created: (d) => this.update(() => this.dirs.add(d)),
       removed: (d) => this.update(() => this.dirs.delete(d)),
@@ -197,8 +233,9 @@ export class TempDirLedger {
     const snapshot = [...this.dirs];
     this.chain = this.chain.then(async () => {
       const tmp = `${this.file}.tmp`;
+      const started = await this.started;
       await fs.mkdir(path.dirname(this.file), { recursive: true });
-      await fs.writeFile(tmp, JSON.stringify({ pid: process.pid, dirs: snapshot }), 'utf8');
+      await fs.writeFile(tmp, JSON.stringify({ pid: process.pid, started, dirs: snapshot }), 'utf8');
       await fs.rename(tmp, this.file);
     }).catch(() => undefined);
     return this.chain;
@@ -230,6 +267,13 @@ export async function bounded<T>(p: Promise<T>, ms: number): Promise<{ ok: true;
   }
 }
 
+/**
+ * 接管的信号。Windows 上（双平台统一时补）跨进程发不出能被捕获的 SIGTERM（`kill` 即 TerminateProcess，处理器跑不到），
+ * 能到的只有控制台 Ctrl+C（SIGINT）与 Ctrl+Break（SIGBREAK）；宿主硬杀与 POSIX 被 SIGKILL 同一格：
+ * 靠进程内计时器到点自收尾，来不及的由下一次 doctor 按台账补删临时目录。
+ */
+const HANDLED_SIGNALS: readonly NodeJS.Signals[] = IS_WIN ? ['SIGINT', 'SIGTERM', 'SIGBREAK'] : ['SIGINT', 'SIGTERM'];
+
 export interface DeadlineControllerOptions {
   ms: number;
   unwindMs: number;
@@ -254,7 +298,7 @@ export class DeadlineController {
   private inflight: Promise<unknown> | null = null;
   private readonly onSignal = (sig: NodeJS.Signals): void => {
     // 第二个信号：用户或宿主坚持要走，立即退出（同前台中断转发的「再按一次」）
-    if (this.reason !== null) process.exit(sig === 'SIGINT' ? 130 : 143);
+    if (this.reason !== null) process.exit(sig === 'SIGTERM' ? 143 : 130);
     process.stderr.write(`收到 ${sig}：doctor 按到点处置，结束本次拉起的探针子进程并收尾（再发一次立即退出）\n`);
     this.fire('signal');
   };
@@ -290,7 +334,7 @@ export class DeadlineController {
   start(): void {
     this.startedAt = Date.now();
     this.timer = setTimeout(() => this.fire('deadline'), this.o.ms);
-    if (this.o.handleSignals) for (const s of ['SIGINT', 'SIGTERM'] as const) process.on(s, this.onSignal);
+    if (this.o.handleSignals) for (const s of HANDLED_SIGNALS) process.on(s, this.onSignal);
   }
 
   /** 记下正在写的 checkpoint：到点收尾要等它写完（`patchProbe` 不经 `run()`，不受中止影响） */
@@ -334,6 +378,6 @@ export class DeadlineController {
   stop(): void {
     if (this.timer) clearTimeout(this.timer);
     if (this.stuckTimer) clearTimeout(this.stuckTimer);
-    if (this.o.handleSignals) for (const s of ['SIGINT', 'SIGTERM'] as const) process.removeListener(s, this.onSignal);
+    if (this.o.handleSignals) for (const s of HANDLED_SIGNALS) process.removeListener(s, this.onSignal);
   }
 }

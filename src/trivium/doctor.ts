@@ -33,6 +33,7 @@ import {
 } from './entry-collisions.js';
 import { say, step, warn } from './util/log.js';
 import { formatCommand, newProbeSection, withProbeSection, type ProbeSectionScope } from './util/exec.js';
+import { IS_WIN } from './util/platform.js';
 import { observeTempDirs } from './util/fsx.js';
 import {
   DEADLINE_UNWIND_MS, DeadlineController, TempDirLedger, sweepDoctorLedgers, unfinishedSectionNote,
@@ -237,11 +238,23 @@ export function doctorRerunCommand(cli: string, opts: Pick<DoctorOptions, 'tierF
     if (tf?.effort !== undefined) args.push(`--effort-${id}`, tf.effort);
   }
   // 前缀是项目里的入口：`trivium` 有意不在 PATH 上，照抄 `trivium …` 会 command not found（代码三审 GLM-02）
+  // Windows（双平台统一时补）：用户终端多是 cmd / PowerShell，sh 形态的入口与单引号转义在那里都不认，给 .cmd 入口与双引号
+  if (IS_WIN) return [DOCTOR_RERUN_ENTRY_WIN, ...args.map(winTerminalArg)].join(' ');
   return formatCommand(DOCTOR_RERUN_ENTRY, args);
 }
 
 /** 终端重跑命令的入口，与用户手册里终端命令的写法同形 */
 export const DOCTOR_RERUN_ENTRY = '.trivium/bin/trivium';
+/**
+ * Windows 终端（cmd / PowerShell）里的同一个入口：init 在 win32 上同时写 sh 形态与 .cmd（设计 §7.1）。
+ * 带 `.\` 前缀：PowerShell 不从当前目录隐式找命令，cmd 也认这个写法。
+ */
+export const DOCTOR_RERUN_ENTRY_WIN = '.\\.trivium\\bin\\trivium.cmd';
+
+/** cmd 与 PowerShell 都认的最小转义：只含安全字符的原样，否则整段加双引号（覆盖旗标的取值不含引号） */
+function winTerminalArg(a: string): string {
+  return /^[A-Za-z0-9_.:\/=@+-]+$/.test(a) ? a : `"${a}"`;
+}
 
 /** 一条诊断结论：进 blockers 还是只进 notes */
 export interface SeverityLine {

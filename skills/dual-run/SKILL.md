@@ -52,8 +52,10 @@ S0 这个标签不再使用。
   用逗号连接后传给 `--critics`，**无条件传**——用户没写 `--critics` 时它就是缺省集合（已减去当轮 Driver），照传即可；
 - `allow_single`：为 true 时 S2、S6 都加 `--allow-single`（用户显式要求的降级：一侧失败时不中止，§12.4）。
 - `max_rounds`：`{ plan, code }`，两个阶段各自的评审循环最大轮次（EV-247）。用户可用 `--max-rounds-plan` / `--max-rounds-code`
-  分别指定、用 `--max-rounds` 同时指定两阶段（专属的优先），取值 1～10；null 表示不指定（缺省 3 轮）。
+  分别指定、用 `--max-rounds` 同时指定两阶段（专属的优先），取值 1～10；null 表示不指定（新起链时由编排器取配置
+  `review.plan_rounds` / `review.code_rounds`，没配为 3）。
   `plan` 非空时 S2 的每一轮都传 `--max-rounds <plan>`，`code` 非空时 S6 的每一轮都传 `--max-rounds <code>`；null 不传。
+- `max_rounds_effective`：`{ plan, code }`，按「旗标 → 配置 → 缺省 3」算好的两阶段上限，只用于 S0.6 的播报，不透传。
 
 用户写的 `--only` 已被 resolve 并进 `critics`、输出的 `only` 恒为 null——**任何一步都不要传 `--only`**。
 
@@ -119,7 +121,7 @@ TV preflight --stage all --driver claude --critics <critics> [--profile <名称>
 新主题的留痕或声明与之冲突时解析会退 64，而不是换一个 Driver。
 
 S0.6 通过后（与主题回显同一条消息），告诉用户本次两个阶段的评审循环上限：「计划审最多 P 轮、代码审最多 C 轮」，
-P / C 取 `max_rounds` 的对应项，null 时写 3（缺省）。
+P / C 取 `max_rounds_effective` 的对应项（已含配置与缺省，照念即可）。
 
 ### S0.8 认领 plan 阶段
 `TV topic claim --topic <主题> --stage plan --driver claude --json`（`<主题>` 取 S0.5 输出的 `topic`）

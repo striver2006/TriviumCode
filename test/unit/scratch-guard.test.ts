@@ -57,6 +57,8 @@ const TEMP_DIR_EXEMPT: Record<string, number> = {
   'test/unit/codex-auth-probe.test.ts': 1,
   // 建在 node_modules/ 下（不在系统临时目录），finally 删
   'test/unit/codex-events.test.ts': 1,
+  // I14：TMPDIR / TEMP / TMP 钉到 world() 私有根下建，finally 里 tryRemoveTempDir（双平台统一时补）
+  'test/unit/doctor-deadline.test.ts': 1,
   // 每格 finally
   'test/unit/mustread-deny.test.ts': 2,
   // CREATED + after（先恢复权限）

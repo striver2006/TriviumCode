@@ -240,7 +240,7 @@ test('I7 · 旧运行第 1 轮全部驳回、不写 r2；复审未修订原稿�
 test('I8 · 带轮次链的轮次全部驳回也要写新一轮计划（EV-247）：缺 → missing_next_plan（无编号），写了「本轮无改动」即通过', { skip }, async () => {
   const fx = await makeFixture({ topic: 'pfg-i8' });
   const runId = await runPlan(fx, 'B');
-  assert.deepEqual((await runMeta(fx, runId))['review_loop'], { round: 1, max_rounds: 3 });
+  assert.deepEqual((await runMeta(fx, runId))['review_loop'], { round: 1, max_rounds: 3, max_rounds_source: 'default' });
   await writeDisposition(fx, runId, { accept: [] });
   const c1 = await check(fx);
   assert.notEqual(c1.code, EXIT.OK, c1.raw);

@@ -972,6 +972,12 @@ export interface ReviewConfig {
   default_critics: CriticId[];
   /** 单次运行可选审核者的基数上限（FR-29：1～3） */
   max_critics: number;
+  /**
+   * 计划审 / 代码审新起轮次链时的最大轮次（1～10，可选；缺席即内置缺省 3）。
+   * 取值顺序：本次旗标 → 本键 → 缺省；续链沿用链首上限、不读本键（双平台统一时由 Windows 线吸收）。
+   */
+  plan_rounds?: number;
+  code_rounds?: number;
   timeout_s: Record<Stage, number>;
   wait_timeout_s: number;
   heartbeat_stale_s: number;
@@ -1623,7 +1629,16 @@ export type RunTermination =
 export interface ReviewLoop {
   round: number;
   max_rounds: number;
+  /**
+   * 上限来自哪里：本次旗标、配置 `review.plan_rounds` / `code_rounds`、还是内置缺省 3（双平台统一时加，可选）。
+   * 续链沿用链首的来源；早于本字段的运行没有它（无从得知，不补）。
+   */
+  max_rounds_source?: MaxRoundsSource;
 }
+
+/** `ReviewLoop.max_rounds_source` 的取值 */
+export const MAX_ROUNDS_SOURCES = ['flag', 'config', 'default'] as const;
+export type MaxRoundsSource = (typeof MAX_ROUNDS_SOURCES)[number];
 
 /** 本轮整体结论；`undetermined` 是有效结论不足（有效票不到入选侧数的一半，含一票都没有） */
 export type RoundOutcome = ReviewVerdict | 'undetermined';

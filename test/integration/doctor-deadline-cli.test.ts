@@ -5,6 +5,7 @@
  * HOME 与 TMPDIR 钉到夹具。真实进程带本次随机标记，`finally` 按组号兜底结束。
  */
 import { test } from 'node:test';
+import { skipOnWin } from '../helpers/platform.js';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -21,6 +22,8 @@ import { DOCTOR_RERUN_ENTRY } from '../../src/trivium/doctor.js';
 const MARK = `trivium-i-dlcli-${process.pid}-${Date.now()}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const skip = bundleMissing ? bundleSkipReason : false;
+// 带假 agy（shebang 脚本、trap TERM）与跨进程 SIGTERM 的格在 Windows 上跳过；I1 只验参数，两平台都跑（双平台统一时补）
+const posixSkip = skip || skipOnWin('shebang 假 CLI 与跨进程 SIGTERM 是 POSIX 语义；Windows 上 SIGTERM 即 TerminateProcess，处理器跑不到');
 
 /** 与 doctor-deadline 单测同一个假 agy：模型调用按 FAKE_AGY_MODE 挂住或秒败 */
 async function fakeAgy(dir: string): Promise<string> {
@@ -69,7 +72,7 @@ test('I1 --deadline-s 越界或非整数退 64；不给时与原来一样不带 
   assert.deepEqual(d.sections, [], '--only env 不探任何一家');
 });
 
-test('I7 带时限运行中收到 SIGTERM：协作式收尾，退 76、reason=signal，假 agy 的进程组已结束、探针临时目录已删', { skip }, async () => {
+test('I7 带时限运行中收到 SIGTERM：协作式收尾，退 76、reason=signal，假 agy 的进程组已结束、探针临时目录已删', { skip: posixSkip }, async () => {
   const { fx, home, tmp } = await project('dlcli-i7');
   const mark = `${MARK}-i7`;
   const child = spawn(process.execPath, [BUNDLE, 'doctor', '--only', 'agy', '--deadline-s', '60', '--json'], {
@@ -107,7 +110,7 @@ test('I7 带时限运行中收到 SIGTERM：协作式收尾，退 76、reason=si
   }
 });
 
-test('I12 读覆盖的段（codex）：预检给出的带路线与模型旗标的 args 照抄喂给打包 CLI，不被判参数错误（代码三审 GLM-04）', { skip }, async () => {
+test('I12 读覆盖的段（codex）：预检给出的带路线与模型旗标的 args 照抄喂给打包 CLI，不被判参数错误（代码三审 GLM-04）', { skip: posixSkip }, async () => {
   const { fx, home, tmp } = await project('dlcli-i12');
   const mark = `${MARK}-i12`;
   // 钉住 CODEX_HOME：放一份名单用的空 profile 文件（不含凭据），不读本机真实配置
@@ -150,7 +153,7 @@ test('I12 读覆盖的段（codex）：预检给出的带路线与模型旗标�
   }
 });
 
-test('I5 预检 JSON 的 recalibration.invocations[*].args 照抄即可执行；重跑预检不再报探针过期', { skip }, async () => {
+test('I5 预检 JSON 的 recalibration.invocations[*].args 照抄即可执行；重跑预检不再报探针过期', { skip: posixSkip }, async () => {
   const { fx, home, tmp } = await project('dlcli-i5');
   const mark = `${MARK}-i5`;
   // 把 agy 的结论拨旧（全部登记 CLI 都过期才触发「探针结论未过期」）

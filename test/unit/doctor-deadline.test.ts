@@ -22,8 +22,11 @@ import type { Config, ProbeSection } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
 import { groupsWithMark, killMarked } from '../helpers/proc.js';
 import { isolateEntryScanHome } from '../helpers/entry-scan-home.js';
+import { skipOnWin } from '../helpers/platform.js';
 
 isolateEntryScanHome();
+
+const WIN_SKIP = skipOnWin('POSIX 进程组语义：/bin/sh 的 trap TERM、/bin/ps、shebang 假 CLI；Windows 侧按父链树杀，纯函数快照见 win-section-snapshot.test.ts（双平台统一时补）');
 
 const MARK = `trivium-u-dldl-${process.pid}-${Date.now()}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -107,7 +110,7 @@ async function diskProbe(w: World): Promise<Partial<ProbeSection>> {
   return (YAML.parse(raw) as { probe: Partial<ProbeSection> }).probe;
 }
 
-test('I2 模型调用挂住、后代忽略 TERM、吐半截 JSON：到点退 76 的结果，按组结束不留进程、探针临时目录已删、在跑段不落盘；随后重跑预检仍退 69（GLM-02）', async () => {
+test('I2 模型调用挂住、后代忽略 TERM、吐半截 JSON：到点退 76 的结果，按组结束不留进程、探针临时目录已删、在跑段不落盘；随后重跑预检仍退 69（GLM-02）', { skip: WIN_SKIP }, async () => {
   const w = await world();
   const mark = `${MARK}-i2`;
   /*
@@ -163,7 +166,7 @@ test('I2 模型调用挂住、后代忽略 TERM、吐半截 JSON：到点退 76 
   });
 });
 
-test('I3 不给 --only：第一段到点没探完，后面各段 not_started，且不被说成「尚无探针实现」', async () => {
+test('I3 不给 --only：第一段到点没探完，后面各段 not_started，且不被说成「尚无探针实现」', { skip: WIN_SKIP }, async () => {
   const w = await world();
   const mark = `${MARK}-i3`;
   await pinned(w, 'hang', mark, async () => {
@@ -183,7 +186,7 @@ test('I3 不给 --only：第一段到点没探完，后面各段 not_started，�
   });
 });
 
-test('I4 兜底：段卡在不经 run() 的 await 上，控制器在兜底时长后按已记状态出结果（stuck），不等挂住的 await（AGY-02）', async () => {
+test('I4 兜底：段卡在不经 run() 的 await 上，控制器在兜底时长后按已记状态出结果（stuck），不等挂住的 await（AGY-02）', { skip: WIN_SKIP }, async () => {
   const w = await world();
   const mark = `${MARK}-i4`;
   await pinned(w, 'hang', mark, async () => {
@@ -199,7 +202,7 @@ test('I4 兜底：段卡在不经 run() 的 await 上，控制器在兜底时长
   });
 });
 
-test('I6 段内不带 killTree 的派生（模拟 git 辅助调用）到点也按组结束，按时出结果（CODEX-02）', async () => {
+test('I6 段内不带 killTree 的派生（模拟 git 辅助调用）到点也按组结束，按时出结果（CODEX-02）', { skip: WIN_SKIP }, async () => {
   const w = await world();
   const mark = `${MARK}-i6`;
   await pinned(w, 'hang', mark, async () => {
@@ -218,7 +221,7 @@ test('I6 段内不带 killTree 的派生（模拟 git 辅助调用）到点也�
   });
 });
 
-test('I9 未到点、模型调用秒败：段 finished、hit false，各段 notes 与 rerun 齐全、不带 note（CODEX-06）', async () => {
+test('I9 未到点、模型调用秒败：段 finished、hit false，各段 notes 与 rerun 齐全、不带 note（CODEX-06）', { skip: WIN_SKIP }, async () => {
   const w = await world();
   const mark = `${MARK}-i9`;
   await pinned(w, 'fail', mark, async () => {
@@ -236,7 +239,7 @@ test('I9 未到点、模型调用秒败：段 finished、hit false，各段 note
   });
 });
 
-test('I10 环境段挂住（第一个探针段之前）：到点照样由兜底按时出结果，residue 说明环境段没跑完（代码三审 CODEX-02）', async () => {
+test('I10 环境段挂住（第一个探针段之前）：到点照样由兜底按时出结果，residue 说明环境段没跑完（代码三审 CODEX-02）', { skip: WIN_SKIP }, async () => {
   const w = await world();
   const mark = `${MARK}-i10`;
   await pinned(w, 'hang', mark, async () => {
@@ -278,7 +281,7 @@ test('U7 收尾的一步已在按长预算等待时收到信号：这一步随�
   assert.deepEqual(await c.limitStep(Promise.resolve(7)), { ok: true, value: 7 });
 });
 
-test('I11 不带时限的普通 doctor 也补删已退出进程留下的台账（代码三审 CODEX-04 ≡ GLM-03）', async () => {
+test('I11 不带时限的普通 doctor 也补删已退出进程留下的台账（代码三审 CODEX-04 ≡ GLM-03）', { skip: WIN_SKIP }, async () => {
   const w = await world();
   const saved = process.env['TMPDIR'];
   process.env['TMPDIR'] = w.tmp;
@@ -299,15 +302,95 @@ test('I11 不带时限的普通 doctor 也补删已退出进程留下的台账�
   }
 });
 
-test('不给 deadline：报告不带 deadline 段（行为不变）', async () => {
+test('不给 deadline：报告不带 deadline 段（行为不变）', { skip: WIN_SKIP }, async () => {
   const w = await world();
   const r = await runDoctor({ config: w.cfg, projectRoot: w.root, triviumDir: w.triviumDir, only: 'env', skipModelCalls: true });
   assert.equal(r.deadline, undefined);
 });
 
+// ── I13 台账主人的 pid 被复用（双平台统一时补：Windows 的 pid 复用快，只看 pid 会让旧台账永远被跳过） ──
+
+test('I13 台账记了启动时刻：pid 还活着但核对为不同进程 ⇒ 判复用、照常补删；同一进程、判不了、旧台账没记启动时刻 ⇒ 不碰', async () => {
+  const w = await world();
+  // os.tmpdir()：POSIX 读 TMPDIR，Windows 读 TEMP / TMP——三个都钉住，两平台同一格
+  const keys = ['TMPDIR', 'TEMP', 'TMP'] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  for (const k of keys) process.env[k] = w.tmp;
+  try {
+    const owner = process.ppid; // 活着、又不是本进程
+    const ledger = path.join(w.ledgerDir, `doctor-temp-${owner}.json`);
+    const seed = async (name: string, started: string | undefined): Promise<string> => {
+      const d = path.join(w.tmp, name);
+      await fs.mkdir(d);
+      await fs.writeFile(ledger, JSON.stringify({ pid: owner, ...(started !== undefined ? { started } : {}), dirs: [d] }));
+      return d;
+    };
+    const asked: string[] = [];
+    const matcher = (answer: 'same' | 'different' | 'unverifiable') => async (pid: number, started: string) => {
+      asked.push(`${pid}:${started}`);
+      return answer;
+    };
+
+    for (const answer of ['same', 'unverifiable'] as const) {
+      const d = await seed(`trivium-probe-${answer.slice(0, 3)}A1b2`, 'Mon Oct 20 07:43:46 2026');
+      assert.deepEqual(await sweepDoctorLedgers(w.ledgerDir, { matchStart: matcher(answer) }), []);
+      assert.ok((await fs.stat(d)).isDirectory(), `${answer} ⇒ 当台账主人还在，不碰`);
+      assert.ok((await fs.stat(ledger)).isFile());
+    }
+
+    asked.length = 0;
+    const legacy = await seed('trivium-probe-LeG4cy', undefined);
+    await sweepDoctorLedgers(w.ledgerDir, { matchStart: matcher('different') });
+    assert.ok((await fs.stat(legacy)).isDirectory(), '旧台账没记启动时刻：只看 pid，活着就不碰');
+    assert.deepEqual(asked, [], '没有启动时刻就不做身份核对');
+
+    const reused = await seed('trivium-probe-ReU5ed', 'Mon Oct 20 07:43:46 2026');
+    assert.deepEqual(await sweepDoctorLedgers(w.ledgerDir, { matchStart: matcher('different') }), []);
+    await assert.rejects(fs.stat(reused), 'pid 被复用：台账主人已不在，形态相符的临时目录照常删');
+    await assert.rejects(fs.stat(ledger), '台账随之删掉');
+    assert.deepEqual(asked, [`${owner}:Mon Oct 20 07:43:46 2026`]);
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+});
+
+test('I14 本进程的台账带上规范化启动时刻（供下一次 doctor 识别 pid 复用）', async () => {
+  const w = await world();
+  const { TempDirLedger } = await import('../../src/trivium/doctor-deadline.js');
+  const { makeTempDir, tryRemoveTempDir } = await import('../../src/trivium/util/fsx.js');
+  const { processStartTime } = await import('../../src/trivium/util/exec.js');
+  const keys = ['TMPDIR', 'TEMP', 'TMP'] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  for (const k of keys) process.env[k] = w.tmp; // 建在夹具私有根下，不落系统临时目录
+  const l = new TempDirLedger(w.ledgerDir);
+  l.install();
+  const d = await makeTempDir('trivium-ledgerstart');
+  try {
+    const file = path.join(w.ledgerDir, `doctor-temp-${process.pid}.json`);
+    let parsed: { pid?: number; started?: string | null; dirs?: string[] } = {};
+    for (let i = 0; i < 50 && !(parsed.dirs ?? []).includes(d); i++) {
+      await sleep(20);
+      parsed = JSON.parse(await fs.readFile(file, 'utf8').catch(() => '{}')) as typeof parsed;
+    }
+    assert.equal(parsed.pid, process.pid);
+    assert.ok((parsed.dirs ?? []).includes(d));
+    assert.equal(parsed.started, await processStartTime(process.pid, { canonical: true }), '与身份核对同一形态（规范化启动时刻）');
+  } finally {
+    await tryRemoveTempDir(d, []);
+    await l.finish();
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+});
+
 // ── I8 台账补删（CODEX-03 / GLM-01） ──
 
-test('I8 台账补删：已退出进程的台账里，系统临时目录下、形态相符的目录删掉；不在临时目录下的不删、列进残留；活进程的台账不碰', async () => {
+test('I8 台账补删：已退出进程的台账里，系统临时目录下、形态相符的目录删掉；不在临时目录下的不删、列进残留；活进程的台账不碰', { skip: WIN_SKIP }, async () => {
   const w = await world();
   const saved = process.env['TMPDIR'];
   process.env['TMPDIR'] = w.tmp;

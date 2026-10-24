@@ -229,8 +229,9 @@ test('未登记的审查件被查出来：堵住「把伪审查件搬进阶段�
   const z = await writeArtifact({ layout: l, stage: 'plan', role: 'glm', writer: 'glm', rerunIndex: 1, content: 'c', date: DATE });
   await writeArtifact({ layout: l, stage: 'plan', role: 'claude', writer: 'driver', kind: 'revised', rerunIndex: 1, content: 'd', date: DATE });
 
+  // 登记集合与真实调用方同形：来自 listRecordedRuns，已归一成 `/`（双平台统一时改，win32 上 path.relative 是反斜杠）
   const recorded = new Set(
-    [g, z].map((a) => path.relative(l.archiveRoot, path.join(l.archiveRoot, l.topic, 'plan', a.fileName))),
+    [g, z].map((a) => path.relative(l.archiveRoot, path.join(l.archiveRoot, l.topic, 'plan', a.fileName)).split(path.sep).join('/')),
   );
 
   // 登记齐全时照常通过

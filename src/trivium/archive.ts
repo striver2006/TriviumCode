@@ -395,7 +395,8 @@ export async function checkStageArtifacts(
   if (recordedPaths !== null) {
     for (const i of all) {
       if (!critics.includes(i.parsed.role)) continue; // 只管审核者后缀的工件
-      const rel = path.relative(layout.archiveRoot, path.join(stageDir(layout, stage), i.fileName));
+      // 登记集合是 `/` 形态（artifactRelPosix）：win32 上 path.relative 现算出反斜杠，要同样归一才比得上
+      const rel = artifactRelPosix(path.relative(layout.archiveRoot, path.join(stageDir(layout, stage), i.fileName)));
       if (!recordedPaths.has(rel)) unregistered.push(i.fileName);
     }
   }
@@ -426,6 +427,26 @@ export interface TamperedArtifact {
    * 「解析失败」，而那对「解析成功但契约不认」的记录是错误的排障方向。
    */
   reason?: string;
+}
+
+/**
+ * `run.json.artifacts[].path` 的统一形态：相对归档根、分隔符一律 `/`（双平台统一时定）。
+ *
+ * Windows 线早先按原生分隔符登记（`主题\code\_meta\…`），同一份归档拿到 macOS 上读，
+ * `path.join` 把反斜杠当成文件名的一部分，提交锚把七份在场的工件全报「已丢失」、拦下提交
+ * （2026-10-24 合并两条平台线时实测）。写入端经 `writeRunMeta` 一律记成 `/`，读取端
+ * （`readRunMetaDetailed`、`listRecordedRuns`）把已落盘的反斜杠形态读成 `/`——盘上原件不改（P6）。
+ *
+ * 归一是安全的：主题名禁止 `/` 与 `\`（`naming.ts`），阶段目录与文件名都由编排器生成，
+ * 登记路径里的反斜杠只可能是 Windows 分隔符。`/` 形态在 win32 上 `path.join` 照样认。
+ */
+export function artifactRelPosix(p: string): string {
+  return p.split('\\').join('/');
+}
+
+/** 一组登记条目按 `artifactRelPosix` 归一（不改条目的其它字段） */
+export function normalizeArtifactPaths<T extends { path: string }>(artifacts: readonly T[]): T[] {
+  return artifacts.map((a) => (a.path.includes('\\') ? { ...a, path: artifactRelPosix(a.path) } : a));
 }
 
 /**
@@ -574,7 +595,7 @@ export async function listRecordedRuns(layout: ArchiveLayout): Promise<RecordedR
         out.push({
           run_id: meta.run_id ?? m[1]!,
           stage,
-          artifacts: meta.artifacts ?? [],
+          artifacts: normalizeArtifactPaths(meta.artifacts ?? []),
           status: meta.status ?? 'unknown',
           ...(meta.skipped !== undefined ? { skipped: meta.skipped } : {}),
         });

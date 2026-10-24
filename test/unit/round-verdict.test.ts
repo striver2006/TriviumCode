@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import {
-  ballotOf, decideOutcome, deriveReviewLoop, maxRoundsProblem, nextAction, renderRoundLine, tallyRound,
+  ballotOf, decideOutcome, deriveReviewLoop, maxRoundsProblem, newChainMaxRounds, nextAction, renderRoundLine, tallyRound,
   REVIEW_LOOP_DEFAULT_ROUNDS, REVIEW_LOOP_MAX_ROUNDS, type PrevRoundFacts, type SideBallot,
 } from '../../src/trivium/round-verdict.js';
 import { parseReview } from '../../src/trivium/parse.js';
@@ -21,7 +21,7 @@ import { resolveTopicArgs } from '../../src/trivium/topic-args.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { newRunMeta } from '../../src/trivium/meta.js';
-import { validateRunMeta } from '../../src/trivium/schemas.js';
+import { validateConfig, validateRunMeta } from '../../src/trivium/schemas.js';
 import { isReviewSchemaId, type Ctx, type ReviewVerdict, type ReviewV1, type ReviewV2 } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
 
@@ -136,13 +136,13 @@ const rerunPrev = (over: Partial<PrevRoundFacts> = {}): PrevRoundFacts => ({
 });
 
 test('R10 新链：没有上一轮 / 上一轮不是 rerun / 旧运行 / 已人工表态 ⇒ 第 1 轮，上限取显式值或缺省', () => {
-  assert.deepEqual(deriveReviewLoop(null, null), { ok: true, loop: { round: 1, max_rounds: 3 }, continued: false });
-  assert.deepEqual(deriveReviewLoop(null, 7), { ok: true, loop: { round: 1, max_rounds: 7 }, continued: false });
+  assert.deepEqual(deriveReviewLoop(null, null), { ok: true, loop: { round: 1, max_rounds: 3, max_rounds_source: 'default' }, continued: false });
+  assert.deepEqual(deriveReviewLoop(null, 7), { ok: true, loop: { round: 1, max_rounds: 7, max_rounds_source: 'flag' }, continued: false });
   const proceeded = rerunPrev({ round_verdict: tallyRound({ glm: { verdict: 'pass' } }, { round: 1, max_rounds: 3 }) });
-  assert.deepEqual(deriveReviewLoop(proceeded, 5), { ok: true, loop: { round: 1, max_rounds: 5 }, continued: false });
+  assert.deepEqual(deriveReviewLoop(proceeded, 5), { ok: true, loop: { round: 1, max_rounds: 5, max_rounds_source: 'flag' }, continued: false });
   const legacy: PrevRoundFacts = { run_id: 'x', closed: false };
-  assert.deepEqual(deriveReviewLoop(legacy, null), { ok: true, loop: { round: 1, max_rounds: 3 }, continued: false });
-  assert.deepEqual(deriveReviewLoop(rerunPrev({ closed: true }), 2), { ok: true, loop: { round: 1, max_rounds: 2 }, continued: false });
+  assert.deepEqual(deriveReviewLoop(legacy, null), { ok: true, loop: { round: 1, max_rounds: 3, max_rounds_source: 'default' }, continued: false });
+  assert.deepEqual(deriveReviewLoop(rerunPrev({ closed: true }), 2), { ok: true, loop: { round: 1, max_rounds: 2, max_rounds_source: 'flag' }, continued: false });
 });
 
 test('R11 续链：上一轮 rerun 且未表态 ⇒ 轮次 +1、上限沿用链首；显式给相同值也行，给不同值拒绝', () => {
@@ -151,6 +151,46 @@ test('R11 续链：上一轮 rerun 且未表态 ⇒ 轮次 +1、上限沿用链�
   const r = deriveReviewLoop(rerunPrev(), 5);
   assert.equal(r.ok, false);
   if (!r.ok) assert.match(r.message, /上限沿用 3，不能中途改成 5/);
+});
+
+// ── 轮次上限配置项（双平台统一时由 Windows 线吸收 review.plan_rounds / code_rounds） ──
+
+test('R21 新链上限取值顺序：旗标 → 配置 → 缺省 3，并记下来源', () => {
+  assert.deepEqual(newChainMaxRounds(4, 6), { max_rounds: 4, max_rounds_source: 'flag' }, '旗标优先于配置');
+  assert.deepEqual(newChainMaxRounds(null, 6), { max_rounds: 6, max_rounds_source: 'config' }, '配置优先于缺省');
+  assert.deepEqual(newChainMaxRounds(null, null), { max_rounds: REVIEW_LOOP_DEFAULT_ROUNDS, max_rounds_source: 'default' });
+  assert.deepEqual(deriveReviewLoop(null, null, 6), { ok: true, loop: { round: 1, max_rounds: 6, max_rounds_source: 'config' }, continued: false });
+  assert.deepEqual(deriveReviewLoop(null, 2, 6), { ok: true, loop: { round: 1, max_rounds: 2, max_rounds_source: 'flag' }, continued: false });
+});
+
+test('R22 续链不读配置：上限与来源沿用链首；链首没有来源（旧运行）就不补', () => {
+  const head = rerunPrev({ review_loop: { round: 1, max_rounds: 3, max_rounds_source: 'config' } });
+  assert.deepEqual(deriveReviewLoop(head, null, 8), { ok: true, loop: { round: 2, max_rounds: 3, max_rounds_source: 'config' }, continued: true },
+    '配置在链中途改成 8，不影响还剩几轮');
+  assert.deepEqual(deriveReviewLoop(rerunPrev(), null, 8), { ok: true, loop: { round: 2, max_rounds: 3 }, continued: true });
+});
+
+test('R23 配置键 review.plan_rounds / code_rounds 按 1～10 校验，缺席合法', () => {
+  const cfg = defaultConfig();
+  assert.equal(cfg.review.plan_rounds, undefined, '缺省不写进配置：init 冻进项目配置的整份缺省里没有它，来源才分得出「缺省」');
+  assert.deepEqual(validateConfig(cfg), []);
+  assert.deepEqual(validateConfig({ ...cfg, review: { ...cfg.review, plan_rounds: 5, code_rounds: 10 } }), []);
+  for (const bad of [0, 11, 2.5]) {
+    assert.ok(validateConfig({ ...cfg, review: { ...cfg.review, code_rounds: bad } }).length > 0, `code_rounds=${bad} 要被拒`);
+  }
+});
+
+test('R24 run.json review_loop.max_rounds_source 只认三个值，缺席合法（旧运行）', () => {
+  const base = newRunMeta({
+    runId: '20261024T000000Z', topic: 'T', stage: 'plan', rerunIndex: 1, command: 'fixture-only',
+    promptHint: null, taskGoal: null, criticsSelected: ['gemini', 'glm'],
+    treeHash: 'h', gitHead: null, dirty: false, subjectSha256: 's', denyPaths: [], driftPolicy: 'warn',
+  });
+  for (const src of ['flag', 'config', 'default'] as const) {
+    assert.deepEqual(validateRunMeta({ ...base, review_loop: { round: 1, max_rounds: 3, max_rounds_source: src } }), []);
+  }
+  assert.deepEqual(validateRunMeta({ ...base, review_loop: { round: 1, max_rounds: 3 } }), []);
+  assert.ok(validateRunMeta({ ...base, review_loop: { round: 1, max_rounds: 3, max_rounds_source: 'cli' } }).length > 0);
 });
 
 test('R19 上一轮停在人工审核：未表态 ⇒ 拒绝起链（由归档正本把守）；已表态 ⇒ 新链', () => {
@@ -166,7 +206,7 @@ test('R19 上一轮停在人工审核：未表态 ⇒ 拒绝起链（由归档�
   }
   const undetermined = rerunPrev({ round_verdict: tallyRound({ glm: { excluded: 'failed' } }, { round: 1, max_rounds: 3 }) });
   assert.equal(deriveReviewLoop(undetermined, null).ok, false, '有效结论不足的第 1 轮同样停住');
-  assert.deepEqual(deriveReviewLoop({ ...held, closed: true }, null), { ok: true, loop: { round: 1, max_rounds: 3 }, continued: false });
+  assert.deepEqual(deriveReviewLoop({ ...held, closed: true }, null), { ok: true, loop: { round: 1, max_rounds: 3, max_rounds_source: 'default' }, continued: false });
 });
 
 test('R20 run.json 的 round_verdict 两组键按注册表与入选集合校验', () => {
@@ -253,6 +293,19 @@ test('R15 命令 A：两阶段分别指定；--max-rounds 同时作用、专属�
   const c = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做点事', '--topic', 'T'] });
   assert.deepEqual(c.max_rounds, { plan: null, code: null });
   assert.equal(c.task_goal, '做点事', '旗标不被吞进正文');
+  assert.deepEqual(c.max_rounds_effective, { plan: 3, code: 3 }, '播报用的生效值：都没写即缺省 3');
+});
+
+test('R25 命令 A 的播报生效值按「旗标 → 配置 → 缺省」算，透传值仍只认旗标', async () => {
+  const ctx = await fakeCtx();
+  ctx.config.review.plan_rounds = 5;
+  ctx.config.review.code_rounds = 7;
+  const a = await resolveTopicArgs({ ctx, scope: 'all', rawArgs: ['做点事', '--topic', 'T', '--max-rounds-code', '2'] });
+  assert.deepEqual(a.max_rounds, { plan: null, code: 2 }, '透传只认旗标：null 不传，起链时由编排器读配置，来源才记得准');
+  assert.deepEqual(a.max_rounds_effective, { plan: 5, code: 2 });
+  await fs.writeFile(path.join(ctx.projectRoot, 'a.ts'), 'export const a = 2;\n');
+  const b = await resolveTopicArgs({ ctx, scope: 'code', rawArgs: ['看安全', '--topic', 'T'] });
+  assert.deepEqual(b.max_rounds_effective, { plan: null, code: 7 }, '本命令不涉及的阶段为 null');
 });
 
 test('R16 越界退 64；命令 C 只认 --max-rounds、写阶段专属旗标退 64', async () => {

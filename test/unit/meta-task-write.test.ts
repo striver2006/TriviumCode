@@ -104,7 +104,7 @@ test('U1 · task.json 的位置是目录：拒写退 2、目录原样', async ()
   assert.deepEqual(await fs.readdir(taskFileOf(ctx)), ['sentinel']);
 });
 
-test('U1 · 权限 000：拒写退 2、文件原样', { skip: process.getuid?.() === 0 ? 'root 读得动 000 文件' : false }, async () => {
+test('U1 · 权限 000：拒写退 2、文件原样', { skip: process.getuid?.() === 0 ? 'root 读得动 000 文件' : process.platform === 'win32' ? 'NTFS 上 chmod 000 不拦读（双平台统一时补）' : false }, async () => {
   const ctx = await fakeCtx();
   const t = emptyTask(TOPIC);
   t.approvals.push({ at: '2026-10-22T00:00:00.000Z', stage: 'plan', run_id: 'R1', decision: 'approved', reason: null });

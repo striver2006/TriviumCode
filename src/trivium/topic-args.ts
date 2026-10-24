@@ -18,7 +18,7 @@ import { assertFlagValuesGiven, assertTierFlags, collectTierFlags, nativeFlagNam
 import { validateTopic, parseArtifactName } from './naming.js';
 import { EXIT, TriviumError } from './exit-codes.js';
 import { exists } from './util/fsx.js';
-import { maxRoundsProblem } from './round-verdict.js';
+import { maxRoundsProblem, newChainMaxRounds } from './round-verdict.js';
 import { isReviewArtifact } from './archive.js';
 import { diffExcludePrefixes } from './code-stage.js';
 import type { PreflightScope } from './preflight.js';
@@ -276,6 +276,13 @@ export interface TopicResolution {
    * 命令 A 两项都可能有值；B 只有 plan、C 只有 code；bug 两项恒 null。
    */
   max_rounds: { plan: number | null; code: number | null };
+  /**
+   * 新起一条轮次链时各阶段实际生效的上限（双平台统一时加）：本次旗标 → 配置 `review.plan_rounds` /
+   * `code_rounds` → 缺省 3，与 `review --start` 起链同一个函数（`newChainMaxRounds`）。
+   * 只供命令 A 开场播报「最多几轮」；透传仍按 `max_rounds`（null 不传，起链时由编排器读配置，来源才记得准）。
+   * 本命令不涉及的阶段、以及 bug 阶段为 null。
+   */
+  max_rounds_effective: { plan: number | null; code: number | null };
   /**
    * 当轮 Driver（`--driver <id>`，M9 第 5 步）。缺省即注册表缺省值。
    *
@@ -752,6 +759,7 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     notes.push('命令 A：原稿将在 S1 由 Driver 起草，此时尚不存在');
   }
 
+  const maxRounds = resolveMaxRounds(scope, named);
   return {
     topic,
     prompt_hint: promptHint,
@@ -768,7 +776,11 @@ export async function resolveTopicArgs(input: ResolveInput): Promise<TopicResolu
     only,
     critics,
     allow_single: allowSingle,
-    max_rounds: resolveMaxRounds(scope, named),
+    max_rounds: maxRounds,
+    max_rounds_effective: {
+      plan: scope === 'all' || scope === 'plan' ? newChainMaxRounds(maxRounds.plan, ctx.config.review.plan_rounds ?? null).max_rounds : null,
+      code: scope === 'all' || scope === 'code' ? newChainMaxRounds(maxRounds.code, ctx.config.review.code_rounds ?? null).max_rounds : null,
+    },
     driver,
     driver_enabled: enabledAsDriver,
     driver_model: named['driver-model'] ?? null,

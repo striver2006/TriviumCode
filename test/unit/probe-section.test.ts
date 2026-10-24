@@ -11,6 +11,9 @@ import {
   abortProbeSections, countLiveGroupMembers, groupSnapshotFrom, newProbeAbortToken, newProbeSection, run, terminateProbeSectionGroups, withProbeSection,
 } from '../../src/trivium/util/exec.js';
 import { killMarked } from '../helpers/proc.js';
+import { skipOnWin } from '../helpers/platform.js';
+
+const WIN_SKIP = skipOnWin('POSIX 进程组语义：/bin/sh 的 trap TERM、/bin/ps、shebang 假 CLI；Windows 侧按父链树杀，纯函数快照见 win-section-snapshot.test.ts（双平台统一时补）');
 
 const MARK = `trivium-u-psec-${process.pid}-${Date.now()}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -34,7 +37,7 @@ function cleanup(tag: string): void {
   killMarked(`${MARK}-${tag}`);
 }
 
-test('U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGKILL，最终组内无成员（计划三审 CODEX-01）', async () => {
+test('U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGKILL，最终组内无成员（计划三审 CODEX-01）', { skip: WIN_SKIP }, async () => {
   const scope = newProbeSection('u1a');
   try {
     // 组长 sh 前台等 sleep；子 shell 忽略 TERM 并拉起 sleep（被忽略的信号跨 exec 保持忽略）
@@ -54,7 +57,7 @@ test('U1a 组长服从 SIGTERM、后代忽略：按非僵尸成员数升级 SIGK
   }
 });
 
-test('U1b 组长在到点前已自然退出、后代仍在：到点时照样按组结束后代', async () => {
+test('U1b 组长在到点前已自然退出、后代仍在：到点时照样按组结束后代', { skip: WIN_SKIP }, async () => {
   const scope = newProbeSection('u1b');
   try {
     const body = `(trap "" TERM; sleep 600; : "${MARK}-u1b") & exit 0`;
@@ -72,7 +75,7 @@ test('U1b 组长在到点前已自然退出、后代仍在：到点时照样按�
   }
 });
 
-test('U1b′ 组内已无成员的组不发信号（组号可能已被复用）', async () => {
+test('U1b′ 组内已无成员的组不发信号（组号可能已被复用）', { skip: WIN_SKIP }, async () => {
   const scope = newProbeSection('u1b2');
   await withProbeSection(scope, () => run('/bin/sh', ['-c', `: "${MARK}-u1b2"`]));
   const sent: number[] = [];
@@ -81,7 +84,7 @@ test('U1b′ 组内已无成员的组不发信号（组号可能已被复用）'
   assert.deepEqual(sent, []);
 });
 
-test('U1d 组长已退出、而进程表里有 pid 等于组号的活进程：判组号已被复用，不发信号，列进 reused（代码三审 CODEX-01）', async () => {
+test('U1d 组长已退出、而进程表里有 pid 等于组号的活进程：判组号已被复用，不发信号，列进 reused（代码三审 CODEX-01）', { skip: WIN_SKIP }, async () => {
   const scope = newProbeSection('u1d');
   await withProbeSection(scope, () => run('/bin/sh', ['-c', `: "${MARK}-u1d"`]));
   const pgid = scope.groups[0]!.pgid;
@@ -113,7 +116,7 @@ test('U1e 快照解析：只数非僵尸成员，组号下有没有 pid 等于�
   assert.deepEqual(groupSnapshotFrom(noLeader, 100), { members: 1, leaderPresent: false });
 });
 
-test('U5 段作用域内不带 killTree 的 run() 也自成一组、进段级记录并计数（计划三审 CODEX-02）', async () => {
+test('U5 段作用域内不带 killTree 的 run() 也自成一组、进段级记录并计数（计划三审 CODEX-02）', { skip: WIN_SKIP }, async () => {
   const scope = newProbeSection('u5');
   const r = await withProbeSection(scope, () => run('/bin/sh', ['-c', 'ps -o pgid= -p $$']));
   assert.equal(scope.launches, 1);
@@ -125,7 +128,7 @@ test('U5 段作用域内不带 killTree 的 run() 也自成一组、进段级记
   assert.equal(outside.launches, 0);
 });
 
-test('U1c 中止派生之后：同一令牌下的段内 run() 立即兑现合成结果、不派生；段外与别的令牌照常', async () => {
+test('U1c 中止派生之后：同一令牌下的段内 run() 立即兑现合成结果、不派生；段外与别的令牌照常', { skip: WIN_SKIP }, async () => {
   const token = newProbeAbortToken();
   const s = newProbeSection('x', token);
   abortProbeSections(token);

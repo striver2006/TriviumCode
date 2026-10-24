@@ -263,7 +263,12 @@ export function taskGoalAppendix(stage: Stage, rawGoal: string | null | undefine
  * 上一轮取本阶段最近一次**算数**的运行（`previousRoundFacts`）；它判了 `rerun` 且没被人工表态 / 作废
  * （`humanDecidedThisRound`，含 abandoned）才续链。旧一轮未裁决就重跑会在后面的闸门比较-交换处被拦，这里不重复判。
  */
-async function resolveReviewLoop(layout: ArchiveLayout, stage: Stage, requested: number | null): Promise<ReviewLoop | undefined> {
+async function resolveReviewLoop(
+  layout: ArchiveLayout,
+  stage: Stage,
+  requested: number | null,
+  configured: number | null,
+): Promise<ReviewLoop | undefined> {
   if (stage === 'bug') {
     if (requested !== null) {
       throw usageError('--max-rounds 只用于计划审与代码审（多轮评审循环，EV-247）；根因审不进循环，请去掉这个旗标。');
@@ -271,7 +276,7 @@ async function resolveReviewLoop(layout: ArchiveLayout, stage: Stage, requested:
     return undefined;
   }
   const prev = await previousRoundFacts(layout, stage);
-  const d = deriveReviewLoop(prev, requested);
+  const d = deriveReviewLoop(prev, requested, configured);
   if (!d.ok) throw usageError(d.message);
   if (d.continued) {
     say(`· 上一轮（run ${prev!.run_id}）判不通过，本轮是同一条轮次链的第 ${d.loop.round}/${d.loop.max_rounds} 轮`);
@@ -961,7 +966,8 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
    */
   const rerunIndex = await resolveRerunIndex(ref.layout, stage, driver);
   // 轮次链（EV-247）：在分配 run_id 之前判，链中途改上限之类的拒绝不留任何东西
-  const reviewLoop = await resolveReviewLoop(ref.layout, stage, opts.maxRounds ?? null);
+  const configuredRounds = stage === 'plan' ? cfg.review.plan_rounds : stage === 'code' ? cfg.review.code_rounds : undefined;
+  const reviewLoop = await resolveReviewLoop(ref.layout, stage, opts.maxRounds ?? null, configuredRounds ?? null);
   /*
    * 审批正本读不出就不开跑（EV-248 计划 r2 §三.5）：下面的骨架登记、任务目标落盘、纯文档跳过的收尾都写正本，
    * 写入口会拒写，但那时闸门、brief、骨架与运行目录都已落下。判在分配 run_id 之前，零工件。
