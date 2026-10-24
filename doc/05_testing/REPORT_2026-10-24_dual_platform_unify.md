@@ -27,10 +27,12 @@
 | 合并后第一次 | 3955 | 3937 | 8 | 10 |
 | 按根因修完 5 格后 | 3955 | 3945 | 0 | 10 |
 | 四批改动完成后 | 3971 | 3960 | 1 | 10 |
+| Windows 收口（1.3.1，`fa09ce3c`）后回 macOS 复跑，两次 | 3975 | 3965 | 0 | 10 |
 
 跳过的 10 例里 8 例是只在 Windows 上跑的用例，另 2 例是基线就有的跳过。
-最后一行的 1 例失败是第 2 批漏改的一处断言（`plan-final-gate` I8 按两个字段深比较轮次链），补上来源字段后单跑 8/8 通过。
+「四批改动完成后」那行的 1 例失败是第 2 批漏改的一处断言（`plan-final-gate` I8 按两个字段深比较轮次链），补上来源字段后单跑 8/8 通过。
 写完本报告后的两次收口全量读数记在提交说明里。
+最后一行两次读数相同，比合并后的 3974 例多出的 1 例是 Windows 收口时 `retention` 新增的 `repoId` 回归锚（POSIX 上走条件断言分支）。
 
 ## 3. 合并后在 macOS 上红的格与根因
 
@@ -78,8 +80,12 @@ windows 线是在 Windows 上开发的，从未在 macOS 上跑过全量；下�
 > 剩余红格为负载底噪（与 1.2.8 登记的长尾族同族，并发 6 时降至 3 红，红格逐轮不重叠、单跑全绿）。
 > `doctor --deadline-s 30` 已验（退 76、段状态如实、无残留、台账清、`.cmd` 重跑命令 PowerShell 可执行）；
 > macOS 侧需对共享路径改动全量复跑一次确认。
+>
+> 2026-10-24 macOS 复跑收口（`fa09ce3c`，1.3.1，读数见 `evidence/macos-unify-20261024/`）：全量前台串行两次均 3975 / 3965 / 0 / 10、
+> 退出码 0；`doctor --only claude` 重跑通过（零 blocker），`--driver codex --critics claude` 预检 12 项全过。
+> doctor 首跑退 69，是一个新发现的缺陷，见下文第二条。**两平台实测全部收口。**
 
-- **Windows 上仍待实测的（2026-10-24 晚二轮收口后仅剩）**：无——`doctor --deadline-s 60` 真实探针中途到点实测通过（退 76、段状态如实、进程零残留、台账清，且 pid 复用判定路径真实触发并被正确处置）；claude 探针已重跑（新指纹含 `settingsEnvSha256`，12 键网关 env 生效、零 blocker，`--driver codex --critics claude` 预检全绿）；网关凭据三形态实测全部生效（env 注入形态兼保只读不变量，定为替换方向，读数见 `evidence/win-unify-20261024/gateway-credential-test.txt`）。**macOS 侧仍需**：全量复跑一次确认共享路径改动（见 Bug 清单 §3.1 第 13 条清单）+ 重跑一次 `doctor --only claude`（指纹键变化）。
-- **真实 CLI 与配额**。本次不花配额。合并后 claude 路线指纹多了 `settingsEnvSha256` 键，两平台各需重跑一次 `doctor --only claude`（macOS 侧亦未做）。
+- **Windows 上仍待实测的（2026-10-24 晚二轮收口后仅剩）**：无——`doctor --deadline-s 60` 真实探针中途到点实测通过（退 76、段状态如实、进程零残留、台账清，且 pid 复用判定路径真实触发并被正确处置）；claude 探针已重跑（新指纹含 `settingsEnvSha256`，12 键网关 env 生效、零 blocker，`--driver codex --critics claude` 预检全绿）；网关凭据三形态实测全部生效（env 注入形态兼保只读不变量，定为替换方向，读数见 `evidence/win-unify-20261024/gateway-credential-test.txt`）。**macOS 侧（2026-10-24 复跑后闭合）**：全量两次 3975 / 3965 / 0 / 10 全绿，Bug 清单 §3.1 第 13 条列的共享路径改动在 POSIX 上零回归（`lock-cross-process` 七格、`retention` 含新增的 `repoId` 回归锚全绿）；`doctor --only claude` 已重跑，见下一条。
+- **真实 CLI 与配额**。合并本身不花配额。合并后 claude 路线指纹多了 `settingsEnvSha256` 键，两平台各需重跑一次 `doctor --only claude`：Windows 侧见上；macOS 侧 2026-10-24 经用户同意重跑。macOS 上没开 `settings_env_source`，该键取 null。**首跑退 69**，唯一 blocker 是「Claude 路线在探测期间发生变化」：本机 claude 当天早上刚由 2.1.309 自升级到 2.1.310，而 windows 线带进来的 claude 探针首跑引导把新探针写回了 doctor 用来做前后指纹比对的同一个配置对象，指纹里的版本前后取值不同，必判变化。这是新发现的缺陷：随合并从 windows 线（`0e44120a`）进入 main，与 Windows 收口提交 `fa09ce3c` 的共享改动无关，在 Windows 上同样会发生（那晚版本没变所以没撞到）。登记 Bug 清单 §3.1 第 15 条、BACKLOG EV-254，未修。**重跑退 0**：零 blocker、native 路线按新指纹重新登记（只读旗标四项、目录 deny 三工具实测可用、7 臂取证无残留）。随后的预检 12 项全过（含「Claude Code 可调用 2.1.310」与「已认证」），形态与 Windows 侧逐项一致。唯一一条 warning「被拒操作留痕未证实」是这次模型没去调写工具、留痕能力记为未测，不拦。两次 doctor 与预检的 JSON 都在 `evidence/macos-unify-20261024/`，首跑留痕带 `-run1` 后缀。
 - **后台安全审查的两条**（均在合并进来的 Windows 线代码里）：`.cmd` 垫片参数经 cmd.exe 重新解析可拼出额外命令，已改为含 cmd 元字符即拒绝拉起，判定函数有两平台用例 `cmd-shim-args.test.ts`；**Windows 实测补充**：本机四家 CLI 全走原生 `.exe`/`.cjs` 入口、无一经垫片，拦截未误伤。claude 网关凭据经 `--settings` 内联进子进程命令行，未改，方案与实测计划已出（Bug 清单 §3.1 第 14 条）。
 - **`doctor-unused-overrides` U2** 用 shebang 假 CLI，分叉前即如此、windows 线未加跳过，本次未改——**2026-10-24 Windows 全量实跑该格绿**，不再列为残余。
