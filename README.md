@@ -1,6 +1,6 @@
 # TriviumCode（三方智鉴）
 
-面向 macOS 与 Windows 的「主攻 + 多方独立审查」编程 Agent 流水线。当前产品版本 **1.3.0**（1.1.0 新增 Windows 原生支持；1.3.0 起 macOS 与 Windows 为同一套代码），支持 Claude Code、Codex、Antigravity、ZCode 四家 Agent 担任 Driver 或审核者；每轮选择 1～3 家审核者，Driver 不审自己的变更。
+面向 macOS 与 Windows 的「主攻 + 多方独立审查」编程 Agent 流水线。当前产品版本 **1.3.1**（1.1.0 新增 Windows 原生支持；1.3.0 起 macOS 与 Windows 为同一套代码），支持 Claude Code、Codex、Antigravity、ZCode 四家 Agent 担任 Driver 或审核者；每轮选择 1～3 家审核者，Driver 不审自己的变更。
 
 Driver 负责起草、代码和逐条裁决；本地 Node 编排器负责预检、后台调度、证据核验、归档、闸门和真实编译测试。审查在工作树中进行，采用检测与留痕机制；护栏按载体分为 L1/L2，具体边界见使用手册。
 
@@ -22,7 +22,7 @@ Driver 负责起草、代码和逐条裁决；本地 Node 编排器负责预检�
 
 运行需要 macOS 或 Windows（10/11，Git for Windows 为硬前置）、Node.js ≥18、Git ≥2.20，以及实际选用的 Agent CLI 和登录。源码构建与测试使用 Node.js ≥22。Windows 侧进程身份/终止走系统 PowerShell 与 taskkill，`trivium init` 同时生成 sh 与 `.cmd` 两种入口 wrapper；边界与残余见 Bug 清单「Windows 移植残余」。Linux、WSL 本版未验收。
 
-收到预构建包时，核对 `.sha256`、完整解压后运行：
+收到预构建包时，核对 `.sha256`、完整解压后运行（Windows 可直接运行包内 `一键安装.cmd`；下列命令在 Windows 上请在 Git Bash 里执行，PowerShell / cmd 的写法见部署手册 §1b）：
 
 ```sh
 node scripts/install-check.mjs
@@ -60,7 +60,7 @@ npm run check
 npm run release
 ```
 
-`check` 执行类型检查、构建和全量测试；`release` 构建后生成 `dist/releases/TriviumCode-1.0.0-macos.tar.gz`、校验文件及解包目录。正式包要求工作树干净，验证 CLI 版本与构建输入指纹。提交前预览：先 `npm run build`，再 `node scripts/package-release.mjs --candidate`。
+`check` 执行类型检查、构建和全量测试；`release` 构建后按**当前平台**生成安装包、校验文件及解包目录：macOS 上为 `dist/releases/TriviumCode-<版本>-macos.tar.gz`，Windows 上为 `dist/releases/TriviumCode-<版本>-windows-x64.zip`，两个平台的包要分别在对应平台上构建。完整手册 PDF 由 `node scripts/build-manual-pdf.mjs` 生成，目前只能在 Windows 上跑（用 Edge 无头模式渲染）。正式包要求工作树干净，验证 CLI 版本与构建输入指纹。提交前预览：先 `npm run build`，再 `node scripts/package-release.mjs --candidate`。
 
 分发包包含运行时、四家入口、carriers、中文文档、许可、版本来源和文件哈希，不包含账号、本机配置、运行目录、审查原件或 node_modules。源码和历史测试原件请在本仓查阅。未提供自带 Node 的 App 或 Apple 签名/公证。
 

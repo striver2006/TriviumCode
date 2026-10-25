@@ -1,15 +1,11 @@
 # RUNBOOK：双审流水线运行期故障处置
 
+> **读者**：本文是运行期故障处置的完整参考，正文按 POSIX shell 与 macOS 写；Windows 上的差异见「十一、Windows 上的差异」，命令改写见[稳定版部署手册](./稳定版部署手册.md) §1b。原先放在开头的三段历史取证记录（2026-10-12 前后）已逐字移到文末附录。
+
 > 稳定版文档整理（2026-10-18）：本文保留运行期故障与历史取证记录；当前新机安装、升级和卸载见[中文手册](./稳定版部署手册.md)。历史采样中的“尚未完成”等措辞不代表当前统一状态；M11/M12 当前结论以主设计台账及报告末节为准。
 
-2026-10-12第27C普通批准采样：run20261011T212239Z三审有效、零漂移，三意见2暂缓1驳回，gate/await通过、停点业务摘要0；按Bob本轮明确委托由Codex批准code，session=null。两项准入判据仍未采用；新r22保存160份r21原件hash和具体27臂/4跳认证决策方案。下文26B阶段状态按当时采样解释，原false/未测、停止批次和官方Claude待订阅保持，M11前置未完成。
-
-26B已有效审查并按Bob普通委托批准完整r30（SHA 9c457711d4146644d9dedd976cbdf854128283df0802ddf32ba6f4bc0cf75d5c），新CLI inline defaultMode/精确deny差异、有界1..32逐跳原值/hash及v3关闭消费者规范见[设计v1.3.158当前合同](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-inline-mode3-contract)。旧v2/mode2正文按历史采样保留；v3/auth两项独立采用仍未批准，原标准false/未测不改。实施采样：Qwen max一次真实CLI取得default与受控机制事实，事后proof错误使首批停止；修正后只读复算通过，原停止保留，k3及其他组合未启动。27C预检正常刷新三项认证时间，4跳/27臂/378组件/91引用重验通过，当前6a2c6213 canonical0通过/12未测。r21实际消费者先核15依赖及独立批准，忽略调用方事实布尔值，再重验原件/完整指纹/scope；候选报告消费与产品准入分列，实际两个候选缺批准保持关闭，正向实际独立批准消费未测。准入734/742、review353/363全部完成，正式26/27，27C尚未启动，M11前置未完成。
-
-25B后取证执行见[设计v1.3.157](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-evidence-guard-contract)与r19批准检查点。首个auto/default失败与旧原列保留；mode2绑定本次run/定稿hash/具名敏感批准及脚本/来源指纹，任一失败停止。限额/关闭/迟到错误须聚合，清理全部尝试；启动清单和硬上限事前发布，普通扩容不批准判据采用。
-
 面向**已经装好并在用**的场景。装不上、跑不通第一条任务属于安装问题，看
-[`QUICKSTART.md`](../07_manuals/QUICKSTART.md) 第 1、3 节；本文只管**跑起来之后卡住了**。
+[稳定版部署手册](./稳定版部署手册.md)（源码开发者看 [`QUICKSTART.md`](../07_manuals/QUICKSTART.md) 第 1、3 节）；本文只管**跑起来之后卡住了**。
 
 > 处置总原则：**先 `trivium status` 看清楚状态，再动手。**
 > 本流水线大量状态（闸门、锁、留痕）是故意做成难以绕过的（设计原则 P5「不可伪装」、
@@ -280,6 +276,7 @@ skill 照预检 JSON 的 `recalibration.invocations` 逐家前台跑 `doctor --o
 | 自动校准后停下，doctor 退 76，`deadline.sections` 里某家 `in_progress` | 时限内没探完：按该段的 `rerun` 在终端单独跑。会话里拉起的厂商 CLI 有过间歇挂满单次探针超时的先例（EV-243），终端里通常能跑完。doctor 若是被载体工具超时杀掉的（没有 JSON 输出、退出码不是 76），看载体上限：Claude Code 缺省 600 秒，须设 `BASH_MAX_TIMEOUT_MS=960000`（缺省时限 900 秒加 60 秒余量），或把 `preflight.recalibrate_deadline_s` 调到上限减 60 秒以下 |
 | doctor 输出 `deadline.residue` 里有「探针临时目录 … 删除失败」或「台账里的 … 不在系统临时目录下」 | 前者按路径手工删（可能有凭据副本）；后者是台账被改过或路径异常，核对后手工处理，编排器不删。台账在 `<run_root>/doctor-temp-<pid>.json`，宿主强杀 doctor 时留下的条目由下一次 doctor 启动时补删 |
 | 厂商 CLI 升级后行为变了 | 重跑 `trivium doctor`。实现代码只读探针结论、不硬编码设计文档列出的命令行（设计原则 P7），所以重探通常就够 |
+| `doctor`（含 `--only claude` 与自动校准那一轮）退 69，唯一的阻断项是「Claude 路线在探测期间发生变化」 | EV-254 已修（随 1.3.2 发版）：claude CLI 升级后或新项目首跑不再误判。仍在用更早的构建时，先比一眼 `claude --version` 与探针记录的版本——不同就是这条，再跑一次 doctor 即过（会再花一次配额）；版本相同才说明探测期间包装器、profile 文件或网关 env 真的变了，核对后再重跑 |
 | 配额打满 | 换模型档位，或 `--allow-single` 单侧跑（记为降级） |
 | 未认证 | 按厂商自己的登录流程处理。**凭据不经编排器**，配置里只放模型 slug 与路径 |
 | 探针结论过期 | `.trivium/config.local.yaml` 的 `probe.generated_at`，重跑 `doctor` 刷新 |
@@ -526,6 +523,29 @@ Hook 与预检只做**存在性**检查：wrapper（`.trivium/bin/trivium`）内
 > result保持deny_pass/per_file_deny原字段，新增deny_evidence伴随事实；历史原false和原件不回算，summary判据不改。新目录文本Read回放及Grep模拟不是新模型能力，Grep仍须实际调用与完整配对。Codex冻结函数/原写标准、生产probe/adapter、Schema、版本/effort和全局配置保持。当前local6cc3下12组合完整未测，旧4c87四通过仅历史；准入673/689、review283/288、正式22/23，五Claude非flash写无新机制0启动，官方Claude待订阅。component/restricted判据替代未采用，仍须Bob独立明确批准；详见[设计契约](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-directory-contract)，M11前置仍未完成。
 
 
+## 十一、Windows 上的差异
+
+本文正文按 POSIX shell 与 macOS 写。Windows（1.1.0 起原生支持，1.3.0 起与 macOS 同一套代码）上，下面几处与正文不同；完整残余见[现存 Bug 与未完成工作清单](../08_project/现存Bug与未完成工作清单.md) §3.1。
+
+- **命令写法**：正文里的 `trivium …` 指项目内 wrapper。Git Bash 里用 `./.trivium/bin/trivium …`；PowerShell / cmd 里用 `.\.trivium\bin\trivium.cmd …`。doctor 与预检给出的终端重跑命令（如 `deadline.sections[].rerun`）在 Windows 上就是 `.cmd` 形态。其余改写（`unset`、`~`）见[部署手册](./稳定版部署手册.md) §1b。
+- **进程与取消**：没有进程组，编排器按父链认本次拉起的进程、结束时用 `taskkill /T` 树杀。厂商 CLI 没有跨进程的优雅取消，`review --cancel` 之后凭据副本的抹除靠 worker 读到 `cancel.requested` 标记后自己收尾（§3.1 第 3 条）。
+- **进程身份判不了**：身份经 PowerShell 枚举进程表取得，机器负载很高时偶发枚举失败，编排器会再试一次；仍失败时状态写「判不了」，不要当成进程已结束，按 §二「先判断是真在跑还是遗留锁」处理。
+- **codex 当审核者**：Windows 上 codex 的 `-s read-only` 拦不住写，要用它当审核者须在本机 `config.local.yaml` 开 `agents.codex.readonly_enforcement: prompt-only`（部署手册 §1a）。这时防线是事后轨迹与漂移核验：检出写入，该侧本轮结论作废（§3.1 第 8 条）。
+- **第三方网关**：claude 走 CC Switch 时在本机层开 `agents.claude.settings_env_source: user_settings`（部署手册 §1a）；开启后的凭据暴露面见 §3.1 第 14 条。
+- **权限位**：凭据副本的 0600 在 NTFS 只映射成只读位，隔离靠运行根所在的用户目录边界（§3.1 第 7 条）。
+- **ZCode 装在非缺省盘**：经本机层的 `agents.glm.entry` 指路（§3.1 第 9 条）。
+- **开发者跑全量测试**：Windows 上全量会有少量随负载出现的红格，单跑能过，已登记为负载底噪（§3.1 第 6、13 条）；判断是否引入回归时以单跑与基线对照为准。
+
 ## 第24B获批集中取证边界（2026-10-12）
 
 B层全部启动计admission池并按controlled-mechanism类别分列，review独立计正式审查。当前731/742、313/318、正式24/25；pilot逻辑2预计4硬6，后续三组合预计6硬8。事前发布具体脚本/hash、目标/实际模型、预计/硬/累计池；不足先扩容留痕。桥接/模式/工具面/配对/泄漏/清理任一未知失败停止，不循环调参。 完整规范见[设计v1.3.156](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-controlled-contract)；执行结果以恢复报告和r17证据为准，不能由剧本或计划宣称已测。
+
+---
+
+## 附：历史取证记录（2026-10-12 前后，2026-10-25 自文首移来，原文未改）
+
+2026-10-12第27C普通批准采样：run20261011T212239Z三审有效、零漂移，三意见2暂缓1驳回，gate/await通过、停点业务摘要0；按Bob本轮明确委托由Codex批准code，session=null。两项准入判据仍未采用；新r22保存160份r21原件hash和具体27臂/4跳认证决策方案。下文26B阶段状态按当时采样解释，原false/未测、停止批次和官方Claude待订阅保持，M11前置未完成。
+
+26B已有效审查并按Bob普通委托批准完整r30（SHA 9c457711d4146644d9dedd976cbdf854128283df0802ddf32ba6f4bc0cf75d5c），新CLI inline defaultMode/精确deny差异、有界1..32逐跳原值/hash及v3关闭消费者规范见[设计v1.3.158当前合同](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-inline-mode3-contract)。旧v2/mode2正文按历史采样保留；v3/auth两项独立采用仍未批准，原标准false/未测不改。实施采样：Qwen max一次真实CLI取得default与受控机制事实，事后proof错误使首批停止；修正后只读复算通过，原停止保留，k3及其他组合未启动。27C预检正常刷新三项认证时间，4跳/27臂/378组件/91引用重验通过，当前6a2c6213 canonical0通过/12未测。r21实际消费者先核15依赖及独立批准，忽略调用方事实布尔值，再重验原件/完整指纹/scope；候选报告消费与产品准入分列，实际两个候选缺批准保持关闭，正向实际独立批准消费未测。准入734/742、review353/363全部完成，正式26/27，27C尚未启动，M11前置未完成。
+
+25B后取证执行见[设计v1.3.157](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-evidence-guard-contract)与r19批准检查点。首个auto/default失败与旧原列保留；mode2绑定本次run/定稿hash/具名敏感批准及脚本/来源指纹，任一失败停止。限额/关闭/迟到错误须聚合，清理全部尝试；启动清单和硬上限事前发布，普通扩容不批准判据采用。
