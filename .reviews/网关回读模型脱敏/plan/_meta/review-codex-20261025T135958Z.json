@@ -1,0 +1,59 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "核心修法与现有调用链相符，未发现必须重新评审的架构问题。实施前需补齐 Windows 泄漏验收的分类口径：拟复用的检查脚本比计划更宽松，会把计划明确要求保护的伪模型键误判为可公开模型名。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §3.2；doc/05_testing/evidence/gateway-env-injection-20261025/check-gateway-exposure.ps1:31",
+      "problem": "Windows 验收直接复用旧检查脚本，无法验证本计划新增的凭据优先边界。脚本只按 _MODEL 或 _MODEL_NAME 后缀豁免，因此 ANTHROPIC_AUTH_MODEL、ANTHROPIC_BASE_URL_MODEL 等计划判为凭据类的键，即使原值泄漏，也只报 NOTE，最终仍可能报告 no leak。模型名键中误填令牌形态值时同样存在这个验收盲区。",
+      "evidence": "实际读取的计划 §1.1 明确排除含 AUTH、URL 等凭据段的键，并要求令牌形态值仍进替换集；§3.2 却直接复用旧扫描脚本。实际读取的 check-gateway-exposure.ps1:31 仅用后缀正则设置 IsModel，Report-Hit 对 IsModel 为真的命中只打印 NOTE，不设置 leak。以上为静态代码推理，未运行 PowerShell 或真实凭据扫描。",
+      "suggestion": "在计划中补充验收扫描器的口径对齐，或增加独立补充扫描，确保只有通过完整豁免条件的值可报 NOTE；用合成值验证伪模型键及模型名键中的令牌形态值泄漏会导致非零退出。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "保留先脱敏后解析的边界，并集中处理模型回读判定，符合现有两条执行出口的结构。",
+    "非模型名键全部保留逐值替换、同值凭据优先、长值先替换及最终模式脱敏，方向正确。",
+    "占位符及首尾预览均降为 null 与 unverified，且覆盖适配器、探针及两份工具脚本，能修复主要误报路径。",
+    "假 CLI 回归与新旧构建对拍可零配额完成；Windows 真实验收另行请求授权、审查输出写到仓库外，符合任务约束。",
+    "不改变 Schema、不回写历史工件，迁移成本较低。"
+  ],
+  "not_covered": [
+    "计划尚未实施，未执行构建、测试或变异检查；现阶段无法确认回归锚实际咬合情况。",
+    "未调用真实 CLI、未使用凭据或消耗模型配额，未验证 Windows 网关及重装后的实际行为。",
+    "未验证截断、折行、再编码凭据形态；这些属于计划明确保留的 EV-256 残余边界。",
+    "两份工具脚本新增判定没有自动化覆盖，计划已如实披露，本次仅核对其现有消费点。"
+  ],
+  "consulted": [
+    ".reviews/网关回读模型脱敏/plan/2026-10-25-网关回读模型脱敏-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/01_requirements/稳定版需求说明书.md",
+    "doc/02_design/稳定版系统设计说明书.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/04_development/GUIDE_env_setup.md",
+    "doc/04_development/GUIDE_local_pitfalls.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/05_testing/evidence/gateway-env-injection-20261025/windows-readout.md",
+    "doc/05_testing/evidence/gateway-env-injection-20261025/check-gateway-exposure.ps1",
+    "src/trivium/secrets.ts",
+    "src/trivium/types.ts",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/claude.ts",
+    "scripts/agent-access-admission.mjs",
+    "scripts/agent-access-closeout.mjs",
+    "scripts/mutation-check.mjs",
+    "test/integration/claude-gateway-env.test.ts",
+    "test/unit/registry-parity.test.ts"
+  ]
+}

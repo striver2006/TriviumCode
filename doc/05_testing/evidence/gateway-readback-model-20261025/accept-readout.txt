@@ -1,0 +1,30 @@
+✓ 两侧被测产物不同（adapters/claude.js sha256）  448dca5c68fb / 38c8b791e731
+✓ base/off/default：凭据键的值在全部输出里零命中  []
+✓ new/off/default：凭据键的值在全部输出里零命中  []
+✓ base/off/model：凭据键的值在全部输出里零命中  []
+✓ new/off/model：凭据键的值在全部输出里零命中  []
+✓ base/off/cred：凭据键的值在全部输出里零命中  []
+✓ new/off/cred：凭据键的值在全部输出里零命中  []
+✓ base/on/default：凭据键的值在全部输出里零命中  []
+✓ new/on/default：凭据键的值在全部输出里零命中  []
+✓ base/on/model：凭据键的值在全部输出里零命中  []
+✓ new/on/model：凭据键的值在全部输出里零命中  []
+✓ base/on/cred：凭据键的值在全部输出里零命中  []
+✓ new/on/cred：凭据键的值在全部输出里零命中  []
+✓ off/default：新旧归一化输出逐项相同
+✓ off/default：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
+✓ off/model：新旧归一化输出逐项相同
+✓ off/model：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
+✓ off/cred：新旧归一化输出逐项相同
+✓ off/cred：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
+✓ on/default：新旧归一化输出逐项相同
+✓ on/model 基线：复现缺陷（占位符记作 envelope）  {"model_effective":"<redacted-env>","model_effective_source":"envelope"}
+✓ on/model 新构建：记真实模型名、来源 envelope  {"model_effective":"gw-ev257-model-01","model_effective_source":"envelope"}
+✓ on/model 新构建：探针臂 init.model 为真实模型名  gw-ev257-model-01
+✓ on/model 新构建：回显的凭据值仍以占位符出现（stdout / stderr）  review_stdout,review_stderr,auth_stdout,auth_stderr,arm_raw,arm_stderr
+✓ on/model 新构建：model_flag 按真实值比（所选 haiku ≠ 网关回报名 → false，是「核对不符」）  false
+✓ on/cred 基线：占位符记作 envelope  {"model_effective":"<redacted-env>","model_effective_source":"envelope"}
+✓ on/cred 新构建：记 null + unverified  {"model_effective":null,"model_effective_source":"unverified"}
+✓ on/cred：model_flag 旧 false（误判核对不符）、新 null（没核对成）  false / null
+
+28 项，全部通过

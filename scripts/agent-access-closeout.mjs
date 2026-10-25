@@ -15,7 +15,7 @@ import { invokeClaude, readSchemaJson, buildDenySettings, denyRuleShapeOf, reado
 import { invokeCodex, codexAdapter } from '../dist/test/src/trivium/adapters/codex.js';
 import { prepareCodexHome, scrubCodexHome } from '../dist/test/src/trivium/adapters/codex-home.js';
 import { parseCodexEvents, readSessionMeta, findSessionFile } from '../dist/test/src/trivium/adapters/codex-trace.js';
-import { parseClaudeEvents, finalReviewText, readPaths, grepHitPaths } from '../dist/test/src/trivium/adapters/claude-trace.js';
+import { parseClaudeEvents, finalReviewText, readPaths, grepHitPaths, claudeModelReadback } from '../dist/test/src/trivium/adapters/claude-trace.js';
 import { CODEX_READONLY_INVARIANTS, judgeReadonlyControl, probeCodexBin, probeCodexPathDeny } from '../dist/test/src/trivium/probes/codex.js';
 import { judgeToolSurface } from '../dist/test/src/trivium/probes/claude.js';
 import { createFixture, SENTINEL_PEER, SENTINEL_SECRET } from '../dist/test/src/trivium/probes/fixture.js';
@@ -247,7 +247,9 @@ try {
             trace.erroredToolUseIds.has(t.id) && match && normalizedPath(match[1], trace.init?.cwd) === normalizedPath(p, fx.root)), error: paired ?? null };
         }) }));
     save('result.json', { request, trace, completed, structured, tool_surface: judgeToolSurface(trace.init?.tools ?? []),
-      readback: { model: trace.init?.model ?? null, model_source: trace.init?.model ? 'envelope' : null, provider: null, effort: null, server_identity: null },
+      // 占位符并进 null 那一支（EV-257）；model_source 保留本脚本的取值集（envelope / null）
+      readback: { model: claudeModelReadback(trace.init).model, model_source: claudeModelReadback(trace.init).model ? 'envelope' : null,
+        provider: null, effort: null, server_identity: null },
       actual_read: trace.toolUses.some(t => t.name === 'Read' && t.id && !trace.erroredToolUseIds.has(t.id) &&
         normalizedPath(t.input.file_path, trace.init?.cwd) === normalizedPath(fx.openFile, fx.root) && trace.toolResults.get(t.id)?.includes(firstWord)),
       strict_first_word: structured.ok && structured.review.summary === firstWord,

@@ -36,11 +36,13 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import type { ClaudeProbe, CriticRequest, CriticResult } from '../types.js';
 import { run } from '../util/exec.js';
-import { claudeInvocationEnv, claudeProbeForRoute, claudeProfileNames, executableFile, resolveClaudeRoute, type ClaudeRoute } from './claude-route.js';
+import { claudeInvocationEnv, claudeProbeForRoute, claudeProfileNames, executableFile, isModelNameKey, looksLikeModelName,
+  resolveClaudeRoute, type ClaudeRoute } from './claude-route.js';
 import { redactSecrets } from '../secrets.js';
 import { ensureDir } from '../util/fsx.js';
 import {
   CLAUDE_OUTPUT_TOOLS,
+  claudeModelReadback,
   countTools,
   extractClaudePath,
   finalReviewText,
@@ -521,17 +523,42 @@ export interface ClaudeInvokeOutcome {
 }
 
 /**
- * 网关 env 值的逐值脱敏（1.2.2，审查 CLAUDE-06）：对注入值先原串替换 `<redacted-env>`，再过模式脱敏。
- * `invokeClaude` 与探针臂（execArgv）共用——「注入值永不落盘」的威胁模型在运行与探针两条路径上对称成立。
- * 极短值（<8 字符）跳过替换（替换面过宽会误伤普通文本），仍交模式脱敏兜底。
+ * 网关 env 逐值脱敏的替换表（EV-257）：哪些值要原串替换、哪些键因是模型名而豁免。
+ * 只返回替换集与豁免**键名**——`scrubGatewayEnv` 与 Windows 落盘扫描脚本共用这一份口径，不各写一套。
+ *
+ * 模型名键的值要**四道守卫同时满足**才豁免，否则照旧进替换集（fail-closed，凭据优先）：
+ * ① 键名过 `isModelNameKey`；② 值本身过 `redactSecrets` 无命中（已知厂商令牌形态误填进模型名键）；
+ * ③ 值不等于任何非豁免键的值（同值按凭据处理）；④ 值过 `looksLikeModelName`（非标准随机令牌、UUID）。
+ * 替换集按长度降序：短凭据值是长凭据值的子串时，先换短的会把长值切成「占位符 + 残段」，残段原样落盘。
+ * 极短值（<8 字符）不进替换集（替换面过宽会误伤普通文本），仍交模式脱敏兜底。
+ */
+export function gatewayScrubPlan(env: Record<string, string> | undefined): { replace: string[]; exemptKeys: string[] } {
+  if (!env) return { replace: [], exemptKeys: [] };
+  const candidates = Object.entries(env).filter(([k, v]) =>
+    isModelNameKey(k) && redactSecrets(v).count === 0 && looksLikeModelName(v));
+  const credentialValues = new Set(Object.entries(env)
+    .filter(([k]) => !candidates.some(([c]) => c === k)).map(([, v]) => v));
+  const exempt = candidates.filter(([, v]) => !credentialValues.has(v));
+  const replace = [...new Set(Object.entries(env)
+    .filter(([k]) => !exempt.some(([e]) => e === k)).map(([, v]) => v))]
+    .filter((v) => v.length >= 8)
+    .sort((a, b) => b.length - a.length);
+  return { replace, exemptKeys: exempt.map(([k]) => k) };
+}
+
+/**
+ * 网关 env 值的逐值脱敏（1.2.2，审查 CLAUDE-06）：对凭据类注入值先原串替换 `<redacted-env>`，再过模式脱敏。
+ * `invokeClaude` 与探针臂（execArgv）共用——「凭据类注入值永不落盘」的威胁模型在运行与探针两条路径上对称成立。
+ *
+ * **模型名键的值不替换**（EV-257）：CC Switch 网关在 `system/init` 里回报的模型名恰等于
+ * `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_*_MODEL` 一类键的值，一并替换会让 `model_effective` 记成占位符、
+ * 来源却仍是 `envelope`。模型名本就以明文进 `model_effective`，在 `stdout.jsonl` 里再抹掉只会让两份留痕互相矛盾。
+ * 豁免判据见 `gatewayScrubPlan`；回读侧另有独立兜底 `claudeModelReadback`（带脱敏痕迹即记 unverified）。
+ * `env` 为空（未开启、env 段为空或读不到）时只过模式脱敏，与修复前逐字相同。
  */
 export function scrubGatewayEnv(text: string, env: Record<string, string> | undefined): string {
   let out = text;
-  if (env) {
-    for (const v of Object.values(env)) {
-      if (v.length >= 8) out = out.split(v).join('<redacted-env>');
-    }
-  }
+  for (const v of gatewayScrubPlan(env).replace) out = out.split(v).join('<redacted-env>');
   return redactSecrets(out).content;
 }
 
@@ -678,6 +705,7 @@ export function buildClaudeResult(
   const writes = trace.toolUses
     .filter((u) => !readonlyTools.includes(u.name) && !CLAUDE_OUTPUT_TOOLS.has(u.name))
     .map((u) => `${u.name}(${extractClaudePath(u.input) ?? JSON.stringify(u.input).slice(0, 80)})`);
+  const readback = claudeModelReadback(trace.init);
 
   return {
     critic: 'claude',
@@ -692,8 +720,9 @@ export function buildClaudeResult(
     /*
      * 生效模型**回读**自 `system/init`。取不到记 `unverified`，
      * **绝不用 `req.model` 冒充**——与另两家同一条纪律（AC-20 的口径）。
+     * 带脱敏痕迹的模型名同样算取不到（EV-257）：两格取 `claudeModelReadback` 同一次判定的产出。
      */
-    model_effective: trace.init?.model ?? null,
+    model_effective: readback.model,
     /*
      * 来源是 **`envelope`**，不是 `trace`。
      *
@@ -701,7 +730,7 @@ export function buildClaudeResult(
      * 是因为它们的生效模型读的是**另一个文件**（会话文件 / rollout）。
      * 两者不是措辞差异——`model_effective_source` 的取值集就是按「从哪拿到的」分的。
      */
-    model_effective_source: trace.init?.model ? 'envelope' : 'unverified',
+    model_effective_source: readback.source,
     /*
      * 恒为 `null`，且**这是能说明理由的空**：该族 CLI 不暴露 provider 归属，
      * 也没有厂商 profile 的概念（codex 才有 `-p`）。空的含义是「该侧没有这种字段」，

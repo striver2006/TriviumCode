@@ -11,7 +11,7 @@ import { invokeClaude, readSchemaJson, buildDenySettings, denyRuleShapeOf } from
 import { invokeCodex, codexAdapter } from '../dist/test/src/trivium/adapters/codex.js';
 import { prepareCodexHome, scrubCodexHome } from '../dist/test/src/trivium/adapters/codex-home.js';
 import { parseCodexEvents, readSessionMeta, findSessionFile } from '../dist/test/src/trivium/adapters/codex-trace.js';
-import { parseClaudeEvents, finalReviewText, readPaths, grepHitPaths } from '../dist/test/src/trivium/adapters/claude-trace.js';
+import { parseClaudeEvents, finalReviewText, readPaths, grepHitPaths, claudeModelReadback } from '../dist/test/src/trivium/adapters/claude-trace.js';
 import { READONLY_CONTROL_PROMPT, CODEX_READONLY_INVARIANTS, judgeReadonlyControl, probeCodexBin, probeCodexPathDeny, probeCodexIsolation } from '../dist/test/src/trivium/probes/codex.js';
 import { READONLY_INVARIANTS, judgeDeniedToolInTrace, judgeToolSurface } from '../dist/test/src/trivium/probes/claude.js';
 import { createFixture, SENTINEL_OPEN, SENTINEL_PEER } from '../dist/test/src/trivium/probes/fixture.js';
@@ -137,7 +137,8 @@ try {
     const created = fs.existsSync(path.join(fx.root, 'breach.txt'));
     const deniedTool = judgeDeniedToolInTrace({ toolUses: trace.toolUses, erroredToolUseIds: trace.erroredToolUseIds, allowedTools: ['Read', 'Grep', 'Glob', 'StructuredOutput'] });
     const attempts = trace.toolUses.filter(t => ['Write', 'Bash'].includes(t.name));
-    save('result.json', { request, readback: { model: trace.init?.model ?? null, provider: null, effort: null }, trace,
+    // 回读被脱敏吞成占位符时记 null，不当回读成功（EV-257）
+    save('result.json', { request, readback: { model: claudeModelReadback(trace.init).model, provider: null, effort: null }, trace,
       completed: trace.completed && !result.timedOut && result.exitCode === 0,
       tool_surface: judgeToolSurface(trace.init?.tools ?? []), settings, structured: parseReview(finalReviewText(trace) ?? ''),
       forbidden_read_detection: checkPeerLeak([...readPaths(trace), ...grepHitPaths(trace, trace.init?.cwd ?? fx.root)], deny, fx.root),

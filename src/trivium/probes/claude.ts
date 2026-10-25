@@ -59,7 +59,7 @@ import { emptyPathDeny, resolveReviewSchemaPath } from '../config.js';
  * `adapters/` 会让第 6 条的两条腿同时打红（主扫命中黑名单 + 防空转腿发现 token
  * 已不在 `probes/`）。见 `adapters/claude-trace.ts` 的文件头。
  */
-import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents, type ClaudeTrace } from '../adapters/claude-trace.js';
+import { CLAUDE_OUTPUT_TOOLS, claudeModelReadback, parseClaudeEvents, type ClaudeTrace } from '../adapters/claude-trace.js';
 /*
  * 送 CLI 的 schema 只有一份变换（代码双审 CODEX-03，EV-74 落地）：适配器、探针、准入脚本
  * 三处造 `--json-schema` 的值，只有 `readSchemaJson`（内部调 `stripMetaSchemaRef`）剥
@@ -794,7 +794,9 @@ export async function execArgv(
   /*
    * 网关 env 逐值脱敏（1.2.2，审查 CLAUDE-06）：与 invokeClaude 同一 scrub，探针臂不留暗角。
    * GLM-03 的「raw 必须透传」针对的是哨兵与泄漏判据——哨兵串不是注入值，脱敏不影响判据；
-   * trace 也从脱敏后的文本解析，命令文本里若回显了网关值，落盘的同样只能是占位符。
+   * trace 也从脱敏后的文本解析，命令文本里若回显了凭据类网关值，落盘的同样只能是占位符。
+   * 模型名键的值不在替换集（EV-257，判据见 `gatewayScrubPlan`），`init.model` 因此能回读到网关模型名；
+   * 仍带脱敏痕迹时由 `claudeModelReadback` 判为没回读到，`model_flag` 记 null。
    */
   const gatewayEnv = routeContext.getStore()?.route.settingsEnv;
   const stdout = scrubGatewayEnv(r.stdout, gatewayEnv);
@@ -1317,7 +1319,11 @@ export async function probeClaude(
       : null;
     // profile 探针实际覆盖了模型，判据必须与送入子进程的组合一致。
     const selectedModel = routeContext.getStore() ? routeContext.getStore()!.model : PROBE_MODEL;
-    probe.model_flag = read.init && selectedModel !== null ? read.init.model === selectedModel : null;
+    // 回读被脱敏吞掉 = 没核对成（null），不是「核对不符」（false）（EV-257）；其余与修复前相同，仍按原值比
+    const modelSwallowed = Boolean(read.init?.model) && claudeModelReadback(read.init).model === null;
+    probe.model_flag = read.init && selectedModel !== null
+      ? (modelSwallowed ? null : read.init.model === selectedModel)
+      : null;
     /*
      * 信任提示：全新目录里首跑若需人工信任，进程会卡住或报错而拿不到结果。
      * 跑通即说明不需要——这条要如实记，因为「需要」会让该侧对新克隆的仓库不可用。

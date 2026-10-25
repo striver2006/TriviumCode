@@ -1,0 +1,54 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass",
+  "summary": "逐项核过六个焦点，结论是可以按现状实施。①凭据类键的逐值替换没有任何放松：替换集仍覆盖全部非豁免键的值（≥8 字符），豁免要四道守卫同时满足，键名正则区分大小写且含凭据词表（ANTHROPIC_AUTH_MODEL 一类伪键留在替换集），同值挂在凭据键与模型名键上按凭据处理（守卫③，S3 锚住），降序替换还是顺带收紧（修了修复前就存在的残段问题，S5）。②划分口径可靠：S1 的 17 个反例加 E9/M3-M10 变异咬住「凭据被放出」方向；「形似模型名的凭据误填进模型名键会放行」这一剩余放松面在主设计与报告 §7 如实登记，且不加启发式的取舍有论证。③占位符无法以回读成功形态落盘：四个消费点（buildClaudeResult 两格、探针 model_flag、admission/closeout 脚本）全部改走 claudeModelReadback；我不止看报告的读取点表，另行 grep 了全仓 init.model 与 scripts 的 readback.model 读取点，不改的四处（restricted 纯判定、probe-agent-access 一次性回填、两份 summary 读历史/跟随生产方）核实为不会制造「成功」记录；model-family.ts:26-27 只在来源为 envelope/trace 时取 model_effective，占位符不再进模型族比较。④探针侧其余事件流字段的豁免论证（合法取值不会等于注入值）逐字段看过，成立。⑤未开启机器 scrub 输出逐字相同（S6/E10/M15 锚住）；唯一瑕疵是回读侧的理论差异让「未开启零变化」的概称不完全成立，见 GLM-01。⑥回归锚双向咬合：放松方向 S1-S5/E1-E9、吞回读方向 S7-S9/E9、零变化 S6/S8/E10，变异 21/21 读数落仓。实现与计划定稿 r2 逐项一致，无未声明的偏离。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md（§24 变更记录 v1.3.179 行「未开启零变化」）；doc/05_testing/REPORT_2026-10-25_gateway_readback_model.md §7",
+      "problem": "「未开启零变化」的口径在回读侧不完全成立。scrub 侧确实逐字相同（env 为空时替换集为空、只过模式脱敏，S6/E10 锚住）；但 claudeModelReadback 与网关开关无关——在未开启网关的机器上，若 init.model 本身命中 redactSecrets 的模式规则（例如某网关别名形如 sk- 前缀令牌，被首尾预览替换）或恰含省略号字符 U+2026，修复前记「占位符 + envelope」、修复后记「null + unverified」。这个方向正是 AC-20 想要的（带痕迹本就不该算回读成功），是修正而非回归；但设计变更记录、BACKLOG EV-257 与需求说明书都用「未开启零变化」作概称，报告 §7 的已知边界清单（全空白模型名、非全大写键）也没列这一条，后来者排查「未开启机器上 model_effective 为何变 unverified」时会被该概称误导。",
+      "evidence": "src/trivium/secrets.ts:323-325（hasRedactionMark 含 s.includes('…') 分支）；src/trivium/adapters/claude-trace.ts:449-453（claudeModelReadback 不感知网关状态）；test/unit/claude-gateway-scrub.test.ts S6/S8（只锚 scrub 逐字相同与缺失/空串三格）；REPORT §7 已知边界无此条；主设计 §24 v1.3.179 行「未开启零变化」。",
+      "suggestion": "在报告 §7 已知边界（或主设计 v1.3.179 变更记录）补一句收窄口径：未开启时「scrub 输出逐字相同」；回读判定仅在 init.model 自身带脱敏痕迹（模型名恰为令牌形态或含省略号字符）时从 envelope 变 unverified，方向为修正。纯文档措辞，不需要改代码与测试。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "四道守卫的分层与 fail-closed 方向：键名区分大小写不做大写归一化（先转大写会把原本被替换的键放进豁免集，是放松）、凭据词表拦伪模型键、同值凭据优先、正向形态约束——E9 与变异 M3-M10 把「凭据被放出」方向咬死",
+    "替换集按长度降序是顺带收紧：修复前按 Object.values 次序替换，短凭据是长凭据子串时会留「占位符+残段」落盘，S5 钉住",
+    "取 ①+③ 不取 ② 的论证成立：② 要把含凭据原文的 stdout 带出 invokeClaude 边界，且解析出的模型名仍要再判是否含凭据值，绕一圈回到同一判据",
+    "claudeModelReadback 作为独立于键名划分的兜底，缺失/空串两格与修复前表达式逐字相同（S8 对照），探针 model_flag 被吞记 null 而非 false 的语义修正正确（null 本就是 model_flag 的既有取值，src 内无按 false/null 分叉的消费方）",
+    "E8-E10 不复用 runAll、新增 CREDENTIAL_VALUES 分离两类不变量，并把 E1-E7 对模型名键值「不出现」断言的空成立如实写进文件头注释",
+    "不改的四处 scripts 读取点各有依据（我逐一 grep 核实）：agent-access-restricted.mjs:40 占位符与 null 都判 mismatch、probe-agent-access.mjs 一次性回填历史证据、两份 summary 读既有产出",
+    "剩余边界（形似模型名的凭据误填进模型名键会明文落盘）如实登记在主设计与报告，明确不再加启发式的取舍有论证",
+    "Windows 真实网关验收如实标注待用户执行，macOS 侧零配额对拍读数与变异 21/21 读数均落仓"
+  ],
+  "not_covered": [
+    "本侧为只读审查、未执行任何命令：npm run check 全量读数（4002 例 × 2）、变异 21/21、新旧构建对拍 28 项均只核对落仓证据与测试源码声明，未复跑验证",
+    "Windows 真实网关形态（CC Switch、受限模式、进程表采样）未验证，报告 §8 待用户执行",
+    "accept-run.mjs / accept-readout.mjs / scan-gateway-exposure.mjs 等证据脚本只读了 mutation-output.txt 与报告转述，未逐行审脚本自身的判定逻辑",
+    "集成测试 E1-E7 的既有断言未逐条重读（diff 显示一行未动，采信该 diff 与全量读数）",
+    "README.md、doc/README.md、doc/01_requirements/README.md、doc/02_design/README.md 等通用导览文档未逐份阅读（与本主题直接关联低；AGENTS.md 已随任务上下文给出全文）",
+    "CLAUDE.md 在工作树中未找到对应文件（任务书必读清单第一项），以 AGENTS.md 与任务上下文为准"
+  ],
+  "consulted": [
+    ".reviews/网关回读模型脱敏/code/_meta/changes-20261025T144753Z.diff",
+    "doc/05_testing/REPORT_2026-10-25_gateway_readback_model.md",
+    ".reviews/网关回读模型脱敏/plan/2026-10-25-网关回读模型脱敏-r2-claude.md",
+    "src/trivium/secrets.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/model-family.ts（grep 摘录）",
+    "test/unit/claude-gateway-scrub.test.ts",
+    "test/integration/claude-gateway-env.test.ts（经 diff）",
+    "scripts/agent-access-admission.mjs（经 diff 与 grep）",
+    "scripts/agent-access-closeout.mjs（经 diff 与 grep）",
+    "scripts/agent-access-restricted.mjs（grep 摘录）",
+    "scripts/agent-access-summary.mjs（grep 摘录）",
+    "scripts/agent-access-closeout-summary.mjs（grep 摘录）",
+    "doc/05_testing/evidence/gateway-readback-model-20261025/mutation-output.txt"
+  ]
+}

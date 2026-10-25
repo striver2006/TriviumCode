@@ -15,7 +15,7 @@ Windows 线实测可用的双审组合：`claude,gemini` 与 `claude,codex`（�
 
 ## 二、CC Switch 第三方网关注入（1.2.0）
 
-`--restricted` 按官方语义忽略 user/project/local settings 文件（含 CC Switch 写入的网关 env 段），回落官方端点即报「未登录」。通道取 claude 子进程的环境变量（受限模式认进程环境变量；1.3.2 起，此前经 `--settings` 内联、键值会出现在进程命令行里）：本机 `.trivium/config.local.yaml` 的 `agents.claude` 段开 `settings_env_source: user_settings` 后，路线解析时读用户级 `~/.claude/settings.json` 的 env 段（只收 `ANTHROPIC_`/`CLAUDE_` 前缀），每次带模型调用时先清掉编排器自身环境里的 `ANTHROPIC_*` 等路线变量、再把提取出的键注入子进程环境。安全边界：键值不进命令行、不落任何留痕（指纹仅 sha256、输出逐值替换脱敏）；子进程环境块同用户进程可读。不要与 claude 的 profile 路线同开（profile 的 `export` 会覆盖同名网关键，部分同名时可能端点与令牌混配而 401）。官方登录机器 env 段为空即自动无操作。codex 侧无此问题（鉴权在 `$CODEX_HOME`）。
+`--restricted` 按官方语义忽略 user/project/local settings 文件（含 CC Switch 写入的网关 env 段），回落官方端点即报「未登录」。通道取 claude 子进程的环境变量（受限模式认进程环境变量；1.3.2 起，此前经 `--settings` 内联、键值会出现在进程命令行里）：本机 `.trivium/config.local.yaml` 的 `agents.claude` 段开 `settings_env_source: user_settings` 后，路线解析时读用户级 `~/.claude/settings.json` 的 env 段（只收 `ANTHROPIC_`/`CLAUDE_` 前缀），每次带模型调用时先清掉编排器自身环境里的 `ANTHROPIC_*` 等路线变量、再把提取出的键注入子进程环境。安全边界：键值不进命令行，凭据类键值不落任何留痕（指纹仅 sha256、输出逐值替换脱敏）；模型名键（`ANTHROPIC_MODEL`、`ANTHROPIC_DEFAULT_*_MODEL` 等）的值按模型名记录，生效模型回读记网关回报的真名（1.3.2 起）；子进程环境块同用户进程可读。不要与 claude 的 profile 路线同开（profile 的 `export` 会覆盖同名网关键，部分同名时可能端点与令牌混配而 401）。官方登录机器 env 段为空即自动无操作。codex 侧无此问题（鉴权在 `$CODEX_HOME`）。
 
 ## 三、codex 只读降级（1.2.1）
 

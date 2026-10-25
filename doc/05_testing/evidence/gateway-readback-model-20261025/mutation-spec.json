@@ -1,0 +1,183 @@
+{
+  "targets": [
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/secrets.ts",
+    "src/trivium/probes/claude.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/claude-gateway-env.test.js",
+    "dist/test/test/unit/claude-gateway-scrub.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "模型名键被重新纳入：isModelNameKey 恒假",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  return !key.split('_').some((seg) => CREDENTIAL_KEY_WORDS.has(seg));",
+      "replace": "  return false;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M1b",
+      "desc": "同 M1，对集成 E8",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  return !key.split('_').some((seg) => CREDENTIAL_KEY_WORDS.has(seg));",
+      "replace": "  return false;",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "模型名键被重新纳入：替换集构造忽略豁免（退回修复前）",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "    .filter(([k]) => !exempt.some(([e]) => e === k)).map(([, v]) => v))]",
+      "replace": "    .map(([, v]) => v))]",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M2b",
+      "desc": "同 M2，对集成 E8",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "    .filter(([k]) => !exempt.some(([e]) => e === k)).map(([, v]) => v))]",
+      "replace": "    .map(([, v]) => v))]",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "凭据键被放出：isModelNameKey 恒真",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  if (!/^(ANTHROPIC|CLAUDE)_(?:[A-Z0-9]+_)*MODEL(?:_NAME)?$/.test(key)) return false;",
+      "replace": "  return true;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M3b",
+      "desc": "同 M3，对集成 E9（令牌值被当模型名记下）",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  if (!/^(ANTHROPIC|CLAUDE)_(?:[A-Z0-9]+_)*MODEL(?:_NAME)?$/.test(key)) return false;",
+      "replace": "  return true;",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "凭据键被放出：去掉凭据词表",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  return !key.split('_').some((seg) => CREDENTIAL_KEY_WORDS.has(seg));",
+      "replace": "  return true;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "凭据键被放出：键名正则去掉前缀与后缀锚定（含 MODEL 即算）",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  if (!/^(ANTHROPIC|CLAUDE)_(?:[A-Z0-9]+_)*MODEL(?:_NAME)?$/.test(key)) return false;",
+      "replace": "  if (!/MODEL/.test(key)) return false;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "凭据键被放出：去掉守卫 2（值过 redactSecrets 无命中）",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "    isModelNameKey(k) && redactSecrets(v).count === 0 && looksLikeModelName(v));",
+      "replace": "    isModelNameKey(k) && looksLikeModelName(v));",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "凭据键被放出：去掉守卫 3（凭据优先）",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "  const exempt = candidates.filter(([, v]) => !credentialValues.has(v));",
+      "replace": "  const exempt = candidates;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "凭据值留残段：替换集不按长度降序",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "    .sort((a, b) => b.length - a.length);",
+      "replace": "    ;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "凭据键被放出：去掉守卫 4（正向形态约束）",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "    isModelNameKey(k) && redactSecrets(v).count === 0 && looksLikeModelName(v));",
+      "replace": "    isModelNameKey(k) && redactSecrets(v).count === 0);",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "凭据键被放出：键名正则改为大小写不敏感",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  if (!/^(ANTHROPIC|CLAUDE)_(?:[A-Z0-9]+_)*MODEL(?:_NAME)?$/.test(key)) return false;",
+      "replace": "  if (!/^(ANTHROPIC|CLAUDE)_(?:[A-Z0-9]+_)*MODEL(?:_NAME)?$/i.test(key)) return false;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "占位符记作回读成功：hasRedactionMark 恒假",
+      "file": "src/trivium/secrets.ts",
+      "find": "  return typeof s === 'string' && (s.includes('<redacted') || s.includes('…'));",
+      "replace": "  return false;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M11b",
+      "desc": "同 M11，对集成 E9",
+      "file": "src/trivium/secrets.ts",
+      "find": "  return typeof s === 'string' && (s.includes('<redacted') || s.includes('…'));",
+      "replace": "  return false;",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "占位符记作回读成功：hasRedactionMark 不认首尾预览",
+      "file": "src/trivium/secrets.ts",
+      "find": "  return typeof s === 'string' && (s.includes('<redacted') || s.includes('…'));",
+      "replace": "  return typeof s === 'string' && s.includes('<redacted');",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "占位符记作回读成功：buildClaudeResult 的来源退回直取 init.model",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "    model_effective_source: readback.source,",
+      "replace": "    model_effective_source: trace.init?.model ? 'envelope' : 'unverified',",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M13b",
+      "desc": "占位符记作生效模型：buildClaudeResult 的模型退回直取 init.model",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "    model_effective: readback.model,",
+      "replace": "    model_effective: trace.init?.model ?? null,",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "回读被吞记成核对不符：探针 model_flag 退回原判据",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "      ? (modelSwallowed ? null : read.init.model === selectedModel)",
+      "replace": "      ? read.init.model === selectedModel",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "零变化破坏：回读判定对正常名也强制 unverified",
+      "file": "src/trivium/adapters/claude-trace.ts",
+      "find": "  return { model, source: model ? 'envelope' : 'unverified' };",
+      "replace": "  return { model: null, source: 'unverified' };",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M15b",
+      "desc": "同 M15，对集成 E10",
+      "file": "src/trivium/adapters/claude-trace.ts",
+      "find": "  return { model, source: model ? 'envelope' : 'unverified' };",
+      "replace": "  return { model: null, source: 'unverified' };",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    }
+  ]
+}

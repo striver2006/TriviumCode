@@ -12,12 +12,23 @@
  * verbose 阴性对照，E3）。未开启（E5）与 env 段为空 / 读不到（E6）时环境里没有任何前缀键、argv 与配方逐项相同。
  * 输出侧脱敏：`invokeClaude` 由 E1 锚住，探针执行封装 `execArgv` 由 E7 锚住（代码审 GLM-01）。
  *
+ * ## 两类不变量（EV-257 起分开写）
+ *
+ * - **凭据类键的值**只以占位符出现：E1、E7 的回显值是 `ANTHROPIC_AUTH_TOKEN`，断言不动。
+ *   E1 / E7 对 `GATEWAY_VALUES` 里两个模型名键的值也断言「不出现」，那两格成立是因为假 CLI 从不回显它们，
+ *   **不是**因为模型名键在脱敏射程内——模型名键的值不进逐值替换（`gatewayScrubPlan`）。
+ * - **模型名键的值**允许出现、回读要记真名：正向覆盖在 E8；凭据值被网关当模型名回显时只剩占位符、
+ *   回读须记 null + `unverified`（E9）；未开启时与修复前逐项相同（E10）。E8～E10 不复用 `runAll`
+ *   （它对全部 `GATEWAY_VALUES` 断言不出现），「不出现」只对 `CREDENTIAL_VALUES` 断言。
+ *
  * ## 装置
  *
  * - 假 CLI 是一份 `.cjs`，路线入口取 `process.execPath`、`prefix: [脚本]`——不靠 shebang，win32 也跑
  *   （兄弟套件 `claude-route-stability` 只在非 win32 跑；网关特性的主场恰是 Windows）。行为沿用该套件那份
  *   已能跑完 `probeClaude` 各臂的假 CLI；另外每次调用往 `FAKE_CLAUDE_LOG` 追加一行记录，并把
- *   `ANTHROPIC_AUTH_TOKEN` 的值回显进 stdout 与 stderr 锚脱敏。
+ *   `ANTHROPIC_AUTH_TOKEN` 的值回显进 stdout 与 stderr 锚脱敏。两个可选开关只给 E8～E10 用、E1～E7 不设：
+ *   `FAKE_CLAUDE_INIT_MODEL_KEY` 让 `init.model` 取该环境变量的值（不在环境里则退回缺省名）；
+ *   `FAKE_CLAUDE_RAW_LOG` 把未脱敏的原始输出另写一份作对照（只在本格 `scratchDir` 里）。
  * - **宿主变量隔离**（计划三审 CODEX-01）：每格先摘下宿主全部 `ANTHROPIC_` / `CLAUDE_` 前缀变量、finally 原样放回，
  *   只放合成值；假 CLI 只对 `FAKE_CLAUDE_VALUE_KEYS` 声明的键记值，其余前缀键只记键名——宿主真实令牌不进子进程、
  *   也不可能落进日志。
@@ -33,7 +44,10 @@ import { defaultConfig, resolveReviewSchemaPath } from '../../src/trivium/config
 import { execArgv, probeArgs, probeClaude, withClaudeProbeRoute, READONLY_INVARIANTS } from '../../src/trivium/probes/claude.js';
 import type { Fixture } from '../../src/trivium/probes/fixture.js';
 import { probeClaudeDirectories } from '../../src/trivium/probes/claude-directory.js';
-import { buildClaudeArgs, buildDenySettings, denyRuleShapeOf, invokeClaude } from '../../src/trivium/adapters/claude.js';
+import { buildClaudeArgs, buildClaudeResult, buildDenySettings, denyRuleShapeOf, invokeClaude, readonlyToolsFromProbe,
+  type ClaudeInvokeOutcome } from '../../src/trivium/adapters/claude.js';
+import { parseClaudeEvents } from '../../src/trivium/adapters/claude-trace.js';
+import { redactSecrets } from '../../src/trivium/secrets.js';
 import { resolveClaudeRoute, type ClaudeRoute } from '../../src/trivium/adapters/claude-route.js';
 import type { Config } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
@@ -64,6 +78,8 @@ const EXPECTED: Record<string, string> = {
 };
 const PARENT = { ANTHROPIC_AUTH_TOKEN: 'parent-ev256-auth', ANTHROPIC_PARENT_ONLY_EV256: 'parent-ev256-only' };
 const GATEWAY_VALUES = Object.values(SETTINGS_ENV).filter((v) => v.length > 0);
+/** 凭据类键的值（EV-257）：E8～E10 的「不出现」只对它们断言；模型名键的值允许出现 */
+const CREDENTIAL_VALUES = [SETTINGS_ENV.ANTHROPIC_AUTH_TOKEN, SETTINGS_ENV.ANTHROPIC_BASE_URL];
 
 let script = '';
 
@@ -80,16 +96,20 @@ before(async () => {
     '}',
     "fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv, env, extra: 'GATEWAY_EXTRA_EV256' in process.env }) + '\\n');",
     "if (argv.includes('--version')) { process.stdout.write('9.9.9 (Fake Claude)\\n'); process.exit(0); }",
-    'function emit(o) { process.stdout.write(JSON.stringify(o) + "\\n"); }',
+    'const rawOut = [], rawErr = [];',
+    'function emit(o) { const s = JSON.stringify(o) + "\\n"; rawOut.push(s); process.stdout.write(s); }',
     "const echo = process.env.ANTHROPIC_AUTH_TOKEN || '';",
-    "if (echo) process.stderr.write('echo ' + echo + '\\n');",
+    "if (echo) { const s = 'echo ' + echo + '\\n'; rawErr.push(s); process.stderr.write(s); }",
+    "const modelKey = process.env.FAKE_CLAUDE_INIT_MODEL_KEY || '';",
+    "const initModel = (modelKey && process.env[modelKey]) || 'claude-haiku-4-5-20251001';",
     'process.stdin.resume();',
     "process.stdin.on('end', () => {",
     "  const structured = argv.includes('--json-schema');",
-    "  emit({ type: 'system', subtype: 'init', cwd: process.cwd(), tools: structured ? ['Read', 'Grep', 'Glob', 'StructuredOutput'] : ['Read', 'Grep', 'Glob'], model: 'claude-haiku-4-5-20251001', session_id: 'fake-session' });",
+    "  emit({ type: 'system', subtype: 'init', cwd: process.cwd(), tools: structured ? ['Read', 'Grep', 'Glob', 'StructuredOutput'] : ['Read', 'Grep', 'Glob'], model: initModel, session_id: 'fake-session' });",
     "  if (echo) emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'echo ' + echo }] } });",
     "  const result = structured ? JSON.stringify({ schema: 'trivium.review.v1', verdict: 'approve', summary: 'fake summary', findings: [] }) : 'ok';",
     "  emit({ type: 'result', subtype: 'success', is_error: false, result, total_cost_usd: 0.001, session_id: 'fake-session' });",
+    "  if (process.env.FAKE_CLAUDE_RAW_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_RAW_LOG, JSON.stringify({ stdout: rawOut.join(''), stderr: rawErr.join('') }) + '\\n');",
     '  process.exit(0);',
     '});',
     '',
@@ -104,7 +124,8 @@ interface Cell { home: string; log: string; cfg: Config }
  * 一格的环境：家目录（可选写 settings.json）、日志、宿主前缀变量隔离、父进程合成键。
  * `fn` 结束后无论成败都原样恢复 `process.env`。
  */
-async function withCell<T>(opts: { enabled: boolean; settings: string | null }, fn: (c: Cell) => Promise<T>): Promise<T> {
+async function withCell<T>(opts: { enabled: boolean; settings: string | null; extra?: Record<string, string> },
+  fn: (c: Cell) => Promise<T>): Promise<T> {
   const home = await scratchDir('trivium-gateway-env-home-');
   if (opts.settings !== null) {
     await fs.mkdir(path.join(home, '.claude'), { recursive: true });
@@ -128,6 +149,7 @@ async function withCell<T>(opts: { enabled: boolean; settings: string | null }, 
     USERPROFILE: home,
     FAKE_CLAUDE_LOG: log,
     FAKE_CLAUDE_VALUE_KEYS: [...Object.keys(SETTINGS_ENV), ...Object.keys(PARENT)].join(','),
+    ...opts.extra,
   };
   for (const [k, v] of Object.entries(patch)) { touch(k); process.env[k] = v; }
   try {
@@ -282,8 +304,9 @@ test('E6 开启但 env 段为空 / settings.json 读不到：与未开启相同'
   }
 });
 
-test('E7 开启：探针执行封装 execArgv 对 stdout / stderr 逐值脱敏（网关值只以占位符出现）', async () => {
-  // 代码审 GLM-01：invokeClaude 的脱敏由 E1 锚住；探针侧这一份此前没有任何断言。假 CLI 把网关值回显进两路输出
+test('E7 开启：探针执行封装 execArgv 对 stdout / stderr 逐值脱敏（回显的凭据值只以占位符出现）', async () => {
+  // 代码审 GLM-01：invokeClaude 的脱敏由 E1 锚住；探针侧这一份此前没有任何断言。假 CLI 把 AUTH_TOKEN 回显进两路输出
+  // （模型名键的值不回显，GATEWAY_VALUES 对它们的「不出现」是空成立；模型名键的正向覆盖在 E8，见文件头）
   await withCell({ enabled: true, settings: SETTINGS_TEXT }, async (c) => {
     const route = fakeRoute(c.cfg);
     const fx = { root: c.home } as Fixture;
@@ -295,5 +318,77 @@ test('E7 开启：探针执行封装 execArgv 对 stdout / stderr 逐值脱敏�
     const recs = await records(c.log);
     assert.equal(recs.length, 1);
     assertGatewayClean('E7 execArgv', recs[0]!);
+  });
+});
+
+// ─────────────── EV-257：模型名回读不被逐值脱敏吞掉（E8～E10，不复用 runAll）───────────────
+
+/** 审查调用一次 → 解析 → 组装，返回输出与组装结果（与 `claudeAdapter.run` 同一条链） */
+async function reviewReadback(c: Cell): Promise<{ out: ClaudeInvokeOutcome; model: string | null; source: string }> {
+  const route = fakeRoute(c.cfg);
+  const out = await invokeClaude(reviewOpts(route, c.home, null));
+  assert.equal(out.exitCode, 0, `审查调用应跑通：${out.stderr}`);
+  const r = buildClaudeResult(parseClaudeEvents(out.stdout), out, { stdout: '/r/s', trace: '/r/t' },
+    { version: '9.9.9', path_deny: { file_shape_verified: true } }, readonlyToolsFromProbe(READONLY_INVARIANTS),
+    { ruleCount: 0, skipped: [], bytes: 0 });
+  return { out, model: r.model_effective, source: r.model_effective_source };
+}
+
+function assertNoCredential(label: string, text: string): void {
+  for (const v of CREDENTIAL_VALUES) assert.ok(!text.includes(v), `${label}：凭据键的值不得出现（逐值替换被放松）`);
+}
+
+test('E8 开启 · 网关回报的模型名等于模型名键的值：回读记真名、来源 envelope，凭据键的值仍被替换', async () => {
+  await withCell({ enabled: true, settings: SETTINGS_TEXT, extra: { FAKE_CLAUDE_INIT_MODEL_KEY: 'ANTHROPIC_MODEL' } }, async (c) => {
+    const real = SETTINGS_ENV.ANTHROPIC_MODEL;
+    const { out, model, source } = await reviewReadback(c);
+    assert.equal(model, real, '模型名键的值被重新纳入逐值替换时，这里是占位符或 null');
+    assert.equal(source, 'envelope');
+    for (const [label, text] of [['stdout', out.stdout], ['stderr', out.stderr], ['commandLine', out.commandLine]] as const) {
+      assertNoCredential(`E8 审查调用 ${label}`, text);
+    }
+    assert.ok(out.stdout.includes('<redacted-env>') && out.stderr.includes('<redacted-env>'), 'E8：回显的 AUTH_TOKEN 须以占位符出现');
+
+    const route = fakeRoute(c.cfg);
+    const fx = { root: c.home } as Fixture;
+    const arm = await withClaudeProbeRoute(route, real, null, () => execArgv(process.execPath, fx, probeArgs({ prompt: 'p' })));
+    assert.equal(arm.init?.model, real, 'E8 探针臂：init.model 须为真实模型名');
+    assertNoCredential('E8 探针 raw', arm.raw);
+    assertNoCredential('E8 探针 stderr', arm.stderr);
+    const { probe } = await withClaudeProbeRoute(route, real, null, () => probeClaude(process.execPath, { assetRoot: ASSET_ROOT }));
+    assert.equal(probe.model_flag, true, 'E8：回读到的真实模型名与所选模型相同，model_flag 须为 true');
+  });
+});
+
+test('E9 开启 · 网关把凭据值当模型名回显：只剩占位符，回读记 null + unverified、model_flag 记 null', async () => {
+  await withCell({ enabled: true, settings: SETTINGS_TEXT, extra: { FAKE_CLAUDE_INIT_MODEL_KEY: 'ANTHROPIC_AUTH_TOKEN' } }, async (c) => {
+    const { out, model, source } = await reviewReadback(c);
+    assert.notEqual(model, SETTINGS_ENV.ANTHROPIC_AUTH_TOKEN, 'E9：凭据值不得作为生效模型落盘（凭据键被放出替换）');
+    assert.equal(model, null, 'E9：只剩占位符时生效模型记 null');
+    assert.equal(source, 'unverified', 'E9：占位符不得以 envelope 记作回读成功');
+    assertNoCredential('E9 审查调用 stdout', out.stdout);
+    const route = fakeRoute(c.cfg);
+    const { probe } = await withClaudeProbeRoute(route, MODEL, null, () => probeClaude(process.execPath, { assetRoot: ASSET_ROOT }));
+    assert.equal(probe.model_flag, null, 'E9：回读被吞是「没核对成」，不是「核对不符」（false）');
+  });
+});
+
+test('E10 未开启：与修复前逐项相同——回读记缺省名 envelope，输出逐字等于只过模式脱敏', async () => {
+  await withCell({ enabled: false, settings: SETTINGS_TEXT, extra: { FAKE_CLAUDE_INIT_MODEL_KEY: 'ANTHROPIC_MODEL' } }, async (c) => {
+    const rawLog = path.join(c.home, 'raw.jsonl');
+    process.env['FAKE_CLAUDE_RAW_LOG'] = rawLog;
+    try {
+      const { out, model, source } = await reviewReadback(c);
+      assert.equal(model, MODEL, 'E10：子进程环境里没有模型名键，init.model 退回缺省名');
+      assert.equal(source, 'envelope');
+      const raw = JSON.parse((await fs.readFile(rawLog, 'utf8')).trim()) as { stdout: string; stderr: string };
+      assert.equal(out.stdout, redactSecrets(raw.stdout).content, 'E10：未开启时 stdout 只过模式脱敏');
+      assert.equal(out.stderr, redactSecrets(raw.stderr).content, 'E10：未开启时 stderr 只过模式脱敏');
+      const route = fakeRoute(c.cfg);
+      const { probe } = await withClaudeProbeRoute(route, MODEL, null, () => probeClaude(process.execPath, { assetRoot: ASSET_ROOT }));
+      assert.equal(probe.model_flag, true, 'E10：未开启时 model_flag 与修复前相同');
+    } finally {
+      delete process.env['FAKE_CLAUDE_RAW_LOG'];
+    }
   });
 });

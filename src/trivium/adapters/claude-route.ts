@@ -24,7 +24,8 @@ export interface ClaudeRoute {
    * env 段，受限模式一开就回落官方端点报「未登录」。路线解析时从 settings.json 提取 env 段，
    * 每次带模型调用的子进程经 `claudeInvocationEnv` 以**环境变量**注入（EV-256；1.2.0～1.3.1
    * 曾并进 `--settings` 内联载荷，键值因此出现在进程命令行里）。受限模式认进程环境变量
-   * （2026-10-24 win32 实测）。值只在内存，指纹只记 sha256；输出侧仍由 `scrubGatewayEnv` 逐值脱敏。
+   * （2026-10-24 win32 实测）。值只在内存，指纹只记 sha256；输出侧由 `scrubGatewayEnv` 对凭据类键
+   * 逐值脱敏，模型名键的值按模型名对待（EV-257，判据见 `isModelNameKey` 与 `gatewayScrubPlan`）。
    */
   settingsEnv: Record<string, string>;
   settingsEnvNote: string | null;
@@ -45,6 +46,36 @@ export function extractSettingsEnv(text: string): Record<string, string> {
     if (/^(ANTHROPIC_|CLAUDE_)/.test(k) && typeof v === 'string' && v.length > 0) out[k] = v;
   }
   return out;
+}
+
+/** 键名里出现任一段即按凭据处理，哪怕后缀像模型名（`ANTHROPIC_AUTH_MODEL` 一类伪模型键） */
+const CREDENTIAL_KEY_WORDS = new Set(['TOKEN', 'KEY', 'SECRET', 'AUTH', 'PASSWORD', 'PASSWD', 'PASS', 'PWD',
+  'CREDENTIAL', 'CREDENTIALS', 'BEARER', 'COOKIE', 'HEADER', 'HEADERS', 'URL']);
+
+/**
+ * 网关 env 键是否是模型名键（EV-257）：模型名键的值是模型名，不进逐值脱敏的替换集——
+ * CC Switch 网关回报的 `init.model` 恰等于这些键的值，一并替换会把回读吞成占位符。
+ *
+ * **区分大小写、只认全大写段**：`extractSettingsEnv` 不改键名大小写，小写或混写的键过不了正则、
+ * 留在替换集。方向是 fail-closed——最坏是那个模型名被替换、回读记 unverified，不会放过凭据；
+ * 先转大写会把原本被替换的键放进豁免集，是放松（计划三审 AGY-01 未采纳的那一半）。
+ * 这只是第一道守卫，值还要过 `gatewayScrubPlan` 的另三道。
+ */
+export function isModelNameKey(key: string): boolean {
+  if (!/^(ANTHROPIC|CLAUDE)_(?:[A-Z0-9]+_)*MODEL(?:_NAME)?$/.test(key)) return false;
+  return !key.split('_').some((seg) => CREDENTIAL_KEY_WORDS.has(seg));
+}
+
+/**
+ * 模型名键的值是否「长得像模型名」（EV-257 守卫 4，计划三审 GLM-01）：字符集沿用 `claudeProfileMetadata`
+ * 对模型名值的口径 `[\w./:+-]`、长度 1～128；按非字母数字字符切开后最长一段不超过 16
+ * （真实模型名由短段拼成，随机令牌是长连续段）；不是 UUID 形态。不像就照旧替换，代价只是回读记 unverified。
+ * 这不是判别凭据的完备算法：由短段拼成的凭据填进模型名键仍会放行，作为剩余边界登记在主设计。
+ */
+export function looksLikeModelName(value: string): boolean {
+  if (!/^[\w./:+-]{1,128}$/.test(value)) return false;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return false;
+  return value.split(/[^A-Za-z0-9]+/).every((seg) => seg.length <= 16);
 }
 
 export function claudeProfilesDir(): string {
@@ -135,7 +166,8 @@ export function resolveClaudeRoute(cfg: Config, profile: string | null, version?
   }
   /*
    * 第三方网关 env（见 ClaudeRoute.settingsEnv 的说明）：只在 settings_env_source 显式开启时
-   * 读取用户级 settings.json，键值不落任何留痕——指纹只进 sha256，经环境变量注入、不进命令行（EV-256）。
+   * 读取用户级 settings.json，凭据类键值不落任何留痕——指纹只进 sha256，经环境变量注入、不进命令行（EV-256）；
+   * 模型名键的值按模型名记录（EV-257）。
    */
   const settingsEnvSource = c?.settings_env_source ?? null;
   let settingsEnv: Record<string, string> = {};

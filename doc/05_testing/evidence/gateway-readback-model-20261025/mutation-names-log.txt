@@ -1,0 +1,21 @@
+M1：fail=3 cancelled=0 0s ⇒ S1 键划分：模型名键为真；凭据键、伪模型键、非全大写键一律为假 ｜ S2 逐值替换的两个方向：模型名键的值保留，凭据键的值替换 ｜ S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免
+M1b：fail=1 cancelled=0 6s ⇒ E8 开启 · 网关回报的模型名等于模型名键的值：回读记真名、来源 envelope，凭据键的值仍被替换
+M2：fail=2 cancelled=0 0s ⇒ S2 逐值替换的两个方向：模型名键的值保留，凭据键的值替换 ｜ S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免
+M2b：fail=1 cancelled=0 6s ⇒ E8 开启 · 网关回报的模型名等于模型名键的值：回读记真名、来源 envelope，凭据键的值仍被替换
+M3：fail=6 cancelled=0 0s ⇒ S1 键划分：模型名键为真；凭据键、伪模型键、非全大写键一律为假 ｜ S2 逐值替换的两个方向：模型名键的值保留，凭据键的值替换 ｜ S3 凭据优先：同一个值同时挂在模型名键与凭据键上，照旧替换 ｜ S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免 ｜ S5 替换集按长度降序：短凭据是长凭据的子串时不留残段 ｜ S7 hasRedactionMark：生产方的每种脱敏产出都认出，真实模型名与非字符串都不认
+M3b：fail=4 cancelled=0 4s ⇒ E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些 ｜ E7 开启：探针执行封装 execArgv 对 stdout / stderr 逐值脱敏（回显的凭据值只以占位符出现） ｜ E8 开启 · 网关回报的模型名等于模型名键的值：回读记真名、来源 envelope，凭据键的值仍被替换 ｜ E9 开启 · 网关把凭据值当模型名回显：只剩占位符，回读记 null + unverified、model_flag 记 null
+M4：fail=1 cancelled=0 0s ⇒ S1 键划分：模型名键为真；凭据键、伪模型键、非全大写键一律为假
+M5：fail=1 cancelled=0 0s ⇒ S1 键划分：模型名键为真；凭据键、伪模型键、非全大写键一律为假
+M6：fail=1 cancelled=0 0s ⇒ S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免
+M7：fail=1 cancelled=0 0s ⇒ S3 凭据优先：同一个值同时挂在模型名键与凭据键上，照旧替换
+M8：fail=1 cancelled=0 0s ⇒ S5 替换集按长度降序：短凭据是长凭据的子串时不留残段
+M9：fail=1 cancelled=0 0s ⇒ S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免
+M10：fail=1 cancelled=0 0s ⇒ S1 键划分：模型名键为真；凭据键、伪模型键、非全大写键一律为假
+M11：fail=3 cancelled=0 0s ⇒ S7 hasRedactionMark：生产方的每种脱敏产出都认出，真实模型名与非字符串都不认 ｜ S8 claudeModelReadback 真值表：缺失 / 空串与修复前逐字相同，带痕迹记 null + unverified ｜ S9 buildClaudeResult：占位符不以 envelope 落盘，正常名照旧 envelope
+M11b：fail=1 cancelled=0 6s ⇒ E9 开启 · 网关把凭据值当模型名回显：只剩占位符，回读记 null + unverified、model_flag 记 null
+M12：fail=2 cancelled=0 0s ⇒ S7 hasRedactionMark：生产方的每种脱敏产出都认出，真实模型名与非字符串都不认 ｜ S8 claudeModelReadback 真值表：缺失 / 空串与修复前逐字相同，带痕迹记 null + unverified
+M13：fail=1 cancelled=0 0s ⇒ S9 buildClaudeResult：占位符不以 envelope 落盘，正常名照旧 envelope
+M13b：fail=1 cancelled=0 0s ⇒ S9 buildClaudeResult：占位符不以 envelope 落盘，正常名照旧 envelope
+M14：fail=1 cancelled=0 7s ⇒ E9 开启 · 网关把凭据值当模型名回显：只剩占位符，回读记 null + unverified、model_flag 记 null
+M15：fail=2 cancelled=0 0s ⇒ S8 claudeModelReadback 真值表：缺失 / 空串与修复前逐字相同，带痕迹记 null + unverified ｜ S9 buildClaudeResult：占位符不以 envelope 落盘，正常名照旧 envelope
+M15b：fail=2 cancelled=0 6s ⇒ E8 开启 · 网关回报的模型名等于模型名键的值：回读记真名、来源 envelope，凭据键的值仍被替换 ｜ E10 未开启：与修复前逐项相同——回读记缺省名 envelope，输出逐字等于只过模式脱敏

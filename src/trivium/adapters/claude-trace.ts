@@ -41,6 +41,7 @@
  * （防的是硬编码 `'claude'` 这类身份串），**与第 6 条黑名单是两回事**，
  * 只要本文件不出现带引号的 `'claude'` 即可（同 `codex-trace.ts`）。
  */
+import { hasRedactionMark } from '../secrets.js';
 
 /** 一次 headless 调用解析出来的轨迹 */
 export interface ClaudeTrace {
@@ -435,4 +436,18 @@ export function countTools(trace: ClaudeTrace): { read: number; grep: number; gl
  */
 export function finalReviewText(trace: ClaudeTrace): string | null {
   return trace.finalText;
+}
+
+/**
+ * 生效模型的回读判定（EV-257）——`buildClaudeResult`、探针 `model_flag` 与准入 / 收口脚本共用。
+ *
+ * 事件流在解析前已过脱敏（`scrubGatewayEnv`），`init.model` 若带脱敏痕迹（占位符或首尾预览），
+ * 说明回读被吞了：记 null + `unverified`，**不让占位符以回读成功的形态落盘**（AC-20）。
+ * 这一道独立于逐值替换的键名划分——不靠那边划得完备。
+ * 缺失或空串时与修复前的表达式逐字相同（`init?.model ?? null` 配 `init?.model ? … : 'unverified'`）。
+ */
+export function claudeModelReadback(init: ClaudeTrace['init']): { model: string | null; source: 'envelope' | 'unverified' } {
+  const model = init?.model ?? null;
+  if (hasRedactionMark(model)) return { model: null, source: 'unverified' };
+  return { model, source: model ? 'envelope' : 'unverified' };
 }

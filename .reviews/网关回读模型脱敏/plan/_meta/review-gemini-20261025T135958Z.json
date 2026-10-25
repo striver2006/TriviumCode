@@ -1,0 +1,69 @@
+{
+  "agreed": [
+    "选定「模型名键豁免逐值替换 + 回读占位符兜底 unverified」组合方案（①+③），彻底避免了原始未脱敏 stdout 跨越 invokeClaude 边界的外溢风险，取舍充分合理。",
+    "替换集构造坚持 fail-closed 与凭据优先原则：模型名键的值若命中 redactSecrets 或与任何凭据键同值，仍强制加入替换集，有效封堵了误填或同值凭据的逃逸可能。",
+    "替换集按值长度降序排序替换，顺带加固了既有实现中短凭据切分长凭据导致残段明文落盘的历史隐患。",
+    "回读解析通过 claudeModelReadback 集中收敛判据，遇脱敏痕迹（<redacted、…）一律记为 null + unverified，彻底阻断占位符被误当成 envelope 成功回读落入 run.json 与审查文档的路径。",
+    "对探针事件流全部字段（tools、cwd、sessionId、toolUses、finalText、completed）做了严谨核对，确认除 init.model 外均不依赖网关环境变量，且在凭据回显时照旧脱敏。",
+    "实事求是地纠正了 windows-readout.md 中关于 probe.models 记录的误判，不使用不成立的断言作为设计论据。",
+    "回归锚与 13 条变异用例设计完整，单测 S1–S9、集成 E8–E10 对「放松脱敏」与「吞掉回读」两个方向形成了严密对称的闭环守卫。"
+  ],
+  "consulted": [
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/稳定版需求说明书.md",
+    "doc/02_design/README.md",
+    "doc/02_design/稳定版系统设计说明书.md",
+    "doc/05_testing/evidence/gateway-env-injection-20261025/windows-readout.md",
+    "doc/05_testing/evidence/gateway-env-injection-20261025/check-gateway-exposure.ps1",
+    "doc/08_project/现存Bug与未完成工作清单.md",
+    "scripts/agent-access-admission.mjs",
+    "scripts/agent-access-closeout.mjs",
+    "scripts/agent-access-restricted.mjs",
+    "scripts/mutation-check.mjs",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/secrets.ts",
+    "src/trivium/types.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/util/exec.ts",
+    "test/contract/facade-version-pointers.test.ts",
+    "test/integration/claude-gateway-env.test.ts",
+    "test/unit/claude-adapter.test.ts",
+    "test/unit/registry-parity.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 src/trivium/adapters/claude-route.ts:45，extractSettingsEnv 的过滤正则为 /^(ANTHROPIC_|CLAUDE_)/.test(k)，未限制 k 必须全大写；而 plan §1.1 的 isModelNameKey 正则 /^(ANTHROPIC|CLAUDE)_(?:[A-Z0-9]+_)*MODEL(?:_NAME)?$/ 与凭据词表均为大写。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §1.1",
+      "problem": "isModelNameKey(key) 未对键名执行大写归一化（case normalization）。若用户在 settings.json 的 env 段配置了含小写字母的模型名键（如 ANTHROPIC_model 或 ANTHROPIC_default_haiku_model），正则将因大小写失配而判定为假，导致合法模型名被误划入替换集脱敏，使回读降级为 unverified；反之，若键名中包含小写凭据词（如 ANTHROPIC_auth_model），分段查表时 CREDENTIAL_WORDS.has 也可能因大小写不符而漏拦。此外，凭据词表未覆盖 PASS、PASSWD、PWD 等变体（secrets.ts:217 已覆盖 passwd）。",
+      "severity": "minor",
+      "suggestion": "在 isModelNameKey(key) 入口先统一将 key 转换为大写（如 const upper = key.toUpperCase()），再进行正则匹配与下划线分段检查；同时凭据词表可补充 PASS、PASSWD、PWD，与 secrets.ts 既有词表对齐。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §1.2，claudeModelReadback 对空白或缺失模型的处理为「init 为空、init.model 为空或缺失：{ model: init?.model ?? null, source: 'unverified' }」，若 init.model 遇到纯空格字符串（如 \"   \"），在 JS 中为 truthy 且不含脱敏标记，会流向 envelope 分支。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §1.2",
+      "problem": "claudeModelReadback(init) 未对全空白字符串做防御。若网关回报全空格的畸变模型名，会被误判定为有效模型并赋予 envelope 来源；同时 hasRedactionMark(s) 应具备类型防卫和大小写容差。",
+      "severity": "nit",
+      "suggestion": "在 claudeModelReadback 中增加 trim 防护，对 !init?.model || init.model.trim() === '' 统一返回 { model: null, source: 'unverified' }；在 hasRedactionMark(s) 中先做 typeof s === 'string' 防护，并对 <redacted 做大小写不敏感匹配（如 /<redacted/i.test(s)）。"
+    }
+  ],
+  "not_covered": [
+    "因独立审查员只读环境限制，未实际运行 node --test 验证测试套件或执行变异脚本。",
+    "未在真实 Windows 网关环境连接 CC Switch 与 Claude Code 观测实际 system/init 回读数据。",
+    "未对 agent-access-admission.mjs 与 agent-access-closeout.mjs 在多网关环境下的端到端生成产物进行实机验证。"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "计划方案选用①+③组合，架构克制且边界清晰，彻底阻断了未脱敏数据外溢风险。\n主要细节风险在于 isModelNameKey 未做大写归一化（AGY-01），可能导致大小写混合配置误吞回读或漏判凭据词。\n回读判据建议增加对全空白模型名的防御，并强化 hasRedactionMark 的容错（AGY-02）。\n凭据替换绝无放松、探针事件流字段已核清、未开启机器零变化、双向回归锚完备，结论给 pass-after-changes。",
+  "verdict": "pass-after-changes"
+}

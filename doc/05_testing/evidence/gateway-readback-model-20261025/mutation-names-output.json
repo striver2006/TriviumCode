@@ -1,0 +1,291 @@
+[
+  {
+    "id": "M1",
+    "desc": "模型名键被重新纳入：isModelNameKey 恒假",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S1 键划分：模型名键为真；凭据键、伪模型键、非全大写键一律为假",
+      "S2 逐值替换的两个方向：模型名键的值保留，凭据键的值替换",
+      "S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M1b",
+    "desc": "同 M1，对集成 E8",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E8 开启 · 网关回报的模型名等于模型名键的值：回读记真名、来源 envelope，凭据键的值仍被替换"
+    ],
+    "firstLines": [],
+    "elapsed_s": 6
+  },
+  {
+    "id": "M2",
+    "desc": "模型名键被重新纳入：替换集构造忽略豁免（退回修复前）",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S2 逐值替换的两个方向：模型名键的值保留，凭据键的值替换",
+      "S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M2b",
+    "desc": "同 M2，对集成 E8",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E8 开启 · 网关回报的模型名等于模型名键的值：回读记真名、来源 envelope，凭据键的值仍被替换"
+    ],
+    "firstLines": [],
+    "elapsed_s": 6
+  },
+  {
+    "id": "M3",
+    "desc": "凭据键被放出：isModelNameKey 恒真",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 6,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S1 键划分：模型名键为真；凭据键、伪模型键、非全大写键一律为假",
+      "S2 逐值替换的两个方向：模型名键的值保留，凭据键的值替换",
+      "S3 凭据优先：同一个值同时挂在模型名键与凭据键上，照旧替换",
+      "S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免",
+      "S5 替换集按长度降序：短凭据是长凭据的子串时不留残段",
+      "S7 hasRedactionMark：生产方的每种脱敏产出都认出，真实模型名与非字符串都不认"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M3b",
+    "desc": "同 M3，对集成 E9（令牌值被当模型名记下）",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 4,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些",
+      "E7 开启：探针执行封装 execArgv 对 stdout / stderr 逐值脱敏（回显的凭据值只以占位符出现）",
+      "E8 开启 · 网关回报的模型名等于模型名键的值：回读记真名、来源 envelope，凭据键的值仍被替换",
+      "E9 开启 · 网关把凭据值当模型名回显：只剩占位符，回读记 null + unverified、model_flag 记 null"
+    ],
+    "firstLines": [],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M4",
+    "desc": "凭据键被放出：去掉凭据词表",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S1 键划分：模型名键为真；凭据键、伪模型键、非全大写键一律为假"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M5",
+    "desc": "凭据键被放出：键名正则去掉前缀与后缀锚定（含 MODEL 即算）",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S1 键划分：模型名键为真；凭据键、伪模型键、非全大写键一律为假"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M6",
+    "desc": "凭据键被放出：去掉守卫 2（值过 redactSecrets 无命中）",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M7",
+    "desc": "凭据键被放出：去掉守卫 3（凭据优先）",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S3 凭据优先：同一个值同时挂在模型名键与凭据键上，照旧替换"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M8",
+    "desc": "凭据值留残段：替换集不按长度降序",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S5 替换集按长度降序：短凭据是长凭据的子串时不留残段"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M9",
+    "desc": "凭据键被放出：去掉守卫 4（正向形态约束）",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M10",
+    "desc": "凭据键被放出：键名正则改为大小写不敏感",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S1 键划分：模型名键为真；凭据键、伪模型键、非全大写键一律为假"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M11",
+    "desc": "占位符记作回读成功：hasRedactionMark 恒假",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S7 hasRedactionMark：生产方的每种脱敏产出都认出，真实模型名与非字符串都不认",
+      "S8 claudeModelReadback 真值表：缺失 / 空串与修复前逐字相同，带痕迹记 null + unverified",
+      "S9 buildClaudeResult：占位符不以 envelope 落盘，正常名照旧 envelope"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M11b",
+    "desc": "同 M11，对集成 E9",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E9 开启 · 网关把凭据值当模型名回显：只剩占位符，回读记 null + unverified、model_flag 记 null"
+    ],
+    "firstLines": [],
+    "elapsed_s": 6
+  },
+  {
+    "id": "M12",
+    "desc": "占位符记作回读成功：hasRedactionMark 不认首尾预览",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S7 hasRedactionMark：生产方的每种脱敏产出都认出，真实模型名与非字符串都不认",
+      "S8 claudeModelReadback 真值表：缺失 / 空串与修复前逐字相同，带痕迹记 null + unverified"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M13",
+    "desc": "占位符记作回读成功：buildClaudeResult 的来源退回直取 init.model",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S9 buildClaudeResult：占位符不以 envelope 落盘，正常名照旧 envelope"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M13b",
+    "desc": "占位符记作生效模型：buildClaudeResult 的模型退回直取 init.model",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S9 buildClaudeResult：占位符不以 envelope 落盘，正常名照旧 envelope"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M14",
+    "desc": "回读被吞记成核对不符：探针 model_flag 退回原判据",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E9 开启 · 网关把凭据值当模型名回显：只剩占位符，回读记 null + unverified、model_flag 记 null"
+    ],
+    "firstLines": [],
+    "elapsed_s": 7
+  },
+  {
+    "id": "M15",
+    "desc": "零变化破坏：回读判定对正常名也强制 unverified",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S8 claudeModelReadback 真值表：缺失 / 空串与修复前逐字相同，带痕迹记 null + unverified",
+      "S9 buildClaudeResult：占位符不以 envelope 落盘，正常名照旧 envelope"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M15b",
+    "desc": "同 M15，对集成 E10",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E8 开启 · 网关回报的模型名等于模型名键的值：回读记真名、来源 envelope，凭据键的值仍被替换",
+      "E10 未开启：与修复前逐项相同——回读记缺省名 envelope，输出逐字等于只过模式脱敏"
+    ],
+    "firstLines": [],
+    "elapsed_s": 6
+  }
+]

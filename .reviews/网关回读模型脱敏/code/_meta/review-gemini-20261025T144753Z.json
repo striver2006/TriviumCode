@@ -1,0 +1,51 @@
+{
+  "agreed": [
+    "双向守卫设计：脱敏侧通过 gatewayScrubPlan 对模型名键实施四道递进守卫（键名全大写白名单、redactSecrets 模式校验、凭据同值排他、形态与分段长度约束），回读侧通过 claudeModelReadback 与 hasRedactionMark 独立兜底，避免将脱敏占位符当作有效模型落盘。",
+    "替换集降序排序优化：gatewayScrubPlan 对替换集按长度降序排列，彻底消除了短凭据优先替换导致长凭据残留片段的安全隐患。",
+    "探针侧状态精准化：probes/claude.ts 中修正 model_flag 判定逻辑，将脱敏吞噬状态与所选模型不匹配明确区分为 null 与 false，消除了误报。",
+    "未开启网关零变化保证：未配置 settings_env_source 或 env 为空时，gatewayScrubPlan 返回空替换集，行为严格回退到既有 redactSecrets 模式，与修改前完全等价。",
+    "回归与变异锚完备：新增 S1～S9 单元测试与 E8～E10 集成测试，对 21 项涵盖模型名键误入替换集、凭据键误放出、占位符记作 envelope 及零变化破坏的变异全部有效击杀。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/稳定版需求说明书.md",
+    "doc/02_design/README.md",
+    "doc/02_design/稳定版系统设计说明书.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    ".reviews/网关回读模型脱敏/plan/2026-10-25-网关回读模型脱敏-r2-claude.md",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/secrets.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/types.ts",
+    "scripts/agent-access-admission.mjs",
+    "scripts/agent-access-closeout.mjs",
+    "scripts/agent-access-restricted.mjs",
+    "scripts/manual-supplement.md",
+    "test/unit/claude-gateway-scrub.test.ts",
+    "test/integration/claude-gateway-env.test.ts",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-25_gateway_readback_model.md",
+    "doc/05_testing/evidence/gateway-readback-model-20261025/scan-gateway-exposure.mjs",
+    "doc/05_testing/evidence/gateway-readback-model-20261025/windows-acceptance.md",
+    "doc/05_testing/evidence/gateway-readback-model-20261025/accept-readout.txt",
+    "doc/05_testing/evidence/gateway-readback-model-20261025/mutation-output.txt",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/现存Bug与未完成工作清单.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "Windows 真实网关环境的现场联调：本审查员运行于 macOS 纯读环境，Windows 平台下真实 CC Switch 配合 Kimi/Qwen 网关的真实配额审查、doctor 探针及落盘扫描脚本现场执行，需依 windows-acceptance.md 清单由用户在真实机上执行。",
+    "动态运行与命令执行验证：审查员无写权限及终端执行权限，所有关于代码执行、分支覆盖和变异用例击杀的判断均为基于静态代码分析与既有产物核对得出的逻辑推理。",
+    "非 ANTHROPIC_ / CLAUDE_ 前缀的自定义网关环境变量处理：由 extractSettingsEnv 机制限制，此类键在路线解析阶段即被排除，本审查未覆盖外部侵入式环境变量注入场景。"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "本次变更完整解决了网关机器上 claude 回读模型被逐值脱敏吞掉的缺陷（EV-257）。凭据类键的逐值替换保持严格且补强了降序替换，未出现任何放松；模型名键划分采用键名大写白名单及四道递进守卫，有效阻断误填凭据；回读侧经 claudeModelReadback 独立兜底，占位符不会以 envelope 成功形态落盘；探针取自事件流的各字段已全面核验；未开启网关的场景保持零变化；S1～S9、E8～E10 与 21 项变异测试双向咬住，整体实现严密规范，结论为 pass。",
+  "verdict": "pass"
+}

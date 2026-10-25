@@ -313,6 +313,18 @@ export function redactSecrets(content: string): { content: string; count: number
 }
 
 /**
+ * 文本是否带脱敏痕迹（EV-257）：脱敏产出的全部形态都在本仓生成——`redactWith` 的 `<redacted>`
+ * （含 PEM 占位符）、`scrubGatewayEnv` 的 `<redacted-env>`、`redact()` 首尾预览里唯一的分隔符 `…`。
+ * 新增脱敏形态时在这里一并改；单测逐一喂各形态的实际产出锁住。
+ *
+ * 用途是**回读字段**的兜底判定：模型名这类结构化字段若带痕迹，说明回读被脱敏吞了，
+ * 不能当回读成功记。匹配区分大小写——形态由本仓代码固定产出。
+ */
+export function hasRedactionMark(s: unknown): boolean {
+  return typeof s === 'string' && (s.includes('<redacted') || s.includes('…'));
+}
+
+/**
  * 扫一段**可能内嵌 unified diff** 的文本：diff hunk 内只看新增行，hunk 外整份扫。
  * 行号按原文行号报，便于直接定位。
  *
