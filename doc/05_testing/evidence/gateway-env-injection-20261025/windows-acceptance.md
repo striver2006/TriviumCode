@@ -7,6 +7,17 @@
 
 ## 0. 准备
 
+> **编码（2026-10-25 首轮实测后补）**：Windows PowerShell 5.1 会把 node 的 UTF-8 输出按控制台代码页（中文系统为 GBK）解码，再经管道存盘，中文变乱码、JSON 不再可解析（首轮读数靠 `repair-gbk-mojibake.mjs` 还原，见 `windows-readout.md`）。**每个**窗口开头先执行：
+>
+> ```powershell
+> [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+> $OutputEncoding = [System.Text.Encoding]::UTF8
+> ```
+>
+> 落盘一律用 `2>&1 | Out-File -Encoding utf8 …`，不用 `*>`。
+>
+> **判读**：检查脚本把以 `_MODEL` / `_MODEL_NAME` 结尾的键报为 `NOTE`（取值是网关回报的模型名，探针本就会记录、也可能作为 `--model` 出现），只有其余键（`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL` 等）的命中才报 `LEAK`。
+
 1. 拉取含 EV-256 的提交，按惯例构建并重装（重装后安装副本与仓库构建的 sha256 应一致）。
 2. 确认本机层配置：`Select-String -Path .trivium\config.local.yaml -Pattern settings_env_source` 应命中 `user_settings`。
 3. 检查脚本 `check-gateway-exposure.ps1`（本目录）只读、只输出键名与计数，不打印任何值。先空跑一次确认它能读到键：
@@ -21,16 +32,16 @@
 
 开两个 PowerShell 窗口，都在仓库根。
 
-- 窗口 B **先**启动采样（300 秒够 doctor 跑完；不够就加长）：
+- 窗口 B **先**启动采样（doctor 实测约 10 分钟，900 秒留足余量）：
 
   ```powershell
-  .\doc\05_testing\evidence\gateway-env-injection-20261025\check-gateway-exposure.ps1 -Watch 300 *> doc\05_testing\evidence\gateway-env-injection-20261025\windows-watch-doctor.txt
+  .\doc\05_testing\evidence\gateway-env-injection-20261025\check-gateway-exposure.ps1 -Watch 900 2>&1 | Out-File -Encoding utf8 doc\05_testing\evidence\gateway-env-injection-20261025\windows-watch-doctor.txt
   ```
 
 - 窗口 A 随即：
 
   ```powershell
-  .\.trivium\bin\trivium.cmd doctor --only claude --json *> doc\05_testing\evidence\gateway-env-injection-20261025\windows-doctor.json
+  .\.trivium\bin\trivium.cmd doctor --only claude --json 2>&1 | Out-File -Encoding utf8 doc\05_testing\evidence\gateway-env-injection-20261025\windows-doctor.json
   echo "exit=$LASTEXITCODE"
   ```
 
@@ -49,7 +60,7 @@
 doctor 跑完后扫一遍探针落盘与 doctor 输出：
 
 ```powershell
-.\doc\05_testing\evidence\gateway-env-injection-20261025\check-gateway-exposure.ps1 -Scan .trivium,doc\05_testing\evidence\gateway-env-injection-20261025\windows-doctor.json *> doc\05_testing\evidence\gateway-env-injection-20261025\windows-scan-doctor.txt
+.\doc\05_testing\evidence\gateway-env-injection-20261025\check-gateway-exposure.ps1 -Scan .trivium,doc\05_testing\evidence\gateway-env-injection-20261025\windows-doctor.json 2>&1 | Out-File -Encoding utf8 doc\05_testing\evidence\gateway-env-injection-20261025\windows-scan-doctor.txt
 ```
 
 期望 `RESULT: no leak`。
@@ -57,7 +68,7 @@ doctor 跑完后扫一遍探针落盘与 doctor 输出：
 ## 2. 预检探活（`invokeClaude` 的探活形态）
 
 ```powershell
-.\.trivium\bin\trivium.cmd preflight --stage code --driver codex --critics claude --json *> doc\05_testing\evidence\gateway-env-injection-20261025\windows-preflight.json
+.\.trivium\bin\trivium.cmd preflight --stage code --driver codex --critics claude --json 2>&1 | Out-File -Encoding utf8 doc\05_testing\evidence\gateway-env-injection-20261025\windows-preflight.json
 echo "exit=$LASTEXITCODE"
 ```
 
@@ -65,10 +76,10 @@ echo "exit=$LASTEXITCODE"
 
 ## 3. 可选：一次真实审查（审查调用 `claudeAdapter.run`）
 
-审查调用与探活、目录臂走同一个出口 `invokeClaude`，第 1、2 步已覆盖这条出口；想再加一道真实审查，就在任意小改动上从非 claude 的 Driver 发起一次 `--critics claude` 的代码审，期间在另一窗口跑 `-Watch 600`，审完对本次运行目录与 `.reviews\` 跑 `-Scan`：
+审查调用与探活、目录臂走同一个出口 `invokeClaude`，第 1、2 步已覆盖这条出口；想再加一道真实审查，就在任意小改动上从非 claude 的 Driver 发起一次 `--critics claude` 的代码审，期间在另一窗口跑 `-Watch 900`，审完对本次运行目录与 `.reviews\` 跑 `-Scan`：
 
 ```powershell
-.\doc\05_testing\evidence\gateway-env-injection-20261025\check-gateway-exposure.ps1 -Scan "$env:USERPROFILE\.trivium\runs\<本次运行目录>",.reviews *> doc\05_testing\evidence\gateway-env-injection-20261025\windows-scan-review.txt
+.\doc\05_testing\evidence\gateway-env-injection-20261025\check-gateway-exposure.ps1 -Scan "$env:USERPROFILE\.trivium\runs\<本次运行目录>",.reviews 2>&1 | Out-File -Encoding utf8 doc\05_testing\evidence\gateway-env-injection-20261025\windows-scan-review.txt
 ```
 
 期望两份输出都是 `RESULT: no leak`，审查侧 claude 结论正常落盘。

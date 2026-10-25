@@ -11,6 +11,11 @@
 #   .\doc\05_testing\evidence\gateway-env-injection-20261025\check-gateway-exposure.ps1 -Scan <dir-or-file>[,<dir-or-file>...]
 #       check file contents under these paths (recursive)
 # Exit codes: 0 no leak; 1 leak seen; 2 nothing to check in settings.json; 3 -Watch saw no claude process (sampling invalid).
+#
+# Model-name keys (ending in _MODEL or _MODEL_NAME) are reported as NOTE, not LEAK: their values are model ids the gateway
+# reports back, which the probe legitimately records (config.local.yaml, doctor output) and which may appear as --model.
+# Only the remaining keys (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, ...) count as a leak.
+# (2026-10-25 first Windows run reported three model-name keys as LEAK in .trivium\config.local.yaml; see windows-readout.md.)
 param(
   [int]$Watch = 0,
   [string[]]$Scan = @()
@@ -23,7 +28,7 @@ $pairs = @()
 if ($null -ne $json.env) {
   foreach ($p in $json.env.PSObject.Properties) {
     if ($p.Name -match '^(ANTHROPIC_|CLAUDE_)' -and $p.Value -is [string] -and $p.Value.Length -ge 8) {
-      $pairs += [pscustomobject]@{ Key = $p.Name; Value = $p.Value }
+      $pairs += [pscustomobject]@{ Key = $p.Name; Value = $p.Value; IsModel = ($p.Name -match '_MODEL(_NAME)?$') }
     }
   }
 }
@@ -34,6 +39,15 @@ if ($pairs.Count -eq 0) {
 }
 
 $leak = $false
+
+function Report-Hit($pair, [string]$where) {
+  if ($pair.IsModel) {
+    Write-Output ("NOTE {0} (model name, expected to appear) {1}" -f $pair.Key, $where)
+  } else {
+    Write-Output ("LEAK {0} {1}" -f $pair.Key, $where)
+    $script:leak = $true
+  }
+}
 
 if ($Watch -gt 0) {
   $deadline = (Get-Date).AddSeconds($Watch)
@@ -51,8 +65,7 @@ if ($Watch -gt 0) {
       if ($null -eq $proc.CommandLine) { continue }
       foreach ($pair in $pairs) {
         if ($proc.CommandLine.Contains($pair.Value)) {
-          Write-Output ("LEAK {0} pid={1} name={2}" -f $pair.Key, $proc.ProcessId, $proc.Name)
-          $leak = $true
+          Report-Hit $pair ("pid={0} name={1}" -f $proc.ProcessId, $proc.Name)
         }
       }
     }
@@ -75,8 +88,7 @@ foreach ($root in $Scan) {
     $text = [System.IO.File]::ReadAllText($f.FullName)
     foreach ($pair in $pairs) {
       if ($text.Contains($pair.Value)) {
-        Write-Output ("LEAK {0} file={1}" -f $pair.Key, $f.FullName)
-        $leak = $true
+        Report-Hit $pair ("file={0}" -f $f.FullName)
       }
     }
   }

@@ -4,7 +4,7 @@
 - **日期**：2026-10-25
 - **基线**：`40dbab4f`（下文行号取自该提交的源码）
 - **留痕**：计划 `.reviews/网关凭据改环境变量注入/plan/`（定稿 r2）；代码审 `.reviews/网关凭据改环境变量注入/code/`；证据 [`evidence/gateway-env-injection-20261025/`](./evidence/gateway-env-injection-20261025/)
-- **登记**：BACKLOG EV-256；Bug 清单 §3.1 第 14 条（闭合）；主设计 v1.3.178（§12「第三方网关键的传法与次序」）
+- **登记**：BACKLOG EV-256；Bug 清单 §3.1 第 14 条（闭合，Windows 真实网关形态已验）；主设计 v1.3.178（§12「第三方网关键的传法与次序」）
 - **产品版本号**：不动（`package.json` 仍为 1.3.1，随 1.3.2 发版）
 
 ## 1. 问题
@@ -79,6 +79,7 @@ M4 / M5 / M6 在未开启格也红（变异写出的 `{"env":{}}` 同样是 env 
 | 1 | 3989 | 3979 | 0 | 10 | 0 | 366 s |
 | 2 | 3989 | 3979 | 0 | 10 | 0 | 360 s |
 | 3（代码审补 E7、改 E6 与契约描述之后，`check-3.txt`） | 3990 | 3980 | 0 | 10 | 0 | 338 s |
+| 4（Windows 验收判读回填文档之后，2026-10-25，`check-4.txt`） | 3990 | 3980 | 0 | 10 | 0 | 350 s |
 
 用例数对基线 3987（EV-254 收口读数）：新增集成 3 格，删掉单测原 G4 一格，净增 2；第 3 次再多 E7 一格。
 
@@ -100,6 +101,15 @@ S10 `trivium verify`（`.reviews/网关凭据改环境变量注入/verify/`）�
 3. **`scrubGatewayEnv` 的残余**不变：截断 / 折行 / 再编码形态的泄漏不在原串替换射程内，与既有模式脱敏口径同一。
 4. **Windows 自动回归**：新集成套件不靠 shebang，按设计在 win32 也跑；本次只在 macOS 跑过，Windows 全量时一并核对。
 
-## 8. Windows 真实网关验收（待用户执行）
+## 8. Windows 真实网关验收（2026-10-25，用户执行，通过）
 
-本机 macOS 没开 `settings_env_source`，真实网关形态只能在 Windows 开发机验，会动用凭据、花少量配额。清单与只读检查脚本：[`evidence/gateway-env-injection-20261025/windows-acceptance.md`](./evidence/gateway-env-injection-20261025/windows-acceptance.md)、`check-gateway-exposure.ps1`（只输出键名与计数，不打印任何值；纯 ASCII，Windows PowerShell 5.1 可直接跑）。判据：`doctor --only claude` 退 0、注记为「经子进程环境变量注入」、只读旗标非空、目录臂有结论，期间进程表零 `LEAK` 且至少采到 1 个 claude 进程；预检探活通过；探针落盘与输出文件零命中。读数回来后补进本节与 Bug 清单 §3.1 第 14 条。
+本机 macOS 没开 `settings_env_source`，真实网关形态只能在 Windows 开发机验，会动用凭据、花少量配额。清单与只读检查脚本：[`evidence/gateway-env-injection-20261025/windows-acceptance.md`](./evidence/gateway-env-injection-20261025/windows-acceptance.md)、`check-gateway-exposure.ps1`（只输出键名与计数，不打印任何值；纯 ASCII，Windows PowerShell 5.1 可直接跑）。用户在 Windows 开发机（CC Switch 网关，claude 2.1.302，安装构建 `514eaca`）跑了第 0～3 步，原始输出在提交 `99cba8ec`，判读全文见 [`windows-readout.md`](./evidence/gateway-env-injection-20261025/windows-readout.md)：
+
+| 项 | 读数 |
+| :--- | :--- |
+| `doctor --only claude` | ok、零 blocker；注记「网关 env 经子进程环境变量注入（12 键；不进命令行，值不落留痕）」；`readonly_flags` 为四项受限组合、`readonly_breach: false`、`headless_read_ok` / `json_schema_ok` / `stream_json_requires_verbose` / `project_memory_blocked` 均 true、目录臂 Read / Grep / Glob 均 true |
+| 进程表采样（`-Watch 420`） | 314 次采样、19 个 claude 进程，12 个网关键零命中 |
+| 落盘扫描（`.trivium`、doctor 输出） | `ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL` 零命中；三个模型名键命中，取值是网关回报的模型名（`kimi-for-coding` 一族），探针本就记录，属合法出现 |
+| 预检探活（`preflight --critics claude`） | ok、退 0，「Claude Code 已认证」探活通过 |
+
+**两处如实登记**：①首轮输出按清单原写法（`*>` / 管道）存盘，Windows PowerShell 5.1 把 node 的 UTF-8 输出按 GBK 解码，两份 JSON 中文乱码、不可整份解析；判读用 `repair-gbk-mojibake.mjs` 还原后逐字段提取（判据字段均可读），清单已改为先设 UTF-8 控制台编码、用 `Out-File -Encoding utf8` 落盘。检查脚本当时把模型名键也报成 `LEAK`，已改为只报 `NOTE`。②这次 doctor 约 10 分钟，采样窗口 420 s 没盖全，目录臂尾段约 3 分钟未采样（同一代码路径，两条出口均已在真实网关下采到）；清单已把窗口改为 900 s。可选的第 4 步（claude 作审核者的真实审查）未做。
