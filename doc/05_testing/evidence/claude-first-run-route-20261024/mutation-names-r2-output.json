@@ -1,0 +1,126 @@
+[
+  {
+    "id": "M1",
+    "desc": "撤销修复：首跑引导恢复写回调用方配置，块内改回用调用方配置",
+    "suite": "dist/test/test/integration/claude-route-stability.test.js",
+    "fail": 7,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "N1 native 全新安装：盘上无结论、未配 bin——不判路线变化，首跑引导给目录臂拿到入口，路线按新版本登记",
+      "N2 native 版本变化：盘上记旧版本、实测新版本——不判路线变化，路线改按新版本登记",
+      "N3 native 版本一致（对照）：不判路线变化，登记照常",
+      "N4 边界锚：缺省 native 配置下探测期间改入口二进制与无关环境——比对恒判稳定，只有目录事实作废",
+      "P1 profile 全新安装：不判路线变化，目录臂拿到实测入口，profile 路线按新版本登记",
+      "P2 profile 版本变化：不判路线变化，profile 路线改按新版本登记",
+      "P3 profile 版本一致（对照）：不判路线变化，登记照常"
+    ],
+    "firstLines": [
+      "N1 native 全新安装 ⇒ AssertionError [ERR_ASSERTION]: N1：本次探测自身带来的变化不得判路线变化：[\"Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。\",\"claude headless 读不到文件——该侧无法作为审查员使用\"]",
+      "N2 native 版本变化 ⇒ AssertionError [ERR_ASSERTION]: N2：本次探测自身带来的变化不得判路线变化：[\"Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。\",\"claude headless 读不到文件——该侧无法作为审查员使用\"]",
+      "N3 native 版本一致（对照） ⇒ AssertionError [ERR_ASSERTION]: N3：调用方配置不得被改动（probeClaude 契约）",
+      "N4 边界锚 ⇒ AssertionError [ERR_ASSERTION]: N4：调用方配置不得被改动（probeClaude 契约）",
+      "P1 profile 全新安装 ⇒ AssertionError [ERR_ASSERTION]: P1：本次探测自身带来的变化不得判路线变化：[\"Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。\",\"claude headless 读不到文件——该侧无法作为审查员使用\"]",
+      "P2 profile 版本变化 ⇒ AssertionError [ERR_ASSERTION]: P2：本次探测自身带来的变化不得判路线变化：[\"Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。\",\"claude headless 读不到文件——该侧无法作为审查员使用\"]",
+      "P3 profile 版本一致（对照） ⇒ AssertionError [ERR_ASSERTION]: P3：调用方配置不得被改动（probeClaude 契约）"
+    ],
+    "elapsed_s": 16
+  },
+  {
+    "id": "M1b",
+    "desc": "同 M1，对既有 doctor 用例所在套件",
+    "suite": "dist/test/test/integration/claude-structured-probe.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "doctor目录后置预期失败不丢主probe：真实假CLI、持久化及重新读取"
+    ],
+    "firstLines": [
+      "doctor目录后置预期失败不丢主probe ⇒ AssertionError [ERR_ASSERTION]: create：首跑不得判路线变化：[\"Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。\",\"claude headless 读不到文件——该侧无法作为审查员使用\"]"
+    ],
+    "elapsed_s": 5
+  },
+  {
+    "id": "M2",
+    "desc": "比对恒判稳定：stable 只看探测前路线是否取到",
+    "suite": "dist/test/test/integration/claude-route-stability.test.js",
+    "fail": 5,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "R1 native 网关 env 摘要在探测期间变了：仍判失效",
+      "R2 profile 文件在探测期间被改：仍判失效",
+      "R5 profile 文件在探测期间被删（探测后解析抛出，走 catch）：仍判失效",
+      "R3 包装器内容在探测期间被改：仍判失效",
+      "R4 包装器入口在探测期间变了（未配 profile_bin，现找的 cld 换了一个）：仍判失效"
+    ],
+    "firstLines": [
+      "R1 native 网关 env 摘要在探测期间变了 ⇒ AssertionError [ERR_ASSERTION]: R1：探测期间路线真的变了，必须判失效：[\"claude headless 读不到文件——该侧无法作为审查员使用\"]",
+      "R2 profile 文件在探测期间被改 ⇒ AssertionError [ERR_ASSERTION]: R2：探测期间路线真的变了，必须判失效：[\"claude headless 读不到文件——该侧无法作为审查员使用\"]",
+      "R5 profile 文件在探测期间被删（探测后解析抛出，走 catch） ⇒ Error: ENOENT: no such file or directory, open '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-route-stability-home-2w62Kh/.claude/profiles/fx.env'",
+      "R3 包装器内容在探测期间被改 ⇒ AssertionError [ERR_ASSERTION]: R3：探测期间路线真的变了，必须判失效：[\"claude headless 读不到文件——该侧无法作为审查员使用\"]",
+      "R4 包装器入口在探测期间变了（未配 profile_bin，现找的 cld 换了一个） ⇒ AssertionError [ERR_ASSERTION]: R4：探测期间路线真的变了，必须判失效：[\"claude headless 读不到文件——该侧无法作为审查员使用\"]"
+    ],
+    "elapsed_s": 16
+  },
+  {
+    "id": "M2b",
+    "desc": "比对处 catch 改判稳定：探测后解析抛出（profile 文件被删）不再判失效（代码审 GLM-01）",
+    "suite": "dist/test/test/integration/claude-route-stability.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "R5 profile 文件在探测期间被删（探测后解析抛出，走 catch）：仍判失效"
+    ],
+    "firstLines": [
+      "R5 profile 文件在探测期间被删（探测后解析抛出，走 catch） ⇒ Error: ENOENT: no such file or directory, open '/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-route-stability-home-4EpEyz/.claude/profiles/fx.env'"
+    ],
+    "elapsed_s": 16
+  },
+  {
+    "id": "M3",
+    "desc": "去掉首跑引导：副本里不放本次探针（块内用调用方配置原样解析）",
+    "suite": "dist/test/test/integration/claude-route-stability.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "N1 native 全新安装：盘上无结论、未配 bin——不判路线变化，首跑引导给目录臂拿到入口，路线按新版本登记",
+      "P1 profile 全新安装：不判路线变化，目录臂拿到实测入口，profile 路线按新版本登记"
+    ],
+    "firstLines": [
+      "N1 native 全新安装 ⇒ AssertionError [ERR_ASSERTION]: 首跑引导：目录臂拿到的路线入口是本次实测的入口",
+      "P1 profile 全新安装 ⇒ AssertionError [ERR_ASSERTION]: 首跑引导：profile 路线的 native 入口取本次实测"
+    ],
+    "elapsed_s": 16
+  },
+  {
+    "id": "M4",
+    "desc": "候选 B：保留写回，比对时显式钉住探测前的版本",
+    "suite": "dist/test/test/integration/claude-route-stability.test.js",
+    "fail": 7,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "N1 native 全新安装：盘上无结论、未配 bin——不判路线变化，首跑引导给目录臂拿到入口，路线按新版本登记",
+      "N2 native 版本变化：盘上记旧版本、实测新版本——不判路线变化，路线改按新版本登记",
+      "N3 native 版本一致（对照）：不判路线变化，登记照常",
+      "N4 边界锚：缺省 native 配置下探测期间改入口二进制与无关环境——比对恒判稳定，只有目录事实作废",
+      "P1 profile 全新安装：不判路线变化，目录臂拿到实测入口，profile 路线按新版本登记",
+      "P2 profile 版本变化：不判路线变化，profile 路线改按新版本登记",
+      "P3 profile 版本一致（对照）：不判路线变化，登记照常"
+    ],
+    "firstLines": [
+      "N1 native 全新安装 ⇒ AssertionError [ERR_ASSERTION]: N1：本次探测自身带来的变化不得判路线变化：[\"Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。\",\"claude headless 读不到文件——该侧无法作为审查员使用\"]",
+      "N2 native 版本变化 ⇒ AssertionError [ERR_ASSERTION]: N2：调用方配置不得被改动（probeClaude 契约）",
+      "N3 native 版本一致（对照） ⇒ AssertionError [ERR_ASSERTION]: N3：调用方配置不得被改动（probeClaude 契约）",
+      "N4 边界锚 ⇒ AssertionError [ERR_ASSERTION]: N4：调用方配置不得被改动（probeClaude 契约）",
+      "P1 profile 全新安装 ⇒ AssertionError [ERR_ASSERTION]: P1：本次探测自身带来的变化不得判路线变化：[\"Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。\",\"claude headless 读不到文件——该侧无法作为审查员使用\"]",
+      "P2 profile 版本变化 ⇒ AssertionError [ERR_ASSERTION]: P2：调用方配置不得被改动（probeClaude 契约）",
+      "P3 profile 版本一致（对照） ⇒ AssertionError [ERR_ASSERTION]: P3：调用方配置不得被改动（probeClaude 契约）"
+    ],
+    "elapsed_s": 16
+  }
+]

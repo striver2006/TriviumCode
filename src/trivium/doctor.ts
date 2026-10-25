@@ -126,6 +126,9 @@ export interface DoctorOptions {
 /** `--only` 的合法取值：全部已登记 CLI，外加环境段 */
 export const DOCTOR_ONLY_ENV = 'env' as const;
 
+/** claude 段路线稳定性比对不成立时的 blocker（EV-254 起用例按常量断言，判据见调用处注释） */
+export const CLAUDE_ROUTE_CHANGED_BLOCKER = 'Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。';
+
 /** 合法 `--only` 取值清单，供 cli.ts 校验与 USAGE 文案共用 —— 两处不得各写各的 */
 export function doctorOnlyChoices(): string[] {
   return [...ALL_CLI_NAMES, DOCTOR_ONLY_ENV];
@@ -1213,6 +1216,16 @@ async function runDoctorCore(opts: DoctorOptions, hooks: DoctorCoreHooks | null)
       directoryEvidence = r.directoryEvidence;
       const snapshot = { ...r.probe, route_profile: selected.vendorProfile };
       delete snapshot.routes;
+      /*
+       * 路线稳定性比对（EV-254）：判的是**探测期间**环境变没变。前后两次都按调用方这份配置解析，
+       * 指纹七项里入口（`nativeBin`）与 `version` 取自其上的盘上结论——它们的新值是本次探针自己测的，
+       * 由下面的登记按快照重算，不算「探测期间的变化」；能在两次之间真变的只有现读环境的几项：
+       * profile 路线的包装器路径与内容、profile 文件，开了 `settings_env_source` 时的网关 env 摘要。
+       * 前提是 `probeClaude` 不改 `opts.config`（见 probes/claude.ts 首跑引导的契约）——在那里写回，
+       * 这里就会把 CLI 升级与全新安装误判成路线变化。
+       * 边界：缺省 native 配置（未配 bin、未开网关 env）下七项都不会在探测期间变，这条恒不触发；
+       * 该形态剩下的保护是目录臂窗口内的目录指纹（入口与 native 二进制内容）与下一次预检的版本 / 入口核对。
+       */
       let stable = false;
       try { stable = routeBefore?.fingerprint === resolveClaudeRoute(opts.config, selected.vendorProfile).fingerprint; }
       catch { /* 消失或权限变化同样使本轮结论失效 */ }
@@ -1225,7 +1238,7 @@ async function runDoctorCore(opts: DoctorOptions, hooks: DoctorCoreHooks | null)
         snapshot.directory_deny_sensitive_globs_sha256 = null;
         snapshot.directory_deny_shape = null;
         snapshot.directory_deny_probed_at = null;
-        blockers.push('Claude 路线在探测期间发生变化，本轮能力结论失效。请重跑 doctor。');
+        blockers.push(CLAUDE_ROUTE_CHANGED_BLOCKER);
       } else if (canProbeModel && snapshot.probed_at !== null) {
         const cfg = { ...opts.config, probe: { ...probe, cli: { ...probe.cli, claude: snapshot } } };
         routes[claudeRouteKey(selected.vendorProfile)] = { profile: selected.vendorProfile,

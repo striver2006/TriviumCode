@@ -1742,27 +1742,31 @@ export async function probeClaude(
   const directorySchemaPath = opts.assetRoot ? resolveReviewSchemaPath(opts.assetRoot) : null;
   const selectedRoute = routeContext.getStore();
   if (opts.config && directorySchemaPath && selectedRoute?.model && probe.readonly_flags.length > 0) {
+    /*
+     * 首跑引导：目录臂按 config 重建路线（resolveClaudeRoute 读 cfg.probe.cli.claude.entrypoint），
+     * 而盘上那份要等本段成功落盘后才有值——不给它本段新探针的话，没有历史结论的机器（全新安装）
+     * 首跑必为 null，目录臂拿 null bin 去 spawn 直接 TypeError。前面的臂不受影响：它们用本段传入的 bin。
+     *
+     * **给的是副本，不写回 `opts.config`**（EV-254）：doctor 的路线稳定性比对在探测前后各拿调用方这份
+     * 配置算一次指纹，写回会让「后」那次的入口与版本换成本段的测量值——CLI 升过级或全新安装时必判
+     * 「路线在探测期间发生变化」。契约：`probeClaude` 不改调用方传入的配置。浅拷贝：`cfg.review` 就是
+     * 调用方的 `review`，下面的哈希绑定的仍是真实项目配置（在夹具复制并替换 sensitive_globs 之前）。
+     */
+    const cfg: Config = { ...opts.config, probe: { ...opts.config.probe, cli: { ...opts.config.probe.cli, claude: probe } } };
     try {
-      /*
-       * 首跑引导：目录臂按 config 重建路线（resolveClaudeRoute 读 cfg.probe.cli.claude.entrypoint），
-       * 而盘上那份要等本段成功落盘后才有值——不同步的话没有历史结论的机器（全新安装）首跑必为
-       * null，目录臂拿 null bin 去 spawn 直接 TypeError。前面的臂不受影响：它们用本段传入的 bin。
-       */
-      opts.config.probe.cli.claude = probe;
-      const route = resolveClaudeRoute(opts.config, selectedRoute.route.profile, probe.version);
-      // 在夹具复制并替换sensitive_globs之前绑定真实项目配置。
-      const projectHash = claudeSensitiveGlobsHash(opts.config.review.sensitive_globs);
+      const route = resolveClaudeRoute(cfg, selectedRoute.route.profile, probe.version);
+      const projectHash = claudeSensitiveGlobsHash(cfg.review.sensitive_globs);
       const before = await claudeDirectoryFingerprint(route, probe.version);
-      directoryEvidence = await (opts.directoryProbe ?? probeClaudeDirectories)({ critic: 'claude', cfg: opts.config, route, model: selectedRoute.model,
+      directoryEvidence = await (opts.directoryProbe ?? probeClaudeDirectories)({ critic: 'claude', cfg, route, model: selectedRoute.model,
         effort: selectedRoute.effort, readonlyFlags: probe.readonly_flags, schemaPath: directorySchemaPath });
-      const after = await claudeDirectoryFingerprint(resolveClaudeRoute(opts.config, route.profile, probe.version), probe.version);
+      const after = await claudeDirectoryFingerprint(resolveClaudeRoute(cfg, route.profile, probe.version), probe.version);
       if (!directoryEvidence.failure && (before === null || after === null || before !== after ||
-          projectHash !== claudeSensitiveGlobsHash(opts.config.review.sensitive_globs))) {
+          projectHash !== claudeSensitiveGlobsHash(cfg.review.sensitive_globs))) {
         directoryEvidence.failure = '目录追加探针绑定未取得或发生变化，目录事实全部失效；主probe保留';
       }
       const recorded = before !== null && before === after && directoryEvidence.arms.length > 0 &&
         !directoryEvidence.failure && !directoryEvidence.cleanup &&
-        projectHash === claudeSensitiveGlobsHash(opts.config.review.sensitive_globs);
+        projectHash === claudeSensitiveGlobsHash(cfg.review.sensitive_globs);
       probe.directory_deny_verified = recorded ? directoryEvidence.verified : {};
       probe.directory_deny_fingerprint = recorded ? before : null;
       probe.directory_deny_probed_at = recorded ? new Date().toISOString() : null;

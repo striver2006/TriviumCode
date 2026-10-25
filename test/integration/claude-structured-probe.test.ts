@@ -40,7 +40,8 @@ import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { probeClaude } from '../../src/trivium/probes/claude.js';
 import { resolveReviewSchemaPath, defaultConfig, persistProbe, loadCtx } from '../../src/trivium/config.js';
-import { runDoctor } from '../../src/trivium/doctor.js';
+import { runDoctor, CLAUDE_ROUTE_CHANGED_BLOCKER } from '../../src/trivium/doctor.js';
+import type { Config } from '../../src/trivium/types.js';
 import { probeClaudeDirectories } from '../../src/trivium/probes/claude-directory.js';
 import { ProbeFixtureError } from '../../src/trivium/probes/fixture.js';
 import { LaunchBudgetExceeded } from '../../src/trivium/util/exec.js';
@@ -261,10 +262,18 @@ test('doctor目录后置预期失败不丢主probe：真实假CLI、持久化及
   const prevAssetRoot = process.env['TRIVIUM_ASSET_ROOT'];
   process.env['TRIVIUM_ASSET_ROOT'] = ASSET_ROOT;
   try {
-    const cfg = defaultConfig();
-    const agent = cfg.agents.claude; assert.ok(agent?.vendor === 'anthropic'); agent.bin = fakeBin;
+    /*
+     * 每轮独立配置（EV-254）：原先五轮共用一个配置对象，首跑引导把第 1 轮的新探针写回了它，
+     * 第 2～5 轮悄悄变成「盘上已有同版本结论」的场景；第 1 轮则撞上「路线在探测期间发生变化」却没人断言。
+     */
+    const freshConfig = (): Config => {
+      const cfg = defaultConfig();
+      const agent = cfg.agents.claude; assert.ok(agent?.vendor === 'anthropic'); agent.bin = fakeBin;
+      return cfg;
+    };
     let directoryCalls = 0;
     for (const fail of ['create', 'populate', 'append', 'budget', 'caller']) {
+      const cfg = freshConfig();
       const projectRoot = await scratchDir('trivium-doctor-directory-');
       const triviumDir = path.join(projectRoot, '.trivium'); await fs.mkdir(triviumDir);
       const report = await runDoctor({ projectRoot, triviumDir, config: cfg, only: 'claude', probeBins: { claude: fakeBin },
@@ -281,6 +290,7 @@ test('doctor目录后置预期失败不丢主probe：真实假CLI、持久化及
             },
           });
         } });
+      assert.ok(!report.blockers.includes(CLAUDE_ROUTE_CHANGED_BLOCKER), `${fail}：首跑不得判路线变化：${JSON.stringify(report.blockers)}`);
       const p = report.probe.cli.claude!;
       assert.equal(p.version, '9.9.9'); assert.equal(p.json_schema_ok, true);
       assert.deepEqual(p.directory_deny_verified, {});
@@ -295,7 +305,7 @@ test('doctor目录后置预期失败不丢主probe：真实假CLI、持久化及
     assert.equal(directoryCalls, 5);
     const unknownRoot = await scratchDir('trivium-doctor-directory-internal-');
     const unknownDir = path.join(unknownRoot, '.trivium'); await fs.mkdir(unknownDir);
-    await assert.rejects(runDoctor({ projectRoot: unknownRoot, triviumDir: unknownDir, config: cfg,
+    await assert.rejects(runDoctor({ projectRoot: unknownRoot, triviumDir: unknownDir, config: freshConfig(),
       only: 'claude', probeBins: { claude: fakeBin }, modelOverrides: { claude: 'stub/0.0.0' },
       claudeDirectoryProbe: async () => { throw new TypeError('undefined-internal-error'); } }), TypeError);
   } finally {

@@ -1,0 +1,52 @@
+{
+  "targets": [
+    "src/trivium/probes/claude.ts",
+    "src/trivium/doctor.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/claude-route-stability.test.js",
+    "dist/test/test/integration/claude-structured-probe.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "撤销修复：首跑引导恢复写回调用方配置，块内改回用调用方配置",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "    const cfg: Config = { ...opts.config, probe: { ...opts.config.probe, cli: { ...opts.config.probe.cli, claude: probe } } };",
+      "replace": "    opts.config.probe.cli.claude = probe; const cfg: Config = opts.config;",
+      "expect": "dist/test/test/integration/claude-route-stability.test.js"
+    },
+    {
+      "id": "M1b",
+      "desc": "同 M1，对既有 doctor 用例所在套件",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "    const cfg: Config = { ...opts.config, probe: { ...opts.config.probe, cli: { ...opts.config.probe.cli, claude: probe } } };",
+      "replace": "    opts.config.probe.cli.claude = probe; const cfg: Config = opts.config;",
+      "expect": "dist/test/test/integration/claude-structured-probe.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "比对恒判稳定：stable 只看探测前路线是否取到",
+      "file": "src/trivium/doctor.ts",
+      "find": "      try { stable = routeBefore?.fingerprint === resolveClaudeRoute(opts.config, selected.vendorProfile).fingerprint; }",
+      "replace": "      try { stable = routeBefore !== undefined; }",
+      "expect": "dist/test/test/integration/claude-route-stability.test.js"
+    },
+    {
+      "id": "M2b",
+      "desc": "比对处 catch 改判稳定：探测后解析抛出（profile 文件被删）不再判失效（代码审 GLM-01）",
+      "file": "src/trivium/doctor.ts",
+      "find": "      catch { /* 消失或权限变化同样使本轮结论失效 */ }",
+      "replace": "      catch { stable = true; }",
+      "expect": "dist/test/test/integration/claude-route-stability.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "去掉首跑引导：副本里不放本次探针（块内用调用方配置原样解析）",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "    const cfg: Config = { ...opts.config, probe: { ...opts.config.probe, cli: { ...opts.config.probe.cli, claude: probe } } };",
+      "replace": "    const cfg: Config = opts.config;",
+      "expect": "dist/test/test/integration/claude-route-stability.test.js"
+    }
+  ]
+}
