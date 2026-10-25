@@ -19,7 +19,6 @@ import {
   claudeAdapter,
   buildDenySettings,
   denyRuleShapeOf,
-  mergeSettingsEnv,
   readonlyArgsFromProbe,
   readonlyToolsFromProbe,
   readSchemaJson,
@@ -747,49 +746,44 @@ test('A31 契约金丝雀：送给 claude 的 review.v2.json 不用 2020-12 独�
   assert.ok(keywordsUsed({ items: [{ prefixItems: [] }] }).has('prefixItems'));
 });
 
-// ─────────────────── 网关 env 经 --settings 内联注入（CC Switch 支撑，Windows 线） ───────────────────
+// ─────────────────── 网关 env 经子进程环境变量注入（CC Switch 支撑，EV-256） ───────────────────
 
 /*
  * 受限模式按官方语义忽略 user/project/local settings 文件——CC Switch 恰好把网关配置
- * （ANTHROPIC_BASE_URL / API_KEY 等）写在用户级 settings.json 的 env 段，`--restricted`
+ * （ANTHROPIC_BASE_URL / AUTH_TOKEN 等）写在用户级 settings.json 的 env 段，`--restricted`
  * 一开就回落官方端点报「未登录」（win32 + claude 2.1.302 + api.kimi.com 实测）。
- * 唯一双活的通道是 `--settings` 内联：受限模式仍认它，且 claude.exe 是原生可执行、
- * argv 不经 cmd.exe 垫片。这一族守三件事：env 并进载荷、关闭时零变化、值不外泄。
+ * 1.2.0～1.3.1 把它并进 `--settings` 内联载荷，键值因此出现在进程命令行里（Bug 清单 §3.1 第 14 条）；
+ * EV-256 起改经子进程环境变量注入（2026-10-24 win32 实测受限模式认它）。这一族守三件事：
+ * 先清后注的次序、关闭时零变化、argv 里不再有网关通道。子进程侧的端到端锚见
+ * `test/integration/claude-gateway-env.test.ts`。
  */
-import { extractSettingsEnv } from '../../src/trivium/adapters/claude-route.js';
+import { claudeInvocationEnv, extractSettingsEnv } from '../../src/trivium/adapters/claude-route.js';
 
-const GW = { ANTHROPIC_BASE_URL: 'https://gw.example', ANTHROPIC_API_KEY: 'sk-gw-1234567890' };
+test('G1 claudeInvocationEnv：先清后注——同名键网关值胜出，父进程独有键仍被清除', () => {
+  const env = claudeInvocationEnv({
+    env: { ANTHROPIC_AUTH_TOKEN: undefined, ANTHROPIC_PARENT_ONLY: undefined },
+    settingsEnv: { ANTHROPIC_AUTH_TOKEN: 'gw-value', ANTHROPIC_BASE_URL: 'https://gw.example' },
+  });
+  assert.deepEqual(env, {
+    ANTHROPIC_AUTH_TOKEN: 'gw-value',
+    ANTHROPIC_PARENT_ONLY: undefined,
+    ANTHROPIC_BASE_URL: 'https://gw.example',
+  }, '次序颠倒时同名键会被清除补丁覆盖成 undefined，网关鉴权随之丢失');
+});
 
-test('G1 mergeSettingsEnv：env 并入 settings 载荷的 env 段，deny 规则原样共存', () => {
+test('G2 claudeInvocationEnv：settingsEnv 为空时与 route.env 逐键相同（未开网关的机器零变化）', () => {
+  const routeEnv = { ANTHROPIC_API_KEY: undefined, CLAUDE_CODE_USE_BEDROCK: undefined };
+  assert.deepEqual(claudeInvocationEnv({ env: routeEnv, settingsEnv: {} }), routeEnv);
+  assert.deepEqual(claudeInvocationEnv({ env: {}, settingsEnv: {} }), {});
+});
+
+test('G3 buildClaudeArgs：--settings 只装 deny 载荷、逐字节原样；settingsJson 为 null 时不出现', () => {
   const deny = JSON.stringify({ permissions: { deny: ['Read(./x)'] } });
-  const merged = JSON.parse(mergeSettingsEnv(deny, GW)!) as { permissions: unknown; env: Record<string, string> };
-  assert.deepEqual(merged.permissions, { deny: ['Read(./x)'] }, 'deny 通道与网关鉴权共存于同一份载荷，合并不得替换');
-  assert.equal(merged.env['ANTHROPIC_BASE_URL'], 'https://gw.example');
-  assert.equal(merged.env['ANTHROPIC_API_KEY'], 'sk-gw-1234567890');
-});
-
-test('G2 mergeSettingsEnv：settings 为 null 而 env 非空时新建；env 空对象时原样返回（含 null）', () => {
-  const made = JSON.parse(mergeSettingsEnv(null, GW)!) as { env: Record<string, string> };
-  assert.deepEqual(made.env, GW);
-  assert.equal(mergeSettingsEnv(null, {}), null, '未配网关的机器上不得凭空多出一个 --settings');
-  const deny = '{"permissions":{"deny":[]}}';
-  assert.equal(mergeSettingsEnv(deny, {}), deny, '关闭或空 env 时载荷逐字节不变');
-  assert.equal(mergeSettingsEnv(null, undefined), null);
-});
-
-test('G3 mergeSettingsEnv：坏 JSON 原样返回，不做校验层', () => {
-  assert.equal(mergeSettingsEnv('not json', GW), 'not json', '坏载荷交给 CLI 拒绝并走既有失败出口');
-});
-
-test('G4 buildClaudeArgs：settingsEnv 在场时 --settings 值含 env 段；缺席时与旧配方逐字节相同', () => {
-  const withEnv = buildClaudeArgs({ ...base, settingsEnv: GW });
-  const i = withEnv.indexOf('--settings');
-  assert.notEqual(i, -1, '网关 env 必须走 --settings 内联，不能靠环境变量（会被隔离剥掉）');
-  assert.deepEqual(JSON.parse(withEnv[i + 1]!).env, GW);
-  // 缺席时零变化：与不带 settingsEnv 的产出完全一致
-  assert.deepEqual(buildClaudeArgs({ ...base, settingsJson: null }), buildClaudeArgs({ ...base, settingsJson: null, settingsEnv: undefined }));
-  const noSettings = buildClaudeArgs(base);
-  assert.ok(!noSettings.includes('--settings'), '没有 deny 也没有网关 env 时不得出现 --settings');
+  const args = buildClaudeArgs({ ...base, settingsJson: deny });
+  const i = args.indexOf('--settings');
+  assert.notEqual(i, -1);
+  assert.equal(args[i + 1], deny, '网关 env 不再并进 --settings（EV-256）');
+  assert.ok(!buildClaudeArgs(base).includes('--settings'), '没有 deny 时不得出现 --settings');
 });
 
 test('G5 extractSettingsEnv：只收 ANTHROPIC_/CLAUDE_ 前缀的非空字符串值；坏 JSON 与缺失 env 段得空对象', () => {

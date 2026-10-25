@@ -1143,21 +1143,18 @@ test('EV-47 ②：judgeDeniedToolInTrace 三分——配上 ⇒ true、配不上
   assert.equal(judgeDeniedToolInTrace({ toolUses: [], erroredToolUseIds: errored, allowedTools }), null);
 });
 
-// ─────────────────── probeArgs 的网关 env 并入（CC Switch 支撑，Windows 线） ───────────────────
+// ─────────────────── probeArgs 不再承载网关 env（EV-256：改经子进程环境变量） ───────────────────
 
-test('probeArgs：settingsEnv 并进 --settings 载荷；缺席时配方逐字节不变', () => {
-  const gw = { ANTHROPIC_BASE_URL: 'https://gw.example', ANTHROPIC_API_KEY: 'sk-gw-1234567890' };
-  const withEnv = probeArgs({ prompt: 'p', settings: '{"permissions":{"deny":[]}}', settingsEnv: gw });
-  const i = withEnv.indexOf('--settings');
+test('probeArgs：--settings 只装 deny 载荷、逐字节原样；记忆两臂与 verbose 阴性对照无 --settings', () => {
+  const deny = '{"permissions":{"deny":[]}}';
+  const args = probeArgs({ prompt: 'p', settings: deny });
+  const i = args.indexOf('--settings');
   assert.notEqual(i, -1);
-  const payload = JSON.parse(withEnv[i + 1]!) as { permissions: unknown; env: Record<string, string> };
-  assert.deepEqual(payload.permissions, { deny: [] }, 'deny 规则与网关 env 共存');
-  assert.deepEqual(payload.env, gw);
-  // 缺席时零变化：与不带 settingsEnv 的产出逐项相等
-  assert.deepEqual(probeArgs({ prompt: 'p' }), probeArgs({ prompt: 'p', settingsEnv: undefined }));
-  // env 单独在场（无 deny）也要出 --settings
-  const only = probeArgs({ prompt: 'p', settingsEnv: gw });
-  const j = only.indexOf('--settings');
-  assert.notEqual(j, -1, '受限模式下网关鉴权只认 --settings 内联');
-  assert.deepEqual(JSON.parse(only[j + 1]!).env, gw);
+  assert.equal(args[i + 1], deny, '网关 env 不再并进 --settings 载荷');
+  assert.ok(!probeArgs({ prompt: 'p' }).includes('--settings'), '不传 settings 时不得出现 --settings');
+  // 这三臂修复前会因网关 env 新建一份 `{"env":…}` 载荷；现在恒无 --settings，网关键只走 routeInvocation 的环境补丁
+  const arms = projectMemoryArmArgs('p');
+  assert.ok(!arms.restricted.includes('--settings'));
+  assert.ok(!arms.control.includes('--settings'));
+  assert.ok(!verboseNegativeControlArgs().includes('--settings'));
 });

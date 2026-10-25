@@ -1,0 +1,94 @@
+{
+  "sha256": {
+    "base": {
+      "adapters/claude.js": "cd5cac034e1075b7f3d4c6619489852455c49eac0aa50570c8d87d9d93060561",
+      "adapters/claude-route.js": "b50a892ccfd8ae78b07a4f67cf7b720b03c45f936f767c5ded7a1842685afc5d",
+      "probes/claude.js": "94f11fc6d43b2acee3d0b75c89cc02b09fd3619ad783ed8b37e6f32244eb3aa5"
+    },
+    "new": {
+      "adapters/claude.js": "448dca5c68fb74e364799de5f0c4a165f7f8154722f0709428e526a0ec6ea06a",
+      "adapters/claude-route.js": "560e7118944529417fbd86ae2853fa64648da2175b723286c1fe0043677923e3",
+      "probes/claude.js": "e98b697a230374af9485a42a67362650d4934f581a9b0a40636558fcbcc3f952"
+    }
+  },
+  "off": {
+    "review": {
+      "calls": 1,
+      "identical": true,
+      "envEmpty": true
+    },
+    "auth": {
+      "calls": 1,
+      "identical": true,
+      "envEmpty": true
+    },
+    "probe": {
+      "calls": 11,
+      "identical": true,
+      "envEmpty": true
+    },
+    "directory": {
+      "calls": 7,
+      "identical": true,
+      "envEmpty": true
+    }
+  },
+  "on": {
+    "review": {
+      "calls": 1,
+      "modelCalls": 1,
+      "baseArgvLeak": 1,
+      "newArgvLeak": 0,
+      "newEnvExact": true,
+      "baseEnvEmpty": true,
+      "argvOnlyLostEnv": true
+    },
+    "auth": {
+      "calls": 1,
+      "modelCalls": 1,
+      "baseArgvLeak": 1,
+      "newArgvLeak": 0,
+      "newEnvExact": true,
+      "baseEnvEmpty": true,
+      "argvOnlyLostEnv": true
+    },
+    "probe": {
+      "calls": 11,
+      "modelCalls": 9,
+      "baseArgvLeak": 9,
+      "newArgvLeak": 0,
+      "newEnvExact": true,
+      "baseEnvEmpty": true,
+      "argvOnlyLostEnv": true
+    },
+    "directory": {
+      "calls": 7,
+      "modelCalls": 7,
+      "baseArgvLeak": 7,
+      "newArgvLeak": 0,
+      "newEnvExact": true,
+      "baseEnvEmpty": true,
+      "argvOnlyLostEnv": true
+    }
+  },
+  "ps": {
+    "base": {
+      "samples": 99,
+      "lines": 94,
+      "leakLines": 89,
+      "leakKeys": [
+        "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_MODEL",
+        "CLAUDE_CODE_SUBAGENT_MODEL"
+      ]
+    },
+    "new": {
+      "samples": 99,
+      "lines": 95,
+      "leakLines": 0,
+      "leakKeys": []
+    }
+  }
+}
+A-1 / A-2 全部断言通过

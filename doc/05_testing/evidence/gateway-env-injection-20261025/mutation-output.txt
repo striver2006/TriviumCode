@@ -1,0 +1,112 @@
+✓ 工作树干净、基线全绿（2 个套件）
+  M1 ✓ 咬住（fail=2）
+  M1b ✓ 咬住（fail=1）
+  M2 ✓ 咬住（fail=1）
+  M3 ✓ 咬住（fail=2）
+  M4 ✓ 咬住（fail=3）
+  M5 ✓ 咬住（fail=3）
+  M6 ✓ 咬住（fail=3）
+  M6b ✓ 咬住（fail=1）
+  M7 ✓ 咬住（fail=1）
+  M8 ✓ 咬住（fail=1）
+  M9 ✓ 咬住（fail=2）
+  M10 ✓ 咬住（fail=1）
+  M11 ✓ 咬住（fail=2）
+  M12 ✓ 咬住（fail=1）
+  M12b ✓ 咬住（fail=1）
+{
+  "总数": 15,
+  "咬住": 15,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "次序颠倒：先注网关键、后展开清除补丁（同名键被父进程清除覆盖）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M1b",
+      "desc": "同 M1，对单测 G1",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M2",
+      "desc": "出口漏注：invokeClaude 只给清除补丁",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M3",
+      "desc": "出口漏注：探针 routeInvocation 只给清除补丁",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M4",
+      "desc": "某臂仍内联：记忆对照臂的 --settings 带 env 段",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M5",
+      "desc": "某臂仍内联：verbose 阴性对照的 --settings 带 env 段",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M6",
+      "desc": "某臂仍内联：目录臂把网关 env 并进 deny 载荷",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M6b",
+      "desc": "某臂漏注：目录臂拿到的路线丢了网关键",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M7",
+      "desc": "某臂仍内联：探活形态（settingsJson 为 null）补一份 {\"env\":…}",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M8",
+      "desc": "某臂漏注：verbose 阴性对照绕过 routeInvocation 的注入、只给清除补丁",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M9",
+      "desc": "键集外溢：extractSettingsEnv 去掉前缀过滤",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M10",
+      "desc": "脱敏丢失：invokeClaude 的 stdout 不过 scrub",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M11",
+      "desc": "零变化破坏：未注入时不清父进程路线变量",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M12",
+      "desc": "脱敏丢失：探针 execArgv 的 stdout 不过 scrub",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M12b",
+      "desc": "脱敏丢失：探针 execArgv 的 stderr 不过 scrub",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

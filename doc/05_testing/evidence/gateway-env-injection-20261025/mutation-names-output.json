@@ -1,0 +1,247 @@
+[
+  {
+    "id": "M1",
+    "desc": "次序颠倒：先注网关键、后展开清除补丁（同名键被父进程清除覆盖）",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些",
+      "E7 开启：探针执行封装 execArgv 对 stdout / stderr 逐值脱敏（网关值只以占位符出现）"
+    ],
+    "firstLines": [
+      "E1–E4 开启 ⇒ AssertionError [ERR_ASSERTION]: E1 审查调用：子进程环境里的 ANTHROPIC_/CLAUDE_ 键须恰为提取出的那些（父进程独有键须被清除、网关键须在）",
+      "E7 开启 ⇒ AssertionError [ERR_ASSERTION]: E7 raw（stdout）：回显的网关值须以占位符出现（脱敏被拿掉时这里是原值）"
+    ],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M1b",
+    "desc": "同 M1，对单测 G1",
+    "suite": "dist/test/test/unit/claude-adapter.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "G1 claudeInvocationEnv：先清后注——同名键网关值胜出，父进程独有键仍被清除"
+    ],
+    "firstLines": [
+      "G1 claudeInvocationEnv ⇒ AssertionError [ERR_ASSERTION]: 次序颠倒时同名键会被清除补丁覆盖成 undefined，网关鉴权随之丢失"
+    ],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M2",
+    "desc": "出口漏注：invokeClaude 只给清除补丁",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些"
+    ],
+    "firstLines": [
+      "E1–E4 开启 ⇒ AssertionError [ERR_ASSERTION]: E1 审查调用：子进程环境里的 ANTHROPIC_/CLAUDE_ 键须恰为提取出的那些（父进程独有键须被清除、网关键须在）"
+    ],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M3",
+    "desc": "出口漏注：探针 routeInvocation 只给清除补丁",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些",
+      "E7 开启：探针执行封装 execArgv 对 stdout / stderr 逐值脱敏（网关值只以占位符出现）"
+    ],
+    "firstLines": [
+      "E1–E4 开启 ⇒ AssertionError [ERR_ASSERTION]: E3 探针第 1 次（--print --output-format stream-json…）：子进程环境里的 ANTHROPIC_/CLAUDE_ 键须恰为提取出的那些（父进程独有键须被清除、网关键须在）",
+      "E7 开启 ⇒ AssertionError [ERR_ASSERTION]: E7 raw（stdout）：回显的网关值须以占位符出现（脱敏被拿掉时这里是原值）"
+    ],
+    "elapsed_s": 5
+  },
+  {
+    "id": "M4",
+    "desc": "某臂仍内联：记忆对照臂的 --settings 带 env 段",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些",
+      "E5 未开启（settings.json 照样放着网关 env）：各组调用都不注入、父进程前缀键照旧被清除，argv 与配方相同",
+      "E6 开启但 env 段为空 / settings.json 读不到：与未开启相同"
+    ],
+    "firstLines": [
+      "E1–E4 开启 ⇒ AssertionError [ERR_ASSERTION]: E3 探针第 9 次（--print --output-format stream-json…）：argv 里出现了网关值（ANTHROPIC_BASE_URL）",
+      "E5 未开启（settings.json 照样放着网关 env） ⇒ AssertionError [ERR_ASSERTION]: E5 探针第 9 次：--settings 不得带 env 段",
+      "E6 开启但 env 段为空 / settings.json 读不到 ⇒ AssertionError [ERR_ASSERTION]: E6 env 段为空：--settings 不得带 env 段"
+    ],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M5",
+    "desc": "某臂仍内联：verbose 阴性对照的 --settings 带 env 段",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些",
+      "E5 未开启（settings.json 照样放着网关 env）：各组调用都不注入、父进程前缀键照旧被清除，argv 与配方相同",
+      "E6 开启但 env 段为空 / settings.json 读不到：与未开启相同"
+    ],
+    "firstLines": [
+      "E1–E4 开启 ⇒ AssertionError [ERR_ASSERTION]: E3 探针第 2 次（--print --output-format stream-json…）：argv 里出现了网关值（ANTHROPIC_BASE_URL）",
+      "E5 未开启（settings.json 照样放着网关 env） ⇒ AssertionError [ERR_ASSERTION]: E5 探针第 2 次：--settings 不得带 env 段",
+      "E6 开启但 env 段为空 / settings.json 读不到 ⇒ AssertionError [ERR_ASSERTION]: E6 env 段为空：--settings 不得带 env 段"
+    ],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M6",
+    "desc": "某臂仍内联：目录臂把网关 env 并进 deny 载荷",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些",
+      "E5 未开启（settings.json 照样放着网关 env）：各组调用都不注入、父进程前缀键照旧被清除，argv 与配方相同",
+      "E6 开启但 env 段为空 / settings.json 读不到：与未开启相同"
+    ],
+    "firstLines": [
+      "E1–E4 开启 ⇒ AssertionError [ERR_ASSERTION]: E4 目录臂第 1 次：argv 里出现了网关值（ANTHROPIC_BASE_URL）",
+      "E5 未开启（settings.json 照样放着网关 env） ⇒ AssertionError [ERR_ASSERTION]: E5 目录臂第 1 次：--settings 不得带 env 段",
+      "E6 开启但 env 段为空 / settings.json 读不到 ⇒ AssertionError [ERR_ASSERTION]: E6 env 段为空：--settings 不得带 env 段"
+    ],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M6b",
+    "desc": "某臂漏注：目录臂拿到的路线丢了网关键",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些"
+    ],
+    "firstLines": [
+      "E1–E4 开启 ⇒ AssertionError [ERR_ASSERTION]: E4 目录臂第 1 次：子进程环境里的 ANTHROPIC_/CLAUDE_ 键须恰为提取出的那些（父进程独有键须被清除、网关键须在）"
+    ],
+    "elapsed_s": 5
+  },
+  {
+    "id": "M7",
+    "desc": "某臂仍内联：探活形态（settingsJson 为 null）补一份 {\"env\":…}",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些"
+    ],
+    "firstLines": [
+      "E1–E4 开启 ⇒ AssertionError [ERR_ASSERTION]: E2 探活：argv 里出现了网关值（ANTHROPIC_BASE_URL）"
+    ],
+    "elapsed_s": 5
+  },
+  {
+    "id": "M8",
+    "desc": "某臂漏注：verbose 阴性对照绕过 routeInvocation 的注入、只给清除补丁",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些"
+    ],
+    "firstLines": [
+      "E1–E4 开启 ⇒ AssertionError [ERR_ASSERTION]: E3 探针第 2 次（--print --output-format stream-json…）：子进程环境里的 ANTHROPIC_/CLAUDE_ 键须恰为提取出的那些（父进程独有键须被清除、网关键须在）"
+    ],
+    "elapsed_s": 5
+  },
+  {
+    "id": "M9",
+    "desc": "键集外溢：extractSettingsEnv 去掉前缀过滤",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些",
+      "E7 开启：探针执行封装 execArgv 对 stdout / stderr 逐值脱敏（网关值只以占位符出现）"
+    ],
+    "firstLines": [
+      "E1–E4 开启 ⇒ AssertionError [ERR_ASSERTION]: E1 审查调用：无前缀的干扰键不得注入",
+      "E7 开启 ⇒ AssertionError [ERR_ASSERTION]: E7 execArgv：无前缀的干扰键不得注入"
+    ],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M10",
+    "desc": "脱敏丢失：invokeClaude 的 stdout 不过 scrub",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E1–E4 开启：审查调用、探活、探针各臂、目录臂——argv 无网关值，环境里网关键恰为提取出的那些"
+    ],
+    "firstLines": [
+      "E1–E4 开启 ⇒ AssertionError [ERR_ASSERTION]: 审查调用的输出与命令行不得含网关值"
+    ],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M11",
+    "desc": "零变化破坏：未注入时不清父进程路线变量",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E5 未开启（settings.json 照样放着网关 env）：各组调用都不注入、父进程前缀键照旧被清除，argv 与配方相同",
+      "E6 开启但 env 段为空 / settings.json 读不到：与未开启相同"
+    ],
+    "firstLines": [
+      "E5 未开启（settings.json 照样放着网关 env） ⇒ AssertionError [ERR_ASSERTION]: E5 审查调用第 1 次：未注入时环境里不得有任何 ANTHROPIC_/CLAUDE_ 键（父进程那两个须被清除）",
+      "E6 开启但 env 段为空 / settings.json 读不到 ⇒ AssertionError [ERR_ASSERTION]: E6 env 段为空：未注入时环境里不得有任何 ANTHROPIC_/CLAUDE_ 键（父进程那两个须被清除）"
+    ],
+    "elapsed_s": 4
+  },
+  {
+    "id": "M12",
+    "desc": "脱敏丢失：探针 execArgv 的 stdout 不过 scrub",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E7 开启：探针执行封装 execArgv 对 stdout / stderr 逐值脱敏（网关值只以占位符出现）"
+    ],
+    "firstLines": [
+      "E7 开启 ⇒ AssertionError [ERR_ASSERTION]: E7 raw（stdout）：网关值须被替换"
+    ],
+    "elapsed_s": 5
+  },
+  {
+    "id": "M12b",
+    "desc": "脱敏丢失：探针 execArgv 的 stderr 不过 scrub",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E7 开启：探针执行封装 execArgv 对 stdout / stderr 逐值脱敏（网关值只以占位符出现）"
+    ],
+    "firstLines": [
+      "E7 开启 ⇒ AssertionError [ERR_ASSERTION]: E7 stderr：网关值须被替换"
+    ],
+    "elapsed_s": 5
+  }
+]

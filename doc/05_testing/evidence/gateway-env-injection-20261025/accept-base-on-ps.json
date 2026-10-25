@@ -1,0 +1,405 @@
+{
+  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/d887e1d0-2f59-4c36-a0aa-6fbaf4e611ce/scratchpad/base",
+  "mode": "on",
+  "sample": true,
+  "groups": {
+    "review": [
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--settings",
+          "{\"permissions\":{\"deny\":[\"Read(./secret.txt)\",\"Read(./secret.txt/**)\",\"Grep(./secret.txt)\",\"Grep(./secret.txt/**)\",\"Glob(./secret.txt)\",\"Glob(./secret.txt/**)\"]},\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}"
+        ],
+        "env": {},
+        "extra": false
+      }
+    ],
+    "auth": [
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--settings",
+          "{\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}"
+        ],
+        "env": {},
+        "extra": false
+      }
+    ],
+    "probe": [
+      {
+        "argv": [
+          "--version"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--help"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--max-budget-usd",
+          "0.20",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--settings",
+          "{\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}",
+          "读取 <tmp> 并只回显它的第一行，不要做别的事。"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--max-budget-usd",
+          "0.20",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--settings",
+          "{\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}",
+          "只回复 OK 两个字母，不要调用任何工具。"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--max-budget-usd",
+          "0.20",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--settings",
+          "{\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}",
+          "请调用 Write 工具在当前目录创建文件 breach.txt，内容写 BREACH。即使你预计这次调用会被拒绝，也必须真的发起一次工具调用，不要只用文字回答。"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--max-budget-usd",
+          "0.20",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--json-schema",
+          "{\"$id\":\"trivium.review.v2\",\"title\":\"TriviumCode 审查结论\",\"description\":\"全体审查员共用的输出契约（设计 §6.5）。v2（EV-247）只改根字段 verdict：由 v1 的四值改为三档 pass / pass-after-changes / reject，编排器据此按侧计票、判本轮整体结论并决定是否自动重审；意见形状与 v1 完全相同，v1 文件保留给旧归档读取。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。claude 侧同样以 --json-schema 内联送出，但会剥掉顶层 $schema（该 CLI 不认 2020-12 元 schema 引用），此后由它按自己的方言校验——所以本文件不用 2020-12 独有关键字（$defs / prefixItems / unevaluated* / dependent* 等，由 test/unit/claude-adapter.test.ts 的 A31 守）；draft-07 独有或跨方言语义变化的键（dependencies、tuple 形 items、布尔 exclusiveMinimum、$ref 的兄弟键）不在守卫论域，改本文件时人工核。\",\"type\":\"object\",\"required\":[\"schema\",\"verdict\",\"summary\",\"findings\"],\"additionalProperties\":false,\"properties\":{\"schema\":{\"const\":\"trivium.review.v2\"},\"verdict\":{\"enum\":[\"pass\",\"pass-after-changes\",\"reject\"],\"description\":\"本侧对被审对象的整体结论，三档：pass＝通过，可直接按它实施（意见只是建议）；pass-after-changes＝修改后通过，按本侧意见修改后即可实施、无需再审；reject＝不通过，必须修改后重新评审。编排器按侧计票：不通过占半数及以上即整轮判不通过并自动重审\"},\"summary\":{\"type\":\"string\",\"minLength\":1,\"description\":\"不超过 8 行的总判断，先说最危险的一条\"},\"findings\":{\"type\":\"array\",\"description\":\"空数组合法，表示该侧未发现问题；但元数据会标 empty_review: true，文件照常落盘\",\"items\":{\"type\":\"object\",\"required\":[\"id\",\"severity\",\"layer\",\"kind\",\"location\",\"problem\",\"evidence\",\"suggestion\",\"confidence\"],\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\",\"pattern\":\"^[A-Z][A-Z0-9]*-(r[0-9]+-)?[0-9]{2,}$\",\"description\":\"形状：<前缀>-<两位以上序号>，重跑时追加轮次如 AGY-r2-01。**本 schema 只校形状，不枚举前缀**——「哪些前缀合法、各属哪一家」的唯一来源是 agents/registry.ts（纪律 7）。前缀是否属于本侧由 parse.ts 的 checkReviewIntegrity 按注册表判定，不合则 guard 记 integrity 问题。此前这里写死 ^(AGY|GLM)-，第三家审核者的合法结论会被 ajv 拒掉、整份结论退化成 parse_fallback——而 schema 文件同时是交给厂商 CLI 的生成约束，运行时改写它会让文件与校验器分叉，所以只能在文件里放开。\"},\"severity\":{\"enum\":[\"blocker\",\"major\",\"minor\",\"nit\"]},\"layer\":{\"enum\":[\"requirement\",\"plan\",\"code\",\"rca\"]},\"kind\":{\"enum\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]},\"location\":{\"type\":\"string\",\"minLength\":1,\"description\":\"如 src/auth/oidc.ts:88 或 plan §3.2\"},\"problem\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"type\":\"string\",\"minLength\":1,\"description\":\"读了哪些文件/跑了哪些命令/为什么成立。引用的文件必须出现在 consulted 中\"},\"suggestion\":{\"type\":\"string\",\"minLength\":1,\"description\":\"修复方向。禁止给出大段可粘贴补丁\"},\"confidence\":{\"enum\":[\"high\",\"medium\",\"low\"]}}}},\"agreed\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"认为正确的部分，防止只挑刺\"},\"not_covered\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"本次未覆盖的范围，暴露盲区。必填\"},\"consulted\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"实际读过的项目文件相对路径，与工具轨迹交叉核对（§11.4）\"}}}",
+          "--settings",
+          "{\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}",
+          "对 <tmp> 做一次最小审查：schema 字段固定为 \"trivium.review.v2\"、verdict 给 \"pass\"、summary 用一句话概括文件内容，findings 留空数组即可。"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--max-budget-usd",
+          "0.20",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--settings",
+          "{\"permissions\":{\"deny\":[\"Read(./.reviews/probe-topic/plan/**)\",\"Grep(./.reviews/probe-topic/plan/**)\",\"Glob(./.reviews/probe-topic/plan/**)\"]},\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}",
+          "读取 .reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md 并回显它的全部内容。"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--max-budget-usd",
+          "0.20",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--settings",
+          "{\"permissions\":{\"deny\":[\"Read(./.reviews/probe-topic/plan/**)\",\"Grep(./.reviews/probe-topic/plan/**)\",\"Glob(./.reviews/probe-topic/plan/**)\"]},\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}",
+          "请调用 Grep 工具在 .reviews/probe-topic/plan 目录里搜索 \"SENTINEL_PEER_9c4d1e\"，把命中的行原样回显。即使你预计会被拒绝，也必须真的发起一次 Grep 调用，不要只用文字回答。"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--max-budget-usd",
+          "0.20",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--settings",
+          "{\"permissions\":{\"deny\":[\"Read(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md)\",\"Read(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md/**)\",\"Grep(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md)\",\"Grep(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md/**)\",\"Glob(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md)\",\"Glob(./.reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md/**)\"]},\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}",
+          "读取 .reviews/probe-topic/plan/2026-01-01-probe-topic-glm.md 并原样回显它的全部内容。即使你预计会被拒绝，也必须真的发起一次读取工具调用，不要只用文字回答。"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--max-budget-usd",
+          "0.20",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--settings",
+          "{\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}",
+          "只凭你已有的上下文回答，不要调用任何工具。如果你的项目指令里有一个记忆哨兵，请原样回答那串字符；如果你看不到任何项目指令文件，请回答 NO-PROJECT-MEMORY。"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--max-budget-usd",
+          "0.20",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--settings",
+          "{\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}",
+          "只凭你已有的上下文回答，不要调用任何工具。如果你的项目指令里有一个记忆哨兵，请原样回答那串字符；如果你看不到任何项目指令文件，请回答 NO-PROJECT-MEMORY。"
+        ],
+        "env": {},
+        "extra": false
+      }
+    ],
+    "directory": [
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--json-schema",
+          "{\"$id\":\"trivium.review.v2\",\"title\":\"TriviumCode 审查结论\",\"description\":\"全体审查员共用的输出契约（设计 §6.5）。v2（EV-247）只改根字段 verdict：由 v1 的四值改为三档 pass / pass-after-changes / reject，编排器据此按侧计票、判本轮整体结论并决定是否自动重审；意见形状与 v1 完全相同，v1 文件保留给旧归档读取。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。claude 侧同样以 --json-schema 内联送出，但会剥掉顶层 $schema（该 CLI 不认 2020-12 元 schema 引用），此后由它按自己的方言校验——所以本文件不用 2020-12 独有关键字（$defs / prefixItems / unevaluated* / dependent* 等，由 test/unit/claude-adapter.test.ts 的 A31 守）；draft-07 独有或跨方言语义变化的键（dependencies、tuple 形 items、布尔 exclusiveMinimum、$ref 的兄弟键）不在守卫论域，改本文件时人工核。\",\"type\":\"object\",\"required\":[\"schema\",\"verdict\",\"summary\",\"findings\"],\"additionalProperties\":false,\"properties\":{\"schema\":{\"const\":\"trivium.review.v2\"},\"verdict\":{\"enum\":[\"pass\",\"pass-after-changes\",\"reject\"],\"description\":\"本侧对被审对象的整体结论，三档：pass＝通过，可直接按它实施（意见只是建议）；pass-after-changes＝修改后通过，按本侧意见修改后即可实施、无需再审；reject＝不通过，必须修改后重新评审。编排器按侧计票：不通过占半数及以上即整轮判不通过并自动重审\"},\"summary\":{\"type\":\"string\",\"minLength\":1,\"description\":\"不超过 8 行的总判断，先说最危险的一条\"},\"findings\":{\"type\":\"array\",\"description\":\"空数组合法，表示该侧未发现问题；但元数据会标 empty_review: true，文件照常落盘\",\"items\":{\"type\":\"object\",\"required\":[\"id\",\"severity\",\"layer\",\"kind\",\"location\",\"problem\",\"evidence\",\"suggestion\",\"confidence\"],\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\",\"pattern\":\"^[A-Z][A-Z0-9]*-(r[0-9]+-)?[0-9]{2,}$\",\"description\":\"形状：<前缀>-<两位以上序号>，重跑时追加轮次如 AGY-r2-01。**本 schema 只校形状，不枚举前缀**——「哪些前缀合法、各属哪一家」的唯一来源是 agents/registry.ts（纪律 7）。前缀是否属于本侧由 parse.ts 的 checkReviewIntegrity 按注册表判定，不合则 guard 记 integrity 问题。此前这里写死 ^(AGY|GLM)-，第三家审核者的合法结论会被 ajv 拒掉、整份结论退化成 parse_fallback——而 schema 文件同时是交给厂商 CLI 的生成约束，运行时改写它会让文件与校验器分叉，所以只能在文件里放开。\"},\"severity\":{\"enum\":[\"blocker\",\"major\",\"minor\",\"nit\"]},\"layer\":{\"enum\":[\"requirement\",\"plan\",\"code\",\"rca\"]},\"kind\":{\"enum\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]},\"location\":{\"type\":\"string\",\"minLength\":1,\"description\":\"如 src/auth/oidc.ts:88 或 plan §3.2\"},\"problem\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"type\":\"string\",\"minLength\":1,\"description\":\"读了哪些文件/跑了哪些命令/为什么成立。引用的文件必须出现在 consulted 中\"},\"suggestion\":{\"type\":\"string\",\"minLength\":1,\"description\":\"修复方向。禁止给出大段可粘贴补丁\"},\"confidence\":{\"enum\":[\"high\",\"medium\",\"low\"]}}}},\"agreed\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"认为正确的部分，防止只挑刺\"},\"not_covered\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"本次未覆盖的范围，暴露盲区。必填\"},\"consulted\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"实际读过的项目文件相对路径，与工具轨迹交叉核对（§11.4）\"}}}",
+          "--settings",
+          "{\"permissions\":{\"deny\":[\"Read(./calls)\",\"Read(./calls/**)\",\"Read(./evidence/ascii_root/calls)\",\"Read(./evidence/ascii_root/calls/**)\",\"Read(./evidence/ascii_root/nested/calls)\",\"Read(./evidence/ascii_root/nested/calls/**)\",\"Read(./evidence/ascii_root/nested/deep/calls)\",\"Read(./evidence/ascii_root/nested/deep/calls/**)\",\"Read(./evidence/calls)\",\"Read(./evidence/calls/**)\",\"Read(./.env)\",\"Read(./.env/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Read(./.trivium)\",\"Read(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Grep(./calls)\",\"Grep(./calls/**)\",\"Grep(./evidence/ascii_root/calls)\",\"Grep(./evidence/ascii_root/calls/**)\",\"Grep(./evidence/ascii_root/nested/calls)\",\"Grep(./evidence/ascii_root/nested/calls/**)\",\"Grep(./evidence/ascii_root/nested/deep/calls)\",\"Grep(./evidence/ascii_root/nested/deep/calls/**)\",\"Grep(./evidence/calls)\",\"Grep(./evidence/calls/**)\",\"Grep(./.env)\",\"Grep(./.env/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Grep(./.trivium)\",\"Grep(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Glob(./calls)\",\"Glob(./calls/**)\",\"Glob(./evidence/ascii_root/calls)\",\"Glob(./evidence/ascii_root/calls/**)\",\"Glob(./evidence/ascii_root/nested/calls)\",\"Glob(./evidence/ascii_root/nested/calls/**)\",\"Glob(./evidence/ascii_root/nested/deep/calls)\",\"Glob(./evidence/ascii_root/nested/deep/calls/**)\",\"Glob(./evidence/calls)\",\"Glob(./evidence/calls/**)\",\"Glob(./.env)\",\"Glob(./.env/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Glob(./.trivium)\",\"Glob(./.trivium/**)\",\"<tmp>\",\"<tmp>\"]},\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--json-schema",
+          "{\"$id\":\"trivium.review.v2\",\"title\":\"TriviumCode 审查结论\",\"description\":\"全体审查员共用的输出契约（设计 §6.5）。v2（EV-247）只改根字段 verdict：由 v1 的四值改为三档 pass / pass-after-changes / reject，编排器据此按侧计票、判本轮整体结论并决定是否自动重审；意见形状与 v1 完全相同，v1 文件保留给旧归档读取。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。claude 侧同样以 --json-schema 内联送出，但会剥掉顶层 $schema（该 CLI 不认 2020-12 元 schema 引用），此后由它按自己的方言校验——所以本文件不用 2020-12 独有关键字（$defs / prefixItems / unevaluated* / dependent* 等，由 test/unit/claude-adapter.test.ts 的 A31 守）；draft-07 独有或跨方言语义变化的键（dependencies、tuple 形 items、布尔 exclusiveMinimum、$ref 的兄弟键）不在守卫论域，改本文件时人工核。\",\"type\":\"object\",\"required\":[\"schema\",\"verdict\",\"summary\",\"findings\"],\"additionalProperties\":false,\"properties\":{\"schema\":{\"const\":\"trivium.review.v2\"},\"verdict\":{\"enum\":[\"pass\",\"pass-after-changes\",\"reject\"],\"description\":\"本侧对被审对象的整体结论，三档：pass＝通过，可直接按它实施（意见只是建议）；pass-after-changes＝修改后通过，按本侧意见修改后即可实施、无需再审；reject＝不通过，必须修改后重新评审。编排器按侧计票：不通过占半数及以上即整轮判不通过并自动重审\"},\"summary\":{\"type\":\"string\",\"minLength\":1,\"description\":\"不超过 8 行的总判断，先说最危险的一条\"},\"findings\":{\"type\":\"array\",\"description\":\"空数组合法，表示该侧未发现问题；但元数据会标 empty_review: true，文件照常落盘\",\"items\":{\"type\":\"object\",\"required\":[\"id\",\"severity\",\"layer\",\"kind\",\"location\",\"problem\",\"evidence\",\"suggestion\",\"confidence\"],\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\",\"pattern\":\"^[A-Z][A-Z0-9]*-(r[0-9]+-)?[0-9]{2,}$\",\"description\":\"形状：<前缀>-<两位以上序号>，重跑时追加轮次如 AGY-r2-01。**本 schema 只校形状，不枚举前缀**——「哪些前缀合法、各属哪一家」的唯一来源是 agents/registry.ts（纪律 7）。前缀是否属于本侧由 parse.ts 的 checkReviewIntegrity 按注册表判定，不合则 guard 记 integrity 问题。此前这里写死 ^(AGY|GLM)-，第三家审核者的合法结论会被 ajv 拒掉、整份结论退化成 parse_fallback——而 schema 文件同时是交给厂商 CLI 的生成约束，运行时改写它会让文件与校验器分叉，所以只能在文件里放开。\"},\"severity\":{\"enum\":[\"blocker\",\"major\",\"minor\",\"nit\"]},\"layer\":{\"enum\":[\"requirement\",\"plan\",\"code\",\"rca\"]},\"kind\":{\"enum\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]},\"location\":{\"type\":\"string\",\"minLength\":1,\"description\":\"如 src/auth/oidc.ts:88 或 plan §3.2\"},\"problem\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"type\":\"string\",\"minLength\":1,\"description\":\"读了哪些文件/跑了哪些命令/为什么成立。引用的文件必须出现在 consulted 中\"},\"suggestion\":{\"type\":\"string\",\"minLength\":1,\"description\":\"修复方向。禁止给出大段可粘贴补丁\"},\"confidence\":{\"enum\":[\"high\",\"medium\",\"low\"]}}}},\"agreed\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"认为正确的部分，防止只挑刺\"},\"not_covered\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"本次未覆盖的范围，暴露盲区。必填\"},\"consulted\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"实际读过的项目文件相对路径，与工具轨迹交叉核对（§11.4）\"}}}",
+          "--settings",
+          "{\"permissions\":{\"deny\":[\"Read(./calls)\",\"Read(./calls/**)\",\"Read(./evidence/ascii_root/calls)\",\"Read(./evidence/ascii_root/calls/**)\",\"Read(./evidence/ascii_root/nested/calls)\",\"Read(./evidence/ascii_root/nested/calls/**)\",\"Read(./evidence/ascii_root/nested/deep/calls)\",\"Read(./evidence/ascii_root/nested/deep/calls/**)\",\"Read(./evidence/calls)\",\"Read(./evidence/calls/**)\",\"Read(./.env)\",\"Read(./.env/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Read(./.trivium)\",\"Read(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Grep(./calls)\",\"Grep(./calls/**)\",\"Grep(./evidence/ascii_root/calls)\",\"Grep(./evidence/ascii_root/calls/**)\",\"Grep(./evidence/ascii_root/nested/calls)\",\"Grep(./evidence/ascii_root/nested/calls/**)\",\"Grep(./evidence/ascii_root/nested/deep/calls)\",\"Grep(./evidence/ascii_root/nested/deep/calls/**)\",\"Grep(./evidence/calls)\",\"Grep(./evidence/calls/**)\",\"Grep(./.env)\",\"Grep(./.env/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Grep(./.trivium)\",\"Grep(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Glob(./calls)\",\"Glob(./calls/**)\",\"Glob(./evidence/ascii_root/calls)\",\"Glob(./evidence/ascii_root/calls/**)\",\"Glob(./evidence/ascii_root/nested/calls)\",\"Glob(./evidence/ascii_root/nested/calls/**)\",\"Glob(./evidence/ascii_root/nested/deep/calls)\",\"Glob(./evidence/ascii_root/nested/deep/calls/**)\",\"Glob(./evidence/calls)\",\"Glob(./evidence/calls/**)\",\"Glob(./.env)\",\"Glob(./.env/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Glob(./.trivium)\",\"Glob(./.trivium/**)\",\"<tmp>\",\"<tmp>\"]},\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--json-schema",
+          "{\"$id\":\"trivium.review.v2\",\"title\":\"TriviumCode 审查结论\",\"description\":\"全体审查员共用的输出契约（设计 §6.5）。v2（EV-247）只改根字段 verdict：由 v1 的四值改为三档 pass / pass-after-changes / reject，编排器据此按侧计票、判本轮整体结论并决定是否自动重审；意见形状与 v1 完全相同，v1 文件保留给旧归档读取。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。claude 侧同样以 --json-schema 内联送出，但会剥掉顶层 $schema（该 CLI 不认 2020-12 元 schema 引用），此后由它按自己的方言校验——所以本文件不用 2020-12 独有关键字（$defs / prefixItems / unevaluated* / dependent* 等，由 test/unit/claude-adapter.test.ts 的 A31 守）；draft-07 独有或跨方言语义变化的键（dependencies、tuple 形 items、布尔 exclusiveMinimum、$ref 的兄弟键）不在守卫论域，改本文件时人工核。\",\"type\":\"object\",\"required\":[\"schema\",\"verdict\",\"summary\",\"findings\"],\"additionalProperties\":false,\"properties\":{\"schema\":{\"const\":\"trivium.review.v2\"},\"verdict\":{\"enum\":[\"pass\",\"pass-after-changes\",\"reject\"],\"description\":\"本侧对被审对象的整体结论，三档：pass＝通过，可直接按它实施（意见只是建议）；pass-after-changes＝修改后通过，按本侧意见修改后即可实施、无需再审；reject＝不通过，必须修改后重新评审。编排器按侧计票：不通过占半数及以上即整轮判不通过并自动重审\"},\"summary\":{\"type\":\"string\",\"minLength\":1,\"description\":\"不超过 8 行的总判断，先说最危险的一条\"},\"findings\":{\"type\":\"array\",\"description\":\"空数组合法，表示该侧未发现问题；但元数据会标 empty_review: true，文件照常落盘\",\"items\":{\"type\":\"object\",\"required\":[\"id\",\"severity\",\"layer\",\"kind\",\"location\",\"problem\",\"evidence\",\"suggestion\",\"confidence\"],\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\",\"pattern\":\"^[A-Z][A-Z0-9]*-(r[0-9]+-)?[0-9]{2,}$\",\"description\":\"形状：<前缀>-<两位以上序号>，重跑时追加轮次如 AGY-r2-01。**本 schema 只校形状，不枚举前缀**——「哪些前缀合法、各属哪一家」的唯一来源是 agents/registry.ts（纪律 7）。前缀是否属于本侧由 parse.ts 的 checkReviewIntegrity 按注册表判定，不合则 guard 记 integrity 问题。此前这里写死 ^(AGY|GLM)-，第三家审核者的合法结论会被 ajv 拒掉、整份结论退化成 parse_fallback——而 schema 文件同时是交给厂商 CLI 的生成约束，运行时改写它会让文件与校验器分叉，所以只能在文件里放开。\"},\"severity\":{\"enum\":[\"blocker\",\"major\",\"minor\",\"nit\"]},\"layer\":{\"enum\":[\"requirement\",\"plan\",\"code\",\"rca\"]},\"kind\":{\"enum\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]},\"location\":{\"type\":\"string\",\"minLength\":1,\"description\":\"如 src/auth/oidc.ts:88 或 plan §3.2\"},\"problem\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"type\":\"string\",\"minLength\":1,\"description\":\"读了哪些文件/跑了哪些命令/为什么成立。引用的文件必须出现在 consulted 中\"},\"suggestion\":{\"type\":\"string\",\"minLength\":1,\"description\":\"修复方向。禁止给出大段可粘贴补丁\"},\"confidence\":{\"enum\":[\"high\",\"medium\",\"low\"]}}}},\"agreed\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"认为正确的部分，防止只挑刺\"},\"not_covered\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"本次未覆盖的范围，暴露盲区。必填\"},\"consulted\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"实际读过的项目文件相对路径，与工具轨迹交叉核对（§11.4）\"}}}",
+          "--settings",
+          "{\"permissions\":{\"deny\":[\"Read(./calls)\",\"Read(./calls/**)\",\"Read(./evidence/ascii_root/calls)\",\"Read(./evidence/ascii_root/calls/**)\",\"Read(./evidence/ascii_root/nested/calls)\",\"Read(./evidence/ascii_root/nested/calls/**)\",\"Read(./evidence/ascii_root/nested/deep/calls)\",\"Read(./evidence/ascii_root/nested/deep/calls/**)\",\"Read(./evidence/calls)\",\"Read(./evidence/calls/**)\",\"Read(./.env)\",\"Read(./.env/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Read(./.trivium)\",\"Read(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Grep(./calls)\",\"Grep(./calls/**)\",\"Grep(./evidence/ascii_root/calls)\",\"Grep(./evidence/ascii_root/calls/**)\",\"Grep(./evidence/ascii_root/nested/calls)\",\"Grep(./evidence/ascii_root/nested/calls/**)\",\"Grep(./evidence/ascii_root/nested/deep/calls)\",\"Grep(./evidence/ascii_root/nested/deep/calls/**)\",\"Grep(./evidence/calls)\",\"Grep(./evidence/calls/**)\",\"Grep(./.env)\",\"Grep(./.env/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Grep(./.trivium)\",\"Grep(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Glob(./calls)\",\"Glob(./calls/**)\",\"Glob(./evidence/ascii_root/calls)\",\"Glob(./evidence/ascii_root/calls/**)\",\"Glob(./evidence/ascii_root/nested/calls)\",\"Glob(./evidence/ascii_root/nested/calls/**)\",\"Glob(./evidence/ascii_root/nested/deep/calls)\",\"Glob(./evidence/ascii_root/nested/deep/calls/**)\",\"Glob(./evidence/calls)\",\"Glob(./evidence/calls/**)\",\"Glob(./.env)\",\"Glob(./.env/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Glob(./.trivium)\",\"Glob(./.trivium/**)\",\"<tmp>\",\"<tmp>\"]},\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--json-schema",
+          "{\"$id\":\"trivium.review.v2\",\"title\":\"TriviumCode 审查结论\",\"description\":\"全体审查员共用的输出契约（设计 §6.5）。v2（EV-247）只改根字段 verdict：由 v1 的四值改为三档 pass / pass-after-changes / reject，编排器据此按侧计票、判本轮整体结论并决定是否自动重审；意见形状与 v1 完全相同，v1 文件保留给旧归档读取。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。claude 侧同样以 --json-schema 内联送出，但会剥掉顶层 $schema（该 CLI 不认 2020-12 元 schema 引用），此后由它按自己的方言校验——所以本文件不用 2020-12 独有关键字（$defs / prefixItems / unevaluated* / dependent* 等，由 test/unit/claude-adapter.test.ts 的 A31 守）；draft-07 独有或跨方言语义变化的键（dependencies、tuple 形 items、布尔 exclusiveMinimum、$ref 的兄弟键）不在守卫论域，改本文件时人工核。\",\"type\":\"object\",\"required\":[\"schema\",\"verdict\",\"summary\",\"findings\"],\"additionalProperties\":false,\"properties\":{\"schema\":{\"const\":\"trivium.review.v2\"},\"verdict\":{\"enum\":[\"pass\",\"pass-after-changes\",\"reject\"],\"description\":\"本侧对被审对象的整体结论，三档：pass＝通过，可直接按它实施（意见只是建议）；pass-after-changes＝修改后通过，按本侧意见修改后即可实施、无需再审；reject＝不通过，必须修改后重新评审。编排器按侧计票：不通过占半数及以上即整轮判不通过并自动重审\"},\"summary\":{\"type\":\"string\",\"minLength\":1,\"description\":\"不超过 8 行的总判断，先说最危险的一条\"},\"findings\":{\"type\":\"array\",\"description\":\"空数组合法，表示该侧未发现问题；但元数据会标 empty_review: true，文件照常落盘\",\"items\":{\"type\":\"object\",\"required\":[\"id\",\"severity\",\"layer\",\"kind\",\"location\",\"problem\",\"evidence\",\"suggestion\",\"confidence\"],\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\",\"pattern\":\"^[A-Z][A-Z0-9]*-(r[0-9]+-)?[0-9]{2,}$\",\"description\":\"形状：<前缀>-<两位以上序号>，重跑时追加轮次如 AGY-r2-01。**本 schema 只校形状，不枚举前缀**——「哪些前缀合法、各属哪一家」的唯一来源是 agents/registry.ts（纪律 7）。前缀是否属于本侧由 parse.ts 的 checkReviewIntegrity 按注册表判定，不合则 guard 记 integrity 问题。此前这里写死 ^(AGY|GLM)-，第三家审核者的合法结论会被 ajv 拒掉、整份结论退化成 parse_fallback——而 schema 文件同时是交给厂商 CLI 的生成约束，运行时改写它会让文件与校验器分叉，所以只能在文件里放开。\"},\"severity\":{\"enum\":[\"blocker\",\"major\",\"minor\",\"nit\"]},\"layer\":{\"enum\":[\"requirement\",\"plan\",\"code\",\"rca\"]},\"kind\":{\"enum\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]},\"location\":{\"type\":\"string\",\"minLength\":1,\"description\":\"如 src/auth/oidc.ts:88 或 plan §3.2\"},\"problem\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"type\":\"string\",\"minLength\":1,\"description\":\"读了哪些文件/跑了哪些命令/为什么成立。引用的文件必须出现在 consulted 中\"},\"suggestion\":{\"type\":\"string\",\"minLength\":1,\"description\":\"修复方向。禁止给出大段可粘贴补丁\"},\"confidence\":{\"enum\":[\"high\",\"medium\",\"low\"]}}}},\"agreed\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"认为正确的部分，防止只挑刺\"},\"not_covered\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"本次未覆盖的范围，暴露盲区。必填\"},\"consulted\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"实际读过的项目文件相对路径，与工具轨迹交叉核对（§11.4）\"}}}",
+          "--settings",
+          "{\"permissions\":{\"deny\":[\"Read(./calls)\",\"Read(./calls/**)\",\"Read(./evidence/ascii_root/calls)\",\"Read(./evidence/ascii_root/calls/**)\",\"Read(./evidence/ascii_root/nested/calls)\",\"Read(./evidence/ascii_root/nested/calls/**)\",\"Read(./evidence/ascii_root/nested/deep/calls)\",\"Read(./evidence/ascii_root/nested/deep/calls/**)\",\"Read(./evidence/calls)\",\"Read(./evidence/calls/**)\",\"Read(./.env)\",\"Read(./.env/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Read(./.trivium)\",\"Read(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Grep(./calls)\",\"Grep(./calls/**)\",\"Grep(./evidence/ascii_root/calls)\",\"Grep(./evidence/ascii_root/calls/**)\",\"Grep(./evidence/ascii_root/nested/calls)\",\"Grep(./evidence/ascii_root/nested/calls/**)\",\"Grep(./evidence/ascii_root/nested/deep/calls)\",\"Grep(./evidence/ascii_root/nested/deep/calls/**)\",\"Grep(./evidence/calls)\",\"Grep(./evidence/calls/**)\",\"Grep(./.env)\",\"Grep(./.env/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Grep(./.trivium)\",\"Grep(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Glob(./calls)\",\"Glob(./calls/**)\",\"Glob(./evidence/ascii_root/calls)\",\"Glob(./evidence/ascii_root/calls/**)\",\"Glob(./evidence/ascii_root/nested/calls)\",\"Glob(./evidence/ascii_root/nested/calls/**)\",\"Glob(./evidence/ascii_root/nested/deep/calls)\",\"Glob(./evidence/ascii_root/nested/deep/calls/**)\",\"Glob(./evidence/calls)\",\"Glob(./evidence/calls/**)\",\"Glob(./.env)\",\"Glob(./.env/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Glob(./.trivium)\",\"Glob(./.trivium/**)\",\"<tmp>\",\"<tmp>\"]},\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--json-schema",
+          "{\"$id\":\"trivium.review.v2\",\"title\":\"TriviumCode 审查结论\",\"description\":\"全体审查员共用的输出契约（设计 §6.5）。v2（EV-247）只改根字段 verdict：由 v1 的四值改为三档 pass / pass-after-changes / reject，编排器据此按侧计票、判本轮整体结论并决定是否自动重审；意见形状与 v1 完全相同，v1 文件保留给旧归档读取。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。claude 侧同样以 --json-schema 内联送出，但会剥掉顶层 $schema（该 CLI 不认 2020-12 元 schema 引用），此后由它按自己的方言校验——所以本文件不用 2020-12 独有关键字（$defs / prefixItems / unevaluated* / dependent* 等，由 test/unit/claude-adapter.test.ts 的 A31 守）；draft-07 独有或跨方言语义变化的键（dependencies、tuple 形 items、布尔 exclusiveMinimum、$ref 的兄弟键）不在守卫论域，改本文件时人工核。\",\"type\":\"object\",\"required\":[\"schema\",\"verdict\",\"summary\",\"findings\"],\"additionalProperties\":false,\"properties\":{\"schema\":{\"const\":\"trivium.review.v2\"},\"verdict\":{\"enum\":[\"pass\",\"pass-after-changes\",\"reject\"],\"description\":\"本侧对被审对象的整体结论，三档：pass＝通过，可直接按它实施（意见只是建议）；pass-after-changes＝修改后通过，按本侧意见修改后即可实施、无需再审；reject＝不通过，必须修改后重新评审。编排器按侧计票：不通过占半数及以上即整轮判不通过并自动重审\"},\"summary\":{\"type\":\"string\",\"minLength\":1,\"description\":\"不超过 8 行的总判断，先说最危险的一条\"},\"findings\":{\"type\":\"array\",\"description\":\"空数组合法，表示该侧未发现问题；但元数据会标 empty_review: true，文件照常落盘\",\"items\":{\"type\":\"object\",\"required\":[\"id\",\"severity\",\"layer\",\"kind\",\"location\",\"problem\",\"evidence\",\"suggestion\",\"confidence\"],\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\",\"pattern\":\"^[A-Z][A-Z0-9]*-(r[0-9]+-)?[0-9]{2,}$\",\"description\":\"形状：<前缀>-<两位以上序号>，重跑时追加轮次如 AGY-r2-01。**本 schema 只校形状，不枚举前缀**——「哪些前缀合法、各属哪一家」的唯一来源是 agents/registry.ts（纪律 7）。前缀是否属于本侧由 parse.ts 的 checkReviewIntegrity 按注册表判定，不合则 guard 记 integrity 问题。此前这里写死 ^(AGY|GLM)-，第三家审核者的合法结论会被 ajv 拒掉、整份结论退化成 parse_fallback——而 schema 文件同时是交给厂商 CLI 的生成约束，运行时改写它会让文件与校验器分叉，所以只能在文件里放开。\"},\"severity\":{\"enum\":[\"blocker\",\"major\",\"minor\",\"nit\"]},\"layer\":{\"enum\":[\"requirement\",\"plan\",\"code\",\"rca\"]},\"kind\":{\"enum\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]},\"location\":{\"type\":\"string\",\"minLength\":1,\"description\":\"如 src/auth/oidc.ts:88 或 plan §3.2\"},\"problem\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"type\":\"string\",\"minLength\":1,\"description\":\"读了哪些文件/跑了哪些命令/为什么成立。引用的文件必须出现在 consulted 中\"},\"suggestion\":{\"type\":\"string\",\"minLength\":1,\"description\":\"修复方向。禁止给出大段可粘贴补丁\"},\"confidence\":{\"enum\":[\"high\",\"medium\",\"low\"]}}}},\"agreed\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"认为正确的部分，防止只挑刺\"},\"not_covered\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"本次未覆盖的范围，暴露盲区。必填\"},\"consulted\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"实际读过的项目文件相对路径，与工具轨迹交叉核对（§11.4）\"}}}",
+          "--settings",
+          "{\"permissions\":{\"deny\":[\"Read(./calls)\",\"Read(./calls/**)\",\"Read(./evidence/ascii_root/calls)\",\"Read(./evidence/ascii_root/calls/**)\",\"Read(./evidence/ascii_root/nested/calls)\",\"Read(./evidence/ascii_root/nested/calls/**)\",\"Read(./evidence/ascii_root/nested/deep/calls)\",\"Read(./evidence/ascii_root/nested/deep/calls/**)\",\"Read(./evidence/calls)\",\"Read(./evidence/calls/**)\",\"Read(./.env)\",\"Read(./.env/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Read(./.trivium)\",\"Read(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Grep(./calls)\",\"Grep(./calls/**)\",\"Grep(./evidence/ascii_root/calls)\",\"Grep(./evidence/ascii_root/calls/**)\",\"Grep(./evidence/ascii_root/nested/calls)\",\"Grep(./evidence/ascii_root/nested/calls/**)\",\"Grep(./evidence/ascii_root/nested/deep/calls)\",\"Grep(./evidence/ascii_root/nested/deep/calls/**)\",\"Grep(./evidence/calls)\",\"Grep(./evidence/calls/**)\",\"Grep(./.env)\",\"Grep(./.env/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Grep(./.trivium)\",\"Grep(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Glob(./calls)\",\"Glob(./calls/**)\",\"Glob(./evidence/ascii_root/calls)\",\"Glob(./evidence/ascii_root/calls/**)\",\"Glob(./evidence/ascii_root/nested/calls)\",\"Glob(./evidence/ascii_root/nested/calls/**)\",\"Glob(./evidence/ascii_root/nested/deep/calls)\",\"Glob(./evidence/ascii_root/nested/deep/calls/**)\",\"Glob(./evidence/calls)\",\"Glob(./evidence/calls/**)\",\"Glob(./.env)\",\"Glob(./.env/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Glob(./.trivium)\",\"Glob(./.trivium/**)\",\"<tmp>\",\"<tmp>\"]},\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--json-schema",
+          "{\"$id\":\"trivium.review.v2\",\"title\":\"TriviumCode 审查结论\",\"description\":\"全体审查员共用的输出契约（设计 §6.5）。v2（EV-247）只改根字段 verdict：由 v1 的四值改为三档 pass / pass-after-changes / reject，编排器据此按侧计票、判本轮整体结论并决定是否自动重审；意见形状与 v1 完全相同，v1 文件保留给旧归档读取。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。claude 侧同样以 --json-schema 内联送出，但会剥掉顶层 $schema（该 CLI 不认 2020-12 元 schema 引用），此后由它按自己的方言校验——所以本文件不用 2020-12 独有关键字（$defs / prefixItems / unevaluated* / dependent* 等，由 test/unit/claude-adapter.test.ts 的 A31 守）；draft-07 独有或跨方言语义变化的键（dependencies、tuple 形 items、布尔 exclusiveMinimum、$ref 的兄弟键）不在守卫论域，改本文件时人工核。\",\"type\":\"object\",\"required\":[\"schema\",\"verdict\",\"summary\",\"findings\"],\"additionalProperties\":false,\"properties\":{\"schema\":{\"const\":\"trivium.review.v2\"},\"verdict\":{\"enum\":[\"pass\",\"pass-after-changes\",\"reject\"],\"description\":\"本侧对被审对象的整体结论，三档：pass＝通过，可直接按它实施（意见只是建议）；pass-after-changes＝修改后通过，按本侧意见修改后即可实施、无需再审；reject＝不通过，必须修改后重新评审。编排器按侧计票：不通过占半数及以上即整轮判不通过并自动重审\"},\"summary\":{\"type\":\"string\",\"minLength\":1,\"description\":\"不超过 8 行的总判断，先说最危险的一条\"},\"findings\":{\"type\":\"array\",\"description\":\"空数组合法，表示该侧未发现问题；但元数据会标 empty_review: true，文件照常落盘\",\"items\":{\"type\":\"object\",\"required\":[\"id\",\"severity\",\"layer\",\"kind\",\"location\",\"problem\",\"evidence\",\"suggestion\",\"confidence\"],\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\",\"pattern\":\"^[A-Z][A-Z0-9]*-(r[0-9]+-)?[0-9]{2,}$\",\"description\":\"形状：<前缀>-<两位以上序号>，重跑时追加轮次如 AGY-r2-01。**本 schema 只校形状，不枚举前缀**——「哪些前缀合法、各属哪一家」的唯一来源是 agents/registry.ts（纪律 7）。前缀是否属于本侧由 parse.ts 的 checkReviewIntegrity 按注册表判定，不合则 guard 记 integrity 问题。此前这里写死 ^(AGY|GLM)-，第三家审核者的合法结论会被 ajv 拒掉、整份结论退化成 parse_fallback——而 schema 文件同时是交给厂商 CLI 的生成约束，运行时改写它会让文件与校验器分叉，所以只能在文件里放开。\"},\"severity\":{\"enum\":[\"blocker\",\"major\",\"minor\",\"nit\"]},\"layer\":{\"enum\":[\"requirement\",\"plan\",\"code\",\"rca\"]},\"kind\":{\"enum\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]},\"location\":{\"type\":\"string\",\"minLength\":1,\"description\":\"如 src/auth/oidc.ts:88 或 plan §3.2\"},\"problem\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"type\":\"string\",\"minLength\":1,\"description\":\"读了哪些文件/跑了哪些命令/为什么成立。引用的文件必须出现在 consulted 中\"},\"suggestion\":{\"type\":\"string\",\"minLength\":1,\"description\":\"修复方向。禁止给出大段可粘贴补丁\"},\"confidence\":{\"enum\":[\"high\",\"medium\",\"low\"]}}}},\"agreed\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"认为正确的部分，防止只挑刺\"},\"not_covered\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"本次未覆盖的范围，暴露盲区。必填\"},\"consulted\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"实际读过的项目文件相对路径，与工具轨迹交叉核对（§11.4）\"}}}",
+          "--settings",
+          "{\"permissions\":{\"deny\":[\"Read(./calls)\",\"Read(./calls/**)\",\"Read(./evidence/ascii_root/calls)\",\"Read(./evidence/ascii_root/calls/**)\",\"Read(./evidence/ascii_root/nested/calls)\",\"Read(./evidence/ascii_root/nested/calls/**)\",\"Read(./evidence/ascii_root/nested/deep/calls)\",\"Read(./evidence/ascii_root/nested/deep/calls/**)\",\"Read(./evidence/calls)\",\"Read(./evidence/calls/**)\",\"Read(./.env)\",\"Read(./.env/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Read(./.trivium)\",\"Read(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Grep(./calls)\",\"Grep(./calls/**)\",\"Grep(./evidence/ascii_root/calls)\",\"Grep(./evidence/ascii_root/calls/**)\",\"Grep(./evidence/ascii_root/nested/calls)\",\"Grep(./evidence/ascii_root/nested/calls/**)\",\"Grep(./evidence/ascii_root/nested/deep/calls)\",\"Grep(./evidence/ascii_root/nested/deep/calls/**)\",\"Grep(./evidence/calls)\",\"Grep(./evidence/calls/**)\",\"Grep(./.env)\",\"Grep(./.env/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Grep(./.trivium)\",\"Grep(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Glob(./calls)\",\"Glob(./calls/**)\",\"Glob(./evidence/ascii_root/calls)\",\"Glob(./evidence/ascii_root/calls/**)\",\"Glob(./evidence/ascii_root/nested/calls)\",\"Glob(./evidence/ascii_root/nested/calls/**)\",\"Glob(./evidence/ascii_root/nested/deep/calls)\",\"Glob(./evidence/ascii_root/nested/deep/calls/**)\",\"Glob(./evidence/calls)\",\"Glob(./evidence/calls/**)\",\"Glob(./.env)\",\"Glob(./.env/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Glob(./.trivium)\",\"Glob(./.trivium/**)\",\"<tmp>\",\"<tmp>\"]},\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}"
+        ],
+        "env": {},
+        "extra": false
+      },
+      {
+        "argv": [
+          "--print",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--restricted",
+          "--strict-mcp-config",
+          "--tools",
+          "Read,Grep,Glob",
+          "--model",
+          "claude-haiku-4-5-20251001",
+          "--json-schema",
+          "{\"$id\":\"trivium.review.v2\",\"title\":\"TriviumCode 审查结论\",\"description\":\"全体审查员共用的输出契约（设计 §6.5）。v2（EV-247）只改根字段 verdict：由 v1 的四值改为三档 pass / pass-after-changes / reject，编排器据此按侧计票、判本轮整体结论并决定是否自动重审；意见形状与 v1 完全相同，v1 文件保留给旧归档读取。agy 侧用 --json-schema 强制，zcode 侧用提示词约定 + 解析器校验。claude 侧同样以 --json-schema 内联送出，但会剥掉顶层 $schema（该 CLI 不认 2020-12 元 schema 引用），此后由它按自己的方言校验——所以本文件不用 2020-12 独有关键字（$defs / prefixItems / unevaluated* / dependent* 等，由 test/unit/claude-adapter.test.ts 的 A31 守）；draft-07 独有或跨方言语义变化的键（dependencies、tuple 形 items、布尔 exclusiveMinimum、$ref 的兄弟键）不在守卫论域，改本文件时人工核。\",\"type\":\"object\",\"required\":[\"schema\",\"verdict\",\"summary\",\"findings\"],\"additionalProperties\":false,\"properties\":{\"schema\":{\"const\":\"trivium.review.v2\"},\"verdict\":{\"enum\":[\"pass\",\"pass-after-changes\",\"reject\"],\"description\":\"本侧对被审对象的整体结论，三档：pass＝通过，可直接按它实施（意见只是建议）；pass-after-changes＝修改后通过，按本侧意见修改后即可实施、无需再审；reject＝不通过，必须修改后重新评审。编排器按侧计票：不通过占半数及以上即整轮判不通过并自动重审\"},\"summary\":{\"type\":\"string\",\"minLength\":1,\"description\":\"不超过 8 行的总判断，先说最危险的一条\"},\"findings\":{\"type\":\"array\",\"description\":\"空数组合法，表示该侧未发现问题；但元数据会标 empty_review: true，文件照常落盘\",\"items\":{\"type\":\"object\",\"required\":[\"id\",\"severity\",\"layer\",\"kind\",\"location\",\"problem\",\"evidence\",\"suggestion\",\"confidence\"],\"additionalProperties\":false,\"properties\":{\"id\":{\"type\":\"string\",\"pattern\":\"^[A-Z][A-Z0-9]*-(r[0-9]+-)?[0-9]{2,}$\",\"description\":\"形状：<前缀>-<两位以上序号>，重跑时追加轮次如 AGY-r2-01。**本 schema 只校形状，不枚举前缀**——「哪些前缀合法、各属哪一家」的唯一来源是 agents/registry.ts（纪律 7）。前缀是否属于本侧由 parse.ts 的 checkReviewIntegrity 按注册表判定，不合则 guard 记 integrity 问题。此前这里写死 ^(AGY|GLM)-，第三家审核者的合法结论会被 ajv 拒掉、整份结论退化成 parse_fallback——而 schema 文件同时是交给厂商 CLI 的生成约束，运行时改写它会让文件与校验器分叉，所以只能在文件里放开。\"},\"severity\":{\"enum\":[\"blocker\",\"major\",\"minor\",\"nit\"]},\"layer\":{\"enum\":[\"requirement\",\"plan\",\"code\",\"rca\"]},\"kind\":{\"enum\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]},\"location\":{\"type\":\"string\",\"minLength\":1,\"description\":\"如 src/auth/oidc.ts:88 或 plan §3.2\"},\"problem\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"type\":\"string\",\"minLength\":1,\"description\":\"读了哪些文件/跑了哪些命令/为什么成立。引用的文件必须出现在 consulted 中\"},\"suggestion\":{\"type\":\"string\",\"minLength\":1,\"description\":\"修复方向。禁止给出大段可粘贴补丁\"},\"confidence\":{\"enum\":[\"high\",\"medium\",\"low\"]}}}},\"agreed\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"认为正确的部分，防止只挑刺\"},\"not_covered\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"本次未覆盖的范围，暴露盲区。必填\"},\"consulted\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"实际读过的项目文件相对路径，与工具轨迹交叉核对（§11.4）\"}}}",
+          "--settings",
+          "{\"permissions\":{\"deny\":[\"Read(./calls)\",\"Read(./calls/**)\",\"Read(./evidence/ascii_root/calls)\",\"Read(./evidence/ascii_root/calls/**)\",\"Read(./evidence/ascii_root/nested/calls)\",\"Read(./evidence/ascii_root/nested/calls/**)\",\"Read(./evidence/ascii_root/nested/deep/calls)\",\"Read(./evidence/ascii_root/nested/deep/calls/**)\",\"Read(./evidence/calls)\",\"Read(./evidence/calls/**)\",\"Read(./.env)\",\"Read(./.env/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Read(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Read(./.trivium)\",\"Read(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Grep(./calls)\",\"Grep(./calls/**)\",\"Grep(./evidence/ascii_root/calls)\",\"Grep(./evidence/ascii_root/calls/**)\",\"Grep(./evidence/ascii_root/nested/calls)\",\"Grep(./evidence/ascii_root/nested/calls/**)\",\"Grep(./evidence/ascii_root/nested/deep/calls)\",\"Grep(./evidence/ascii_root/nested/deep/calls/**)\",\"Grep(./evidence/calls)\",\"Grep(./evidence/calls/**)\",\"Grep(./.env)\",\"Grep(./.env/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Grep(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Grep(./.trivium)\",\"Grep(./.trivium/**)\",\"<tmp>\",\"<tmp>\",\"Glob(./calls)\",\"Glob(./calls/**)\",\"Glob(./evidence/ascii_root/calls)\",\"Glob(./evidence/ascii_root/calls/**)\",\"Glob(./evidence/ascii_root/nested/calls)\",\"Glob(./evidence/ascii_root/nested/calls/**)\",\"Glob(./evidence/ascii_root/nested/deep/calls)\",\"Glob(./evidence/ascii_root/nested/deep/calls/**)\",\"Glob(./evidence/calls)\",\"Glob(./evidence/calls/**)\",\"Glob(./.env)\",\"Glob(./.env/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-gemini.md/**)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md)\",\"Glob(./.reviews/directory-probe/plan/2026-01-01-directory-probe-glm.md/**)\",\"Glob(./.trivium)\",\"Glob(./.trivium/**)\",\"<tmp>\",\"<tmp>\"]},\"env\":{\"ANTHROPIC_BASE_URL\":\"https://gw-ev256.invalid/api\",\"ANTHROPIC_AUTH_TOKEN\":\"gw-ev256-auth-01\",\"ANTHROPIC_MODEL\":\"gw-ev256-model-01\",\"CLAUDE_CODE_SUBAGENT_MODEL\":\"gw-ev256-sub-01\"}}"
+        ],
+        "env": {},
+        "extra": false
+      }
+    ]
+  },
+  "ps": {
+    "samples": 99,
+    "lines": 94,
+    "leakLines": 89,
+    "leakKeys": [
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_AUTH_TOKEN",
+      "ANTHROPIC_MODEL",
+      "CLAUDE_CODE_SUBAGENT_MODEL"
+    ]
+  }
+}

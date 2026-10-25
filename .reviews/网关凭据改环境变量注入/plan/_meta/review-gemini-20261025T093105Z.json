@@ -1,0 +1,53 @@
+{
+  "agreed": [
+    "从根本上删除 mergeSettingsEnv 及各层函数中的 settingsEnv 形参，在静态类型系统层面杜绝任何臂继续将网关凭据内联进 argv 的可能",
+    "通过唯一函数 claudeInvocationEnv 固定展开次序（先展开 route.env 后展开 route.settingsEnv），确保父进程同名键被清除、网关同名键胜出、未配置时逐键等价达成零变化",
+    "保留 invokeClaude 与探针中的 scrubGatewayEnv 兜底脱敏机制，确保即便底层输出意外回显也具备纵深防御能力",
+    "针对 Windows 平台 node 包装器无法依赖 shebang 执行的问题，明确采用 process.execPath 与脚本前缀的跨平台测试启动策略",
+    "集成测试 E3 显式针对探针的记忆臂、阴性对照臂、模式 deny 臂等执行断言与覆盖率校验，杜绝测试空跑或假绿",
+    "规划了 11 条覆盖注入次序、参数残留、零变化与脱敏的变异自检核验（M1-M11），验证锚点完备有效"
+  ],
+  "consulted": [
+    ".reviews/网关凭据改环境变量注入/plan/2026-10-25-网关凭据改环境变量注入-claude.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/claude-directory.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/types.ts",
+    "src/trivium/util/exec.ts",
+    "doc/05_testing/evidence/win-unify-20261024/gateway-credential-plan.md",
+    "doc/05_testing/evidence/win-unify-20261024/gateway-credential-test.txt",
+    "doc/08_project/现存Bug与未完成工作清单.md",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/06_deployment/稳定版部署手册.md",
+    "doc/02_design/稳定版系统设计说明书.md",
+    "scripts/manual-supplement.md",
+    "doc/05_testing/README.md",
+    "test/unit/claude-adapter.test.ts",
+    "test/unit/claude-events.test.ts",
+    "test/integration/claude-route-stability.test.ts",
+    "test/integration/claude-profile.test.ts",
+    "test/helpers/entry-scan-home.ts",
+    "test/unit/entry-scan-isolation.test.ts",
+    "package.json",
+    "scripts/claude-admission-control.mjs",
+    "scripts/agent-access-closeout.mjs",
+    "scripts/agent-access-admission.mjs",
+    "scripts/mutation-check.mjs"
+  ],
+  "findings": [],
+  "not_covered": [
+    "受限于二次审查员环境的只读与无执行权限约束，未在本地执行 npm run check、trivium doctor 或运行集成测试套件",
+    "未在真实 Windows 操作系统中直接执行 Get-CimInstance Win32_Process 捕获实时进程命令行（已核对 2026-10-24 的基线测试记录）",
+    "未连接真实第三方网关进行在线鉴权流量交互验证"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "本计划彻底阻断了网关凭据内联进子进程 argv 的通道，类型系统与运行时均无法再构造内联凭据。\n注入次序通过 claudeInvocationEnv 固定为先展开清除补丁、后叠网关变量，父进程凭据可靠清除且网关值胜出。\n两条执行出口与七类调用点全面切换，未配置网关时与原行为逐键等价，保持零变化。\n命令行与留痕中凭据彻底消除，同时保留 scrubGatewayEnv 作为纵深防御兜底。\n回归测试套件支持跨平台执行，E3 显式防御探针各臂空跑，11 项变异核验点闭环完备。\n综上判定实施计划严密周全，准予通过。",
+  "verdict": "pass"
+}

@@ -69,8 +69,8 @@ import { CLAUDE_OUTPUT_TOOLS, parseClaudeEvents, type ClaudeTrace } from '../ada
  */
 import { buildDenySettings, claudeDirectoryFingerprint, claudeSensitiveGlobsHash, CLAUDE_DIRECTORY_SHAPE,
   denyRuleShapeOf, readSchemaJson } from '../adapters/claude.js';
-import { claudeRouteEnv, resolveClaudeRoute, type ClaudeRoute } from '../adapters/claude-route.js';
-import { mergeSettingsEnv, scrubGatewayEnv } from '../adapters/claude.js';
+import { claudeInvocationEnv, claudeRouteEnv, resolveClaudeRoute, type ClaudeRoute } from '../adapters/claude-route.js';
+import { scrubGatewayEnv } from '../adapters/claude.js';
 import { probeClaudeDirectories, expectedDirectoryFailure, directoryFailureText } from './claude-directory.js';
 
 const routeContext = new AsyncLocalStorage<{ route: ClaudeRoute; model: string | null; effort: string | null }>();
@@ -87,7 +87,8 @@ function routeInvocation(bin: string, argv: string[]): { bin: string; argv: stri
     if (at >= 0 && ctx.model !== null) args[at + 1] = ctx.model;
     if (ctx.effort !== null) args.push('--effort', ctx.effort);
   }
-  return { bin: ctx?.route.bin ?? bin, argv: [...(ctx?.route.prefix ?? []), ...args], env: ctx?.route.env ?? claudeRouteEnv(null) };
+  // 带模型调用的探针臂都经这里拿 env：先清父进程路线变量、后注网关键（EV-256）
+  return { bin: ctx?.route.bin ?? bin, argv: [...(ctx?.route.prefix ?? []), ...args], env: ctx ? claudeInvocationEnv(ctx.route) : claudeRouteEnv(null) };
 }
 
 /** 探针模型：探能力不探质量，挑最便宜的一档 */
@@ -151,10 +152,8 @@ export function probeArgs(opts: {
   prompt: string;
   /** 内联 JSON Schema（**不是文件路径**——实测该旗标只收内联 JSON） */
   jsonSchema?: string;
-  /** 内联 settings JSON，用于注入 permissions.deny */
+  /** 内联 settings JSON，用于注入 permissions.deny（网关 env 不进这里，走子进程环境变量，EV-256） */
   settings?: string;
-  /** 第三方网关 env（CC Switch 支撑）：并入 settings 载荷的 env 段，见 ClaudeRoute.settingsEnv */
-  settingsEnv?: Record<string, string>;
   outputFormat?: 'text' | 'json' | 'stream-json';
   /**
    * **只给 EV-40 的负对照用**：刻意不传 `--verbose`，看 CLI 认不认。
@@ -190,8 +189,6 @@ export function probeArgs(opts: {
    * 都是 argv 形态下的结论**，EV-40 那格尤其。
    */
   const fmt = opts.outputFormat ?? 'stream-json';
-  // 网关 env 与 deny 规则合并进同一份载荷（受限模式忽略 settings 文件、仍认内联）
-  const settingsPayload = mergeSettingsEnv(opts.settings ?? null, opts.settingsEnv);
   return [
     '-p',
     '--output-format', fmt,
@@ -207,7 +204,7 @@ export function probeArgs(opts: {
     '--max-budget-usd', opts.budgetUsdOverride ?? PROBE_BUDGET_USD,
     '--model', PROBE_MODEL,
     ...(opts.jsonSchema ? ['--json-schema', opts.jsonSchema] : []),
-    ...(settingsPayload ? ['--settings', settingsPayload] : []),
+    ...(opts.settings ? ['--settings', opts.settings] : []),
     opts.prompt,
   ];
 }
@@ -559,10 +556,10 @@ export function projectMemoryControlArgs(readonlyFlags: readonly string[]): stri
  * 「两臂逐字相同、只差一条旗标」这个单变量前提没有任何东西守着。现在两臂都经 `probeArgs` 构造，
  * 对照臂只在 `readonlyFlags` 上不同；用例断言 `control` 恰为 `restricted` 去掉 `--restricted`。
  */
-export function projectMemoryArmArgs(prompt: string, settingsEnv?: Record<string, string>): { restricted: string[]; control: string[] } {
+export function projectMemoryArmArgs(prompt: string): { restricted: string[]; control: string[] } {
   return {
-    restricted: probeArgs({ prompt, settingsEnv }),
-    control: probeArgs({ prompt, readonlyFlags: projectMemoryControlArgs(READONLY_INVARIANTS), settingsEnv }),
+    restricted: probeArgs({ prompt }),
+    control: probeArgs({ prompt, readonlyFlags: projectMemoryControlArgs(READONLY_INVARIANTS) }),
   };
 }
 
@@ -770,15 +767,17 @@ async function execProbe(
   } = {},
 ): Promise<ClaudeTrace & { timedOut: boolean; raw: string; exitCode: number | null; stderr: string }> {
   const { overrideBudgetUsd, overrideTimeoutMs, ...argOpts } = extra;
-  return execArgv(bin, fx, probeArgs({ prompt, ...argOpts, budgetUsdOverride: overrideBudgetUsd,
-    settingsEnv: routeContext.getStore()?.route.settingsEnv }), overrideTimeoutMs);
+  return execArgv(bin, fx, probeArgs({ prompt, ...argOpts, budgetUsdOverride: overrideBudgetUsd }), overrideTimeoutMs);
 }
 
 /**
  * `execProbe` 的执行与解析那一半：收一条现成的 argv（EV-46）。EV-44 记忆探测两臂经 `projectMemoryArmArgs`
  * 拿到完整 argv 后都走这里——两臂同一个执行封装、同一份解析，对照臂不再在调用点另拼一次 `run` 与 `parseClaudeEvents`。
+ *
+ * 导出只为测试面（EV-256 代码审 GLM-01）：探针侧输出脱敏的回归锚要直接观测 `raw` / `stderr`，
+ * `probeClaude` 的返回不暴露各臂原文。生产调用方仍只有本文件。
  */
-async function execArgv(
+export async function execArgv(
   bin: string,
   fx: Fixture,
   argv: string[],
@@ -832,10 +831,10 @@ async function execArgv(
  * 与把 `coverage_complete` 改必填同一条思路：**能让类型或结构保证的，
  * 就不要留给「记得写对」**。这一族我在 r1～r3 连错三轮。
  */
-export function verboseNegativeControlArgs(settingsEnv?: Record<string, string>): string[] {
-  // settingsEnv 与 execProbe 同源（1.2.2，审查 CLAUDE-04）：网关机器上阴性对照的失败
-  // 只能是「缺 verbose 绑定」这种语义原因，不能是认证失败——否则 vacuous true 毁掉回归哨兵。
-  return probeArgs({ prompt: '只回复 OK 两个字母，不要调用任何工具。', omitVerbose: true, settingsEnv });
+export function verboseNegativeControlArgs(): string[] {
+  // 网关 env 与 execProbe 同源（1.2.2，审查 CLAUDE-04；EV-256 起经 routeInvocation 的子进程环境变量）：
+  // 网关机器上阴性对照的失败只能是「缺 verbose 绑定」这种语义原因，不能是认证失败——否则 vacuous true 毁掉回归哨兵。
+  return probeArgs({ prompt: '只回复 OK 两个字母，不要调用任何工具。', omitVerbose: true });
 }
 
 /**
@@ -881,7 +880,7 @@ async function probeStreamVerboseBinding(
    */
   if (!positiveControlOk) return null;
 
-  const invocation = routeInvocation(bin, verboseNegativeControlArgs(routeContext.getStore()?.route.settingsEnv));
+  const invocation = routeInvocation(bin, verboseNegativeControlArgs());
   const r = await run(invocation.bin, invocation.argv, {
     env: invocation.env,
     timeoutMs: PROBE_TIMEOUT_MS, cwd: fx.root, stdin: '', killTree: true,
@@ -1695,7 +1694,7 @@ export async function probeClaude(
       `如果你看不到任何项目指令文件，请回答 ${MEMORY_NEGATIVE}。`;
 
     // 两臂的完整 argv 同出 `projectMemoryArmArgs`，只差 `--restricted` 一条（EV-46）
-    const arms = projectMemoryArmArgs(askMemory, routeContext.getStore()?.route.settingsEnv);
+    const arms = projectMemoryArmArgs(askMemory);
     const restricted = await execArgv(bin, memFx, arms.restricted);
     const restrictedSaw = restricted.raw.includes(SENTINEL_MEMORY);
 

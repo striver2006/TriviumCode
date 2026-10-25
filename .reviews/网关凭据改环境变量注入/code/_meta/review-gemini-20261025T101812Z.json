@@ -1,0 +1,69 @@
+{
+  "agreed": [
+    "注入方式切换彻底：彻底删除了 mergeSettingsEnv 与 ClaudeInvokeOptions.settingsEnv，buildClaudeArgs、probeArgs、projectMemoryArmArgs、verboseNegativeControlArgs 均移除了网关入参通道，类型层面杜绝了遗留内联。",
+    "环境变量注入次序与路线隔离固定：claudeInvocationEnv 严格固定为「先展开 route.env 清除父进程路线变量，再展开 route.settingsEnv 注入网关键」，父进程残留前缀变量被清除、同名网关变量胜出，由单测 G1、变异 M1/M1b 与集成用例 E1–E4 强力锁死。",
+    "命令行与留痕零泄漏：零配额进程表采样证实基线 89 行泄漏在新构建中降为 0 行，命令行中网关凭据彻底消除；输出侧保留 scrubGatewayEnv 逐值脱敏（<redacted-env>）与模式脱敏兜底，指纹仅记 sha256，日志与留痕不落明文凭据。",
+    "未开启机器零变化：未开启 settings_env_source 或 settings.json 为空时，settingsEnv 为空对象，claudeInvocationEnv 与 route.env 逐键相等，四组调用的 argv 与环境变量与基线逐条 byte-for-byte 对齐。",
+    "回归锚与变异体系严密：新集成套件 claude-gateway-env.test.ts 采用 .cjs 假 CLI 实现跨平台测试，显式断言了探针四类按需 spawn 臂的覆盖率防空转，13/13 变异全部咬住，能精准检出任意一臂漏注或遗留内联。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/网关凭据改环境变量注入/plan/2026-10-25-网关凭据改环境变量注入-r2-claude.md",
+    "doc/01_requirements/稳定版需求说明书.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/稳定版系统设计说明书.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-25_gateway_env_injection.md",
+    "doc/05_testing/evidence/gateway-env-injection-20261025/accept-readout.txt",
+    "doc/05_testing/evidence/gateway-env-injection-20261025/accept-readout.mjs",
+    "doc/05_testing/evidence/gateway-env-injection-20261025/mutation-output.txt",
+    "doc/05_testing/evidence/gateway-env-injection-20261025/windows-acceptance.md",
+    "doc/05_testing/evidence/gateway-env-injection-20261025/check-gateway-exposure.ps1",
+    "doc/05_testing/evidence/gateway-env-injection-20261025/check-1.txt",
+    "doc/06_deployment/RUNBOOK_pipeline_ops.md",
+    "doc/06_deployment/稳定版部署手册.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/现存Bug与未完成工作清单.md",
+    "scripts/manual-supplement.md",
+    "scripts/agent-access-admission.mjs",
+    "scripts/agent-access-closeout.mjs",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/claude-directory.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/types.ts",
+    "src/trivium/util/exec.ts",
+    "skills/dual-critic/schema/config.v2.json",
+    "test/integration/claude-gateway-env.test.ts",
+    "test/unit/claude-adapter.test.ts",
+    "test/unit/claude-events.test.ts",
+    "test/helpers/doc-archive-index.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 skills/dual-critic/schema/config.v2.json:536，其 description 键值仍为「第三方网关支撑：user_settings = 每次调用读用户级 ~/.claude/settings.json 的 env 段并经 --settings 内联注入（受限模式忽略 settings 文件但仍认内联）。缺省 null 关闭。」；而对比 src/trivium/types.ts:1096-1102 已明确更新为「经子进程环境变量注入（EV-256；1.2.0～1.3.1 曾经 --settings 内联...）」。在 doc/05_testing/REPORT_2026-10-25_gateway_env_injection.md §6.1 的文档对账扫描中，论域覆盖了 doc/、scripts/、skills-src/ 与 README.md，但遗漏了 skills/dual-critic/schema/ 下的 JSON Schema 契约文件。",
+      "id": "AGY-01",
+      "kind": "contract",
+      "layer": "code",
+      "location": "skills/dual-critic/schema/config.v2.json:536",
+      "problem": "机读契约 skills/dual-critic/schema/config.v2.json 中关于 agents.claude.settings_env_source 的 description 仍描述为旧机制「并经 --settings 内联注入（受限模式忽略 settings 文件但仍认内联）」，未同步为子进程环境变量注入通道，与 src/trivium/types.ts:1096-1102 及 EV-256 实现存在契约文案漂移。",
+      "severity": "minor",
+      "suggestion": "同步更新 skills/dual-critic/schema/config.v2.json:536 中的 description 文案，保持与 src/trivium/types.ts:1096-1102 一致，注明 1.3.2（EV-256）起改经子进程环境变量注入、不再进命令行。"
+    }
+  ],
+  "not_covered": [
+    "真实 Windows 环境下的真实网关端到端运行（包括真实 CC Switch 网关配置下的 doctor --only claude 执行与 check-gateway-exposure.ps1 -Watch 实时进程表监测、预检探活与真实代码审调用）：本机为 macOS 且未配置真实第三方网关，且本审查员没有执行系统命令与联网调用真实 LLM 配额的能力，此部分按计划如实依赖用户在 Windows 开发机执行验收脚本。",
+    "真实进程运行环境中的环境变量读取防护：Linux /proc/<pid>/environ、Windows 跨进程内存或调试 API 在同用户权限下的暴露面（已知结构性边界，如 RUNBOOK §11 和报告 §7 所述：暴露面由系统任意用户可见的命令行收敛到同一用户子进程环境块，同一用户进程仍可读取）。",
+    "profile 路线与网关同开时「包装器 profile 胜出 / 部分同名混配 401」的运行时实测行为：由于无真实包装器混合环境，此项按机制推理成立并已在部署手册和设计文档做排障注记，未做真实环境测试。"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "本次网关凭据改环境变量注入实施完整，最核心的命令行暴露面已彻底消除，仅遗留一处配置 schema 描述未同步的轻微漂移（AGY-01）。\n1. 注入切换彻底：彻底删除 mergeSettingsEnv 及 argv 构造器上的网关入参，invokeClaude 与 routeInvocation 两大出口统一经 claudeInvocationEnv 注入，无一臂遗留内联。\n2. 次序固定：固定为「先清父进程变量、后注网关 env」，父进程未覆盖变量保持清除、同名网关变量胜出，由单测 G1 与变异 M1/M1b 锁死。\n3. 留痕与脱敏保全：命令行中网关值彻底消失，输出与日志保留原串替换与模式脱敏，指纹仅记 sha256，未开启网关机器四组调用实现零变化。\n4. 回归锚完备：跨平台集成测试覆盖审查调用、探活、四类探针臂及 7 次目录臂，13/13 变异全部咬住，能有效检出任意一臂漏注或遗留内联。\n5. 建议同步更新 config.v2.json 中 settings_env_source 的描述说明，修改后即可直接通过实施。",
+  "verdict": "pass-after-changes"
+}

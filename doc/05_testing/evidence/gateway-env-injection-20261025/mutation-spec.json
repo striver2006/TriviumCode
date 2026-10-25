@@ -1,0 +1,134 @@
+{
+  "targets": [
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/probes/claude-directory.ts"
+  ],
+  "suites": [
+    "dist/test/test/integration/claude-gateway-env.test.js",
+    "dist/test/test/unit/claude-adapter.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "次序颠倒：先注网关键、后展开清除补丁（同名键被父进程清除覆盖）",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  return { ...route.env, ...route.settingsEnv };",
+      "replace": "  return { ...route.settingsEnv, ...route.env };",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M1b",
+      "desc": "同 M1，对单测 G1",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  return { ...route.env, ...route.settingsEnv };",
+      "replace": "  return { ...route.settingsEnv, ...route.env };",
+      "expect": "dist/test/test/unit/claude-adapter.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "出口漏注：invokeClaude 只给清除补丁",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "    env: opts.route ? claudeInvocationEnv(opts.route) : undefined,",
+      "replace": "    env: opts.route?.env,",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "出口漏注：探针 routeInvocation 只给清除补丁",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "env: ctx ? claudeInvocationEnv(ctx.route) : claudeRouteEnv(null) };",
+      "replace": "env: ctx?.route.env ?? claudeRouteEnv(null) };",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "某臂仍内联：记忆对照臂的 --settings 带 env 段",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "    control: probeArgs({ prompt, readonlyFlags: projectMemoryControlArgs(READONLY_INVARIANTS) }),",
+      "replace": "    control: probeArgs({ prompt, readonlyFlags: projectMemoryControlArgs(READONLY_INVARIANTS), settings: JSON.stringify({ env: routeContext.getStore()?.route.settingsEnv ?? {} }) }),",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M5",
+      "desc": "某臂仍内联：verbose 阴性对照的 --settings 带 env 段",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  return probeArgs({ prompt: '只回复 OK 两个字母，不要调用任何工具。', omitVerbose: true });",
+      "replace": "  return probeArgs({ prompt: '只回复 OK 两个字母，不要调用任何工具。', omitVerbose: true, settings: JSON.stringify({ env: routeContext.getStore()?.route.settingsEnv ?? {} }) });",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "某臂仍内联：目录臂把网关 env 并进 deny 载荷",
+      "file": "src/trivium/probes/claude-directory.ts",
+      "find": "readonlyArgs: [...input.readonlyFlags], schemaJson, settingsJson: settings.json, timeoutMs: 180_000 });",
+      "replace": "readonlyArgs: [...input.readonlyFlags], schemaJson, settingsJson: JSON.stringify({ ...JSON.parse(settings.json ?? '{}'), env: input.route.settingsEnv }), timeoutMs: 180_000 });",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M6b",
+      "desc": "某臂漏注：目录臂拿到的路线丢了网关键",
+      "file": "src/trivium/probes/claude-directory.ts",
+      "find": "      const outcome = await invoke({ bin: input.route.bin!, route: input.route, cwd: fx!.root,",
+      "replace": "      const outcome = await invoke({ bin: input.route.bin!, route: { ...input.route, settingsEnv: {} }, cwd: fx!.root,",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "某臂仍内联：探活形态（settingsJson 为 null）补一份 {\"env\":…}",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "  const args = [...(opts.route?.prefix ?? []), ...buildClaudeArgs(opts)];",
+      "replace": "  const args = [...(opts.route?.prefix ?? []), ...buildClaudeArgs({ ...opts, settingsJson: opts.settingsJson ?? (opts.route && Object.keys(opts.route.settingsEnv).length > 0 ? JSON.stringify({ env: opts.route.settingsEnv }) : null) })];",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "某臂漏注：verbose 阴性对照绕过 routeInvocation 的注入、只给清除补丁",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "const invocation = routeInvocation(bin, verboseNegativeControlArgs());",
+      "replace": "const invocation = { ...routeInvocation(bin, verboseNegativeControlArgs()), env: routeContext.getStore()?.route.env ?? claudeRouteEnv(null) };",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "键集外溢：extractSettingsEnv 去掉前缀过滤",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "    if (/^(ANTHROPIC_|CLAUDE_)/.test(k) && typeof v === 'string' && v.length > 0) out[k] = v;",
+      "replace": "    if (typeof v === 'string' && v.length > 0) out[k] = v;",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "脱敏丢失：invokeClaude 的 stdout 不过 scrub",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "    stdout: scrub(r.stdout),",
+      "replace": "    stdout: r.stdout,",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "零变化破坏：未注入时不清父进程路线变量",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  return { ...route.env, ...route.settingsEnv };",
+      "replace": "  return Object.keys(route.settingsEnv).length > 0 ? { ...route.env, ...route.settingsEnv } : {};",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "脱敏丢失：探针 execArgv 的 stdout 不过 scrub",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  const stdout = scrubGatewayEnv(r.stdout, gatewayEnv);",
+      "replace": "  const stdout = r.stdout;",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M12b",
+      "desc": "脱敏丢失：探针 execArgv 的 stderr 不过 scrub",
+      "file": "src/trivium/probes/claude.ts",
+      "find": "  const stderr = scrubGatewayEnv(r.stderr, gatewayEnv);",
+      "replace": "  const stderr = r.stderr;",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    }
+  ]
+}

@@ -531,7 +531,7 @@ Hook 与预检只做**存在性**检查：wrapper（`.trivium/bin/trivium`）内
 - **进程与取消**：没有进程组，编排器按父链认本次拉起的进程、结束时用 `taskkill /T` 树杀。厂商 CLI 没有跨进程的优雅取消，`review --cancel` 之后凭据副本的抹除靠 worker 读到 `cancel.requested` 标记后自己收尾（§3.1 第 3 条）。
 - **进程身份判不了**：身份经 PowerShell 枚举进程表取得，机器负载很高时偶发枚举失败，编排器会再试一次；仍失败时状态写「判不了」，不要当成进程已结束，按 §二「先判断是真在跑还是遗留锁」处理。
 - **codex 当审核者**：Windows 上 codex 的 `-s read-only` 拦不住写，要用它当审核者须在本机 `config.local.yaml` 开 `agents.codex.readonly_enforcement: prompt-only`（部署手册 §1a）。这时防线是事后轨迹与漂移核验：检出写入，该侧本轮结论作废（§3.1 第 8 条）。
-- **第三方网关**：claude 走 CC Switch 时在本机层开 `agents.claude.settings_env_source: user_settings`（部署手册 §1a）；开启后的凭据暴露面见 §3.1 第 14 条。
+- **第三方网关**：claude 走 CC Switch 时在本机层开 `agents.claude.settings_env_source: user_settings`（部署手册 §1a）。1.3.2 起网关键经子进程环境变量注入，不再出现在 claude 进程的命令行里（EV-256，§3.1 第 14 条已闭合）；仍在用 1.2.0～1.3.1 时，键值会出现在进程命令行、本机能列进程的其他进程都看得到，凭据敏感的机器请升级。修复后剩下的暴露面是 claude 子进程的环境块，同一用户的进程仍可读。开启后 `doctor --only claude` 的注记应写「网关 env 经子进程环境变量注入（N 键；不进命令行……）」；写的若是「经 --settings 内联注入」，说明装的还是旧构建。claude 鉴权报 401 且同时用着 profile 路线时，先关 `settings_env_source` 再试（部署手册 §1a 的同开提醒）。
 - **权限位**：凭据副本的 0600 在 NTFS 只映射成只读位，隔离靠运行根所在的用户目录边界（§3.1 第 7 条）。
 - **ZCode 装在非缺省盘**：经本机层的 `agents.glm.entry` 指路（§3.1 第 9 条）。
 - **开发者跑全量测试**：Windows 上全量会有少量随负载出现的红格，单跑能过，已登记为负载底噪（§3.1 第 6、13 条）；判断是否引入回归时以单跑与基线对照为准。

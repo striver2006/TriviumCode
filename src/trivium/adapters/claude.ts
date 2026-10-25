@@ -36,7 +36,7 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import type { ClaudeProbe, CriticRequest, CriticResult } from '../types.js';
 import { run } from '../util/exec.js';
-import { claudeProbeForRoute, claudeProfileNames, executableFile, resolveClaudeRoute, type ClaudeRoute } from './claude-route.js';
+import { claudeInvocationEnv, claudeProbeForRoute, claudeProfileNames, executableFile, resolveClaudeRoute, type ClaudeRoute } from './claude-route.js';
 import { redactSecrets } from '../secrets.js';
 import { ensureDir } from '../util/fsx.js';
 import {
@@ -82,13 +82,11 @@ export interface ClaudeInvokeOptions {
    * 实测传路径当场被拒：`--json-schema is not valid JSON: Unrecognized token '/'`。
    */
   schemaJson: string | null;
-  /** 内联 settings JSON（`permissions.deny`），由 `buildDenySettings` 产出；null 即不注入 */
-  settingsJson: string | null;
   /**
-   * 第三方网关 env（CC Switch 支撑）：非空时并入 `--settings` 载荷的 `env` 段（见
-   * `mergeSettingsEnv`）。生产路径由 `invokeClaude` 从 `route.settingsEnv` 带入，调用方不手填。
+   * 内联 settings JSON（`permissions.deny`），由 `buildDenySettings` 产出；null 即不注入。
+   * 第三方网关 env **不进这里**：它经 `claudeInvocationEnv` 走子进程环境变量（EV-256）。
    */
-  settingsEnv?: Record<string, string>;
+  settingsJson: string | null;
   timeoutMs: number;
   /**
    * **仅准入脚本使用**的成本硬闸。生产路径恒为 null。
@@ -98,37 +96,6 @@ export interface ClaudeInvokeOptions {
    * 那是**纯追加、不改被测行为**的偏差——脚本文件头与实测报告各记一次。
    */
   maxBudgetUsd?: string | null;
-}
-
-/**
- * 把网关 env 并进 `--settings` 内联载荷（第三方网关支撑，见 `ClaudeRoute.settingsEnv`）。
- *
- * 纯函数。三件事：
- * - 已有 settings（deny 规则）时**合并不替换**——deny 通道与网关鉴权共存于同一份载荷；
- * - settings 为 null 而 env 非空时新建 `{"env":…}`；
- * - env 为空对象时**原样返回**（含 null）——关闭或未配网关的机器上一个字节都不变。
- *
- * 解析失败的 settings 原样返回：本函数不是校验层，坏载荷交给 CLI 拒绝并走既有失败出口。
- */
-export function mergeSettingsEnv(
-  settingsJson: string | null,
-  env: Record<string, string> | undefined,
-): string | null {
-  if (!env || Object.keys(env).length === 0) return settingsJson;
-  let obj: Record<string, unknown>;
-  if (settingsJson === null) {
-    obj = {};
-  } else {
-    try {
-      const parsed: unknown = JSON.parse(settingsJson);
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return settingsJson;
-      obj = { ...(parsed as Record<string, unknown>) };
-    } catch {
-      return settingsJson;
-    }
-  }
-  obj['env'] = { ...(typeof obj['env'] === 'object' && obj['env'] !== null ? obj['env'] as Record<string, string> : {}), ...env };
-  return JSON.stringify(obj);
 }
 
 /**
@@ -150,11 +117,9 @@ export function mergeSettingsEnv(
  * 两者实测等价，取 A 是因为依赖面更小。
  */
 export function buildClaudeArgs(
-  opts: Pick<ClaudeInvokeOptions, 'model' | 'readonlyArgs' | 'schemaJson' | 'settingsJson' | 'maxBudgetUsd' | 'settingsEnv'> &
+  opts: Pick<ClaudeInvokeOptions, 'model' | 'readonlyArgs' | 'schemaJson' | 'settingsJson' | 'maxBudgetUsd'> &
     Partial<Pick<ClaudeInvokeOptions, 'effort'>>,
 ): string[] {
-  // 网关 env 与 deny 规则合并进同一份载荷：受限模式忽略 settings 文件、仍认这里的内联
-  const settingsPayload = mergeSettingsEnv(opts.settingsJson ?? null, opts.settingsEnv);
   return [
     '--print',
     '--output-format', 'stream-json',
@@ -182,7 +147,8 @@ export function buildClaudeArgs(
      * 不是因为今天真有调用方绕过。
      */
     ...(opts.schemaJson ? ['--json-schema', stripMetaSchemaRef(opts.schemaJson)] : []),
-    ...(settingsPayload ? ['--settings', settingsPayload] : []),
+    // 只装非凭据载荷（deny 规则）；网关 env 走子进程环境变量，不进 argv（EV-256）
+    ...(opts.settingsJson ? ['--settings', opts.settingsJson] : []),
     ...(opts.maxBudgetUsd ? ['--max-budget-usd', opts.maxBudgetUsd] : []),
   ];
 }
@@ -576,9 +542,10 @@ export function scrubGatewayEnv(text: string, env: Record<string, string> | unde
  * codex 侧踩过「继承了一个不会 EOF 的 stdin、进程挂到超时被杀」，此处同理显式给定。
  */
 export async function invokeClaude(opts: ClaudeInvokeOptions): Promise<ClaudeInvokeOutcome> {
-  const args = [...(opts.route?.prefix ?? []), ...buildClaudeArgs({ ...opts, settingsEnv: opts.settingsEnv ?? opts.route?.settingsEnv })];
+  const args = [...(opts.route?.prefix ?? []), ...buildClaudeArgs(opts)];
   const r = await run(opts.route?.bin ?? opts.bin, args, {
-    env: opts.route?.env,
+    // 先清父进程路线变量、后注网关键（EV-256）；无 route 时不给补丁，与修复前相同
+    env: opts.route ? claudeInvocationEnv(opts.route) : undefined,
     cwd: opts.cwd,
     stdin: opts.prompt,
     timeoutMs: opts.timeoutMs,

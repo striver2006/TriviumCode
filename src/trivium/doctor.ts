@@ -1199,7 +1199,7 @@ async function runDoctorCore(opts: DoctorOptions, hooks: DoctorCoreHooks | null)
       notes.push(`[claude] 配置声明模型：${route.modelsDeclared.join('、') || '未声明'}；不代表完整服务端目录`);
       if (route.settingsEnvNote) notes.push(`[claude] ${route.settingsEnvNote}`);
       else if (Object.keys(route.settingsEnv).length > 0) {
-        notes.push(`[claude] 网关 env 经 --settings 内联注入（${Object.keys(route.settingsEnv).length} 键，值不落留痕）：受限模式在第三方网关下保住鉴权`);
+        notes.push(`[claude] 网关 env 经子进程环境变量注入（${Object.keys(route.settingsEnv).length} 键；不进命令行，值不落留痕）：受限模式在第三方网关下保住鉴权`);
       }
       return withClaudeProbeRoute(route, selected.model, selected.effort, () => probeClaude(opts.probeBins?.claude ?? route.nativeBin, {
         skipModelCalls: !canProbeModel,

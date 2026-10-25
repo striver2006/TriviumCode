@@ -21,9 +21,10 @@ export interface ClaudeRoute {
   /*
    * 第三方网关 env（CC Switch 支撑，win32 实测 2026-10-19）：`--restricted` 按官方语义忽略
    * user/project/local settings 文件——CC Switch 恰好把网关配置写在用户级 settings.json 的
-   * env 段，受限模式一开就回落官方端点报「未登录」。出路是 `--settings` 内联载荷（受限模式
-   * 仍生效）：调用时从 settings.json 提取 env 段、并入每次调用的 `--settings`。值只在内存，
-   * 指纹只记 sha256；commandLine 侧由 invokeClaude 逐值替换成占位符。
+   * env 段，受限模式一开就回落官方端点报「未登录」。路线解析时从 settings.json 提取 env 段，
+   * 每次带模型调用的子进程经 `claudeInvocationEnv` 以**环境变量**注入（EV-256；1.2.0～1.3.1
+   * 曾并进 `--settings` 内联载荷，键值因此出现在进程命令行里）。受限模式认进程环境变量
+   * （2026-10-24 win32 实测）。值只在内存，指纹只记 sha256；输出侧仍由 `scrubGatewayEnv` 逐值脱敏。
    */
   settingsEnv: Record<string, string>;
   settingsEnvNote: string | null;
@@ -77,6 +78,22 @@ export function claudeRouteEnv(profile: string | null, parent: NodeJS.ProcessEnv
   return patch;
 }
 
+/**
+ * claude 子进程的环境补丁（EV-256）：先清、后注，次序固定。
+ *
+ * 先展开 `route.env`（`claudeRouteEnv` 的清除补丁：父进程 `ANTHROPIC_*` 等置 undefined），
+ * 再展开 `route.settingsEnv`（`extractSettingsEnv` 提取出的网关键）——同名键网关值胜出；
+ * 父进程里有、settings.json 里没有的键仍被清除。未开 `settings_env_source` 或 env 段为空时
+ * `settingsEnv` 是 `{}`，结果与 `route.env` 逐键相同。
+ *
+ * 网关键进入子进程的**唯一**入口：`invokeClaude` 与探针 `routeInvocation` 各调一次。
+ * 不把网关键直接并进 `route.env`——它还给 `--version` / `--help` / 预检版本核对用，
+ * 那些调用不发模型请求，不该带上凭据。
+ */
+export function claudeInvocationEnv(route: Pick<ClaudeRoute, 'env' | 'settingsEnv'>): Record<string, string | undefined> {
+  return { ...route.env, ...route.settingsEnv };
+}
+
 export function executableFile(file: string | null): boolean {
   if (!file) return false;
   try { accessSync(file, constants.X_OK); return true; } catch { return false; }
@@ -118,7 +135,7 @@ export function resolveClaudeRoute(cfg: Config, profile: string | null, version?
   }
   /*
    * 第三方网关 env（见 ClaudeRoute.settingsEnv 的说明）：只在 settings_env_source 显式开启时
-   * 读取用户级 settings.json，键值不落任何留痕——指纹只进 sha256，commandLine 由 invokeClaude 逐值替换。
+   * 读取用户级 settings.json，键值不落任何留痕——指纹只进 sha256，经环境变量注入、不进命令行（EV-256）。
    */
   const settingsEnvSource = c?.settings_env_source ?? null;
   let settingsEnv: Record<string, string> = {};
