@@ -76,7 +76,10 @@ echo "exit=$LASTEXITCODE"
 
 ## 3. 可选：一次真实审查（审查调用 `claudeAdapter.run`）
 
-审查调用与探活、目录臂走同一个出口 `invokeClaude`，第 1、2 步已覆盖这条出口；想再加一道真实审查，就在任意小改动上从非 claude 的 Driver 发起一次 `--critics claude` 的代码审，期间在另一窗口跑 `-Watch 900`，审完对本次运行目录与 `.reviews\` 跑 `-Scan`：
+审查调用与探活、目录臂走同一个出口 `invokeClaude`，第 1、2 步已覆盖这条出口；想再加一道真实审查，就在任意小改动上从非 claude 的 Driver 发起一次 `--critics claude` 的代码审，期间在另一窗口跑 `-Watch 900`，审完对本次运行目录与 `.reviews\` 跑 `-Scan`。
+
+> **审查运行期间不要往仓库工作树里写任何文件**（2026-10-25 首次补做撞过）：采样与 `review --wait` 的输出若落在 `doc\05_testing\evidence\…`，编排器跑后复算工作树会判「被审对象在审查期间被修改」、整次运行作废。审查期间的输出一律写到仓库外（如 `"$env:TEMP\windows-watch-review.txt"`），审完、`--wait` 退 0 或失败之后再 `Copy-Item` 进证据目录。另：PowerShell 不展开命令名位置上的变量，用变量拼脚本路径时要写成 `& ".\$E\check-gateway-exposure.ps1" …`。
+
 
 ```powershell
 .\doc\05_testing\evidence\gateway-env-injection-20261025\check-gateway-exposure.ps1 -Scan "$env:USERPROFILE\.trivium\runs\<本次运行目录>",.reviews 2>&1 | Out-File -Encoding utf8 doc\05_testing\evidence\gateway-env-injection-20261025\windows-scan-review.txt

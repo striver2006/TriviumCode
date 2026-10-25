@@ -41,4 +41,18 @@
 
 ## 总结论
 
-Windows 真实网关形态验收通过：env 注入下鉴权正常、只读不变量保持，进程表与落盘均未见凭据键值。未做的是可选的第 4 步（一次 claude 作审核者的真实审查），以及 doctor 尾段约 3 分钟的进程表采样。
+Windows 真实网关形态验收通过：env 注入下鉴权正常、只读不变量保持，进程表与落盘均未见凭据键值。第 4 步（claude 作审核者的真实审查）随后补做，见下节；未覆盖的只剩 doctor 尾段约 3 分钟的进程表采样。
+
+## 第 4 步补做：claude 作审核者的真实审查（2026-10-25，用户提交 `b6cf09fa`）
+
+临时主题 `ev256-win-claude`，codex 作 Driver、只选 claude 一侧，审一个临时文件（run `20261025T131133Z`，HEAD `920b63cc`）。原始输出：`windows-review-start.json`、`windows-review-wait.txt`、`windows-watch-review.txt`、`windows-scan-review.txt`、`windows-review-claude.md`（claude 审查文档的副本）。这次按 UTF-8 写法落盘，没有乱码；四个文件过 `scanSecrets` 零命中。
+
+| 项 | 读数 |
+| :--- | :--- |
+| 审查调用（`claudeAdapter.run` → `invokeClaude`） | claude 侧 `state: ok`，opus 档、`agent_cli: claude/2.1.302`，用时 584 s 正常交卷；`verdict: pass-after-changes`、`evidence_ok: true`、工具调用 read 13 / grep 6 / glob 1、`run_command: 0` |
+| 进程表采样（`-Watch 900`） | 671 次采样、5 个 claude 进程（含拉起前探活与审查本体），12 个网关键零命中，`RESULT: no leak` |
+| 落盘扫描（本次运行目录 7 个文件、`.reviews\ev256-win-claude` 7 个文件） | 零命中（连模型名 `NOTE` 也没有，原因见下条），`RESULT: no leak` |
+
+**运行被判作废，与 EV-256 无关**：`review --wait` 最终 `phase: failed`、退 1，原因是「被审对象在审查期间被修改」。根因在我给的步骤：采样输出 `windows-watch-review.txt` 与发起输出 `windows-review-start.json` 都写在仓库工作树里，送审补丁（3 个文件、1.7 KB）把它们一起冻结了，审查期间采样文件还在增长，跑后复算判漂移。claude 审查员本身也看到了这一点：它的 CLAUDE-01 指出送审的采样文件「只有首行、缺汇总与结论行」，`drift: true`。验收清单已补「审查期间输出写到仓库外、审完再拷进证据目录」。作废只影响这次审查结论的效力，不影响本步要验的事实：审查调用在真实网关的 env 注入下鉴权通过、跑完、命令行与落盘无凭据。
+
+**附带观察（既有行为，不是本次引入）**：审查文档里 `model_effective` 与 `family_comparisons.right_model` 都是 `<redacted-env>`。原因是 `invokeClaude` 先对 stdout 做网关值逐值脱敏（1.2.2，`8c2d573f` 起），适配器再从脱敏后的事件流解析 `init.model`，而网关回报的模型名恰好等于 `ANTHROPIC_MODEL` 等键的值（≥ 8 字符）。后果：网关机器上回读模型丢失，却仍记 `model_effective_source: envelope`，看起来像回读成功。这正是扫描里模型名键这次零命中的原因。已登记 BACKLOG EV-257（2026-10-25，用户定走 `/dual-run` 修）。
