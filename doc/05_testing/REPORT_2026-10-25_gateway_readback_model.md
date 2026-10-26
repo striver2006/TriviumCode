@@ -116,4 +116,6 @@ S10 `trivium verify`（`.reviews/网关回读模型脱敏/verify/`，代码审�
 
 ## 8. Windows 真实网关验收
 
-动用凭据、花配额，只能在 Windows 开发机上做。清单 [`windows-acceptance.md`](./evidence/gateway-readback-model-20261025/windows-acceptance.md)：扫描器自检 → doctor（探针原文 `init.model` 为网关模型名、`model_flag` 不为 null）→ 一次 claude 作审核者的真实审查（`model_effective` 为网关模型名、来源 `envelope`）→ 落盘扫描（凭据零命中、模型名只报 NOTE）；全程输出先写到仓库外 `%TEMP%\ev257`。**待用户执行**，结果回填本节。
+动用凭据、花配额，只能在 Windows 开发机上做。清单 [`windows-acceptance.md`](./evidence/gateway-readback-model-20261025/windows-acceptance.md)：扫描器自检 → doctor（探针原文 `init.model` 为网关模型名、`model_flag` 不为 null）→ 一次 claude 作审核者的真实审查（`model_effective` 为网关模型名、来源 `envelope`）→ 落盘扫描（凭据零命中、模型名只报 NOTE）；全程输出先写到仓库外 `%TEMP%\ev257`。
+
+**2026-10-26 用户执行第 2 步：不通过**（判读 [`windows-readout.md`](./evidence/gateway-readback-model-20261025/windows-readout.md)）。网关已换成 Qwen，CC Switch 写进生效模型名键的值带 Claude Code 上下文窗口后缀（`qwen3.8-max[1m]`、`qwen3.8-flash[1m]`），守卫 4 的字符集不含方括号，这些键留在替换集；opus 档审查回报的模型名仍被吞成占位符，`model_effective` 记 null + `unverified`（兜底生效，未以 `envelope` 落盘）。不带后缀的 `*_MODEL_NAME` 键正常豁免，凭据类键照旧替换。本报告 §3～§5 的回归锚与对拍都没覆盖带后缀的形态——这是 EV-257 修复本身的缺口，登记 BACKLOG **EV-258**，另走 `/dual-run`。第 1 步 doctor 与第 3 步扫描读数待回传。
