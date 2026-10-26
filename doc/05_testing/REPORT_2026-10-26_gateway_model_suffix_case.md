@@ -109,4 +109,12 @@ C4、C5 都改 `exec` 那一行而不碰正则构造：构造是以 `$` 加反�
 
 ## 9. Windows 真实网关验收
 
-待用户执行（见 §6）。
+**2026-10-26 至 10-27 用户执行，四步全部通过**（构建 `935e9a8`，claude 2.1.302，CC Switch Qwen 网关；判读 [`windows-readout.md`](./evidence/gateway-model-suffix-case-20261026/windows-readout.md)）：
+
+- 第 0 步：扫描器自检与码点诊断自检（17 格）均 `SELF-TEST PASS`。
+- 第 1 步：6 个带 `[1M]` 的模型名键全部豁免，码点逐个为 `U+005B U+0031 U+004D U+005D`；替换集恰为两个凭据值（116、62）。比清单多一个键：`ANTHROPIC_DEFAULT_HAIKU_MODEL` 这次也带后缀（推断两次验收之间 CC Switch 配置变了），同样豁免。
+- 第 2 步 doctor：`ok: true`、无 blocker；探针原文 `\"model\":\"<redacted-env>\"` 0 处，`model` 取值只有 `qwen3.8-max[1M]`（init）与 `qwen3.8-max`（回报）；`model_flag` false（别名比对的既有口径）；只读旗标、目录臂结论如前。
+- 第 3 步真实审查（run `20261026T162541Z`）：`model_effective` 为 `qwen3.8-max[1M]`、来源 `envelope`；`trace.json` 的 `modelReadback` 为 `{ init: "qwen3.8-max[1M]", reported: ["qwen3.8-max"], consistent: true }`。
+- 第 4 步落盘扫描：无 `LEAK`、`RESULT: no leak`。
+
+全部 9 份交回文件 `scanSecrets` 零命中。
