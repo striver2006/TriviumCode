@@ -1,0 +1,77 @@
+﻿{
+  "ok": false,
+  "still_running": true,
+  "run_id": "20261026T162541Z",
+  "phase": "running",
+  "artifacts": [],
+  "message": null,
+  "progress": "运行 20261026T162541Z ｜ 主题 ev258b-win-claude ｜ 阶段 code ｜ 阶段状态 审查中\n已用 3m13s / 预算 60m0s（5%） ｜ 第 2/42 次等待 ｜ 最近心跳 13s 前\n  claude: 审查中 ｜ 请求模型 opus ｜ 第 1 次尝试",
+  "progress_brief": "code 审查中 ｜ 已用 3m13s / 预算 60m0s（5%） ｜ claude 审查中",
+  "elapsed_s": 193,
+  "budget_s": 3600,
+  "pct": 5,
+  "waits_done": 2,
+  "max_waits": 42,
+  "sides": {
+    "claude": {
+      "state": "running",
+      "model": "opus",
+      "attempt": 1,
+      "elapsed_s": 0,
+      "cli": {
+        "pgid": 38272,
+        "started_at": "2026-10-26T16:25:48.762793Z"
+      }
+    }
+  },
+  "review_loop": null,
+  "round_verdict": null,
+  "next_action": null,
+  "round_line": null
+}
+{
+  "ok": true,
+  "still_running": false,
+  "run_id": "20261026T162541Z",
+  "phase": "success",
+  "artifacts": [
+    "D:\\Work\\TriviumCode\\.reviews\\ev258b-win-claude\\code\\2026-10-27-ev258b-win-claude-claude.md"
+  ],
+  "message": "claude 侧只读核验不可用：该侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守（只读保障从三重降到两重，指纹比对仍有效） ｜ 模型族 unknown：左侧模型信息缺失（codex/claude）；告警继续",
+  "progress": "运行 20261026T162541Z ｜ 主题 ev258b-win-claude ｜ 阶段 code ｜ 阶段状态 已完成\n已用 5m36s / 预算 60m0s（9%） ｜ 第 2/42 次等待 ｜ 最近心跳 0s 前\n  claude: 已完成 ｜ 请求模型 opus ｜ 第 1 次尝试 ｜ 5m26s",
+  "progress_brief": "code 已完成 ｜ 已用 5m36s / 预算 60m0s（9%） ｜ claude 已完成",
+  "elapsed_s": 336,
+  "budget_s": 3600,
+  "pct": 9,
+  "waits_done": 2,
+  "max_waits": 42,
+  "sides": {
+    "claude": {
+      "state": "ok",
+      "model": "opus",
+      "attempt": 1,
+      "elapsed_s": 326,
+      "cli": null
+    }
+  },
+  "review_loop": {
+    "round": 1,
+    "max_rounds": 3,
+    "max_rounds_source": "default"
+  },
+  "round_verdict": {
+    "sides": {
+      "claude": "pass"
+    },
+    "excluded": {},
+    "counts": {
+      "pass": 1,
+      "pass-after-changes": 0,
+      "reject": 0
+    },
+    "outcome": "pass",
+    "next_action": "proceed"
+  },
+  "next_action": "proceed",
+  "round_line": "第 1/3 轮 · 计票：1 通过 / 0 修改后通过 / 0 不通过 → 通过 · 下一步：按裁决修改后进入下一阶段"
+}
