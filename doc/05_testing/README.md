@@ -25,7 +25,7 @@
 
 ## 当前已归档文件
 
-- [稳定版发布检查报告](./稳定版发布检查报告.md)：稳定版检查结果、分发安装验证与未测边界。
+- [发布检查报告](./发布检查报告.md)：稳定版检查结果、分发安装验证与未测边界。
 
 - [`CASE_manual_acceptance.md`](./CASE_manual_acceptance.md)：人工验收剧本（PRD 场景 S1～S5 / 设计 §17.3）。自动化测试与 `doctor --selftest` 覆盖不到的部分——需要人在 Claude Code 窗口里操作，或必须真实消耗两侧厂商配额。
 - [`REPORT_2026-09-11_m0_probe.md`](./REPORT_2026-09-11_m0_probe.md)：M0 探针本机实测报告，M0 当时的里程碑快照，不再更新；含 12 条与厂商文档记载不符之处 C-01～C-12（§8）。其 §7 原是跨里程碑追加的 `P-xx` 本机坑清单（P-01～P-31），M11 第 10 步（BACKLOG **EV-13**）整节搬到 [`doc/04_development/GUIDE_local_pitfalls.md`](../04_development/GUIDE_local_pitfalls.md)，§7 只留指针。

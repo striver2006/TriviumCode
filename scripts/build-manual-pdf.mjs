@@ -1,7 +1,7 @@
 /**
  * 《完整手册》PDF 生成（1.2.9 起固化为脚本；此前各版为临时汇编）。
  *
- * 组成：封面 + 四部分——①安装部署（稳定版部署手册）②日常使用（稳定版使用手册）
+ * 组成：封面 + 四部分——①安装部署（部署手册）②日常使用（使用手册）
  * ③命令与配置详参（MANUAL_user 字段参考）④1.2.x 增补篇（scripts/manual-supplement.md，
  * 事实口径与 Bug 清单 §3 同源，发版时随批更新）。
  *
@@ -40,8 +40,8 @@ for (const c of edgeCandidates) { try { await fs.access(c); edge = c; break; } c
 if (!edge) throw new Error('找不到 Microsoft Edge（msedge.exe）。本脚本用其无头模式渲染 PDF，请在标准路径安装 Edge 或改造本脚本指路。');
 
 const parts = [
-  { title: '第一部分 · 安装部署', file: 'doc/06_deployment/稳定版部署手册.md' },
-  { title: '第二部分 · 日常使用', file: 'doc/07_manuals/稳定版使用手册.md' },
+  { title: '第一部分 · 安装部署', file: 'doc/06_deployment/部署手册.md' },
+  { title: '第二部分 · 日常使用', file: 'doc/07_manuals/使用手册.md' },
   { title: '第三部分 · 命令与配置详参', file: 'doc/07_manuals/MANUAL_user.md' },
   { title: '第四部分 · 1.2.x 增补篇', file: 'scripts/manual-supplement.md' },
 ];

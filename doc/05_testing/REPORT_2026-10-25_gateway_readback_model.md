@@ -100,7 +100,7 @@ S10 `trivium verify`（`.reviews/网关回读模型脱敏/verify/`，代码审�
 
 ### 6.1 文档对账
 
-整仓 grep「值不落｜不落任何留痕｜注入值｜逐值脱敏｜redacted-env」（论域 `doc/`（不含 `evidence/`）、`skills-src/`、`skills/`（排除打包产物）、`README.md`、`src/`、`scripts/`、`test/`）。改了：`claude.ts` 两处注释、`claude-route.ts` 两处注释、`probes/claude.ts` 一处注释、`doctor.ts` 注记（「凭据值不落留痕」）、需求说明书第 61 行、稳定版系统设计说明书第 107 行、`scripts/manual-supplement.md` 第 18 行（计划表外，grep 补出）、Bug 清单 §3.1 第 0 条（计划表外，grep 补出）与第 14 条、主设计 §12 补段。`skills/dual-critic/schema/config.v2.json` 的 `settings_env_source` 描述只说「不进命令行」，不改。其余命中是历史报告、证据与本主题新增的代码注释。
+整仓 grep「值不落｜不落任何留痕｜注入值｜逐值脱敏｜redacted-env」（论域 `doc/`（不含 `evidence/`）、`skills-src/`、`skills/`（排除打包产物）、`README.md`、`src/`、`scripts/`、`test/`）。改了：`claude.ts` 两处注释、`claude-route.ts` 两处注释、`probes/claude.ts` 一处注释、`doctor.ts` 注记（「凭据值不落留痕」）、需求说明书第 61 行、系统设计说明书第 107 行、`scripts/manual-supplement.md` 第 18 行（计划表外，grep 补出）、Bug 清单 §3.1 第 0 条（计划表外，grep 补出）与第 14 条、主设计 §12 补段。`skills/dual-critic/schema/config.v2.json` 的 `settings_env_source` 描述只说「不进命令行」，不改。其余命中是历史报告、证据与本主题新增的代码注释。
 
 ### 6.2 附带订正
 

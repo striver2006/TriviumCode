@@ -92,7 +92,7 @@ S10 `trivium verify`（`.reviews/网关凭据改环境变量注入/verify/`）�
 
 ### 6.1 文档对账（计划三审 GLM-01）
 
-同步改了七处描述网关通道的现行文档与契约：机读配置契约 `skills/dual-critic/schema/config.v2.json` 里 `settings_env_source` 的 description（代码审 AGY-01：首次对账论域只含 `skills-src/`、漏了手写的 `skills/` 契约，补改后把论域扩到 `skills/` 全目录（排除打包产物）复查，只此一处）、需求说明书第 61 行、稳定版系统设计说明书第 107 行、部署手册 §1a（第 25 行与配置片段注释）、RUNBOOK 十一节、发布包手册增补篇 `scripts/manual-supplement.md`、Bug 清单 §3.1 第 0 / 14 条；主设计新增「第三方网关键的传法与次序」一段并升 v1.3.178。收口前对 `doc/`（不含 `evidence/`）、`scripts/manual-supplement.md`、`skills-src/`、`skills/`、`README.md` 重跑「内联注入｜内联 JSON｜内联载荷｜mergeSettingsEnv｜settings_env_source」：现行文档的命中都已改成新通道，或是写明「1.2.0～1.3.1 曾经 `--settings` 内联」的历史说明；其余命中是历史测试报告、BACKLOG / 主设计变更记录里的旧条目，以及 `EV-12-实施计划.md` 里与本题无关的 `--json-schema` 内联。没有第四处遗漏。
+同步改了七处描述网关通道的现行文档与契约：机读配置契约 `skills/dual-critic/schema/config.v2.json` 里 `settings_env_source` 的 description（代码审 AGY-01：首次对账论域只含 `skills-src/`、漏了手写的 `skills/` 契约，补改后把论域扩到 `skills/` 全目录（排除打包产物）复查，只此一处）、需求说明书第 61 行、系统设计说明书第 107 行、部署手册 §1a（第 25 行与配置片段注释）、RUNBOOK 十一节、发布包手册增补篇 `scripts/manual-supplement.md`、Bug 清单 §3.1 第 0 / 14 条；主设计新增「第三方网关键的传法与次序」一段并升 v1.3.178。收口前对 `doc/`（不含 `evidence/`）、`scripts/manual-supplement.md`、`skills-src/`、`skills/`、`README.md` 重跑「内联注入｜内联 JSON｜内联载荷｜mergeSettingsEnv｜settings_env_source」：现行文档的命中都已改成新通道，或是写明「1.2.0～1.3.1 曾经 `--settings` 内联」的历史说明；其余命中是历史测试报告、BACKLOG / 主设计变更记录里的旧条目，以及 `EV-12-实施计划.md` 里与本题无关的 `--json-schema` 内联。没有第四处遗漏。
 
 ## 7. 已知边界
 

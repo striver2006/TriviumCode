@@ -44,7 +44,7 @@ test('发布包真解压：白名单与哈希、四家28入口、隔离安装升
         assert.equal(createHash('sha256').update(await fs.readFile(path.join(root, f.path))).digest('hex'), f.sha256, f.path);
       }
       assert.ok(manifest.some((f) => f.path.startsWith('skills-src/carriers/')));
-      assert.ok(manifest.some((f) => f.path.endsWith('稳定版部署手册.md')));
+      assert.ok(manifest.some((f) => f.path.endsWith('部署手册.md')));
       if (IS_WIN) {
         // 1.2.9：一键安装链路进包——入口 .cmd 与其后端脚本都在，且入口带齐三道闸门（存在性/版本/条件 pause）
         assert.ok(manifest.some((f) => f.path === '一键安装.cmd'), 'zip 须含 一键安装.cmd');

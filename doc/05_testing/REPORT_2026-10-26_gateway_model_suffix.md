@@ -95,7 +95,7 @@ S10 `trivium verify`（`.reviews/网关模型名上下文后缀/verify/`，代�
 
 ### 6.1 文档对账
 
-grep「`looksLikeModelName`｜四道守卫｜`system/init` 回报｜网关回报」（论域 `doc/`（不含 `evidence/`）、`skills-src/`、`skills/`（排除打包产物）、`README.md`）。改了：主设计 §12 两处（订正措辞、守卫 ④ 补后缀）与新增一段、变更记录 v1.3.180、文档头版本；稳定版系统设计说明书第 107 行；稳定版需求说明书第 61 行（计划表外，grep 补出）；Bug 清单第 105 行与第 131 行（计划表外，grep 补出）；EV-257 报告 §8 补记。代码注释：`claude-route.ts` 三处、`claude.ts` 两处、`probes/claude.ts` 一处。`skills/` 与 `skills-src/` 无命中。其余命中是历史报告与证据（不改原文）。
+grep「`looksLikeModelName`｜四道守卫｜`system/init` 回报｜网关回报」（论域 `doc/`（不含 `evidence/`）、`skills-src/`、`skills/`（排除打包产物）、`README.md`）。改了：主设计 §12 两处（订正措辞、守卫 ④ 补后缀）与新增一段、变更记录 v1.3.180、文档头版本；系统设计说明书第 107 行；需求说明书第 61 行（计划表外，grep 补出）；Bug 清单第 105 行与第 131 行（计划表外，grep 补出）；EV-257 报告 §8 补记。代码注释：`claude-route.ts` 三处、`claude.ts` 两处、`probes/claude.ts` 一处。`skills/` 与 `skills-src/` 无命中。其余命中是历史报告与证据（不改原文）。
 
 ## 7. 已知边界
 

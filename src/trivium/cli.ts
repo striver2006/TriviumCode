@@ -59,7 +59,7 @@ import {
   type RenderOptions, type WorkTreeSummary,
 } from './worktree-summary.js';
 
-const VERSION = '1.3.1';
+const VERSION = '1.3.2';
 
 interface ParsedArgs {
   command: string;

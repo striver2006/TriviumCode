@@ -90,5 +90,5 @@ if (st.status !== 0) {
   process.exit(3);
 }
 say('✓ 一键安装完成：环境前置 → 安装前检查 → 安装 → 版本核对 → 14 步自检全部通过。');
-say('  下一步：在自己的 Git 项目根目录运行 trivium init（详见 doc/06_deployment/稳定版部署手册.md §3）。');
+say('  下一步：在自己的 Git 项目根目录运行 trivium init（详见 doc/06_deployment/部署手册.md §3）。');
 process.exit(0);

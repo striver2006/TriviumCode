@@ -1,11 +1,11 @@
 # RUNBOOK：双审流水线运行期故障处置
 
-> **读者**：本文是运行期故障处置的完整参考，正文按 POSIX shell 与 macOS 写；Windows 上的差异见「十一、Windows 上的差异」，命令改写见[稳定版部署手册](./稳定版部署手册.md) §1b。原先放在开头的三段历史取证记录（2026-10-12 前后）已逐字移到文末附录。
+> **读者**：本文是运行期故障处置的完整参考，正文按 POSIX shell 与 macOS 写；Windows 上的差异见「十一、Windows 上的差异」，命令改写见[部署手册](./部署手册.md) §1b。原先放在开头的三段历史取证记录（2026-10-12 前后）已逐字移到文末附录。
 
-> 稳定版文档整理（2026-10-18）：本文保留运行期故障与历史取证记录；当前新机安装、升级和卸载见[中文手册](./稳定版部署手册.md)。历史采样中的“尚未完成”等措辞不代表当前统一状态；M11/M12 当前结论以主设计台账及报告末节为准。
+> 稳定版文档整理（2026-10-18）：本文保留运行期故障与历史取证记录；当前新机安装、升级和卸载见[中文手册](./部署手册.md)。历史采样中的“尚未完成”等措辞不代表当前统一状态；M11/M12 当前结论以主设计台账及报告末节为准。
 
 面向**已经装好并在用**的场景。装不上、跑不通第一条任务属于安装问题，看
-[稳定版部署手册](./稳定版部署手册.md)（源码开发者看 [`QUICKSTART.md`](../07_manuals/QUICKSTART.md) 第 1、3 节）；本文只管**跑起来之后卡住了**。
+[部署手册](./部署手册.md)（源码开发者看 [`QUICKSTART.md`](../07_manuals/QUICKSTART.md) 第 1、3 节）；本文只管**跑起来之后卡住了**。
 
 > 处置总原则：**先 `trivium status` 看清楚状态，再动手。**
 > 本流水线大量状态（闸门、锁、留痕）是故意做成难以绕过的（设计原则 P5「不可伪装」、
@@ -527,7 +527,7 @@ Hook 与预检只做**存在性**检查：wrapper（`.trivium/bin/trivium`）内
 
 本文正文按 POSIX shell 与 macOS 写。Windows（1.1.0 起原生支持，1.3.0 起与 macOS 同一套代码）上，下面几处与正文不同；完整残余见[现存 Bug 与未完成工作清单](../08_project/现存Bug与未完成工作清单.md) §3.1。
 
-- **命令写法**：正文里的 `trivium …` 指项目内 wrapper。Git Bash 里用 `./.trivium/bin/trivium …`；PowerShell / cmd 里用 `.\.trivium\bin\trivium.cmd …`。doctor 与预检给出的终端重跑命令（如 `deadline.sections[].rerun`）在 Windows 上就是 `.cmd` 形态。其余改写（`unset`、`~`）见[部署手册](./稳定版部署手册.md) §1b。
+- **命令写法**：正文里的 `trivium …` 指项目内 wrapper。Git Bash 里用 `./.trivium/bin/trivium …`；PowerShell / cmd 里用 `.\.trivium\bin\trivium.cmd …`。doctor 与预检给出的终端重跑命令（如 `deadline.sections[].rerun`）在 Windows 上就是 `.cmd` 形态。其余改写（`unset`、`~`）见[部署手册](./部署手册.md) §1b。
 - **进程与取消**：没有进程组，编排器按父链认本次拉起的进程、结束时用 `taskkill /T` 树杀。厂商 CLI 没有跨进程的优雅取消，`review --cancel` 之后凭据副本的抹除靠 worker 读到 `cancel.requested` 标记后自己收尾（§3.1 第 3 条）。
 - **进程身份判不了**：身份经 PowerShell 枚举进程表取得，机器负载很高时偶发枚举失败，编排器会再试一次；仍失败时状态写「判不了」，不要当成进程已结束，按 §二「先判断是真在跑还是遗留锁」处理。
 - **codex 当审核者**：Windows 上 codex 的 `-s read-only` 拦不住写，要用它当审核者须在本机 `config.local.yaml` 开 `agents.codex.readonly_enforcement: prompt-only`（部署手册 §1a）。这时防线是事后轨迹与漂移核验：检出写入，该侧本轮结论作废（§3.1 第 8 条）。
