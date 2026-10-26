@@ -107,4 +107,6 @@ grep「`looksLikeModelName`｜四道守卫｜`system/init` 回报｜网关回报
 
 ## 8. Windows 真实网关验收
 
-动用凭据、花配额，只能在 Windows 开发机上做；执行前先问用户。清单 [`windows-acceptance.md`](./evidence/gateway-model-suffix-20261026/windows-acceptance.md)：扫描器自检 → 逐键诊断（零配额，[`diag-scrub-plan.mjs`](./evidence/gateway-model-suffix-20261026/diag-scrub-plan.mjs)，凭据类键只打印长度）→ doctor（探针原文 `init.model` 为带后缀名、`model_flag` 不为 null）→ 一次 claude 作审核者的真实审查（`model_effective` 为 `qwen3.8-max[1m]`、来源 `envelope`，`trace.json` 的 `modelReadback` 一致）→ 落盘扫描（凭据零命中）；全程输出写到仓库外 `%TEMP%\ev258`，落文件 `Out-File -Encoding utf8`、读文件 `-Encoding UTF8`。读数待回传。
+动用凭据、花配额，只能在 Windows 开发机上做；执行前先问用户。清单 [`windows-acceptance.md`](./evidence/gateway-model-suffix-20261026/windows-acceptance.md)：扫描器自检 → 逐键诊断（零配额，[`diag-scrub-plan.mjs`](./evidence/gateway-model-suffix-20261026/diag-scrub-plan.mjs)，凭据类键只打印长度）→ doctor（探针原文 `init.model` 为带后缀名、`model_flag` 不为 null）→ 一次 claude 作审核者的真实审查（`model_effective` 为 `qwen3.8-max[1m]`、来源 `envelope`，`trace.json` 的 `modelReadback` 一致）→ 落盘扫描（凭据零命中）；全程输出写到仓库外 `%TEMP%\ev258`，落文件 `Out-File -Encoding utf8`、读文件 `-Encoding UTF8`。
+
+**2026-10-26 用户执行：扫描器自检通过，第 1 步逐键诊断不通过**（判读 [`windows-readout.md`](./evidence/gateway-model-suffix-20261026/windows-readout.md)）。追加的码点诊断确认 `dist/test` 已是新代码，而 CC Switch 写的后缀是大写 `[1M]`（U+004D）；§2 的后缀片段只认小写单位，5 个带后缀的模型名键仍留在替换集。§7「大写单位 `[1M]` 不认」那条边界所依据的「实测都写小写」不成立——EV-257 判读里的 `[1m]` 是从字母换 a 的形状推出来的，从未逐字核过大小写。第 2～4 步未执行（同一原因下必然不通过）。BACKLOG EV-258 由 done 改回 doing，在原条目上修（单位大小写不敏感），另走 `/dual-run`。
