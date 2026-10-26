@@ -1,0 +1,58 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "主体修法及回归安排可实施：显式字符类只放宽单位大小写，三个消费点共用片段，其余判据保持不变。实施前需收紧 Windows 诊断的码点输出规则；当前长度限制仍允许将未豁免值中的凭据字符可逆输出。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "security",
+      "location": ".reviews/网关模型名后缀大小写/plan/2026-10-26-网关模型名后缀大小写-claude.md:227",
+      "problem": "未豁免模型名键的末尾方括号段只要不超过 8 字符就直接打印码点，仍会泄露凭据字符。模型名键可能误填凭据，也可能与凭据键同值；码点是可逆编码，限制长度不能维持“凭据不出屏”的承诺。若整个误填值就是一个 8 字符方括号串，甚至会完整输出该值。",
+      "evidence": "已读计划 §6.2、§七第 5 步，以及 src/trivium/adapters/claude-route.ts:66-98、src/trivium/adapters/claude.ts:526-551 和 test/unit/claude-gateway-scrub.test.ts 的 S3、S4、S11。产品明确将模型名键里的凭据形态值、与非候选键同值的值留在替换集；计划中的诊断却绕过这些保护输出后缀码点。本轮实际执行只读 node -e 合成复算：值 '[aB3dE6]' 长度为 8，符合计划的输出条件，输出码点可完整还原原值。该复算验证的是计划规则，未运行尚未实施的诊断脚本。",
+      "suggestion": "对未豁免值另设严格的可输出后缀形态，并排除已知凭据同值情形；任意短方括号内容只报长度或分类。保留对合法数字加单位后缀逐字核码点的能力。合成验收补入模型名键误填短方括号凭据、与凭据键同值两类反例，并检查码点解码后也不能恢复凭据内容。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "采用 [kKmM] 而不给整行正则添加 i 旗标，可以避免连带放宽 profile 键名；三个消费点确实共用同一片段。",
+    "数字位数、非零首位、末尾只剥一个、剥后字符集及 UUID 和最长段判据均保持原实现；守卫②③继续检查完整值。",
+    "S11 补其它单位、混入字符和 Unicode 反例，配合 C1、C2 两向变异，能保留过窄与过宽方向的回归锚；S14 大写断言同步调整合理。",
+    "新增 E12 保留 E11 原断言，同时覆盖大写 init.model 与无后缀 message.model 的一致性；真实 Windows 验收明确由用户执行并在花配额前确认。",
+    "根因说明正确区分形状与真实字符，后续验收依据逐字读数，避免再次从形状推断大小写。"
+  ],
+  "not_covered": [
+    "未修改文件，未执行构建、全量测试或变异装置；本次对象是尚未实施的计划。",
+    "未调用真实 CLI、读取用户凭据或执行 Windows 验收；平台及网关实际行为依据仓库内已有判读。",
+    "新诊断脚本和第二轮报告尚待实施，其最终安全性、编码处理及测试结果需在代码审查时核验。"
+  ],
+  "consulted": [
+    ".reviews/网关模型名后缀大小写/plan/2026-10-26-网关模型名后缀大小写-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/稳定版系统设计说明书.md",
+    "doc/04_development/GUIDE_env_setup.md",
+    "doc/04_development/GUIDE_local_pitfalls.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/evidence/gateway-model-suffix-20261026/windows-readout.md",
+    "doc/05_testing/evidence/gateway-model-suffix-20261026/windows-acceptance.md",
+    "doc/05_testing/evidence/gateway-model-suffix-20261026/gen-mutation-spec.mjs",
+    "doc/05_testing/evidence/gateway-model-suffix-20261026/accept-run.mjs",
+    "doc/05_testing/evidence/gateway-model-suffix-20261026/accept-readout.mjs",
+    "doc/08_project/BACKLOG.md",
+    "scripts/build.mjs",
+    "scripts/mutation-check.mjs",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/claude.ts",
+    "test/unit/claude-gateway-scrub.test.ts",
+    "test/unit/access-modes.test.ts",
+    "test/integration/claude-gateway-env.test.ts"
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "agreed": [
+    "上下文窗口后缀片段采用显式字符类 [kKmM] 替代正则 i 旗标，精准放宽单位大小写，未连带放宽 profile 键名大小写，亦未引入 Unicode 大小写折叠带来的 U+212A 误匹配",
+    "剥离判据保持末尾恰好一个后缀匹配，数字位数（1～4 位非 0 开头）及剥离后的字符集、长度、UUID 与段长判据均原样保持生效",
+    "过宽方向防护严密，S11、access-modes 与变异测试补齐了 [1G]、[1MB]、[1mM]、[0M]、[1K]、[1Ｍ] 等反例，变异 C2～C5 与第一轮既有变异全部咬住",
+    "四道守卫与凭据优先策略无任何放松，带后缀的短凭据、与凭据键同值的值均保持替换，S15、S16 覆盖了大写形态下的凭据冲突场景",
+    "profile 元数据与 claudeModelConsistency 一致性函数同批使用同一后缀片段派生，代码无重复且行为对齐",
+    "验收诊断脚本 diag-suffix-codepoints.mjs 对未豁免值做了严格白名单 SAFE_TAIL、无模式脱敏命中与非凭据键同值的三重守卫，杜绝可逆编码凭据泄露，期望表改用真实读数对账杜绝形状还原失真"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/网关模型名后缀大小写/plan/2026-10-26-网关模型名后缀大小写-r2-claude.md",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/claude.ts",
+    "test/unit/claude-gateway-scrub.test.ts",
+    "test/unit/access-modes.test.ts",
+    "test/integration/claude-gateway-env.test.ts",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/稳定版系统设计说明书.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-26_gateway_model_suffix.md",
+    "doc/05_testing/REPORT_2026-10-26_gateway_model_suffix_case.md",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/windows-acceptance.md",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-suffix-codepoints.mjs",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/gen-mutation-spec.mjs",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.mjs",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-run.mjs",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.txt",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-self-test-macos.txt",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-output.txt",
+    "doc/08_project/BACKLOG.md"
+  ],
+  "findings": [],
+  "not_covered": [
+    "本审查员环境无命令执行能力，未在真实 Windows + CC Switch + Qwen 网关环境下实跑 Windows 验收清单（依赖用户后续按 windows-acceptance.md 执行并对账）。",
+    "未在真实各平台终端（sh / bash / zsh / dash / powershell）中实际执行 export 赋值与环境变量展开验证，依赖代码与用例逻辑推导。"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "大小写放宽严格限定在单位字母（显式字符类 [kKmM]），未引入 i 旗标；\n数字位数（1～4 位且首位非 0）、末尾恰好一个剥除及剥后字符集/长度/UUID/段长判据原样保持；\n其他单位字母（如 [1G]）、多字母（[1MB]、[1mM]）、Unicode 变体（开尔文符号、全角）与别处方括号均照旧按反例替换；\n四道守卫与凭据优先策略无任何放松；profile 元数据与一致性判定同批生效且保持键名区分大小写；\nWindows 验收清单改用自检通过的码点诊断脚本，杜绝形状反推与凭据外泄风险；\n29 项变异与 47 项对拍全数咬住，全量回归通过。结论为 pass。",
+  "verdict": "pass"
+}

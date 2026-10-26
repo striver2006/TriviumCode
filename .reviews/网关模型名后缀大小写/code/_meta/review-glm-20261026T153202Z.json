@@ -1,0 +1,45 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass",
+  "summary": "逐项核过六条审查焦点，全部成立，未发现需要修改的问题。①放宽确只落在单位字母一位：全 src 检索确认 `[kKmM]` 字面量仅存在于 claude-route.ts:79 一处，数字段 `[1-9][0-9]{0,3}`、`stripContextWindowSuffix` 的单次 exec+slice（$ 锚定、只剥末尾一个，S16 断言 x[1M][1M] 剥成 x[1M]）、`looksLikeModelName` 的字符集/长度/UUID/最长段判据全部原样，claude-trace.ts 只改注释、一致性行为由共用片段派生。②其它单位字母与混入字符照旧替换：S11 以三层断言补了 [1G]、[1MB]、[1mM]、[M1]、[0M]、[12345M]、[1M][1M]、qwen[1M]-max、开尔文 [1K]、全角 [1Ｍ] 十个反例，我对 [1MB]/[1mM]/[M1] 手工推演过正则回溯，均不匹配；profile 侧 access-modes 新格反例同构。③反例改正例后过宽方向仍咬得住：mutation-output.txt 29/29 咬住，含 C2 任意字母（S11 的 [1G]/[1g]）、C3 多字母（[1mM]）、C4 iu 折叠（开尔文反例）、C5 整行 i 旗标（小写键名反例）、C1/C1b/C1c 退回小写与 C6 丢了小写两个过窄方向；第一轮 M 系 find 锚与 M4/M5b 替换串均同步为 [kKmM]（mutation-spec.json 逐条核过，GLM-01 已落实），M5a 删除合理（[kKmM] 加 i 行为等价）。④凭据替换无放松：gatewayScrubPlan/scrubGatewayEnv 在 claude.ts（不在补丁内）且守卫 ②③ 看完整值；唯一放宽路径是守卫 ④ 的单位位，S15 的染污整表证明挂同值的非模型名键仍把带 [1M] 的值压回替换集并阻断三键豁免，E12 与对拍 20 份输出凭据零命中。⑤profile 元数据与一致性判定同批覆盖大写：两者都由同一片段派生（源码核实），access-modes 三种引号正例 + 键名区分大小写反例、S14/S16 真值表、E12 端到端一致性 true。⑥验收清单已改成逐字核码点：第 1 步 diag-suffix-codepoints.mjs 导入产品构建里的同一份判定函数，已豁免键打印原值与方括号段码点、未豁免键前段只打形状且码点打印有白名单（形态 + 守卫 ② 无命中 + 不与非模型名键同值）三重闸，--self-test 用三类反例核过原文与码点序列都不外泄；期望表不再写死具体串，第 2、3 步以第 1 步逐字读数（〈OPUS 值〉）为准，第 3 步再对照打印 model_effective 后缀码点，并明示「若码点变了照实发我，不要按形状判」。另核过：diff 的 42 个文件中 src 侧仅两文件、其中一文件只改注释，不触发 CLI/schema/入口契约的同步义务；文档链（主设计 v1.3.181、稳定版说明书、BACKLOG、两份报告互链、README 索引）齐备；报告 §5 对对拍键位与计划的偏离（SUBAGENT 已被占用换 SMALL_FAST）有显式说明。",
+  "findings": [],
+  "agreed": [
+    "片段单位改为显式字符类 [kKmM] 而不用 i 旗标的取舍正确：整行 i 会连带放宽 profile 键名判据、iu 会折叠开尔文符号，C4/C5 两条变异把这两种替代写法都钉死了",
+    "S14 那一行任务目标未点名的大写反例（qwen[1M] 对 qwen）被主动核出并改为正例、「后缀不合法」换用 [1G]，处理妥当且在报告 §3.1 逐处列表留痕",
+    "S15 复刻 S13 的 12 键整表并把染污测试（非模型名键挂 max[1M]）在大写形态下重做，是「凭据优先不因大小写放宽而松动」的最直接证据",
+    "mutation-spec.json 里第一轮 M4/M5b 的替换串内嵌单位类同步为 [kKmM]（计划三审 GLM-01），避免了复合变异与 desc 不符",
+    "第一轮报告 §7 用删除线改写并指向新报告、REAL_MODELS 里 [1m] 的注释由「Windows 实测」订正为「实为从形状推出」，历史订正方式诚实且不抹记录",
+    "诊断脚本码点打印的三重白名单闸与 --self-test 的三类反例（误填短凭据、与凭据同值、方括号长随机串）落实了计划三审 CODEX-01，未豁免键前段只打形状的旧口径保留"
+  ],
+  "not_covered": [
+    "本侧只读、未执行任何命令：测试、变异、对拍、诊断自检的结论全部取自证据文件读数（mutation-output.txt、accept-readout.txt），「预跑与正式装置两次逐条一致」「npm run check 两次 4013 例全绿」等运行性主张未独立复跑核验",
+    "Windows 真实网关验收尚未由用户执行（清单已备、报告 §9 与 BACKLOG 待回填）：大写形态在真实 CC Switch 环境的端到端表现目前以 macOS 零配额对拍与 2026-10-26 码点实测为据",
+    "证据目录中 20 个 accept-*.json 原始件、accept-run.mjs、accept-readout.mjs、gen-mutation-spec.mjs、mutation-names-output.json、diag-self-test-macos.txt、accept-run-log.txt 未逐份通读，只核了规格、正式读数、诊断脚本与验收清单",
+    "第一轮报告全文、BACKLOG 与两份设计文档只读了 diff 内的变更段，未通读全文排查其它残留的「只认小写」类措辞（报告 §8 声明其余小写举例属历史事实陈述、已加指向注）",
+    "E12 复用的 fake CLI 装置（withCell、reviewReadback、withClaudeProbeRoute 等 helper）沿用 E11 既有实现，其内部细节未重读",
+    "对拍判读中 on/suffixU 新构建 model_flag 记 false（所选 haiku 与回读名不等）系既有别名比对口径，与 Windows 第 2 步期望（不为 null 即通过）一致，未再深究该口径本身"
+  ],
+  "consulted": [
+    ".reviews/网关模型名后缀大小写/code/_meta/changes-20261026T153202Z.diff",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/claude.ts（经限定范围检索读取 gatewayScrubPlan/scrubGatewayEnv 相关段）",
+    "test/unit/claude-gateway-scrub.test.ts",
+    "test/unit/access-modes.test.ts（经 diff 全文段）",
+    "test/integration/claude-gateway-env.test.ts（经 diff 全文段）",
+    "doc/05_testing/REPORT_2026-10-26_gateway_model_suffix_case.md",
+    "doc/05_testing/REPORT_2026-10-26_gateway_model_suffix.md（经 diff 变更段）",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-spec.json",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-output.txt",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-suffix-codepoints.mjs",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/windows-acceptance.md",
+    "doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.txt",
+    ".reviews/网关模型名后缀大小写/plan/2026-10-26-网关模型名后缀大小写-r2-claude.md",
+    "CLAUDE.md",
+    "README.md",
+    "doc/08_project/BACKLOG.md（经 diff 变更段）",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md（经 diff 变更段）",
+    "doc/02_design/稳定版系统设计说明书.md（经 diff 变更段）",
+    "doc/05_testing/README.md（经 diff 变更段）"
+  ]
+}

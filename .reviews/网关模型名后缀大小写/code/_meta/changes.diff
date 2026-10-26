@@ -1,0 +1,3166 @@
+# trivium changes.diff
+# run_id: 20261026T153202Z
+# base: HEAD
+# head: 1f8e8e873e453fd7df7fb4f2bc87a88a7e098e0a
+# files: 42
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/稳定版系统设计说明书.md
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-10-26_gateway_model_suffix.md
+#   doc/05_testing/REPORT_2026-10-26_gateway_model_suffix_case.md
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-cred.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-default.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-model.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-suffix.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-suffixU.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-cred.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-default.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-model.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-suffix.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-suffixU.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-cred.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-default.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-model.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-suffix.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-suffixU.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-cred.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-default.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-model.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-suffix.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-suffixU.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.mjs
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.txt
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-run-log.txt
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-run.mjs
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-self-test-macos.txt
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-suffix-codepoints.mjs
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/gen-mutation-spec.mjs
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-names-output.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-output.txt
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-spec.json
+#   doc/05_testing/evidence/gateway-model-suffix-case-20261026/windows-acceptance.md
+#   doc/08_project/BACKLOG.md
+#   src/trivium/adapters/claude-route.ts
+#   src/trivium/adapters/claude-trace.ts
+#   test/integration/claude-gateway-env.test.ts
+#   test/unit/access-modes.test.ts
+#   test/unit/claude-gateway-scrub.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 66f97bac..e0486080 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -5,7 +5,7 @@
+ > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
+ > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
+ > - **创建日期**：2026-09-10
+-> - **当前版本**：v1.3.180
++> - **当前版本**：v1.3.181
+ > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
+ >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
+ >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
+@@ -3246,7 +3246,7 @@ v1/v2先按原Schema严格校验再转统一内存接口，原工件与Schema不
+ 
+ **逐值脱敏只对凭据类键、模型名回读不被吞**（v1.3.179，EV-257）。`scrubGatewayEnv` 原先对 `settingsEnv` 的全部值（≥ 8 字符）原串替换 `<redacted-env>`，而 `system/init` 的 `model`（CLI 按别名读这些键解析出的配置值；v1.3.179 原写「网关回报」，不准确，v1.3.180 订正）恰等于 `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_*_MODEL[_NAME]` 等键的值——脱敏后再解析，`model_effective` 记成占位符、来源仍是 `envelope`，AC-20 被绕过（2026-10-25 Windows 实测）。现替换表由 `gatewayScrubPlan(env)` 构造（`scrubGatewayEnv` 与验收扫描脚本共用这一份口径）：替换集 = 全部非豁免键的值；模型名键的值要**四道守卫同时满足**才豁免——①键名过 `isModelNameKey`（`^(ANTHROPIC|CLAUDE)_(?:[A-Z0-9]+_)*MODEL(?:_NAME)?$`，且按 `_` 切开后不含 TOKEN / KEY / SECRET / AUTH / PASSWORD / PASSWD / PASS / PWD / CREDENTIAL(S) / BEARER / COOKIE / HEADER(S) / URL 任一段；区分大小写，非全大写的键一律按凭据处理）、②值过 `redactSecrets` 无命中、③值不等于任何非豁免键的值（凭据优先）、④值过 `looksLikeModelName`（字符集 `[\w./:+-]`、长度 1～128，按非字母数字切开后最长段 ≤ 16，非 UUID 形态；v1.3.180 起末尾一个上下文窗口后缀先剥掉、上述判据作用于剥后部分，见下段）；替换集按长度降序（短凭据是长凭据子串时不留残段）。回读侧独立兜底：`claudeModelReadback(init)`——`init.model` 带脱敏痕迹（`hasRedactionMark`：含 `<redacted` 或 `redact()` 首尾预览的 `…`）即 `{ model: null, source: 'unverified' }`，缺失 / 空串与修复前逐字相同；`buildClaudeResult` 两格、探针 `model_flag`（被吞记 null 而非 false）、准入 / 收口脚本的 `readback.model` 都走它。`trace.json` 的 `init` 照记解析结果。未开 `settings_env_source` 或 env 段为空时替换集为空、只过模式脱敏，scrub 输出逐字不变；回读判定与网关开关无关，未开启时只在 `init.model` 自身带脱敏痕迹（模型名恰为令牌形态被换成首尾预览、或含 `…`）时由 `envelope` 改记 `unverified`——修正方向，真实模型名不会是这两种形态（代码审 GLM-01）。探针其余取自事件流的字段（`init.tools` / `cwd`、`sessionId`、`toolUses`、`finalText`、`completed`）的合法取值不会等于注入值，不受影响。**剩余边界**：四道守卫防的是「模型名键里误填凭据」，不是判别凭据的完备算法——由短段拼成、形似模型名、不命中模式规则又不与别的凭据同值的凭据填进模型名键，修复后会明文落盘（修复前被「全部值都替换」兜住）；CC Switch 写这些键时填的是模型名，只在手工误配时出现，登记不再加启发式。回归锚 `test/unit/claude-gateway-scrub.test.ts`（S1～S9）与 `claude-gateway-env.test.ts` 的 E8～E10。
+ 
+-**模型名的上下文窗口后缀与 AC-20 回读口径**（v1.3.180，EV-258）。CC Switch 写进生效模型名键的值带 Claude Code 的上下文窗口后缀（`qwen3.8-max[1m]`），守卫 ④ 的字符集不含方括号，这些键留在替换集；同值的几个键互为「与凭据同值」、守卫 ③ 连带不过，`init.model` 照旧被吞（2026-10-26 Windows 实测，回读兜底记 null + `unverified`）。现守卫 ④ 先用 `stripContextWindowSuffix` 剥掉末尾**恰好一个**后缀——无锚片段 `\[[1-9][0-9]{0,3}[km]\]`（1～4 位不以 0 开头的数字加小写 k 或 m），守卫 ④ 锚在串尾、profile 元数据放在闭引号之前，各使用点自定锚定——再对剥后部分照旧判字符集、长度、UUID、最长段；方括号在别处、两个后缀、大写或其它单位、只有后缀都剥不掉或剥后仍不合字符集，照旧替换。守卫 ②③ 看的仍是含后缀的完整值。`gatewayScrubPlan` 不改：守卫 ④ 放行后同值的几个模型名键都是候选、候选之间同值不算冲突，一并豁免；挂着同一个值的非候选键仍让它进替换集。`claudeProfileMetadata` 同一缺口同批修：双引号、单引号、不加引号三种形态都接受同一个可选后缀（shell 对赋值右侧不做路径名展开，sh / bash / zsh / dash 实测），只影响 doctor 的「配置声明模型」注记。**AC-20 回读口径**：同一次调用里 `system/init` 的 `model` 是 CLI 解析出的配置值（带后缀），assistant 消息的 `message.model` 是服务端回报的名（CLI 发请求前已剥后缀），`result.modelUsage` 按模型分桶、含旁路调用、不是单值。`model_effective` 仍取 `init.model`、来源 `envelope`——与另三家同为「CLI 自己回报按什么配置跑」（codex rollout、zcode 会话文件、agy 信封都是客户端记录）；`message.model` 在无 assistant 消息的运行里缺失、回落备用模型时多值、网关下同样由网关控制。`parseClaudeEvents` 另收 `reportedModels`（assistant 的非空 `message.model`，去重保序），`claudeModelConsistency(init, reported)` 判两者是否一致（每个回报值等于 `init.model`，或在 init 恰为「不含方括号的基名 + 一个后缀」时等于基名；取不到或无回报记 null），二者只进 `trace.json` 的 `modelReadback: { init, reported, consistent }`，不进判定面、不一致也不降级或告警。未开网关的机器：scrub 输出与 `model_effective` 逐字不变（本机 33 份运行样本 `init.model` 与 `message.model` 全部相同），`trace.json` 多 `modelReadback` 一键；另三家与模型族比较（`MODEL_FAMILY_RULES` 只看前缀）不受影响；探针 `model_flag` 口径不变——网关机器按别名选模型时回读的是全名，修好后记 false（与 EV-256 验收时相同）。剩余边界延伸一条：形似模型名的短段凭据加一个合法后缀，与不加后缀时同样放行。回归锚 `claude-gateway-scrub.test.ts` 的 S10～S14、`access-modes.test.ts` 的 profile 后缀格、`claude-gateway-env.test.ts` 的 E11、`claude-directory-adapter.test.ts` 的 `modelReadback` 断言。
++**模型名的上下文窗口后缀与 AC-20 回读口径**（v1.3.180，EV-258）。CC Switch 写进生效模型名键的值带 Claude Code 的上下文窗口后缀（`qwen3.8-max[1m]`），守卫 ④ 的字符集不含方括号，这些键留在替换集；同值的几个键互为「与凭据同值」、守卫 ③ 连带不过，`init.model` 照旧被吞（2026-10-26 Windows 实测，回读兜底记 null + `unverified`）。现守卫 ④ 先用 `stripContextWindowSuffix` 剥掉末尾**恰好一个**后缀——无锚片段 `\[[1-9][0-9]{0,3}[kKmM]\]`（1～4 位不以 0 开头的数字加 k 或 m，单位大小写不敏感；v1.3.180 原为只认小写的 `[km]`，v1.3.181 放宽，见本段末），守卫 ④ 锚在串尾、profile 元数据放在闭引号之前，各使用点自定锚定——再对剥后部分照旧判字符集、长度、UUID、最长段；方括号在别处、两个后缀、其它单位字母或字符、只有后缀都剥不掉或剥后仍不合字符集，照旧替换。守卫 ②③ 看的仍是含后缀的完整值。`gatewayScrubPlan` 不改：守卫 ④ 放行后同值的几个模型名键都是候选、候选之间同值不算冲突，一并豁免；挂着同一个值的非候选键仍让它进替换集。`claudeProfileMetadata` 同一缺口同批修：双引号、单引号、不加引号三种形态都接受同一个可选后缀（shell 对赋值右侧不做路径名展开，sh / bash / zsh / dash 实测），只影响 doctor 的「配置声明模型」注记。**AC-20 回读口径**：同一次调用里 `system/init` 的 `model` 是 CLI 解析出的配置值（带后缀），assistant 消息的 `message.model` 是服务端回报的名（CLI 发请求前已剥后缀），`result.modelUsage` 按模型分桶、含旁路调用、不是单值。`model_effective` 仍取 `init.model`、来源 `envelope`——与另三家同为「CLI 自己回报按什么配置跑」（codex rollout、zcode 会话文件、agy 信封都是客户端记录）；`message.model` 在无 assistant 消息的运行里缺失、回落备用模型时多值、网关下同样由网关控制。`parseClaudeEvents` 另收 `reportedModels`（assistant 的非空 `message.model`，去重保序），`claudeModelConsistency(init, reported)` 判两者是否一致（每个回报值等于 `init.model`，或在 init 恰为「不含方括号的基名 + 一个后缀」时等于基名；取不到或无回报记 null），二者只进 `trace.json` 的 `modelReadback: { init, reported, consistent }`，不进判定面、不一致也不降级或告警。未开网关的机器：scrub 输出与 `model_effective` 逐字不变（本机 33 份运行样本 `init.model` 与 `message.model` 全部相同），`trace.json` 多 `modelReadback` 一键；另三家与模型族比较（`MODEL_FAMILY_RULES` 只看前缀）不受影响；探针 `model_flag` 口径不变——网关机器按别名选模型时回读的是全名，修好后记 false（与 EV-256 验收时相同）。剩余边界延伸一条：形似模型名的短段凭据加一个合法后缀，与不加后缀时同样放行。回归锚 `claude-gateway-scrub.test.ts` 的 S10～S14、`access-modes.test.ts` 的 profile 后缀格、`claude-gateway-env.test.ts` 的 E11、`claude-directory-adapter.test.ts` 的 `modelReadback` 断言。**单位大小写（v1.3.181，EV-258 第二轮）**：CC Switch 写进生效模型名键的后缀是大写 `[1M]`（2026-10-26 Windows 码点实测 U+005B U+0031 U+004D U+005D），v1.3.180 只认小写、这些键仍留在替换集。v1.3.180 定「只认小写」的依据是 EV-257 判读里的 `[1m]`，而那是从字母一律换 `a` 的「形状」还原出来的，形状抹掉了大小写。片段的单位改为显式字符类 `[kKmM]`，其余边界不变；不用 `i` 旗标：片段嵌进 profile 的整行正则，整行加 `i` 会连键名一起放宽，`iu` 还会把开尔文符号（U+212A）折成 k。三个使用点（守卫 ④、`claudeProfileMetadata`、`claudeModelConsistency`）共用片段、同批生效。回归锚追加 S15、S16、profile 大写格、E12；S11、S14 与 profile 后缀格里第一轮锁成反例的 `[1M]` 改为正例，另补 `[1G]`、`[1MB]`、`[1mM]`、开尔文符号、全角字母与小写键名等反例。
+ 
+ 实际入口仅凭进程spawn证据记录，spawn失败为null；命令字符串只表示请求尝试。取消和异常收尾的完成度为partial并说明原因，保留请求快照。归档API支持显式当轮Driver，非缺省身份的裁决仍由archive唯一出口防覆盖写入。启动播报及状态里的模型均标请求模型，尚未回读。
+ 
+@@ -4104,6 +4104,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
+ 
+ | 版本 | 日期 | 变更 |
+ | :--- | :--- | :--- |
++| **v1.3.181** | 2026-10-26 | **网关模型名后缀大小写（EV-258 第二轮，主题 `网关模型名后缀大小写`，`/dual-run` 全流程）。** v1.3.180 的上下文窗口后缀片段只认小写单位，而 CC Switch 写进 5 个生效模型名键的后缀是大写 `[1M]`（2026-10-26 Windows 验收第 1 步、码点实测），守卫 ④ 仍判不像模型名、回读照旧被吞。v1.3.180「只认小写」的依据是 EV-257 判读里从形状还原出的 `[1m]`，从未逐字核过。片段单位改为显式字符类 `[kKmM]`（不用 `i` 旗标：整行加 `i` 会连 profile 键名一起放宽，`iu` 会把开尔文符号折成 k）；数字位数、末尾恰好一个、剥后其余判据、守卫 ②③ 看完整值、凭据类键逐值替换均不变；`claudeProfileMetadata` 与 `claudeModelConsistency` 共用片段、同批生效。见 §3245 段「模型名的上下文窗口后缀与 AC-20 回读口径」末尾。计划三审第 1/3 轮修改后通过（4 条全接受，含 Windows 码点诊断只对白名单形态打印码点，CODEX-01）。单测追加 S15、S16，S11 与 S14 里锁成反例的 `[1M]` 改为正例并补其它单位字母等反例；profile 大写格；集成 E12；变异 29 条全部咬住（第一轮 20 条重生成、M5a 放宽后等价删除；新增去掉大写放行 3、丢了小写 1、单位任意字母 2、多个字母 1、Unicode 折叠 1、键名随之放宽 1）；本机零配额新旧构建对拍 47 项通过（基线 `1f8e8e87`，未开启五情形与开启不带大写后缀四情形归一化输出逐项相同）。Windows 验收清单改为第 1 步直接打印后缀码点、期望值以第 1 步逐字读数为准，待用户执行。报告 `REPORT_2026-10-26_gateway_model_suffix_case.md`。 |
+ | **v1.3.180** | 2026-10-26 | **网关模型名上下文后缀（EV-258，主题 `网关模型名上下文后缀`，`/dual-run` 全流程）。** EV-257 的守卫 ④ 字符集不含方括号，CC Switch 写进生效模型名键的 `qwen3.8-max[1m]` 一类上下文窗口后缀形态被判为不像模型名、留在替换集，同值的几个键守卫 ③ 连带不过，`init.model` 照旧被吞、回读记 null 与 `unverified`（2026-10-26 Windows 实测，Qwen 网关）。改为：守卫 ④ 先剥末尾恰好一个后缀（`\[[1-9][0-9]{0,3}[km]\]`，无锚片段，各使用点自定锚定），剥后部分照旧判字符集、长度、UUID、最长段；守卫 ②③ 看完整值；`gatewayScrubPlan` 不改，同值模型名键一并豁免。`claudeProfileMetadata` 同一缺口同批修（三种引号形态都收同一后缀）。定 AC-20 回读口径：`model_effective` 仍取 `init.model`（CLI 解析出的配置值），服务端回报的 `message.model` 收进 `ClaudeTrace.reportedModels`，与 `claudeModelConsistency` 的比对结果只进 `trace.json` 的 `modelReadback`。订正 v1.3.179 等处「`init.model` 是网关回报」的措辞。见 §3245 段「模型名的上下文窗口后缀与 AC-20 回读口径」。计划三审第 1/3 轮修改后通过（8 条全接受）。单测 S10～S14、profile 后缀格、集成 E11、目录臂适配器 `modelReadback` 断言（S1～S9、E1～E10 断言未动、保持全绿）；变异 21 条全部咬住（去掉后缀放行 4、后缀放行过宽 5、剥后跳过或看原值 2、profile 元数据两向 2、AC-20 留痕 8）；本机零配额新旧构建对拍 38 项通过（未开启四情形与开启不带后缀三情形归一化输出逐项相同）。Windows 真实网关验收清单已备、待用户执行。报告 `REPORT_2026-10-26_gateway_model_suffix.md`。 |
+ | **v1.3.179** | 2026-10-25 | **网关回读模型脱敏（EV-257，主题 `网关回读模型脱敏`，`/dual-run` 全流程）。** 开了 `settings_env_source: user_settings` 时，`scrubGatewayEnv` 对网关 env 全部值逐值替换，网关回报的模型名与模型名键同值而被吞成 `<redacted-env>`，`model_effective` 却仍记 `envelope`、模型族比较拿占位符当模型名（2026-10-25 Windows 实测；探针 `model_flag` 同时误记 false）。改为：逐值替换只对凭据类键，模型名键的值过四道守卫（键名、模式脱敏无命中、不与凭据同值、形似模型名）才豁免，替换集按长度降序；回读侧新增 `claudeModelReadback`，带脱敏痕迹即记 null 与 `unverified`，适配器、探针 `model_flag`（被吞记 null）、准入 / 收口脚本共用。未开启时 scrub 输出逐字不变，回读判定只在 `init.model` 自身带脱敏痕迹时改记 `unverified`（修正方向，代码审 GLM-01）。见 §3245 段「逐值脱敏只对凭据类键」与剩余边界。单测 S1～S9、集成 E8～E10（E1～E7 断言未动、保持全绿）；变异 21 条全部咬住（模型名键重入替换 4、凭据键被放出 10、占位符记作 envelope 5、零变化 2）；本机零配额新旧构建对拍 28 项通过（未开启三情形归一化输出逐项相同）。Windows 真实网关验收清单已备、待用户执行。报告 `REPORT_2026-10-25_gateway_readback_model.md`。 |
+ | **v1.3.178** | 2026-10-25 | **网关凭据改环境变量注入（EV-256，Bug 清单 §3.1 第 14 条，主题 `网关凭据改环境变量注入`，`/dual-run` 全流程）。** 开了 `settings_env_source: user_settings` 时，网关键 1.2.0 起经 `mergeSettingsEnv` 并进 `--settings` 内联 JSON、出现在 claude 子进程命令行里，本机能列进程命令行的进程都看得到。按 2026-10-24 Windows 实测定下的方案 A 改为子进程环境变量注入：新增唯一注入函数 `claudeInvocationEnv`（先清父进程路线变量、后注提取出的网关键，次序由单测 G1 与集成套件锁住），`invokeClaude` 与探针 `routeInvocation` 各调一次；删 `mergeSettingsEnv` 与 argv 构造器上的网关入参，`--settings` 只装 deny 规则；doctor 注记改为「经子进程环境变量注入」。`--version` / `--help` 不注入，指纹与登记格式不变，输出脱敏保留，未开启时零变化。语义边界（profile 路线与网关同开时 profile 胜出、部分同名可致混配）与传法次序见 §12 开头 claude 路线各段之后的「第三方网关键的传法与次序」。回归锚 `test/integration/claude-gateway-env.test.ts`（跨平台）；变异 15 条全部咬住；零配额对拍：未开启时新旧构建四组调用逐条相同，开启时基线进程表带网关值、新构建零命中。Windows 真实网关形态 2026-10-25 由用户在 Windows 开发机验收通过（判读 `evidence/gateway-env-injection-20261025/windows-readout.md`）。报告 `doc/05_testing/REPORT_2026-10-25_gateway_env_injection.md`。产品版本号不动（随 1.3.2）。 |
+diff --git a/doc/02_design/稳定版系统设计说明书.md b/doc/02_design/稳定版系统设计说明书.md
+index ab337747..4f7e8864 100644
+--- a/doc/02_design/稳定版系统设计说明书.md
++++ b/doc/02_design/稳定版系统设计说明书.md
+@@ -104,7 +104,7 @@
+ 
+ **路径域。** 项目相对路径的**匹配域与落盘域恒用 `/`**：win32 的 `path.relative` 产出反斜杠，`matchesAnyGlob` 匹配前先归一，禁读条目输出侧另由 `toDomainRel` 归一落盘形态。归一必须落在**匹配输入侧**——只归一输出救不了「什么进禁读集」的判定；带目录段的 glob（`**/*.pem`、`calls/**`）由此两平台同配，根级 `**/*-<id>.md` 不再依赖 `[^/]*` 吃掉反斜杠的侥幸成立（1.1.0 漏此侧归一，1.1.1 修复，见 Bug 清单 §5）。归一对真实路径输入（git 产出、`path.relative` 产物）两平台零变化；POSIX 文件名字面反斜杠属理论差异、不触发。链接语义：两平台**均不做**链接展开——与「不承诺抵御蓄意规避」的既有边界同族；POSIX 分支的 `/private` 前缀解析逐字保留、win32 无此概念。
+ 
+-**第三方网关（CC Switch 支撑，1.2.0）。** `--restricted` 按官方语义忽略 user/project/local settings 文件，而 CC Switch 把网关配置写在用户级 `~/.claude/settings.json` 的 env 段——受限模式一开即回落官方端点报「未登录」。通道取 claude 子进程的**环境变量**（1.3.2 起，EV-256；受限模式认进程环境变量，2026-10-24 win32 实测）：`agents.claude.settings_env_source: user_settings` 开启后，路线解析时读该 env 段（只收 `ANTHROPIC_`/`CLAUDE_` 前缀的非空字符串值），每次带模型调用的子进程经唯一注入函数 `claudeInvocationEnv` 拿环境补丁——**先**展开 `claudeRouteEnv` 的清除补丁（父进程 `ANTHROPIC_*` 等置空，隔离不变），**后**展开提取出的网关键，同名键网关值胜出；`invokeClaude`（审查调用、探活、目录臂）与探针 `routeInvocation`（各探针臂、记忆两臂、verbose 阴性对照）各调一次，`--version` / `--help` 不注入。`--settings` 只装 `permissions.deny`。1.2.0～1.3.1 曾经 `mergeSettingsEnv` 把网关键并进 `--settings` 内联载荷，键值因此出现在进程命令行里（Bug 清单 §3.1 第 14 条，已修）。安全边界：键值不进命令行，凭据类键值不落任何留痕——路线指纹只记 sha256，`invokeClaude` 与探针臂对 commandLine 与输出做**原串逐值替换** `<redacted-env>` 后再过模式脱敏。模型名键的值不进替换集（1.3.2 起，EV-257）：`system/init` 的 `model` 是 CLI 按这些键解析出的配置值、恰等于键值（不是网关回报的，EV-258 订正），一并替换会把回读吞成占位符；豁免要同时过键名（`(ANTHROPIC|CLAUDE)_…MODEL[_NAME]`、不含凭据词、区分大小写）、值不命中模式脱敏、不与凭据同值、长得像模型名四道守卫（`gatewayScrubPlan`），否则照旧替换；「长得像模型名」先剥掉末尾恰好一个上下文窗口后缀（`[1m]`、`[200k]` 一类，1～4 位数字加小写 k 或 m）再判，方括号在别处、多个后缀、后缀内容不符照旧替换（1.3.2 起，EV-258）；生效模型取 `init.model`（可带后缀），服务端回报的 `message.model` 与两者是否一致只记进 `trace.json` 的 `modelReadback`，不进判定面；回读侧另有独立兜底，`init.model` 带脱敏痕迹即记 null 与 `unverified`（`claudeModelReadback`）；剩下的暴露面是子进程环境块（同用户进程可读）；截断/折行/再编码形态的泄漏面不在原串替换射程内，与既有模式脱敏口径同一、登记为残余；官方登录机器上 env 段为空即自动无操作。codex 侧无此问题（鉴权在 `$CODEX_HOME`，与 settings 文件无关）。
++**第三方网关（CC Switch 支撑，1.2.0）。** `--restricted` 按官方语义忽略 user/project/local settings 文件，而 CC Switch 把网关配置写在用户级 `~/.claude/settings.json` 的 env 段——受限模式一开即回落官方端点报「未登录」。通道取 claude 子进程的**环境变量**（1.3.2 起，EV-256；受限模式认进程环境变量，2026-10-24 win32 实测）：`agents.claude.settings_env_source: user_settings` 开启后，路线解析时读该 env 段（只收 `ANTHROPIC_`/`CLAUDE_` 前缀的非空字符串值），每次带模型调用的子进程经唯一注入函数 `claudeInvocationEnv` 拿环境补丁——**先**展开 `claudeRouteEnv` 的清除补丁（父进程 `ANTHROPIC_*` 等置空，隔离不变），**后**展开提取出的网关键，同名键网关值胜出；`invokeClaude`（审查调用、探活、目录臂）与探针 `routeInvocation`（各探针臂、记忆两臂、verbose 阴性对照）各调一次，`--version` / `--help` 不注入。`--settings` 只装 `permissions.deny`。1.2.0～1.3.1 曾经 `mergeSettingsEnv` 把网关键并进 `--settings` 内联载荷，键值因此出现在进程命令行里（Bug 清单 §3.1 第 14 条，已修）。安全边界：键值不进命令行，凭据类键值不落任何留痕——路线指纹只记 sha256，`invokeClaude` 与探针臂对 commandLine 与输出做**原串逐值替换** `<redacted-env>` 后再过模式脱敏。模型名键的值不进替换集（1.3.2 起，EV-257）：`system/init` 的 `model` 是 CLI 按这些键解析出的配置值、恰等于键值（不是网关回报的，EV-258 订正），一并替换会把回读吞成占位符；豁免要同时过键名（`(ANTHROPIC|CLAUDE)_…MODEL[_NAME]`、不含凭据词、区分大小写）、值不命中模式脱敏、不与凭据同值、长得像模型名四道守卫（`gatewayScrubPlan`），否则照旧替换；「长得像模型名」先剥掉末尾恰好一个上下文窗口后缀（`[1m]`、`[200k]` 一类，1～4 位数字加 k 或 m，单位大小写不敏感（EV-258 第二轮：CC Switch 写的是大写 `[1M]`））再判，方括号在别处、多个后缀、后缀内容不符照旧替换（1.3.2 起，EV-258）；生效模型取 `init.model`（可带后缀），服务端回报的 `message.model` 与两者是否一致只记进 `trace.json` 的 `modelReadback`，不进判定面；回读侧另有独立兜底，`init.model` 带脱敏痕迹即记 null 与 `unverified`（`claudeModelReadback`）；剩下的暴露面是子进程环境块（同用户进程可读）；截断/折行/再编码形态的泄漏面不在原串替换射程内，与既有模式脱敏口径同一、登记为残余；官方登录机器上 env 段为空即自动无操作。codex 侧无此问题（鉴权在 `$CODEX_HOME`，与 settings 文件无关）。
+ 
+ **只读降级（prompt-only，1.2.1，Windows 线）。** codex CLI 在 Windows 上 `-s read-only` 不拦截 shell 写（上游缺口，Bug 清单 §3.1-8）。`agents.codex.readonly_enforcement: prompt-only` 是对该缺口的**显式取舍**：负对照失败时探针保留 `-s read-only` 旗标（该旗标本身让 CLI 在提示层面声明只读）并记 `readonly_enforced: false`（执法结论独立成字段，不塌缩进旗标空集），`availability()` 以降级注记放行、预检的「只读能力可用」一格带注记通过。补偿控制全开不动：BRIEF 既有只读措辞（写即失守、跑后复算检出整轮作废）+ 事后轨迹写事件核验 + 漂移复算——即防线从「事前阻止」换为「事后必查」，写入一旦检出该侧作废。缺省 `required` 行为逐字不变（fail-closed）；该配置不应在 OS 级只读可用的平台上开启。
+ 
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index 6001ea82..600d3978 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -162,6 +162,7 @@
+ - [`REPORT_2026-10-25_gateway_env_injection.md`](./REPORT_2026-10-25_gateway_env_injection.md)：**网关凭据改环境变量注入（EV-256）**（A 档，`/dual-run`，主题 `网关凭据改环境变量注入`）。开了 `settings_env_source` 时网关键原经 `--settings` 内联、出现在 claude 子进程命令行里（Bug 清单 §3.1 第 14 条）；改为经唯一注入函数 `claudeInvocationEnv` 走子进程环境变量（先清父进程路线变量、后注提取出的键），`invokeClaude` 与探针 `routeInvocation` 各调一次，argv 构造器去掉网关通道。回归锚新集成套件（跨平台假 CLI，覆盖审查调用、探活、探针各臂、目录臂，开启 / 未开启 / 空 env 三态）；变异 15 / 15 咬住；零配额对拍：未开启时新旧构建逐条相同，开启时基线进程表 89 行带网关值、新构建零命中。Windows 真实网关验收（用户在 Windows 开发机执行）通过：env 注入下鉴权正常、只读不变量保持，进程表与落盘均未见凭据键值。
+ - [`REPORT_2026-10-25_gateway_readback_model.md`](./REPORT_2026-10-25_gateway_readback_model.md)：**网关回读模型脱敏（EV-257）**（A 档，`/dual-run`，主题 `网关回读模型脱敏`）。开了 `settings_env_source` 时网关 env 全部值逐值替换，网关回报的模型名与模型名键同值被吞成 `<redacted-env>`，却仍记 `envelope`（探针 `model_flag` 误记 false）；改为只对凭据类键逐值替换，模型名键的值过四道守卫（键名、模式脱敏无命中、不与凭据同值、形似模型名）才豁免，替换集按长度降序；回读侧新增 `claudeModelReadback`，带脱敏痕迹即记 null 与 `unverified`。新单测 S1～S9、集成 E8～E10（E1～E7 断言未动），变异 21 条全部咬住，本机零配额新旧构建对拍 28 项通过；剩余边界（形似模型名的凭据误填进模型名键会放行）登记在主设计。Windows 真实网关验收清单已备、待用户执行。证据 [`evidence/gateway-readback-model-20261025/`](./evidence/gateway-readback-model-20261025/)。
+ - [`REPORT_2026-10-26_gateway_model_suffix.md`](./REPORT_2026-10-26_gateway_model_suffix.md)：**网关模型名上下文后缀（EV-258）**（A 档，`/dual-run`，主题 `网关模型名上下文后缀`）。EV-257 的守卫 ④ 字符集不含方括号，CC Switch 写进模型名键的 `qwen3.8-max[1m]` 一类后缀形态留在替换集、回读仍被吞（Windows 实测）；改为只剥末尾恰好一个 `[数字k|m]` 后缀、剥后其余判据照旧，`claudeProfileMetadata` 同批修；定 AC-20 口径：`model_effective` 仍取 `init.model`，服务端回报的 `message.model` 与一致性只进 `trace.json` 的 `modelReadback`。单测 S10～S14、集成 E11 等；变异 21 条全咬住；新旧构建对拍 38 项通过；Windows 验收清单待用户执行。证据 [`evidence/gateway-model-suffix-20261026/`](./evidence/gateway-model-suffix-20261026/)。
++- [`REPORT_2026-10-26_gateway_model_suffix_case.md`](./REPORT_2026-10-26_gateway_model_suffix_case.md)：**网关模型名后缀大小写（EV-258 第二轮）**（A 档，`/dual-run`，主题 `网关模型名后缀大小写`）。第一轮的后缀片段只认小写单位，而 CC Switch 写的是大写 `[1M]`（Windows 验收第 1 步码点实测），回读仍被吞；第一轮「只认小写」的依据是从形状还原出的值。片段单位改为显式字符类 `[kKmM]`、其余边界不变，三个使用点同批生效；第一轮锁成反例的 `[1M]` 改为正例并补其它单位字母等反例；新增 S15、S16、profile 大写格、E12；变异 29 条全部咬住；零配额新旧对拍 47 项通过；Windows 清单第 1 步改为直接打印后缀码点（白名单形态才打印），待用户执行。
+ 
+ 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
+ 
+diff --git a/doc/05_testing/REPORT_2026-10-26_gateway_model_suffix.md b/doc/05_testing/REPORT_2026-10-26_gateway_model_suffix.md
+index b6350a38..f8ced814 100644
+--- a/doc/05_testing/REPORT_2026-10-26_gateway_model_suffix.md
++++ b/doc/05_testing/REPORT_2026-10-26_gateway_model_suffix.md
+@@ -15,7 +15,7 @@ EV-257 的守卫 ④ `looksLikeModelName`（`src/trivium/adapters/claude-route.t
+ 
+ ## 2. 修法（计划三审 r2 定）
+ 
+-- **守卫 ④ 只放行末尾一个上下文窗口后缀**（`claude-route.ts`）：无锚片段 `CONTEXT_WINDOW_SUFFIX_PATTERN` = `\[[1-9][0-9]{0,3}[km]\]`（1～4 位不以 0 开头的数字加小写 k 或 m）；`CONTEXT_WINDOW_SUFFIX` 由它加 `$` 构造，`stripContextWindowSuffix` 只剥一个。`looksLikeModelName` 先剥，再对剥后部分照旧判字符集、长度 1～128、UUID、最长段 ≤ 16。方括号在别处、两个后缀、大写或其它单位、0 开头或超过 4 位、只有后缀，都剥不掉或剥后仍不合字符集，照旧替换。守卫 ②③ 看的仍是含后缀的完整值；`gatewayScrubPlan` 不改，同值的模型名键守卫 ④ 放行后都是候选、一并豁免，挂同一个值的非候选键仍让它进替换集。
++- **守卫 ④ 只放行末尾一个上下文窗口后缀**（`claude-route.ts`）：无锚片段 `CONTEXT_WINDOW_SUFFIX_PATTERN` = `\[[1-9][0-9]{0,3}[km]\]`（1～4 位不以 0 开头的数字加小写 k 或 m）；`CONTEXT_WINDOW_SUFFIX` 由它加 `$` 构造，`stripContextWindowSuffix` 只剥一个。`looksLikeModelName` 先剥，再对剥后部分照旧判字符集、长度 1～128、UUID、最长段 ≤ 16。方括号在别处、两个后缀、大写或其它单位、0 开头或超过 4 位、只有后缀，都剥不掉或剥后仍不合字符集，照旧替换（「大写」一项第二轮已改：单位大小写不敏感，见 §7 与 [`REPORT_2026-10-26_gateway_model_suffix_case.md`](./REPORT_2026-10-26_gateway_model_suffix_case.md)）。守卫 ②③ 看的仍是含后缀的完整值；`gatewayScrubPlan` 不改，同值的模型名键守卫 ④ 放行后都是候选、一并豁免，挂同一个值的非候选键仍让它进替换集。
+ - **`claudeProfileMetadata` 同一缺口同批修**：三种形态（双引号、单引号、不加引号）的值都改为 `[\w.\/:+-]+(?:片段)?`，由同一个无锚片段派生、行级正则自管锚定（计划三审 AGY-01 ≡ GLM-01）。不加引号的形态也收：包装器 `~/.local/bin/cld` 是 bash、`source` 读 profile；shell 对赋值右侧不做路径名展开（目录里放一个能匹配的 `qwen1` 文件，sh / bash / zsh / dash 对 `export M=qwen[1m]` 都输出原串，计划三审 CODEX-01）。消费面只有 doctor 的「配置声明模型」注记。
+ - **AC-20 回读口径**：`model_effective` 仍取 `init.model`、来源 `envelope`。理由：与另三家同为「CLI 自己回报按什么配置跑」（codex rollout、zcode 会话文件、agy 信封都是客户端记录）；`message.model` 在无 assistant 消息的运行里缺失、回落备用模型时多值、网关下同样由网关控制；`result.modelUsage` 按模型分桶、含旁路调用，不是单值。不一致时：`parseClaudeEvents` 新收 `reportedModels`（assistant 的非空 `message.model`，去重保序；空串不收，计划三审 AGY-02），`claudeModelConsistency(init, reported)` 判一致（每个回报值等于 `init.model`，或在 init 恰为「不含方括号的基名 + 一个后缀」时等于基名，计划三审 CODEX-03；取不到或无回报记 null），二者写进 `trace.json` 的 `modelReadback: { init, reported, consistent }`，只留痕、不进判定面、不降级不告警。
+ - **不动**：守卫 ①②③、替换集构造与降序、≥ 8 字符阈值、`claudeModelReadback`、探针 `model_flag` 的比法、run.json / `CriticResult` 契约。
+@@ -100,7 +100,7 @@ grep「`looksLikeModelName`｜四道守卫｜`system/init` 回报｜网关回报
+ ## 7. 已知边界
+ 
+ - **形似模型名的短段凭据加一个合法后缀**，与不加后缀时同样放行（EV-257 剩余边界的延伸，不新开口子）。
+-- **大写单位 `[1M]` 不认**：fail-closed，代价是那个值照旧替换、回读记 `unverified`。Claude Code 与 CC Switch 实测都写小写。
++- ~~**大写单位 `[1M]` 不认**：fail-closed，代价是那个值照旧替换、回读记 `unverified`。Claude Code 与 CC Switch 实测都写小写。~~ **（2026-10-26 改写）这条边界不成立，已由第二轮修掉。** Windows 验收第 1 步码点实测，CC Switch 写进 5 个生效模型名键的后缀是大写 `[1M]`（U+005B U+0031 U+004D U+005D），只认小写正好把真实形态挡在外面。原文「CC Switch 实测都写小写」的出处是 EV-257 判读里的 `qwen3.8-max[1m]`，那是从字母一律换 `a` 的形状 `aaaa9.9-aaa[9a]` 还原出来的，形状抹掉了大小写，从未逐字核过；本报告 S11、access-modes 后缀格与变异 M5a 据此把 `[1M]` 锁成了反例。第二轮（主题 `网关模型名后缀大小写`，主设计 v1.3.181）把单位改为 `[kKmM]`、其余边界不变，上述三处改为正例并补其它单位字母等反例，见 [`REPORT_2026-10-26_gateway_model_suffix_case.md`](./REPORT_2026-10-26_gateway_model_suffix_case.md)。
+ - **`model_flag` 在网关机器上记 false**：按别名 `opus` 选模型、回读到的是解析后的全名，两者不等；这是别名比对的既有口径（EV-256 验收时也是 false），不在本题。
+ - **`trace.json` 在全部机器上多一个 `modelReadback` 键**：诊断留痕，不进判定面；「未开网关零变化」承诺的是 scrub 输出与 `model_effective`。
+ - **一致性判定只认「剥一个合法后缀」这一种改写**：网关把模型名改写成别的形态时记 false，不告警；生效模型照记 `init.model`。
+diff --git a/doc/08_project/BACKLOG.md b/doc/08_project/BACKLOG.md
+index 3e025f10..bec8fbb5 100644
+--- a/doc/08_project/BACKLOG.md
++++ b/doc/08_project/BACKLOG.md
+@@ -353,7 +353,7 @@
+ | EV-255 | todo（2026-10-25 登记，EV-254 全量首轮观察到；测试侧时序问题，未定修法，按 M11 分档由用户定走不走双审） | **`doctor-deadline` 的 I4「兜底：段卡在不经 run() 的 await 上……（stuck）」偶发红在 `deadline.stuck`**（`test/unit/doctor-deadline.test.ts`，该格 `only: 'agy'`、总时限 `ms: 300`、兜底 `unwindMs: 300`，`sectionPrelude` 让 agy 段永久挂住，断言 `hit`、`stuck` 为真且首段为 `in_progress`）。**观察**：2026-10-24 EV-254 第 1 次全量 3986 例里唯一的红（`hit` 已过、红在 `stuck`）；当前树单跑 8 次 7 过（红的那次紧跟全量之后），基线 `db876910` 的独立工作树单跑 8 次全过；同主题后三次全量都过。claude 段不运行，与 EV-254 改动无关。**推测成因（按代码推得，未实测证实）**：`runDoctorCore` 先跑环境段再进 agy 段；若负载下环境段超过 300 ms，到点时 agy 段尚未开始，`inSection` 见已中止直接返回 `ABORTED`、挂住的前置根本没被调用，主流程照常走到 `finalize()`——此时兜底计时器（到点后再 `unwindMs`）还没响，正常收尾传入的 `stuck` 为假、`dl.stuckFired` 也还是假，`deadline.stuck` 于是记成 false。**候选修法（待定）**：用例让挂住发生在环境段（`sectionPrelude` 对 `env` 也挂住），或放宽总时限、把挂住与到点的先后钉住；不改 `doctor-deadline.ts` 的判据。修前先单跑加压复现，确认红时首段确是环境段 | `test/unit/doctor-deadline.test.ts`（I4）；`src/trivium/doctor.ts`（`runDoctor` 兜底竞速、`inSection`、`finalize`）；`src/trivium/doctor-deadline.ts`（`fire` 起兜底计时器）；读数 `doc/05_testing/evidence/claude-first-run-route-20261024/check-1.txt` 与报告 `REPORT_2026-10-24_claude_first_run_route.md` 第 5 节 |
+ | EV-256 | **done**（2026-10-25，主题 `网关凭据改环境变量注入`，`/dual-run` 全流程：计划三审 1 轮修改后通过（run `20261025T093105Z`，6 条全接受），代码三审与 verify 读数见报告；产品版本号不动，随 1.3.2 发版；Windows 真实网关形态 2026-10-25 已由用户在 Windows 开发机验收通过（判读 `evidence/gateway-env-injection-20261025/windows-readout.md`）） | **Bug 清单 §3.1 第 14 条：claude 网关凭据经命令行传递**。开了 `agents.claude.settings_env_source: user_settings` 时，`~/.claude/settings.json` env 段里的网关键（含凭据）经 `mergeSettingsEnv` 并进 `--settings` 内联 JSON、出现在 claude 子进程命令行里，本机能列进程命令行的其他进程都看得到（日志与留痕里的命令行已由 `scrubGatewayEnv` 脱敏，进程表没有）。**修复（2026-10-25，方案 A，2026-10-24 Windows 实测已定）**：网关键改经子进程环境变量注入。唯一注入函数 `claudeInvocationEnv`：先展开 `claudeRouteEnv` 的清除补丁、再展开 `extractSettingsEnv` 提取出的键，同名键网关值胜出、父进程独有的 `ANTHROPIC_*` 仍被清除；`invokeClaude`（审查调用、预检探活、目录臂、脚本）与探针 `routeInvocation`（execProbe 各臂、记忆两臂、verbose 阴性对照）各调一次。删 `mergeSettingsEnv` 与 argv 构造器的 `settingsEnv` 入参，`--settings` 只装 deny 规则。`--version` / `--help` 不注入（修复前后相同）；指纹与 `settingsEnvSha256` 不变；输出脱敏保留。**回归锚**：`test/integration/claude-gateway-env.test.ts`（跨平台假 CLI，开启 / 未开启 / env 段为空三态，宿主前缀变量隔离）与单测 G1–G3；变异 15 条全部咬住；本机零配额对拍：未开启时新旧构建四组调用逐条相同，开启时基线进程表 89 行带网关值、新构建零命中。**边界**：profile 路线与网关同开时同名键改由 profile 胜出、部分同名可致端点与令牌混配（推理、未实测，只登记）；暴露面缩到子进程环境块，同用户进程仍可读。 | `src/trivium/adapters/claude-route.ts`（`claudeInvocationEnv`）；`src/trivium/adapters/claude.ts`（`invokeClaude`、`buildClaudeArgs`）；`src/trivium/probes/claude.ts`（`routeInvocation`、`probeArgs`、`projectMemoryArmArgs`、`verboseNegativeControlArgs`）；`src/trivium/doctor.ts`（注记文案）；报告 `REPORT_2026-10-25_gateway_env_injection.md`；证据 `doc/05_testing/evidence/gateway-env-injection-20261025/` |
+ | EV-257 | **done**（2026-10-25 登记并修复，主题 `网关回读模型脱敏`，`/dual-run` 全流程：计划三审 1 轮修改后通过（run `20261025T135958Z`，8 条：6 接受、2 部分接受），代码三审与 verify 读数见报告；产品版本号不动，随 1.3.2 发版；Windows 真实网关验收清单 `evidence/gateway-readback-model-20261025/windows-acceptance.md` 待用户执行） | **网关机器上 claude 回读模型被逐值脱敏吞掉，却仍记作回读成功**。`invokeClaude` 先对 stdout 做 `scrubGatewayEnv` 逐值替换（1.2.2，`8c2d573f`），适配器再从脱敏后的事件流解析 `init.model`；CC Switch 网关回报的真实模型名恰好等于 settings.json env 段里 `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_*_MODEL` 等键的值（长度 ≥ 8），于是 `model_effective` 记成占位符 `<redacted-env>`，`model_effective_source` 仍写 `envelope`——看起来像回读成功（AC-20「生效模型以回读为准、拿不到记 unverified」在这里被绕过），模型族比较拿占位符当模型名。**实测**：2026-10-25 Windows 开发机（kimi 网关，claude 2.1.302）一次 claude 作审核者的真实审查，审查文档 `model_effective` 与 `family_comparisons.right_model` 均为占位符（`doc/05_testing/evidence/gateway-env-injection-20261025/windows-readout.md` 末节）。探针侧 `execArgv` 同样先脱敏后解析，`init.model` 参与 `probe.model_flag` 判定，可能受同一影响（未核实）。**修法候选**：①逐值替换跳过模型名类键（`_MODEL` / `_MODEL_NAME` 结尾），只对凭据类键做原串替换；②先从原始事件流解析出 `init.model` 等结构化字段，再对要落盘的文本脱敏；③命中占位符时 `model_effective` 记 null、来源记 `unverified`。三者不互斥，取舍待计划双审。**修复（2026-10-25）**：取 ①+③、不取 ②（② 要把含凭据原文的 stdout 带出 `invokeClaude` 边界，且解析出的模型名仍要再判是否含凭据值）。`gatewayScrubPlan` 构造替换表：凭据类键照旧逐值替换、按长度降序；模型名键的值要过四道守卫（键名 `isModelNameKey` 区分大小写且不含凭据词、值不命中模式脱敏、不与凭据同值、`looksLikeModelName` 形态约束）才豁免。`claudeModelReadback` 作独立兜底：`init.model` 带脱敏痕迹（`hasRedactionMark`）即记 null 与 `unverified`，适配器、探针 `model_flag`（被吞记 null，不再误记 false）、准入 / 收口脚本共用。探针其余取自事件流的字段核过不受影响。未开启时 scrub 输出逐字不变，回读判定只在 init.model 自身带脱敏痕迹时改记 unverified（修正方向，代码审 GLM-01）。回归锚 `test/unit/claude-gateway-scrub.test.ts` S1～S9 与 `claude-gateway-env.test.ts` E8～E10（E1～E7 断言未动）；变异 21 条全部咬住；本机零配额新旧构建对拍 28 项通过。剩余边界（形似模型名的凭据误填进模型名键会放行）登记在主设计 §3245 段。报告 `REPORT_2026-10-25_gateway_readback_model.md`。 | `src/trivium/adapters/claude.ts`（`scrubGatewayEnv`、`invokeClaude`、`buildClaudeResult` 的 `model_effective`）；`src/trivium/probes/claude.ts`（`execArgv`、`model_flag`）；证据目录 `doc/05_testing/evidence/gateway-env-injection-20261025/` 里的 claude 审查文档副本 |
+-| EV-258 | **doing**（2026-10-26 Windows 验收第 1 步不通过、由 done 改回：CC Switch 写进 5 个生效模型名键的后缀是大写 `[1M]`（码点 U+005B U+0031 U+004D U+005D），下文修法的后缀片段只认小写单位，这些键仍留在替换集；判读 `evidence/gateway-model-suffix-20261026/windows-readout.md`。用户定在本条目上修（单位大小写不敏感），另走 `/dual-run`。以下为第一轮修复记录——2026-10-26 登记并修复，主题 `网关模型名上下文后缀`，`/dual-run` 全流程：计划三审 1 轮修改后通过（run `20261026T112757Z`，8 条全接受），代码三审与 verify 读数见报告 `REPORT_2026-10-26_gateway_model_suffix.md`；产品版本号不动，随 1.3.2 发版；Windows 真实网关验收清单 `evidence/gateway-model-suffix-20261026/windows-acceptance.md` 待用户执行。**修法**：守卫 4 先剥末尾恰好一个 `\[[1-9][0-9]{0,3}[km]\]` 后缀、剥后照旧判字符集 / 长度 / UUID / 最长段，守卫 2、3 看完整值，同值模型名键一并豁免；`claudeProfileMetadata` 三种引号形态同批收后缀；AC-20 口径定为 `model_effective` 仍取 `init.model`（CLI 解析出的配置值），服务端回报的 `message.model` 与一致性只进 `trace.json` 的 `modelReadback`；订正「`init.model` 是网关回报」的措辞。原登记：todo，EV-257 Windows 真实网关验收第 2 步观察到；EV-257 修复本身的缺口，1.3.2 未发版；用户定新开条目、走 `/dual-run`） | **EV-257 的守卫 4 不认上下文窗口后缀，网关模型名仍被吞**。`looksLikeModelName`（`adapters/claude-route.ts`）的字符集 `[\w./:+-]` 不含方括号，CC Switch 写进生效模型名键（`ANTHROPIC_MODEL`、`ANTHROPIC_DEFAULT_{OPUS,SONNET,FABLE}_MODEL`、`CLAUDE_CODE_SUBAGENT_MODEL`）的 Claude Code 上下文窗口后缀形态（`qwen3.8-max[1m]`、`qwen3.8-flash[1m]`）被判为不像模型名，这些键留在逐值替换集；同值的几个键互为「与凭据同值」，守卫 3 连带不过。**实测**：2026-10-26 Windows 开发机（Qwen 网关，构建 `f1ca93bb`）claude 作审核者、opus 档的真实审查，`trace.json` 的 `init.model` 为占位符，`model_effective` 记 null + `unverified`（回读兜底生效，未以 `envelope` 落盘）；`*_MODEL_NAME` 与 `ANTHROPIC_DEFAULT_HAIKU_MODEL`（不带后缀）正常豁免；凭据类键照旧替换（`evidence/gateway-readback-model-20261025/windows-readout.md`）。EV-257 的单测、集成与 macOS 对拍都没覆盖带后缀的形态。**修法方向**：守卫 4 只额外放行末尾一个上下文窗口后缀（数字加 k / m），剥掉后其余判据不变；方括号出现在别处、多个后缀、后缀形态不符照旧替换；另核 `claudeProfileMetadata` 的同一字符集。 | `src/trivium/adapters/claude-route.ts`（`looksLikeModelName`、`claudeProfileMetadata`）；`test/unit/claude-gateway-scrub.test.ts`；`test/integration/claude-gateway-env.test.ts`；EV-257 报告 §8 |
++| EV-258 | **done**（两轮修复。**第二轮**（2026-10-26，主题 `网关模型名后缀大小写`，`/dual-run` 全流程，主设计 v1.3.181）：后缀片段的单位改为显式字符类 `[kKmM]`（大小写不敏感；不用 `i` 旗标，免得连 profile 键名一起放宽、`iu` 把开尔文符号折成 k），数字位数、末尾恰好一个、剥后其余判据、守卫 2 与 3 看完整值、凭据类键逐值替换均不变；`claudeProfileMetadata` 与 `claudeModelConsistency` 共用片段同批生效；第一轮锁成反例的 `[1M]`（S11、S14 一行、access-modes 后缀格、变异 M5a）改为正例或删除，另补其它单位字母等反例；计划三审 1 轮修改后通过（run `20261026T145019Z`，4 条全接受），代码三审与 verify 读数见报告 `REPORT_2026-10-26_gateway_model_suffix_case.md`；Windows 验收清单 `evidence/gateway-model-suffix-case-20261026/windows-acceptance.md`（第 1 步直接打印后缀码点）待用户执行；产品版本号不动，随 1.3.2 发版。**根因复盘**：第一轮「只认小写」的依据是 EV-257 判读里的 `[1m]`，那是从字母换 a 的形状还原出来的，形状抹掉了大小写；验收清单的期望值也照抄了这个还原值、没有任何一步逐字核后缀字符。**第一轮验收不通过**（2026-10-26 Windows 验收第 1 步，由 done 改回 doing）：CC Switch 写进 5 个生效模型名键的后缀是大写 `[1M]`（码点 U+005B U+0031 U+004D U+005D），下文修法的后缀片段只认小写单位，这些键仍留在替换集；判读 `evidence/gateway-model-suffix-20261026/windows-readout.md`。用户定在本条目上修（单位大小写不敏感），另走 `/dual-run`。以下为第一轮修复记录——2026-10-26 登记并修复，主题 `网关模型名上下文后缀`，`/dual-run` 全流程：计划三审 1 轮修改后通过（run `20261026T112757Z`，8 条全接受），代码三审与 verify 读数见报告 `REPORT_2026-10-26_gateway_model_suffix.md`；产品版本号不动，随 1.3.2 发版；Windows 真实网关验收清单 `evidence/gateway-model-suffix-20261026/windows-acceptance.md` 待用户执行。**修法**：守卫 4 先剥末尾恰好一个 `\[[1-9][0-9]{0,3}[km]\]` 后缀、剥后照旧判字符集 / 长度 / UUID / 最长段，守卫 2、3 看完整值，同值模型名键一并豁免；`claudeProfileMetadata` 三种引号形态同批收后缀；AC-20 口径定为 `model_effective` 仍取 `init.model`（CLI 解析出的配置值），服务端回报的 `message.model` 与一致性只进 `trace.json` 的 `modelReadback`；订正「`init.model` 是网关回报」的措辞。原登记：todo，EV-257 Windows 真实网关验收第 2 步观察到；EV-257 修复本身的缺口，1.3.2 未发版；用户定新开条目、走 `/dual-run`） | **EV-257 的守卫 4 不认上下文窗口后缀，网关模型名仍被吞**。`looksLikeModelName`（`adapters/claude-route.ts`）的字符集 `[\w./:+-]` 不含方括号，CC Switch 写进生效模型名键（`ANTHROPIC_MODEL`、`ANTHROPIC_DEFAULT_{OPUS,SONNET,FABLE}_MODEL`、`CLAUDE_CODE_SUBAGENT_MODEL`）的 Claude Code 上下文窗口后缀形态（`qwen3.8-max[1m]`、`qwen3.8-flash[1m]`）被判为不像模型名，这些键留在逐值替换集；同值的几个键互为「与凭据同值」，守卫 3 连带不过。**实测**：2026-10-26 Windows 开发机（Qwen 网关，构建 `f1ca93bb`）claude 作审核者、opus 档的真实审查，`trace.json` 的 `init.model` 为占位符，`model_effective` 记 null + `unverified`（回读兜底生效，未以 `envelope` 落盘）；`*_MODEL_NAME` 与 `ANTHROPIC_DEFAULT_HAIKU_MODEL`（不带后缀）正常豁免；凭据类键照旧替换（`evidence/gateway-readback-model-20261025/windows-readout.md`）。EV-257 的单测、集成与 macOS 对拍都没覆盖带后缀的形态。**修法方向**：守卫 4 只额外放行末尾一个上下文窗口后缀（数字加 k / m），剥掉后其余判据不变；方括号出现在别处、多个后缀、后缀形态不符照旧替换；另核 `claudeProfileMetadata` 的同一字符集。 | `src/trivium/adapters/claude-route.ts`（`looksLikeModelName`、`claudeProfileMetadata`）；`test/unit/claude-gateway-scrub.test.ts`；`test/integration/claude-gateway-env.test.ts`；EV-257 报告 §8 |
+ 
+ ## 待双审（不自行实施）
+ 
+diff --git a/src/trivium/adapters/claude-route.ts b/src/trivium/adapters/claude-route.ts
+index 547398a3..d0a2a457 100644
+--- a/src/trivium/adapters/claude-route.ts
++++ b/src/trivium/adapters/claude-route.ts
+@@ -69,11 +69,14 @@ export function isModelNameKey(key: string): boolean {
+ }
+ 
+ /**
+- * Claude Code 上下文窗口后缀（`sonnet[1m]` 一类，EV-258）的**无锚片段**：1～4 位不以 0 开头的数字加小写 k 或 m。
++ * Claude Code 上下文窗口后缀（`sonnet[1m]`、`qwen3.8-max[1M]` 一类，EV-258）的**无锚片段**：
++ * 1～4 位不以 0 开头的数字加 k / K / m / M。单位大小写不敏感是 EV-258 第二轮改的：CC Switch 写进生效模型名键的是
++ * 大写 `[1M]`（2026-10-26 Windows 码点实测），第一轮只认小写的依据是从「形状」推出来的。
+  * 只定义片段、不带锚：守卫 4 要锚在串尾，profile 元数据要放在闭引号之前，锚定由各使用点自定
+- * （计划三审 AGY-01 ≡ GLM-01）。大写、多位、其它单位一律不认，fail-closed——代价只是那个值照旧替换、回读记 unverified。
++ * （计划三审 AGY-01 ≡ GLM-01）。用显式字符类而不用 `i` 旗标：片段嵌进 profile 的整行正则，整行加 `i` 会连键名一起放宽；
++ * `iu` 还会把开尔文符号（U+212A）折成 k。多位、0 开头、其它单位字母或字符一律不认，fail-closed——代价只是那个值照旧替换、回读记 unverified。
+  */
+-const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\[[1-9][0-9]{0,3}[km]\]`;
++const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\[[1-9][0-9]{0,3}[kKmM]\]`;
+ const CONTEXT_WINDOW_SUFFIX = new RegExp(`${CONTEXT_WINDOW_SUFFIX_PATTERN}$`);
+ 
+ /** 剥掉末尾**一个**上下文窗口后缀；没有就原样返回。不验证剩下的部分，由调用方自己判 */
+@@ -88,7 +91,7 @@ export function stripContextWindowSuffix(value: string): string {
+  * （真实模型名由短段拼成，随机令牌是长连续段）；不是 UUID 形态。不像就照旧替换，代价只是回读记 unverified。
+  * 这不是判别凭据的完备算法：由短段拼成的凭据填进模型名键仍会放行，作为剩余边界登记在主设计。
+  *
+- * 末尾一个上下文窗口后缀（`qwen3.8-max[1m]`）先剥掉，上述判据全部作用于剥后的部分（EV-258）：
++ * 末尾一个上下文窗口后缀（`qwen3.8-max[1m]` 或 `[1M]`）先剥掉，上述判据全部作用于剥后的部分（EV-258）：
+  * 方括号在别处、两个后缀、后缀内容不符都剥不掉或剥后仍含方括号，照旧不像。
+  */
+ export function looksLikeModelName(value: string): boolean {
+diff --git a/src/trivium/adapters/claude-trace.ts b/src/trivium/adapters/claude-trace.ts
+index 2c13de95..dd7f30df 100644
+--- a/src/trivium/adapters/claude-trace.ts
++++ b/src/trivium/adapters/claude-trace.ts
+@@ -468,7 +468,7 @@ export function claudeModelReadback(init: ClaudeTrace['init']): { model: string
+ /**
+  * CLI 解析出的 `init.model` 与服务端回报的 `message.model` 是否一致（EV-258 定的 AC-20 留痕口径）。
+  *
+- * `init.model` 是 CLI 按别名解析出的配置值，可带上下文窗口后缀（`qwen3.8-max[1m]`）；CLI 发请求前剥掉后缀，
++ * `init.model` 是 CLI 按别名解析出的配置值，可带上下文窗口后缀（`qwen3.8-max[1m]` 或 `[1M]`）；CLI 发请求前剥掉后缀，
+  * 服务端回报的是 `qwen3.8-max`。所以每个回报值等于 `init.model`、或等于剥掉**一个**合法后缀后的基名，即算一致。
+  * 剥后缀那一支只在 init 恰为「不含方括号的基名 + 一个后缀」时适用（计划三审 CODEX-03：`qwen[1m][1m]` 对 `qwen[1m]` 不算一致）。
+  * 回读取不到（缺失、空串、带脱敏痕迹）或没有回报值时记 null——没法比，不是不一致。
+diff --git a/test/integration/claude-gateway-env.test.ts b/test/integration/claude-gateway-env.test.ts
+index a6bdf948..1985d131 100644
+--- a/test/integration/claude-gateway-env.test.ts
++++ b/test/integration/claude-gateway-env.test.ts
+@@ -21,7 +21,8 @@
+  *   回读须记 null + `unverified`（E9）；未开启时与修复前逐项相同（E10）。E8～E10 不复用 `runAll`
+  *   （它对全部 `GATEWAY_VALUES` 断言不出现），「不出现」只对 `CREDENTIAL_VALUES` 断言。
+  * - **带上下文窗口后缀的模型名**（EV-258）：模型名键值形如 `xxx[1m]`、多键同值时一并豁免，回读记带后缀的名、
+- *   服务端回报的 `message.model` 不带后缀且判为一致，凭据键的值仍被替换（E11）。
++ *   服务端回报的 `message.model` 不带后缀且判为一致，凭据键的值仍被替换（E11）。单位为大写的 `xxx[1M]`
++ *   （CC Switch 的真实形态，2026-10-26 Windows 码点实测；EV-258 第二轮）同样如此（E12）。
+  * - 用例名里的「网关回报的模型名」沿用 EV-257 的叫法：`init.model` 实为 CLI 按模型名键解析出的配置值，
+  *   服务端回报的是 assistant 消息的 `message.model`（EV-258 订正；改用例名会让历史读数与变异规格对不上，故只在这里说明）。
+  *
+@@ -32,7 +33,7 @@
+  *   已能跑完 `probeClaude` 各臂的假 CLI；另外每次调用往 `FAKE_CLAUDE_LOG` 追加一行记录，并把
+  *   `ANTHROPIC_AUTH_TOKEN` 的值回显进 stdout 与 stderr 锚脱敏。两个可选开关只给 E8～E10 用、E1～E7 不设：
+  *   `FAKE_CLAUDE_INIT_MODEL_KEY` 让 `init.model` 取该环境变量的值（不在环境里则退回缺省名）；
+- *   `FAKE_CLAUDE_MESSAGE_MODEL_KEY`（EV-258，只给 E11 用）多吐一条 assistant 事件、`message.model` 取该环境变量的值；
++ *   `FAKE_CLAUDE_MESSAGE_MODEL_KEY`（EV-258，只给 E11 / E12 用）多吐一条 assistant 事件、`message.model` 取该环境变量的值；
+  *   `FAKE_CLAUDE_RAW_LOG` 把未脱敏的原始输出另写一份作对照（只在本格 `scratchDir` 里）。
+  * - **宿主变量隔离**（计划三审 CODEX-01）：每格先摘下宿主全部 `ANTHROPIC_` / `CLAUDE_` 前缀变量、finally 原样放回，
+  *   只放合成值；假 CLI 只对 `FAKE_CLAUDE_VALUE_KEYS` 声明的键记值，其余前缀键只记键名——宿主真实令牌不进子进程、
+@@ -436,3 +437,40 @@ test('E11 开启 · 模型名键值带上下文窗口后缀且多键同值：回
+     assert.equal(probe.model_flag, true, 'E11：回读到的带后缀名与所选模型相同，model_flag 须为 true');
+   });
+ });
++
++// ─────────────── EV-258 第二轮：大写单位后缀（E12）───────────────
++
++/** CC Switch 真实形态的合成版：模型名键值带大写 `[1M]`（2026-10-26 Windows 码点实测）、两个键同值，`*_MODEL_NAME` 不带后缀 */
++const UPPER_SUFFIX_ENV = {
++  ANTHROPIC_BASE_URL: 'https://gw-ev258.invalid/api',
++  ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01',
++  ANTHROPIC_MODEL: 'gw-ev258-model-02[1M]',
++  ANTHROPIC_DEFAULT_OPUS_MODEL: 'gw-ev258-model-02[1M]',
++  ANTHROPIC_DEFAULT_OPUS_MODEL_NAME: 'gw-ev258-model-02',
++};
++const UPPER_SUFFIX_CREDENTIALS = [UPPER_SUFFIX_ENV.ANTHROPIC_AUTH_TOKEN, UPPER_SUFFIX_ENV.ANTHROPIC_BASE_URL];
++
++test('E12 开启 · 模型名键值带大写单位后缀 [1M] 且多键同值：回读记带后缀的名、来源 envelope、与不带后缀的回报一致，凭据键的值仍被替换', async () => {
++  await withCell({ enabled: true, settings: JSON.stringify({ env: UPPER_SUFFIX_ENV }),
++    extra: { FAKE_CLAUDE_INIT_MODEL_KEY: 'ANTHROPIC_MODEL', FAKE_CLAUDE_MESSAGE_MODEL_KEY: 'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME' } }, async (c) => {
++    const real = UPPER_SUFFIX_ENV.ANTHROPIC_MODEL;
++    const { out, model, source } = await reviewReadback(c);
++    assert.equal(model, real, 'E12：带大写后缀的模型名被守卫 4 拒收、留在替换集时，这里是 null');
++    assert.equal(source, 'envelope');
++    for (const [label, text] of [['stdout', out.stdout], ['stderr', out.stderr], ['commandLine', out.commandLine]] as const) {
++      for (const v of UPPER_SUFFIX_CREDENTIALS) assert.ok(!text.includes(v), `E12 审查调用 ${label}：凭据键的值不得出现`);
++    }
++    assert.ok(out.stdout.includes('<redacted-env>') && out.stderr.includes('<redacted-env>'), 'E12：回显的 AUTH_TOKEN 须以占位符出现');
++    const trace = parseClaudeEvents(out.stdout);
++    assert.deepEqual(trace.reportedModels, [UPPER_SUFFIX_ENV.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME], 'E12：服务端回报的模型名须原样收进留痕');
++    assert.equal(claudeModelConsistency(trace.init, trace.reportedModels), true, 'E12：带大写后缀的 init 与不带后缀的回报判为一致');
++
++    const route = fakeRoute(c.cfg);
++    const fx = { root: c.home } as Fixture;
++    const arm = await withClaudeProbeRoute(route, real, null, () => execArgv(process.execPath, fx, probeArgs({ prompt: 'p' })));
++    assert.equal(arm.init?.model, real, 'E12 探针臂：init.model 须为带大写后缀的模型名');
++    for (const v of UPPER_SUFFIX_CREDENTIALS) assert.ok(!arm.raw.includes(v) && !arm.stderr.includes(v), 'E12 探针臂：凭据键的值不得出现');
++    const { probe } = await withClaudeProbeRoute(route, real, null, () => probeClaude(process.execPath, { assetRoot: ASSET_ROOT }));
++    assert.equal(probe.model_flag, true, 'E12：回读到的带大写后缀名与所选模型相同，model_flag 须为 true');
++  });
++});
+diff --git a/test/unit/access-modes.test.ts b/test/unit/access-modes.test.ts
+index bca335f7..cda0c3f3 100644
+--- a/test/unit/access-modes.test.ts
++++ b/test/unit/access-modes.test.ts
+@@ -64,13 +64,32 @@ test('profile 元数据：三种形态都收末尾一个上下文窗口后缀，
+     'export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-4.6[1m]',
+   ].join('\n'));
+   assert.deepEqual(meta.models, ['qwen3.8-max[1m]', 'qwen3.8-flash[200k]', 'glm-4.6[1m]']);
+-  for (const v of ['qwen[1m]-max', 'qwen3.8-max[1m][1m]', 'qwen3.8-max[abc]', 'qwen3.8-max[1M]', 'qwen3.8-max[0m]']) {
++  // 第一轮这里的 `qwen3.8-max[1M]` 是反例；第二轮单位大小写不敏感（CC Switch 写的是大写，Windows 码点实测），换成 `[1G]`
++  for (const v of ['qwen[1m]-max', 'qwen3.8-max[1m][1m]', 'qwen3.8-max[abc]', 'qwen3.8-max[1G]', 'qwen3.8-max[0m]']) {
+     for (const line of [`export ANTHROPIC_MODEL="${v}"`, `export ANTHROPIC_MODEL='${v}'`, `export ANTHROPIC_MODEL=${v}`]) {
+       assert.deepEqual(claudeProfileMetadata(line).models, [], `${line} 不应收`);
+     }
+   }
+ });
+ 
++test('profile 元数据：大写单位后缀三种形态都收；其它单位字母、混入字符、小写键名一律不收（EV-258 第二轮）', () => {
++  const meta = claudeProfileMetadata([
++    'export ANTHROPIC_MODEL="qwen3.8-max[1M]"',
++    "export ANTHROPIC_DEFAULT_SONNET_MODEL='qwen3.8-flash[200K]'",
++    'export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-4.6[1M]',
++  ].join('\n'));
++  assert.deepEqual(meta.models, ['qwen3.8-max[1M]', 'qwen3.8-flash[200K]', 'glm-4.6[1M]']);
++  for (const v of ['qwen3.8-max[1G]', 'qwen3.8-max[1MB]', 'qwen3.8-max[1mM]', 'qwen3.8-max[1M][1M]', 'qwen3.8-max[1K]']) {
++    for (const line of [`export ANTHROPIC_MODEL="${v}"`, `export ANTHROPIC_MODEL='${v}'`, `export ANTHROPIC_MODEL=${v}`]) {
++      assert.deepEqual(claudeProfileMetadata(line).models, [], `${line} 不应收`);
++    }
++  }
++  // 放宽只落在单位那一个字符位：键名判据仍区分大小写（片段用显式字符类、没给整行正则加 i 旗标）
++  for (const line of ['export anthropic_model="qwen3.8-max[1M]"', 'export Anthropic_Model=qwen3.8-max']) {
++    assert.deepEqual(claudeProfileMetadata(line).models, [], `${line} 不应收`);
++  }
++});
++
+ test('spawn失败保留请求命令但实际入口为空；被终止的已启动进程保留入口', async () => {
+   const out = await run('/trivium-fixture-missing-entry', [], { timeoutMs: 1000 });
+   assert.equal(out.spawned, false);
+diff --git a/test/unit/claude-gateway-scrub.test.ts b/test/unit/claude-gateway-scrub.test.ts
+index cbe44665..001fb65d 100644
+--- a/test/unit/claude-gateway-scrub.test.ts
++++ b/test/unit/claude-gateway-scrub.test.ts
+@@ -12,6 +12,10 @@
+  * - **上下文窗口后缀**（EV-258）：守卫 4 只放行末尾一个 `[数字k|m]` 后缀，剥后其余判据照旧（S10～S13）；
+  *   放行过窄（真实带后缀形态被替换）与过宽（方括号在别处、多个后缀、内容不符、剥后跳过判据）两个方向都咬。
+  *   AC-20 留痕：`init.model` 与服务端回报的 `message.model` 的比对只进 `trace.json`（S14）。
++ * - **单位大小写不敏感**（EV-258 第二轮）：CC Switch 写的是大写 `[1M]`（2026-10-26 Windows 码点实测，U+005B U+0031 U+004D U+005D）。
++ *   第一轮把 `[1M]` 锁成了反例（S11、S14 各一处），依据是从「形状」推出来的小写，本轮改为正例（S15、S16）；
++ *   过宽方向另补其它单位字母、多个字母、开尔文符号、全角字母等反例（S11）。S13 用例名里的「Windows 实测形态」
++ *   当时写的是小写 `[1m]`，真实形态由 S15 覆盖（不改名：变异规格与历史读数按用例名对）。
+  *
+  * 凭据形态的夹具一律运行时分段拼接（`contract/fixture-credentials`）。
+  */
+@@ -35,7 +39,8 @@ const REAL_MODELS = [
+   'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+   'ep-20250101123456-abcde',
+   'glm-4.6',
+-  'qwen3.8-max[1m]', // EV-258：CC Switch 写进生效模型名键的上下文窗口后缀形态（2026-10-26 Windows 实测）
++  'qwen3.8-max[1m]', // EV-258：Claude Code 文档的上下文窗口后缀形态（第一轮注为「Windows 实测」，实为从形状推出）
++  'qwen3.8-max[1M]', // EV-258 第二轮：CC Switch 写进生效模型名键的真实形态（2026-10-26 Windows 码点实测）
+ ];
+ 
+ /** 运行时拼接的令牌形态值：静态文本里不出现完整形态 */
+@@ -181,8 +186,12 @@ test('S10 带后缀的真实形态放行：守卫 4 为真、模型名键豁免
+ 
+ test('S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）', () => {
+   const B = 'qwen3.8-max';
+-  const negatives = [`qwen[1m]-max`, `${B}[1m][1m]`, `${B}[abc]`, `${B}[1g]`, `${B}[0m]`, `${B}[12345m]`, `${B}[1M]`,
+-    `${B}[]`, `${B}[ 1m]`, `${B}[1m] `, '[1m]', `[${RANDOM_TOKEN}]`];
++  // 第一轮这里还有 `${B}[1M]`：CC Switch 实际写的就是大写（Windows 码点实测），第二轮移出、改由 S15 当正例。
++  // 补上的大写一类反例钉住「只放宽单位字母 k / m 的大小写」：其它字母、多个字母、单位在前、开尔文符号（`iu` 折叠会放过）、全角字母。
++  const negatives = [`qwen[1m]-max`, `${B}[1m][1m]`, `${B}[abc]`, `${B}[1g]`, `${B}[0m]`, `${B}[12345m]`,
++    `${B}[]`, `${B}[ 1m]`, `${B}[1m] `, '[1m]', `[${RANDOM_TOKEN}]`,
++    `${B}[1G]`, `${B}[1MB]`, `${B}[1mM]`, `${B}[M1]`, `${B}[0M]`, `${B}[12345M]`, `${B}[1M][1M]`, `qwen[1M]-max`,
++    `${B}[1K]`, `${B}[1Ｍ]`];
+   for (const v of negatives) {
+     const env = { ANTHROPIC_MODEL: v, ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01' };
+     // 第一层：形态拒绝、不豁免
+@@ -268,8 +277,80 @@ test('S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值
+   assert.equal(claudeModelConsistency(mk('gw-a[1m]'), ['gw-']), false, '回报是 init 的真前缀但不是剥后缀结果 ⇒ false（GLM-02）');
+   assert.equal(claudeModelConsistency(mk('gw-a[1m]'), ['gw-a', 'gw-b']), false, '有一个不符 ⇒ false');
+   assert.equal(claudeModelConsistency(mk('qwen[1m][1m]'), ['qwen[1m]']), false, '两个后缀只剥一个 ⇒ false（CODEX-03）');
+-  assert.equal(claudeModelConsistency(mk('qwen[1M]'), ['qwen']), false, '后缀不合法不剥 ⇒ false');
++  // 第一轮这里断言 qwen[1M] 对 qwen 为 false（把大写当「后缀不合法」）；第二轮单位大小写不敏感，改为 true，「不合法」换用 [1G]
++  assert.equal(claudeModelConsistency(mk('qwen[1M]'), ['qwen']), true, '大写单位后缀照样剥 ⇒ true（EV-258 第二轮）');
++  assert.equal(claudeModelConsistency(mk('qwen[1G]'), ['qwen']), false, '后缀不合法不剥 ⇒ false');
+ 
+   assert.equal(modelFamily('qwen3.8-max[1m]'), 'qwen');
+   assert.equal(modelFamily('claude-opus-4-1[1m]'), 'claude');
+ });
++
++/** 带大写单位后缀的真实形态（EV-258 第二轮）：都要放行、豁免、原样保留 */
++const UPPER_SUFFIXED_MODELS = ['qwen3.8-max[1M]', 'qwen3.8-flash[1M]', 'claude-opus-4-1[200K]', 'glm-4.6[1000K]', 'gw-x[9999M]'];
++
++test('S15 大写单位后缀放行：守卫 4 为真、豁免、输出原样保留；Windows 码点实测形态整表只替换凭据（过窄方向）', () => {
++  for (const m of UPPER_SUFFIXED_MODELS) {
++    assert.equal(looksLikeModelName(m), true, `${m} 应像模型名`);
++    const env = { ANTHROPIC_MODEL: m, ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01' };
++    assert.deepEqual(gatewayScrubPlan(env).exemptKeys, ['ANTHROPIC_MODEL'], `${m} 应豁免`);
++    assert.deepEqual(gatewayScrubPlan(env).replace, ['gw-ev258-auth-01'], `${m}：替换集只剩凭据值`);
++    assert.ok(scrubGatewayEnv(`"model":"${m}"`, env).includes(m), `${m} 应原样保留`);
++  }
++
++  // 与 S13 同一结构，带后缀的 5 个键用 2026-10-26 Windows 码点实测的大写 [1M]
++  const flash = 'gw-ev258-flash';
++  const max = 'gw-ev258-max';
++  const env: Record<string, string> = {
++    ANTHROPIC_BASE_URL: 'https://gw-ev258.invalid/api',
++    ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01',
++    ANTHROPIC_MODEL: `${flash}[1M]`,
++    ANTHROPIC_DEFAULT_SONNET_MODEL: `${flash}[1M]`,
++    ANTHROPIC_DEFAULT_OPUS_MODEL: `${max}[1M]`,
++    ANTHROPIC_DEFAULT_FABLE_MODEL: `${max}[1M]`,
++    CLAUDE_CODE_SUBAGENT_MODEL: `${max}[1M]`,
++    ANTHROPIC_DEFAULT_HAIKU_MODEL: flash,
++    ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME: flash,
++    ANTHROPIC_DEFAULT_SONNET_MODEL_NAME: flash,
++    ANTHROPIC_DEFAULT_OPUS_MODEL_NAME: max,
++    ANTHROPIC_DEFAULT_FABLE_MODEL_NAME: max,
++  };
++  const models = Object.keys(env).filter((k) => !['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN'].includes(k));
++  const plan = gatewayScrubPlan(env);
++  assert.deepEqual([...plan.exemptKeys].sort(), [...models].sort(), '10 个模型名键须全部豁免');
++  assert.deepEqual(plan.replace, [env['ANTHROPIC_BASE_URL'], env['ANTHROPIC_AUTH_TOKEN']], '替换集恰为两个凭据值（降序）');
++
++  // 凭据优先在大写形态下同样成立：非模型名键挂着 max[1M] ⇒ 挂它的三个模型名键全部不豁免
++  const tainted = { ...env, ANTHROPIC_EXTRA_EV258: `${max}[1M]` };
++  const p2 = gatewayScrubPlan(tainted);
++  for (const k of ['ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_FABLE_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL']) {
++    assert.ok(!p2.exemptKeys.includes(k), `${k}：与非模型名键同值，不得豁免`);
++  }
++  assert.ok(p2.replace.includes(`${max}[1M]`), '与非模型名键同值的带大写后缀值须进替换集');
++  assert.ok(!scrubGatewayEnv(`init ${max}[1M] end`, tainted).includes(`${max}[1M]`), '与非模型名键同值的带大写后缀值须被替换');
++  assert.equal(p2.exemptKeys.length, 7, '其余 7 个模型名键照旧豁免');
++});
++
++test('S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写', () => {
++  for (const sfx of ['[1M]', '[1K]']) {
++    for (const [label, core] of [['随机令牌（最长段）', RANDOM_TOKEN], ['UUID', UUID_TOKEN], ['OpenAI 形态（守卫 2）', OPENAI_LIKE]] as const) {
++      const v = `${core}${sfx}`;
++      assert.equal(stripContextWindowSuffix(v), core, `前提：${label} 的 ${sfx} 后缀剥得掉——这格咬的是剥后判据`);
++      const env = { ANTHROPIC_DEFAULT_OPUS_MODEL: v };
++      assert.deepEqual(gatewayScrubPlan(env).exemptKeys, [], `${label} + ${sfx}：不得豁免`);
++      assert.ok(!scrubGatewayEnv(`init ${v} end`, env).includes(v), `${label} + ${sfx}：须被替换`);
++    }
++    assert.equal(looksLikeModelName(`${RANDOM_TOKEN}${sfx}`), false, `随机令牌 + ${sfx}：守卫 4 须拒`);
++    assert.equal(looksLikeModelName(`${UUID_TOKEN}${sfx}`), false, `UUID + ${sfx}：守卫 4 须拒`);
++  }
++  assert.equal(stripContextWindowSuffix('x[1M][1M]'), 'x[1M]', '大写后缀也只剥一个');
++  assert.equal(looksLikeModelName('qwen3.8-max[1M][1M]'), false);
++  assert.equal(stripContextWindowSuffix('qwen3.8-max[1m]'), 'qwen3.8-max', '小写照旧剥');
++
++  const mk = (model: string | null) => ({ model, tools: [], permissionMode: null, cwd: null });
++  assert.equal(claudeModelConsistency(mk('gw-a[1M]'), ['gw-a']), true, 'init 带大写后缀、回报不带 ⇒ true');
++  assert.equal(claudeModelConsistency(mk('gw-a[1M]'), ['gw-']), false, '回报是 init 的真前缀但不是剥后缀结果 ⇒ false');
++  assert.equal(claudeModelConsistency(mk('qwen[1M][1M]'), ['qwen[1M]']), false, '两个大写后缀只剥一个 ⇒ false');
++  assert.equal(claudeModelConsistency(mk('qwen[1G]'), ['qwen']), false, '其它单位字母不剥 ⇒ false');
++
++  assert.equal(modelFamily('qwen3.8-max[1M]'), 'qwen');
++});
+diff --git a/doc/05_testing/REPORT_2026-10-26_gateway_model_suffix_case.md b/doc/05_testing/REPORT_2026-10-26_gateway_model_suffix_case.md
+new file mode 100644
+index 00000000..79130a85
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-10-26_gateway_model_suffix_case.md
+@@ -0,0 +1,112 @@
++# 网关模型名后缀大小写 · 测试报告（EV-258 第二轮）
++
++- **主题**：`网关模型名后缀大小写`（`/dual-run` 命令 A 全流程，Driver claude，审核者 codex、gemini、glm）
++- **日期**：2026-10-26
++- **基线**：`1f8e8e87`（`src/` 与第一轮实施提交 `4e21fb76` 逐字相同；下文行号取自源码）
++- **留痕**：计划 `.reviews/网关模型名后缀大小写/plan/`（定稿 r2）；代码审 `.reviews/网关模型名后缀大小写/code/`；证据 [`evidence/gateway-model-suffix-case-20261026/`](./evidence/gateway-model-suffix-case-20261026/)
++- **第一轮**：[`REPORT_2026-10-26_gateway_model_suffix.md`](./REPORT_2026-10-26_gateway_model_suffix.md)（其 §7「大写单位 `[1M]` 不认」那条已改写并指向本报告）
++- **登记**：BACKLOG EV-258（done，记两轮）；主设计 v1.3.181（§12「模型名的上下文窗口后缀与 AC-20 回读口径」末尾）
++- **产品版本号**：不动（`package.json` 仍为 1.3.1，随 1.3.2 发版）
++
++## 1. 问题
++
++第一轮在 `src/trivium/adapters/claude-route.ts:76` 定义的上下文窗口后缀片段 `\[[1-9][0-9]{0,3}[km]\]` 只认小写单位。2026-10-26 Windows 验收第 1 步（构建 `4e21fb76`，追加诊断确认 `dist/test` 已是新代码）：CC Switch 写进 5 个生效模型名键（`ANTHROPIC_MODEL`、`ANTHROPIC_DEFAULT_{OPUS,SONNET,FABLE}_MODEL`、`CLAUDE_CODE_SUBAGENT_MODEL`）的后缀，码点逐个为 `U+005B U+0031 U+004D U+005D`——大写 `[1M]`。片段剥不掉 ⇒ 守卫 ④ 判不像模型名 ⇒ 这些键留在逐值替换集 ⇒ `init.model` 照旧被换成 `<redacted-env>`。判读 [`evidence/gateway-model-suffix-20261026/windows-readout.md`](./evidence/gateway-model-suffix-20261026/windows-readout.md)。
++
++### 1.1 第一轮「只认小写」的依据为什么不成立
++
++第一轮计划 r2 §2.1 写「Claude Code 文档与 CC Switch 实测写的都是 `[1m]`」。前半句成立（Claude Code 自己的示例用小写），但说明不了第三方工具写进 settings.json 的是什么；后半句的出处是 EV-257 Windows 判读里的 `qwen3.8-max[1m]`，而那次逐键诊断对未豁免的模型名键只打印「形状」（字母一律换 `a`、数字换 `9`），读数是 `aaaa9.9-aaa[9a]`——形状抹掉了大小写，判读把它还原成了小写的具体值，计划又把还原值当成实测，据此定判据并把 `[1M]` 锁成反例（单测 S11、S14 一行、access-modes 后缀格、变异 M5a）。
++
++### 1.2 验收清单为什么没先逐字核后缀大小写
++
++第一轮 Windows 清单第 1 步沿用 EV-257 的诊断口径（未豁免的值只打印形状，为了不把可能是凭据的值打出来），期望表直接写了「值列为 `qwen3.8-max[1m]`」——期望值本身来自上面那次形状还原，清单里没有任何一步在定判据之前单独核后缀的真实字符。失败时第 1 步也只能读出「守卫 4 `N`」，要追加一段码点诊断才定位到大小写。本轮的对策见 §6：诊断直接打印后缀码点，期望值一律以第 1 步逐字读数为准。
++
++## 2. 修法（计划三审 r2 定）
++
++- **片段单位改为显式字符类 `[kKmM]`**（`claude-route.ts:76`）：`\[[1-9][0-9]{0,3}[kKmM]\]`。只放宽单位字母的大小写；数字 1～4 位不以 0 开头、末尾恰好一个、剥后其余判据（字符集、长度、UUID、最长段）、守卫 ②③ 看完整值、`gatewayScrubPlan`、≥ 8 字符阈值、`isModelNameKey` 与凭据键词表全部不变。
++- **不用 `i` 旗标**：片段嵌进 `claudeProfileMetadata` 的整行正则，整行加 `i` 会让键名 `ANTHROPIC_(?:MODEL|DEFAULT_[A-Z_]+_MODEL|SMALL_FAST_MODEL)` 一起大小写不敏感；`iu` 还会把开尔文符号 `K`（U+212A）折成 `k`（本机实测：`/…[km]…$/iu` 对 `x[1K]` 为 true，无 `u` 为 false，显式 `[kKmM]` 为 false）。
++- **三个使用点同批生效**：守卫 ④（`stripContextWindowSuffix` / `looksLikeModelName`）、`PROFILE_MODEL_VALUE`、`claudeModelConsistency` 都由同一片段派生，代码一行不改。`claude-trace.ts` 只改注释。
++
++## 3. 回归锚
++
++### 3.1 第一轮锁成反例的大写后缀，逐处改为正例
++
++| 位置 | 第一轮 | 本轮 | 依据 |
++| :--- | :--- | :--- | :--- |
++| S11 反例表 | 含 `${B}[1M]` | 移出；由 S15 当正例 | Windows 码点实测（§1） |
++| S14 真值表 | `qwen[1M]` 对 `qwen` ⇒ false | 改断言 true；「后缀不合法 ⇒ false」换用 `qwen[1G]` | 同上；这一处不在任务目标点名之列，读 S14 时核出 |
++| access-modes 后缀格 | `qwen3.8-max[1M]` 三形态不收 | 换成 `[1G]`；大写由新格当正例 | 同上 |
++| 变异 M5a | 加 `i` 旗标当过宽、须咬住 | 删除（放宽后是等价变异） | 同上 |
++
++S1～S10、S12、S13 与 E1～E11 的断言一字未动。`REAL_MODELS` 追加 `qwen3.8-max[1M]`，S4（豁免）与 S7（不算脱敏痕迹）随之覆盖大写；第一轮那条 `[1m]` 的注释由「Windows 实测」订正为「实为从形状推出」。
++
++### 3.2 单测 `test/unit/claude-gateway-scrub.test.ts`
++
++| 格 | 钉住的事 |
++| :--- | :--- |
++| S11（改） | 反例表补 `[1G]`、`[1MB]`、`[1mM]`、`[M1]`、`[0M]`、`[12345M]`、`[1M][1M]`、`qwen[1M]-max`、开尔文符号 `[1K]`、全角 `[1Ｍ]`——过宽方向，沿用三层断言 |
++| S15（新） | 5 个大写后缀形态（`[1M]`、`[200K]`、`[1000K]`、`[9999M]`）守卫 4 为真、豁免、替换集只剩凭据、原样保留；按 Windows 码点实测形态（`[1M]`）重做 S13 的 12 键整表：10 个模型名键全部豁免、替换集恰为两个凭据值；加挂同值的非模型名键 ⇒ 三键不豁免、该值被替换、其余 7 键照旧 |
++| S16（新） | 随机令牌 / UUID / OpenAI 形态各加 `[1M]`、`[1K]`：先断言剥得掉，仍不豁免、被替换；大写后缀也只剥一个；一致性 `gw-a[1M]` 对 `gw-a` ⇒ true，真前缀、两个大写后缀、`[1G]` ⇒ false；`modelFamily` 照旧 |
++
++### 3.3 `test/unit/access-modes.test.ts`
++
++新格：三种引号形态都收 `[1M]` / `[200K]`；`[1G]`、`[1MB]`、`[1mM]`、`[1M][1M]`、开尔文符号三形态一律不收；小写或混写键名（`export anthropic_model=…`、`export Anthropic_Model=…`）不收——钉住「没给整行正则加 `i`」。
++
++### 3.4 集成 `test/integration/claude-gateway-env.test.ts`（新增 E12）
++
++照 E11 的装置，模型名键值为 `gw-ev258-model-02[1M]`（两键同值）、`*_OPUS_MODEL_NAME` 不带后缀：`model_effective` 为带 `[1M]` 的名、来源 `envelope`；审查调用三路凭据零命中、占位符出现；`reportedModels` 为不带后缀的名、一致性 true；探针臂 `init.model` 为带 `[1M]` 的名；`probeClaude` 的 `model_flag === true`。文件头注释补 E12，`FAKE_CLAUDE_MESSAGE_MODEL_KEY` 那句改为「只给 E11 / E12 用」（计划三审 GLM-03）。
++
++## 4. 变异
++
++规格由 [`gen-mutation-spec.mjs`](./evidence/gateway-model-suffix-case-20261026/gen-mutation-spec.mjs) 生成：第一轮 21 条按新源码重生成（find 与 M4、M5b 替换串里的单位类同步为 `[kKmM]`，计划三审 GLM-01），M5a 删除，余 20 条；本轮新增 9 条。先用重打 bundle 的带超时逐条预跑（[`mutation-names-output.json`](./evidence/gateway-model-suffix-case-20261026/mutation-names-output.json)），再跑正式装置（[`mutation-output.txt`](./evidence/gateway-model-suffix-case-20261026/mutation-output.txt)）：**29 条全部咬住**，两次各条 fail 数逐条一致。
++
++| 方向 | 条目 | 咬住的格 |
++| :--- | :--- | :--- |
++| 去掉大写放行（过窄） | C1 单位回到 `[km]`；C1b 同，对集成；C1c 同，对 profile | S4、S14、S15、S16；E12；profile 大写格 |
++| 丢了小写（过窄） | C6 单位改 `[KM]` | S4、S10、S12～S14、S16 |
++| 单位任意字母（过宽） | C2 `[A-Za-z]`；C2b 同，对 profile | S11、S14、S16；profile 两格 |
++| 多个字母（过宽） | C3 `[kKmM]+` | S11（`[1mM]`） |
++| Unicode 折叠（过宽） | C4 `exec` 前加 `iu`（单点替换，计划三审 GLM-02） | S11（开尔文符号） |
++| 键名随之放宽（过宽） | C5 profile 整行正则 `exec` 前加 `i` | profile 大写格（小写键名） |
++| 第一轮 20 条 | M1～M16（不含 M5a） | 同第一轮，另多红 S15 / S16 / E12 若干格 |
++
++C4、C5 都改 `exec` 那一行而不碰正则构造：构造是以 `$` 加反引号收尾的模板串，改写它的替换串会撞 `String.replace` 的 `$` 特殊替换模式。
++
++## 5. 本机零配额验收（macOS，假 CLI）
++
++`git archive 1f8e8e87` 导出基线树（`node_modules` 软链、`--with-tests` 构建），与当前工作树各跑 [`accept-run.mjs`](./evidence/gateway-model-suffix-case-20261026/accept-run.mjs)（照第一轮那份改：网关 env 再加两个同值的大写后缀模型名键 `ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_SMALL_FAST_MODEL` 与不带后缀的 `*_SONNET_MODEL_NAME`——计划写的是 SONNET 与 SUBAGENT，SUBAGENT 已被第一轮占作不带后缀的键，换成 SMALL_FAST；加情形 `suffixU`；被测产物指纹改记 `claude-route.js`），[`accept-readout.mjs`](./evidence/gateway-model-suffix-case-20261026/accept-readout.mjs) 判读：**47 项全部通过**（[`accept-readout.txt`](./evidence/gateway-model-suffix-case-20261026/accept-readout.txt)）。
++
++| 情形 | 基线 `1f8e8e87` | 当前构建 |
++| :--- | :--- | :--- |
++| 未开启 × 五情形 | 缺省名、`envelope`、`model_flag` true | 归一化后全部输出、组装结果、探针结论、目录臂结论**逐项相同**（未开 `settings_env_source` 的机器 scrub 输出逐字不变） |
++| 开启 × default / model / cred / suffix（小写） | 第一轮的行为 | 逐项相同，回读、`model_flag`、回报与一致性相同 |
++| 开启 · `init.model` 取大写后缀键（suffixU） | 回读被吞：null + `unverified`，探针臂 `init.model` 为占位符，一致性 null，`model_flag` null | `gw-ev258-flash-02[1M]` + `envelope`；探针臂同名；`reported_models` 为不带后缀的名、一致性 **true**；`model_flag` false（所选 haiku ≠ 回读名） |
++| 凭据值（两侧全部 20 份输出） | 零命中 | 零命中 |
++
++## 6. Windows 验收清单与码点诊断
++
++新清单 [`windows-acceptance.md`](./evidence/gateway-model-suffix-case-20261026/windows-acceptance.md)，第 1 步换成 [`diag-suffix-codepoints.mjs`](./evidence/gateway-model-suffix-case-20261026/diag-suffix-codepoints.mjs)：首行自证构建（`stripContextWindowSuffix('x[1M]') === 'x'`）；凭据类键只打印长度；已豁免的模型名键打印原值与末尾方括号段码点；未豁免的模型名键前段只打印形状，末尾方括号段只有恰为「1～4 位 ASCII 数字 + 恰好一个 ASCII 字母」、整值无模式脱敏命中、不与任何非模型名键同值时才打印码点，否则只报长度与类别（计划三审 CODEX-01：长度上限挡不住可逆编码）。`--self-test` 用合成 env 核三类反例（误填进模型名键的短凭据、与凭据键同值的值、方括号里的长随机串）既不以原文也不以码点出现：本机 16 项全过（[`diag-self-test-macos.txt`](./evidence/gateway-model-suffix-case-20261026/diag-self-test-macos.txt)）。期望表不再写死具体串，第 2、3 步的模型名一律「逐字等于第 1 步打印值」，第 3 步再打印一次 `model_effective` 后缀码点对照。全程输出写到 `%TEMP%\ev258b`，落文件 `Out-File -Encoding utf8`、读文件 `-Encoding UTF8`。动用凭据、花配额，由用户在 Windows 上执行，结果回填 §8。
++
++## 7. 全量与双审读数
++
++代码审之前，`npm run check` 前台串行两次（开跑前确认无残留 `node --test`）：
++
++| 次 | 用例 | 过 | 红 | 跳过 | 退出码 | 耗时 |
++| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
++| 1 | 4013 | 4003 | 0 | 10 | 0 | 351 s |
++| 2 | 4013 | 4003 | 0 | 10 | 0 | 340 s |
++
++用例数对第一轮收口读数 4009 净增 4：单测 S15、S16，profile 大写格，集成 E12（S11、S14 与第一轮 profile 后缀格在原用例里改）。
++
++- 计划三审 1 轮（run `20261026T145019Z`）：codex、glm 修改后通过，gemini 通过零意见；4 条全接受（CODEX-01 码点诊断只对白名单形态打印、GLM-01 M5b 替换串同步、GLM-02 C4 改单点替换、GLM-03 集成头注），合入 r2。
++- 代码三审：（待填）
++- S10 `trivium verify`：（待填）
++
++## 8. 已知边界
++
++- **形似模型名的短段凭据加一个合法后缀**（现在含大写单位）与不加后缀时同样放行——EV-257 剩余边界的延伸，本轮只多了单位大小写这一位，不新开口子。
++- **只认 ASCII 的 k / K / m / M**：开尔文符号、全角字母等不认，fail-closed。
++- **第一轮报告里其余小写措辞**（§2、§3 举例用 `[1m]`）是当时的事实陈述，不改原文；§2 那句「大写或其它单位」加了指向本报告的注。
++
++## 9. Windows 真实网关验收
++
++待用户执行（见 §6）。
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-cred.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-cred.json
+new file mode 100644
+index 00000000..46b0e04d
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-cred.json
+@@ -0,0 +1,39 @@
++{
++  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/289eab05-1ee2-41aa-a85b-3475b53787c2/scratchpad/base",
++  "mode": "off",
++  "scenario": "cred",
++  "route_sha256": "3613ea0ccae33804da348f7e2a9f331dc0ef6f2121a55f4668ec93e67849ce88",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [],
++  "normalized_sha256": {
++    "texts": "80906db51bf29357470644dea991017dbf9cefe0bf5ec14cfe3fefa40d1de605",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "369927a5845ba3e9d963f6da7813f77fa59646810fc792bb51bdb7011c5678dc"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-default.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-default.json
+new file mode 100644
+index 00000000..f8c84528
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-default.json
+@@ -0,0 +1,39 @@
++{
++  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/289eab05-1ee2-41aa-a85b-3475b53787c2/scratchpad/base",
++  "mode": "off",
++  "scenario": "default",
++  "route_sha256": "3613ea0ccae33804da348f7e2a9f331dc0ef6f2121a55f4668ec93e67849ce88",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [],
++  "normalized_sha256": {
++    "texts": "80906db51bf29357470644dea991017dbf9cefe0bf5ec14cfe3fefa40d1de605",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "369927a5845ba3e9d963f6da7813f77fa59646810fc792bb51bdb7011c5678dc"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-model.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-model.json
+new file mode 100644
+index 00000000..440cc5bb
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-model.json
+@@ -0,0 +1,39 @@
++{
++  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/289eab05-1ee2-41aa-a85b-3475b53787c2/scratchpad/base",
++  "mode": "off",
++  "scenario": "model",
++  "route_sha256": "3613ea0ccae33804da348f7e2a9f331dc0ef6f2121a55f4668ec93e67849ce88",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [],
++  "normalized_sha256": {
++    "texts": "80906db51bf29357470644dea991017dbf9cefe0bf5ec14cfe3fefa40d1de605",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "369927a5845ba3e9d963f6da7813f77fa59646810fc792bb51bdb7011c5678dc"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-suffix.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-suffix.json
+new file mode 100644
+index 00000000..f28433e8
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-suffix.json
+@@ -0,0 +1,39 @@
++{
++  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/289eab05-1ee2-41aa-a85b-3475b53787c2/scratchpad/base",
++  "mode": "off",
++  "scenario": "suffix",
++  "route_sha256": "3613ea0ccae33804da348f7e2a9f331dc0ef6f2121a55f4668ec93e67849ce88",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [],
++  "normalized_sha256": {
++    "texts": "80906db51bf29357470644dea991017dbf9cefe0bf5ec14cfe3fefa40d1de605",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "369927a5845ba3e9d963f6da7813f77fa59646810fc792bb51bdb7011c5678dc"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-suffixU.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-suffixU.json
+new file mode 100644
+index 00000000..51ea69c8
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-off-suffixU.json
+@@ -0,0 +1,39 @@
++{
++  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/289eab05-1ee2-41aa-a85b-3475b53787c2/scratchpad/base",
++  "mode": "off",
++  "scenario": "suffixU",
++  "route_sha256": "3613ea0ccae33804da348f7e2a9f331dc0ef6f2121a55f4668ec93e67849ce88",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [],
++  "normalized_sha256": {
++    "texts": "80906db51bf29357470644dea991017dbf9cefe0bf5ec14cfe3fefa40d1de605",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "369927a5845ba3e9d963f6da7813f77fa59646810fc792bb51bdb7011c5678dc"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-cred.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-cred.json
+new file mode 100644
+index 00000000..062cb4c9
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-cred.json
+@@ -0,0 +1,46 @@
++{
++  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/289eab05-1ee2-41aa-a85b-3475b53787c2/scratchpad/base",
++  "mode": "on",
++  "scenario": "cred",
++  "route_sha256": "3613ea0ccae33804da348f7e2a9f331dc0ef6f2121a55f4668ec93e67849ce88",
++  "readback": {
++    "model_effective": null,
++    "model_effective_source": "unverified"
++  },
++  "arm_init_model": "<redacted-env>",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": null,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [
++    "review_stdout",
++    "review_stderr",
++    "auth_stdout",
++    "auth_stderr",
++    "arm_raw",
++    "arm_stderr"
++  ],
++  "normalized_sha256": {
++    "texts": "71b89523dc23e547398ae8cac0940bb527a6053c802fdef17b6d86a2815b73d5",
++    "result": "2fdd4b3574ee73417d1d912442375407da83245fbef22d4dad147c59fde36dfb",
++    "probe": "6ac40c1a4d415db4f430ea112a4437ef2c6b2300fab6c93bbc99b0a0a145973a",
++    "directory": "741bb308c8de9b29fe4785e6aac910d60e4d13739d21b43010939594ced432d5"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-default.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-default.json
+new file mode 100644
+index 00000000..9fff41eb
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-default.json
+@@ -0,0 +1,46 @@
++{
++  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/289eab05-1ee2-41aa-a85b-3475b53787c2/scratchpad/base",
++  "mode": "on",
++  "scenario": "default",
++  "route_sha256": "3613ea0ccae33804da348f7e2a9f331dc0ef6f2121a55f4668ec93e67849ce88",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [
++    "review_stdout",
++    "review_stderr",
++    "auth_stdout",
++    "auth_stderr",
++    "arm_raw",
++    "arm_stderr"
++  ],
++  "normalized_sha256": {
++    "texts": "c8771b4074eb408ad0fb3259f82f250099b1aa33508a028dc43ece14f12d1754",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "ed38b78ba54b4a15a9a626533bbe236e26db013f34e985b98ea8561447ae6647"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-model.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-model.json
+new file mode 100644
+index 00000000..34387c4b
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-model.json
+@@ -0,0 +1,52 @@
++{
++  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/289eab05-1ee2-41aa-a85b-3475b53787c2/scratchpad/base",
++  "mode": "on",
++  "scenario": "model",
++  "route_sha256": "3613ea0ccae33804da348f7e2a9f331dc0ef6f2121a55f4668ec93e67849ce88",
++  "readback": {
++    "model_effective": "gw-ev257-model-01",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "gw-ev257-model-01",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": false,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [
++      "ANTHROPIC_MODEL"
++    ],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [
++      "ANTHROPIC_MODEL"
++    ],
++    "auth_stderr": [],
++    "arm_raw": [
++      "ANTHROPIC_MODEL"
++    ],
++    "arm_stderr": []
++  },
++  "placeholder_in": [
++    "review_stdout",
++    "review_stderr",
++    "auth_stdout",
++    "auth_stderr",
++    "arm_raw",
++    "arm_stderr"
++  ],
++  "normalized_sha256": {
++    "texts": "f8e3739cd2446da94c462f8f0148ca128fe0ecad55ec527f8724333aac5b803a",
++    "result": "9af93eb5dcb4cd077f6b262e6bf5bf7311e16a9dc078f81d12b857bc736211e1",
++    "probe": "3f767043c46202be412e466769e3641c9b7e830d9caaa46592877208028ce0ba",
++    "directory": "a62426b9b2cef67997e420597163ba13900f6fab6056635e70061576563b58db"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-suffix.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-suffix.json
+new file mode 100644
+index 00000000..0b7235d9
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-suffix.json
+@@ -0,0 +1,60 @@
++{
++  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/289eab05-1ee2-41aa-a85b-3475b53787c2/scratchpad/base",
++  "mode": "on",
++  "scenario": "suffix",
++  "route_sha256": "3613ea0ccae33804da348f7e2a9f331dc0ef6f2121a55f4668ec93e67849ce88",
++  "readback": {
++    "model_effective": "gw-ev258-max-01[1m]",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "gw-ev258-max-01[1m]",
++  "reported_models": [
++    "gw-ev258-max-01"
++  ],
++  "consistency": true,
++  "model_flag": false,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [
++      "ANTHROPIC_DEFAULT_OPUS_MODEL",
++      "ANTHROPIC_DEFAULT_FABLE_MODEL",
++      "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"
++    ],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [
++      "ANTHROPIC_DEFAULT_OPUS_MODEL",
++      "ANTHROPIC_DEFAULT_FABLE_MODEL",
++      "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"
++    ],
++    "auth_stderr": [],
++    "arm_raw": [
++      "ANTHROPIC_DEFAULT_OPUS_MODEL",
++      "ANTHROPIC_DEFAULT_FABLE_MODEL",
++      "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"
++    ],
++    "arm_stderr": []
++  },
++  "placeholder_in": [
++    "review_stdout",
++    "review_stderr",
++    "auth_stdout",
++    "auth_stderr",
++    "arm_raw",
++    "arm_stderr"
++  ],
++  "normalized_sha256": {
++    "texts": "5285aaf2a4f498a2025bf9f9eff1a7d0c18e9575f29e508cdea0bcfc6bf39142",
++    "result": "f5fd63541fd134a3b6a48d1236c75e33bf95ca9211cf524bc56249d615c411ae",
++    "probe": "3f767043c46202be412e466769e3641c9b7e830d9caaa46592877208028ce0ba",
++    "directory": "31e21f9289d5e7ef3376b7d726d755a1b214de5a919d954bdd8771600a0013fe"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-suffixU.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-suffixU.json
+new file mode 100644
+index 00000000..232afec6
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-base-on-suffixU.json
+@@ -0,0 +1,54 @@
++{
++  "tree": "/private/tmp/claude-501/-Users-chenzhenbo-Work-TriviumCode/289eab05-1ee2-41aa-a85b-3475b53787c2/scratchpad/base",
++  "mode": "on",
++  "scenario": "suffixU",
++  "route_sha256": "3613ea0ccae33804da348f7e2a9f331dc0ef6f2121a55f4668ec93e67849ce88",
++  "readback": {
++    "model_effective": null,
++    "model_effective_source": "unverified"
++  },
++  "arm_init_model": "<redacted-env>",
++  "reported_models": [
++    "gw-ev258-flash-02"
++  ],
++  "consistency": null,
++  "model_flag": null,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [
++      "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"
++    ],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [
++      "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"
++    ],
++    "auth_stderr": [],
++    "arm_raw": [
++      "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"
++    ],
++    "arm_stderr": []
++  },
++  "placeholder_in": [
++    "review_stdout",
++    "review_stderr",
++    "auth_stdout",
++    "auth_stderr",
++    "arm_raw",
++    "arm_stderr"
++  ],
++  "normalized_sha256": {
++    "texts": "fd8cb46c4a21b6746cebd9ed01c5229cb7ddb54377a1be0787334a0fa334a43b",
++    "result": "2fdd4b3574ee73417d1d912442375407da83245fbef22d4dad147c59fde36dfb",
++    "probe": "6ac40c1a4d415db4f430ea112a4437ef2c6b2300fab6c93bbc99b0a0a145973a",
++    "directory": "cd59c567a6130b9eabe20348e4ee7aba767fcad5b889a8a940a1d2316bdaf3d9"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-cred.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-cred.json
+new file mode 100644
+index 00000000..bf970cef
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-cred.json
+@@ -0,0 +1,39 @@
++{
++  "tree": "/Users/chenzhenbo/Work/TriviumCode",
++  "mode": "off",
++  "scenario": "cred",
++  "route_sha256": "cf86f55dec1336f93193c05ff5d79704ecde2b3ef268587ebcfca5fc375338c0",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [],
++  "normalized_sha256": {
++    "texts": "80906db51bf29357470644dea991017dbf9cefe0bf5ec14cfe3fefa40d1de605",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "369927a5845ba3e9d963f6da7813f77fa59646810fc792bb51bdb7011c5678dc"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-default.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-default.json
+new file mode 100644
+index 00000000..207b59a4
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-default.json
+@@ -0,0 +1,39 @@
++{
++  "tree": "/Users/chenzhenbo/Work/TriviumCode",
++  "mode": "off",
++  "scenario": "default",
++  "route_sha256": "cf86f55dec1336f93193c05ff5d79704ecde2b3ef268587ebcfca5fc375338c0",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [],
++  "normalized_sha256": {
++    "texts": "80906db51bf29357470644dea991017dbf9cefe0bf5ec14cfe3fefa40d1de605",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "369927a5845ba3e9d963f6da7813f77fa59646810fc792bb51bdb7011c5678dc"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-model.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-model.json
+new file mode 100644
+index 00000000..e97ab61d
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-model.json
+@@ -0,0 +1,39 @@
++{
++  "tree": "/Users/chenzhenbo/Work/TriviumCode",
++  "mode": "off",
++  "scenario": "model",
++  "route_sha256": "cf86f55dec1336f93193c05ff5d79704ecde2b3ef268587ebcfca5fc375338c0",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [],
++  "normalized_sha256": {
++    "texts": "80906db51bf29357470644dea991017dbf9cefe0bf5ec14cfe3fefa40d1de605",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "369927a5845ba3e9d963f6da7813f77fa59646810fc792bb51bdb7011c5678dc"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-suffix.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-suffix.json
+new file mode 100644
+index 00000000..0aee6678
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-suffix.json
+@@ -0,0 +1,39 @@
++{
++  "tree": "/Users/chenzhenbo/Work/TriviumCode",
++  "mode": "off",
++  "scenario": "suffix",
++  "route_sha256": "cf86f55dec1336f93193c05ff5d79704ecde2b3ef268587ebcfca5fc375338c0",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [],
++  "normalized_sha256": {
++    "texts": "80906db51bf29357470644dea991017dbf9cefe0bf5ec14cfe3fefa40d1de605",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "369927a5845ba3e9d963f6da7813f77fa59646810fc792bb51bdb7011c5678dc"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-suffixU.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-suffixU.json
+new file mode 100644
+index 00000000..7a38b8f6
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-off-suffixU.json
+@@ -0,0 +1,39 @@
++{
++  "tree": "/Users/chenzhenbo/Work/TriviumCode",
++  "mode": "off",
++  "scenario": "suffixU",
++  "route_sha256": "cf86f55dec1336f93193c05ff5d79704ecde2b3ef268587ebcfca5fc375338c0",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [],
++  "normalized_sha256": {
++    "texts": "80906db51bf29357470644dea991017dbf9cefe0bf5ec14cfe3fefa40d1de605",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "369927a5845ba3e9d963f6da7813f77fa59646810fc792bb51bdb7011c5678dc"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-cred.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-cred.json
+new file mode 100644
+index 00000000..0d3c8215
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-cred.json
+@@ -0,0 +1,46 @@
++{
++  "tree": "/Users/chenzhenbo/Work/TriviumCode",
++  "mode": "on",
++  "scenario": "cred",
++  "route_sha256": "cf86f55dec1336f93193c05ff5d79704ecde2b3ef268587ebcfca5fc375338c0",
++  "readback": {
++    "model_effective": null,
++    "model_effective_source": "unverified"
++  },
++  "arm_init_model": "<redacted-env>",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": null,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [
++    "review_stdout",
++    "review_stderr",
++    "auth_stdout",
++    "auth_stderr",
++    "arm_raw",
++    "arm_stderr"
++  ],
++  "normalized_sha256": {
++    "texts": "71b89523dc23e547398ae8cac0940bb527a6053c802fdef17b6d86a2815b73d5",
++    "result": "2fdd4b3574ee73417d1d912442375407da83245fbef22d4dad147c59fde36dfb",
++    "probe": "6ac40c1a4d415db4f430ea112a4437ef2c6b2300fab6c93bbc99b0a0a145973a",
++    "directory": "741bb308c8de9b29fe4785e6aac910d60e4d13739d21b43010939594ced432d5"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-default.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-default.json
+new file mode 100644
+index 00000000..726acfbd
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-default.json
+@@ -0,0 +1,46 @@
++{
++  "tree": "/Users/chenzhenbo/Work/TriviumCode",
++  "mode": "on",
++  "scenario": "default",
++  "route_sha256": "cf86f55dec1336f93193c05ff5d79704ecde2b3ef268587ebcfca5fc375338c0",
++  "readback": {
++    "model_effective": "claude-haiku-4-5-20251001",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "claude-haiku-4-5-20251001",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": true,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "placeholder_in": [
++    "review_stdout",
++    "review_stderr",
++    "auth_stdout",
++    "auth_stderr",
++    "arm_raw",
++    "arm_stderr"
++  ],
++  "normalized_sha256": {
++    "texts": "c8771b4074eb408ad0fb3259f82f250099b1aa33508a028dc43ece14f12d1754",
++    "result": "442ea3a10a39cf6efb458d20951bba1baa7072b0041932f5daa7b64070b89f23",
++    "probe": "3d27261c7b07e9f04353d40fd581b510a78958f4f358d8c4c17826e85b354b0d",
++    "directory": "ed38b78ba54b4a15a9a626533bbe236e26db013f34e985b98ea8561447ae6647"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-model.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-model.json
+new file mode 100644
+index 00000000..28f59d50
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-model.json
+@@ -0,0 +1,52 @@
++{
++  "tree": "/Users/chenzhenbo/Work/TriviumCode",
++  "mode": "on",
++  "scenario": "model",
++  "route_sha256": "cf86f55dec1336f93193c05ff5d79704ecde2b3ef268587ebcfca5fc375338c0",
++  "readback": {
++    "model_effective": "gw-ev257-model-01",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "gw-ev257-model-01",
++  "reported_models": [],
++  "consistency": null,
++  "model_flag": false,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [
++      "ANTHROPIC_MODEL"
++    ],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [
++      "ANTHROPIC_MODEL"
++    ],
++    "auth_stderr": [],
++    "arm_raw": [
++      "ANTHROPIC_MODEL"
++    ],
++    "arm_stderr": []
++  },
++  "placeholder_in": [
++    "review_stdout",
++    "review_stderr",
++    "auth_stdout",
++    "auth_stderr",
++    "arm_raw",
++    "arm_stderr"
++  ],
++  "normalized_sha256": {
++    "texts": "f8e3739cd2446da94c462f8f0148ca128fe0ecad55ec527f8724333aac5b803a",
++    "result": "9af93eb5dcb4cd077f6b262e6bf5bf7311e16a9dc078f81d12b857bc736211e1",
++    "probe": "3f767043c46202be412e466769e3641c9b7e830d9caaa46592877208028ce0ba",
++    "directory": "a62426b9b2cef67997e420597163ba13900f6fab6056635e70061576563b58db"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-suffix.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-suffix.json
+new file mode 100644
+index 00000000..3f7580db
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-suffix.json
+@@ -0,0 +1,60 @@
++{
++  "tree": "/Users/chenzhenbo/Work/TriviumCode",
++  "mode": "on",
++  "scenario": "suffix",
++  "route_sha256": "cf86f55dec1336f93193c05ff5d79704ecde2b3ef268587ebcfca5fc375338c0",
++  "readback": {
++    "model_effective": "gw-ev258-max-01[1m]",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "gw-ev258-max-01[1m]",
++  "reported_models": [
++    "gw-ev258-max-01"
++  ],
++  "consistency": true,
++  "model_flag": false,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [
++      "ANTHROPIC_DEFAULT_OPUS_MODEL",
++      "ANTHROPIC_DEFAULT_FABLE_MODEL",
++      "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"
++    ],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [
++      "ANTHROPIC_DEFAULT_OPUS_MODEL",
++      "ANTHROPIC_DEFAULT_FABLE_MODEL",
++      "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"
++    ],
++    "auth_stderr": [],
++    "arm_raw": [
++      "ANTHROPIC_DEFAULT_OPUS_MODEL",
++      "ANTHROPIC_DEFAULT_FABLE_MODEL",
++      "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"
++    ],
++    "arm_stderr": []
++  },
++  "placeholder_in": [
++    "review_stdout",
++    "review_stderr",
++    "auth_stdout",
++    "auth_stderr",
++    "arm_raw",
++    "arm_stderr"
++  ],
++  "normalized_sha256": {
++    "texts": "5285aaf2a4f498a2025bf9f9eff1a7d0c18e9575f29e508cdea0bcfc6bf39142",
++    "result": "f5fd63541fd134a3b6a48d1236c75e33bf95ca9211cf524bc56249d615c411ae",
++    "probe": "3f767043c46202be412e466769e3641c9b7e830d9caaa46592877208028ce0ba",
++    "directory": "31e21f9289d5e7ef3376b7d726d755a1b214de5a919d954bdd8771600a0013fe"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-suffixU.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-suffixU.json
+new file mode 100644
+index 00000000..307ce85b
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-new-on-suffixU.json
+@@ -0,0 +1,60 @@
++{
++  "tree": "/Users/chenzhenbo/Work/TriviumCode",
++  "mode": "on",
++  "scenario": "suffixU",
++  "route_sha256": "cf86f55dec1336f93193c05ff5d79704ecde2b3ef268587ebcfca5fc375338c0",
++  "readback": {
++    "model_effective": "gw-ev258-flash-02[1M]",
++    "model_effective_source": "envelope"
++  },
++  "arm_init_model": "gw-ev258-flash-02[1M]",
++  "reported_models": [
++    "gw-ev258-flash-02"
++  ],
++  "consistency": true,
++  "model_flag": false,
++  "credential_hits": {
++    "review_stdout": [],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [],
++    "auth_stderr": [],
++    "arm_raw": [],
++    "arm_stderr": []
++  },
++  "model_key_hits": {
++    "review_stdout": [
++      "ANTHROPIC_DEFAULT_SONNET_MODEL",
++      "ANTHROPIC_SMALL_FAST_MODEL",
++      "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"
++    ],
++    "review_stderr": [],
++    "review_commandLine": [],
++    "auth_stdout": [
++      "ANTHROPIC_DEFAULT_SONNET_MODEL",
++      "ANTHROPIC_SMALL_FAST_MODEL",
++      "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"
++    ],
++    "auth_stderr": [],
++    "arm_raw": [
++      "ANTHROPIC_DEFAULT_SONNET_MODEL",
++      "ANTHROPIC_SMALL_FAST_MODEL",
++      "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"
++    ],
++    "arm_stderr": []
++  },
++  "placeholder_in": [
++    "review_stdout",
++    "review_stderr",
++    "auth_stdout",
++    "auth_stderr",
++    "arm_raw",
++    "arm_stderr"
++  ],
++  "normalized_sha256": {
++    "texts": "32cf5e36baffc8e58137ffff729de0449aa1da52852f9f980c407a6b0f5e5adf",
++    "result": "06715bf4ffa286758766d6cce6950a61262345bd8b513d3b9c7231e6bfa9ef5b",
++    "probe": "3f767043c46202be412e466769e3641c9b7e830d9caaa46592877208028ce0ba",
++    "directory": "6482aba44ed9ccc36401ab41e077d33189e1d6d0acd049b9dbc3433354ee7dd4"
++  }
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.mjs b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.mjs
+new file mode 100644
+index 00000000..600b34d7
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.mjs
+@@ -0,0 +1,65 @@
++// EV-258 第二轮零配额验收的判读半边（计划 r2 §6.1）：读 accept-run.mjs 产出的 20 份 JSON（两棵树 × 两态 × 五情形），逐条判定并打印。
++// 照第一轮 evidence/gateway-model-suffix-20261026/accept-readout.mjs 改：加情形 suffixU；被测产物比 claude-route.js；
++// 开启时不带大写后缀的四情形新旧逐项相同，suffixU 基线复现缺陷、新构建回读带 [1M] 的名且一致性 true。
++// 用法（仓库根）：node doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.mjs
++import fs from 'node:fs';
++import { isDeepStrictEqual } from 'node:util';
++
++const DIR = 'doc/05_testing/evidence/gateway-model-suffix-case-20261026';
++const SCENARIOS = ['default', 'model', 'cred', 'suffix', 'suffixU'];
++const load = (t, m, s) => JSON.parse(fs.readFileSync(`${DIR}/accept-${t}-${m}-${s}.json`, 'utf8'));
++const checks = [];
++const check = (name, ok, detail = '') => checks.push({ name, ok, detail });
++
++{
++  const a = load('base', 'off', 'default'), b = load('new', 'off', 'default');
++  check('两侧被测产物不同（adapters/claude-route.js sha256）', a.route_sha256 !== b.route_sha256,
++    `${a.route_sha256.slice(0, 12)} / ${b.route_sha256.slice(0, 12)}`);
++}
++
++for (const m of ['off', 'on']) for (const s of SCENARIOS) for (const t of ['base', 'new']) {
++  const r = load(t, m, s);
++  const leaked = Object.entries(r.credential_hits).filter(([, ks]) => ks.length > 0);
++  check(`${t}/${m}/${s}：凭据键的值在全部输出里零命中`, leaked.length === 0, JSON.stringify(leaked));
++}
++
++// 未开启：五种情形新旧逐项相同（未开 settings_env_source 的机器 scrub 输出逐字不变；回读与 model_flag 不变）
++for (const s of SCENARIOS) {
++  const a = load('base', 'off', s), b = load('new', 'off', s);
++  check(`off/${s}：新旧归一化输出逐项相同`, isDeepStrictEqual(a.normalized_sha256, b.normalized_sha256));
++  check(`off/${s}：回读与 model_flag 新旧相同`, isDeepStrictEqual([a.readback, a.model_flag], [b.readback, b.model_flag]),
++    JSON.stringify([b.readback, b.model_flag]));
++}
++// 开启、init.model 不带大写后缀的四种情形（含第一轮的小写 suffix）：本轮不该有任何影响，新旧逐项相同
++for (const s of ['default', 'model', 'cred', 'suffix']) {
++  const a = load('base', 'on', s), b = load('new', 'on', s);
++  check(`on/${s}：新旧归一化输出逐项相同`, isDeepStrictEqual(a.normalized_sha256, b.normalized_sha256));
++  check(`on/${s}：回读、model_flag、回报与一致性新旧相同`,
++    isDeepStrictEqual([a.readback, a.model_flag, a.reported_models, a.consistency], [b.readback, b.model_flag, b.reported_models, b.consistency]),
++    JSON.stringify([b.readback, b.model_flag, b.consistency]));
++}
++// 开启、init.model 取大写后缀键：基线被吞（兜底记 null + unverified），新构建记带 [1M] 的名 + envelope、与回报一致
++{
++  const a = load('base', 'on', 'suffixU'), b = load('new', 'on', 'suffixU');
++  const real = 'gw-ev258-flash-02[1M]';
++  check('on/suffixU 基线：复现缺陷（回读被吞，兜底记 null + unverified）',
++    a.readback.model_effective === null && a.readback.model_effective_source === 'unverified', JSON.stringify(a.readback));
++  check('on/suffixU 基线：探针臂 init.model 是占位符', a.arm_init_model === '<redacted-env>', String(a.arm_init_model));
++  check('on/suffixU 新构建：记带大写后缀的模型名、来源 envelope',
++    b.readback.model_effective === real && b.readback.model_effective_source === 'envelope', JSON.stringify(b.readback));
++  check('on/suffixU 新构建：探针臂 init.model 为带大写后缀的模型名', b.arm_init_model === real, String(b.arm_init_model));
++  check('on/suffixU 新构建：回显的凭据值仍以占位符出现',
++    ['review_stdout', 'review_stderr', 'arm_raw', 'arm_stderr'].every((n) => b.placeholder_in.includes(n)), b.placeholder_in.join(','));
++  check('on/suffixU 新构建：服务端回报名收进留痕、判为一致',
++    isDeepStrictEqual(b.reported_models, ['gw-ev258-flash-02']) && b.consistency === true,
++    `${JSON.stringify(b.reported_models)} / ${b.consistency}`);
++  check('on/suffixU：一致性旧 null（回读被吞、没法比）、新 true', a.consistency === null && b.consistency === true,
++    `${a.consistency} / ${b.consistency}`);
++  check('on/suffixU：model_flag 旧 null（没核对成）、新 false（所选 haiku ≠ 回读名，核对不符）', a.model_flag === null && b.model_flag === false,
++    `${a.model_flag} / ${b.model_flag}`);
++}
++
++for (const c of checks) console.log(`${c.ok ? '✓' : '✗'} ${c.name}${c.detail ? `  ${c.detail}` : ''}`);
++const bad = checks.filter((c) => !c.ok).length;
++console.log(`\n${checks.length} 项，${bad === 0 ? '全部通过' : `${bad} 项不通过`}`);
++process.exit(bad === 0 ? 0 : 1);
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.txt b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.txt
+new file mode 100644
+index 00000000..06e0267a
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-readout.txt
+@@ -0,0 +1,49 @@
++✓ 两侧被测产物不同（adapters/claude-route.js sha256）  3613ea0ccae3 / cf86f55dec13
++✓ base/off/default：凭据键的值在全部输出里零命中  []
++✓ new/off/default：凭据键的值在全部输出里零命中  []
++✓ base/off/model：凭据键的值在全部输出里零命中  []
++✓ new/off/model：凭据键的值在全部输出里零命中  []
++✓ base/off/cred：凭据键的值在全部输出里零命中  []
++✓ new/off/cred：凭据键的值在全部输出里零命中  []
++✓ base/off/suffix：凭据键的值在全部输出里零命中  []
++✓ new/off/suffix：凭据键的值在全部输出里零命中  []
++✓ base/off/suffixU：凭据键的值在全部输出里零命中  []
++✓ new/off/suffixU：凭据键的值在全部输出里零命中  []
++✓ base/on/default：凭据键的值在全部输出里零命中  []
++✓ new/on/default：凭据键的值在全部输出里零命中  []
++✓ base/on/model：凭据键的值在全部输出里零命中  []
++✓ new/on/model：凭据键的值在全部输出里零命中  []
++✓ base/on/cred：凭据键的值在全部输出里零命中  []
++✓ new/on/cred：凭据键的值在全部输出里零命中  []
++✓ base/on/suffix：凭据键的值在全部输出里零命中  []
++✓ new/on/suffix：凭据键的值在全部输出里零命中  []
++✓ base/on/suffixU：凭据键的值在全部输出里零命中  []
++✓ new/on/suffixU：凭据键的值在全部输出里零命中  []
++✓ off/default：新旧归一化输出逐项相同
++✓ off/default：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
++✓ off/model：新旧归一化输出逐项相同
++✓ off/model：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
++✓ off/cred：新旧归一化输出逐项相同
++✓ off/cred：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
++✓ off/suffix：新旧归一化输出逐项相同
++✓ off/suffix：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
++✓ off/suffixU：新旧归一化输出逐项相同
++✓ off/suffixU：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
++✓ on/default：新旧归一化输出逐项相同
++✓ on/default：回读、model_flag、回报与一致性新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true,null]
++✓ on/model：新旧归一化输出逐项相同
++✓ on/model：回读、model_flag、回报与一致性新旧相同  [{"model_effective":"gw-ev257-model-01","model_effective_source":"envelope"},false,null]
++✓ on/cred：新旧归一化输出逐项相同
++✓ on/cred：回读、model_flag、回报与一致性新旧相同  [{"model_effective":null,"model_effective_source":"unverified"},null,null]
++✓ on/suffix：新旧归一化输出逐项相同
++✓ on/suffix：回读、model_flag、回报与一致性新旧相同  [{"model_effective":"gw-ev258-max-01[1m]","model_effective_source":"envelope"},false,true]
++✓ on/suffixU 基线：复现缺陷（回读被吞，兜底记 null + unverified）  {"model_effective":null,"model_effective_source":"unverified"}
++✓ on/suffixU 基线：探针臂 init.model 是占位符  <redacted-env>
++✓ on/suffixU 新构建：记带大写后缀的模型名、来源 envelope  {"model_effective":"gw-ev258-flash-02[1M]","model_effective_source":"envelope"}
++✓ on/suffixU 新构建：探针臂 init.model 为带大写后缀的模型名  gw-ev258-flash-02[1M]
++✓ on/suffixU 新构建：回显的凭据值仍以占位符出现  review_stdout,review_stderr,auth_stdout,auth_stderr,arm_raw,arm_stderr
++✓ on/suffixU 新构建：服务端回报名收进留痕、判为一致  ["gw-ev258-flash-02"] / true
++✓ on/suffixU：一致性旧 null（回读被吞、没法比）、新 true  null / true
++✓ on/suffixU：model_flag 旧 null（没核对成）、新 false（所选 haiku ≠ 回读名，核对不符）  null / false
++
++47 项，全部通过
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-run-log.txt b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-run-log.txt
+new file mode 100644
+index 00000000..48c9a310
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-run-log.txt
+@@ -0,0 +1,20 @@
++off/default：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++off/model：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++off/cred：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++off/suffix：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++off/suffixU：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++on/default：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++on/model：model_effective=gw-ev257-model-01 source=envelope model_flag=false reported=[] consistency=null
++on/cred：model_effective=null source=unverified model_flag=null reported=[] consistency=null
++on/suffix：model_effective=gw-ev258-max-01[1m] source=envelope model_flag=false reported=["gw-ev258-max-01"] consistency=true
++on/suffixU：model_effective=null source=unverified model_flag=null reported=["gw-ev258-flash-02"] consistency=null
++off/default：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++off/model：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++off/cred：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++off/suffix：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++off/suffixU：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++on/default：model_effective=claude-haiku-4-5-20251001 source=envelope model_flag=true reported=[] consistency=null
++on/model：model_effective=gw-ev257-model-01 source=envelope model_flag=false reported=[] consistency=null
++on/cred：model_effective=null source=unverified model_flag=null reported=[] consistency=null
++on/suffix：model_effective=gw-ev258-max-01[1m] source=envelope model_flag=false reported=["gw-ev258-max-01"] consistency=true
++on/suffixU：model_effective=gw-ev258-flash-02[1M] source=envelope model_flag=false reported=["gw-ev258-flash-02"] consistency=true
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-run.mjs b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-run.mjs
+new file mode 100644
+index 00000000..21a1ad72
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/accept-run.mjs
+@@ -0,0 +1,138 @@
++// EV-258 第二轮零配额验收的执行半边（计划 r2 §6.1）：照第一轮 evidence/gateway-model-suffix-20261026/accept-run.mjs 改。
++// 对一棵已构建的树（基线 `1f8e8e87`，即第一轮修法；或当前工作树）用假 CLI 跑审查调用、探活、探针（execArgv 一臂 +
++// probeClaude 全量）、目录臂四组，记下输出（归一化后）与回读结论。
++// 相对第一轮版只改三处：网关 env 再加两个同值的大写后缀模型名键（ANTHROPIC_DEFAULT_SONNET_MODEL、ANTHROPIC_SMALL_FAST_MODEL，
++// 计划写的是 SONNET 与 SUBAGENT，SUBAGENT 已被第一轮占作不带后缀的键，换成 SMALL_FAST）与不带后缀的 *_SONNET_MODEL_NAME；
++// 加情形 suffixU（init.model 取大写后缀键，message.model 取不带后缀的键）；被测产物指纹改记 adapters/claude-route.js（本轮改的模块）。
++// 装置与 test/integration/claude-gateway-env.test.ts 同口径：宿主前缀变量全部摘下、家目录钉到临时目录、
++// 父进程放两个合成键；值全是假值，宿主真实凭据不进子进程、不进记录。
++// 情形：default（init.model 恒为缺省名）、model（取 ANTHROPIC_MODEL 的值）、cred（取 ANTHROPIC_AUTH_TOKEN 的值）、
++// suffix（取 ANTHROPIC_DEFAULT_OPUS_MODEL 的小写后缀值，message.model 取 ANTHROPIC_DEFAULT_OPUS_MODEL_NAME）、
++// suffixU（取 ANTHROPIC_DEFAULT_SONNET_MODEL 的大写后缀值，message.model 取 ANTHROPIC_DEFAULT_SONNET_MODEL_NAME）。
++// 归一化输出只记分段 sha256（全文约 90 KB × 12 份，进送审补丁太重）；判读按哈希比相等。
++// 用法：node accept-run.mjs 〈树根〉 on|off default|model|cred|suffix|suffixU 〈输出 JSON〉
++import path from 'node:path';
++import fs from 'node:fs';
++import os from 'node:os';
++import { createHash } from 'node:crypto';
++import { pathToFileURL } from 'node:url';
++
++const [tree, mode, scenario, outFile] = process.argv.slice(2);
++const mod = (p) => import(pathToFileURL(path.join(tree, 'dist/test/src/trivium', p)).href);
++const { defaultConfig, resolveReviewSchemaPath } = await mod('config.js');
++const { probeClaude, withClaudeProbeRoute, execArgv, probeArgs, READONLY_INVARIANTS } = await mod('probes/claude.js');
++const { probeClaudeDirectories } = await mod('probes/claude-directory.js');
++const { buildDenySettings, buildClaudeResult, denyRuleShapeOf, invokeClaude, readonlyToolsFromProbe } = await mod('adapters/claude.js');
++const traceMod = await mod('adapters/claude-trace.js');
++const { parseClaudeEvents } = traceMod;
++const { resolveClaudeRoute } = await mod('adapters/claude-route.js');
++const ASSET_ROOT = path.join(tree, 'skills/dual-critic');
++
++const SETTINGS_ENV = {
++  ANTHROPIC_BASE_URL: 'https://gw-ev257.invalid/api',
++  ANTHROPIC_AUTH_TOKEN: 'gw-ev257-auth-01',
++  ANTHROPIC_MODEL: 'gw-ev257-model-01',
++  ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME: 'gw-ev257-haiku-01',
++  CLAUDE_CODE_SUBAGENT_MODEL: 'gw-ev257-sub-01',
++  ANTHROPIC_DEFAULT_OPUS_MODEL: 'gw-ev258-max-01[1m]',
++  ANTHROPIC_DEFAULT_FABLE_MODEL: 'gw-ev258-max-01[1m]',
++  ANTHROPIC_DEFAULT_OPUS_MODEL_NAME: 'gw-ev258-max-01',
++  ANTHROPIC_DEFAULT_SONNET_MODEL: 'gw-ev258-flash-02[1M]',
++  ANTHROPIC_SMALL_FAST_MODEL: 'gw-ev258-flash-02[1M]',
++  ANTHROPIC_DEFAULT_SONNET_MODEL_NAME: 'gw-ev258-flash-02',
++};
++const CREDENTIAL_KEYS = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN'];
++const PARENT = { ANTHROPIC_AUTH_TOKEN: 'parent-ev257-auth', ANTHROPIC_PARENT_ONLY_EV257: 'parent-ev257-only' };
++// 情形 → 假 CLI 取哪个环境变量作 init.model（`cred` 取凭据键，键名分段拼接，免得被赋值形态的密钥规则误判）
++const MODEL_KEY = { default: '', model: 'ANTHROPIC_MODEL', cred: ['ANTHROPIC', 'AUTH', 'TOKEN'].join('_'),
++  suffix: 'ANTHROPIC_DEFAULT_OPUS_MODEL', suffixU: 'ANTHROPIC_DEFAULT_SONNET_MODEL' }[scenario];
++const MESSAGE_KEY = { suffix: 'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME', suffixU: 'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME' }[scenario] ?? '';
++if (MODEL_KEY === undefined) throw new Error(`未知情形 ${scenario}`);
++
++const work = fs.mkdtempSync(path.join(os.tmpdir(), 'trivium-ev258b-accept-'));
++const real = fs.realpathSync(work);
++/**
++ * 归一化：临时目录、目录臂自建夹具的随机目录名（`trivium-probe-XXXXXX`）与由它派生的 `sourceHash`、
++ * 耗时、时间戳——其余逐字保留。
++ */
++const norm = (v) => JSON.parse(JSON.stringify(v, (k, x) =>
++  /(_at|At|duration|Duration|_s|Ms|elapsed)$/.test(k) && (typeof x === 'number' || typeof x === 'string') ? '〈t〉'
++    : k === 'sourceHash' && typeof x === 'string' ? '〈hash〉' : x)
++  .split(real).join('〈WORK〉').split(work).join('〈WORK〉').replace(/trivium-probe-[A-Za-z0-9]+/g, '〈FX〉'));
++try {
++  const script = path.join(work, 'fake-claude.cjs');
++  fs.writeFileSync(script, [
++    "const fs = require('node:fs');",
++    'const argv = process.argv.slice(2);',
++    "if (argv.includes('--version')) { process.stdout.write('9.9.9 (Fake Claude)\\n'); process.exit(0); }",
++    'function emit(o) { process.stdout.write(JSON.stringify(o) + "\\n"); }',
++    "const echo = process.env.ANTHROPIC_AUTH_TOKEN || '';",
++    "if (echo) process.stderr.write('echo ' + echo + '\\n');",
++    "const modelKey = process.env.FAKE_CLAUDE_INIT_MODEL_KEY || '';",
++    "const initModel = (modelKey && process.env[modelKey]) || 'claude-haiku-4-5-20251001';",
++    'process.stdin.resume();',
++    "process.stdin.on('end', () => {",
++    "  const structured = argv.includes('--json-schema');",
++    "  emit({ type: 'system', subtype: 'init', cwd: process.cwd(), tools: structured ? ['Read', 'Grep', 'Glob', 'StructuredOutput'] : ['Read', 'Grep', 'Glob'], model: initModel, session_id: 'fake-session' });",
++    "  if (echo) emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'echo ' + echo }] } });",
++    "  const msgKey = process.env.FAKE_CLAUDE_MESSAGE_MODEL_KEY || '';",
++    "  if (msgKey && process.env[msgKey]) emit({ type: 'assistant', message: { model: process.env[msgKey], content: [{ type: 'text', text: 'ok' }] } });",
++    "  const result = structured ? JSON.stringify({ schema: 'trivium.review.v1', verdict: 'approve', summary: 'fake summary', findings: [] }) : 'ok';",
++    "  emit({ type: 'result', subtype: 'success', is_error: false, result, total_cost_usd: 0.001, session_id: 'fake-session' });",
++    '  process.exit(0);',
++    '});',
++    '',
++  ].join('\n'));
++  const home = path.join(work, 'home');
++  fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
++  fs.writeFileSync(path.join(home, '.claude', 'settings.json'), JSON.stringify({ env: SETTINGS_ENV }));
++
++  for (const k of Object.keys(process.env)) if (/^(ANTHROPIC_|CLAUDE_)/.test(k)) delete process.env[k];
++  Object.assign(process.env, PARENT, { HOME: home, USERPROFILE: home, FAKE_CLAUDE_INIT_MODEL_KEY: MODEL_KEY,
++    FAKE_CLAUDE_MESSAGE_MODEL_KEY: MESSAGE_KEY });
++
++  const cfg = defaultConfig();
++  cfg.agents.claude.bin = process.execPath;
++  if (mode === 'on') cfg.agents.claude.settings_env_source = 'user_settings';
++  const route = { ...resolveClaudeRoute(cfg, null), bin: process.execPath, prefix: [script] };
++  const model = 'claude-haiku-4-5-20251001';
++  const deny = buildDenySettings(['secret.txt'], ['Read', 'Grep', 'Glob'], denyRuleShapeOf('Read(./x)')).json;
++  const opts = (settingsJson) => ({ bin: route.bin, route, cwd: work, prompt: 'review', model, effort: null,
++    readonlyArgs: [...READONLY_INVARIANTS], schemaJson: null, settingsJson, timeoutMs: 30_000 });
++
++  const review = await invokeClaude(opts(deny));
++  const reviewTrace = parseClaudeEvents(review.stdout);
++  const result = buildClaudeResult(reviewTrace, review, { stdout: '/r/s', trace: '/r/t' },
++    { version: '9.9.9', path_deny: { file_shape_verified: true } }, readonlyToolsFromProbe(READONLY_INVARIANTS),
++    { ruleCount: 0, skipped: [], bytes: 0 });
++  const auth = await invokeClaude(opts(null));
++  const arm = await withClaudeProbeRoute(route, model, null, () => execArgv(process.execPath, { root: work }, probeArgs({ prompt: 'p' })));
++  const probed = await withClaudeProbeRoute(route, model, null, () => probeClaude(process.execPath, { assetRoot: ASSET_ROOT }));
++  const directory = await probeClaudeDirectories({ critic: 'claude', cfg, route, model, effort: null,
++    readonlyFlags: READONLY_INVARIANTS, schemaPath: resolveReviewSchemaPath(ASSET_ROOT) });
++
++  const texts = { review_stdout: review.stdout, review_stderr: review.stderr, review_commandLine: review.commandLine,
++    auth_stdout: auth.stdout, auth_stderr: auth.stderr, arm_raw: arm.raw, arm_stderr: arm.stderr };
++  /** 只记键名与次数，不记值 */
++  const hits = Object.fromEntries(Object.entries(texts).map(([name, t]) => [name,
++    Object.entries(SETTINGS_ENV).filter(([, v]) => t.includes(v)).map(([k]) => k)]));
++  const out = {
++    tree: path.resolve(tree), mode, scenario,
++    route_sha256: createHash('sha256').update(fs.readFileSync(path.join(tree, 'dist/test/src/trivium/adapters/claude-route.js'))).digest('hex'),
++    readback: { model_effective: result.model_effective, model_effective_source: result.model_effective_source },
++    arm_init_model: arm.init?.model ?? null,
++    reported_models: reviewTrace.reportedModels ?? null,
++    consistency: typeof traceMod.claudeModelConsistency === 'function'
++      ? traceMod.claudeModelConsistency(reviewTrace.init, reviewTrace.reportedModels) : null,
++    model_flag: probed.probe.model_flag,
++    credential_hits: Object.fromEntries(Object.entries(hits).map(([n, ks]) => [n, ks.filter((k) => CREDENTIAL_KEYS.includes(k))])),
++    model_key_hits: Object.fromEntries(Object.entries(hits).map(([n, ks]) => [n, ks.filter((k) => !CREDENTIAL_KEYS.includes(k))])),
++    placeholder_in: Object.entries(texts).filter(([, t]) => t.includes('<redacted-env>')).map(([n]) => n),
++    normalized_sha256: Object.fromEntries(Object.entries(norm({ texts, result, probe: probed.probe, directory }))
++      .map(([k, v]) => [k, createHash('sha256').update(JSON.stringify(v)).digest('hex')])),
++  };
++  fs.writeFileSync(outFile, JSON.stringify(out, null, 2) + '\n');
++  console.log(`${mode}/${scenario}：model_effective=${out.readback.model_effective} source=${out.readback.model_effective_source} model_flag=${out.model_flag} reported=${JSON.stringify(out.reported_models)} consistency=${out.consistency}`);
++} finally {
++  fs.rmSync(work, { recursive: true, force: true });
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-self-test-macos.txt b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-self-test-macos.txt
+new file mode 100644
+index 00000000..1101eafe
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-self-test-macos.txt
+@@ -0,0 +1,17 @@
++✓ 构建自证为「是」
++✓ 合法 [1M] 后缀的模型名键豁免，码点列为 U+005B U+0031 U+004D U+005D
++✓ ANTHROPIC_DEFAULT_OPUS_MODEL：未豁免，且该行不含任何码点
++✓ ANTHROPIC_DEFAULT_SONNET_MODEL：未豁免，且该行不含任何码点
++✓ CLAUDE_CODE_SUBAGENT_MODEL：未豁免，且该行不含任何码点
++✓ 输出不含凭据键的值的原文
++✓ 输出不含凭据键的值的码点序列
++✓ 输出不含基地址的原文
++✓ 输出不含基地址的码点序列
++✓ 输出不含误填的短凭据的原文
++✓ 输出不含误填的短凭据的码点序列
++✓ 输出不含与非模型名键同值的值的原文
++✓ 输出不含与非模型名键同值的值的码点序列
++✓ 输出不含方括号里的长随机串的原文
++✓ 输出不含方括号里的长随机串的码点序列
++✓ 凭据类键只出现长度
++SELF-TEST PASS
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-suffix-codepoints.mjs b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-suffix-codepoints.mjs
+new file mode 100644
+index 00000000..f8b211e3
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-suffix-codepoints.mjs
+@@ -0,0 +1,121 @@
++// EV-258 第二轮 Windows 验收第 1 步（零配额）：读本机 ~/.claude/settings.json 的 env 段，按**构建产物里的同一份口径**
++// （extractSettingsEnv、isModelNameKey、looksLikeModelName、stripContextWindowSuffix、gatewayScrubPlan、redactSecrets）
++// 逐键列出守卫与是否豁免，并**直接打印模型名键末尾方括号段的码点**——第一轮只打印「形状」，形状抹掉了大小写（计划 r2 §0.4）。
++// 不在脚本里另写「哪些算模型名」。输出不含任何凭据值（计划三审 CODEX-01）：
++//   - 非模型名键（凭据类）：只打印长度；
++//   - 已豁免的模型名键（四道守卫全过）：打印原值与末尾方括号段的码点；
++//   - 未豁免的模型名键：方括号前的部分只打印形状（字母换 a、数字换 9）；末尾方括号段只有同时满足
++//     ①恰为「1～4 位 ASCII 数字 + 恰好一个 ASCII 字母」②整值无模式脱敏命中 ③不与任何非模型名键同值
++//     才打印码点，否则只打印长度与类别——长度上限挡不住可逆编码，误填进模型名键的短凭据会被码点原样打出。
++// 用法（仓库根，先 node scripts/build.mjs --with-tests）：
++//   node doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-suffix-codepoints.mjs            # 读本机 settings.json
++//   node doc/05_testing/evidence/gateway-model-suffix-case-20261026/diag-suffix-codepoints.mjs --self-test  # 合成 env 自检，不读本机文件
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { pathToFileURL } from 'node:url';
++
++const dist = (p) => import(pathToFileURL(path.resolve('dist/test/src/trivium', p)).href);
++const { extractSettingsEnv, isModelNameKey, looksLikeModelName, stripContextWindowSuffix } = await dist('adapters/claude-route.js');
++const { gatewayScrubPlan } = await dist('adapters/claude.js');
++const { redactSecrets } = await dist('secrets.js');
++
++const cps = (s) => [...s].map((c) => `U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`).join(' ');
++const shape = (v) => v.replace(/[A-Za-z]/g, 'a').replace(/[0-9]/g, '9');
++const mark = (b) => (b ? 'Y' : 'N');
++/** 未豁免值的末尾方括号段可打印码点的唯一形态：信息量极低，足以分辨单位字母的大小写 */
++const SAFE_TAIL = /^\[[0-9]{1,4}[A-Za-z]\]$/;
++
++/** 拆出末尾方括号段：值以 `]` 结尾时取最后一个 `[` 起的部分，否则没有 */
++function splitTail(v) {
++  const i = v.lastIndexOf('[');
++  return v.endsWith(']') && i >= 0 ? { head: v.slice(0, i), tail: v.slice(i) } : { head: v, tail: null };
++}
++
++/** 逐键诊断，返回 { lines, rows }；rows 给自检按键核对 */
++function diagnose(env) {
++  const plan = gatewayScrubPlan(env);
++  const nonModelValues = new Set(Object.entries(env).filter(([k]) => !isModelNameKey(k)).map(([, v]) => v));
++  const lines = [];
++  const rows = {};
++  lines.push(`dist/test 含第二轮代码：${stripContextWindowSuffix('x[1M]') === 'x' ? '是' : '否'}`);
++  lines.push(`settings.json env 段可注入键 ${Object.keys(env).length} 个；豁免 ${plan.exemptKeys.length} 个；替换集 ${plan.replace.length} 个值`);
++  lines.push('键 | 长度 | 模型名键(守卫1) | 模式脱敏无命中(守卫2) | 像模型名(守卫4) | 豁免 | 值或形状 | 末尾方括号段码点');
++  for (const [k, v] of Object.entries(env)) {
++    let line;
++    if (!isModelNameKey(k)) {
++      line = `${k} | ${v.length} | N | - | - | N | （凭据类，不打印） | -`;
++    } else {
++      const g2 = redactSecrets(v).count === 0;
++      const g4 = looksLikeModelName(v);
++      const exempt = plan.exemptKeys.includes(k);
++      const { head, tail } = splitTail(v);
++      let valueCol;
++      let tailCol;
++      if (exempt) {
++        valueCol = v;
++        tailCol = tail ? cps(tail) : '（无方括号后缀）';
++      } else {
++        valueCol = shape(head) + (tail ? '[…]' : '');
++        if (!tail) tailCol = '（无方括号后缀）';
++        else if (!SAFE_TAIL.test(tail)) tailCol = `（方括号段 ${tail.length} 字符，形态不在白名单，不打印）`;
++        else if (!g2) tailCol = '（命中模式脱敏，不打印）';
++        else if (nonModelValues.has(v)) tailCol = '（与非模型名键同值，不打印）';
++        else tailCol = cps(tail);
++      }
++      line = `${k} | ${v.length} | Y | ${mark(g2)} | ${mark(g4)} | ${mark(exempt)} | ${valueCol} | ${tailCol}`;
++    }
++    rows[k] = line;
++    lines.push(line);
++  }
++  lines.push(`替换集各值长度（降序）：${plan.replace.map((v) => v.length).join(', ') || '（空）'}`);
++  return { lines, rows };
++}
++
++if (process.argv.includes('--self-test')) {
++  // 合成 env：凭据形态值运行时分段拼接；写进临时目录再经 extractSettingsEnv 读回，走与正常模式相同的解析路径
++  const auth = ['st', 'auth', 'Zq9Xw2Lp'].join('-');
++  const misfilled = ['aB3', 'dE6'].join('');
++  const random = ['q7Xk2Lm9', 'Vb4Nc8Zr', 'T1yW6pHs'].join('');
++  const synthetic = {
++    ANTHROPIC_BASE_URL: 'https://selftest.invalid/api',
++    ANTHROPIC_AUTH_TOKEN: auth,
++    ANTHROPIC_MODEL: 'selftest-max[1M]',
++    ANTHROPIC_DEFAULT_OPUS_MODEL: `x[${misfilled}]`,
++    ANTHROPIC_DEFAULT_SONNET_MODEL: 'selftest-cred[1M]',
++    ANTHROPIC_EXTRA_SELFTEST: 'selftest-cred[1M]',
++    CLAUDE_CODE_SUBAGENT_MODEL: `x[${random}]`,
++  };
++  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trivium-ev258b-diag-'));
++  let out;
++  try {
++    const file = path.join(dir, 'settings.json');
++    fs.writeFileSync(file, JSON.stringify({ env: synthetic }), 'utf8');
++    out = diagnose(extractSettingsEnv(fs.readFileSync(file, 'utf8')));
++  } finally {
++    fs.rmSync(dir, { recursive: true, force: true });
++  }
++  const text = out.lines.join('\n');
++  const checks = [];
++  const check = (name, ok) => checks.push({ name, ok });
++  check('构建自证为「是」', out.lines[0] === 'dist/test 含第二轮代码：是');
++  check('合法 [1M] 后缀的模型名键豁免，码点列为 U+005B U+0031 U+004D U+005D',
++    / \| Y \| Y \| Y \| Y \| selftest-max\[1M\] \| U\+005B U\+0031 U\+004D U\+005D$/.test(out.rows.ANTHROPIC_MODEL));
++  for (const k of ['ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL']) {
++    check(`${k}：未豁免，且该行不含任何码点`, out.rows[k].split(' | ')[5] === 'N' && !out.rows[k].includes('U+'));
++  }
++  for (const [label, secret] of [['凭据键的值', auth], ['基地址', synthetic.ANTHROPIC_BASE_URL], ['误填的短凭据', misfilled],
++    ['与非模型名键同值的值', synthetic.ANTHROPIC_EXTRA_SELFTEST], ['方括号里的长随机串', random]]) {
++    check(`输出不含${label}的原文`, !text.includes(secret));
++    check(`输出不含${label}的码点序列`, !text.includes(cps(secret)) && !text.includes(cps(`[${secret}]`)));
++  }
++  check('凭据类键只出现长度', out.rows.ANTHROPIC_AUTH_TOKEN === `ANTHROPIC_AUTH_TOKEN | ${auth.length} | N | - | - | N | （凭据类，不打印） | -`);
++  for (const c of checks) console.log(`${c.ok ? '✓' : '✗'} ${c.name}`);
++  const bad = checks.filter((c) => !c.ok).length;
++  console.log(bad === 0 ? 'SELF-TEST PASS' : `SELF-TEST FAIL（${bad} 项）`);
++  process.exit(bad === 0 ? 0 : 1);
++}
++
++const file = path.join(os.homedir(), '.claude', 'settings.json');
++const { lines } = diagnose(extractSettingsEnv(fs.readFileSync(file, 'utf8')));
++for (const l of lines) console.log(l);
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/gen-mutation-spec.mjs b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/gen-mutation-spec.mjs
+new file mode 100644
+index 00000000..4e6f9a5c
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/gen-mutation-spec.mjs
+@@ -0,0 +1,109 @@
++// 生成 EV-258 第二轮变异规格（计划 r2 §五）：每条 find 在目标文件里须恰好命中一处，替换串不含 `$` 特殊替换模式。
++// A 部分：第一轮 21 条（evidence/gateway-model-suffix-20261026/gen-mutation-spec.mjs）按新源码重生成——find 里的单位类
++// 随之改为 [kKmM]，M4 与 M5b 的替换串里内嵌的单位类也同步（计划三审 GLM-01）；M5a（加 i 旗标）放宽后是等价变异，删除。
++// B 部分：本轮新增，两个方向都咬——去掉大写放行（C1、C6 丢了小写）与过宽（C2 单位任意字母、C3 多个字母、
++// C4 Unicode 折叠、C5 键名随之放宽）。
++// 用法（仓库根）：node doc/05_testing/evidence/gateway-model-suffix-case-20261026/gen-mutation-spec.mjs
++import fs from 'node:fs';
++
++const DIR = 'doc/05_testing/evidence/gateway-model-suffix-case-20261026';
++const ROUTE = 'src/trivium/adapters/claude-route.ts';
++const TRACE = 'src/trivium/adapters/claude-trace.ts';
++const ADAPTER = 'src/trivium/adapters/claude.ts';
++const UNIT = 'dist/test/test/unit/claude-gateway-scrub.test.js';
++const ACCESS = 'dist/test/test/unit/access-modes.test.js';
++const IT = 'dist/test/test/integration/claude-gateway-env.test.js';
++const DIRADAPTER = 'dist/test/test/integration/claude-directory-adapter.test.js';
++
++const UNIT_CLASS = '[kKmM]';
++const PATTERN = `const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw\`\\[[1-9][0-9]{0,3}${UNIT_CLASS}\\]\`;`;
++const pattern = (body) => `const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw\`${body}\`;`;
++const EXEC = '  const m = CONTEXT_WINDOW_SUFFIX.exec(value);';
++const STRIP_AND_CHARSET = '  const base = stripContextWindowSuffix(value);\n  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;';
++const CHARSET = '  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;';
++const UUID = '  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(base)) return false;';
++const PROFILE = 'const PROFILE_MODEL_VALUE = String.raw`[\\w.\\/:+-]+(?:${CONTEXT_WINDOW_SUFFIX_PATTERN})?`;';
++// 整行正则的构造以 `$` 加反引号收尾，改写它的替换串会撞 `$` 特殊替换模式；与 C4 同法只改 exec 一行
++const PROFILE_EXEC = '    const m = PROFILE_MODEL_LINE.exec(line);';
++const COLLECT = "      if (typeof m === 'string' && m.length > 0 && !reportedModels.includes(m)) reportedModels.push(m);";
++const BARE = "  const bareBase = b !== m && !b.includes('[');";
++const EVERY = '  return reported.every((r) => r === m || (bareBase && r === b));';
++const CONSISTENT = '            consistent: claudeModelConsistency(trace.init, trace.reportedModels),';
++
++const cases = [
++  // ══ A：第一轮 21 条按新源码重生成（M5a 删除） ══
++  // ── 去掉后缀放行（过窄） ──
++  { id: 'M1', desc: '去掉后缀放行：stripContextWindowSuffix 恒不剥', file: ROUTE, find: EXEC, replace: '  const m = null;', expect: UNIT },
++  { id: 'M1b', desc: '同 M1，对集成 E11 / E12', file: ROUTE, find: EXEC, replace: '  const m = null;', expect: IT },
++  { id: 'M8', desc: '剥了也白剥：字符集判据改看原值', file: ROUTE, find: CHARSET,
++    replace: CHARSET.replace('.test(base)', '.test(value)'), expect: UNIT },
++  { id: 'M8b', desc: '同 M8，对集成 E11 / E12', file: ROUTE, find: CHARSET,
++    replace: CHARSET.replace('.test(base)', '.test(value)'), expect: IT },
++  // ── 后缀放行过宽 ──
++  { id: 'M2', desc: '过宽：不剥后缀、字符集直接收方括号（任意位置方括号）', file: ROUTE, find: STRIP_AND_CHARSET,
++    replace: '  const base = value;\n  if (!/^[\\w./:+\\[\\]-]{1,128}$/.test(base)) return false;', expect: UNIT },
++  { id: 'M3', desc: '过宽：后缀内容任意', file: ROUTE, find: PATTERN, replace: pattern('\\[[^\\]]*\\]'), expect: UNIT },
++  { id: 'M4', desc: '过宽：可剥多个后缀', file: ROUTE, find: PATTERN, replace: pattern(`(?:\\[[1-9][0-9]{0,3}${UNIT_CLASS}\\])+`), expect: UNIT },
++  { id: 'M5b', desc: '过宽：后缀位数不限、可以 0 开头', file: ROUTE, find: PATTERN, replace: pattern(`\\[[0-9]+${UNIT_CLASS}\\]`), expect: UNIT },
++  // ── 剥后缀后跳过或改看原值 ──
++  { id: 'M6', desc: '剥得到后缀就直接放行，跳过其余判据', file: ROUTE, find: STRIP_AND_CHARSET,
++    replace: STRIP_AND_CHARSET.replace('\n', '\n  if (base !== value) return true;\n'), expect: UNIT },
++  { id: 'M7', desc: 'UUID 判据改看原值（带后缀的 UUID 漏网）', file: ROUTE, find: UUID,
++    replace: UUID.replace('.test(base)', '.test(value)'), expect: UNIT },
++  // ── profile 元数据两个方向 ──
++  { id: 'M9', desc: 'profile 元数据不放行后缀', file: ROUTE, find: PROFILE,
++    replace: 'const PROFILE_MODEL_VALUE = String.raw`[\\w.\\/:+-]+`;', expect: ACCESS },
++  { id: 'M10', desc: 'profile 元数据放行任意方括号内容', file: ROUTE, find: PROFILE,
++    replace: 'const PROFILE_MODEL_VALUE = String.raw`[\\w.\\/:+-]+(?:\\[[^\\]]*\\])?`;', expect: ACCESS },
++  // ── AC-20 留痕 ──
++  { id: 'M11', desc: '一致性过宽：剥后缀分支改为前缀比较', file: TRACE, find: EVERY,
++    replace: '  return reported.every((r) => r === m || (bareBase && m.startsWith(r)));', expect: UNIT },
++  { id: 'M12', desc: '一致性过窄：去掉剥后缀那一支', file: TRACE, find: EVERY,
++    replace: '  return reported.every((r) => r === m);', expect: UNIT },
++  { id: 'M12b', desc: '同 M12，对集成 E11 / E12', file: TRACE, find: EVERY,
++    replace: '  return reported.every((r) => r === m);', expect: IT },
++  { id: 'M13', desc: '留痕丢失：reportedModels 恒空', file: TRACE, find: COLLECT,
++    replace: '      if (m === COLLECT_NEVER) reportedModels.push(m);'.replace('COLLECT_NEVER', "'\\u0000never'"), expect: UNIT },
++  { id: 'M13b', desc: '同 M13，对集成 E11 / E12', file: TRACE, find: COLLECT,
++    replace: '      if (m === COLLECT_NEVER) reportedModels.push(m);'.replace('COLLECT_NEVER', "'\\u0000never'"), expect: IT },
++  { id: 'M14', desc: '一致性过宽：不核剥后部分是否还含方括号', file: TRACE, find: BARE,
++    replace: '  const bareBase = b !== m;', expect: UNIT },
++  { id: 'M15', desc: '留痕写错：trace.json 的 consistent 恒为 false', file: ADAPTER, find: CONSISTENT,
++    replace: '            consistent: false,', expect: DIRADAPTER },
++  { id: 'M16', desc: '空串混进回报值（计划三审 AGY-02）', file: TRACE, find: COLLECT,
++    replace: "      if (typeof m === 'string' && !reportedModels.includes(m)) reportedModels.push(m);", expect: UNIT },
++
++  // ══ B：本轮新增 ══
++  // ── 去掉大写放行（过窄） ──
++  { id: 'C1', desc: '去掉大写放行：单位回到只认小写 [km]（第一轮）', file: ROUTE, find: PATTERN,
++    replace: pattern('\\[[1-9][0-9]{0,3}[km]\\]'), expect: UNIT },
++  { id: 'C1b', desc: '同 C1，对集成 E12', file: ROUTE, find: PATTERN, replace: pattern('\\[[1-9][0-9]{0,3}[km]\\]'), expect: IT },
++  { id: 'C1c', desc: '同 C1，对 profile 元数据', file: ROUTE, find: PATTERN, replace: pattern('\\[[1-9][0-9]{0,3}[km]\\]'), expect: ACCESS },
++  { id: 'C6', desc: '只放行大写、丢了小写：单位改为 [KM]', file: ROUTE, find: PATTERN,
++    replace: pattern('\\[[1-9][0-9]{0,3}[KM]\\]'), expect: UNIT },
++  // ── 过宽 ──
++  { id: 'C2', desc: '过宽：单位任意字母 [A-Za-z]', file: ROUTE, find: PATTERN,
++    replace: pattern('\\[[1-9][0-9]{0,3}[A-Za-z]\\]'), expect: UNIT },
++  { id: 'C2b', desc: '同 C2，对 profile 元数据', file: ROUTE, find: PATTERN,
++    replace: pattern('\\[[1-9][0-9]{0,3}[A-Za-z]\\]'), expect: ACCESS },
++  { id: 'C3', desc: '过宽：单位可以多个字母 [kKmM]+', file: ROUTE, find: PATTERN,
++    replace: pattern(`\\[[1-9][0-9]{0,3}${UNIT_CLASS}+\\]`), expect: UNIT },
++  { id: 'C4', desc: '过宽：改用 Unicode 大小写折叠（exec 前加 iu 旗标，开尔文符号折成 k，计划三审 GLM-02）', file: ROUTE, find: EXEC,
++    replace: "  const m = new RegExp(CONTEXT_WINDOW_SUFFIX.source, 'iu').exec(value);", expect: UNIT },
++  { id: 'C5', desc: '过宽：profile 整行正则加 i 旗标，键名随之大小写不敏感', file: ROUTE, find: PROFILE_EXEC,
++    replace: "    const m = new RegExp(PROFILE_MODEL_LINE.source, 'i').exec(line);", expect: ACCESS },
++];
++
++const targets = [ROUTE, TRACE, ADAPTER];
++const src = Object.fromEntries(targets.map((f) => [f, fs.readFileSync(f, 'utf8')]));
++for (const c of cases) {
++  const n = src[c.file].split(c.find).length - 1;
++  if (n !== 1) throw new Error(`${c.id}：find 在 ${c.file} 命中 ${n} 处，须恰好 1 处`);
++  if (/\$[$&`'0-9<]/.test(c.replace)) throw new Error(`${c.id}：替换串含 $ 特殊替换模式`);
++  if (c.replace === c.find) throw new Error(`${c.id}：替换串与 find 相同`);
++}
++if (new Set(cases.map((c) => c.id)).size !== cases.length) throw new Error('id 重复');
++const spec = { targets, suites: [UNIT, ACCESS, IT, DIRADAPTER], cases };
++fs.writeFileSync(`${DIR}/mutation-spec.json`, JSON.stringify(spec, null, 2) + '\n');
++console.log(`已生成 ${cases.length} 条，find 全部唯一`);
++for (const c of cases) console.log(`${c.id}\t${c.desc}\n\t- ${c.find.split('\n').join('⏎')}\n\t+ ${c.replace.split('\n').join('⏎')}`);
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-names-output.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-names-output.json
+new file mode 100644
+index 00000000..c704d613
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-names-output.json
+@@ -0,0 +1,416 @@
++[
++  {
++    "id": "M1",
++    "desc": "去掉后缀放行：stripContextWindowSuffix 恒不剥",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 7,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免",
++      "S10 带后缀的真实形态放行：守卫 4 为真、模型名键豁免、输出原样保留（过窄方向）",
++      "S12 剥掉后缀后其余判据照旧：令牌 / UUID / 厂商形态加合法后缀仍不豁免",
++      "S13 Windows 实测形态整表：同值的带后缀模型名键一并豁免，替换集只剩凭据；挂同值的非模型名键让它们全部不豁免",
++      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变",
++      "S15 大写单位后缀放行：守卫 4 为真、豁免、输出原样保留；Windows 码点实测形态整表只替换凭据（过窄方向）",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M1b",
++    "desc": "同 M1，对集成 E11 / E12",
++    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "E11 开启 · 模型名键值带上下文窗口后缀且多键同值：回读记带后缀的名、来源 envelope，凭据键的值仍被替换",
++      "E12 开启 · 模型名键值带大写单位后缀 [1M] 且多键同值：回读记带后缀的名、来源 envelope、与不带后缀的回报一致，凭据键的值仍被替换"
++    ],
++    "firstLines": [],
++    "elapsed_s": 7
++  },
++  {
++    "id": "M8",
++    "desc": "剥了也白剥：字符集判据改看原值",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 4,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免",
++      "S10 带后缀的真实形态放行：守卫 4 为真、模型名键豁免、输出原样保留（过窄方向）",
++      "S13 Windows 实测形态整表：同值的带后缀模型名键一并豁免，替换集只剩凭据；挂同值的非模型名键让它们全部不豁免",
++      "S15 大写单位后缀放行：守卫 4 为真、豁免、输出原样保留；Windows 码点实测形态整表只替换凭据（过窄方向）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M8b",
++    "desc": "同 M8，对集成 E11 / E12",
++    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "E11 开启 · 模型名键值带上下文窗口后缀且多键同值：回读记带后缀的名、来源 envelope，凭据键的值仍被替换",
++      "E12 开启 · 模型名键值带大写单位后缀 [1M] 且多键同值：回读记带后缀的名、来源 envelope、与不带后缀的回报一致，凭据键的值仍被替换"
++    ],
++    "firstLines": [],
++    "elapsed_s": 7
++  },
++  {
++    "id": "M2",
++    "desc": "过宽：不剥后缀、字符集直接收方括号（任意位置方括号）",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 3,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）",
++      "S12 剥掉后缀后其余判据照旧：令牌 / UUID / 厂商形态加合法后缀仍不豁免",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M3",
++    "desc": "过宽：后缀内容任意",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 3,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）",
++      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M4",
++    "desc": "过宽：可剥多个后缀",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M5b",
++    "desc": "过宽：后缀位数不限、可以 0 开头",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M6",
++    "desc": "剥得到后缀就直接放行，跳过其余判据",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 3,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）",
++      "S12 剥掉后缀后其余判据照旧：令牌 / UUID / 厂商形态加合法后缀仍不豁免",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M7",
++    "desc": "UUID 判据改看原值（带后缀的 UUID 漏网）",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S12 剥掉后缀后其余判据照旧：令牌 / UUID / 厂商形态加合法后缀仍不豁免",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M9",
++    "desc": "profile 元数据不放行后缀",
++    "suite": "dist/test/test/unit/access-modes.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "profile 元数据：三种形态都收末尾一个上下文窗口后缀，方括号在别处 / 两个后缀 / 内容不符一律不收（EV-258）",
++      "profile 元数据：大写单位后缀三种形态都收；其它单位字母、混入字符、小写键名一律不收（EV-258 第二轮）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M10",
++    "desc": "profile 元数据放行任意方括号内容",
++    "suite": "dist/test/test/unit/access-modes.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "profile 元数据：三种形态都收末尾一个上下文窗口后缀，方括号在别处 / 两个后缀 / 内容不符一律不收（EV-258）",
++      "profile 元数据：大写单位后缀三种形态都收；其它单位字母、混入字符、小写键名一律不收（EV-258 第二轮）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M11",
++    "desc": "一致性过宽：剥后缀分支改为前缀比较",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M12",
++    "desc": "一致性过窄：去掉剥后缀那一支",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M12b",
++    "desc": "同 M12，对集成 E11 / E12",
++    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "E11 开启 · 模型名键值带上下文窗口后缀且多键同值：回读记带后缀的名、来源 envelope，凭据键的值仍被替换",
++      "E12 开启 · 模型名键值带大写单位后缀 [1M] 且多键同值：回读记带后缀的名、来源 envelope、与不带后缀的回报一致，凭据键的值仍被替换"
++    ],
++    "firstLines": [],
++    "elapsed_s": 7
++  },
++  {
++    "id": "M13",
++    "desc": "留痕丢失：reportedModels 恒空",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M13b",
++    "desc": "同 M13，对集成 E11 / E12",
++    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "E11 开启 · 模型名键值带上下文窗口后缀且多键同值：回读记带后缀的名、来源 envelope，凭据键的值仍被替换",
++      "E12 开启 · 模型名键值带大写单位后缀 [1M] 且多键同值：回读记带后缀的名、来源 envelope、与不带后缀的回报一致，凭据键的值仍被替换"
++    ],
++    "firstLines": [],
++    "elapsed_s": 7
++  },
++  {
++    "id": "M14",
++    "desc": "一致性过宽：不核剥后部分是否还含方括号",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "M15",
++    "desc": "留痕写错：trace.json 的 consistent 恒为 false",
++    "suite": "dist/test/test/integration/claude-directory-adapter.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "生产适配器大集合经过目录投影实际递入argv/stdin；失败出口仍有投影与规模"
++    ],
++    "firstLines": [],
++    "elapsed_s": 1
++  },
++  {
++    "id": "M16",
++    "desc": "空串混进回报值（计划三审 AGY-02）",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "C1",
++    "desc": "去掉大写放行：单位回到只认小写 [km]（第一轮）",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 4,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免",
++      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变",
++      "S15 大写单位后缀放行：守卫 4 为真、豁免、输出原样保留；Windows 码点实测形态整表只替换凭据（过窄方向）",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "C1b",
++    "desc": "同 C1，对集成 E12",
++    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "E12 开启 · 模型名键值带大写单位后缀 [1M] 且多键同值：回读记带后缀的名、来源 envelope、与不带后缀的回报一致，凭据键的值仍被替换"
++    ],
++    "firstLines": [],
++    "elapsed_s": 8
++  },
++  {
++    "id": "C1c",
++    "desc": "同 C1，对 profile 元数据",
++    "suite": "dist/test/test/unit/access-modes.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "profile 元数据：大写单位后缀三种形态都收；其它单位字母、混入字符、小写键名一律不收（EV-258 第二轮）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "C6",
++    "desc": "只放行大写、丢了小写：单位改为 [KM]",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 6,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免",
++      "S10 带后缀的真实形态放行：守卫 4 为真、模型名键豁免、输出原样保留（过窄方向）",
++      "S12 剥掉后缀后其余判据照旧：令牌 / UUID / 厂商形态加合法后缀仍不豁免",
++      "S13 Windows 实测形态整表：同值的带后缀模型名键一并豁免，替换集只剩凭据；挂同值的非模型名键让它们全部不豁免",
++      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "C2",
++    "desc": "过宽：单位任意字母 [A-Za-z]",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 3,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）",
++      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变",
++      "S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "C2b",
++    "desc": "同 C2，对 profile 元数据",
++    "suite": "dist/test/test/unit/access-modes.test.js",
++    "fail": 2,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "profile 元数据：三种形态都收末尾一个上下文窗口后缀，方括号在别处 / 两个后缀 / 内容不符一律不收（EV-258）",
++      "profile 元数据：大写单位后缀三种形态都收；其它单位字母、混入字符、小写键名一律不收（EV-258 第二轮）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "C3",
++    "desc": "过宽：单位可以多个字母 [kKmM]+",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "C4",
++    "desc": "过宽：改用 Unicode 大小写折叠（exec 前加 iu 旗标，开尔文符号折成 k，计划三审 GLM-02）",
++    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  },
++  {
++    "id": "C5",
++    "desc": "过宽：profile 整行正则加 i 旗标，键名随之大小写不敏感",
++    "suite": "dist/test/test/unit/access-modes.test.js",
++    "fail": 1,
++    "timed_out": false,
++    "cancelled": 0,
++    "red": [
++      "profile 元数据：大写单位后缀三种形态都收；其它单位字母、混入字符、小写键名一律不收（EV-258 第二轮）"
++    ],
++    "firstLines": [],
++    "elapsed_s": 0
++  }
++]
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-output.txt b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-output.txt
+new file mode 100644
+index 00000000..c5e0d487
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-output.txt
+@@ -0,0 +1,210 @@
++✓ 工作树干净、基线全绿（4 个套件）
++  M1 ✓ 咬住（fail=7）
++  M1b ✓ 咬住（fail=2）
++  M8 ✓ 咬住（fail=4）
++  M8b ✓ 咬住（fail=2）
++  M2 ✓ 咬住（fail=3）
++  M3 ✓ 咬住（fail=3）
++  M4 ✓ 咬住（fail=2）
++  M5b ✓ 咬住（fail=1）
++  M6 ✓ 咬住（fail=3）
++  M7 ✓ 咬住（fail=2）
++  M9 ✓ 咬住（fail=2）
++  M10 ✓ 咬住（fail=2）
++  M11 ✓ 咬住（fail=2）
++  M12 ✓ 咬住（fail=2）
++  M12b ✓ 咬住（fail=2）
++  M13 ✓ 咬住（fail=1）
++  M13b ✓ 咬住（fail=2）
++  M14 ✓ 咬住（fail=2）
++  M15 ✓ 咬住（fail=1）
++  M16 ✓ 咬住（fail=1）
++  C1 ✓ 咬住（fail=4）
++  C1b ✓ 咬住（fail=1）
++  C1c ✓ 咬住（fail=1）
++  C6 ✓ 咬住（fail=6）
++  C2 ✓ 咬住（fail=3）
++  C2b ✓ 咬住（fail=2）
++  C3 ✓ 咬住（fail=1）
++  C4 ✓ 咬住（fail=1）
++  C5 ✓ 咬住（fail=1）
++{
++  "总数": 29,
++  "咬住": 29,
++  "逐条": [
++    {
++      "id": "M1",
++      "desc": "去掉后缀放行：stripContextWindowSuffix 恒不剥",
++      "verdict": "✓ 咬住（fail=7）",
++      "fail": 7
++    },
++    {
++      "id": "M1b",
++      "desc": "同 M1，对集成 E11 / E12",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M8",
++      "desc": "剥了也白剥：字符集判据改看原值",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "M8b",
++      "desc": "同 M8，对集成 E11 / E12",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M2",
++      "desc": "过宽：不剥后缀、字符集直接收方括号（任意位置方括号）",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M3",
++      "desc": "过宽：后缀内容任意",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M4",
++      "desc": "过宽：可剥多个后缀",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M5b",
++      "desc": "过宽：后缀位数不限、可以 0 开头",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M6",
++      "desc": "剥得到后缀就直接放行，跳过其余判据",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "M7",
++      "desc": "UUID 判据改看原值（带后缀的 UUID 漏网）",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M9",
++      "desc": "profile 元数据不放行后缀",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M10",
++      "desc": "profile 元数据放行任意方括号内容",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M11",
++      "desc": "一致性过宽：剥后缀分支改为前缀比较",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M12",
++      "desc": "一致性过窄：去掉剥后缀那一支",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M12b",
++      "desc": "同 M12，对集成 E11 / E12",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M13",
++      "desc": "留痕丢失：reportedModels 恒空",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M13b",
++      "desc": "同 M13，对集成 E11 / E12",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M14",
++      "desc": "一致性过宽：不核剥后部分是否还含方括号",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "M15",
++      "desc": "留痕写错：trace.json 的 consistent 恒为 false",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "M16",
++      "desc": "空串混进回报值（计划三审 AGY-02）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "C1",
++      "desc": "去掉大写放行：单位回到只认小写 [km]（第一轮）",
++      "verdict": "✓ 咬住（fail=4）",
++      "fail": 4
++    },
++    {
++      "id": "C1b",
++      "desc": "同 C1，对集成 E12",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "C1c",
++      "desc": "同 C1，对 profile 元数据",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "C6",
++      "desc": "只放行大写、丢了小写：单位改为 [KM]",
++      "verdict": "✓ 咬住（fail=6）",
++      "fail": 6
++    },
++    {
++      "id": "C2",
++      "desc": "过宽：单位任意字母 [A-Za-z]",
++      "verdict": "✓ 咬住（fail=3）",
++      "fail": 3
++    },
++    {
++      "id": "C2b",
++      "desc": "同 C2，对 profile 元数据",
++      "verdict": "✓ 咬住（fail=2）",
++      "fail": 2
++    },
++    {
++      "id": "C3",
++      "desc": "过宽：单位可以多个字母 [kKmM]+",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "C4",
++      "desc": "过宽：改用 Unicode 大小写折叠（exec 前加 iu 旗标，开尔文符号折成 k，计划三审 GLM-02）",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    },
++    {
++      "id": "C5",
++      "desc": "过宽：profile 整行正则加 i 旗标，键名随之大小写不敏感",
++      "verdict": "✓ 咬住（fail=1）",
++      "fail": 1
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-spec.json b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-spec.json
+new file mode 100644
+index 00000000..b0ce33a4
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/mutation-spec.json
+@@ -0,0 +1,247 @@
++{
++  "targets": [
++    "src/trivium/adapters/claude-route.ts",
++    "src/trivium/adapters/claude-trace.ts",
++    "src/trivium/adapters/claude.ts"
++  ],
++  "suites": [
++    "dist/test/test/unit/claude-gateway-scrub.test.js",
++    "dist/test/test/unit/access-modes.test.js",
++    "dist/test/test/integration/claude-gateway-env.test.js",
++    "dist/test/test/integration/claude-directory-adapter.test.js"
++  ],
++  "cases": [
++    {
++      "id": "M1",
++      "desc": "去掉后缀放行：stripContextWindowSuffix 恒不剥",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "  const m = CONTEXT_WINDOW_SUFFIX.exec(value);",
++      "replace": "  const m = null;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M1b",
++      "desc": "同 M1，对集成 E11 / E12",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "  const m = CONTEXT_WINDOW_SUFFIX.exec(value);",
++      "replace": "  const m = null;",
++      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
++    },
++    {
++      "id": "M8",
++      "desc": "剥了也白剥：字符集判据改看原值",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;",
++      "replace": "  if (!/^[\\w./:+-]{1,128}$/.test(value)) return false;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M8b",
++      "desc": "同 M8，对集成 E11 / E12",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;",
++      "replace": "  if (!/^[\\w./:+-]{1,128}$/.test(value)) return false;",
++      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
++    },
++    {
++      "id": "M2",
++      "desc": "过宽：不剥后缀、字符集直接收方括号（任意位置方括号）",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "  const base = stripContextWindowSuffix(value);\n  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;",
++      "replace": "  const base = value;\n  if (!/^[\\w./:+\\[\\]-]{1,128}$/.test(base)) return false;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M3",
++      "desc": "过宽：后缀内容任意",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
++      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[^\\]]*\\]`;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M4",
++      "desc": "过宽：可剥多个后缀",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
++      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`(?:\\[[1-9][0-9]{0,3}[kKmM]\\])+`;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M5b",
++      "desc": "过宽：后缀位数不限、可以 0 开头",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
++      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[0-9]+[kKmM]\\]`;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M6",
++      "desc": "剥得到后缀就直接放行，跳过其余判据",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "  const base = stripContextWindowSuffix(value);\n  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;",
++      "replace": "  const base = stripContextWindowSuffix(value);\n  if (base !== value) return true;\n  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M7",
++      "desc": "UUID 判据改看原值（带后缀的 UUID 漏网）",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(base)) return false;",
++      "replace": "  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return false;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M9",
++      "desc": "profile 元数据不放行后缀",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const PROFILE_MODEL_VALUE = String.raw`[\\w.\\/:+-]+(?:${CONTEXT_WINDOW_SUFFIX_PATTERN})?`;",
++      "replace": "const PROFILE_MODEL_VALUE = String.raw`[\\w.\\/:+-]+`;",
++      "expect": "dist/test/test/unit/access-modes.test.js"
++    },
++    {
++      "id": "M10",
++      "desc": "profile 元数据放行任意方括号内容",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const PROFILE_MODEL_VALUE = String.raw`[\\w.\\/:+-]+(?:${CONTEXT_WINDOW_SUFFIX_PATTERN})?`;",
++      "replace": "const PROFILE_MODEL_VALUE = String.raw`[\\w.\\/:+-]+(?:\\[[^\\]]*\\])?`;",
++      "expect": "dist/test/test/unit/access-modes.test.js"
++    },
++    {
++      "id": "M11",
++      "desc": "一致性过宽：剥后缀分支改为前缀比较",
++      "file": "src/trivium/adapters/claude-trace.ts",
++      "find": "  return reported.every((r) => r === m || (bareBase && r === b));",
++      "replace": "  return reported.every((r) => r === m || (bareBase && m.startsWith(r)));",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M12",
++      "desc": "一致性过窄：去掉剥后缀那一支",
++      "file": "src/trivium/adapters/claude-trace.ts",
++      "find": "  return reported.every((r) => r === m || (bareBase && r === b));",
++      "replace": "  return reported.every((r) => r === m);",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M12b",
++      "desc": "同 M12，对集成 E11 / E12",
++      "file": "src/trivium/adapters/claude-trace.ts",
++      "find": "  return reported.every((r) => r === m || (bareBase && r === b));",
++      "replace": "  return reported.every((r) => r === m);",
++      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
++    },
++    {
++      "id": "M13",
++      "desc": "留痕丢失：reportedModels 恒空",
++      "file": "src/trivium/adapters/claude-trace.ts",
++      "find": "      if (typeof m === 'string' && m.length > 0 && !reportedModels.includes(m)) reportedModels.push(m);",
++      "replace": "      if (m === '\\u0000never') reportedModels.push(m);",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M13b",
++      "desc": "同 M13，对集成 E11 / E12",
++      "file": "src/trivium/adapters/claude-trace.ts",
++      "find": "      if (typeof m === 'string' && m.length > 0 && !reportedModels.includes(m)) reportedModels.push(m);",
++      "replace": "      if (m === '\\u0000never') reportedModels.push(m);",
++      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
++    },
++    {
++      "id": "M14",
++      "desc": "一致性过宽：不核剥后部分是否还含方括号",
++      "file": "src/trivium/adapters/claude-trace.ts",
++      "find": "  const bareBase = b !== m && !b.includes('[');",
++      "replace": "  const bareBase = b !== m;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "M15",
++      "desc": "留痕写错：trace.json 的 consistent 恒为 false",
++      "file": "src/trivium/adapters/claude.ts",
++      "find": "            consistent: claudeModelConsistency(trace.init, trace.reportedModels),",
++      "replace": "            consistent: false,",
++      "expect": "dist/test/test/integration/claude-directory-adapter.test.js"
++    },
++    {
++      "id": "M16",
++      "desc": "空串混进回报值（计划三审 AGY-02）",
++      "file": "src/trivium/adapters/claude-trace.ts",
++      "find": "      if (typeof m === 'string' && m.length > 0 && !reportedModels.includes(m)) reportedModels.push(m);",
++      "replace": "      if (typeof m === 'string' && !reportedModels.includes(m)) reportedModels.push(m);",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "C1",
++      "desc": "去掉大写放行：单位回到只认小写 [km]（第一轮）",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
++      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[km]\\]`;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "C1b",
++      "desc": "同 C1，对集成 E12",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
++      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[km]\\]`;",
++      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
++    },
++    {
++      "id": "C1c",
++      "desc": "同 C1，对 profile 元数据",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
++      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[km]\\]`;",
++      "expect": "dist/test/test/unit/access-modes.test.js"
++    },
++    {
++      "id": "C6",
++      "desc": "只放行大写、丢了小写：单位改为 [KM]",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
++      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[KM]\\]`;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "C2",
++      "desc": "过宽：单位任意字母 [A-Za-z]",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
++      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[A-Za-z]\\]`;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "C2b",
++      "desc": "同 C2，对 profile 元数据",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
++      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[A-Za-z]\\]`;",
++      "expect": "dist/test/test/unit/access-modes.test.js"
++    },
++    {
++      "id": "C3",
++      "desc": "过宽：单位可以多个字母 [kKmM]+",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
++      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]+\\]`;",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "C4",
++      "desc": "过宽：改用 Unicode 大小写折叠（exec 前加 iu 旗标，开尔文符号折成 k，计划三审 GLM-02）",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "  const m = CONTEXT_WINDOW_SUFFIX.exec(value);",
++      "replace": "  const m = new RegExp(CONTEXT_WINDOW_SUFFIX.source, 'iu').exec(value);",
++      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
++    },
++    {
++      "id": "C5",
++      "desc": "过宽：profile 整行正则加 i 旗标，键名随之大小写不敏感",
++      "file": "src/trivium/adapters/claude-route.ts",
++      "find": "    const m = PROFILE_MODEL_LINE.exec(line);",
++      "replace": "    const m = new RegExp(PROFILE_MODEL_LINE.source, 'i').exec(line);",
++      "expect": "dist/test/test/unit/access-modes.test.js"
++    }
++  ]
++}
+diff --git a/doc/05_testing/evidence/gateway-model-suffix-case-20261026/windows-acceptance.md b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/windows-acceptance.md
+new file mode 100644
+index 00000000..29a45987
+--- /dev/null
++++ b/doc/05_testing/evidence/gateway-model-suffix-case-20261026/windows-acceptance.md
+@@ -0,0 +1,153 @@
++# EV-258 第二轮 Windows 真实网关验收清单（后缀单位大小写）
++
++- 主题：网关模型名后缀大小写（BACKLOG EV-258 第二轮；第一轮清单见 `../gateway-model-suffix-20261026/windows-acceptance.md`，第 1 步不通过，判读同目录 `windows-readout.md`）
++- 执行人：用户，在 Windows 开发机上（本机层 `.trivium/config.local.yaml` 已开 `agents.claude.settings_env_source: user_settings`，CC Switch 网关，Qwen）
++- **会动用凭据、花配额**：doctor 一次（主探针约十次模型调用 + 目录臂 7 次）、claude 作审核者的真实审查一次（约 10 分钟）。第 0、1、4 步零配额。
++- 这次修的事：后缀单位改为大小写不敏感（`[1M]` 与 `[1m]` 都剥），其余边界不变。macOS 零配额对拍（47 项，含大写情形）已做完，见同目录 `accept-readout.txt`。
++- **和第一轮最大的不同：期望值不再预先写死一个具体串。** 第一轮的期望表写了 `qwen3.8-max[1m]`，那是从「形状」推出来的（形状把字母都换成 `a`，大小写被抹掉了）。这次第 1 步直接打印模型名键末尾方括号段的**码点**，后面各步的期望一律写「与第 1 步打印值逐字相同」，并在第 3 步再打印一次 `model_effective` 后缀的码点对照。
++- 要验的事：①带后缀的模型名键全部豁免，凭据类键（`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`）照旧替换；②探针原文与审查文档里 `init.model` / `model_effective` 逐字等于第 1 步打印的豁免值（带 `[1M]`）、来源 `envelope`；③`trace.json` 的 `modelReadback` 记下服务端回报的不带后缀的名并判为一致；④落盘凭据零命中。
++
++## 0. 准备
++
++每个 PowerShell 窗口开头先执行。Windows PowerShell 5.1 默认按 GBK 解码 node 输出、`Get-Content` / `Select-String` 也不按 UTF-8 读文件，所以**落文件一律 `Out-File -Encoding utf8`，读文件一律带 `-Encoding UTF8`**：
++
++```powershell
++[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
++$OutputEncoding = [System.Text.Encoding]::UTF8
++$E = "doc\05_testing\evidence\gateway-model-suffix-case-20261026"
++$E257 = "doc\05_testing\evidence\gateway-readback-model-20261025"
++$T = "$env:TEMP\ev258b"
++New-Item -ItemType Directory -Force $T | Out-Null
++```
++
++> **全程的输出都先写到 `$T`（仓库外）**，第 5 步再统一拷进证据目录。审查运行期间往工作树里写任何文件都会被跑后复算判成漂移、整次运行作废。
++
++1. 拉取含 EV-258 第二轮的提交，按惯例构建并重装；重装后核安装副本与仓库构建一致：
++
++   ```powershell
++   (Get-FileHash skills\dual-critic\scripts\trivium.cjs).Hash
++   (Get-FileHash "$env:USERPROFILE\.claude\skills\dual-critic\scripts\trivium.cjs").Hash
++   ```
++
++   两行应相同。
++2. 构建测试产物（第 0、1、4 步的脚本直接导入产品的判定函数，不另写口径）：`node scripts\build.mjs --with-tests`
++3. 确认本机层配置：`Select-String -Encoding UTF8 -Path .trivium\config.local.yaml -Pattern settings_env_source` 应命中 `user_settings`。
++4. 两个自检（零配额，都不读你的 settings.json）：
++
++   ```powershell
++   node "$E257\scan-gateway-exposure.mjs" --self-test 2>&1 | Out-File -Encoding utf8 "$T\windows-scan-self-test.txt"
++   echo "exit=$LASTEXITCODE"
++   node "$E\diag-suffix-codepoints.mjs" --self-test 2>&1 | Out-File -Encoding utf8 "$T\windows-diag-self-test.txt"
++   echo "exit=$LASTEXITCODE"
++   Get-Content -Encoding UTF8 "$T\windows-diag-self-test.txt"
++   ```
++
++   期望两条退出码都是 0：扫描器三格全 `✓`、末行 `SELF-TEST PASS`；码点诊断全 `✓`、首格「构建自证为『是』」、末行 `SELF-TEST PASS`（它用合成值核过：误填进模型名键的短凭据、与凭据键同值的值、方括号里的长随机串，都不会以原文或码点出现在输出里）。不通过就停下把两个文件发我。
++
++## 1. 逐键诊断：直接打印后缀码点（零配额）
++
++```powershell
++node "$E\diag-suffix-codepoints.mjs" 2>&1 | Out-File -Encoding utf8 "$T\windows-diag.txt"
++echo "exit=$LASTEXITCODE"
++Get-Content -Encoding UTF8 "$T\windows-diag.txt"
++```
++
++脚本读你的 `settings.json`，**不打印任何凭据值**：凭据类键只打印长度；已豁免的模型名键打印原值与末尾方括号段的码点；未豁免的模型名键只打印形状，末尾方括号段只有是「1～4 位数字加一个字母」、且不命中模式脱敏、不与任何凭据类键同值时才打印码点，否则只写类别。
++
++**通过判据**
++
++| 项 | 期望 |
++| --- | --- |
++| 退出码 | 0 |
++| 首行 | `dist/test 含第二轮代码：是` |
++| 带后缀的 5 个模型名键（`ANTHROPIC_MODEL`、`ANTHROPIC_DEFAULT_{OPUS,SONNET,FABLE}_MODEL`、`CLAUDE_CODE_SUBAGENT_MODEL`） | 「像模型名」「豁免」两列都是 `Y`；码点列与 2026-10-26 读数一致（`U+005B U+0031 U+004D U+005D`）。若码点变了（比如 CC Switch 改写了后缀），照实发我，不要按形状判 |
++| `*_MODEL_NAME` 四键与 `ANTHROPIC_DEFAULT_HAIKU_MODEL` | 豁免 `Y`，码点列为「（无方括号后缀）」 |
++| `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN` | 豁免 `N`，只有长度 |
++| 末行替换集长度 | 恰为两个凭据值的长度（前两次判读里是 116 与 62） |
++
++**把第 1 步打印的 `ANTHROPIC_DEFAULT_OPUS_MODEL` 那一行的值记下来**，下文记作〈OPUS 值〉；第 2、3 步的期望都以它为准（opus 档按别名读这个键）。不符合就停下把 `windows-diag.txt` 发我，不必做后面几步。
++
++## 2. doctor（探针侧回读）
++
++```powershell
++.\.trivium\bin\trivium.cmd doctor --only claude --json 2>&1 | Out-File -Encoding utf8 "$T\windows-doctor.json"
++echo "exit=$LASTEXITCODE"
++Select-String -Encoding UTF8 -Path "$T\windows-doctor.json" -Pattern '"model_flag"'
++(Select-String -Encoding UTF8 -Path "$T\windows-doctor.json" -Pattern 'model\\":\\"<redacted-env>').Count
++Select-String -Encoding UTF8 -Path "$T\windows-doctor.json" -Pattern 'model\\":\\"[^<\\]+' | Select-Object -First 3
++```
++
++**通过判据**
++
++| 项 | 期望 |
++| --- | --- |
++| doctor 退出码 | 0 |
++| 探针原文里的 `\"model\":\"<redacted-env>\"` | **0 处** |
++| 探针原文里的 `\"model\":\"…\"` | `init.model` 逐字等于〈OPUS 值〉（带后缀）；assistant 消息里另有不带后缀的名 |
++| `model_flag` | **不为 `null`**。按别名 `opus` 选模型时回读的是解析后的全名，记 `false` 是既有口径，判通过；`null` 即回读仍被吞，判不通过 |
++| `readonly_flags` / `readonly_breach` / `directory_deny_verified` | 与前几次验收相同（非空 / 不为 true / 有结论） |
++
++## 3. 一次 claude 作审核者的真实审查（审查调用的回读与 AC-20 留痕）
++
++在仓库根建一个临时文件作被审对象（**不要提交**），用非 claude 的 Driver 只选 claude 一侧、opus 档发起代码审：
++
++```powershell
++Set-Content -Encoding utf8 tmp-ev258b.txt "EV-258 第二轮 Windows 验收用的临时文件，审完删除。"
++.\.trivium\bin\trivium.cmd review --start --entry B --stage code --topic ev258b-win-claude --driver codex --critics claude --focus "只核对这个临时文件的措辞" --json 2>&1 | Out-File -Encoding utf8 "$T\windows-review-start.json"
++Get-Content -Encoding UTF8 "$T\windows-review-start.json"
++```
++
++记下 `run_id` 与 `run_dir`，然后反复等待，直到退出码不是 73：
++
++```powershell
++.\.trivium\bin\trivium.cmd review --wait <run_id> --timeout 180 --json 2>&1 | Out-File -Encoding utf8 -Append "$T\windows-review-wait.txt"
++echo "exit=$LASTEXITCODE"
++```
++
++审完（退 0，或退 1 也照样往下做）后：
++
++```powershell
++Copy-Item (Get-ChildItem .reviews\ev258b-win-claude\code\*-claude.md | Select-Object -First 1).FullName "$T\windows-review-claude.md"
++Select-String -Encoding UTF8 -Path "$T\windows-review-claude.md" -Pattern '^model_effective|right_model|right_source'
++$me = ((Select-String -Encoding UTF8 -Path "$T\windows-review-claude.md" -Pattern '^model_effective:' | Select-Object -First 1).Line -replace '^model_effective:\s*', '').Trim()
++$i = $me.LastIndexOf('[')
++if ($i -ge 0) { "model_effective 后缀码点：" + (($me.Substring($i).ToCharArray() | ForEach-Object { 'U+{0:X4}' -f [int]$_ }) -join ' ') } else { "model_effective 无方括号后缀" }
++$trace = Get-Content -Raw -Encoding UTF8 "<run_dir>\claude\out\trace.json" | ConvertFrom-Json
++$trace.modelReadback | ConvertTo-Json | Out-File -Encoding utf8 "$T\windows-trace-model-readback.json"
++Get-Content -Encoding UTF8 "$T\windows-trace-model-readback.json"
++```
++
++`<run_dir>` 是 `windows-review-start.json` 里 `run_dir` 的值。
++
++**通过判据**
++
++| 项 | 期望 |
++| --- | --- |
++| claude 侧 | 正常交卷 |
++| `model_effective` | 逐字等于〈OPUS 值〉（不是 `null`、不是 `<redacted-env>`）；上面打印的后缀码点与第 1 步该键的码点列相同 |
++| `model_effective_source` | `envelope` |
++| `family_comparisons` 里 claude 一侧的 `right_model` / `right_source` | 同上模型名 / `envelope` |
++| `trace.json` 的 `modelReadback` | `init` 等于〈OPUS 值〉，`reported` 为去掉后缀的名（一个元素），`consistent` 为 `true` |
++
++> 若 `consistent` 为 `false`：说明服务端回报的模型名既不是 `init.model`、也不是剥掉后缀的基名——不判不通过（生效模型照记 `init.model`，这一格只留痕），但请把 `windows-trace-model-readback.json` 发我。
++
++## 4. 落盘扫描（凭据零命中、模型名只报 NOTE）
++
++```powershell
++node "$E257\scan-gateway-exposure.mjs" .trivium "<run_dir>" .reviews\ev258b-win-claude $T 2>&1 | Out-File -Encoding utf8 "$T\windows-scan.txt"
++echo "exit=$LASTEXITCODE"
++Get-Content -Encoding UTF8 "$T\windows-scan.txt"
++```
++
++扫描脚本只打印键名与命中文件，不打印任何值；它导入的是新构建的 `gatewayScrubPlan`，所以带 `[1M]` 的模型名键这次应列在「豁免模型名键」里。
++
++**通过判据**：首行「豁免模型名键」包含第 1 步那五个带后缀的键；没有 `LEAK` 行；末行 `RESULT: no leak`、退出码 0。`NOTE` 行（模型名键的值出现在审查文档、探针原文里）是预期的。
++
++## 5. 交回
++
++```powershell
++Copy-Item "$T\windows-*" $E
++Remove-Item tmp-ev258b.txt
++```
++
++临时主题目录 `.reviews\ev258b-win-claude` 按惯例自行清理（不要提交）。把 `$E` 下新生成的 `windows-*` 文件发我（不含任何凭据值：doctor 与审查输出对凭据逐值脱敏，两个脚本只写键名、长度、模型名与白名单形态的后缀码点）。我据此回填测试报告 §8 与 BACKLOG EV-258。任一项不符合期望，原样发我，不要重试。

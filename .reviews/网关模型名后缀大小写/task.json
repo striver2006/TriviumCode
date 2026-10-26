@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "网关模型名后缀大小写",
+  "goal": "续修 BACKLOG EV-258（已由 done 改回 doing，在原条目上修）：第一轮修复的上下文窗口后缀片段只认小写单位 k 或 m，而 CC Switch 写进生效模型名键的后缀是大写 [1M]（2026-10-26 Windows 验收第 1 步实测，5 个键码点均为 U+005B U+0031 U+004D U+005D，dist/test 已是新代码），守卫 4 仍判不像模型名，这…",
+  "created_at": "2026-10-26T14:45:56.795Z",
+  "updated_at": "2026-10-26T15:57:31.369Z",
+  "runs": [
+    {
+      "run_id": "20261026T145019Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-26T14:50:27.726Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261026T153202Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-26T15:32:11.052Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261026T155144Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-26T15:57:31.369Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-26T14:45:56.795Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-26T15:07:39.152Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261026T145019Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-26T15:07:33.016Z"
+    },
+    {
+      "run_id": "20261026T153202Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-26T15:51:16.111Z"
+    }
+  ]
+}
