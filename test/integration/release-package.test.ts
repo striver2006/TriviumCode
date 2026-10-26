@@ -24,14 +24,17 @@ test('发布包真解压：白名单与哈希、四家28入口、隔离安装升
       const r = await execFile(process.execPath, ['scripts/package-release.mjs', '--candidate', '--out', out],
         { cwd: REPO_ROOT, timeout: 120_000 });
       const release = JSON.parse(r.stdout) as { archive: string; sha256: string; version: string };
-      assert.equal(createHash('sha256').update(await fs.readFile(release.archive)).digest('hex'), release.sha256);
+      const archiveBytes = await fs.readFile(release.archive);
+      assert.equal(createHash('sha256').update(archiveBytes).digest('hex'), release.sha256);
+      if (IS_WIN) assert.deepEqual(archiveBytes.subarray(0, 4), Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+        'Windows 发布包必须是 ZIP，不能是改名的 tar');
       const extracted = path.join(temp, 'extracted');
       await fs.mkdir(extracted);
-      // win32 包是 zip（bsdtar 可解）；macOS 包是 tar.gz。
-      // bsdtar 会把 `C:\...` 当远程主机语法（--force-local 只护 -f 操作数），-C 也用相对路径
+      // Windows 按发布清单的 Expand-Archive 验收；macOS 包是 tar.gz。
       if (IS_WIN) {
-        await execFile('tar.exe', ['--force-local', '-xf', path.relative(temp, release.archive), '-C', path.relative(temp, extracted)],
-          { cwd: temp, windowsHide: true });
+        await execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+          'Expand-Archive -LiteralPath $env:TRIVIUM_RELEASE_ARCHIVE -DestinationPath $env:TRIVIUM_RELEASE_EXTRACTED -Force'],
+        { windowsHide: true, env: { ...process.env, TRIVIUM_RELEASE_ARCHIVE: release.archive, TRIVIUM_RELEASE_EXTRACTED: extracted } });
       } else {
         await execFile('/usr/bin/tar', ['-xzf', release.archive, '-C', extracted]);
       }
