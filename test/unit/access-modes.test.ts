@@ -64,10 +64,29 @@ test('profile 元数据：三种形态都收末尾一个上下文窗口后缀，
     'export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-4.6[1m]',
   ].join('\n'));
   assert.deepEqual(meta.models, ['qwen3.8-max[1m]', 'qwen3.8-flash[200k]', 'glm-4.6[1m]']);
-  for (const v of ['qwen[1m]-max', 'qwen3.8-max[1m][1m]', 'qwen3.8-max[abc]', 'qwen3.8-max[1M]', 'qwen3.8-max[0m]']) {
+  // 第一轮这里的 `qwen3.8-max[1M]` 是反例；第二轮单位大小写不敏感（CC Switch 写的是大写，Windows 码点实测），换成 `[1G]`
+  for (const v of ['qwen[1m]-max', 'qwen3.8-max[1m][1m]', 'qwen3.8-max[abc]', 'qwen3.8-max[1G]', 'qwen3.8-max[0m]']) {
     for (const line of [`export ANTHROPIC_MODEL="${v}"`, `export ANTHROPIC_MODEL='${v}'`, `export ANTHROPIC_MODEL=${v}`]) {
       assert.deepEqual(claudeProfileMetadata(line).models, [], `${line} 不应收`);
     }
+  }
+});
+
+test('profile 元数据：大写单位后缀三种形态都收；其它单位字母、混入字符、小写键名一律不收（EV-258 第二轮）', () => {
+  const meta = claudeProfileMetadata([
+    'export ANTHROPIC_MODEL="qwen3.8-max[1M]"',
+    "export ANTHROPIC_DEFAULT_SONNET_MODEL='qwen3.8-flash[200K]'",
+    'export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-4.6[1M]',
+  ].join('\n'));
+  assert.deepEqual(meta.models, ['qwen3.8-max[1M]', 'qwen3.8-flash[200K]', 'glm-4.6[1M]']);
+  for (const v of ['qwen3.8-max[1G]', 'qwen3.8-max[1MB]', 'qwen3.8-max[1mM]', 'qwen3.8-max[1M][1M]', 'qwen3.8-max[1K]']) {
+    for (const line of [`export ANTHROPIC_MODEL="${v}"`, `export ANTHROPIC_MODEL='${v}'`, `export ANTHROPIC_MODEL=${v}`]) {
+      assert.deepEqual(claudeProfileMetadata(line).models, [], `${line} 不应收`);
+    }
+  }
+  // 放宽只落在单位那一个字符位：键名判据仍区分大小写（片段用显式字符类、没给整行正则加 i 旗标）
+  for (const line of ['export anthropic_model="qwen3.8-max[1M]"', 'export Anthropic_Model=qwen3.8-max']) {
+    assert.deepEqual(claudeProfileMetadata(line).models, [], `${line} 不应收`);
   }
 });
 

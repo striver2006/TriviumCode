@@ -15,7 +15,7 @@ EV-257 的守卫 ④ `looksLikeModelName`（`src/trivium/adapters/claude-route.t
 
 ## 2. 修法（计划三审 r2 定）
 
-- **守卫 ④ 只放行末尾一个上下文窗口后缀**（`claude-route.ts`）：无锚片段 `CONTEXT_WINDOW_SUFFIX_PATTERN` = `\[[1-9][0-9]{0,3}[km]\]`（1～4 位不以 0 开头的数字加小写 k 或 m）；`CONTEXT_WINDOW_SUFFIX` 由它加 `$` 构造，`stripContextWindowSuffix` 只剥一个。`looksLikeModelName` 先剥，再对剥后部分照旧判字符集、长度 1～128、UUID、最长段 ≤ 16。方括号在别处、两个后缀、大写或其它单位、0 开头或超过 4 位、只有后缀，都剥不掉或剥后仍不合字符集，照旧替换。守卫 ②③ 看的仍是含后缀的完整值；`gatewayScrubPlan` 不改，同值的模型名键守卫 ④ 放行后都是候选、一并豁免，挂同一个值的非候选键仍让它进替换集。
+- **守卫 ④ 只放行末尾一个上下文窗口后缀**（`claude-route.ts`）：无锚片段 `CONTEXT_WINDOW_SUFFIX_PATTERN` = `\[[1-9][0-9]{0,3}[km]\]`（1～4 位不以 0 开头的数字加小写 k 或 m）；`CONTEXT_WINDOW_SUFFIX` 由它加 `$` 构造，`stripContextWindowSuffix` 只剥一个。`looksLikeModelName` 先剥，再对剥后部分照旧判字符集、长度 1～128、UUID、最长段 ≤ 16。方括号在别处、两个后缀、大写或其它单位、0 开头或超过 4 位、只有后缀，都剥不掉或剥后仍不合字符集，照旧替换（「大写」一项第二轮已改：单位大小写不敏感，见 §7 与 [`REPORT_2026-10-26_gateway_model_suffix_case.md`](./REPORT_2026-10-26_gateway_model_suffix_case.md)）。守卫 ②③ 看的仍是含后缀的完整值；`gatewayScrubPlan` 不改，同值的模型名键守卫 ④ 放行后都是候选、一并豁免，挂同一个值的非候选键仍让它进替换集。
 - **`claudeProfileMetadata` 同一缺口同批修**：三种形态（双引号、单引号、不加引号）的值都改为 `[\w.\/:+-]+(?:片段)?`，由同一个无锚片段派生、行级正则自管锚定（计划三审 AGY-01 ≡ GLM-01）。不加引号的形态也收：包装器 `~/.local/bin/cld` 是 bash、`source` 读 profile；shell 对赋值右侧不做路径名展开（目录里放一个能匹配的 `qwen1` 文件，sh / bash / zsh / dash 对 `export M=qwen[1m]` 都输出原串，计划三审 CODEX-01）。消费面只有 doctor 的「配置声明模型」注记。
 - **AC-20 回读口径**：`model_effective` 仍取 `init.model`、来源 `envelope`。理由：与另三家同为「CLI 自己回报按什么配置跑」（codex rollout、zcode 会话文件、agy 信封都是客户端记录）；`message.model` 在无 assistant 消息的运行里缺失、回落备用模型时多值、网关下同样由网关控制；`result.modelUsage` 按模型分桶、含旁路调用，不是单值。不一致时：`parseClaudeEvents` 新收 `reportedModels`（assistant 的非空 `message.model`，去重保序；空串不收，计划三审 AGY-02），`claudeModelConsistency(init, reported)` 判一致（每个回报值等于 `init.model`，或在 init 恰为「不含方括号的基名 + 一个后缀」时等于基名，计划三审 CODEX-03；取不到或无回报记 null），二者写进 `trace.json` 的 `modelReadback: { init, reported, consistent }`，只留痕、不进判定面、不降级不告警。
 - **不动**：守卫 ①②③、替换集构造与降序、≥ 8 字符阈值、`claudeModelReadback`、探针 `model_flag` 的比法、run.json / `CriticResult` 契约。
@@ -100,7 +100,7 @@ grep「`looksLikeModelName`｜四道守卫｜`system/init` 回报｜网关回报
 ## 7. 已知边界
 
 - **形似模型名的短段凭据加一个合法后缀**，与不加后缀时同样放行（EV-257 剩余边界的延伸，不新开口子）。
-- **大写单位 `[1M]` 不认**：fail-closed，代价是那个值照旧替换、回读记 `unverified`。Claude Code 与 CC Switch 实测都写小写。
+- ~~**大写单位 `[1M]` 不认**：fail-closed，代价是那个值照旧替换、回读记 `unverified`。Claude Code 与 CC Switch 实测都写小写。~~ **（2026-10-26 改写）这条边界不成立，已由第二轮修掉。** Windows 验收第 1 步码点实测，CC Switch 写进 5 个生效模型名键的后缀是大写 `[1M]`（U+005B U+0031 U+004D U+005D），只认小写正好把真实形态挡在外面。原文「CC Switch 实测都写小写」的出处是 EV-257 判读里的 `qwen3.8-max[1m]`，那是从字母一律换 `a` 的形状 `aaaa9.9-aaa[9a]` 还原出来的，形状抹掉了大小写，从未逐字核过；本报告 S11、access-modes 后缀格与变异 M5a 据此把 `[1M]` 锁成了反例。第二轮（主题 `网关模型名后缀大小写`，主设计 v1.3.181）把单位改为 `[kKmM]`、其余边界不变，上述三处改为正例并补其它单位字母等反例，见 [`REPORT_2026-10-26_gateway_model_suffix_case.md`](./REPORT_2026-10-26_gateway_model_suffix_case.md)。
 - **`model_flag` 在网关机器上记 false**：按别名 `opus` 选模型、回读到的是解析后的全名，两者不等；这是别名比对的既有口径（EV-256 验收时也是 false），不在本题。
 - **`trace.json` 在全部机器上多一个 `modelReadback` 键**：诊断留痕，不进判定面；「未开网关零变化」承诺的是 scrub 输出与 `model_effective`。
 - **一致性判定只认「剥一个合法后缀」这一种改写**：网关把模型名改写成别的形态时记 false，不告警；生效模型照记 `init.model`。

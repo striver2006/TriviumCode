@@ -12,6 +12,10 @@
  * - **上下文窗口后缀**（EV-258）：守卫 4 只放行末尾一个 `[数字k|m]` 后缀，剥后其余判据照旧（S10～S13）；
  *   放行过窄（真实带后缀形态被替换）与过宽（方括号在别处、多个后缀、内容不符、剥后跳过判据）两个方向都咬。
  *   AC-20 留痕：`init.model` 与服务端回报的 `message.model` 的比对只进 `trace.json`（S14）。
+ * - **单位大小写不敏感**（EV-258 第二轮）：CC Switch 写的是大写 `[1M]`（2026-10-26 Windows 码点实测，U+005B U+0031 U+004D U+005D）。
+ *   第一轮把 `[1M]` 锁成了反例（S11、S14 各一处），依据是从「形状」推出来的小写，本轮改为正例（S15、S16）；
+ *   过宽方向另补其它单位字母、多个字母、开尔文符号、全角字母等反例（S11）。S13 用例名里的「Windows 实测形态」
+ *   当时写的是小写 `[1m]`，真实形态由 S15 覆盖（不改名：变异规格与历史读数按用例名对）。
  *
  * 凭据形态的夹具一律运行时分段拼接（`contract/fixture-credentials`）。
  */
@@ -35,7 +39,8 @@ const REAL_MODELS = [
   'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
   'ep-20250101123456-abcde',
   'glm-4.6',
-  'qwen3.8-max[1m]', // EV-258：CC Switch 写进生效模型名键的上下文窗口后缀形态（2026-10-26 Windows 实测）
+  'qwen3.8-max[1m]', // EV-258：Claude Code 文档的上下文窗口后缀形态（第一轮注为「Windows 实测」，实为从形状推出）
+  'qwen3.8-max[1M]', // EV-258 第二轮：CC Switch 写进生效模型名键的真实形态（2026-10-26 Windows 码点实测）
 ];
 
 /** 运行时拼接的令牌形态值：静态文本里不出现完整形态 */
@@ -181,8 +186,12 @@ test('S10 带后缀的真实形态放行：守卫 4 为真、模型名键豁免�
 
 test('S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）', () => {
   const B = 'qwen3.8-max';
-  const negatives = [`qwen[1m]-max`, `${B}[1m][1m]`, `${B}[abc]`, `${B}[1g]`, `${B}[0m]`, `${B}[12345m]`, `${B}[1M]`,
-    `${B}[]`, `${B}[ 1m]`, `${B}[1m] `, '[1m]', `[${RANDOM_TOKEN}]`];
+  // 第一轮这里还有 `${B}[1M]`：CC Switch 实际写的就是大写（Windows 码点实测），第二轮移出、改由 S15 当正例。
+  // 补上的大写一类反例钉住「只放宽单位字母 k / m 的大小写」：其它字母、多个字母、单位在前、开尔文符号（`iu` 折叠会放过）、全角字母。
+  const negatives = [`qwen[1m]-max`, `${B}[1m][1m]`, `${B}[abc]`, `${B}[1g]`, `${B}[0m]`, `${B}[12345m]`,
+    `${B}[]`, `${B}[ 1m]`, `${B}[1m] `, '[1m]', `[${RANDOM_TOKEN}]`,
+    `${B}[1G]`, `${B}[1MB]`, `${B}[1mM]`, `${B}[M1]`, `${B}[0M]`, `${B}[12345M]`, `${B}[1M][1M]`, `qwen[1M]-max`,
+    `${B}[1K]`, `${B}[1Ｍ]`];
   for (const v of negatives) {
     const env = { ANTHROPIC_MODEL: v, ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01' };
     // 第一层：形态拒绝、不豁免
@@ -268,8 +277,80 @@ test('S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值�
   assert.equal(claudeModelConsistency(mk('gw-a[1m]'), ['gw-']), false, '回报是 init 的真前缀但不是剥后缀结果 ⇒ false（GLM-02）');
   assert.equal(claudeModelConsistency(mk('gw-a[1m]'), ['gw-a', 'gw-b']), false, '有一个不符 ⇒ false');
   assert.equal(claudeModelConsistency(mk('qwen[1m][1m]'), ['qwen[1m]']), false, '两个后缀只剥一个 ⇒ false（CODEX-03）');
-  assert.equal(claudeModelConsistency(mk('qwen[1M]'), ['qwen']), false, '后缀不合法不剥 ⇒ false');
+  // 第一轮这里断言 qwen[1M] 对 qwen 为 false（把大写当「后缀不合法」）；第二轮单位大小写不敏感，改为 true，「不合法」换用 [1G]
+  assert.equal(claudeModelConsistency(mk('qwen[1M]'), ['qwen']), true, '大写单位后缀照样剥 ⇒ true（EV-258 第二轮）');
+  assert.equal(claudeModelConsistency(mk('qwen[1G]'), ['qwen']), false, '后缀不合法不剥 ⇒ false');
 
   assert.equal(modelFamily('qwen3.8-max[1m]'), 'qwen');
   assert.equal(modelFamily('claude-opus-4-1[1m]'), 'claude');
+});
+
+/** 带大写单位后缀的真实形态（EV-258 第二轮）：都要放行、豁免、原样保留 */
+const UPPER_SUFFIXED_MODELS = ['qwen3.8-max[1M]', 'qwen3.8-flash[1M]', 'claude-opus-4-1[200K]', 'glm-4.6[1000K]', 'gw-x[9999M]'];
+
+test('S15 大写单位后缀放行：守卫 4 为真、豁免、输出原样保留；Windows 码点实测形态整表只替换凭据（过窄方向）', () => {
+  for (const m of UPPER_SUFFIXED_MODELS) {
+    assert.equal(looksLikeModelName(m), true, `${m} 应像模型名`);
+    const env = { ANTHROPIC_MODEL: m, ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01' };
+    assert.deepEqual(gatewayScrubPlan(env).exemptKeys, ['ANTHROPIC_MODEL'], `${m} 应豁免`);
+    assert.deepEqual(gatewayScrubPlan(env).replace, ['gw-ev258-auth-01'], `${m}：替换集只剩凭据值`);
+    assert.ok(scrubGatewayEnv(`"model":"${m}"`, env).includes(m), `${m} 应原样保留`);
+  }
+
+  // 与 S13 同一结构，带后缀的 5 个键用 2026-10-26 Windows 码点实测的大写 [1M]
+  const flash = 'gw-ev258-flash';
+  const max = 'gw-ev258-max';
+  const env: Record<string, string> = {
+    ANTHROPIC_BASE_URL: 'https://gw-ev258.invalid/api',
+    ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01',
+    ANTHROPIC_MODEL: `${flash}[1M]`,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: `${flash}[1M]`,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: `${max}[1M]`,
+    ANTHROPIC_DEFAULT_FABLE_MODEL: `${max}[1M]`,
+    CLAUDE_CODE_SUBAGENT_MODEL: `${max}[1M]`,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: flash,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME: flash,
+    ANTHROPIC_DEFAULT_SONNET_MODEL_NAME: flash,
+    ANTHROPIC_DEFAULT_OPUS_MODEL_NAME: max,
+    ANTHROPIC_DEFAULT_FABLE_MODEL_NAME: max,
+  };
+  const models = Object.keys(env).filter((k) => !['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN'].includes(k));
+  const plan = gatewayScrubPlan(env);
+  assert.deepEqual([...plan.exemptKeys].sort(), [...models].sort(), '10 个模型名键须全部豁免');
+  assert.deepEqual(plan.replace, [env['ANTHROPIC_BASE_URL'], env['ANTHROPIC_AUTH_TOKEN']], '替换集恰为两个凭据值（降序）');
+
+  // 凭据优先在大写形态下同样成立：非模型名键挂着 max[1M] ⇒ 挂它的三个模型名键全部不豁免
+  const tainted = { ...env, ANTHROPIC_EXTRA_EV258: `${max}[1M]` };
+  const p2 = gatewayScrubPlan(tainted);
+  for (const k of ['ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_FABLE_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL']) {
+    assert.ok(!p2.exemptKeys.includes(k), `${k}：与非模型名键同值，不得豁免`);
+  }
+  assert.ok(p2.replace.includes(`${max}[1M]`), '与非模型名键同值的带大写后缀值须进替换集');
+  assert.ok(!scrubGatewayEnv(`init ${max}[1M] end`, tainted).includes(`${max}[1M]`), '与非模型名键同值的带大写后缀值须被替换');
+  assert.equal(p2.exemptKeys.length, 7, '其余 7 个模型名键照旧豁免');
+});
+
+test('S16 大写单位后缀下剥后其余判据照旧、只剥一个；一致性判定同批覆盖大写', () => {
+  for (const sfx of ['[1M]', '[1K]']) {
+    for (const [label, core] of [['随机令牌（最长段）', RANDOM_TOKEN], ['UUID', UUID_TOKEN], ['OpenAI 形态（守卫 2）', OPENAI_LIKE]] as const) {
+      const v = `${core}${sfx}`;
+      assert.equal(stripContextWindowSuffix(v), core, `前提：${label} 的 ${sfx} 后缀剥得掉——这格咬的是剥后判据`);
+      const env = { ANTHROPIC_DEFAULT_OPUS_MODEL: v };
+      assert.deepEqual(gatewayScrubPlan(env).exemptKeys, [], `${label} + ${sfx}：不得豁免`);
+      assert.ok(!scrubGatewayEnv(`init ${v} end`, env).includes(v), `${label} + ${sfx}：须被替换`);
+    }
+    assert.equal(looksLikeModelName(`${RANDOM_TOKEN}${sfx}`), false, `随机令牌 + ${sfx}：守卫 4 须拒`);
+    assert.equal(looksLikeModelName(`${UUID_TOKEN}${sfx}`), false, `UUID + ${sfx}：守卫 4 须拒`);
+  }
+  assert.equal(stripContextWindowSuffix('x[1M][1M]'), 'x[1M]', '大写后缀也只剥一个');
+  assert.equal(looksLikeModelName('qwen3.8-max[1M][1M]'), false);
+  assert.equal(stripContextWindowSuffix('qwen3.8-max[1m]'), 'qwen3.8-max', '小写照旧剥');
+
+  const mk = (model: string | null) => ({ model, tools: [], permissionMode: null, cwd: null });
+  assert.equal(claudeModelConsistency(mk('gw-a[1M]'), ['gw-a']), true, 'init 带大写后缀、回报不带 ⇒ true');
+  assert.equal(claudeModelConsistency(mk('gw-a[1M]'), ['gw-']), false, '回报是 init 的真前缀但不是剥后缀结果 ⇒ false');
+  assert.equal(claudeModelConsistency(mk('qwen[1M][1M]'), ['qwen[1M]']), false, '两个大写后缀只剥一个 ⇒ false');
+  assert.equal(claudeModelConsistency(mk('qwen[1G]'), ['qwen']), false, '其它单位字母不剥 ⇒ false');
+
+  assert.equal(modelFamily('qwen3.8-max[1M]'), 'qwen');
 });

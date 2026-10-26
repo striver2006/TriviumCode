@@ -1,0 +1,210 @@
+✓ 工作树干净、基线全绿（4 个套件）
+  M1 ✓ 咬住（fail=7）
+  M1b ✓ 咬住（fail=2）
+  M8 ✓ 咬住（fail=4）
+  M8b ✓ 咬住（fail=2）
+  M2 ✓ 咬住（fail=3）
+  M3 ✓ 咬住（fail=3）
+  M4 ✓ 咬住（fail=2）
+  M5b ✓ 咬住（fail=1）
+  M6 ✓ 咬住（fail=3）
+  M7 ✓ 咬住（fail=2）
+  M9 ✓ 咬住（fail=2）
+  M10 ✓ 咬住（fail=2）
+  M11 ✓ 咬住（fail=2）
+  M12 ✓ 咬住（fail=2）
+  M12b ✓ 咬住（fail=2）
+  M13 ✓ 咬住（fail=1）
+  M13b ✓ 咬住（fail=2）
+  M14 ✓ 咬住（fail=2）
+  M15 ✓ 咬住（fail=1）
+  M16 ✓ 咬住（fail=1）
+  C1 ✓ 咬住（fail=4）
+  C1b ✓ 咬住（fail=1）
+  C1c ✓ 咬住（fail=1）
+  C6 ✓ 咬住（fail=6）
+  C2 ✓ 咬住（fail=3）
+  C2b ✓ 咬住（fail=2）
+  C3 ✓ 咬住（fail=1）
+  C4 ✓ 咬住（fail=1）
+  C5 ✓ 咬住（fail=1）
+{
+  "总数": 29,
+  "咬住": 29,
+  "逐条": [
+    {
+      "id": "M1",
+      "desc": "去掉后缀放行：stripContextWindowSuffix 恒不剥",
+      "verdict": "✓ 咬住（fail=7）",
+      "fail": 7
+    },
+    {
+      "id": "M1b",
+      "desc": "同 M1，对集成 E11 / E12",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M8",
+      "desc": "剥了也白剥：字符集判据改看原值",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "M8b",
+      "desc": "同 M8，对集成 E11 / E12",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M2",
+      "desc": "过宽：不剥后缀、字符集直接收方括号（任意位置方括号）",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M3",
+      "desc": "过宽：后缀内容任意",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M4",
+      "desc": "过宽：可剥多个后缀",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M5b",
+      "desc": "过宽：后缀位数不限、可以 0 开头",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M6",
+      "desc": "剥得到后缀就直接放行，跳过其余判据",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "M7",
+      "desc": "UUID 判据改看原值（带后缀的 UUID 漏网）",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M9",
+      "desc": "profile 元数据不放行后缀",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M10",
+      "desc": "profile 元数据放行任意方括号内容",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M11",
+      "desc": "一致性过宽：剥后缀分支改为前缀比较",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M12",
+      "desc": "一致性过窄：去掉剥后缀那一支",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M12b",
+      "desc": "同 M12，对集成 E11 / E12",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M13",
+      "desc": "留痕丢失：reportedModels 恒空",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M13b",
+      "desc": "同 M13，对集成 E11 / E12",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M14",
+      "desc": "一致性过宽：不核剥后部分是否还含方括号",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "M15",
+      "desc": "留痕写错：trace.json 的 consistent 恒为 false",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "M16",
+      "desc": "空串混进回报值（计划三审 AGY-02）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "C1",
+      "desc": "去掉大写放行：单位回到只认小写 [km]（第一轮）",
+      "verdict": "✓ 咬住（fail=4）",
+      "fail": 4
+    },
+    {
+      "id": "C1b",
+      "desc": "同 C1，对集成 E12",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "C1c",
+      "desc": "同 C1，对 profile 元数据",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "C6",
+      "desc": "只放行大写、丢了小写：单位改为 [KM]",
+      "verdict": "✓ 咬住（fail=6）",
+      "fail": 6
+    },
+    {
+      "id": "C2",
+      "desc": "过宽：单位任意字母 [A-Za-z]",
+      "verdict": "✓ 咬住（fail=3）",
+      "fail": 3
+    },
+    {
+      "id": "C2b",
+      "desc": "同 C2，对 profile 元数据",
+      "verdict": "✓ 咬住（fail=2）",
+      "fail": 2
+    },
+    {
+      "id": "C3",
+      "desc": "过宽：单位可以多个字母 [kKmM]+",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "C4",
+      "desc": "过宽：改用 Unicode 大小写折叠（exec 前加 iu 旗标，开尔文符号折成 k，计划三审 GLM-02）",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    },
+    {
+      "id": "C5",
+      "desc": "过宽：profile 整行正则加 i 旗标，键名随之大小写不敏感",
+      "verdict": "✓ 咬住（fail=1）",
+      "fail": 1
+    }
+  ]
+}

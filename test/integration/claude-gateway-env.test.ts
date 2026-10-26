@@ -21,7 +21,8 @@
  *   回读须记 null + `unverified`（E9）；未开启时与修复前逐项相同（E10）。E8～E10 不复用 `runAll`
  *   （它对全部 `GATEWAY_VALUES` 断言不出现），「不出现」只对 `CREDENTIAL_VALUES` 断言。
  * - **带上下文窗口后缀的模型名**（EV-258）：模型名键值形如 `xxx[1m]`、多键同值时一并豁免，回读记带后缀的名、
- *   服务端回报的 `message.model` 不带后缀且判为一致，凭据键的值仍被替换（E11）。
+ *   服务端回报的 `message.model` 不带后缀且判为一致，凭据键的值仍被替换（E11）。单位为大写的 `xxx[1M]`
+ *   （CC Switch 的真实形态，2026-10-26 Windows 码点实测；EV-258 第二轮）同样如此（E12）。
  * - 用例名里的「网关回报的模型名」沿用 EV-257 的叫法：`init.model` 实为 CLI 按模型名键解析出的配置值，
  *   服务端回报的是 assistant 消息的 `message.model`（EV-258 订正；改用例名会让历史读数与变异规格对不上，故只在这里说明）。
  *
@@ -32,7 +33,7 @@
  *   已能跑完 `probeClaude` 各臂的假 CLI；另外每次调用往 `FAKE_CLAUDE_LOG` 追加一行记录，并把
  *   `ANTHROPIC_AUTH_TOKEN` 的值回显进 stdout 与 stderr 锚脱敏。两个可选开关只给 E8～E10 用、E1～E7 不设：
  *   `FAKE_CLAUDE_INIT_MODEL_KEY` 让 `init.model` 取该环境变量的值（不在环境里则退回缺省名）；
- *   `FAKE_CLAUDE_MESSAGE_MODEL_KEY`（EV-258，只给 E11 用）多吐一条 assistant 事件、`message.model` 取该环境变量的值；
+ *   `FAKE_CLAUDE_MESSAGE_MODEL_KEY`（EV-258，只给 E11 / E12 用）多吐一条 assistant 事件、`message.model` 取该环境变量的值；
  *   `FAKE_CLAUDE_RAW_LOG` 把未脱敏的原始输出另写一份作对照（只在本格 `scratchDir` 里）。
  * - **宿主变量隔离**（计划三审 CODEX-01）：每格先摘下宿主全部 `ANTHROPIC_` / `CLAUDE_` 前缀变量、finally 原样放回，
  *   只放合成值；假 CLI 只对 `FAKE_CLAUDE_VALUE_KEYS` 声明的键记值，其余前缀键只记键名——宿主真实令牌不进子进程、
@@ -434,5 +435,42 @@ test('E11 开启 · 模型名键值带上下文窗口后缀且多键同值：回
     for (const v of SUFFIX_CREDENTIALS) assert.ok(!arm.raw.includes(v) && !arm.stderr.includes(v), 'E11 探针臂：凭据键的值不得出现');
     const { probe } = await withClaudeProbeRoute(route, real, null, () => probeClaude(process.execPath, { assetRoot: ASSET_ROOT }));
     assert.equal(probe.model_flag, true, 'E11：回读到的带后缀名与所选模型相同，model_flag 须为 true');
+  });
+});
+
+// ─────────────── EV-258 第二轮：大写单位后缀（E12）───────────────
+
+/** CC Switch 真实形态的合成版：模型名键值带大写 `[1M]`（2026-10-26 Windows 码点实测）、两个键同值，`*_MODEL_NAME` 不带后缀 */
+const UPPER_SUFFIX_ENV = {
+  ANTHROPIC_BASE_URL: 'https://gw-ev258.invalid/api',
+  ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01',
+  ANTHROPIC_MODEL: 'gw-ev258-model-02[1M]',
+  ANTHROPIC_DEFAULT_OPUS_MODEL: 'gw-ev258-model-02[1M]',
+  ANTHROPIC_DEFAULT_OPUS_MODEL_NAME: 'gw-ev258-model-02',
+};
+const UPPER_SUFFIX_CREDENTIALS = [UPPER_SUFFIX_ENV.ANTHROPIC_AUTH_TOKEN, UPPER_SUFFIX_ENV.ANTHROPIC_BASE_URL];
+
+test('E12 开启 · 模型名键值带大写单位后缀 [1M] 且多键同值：回读记带后缀的名、来源 envelope、与不带后缀的回报一致，凭据键的值仍被替换', async () => {
+  await withCell({ enabled: true, settings: JSON.stringify({ env: UPPER_SUFFIX_ENV }),
+    extra: { FAKE_CLAUDE_INIT_MODEL_KEY: 'ANTHROPIC_MODEL', FAKE_CLAUDE_MESSAGE_MODEL_KEY: 'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME' } }, async (c) => {
+    const real = UPPER_SUFFIX_ENV.ANTHROPIC_MODEL;
+    const { out, model, source } = await reviewReadback(c);
+    assert.equal(model, real, 'E12：带大写后缀的模型名被守卫 4 拒收、留在替换集时，这里是 null');
+    assert.equal(source, 'envelope');
+    for (const [label, text] of [['stdout', out.stdout], ['stderr', out.stderr], ['commandLine', out.commandLine]] as const) {
+      for (const v of UPPER_SUFFIX_CREDENTIALS) assert.ok(!text.includes(v), `E12 审查调用 ${label}：凭据键的值不得出现`);
+    }
+    assert.ok(out.stdout.includes('<redacted-env>') && out.stderr.includes('<redacted-env>'), 'E12：回显的 AUTH_TOKEN 须以占位符出现');
+    const trace = parseClaudeEvents(out.stdout);
+    assert.deepEqual(trace.reportedModels, [UPPER_SUFFIX_ENV.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME], 'E12：服务端回报的模型名须原样收进留痕');
+    assert.equal(claudeModelConsistency(trace.init, trace.reportedModels), true, 'E12：带大写后缀的 init 与不带后缀的回报判为一致');
+
+    const route = fakeRoute(c.cfg);
+    const fx = { root: c.home } as Fixture;
+    const arm = await withClaudeProbeRoute(route, real, null, () => execArgv(process.execPath, fx, probeArgs({ prompt: 'p' })));
+    assert.equal(arm.init?.model, real, 'E12 探针臂：init.model 须为带大写后缀的模型名');
+    for (const v of UPPER_SUFFIX_CREDENTIALS) assert.ok(!arm.raw.includes(v) && !arm.stderr.includes(v), 'E12 探针臂：凭据键的值不得出现');
+    const { probe } = await withClaudeProbeRoute(route, real, null, () => probeClaude(process.execPath, { assetRoot: ASSET_ROOT }));
+    assert.equal(probe.model_flag, true, 'E12：回读到的带大写后缀名与所选模型相同，model_flag 须为 true');
   });
 });

@@ -1,0 +1,247 @@
+{
+  "targets": [
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/claude.ts"
+  ],
+  "suites": [
+    "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "dist/test/test/unit/access-modes.test.js",
+    "dist/test/test/integration/claude-gateway-env.test.js",
+    "dist/test/test/integration/claude-directory-adapter.test.js"
+  ],
+  "cases": [
+    {
+      "id": "M1",
+      "desc": "去掉后缀放行：stripContextWindowSuffix 恒不剥",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  const m = CONTEXT_WINDOW_SUFFIX.exec(value);",
+      "replace": "  const m = null;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M1b",
+      "desc": "同 M1，对集成 E11 / E12",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  const m = CONTEXT_WINDOW_SUFFIX.exec(value);",
+      "replace": "  const m = null;",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M8",
+      "desc": "剥了也白剥：字符集判据改看原值",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;",
+      "replace": "  if (!/^[\\w./:+-]{1,128}$/.test(value)) return false;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M8b",
+      "desc": "同 M8，对集成 E11 / E12",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;",
+      "replace": "  if (!/^[\\w./:+-]{1,128}$/.test(value)) return false;",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M2",
+      "desc": "过宽：不剥后缀、字符集直接收方括号（任意位置方括号）",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  const base = stripContextWindowSuffix(value);\n  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;",
+      "replace": "  const base = value;\n  if (!/^[\\w./:+\\[\\]-]{1,128}$/.test(base)) return false;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M3",
+      "desc": "过宽：后缀内容任意",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
+      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[^\\]]*\\]`;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M4",
+      "desc": "过宽：可剥多个后缀",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
+      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`(?:\\[[1-9][0-9]{0,3}[kKmM]\\])+`;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M5b",
+      "desc": "过宽：后缀位数不限、可以 0 开头",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
+      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[0-9]+[kKmM]\\]`;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M6",
+      "desc": "剥得到后缀就直接放行，跳过其余判据",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  const base = stripContextWindowSuffix(value);\n  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;",
+      "replace": "  const base = stripContextWindowSuffix(value);\n  if (base !== value) return true;\n  if (!/^[\\w./:+-]{1,128}$/.test(base)) return false;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M7",
+      "desc": "UUID 判据改看原值（带后缀的 UUID 漏网）",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(base)) return false;",
+      "replace": "  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return false;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M9",
+      "desc": "profile 元数据不放行后缀",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const PROFILE_MODEL_VALUE = String.raw`[\\w.\\/:+-]+(?:${CONTEXT_WINDOW_SUFFIX_PATTERN})?`;",
+      "replace": "const PROFILE_MODEL_VALUE = String.raw`[\\w.\\/:+-]+`;",
+      "expect": "dist/test/test/unit/access-modes.test.js"
+    },
+    {
+      "id": "M10",
+      "desc": "profile 元数据放行任意方括号内容",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const PROFILE_MODEL_VALUE = String.raw`[\\w.\\/:+-]+(?:${CONTEXT_WINDOW_SUFFIX_PATTERN})?`;",
+      "replace": "const PROFILE_MODEL_VALUE = String.raw`[\\w.\\/:+-]+(?:\\[[^\\]]*\\])?`;",
+      "expect": "dist/test/test/unit/access-modes.test.js"
+    },
+    {
+      "id": "M11",
+      "desc": "一致性过宽：剥后缀分支改为前缀比较",
+      "file": "src/trivium/adapters/claude-trace.ts",
+      "find": "  return reported.every((r) => r === m || (bareBase && r === b));",
+      "replace": "  return reported.every((r) => r === m || (bareBase && m.startsWith(r)));",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M12",
+      "desc": "一致性过窄：去掉剥后缀那一支",
+      "file": "src/trivium/adapters/claude-trace.ts",
+      "find": "  return reported.every((r) => r === m || (bareBase && r === b));",
+      "replace": "  return reported.every((r) => r === m);",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M12b",
+      "desc": "同 M12，对集成 E11 / E12",
+      "file": "src/trivium/adapters/claude-trace.ts",
+      "find": "  return reported.every((r) => r === m || (bareBase && r === b));",
+      "replace": "  return reported.every((r) => r === m);",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M13",
+      "desc": "留痕丢失：reportedModels 恒空",
+      "file": "src/trivium/adapters/claude-trace.ts",
+      "find": "      if (typeof m === 'string' && m.length > 0 && !reportedModels.includes(m)) reportedModels.push(m);",
+      "replace": "      if (m === '\\u0000never') reportedModels.push(m);",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M13b",
+      "desc": "同 M13，对集成 E11 / E12",
+      "file": "src/trivium/adapters/claude-trace.ts",
+      "find": "      if (typeof m === 'string' && m.length > 0 && !reportedModels.includes(m)) reportedModels.push(m);",
+      "replace": "      if (m === '\\u0000never') reportedModels.push(m);",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "M14",
+      "desc": "一致性过宽：不核剥后部分是否还含方括号",
+      "file": "src/trivium/adapters/claude-trace.ts",
+      "find": "  const bareBase = b !== m && !b.includes('[');",
+      "replace": "  const bareBase = b !== m;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "M15",
+      "desc": "留痕写错：trace.json 的 consistent 恒为 false",
+      "file": "src/trivium/adapters/claude.ts",
+      "find": "            consistent: claudeModelConsistency(trace.init, trace.reportedModels),",
+      "replace": "            consistent: false,",
+      "expect": "dist/test/test/integration/claude-directory-adapter.test.js"
+    },
+    {
+      "id": "M16",
+      "desc": "空串混进回报值（计划三审 AGY-02）",
+      "file": "src/trivium/adapters/claude-trace.ts",
+      "find": "      if (typeof m === 'string' && m.length > 0 && !reportedModels.includes(m)) reportedModels.push(m);",
+      "replace": "      if (typeof m === 'string' && !reportedModels.includes(m)) reportedModels.push(m);",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "C1",
+      "desc": "去掉大写放行：单位回到只认小写 [km]（第一轮）",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
+      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[km]\\]`;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "C1b",
+      "desc": "同 C1，对集成 E12",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
+      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[km]\\]`;",
+      "expect": "dist/test/test/integration/claude-gateway-env.test.js"
+    },
+    {
+      "id": "C1c",
+      "desc": "同 C1，对 profile 元数据",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
+      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[km]\\]`;",
+      "expect": "dist/test/test/unit/access-modes.test.js"
+    },
+    {
+      "id": "C6",
+      "desc": "只放行大写、丢了小写：单位改为 [KM]",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
+      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[KM]\\]`;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "C2",
+      "desc": "过宽：单位任意字母 [A-Za-z]",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
+      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[A-Za-z]\\]`;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "C2b",
+      "desc": "同 C2，对 profile 元数据",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
+      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[A-Za-z]\\]`;",
+      "expect": "dist/test/test/unit/access-modes.test.js"
+    },
+    {
+      "id": "C3",
+      "desc": "过宽：单位可以多个字母 [kKmM]+",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]\\]`;",
+      "replace": "const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\\[[1-9][0-9]{0,3}[kKmM]+\\]`;",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "C4",
+      "desc": "过宽：改用 Unicode 大小写折叠（exec 前加 iu 旗标，开尔文符号折成 k，计划三审 GLM-02）",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "  const m = CONTEXT_WINDOW_SUFFIX.exec(value);",
+      "replace": "  const m = new RegExp(CONTEXT_WINDOW_SUFFIX.source, 'iu').exec(value);",
+      "expect": "dist/test/test/unit/claude-gateway-scrub.test.js"
+    },
+    {
+      "id": "C5",
+      "desc": "过宽：profile 整行正则加 i 旗标，键名随之大小写不敏感",
+      "file": "src/trivium/adapters/claude-route.ts",
+      "find": "    const m = PROFILE_MODEL_LINE.exec(line);",
+      "replace": "    const m = new RegExp(PROFILE_MODEL_LINE.source, 'i').exec(line);",
+      "expect": "dist/test/test/unit/access-modes.test.js"
+    }
+  ]
+}

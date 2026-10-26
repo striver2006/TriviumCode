@@ -69,11 +69,14 @@ export function isModelNameKey(key: string): boolean {
 }
 
 /**
- * Claude Code 上下文窗口后缀（`sonnet[1m]` 一类，EV-258）的**无锚片段**：1～4 位不以 0 开头的数字加小写 k 或 m。
+ * Claude Code 上下文窗口后缀（`sonnet[1m]`、`qwen3.8-max[1M]` 一类，EV-258）的**无锚片段**：
+ * 1～4 位不以 0 开头的数字加 k / K / m / M。单位大小写不敏感是 EV-258 第二轮改的：CC Switch 写进生效模型名键的是
+ * 大写 `[1M]`（2026-10-26 Windows 码点实测），第一轮只认小写的依据是从「形状」推出来的。
  * 只定义片段、不带锚：守卫 4 要锚在串尾，profile 元数据要放在闭引号之前，锚定由各使用点自定
- * （计划三审 AGY-01 ≡ GLM-01）。大写、多位、其它单位一律不认，fail-closed——代价只是那个值照旧替换、回读记 unverified。
+ * （计划三审 AGY-01 ≡ GLM-01）。用显式字符类而不用 `i` 旗标：片段嵌进 profile 的整行正则，整行加 `i` 会连键名一起放宽；
+ * `iu` 还会把开尔文符号（U+212A）折成 k。多位、0 开头、其它单位字母或字符一律不认，fail-closed——代价只是那个值照旧替换、回读记 unverified。
  */
-const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\[[1-9][0-9]{0,3}[km]\]`;
+const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\[[1-9][0-9]{0,3}[kKmM]\]`;
 const CONTEXT_WINDOW_SUFFIX = new RegExp(`${CONTEXT_WINDOW_SUFFIX_PATTERN}$`);
 
 /** 剥掉末尾**一个**上下文窗口后缀；没有就原样返回。不验证剩下的部分，由调用方自己判 */
@@ -88,7 +91,7 @@ export function stripContextWindowSuffix(value: string): string {
  * （真实模型名由短段拼成，随机令牌是长连续段）；不是 UUID 形态。不像就照旧替换，代价只是回读记 unverified。
  * 这不是判别凭据的完备算法：由短段拼成的凭据填进模型名键仍会放行，作为剩余边界登记在主设计。
  *
- * 末尾一个上下文窗口后缀（`qwen3.8-max[1m]`）先剥掉，上述判据全部作用于剥后的部分（EV-258）：
+ * 末尾一个上下文窗口后缀（`qwen3.8-max[1m]` 或 `[1M]`）先剥掉，上述判据全部作用于剥后的部分（EV-258）：
  * 方括号在别处、两个后缀、后缀内容不符都剥不掉或剥后仍含方括号，照旧不像。
  */
 export function looksLikeModelName(value: string): boolean {

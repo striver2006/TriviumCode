@@ -468,7 +468,7 @@ export function claudeModelReadback(init: ClaudeTrace['init']): { model: string 
 /**
  * CLI 解析出的 `init.model` 与服务端回报的 `message.model` 是否一致（EV-258 定的 AC-20 留痕口径）。
  *
- * `init.model` 是 CLI 按别名解析出的配置值，可带上下文窗口后缀（`qwen3.8-max[1m]`）；CLI 发请求前剥掉后缀，
+ * `init.model` 是 CLI 按别名解析出的配置值，可带上下文窗口后缀（`qwen3.8-max[1m]` 或 `[1M]`）；CLI 发请求前剥掉后缀，
  * 服务端回报的是 `qwen3.8-max`。所以每个回报值等于 `init.model`、或等于剥掉**一个**合法后缀后的基名，即算一致。
  * 剥后缀那一支只在 init 恰为「不含方括号的基名 + 一个后缀」时适用（计划三审 CODEX-03：`qwen[1m][1m]` 对 `qwen[1m]` 不算一致）。
  * 回读取不到（缺失、空串、带脱敏痕迹）或没有回报值时记 null——没法比，不是不一致。
