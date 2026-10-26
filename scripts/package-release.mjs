@@ -132,8 +132,10 @@ try {
   await fs.writeFile(path.join(staged, '文件校验.json'), JSON.stringify(await manifest(staged), null, 2) + '\n');
   if (PLATFORM === 'windows') {
     // Windows 10+ 自带 bsdtar（System32\tar.exe），按扩展名出 zip（-a）；不可用时退 PowerShell Compress-Archive
+    // 必须显式走系统副本：Git Bash 的 PATH 会把 tar.exe 解析成不支持 zip 的 GNU tar。
     try {
-      await execFile('tar.exe', ['--force-local', '-a', '-cf', path.join(scratch, `${name}.zip`), '-C', scratch, name], { windowsHide: true });
+      const windowsTar = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe');
+      await execFile(windowsTar, ['--force-local', '-a', '-cf', path.join(scratch, `${name}.zip`), '-C', scratch, name], { windowsHide: true });
     } catch {
       await execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
         `Compress-Archive -Path ${JSON.stringify(path.join(scratch, name))} -DestinationPath ${JSON.stringify(path.join(scratch, `${name}.zip`))} -Force`],
