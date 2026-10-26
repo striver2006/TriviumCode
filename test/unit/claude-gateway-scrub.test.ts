@@ -9,16 +9,20 @@
  * - **不吞回读**：模型名键的值不进替换集（S2）；回读字段带脱敏痕迹时记 null + `unverified`，
  *   不以 `envelope` 落盘（S7～S9）。
  * - **未开启零变化**：env 为空时只过模式脱敏，与修复前逐字相同（S6、S8 前三格）。
+ * - **上下文窗口后缀**（EV-258）：守卫 4 只放行末尾一个 `[数字k|m]` 后缀，剥后其余判据照旧（S10～S13）；
+ *   放行过窄（真实带后缀形态被替换）与过宽（方括号在别处、多个后缀、内容不符、剥后跳过判据）两个方向都咬。
+ *   AC-20 留痕：`init.model` 与服务端回报的 `message.model` 的比对只进 `trace.json`（S14）。
  *
  * 凭据形态的夹具一律运行时分段拼接（`contract/fixture-credentials`）。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gatewayScrubPlan, scrubGatewayEnv, buildClaudeResult, readonlyToolsFromProbe } from '../../src/trivium/adapters/claude.js';
-import { isModelNameKey, looksLikeModelName } from '../../src/trivium/adapters/claude-route.js';
-import { claudeModelReadback, parseClaudeEvents } from '../../src/trivium/adapters/claude-trace.js';
+import { isModelNameKey, looksLikeModelName, stripContextWindowSuffix } from '../../src/trivium/adapters/claude-route.js';
+import { claudeModelConsistency, claudeModelReadback, parseClaudeEvents } from '../../src/trivium/adapters/claude-trace.js';
 import { hasRedactionMark, redactSecrets } from '../../src/trivium/secrets.js';
 import { READONLY_INVARIANTS } from '../../src/trivium/probes/claude.js';
+import { modelFamily } from '../../src/trivium/model-family.js';
 
 const P = '<redacted-env>';
 
@@ -31,6 +35,7 @@ const REAL_MODELS = [
   'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
   'ep-20250101123456-abcde',
   'glm-4.6',
+  'qwen3.8-max[1m]', // EV-258：CC Switch 写进生效模型名键的上下文窗口后缀形态（2026-10-26 Windows 实测）
 ];
 
 /** 运行时拼接的令牌形态值：静态文本里不出现完整形态 */
@@ -159,4 +164,112 @@ test('S9 buildClaudeResult：占位符不以 envelope 落盘，正常名照旧 e
   const ok = buildClaudeResult(trace('kimi-for-coding'), ...args);
   assert.equal(ok.model_effective, 'kimi-for-coding');
   assert.equal(ok.model_effective_source, 'envelope');
+});
+
+/** 带合法上下文窗口后缀的真实形态（EV-258）：都要放行、豁免、原样保留 */
+const SUFFIXED_MODELS = ['qwen3.8-max[1m]', 'qwen3.8-flash[1m]', 'claude-sonnet-4-5[1m]', 'claude-opus-4-1[200k]', 'glm-4.6[1000k]'];
+
+test('S10 带后缀的真实形态放行：守卫 4 为真、模型名键豁免、输出原样保留（过窄方向）', () => {
+  for (const m of SUFFIXED_MODELS) {
+    assert.equal(looksLikeModelName(m), true, `${m} 应像模型名`);
+    const env = { ANTHROPIC_MODEL: m, ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01' };
+    assert.deepEqual(gatewayScrubPlan(env).exemptKeys, ['ANTHROPIC_MODEL'], `${m} 应豁免`);
+    assert.deepEqual(gatewayScrubPlan(env).replace, ['gw-ev258-auth-01'], `${m}：替换集只剩凭据值`);
+    assert.ok(scrubGatewayEnv(`"model":"${m}"`, env).includes(m), `${m} 应原样保留`);
+  }
+});
+
+test('S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）', () => {
+  const B = 'qwen3.8-max';
+  const negatives = [`qwen[1m]-max`, `${B}[1m][1m]`, `${B}[abc]`, `${B}[1g]`, `${B}[0m]`, `${B}[12345m]`, `${B}[1M]`,
+    `${B}[]`, `${B}[ 1m]`, `${B}[1m] `, '[1m]', `[${RANDOM_TOKEN}]`];
+  for (const v of negatives) {
+    const env = { ANTHROPIC_MODEL: v, ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01' };
+    // 第一层：形态拒绝、不豁免
+    assert.equal(looksLikeModelName(v), false, `${v} 不应像模型名`);
+    assert.deepEqual(gatewayScrubPlan(env).exemptKeys, [], `${v}：不得豁免`);
+    if (v.length >= 8) {
+      // 第二层：够长的反例进替换集、输出不含原值
+      assert.ok(gatewayScrubPlan(env).replace.includes(v), `${v}：须进替换集`);
+      assert.ok(!scrubGatewayEnv(`"model":"${v}"`, env).includes(v), `${v}：须被替换`);
+    } else {
+      // 第三层：短于 8 字符的值不进替换集，与修复前相同（阈值不动，计划三审 CODEX-02）
+      assert.ok(!gatewayScrubPlan(env).replace.includes(v), `${v}：短值行为须与修复前相同`);
+    }
+  }
+});
+
+test('S12 剥掉后缀后其余判据照旧：令牌 / UUID / 厂商形态加合法后缀仍不豁免', () => {
+  for (const [label, core] of [['随机令牌（最长段）', RANDOM_TOKEN], ['UUID', UUID_TOKEN], ['OpenAI 形态（守卫 2）', OPENAI_LIKE]] as const) {
+    const v = `${core}[1m]`;
+    assert.equal(stripContextWindowSuffix(v), core, `前提：${label} 的后缀本身合法、剥得掉——这格咬的是剥后判据`);
+    const env = { ANTHROPIC_DEFAULT_OPUS_MODEL: v };
+    assert.deepEqual(gatewayScrubPlan(env).exemptKeys, [], `${label} + 后缀：不得豁免`);
+    assert.ok(!scrubGatewayEnv(`init ${v} end`, env).includes(v), `${label} + 后缀：须被替换`);
+  }
+  assert.equal(looksLikeModelName(`${RANDOM_TOKEN}[1m]`), false, '随机令牌 + 后缀：守卫 4 须拒');
+  assert.equal(looksLikeModelName(`${UUID_TOKEN}[1m]`), false, 'UUID + 后缀：守卫 4 须拒');
+  assert.ok(redactSecrets(`${OPENAI_LIKE}[1m]`).count > 0, '前提：OpenAI 形态加后缀仍命中模式规则，咬的是守卫 2');
+});
+
+test('S13 Windows 实测形态整表：同值的带后缀模型名键一并豁免，替换集只剩凭据；挂同值的非模型名键让它们全部不豁免', () => {
+  const flash = 'gw-ev258-flash';
+  const max = 'gw-ev258-max';
+  const env: Record<string, string> = {
+    ANTHROPIC_BASE_URL: 'https://gw-ev258.invalid/api',
+    ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01',
+    ANTHROPIC_MODEL: `${flash}[1m]`,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: `${flash}[1m]`,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: `${max}[1m]`,
+    ANTHROPIC_DEFAULT_FABLE_MODEL: `${max}[1m]`,
+    CLAUDE_CODE_SUBAGENT_MODEL: `${max}[1m]`,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: flash,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME: flash,
+    ANTHROPIC_DEFAULT_SONNET_MODEL_NAME: flash,
+    ANTHROPIC_DEFAULT_OPUS_MODEL_NAME: max,
+    ANTHROPIC_DEFAULT_FABLE_MODEL_NAME: max,
+  };
+  const models = Object.keys(env).filter((k) => !['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN'].includes(k));
+  const plan = gatewayScrubPlan(env);
+  assert.deepEqual([...plan.exemptKeys].sort(), [...models].sort(), '10 个模型名键须全部豁免');
+  assert.deepEqual(plan.replace, [env['ANTHROPIC_BASE_URL'], env['ANTHROPIC_AUTH_TOKEN']], '替换集恰为两个凭据值（降序）');
+
+  // 凭据优先：一个非模型名键挂着 max[1m] 这个值 ⇒ 挂它的三个模型名键全部不豁免，其余照旧
+  const tainted = { ...env, ANTHROPIC_EXTRA_EV258: `${max}[1m]` };
+  const p2 = gatewayScrubPlan(tainted);
+  for (const k of ['ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_FABLE_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL']) {
+    assert.ok(!p2.exemptKeys.includes(k), `${k}：与非模型名键同值，不得豁免`);
+  }
+  assert.ok(p2.replace.includes(`${max}[1m]`), '与非模型名键同值的带后缀值须进替换集');
+  assert.equal(p2.exemptKeys.length, 7, '其余 7 个模型名键照旧豁免');
+});
+
+test('S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变', () => {
+  const ev = (o: unknown) => JSON.stringify(o);
+  const t = parseClaudeEvents([
+    ev({ type: 'system', subtype: 'init', model: 'gw-a[1m]', tools: [] }),
+    ev({ type: 'assistant', message: { model: 'gw-a', content: [] } }),
+    ev({ type: 'assistant', message: { model: '', content: [] } }),
+    ev({ type: 'assistant', message: { model: 42, content: [] } }),
+    ev({ type: 'assistant', message: { model: 'gw-b', content: [] } }),
+    ev({ type: 'assistant', message: { model: 'gw-a', content: [] } }),
+    ev({ type: 'user', message: { model: 'gw-user', content: [] } }),
+  ].join('\n'));
+  assert.deepEqual(t.reportedModels, ['gw-a', 'gw-b'], '去重保序；空串、非字符串、非 assistant 事件不收');
+  assert.deepEqual(parseClaudeEvents(ev({ type: 'system', subtype: 'init', model: 'x' })).reportedModels, []);
+
+  const mk = (model: string | null) => ({ model, tools: [], permissionMode: null, cwd: null });
+  for (const init of [null, mk(null), mk(''), mk(P)]) assert.equal(claudeModelConsistency(init, ['gw-a']), null, '回读取不到 ⇒ null');
+  assert.equal(claudeModelConsistency(mk('gw-a'), []), null, '没有回报值 ⇒ null');
+  assert.equal(claudeModelConsistency(mk('gw-a'), ['gw-a']), true, '逐字相同 ⇒ true');
+  assert.equal(claudeModelConsistency(mk('gw-a[1m]'), ['gw-a']), true, 'init 带后缀、回报不带 ⇒ true');
+  assert.equal(claudeModelConsistency(mk('gw-a[1m]'), ['gw-a[1m]', 'gw-a']), true);
+  assert.equal(claudeModelConsistency(mk('gw-a[1m]'), ['other-model']), false, '完全不同名 ⇒ false');
+  assert.equal(claudeModelConsistency(mk('gw-a[1m]'), ['gw-']), false, '回报是 init 的真前缀但不是剥后缀结果 ⇒ false（GLM-02）');
+  assert.equal(claudeModelConsistency(mk('gw-a[1m]'), ['gw-a', 'gw-b']), false, '有一个不符 ⇒ false');
+  assert.equal(claudeModelConsistency(mk('qwen[1m][1m]'), ['qwen[1m]']), false, '两个后缀只剥一个 ⇒ false（CODEX-03）');
+  assert.equal(claudeModelConsistency(mk('qwen[1M]'), ['qwen']), false, '后缀不合法不剥 ⇒ false');
+
+  assert.equal(modelFamily('qwen3.8-max[1m]'), 'qwen');
+  assert.equal(modelFamily('claude-opus-4-1[1m]'), 'claude');
 });

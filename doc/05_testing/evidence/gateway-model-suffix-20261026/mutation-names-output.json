@@ -1,0 +1,285 @@
+[
+  {
+    "id": "M1",
+    "desc": "去掉后缀放行：stripContextWindowSuffix 恒不剥",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 5,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免",
+      "S10 带后缀的真实形态放行：守卫 4 为真、模型名键豁免、输出原样保留（过窄方向）",
+      "S12 剥掉后缀后其余判据照旧：令牌 / UUID / 厂商形态加合法后缀仍不豁免",
+      "S13 Windows 实测形态整表：同值的带后缀模型名键一并豁免，替换集只剩凭据；挂同值的非模型名键让它们全部不豁免",
+      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M1b",
+    "desc": "同 M1，对集成 E11",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E11 开启 · 模型名键值带上下文窗口后缀且多键同值：回读记带后缀的名、来源 envelope，凭据键的值仍被替换"
+    ],
+    "firstLines": [],
+    "elapsed_s": 8
+  },
+  {
+    "id": "M8",
+    "desc": "剥了也白剥：字符集判据改看原值",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 3,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S4 模型名键里的凭据形态值照旧替换；真实模型名形态全部豁免",
+      "S10 带后缀的真实形态放行：守卫 4 为真、模型名键豁免、输出原样保留（过窄方向）",
+      "S13 Windows 实测形态整表：同值的带后缀模型名键一并豁免，替换集只剩凭据；挂同值的非模型名键让它们全部不豁免"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M8b",
+    "desc": "同 M8，对集成 E11",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E11 开启 · 模型名键值带上下文窗口后缀且多键同值：回读记带后缀的名、来源 envelope，凭据键的值仍被替换"
+    ],
+    "firstLines": [],
+    "elapsed_s": 8
+  },
+  {
+    "id": "M2",
+    "desc": "过宽：不剥后缀、字符集直接收方括号（任意位置方括号）",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）",
+      "S12 剥掉后缀后其余判据照旧：令牌 / UUID / 厂商形态加合法后缀仍不豁免"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M3",
+    "desc": "过宽：后缀内容任意",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）",
+      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M4",
+    "desc": "过宽：可剥多个后缀",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M5a",
+    "desc": "过宽：后缀大小写不敏感",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）",
+      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M5b",
+    "desc": "过宽：后缀位数不限、可以 0 开头",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M6",
+    "desc": "剥得到后缀就直接放行，跳过其余判据",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 2,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S11 方括号形态的反例照旧不豁免：别处方括号、两个后缀、后缀内容不符、只有后缀、方括号包令牌（过宽方向）",
+      "S12 剥掉后缀后其余判据照旧：令牌 / UUID / 厂商形态加合法后缀仍不豁免"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M7",
+    "desc": "UUID 判据改看原值（带后缀的 UUID 漏网）",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S12 剥掉后缀后其余判据照旧：令牌 / UUID / 厂商形态加合法后缀仍不豁免"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M9",
+    "desc": "profile 元数据不放行后缀",
+    "suite": "dist/test/test/unit/access-modes.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "profile 元数据：三种形态都收末尾一个上下文窗口后缀，方括号在别处 / 两个后缀 / 内容不符一律不收（EV-258）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M10",
+    "desc": "profile 元数据放行任意方括号内容",
+    "suite": "dist/test/test/unit/access-modes.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "profile 元数据：三种形态都收末尾一个上下文窗口后缀，方括号在别处 / 两个后缀 / 内容不符一律不收（EV-258）"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M11",
+    "desc": "一致性过宽：剥后缀分支改为前缀比较",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M12",
+    "desc": "一致性过窄：去掉剥后缀那一支",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M12b",
+    "desc": "同 M12，对集成 E11",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E11 开启 · 模型名键值带上下文窗口后缀且多键同值：回读记带后缀的名、来源 envelope，凭据键的值仍被替换"
+    ],
+    "firstLines": [],
+    "elapsed_s": 8
+  },
+  {
+    "id": "M13",
+    "desc": "留痕丢失：reportedModels 恒空",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M13b",
+    "desc": "同 M13，对集成 E11",
+    "suite": "dist/test/test/integration/claude-gateway-env.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "E11 开启 · 模型名键值带上下文窗口后缀且多键同值：回读记带后缀的名、来源 envelope，凭据键的值仍被替换"
+    ],
+    "firstLines": [],
+    "elapsed_s": 8
+  },
+  {
+    "id": "M14",
+    "desc": "一致性过宽：不核剥后部分是否还含方括号",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  },
+  {
+    "id": "M15",
+    "desc": "留痕写错：trace.json 的 consistent 恒为 false",
+    "suite": "dist/test/test/integration/claude-directory-adapter.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "生产适配器大集合经过目录投影实际递入argv/stdin；失败出口仍有投影与规模"
+    ],
+    "firstLines": [],
+    "elapsed_s": 1
+  },
+  {
+    "id": "M16",
+    "desc": "空串混进回报值（计划三审 AGY-02）",
+    "suite": "dist/test/test/unit/claude-gateway-scrub.test.js",
+    "fail": 1,
+    "timed_out": false,
+    "cancelled": 0,
+    "red": [
+      "S14 AC-20 留痕：reportedModels 收集与 claudeModelConsistency 真值表；带后缀的模型族判定不变"
+    ],
+    "firstLines": [],
+    "elapsed_s": 0
+  }
+]

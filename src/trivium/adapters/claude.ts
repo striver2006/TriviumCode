@@ -42,6 +42,7 @@ import { redactSecrets } from '../secrets.js';
 import { ensureDir } from '../util/fsx.js';
 import {
   CLAUDE_OUTPUT_TOOLS,
+  claudeModelConsistency,
   claudeModelReadback,
   countTools,
   extractClaudePath,
@@ -528,7 +529,9 @@ export interface ClaudeInvokeOutcome {
  *
  * 模型名键的值要**四道守卫同时满足**才豁免，否则照旧进替换集（fail-closed，凭据优先）：
  * ① 键名过 `isModelNameKey`；② 值本身过 `redactSecrets` 无命中（已知厂商令牌形态误填进模型名键）；
- * ③ 值不等于任何非豁免键的值（同值按凭据处理）；④ 值过 `looksLikeModelName`（非标准随机令牌、UUID）。
+ * ③ 值不等于任何非豁免键的值（同值按凭据处理）；④ 值过 `looksLikeModelName`（非标准随机令牌、UUID；
+ * 末尾一个上下文窗口后缀如 `[1m]` 先剥掉再判，EV-258）。守卫 ②③ 看的是含后缀的完整值。
+ * 守卫 ④ 放行后，同值的几个模型名键都是候选、候选之间同值不算冲突，一并豁免；挂着同一个值的非候选键仍让它进替换集。
  * 替换集按长度降序：短凭据值是长凭据值的子串时，先换短的会把长值切成「占位符 + 残段」，残段原样落盘。
  * 极短值（<8 字符）不进替换集（替换面过宽会误伤普通文本），仍交模式脱敏兜底。
  */
@@ -550,8 +553,8 @@ export function gatewayScrubPlan(env: Record<string, string> | undefined): { rep
  * 网关 env 值的逐值脱敏（1.2.2，审查 CLAUDE-06）：对凭据类注入值先原串替换 `<redacted-env>`，再过模式脱敏。
  * `invokeClaude` 与探针臂（execArgv）共用——「凭据类注入值永不落盘」的威胁模型在运行与探针两条路径上对称成立。
  *
- * **模型名键的值不替换**（EV-257）：CC Switch 网关在 `system/init` 里回报的模型名恰等于
- * `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_*_MODEL` 一类键的值，一并替换会让 `model_effective` 记成占位符、
+ * **模型名键的值不替换**（EV-257）：`system/init` 的 `model` 是 CLI 按 `ANTHROPIC_MODEL` /
+ * `ANTHROPIC_DEFAULT_*_MODEL` 一类键解析出的配置值（不是网关回报的，EV-258 订正），恰等于这些键的值，一并替换会让 `model_effective` 记成占位符、
  * 来源却仍是 `envelope`。模型名本就以明文进 `model_effective`，在 `stdout.jsonl` 里再抹掉只会让两份留痕互相矛盾。
  * 豁免判据见 `gatewayScrubPlan`；回读侧另有独立兜底 `claudeModelReadback`（带脱敏痕迹即记 unverified）。
  * `env` 为空（未开启、env 段为空或读不到）时只过模式脱敏，与修复前逐字相同。
@@ -1147,6 +1150,16 @@ async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: C
         {
           sessionId: trace.sessionId,
           init: trace.init,
+          /*
+           * AC-20 回读留痕（EV-258）：生效模型取 `init.model`（CLI 解析出的配置值，可带 `[1m]` 后缀）；
+           * `reported` 是 assistant 消息里服务端回报的 `message.model`，`consistent` 是两者比对结果。
+           * 只留痕、不进判定面，不一致也不降级——复盘与 Windows 验收读它。
+           */
+          modelReadback: {
+            init: trace.init?.model ?? null,
+            reported: trace.reportedModels,
+            consistent: claudeModelConsistency(trace.init, trace.reportedModels),
+          },
           toolUses: trace.toolUses,
           toolErrors: trace.toolErrors,
           permissionDenials: trace.permissionDenials,

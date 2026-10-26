@@ -59,6 +59,12 @@ test('生产适配器大集合经过目录投影实际递入argv/stdin；失败�
     const trace = JSON.parse(await fs.readFile(path.join(outDir, 'trace.json'), 'utf8'));
     assert.deepEqual(trace.denySettings.projection.compressedTools, ['Read', 'Grep', 'Glob']);
     assert.equal(trace.denySettings.projection.originalCount, deny.length);
+    // AC-20 回读留痕（EV-258）：三键恒在；该假 CLI 不吐 assistant 事件，没有回报值可比
+    assert.deepEqual(Object.keys(trace.modelReadback).sort(), ['consistent', 'init', 'reported']);
+    if (model === 'stub/0.0.0') {
+      assert.deepEqual(trace.modelReadback, { init: 'stub/0.0.0', reported: [], consistent: null });
+      assert.equal(result.model_effective, trace.modelReadback.init, 'trace.json 的 init 须与回读的生效模型一致');
+    }
     assert.equal(result.process_started, true);
     if (model !== 'stub/0.0.0') assert.equal(result.peer_deny_applied, false);
   }
@@ -67,7 +73,10 @@ test('生产适配器大集合经过目录投影实际递入argv/stdin；失败�
   assert.equal(result.process_started, false);
   assert.equal(result.peer_deny_applied, false);
   assert.equal(result.deny_rule_count, 6);
-  assert.equal(JSON.parse(await fs.readFile(path.join(root, 'spawn-failure/trace.json'), 'utf8')).denySettings.ruleCount, 6);
+  const spawnFailureTrace = JSON.parse(await fs.readFile(path.join(root, 'spawn-failure/trace.json'), 'utf8'));
+  assert.equal(spawnFailureTrace.denySettings.ruleCount, 6);
+  // 入口不可执行时 run 层返回 spawned:false、走正常落盘路径：事件流为空，留痕三键都是「没有」
+  assert.deepEqual(spawnFailureTrace.modelReadback, { init: null, reported: [], consistent: null });
   await fs.chmod(bin, 0o700);
   probe.directory_deny_shape = 'ascii-root1-4-depth0-2-v1';
   const oldShapeOut = path.join(root, 'old-v1-shape');

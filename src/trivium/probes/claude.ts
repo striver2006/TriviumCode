@@ -795,7 +795,7 @@ export async function execArgv(
    * 网关 env 逐值脱敏（1.2.2，审查 CLAUDE-06）：与 invokeClaude 同一 scrub，探针臂不留暗角。
    * GLM-03 的「raw 必须透传」针对的是哨兵与泄漏判据——哨兵串不是注入值，脱敏不影响判据；
    * trace 也从脱敏后的文本解析，命令文本里若回显了凭据类网关值，落盘的同样只能是占位符。
-   * 模型名键的值不在替换集（EV-257，判据见 `gatewayScrubPlan`），`init.model` 因此能回读到网关模型名；
+   * 模型名键的值不在替换集（EV-257，判据见 `gatewayScrubPlan`），`init.model` 因此能回读到 CLI 按这些键解析出的模型名（含 `[1m]` 一类后缀，EV-258）；
    * 仍带脱敏痕迹时由 `claudeModelReadback` 判为没回读到，`model_flag` 记 null。
    */
   const gatewayEnv = routeContext.getStore()?.route.settingsEnv;

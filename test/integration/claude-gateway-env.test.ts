@@ -20,6 +20,10 @@
  * - **模型名键的值**允许出现、回读要记真名：正向覆盖在 E8；凭据值被网关当模型名回显时只剩占位符、
  *   回读须记 null + `unverified`（E9）；未开启时与修复前逐项相同（E10）。E8～E10 不复用 `runAll`
  *   （它对全部 `GATEWAY_VALUES` 断言不出现），「不出现」只对 `CREDENTIAL_VALUES` 断言。
+ * - **带上下文窗口后缀的模型名**（EV-258）：模型名键值形如 `xxx[1m]`、多键同值时一并豁免，回读记带后缀的名、
+ *   服务端回报的 `message.model` 不带后缀且判为一致，凭据键的值仍被替换（E11）。
+ * - 用例名里的「网关回报的模型名」沿用 EV-257 的叫法：`init.model` 实为 CLI 按模型名键解析出的配置值，
+ *   服务端回报的是 assistant 消息的 `message.model`（EV-258 订正；改用例名会让历史读数与变异规格对不上，故只在这里说明）。
  *
  * ## 装置
  *
@@ -28,6 +32,7 @@
  *   已能跑完 `probeClaude` 各臂的假 CLI；另外每次调用往 `FAKE_CLAUDE_LOG` 追加一行记录，并把
  *   `ANTHROPIC_AUTH_TOKEN` 的值回显进 stdout 与 stderr 锚脱敏。两个可选开关只给 E8～E10 用、E1～E7 不设：
  *   `FAKE_CLAUDE_INIT_MODEL_KEY` 让 `init.model` 取该环境变量的值（不在环境里则退回缺省名）；
+ *   `FAKE_CLAUDE_MESSAGE_MODEL_KEY`（EV-258，只给 E11 用）多吐一条 assistant 事件、`message.model` 取该环境变量的值；
  *   `FAKE_CLAUDE_RAW_LOG` 把未脱敏的原始输出另写一份作对照（只在本格 `scratchDir` 里）。
  * - **宿主变量隔离**（计划三审 CODEX-01）：每格先摘下宿主全部 `ANTHROPIC_` / `CLAUDE_` 前缀变量、finally 原样放回，
  *   只放合成值；假 CLI 只对 `FAKE_CLAUDE_VALUE_KEYS` 声明的键记值，其余前缀键只记键名——宿主真实令牌不进子进程、
@@ -46,7 +51,7 @@ import type { Fixture } from '../../src/trivium/probes/fixture.js';
 import { probeClaudeDirectories } from '../../src/trivium/probes/claude-directory.js';
 import { buildClaudeArgs, buildClaudeResult, buildDenySettings, denyRuleShapeOf, invokeClaude, readonlyToolsFromProbe,
   type ClaudeInvokeOutcome } from '../../src/trivium/adapters/claude.js';
-import { parseClaudeEvents } from '../../src/trivium/adapters/claude-trace.js';
+import { claudeModelConsistency, parseClaudeEvents } from '../../src/trivium/adapters/claude-trace.js';
 import { redactSecrets } from '../../src/trivium/secrets.js';
 import { resolveClaudeRoute, type ClaudeRoute } from '../../src/trivium/adapters/claude-route.js';
 import type { Config } from '../../src/trivium/types.js';
@@ -107,6 +112,8 @@ before(async () => {
     "  const structured = argv.includes('--json-schema');",
     "  emit({ type: 'system', subtype: 'init', cwd: process.cwd(), tools: structured ? ['Read', 'Grep', 'Glob', 'StructuredOutput'] : ['Read', 'Grep', 'Glob'], model: initModel, session_id: 'fake-session' });",
     "  if (echo) emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'echo ' + echo }] } });",
+    "  const msgKey = process.env.FAKE_CLAUDE_MESSAGE_MODEL_KEY || '';",
+    "  if (msgKey && process.env[msgKey]) emit({ type: 'assistant', message: { model: process.env[msgKey], content: [{ type: 'text', text: 'ok' }] } });",
     "  const result = structured ? JSON.stringify({ schema: 'trivium.review.v1', verdict: 'approve', summary: 'fake summary', findings: [] }) : 'ok';",
     "  emit({ type: 'result', subtype: 'success', is_error: false, result, total_cost_usd: 0.001, session_id: 'fake-session' });",
     "  if (process.env.FAKE_CLAUDE_RAW_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_RAW_LOG, JSON.stringify({ stdout: rawOut.join(''), stderr: rawErr.join('') }) + '\\n');",
@@ -390,5 +397,42 @@ test('E10 未开启：与修复前逐项相同——回读记缺省名 envelope�
     } finally {
       delete process.env['FAKE_CLAUDE_RAW_LOG'];
     }
+  });
+});
+
+// ─────────────── EV-258：带上下文窗口后缀的模型名键（E11）───────────────
+
+/** Windows 实测形态的合成版：模型名键值带 `[1m]`、两个键同值，`*_MODEL_NAME` 不带后缀 */
+const SUFFIX_ENV = {
+  ANTHROPIC_BASE_URL: 'https://gw-ev258.invalid/api',
+  ANTHROPIC_AUTH_TOKEN: 'gw-ev258-auth-01',
+  ANTHROPIC_MODEL: 'gw-ev258-model-01[1m]',
+  ANTHROPIC_DEFAULT_OPUS_MODEL: 'gw-ev258-model-01[1m]',
+  ANTHROPIC_DEFAULT_OPUS_MODEL_NAME: 'gw-ev258-model-01',
+};
+const SUFFIX_CREDENTIALS = [SUFFIX_ENV.ANTHROPIC_AUTH_TOKEN, SUFFIX_ENV.ANTHROPIC_BASE_URL];
+
+test('E11 开启 · 模型名键值带上下文窗口后缀且多键同值：回读记带后缀的名、来源 envelope，凭据键的值仍被替换', async () => {
+  await withCell({ enabled: true, settings: JSON.stringify({ env: SUFFIX_ENV }),
+    extra: { FAKE_CLAUDE_INIT_MODEL_KEY: 'ANTHROPIC_MODEL', FAKE_CLAUDE_MESSAGE_MODEL_KEY: 'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME' } }, async (c) => {
+    const real = SUFFIX_ENV.ANTHROPIC_MODEL;
+    const { out, model, source } = await reviewReadback(c);
+    assert.equal(model, real, 'E11：带后缀的模型名被守卫 4 拒收、留在替换集时，这里是 null');
+    assert.equal(source, 'envelope');
+    for (const [label, text] of [['stdout', out.stdout], ['stderr', out.stderr], ['commandLine', out.commandLine]] as const) {
+      for (const v of SUFFIX_CREDENTIALS) assert.ok(!text.includes(v), `E11 审查调用 ${label}：凭据键的值不得出现`);
+    }
+    assert.ok(out.stdout.includes('<redacted-env>') && out.stderr.includes('<redacted-env>'), 'E11：回显的 AUTH_TOKEN 须以占位符出现');
+    const trace = parseClaudeEvents(out.stdout);
+    assert.deepEqual(trace.reportedModels, [SUFFIX_ENV.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME], 'E11：服务端回报的模型名须原样收进留痕');
+    assert.equal(claudeModelConsistency(trace.init, trace.reportedModels), true, 'E11：带后缀的 init 与不带后缀的回报判为一致');
+
+    const route = fakeRoute(c.cfg);
+    const fx = { root: c.home } as Fixture;
+    const arm = await withClaudeProbeRoute(route, real, null, () => execArgv(process.execPath, fx, probeArgs({ prompt: 'p' })));
+    assert.equal(arm.init?.model, real, 'E11 探针臂：init.model 须为带后缀的模型名');
+    for (const v of SUFFIX_CREDENTIALS) assert.ok(!arm.raw.includes(v) && !arm.stderr.includes(v), 'E11 探针臂：凭据键的值不得出现');
+    const { probe } = await withClaudeProbeRoute(route, real, null, () => probeClaude(process.execPath, { assetRoot: ASSET_ROOT }));
+    assert.equal(probe.model_flag, true, 'E11：回读到的带后缀名与所选模型相同，model_flag 须为 true');
   });
 });

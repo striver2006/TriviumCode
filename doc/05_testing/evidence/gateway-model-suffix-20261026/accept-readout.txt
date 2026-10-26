@@ -1,0 +1,40 @@
+✓ 两侧被测产物不同（adapters/claude.js sha256）  38c8b791e731 / 19f0f894bc9f
+✓ base/off/default：凭据键的值在全部输出里零命中  []
+✓ new/off/default：凭据键的值在全部输出里零命中  []
+✓ base/off/model：凭据键的值在全部输出里零命中  []
+✓ new/off/model：凭据键的值在全部输出里零命中  []
+✓ base/off/cred：凭据键的值在全部输出里零命中  []
+✓ new/off/cred：凭据键的值在全部输出里零命中  []
+✓ base/off/suffix：凭据键的值在全部输出里零命中  []
+✓ new/off/suffix：凭据键的值在全部输出里零命中  []
+✓ base/on/default：凭据键的值在全部输出里零命中  []
+✓ new/on/default：凭据键的值在全部输出里零命中  []
+✓ base/on/model：凭据键的值在全部输出里零命中  []
+✓ new/on/model：凭据键的值在全部输出里零命中  []
+✓ base/on/cred：凭据键的值在全部输出里零命中  []
+✓ new/on/cred：凭据键的值在全部输出里零命中  []
+✓ base/on/suffix：凭据键的值在全部输出里零命中  []
+✓ new/on/suffix：凭据键的值在全部输出里零命中  []
+✓ off/default：新旧归一化输出逐项相同
+✓ off/default：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
+✓ off/model：新旧归一化输出逐项相同
+✓ off/model：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
+✓ off/cred：新旧归一化输出逐项相同
+✓ off/cred：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
+✓ off/suffix：新旧归一化输出逐项相同
+✓ off/suffix：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
+✓ on/default：新旧归一化输出逐项相同
+✓ on/default：回读与 model_flag 新旧相同  [{"model_effective":"claude-haiku-4-5-20251001","model_effective_source":"envelope"},true]
+✓ on/model：新旧归一化输出逐项相同
+✓ on/model：回读与 model_flag 新旧相同  [{"model_effective":"gw-ev257-model-01","model_effective_source":"envelope"},false]
+✓ on/cred：新旧归一化输出逐项相同
+✓ on/cred：回读与 model_flag 新旧相同  [{"model_effective":null,"model_effective_source":"unverified"},null]
+✓ on/suffix 基线：复现缺陷（回读被吞，兜底记 null + unverified）  {"model_effective":null,"model_effective_source":"unverified"}
+✓ on/suffix 基线：探针臂 init.model 是占位符  <redacted-env>
+✓ on/suffix 新构建：记带后缀的模型名、来源 envelope  {"model_effective":"gw-ev258-max-01[1m]","model_effective_source":"envelope"}
+✓ on/suffix 新构建：探针臂 init.model 为带后缀的模型名  gw-ev258-max-01[1m]
+✓ on/suffix 新构建：回显的凭据值仍以占位符出现  review_stdout,review_stderr,auth_stdout,auth_stderr,arm_raw,arm_stderr
+✓ on/suffix 新构建：服务端回报名收进留痕、判为一致  ["gw-ev258-max-01"] / true
+✓ on/suffix：model_flag 旧 null（没核对成）、新 false（所选 haiku ≠ 回读名，核对不符）  null / false
+
+38 项，全部通过

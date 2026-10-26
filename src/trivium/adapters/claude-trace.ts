@@ -42,6 +42,7 @@
  * 只要本文件不出现带引号的 `'claude'` 即可（同 `codex-trace.ts`）。
  */
 import { hasRedactionMark } from '../secrets.js';
+import { stripContextWindowSuffix } from './claude-route.js';
 
 /** 一次 headless 调用解析出来的轨迹 */
 export interface ClaudeTrace {
@@ -52,6 +53,11 @@ export interface ClaudeTrace {
    * **回读来的**基准，而不是靠调用方记得传（EV-76 出路 ①，计划双审 CODEX-04 ≡ GLM-03）。
    */
   init: { model: string | null; tools: string[]; permissionMode: string | null; cwd: string | null } | null;
+  /**
+   * assistant 消息的 `message.model`（服务端回报的模型名）：只收非空字符串，去重、保持首次出现顺序（EV-258）。
+   * **只进 `trace.json` 留痕，不进判定面**——生效模型取 `init.model`，两者比对见 `claudeModelConsistency`。
+   */
+  reportedModels: string[];
   /** 全部 `tool_use`：工具名 + 参数 + id（id 用于与 tool_result 配对） */
   toolUses: { name: string; input: Record<string, unknown>; id: string | null }[];
   /** 出错的 `tool_result` 文本（白名单外工具走这条路，不进 permission_denials） */
@@ -106,6 +112,7 @@ export interface ClaudeTrace {
  */
 export function parseClaudeEvents(jsonl: string): ClaudeTrace {
   let init: ClaudeTrace['init'] = null;
+  const reportedModels: string[] = [];
   const toolUses: ClaudeTrace['toolUses'] = [];
   const toolErrors: string[] = [];
   const erroredToolUseIds = new Set<string>();
@@ -138,7 +145,12 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
       };
     }
 
-    const message = o['message'] as { content?: unknown } | undefined;
+    const message = o['message'] as { content?: unknown; model?: unknown } | undefined;
+    if (o['type'] === 'assistant') {
+      const m = message?.model;
+      // 空串不收（计划三审 AGY-02）：它会让一致性判定误记 false
+      if (typeof m === 'string' && m.length > 0 && !reportedModels.includes(m)) reportedModels.push(m);
+    }
     const content = message?.content;
     if (Array.isArray(content)) {
       for (const raw of content) {
@@ -177,6 +189,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
 
   return {
     init,
+    reportedModels,
     toolUses,
     toolErrors,
     erroredToolUseIds,
@@ -450,4 +463,22 @@ export function claudeModelReadback(init: ClaudeTrace['init']): { model: string 
   const model = init?.model ?? null;
   if (hasRedactionMark(model)) return { model: null, source: 'unverified' };
   return { model, source: model ? 'envelope' : 'unverified' };
+}
+
+/**
+ * CLI 解析出的 `init.model` 与服务端回报的 `message.model` 是否一致（EV-258 定的 AC-20 留痕口径）。
+ *
+ * `init.model` 是 CLI 按别名解析出的配置值，可带上下文窗口后缀（`qwen3.8-max[1m]`）；CLI 发请求前剥掉后缀，
+ * 服务端回报的是 `qwen3.8-max`。所以每个回报值等于 `init.model`、或等于剥掉**一个**合法后缀后的基名，即算一致。
+ * 剥后缀那一支只在 init 恰为「不含方括号的基名 + 一个后缀」时适用（计划三审 CODEX-03：`qwen[1m][1m]` 对 `qwen[1m]` 不算一致）。
+ * 回读取不到（缺失、空串、带脱敏痕迹）或没有回报值时记 null——没法比，不是不一致。
+ * 只进 `trace.json`，不进判定面：网关合法改写模型名时也会不一致，告警会成稳态噪声。
+ */
+export function claudeModelConsistency(init: ClaudeTrace['init'], reported: readonly string[]): boolean | null {
+  const m = claudeModelReadback(init).model;
+  // 空串与 null 同义（claudeModelReadback 对空串原样返回 ''，来源记 unverified）
+  if (!m || reported.length === 0) return null;
+  const b = stripContextWindowSuffix(m);
+  const bareBase = b !== m && !b.includes('[');
+  return reported.every((r) => r === m || (bareBase && r === b));
 }

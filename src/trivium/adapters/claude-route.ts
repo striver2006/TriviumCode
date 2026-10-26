@@ -25,7 +25,8 @@ export interface ClaudeRoute {
    * 每次带模型调用的子进程经 `claudeInvocationEnv` 以**环境变量**注入（EV-256；1.2.0～1.3.1
    * 曾并进 `--settings` 内联载荷，键值因此出现在进程命令行里）。受限模式认进程环境变量
    * （2026-10-24 win32 实测）。值只在内存，指纹只记 sha256；输出侧由 `scrubGatewayEnv` 对凭据类键
-   * 逐值脱敏，模型名键的值按模型名对待（EV-257，判据见 `isModelNameKey` 与 `gatewayScrubPlan`）。
+   * 逐值脱敏，模型名键的值按模型名对待（EV-257，判据见 `isModelNameKey` 与 `gatewayScrubPlan`；
+   * 带上下文窗口后缀的形态见 `looksLikeModelName`，EV-258）。
    */
   settingsEnv: Record<string, string>;
   settingsEnvNote: string | null;
@@ -54,7 +55,8 @@ const CREDENTIAL_KEY_WORDS = new Set(['TOKEN', 'KEY', 'SECRET', 'AUTH', 'PASSWOR
 
 /**
  * 网关 env 键是否是模型名键（EV-257）：模型名键的值是模型名，不进逐值脱敏的替换集——
- * CC Switch 网关回报的 `init.model` 恰等于这些键的值，一并替换会把回读吞成占位符。
+ * `system/init` 的 `model` 是 CLI 读这些键解析出的配置值（不是网关回报的，EV-258 订正），
+ * 恰等于这些键的值，一并替换会把回读吞成占位符。
  *
  * **区分大小写、只认全大写段**：`extractSettingsEnv` 不改键名大小写，小写或混写的键过不了正则、
  * 留在替换集。方向是 fail-closed——最坏是那个模型名被替换、回读记 unverified，不会放过凭据；
@@ -67,15 +69,33 @@ export function isModelNameKey(key: string): boolean {
 }
 
 /**
+ * Claude Code 上下文窗口后缀（`sonnet[1m]` 一类，EV-258）的**无锚片段**：1～4 位不以 0 开头的数字加小写 k 或 m。
+ * 只定义片段、不带锚：守卫 4 要锚在串尾，profile 元数据要放在闭引号之前，锚定由各使用点自定
+ * （计划三审 AGY-01 ≡ GLM-01）。大写、多位、其它单位一律不认，fail-closed——代价只是那个值照旧替换、回读记 unverified。
+ */
+const CONTEXT_WINDOW_SUFFIX_PATTERN = String.raw`\[[1-9][0-9]{0,3}[km]\]`;
+const CONTEXT_WINDOW_SUFFIX = new RegExp(`${CONTEXT_WINDOW_SUFFIX_PATTERN}$`);
+
+/** 剥掉末尾**一个**上下文窗口后缀；没有就原样返回。不验证剩下的部分，由调用方自己判 */
+export function stripContextWindowSuffix(value: string): string {
+  const m = CONTEXT_WINDOW_SUFFIX.exec(value);
+  return m ? value.slice(0, m.index) : value;
+}
+
+/**
  * 模型名键的值是否「长得像模型名」（EV-257 守卫 4，计划三审 GLM-01）：字符集沿用 `claudeProfileMetadata`
  * 对模型名值的口径 `[\w./:+-]`、长度 1～128；按非字母数字字符切开后最长一段不超过 16
  * （真实模型名由短段拼成，随机令牌是长连续段）；不是 UUID 形态。不像就照旧替换，代价只是回读记 unverified。
  * 这不是判别凭据的完备算法：由短段拼成的凭据填进模型名键仍会放行，作为剩余边界登记在主设计。
+ *
+ * 末尾一个上下文窗口后缀（`qwen3.8-max[1m]`）先剥掉，上述判据全部作用于剥后的部分（EV-258）：
+ * 方括号在别处、两个后缀、后缀内容不符都剥不掉或剥后仍含方括号，照旧不像。
  */
 export function looksLikeModelName(value: string): boolean {
-  if (!/^[\w./:+-]{1,128}$/.test(value)) return false;
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return false;
-  return value.split(/[^A-Za-z0-9]+/).every((seg) => seg.length <= 16);
+  const base = stripContextWindowSuffix(value);
+  if (!/^[\w./:+-]{1,128}$/.test(base)) return false;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(base)) return false;
+  return base.split(/[^A-Za-z0-9]+/).every((seg) => seg.length <= 16);
 }
 
 export function claudeProfilesDir(): string {
@@ -88,11 +108,20 @@ export function claudeProfileNames(dir = claudeProfilesDir()): string[] {
   catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []; throw e; }
 }
 
-/** 只接受独立静态 export 字符串。插值/命令替换/多行内容不作为元数据。 */
+/** profile 元数据里模型名值的形态：守卫 4 的字符集，可带一个上下文窗口后缀（EV-258，同一片段派生） */
+const PROFILE_MODEL_VALUE = String.raw`[\w.\/:+-]+(?:${CONTEXT_WINDOW_SUFFIX_PATTERN})?`;
+const PROFILE_MODEL_LINE = new RegExp(String.raw`^\s*export\s+(ANTHROPIC_(?:MODEL|DEFAULT_[A-Z_]+_MODEL|SMALL_FAST_MODEL))=`
+  + `(?:"(${PROFILE_MODEL_VALUE})"|'(${PROFILE_MODEL_VALUE})'|(${PROFILE_MODEL_VALUE}))` + String.raw`\s*(?:#.*)?$`);
+
+/**
+ * 只接受独立静态 export 字符串。插值/命令替换/多行内容不作为元数据。
+ * 不加引号的带后缀形态也收：shell 对赋值右侧不做路径名展开，`export M=qwen[1m]` 就是静态串
+ * （sh / bash / zsh / dash 实测，计划三审 CODEX-01）。
+ */
 export function claudeProfileMetadata(text: string): { models: string[] } {
   const models: string[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const m = /^\s*export\s+(ANTHROPIC_(?:MODEL|DEFAULT_[A-Z_]+_MODEL|SMALL_FAST_MODEL))=(?:"([\w.\/:+-]+)"|'([\w.\/:+-]+)'|([\w.\/:+-]+))\s*(?:#.*)?$/.exec(line);
+    const m = PROFILE_MODEL_LINE.exec(line);
     const model = m?.[2] ?? m?.[3] ?? m?.[4];
     if (model && !models.includes(model)) models.push(model);
   }

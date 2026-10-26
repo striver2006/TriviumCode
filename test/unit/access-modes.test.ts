@@ -57,6 +57,20 @@ test('profile 元数据只取静态模型，不执行插值；认证环境只作
   assert.equal(parent.ANTHROPIC_MODEL, 'other');
 });
 
+test('profile 元数据：三种形态都收末尾一个上下文窗口后缀，方括号在别处 / 两个后缀 / 内容不符一律不收（EV-258）', () => {
+  const meta = claudeProfileMetadata([
+    'export ANTHROPIC_MODEL="qwen3.8-max[1m]"',
+    "export ANTHROPIC_DEFAULT_SONNET_MODEL='qwen3.8-flash[200k]'",
+    'export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-4.6[1m]',
+  ].join('\n'));
+  assert.deepEqual(meta.models, ['qwen3.8-max[1m]', 'qwen3.8-flash[200k]', 'glm-4.6[1m]']);
+  for (const v of ['qwen[1m]-max', 'qwen3.8-max[1m][1m]', 'qwen3.8-max[abc]', 'qwen3.8-max[1M]', 'qwen3.8-max[0m]']) {
+    for (const line of [`export ANTHROPIC_MODEL="${v}"`, `export ANTHROPIC_MODEL='${v}'`, `export ANTHROPIC_MODEL=${v}`]) {
+      assert.deepEqual(claudeProfileMetadata(line).models, [], `${line} 不应收`);
+    }
+  }
+});
+
 test('spawn失败保留请求命令但实际入口为空；被终止的已启动进程保留入口', async () => {
   const out = await run('/trivium-fixture-missing-entry', [], { timeoutMs: 1000 });
   assert.equal(out.spawned, false);
