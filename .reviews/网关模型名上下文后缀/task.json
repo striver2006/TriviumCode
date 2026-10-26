@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "网关模型名上下文后缀",
+  "goal": "修复 BACKLOG EV-258：EV-257 的守卫 4（looksLikeModelName）字符集不含方括号，CC Switch 写进生效模型名键的 Claude Code 上下文窗口后缀形态（如 qwen3.8-max[1m]、qwen3.8-flash[1m]）被判为不像模型名，这些键留在逐值替换集，同值的几个模型名键互为与凭据同值、守卫 3 连带不过，网关回报的模型名仍被吞成 red…",
+  "created_at": "2026-10-26T11:21:14.971Z",
+  "updated_at": "2026-10-26T12:32:04.799Z",
+  "runs": [
+    {
+      "run_id": "20261026T112757Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-26T11:28:06.161Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261026T121048Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-26T12:10:57.140Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261026T122618Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-26T12:32:04.799Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "claude",
+      "claimed_at": "2026-10-26T11:21:14.971Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-26T11:40:23.858Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261026T112757Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-26T11:40:17.110Z"
+    },
+    {
+      "run_id": "20261026T121048Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-26T12:25:54.224Z"
+    }
+  ]
+}

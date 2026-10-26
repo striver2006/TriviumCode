@@ -1,0 +1,85 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "核心后缀放行方案成立，未发现它会绕过凭据键、模式脱敏或同值冲突守卫。实施前需修正 profile 的 shell 语义依据，以及两处算法与回归预期的冲突；这些修改无需重新评审。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.2、§4.2、M10",
+      "problem": "拒收未加引号后缀的依据不成立：export 的赋值参数不能按普通命令参数的通配展开理解。按计划实施后，合法的静态 profile 声明仍可能被 doctor 显示为“未声明”，且 M10 会把支持这种声明误判为放行过宽。",
+      "evidence": "已读 src/trivium/adapters/claude-route.ts:91-100、test/unit/access-modes.test.ts:51-59 与 src/trivium/doctor.ts:1199。现有解析器明确支持未加引号的 export 赋值。本轮实际执行 /bin/bash --noprofile --norc -c 'export EV258_MODEL=READ[M]E.md\nprintf \"%s\\n\" \"$EV258_MODEL\"'，并以 /bin/zsh -f 执行同样内容；工作目录存在 README.md，两者均输出原串 READ[M]E.md，没有展开成文件名。",
+      "suggestion": "依据实际支持的 profile 包装器 shell 核定赋值语义；对可证明为静态赋值的未加引号形态接受同一合法后缀，并同步 §4.2 与 M10。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "计划 §4.1 S11",
+      "problem": "S11 要求所有反例经 scrubGatewayEnv 后都不含原值，但明确包含仅 4 字符的 [1m]。它不被豁免，却仍因现有长度阈值而不进入替换集。照计划写测试必然失败；通过降低阈值来满足测试又会违反本批“不动 ≥8 字符阈值”的范围约束。",
+      "evidence": "已读计划 §一与 §4.1，以及 src/trivium/adapters/claude.ts:535-547：replace 构造明确过滤 v.length >= 8。test/unit/claude-gateway-scrub.test.ts 的既有夹具均按该阈值设计，集成测试文件也明确说明合成值须 ≥8 字符。此结论来自源码推理，未执行会写夹具的测试。",
+      "suggestion": "将形态拒绝、不豁免和实际替换分开断言；短反例保持既有短值行为，替换断言使用长度达到阈值的反例。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §2.3 claudeModelConsistency 与 §4.1 S14",
+      "problem": "拟定算法会把双后缀输入与“剥掉一个后缀”的服务端值判为一致，直接违背 S14 的 false 预期。stripContextWindowSuffix 仅负责剥一次，不验证剩余部分，因此不能单独承担一致性判定的合法后缀边界。",
+      "evidence": "已读计划 §2.1、§2.3、S14，以及 src/trivium/adapters/claude-trace.ts:449-453；现有 claudeModelReadback 只检查脱敏痕迹，不拒绝双后缀。本轮实际执行 node --input-type=module -e 的内存验证，按计划原样定义 suffix、strip 和逐项相等条件；consistent(\"qwen[1m][1m]\", [\"qwen[1m]\"]) 输出 true。这是拟定算法验证，并非尚未实施代码的测试。",
+      "suggestion": "明确后缀等价分支只适用于满足本批单后缀形态的输入，使其与 S14 对齐；保留双后缀反例锁住该分支。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "只剥末尾一个受限后缀，再对剩余部分执行原字符集、长度、UUID 和最长段判据，能够同时拒绝中间方括号、重复后缀及方括号包裹的令牌。",
+    "守卫②③继续检查完整值，gatewayScrubPlan 不变，可保留同值模型名键共同豁免及非模型名键同值时凭据优先的行为。",
+    "保留 init.model 为主要回读、将 message.model 放入诊断留痕，是边界明确且保持现有判定面兼容的选择；新增 trace.json 诊断键不违反 scrub 输出逐字不变的要求。",
+    "使用合成 CLI 完成回归、变异及新旧对拍，并把 Windows 真实凭据与配额调用留待用户执行，成本安排合理；本批没有引入新依赖或数据迁移。"
+  ],
+  "not_covered": [
+    "未执行构建、测试或变异装置，因为这些操作会写文件；本次审查对象仍是实施计划。",
+    "未调用真实厂商 CLI、网关或任何付费模型，未验证 Windows 验收结果。",
+    "未读取运行目录或用户凭据；计划中的历史运行抽样未独立复核。",
+    "shell 赋值实验仅覆盖本机 bash 与 zsh，未检查用户实际安装的 profile 包装器。"
+  ],
+  "consulted": [
+    ".reviews/网关模型名上下文后缀/plan/2026-10-26-网关模型名上下文后缀-claude.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/稳定版系统设计说明书.md",
+    "doc/04_development/GUIDE_env_setup.md",
+    "doc/04_development/GUIDE_local_pitfalls.md",
+    "doc/05_testing/evidence/gateway-readback-model-20261025/windows-readout.md",
+    "doc/07_manuals/QUICKSTART.md",
+    "scripts/build.mjs",
+    "scripts/mutation-check.mjs",
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/adapters/codex.ts",
+    "src/trivium/adapters/zcode.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/secrets.ts",
+    "test/unit/access-modes.test.ts",
+    "test/unit/claude-adapter.test.ts",
+    "test/unit/claude-gateway-scrub.test.ts",
+    "test/integration/claude-directory-adapter.test.ts",
+    "test/integration/claude-gateway-env.test.ts"
+  ]
+}

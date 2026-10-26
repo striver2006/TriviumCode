@@ -1,0 +1,70 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass",
+  "summary": "计划与任务目标忠实一致，现状陈述逐项与代码、Windows 实测证据核对吻合：gatewayScrubPlan 四道守卫的实现语义（claude.ts:535-547，候选之间同值不算冲突、credentialValues 只收非候选键的值）与连带豁免推导一致；守卫④正则边界表（只剥末尾一个、两后缀/中间方括号/内容不符/只有后缀均拒）推演无放过路径，方括号形态凭据无被当成模型名放过的通道；回读口径取 init.model 的四条理由成立（AC-20 客户端侧回报语义、与另三家同构、本机 33 份样本零变化、modelUsage 非单值），模型族规则只看前缀、带后缀不影响比较（registry.ts:70-78 已核）；trace.json 只加 modelReadback 留痕键不打红现有逐键断言，claude-directory-adapter.test.ts 正是 §4.4 要找的装置；对拍脚本 accept-run.mjs 确实不走 run()，论域声明准确；E1-E10/S1-S9 不动的装置前提成立；主设计 §3247 与稳定版 §107 确实存在待订正的『网关在 system/init 回报』措辞。发现两条 minor：§2.1 带末尾锚的正则与 §2.2『共用一个正则源』的承诺存在实现矛盾；M11 变异在 S14 真值表缺少能稳定咬住它的格。两条都不改变实施方向，修复后无需再审。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": ".reviews/网关模型名上下文后缀/plan/2026-10-26-网关模型名上下文后缀-claude.md §2.2（源头在 §2.1 的伪代码）；参照 src/trivium/adapters/claude-route.ts:95",
+      "problem": "§2.1 把 CONTEXT_WINDOW_SUFFIX 定义为带末尾锚的完整正则（\\[[1-9][0-9]{0,3}[km]\\]$ 形态），而 §2.2 要求 claudeProfileMetadata 的行级正则『与 §2.1 共用一个正则源，不另写一份』。但 profile 行级正则里值的后面还有闭引号与行尾（claude-route.ts:95 的形态是 (?:\"…\"|'…'|…)），把带 $ 锚的 source 直接拼进行级正则会让 $ 断言落在值中间、导致永不匹配。实现时必须把『后缀片段』与『锚定』拆开（例如导出无锚的片段字符串、两侧各自组合锚定），计划没有写这一步；照伪代码最省事的实现是复制一份字面量进 profile 正则，行为正确但恰好违反『不另写一份』的自我承诺，留下两处漂移面——而单一事实源正是该承诺要防的事。",
+      "evidence": "src/trivium/adapters/claude-route.ts:75-79（looksLikeModelName 的字符集判据）、:95（claudeProfileMetadata 行级正则，值后接闭引号）；被审计划 §2.1 的 CONTEXT_WINDOW_SUFFIX 伪代码（带 $ 锚）与 §2.2 的『（与 §2.1 共用一个正则源，不另写一份）』。",
+      "suggestion": "在 §2.1 写明拆法：把后缀定义成无锚片段（模式字符串），stripContextWindowSuffix 与 profile 行级正则各自用该片段组合自己的锚定；或者把 §2.2 的承诺改写成『同一片段派生』并说明锚定由各使用点自定。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": ".reviews/网关模型名上下文后缀/plan/2026-10-26-网关模型名上下文后缀-claude.md §4.1 S14 真值表与 §五 M11 行",
+      "problem": "M11（一致性判定过宽：后缀剥离改为任意尾部截断 / startsWith）在 S14 真值表里没有确定能咬住它的格。真值表中最接近的是『reported 带一个不同名 ⇒ false』，但若该格用例选的字符串不是 init.model 的前缀，startsWith 形态的过宽实现对该用例仍判 false，S14 照绿、M11 在变异装置下假通过；预跑虽然可能暴露『没咬住』，但那已经是实施期返工，计划阶段补一格更便宜。",
+      "evidence": "被审计划 §4.1 S14 真值表（七格：init 缺失/空串/占位符、reported 空、逐字相同、init 带后缀 reported 不带、reported 带一个不同名、init 两个后缀 reported 剥一个）与 §五 M11 行（期望咬住 S14 的『不同名』格）；claude-trace.ts:449-453（claudeModelConsistency 将新增于该文件族）。",
+      "suggestion": "S14 显式加一格『reported 是 init.model 的真前缀但不是剥后缀结果 ⇒ false』（例如 init 取 gw-a[1m]、reported 取 gw-），并把这格列为 M11 的期望咬合点；『reported 带一个不同名』格也建议选一个恰为 init 前缀的值，使两格分别咬宽方向的两种形态。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "守卫④只放行末尾一个上下文窗口后缀的正则边界（只认小写 k/m、1～4 位不以 0 开头、只剥一个、剥后长度仍须 1～128）经对 claude-route.ts:75-79 现实现的推演无放过路径；方括号形态的凭据（中间方括号、两个后缀、内容不符、只有后缀、方括号包随机令牌）全部落在『不剥 + 字符集拒』一侧。",
+    "守卫②③看完整值、守卫④看剥后部分的分工没有漏洞且方向保守：模式脱敏与同值比较都作用于完整串，不会因剥后缀变松；同值连带豁免的推导与 gatewayScrubPlan 实现逐字吻合（credentialValues 只收非候选键的值，claude.ts:535-547），反方向（非模型名键挂同值则挂该值的模型名键全不豁免）有 S3 先例加 S13 新格锚住。",
+    "凭据类键的逐值替换零放松：gatewayScrubPlan/scrubGatewayEnv 不改，替换集构造、长度降序、≥8 字符阈值全部不动；Windows 证据（windows-readout.md 诊断表）确认 12 键 env 下修复后 exemptKeys 应恰为 10 个模型名键、replace 恰为两个凭据值，S13 整表与证据一致。",
+    "回读口径取 init.model 的四条理由均经核实成立：claudeModelReadback（claude-trace.ts:449-453）口径不动；MODEL_FAMILY_RULES 的 qwen/claude 规则只看前缀（registry.ts:70-78），带后缀不影响族比较；不一致只进 trace.json 不告警的取舍（网关合法改写名会造成稳态噪声）合理；『零变化』承诺的论域（scrub 输出与 model_effective）与任务目标原文一致，trace.json 是诊断留痕且现有测试对它是逐键断言，加 modelReadback 键不打红。",
+    "trace.json 写入点与 spawn 失败早退分支的描述准确（claude.ts:1129-1181）；claude-directory-adapter.test.ts 确实经 claudeAdapter.run() 落 trace.json 且断言逐键访问，满足 §4.4 的装置需求。",
+    "profile 元数据口径：claudeProfileMetadata 的消费面全仓仅 doctor.ts:1199 一处注记、不进判定面不进指纹（已 grep 核实），改引号两形态、不放行不加引号形态（shell 通配展开语义）的处置与风险描述准确；access-modes.test.ts:51-58 的现有用例形态与 §4.2 追加方案衔接。",
+    "变异表 M1-M10、M12、M13 与 S10-S14、E11、access-modes 新格的对应关系静态推演全部成立，过窄（M1/M8/M9/M12）与过宽（M2-M7/M10）两方向都有锚；S12 先断言『后缀本身合法』前提的做法与 S4 既有风格一致。",
+    "对拍论域声明准确：EV-257 的 accept-run.mjs 走 invokeClaude+buildClaudeResult+探针、不走 run()，trace.json 不在比对面；E1-E10 不设新开关输出不变的装置前提成立（假 CLI 现有 assistant 事件不带 message.model，claude-gateway-env.test.ts:109）。",
+    "§0.3 措辞订正的事实依据充分：init.model 是 CLI 按别名解析的配置值而非网关回报，与 windows-readout.md 的三处模型信息一致；主设计 §3247 与稳定版 §107 确实存在『网关在 system/init 回报』措辞与守卫④描述（已 grep 核实只此两处）。",
+    "『剩余边界延伸』的登记（短段拼成形似模型名的凭据加合法后缀会放行，修复前被方括号判据兜住）如实且与主设计 v1.3.179 的剩余边界条款衔接正确，不新开口子的说法成立。"
+  ],
+  "not_covered": [
+    "本侧为只读审查，未运行任何测试、变异或脚本；S10-S14、M1-M13 的咬合判断是对源码与计划用例的静态推演，正则行为未经执行验证。",
+    "EV-257 证据目录的 accept-readout.mjs、gen-mutation-spec.mjs、mutation-spec.json 未逐行读，变异规格的锚点截取与唯一性机制按计划描述采信。",
+    "secrets.ts 的 RULES 完整规则列表未逐条读完，守卫②对带后缀值零命中的判断基于已读规则族（赋值形态按键名判、PEM/JWT/sk- 形态均不含方括号段）与 EV-257 既有豁免先例；S10/S13 实跑会兜住意外命中。",
+    "描述面 grep 的完备性未独立复算（计划 §3.2 的论域方法采信），我只验证了点名的主设计 §3247 与稳定版 §107 存在目标措辞，doc/ 其余文件未全量扫。",
+    "Windows 真实网关验收清单只能在 Windows 机器执行，本侧无法验证其可执行性；scan-gateway-exposure.mjs 的内部逻辑未读（仅确认存在于 EV-257 证据目录）。",
+    "仓库根 README.md、doc/01_requirements/README.md、doc/02_design/README.md 未逐字读，其内容与已读的 AGENTS.md/CLAUDE.md/doc/README.md 重合度高，未发现对本次审查有增量的约束。"
+  ],
+  "consulted": [
+    "src/trivium/adapters/claude-route.ts",
+    "src/trivium/adapters/claude-trace.ts",
+    "src/trivium/adapters/claude.ts",
+    "src/trivium/probes/claude.ts",
+    "src/trivium/secrets.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/doctor.ts",
+    "test/unit/claude-gateway-scrub.test.ts",
+    "test/integration/claude-gateway-env.test.ts",
+    "test/unit/access-modes.test.ts",
+    "test/integration/claude-directory-adapter.test.ts",
+    "doc/05_testing/evidence/gateway-readback-model-20261025/windows-readout.md",
+    "doc/05_testing/evidence/gateway-readback-model-20261025/accept-run.mjs",
+    "doc/08_project/BACKLOG.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/稳定版系统设计说明书.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "CLAUDE.md",
+    "doc/README.md"
+  ]
+}
