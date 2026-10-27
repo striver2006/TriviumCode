@@ -81,7 +81,7 @@ import { measureAllPairs, renderDivergence } from './divergence.js';
 import { resolveAssetRoot, resolveReviewSchemaPath, runRoot } from './config.js';
 import { resolveCriticSelection } from './critics.js';
 import { releaseRunningGateEntry, setGateChecked } from './state.js';
-import { ensureDir, sha256, sha256File, tryRemoveTempDir } from './util/fsx.js';
+import { ensureDir, renameOverwriting, sha256, sha256File, tryRemoveTempDir } from './util/fsx.js';
 import { workTreeHash } from './util/git.js';
 import {
   EXIT,
@@ -2544,7 +2544,8 @@ export async function stashVoidedOutput(
   try {
     // 目标父目录首次必然不存在，rename 不会替我们建（计划双审 AGY-01）
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.rename(outDir, target);
+    // win32 上句柄争用与 writeAtomic 同口径有界重试（EV-260）；耗尽照旧落入下方 catch 的既有兜底
+    await renameOverwriting(outDir, target);
     return rel;
   } catch (e) {
     const why = (e as NodeJS.ErrnoException).code === 'ENOENT' ? '该次尝试没有留下 out 目录' : (e as Error).message;

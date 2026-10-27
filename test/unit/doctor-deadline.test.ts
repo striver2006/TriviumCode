@@ -378,6 +378,12 @@ test('I14 本进程的台账带上规范化启动时刻（供下一次 doctor �
     assert.equal(parsed.pid, process.pid);
     assert.ok((parsed.dirs ?? []).includes(d));
     assert.equal(parsed.started, await processStartTime(process.pid, { canonical: true }), '与身份核对同一形态（规范化启动时刻）');
+    // EV-260：台账落盘改走 writeAtomic 后，台账目录里不该再有任何 tmp 中间态残件（旧手写实现的 `.tmp` 残件面）
+    assert.deepEqual(
+      (await fs.readdir(w.ledgerDir)).filter((n) => n.includes('.tmp')),
+      [],
+      '台账落盘后无 .tmp 残件',
+    );
   } finally {
     await tryRemoveTempDir(d, []);
     await l.finish();

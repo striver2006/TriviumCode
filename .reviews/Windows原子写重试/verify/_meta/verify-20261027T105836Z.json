@@ -1,0 +1,42 @@
+{
+  "schema": "trivium.verify.v1",
+  "run_id": "20261027T105836Z",
+  "topic": "Windows原子写重试",
+  "started_at": "2026-10-27T10:58:36.590Z",
+  "finished_at": "2026-10-27T11:05:16.593Z",
+  "project_root": "C:/Work/TriviumCode",
+  "commands": [
+    {
+      "cmd": "npm run typecheck",
+      "cmd_sha256": "982c1455e5e73c8ccab2d70a550c972e2841a0582596e26a7fcc53b80e14aa14",
+      "group": "build",
+      "exit_code": 0,
+      "duration_s": 11.9,
+      "timed_out": false,
+      "stdout_tail": "",
+      "stderr_tail": "npm notice run triviumcode@1.3.2 typecheck\nnpm notice run tsc --noEmit"
+    },
+    {
+      "cmd": "npm run build",
+      "cmd_sha256": "16c0e4305ac213dff39fc82b69b6e08aeeb8758e33cd72d7c409752a70e9f054",
+      "group": "build",
+      "exit_code": 0,
+      "duration_s": 5.5,
+      "timed_out": false,
+      "stdout_tail": "构建标识：6e5f313（作用面内有未提交改动），inputs 337a6a8fac20",
+      "stderr_tail": "npm notice run triviumcode@1.3.2 build\nnpm notice run node scripts/build.mjs\n\n  skills\\dual-critic\\scripts\\trivium.cjs  1.8mb\n\nDone in 92ms\n\n  dist\\install.cjs  294.0kb\n\nDone in 24ms"
+    },
+    {
+      "cmd": "npm test",
+      "cmd_sha256": "328e123c63857fd8473bd4bd3581e655b08b7440d7f5d2c31cc375607582f539",
+      "group": "test",
+      "exit_code": 1,
+      "duration_s": 382.6,
+      "timed_out": false,
+      "stdout_tail": "…（已省略前 18882 行）\n  type: 'test'\n  ...\n# Subtest: G2 名单外 ⇒ 证据不可信：不失守、不动禁读与证据判定，告警点名\nok 3078 - G2 名单外 ⇒ 证据不可信：不失守、不动禁读与证据判定，告警点名\n  ---\n  duration_ms: 1.3289\n  type: 'test'\n  ...\n# Subtest: G3 两档同时成立、互不覆盖\nok 3079 - G3 两档同时成立、互不覆盖\n  ---\n  duration_ms: 0.8802\n  type: 'test'\n  ...\n# Subtest: G4 都没有 ⇒ verification 上没有 untrusted 这个键（结构上缺席）\nok 3080 - G4 都没有 ⇒ verification 上没有 untrusted 这个键（结构上缺席）\n  ---\n  duration_ms: 0.7617\n  type: 'test'\n  ...\n# Subtest: G5 MCP: 条目不参与归因扣除：括号里恰好是漂移文件的路径也不扣（GLM-01 的可杀构造）\nok 3081 - G5 MCP: 条目不参与归因扣除：括号里恰好是漂移文件的路径也不扣（GLM-01 的可杀构造）\n  ---\n  duration_ms: 2001.0672\n  type: 'test'\n  ...\n# Subtest: G6 证据不可信参与归因：漂移落进「无法归因」、不记开发者手改（AGY-01）\nok 3082 - G6 证据不可信参与归因：漂移落进「无法归因」、不记开发者手改（AGY-01）\n  ---\n  duration_ms: 1481.2526\n  type: 'test'\n  ...\n# Subtest: G7 无不可信侧、能力都可用 ⇒ 归因与改前相同（开发者手改）\nok 3083 - G7 无不可信侧、能力都可用 ⇒ 归因与改前相同（开发者手改）\n  ---\n  duration_ms: 1500.114\n  type: 'test'\n  ...\n# Subtest: G8 MCP 执行型调用参与归因：写事件里没有路径，漂移不得记成开发者手改（计划 r2 §7 偏离 2）\nok 3084 - G8 MCP 执行型调用参与归因：写事件里没有路径，漂移不得记成开发者手改（计划 r2 §7 偏离 2）\n  ---\n  duration_ms: 1375.7642\n  type: 'test'\n  ...\n# Subtest: G9 只有能力恒态这一种成因时，「无法归因」文案与改前逐字相同\nok 3085 - G9 只有能力恒态这一种成因时，「无法归因」文案与改前逐字相同\n  ---\n  duration_ms: 1399.6169\n  type: 'test'\n  ...\n# skip（win32）: zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）\n# Subtest: dist\\\\test\\\\test\\\\unit\\\\zcode-model-selection.test.js\nok 237 - dist\\\\test\\\\test\\\\unit\\\\zcode-model-selection.test.js\n  ---\n  duration_ms: 726.9639\n  type: 'test'\n  ...\n# skip（win32）: zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）\n# Subtest: dist\\\\test\\\\test\\\\unit\\\\zcode-provider-env.test.js\nok 238 - dist\\\\test\\\\test\\\\unit\\\\zcode-provider-env.test.js\n  ---\n  duration_ms: 738.5566\n  type: 'test'\n  ...\n# skip（win32）: zcode HOME 隔离夹具按 POSIX env HOME 写死，win32 需 USERPROFILE 一并适配（登记残余清单）\n# Subtest: dist\\\\test\\\\test\\\\unit\\\\zcode-runtime-selection.test.js\nok 239 - dist\\\\test\\\\test\\\\unit\\\\zcode-runtime-selection.test.js\n  ---\n  duration_ms: 671.7715\n  type: 'test'\n  ...\n# Subtest: 抠 envelope：容忍前置告警行（不能用 JSON.parse(trim) ）\nok 3089 - 抠 envelope：容忍前置告警行（不能用 JSON.parse(trim) ）\n  ---\n  duration_ms: 2.3296\n  type: 'test'\n  ...\n# Subtest: 抠 envelope：字符串里的花括号不破坏配平\nok 3090 - 抠 envelope：字符串里的花括号不破坏配平\n  ---\n  duration_ms: 1.2942\n  type: 'test'\n  ...\n# Subtest: 抠 envelope：转义引号不破坏配平\nok 3091 - 抠 envelope：转义引号不破坏配平\n  ---\n  duration_ms: 0.2873\n  type: 'test'\n  ...\n# Subtest: 抠 envelope：无 JSON 时返回 null 而非抛异常\nok 3092 - 抠 envelope：无 JSON 时返回 null 而非抛异常\n  ---\n  duration_ms: 0.2187\n  type: 'test'\n  ...\n# Subtest: 解析 envelope：正文在 .response，且记录全部字段名\nok 3093 - 解析 envelope：正文在 .response，且记录全部字段名\n  ---\n  duration_ms: 0.4005\n  type: 'test'\n  ...\n# Subtest: 回读生效模型：envelope 没有 model 字段，只能从日志 context.model 取（AC-13）\nok 3094 - 回读生效模型：envelope 没有 model 字段，只能从日志 context.model 取（AC-13）\n  ---\n  duration_ms: 0.8464\n  type: 'test'\n  ...\n# Subtest: 按 sessionId 过滤：共享 HOME 下多会话交织不得混入\nok 3095 - 按 sessionId 过滤：共享 HOME 下多会话交织不得混入\n  ---\n  duration_ms: 0.4929\n  type: 'test'\n  ...\n# Subtest: 只统计 completed 的工具调用，failed 不算证据\nok 3096 - 只统计 completed 的工具调用，failed 不算证据\n  ---\n  duration_ms: 0.5797\n  type: 'test'\n  ...\n# Subtest: 写工具与 Bash 计入 writeEvents（只读失守信号）\nok 3097 - 写工具与 Bash 计入 writeEvents（只读失守信号）\n  ---\n  duration_ms: 0.6953\n  type: 'test'\n  ...\n# Subtest: 解析 turn.failed 的结构化根因\nok 3098 - 解析 turn.failed 的结构化根因\n  ---\n  duration_ms: 0.6842\n  type: 'test'\n  ...\n# Subtest: sessionId 传 null 时全收（独立 HOME 下日志天然隔离）\nok 3099 - sessionId 传 null 时全收（独立 HOME 下日志天然隔离）\n  ---\n  duration_ms: 0.3576\n  type: 'test'\n  ...\n# Subtest: rollout：工具参数里的路径可提取（标准日志没有这个信息）\nok 3100 - rollout：工具参数里的路径可提取（标准日志没有这个信息）\n  ---\n  duration_ms: 0.7224\n  type: 'test'\n  ...\n# Subtest: rollout：回读生效模型的全限定形态与来源档位\nok 3101 - rollout：回读生效模型的全限定形态与来源档位\n  ---\n  duration_ms: 0.3523\n  type: 'test'\n  ...\n# Subtest: rollout：写工具与 Bash 计入 writeEvents\nok 3102 - rollout：写工具与 Bash 计入 writeEvents\n  ---\n  duration_ms: 1.726\n  type: 'test'\n  ...\n# Subtest: rollout：坏行与无 toolCalls 的行被跳过而非抛异常\nok 3103 - rollout：坏行与无 toolCalls 的行被跳过而非抛异常\n  ---\n  duration_ms: 0.4488\n  type: 'test'\n  ...\n# Subtest: 模型名补全：短名按探针回读的 providerId 补前缀\nok 3104 - 模型名补全：短名按探针回读的 providerId 补前缀\n  ---\n  duration_ms: 30.9338\n  type: 'test'\n  ...\n# Subtest: 模型名补全：已是全限定形态时原样返回\nok 3105 - 模型名补全：已是全限定形态时原样返回\n  ---\n  duration_ms: 0.3647\n  type: 'test'\n  ...\n# Subtest: 模型名补全：探针没给出前缀时原样传，不瞎猜\nok 3106 - 模型名补全：探针没给出前缀时原样传，不瞎猜\n  ---\n  duration_ms: 0.2626\n  type: 'test'\n  ...\n# Subtest: 模型名补全：providerId 含斜杠时只切最后一段\nok 3107 - 模型名补全：providerId 含斜杠时只切最后一段\n  ---\n  duration_ms: 0.4274\n  type: 'test'\n  ...\n# Subtest: 模型名补全：null 模型返回 null\nok 3108 - 模型名补全：null 模型返回 null\n  ---\n  duration_ms: 0.328\n  type: 'test'\n  ...\n1..3108\n# tests 3129\n# suites 0\n# pass 3083\n# fail 3\n# cancelled 0\n# skipped 43\n# todo 0\n# duration_ms 376383.1043",
+      "stderr_tail": "npm notice run triviumcode@1.3.2 pretest\nnpm notice run node scripts/build.mjs --with-tests\n\n  skills\\dual-critic\\scripts\\trivium.cjs  1.8mb\n\nDone in 93ms\n\n  dist\\install.cjs  294.0kb\n\nDone in 25ms\n\n  dist\\test\\test\\integration\\gate-loop.test.js  635.7kb\n  dist\\test\\test\\unit\\hooks.test.js             304.3kb\n  dist\\test\\src\\trivium\\run-protocol.js         302.2kb\n  dist\\test\\src\\trivium\\review.js               300.5kb\n  dist\\test\\src\\trivium\\cli.js                  294.2kb\n  ...and 332 more output files...\n\nDone in 289ms\nnpm notice run triviumcode@1.3.2 test\nnpm notice run node scripts/run-tests.mjs \"dist/test/**/*.test.js\""
+    }
+  ],
+  "status": "failed",
+  "unconfigured": false
+}

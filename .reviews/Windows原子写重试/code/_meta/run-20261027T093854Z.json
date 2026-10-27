@@ -1,0 +1,484 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "glm",
+      "right": "codex",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "qwen3.8-flash",
+      "left_source": null,
+      "right_source": "trace",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "glm",
+      "right": "gemini",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "gemini-3.8-flash-high",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "glm",
+      "right": "claude",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "kimi-for-coding[1M]",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "codex",
+      "right": "gemini",
+      "status": "different-family",
+      "left_model": "qwen3.8-flash",
+      "right_model": "gemini-3.8-flash-high",
+      "left_source": "trace",
+      "right_source": "envelope",
+      "reason": "模型族不同：qwen / gemini"
+    },
+    {
+      "left": "codex",
+      "right": "claude",
+      "status": "different-family",
+      "left_model": "qwen3.8-flash",
+      "right_model": "kimi-for-coding[1M]",
+      "left_source": "trace",
+      "right_source": "envelope",
+      "reason": "模型族不同：qwen / kimi"
+    },
+    {
+      "left": "gemini",
+      "right": "claude",
+      "status": "different-family",
+      "left_model": "gemini-3.8-flash-high",
+      "right_model": "kimi-for-coding[1M]",
+      "left_source": "envelope",
+      "right_source": "envelope",
+      "reason": "模型族不同：gemini / kimi"
+    }
+  ],
+  "run_id": "20261027T093854Z",
+  "topic": "Windows原子写重试",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "重试是否严格限于 win32 加三种错误码，POSIX 是否逐字不变；总等待上界是否合理，满负载下会不会把 --start 拖得过久；最终失败时抛的是否原始错误、临时文件是否清干净；锁获取等靠改名原子语义判定成败的调用有没有被误加重试；两个进程并发写同一目标时，「后写者胜」的语义是否不变；回归锚能否在 macOS 上跑出 win32 分支，删掉重试后是否必红",
+  "task_goal": "修 BACKLOG EV-260：writeAtomic 在 Windows 上改名覆盖目标失败时不重试，--start 偶发「内部错误：EPERM」退出（2026-10-27 Windows 全量 EV-160 I2 实测，单跑通过；原文见 doc/05_testing/evidence/release-132-20261027/windows-check-bd5c0635.txt 的 not …",
+  "entry": "A",
+  "driver": "glm",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "review_loop": {
+    "round": 1,
+    "max_rounds": 3,
+    "max_rounds_source": "default"
+  },
+  "profile": "default",
+  "critics_selected": [
+    "codex",
+    "gemini",
+    "claude"
+  ],
+  "snapshot": {
+    "git_head": "6e5f313182bdad58ea36f32ecbe7d3e014a4644a",
+    "tree_hash": "af9f3c99cda34b982d33c4af2c7f4d95096d73ba",
+    "dirty": true,
+    "subject_sha256": "8716ebe205c6555b316017611a1060a0d13d559e539ac9460cf39b336fe4d145",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "6e5f313182bdad58ea36f32ecbe7d3e014a4644a",
+      "dirty": false,
+      "inputs_sha256": "82ce483d86ec6c50a877b3bdfce3a3bad127fef2de4c06fcc8c7c44d39998845",
+      "built_at": "2026-10-27T08:58:07.099Z"
+    },
+    "after_tree_hash": "af9f3c99cda34b982d33c4af2c7f4d95096d73ba"
+  },
+  "started_at": "2026-10-27T09:39:09.512Z",
+  "finished_at": "2026-10-27T09:45:17.608Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "codex": {
+      "vendor": "openai",
+      "cli_version": "0.164.0",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "trace",
+      "profile_requested": "ccswitch",
+      "model_provider": "custom",
+      "model_route": "config_copy",
+      "effort": "medium",
+      "effort_requested": "medium",
+      "effort_effective": null,
+      "effort_effective_source": "unverified",
+      "tier": null,
+      "tier_source": "profile",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 360.741,
+      "tool_calls": {
+        "run_command": 0,
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "access": {
+        "requested_mode": "profile",
+        "profile": "ccswitch",
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+        "launcher_effective": "C:\\Users\\k_bo\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+        "wrapper_sha256": null,
+        "configuration_sha256": "5c8cfdca5a7ac30a865e9b5c5bad0fe44829e4e3530c3d116e4d22829400ba18",
+        "provider_declared": "custom",
+        "provider_declared_source": "config",
+        "provider_effective": "custom",
+        "provider_effective_source": "trace"
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "01a17cba-5cb6-7062-b25d-5716d9cc3ae4",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.4.8",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 310.574,
+      "tool_calls": {
+        "read": 15,
+        "grep": 6,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 16
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 113373,
+        "output_tokens": 23377,
+        "thinking_tokens": 21588,
+        "cache_read_tokens": 1286038,
+        "total_tokens": 136750
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "launcher_effective": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "b00ae100-fec6-4017-96a9-4e05ee4b813f",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "claude": {
+      "vendor": "anthropic",
+      "cli_version": "2.1.311",
+      "model_requested": "opus",
+      "model_effective": "kimi-for-coding[1M]",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": null,
+      "effort_effective_source": "unverified",
+      "tier": null,
+      "tier_source": "profile",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 210.568,
+      "tool_calls": {
+        "read": 9,
+        "grep": 2,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 9
+      },
+      "evidence_ok": true,
+      "usage": {
+        "cost_usd": 0.48712999999999995
+      },
+      "access": {
+        "requested_mode": "native",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+        "launcher_effective": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "cc31eb1c-501a-44f7-b6bb-87d6c3434a22",
+      "peer_deny_applied": true,
+      "deny_skipped": 1,
+      "deny_rule_count": 48,
+      "deny_bytes": 3170
+    }
+  },
+  "requested_routes": {
+    "codex": {
+      "model": "qwen3.8-flash",
+      "effort": "medium",
+      "tier": null,
+      "tier_source": "profile",
+      "access": {
+        "requested_mode": "profile",
+        "profile": "ccswitch",
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": "5c8cfdca5a7ac30a865e9b5c5bad0fe44829e4e3530c3d116e4d22829400ba18",
+        "provider_declared": "custom",
+        "provider_declared_source": "config",
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    },
+    "gemini": {
+      "model": "gemini-3.8-flash-high",
+      "effort": "high",
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    },
+    "claude": {
+      "model": "opus",
+      "effort": "high",
+      "tier": null,
+      "tier_source": "profile",
+      "access": {
+        "requested_mode": "native",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".env",
+    ".env.example",
+    ".reviews/Windows原子写重试/plan/2026-10-27-Windows原子写重试-claude.md",
+    ".reviews/Windows原子写重试/plan/2026-10-27-Windows原子写重试-gemini.md",
+    ".reviews/Windows原子写重试/plan/_meta/review-claude-20261027T091039Z.json",
+    ".reviews/Windows原子写重试/plan/_meta/review-gemini-20261027T091039Z.json",
+    ".trivium",
+    "C:\\Users\\k_bo\\.trivium\\runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "codex": false,
+      "gemini": false,
+      "claude": true
+    },
+    "deny_skipped": {
+      "codex": 0,
+      "gemini": 0,
+      "claude": 1
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "codex": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "claude": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "codex": {
+        "hit": false,
+        "hits": []
+      },
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "claude": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 3
+    },
+    "verification_degraded": {
+      "codex": {
+        "readonly": "unavailable",
+        "path": "unavailable",
+        "path_cause": "command-trace",
+        "evidence_threshold": 2
+      },
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "claude": {
+        "readonly": "unavailable",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "Windows原子写重试/code/_meta/changes-20261027T093854Z.diff",
+      "sha256": "8716ebe205c6555b316017611a1060a0d13d559e539ac9460cf39b336fe4d145"
+    },
+    {
+      "path": "Windows原子写重试/code/_meta/brief-codex-20261027T093854Z.md",
+      "sha256": "60b0086335f06bf69a4d6419e1c342caf867e01a2560d79f5dc91c8a31939a20"
+    },
+    {
+      "path": "Windows原子写重试/code/_meta/brief-gemini-20261027T093854Z.md",
+      "sha256": "7ff10e3047e2b4bb94b74bd6c97cb25040654e0df08927aea9f91364678df296"
+    },
+    {
+      "path": "Windows原子写重试/code/_meta/brief-claude-20261027T093854Z.md",
+      "sha256": "9092cc83cba36c2551a39f0185c0fc2ea7afbcef61cfe23725b72b8d0e40fb72"
+    },
+    {
+      "path": "Windows原子写重试/code/_meta/review-codex-20261027T093854Z.json",
+      "sha256": "78ab95bacae3c86224b463701fcc976b1c28301d04496b16e58fa3797a6fdad2"
+    },
+    {
+      "path": "Windows原子写重试/code/_meta/review-gemini-20261027T093854Z.json",
+      "sha256": "cca63218fff63f48b7d2c027d7b300f6a79b292c304ae374d3738549c9bcd837"
+    },
+    {
+      "path": "Windows原子写重试/code/_meta/review-claude-20261027T093854Z.json",
+      "sha256": "b5696f496115df4fe519af8faf0df3568ff7cbbee081446c746c5849924bfb98"
+    },
+    {
+      "path": "Windows原子写重试/code/2026-10-27-Windows原子写重试-codex.md",
+      "sha256": "b863d61974ef573f6c20be1cbe4a01f72bdd5d760a605c3e8ecd1376490eb6d4"
+    },
+    {
+      "path": "Windows原子写重试/code/2026-10-27-Windows原子写重试-gemini.md",
+      "sha256": "e849c1cdf09cf70b228d563fab9433c15eefd183d4a19f477c4bd338fa4f64e9"
+    },
+    {
+      "path": "Windows原子写重试/code/2026-10-27-Windows原子写重试-claude.md",
+      "sha256": "760007b53cf8ac05cd0ed14ed92835b522eb9001745c08084b8ac220647471a8"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition",
+    "warnings": [
+      "安装副本不是当前工作树构建的：构建之后作用面内的文件又改过，改动未生效，需重新构建并安装"
+    ]
+  },
+  "status": "success",
+  "round_verdict": {
+    "sides": {
+      "codex": "pass",
+      "gemini": "pass",
+      "claude": "pass"
+    },
+    "excluded": {},
+    "counts": {
+      "pass": 3,
+      "pass-after-changes": 0,
+      "reject": 0
+    },
+    "outcome": "pass",
+    "next_action": "proceed"
+  }
+}

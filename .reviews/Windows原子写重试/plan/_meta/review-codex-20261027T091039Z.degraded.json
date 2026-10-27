@@ -1,0 +1,111 @@
+{
+  "critic": "codex",
+  "run_id": "20261027T091039Z",
+  "findings": [
+    {
+      "index": 0,
+      "id": "CODEX-01",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-01",
+        "severity": "major",
+        "layer": "plan",
+        "kind": "concurrency",
+        "location": "§6.1 R2 与 §1.3 B1（Hook 预算段）、§3.3 表格 C 行的 withGlobalLock 口径",
+        "problem": "计划自述 Hook 进程内的 state 写走 withGlobalLock 再到 writeAtomic；实施后 win32 三码重试的最长 775 ms 睡眠发生在【持锁区间内】，把全局锁的持有时长上限抬高近 1 秒。等待方进程按 acquireLock 自带的 retries × retryDelayMs 预算取锁（C1 承认该预算存在），计划只论证了本进程 Hook 的 15 s 预算占比 5%，没有论证【等待侧的取锁预算是否大于 持锁者新增的 775 ms 加传播延迟】。若某等待方预算小于该值，重试会给它引入今天不存在的新失败模式（取锁超时），比原来一次写失败更糟——这与 B1 自己声明的『更危险的失败模式要防』是同一类风险，却只防了一半。",
+        "evidence": "被审计划原文：§1.3 B1（state 写走 withGlobalLock 到 writeAtomic、Hook 15 s）、§6.1 R2（只按本进程预算 5% 论证）、§1.2 C1（acquireLock 有 retries × retryDelayMs 取锁预算）。依赖 lock.ts 实际预算数值，本会话所有文件读取被策略阻止（见 summary），未能核对，故为计划文本内部缺口叠加推理。",
+        "suggestion": "编码前先读 lock.ts 的 withGlobalLock/acquireLock 等待参数，把『等待侧取锁预算 vs 持锁者新增 775 ms』的数值比较补进 R2 处置；若预算不足，考虑把重试睡眠移出持锁区间或缩短在锁内的间隔表。"
+      }
+    },
+    {
+      "index": 1,
+      "id": "CODEX-02",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-02",
+        "severity": "major",
+        "layer": "plan",
+        "kind": "correctness",
+        "location": "§3.2『并发后写者胜不变』一条与 §4.1 T6",
+        "problem": "重试改变了一个真实的竞态结局分布：今天写者 A 的 rename 撞 EPERM 即整体失败，A 的内容【永不落地】，后发起的写者 B 成功即为终态；实施后 A 睡眠重试，其 rename 可能在 B 成功【之后】完成，终态变成 A 的较旧内容——即『后发起的逻辑写』可以被『先发起的过期写』盖掉。T6 把『目标最终内容 = A（后执行的 rename 胜）』钉成期望断言，等于把这一语义变化写进回归锚。而计划自己给出的高频争用场景恰是 --start 与 worker 并发写同一 status.json（F2），且失败样本所在用例名是 heartbeat-threshold-warning：心跳时间戳一类有单调性期望的内容被过期写回滚，可能反过来触发阈值误判。计划称『次序语义不变』只对了一半——rename 原子覆盖的次序不变，但写者之间谁的内容胜出的分布变了。",
+        "evidence": "被审计划原文：§3.2 后写者胜条目、§4.1 T6 断言（最终内容 = A）、§1.1 F2（争用双方为 --start 与 worker、失败文件 status.json）、§4.2（EV-160 I2 即 heartbeat-threshold-warning）。status.json 各字段是否有单调性依赖需读 status.ts 与心跳判定代码核实，本会话读取被阻止，未能核对，结论为基于计划自身文本的推理，故 confidence 中。",
+        "suggestion": "不要只钉『后执行的 rename 胜』：在 §3.2 增加一小节逐文件分析（status.json / state.json 各自的写入方与内容单调性），明确『过期内容后落』是接受的风险还是需要用内容级防护（如心跳时间戳取 max、带序号字段拒退）；并把该结论同步进 T6 的注释口径，避免回归锚把有害行为钉成正确行为。"
+      }
+    },
+    {
+      "index": 2,
+      "id": "CODEX-03",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-03",
+        "severity": "major",
+        "layer": "plan",
+        "kind": "test-gap",
+        "location": "§4.3 场景 A 与场景 B 的操作步骤",
+        "problem": "两场景缺少 PowerShell 持柄方与 node 写入方之间的同步协议：子进程启动并执行到 File Open 本身有数百毫秒到秒级抖动，计划写的是『起子进程按住 400 ms 再放开；紧接调用 writeAtomic』——若 node 在句柄实际按下前就发起写入，场景 A 首试即成功、断言『实际重试次数 ≥ 2』虚假变红；场景 B 同理会整体成功（该拒未拒）得出虚假的绿。另外『实际重试次数 ≥ 2（脚本自记）』在计划自身约束下不可观测：§4.3 第 1 条明确用缺省参数、与产品同一源码零改编，注入面（rename 包装计数）恰恰被排除在外，外围无从数到内部尝试次数。",
+        "evidence": "被审计划原文：§4.3 第 1 条（缺省参数、零改编、测的是缺省行为）、第 2 条（按住 400 ms；断言重试次数 ≥ 2 脚本自记）、第 3 条（按住 5 s；断言 rejects）、第 4 条（输出由 node 侧收集）。时序竞态与观测缺口均由计划文本自身推得，无需仓库读取。",
+        "suggestion": "给脚本补握手：PS 侧成功按柄后向 stdout 发信号，node 收到信号再发起 writeAtomic，随后 PS 按时释放/继续按住；场景 B 同理确认按柄成功后才计时。计数断言二选一改为可行口径：或在打包入口外层包一层真正的 fs.rename 计数 wrapper（写明这不算改编产品源码的实现方式），或删去次数断言、以『总耗时 ≥ 25 ms 且成功』的时序边界推断发生过重试。"
+      }
+    },
+    {
+      "index": 3,
+      "id": "CODEX-04",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-04",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "scope-drift",
+        "location": "§0 不做栏第一行（POSIX 路径行为零变化）与 §3.3 C、§6.1 R5",
+        "problem": "『POSIX（非 win32）路径行为零变化』的全局宣称与 C 调用点的处置自相矛盾：TempDirLedger 改调 writeAtomic 后，在 macOS/POSIX 上 rename 失败时磁盘残件的形状由 doctor-temp-N.json.tmp 变为带 pid 与时间戳的 .tmp-* 后缀，落盘前的手工 mkdir 也被 ensureDir 替换——这些是 POSIX 上可观察的行为差异，只是无害。任务原话『macOS / POSIX 路径逐字不变、不重试』若按字面理解为整体交付，C 的并入（以及计划顺带修残件面的动机）就超出了该宣称的授权；若按 writeAtomic 函数自身理解，则 §0 的表述过宽。计划的『零变化』声明需要限定辖域，否则验收时会被这句过头的话反咬。",
+        "evidence": "被审计划原文：§0 不做栏（POSIX 行为零变化的表述）、§3.3 C（整段改调 writeAtomic、删手写 tmp 与 mkdir、顺带修掉 .tmp 残件面）、§6.1 R5（承认 tmp 名变化）；任务目标原文（macOS / POSIX 路径逐字不变、不重试）。LEDGER_RE 与旧实现细节未读仓库核实，但矛盾在计划文本内部即成立。",
+        "suggestion": "把 §0 该行改为『fsx.ts 的 POSIX 分支逐字不变；C 调用点并入 writeAtomic 带来的 POSIX 残件形状变化在 R5 单独声明并论证无害』，并在 R5 补一句『旧 .tmp 形状无既有读取者（LEDGER_RE 不认）、新形状同样无读取者』的判据出处（行号）。"
+      }
+    },
+    {
+      "index": 4,
+      "id": "CODEX-05",
+      "problems": [
+        {
+          "field": "confidence",
+          "kind": "missing",
+          "message": "(根对象) must have required property 'confidence' {\"missingProperty\":\"confidence\"}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-05",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "performance",
+        "location": "§4.3 场景 B 的断言『抛出耗时在 0.7 ~ 1.5 s 区间』",
+        "problem": "耗时上界未计入耗尽后的清理路径与系统抖动：onExhausted 用 fs.rm 带 maxRetries 3，未设 retryDelay 时 Node 缺省每次重试间隔约 100 ms——若 AV 或 PowerShell 也按着 tmp 本身，清理可再加约 0.3 s；加上满负载下 6 次 rename syscall 与定时器精度抖动，1.5 s 的窗口偏紧，会在慢机器上制造新的底噪红（计划自己在 §4.3 开篇引用的正是『满负载计时断言引入底噪』这条教训，却在本场景种了一条）。",
+        "evidence": "被审计划原文：§4.3 第 3 条（0.7 ~ 1.5 s 断言）、§3.2（fs.rm 用 maxRetries: 3、未提 retryDelay 取值）、§4.3 第 1 段（不进套件的理由即计时底噪）。fs.rm 缺省 retryDelay 为 Node 行为常识，本会话无法实测验证，confidence 中。",
+        "suggestion": "放宽该区间的上界（或改断言为『不低于 775 ms 且不超过 3 s』并写明理由），或在 onExhausted 的 rm 显式设小 retryDelay 并计入窗口——两者选一写进计划即可。"
+      }
+    }
+  ]
+}

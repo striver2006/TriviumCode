@@ -166,6 +166,7 @@
 - [`REPORT_2026-10-26_gateway_model_suffix_case.md`](./REPORT_2026-10-26_gateway_model_suffix_case.md)：**网关模型名后缀大小写（EV-258 第二轮）**（A 档，`/dual-run`，主题 `网关模型名后缀大小写`）。第一轮的后缀片段只认小写单位，而 CC Switch 写的是大写 `[1M]`（Windows 验收第 1 步码点实测），回读仍被吞；第一轮「只认小写」的依据是从形状还原出的值。片段单位改为显式字符类 `[kKmM]`、其余边界不变，三个使用点同批生效；第一轮锁成反例的 `[1M]` 改为正例并补其它单位字母等反例；新增 S15、S16、profile 大写格、E12；变异 29 条全部咬住；零配额新旧对拍 47 项通过；Windows 清单第 1 步改为直接打印后缀码点（白名单形态才打印）；2026-10-27 Windows 真实网关验收四步全部通过。
 
 - [Kimi Code 与 Qoder CN 接入前置取证报告](./REPORT_2026-10-27_KimiCode与QoderCN接入前置取证.md)：计划双审后 S5 能力取证；Kimi 禁读失败，Qoder 路径修正与模型回退、未测工具分发及 Windows/GUI 阻塞；整体未完成。
+- [`REPORT_2026-10-27_windows_atomic_write_retry.md`](./REPORT_2026-10-27_windows_atomic_write_retry.md)：**Windows 原子写重试（EV-260）**（A 档，`/dual-run`，主题 `Windows原子写重试`）。`writeAtomic` 在 win32 上 rename 覆盖撞 EPERM/EACCES/EBUSY 时无重试，`--start` 偶发「内部错误：EPERM」退出（1.3.2 发版全量 not ok 357）；拆出 `renameOverwriting` 原语，三码按 [25,50,100,200,400] ms 指数退避（6 次、总睡眠 ≤775 ms），耗尽清 tmp 抛最后一次原始错误，POSIX 与非三码逐字不变；`lock.ts` 回收改名不重试（仲裁语义）、`review.ts` 挪移与 `doctor-deadline.ts` 台账同口径。回归锚 9 例（三码参数化、平台可注入、删重试必红、缺省表钉值）；Windows 零配额实测两场景通过（按住 400 ms→826 ms 重试成功；按住 5 s→824 ms 抛原始 EPERM、tmp 已清）；S10 verify 六次全量红格（5/5/4/3/1/3）全部归因既有底噪族、原 EPERM 形态零出现，2026-10-27 用户认可按底噪判读收口；macOS 全量复跑待做。证据 [`evidence/windows-atomic-write-retry-2026-10-27/`](./evidence/windows-atomic-write-retry-2026-10-27/)。
 
 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
 

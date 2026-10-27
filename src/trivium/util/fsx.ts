@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs, constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { IS_WIN } from './platform.js';
 
 export async function ensureDir(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
@@ -22,12 +23,83 @@ export async function exists(p: string): Promise<boolean> {
   }
 }
 
-/** 原子写：先写同目录临时文件再 rename，避免读到写了一半的内容 */
-export async function writeAtomic(target: string, content: string | Buffer): Promise<void> {
+/** win32 改名覆盖可重试的三种错误码：目标被短暂占用（自家并发写者、杀毒/索引扫描）时的形态（EV-260） */
+const WIN_RETRYABLE_RENAME_CODES: ReadonlySet<string> = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+/**
+ * 缺省重试间隔：指数退避，6 次尝试、总睡眠 ≤ 775 ms（取值理由见主题计划 §3.1）。
+ * 耗尽路径的墙钟最坏值另计 `onExhausted` 里 `fs.rm` 的重试（maxRetries 3 × 缺省 retryDelay
+ * 100 ms），约 1.1 s——预算论证按「单次调用最坏 ~1.1 s」口径（代码双审 CODEX-02）。
+ * 导出供回归锚钉值：这张表承载着 Hook 15 s / 取锁等待 4 s / 心跳 30 s 的全部预算论证。
+ */
+export const WIN_RENAME_RETRY_DELAYS_MS: readonly number[] = [25, 50, 100, 200, 400];
+
+export interface RenameRetryOptions {
+  /** 判定平台；缺省 process.platform。测试注入 'win32' 即可在非 Windows 平台跑 win32 分支 */
+  platform?: NodeJS.Platform;
+  /** 重试间隔表（毫秒）；缺省 [25, 50, 100, 200, 400]。测试注入小值避免真实等待 */
+  delaysMs?: readonly number[];
+  /** 被测改名函数；缺省 fs.rename。回归锚的故障注入点 */
+  rename?: (from: string, to: string) => Promise<void>;
+}
+
+/**
+ * 改名覆盖目标。win32 上对 EPERM / EACCES / EBUSY 做【有界短重试】（EV-260）：
+ * 间隔按 delaysMs 指数退避，耗尽后抛最后一次的原始错误；其余错误码与非 win32
+ * 平台单次、立即抛出（POSIX 行为与原先逐字相同）。`onExhausted` 在 win32 三码
+ * 耗尽、抛出之前回调（`writeAtomic` 用它清本次临时文件）；**其自身异常在这里
+ * 一律吞掉**——原始错误最高优先，清理失败不得顶替它（计划双审 AGY-01）。
+ */
+export async function renameOverwriting(
+  from: string,
+  to: string,
+  opts?: RenameRetryOptions & { onExhausted?: () => Promise<void> },
+): Promise<void> {
+  const rename = opts?.rename ?? ((src: string, dest: string) => fs.rename(src, dest));
+  // 缺省判定取 IS_WIN（平台事实的唯一落点 platform.ts）；注入平台仅供测试跑出 win32 分支（代码双审 CODEX-05）
+  const isWin = opts?.platform === undefined ? IS_WIN : opts.platform === 'win32';
+  if (!isWin) {
+    await rename(from, to);
+    return;
+  }
+  const delays = opts?.delaysMs ?? WIN_RENAME_RETRY_DELAYS_MS;
+  let lastErr: NodeJS.ErrnoException | undefined;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      if (!WIN_RETRYABLE_RENAME_CODES.has(err.code ?? '')) throw err;
+      lastErr = err;
+      if (attempt >= delays.length) break;
+      await new Promise((r) => setTimeout(r, delays[attempt]));
+    }
+  }
+  try {
+    await opts?.onExhausted?.();
+  } catch {
+    /* 吞：原始错误优先（AGY-01） */
+  }
+  // 循环结构保证 break 只发生在 lastErr 赋值之后，此处必非 undefined（代码双审 CLAUDE-02）
+  throw lastErr!;
+}
+
+/**
+ * 原子写：先写同目录临时文件再 rename，避免读到写了一半的内容。
+ * win32 上 rename 覆盖若撞 EPERM / EACCES / EBUSY 按 `renameOverwriting` 有界重试，
+ * 耗尽清掉本次 tmp 后抛最后一次原始错误；其余错误码与 POSIX 平台单次直通、行为与原先相同。
+ */
+export async function writeAtomic(target: string, content: string | Buffer, opts?: RenameRetryOptions): Promise<void> {
   await ensureDir(path.dirname(target));
   const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
   await fs.writeFile(tmp, content);
-  await fs.rename(tmp, target);
+  await renameOverwriting(tmp, target, {
+    ...opts,
+    onExhausted: async () => {
+      await fs.rm(tmp, { force: true, maxRetries: 3 }).catch(() => undefined);
+    },
+  });
 }
 
 /**

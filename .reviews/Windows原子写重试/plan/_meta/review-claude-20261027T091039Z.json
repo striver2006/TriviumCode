@@ -1,0 +1,90 @@
+{
+  "agreed": [
+    "C5 的完备性断言我独立复核成立：src/ 全树恰有 4 处 fs.rename（fsx.ts:30、lock.ts:289、review.ts:2547、doctor-deadline.ts:239），『不只改 fsx.ts 了事』的逐个核对有真实依据，不是口号",
+    "三个调用点的处置结论与代码实际语义一致：lock.ts:290-292 的 catch{return false} 确是仲裁结局（LLD_orchestrator.md:598-605 独立佐证 rename 挪走的是『此刻』的文件、失败即合法结局）；review.ts:2549-2561 确是非判定式的尽力路径；doctor-deadline.ts:234-240 与 writeAtomic 完全同形且整条 chain 吞错",
+    "POSIX 零变化靠『platform 判定在循环之外、非 win32 单次直通』的结构保证，比『行为碰巧相同』强；T4 用 platform:'win32' 注入在 macOS 跑 win32 分支的设计成立",
+    "D1 上界论证引用的事实全部属实：hooks.json 实测 15/15/15/30（skills/dual-critic/hooks/hooks.json:42,52,62,73），775 ms 占 15 s Hook 预算 5% 的算式成立",
+    "tmp 名形状 `${target}.tmp-${pid}-${Date.now()}` 保持不变，因此主设计 :2378 的中间态判据、v1.3.125 变更记录与 run-files-parity 的 ATOMIC_TMP_SUFFIX 口径全部继续成立，F5 的消费面论证可靠",
+    "§6.2 如实登记了 EBUSY 无实测样本、AV 超上界仍败、macOS 复跑待用户执行三个边界，『失败不得宣称成功』的 §4.4 归因口径与第 13 条底噪先例一致",
+    "证据引用准确：windows-check-bd5c0635.txt:2326-2353 的 not ok 357 与 :2344 的 EPERM rename 原文逐字对得上 F2，且失败确实发生在派生 worker 之后写 status.json 的路径上"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "src/trivium/util/fsx.ts",
+    "src/trivium/lock.ts",
+    "src/trivium/review.ts",
+    "src/trivium/doctor-deadline.ts",
+    "src/trivium/status.ts",
+    "skills/dual-critic/hooks/hooks.json",
+    "doc/04_development/GUIDE_local_pitfalls.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/02_design/LLD_orchestrator.md",
+    "doc/02_design/系统设计说明书.md",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/现存Bug与未完成工作清单.md",
+    "doc/05_testing/evidence/release-132-20261027/windows-check-bd5c0635.txt",
+    "doc/05_testing/README.md",
+    "doc/05_testing/发布检查报告.md",
+    "test/unit/run-files-parity.test.ts",
+    "test/unit/doctor-deadline.test.ts",
+    "test/unit/void-rerun.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "medium",
+      "evidence": "推理而非实测：src/trivium/status.ts:134-137 的 writeStatus 直接调 writeAtomic、不经全局锁（对照 state 写走 withGlobalLock 的 B1 口径），心跳与 --start 写同一 status.json 本就并发。计划 §3.2 的『并发后写者胜不变』论证与 T6 只覆盖 rename 次序的形式语义，未讨论『延迟者内容较旧』这一方向。",
+      "id": "CLAUDE-01",
+      "kind": "concurrency",
+      "layer": "plan",
+      "location": "plan §3.2 并发「后写者胜」不变 与 §6.2 边界清单",
+      "problem": "重试给 win32 引入了一种今天以响亮失败收场的新交错：写者 A rename 撞 EPERM 退避期间，写者 B 的 rename 已成功落较新内容，A 随后重试成功、用较旧快照覆盖 B。今天 win32 上这一交错以 A 抛错告终（B 的新内容保住）；改后它静默成功且内容回退。任务书焦点正是『后写者胜语义是否不变』，计划只回答了形式语义（最后一次成功 rename 胜，T6 钉住），没有承认这个窗口在 win32 上新出现。影响面评估：state.json 经 withGlobalLock 串行、无此面；主要落在 status.json 心跳（heartbeat_at 回退 <1 s，30 s 级判据兜得住），后果轻——但它是一个真实的语义变化，且恰好是审查焦点所在。",
+      "severity": "minor",
+      "suggestion": "不必改设计：在 §6.2 边界清单补一行如实登记『win32 重试使延迟写者可能在较新写入后以较旧快照成功覆盖（窗口 ≤775 ms，仅 status.json 类无锁并发写可见，心跳回退 <1 s 不影响 30 s 级判定）』，让 BACKLOG 收口行与报告把这个方向也说清。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读了 plan §4.3：被测入口用缺省参数即时打包（rename 缺省 fs.rename、delaysMs 缺省 [25,50,100,200,400]），注入面在 §4.1 单测、§4.3 明示『测的是缺省行为而非注入行为』，两处口径自洽，但脚本侧没有任何可计数的钩子，『自记』二字没有落点。",
+      "id": "CLAUDE-02",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §4.3 场景 A 断言『实际重试次数 ≥ 2（脚本自记）』",
+      "problem": "场景 A 用真实缺省参数、真 fs.rename，从进程外没有任何手段直接观察『尝试了几次』——renameOverwriting 不暴露计数，注入 rename 又与『测缺省行为』的定位矛盾。断言里的『脚本自记』没有写记什么、怎么记，编码时会要么含糊放过、要么临时发明一个观测口径，判读的说服力系于一个未定的测量方法。",
+      "severity": "minor",
+      "suggestion": "在 §4.3 把观测手段钉死：可行的忠实口径是耗时下界推断（首次重试前睡眠 25 ms，成功耗时 ≥25 ms 即证明至少发生 1 次重试；≥75 ms 证明 ≥2 次），或放宽断言为『成功 + 新内容 + 无 .tmp-* + 耗时越过首档间隔』。写明用哪一种，判读段按它写。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读了 doc/04_development/GUIDE_local_pitfalls.md（P-34 等条目通读相关段）与 AGENTS.md『改动同步清单』：P-xx 台账登记的是本机实测坑，P-34 已收录多条 PowerShell/Windows 事实，但没有 PS 5.1 无 BOM .ps1 按 ANSI 读取的条目；计划 §2.2 E2 自己只引『记忆 + 发布脚本既例』，未声称它已入 GUIDE。",
+      "id": "CLAUDE-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §5 文档同步表 与 §2.2 E2",
+      "problem": "§4.3 的 ASCII-only + 显式 -Encoding UTF8 纪律建立在『PowerShell 5.1 无 BOM .ps1 按 ANSI 读』这个本机坑上，但该坑只存在于记忆与发布脚本先例，GUIDE_local_pitfalls.md 的 P-xx 台账没有条目（我核过，P-34 收录了多条 Windows/PowerShell 事实，唯独没有这条）。§5 的文档同步清单也不含补登它。下次任何人写 .ps1 验证脚本时会重蹈踩坑—再发现的循环。",
+      "severity": "nit",
+      "suggestion": "在 §5 文档同步表加一行：把『PS 5.1 无 BOM .ps1 按 ANSI 读取，脚本一律 ASCII-only 或带 BOM、Set-Content/Get-Content 显式 -Encoding UTF8』补登为 P-xx 新条目（发布脚本惯例作依据）。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "读了 test/unit/run-files-parity.test.ts:82-102：该用例从 fsx.ts 源码抓取 `const tmp = `${target}...`` 的第一个匹配断言 ATOMIC_TMP_SUFFIX，注释明说『手抄的话改了拼法照样绿』，所以它依赖 fsx.ts 内该字面的位置与拼法。计划 §3.2 的 writeAtomic 轮廓保留了这一行，但 §4.1/§4.4 未把这条既有用例列入回归面。",
+      "id": "CLAUDE-04",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §4.1 接线回归段",
+      "problem": "既有 test/unit/run-files-parity.test.ts:92 用正则 /const tmp = `\\$\\{target\\}([^`]*)`/ 抓 fsx.ts 源码中第一个该形态字面量来钉临时名形状。实现时若把 tmp 拼装挪进 renameOverwriting、或在 writeAtomic 之前新增同形态字面量，抓取结果就会漂移（正则抓第一个匹配）。计划列了接线回归的两份测试，没提这条其实已经钉住 writeAtomic 形状的 parity 用例——它无需改动，但值得显式点名，免得编码时为迁就新结构动了那行字面量而意外踩中。",
+      "severity": "nit",
+      "suggestion": "在 §4.1 接线回归段补一句：run-files-parity.test.ts 的『原子写的临时文件名形态』用例从 fsx.ts 源码抓 `const tmp = `${target}...`` 首匹配，实现须保持 writeAtomic 内该行字面量为首处同形态出现（或同步更新该用例的抓取）。"
+    }
+  ],
+  "not_covered": [
+    "需求层面对照：未读 doc/01_requirements/需求说明书.md 全文，只从 BACKLOG/Bug 清单/发布检查报告间接核了需求口径；本变更不动 CLI/契约/AC，判断为无需求面影响，但未逐条过 PRD",
+    "test/unit/void-rerun.test.ts 与 test/unit/doctor-deadline.test.ts 只确认了文件存在与主题相关，未通读用例体；计划 B3 所称『既有三态测试承接接线回归』的具体断言覆盖面未逐格核实",
+    "未读 README.md、doc/README.md、doc/02_design/README.md（必读清单中除已读外的其余项）；判断它们不含 writeAtomic 语义副本的依据是全 doc/ 树 grep 无其他命中，但该判断依赖检索而非通读",
+    "§4.3 实测的 Windows 判读本身无法代核：我没有执行任何命令，场景 A/B 的实际系统行为（FileShare.None 按住目标时 rename 的确切错误码、耗时分布）只能从计划引用推断",
+    "未核实 archive.ts/run-files.ts/meta.ts 等其余 5 个 writeAtomic 调用点各自传入的内容形态（string/Buffer）与失败后果差异；F4 的『改一处即覆盖观测点』按模块清单成立，但各调用点的失败面未逐个展开",
+    "主设计 :1928 一带的正文只读了命中行上下文，未通读整个 §；§5 拟补句的落点『引 writeAtomic 为依据的段落』是否还有第二处（如异常表/附录），未做穷尽检索"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "计划的现状陈述全部与仓库逐字对得上（rename 恰 4 处、writeAtomic 恰 8 个消费模块、not ok 357 原文、hooks 15/15/15/30、主设计 v1.3.181），三调用点处置（lock 仲裁不重试 / review 同口径 / ledger 并入 writeAtomic）与代码实际语义一致，POSIX 零变化由结构保证，无阻断项、无 major。最值得记的一条：win32 重试让「延迟的较旧写入在较新写入之后静默成功」成为新交错，今天它以响亮失败收场——形式语义（后写者胜）不变，但 §6.2 应如实登记这个窗口。其余三条为 minor/nit：§4.3「重试次数 ≥2（脚本自记）」的观测手段未定；PS 5.1 ANSI 读取坑未入 GUIDE P-xx 台账；run-files-parity 的源码抓取正则与实现字面量位置有隐含耦合、应在接线回归里点名。四条均属可在实施中顺带落实的意见，verdict 取 pass。",
+  "verdict": "pass"
+}

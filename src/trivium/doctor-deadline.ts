@@ -20,7 +20,7 @@ import {
   abortProbeSections, newProbeAbortToken, processMatchesRecord, processStartTime, terminateProbeSectionGroups,
   type ProbeSectionScope, type SectionTerminateResult,
 } from './util/exec.js';
-import { observeTempDirs, tildeHome, tryRemoveTempDir } from './util/fsx.js';
+import { observeTempDirs, tildeHome, tryRemoveTempDir, writeAtomic } from './util/fsx.js';
 import { IS_WIN } from './util/platform.js';
 
 /** 到点后给段退出来的兜底时长（计划 r2 D3 第 5 条） */
@@ -227,16 +227,13 @@ export class TempDirLedger {
     });
   }
 
-  /** 改内存、串行落盘（临时文件加改名，免得半截台账） */
+  /** 改内存、串行落盘（原子写：win32 上经 writeAtomic 的有界重试，EV-260） */
   private update(mutate: () => unknown): Promise<void> {
     mutate();
     const snapshot = [...this.dirs];
     this.chain = this.chain.then(async () => {
-      const tmp = `${this.file}.tmp`;
       const started = await this.started;
-      await fs.mkdir(path.dirname(this.file), { recursive: true });
-      await fs.writeFile(tmp, JSON.stringify({ pid: process.pid, started, dirs: snapshot }), 'utf8');
-      await fs.rename(tmp, this.file);
+      await writeAtomic(this.file, JSON.stringify({ pid: process.pid, started, dirs: snapshot }));
     }).catch(() => undefined);
     return this.chain;
   }
