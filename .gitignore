@@ -83,9 +83,11 @@ package-lock.json.bak
 # TriviumCode 构建产物（esbuild，设计 5.2：不进 Git）
 /dist/
 skills/dual-critic/scripts/trivium.cjs
-# 发布包与手册 PDF 走 Release 附件，不入库（2026-10-24 双平台统一）
+# 发布物：缺省不入库（2026-10-24 双平台统一）；2026-10-27 起正式包按版本放进 releases/<x.y.z>/ 入库，
+# 便于两台机器之间传包上传 Release——只放开版本子目录，releases/ 根下的临时产物照旧忽略
 /releases/*
 !/releases/README.md
+!/releases/[0-9]*.[0-9]*.[0-9]*/
 
 # Python
 __pycache__/

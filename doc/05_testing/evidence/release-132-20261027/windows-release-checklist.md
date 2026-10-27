@@ -1,7 +1,7 @@
 # 1.3.2 Windows 发版清单
 
 - 执行人：用户，在 Windows 开发机上
-- 前提：macOS 侧已提交发布提交、打附注标签 `v1.3.2`、建分支 `1.3.2` 并推送 origin；macOS 正式包由 Claude 在 Mac 上从干净工作树打出，`.tar.gz` 与 `.sha256` 交给你上传
+- 前提：macOS 侧已提交发布提交、打附注标签 `v1.3.2`、建分支 `1.3.2` 并推送 origin；macOS 正式包由 Claude 在 Mac 上从干净工作树打出，`.tar.gz` 与 `.sha256` 已入库 `main` 的 `releases/1.3.2/`（第 6 步拉取即得）
 - 不花配额：本清单只有构建、测试、打包、零配额自检与手册 PDF，没有带模型调用的步骤
 
 ## 0. 准备
@@ -19,8 +19,10 @@ New-Item -ItemType Directory -Force $T | Out-Null
 
 ## 1. 切到发布提交
 
+标签 `v1.3.2` 在 2026-10-27 由 `bf4bf556` 移到了 `bd5c0635`（含 Windows ZIP 改用系统 tar 的修复），已拉过旧标签的机器要带 `--force` 才会更新：
+
 ```powershell
-git fetch origin --tags
+git fetch origin --tags --force
 git checkout v1.3.2
 git status --short
 git rev-parse HEAD
@@ -79,16 +81,28 @@ echo "exit=$LASTEXITCODE"
 
 PDF 第四部分「增补篇」本次加了「七、1.3.x 增量」一节。打开核一眼目录与页数。
 
-## 6. Release 附件
+## 6. 回到 main，把 Windows 包、PDF 与输出放进仓库
 
-在代码托管平台的 `v1.3.2` 标签上建 Release，上传：
+正式包按版本入库 `releases/1.3.2/`（2026-10-27 起，见 `releases/README.md`）；macOS 包已由 Claude 提交在那里。
 
-- `TriviumCode-1.3.2-windows-x64.zip` 与 `.sha256`（第 3 步）
-- `TriviumCode-1.3.2-macos.tar.gz` 与 `.sha256`（Claude 在 Mac 上打的正式包）
-- `TriviumCode-1.3.2-完整手册.pdf`（第 5 步）
+```powershell
+git checkout main
+git pull --ff-only origin main
+Copy-Item dist\releases\TriviumCode-1.3.2-windows-x64.zip, dist\releases\TriviumCode-1.3.2-windows-x64.zip.sha256 releases\1.3.2\
+Copy-Item "$T\TriviumCode-1.3.2-完整手册.pdf" releases\1.3.2\
+Copy-Item "$T\windows-check.txt", "$T\windows-release.txt", "$T\windows-quick-install.txt", "$T\windows-pdf.txt" doc\05_testing\evidence\release-132-20261027\
+(Get-FileHash releases\1.3.2\TriviumCode-1.3.2-macos.tar.gz -Algorithm SHA256).Hash.ToLower()
+Get-Content releases\1.3.2\TriviumCode-1.3.2-macos.tar.gz.sha256
+```
 
-Release 说明可直接用 `doc/08_project/发布说明.md` 的 1.3.2 一节。
+最后两行的哈希应相同（`3d2492fa1de0b9c345c272faedfcdad6f61d6b4b7191b74c47495d593736d4d3`）。然后按文件名逐个 `git add`、提交、推送。前一次打出的那个「.zip」实际是 tar 归档，不要放进来。
 
-## 7. 交回
+## 7. Release 附件
 
-把 `$T` 下的 `windows-check.txt`、`windows-release.txt`、`windows-quick-install.txt`、`windows-pdf.txt` 拷进本目录（`doc\05_testing\evidence\release-132-20261027\`），切回 `main` 后提交推送。我据此回填《发布检查报告》1.3.2 一节的 Windows 侧。任一步不符合期望，原样发我，不要重试。
+在代码托管平台的 `v1.3.2` 标签上建 Release，从 `releases\1.3.2\` 上传：
+
+- `TriviumCode-1.3.2-windows-x64.zip` 与 `.sha256`
+- `TriviumCode-1.3.2-macos.tar.gz` 与 `.sha256`
+- `TriviumCode-1.3.2-完整手册.pdf`
+
+Release 说明可直接用 `doc/08_project/发布说明.md` 的 1.3.2 一节。完成后告诉我，我据此回填《发布检查报告》1.3.2 一节的 Windows 侧。任一步不符合期望，原样发我，不要重试。
