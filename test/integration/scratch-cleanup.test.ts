@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { KEEP_FIXTURES_ENV, REPO_ROOT } from '../helpers/fixture.js';
 import { run } from '../../src/trivium/util/exec.js';
 import { IS_WIN, skipOnWin } from '../helpers/platform.js';
@@ -25,6 +26,14 @@ import { IS_WIN, skipOnWin } from '../helpers/platform.js';
 const ROOT = process.getuid?.() === 0;
 const SCRATCH_URL = pathToFileURL(path.join(REPO_ROOT, 'dist/test/test/helpers/scratch.js')).href;
 const FIXTURE_URL = pathToFileURL(path.join(REPO_ROOT, 'dist/test/test/helpers/fixture.js')).href;
+/*
+ * 子进程显式用 spec 报告器（EV-259）：Node 22 及更早，输出不是终端时 `node --test` 缺省用 TAP，子进程 stderr 每行前面加 `#` 与空格、
+ * 反斜杠转义成两个——Windows 路径于是与断言里的原样路径对不上（2026-10-27 Windows + Node v22.23.2 上 SC2 / SC5 确定性红）。
+ * spec 原样转发 stderr；`--test-reporter` 要 Node ≥ 18.15，本包 engines 是 ≥ 18，所以照 `scripts/run-tests.mjs` 按 `--help` 探测。
+ */
+const SPEC_REPORTER = (spawnSync(process.execPath, ['--help'], { encoding: 'utf8' }).stdout ?? '').includes('--test-reporter')
+  ? ['--test-reporter=spec']
+  : [];
 
 /** 子测试文件正文：按 SC_MODE 分格，把建出来的目录（解析成绝对路径）写进 SC_REPORT */
 const CHILD = `
@@ -132,7 +141,7 @@ async function drop(base: string): Promise<void> {
 }
 
 async function runChild(c: Cell, mode: string, extraEnv: Record<string, string | undefined> = {}) {
-  const r = await run(process.execPath, ['--test', path.join(c.base, 'child.test.mjs')], {
+  const r = await run(process.execPath, ['--test', ...SPEC_REPORTER, path.join(c.base, 'child.test.mjs')], {
     cwd: c.base,
     // 去掉 NODE_TEST_CONTEXT：继承下去子进程的 node --test 会判为递归调用、跳过全部文件且退 0（EV-207 撞过）。
     // TMP 三键齐设：win32 的 os.tmpdir() 只认 TMP/TEMP，单设 TMPDIR 时子进程全建到真实临时目录（Bug 清单 §3.1 第 13 条）

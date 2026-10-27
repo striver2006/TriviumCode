@@ -2087,7 +2087,7 @@ async function cancelLostWorker(
   } else {
     // 判不了的两种（EV-177 ①）：零信号（首检即判不了）不能说「发送 （无）」；宽限期满判不了要说清为什么没升级
     const head = t?.unverifiable && noSignalSent
-      ? `取不到工作进程 ${pid} 的启动时刻（ps 未返回），判不了它是不是 status.json 记录的那个工作进程：未发信号，未能确认退出`
+      ? `取不到工作进程 ${pid} 的启动时刻（${startTimeUnavailableCause()}），判不了它是不是 status.json 记录的那个工作进程：未发信号，未能确认退出`
       : t?.unverifiable && !t.escalated
         ? `已向工作进程组 ${pid} 发送 ${sent}，宽限 ${WORKER_TERM_GRACE_MS / 1000} s 期满时取不到它的启动时刻、判不了身份：` +
           '不升级 SIGKILL（不向身份判不了的进程发），未能确认退出'
@@ -2122,8 +2122,30 @@ async function cancelLostWorker(
   return EXIT.OK;
 }
 
-/** `ps` 持续取不到时的手工出路（EV-175 入口格与 EV-176 未确认格共用一句，计划 r2 D3） */
-function manualCancelWayOut(pid: number, runId: string): string {
+/** 取不到启动时刻的原因括注（EV-261）：win32 的启动时刻来自 `Get-CimInstance` 进程枚举，不经 `ps` */
+export function startTimeUnavailableCause(win: boolean = IS_WIN): string {
+  return win ? '进程枚举未返回' : 'ps 未返回';
+}
+
+/**
+ * 手工出路按平台给终端命令（EV-261）：win32 的 PowerShell / cmd 里没有 `ps` 与 `kill`，也没有负 pid 的进程组语义。
+ * win32 上查命令行用 `Get-CimInstance`（编排器自己的进程枚举也走它），结束用 `taskkill /T /F`——编排器在 win32 上结束
+ * 工作进程走的也是 `taskkill /T`；控制台进程不带 `/F` 关不掉，优雅收尾靠的是取消标记，不是信号。
+ * POSIX 一侧逐字不变。`win` 缺省取 `IS_WIN`，单测在任一平台上都能锁两种形态。
+ */
+function winCommandLineCmd(pid: number): string {
+  return `PowerShell：Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" | Select-Object ProcessId,CommandLine`;
+}
+
+/** 启动时刻持续取不到时的手工出路（EV-175 入口格与 EV-176 未确认格共用一句，计划 r2 D3） */
+export function manualCancelWayOut(pid: number, runId: string, win: boolean = IS_WIN): string {
+  if (win) {
+    return (
+      `一直取不到时：先在终端确认 ${pid} 的命令行含 review --worker ${runId}` +
+      `（${winCommandLineCmd(pid)}），确认是它、要结束这一轮，就在终端结束它的进程树（taskkill /PID ${pid} /T /F），` +
+      '之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI'
+    );
+  }
   return (
     `一直取不到时：先在终端确认 ${pid} 的命令行含 review --worker ${runId}` +
     `（ps -p ${pid} -o command=），确认是它、要结束这一轮，就在终端按组结束它（kill -TERM -${pid}），` +
@@ -2137,7 +2159,7 @@ function manualCancelWayOut(pid: number, runId: string): string {
  */
 function unverifiableCancelMessage(pid: number, runId: string): string {
   return (
-    `取不到工作进程 ${pid} 的启动时刻（ps 未返回），判不了它是不是 status.json 记录的那个工作进程：本次不取消——` +
+    `取不到工作进程 ${pid} 的启动时刻（${startTimeUnavailableCause()}），判不了它是不是 status.json 记录的那个工作进程：本次不取消——` +
     '未发信号，status.json、主题锁、闸门、归档与凭据副本都没动。请稍后重试 ' +
     `trivium review --cancel ${runId}。${manualCancelWayOut(pid, runId)}`
   );
@@ -2151,7 +2173,14 @@ function unverifiableCancelMessage(pid: number, runId: string): string {
  * 发过信号之后判不了时的手工出路（EV-176 代码双审 r1 CODEX-01 ≡ GLM-01）：SIGTERM 已经按组发过而它没在宽限内退出，
  * 再发 SIGTERM 多半无效，所以终端里按组 SIGKILL。入口格与零信号格没发过信号，仍用 `manualCancelWayOut`（逐字不变）。
  */
-function manualKillWayOut(pid: number, runId: string): string {
+export function manualKillWayOut(pid: number, runId: string, win: boolean = IS_WIN): string {
+  if (win) {
+    return (
+      `一直取不到时：先在终端确认 ${pid} 的命令行含 review --worker ${runId}` +
+      `（${winCommandLineCmd(pid)}），确认是它、要结束这一轮——关闭请求已经发过而它没有退出，就在终端强制结束它的进程树` +
+      `（taskkill /PID ${pid} /T /F），之后再跑一次 --cancel，会按「已不存在」回收锁与闸门、按记录结束审查员 CLI`
+    );
+  }
   return (
     `一直取不到时：先在终端确认 ${pid} 的命令行含 review --worker ${runId}` +
     `（ps -p ${pid} -o command=），确认是它、要结束这一轮——SIGTERM 已经发过而它没有退出，就在终端按组强制结束它` +
@@ -2168,7 +2197,7 @@ function unconfirmedCancelMessage(pid: number, runId: string, t: TerminateResult
     : `SIGKILL 之后等 ${ORPHAN_KILL_CONFIRM_MS / 1000} s 仍是同一进程，未确认退出`;
   const next = t.unverifiable
     ? manualKillWayOut(pid, runId)
-    : `仍不退出时请在终端核对它的状态（ps -p ${pid} -o stat=,command=）`;
+    : `仍不退出时请在终端核对它的状态（${IS_WIN ? winCommandLineCmd(pid) : `ps -p ${pid} -o stat=,command=`}）`;
   // 「没动」限定为本命令的动作（代码双审 r1 CODEX-01）：这几格都按记录结束了 CLI，工作进程若仍在，看到它们退出后
   // 可能自己收尾（写 failed、放锁）——跨进程验收里实测过
   return (

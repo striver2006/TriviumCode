@@ -315,7 +315,8 @@ test('T13 符号链接根：projectRoots 带 realpath 别名时，物理形态�
    */
   const t = await loadTrace('read-sentinel.jsonl');
   const LINK = `${ABS}/Users/someone/link/repo`;
-  const REAL = '/Volumes/data/repo';
+  // 物理根也要带 ${ABS}（EV-259）：win32 上无盘符的根路径按当前目录所在盘解析，仓库不在 D 盘时与 LINK 的 D: 对不上
+  const REAL = `${ABS}/Volumes/data/repo`;
   const req = { ...REQ, project_root: LINK, deny_paths: ['.reviews/T/plan/2026-09-19-T-glm.md'] } as CriticRequest;
   const opts = (roots?: readonly string[]) => ({
     degraded: [],

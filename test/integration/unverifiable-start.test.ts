@@ -440,7 +440,9 @@ test('EV-175 U6：cancelRun 主路径取不到 ⇒ 抛 69、什么都不动（�
     const e = io.error as { code?: number; message?: string } | undefined;
     assert.ok(e, `应抛出而不是返回 ${String(io.value)}；stdout=${io.out} stderr=${io.err}`);
     assert.equal(e.code, EXIT.ENV, `退出码应为 69：${e.message}`);
-    for (const frag of ['取不到工作进程', '本次不取消', '稍后重试', `review --worker ${runId}`, `kill -TERM -${w.pid}`]) {
+    // 手工出路按平台给命令（EV-261）：win32 是 taskkill 结束进程树，POSIX 是按组 kill
+    const wayOut = process.platform === 'win32' ? `taskkill /PID ${w.pid} /T /F` : `kill -TERM -${w.pid}`;
+    for (const frag of ['取不到工作进程', '本次不取消', '稍后重试', `review --worker ${runId}`, wayOut]) {
       assert.ok(e.message!.includes(frag), `正文应含「${frag}」：${e.message}`);
     }
     assert.equal(io.out, '', 'stdout 应为空');

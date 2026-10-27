@@ -775,6 +775,9 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 > （`ps -p N -o command=`），确认是它、要结束这一轮，就在终端按组结束它（`kill -TERM -N`），之后再跑一次 `--cancel`，
 > 它会按「已不存在」回收锁与闸门、按记录结束审查员 CLI。同一原因下 `--wait` 不再把活着的工作进程判成失联（心跳新鲜就继续等，过期才判
 > `heartbeat_stale`），会话启动清扫、`trivium scrub` 与到期整删也把它当仍在（不抹副本、不删目录）。
+> **Windows 上**（EV-261 起）括号里写「进程枚举未返回」，手工出路给的是 PowerShell 写法：查命令行用
+> `Get-CimInstance Win32_Process -Filter "ProcessId=N" | Select-Object ProcessId,CommandLine`，结束用 `taskkill /PID N /T /F`
+> （结束整棵进程树；控制台进程不带 `/F` 关不掉）。此前 Windows 上也给 `ps` / `kill`，在 PowerShell 与 cmd 里照抄都执行不了。
 
 > **发过信号而没确认工作进程退出时，`--cancel` 也不收尾**（v1.0.23 起，设计 v1.3.67，EV-176）：`--cancel` 发 SIGTERM 之后要看到工作进程
 > 真的退出，才把运行标成 `cancelled`、回收锁与闸门。三种情形确认不了——stderr 按实际发出的信号说明，**退出码 69**，status.json、主题锁、
@@ -788,8 +791,8 @@ v1.0.26 起（设计 v1.3.72）删除了前两个键，v1.0.40 起（设计 v1.3
 > 后两种情形按记录结束了审查员 CLI，所以「没动」指的是本命令没动：工作进程若还活着，看到它的 CLI 退出后可能自己收尾（写 `failed`、放锁）。
 > 此前这几种情形照样写 `cancelled`、放掉锁与闸门，工作进程若还活着，同主题再 `--start` 就两轮同时跑。重试时它若已退出，`--cancel` 会按
 > 「已不存在」收尾。一直取不到启动时刻时：发信号之前就取不到的那一种走上一条的手工出路；发过 SIGTERM 的两种，SIGTERM 已经无效，
-> 报错给的是按组强制结束（`kill -KILL -N`），确认命令行后照做、再跑 `--cancel`。SIGKILL 之后多等的这 5 秒只在工作进程不响应 SIGTERM 时出现，
-> 通常毫秒级即确认。
+> 报错给的是按组强制结束（`kill -KILL -N`；Windows 上同样是 `taskkill /PID N /T /F`），确认命令行后照做、再跑 `--cancel`。
+> SIGKILL 之后多等的这 5 秒只在工作进程不响应 SIGTERM 时出现，通常毫秒级即确认。
 
 > 被取消的运行，其 `run-<id>.json` 会标为 `cancelled`（v1.0.5 起，设计 v1.3.47，EV-128；此前停在 `running`）。
 > 两种情形不写，输出会说明原因：工作进程没能确认已退出（可能还有写者），或 run.json 已是终态（不追溯改写）。

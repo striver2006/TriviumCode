@@ -13,16 +13,23 @@ import { planInstall, install, uninstall } from '../../src/install.js';
 
 const execFile = promisify(execFileCallback);
 const IS_WIN = process.platform === 'win32';
+/*
+ * 时限（EV-262）：Windows 全量满载下这条三次都红在时限上——两次是自检子进程到 90 s 被杀，一次是整条到 240 s 超时；
+ * 单跑约 50 s。win32 放宽到整条与 `scripts/run-tests.mjs` 的全局上限同级，macOS 不变。
+ */
+const LIMIT_MS = IS_WIN
+  ? { test: 600_000, pack: 300_000, selftest: 300_000 }
+  : { test: 240_000, pack: 120_000, selftest: 90_000 };
 
 test('发布包真解压：白名单与哈希、四家28入口、隔离安装升级、14步桩自检与卸载',
   // Linux/WSL 不在支持面（设计 §7.1）；macOS 与 Windows 各自在本平台出包并解包验收
-  { skip: process.platform !== 'darwin' && process.platform !== 'win32' ? '只在 macOS 与 Windows 上跑' : false, timeout: 240_000 },
+  { skip: process.platform !== 'darwin' && process.platform !== 'win32' ? '只在 macOS 与 Windows 上跑' : false, timeout: LIMIT_MS.test },
   async () => {
     const temp = await scratchDir('trivium-release-');
     try {
       const out = path.join(temp, 'out');
       const r = await execFile(process.execPath, ['scripts/package-release.mjs', '--candidate', '--out', out],
-        { cwd: REPO_ROOT, timeout: 120_000 });
+        { cwd: REPO_ROOT, timeout: LIMIT_MS.pack });
       const release = JSON.parse(r.stdout) as { archive: string; sha256: string; version: string };
       const archiveBytes = await fs.readFile(release.archive);
       assert.equal(createHash('sha256').update(archiveBytes).digest('hex'), release.sha256);
@@ -90,7 +97,7 @@ test('发布包真解压：白名单与哈希、四家28入口、隔离安装升
       const cli = path.join(plan.runtimeRoot, 'scripts/trivium.cjs');
       assert.equal((await execFile(process.execPath, [cli, '--version'])).stdout.trim(), release.version);
       const selftest = await execFile(process.execPath, [cli, 'doctor', '--selftest', '--asset-root', plan.runtimeRoot],
-        { cwd: extracted, timeout: 90_000 });
+        { cwd: extracted, timeout: LIMIT_MS.selftest });
       assert.match(selftest.stdout, /14\/14/);
       const removed = await bundled.uninstall(root, ie);
       assert.ok(removed.removed.includes(plan.runtimeRoot));
