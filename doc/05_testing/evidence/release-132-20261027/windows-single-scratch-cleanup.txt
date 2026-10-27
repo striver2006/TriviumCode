@@ -1,0 +1,92 @@
+﻿✔ SC1 退出后都不在：只读子目录、自身只读、已被用例删掉、无手脚、同步版、带尾斜杠与相对路径的 TMPDIR，且不误报 (510.5725ms)
+✖ SC2 设保留变量时都还在，并打一行列出路径 (505.0474ms)
+﹣ SC3 删不掉时逐个打一行（路径与错误码）、一个删不掉不中断后面的，不改子进程的退出码 (1.0649ms) # win32 上无可靠「删不掉」构造（Bug 清单 §3.1 第 13 条）：NTFS + Node 24 的 POSIX 删除语义下，实测只读目录、目录内只读文件、父目录只读、被打开句柄四种形态全部删除成功，chmod(0o555) 锁不住、收尾路径无法触发
+✔ SC4 用例失败时照样删，失败不被收尾翻成通过 (496.4119ms)
+✖ SC5 与 makeFixture 同进程：都删；保留时按调用方各打一行，makeFixture 那行与 EV-207 逐字相同 (2109.7131ms)
+✔ SC6 前缀不合规时在 mkdtemp 之前拒绝（异步版被拒、同步版同步抛），合规的下划线前缀照常建出并删掉 (491.7748ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 3
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 4595.5991
+
+✖ failing tests:
+
+test at dist\test\test\integration\scratch-cleanup.test.js:147:1
+✖ SC2 设保留变量时都还在，并打一行列出路径 (505.0474ms)
+  AssertionError [ERR_ASSERTION]: 保留提示里应有 C:\Users\k_bo\AppData\Local\Temp\trivium-scc-sc2-oR25FV\tmp\trivium-sc-k-kVyAFy：
+  TAP version 13
+  # Subtest: child
+  ok 1 - child
+    ---
+    duration_ms: 6.2301
+    type: 'test'
+    ...
+  # scratchDir：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 2 个测试临时目录：C:\\Users\\k_bo\\AppData\\Local\\Temp\\trivium-scc-sc2-oR25FV\\tmp\\trivium-sc-k-kVyAFy、C:\\Users\\k_bo\\AppData\\Local\\Temp\\trivium-scc-sc2-oR25FV\\tmp\\trivium-sc-k-kfPjfA
+  1..1
+  # tests 1
+  # suites 0
+  # pass 1
+  # fail 0
+  # cancelled 0
+  # skipped 0
+  # todo 0
+  # duration_ms 387.1518
+  
+  
+      at TestContext.<anonymous> (file:///C:/Work/TriviumCode/dist/test/test/integration/scratch-cleanup.test.js:157:34)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at dist\test\test\integration\scratch-cleanup.test.js:198:1
+✖ SC5 与 makeFixture 同进程：都删；保留时按调用方各打一行，makeFixture 那行与 EV-207 逐字相同 (2109.7131ms)
+  AssertionError [ERR_ASSERTION]: 应按调用方各打一行：
+  TAP version 13
+  # Subtest: child
+  ok 1 - child
+    ---
+    duration_ms: 509.6132
+    type: 'test'
+    ...
+  # makeFixture：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 1 个夹具目录：C:\\Users\\k_bo\\AppData\\Local\\Temp\\trivium-scc-sc5-ZqxRkl\\tmp\\trivium-fx-OVXBxW
+  # scratchDir：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 1 个测试临时目录：C:\\Users\\k_bo\\AppData\\Local\\Temp\\trivium-scc-sc5-ZqxRkl\\tmp\\trivium-sc-m-GWQIpv
+  1..1
+  # tests 1
+  # suites 0
+  # pass 1
+  # fail 0
+  # cancelled 0
+  # skipped 0
+  # todo 0
+  # duration_ms 892.3285
+  
+  
+  + actual - expected
+  
+    [
+  +   '# makeFixture：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 1 个夹具目录：C:\\\\Users\\\\k_bo\\\\AppData\\\\Local\\\\Temp\\\\trivium-scc-sc5-ZqxRkl\\\\tmp\\\\trivium-fx-OVXBxW',
+  +   '# scratchDir：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 1 个测试临时目录：C:\\\\Users\\\\k_bo\\\\AppData\\\\Local\\\\Temp\\\\trivium-scc-sc5-ZqxRkl\\\\tmp\\\\trivium-sc-m-GWQIpv'
+  -   'makeFixture：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 1 个夹具目录：C:\\Users\\k_bo\\AppData\\Local\\Temp\\trivium-scc-sc5-ZqxRkl\\tmp\\trivium-fx-OVXBxW',
+  -   'scratchDir：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 1 个测试临时目录：C:\\Users\\k_bo\\AppData\\Local\\Temp\\trivium-scc-sc5-ZqxRkl\\tmp\\trivium-sc-m-GWQIpv'
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Work/TriviumCode/dist/test/test/integration/scratch-cleanup.test.js:215:12)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ '# makeFixture：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 1 个夹具目录：C:\\\\Users\\\\k_bo\\\\AppData\\\\Local\\\\Temp\\\\trivium-scc-sc5-ZqxRkl\\\\tmp\\\\trivium-fx-OVXBxW', '# scratchDir：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 1 个测试临时目录：C:\\\\Users\\\\k_bo\\\\AppData\\\\Local\\\\Temp\\\\trivium-scc-sc5-ZqxRkl\\\\tmp\\\\trivium-sc-m-GWQIpv' ],
+    expected: [ 'makeFixture：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 1 个夹具目录：C:\\Users\\k_bo\\AppData\\Local\\Temp\\trivium-scc-sc5-ZqxRkl\\tmp\\trivium-fx-OVXBxW', 'scratchDir：TRIVIUM_KEEP_FIXTURES=1，保留本进程的 1 个测试临时目录：C:\\Users\\k_bo\\AppData\\Local\\Temp\\trivium-scc-sc5-ZqxRkl\\tmp\\trivium-sc-m-GWQIpv' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

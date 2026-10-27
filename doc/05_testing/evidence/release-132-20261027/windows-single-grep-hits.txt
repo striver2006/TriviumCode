@@ -1,0 +1,38 @@
+﻿✔ T1a 相对 path 形态：content 进 hits，count / files_with_matches 进 listed，文件级 Grep 不产路径 (9.6192ms)
+✔ T1b 绝对 path 形态（生产形态）：content 命中相对 cwd 而非相对 path 参数 (2.6765ms)
+✔ T2 守卫：数字开头、含空白、无 / 无 . 的行不当路径；噪声行不计 (0.426ms)
+✔ T3 配对：is_error 的 Grep 结果不计；无 id 的 tool_use 不计；数组形态的 content 也能读 (0.3116ms)
+✔ T7 回放第 2 跑：Grep 命中恰好补上那 5 项，consulted 15/15，布尔位翻回 false (11.3862ms)
+✔ T8 search_hit_paths 不进 project_reads——证据档口径不动（变异守卫） (7.0754ms)
+✔ T9 三态：失败出口写 null，claude 成功出口写数组（可为空） (4.0657ms)
+✔ T10 兜底：凡 grep-*.jsonl 夹具，content 命中或 listed 至少一条非空——格式漂移在构建期打红 (3.3309ms)
+✔ T11 toProjectRelative：/tmp 与 D:/private/tmp、./、绝对写法互相匹配；同名前缀与项目外为 null (0.7934ms)
+✔ T12 措施 a：搜索命中对端审查件 → 作废并分类；命中状态文件只告警；命中己方运行材料不作废；置空恢复 (3.9731ms)
+✖ T13 符号链接根：projectRoots 带 realpath 别名时，物理形态的搜索命中仍命中逻辑形态的 deny 条目 (2.875ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 10
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 574.2782
+
+✖ failing tests:
+
+test at dist\test\test\unit\grep-hits.test.js:229:1
+✖ T13 符号链接根：projectRoots 带 realpath 别名时，物理形态的搜索命中仍命中逻辑形态的 deny 条目 (2.875ms)
+  AssertionError [ERR_ASSERTION]: 带别名：物理形态命中折成相对形态后命中逻辑形态条目
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///C:/Work/TriviumCode/dist/test/test/unit/grep-hits.test.js:244:10)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

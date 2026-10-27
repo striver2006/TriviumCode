@@ -1,0 +1,19 @@
+﻿✔ C1 · --context 指向对端审查件 ⇒ 退 64、零工件，只点名把它当禁读的那一侧 (2576.7427ms)
+✔ C4 · 同一路径写成绝对路径、./ 与 .. 形态都拦（判原始写法，不判必读清单的产物） (6463.3261ms)
+✔ C2 · --context 指向凭据类文件（只记一笔类）⇒ 同样退 64，两侧都点名；同步 review --stage 也拦 (4661.0192ms)
+✔ C3 · --context 是罩住禁读条目的目录（项目根）⇒ 退 64，按「含禁读条目」逐条点名 (2599.9775ms)
+✔ C5 · --context 指向具名放行的项目配置 ⇒ 照常启动，第 4 段列出它，warnings 为空 (5787.4953ms)
+✔ A1 · 建议核实撞上对端审查件 ⇒ 只从 gemini 侧第 4 段剔除；warnings、run.json 与 gate --check 都有这一笔 (6328.6586ms)
+✔ A2 · 公约文档被 sensitive_globs 罩住 ⇒ 两侧都剔、8.2 列出，告警写「各侧」 (6000.7319ms)
+✔ A3 · 关键词匹配到的设计文档被 sensitive_globs 罩住 ⇒ 剔除并告警（来源：与主题相关的需求与设计文档） (5974.3681ms)
+✔ A5 · 纯文档跳过轮（代码双审 CODEX-03 / GLM-01）：不播报（finished_inline 的 warnings 为 []），run.json 的 gate.warnings 仍记剔除 (3799.2435ms)
+✔ A6 · 剔除超过 5 条（代码双审 CODEX-06）：--start 的 warnings 封顶 5 条（末条是汇总），run.json 存全量 (5878.5726ms)
+✔ A4 · 同步 review --stage：人读模式 stderr 打出剔除告警（只一个 ⚠️），--json 的 warnings 含同一句 (9466.9771ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 60503.8424
