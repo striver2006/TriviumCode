@@ -2045,7 +2045,7 @@ test('D3 · M1：拦截文案列出的后缀与判据同源（全集四家，含
    */
   const line = (r.stderr ?? '').split('\n').find((l) => l.includes('角色工件的后缀'));
   assert.ok(line, '拦截文案要有列举后缀的那一行');
-  const listed = [...line.matchAll(/-([a-z]+)\.md/g)].map((m) => m[1]);
+  const listed = [...line.matchAll(/-([a-z-]+)\.md/g)].map((m) => m[1]);
   for (const id of ALL_AGENT_IDS) {
     assert.ok(listed.includes(id), `拦截文案应列出 -${id}.md——文案与判据两处独立取值时，只改一处就会少列`);
   }

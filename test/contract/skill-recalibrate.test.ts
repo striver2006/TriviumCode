@@ -52,11 +52,13 @@ function at(md: string, needle: string): number {
   return i;
 }
 
-test('论域：四条命令 × 四家载体共 16 份入口产物带预检步骤（防止扫描空转）', () => {
-  assert.equal(withPreflight.length, 16, withPreflight.map((p) => path.relative(REPO_ROOT, p)).join('\n'));
+test('论域：主命令 × 已登记 Driver 载体的入口产物均带预检步骤（防止扫描空转）', () => {
+  const mainCommandCount = 4;
+  const carrierCount = 1 + readdirSync(ENTRY_DIR).length;
+  assert.equal(withPreflight.length, mainCommandCount * carrierCount, withPreflight.map((p) => path.relative(REPO_ROOT, p)).join('\n'));
 });
 
-test('同一口径：16 份产物的自动校准一节逐字节相同（EV-252）', () => {
+test('同一口径：所有入口产物的自动校准一节逐字节相同（EV-252）', () => {
   const sections = withPreflight.map((p) => ({ rel: path.relative(REPO_ROOT, p), s: section(readFileSync(p, 'utf8')) }));
   for (const { rel, s } of sections) assert.ok(s, `${rel}：截不出自动校准一节`);
   const first = sections[0]!;

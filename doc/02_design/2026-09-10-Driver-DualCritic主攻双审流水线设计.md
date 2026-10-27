@@ -39,7 +39,7 @@
 >   按阶段声明当轮 Driver（`topic claim`，7.1）、提交锚改「位置 + 登记」（8.5）、翻开 `driverEnabled` 并收紧、
 >   `approve` 前置复核（8.4 / 8.5）、登记清理、Bash 侧角色后缀全集字面保护——**零真实 CLI 调用**，
 >   八条达成边界见 16.1 M10a 行。**M10b（入口资产与真载体验收）五步已达成（2026-09-26，v1.3.43）**：
->   四家入口资产单源渲染与多目标安装（7.4）、`trivium hooks --agent` 与 ZCode 尽力拦截 Hook、护栏等级接线与按当轮 Driver 措辞的闸门停点（8.5）、
+>   既有四家入口资产单源渲染与多目标安装（7.4），以及 Kimi Code / Qoder CN 的 L2 Driver-only 入口扩展；`trivium hooks --agent` 与 ZCode 尽力拦截 Hook、护栏等级接线与按当轮 Driver 措辞的闸门停点（8.5）、
 >   第 4 步五轮验收（ZCode 真载体 J4、codex 真载体与 EV-77、gemini 名义 Driver、claude 兼容回归 J3），达成边界见 16.1 M10b 行。**M11 已达成**（2026-10-16，v1.3.159：第 12 步全量手工剧本 68 格收口，达成边界见 16.1 M11 行；以下为各步落点，拆步见 `.reviews/M11-档位全链路与文档收口/plan/` r3）：第 0 步计划定稿、第 1 步档位事实探针（3.6 / 3.7 回填）、第 2 步档位契约并入（v1.3.129：11.5 / 7.1 / 13.1.1 / 6.7.1 / 11.1，并入时均带【待实施 · M11 第 n 步】标记，随第 3～7 步落地逐处翻为【已实现】；第 10 步核过，正文已无挂在这几节上的【待实施 · M11】）、第 3 步 AC-25 三审形态检测收口（v1.3.130：**AC-25 达成**，只覆盖路径通道、三审形态，达成边界见 15.3）、第 4 步配置契约与档位解析（v1.3.131：`tiers` / `default_tier` 与 `profiles` 三形态、两段式解析、原生枚举与厂商 profile 校验已实现）、第 5 步档位命令行旗标（v1.3.132：`--tier-<id>` / `--effort-<id>` / `--profile-<id>` 已上线，命令 A 由 resolve 输出照抄进预检与两轮 `--start`）、第 6 步思考等级透传与留痕接线（v1.3.133：思考等级按厂商通路下传，厂商 profile 的三层解析值同时用于可用性检查、模型目录比对与 codex 的 `-p`，run.json 与审查文档 front-matter 写 `effort_requested` / `effort_effective` / `effort_effective_source` / `tier` / `tier_source` 与顶层 `profile`，第 4、5 步的过渡闸与两条过渡告警拆除；生效思考等级只有 gemini 侧有回读面，codex / claude 如实记 `null`，见 11.1、11.5、6.7.1；claude 原生枚举在真机上落成 `null`——取值列表在帮助文本的续行上，v1.3.134 修续行解析，重装后零配额 doctor 已落五项）、第 7 步复盘报告双维度聚合（v1.3.135：原稿与裁决件按该轮 run.json 的 driver 排除 / 定位——此前写死缺省 Driver，换过 Driver 的阶段读不到裁决件；按 Driver 与按审核者两维聚合、读不到 Driver 的轮次单独成组；第四节加思考等级请求 / 生效两列，缺席与 null 分写，见 13.2 / 13.2.1）、第 8 步零消费方配置项删除（v1.3.136：EV-30 ④～⑦ 四键删类型与默认值，旧配置照常通过、doctor / preflight 提示一条，见 13.1.1「已废弃键」）、第 9 步 §24 台账结构对账测试（v1.3.137：EV-14 结构层三条，第 ③ 条「§24 无 ◐ / ⏳」暂以跳过开关关着）、第 10 步文档收口与对账（v1.3.138～v1.3.139：`P-xx` 坑清单搬到 `doc/04_development/GUIDE_local_pitfalls.md`；使用与运维文档补档位用法与排障、CASE 补剧本 8～11；本文 17.2 增补表与陈旧【待实施】标记逐条回代码核实，§24 两表翻绿，见 §24）、第 11 步 AC-23 真实验收（v1.3.140：codex、gemini 各以选档与精确指定发起一次，共 4 次单侧真实审查，剧本 11 判据 11.1～11.6、11.8、11.9 全部成立，见 `doc/05_testing/REPORT_2026-10-08_m11_ac23_acceptance.md`；AC-23 达成状态随第 12 步翻）、第 12 步全量手工剧本与收口（v1.3.159：第 9 步那条跳过的断言已启用，16.1 M11 行与 AC-23 翻为达成，见 `doc/05_testing/REPORT_2026-10-12_m11_step12_manual_acceptance.md`））。**M12 已达成**（2026-10-18，v1.3.168：批次 0～5 与追加的共享根残留检测全部完成，达成边界与残余见 16.1 M12 行）。
 >   **本段是「现状断言」，凡与代码不一致一律以代码为准**——它曾在 M8 第 2、3 步合入后
 >   连续两版未跟上（两次回填都只改了各自章节），第 4 步的计划双审把它查了出来。
@@ -86,7 +86,7 @@
 
 | 术语 | 含义 |
 | :--- | :--- |
-| Driver | **当轮**执笔与裁决者。缺省是 Claude Code（VS Code 插件）。自 M9 第 5 步起是「每次运行的属性」（`--driver <id>`，记入 `run.json.driver`）；plan / bug 阶段在写原稿之前可经 `topic claim` 按阶段声明（M10a 第 1 步，见 7.1）；注册表四家自 M10a 第 3 步起均可用作 Driver。**在别家自己的 CLI 里执笔**（入口资产、真载体下的 Hook）自 M10b 起可用：入口资产与安装目标见 7.4，各载体的护栏等级见 8.5（claude L1；glm L2、有尽力拦截的 Hook；codex / gemini L2、无 Hook） |
+| Driver | **当轮**执笔与裁决者。缺省是 Claude Code（VS Code 插件）。自 M9 第 5 步起是「每次运行的属性」（`--driver <id>`，记入 `run.json.driver`）；plan / bug 阶段在写原稿之前可经 `topic claim` 按阶段声明（M10a 第 1 步，见 7.1）；注册表登记既有四家以及 Kimi Code、Qoder CN，当前仅既有四家启用为 Driver，后两家为 L2 候选入口且 `driverEnabled` 关闭，待真实客户端证据完成后再开放。**在别家自己的 CLI 里执笔**（入口资产、真载体下的 Hook）自 M10b 起可用：入口资产与安装目标见 7.4，各载体的护栏等级见 8.5（claude L1；其余当前登记载体 L2） |
 | Critic-A / `gemini` | Antigravity 编程 Agent（CLI 入口 `agy`），审查输出角色后缀 `gemini` |
 | Critic-B / `glm` | ZCode 编程 Agent（CLI 入口 `zcode.cjs`），审查输出角色后缀 `glm` |
 | **Agent** | 一家厂商编程 Agent 的注册项：`claude`（Claude Code）/ `codex`（Codex）/ `gemini`（Antigravity）/ `glm`（ZCode）。Agent id 同时是**归档后缀**与配置键命名空间 |
@@ -150,7 +150,7 @@
 - **本仓库（TriviumCode）交付**：编排器 `trivium`（Node.js/TypeScript，打包为单文件）、Claude Code 侧资产（skills / Hooks / 协议片段）、Antigravity 自定义审查 Agent 定义、提示词与文档模板、安装器与自检。
 - **用户机器全局安装**：`~/.claude/skills/dual-critic/`（核心 skill：编排器脚本与全部资产）与 `~/.claude/skills/dual-*/`（7 个入口 skill）、`~/.gemini/config/agents/trivium-critic/agent.md`、`~/.trivium/runs/`（运行目录）。
   M10b 起入口 skill 按载体多目标安装（`node dist/install.cjs [--targets <id,…>]`；不给 `--targets` 时家根不在的载体跳过，显式点名而家根不在即报错）：claude → `~/.claude/skills/dual-*/`，codex → `$CODEX_HOME/skills/dual-*/`（缺省 `~/.codex/skills`），gemini → `~/.gemini/config/skills/dual-*/`，glm → `~/.zcode/skills/dual-*/`；
-  运行时根 `~/.claude/skills/dual-critic/` 不随任何一家、每次必装；`~/.agents/skills` **禁装**（codex 与 zcode 都读它，装进去会出现同名双份，见 7.4）。
+  运行时根 `~/.claude/skills/dual-critic/` 不随任何一家、每次必装；候选 L2 载体 Kimi Code → `$KIMI_CODE_HOME/skills`（缺省 `~/.kimi-code/skills`），Qoder CN → `~/.qoder-cn/skills`，两处均已生成但客户端发现与 Driver 开关仍待验收；`~/.agents/skills` **禁装**（codex 与 zcode 都读它，装进去会出现同名双份，见 7.4）。
 - **目标项目内产生**：`.trivium/`（配置、状态、锁、wrapper）、`.reviews/`（归档，进 Git）、`.claude/settings.json`（Hooks）、`CLAUDE.md` 与 `AGENTS.md` 协议片段。
 
 ---
@@ -1643,6 +1643,8 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
   | codex | `$CODEX_HOME/skills/dual-*/`（未设则 `~/.codex/skills`） | `$dual-review-plan <参数>`（提示词里的显式提及） | 第 1 步 `exec` 实测；交互会话 M10b 第 4 步 3-4；`/名字` 写法只做过零配额渲染 |
   | gemini | `~/.gemini/config/skills/dual-*/`（全局根；工作区根在 print 模式下不读） | `/dual-review-plan <参数>` | 第 1 步 print 模式斜杠展开；交互模式未测；真载体未跑 |
   | glm | `~/.zcode/skills/dual-*/` | 桌面端 `/dual-review-plan <参数>`（命令行 `--prompt` 下为 `/skill <名字>`） | 第 2 步薄冒烟与第 4 步 3-5（J4） |
+  | kimi | `$KIMI_CODE_HOME/skills/dual-*/`（缺省 `~/.kimi-code/skills`） | `/skill:dual-review-plan <参数>` | 候选值，CLI / 桌面端 / VS Code Extension Host 未验收，Driver 开关关闭 |
+  | qoder-cn | `~/.qoder-cn/skills/dual-*/` | `/dual-review-plan <参数>` | 候选值，CN CLI / 桌面端未验收，Driver 开关关闭 |
 
 - **`entry/` 不进运行时根**：claude 目标的运行时根 `~/.claude/skills/dual-critic/` 同步时排除 `entry/` 子树。codex 会递归枚举 skill 根下的 `SKILL.md`（第 1 步报告 §5），嵌套落点会让别家入口出现在 codex 的列表里、还能被调起。
 - **`~/.agents/skills` 禁装**：codex 与 zcode 都读它。同名时 codex 的显式调用直接失效且无告警，zcode 由 `~/.zcode/skills` 胜出、同样不告警（第 1 步报告 §2.3、§3.6）。

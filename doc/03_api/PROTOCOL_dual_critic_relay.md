@@ -11,7 +11,7 @@
 > 依据 [设计](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 第 6、7、9 章与 [PRD](../01_requirements/PRD_driver_dual_critic.md)（两者的当前版本见其文档头）。
 > **本文是对实现的描述性汇总，不是第二份规范。** 与设计文档冲突时以设计为准。
 >
-> **当前写契约**：`config.v2` / `run.v3` / 四家审核者 / `--driver <id>`；`run.v1`、`run.v2` 原形保留并严格分发读取，verify 独立。双模式真实准入状态以本次验收报告为准。
+> **当前写契约**：`config.v2` / `run.v3` / 四家已启用审核者 + 两家 L2 Driver-only / `--driver <id>`；`run.v1`、`run.v2` 原形保留并严格分发读取，verify 独立。Kimi Code 与 Qoder CN 当前只登记 Driver，不进入审核者集合；双模式真实准入状态以本次验收报告为准。
 
 > 2026-10-10真实补测独立保存请求、配置指纹、回读和轨迹，不回写历史run/Schema。准入预算与正式审查预算分池，预占先于spawn，现行机制扩容序列连续且原子发布，重启不清零。首条bootstrap扩容的发布机制和确切时刻无回读，另记边界，不追写历史。工具没有实际尝试时拒绝结论为null；供应商/effort没有运行回读时为null。原48/48证据冻结。
 > `run.v2`（含 `driver` / `critics_selected` / `review_mode: full|partial`）于 M7b 第 3 步生效，规范见设计 6.7.1；
@@ -27,7 +27,7 @@
 > 它决定本轮谁是 Driver，进而决定**原稿与裁决件的后缀**（`locateSubject` 按它定位
 > 被审对象，写错后缀在 `review --start` 就退 65）、闸门按谁定位裁决件、以及留痕里
 > 记的发起方。规则细则见设计 §7.1。
-> **四家入口自 M10b 第 2 步起生效**：每家各有一套入口 skill（安装目标与调用写法见设计 7.4.1：claude / gemini / glm 写 `/dual-*`，codex 写 `$dual-*`），
+> **既有四家入口自 M10b 第 2 步起生效；Kimi/Qoder CN 的 L2 Driver 入口已生成**：既有安装目标与调用写法见设计 7.4.1；Kimi 使用官方外部 Skill 的 `/skill:<name>`，Qoder CN 使用 `/name`。两家真实客户端加载/调用仍未验收，不能据入口生成宣称客户端通过。
 > 各自在 `preflight` / `topic resolve` / `review --start` 里写死本载体的 `--driver`；命令 A / B / D 的入口在写原稿之前跑 `topic claim`。
 > 选侧来自缺省集合时**先减去当轮 Driver**（D-4）。非 claude 载体上命令参数由 Driver 模型转抄，保真边界见设计 8.5。
 >
@@ -39,7 +39,7 @@
 > **`addresses` 基数 1～3 已随 M7b 的 `--critics` 生效**（`minItems: 1`）。**份数等于本轮落了审查文档的入选侧数**
 > （status ∈ {ok, parse_fallback}，失败侧不计），每项是审查文档的文件名（或以 `<主题>/<阶段>/<文件名>` 结尾的路径）、**不是意见编号**；
 > 闸门按 `run.json.artifacts[]` 派生期望集逐项比对（设计 v1.3.45 / EV-134；此前只核非空）。
-> **意见编号前缀已是四值**（`CODEX-` 随 M8、`CLAUDE-` 随 M9；取值由注册表派生、schema 不枚举）；
+> **意见编号前缀由注册表派生**（既有前缀不变；Kimi/Qoder CN 的 `KIMI-` / `QODER-` 仅为 Driver 留痕命名，当前不产审核意见）；
 > **档位旗标 `--tier-<id>` / `--effort-<id>` / `--profile-<id>` 自 M11 第 5 步（设计 v1.3.132）起生效**：`review` / `preflight` / `topic resolve` 都收，键必须是本轮入选审核者（与 `--model-<id>` 同一判据），`--profile-<id>` 只对带厂商 profile 概念的侧成立（目前支持 `--profile-codex` 与 `--profile-claude`；同侧可用 `--native-<id>` 显式清空）。**M11 第 6 步（设计 v1.3.133）起三类值都随请求下传**：思考等级经各家通路（codex 的 `-c model_reasoning_effort=`、claude 的 `--effort`、agy 的 `--effort`，gemini 的 slug 已编码档位时不传、只告警），厂商 profile 成为 codex 的 `-p`；第 5 步时的过渡闸与「档位名不入档」告警已拆除。run.json 审核者条目恒写 `effort_requested` / `effort_effective` / `effort_effective_source` / `tier` / `tier_source`（null 也写；缺席＝第 6 步之前的旧留痕），顶层写 `profile`（档位表名）；`effort_effective` 只取回读，codex / claude 恒 `null` + `unverified`，审查文档 front-matter 同值。（v1.3.43 前此处写「M10b / M11」；M10b 份额是四家入口，已生效，见上。）
 > `--critics` 当前可选四家：codex / gemini / glm 为缺省集合（默认即三侧，D4-4），
 > claude 只在 `--driver` 取非 claude 时可入选（当轮 Driver 不得入选）。

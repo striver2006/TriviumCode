@@ -537,6 +537,72 @@
               }
             },
             "description": "支持原生订阅/登录与包装器profile路线；路径覆盖有实际执行和探针消费方，接入方式独立于模型和effort。"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "vendor"
+            ],
+            "properties": {
+              "vendor": {
+                "const": "moonshot"
+              },
+              "bin": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "description": "显式模型请求；只有真实响应回读后才能填写生效模型。"
+              },
+              "tiers": {
+                "$ref": "#/$defs/tiersModelOnly"
+              },
+              "default_tier": {
+                "$ref": "#/$defs/tierName"
+              }
+            },
+            "description": "Kimi Code 原生 CLI 配置。Driver 接入与审核者准入分离。"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "vendor"
+            ],
+            "properties": {
+              "vendor": {
+                "const": "qoder-cn"
+              },
+              "bin": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "description": "请求模型；Auto 或其他路由标签不能代替生效底层模型回读。"
+              },
+              "tiers": {
+                "$ref": "#/$defs/tiersModelOnly"
+              },
+              "default_tier": {
+                "$ref": "#/$defs/tierName"
+              }
+            },
+            "description": "Qoder CN 原生 CLI 配置。请求、配置声明和生效回读必须分开记录。"
           }
         ]
       }

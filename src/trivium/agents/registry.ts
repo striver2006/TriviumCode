@@ -30,9 +30,10 @@
  *
  * ## M10a 第 3 步的变化
  *
- * codex / gemini / glm 的 `driverEnabled` 翻为 true，四家均可作为 Driver。
+ * codex / gemini / glm 的 `driverEnabled` 翻为 true，既有四家均可作为 Driver；
+ * 后续 Kimi Code / Qoder CN 也按同一注册表字段登记为 L2 Driver-only。
  * 与此同时 `resolveDriver` 对 `driverEnabled: false` 由「放行 + 标注」收紧为退 64——
- * 今天四家全启用、该分支对本表不可达，它守的是**第五家登记而未启用**的那一格
+ * 该分支守的是**登记而未启用**的那一格
  * （M10 计划 r7 §4.2 / §9 A4）。收紧只作用于经 `resolveDriver` 的入口，
  * 不经它的面见 `critics.ts` 的 `DriverResolution` 文档块。
  * 任一 Agent 作为 Driver 真实走完命令 B 的真载体验收在 M10b（入口资产随之渲染）。
@@ -42,10 +43,10 @@
 import path from 'node:path';
 
 /** 已登记的 Agent。取值同时是归档后缀与配置键命名空间 */
-export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm';
+export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm' | 'kimi' | 'qoder-cn';
 
 /** 厂商标识。与 `AgentId` 分开：未来同一厂商可能有多个 Agent */
-export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode';
+export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode' | 'moonshot' | 'qoder-cn';
 
 /**
  * 各厂商的**名义**模型族，按模型名判定（EV-62，M10a 第 4 步）。
@@ -64,6 +65,9 @@ export const VENDOR_MODEL_FAMILY: Readonly<Record<AgentVendor, RegExp>> = {
   openai: /gpt/i,
   antigravity: /gemini/i,
   zcode: /glm/i,
+  moonshot: /kimi/i,
+  // Qoder 的 Auto/自定义模型标签不能冒充可识别的底层模型族。
+  'qoder-cn': /(?!)/,
 };
 
 /** 模型标识族规则：短别名不解析，供应商与工具身份不参与判断。 */
@@ -182,7 +186,7 @@ export interface AgentDescriptor {
    * 生成的根本原因（计划 §3.1 / D-3）。
    */
   suffix: AgentId;
-  /** 意见编号前缀，不含连字符。四家互不冲突 */
+  /** 意见编号前缀，不含连字符。全部已登记 Agent 互不冲突 */
   findingPrefix: string;
   /** 可作为审核者被 headless 拉起 */
   criticEnabled: boolean;
@@ -241,7 +245,7 @@ export interface AgentDescriptor {
 }
 
 /**
- * 四家注册值。
+ * 当前注册值（四家审核 Agent + 两家 L2 Driver-only Agent）。
  *
  * 顺序即派生集合的顺序，改动会影响 `ALL_SUFFIXES` 等导出的枚举次序——
  * 那些次序进了 schema pattern 与错误提示文案，因此不要随意重排。
@@ -389,6 +393,52 @@ export const AGENTS: readonly AgentDescriptor[] = [
     entryInvocation: '/{name}',
     entrySkillExtraReadRoots: ['.agents/skills'],
   },
+  {
+    id: 'kimi',
+    display: 'Kimi Code',
+    label: 'Critic-E · Moonshot Kimi Code',
+    vendor: 'moonshot',
+    cliName: 'kimi',
+    suffix: 'kimi',
+    findingPrefix: 'KIMI',
+    // L2 入口套件先落地；客户端规则加载与五入口验收未完成前保持 Driver 开关关闭。
+    criticEnabled: false,
+    defaultSelected: false,
+    driverEnabled: false,
+    guardLevel: 'L2',
+    hookConfigTarget: null,
+    instructionFiles: ['AGENTS.md'],
+    criticReadsInstructionFiles: false,
+    // 官方文档候选落点；CLI、桌面端与 VS Code Extension Host 尚未分别实测。
+    entrySkillRoot: { homeEnv: 'KIMI_CODE_HOME', homeRel: '.kimi-code', skillsRel: 'skills' },
+    // 官方文档候选调用语法；桌面端与 VS Code 插件须另行实测，不在此冒充通过。
+    entryInvocation: '/skill:{name}',
+    // 共享读取面同样是候选值，未取得三类客户端实测前不作为准入证据。
+    entrySkillExtraReadRoots: ['.agents/skills'],
+  },
+  {
+    id: 'qoder-cn',
+    display: 'Qoder CN',
+    label: 'Critic-F · Qoder CN',
+    vendor: 'qoder-cn',
+    // 本机实测可执行文件名；官方文档/原生命令名是 qodercn，二者保持分开留痕。
+    cliName: 'qoderclicn',
+    suffix: 'qoder-cn',
+    findingPrefix: 'QODER',
+    // Qoder CN 的无效模型回退与客户端规则加载仍未闭环，保持 Driver 开关关闭。
+    criticEnabled: false,
+    defaultSelected: false,
+    driverEnabled: false,
+    guardLevel: 'L2',
+    hookConfigTarget: null,
+    instructionFiles: ['AGENTS.md'],
+    criticReadsInstructionFiles: false,
+    // 官方 CN 路线候选落点；CLI 与桌面端发现行为尚未分别实测。
+    entrySkillRoot: { homeRel: '.qoder-cn', skillsRel: 'skills' },
+    entryInvocation: '/{name}',
+    // 共享读取面候选值，待 CN 客户端实测确认。
+    entrySkillExtraReadRoots: ['.agents/skills'],
+  },
 ];
 
 const BY_ID = new Map<string, AgentDescriptor>(AGENTS.map((a) => [a.id, a]));
@@ -406,7 +456,7 @@ export const ALL_FINDING_PREFIXES: readonly string[] = AGENTS.map((a) => a.findi
  * 去重是必要的而非防御性的：将来同一厂商的两个 Agent 共用一条 CLI 时，
  * 它们只该占探针段的**一个**键（见 `cliName` 的登记说明）。
  * `registry-parity` 另有一条「cliName 全表唯一」的对账——那条守的是
- * **当前**四家不得重名（重名会让 `agent_cli` 留痕分不清是哪家）；
+ * **当前**各家不得重名（重名会让 `agent_cli` 留痕分不清是哪家）；
  * 这里的去重守的是**键集**语义，两者不冲突也不互相替代。
  */
 export const ALL_CLI_NAMES: readonly string[] = [...new Set(AGENTS.map((a) => a.cliName))];
@@ -416,7 +466,7 @@ export function agentByCliName(cliName: string): AgentDescriptor | null {
   return AGENTS.find((a) => a.cliName === cliName) ?? null;
 }
 
-/** 当前可被选为审核者的 Agent（M7a：gemini / glm；M9 起四家均已启用，EV-61 ⑤） */
+/** 当前可被选为审核者的 Agent（四家；Kimi/Qoder CN 保持 Driver-only） */
 export const CRITIC_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.criticEnabled).map(
   (a) => a.id,
 );
@@ -490,7 +540,10 @@ export function deriveDefaultCritics(
   return picked;
 }
 
-/** 当前可作为 Driver 的 Agent（M7a 只有 claude；M10a 第 3 步起四家全部启用） */
+/**
+ * 当前已启用为 Driver 的 Agent；Kimi Code / Qoder CN 已登记但仍保持
+ * `driverEnabled: false`，登记全集见 `ALL_AGENT_IDS`。
+ */
 export const DRIVER_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.driverEnabled).map(
   (a) => a.id,
 );

@@ -17,7 +17,7 @@ import { writeRunMeta } from '../../src/trivium/meta.js';
 import { historicalRunMeta } from '../helpers/legacy-run-meta.js';
 import { metaDir, stageDir, writeMeta, type ArchiveLayout } from '../../src/trivium/archive.js';
 import { buildArtifactName, localDate } from '../../src/trivium/naming.js';
-import type { AgentId } from '../../src/trivium/agents/registry.js';
+import { agentById, type AgentId } from '../../src/trivium/agents/registry.js';
 import type { CriticId, CriticRunMeta, Review, Stage } from '../../src/trivium/types.js';
 import { scratchDir } from '../helpers/scratch.js';
 
@@ -89,7 +89,7 @@ function side(
   legacy?: string,
 ): CriticRunMeta {
   return {
-    vendor: ({ claude: 'anthropic', codex: 'openai', gemini: 'antigravity', glm: 'zcode' } as const)[c],
+    vendor: agentById(c)!.vendor,
     cli_version: '1.0', profile_requested: null, model_provider: null,
     model_requested: `${c}-m`, model_effective: status === 'ok' ? `${c}-m` : null,
     model_effective_source: status === 'ok' ? 'envelope' : 'unverified',

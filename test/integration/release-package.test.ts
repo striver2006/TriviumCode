@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { scratchDir } from '../helpers/scratch.js';
 import { planInstall, install, uninstall } from '../../src/install.js';
+import { AGENTS } from '../../src/trivium/agents/registry.js';
 
 const execFile = promisify(execFileCallback);
 const IS_WIN = process.platform === 'win32';
@@ -21,7 +22,7 @@ const LIMIT_MS = IS_WIN
   ? { test: 600_000, pack: 300_000, selftest: 300_000 }
   : { test: 240_000, pack: 120_000, selftest: 90_000 };
 
-test('发布包真解压：白名单与哈希、四家28入口、隔离安装升级、14步桩自检与卸载',
+test('发布包真解压：白名单与哈希、全部已登记载体入口、隔离安装升级、14步桩自检与卸载',
   // Linux/WSL 不在支持面（设计 §7.1）；macOS 与 Windows 各自在本平台出包并解包验收
   { skip: process.platform !== 'darwin' && process.platform !== 'win32' ? '只在 macOS 与 Windows 上跑' : false, timeout: LIMIT_MS.test },
   async () => {
@@ -88,7 +89,7 @@ test('发布包真解压：白名单与哈希、四家28入口、隔离安装升
           entries++;
         }
       }
-      assert.equal(entries, 28);
+      assert.equal(entries, AGENTS.length * 7);
       await assert.rejects(fs.access(path.join(plan.runtimeRoot, 'entry')));
       const stale = path.join(plan.runtimeRoot, '旧版本遗留文件.txt');
       await fs.writeFile(stale, 'upgrade should prune this');

@@ -189,14 +189,14 @@ export async function applyOverlay(dest: string): Promise<string[]> {
     let s = src;
     s = anchor(
       s,
-      "export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm';",
-      `export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm' | '${STUB_ID}';`,
+      "export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm' | 'kimi' | 'qoder-cn';",
+      `export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm' | 'kimi' | 'qoder-cn' | '${STUB_ID}';`,
       'AgentId union',
     );
     s = anchor(
       s,
-      "export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode';",
-      `export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode' | '${STUB_VENDOR}';`,
+      "export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode' | 'moonshot' | 'qoder-cn';",
+      `export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode' | 'moonshot' | 'qoder-cn' | '${STUB_VENDOR}';`,
       'AgentVendor union',
     );
     /*
@@ -206,8 +206,8 @@ export async function applyOverlay(dest: string): Promise<string[]> {
      */
     s = anchor(
       s,
-      '  zcode: /glm/i,\n};',
-      `  zcode: /glm/i,\n  ${STUB_VENDOR}: /stub-model/i,\n};`,
+      "  'qoder-cn': /(?!)/,\n};",
+      `  'qoder-cn': /(?!)/,\n  ${STUB_VENDOR}: /stub-model/i,\n};`,
       'VENDOR_MODEL_FAMILY 末项',
     );
     s = anchor(

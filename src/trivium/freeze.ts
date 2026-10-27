@@ -10,7 +10,7 @@
  */
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { ALL_AGENT_IDS, DEFAULT_DRIVER, isAgentId, type AgentId } from './agents/registry.js';
+import { ALL_AGENT_IDS, DEFAULT_DRIVER, isAgentId, suffixAlternation, type AgentId } from './agents/registry.js';
 import type { Config, CriticId, DenyCategory, DriftUnknownReason, Stage } from './types.js';
 import { isReviewSchemaId, VOIDING_DENY_CATEGORIES } from './types.js';
 import { parseArtifactName, type DispositionKind, type Role } from './naming.js';
@@ -380,7 +380,7 @@ export async function enumerateDenyPaths(
        * `_meta/` 下的结构化意见与 fallback 编号件：它们是意见**原文**，
        * 泄漏后果与 `.md` 等同。按文件名里的角色段判定，不读内容。
        */
-      const metaHit = /^review-([a-z]+)-.+\.(?:json|md)$/.exec(e.name);
+      const metaHit = new RegExp(`^review-(${suffixAlternation()})-.+\\.(?:json|md)$`).exec(e.name);
       if (metaHit) {
         const owner = metaHit[1]!;
         if (owner !== critic && isAgentId(owner)) out.add(toDomainRel(rel));

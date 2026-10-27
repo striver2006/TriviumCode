@@ -203,14 +203,9 @@ test('已登记但未启用为审核者 → 退 64，说明随后续里程碑接
  * **写成断言而不是注释**：注释里的「当前四家全部启用」会随注册表变化而失真，
  * 且没有任何机制提醒。断言会在引入第五家（未启用）时红，提示回去看上一条。
  */
-test('真实注册表当前全部启用为审核者——引入未启用的第五家时，上一条可回到真实注册表', () => {
+test('真实注册表明确记录未启用审核者——上一条保留注入表负向覆盖', () => {
   const notEnabled = AGENTS.filter((a) => !a.criticEnabled).map((a) => a.id);
-  assert.deepEqual(
-    notEnabled, [],
-    `注册表出现了未启用为审核者的 Agent（${notEnabled.join('、')}）。\n` +
-      '  这不是错误：上一条用例的 descriptors 注入表可以改回从真实注册表现取，\n' +
-      '  「登记但未启用」那条分支于是重新有了真实数据的覆盖。',
-  );
+  assert.deepEqual(notEnabled, ['kimi', 'qoder-cn']);
 });
 
 test('在 agents 段里没有配置条目 → 退 64（取不到调用参数）', () => {
@@ -452,12 +447,12 @@ test('resolveDriver：缺省分支走同一个判定——缺省 Driver 在注�
   }
 });
 
-test('resolveDriver：非缺省 Driver 在真实注册表下已启用（M10a 第 3 步翻开关）', () => {
+test('resolveDriver：真实注册表中的已启用 Driver 可用（未启用候选仍拒绝）', () => {
   /*
    * M9 时「非缺省且已启用」这一臂只能靠注入表构造。四家翻开之后真实注册表即可覆盖；
    * 注入表那一格留作对照：判定要跟着注入表走，而不是偷看模块级注册表。
    */
-  for (const id of ALL_AGENT_IDS) {
+  for (const id of DRIVER_AGENT_IDS) {
     const r = resolveDriver(id);
     assert.equal(r.driver, id);
     assert.equal(r.enabledAsDriver, true, `${id} 已启用为 Driver`);
@@ -472,10 +467,11 @@ test('resolveDriver：非缺省 Driver 在真实注册表下已启用（M10a 第
  * 第五家登记而未启用时这条红——提醒上面几条桩用例可以回到真实注册表取夹具。
  * 写成断言而不是注释：注释会随注册表变化而失真，且没有任何机制提醒。
  */
-test('真实注册表当前全部启用为 Driver——引入未启用的第五家时，桩用例可回到真实注册表', () => {
+test('真实注册表明确区分 Driver 开关与登记全集', () => {
+  assert.deepEqual([...DRIVER_AGENT_IDS], ['claude', 'codex', 'gemini', 'glm']);
   assert.deepEqual(
-    [...DRIVER_AGENT_IDS], [...ALL_AGENT_IDS],
-    '注册表出现了未启用为 Driver 的 Agent。这不是错误：resolveDriver 的 64 分支从此有了真实数据覆盖。',
+    ALL_AGENT_IDS.filter((id) => !DRIVER_AGENT_IDS.includes(id)),
+    ['kimi', 'qoder-cn'],
   );
 });
 

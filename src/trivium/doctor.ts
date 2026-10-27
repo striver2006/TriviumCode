@@ -67,7 +67,7 @@ export function doctorSectionConsumesOverrides(cliName: string): boolean {
 }
 
 /** doctor 的段次序（与 `runDoctor` 里各段的先后一致） */
-const DOCTOR_SECTION_ORDER: readonly string[] = ['agy', 'zcode', 'codex', 'claude'];
+export const DOCTOR_SECTION_ORDER: readonly string[] = ['agy', 'zcode', 'codex', 'claude'];
 
 export interface DoctorOptions {
   tierFlags?: Partial<Record<CriticId, TierFlagValues>>;

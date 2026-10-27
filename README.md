@@ -1,6 +1,6 @@
 # TriviumCode（三方智鉴）
 
-面向 macOS 与 Windows 的「主攻 + 多方独立审查」编程 Agent 流水线。当前产品版本 **1.3.2**（1.1.0 新增 Windows 原生支持；1.3.0 起 macOS 与 Windows 为同一套代码），支持 Claude Code、Codex、Antigravity、ZCode 四家 Agent 担任 Driver 或审核者；每轮选择 1～3 家审核者，Driver 不审自己的变更。
+面向 macOS 与 Windows 的「主攻 + 多方独立审查」编程 Agent 流水线。当前产品版本 **1.3.2**（1.1.0 新增 Windows 原生支持；1.3.0 起 macOS 与 Windows 为同一套代码），支持 Claude Code、Codex、Antigravity、ZCode 四家 Agent 担任 Driver 或审核者；Kimi Code 与 Qoder CN 已登记候选入口，但客户端验收未完成、Driver 开关保持关闭；每轮选择 1～3 家审核者，Driver 不审自己的变更。
 
 Driver 负责起草、代码和逐条裁决；本地 Node 编排器负责预检、后台调度、证据核验、归档、闸门和真实编译测试。审查在工作树中进行，采用检测与留痕机制；护栏按载体分为 L1/L2，具体边界见使用手册。
 
@@ -62,6 +62,6 @@ npm run release
 
 `check` 执行类型检查、构建和全量测试；`release` 构建后按**当前平台**生成安装包、校验文件及解包目录：macOS 上为 `dist/releases/TriviumCode-<版本>-macos.tar.gz`，Windows 上为 `dist/releases/TriviumCode-<版本>-windows-x64.zip`，两个平台的包要分别在对应平台上构建。完整手册 PDF 由 `node scripts/build-manual-pdf.mjs` 生成，目前只能在 Windows 上跑（用 Edge 无头模式渲染）。正式包要求工作树干净，验证 CLI 版本与构建输入指纹。提交前预览：先 `npm run build`，再 `node scripts/package-release.mjs --candidate`。
 
-分发包包含运行时、四家入口、carriers、中文文档、许可、版本来源和文件哈希，不包含账号、本机配置、运行目录、审查原件或 node_modules。源码和历史测试原件请在本仓查阅。未提供自带 Node 的 App 或 Apple 签名/公证。
+分发包包含运行时、已登记载体入口、carriers、中文文档、许可、版本来源和文件哈希，不包含账号、本机配置、运行目录、审查原件或 node_modules。Kimi Code 与 Qoder CN 入口属于候选资产，不能据此宣称客户端验收通过。源码和历史测试原件请在本仓查阅。未提供自带 Node 的 App 或 Apple 签名/公证。
 
 开发约定见 [AGENTS.md](AGENTS.md)、[开发指南](doc/04_development/GUIDE_env_setup.md)及 [贡献指南](CONTRIBUTING.md)。许可：[Apache-2.0](LICENSE)。

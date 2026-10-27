@@ -11,7 +11,8 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import YAML from 'yaml';
-import { DOCTOR_RERUN_ENTRY, runDoctor, type DoctorOptions, type DoctorReport } from '../../src/trivium/doctor.js';
+import { DOCTOR_RERUN_ENTRY, DOCTOR_SECTION_ORDER, runDoctor, type DoctorOptions, type DoctorReport } from '../../src/trivium/doctor.js';
+import { AGENTS } from '../../src/trivium/agents/registry.js';
 import { DeadlineController, sweepDoctorLedgers, unfinishedSectionNote } from '../../src/trivium/doctor-deadline.js';
 import { TRIVIUM_DIR, agentConfigOf, defaultConfig } from '../../src/trivium/config.js';
 import { runPreflight } from '../../src/trivium/preflight.js';
@@ -173,8 +174,15 @@ test('I3 不给 --only：第一段到点没探完，后面各段 not_started，�
     const r = await doctor(w, { only: null });
     const states = Object.fromEntries(r.deadline!.sections.map((s) => [s.only, s.state]));
     assert.equal(states['agy'], 'in_progress');
-    for (const cli of ['zcode', 'codex', 'claude']) assert.equal(states[cli], 'not_started', cli);
-    assert.ok(!r.notes.some((n) => /尚无探针实现/.test(n)), r.notes.join('\n'));
+    for (const cli of DOCTOR_SECTION_ORDER.filter((name) => name !== 'agy')) {
+      assert.equal(states[cli], 'not_started', cli);
+    }
+    for (const agent of AGENTS.filter((a) => !DOCTOR_SECTION_ORDER.includes(a.cliName))) {
+      assert.ok(
+        r.notes.some((n) => n.includes(`[${agent.cliName}]`) && /尚无探针实现/.test(n)),
+        `${agent.cliName} 应明确记录为尚无探针实现：${r.notes.join('\n')}`,
+      );
+    }
     for (const s of r.deadline!.sections.filter((x) => x.state === 'not_started')) {
       assert.equal(s.launches, 0);
       // 没开始的段不说「配额已花」（代码三审 AGY-02 ≡ GLM-05）

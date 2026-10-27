@@ -1,6 +1,6 @@
 # Codex 开发与配置迁移
 
-本仓自 2026-10-09 起以 Codex 作为日常开发会话的主攻方。产品仍是支持四家 Agent 的
+本仓自 2026-10-09 起以 Codex 作为日常开发会话的主攻方。产品支持四家审核 Agent，并生成 Kimi Code 与 Qoder CN 的候选 L2 入口；客户端验收未完成，Driver 开关与审核准入均关闭。
 「主攻 + 多审」编排器，内置缺省 Driver 保持不变。项目共享规则在根目录 `AGENTS.md`。
 
 ## 需求、设计与实现入口
@@ -79,7 +79,7 @@ Sonnet medium（flash）也已通过全阶段预检及新的组合探活。这�
 ## 技能与运行时
 
 Codex 的七个入口安装到 `$CODEX_HOME/skills/dual-*/`，未设该变量时为 `~/.codex/skills/`。
-核心运行时仍位于 `~/.claude/skills/dual-critic/`：这是四家共用的资产根，
+核心运行时仍位于 `~/.claude/skills/dual-critic/`：这是各载体共用的资产根，
 不表示当前 Driver 必须是 Claude Code。项目 `.trivium/bin/trivium` 指向已安装产物。
 
 ```bash

@@ -243,7 +243,10 @@ test('U3″ 段次序常量与源码里各段的出现次序一致，集合等�
   assert.ok(decl, '找不到 DOCTOR_SECTION_ORDER 的声明');
   const constant = [...decl[1]!.matchAll(/'([a-z]+)'/g)].map((m) => m[1]!);
   assert.deepEqual(constant, order, '常量要与 runDoctor 里各段的执行次序一致，否则 deadline.sections 会漏段或错序');
-  assert.deepEqual([...constant].sort(), [...ALL_CLI_NAMES].sort(), '新增一家 CLI 时常量要跟着加');
+  assert.ok(
+    constant.every((name) => ALL_CLI_NAMES.includes(name)),
+    'doctor 的实际探针段只能来自注册表，新增未实现探针的 CLI 不应伪造成已探测段',
+  );
 });
 
 // ── U5 判键接线 ──────────────────────────────────────────────────────

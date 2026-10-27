@@ -1102,6 +1102,21 @@ export interface ClaudeCriticConfig extends TierFields {
   settings_env_source?: 'user_settings' | null;
 }
 
+/** Kimi Code 原生路线配置。当前仅登记为 Driver；审核者准入仍由真实能力证据控制。 */
+export interface KimiCriticConfig extends TierFields {
+  vendor: 'moonshot';
+  bin?: string | null;
+  /** 显式模型请求；未回读时不得写入 model_effective。 */
+  model?: string | null;
+}
+
+/** Qoder CN 原生路线配置。Auto 标签不是底层模型身份，生效模型必须单独回读。 */
+export interface QoderCnCriticConfig extends TierFields {
+  vendor: 'qoder-cn';
+  bin?: string | null;
+  model?: string | null;
+}
+
 /**
  * 单个 Agent 的配置段（`config.v2` 的 `agents.<id>`）。
  *
@@ -1109,7 +1124,8 @@ export interface ClaudeCriticConfig extends TierFields {
  * （antigravity 要 `agent` 与 `effort`，zcode 只要 `entry`），
  * 硬压成同一个形状只会得到一堆互相不适用的可选字段，校验也就形同虚设。
  *
- * **四家形状自 M9 第 4 步起全部就位**（codex 随 M8 第 3 步、claude 随本步）。
+ * **既有四家形状自 M9 第 4 步起全部就位**；Kimi/Qoder CN 的原生配置形状随后加入，
+ * 但两家当前仍为 Driver-only，不因此获得审核者准入。
  * 此前配置里写 `agents.claude` 会被 schema 拒，那不是缺陷而是「形状尚未定义」
  * 的如实反映——设计 13.1.1 允许 Driver 段存在，但没说它长什么样，
  * 凭空放行等于承诺一个不存在的契约。
@@ -1123,7 +1139,9 @@ export type AgentConfig =
   | GeminiCriticConfig
   | GlmCriticConfig
   | CodexCriticConfig
-  | ClaudeCriticConfig;
+  | ClaudeCriticConfig
+  | KimiCriticConfig
+  | QoderCnCriticConfig;
 
 /**
  * 一条判不实的写入线索（`CriticResult.suspected_write_events` 的元素）。

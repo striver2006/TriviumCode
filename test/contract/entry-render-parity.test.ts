@@ -262,7 +262,10 @@ test('命令 B/C/D 先解析、后预检，预检带上 resolve 解析出的入�
 test('护栏注入段与 r10 §3.1.3 的表一致', () => {
   // 表本身先钉住：它来自注册表派生，派生规则或登记值一改，这里先红
   const table = Object.fromEntries(AGENTS.map((a) => [a.id, guardProfileOf(a)]));
-  assert.deepEqual(table, { claude: 'l1-hook', codex: 'l2-none', gemini: 'l2-none', glm: 'l2-hook' });
+  assert.deepEqual(table, {
+    claude: 'l1-hook', codex: 'l2-none', gemini: 'l2-none', glm: 'l2-hook',
+    kimi: 'l2-none', 'qoder-cn': 'l2-none',
+  });
 
   const heads = {
     'l1-hook': partial('guard/main.l1-hook').split('\n')[0]!,

@@ -8,7 +8,7 @@
 > 依据 [设计](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md) 与 [PRD](../01_requirements/PRD_driver_dual_critic.md)（两者的当前版本见其文档头）。
 >
 > **本文描述的是当前可用的系统**：缺省由 Claude Code 主攻 + 缺省三侧审查（Antigravity / ZCode / Codex，2026-09-16 起默认即三侧）。
-> 第四家（Claude Code 作审核者）已随 M9 接入，入选须由另一家当 Driver。
+> 第四家（Claude Code 作审核者）已随 M9 接入，入选须由另一家当 Driver。Kimi Code 与 Qoder CN 已生成 L2 候选入口，但客户端发现、规则加载和模型回读验收未完成，Driver 开关保持关闭，不可作为 Driver 或审核者。
 > **换一家 Agent 在自己的会话里主攻已可用（M10b，2026-09-26）**：ZCode、Codex 也能当 Driver，但**护栏强度不同**——先读 [§5.2](#52-换一家-agent-主攻护栏等级-l1--l2)。逐审核者选档（低 / 中 / 高）或精确指定思考等级已可用，见 [§4「按档位选模型与思考深度」](#按档位选模型与思考深度)。
 > **`--critics <id,…>` 已可用**——从已启用的几家里选跑哪几侧（选一侧不算降级）。
 > 本文正文以 Claude Code 主攻为例；Codex 侧的 provider 配置由你写在 `$CODEX_HOME`（不设即 `~/.codex`）下：`doctor` 探测哪些 profile 带得出凭据，预检在缺凭据时点名该补哪个文件的哪一段；编排器不代写你的全局配置（设计 16.2 纪律 5）。
@@ -339,7 +339,7 @@ agents:
 
 ## 5.2 换一家 Agent 主攻：护栏等级 L1 / L2
 
-四家都能当 Driver（执笔与裁决的那一方）。换谁主攻，就在**那一家自己的会话里**、在项目根目录下发命令；
+既有四家可按注册表作为 Driver（执笔与裁决的那一方）；Kimi Code、Qoder CN 目前只有候选 L2 入口，待真实客户端验收后再打开 Driver 开关。换已启用的 Driver，就在**那一家自己的会话里**、在项目根目录下发命令；
 编排器、归档、闸门都不变，**变的是护栏的强度**。
 
 ### 各家的入口与等级
@@ -352,6 +352,8 @@ agents:
 | ZCode 桌面端（`glm`） | `~/.zcode/skills/dual-*/` | `/dual-review-plan <提示语>` | **L2**，有尽力拦截的 Hook |
 | Codex CLI（`codex`） | `~/.codex/skills/dual-*/`（设了 `CODEX_HOME` 则在它下面） | `$dual-review-plan <提示语>` | **L2**，没有 Hook |
 | Antigravity（`gemini`） | `~/.gemini/config/skills/dual-*/` | `/dual-review-plan <提示语>` | **L2**，没有 Hook |
+| Kimi Code（`kimi`） | `$KIMI_CODE_HOME/skills/dual-*/`（缺省 `~/.kimi-code/skills`） | `/skill:dual-review-plan <提示语>` | 候选，未验收，Driver 开关关闭 |
+| Qoder CN（`qoder-cn`） | `~/.qoder-cn/skills/dual-*/` | `/dual-review-plan <提示语>` | 候选，未验收，Driver 开关关闭 |
 
 其余几条命令同理（`/dual-approve` 在 Codex 里写 `$dual-approve`，闸门停点的提示会按当轮 Driver 给出正确写法）。
 Antigravity 目前只以「名义 Driver」验收过（在 Claude Code 会话里用 `--driver gemini` 声明），在它自己的会话里执笔还没真跑过。

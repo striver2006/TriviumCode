@@ -1044,7 +1044,7 @@ test('全部机读 schema：任何校验关键字都不得枚举 Agent id 或意
         const hitTokens = [...ids, ...prefixes].filter((t) =>
           new RegExp(`(?:^|[^A-Za-z0-9])${t}(?:[^A-Za-z0-9]|$)`).test(v),
         );
-        if (hitTokens.length > 0 && !exempt(file, here)) {
+        if (hitTokens.length > 0 && !VENDOR_DISCRIMINANT_KEYS.has(at.split('.').pop() ?? '') && !exempt(file, here)) {
           hits.push(
             `${file} 的 ${here} 在校验关键字里写了身份 ${JSON.stringify(hitTokens)}：${JSON.stringify(v)}`,
           );
