@@ -42,6 +42,8 @@ node .\scripts\acceptance\kimi-qoder-cn\probe.mjs --agent qoder-cn --bin 'C:\实
 
 Kimi 追加工具级禁读对照：`--agent kimi --case deny --rule-mode tool-deny`。每次 `open/deny/tools/failure` 至多 180 秒，`cancel` 为 1.5 秒超时触发，另有版本/配置校验及结束宽限。两份包装脚本均为 Windows **未测**，不得把 macOS 的语法检查当作 Windows 验收。
 
+Kimi 规则定位新增 `--rule-mode none|allow-only|deny-only|allow-first|paths-only`，分别表示无自定义规则、仅三种读工具 allow、仅三种读工具 deny、allow 在前再 deny、仅路径 deny。旧 `paths` 和 `tool-deny` 形状保留。逐次指定一个值，结合实际调用判读；这些是根因对照，不能自动登记准入。JSON 记录生成的 `permission_rules`。Windows 新控制臂全部未测。
+
 | 用例 | 必须核对 | 当前 Windows 状态 |
 | --- | --- | --- |
 | open | Read、Grep、Glob 实际调用、普通 canary、正确 cwd、中文空格路径 | 未测 |

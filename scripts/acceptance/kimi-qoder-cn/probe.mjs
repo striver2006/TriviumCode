@@ -16,7 +16,8 @@ for (const k of Object.keys(options)) if (!['agent','case','output','bin','model
 const agent = options.agent;
 const arm = options.case ?? 'open';
 const ruleMode = options['rule-mode'] ?? 'paths';
-if (!['paths', 'tool-deny'].includes(ruleMode)) throw Error('--rule-mode paths|tool-deny');
+if (!['paths', 'tool-deny', 'none', 'allow-only', 'deny-only', 'allow-first', 'paths-only'].includes(ruleMode)) throw Error('不支持的 --rule-mode');
+if (agent !== 'kimi' && !['paths', 'tool-deny'].includes(ruleMode)) throw Error('新增规则控制臂当前仅用于 Kimi');
 if (!['kimi', 'qoder-cn'].includes(agent) || !['open', 'deny', 'tools', 'failure', 'cancel'].includes(arm)) {
   throw Error('--agent kimi|qoder-cn --case open|deny|tools|failure|cancel [--output 证据目录] [--bin 入口] [--model 官方模型]');
 }
@@ -130,10 +131,13 @@ try {
     config += table(`providers.${JSON.stringify(selected.providerId)}`, selected.provider);
     config += table(`providers.${JSON.stringify(selected.providerId)}.oauth`, selected.oauth);
     config += table(`models.${JSON.stringify(selected.name)}`, selected.model);
-    const rules = [];
-    if (ruleMode === 'tool-deny') for (const tool of ['Read','Grep','Glob']) rules.push({decision:'deny',pattern:tool});
-    for (const tool of ['Read', 'Grep', 'Glob']) for (const file of [peer, secret, path.join(root, 'peer/**')]) rules.push({decision:'deny', pattern:`${tool}(${file})`});
-    for (const tool of ['Read','Grep','Glob']) rules.push({decision:'allow',pattern:tool});
+    const allow = ['Read','Grep','Glob'].map(pattern=>({decision:'allow',pattern}));
+    const deny = ['Read','Grep','Glob'].map(pattern=>({decision:'deny',pattern}));
+    const paths = ['Read','Grep','Glob'].flatMap(tool=>[peer,secret,path.join(root,'peer/**')].map(file=>({decision:'deny',pattern:`${tool}(${file})`})));
+    // 保留旧控制臂形状；新增单因素控制不自动改变任何准入结论。
+    const rules = {paths:[...paths,...allow], 'tool-deny':[...deny,...paths,...allow],
+      none:[], 'allow-only':allow, 'deny-only':deny, 'allow-first':[...allow,...deny], 'paths-only':paths}[ruleMode];
+    manifest.permission_rules = rules;
     for (const r of rules) config += `\n[[permission.rules]]\ndecision = ${JSON.stringify(r.decision)}\npattern = ${JSON.stringify(r.pattern)}\n`;
     await writePrivate(path.join(configRoot,'config.toml'), config);
     manifest.generated_config_sha256 = hash(config);

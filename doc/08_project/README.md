@@ -20,6 +20,8 @@
 
 ## 仓库维护记录
 
+- 2026-10-27：制定 [Kimi Code 与 Qoder CN 双角色接入实施计划](./KimiCode与QoderCN双角色接入实施计划.md)，细化 Kimi 禁读定位、Qoder 模型回退处理、独立 Driver 接入及严格审核准入；本条仅记录计划，不代表实现或真实验收完成。
+- 2026-10-27：补充 Kimi 权限规则单因素控制臂；仅 deny、无 allow 的真实复测仍读出同行 canary，保留反例并继续关闭审核准入。提交前 check 为 4015 通过、10 跳过、0 失败，详见[前置报告 §7](../05_testing/REPORT_2026-10-27_KimiCode与QoderCN接入前置取证.md#7-后续实施计划与规则控制复测2026-10-27-追加)。
 - 2026-10-27：Kimi Code 与 Qoder CN 双角色接入完成计划双审，S5 受控能力取证发现禁读/模型回退与执行分发证据缺口；未启用生产接入。开发过程、原始证据和 Windows 待验材料见[前置报告](../05_testing/REPORT_2026-10-27_KimiCode与QoderCN接入前置取证.md)。
 - 2026-10-09：忽略仓库根目录 `.codex/` 的本机配置与会话工件；沿用 `.claude/` 的忽略规则，保留随仓库分发的 `.claude/settings.json` Hook 配置。
 

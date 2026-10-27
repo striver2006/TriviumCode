@@ -75,3 +75,13 @@ Windows 证据尚未回传，五个 Driver、两家审核者、原生进程调�
 已核查 Kimi 原生 Hook 作为备选：官方说明异常/超时默认放行，不能把它直接作为唯一安全边界；本轮没有用它替代失败的权限规则，也未宣称 Hook 方案经过实测。[官方 Hook 说明](https://moonshotai.github.io/kimi-code/en/customization/hooks)。
 
 官方依据（能力结论仍以本报告实测为准）：[Kimi 配置规则](https://moonshotai.github.io/kimi-code/en/configuration/config-files)、[Kimi 工具](https://moonshotai.github.io/kimi-code/en/reference/tools)、[Qoder CN 权限与双斜杠路径](https://docs.qoder.cn/cli/permissions)、[Qoder CN 配置范围](https://docs.qoder.cn/cli/config-scope)。
+
+## 7. 后续实施计划与规则控制复测（2026-10-27 追加）
+
+前述取证批次随后已在 `c4d495ee` 提交并推送；§6 的未提交陈述保留为当时状态。本次核对基线为 `10ce14bf`，无未关闭闸门，已制定[实施分解](../08_project/KimiCode与QoderCN双角色接入实施计划.md)。生产接入仍未实现。
+
+探针新增 Kimi 单因素规则控制臂，并执行 `--case deny --rule-mode deny-only`：只配置 Read/Grep/Glob 三条 deny，没有 allow。CLI 仍退出 0，实际读出普通和同行 canary，敏感 canary 未泄漏，文件未改变，临时根清理成功。证据：[kimi-deny-2026-10-27T00-21-15-834Z-efadf042.json](./evidence/kimi-qoder-cn-20261027-controls/kimi-deny-2026-10-27T00-21-15-834Z-efadf042.json)。
+
+该反例排除了“此次失败必须依赖后续 broad allow”这一解释；不能据此断言具体内部根因。配置加载、模式与规则匹配仍需定位；其余新增控制臂未测，禁用工具实际分发拒绝及 Windows 仍未测。未更新 TraceCapability 或放开审核准入。本次仅运行脚本语法检查与真实单例取证，未把历史 check/selftest 计为本批验证，未运行代码审或正式 verify。
+
+提交前补验（2026-10-27）：在更新后的基线 `cef044a5` 上执行 `npm run check`，退出 0；4025 项中 4015 通过、10 跳过、0 失败，测试耗时约 387 秒。脚本语法、文档链接和 `git diff --check` 通过，6 份交付文件经仓库敏感信息扫描零命中。此为本次材料交付的回归检查，不代表新客户端准入、代码双审或正式 verify 完成。
