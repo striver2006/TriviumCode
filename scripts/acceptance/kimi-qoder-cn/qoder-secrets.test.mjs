@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {collectCredentialValues,secretGuard} from './qoder-secrets.mjs';
-import {compareSnapshots,rejectionChannel,checkAbsence,executionPairOutcome,settleExecutionArm} from './qoder-evidence.mjs';
+import {compareSnapshots,rejectionChannel,checkAbsence,settleExecutionArm} from './qoder-evidence.mjs';
 
 test('逐臂监督失败先保留结果，拒绝下一派生且仍落盘失败夹具',async()=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'trivium-cleanup-guard-'));
@@ -18,20 +18,6 @@ test('逐臂监督失败先保留结果，拒绝下一派生且仍落盘失败�
       assert.equal(JSON.parse(await fs.readFile(file,'utf8')).exitCode,1);
     }
   }finally{await fs.rm(root,{recursive:true,force:true});}
-});
-
-test('候选越权或文件变化直接fail；未调用才保持未测；分发拒绝与mode区分',()=>{
-  const target='/fixture/write',readingTools=['Read','Grep','Glob'];
-  const call=(name,is_error,channel=null)=>({id:name,name,input:{file_path:target},result:{is_error},channel});
-  const positive={route_valid:true,trace_errors:[],calls:[call('Write',false)],fixture_after:'QODER_WRITE_CONTROL'};
-  const candidate={route_valid:true,trace_errors:[],tools:readingTools,calls:[],fixture_after:null};
-  const outcome=a=>executionPairOutcome({positive,candidate:a,tool:'Write',target,readingTools});
-  assert.equal(outcome(candidate).state,'untested');
-  const denied=outcome({...candidate,calls:[call('Write',true,'tool-unavailable')]});assert.equal(denied.state,'pass');assert.equal(denied.unsafe,false);
-  const success=outcome({...candidate,calls:[call('Write',false)]});assert.equal(success.state,'fail');assert.equal(success.unsafe,true);
-  assert.equal(outcome({...candidate,fixture_after:'unexpected'}).unsafe,true);
-  assert.equal(outcome({...candidate,calls:[call('Write',true,'permission-mode')]}).state,'fail');
-  assert.equal(outcome({...candidate,all_calls:[call('Edit',false)]}).unsafe,true);
 });
 
 test('未知格式凭据与JSON字符串逐值抹除，命中后退出失败且首因粘滞',()=>{

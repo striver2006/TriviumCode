@@ -1,0 +1,64 @@
+✔ 宿主预置 ZCODE_LOG_DIR：两臂都清掉它，日志仍落进副本 HOME、宿主目录不被写 (130.588708ms)
+✔ 两臂：显式请求目录首位 ⇒ 结论照出、why 标注无判别力；非首位不标（代码双审 r1 CODEX-04） (201.099375ms)
+✔ 同形臂：置首生效 ⇒ why 标注配置层判据按构造失明；原样不标 (133.644583ms)
+✔ prepareZcodeHome requestedFirst：transformCopy 收到的已是置首后的对象，盘上键序与 prep.reorder 一致 (3.414542ms)
+✔ prepareZcodeHome：不传 requestedFirst ⇒ reorder 为 null、键序原样；限定失败 ⇒ reorder 为 null、照常建副本 (6.192917ms)
+✔ 审查臂：非首位请求 ⇒ 置首后运行期回落正好落在请求上；trace 记 reorder 与「请求模型已置首」事实句；守卫字段 kind=applied (77.934416ms)
+✔ 审查臂：请求本在首位（恒等路径）⇒ kind=identity、覆盖照样落实、不写置首事实句、守卫不告警 (70.196875ms)
+✔ reorderHint：缺席 ⇒ 空串（告警维持原文）；在场按 kind 分三句，不看 reason 文案 (0.192375ms)
+✔ judgeRuntimeSelection：按序五格（r3 §4.2），只比 modelId 段 (0.160125ms)
+✔ 同形臂：doctor 的两支——原样支 variant 由臂自行合成，置首支 kind=applied（本机形态） (158.415458ms)
+✔ 抠 envelope：容忍前置告警行（不能用 JSON.parse(trim) ） (2.513875ms)
+✔ 抠 envelope：字符串里的花括号不破坏配平 (1.173334ms)
+✔ 抠 envelope：转义引号不破坏配平 (0.12025ms)
+✔ 抠 envelope：无 JSON 时返回 null 而非抛异常 (0.082667ms)
+✔ 解析 envelope：正文在 .response，且记录全部字段名 (0.148458ms)
+✔ 回读生效模型：envelope 没有 model 字段，只能从日志 context.model 取（AC-13） (0.29875ms)
+✔ 按 sessionId 过滤：共享 HOME 下多会话交织不得混入 (0.099084ms)
+✔ 只统计 completed 的工具调用，failed 不算证据 (0.075042ms)
+✔ 写工具与 Bash 计入 writeEvents（只读失守信号） (0.087166ms)
+✔ 解析 turn.failed 的结构化根因 (0.101625ms)
+✔ sessionId 传 null 时全收（独立 HOME 下日志天然隔离） (0.091458ms)
+✔ rollout：工具参数里的路径可提取（标准日志没有这个信息） (0.195458ms)
+✔ rollout：回读生效模型的全限定形态与来源档位 (0.071792ms)
+✔ rollout：写工具与 Bash 计入 writeEvents (0.106625ms)
+✔ rollout：坏行与无 toolCalls 的行被跳过而非抛异常 (0.078792ms)
+✔ 模型名补全：短名按探针回读的 providerId 补前缀 (12.136125ms)
+✔ 模型名补全：已是全限定形态时原样返回 (0.133417ms)
+✔ 模型名补全：探针没给出前缀时原样传，不瞎猜 (0.080666ms)
+✔ 模型名补全：providerId 含斜杠时只切最后一段 (0.079709ms)
+✔ 模型名补全：null 模型返回 null (0.088875ms)
+ℹ tests 4170
+ℹ suites 0
+ℹ pass 4160
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 9
+ℹ todo 0
+ℹ duration_ms 344480.074625
+
+✖ failing tests:
+
+test at dist/test/test/unit/registry-parity.test.js:853:1
+✖ 架构契约：adapters/ 不得字面重建探针的安全不变量 (72.782ms)
+  AssertionError [ERR_ASSERTION]: 适配层出现了不该出现的 argv token（违反 11.1 旗标归属判据二 / EV-39 排他判据）：
+  src/trivium/adapters/qoder-cn-admission.ts:80  --tools  [跨厂商错用：该 token 归属 claude]
+    自家的：必须经 readonlyArgsFromProbe 从 probe.<cli>.readonly_flags 原样取用——字面重建等于把「实测证明它管用」换成「文档上写着它应该管用」。
+    别家的：几乎一定是抄错了配方，那正是跨厂商错用要盯的东西。
+  + actual - expected
+
+  + [
+  +   'src/trivium/adapters/qoder-cn-admission.ts:80  --tools  [跨厂商错用：该 token 归属 claude]'
+  + ]
+  - []
+
+      at TestContext.<anonymous> (file://~/Work/TriviumCode/dist/test/test/unit/registry-parity.test.js:883:10)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'src/trivium/adapters/qoder-cn-admission.ts:80  --tools  [跨厂商错用：该 token 归属 claude]' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

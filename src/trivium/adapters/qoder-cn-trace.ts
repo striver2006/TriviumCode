@@ -38,6 +38,7 @@ export function parseQoderTrace(stdout:string):QoderTrace {
       for(const block of blocks){
         const b=object(block);if(!b)continue;
         if(b['type']==='tool_use'){
+          if(e['type']!=='assistant'||!trace.init)trace.errors.push('工具调用来源或init顺序无效');
           const id=text(b['id']),name=text(b['name']),input=object(b['input']);
           if(!id||!name||!input){trace.errors.push('工具调用缺ID/名称/参数');continue;}
           if(ids.has(id)){trace.errors.push('重复工具调用ID');continue;}
@@ -45,6 +46,7 @@ export function parseQoderTrace(stdout:string):QoderTrace {
           const call:QoderToolCall={id,name,input,result:null,channel:null};ids.set(id,call);trace.calls.push(call);
         }
         if(b['type']==='tool_result'){
+          if(e['type']!=='user'||!trace.init)trace.errors.push('工具结果来源或init顺序无效');
           if(trace.terminal_count)trace.errors.push('终态之后仍有工具结果');
           const id=text(b['tool_use_id']),call=id?ids.get(id):null;
           if(!call||call.result){trace.errors.push('工具结果悬空、先于调用或重复');continue;}
@@ -65,7 +67,7 @@ export function parseQoderTrace(stdout:string):QoderTrace {
     if(decisions.length===1&&reasons.has('rule'))call.channel='permission-rule';
     else if(decisions.length===1&&reasons.has('mode'))call.channel='permission-mode';
     else if(decisions.length)call.channel='unknown';
-    else if(typeof call.result.content==='string'&&/^Error: Tool "[^"]+" (?:not found|is not available)\.?$/.test(call.result.content))call.channel='tool-unavailable';
+    else if(typeof call.result.content==='string'&&/^Error: Tool "([^"]+)" (?:not found|is not available)\.?$/.exec(call.result.content)?.[1]===call.name)call.channel='tool-unavailable';
     else call.channel='unknown';
   }
   for(const d of trace.decisions)if(!ids.get(d.id)?.result?.is_error)trace.errors.push('权限事件没有对应失败结果');

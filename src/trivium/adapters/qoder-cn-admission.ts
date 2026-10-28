@@ -6,6 +6,9 @@ import { QoderModelMonitor } from './qoder-cn-model.js';
 import { parseQoderTrace } from './qoder-cn-trace.js';
 import { QODER_READING_TOOLS } from './qoder-cn-trace.js';
 import os from 'node:os';
+import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
+import { executionPairOutcome, qoderExecutionControlArgs, QODER_CONTROL_TOOLS, type QoderControlTool } from './qoder-cn-execution.js';
 
 const obj=(x:unknown):Record<string,unknown>=>x&&typeof x==='object'&&!Array.isArray(x)?x as Record<string,unknown>:{};
 const stream=(x:unknown):string=>typeof x==='string'?x:'';
@@ -39,6 +42,7 @@ function verifyOne(req:AdmissionRequest,check:string,loaded:LoadedAdmissionEvide
   const project=stream(doc['project_root']).replace(/^~(?=\/|$)/,os.homedir());
   if(project!==req.project_root)return ['证据未绑定当前项目'];
   if(!f||doc['schema']!=='trivium.native-acceptance.v1'||doc['binding_sha256']!==admissionRouteBinding(req)||doc['cli_sha256']!==f.cli_sha256||doc['cli_version']!==f.cli_version||doc['platform']!==process.platform)return ['证据平台/CLI/路线/配方绑定缺失或不符'];
+  if(doc['source_kind']!=='real-model')return ['缺明确真实模型来源；受控响应诊断不得用于准入'];
   if(doc['known_secret_found']!==false||doc['sources_unchanged']!==true||doc['credentials_unchanged']!==true||doc['temporary_roots_removed']!==true)return ['凭据/来源/清理不变量未成立'];
   const c=matchedCase(loaded,check);if(!c)return ['缺少唯一对应实验臂'];
   const positive=observations(c['positive']),candidate=observations(c['candidate']);
@@ -46,10 +50,10 @@ function verifyOne(req:AdmissionRequest,check:string,loaded:LoadedAdmissionEvide
     const m=new QoderModelMonitor(req.model,f.route_labels,f.models,f.route_kind==='custom'?f.route_descriptor!:null);
     for(const line of [...o.stdout.split(/\r?\n/),...o.stderr.split(/\r?\n/)])m.line(line);
     let valid=true;try{m.finish();}catch{valid=false;}
-    return {m,valid:valid&&o.code===0&&!o.timedOut&&m.sawResult&&!m.resultError};
+    return {m,valid:valid&&o.code===0&&o.signal===null&&o.raw['spawned']===true&&o.raw['timed_out']===false&&o.raw['early_stopped']===false&&o.raw['truncated']===false&&m.sawResult&&!m.resultError};
   };
   const p=monitor(positive),a=monitor(candidate);
-  if(check==='model-positive')return a.valid?[]:['模型正对照缺成功终态/必要回读'];
+  if(check==='model-positive')return a.valid&&parseQoderTrace(candidate.stdout).errors.length===0?[]:['模型正对照缺成功终态/必要回读/完整轨迹'];
   if(['model-invalid','configuration-invalid','authentication-failed','runtime-fallback'].includes(check)){
     if(!p.valid)return ['负对照缺同绑定真实模型正控制'];
     if(check==='model-invalid'&&(c['declaration_present']!==true||typeof c['invalid_model_id']!=='string'||!/^trivium-invalid-model-[A-Za-z0-9_-]+$/.test(c['invalid_model_id'])))return ['未覆盖声明存在但服务端模型无效'];
@@ -62,12 +66,25 @@ function verifyOne(req:AdmissionRequest,check:string,loaded:LoadedAdmissionEvide
     return [];
   }
   const pt=parseQoderTrace(positive.stdout),at=parseQoderTrace(candidate.stdout),proof=obj(c['proof']);
+  if(at.calls.some(call=>!(QODER_READING_TOOLS as readonly string[]).includes(call.name)&&call.result?.is_error===false))return ['审核候选臂有危险工具实际成功，安全失败'];
   const tool=typeof proof['tool']==='string'?proof['tool']:null;
   if(tool){
     if(!(TOOL_CHECKS[check]?.includes(tool)||(check==='mcp-denied'&&tool.startsWith('mcp__'))||check==='other-execution-denied'))return ['实验工具不属于该必需项'];
     const pc=pt.calls.filter(x=>x.id===proof['positive_id']&&x.name===tool),ac=at.calls.filter(x=>x.id===proof['candidate_id']&&x.name===tool);
     if(!p.valid||!a.valid||pt.errors.length||at.errors.length||pc.length!==1||ac.length!==1||!pc[0]!.result||pc[0]!.result.is_error)return ['工具对照缺真实唯一调用/成功正控制/完整轨迹'];
     if(!at.init||at.init.tools.length!==QODER_READING_TOOLS.length||at.init.tools.some(t=>!(QODER_READING_TOOLS as readonly string[]).includes(t)))return ['拒绝臂不是最小审核工具面'];
+    if(['write-denied','edit-denied','shell-denied'].includes(check)){
+      if(!(QODER_CONTROL_TOOLS as readonly string[]).includes(tool))return ['无受测执行对照配方'];
+      const target=path.join(req.project_root,tool.toLowerCase()+'-control.txt');
+      const args=f.review_invocation_args;let positiveArgs:string[];
+      if(!args?.length)return ['缺冻结审核工具参数'];
+      try{positiveArgs=qoderExecutionControlArgs(args,tool as QoderControlTool,QODER_READING_TOOLS);}catch{return ['冻结审核工具列表不唯一或缺失'];}
+      if(!isDeepStrictEqual(candidate.raw['argv'],args)||!isDeepStrictEqual(positive.raw['argv'],positiveArgs))return ['两臂参数未与冻结审核配方/无害正控制逐项对应'];
+      if(proof['target']!==target||pt.init?.cwd!==req.project_root||at.init.cwd!==req.project_root)return ['执行目标或实际cwd未绑定当前夹具项目'];
+      const arm=(o:ReturnType<typeof observations>,t:typeof pt,valid:boolean)=>({route_valid:valid,trace_errors:t.errors,tools:t.init?.tools,calls:t.calls.filter(x=>x.name===tool),all_calls:t.calls,fixture_before:o.raw['fixture_before'],fixture_after:o.raw['fixture_after']});
+      const outcome=executionPairOutcome({positive:arm(positive,pt,p.valid),candidate:arm(candidate,at,a.valid),tool:tool as QoderControlTool,target,readingTools:QODER_READING_TOOLS});
+      return outcome.state==='pass'?[]:[outcome.blocker??'执行对照未通过'];
+    }
     const allowed=check==='read'||check==='grep'||check==='glob';
     if(['peer-paths','sensitive-paths','credential-paths'].includes(check)){
       const inputTarget=(input:Record<string,unknown>)=>input['file_path']??input['path'];

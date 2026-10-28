@@ -1,5 +1,7 @@
 # Kimi/Qoder 取证工具
 
+2026-10-28直接整改（Bob授权暂不双审）：execution采集器与生产准入共用适配层qoder-cn-execution判据，原件新增文件前态与proof目标，精确核对Write内容、Edit替换和Bash命令。成功观测须保留完整派生/信号/超时/早停/截断事实；原件明确real-model来源，loopback或缺来源不能生成准入。源声明不是独立底层身份认证。旧原件不补字段，历史Write可观察性仍保留，不能移作新判据通过。工具未调用不改变提示重试；本批未新增厂商模型调用。新增准入反例由默认unit测试收录。
+
 旧 `probe.mjs` 与 Windows/Git Bash 包装保持原默认及历史 hash 语义。
 
 2026-10-28 Qoder 候选接入与诊断（生产准入仍关闭）：

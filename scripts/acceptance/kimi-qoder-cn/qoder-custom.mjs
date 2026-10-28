@@ -12,7 +12,7 @@ const repo=path.resolve(import.meta.dirname,'../../..'),source=path.join(os.home
 const hash=x=>crypto.createHash('sha256').update(x).digest('hex');
 const temp=await fs.mkdtemp(path.join(os.tmpdir(),'trivium-cn-custom-v2-'));await fs.chmod(temp,0o700);
 const roots=new Set(),paths=new Map(),snapshots=new Map();
-const evidence={schema:'trivium.native-acceptance.v1',at:new Date().toISOString(),project_root:repo,platform:process.platform,requested:key,admission:false,windows:'未测',environment_policy:'replace-v1',cases:[]};
+const evidence={schema:'trivium.native-acceptance.v1',source_kind:'real-model',at:new Date().toISOString(),project_root:repo,platform:process.platform,requested:key,admission:false,windows:'未测',environment_policy:'replace-v1',cases:[]};
 let runtime,guard,selected,bytes,pinned,probe,positive,stage='prepare';
 const safe=s=>guard?guard.scrub(s):s;
 try{
@@ -33,7 +33,7 @@ try{
   probe=await runtime.probeQoderCustom(pinned,runtime.defaultProbe().cli.qoderclicn,key,observation=>{positive=observation;});
   const facts=structuredClone(probe.native_routes.find(f=>f.model==='custom:'+key));facts.entrypoint=bin;
   evidence.facts=facts;evidence.cli_version=facts.cli_version;evidence.binding_sha256=runtime.admissionRouteBinding({critic:'qoder-cn',project_root:repo,model:facts.model,native_model:{facts,requested:facts.model,override:'custom:'+key,origin:'diagnostic'}});
-  const normalized=r=>({stdout:safe(r.stdout),stderr:safe(r.stderr),raw_exit_code:r.code,raw_signal:r.signal,timed_out:r.timedOut,spawned:r.spawned,duration_ms:r.durationMs,command_line:r.commandLine});
+  const normalized=r=>({stdout:safe(r.stdout),stderr:safe(r.stderr),raw_exit_code:r.code,raw_signal:r.signal,timed_out:r.timedOut,early_stopped:r.earlyStopped,truncated:r.truncated,spawned:r.spawned,duration_ms:r.durationMs,command_line:r.commandLine});
   const legacy=r=>({...r,code:r.code,stdout:safe(r.stdout),stderr:safe(r.stderr)});
   const positiveObservation=normalized(positive.review);evidence.deny_paths_sha256=runtime.admissionHash([]);evidence.recipe_kind='review';
   evidence.cases.push({id:'positive',arm:'positive',check:'model-positive',positive:positiveObservation,candidate:positiveObservation,catalog:legacy(positive.catalog),out:legacy(positive.review),model_effective:null,provider_effective:null});

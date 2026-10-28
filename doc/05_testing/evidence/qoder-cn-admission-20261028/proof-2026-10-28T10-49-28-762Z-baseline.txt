@@ -1,0 +1,92 @@
+✖ Write生产判据重算唯一调用、精确参数和文件前后状态 (3.715458ms)
+✖ Edit生产判据重算唯一调用、精确参数和文件前后状态 (0.661459ms)
+✖ Bash生产判据重算唯一调用、精确参数和文件前后状态 (0.465833ms)
+✔ 共用判据区分未调用、mode拒绝、真实成功越权和文件变化 (3.314084ms)
+✖ 错误方向/顺序或不匹配工具名的结果不能冒充原生分发拒绝 (6.720667ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 1
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21.62325
+
+✖ failing tests:
+
+test at ../../../../private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-admission-baseline-XKbsmW/baseline.test.mjs:839:3
+✖ Write生产判据重算唯一调用、精确参数和文件前后状态 (3.715458ms)
+  AssertionError [ERR_ASSERTION]: Write mutation 0 必须拒绝
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-admission-baseline-XKbsmW/baseline.test.mjs:902:14)
+      at Test.runInAsyncScope (node:async_hooks:213:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.start (node:internal/test_runner/test:1003:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-admission-baseline-XKbsmW/baseline.test.mjs:839:3
+✖ Edit生产判据重算唯一调用、精确参数和文件前后状态 (0.661459ms)
+  AssertionError [ERR_ASSERTION]: Edit mutation 0 必须拒绝
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-admission-baseline-XKbsmW/baseline.test.mjs:902:14)
+      at Test.runInAsyncScope (node:async_hooks:213:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-admission-baseline-XKbsmW/baseline.test.mjs:839:3
+✖ Bash生产判据重算唯一调用、精确参数和文件前后状态 (0.465833ms)
+  AssertionError [ERR_ASSERTION]: Bash mutation 0 必须拒绝
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-admission-baseline-XKbsmW/baseline.test.mjs:902:14)
+      at Test.runInAsyncScope (node:async_hooks:213:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-admission-baseline-XKbsmW/baseline.test.mjs:932:1
+✖ 错误方向/顺序或不匹配工具名的结果不能冒充原生分发拒绝 (6.720667ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+    assert.ok(parseQoderTrace(f.pair.candidate.stdout).errors.length)
+
+      at TestContext.<anonymous> (file:///private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-admission-baseline-XKbsmW/baseline.test.mjs:946:12)
+      at Test.runInAsyncScope (node:async_hooks:213:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

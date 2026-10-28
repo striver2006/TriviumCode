@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {build} from 'esbuild';
-import {compareSnapshots,checkAbsence,executionPairOutcome,settleExecutionArm} from './qoder-evidence.mjs';
+import {compareSnapshots,checkAbsence,settleExecutionArm} from './qoder-evidence.mjs';
 
 const key=process.argv[2]?.replace(/^custom:/,'');
 if(process.argv.length!==3||!key||!/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(key))throw Error('用法：node qoder-execution.mjs custom:<provider/model>；同时独立核对官方探针实际路线');
@@ -18,7 +18,7 @@ const started=Date.now(),deadline=started+60*60*1000;
 // 对全部原生CLI派生计数（包括version/catalog），比24次模型调用限制更严格。
 const budget={limit:24,used:0,launches:[],exhausted:false};
 const evidence={schema:'trivium.native-acceptance.v1',at:new Date().toISOString(),project_root:project,platform:process.platform,
-  scope:'disposable-native-observability-only',admitted:false,windows:'未测',script_sha256:hash(await fs.readFile(import.meta.filename)),routes:[],cases:[]};
+  scope:'disposable-native-observability-only',source_kind:'real-model',admitted:false,windows:'未测',script_sha256:hash(await fs.readFile(import.meta.filename)),routes:[],cases:[]};
 let r,guard,primary=null,scope,timer,termination;
 const safe=x=>guard?guard.scrub(x):x;
 const assertTime=reserve=>{if(Date.now()+reserve>=deadline)throw Error('全批60分钟预算耗尽，剩余未测');};
@@ -35,6 +35,7 @@ try{
     export {probeQoderCustom,probeQoderCn} from './src/trivium/probes/qoder-cn.ts';
     export {qoderModelRequest,QoderModelMonitor} from './src/trivium/adapters/qoder-cn-model.ts';
     export {parseQoderTrace,QODER_READING_TOOLS} from './src/trivium/adapters/qoder-cn-trace.ts';
+    export {executionPairOutcome,qoderExecutionControlArgs} from './src/trivium/adapters/qoder-cn-execution.ts';
     export {defaultProbe,defaultConfig} from './src/trivium/config.ts';export {AGENTS} from './src/trivium/agents/registry.ts';
     export {enumerateDenyPaths} from './src/trivium/freeze.ts';export {admissionRouteBinding,admissionHash} from './src/trivium/admission.ts';
     export {observeTempDirs,tryRemoveTempDir} from './src/trivium/util/fsx.ts';
@@ -88,19 +89,19 @@ try{
         for(const arm of ['positive','candidate']){
           assertTime(30000);
           if(tool==='Edit')await fs.writeFile(target,'QODER_EDIT_BEFORE');else await fs.rm(target,{force:true});
+          const fixtureBefore=await fs.readFile(target,'utf8').catch(e=>{if(e.code==='ENOENT')return null;throw e;});
           const out=await r.withQoderHome(async(home,config,env)=>{
             const pinned=await r.pinQoderExecutable(bin,home,facts.cli_sha256);
             for(const name of ['user','machine_id'])guard.addCredential(await fs.readFile(path.join(config,'.auth',name),'utf8'));
             if(route==='custom'){const selected=await r.loadQoderCustom(pinned.executable,key,facts.route_descriptor);guard.merge(selected.secrets);await r.installQoderCustom(selected,config);}
             await r.prepareQoderReadonly(home,config,deny,project);
-            const args=[...facts.review_invocation_args];
+            const args=arm==='positive'?r.qoderExecutionControlArgs(facts.review_invocation_args,tool,r.QODER_READING_TOOLS):[...facts.review_invocation_args];
             if(arm==='positive'){
               // 仅无害正控制允许这个目标动作；候选臂从未消费该更宽配置。
               const settings=JSON.parse(await fs.readFile(path.join(config,'settings.json'),'utf8'));
               settings.permissions.deny=settings.permissions.deny.filter(t=>t!==tool&&(tool!=='Write'||t!=='Edit'));
               settings.permissions.allow.push(tool==='Bash'?'Bash(echo QODER_BASH_CONTROL*)':`Edit(/${target})`);
               await fs.writeFile(path.join(config,'settings.json'),JSON.stringify(settings),{mode:0o600});
-              args[args.indexOf('--tools')+1]=[...r.QODER_READING_TOOLS,tool].join(',');
             }
             const monitor=new r.QoderModelMonitor(req.model,facts.route_labels,facts.models,route==='custom'?facts.route_descriptor:null);
             let stop,failureObservation=null;const begun=Date.now();
@@ -114,9 +115,10 @@ try{
           });
           const trace=r.parseQoderTrace(out.observation.stdout),calls=trace.calls.filter(c=>c.name===tool);
           pair[arm]={...out.observation,...out.monitor,argv:out.argv,settings:out.settings,route_valid:out.route_valid,trace_errors:trace.errors,tools:trace.init?.tools??null,calls,all_calls:trace.calls,
+            fixture_before:fixtureBefore,
             fixture_after:await fs.readFile(target,'utf8').catch(e=>{if(e.code==='ENOENT')return null;throw e;})};
           if(arm==='candidate'){
-            Object.assign(pair,executionPairOutcome({positive:pair.positive,candidate:pair.candidate,tool,target,readingTools:r.QODER_READING_TOOLS}));
+            Object.assign(pair,r.executionPairOutcome({positive:pair.positive,candidate:pair.candidate,tool,target,readingTools:r.QODER_READING_TOOLS}));
             if(pair.unsafe)throw Error(pair.blocker);
           }
           const unchanged=await compareSnapshots(snapshots,l=>fs.readFile(sourcePaths.get(l)),hash);

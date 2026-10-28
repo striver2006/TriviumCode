@@ -560,3 +560,5 @@ Qoder 持久化输出在返回 worker 前统一逐值脱敏；命中仍失败并
 代码审契约勘误：上段“enumerateDenyPaths对账”指采集器实际枚举及生产消费端核请求覆盖；生成器只冻结manifest所给集合，不自行枚举。评估原件默认在manifest目录生成，不写台账也会写评估原件，不称纯只读。候选危险工具成功或假文件变化必须fail并停止派生；未调用/正控制不足为untested，实际调用但无合格拒绝为fail，mode不能算规则或分发拒绝。旧原件不回填。
 
 GLM续裁：新诊断原件记录实际配置根（生产加载root）、入口、script/护栏/辅助hash及monitor首因/通道、验证失败、saw_result/result_error。索引对旧件缺字段保持null并单列execution_binding_warnings；单件损坏或非字符串stdout记error_code、继续其它件并最终退出1。逐臂监督结果先落内存记录，remaining/reused拒绝下一派生；共享身份查询脱离探针段以防观察器递归。以上为诊断/内部执行变更，不扩充生产run Schema，不回填历史原件，不代表新增native准入。
+
+2026-10-28直接整改：内部验收原件明确source_kind=real-model（来源声明，不等于独立底层模型认证），受控响应诊断与缺来源字段的旧件不能消费。成功控制明确spawned=true、timed_out/early_stopped/truncated=false、raw_signal=null。Write/Edit/Bash两臂增加fixture_before；proof.target限定当前项目对应无害控制文件，两臂实际工具参数与固定内容逐项核对、文件前后态重算，candidate.argv与冻结review_invocation_args一致。采集器与生产共用qoder-cn-execution判据；拒绝文本中的工具名须等于实际调用工具，调用/结果角色与init顺序须合法。缺字段不补写历史件，重新取证前继续阻塞；产品run与admission Schema形状不变，两家开关保持关闭。本轮按Bob授权不双审。

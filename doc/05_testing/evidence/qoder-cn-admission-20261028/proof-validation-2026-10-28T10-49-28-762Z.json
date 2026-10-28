@@ -1,0 +1,93 @@
+{
+  "schema": "trivium.proof-regression-check.v1",
+  "at": "2026-10-28T10:49:28.771Z",
+  "base": "d22de3de",
+  "review_mode": "Bob authorized direct implementation without dual review",
+  "native_model_calls": 0,
+  "actual_review_runs": 0,
+  "windows": "未测",
+  "production_admitted": false,
+  "admission_ledger_exists": false,
+  "records": [
+    {
+      "name": "baseline",
+      "kind": "expected-regression-on-original-source",
+      "exit_code": 1,
+      "counts": {
+        "tests": 5,
+        "pass": 1,
+        "fail": 4,
+        "skipped": 0,
+        "cancelled": 0
+      },
+      "raw_log_sha256": "1a5c041bf4b2bb3d620925d26ea6ee9ce3c13e6a22ec79e2ab266a6340310874",
+      "excerpt": "proof-2026-10-28T10-49-28-762Z-baseline.txt",
+      "excerpt_sha256": "53d890f2382fed621f30fbb4ff9342e5b2074e367524681afb762c77ccb6fe02"
+    },
+    {
+      "name": "check-r1",
+      "kind": "architecture-contract-failure",
+      "exit_code": 1,
+      "counts": {
+        "tests": 4170,
+        "pass": 4160,
+        "fail": 1,
+        "skipped": 9,
+        "cancelled": 0
+      },
+      "raw_log_sha256": "3416f278dfdb89070e79d0c23f1a658e6bb22fcb8493e1070c06aec07e2bbe71",
+      "excerpt": "proof-2026-10-28T10-49-28-762Z-check-r1.txt",
+      "excerpt_sha256": "9187de3051ebacb095fd24bf916bc2e8b12d4b4550d70fab5aeb47e52601ad67"
+    },
+    {
+      "name": "targeted",
+      "kind": "fixed-source",
+      "exit_code": 0,
+      "counts": {
+        "tests": 56,
+        "pass": 56,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      },
+      "raw_log_sha256": "e054b2339b6f7c63e2883da0c7d2d71ac429c780af5793fb31d30dc4db1905ff",
+      "excerpt": "proof-2026-10-28T10-49-28-762Z-targeted.txt",
+      "excerpt_sha256": "e054b2339b6f7c63e2883da0c7d2d71ac429c780af5793fb31d30dc4db1905ff"
+    },
+    {
+      "name": "check-r2",
+      "kind": "fixed-source",
+      "exit_code": 0,
+      "counts": {
+        "tests": 4171,
+        "pass": 4162,
+        "fail": 0,
+        "skipped": 9,
+        "cancelled": 0
+      },
+      "raw_log_sha256": "1194caffb7eb9e3d015478613b85ac548eef69e3ac1ecd9ac4a70629c76c23a5",
+      "excerpt": "proof-2026-10-28T10-49-28-762Z-check-r2.txt",
+      "excerpt_sha256": "148a6879e9175b2e4bd148b63d52b588115288934e3f133b6b5c6b18a8b68703"
+    }
+  ],
+  "source_sha256": {
+    "src/trivium/adapters/qoder-cn-admission.ts": "c4ab24c50511e6a4d2e1eb51b311be20e4e9e2fa6333b679183a1ba63492b90f",
+    "src/trivium/adapters/qoder-cn-execution.ts": "180116837bc21893aadeb41f0286ddbc569750550d28bde2a481bfb741a80742",
+    "src/trivium/adapters/qoder-cn-trace.ts": "8214bffa42676cb884a0c127050ca02c870e3c884a0e928cf2e69dbfa144f3c7",
+    "scripts/acceptance/kimi-qoder-cn/qoder-execution.mjs": "f72d9b7c20754395dfc1edf4adf25d9bfdabeb162a54d2f5421808ab0cb7d948",
+    "scripts/acceptance/kimi-qoder-cn/qoder-custom.mjs": "5e43664b42b5bed23d348e0ec902be82dabb78b4cb8675700393f8971384fc86",
+    "test/unit/qoder-cn-admission.test.ts": "2b32aa90bb9e21b932f87551a3d18737aa1b71d3a3531112b2524a473896c8b0"
+  },
+  "installation": {
+    "install_exit_code": 0,
+    "check_exit_code": 0,
+    "bundle_sha256": "3b064aeab3c369fff6771393d9b9642d329cf845ed84051264305fa533bc00e1",
+    "installed_sha256": "3b064aeab3c369fff6771393d9b9642d329cf845ed84051264305fa533bc00e1",
+    "match": true
+  },
+  "excerpt_normalization": {
+    "home": "~",
+    "trailing_whitespace": "removed",
+    "raw_logs": "unchanged; raw_log_sha256 preserved"
+  }
+}
