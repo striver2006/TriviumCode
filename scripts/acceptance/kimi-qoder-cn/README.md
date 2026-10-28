@@ -2,6 +2,16 @@
 
 2026-10-28直接整改（Bob授权暂不双审）：execution采集器与生产准入共用适配层qoder-cn-execution判据，原件新增文件前态与proof目标，精确核对Write内容、Edit替换和Bash命令。成功观测须保留完整派生/信号/超时/早停/截断事实；原件明确real-model来源，loopback或缺来源不能生成准入。源声明不是独立底层身份认证。旧原件不补字段，历史Write可观察性仍保留，不能移作新判据通过。工具未调用不改变提示重试；本批未新增厂商模型调用。新增准入反例由默认unit测试收录。
 
+20:30左右的续调查见两份报告末节：隔离下载官方Kimi 2.4.0并校验发布digest，final五臂仍复现规则未阻止执行；没有替换本机2.3.3。Qoder 1.1.80本地合成模型响应实验在鉴权/目录能力层失败，localhost请求0，不能补成Edit/Bash分发拒绝证据。该临时原型只以脱敏文本留存于evidence，不新增受支持的生产入口。
+
+源码工具现支持显式完整commit，默认仍固定历史2.3.3，不跟随main或浮动标签；导入模块不会联网。新版本复核用已解析的官方release commit，例如：
+
+```sh
+python3 scripts/acceptance/kimi-qoder-cn/kimi-source.py doc/05_testing/evidence/kimi-240-20261028 --commit f26e4d91ef8d5d233f6c20b42a150f96924d4f5e
+```
+
+只接受40位十六进制SHA，拒绝main、短SHA与任意URL。新原件记录该commit、源码归档hash与采集器hash；旧原件不改写。该源码检索和受控响应均不是生产真实模型准入。
+
 旧 `probe.mjs` 与 Windows/Git Bash 包装保持原默认及历史 hash 语义。
 
 2026-10-28 Qoder 候选接入与诊断（生产准入仍关闭）：

@@ -2,6 +2,8 @@
 
 日期：2026-10-28（Asia/Singapore）；基线 `355eb46e`；Driver：Codex。结论：**仍阻塞，审核准入与 Driver 开关均关闭**。已完成受控 native 机制定位和实验工具整改，未修复官方二进制的规则执行缺口，不宣称真实模型准入通过。
 
+续调查：2026-10-28 20:30左右另验新发布2.4.0，结果见§10；§1—§9仍只归属于历史2.3.3及其交付时点，不将旧版本链接/生命周期结果推广至新版本。
+
 ## 1. 指纹、范围与证据等级
 
 有效采样：macOS arm64，Kimi Code **2.3.3**，native SHA-256 `28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120`。`rules` 批启动前读取同 hash，逐臂版本均 2.3.3；`extra`、`verify` 及生命周期批固定私有 native 副本并核对执行后 hash。未运行 upgrade/install/login，不修改全局供应商、模型或账号配置。
@@ -137,3 +139,29 @@ Bob 后续显式调用 deliver，授权提交并推送本批材料。上一段�
 在该基线及本批工作树上重新执行 `npm run check`：typecheck/build/test 全部通过，4131 项中 4122 通过、9 跳过、0 失败；独立实验判定测试 19/19。以上结果为本次交付复核，§8 的历史 verify 和安装 hash 仍仅归属于各自采样基线，不混作当前运行时验收。
 
 交付不改变隔离失败和未测结论，不增加真实 native 调用，不打开审核或 Driver 开关；最终提交号及远端回读以 Git 记录为准。
+
+## 10. Kimi 2.4.0隔离复核（继续授权，暂不双审）
+
+本轮起点cc5d4e5e、工作树干净，Bob要求继续并沿用不双审。官方在2026-10-28 11:45:13 UTC（本地19:45:13）发布[2.4.0](https://github.com/MoonshotAI/kimi-code/releases/tag/@moonshot-ai/kimi-code@2.4.0)。下载darwin-arm64独立包到私有临时目录，archive SHA256与GitHub asset digest均为e9ed07859a74a9735ece9885f2466ad755fb8c27d559add2a69ffadcc6369a75，未运行安装器、未替换全局CLI。新二进制SHA256为39ebd6b434447574876bc66b05ae409c8e99b239494b3fef62b3a34ecceb9fd8；[发布与清理溯源](evidence/kimi-240-20261028/release-provenance-2.4.0.json)保留官方URL、digest、release commit与全局安装字节回读。下载缓存已删除并独立回读不存在。
+
+使用当前kimi-rootcause.mjs的final套件，仅将--bin指定隔离2.4.0，输出到新目录。五实验臂加version共6次native启动，受控loopback模型响应，不携带真实凭据、不调用官方模型，不算真实模型准入。[完整原件](evidence/kimi-240-20261028/kimi-final-1793190566195-76ca39.json)中五臂均退出0、调用/结果/终态配对完整：
+
+| 臂 | 原生事实 | 判读 |
+| --- | --- | --- |
+| none | 普通/同行/夹具外文件Read/Grep/Glob均实际返回 | 允许正控制，不是隔离通过 |
+| final-deny-only | 裸Read/Grep/Glob deny下仍返回同行及夹具外canary | 禁读隔离失败 |
+| final-nonread-allow | Write创建合成文件，Bash返回标记 | 无害成功正控制成立 |
+| final-nonread-deny | 自定义Write/Bash deny下仍创建同内容文件、返回Shell标记，无规则拒绝 | 自定义规则执行缺口仍复现 |
+| final-write-trimmed | native同ID返回Tool not found，目标文件前后不存在 | 只证明所测Write工具裁剪分发拒绝，不弥补读隔离 |
+
+私有实验根删除回读成功，global_before/global_after一致，全局安装仍为历史2.3.3字节28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120。2.4.0符号链接变体、真实模型、MCP/skills/Hook/插件完整隔离、真实原生进程树/凭据生命周期、GUI/Extension Host及Windows均未测；不继承2.3.3证据。
+
+源码工具不再只有硬编码历史commit：新增--commit完整40位SHA、保留旧位置输出目录与默认2.3.3 commit；import不触发联网，main/短SHA/URL等在网络前拒绝。按官方tag解析的固定release commit f26e4d91ef8d5d233f6c20b42a150f96924d4f5e复核，[新源码检索](evidence/kimi-240-20261028/official-search-f26e4d91-1793190698309530000.json)扫描2144个src TypeScript文件、10组模式；.addRules调用仍0，bindBootstrap仍只接permission mode而未种入配置rules。与native反例一致，但不声称二进制与源码等价或检索穷尽所有动态路径。
+
+官方[Server API](https://www.kimi.com/code/docs/en/kimi-code-cli/reference/server-api.html)还明确记录session更新接受但不应用permission_rules。该文档不替代本机API实测，本轮没有另启Web/ACP会话或宣称能用此接口修复规则。两家开关均未动，无新增准入或三审。
+
+收尾：[验证摘要](evidence/kimi-240-20261028/followup-validation.json)记录判定回归19/19、文档索引27/27、Python语法/导入无联网及8组参数检查（旧默认、位置目录、完整SHA、5个非法值）通过；源码生产者hash与当前脚本一致。[Qoder独立收尾回读](evidence/qoder-cn-admission-20261028/interface-postflight-20261028.json)记录4个临时根均不存在。提交候选文件敏感模式扫描零命中。产品TS运行时与审核配方未改，本轮未重跑npm run check、未重装，不引用前轮4162通过为本轮新检查。未提交、未推送。
+
+本轮交付授权：Bob随后明确要求“提交、推送”。交付仅包含本轮固定commit源码工具、说明文档、Kimi 2.4.0及Qoder原生入口调查证据；不含CLI二进制、凭据副本、本机配置、准入台账或构建产物。上述未提交与未全量检查描述保留为调查收尾时点，提交前另做完整检查并记录新结果。推送当前main到origin，最终提交与远端状态以Git回读为准；交付不改变准入关闭或未测结论。
+
+交付复核：本次npm run check的typecheck/build/test均退出0，4171项中4162通过、9跳过、0失败、0取消，测试364.2秒。另行重验Python CLI的8组参数全部通过；本地TriviumCode重装与install:check均退出0，仓库/安装bundle SHA256同为ee7dc10d8d6d4ef28d29b6b9cb0533b8ffc0f623da9cf42e7ea539adbe5278b6。[交付验证摘要](evidence/kimi-240-20261028/delivery-validation-20261028.json)与日志摘录新增保存，不覆盖调查时点验证。产品版本仍1.3.2；没有升级用户Kimi CLI、没有启动双审或开放准入。

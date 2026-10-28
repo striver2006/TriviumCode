@@ -1,0 +1,2046 @@
+{
+  "schema": "trivium.kimi-experiment.v1",
+  "suite": "final",
+  "at": "2026-10-28T12:29:10.775Z",
+  "platform": "darwin",
+  "intended_source_kind": "controlled-loopback-native-cli",
+  "native_launches": 6,
+  "source_code": "/** Kimi macOS 独立根因实验。loopback 只替代模型输出，执行/权限仍为原版 native CLI。 */\nimport fs from 'node:fs/promises';\nimport os from 'node:os';\nimport path from 'node:path';\nimport crypto from 'node:crypto';\nimport http from 'node:http';\nimport { spawnSync } from 'node:child_process';\nimport { fileURLToPath, pathToFileURL } from 'node:url';\nimport { build } from 'esbuild';\nimport { inspectTrace, classifyDenial, managedExpected } from './kimi-evidence.mjs';\n\nconst argv = process.argv.slice(2), opts = {};\nfor (let i = 0; i < argv.length; i += 2) {\n  if (!['--suite','--output','--bin'].includes(argv[i]) || !argv[i + 1]) throw Error('参数：--suite spike|rules|extra --output 目录 --bin native');\n  opts[argv[i].slice(2)] = argv[i + 1];\n}\nconst suite = opts.suite ?? 'spike';\nif (!['spike','rules','extra','managed','verify','final'].includes(suite) || process.platform !== 'darwin') throw Error('仅 macOS spike/rules/extra/managed/verify/final');\nconst repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');\nconst output = path.resolve(opts.output ?? path.join(repo,'doc/05_testing/evidence/kimi-macos-20261028'));\nconst installedBin = await fs.realpath(opts.bin ?? path.join(os.homedir(),'.kimi-code/bin/kimi'));\nconst sha = x => crypto.createHash('sha256').update(x).digest('hex');\nconst temp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'trivium-kimi-rca-')));\nawait fs.chmod(temp,0o700);\n// 固定本次执行字节，防止原生自动升级或外部安装与取证交错。\nconst bin=path.join(temp,'kimi-native');\nawait fs.copyFile(installedBin,bin); await fs.chmod(bin,0o700);\nconst sourceKinds={managed:'real-official-model-static-access-token',loopback:'controlled-loopback-native-cli'};\nconst manifest = { schema:'trivium.kimi-experiment.v1', suite, at:new Date().toISOString(), platform:process.platform,\n  intended_source_kind:suite==='managed'?sourceKinds.managed:sourceKinds.loopback,native_launches:0,\n  source_code:await fs.readFile(fileURLToPath(import.meta.url),'utf8'),\n  rerun:{executable:process.execPath,args:[fileURLToPath(import.meta.url),...process.argv.slice(2)]},\n  source_kind:'controlled-loopback-native-cli', real_model:false, real_credentials:false, admission:false,\n  cli_path:installedBin.replace(os.homedir(),'~'), execution_path:bin, cli_sha256:sha(await fs.readFile(bin)), script_sha256:sha(await fs.readFile(fileURLToPath(import.meta.url))), arms:[] };\nconst globalFiles = ['config.toml','credentials/kimi-code.json'];\nasync function globalHashes() {\n  return Object.fromEntries(await Promise.all(globalFiles.map(async p=>[p,await fs.readFile(path.join(os.homedir(),'.kimi-code',p)).then(sha,()=>null)])));\n}\nmanifest.global_before = await globalHashes();\nlet server, runtime, activeStop, interrupted = false, allTreesExited=true;\nconst privateValues=[];\nconst interrupt = () => {interrupted = true; activeStop?.();};\nfor (const sig of ['SIGINT','SIGTERM','SIGHUP']) process.once(sig,interrupt);\nconst safe = s => {for(const v of privateValues)if(v?.length>=12)s=s.replaceAll(v,'[REDACTED]');return runtime ? runtime.redactSecrets(s).content.replaceAll(os.homedir(),'~') : s;};\nasync function put(p,s) { await fs.mkdir(path.dirname(p),{recursive:true,mode:0o700}); await fs.writeFile(p,s,{mode:0o600}); }\nfunction processRows(pgid) {\n  const p = spawnSync('/bin/ps',['-axo','pid=,ppid=,pgid=,stat=,lstart='],{encoding:'utf8',env:{...process.env,TZ:'UTC',LC_ALL:'C'}});\n  if (p.status !== 0) return null;\n  return p.stdout.split('\\n').map(l=>/^\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\S+)\\s+(.+)$/.exec(l)).filter(Boolean)\n    .filter(m=>Number(m[3])===pgid && !m[4].startsWith('Z')).map(m=>({pid:+m[1],ppid:+m[2],pgid:+m[3],stat:m[4],lstart:m[5]}));\n}\ntry {\n  await build({stdin:{contents:`export {run,newProbeSection,withProbeSection,terminateProbeSectionGroups} from './src/trivium/util/exec.ts'; export {redactSecrets} from './src/trivium/secrets.ts';`,resolveDir:repo},bundle:true,platform:'node',format:'esm',outfile:path.join(temp,'runtime.mjs'),logLevel:'silent'});\n  runtime = await import(pathToFileURL(path.join(temp,'runtime.mjs')).href);\n  const root = path.join(temp,'中文 空格夹具'), home = path.join(temp,'config-a'), homeB = path.join(temp,'config-b');\n  const emptySkills = path.join(temp,'empty-skills');\n  await fs.mkdir(emptySkills); await fs.mkdir(path.join(root,'.git'),{recursive:true});\n  const fixture = {open:path.join(root,'普通 文件.txt'),peer:path.join(root,'peer','history.md'),secret:path.join(root,'.env'),outside:path.join(temp,'outside','outside.txt')};\n  const tokens = Object.fromEntries(Object.keys(fixture).map(k=>[k,`${k.toUpperCase()}_${crypto.randomBytes(12).toString('hex')}`]));\n  for (const k of Object.keys(fixture)) await put(fixture[k],tokens[k]+'\\n');\n  await fs.symlink(path.dirname(fixture.outside),path.join(root,'link'));\n  await fs.symlink(fixture.secret,path.join(root,'alias.txt'));\n  await fs.mkdir(path.join(root,'child'));\n  const agentFile = path.join(temp,'critic.md');\n  const agent = tools => `---\\nname: trivium-rca\\ndescription: Synthetic disposable experiment\\n${tools ? 'tools: '+JSON.stringify(tools)+'\\n' : ''}subagents: []\\n---\\nExecute requested tools. Do not fabricate results.\\n`;\n  const env = {...process.env};\n  for (const k of Object.keys(env)) if (/^(KIMI|MOONSHOT|QODER|ANTHROPIC|OPENAI|CODEX|TRIVIUM)_/.test(k) || ['NODE_OPTIONS','BUN_OPTIONS'].includes(k)) delete env[k];\n  env.KIMI_CODE_HOME = home;\n  let current, requestCount = 0;\n  server = http.createServer(async(req,res)=>{\n    // 不保存请求头；此服务永不获得真实凭据。\n    try {\n      let raw=''; for await (const c of req) {raw+=c;if(raw.length>2*1024*1024)throw Error('request-too-large');}\n      const body=JSON.parse(raw); requestCount++;\n      current.requests.push({url:req.url,model:body.model,tools:(body.tools??[]).map(t=>t.function?.name),stream:body.stream,\n        returned_tool_ids:(body.messages??[]).filter(m=>m.role==='tool').map(m=>m.tool_call_id),\n        skill_sentinel_seen:JSON.stringify(body.messages??[]).includes('SYNTHETIC_SKILL_DISCOVERY')});\n      if(requestCount>4)throw Error('round-budget');\n      const calls=requestCount===1?current.calls:[];\n      const message=calls.length?{role:'assistant',content:null,tool_calls:calls.map(c=>({id:c.id,type:'function',function:{name:c.name,arguments:JSON.stringify(c.args)}}))}:{role:'assistant',content:'PROBE_DONE'};\n      if(body.stream) {\n        res.writeHead(200,{'content-type':'text/event-stream'});\n        const delta=calls.length?{...message,tool_calls:message.tool_calls.map((c,i)=>({...c,index:i}))}:message;\n        for(const choice of [{delta,finish_reason:null},{delta:{},finish_reason:calls.length?'tool_calls':'stop'}])res.write('data: '+JSON.stringify({id:'chatcmpl-probe',object:'chat.completion.chunk',created:1,model:'probe',choices:[{index:0,...choice}]})+'\\n\\n');\n        res.end('data: [DONE]\\n\\n');\n      } else {res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({id:'chatcmpl-probe',object:'chat.completion',created:1,model:'probe',choices:[{index:0,message,finish_reason:calls.length?'tool_calls':'stop'}],usage:{prompt_tokens:1,completion_tokens:1,total_tokens:2}}));}\n    } catch(e) {current?.requests.push({error:e.message});res.writeHead(500);res.end('controlled protocol failure');}\n  });\n  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));\n  const port=server.address().port;\n  let providerConfig=`[providers.probe]\\ntype = \"openai\"\\nbase_url = \"http://127.0.0.1:${port}/v1\"\\napi_key = \"synthetic-not-a-real-credential\"\\n[models.probe]\\nprovider = \"probe\"\\nmodel = \"probe\"\\nmax_context_size = 131072\\ncapabilities = [\"tool_use\"]\\n`,modelAlias='probe';\n  if(suite==='managed') {\n    // 仅解析 CLI 自动生成的 JSON 兼容 TOML 值，拒绝猜测其它语法；不输出整份配置。\n    const text=await fs.readFile(path.join(os.homedir(),'.kimi-code/config.toml'),'utf8');\n    const sections=new Map();let section='';sections.set('',{});\n    for(const l of text.split(/\\r?\\n/)){const s=l.trim();if(!s||s.startsWith('#'))continue;if(/^\\[.*\\]$/.test(s)){section=s.slice(1,-1);sections.set(section,{});continue;}const m=/^([a-zA-Z_][a-zA-Z_0-9]*)\\s*=\\s*(.+)$/.exec(s);if(m)sections.get(section)[m[1]]=m[2];}\n    const value=(s,k)=>JSON.parse(sections.get(s)?.[k]??'null');\n    modelAlias=value('','default_model');const modelSection=`models.${JSON.stringify(modelAlias)}`;\n    const provider=value(modelSection,'provider'),providerSection=`providers.${JSON.stringify(provider)}`;\n    if(provider!=='managed:kimi-code'||value(providerSection,'type')!=='kimi'||value(providerSection,'base_url')!=='https://api.kimi.com/coding/v1')throw Error('not-official-native-default');\n    const credential=JSON.parse(await fs.readFile(path.join(os.homedir(),'.kimi-code/credentials/kimi-code.json'),'utf8'));\n    for(const v of Object.values(credential))if(typeof v==='string')privateValues.push(v);\n    if(typeof credential.access_token!=='string'||!credential.access_token)throw Error('no-access-token');\n    // 只使用已有 access token 的静态快照，临时配置不带 refresh token/OAuth 引用，杜绝刷新轮换。\n    providerConfig=`[providers.${JSON.stringify(provider)}]\\ntype = \"kimi\"\\nbase_url = \"https://api.kimi.com/coding/v1\"\\napi_key = ${JSON.stringify(credential.access_token)}\\n[${modelSection}]\\n`;\n    for(const k of ['provider','model','max_context_size','capabilities','display_name','support_efforts','default_effort']){const v=value(modelSection,k);if(v!==null)providerConfig+=`${k} = ${JSON.stringify(v)}\\n`;}\n    manifest.source_kind='real-official-model-static-access-token';manifest.real_model=true;manifest.real_credentials=true;\n    manifest.model_requested=modelAlias;manifest.model_effective=null;manifest.config_source_sha256=sha(text);\n    manifest.authentication_difference='existing access_token snapshot delivered via temporary api_key, no OAuth/refresh token; not identical managed OAuth launch';\n  }\n  const config = (rules=[], mode='manual', extra='') => `default_model = ${JSON.stringify(modelAlias)}\\ndefault_permission_mode = ${JSON.stringify(mode)}\\nmerge_all_available_skills = false\\nbuiltin_product_skills = false\\ntelemetry = false\\nauto_session_title = false\\n${providerConfig}${rules.map(r=>'\\n[[permission.rules]]\\n'+Object.entries(r).map(([k,v])=>k+' = '+JSON.stringify(v)).join('\\n')).join('\\n')}\\n${extra}`;\n  const calls = () => Object.entries(fixture).flatMap(([k,p])=>[\n    {id:'read-'+k,name:'Read',args:{path:p},tokens:[tokens[k]]},\n    {id:'grep-'+k,name:'Grep',args:{pattern:tokens[k],path:path.dirname(p),output_mode:'content'},tokens:[tokens[k]],paths:[path.basename(p)]},\n    {id:'glob-'+k,name:'Glob',args:{pattern:path.basename(p),path:path.dirname(p)},paths:[path.basename(p)]},\n  ]);\n  async function arm(name,{rules=[],mode='manual',cwd=root,configHome=home,tools=['Read','Grep','Glob'],useAgent=true,skills=true,selected=calls(),extra='',rawConfig,timeoutMs=60000,argsExtra=[],lifecycle=null,pty=false}={}) {\n    if (interrupted || manifest.arms.length>=64) throw Error('interrupted-or-launch-budget');\n    await put(path.join(configHome,'config.toml'),rawConfig??config(rules,mode,extra));\n    await put(path.join(configHome,'tui.toml'),'[upgrade]\\nauto_install = false\\n');\n    await put(agentFile,agent(tools));\n    const watched=[...new Set([...Object.values(fixture),...selected.filter(c=>['Write','Edit'].includes(c.name)).map(c=>c.args.path)])];\n    const fileStates=()=>Promise.all(watched.map(async p=>{try{const s=await fs.lstat(p);return {path:p,exists:true,regular:s.isFile(),symlink:s.isSymbolicLink(),sha256:s.isFile()?sha(await fs.readFile(p)):null};}catch(e){if(e.code==='ENOENT')return {path:p,exists:false};throw e;}}));\n    const fixtureBefore=await fileStates();\n    const configBefore=sha(await fs.readFile(path.join(configHome,'config.toml')));\n    current={name,calls:selected,requests:[]}; requestCount=0;\n    const prompt=suite==='managed'?`Disposable synthetic fixture, no real secrets. Use the exact Read/Grep/Glob calls below and report all errors; do not execute commands. Every target is synthetic. Finish with PROBE_DONE. Calls: ${JSON.stringify(selected.map(({name,args})=>({name,args})))}`:'Run the disposable capability experiment, then say PROBE_DONE.';\n    const args=[...(useAgent?['--agent-file',agentFile]:[]),...(skills?['--skills-dir',emptySkills]:[]),'-p',prompt,'--output-format','stream-json',...argsExtra];\n    const section=runtime.newProbeSection(name), samples=[];\n    // 不在段作用域安装 liveTrees 观察者：其内部 ps 也按段派生，会递归触发观察者。\n    let stopped=false;\n    const sampler=setInterval(()=>{for(const g of section.groups){const members=processRows(g.pgid);if(members?.length)samples.push({pgid:g.pgid,members});\n      if(lifecycle&&!stopped&&members?.length>1&&g.child.exitCode===null&&g.child.signalCode===null){stopped=true;if(lifecycle==='kill')process.kill(-g.pgid,'SIGSTOP');activeStop?.();}\n    }},200);\n    let r, ended;\n    try {manifest.native_launches++;r=await runtime.withProbeSection(section,()=>runtime.run(bin,args,{env:{...env,KIMI_CODE_HOME:configHome},cwd,timeoutMs,killGraceMs:500,killTree:true,pty,maxBufferBytes:4*1024*1024,stopEarly:s=>{activeStop=s;}}));}\n    finally {activeStop=undefined;clearInterval(sampler);ended=await runtime.terminateProbeSectionGroups([section],{graceMs:500,killWaitMs:3000});}\n    let expected=selected;\n    if(suite==='managed') {\n      // 真实模型自选调用 ID；逐项核对它实际提供的工具与精确参数，不补造缺失调用。\n      const actual=r.stdout.split(/\\r?\\n/).flatMap(l=>{try{return JSON.parse(l).tool_calls??[];}catch{return [];}});\n      expected=managedExpected(selected,actual);\n    }\n    const trace=inspectTrace(r.stdout,{expected,...r});\n    const configAfter=sha(await fs.readFile(path.join(configHome,'config.toml')));\n    const item={name,rules,mode,cwd,config_home:configHome,lifecycle_injection:lifecycle,lifecycle_triggered:stopped,execution_sha256:sha(await fs.readFile(bin)),config_sha256:configBefore,config_sha256_after:configAfter,fixture_before:fixtureBefore,fixture_after:await fileStates(),agent_sha256:useAgent?sha(await fs.readFile(agentFile)):null,\n      args,requests:current.requests,process_samples:samples,tree_cleanup:ended,trace,status:classifyDenial(trace),...r};\n    item.rerun=manifest.rerun; // 重建同一 suite/因素；args/commandLine 保留本次临时路径的实际调用。\n    manifest.arms.push(item);\n    console.log(JSON.stringify({arm:name,code:r.code,complete:trace.complete,leaks:trace.observations.filter(x=>x.leaked||x.path_listed).map(x=>x.id),rule_denied:trace.observations.filter(x=>x.rule_denied).map(x=>x.id),requests:requestCount}));\n    if(ended.remaining.length){allTreesExited=false;throw Error('unverified-process-tree');}\n    if(configBefore!==configAfter)throw Error('temporary-config-changed-stop');\n    if(suite==='managed'&&JSON.stringify(manifest.global_before)!==JSON.stringify(await globalHashes()))throw Error('global-config-or-credential-changed-stop');\n    return item;\n  }\n  manifest.native_launches++;\n  manifest.cli_version=(await runtime.run(bin,['--version'],{env,cwd:root,timeoutMs:15000,killTree:true})).stdout.trim();\n  await arm('none',{timeoutMs:suite==='managed'?180000:60000});\n  if(suite==='managed')await arm('managed-deny-only',{rules:['Read','Grep','Glob'].map(pattern=>({decision:'deny',pattern})),timeoutMs:180000});\n  if (suite==='rules') {\n    const deny=['Read','Grep','Glob'].map(pattern=>({decision:'deny',pattern}));\n    await arm('deny-only',{rules:deny});\n    await arm('allow-first',{rules:[...deny.map(x=>({...x,decision:'allow'})),...deny]});\n    await arm('deny-first',{rules:[...deny,...deny.map(x=>({...x,decision:'allow'}))]});\n    for(const mode of ['auto','yolo'])await arm('mode-'+mode,{rules:deny,mode});\n    await arm('no-agent',{rules:deny,useAgent:false});\n    await arm('no-tools-declaration',{rules:deny,tools:null});\n    await arm('no-skills-flag',{rules:deny,skills:false});\n    await arm('config-root-b',{rules:deny,configHome:homeB});\n    await arm('cwd-child',{rules:deny,cwd:path.join(root,'child')});\n    await arm('ordinary-deny',{rules:[{decision:'deny',pattern:`Read(${fixture.open})`}],selected:[calls()[0]]});\n    await arm('ordinary-quoted-deny',{rules:[{decision:'deny',pattern:`Read(${JSON.stringify(fixture.open)})`}],selected:[calls()[0]]});\n    await arm('lowercase-deny',{rules:[{decision:'deny',pattern:'read'}],selected:[calls()[0]]});\n    const pathCalls=[fixture.peer,path.relative(root,fixture.peer),path.join(root,'peer')+'/../peer/history.md',await fs.realpath(fixture.peer),path.join(root,'link/outside.txt'),await fs.realpath(path.join(root,'link/outside.txt')),path.join(root,'alias.txt')].map((p,i)=>({id:'path-'+i,name:'Read',args:{path:p},tokens:[i>=4&&i<=5?tokens.outside:i===6?tokens.secret:tokens.peer]}));\n    await arm('paths-no-rule',{selected:pathCalls});\n    await arm('paths-deny',{selected:pathCalls,rules:deny});\n    await arm('search-subject-deny',{rules:[{decision:'deny',pattern:`Grep(${tokens.peer})`},{decision:'deny',pattern:'Glob(history.md)'}]});\n    const write={id:'write',name:'Write',args:{path:path.join(root,'written.txt'),content:'SYNTHETIC_WRITE'}};\n    const bash={id:'bash',name:'Bash',args:{command:'echo SYNTHETIC_BASH'}};\n    await arm('nonread-allow',{tools:['Read','Grep','Glob','Write','Bash'],selected:[write,bash]});\n    await fs.rm(write.args.path,{force:true});\n    await arm('nonread-deny',{tools:['Read','Grep','Glob','Write','Bash'],selected:[write,bash],rules:[{decision:'deny',pattern:'Write'},{decision:'deny',pattern:'Bash'}]});\n    await fs.rm(write.args.path,{force:true});\n    await arm('nonread-trimmed',{selected:[write,bash,{id:'agent',name:'Agent',args:{prompt:'Say SYNTHETIC',description:'fixture'}},{id:'fetch',name:'FetchURL',args:{url:`http://127.0.0.1:${port}/synthetic`}}]});\n    await arm('invalid-rule-sentinel',{rawConfig:config([{decision:'invalid-decision',pattern:'Read'}])});\n    await arm('invalid-model-sentinel',{rawConfig:config().replace('default_model = \"probe\"','default_model = \"missing-model-sentinel\"')});\n  }\n  if(suite==='extra') {\n    // 每个裁剪工具单独一臂，保留 native 对批量未知工具重复转录的原反例。\n    for(const c of [{id:'write-one',name:'Write',args:{path:path.join(root,'written.txt'),content:'SYNTHETIC'}},{id:'bash-one',name:'Bash',args:{command:'echo SYNTHETIC'}},{id:'agent-one',name:'Agent',args:{prompt:'Say SYNTHETIC',description:'fixture'}},{id:'fetch-one',name:'FetchURL',args:{url:`http://127.0.0.1:${port}/synthetic`}},{id:'mcp-one',name:'mcp__fixture__ping',args:{}}])await arm('trimmed-'+c.name,{selected:[c]});\n    await arm('wrong-permissions-table',{rawConfig:config().replace(/\\n$/,'')+'\\n[[permissions.rules]]\\ndecision = \"deny\"\\npattern = \"Read\"\\n'});\n    await arm('legacy-permission-deny',{rawConfig:config()+'\\n[permission]\\ndeny = [{pattern=\"Read\"}]\\n'});\n    await arm('headless-explicit-manual-flag',{argsExtra:['--permission-mode','manual']});\n    // Hook 存活控制：仅合成配置，命令只写本临时根哨兵。\n    const hookMarker=path.join(temp,'hook-marker');\n    const hookScript=path.join(temp,'hook.mjs');\n    await put(hookScript,`import fs from 'node:fs'; fs.appendFileSync(${JSON.stringify(hookMarker)},'HOOK\\\\n'); process.stdout.write('{}');`);\n    const hook=`\\n[[hooks]]\\nevent = \"PreToolUse\"\\nmatcher = \"Read\"\\ncommand = ${JSON.stringify(process.execPath+' '+hookScript)}\\ntimeout = 5\\n`;\n    const hc=await arm('hook-enabled',{extra:hook,selected:[calls()[0]]});hc.hook_marker=await fs.readFile(hookMarker,'utf8').catch(()=>null);\n    await fs.rm(hookMarker,{force:true});\n    const hi=await arm('hook-omitted',{selected:[calls()[0]]});hi.hook_marker=await fs.readFile(hookMarker,'utf8').catch(()=>null);\n    // 项目 MCP 是独立执行面；裁剪模型工具面不能假定其启动进程也被禁用。\n    const mcpMarker=path.join(temp,'mcp-marker'), mcpScript=path.join(temp,'mcp.mjs');\n    await put(mcpScript,`import fs from 'node:fs';import readline from 'node:readline';fs.appendFileSync(${JSON.stringify(mcpMarker)},'MCP_STARTED\\\\n');for await (const l of readline.createInterface({input:process.stdin})){let q;try{q=JSON.parse(l)}catch{continue}if(q.id===undefined)continue;const result=q.method==='initialize'?{protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}:q.method==='tools/list'?{tools:[{name:'ping',description:'Synthetic injection sentinel',inputSchema:{type:'object',properties:{}}}]}:q.method==='tools/call'?{content:[{type:'text',text:'MCP_CALLED'}]}:{};console.log(JSON.stringify({jsonrpc:'2.0',id:q.id,result}));}`);\n    await put(path.join(root,'.mcp.json'),JSON.stringify({mcpServers:{fixture:{command:process.execPath,args:[mcpScript]}}}));\n    const mc=await arm('project-mcp-default-agent',{useAgent:false,selected:[calls()[0]]});mc.mcp_marker=await fs.readFile(mcpMarker,'utf8').catch(()=>null);\n    await fs.rm(mcpMarker,{force:true});\n    const mi=await arm('project-mcp-trimmed-agent',{selected:[calls()[0]]});mi.mcp_marker=await fs.readFile(mcpMarker,'utf8').catch(()=>null);\n    await fs.rm(path.join(root,'.mcp.json'));await fs.rm(mcpMarker,{force:true});\n    const skillName='trivium-injection-'+crypto.randomBytes(4).toString('hex');\n    await put(path.join(root,'.agents/skills',skillName,'SKILL.md'),`---\\nname: ${skillName}\\ndescription: SYNTHETIC_SKILL_DISCOVERY\\n---\\nSynthetic fixture only.\\n`);\n    const sc=await arm('project-skills-enabled',{useAgent:false,skills:false,selected:[calls()[0]]});sc.skill_canary=skillName;\n    const si=await arm('project-skills-empty-dir',{useAgent:false,skills:true,selected:[calls()[0]]});si.skill_canary=skillName;\n    // 历史直接 Bash 臂留下脱组后代，原件/回收证据保留；不再启动这两个不安全控制。\n    manifest.disabled_experiments=[{names:['lifecycle-term','lifecycle-force-kill'],reason:'detached Bash descendants escaped tracked process groups; see orphan recovery evidence; use the separate bounded lifecycle fixture only'}];\n  }\n  if(suite==='verify') {\n    const deny=['Read','Grep','Glob'].map(pattern=>({decision:'deny',pattern}));\n    await arm('headless-pty',{rules:deny,pty:true});\n    const aliases=[['alias',path.join(root,'alias.txt'),tokens.secret],['link',path.join(root,'link/outside.txt'),tokens.outside]];\n    const search=aliases.flatMap(([id,p,t])=>[{id:'grep-'+id,name:'Grep',args:{pattern:t,path:p,output_mode:'content'},tokens:[t]},{id:'glob-'+id,name:'Glob',args:{pattern:path.basename(p),path:path.dirname(p)},paths:[path.basename(p)]}]);\n    await arm('alias-search-open',{selected:search});await arm('alias-search-deny',{selected:search,rules:deny});\n    // 本批 doctor 只作 schema 诊断；历史 -p 非法规则来自 rules 批，端口/配置字节不同。\n    await put(path.join(home,'config.toml'),config([{decision:'invalid-decision',pattern:'Read'}]));\n    const doctorConfigHash=sha(await fs.readFile(path.join(home,'config.toml')));\n    manifest.native_launches++;\n    const d=await runtime.run(bin,['doctor'],{cwd:root,env,timeoutMs:15000,killTree:true});\n    manifest.invalid_rule_doctor={...d,config_sha256:doctorConfigHash};\n    const normal=await arm('rule-runtime-state',{rules:deny,selected:[calls()[0]]});\n    const session=normal.stdout.split(/\\r?\\n/).flatMap(l=>{try{const x=JSON.parse(l);return x.type==='session.resume_hint'?[x.session_id]:[];}catch{return [];}})[0];\n    const files=await fs.readdir(home,{recursive:true});\n    normal.session_state_observation={session,files:[],permission_rule_events:[],scope:'only text files under matching session id; absence is diagnostic, not native equivalence proof'};\n    for(const rel of files.filter(x=>session&&x.includes(session)&&/\\.(?:jsonl|json)$/.test(x))){const bytes=await fs.readFile(path.join(home,rel)).catch(()=>null);if(!bytes||bytes.length>2*1024*1024)continue;const text=bytes.toString();normal.session_state_observation.files.push({path:rel,sha256:sha(bytes)});for(const line of text.split('\\n'))if(line.includes('permission.rules.add')||line.includes('permissionRules'))normal.session_state_observation.permission_rule_events.push(line);}\n  }\n  if(suite==='final') {\n    await arm('final-deny-only',{rules:['Read','Grep','Glob'].map(pattern=>({decision:'deny',pattern}))});\n    const write={id:'write-final',name:'Write',args:{path:path.join(root,'written.txt'),content:'SYNTHETIC_WRITE'}};\n    const bash={id:'bash-final',name:'Bash',args:{command:'echo SYNTHETIC_BASH'}};\n    await arm('final-nonread-allow',{tools:['Read','Grep','Glob','Write','Bash'],selected:[write,bash]});\n    await fs.rm(write.args.path,{force:true});\n    await arm('final-nonread-deny',{tools:['Read','Grep','Glob','Write','Bash'],selected:[write,bash],rules:[{decision:'deny',pattern:'Write'},{decision:'deny',pattern:'Bash'}]});\n    await fs.rm(write.args.path,{force:true});\n    await arm('final-write-trimmed',{selected:[write]});\n  }\n  manifest.fixture={root,files:fixture,realpaths:Object.fromEntries(await Promise.all(Object.entries(fixture).map(async([k,p])=>[k,await fs.realpath(p)]))),tokens};\n  manifest.global_after=await globalHashes();\n  manifest.global_unchanged=JSON.stringify(manifest.global_before)===JSON.stringify(manifest.global_after);\n  manifest.execution_sha256_after=sha(await fs.readFile(bin));\n} catch(e) {manifest.error=safe(e.stack);process.exitCode=1;}\nfinally {\n  manifest.global_after=await globalHashes();\n  manifest.global_unchanged=JSON.stringify(manifest.global_before)===JSON.stringify(manifest.global_after);\n  if(server) {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}\n  if(allTreesExited)await fs.rm(temp,{recursive:true,force:true,maxRetries:3}).then(()=>{manifest.cleanup={ok:true,root_absent:true};},e=>{manifest.cleanup={ok:false,error:e.message};process.exitCode=1;});\n  else manifest.cleanup={ok:false,preserved_private_root:temp,reason:'tree-exit-unverified'};\n  manifest.finished_at=new Date().toISOString();\n  await fs.mkdir(output,{recursive:true});\n  const file=path.join(output,`kimi-${suite}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.json`);\n  await fs.writeFile(file,safe(JSON.stringify(manifest,null,2))+'\\n',{flag:'wx',mode:0o600});\n  console.log(JSON.stringify({file,error:manifest.error,arms:manifest.arms.length,cleanup:manifest.cleanup}));\n  for(const sig of ['SIGINT','SIGTERM','SIGHUP'])process.removeListener(sig,interrupt);\n}\n",
+  "rerun": {
+    "executable": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+    "args": [
+      "~/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/kimi-rootcause.mjs",
+      "--suite",
+      "final",
+      "--bin",
+      "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-release-240-saovmch2/kimi-native-2.4.0",
+      "--output",
+      "doc/05_testing/evidence/kimi-240-20261028"
+    ]
+  },
+  "source_kind": "controlled-loopback-native-cli",
+  "real_model": false,
+  "real_credentials": false,
+  "admission": false,
+  "cli_path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-release-240-saovmch2/kimi-native-2.4.0",
+  "execution_path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/kimi-native",
+  "cli_sha256": "39ebd6b434447574876bc66b05ae409c8e99b239494b3fef62b3a34ecceb9fd8",
+  "script_sha256": "f2dc101e952297cadc9f69a08b42bedb4f649700730ecbc78fc94882b9b45a7b",
+  "arms": [
+    {
+      "name": "none",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "39ebd6b434447574876bc66b05ae409c8e99b239494b3fef62b3a34ecceb9fd8",
+      "config_sha256": "770a57766e09e5b8ad7b964d3dd668db94eceeae142014f36db74755a78eb0cb",
+      "config_sha256_after": "770a57766e09e5b8ad7b964d3dd668db94eceeae142014f36db74755a78eb0cb",
+      "fixture_before": [
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "ae443dac46afc35c4044e62da8e09d9f116c5a2df59ac6f60c29b07f46ab885b"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "71ff514d8335f97e18a7397d1c4539e8d2aa5f7ada29232726427f2d4cd49d91"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "05d49a2e392d9b07567835970725a15e807fd25fb4b3a60898bd159ad91c8842"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "e6f2b20185478c7fe54e19585829d4fa9ac0e39a1acea13fec38962cf516441e"
+        }
+      ],
+      "fixture_after": [
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "ae443dac46afc35c4044e62da8e09d9f116c5a2df59ac6f60c29b07f46ab885b"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "71ff514d8335f97e18a7397d1c4539e8d2aa5f7ada29232726427f2d4cd49d91"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "05d49a2e392d9b07567835970725a15e807fd25fb4b3a60898bd159ad91c8842"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "e6f2b20185478c7fe54e19585829d4fa9ac0e39a1acea13fec38962cf516441e"
+        }
+      ],
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [],
+          "skill_sentinel_seen": false
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "read-open",
+            "grep-open",
+            "glob-open",
+            "read-peer",
+            "grep-peer",
+            "glob-peer",
+            "read-secret",
+            "grep-secret",
+            "glob-secret",
+            "read-outside",
+            "grep-outside",
+            "glob-outside"
+          ],
+          "skill_sentinel_seen": false
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Rs",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Us",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60116,
+          "members": [
+            {
+              "pid": 60116,
+              "ppid": 60070,
+              "pgid": 60116,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:13 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": true,
+            "result": "1\tOPEN_55755d3e1f624dbc7a0aa10e",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-open",
+            "name": "Grep",
+            "args": {
+              "pattern": "OPEN_55755d3e1f624dbc7a0aa10e",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "普通 文件.txt:1:OPEN_55755d3e1f624dbc7a0aa10e",
+            "leaked": true,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-open",
+            "name": "Glob",
+            "args": {
+              "pattern": "普通 文件.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具"
+            },
+            "exact": true,
+            "result": "普通 文件.txt",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-peer",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md"
+            },
+            "exact": true,
+            "result": "1\tPEER_f9a14aa50ceadea755dac354",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-peer",
+            "name": "Grep",
+            "args": {
+              "pattern": "PEER_f9a14aa50ceadea755dac354",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "peer/history.md:1:PEER_f9a14aa50ceadea755dac354",
+            "leaked": true,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-peer",
+            "name": "Glob",
+            "args": {
+              "pattern": "history.md",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer"
+            },
+            "exact": true,
+            "result": "history.md",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-secret",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env"
+            },
+            "exact": true,
+            "result": "\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env\" matches a sensitive-file pattern (env / credential / SSH key). Access is blocked to protect secrets.",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": true
+          },
+          {
+            "id": "grep-secret",
+            "name": "Grep",
+            "args": {
+              "pattern": "SECRET_c072af02679a9f0a8e1fc08c",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "No non-sensitive matches found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-secret",
+            "name": "Glob",
+            "args": {
+              "pattern": ".env",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具"
+            },
+            "exact": true,
+            "result": "No matches found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-outside",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt"
+            },
+            "exact": true,
+            "result": "1\tOUTSIDE_26d3e1d90701658d60b5e315",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-outside",
+            "name": "Grep",
+            "args": {
+              "pattern": "OUTSIDE_26d3e1d90701658d60b5e315",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt:1:OUTSIDE_26d3e1d90701658d60b5e315",
+            "leaked": true,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-outside",
+            "name": "Glob",
+            "args": {
+              "pattern": "outside.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside"
+            },
+            "exact": true,
+            "result": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 12,
+        "result_count": 12,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "失败",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.4.0\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"read-open\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-open\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"OPEN_55755d3e1f624dbc7a0aa10e\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-open\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"普通 文件.txt\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具\\\"}\"}},{\"type\":\"function\",\"id\":\"read-peer\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-peer\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"PEER_f9a14aa50ceadea755dac354\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-peer\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"history.md\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer\\\"}\"}},{\"type\":\"function\",\"id\":\"read-secret\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-secret\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"SECRET_c072af02679a9f0a8e1fc08c\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-secret\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\".env\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具\\\"}\"}},{\"type\":\"function\",\"id\":\"read-outside\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-outside\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"OUTSIDE_26d3e1d90701658d60b5e315\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-outside\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"outside.txt\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"read-secret\",\"content\":\"\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env\\\" matches a sensitive-file pattern (env / credential / SSH key). Access is blocked to protect secrets.\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-open\",\"content\":\"普通 文件.txt:1:OPEN_55755d3e1f624dbc7a0aa10e\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-secret\",\"content\":\"No non-sensitive matches found\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-open\",\"content\":\"1\\tOPEN_55755d3e1f624dbc7a0aa10e\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-open\",\"content\":\"普通 文件.txt\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-peer\",\"content\":\"peer/history.md:1:PEER_f9a14aa50ceadea755dac354\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-secret\",\"content\":\"No matches found\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-peer\",\"content\":\"history.md\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-peer\",\"content\":\"1\\tPEER_f9a14aa50ceadea755dac354\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-outside\",\"content\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt:1:OUTSIDE_26d3e1d90701658d60b5e315\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-outside\",\"content\":\"1\\tOUTSIDE_26d3e1d90701658d60b5e315\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-outside\",\"content\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_05f3c3d2-a0b8-4c89-8c15-5b73afbd293c\",\"command\":\"kimi -r session_05f3c3d2-a0b8-4c89-8c15-5b73afbd293c\",\"content\":\"To resume this session: kimi -r session_05f3c3d2-a0b8-4c89-8c15-5b73afbd293c\"}\n",
+      "stderr": "",
+      "durationMs": 2470,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/kimi-native --agent-file /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/critic.md --skills-dir /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/empty-skills -p 'Run the disposable capability experiment, then say PROBE_DONE.' --output-format stream-json",
+      "spawned": true,
+      "rerun": {
+        "executable": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "args": [
+          "~/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/kimi-rootcause.mjs",
+          "--suite",
+          "final",
+          "--bin",
+          "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-release-240-saovmch2/kimi-native-2.4.0",
+          "--output",
+          "doc/05_testing/evidence/kimi-240-20261028"
+        ]
+      }
+    },
+    {
+      "name": "final-deny-only",
+      "rules": [
+        {
+          "decision": "deny",
+          "pattern": "Read"
+        },
+        {
+          "decision": "deny",
+          "pattern": "Grep"
+        },
+        {
+          "decision": "deny",
+          "pattern": "Glob"
+        }
+      ],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "39ebd6b434447574876bc66b05ae409c8e99b239494b3fef62b3a34ecceb9fd8",
+      "config_sha256": "cb069bb5e2a1701796dae843c30882434e936c6289d3e3637e30f17018b91a29",
+      "config_sha256_after": "cb069bb5e2a1701796dae843c30882434e936c6289d3e3637e30f17018b91a29",
+      "fixture_before": [
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "ae443dac46afc35c4044e62da8e09d9f116c5a2df59ac6f60c29b07f46ab885b"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "71ff514d8335f97e18a7397d1c4539e8d2aa5f7ada29232726427f2d4cd49d91"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "05d49a2e392d9b07567835970725a15e807fd25fb4b3a60898bd159ad91c8842"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "e6f2b20185478c7fe54e19585829d4fa9ac0e39a1acea13fec38962cf516441e"
+        }
+      ],
+      "fixture_after": [
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "ae443dac46afc35c4044e62da8e09d9f116c5a2df59ac6f60c29b07f46ab885b"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "71ff514d8335f97e18a7397d1c4539e8d2aa5f7ada29232726427f2d4cd49d91"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "05d49a2e392d9b07567835970725a15e807fd25fb4b3a60898bd159ad91c8842"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "e6f2b20185478c7fe54e19585829d4fa9ac0e39a1acea13fec38962cf516441e"
+        }
+      ],
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [],
+          "skill_sentinel_seen": false
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "read-open",
+            "grep-open",
+            "glob-open",
+            "read-peer",
+            "grep-peer",
+            "glob-peer",
+            "read-secret",
+            "grep-secret",
+            "glob-secret",
+            "read-outside",
+            "grep-outside",
+            "glob-outside"
+          ],
+          "skill_sentinel_seen": false
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "Rs",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "Rs",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60202,
+          "members": [
+            {
+              "pid": 60202,
+              "ppid": 60070,
+              "pgid": 60202,
+              "stat": "?Es",
+              "lstart": "Wed Oct 28 12:29:16 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": true,
+            "result": "1\tOPEN_55755d3e1f624dbc7a0aa10e",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-open",
+            "name": "Grep",
+            "args": {
+              "pattern": "OPEN_55755d3e1f624dbc7a0aa10e",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "普通 文件.txt:1:OPEN_55755d3e1f624dbc7a0aa10e",
+            "leaked": true,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-open",
+            "name": "Glob",
+            "args": {
+              "pattern": "普通 文件.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具"
+            },
+            "exact": true,
+            "result": "普通 文件.txt",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-peer",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md"
+            },
+            "exact": true,
+            "result": "1\tPEER_f9a14aa50ceadea755dac354",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-peer",
+            "name": "Grep",
+            "args": {
+              "pattern": "PEER_f9a14aa50ceadea755dac354",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "peer/history.md:1:PEER_f9a14aa50ceadea755dac354",
+            "leaked": true,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-peer",
+            "name": "Glob",
+            "args": {
+              "pattern": "history.md",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer"
+            },
+            "exact": true,
+            "result": "history.md",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-secret",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env"
+            },
+            "exact": true,
+            "result": "\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env\" matches a sensitive-file pattern (env / credential / SSH key). Access is blocked to protect secrets.",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": true
+          },
+          {
+            "id": "grep-secret",
+            "name": "Grep",
+            "args": {
+              "pattern": "SECRET_c072af02679a9f0a8e1fc08c",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "No non-sensitive matches found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-secret",
+            "name": "Glob",
+            "args": {
+              "pattern": ".env",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具"
+            },
+            "exact": true,
+            "result": "No matches found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-outside",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt"
+            },
+            "exact": true,
+            "result": "1\tOUTSIDE_26d3e1d90701658d60b5e315",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-outside",
+            "name": "Grep",
+            "args": {
+              "pattern": "OUTSIDE_26d3e1d90701658d60b5e315",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt:1:OUTSIDE_26d3e1d90701658d60b5e315",
+            "leaked": true,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-outside",
+            "name": "Glob",
+            "args": {
+              "pattern": "outside.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside"
+            },
+            "exact": true,
+            "result": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 12,
+        "result_count": 12,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "失败",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.4.0\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"read-open\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-open\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"OPEN_55755d3e1f624dbc7a0aa10e\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-open\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"普通 文件.txt\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具\\\"}\"}},{\"type\":\"function\",\"id\":\"read-peer\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-peer\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"PEER_f9a14aa50ceadea755dac354\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-peer\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"history.md\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer\\\"}\"}},{\"type\":\"function\",\"id\":\"read-secret\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-secret\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"SECRET_c072af02679a9f0a8e1fc08c\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-secret\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\".env\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具\\\"}\"}},{\"type\":\"function\",\"id\":\"read-outside\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-outside\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"OUTSIDE_26d3e1d90701658d60b5e315\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-outside\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"outside.txt\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"read-secret\",\"content\":\"\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env\\\" matches a sensitive-file pattern (env / credential / SSH key). Access is blocked to protect secrets.\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-open\",\"content\":\"普通 文件.txt\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-secret\",\"content\":\"No matches found\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-open\",\"content\":\"普通 文件.txt:1:OPEN_55755d3e1f624dbc7a0aa10e\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-secret\",\"content\":\"No non-sensitive matches found\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-open\",\"content\":\"1\\tOPEN_55755d3e1f624dbc7a0aa10e\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-peer\",\"content\":\"history.md\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-peer\",\"content\":\"peer/history.md:1:PEER_f9a14aa50ceadea755dac354\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-peer\",\"content\":\"1\\tPEER_f9a14aa50ceadea755dac354\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-outside\",\"content\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt:1:OUTSIDE_26d3e1d90701658d60b5e315\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-outside\",\"content\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-outside\",\"content\":\"1\\tOUTSIDE_26d3e1d90701658d60b5e315\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_88a443b0-6fd2-4703-bafc-8a71cfd940bb\",\"command\":\"kimi -r session_88a443b0-6fd2-4703-bafc-8a71cfd940bb\",\"content\":\"To resume this session: kimi -r session_88a443b0-6fd2-4703-bafc-8a71cfd940bb\"}\n",
+      "stderr": "",
+      "durationMs": 2442,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/kimi-native --agent-file /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/critic.md --skills-dir /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/empty-skills -p 'Run the disposable capability experiment, then say PROBE_DONE.' --output-format stream-json",
+      "spawned": true,
+      "rerun": {
+        "executable": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "args": [
+          "~/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/kimi-rootcause.mjs",
+          "--suite",
+          "final",
+          "--bin",
+          "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-release-240-saovmch2/kimi-native-2.4.0",
+          "--output",
+          "doc/05_testing/evidence/kimi-240-20261028"
+        ]
+      }
+    },
+    {
+      "name": "final-nonread-allow",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "39ebd6b434447574876bc66b05ae409c8e99b239494b3fef62b3a34ecceb9fd8",
+      "config_sha256": "770a57766e09e5b8ad7b964d3dd668db94eceeae142014f36db74755a78eb0cb",
+      "config_sha256_after": "770a57766e09e5b8ad7b964d3dd668db94eceeae142014f36db74755a78eb0cb",
+      "fixture_before": [
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "ae443dac46afc35c4044e62da8e09d9f116c5a2df59ac6f60c29b07f46ab885b"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "71ff514d8335f97e18a7397d1c4539e8d2aa5f7ada29232726427f2d4cd49d91"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "05d49a2e392d9b07567835970725a15e807fd25fb4b3a60898bd159ad91c8842"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "e6f2b20185478c7fe54e19585829d4fa9ac0e39a1acea13fec38962cf516441e"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt",
+          "exists": false
+        }
+      ],
+      "fixture_after": [
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "ae443dac46afc35c4044e62da8e09d9f116c5a2df59ac6f60c29b07f46ab885b"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "71ff514d8335f97e18a7397d1c4539e8d2aa5f7ada29232726427f2d4cd49d91"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "05d49a2e392d9b07567835970725a15e807fd25fb4b3a60898bd159ad91c8842"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "e6f2b20185478c7fe54e19585829d4fa9ac0e39a1acea13fec38962cf516441e"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "1a9ae54424c8e7af8bb8c32d10e8f60d0d30eeeb75fc8e7802f3c15ed81d4a1e"
+        }
+      ],
+      "agent_sha256": "984c501e923c9c213db1ab4713a21c40ad44d59c50165de56c81ab9e88073662",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Bash",
+            "Glob",
+            "Grep",
+            "Read",
+            "Write"
+          ],
+          "stream": true,
+          "returned_tool_ids": [],
+          "skill_sentinel_seen": false
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Bash",
+            "Glob",
+            "Grep",
+            "Read",
+            "Write"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "write-final",
+            "bash-final"
+          ],
+          "skill_sentinel_seen": false
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "Rs",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "Us",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60330,
+          "members": [
+            {
+              "pid": 60330,
+              "ppid": 60070,
+              "pgid": 60330,
+              "stat": "?Es",
+              "lstart": "Wed Oct 28 12:29:18 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "write-final",
+            "name": "Write",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt",
+              "content": "SYNTHETIC_WRITE"
+            },
+            "exact": true,
+            "result": "Wrote 15 bytes to /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "bash-final",
+            "name": "Bash",
+            "args": {
+              "command": "echo SYNTHETIC_BASH"
+            },
+            "exact": true,
+            "result": "SYNTHETIC_BASH\n",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 2,
+        "result_count": 2,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "未证实拒绝",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.4.0\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"write-final\",\"function\":{\"name\":\"Write\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt\\\",\\\"content\\\":\\\"SYNTHETIC_WRITE\\\"}\"}},{\"type\":\"function\",\"id\":\"bash-final\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"echo SYNTHETIC_BASH\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"write-final\",\"content\":\"Wrote 15 bytes to /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt\"}\n{\"role\":\"tool\",\"tool_call_id\":\"bash-final\",\"content\":\"SYNTHETIC_BASH\\n\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_29c4b8b8-8ef7-4100-87fa-b053ee253357\",\"command\":\"kimi -r session_29c4b8b8-8ef7-4100-87fa-b053ee253357\",\"content\":\"To resume this session: kimi -r session_29c4b8b8-8ef7-4100-87fa-b053ee253357\"}\n",
+      "stderr": "SYNTHETIC_BASH\n",
+      "durationMs": 2452,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/kimi-native --agent-file /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/critic.md --skills-dir /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/empty-skills -p 'Run the disposable capability experiment, then say PROBE_DONE.' --output-format stream-json",
+      "spawned": true,
+      "rerun": {
+        "executable": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "args": [
+          "~/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/kimi-rootcause.mjs",
+          "--suite",
+          "final",
+          "--bin",
+          "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-release-240-saovmch2/kimi-native-2.4.0",
+          "--output",
+          "doc/05_testing/evidence/kimi-240-20261028"
+        ]
+      }
+    },
+    {
+      "name": "final-nonread-deny",
+      "rules": [
+        {
+          "decision": "deny",
+          "pattern": "Write"
+        },
+        {
+          "decision": "deny",
+          "pattern": "Bash"
+        }
+      ],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "39ebd6b434447574876bc66b05ae409c8e99b239494b3fef62b3a34ecceb9fd8",
+      "config_sha256": "dca6fa27c83bd266d2d7bd4ee2c8f9de450bdd3998a46a3812c7cdbc85177e11",
+      "config_sha256_after": "dca6fa27c83bd266d2d7bd4ee2c8f9de450bdd3998a46a3812c7cdbc85177e11",
+      "fixture_before": [
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "ae443dac46afc35c4044e62da8e09d9f116c5a2df59ac6f60c29b07f46ab885b"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "71ff514d8335f97e18a7397d1c4539e8d2aa5f7ada29232726427f2d4cd49d91"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "05d49a2e392d9b07567835970725a15e807fd25fb4b3a60898bd159ad91c8842"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "e6f2b20185478c7fe54e19585829d4fa9ac0e39a1acea13fec38962cf516441e"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt",
+          "exists": false
+        }
+      ],
+      "fixture_after": [
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "ae443dac46afc35c4044e62da8e09d9f116c5a2df59ac6f60c29b07f46ab885b"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "71ff514d8335f97e18a7397d1c4539e8d2aa5f7ada29232726427f2d4cd49d91"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "05d49a2e392d9b07567835970725a15e807fd25fb4b3a60898bd159ad91c8842"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "e6f2b20185478c7fe54e19585829d4fa9ac0e39a1acea13fec38962cf516441e"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "1a9ae54424c8e7af8bb8c32d10e8f60d0d30eeeb75fc8e7802f3c15ed81d4a1e"
+        }
+      ],
+      "agent_sha256": "984c501e923c9c213db1ab4713a21c40ad44d59c50165de56c81ab9e88073662",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Bash",
+            "Glob",
+            "Grep",
+            "Read",
+            "Write"
+          ],
+          "stream": true,
+          "returned_tool_ids": [],
+          "skill_sentinel_seen": false
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Bash",
+            "Glob",
+            "Grep",
+            "Read",
+            "Write"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "write-final",
+            "bash-final"
+          ],
+          "skill_sentinel_seen": false
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 60402,
+          "members": [
+            {
+              "pid": 60402,
+              "ppid": 60070,
+              "pgid": 60402,
+              "stat": "Rs",
+              "lstart": "Wed Oct 28 12:29:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60402,
+          "members": [
+            {
+              "pid": 60402,
+              "ppid": 60070,
+              "pgid": 60402,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60402,
+          "members": [
+            {
+              "pid": 60402,
+              "ppid": 60070,
+              "pgid": 60402,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60402,
+          "members": [
+            {
+              "pid": 60402,
+              "ppid": 60070,
+              "pgid": 60402,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60402,
+          "members": [
+            {
+              "pid": 60402,
+              "ppid": 60070,
+              "pgid": 60402,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60402,
+          "members": [
+            {
+              "pid": 60402,
+              "ppid": 60070,
+              "pgid": 60402,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60402,
+          "members": [
+            {
+              "pid": 60402,
+              "ppid": 60070,
+              "pgid": 60402,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60402,
+          "members": [
+            {
+              "pid": 60402,
+              "ppid": 60070,
+              "pgid": 60402,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60402,
+          "members": [
+            {
+              "pid": 60402,
+              "ppid": 60070,
+              "pgid": 60402,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60402,
+          "members": [
+            {
+              "pid": 60402,
+              "ppid": 60070,
+              "pgid": 60402,
+              "stat": "Rs",
+              "lstart": "Wed Oct 28 12:29:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60402,
+          "members": [
+            {
+              "pid": 60402,
+              "ppid": 60070,
+              "pgid": 60402,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:21 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "write-final",
+            "name": "Write",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt",
+              "content": "SYNTHETIC_WRITE"
+            },
+            "exact": true,
+            "result": "Wrote 15 bytes to /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "bash-final",
+            "name": "Bash",
+            "args": {
+              "command": "echo SYNTHETIC_BASH"
+            },
+            "exact": true,
+            "result": "SYNTHETIC_BASH\n",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 2,
+        "result_count": 2,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "未证实拒绝",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.4.0\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"write-final\",\"function\":{\"name\":\"Write\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt\\\",\\\"content\\\":\\\"SYNTHETIC_WRITE\\\"}\"}},{\"type\":\"function\",\"id\":\"bash-final\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"echo SYNTHETIC_BASH\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"write-final\",\"content\":\"Wrote 15 bytes to /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt\"}\n{\"role\":\"tool\",\"tool_call_id\":\"bash-final\",\"content\":\"SYNTHETIC_BASH\\n\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_a0564811-888d-4f41-affd-29c86e3b0d22\",\"command\":\"kimi -r session_a0564811-888d-4f41-affd-29c86e3b0d22\",\"content\":\"To resume this session: kimi -r session_a0564811-888d-4f41-affd-29c86e3b0d22\"}\n",
+      "stderr": "SYNTHETIC_BASH\n",
+      "durationMs": 2389,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/kimi-native --agent-file /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/critic.md --skills-dir /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/empty-skills -p 'Run the disposable capability experiment, then say PROBE_DONE.' --output-format stream-json",
+      "spawned": true,
+      "rerun": {
+        "executable": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "args": [
+          "~/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/kimi-rootcause.mjs",
+          "--suite",
+          "final",
+          "--bin",
+          "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-release-240-saovmch2/kimi-native-2.4.0",
+          "--output",
+          "doc/05_testing/evidence/kimi-240-20261028"
+        ]
+      }
+    },
+    {
+      "name": "final-write-trimmed",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "39ebd6b434447574876bc66b05ae409c8e99b239494b3fef62b3a34ecceb9fd8",
+      "config_sha256": "770a57766e09e5b8ad7b964d3dd668db94eceeae142014f36db74755a78eb0cb",
+      "config_sha256_after": "770a57766e09e5b8ad7b964d3dd668db94eceeae142014f36db74755a78eb0cb",
+      "fixture_before": [
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "ae443dac46afc35c4044e62da8e09d9f116c5a2df59ac6f60c29b07f46ab885b"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "71ff514d8335f97e18a7397d1c4539e8d2aa5f7ada29232726427f2d4cd49d91"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "05d49a2e392d9b07567835970725a15e807fd25fb4b3a60898bd159ad91c8842"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "e6f2b20185478c7fe54e19585829d4fa9ac0e39a1acea13fec38962cf516441e"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt",
+          "exists": false
+        }
+      ],
+      "fixture_after": [
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "ae443dac46afc35c4044e62da8e09d9f116c5a2df59ac6f60c29b07f46ab885b"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "71ff514d8335f97e18a7397d1c4539e8d2aa5f7ada29232726427f2d4cd49d91"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/.env",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "05d49a2e392d9b07567835970725a15e807fd25fb4b3a60898bd159ad91c8842"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt",
+          "exists": true,
+          "regular": true,
+          "symlink": false,
+          "sha256": "e6f2b20185478c7fe54e19585829d4fa9ac0e39a1acea13fec38962cf516441e"
+        },
+        {
+          "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt",
+          "exists": false
+        }
+      ],
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [],
+          "skill_sentinel_seen": false
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "write-final"
+          ],
+          "skill_sentinel_seen": false
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 60485,
+          "members": [
+            {
+              "pid": 60485,
+              "ppid": 60070,
+              "pgid": 60485,
+              "stat": "Rs",
+              "lstart": "Wed Oct 28 12:29:23 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60485,
+          "members": [
+            {
+              "pid": 60485,
+              "ppid": 60070,
+              "pgid": 60485,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:23 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60485,
+          "members": [
+            {
+              "pid": 60485,
+              "ppid": 60070,
+              "pgid": 60485,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:23 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60485,
+          "members": [
+            {
+              "pid": 60485,
+              "ppid": 60070,
+              "pgid": 60485,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:23 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60485,
+          "members": [
+            {
+              "pid": 60485,
+              "ppid": 60070,
+              "pgid": 60485,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:23 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60485,
+          "members": [
+            {
+              "pid": 60485,
+              "ppid": 60070,
+              "pgid": 60485,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:23 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60485,
+          "members": [
+            {
+              "pid": 60485,
+              "ppid": 60070,
+              "pgid": 60485,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:23 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60485,
+          "members": [
+            {
+              "pid": 60485,
+              "ppid": 60070,
+              "pgid": 60485,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:23 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60485,
+          "members": [
+            {
+              "pid": 60485,
+              "ppid": 60070,
+              "pgid": 60485,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:23 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60485,
+          "members": [
+            {
+              "pid": 60485,
+              "ppid": 60070,
+              "pgid": 60485,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:23 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 60485,
+          "members": [
+            {
+              "pid": 60485,
+              "ppid": 60070,
+              "pgid": 60485,
+              "stat": "Ss",
+              "lstart": "Wed Oct 28 12:29:23 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "write-final",
+            "name": "Write",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt",
+              "content": "SYNTHETIC_WRITE"
+            },
+            "exact": true,
+            "result": "Tool \"Write\" not found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": true,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "机制拒绝待对照",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.4.0\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"write-final\",\"function\":{\"name\":\"Write\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/written.txt\\\",\\\"content\\\":\\\"SYNTHETIC_WRITE\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"write-final\",\"content\":\"Tool \\\"Write\\\" not found\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_2c8a827b-f841-4f3a-a6fa-caf19b3725fd\",\"command\":\"kimi -r session_2c8a827b-f841-4f3a-a6fa-caf19b3725fd\",\"content\":\"To resume this session: kimi -r session_2c8a827b-f841-4f3a-a6fa-caf19b3725fd\"}\n",
+      "stderr": "",
+      "durationMs": 2403,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/kimi-native --agent-file /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/critic.md --skills-dir /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/empty-skills -p 'Run the disposable capability experiment, then say PROBE_DONE.' --output-format stream-json",
+      "spawned": true,
+      "rerun": {
+        "executable": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+        "args": [
+          "~/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/kimi-rootcause.mjs",
+          "--suite",
+          "final",
+          "--bin",
+          "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-release-240-saovmch2/kimi-native-2.4.0",
+          "--output",
+          "doc/05_testing/evidence/kimi-240-20261028"
+        ]
+      }
+    }
+  ],
+  "global_before": {
+    "config.toml": "e489b2f94e6c76db67a7f62a04a1cac8bb0fadbbca5319c16787d04fa55aeeee",
+    "credentials/kimi-code.json": "6c91fa08353ce37d4ad8b1919c43f80c3817e74760d783e9f1e7d2fdd2178335"
+  },
+  "cli_version": "2.4.0",
+  "fixture": {
+    "root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具",
+    "files": {
+      "open": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+      "peer": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+      "secret": "/pri…smk/中文 空格夹具/.env",
+      "outside": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt"
+    },
+    "realpaths": {
+      "open": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/普通 文件.txt",
+      "peer": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/中文 空格夹具/peer/history.md",
+      "secret": "/pri…smk/中文 空格夹具/.env",
+      "outside": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-3dLsmk/outside/outside.txt"
+    },
+    "tokens": {
+      "open": "OPEN_55755d3e1f624dbc7a0aa10e",
+      "peer": "PEER_f9a14aa50ceadea755dac354",
+      "secret": "SECR…c08c",
+      "outside": "OUTSIDE_26d3e1d90701658d60b5e315"
+    }
+  },
+  "global_after": {
+    "config.toml": "e489b2f94e6c76db67a7f62a04a1cac8bb0fadbbca5319c16787d04fa55aeeee",
+    "credentials/kimi-code.json": "6c91fa08353ce37d4ad8b1919c43f80c3817e74760d783e9f1e7d2fdd2178335"
+  },
+  "global_unchanged": true,
+  "execution_sha256_after": "39ebd6b434447574876bc66b05ae409c8e99b239494b3fef62b3a34ecceb9fd8",
+  "cleanup": {
+    "ok": true,
+    "root_absent": true
+  },
+  "finished_at": "2026-10-28T12:29:26.195Z"
+}

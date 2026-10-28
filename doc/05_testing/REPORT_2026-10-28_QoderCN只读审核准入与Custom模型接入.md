@@ -243,3 +243,24 @@ run `20261028T092749Z`固定三家全部交卷，历时33m54s：Gemini通过、C
 本轮交付授权：Bob随后明确要求“提交、推送”。提交范围为本轮Qoder准入判据、采集器同步、回归测试、设计/协议/报告与验证日志摘录；不纳入本机配置、凭据、准入台账或构建产物。当前main推送origin，提交号及远端结果以Git回读为准。上述“未提交、未推送”保留为整改完成时的状态；Git交付不改变两家准入关闭和真实补测未完成的结论。
 
 提交前只对派生日志摘录归一用户主目录和移除行尾空白，重新计算excerpt_sha256并记录excerpt_normalization；原始完整日志及其raw_log_sha256不变，历史native原件不动。
+
+## 原生受控调用入口续调查（20:30左右，暂不双审）
+
+Bob在cc5d4e5e交付后要求继续。为补Edit/Bash的真实调用缺口，本轮先查官方CLI/SDK文档和已安装1.1.80的私有无凭据--help；未换提示词重跑已收口的真实模型臂。[帮助原件](evidence/qoder-cn-admission-20261028/interface-help-20261028.json)同时保存Kimi/Qoder两次help，不构成工具或客户端准入。
+
+官方[SDK工作原理](https://docs.qoder.cn/en/cli/sdk/how-it-works)区分Agent消息与control请求；官方[SDK工具说明](https://docs.qoder.com/cli/sdk/tools)说明canUseTool仅在需要审批时触发，已经允许的工具不会经过它。后者是公开SDK机制说明，不代替当前CN入口实测。因此不能拿该callback当成覆盖全部工具的执行拒绝或审计证明。本轮未实现新SDK生产路线，也未把control请求当作“强制模型生成任意工具调用”的既成能力。
+
+隔离原型以原生codec生成单条合成Custom、仅配置localhost OpenAI兼容响应服务，计划由服务返回工具调用、仍交原生dispatcher执行，不自行实现权限分发器。它不同于现有真实bailian/官方路线，只作机制诊断。没有复制任何真实Custom api_key，原型缺认证与最小认证副本分别一臂，不以失败换提示重试：
+
+| 原型臂 | 原始结果 | 可采信边界 |
+| --- | --- | --- |
+| 无真实账号凭据 | exit1，authentication_failed / Not logged in，本地HTTP请求0、工具调用0 | 未越过认证前置；不是任何执行拒绝 |
+| 生产最小认证副本 | exit1，error_code=100406、error_message=Custom model disabled，本地HTTP请求0、工具调用0 | 所测合成custom/provider在当前CN入口未可用；不是Edit/Bash拒绝或真实模型验收 |
+
+原件：[无认证](evidence/qoder-cn-admission-20261028/interface-no-auth-20261028.json)、[最小认证](evidence/qoder-cn-admission-20261028/interface-authenticated-20261028.json)；[原型脱敏文本](evidence/qoder-cn-admission-20261028/interface-prototype-20261028.mjs.txt)仅为调查留痕，不提供受支持运行入口。首臂源码未固定保留hash=null，第二臂记录实际原型hash；不伪造历史生产者。认证臂复制源的四项字节前后相等，生产私有根按现有加载器清理，原件组回读为空不推广为完整原生整树验收。real_model=false是原型的预期来源，不代表独立网络审计；model inference attempted保持null，不能由localhost零请求猜测服务端是否收到了其它请求。
+
+原型未触达本地模型传输，核心工具拒绝缺口未解，按停止条件不继续扩大其它矩阵，不把合成路由移植到生产bailian配方。全局provider/model/账号声明、两家开关、产品版本和生产台账均未改；真实Qoder三审及Windows仍未测。同期Kimi隔离2.4.0仍复现规则执行缺口，详见[Kimi报告§10](REPORT_2026-10-28_KimiCode_macOS规则根因与只读准入.md)。本轮未提交、未推送。
+
+后续独立[收尾回读](evidence/qoder-cn-admission-20261028/interface-postflight-20261028.json)确认两臂的私有home与原型项目共4根均不存在；这是本批目录回读，不是完整原生进程树/失联验收。回归与未重跑全量的边界见[Kimi验证摘要](evidence/kimi-240-20261028/followup-validation.json)。当前这些阻塞位于上游规则执行或所测原生路由能力，不能靠继续给本仓开关赋true、重复提示词或扩大工具面解决；不调整既有准入判据。
+
+Bob随后授权提交、推送本轮调查成果；提交前完整检查结果另记于[Kimi报告§10](REPORT_2026-10-28_KimiCode_macOS规则根因与只读准入.md)，此前调查时点的未全量/未提交状态仍保留。本轮Git交付不启用Qoder或增加真实模型准入。

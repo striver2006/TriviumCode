@@ -1,0 +1,69 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import http from 'node:http';
+import crypto from 'node:crypto';
+import {createRequire} from 'node:module';
+import {pathToFileURL} from 'node:url';
+const repo=process.cwd(),{build}=createRequire(path.join(repo,'package.json'))('esbuild');
+const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'trivium-cn-loopback-spike-')));
+let runtime,server,section,current=null,guard;
+const copyAuth=process.argv.includes('--copy-auth'),snapshots=new Map();
+const output={schema:'trivium.native-interface-spike.v1',source_kind:'controlled-loopback-native-cli',real_model:false,real_credentials:copyAuth,admitted:false,requests:[],cases:[]};
+try {
+ await build({stdin:{contents:`export {withQoderHome,qoderRun,pinQoderExecutable,prepareQoderReadonly,qoderConfigRoot} from './src/trivium/adapters/qoder-cn-native.ts';export {extractQoderCodec,QoderSecretGuard} from './src/trivium/adapters/qoder-cn-custom.ts';export {QODER_REVIEW_ARGS} from './src/trivium/probes/qoder-cn.ts';export {parseQoderTrace} from './src/trivium/adapters/qoder-cn-trace.ts';export {newProbeSection,withProbeSection,terminateProbeSectionGroups} from './src/trivium/util/exec.ts';`,resolveDir:repo},bundle:true,platform:'node',format:'cjs',outfile:path.join(root,'bridge.cjs'),logLevel:'silent'});
+ runtime=(await import(pathToFileURL(path.join(root,'bridge.cjs')).href)).default;
+ guard=new runtime.QoderSecretGuard();
+ if(copyAuth)for(const rel of ['.auth/user','.auth/machine_id','settings.json','.models/default']){const p=path.join(runtime.qoderConfigRoot(),rel);snapshots.set(p,crypto.createHash('sha256').update(await fs.readFile(p)).digest('hex'));}
+ server=http.createServer(async(req,res)=>{
+  try {
+   let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>1024*1024)throw Error('request budget');}
+   const body=JSON.parse(raw);const round=current.requests++;
+   if(round>=3)throw Error('round budget');
+   output.requests.push({url:req.url,model:body.model,stream:body.stream,tools:(body.tools??[]).map(t=>t.function?.name)});
+   const calls=round===0?[{id:'controlled-read',type:'function',function:{name:'Read',arguments:JSON.stringify({file_path:current.target})}}]:[];
+   const message={role:'assistant',content:calls.length?null:'PROBE_DONE',...(calls.length?{tool_calls:calls}:{})};
+   if(body.stream){
+    res.writeHead(200,{'content-type':'text/event-stream'});
+    const delta=calls.length?{...message,tool_calls:calls.map((c,index)=>({...c,index}))}:message;
+    for(const choice of [{delta,finish_reason:null},{delta:{},finish_reason:calls.length?'tool_calls':'stop'}])res.write('data: '+JSON.stringify({id:'synthetic-response',object:'chat.completion.chunk',created:1,model:'trivium-loopback',choices:[{index:0,...choice}]})+'\n\n');
+    res.end('data: [DONE]\n\n');
+   }else {res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({id:'synthetic-response',object:'chat.completion',created:1,model:'trivium-loopback',choices:[{index:0,message,finish_reason:calls.length?'tool_calls':'stop'}],usage:{prompt_tokens:1,completion_tokens:1,total_tokens:2}}));}
+  } catch(e){output.server_error=e.message;res.writeHead(500);res.end('controlled protocol failure');}
+ });
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const port=server.address().port;
+ section=runtime.newProbeSection('qoder-controlled-interface');
+ await runtime.withProbeSection(section,()=>runtime.withQoderHome(async(home,config,env)=>{
+  const pinned=await runtime.pinQoderExecutable(path.join(os.homedir(),'.local/bin/qoderclicn'),home);
+  output.cli_sha256=pinned.sha256;
+  if(copyAuth)for(const rel of ['.auth/user','.auth/machine_id'])guard.addCredential(await fs.readFile(path.join(config,rel),'utf8'));
+  const account=copyAuth?JSON.parse(await fs.readFile(path.join(runtime.qoderConfigRoot(),'.models/default'),'utf8')):{key:'synthetic',uid:'trivium-fixture',scene:'cn'};
+  const machine=copyAuth?(await fs.readFile(path.join(config,'.auth/machine_id'),'utf8')).trim():crypto.randomUUID(),uid=account.uid,key='custom/trivium-loopback';
+  if(!copyAuth)await fs.writeFile(path.join(config,'.auth/machine_id'),machine,{mode:0o600});
+  await fs.mkdir(path.join(config,'.models',uid),{recursive:true,mode:0o700});
+  await fs.writeFile(path.join(config,'.models/default'),JSON.stringify(account),{mode:0o600});
+  const codec=runtime.extractQoderCodec(await fs.readFile(pinned.executable));
+  const module=path.join(home,'codec.mjs'),wasm=path.join(home,'codec.wasm'),runner=path.join(home,'encode.mjs');
+  await fs.writeFile(module,codec.source,{mode:0o600});await fs.writeFile(wasm,codec.wasm,{mode:0o600});
+  await fs.writeFile(runner,`import fs from 'node:fs/promises';import {pathToFileURL} from 'node:url';let s='';for await(const c of process.stdin)s+=c;const x=JSON.parse(s),n=await import(pathToFileURL(x.module).href);await n.default({module_or_path:await fs.readFile(x.wasm)});await fs.writeFile(x.file,n.model_cache_encrypt(JSON.stringify(x.records),x.machine),{mode:0o600});`,{mode:0o600});
+  const records=[{key,display_name:'Trivium synthetic loopback',provider:'custom',model:'trivium-loopback',type:'api',url:'http://127.0.0.1:'+port+'/v1',format:'openai',max_input_tokens:8192,parameters:{api_key:'synt…tial'}}];
+  const encoded=await runtime.qoderRun(process.execPath,[runner],{cwd:home,env,stdin:JSON.stringify({module,wasm,machine,records,file:path.join(config,'.models',uid,'customs')}),timeoutMs:15000,killTree:true});
+  if(encoded.code!==0)throw Error('codec failed');
+  const project=path.join(root,'project');await fs.mkdir(project);const target=path.join(project,'normal.txt');await fs.writeFile(target,'SYNTHETIC_READ_CANARY');
+  await runtime.prepareQoderReadonly(home,config,[],project);
+  current={target,requests:0};
+  let stop;
+  const out=await runtime.qoderRun(pinned.executable,['--config-dir',config,...runtime.QODER_REVIEW_ARGS,'--model',key,'-p'],{cwd:project,env,stdin:'Perform the controlled transport experiment.',timeoutMs:30000,killTree:true,stopEarly:s=>{stop=s;},onStderrLine:line=>{if(/fall.?back|falling back/i.test(line)){output.fallback=true;stop?.();}}});
+  output.cases.push({...out,trace:runtime.parseQoderTrace(out.stdout)});
+ },{copyAuthentication:copyAuth}));
+}catch(e){output.error=e.message;process.exitCode=1;}
+finally {
+ if(section)output.cleanup=await runtime.terminateProbeSectionGroups([section],{graceMs:500,killWaitMs:3000});
+ if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+ await fs.rm(root,{recursive:true,force:true});
+ output.sources_unchanged=copyAuth?(await Promise.all([...snapshots].map(async([p,h])=>crypto.createHash('sha256').update(await fs.readFile(p)).digest('hex')===h))).every(Boolean):null;
+ const serialized=guard?guard.scrub(JSON.stringify(output,null,2)):JSON.stringify(output,null,2);
+ const file=path.join(os.tmpdir(),'trivium-qoder-loopback-spike-'+Date.now()+'.json');await fs.writeFile(file,serialized,{mode:0o600,flag:'wx'});
+ console.log(JSON.stringify({file,error:output.error,requests:output.requests,cases:output.cases.map(c=>({code:c.code,calls:c.trace.calls.map(t=>({name:t.name,channel:t.channel})),errors:c.trace.errors,result:c.trace.raw_result})),cleanup:output.cleanup,sources_unchanged:output.sources_unchanged}));
+}

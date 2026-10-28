@@ -1,0 +1,23 @@
+✔ 回读生效模型：envelope 没有 model 字段，只能从日志 context.model 取（AC-13） (0.532417ms)
+✔ 按 sessionId 过滤：共享 HOME 下多会话交织不得混入 (0.165417ms)
+✔ 只统计 completed 的工具调用，failed 不算证据 (0.141584ms)
+✔ 写工具与 Bash 计入 writeEvents（只读失守信号） (0.259375ms)
+✔ 解析 turn.failed 的结构化根因 (0.694833ms)
+✔ sessionId 传 null 时全收（独立 HOME 下日志天然隔离） (0.567167ms)
+✔ rollout：工具参数里的路径可提取（标准日志没有这个信息） (0.249042ms)
+✔ rollout：回读生效模型的全限定形态与来源档位 (0.075542ms)
+✔ rollout：写工具与 Bash 计入 writeEvents (0.13225ms)
+✔ rollout：坏行与无 toolCalls 的行被跳过而非抛异常 (0.079958ms)
+✔ 模型名补全：短名按探针回读的 providerId 补前缀 (15.619ms)
+✔ 模型名补全：已是全限定形态时原样返回 (0.134083ms)
+✔ 模型名补全：探针没给出前缀时原样传，不瞎猜 (0.07875ms)
+✔ 模型名补全：providerId 含斜杠时只切最后一段 (0.082292ms)
+✔ 模型名补全：null 模型返回 null (0.174833ms)
+ℹ tests 4171
+ℹ suites 0
+ℹ pass 4162
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 9
+ℹ todo 0
+ℹ duration_ms 364184.124542
