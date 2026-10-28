@@ -1,0 +1,802 @@
+{
+  "schema": "trivium.driver-identity.v1",
+  "at": "2026-10-28T13:49:13.237Z",
+  "baseline": "892c4767",
+  "agent": "qoder-cn",
+  "case": "local",
+  "source_kind": "isolated-build-local-processes",
+  "admission": false,
+  "formal_review": "未测；未启动",
+  "windows": "未测",
+  "commands": [
+    {
+      "args": [
+        "topic",
+        "claim",
+        "--topic",
+        "DriverIdentity-qoder-cn",
+        "--stage",
+        "plan",
+        "--driver",
+        "qoder-cn",
+        "--session-id",
+        "local-first",
+        "--json"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"plan\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"claimed\",\n  \"claimed_at\": \"2026-10-28T13:49:15.597Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+      "stderr": "",
+      "durationMs": 2007,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic claim --topic DriverIdentity-qoder-cn --stage plan --driver qoder-cn --session-id local-first --json",
+      "spawned": true
+    },
+    {
+      "args": [
+        "fixture-draft",
+        "plan"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"draft\":{\"relPath\":\"DriverIdentity-qoder-cn/plan/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"absPath\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.reviews/DriverIdentity-qoder-cn/plan/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"fileName\":\"2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"sha256\":\"0fcce0565bc36fb09d6e6ff971676d4a1eaccda4a59f7d73b2d422c849c5d0af\",\"effectiveRerunIndex\":1},\"driver\":\"qoder-cn\",\"stage\":\"plan\"}",
+      "stderr": "",
+      "durationMs": 56,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' fixture-draft plan",
+      "spawned": true
+    },
+    {
+      "args": [
+        "topic",
+        "resolve",
+        "--stage",
+        "plan",
+        "--json",
+        "--",
+        "检查夹具",
+        "--topic",
+        "DriverIdentity-qoder-cn"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"prompt_hint\": \"检查夹具\",\n  \"task_goal\": null,\n  \"subject_path\": \"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.reviews/DriverIdentity-qoder-cn/plan/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\n  \"base\": null,\n  \"diff_available\": null,\n  \"context_paths\": [],\n  \"models\": {},\n  \"tiers\": {},\n  \"efforts\": {},\n  \"vendor_profiles\": {},\n  \"profile\": null,\n  \"only\": null,\n  \"critics\": [\n    \"gemini\",\n    \"glm\"\n  ],\n  \"allow_single\": false,\n  \"max_rounds\": {\n    \"plan\": null,\n    \"code\": null\n  },\n  \"max_rounds_effective\": {\n    \"plan\": 3,\n    \"code\": null\n  },\n  \"driver\": \"qoder-cn\",\n  \"driver_enabled\": true,\n  \"driver_model\": null,\n  \"driver_provider\": null,\n  \"session_id\": null,\n  \"topic_inferred\": false,\n  \"notes\": [\n    \"未传 --driver，已继承 plan 阶段的当轮 Driver「qoder-cn」（来源：topic claim 的声明）\"\n  ]\n}\n",
+      "stderr": "",
+      "durationMs": 160,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic resolve --stage plan --json -- '检查夹具' --topic DriverIdentity-qoder-cn",
+      "spawned": true
+    },
+    {
+      "args": [
+        "topic",
+        "claim",
+        "--topic",
+        "DriverIdentity-qoder-cn",
+        "--stage",
+        "plan",
+        "--driver",
+        "qoder-cn",
+        "--session-id",
+        "local-first",
+        "--json"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"plan\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"noop\",\n  \"claimed_at\": \"2026-10-28T13:49:15.597Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+      "stderr": "",
+      "durationMs": 162,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic claim --topic DriverIdentity-qoder-cn --stage plan --driver qoder-cn --session-id local-first --json",
+      "spawned": true
+    },
+    {
+      "args": [
+        "topic",
+        "claim",
+        "--topic",
+        "DriverIdentity-qoder-cn",
+        "--stage",
+        "plan",
+        "--driver",
+        "codex",
+        "--session-id",
+        "local-first",
+        "--json"
+      ],
+      "code": 64,
+      "signal": null,
+      "stdout": "",
+      "stderr": "✗ plan 阶段的 qoder-cn 后缀**已被使用**，不能把声明改成 codex。\n  该阶段子树里已存在带该后缀的文件：\n    · 2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\n  声明一旦用来写出文件，它就等同于留痕。这条限制是刻意的：\n  否则同一个会话可以在首份运行留痕诞生前反复翻转声明、依次拿到每一家的后缀豁免。\n  上列文件是以另一家的后缀写成的：可能是撤回前的旧声明留下的，\n  也可能是尚无声明时写下、仍在使用的原稿。\n  出口：请用户确认它们的去留后，在**终端**里处理再重试。\n  不要在会话里删它们来换回认领——那正是这条限制要防的「会话自己翻转声明」。\n",
+      "durationMs": 162,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic claim --topic DriverIdentity-qoder-cn --stage plan --driver codex --session-id local-first --json",
+      "spawned": true
+    },
+    {
+      "args": [
+        "topic",
+        "claim",
+        "--topic",
+        "DriverIdentity-qoder-cn",
+        "--stage",
+        "code",
+        "--driver",
+        "qoder-cn",
+        "--session-id",
+        "local-first",
+        "--json"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"code\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"claimed\",\n  \"claimed_at\": \"2026-10-28T13:49:16.415Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+      "stderr": "",
+      "durationMs": 166,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic claim --topic DriverIdentity-qoder-cn --stage code --driver qoder-cn --session-id local-first --json",
+      "spawned": true
+    },
+    {
+      "args": [
+        "fixture-draft",
+        "code"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"draft\":{\"relPath\":\"DriverIdentity-qoder-cn/code/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"absPath\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.reviews/DriverIdentity-qoder-cn/code/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"fileName\":\"2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"sha256\":\"66227959dea03eb079de3d05073cdc7f2d8c9d6247c4648b6dcf5082748b3435\",\"effectiveRerunIndex\":1},\"driver\":\"qoder-cn\",\"stage\":\"code\"}",
+      "stderr": "",
+      "durationMs": 57,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' fixture-draft code",
+      "spawned": true
+    },
+    {
+      "args": [
+        "topic",
+        "resolve",
+        "--stage",
+        "code",
+        "--json",
+        "--",
+        "检查夹具",
+        "--topic",
+        "DriverIdentity-qoder-cn"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"prompt_hint\": \"检查夹具\",\n  \"task_goal\": null,\n  \"subject_path\": null,\n  \"base\": \"HEAD\",\n  \"diff_available\": true,\n  \"context_paths\": [],\n  \"models\": {},\n  \"tiers\": {},\n  \"efforts\": {},\n  \"vendor_profiles\": {},\n  \"profile\": null,\n  \"only\": null,\n  \"critics\": [\n    \"gemini\",\n    \"glm\"\n  ],\n  \"allow_single\": false,\n  \"max_rounds\": {\n    \"plan\": null,\n    \"code\": null\n  },\n  \"max_rounds_effective\": {\n    \"plan\": null,\n    \"code\": 3\n  },\n  \"driver\": \"qoder-cn\",\n  \"driver_enabled\": true,\n  \"driver_model\": null,\n  \"driver_provider\": null,\n  \"session_id\": null,\n  \"topic_inferred\": false,\n  \"notes\": [\n    \"未传 --driver，已继承 code 阶段的当轮 Driver「qoder-cn」（来源：topic claim 的声明）\",\n    \"code 阶段的被审对象是 git diff（base=HEAD），不是单一文件\"\n  ]\n}\n",
+      "stderr": "",
+      "durationMs": 184,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic resolve --stage code --json -- '检查夹具' --topic DriverIdentity-qoder-cn",
+      "spawned": true
+    },
+    {
+      "args": [
+        "topic",
+        "claim",
+        "--topic",
+        "DriverIdentity-qoder-cn",
+        "--stage",
+        "code",
+        "--driver",
+        "qoder-cn",
+        "--session-id",
+        "local-first",
+        "--json"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"code\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"noop\",\n  \"claimed_at\": \"2026-10-28T13:49:16.415Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+      "stderr": "",
+      "durationMs": 164,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic claim --topic DriverIdentity-qoder-cn --stage code --driver qoder-cn --session-id local-first --json",
+      "spawned": true
+    },
+    {
+      "args": [
+        "topic",
+        "claim",
+        "--topic",
+        "DriverIdentity-qoder-cn",
+        "--stage",
+        "code",
+        "--driver",
+        "codex",
+        "--session-id",
+        "local-first",
+        "--json"
+      ],
+      "code": 64,
+      "signal": null,
+      "stdout": "",
+      "stderr": "✗ code 阶段的 qoder-cn 后缀**已被使用**，不能把声明改成 codex。\n  该阶段子树里已存在带该后缀的文件：\n    · 2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\n  声明一旦用来写出文件，它就等同于留痕。这条限制是刻意的：\n  否则同一个会话可以在首份运行留痕诞生前反复翻转声明、依次拿到每一家的后缀豁免。\n  上列文件是以另一家的后缀写成的：可能是撤回前的旧声明留下的，\n  也可能是尚无声明时写下、仍在使用的原稿。\n  出口：请用户确认它们的去留后，在**终端**里处理再重试。\n  不要在会话里删它们来换回认领——那正是这条限制要防的「会话自己翻转声明」。\n",
+      "durationMs": 168,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic claim --topic DriverIdentity-qoder-cn --stage code --driver codex --session-id local-first --json",
+      "spawned": true
+    },
+    {
+      "args": [
+        "topic",
+        "claim",
+        "--topic",
+        "DriverIdentity-qoder-cn",
+        "--stage",
+        "bug",
+        "--driver",
+        "qoder-cn",
+        "--session-id",
+        "local-first",
+        "--json"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"bug\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"claimed\",\n  \"claimed_at\": \"2026-10-28T13:49:17.270Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+      "stderr": "",
+      "durationMs": 166,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic claim --topic DriverIdentity-qoder-cn --stage bug --driver qoder-cn --session-id local-first --json",
+      "spawned": true
+    },
+    {
+      "args": [
+        "fixture-draft",
+        "bug"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"draft\":{\"relPath\":\"DriverIdentity-qoder-cn/bug/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"absPath\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.reviews/DriverIdentity-qoder-cn/bug/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"fileName\":\"2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"sha256\":\"0b8292182bb3d642abbd5229be16cea84e431abaa4d12994b1bae6b14d47b6cc\",\"effectiveRerunIndex\":1},\"driver\":\"qoder-cn\",\"stage\":\"bug\"}",
+      "stderr": "",
+      "durationMs": 57,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' fixture-draft bug",
+      "spawned": true
+    },
+    {
+      "args": [
+        "topic",
+        "resolve",
+        "--stage",
+        "bug",
+        "--json",
+        "--",
+        "检查夹具",
+        "--topic",
+        "DriverIdentity-qoder-cn"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"prompt_hint\": \"检查夹具\",\n  \"task_goal\": null,\n  \"subject_path\": \"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.reviews/DriverIdentity-qoder-cn/bug/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\n  \"base\": null,\n  \"diff_available\": null,\n  \"context_paths\": [],\n  \"models\": {},\n  \"tiers\": {},\n  \"efforts\": {},\n  \"vendor_profiles\": {},\n  \"profile\": null,\n  \"only\": null,\n  \"critics\": [\n    \"gemini\",\n    \"glm\"\n  ],\n  \"allow_single\": false,\n  \"max_rounds\": {\n    \"plan\": null,\n    \"code\": null\n  },\n  \"max_rounds_effective\": {\n    \"plan\": null,\n    \"code\": null\n  },\n  \"driver\": \"qoder-cn\",\n  \"driver_enabled\": true,\n  \"driver_model\": null,\n  \"driver_provider\": null,\n  \"session_id\": null,\n  \"topic_inferred\": false,\n  \"notes\": [\n    \"未传 --driver，已继承 bug 阶段的当轮 Driver「qoder-cn」（来源：topic claim 的声明）\"\n  ]\n}\n",
+      "stderr": "",
+      "durationMs": 160,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic resolve --stage bug --json -- '检查夹具' --topic DriverIdentity-qoder-cn",
+      "spawned": true
+    },
+    {
+      "args": [
+        "topic",
+        "claim",
+        "--topic",
+        "DriverIdentity-qoder-cn",
+        "--stage",
+        "bug",
+        "--driver",
+        "qoder-cn",
+        "--session-id",
+        "local-first",
+        "--json"
+      ],
+      "code": 0,
+      "signal": null,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"bug\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"noop\",\n  \"claimed_at\": \"2026-10-28T13:49:17.270Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+      "stderr": "",
+      "durationMs": 168,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic claim --topic DriverIdentity-qoder-cn --stage bug --driver qoder-cn --session-id local-first --json",
+      "spawned": true
+    },
+    {
+      "args": [
+        "topic",
+        "claim",
+        "--topic",
+        "DriverIdentity-qoder-cn",
+        "--stage",
+        "bug",
+        "--driver",
+        "codex",
+        "--session-id",
+        "local-first",
+        "--json"
+      ],
+      "code": 64,
+      "signal": null,
+      "stdout": "",
+      "stderr": "✗ bug 阶段的 qoder-cn 后缀**已被使用**，不能把声明改成 codex。\n  该阶段子树里已存在带该后缀的文件：\n    · 2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\n  声明一旦用来写出文件，它就等同于留痕。这条限制是刻意的：\n  否则同一个会话可以在首份运行留痕诞生前反复翻转声明、依次拿到每一家的后缀豁免。\n  上列文件是以另一家的后缀写成的：可能是撤回前的旧声明留下的，\n  也可能是尚无声明时写下、仍在使用的原稿。\n  出口：请用户确认它们的去留后，在**终端**里处理再重试。\n  不要在会话里删它们来换回认领——那正是这条限制要防的「会话自己翻转声明」。\n",
+      "durationMs": 168,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.trivium/bin/trivium' topic claim --topic DriverIdentity-qoder-cn --stage bug --driver codex --session-id local-first --json",
+      "spawned": true
+    }
+  ],
+  "script_sha256": "f248a84c7f51d2f1c021b5f95fc9f6b36c8b23f2541b3c494ddcd1c4d9e231b1",
+  "roots": [
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw"
+  ],
+  "global_before": {
+    "~/.qoder-cn/settings.json": "140672a4af3a98f0bc4be50a47ccf684ae6cb747bb699b0630ee178ed16e4a08",
+    "~/.qoder-cn/.auth/user": "4dfc895a87195ea566e0dabd9b862949dca4f7f6d09f14d69a72894e3040da46",
+    "~/.qoder-cn/.auth/machine_id": "861ef264875eade9081f8c19114ee3356b6681f20203203e884905939cf5072e"
+  },
+  "fixture": {
+    "root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+    "home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/home",
+    "candidate": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/candidate.cjs",
+    "topic": "DriverIdentity-qoder-cn",
+    "agent": "qoder-cn",
+    "head": "6b1caba41e06b1e138332311c93c17cab125523d",
+    "run_root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/runs",
+    "review_allowed": false,
+    "credential_copies": 0,
+    "cleanup_owner": "采集器默认清理；显式keep时由Bob确认使用完毕后删除fixture.json所在独立根",
+    "candidate_sha256": "d9c3ff95555a65eecee74fcedb1ba7a40e5835812887e92582e986f56544d2fa",
+    "registry_source_sha256": "9ef26f6e318042251e7d86abb4acf833481823f92c1b70c025c176769f56c66f",
+    "registry_transformed_sha256": "facee0258fbb341cddc4ded45c62afb0cc8d2a1589a8ea3fb8e387cae7a60711"
+  },
+  "observation": {
+    "rows": [
+      {
+        "at": "2026-10-28T13:49:15.456Z",
+        "pid": 6065,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "claim",
+          "--topic",
+          "DriverIdentity-qoder-cn",
+          "--stage",
+          "plan",
+          "--driver",
+          "qoder-cn",
+          "--session-id",
+          "local-first",
+          "--json"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"plan\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"claimed\",\n  \"claimed_at\": \"2026-10-28T13:49:15.597Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:15.645Z",
+        "pid": 6161,
+        "ppid": 5912,
+        "argv": [
+          "fixture-draft",
+          "plan"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\"draft\":{\"relPath\":\"DriverIdentity-qoder-cn/plan/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"absPath\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.reviews/DriverIdentity-qoder-cn/plan/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"fileName\":\"2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"sha256\":\"0fcce0565bc36fb09d6e6ff971676d4a1eaccda4a59f7d73b2d422c849c5d0af\",\"effectiveRerunIndex\":1},\"driver\":\"qoder-cn\",\"stage\":\"plan\"}",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:15.701Z",
+        "pid": 6162,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "resolve",
+          "--stage",
+          "plan",
+          "--json",
+          "--",
+          "检查夹具",
+          "--topic",
+          "DriverIdentity-qoder-cn"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"prompt_hint\": \"检查夹具\",\n  \"task_goal\": null,\n  \"subject_path\": \"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.reviews/DriverIdentity-qoder-cn/plan/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\n  \"base\": null,\n  \"diff_available\": null,\n  \"context_paths\": [],\n  \"models\": {},\n  \"tiers\": {},\n  \"efforts\": {},\n  \"vendor_profiles\": {},\n  \"profile\": null,\n  \"only\": null,\n  \"critics\": [\n    \"gemini\",\n    \"glm\"\n  ],\n  \"allow_single\": false,\n  \"max_rounds\": {\n    \"plan\": null,\n    \"code\": null\n  },\n  \"max_rounds_effective\": {\n    \"plan\": 3,\n    \"code\": null\n  },\n  \"driver\": \"qoder-cn\",\n  \"driver_enabled\": true,\n  \"driver_model\": null,\n  \"driver_provider\": null,\n  \"session_id\": null,\n  \"topic_inferred\": false,\n  \"notes\": [\n    \"未传 --driver，已继承 plan 阶段的当轮 Driver「qoder-cn」（来源：topic claim 的声明）\"\n  ]\n}\n",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:15.861Z",
+        "pid": 6210,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "claim",
+          "--topic",
+          "DriverIdentity-qoder-cn",
+          "--stage",
+          "plan",
+          "--driver",
+          "qoder-cn",
+          "--session-id",
+          "local-first",
+          "--json"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"plan\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"noop\",\n  \"claimed_at\": \"2026-10-28T13:49:15.597Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:16.023Z",
+        "pid": 6264,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "claim",
+          "--topic",
+          "DriverIdentity-qoder-cn",
+          "--stage",
+          "plan",
+          "--driver",
+          "codex",
+          "--session-id",
+          "local-first",
+          "--json"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 64,
+        "signal": null,
+        "stdout": "",
+        "stderr": "✗ plan 阶段的 qoder-cn 后缀**已被使用**，不能把声明改成 codex。\n  该阶段子树里已存在带该后缀的文件：\n    · 2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\n  声明一旦用来写出文件，它就等同于留痕。这条限制是刻意的：\n  否则同一个会话可以在首份运行留痕诞生前反复翻转声明、依次拿到每一家的后缀豁免。\n  上列文件是以另一家的后缀写成的：可能是撤回前的旧声明留下的，\n  也可能是尚无声明时写下、仍在使用的原稿。\n  出口：请用户确认它们的去留后，在**终端**里处理再重试。\n  不要在会话里删它们来换回认领——那正是这条限制要防的「会话自己翻转声明」。\n"
+      },
+      {
+        "at": "2026-10-28T13:49:16.299Z",
+        "pid": 6363,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "claim",
+          "--topic",
+          "DriverIdentity-qoder-cn",
+          "--stage",
+          "code",
+          "--driver",
+          "qoder-cn",
+          "--session-id",
+          "local-first",
+          "--json"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"code\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"claimed\",\n  \"claimed_at\": \"2026-10-28T13:49:16.415Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:16.464Z",
+        "pid": 6414,
+        "ppid": 5912,
+        "argv": [
+          "fixture-draft",
+          "code"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\"draft\":{\"relPath\":\"DriverIdentity-qoder-cn/code/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"absPath\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.reviews/DriverIdentity-qoder-cn/code/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"fileName\":\"2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"sha256\":\"66227959dea03eb079de3d05073cdc7f2d8c9d6247c4648b6dcf5082748b3435\",\"effectiveRerunIndex\":1},\"driver\":\"qoder-cn\",\"stage\":\"code\"}",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:16.521Z",
+        "pid": 6415,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "resolve",
+          "--stage",
+          "code",
+          "--json",
+          "--",
+          "检查夹具",
+          "--topic",
+          "DriverIdentity-qoder-cn"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"prompt_hint\": \"检查夹具\",\n  \"task_goal\": null,\n  \"subject_path\": null,\n  \"base\": \"HEAD\",\n  \"diff_available\": true,\n  \"context_paths\": [],\n  \"models\": {},\n  \"tiers\": {},\n  \"efforts\": {},\n  \"vendor_profiles\": {},\n  \"profile\": null,\n  \"only\": null,\n  \"critics\": [\n    \"gemini\",\n    \"glm\"\n  ],\n  \"allow_single\": false,\n  \"max_rounds\": {\n    \"plan\": null,\n    \"code\": null\n  },\n  \"max_rounds_effective\": {\n    \"plan\": null,\n    \"code\": 3\n  },\n  \"driver\": \"qoder-cn\",\n  \"driver_enabled\": true,\n  \"driver_model\": null,\n  \"driver_provider\": null,\n  \"session_id\": null,\n  \"topic_inferred\": false,\n  \"notes\": [\n    \"未传 --driver，已继承 code 阶段的当轮 Driver「qoder-cn」（来源：topic claim 的声明）\",\n    \"code 阶段的被审对象是 git diff（base=HEAD），不是单一文件\"\n  ]\n}\n",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:16.705Z",
+        "pid": 6532,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "claim",
+          "--topic",
+          "DriverIdentity-qoder-cn",
+          "--stage",
+          "code",
+          "--driver",
+          "qoder-cn",
+          "--session-id",
+          "local-first",
+          "--json"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"code\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"noop\",\n  \"claimed_at\": \"2026-10-28T13:49:16.415Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:16.868Z",
+        "pid": 6582,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "claim",
+          "--topic",
+          "DriverIdentity-qoder-cn",
+          "--stage",
+          "code",
+          "--driver",
+          "codex",
+          "--session-id",
+          "local-first",
+          "--json"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 64,
+        "signal": null,
+        "stdout": "",
+        "stderr": "✗ code 阶段的 qoder-cn 后缀**已被使用**，不能把声明改成 codex。\n  该阶段子树里已存在带该后缀的文件：\n    · 2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\n  声明一旦用来写出文件，它就等同于留痕。这条限制是刻意的：\n  否则同一个会话可以在首份运行留痕诞生前反复翻转声明、依次拿到每一家的后缀豁免。\n  上列文件是以另一家的后缀写成的：可能是撤回前的旧声明留下的，\n  也可能是尚无声明时写下、仍在使用的原稿。\n  出口：请用户确认它们的去留后，在**终端**里处理再重试。\n  不要在会话里删它们来换回认领——那正是这条限制要防的「会话自己翻转声明」。\n"
+      },
+      {
+        "at": "2026-10-28T13:49:17.154Z",
+        "pid": 6719,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "claim",
+          "--topic",
+          "DriverIdentity-qoder-cn",
+          "--stage",
+          "bug",
+          "--driver",
+          "qoder-cn",
+          "--session-id",
+          "local-first",
+          "--json"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"bug\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"claimed\",\n  \"claimed_at\": \"2026-10-28T13:49:17.270Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:17.319Z",
+        "pid": 6769,
+        "ppid": 5912,
+        "argv": [
+          "fixture-draft",
+          "bug"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\"draft\":{\"relPath\":\"DriverIdentity-qoder-cn/bug/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"absPath\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.reviews/DriverIdentity-qoder-cn/bug/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"fileName\":\"2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\"sha256\":\"0b8292182bb3d642abbd5229be16cea84e431abaa4d12994b1bae6b14d47b6cc\",\"effectiveRerunIndex\":1},\"driver\":\"qoder-cn\",\"stage\":\"bug\"}",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:17.376Z",
+        "pid": 6770,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "resolve",
+          "--stage",
+          "bug",
+          "--json",
+          "--",
+          "检查夹具",
+          "--topic",
+          "DriverIdentity-qoder-cn"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"prompt_hint\": \"检查夹具\",\n  \"task_goal\": null,\n  \"subject_path\": \"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目/.reviews/DriverIdentity-qoder-cn/bug/2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\",\n  \"base\": null,\n  \"diff_available\": null,\n  \"context_paths\": [],\n  \"models\": {},\n  \"tiers\": {},\n  \"efforts\": {},\n  \"vendor_profiles\": {},\n  \"profile\": null,\n  \"only\": null,\n  \"critics\": [\n    \"gemini\",\n    \"glm\"\n  ],\n  \"allow_single\": false,\n  \"max_rounds\": {\n    \"plan\": null,\n    \"code\": null\n  },\n  \"max_rounds_effective\": {\n    \"plan\": null,\n    \"code\": null\n  },\n  \"driver\": \"qoder-cn\",\n  \"driver_enabled\": true,\n  \"driver_model\": null,\n  \"driver_provider\": null,\n  \"session_id\": null,\n  \"topic_inferred\": false,\n  \"notes\": [\n    \"未传 --driver，已继承 bug 阶段的当轮 Driver「qoder-cn」（来源：topic claim 的声明）\"\n  ]\n}\n",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:17.536Z",
+        "pid": 6818,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "claim",
+          "--topic",
+          "DriverIdentity-qoder-cn",
+          "--stage",
+          "bug",
+          "--driver",
+          "qoder-cn",
+          "--session-id",
+          "local-first",
+          "--json"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 0,
+        "signal": null,
+        "stdout": "{\n  \"ok\": true,\n  \"topic\": \"DriverIdentity-qoder-cn\",\n  \"stage\": \"bug\",\n  \"driver\": \"qoder-cn\",\n  \"outcome\": \"noop\",\n  \"claimed_at\": \"2026-10-28T13:49:17.270Z\",\n  \"claimed_by\": \"local-first\",\n  \"history_len\": 0\n}\n",
+        "stderr": ""
+      },
+      {
+        "at": "2026-10-28T13:49:17.707Z",
+        "pid": 6877,
+        "ppid": 5912,
+        "argv": [
+          "topic",
+          "claim",
+          "--topic",
+          "DriverIdentity-qoder-cn",
+          "--stage",
+          "bug",
+          "--driver",
+          "codex",
+          "--session-id",
+          "local-first",
+          "--json"
+        ],
+        "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+        "allowed": true,
+        "exit_code": 64,
+        "signal": null,
+        "stdout": "",
+        "stderr": "✗ bug 阶段的 qoder-cn 后缀**已被使用**，不能把声明改成 codex。\n  该阶段子树里已存在带该后缀的文件：\n    · 2026-10-28-DriverIdentity-qoder-cn-qoder-cn.md\n  声明一旦用来写出文件，它就等同于留痕。这条限制是刻意的：\n  否则同一个会话可以在首份运行留痕诞生前反复翻转声明、依次拿到每一家的后缀豁免。\n  上列文件是以另一家的后缀写成的：可能是撤回前的旧声明留下的，\n  也可能是尚无声明时写下、仍在使用的原稿。\n  出口：请用户确认它们的去留后，在**终端**里处理再重试。\n  不要在会话里删它们来换回认领——那正是这条限制要防的「会话自己翻转声明」。\n"
+      }
+    ],
+    "task": {
+      "schema": "trivium.task.v1",
+      "topic": "DriverIdentity-qoder-cn",
+      "goal": null,
+      "created_at": "2026-10-28T13:49:15.597Z",
+      "updated_at": "2026-10-28T13:49:17.270Z",
+      "runs": [],
+      "gate": {
+        "stage": null,
+        "state": "idle",
+        "since": null,
+        "run_id": null
+      },
+      "approvals": [],
+      "degradations": [],
+      "disputed": false,
+      "disputes": [],
+      "drivers": {
+        "plan": {
+          "driver": "qoder-cn",
+          "claimed_at": "2026-10-28T13:49:15.597Z",
+          "claimed_by": "local-first"
+        },
+        "code": {
+          "driver": "qoder-cn",
+          "claimed_at": "2026-10-28T13:49:16.415Z",
+          "claimed_by": "local-first"
+        },
+        "bug": {
+          "driver": "qoder-cn",
+          "claimed_at": "2026-10-28T13:49:17.270Z",
+          "claimed_by": "local-first"
+        }
+      }
+    },
+    "per_stage": {
+      "plan": {
+        "claimed": true,
+        "draft_owned": true,
+        "inherits": true,
+        "idempotent": true,
+        "wrong_identity_rejected": true,
+        "separate_cli_process": true
+      },
+      "code": {
+        "claimed": true,
+        "draft_owned": true,
+        "inherits": true,
+        "idempotent": true,
+        "wrong_identity_rejected": true,
+        "separate_cli_process": true
+      },
+      "bug": {
+        "claimed": true,
+        "draft_owned": true,
+        "inherits": true,
+        "idempotent": true,
+        "wrong_identity_rejected": true,
+        "separate_cli_process": true
+      }
+    },
+    "passed": true
+  },
+  "passed": true,
+  "registry_unchanged": true,
+  "retained_fixture": {
+    "root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/中文 空格项目",
+    "home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/home",
+    "candidate": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/candidate.cjs",
+    "topic": "DriverIdentity-qoder-cn",
+    "agent": "qoder-cn",
+    "head": "6b1caba41e06b1e138332311c93c17cab125523d",
+    "run_root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw/runs",
+    "review_allowed": false,
+    "credential_copies": 0,
+    "cleanup_owner": "采集器默认清理；显式keep时由Bob确认使用完毕后删除fixture.json所在独立根",
+    "candidate_sha256": "d9c3ff95555a65eecee74fcedb1ba7a40e5835812887e92582e986f56544d2fa",
+    "registry_source_sha256": "9ef26f6e318042251e7d86abb4acf833481823f92c1b70c025c176769f56c66f",
+    "registry_transformed_sha256": "facee0258fbb341cddc4ded45c62afb0cc8d2a1589a8ea3fb8e387cae7a60711"
+  },
+  "global_after": {
+    "~/.qoder-cn/settings.json": "140672a4af3a98f0bc4be50a47ccf684ae6cb747bb699b0630ee178ed16e4a08",
+    "~/.qoder-cn/.auth/user": "4dfc895a87195ea566e0dabd9b862949dca4f7f6d09f14d69a72894e3040da46",
+    "~/.qoder-cn/.auth/machine_id": "861ef264875eade9081f8c19114ee3356b6681f20203203e884905939cf5072e"
+  },
+  "global_unchanged": true,
+  "cleanup": [
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-identity-HsrMqw",
+      "absent": false,
+      "intentionally_retained": true
+    }
+  ]
+}

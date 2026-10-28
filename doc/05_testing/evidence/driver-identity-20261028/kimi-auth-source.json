@@ -1,0 +1,225 @@
+{
+  "schema": "trivium.kimi-auth-source.v1",
+  "at": "2026-10-28T13:57:57.784Z",
+  "commit": "ec495f0cb00f6db9a9118bf979112886f4264a41",
+  "source": "https://github.com/MoonshotAI/kimi-code",
+  "source_proves_binary_equivalence": false,
+  "files": [
+    {
+      "path": "packages/oauth/src/token-state.ts",
+      "sha256": "7c5804c6d253451413463749078c365c3fcc230eb59dcb40562545cf0f67ebaf",
+      "lines": [
+        {
+          "line": 6,
+          "text": " *   • revoked  — a \"tombstone\": the on-disk file exists but the prior"
+        },
+        {
+          "line": 12,
+          "text": " * Wire format and `TokenInfo` are unchanged: a revoked record is still"
+        },
+        {
+          "line": 25,
+          "text": "  | { readonly kind: 'revoked'; readonly scope: string; readonly tokenType: string }"
+        },
+        {
+          "line": 30,
+          "text": "  if (token.accessToken.length === 0) {"
+        },
+        {
+          "line": 31,
+          "text": "    return { kind: 'revoked', scope: token.scope, tokenType: token.tokenType };"
+        },
+        {
+          "line": 36,
+          "text": "export function revokedTombstone(prior: TokenInfo): TokenInfo {"
+        }
+      ]
+    },
+    {
+      "path": "packages/oauth/src/toolkit.ts",
+      "sha256": "65d321ded8431891d6004a433a781d6cd2b0013b6ce159e6998405f95eb86b34",
+      "lines": [
+        {
+          "line": 45,
+          "text": "import { FileTokenStorage, type TokenStorage } from './storage';"
+        },
+        {
+          "line": 64,
+          "text": "  readonly credentialsDir?: string | undefined;"
+        },
+        {
+          "line": 126,
+          "text": "    const credentialsDir = options.credentialsDir ?? join(this.homeDir, 'credentials');"
+        },
+        {
+          "line": 127,
+          "text": "    this.storage = options.storage ?? new FileTokenStorage(credentialsDir);"
+        },
+        {
+          "line": 399,
+          "text": "    const storageName = resolveKimiTokenStorageName({ providerName, oauthKey });"
+        },
+        {
+          "line": 465,
+          "text": "export function resolveKimiTokenStorageName(input: {"
+        },
+        {
+          "line": 472,
+          "text": "  const prefix = 'oauth/';"
+        },
+        {
+          "line": 482,
+          "text": "  const override = process.env['KIMI_CODE_HOME'];"
+        }
+      ]
+    },
+    {
+      "path": "packages/oauth/src/provider-credential.ts",
+      "sha256": "ce648fbc9c10d78649d045c455eff7cb13a5f3352273068c45d63679353d3d36",
+      "lines": [
+        {
+          "line": 5,
+          "text": " * write routes. The precedence chain (inline `apiKey` vs declared `apiKeyEnv`),"
+        },
+        {
+          "line": 12,
+          "text": "  readonly apiKeyEnv?: unknown;"
+        },
+        {
+          "line": 18,
+          "text": "  | { readonly kind: 'env'; readonly apiKeyEnv: string }"
+        },
+        {
+          "line": 25,
+          "text": " * `apiKey`+`apiKeyEnv`, `apiKeyEnv`+`oauth`, and `apiKey`+`oauth` — refresh"
+        },
+        {
+          "line": 28,
+          "text": "export function declaredProviderCredential("
+        },
+        {
+          "line": 33,
+          "text": "  const apiKeyEnv = nonEmptyString(provider.apiKeyEnv);"
+        },
+        {
+          "line": 35,
+          "text": "  if (inlineApiKey !== undefined && apiKeyEnv !== undefined) {"
+        },
+        {
+          "line": 38,
+          "text": "      message: credentialConflictMessage('Provider', providerName, 'apiKey', 'apiKeyEnv'),"
+        },
+        {
+          "line": 41,
+          "text": "  if (apiKeyEnv !== undefined && hasOAuth) {"
+        },
+        {
+          "line": 44,
+          "text": "      message: credentialConflictMessage('Provider', providerName, 'apiKeyEnv', 'oauth'),"
+        },
+        {
+          "line": 54,
+          "text": "  if (apiKeyEnv !== undefined) return { kind: 'env', apiKeyEnv };"
+        },
+        {
+          "line": 67,
+          "text": "export function apiKeyEnvMissingMessage(providerName: string, envName: string): string {"
+        },
+        {
+          "line": 73,
+          "text": "  readonly apiKeyEnv?: string;"
+        },
+        {
+          "line": 77,
+          "text": "  | { readonly ok: true; readonly apiKey?: string; readonly apiKeyEnv?: string }"
+        },
+        {
+          "line": 82,
+          "text": " * Submitted values are trimmed; a non-empty `apiKey` replaces any `apiKeyEnv`"
+        },
+        {
+          "line": 92,
+          "text": "  const env = nonEmptyString(submitted.apiKeyEnv);"
+        },
+        {
+          "line": 96,
+          "text": "      message: credentialConflictMessage('Provider', providerName, 'apiKey', 'apiKeyEnv'),"
+        },
+        {
+          "line": 99,
+          "text": "  if (env !== undefined) return { ok: true, apiKeyEnv: env };"
+        },
+        {
+          "line": 104,
+          "text": "    apiKeyEnv: submitted.apiKeyEnv === undefined ? existing.apiKeyEnv : undefined,"
+        }
+      ]
+    },
+    {
+      "path": "packages/oauth/src/storage.ts",
+      "sha256": "7881f9f3e7f7eeb334d4bc96ece494d4d7338fc1e10fb22a32752300ff0a350b",
+      "lines": [
+        {
+          "line": 5,
+          "text": " * `~/.kimi-code/credentials/`) as `<name>.json` with mode 0600 (parent"
+        },
+        {
+          "line": 41,
+          "text": "export class FileTokenStorage implements TokenStorage {"
+        },
+        {
+          "line": 61,
+          "text": "    // or slash commands) must not escape the credentials dir. `basename`"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/llm-adapter/model/model-auth.ts",
+      "sha256": "e18408281dd273071e5482f98c9fc179e5e66d5a9aa5e11a72b25b8194ec3a53",
+      "lines": [
+        {
+          "line": 4,
+          "text": "  declaredProviderCredential,"
+        },
+        {
+          "line": 5,
+          "text": "} from '@moonshot-ai/kimi-code-oauth/provider-credential';"
+        },
+        {
+          "line": 49,
+          "text": "  const declared = declaredProviderCredential(args.provider ?? {}, args.providerName);"
+        },
+        {
+          "line": 57,
+          "text": "    return { apiKeyEnv: declared.apiKeyEnv };"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/app/auth/authService.ts",
+      "sha256": "d5b564fac65ff4f55c169f0dbb5c69569d7bd15df1a1b0e379bfe9874e07e68b",
+      "lines": [
+        {
+          "line": 25,
+          "text": "import { declaredProviderCredential } from '@moonshot-ai/kimi-code-oauth/provider-credential';"
+        },
+        {
+          "line": 338,
+          "text": "      const declared = declaredProviderCredential(provider, KIMI_CODE_PROVIDER_NAME);"
+        },
+        {
+          "line": 720,
+          "text": "      if (auth.apiKeyEnv !== undefined) {"
+        },
+        {
+          "line": 721,
+          "text": "        if (nonEmpty(process.env[auth.apiKeyEnv]) !== undefined) return;"
+        },
+        {
+          "line": 722,
+          "text": "        throw new AuthCredentialEnvMissingError(providerName, auth.apiKeyEnv);"
+        }
+      ]
+    }
+  ]
+}

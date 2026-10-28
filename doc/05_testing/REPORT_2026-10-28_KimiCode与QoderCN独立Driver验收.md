@@ -92,3 +92,77 @@ Driver已有CLI发现、原生状态调用、参数/cwd及隔离认领证据；�
 最终自动化：`npm run check`退出0，4177项中4168通过、9跳过、0失败，测试350.8秒；新增采集器5/5通过（纳入默认测试），当前入口/文档索引/采集器定向54/54通过；桩自检14/14通过，正式verify未测。最终再build并重装，install:check通过；仓库/安装bundle SHA256同为`22fce4561d43e6cc6b9d97f4fd3e2b19f0875ec769c209285a69be6587f8c604`，两家共14份安装入口与当前源产物逐字节一致。两家配置/认证hash与首批快照相等，最终open_gates=[]，两家三个生产开关均false，无准入台账，HEAD仍d4abd6f3。摘要索引保留23份采集原件，首轮装置失败及后续成功分别列示，原件source hash不伪装为最终采集器逐字复跑。
 
 交付授权：Bob随后明确要求“提交、推送”。提交本轮Driver工具、入口资产、测试、同步文档及脱敏证据，推送当前main至origin；不含本机配置、凭据、临时candidate或构建产物。验证日志摘录以`.txt`随交付保存，避免被仓库日志忽略规则遗漏；仅复制摘录并去除行尾空白，验证摘要同步excerpt hash，历史native原件和原始完整日志不改。上述未提交状态保留为开发收尾时点，最终提交号与远端状态以Git回读为准；Git交付不提升任何未测或准入状态。
+
+## 7. main / 892c4767 独立身份续验（2026-10-28）
+
+本节为之后的新一轮，Codex执笔，开始时`main / 892c4767747cbce3acb2aa213097f9aa28f37781`、工作树干净，所有主题`open_gates=[]`，安装检查通过。沿用Bob“暂不双审”：未在本仓或真实客户端调用正式A/B/C/D、审核者CLI、approve或abandon，没有提交、推送、发布、修改版本或生产开关。前六节及旧23份原件保持历史事实；上节Git交付授权不延续为本轮自动提交授权。
+
+### 7.1 新装置与自动化
+
+新增`driver-identity.mjs`、`driver-identity-index.mjs`、`kimi-auth.mjs`与回归，默认测试收录。只在临时esbuild的单个注册块开启被验侧Driver，记录源/变换/bundle指纹，完全不安装候选。`src/`、`skills-src/`与生成入口均无修改，产品契约及版本仍1.3.2。
+
+新夹具用真实Git init和一次夹具提交建立可用HEAD，HEAD中的sum错误为减法，工作树为加法，另有计划/根因材料、项目配置和独立run_root。夹具提交不涉及本仓Git。plan/bug先认领再由验收wrapper调用生产archive唯一出口写归属材料；code也放一个明确标记为“归属材料”的文件用于验证使用后不能换身份，**不把它说成正式命令C的必需原稿**。模型实际调用的是wrapper；采集器没有替模型直接发认领命令。归属材料正文由装置固定生成，不代表真实业务原稿撰写质量已验。
+
+零配额回归覆盖两候选×三个阶段：生产关闭退64，独立进程认领/解析，真实HEAD上的diff可用，plan/bug找本身份原稿；两个并发进程同值认领均noop，声明字节不变；异身份claim/resolve退64且不改声明。另用真实轨迹离线验证：入口必须有同ID成功结果；缺失/错ID/被拒不能通过，首批失败与客户端纠错不能抹除。
+
+上一轮两份保留夹具仍存在，但`git rev-parse --verify HEAD`失败（仅有初始化git，没有提交）；未覆盖或删除。新两份有效夹具及`formal-pending.json`的位置见本批local原件，均无凭据，清理责任写入`fixture.json`。中间一次仅本地认领夹具已另列清理，不能把“保留”报成已删除。
+
+### 7.2 Kimi认证核清及真实客户端
+
+当前安装仍2.3.3，不升级。按该版本官方固定commit的[认证源码摘要](evidence/driver-identity-20261028/kimi-auth-source.json)核清：原生file OAuth的`oauth/kimi-code`映射到`credentials/kimi-code.json`；空access token属于revoked记录。配置也支持内联api_key、显式api_key_env及provider env的KIMI_API_KEY路径；它们不是可从任意产品认证文件自动拼出的官方登录。keyring仅见schema声明，本轮不读取系统钥匙串，也不宣称已证明其可用。
+
+仅读取当前配置所需非敏感键与hash：managed官方endpoint为`https://api.kimi.com/coding/v1`，default alias为`kimi-code/kimi-for-coding`，model声明为`kimi-for-coding`；全局对应file OAuth的access/refresh均为空、无内联key或显式api_key_env、当前进程无Kimi认证环境变量。新私有副本中的实际请求退出1，明确报`provider managed:kimi-code has no credential configured`，不是由历史采样推断所有认证方式不可用。原件见[kimi-auth](evidence/driver-identity-20261028/kimi-auth-1793195452509-24a5e3.json)。
+
+Bob随后亲自在单独HOME/KIMI_CODE_HOME运行官方login并报告成功。采集器只将该私有原生OAuth引用、配置及必要身份文件复制到一次性0700根/0600文件，不改成静态key，不动全局账号、provider/model。真实客户端成功批次见[Kimi原件](evidence/driver-identity-20261028/kimi-real-1793196160184-33e015.json)：
+
+- 原生`/skill:dual-status` → Skill同ID加载 → Bash → wrapper账本 → 底层status退出0。
+- 两个独立官方CLI会话实际Read三份已安装入口内容，再由模型生成本地Bash命令；plan/code/bug各自认领为kimi，归属材料均为kimi后缀，第二会话省略driver解析继承、同值noop、改codex均退64。
+- CLI均完整退出0，无超时/截断；两个会话ID不同。配置声明与模型请求有hash绑定，底层具体模型身份仍null/unknown；不把别名当服务端身份证明。
+
+Kimi status另写了私有会话内计划文件，均在一次性根中；这是Driver行为，不是只读审核通过证据。Kimi真实模型特殊字符argv仍未测，本批只补真实status和身份项，旧受控透传证据不提升来源。
+
+两次装置问题保留：首次要求新login一定有region，导致启动前ENOENT，未发模型请求，另存失败说明；随后`--auto`与`-p`组合被2.3.3拒绝，原件[kimi失败](evidence/driver-identity-20261028/kimi-real-1793195792649-de6a64.json)，并未调用模型。去掉不兼容旗标后才产生上面的真实成功。
+
+### 7.3 Qoder CN真实客户端及失败边界
+
+仍为1.1.80，采用最小官方认证副本和生产withQoderHome清理设施。省略`--model`，私有settings未声明model；原生init回读Auto，底层身份null/unknown。本批不重复status、特殊字符参数、中文空格cwd的既有独立项目。
+
+首批两个真实会话完成身份操作，但私有skills目录不在工作区，Read和cat实际被拒；且采集器只看首个resolve失败，漏掉模型后续成功调用。保留[首批原件](evidence/driver-identity-20261028/qoder-cn-real-1793195599403-3d29d8.json)，该批不能算入口加载通过。不是审核只读准入实验。
+
+根据实际错误加入官方`--add-dir <私有skills根>`，只扩大本轮Driver对无凭据入口目录的工作区读取，未扩大到auth目录。补验[原件](evidence/driver-identity-20261028/qoder-cn-real-1793195912680-2d1e36.json)的两个不同会话均实际Read三份原入口，工具结果含对应driver命令；plan/code/bug认领、归属材料、继承、noop、错误身份拒绝全部有Bash同ID结果及wrapper的argv/cwd/底层退出码、task落盘关联。
+
+这批原件的`passed=false`保留：模型第一次把fixture-draft误写成旗标形状，被wrapper退64，之后纠正成正确位置参数。离线索引分列`identity_items_passed=true`、`collector_passed=false`、`clean_first_attempts=false`。**独立身份项有证据通过，整场无误调用不通过**，不能改旧总标志或再烧配额只为得到绿色。工具加载和本地身份结果也不代表正式斜杠审查入口已运行。
+
+### 7.4 更新后的矩阵与正式待验
+
+| macOS独立项 | Kimi 2.3.3 | Qoder CN 1.1.80 |
+| --- | --- | --- |
+| 官方真实模型原生status | 通过（本批） | 通过（上一批，本批未重跑） |
+| 三阶段入口内容实际加载为参考 | 通过 | 通过；首批权限失败保留 |
+| plan/code/bug认领及本身份归属材料 | 三阶段通过 | 三阶段通过；含一次wrapper参数错误后纠正 |
+| 另一官方CLI会话继承、noop、异身份退64 | 三阶段通过 | 三阶段通过 |
+| 无误调用会话总检查 | 通过 | 失败；不掩盖纠错样本 |
+| 正式A/B/C/D、worker交接、裁决、人工停点/恢复/放弃 | 未测 | 未测 |
+| 生产Driver启用 | 关闭/阻塞，完整验收未完成 | 关闭/阻塞，完整验收未完成 |
+| 审核者严格只读准入 | 阻塞；原反例保留，本批未重测 | 阻塞；完整安全矩阵仍缺，本批未重测 |
+| 桌面端、Kimi VS Code插件、Windows全部 | 未测 | 未测；不含Qoder插件 |
+
+每份新local夹具已准备四条确切入口文本、独立主题、B/D原稿、C的HEAD/diff和前置条件，写在`formal-pending.json`，源工具可重建。A要求增加测试并修正sum，B审计划，C审当前改动，D审减法根因；文本沿用上一批`--critics gemini,glm`，实际账号、探针与正式集合仍须未来显式入口核定，**本批未预检**。
+
+标准继续为：入口/认领/原稿/run.driver/交接options.driver/worker恢复一致，requested_routes逐项冻结，真实审核指纹与路线、逐条裁决和gate齐全；B/C/D在人工停点停止，Bob显式approve才恢复；专用主题恢复/abandon另验。当前wrapper仍拒绝正式命令，`formal-pending`只是材料准备，不代表可审查客户端已经就绪。生产Driver关闭仍是正式产品前置阻塞，不能用candidate代替生产通过。
+
+本批离线索引、最终自动化、全局/安装回读和清理事实见[evidence目录](evidence/driver-identity-20261028/)中的最新index与validation；原件不补写，采集器迭代hash不同如实记录。全部可独立推进的取证完成后等待Bob另行决定Git交付或正式入口。
+
+### 7.5 本批验证与清理收尾
+
+`npm run check`退出0：4181项、4172通过、9跳过、0失败，374.2秒；入口/文档索引/取证工具定向58/58，最后工具回归4/4。既有全量测试在各自临时夹具中包含桩review、approve/abandon等状态机回归，没有真实审核者CLI或本仓闸门变化；不能充作本轮正式流程验收。工具最终又补了实际HEAD读取及实时关联摘要，这些零模型改动有最后定向回归，不追加真实模型调用，也不宣称按最终脚本hash逐字重跑历史原件。本轮selftest、正式verify未测。
+
+本批真实模型客户端启动为Kimi三次（status和两个身份会话）、Qoder四次（首批两个、补验两个），每次内部均有多轮模型交互，不能把CLI启动数称为网络请求数。无凭据请求与不兼容旗标的失败另外列证，受控loopback调用本批0次。
+
+全局两家配置/认证五个hash仍与本轮开始及上一轮validation相等；`driverEnabled/criticEnabled/defaultSelected`六个值全部false，无新增准入台账，最终open_gates为空。安装check通过，14份安装入口与仓库生成物字节相同。安装bundle保持`22fce456…`；check重建的仓库bundle为`8484607d…`，只含构建标识差异（HEAD/inputs/built_at）；精确移除唯一构建标识赋值后其余字节完全相等，归一化SHA256为`fb43672b96d828bba097c4039e465bfda57a07322134254d56f5b7c4da7f200e`。本轮未改运行时代码或入口，不重装生产，也没有安装candidate；两个完整hash与回读存入[validation](evidence/driver-identity-20261028/validation.json)。
+
+两家真实批次一次性根全部逐项回读不存在。Bob使用的私有登录根在确认无匹配残留进程、私有来源hash未变及已知凭据扫描无匹配后删除；该login.sh路径现已失效，无待Bob补做认证。它不改变全局空token记录。中间多余的local根及临时公开源码根也已删除。新两份有HEAD/正式待验材料的local根和历史两份旧夹具有意保留，均无凭据；见[cleanup](evidence/driver-identity-20261028/cleanup.json)与validation，不能称作全部临时根均已删除。完整厂商逃逸后代/监督者强杀回收及Windows ACL仍未测。
+
+下一依赖是Bob另行显式调用具体正式入口及未来Driver开关的准入决定；当前没有认证操作待办。Git交付须另行授权，本轮HEAD未动。
+
+本节后续交付：Bob明确授权“提交、推送”，本轮工具、测试、同步文档及18份脱敏证据按文件清单提交至当前main并推送origin。交付前远端与892c4767一致、133个主题无未关闭闸门，12份索引对象hash逐项匹配、18份证据敏感信息扫描无匹配。未纳入全局配置、凭据、临时candidate或构建产物，不改版本及生产开关。Git交付不提升正式入口、审核者准入或Windows状态；提交号和推送结果以Git回读为准。

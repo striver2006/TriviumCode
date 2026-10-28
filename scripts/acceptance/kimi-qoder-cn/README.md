@@ -1,5 +1,26 @@
 # Kimi/Qoder 取证工具
 
+2026-10-28 main/892c4767新增三阶段独立身份工具（不运行正式审查，不安装候选）：
+
+```sh
+node scripts/acceptance/kimi-qoder-cn/driver-identity.mjs --agent kimi --case local --keep-fixture yes
+node scripts/acceptance/kimi-qoder-cn/driver-identity.mjs --agent qoder-cn --case local --keep-fixture yes
+node scripts/acceptance/kimi-qoder-cn/driver-identity.mjs --agent qoder-cn --case real
+node scripts/acceptance/kimi-qoder-cn/kimi-auth.mjs
+# Bob自行完成上条工具生成的私有login.sh；不要回传token。
+node scripts/acceptance/kimi-qoder-cn/driver-identity.mjs --agent kimi --case real --kimi-home '/本次私有登录根/home/.kimi-code'
+node scripts/acceptance/kimi-qoder-cn/driver-identity-index.mjs
+node --test scripts/acceptance/kimi-qoder-cn/driver-identity.test.mjs
+```
+
+real显式消耗官方真实配额：Qoder每批两个全新CLI会话；Kimi每批status加两个身份会话。不要为了重取绿色重复当前通过项。Kimi必须显式指定Bob登录的私有根，拒绝全局根；复制原生OAuth引用，不转换静态key。--output可指定新证据目录。仅macOS，Windows未测。native每进程限180秒（Kimi status120秒），Node侧TERM→宽限→KILL；完整逃逸后代与监督者被杀回收仍未测。
+
+local建立真实Git HEAD和dirty diff、三个阶段认领/归属材料/解析继承/幂等/异身份拒绝；生产关闭退64。--keep-fixture yes只保留无凭据local根，内有fixture.json、formal-pending.json，记录清理责任。B/D待验材料先认领再用archive写，C有HEAD/diff，四条入口文本及前置条件已备；wrapper仍只允许本地命令，绝不代表正式审查就绪。到期目录被系统清理后按local命令重建，不能依赖旧路径。
+
+real让真实模型读取实际安装的三份入口为参考并生成Bash，通过wrapper认领及生成材料，第二会话继承/幂等/拒绝。Qoder用--add-dir仅纳入私有skills目录；不纳入auth目录。它不调用四个正式斜杠入口，原稿正文固定由夹具archive生成；自动化、参考加载、独立身份、正式入口与真实业务撰写质量分开。Kimi真实status经原生Skill加载，特殊字符模型转抄仍未测。
+
+所有原件wx保留，索引只离线关联同ID工具结果和wrapper账本。Qoder首批入口Read被拒不能通过；补验实际加载/身份项通过，但一次fixture-draft参数错误被拒后纠正，使原件整场passed仍false。索引分列identity_items_passed、collector_passed及clean_first_attempts，不改旧证据也不重跑凑绿。详见[报告第7节](../../../doc/05_testing/REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#7-main--892c4767-独立身份续验2026-10-28)。本批结束已清理的私有登录路径不可复用；需新登录时由kimi-auth重新准备，不代Bob登录。
+
 2026-10-28新增独立Driver工作（不启动审查、不审批、不改生产开关）：
 
 ```sh

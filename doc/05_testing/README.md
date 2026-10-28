@@ -169,7 +169,7 @@
 - [`REPORT_2026-10-27_windows_atomic_write_retry.md`](./REPORT_2026-10-27_windows_atomic_write_retry.md)：**Windows 原子写重试（EV-260）**（A 档，`/dual-run`，主题 `Windows原子写重试`）。`writeAtomic` 在 win32 上 rename 覆盖撞 EPERM/EACCES/EBUSY 时无重试，`--start` 偶发「内部错误：EPERM」退出（1.3.2 发版全量 not ok 357）；拆出 `renameOverwriting` 原语，三码按 [25,50,100,200,400] ms 指数退避（6 次、总睡眠 ≤775 ms），耗尽清 tmp 抛最后一次原始错误，POSIX 与非三码逐字不变；`lock.ts` 回收改名不重试（仲裁语义）、`review.ts` 挪移与 `doctor-deadline.ts` 台账同口径。回归锚 9 例（三码参数化、平台可注入、删重试必红、缺省表钉值）；Windows 零配额实测两场景通过（按住 400 ms→826 ms 重试成功；按住 5 s→824 ms 抛原始 EPERM、tmp 已清）；S10 verify 六次全量红格（5/5/4/3/1/3）全部归因既有底噪族、原 EPERM 形态零出现，2026-10-27 用户认可按底噪判读收口；macOS 全量复跑待做。证据 [`evidence/windows-atomic-write-retry-2026-10-27/`](./evidence/windows-atomic-write-retry-2026-10-27/)。
 
 - [Kimi Code macOS 规则根因与只读准入](./REPORT_2026-10-28_KimiCode_macOS规则根因与只读准入.md)：2.3.3 native 单因素对照、配置规则播种缺口与链接泄漏、受控分发和生命周期证据；真实模型/扩展/凭据矩阵仍阻塞，双开关关闭。
-- [Kimi Code 与 Qoder CN 独立 Driver 验收](./REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md)：macOS CLI七技能发现/来源/同名控制、Qoder真实模型status与Kimi受控原生透传、隔离构建认领继承；正式任务/worker及Windows未测，开关关闭。
+- [Kimi Code 与 Qoder CN 独立 Driver 验收](./REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md)：macOS CLI发现/透传与两家真实模型三阶段身份续验；Kimi私有原生登录后status通过，Qoder保留权限失败与参数纠错，单项与整场分列；有效Git夹具、跨进程契约及待验文本，正式任务/worker和Windows未测，开关关闭。
 - [Qoder CN 只读审核准入与 Custom 模型接入](./REPORT_2026-10-28_QoderCN只读审核准入与Custom模型接入.md)：最小加载、回退反例及官方/Custom的Write真实分发拒绝；Edit/Bash与完整安全矩阵仍阻塞，正式verify4157通过/9跳过不代表生产准入。
 - [Qoder CN 官方模型路由与回退阻断](./REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md)：1.1.80 官方目录、Auto 默认标签、显式模型、无效请求拒绝与当前真机回退早停；P2 接线、自动化和代码审状态分列，Windows 未测，生产审核准入关闭。
 
