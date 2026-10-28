@@ -3,7 +3,7 @@
   "topic": "QoderCN只读审核准入与Custom模型接入",
   "goal": "在现有 Qoder CN 官方模型路由与回退阻断实现基础上，完成 Qoder CN 只读审核准入，并将 Custom/BYOK 模型接入纳入同一轮任务。 一、Custom 模型接入 优先依据官方原生机制和本机实测，确认自定义模型目录、配置声明、必要凭据及其隔离加载方式。以当前已配置的 bailian/qwen3.8-flash-tp 作为首个真实样本，但不得硬编码为通用默认。不得修改用户全局配置，…",
   "created_at": "2026-10-28T02:19:59.975Z",
-  "updated_at": "2026-10-28T08:23:11.310Z",
+  "updated_at": "2026-10-28T10:21:11.377Z",
   "runs": [
     {
       "run_id": "20261028T022148Z",
@@ -82,6 +82,40 @@
       "status": "success",
       "review_mode": "full",
       "started_at": "2026-10-28T08:23:11.310Z"
+    },
+    {
+      "run_id": "20261028T090050Z",
+      "stage": "plan",
+      "rerun_index": 3,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T09:00:58.228Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261028T092749Z",
+      "stage": "code",
+      "rerun_index": 5,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T09:27:57.315Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261028T100514Z",
+      "stage": "verify",
+      "rerun_index": 4,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T10:11:05.432Z"
+    },
+    {
+      "run_id": "20261028T101518Z",
+      "stage": "verify",
+      "rerun_index": 5,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T10:21:11.377Z"
     }
   ],
   "gate": {
@@ -153,6 +187,22 @@
       "state": "checked-none",
       "effective_sides": 3,
       "at": "2026-10-28T08:17:18.709Z"
+    },
+    {
+      "run_id": "20261028T090050Z",
+      "stage": "plan",
+      "rerun_index": 3,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-28T09:15:11.799Z"
+    },
+    {
+      "run_id": "20261028T092749Z",
+      "stage": "code",
+      "rerun_index": 5,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-28T10:15:11.065Z"
     }
   ]
 }

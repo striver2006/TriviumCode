@@ -9,7 +9,37 @@ import {admissionHash,admissionRouteBinding,requireAdmission,storeAdmission,type
 import {validateAdmission} from '../../src/trivium/schemas.js';
 import {scratchDir} from '../helpers/scratch.js';
 import type {AdmissionRecord} from '../../src/trivium/types.js';
+import {defaultConfig} from '../../src/trivium/config.js';
+import {enumerateDenyPaths} from '../../src/trivium/freeze.js';
 const agent=AGENTS.find(a=>a.admissionChecks?.length)!;
+
+test('真实禁读枚举对接精确台账：编排目录/隔离运行根/同行/敏感均覆盖，新轮工件拒绝',async()=>{
+  const root=await fs.realpath(await scratchDir('trivium-admission-enumeration-')),cfg=defaultConfig();
+  const archive=path.join(root,'.reviews'),topic='CoverageFixture',driver=AGENTS.find(a=>a.id==='codex')!.id;
+  cfg.runtime.run_root=path.join(root,'disposable-runs');
+  try{
+    await fs.mkdir(path.join(root,'.trivium'));await fs.mkdir(cfg.runtime.run_root);
+    const dir=path.join(archive,topic,'code');await fs.mkdir(dir,{recursive:true});
+    const peer=AGENTS.find(a=>a.id!==agent.id&&a.id!==driver)!.id;
+    const filename=(round:string)=>path.join(dir,`2026-10-28-${topic}${round}-${peer}.md`);
+    await fs.writeFile(filename(''),`---\nschema: trivium.review.v2\nrole: ${peer}\n---\nFAKE_ONLY`);
+    await fs.writeFile(path.join(root,'.env'),'FAKE_ONLY');
+    const deny=await enumerateDenyPaths(cfg,root,archive,agent.id,driver,topic);
+    assert.ok(deny.includes('.trivium'));assert.ok(deny.includes(cfg.runtime.run_root));assert.ok(deny.includes('.env'));
+    assert.ok(deny.includes(path.relative(root,filename('')).split(path.sep).join('/')));
+    const raw=JSON.stringify({synthetic_engine_fixture:true});await fs.writeFile(path.join(root,'proof.json'),raw);
+    const req:AdmissionRequest={critic:agent.id,project_root:root,model:'fixture-model',deny_paths:deny};
+    const record:AdmissionRecord={record_id:'enumerated',agent:agent.id,project_root:root,binding_sha256:admissionRouteBinding(req),
+      tested_at:new Date(Date.now()-1000).toISOString(),expires_at:new Date(Date.now()+60000).toISOString(),deny_paths:deny.map(p=>path.resolve(root,p)),
+      checks:Object.fromEntries(agent.admissionChecks!.map(check=>[check,{state:'pass' as const,evidence:[{path:'proof.json',sha256:createHash('sha256').update(raw).digest('hex'),case_id:check}]}]))};
+    const verify=()=>[]; // 仅台账引擎回归，不冒充native语义验证器。
+    await storeAdmission(root,record);requireAdmission(req,1,verify);
+    await fs.writeFile(filename('-r2'),`---\nschema: trivium.review.v2\nrole: ${peer}\n---\nNEW_FAKE_ONLY`);
+    const expanded=await enumerateDenyPaths(cfg,root,archive,agent.id,driver,topic);
+    assert.throws(()=>requireAdmission({...req,deny_paths:expanded},1,verify),/超出准入已验覆盖/);
+    assert.throws(()=>requireAdmission({...req,deny_paths:[...deny,path.join(root,'.trivium','new-file')]},1,verify),/超出准入已验覆盖/);
+  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
 
 test('准入台账纯形状+身份追加校验，拒绝未知身份',()=>{
   assert.ok(validateAdmission({schema:'wrong',records:[{agent:'unregistered-fixture'}]}).length>=2);

@@ -2,10 +2,23 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {rejectionChannel} from './qoder-evidence.mjs';
-const root=path.resolve(import.meta.dirname,'../../../doc/05_testing/evidence/qoder-cn-admission-20261028');
+import {build} from 'esbuild';
+import {rejectionChannel,executionIndexEntry} from './qoder-evidence.mjs';
+if(process.argv.length>3)throw Error('用法：node qoder-index.mjs [证据目录]');
+const root=await fs.realpath(process.argv[2]??path.resolve(import.meta.dirname,'../../../doc/05_testing/evidence/qoder-cn-admission-20261028'));
 const hash=v=>crypto.createHash('sha256').update(v).digest('hex');
 const index={at:new Date().toISOString(),admission:false,windows:'未测',script_sha256:hash(await fs.readFile(import.meta.filename)),files:[]};
+// 新可观察性原件独立回放生产解析器；不信任采集器写下的pass或通道摘要。
+const built=await build({stdin:{contents:"export {parseQoderTrace} from './src/trivium/adapters/qoder-cn-trace.ts';",resolveDir:path.resolve(import.meta.dirname,'../../..')},bundle:true,platform:'node',format:'esm',write:false,logLevel:'silent'});
+const {parseQoderTrace}=await import('data:text/javascript;base64,'+Buffer.from(built.outputFiles[0].text).toString('base64'));
+index.execution=[];
+for(const name of (await fs.readdir(root)).filter(n=>/^execution-\d.*\.json$/.test(n)).sort()){
+  let bytes;
+  try{
+    bytes=await fs.readFile(path.join(root,name));
+    index.execution.push({file:name,sha256:hash(bytes),...executionIndexEntry(JSON.parse(bytes),parseQoderTrace)});
+  }catch(error){index.execution.push({file:name,sha256:bytes?hash(bytes):null,error_code:error.code??'JSON_INVALID'});process.exitCode=1;}
+}
 index.environment_correction='04:12及以前本主题批次不能证明环境白名单隔离；run会叠加父环境。04:30修复后证据另列，旧原件不改，完整说明见本轮报告。';
 index.rejection_correction='04:33及以前索引仅按non_execution_kind计permission-rule，误含dont_ask模式拒绝；本索引按system决策ID关联，mode独立分类、缺失保持unknown，旧索引不改。';
 for(const name of (await fs.readdir(root)).filter(n=>/^(custom|readonly)-.*\.json$/.test(n)).sort()){
@@ -33,12 +46,13 @@ for(const name of (await fs.readdir(root)).filter(n=>/^(custom|readonly)-.*\.jso
     sources_unchanged:e.sources_unchanged,temporary_roots_removed:e.temporary_roots_removed,cases});
 }
 index.auxiliary=[];
-for(const name of (await fs.readdir(root)).filter(n=>/^(lifecycle|admission-evaluation|manifest)-.*\.json$/.test(n)).sort()){
+for(const name of (await fs.readdir(root)).filter(n=>/^(lifecycle|admission-evaluation|manifest|execution-harness-failure|execution-cleanup-readback)-.*\.json$/.test(n)).sort()){
   const bytes=await fs.readFile(path.join(root,name));let data;
   try{data=JSON.parse(bytes);}catch{index.auxiliary.push({file:name,sha256:hash(bytes),error_code:'JSON_INVALID'});process.exitCode=1;continue;}
   index.auxiliary.push({file:name,sha256:hash(bytes),scope:data.scope??null,admitted:data.admitted??false,known_secret_found:data.known_secret_found??null,temporary_roots_removed:data.temporary_roots_removed??null});
 }
-index.guard_binding_warnings=index.files.filter(x=>!x.error_code&&!x.secret_guard_sha256).map(x=>x.file);
+index.execution_binding_warnings=index.execution.filter(x=>!x.error_code).map(x=>({file:x.file,missing:['script_sha256','secret_guard_sha256','evidence_helper_sha256'].filter(k=>!x[k])})).filter(x=>x.missing.length);
+index.guard_binding_warnings=[...index.files,...index.execution].filter(x=>!x.error_code&&!x.secret_guard_sha256).map(x=>x.file);
 index.guard_binding_missing_count=index.guard_binding_warnings.length;
 const file=path.join(root,`index-${new Date().toISOString().replace(/[:.]/g,'-')}-${crypto.randomBytes(3).toString('hex')}.json`);
 await fs.writeFile(file,JSON.stringify(index,null,2)+'\n',{flag:'wx',mode:0o600});

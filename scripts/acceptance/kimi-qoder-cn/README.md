@@ -6,6 +6,7 @@
 
 ```sh
 node scripts/acceptance/kimi-qoder-cn/qoder-custom.mjs bailian/qwen3.8-flash-tp
+node scripts/acceptance/kimi-qoder-cn/qoder-execution.mjs custom:bailian/qwen3.8-flash-tp
 node scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs Qwen3.8-Flash open deny-visible paths
 node scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs Qwen3.8-Flash matrix-open matrix-readonly project-hook-open project-hook-readonly
 node scripts/acceptance/kimi-qoder-cn/qoder-lifecycle.mjs Qwen3.8-Flash
@@ -13,7 +14,17 @@ node scripts/acceptance/kimi-qoder-cn/qoder-admission.mjs doc/05_testing/evidenc
 node scripts/acceptance/kimi-qoder-cn/qoder-index.mjs
 ```
 
-前四条消耗真实配额，显式选择样本；后两条仅校验/汇总项目证据。admission生成器默认仅输出候选评估，全部必需项通过且带--write才写项目台账；当前新review配方仅4项模型控制/30项，空禁读覆盖不能用于生产，不写台账，不打开registry。历史原件wx保留，复跑指当前源码，不保证复原旧脚本/临时路径。
+custom、execution、readonly、lifecycle命令消耗真实配额，显式选择样本；admission/index仅校验或汇总项目证据。admission生成器默认仅输出候选评估，全部必需项通过且带--write和显式项目根才写项目台账；08:05历史review配方评估仅4项模型控制/30项，空禁读覆盖不能用于生产。09:24新可观察性诊断独立列示，不与旧4/30合并；不写台账，不打开registry。历史原件wx保留，复跑指当前源码，不保证复原旧脚本/临时路径。
+
+新增 execution 命令消耗真实配额：先核实显式 Custom 唯一声明，另以生产官方探针实际路线独立核对。两路线合计至多24次原生CLI启动（包括版本/目录，比24次模型调用更严格）与60分钟模型派生窗口；每臂最多180秒，不因未调用换提示重试。固定提示词/hash、实际argv、两臂权限语义、同ID工具轨迹与假文件回读都入原件。候选原样消费生产审核参数/权限模板；无害正控制另列，不能算审核配方。生产枚举生成非空禁读集，集合冻结不等于路径拒绝已验；临时项目删除后证据仅用于可观察性诊断，不供其它项目写台账。
+
+execution 首跑装置失败及回收单独留痕，后续修正不覆盖。原生完整进程树/codec/worker失联仍需另测；本批组回读只作安全收尾。任一核心必需项阻塞时停止扩展其它准入调用。工具未暴露且未调用是未测；只有真实调用和同ID分发错误才称tool-unavailable，mode/rule单列。代码自动化通过不提升为准入。
+
+admission 生成器可用 `--project-root <隔离项目根>`；manifest、facts、证据和覆盖均相对该项目，评估原件默认放manifest所在目录。`--write` 必须同时显式给项目根且全部必需项通过；不传根仍兼容本仓评估，不写台账但写评估原件。生成器只冻结manifest集合，不自行运行生产禁读枚举；execution采集器调用enumerateDenyPaths，生产消费端将实际请求禁读集与已验集合复核。隔离项目应配置自己的runtime.run_root；新增同行工件扩集须重验，不能用目录前缀替代精确台账覆盖。
+
+代码审修订：真实候选越权成功或假文件变化直接记fail/unsafe并停止后续派生，不能降成untested。未调用或正控制不足才记untested；有调用但不满足执行层拒绝记fail。此新增反例仅合成回归，未追加native调用，不改09:24原件。
+
+GLM续裁修订：来源快照使用生产加载器返回的实际root（尊重QODERCN_CONFIG_DIR），新原件带实际入口、护栏/辅助hash及monitor首因/通道/终态因子；索引转录绑定并将缺字段列为警告，不给旧件补字段。`qoder-index.mjs [证据目录]`可对隔离夹具运行，坏execution逐件记录错误并继续，好件仍索引，脚本退出1。逐臂清理先保留监督结果，remaining/reused立即拒绝下一派生。共享执行器的身份ps移出探针段，真实Node限额回归通过；当前采集器hash已不同于09:24原件，逐臂清理/新增字段仍未追加native实测，不据自动化提升准入。
 
 Custom复用生产单条加载器：当前CLI内置非公共JS/WASM在私有replace环境短命Node子进程运行，筛选唯一声明，仅重加密一项；所有解密参数加入秘密集，传输AES-GCM密封，不复制全目录或提取物进项目。模型/CLI/Node/codec/配方指纹绑定，未知布局拒绝；密钥不进配置、日志或工件。可调用不等于只读准入，底层model/provider未知保持null。
 

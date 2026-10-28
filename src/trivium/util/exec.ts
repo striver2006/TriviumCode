@@ -571,7 +571,8 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
        */
       if (treeListener) {
         notifyTrees();
-        processStartTime(pid, { canonical: true })
+        // 身份查询不能再被探针段强制登记，否则观察器会对ps递归查询身份。
+        outsideProbeSection(() => processStartTime(pid, { canonical: true }))
           .then((t) => {
             entry.startedAt = t;
             if (liveTrees.get(pid) === entry) notifyTrees();

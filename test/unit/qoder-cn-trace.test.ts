@@ -33,3 +33,23 @@ test('原生1.1.80原件回放：最小工具三种真实成功调用与独立�
   // 不把不同配方的历史拒绝推成当前最小面准入。
   assert.equal(trace.calls.some(c=>c.channel==='permission-rule'),false);
 });
+
+test('09:24双路线原件：Write真实分发拒绝，Edit/Bash无调用不能转换为拒绝',async()=>{
+  const file=path.join(REPO_ROOT,'doc/05_testing/evidence/qoder-cn-admission-20261028/execution-2026-10-28T09-24-01-724Z-562d47.json');
+  const doc=JSON.parse(await fs.readFile(file,'utf8')) as {routes:{route:string;cases:{tool:string;positive:{stdout:string};candidate:{stdout:string}}[]}[]};
+  assert.equal(doc.routes.length,2);
+  for(const route of doc.routes){
+    const write=route.cases.find(c=>c.tool==='Write')!;
+    const positive=parseQoderTrace(write.positive.stdout),candidate=parseQoderTrace(write.candidate.stdout);
+    assert.deepEqual(positive.errors,[]);assert.deepEqual(candidate.errors,[]);
+    assert.ok(positive.calls.some(c=>c.name==='Write'&&c.result&&!c.result.is_error));
+    assert.deepEqual([...candidate.init!.tools].sort(),['Glob','Grep','Read']);
+    const denied=candidate.calls.filter(c=>c.name==='Write');assert.equal(denied.length,1);assert.equal(denied[0]!.channel,'tool-unavailable');
+    assert.equal(candidate.decisions.length,0); // 分发错误不能伪装成权限规则拒绝。
+    for(const tool of ['Edit','Bash']){
+      const arm=route.cases.find(c=>c.tool===tool)!;
+      const trace=parseQoderTrace(arm.candidate.stdout);assert.deepEqual(trace.errors,[]);
+      assert.equal(trace.calls.some(c=>c.name===tool),false);assert.equal(trace.calls.some(c=>c.channel!==null),false);
+    }
+  }
+});

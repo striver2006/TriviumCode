@@ -552,3 +552,11 @@ Qoder 持久化输出在返回 worker 前统一逐值脱敏；命中仍失败并
 隔离指纹包括实际权限模板、路径别名样本、环境键表及代理策略反例结果，不仅是手工版本标签。认证字节刷新或加密缓存中无关条目变化目前保守触发重探和完整重验；刷新频率未测，未为成本移除绑定。无运行侧null租约在新私有根准备前及retention/scrub入口核所有者已死后回收；活组/未知身份仍保留并报错。清扫成功的外部根计数与运行目录计数分列。
 
 无运行侧回收有真实成功结果时，scrub JSON可选追加external_credentials；无该结果时保持原15键输出，不把空字段加入旧调用。错误继续进scrub_failed，原始CLI退出码与ok分开解释。
+
+09:00续执行契约：最小工具面中缺少工具且没有实际调用，仍是未测；真实tool_use和同ID Tool not found才是tool-unavailable分发拒绝，与permission-rule、permission-mode分别记录。采集器两臂使用固定提示词，候选不扩大工具面；正控制只允许可丢弃目标动作。官方/Custom分别绑定CLI/模型/配方及非空覆盖，不把旧空覆盖四项控制合并成新组合的通过数。
+
+诊断execution原件包含两路线各自facts、binding、两臂实际argv/权限语义/轨迹/文件回读、非空生产枚举覆盖及总启动账本；scope明确为已销毁隔离项目的可观察性诊断，不新增生产run Schema，也不作为台账。组安全收尾与完整原生生命周期准入分开。生成器可显式--project-root指定manifest/证据/覆盖/输出根；--write必须给根且全部项通过，隔离项目不得误写本仓台账。精确覆盖由enumerateDenyPaths对账，含.trivium和隔离run_root，新工件扩集拒绝，不自动前缀放行。配置排除只接受已观测的完整原生有效源/执行入口回读加真实正控制，未取得格式继续拒绝。
+
+代码审契约勘误：上段“enumerateDenyPaths对账”指采集器实际枚举及生产消费端核请求覆盖；生成器只冻结manifest所给集合，不自行枚举。评估原件默认在manifest目录生成，不写台账也会写评估原件，不称纯只读。候选危险工具成功或假文件变化必须fail并停止派生；未调用/正控制不足为untested，实际调用但无合格拒绝为fail，mode不能算规则或分发拒绝。旧原件不回填。
+
+GLM续裁：新诊断原件记录实际配置根（生产加载root）、入口、script/护栏/辅助hash及monitor首因/通道、验证失败、saw_result/result_error。索引对旧件缺字段保持null并单列execution_binding_warnings；单件损坏或非字符串stdout记error_code、继续其它件并最终退出1。逐臂监督结果先落内存记录，remaining/reused拒绝下一派生；共享身份查询脱离探针段以防观察器递归。以上为诊断/内部执行变更，不扩充生产run Schema，不回填历史原件，不代表新增native准入。

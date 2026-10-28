@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
-  abortProbeSections, countLiveGroupMembers, groupSnapshotFrom, newProbeAbortToken, newProbeSection, run, terminateProbeSectionGroups, withProbeSection,
+  abortProbeSections, countLiveGroupMembers, groupSnapshotFrom, newProbeAbortToken, newProbeSection, run, terminateProbeSectionGroups, withProbeSection, withLaunchBudget, watchTrackedTrees,
 } from '../../src/trivium/util/exec.js';
 import { killMarked } from '../helpers/proc.js';
 import { skipOnWin } from '../helpers/platform.js';
@@ -18,6 +18,16 @@ const WIN_SKIP = skipOnWin('POSIX 进程组语义：/bin/sh 的 trap TERM、/bin
 const MARK = `trivium-u-psec-${process.pid}-${Date.now()}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const GRACE = { graceMs: 300, killWaitMs: 1000 };
+
+test('探针段与树观察器叠加：身份ps不递归派生、不进入段登记', { skip: WIN_SKIP },async()=>{
+  const scope=newProbeSection('observer-composition'),budget={limit:6,used:0,launches:[] as string[],exhausted:false};
+  let notices=0;const unwatch=watchTrackedTrees(()=>{notices++;});
+  try{
+    const result=await withProbeSection(scope,()=>withLaunchBudget(budget,()=>true,()=>run(process.execPath,['-e','setTimeout(()=>{},100)'],{timeoutMs:2000})));
+    await sleep(30);assert.equal(result.code,0);assert.equal(scope.groups.length,1);
+    assert.equal(budget.used,2,'仅主Node和一次身份查询ps');assert.ok(notices>0);
+  }finally{unwatch();await terminateProbeSectionGroups([scope],GRACE);}
+});
 
 function liveMembers(pgid: number): number {
   const r = spawnSync('/bin/ps', ['-axo', 'pgid=,stat='], { encoding: 'utf8' });

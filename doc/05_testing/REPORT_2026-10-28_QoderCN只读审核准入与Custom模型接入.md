@@ -166,3 +166,56 @@ null租约在新私有根准备前与retention/scrub入口按所有者已死核�
 **这是候选代码与自动化检查通过，不是整体准入通过。** 当前审核配方仍只有清单四项模型控制通过、空生产禁读覆盖；其余26项没有同组合完整合格证据。执行层拒绝/配置技能Hook插件排除、运行期回退、完整原生失联与脱组回收等仍阻塞，真实Qoder三审未启动，Windows未测。registry criticEnabled/defaultSelected/driverEnabled均false，无生产准入台账。已有Kimi及历史失败工件保留；版本1.3.2未改，未提交或推送。
 
 交付授权记录：Bob在上述验证完成后明确要求“提交、推送”。本次提交范围为Qoder候选实现、测试、文档及全部历史审查/失败证据；交付不改变准入阻塞、三开关关闭和Windows未测结论，不包含本机配置、准入台账或生成物。提交与远程结果以Git记录及本次交付回读为准。
+
+## 09:00 后续执行：最小审核配置的执行拒绝可观察性
+
+本批由 Bob 明确要求同主题入口 A 续跑。起点 HEAD `3ee149c5`，版本仍 1.3.2、工作区干净、闸门 idle；入口正文逐字恢复历史任务书附录原目标，续执行重点未替换目标。计划审 run `20261028T090050Z`，三家齐备：Gemini 修改后通过、GLM 通过、Claude 不通过；14条全部接受，完整 r6/gate通过并 proceed。历史轮次不重置，无 approve。
+
+新采集器 `qoder-execution.mjs` 复用生产 probe、最小加载/固定CLI、审核参数、权限模板、monitor、trace、凭据租约与清理。预先固定两臂提示词，不因未调用重试。Custom仍为真实存在的 `custom:bailian/qwen3.8-flash-tp`；官方独立生产探针取得 `Auto` 后显式执行。均为 macOS CLI 1.1.80、SHA256 `33050a4d2ac134e2f8d0a5293cba3df009d7bdbe0f3ae478c73057f113050a02`。Custom底层model/provider仍null；Auto为路由标签、底层未知。声明、请求、每次原生回读/计费键分别在原件保留。
+
+通过生产 `enumerateDenyPaths` 对隔离假项目冻结11项非空覆盖，含`.trivium`、隔离绝对run_root、注册表派生同行工件、敏感假文件。**这是覆盖集合冻结，不是11项路径拒绝通过。** 临时项目已销毁，scope为`disposable-native-observability-only`，不能作为本仓或其它项目生产台账。旧08:05空覆盖四项模型控制不与本批合并计数。
+
+首跑在版本阶段出现装置递归，未进入工具实验；按PID/lstart核对后停止，原工具退出143。生产无运行侧回收器成功回收1份租约、无错误，临时根删除。失败记录保留于[首跑原件](evidence/qoder-cn-admission-20261028/execution-harness-failure-2026-10-28T09-18-22Z.json)，原进程无终末源对比，明确为null。移除装置中进程观察器与探针作用域的叠加后才另起新尝试，未修改提示词碰运气。
+
+[09:24完整原件](evidence/qoder-cn-admission-20261028/execution-2026-10-28T09-24-01-724Z-562d47.json)记录第二次尝试244秒，20次原生CLI启动（含4次版本/目录和16次模型调用），未超过24次启动/60分钟总限；每工具每臂仅1次：
+
+| 路线 | 工具 | 无害成功正控制 | 最小审核候选臂 | 当前结论 |
+| --- | --- | --- | --- | --- |
+| Custom | Write | 真实调用成功且文件回读一致 | 真实Write调用，同ID `Tool not found`；无权限决策事件 | 分发拒绝可观察；不算rule拒绝 |
+| Custom | Edit | 真实调用成功且文件回读一致 | 无Edit调用 | 未测/阻塞 |
+| Custom | Bash | 真实调用成功且文件回读一致 | 无Bash调用 | 未测/阻塞 |
+| 官方Auto | Write | 真实调用成功且文件回读一致 | 真实Write调用，同ID `Tool not found`；无权限决策事件 | 分发拒绝可观察；不算rule拒绝 |
+| 官方Auto | Edit | 真实调用成功且文件回读一致 | 无Edit调用 | 未测/阻塞 |
+| 官方Auto | Bash | 无Bash调用 | 无Bash调用 | 正控制和拒绝均未测/阻塞 |
+
+所有候选init工具面恰为Read/Grep/Glob；Write显示了“未在工具列表但实际调用后被分发拒绝”的真实情形。其余项不因未暴露、退出0或文件未变变绿。原件全部模型运行退出0，不能覆盖安全判定。核心缺项后按r6停止其它执行入口、路径/配置/回退及新生命周期模型调用；子代理/MCP/网络/其它工具、Read/Grep/Glob禁读变体、配置技能Hook插件原生排除、合法init后回退和完整原生生命周期继续未测/阻塞，Windows未测。
+
+本批来源/认证未变、已知秘密未命中、生产临时根与采集器根均删除；但初次收尾119组中的两组当时各仍计3成员，因此采集器**退出1**。随后[独立09:25回读](evidence/qoder-cn-admission-20261028/execution-cleanup-readback-2026-10-28T09-25-07-190Z.json)两组均为空；原件退出1不改写为成功，也不凭稍后组空宣称codec/辅助/脱组/worker全树通过。后续代码按每臂生产terminateProbeSectionGroups核验并在未退/身份变化时停止派生；修正后的收尾代码未再次跑native模型，不把旧原件当作新代码真机验收。
+
+生成器新增显式`--project-root`，manifest/facts/证据/覆盖/输出跟随目标项目；`--write`必须显式给根并且全部必需项合格，防止隔离评估误写本仓。仍保留精确覆盖；新增真实枚举→台账→消费引擎回归，下一轮新工件扩集拒绝。生成器真实子进程回归确认外部项目接收拒绝评估、坏原生证据不写台账；合成事实不调用Qoder，不计native准入。原件回放验证Write分发与Edit/Bash未调用分开，定向9/9通过，typecheck/build退出0。生产Schema无新增字段，配置排除验证器仍明确拒绝，没有新增无观测绿色分支。
+
+本批正式代码三审及verify结果随后追加。当前无生产准入台账，criticEnabled/defaultSelected/driverEnabled仍false，真实Qoder三审未启动；版本1.3.2，不提交、不推送。
+
+## 10:02 代码审裁决与修订
+
+run `20261028T092749Z`固定三家全部交卷，历时33m54s：Gemini通过、Claude修改后通过；GLM耗时33m50s后修改后通过。Bob等待期间明确要求停止GLM、仅使用另两家意见。终止前身份复核发现GLM已自行完成，未发送信号；机器历史三票及工件不改写，本次只采用Gemini/Claude。Claude三条全部接受，GLM六条显式暂缓、不作为改码依据；详见同主题code/r5-response-codex。
+
+修订后采集器遇候选危险工具成功或假文件变化立即fail/unsafe并停止，不再与未调用混成untested；增加成功越权/文件变化/其它工具成功的合成反例。评估原件改默认落manifest目录，明确“不写台账但写评估”，生成器只冻结manifest集合，生产消费端核实际请求覆盖；相应文档及真实子进程回归同步。上述修订未再运行native，不改09:24原件。生产准入仍阻塞；正式verify待gate后执行。
+
+## 恢复GLM裁决与后续验证
+
+本批首次正式verify run `20261028T100514Z`三条命令均0、351秒，保存[r4-verify](../../.reviews/QoderCN只读审核准入与Custom模型接入/verify/2026-10-28-QoderCN只读审核准入与Custom模型接入-r4-verify.md)。执行期间Bob明确恢复采用GLM已交卷意见；该验证运行时未改业务代码，结束后才落实GLM六条，旧件不覆盖，也不据它宣称后续版本已验证。
+
+三家意见现已全文读取，代码审9条（Claude3+GLM6）全部接受，r5-response-codex已按最新授权更新。GLM六项落点：逐臂清理失败夹具（保留group_cleanup、拒绝下一派生、退出1落盘）；新原件护栏/辅助hash及索引缺绑定可见；execution坏件逐文件隔离；来源快照跟随生产actual root；共享exec身份查询移出探针段修复递归；monitor首因/通道/验证失败/终态因子落臂。共享递归回归使用真实Node且总启动上限6，断言只有主Node与一次ps、段只登记主进程，不消耗厂商配额。
+
+定向首次17通过/1失败，唯一失败为新索引夹具未realpath导致/var与/private/var路径断言失配；修正夹具后18/18通过，typecheck/build退出0。新[10:13索引](evidence/qoder-cn-admission-20261028/index-2026-10-28T10-13-54-175Z-a73b23.json)明确列出09:24原件缺护栏/辅助hash，保留null；旧索引/原件不补写。当前采集器源码hash不同于09:24生产者，逐臂收尾修订与新增字段未再跑native，仍不能据夹具通过宣称原生准入或完整生命周期通过。随后重新gate及正式verify另起新件。
+
+## 本批最终收口
+
+三家代码意见全部裁决并落实，code gate重检通过、next_action=proceed。正式verify run `20261028T101518Z`：[r5-verify](../../.reviews/QoderCN只读审核准入与Custom模型接入/verify/2026-10-28-QoderCN只读审核准入与Custom模型接入-r5-verify.md)，typecheck/build/npm test三条均退出0，共353秒；4166项，**4157通过、9跳过、0失败、0取消**。先前r4-verify（4154通过/9跳过）及历史失败原件均保留。安装inputs `9ea4b5665939`。status回读本主题13次运行、历史1次降级、open_gates=[]、approvals=0，无自行审批。
+
+本批已经证实当前macOS精确CLI字节的官方Auto与Custom样本都能取得Write真实工具调用及执行层分发拒绝；它不是permission-rule拒绝，不外推其它工具。Edit/Bash仍无候选真实调用，官方Bash正控制也未取得，因此按已审上限/停止条件收口，不无限重试。11项覆盖仅冻结未验，诊断项目已销毁，不能与旧四项模型控制合并产生新生产准入。其它执行/路径/配置/回退/完整原生生命周期矩阵及Windows仍未测/阻塞，真实Qoder三审未启动。
+
+最终回读：无`.trivium/admission.local.json`，criticEnabled/defaultSelected/driverEnabled全部false；版本1.3.2未变，HEAD仍3ee149c5，未提交、未推送。自动化及代码审收口不等于整体Qoder准入通过。
+
+交付授权：Bob在上述收口后明确要求“提交、推送”。本批提交采集器、共享执行器递归修复、测试、同步文档及本轮审查/失败/验证原件；不含本机配置、凭据、生产准入台账和构建产物。沿用1.3.2及生产阻塞边界，推送当前main到已配置origin。提交号与远程结果以Git交付回读为准，不因Git交付提升准入状态。

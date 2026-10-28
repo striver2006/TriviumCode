@@ -1,0 +1,256 @@
+---
+schema: trivium.review.v2
+topic: QoderCN只读审核准入与Custom模型接入
+stage: code
+role: glm
+vendor: zcode
+agent_cli: zcode/0.17.0
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+effort_requested: null
+effort_effective: null
+effort_effective_source: null
+tier: null
+tier_source: legacy
+model_route: config_copy
+run_id: 20261028T092749Z
+rerun_index: 5
+snapshot_hash: sha256:ea0c1ff032fd5a18a014283d2d294c6c3f332f4f2a3abdddd01e6d8f2fff92e0
+blind: true
+started_at: 2026-10-28T09:27:57.519Z
+finished_at: 2026-10-28T10:01:47.226Z
+duration_s: 2029
+tool_calls:
+  read: 27
+  grep: 17
+  glob: 0
+  run_command: 0
+  project_reads: 22
+evidence_ok: true
+verdict: pass-after-changes
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 5
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+consulted_unverified: true
+heterogeneous: unknown
+access:
+  requested_mode: standard
+  profile: null
+  launcher_requested: /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs
+  launcher_effective: /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs
+  wrapper_sha256: null
+  configuration_sha256: null
+  provider_declared: null
+  provider_declared_source: null
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: glm
+    status: unknown
+    left_model: null
+    right_model: bigmodel-coding-plan/GLM-5.3
+    left_source: null
+    right_source: trace
+    reason: 左侧模型信息缺失
+  - left: gemini
+    right: glm
+    status: different-family
+    left_model: gemini-3.8-flash-high
+    right_model: bigmodel-coding-plan/GLM-5.3
+    left_source: envelope
+    right_source: trace
+    reason: 模型族不同：gemini / glm
+  - left: glm
+    right: claude
+    status: different-family
+    left_model: bigmodel-coding-plan/GLM-5.3
+    right_model: claude-opus-5-5
+    left_source: trace
+    right_source: envelope
+    reason: 模型族不同：glm / claude
+override_reason: 左侧模型信息缺失
+session_id: sess_1c34f0dd-9f92-4422-a180-e99818ee9d57
+---
+
+# 代码审查：QoderCN只读审核准入与Custom模型接入
+
+> Critic-B · 智谱 ZCode ｜ 回读模型 `bigmodel-coding-plan/GLM-5.3` ｜ 请求模型 `GLM-5.3`
+> ｜ 运行 `20261028T092749Z` ｜ 第 5 轮
+> ｜ 本轮审核者 gemini、glm、claude
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+本批（09:00 续执行）新增的执行层可观察性采集器 qoder-execution.mjs、生成器 --project-root、索引回放与三条测试总体严谨、口径诚实。核心机制逐项核实成立：采集器只从 esbuild 临时 bundle 导入生产函数（withQoderHome/pinQoderExecutable/prepareQoderReadonly/QoderModelMonitor/parseQoderTrace/enumerateDenyPaths/terminateProbeSectionGroups 等），不维护第二套权限策略；withLaunchBudget 在 spawn 前拒绝第 25 次启动（exec.ts:450-452）且把 version/catalog 一并计入，比 r6 的 24 次模型调用更严；两臂各起独立私有 home，正控制臂放宽的 settings 与 --tools 从未被候选臂消费；候选臂要求 init 工具面恰为 Read/Grep/Glob、唯一同 ID 真实 tool_use、result.is_error、channel 为 permission-rule 或 tool-unavailable、夹具不变，未暴露/未调用只记 untested 并给出准确阻塞语，与生产验证器 qoder-cn-admission.ts:77 和 parseQoderTrace 的通道分类一致；每臂结束先核来源/认证快照、guard.leaked、临时根清理再派生下一次；收尾处 safe(JSON.stringify(evidence)) 不是死代码——QoderSecretGuard.scrub 命中即置 leaked（qoder-cn-custom.ts:33），known_secret_found 与 exit 1 据此收口。生成器对重复、缺值、--project-root 缺省加 --write 一律抛错，manifest/facts/证据三类路径都经 relativeFile 限定在目标项目实根内并新增前缀校验，集成测试以真实子进程覆盖隐式写拒绝、外部根路由与坏证据不写台账。enumerateDenyPaths→storeAdmission→requireAdmission 的端到端回归用真实夹具同时覆盖 .trivium、隔离 run_root、同行工件与 .env，并以两条扩集反例证明精确覆盖不前缀放行；verifyAdmissionRecord 同时核字面与 realpath（admission.ts:52-55）。09:24 原件关键数字与报告逐项吻合（20/24 次启动、244 秒、两组 members_after=3 → exit 1、秘密未命中、两路线 Write 均为 tool-unavailable 分发拒绝、Edit/Bash 无调用、官方 Bash 正控制未取得）。未发现阻断或重要问题。六条意见均非阻断：现行采集器的逐臂 fail-closed 收尾路径没有任何真机或夹具覆盖、产出 09:24 原件的是修正前版本（原件无 group_cleanup 键、script_sha256 不同）；索引 execution 条目缺 script_sha256 与护栏/辅助绑定且 guard_binding_warnings 不覆盖这一类原件；索引 execution 循环对坏件无逐文件容错（r2 GLM-05 已接受的修法在新循环上回归）；采集器来源快照根硬编码 ~/.qoder-cn 与生产 qoderConfigRoot() 不同源；首跑递归的根因（段作用域内 run() 第 574 行的 processStartTime 未包 outsideProbeSection）只在装置侧绕开、共享工具未加护；monitor 失败首因不入臂记录。按意见修改后可直接实施，无需再审一轮。
+
+**结论**：修改后通过（`pass-after-changes`）
+
+## 审查意见（共 6 条：次要 5 ｜ 吹毛求疵 1）
+
+### GLM-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `scripts/acceptance/kimi-qoder-cn/qoder-execution.mjs:117-119,135-143；doc/05_testing/evidence/qoder-cn-admission-20261028/execution-2026-10-28T09-24-01-724Z-562d47.json:9` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：现行采集器在每臂结束后调用 terminateProbeSectionGroups，并在 remaining 或 reused 非空时抛错中止全部后续派生（第 117-119 行），收尾又写 evidence.group_cleanup（第 137 行）；但归档的 09:24 原件里没有任何 group_cleanup 键、script_sha256 为 d6e3fa58…，说明产出原件的是修正前版本（当时只在末尾数成员、发现两组各 3 成员才退出 1）。报告如实写了「修正后的收尾代码未再次跑 native 模型」，但这条 fail-closed 路径目前既无真机覆盖也无夹具回归：exec.ts 里 snapshot 取不到会判 unverifiable 并进入 remaining，一旦出现这种误判，现行脚本会在第一臂后就中断一次本可完成的采集，而现有自动化完全看不到这条分支。
+
+**依据**：被审 diff 第 16000-16002 行（逐臂 terminate 与 throw）、第 16020 行（evidence.group_cleanup）；对 09:24 原件 grep group_cleanup 零命中，第 9 行 script_sha256 为 d6e3fa58…；REPORT 新增节原句「修正后的收尾代码未再次跑native模型，不把旧原件当作新代码真机验收」；src/trivium/util/exec.ts 第 334-344、370-375 行：isGone 返回 unverifiable 的组进入 candidates，结束不了即计入 remaining。
+
+**建议**：给采集器的「逐臂收尾→中止」分支补一条不调原生 CLI 的夹具回归：terminateProbeSectionGroups 已暴露可注入的 o.snapshot，可用桩让某组判为 remaining，断言脚本记录 group_cleanup、停止后续派生并仍以 exit 1 落盘原件；同时在脚本 README 与报告中明确写出现行 script_sha256 与 09:24 原件不同、逐臂路径尚未真机验证，下一次经用户授权预算的真机采集才算验收。
+
+### GLM-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `scripts/acceptance/kimi-qoder-cn/qoder-index.mjs:14-24,57-58；scripts/acceptance/kimi-qoder-cn/qoder-execution.mjs:20-21` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：custom/readonly 两个采集器都把 secret_guard_sha256 与 evidence_helper_sha256 写进原件，索引对 index.files 逐件回录 script_sha256 与护栏绑定，并把缺绑定件聚合进 guard_binding_warnings；新采集器只写 script_sha256、不写任何护栏/辅助绑定，索引的 execution 条目连 script_sha256 都没转录，而 guard_binding_warnings 只过滤 index.files。结果是索引读者看到 guard_binding_missing_count 为 0，却不知道新一类原件根本不在该核对面内，也无法从索引看出 09:24 原件出自哪一版采集器——GLM-01 指出的版本分歧目前只在报告散文里可见。
+
+**依据**：qoder-index.mjs 第 16-23 行 execution 条目字段清单无 script_sha256/secret_guard_sha256/evidence_helper_sha256，第 57 行 guard_binding_warnings 仅 index.files.filter；qoder-custom.mjs 第 27 行与 qoder-readonly.mjs 第 26-27 行写入两项绑定；qoder-execution.mjs 第 20-21 行 evidence 初始字段只有 script_sha256；09:24 原件第 9 行有 script_sha256 但索引未转录。
+
+**建议**：采集器记录 secret_guard_sha256（取 src/trivium/adapters/qoder-cn-custom.ts 源文件或构建出的 runtime.cjs 的 sha256）与 evidence_helper_sha256（qoder-evidence.mjs）；索引的 execution 条目转录 script_sha256 与两项绑定，并把 execution 纳入 guard_binding_warnings 的论域或单列 execution_binding_warnings，使缺绑定与版本分歧机器可读。
+
+### GLM-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `scripts/acceptance/kimi-qoder-cn/qoder-index.mjs:14-24` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：新增的 execution 循环对 JSON.parse(bytes) 与 parseQoderTrace(o?.stdout??'') 都没有逐文件容错；同文件里 custom/readonly 循环（第 29 行）与 auxiliary 循环（第 54 行）都是单件损坏记 error_code、置 exitCode=1 后 continue。于是任何一份 execution-*.json 损坏或形状不符（采集器以单次非原子 writeFile 落盘，中途被杀即留半截文件；或某臂 stdout 不是字符串）都会让整个索引脚本抛未捕获异常、不写出任何 index 文件——这正是 r2 GLM-05 已被接受修复的「一份坏件拖垮整个索引」形态在新循环上的回归。
+
+**依据**：qoder-index.mjs 第 15 行 doc=JSON.parse(bytes) 与第 21 行 parseQoderTrace 均在无 try/catch 的 for 体内；对照第 29 行与第 54 行的 try/catch 加 error_code 加 process.exitCode=1 模式；qoder-execution.mjs 第 157-158 行以单次 fs.writeFile 落盘。
+
+**建议**：与另两处对齐：execution 循环逐文件 try/catch，解析失败或 routes 不是数组时推入 {file,sha256,error_code} 并置 process.exitCode=1 后 continue；parseQoderTrace 的输入先校验为字符串，非字符串记为形状错误而不是抛出。
+
+### GLM-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `scripts/acceptance/kimi-qoder-cn/qoder-execution.mjs:12,33,45-48` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：采集器把来源快照根硬编码为 ~/.qoder-cn（第 12 行 source），并从它读 settings.json、.auth/user、.auth/machine_id、.models/default 做 sources_unchanged 与 credentials_unchanged 比对；而同一脚本消费的 customs 快照 original.file 来自生产 qoderCustomSource()，后者与 prepareQoderReadonly 都经 qoderConfigRoot() 解析并尊重 QODERCN_CONFIG_DIR 覆盖。bundle 还导出了 qoderConfigRoot 却从未调用。若运行时设置了该环境变量（生产探针与只读模板会跟着它走），四项快照盯的就是 CLI 并未使用的那套文件，「来源/认证未变」会空真，且与 customs 一项来源不一致。
+
+**依据**：qoder-execution.mjs 第 12 行 source 常量、第 33 行 export 列表含 qoderConfigRoot 而正文无调用、第 45-48 行 original=await r.qoderCustomSource() 与五项 snapshots 读取；src/trivium/adapters/qoder-cn-native.ts 第 52-53 行 qoderConfigRoot() 读 QODERCN_CONFIG_DIR、第 126 行 prepareQoderReadonly 用 qoderConfigRoot()；src/trivium/adapters/qoder-cn-custom.ts 第 59、68 行 qoderCustomSource() 以 qoderConfigRoot() 为 root 并返回 root。
+
+**建议**：用 original.root（或 r.qoderConfigRoot()）替代硬编码 source，让五项快照同源；bin 可保持显式参数，但在 evidence 顶层记录实际入口路径（facts.entrypoint 已有，可直接复用），使快照来源与 CLI 实际配置根可对账。
+
+### GLM-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/util/exec.ts:473,558-580,901-910（对照第 329 行 outsideProbeSection）；doc/05_testing/evidence/qoder-cn-admission-20261028/execution-harness-failure-2026-10-28T09-18-22Z.json` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：run() 在探针段作用域内一律强制 killTree 并登记 LiveTree（第 473、558-561 行）；装有树观察器时第 574 行再为新组调用 processStartTime(pid,{canonical:true})，而该函数自身经 run('/bin/ps') 派生（第 903 行）且没有像 groupSnapshot 那样包在 outsideProbeSection 里——这次 ps 又在段内被强制登记、再触发观察器、再派生 ps，形成无界递归。首跑失败原件记录的正是这个 RangeError（「组合探针作用域与进程观察器后，身份查询反复派生」）。本批的处置是让采集器不再装观察器，共享工具里的隐患原样保留。当前生产中段作用域只在 doctor.ts、watchTrackedTrees 只在 run-protocol.ts 的 worker 内，二者不同进程，所以今天不触发；但任何把两者放进同一进程的后续改动（doctor 输出树状态、worker 内跑探针）都会复现，而且没有测试拦。
+
+**依据**：exec.ts 第 473 行 killTree 由 section 强制、第 572-580 行 treeListener 分支调用 processStartTime、第 901-906 行 processStartTime 内部 run('/bin/ps')、第 329 行 groupSnapshot 的 outsideProbeSection 保护形成对照；harness-failure 原件 raw_error_excerpt 与 observation 字段；grep 显示 newProbeSection/withProbeSection 仅 doctor.ts:776、780、980、982，watchTrackedTrees 仅 run-protocol.ts:1354。
+
+**建议**：把第 574 行的 processStartTime 调用包进 outsideProbeSection（或让 processStartTime 内部的 ps 不参与段登记与观察通知），并补一条「段作用域内装观察器后 run() 不递归」的回归测试；在 exec.ts 注释里写明段作用域与树观察器叠加的约束。
+
+### GLM-06 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `scripts/acceptance/kimi-qoder-cn/qoder-execution.mjs:107-108,111` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：monitor.finish() 抛错时只把 route_valid 置 false，错误消息与 monitor 的首因/通道、sawResult、resultError 都不进 pair[arm]；某臂 route_valid=false 时原件只剩退出码与 timed_out/early_stopped 等旗标，读者分不清是模型回退、计费键失配还是缺 result。本批六臂都为 true 所以未暴露，但这正是该原件作为「可观察性诊断」最该回答的问题。
+
+**依据**：qoder-execution.mjs 第 107 行 try{monitor.finish();}catch{valid=false;} 吞掉错误、第 108 行 route_valid 由 valid 与多项旗标合成、第 111 行 pair[arm] 字段清单无 monitor 相关项；同函数内 monitor.failure 仅用于 stopEarly。
+
+**建议**：在 pair[arm] 增记 monitor_failure（经 safe() 的首因消息/通道）、saw_result、result_error 三项，使 route_valid 的每个判定因子逐项落盘。
+
+## 认为正确的部分
+
+- 生成器 --project-root 的参数解析对重复参数、缺值、值以 -- 开头、隐式 --write 一律 fail-closed；manifest、facts_file 与每条证据都经 relativeFile 限定为目标项目实根内的普通文件并新增 project+sep 前缀校验，评估文件 wx/0600 落盘并以 ~ 掩盖 home；集成测试以真实子进程覆盖隐式写拒绝、外部根路由、坏证据 admitted=false 且不生成 .trivium/admission.local.json。
+- admission.test.ts 新增用例是真实的端到端回归：用 enumerateDenyPaths 对真实夹具（.trivium、隔离 run_root、注册表派生同行工件、.env）生成覆盖，storeAdmission 后 requireAdmission 通过，再以新一轮同行工件与 .trivium/new-file 两条扩集反例命中「超出准入已验覆盖」；verify=()=>[] 的用途在注释中如实标注，不冒充原生语义验证。
+- 采集器完全复用生产函数、不维护第二套权限策略；withLaunchBudget 在 spawn 前拒绝超限并把 version/catalog 一并计入 24 次；每臂独立私有 home，正控制臂放宽的 settings 与 --tools 不会被候选臂消费；候选 pass 需同时满足 route_valid、init 工具面恰为 Read/Grep/Glob、唯一同 ID 真实调用、result.is_error、channel 为 permission-rule 或 tool-unavailable、夹具未变，未暴露/未调用只记 untested 并给出准确阻塞语；部分通过不写台账。
+- 通道口径三处一致：parseQoderTrace 仅在无配对权限决策且 result 文本匹配 Tool not found 或 is not available 时判 tool-unavailable；生产验证器 qoder-cn-admission.ts:77 与采集器接受同一组通道；新回放测试断言 Write 候选 channel 为 tool-unavailable 且 decisions 为空、Edit/Bash 候选无调用无通道——改动任一分类都会让该测试变红。
+- 秘密护栏闭环成立：观测 stdout/stderr 经 scrub 落盘，QoderSecretGuard.scrub 命中即置 leaked；每臂结束核 guard.leaked、来源/认证快照与临时根清理后才派生下一次；收尾对整份 evidence 再 scrub 一次做检测后写 known_secret_found 与 exit 1；NativeRouteDescriptor 不含任何 key 哈希，facts 落盘无凭据面。
+- 证据与报告口径诚实一致：09:24 原件 20/24 次启动、244 秒、两组 members_after=3 使脚本退出 1，09:25 回读另存且声明不改写原件结论；首跑装置失败单独留痕并记录按 PID/lstart 核对后的 SIGTERM 与租约回收；Edit/Bash 与官方 Bash 正控制的阻塞原因与原件逐项相符；索引回放生产解析器而不信任采集器写下的 pass。
+- 设计/PROTOCOL/报告/BACKLOG/Bug 清单/脚本 README 同批更新且与实现一致：明确未暴露且未调用为未测、只有真实同 ID tool_use 的 Tool not found 才是分发拒绝、覆盖冻结不等于路径拒绝通过、隔离项目结果不写回本仓台账、生产 run Schema 无新增字段。
+
+## 未覆盖范围（本侧盲区）
+
+- 本侧只读，未运行 typecheck/build/npm test，也未运行任何采集或索引脚本；报告所称定向 9/9 通过、typecheck/build 退出 0 未独立复跑，全部结论为静态读码推理。
+- 两份 index-*.json（diff 第 4118-15877 行，约 1.17 万行）与 09:24 原件的六臂 stdout 转写未逐行阅读；09:24 原件仅以 grep 核对顶层不变量、各臂 state/blocker/channel、launch_budget 与 process_groups 字段。
+- qoder-cn-native.ts 的 withQoderHome/qoderReadonlySettings/pinQoderExecutable 正文、qoder-cn-admission.ts 第 77 行以外的验证器逻辑、probes/qoder-cn.ts 探针正文、registry.ts 中 qoder-cn 三开关的取值本轮未重读（本 diff 未触及这些文件；三开关为 false 沿用报告与前几轮核对，本轮未再核）。
+- 设计文档与 PROTOCOL 只读了本批新增段落（diff hunk），未对照其余章节检查是否有与新增契约句冲突的旧表述；05_testing README 只以 grep 确认报告条目存在，doc-archive-index 与 facade-version-pointers 契约测试结果未复核。
+- 正控制臂 Edit(//绝对路径) 允许规则语法与 deny 列表为裸工具名的判断来自原件中 positive_control=true 的实证，未对照 Qoder/Claude Code 权限规则文档，也未读 qoderReadonlySettings 的实现。
+- GLM-05 关于生产不叠加的判断只基于 newProbeSection/withProbeSection/watchTrackedTrees 调用点的 grep，未追踪 doctor 与 worker 是否可能在同一进程内被同时调用（如 preflight/selftest 路径）。
+- Windows 路径与进程语义、真实 Qoder CLI 行为、esbuild data: URL 导入在其它 Node 版本下的可用性均未验证。
+
+## 实际查阅的项目文件
+
+- `.reviews/QoderCN只读审核准入与Custom模型接入/code/_meta/changes-20261028T092749Z.diff`
+- `.reviews/QoderCN只读审核准入与Custom模型接入/plan/2026-10-28-QoderCN只读审核准入与Custom模型接入-r6-codex.md`
+- `.reviews/QoderCN只读审核准入与Custom模型接入/code/2026-10-28-QoderCN只读审核准入与Custom模型接入-r2-glm.md`
+- `.reviews/QoderCN只读审核准入与Custom模型接入/code/2026-10-28-QoderCN只读审核准入与Custom模型接入-r3-glm.md`
+- `.reviews/QoderCN只读审核准入与Custom模型接入/code/2026-10-28-QoderCN只读审核准入与Custom模型接入-r4-glm.md`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `README.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `doc/05_testing/README.md`
+- `doc/05_testing/REPORT_2026-10-28_QoderCN只读审核准入与Custom模型接入.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `doc/08_project/BACKLOG.md`
+- `doc/08_project/现存Bug与未完成工作清单.md`
+- `doc/05_testing/evidence/qoder-cn-admission-20261028/execution-2026-10-28T09-24-01-724Z-562d47.json`
+- `doc/05_testing/evidence/qoder-cn-admission-20261028/execution-cleanup-readback-2026-10-28T09-25-07-190Z.json`
+- `doc/05_testing/evidence/qoder-cn-admission-20261028/execution-harness-failure-2026-10-28T09-18-22Z.json`
+- `scripts/acceptance/kimi-qoder-cn/README.md`
+- `scripts/acceptance/kimi-qoder-cn/qoder-execution.mjs`
+- `scripts/acceptance/kimi-qoder-cn/qoder-admission.mjs`
+- `scripts/acceptance/kimi-qoder-cn/qoder-index.mjs`
+- `scripts/acceptance/kimi-qoder-cn/qoder-evidence.mjs`
+- `scripts/acceptance/kimi-qoder-cn/qoder-custom.mjs`
+- `scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs`
+- `src/trivium/admission.ts`
+- `src/trivium/freeze.ts`
+- `src/trivium/util/exec.ts`
+- `src/trivium/adapters/qoder-cn-custom.ts`
+- `src/trivium/adapters/qoder-cn-trace.ts`
+- `src/trivium/adapters/qoder-cn-native.ts`
+- `src/trivium/adapters/qoder-cn-admission.ts`
+- `src/trivium/probes/qoder-cn.ts`
+- `src/trivium/types.ts`
+- `src/trivium/agents/registry.ts`
+- `src/trivium/doctor.ts`
+- `src/trivium/run-protocol.ts`
+- `test/unit/admission.test.ts`
+- `test/unit/qoder-cn-trace.test.ts`
+- `test/integration/qoder-admission-generator.test.ts`
+- `test/unit/registry-parity.test.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":27,"grep":17,"glob":0,"run_command":0,"project_reads":22}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*
