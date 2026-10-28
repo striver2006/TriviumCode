@@ -217,3 +217,82 @@ Codex为开发Driver，被验客户端为Qoder CN官方CLI。开始时main/0048e
 最终第二轮`npm run check`退出0：4186项、4177通过、9跳过、0失败，373.0秒；新增装置定向5/5。安装check退出0，14份入口匹配，安装bundle保持22fce456…，当前仓库bundle与它仅构建标识不同。所核全局配置/认证hash前后相等，源注册表hash不变，133个本仓主题没有开放闸门；三份无凭据装置根有意保留，最新根全部pin匹配，未见对应残留CLI/候选进程。Kimi旧私有登录根仍不存在；审计临时根已删除。没有真实B运行或人工审批事实，正式verify未测。
 
 本批后续交付：Bob明确授权“提交、推送”。按文件清单提交本轮B前置装置、5项回归、同步文档及11份脱敏证据，推送当前main至origin。交付前133个主题无开放闸门，证据索引10个对象hash与装置脚本hash匹配；生产开关、版本、安装及全局配置不改。上文未提交状态保留为开发收尾时点；Git交付不提升真实B、严格准入或其它客户端状态，最终提交号和远端结果以Git回读为准。
+
+## 9. main / 3f85882f Qoder CN命令B续验（2026-10-28）
+
+本轮以实际main/3f85882f20e73a4132b81c11eb16a8151a191542为基线，开始工作树干净。0048e086后的上轮装置及证据已经提交，未重置、覆盖、删除旧件。安装wrapper仍指向用户级生产bundle，开始hash为22fce4561d43e6cc6b9d97f4fd3e2b19f0875ec769c209285a69be6587f8c604；仓库bundle为97d08062c9e21cd7f994c73a02ab8eff81fc7d39f44039b2da63d1381438d296。本仓133个主题无open_gates。本轮Codex为开发Driver，Qoder CN为被验客户端Driver；不启动本仓开发主题审查。
+
+### 9.1 上轮阻塞依据复核与裁定
+
+| 证据或机制 | 证明范围及本轮结论 | 设计与源码落点 |
+| --- | --- | --- |
+| 原生path_deny.supported=false | 两家既有探针有同行读取负对照，说明该版本、路径配方未能事前拦读；不说明全部审核能力不可用 | 主设计§10.1机制③明确写“支持时”叠加CLI路径deny；§10.2诚实边界；ADR-002为Accepted，不引入硬隔离 |
+| coverage_complete/file_shape_verified=null | 未取得完整覆盖或当前逐文件形状的拦读证据，不能记true；不是这两家生产预检的硬门 | agy.ts/zcode.ts的peer_deny_applied读file_shape_verified===true；两个availability均不要求该字段。§3.7/§11.1区分机制支持、覆盖、形状 |
+| 当前产出与历史产物隔离 | 独立进程/会话、项目外run_root、两家完成后再archive；历史件禁读由同源清单及跑后路径/命令核验承担，按§10.1.1分类，不宣称文件系统硬隔离 | 主设计§10.1、ADR-002；freeze.ts enumerateDenyPaths、brief.ts、adapters/base.ts checkPeerLeak及checkPeerLeakViaCommand、guard.ts |
+| 工具只读 | Gemini使用已安装trivium-critic工具白名单；GLM使用实测mode+全套工具deny，Bash禁用；与路径隔离不同职责 | 主设计§10.3/§11.2/§11.3；agy.ts availability/run、zcode.ts availability/readonlyArgsFromProbe/bashStillDenied。GLM MCP残余及跑后检测边界仍存在，不提升为绝对拒绝 |
+| 模型专属组合准入 | Qoder审核者的admission.v1须完整必需项与精确deny_paths覆盖；本次Qoder是Driver，gemini/glm未实现admissionFor，不可挪用该专属台账或反向以availability宣称台账通过 | registry.ts仅qoder-cn声明admissionChecks；preflight.ts checkReadonlyAvailability按adapter.admissionFor条件调用；admission.ts；run-protocol.ts rebuildContext逐项核请求 |
+| 认证TTL | 过期使缓存无效，需一次真实核验；不直接判账号失效 | preflight.ts authCacheValid/probeAuth/probeAuthAll/commitAuthCache；仅成功提交本项目local缓存，失败留原件 |
+| strict_admitted固定false、start固定69 | 上轮验收装置的保守停点，过度阻塞，属于本轮应修正对象；不是产品guard/gate契约 | 历史preparation-1793198518722.json及qoder-plan.mjs原版；本轮改为必须有本夹具完整生产预检成功记录，不以布尔开关代替 |
+
+结论：按既有获准机制推进本次B，不新增两家路径硬门，也不放宽生产标准。完整preflight、真实审查工具证据、跑后漂移/禁读核验及裁决gate各自仍必须通过，不能互相替代。旧第8节与原件按历史保留，本节纠正其“路径三字段缺失即全部阻塞”的推论。未知底层模型继续null/unknown。
+
+### 9.2 本轮装置与首次生产预检
+
+修订qoder-plan.mjs的前置判断与wrapper；新增显式production-preflight/native-B采集器。wrapper固定本主题/plan/qoder-cn/gemini,glm/B、最多三轮，拒绝skip-auth、降级、审批、放弃、其它阶段和未知run；未取得完整生产预检成功原件仍退69。只有生产preflight成功才接受其本地缓存写回并更新该夹具pin。真实修订与裁决正文消费客户端暂存文件，再由archive唯一出口落盘，不用固定文本代写。
+
+新根为trivium-qoder-plan-B-m5Km0O，完整路径与HEAD/原稿/candidate/独立run_root及清理责任见续批preparation原件；上轮所有有效夹具及计划原样保留。新候选只在临时esbuild内变换qoder-cn.driverEnabled，未安装；生产src、注册表、guard/gate、skills-src及版本未改。
+
+首次production-preflight退出0，两个组合缓存均过1h TTL，经编排器各调用一次最小认证：Antigravity成功106秒，ZCode成功8秒（bigmodel-coding-plan/GLM-5.3）。全部11项通过，Driver模型未声明仅告警，相关模型族比较unknown；未入选其它侧的过期探针不借机刷新。全局所核配置hash前后相等。证据：evidence/qoder-plan-B-20261028-continuation/production-preflight-1793200261955.json。该项是认证与现行前置，不是完整执行层严格准入证明。
+
+### 9.3 真实B与收尾
+
+**实际结果：真实B已到达人工审批停点；完整验收不通过，归档通道不合规。** 不能以客户端退出0、生产gate通过或采集器passed=true覆盖该例外。当前主题为`DriverCLI-qoder-cn-B`，run_id为`20261028T151257Z`，gate为`awaiting_approval`，driver为`qoder-cn`。2026-10-28 15:20:51 UTC立停点后不再写夹具业务文件，没有approve、恢复、abandon或新一轮审查。人工停点必须保留。
+
+| 真实B环节 | 状态 | 实际证据与边界 |
+| --- | --- | --- |
+| 官方客户端、正式入口原文 | 实际调用 | Qoder CN 1.1.80，CLI sha256 `33050a4d2ac134e2f8d0a5293cba3df009d7bdbe0f3ae478c73057f113050a02`；原生-p收到原文，采集器没有直接启动review；私有入口与正式渲染源hash均为a560d0a6… |
+| 入口加载来源观测 | 有来源与原生目录证据；独立展开事件缺席 | 只复制正式dual-review-plan字节，init.skills列出该技能；本次CLI没有独立Skill或入口Read事件，不伪造同ID加载证据，也不以模型自述补证 |
+| 请求模型与路线 | 已记录，底层未知 | 官方默认，未传--model；私有settings没有模型声明；原生init/消息标签Auto，modelUsage键auto，底层模型/provider仍null；Driver模型族unknown告警保留 |
+| 认领/原稿 | 实际调用认领noop；原稿为既有备料输入 | 原稿准备前已认领qoder-cn，正式会话再次claim返回noop；既有原稿hash未变。Qoder尝试另写原稿被权限拒绝，不把该尝试算成功撰写，也不称备料原稿由它本次新写 |
+| 真实工具ID与编排器argv/cwd/底层退出码 | 已关联 | 20条正式会话wrapper账本均关联同ID Bash结果；包含预期wait=73、三条装置拒绝=64、start与两次gate=0；不能以外层shell管道退出0抹掉底层64 |
+| run.driver/handoff/worker恢复 | 已核交接与真实运行 | run.driver与handoff options.driver均qoder-cn；真实worker经rebuildContext恢复后运行并成功收尾，恢复函数按handoffDriver强制核对；没有独立worker身份遥测字段，不编造回读 |
+| requested_routes | 冻结并逐项一致 | Gemini/GLM请求与交接经sameRequestedRoute重算均true；真实worker同一核对分支之后执行，不重选默认；两家不要求Qoder专属admission字段 |
+| 两家真实审核者 | 已完成，无降级或重试 | agy 1.4.9与zcode 0.17.0，实际入口hash前后相同；Gemini回读gemini-3.8-flash-high/high（envelope），GLM回读bigmodel-coding-plan/GLM-5.3（trace），底层供应商null；每家一次审查，非stub |
+| 工具证据与跑后核验 | 本次现行判据通过 | 两家evidence_ok=true；Gemini 6 read+2 glob、6 project_reads，GLM 6 read+1 glob、5 project_reads；readonly_breach=false、peer_artifact_read=false、drift.changed=false。peer_deny_applied两家均false，不升格为路径事前拒绝 |
+| 完整读两份审查 | 已证实 | 两个Read工具ID分别为call_5fcbc6ad5caa4ba5af70d1e7、call_012bfab1db484a29abbc756e；同ID成功结果逐行与完整原件相同 |
+| 客户端实际裁决与修订计划 | 正文来源已证实 | 六条意见，五接受一暂缓；真实Qoder两条tee调用正文与落盘hash逐字相同，非固定夹具正文；生产gate无缺号、无失败/告警 |
+| 归档通道与首次无误调用 | **不通过** | 三次archive装置调用均退64；原生权限另有6次拒绝。最终tee直接写.reviews，未走要求的暂存正文→artifact→archive唯一出口。成功文件不能回填为被拒Write工具成功，也不能称专用归档通道通过 |
+| gate/人工停点 | 实际到达 | 两家均pass-after-changes，计票proceed；gate --check与--await-approval均0，state/task双落点awaiting_approval，approvals=[] |
+
+正文写入的两个成功工具ID为`call_bc636b200c6040d68135fa25`（裁决）与`call_5933495b237d4ee4b922eedc`（r2计划），都是**本次真实Qoder会话的Bash/tee**，不是Codex代写。裁决sha256为282bde69fc58f50f4828e2b452aa0f28f04957594128ec17ce6d8d346aeb1e4f；计划正文hash及两条完整命令/同ID结果见[最终裁定原件](evidence/qoder-plan-B-20261028-continuation/final-verdict.json)。被拒Write恰与最终裁决内容相同，也不能据hash相同倒推其执行成功。未实施sum修复或新增业务测试。
+
+最小后续项是私有Driver的暂存写入授权与archive执行规约；这是Driver验收装置/载体行为缺口，不是gemini/glm路径deny的缺口，也不应改生产guard/gate。当前已经立人工停点，本轮不改权限重跑、不修补本轮工件。不增加审核配额。待Bob处理当前停点并另行启动新批次时，先在新根核实同版本官方CLI的暂存写入许可和archive链，再考虑新的B；局部合成回归不能代替该真实证据。
+
+### 9.4 Bob的确切审批入口
+
+产品实际停点给出的入口是：
+
+```text
+/dual-approve --topic DriverCLI-qoder-cn-B --stage plan
+```
+
+本夹具wrapper刻意拒绝approve，临时Qoder home也已清理；因此上面的产品话术不能直接作为该wrapper上的可执行入口。以下是**只供Bob自行决策后在终端执行**的同项目/同候选入口，Codex未执行；审批不等于解决归档通道验收例外：
+
+```sh
+cd '/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-m5Km0O/中文 空格项目'
+TRIVIUM_ASSET_ROOT='/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic' '/opt/homebrew/Cellar/node/25.2.1/bin/node' '../candidate.cjs' approve --topic DriverCLI-qoder-cn-B --stage plan
+```
+
+另存[Bob审批入口.txt](evidence/qoder-plan-B-20261028-continuation/Bob审批入口.txt)，内含候选绝对路径。候选和无凭据项目/运行原件有意保留，使用完毕后的删除责任仍由Bob确认；本轮不擅自清掉真实待审批工件。
+
+### 9.5 自动化、清理与正式产品边界
+
+本轮7项定向回归通过；冻结作用面后完整`npm run check`退出0：4188项、4179通过、9跳过、0失败，347.2秒。构建与pretest作用面指纹均为40a6cfa2fd7f…，冻结清单14个文件最终全部未变；完整检查中没有再修改脚本。check中的桩审核/审批回归只属于测试夹具，不是本次真实B的审批。安装只读检查退出0；未执行安装，安装bundle仍为22fce456…，仓库bundle由本轮check重新生成，两者完整hash分列在最终裁定原件。正式verify未测。
+
+凭据方面：Qoder只在私有home复制2个最小认证文件，已由生产withQoderHome清理并回读home不存在；两家运行目录的scrub原件已留存，GLM副本中具名敏感载体无残留。所核14项全局配置/认证hash前后相等；不打印内容。新旧无凭据夹具与真实运行审计材料保留，不报成已删除。正常退出与这次具名清理不替代完整逃逸后代/监督者SIGKILL准入。运行后进程与最终敏感扫描见续批索引。
+
+本轮只改验收脚本、回归和文档；生产src、driverEnabled/criticEnabled/defaultSelected六值与版本1.3.2不变；未改skills-src，无需render，未手改生成入口。候选仅启用临时Qoder Driver，未安装，不代表正式产品Driver或Qoder审核者准入开放。Kimi模型、A/C/D、桌面、插件、Windows、审批后恢复/放弃均未测；未重复status/特殊字符/cwd/独立身份验收。本仓133个开发主题仍无open_gates；真实停点仅存在于隔离项目。没有提交、推送或发布。
+
+证据入口：[续批完整索引](evidence/qoder-plan-B-20261028-continuation/index.json)、[首次真实预检](evidence/qoder-plan-B-20261028-continuation/production-preflight-1793200261955.json)、[真实Qoder B原件](evidence/qoder-plan-B-20261028-continuation/native-B-1793200860192.json)、[离线关联与完整审计副本](evidence/qoder-plan-B-20261028-continuation/audit/audit-1793200889405.json)、[最终分项裁定](evidence/qoder-plan-B-20261028-continuation/final-verdict.json)、[自动化结果](evidence/qoder-plan-B-20261028-continuation/automation.json)、[凭据清理](evidence/qoder-plan-B-20261028-continuation/credential-cleanup.json)。源码/规范依据为[主设计§10/11](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)、[ADR-002](../02_design/ADR_002_multicritic_isolation.md)、[生产预检](../../src/trivium/preflight.ts)、[两家适配器](../../src/trivium/adapters/agy.ts)、[ZCode适配器](../../src/trivium/adapters/zcode.ts)、[worker交接](../../src/trivium/run-protocol.ts)。
+
+本轮后续Git交付：Bob明确授权“提交、推送”。交付前复核索引27个对象hash一致、全局所核hash不变、本仓133个主题无开放闸门；仅按本轮文件清单提交并推送当前main至origin。隔离项目的awaiting_approval原样保留，不因Git授权代为approve、恢复或abandon；本次交付不提升完整验收或正式产品开关状态。上文“没有提交、推送”保留为开发收尾时点，实际提交号与远端结果以Git回读为准。

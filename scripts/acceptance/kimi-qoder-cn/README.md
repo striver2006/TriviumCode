@@ -1,5 +1,17 @@
 # Kimi/Qoder 取证工具
 
+2026-10-28 main/3f85882f续验：第8节的路径deny硬前置已按现行设计纠正，详见[报告第9节](../../../doc/05_testing/REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#9-main--3f85882f-qoder-cn命令b续验2026-10-28)。gemini/glm沿用设计10.1/10.3及ADR-002的获准机制；path_deny=false/null仍是未取得原生路径拒绝证据，不能写成硬隔离通过。Qoder审核者专属模型组合准入台账不移作两家既有审核者的条件。availability不代替完整preflight，TTL过期须刷新，不直接判账号失效。
+
+```sh
+node scripts/acceptance/kimi-qoder-cn/qoder-plan.mjs <新证据目录>
+node scripts/acceptance/kimi-qoder-cn/qoder-plan-live.mjs production-preflight <新fixture-B.json> <新证据目录>
+node scripts/acceptance/kimi-qoder-cn/qoder-plan-live.mjs native-B <同fixture-B.json> <新证据目录>
+```
+
+后两步显式消耗真实配额，不能隐式批量运行：首次生产预检最多两家各一次认证调用；native-B只允许一次官方客户端会话，原文调用/dual-review-plan，不能由采集器直接启动review。wrapper要求一小时内本夹具完整预检成功，固定plan/qoder-cn/gemini,glm/B与三轮上限，禁止skip-auth、降级、审批与放弃。原生客户端实际撰写修订与裁决，归档仍经archive；失败保留原件。候选不安装，正式注册表/版本/guard/gate不变。到awaiting_approval立即停写，只给Bob确切审批入口；工具自身不会approve或abandon。CLI退出0只是会话完成，真实B各环节须离线核验后另列，不能用采集器passed代替。
+
+以下0048e086说明保留为历史装置事实；其中固定strict_admitted=false和启动固定退69已由续验修订，不能继续当作产品契约。
+
 2026-10-28 main/0048e086专用Qoder CN命令B前置：
 
 ```sh

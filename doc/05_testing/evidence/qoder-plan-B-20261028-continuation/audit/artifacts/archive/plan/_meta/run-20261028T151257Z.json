@@ -1,0 +1,356 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "qoder-cn",
+      "right": "gemini",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "gemini-3.8-flash-high",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "qoder-cn",
+      "right": "glm",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "bigmodel-coding-plan/GLM-5.3",
+      "left_source": null,
+      "right_source": "trace",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "gemini",
+      "right": "glm",
+      "status": "different-family",
+      "left_model": "gemini-3.8-flash-high",
+      "right_model": "bigmodel-coding-plan/GLM-5.3",
+      "left_source": "envelope",
+      "right_source": "trace",
+      "reason": "模型族不同：gemini / glm"
+    }
+  ],
+  "run_id": "20261028T151257Z",
+  "topic": "DriverCLI-qoder-cn-B",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "检查sum修复计划及测试边界",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "qoder-cn",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "review_loop": {
+    "round": 1,
+    "max_rounds": 3,
+    "max_rounds_source": "default"
+  },
+  "profile": "default",
+  "critics_selected": [
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "e9421606a8f66c25868cee10d7d62763e264c74a",
+    "tree_hash": "b62a6b4f139f7fa9e5bef914117cc5b2cbba826a",
+    "dirty": true,
+    "subject_sha256": "fd09e1c0a07e900b99aeb2f6d4f5ac90c5243d39184c2c15e75c4878489c3d4e",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": null,
+    "after_tree_hash": "b62a6b4f139f7fa9e5bef914117cc5b2cbba826a"
+  },
+  "started_at": "2026-10-28T15:12:58.040Z",
+  "finished_at": "2026-10-28T15:18:45.748Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.4.9",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 153.677,
+      "tool_calls": {
+        "read": 6,
+        "grep": 0,
+        "glob": 2,
+        "run_command": 0,
+        "project_reads": 6
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 65335,
+        "output_tokens": 14583,
+        "thinking_tokens": 12672,
+        "cache_read_tokens": 163102,
+        "total_tokens": 79918
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+        "launcher_effective": "/Users/chenzhenbo/.local/bin/agy",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "7abfccbc-2d5b-41a1-b895-ae0f34fa7647",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.17.0",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-coding-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 347.492,
+      "tool_calls": {
+        "read": 6,
+        "grep": 0,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 5
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 3,
+        "inputTokens": 90744,
+        "outputTokens": 15779,
+        "totalTokens": 106523,
+        "cacheReadTokens": 61632,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "launcher_effective": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_601b30cd-5c22-407f-998e-b0adc04b212e",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "requested_routes": {
+    "gemini": {
+      "model": "gemini-3.8-flash-high",
+      "effort": "high",
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.local/bin/agy",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    },
+    "glm": {
+      "model": "GLM-5.3",
+      "effort": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-m5Km0O/runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "DriverCLI-qoder-cn-B/plan/_meta/brief-gemini-20261028T151257Z.md",
+      "sha256": "eae2c31dd01eede020b5b2fced1559570fe903c9b7c1299e6546b2fa3621743d"
+    },
+    {
+      "path": "DriverCLI-qoder-cn-B/plan/_meta/brief-glm-20261028T151257Z.md",
+      "sha256": "ba171027dac0453e8c3ab9ed3e5a087a68d7e38612301c46c4ae067e4f421ac8"
+    },
+    {
+      "path": "DriverCLI-qoder-cn-B/plan/_meta/review-gemini-20261028T151257Z.json",
+      "sha256": "adc5a7f603344650ba2eea7cea4a1c0d69ee4a18968fe2a43cb5b0ef440ddf79"
+    },
+    {
+      "path": "DriverCLI-qoder-cn-B/plan/_meta/review-glm-20261028T151257Z.json",
+      "sha256": "6d410ff670a68b1d4a463cbd76bd758aa0939eec33ee612abd64cc76b947d339"
+    },
+    {
+      "path": "DriverCLI-qoder-cn-B/plan/2026-10-28-DriverCLI-qoder-cn-B-gemini.md",
+      "sha256": "576d7f4fda05cd7974354e1cfc38be0731a6ae702eb7e21cf360df0088bb35b7"
+    },
+    {
+      "path": "DriverCLI-qoder-cn-B/plan/2026-10-28-DriverCLI-qoder-cn-B-glm.md",
+      "sha256": "67de46c7c10e5794f8ad81aad1d50bd58033e8ec3d85a59d750bcb925ab4445b"
+    },
+    {
+      "path": "DriverCLI-qoder-cn-B/plan/2026-10-28-DriverCLI-qoder-cn-B-qoder-cn.md",
+      "sha256": "fd09e1c0a07e900b99aeb2f6d4f5ac90c5243d39184c2c15e75c4878489c3d4e"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success",
+  "round_verdict": {
+    "sides": {
+      "gemini": "pass-after-changes",
+      "glm": "pass-after-changes"
+    },
+    "excluded": {},
+    "counts": {
+      "pass": 0,
+      "pass-after-changes": 2,
+      "reject": 0
+    },
+    "outcome": "pass-after-changes",
+    "next_action": "proceed"
+  }
+}
