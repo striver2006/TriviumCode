@@ -16,7 +16,7 @@ export const stages=['plan','code','bug'];
 const put=async(p,s,mode=0o600)=>{await fs.mkdir(path.dirname(p),{recursive:true,mode:0o700});await fs.writeFile(p,s,{mode,flag:'wx'});};
 export async function helper(temp){
   const target=path.join(temp,'helper.cjs');
-  await build({stdin:{contents:`export {run} from './src/trivium/util/exec.ts';export {writeArtifact} from './src/trivium/archive.ts';export {AGENTS} from './src/trivium/agents/registry.ts';export {install} from './src/install.ts';export {withQoderHome,qoderRun} from './src/trivium/adapters/qoder-cn-native.ts';export {redactSecrets} from './src/trivium/secrets.ts';`,resolveDir:repo},outfile:target,bundle:true,platform:'node',format:'cjs',logLevel:'silent'});
+  await build({stdin:{contents:`export {run} from './src/trivium/util/exec.ts';export {writeArtifact,listStageArtifacts} from './src/trivium/archive.ts';export {AGENTS} from './src/trivium/agents/registry.ts';export {install} from './src/install.ts';export {withQoderHome,qoderRun} from './src/trivium/adapters/qoder-cn-native.ts';export {redactSecrets} from './src/trivium/secrets.ts';`,resolveDir:repo},outfile:target,bundle:true,platform:'node',format:'cjs',logLevel:'silent'});
   return {runtime:createRequire(import.meta.url)(target),target};
 }
 export async function createFixture(temp,agent){

@@ -296,3 +296,85 @@ TRIVIUM_ASSET_ROOT='/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic' '/opt
 证据入口：[续批完整索引](evidence/qoder-plan-B-20261028-continuation/index.json)、[首次真实预检](evidence/qoder-plan-B-20261028-continuation/production-preflight-1793200261955.json)、[真实Qoder B原件](evidence/qoder-plan-B-20261028-continuation/native-B-1793200860192.json)、[离线关联与完整审计副本](evidence/qoder-plan-B-20261028-continuation/audit/audit-1793200889405.json)、[最终分项裁定](evidence/qoder-plan-B-20261028-continuation/final-verdict.json)、[自动化结果](evidence/qoder-plan-B-20261028-continuation/automation.json)、[凭据清理](evidence/qoder-plan-B-20261028-continuation/credential-cleanup.json)。源码/规范依据为[主设计§10/11](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)、[ADR-002](../02_design/ADR_002_multicritic_isolation.md)、[生产预检](../../src/trivium/preflight.ts)、[两家适配器](../../src/trivium/adapters/agy.ts)、[ZCode适配器](../../src/trivium/adapters/zcode.ts)、[worker交接](../../src/trivium/run-protocol.ts)。
 
 本轮后续Git交付：Bob明确授权“提交、推送”。交付前复核索引27个对象hash一致、全局所核hash不变、本仓133个主题无开放闸门；仅按本轮文件清单提交并推送当前main至origin。隔离项目的awaiting_approval原样保留，不因Git授权代为approve、恢复或abandon；本次交付不提升完整验收或正式产品开关状态。上文“没有提交、推送”保留为开发收尾时点，实际提交号与远端结果以Git回读为准。
+
+
+## 10. main / f7167326 归档契约与原生写入正控制（2026-10-29）
+
+本轮Codex是开发Driver，Qoder CN是被验客户端Driver。开始实际main/f7167326e82ed2e7a9ce452b75411c76b18852bc，工作树干净；没有重置、覆盖或删除既有改动。日期按Asia/Singapore记2026-10-29，原始事件仍保留UTC。证据目录名称qoder-write-20261028沿用本轮开始时日期，不用目录名替代事件时间。旧B的27份索引对象全部hash一致，旧夹具与原始证据保留。以下结论是对第9节判定边界的复核，不回填旧JSON。
+
+### 10.1 归档契约复核
+
+| 对象 | 正式契约与实现 | 本轮裁定 |
+| --- | --- | --- |
+| 编排器生成的审核Markdown、brief/review/run等元数据 | 主设计§5.1/§6.2/§16.2、GUIDE_env_setup四.2；archive.ts模块头写“任何模块”，角色工件writeArtifact独占创建、扫描、防覆盖抬升；writeMeta按run_id原子替换 | archive是编排器代码的唯一写模块，不等于每个外部Driver必须调用某个公开archive CLI |
+| Driver原稿 | 正式B步骤0先claim；可以--plan-file指定归档外文档，也可在归档内按本Driver后缀写原稿；archive.ts关于isReviewArtifact的注释明确区分手写原稿与可选writer=driver接口 | 生产CLI没有artifact子命令；正式技能提供Write/Edit。客户端正文→暂存→专用artifact是装置附加控制，不应冒称产品必经链 |
+| Driver裁决件与完整新计划 | 正式B步骤5、主设计§6.6：裁决文件后缀/role=当轮Driver，schema/run_id/addresses及每条意见齐备；新计划引用接受编号并给完整正文 | 裁决轮次=审查run.rerun_index；新计划轮次=被审对象subject_rerun_index+1，二者并非同一个计数 |
+| 登记与gate | review.ts:2276起在success收尾把归档内原稿按冻结hash登记run.artifacts；归档外原稿明确告警。gate.ts checkAdjudication/checkNextPlan核裁决与新计划，verifyRoundForApproval再核本轮登记hash；cli.ts cmdGate迁移state | gate不是写通道来源证明，不验证专用artifact收据。不能以gate通过抹掉原生拒绝，也不能把未调用附加通道本身认作产品工件契约失败 |
+
+因此，第9节“归档通道不合规”准确适用范围是**该次装置自定的传输控制未通过**，不是已证实的产品归档契约违规。正式工件内容/命名/逐项裁决已有gate证据；原生Write及完整客户端验收缺口仍存在，完整验收仍不通过。所谓首次无误调用也属于额外验收项，不能改写生产gate结论。源码参考：[archive.ts](../../src/trivium/archive.ts)、[review.ts](../../src/trivium/review.ts)、[gate.ts](../../src/trivium/gate.ts)、[cli.ts](../../src/trivium/cli.ts)、[源契约](../../skills-src/commands/review-plan.contract.md)、[正式Qoder B入口](../../skills/dual-critic/entry/qoder-cn/dual-review-plan/SKILL.md)、[主设计](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md)。`task.json`另由meta.ts的updateTaskAsync持主题任务锁读改并原子替换，`.trivium/state.json`由state模块持全局锁维护；不能把“唯一出口”扩解成它们也必须经writeArtifact。本轮是装置与判定纠偏，没有修改产品设计、生产实现或版本，无需render。
+
+### 10.2 原生权限与三次64的根因证据
+
+[根因原件](evidence/qoder-write-20261028/rootcause.json)保存旧native文件hash、11组call/result、6个permission_denied事件及同hash官方二进制的内嵌源码片段/字节偏移。它是静态源码与原始事件的对应，不冒充运行分支遥测。
+
+- **工具可见与写权限不同。** 旧argv提供--tools及--allowed-tools Bash,Read,Write,Skill，原生init确认工具面与dontAsk。私有withQoderHome仅写general.enableAutoUpdate=false，--setting-sources user没有复制用户全局权限规则；不存在对drafts的Edit路径allow。官方[权限说明](https://docs.qoder.cn/cli/permissions)规定路径写规则用Edit(...)覆盖Write，绝对路径规则以前导双斜杠表示，dont_ask把需要确认的操作拒绝。路径规则中的双斜杠不是Write实际file_path的写法。
+- **当前相同CLI字节提供机制依据。** CLI 1.1.80/hash 33050a4d…与旧会话一致。内嵌zb（偏移124496540）按edit路径规则检查，未覆盖的普通写最终ask且无fillableByAllow；yg（125302772）不会用宽泛工具allow填补此ask；FD/rVe（125411458/125412633）将dont_ask中的ask转为mode/permission-rule。旧Write call_50551c53857644059be394df与call_09c44f91fc3749909da46ba1确有同ID拒绝，不能记成执行成功。未配置路径规则是装置缺项；旧事件只保留最终mode，没有上游逐次decisionPoint，敏感路径或其它安全子分支不能据通用文案反推。
+- **路径、配置与原生安全分开。** 实际cwd为canonical /private/var中文空格根，init未显示权限模式降级；相同目录下tee成功不支持简单归因操作系统目录不可写。旧装置没有路径pattern，不能把它描述成“旧pattern少一个斜杠”；本轮新增规则才需要正确绝对语法与/var别名。原生安全检查在规则/模式链中有独立地位，不通过换mode、关闭检查或全工具授权绕过。旧原件未保存成功调用的上游决策点，不能断言所有安全检查都未参与。
+- **tee与其它写法的差异。** 四个Bash写调用call_ef31d82c0d4d46249e7b5c3b、call_1f43de9583934577b3e72df8、call_6bcf265f210242afaeb227da、call_715d82c44e3d41db8924818d被同ID权限事件拒绝。两条tee call_bc636b200c6040d68135fa25与call_5933495b237d4ee4b922eedc则各有同ID非错误Exit:0，输入正文与文件hash一致；这只证明那两次实际成功。内嵌A3e（124510603）含命令安全/allow形状分支与后续写目标提取，不同形状可能走不同分支；旧日志不足以认定具体命中哪一支或已发现客户端漏洞。tee不会作为本轮修复手段。
+
+| 专用artifact尝试 | 实际底层64原因 | 不能推断的事项及修正 |
+| --- | --- | --- |
+| artifact --help（call_8414a6324cea4f12a653c099） | 装置未支持help；外层head可能返回0 | 可发现性欠缺，不是客户端归档实现坏；新装置补help并保留底层码 |
+| artifact plan 2 指向.reviews内既有原稿（call_f7331cee16c745e8a2e4db73） | 明确不在装置非归档暂存域 | 这是装置规约拒绝，不是写工具拒绝；不能用固定原稿冒充新正文 |
+| artifact revised 2 drafts/verdict.md（call_01ba00cd235f4598a12ca3d4） | realpath ENOENT，暂存正文根本不存在 | 当时未走到轮次判断；实际run为1，裁决应revised 1，下一版完整计划为plan 2。若按旧夹具指令先写原稿r2，则下一版应r3；旧“轮次按被审对象递增”对裁决有歧义 |
+
+结论是可核实的装置契约/授权不足及原生最终拒绝，保留Bash成功分支与部分上游安全检查未观测项；不把所有问题归为Qoder客户端缺陷。
+
+### 10.3 最小装置修正与自动化
+
+只改验收脚本、相关测试和文档。新B夹具预建drafts，取消固定备料原稿，客户端从plan 1开始；help标明artifact是验收传输。传输要求真实普通drafts文件、先claim，校两类轮次、已有工件、running/awaiting_approval，随后调用生产archive扫描与独占写入并记录源hash和结果。不会修改旧夹具或补写旧工件。
+
+私有写入配置按Edit路径规则授权；本次正控制只放一个draft文件与两条精确wrapper命令，不使用全工具/全目录写allow。未来B配方将写范围限制drafts，Bash限制专用wrapper，不更改生产guard/gate。只读核验强化同ID结果还须对应argv文字；外层管道0不能替代底层退出码。新增qoder-write.mjs有全新隔离根、独立run_root、wx预占的一次会话记录与失败原件。10项定向离线回归已通过，覆盖真实子进程/真实archive、防覆盖、路径/符号链接、停点、两种轮次、无正文/无审核备料及工具关联；这些不是客户端通过证据。
+
+完整检查结果与真实正控制结果见本节后续收尾条目。参与INSTALL_INPUT_PATHS的文件已在check前冻结，指纹3d1a08399ed4682e2be7c08e61bea05dc26a947e3afd4a017765b79fd48b5afe；冻结后只更新doc报告/矩阵/证据，不修改脚本或生产资产。
+
+
+### 10.4 一次真实Qoder写入正控制
+
+完整离线check通过且冻结复算一致后，事前播报一次官方默认会话、180秒/8轮交互/请求重试0、审核者0。实际只启动一次Qoder CN 1.1.80，CLI hash与旧B相同；原生6轮，监督进程耗时42.121秒，无超时/截断，CLI退出0，原生成功终态，回报1.07174837 credits。会话数与turn数不是底层供应商请求数或固定费用。官方默认未传model，私有设置无model，Auto/auto仅路线/计费标签，底层model/provider保持null/unknown。
+
+新无凭据保留根为`trivium-qoder-write-0tqdgR`下的中文空格项目，独立run_root在该根的runs；具体绝对路径、候选hash与pins见[备料](evidence/qoder-write-20261028/preparation.json)及[真实原件](evidence/qoder-write-20261028/native-write.json)。没有安装候选，没有执行正式技能、preflight、review或gate，没有审核者调用；runs未产生审查运行。
+
+| 正控制项目 | 状态 | 原始证据 |
+| --- | --- | --- |
+| 实际材料读取与正文作者 | 通过正文来源项 | 三个Read同ID成功；Write内容由真实客户端生成，Codex未补写、替换或固定生成正文；模型正文质量不在本次通过项中 |
+| Driver认领 | 通过 | call_fc525866e25445eeb0d4b9e2，真实wrapper argv为topic claim / plan / qoder-cn，cwd与原生init一致，底层exit_code=0、outcome=claimed |
+| 合法原生Write | 通过 | call_a450a52aea0b413a8d363dde，精确绝对draft路径，同IDFile created successfully且非错误；权限日志同调用记录后明确main Write dontAsk → allow point=fs_write.rule.allow |
+| 合法本Driver归档 | 通过原稿链 | call_bc097c4cd2b04212bf760172；实际argv=artifact plan 1 drafts/original.md，cwd正确，底层exit_code=0；日志命中shell.rule_exact.allow，经archive生成2026-10-29-DriverWrite-qoder-cn-qoder-cn.md |
+| 工具正文/暂存/传输/归档hash | 四处相同 | 6d45dbfdb4ce5fe473d8e4d467a49c96b0ebbb6fcab4705660287d5d5a849253；来源和实际文件独立回读，没有覆盖旧件 |
+| 精确两条Bash的提示遵循 | 有偏离，单列 | 额外call_cc644a380e364535b9a6d875执行ls drafts并附2>/dev/null及只读fallback，native判shell.readonly.allow，无写入/无审核。显式allow只有两条wrapper命令，但安全只读动作仍可默认允许，不能把allow当deny或声称整场只执行两条Bash |
+| 正文中未经事件证明的表述 | 不采为实测 | 客户端正文自述git status及未跟踪状态，但无对应工具事件；也没有实际执行正文中的node测试。不因正文自述而补成通过，计划未做正式B质量审查 |
+| 权限拒绝/失败重试 | 无新增拒绝；无第二会话 | 原生permission_denials=[]；未替换写命令、换提示、重跑凑绿或由Codex代写 |
+| 真实裁决/下一版计划/B重新验收 | **未测** | 本次仅原稿，不伪造审核意见，不运行B；新B采集器权限配方也没有在完整B中真实复跑 |
+
+[独立复核](evidence/qoder-write-20261028/independent-audit.json)保留额外只读Bash、正文自述限制及实际权限决策点。[采集器判定](evidence/qoder-write-20261028/verdict.json)九项为true，只证明上述真实写入/原稿归档链，不包括“完全遵循仅两条Bash提示”、正文质量或B整体。对额外只读操作如实留痕，不改脚本或再调模型消除记录。
+
+### 10.5 旧B停点、仍未满足项与下一次复验条件
+
+旧主题`DriverCLI-qoder-cn-B`、run_id=`20261028T151257Z`的当前state闸门仍为awaiting_approval，approvals=[]。本轮没有approve、恢复、abandon、gate重验或补写旧工件，旧归档/状态/candidate逐项hash未变。**更正第9节“state/task双落点awaiting_approval”**：本次回读task.gate为idle，run.gate为review_done_awaiting_disposition且adjudication_complete=false；后者按主设计§6.7/EV-133是收尾快照、不由gate回写。当前停点看state，人工决定看approvals，不能混用三个字段。task快照差异只记录，不主动修复。审批入口仍见9.4，本轮不执行；更新后的源装置与旧pins不同，不把旧wrapper称为已在新源码下复验，旧候选直接入口字节保持原样。
+
+本次正控制证明同版本、dontAsk、私有精确Edit路径规则可完成客户端正文与archive原稿链；它不消除旧B失败/偏离记录，也不构成正式B重新通过。正式入口独立展开事件、真实B全部写入链/裁决/定稿、审批后恢复/放弃、其它A/C/D、Kimi模型、桌面/插件、Windows及完整逃逸后代/监督者被杀清理仍未测或未满足。两个候选产品角色仍关闭。
+
+下一次真实B须另行明确授权，使用新隔离根/独立run_root与新证据目录，不能复用旧待审批工件；旧停点由Bob单独决定，不把本次正控制当审批。先核CLI、入口、候选/源文件冻结hash与生产开关；确认私有drafts精确范围和wrapper权限，采用客户端真实原稿plan 1，裁决用审查轮次、完整新计划用subject+1。沿既有gemini/glm获准机制运行该夹具完整生产preflight，TTL需要刷新时事前说明配额，再由原文正式B发起真实双审，逐项核worker/请求冻结/工具证据/裁决/gate，出现写入拒绝立即停下保留，不改提示换写法。真实B应保存权限日志决策点及同ID工具/argv/cwd/底层码/hash，不能只留最终mode文案。当前未授权该复验，未启动。
+
+旧tee为何走不同成功分支仍缺当次上游决策点；本轮静态源码只能说明存在相应形态分支，不能还原真实选择。若该问题仍要继续核实，最小下一项是另行授权、独立保留权限决策点的单命令形态对照；旧日志不可追补，本轮不追加会话。这个历史归因缺口不妨碍本次已取到fs_write.rule.allow的合法Write链，但也不能被它抹去。
+
+### 10.6 自动化、冻结、安装与凭据清理收尾
+
+完整`npm run check`退出0：4191项、4182通过、9跳过、0失败，测试耗时340.408秒；10项定向回归也通过；报告/矩阵更新后，文档归档索引与入口渲染契约49项通过。build及pretest均为指纹3d1a08399ed4…；前后两次冻结复算一致，16项具名pins未变，参与构建的脚本/源码/资产冻结后未修改。安装只读检查退出0，14份入口字节匹配；没有重装或安装候选。安装bundle保持22fce4561d43e6cc6b9d97f4fd3e2b19f0875ec769c209285a69be6587f8c604，仓库新bundle完整hash另列[安装回读](evidence/qoder-write-20261028/installation.json)与[收尾](evidence/qoder-write-20261028/closeout.json)，不以二者hash相等冒称已安装新构建。
+
+所核14项全局配置/认证hash与轮前一致，生产src全树未变，Kimi/Qoder的driverEnabled、criticEnabled、defaultSelected六值均false，package版本仍1.3.2。正常withQoderHome只复制2个最小认证文件，私有home已清理并回读不存在；对应进程根扫描无残留。新旧无凭据夹具有意保留，删除责任由Bob确认使用完毕后处理；不报成全部临时根已删。已保存证据对已知认证原串/JSON字符串及既有脱敏规则扫描无命中，未知内部解密字段与监督者SIGKILL情形仍未测。正常清理不代替完整生命周期准入。
+
+本仓没有开放开发闸门，本轮未启动本仓主题双审，也没有提交、推送、发布。证据：[完整索引](evidence/qoder-write-20261028/index.json)、[根因](evidence/qoder-write-20261028/rootcause.json)、[自动化](evidence/qoder-write-20261028/automation.json)、[冻结](evidence/qoder-write-20261028/freeze.json)、[真实写入](evidence/qoder-write-20261028/native-write.json)、[独立复核](evidence/qoder-write-20261028/independent-audit.json)、[收尾](evidence/qoder-write-20261028/closeout.json)。本节为当前结果；旧节和旧JSON保留历史事实及已指明的判定局限。
+
+本轮后续Git交付：Bob明确授权“提交、推送”。交付前再次核对16份索引对象hash、冻结作用面、全局配置、安装bundle及旧B归档/状态均未变，本仓无开放开发闸门；按本批具名清单提交并推送当前main至origin。旧隔离B的awaiting_approval与approvals=[]保持原样，不代为审批、恢复或放弃；Git交付不提升正式B复验或产品准入状态。上文未提交状态保留为开发收尾时点，实际提交号及远端结果以Git回读为准。

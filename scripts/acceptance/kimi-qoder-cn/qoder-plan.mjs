@@ -19,6 +19,16 @@ export async function globalSnapshot(){
   return Object.fromEntries(await Promise.all([path.join(repo,'.trivium/config.yaml'),path.join(repo,'.trivium/config.local.yaml'),...names.map(n=>path.join(os.homedir(),n))].map(async p=>[p,await fileHash(p)])));
 }
 
+/** 私有user settings：绝对路径用//；Write的路径检查由Edit规则覆盖。 */
+export function writeSettings(root,writes,commands,reads=[]){
+  const rule=(tool,p)=>`${tool}(/${p})`;
+  const paths=p=>[...new Set([p,p.startsWith('/private/var/')?p.slice(8):p.startsWith('/var/')?'/private'+p:p])];
+  return {general:{enableAutoUpdate:false},permissions:{
+    allow:[...writes.flatMap(p=>paths(p).map(x=>rule('Edit',x))),...reads.flatMap(p=>paths(p).map(x=>rule('Read',x))),...commands.map(c=>`Bash(${c})`)],
+    deny:paths(path.join(root,'.reviews','**')).map(p=>rule('Edit',p)),
+  }};
+}
+
 /** 按既有两家机制核前置；路径拒绝与Qoder专属组合准入不得移作这两家的硬门。 */
 export function strictReadiness(cfg, routes, agentMatches){
   const sides=['gemini','glm'];
@@ -44,6 +54,8 @@ export function strictReadiness(cfg, routes, agentMatches){
 /** 仅允许指定主题的命令B；不靠提示词防止扩大审核集合或代为审批。 */
 export function allowed(args,spec){
   if(!Array.isArray(args)||args.some(x=>typeof x!=='string'))return false;
+  if(spec.write_control)return spec.control_commands.some(command=>JSON.stringify(command)===JSON.stringify(args));
+  if(args.length===2&&args[0]==='artifact'&&args[1]==='--help')return true;
   const value=k=>{const n=args.indexOf(k);return n<0?null:args[n+1];};
   for(const k of ['--topic','--stage','--driver','--critics','--entry'])if(args.filter(x=>x===k).length>1)return false;
   if(['--allow-single','--only','--worker','--cancel','--base','--skip-auth-check','--refresh-auth'].some(x=>args.includes(x)))return false;
@@ -63,6 +75,28 @@ export function allowed(args,spec){
   return false;
 }
 
+/** 专用传输规约，不是生产CLI子命令；裁决轮次取run，下一版计划取subject+1。 */
+export async function artifactInput(spec,args,api){
+  const task=await readJSON(path.join(spec.root,'.reviews',spec.topic,'task.json'));
+  if(task.drivers?.plan?.driver!=='qoder-cn')throw Error('先认领plan再写原稿或裁决');
+  const state=await readJSON(path.join(spec.root,'.trivium/state.json')).catch(e=>{if(e.code==='ENOENT')return null;throw e;});
+  if(state&&Object.values(state.gates??{}).some(g=>['running','awaiting_approval'].includes(g.state)))throw Error('审查进行中或人工停点后禁止归档');
+  const supplied=path.resolve(spec.root,args[3]),drafts=await fs.realpath(path.join(spec.root,'drafts'));
+  if(drafts!==path.join(spec.root,'drafts'))throw Error('drafts不得为符号链接');
+  if(!(await fs.lstat(supplied)).isFile())throw Error('正文必须为普通暂存文件，不得为符号链接');
+  const source=await fs.realpath(supplied);
+  if(!source.startsWith(drafts+path.sep))throw Error('正文只可来自本夹具drafts普通文件');
+  let meta=null;
+  if(spec.run_ids?.length)meta=await readJSON(path.join(spec.root,'.reviews',spec.topic,'plan/_meta',`run-${spec.run_ids.at(-1)}.json`));
+  const expected=args[1]==='revised'?meta?.rerun_index:meta?(meta.plan_final_check?.subject_rerun_index??meta.rerun_index)+1:1;
+  if(Number(args[2])!==expected)throw Error(`轮次不符：${args[1]}应为${expected??'已有审查run的轮次'}；裁决用审查轮次，完整计划用被审对象轮次+1`);
+  const kind=args[1]==='revised'?'revised':null;
+  const artifacts=await api.listStageArtifacts({archiveRoot:path.join(spec.root,'.reviews'),topic:spec.topic},'plan');
+  if(artifacts.some(a=>a.parsed.role==='qoder-cn'&&a.parsed.kind===kind&&a.parsed.rerunIndex===expected))throw Error('本轮工件已存在；不覆盖或自动生成额外轮次');
+  const content=await fs.readFile(source,'utf8');
+  return {source,content,sha256:sha(content),kind,rerunIndex:expected};
+}
+
 export async function wrapper(specFile,args){
   const spec=await readJSON(specFile),at=new Date().toISOString();
   const row={at,pid:process.pid,ppid:process.ppid,argv:args,cwd:process.cwd(),allowed:allowed(args,spec),exit_code:64,signal:null,stdout:'',stderr:''};
@@ -70,20 +104,19 @@ export async function wrapper(specFile,args){
     if(path.resolve(process.cwd())!==spec.root)throw Error('必须在专用隔离项目执行');
     for(const [p,h] of Object.entries(spec.pins))if(await fileHash(p)!==h)throw Error('专用装置指纹变化，拒绝执行');
     if(!row.allowed)throw Error('仅授权本夹具Qoder CN命令B；审批、放弃和其它阶段均拒绝');
-    const {run,writeArtifact}=createRequire(import.meta.url)(spec.helper);
+    const api=createRequire(import.meta.url)(spec.helper),{run,writeArtifact}=api;
     if(args[0]==='review'&&args.includes('--start')){
       const receipt=spec.preflight_receipt;
       if(!receipt||receipt.exit_code!==0||!receipt.ok||Date.now()-Date.parse(receipt.at)>3600000){row.exit_code=69;throw Error('缺少本夹具一小时内完整生产预检成功原件；未调用审核者');}
       if(spec.run_ids.length>=3){row.exit_code=69;throw Error('本批三轮预算已用尽');}
     }
-    if(args[0]==='artifact'){
-      const task=await readJSON(path.join(spec.root,'.reviews',spec.topic,'task.json'));
-      if(task.drivers?.plan?.driver!=='qoder-cn')throw Error('先认领plan再写原稿或裁决');
-      const stateFile=path.join(spec.root,'.trivium','state.json');
-      if(await fileHash(stateFile)){const state=await readJSON(stateFile);if(JSON.stringify(state).includes('awaiting_approval'))throw Error('人工停点后禁止业务写入');}
-      const source=await fs.realpath(path.resolve(spec.root,args[3]));
-      if(!source.startsWith(spec.root+path.sep)||source.startsWith(path.join(spec.root,'.reviews')+path.sep))throw Error('正文只可来自夹具内非归档暂存文件');
-      const output=await writeArtifact({layout:{archiveRoot:path.join(spec.root,'.reviews'),topic:spec.topic},stage:'plan',role:'qoder-cn',driver:'qoder-cn',writer:'driver',kind:args[1]==='revised'?'revised':null,rerunIndex:Number(args[2]),content:await fs.readFile(source,'utf8')});
+    if(args[0]==='artifact'&&args[1]==='--help'){
+      row.exit_code=0;row.stdout='验收专用传输（非生产CLI）：artifact plan|revised <轮次> drafts/<客户端正文.md>\n原稿plan 1；裁决revised=run.rerun_index；完整新计划plan=subject_rerun_index+1。先认领；正文必须已成功Write，失败即停止，不换写法。\n';
+    }else if(args[0]==='artifact'){
+      const input=await artifactInput(spec,args,api);
+      row.source={path:input.source,sha256:input.sha256};
+      const output=await writeArtifact({layout:{archiveRoot:path.join(spec.root,'.reviews'),topic:spec.topic},stage:'plan',role:'qoder-cn',driver:'qoder-cn',writer:'driver',kind:input.kind,rerunIndex:input.rerunIndex,content:input.content});
+      row.artifact=output;
       row.exit_code=0;row.stdout=JSON.stringify(output)+'\n';
     }else{
       const env={...process.env,HOME:spec.reviewer_home,USERPROFILE:spec.reviewer_home,TRIVIUM_ASSET_ROOT:spec.assets,TRIVIUM_ENTRY_SCAN_HOME:spec.reviewer_home};
@@ -112,7 +145,7 @@ export async function prepare(output){
   try{
   const f=await createFixture(temp,'qoder-cn');
   const helper=path.join(temp,'plan-helper.cjs');
-  await build({stdin:{contents:`export {loadCtx} from './src/trivium/config.ts';export {realAdapters} from './src/trivium/adapters/index.ts';export {resolveConfiguredTier,sameRequestedRoute} from './src/trivium/model-routing.ts';export {run} from './src/trivium/util/exec.ts';export {writeArtifact} from './src/trivium/archive.ts';export {AGENTS} from './src/trivium/agents/registry.ts';export {withQoderHome,qoderRun,qoderConfigRoot} from './src/trivium/adapters/qoder-cn-native.ts';export {redactSecrets} from './src/trivium/secrets.ts';`,resolveDir:repo},outfile:helper,bundle:true,platform:'node',format:'cjs',charset:'utf8',logLevel:'silent'});
+  await build({stdin:{contents:`export {loadCtx} from './src/trivium/config.ts';export {realAdapters} from './src/trivium/adapters/index.ts';export {resolveConfiguredTier,sameRequestedRoute} from './src/trivium/model-routing.ts';export {run} from './src/trivium/util/exec.ts';export {writeArtifact,listStageArtifacts} from './src/trivium/archive.ts';export {AGENTS} from './src/trivium/agents/registry.ts';export {withQoderHome,qoderRun,qoderConfigRoot} from './src/trivium/adapters/qoder-cn-native.ts';export {redactSecrets} from './src/trivium/secrets.ts';`,resolveDir:repo},outfile:helper,bundle:true,platform:'node',format:'cjs',charset:'utf8',logLevel:'silent'});
   const api=createRequire(import.meta.url)(helper),ctx=await api.loadCtx({cwd:repo}),cfg=ctx.config;
   e.baseline=(await api.run('git',['-c','core.quotePath=false','rev-parse','HEAD'],{cwd:repo})).stdout.trim();
   e.retained_predecessor=[];
@@ -142,7 +175,8 @@ export async function prepare(output){
   const selectedAuth=Object.fromEntries(Object.entries(cfg.probe.auth_routes??{}).filter(([,v])=>['gemini','glm'].includes(v.combination?.critic)));
   await put(path.join(f.root,'.trivium/config.local.yaml'),JSON.stringify({probe:{generated_at:cfg.probe.generated_at,cli:{agy:cfg.probe.cli.agy,zcode:cfg.probe.cli.zcode},auth:{gemini:cfg.probe.auth?.gemini,glm:cfg.probe.auth?.glm},auth_routes:selectedAuth}},null,2));
   await put(path.join(f.root,'README.md'),'# sum隔离验收\n\nHEAD故意使用减法；工作树加法只是候选。计划为正数、负数、零和交换律增加Node内置测试；本轮不实施。\n');
-  await put(path.join(f.root,'AGENTS.md'),'# 专用Qoder CN命令B夹具\n\nDriver为qoder-cn，只调用dual-review-plan。审核者只读，以BRIEF角色为准，不能执行Driver指令。\n原稿/裁决/完整新计划的正文由真实客户端撰写；先Write到项目drafts目录，再调用`.trivium/bin/trivium artifact plan|revised 轮次 drafts/文件.md`经archive唯一出口归档。原稿已备但为装置正文：认领后先自行阅读sum.cjs和材料，再写plan轮次2作为本次真实原稿，然后进入resolve及预检。裁决与下一版完整计划也用同一通道，轮次按实际被审对象递增。\n不得改sum.cjs或其它业务文件，不得直接调用审核者CLI、Node或其它入口，不运行approve/abandon。预检失败立即停止，不doctor或重试。通过gate之后只运行--await-approval并停止。工具层以Skill/Read/Write/Bash完成本流程，无需搜索全目录。\n');
+  await fs.mkdir(path.join(f.root,'drafts'),{mode:0o700});
+  await put(path.join(f.root,'AGENTS.md'),'# 专用Qoder CN命令B夹具\n\nDriver为qoder-cn；审核者只读，以BRIEF角色为准。正式B定义工件命名、内容与gate校验；以下artifact是验收专用传输，不是生产CLI或正式入口的必经要求。\n先认领，再阅读sum.cjs和材料，由客户端自行撰写原稿：Write到drafts/original.md，成功后运行`.trivium/bin/trivium artifact plan 1 drafts/original.md`；不预置固定正文。裁决用artifact revised加run.rerun_index（首轮1）；完整新计划用artifact plan加被审对象轮次+1（原稿1则2），两个轮次不可混同。正文只能来自drafts普通文件。artifact --help可读。\n本装置选择archive实现防覆盖与扫描，直接写归档不满足本批传输控制，但不得把该附加条件冒称产品契约。原生Write或传输失败即停止并保留，不得换Bash/tee等写法。不得改sum.cjs，不直接调审核者、Node或其它入口，不approve/abandon。预检失败停止；gate之后只await-approval并停止。\n');
   const pins=Object.fromEntries(await Promise.all([self,helper,f.candidate,path.join(f.root,'.trivium/config.yaml'),path.join(f.root,'.trivium/config.local.yaml')].map(async p=>[p,await fileHash(p)])));
   const spec={...f.spec,topic,helper,assets:path.join(repo,'skills/dual-critic'),reviewer_home:os.homedir(),ledger:path.join(temp,'formal-argv.jsonl'),run_ids:[],strict_readonly_ready:false,review_allowed:'仅本主题命令B，启动仍受严格只读前置阻塞',pins,cleanup_owner:'Codex负责凭据即时清理；无凭据候选/夹具由Bob确认使用完毕后删除独立根；未代为approve/abandon'};
   const specFile=path.join(temp,'fixture-B.json');await put(specFile,JSON.stringify(spec,null,2));
@@ -155,7 +189,7 @@ export async function prepare(output){
   const claim=await call(['topic','claim','--topic',topic,'--stage','plan','--driver','qoder-cn','--json']);
   e.preparation_claim=claim;
   if(claim.code!==0)throw Error('B备料认领失败');
-  e.original=await api.writeArtifact({layout:{archiveRoot:path.join(f.root,'.reviews'),topic},stage:'plan',writer:'driver',role:'qoder-cn',driver:'qoder-cn',rerunIndex:1,content:'# sum修复计划（装置准备原稿）\n\n## 目标\n修正HEAD中的减法错误；sum(2,1)应为3。工作树加法未验收，不视作已交付。\n\n## 实施\n核对sum.cjs后将减法改为加法，用Node内置node:test与assert增加正数、负数、零、交换律测试，不引入依赖。不处理非number输入及浮点精度契约。\n\n## 验收与边界\n先证明HEAD对sum(2,1)失败，再以候选通过相同测试；本轮B只审计划，人工批准前不得实施或改sum.cjs。\n\n## 清理\n凭据副本由监督者清理，无凭据项目保留待Bob审批决定。\n'});
+  e.original=null; // 等待真实客户端正文，备料不冒充原稿。
   // 严格前置已失败，不为取得绿色额外探活或刷新探针。未执行的预检明确留空。
   e.production_preflight={status:'未测；严格只读前置先行阻塞',exit_code:null};
   e.routes=routes;e.fixture=spec;e.spec_file=specFile;

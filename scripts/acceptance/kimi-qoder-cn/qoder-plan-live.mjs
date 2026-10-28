@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
-import {fileHash,globalSnapshot,request,topic} from './qoder-plan.mjs';
+import {fileHash,globalSnapshot,request,topic,writeSettings} from './qoder-plan.mjs';
 import {repo} from './driver-identity.mjs';
 import {collectCredentialValues,secretGuard} from './qoder-secrets.mjs';
 
@@ -45,9 +45,11 @@ export async function live(mode,specFile,output){
           e.entries.push({name,source:src,installed:dst,source_sha256:await fileHash(src),sha256:await fileHash(dst)});
         }
         env.TRIVIUM_ASSET_ROOT=spec.assets;env.TRIVIUM_ENTRY_SCAN_HOME=home;
+        e.permission_settings=writeSettings(spec.root,[path.join(spec.root,'drafts','**')],['.trivium/bin/trivium:*'],[path.join(spec.root,'**')]);
+        await fs.writeFile(path.join(config,'settings.json'),JSON.stringify(e.permission_settings),{mode:0o600});
         e.cli.version=await api.qoderRun(bin,['--version'],{cwd:spec.root,env,timeoutMs:15000,killTree:true});
         e.model_request={route:'official-default',argv_model:null,private_settings_model:null,effective_underlying_model:null};
-        const args=['--cwd',spec.root,'--add-dir',entries,'--setting-sources','user','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--tools','Bash,Read,Write,Skill','--allowed-tools','Bash,Read,Write,Skill','--permission-mode','dont_ask','--no-session-persistence','--output-format','stream-json','-p',request];
+        const args=['--cwd',spec.root,'--add-dir',entries,'--setting-sources','user','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--tools','Bash,Read,Write,Skill','--permission-mode','dont_ask','--no-session-persistence','--output-format','stream-json','-p',request];
         e.command={bin,args,cwd:spec.root};
         e.result=await api.qoderRun(bin,args,{cwd:spec.root,env,timeoutMs:1500000,killGraceMs:5000,killTree:true,maxBufferBytes:24*1024*1024});
         e.passed=e.result.code===0&&!e.result.timedOut&&!e.result.truncated;

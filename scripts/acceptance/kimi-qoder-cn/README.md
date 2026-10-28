@@ -1,5 +1,19 @@
 # Kimi/Qoder 取证工具
 
+2026-10-29 main/f7167326归档/权限复核：正式入口允许Driver按命名、schema和轮次契约自行撰写；`archive.ts`是编排器模块的唯一写出口，生产CLI没有`artifact`子命令。暂存正文→artifact→archive是本装置附加控制，旧B未满足该控制，不能据此直接判产品归档违规。真实Write拒绝、旧B待审批和完整验收缺口仍保留。根因与同ID原件见[报告第10节](../../../doc/05_testing/REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#10-main--f7167326-归档契约与原生写入正控制2026-10-29)。
+
+本批新增唯一写入正控制（prepare零配额，real一次真实Qoder会话；不调用任何正式技能或审核者）：
+
+```sh
+node --test scripts/acceptance/kimi-qoder-cn/qoder-plan.test.mjs
+node scripts/acceptance/kimi-qoder-cn/qoder-write.mjs prepare <全新证据目录>
+node scripts/acceptance/kimi-qoder-cn/qoder-write.mjs real <该次write-spec.json>
+```
+
+real至多180秒、8轮模型交互、模型请求重试0；CLI会话数不是内部请求数或固定费用。只有一个精确draft文件的Edit路径allow（覆盖Write），Read指向材料及AGENTS，两条精确Bash命令为claim与artifact。私有user settings是唯一settings文件来源，模式保持dont_ask，MCP为空、工具面Read/Write/Bash。规则绝对路径使用双斜杠，覆盖/private/var和/var别名，不使用全工具或全目录写授权。正文由真实客户端Write；任何失败立即停止，不换tee或其它写法、不重试、不补写。保留失败原件和无凭据夹具，认证副本即时清理。一次正控制不等于B重新通过；裁决/下一版计划的真实链本批不启动审核，仍未测。
+
+B装置修正仅作用于新根：预建drafts，取消固定备料原稿，客户端先认领后写plan 1；artifact --help说明其非生产性质。revised轮次取run.rerun_index，新计划取subject_rerun_index+1；普通正文、符号链接、运行/审批停点与已有工件分别检查。B采集器配置私有drafts写路径规则及wrapper范围，删除宽泛全工具allow。旧夹具、旧脚本副本、旧证据不修改。本轮禁止运行上面的native-B或production-preflight历史命令。
+
 2026-10-28 main/3f85882f续验：第8节的路径deny硬前置已按现行设计纠正，详见[报告第9节](../../../doc/05_testing/REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#9-main--3f85882f-qoder-cn命令b续验2026-10-28)。gemini/glm沿用设计10.1/10.3及ADR-002的获准机制；path_deny=false/null仍是未取得原生路径拒绝证据，不能写成硬隔离通过。Qoder审核者专属模型组合准入台账不移作两家既有审核者的条件。availability不代替完整preflight，TTL过期须刷新，不直接判账号失效。
 
 ```sh

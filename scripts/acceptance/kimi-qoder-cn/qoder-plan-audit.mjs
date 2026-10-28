@@ -21,7 +21,12 @@ export function nativeTools(stdout){
 export function linkRows(rows,native){
   return rows.map(row=>{
     const output=(row.stdout||row.stderr||'').trim();
-    const ids=native.calls.filter(c=>c.name==='Bash'&&c.input?.command?.includes('.trivium/bin/trivium')&&output&&native.results.get(c.id)?.text?.includes(output)).map(c=>c.id);
+    const ids=native.calls.filter(c=>{
+      const command=c.input?.command,result=native.results.get(c.id);
+      return c.name==='Bash'&&typeof command==='string'&&command.includes('.trivium/bin/trivium')&&
+        row.argv.every(arg=>command.includes(arg))&&output&&result?.text?.includes(output)&&
+        (row.exit_code!==0||result.error===false);
+    }).map(c=>c.id);
     return {at:row.at,argv:row.argv,cwd:row.cwd,exit_code:row.exit_code,signal:row.signal,tool_ids:ids,matched:ids.length>0};
   });
 }

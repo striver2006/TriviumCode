@@ -5,8 +5,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {helper} from './driver-identity.mjs';
-import {allowed,strictReadiness,topic} from './qoder-plan.mjs';
+import {allowed,strictReadiness,topic,artifactInput,writeSettings} from './qoder-plan.mjs';
 import {nativeTools,linkRows} from './qoder-plan-audit.mjs';
+import {prepareWrite} from './qoder-write.mjs';
 
 const spec={topic,run_ids:['known-run']};
 const start=['review','--start','--stage','plan','--topic',topic,'--driver','qoder-cn','--critics','gemini,glm','--entry','B'];
@@ -18,6 +19,7 @@ test('离线工具关联必须使用同ID结果，模型口头总结和其它ID�
   const rows=[{argv:['topic','claim'],stdout:'{"ok":true}',exit_code:0}];
   assert.equal(linkRows(rows,make('a','a'))[0].matched,true);
   assert.equal(linkRows(rows,make('a','b'))[0].matched,false);
+  assert.equal(linkRows([{...rows[0],argv:['artifact','plan']}],make('a','a'))[0].matched,false);
   assert.equal(linkRows(rows,nativeTools(JSON.stringify({type:'assistant',text:'{"ok":true}'})))[0].matched,false);
 });
 test('B传输策略保持指定主题、阶段、身份、审核集合与入口',()=>{
@@ -50,9 +52,62 @@ test('审批、放弃、任意worker恢复及不明run拒绝',()=>{
   assert.equal(allowed(['gate','--topic',topic,'--stage','plan','--await-approval'],spec),true);
 });
 test('真实撰写的归档通道只允许本Driver的计划与裁决',()=>{
+  assert.equal(allowed(['artifact','--help'],spec),true);
   assert.equal(allowed(['artifact','plan','2','drafts/p.md'],spec),true);
   assert.equal(allowed(['artifact','revised','1','drafts/r.md'],spec),true);
   for(const args of [['artifact','gemini','1','x'],['artifact','plan','0','x'],['artifact','plan','1'],['artifact','response','1','x']])assert.equal(allowed(args,spec),false);
+});
+
+test('私有写入规则只授权指定正文与两条命令，使用Edit和绝对路径语法',()=>{
+  const root='/private/var/test/中文 空格项目',draft=root+'/drafts/original.md';
+  const settings=writeSettings(root,[draft],['.trivium/bin/trivium artifact plan 1 drafts/original.md']);
+  assert.deepEqual(settings.permissions.allow,[`Edit(/${draft})`,`Edit(//var/test/中文 空格项目/drafts/original.md)`,'Bash(.trivium/bin/trivium artifact plan 1 drafts/original.md)']);
+  assert.equal(settings.permissions.allow.some(x=>['Write','Bash','*'].includes(x)),false);
+  const control={...spec,write_control:true,control_commands:[['artifact','plan','1','drafts/original.md']]};
+  assert.equal(allowed(control.control_commands[0],control),true);
+  for(const args of [start,['preflight'],['gate'],['artifact','--help'],['artifact','plan','2','drafts/original.md']])assert.equal(allowed(args,control),false);
+});
+
+test('正控制备料不写正文、不启动审核；新根和候选pins全部可回读',{timeout:30000},async()=>{
+  const output=await fs.mkdtemp(path.join(os.tmpdir(),'trivium-write-preparation-test-'));let prepared;
+  try{
+    prepared=await prepareWrite(output);const s=JSON.parse(await fs.readFile(prepared.spec_file));
+    assert.equal(s.attempted,false);assert.equal(s.write_control,true);assert.deepEqual(s.run_ids,[]);
+    for(const p of [s.draft,s.run_root,path.join(s.root,'.reviews')])assert.equal(await fs.stat(p).then(()=>true,e=>{if(e.code==='ENOENT')return false;throw e;}),false);
+    for(const [p,h] of Object.entries(s.pins)){const {createHash}=await import('node:crypto');assert.equal(createHash('sha256').update(await fs.readFile(p)).digest('hex'),h);}
+    assert.equal(s.control_commands.length,2);assert.equal(allowed(start,s),false);
+  }finally{await fs.rm(output,{recursive:true,force:true});if(prepared)await fs.rm(path.dirname(prepared.spec_file),{recursive:true,force:true});}
+});
+
+test('archive真实落盘守正文hash、防覆盖、暂存边界、运行/停点和两种轮次',{timeout:30000},async()=>{
+  const temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'trivium-qoder-artifact-test-')));
+  try{
+    const {runtime:api,target}=await helper(temp),root=path.join(temp,'project'),archive=path.join(root,'.reviews',topic);
+    await fs.mkdir(path.join(archive,'plan/_meta'),{recursive:true});await fs.mkdir(path.join(root,'drafts'));await fs.mkdir(path.join(root,'.trivium'));
+    await fs.writeFile(path.join(archive,'task.json'),JSON.stringify({drivers:{plan:{driver:'qoder-cn'}}}));
+    await fs.writeFile(path.join(root,'drafts/original.md'),'# 离线合成正文\n');
+    const local={...spec,root,helper:target,run_ids:[],pins:{},ledger:path.join(temp,'ledger.jsonl')};
+    const file=path.join(temp,'spec.json');await fs.writeFile(file,JSON.stringify(local));
+    const call=args=>api.run(process.execPath,['-e',`import(${JSON.stringify(new URL('./qoder-plan.mjs',import.meta.url).href)}).then(m=>m.wrapper(${JSON.stringify(file)},${JSON.stringify(args)}));`],{cwd:root,timeoutMs:10000});
+    const args=['artifact','plan','1','drafts/original.md'];const result=await call(args);assert.equal(result.code,0);
+    const output=JSON.parse(result.stdout);assert.equal(await fs.readFile(output.absPath,'utf8'),'# 离线合成正文\n');
+    assert.equal((await call(args)).code,64);assert.equal((await fs.readdir(path.join(archive,'plan'))).filter(x=>x.endsWith('.md')).length,1);
+    await fs.symlink(path.join(root,'drafts/original.md'),path.join(root,'drafts/link.md'));
+    await assert.rejects(artifactInput(local,['artifact','plan','1','drafts/link.md'],api),/普通暂存文件/);
+    await fs.writeFile(path.join(root,'outside.md'),'outside');
+    await assert.rejects(artifactInput(local,['artifact','plan','1','outside.md'],api),/drafts普通文件/);
+    await assert.rejects(artifactInput(local,['artifact','plan','1','drafts/missing.md'],api),/ENOENT/);
+    await assert.rejects(artifactInput(local,['artifact','revised','1','drafts/original.md'],api),/已有审查run/);
+    local.run_ids=['synthetic'];await fs.writeFile(path.join(archive,'plan/_meta/run-synthetic.json'),JSON.stringify({rerun_index:1,plan_final_check:{subject_rerun_index:2}}));
+    assert.equal((await artifactInput(local,['artifact','revised','1','drafts/original.md'],api)).rerunIndex,1);
+    assert.equal((await artifactInput(local,['artifact','plan','3','drafts/original.md'],api)).rerunIndex,3);
+    await assert.rejects(artifactInput(local,['artifact','revised','2','drafts/original.md'],api),/轮次不符/);
+    await assert.rejects(artifactInput(local,['artifact','plan','2','drafts/original.md'],api),/轮次不符/);
+    for(const state of ['running','awaiting_approval']){
+      await fs.writeFile(path.join(root,'.trivium/state.json'),JSON.stringify({gates:{test:{state}}}));
+      await assert.rejects(artifactInput(local,['artifact','revised','1','drafts/original.md'],api),/禁止归档/);
+    }
+  }finally{await fs.rm(temp,{recursive:true,force:true});}
 });
 test('按既有机制核两家前置，不把路径deny和Qoder专属台账移作硬门',()=>{
   const probe={probed_at:'2026-10-28',entrypoint:'/cli',headless_read_ok:true,path_deny:{supported:false,coverage_complete:null,file_shape_verified:null},readonly_flags:['--disallowed-tools Write,Bash']};
