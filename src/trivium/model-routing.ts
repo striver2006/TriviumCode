@@ -11,6 +11,7 @@ export function resolveConfiguredTier(cfg: Config, id: CriticId, stage: Stage, c
 export function requestRouteSnapshot(req: CriticRequest) {
   return { model: req.model, effort: req.effort ?? null, tier: req.tier,
     tier_source: req.tier_source, access: req.access!,
+    ...(req.admission ? { admission: req.admission } : {}),
     ...(req.native_model ? { native_model: req.native_model } : {}) };
 }
 

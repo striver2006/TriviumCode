@@ -274,6 +274,8 @@ export interface VersionProbe {
 export interface CommonProbe {
   /** 原生官方模型事实；独立于只读准入，只有探针能准备。 */
   native_default?: NativeModelFacts;
+  /** 逐路线可调用事实；不代表只读审核准入。 */
+  native_routes?: NativeModelFacts[];
   /** CLI 可执行入口的绝对路径。null = 未探到（该侧不可用） */
   entrypoint: string | null;
   /** CLI 自报版本。`preflight` 据此判漂移 */
@@ -1008,14 +1010,19 @@ export type TierSource = 'cli' | 'profile' | 'agent_default' | 'legacy' | 'overr
 
 /** 仅非敏感事实；原始用户设置、认证绝不进入请求。 */
 export interface NativeModelFacts {
+  binding_version?: 2;
+  route_kind?: 'official' | 'custom';
+  route_descriptor?: NativeRouteDescriptor;
   model: string;
-  source: 'catalog-default' | 'config';
+  source: 'catalog-default' | 'config' | 'native-config';
   observed_user_model: string | null;
   models: string[];
   route_labels: string[];
   catalog_sha256: string;
   catalog_raw_sha256: string;
   configuration_sha256: string | null;
+  /** v2仅审计整份设置；执行绑定使用路线语义configuration_sha256。 */
+  configuration_raw_sha256?: string | null;
   entrypoint: string;
   cli_sha256: string;
   cli_version: string;
@@ -1024,6 +1031,23 @@ export interface NativeModelFacts {
   default_verified: boolean;
   /** 本次受测隔离调用的参数片段，由探针原样提供。 */
   invocation_args: string[];
+  /** 独立审核配方；只有真实最小读取正控制成功后才提供，缺席不能用于审核。 */
+  review_invocation_args?:string[];
+}
+
+/** 命名空间/声明来自原生配置；不代表可信底层provider/model身份。 */
+export interface NativeRouteDescriptor {
+  selector: string;
+  native_key: string;
+  display_name: string;
+  provider_id: string | null;
+  model_id: string;
+  source_ref: string;
+  declaration_sha256: string;
+  credential_source_sha256: string;
+  authentication_sha256: string;
+  recipe_sha256: string;
+  codec: { source_sha256: string; wasm_sha256: string; recipe: string } | null;
 }
 
 export interface NativeModelRequest {
@@ -1033,7 +1057,18 @@ export interface NativeModelRequest {
   origin: string;
 }
 
+export interface AdmissionReference { record_id:string; record_sha256:string; }
+export interface AdmissionEvidenceRef { path:string; sha256:string; case_id:string; }
+export interface AdmissionRecord {
+  record_id:string; agent:string; project_root:string; binding_sha256:string;
+  tested_at:string; expires_at:string;
+  deny_paths:string[];
+  checks:Record<string,{state:'pass'|'fail'|'untested';evidence:AdmissionEvidenceRef[]}>;
+}
+
 export interface NativeModelResult {
+  /** 路线一致性+绑定对照证明；不提升底层身份。未准入诊断为false。 */
+  route_verified?: boolean;
   request: NativeModelRequest;
   labels: string[];
   /** result.modelUsage 是计费命名空间，无法映射到官方目录的键保持未知。 */
@@ -1824,6 +1859,7 @@ export interface RunMeta {
   critics: Partial<Record<CriticId, CriticRunMeta>>;
   /** v3 启动前恒写请求快照，提前取消或 worker 启动失败也保留；历史件缺席。 */
   requested_routes?: Partial<Record<CriticId, {
+    admission?: AdmissionReference;
     native_model?: NativeModelRequest;
     model: string | null; effort: string | null; tier: TierName | null; tier_source: TierSource | null; access: AccessMeta;
   }>>;
@@ -2026,6 +2062,7 @@ export interface RunMeta {
 // ─────────────────── 适配层契约（设计 §11.1） ───────────────────
 
 export interface CriticRequest {
+  admission?: AdmissionReference;
   native_model?: NativeModelRequest;
   access?: AccessMeta;
   run_id: string;

@@ -1,0 +1,293 @@
+---
+schema: trivium.review.v2
+topic: QoderCN只读审核准入与Custom模型接入
+stage: plan
+role: claude
+vendor: anthropic
+agent_cli: claude/2.1.310
+model_requested: opus
+model_effective: claude-opus-5-5
+model_effective_source: envelope
+effort: high
+effort_requested: high
+effort_effective: null
+effort_effective_source: unverified
+tier: null
+tier_source: profile
+run_id: 20261028T022148Z
+rerun_index: 1
+snapshot_hash: sha256:9104189aeb88f3a7bc31841055d23264f8d3500391ed975b6bf97d48e6c627b1
+blind: true
+started_at: 2026-10-28T02:21:56.879Z
+finished_at: 2026-10-28T02:32:36.039Z
+duration_s: 164
+tool_calls:
+  read: 6
+  grep: 9
+  glob: 1
+  run_command: 0
+  project_reads: 8
+evidence_ok: true
+verdict: pass-after-changes
+findings_count:
+  blocker: 0
+  major: 7
+  minor: 3
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: true
+drift: false
+readonly_verification: unavailable
+heterogeneous: unknown
+access:
+  requested_mode: native
+  profile: null
+  launcher_requested: /Users/chenzhenbo/.local/bin/claude
+  launcher_effective: /Users/chenzhenbo/.local/bin/claude
+  wrapper_sha256: null
+  configuration_sha256: null
+  provider_declared: null
+  provider_declared_source: null
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: claude
+    status: unknown
+    left_model: null
+    right_model: claude-opus-5-5
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: gemini
+    right: claude
+    status: different-family
+    left_model: gemini-3.8-flash-high
+    right_model: claude-opus-5-5
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：gemini / claude
+  - left: glm
+    right: claude
+    status: different-family
+    left_model: bigmodel-coding-plan/GLM-5.3
+    right_model: claude-opus-5-5
+    left_source: trace
+    right_source: envelope
+    reason: 模型族不同：glm / claude
+override_reason: 左侧模型信息缺失
+session_id: ce5b342e-d44c-418f-b8fe-03231bb73ad0
+---
+
+# 计划审查：QoderCN只读审核准入与Custom模型接入
+
+> Critic-D · Anthropic Claude Code ｜ 回读模型 `claude-opus-5-5` ｜ 请求模型 `opus`
+> ｜ 运行 `20261028T022148Z`
+> ｜ 本轮审核者 gemini、glm、claude
+
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+最危险的一条：计划对 Custom 路线的「可信信封回读」没有定义。现有 QoderModelMonitor 把 init/assistant 的 model 标签当作 envelope 生效值，而 BYOK 下这个标签很可能只是客户端回显了请求的 modelID。按计划现在的写法，要么把回显当生效身份（与「不得将请求值复制成生效身份」冲突），要么 Custom 永远无法准入，两条结论互相打架。
+其次：production 启动仍继承整份 process.env，计划的最小隔离只管了文件；provider 身份已有 access.provider_declared/provider_effective，计划又在 native_model 里加一份，会形成第二事实源；组合准入事实由谁持有、存在哪一层（config.local 探针段还是仓库证据）没有决定；在 run.v3 的 nativeFacts（additionalProperties:false）里扩字段，对旧归档的兼容方式也未定。
+另有几处未决策：default 档在用户全局默认就是 Custom 时归属哪条路线；原生 --model 只收 modelID，同名时 Trivium 侧消歧拦不住 CLI 自己选；Custom 模型族（如 bailian/qwen…）没有进入异构对比；生产归档 stdout/stderr 的密钥扫描未覆盖。
+整体方向（fail-closed、未测即阻塞、准入前保持拒绝、注册表为唯一来源）正确，补上这些决策后可以实施。
+
+**结论**：修改后通过（`pass-after-changes`）
+
+## 审查意见（共 11 条：重要 7 ｜ 次要 3 ｜ 吹毛求疵 1）
+
+### CLAUDE-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §2 第3段「模型正对照要求真实请求和可信信封回读」与「不得将请求值/配置声明复制成生效身份」` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：计划没有定义 Custom 路线上什么算「可信信封回读」。现有 QoderModelMonitor.readback() 把 system/init 与 assistant.message.model 中第一个非路由标签直接当作 effective（source:'envelope'）。对 BYOK 来说，这些字段很可能是 CLI 把请求的 modelID 原样回显，并不是供应商响应里的模型。计划里两句话因此互相冲突：如果承认回显，就等于把请求值复制成生效身份；如果不承认，就没有其它回读源，Custom 永远拿不到正对照、永远不能准入。
+
+**依据**：src/trivium/adapters/qoder-cn-model.ts:97-123：observe() 收集 init/assistant 标签，readback() 取最后一个非路由标签作 effective、source='envelope'；src/trivium/adapters/qoder-cn.ts:112 直接写入 result.model_effective。官方路线下 Auto→具体模型的变化能说明信封有信息量，Custom 路线下请求就是确定的 modelID，回显无法和请求区分。
+
+**建议**：在计划 §2 里按路线分别写明判据：哪个通道、哪个字段算供应商侧回读（例如 result.modelUsage 键、provider 响应头或 SDK 事件），什么情况只算回显。回显只能落到 model_label，effective 保持 null/unknown，同时写清这种情况对准入的影响：阻塞，还是允许以 unknown 准入。
+
+### CLAUDE-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §1「最小加载集合…仅将该模型必需的声明和凭据按字段白名单置入 0700 临时根」` |
+| 类别 | security ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：最小隔离只覆盖了文件。现有 withQoderHome 用 {...process.env, HOME, USERPROFILE} 启动子进程，父进程的全部环境变量（各厂商 API Key、代理、可能被 Qoder 识别的配置覆盖变量）都会进入审核臂。计划 §1 只在对照实验里「核验环境叠加」，没有要求生产启动改为环境白名单，也没有把环境纳入隔离配方指纹。
+
+**依据**：src/trivium/adapters/qoder-cn-native.ts:68：env={...process.env,HOME:home,USERPROFILE:home}；src/trivium/adapters/qoder-cn.ts:39-41 生产 run 直接使用这个 env。
+
+**建议**：把「子进程环境按白名单构造」写成 §1 的交付项，白名单的哈希纳入隔离配方指纹。再补一个负对照：父环境里放假 canary 变量，验证审核臂无法通过任何通道读到它。
+
+### CLAUDE-03 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §2「拟扩展 route_kind（official/custom）、provider 声明、modelID…；底层 provider/model 生效回读单列」` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：provider 的声明值和生效值在 run.v3 的 critic.access 里已有一份：provider_declared/provider_declared_source（profile/config）、provider_effective/provider_effective_source（envelope/trace），而且是 requested_routes.access 的必填项。计划要在 native_model 里再加一份 provider 声明和生效回读，没有说明与 access 的关系。这会形成第二事实源，两份值一旦不一致，报告和计票该信哪一份没有定义。
+
+**依据**：skills/dual-critic/schema/run.v3.json:1292-1371 access 定义（required 含 provider_declared*/provider_effective*）；同文件 758-769 requested_routes 必含 access；nativeFacts 在 1435 起，目前不含 provider。
+
+**建议**：决定 provider 身份由哪一层持有：建议复用 access.provider_*，native_model 只放 Qoder 特有的目录、路线和来源事实。如确需两处都有，写明一致性校验和冲突时的处理。
+
+### CLAUDE-04 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5「建立组合级准入事实…仅消费完整、匹配且新鲜的验收」` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：新增的「组合准入事实」没有指定持有者和存储层。准入事实里有本机 CLI 入口哈希、平台和证据哈希，是机器相关的数据；registry 是进 Git 的静态代码，criticEnabled 只是布尔值；现有新鲜度机制挂在 config.local 的 probe.cli.qoderclicn.native_default 上，并有 TTL。计划同时说「注册表为唯一来源」和「通用层消费绑定」，却没说准入记录由谁生成（doctor 跑不出完整对抗矩阵）、存在哪里、其它机器怎么办。这是落地后很难改的分层决定。
+
+**依据**：src/trivium/agents/registry.ts:192 criticEnabled:boolean、429 qoder-cn criticEnabled:false；src/trivium/adapters/qoder-cn.ts:14、83 从 cfg.probe.cli['qoderclicn'] 取 native_default 并用 nativeDefaultIsFresh 判新鲜度。
+
+**建议**：在计划里明确三件事：准入记录的落点（本机 local 状态还是仓库证据索引）、它的 schema、生成方（验收脚本还是 doctor）。同时写清 registry 只登记「需要哪些证据项」这类能力要求，不登记具体机器的准入结论，以及其它机器在没有准入记录时一律拒绝。
+
+### CLAUDE-05 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §2「default/flash/pro 继续通过 resolveConfiguredTier…默认来自已验证声明」` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：没有决定 default 档的路线归属。P2 有意不继承用户全局 model.name（Custom 观察声明），default 来自官方目录。如果本轮让 default 跟随「已验证声明」，那么全局默认是 Custom 的用户，审核者会被静默切到 BYOK：计费方和供应商都变了，而且对已冻结配置的项目没有任何提示。现有 nativeFacts.source 只有 catalog-default/config 两个值，也表达不了「config 指向 Custom」。
+
+**依据**：doc/05_testing/REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md:9 「用户原始 model.name 为 Custom 观察声明，未作为官方默认继承」；src/trivium/adapters/qoder-cn-model.ts:57 source 只允许 catalog-default/config；run.v3.json:1443-1448 同枚举。
+
+**建议**：在计划里写明结论：default 档保持官方路线、Custom 只能显式选择（或另给理由），并写进 source 枚举扩展和兼容说明。
+
+### CLAUDE-06 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §2「供应商+modelID+来源共同消歧；同名/大小写歧义不得以首个匹配吞掉」` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：消歧只发生在 Trivium 内部。原生 CLI 只接受 --model <modelID>（计划自己引用了官方文档），并不接收供应商限定。当 Custom 的 modelID 与官方目录项同名或只差大小写时，Trivium 记的是 custom，CLI 实际选哪一个由 CLI 自己决定。现有匹配本身是大小写不敏感的（labelKey 转小写），normalizeModelForCatalog 也会把请求改写成官方大小写。计划没有写出「原生选择无法消歧时怎么办」。
+
+**依据**：src/trivium/adapters/qoder-cn-model.ts:9 labelKey 转小写、63 按 labelKey 找 canonical；src/trivium/adapters/qoder-cn.ts:40 只传 --model requested、75 normalizeModelForCatalog 改写为官方大小写。
+
+**建议**：明确两条：如果 Custom 最小根里能做到官方目录不可见，就以「目录隔离」作为消歧机制，并用证据证明；做不到时，同名或大小写冲突一律在派生前拒绝，不能只靠 Trivium 内部字段区分。
+
+### CLAUDE-07 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §5「以 Qoder 加两家已准入审核者运行真实三审」及 §2 身份字段` |
+| 类别 | test-gap ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：计划没有说明 Custom/官方路线的生效模型怎样进入 v3 的模型族异构判定。MODEL_FAMILY_RULES 按生效模型 ID 前缀判族（^qwen…）。样本 bailian/qwen3.8-flash-tp 如果以带供应商前缀的形式落进 model_effective，会被判为未知族。而 codex 在本仓默认跑 qwen，官方目录里也有 Qwen3.8-Flash，同族的两侧可能不被识别为同族，三审的异构结论就失真了。
+
+**依据**：src/trivium/agents/registry.ts:69-70 qoder-cn 名义族正则永不匹配；74-82 MODEL_FAMILY_RULES 按 ID 前缀判族，qwen 规则为 ^qwen；336 注释说明 codex 缺省跑 qwen3.8-flash；run.v3.json 有 family_comparisons。
+
+**建议**：在 §2/§5 写明：modelID 与供应商前缀分字段存储，判族只用模型字段；effective 为 unknown 时异构比较给出 unknown 而不是通过。真实三审的证据里加一条 family_comparisons 记录。
+
+### CLAUDE-08 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §2「拟扩展…」与 §6「同步…types/Schema 当前形状」` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：run.v3 的 nativeFacts 和 nativeRequest 都是 additionalProperties:false，新字段必须改 schema。计划没有写兼容策略：新字段是否可选、缺省语义（缺省是否等于 official）、要不要升 run 版本。已归档的 v3 run.json 不含 route_kind，如果改成必填，旧归档读取或校验会失败；如果是可选，又得规定缺省时视为 official。§6 的同步清单也漏了 native_model 的消费方 parse.ts、report.ts、render.ts。
+
+**依据**：skills/dual-critic/schema/run.v3.json:1435-1438 nativeFacts additionalProperties:false、1539-1542 nativeRequest 同样；Grep 显示 native_model/NativeModelFacts 出现在 parse.ts、report.ts、render.ts、schemas.ts、PROTOCOL_dual_critic_relay.md、SKILL.md、AGENTS.md 等 21 个文件。
+
+**建议**：在计划里写明新字段的可选性、缺省语义和是否升版本，并把同步清单按上述副本逐项列全，避免只改一处造成其它副本失实。
+
+### CLAUDE-09 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §1「敏感原文仅内存处理…错误消息经过脱敏，真实 key 另作不回显的输出扫描」` |
+| 类别 | security ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：「仅内存处理」这个绝对说法有例外：同一段话要求把凭据写进临时根的 0600 文件，CLI 自身也可能落缓存或日志。另外，「不回显扫描」只写在验收阶段。生产 run 会把 stdout.ndjson、stderr.txt、trace.json 归档，用的是按模式匹配的 redactSecrets；BYOK 密钥的格式不一定能被这些模式识别，计划没有要求对生产归档做「已知密钥值」级别的扫描。
+
+**依据**：src/trivium/adapters/qoder-cn.ts:105-107 生产归档只经 redactSecrets；src/trivium/adapters/qoder-cn-native.ts:60-65 凭据以 0600 文件写入临时根。
+
+**建议**：把例外写清：哪些地方允许落盘（临时根，并且清理时核验），哪些地方严禁出现。再要求生产路径在写归档之前，用内存里的已知密钥值对输出做精确匹配扫描，命中就失败。
+
+### CLAUDE-10 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §3 末段「按实际轨迹形成 TraceCapability…没有拒绝事件就不能把 rejectionRecorded 写 true」` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | low |
+
+**问题**：TraceCapability 目前作为静态值声明在适配器上（qoderCnAdapter.capability），按 Agent 生效；准入则按组合绑定（official/custom、版本、配方）。计划没有说实测出的能力写回适配器的静态声明还是挂到组合准入记录上。如果两条路线实测不同，静态声明表达不了。
+
+**依据**：src/trivium/adapters/qoder-cn.ts:68 capability:{traceShape:'tool-trace',rejectionRecorded:false}；src/trivium/types.ts:461-477 说明 TraceCapability 声明在适配器上，探针侧只是实测对照物。
+
+**建议**：写明归属：适配器静态值只取各组合的最保守交集，组合差异放进准入记录；或者说明为什么两条路线必然一致。
+
+### CLAUDE-11 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §6 同步清单 / src/trivium/agents/registry.ts 注释` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：准入后 registry 里有几处注释会失实，计划没有点名：qoder-cn 条目的「无效模型回退与客户端规则加载仍未闭环，保持 Driver 开关关闭」，CRITIC_AGENT_IDS 的「四家；Kimi/Qoder CN 保持 Driver-only」（这句现在就已不准确，两家 driverEnabled 都是 false），以及 AGENTS 数组头注释「四家审核 Agent + 两家 L2 Driver-only」。
+
+**依据**：src/trivium/agents/registry.ts:247-248、428、431、469。
+
+**建议**：在 §6 的注册表对账项下列出这些注释副本，按最终启用状态一并修正。
+
+## 认为正确的部分
+
+- 三个工作包分开验收，部分通过不写成整体完成；Windows 没有证据时记为未测、不可启用，符合任务原文。
+- 沿用冻结快照：worker 不重新解析默认，与现有 qoderCnAdapter.run 里 isDeepStrictEqual 的冻结比对一致，方向正确。
+- 工具未暴露、拒绝无法触发的必需项记为未测或阻塞，不拿模型口头拒绝、文件未变化或静态检查代替执行层拒绝证据。
+- 在完整准入之前维持生产拒绝，默认三审配置不变，并要求预检、worker、adapter 三处都拒绝不匹配的组合。
+- 生产禁读集合由注册表派生枚举，不手写角色名单，符合纪律 7。
+- 真实 CLI 的生命周期项和可控 executable 的故障注入分开标识，后者不算原生能力验收。
+- 正式 verify 通过不冲抵原生准入缺口，失败产物和原始退出码都保留。
+
+## 未覆盖范围（本侧盲区）
+
+- 没有执行任何命令。Qoder CN CLI 的 Custom 目录格式、keychain 依赖、init 事件里 model 字段是不是回显，都没能核实，CLAUDE-01/05/06 是根据代码和文档推理得出的。
+- 没有阅读 preflight.ts、review.ts、run-protocol.ts 中 requested_routes 比对的完整实现，也没读 critics.ts 的选择逻辑细节。
+- 没有阅读主设计文档 §3.5/§10/§11 正文和 PROTOCOL_dual_critic_relay.md，只用 Grep 确认它们是 native_model 的副本面。
+- 没有阅读 qoder-cn-routing 集成测试和 qoder-cn-model 单元测试，以及 probes/qoder-cn.ts 的探针实现。
+- 没有核对 redactSecrets 的具体匹配模式，CLAUDE-09 中「BYOK 密钥可能匹配不到」是推断。
+- 没有访问外部官方文档 docs.qoder.cn。
+
+## 实际查阅的项目文件
+
+- `src/trivium/agents/registry.ts`
+- `src/trivium/adapters/qoder-cn-model.ts`
+- `src/trivium/adapters/qoder-cn.ts`
+- `src/trivium/adapters/qoder-cn-native.ts`
+- `src/trivium/types.ts`
+- `skills/dual-critic/schema/run.v3.json`
+- `doc/05_testing/REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md`
+- `doc/08_project/KimiCode与QoderCN双角色接入实施计划.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":6,"grep":9,"glob":1,"run_command":0,"project_reads":8}
+
+---
+
+*本文档由 TriviumCode 编排器从 `claude` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

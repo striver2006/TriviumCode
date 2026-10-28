@@ -770,7 +770,7 @@ function checkModelAgainstCatalog(
 
   const where = scoped?.kind === 'catalog' ? scoped.source : `${label} 模型目录`;
   // 前面留一个空格：既有断言按「不在 ZCode 模型目录中」的原文匹配，去掉会静默破坏它
-  return models.some((m) => m === model || m === normalized || m === short)
+  return models.some((m) => m === model || m === normalized || (scoped?.kind === 'catalog' && scoped.match === 'exact' ? false : m === short))
     ? { kind: 'ok', note: scoped?.kind === 'fallback' ? `${label}：${scoped.why}` : undefined }
     : {
         kind: 'bad',
@@ -838,7 +838,17 @@ function checkReadonlyCapability(
       .filter((r) => !r.missingTier && r.model)
       .map((r) => r.vendorProfile);
     const v = a.availability(actx, { vendorProfiles });
-    if (v.ok) oks.push((agentById(id)?.display ?? id) + (v.note ? `（${v.note}）` : ''));
+    if (v.ok) {
+      try {
+        if(a.admissionFor)for(const stage of scopeStages(scope)){
+          const routed=resolveTier(ctx.config,id,stage,cli[id]??{});
+          if(routed.missingTier||!routed.model)throw new Error('准入缺少明确模型路线');
+          const native=a.nativeModelFor?.(ctx.config,routed.model,routed.tierSource==='probe_default'?'probe_default':routed.origin.model??'cell');
+          a.admissionFor(actx,{critic:id,project_root:ctx.projectRoot,model:native?.requested??routed.model,...(native?{native_model:native}:{})});
+        }
+        oks.push((agentById(id)?.display ?? id) + (v.note ? `（${v.note}）` : ''));
+      }catch(e){problems.push(`${agentById(id)?.display??id}：${(e as Error).message}`);unfixable=true;}
+    }
     else {
       problems.push(`${agentById(id)?.display ?? id}：${v.reason ?? '不可用（未给出原因）'}`);
       if (v.fix === 'doctor') fixable.push(id);

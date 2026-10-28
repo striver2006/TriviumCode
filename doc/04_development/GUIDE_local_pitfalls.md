@@ -141,3 +141,6 @@ P-35 PowerShell 5.1 无 BOM `.ps1` 按 ANSI 读（2026-10-27 补登；坑本身�
 ## 第24B获批集中取证边界（2026-10-12）
 
 旧受控Kimi以auto权限模式绕过原profile包装器，不能证明default生产模式。新夹具须同原cld/同hash native、实际PID/lstart及映像、生产工具面/参数/Schema/settings，未知即停。认证缓存三时间戳改变会使全配置hash失配；先原值完整语义比较后脱敏，不扩大probe.auth白名单或恢复旧生产配置。 完整规范见[设计v1.3.156](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-controlled-contract)；执行结果以恢复报告和r17证据为准，不能由剧本或计划宣称已测。
+
+
+P-36 Qoder CN 1.1.80（2026-10-28）：官方 `Edit(path)` 同时管理Write/Edit/NotebookEdit，`Write(path)` 不能当窄路径许可/拒绝的证据。绝对路径规则按已测双斜杠及/var、/private/var别名回读，Grep/Glob空结果不是拒绝。--tools只列Read/Grep/Glob时本次模型未发危险调用，不能补成工具分发拒绝。项目Hook正控制执行而user源臂未触发，无原生排除事件仍阻塞。Custom缓存是CLI内部加密机制，codec仅在私有replace环境短命Node子进程运行；声明key/init标签/modelUsage不提升底层身份。probe.native_routes每路线独立TTL，可调用事实不等于项目组合台账；当前无合格组合，Windows未测。

@@ -1,0 +1,106 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "计划忠实覆盖任务目标原文的三大工作包，验收定义可测（真实正对照、执行层拒绝配对证据、未测即阻塞不降级），复用了已验证的现有机制（请求冻结与 worker 逐项比对、首因粘滞回退阻断、临时认证根清理、注册表派生禁读集合），凭据处理边界（字段白名单、0700/0600、脱敏、不入 argv/日志/工件）与准入前维持生产拒绝的立场均正确。按我的镜头（失败路径、数据一致性、验收可测性、运维约束）发现两个计划阶段的未决策点：①官方与 Custom 双路线的绑定指纹互相拖累——现状 checkQoderBinding 对整份用户全局 settings.json 做 hash 对账，而 Custom 按官方文档由原生 /model 向导管理、必然落在用户全局侧，用户日常增删 Custom 会连带作废官方路线探针与准入组合，绑定粒度需要隔离决策；②探针存储（native_default 为单数键）与新增组合级准入台账的落盘形态与机读契约未定位，这是牵动 schema/parse/gate/meta 同步面的契约决策。两条 major 补齐决策文字即可实施，无需推翻方向，故为修改后通过。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划 §实施顺序第5段「准入绑定与生产接线」；src/trivium/adapters/qoder-cn-native.ts:91-97（checkQoderBinding）；src/trivium/probes/qoder-cn.ts:38",
+      "problem": "官方与 Custom 两条路线的绑定指纹粒度未做隔离决策。现状 checkQoderBinding 在每次预检/执行前重读用户全局 settings.json 并与 facts.configuration_sha256 整份 hash 对账，失配即「请重探」；而计划依据的官方文档说明 Custom 由原生 /model 向导管理，其声明与凭据落在用户全局侧。这意味着 Custom 接入后，用户在 Qoder 里正常增删改自定义模型（或改任何 settings 字段）都会作废官方路线的探针事实，进而使已验收的官方组合失效、三审反复要求重探；计划第 5 段「来源/版本/模型变化即失效」若按整份 settings hash 执行会把这种失效常态化。落地后再收紧绑定粒度就要动 facts 字段、对账逻辑、schema 与已归档的 P2 验收语义，属于契约面返工。",
+      "evidence": "src/trivium/adapters/qoder-cn-native.ts 第 95-96 行：hash!==facts.configuration_sha256 即抛「Qoder CN 原生配置来源指纹变化，请重探」；src/trivium/probes/qoder-cn.ts 第 38 行将整份 settings.json hash 写入 configuration_sha256；doc/05_testing/REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md 第 22 行把「settings 前后 hash 一致」列为真机成功条件；计划 §依据第 3 条引官方文档「Custom 由原生 /model 向导管理……不在 settings.json 手工编造 BYOK」；计划 §5 只写了「仅消费完整、匹配且新鲜的验收，来源/版本/模型变化即失效」，未区分官方路线应绑定什么粒度、Custom 侧变更是否必然波及官方路线。",
+      "suggestion": "在计划 §2 或 §5 补一条明确决策：官方路线与 Custom 路线的配置绑定各自收敛到语义级指纹（如官方路线只绑定影响其行为的声明子集），并明确用户全局侧 Custom 变更的失效边界（只作废 Custom 组合，不连带官方组合）；若维持整份 hash 绑定，需写明接受频繁重探的运维后果。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划 §实施顺序第2段与第5段；src/trivium/probes/qoder-cn.ts:36-40（native_default 单数）；src/trivium/schemas.ts:263-285",
+      "problem": "多路线事实与准入台账的存储数据模型未决策。现有 probe 段的 native_default 是单数键，只承载官方单路线一份 NativeModelFacts；Custom 需要第二条独立事实（声明来源、隔离配方、清单）。计划只写了「拟扩展 route_kind（official/custom）」，没有定位：探针存储是按 route_kind 分键还是数组、两条路线的 TTL/新鲜度与重探触发是否独立、第 5 段新增的「组合级准入事实」（平台、版本/指纹、路线、证据哈希）落在哪个文件、是否进机读 schema。这是契约形状决策，直接影响 AGENTS.md 改动同步清单里 parse/gate/meta/协议文档/registry-parity 扫描的整串同步面，实施后返改代价高。",
+      "evidence": "src/trivium/probes/qoder-cn.ts 第 36-40 行探针只产单个 native_default 字段；src/trivium/adapters/qoder-cn.ts 第 14 行 factsFor 只读单数 native_default；src/trivium/schemas.ts 第 263-285 行对 requested_routes 的身份与快照一致性校验是现成同步面；计划 §2「拟扩展 route_kind」与 §5「建立组合级准入事实……仅消费完整、匹配且新鲜的验收」均未给出键形/落盘位置/独立时效的决策。",
+      "suggestion": "计划补一段数据模型决策：探针段按路线分键（或等价形态）承载多份 facts、各路线独立 TTL 与重探条件；组合级准入台账的落盘位置（probe 段扩展或独立文件）、是否成为机读 schema 的一部分、以及历史件不补写新字段的边界。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §实施顺序第2段「Custom 从已核实的原生声明派生」；src/trivium/adapters/qoder-cn-model.ts:14；test/unit/qoder-cn-model.test.ts:25",
+      "problem": "Custom 标识符与现有官方目录解析的格式冲突未点名。首个真实样本 bailian/qwen3.8-flash-tp 含斜杠，而 parseQoderCatalog 的行级正则显式拒绝含 / 的标识符，且「MODEL 单列含 bailian/x 即抛错」是现有单测契约。计划说了「目录来源不混合」，但没有点名 Custom 清单需要独立于官方目录的解析契约——实施时若顺手放宽官方目录正则会破坏「官方目录只含官方」的格式防线与既有测试语义。",
+      "evidence": "src/trivium/adapters/qoder-cn-model.ts 第 14 行正则 /^[A-Za-z0-9][A-Za-z0-9_.-]*$/ 拒绝斜杠；test/unit/qoder-cn-model.test.ts 第 25 行将 'MODEL\\nbailian/x' 的抛错作为断言；计划 §2 只写了来源不混合，未提及为含 provider/model 斜杠形态的 Custom 标识符定义第二套清单解析。",
+      "suggestion": "在 §2 点名：Custom 声明清单走独立解析与校验路径，官方目录正则保持现状不放宽，含斜杠标识符的合法性只在 Custom 路线契约中定义。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "计划 §实施顺序第2段「隔离配方指纹」进契约、worker「执行前验证来源/版本/配方未变」；src/trivium/model-routing.ts:11-19；src/trivium/adapters/qoder-cn-native.ts:53",
+      "problem": "隔离配方指纹的确定性约束未写。requested_routes 冻结的是整份 native_model 且 worker 用 isDeepStrictEqual 逐字段比对；而隔离临时根每次执行都由 makeTempDir 新建、prepared_at 为当下时间。若「隔离配方指纹」把临时根路径、时间戳或文件 mtime 等每次执行变化的量揉进去，worker 交接比对会恒假（或被迫事后排除字段），这正是计划强调的「派生前拒绝」被自己触发。",
+      "evidence": "src/trivium/model-routing.ts 第 11-19 行 requestRouteSnapshot 含整份 native_model 且 sameRequestedRoute 深比较；src/trivium/adapters/qoder-cn-native.ts 第 53 行每次 withQoderHome 新建临时根；计划 §2 要求配方指纹进冻结契约并在执行前验证「配方未变」。",
+      "suggestion": "在 §2 明确配方指纹只覆盖配方语义（字段白名单集、文件清单、权限位、来源声明内容），对两次独立构建保持确定，不含临时路径与时间量；catalog_sha256 的「排序后语义 hash」先例可直接沿用。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "performance",
+      "location": "计划 §实施顺序第3、4段（验收矩阵）",
+      "problem": "真实验收矩阵的规模收敛与配额预算原则缺失。§3/§4 列举的维度是控制臂×审核臂×工具类×路径类×级联面×生命周期项×official/custom 两路线，每格都要求真实调用与真实模型请求；计划没有像 Kimi 侧先例那样写「运行设时限、先最小失败对照定位再扩展矩阵、固定模型与提示词」，验收阶段存在配额失控与矩阵不可复现的风险。",
+      "evidence": "计划 §3 全段与 §4 全段的对照枚举未附任何收敛/预算语句；对照 doc/08_project/KimiCode与QoderCN双角色接入实施计划.md P0 第 4 条「运行设时限，先用最小失败对照定位，再扩展矩阵，避免无目标重复调用」的既有先例。",
+      "suggestion": "在 §3 开头补一行验收执行原则：单变量对照、先最小失败定位再扩展、固定模型与提示词、每格限次，失败格子不重复烧真实调用。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "计划 §实施顺序第3段配置叠加验证与 §6「注册表对账」；src/trivium/agents/registry.ts:419-441",
+      "problem": "qoder-cn 登记项中标注为候选/未实测的登记值（criticReadsInstructionFiles、entrySkillRoot、entrySkillExtraReadRoots）按实测回填的义务未点名。尤其 criticReadsInstructionFiles 当前为 false，它决定「审查员身份」两段式协议是否注入其 instructionFiles；若 §3 的哨兵对照实测发现隔离配方下 Qoder 仍读项目 AGENTS.md/共享技能，该登记与身份段注入策略需要同步翻转，且要复核「死件」检查。§6 只写了「注册表对账」，未覆盖按实测翻正这些登记值的步骤。",
+      "evidence": "src/trivium/agents/registry.ts 第 419-441 行 qoder-cn 登记 criticReadsInstructionFiles:false，注释标注 entrySkillRoot 为「候选落点」「待 CN 客户端实测确认」；计划 §3 只验证「候选隔离配方不会额外加载执行能力」，§6 同步清单未含登记值实测回填。",
+      "suggestion": "在 §3 或 §6 补一句：配置叠加/共享技能哨兵对照的实测结论要回填 registry 的 qoder-cn 登记值（至少 criticReadsInstructionFiles 与 entrySkillRoot），并据此复核审查员身份段的注入面。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "计划对任务目标原文三大块的映射完整：Custom 接入（第1-2段）、只读准入（第3-4段）、生产接线与交付（第5-6段），未发现漏项或范围扩大",
+    "「三个工作包分别验收、部分通过不得写成整体完成」「没有证据的格子写未测」「正式 verify 通过不能冲抵原生准入缺口」的验收口径与仓库既有纪律一致且可测",
+    "复用现有已验证机制而非重造：requested_routes 冻结与 worker sameRequestedRoute 逐项比对（src/trivium/run-protocol.ts:323-329）、回退早停与首因粘滞（src/trivium/adapters/qoder-cn-model.ts:71-129）、临时认证根与辅助进程清理（src/trivium/adapters/qoder-cn-native.ts:52-82），方向正确",
+    "「目录来源不混合、供应商+modelID+来源共同消歧、不以首个匹配吞掉同名」「不得将请求值/配置声明复制成生效身份」「不用 assistant 正文自述」与现有 QoderModelMonitor 的实现立场一致",
+    "凭据边界完整：字段白名单最小复制、0700/0600、不整份复制、不入 argv/日志/证据、错误脱敏、假 canary 负对照、Windows 未验证 ACL 前拒绝复制",
+    "准入前维持生产拒绝、默认三审配置不变、组合级绑定且「不能因全局 criticEnabled=true 让未验收路线可用」、注册表继续为唯一差异来源，符合纪律 7/10/11",
+    "「先修订拟交付契约再实施、实测事实测后回填、历史 v1/v2 与失败证据不重写」的顺序与 AGENTS.md 改动同步清单兼容"
+  ],
+  "not_covered": [
+    "我是只读审查，未运行任何命令、测试或真实 CLI；所有判断基于源码与文档静态阅读，凡需实测的结论均已标注为推理",
+    "计划的「待证事实」（本机 Custom 文件位置、凭据保护方式、目录输出格式、工具拒绝与终态轨迹）我无法核验，官方 CN 文档内容未取回比对",
+    "src/trivium/review.ts 与 src/trivium/preflight.ts 仅读了模型路由与请求冻结相关片段，未做全文审查；src/trivium/types.ts 的 NativeModelFacts 完整形状未逐字段核对",
+    "另一位审查员的镜头（如 Schema JSON 形状逐字段、契约文案措辞）未覆盖；CLAUDE.md/README.md/doc 各 README 仅以会话注入的 AGENTS.md 为背景参照，未逐一通读",
+    "Windows 侧行为、Qoder CLI 实际工具面与配置级联行为无法在本侧验证"
+  ],
+  "consulted": [
+    ".reviews/QoderCN只读审核准入与Custom模型接入/plan/2026-10-28-QoderCN只读审核准入与Custom模型接入-codex.md",
+    "src/trivium/adapters/qoder-cn.ts",
+    "src/trivium/adapters/qoder-cn-native.ts",
+    "src/trivium/adapters/qoder-cn-model.ts",
+    "src/trivium/probes/qoder-cn.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/model-routing.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/schemas.ts",
+    "test/unit/qoder-cn-model.test.ts",
+    "test/integration/qoder-cn-routing.test.ts",
+    "doc/05_testing/REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md",
+    "doc/08_project/KimiCode与QoderCN双角色接入实施计划.md"
+  ]
+}

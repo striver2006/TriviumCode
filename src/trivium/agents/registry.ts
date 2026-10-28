@@ -139,6 +139,8 @@ export interface EntrySkillRootSpec {
 export type GuardProfile = 'l1-hook' | 'l2-hook' | 'l2-none';
 
 export interface AgentDescriptor {
+  /** 组合准入必需项；机器结论不在注册表。 */
+  admissionChecks?: readonly string[];
   id: AgentId;
   /** 人读名，进播报与报告 */
   display: string;
@@ -418,6 +420,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
   },
   {
     id: 'qoder-cn',
+    admissionChecks: ['model-positive','model-invalid','configuration-invalid','authentication-failed','runtime-fallback','read','grep','glob','write-denied','edit-denied','shell-denied','agent-denied','mcp-denied','network-denied','other-execution-denied','peer-paths','sensitive-paths','credential-paths','config-layers','shared-skills','hooks','plugins','trace','start-failure','timeout','cancel','force-kill','lost-worker','process-tree','credential-cleanup'],
     display: 'Qoder CN',
     label: 'Critic-F · Qoder CN',
     vendor: 'qoder-cn',

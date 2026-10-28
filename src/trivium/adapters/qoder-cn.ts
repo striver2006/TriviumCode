@@ -1,17 +1,26 @@
-/** P2 真实模型执行适配器。生产审核准入仍关闭；本阶段工具面固定为空。 */
+/** 原生路线与候选审核适配器；只有组合台账通过后才允许审核派生。 */
 import { promises as fs } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
 import type { Config, NativeModelRequest, NativeModelResult } from '../types.js';
-import { run } from '../util/exec.js';
 import { redactSecrets } from '../secrets.js';
 import { failedResult, EFFORT_UNVERIFIED, type CriticAdapter } from './base.js';
-import { nativeDefaultIsFresh } from '../config.js';
-import { QoderModelMonitor, qoderModelRequest, validateQoderFacts } from './qoder-cn-model.js';
-import { verifyQoderBinding, checkQoderBinding, withQoderHome } from './qoder-cn-native.js';
+import { QoderModelMonitor, qoderModelRequest, validateQoderFacts, normalizeQoderSelection } from './qoder-cn-model.js';
+import { loadQoderCustom, installQoderCustom, QoderSecretGuard } from './qoder-cn-custom.js';
+import { verifyQoderBinding, checkQoderBinding, withQoderHome, qoderRun as run, prepareQoderReadonly, qoderAuthenticationHash, pinQoderExecutable } from './qoder-cn-native.js';
+import { qoderAdmission } from './qoder-cn-admission.js';
+import { parseQoderTrace, qoderTraceEvidence } from './qoder-cn-trace.js';
+import { withCredentialLeaseScope, reapCredentialLeases } from '../util/credential-lease.js';
+import { stopQoderHomeHelpers,reapQoderUnscopedCredentials } from './qoder-cn-native.js';
 import type { RunResult } from '../util/exec.js';
+import { tryRemoveTempDir } from '../util/fsx.js';
 
-function factsFor(cfg:Config) {return cfg.probe.cli['qoderclicn']?.native_default;}
+function routeFacts(cfg:Config) {const p=cfg.probe.cli['qoderclicn'];return [...(p?.native_default?[p.native_default]:[]),...(p?.native_routes??[])];}
+function factsFor(cfg:Config,model?:string) {
+  if(model===undefined)return cfg.probe.cli['qoderclicn']?.native_default;
+  const selected=normalizeQoderSelection(model,routeFacts(cfg));
+  return routeFacts(cfg).find(f=>f.model===selected&&(selected.startsWith('custom:')?f.route_kind==='custom':f.route_kind!=='custom'))??cfg.probe.cli['qoderclicn']?.native_default;
+}
 function binFor(cfg:Config) {const a=cfg.agents['qoder-cn'];return a?.vendor==='qoder-cn'?a.bin:null;}
 
 export function qoderFailureMessage(error:unknown):string {
@@ -24,26 +33,44 @@ function unstartedOutcome(durationMs:number):RunResult {
 }
 
 /** 取证脚本可直接调用这个真实执行边界制造无效模型故障；产品不提供跳过目录校验旗标。 */
-export async function invokeQoderModel(opts:{request:NativeModelRequest;cwd:string;prompt:string;timeoutMs:number}) {
+export async function invokeQoderModel(opts:{request:NativeModelRequest;cwd:string;prompt:string;timeoutMs:number;readonlyDenyPaths?:readonly string[]}) {
   validateQoderFacts(opts.request.facts);
-  const monitor=new QoderModelMonitor(opts.request.requested,opts.request.facts.route_labels,opts.request.facts.models);
+  const executionArgs=opts.readonlyDenyPaths?opts.request.facts.review_invocation_args:opts.request.facts.invocation_args;
+  const custom=opts.request.facts.route_kind==='custom'?opts.request.facts.route_descriptor!:null;
+  const monitor=new QoderModelMonitor(opts.request.requested,opts.request.facts.route_labels,opts.request.facts.models,custom);
+  const guard=new QoderSecretGuard();
   let observedOutcome:RunResult|null=null,cleanupFailure:string|null=null;
   let stopObservation:NativeModelResult['stop_observation']=null;
   const started=Date.now();
-  try {await withQoderHome(async(_home,config,env)=>{
+  try {if(!executionArgs?.length)throw new Error('Qoder CN 缺少独立已测审核配方');await withQoderHome(async(_home,config,env)=>{
+    const {executable}=await pinQoderExecutable(opts.request.facts.entrypoint,_home,opts.request.facts.cli_sha256);
+    for(const name of ['user','machine_id'])guard.addCredential(await fs.readFile(path.join(config,'.auth',name),'utf8'));
+    if(opts.readonlyDenyPaths)await prepareQoderReadonly(_home,config,opts.readonlyDenyPaths,opts.cwd);
+    if(custom){const selected=await loadQoderCustom(executable,custom.native_key,custom);guard.merge(selected.secrets);if(qoderAuthenticationHash(config)!==selected.descriptor.authentication_sha256)throw new Error('Qoder CN 准备期间认证来源变化');await installQoderCustom(selected,config);}
     let stop:(()=>void)|undefined;
     const line=(s:string,channel:'stdout'|'stderr')=>{
       monitor.line(s);
       if(monitor.failure && stopObservation===null){stopObservation={channel,after_result:monitor.sawResult,elapsed_ms:Date.now()-started};stop?.();}
     };
-    observedOutcome=await run(opts.request.facts.entrypoint,['--config-dir',config,...opts.request.facts.invocation_args,
-      '--model',opts.request.requested,'-p'],{cwd:opts.cwd,env,stdin:opts.prompt,timeoutMs:opts.timeoutMs,killTree:true,
+    observedOutcome=await run(executable,['--config-dir',config,...executionArgs,
+      '--model',custom?.native_key??opts.request.requested,'-p'],{cwd:opts.cwd,env,stdin:opts.prompt,timeoutMs:opts.timeoutMs,killTree:true,
         stopEarly:s=>{stop=s;},onStdoutLine:s=>line(s,'stdout'),onStderrLine:s=>line(s,'stderr')});
   });}catch(e){
     cleanupFailure=`Qoder CN ${observedOutcome?'清理':'准备'}失败：${qoderFailureMessage(e)}`;
     if(!observedOutcome)observedOutcome=unstartedOutcome(Date.now()-started);
   }
-  return completeQoderModelRun(opts.request,monitor,observedOutcome??unstartedOutcome(Date.now()-started),stopObservation,Date.now()-started,cleanupFailure);
+  // 在任何原生结果返回上层（worker日志/归档/结构化结论）前统一净化。
+  const safe=completeQoderModelRun(opts.request,monitor,observedOutcome??unstartedOutcome(Date.now()-started),stopObservation,Date.now()-started,cleanupFailure);
+  safe.outcome.stdout=guard.scrub(safe.outcome.stdout);safe.outcome.stderr=guard.scrub(safe.outcome.stderr);
+  safe.monitor.resultText=safe.monitor.resultText===null?null:guard.scrub(safe.monitor.resultText);
+  safe.evidence=JSON.parse(guard.scrub(JSON.stringify(safe.evidence))) as NativeModelResult;
+  for(const labels of [safe.monitor.labels,safe.monitor.usageLabels])labels.splice(0,labels.length,...labels.map(x=>guard.scrub(x)));
+  if(safe.monitor.initLabel)safe.monitor.initLabel=guard.scrub(safe.monitor.initLabel);
+  if(safe.monitor.failure)safe.monitor.failure=guard.scrub(safe.monitor.failure);
+  safe.effective=JSON.parse(guard.scrub(JSON.stringify(safe.effective))) as typeof safe.effective;
+  if(guard.leaked){safe.ok=false;safe.evidence.execution_failure='Qoder CN 输出命中已知凭据，已脱敏并拒绝';safe.monitor.resultText=null;}
+  if(!safe.ok)safe.monitor.resultText=null;
+  return safe;
 }
 
 /** 防御性收尾独立于流回调；缺回调的合成结果只用于验证 final 兜底，不冒充真机早停。 */
@@ -67,25 +94,31 @@ export function completeQoderModelRun(request:NativeModelRequest,monitor:QoderMo
 export const qoderCnAdapter:CriticAdapter={
   critic:'qoder-cn',capability:{traceShape:'tool-trace',rejectionRecorded:false},commandExecution:'none',
   effortReadback:()=>EFFORT_UNVERIFIED,
+  admissionFor(ctx,req,frozen){if(!req.native_model)throw new Error('Qoder CN 路线事实缺失');checkQoderBinding(req.native_model.facts,binFor(ctx.cfg));return qoderAdmission(req,ctx.cfg.probe_ttl_days,frozen);},
+  scrubUnscoped:()=>reapQoderUnscopedCredentials(),
+  async scrubRunDir(sideDir){
+    const reaped=await reapCredentialLeases('qoder-cn',sideDir,async home=>{await stopQoderHomeHelpers(home);if(await tryRemoveTempDir(home,[]))throw new Error('Qoder CN 租约私有根清理失败');});
+    return {deleted:[],unscannableDeleted:[],scanned:0,removedOnHit:[],redacted:{},warnings:reaped.deleted.length?[`已回收${reaped.deleted.length}个租约绑定的外部私有根`]:[],skipped:0,errors:reaped.errors};
+  },
   defaultModelFor(cfg) {
     try {const f=factsFor(cfg);if(!f)throw new Error('请显式运行 doctor --only qoderclicn 取得官方默认');validateQoderFacts(f);return {kind:'resolved',model:f.model};}
     catch(e){return {kind:'missing',reason:(e as Error).message};}
   },
-  nativeModelFor(cfg,model,origin) {const f=factsFor(cfg);if(!f)throw new Error('Qoder CN 官方默认探针缺失');return qoderModelRequest(f,model,origin);},
-  normalizeModelForCatalog(cfg,model){return factsFor(cfg)?.models.find(x=>x.toLowerCase()===model.toLowerCase())??model;},
+  nativeModelFor(cfg,model,origin) {const f=factsFor(cfg,model);if(!f)throw new Error('Qoder CN 路线探针缺失');return qoderModelRequest(f,model,origin);},
+  normalizeModelForCatalog(cfg,model){try{return normalizeQoderSelection(model,routeFacts(cfg));}catch{return model;}},
   catalogModelsFor(cfg) {
-    try{const f=factsFor(cfg);if(!f)throw new Error('官方目录缺失');return {kind:'catalog',models:validateQoderFacts(f).models,source:'官方隔离目录探针'};}
+    try{const all=routeFacts(cfg);if(!all.length)throw new Error('模型目录缺失');return {kind:'catalog',models:[...new Set(all.flatMap(f=>validateQoderFacts(f).models))],source:'分离的官方/Custom隔离目录探针',match:'exact'};}
     catch(e){return {kind:'unverifiable',why:`${(e as Error).message}；请 doctor --only qoderclicn 重探`};}
   },
   availability(ctx) {
     try {
-      const f=factsFor(ctx.cfg);if(!f)throw new Error('官方模型探针缺失');validateQoderFacts(f);
-      if(!nativeDefaultIsFresh(ctx.cfg.probe.cli['qoderclicn'],ctx.cfg.probe_ttl_days))throw new Error('官方模型探针过期或绑定不符');
-      checkQoderBinding(f,binFor(ctx.cfg));
-      return {ok:true,note:'仅模型路由机制；严格只读审核准入尚未完成'};
+      const fresh=routeFacts(ctx.cfg).some(f=>{try{validateQoderFacts(f);const age=Date.now()-Date.parse(f.prepared_at);if(!Number.isFinite(age)||age<0||age>ctx.cfg.probe_ttl_days*86400000)return false;checkQoderBinding(f,binFor(ctx.cfg));return true;}catch{return false;}});
+      if(!fresh)throw new Error('缺少有效且绑定本机的官方/Custom路线探针');
+      return {ok:true,note:'仅确认候选路线存在；具体请求仍须组合准入'};
     }catch(e){return {ok:false,reason:(e as Error).message,fix:'doctor'};}
   },
   async run(ctx,req) {
+    return withCredentialLeaseScope(path.dirname(req.out_dir),async()=>{
     const fail=(reason:string)=>{
       const result=failedResult('qoder-cn',{status:'failed',reason,processStarted:false});
       if(req.native_model)result.native_model={request:req.native_model,labels:[],usage_labels:[],failure:null,execution_failure:reason,
@@ -98,19 +131,28 @@ export const qoderCnAdapter:CriticAdapter={
       const expected=qoderModelRequest(req.native_model.facts,req.native_model.override??req.model,req.native_model.origin);
       if(expected.requested!==req.model || !isDeepStrictEqual(expected,req.native_model))throw new Error('Qoder CN 请求与冻结快照不一致');
       await verifyQoderBinding(req.native_model.facts,binFor(ctx.cfg));
+      if(!req.admission)throw new Error('Qoder CN 准入请求快照缺失');
+      qoderAdmission(req,ctx.cfg.probe_ttl_days,req.admission);
     }catch(e){return fail(qoderFailureMessage(e));}
-    const invoked=await invokeQoderModel({request:req.native_model,cwd:req.project_root,prompt:req.brief_text,timeoutMs:req.timeout_s*1000});
+    const invoked=await invokeQoderModel({request:req.native_model,cwd:req.project_root,prompt:req.brief_text,timeoutMs:req.timeout_s*1000,
+      readonlyDenyPaths:[...req.deny_paths,path.join(req.project_root,'.trivium/admission.local.json')]});
+    const parsed=parseQoderTrace(invoked.outcome.stdout);
+    if(parsed.errors.length){invoked.ok=false;invoked.evidence.verification_failure='Qoder CN 工具/终态轨迹不完整';}
+    invoked.evidence.route_verified=invoked.ok;
     await fs.mkdir(req.out_dir,{recursive:true});
     const stdout=path.join(req.out_dir,'stdout.ndjson'),trace=path.join(req.out_dir,'trace.json');
     await fs.writeFile(stdout,redactSecrets(invoked.outcome.stdout).content,{mode:0o600});
     await fs.writeFile(path.join(req.out_dir,'stderr.txt'),redactSecrets(invoked.outcome.stderr).content,{mode:0o600});
-    await fs.writeFile(trace,JSON.stringify(invoked.evidence,null,2),{mode:0o600});
+    await fs.writeFile(trace,JSON.stringify({...invoked.evidence,tool_trace:parsed},null,2),{mode:0o600});
     const result=failedResult('qoder-cn',{status:invoked.outcome.timedOut?'timeout':'failed',reason:invoked.evidence.execution_failure??invoked.evidence.failure??invoked.evidence.verification_failure??'Qoder CN 执行未完成',
       exitCode:invoked.outcome.code,durationS:invoked.outcome.durationMs/1000,processStarted:invoked.outcome.spawned===true,
       rawStdoutPath:stdout,tracePath:trace,cliVersion:req.native_model.facts.cli_version,commandLine:invoked.outcome.commandLine});
     result.native_model=invoked.evidence;
+    result.native_model.route_verified=invoked.ok;
+    Object.assign(result,qoderTraceEvidence(parsed,req.project_root));result.session_id=parsed.session_id;
     result.model_effective=invoked.effective.effective;result.model_effective_source=invoked.effective.source;
     if(invoked.ok){result.status='ok';result.fail_reason=null;result.raw_response_text=invoked.monitor.resultText;}
     return result;
+    });
   },
 };

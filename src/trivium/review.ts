@@ -1280,6 +1280,8 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
       tier: routed.tier,
       tier_source: routed.tierSource,
     };
+    const admission=adapters[critic]!.admissionFor?.(adapterCtx,requests[critic]!);
+    if(admission)requests[critic]!.admission=admission;
   }
 
   const primarySnap = snapshots[sides[0]!]!;

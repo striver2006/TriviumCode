@@ -528,3 +528,27 @@ Codex版本引用的profile上下文须与能力臂完整指纹一致；同一CL
 Auto/Fast 为路由标签，未知底层 model_effective=null、source=unverified；具体模型只读原生信封。modelUsage 的未知计费键独立保留，不推断别名。双通道明确回退或精确请求不一致立即中止，退出0仍判失败且审查结论不计票。Qoder 生产审核准入继续关闭，P2 无工具路线不等于 P3 能力验收；Windows ACL 未测时不复制认证。
 
 P2 首轮代码审修订：native_model 运行证据新增 execution_failure、verification_failure、stop_observation（channel/after_result/elapsed_ms），模型回退与执行失败/未核实分列。source=config 由目录内原生配置的真实显式验证产出；无配置默认只取首个 init。完整真机告警尾句纳入识别，停止时是否已见 result 必须如实记录。
+
+历史04:48及以前隔离环境加固（以下未实施描述仅指当时）：withQoderHome 的子进程环境按显式系统/locale/无凭据代理白名单构造，临时目录归入私有 HOME；未知父环境与运行注入变量不继承，含认证/查询/非标准路径代理拒绝继承且诊断不回显值。Custom 原生最小加载仍是诊断取证，未新增生产 native_model 形状、档位/worker 路由或准入记录；必要回读/拒绝证据不足，生产继续拒绝。详见[本轮报告](../05_testing/REPORT_2026-10-28_QoderCN只读审核准入与Custom模型接入.md)。
+
+历史删除补丁曾要求符合公共run叠加语义：所有未允许的父键显式undefined，而非仅返回允许键。完整代码审首次发现早期实现漏掉删除补丁，旧批次不能作为隔离证据；已按真实run子进程回归修复，历史记录不回填。必要证书路径列入允许键。
+
+历史04:48及以前：当时删除补丁仅覆盖构造时已有父键，尚未实现替换式环境。续批现已由qoderRun强制replace覆盖后新增键，该历史前提不再描述当前实现。诊断索引区分system决策reason=mode与rule，按tool_use_id配对，分别记permission-mode/permission-rule，缺决策为unknown；单独的non_execution_kind不证明规则拒绝。路径证据须分辨/var与/private/var别名，诊断装置使用realpath并覆盖两种home路径；不将这些诊断字段扩充为未消费的run.v3生产形状。
+
+
+## 2026-10-28：候选原生路线与项目组合准入
+
+仅当前 run.v3 追加可选 `native_model.facts.binding_version=2`、`route_kind`、`route_descriptor`、`configuration_raw_sha256`，及结果 `route_verified`；历史 run.v1/v2 不改。descriptor 记录 selector/native_key/display_name、配置命名空间 provider_id、model_id、非敏感 source_ref、声明/加密凭据来源/认证/隔离配方指纹及 codec 指纹；严禁密钥或明文 key 的哈希。source 可为 native-config，probe 当前支持独立 prepared_at 的 native_routes。配置 Schema 的开放 probe 段仍由厂商事实校验器核实，不能凭配置存在当作验收。
+
+Qoder `official:<label>` 与 `custom:<provider>/<modelID>` 明确消歧；裸官方兼容，裸 provider/modelID 仅唯一已验证声明可匹配。目录按精确规范值校验，不使用通用短名回落。default/flash/pro 及 CLI 单次覆盖沿用既有优先级；用户全局 Custom 设置不成为通用默认。声明、请求、init/信封标签与 modelUsage 分开；Custom 标签/key 仅作运行一致性，底层 provider/model 未证实保持 null。route_verified 只在组合台账已验且当次回读/终态有效时成立。
+
+`requested_routes` 与 worker request 可带 `admission:{record_id,record_sha256}`。父进程冻结项目级 `.trivium/admission.local.json` 唯一组合；worker/adapter 逐项比对并复核原件 hash、有效期、当前绑定，不重选台账。台账 schema 为 trivium.admission.v1，Agent 身份仍由注册表校验；记录包括项目根、binding_sha256、tested_at/expires_at 与每个必需项的 state/evidence（项目相对路径、sha256、case_id）。未测即拒绝。安装副本不带本仓台账或证据，跨仓必须独立验收。
+
+Qoder 持久化输出在返回 worker 前统一逐值脱敏；命中仍失败并保留 raw_exit_code/raw_signal。租约在复制认证前落盘，正常、取消、失联与保留期回收复用 scrub 入口；回收方先确认所有者身份和进程组退出及私有标记，不杀身份未知进程。当前原生完整生命周期与执行拒绝矩阵仍未验收，生产接入关闭。
+
+
+续批代码审修订（run 20261028T063910Z）：`native_model.facts.review_invocation_args` 与无工具 `invocation_args` 分开。只有固定字节的原生Read/Grep/Glob正控制通过后才提供审核参数；审核派生与admission binding消费同一字段，缺失拒绝。旧可调用原件不可移植为审核配方证据。台账必含deny_paths覆盖集，其hash写入原件，worker/adapter拒绝本次禁读集超出已验覆盖；预检在尚未生成主题禁读矩阵时只检查已知路线，不能替代worker覆盖核验。record hash冻结覆盖集。
+
+隔离指纹包括实际权限模板、路径别名样本、环境键表及代理策略反例结果，不仅是手工版本标签。认证字节刷新或加密缓存中无关条目变化目前保守触发重探和完整重验；刷新频率未测，未为成本移除绑定。无运行侧null租约在新私有根准备前及retention/scrub入口核所有者已死后回收；活组/未知身份仍保留并报错。清扫成功的外部根计数与运行目录计数分列。
+
+无运行侧回收有真实成功结果时，scrub JSON可选追加external_credentials；无该结果时保持原15键输出，不把空字段加入旧调用。错误继续进scrub_failed，原始CLI退出码与ok分开解释。

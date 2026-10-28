@@ -278,6 +278,8 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 
 ### 3.5 探针必测清单（`trivium doctor` 的输出契约）
 
+2026-10-28 Qoder候选扩展：显式Custom选择经doctor形成native_routes独立事实，必须真实正调用；--no-model-calls不能生成default_verified。目录声明、每次init/modelUsage和可信底层身份分开；来源/认证/加密缓存/CLI/codec/Node/配方漂移须重探。官方native_default兼容保留，Custom不改默认。每路线TTL独立，不以新Custom探测刷新旧官方时间。完整组合台账由验收生成器另验30项，不是doctor的可调用结论。坑清单P-36及续批报告记录未测边界。
+
 <a id="agent-access-directory-contract"></a>
 
 **v1.3.155 · 第22B获批Claude精确拒绝取证**
@@ -872,6 +874,8 @@ TriviumCode/
 安装命令：`npm install && npm run build && node dist/install.cjs`（等价于旧 `install.sh`）。`build` 用 esbuild 把 `src/trivium/cli.ts` 及其依赖打包为 `skills/dual-critic/scripts/trivium.cjs`；`install` 把 `skills/*` 拷贝到 `~/.claude/skills/`，把 Agent 定义拷贝到 `~/.gemini/config/agents/trivium-critic/agent.md`，然后运行 `doctor`。〔v1.3.43：M10b 第 2 步起 `install` 按载体多目标安装（`--targets <id,…>`），运行时根每次必装、同步时排除 `entry/`，Agent 定义只在 `~/.gemini` 家根在场时才装；安装后打印的下一步提示里是 `doctor` 命令，安装器本身不运行 `doctor`。见 1.4、7.4.1〕
 
 ### 5.3 目标项目内的运行时布局
+
+2026-10-28：组合准入台账为项目本地 `.trivium/admission.local.json`（0600），由 gitignore.snippet 与 init 幂等加入忽略，不随安装器分发或跨项目继承。持现有全局锁原子替换，读坏/缺失均拒绝。外部私有认证根的无秘密租约在 `~/.trivium/credential-leases/`，只按所有者规范启动时刻、进程组退出与独占标记回收，不按前缀扫描删除。
 
 ```text
 <project>/                            # 审查员的 cwd 就是这里（就地模式）
@@ -3215,7 +3219,33 @@ profiles:
 
 原生配置值属于隔离官方目录时，探针以该值显式执行验证，默认 source=config；目录外 Custom 声明只留观察，不继承。无配置默认只取省略 --model 的首个 init 标签，后续具体身份披露不改默认声明。运行证据 failure 只收模型回退/不一致，execution_failure 与 verification_failure 分别收执行错误与缺回读；stop_observation 保存通道、到达耗时与停止时是否已见 result。预检校本地入口/配置 hash，实际版本由既有预检和执行前异步校验。清理对短命进程和PID复用分开处理，不以返回对象的真值判断存活。
 
+#### Qoder CN Custom 与审核准入（2026-10-28，候选实现已接线，准入仍阻塞）
+
+依据同主题计划 r4（run 20261028T050945Z 三审及逐条裁决）。以下契约已进入候选实现，实际验收以本轮报告及项目台账为准；代码存在不能据此开放审核者。版本不自动修改。
+
+官方目录解析保持原规则；Custom 独立解析，选中项按 provider 命名空间、modelID、原生 key 与来源消歧。默认仍走 P2 官方路线，Custom 只能显式选择。请求、配置声明、原生标签与可信生效回读分列；仅回显 Custom key 不证明底层身份，必要回读缺失即阻塞。provider 身份沿用 access.provider_*，不另造生效供应商字段。当前 v3 只增加可选形状，不回填历史记录；未实施的扩展不得描述为已上线。
+
+本机原生缓存采用账号目录下加密 customs，由安装 CLI 内置的 model_cache_decrypt/encrypt 与 machine_id 处理。它不是文档承诺的公共配置 API。先以当前 CLI 指纹绑定的诊断验证选中条目的最小重加密加载，不复制其它模型凭据；若编解码或原生回读无法核实，不进入生产。CLI 内置代码只用于本地原生机制取证，不将提取的源码或解密内容存入项目/工件。
+
+临时 HOME 与 cwd 分离，环境按白名单生成；原生必需凭据仅在私有临时根落盘。运行期生成 deny 覆盖临时根、既有同行/敏感路径，逐工具验证真实拒绝。环境/文件白名单、工具/拒绝策略和权限位形成确定性配方指纹，排除临时路径和时间。归档前对已知密钥值精确替换扫描，泄漏命中仍失败；清理结果独立于原始退出码与首因。
+
+审核准入要求真实无害正对照与执行层拒绝配对，工具未暴露、未调用或口头拒绝不能代替。模型、工具、路径、配置叠加、轨迹和生命周期各必需项未测即阻塞；Windows 无回传保持未测。组合级准入由验收脚本校验并生成本机记录，绑定平台/入口/版本/模型路线/隔离配方及证据 hash；registry 只登记身份/能力要求，不登记机器结论。任何组合未完成前保持生产拒绝，真实 Qoder 三审不得提前启动。
+
+当前实现包含 `native_routes`、Custom 规范选择器、语义绑定 v2、native/codec 私有替换环境、短命 codec 密封协议、持久凭据租约及项目组合台账。Custom `/provider/modelID` 必须唯一精确匹配，禁止通用短名匹配到官方同名；裸官方兼容，三档沿用通用配置解析。请求/声明/每次标签独立，Custom 底层 model/provider 保持 null/unverified。新事实只绑定路线语义和认证/加密缓存源；旧事实仍按原全 settings 指纹判，不回写。CLI 字节在模型派生前核对并固定私有副本。
+
+`admission.v1` 只校形状，再按注册表校身份。必需项来自 registry.admissionChecks；每项必须有原件相对路径/hash/实验臂及厂商语义验证，缺项、坏件、过期、未来时间、平台/CLI/路线/配方变化均拒绝。tested_at 不晚于所引原件最早时间，expires_at 不超过 tested_at+probe TTL。`requested_routes.admission` 冻结 record_id/hash，worker 与适配器复核同一记录，不能重选新记录。生成器先校候选再写，缺项不创建可用台账。宿主可篡改本机所有文件，不宣称抗宿主伪造。
+
+最小审核配方仅 Read/Grep/Glob、user 设置源、strict-empty MCP、不持久化会话及显式路径拒绝。正对照/真实规则拒绝、分发拒绝、mode 拒绝分别记录；空结果或未调用不能通过。06:20 最小面实测有三种成功读取，但危险工具未被实际调用；项目 Hook 正控制真实执行，审核臂未触发仍缺执行层排除证据。配置/技能/Hook/插件尚无合格原生排除格式，验证器明确阻塞。TraceCapability 仍保守声明 rejectionRecorded=false，不据历史不同配方外推。生产开关均 false，真实 Qoder 三审与 Windows 未测，详见本轮报告。
+
+代码审修订：子环境继承必要证书路径，Windows家目录盘符变量不从父环境继承且平台仍拒绝复制认证。第二批审核臂有真实Write/Bash调用及tool unavailable分发拒绝，初版误记为未尝试，已更正；该拒绝不进permission_denials。另行请求完整工具的deny对照仍被原生提前裁剪，permissions规则证据未补齐。采集器共用逐值护栏，秘密命中则脱敏并退出1，原生内部未取得的解密认证字段如实列为扫描边界。
+
+完整代码审首轮更正：公共run对env作叠加，故厂商白名单必须给所有未允许父键显式undefined。早期仅返回允许键的实现失效，02:38至04:12批次环境条件不得用于隔离准入；原件不改，报告另注。现已补删除补丁与真实run子进程canary回归；护栏与留痕工具进入默认测试，open正控制取消无路径Write自动批准。
+
+历史04:48代码审第2轮补充：当时删除补丁只覆盖构造时已有键；续批现已实现qoderRun强制replace，构造后新增键也不继承，以下为历史装置说明。诊断装置先realpath、home规则覆盖原/真实路径并增加别名读取对照。索引按system权限决策与tool_use_id关联，reason=mode单列permission-mode，只有reason=rule计permission-rule，缺失为unknown；旧索引误分类旁注保留，不能据任意non_execution_kind升级准入。
+
 ### 11.6 接入方式与模型族判定（M11 第12步前置 · 契约已定，实施验收中）
+
+> 2026-10-28 Qoder续实施契约（r4计划三审已通过，以下为拟交付，验收后回填）：执行器新增显式merge/replace，默认merge兼容，Qoder统一派生包装器强制replace并保留旧删除补丁兜底；厂商提取codec仅在私有HOME/tmp的短命子进程执行，不在编排器内import。Custom规范选择与官方分开，binding_version=2按声明语义/加密凭据源/codec/配方绑定，旧无version事实保持原规则不回写。标签仅作每次一致性，路线验证还需绑定正负控制，底层身份未知保持null。项目级admission.v1的证据相对项目根，跨仓缺记录拒绝；持锁原子替换、record id/hash冻结交接，worker不得另选。只有完整真实组合通过后才持久开启criticEnabled，仍逐组合校验，不自动启用Driver或默认选侧。复制凭据前登记持久租约，取消与失联监督方按身份核验回收，不能靠被杀进程finally保证。所有持久化出口先逐值脱敏、命中失败；原始退出码/信号与清理错误分列。详见本主题plan r4；当前是否已实现/准入以报告及代码为准。
 
 **v1.3.148 · 当前规范引用**：目录事实与敏感扫描边界统一见[§3.5规范](#agent-access-directory-contract)，进展见[恢复报告](../05_testing/REPORT_2026-10-11_agent_access_recovery.md)。本节不复制计划时点的实施状态。
 
@@ -4612,3 +4642,8 @@ Read/Grep各覆盖生产枚举完整目标集，复用claudeDenyEvidence的已�
 6. 完整25C覆盖累积整改、全部新夹具、获独立批准的消费实现（如有）、诊断/边界及证据，三审有效、逐条裁决和普通委托code审批后才报告可用结论。最终矩阵并列original_status、每个原单臂false/未测、restricted_status、applicability及approved_criteria版本。只有用户批准范围内全部路线/模型、Qwen pro、共享三审、检查和官方档位边界齐备才可另算M11 readiness；原标准仍未满足就如实显示。未获独立批准或B有任何未知，目标保持未完成。
 
 本节依据有效24B修订定稿及本轮普通plan批准；实施与验证结果以恢复报告最新采样为准。两个独立判据未批准，受控取证仍未证明可行。官方Claude待订阅恢复、客户端真实重名解析及其它仓库完整依赖覆盖仍未测。
+
+
+2026-10-28续批代码审契约勘误（CLAUDE-01/02/03/04/05/06/07、GLM-01至05）：审核参数单列facts.review_invocation_args，来自固定CLI字节的真实最小读取探针，不复用无工具callability argv；生产invoke和准入binding必须消费同一审核参数。无字段的旧事实只能诊断，不能审核。台账deny_paths为已验覆盖集，原件携其hash，本次请求扩集即拒绝；具体临时HOME由同一已验模板保护，不把随机路径放入静态指纹。权限生成模板/别名样本/环境允许键/代理反例结果实际入recipe hash，不能仅靠手工版本串。Custom key大小写精确，官方旧归一保持。
+
+探针在私有HOME固定一次CLI字节，codec/version/catalog/两类正控制均用该副本，末尾确认源未变。Custom深比解密仅在invoke固定副本内做一次，不跨run保留明文。null作用域租约在下一次private HOME准备与无运行目录也会执行的retention/scrub适配钩子回收；所有者活着时跳过，所有者死但CLI组活/身份未知时明确阻塞，不自动杀未知进程。认证或整个加密缓存源变化目前会保守使30项准入失效；刷新频率未测，成本边界明确，不为复用降低凭据绑定。

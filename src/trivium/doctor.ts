@@ -1277,15 +1277,16 @@ async function runDoctorCore(opts: DoctorOptions, hooks: DoctorCoreHooks | null)
     const name = only;
     const descriptor = agentByCliName(name)!;
     const config = opts.config.agents[descriptor.id];
+    const selected=resolveTier(opts.config,descriptor.id,'code',overridesFor(descriptor.id));
     const got = await inSection(name, async () => {
-      try {return await probeQoderCn(config && 'bin' in config ? config.bin ?? null : null, probe.cli[name] ?? defaultProbe().cli[name]!, opts.skipModelCalls ?? false);}
+      try {return await probeQoderCn(config && 'bin' in config ? config.bin ?? null : null, probe.cli[name] ?? defaultProbe().cli[name]!, opts.skipModelCalls ?? false,selected.model||null);}
       catch(e) {blockers.push(`Qoder CN 路由探测失败：${(e as Error).message}`);return null;}
     });
     if (got !== ABORTED) markFinished(name);
     if (got && got !== ABORTED) {
       probe.cli[name] = got;
       await checkpoint(name);
-      notes.push(`[${name}] 官方模型路由探测完成；严格只读审核准入仍未完成`);
+      notes.push(`[${name}] 显式官方/Custom模型路由探测完成；可调用事实不等于严格只读审核准入`);
     }
   }
 

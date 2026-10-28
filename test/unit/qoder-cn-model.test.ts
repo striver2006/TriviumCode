@@ -10,6 +10,7 @@ import { qoderCnAdapter } from '../../src/trivium/adapters/qoder-cn.js';
 import { completeQoderModelRun, qoderFailureMessage } from '../../src/trivium/adapters/qoder-cn.js';
 import { checkModelSlugs } from '../../src/trivium/preflight.js';
 import { QODER_MODEL_ARGS } from '../../src/trivium/probes/qoder-cn.js';
+import { qoderChildEnv } from '../../src/trivium/adapters/qoder-cn-native.js';
 import { parseQoderCatalog, parseQoderSettings, qoderHash, qoderModelRequest, QoderModelMonitor, QoderModelConfigurationError,
   assertQoderModelDidNotFallback, readQoderEffectiveModel } from '../../src/trivium/adapters/qoder-cn-model.js';
 import type { NativeModelFacts, CriticRequest } from '../../src/trivium/types.js';
@@ -19,6 +20,27 @@ export const facts:NativeModelFacts={model:'Auto',source:'catalog-default',obser
   catalog_sha256:catalog.semanticHash,catalog_raw_sha256:qoderHash('raw'),configuration_sha256:null,entrypoint:'/fixture/cli',cli_sha256:'a'.repeat(64),
   cli_version:'1.1.80',platform:process.platform,prepared_at:new Date().toISOString(),default_verified:true,invocation_args:[...QODER_MODEL_ARGS]};
 const init=(model:string)=>JSON.stringify({type:'system',subtype:'init',model});
+
+test('子进程环境按白名单生成，未知凭据/运行注入不继承，临时目录归属隔离根',()=>{
+  const parent={PATH:'/bin',LANG:'C',HOME:'/real-home',QODERCN_CONFIG_DIR:'/real-config',NODE_OPTIONS:'--require injected',
+    BUN_OPTIONS:'injected',AWS_SECRET_ACCESS_KEY:'fixture-secret',QODER_API_KEY:'fixture-key',UNKNOWN_CANARY:'fixture-value',HTTPS_PROXY:'http://127.0.0.1:7890',HOMEDRIVE:'Z:',HOMEPATH:'\\real-home'};
+  const env=qoderChildEnv('/isolated','/isolated/config',parent);
+  assert.deepEqual(Object.keys(env).filter(k=>env[k]!==undefined).sort(),['HOME','HTTPS_PROXY','LANG','PATH','QODERCN_CONFIG_DIR','TEMP','TMP','TMPDIR','USERPROFILE'].sort());
+  for(const k of ['NODE_OPTIONS','BUN_OPTIONS','AWS_SECRET_ACCESS_KEY','QODER_API_KEY','UNKNOWN_CANARY'])assert.ok(Object.hasOwn(env,k));
+  assert.equal(env['HOME'],'/isolated');assert.equal(env['TMPDIR'],path.join('/isolated','tmp'));assert.equal(env['QODERCN_CONFIG_DIR'],'/isolated/config');
+  assert.equal(parent.HOME,'/real-home');assert.equal(env['AWS_SECRET_ACCESS_KEY'],undefined);
+  assert.equal(env['HOMEDRIVE'],undefined);assert.equal(env['HOMEPATH'],undefined);
+});
+test('合法代理、排除域与必要证书路径保持继承，未继承其它父凭据',()=>{
+  const parent={HTTP_PROXY:'http://127.0.0.1:7890',HTTPS_PROXY:'https://proxy.example:443/',ALL_PROXY:'socks5://127.0.0.1:1080',all_proxy:'socks5h://127.0.0.1:1080',NO_PROXY:'localhost,127.0.0.1,.example',no_proxy:'localhost',SSL_CERT_FILE:'/fixture/ca.pem',SSL_CERT_DIR:'/fixture/certs',NODE_EXTRA_CA_CERTS:'/fixture/extra.pem',PRIVATE_CANARY:'do-not-inherit'};
+  const env=qoderChildEnv('/isolated','/isolated/config',parent);
+  for(const [key,value] of Object.entries(parent))assert.equal(env[key],key==='PRIVATE_CANARY'?undefined:value);
+});
+test('代理继承拒绝认证、查询、非标准路径，诊断不含URL或凭据',()=>{
+  for(const value of ['http://fixture-user:fixture-password@127.0.0.1:7890','http://127.0.0.1/key-path','http://127.0.0.1?token=fixture-secret','not-a-url']) {
+    assert.throws(()=>qoderChildEnv('/isolated','/isolated/config',{HTTPS_PROXY:value}),e=>e instanceof Error&&!e.message.includes(value)&&!e.message.includes('fixture-secret'));
+  }
+});
 
 test('目录由隔离 MODEL 单列取得，排序不改变语义，非原生形态/重复/空值拒绝',()=>{
   assert.equal(parseQoderCatalog('MODEL\nQwen3.8-Max\nFast\nAuto\n').semanticHash,catalog.semanticHash);

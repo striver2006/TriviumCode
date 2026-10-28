@@ -1,0 +1,95 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "被审补丁的产品面改动小而收口干净：qoderChildEnv 白名单替换整份 process.env 继承，P2 全部调用链（probes/qoder-cn.ts、qoder-cn.ts 的 invokeQoderModel、verifyQoderBinding）都经 withQoderHome 走同一构造，无旁路残留；registry 中 qoder-cn 的 criticEnabled/driverEnabled 仍为 false，与报告声明一致；两个新单测有真实失败模式。取证脚本整体纪律好（Custom 采集器对全部记录的参数值做内存精确替换、合成假 key 做反例、来源不变与临时根清理留痕齐全）。主要问题：本轮报告对第二批 readonly 复跑（e3f692）的描述与其自引证据矛盾——证据显示审核臂模型实际发起了 Write/Bash 调用并被「工具不可用」形态拒绝（is_error=true、permission_rule=false、permission_denials 为空），报告及 Bug清单/实施计划却写「审核臂仍未尝试／没有实际调用」；这不改变准入保持阻塞的结论，但误述了证据形状，并漏掉了「CLI 的 permission_denials 通道不记录工具裁剪类拒绝」这一对 TraceCapability 关键的观察，须修正。另有取证脚本密钥扫描两处差距与白名单偏离 D1「必要证书」枚举的显式记录问题。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "doc/05_testing/REPORT_2026-10-28_QoderCN只读审核准入与Custom模型接入.md（官方模型工具与路径对照节，引 readonly-2026-10-28T02-44-15-091Z-e3f692.json 处）；doc/08_project/现存Bug与未完成工作清单.md、doc/08_project/KimiCode与QoderCN双角色接入实施计划.md 的同款表述",
+      "problem": "报告对第二批固定字节复跑写道「三臂全部原始 exit 0，Write/Bash 只在开放臂调用，审核臂仍未尝试」，但该批原始证据的 readonly 臂 stdout 中存在 Write 调用（call_6c2eda8a59cf48b5b06acc47）与 Bash 调用（call_27295a179e624ca18d432ff1），二者 is_error=true、permission_rule=false、终态 permission_denials 为空，错误串含 not available——即模型确实尝试了 Write/Bash，被工具裁剪层拒绝且该拒绝不进 permission 记录通道。Bug清单「裁剪后的审核臂没有实际调用/拒绝」与实施计划「Write/Bash 未尝试不算拒绝」重复了同一失实表述。结论方向（未达执行层 permission 拒绝、准入继续阻塞）不受影响，但证据形状被误述，且漏掉对 TraceCapability/rejectionRecorded 设计有价值的观察：工具未暴露时的拒绝在 CLI 轨迹里没有 permission_denials 记录。",
+      "evidence": "doc/05_testing/evidence/qoder-cn-admission-20261028/readonly-2026-10-28T02-44-15-091Z-e3f692.json（readonly 臂 stdout 行含上述两个调用 ID、write-canary/shell-canary 与 not available 字样）；doc/05_testing/evidence/qoder-cn-admission-20261028/index-2026-10-28T02-46-01-353Z-11bd65.json（readonly 臂 calls/results/terminal 逐字段）；报告 diff 节选同句。",
+      "suggestion": "按证据改写报告该句与对照表行、Bug清单与实施计划的对应句：如实记为「审核臂模型发起了 Write/Bash 调用，被工具不可用形态拒绝（is_error、无 permission-rule、permission_denials 空），工具裁剪类拒绝不留 permission 记录」，并把这形态学观察登记进剩余缺口（rejectionRecorded 相关）。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "security",
+      "location": "scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs:42-43、54-56",
+      "problem": "readonly 采集器归档前只过模式脱敏（redactSecrets），未像 qoder-custom.mjs 那样对本次在场的真实凭据值做精确替换：withQoderHome 会把 .auth/user、.auth/machine_id 复制进模型进程的隔离 HOME，而 open 臂以 bypass_permissions 运行且无任何 deny 规则（首批 open 臂还出现过程序提示之外的自发 Bash 调用）。若模型自行读取隔离 HOME 并回显，不匹配已知正则形态的不透明 token 会原样写入进 Git 的证据文件。qoder-custom.mjs 已示范了正确做法（收集已知值逐值替换），两个脚本口径不一致。",
+      "evidence": "scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs 第 42 行 safe 仅调 runtime.redactSecrets、第 56 行直接落盘；scripts/acceptance/kimi-qoder-cn/qoder-custom.mjs 第 21、48 行的精确替换对照；src/trivium/adapters/qoder-cn-native.ts 第 80-84 行（凭据复制进隔离 HOME）；index-2026-10-28T02-46-01-353Z-11bd65.json 首批 open 臂含未提示的额外 Bash 调用（call_0bcbeb5b0b0a41d3a60fb2e2）。",
+      "suggestion": "运行前读入被复制凭据的值加入精确替换集（同 qoder-custom.mjs 的 secrets 列表），归档命中时失败或至少在汇总行标出；open 臂可考虑对隔离 HOME 加 deny 以收窄暴露面。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "scripts/acceptance/kimi-qoder-cn/qoder-custom.mjs:75-78、86-88",
+      "problem": "脚本把 known_secret_found 记进证据但不据此置非零退出码，finally 的汇总输出也不含该字段；而同批交付的设计新增节（「归档前对已知密钥值精确替换扫描，泄漏命中仍失败」）与 r2 计划 D1/CLAUDE-09（「命中则编排失败」「命中脱敏并失败」）都要求命中即失败。当前实现只脱敏不失败，泄漏时采集器静默 exit 0，与自己在同一补丁里写下的契约不符。",
+      "evidence": "scripts/acceptance/kimi-qoder-cn/qoder-custom.mjs 第 75 行仅记录标志、无 process.exitCode 赋值，第 76、88 行两条 console.log 均不含 known_secret_found；设计文档 diff 新增节「泄漏命中仍失败」句；.reviews/.../plan/2026-10-28-...-r2-codex.md D1 段「命中则编排失败」。",
+      "suggestion": "known_secret_found 任一为 true 时置 process.exitCode=1 并把该标志加入最终汇总行；这是取证脚本走向未来准入记录生成器前的必要语义。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/adapters/qoder-cn-native.ts:55",
+      "problem": "qoderChildEnv 白名单未包含 r2 D1 枚举中的「必要证书」类别（SSL_CERT_FILE/SSL_CERT_DIR、NODE_EXTRA_CA_CERTS 一类）；企业自签 CA 环境下厂商进程 TLS 将失败。属 fail-visible 且当前本机实测通过，但这是对已批准计划的显式收窄，未见在设计新增节或注释中记录该偏离。",
+      "evidence": "src/trivium/adapters/qoder-cn-native.ts 第 55 行白名单键集；.reviews/.../plan/2026-10-28-...-r2-codex.md D1「PATH、locale、系统临时目录、必要证书/无凭据代理」。",
+      "suggestion": "或在白名单补证书键（仍不含凭据形态），或在设计新增节/代码注释明确记录「证书键暂不继承」的决策与触发条件，避免后来者以为是遗漏。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/unit/qoder-cn-model.test.ts:24-36；doc/05_testing/REPORT_2026-10-28_QoderCN只读审核准入与Custom模型接入.md（生产代码与未实施项表）",
+      "problem": "环境白名单的验证停留在构造级单测；r2 计划 CLAU-02/D1 要求「父环境 canary 需反测」（在真实厂商子进程侧确认注入的父环境 canary 不可见），两批复跑都未做，报告的剩余工作表也未把该项列入缺口。此外单测只测拒绝形态，未覆盖合法继承正例（socks5/socks5h、无认证 https、NO_PROXY 透传），白名单被过度收窄时无测试变红。",
+      "evidence": "test/unit/qoder-cn-model.test.ts 第 24-36 行两个用例均为构造级断言与拒绝形态；.reviews/.../plan/2026-10-28-...-r2-codex.md CLAU-02「父环境canary需反测」；报告未实施项表未含该项。",
+      "suggestion": "补一条合法代理形态/NO_PROXY 正例断言；把「真实子进程侧 canary 反测」补进报告剩余缺口清单，与其它未测项同口径管理。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "qoderChildEnv 以白名单取代继承整份 process.env 并统一收口：probes/qoder-cn.ts、qoder-cn.ts invokeQoderModel、verifyQoderBinding 全部经 withQoderHome 取 env，旧的 QODER/ANTHROPIC/NODE_OPTIONS 正则剥除双轨被整体替换，无残留旁路（src/trivium/adapters/qoder-cn-native.ts:52-89 及三处调用点核实）。",
+    "代理继承的认证/查询/非标准路径拒绝实现正确：协议白名单、url.username/password/search/hash/pathname 判定齐全，错误信息不回显代理值，单测断言了这一点（qoder-cn-native.ts:58-63；qoder-cn-model.test.ts:32-36）。",
+    "TMPDIR/TMP/TEMP 归入私有 HOME 下的 0700 tmp，厂商进程临时文件随 home 一并清理，收窄了此前落系统临时目录的暴露面（qoder-cn-native.ts:66、87、96-97）。",
+    "registry 中 qoder-cn 的 criticEnabled/driverEnabled/defaultSelected 保持 false（registry.ts:429-431），报告「registry 两个开关继续为 false」属实，无越权放开。",
+    "qoder-custom.mjs 的取证纪律：全部源文件前后 hash 对账、内存解密后仅重加密选中条目、invalid-key 臂用合成假 key、密钥值在归档前逐值替换、临时根删除回读，与报告表格逐项相符（脚本第 22-88 行；index 汇总 sources_unchanged/temporary_roots_removed 均为 true）。",
+    "报告对整体未完成、Custom 必要回读缺失、三档/worker/native_routes 未实施、Windows 未测的定性诚实，未把诊断取证冒充生产接入；README 归档新条目形态与相邻条目一致。"
+  ],
+  "not_covered": [
+    "只读审查：未运行 typecheck/build/test 或任何脚本，回归是否全绿未验证；qoder-index.mjs 汇总逻辑仅经读码与既出索引交叉核对，未复算。",
+    "被审 diff 原文件 261KB 超读取上限，未整读（主要为五份证据 JSON 全文）；以任务书节选加仓库真实文件替代核对，未读到的部分以下不在论域内声明为准。",
+    "必读清单中的 CLAUDE.md、README.md、doc/README.md、doc/01_requirements/README.md、doc/02_design/README.md、src/trivium/review.ts、run-protocol.ts、preflight.ts、qoder-cn-model.ts 全文、test/integration/qoder-cn-routing.test.ts、上一轮 REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md 未读或仅部分/grep 查验（model-routing.ts 经 grep 确认无 qoder 引用）。",
+    "qoder-custom.mjs 依赖的厂商字节码边界提取与 WASM 编解码行为、.auth/user 真实 token 形态（涉及凭据，不读取）未核；GLM-02 的泄露路径因此是推理而非实测。",
+    "Windows 行为、生命周期矩阵（取消/强杀/失联回收）、skills/Hook/插件叠加执行能力未覆盖；两份 readonly 复跑均为 macOS 本机采样，不可外推。"
+  ],
+  "consulted": [
+    "src/trivium/adapters/qoder-cn-native.ts",
+    "src/trivium/adapters/qoder-cn.ts",
+    "src/trivium/probes/qoder-cn.ts",
+    "src/trivium/secrets.ts",
+    "src/trivium/agents/registry.ts",
+    "test/unit/qoder-cn-model.test.ts",
+    "scripts/acceptance/kimi-qoder-cn/qoder-custom.mjs",
+    "scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs",
+    "scripts/acceptance/kimi-qoder-cn/qoder-index.mjs",
+    "scripts/acceptance/kimi-qoder-cn/README.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/evidence/qoder-cn-admission-20261028/index-2026-10-28T02-46-01-353Z-11bd65.json",
+    "doc/05_testing/evidence/qoder-cn-admission-20261028/readonly-2026-10-28T02-44-15-091Z-e3f692.json",
+    ".reviews/QoderCN只读审核准入与Custom模型接入/plan/2026-10-28-QoderCN只读审核准入与Custom模型接入-r2-codex.md",
+    "package.json",
+    "src/trivium/model-routing.ts"
+  ]
+}

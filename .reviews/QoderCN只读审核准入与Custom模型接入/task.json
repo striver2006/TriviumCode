@@ -1,0 +1,158 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "QoderCN只读审核准入与Custom模型接入",
+  "goal": "在现有 Qoder CN 官方模型路由与回退阻断实现基础上，完成 Qoder CN 只读审核准入，并将 Custom/BYOK 模型接入纳入同一轮任务。 一、Custom 模型接入 优先依据官方原生机制和本机实测，确认自定义模型目录、配置声明、必要凭据及其隔离加载方式。以当前已配置的 bailian/qwen3.8-flash-tp 作为首个真实样本，但不得硬编码为通用默认。不得修改用户全局配置，…",
+  "created_at": "2026-10-28T02:19:59.975Z",
+  "updated_at": "2026-10-28T08:23:11.310Z",
+  "runs": [
+    {
+      "run_id": "20261028T022148Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T02:21:56.650Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261028T024721Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "partial",
+      "started_at": "2026-10-28T02:47:29.737Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261028T041304Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T04:13:12.729Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261028T043435Z",
+      "stage": "code",
+      "rerun_index": 3,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T04:34:42.956Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261028T044834Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T04:54:13.464Z"
+    },
+    {
+      "run_id": "20261028T050945Z",
+      "stage": "plan",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T05:09:54.378Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261028T063910Z",
+      "stage": "code",
+      "rerun_index": 4,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T06:39:20.735Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261028T080829Z",
+      "stage": "verify",
+      "rerun_index": 2,
+      "status": "failed",
+      "review_mode": "full",
+      "started_at": "2026-10-28T08:14:28.584Z"
+    },
+    {
+      "run_id": "20261028T081723Z",
+      "stage": "verify",
+      "rerun_index": 3,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T08:23:11.310Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [
+    {
+      "run_id": "20261028T024721Z",
+      "stage": "code",
+      "reason": "claude: failed（claude 未产出最终回复：(无错误消息)）",
+      "at": "2026-10-28T03:00:19.959Z"
+    }
+  ],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "codex",
+      "claimed_at": "2026-10-28T02:19:59.975Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "codex",
+      "claimed_at": "2026-10-28T02:35:35.062Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261028T022148Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-28T02:35:25.514Z"
+    },
+    {
+      "run_id": "20261028T041304Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-28T04:34:05.535Z"
+    },
+    {
+      "run_id": "20261028T043435Z",
+      "stage": "code",
+      "rerun_index": 3,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-28T04:48:22.676Z"
+    },
+    {
+      "run_id": "20261028T050945Z",
+      "stage": "plan",
+      "rerun_index": 2,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-28T05:23:36.119Z"
+    },
+    {
+      "run_id": "20261028T063910Z",
+      "stage": "code",
+      "rerun_index": 4,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-28T08:17:18.709Z"
+    }
+  ]
+}

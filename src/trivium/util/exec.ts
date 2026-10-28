@@ -15,8 +15,10 @@ import {
 
 export interface RunOptions {
   cwd?: string;
-  /** 追加/覆盖到 process.env 之上的环境变量；值为 undefined 表示删除该变量 */
+  /** merge时追加/覆盖process.env；replace时从空环境构建。undefined表示删除。 */
   env?: Record<string, string | undefined>;
+  /** 默认merge保持旧调用行为；隔离原生进程须显式replace。 */
+  envMode?: 'merge' | 'replace';
   /** 超时毫秒。0 或省略表示不限时 */
   timeoutMs?: number;
   /** SIGTERM 之后等多久再 SIGKILL */
@@ -524,7 +526,7 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     return Promise.resolve(result);
   }
 
-  const childEnv: NodeJS.ProcessEnv = { ...process.env };
+  const childEnv: NodeJS.ProcessEnv = opts.envMode === 'replace' ? {} : { ...process.env };
   for (const [k, v] of Object.entries(env ?? {})) {
     if (v === undefined) delete childEnv[k];
     else childEnv[k] = v;

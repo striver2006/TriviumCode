@@ -79,3 +79,10 @@ GUI 进程不读 `~/.zshrc`，依赖 `PATH` 会在 VS Code 里失效（设计 §
 Auto/Fast 为路由标签，未知底层 model_effective=null、source=unverified；具体模型只读原生信封。modelUsage 的未知计费键独立保留，不推断别名。双通道明确回退或精确请求不一致立即中止，退出0仍判失败且审查结论不计票。Qoder 生产审核准入继续关闭，P2 无工具路线不等于 P3 能力验收；Windows ACL 未测时不复制认证。
 
 P2 首轮代码审修订：native_model 运行证据新增 execution_failure、verification_failure、stop_observation（channel/after_result/elapsed_ms），模型回退与执行失败/未核实分列。source=config 由目录内原生配置的真实显式验证产出；无配置默认只取首个 init。完整真机告警尾句纳入识别，停止时是否已见 result 必须如实记录。
+
+
+### 候选原生模型与组合准入（2026-10-28）
+
+当前 v3 可携带 binding_version=2/route_kind/route_descriptor、route_verified 和 requested_routes.admission(record_id/hash)，不回写 v1/v2。admission.v1 台账仅项目本地，形状校验后按 registry 校身份，缺证据或组合失配必须拒绝。Qoder 官方与 Custom 选择值严格区分，底层未知保持 null；可调用探针、代码审/verify 通过均不能代替安全准入。完整准入之前 registry 开关保持 false，不能临时开启跑三审再关闭。详见 PROTOCOL 当前组合准入段。
+
+候选审核facts必须单列已实测review_invocation_args，不能把无工具可调用参数用作审核；admission.v1必含deny_paths覆盖，原件hash绑定，扩集拒绝。无运行侧探针租约也有retention/scrub回收入口，活/未知身份仍不删除。

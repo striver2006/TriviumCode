@@ -7,10 +7,11 @@ import YAML from 'yaml';
 import {defaultConfig,defaultProbe} from '../../src/trivium/config.js';
 import {qoderCnAdapter,invokeQoderModel} from '../../src/trivium/adapters/qoder-cn.js';
 import {parseQoderCatalog,qoderHash,qoderModelRequest} from '../../src/trivium/adapters/qoder-cn-model.js';
-import {QODER_MODEL_ARGS,probeQoderCn} from '../../src/trivium/probes/qoder-cn.js';
-import {stopQoderHomeHelpers} from '../../src/trivium/adapters/qoder-cn-native.js';
+import {QODER_MODEL_ARGS,QODER_REVIEW_ARGS,probeQoderCn} from '../../src/trivium/probes/qoder-cn.js';
+import {stopQoderHomeHelpers,withQoderHome,qoderRun,checkQoderBinding} from '../../src/trivium/adapters/qoder-cn-native.js';
 import {run} from '../../src/trivium/util/exec.js';
 import {extractJsonCandidate} from '../../src/trivium/parse.js';
+import {admissionRouteBinding} from '../../src/trivium/admission.js';
 import {copyProductionTree,linkDependencies} from '../fixtures/stub-agent-kit/overlay.js';
 import {REPO_ROOT,makeFixture} from '../helpers/fixture.js';
 import {scratchDir} from '../helpers/scratch.js';
@@ -31,28 +32,53 @@ after(async()=>{if(oldSource===undefined)delete process.env['QODERCN_CONFIG_DIR'
 
 async function fake(script:string) {
   const entry=path.join(root,`cli-${created.length}.cjs`);created.push(entry);
-  await fs.writeFile(entry,`#!${process.execPath}\nif(process.argv.includes('--version')){console.log('1.1.80');process.exit(0);}\nif(process.argv.includes('--list-models')){console.log('MODEL\\nAuto\\nExact\\nOther');process.exit(0);}\n${script}\n`,{mode:0o700});
+  await fs.writeFile(entry,`#!${process.execPath}\nif(process.argv.includes('--version')){console.log('1.1.80');process.exit(0);}\nif(process.argv.includes('--list-models')){console.log('MODEL\\nAuto\\nExact\\nOther');process.exit(0);}\nif(process.argv[process.argv.indexOf('--tools')+1]==='Read,Grep,Glob'){const model=process.argv[process.argv.indexOf('--model')+1]??'Auto';console.log(JSON.stringify({type:'system',subtype:'init',model,tools:['Read','Grep','Glob']}));for(const name of ['Read','Grep','Glob']){console.log(JSON.stringify({type:'assistant',message:{content:[{type:'tool_use',id:name,name,input:{file_path:'normal.txt',path:'.'}}]}}));console.log(JSON.stringify({type:'user',message:{content:[{type:'tool_result',tool_use_id:name,content:'QODER_REVIEW_CANARY'}]}}));}console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,result:'OK'}));process.exit(0);}
+${script}\n`,{mode:0o700});
   const parsed=parseQoderCatalog('MODEL\nAuto\nExact\nOther\n');
   const facts:NativeModelFacts={model:'Auto',source:'catalog-default',observed_user_model:'custom/test',models:parsed.models,route_labels:parsed.routeLabels,
     catalog_sha256:parsed.semanticHash,catalog_raw_sha256:qoderHash('raw'),configuration_sha256:qoderHash(await fs.readFile(path.join(source,'settings.json'))),
-    entrypoint:entry,cli_sha256:qoderHash(await fs.readFile(entry)),cli_version:'1.1.80',platform:process.platform,prepared_at:new Date().toISOString(),default_verified:true,invocation_args:[...QODER_MODEL_ARGS]};
+    entrypoint:entry,cli_sha256:qoderHash(await fs.readFile(entry)),cli_version:'1.1.80',platform:process.platform,prepared_at:new Date().toISOString(),default_verified:true,invocation_args:[...QODER_MODEL_ARGS],review_invocation_args:[...QODER_REVIEW_ARGS]};
   return facts;
 }
 const event=(model:string)=>JSON.stringify({type:'system',subtype:'init',model})+'\n';
 const success=JSON.stringify({type:'result',subtype:'success',is_error:false,result:'OK'})+'\n';
 const warning='Model "Exact" is not available right now; using "auto" instead. Use /model to choose another model.';
 
-test('真实适配器：退出0伴随回退仍失败、结果为空；缺快照/无效模型未派生', {skip}, async()=>{
+test('生产隔离环境经真实run派生后删除全部未知父键，运行注入不会生效', {skip},async()=>{
+  const keys=['QODER_CANARY','TRIVIUM_ENV_CANARY','AWS_SECRET_ACCESS_KEY','NODE_OPTIONS','BUN_OPTIONS'];
+  const old=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+  try {
+    for(const key of keys)process.env[key]=key==='NODE_OPTIONS'?'--require /trivium-fixture-never-exists.cjs':'test_key_parent_canary';
+    const out=await withQoderHome((home,_config,env)=>qoderRun(process.execPath,['-e',`const keys=${JSON.stringify(keys)};console.log(JSON.stringify({present:keys.filter(k=>process.env[k]!==undefined),home:process.env.HOME,tmp:process.env.TMPDIR}));`],{cwd:home,env,timeoutMs:10000,killTree:true}));
+    assert.equal(out.code,0,out.stderr);const observed=JSON.parse(out.stdout);assert.deepEqual(observed.present,[]);assert.equal(observed.tmp,path.join(observed.home,'tmp'));
+  } finally {for(const key of keys){if(old[key]===undefined)delete process.env[key];else process.env[key]=old[key];}}
+});
+
+test('完整替换阻止构造后新增父键；公共merge仍继承且undefined删除兼容', {skip},async()=>{
+  const key='TRIVIUM_LATE_ENV_CANARY',old=process.env[key];delete process.env[key];
+  try {
+    await withQoderHome(async(home,_config,env)=>{
+      process.env[key]='test_key_late_fixture';
+      const args=['-e',`console.log(process.env.${key}===undefined?'ABSENT':'PRESENT')`];
+      const isolated=await qoderRun(process.execPath,args,{cwd:home,env,timeoutMs:10000});
+      assert.equal(isolated.code,0);assert.equal(isolated.stdout.trim(),'ABSENT');
+      const merged=await run(process.execPath,args,{env:{},timeoutMs:10000});assert.equal(merged.stdout.trim(),'PRESENT');
+      const removed=await run(process.execPath,args,{env:{[key]:undefined},timeoutMs:10000});assert.equal(removed.stdout.trim(),'ABSENT');
+    });
+  } finally {if(old===undefined)delete process.env[key];else process.env[key]=old;}
+});
+
+test('生产适配器缺准入快照必须在模型派生前失败；下层执行边界仍阻断退出0回退', {skip}, async()=>{
   const marker=path.join(root,'spawned');
   const f=await fake(`require('fs').writeFileSync(${JSON.stringify(marker)},'yes');process.stdout.write(${JSON.stringify(event('Exact')+success)});process.stderr.write(${JSON.stringify(warning)});process.exit(0);`);
-  const cfg=defaultConfig();cfg.probe.cli['qoderclicn']={...defaultProbe().cli['qoderclicn']!,native_default:f};
-  const request=qoderModelRequest(f,'Exact','cli');
+  const cfg=defaultConfig(),request=qoderModelRequest(f,'Exact','cli');
   const req={critic:'qoder-cn',project_root:root,model:'Exact',native_model:request,out_dir:path.join(root,'out'),brief_text:'test',timeout_s:10} as CriticRequest;
-  const result=await qoderCnAdapter.run({cfg,nodePath:process.execPath},req);
-  assert.equal(result.status,'failed');assert.equal(result.exit_code,0);assert.equal(result.review_json,null);assert.match(result.fail_reason!,/回退/);
-  assert.ok(result.native_model);assert.equal(result.native_model.request.override,'Exact');
-  await fs.rm(marker);
+  const blocked=await qoderCnAdapter.run({cfg,nodePath:process.execPath},req);
+  assert.equal(blocked.process_started,false);assert.match(blocked.fail_reason!,/准入请求快照缺失/);assert.equal(await fs.stat(marker).then(()=>true,()=>false),false);
+  const result=await invokeQoderModel({request,cwd:root,prompt:'x',timeoutMs:10000});
+  assert.equal(result.ok,false);assert.match(result.evidence.failure!,/回退/);assert.equal(result.monitor.resultText,null);
   const invalid={...req,model:'bad',native_model:{...request,requested:'bad'}};
+  await fs.rm(marker);
   assert.equal((await qoderCnAdapter.run({cfg,nodePath:process.execPath},invalid)).process_started,false);
   assert.equal(await fs.stat(marker).then(()=>true,()=>false),false);
 });
@@ -72,10 +98,10 @@ test('真实执行边界：stdout/stderr 分块告警触发早停，末尾无换
 test('真实result先于告警时如实记after_result，回退摘要不被原生结果错误覆盖', {skip},async()=>{
   const errorResult=JSON.stringify({type:'result',subtype:'error',is_error:true})+'\n';
   const f=await fake(`process.stdout.write(${JSON.stringify(event('Exact')+errorResult)});setTimeout(()=>process.stderr.write(${JSON.stringify(warning+'\n')}),30);setTimeout(()=>{},5000);`);
-  const cfg=defaultConfig(),native=qoderModelRequest(f,'Exact','cli');
+  const native=qoderModelRequest(f,'Exact','cli');
   const req={model:'Exact',native_model:native,project_root:root,out_dir:path.join(root,'after-result'),brief_text:'x',timeout_s:10} as CriticRequest;
-  const r=await qoderCnAdapter.run({cfg,nodePath:process.execPath},req);
-  assert.equal(r.native_model!.stop_observation!.after_result,true);assert.equal(r.native_model!.stop_observation!.channel,'stderr');assert.match(r.fail_reason!,/回退/);
+  const r=await invokeQoderModel({request:native,cwd:req.project_root,prompt:'x',timeoutMs:10000});
+  assert.equal(r.evidence.stop_observation!.after_result,true);assert.equal(r.evidence.stop_observation!.channel,'stderr');assert.match(r.evidence.failure!,/回退/);
 });
 
 test('缺认证分别覆盖invoke准备失败与adapter版本验证失败，version在隔离HOME内', {skip},async()=>{
@@ -85,7 +111,7 @@ test('缺认证分别覆盖invoke准备失败与adapter版本验证失败，vers
   assert.notEqual(bytes,isolated);await fs.writeFile(f.entrypoint,isolated);f.cli_sha256=qoderHash(isolated);
   const cfg=defaultConfig(),native=qoderModelRequest(f,'Exact','cli');
   const req={model:'Exact',native_model:native,project_root:root,out_dir:path.join(root,'prepare-failure'),brief_text:'x',timeout_s:5} as CriticRequest;
-  assert.equal((await qoderCnAdapter.run({cfg,nodePath:process.execPath},req)).status,'ok');
+  assert.equal((await invokeQoderModel({request:native,cwd:root,prompt:'x',timeoutMs:5000})).ok,true);
   const auth=path.join(source,'.auth/user');await fs.rename(auth,auth+'.saved');
   try {
     const invoked=await invokeQoderModel({request:native,cwd:root,prompt:'x',timeoutMs:1000});
@@ -95,17 +121,12 @@ test('缺认证分别覆盖invoke准备失败与adapter版本验证失败，vers
   }finally{await fs.rename(auth+'.saved',auth);}
 });
 
-test('真实适配器：退出0且result成功但无模型回读时判未核实失败', {skip},async()=>{
+test('真实执行边界：退出0且result成功但无模型回读仍判失败', {skip},async()=>{
   const f=await fake(`process.stdout.write(${JSON.stringify(success)});`);
-  const native=qoderModelRequest(f,'Exact','cli');
-  const req={model:'Exact',native_model:native,project_root:root,out_dir:path.join(root,'no-model-readback'),brief_text:'x',timeout_s:5} as CriticRequest;
-  const r=await qoderCnAdapter.run({cfg:defaultConfig(),nodePath:process.execPath},req);
-  assert.equal(r.process_started,true);assert.equal(r.exit_code,0);assert.equal(r.status,'failed');assert.equal(r.review_json,null);
-  assert.equal(r.native_model!.failure,null);assert.equal(r.native_model!.execution_failure,null);assert.deepEqual(r.native_model!.labels,[]);
-  assert.match(r.native_model!.verification_failure!,/未核实/);assert.equal(r.fail_reason,r.native_model!.verification_failure);
-  assert.equal(r.model_effective,null);assert.equal(r.model_effective_source,'unverified');
-  const trace=JSON.parse(await fs.readFile(r.trace_path!,'utf8'));
-  assert.equal(trace.verification_failure,r.fail_reason);assert.equal(trace.raw_exit_code,0);
+  const r=await invokeQoderModel({request:qoderModelRequest(f,'Exact','cli'),cwd:root,prompt:'x',timeoutMs:5000});
+  assert.equal(r.outcome.spawned,true);assert.equal(r.outcome.code,0);assert.equal(r.ok,false);
+  assert.equal(r.evidence.failure,null);assert.equal(r.evidence.execution_failure,null);assert.deepEqual(r.evidence.labels,[]);
+  assert.match(r.evidence.verification_failure!,/未核实/);assert.equal(r.effective.effective,null);assert.equal(r.effective.source,'unverified');
 });
 
 test('真实执行边界：成功正对照、超时、启动失败均保留原始事实并清理认证', {skip},async()=>{
@@ -118,7 +139,7 @@ test('真实执行边界：成功正对照、超时、启动失败均保留原�
   const missing={...f,entrypoint:path.join(root,'absent')};
   const failed=await invokeQoderModel({request:qoderModelRequest(missing,'Exact','cli'),cwd:root,prompt:'x',timeoutMs:1000});
   assert.equal(failed.outcome.spawned,false);assert.equal(failed.outcome.code,null);
-  assert.match(failed.evidence.execution_failure!,/启动失败/);assert.equal(failed.evidence.failure,null);
+  assert.match(failed.evidence.execution_failure!,/准备失败/);assert.equal(failed.evidence.failure,null);
   assert.match(timeout.evidence.execution_failure!,/超时/);assert.equal(timeout.evidence.failure,null);
 });
 
@@ -155,11 +176,10 @@ test('执行前绑定漂移和直接快照篡改：入口/平台/hash/settings/v
   assert.equal(await fs.stat(marker).then(()=>true,()=>false),false);
 });
 
-test('显式模型大小写归一后仍保留原始override，直接适配器不误拒合法请求', {skip},async()=>{
+test('显式模型大小写归一后仍保留原始override，执行边界不误拒合法请求', {skip},async()=>{
   const f=await fake(`process.stdout.write(${JSON.stringify(event('Exact')+success)});`);
-  const cfg=defaultConfig(),native=qoderModelRequest(f,'exact','cli');
-  const req={model:native.requested,native_model:native,project_root:root,out_dir:path.join(root,'case-out'),brief_text:'x',timeout_s:5} as CriticRequest;
-  const r=await qoderCnAdapter.run({cfg,nodePath:process.execPath},req);assert.equal(r.status,'ok');assert.equal(r.native_model!.request.override,'exact');
+  const native=qoderModelRequest(f,'exact','cli');
+  const r=await invokeQoderModel({request:native,cwd:root,prompt:'x',timeoutMs:5000});assert.equal(r.ok,true);assert.equal(r.evidence.request.override,'exact');
 });
 
 test('真实探针：init 路由声明不受后续具体回读影响；官方配置产config，Custom不继承', {skip},async()=>{
@@ -174,6 +194,33 @@ test('真实探针：init 路由声明不受后续具体回读影响；官方配
   }finally {await fs.writeFile(settings,original);}
 });
 
+test('旧事实保持全settings绑定且不回写；v2忽略无关设置、模型语义变化仍拒绝',{skip},async()=>{
+  const f=await fake(`process.stdout.write(${JSON.stringify(event('Exact')+success)});`),settings=path.join(source,'settings.json'),original=await fs.readFile(settings);
+  try{
+    await fs.writeFile(settings,'{"model":{"name":"Exact"},"general":{"theme":"one"}}');
+    const old={...f,configuration_sha256:qoderHash(await fs.readFile(settings))},snapshot=JSON.stringify(old);
+    checkQoderBinding(old,null);
+    const next=(await probeQoderCn(f.entrypoint,defaultProbe().cli['qoderclicn']!)).native_default!;assert.equal(next.binding_version,2);checkQoderBinding(next,null);
+    await fs.writeFile(settings,'{"general":{"theme":"two"},"model":{"name":"Exact"}}');
+    assert.throws(()=>checkQoderBinding(old,null),/重探/);checkQoderBinding(next,null);assert.equal(JSON.stringify(old),snapshot);
+    const untouched=await fs.readFile(settings,'utf8');checkQoderBinding(next,null);assert.equal(await fs.readFile(settings,'utf8'),untouched);
+    await fs.writeFile(settings,'{"model":{"name":"Other"}}');assert.throws(()=>checkQoderBinding(next,null),/重探/);
+  }finally{await fs.writeFile(settings,original);}
+});
+
+test('实际审核argv等于准入绑定的独立review配方，无工具事实不能审核',{skip},async()=>{
+  const argvFile=path.join(root,'review-argv.json'),f=await fake('');
+  const source=await fs.readFile(f.entrypoint,'utf8');await fs.writeFile(f.entrypoint,source.replace("if(process.argv[process.argv.indexOf('--tools')+1]",`if(process.argv.includes('--model'))require('fs').writeFileSync(${JSON.stringify(argvFile)},JSON.stringify(process.argv.slice(2)));if(process.argv[process.argv.indexOf('--tools')+1]`));f.cli_sha256=qoderHash(await fs.readFile(f.entrypoint));
+  const request=qoderModelRequest(f,'Exact','cli');
+  const out=await invokeQoderModel({request,cwd:root,prompt:'x',timeoutMs:5000,readonlyDenyPaths:[]});assert.equal(out.ok,true);
+  const argv=JSON.parse(await fs.readFile(argvFile,'utf8')) as string[],actual=argv.slice(2,argv.indexOf('--model'));
+  assert.deepEqual(actual,f.review_invocation_args);assert.notDeepEqual(actual,f.invocation_args);
+  const req={critic:'qoder-cn' as const,project_root:root,model:'Exact',native_model:request};
+  assert.notEqual(admissionRouteBinding(req),admissionRouteBinding({...req,native_model:{...request,facts:{...f,review_invocation_args:[...actual,'--different-fixture']}}}));
+  await fs.rm(argvFile);const missing=structuredClone(request);delete missing.facts.review_invocation_args;
+  const refused=await invokeQoderModel({request:missing,cwd:root,prompt:'x',timeoutMs:5000,readonlyDenyPaths:[]});assert.equal(refused.outcome.spawned,false);assert.match(refused.evidence.execution_failure!,/缺少独立已测审核配方/);assert.equal(await fs.stat(argvFile).then(()=>true,()=>false),false);
+});
+
 test('隔离复制树重打包：真实父进程→worker 保留native请求；篡改在模型派生前失败', {skip,timeout:180000},async()=>{
   kit=path.join(root,'build');await copyProductionTree(REPO_ROOT,kit);await linkDependencies(REPO_ROOT,kit);
   const registry=path.join(kit,'src/trivium/agents/registry.ts');
@@ -181,16 +228,20 @@ test('隔离复制树重打包：真实父进程→worker 保留native请求；�
   const anchor=original.indexOf("id: 'qoder-cn'");assert.ok(anchor>0);
   const tail=original.slice(anchor);assert.ok(tail.includes('criticEnabled: false'));
   await fs.writeFile(registry,original.slice(0,anchor)+tail.replace('criticEnabled: false','criticEnabled: true'));
+  // 只在隔离复制树注入台账替身，测父进程/worker冻结交接；不作为原生准入证据。
+  await fs.writeFile(path.join(kit,'src/trivium/adapters/qoder-cn-admission.ts'),`import {readFileSync} from 'node:fs';import {createHash} from 'node:crypto';import path from 'node:path';import type {AdmissionRequest} from '../admission.js';import type {AdmissionReference} from '../types.js';export function qoderAdmission(req:AdmissionRequest,_ttl:number,frozen?:AdmissionReference){const ref={record_id:'synthetic-transport-only',record_sha256:createHash('sha256').update(readFileSync(path.join(req.project_root,'.trivium/admission.local.json'))).digest('hex')};if(frozen&&JSON.stringify(ref)!==JSON.stringify(frozen))throw Error('准入记录自冻结后已变化');return ref;}`);
   const built=await run(process.execPath,['scripts/build.mjs'],{cwd:kit,timeoutMs:60000});assert.equal(built.code,0,built.stderr);
   const bundle=path.join(kit,'skills/dual-critic/scripts/trivium.cjs');
-  for(const tamper of [false,true]) {
-    const fx=await makeFixture({topic:tamper?'原生快照篡改':'原生快照正对照'});
+  for(const tamper of ['none','native','admission']) {
+    const fx=await makeFixture({topic:'原生快照-'+tamper});
     for(const name of await fs.readdir(fx.stageDir))if(name.endsWith('-claude.md'))await fs.rename(path.join(fx.stageDir,name),path.join(fx.stageDir,name.replace(/-claude\.md$/,'-codex.md')));
+    await fs.writeFile(path.join(fx.root,'.trivium/admission.local.json'),'synthetic-transport-only');
     const gate=path.join(fx.root,'worker-go');
     const shim=path.join(fx.root,'node-shim.cjs');
     await fs.writeFile(shim,`#!${process.execPath}\nconst fs=require('fs'),cp=require('child_process');const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(gate)})){clearInterval(timer);const c=cp.spawn(${JSON.stringify(process.execPath)},process.argv.slice(2),{stdio:'inherit'});c.on('exit',code=>process.exit(code??1));}},20);setTimeout(()=>process.exit(99),30000).unref();`,{mode:0o700});
     const marker=path.join(fx.root,'model-spawned');
     const f=await fake(`require('fs').writeFileSync(${JSON.stringify(marker)},'yes');process.stdout.write(${JSON.stringify(event('Auto')+success)});`);
+    const fakeBytes=await fs.readFile(f.entrypoint,'utf8');await fs.writeFile(f.entrypoint,fakeBytes.replace("if(process.argv[process.argv.indexOf('--tools')+1]","if(process.argv.includes('--model'))require('fs').writeFileSync("+JSON.stringify(marker)+",'yes');if(process.argv[process.argv.indexOf('--tools')+1]"));f.cli_sha256=qoderHash(await fs.readFile(f.entrypoint));
     const cfg=defaultConfig();
     const local={runtime:{node:shim},agents:{'qoder-cn':{vendor:'qoder-cn',bin:f.entrypoint}},probe:{...cfg.probe,cli:{...cfg.probe.cli,qoderclicn:{...cfg.probe.cli['qoderclicn'],entrypoint:f.entrypoint,version:f.cli_version,probed_at:f.prepared_at,native_default:f}}}};
     await fs.writeFile(path.join(fx.root,'.trivium/config.local.yaml'),YAML.stringify(local));
@@ -201,14 +252,16 @@ test('隔离复制树重打包：真实父进程→worker 保留native请求；�
     const handoffPath=path.join(info.run_dir,'request.json');
     const h=JSON.parse(await fs.readFile(handoffPath,'utf8'));
     assert.equal(h.requests['qoder-cn'].native_model.facts.model,'Auto');
-    if(tamper) {h.requests['qoder-cn'].native_model.facts.configuration_sha256='b'.repeat(64);await fs.writeFile(handoffPath,JSON.stringify(h));}
+    assert.equal(h.requests['qoder-cn'].admission.record_id,'synthetic-transport-only');
+    if(tamper==='admission')await fs.appendFile(path.join(fx.root,'.trivium/admission.local.json'),'changed');
+    if(tamper==='native') {h.requests['qoder-cn'].native_model.facts.configuration_sha256='b'.repeat(64);await fs.writeFile(handoffPath,JSON.stringify(h));}
     await fs.writeFile(gate,'go');
     const waited=await run(process.execPath,[bundle,'review','--wait',info.run_id,'--timeout','20','--json'],{cwd:fx.root,env,timeoutMs:30000});
     assert.notEqual(waited.code,73,waited.stdout+waited.stderr);
     const meta=JSON.parse(await fs.readFile(path.join(fx.stageDir,'_meta',`run-${info.run_id}.json`),'utf8'));
     assert.equal(meta.requested_routes['qoder-cn'].native_model.facts.configuration_sha256,f.configuration_sha256);
-    const ran=await fs.stat(marker).then(()=>true,()=>false);assert.equal(ran,!tamper);
-    if(tamper)assert.match(waited.stdout+waited.stderr,/不一致|失败|failed/);
+    const ran=await fs.stat(marker).then(()=>true,()=>false);assert.equal(ran,tamper==='none',JSON.stringify(meta.critics)+' '+waited.stdout+waited.stderr);
+    if(tamper!=='none')assert.match(waited.stdout+waited.stderr,/不一致|失败|failed/);
     else assert.equal(meta.critics['qoder-cn'].native_model.raw_exit_code,0);
   }
   // 测试构建没有回写生产注册表开关。

@@ -1,0 +1,67 @@
+{
+  "agreed": [
+    "严格坚守准入底线：在面临 Custom 底层模型身份无法独立回读、Write/Bash 执行层拒绝证据不足等厂商能力阻碍时，保持 registry 中的 criticEnabled 与 driverEnabled 开关关闭，未为了过审而降低安全标准或虚构准入台账。",
+    "生产环境隔离加固彻底：qoderChildEnv 采用严格显式白名单构造，禁止包含认证或查询参数的代理继承并不在错误中泄漏 URL，临时目录严格收敛于私有临时根并完成单测覆盖。",
+    "真实单变量正负对照完备且诚实留痕：对 Custom 记录了单条加载成功、缺失配置回退 Auto 退出 0、合成错误 key 触发 401 失败三臂；对官方模型记录了 Write/Bash 正控制与两条 Read 路径拒绝，如实报告原生裁剪现象及搜索区域未测状态，不将退出 0 或空结果冒充通过。",
+    "内存凭据护栏与脱敏机制健全：新增 qoder-secrets.mjs 实现已知明文参数与复制认证原文的脱敏替换，命中时强制退出 1 并使终态标记粘滞，同时在输出落地前对用户家目录路径进行了规范化替换。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md",
+    "doc/05_testing/REPORT_2026-10-28_QoderCN只读审核准入与Custom模型接入.md",
+    "doc/05_testing/evidence/qoder-cn-admission-20261028/readonly-2026-10-28T04-11-23-932Z-18cab9.json",
+    "doc/05_testing/evidence/qoder-cn-admission-20261028/readonly-2026-10-28T04-12-18-095Z-595da8.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/KimiCode与QoderCN双角色接入实施计划.md",
+    "doc/08_project/现存Bug与未完成工作清单.md",
+    ".reviews/QoderCN只读审核准入与Custom模型接入/plan/2026-10-28-QoderCN只读审核准入与Custom模型接入-r2-codex.md",
+    ".reviews/QoderCN只读审核准入与Custom模型接入/code/_meta/changes-20261028T041304Z.diff",
+    ".reviews/QoderCN只读审核准入与Custom模型接入/code/2026-10-28-QoderCN只读审核准入与Custom模型接入-gemini.md",
+    "scripts/acceptance/kimi-qoder-cn/README.md",
+    "scripts/acceptance/kimi-qoder-cn/qoder-custom.mjs",
+    "scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs",
+    "scripts/acceptance/kimi-qoder-cn/qoder-secrets.mjs",
+    "scripts/acceptance/kimi-qoder-cn/qoder-secrets.test.mjs",
+    "scripts/acceptance/kimi-qoder-cn/qoder-index.mjs",
+    "src/trivium/adapters/qoder-cn.ts",
+    "src/trivium/adapters/qoder-cn-native.ts",
+    "src/trivium/adapters/qoder-cn-model.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/model-routing.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/probes/qoder-cn.ts",
+    "test/unit/qoder-cn-model.test.ts",
+    "test/integration/qoder-cn-routing.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs:45-46（diff 行 5873-5874），home 与 p 均为绝对路径，前缀再显式拼接 / 产生多余前导斜杠；查阅 doc/05_testing/evidence/qoder-cn-admission-20261028/readonly-2026-10-28T04-11-23-932Z-18cab9.json:86 中实际 Qoder 报错回显的拒绝规则为单斜杠路径。",
+      "id": "AGY-01",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs:45",
+      "problem": "permissions.deny 规则拼接时使用 /${p} 与 /${home}/**，因变量已为绝对路径，生成了包含双斜杠的非标准路径（如 Read(//var/...)），在特定严格 glob 匹配器或跨平台环境下存在路径规范化失效风险。",
+      "severity": "minor",
+      "suggestion": "移除模板字符串中多余的前导斜杠，直接写为 ${t}(${p}) 与 ${t}(${home}/**)，保持路径格式标准。"
+    }
+  ],
+  "not_covered": [
+    "本审查员无代码修改与命令执行权限，无法直接在宿主终端运行 Node 进程验证 qoder-custom.mjs 与 qoder-readonly.mjs 对真实二进制的调用。",
+    "Windows 平台（win32）下的 ACL 配置、权限隔离以及真实运行环境（当前在生产环境与实验脚本中均处于未测阻断状态）。",
+    "Qoder CLI 进程树完整生命周期（包括 SIGTERM/SIGKILL 强杀、超时、用户取消及失联回收等场景）下的辅助进程与临时凭据清理。"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "1. 生产代码已完成严格的环境变量白名单加固（qoderChildEnv），未知父环境/注入变量及含认证代理均安全拒绝，临时目录收敛至私有 HOME；\n2. 针对 Custom 模型的实测表明其仅在内存做最小重加密加载，未泄漏其他模型凭据；但在缺配置时存在回退 Auto 且退出 0 的静默失败反例，且缺乏底层独立身份回读；\n3. 官方模型工具对照测试中，原生 deny 策略仍会提前裁剪工具导致 Tool not found，未能证明 permissions 规则拦截能力；搜索禁读区域未触发拒绝；\n4. Driver 严格遵守准入红线，未强行开放生产 criticEnabled/driverEnabled 开关，在所有文档与证据中均实事求是地将状态标记为阻塞并保留原始反例；\n5. 本次代码修订充分采纳了上一轮审查意见，生产代码安全受控，微小路径拼接优化后即可实施。",
+  "verdict": "pass-after-changes"
+}

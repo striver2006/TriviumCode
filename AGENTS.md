@@ -176,6 +176,8 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
   接入能力从注册表派生；请求、配置声明与运行回读分开记录。Driver 模型仅来自本轮声明，
   模型族逐对三态比较；同族与未知告警继续，不作为闸门条件。真实路线准入之前不得恢复三审或宣称完成。
 
+- 当前 v3 可选 `native_model.facts.binding_version=2/route_kind/route_descriptor` 与 `route_verified` 分离声明/一致性/底层身份；`probe.cli.*.native_routes` 各自过期。审核参数独立为已实测 `review_invocation_args`，不复用无工具可调用参数。组合台账 `admission.v1` 含禁读覆盖 `deny_paths`（请求扩集拒绝），形状后按注册表校身份，项目本地 `.trivium/admission.local.json` 不进 Git，必需项由 registry 派生。`requested_routes.admission` 冻结记录 id/hash，worker 不重选，缺项/过期/证据变化拒绝。Qoder 生产开关须完整真实准入后才启用，当前无合格组合。
+
 - **契约层守跨文件对账**：改了 `hooks.json` / SKILL.md 的 `argument-hint` / CLI 旗标，
   必须同步另一侧，否则 `test/contract/` 红。
 - **集成测试走真实子进程**调打包产物、动真实 git 夹具仓库。凡是「A 进程算的东西

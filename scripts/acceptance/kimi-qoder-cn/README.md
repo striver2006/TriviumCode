@@ -2,6 +2,27 @@
 
 旧 `probe.mjs` 与 Windows/Git Bash 包装保持原默认及历史 hash 语义。
 
+2026-10-28 Qoder 候选接入与诊断（生产准入仍关闭）：
+
+```sh
+node scripts/acceptance/kimi-qoder-cn/qoder-custom.mjs bailian/qwen3.8-flash-tp
+node scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs Qwen3.8-Flash open deny-visible paths
+node scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs Qwen3.8-Flash matrix-open matrix-readonly project-hook-open project-hook-readonly
+node scripts/acceptance/kimi-qoder-cn/qoder-lifecycle.mjs Qwen3.8-Flash
+node scripts/acceptance/kimi-qoder-cn/qoder-admission.mjs doc/05_testing/evidence/qoder-cn-admission-20261028/manifest-custom-0802.json
+node scripts/acceptance/kimi-qoder-cn/qoder-index.mjs
+```
+
+前四条消耗真实配额，显式选择样本；后两条仅校验/汇总项目证据。admission生成器默认仅输出候选评估，全部必需项通过且带--write才写项目台账；当前新review配方仅4项模型控制/30项，空禁读覆盖不能用于生产，不写台账，不打开registry。历史原件wx保留，复跑指当前源码，不保证复原旧脚本/临时路径。
+
+Custom复用生产单条加载器：当前CLI内置非公共JS/WASM在私有replace环境短命Node子进程运行，筛选唯一声明，仅重加密一项；所有解密参数加入秘密集，传输AES-GCM密封，不复制全目录或提取物进项目。模型/CLI/Node/codec/配方指纹绑定，未知布局拒绝；密钥不进配置、日志或工件。可调用不等于只读准入，底层model/provider未知保持null。
+
+readonly可选择 open/readonly/deny-visible/paths/env-canary/matrix-open/matrix-readonly/project-hook-open/project-hook-readonly。Write路径规则实际由Edit(path)管理；05:55已有Write/Bash正控制与可见rule拒绝、直接Grep/Glob禁读拒绝。06:20最小工具仅Read/Grep/Glob且正常调用成功，危险工具未调用不能算分发拒绝；项目Hook正控制执行而user源臂未触发，缺原生执行层排除证据仍阻塞。默认工具31项需完整审计，不能只检查Write/Bash。
+
+生命周期装置观察真实CLI启动失败、超时、诊断取消和强杀，并核组退出/私有根/租约清理；不是生产三审worker，不能替代失联与脱组后代准入。通用两进程租约/冻结测试使用明确合成夹具，也不能冒充native验收。
+
+历史环境/拒绝更正范围见[报告](../../../doc/05_testing/REPORT_2026-10-28_QoderCN只读审核准入与Custom模型接入.md)：04:12及以前只叠加env，04:30后undefined删除，续批qoderRun强制replace覆盖构造后新增键；mode与rule按原生system决策ID区分。旧JSON/索引不回填。共用护栏回归已由默认npm test导入；未知内部解密认证字段如实列扫描边界。官方/Custom、诊断/审核配方、平台与CLI版本的结果不能互相套用。生产三审、Windows与完整安全矩阵未通过。
+
 2026-10-28 新增 macOS Kimi 独立诊断：
 
 ```sh
@@ -33,3 +54,5 @@ node scripts/acceptance/kimi-qoder-cn/kimi-index.mjs
 拒绝文案按版本固定：not found 与敏感路径错误取自 2.3.3 实录；`rule_denied` 文案只取官方源码候选，本批从未在 native 里生效，正向单测是合成回放。换版本时文案不匹配即未证实，必须另取真实正反对照，不能仅为得到绿色而扩大正则。
 
 源码检索工具固定官方 commit，保存全部检索正则、逐项命中与关键函数正文；它不证明二进制等价。索引工具重算原件 hash/模式敏感扫描，不覆盖旧索引，不调用厂商。旧 v1 原件无机读启动账本，v2 索引保持 null/count_complete=false；历史 60 是报告中的逐批人工推算，不伪装为新工具自动核算。新索引也不重复读取用户全局凭据。
+
+Qoder续批代码审修订：无工具callability参数与review_invocation_args分开；探针追加真实最小读取控制（会多一次模型调用），只有成功才提供review参数。当前08:02四臂已改用review argv；旧06:23的4/30不可跨配方继承。模板/环境允许键实际入hash，Custom key大小写精确。无运行目录也会从retention/scrub回收所有者已死的null租约，活组仍拒绝。manifest须列deny_paths已验覆盖，原件scope hash一致且实际请求不扩集才可能准入；当前无完整合格组合。

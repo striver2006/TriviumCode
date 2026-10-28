@@ -808,12 +808,33 @@
           },
           "native_model": {
             "$ref": "#/$defs/nativeRequest"
+          },
+          "admission": {
+            "$ref": "#/$defs/admissionReference"
           }
         }
       }
     }
   },
   "$defs": {
+    "admissionReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "record_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "record_id",
+        "record_sha256"
+      ]
+    },
     "critic": {
       "type": "object",
       "required": [
@@ -1432,10 +1453,120 @@
         }
       }
     },
+    "nativeRouteDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "native_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "declaration_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "credential_source_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "authentication_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "recipe_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "codec": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "source_sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "wasm_sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "recipe": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "source_sha256",
+                "wasm_sha256",
+                "recipe"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "selector",
+        "native_key",
+        "display_name",
+        "provider_id",
+        "model_id",
+        "source_ref",
+        "declaration_sha256",
+        "credential_source_sha256",
+        "authentication_sha256",
+        "recipe_sha256",
+        "codec"
+      ]
+    },
     "nativeFacts": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "binding_version": {
+          "const": 2
+        },
+        "configuration_raw_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "route_kind": {
+          "enum": [
+            "official",
+            "custom"
+          ]
+        },
+        "route_descriptor": {
+          "$ref": "#/$defs/nativeRouteDescriptor"
+        },
         "model": {
           "type": "string",
           "minLength": 1
@@ -1443,7 +1574,8 @@
         "source": {
           "enum": [
             "catalog-default",
-            "config"
+            "config",
+            "native-config"
           ]
         },
         "observed_user_model": {
@@ -1516,6 +1648,13 @@
           "items": {
             "type": "string"
           }
+        },
+        "review_invocation_args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
         }
       },
       "required": [
@@ -1569,6 +1708,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "route_verified": {
+          "type": "boolean"
+        },
         "request": {
           "$ref": "#/$defs/nativeRequest"
         },

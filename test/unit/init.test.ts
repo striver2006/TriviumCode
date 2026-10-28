@@ -285,6 +285,14 @@ test('.gitignore 幂等：重复修正不重复追加', async () => {
   assert.equal(n, 1, `片段应只出现一次，实际 ${n}`);
 });
 
+test('真实安装模板的项目准入台账忽略规则经init幂等写入',async()=>{
+  const root=await scratchDir('trivium-admission-ignore-');
+  const snippet=path.join(REPO_ROOT,'skills/dual-critic/protocol/gitignore.snippet');
+  const report=emptyReport;
+  await fixGitignore(root,snippet,report(),false);await fixGitignore(root,snippet,report(),false);
+  const text=await fs.readFile(path.join(root,'.gitignore'),'utf8');assert.equal(text.split('\n').filter(line=>line==='.trivium/admission.local.json').length,1);
+});
+
 test('无 .claude/ 整体忽略时不乱改', async () => {
   const ctx = await fakeProject();
   const assetRoot = await fakeAssets();

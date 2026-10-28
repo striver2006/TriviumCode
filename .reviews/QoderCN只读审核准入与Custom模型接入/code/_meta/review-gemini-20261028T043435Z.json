@@ -1,0 +1,52 @@
+{
+  "agreed": [
+    "子进程环境隔离通过显式 undefined 补丁彻底修复公共 run 的父环境变量隐式合并隐患，且包含专用 canary 回归测试",
+    "Custom 模型凭据采用内存动态重加密且仅抽取目标单一条目，未在临时根复制全量凭据，配合精确值脱敏护栏有效防范泄漏",
+    "在 Custom 底层身份缺乏可信独立回读、执行层拒绝证据存在原生裁剪遮蔽的情况下，严格保持准入关闭（admission=false，criticEnabled=false，driverEnabled=false），未提前放开生产接线",
+    "客观记录并如实披露 Windows 平台 ACL 与未测事实，并在 Windows 上严格拒绝凭据复制",
+    "对前期审查意见的处理严谨，r2 关于双斜杠路径的驳回附带了 CLI 正则语法实测依据与注释说明，技术论证充分"
+  ],
+  "consulted": [
+    ".reviews/QoderCN只读审核准入与Custom模型接入/code/2026-10-28-QoderCN只读审核准入与Custom模型接入-gemini.md",
+    ".reviews/QoderCN只读审核准入与Custom模型接入/code/2026-10-28-QoderCN只读审核准入与Custom模型接入-r2-gemini.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "doc/05_testing/README.md",
+    "doc/05_testing/REPORT_2026-10-28_QoderCN只读审核准入与Custom模型接入.md",
+    "doc/05_testing/evidence/qoder-cn-admission-20261028/custom-2026-10-28T04-30-46-046Z-cbceeb.json",
+    "doc/05_testing/evidence/qoder-cn-admission-20261028/index-2026-10-28T04-33-00-586Z-104b6c.json",
+    "doc/05_testing/evidence/qoder-cn-admission-20261028/readonly-2026-10-28T04-31-58-012Z-0a893e.json",
+    "doc/08_project/BACKLOG.md",
+    "doc/08_project/KimiCode与QoderCN双角色接入实施计划.md",
+    "doc/08_project/现存Bug与未完成工作清单.md",
+    "scripts/acceptance/kimi-qoder-cn/qoder-custom.mjs",
+    "scripts/acceptance/kimi-qoder-cn/qoder-evidence.mjs",
+    "scripts/acceptance/kimi-qoder-cn/qoder-index.mjs",
+    "scripts/acceptance/kimi-qoder-cn/qoder-readonly.mjs",
+    "scripts/acceptance/kimi-qoder-cn/qoder-secrets.mjs",
+    "scripts/acceptance/kimi-qoder-cn/qoder-secrets.test.mjs",
+    "src/trivium/adapters/qoder-cn-model.ts",
+    "src/trivium/adapters/qoder-cn-native.ts",
+    "src/trivium/adapters/qoder-cn.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/model-routing.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/probes/qoder-cn.ts",
+    "src/trivium/review.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/util/exec.ts",
+    "test/helpers/doc-archive-index.ts",
+    "test/integration/qoder-cn-routing.test.ts",
+    "test/unit/qoder-cn-model.test.ts",
+    "test/unit/qoder-secret-values.test.ts"
+  ],
+  "findings": [],
+  "not_covered": [
+    "审查员沙箱无写权限及外部 CLI 运行权限，未在宿主机实际执行 node scripts/acceptance/kimi-qoder-cn/*.mjs 进行实时二次复测",
+    "Windows 平台（win32）原生环境隔离、文件 ACL 继承、环境变量过滤及真实 CLI 执行由于宿主为 macOS 未作实机运行覆盖",
+    "Qoder CLI 长周期进程生命周期信号（SIGTERM/SIGKILL 宽限期中断及进程树退出）在极端异常退出场景下的表现未作全量压力测试"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "本轮代码变更与取证数据完整可信，前期发现的问题已全部闭环。\n核心变更与验证结果：\n1. 子进程环境变量白名单已通过显式将父环境键赋为 undefined 实现严格覆盖与真实清除，经单测、真实集成子进程 canary 与 real CLI 取证三重验证无泄漏；\n2. Custom 模型凭据加载仅在独立临时目录内存重加密所选单一模型，并配置逐值护栏与扫描器，不污染父配置或泄露无关密钥；\n3. 恪守安全准入红线：针对 Custom 底层供应商与生效模型真实回读缺失、执行层权限规则拒绝（permission-rule）未完整取得等客观差距，保持 admission=false、criticEnabled=false 及 driverEnabled=false，未提前接线三审；\n4. Windows 平台隔离未测事实如实披露，所有报告、设计与契约保持客观严谨。结论同意通过。",
+  "verdict": "pass"
+}

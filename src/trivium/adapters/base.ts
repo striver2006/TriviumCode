@@ -113,6 +113,8 @@ export interface AuthProbe {
 export type AuthCombination = Pick<TierResolution, 'model' | 'effort' | 'vendorProfile'>;
 
 export interface CriticAdapter {
+  /** 同一准入记录冻结后只能复核，不得重选；缺钩子的既有侧行为不变。 */
+  admissionFor?(ctx:AdapterContext,request:Pick<import('../types.js').CriticRequest,'critic'|'project_root'|'model'|'native_model'>,frozen?:import('../types.js').AdmissionReference):import('../types.js').AdmissionReference;
   /** 纯钩子：只消费已加载探针，不能读盘/启动 CLI。 */
   defaultModelFor?(cfg: Config): { kind: 'resolved'; model: string } | { kind: 'missing'; reason: string };
   nativeModelFor?(cfg: Config, model: string, origin: string): import('../types.js').NativeModelRequest;
@@ -261,6 +263,8 @@ export interface CriticAdapter {
    * 编排器自写日志（`stdout.*` / `trace.json`）的脱敏不在这里做，由 `scrub.ts` 统一处理。
    */
   scrubRunDir?(sideDir: string, opts?: { sizeCap?: number }): Promise<CarrierScrub>;
+  /** 无运行侧的探针/doctor凭据租约；只能回收已确认所有者退出的根。 */
+  scrubUnscoped?():Promise<{deleted:string[];errors:string[]}>;
 }
 
 /** `scrubRunDir` 的返回：删了什么、扫了多少、扫到什么 */
@@ -301,7 +305,7 @@ export interface CarrierScrub {
  * 合并任意两格都会让某个「没测到」被当成「测出来没有」。
  */
 export type CatalogSource =
-  | { kind: 'catalog'; models: string[]; source: string }
+  | { kind: 'catalog'; models: string[]; source: string; match?: 'exact' }
   | { kind: 'fallback'; why: string }
   | { kind: 'unverifiable'; why: string };
 
