@@ -378,3 +378,63 @@ TRIVIUM_ASSET_ROOT='/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic' '/opt
 本仓没有开放开发闸门，本轮未启动本仓主题双审，也没有提交、推送、发布。证据：[完整索引](evidence/qoder-write-20261028/index.json)、[根因](evidence/qoder-write-20261028/rootcause.json)、[自动化](evidence/qoder-write-20261028/automation.json)、[冻结](evidence/qoder-write-20261028/freeze.json)、[真实写入](evidence/qoder-write-20261028/native-write.json)、[独立复核](evidence/qoder-write-20261028/independent-audit.json)、[收尾](evidence/qoder-write-20261028/closeout.json)。本节为当前结果；旧节和旧JSON保留历史事实及已指明的判定局限。
 
 本轮后续Git交付：Bob明确授权“提交、推送”。交付前再次核对16份索引对象hash、冻结作用面、全局配置、安装bundle及旧B归档/状态均未变，本仓无开放开发闸门；按本批具名清单提交并推送当前main至origin。旧隔离B的awaiting_approval与approvals=[]保持原样，不代为审批、恢复或放弃；Git交付不提升正式B复验或产品准入状态。上文未提交状态保留为开发收尾时点，实际提交号及远端结果以Git回读为准。
+
+## 11. main / 2b52e24e 新隔离根真实命令B复验（2026-10-29）
+
+**本次B复验未通过：首次原生工具的存在性检查被拒，已立即停止；未进入认领、原稿写入或正式评审。** 上轮Write正控制继续有效，本轮没有重测，也不能用它代替未发生的B写入链。当前生产Driver/审核者准入仍未完成。
+
+### 11.1 实际基线、装置与冻结
+
+起点为干净的`main / 2b52e24ed905f1f1f9e8f83c6451cc13b55c1ed5`，本仓无开放开发闸门；Codex是开发Driver，Qoder CN是被验客户端Driver。未重置、覆盖、删除旧改动或旧工件。旧B索引27个对象、写入正控制索引16个对象均回读匹配。
+
+仅修订验收装置、回归和相关说明：新根备料不再代领；drafts预建、正文不存在；只授权`original.md`、`revised-1.md`至`revised-3.md`、`plan-2.md`至`plan-4.md`七个具名暂存路径，使用已核实的Edit绝对路径规则及路径别名。settings仅来自私有user文件，`dontAsk`、空MCP和原生权限检查保留，不使用全工具、全项目写allow或bypass。Bash显式allow只有wrapper前缀，wrapper再限定本主题、plan、qoder-cn、gemini,glm、入口B、三轮上限及必要旗标；未知run、路由覆盖、审批、放弃、其它阶段均拒绝。原生安全只读操作仍可能自动允许，不能把精确allow宣称为其它读取的绝对deny。
+
+artifact须先有同ID原生Write成功结果和匹配正文hash，再调用生产archive；普通文件、身份、两种轮次、防覆盖及运行/审批停点仍校验。`archive`是编排器工件模块唯一写出口，正式Driver可按入口契约撰写；本批artifact是附加传输控制，不是生产CLI或产品必经契约。裁决轮次取`run.rerun_index`，下一完整计划取被审对象轮次加1。流式监督遇到原生权限拒绝、关键工具错误或传输失败即停，正常wait=73继续；生产gate检查返回proceed/human_review时已立审批停点，立即监督停止，rerun按返回预算继续。私有日志在清理前只提取权限决策及本次调用ID关联行。离线审计补齐两家`out/`真实输出、轨迹和清理回执的复制路径。
+
+定向13项通过。最终完整`npm run check`退出0：4194项、4185通过、9跳过、0失败，363.778秒；最终build/pretest指纹与冻结复算一致，为`e7d86c19e6f245d20b9fcaba6d3db9847f684f0e212f8fdd4623a0f60c79af13`。219个文件在最终检查后冻结，真实调用至收尾均未变化。两次中间完整检查输出保留；其后发现的resolve旗标兼容、gate自动停点和out原件路径补正均由最终完整检查覆盖，不拿中间构建放行。未改skills-src或生成入口，无需render。证据：[装置核验](evidence/qoder-plan-B-20261029-retest/apparatus-audit.json)、[自动化](evidence/qoder-plan-B-20261029-retest/automation.json)、[最终冻结](evidence/qoder-plan-B-20261029-retest/freeze-final.json)。
+
+### 11.2 一次生产预检与一次真实会话
+
+新项目根为`trivium-qoder-plan-B-hBF8Sm/中文 空格项目`，独立run_root为其同级`runs`；完整路径、候选hash及清理责任见[本批夹具](evidence/qoder-plan-B-20261029-retest/current-fixture.json)和preparation原件。新根备料后drafts为空、preparation_claim和original均null，无task、state或run，不复用旧B正文。临时候选只在独立esbuild中启用Qoder Driver，未安装。
+
+真实调用前已说明目的、官方默认路线、固定两审、认证每家最多一次、三轮上限和时限。生产preflight一次通过全部11项：两家缓存过1h TTL，经编排器各一次认证；Antigravity 1.4.9 / `gemini-3.8-flash-high` / high，约99秒；ZCode 0.17.0 / `bigmodel-coding-plan/GLM-5.3`，约13秒，并行墙钟100.457秒。未skip-auth、降级、doctor或扩展探针；Driver未声明底层模型的unknown告警保留。认证成功只证明本次预检，不代表正式评审已运行。证据：[生产preflight](evidence/qoder-plan-B-20261029-retest/production-preflight-1793230554931.json)。
+
+Qoder只启动一次真实模型会话，原生`-p`接收正式B调用原文；另有一次本地`--version`。版本1.1.80、CLI sha256为`33050a4d2ac134e2f8d0a5293cba3df009d7bdbe0f3ae478c73057f113050a02`，源二进制前后未变。上限为25分钟、120次交互、模型请求重试0；生产每轮阶段预算45分钟不因此扩大。实际会话约6.972秒即停止，没有任何正式评审轮次。
+
+| 新B环节 | 本次实际状态 | 原始证据及局限 |
+| --- | --- | --- |
+| 正式入口来源、字节、原生加载 | 来源/字节及原生激活已证；展开正文未回读 | 私有副本与正式入口sha256均为a560d0a6…；init列出dual-review-plan，stderr含`Skill **dual-review-plan** activated.`；无独立Skill或入口Read工具事件，展开正文运行期字节为null，不用模型thinking补证 |
+| 实际路线 | Auto / auto；底层未知 | init与消息标签Auto，计费信封键auto，原生返回0.90504282 credits；底层模型/provider均null，不把路线标签当模型身份 |
+| 首次工具与权限 | **原生拒绝，立即停止** | call_f7fe08dd418d436fb6619a41；同ID调用、失败结果、permission_denied、options.callId、`mode.dont_ask.deny`及permission.resolved/denied均保留 |
+| 实际claim为qoder-cn | 未测 | 没有topic claim；CLI客户端身份不代替阶段认领 |
+| 阅读材料、原稿Write、artifact归档 | 未测 | 无Read、Write或artifact事件；drafts仍空，不预置、不代写、不换tee |
+| 真实双审、run.driver、handoff、worker恢复 | 未测 | 正式评审gemini=0、glm=0；无新run_id，无worker，未减少集合取得通过 |
+| requested_routes冻结及逐项核对 | 未测 | 仅有本批配置路线/认证证据，没有新run请求快照；不能补写为已冻结 |
+| 完整读审查、逐条裁决、下一完整计划 | 未测 | 两家正式意见及正文写入链均未发生，逐项hash链无可核对象 |
+| 生产gate及新人工停点 | 未测/未到达 | 新root无task/state，new_run_id和new_gate为null；没有新审批入口 |
+
+### 11.3 首次拒绝的确证范围、额外操作和装置局限
+
+唯一工具调用原文为：
+
+```sh
+test -f .trivium/bin/trivium && echo "EXISTS" || echo "MISSING"
+```
+
+它是正式入口要求确认wrapper存在时，客户端自行选择的复合Bash检查；超出本批“只直接调用wrapper”的显式命令形态，私有allow没有授权这一整条检查。原生记录`non_execution_kind=permission-rule`，最终决策点为`mode.dont_ask.deny`。因此没有shell实际执行或EXISTS/MISSING结果，也没有wrapper进程或其底层退出码；这不是wrapper执行退64，不能因字符串里含wrapper路径就宣称它已执行。采集器原始stop_reason写作“wrapper工具失败”，是`command.includes`路径匹配的过宽标签；原件不改，离线精确事实在[审计说明](evidence/qoder-plan-B-20261029-retest/offline-audit-notes.json)更正。
+
+同ID权限分支已取得；但mode之前触发“需确认”的具体shell上游分支未单独打印，保持unknown。不能仅凭命令名称、通用文案或终止码认定客户端缺陷，也不能据此认定wrapper缺失或精确Edit写授权回归。旧tee与其它Bash写法的旧上游决策点仍未知。本批事实是入口存在性检查与私有权限配方的衔接缺口，尚未修复或复验。
+
+监督器收到失败即终止；CLI底层退出143、signal=null、earlyStopped=true，未超时、未截断；原生最终信封为error_during_execution/aborted_streaming。未调用任何claim/artifact/review/gate，不换写法、改提示、补结果或重启。正式入口仅启动意图与激活，不是完整B通过。离线audit首次因无归档可walk、输出目录未预建而ENOENT；调用方预建空audit目录后原脚本完成，未改冻结源码，也没有新增真实配额。证据：[原生原件](evidence/qoder-plan-B-20261029-retest/native-B-1793230605158.json)、[同ID拒绝及根因边界](evidence/qoder-plan-B-20261029-retest/rootcause.json)、[离线审计](evidence/qoder-plan-B-20261029-retest/audit/audit-1793230660072.json)、[分项结论](evidence/qoder-plan-B-20261029-retest/verdict.json)。
+
+### 11.4 新旧停点、生产状态和清理
+
+旧主题`DriverCLI-qoder-cn-B`仍只在旧根`trivium-qoder-plan-B-m5Km0O`，run=`20261028T151257Z`。旧state.gate为awaiting_approval，approvals=[]；旧task.gate仍idle，run.gate是运行期快照，不冒称两处当前停点一致。旧归档、state、候选和27份续验/16份写控制索引对象全部未变。新根hBF8Sm没有run、task、state或待审批闸门；不能把Qoder session_id `807c424c-8789-4b07-8cc8-b586ac0630bc`当作run_id。没有approve、恢复或abandon，也没有补写旧工件。
+
+生产src全树、guard/gate、适配器、注册表与版本字段未改。Kimi/Qoder的driverEnabled、criticEnabled、defaultSelected六值均false，package版本仍1.3.2；本仓state hash未变、无开放开发闸门。安装只读检查通过，14份入口匹配；已安装bundle保持`22fce4561d43e6cc6b9d97f4fd3e2b19f0875ec769c209285a69be6587f8c604`。仓库检查生成bundle为`850b473027c0d80f755eeaee321406f11fe0ae1a2b1a142b8c2768fd3312a10d`；两者分别记录，不据此冒称安装新构建。全局所核14项配置/认证hash与轮前一致。
+
+私有Qoder HOME只复制2个最小认证文件，已清理并回读不存在；新正式run_root不存在，未产生正式审核者敏感载体；本次预检以来未见具名认证根残留，本批具名进程路径扫描无残留。已保存证据对已知Qoder认证原串/JSON字符串扫描无命中，未知内部解密字段、完整逃逸后代与监督者SIGKILL清理仍未测。新旧无凭据夹具、候选、运行审计原件及离线辅助根有意保留，使用完毕由Bob确认删除，不称全部临时根已删。证据：[凭据清理](evidence/qoder-plan-B-20261029-retest/credential-cleanup.json)、[收尾回读](evidence/qoder-plan-B-20261029-retest/closeout.json)、[安装回读](evidence/qoder-plan-B-20261029-retest/installation.json)、[完整索引](evidence/qoder-plan-B-20261029-retest/index.json)。
+
+下一项最小操作是先离线审查存在性检查的精确授权与上游需确认分支，补充具名只读检查覆盖及定向回归；之后必须另行授权，才可在又一全新根重新做一次B。本批不再改配方或发起会话，不重跑已通过的写入正控制。原稿/裁决/下一版的真实Write→artifact→archive全链、真实双审/worker/请求冻结、gate和新审批停点仍未满足。Kimi模型、A/C/D、桌面/插件/Windows及审批后恢复/放弃均未测；没有启动本仓开发双审，没有提交、推送、安装或发布。
+
+本批后续Git交付：Bob明确授权“提交、推送”。交付前再次只读核对证据对象hash、最终冻结作用面、安装副本、全局所核hash及旧B归档/状态；本仓无开放开发闸门，当前main与origin/main基线一致。仅提交本批装置、回归、报告/矩阵和索引列出的证据；7份具名原始验证日志作为验收证据纳入，不收集其它运行日志或凭据。旧B的awaiting_approval和approvals=[]保持原样，不代为审批、恢复或放弃，也不启动新模型会话。上文及JSON中的未提交状态保留为验收收尾时点；实际提交号和远端结果以Git回读为准，Git交付不提升本次B或完整Driver准入结论。

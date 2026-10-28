@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-28T23:37:40.123Z",
+  "errors": [
+    {
+      "operation": "首次离线audit",
+      "code": "ENOENT",
+      "path": "audit/audit-1793230644292.json",
+      "reason": "无任何归档可walk，输出目录未自动建立；调用方预建空输出目录后原脚本完成；未改冻结源码，未调用客户端或审核者"
+    }
+  ],
+  "label_correction": {
+    "raw_collector_stop_reason": {
+      "reason": "wrapper工具失败",
+      "id": "call_f7fe08dd418d436fb6619a41"
+    },
+    "precise_fact": "命令仅把wrapper路径作为test -f参数；原生权限拒绝，wrapper进程没有启动。采集器按command.includes路径归为wrapper工具失败，名称过宽；底层wrapper退出码不存在，不能记64或0。"
+  },
+  "decision_point": {
+    "verified": "同ID options.callId、main Bash mode=dontAsk → deny point=mode.dont_ask.deny及permission.resolved/denied均已保存",
+    "upstream_branch": "mode之前为何需确认的shell具体分支未单独打印，保持unknown；不由命令名称或通用拒绝文案推断"
+  }
+}

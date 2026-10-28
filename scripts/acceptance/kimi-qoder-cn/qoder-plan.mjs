@@ -10,6 +10,7 @@ import {createFixture, repo, sha} from './driver-identity.mjs';
 
 export const topic='DriverCLI-qoder-cn-B';
 export const request='/dual-review-plan 检查sum修复计划及测试边界 --topic DriverCLI-qoder-cn-B --critics gemini,glm';
+export const draftNames=['original.md',...Array.from({length:3},(_,i)=>`revised-${i+1}.md`),...Array.from({length:3},(_,i)=>`plan-${i+2}.md`)];
 const self=fileURLToPath(import.meta.url);
 const readJSON=async p=>JSON.parse(await fs.readFile(p,'utf8'));
 const put=async(p,s,mode=0o600)=>{await fs.mkdir(path.dirname(p),{recursive:true,mode:0o700});await fs.writeFile(p,s,{flag:'wx',mode});};
@@ -56,6 +57,19 @@ export function allowed(args,spec){
   if(!Array.isArray(args)||args.some(x=>typeof x!=='string'))return false;
   if(spec.write_control)return spec.control_commands.some(command=>JSON.stringify(command)===JSON.stringify(args));
   if(args.length===2&&args[0]==='artifact'&&args[1]==='--help')return true;
+  const options={topic:['--topic','--stage','--driver',...(args[1]==='resolve'?['--critics','--context','--plan-file','--max-rounds','--goal','--focus']:[])],preflight:['--stage','--driver','--critics','--context'],review:['--entry','--stage','--topic','--driver','--critics','--focus','--goal','--plan-file','--context','--max-rounds','--wait','--status','--timeout'],gate:['--stage','--topic','--run-id']};
+  if(options[args[0]]){
+    const flags=new Set(['--json',...(args[0]==='review'?['--start']:args[0]==='gate'?['--check','--check-artifacts','--await-approval']:[])]),seen=new Set();
+    for(let i=args[0]==='topic'?2:1;i<args.length;i++){
+      const key=args[i];if(key==='--'&&args[0]==='topic'&&args[1]==='resolve')continue;
+      if(!key.startsWith('--')){if(args[0]==='topic'&&args[1]==='resolve')continue;return false;}
+      if(seen.has(key))return false;seen.add(key);
+      if(flags.has(key))continue;
+      if(!options[args[0]].includes(key)||!args[i+1]||args[i+1].startsWith('--'))return false;
+      const v=args[++i];if(key==='--max-rounds'&&v!=='3')return false;
+      if(key==='--run-id'&&!spec.run_ids?.includes(v))return false;
+    }
+  }
   const value=k=>{const n=args.indexOf(k);return n<0?null:args[n+1];};
   for(const k of ['--topic','--stage','--driver','--critics','--entry'])if(args.filter(x=>x===k).length>1)return false;
   if(['--allow-single','--only','--worker','--cancel','--base','--skip-auth-check','--refresh-auth'].some(x=>args.includes(x)))return false;
@@ -94,6 +108,10 @@ export async function artifactInput(spec,args,api){
   const artifacts=await api.listStageArtifacts({archiveRoot:path.join(spec.root,'.reviews'),topic:spec.topic},'plan');
   if(artifacts.some(a=>a.parsed.role==='qoder-cn'&&a.parsed.kind===kind&&a.parsed.rerunIndex===expected))throw Error('本轮工件已存在；不覆盖或自动生成额外轮次');
   const content=await fs.readFile(source,'utf8');
+  if(spec.native_receipts){
+    const receipts=(await fs.readFile(spec.native_receipts,'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);
+    if(!receipts.some(r=>r.name==='Write'&&r.path===source&&r.sha256===sha(content)&&r.result?.error===false))throw Error('缺少本会话同ID原生Write成功及正文hash凭据');
+  }
   return {source,content,sha256:sha(content),kind,rerunIndex:expected};
 }
 
@@ -104,6 +122,7 @@ export async function wrapper(specFile,args){
     if(path.resolve(process.cwd())!==spec.root)throw Error('必须在专用隔离项目执行');
     for(const [p,h] of Object.entries(spec.pins))if(await fileHash(p)!==h)throw Error('专用装置指纹变化，拒绝执行');
     if(!row.allowed)throw Error('仅授权本夹具Qoder CN命令B；审批、放弃和其它阶段均拒绝');
+    if(spec.stopped)throw Error('本批已停止，不再执行依赖操作');
     const api=createRequire(import.meta.url)(spec.helper),{run,writeArtifact}=api;
     if(args[0]==='review'&&args.includes('--start')){
       const receipt=spec.preflight_receipt;
@@ -133,6 +152,9 @@ export async function wrapper(specFile,args){
       }
     }
   }catch(e){row.stderr=e.message+'\n';}
+  if(spec.fail_stop&&row.exit_code!==0&&!(args[0]==='review'&&args.includes('--wait')&&row.exit_code===73)){
+    const latest=await readJSON(specFile);latest.stopped={at,argv:args,exit_code:row.exit_code};await fs.writeFile(specFile,JSON.stringify(latest,null,2));
+  }
   await fs.appendFile(spec.ledger,JSON.stringify(row)+'\n',{mode:0o600});
   process.stdout.write(row.stdout);process.stderr.write(row.stderr);process.exitCode=row.exit_code;
   return row;
@@ -166,32 +188,35 @@ export async function prepare(output){
     const fingerprint=await auth.fingerprint();
     const cache=Object.values(cfg.probe.auth_routes??{}).find(v=>v.combination?.critic===id&&v.combination?.model===route.model&&v.combination?.effort===(route.effort??null)&&v.fingerprint===fingerprint&&v.cli_version===probe.version&&v.ok===true);
     const age=cache?(Date.now()-Date.parse(cache.checked_at))/3600000:null;
-    e.account_checks.push({id,route_model:route.model,version_declared:probe.version,entrypoint_sha256:await fileHash(probe.entrypoint),fingerprint,matching_cache:cache??null,cache_within_ttl:age!==null&&age>=0&&age<cfg.preflight.auth_cache_ttl_h,live_authentication:'未测；严格前置阻塞，无新增模型调用',availability:adapter.availability({cfg,nodePath:process.execPath})});
+    e.account_checks.push({id,route_model:route.model,version_declared:probe.version,entrypoint_sha256:await fileHash(probe.entrypoint),fingerprint,matching_cache:cache??null,cache_within_ttl:age!==null&&age>=0&&age<cfg.preflight.auth_cache_ttl_h,live_authentication:'未测；本步只读缓存，尚未运行生产preflight',availability:adapter.availability({cfg,nodePath:process.execPath})});
   }
   e.readonly_limits='按gemini/glm既有获准机制验B；路径deny仍false/null，不宣称硬隔离或Qoder审核者组合准入。';
-  const projectCfg={schema:cfg.schema,runtime:{node:cfg.runtime.node,run_root:f.spec.run_root},archive_root:'.reviews',review:{...cfg.review,default_critics:['gemini','glm'],failure_policy:'strict',wait_timeout_s:30},profiles:cfg.profiles,agents:{gemini:cfg.agents.gemini,glm:cfg.agents.glm},probe_ttl_days:cfg.probe_ttl_days};
+  const projectCfg={schema:cfg.schema,runtime:{node:cfg.runtime.node,run_root:f.spec.run_root},archive_root:'.reviews',review:{...cfg.review,plan_rounds:3,default_critics:['gemini','glm'],failure_policy:'strict',wait_timeout_s:30},profiles:cfg.profiles,agents:{gemini:cfg.agents.gemini,glm:cfg.agents.glm},probe_ttl_days:cfg.probe_ttl_days};
   // 仅复制非秘密项目配置/既有探针，不复写时间，不复制账号文件。
   await fs.writeFile(path.join(f.root,'.trivium/config.yaml'),JSON.stringify(projectCfg,null,2),{mode:0o600});
   const selectedAuth=Object.fromEntries(Object.entries(cfg.probe.auth_routes??{}).filter(([,v])=>['gemini','glm'].includes(v.combination?.critic)));
   await put(path.join(f.root,'.trivium/config.local.yaml'),JSON.stringify({probe:{generated_at:cfg.probe.generated_at,cli:{agy:cfg.probe.cli.agy,zcode:cfg.probe.cli.zcode},auth:{gemini:cfg.probe.auth?.gemini,glm:cfg.probe.auth?.glm},auth_routes:selectedAuth}},null,2));
   await put(path.join(f.root,'README.md'),'# sum隔离验收\n\nHEAD故意使用减法；工作树加法只是候选。计划为正数、负数、零和交换律增加Node内置测试；本轮不实施。\n');
+  await fs.writeFile(path.join(f.root,'材料.md'),'# 隔离命令B材料\n\n目标：检查sum修复计划及测试边界。HEAD中sum误用减法，工作树加法仅为既有候选；由客户端实际阅读后自行起草完整计划。本批允许固定gemini,glm的命令B审查，最多三轮，不实施业务修复；生产gate到awaiting_approval即停。\n');
   await fs.mkdir(path.join(f.root,'drafts'),{mode:0o700});
   await put(path.join(f.root,'AGENTS.md'),'# 专用Qoder CN命令B夹具\n\nDriver为qoder-cn；审核者只读，以BRIEF角色为准。正式B定义工件命名、内容与gate校验；以下artifact是验收专用传输，不是生产CLI或正式入口的必经要求。\n先认领，再阅读sum.cjs和材料，由客户端自行撰写原稿：Write到drafts/original.md，成功后运行`.trivium/bin/trivium artifact plan 1 drafts/original.md`；不预置固定正文。裁决用artifact revised加run.rerun_index（首轮1）；完整新计划用artifact plan加被审对象轮次+1（原稿1则2），两个轮次不可混同。正文只能来自drafts普通文件。artifact --help可读。\n本装置选择archive实现防覆盖与扫描，直接写归档不满足本批传输控制，但不得把该附加条件冒称产品契约。原生Write或传输失败即停止并保留，不得换Bash/tee等写法。不得改sum.cjs，不直接调审核者、Node或其它入口，不approve/abandon。预检失败停止；gate之后只await-approval并停止。\n');
   const pins=Object.fromEntries(await Promise.all([self,helper,f.candidate,path.join(f.root,'.trivium/config.yaml'),path.join(f.root,'.trivium/config.local.yaml')].map(async p=>[p,await fileHash(p)])));
-  const spec={...f.spec,topic,helper,assets:path.join(repo,'skills/dual-critic'),reviewer_home:os.homedir(),ledger:path.join(temp,'formal-argv.jsonl'),run_ids:[],strict_readonly_ready:false,review_allowed:'仅本主题命令B，启动仍受严格只读前置阻塞',pins,cleanup_owner:'Codex负责凭据即时清理；无凭据候选/夹具由Bob确认使用完毕后删除独立根；未代为approve/abandon'};
+  const spec={...f.spec,topic,helper,assets:path.join(repo,'skills/dual-critic'),reviewer_home:os.homedir(),ledger:path.join(temp,'formal-argv.jsonl'),run_ids:[],fail_stop:true,native_receipts:path.join(temp,'native-writes.jsonl'),draft_names:draftNames,review_allowed:'仅本主题命令B；完整生产预检成功后至多三轮',pins,cleanup_owner:'Codex负责凭据即时清理；无凭据候选/夹具由Bob确认使用完毕后删除独立根；未代为approve/abandon'};
   const specFile=path.join(temp,'fixture-B.json');await put(specFile,JSON.stringify(spec,null,2));
   const guard=path.join(f.root,'.trivium/bin/B-guard.cjs');
   await put(guard,`import(${JSON.stringify(pathToFileURL(self).href)}).then(m=>m.wrapper(${JSON.stringify(specFile)},process.argv.slice(2))).catch(e=>{console.error(e.message);process.exitCode=70});\n`);
   // 替换的只是本次新建夹具wrapper；历史保留夹具不修改。
   const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
   await fs.writeFile(f.wrapper,`#!/bin/sh\nexec ${quote(process.execPath)} ${quote(guard)} "$@"\n`,{mode:0o700});
-  const call=args=>api.run(f.wrapper,args,{cwd:f.root,timeoutMs:180000,killTree:true,maxBufferBytes:8*1024*1024});
-  const claim=await call(['topic','claim','--topic',topic,'--stage','plan','--driver','qoder-cn','--json']);
-  e.preparation_claim=claim;
-  if(claim.code!==0)throw Error('B备料认领失败');
+  // 认领留给原生客户端，备料不代领、不写任何原稿。
+  e.preparation_claim=null;
+  await put(spec.ledger,'');await put(spec.native_receipts,'');
+  await fs.appendFile(path.join(f.root,'AGENTS.md'),'\n本批精确暂存文件：原稿drafts/original.md；第k次裁决drafts/revised-k.md（k=run.rerun_index，1至3）；下一版完整计划drafts/plan-N.md（N=subject_rerun_index+1，2至4）。必须用这些具名路径，文件预先不存在，不重复Write、不覆盖。完整预检失败立即停止，即使正式入口建议自动校准也不doctor。全部命令只直接调用.trivium/bin/trivium，不加cd、管道或其它命令；工具超时按生产返回值。最多三轮正式评审，模型请求重试0，会话总时限25分钟。\n');
+  for(const p of [f.wrapper,guard,path.join(f.root,'AGENTS.md'),path.join(f.root,'README.md'),path.join(f.root,'sum.cjs'),path.join(f.root,'材料.md'),...['qoder-plan-live.mjs','qoder-plan-audit.mjs','qoder-secrets.mjs','driver-identity.mjs','driver-cli.mjs'].map(n=>path.join(path.dirname(self),n)),path.join(repo,'skills/dual-critic/entry/qoder-cn/dual-review-plan/SKILL.md')])spec.pins[p]=await fileHash(p);
+  await fs.writeFile(specFile,JSON.stringify(spec,null,2));
   e.original=null; // 等待真实客户端正文，备料不冒充原稿。
-  // 严格前置已失败，不为取得绿色额外探活或刷新探针。未执行的预检明确留空。
-  e.production_preflight={status:'未测；严格只读前置先行阻塞',exit_code:null};
+  // 本步不探活或刷新探针，真实生产预检必须另行显式执行。
+  e.production_preflight={status:'未测；须显式运行完整生产预检',exit_code:null};
   e.routes=routes;e.fixture=spec;e.spec_file=specFile;
   e.global_after=await globalSnapshot();e.global_unchanged=JSON.stringify(e.global_before)===JSON.stringify(e.global_after);
   e.account_validation='本批只读核验来源存在/hash与生产预检；未新增真实账号/模型调用，不能称为本批真实探活通过';
@@ -201,7 +226,7 @@ export async function prepare(output){
   e.blockers=e.readonly.flatMap(x=>x.reasons.map(reason=>({critic:x.id,reason})));
   e.blocked=e.blockers.length>0;
   e.status='备料完成；尚须本夹具生产预检。缓存过期须刷新，不判账号失效；真实B未启动。';
-  e.approval_entry=null;e.pending_entry={cwd:f.root,text:request,status:'严格前置齐备之后才可执行；当前不要审批或恢复'};
+  e.approval_entry=null;e.pending_entry={cwd:f.root,text:request,status:'本夹具完整生产预检成功后才可执行；当前不要审批或恢复'};
   await fs.mkdir(output,{recursive:true});
   const file=path.join(output,`preparation-${Date.now()}.json`);await put(file,JSON.stringify(e,null,2));
   return {file,spec_file:specFile,fixture:f.root,blocked:e.blocked,blockers:e.blockers};

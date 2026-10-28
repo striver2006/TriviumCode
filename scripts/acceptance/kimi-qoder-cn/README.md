@@ -1,5 +1,17 @@
 # Kimi/Qoder 取证工具
 
+2026-10-29 main/2b52e24e命令B复验：仅在全新根运行以下三步，每步失败即停止，不另起会话。prepare不代领、不预写正文；私有user settings仅允许original.md、revised-1至3.md、plan-2至4.md七个具名暂存文件，保持dontAsk。原生-p只接收正式B原文，流式监督保存同ID Write成功/hash凭据，artifact消费凭据后调用生产archive。权限日志在私有根清理前提取options callId和decisionPoint；不保存认证目录。wrapper只准本批B必要旗标、固定gemini,glm、至多三轮，拒绝未知run/审批/放弃/其它阶段/路由覆盖；失败锁止。正常wait=73属于生产等待，不当成失败；所有时限和等待预算仍以生产返回值为准，会话外层上限25分钟、120轮交互、模型请求重试0。preflight最多两家各一次认证，缓存有效直接复用；失败不doctor。
+
+```sh
+node scripts/acceptance/kimi-qoder-cn/qoder-plan.mjs <全新证据目录>
+node scripts/acceptance/kimi-qoder-cn/qoder-plan-live.mjs production-preflight <本次fixture-B.json> <同证据目录>
+node scripts/acceptance/kimi-qoder-cn/qoder-plan-live.mjs native-B <本次fixture-B.json> <同证据目录>
+```
+
+先完成定向回归和完整check，冻结参与构建的全部文件后才备料/实调。本批不重跑写入正控制，不安装候选，不改生产开关或版本；旧根与旧待审批状态原样保留。后文“本轮禁止运行”是上一批写入正控制的历史边界，本段为新批授权范围。
+
+采集器在`gate --check`成功并返回proceed/human_review（生产机制已立审批停点），或成功的`gate --await-approval`同ID结果出现时立即终止原生会话，标为expected停点；rerun照常继续。底层信号和退出码如实保存，不要求CLI自然退出0。最终验收仍独立核对state、run、审批空集及完整原生写入/归档链。若因此没有最终计费信封，计费键及成本保留unknown，不用旧会话补值。
+
 2026-10-29 main/f7167326归档/权限复核：正式入口允许Driver按命名、schema和轮次契约自行撰写；`archive.ts`是编排器模块的唯一写出口，生产CLI没有`artifact`子命令。暂存正文→artifact→archive是本装置附加控制，旧B未满足该控制，不能据此直接判产品归档违规。真实Write拒绝、旧B待审批和完整验收缺口仍保留。根因与同ID原件见[报告第10节](../../../doc/05_testing/REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#10-main--f7167326-归档契约与原生写入正控制2026-10-29)。
 
 本批新增唯一写入正控制（prepare零配额，real一次真实Qoder会话；不调用任何正式技能或审核者）：

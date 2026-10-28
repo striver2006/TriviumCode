@@ -1,0 +1,276 @@
+{
+  "schema": "trivium.qoder-plan-audit.v1",
+  "at": "2026-10-28T23:37:40.057Z",
+  "source": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/qoder-plan-B-20261029-retest/native-B-1793230605158.json",
+  "source_sha256": "f423b83e816bb36b0f8d833ef633df64e43844aa7605efa4d96be80f87337135",
+  "fixture": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/中文 空格项目",
+  "run_root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/runs",
+  "cli": {
+    "source": "/Users/chenzhenbo/.qoder-cn/bin/qoderclicn/qoderclicn-1.1.80",
+    "sha256": "33050a4d2ac134e2f8d0a5293cba3df009d7bdbe0f3ae478c73057f113050a02",
+    "version": {
+      "code": 0,
+      "signal": null,
+      "stdout": "1.1.80\n",
+      "stderr": "",
+      "durationMs": 2664,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/qoderclicn --version",
+      "spawned": true
+    },
+    "source_unchanged": true
+  },
+  "model_request": {
+    "route": "official-default",
+    "argv_model": null,
+    "private_settings_model": null,
+    "effective_underlying_model": null
+  },
+  "native_exit": {
+    "code": 143,
+    "signal": null,
+    "timedOut": false,
+    "truncated": false
+  },
+  "global_unchanged": true,
+  "private_home_absent": true,
+  "wrapper_pairs": [],
+  "runs": [],
+  "artifacts": [],
+  "writes": [],
+  "native": {
+    "session_id": "807c424c-8789-4b07-8cc8-b586ac0630bc",
+    "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/中文 空格项目",
+    "route_label": "Auto",
+    "underlying_model": null,
+    "skills": [
+      "simplify",
+      "debug",
+      "quest",
+      "batch",
+      "mcp-config",
+      "loop",
+      "run",
+      "verify",
+      "run-skill-generator",
+      "workflow-authoring",
+      "agent-creator",
+      "hook-config",
+      "sdk",
+      "skill-creator",
+      "security-scan",
+      "imagegen",
+      "sites:sites-build-agent-app",
+      "sites:sites-building",
+      "sites:sites-hosting",
+      "sites:sites-management",
+      "deep-research",
+      "dual-review-plan"
+    ],
+    "skill_calls": [],
+    "billing_keys": [
+      "auto"
+    ],
+    "credits": 0.90504282
+  },
+  "permission_pairs": [
+    {
+      "file": ".qoder-cn/logs/runs/2026-10-29T07-36-38-044+08-00-z8n368-p80927/qodercli.log",
+      "tool": "Bash",
+      "tool_id": "call_f7fe08dd418d436fb6619a41",
+      "mode": "dontAsk",
+      "decision": "deny",
+      "point": "mode.dont_ask.deny",
+      "option_line": "2026-10-29T07:36:44.452+08:00 INFO  debug.message [permission-check] options tool=Bash callId=call_f7fe08dd418d436fb6619a41 agentId=- override=undefined",
+      "decision_line": "2026-10-29T07:36:44.454+08:00 INFO  debug.message [permission-check] main Bash mode=dontAsk → deny point=mode.dont_ask.deny"
+    }
+  ],
+  "native_calls": [
+    {
+      "type": "tool_use",
+      "id": "call_f7fe08dd418d436fb6619a41",
+      "name": "Bash",
+      "input": {
+        "command": "test -f .trivium/bin/trivium && echo \"EXISTS\" || echo \"MISSING\"",
+        "description": "Check if trivium binary exists"
+      },
+      "result": {
+        "text": "Error: This action needs approval, and the \"Don't ask\" permission mode does not prompt. Switch modes to approve it.",
+        "error": true
+      }
+    }
+  ],
+  "stop_reason": {
+    "reason": "wrapper工具失败",
+    "id": "call_f7fe08dd418d436fb6619a41"
+  },
+  "entries": [
+    {
+      "name": "dual-review-plan",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-review-plan/SKILL.md",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-3dw5T4/.qoder-cn/skills/dual-review-plan/SKILL.md",
+      "source_sha256": "a560d0a6eabab1784a1bdd5c3b9a55ee7dd876fe2928af87e4f91733b7cf3962",
+      "sha256": "a560d0a6eabab1784a1bdd5c3b9a55ee7dd876fe2928af87e4f91733b7cf3962"
+    }
+  ],
+  "native_denials": [
+    {
+      "type": "system",
+      "tool_name": "Bash",
+      "tool_use_id": "call_f7fe08dd418d436fb6619a41",
+      "message": "Error: This action needs approval, and the \"Don't ask\" permission mode does not prompt. Switch modes to approve it.",
+      "decision_reason_type": "mode",
+      "decision_reason": "This action needs approval, and the \"Don't ask\" permission mode does not prompt. Switch modes to approve it.",
+      "tool_denial_kind": "permission-rule",
+      "subtype": "permission_denied",
+      "uuid": "fb54e433-98af-4b03-8fb6-c1f172fcb095",
+      "session_id": "807c424c-8789-4b07-8cc8-b586ac0630bc"
+    }
+  ],
+  "write_chains": [],
+  "task": null,
+  "state": null,
+  "fixture_head": "5fa54bf3f5dafed380999509c50d904a9076d663",
+  "fixture_head_matches": true,
+  "pins": [
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/qoder-plan.mjs",
+      "expected": "f8bddd06f599bebdf9349e8cdc0892896eb80489635362121f35cd93ce23d105",
+      "actual": "f8bddd06f599bebdf9349e8cdc0892896eb80489635362121f35cd93ce23d105",
+      "matches": true
+    },
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/plan-helper.cjs",
+      "expected": "9cd7ca8ba3491132098a73f192470e234fb5e91c28728c814c9a76b2941ee5f7",
+      "actual": "9cd7ca8ba3491132098a73f192470e234fb5e91c28728c814c9a76b2941ee5f7",
+      "matches": true
+    },
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/candidate.cjs",
+      "expected": "d9c3ff95555a65eecee74fcedb1ba7a40e5835812887e92582e986f56544d2fa",
+      "actual": "d9c3ff95555a65eecee74fcedb1ba7a40e5835812887e92582e986f56544d2fa",
+      "matches": true
+    },
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/中文 空格项目/.trivium/config.yaml",
+      "expected": "4527f2ca6d821ddcb2ccd8623a4646938a58f24b5f4a63d27bcd68f7069a770f",
+      "actual": "4527f2ca6d821ddcb2ccd8623a4646938a58f24b5f4a63d27bcd68f7069a770f",
+      "matches": true
+    },
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/中文 空格项目/.trivium/config.local.yaml",
+      "expected": "401ebdcc9148b3c65fae4eeb76ece29f984b6f655bf5c9dd5007b81750f21420",
+      "actual": "401ebdcc9148b3c65fae4eeb76ece29f984b6f655bf5c9dd5007b81750f21420",
+      "matches": true
+    },
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/中文 空格项目/.trivium/bin/trivium",
+      "expected": "c100b9c6d56c941fb1e3a4508262064a31bb9bc08ac186ab9bb029e25bd598f6",
+      "actual": "c100b9c6d56c941fb1e3a4508262064a31bb9bc08ac186ab9bb029e25bd598f6",
+      "matches": true
+    },
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/中文 空格项目/.trivium/bin/B-guard.cjs",
+      "expected": "42fc918c94b719f7677ac6ad1eb622aca6db281c2c3ee077e4f238853b36b582",
+      "actual": "42fc918c94b719f7677ac6ad1eb622aca6db281c2c3ee077e4f238853b36b582",
+      "matches": true
+    },
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/中文 空格项目/AGENTS.md",
+      "expected": "7a19b3f016be8c1ca12a9cbe8bab6e0b5860f5c3d1fefc8436bd6b0fae495447",
+      "actual": "7a19b3f016be8c1ca12a9cbe8bab6e0b5860f5c3d1fefc8436bd6b0fae495447",
+      "matches": true
+    },
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/中文 空格项目/README.md",
+      "expected": "b976dd70d3ce5b0c0ef5ec21168e0b2cd2a7f0357e69bc39483ff43d45165754",
+      "actual": "b976dd70d3ce5b0c0ef5ec21168e0b2cd2a7f0357e69bc39483ff43d45165754",
+      "matches": true
+    },
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/中文 空格项目/sum.cjs",
+      "expected": "bb7c7db9f2b1a6343c401029371109b8665e996e92ca16c42b503765431a90dc",
+      "actual": "bb7c7db9f2b1a6343c401029371109b8665e996e92ca16c42b503765431a90dc",
+      "matches": true
+    },
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-hBF8Sm/中文 空格项目/材料.md",
+      "expected": "9cbe11b9200f3e6e5c9c50595b603ba3319091c06b78d8781128b4d8c53f0044",
+      "actual": "9cbe11b9200f3e6e5c9c50595b603ba3319091c06b78d8781128b4d8c53f0044",
+      "matches": true
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/qoder-plan-live.mjs",
+      "expected": "8359a0a3cd5c2be64ac4af575adcf6cd7bc2dd20d69d4005c243315bc8fbb5b1",
+      "actual": "8359a0a3cd5c2be64ac4af575adcf6cd7bc2dd20d69d4005c243315bc8fbb5b1",
+      "matches": true
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/qoder-plan-audit.mjs",
+      "expected": "df2bf68585d7885d724e88e5ceb1c1c4921cfe5fe18c9d891f6d4f559a1edd00",
+      "actual": "df2bf68585d7885d724e88e5ceb1c1c4921cfe5fe18c9d891f6d4f559a1edd00",
+      "matches": true
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/qoder-secrets.mjs",
+      "expected": "133cfad1318d612cfd16dbee0b84cb6a5fa67ba3b183422d95d828b8b301e9ea",
+      "actual": "133cfad1318d612cfd16dbee0b84cb6a5fa67ba3b183422d95d828b8b301e9ea",
+      "matches": true
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/driver-identity.mjs",
+      "expected": "e89758c69e163429a458246f2e3de1b52da603448ee1a9c8586ff2ff692f9b30",
+      "actual": "e89758c69e163429a458246f2e3de1b52da603448ee1a9c8586ff2ff692f9b30",
+      "matches": true
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/driver-cli.mjs",
+      "expected": "9d90a3f387f64d7a54e2ea188db71623f688eb6cd78e39a1e32a969f94b3fc4c",
+      "actual": "9d90a3f387f64d7a54e2ea188db71623f688eb6cd78e39a1e32a969f94b3fc4c",
+      "matches": true
+    },
+    {
+      "path": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-review-plan/SKILL.md",
+      "expected": "a560d0a6eabab1784a1bdd5c3b9a55ee7dd876fe2928af87e4f91733b7cf3962",
+      "actual": "a560d0a6eabab1784a1bdd5c3b9a55ee7dd876fe2928af87e4f91733b7cf3962",
+      "matches": true
+    }
+  ],
+  "global_final": {
+    "/Users/chenzhenbo/Work/TriviumCode/.trivium/config.yaml": "c68fbbc2912aeab6673d8d0db9645e006c4029f5cd6815da378225e3b420a152",
+    "/Users/chenzhenbo/Work/TriviumCode/.trivium/config.local.yaml": "205d55f5e9ef38ef10eb092b6acff23a705d2f18ae59d8961b5f48f7b35dd422",
+    "/Users/chenzhenbo/.qoder-cn/settings.json": "140672a4af3a98f0bc4be50a47ccf684ae6cb747bb699b0630ee178ed16e4a08",
+    "/Users/chenzhenbo/.qoder-cn/.auth/user": "4dfc895a87195ea566e0dabd9b862949dca4f7f6d09f14d69a72894e3040da46",
+    "/Users/chenzhenbo/.qoder-cn/.auth/machine_id": "861ef264875eade9081f8c19114ee3356b6681f20203203e884905939cf5072e",
+    "/Users/chenzhenbo/.kimi-code/config.toml": "e489b2f94e6c76db67a7f62a04a1cac8bb0fadbbca5319c16787d04fa55aeeee",
+    "/Users/chenzhenbo/.kimi-code/credentials/kimi-code.json": "6c91fa08353ce37d4ad8b1919c43f80c3817e74760d783e9f1e7d2fdd2178335",
+    "/Users/chenzhenbo/.codex/config.toml": "1b650bf0cf94004f9f71f7f95387a3edd52dbfbbe22dc028008c04b909d1d5d8",
+    "/Users/chenzhenbo/.codex/auth.json": "a86a02dfc65dbe4305624ba36309e22a00f2a58ffd3d31d9d71fb21c36b380df",
+    "/Users/chenzhenbo/.gemini/config/agents/trivium-critic/agent.md": "5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4",
+    "/Users/chenzhenbo/.gemini/settings.json": "3200ed400db119b61b2ed0659ec4f96d9264ca5c764e76d0619ebec54bafe0de",
+    "/Users/chenzhenbo/.gemini/config/settings.json": null,
+    "/Users/chenzhenbo/.zcode/cli/config.json": "5cbbb8505c445a42a0e7a01c5d775ec372cf417396d22467e3d2077410eaab99",
+    "/Users/chenzhenbo/.zcode/v2/provider_config.json": "f7f64749b47b7c9d389994de267bdc0966cdf97eb0c4e81a3a2a30c3b0dbbfdd"
+  },
+  "global_still_unchanged": true,
+  "production_flags": [
+    {
+      "id": "kimi",
+      "driverEnabled": false,
+      "criticEnabled": false,
+      "defaultSelected": false
+    },
+    {
+      "id": "qoder-cn",
+      "driverEnabled": false,
+      "criticEnabled": false,
+      "defaultSelected": false
+    }
+  ],
+  "installed_bundle_sha256": "22fce4561d43e6cc6b9d97f4fd3e2b19f0875ec769c209285a69be6587f8c604",
+  "root_cleanup_owner": "Codex负责凭据即时清理；无凭据候选/夹具由Bob确认使用完毕后删除独立根；未代为approve/abandon",
+  "approval_executed": false,
+  "restore_or_abandon_executed": false
+}

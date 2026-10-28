@@ -5,9 +5,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {helper} from './driver-identity.mjs';
-import {allowed,strictReadiness,topic,artifactInput,writeSettings} from './qoder-plan.mjs';
-import {nativeTools,linkRows} from './qoder-plan-audit.mjs';
+import {allowed,strictReadiness,topic,artifactInput,writeSettings,prepare} from './qoder-plan.mjs';
+import {nativeTools,linkRows,permissionPairs} from './qoder-plan-audit.mjs';
 import {prepareWrite} from './qoder-write.mjs';
+import {nativeObserver,permissionLogs} from './qoder-plan-live.mjs';
 
 const spec={topic,run_ids:['known-run']};
 const start=['review','--start','--stage','plan','--topic',topic,'--driver','qoder-cn','--critics','gemini,glm','--entry','B'];
@@ -26,6 +27,56 @@ test('B传输策略保持指定主题、阶段、身份、审核集合与入口'
   assert.equal(allowed(start,spec),true);
   for(const [from,to] of [['plan','code'],[topic,'other'],['qoder-cn','codex'],['gemini,glm','gemini'],['B','A']])assert.equal(allowed(start.map(x=>x===from?to:x),spec),false);
   for(const tail of [['--allow-single'],['--only','glm'],['--driver','codex'],['--critics','glm'],['--worker','run'],['--cancel','run'],['--skip-auth-check'],['--refresh-auth']])assert.equal(allowed([...start,...tail],spec),false);
+  for(const tail of [['--unknown'],['--model-glm','other'],['--max-rounds','4'],['--run-id','foreign']])assert.equal(allowed([...start,...tail],spec),false);
+  assert.equal(allowed([...start,'--max-rounds','3'],spec),true);
+  assert.equal(allowed(['topic','resolve','--stage','plan','--json','--','检查sum修复计划及测试边界','--topic',topic,'--critics','gemini,glm','--driver','qoder-cn'],spec),true);
+  assert.equal(allowed(['preflight','--stage','plan','--driver','qoder-cn','--critics','gemini,glm','--context','sum.cjs','--json'],spec),true);
+});
+
+test('流式监督只认同ID成功Write；权限拒绝或传输失败立停，正常wait73继续',()=>{
+  const receipts=new Map(),stops=[],o=nativeObserver(receipts,r=>stops.push(r));
+  const send=e=>o.line(JSON.stringify(e));
+  send({message:{content:[{type:'tool_use',id:'w',name:'Write',input:{file_path:'/draft',content:'native'}}]}});
+  send({message:{content:[{type:'tool_result',tool_use_id:'other',content:'ok'}]}});assert.equal(receipts.size,0);
+  send({message:{content:[{type:'tool_result',tool_use_id:'w',content:'ok'}]}});assert.equal(receipts.get('w').result.error,false);
+  send({message:{content:[{type:'tool_use',id:'wait',name:'Bash',input:{command:'.trivium/bin/trivium review --wait known'}}]}});
+  send({message:{content:[{type:'tool_result',tool_use_id:'wait',content:'Exit code 73\n{"still_running": true}',is_error:true}]}});assert.equal(stops.length,0);
+  send({subtype:'permission_denied',tool_use_id:'denied'});assert.equal(stops.at(-1).id,'denied');
+  const failure=nativeObserver(new Map(),r=>stops.push(r));
+  failure.line(JSON.stringify({message:{content:[{type:'tool_use',id:'a',name:'Bash',input:{command:'.trivium/bin/trivium artifact plan 1 drafts/original.md'}},{type:'tool_result',tool_use_id:'a',content:'Exit code 64',is_error:true}]}}));
+  assert.equal(stops.at(-1).id,'a');
+  const approved=nativeObserver(new Map(),r=>stops.push(r));
+  approved.line(JSON.stringify({message:{content:[{type:'tool_use',id:'g',name:'Bash',input:{command:'.trivium/bin/trivium gate --stage plan --topic test --await-approval'}},{type:'tool_result',tool_use_id:'g',content:'等待人工审批'}]}}));
+  assert.equal(stops.at(-1).expected,true);assert.equal(stops.at(-1).id,'g');
+  for(const action of ['proceed','human_review','rerun']){
+    const ended=[],o=nativeObserver(new Map(),r=>ended.push(r));
+    o.line(JSON.stringify({message:{content:[{type:'tool_use',id:'check',name:'Bash',input:{command:'.trivium/bin/trivium gate --check --json'}},{type:'tool_result',tool_use_id:'check',content:JSON.stringify({ok:true,next_action:action})}]}}));
+    assert.equal(ended.length,action==='rerun'?0:1);
+  }
+});
+
+test('私有日志清理前提取权限决策和调用ID，认证目录不入证据',async()=>{
+  const home=await fs.mkdtemp(path.join(os.tmpdir(),'qoder-permission-log-test-')),config=path.join(home,'.qoder-cn');
+  try{
+    await fs.mkdir(path.join(config,'.auth'),{recursive:true});
+    await fs.writeFile(path.join(config,'.auth','secret.log'),'[permission-check] synthetic-secret');
+    await fs.writeFile(path.join(config,'native.log'),'unrelated\n[permission-check] options tool=Write callId=test-call\n[permission-check] main Write → allow point=fs_write.rule.allow\n');
+    const logs=await permissionLogs(config,home,['test-call']);assert.equal(logs.length,1);assert.equal(logs[0].lines.length,2);assert.equal(JSON.stringify(logs).includes('synthetic-secret'),false);
+    const pairs=permissionPairs([{file:'synthetic.log',lines:['[permission-check] options tool=Write callId=test-call','[permission-check] main Write mode=dontAsk → allow point=fs_write.rule.allow']}]);
+    assert.equal(pairs[0].tool_id,'test-call');assert.equal(pairs[0].point,'fs_write.rule.allow');
+  }finally{await fs.rm(home,{recursive:true,force:true});}
+});
+
+test('新B不代领或预置原稿，drafts预建、七个具名写路径及独立run_root',{timeout:30000},async()=>{
+  const output=await fs.mkdtemp(path.join(os.tmpdir(),'qoder-B-preparation-test-'));let p;
+  try{
+    p=await prepare(output);const s=JSON.parse(await fs.readFile(p.spec_file));
+    assert.deepEqual(await fs.readdir(path.join(s.root,'drafts')),[]);assert.equal(s.draft_names.length,7);assert.equal(s.fail_stop,true);
+    assert.equal(await fs.stat(path.join(s.root,'.reviews')).then(()=>true,e=>{if(e.code==='ENOENT')return false;throw e;}),false);
+    assert.equal(await fs.readFile(s.ledger,'utf8'),'');assert.equal(await fs.readFile(s.native_receipts,'utf8'),'');assert.equal(s.run_root.startsWith(path.dirname(p.spec_file)),true);
+    const settings=writeSettings(s.root,s.draft_names.map(n=>path.join(s.root,'drafts',n)),['.trivium/bin/trivium:*']);
+    assert.equal(settings.permissions.allow.filter(x=>x.startsWith('Edit(')).some(x=>x.includes('*')),false);
+  }finally{await fs.rm(output,{recursive:true,force:true});if(p)await fs.rm(path.dirname(p.spec_file),{recursive:true,force:true});}
 });
 
 test('完整预检成功记录才允许真实子进程启动；失败或过期继续拒绝',{timeout:30000},async()=>{
@@ -99,6 +150,10 @@ test('archive真实落盘守正文hash、防覆盖、暂存边界、运行/停�
     await assert.rejects(artifactInput(local,['artifact','plan','1','drafts/missing.md'],api),/ENOENT/);
     await assert.rejects(artifactInput(local,['artifact','revised','1','drafts/original.md'],api),/已有审查run/);
     local.run_ids=['synthetic'];await fs.writeFile(path.join(archive,'plan/_meta/run-synthetic.json'),JSON.stringify({rerun_index:1,plan_final_check:{subject_rerun_index:2}}));
+    local.native_receipts=path.join(temp,'native-writes.jsonl');await fs.writeFile(local.native_receipts,'');
+    await assert.rejects(artifactInput(local,['artifact','revised','1','drafts/original.md'],api),/同ID/);
+    const {createHash}=await import('node:crypto');const hash=createHash('sha256').update('# 离线合成正文\n').digest('hex');
+    await fs.writeFile(local.native_receipts,JSON.stringify({id:'synthetic-write',name:'Write',path:path.join(root,'drafts/original.md'),sha256:hash,result:{error:false}})+'\n');
     assert.equal((await artifactInput(local,['artifact','revised','1','drafts/original.md'],api)).rerunIndex,1);
     assert.equal((await artifactInput(local,['artifact','plan','3','drafts/original.md'],api)).rerunIndex,3);
     await assert.rejects(artifactInput(local,['artifact','revised','2','drafts/original.md'],api),/轮次不符/);

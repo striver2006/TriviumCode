@@ -1,5 +1,24 @@
 # Kimi Code 与 Qoder CN 双平台验收清单
 
+2026-10-29 main/2b52e24e新隔离B复验见[报告第11节](REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#11-main--2b52e24e-新隔离根真实命令b复验2026-10-29)及[原始证据索引](evidence/qoder-plan-B-20261029-retest/index.json)。以下为最新分项；后文全部保留其历史时点。
+
+| 2b52e24e新B项目 | 本次状态 | 证据及边界 |
+| --- | --- | --- |
+| 新隔离根与备料 | 已核实 | hBF8Sm、独立run_root；drafts预建且为空，不代领、不预写计划；与旧m5Km0O区分 |
+| 装置/权限/防覆盖/轮次/日志与监督 | 离线回归通过，真实全链未测 | 七个具名Edit暂存路径、dontAsk、私有user settings；Write同ID/hash凭据后才准artifact；最终13项定向、完整check 4185通过/9跳过/0失败，219文件冻结一致 |
+| 完整生产preflight及两家认证 | 通过 | gemini-3.8-flash-high/high、GLM-5.3；各一次真实认证，无skip-auth、单审、doctor或额外探针；认证不等于正式评审 |
+| 官方B原文、来源字节与原生加载 | 部分已证 | 1.1.80；私有入口hash一致，原生目录及stderr activation存在；无独立Skill/入口Read事件或展开正文逐字回读 |
+| 本轮首次工具与正式B结果 | **失败并立即停止** | 唯一test -f复合Bash被同ID原生权限拒绝，decisionPoint=mode.dont_ask.deny；wrapper未执行，不能记为其退64；上游需确认分支未知 |
+| claim/材料阅读/原稿Write/artifact | **未测** | 全部尚未发生，drafts仍空；不换tee、补正文或重启；上轮Write正控制沿用但不代替本批链 |
+| 正式双审、身份交接、worker、requested_routes | **未测** | 两家正式评审均0、正式轮次0，无新run；配置路线不能当冻结请求快照 |
+| 读意见、逐条裁决、下一计划、gate | **未测** | 没有正式意见或写入链，不由CLI退出码或预检通过推断 |
+| 官方路线与底层身份 | Auto/auto；底层未知 | 原生计费回读0.90504282 credits，底层模型/provider均null；不把Auto认作模型 |
+| 新旧B审批状态 | 新未到达；旧原样待审批 | 新无run/task/state，new_gate=null；旧20261028T151257Z state=awaiting_approval、approvals=[]、task.gate=idle，run.gate为运行期快照 |
+| 生产、版本、安装、全局与清理 | 已回读，未提升准入 | 六开关false、1.3.2、生产src未变；安装bundle和14份入口不变、全局14项hash不变；新私有HOME不存在，具名进程/认证根无残留；逃逸后代/SIGKILL仍未测 |
+| 剩余与下一项 | 仍未完成Driver准入 | 先离线核精确存在性检查授权/上游分支，补回归；另行授权后才可又一新根真实B。Kimi/A/C/D/桌面/插件/Windows、人工审批与Git交付均未执行 |
+
+以下“日期/状态”为原始清单时点，以以上最新分项为本轮结果。
+
 日期：2026-10-27。负责人：Bob / Codex。状态：待执行，双角色接入尚未交付。
 
 2026-10-29 main/f7167326归档与写权限复核见[报告第10节](REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#10-main--f7167326-归档契约与原生写入正控制2026-10-29)。以下为最新分项，后续旧表保留其历史时点。

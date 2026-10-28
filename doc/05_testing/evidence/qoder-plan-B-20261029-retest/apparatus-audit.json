@@ -1,0 +1,62 @@
+{
+  "at": "2026-10-28T23:27:59.369Z",
+  "baseline": "2b52e24ed905f1f1f9e8f83c6451cc13b55c1ed5",
+  "development_driver": "codex",
+  "client_driver": "qoder-cn",
+  "production_changes": [],
+  "sources": {
+    "entry": "skills/dual-critic/entry/qoder-cn/dual-review-plan/SKILL.md",
+    "entry_sha256": "a560d0a6eabab1784a1bdd5c3b9a55ee7dd876fe2928af87e4f91733b7cf3962",
+    "contract": "skills-src/commands/review-plan.contract.md",
+    "body": "skills-src/partials/review/body.md",
+    "carrier": "skills-src/carriers/qoder-cn.yaml",
+    "design": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "design_sections": [
+      "6.6",
+      "6.7.1",
+      "10.1",
+      "10.2",
+      "10.3",
+      "11.1"
+    ],
+    "environment": "doc/04_development/GUIDE_env_setup.md"
+  },
+  "contract_findings": {
+    "archive": "编排器工件模块唯一写出口；Driver按正式入口撰写。artifact不存在于生产CLI，本批采用它作为额外传输/防覆盖控制。",
+    "rounds": "裁决=run.rerun_index；下一完整计划=(subject_rerun_index ?? rerun_index)+1",
+    "readiness": "沿用gemini/glm获准机制及生产preflight；不把path_deny=false/null或Qoder专属admission挪作两家硬门",
+    "upstream_legacy_shell_branch": "unknown；不由命令名、通用拒绝文案或外层0归因",
+    "prior_control": "上轮原生Write正控制沿用；不重测、不替代正式B/计划质量"
+  },
+  "apparatus": {
+    "preparation": "新根；drafts预建且七个正文文件均不存在；不代领、不预置计划；认领留给原生客户端",
+    "permissions": "仅私有user settings；dont_ask；七个精确Edit绝对路径规则及/private/var别名；归档写deny；Bash限wrapper前缀并由wrapper逐项约束；原生安全读取可能额外自动允许，不能声称精确allow会deny一切其它只读操作",
+    "body_source": "同ID原生Write成功结果与正文sha256先写凭据，再准artifact消费；真实生产archive防覆盖与秘密扫描",
+    "wrapper": "固定plan/qoder-cn/本主题/gemini,glm/B；未知旗标、路线覆盖、未知run、其它阶段、审批与放弃拒绝；最多三轮",
+    "stop": "原生权限拒绝、Write/Read/Skill错误、wrapper错误（正常wait73除外）即stopEarly；失败后wrapper锁止；gate检查proceed/human_review立即监督停止，rerun遵循生产返回预算",
+    "logs": "私有根清理前保留permission-check options.callId与decisionPoint，关联同ID调用与结果；凭据目录不取证",
+    "limits": {
+      "qoder_sessions": 1,
+      "formal_rounds": 3,
+      "auth_each_at_most": 1,
+      "timeout_ms": 1500000,
+      "max_turns": 120,
+      "max_model_request_retries": 0
+    }
+  },
+  "tests": {
+    "targeted": "targeted-complete.log及最终完整check内同源13项；仅自动化，不当成真实验收",
+    "check_in_progress": "check-frozen.log；最终通过后冻结，期间不再修改构建作用面"
+  },
+  "not_started": [
+    "Qoder本轮模型会话",
+    "本轮认证调用",
+    "本轮审核者调用",
+    "本仓开发主题双审",
+    "Kimi模型",
+    "A/C/D",
+    "桌面/插件/Windows",
+    "审批/恢复/放弃",
+    "提交/推送/安装/发布"
+  ]
+}
