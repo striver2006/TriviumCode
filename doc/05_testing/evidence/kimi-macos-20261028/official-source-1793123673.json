@@ -1,0 +1,842 @@
+{
+  "version_tag": "@moonshot-ai/kimi-code@2.3.3",
+  "commit": "ec495f0cb00f6db9a9118bf979112886f4264a41",
+  "tarball_url": "https://api.github.com/repos/moonshotai/kimi-code/tarball/ec495f0cb00f6db9a9118bf979112886f4264a41",
+  "tarball_sha256": "7a750be259bc8365c0d70346f9ca362cd40ab53b8a53d0988c56837b1d3874d2",
+  "scope": "all src TypeScript in official tarball; excludes tests/generated/native equivalence",
+  "files": [
+    {
+      "path": "packages/agent-core-v2/src/session/agentLifecycle/agentLifecycleService.ts",
+      "sha256": "df1951af98277d7e58d38ce6a0bece64e4b593fea0dbc273df0661b45a812bf5",
+      "url": "https://github.com/moonshotai/kimi-code/blob/ec495f0cb00f6db9a9118bf979112886f4264a41/packages/agent-core-v2/src/session/agentLifecycle/agentLifecycleService.ts",
+      "excerpts": [
+        {
+          "line": 19,
+          "text": "import { IConfigService } from '#/app/config/config';"
+        },
+        {
+          "line": 20,
+          "text": "import { ISessionEventBus } from '#/app/event/eventBus';"
+        },
+        {
+          "line": 21,
+          "text": "import { DEFAULT_PERMISSION_MODE_SECTION } from '#/agent/permissionMode/configSection';"
+        },
+        {
+          "line": 22,
+          "text": "import { permissionModeConfiguredKey } from '#/agent/permissionMode/permissionModeOps';"
+        },
+        {
+          "line": 23,
+          "text": "import type { PermissionMode } from '#/agent/permissionPolicy/types';"
+        },
+        {
+          "line": 24,
+          "text": "import { profileKey } from '#/agent/profile/profileOps';"
+        },
+        {
+          "line": 25,
+          "text": "import { hasPinnedPermissionMode } from '#/features/tower/tower';"
+        },
+        {
+          "line": 26,
+          "text": "import { IAgentTaskService } from '#/agent/task/task';"
+        },
+        {
+          "line": 351,
+          "text": "      attachInteractionAgent(agentId, this.ctx.sessionId, handle.accessor.get(IEventDispatcher));"
+        },
+        {
+          "line": 352,
+          "text": "      stage = 'bootstrap';"
+        },
+        {
+          "line": 353,
+          "text": "      await this.bindBootstrap(handle, opts);"
+        },
+        {
+          "line": 354,
+          "text": "      stage = 'toolActivation';"
+        },
+        {
+          "line": 355,
+          "text": "      await handle.accessor.get(IAgentToolActivationService).activate();"
+        },
+        {
+          "line": 356,
+          "text": "      stage = 'attach';"
+        },
+        {
+          "line": 357,
+          "text": "      const loop = handle.accessor.get(IAgentLoopService);"
+        },
+        {
+          "line": 396,
+          "text": "  }"
+        },
+        {
+          "line": 397,
+          "text": ""
+        },
+        {
+          "line": 398,
+          "text": "  private async bindBootstrap("
+        },
+        {
+          "line": 399,
+          "text": "    handle: IAgentScopeHandle,"
+        },
+        {
+          "line": 400,
+          "text": "    opts: CreateAgentOptions,"
+        },
+        {
+          "line": 401,
+          "text": "  ): Promise<void> {"
+        },
+        {
+          "line": 402,
+          "text": "    if (opts.binding !== undefined) {"
+        },
+        {
+          "line": 403,
+          "text": "      await handle.accessor.get(IAgentProfileService).bind(opts.binding);"
+        },
+        {
+          "line": 404,
+          "text": "    }"
+        },
+        {
+          "line": 405,
+          "text": "    const permissionMode = this.config.get<PermissionMode>(DEFAULT_PERMISSION_MODE_SECTION);"
+        },
+        {
+          "line": 406,
+          "text": "    const hasRestoredPermissionMode = handle.accessor"
+        },
+        {
+          "line": 407,
+          "text": "      .get(IAgentStateService)"
+        },
+        {
+          "line": 408,
+          "text": "      .get(permissionModeConfiguredKey);"
+        },
+        {
+          "line": 409,
+          "text": "    if (permissionMode !== undefined && !hasRestoredPermissionMode) {"
+        },
+        {
+          "line": 410,
+          "text": "      handle.accessor.get(IAgentPermissionModeService).setMode(permissionMode);"
+        },
+        {
+          "line": 411,
+          "text": "    }"
+        },
+        {
+          "line": 412,
+          "text": "  }"
+        },
+        {
+          "line": 413,
+          "text": ""
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesOps.ts",
+      "sha256": "165c496964e26bf44f65b74e2b578f07d5db3b9928cc611165e65a3b2bec447a",
+      "url": "https://github.com/moonshotai/kimi-code/blob/ec495f0cb00f6db9a9118bf979112886f4264a41/packages/agent-core-v2/src/agent/permissionRules/permissionRulesOps.ts",
+      "excerpts": [
+        {
+          "line": 17,
+          "text": "});"
+        },
+        {
+          "line": 18,
+          "text": ""
+        },
+        {
+          "line": 19,
+          "text": "export class PermissionRulesAdd extends AgentEvent2<z.infer<typeof permissionRulesAddSchema>> {"
+        },
+        {
+          "line": 20,
+          "text": "  static override readonly type = 'permission.rules.add';"
+        },
+        {
+          "line": 21,
+          "text": "}"
+        },
+        {
+          "line": 22,
+          "text": "export interface PermissionRulesAdd {"
+        },
+        {
+          "line": 23,
+          "text": "  readonly agentId: string;"
+        },
+        {
+          "line": 24,
+          "text": "  readonly rules: readonly PermissionRule[];"
+        },
+        {
+          "line": 25,
+          "text": "}"
+        },
+        {
+          "line": 26,
+          "text": ""
+        },
+        {
+          "line": 49,
+          "text": "  'permissionRules',"
+        },
+        {
+          "line": 50,
+          "text": "  (): PermissionRulesModelState => ({"
+        },
+        {
+          "line": 51,
+          "text": "    rules: [],"
+        },
+        {
+          "line": 52,
+          "text": "    sessionApprovalRulePatterns: [],"
+        },
+        {
+          "line": 53,
+          "text": "  }),"
+        },
+        {
+          "line": 54,
+          "text": ").replayable({ schema: z.custom<PermissionRulesModelState>() })"
+        },
+        {
+          "line": 55,
+          "text": "  .on(PermissionRulesAdd, (s, e) => {"
+        },
+        {
+          "line": 56,
+          "text": "    if (e.rules.length === 0) return;"
+        },
+        {
+          "line": 57,
+          "text": "    s.rules = [...s.rules, ...e.rules];"
+        },
+        {
+          "line": 58,
+          "text": "  })"
+        },
+        {
+          "line": 59,
+          "text": "  .on(PermissionRecordApprovalResult, (s, e) => {"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/agent/permissionRules/configSection.ts",
+      "sha256": "486f17fad4154e8206d88df6efaa704597591836e69ae6c342e6bc2d5fc23e88",
+      "url": "https://github.com/moonshotai/kimi-code/blob/ec495f0cb00f6db9a9118bf979112886f4264a41/packages/agent-core-v2/src/agent/permissionRules/configSection.ts",
+      "excerpts": [
+        {
+          "line": 7,
+          "text": "  type IConfigService,"
+        },
+        {
+          "line": 8,
+          "text": "} from '#/app/config/config';"
+        },
+        {
+          "line": 9,
+          "text": "import { registerConfigSection } from '#/app/config/configSectionContributions';"
+        },
+        {
+          "line": 10,
+          "text": "import {"
+        },
+        {
+          "line": 11,
+          "text": "  cloneRecord,"
+        },
+        {
+          "line": 12,
+          "text": "  isPlainObject,"
+        },
+        {
+          "line": 13,
+          "text": "  plainObjectToToml,"
+        },
+        {
+          "line": 36,
+          "text": "});"
+        },
+        {
+          "line": 37,
+          "text": ""
+        },
+        {
+          "line": 38,
+          "text": "export const PermissionConfigSchema = z.object({"
+        },
+        {
+          "line": 39,
+          "text": "  rules: z.array(PermissionRuleSchema).optional(),"
+        },
+        {
+          "line": 40,
+          "text": "  dangerousCommandGuard: z.boolean().optional(),"
+        },
+        {
+          "line": 41,
+          "text": "});"
+        },
+        {
+          "line": 42,
+          "text": ""
+        },
+        {
+          "line": 43,
+          "text": "export type PermissionConfig = z.infer<typeof PermissionConfigSchema>;"
+        },
+        {
+          "line": 44,
+          "text": ""
+        },
+        {
+          "line": 45,
+          "text": "export const DANGEROUS_COMMAND_GUARD_ENV = 'KIMI_CODE_DANGEROUS_COMMAND_GUARD';"
+        },
+        {
+          "line": 46,
+          "text": ""
+        },
+        {
+          "line": 47,
+          "text": "function parseDangerousCommandGuardEnv(raw: string): boolean | undefined {"
+        },
+        {
+          "line": 52,
+          "text": ""
+        },
+        {
+          "line": 53,
+          "text": "export const permissionEnvBindings: EnvBindings<PermissionConfig> = envBindings("
+        },
+        {
+          "line": 54,
+          "text": "  PermissionConfigSchema,"
+        },
+        {
+          "line": 55,
+          "text": "  {"
+        },
+        {
+          "line": 56,
+          "text": "    dangerousCommandGuard: {"
+        },
+        {
+          "line": 57,
+          "text": "      env: DANGEROUS_COMMAND_GUARD_ENV,"
+        },
+        {
+          "line": 58,
+          "text": "      parse: parseDangerousCommandGuardEnv,"
+        },
+        {
+          "line": 143,
+          "text": "};"
+        },
+        {
+          "line": 144,
+          "text": ""
+        },
+        {
+          "line": 145,
+          "text": "registerConfigSection(PERMISSION_SECTION, PermissionConfigSchema, {"
+        },
+        {
+          "line": 146,
+          "text": "  fromToml: permissionFromToml,"
+        },
+        {
+          "line": 147,
+          "text": "  toToml: permissionToToml,"
+        },
+        {
+          "line": 148,
+          "text": "  env: permissionEnvBindings,"
+        },
+        {
+          "line": 149,
+          "text": "  stripEnv: stripPermissionEnv,"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/agent/permissionPolicy/permissionPolicyService.ts",
+      "sha256": "91b9da37e4e71299d6ed1f2ca4aadd5f6f8ec50e547625fda9facc16138434e3",
+      "url": "https://github.com/moonshotai/kimi-code/blob/ec495f0cb00f6db9a9118bf979112886f4264a41/packages/agent-core-v2/src/agent/permissionPolicy/permissionPolicyService.ts",
+      "excerpts": [
+        {
+          "line": 3,
+          "text": "import { IBootstrapService } from '#/app/bootstrap/bootstrap';"
+        },
+        {
+          "line": 4,
+          "text": "import type { ResolvedToolExecutionHookContext } from '#/agent/toolExecutor/toolHooks';"
+        },
+        {
+          "line": 5,
+          "text": "import { AutoModeApprovePermissionPolicyService } from '#/agent/permissionPolicy/policies/auto-mode-approve';"
+        },
+        {
+          "line": 6,
+          "text": "import { AutoModeAskUserQuestionDenyPermissionPolicyService } from '#/agent/permissionPolicy/policies/auto-mode-ask-user-question-deny';"
+        },
+        {
+          "line": 7,
+          "text": "import { DangerousCommandAskPermissionPolicyService } from '#/agent/permissionPolicy/policies/dangerous-command-ask';"
+        },
+        {
+          "line": 8,
+          "text": "import { DefaultToolApprovePermissionPolicyService } from '#/agent/permissionPolicy/policies/default-tool-approve';"
+        },
+        {
+          "line": 9,
+          "text": "import { FallbackAskPermissionPolicyService } from '#/agent/permissionPolicy/policies/fallback-ask';"
+        },
+        {
+          "line": 14,
+          "text": "import { UserConfiguredAllowPermissionPolicyService } from '#/agent/permissionPolicy/policies/user-configured-allow';"
+        },
+        {
+          "line": 15,
+          "text": "import { UserConfiguredAskPermissionPolicyService } from '#/agent/permissionPolicy/policies/user-configured-ask';"
+        },
+        {
+          "line": 16,
+          "text": "import { UserConfiguredDenyPermissionPolicyService } from '#/agent/permissionPolicy/policies/user-configured-deny';"
+        },
+        {
+          "line": 17,
+          "text": "import { YoloModeApprovePermissionPolicyService } from '#/agent/permissionPolicy/policies/yolo-mode-approve';"
+        },
+        {
+          "line": 18,
+          "text": "import {"
+        },
+        {
+          "line": 19,
+          "text": "  IAgentPermissionPolicyService,"
+        },
+        {
+          "line": 20,
+          "text": "  type PermissionPolicyEvaluation,"
+        },
+        {
+          "line": 39,
+          "text": "    this.policies = ["
+        },
+        {
+          "line": 40,
+          "text": "      this.instantiation.createInstance(AutoModeAskUserQuestionDenyPermissionPolicyService),"
+        },
+        {
+          "line": 41,
+          "text": "      this.instantiation.createInstance(UserConfiguredDenyPermissionPolicyService),"
+        },
+        {
+          "line": 42,
+          "text": "      ...(bootstrap.args.nonInteractive"
+        },
+        {
+          "line": 43,
+          "text": "        ? []"
+        },
+        {
+          "line": 44,
+          "text": "        : [this.instantiation.createInstance(DangerousCommandAskPermissionPolicyService)]),"
+        },
+        {
+          "line": 45,
+          "text": "      this.instantiation.createInstance(AutoModeApprovePermissionPolicyService),"
+        },
+        {
+          "line": 46,
+          "text": "      this.instantiation.createInstance(SessionApprovalHistoryPermissionPolicyService),"
+        },
+        {
+          "line": 47,
+          "text": "      this.instantiation.createInstance(UserConfiguredAskPermissionPolicyService),"
+        },
+        {
+          "line": 48,
+          "text": "      this.instantiation.createInstance(UserConfiguredAllowPermissionPolicyService),"
+        },
+        {
+          "line": 49,
+          "text": "      this.instantiation.createInstance(SensitiveFileAccessAskPermissionPolicyService),"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/agent/permissionPolicy/policies/user-configured-rule.ts",
+      "sha256": "869fce73049e395cc09d3a90e66d37803ead41af917977fc18fe4b532f3c355b",
+      "url": "https://github.com/moonshotai/kimi-code/blob/ec495f0cb00f6db9a9118bf979112886f4264a41/packages/agent-core-v2/src/agent/permissionPolicy/policies/user-configured-rule.ts",
+      "excerpts": []
+    },
+    {
+      "path": "packages/agent-core-v2/src/agent/tools/os/grep/grepTool.ts",
+      "sha256": "0d3a81cc2bb0070c7dd5fcab02dfa7771fbd2cb4ff154ab58d984d1d4b6edfde",
+      "url": "https://github.com/moonshotai/kimi-code/blob/ec495f0cb00f6db9a9118bf979112886f4264a41/packages/agent-core-v2/src/agent/tools/os/grep/grepTool.ts",
+      "excerpts": [
+        {
+          "line": 105,
+          "text": "      description: `Searching for '${args.pattern}' in ${searchPath}`,"
+        },
+        {
+          "line": 106,
+          "text": "      display: { kind: 'file_io', operation: 'grep', path: searchPaths[0]! },"
+        },
+        {
+          "line": 107,
+          "text": "      approvalRule: literalRulePattern(this.name, args.pattern),"
+        },
+        {
+          "line": 108,
+          "text": "      matchesRule: (ruleArgs) => matchesGlobRuleSubject(ruleArgs, args.pattern),"
+        },
+        {
+          "line": 109,
+          "text": "      execute: async ({ signal }) => {"
+        },
+        {
+          "line": 110,
+          "text": "        const lease = this.runtime.acquire(['fs', 'process']);"
+        },
+        {
+          "line": 111,
+          "text": "        try {"
+        },
+        {
+          "line": 112,
+          "text": "          if (lease.runtime.identity.generation !== inspected.identity.generation) {"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/agent/tools/os/glob/globTool.ts",
+      "sha256": "9ab9539c9ba219569eca693fa5b670ad8f57ce74e70e4077868c55eedbab6fdf",
+      "url": "https://github.com/moonshotai/kimi-code/blob/ec495f0cb00f6db9a9118bf979112886f4264a41/packages/agent-core-v2/src/agent/tools/os/glob/globTool.ts",
+      "excerpts": [
+        {
+          "line": 119,
+          "text": "        detail: detailParts.join(', '),"
+        },
+        {
+          "line": 120,
+          "text": "      },"
+        },
+        {
+          "line": 121,
+          "text": "      approvalRule: literalRulePattern(this.name, args.pattern),"
+        },
+        {
+          "line": 122,
+          "text": "      matchesRule: (ruleArgs) => matchesGlobRuleSubject(ruleArgs, args.pattern),"
+        },
+        {
+          "line": 123,
+          "text": "      execute: async ({ signal }) => {"
+        },
+        {
+          "line": 124,
+          "text": "        const lease = this.runtime.acquire(['fs', 'process']);"
+        },
+        {
+          "line": 125,
+          "text": "        try {"
+        },
+        {
+          "line": 126,
+          "text": "          if (lease.runtime.identity.generation !== inspected.identity.generation) {"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/agent/tools/os/read/readTool.ts",
+      "sha256": "71dfc0f2cf0ab8764e816ed1f539647aee1b63c31d57a4f3d9b04debd5b5be56",
+      "url": "https://github.com/moonshotai/kimi-code/blob/ec495f0cb00f6db9a9118bf979112886f4264a41/packages/agent-core-v2/src/agent/tools/os/read/readTool.ts",
+      "excerpts": [
+        {
+          "line": 226,
+          "text": "      description: `Reading ${args.path}`,"
+        },
+        {
+          "line": 227,
+          "text": "      display: { kind: 'file_io', operation: 'read', path },"
+        },
+        {
+          "line": 228,
+          "text": "      approvalRule: literalRulePattern(this.name, path),"
+        },
+        {
+          "line": 229,
+          "text": "      matchesRule: (ruleArgs) =>"
+        },
+        {
+          "line": 230,
+          "text": "        matchesPathRuleSubject(ruleArgs, path, {"
+        },
+        {
+          "line": 231,
+          "text": "          cwd: workspace.workspaceDir,"
+        },
+        {
+          "line": 232,
+          "text": "          pathClass: env.pathClass,"
+        },
+        {
+          "line": 233,
+          "text": "          homeDir: env.homeDir,"
+        },
+        {
+          "line": 255,
+          "text": "      description: `Reading ${args.path}`,"
+        },
+        {
+          "line": 256,
+          "text": "      display: { kind: 'file_io', operation: 'read', path: source.localPath ?? args.path },"
+        },
+        {
+          "line": 257,
+          "text": "      approvalRule: literalRulePattern(this.name, args.path),"
+        },
+        {
+          "line": 258,
+          "text": "      matchesRule: (ruleArgs) => matchesGlobRuleSubject(ruleArgs, args.path),"
+        },
+        {
+          "line": 259,
+          "text": "      execute: async () => ({"
+        },
+        {
+          "line": 260,
+          "text": "        ...withAttachmentLocation(await this.execution(source, args, false), source),"
+        },
+        {
+          "line": 261,
+          "text": "        spillExempt: true,"
+        },
+        {
+          "line": 262,
+          "text": "      }),"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/app/mcpConfig/configLoader.ts",
+      "sha256": "ed30b684f8592466b6d485b5048156012bab8ae1b355cda572a1acdb03f35fc3",
+      "url": "https://github.com/moonshotai/kimi-code/blob/ec495f0cb00f6db9a9118bf979112886f4264a41/packages/agent-core-v2/src/app/mcpConfig/configLoader.ts",
+      "excerpts": [
+        {
+          "line": 11,
+          "text": "export interface McpJsonPaths {"
+        },
+        {
+          "line": 12,
+          "text": "  readonly user: string;"
+        },
+        {
+          "line": 13,
+          "text": "  readonly projectRoot: string;"
+        },
+        {
+          "line": 14,
+          "text": "  readonly project: string;"
+        },
+        {
+          "line": 15,
+          "text": "}"
+        },
+        {
+          "line": 16,
+          "text": ""
+        },
+        {
+          "line": 17,
+          "text": "export interface ResolveMcpJsonPathsInput {"
+        },
+        {
+          "line": 26,
+          "text": ""
+        },
+        {
+          "line": 27,
+          "text": "  return {"
+        },
+        {
+          "line": 28,
+          "text": "    user: join(resolveKimiHome(input.homeDir), 'mcp.json'),"
+        },
+        {
+          "line": 29,
+          "text": "    projectRoot: join(projectRoot, '.mcp.json'),"
+        },
+        {
+          "line": 30,
+          "text": "    project: join(input.cwd, '.kimi-code', 'mcp.json'),"
+        },
+        {
+          "line": 31,
+          "text": "  };"
+        },
+        {
+          "line": 32,
+          "text": "}"
+        },
+        {
+          "line": 33,
+          "text": ""
+        },
+        {
+          "line": 34,
+          "text": "export interface LoadMcpServersInput {"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/features/externalHooks/configSection.ts",
+      "sha256": "a95482d27f1a873a64d4e67fda77e844dc8dc29e424acbe03f6ffb094d832b20",
+      "url": "https://github.com/moonshotai/kimi-code/blob/ec495f0cb00f6db9a9118bf979112886f4264a41/packages/agent-core-v2/src/features/externalHooks/configSection.ts",
+      "excerpts": [
+        {
+          "line": 1,
+          "text": "import { z } from 'zod';"
+        },
+        {
+          "line": 2,
+          "text": ""
+        },
+        {
+          "line": 3,
+          "text": "import { registerConfigSection } from '#/app/config/configSectionContributions';"
+        },
+        {
+          "line": 4,
+          "text": "import { isPlainObject, plainObjectToToml, transformPlainObject } from '#/app/config/toml';"
+        },
+        {
+          "line": 5,
+          "text": ""
+        },
+        {
+          "line": 6,
+          "text": "import { HOOK_EVENT_TYPES } from './internal/types';"
+        },
+        {
+          "line": 7,
+          "text": ""
+        },
+        {
+          "line": 10,
+          "text": "export const HookDefSchema = z"
+        },
+        {
+          "line": 11,
+          "text": "  .object({"
+        },
+        {
+          "line": 12,
+          "text": "    event: z.enum(HOOK_EVENT_TYPES),"
+        },
+        {
+          "line": 13,
+          "text": "    matcher: z.string().optional(),"
+        },
+        {
+          "line": 14,
+          "text": "    command: z.string().min(1),"
+        },
+        {
+          "line": 15,
+          "text": "    timeout: z.number().int().min(1).max(600).optional(),"
+        },
+        {
+          "line": 16,
+          "text": "  })"
+        },
+        {
+          "line": 17,
+          "text": "  .strict();"
+        },
+        {
+          "line": 18,
+          "text": ""
+        },
+        {
+          "line": 19,
+          "text": "export type HookDefConfig = z.infer<typeof HookDefSchema>;"
+        },
+        {
+          "line": 20,
+          "text": ""
+        },
+        {
+          "line": 21,
+          "text": "export const HooksConfigSchema = z.array(HookDefSchema);"
+        },
+        {
+          "line": 22,
+          "text": ""
+        },
+        {
+          "line": 23,
+          "text": "export const hooksFromToml = (rawSnake: unknown): unknown => {"
+        },
+        {
+          "line": 24,
+          "text": "  if (!Array.isArray(rawSnake)) return rawSnake;"
+        },
+        {
+          "line": 25,
+          "text": "  return rawSnake.map((hook) => (isPlainObject(hook) ? transformPlainObject(hook) : hook));"
+        },
+        {
+          "line": 31,
+          "text": "};"
+        },
+        {
+          "line": 32,
+          "text": ""
+        },
+        {
+          "line": 33,
+          "text": "registerConfigSection(HOOKS_SECTION, HooksConfigSchema, {"
+        },
+        {
+          "line": 34,
+          "text": "  fromToml: hooksFromToml,"
+        },
+        {
+          "line": 35,
+          "text": "  toToml: hooksToToml,"
+        },
+        {
+          "line": 36,
+          "text": "});"
+        }
+      ]
+    }
+  ],
+  "rule_add_calls": [
+    {
+      "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesService.ts",
+      "line": 41,
+      "text": "      new PermissionRulesAdd({ agentId: this.scopeContext.agentId, rules: [...rules] }),"
+    }
+  ],
+  "not_binary_equivalence_proof": true
+}

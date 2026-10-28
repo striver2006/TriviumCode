@@ -1,0 +1,99 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass",
+  "summary": "被审补丁为 Kimi macOS 根因取证工具（kimi-rootcause/kimi-lifecycle/kimi-evidence 及其测试）、2.3.3 版证据原件、根因报告与文档同步、registry.ts 注释澄清，生产面零行为变化。我沿审查焦点逐项核实：配置实际加载有模型哨兵与非法规则/非法模型对照支撑；权限规则单因素矩阵的证据原件臂数（rules 22、extra 17、verify 5、final 5、lifecycle 4）与 status 分布和报告完全一致，含 60 次 native 启动的推算核对；Read/Grep/Glob 判定只认同 ID 工具结果，链接别名泄漏（leaked/path_listed）在 verify 原件中确证；扩展注入各面（Hook 正反对照成立、MCP/skills/插件如实标未测）与轨迹证据边界（过滤不升格为拒绝、complete 仅指配对契约）与 r2 计划的判定标准一致。doctor 成功、提示词只读、未调用工具、CLI 退出 0 在报告与 README 中均被显式排除在准入证据之外，焦点禁令被遵守。凭据处理（不复制 refresh token、loopback 不记请求头、私有值脱敏、全局前后 hash、0700/0600、wx 防覆盖）与仓库纪律一致。四条意见均为复跑链健壮性的改进建议，不阻塞实施。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "scripts/acceptance/kimi-qoder-cn/kimi-evidence.test.mjs:6-9",
+      "problem": "测试用 files.find(x=>x.startsWith('kimi-extra-')) 从证据目录动态选择夹具原件，而 kimi-rootcause.mjs 第 20 行的默认输出正是同一目录 doc/05_testing/evidence/kimi-macos-20261028，README 的复跑命令也不带 --output。复跑 extra 套件必然产生第二个 kimi-extra-* 前缀文件，find 依 readdir 顺序取第一个匹配，测试将不确定地读到新旧任一原件：native 行为变化时同一测试对不同夹具给出不同结论，证据目录清理后测试直接崩溃，且该测试不在默认 check 收录、无人值守发现。",
+      "evidence": "scripts/acceptance/kimi-qoder-cn/kimi-evidence.test.mjs 第 6-9 行（readdir+find 选取夹具）；scripts/acceptance/kimi-qoder-cn/kimi-rootcause.mjs 第 20 行（默认 output 指向同一证据目录）；scripts/acceptance/kimi-qoder-cn/README.md 第 7-15 行（复跑命令未指定 --output）。",
+      "suggestion": "把夹具固定为具体已归档文件名，或将最小事件流（assistant tool_calls + 同 ID tool result + 终态 + resume_hint）内联为测试常量，真实原件只作附加参照。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/evidence/kimi-macos-20261028/index-1793124190597.json:1",
+      "problem": "证据索引（trivium.kimi-evidence-index.v1，含逐文件 sha256/bytes/secret 扫描命中、本批启动总量、managed 失败后的全局回读声明）没有对应的生成工具落在仓库内——scripts/ 全目录检索不到该 schema 与 secret_scan_hits 等字段，README 的七条复跑命令也不含索引再生成步骤。报告以独立证据目录加索引作为原件对账面，下次复跑产生的新原件不会进任何索引，sha256 对账链随即断裂且只能手工重建，与本项目证据可复跑的口径不一致。",
+      "evidence": "doc/05_testing/evidence/kimi-macos-20261028/index-1793124190597.json（schema 与逐条目 sha256）；scripts/acceptance/kimi-qoder-cn/ 下 grep kimi-evidence-index 无命中；scripts/acceptance/kimi-qoder-cn/README.md 复跑命令列表。",
+      "suggestion": "将索引生成（读取目录、重算 sha256、跑 secret 扫描、汇总启动数）并入实验工具的一个子命令或独立小脚本并写进 README 复跑步骤；至少在 README 注明索引为一次性产物及其重建方式。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "doc/05_testing/REPORT_2026-10-28_KimiCode_macOS规则根因与只读准入.md:5(§5 扩展隔离表 skills 行)",
+      "problem": "报告 skills 行称本批未保存完整发现清单，但工作树当前版 kimi-rootcause.mjs 已在 loopback 请求记录中写入 skill_sentinel_seen 字段（第 73 行）；extra 批证据的 script_sha256（5b23548b…）与更晚的 managed 批（54ac0609…）不同，且 extra 原件中检索不到该字段，证明跑 extra 时脚本尚无此观测。该结论对已归档证据成立，对按 README 复跑得到的未来证据已过时——复跑者按报告预期解读时会遇到报告未记载的请求级观测字段，可能误以为观测面与报告不符。",
+      "evidence": "scripts/acceptance/kimi-qoder-cn/kimi-rootcause.mjs 第 73 行（skill_sentinel_seen 记录）；doc/05_testing/evidence/kimi-macos-20261028/kimi-extra-1793123673700-a7f1fc.json 第 13 行 script_sha256 与 kimi-managed-1793123729239-a63d5d.json 第 13 行 script_sha256 不同；对该 extra 原件检索 skill_sentinel_seen 无命中。",
+      "suggestion": "在报告 skills 行或 README 补一句：脚本在批次间迭代，复跑的观测面包含 skill_sentinel_seen 等新增字段，以归档原件的 script_sha256 为准对齐结论。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "scripts/acceptance/kimi-qoder-cn/kimi-evidence.mjs:37-39",
+      "problem": "rule_denied、sensitive_blocked、unavailable 三个观测锚定 Kimi 2.3.3 的精确错误文案（正则字面匹配）。native 升级改动文案时这些标志会静默变 false；分类方向是 fail-closed 的（只会从机制拒绝待对照降级为未证实拒绝，不会误判通过），但复跑者可能把拒绝证据消失误读为隔离行为退化，且测试锁住的是旧证据的文案、管不住新版本。README 判定段未说明这一锚定的版本性。",
+      "evidence": "scripts/acceptance/kimi-qoder-cn/kimi-evidence.mjs 第 37-39 行（三条正则字面）；scripts/acceptance/kimi-qoder-cn/README.md 第 23 行（仅声明判定模块实验专用，未提文案锚定）。",
+      "suggestion": "在 README 判定段注明三条拒绝文案锚定 2.3.3 实测输出、换版本复跑时需先在允许臂重新校准文案，避免把文案漂移误读为行为变化。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "根因结论的证据分级诚实：配置加载哨兵（invalid-model-sentinel 退出 1 且零请求、invalid-rule-sentinel 下 -p 仍执行读工具）与官方 2.3.3 源码摘要（permissionRulesOps 初始空、无 addRules 消费、bindBootstrap 不播种规则）相互印证，且报告明确不宣称 native 二进制与公开源码逐字等价、交互 TUI 未测。",
+    "判定器 fail-closed 设计正确：泄漏只从同 ID 工具结果判定，请求文本与模型总结不计；过滤、未调用、口头拒绝、退出 0、文件未变均不升格为执行拒绝；机制拒绝待对照也不作为准入通过；坏 JSON、重复/悬空调用、截断、非零退出、缺终态均判不完整。",
+    "首个 spike 的版本漂移（hash 33eb2b… 与回读 2.3.3 不符）与观察者递归问题被如实保留为无效原件并在后续批改为独立 ps 采样与固定 native 副本，未静默丢弃。",
+    "凭据与隔离边界执行到位：不复制 refresh token、loopback 不记请求头、私有值脱敏、全局 config/credentials 前后 hash 比对、临时根 0700 与文件 0600、输出 wx 防覆盖；managed 桥接因 access_token 为空在启动前停止且未登录未改账号。",
+    "生命周期臂按仓库纪律用 pid 加 lstart 双重身份比对而非 kill(pid,0)，由外层监督者在强杀后确认整组退出再清理，四臂 tree_exit_verified 均为 true；真实凭据清理与逃逸后代如实标未测。",
+    "生产面零改动：registry.ts 仅注释澄清，kimi 的 criticEnabled 与 driverEnabled 均保持 false；旧 probe.mjs、windows.ps1、git-bash.sh 与历史证据未动，符合 r2 计划 CLAUDE-03 与 AGY-06。",
+    "文档同步完整且不改历史：旧报告仅追加 §9，CASE、实施计划状态表、doc/05_testing/README 索引条目均同步，并把受控机制结果明确排除在真实路线准入列之外。"
+  ],
+  "not_covered": [
+    "只读审查，未执行任何命令：kimi-evidence.test.mjs 的 14/14 结果、index 中逐文件 sha256 与原件的一致性、npm 侧任何检查均未复算，结论基于源码阅读与归档 JSON 的字段级抽查。",
+    "kimi-rules（约 26 万字节）等大证据文件只做了臂名、status、leaked/path_listed/rule_denied 等关键字段级检索，未逐臂逐字段全文核对；extra/verify/final 仅抽查了部分臂的观测行。",
+    "official-source-1793123673.json 的 excerpts 未与 GitHub 上游原文逐条比对（无法联网验证），源码层根因接受其与 native 反例的一致性推证。",
+    "60 次 native 启动总数是按各批 version/doctor 辅助启动加臂数的推算（spike 2、rules 23、extra 18、verify 7、final 6、lifecycle 4），与报告总数吻合但未从证据逐批机读重算。",
+    "Windows 包装脚本与桌面、VS Code Extension Host 客户端面仅确认未被本次补丁修改，实际执行面不在本批评审范围。",
+    "生产适配层、gate、schema、TraceCapability 本次补丁未触及，未做重新审查；.trivium 共享配置与运行目录按任务书边界未读。"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "README.md",
+    "AGENTS.md（任务书随附的工作区指令）",
+    "src/trivium/agents/registry.ts（节选 kimi/qoder 段）",
+    "scripts/acceptance/kimi-qoder-cn/README.md",
+    "scripts/acceptance/kimi-qoder-cn/kimi-rootcause.mjs",
+    "scripts/acceptance/kimi-qoder-cn/kimi-evidence.mjs",
+    "scripts/acceptance/kimi-qoder-cn/kimi-evidence.test.mjs",
+    "scripts/acceptance/kimi-qoder-cn/kimi-lifecycle.mjs",
+    "scripts/acceptance/kimi-qoder-cn/probe.mjs",
+    "scripts/acceptance/kimi-qoder-cn/windows.ps1",
+    "scripts/acceptance/kimi-qoder-cn/git-bash.sh",
+    "doc/05_testing/evidence/kimi-macos-20261028/kimi-managed-1793123729239-a63d5d.json",
+    "doc/05_testing/evidence/kimi-macos-20261028/kimi-rules-1793123572082-399108.json（字段级检索）",
+    "doc/05_testing/evidence/kimi-macos-20261028/kimi-extra-1793123673700-a7f1fc.json（头部与字段级检索）",
+    "doc/05_testing/evidence/kimi-macos-20261028/kimi-verify-1793123895955-a45d0e.json（字段级检索）",
+    "doc/05_testing/evidence/kimi-macos-20261028/kimi-final-1793124157502-6b3356.json（字段级检索）",
+    "doc/05_testing/evidence/kimi-macos-20261028/kimi-lifecycle-1793123829752-4c182c.json（字段级检索）",
+    "doc/05_testing/evidence/kimi-macos-20261028/kimi-spike-1793123543180-f18e86.json（字段级检索）",
+    "doc/05_testing/evidence/kimi-macos-20261028/official-source-1793123673.json（节选）",
+    "doc/05_testing/evidence/kimi-macos-20261028/index-1793124190597.json（任务书随附节选）",
+    ".reviews/KimiCode-macOS规则根因与只读准入修复/plan/2026-10-28-KimiCode-macOS规则根因与只读准入修复-r2-codex.md",
+    "doc/05_testing/REPORT_2026-10-27_KimiCode与QoderCN接入前置取证.md",
+    "doc/05_testing/CASE_KimiCode与QoderCN双平台验收.md",
+    "doc/08_project/KimiCode与QoderCN双角色接入实施计划.md（状态表节选）",
+    "test/unit/deny-matrix.test.ts（节选）",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md"
+  ]
+}

@@ -401,7 +401,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
     cliName: 'kimi',
     suffix: 'kimi',
     findingPrefix: 'KIMI',
-    // L2 入口套件先落地；客户端规则加载与五入口验收未完成前保持 Driver 开关关闭。
+    // L2 入口套件先落地；macOS 规则诊断见 2026-10-28 报告。审核隔离仍阻塞，Driver 独立等待五入口验收。
     criticEnabled: false,
     defaultSelected: false,
     driverEnabled: false,

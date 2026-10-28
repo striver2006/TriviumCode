@@ -2,6 +2,8 @@
 
 日期：2026-10-27。负责人：Bob / Codex。状态：待执行，双角色接入尚未交付。
 
+2026-10-28 追加：Kimi macOS 新根因工具与复跑命令见 [实验说明](../../scripts/acceptance/kimi-qoder-cn/README.md)、[本次报告](./REPORT_2026-10-28_KimiCode_macOS规则根因与只读准入.md)。它们不修改以下旧 probe / Windows 控制臂，不把本地受控机制结果填入真实路线准入列。两个开关仍关闭，Windows/其它客户端仍未测。
+
 本清单分开记录能力前置和交付后验收。产品已登记两个 L2 Driver 并生成入口产物，但尚未完成本机安装、客户端调用和审核者安全准入；不能提前把后半部分填写为通过。macOS 当前结果见[前置取证报告](./REPORT_2026-10-27_KimiCode与QoderCN接入前置取证.md)。
 
 ## 1. Windows 能力取证（现在可复跑）

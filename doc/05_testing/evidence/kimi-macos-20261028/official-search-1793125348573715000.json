@@ -1,0 +1,1948 @@
+{
+  "schema": "trivium.kimi-source-search.v1",
+  "commit": "ec495f0cb00f6db9a9118bf979112886f4264a41",
+  "url": "https://api.github.com/repos/moonshotai/kimi-code/tarball/ec495f0cb00f6db9a9118bf979112886f4264a41",
+  "tarball_sha256": "7a750be259bc8365c0d70346f9ca362cd40ab53b8a53d0988c56837b1d3874d2",
+  "typescript_src_files": 2119,
+  "scope": "all tarball src/**/*.ts; excludes tests/generated/binary; regex absence is bounded evidence",
+  "searches": [
+    {
+      "regex": "\\.addRules\\s*\\(",
+      "flags": "none; whole file including newlines",
+      "hits": []
+    },
+    {
+      "regex": "PermissionRulesAdd",
+      "flags": "none; whole file including newlines",
+      "hits": [
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesOps.ts",
+          "line": 19,
+          "text": "export class PermissionRulesAdd extends AgentEvent2<z.infer<typeof permissionRulesAddSchema>> {"
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesOps.ts",
+          "line": 22,
+          "text": "export interface PermissionRulesAdd {"
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesOps.ts",
+          "line": 55,
+          "text": "  .on(PermissionRulesAdd, (s, e) => {"
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesService.ts",
+          "line": 15,
+          "text": "  PermissionRulesAdd,"
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesService.ts",
+          "line": 41,
+          "text": "      new PermissionRulesAdd({ agentId: this.scopeContext.agentId, rules: [...rules] }),"
+        }
+      ]
+    },
+    {
+      "regex": "permission\\.rules\\.add",
+      "flags": "none; whole file including newlines",
+      "hits": [
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesOps.ts",
+          "line": 20,
+          "text": "  static override readonly type = 'permission.rules.add';"
+        }
+      ]
+    },
+    {
+      "regex": "\\bPERMISSION_SECTION\\b",
+      "flags": "none; whole file including newlines",
+      "hits": [
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/configSection.ts",
+          "line": 19,
+          "text": "export const PERMISSION_SECTION = 'permission';"
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/configSection.ts",
+          "line": 67,
+          "text": "    config.get<PermissionConfig | undefined>(PERMISSION_SECTION)?.dangerousCommandGuard ?? true"
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/configSection.ts",
+          "line": 145,
+          "text": "registerConfigSection(PERMISSION_SECTION, PermissionConfigSchema, {"
+        }
+      ]
+    },
+    {
+      "regex": "permissionRulesKey",
+      "flags": "none; whole file including newlines",
+      "hits": [
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesOps.ts",
+          "line": 48,
+          "text": "export const permissionRulesKey = defineState("
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesService.ts",
+          "line": 16,
+          "text": "  permissionRulesKey,"
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesService.ts",
+          "line": 27,
+          "text": "    this.agentState.contributeState(permissionRulesKey);"
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesService.ts",
+          "line": 31,
+          "text": "    return [...this.agentState.get(permissionRulesKey).rules];"
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesService.ts",
+          "line": 35,
+          "text": "    return [...this.agentState.get(permissionRulesKey).sessionApprovalRulePatterns];"
+        }
+      ]
+    },
+    {
+      "regex": "(?:get|inspect|resolve)\\s*(?:<[^>]+>)?\\s*\\(\\s*[\\'\\\"]permission[\\'\\\"]",
+      "flags": "none; whole file including newlines",
+      "hits": []
+    },
+    {
+      "regex": "(?:rulesService|permissionRules)\\.(?:rules|addRules)",
+      "flags": "none; whole file including newlines",
+      "hits": [
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionGate/permissionGateService.ts",
+          "line": 36,
+          "text": "      rules: [...this.rulesService.rules],"
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionPolicy/policies/user-configured-rule.ts",
+          "line": 48,
+          "text": "  const rules = rulesService.rules.filter((rule): rule is PermissionRule =>"
+        }
+      ]
+    },
+    {
+      "regex": "permissionRules\\s*:",
+      "flags": "none; whole file including newlines",
+      "hits": []
+    },
+    {
+      "regex": "config[^\\n]*\\.rules",
+      "flags": "none; whole file including newlines",
+      "hits": [
+        {
+          "path": "apps/kimi-code/src/utils/model-switch-confirm-config.ts",
+          "line": 154,
+          "text": "  return config.rules.find("
+        }
+      ]
+    },
+    {
+      "regex": "config[^\\n]*[Pp]ermission",
+      "flags": "none; whole file including newlines",
+      "hits": [
+        {
+          "path": "apps/kimi-code/src/tui/kimi-tui.ts",
+          "line": 2738,
+          "text": "      patch.permissionMode = config.defaultPermissionMode ?? 'manual';"
+        },
+        {
+          "path": "apps/vis/web/src/hooks/useContext.ts",
+          "line": 9,
+          "text": " * config snapshot, permission mode, plan mode, goal, swarm). Defaults"
+        },
+        {
+          "path": "packages/agent-core-v2/src/agent/permissionRules/configSection.ts",
+          "line": 67,
+          "text": "    config.get<PermissionConfig | undefined>(PERMISSION_SECTION)?.dangerousCommandGuard ?? true"
+        },
+        {
+          "path": "packages/agent-core-v2/src/session/agentLifecycle/agentLifecycleService.ts",
+          "line": 405,
+          "text": "    const permissionMode = this.config.get<PermissionMode>(DEFAULT_PERMISSION_MODE_SECTION);"
+        },
+        {
+          "path": "packages/node-sdk/src/config/toml.ts",
+          "line": 465,
+          "text": "  setSection(out, 'permission', config.permission, permissionToToml);"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "packages/agent-core-v2/src/agent/permissionPolicy/permissionPolicyService.ts",
+      "sha256": "91b9da37e4e71299d6ed1f2ca4aadd5f6f8ec50e547625fda9facc16138434e3",
+      "excerpts": [
+        {
+          "line": 1,
+          "text": "import { IInstantiationService } from \"#/_base/di/instantiation\";"
+        },
+        {
+          "line": 2,
+          "text": "import { Service } from \"#/_base/di/service\";"
+        },
+        {
+          "line": 3,
+          "text": "import { IBootstrapService } from '#/app/bootstrap/bootstrap';"
+        },
+        {
+          "line": 4,
+          "text": "import type { ResolvedToolExecutionHookContext } from '#/agent/toolExecutor/toolHooks';"
+        },
+        {
+          "line": 5,
+          "text": "import { AutoModeApprovePermissionPolicyService } from '#/agent/permissionPolicy/policies/auto-mode-approve';"
+        },
+        {
+          "line": 6,
+          "text": "import { AutoModeAskUserQuestionDenyPermissionPolicyService } from '#/agent/permissionPolicy/policies/auto-mode-ask-user-question-deny';"
+        },
+        {
+          "line": 7,
+          "text": "import { DangerousCommandAskPermissionPolicyService } from '#/agent/permissionPolicy/policies/dangerous-command-ask';"
+        },
+        {
+          "line": 8,
+          "text": "import { DefaultToolApprovePermissionPolicyService } from '#/agent/permissionPolicy/policies/default-tool-approve';"
+        },
+        {
+          "line": 9,
+          "text": "import { FallbackAskPermissionPolicyService } from '#/agent/permissionPolicy/policies/fallback-ask';"
+        },
+        {
+          "line": 10,
+          "text": "import { GitControlPathAccessAskPermissionPolicyService } from '#/agent/permissionPolicy/policies/git-control-path-access-ask';"
+        },
+        {
+          "line": 11,
+          "text": "import { GitCwdWriteApprovePermissionPolicyService } from '#/agent/permissionPolicy/policies/git-cwd-write-approve';"
+        },
+        {
+          "line": 12,
+          "text": "import { SensitiveFileAccessAskPermissionPolicyService } from '#/agent/permissionPolicy/policies/sensitive-file-access-ask';"
+        },
+        {
+          "line": 13,
+          "text": "import { SessionApprovalHistoryPermissionPolicyService } from '#/agent/permissionPolicy/policies/session-approval-history';"
+        },
+        {
+          "line": 14,
+          "text": "import { UserConfiguredAllowPermissionPolicyService } from '#/agent/permissionPolicy/policies/user-configured-allow';"
+        },
+        {
+          "line": 15,
+          "text": "import { UserConfiguredAskPermissionPolicyService } from '#/agent/permissionPolicy/policies/user-configured-ask';"
+        },
+        {
+          "line": 16,
+          "text": "import { UserConfiguredDenyPermissionPolicyService } from '#/agent/permissionPolicy/policies/user-configured-deny';"
+        },
+        {
+          "line": 17,
+          "text": "import { YoloModeApprovePermissionPolicyService } from '#/agent/permissionPolicy/policies/yolo-mode-approve';"
+        },
+        {
+          "line": 18,
+          "text": "import {"
+        },
+        {
+          "line": 19,
+          "text": "  IAgentPermissionPolicyService,"
+        },
+        {
+          "line": 20,
+          "text": "  type PermissionPolicyEvaluation,"
+        },
+        {
+          "line": 21,
+          "text": "} from './permissionPolicy';"
+        },
+        {
+          "line": 22,
+          "text": "import type { PermissionPolicy } from \"./types\";"
+        },
+        {
+          "line": 23,
+          "text": "import { LifecycleScope } from '#/app/scopes';"
+        },
+        {
+          "line": 24,
+          "text": "import { ScopeActivation, registerScopedService } from '#/_base/di/scope';"
+        },
+        {
+          "line": 25,
+          "text": ""
+        },
+        {
+          "line": 26,
+          "text": "export class AgentPermissionPolicyService"
+        },
+        {
+          "line": 27,
+          "text": "  extends Service"
+        },
+        {
+          "line": 28,
+          "text": "  implements IAgentPermissionPolicyService"
+        },
+        {
+          "line": 29,
+          "text": "{"
+        },
+        {
+          "line": 30,
+          "text": "  declare readonly _serviceBrand: undefined;"
+        },
+        {
+          "line": 31,
+          "text": ""
+        },
+        {
+          "line": 32,
+          "text": "  private readonly policies: readonly PermissionPolicy[];"
+        },
+        {
+          "line": 33,
+          "text": ""
+        },
+        {
+          "line": 34,
+          "text": "  constructor("
+        },
+        {
+          "line": 35,
+          "text": "    @IInstantiationService private readonly instantiation: IInstantiationService,"
+        },
+        {
+          "line": 36,
+          "text": "    @IBootstrapService bootstrap: IBootstrapService,"
+        },
+        {
+          "line": 37,
+          "text": "  ) {"
+        },
+        {
+          "line": 38,
+          "text": "    super();"
+        },
+        {
+          "line": 39,
+          "text": "    this.policies = ["
+        },
+        {
+          "line": 40,
+          "text": "      this.instantiation.createInstance(AutoModeAskUserQuestionDenyPermissionPolicyService),"
+        },
+        {
+          "line": 41,
+          "text": "      this.instantiation.createInstance(UserConfiguredDenyPermissionPolicyService),"
+        },
+        {
+          "line": 42,
+          "text": "      ...(bootstrap.args.nonInteractive"
+        },
+        {
+          "line": 43,
+          "text": "        ? []"
+        },
+        {
+          "line": 44,
+          "text": "        : [this.instantiation.createInstance(DangerousCommandAskPermissionPolicyService)]),"
+        },
+        {
+          "line": 45,
+          "text": "      this.instantiation.createInstance(AutoModeApprovePermissionPolicyService),"
+        },
+        {
+          "line": 46,
+          "text": "      this.instantiation.createInstance(SessionApprovalHistoryPermissionPolicyService),"
+        },
+        {
+          "line": 47,
+          "text": "      this.instantiation.createInstance(UserConfiguredAskPermissionPolicyService),"
+        },
+        {
+          "line": 48,
+          "text": "      this.instantiation.createInstance(UserConfiguredAllowPermissionPolicyService),"
+        },
+        {
+          "line": 49,
+          "text": "      this.instantiation.createInstance(SensitiveFileAccessAskPermissionPolicyService),"
+        },
+        {
+          "line": 50,
+          "text": "      this.instantiation.createInstance(GitControlPathAccessAskPermissionPolicyService),"
+        },
+        {
+          "line": 51,
+          "text": "      this.instantiation.createInstance(YoloModeApprovePermissionPolicyService),"
+        },
+        {
+          "line": 52,
+          "text": "      this.instantiation.createInstance(DefaultToolApprovePermissionPolicyService),"
+        },
+        {
+          "line": 53,
+          "text": "      this.instantiation.createInstance(GitCwdWriteApprovePermissionPolicyService),"
+        },
+        {
+          "line": 54,
+          "text": "      this.instantiation.createInstance(FallbackAskPermissionPolicyService),"
+        },
+        {
+          "line": 55,
+          "text": "    ];"
+        },
+        {
+          "line": 56,
+          "text": "  }"
+        },
+        {
+          "line": 57,
+          "text": ""
+        },
+        {
+          "line": 58,
+          "text": "  async evaluate("
+        },
+        {
+          "line": 59,
+          "text": "    context: ResolvedToolExecutionHookContext,"
+        },
+        {
+          "line": 60,
+          "text": "  ): Promise<PermissionPolicyEvaluation | undefined> {"
+        },
+        {
+          "line": 61,
+          "text": "    for (const policy of this.policies) {"
+        },
+        {
+          "line": 62,
+          "text": "      const result = await policy.evaluate(context);"
+        },
+        {
+          "line": 63,
+          "text": "      if (result !== undefined) return { policyName: policy.name, result };"
+        },
+        {
+          "line": 64,
+          "text": "    }"
+        },
+        {
+          "line": 65,
+          "text": "    return undefined;"
+        },
+        {
+          "line": 66,
+          "text": "  }"
+        },
+        {
+          "line": 67,
+          "text": "}"
+        },
+        {
+          "line": 68,
+          "text": ""
+        },
+        {
+          "line": 69,
+          "text": "registerScopedService("
+        },
+        {
+          "line": 70,
+          "text": "  LifecycleScope.Agent,"
+        },
+        {
+          "line": 71,
+          "text": "  IAgentPermissionPolicyService,"
+        },
+        {
+          "line": 72,
+          "text": "  AgentPermissionPolicyService,"
+        },
+        {
+          "line": 73,
+          "text": "  ScopeActivation.OnScopeCreated,"
+        },
+        {
+          "line": 74,
+          "text": "  'permissionPolicy',"
+        },
+        {
+          "line": 75,
+          "text": ");"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/agent/permissionPolicy/policies/user-configured-rule.ts",
+      "sha256": "869fce73049e395cc09d3a90e66d37803ead41af917977fc18fe4b532f3c355b",
+      "excerpts": [
+        {
+          "line": 1,
+          "text": "import type {"
+        },
+        {
+          "line": 2,
+          "text": "  PermissionRule,"
+        },
+        {
+          "line": 3,
+          "text": "  PermissionRuleDecision,"
+        },
+        {
+          "line": 4,
+          "text": "  PermissionRuleScope,"
+        },
+        {
+          "line": 5,
+          "text": "} from '#/agent/permissionRules/permissionRules';"
+        },
+        {
+          "line": 6,
+          "text": "import {"
+        },
+        {
+          "line": 7,
+          "text": "  matchPermissionRule,"
+        },
+        {
+          "line": 8,
+          "text": "  type PermissionRuleMatch,"
+        },
+        {
+          "line": 9,
+          "text": "} from '#/agent/permissionRules/matchesRule';"
+        },
+        {
+          "line": 10,
+          "text": "import type { ResolvedToolExecutionHookContext } from '#/agent/toolExecutor/toolHooks';"
+        },
+        {
+          "line": 11,
+          "text": "import type { IAgentPermissionRulesService } from '#/agent/permissionRules/permissionRules';"
+        },
+        {
+          "line": 12,
+          "text": "import type { PermissionPolicyResult } from '#/agent/permissionPolicy/types';"
+        },
+        {
+          "line": 13,
+          "text": ""
+        },
+        {
+          "line": 14,
+          "text": "const USER_CONFIGURED_SCOPES = new Set<PermissionRuleScope>(["
+        },
+        {
+          "line": 15,
+          "text": "  'turn-override',"
+        },
+        {
+          "line": 16,
+          "text": "  'project',"
+        },
+        {
+          "line": 17,
+          "text": "  'user',"
+        },
+        {
+          "line": 18,
+          "text": "]);"
+        },
+        {
+          "line": 19,
+          "text": ""
+        },
+        {
+          "line": 20,
+          "text": "export function evaluateUserConfiguredRule("
+        },
+        {
+          "line": 21,
+          "text": "  context: ResolvedToolExecutionHookContext,"
+        },
+        {
+          "line": 22,
+          "text": "  decision: PermissionRuleDecision,"
+        },
+        {
+          "line": 23,
+          "text": "  rulesService: IAgentPermissionRulesService,"
+        },
+        {
+          "line": 24,
+          "text": "): PermissionPolicyResult | undefined {"
+        },
+        {
+          "line": 25,
+          "text": "  const match = firstMatchingRule(context, decision, rulesService, USER_CONFIGURED_SCOPES);"
+        },
+        {
+          "line": 26,
+          "text": "  if (match === undefined) return undefined;"
+        },
+        {
+          "line": 27,
+          "text": "  if (decision === 'deny') {"
+        },
+        {
+          "line": 28,
+          "text": "    return {"
+        },
+        {
+          "line": 29,
+          "text": "      kind: 'deny',"
+        },
+        {
+          "line": 30,
+          "text": "      message: defaultPermissionRuleDenyMessage(context.toolCall.name, match.rule.reason),"
+        },
+        {
+          "line": 31,
+          "text": "    };"
+        },
+        {
+          "line": 32,
+          "text": "  }"
+        },
+        {
+          "line": 33,
+          "text": "  if (decision === 'ask') return { kind: 'ask' };"
+        },
+        {
+          "line": 34,
+          "text": "  return { kind: 'approve' };"
+        },
+        {
+          "line": 35,
+          "text": "}"
+        },
+        {
+          "line": 36,
+          "text": ""
+        },
+        {
+          "line": 37,
+          "text": "function defaultPermissionRuleDenyMessage(tool: string, reason: string | undefined): string {"
+        },
+        {
+          "line": 38,
+          "text": "  const suffix = reason !== undefined && reason.length > 0 ? ` Reason: ${reason}` : '';"
+        },
+        {
+          "line": 39,
+          "text": "  return `Tool \"${tool}\" was denied by permission rule.${suffix}`;"
+        },
+        {
+          "line": 40,
+          "text": "}"
+        },
+        {
+          "line": 41,
+          "text": ""
+        },
+        {
+          "line": 42,
+          "text": "function firstMatchingRule("
+        },
+        {
+          "line": 43,
+          "text": "  context: ResolvedToolExecutionHookContext,"
+        },
+        {
+          "line": 44,
+          "text": "  decision: PermissionRuleDecision,"
+        },
+        {
+          "line": 45,
+          "text": "  rulesService: IAgentPermissionRulesService,"
+        },
+        {
+          "line": 46,
+          "text": "  scopes: ReadonlySet<PermissionRuleScope>,"
+        },
+        {
+          "line": 47,
+          "text": "): PermissionRuleMatch | undefined {"
+        },
+        {
+          "line": 48,
+          "text": "  const rules = rulesService.rules.filter((rule): rule is PermissionRule =>"
+        },
+        {
+          "line": 49,
+          "text": "    scopes.has(rule.scope),"
+        },
+        {
+          "line": 50,
+          "text": "  );"
+        },
+        {
+          "line": 51,
+          "text": "  for (const rule of rules) {"
+        },
+        {
+          "line": 52,
+          "text": "    if (rule.decision !== decision) continue;"
+        },
+        {
+          "line": 53,
+          "text": "    const match = matchPermissionRule({"
+        },
+        {
+          "line": 54,
+          "text": "      rule,"
+        },
+        {
+          "line": 55,
+          "text": "      toolName: context.toolCall.name,"
+        },
+        {
+          "line": 56,
+          "text": "      execution: context.execution,"
+        },
+        {
+          "line": 57,
+          "text": "    });"
+        },
+        {
+          "line": 58,
+          "text": "    if (match !== undefined) return match;"
+        },
+        {
+          "line": 59,
+          "text": "  }"
+        },
+        {
+          "line": 60,
+          "text": "  return undefined;"
+        },
+        {
+          "line": 61,
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/agent/permissionRules/configSection.ts",
+      "sha256": "486f17fad4154e8206d88df6efaa704597591836e69ae6c342e6bc2d5fc23e88",
+      "excerpts": [
+        {
+          "line": 1,
+          "text": "import { z } from 'zod';"
+        },
+        {
+          "line": 2,
+          "text": ""
+        },
+        {
+          "line": 3,
+          "text": "import {"
+        },
+        {
+          "line": 4,
+          "text": "  type EnvBindings,"
+        },
+        {
+          "line": 5,
+          "text": "  envBindings,"
+        },
+        {
+          "line": 6,
+          "text": "  stripEnvBoundFields,"
+        },
+        {
+          "line": 7,
+          "text": "  type IConfigService,"
+        },
+        {
+          "line": 8,
+          "text": "} from '#/app/config/config';"
+        },
+        {
+          "line": 9,
+          "text": "import { registerConfigSection } from '#/app/config/configSectionContributions';"
+        },
+        {
+          "line": 10,
+          "text": "import {"
+        },
+        {
+          "line": 11,
+          "text": "  cloneRecord,"
+        },
+        {
+          "line": 12,
+          "text": "  isPlainObject,"
+        },
+        {
+          "line": 13,
+          "text": "  plainObjectToToml,"
+        },
+        {
+          "line": 14,
+          "text": "  transformPlainObject,"
+        },
+        {
+          "line": 15,
+          "text": "} from '#/app/config/toml';"
+        },
+        {
+          "line": 16,
+          "text": ""
+        },
+        {
+          "line": 17,
+          "text": "import { parsePermissionPattern } from './matchesRule';"
+        },
+        {
+          "line": 18,
+          "text": ""
+        },
+        {
+          "line": 19,
+          "text": "export const PERMISSION_SECTION = 'permission';"
+        },
+        {
+          "line": 20,
+          "text": ""
+        },
+        {
+          "line": 21,
+          "text": "export const PermissionRuleDecisionSchema = z.enum(['allow', 'deny', 'ask']);"
+        },
+        {
+          "line": 22,
+          "text": "export const PermissionRuleScopeSchema = z.enum(["
+        },
+        {
+          "line": 23,
+          "text": "  'turn-override',"
+        },
+        {
+          "line": 24,
+          "text": "  'session-runtime',"
+        },
+        {
+          "line": 25,
+          "text": "  'project',"
+        },
+        {
+          "line": 26,
+          "text": "  'user',"
+        },
+        {
+          "line": 27,
+          "text": "]);"
+        },
+        {
+          "line": 28,
+          "text": ""
+        },
+        {
+          "line": 29,
+          "text": "export const PermissionRuleSchema = z.object({"
+        },
+        {
+          "line": 30,
+          "text": "  decision: PermissionRuleDecisionSchema,"
+        },
+        {
+          "line": 31,
+          "text": "  scope: PermissionRuleScopeSchema.default('user'),"
+        },
+        {
+          "line": 32,
+          "text": "  pattern: z.string().min(1).refine(isValidPermissionPattern, {"
+        },
+        {
+          "line": 33,
+          "text": "    message: 'Invalid permission rule pattern',"
+        },
+        {
+          "line": 34,
+          "text": "  }),"
+        },
+        {
+          "line": 35,
+          "text": "  reason: z.string().optional(),"
+        },
+        {
+          "line": 36,
+          "text": "});"
+        },
+        {
+          "line": 37,
+          "text": ""
+        },
+        {
+          "line": 38,
+          "text": "export const PermissionConfigSchema = z.object({"
+        },
+        {
+          "line": 39,
+          "text": "  rules: z.array(PermissionRuleSchema).optional(),"
+        },
+        {
+          "line": 40,
+          "text": "  dangerousCommandGuard: z.boolean().optional(),"
+        },
+        {
+          "line": 41,
+          "text": "});"
+        },
+        {
+          "line": 42,
+          "text": ""
+        },
+        {
+          "line": 43,
+          "text": "export type PermissionConfig = z.infer<typeof PermissionConfigSchema>;"
+        },
+        {
+          "line": 44,
+          "text": ""
+        },
+        {
+          "line": 45,
+          "text": "export const DANGEROUS_COMMAND_GUARD_ENV = 'KIMI_CODE_DANGEROUS_COMMAND_GUARD';"
+        },
+        {
+          "line": 46,
+          "text": ""
+        },
+        {
+          "line": 47,
+          "text": "function parseDangerousCommandGuardEnv(raw: string): boolean | undefined {"
+        },
+        {
+          "line": 48,
+          "text": "  if (raw === 'true') return true;"
+        },
+        {
+          "line": 49,
+          "text": "  if (raw === 'false') return false;"
+        },
+        {
+          "line": 50,
+          "text": "  return undefined;"
+        },
+        {
+          "line": 51,
+          "text": "}"
+        },
+        {
+          "line": 52,
+          "text": ""
+        },
+        {
+          "line": 53,
+          "text": "export const permissionEnvBindings: EnvBindings<PermissionConfig> = envBindings("
+        },
+        {
+          "line": 54,
+          "text": "  PermissionConfigSchema,"
+        },
+        {
+          "line": 55,
+          "text": "  {"
+        },
+        {
+          "line": 56,
+          "text": "    dangerousCommandGuard: {"
+        },
+        {
+          "line": 57,
+          "text": "      env: DANGEROUS_COMMAND_GUARD_ENV,"
+        },
+        {
+          "line": 58,
+          "text": "      parse: parseDangerousCommandGuardEnv,"
+        },
+        {
+          "line": 59,
+          "text": "    },"
+        },
+        {
+          "line": 60,
+          "text": "  },"
+        },
+        {
+          "line": 61,
+          "text": ");"
+        },
+        {
+          "line": 62,
+          "text": ""
+        },
+        {
+          "line": 63,
+          "text": "export const stripPermissionEnv = stripEnvBoundFields(permissionEnvBindings);"
+        },
+        {
+          "line": 64,
+          "text": ""
+        },
+        {
+          "line": 65,
+          "text": "export function isDangerousCommandGuardEnabled(config: IConfigService): boolean {"
+        },
+        {
+          "line": 66,
+          "text": "  return ("
+        },
+        {
+          "line": 67,
+          "text": "    config.get<PermissionConfig | undefined>(PERMISSION_SECTION)?.dangerousCommandGuard ?? true"
+        },
+        {
+          "line": 68,
+          "text": "  );"
+        },
+        {
+          "line": 69,
+          "text": "}"
+        },
+        {
+          "line": 70,
+          "text": ""
+        },
+        {
+          "line": 71,
+          "text": "function isValidPermissionPattern(pattern: string): boolean {"
+        },
+        {
+          "line": 72,
+          "text": "  try {"
+        },
+        {
+          "line": 73,
+          "text": "    parsePermissionPattern(pattern);"
+        },
+        {
+          "line": 74,
+          "text": "    return true;"
+        },
+        {
+          "line": 75,
+          "text": "  } catch {"
+        },
+        {
+          "line": 76,
+          "text": "    return false;"
+        },
+        {
+          "line": 77,
+          "text": "  }"
+        },
+        {
+          "line": 78,
+          "text": "}"
+        },
+        {
+          "line": 79,
+          "text": ""
+        },
+        {
+          "line": 80,
+          "text": "export const permissionFromToml = (rawSnake: unknown): unknown => {"
+        },
+        {
+          "line": 81,
+          "text": "  if (!isPlainObject(rawSnake)) return rawSnake;"
+        },
+        {
+          "line": 82,
+          "text": "  const raw = transformPlainObject(rawSnake);"
+        },
+        {
+          "line": 83,
+          "text": "  const rules: unknown[] = [];"
+        },
+        {
+          "line": 84,
+          "text": "  appendPermissionRules(rules, raw['rules']);"
+        },
+        {
+          "line": 85,
+          "text": "  appendPermissionRules(rules, raw['deny'], 'deny');"
+        },
+        {
+          "line": 86,
+          "text": "  appendPermissionRules(rules, raw['allow'], 'allow');"
+        },
+        {
+          "line": 87,
+          "text": "  appendPermissionRules(rules, raw['ask'], 'ask');"
+        },
+        {
+          "line": 88,
+          "text": "  const out: Record<string, unknown> = {};"
+        },
+        {
+          "line": 89,
+          "text": "  if (rules.length > 0) out['rules'] = rules;"
+        },
+        {
+          "line": 90,
+          "text": "  if (raw['dangerousCommandGuard'] !== undefined) {"
+        },
+        {
+          "line": 91,
+          "text": "    out['dangerousCommandGuard'] = raw['dangerousCommandGuard'];"
+        },
+        {
+          "line": 92,
+          "text": "  }"
+        },
+        {
+          "line": 93,
+          "text": "  return out;"
+        },
+        {
+          "line": 94,
+          "text": "};"
+        },
+        {
+          "line": 95,
+          "text": ""
+        },
+        {
+          "line": 96,
+          "text": "function appendPermissionRules("
+        },
+        {
+          "line": 97,
+          "text": "  target: unknown[],"
+        },
+        {
+          "line": 98,
+          "text": "  value: unknown,"
+        },
+        {
+          "line": 99,
+          "text": "  decision?: 'allow' | 'deny' | 'ask',"
+        },
+        {
+          "line": 100,
+          "text": "): void {"
+        },
+        {
+          "line": 101,
+          "text": "  if (value === undefined) return;"
+        },
+        {
+          "line": 102,
+          "text": "  const entries = Array.isArray(value) ? value : [value];"
+        },
+        {
+          "line": 103,
+          "text": "  for (const entry of entries) {"
+        },
+        {
+          "line": 104,
+          "text": "    target.push(transformPermissionRule(entry, decision));"
+        },
+        {
+          "line": 105,
+          "text": "  }"
+        },
+        {
+          "line": 106,
+          "text": "}"
+        },
+        {
+          "line": 107,
+          "text": ""
+        },
+        {
+          "line": 108,
+          "text": "function transformPermissionRule(value: unknown, decision?: 'allow' | 'deny' | 'ask'): unknown {"
+        },
+        {
+          "line": 109,
+          "text": "  if (!isPlainObject(value)) return value;"
+        },
+        {
+          "line": 110,
+          "text": "  const rule = transformPlainObject(value);"
+        },
+        {
+          "line": 111,
+          "text": "  const tool = rule['tool'];"
+        },
+        {
+          "line": 112,
+          "text": "  const match = rule['match'];"
+        },
+        {
+          "line": 113,
+          "text": "  const pattern = rule['pattern'];"
+        },
+        {
+          "line": 114,
+          "text": "  const out: Record<string, unknown> = {"
+        },
+        {
+          "line": 115,
+          "text": "    decision: decision !== undefined ? decision : rule['decision'],"
+        },
+        {
+          "line": 116,
+          "text": "    scope: rule['scope'],"
+        },
+        {
+          "line": 117,
+          "text": "    reason: rule['reason'],"
+        },
+        {
+          "line": 118,
+          "text": "  };"
+        },
+        {
+          "line": 119,
+          "text": "  if (typeof tool === 'string') {"
+        },
+        {
+          "line": 120,
+          "text": "    const argPattern = typeof match === 'string' ? match : pattern;"
+        },
+        {
+          "line": 121,
+          "text": "    out['pattern'] = typeof argPattern === 'string' ? `${tool}(${argPattern})` : tool;"
+        },
+        {
+          "line": 122,
+          "text": "  } else {"
+        },
+        {
+          "line": 123,
+          "text": "    out['pattern'] = pattern;"
+        },
+        {
+          "line": 124,
+          "text": "  }"
+        },
+        {
+          "line": 125,
+          "text": "  return out;"
+        },
+        {
+          "line": 126,
+          "text": "}"
+        },
+        {
+          "line": 127,
+          "text": ""
+        },
+        {
+          "line": 128,
+          "text": "export const permissionToToml = (value: unknown, rawSnake: unknown): unknown => {"
+        },
+        {
+          "line": 129,
+          "text": "  if (!isPlainObject(value)) return value;"
+        },
+        {
+          "line": 130,
+          "text": "  const out = cloneRecord(rawSnake);"
+        },
+        {
+          "line": 131,
+          "text": "  delete out['deny'];"
+        },
+        {
+          "line": 132,
+          "text": "  delete out['allow'];"
+        },
+        {
+          "line": 133,
+          "text": "  delete out['ask'];"
+        },
+        {
+          "line": 134,
+          "text": "  const rules = value['rules'];"
+        },
+        {
+          "line": 135,
+          "text": "  if (Array.isArray(rules)) {"
+        },
+        {
+          "line": 136,
+          "text": "    out['rules'] = rules.map((rule) =>"
+        },
+        {
+          "line": 137,
+          "text": "      isPlainObject(rule) ? plainObjectToToml(rule, undefined) : rule,"
+        },
+        {
+          "line": 138,
+          "text": "    );"
+        },
+        {
+          "line": 139,
+          "text": "  } else {"
+        },
+        {
+          "line": 140,
+          "text": "    delete out['rules'];"
+        },
+        {
+          "line": 141,
+          "text": "  }"
+        },
+        {
+          "line": 142,
+          "text": "  return out;"
+        },
+        {
+          "line": 143,
+          "text": "};"
+        },
+        {
+          "line": 144,
+          "text": ""
+        },
+        {
+          "line": 145,
+          "text": "registerConfigSection(PERMISSION_SECTION, PermissionConfigSchema, {"
+        },
+        {
+          "line": 146,
+          "text": "  fromToml: permissionFromToml,"
+        },
+        {
+          "line": 147,
+          "text": "  toToml: permissionToToml,"
+        },
+        {
+          "line": 148,
+          "text": "  env: permissionEnvBindings,"
+        },
+        {
+          "line": 149,
+          "text": "  stripEnv: stripPermissionEnv,"
+        },
+        {
+          "line": 150,
+          "text": "});"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesOps.ts",
+      "sha256": "165c496964e26bf44f65b74e2b578f07d5db3b9928cc611165e65a3b2bec447a",
+      "excerpts": [
+        {
+          "line": 1,
+          "text": "/* oxlint-disable typescript-eslint/no-unsafe-declaration-merging, eslint-plugin-import/namespace -- Event2 class+payload-interface declaration merging is the sanctioned event-declaration idiom. */"
+        },
+        {
+          "line": 2,
+          "text": "import { z } from 'zod';"
+        },
+        {
+          "line": 3,
+          "text": ""
+        },
+        {
+          "line": 4,
+          "text": "import { AgentEvent2 } from '#/app/event/event2';"
+        },
+        {
+          "line": 5,
+          "text": "import { defineState } from '#/state/state';"
+        },
+        {
+          "line": 6,
+          "text": ""
+        },
+        {
+          "line": 7,
+          "text": "import type { PermissionApprovalResultRecord, PermissionRule } from './permissionRules';"
+        },
+        {
+          "line": 8,
+          "text": ""
+        },
+        {
+          "line": 9,
+          "text": "export interface PermissionRulesModelState {"
+        },
+        {
+          "line": 10,
+          "text": "  readonly rules: readonly PermissionRule[];"
+        },
+        {
+          "line": 11,
+          "text": "  readonly sessionApprovalRulePatterns: readonly string[];"
+        },
+        {
+          "line": 12,
+          "text": "}"
+        },
+        {
+          "line": 13,
+          "text": ""
+        },
+        {
+          "line": 14,
+          "text": "const permissionRulesAddSchema = z.object({"
+        },
+        {
+          "line": 15,
+          "text": "  agentId: z.string(),"
+        },
+        {
+          "line": 16,
+          "text": "  rules: z.custom<readonly PermissionRule[]>(),"
+        },
+        {
+          "line": 17,
+          "text": "});"
+        },
+        {
+          "line": 18,
+          "text": ""
+        },
+        {
+          "line": 19,
+          "text": "export class PermissionRulesAdd extends AgentEvent2<z.infer<typeof permissionRulesAddSchema>> {"
+        },
+        {
+          "line": 20,
+          "text": "  static override readonly type = 'permission.rules.add';"
+        },
+        {
+          "line": 21,
+          "text": "}"
+        },
+        {
+          "line": 22,
+          "text": "export interface PermissionRulesAdd {"
+        },
+        {
+          "line": 23,
+          "text": "  readonly agentId: string;"
+        },
+        {
+          "line": 24,
+          "text": "  readonly rules: readonly PermissionRule[];"
+        },
+        {
+          "line": 25,
+          "text": "}"
+        },
+        {
+          "line": 26,
+          "text": ""
+        },
+        {
+          "line": 27,
+          "text": "const permissionRecordApprovalResultSchema = z.object({"
+        },
+        {
+          "line": 28,
+          "text": "  agentId: z.string(),"
+        },
+        {
+          "line": 29,
+          "text": "  turnId: z.number(),"
+        },
+        {
+          "line": 30,
+          "text": "  toolCallId: z.string(),"
+        },
+        {
+          "line": 31,
+          "text": "  toolName: z.string(),"
+        },
+        {
+          "line": 32,
+          "text": "  action: z.string(),"
+        },
+        {
+          "line": 33,
+          "text": "  sessionApprovalRule: z.string().optional(),"
+        },
+        {
+          "line": 34,
+          "text": "  result: z.custom<PermissionApprovalResultRecord['result']>(),"
+        },
+        {
+          "line": 35,
+          "text": "});"
+        },
+        {
+          "line": 36,
+          "text": ""
+        },
+        {
+          "line": 37,
+          "text": "export class PermissionRecordApprovalResult extends AgentEvent2<"
+        },
+        {
+          "line": 38,
+          "text": "  z.infer<typeof permissionRecordApprovalResultSchema>"
+        },
+        {
+          "line": 39,
+          "text": "> {"
+        },
+        {
+          "line": 40,
+          "text": "  static override readonly type = 'permission.record_approval_result';"
+        },
+        {
+          "line": 41,
+          "text": "  static override readonly durable = true;"
+        },
+        {
+          "line": 42,
+          "text": "  static override readonly schema = permissionRecordApprovalResultSchema;"
+        },
+        {
+          "line": 43,
+          "text": "}"
+        },
+        {
+          "line": 44,
+          "text": "export interface PermissionRecordApprovalResult extends PermissionApprovalResultRecord {"
+        },
+        {
+          "line": 45,
+          "text": "  readonly agentId: string;"
+        },
+        {
+          "line": 46,
+          "text": "}"
+        },
+        {
+          "line": 47,
+          "text": ""
+        },
+        {
+          "line": 48,
+          "text": "export const permissionRulesKey = defineState("
+        },
+        {
+          "line": 49,
+          "text": "  'permissionRules',"
+        },
+        {
+          "line": 50,
+          "text": "  (): PermissionRulesModelState => ({"
+        },
+        {
+          "line": 51,
+          "text": "    rules: [],"
+        },
+        {
+          "line": 52,
+          "text": "    sessionApprovalRulePatterns: [],"
+        },
+        {
+          "line": 53,
+          "text": "  }),"
+        },
+        {
+          "line": 54,
+          "text": ").replayable({ schema: z.custom<PermissionRulesModelState>() })"
+        },
+        {
+          "line": 55,
+          "text": "  .on(PermissionRulesAdd, (s, e) => {"
+        },
+        {
+          "line": 56,
+          "text": "    if (e.rules.length === 0) return;"
+        },
+        {
+          "line": 57,
+          "text": "    s.rules = [...s.rules, ...e.rules];"
+        },
+        {
+          "line": 58,
+          "text": "  })"
+        },
+        {
+          "line": 59,
+          "text": "  .on(PermissionRecordApprovalResult, (s, e) => {"
+        },
+        {
+          "line": 60,
+          "text": "    const pattern = e.sessionApprovalRule;"
+        },
+        {
+          "line": 61,
+          "text": "    if ("
+        },
+        {
+          "line": 62,
+          "text": "      e.result.decision !== 'approved' ||"
+        },
+        {
+          "line": 63,
+          "text": "      e.result.scope !== 'session' ||"
+        },
+        {
+          "line": 64,
+          "text": "      pattern === undefined ||"
+        },
+        {
+          "line": 65,
+          "text": "      s.sessionApprovalRulePatterns.includes(pattern)"
+        },
+        {
+          "line": 66,
+          "text": "    ) {"
+        },
+        {
+          "line": 67,
+          "text": "      return;"
+        },
+        {
+          "line": 68,
+          "text": "    }"
+        },
+        {
+          "line": 69,
+          "text": "    s.sessionApprovalRulePatterns = [...s.sessionApprovalRulePatterns, pattern];"
+        },
+        {
+          "line": 70,
+          "text": "  });"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/agent/permissionRules/permissionRulesService.ts",
+      "sha256": "99d5c3a018c77648f23658810a1e73475312cd9b1ccdcce4110d4cb866c230ae",
+      "excerpts": [
+        {
+          "line": 1,
+          "text": "import { LifecycleScope } from '#/app/scopes';"
+        },
+        {
+          "line": 2,
+          "text": ""
+        },
+        {
+          "line": 3,
+          "text": "import { ScopeActivation, registerScopedService } from '#/_base/di/scope';"
+        },
+        {
+          "line": 4,
+          "text": ""
+        },
+        {
+          "line": 5,
+          "text": "import { IAgentScopeContext } from '#/agent/scopeContext/scopeContext';"
+        },
+        {
+          "line": 6,
+          "text": "import { IAgentStateService } from '#/agent/state/agentState';"
+        },
+        {
+          "line": 7,
+          "text": "import { IEventDispatcher } from '#/state/eventDispatcher';"
+        },
+        {
+          "line": 8,
+          "text": "import {"
+        },
+        {
+          "line": 9,
+          "text": "  IAgentPermissionRulesService,"
+        },
+        {
+          "line": 10,
+          "text": "  type PermissionApprovalResultRecord,"
+        },
+        {
+          "line": 11,
+          "text": "  type PermissionRule,"
+        },
+        {
+          "line": 12,
+          "text": "} from './permissionRules';"
+        },
+        {
+          "line": 13,
+          "text": "import {"
+        },
+        {
+          "line": 14,
+          "text": "  PermissionRecordApprovalResult,"
+        },
+        {
+          "line": 15,
+          "text": "  PermissionRulesAdd,"
+        },
+        {
+          "line": 16,
+          "text": "  permissionRulesKey,"
+        },
+        {
+          "line": 17,
+          "text": "} from './permissionRulesOps';"
+        },
+        {
+          "line": 18,
+          "text": ""
+        },
+        {
+          "line": 19,
+          "text": "export class AgentPermissionRulesService implements IAgentPermissionRulesService {"
+        },
+        {
+          "line": 20,
+          "text": "  declare readonly _serviceBrand: undefined;"
+        },
+        {
+          "line": 21,
+          "text": ""
+        },
+        {
+          "line": 22,
+          "text": "  constructor("
+        },
+        {
+          "line": 23,
+          "text": "    @IEventDispatcher private readonly dispatcher: IEventDispatcher,"
+        },
+        {
+          "line": 24,
+          "text": "    @IAgentScopeContext private readonly scopeContext: IAgentScopeContext,"
+        },
+        {
+          "line": 25,
+          "text": "    @IAgentStateService private readonly agentState: IAgentStateService,"
+        },
+        {
+          "line": 26,
+          "text": "  ) {"
+        },
+        {
+          "line": 27,
+          "text": "    this.agentState.contributeState(permissionRulesKey);"
+        },
+        {
+          "line": 28,
+          "text": "  }"
+        },
+        {
+          "line": 29,
+          "text": ""
+        },
+        {
+          "line": 30,
+          "text": "  get rules(): readonly PermissionRule[] {"
+        },
+        {
+          "line": 31,
+          "text": "    return [...this.agentState.get(permissionRulesKey).rules];"
+        },
+        {
+          "line": 32,
+          "text": "  }"
+        },
+        {
+          "line": 33,
+          "text": ""
+        },
+        {
+          "line": 34,
+          "text": "  get sessionApprovalRulePatterns(): readonly string[] {"
+        },
+        {
+          "line": 35,
+          "text": "    return [...this.agentState.get(permissionRulesKey).sessionApprovalRulePatterns];"
+        },
+        {
+          "line": 36,
+          "text": "  }"
+        },
+        {
+          "line": 37,
+          "text": ""
+        },
+        {
+          "line": 38,
+          "text": "  addRules(rules: readonly PermissionRule[]): void {"
+        },
+        {
+          "line": 39,
+          "text": "    if (rules.length === 0) return;"
+        },
+        {
+          "line": 40,
+          "text": "    void this.dispatcher.dispatch("
+        },
+        {
+          "line": 41,
+          "text": "      new PermissionRulesAdd({ agentId: this.scopeContext.agentId, rules: [...rules] }),"
+        },
+        {
+          "line": 42,
+          "text": "    );"
+        },
+        {
+          "line": 43,
+          "text": "  }"
+        },
+        {
+          "line": 44,
+          "text": ""
+        },
+        {
+          "line": 45,
+          "text": "  recordApprovalResult(record: PermissionApprovalResultRecord): void {"
+        },
+        {
+          "line": 46,
+          "text": "    void this.dispatcher.dispatch("
+        },
+        {
+          "line": 47,
+          "text": "      new PermissionRecordApprovalResult({"
+        },
+        {
+          "line": 48,
+          "text": "        ...record,"
+        },
+        {
+          "line": 49,
+          "text": "        agentId: this.scopeContext.agentId,"
+        },
+        {
+          "line": 50,
+          "text": "      }),"
+        },
+        {
+          "line": 51,
+          "text": "    );"
+        },
+        {
+          "line": 52,
+          "text": "  }"
+        },
+        {
+          "line": 53,
+          "text": "}"
+        },
+        {
+          "line": 54,
+          "text": ""
+        },
+        {
+          "line": 55,
+          "text": "registerScopedService("
+        },
+        {
+          "line": 56,
+          "text": "  LifecycleScope.Agent,"
+        },
+        {
+          "line": 57,
+          "text": "  IAgentPermissionRulesService,"
+        },
+        {
+          "line": 58,
+          "text": "  AgentPermissionRulesService,"
+        },
+        {
+          "line": 59,
+          "text": "  ScopeActivation.OnScopeCreated,"
+        },
+        {
+          "line": 60,
+          "text": "  'permissionRules',"
+        },
+        {
+          "line": 61,
+          "text": ");"
+        }
+      ]
+    },
+    {
+      "path": "packages/agent-core-v2/src/session/agentLifecycle/agentLifecycleService.ts",
+      "sha256": "df1951af98277d7e58d38ce6a0bece64e4b593fea0dbc273df0661b45a812bf5",
+      "excerpts": [
+        {
+          "line": 398,
+          "text": "  private async bindBootstrap("
+        },
+        {
+          "line": 399,
+          "text": "    handle: IAgentScopeHandle,"
+        },
+        {
+          "line": 400,
+          "text": "    opts: CreateAgentOptions,"
+        },
+        {
+          "line": 401,
+          "text": "  ): Promise<void> {"
+        },
+        {
+          "line": 402,
+          "text": "    if (opts.binding !== undefined) {"
+        },
+        {
+          "line": 403,
+          "text": "      await handle.accessor.get(IAgentProfileService).bind(opts.binding);"
+        },
+        {
+          "line": 404,
+          "text": "    }"
+        },
+        {
+          "line": 405,
+          "text": "    const permissionMode = this.config.get<PermissionMode>(DEFAULT_PERMISSION_MODE_SECTION);"
+        },
+        {
+          "line": 406,
+          "text": "    const hasRestoredPermissionMode = handle.accessor"
+        },
+        {
+          "line": 407,
+          "text": "      .get(IAgentStateService)"
+        },
+        {
+          "line": 408,
+          "text": "      .get(permissionModeConfiguredKey);"
+        },
+        {
+          "line": 409,
+          "text": "    if (permissionMode !== undefined && !hasRestoredPermissionMode) {"
+        },
+        {
+          "line": 410,
+          "text": "      handle.accessor.get(IAgentPermissionModeService).setMode(permissionMode);"
+        },
+        {
+          "line": 411,
+          "text": "    }"
+        },
+        {
+          "line": 412,
+          "text": "  }"
+        },
+        {
+          "line": 413,
+          "text": ""
+        }
+      ]
+    }
+  ],
+  "not_binary_equivalence_proof": true
+}

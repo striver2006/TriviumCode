@@ -95,3 +95,9 @@ Windows 证据尚未回传，五个 Driver、两家审核者、原生进程调�
 当前自动化复测已通过定向入口/安装/发布包/注册表 Schema 对账 83/83；`npm run typecheck` 通过；最终 `npm run check` 通过（4113 项，4104 通过、9 跳过、0 失败）；已安装 bundle 与工作树 bundle SHA-256 均为 `a4a2eabfc2ed4a199e8350022e49f4a917a279e0042bb1015d3ff21919aca89d`；selftest 14/14。第 2 轮意见已全部裁决并完成代码复测，正式 verify 需在人工审批后执行；未完成前整体仍未完成。
 
 本轮 r2 落点包括：Qoder CN 回退检测限定在 stderr 的模型系统提示并增加正常 stdout 反例；归档 `_meta` 文件名的 owner 后缀改由注册表派生；补齐 Qoder 后缀禁读正例和相关注册表/驱动注释。上述改动已重新构建、安装并通过 gate；未启用任何新的审核者或 Driver 准入。
+
+## 9. Kimi macOS 独立根因诊断（2026-10-28 追加）
+
+新主题三审后的单因素实验见 [Kimi macOS 规则报告](./REPORT_2026-10-28_KimiCode_macOS规则根因与只读准入.md)。旧 probe、失败证据与上述历史状态均保留。新证据有效版本为 2.3.3，不把 2.3.0 或首个版本/hash 不一致 spike 合并为同一指纹；新报告区分真实 native 受控机制、官方真实模型未测及源码推断。
+
+配置实际被读取，但 `permission.rules` 未进入运行规则集合是与本次行为一致的源码层根因；规则顺序、manual/auto/yolo、agent/skills、根/cwd 与 PTY 对照未修复泄漏。Read/Grep 链接别名还可绕过合成敏感文件的词法过滤。没有找到项目可控且满足标准的官方原生修复；生产审核与 Driver 开关仍 false。真实模型桥接因现有 token 为空在启动前停止，未登录或改账号配置；不以本地受控服务取代该证据。

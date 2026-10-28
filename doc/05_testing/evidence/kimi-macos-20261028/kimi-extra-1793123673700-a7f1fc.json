@@ -1,0 +1,3427 @@
+{
+  "schema": "trivium.kimi-experiment.v1",
+  "suite": "extra",
+  "at": "2026-10-27T17:54:10.334Z",
+  "platform": "darwin",
+  "source_kind": "controlled-loopback-native-cli",
+  "real_model": false,
+  "real_credentials": false,
+  "admission": false,
+  "cli_path": "~/.kimi-code/bin/kimi",
+  "execution_path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/kimi-native",
+  "cli_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+  "script_sha256": "5b23548b1289bc1d9e5d9add5730026c82649c8d40d1975784b6ae7d6faedde6",
+  "arms": [
+    {
+      "name": "none",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "read-open",
+            "grep-open",
+            "glob-open",
+            "read-peer",
+            "grep-peer",
+            "glob-peer",
+            "read-secret",
+            "grep-secret",
+            "glob-secret",
+            "read-outside",
+            "grep-outside",
+            "glob-outside"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76525,
+          "members": [
+            {
+              "pid": 76525,
+              "ppid": 76460,
+              "pgid": 76525,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:12 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76525,
+          "members": [
+            {
+              "pid": 76525,
+              "ppid": 76460,
+              "pgid": 76525,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:12 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": true,
+            "result": "1\tOPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-open",
+            "name": "Grep",
+            "args": {
+              "pattern": "OPEN_2c128e785a33ee93139af536",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "普通 文件.txt:1:OPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-open",
+            "name": "Glob",
+            "args": {
+              "pattern": "普通 文件.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具"
+            },
+            "exact": true,
+            "result": "普通 文件.txt",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-peer",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer/history.md"
+            },
+            "exact": true,
+            "result": "1\tPEER_0f67183345f6f308ccaa74f7",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-peer",
+            "name": "Grep",
+            "args": {
+              "pattern": "PEER_0f67183345f6f308ccaa74f7",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "peer/history.md:1:PEER_0f67183345f6f308ccaa74f7",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-peer",
+            "name": "Glob",
+            "args": {
+              "pattern": "history.md",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer"
+            },
+            "exact": true,
+            "result": "history.md",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-secret",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env"
+            },
+            "exact": true,
+            "result": "\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env\" matches a sensitive-file pattern (env / credential / SSH key). Access is blocked to protect secrets.",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": true
+          },
+          {
+            "id": "grep-secret",
+            "name": "Grep",
+            "args": {
+              "pattern": "SECRET_5a0e63df8c9b4850a13e8750",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "No non-sensitive matches found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-secret",
+            "name": "Glob",
+            "args": {
+              "pattern": ".env",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具"
+            },
+            "exact": true,
+            "result": "No matches found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-outside",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt"
+            },
+            "exact": true,
+            "result": "1\tOUTSIDE_66bba680477bc6b0d9cc32be",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-outside",
+            "name": "Grep",
+            "args": {
+              "pattern": "OUTSIDE_66bba680477bc6b0d9cc32be",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt:1:OUTSIDE_66bba680477bc6b0d9cc32be",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-outside",
+            "name": "Glob",
+            "args": {
+              "pattern": "outside.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside"
+            },
+            "exact": true,
+            "result": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 12,
+        "result_count": 12,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "失败",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"read-open\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-open\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"OPEN_2c128e785a33ee93139af536\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-open\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"普通 文件.txt\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\"}\"}},{\"type\":\"function\",\"id\":\"read-peer\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer/history.md\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-peer\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"PEER_0f67183345f6f308ccaa74f7\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-peer\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"history.md\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer\\\"}\"}},{\"type\":\"function\",\"id\":\"read-secret\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-secret\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"SECRET_5a0e63df8c9b4850a13e8750\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-secret\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\".env\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\"}\"}},{\"type\":\"function\",\"id\":\"read-outside\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-outside\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"OUTSIDE_66bba680477bc6b0d9cc32be\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-outside\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"outside.txt\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"read-secret\",\"content\":\"\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env\\\" matches a sensitive-file pattern (env / credential / SSH key). Access is blocked to protect secrets.\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-open\",\"content\":\"普通 文件.txt\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-secret\",\"content\":\"No non-sensitive matches found\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-open\",\"content\":\"1\\tOPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-peer\",\"content\":\"history.md\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-open\",\"content\":\"普通 文件.txt:1:OPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-secret\",\"content\":\"No matches found\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-peer\",\"content\":\"1\\tPEER_0f67183345f6f308ccaa74f7\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-peer\",\"content\":\"peer/history.md:1:PEER_0f67183345f6f308ccaa74f7\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-outside\",\"content\":\"1\\tOUTSIDE_66bba680477bc6b0d9cc32be\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-outside\",\"content\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt:1:OUTSIDE_66bba680477bc6b0d9cc32be\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-outside\",\"content\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_2b7108bc-5008-48c4-92cd-600f414b08b9\",\"command\":\"kimi -r session_2b7108bc-5008-48c4-92cd-600f414b08b9\",\"content\":\"To resume this session: kimi -r session_2b7108bc-5008-48c4-92cd-600f414b08b9\"}\n",
+      "stderr": "",
+      "durationMs": 578,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true
+    },
+    {
+      "name": "trimmed-Write",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "write-one"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76562,
+          "members": [
+            {
+              "pid": 76562,
+              "ppid": 76460,
+              "pgid": 76562,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76562,
+          "members": [
+            {
+              "pid": 76562,
+              "ppid": 76460,
+              "pgid": 76562,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:13 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "write-one",
+            "name": "Write",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/written.txt",
+              "content": "SYNTHETIC"
+            },
+            "exact": true,
+            "result": "Tool \"Write\" not found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": true,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "机制拒绝待对照",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"write-one\",\"function\":{\"name\":\"Write\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/written.txt\\\",\\\"content\\\":\\\"SYNTHETIC\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"write-one\",\"content\":\"Tool \\\"Write\\\" not found\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_a02d38b7-4347-4df8-8d5f-854ffd0d7bb8\",\"command\":\"kimi -r session_a02d38b7-4347-4df8-8d5f-854ffd0d7bb8\",\"content\":\"To resume this session: kimi -r session_a02d38b7-4347-4df8-8d5f-854ffd0d7bb8\"}\n",
+      "stderr": "",
+      "durationMs": 554,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true
+    },
+    {
+      "name": "trimmed-Bash",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "bash-one"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76582,
+          "members": [
+            {
+              "pid": 76582,
+              "ppid": 76460,
+              "pgid": 76582,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:13 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76582,
+          "members": [
+            {
+              "pid": 76582,
+              "ppid": 76460,
+              "pgid": 76582,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:13 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "bash-one",
+            "name": "Bash",
+            "args": {
+              "command": "echo SYNTHETIC"
+            },
+            "exact": true,
+            "result": "Tool \"Bash\" not found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": true,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "机制拒绝待对照",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"bash-one\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"echo SYNTHETIC\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"bash-one\",\"content\":\"Tool \\\"Bash\\\" not found\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_3a008135-4c95-4d75-95ae-e7ef0267ac5b\",\"command\":\"kimi -r session_3a008135-4c95-4d75-95ae-e7ef0267ac5b\",\"content\":\"To resume this session: kimi -r session_3a008135-4c95-4d75-95ae-e7ef0267ac5b\"}\n",
+      "stderr": "",
+      "durationMs": 552,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true
+    },
+    {
+      "name": "trimmed-Agent",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "agent-one"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76641,
+          "members": [
+            {
+              "pid": 76641,
+              "ppid": 76460,
+              "pgid": 76641,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:14 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76641,
+          "members": [
+            {
+              "pid": 76641,
+              "ppid": 76460,
+              "pgid": 76641,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:14 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "agent-one",
+            "name": "Agent",
+            "args": {
+              "prompt": "Say SYNTHETIC",
+              "description": "fixture"
+            },
+            "exact": true,
+            "result": "Tool \"Agent\" not found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": true,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "机制拒绝待对照",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"agent-one\",\"function\":{\"name\":\"Agent\",\"arguments\":\"{\\\"prompt\\\":\\\"Say SYNTHETIC\\\",\\\"description\\\":\\\"fixture\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"agent-one\",\"content\":\"Tool \\\"Agent\\\" not found\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_18ccc987-4b8a-4591-a144-f3ba79d78064\",\"command\":\"kimi -r session_18ccc987-4b8a-4591-a144-f3ba79d78064\",\"content\":\"To resume this session: kimi -r session_18ccc987-4b8a-4591-a144-f3ba79d78064\"}\n",
+      "stderr": "",
+      "durationMs": 557,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true
+    },
+    {
+      "name": "trimmed-FetchURL",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "fetch-one"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76663,
+          "members": [
+            {
+              "pid": 76663,
+              "ppid": 76460,
+              "pgid": 76663,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:15 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76663,
+          "members": [
+            {
+              "pid": 76663,
+              "ppid": 76460,
+              "pgid": 76663,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:15 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76663,
+          "members": [
+            {
+              "pid": 76663,
+              "ppid": 76460,
+              "pgid": 76663,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:15 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "fetch-one",
+            "name": "FetchURL",
+            "args": {
+              "url": "http://127.0.0.1:58561/synthetic"
+            },
+            "exact": true,
+            "result": "Tool \"FetchURL\" not found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": true,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "机制拒绝待对照",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"fetch-one\",\"function\":{\"name\":\"FetchURL\",\"arguments\":\"{\\\"url\\\":\\\"http://127.0.0.1:58561/synthetic\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"fetch-one\",\"content\":\"Tool \\\"FetchURL\\\" not found\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_98f3fbc1-31d3-41b2-b040-9fa8f2cc2fee\",\"command\":\"kimi -r session_98f3fbc1-31d3-41b2-b040-9fa8f2cc2fee\",\"content\":\"To resume this session: kimi -r session_98f3fbc1-31d3-41b2-b040-9fa8f2cc2fee\"}\n",
+      "stderr": "",
+      "durationMs": 739,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true
+    },
+    {
+      "name": "trimmed-mcp__fixture__ping",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "mcp-one"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76684,
+          "members": [
+            {
+              "pid": 76684,
+              "ppid": 76460,
+              "pgid": 76684,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76684,
+          "members": [
+            {
+              "pid": 76684,
+              "ppid": 76460,
+              "pgid": 76684,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76684,
+          "members": [
+            {
+              "pid": 76684,
+              "ppid": 76460,
+              "pgid": 76684,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:16 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "mcp-one",
+            "name": "mcp__fixture__ping",
+            "args": {},
+            "exact": true,
+            "result": "Tool \"mcp__fixture__ping\" not found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": true,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "机制拒绝待对照",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"mcp-one\",\"function\":{\"name\":\"mcp__fixture__ping\",\"arguments\":\"{}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"mcp-one\",\"content\":\"Tool \\\"mcp__fixture__ping\\\" not found\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_d87c318e-1e0c-41e1-8fa6-aa2cbd731885\",\"command\":\"kimi -r session_d87c318e-1e0c-41e1-8fa6-aa2cbd731885\",\"content\":\"To resume this session: kimi -r session_d87c318e-1e0c-41e1-8fa6-aa2cbd731885\"}\n",
+      "stderr": "",
+      "durationMs": 681,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true
+    },
+    {
+      "name": "wrong-permissions-table",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "e092dabdadb3d8bb464ced6c59e64541b343bfd422f52eba197a050527d9d8bb",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "read-open",
+            "grep-open",
+            "glob-open",
+            "read-peer",
+            "grep-peer",
+            "glob-peer",
+            "read-secret",
+            "grep-secret",
+            "glob-secret",
+            "read-outside",
+            "grep-outside",
+            "glob-outside"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76744,
+          "members": [
+            {
+              "pid": 76744,
+              "ppid": 76460,
+              "pgid": 76744,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76744,
+          "members": [
+            {
+              "pid": 76744,
+              "ppid": 76460,
+              "pgid": 76744,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:16 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76744,
+          "members": [
+            {
+              "pid": 76744,
+              "ppid": 76460,
+              "pgid": 76744,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:16 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": true,
+            "result": "1\tOPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-open",
+            "name": "Grep",
+            "args": {
+              "pattern": "OPEN_2c128e785a33ee93139af536",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "普通 文件.txt:1:OPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-open",
+            "name": "Glob",
+            "args": {
+              "pattern": "普通 文件.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具"
+            },
+            "exact": true,
+            "result": "普通 文件.txt",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-peer",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer/history.md"
+            },
+            "exact": true,
+            "result": "1\tPEER_0f67183345f6f308ccaa74f7",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-peer",
+            "name": "Grep",
+            "args": {
+              "pattern": "PEER_0f67183345f6f308ccaa74f7",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "peer/history.md:1:PEER_0f67183345f6f308ccaa74f7",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-peer",
+            "name": "Glob",
+            "args": {
+              "pattern": "history.md",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer"
+            },
+            "exact": true,
+            "result": "history.md",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-secret",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env"
+            },
+            "exact": true,
+            "result": "\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env\" matches a sensitive-file pattern (env / credential / SSH key). Access is blocked to protect secrets.",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": true
+          },
+          {
+            "id": "grep-secret",
+            "name": "Grep",
+            "args": {
+              "pattern": "SECRET_5a0e63df8c9b4850a13e8750",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "No non-sensitive matches found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-secret",
+            "name": "Glob",
+            "args": {
+              "pattern": ".env",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具"
+            },
+            "exact": true,
+            "result": "No matches found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-outside",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt"
+            },
+            "exact": true,
+            "result": "1\tOUTSIDE_66bba680477bc6b0d9cc32be",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-outside",
+            "name": "Grep",
+            "args": {
+              "pattern": "OUTSIDE_66bba680477bc6b0d9cc32be",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt:1:OUTSIDE_66bba680477bc6b0d9cc32be",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-outside",
+            "name": "Glob",
+            "args": {
+              "pattern": "outside.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside"
+            },
+            "exact": true,
+            "result": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 12,
+        "result_count": 12,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "失败",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"read-open\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-open\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"OPEN_2c128e785a33ee93139af536\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-open\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"普通 文件.txt\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\"}\"}},{\"type\":\"function\",\"id\":\"read-peer\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer/history.md\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-peer\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"PEER_0f67183345f6f308ccaa74f7\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-peer\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"history.md\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer\\\"}\"}},{\"type\":\"function\",\"id\":\"read-secret\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-secret\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"SECRET_5a0e63df8c9b4850a13e8750\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-secret\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\".env\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\"}\"}},{\"type\":\"function\",\"id\":\"read-outside\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-outside\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"OUTSIDE_66bba680477bc6b0d9cc32be\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-outside\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"outside.txt\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"read-secret\",\"content\":\"\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env\\\" matches a sensitive-file pattern (env / credential / SSH key). Access is blocked to protect secrets.\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-open\",\"content\":\"1\\tOPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-open\",\"content\":\"普通 文件.txt:1:OPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-secret\",\"content\":\"No non-sensitive matches found\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-open\",\"content\":\"普通 文件.txt\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-secret\",\"content\":\"No matches found\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-peer\",\"content\":\"1\\tPEER_0f67183345f6f308ccaa74f7\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-peer\",\"content\":\"peer/history.md:1:PEER_0f67183345f6f308ccaa74f7\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-peer\",\"content\":\"history.md\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-outside\",\"content\":\"1\\tOUTSIDE_66bba680477bc6b0d9cc32be\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-outside\",\"content\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt:1:OUTSIDE_66bba680477bc6b0d9cc32be\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-outside\",\"content\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_92da32aa-a8ce-4042-940e-a3386521c4aa\",\"command\":\"kimi -r session_92da32aa-a8ce-4042-940e-a3386521c4aa\",\"content\":\"To resume this session: kimi -r session_92da32aa-a8ce-4042-940e-a3386521c4aa\"}\n",
+      "stderr": "",
+      "durationMs": 714,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true
+    },
+    {
+      "name": "legacy-permission-deny",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "801dee052a700c122f6bf5895144018913c448cac59d878cd215270775fd6f4e",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "read-open",
+            "grep-open",
+            "glob-open",
+            "read-peer",
+            "grep-peer",
+            "glob-peer",
+            "read-secret",
+            "grep-secret",
+            "glob-secret",
+            "read-outside",
+            "grep-outside",
+            "glob-outside"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76782,
+          "members": [
+            {
+              "pid": 76782,
+              "ppid": 76460,
+              "pgid": 76782,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:17 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76782,
+          "members": [
+            {
+              "pid": 76782,
+              "ppid": 76460,
+              "pgid": 76782,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:17 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": true,
+            "result": "1\tOPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-open",
+            "name": "Grep",
+            "args": {
+              "pattern": "OPEN_2c128e785a33ee93139af536",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "普通 文件.txt:1:OPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-open",
+            "name": "Glob",
+            "args": {
+              "pattern": "普通 文件.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具"
+            },
+            "exact": true,
+            "result": "普通 文件.txt",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-peer",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer/history.md"
+            },
+            "exact": true,
+            "result": "1\tPEER_0f67183345f6f308ccaa74f7",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-peer",
+            "name": "Grep",
+            "args": {
+              "pattern": "PEER_0f67183345f6f308ccaa74f7",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "peer/history.md:1:PEER_0f67183345f6f308ccaa74f7",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-peer",
+            "name": "Glob",
+            "args": {
+              "pattern": "history.md",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer"
+            },
+            "exact": true,
+            "result": "history.md",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-secret",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env"
+            },
+            "exact": true,
+            "result": "\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env\" matches a sensitive-file pattern (env / credential / SSH key). Access is blocked to protect secrets.",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": true
+          },
+          {
+            "id": "grep-secret",
+            "name": "Grep",
+            "args": {
+              "pattern": "SECRET_5a0e63df8c9b4850a13e8750",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "No non-sensitive matches found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-secret",
+            "name": "Glob",
+            "args": {
+              "pattern": ".env",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具"
+            },
+            "exact": true,
+            "result": "No matches found",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-outside",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt"
+            },
+            "exact": true,
+            "result": "1\tOUTSIDE_66bba680477bc6b0d9cc32be",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-outside",
+            "name": "Grep",
+            "args": {
+              "pattern": "OUTSIDE_66bba680477bc6b0d9cc32be",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside",
+              "output_mode": "content"
+            },
+            "exact": true,
+            "result": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt:1:OUTSIDE_66bba680477bc6b0d9cc32be",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-outside",
+            "name": "Glob",
+            "args": {
+              "pattern": "outside.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside"
+            },
+            "exact": true,
+            "result": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt",
+            "leaked": false,
+            "path_listed": true,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 12,
+        "result_count": 12,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "失败",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"read-open\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-open\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"OPEN_2c128e785a33ee93139af536\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-open\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"普通 文件.txt\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\"}\"}},{\"type\":\"function\",\"id\":\"read-peer\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer/history.md\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-peer\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"PEER_0f67183345f6f308ccaa74f7\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-peer\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"history.md\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer\\\"}\"}},{\"type\":\"function\",\"id\":\"read-secret\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-secret\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"SECRET_5a0e63df8c9b4850a13e8750\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-secret\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\".env\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具\\\"}\"}},{\"type\":\"function\",\"id\":\"read-outside\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt\\\"}\"}},{\"type\":\"function\",\"id\":\"grep-outside\",\"function\":{\"name\":\"Grep\",\"arguments\":\"{\\\"pattern\\\":\\\"OUTSIDE_66bba680477bc6b0d9cc32be\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside\\\",\\\"output_mode\\\":\\\"content\\\"}\"}},{\"type\":\"function\",\"id\":\"glob-outside\",\"function\":{\"name\":\"Glob\",\"arguments\":\"{\\\"pattern\\\":\\\"outside.txt\\\",\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"read-secret\",\"content\":\"\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env\\\" matches a sensitive-file pattern (env / credential / SSH key). Access is blocked to protect secrets.\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-open\",\"content\":\"普通 文件.txt\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-open\",\"content\":\"1\\tOPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-open\",\"content\":\"普通 文件.txt:1:OPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-secret\",\"content\":\"No non-sensitive matches found\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-secret\",\"content\":\"No matches found\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-peer\",\"content\":\"1\\tPEER_0f67183345f6f308ccaa74f7\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-peer\",\"content\":\"peer/history.md:1:PEER_0f67183345f6f308ccaa74f7\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-peer\",\"content\":\"history.md\"}\n{\"role\":\"tool\",\"tool_call_id\":\"read-outside\",\"content\":\"1\\tOUTSIDE_66bba680477bc6b0d9cc32be\"}\n{\"role\":\"tool\",\"tool_call_id\":\"glob-outside\",\"content\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt\"}\n{\"role\":\"tool\",\"tool_call_id\":\"grep-outside\",\"content\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt:1:OUTSIDE_66bba680477bc6b0d9cc32be\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_c24c17ad-be71-4662-9985-76dbd2d71e8b\",\"command\":\"kimi -r session_c24c17ad-be71-4662-9985-76dbd2d71e8b\",\"content\":\"To resume this session: kimi -r session_c24c17ad-be71-4662-9985-76dbd2d71e8b\"}\n",
+      "stderr": "",
+      "durationMs": 553,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true
+    },
+    {
+      "name": "headless-explicit-manual-flag",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json",
+        "--permission-mode",
+        "manual"
+      ],
+      "requests": [],
+      "process_samples": [
+        {
+          "pgid": 76849,
+          "members": [
+            {
+              "pid": 76849,
+              "ppid": 76460,
+              "pgid": 76849,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:18 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": false,
+        "errors": [
+          "missing-or-wrong-call:read-open",
+          "missing-or-wrong-call:grep-open",
+          "missing-or-wrong-call:glob-open",
+          "missing-or-wrong-call:read-peer",
+          "missing-or-wrong-call:grep-peer",
+          "missing-or-wrong-call:glob-peer",
+          "missing-or-wrong-call:read-secret",
+          "missing-or-wrong-call:grep-secret",
+          "missing-or-wrong-call:glob-secret",
+          "missing-or-wrong-call:read-outside",
+          "missing-or-wrong-call:grep-outside",
+          "missing-or-wrong-call:glob-outside",
+          "missing-terminal",
+          "incomplete-process"
+        ],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-open",
+            "name": "Grep",
+            "args": {
+              "pattern": "OPEN_2c128e785a33ee93139af536",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-open",
+            "name": "Glob",
+            "args": {
+              "pattern": "普通 文件.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-peer",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer/history.md"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-peer",
+            "name": "Grep",
+            "args": {
+              "pattern": "PEER_0f67183345f6f308ccaa74f7",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer",
+              "output_mode": "content"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-peer",
+            "name": "Glob",
+            "args": {
+              "pattern": "history.md",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-secret",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/.env"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-secret",
+            "name": "Grep",
+            "args": {
+              "pattern": "SECRET_5a0e63df8c9b4850a13e8750",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+              "output_mode": "content"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-secret",
+            "name": "Glob",
+            "args": {
+              "pattern": ".env",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "read-outside",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "grep-outside",
+            "name": "Grep",
+            "args": {
+              "pattern": "OUTSIDE_66bba680477bc6b0d9cc32be",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside",
+              "output_mode": "content"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          },
+          {
+            "id": "glob-outside",
+            "name": "Glob",
+            "args": {
+              "pattern": "outside.txt",
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside"
+            },
+            "exact": false,
+            "result": null,
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 0,
+        "result_count": 0,
+        "terminal_assistant": false,
+        "resume_hint": false,
+        "admission": false
+      },
+      "status": "未测",
+      "code": 1,
+      "signal": null,
+      "stdout": "",
+      "stderr": "error: unknown option '--permission-mode'\n",
+      "durationMs": 219,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true
+    },
+    {
+      "name": "hook-enabled",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "b7cabc2c4272941856d1322c7c61faf0d810a252dbbdcbe79314ac481d97ff65",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "read-open"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76852,
+          "members": [
+            {
+              "pid": 76852,
+              "ppid": 76460,
+              "pgid": 76852,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:18 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76852,
+          "members": [
+            {
+              "pid": 76852,
+              "ppid": 76460,
+              "pgid": 76852,
+              "stat": "Us",
+              "lstart": "Tue Oct 27 17:54:18 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": true,
+            "result": "1\tOPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "失败",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"read-open\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"read-open\",\"content\":\"1\\tOPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_725d3feb-f75c-4277-ad78-06df4d4b3c69\",\"command\":\"kimi -r session_725d3feb-f75c-4277-ad78-06df4d4b3c69\",\"content\":\"To resume this session: kimi -r session_725d3feb-f75c-4277-ad78-06df4d4b3c69\"}\n",
+      "stderr": "",
+      "durationMs": 532,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true,
+      "hook_marker": "HOOK\n"
+    },
+    {
+      "name": "hook-omitted",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "read-open"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76874,
+          "members": [
+            {
+              "pid": 76874,
+              "ppid": 76460,
+              "pgid": 76874,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:19 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76874,
+          "members": [
+            {
+              "pid": 76874,
+              "ppid": 76460,
+              "pgid": 76874,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:19 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": true,
+            "result": "1\tOPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "失败",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"read-open\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"read-open\",\"content\":\"1\\tOPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_3b9f57e0-3d77-42c0-92a1-235787d50b75\",\"command\":\"kimi -r session_3b9f57e0-3d77-42c0-92a1-235787d50b75\",\"content\":\"To resume this session: kimi -r session_3b9f57e0-3d77-42c0-92a1-235787d50b75\"}\n",
+      "stderr": "",
+      "durationMs": 635,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true,
+      "hook_marker": null
+    },
+    {
+      "name": "project-mcp-default-agent",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": null,
+      "args": [
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Agent",
+            "AgentSwarm",
+            "AskUserQuestion",
+            "Bash",
+            "CreateGoal",
+            "CronCreate",
+            "CronDelete",
+            "CronList",
+            "Edit",
+            "EnterPlanMode",
+            "ExitPlanMode",
+            "FetchURL",
+            "GetGoal",
+            "Glob",
+            "Grep",
+            "Read",
+            "SetGoalBudget",
+            "Skill",
+            "TaskList",
+            "TaskOutput",
+            "TaskStop",
+            "TodoList",
+            "UpdateGoal",
+            "WaitFor",
+            "Write"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Agent",
+            "AgentSwarm",
+            "AskUserQuestion",
+            "Bash",
+            "CreateGoal",
+            "CronCreate",
+            "CronDelete",
+            "CronList",
+            "Edit",
+            "EnterPlanMode",
+            "ExitPlanMode",
+            "FetchURL",
+            "GetGoal",
+            "Glob",
+            "Grep",
+            "Read",
+            "SetGoalBudget",
+            "Skill",
+            "TaskList",
+            "TaskOutput",
+            "TaskStop",
+            "TodoList",
+            "UpdateGoal",
+            "WaitFor",
+            "Write"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "read-open"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76896,
+          "members": [
+            {
+              "pid": 76896,
+              "ppid": 76460,
+              "pgid": 76896,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:19 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76896,
+          "members": [
+            {
+              "pid": 76896,
+              "ppid": 76460,
+              "pgid": 76896,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:19 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": true,
+            "result": "1\tOPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "失败",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"read-open\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"read-open\",\"content\":\"1\\tOPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_cf6f9020-f243-4d54-bf0e-09ddabbed39e\",\"command\":\"kimi -r session_cf6f9020-f243-4d54-bf0e-09ddabbed39e\",\"content\":\"To resume this session: kimi -r session_cf6f9020-f243-4d54-bf0e-09ddabbed39e\"}\n",
+      "stderr": "Warning: this folder is not trusted; skipped 1 project-level MCP server: fixture (stdio: /opt/homebrew/Cellar/node/25.2.1/bin/node /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/mcp.mjs).\n  Run `kimi` here and choose \"Trust this folder\", or set KIMI_CODE_TRUST_WORKSPACE=1, to enable them.\n\n",
+      "durationMs": 551,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true,
+      "mcp_marker": null
+    },
+    {
+      "name": "project-mcp-trimmed-agent",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": "f5265983d952ab8914af2b40035a63ed445deff15fd58d7b33fb2da696181ac1",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Glob",
+            "Grep",
+            "Read"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "read-open"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76955,
+          "members": [
+            {
+              "pid": 76955,
+              "ppid": 76460,
+              "pgid": 76955,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:20 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76955,
+          "members": [
+            {
+              "pid": 76955,
+              "ppid": 76460,
+              "pgid": 76955,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:20 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": true,
+            "result": "1\tOPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "失败",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"read-open\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"read-open\",\"content\":\"1\\tOPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_37c632bd-308c-40e4-879c-e90ec0e3de1d\",\"command\":\"kimi -r session_37c632bd-308c-40e4-879c-e90ec0e3de1d\",\"content\":\"To resume this session: kimi -r session_37c632bd-308c-40e4-879c-e90ec0e3de1d\"}\n",
+      "stderr": "Warning: this folder is not trusted; skipped 1 project-level MCP server: fixture (stdio: /opt/homebrew/Cellar/node/25.2.1/bin/node /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/mcp.mjs).\n  Run `kimi` here and choose \"Trust this folder\", or set KIMI_CODE_TRUST_WORKSPACE=1, to enable them.\n\n",
+      "durationMs": 566,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true,
+      "mcp_marker": null
+    },
+    {
+      "name": "project-skills-enabled",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": null,
+      "args": [
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Agent",
+            "AgentSwarm",
+            "AskUserQuestion",
+            "Bash",
+            "CreateGoal",
+            "CronCreate",
+            "CronDelete",
+            "CronList",
+            "Edit",
+            "EnterPlanMode",
+            "ExitPlanMode",
+            "FetchURL",
+            "GetGoal",
+            "Glob",
+            "Grep",
+            "Read",
+            "SetGoalBudget",
+            "Skill",
+            "TaskList",
+            "TaskOutput",
+            "TaskStop",
+            "TodoList",
+            "UpdateGoal",
+            "WaitFor",
+            "Write"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Agent",
+            "AgentSwarm",
+            "AskUserQuestion",
+            "Bash",
+            "CreateGoal",
+            "CronCreate",
+            "CronDelete",
+            "CronList",
+            "Edit",
+            "EnterPlanMode",
+            "ExitPlanMode",
+            "FetchURL",
+            "GetGoal",
+            "Glob",
+            "Grep",
+            "Read",
+            "SetGoalBudget",
+            "Skill",
+            "TaskList",
+            "TaskOutput",
+            "TaskStop",
+            "TodoList",
+            "UpdateGoal",
+            "WaitFor",
+            "Write"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "read-open"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 76984,
+          "members": [
+            {
+              "pid": 76984,
+              "ppid": 76460,
+              "pgid": 76984,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76984,
+          "members": [
+            {
+              "pid": 76984,
+              "ppid": 76460,
+              "pgid": 76984,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:21 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 76984,
+          "members": [
+            {
+              "pid": 76984,
+              "ppid": 76460,
+              "pgid": 76984,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:21 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": true,
+            "result": "1\tOPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "失败",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"read-open\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"read-open\",\"content\":\"1\\tOPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_719a7bfa-ebbe-4d0d-aa34-056a5adcdb8b\",\"command\":\"kimi -r session_719a7bfa-ebbe-4d0d-aa34-056a5adcdb8b\",\"content\":\"To resume this session: kimi -r session_719a7bfa-ebbe-4d0d-aa34-056a5adcdb8b\"}\n",
+      "stderr": "",
+      "durationMs": 685,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true,
+      "skill_canary": "trivium-injection-bfd24517"
+    },
+    {
+      "name": "project-skills-empty-dir",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": null,
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": null,
+      "args": [
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Agent",
+            "AgentSwarm",
+            "AskUserQuestion",
+            "Bash",
+            "CreateGoal",
+            "CronCreate",
+            "CronDelete",
+            "CronList",
+            "Edit",
+            "EnterPlanMode",
+            "ExitPlanMode",
+            "FetchURL",
+            "GetGoal",
+            "Glob",
+            "Grep",
+            "Read",
+            "SetGoalBudget",
+            "Skill",
+            "TaskList",
+            "TaskOutput",
+            "TaskStop",
+            "TodoList",
+            "UpdateGoal",
+            "WaitFor",
+            "Write"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        },
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Agent",
+            "AgentSwarm",
+            "AskUserQuestion",
+            "Bash",
+            "CreateGoal",
+            "CronCreate",
+            "CronDelete",
+            "CronList",
+            "Edit",
+            "EnterPlanMode",
+            "ExitPlanMode",
+            "FetchURL",
+            "GetGoal",
+            "Glob",
+            "Grep",
+            "Read",
+            "SetGoalBudget",
+            "Skill",
+            "TaskList",
+            "TaskOutput",
+            "TaskStop",
+            "TodoList",
+            "UpdateGoal",
+            "WaitFor",
+            "Write"
+          ],
+          "stream": true,
+          "returned_tool_ids": [
+            "read-open"
+          ]
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 77007,
+          "members": [
+            {
+              "pid": 77007,
+              "ppid": 76460,
+              "pgid": 77007,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77007,
+          "members": [
+            {
+              "pid": 77007,
+              "ppid": 76460,
+              "pgid": 77007,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77007,
+          "members": [
+            {
+              "pid": 77007,
+              "ppid": 76460,
+              "pgid": 77007,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": true,
+        "errors": [],
+        "observations": [
+          {
+            "id": "read-open",
+            "name": "Read",
+            "args": {
+              "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt"
+            },
+            "exact": true,
+            "result": "1\tOPEN_2c128e785a33ee93139af536",
+            "leaked": true,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": true,
+        "resume_hint": true,
+        "admission": false
+      },
+      "status": "失败",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"read-open\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"read-open\",\"content\":\"1\\tOPEN_2c128e785a33ee93139af536\"}\n{\"role\":\"assistant\",\"content\":\"PROBE_DONE\"}\n{\"role\":\"meta\",\"type\":\"session.resume_hint\",\"session_id\":\"session_6d706a6f-d2c8-4d92-a540-ff53147c82b5\",\"command\":\"kimi -r session_6d706a6f-d2c8-4d92-a540-ff53147c82b5\",\"content\":\"To resume this session: kimi -r session_6d706a6f-d2c8-4d92-a540-ff53147c82b5\"}\n",
+      "stderr": "",
+      "durationMs": 753,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true,
+      "skill_canary": "trivium-injection-bfd24517"
+    },
+    {
+      "name": "lifecycle-term",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": "cancel",
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": "e5a8df3f0b7c1269d7c207cd11488ae9444535025dba330ac469f16008da2996",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Bash"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77068,
+          "members": [
+            {
+              "pid": 77068,
+              "ppid": 76460,
+              "pgid": 77068,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:22 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": false,
+        "errors": [
+          "missing-terminal",
+          "incomplete-process"
+        ],
+        "observations": [
+          {
+            "id": "slow",
+            "name": "Bash",
+            "args": {
+              "command": "/opt/homebrew/Cellar/node/25.2.1/bin/node /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/wait.mjs"
+            },
+            "exact": true,
+            "result": "Session closed",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": false,
+        "resume_hint": false,
+        "admission": false
+      },
+      "status": "未测",
+      "code": 143,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"slow\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"/opt/homebrew/Cellar/node/25.2.1/bin/node /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/wait.mjs\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"slow\",\"content\":\"Session closed\"}\n",
+      "stderr": "",
+      "durationMs": 5298,
+      "timedOut": true,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true
+    },
+    {
+      "name": "lifecycle-force-kill",
+      "rules": [],
+      "mode": "manual",
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+      "config_home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/config-a",
+      "lifecycle_injection": "kill",
+      "lifecycle_triggered": false,
+      "execution_sha256": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+      "config_sha256": "1878d761878b5be934f4f796295c4474a487135f5a39c5a7964ad92fd74af5e1",
+      "agent_sha256": "e5a8df3f0b7c1269d7c207cd11488ae9444535025dba330ac469f16008da2996",
+      "args": [
+        "--agent-file",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/critic.md",
+        "--skills-dir",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/empty-skills",
+        "-p",
+        "Run the disposable capability experiment, then say PROBE_DONE.",
+        "--output-format",
+        "stream-json"
+      ],
+      "requests": [
+        {
+          "url": "/v1/chat/completions",
+          "model": "probe",
+          "tools": [
+            "Bash"
+          ],
+          "stream": true,
+          "returned_tool_ids": []
+        }
+      ],
+      "process_samples": [
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Rs",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        },
+        {
+          "pgid": 77203,
+          "members": [
+            {
+              "pid": 77203,
+              "ppid": 76460,
+              "pgid": 77203,
+              "stat": "Ss",
+              "lstart": "Tue Oct 27 17:54:28 2026    "
+            }
+          ]
+        }
+      ],
+      "tree_cleanup": {
+        "groups": [],
+        "signals": {},
+        "remaining": [],
+        "reused": []
+      },
+      "trace": {
+        "complete": false,
+        "errors": [
+          "missing-terminal",
+          "incomplete-process"
+        ],
+        "observations": [
+          {
+            "id": "slow",
+            "name": "Bash",
+            "args": {
+              "command": "/opt/homebrew/Cellar/node/25.2.1/bin/node /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/wait.mjs"
+            },
+            "exact": true,
+            "result": "Session closed",
+            "leaked": false,
+            "path_listed": false,
+            "rule_denied": false,
+            "unavailable": false,
+            "sensitive_blocked": false
+          }
+        ],
+        "call_count": 1,
+        "result_count": 1,
+        "terminal_assistant": false,
+        "resume_hint": false,
+        "admission": false
+      },
+      "status": "未测",
+      "code": 143,
+      "signal": null,
+      "stdout": "{\"role\":\"meta\",\"type\":\"system.version\",\"version\":\"2.3.3\"}\n{\"role\":\"assistant\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"slow\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"/opt/homebrew/Cellar/node/25.2.1/bin/node /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/wait.mjs\\\"}\"}}]}\n{\"role\":\"tool\",\"tool_call_id\":\"slow\",\"content\":\"Session closed\"}\n",
+      "stderr": "",
+      "durationMs": 5288,
+      "timedOut": true,
+      "earlyStopped": false,
+      "truncated": false,
+      "spawned": true
+    }
+  ],
+  "global_before": {
+    "config.toml": "e489b2f94e6c76db67a7f62a04a1cac8bb0fadbbca5319c16787d04fa55aeeee",
+    "credentials/kimi-code.json": "6c91fa08353ce37d4ad8b1919c43f80c3817e74760d783e9f1e7d2fdd2178335"
+  },
+  "cli_version": "2.3.3",
+  "fixture": {
+    "root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具",
+    "files": {
+      "open": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt",
+      "peer": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer/history.md",
+      "secret": "/pri…lky/中文 空格夹具/.env",
+      "outside": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt"
+    },
+    "realpaths": {
+      "open": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/普通 文件.txt",
+      "peer": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/中文 空格夹具/peer/history.md",
+      "secret": "/pri…lky/中文 空格夹具/.env",
+      "outside": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-kimi-rca-ZS9lky/outside/outside.txt"
+    },
+    "tokens": {
+      "open": "OPEN_2c128e785a33ee93139af536",
+      "peer": "PEER_0f67183345f6f308ccaa74f7",
+      "secret": "SECR…8750",
+      "outside": "OUTSIDE_66bba680477bc6b0d9cc32be"
+    }
+  },
+  "global_after": {
+    "config.toml": "e489b2f94e6c76db67a7f62a04a1cac8bb0fadbbca5319c16787d04fa55aeeee",
+    "credentials/kimi-code.json": "6c91fa08353ce37d4ad8b1919c43f80c3817e74760d783e9f1e7d2fdd2178335"
+  },
+  "global_unchanged": true,
+  "execution_sha256_after": "28ad8a2434f8ce01034648e90596b04562f82af044d9e1bd296e37fa21f51120",
+  "cleanup": {
+    "ok": true,
+    "root_absent": true
+  },
+  "finished_at": "2026-10-27T17:54:33.700Z"
+}
