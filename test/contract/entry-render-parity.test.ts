@@ -169,6 +169,22 @@ test('参数写法：substitute 载体用 $ARGUMENTS；transcribe 载体一处�
   assert.ok(transcribeSeen >= 21, `只检查了 ${transcribeSeen} 份 transcribe 产物，论域塌了`);
 });
 
+test('native-tail载体保留原生参数尾段说明、显式调用边界和转抄规约', () => {
+  const carriers = src.carriers.filter((c) => c.arguments === 'native-tail');
+  assert.ok(carriers.length > 0, 'native-tail论域不得为空');
+  for (const c of carriers) {
+    const entries = rendered.filter((r) => r.agent === c.agent);
+    assert.equal(entries.length, src.contracts.length);
+    for (const r of entries) {
+      assert.match(r.content, /ARGUMENTS: <用户参数原文>/);
+      assert.match(r.content, /只在用户显式调用本命令时执行/);
+      assert.match(r.content, /原生加载和模型转抄是两步/);
+      assert.doesNotMatch(r.content, /本载体\*\*不替换\*\*参数占位符/);
+      assert.ok(r.content.includes(partial('args/rule-empty')));
+    }
+  }
+});
+
 /**
  * 每条命令应注入 `--driver` 的调用数（计划 r5 §5.1 ③ / §5.3）。
  *

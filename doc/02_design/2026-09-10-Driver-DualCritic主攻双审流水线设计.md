@@ -1635,6 +1635,10 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 
 #### 7.4.1 多载体入口资产与安装【已实现 · M10b 第 2 步】（v1.3.43 并入；演进设计 §7.5 安装目标表、§10.2 渲染落点的修正落本文，方案 A）
 
+2026-10-28 Driver 独立验收约束（Bob 授权暂不双审）：审核准入阻塞不阻止 CLI 的发现、状态调用和本地阶段认领验证。生产 `driverEnabled` 不为验收临时放开；验收工具只在私有目录构建带候选 Driver 的独立产物，记录变换、源与 bundle hash，禁止安装该产物。正式客户端、受控模型响应、隔离构建自动化分别列证，均不等于正式 A/B/C/D 审查通过。无审查的夹具 wrapper 仅允许 status/topic claim/topic resolve，拒绝 review/preflight/approve/abandon 等其它命令。跨进程先验证认领及解析继承；实际审查 worker 交接仍须用户显式调用正式入口后验收。Windows 不继承 macOS 结果。客户端事实以新报告逐项回填，版本号仍由 Bob 手动控制。
+
+同批CLI实测修订：Kimi 2.3.3 `-p` 不预展开斜杠，原生 `Skill` 工具会在无参数占位符正文后追加 `ARGUMENTS:`。入口载体新增 `arguments: native-tail`：正文不引入原生占位符，明确尾段来源并保留模型转抄规约、空参拒绝和显式调用边界，不再声称该客户端没有替换能力。七份产物仍统一render。Qoder CN 1.1.80原生状态调用已验证，现有转抄资产不变。两家私有用户根及共享哨兵均被发现；所测项目 `.agents/skills/dual-status` 在Kimi胜出，在Qoder CN未覆盖自家用户项。此优先级只覆盖这组实际根，不推广成所有项目路径/GUI的优先级。
+
 上面的示例是 **claude 目标**那一份（`description` 原写死「Antigravity + ZCode」，v1.3.45 已去实名，与命令 C / D 同口径，EV-131；渲染断言「命令描述与一级标题不含已登记 Agent 的产品名」守着它）。M10b 起四家各有一份，由同一份源渲染：
 
 - **单源渲染**：源在 `skills-src/`（`commands/*.contract.md` 命令契约 + `partials/` 片段），`npm run render` 产出 claude 目标 `skills/dual-*/`（拍平布局）与另三家 `skills/dual-critic/entry/<agent>/dual-*/`。

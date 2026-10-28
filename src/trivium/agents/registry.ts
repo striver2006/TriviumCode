@@ -411,11 +411,11 @@ export const AGENTS: readonly AgentDescriptor[] = [
     hookConfigTarget: null,
     instructionFiles: ['AGENTS.md'],
     criticReadsInstructionFiles: false,
-    // 官方文档候选落点；CLI、桌面端与 VS Code Extension Host 尚未分别实测。
+    // macOS CLI 2.3.3 私有根发现已实测；桌面端与 VS Code Extension Host 仍未测。
     entrySkillRoot: { homeEnv: 'KIMI_CODE_HOME', homeRel: '.kimi-code', skillsRel: 'skills' },
-    // 官方文档候选调用语法；桌面端与 VS Code 插件须另行实测，不在此冒充通过。
+    // 交互调用候选语法；2.3.3 -p原样传给模型，再由原生Skill加载，不预展开斜杠。
     entryInvocation: '/skill:{name}',
-    // 共享读取面同样是候选值，未取得三类客户端实测前不作为准入证据。
+    // macOS CLI 已发现独立共享哨兵；同名被项目项覆盖。GUI/Windows仍未测。
     entrySkillExtraReadRoots: ['.agents/skills'],
   },
   {
@@ -428,7 +428,7 @@ export const AGENTS: readonly AgentDescriptor[] = [
     cliName: 'qoderclicn',
     suffix: 'qoder-cn',
     findingPrefix: 'QODER',
-    // Qoder CN 的无效模型回退与客户端规则加载仍未闭环，保持 Driver 开关关闭。
+    // CLI状态技能已实测；真实任务/worker及其它客户端未验完，Driver独立保持关闭。
     criticEnabled: false,
     defaultSelected: false,
     driverEnabled: false,
@@ -436,10 +436,10 @@ export const AGENTS: readonly AgentDescriptor[] = [
     hookConfigTarget: null,
     instructionFiles: ['AGENTS.md'],
     criticReadsInstructionFiles: false,
-    // 官方 CN 路线候选落点；CLI 与桌面端发现行为尚未分别实测。
+    // macOS CN CLI 1.1.80 七入口发现/状态调用已实测；桌面端仍未测。
     entrySkillRoot: { homeRel: '.qoder-cn', skillsRel: 'skills' },
     entryInvocation: '/{name}',
-    // 共享读取面候选值，待 CN 客户端实测确认。
+    // macOS CN CLI已发现独立共享哨兵；同名选择自家用户根。其它客户端仍未测。
     entrySkillExtraReadRoots: ['.agents/skills'],
   },
 ];

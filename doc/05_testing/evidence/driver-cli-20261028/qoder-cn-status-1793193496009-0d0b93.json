@@ -1,0 +1,237 @@
+{
+  "schema": "trivium.driver-cli-experiment.v1",
+  "at": "2026-10-28T13:18:00.067Z",
+  "agent": "qoder-cn",
+  "case": "status",
+  "platform": "darwin",
+  "arch": "arm64",
+  "admission": false,
+  "production_driver_enabled": false,
+  "review_started": false,
+  "approval_started": false,
+  "windows": "未测",
+  "commands": [
+    {
+      "bin": "git",
+      "args": [
+        "-c",
+        "core.quotePath=false",
+        "init"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目",
+      "code": 0,
+      "signal": null,
+      "stdout": "Initialized empty Git repository in /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目/.git/\n",
+      "stderr": "",
+      "durationMs": 110,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "git -c core.quotePath=false init",
+      "spawned": true
+    },
+    {
+      "bin": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/native",
+      "args": [
+        "--version"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目",
+      "code": 0,
+      "signal": null,
+      "stdout": "1.1.80\n",
+      "stderr": "",
+      "durationMs": 1273,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/native --version",
+      "spawned": true
+    },
+    {
+      "bin": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/native",
+      "args": [
+        "skills",
+        "list"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目",
+      "code": 0,
+      "signal": null,
+      "stdout": "Discovered Agent Skills:\n\ndual-abandon [Enabled]\n  Description: 放弃未关闭的双审闸门，解除业务写锁；已有工件全部保留（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-abandon/SKILL.md\n\ndual-approve [Enabled]\n  Description: 人工审批双审闸门：通过或拒绝。两种结论均解除业务写锁，工件一律保留（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-approve/SKILL.md\n\ndual-review-bug [Enabled]\n  Description: 对已有 Bug 根因定位材料做背靠背双审，并产出修订后的根因结论（命令 D）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-review-bug/SKILL.md\n\ndual-review-code [Enabled]\n  Description: 对已有代码变更做背靠背双审，并产出逐条应答与修改方案（命令 C）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-review-code/SKILL.md\n\ndual-review-plan [Enabled]\n  Description: 对已有计划做背靠背双审，并产出逐条裁决的修订计划（命令 B）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-review-plan/SKILL.md\n\ndual-run [Enabled]\n  Description: 全流程双审：出方案 → 多轮双审与修订 → 编码 → 多轮双审、应答与改码 → 真实执行编译测试（命令 A）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-run/SKILL.md\n\ndual-status [Enabled]\n  Description: 查询双审流水线状态：未关闭闸门、运行次数、降级记录与争议项（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-status/SKILL.md\n\n",
+      "stderr": "",
+      "durationMs": 2083,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/native skills list",
+      "spawned": true
+    },
+    {
+      "bin": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/native",
+      "args": [
+        "--cwd",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目",
+        "--setting-sources",
+        "user",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--tools",
+        "Bash,Read,Skill",
+        "--allowed-tools",
+        "Bash",
+        "--permission-mode",
+        "dont_ask",
+        "--no-session-persistence",
+        "--output-format",
+        "stream-json",
+        "-p",
+        "/dual-status --topic '中文 空格 O'\\''Bob $HOME `literal` --尾' --json"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_id\":\"1921dc56-d333-4b98-aba4-a33594b2bb50\",\"hook_name\":\"Initializing Qoder Security\",\"hook_event\":\"SessionStart\",\"uuid\":\"36e07ce0-2955-4872-bc6c-62a0f21c116d\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"none\",\"qodercli_version\":\"1.1.80\",\"protocol_version\":\"1.5.0\",\"cwd\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目\",\"tools\":[\"Bash\",\"Read\",\"Skill\"],\"mcp_servers\":[],\"model\":\"Auto\",\"permissionMode\":\"dontAsk\",\"slash_commands\":[\"about\",\"agents\",\"btw\",\"branch\",\"subtask\",\"clear\",\"new\",\"commands\",\"compact\",\"copy\",\"corgi\",\"docs\",\"editor\",\"effort\",\"fast\",\"export\",\"help\",\"shortcuts\",\"hooks\",\"diff\",\"review\",\"insights\",\"kanban\",\"init\",\"mcp\",\"memory\",\"marketplace\",\"plugins\",\"plan\",\"goal\",\"permissions\",\"crontab\",\"profile\",\"quit\",\"rewind\",\"continue\",\"rename\",\"resume\",\"add-dir\",\"context\",\"context-window\",\"theme\",\"tools\",\"output-style\",\"skills\",\"statusline\",\"tasks\",\"workflows\",\"vim\",\"upgrade\",\"feedback\",\"usage\",\"status\",\"settings\",\"privacy\",\"release-notes\",\"model\",\"login\",\"logout\",\"remote-control\",\"remote-env\",\"simplify\",\"debug\",\"quest\",\"batch\",\"mcp-config\",\"loop\",\"run\",\"verify\",\"run-skill-generator\",\"workflow-authoring\",\"agent-creator\",\"hook-config\",\"sdk\",\"skill-creator\",\"security-scan\",\"imagegen\",\"sites:sites-build-agent-app\",\"sites:sites-building\",\"sites:sites-hosting\",\"sites:sites-management\",\"dual-status\",\"dual-approve\",\"dual-review-code\",\"dual-review-plan\",\"dual-abandon\",\"dual-run\",\"dual-review-bug\",\"deep-research\"],\"output_style\":\"default\",\"agents\":[\"general-purpose\",\"statusline-setup\",\"Explore\",\"Plan\",\"qoder-guide\"],\"skills\":[\"simplify\",\"debug\",\"quest\",\"batch\",\"mcp-config\",\"loop\",\"run\",\"verify\",\"run-skill-generator\",\"workflow-authoring\",\"agent-creator\",\"hook-config\",\"sdk\",\"skill-creator\",\"security-scan\",\"imagegen\",\"sites:sites-build-agent-app\",\"sites:sites-building\",\"sites:sites-hosting\",\"sites:sites-management\",\"deep-research\",\"dual-status\",\"dual-approve\",\"dual-review-code\",\"dual-review-plan\",\"dual-abandon\",\"dual-run\",\"dual-review-bug\"],\"plugins\":[],\"capabilities\":[\"interrupt_receipt_v1\",\"interrupt_cancel_queued_v1\",\"msg_lifecycle_v1\",\"session_rewind_v1\",\"background_tasks_v1\",\"side_question_v1\",\"custom_context_v1\",\"goal_v1\",\"goal_max_turns_v1\",\"goal_resume_v1\",\"skill_evolution_v1\",\"plan_mode_v1\",\"session_store_fork_barrier_v1\",\"host_action\",\"byok_config_management_v1\",\"commands_changed_v1\",\"reload_skills_v1\",\"selected_skills_v1\"],\"fast_mode_state\":\"off\",\"uuid\":\"09811055-56b2-4643-a79f-107aeb483640\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"system\",\"subtype\":\"artifacts_update\",\"artifacts\":[],\"uuid\":\"e0631409-3c38-4072-a307-f59ff3de3cf7\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"system\",\"subtype\":\"hook_diagnostics\",\"read_status\":\"complete\",\"checked_at\":\"2026-10-28T13:18:04.789Z\",\"diagnostics\":[],\"uuid\":\"3388fecf-2472-4f25-8840-d35204611121\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"system\",\"subtype\":\"hook_response\",\"hook_id\":\"1921dc56-d333-4b98-aba4-a33594b2bb50\",\"hook_name\":\"Initializing Qoder Security\",\"hook_event\":\"SessionStart\",\"output\":\"\",\"stdout\":\"\",\"stderr\":\"\",\"exit_code\":0,\"duration_ms\":44,\"outcome\":\"success\",\"uuid\":\"4223ddb9-8e65-42d2-8395-3914fa03621d\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-8e8f954d-1673-9d94-b681-8fa740afe795\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":null,\"stop_sequence\":null,\"content\":[{\"type\":\"thinking\",\"thinking\":\"The user is invoking the `/dual-status` command with specific arguments. Let me follow the instructions carefully.\\n\\nThe arguments are: `--topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json`\\n\\nAccording to the parameter transcription rules, I need to pass these arguments as-is to the command. The arguments are already properly formatted with single quotes and the single quote escape `'\\\\''`.\\n\\nLet me run the command:\\n\\n```\\n.trivium/bin/trivium status --topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json\\n```\\n\\nThe base directory is `/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-status`, but the command should be run from the project directory using the relative path `.trivium/bin/trivium`.\\n\\n\\nI'm currently in `/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目`, so I'll execute the status command from here with the provided arguments.\",\"signature\":\"\"}],\"container\":null,\"context_management\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"}},\"parent_tool_use_id\":null,\"uuid\":\"9e76b694-b5fc-4e73-89e3-b7b9de81a117\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-8e8f954d-1673-9d94-b681-8fa740afe795\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":\"tool_use\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"credits\":0.53819062,\"original_credits\":0.53819062,\"billable\":true,\"request_id\":\"81177381-47a2-46f8-8b03-fdcf6662f8eb\",\"context_usage_ratio\":0.04264},\"content\":[{\"type\":\"tool_use\",\"id\":\"call_367b31222e574c7598dee046\",\"name\":\"Bash\",\"input\":{\"command\":\".trivium/bin/trivium status --topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json\",\"description\":\"Run trivium status with topic and json flags\",\"timeout\":30000}}],\"container\":null,\"context_management\":null},\"parent_tool_use_id\":null,\"uuid\":\"62fcac8a-6595-4a0d-b859-1fe1eea0388c\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"call_367b31222e574c7598dee046\",\"content\":\"{\\n  \\\"ok\\\": true,\\n  \\\"topics\\\": [\\n    {\\n      \\\"topic\\\": \\\"中文 空格 O'Bob $HOME `literal` --尾\\\",\\n      \\\"open_gates\\\": [],\\n      \\\"runs\\\": 0,\\n      \\\"degradations\\\": 0,\\n      \\\"disputed\\\": false,\\n      \\\"approvals\\\": 0\\n    }\\n  ]\\n}\"}]},\"parent_tool_use_id\":null,\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\",\"uuid\":\"e870909c-1956-4c69-9471-3aaa476b97fc\",\"timestamp\":\"2026-10-28T13:18:11.509Z\",\"isSynthetic\":false,\"tool_use_result\":{\"kind\":\"completed\",\"telemetryExecutionId\":\"0ec08daf-a402-4dfc-b221-7305dff9aa0c\",\"stdout\":\"{\\n  \\\"ok\\\": true,\\n  \\\"topics\\\": [\\n    {\\n      \\\"topic\\\": \\\"中文 空格 O'Bob $HOME `literal` --尾\\\",\\n      \\\"open_gates\\\": [],\\n      \\\"runs\\\": 0,\\n      \\\"degradations\\\": 0,\\n      \\\"disputed\\\": false,\\n      \\\"approvals\\\": 0\\n    }\\n  ]\\n}\",\"stderr\":\"\",\"exitCode\":0,\"signal\":null,\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false,\"processStarted\":true}}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-ae531816-c670-937f-bf55-1dca49af2475\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":null,\"stop_sequence\":null,\"content\":[{\"type\":\"thinking\",\"thinking\":\"The command ran successfully. Let me present the output to the user.\",\"signature\":\"\"}],\"container\":null,\"context_management\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"}},\"parent_tool_use_id\":null,\"uuid\":\"a12bd92f-767f-442c-8868-2d46eaefa42b\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-ae531816-c670-937f-bf55-1dca49af2475\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"credits\":0.084644868,\"original_credits\":0.084644868,\"billable\":true,\"request_id\":\"54ccd6a0-960c-4301-9119-5d8ed90f12e4\",\"context_usage_ratio\":0.04497},\"content\":[{\"type\":\"text\",\"text\":\"闸门概览：\\n\\n| 字段 | 值 |\\n|---|---|\\n| 主题 | `中文 空格 O'Bob $HOME \\\\`literal\\\\` --尾` |\\n| 未关闭闸门 | 0 |\\n| 运行次数 | 0 |\\n| 降级次数 | 0 |\\n| 争议 | 否 |\\n| 审批通过 | 0 |\\n\\n该主题当前没有任何运行记录，也没有未关闭的闸门。\",\"citations\":null}],\"container\":null,\"context_management\":null},\"parent_tool_use_id\":null,\"uuid\":\"d614dcce-b821-4570-bfef-cfc74efcf1ae\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"result\",\"subtype\":\"success\",\"duration_ms\":10037,\"duration_api_ms\":9581,\"is_error\":false,\"num_turns\":2,\"result\":\"闸门概览：\\n\\n| 字段 | 值 |\\n|---|---|\\n| 主题 | `中文 空格 O'Bob $HOME \\\\`literal\\\\` --尾` |\\n| 未关闭闸门 | 0 |\\n| 运行次数 | 0 |\\n| 降级次数 | 0 |\\n| 争议 | 否 |\\n| 审批通过 | 0 |\\n\\n该主题当前没有任何运行记录，也没有未关闭的闸门。\",\"stop_reason\":\"end_turn\",\"total_cost_usd\":0,\"total_credits\":0.622835488,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"request_id\":\"54ccd6a0-960c-4301-9119-5d8ed90f12e4\",\"context_usage_ratio\":0.04497},\"modelUsage\":{\"auto\":{\"inputTokens\":0,\"outputTokens\":0,\"cacheReadInputTokens\":0,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0,\"contextWindow\":0,\"maxOutputTokens\":0,\"credits\":0.622835488}},\"permission_denials\":[],\"fast_mode_state\":\"off\",\"uuid\":\"9dcd89fd-cb21-4a8a-9df4-dd2715e0c3a9\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n",
+      "stderr": "[stdout-guard] Skill **dual-status** activated.\n",
+      "durationMs": 12067,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/native --cwd '/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目' --setting-sources user --strict-mcp-config --mcp-config '{\"mcpServers\":{}}' --tools 'Bash,Read,Skill' --allowed-tools Bash --permission-mode dont_ask --no-session-persistence --output-format stream-json -p '/dual-status --topic '\\''中文 空格 O'\\''\\'\\'''\\''Bob $HOME `literal` --尾'\\'' --json'",
+      "spawned": true
+    }
+  ],
+  "requests": [],
+  "global_before": {
+    "~/.qoder-cn/settings.json": "140672a4af3a98f0bc4be50a47ccf684ae6cb747bb699b0630ee178ed16e4a08",
+    "~/.qoder-cn/.auth/user": "4dfc895a87195ea566e0dabd9b862949dca4f7f6d09f14d69a72894e3040da46",
+    "~/.qoder-cn/.auth/machine_id": "861ef264875eade9081f8c19114ee3356b6681f20203203e884905939cf5072e"
+  },
+  "global_after": {
+    "~/.qoder-cn/settings.json": "140672a4af3a98f0bc4be50a47ccf684ae6cb747bb699b0630ee178ed16e4a08",
+    "~/.qoder-cn/.auth/user": "4dfc895a87195ea566e0dabd9b862949dca4f7f6d09f14d69a72894e3040da46",
+    "~/.qoder-cn/.auth/machine_id": "861ef264875eade9081f8c19114ee3356b6681f20203203e884905939cf5072e"
+  },
+  "roots": [
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O",
+    "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G"
+  ],
+  "checks": {
+    "seven_discovered": true,
+    "installed_bytes_match": true,
+    "status_argv_cwd": true,
+    "only_status_executed": true,
+    "status_succeeded": true,
+    "native_exit": true,
+    "global_unchanged": true,
+    "cleanup": true
+  },
+  "script_sha256": "1cd9f3ff6979dc1da694e733b640b7203d0f37d1e815ec5c45d0e77221fff89a",
+  "production_bundle_sha256": "ee7dc10d8d6d4ef28d29b6b9cb0533b8ffc0f623da9cf42e7ea539adbe5278b6",
+  "expected": {
+    "topic": "中文 空格 O'Bob $HOME `literal` --尾",
+    "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目",
+    "status_argv": [
+      "status",
+      "--topic",
+      "中文 空格 O'Bob $HOME `literal` --尾",
+      "--json"
+    ]
+  },
+  "cli": {
+    "source": "/Users/chenzhenbo/.qoder-cn/bin/qoderclicn/qoderclicn-1.1.80",
+    "sha256": "33050a4d2ac134e2f8d0a5293cba3df009d7bdbe0f3ae478c73057f113050a02",
+    "version": "1.1.80",
+    "source_unchanged": true
+  },
+  "source_kind": "real-official-model",
+  "real_model": true,
+  "entries": [
+    {
+      "name": "dual-run",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-run/SKILL.md",
+      "sha256": "e5bc8a73f641b5584032044ccca01fa96c4e46ab6b1a101d0c6e624f1d48b133",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-run/SKILL.md",
+      "source_sha256": "e5bc8a73f641b5584032044ccca01fa96c4e46ab6b1a101d0c6e624f1d48b133"
+    },
+    {
+      "name": "dual-review-plan",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-review-plan/SKILL.md",
+      "sha256": "a560d0a6eabab1784a1bdd5c3b9a55ee7dd876fe2928af87e4f91733b7cf3962",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-review-plan/SKILL.md",
+      "source_sha256": "a560d0a6eabab1784a1bdd5c3b9a55ee7dd876fe2928af87e4f91733b7cf3962"
+    },
+    {
+      "name": "dual-review-code",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-review-code/SKILL.md",
+      "sha256": "a30822d990b72f8149805dec44a9f1ef1ebac483e04ae9d1703a45b702e77b75",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-review-code/SKILL.md",
+      "source_sha256": "a30822d990b72f8149805dec44a9f1ef1ebac483e04ae9d1703a45b702e77b75"
+    },
+    {
+      "name": "dual-review-bug",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-review-bug/SKILL.md",
+      "sha256": "b198b2a2b7c9cc42af7e7901665137d47f3c6741690074390222003e033c5723",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-review-bug/SKILL.md",
+      "source_sha256": "b198b2a2b7c9cc42af7e7901665137d47f3c6741690074390222003e033c5723"
+    },
+    {
+      "name": "dual-approve",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-approve/SKILL.md",
+      "sha256": "6ba56b9ff11a4c989a1b7ab0978e891d79fc2b075428f3f367f87301f3c3a2b7",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-approve/SKILL.md",
+      "source_sha256": "6ba56b9ff11a4c989a1b7ab0978e891d79fc2b075428f3f367f87301f3c3a2b7"
+    },
+    {
+      "name": "dual-status",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-status/SKILL.md",
+      "sha256": "828778d1b762a70f9821019efda232cc2a22af1a90067ce36594227aa4993630",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-status/SKILL.md",
+      "source_sha256": "828778d1b762a70f9821019efda232cc2a22af1a90067ce36594227aa4993630"
+    },
+    {
+      "name": "dual-abandon",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-abandon/SKILL.md",
+      "sha256": "eaf2c4d3eecc78f3c9189d608522ad6c41e553471b8c9332c0c9f7e58d27ba44",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-abandon/SKILL.md",
+      "source_sha256": "eaf2c4d3eecc78f3c9189d608522ad6c41e553471b8c9332c0c9f7e58d27ba44"
+    }
+  ],
+  "discovery": "Discovered Agent Skills:\n\ndual-abandon [Enabled]\n  Description: 放弃未关闭的双审闸门，解除业务写锁；已有工件全部保留（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-abandon/SKILL.md\n\ndual-approve [Enabled]\n  Description: 人工审批双审闸门：通过或拒绝。两种结论均解除业务写锁，工件一律保留（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-approve/SKILL.md\n\ndual-review-bug [Enabled]\n  Description: 对已有 Bug 根因定位材料做背靠背双审，并产出修订后的根因结论（命令 D）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-review-bug/SKILL.md\n\ndual-review-code [Enabled]\n  Description: 对已有代码变更做背靠背双审，并产出逐条应答与修改方案（命令 C）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-review-code/SKILL.md\n\ndual-review-plan [Enabled]\n  Description: 对已有计划做背靠背双审，并产出逐条裁决的修订计划（命令 B）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-review-plan/SKILL.md\n\ndual-run [Enabled]\n  Description: 全流程双审：出方案 → 多轮双审与修订 → 编码 → 多轮双审、应答与改码 → 真实执行编译测试（命令 A）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-run/SKILL.md\n\ndual-status [Enabled]\n  Description: 查询双审流水线状态：未关闭闸门、运行次数、降级记录与争议项（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-status/SKILL.md\n\n",
+  "native_result": {
+    "code": 0,
+    "signal": null,
+    "stdout": "{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_id\":\"1921dc56-d333-4b98-aba4-a33594b2bb50\",\"hook_name\":\"Initializing Qoder Security\",\"hook_event\":\"SessionStart\",\"uuid\":\"36e07ce0-2955-4872-bc6c-62a0f21c116d\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"none\",\"qodercli_version\":\"1.1.80\",\"protocol_version\":\"1.5.0\",\"cwd\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目\",\"tools\":[\"Bash\",\"Read\",\"Skill\"],\"mcp_servers\":[],\"model\":\"Auto\",\"permissionMode\":\"dontAsk\",\"slash_commands\":[\"about\",\"agents\",\"btw\",\"branch\",\"subtask\",\"clear\",\"new\",\"commands\",\"compact\",\"copy\",\"corgi\",\"docs\",\"editor\",\"effort\",\"fast\",\"export\",\"help\",\"shortcuts\",\"hooks\",\"diff\",\"review\",\"insights\",\"kanban\",\"init\",\"mcp\",\"memory\",\"marketplace\",\"plugins\",\"plan\",\"goal\",\"permissions\",\"crontab\",\"profile\",\"quit\",\"rewind\",\"continue\",\"rename\",\"resume\",\"add-dir\",\"context\",\"context-window\",\"theme\",\"tools\",\"output-style\",\"skills\",\"statusline\",\"tasks\",\"workflows\",\"vim\",\"upgrade\",\"feedback\",\"usage\",\"status\",\"settings\",\"privacy\",\"release-notes\",\"model\",\"login\",\"logout\",\"remote-control\",\"remote-env\",\"simplify\",\"debug\",\"quest\",\"batch\",\"mcp-config\",\"loop\",\"run\",\"verify\",\"run-skill-generator\",\"workflow-authoring\",\"agent-creator\",\"hook-config\",\"sdk\",\"skill-creator\",\"security-scan\",\"imagegen\",\"sites:sites-build-agent-app\",\"sites:sites-building\",\"sites:sites-hosting\",\"sites:sites-management\",\"dual-status\",\"dual-approve\",\"dual-review-code\",\"dual-review-plan\",\"dual-abandon\",\"dual-run\",\"dual-review-bug\",\"deep-research\"],\"output_style\":\"default\",\"agents\":[\"general-purpose\",\"statusline-setup\",\"Explore\",\"Plan\",\"qoder-guide\"],\"skills\":[\"simplify\",\"debug\",\"quest\",\"batch\",\"mcp-config\",\"loop\",\"run\",\"verify\",\"run-skill-generator\",\"workflow-authoring\",\"agent-creator\",\"hook-config\",\"sdk\",\"skill-creator\",\"security-scan\",\"imagegen\",\"sites:sites-build-agent-app\",\"sites:sites-building\",\"sites:sites-hosting\",\"sites:sites-management\",\"deep-research\",\"dual-status\",\"dual-approve\",\"dual-review-code\",\"dual-review-plan\",\"dual-abandon\",\"dual-run\",\"dual-review-bug\"],\"plugins\":[],\"capabilities\":[\"interrupt_receipt_v1\",\"interrupt_cancel_queued_v1\",\"msg_lifecycle_v1\",\"session_rewind_v1\",\"background_tasks_v1\",\"side_question_v1\",\"custom_context_v1\",\"goal_v1\",\"goal_max_turns_v1\",\"goal_resume_v1\",\"skill_evolution_v1\",\"plan_mode_v1\",\"session_store_fork_barrier_v1\",\"host_action\",\"byok_config_management_v1\",\"commands_changed_v1\",\"reload_skills_v1\",\"selected_skills_v1\"],\"fast_mode_state\":\"off\",\"uuid\":\"09811055-56b2-4643-a79f-107aeb483640\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"system\",\"subtype\":\"artifacts_update\",\"artifacts\":[],\"uuid\":\"e0631409-3c38-4072-a307-f59ff3de3cf7\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"system\",\"subtype\":\"hook_diagnostics\",\"read_status\":\"complete\",\"checked_at\":\"2026-10-28T13:18:04.789Z\",\"diagnostics\":[],\"uuid\":\"3388fecf-2472-4f25-8840-d35204611121\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"system\",\"subtype\":\"hook_response\",\"hook_id\":\"1921dc56-d333-4b98-aba4-a33594b2bb50\",\"hook_name\":\"Initializing Qoder Security\",\"hook_event\":\"SessionStart\",\"output\":\"\",\"stdout\":\"\",\"stderr\":\"\",\"exit_code\":0,\"duration_ms\":44,\"outcome\":\"success\",\"uuid\":\"4223ddb9-8e65-42d2-8395-3914fa03621d\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-8e8f954d-1673-9d94-b681-8fa740afe795\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":null,\"stop_sequence\":null,\"content\":[{\"type\":\"thinking\",\"thinking\":\"The user is invoking the `/dual-status` command with specific arguments. Let me follow the instructions carefully.\\n\\nThe arguments are: `--topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json`\\n\\nAccording to the parameter transcription rules, I need to pass these arguments as-is to the command. The arguments are already properly formatted with single quotes and the single quote escape `'\\\\''`.\\n\\nLet me run the command:\\n\\n```\\n.trivium/bin/trivium status --topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json\\n```\\n\\nThe base directory is `/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills/dual-status`, but the command should be run from the project directory using the relative path `.trivium/bin/trivium`.\\n\\n\\nI'm currently in `/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目`, so I'll execute the status command from here with the provided arguments.\",\"signature\":\"\"}],\"container\":null,\"context_management\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"}},\"parent_tool_use_id\":null,\"uuid\":\"9e76b694-b5fc-4e73-89e3-b7b9de81a117\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-8e8f954d-1673-9d94-b681-8fa740afe795\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":\"tool_use\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"credits\":0.53819062,\"original_credits\":0.53819062,\"billable\":true,\"request_id\":\"81177381-47a2-46f8-8b03-fdcf6662f8eb\",\"context_usage_ratio\":0.04264},\"content\":[{\"type\":\"tool_use\",\"id\":\"call_367b31222e574c7598dee046\",\"name\":\"Bash\",\"input\":{\"command\":\".trivium/bin/trivium status --topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json\",\"description\":\"Run trivium status with topic and json flags\",\"timeout\":30000}}],\"container\":null,\"context_management\":null},\"parent_tool_use_id\":null,\"uuid\":\"62fcac8a-6595-4a0d-b859-1fe1eea0388c\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"call_367b31222e574c7598dee046\",\"content\":\"{\\n  \\\"ok\\\": true,\\n  \\\"topics\\\": [\\n    {\\n      \\\"topic\\\": \\\"中文 空格 O'Bob $HOME `literal` --尾\\\",\\n      \\\"open_gates\\\": [],\\n      \\\"runs\\\": 0,\\n      \\\"degradations\\\": 0,\\n      \\\"disputed\\\": false,\\n      \\\"approvals\\\": 0\\n    }\\n  ]\\n}\"}]},\"parent_tool_use_id\":null,\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\",\"uuid\":\"e870909c-1956-4c69-9471-3aaa476b97fc\",\"timestamp\":\"2026-10-28T13:18:11.509Z\",\"isSynthetic\":false,\"tool_use_result\":{\"kind\":\"completed\",\"telemetryExecutionId\":\"0ec08daf-a402-4dfc-b221-7305dff9aa0c\",\"stdout\":\"{\\n  \\\"ok\\\": true,\\n  \\\"topics\\\": [\\n    {\\n      \\\"topic\\\": \\\"中文 空格 O'Bob $HOME `literal` --尾\\\",\\n      \\\"open_gates\\\": [],\\n      \\\"runs\\\": 0,\\n      \\\"degradations\\\": 0,\\n      \\\"disputed\\\": false,\\n      \\\"approvals\\\": 0\\n    }\\n  ]\\n}\",\"stderr\":\"\",\"exitCode\":0,\"signal\":null,\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false,\"processStarted\":true}}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-ae531816-c670-937f-bf55-1dca49af2475\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":null,\"stop_sequence\":null,\"content\":[{\"type\":\"thinking\",\"thinking\":\"The command ran successfully. Let me present the output to the user.\",\"signature\":\"\"}],\"container\":null,\"context_management\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"}},\"parent_tool_use_id\":null,\"uuid\":\"a12bd92f-767f-442c-8868-2d46eaefa42b\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-ae531816-c670-937f-bf55-1dca49af2475\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"credits\":0.084644868,\"original_credits\":0.084644868,\"billable\":true,\"request_id\":\"54ccd6a0-960c-4301-9119-5d8ed90f12e4\",\"context_usage_ratio\":0.04497},\"content\":[{\"type\":\"text\",\"text\":\"闸门概览：\\n\\n| 字段 | 值 |\\n|---|---|\\n| 主题 | `中文 空格 O'Bob $HOME \\\\`literal\\\\` --尾` |\\n| 未关闭闸门 | 0 |\\n| 运行次数 | 0 |\\n| 降级次数 | 0 |\\n| 争议 | 否 |\\n| 审批通过 | 0 |\\n\\n该主题当前没有任何运行记录，也没有未关闭的闸门。\",\"citations\":null}],\"container\":null,\"context_management\":null},\"parent_tool_use_id\":null,\"uuid\":\"d614dcce-b821-4570-bfef-cfc74efcf1ae\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n{\"type\":\"result\",\"subtype\":\"success\",\"duration_ms\":10037,\"duration_api_ms\":9581,\"is_error\":false,\"num_turns\":2,\"result\":\"闸门概览：\\n\\n| 字段 | 值 |\\n|---|---|\\n| 主题 | `中文 空格 O'Bob $HOME \\\\`literal\\\\` --尾` |\\n| 未关闭闸门 | 0 |\\n| 运行次数 | 0 |\\n| 降级次数 | 0 |\\n| 争议 | 否 |\\n| 审批通过 | 0 |\\n\\n该主题当前没有任何运行记录，也没有未关闭的闸门。\",\"stop_reason\":\"end_turn\",\"total_cost_usd\":0,\"total_credits\":0.622835488,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"request_id\":\"54ccd6a0-960c-4301-9119-5d8ed90f12e4\",\"context_usage_ratio\":0.04497},\"modelUsage\":{\"auto\":{\"inputTokens\":0,\"outputTokens\":0,\"cacheReadInputTokens\":0,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0,\"contextWindow\":0,\"maxOutputTokens\":0,\"credits\":0.622835488}},\"permission_denials\":[],\"fast_mode_state\":\"off\",\"uuid\":\"9dcd89fd-cb21-4a8a-9df4-dd2715e0c3a9\",\"session_id\":\"d4e102b9-7243-48ce-bfcd-b3832147657e\"}\n",
+    "stderr": "[stdout-guard] Skill **dual-status** activated.\n",
+    "durationMs": 12067,
+    "timedOut": false,
+    "earlyStopped": false,
+    "truncated": false,
+    "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/native --cwd '/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目' --setting-sources user --strict-mcp-config --mcp-config '{\"mcpServers\":{}}' --tools 'Bash,Read,Skill' --allowed-tools Bash --permission-mode dont_ask --no-session-persistence --output-format stream-json -p '/dual-status --topic '\\''中文 空格 O'\\''\\'\\'''\\''Bob $HOME `literal` --尾'\\'' --json'",
+    "spawned": true
+  },
+  "skill_root": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G/.qoder-cn/skills",
+  "ledger": [
+    {
+      "argv": [
+        "status",
+        "--topic",
+        "中文 空格 O'Bob $HOME `literal` --尾",
+        "--json"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O/中文 空格项目",
+      "allowed": true,
+      "exit_code": 0
+    }
+  ],
+  "global_unchanged": true,
+  "cleanup": [
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-GY438O",
+      "absent": true
+    },
+    {
+      "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-EBYn5G",
+      "absent": true
+    }
+  ]
+}

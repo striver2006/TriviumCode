@@ -1,0 +1,216 @@
+{
+  "schema": "trivium.driver-cli-experiment.v1",
+  "at": "2026-10-28T13:17:06.954Z",
+  "agent": "qoder-cn",
+  "case": "status",
+  "platform": "darwin",
+  "arch": "arm64",
+  "admission": false,
+  "production_driver_enabled": false,
+  "review_started": false,
+  "approval_started": false,
+  "windows": "未测",
+  "commands": [
+    {
+      "bin": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/native",
+      "args": [
+        "--version"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/中文 空格项目",
+      "code": 0,
+      "signal": null,
+      "stdout": "1.1.80\n",
+      "stderr": "",
+      "durationMs": 1211,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/native --version",
+      "spawned": true
+    },
+    {
+      "bin": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/native",
+      "args": [
+        "skills",
+        "list"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/中文 空格项目",
+      "code": 0,
+      "signal": null,
+      "stdout": "Discovered Agent Skills:\n\ndual-abandon [Enabled]\n  Description: 放弃未关闭的双审闸门，解除业务写锁；已有工件全部保留（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-abandon/SKILL.md\n\ndual-approve [Enabled]\n  Description: 人工审批双审闸门：通过或拒绝。两种结论均解除业务写锁，工件一律保留（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-approve/SKILL.md\n\ndual-review-bug [Enabled]\n  Description: 对已有 Bug 根因定位材料做背靠背双审，并产出修订后的根因结论（命令 D）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-review-bug/SKILL.md\n\ndual-review-code [Enabled]\n  Description: 对已有代码变更做背靠背双审，并产出逐条应答与修改方案（命令 C）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-review-code/SKILL.md\n\ndual-review-plan [Enabled]\n  Description: 对已有计划做背靠背双审，并产出逐条裁决的修订计划（命令 B）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-review-plan/SKILL.md\n\ndual-run [Enabled]\n  Description: 全流程双审：出方案 → 多轮双审与修订 → 编码 → 多轮双审、应答与改码 → 真实执行编译测试（命令 A）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-run/SKILL.md\n\ndual-status [Enabled]\n  Description: 查询双审流水线状态：未关闭闸门、运行次数、降级记录与争议项（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-status/SKILL.md\n\n",
+      "stderr": "",
+      "durationMs": 1836,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/native skills list",
+      "spawned": true
+    },
+    {
+      "bin": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/native",
+      "args": [
+        "--cwd",
+        "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/中文 空格项目",
+        "--setting-sources",
+        "user",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--tools",
+        "Bash,Read,Skill",
+        "--allowed-tools",
+        "Bash",
+        "--permission-mode",
+        "dont_ask",
+        "--no-session-persistence",
+        "--output-format",
+        "stream-json",
+        "-p",
+        "/dual-status --topic '中文 空格 O'\\''Bob $HOME `literal` --尾' --json"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/中文 空格项目",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_id\":\"54a783b4-932c-453b-bac4-8c0871b2bab6\",\"hook_name\":\"Initializing Qoder Security\",\"hook_event\":\"SessionStart\",\"uuid\":\"343fd9df-6353-4104-99cd-95fbb7329ea3\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"none\",\"qodercli_version\":\"1.1.80\",\"protocol_version\":\"1.5.0\",\"cwd\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/中文 空格项目\",\"tools\":[\"Bash\",\"Read\",\"Skill\"],\"mcp_servers\":[],\"model\":\"Auto\",\"permissionMode\":\"dontAsk\",\"slash_commands\":[\"about\",\"agents\",\"btw\",\"branch\",\"subtask\",\"clear\",\"new\",\"commands\",\"compact\",\"copy\",\"corgi\",\"docs\",\"editor\",\"effort\",\"fast\",\"export\",\"help\",\"shortcuts\",\"hooks\",\"diff\",\"review\",\"insights\",\"kanban\",\"init\",\"mcp\",\"memory\",\"marketplace\",\"plugins\",\"plan\",\"goal\",\"permissions\",\"crontab\",\"profile\",\"quit\",\"rewind\",\"continue\",\"rename\",\"resume\",\"add-dir\",\"context\",\"context-window\",\"theme\",\"tools\",\"output-style\",\"skills\",\"statusline\",\"tasks\",\"workflows\",\"vim\",\"upgrade\",\"feedback\",\"usage\",\"status\",\"settings\",\"privacy\",\"release-notes\",\"model\",\"login\",\"logout\",\"remote-control\",\"remote-env\",\"simplify\",\"debug\",\"quest\",\"batch\",\"mcp-config\",\"loop\",\"run\",\"verify\",\"run-skill-generator\",\"workflow-authoring\",\"agent-creator\",\"hook-config\",\"sdk\",\"skill-creator\",\"security-scan\",\"imagegen\",\"sites:sites-build-agent-app\",\"sites:sites-building\",\"sites:sites-hosting\",\"sites:sites-management\",\"dual-status\",\"dual-approve\",\"dual-review-code\",\"dual-review-plan\",\"dual-abandon\",\"dual-run\",\"dual-review-bug\",\"deep-research\"],\"output_style\":\"default\",\"agents\":[\"general-purpose\",\"statusline-setup\",\"Explore\",\"Plan\",\"qoder-guide\"],\"skills\":[\"simplify\",\"debug\",\"quest\",\"batch\",\"mcp-config\",\"loop\",\"run\",\"verify\",\"run-skill-generator\",\"workflow-authoring\",\"agent-creator\",\"hook-config\",\"sdk\",\"skill-creator\",\"security-scan\",\"imagegen\",\"sites:sites-build-agent-app\",\"sites:sites-building\",\"sites:sites-hosting\",\"sites:sites-management\",\"deep-research\",\"dual-status\",\"dual-approve\",\"dual-review-code\",\"dual-review-plan\",\"dual-abandon\",\"dual-run\",\"dual-review-bug\"],\"plugins\":[],\"capabilities\":[\"interrupt_receipt_v1\",\"interrupt_cancel_queued_v1\",\"msg_lifecycle_v1\",\"session_rewind_v1\",\"background_tasks_v1\",\"side_question_v1\",\"custom_context_v1\",\"goal_v1\",\"goal_max_turns_v1\",\"goal_resume_v1\",\"skill_evolution_v1\",\"plan_mode_v1\",\"session_store_fork_barrier_v1\",\"host_action\",\"byok_config_management_v1\",\"commands_changed_v1\",\"reload_skills_v1\",\"selected_skills_v1\"],\"fast_mode_state\":\"off\",\"uuid\":\"d79ee487-4cf9-426c-8d65-140d630d05a7\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"system\",\"subtype\":\"artifacts_update\",\"artifacts\":[],\"uuid\":\"ff8b964d-eadd-401c-8bf9-ede1c62fb0eb\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"system\",\"subtype\":\"hook_diagnostics\",\"read_status\":\"complete\",\"checked_at\":\"2026-10-28T13:17:11.841Z\",\"diagnostics\":[],\"uuid\":\"8490ab50-305c-42dc-a8e7-023c8821f51f\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"system\",\"subtype\":\"hook_response\",\"hook_id\":\"54a783b4-932c-453b-bac4-8c0871b2bab6\",\"hook_name\":\"Initializing Qoder Security\",\"hook_event\":\"SessionStart\",\"output\":\"\",\"stdout\":\"\",\"stderr\":\"\",\"exit_code\":0,\"duration_ms\":37,\"outcome\":\"success\",\"uuid\":\"d836fed9-fa69-4836-a27b-fc06db1c813a\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-22ae7c10-7f9b-931e-8335-6c9f067c3c95\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":null,\"stop_sequence\":null,\"content\":[{\"type\":\"thinking\",\"thinking\":\"The user is invoking the `/dual-status` command with specific arguments. Let me follow the instructions carefully.\\n\\nThe arguments are: `--topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json`\\n\\nWait, let me re-read. The user's message contains:\\n- The command name: `/dual-status`\\n- The command args: `--topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json`\\n\\nAccording to the parameter transcription rules:\\n- The user's full text after the command is the parameters\\n- I need to transcribe them verbatim\\n\\n\\n- The `'\\\\''` is the shell idiom for embedding a single quote within single-quoted strings, so the actual topic value is `中文 空格 O'Bob $HOME `literal` --尾`\\n- When I pass this to the shell command, I need to use the same quoting mechanism to preserve the literal single quote and prevent shell expansion of the backticks and `$HOME`\\n- The skill instructions say to transcribe the parameters exactly as given, so I should use the user's original argument string directly in the command\\n- The `'\\\\''` syntax is already the correct shell escaping for embedding a single quote within a single-quoted string, so when I construct the bash command, I need to preserve this exact quoting to properly handle the topic value with its special characters and spaces\",\"signature\":\"\"}],\"container\":null,\"context_management\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"}},\"parent_tool_use_id\":null,\"uuid\":\"aab8298c-17db-43f9-85ac-97df0370f1b2\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-22ae7c10-7f9b-931e-8335-6c9f067c3c95\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":null,\"stop_sequence\":null,\"content\":[{\"type\":\"text\",\"text\":\"Running the status command with the provided arguments.\\n\\n\",\"citations\":null}],\"container\":null,\"context_management\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"}},\"parent_tool_use_id\":null,\"uuid\":\"0a7f6561-238c-4b9b-9a02-c34ca50b35f4\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-22ae7c10-7f9b-931e-8335-6c9f067c3c95\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":\"tool_use\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"credits\":0.53792398,\"original_credits\":0.53792398,\"billable\":true,\"request_id\":\"1ac01eae-0c67-4865-a9a6-7611094c13e5\",\"context_usage_ratio\":0.04228},\"content\":[{\"type\":\"tool_use\",\"id\":\"call_079ff0d7f17d4be5b1013b1a\",\"name\":\"Bash\",\"input\":{\"command\":\".trivium/bin/trivium status --topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json\",\"description\":\"Run trivium status with the exact user-provided arguments\"}}],\"container\":null,\"context_management\":null},\"parent_tool_use_id\":null,\"uuid\":\"5494178c-53b7-440f-901a-dff8a579d19b\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"call_079ff0d7f17d4be5b1013b1a\",\"content\":\"Exit code 69\\n✗ 当前目录不是 git 仓库。TriviumCode 依赖 git 做快照与漂移检测，并要求工件纳入版本管理。\",\"is_error\":true}]},\"parent_tool_use_id\":null,\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\",\"uuid\":\"8a58846f-17b6-4bdb-9c45-cd0d59b917b1\",\"timestamp\":\"2026-10-28T13:17:19.790Z\",\"isSynthetic\":false,\"tool_use_result\":{\"kind\":\"completed\",\"telemetryExecutionId\":\"d222561f-89f4-4b66-9ee4-3f67cbe71128\",\"stdout\":\"✗ 当前目录不是 git 仓库。TriviumCode 依赖 git 做快照与漂移检测，并要求工件纳入版本管理。\",\"stderr\":\"\",\"exitCode\":69,\"signal\":null,\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false,\"isError\":true,\"processStarted\":true}}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-c3575c52-1863-9f82-893d-6f2f7d8961a5\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":null,\"stop_sequence\":null,\"content\":[{\"type\":\"thinking\",\"thinking\":\"The command returned exit code 69 with an error message saying the current directory is not a git repository. TriviumCode depends on git for snapshots and drift detection, and requires artifacts to be version-controlled.\\n\\nThe context also says \\\"Is a git repository: false\\\", which confirms this.\\n\\nI should relay this error to the user as-is, per the instructions (\\\"把输出原样转述给用户\\\").\\n\",\"signature\":\"\"}],\"container\":null,\"context_management\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"}},\"parent_tool_use_id\":null,\"uuid\":\"b1b90a5c-d2d8-4bdf-ae77-837a5c446c1f\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-c3575c52-1863-9f82-893d-6f2f7d8961a5\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"credits\":0.08728016,\"original_credits\":0.08728016,\"billable\":true,\"request_id\":\"62c2d250-8ef7-4686-b6a4-a773d6c023d5\",\"context_usage_ratio\":0.04446},\"content\":[{\"type\":\"text\",\"text\":\"当前目录不是 git 仓库。TriviumCode 依赖 git 做快照与漂移检测，并要求工件纳入版本管理。\\n\\n需要先在项目目录中初始化 git 仓库（`git init` 并完成首次提交），之后再运行 `/dual-status`。\",\"citations\":null}],\"container\":null,\"context_management\":null},\"parent_tool_use_id\":null,\"uuid\":\"898ae5ed-281d-4ac3-b3bb-da0dbd1d8853\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"result\",\"subtype\":\"success\",\"duration_ms\":10515,\"duration_api_ms\":10092,\"is_error\":false,\"num_turns\":2,\"result\":\"当前目录不是 git 仓库。TriviumCode 依赖 git 做快照与漂移检测，并要求工件纳入版本管理。\\n\\n需要先在项目目录中初始化 git 仓库（`git init` 并完成首次提交），之后再运行 `/dual-status`。\",\"stop_reason\":\"end_turn\",\"total_cost_usd\":0,\"total_credits\":0.6252041399999999,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"request_id\":\"62c2d250-8ef7-4686-b6a4-a773d6c023d5\",\"context_usage_ratio\":0.04446},\"modelUsage\":{\"auto\":{\"inputTokens\":0,\"outputTokens\":0,\"cacheReadInputTokens\":0,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0,\"contextWindow\":0,\"maxOutputTokens\":0,\"credits\":0.6252041399999999}},\"permission_denials\":[],\"fast_mode_state\":\"off\",\"uuid\":\"ad1c5cb0-3778-4c7c-a4cf-692cef897ac4\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n",
+      "stderr": "[stdout-guard] Skill **dual-status** activated.\n",
+      "durationMs": 12588,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/native --cwd '/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/中文 空格项目' --setting-sources user --strict-mcp-config --mcp-config '{\"mcpServers\":{}}' --tools 'Bash,Read,Skill' --allowed-tools Bash --permission-mode dont_ask --no-session-persistence --output-format stream-json -p '/dual-status --topic '\\''中文 空格 O'\\''\\'\\'''\\''Bob $HOME `literal` --尾'\\'' --json'",
+      "spawned": true
+    }
+  ],
+  "requests": [],
+  "global_before": {
+    "~/.qoder-cn/settings.json": "140672a4af3a98f0bc4be50a47ccf684ae6cb747bb699b0630ee178ed16e4a08",
+    "~/.qoder-cn/.auth/user": "4dfc895a87195ea566e0dabd9b862949dca4f7f6d09f14d69a72894e3040da46",
+    "~/.qoder-cn/.auth/machine_id": "861ef264875eade9081f8c19114ee3356b6681f20203203e884905939cf5072e"
+  },
+  "global_after": {
+    "~/.qoder-cn/settings.json": "140672a4af3a98f0bc4be50a47ccf684ae6cb747bb699b0630ee178ed16e4a08",
+    "~/.qoder-cn/.auth/user": "4dfc895a87195ea566e0dabd9b862949dca4f7f6d09f14d69a72894e3040da46",
+    "~/.qoder-cn/.auth/machine_id": "861ef264875eade9081f8c19114ee3356b6681f20203203e884905939cf5072e"
+  },
+  "roots": [
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX",
+    "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO"
+  ],
+  "checks": {
+    "seven_discovered": true,
+    "installed_bytes_match": true,
+    "status_argv_cwd": true,
+    "only_status_executed": true,
+    "native_exit": true,
+    "global_unchanged": true,
+    "cleanup": true
+  },
+  "script_sha256": "883fc82d87526069e969301f9c88551dc3c0cab1d1b5e56f8f01a2ab90e30677",
+  "production_bundle_sha256": "ee7dc10d8d6d4ef28d29b6b9cb0533b8ffc0f623da9cf42e7ea539adbe5278b6",
+  "expected": {
+    "topic": "中文 空格 O'Bob $HOME `literal` --尾",
+    "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/中文 空格项目",
+    "status_argv": [
+      "status",
+      "--topic",
+      "中文 空格 O'Bob $HOME `literal` --尾",
+      "--json"
+    ]
+  },
+  "cli": {
+    "source": "/Users/chenzhenbo/.qoder-cn/bin/qoderclicn/qoderclicn-1.1.80",
+    "sha256": "33050a4d2ac134e2f8d0a5293cba3df009d7bdbe0f3ae478c73057f113050a02",
+    "version": "1.1.80",
+    "source_unchanged": true
+  },
+  "source_kind": "real-official-model",
+  "real_model": true,
+  "entries": [
+    {
+      "name": "dual-run",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-run/SKILL.md",
+      "sha256": "e5bc8a73f641b5584032044ccca01fa96c4e46ab6b1a101d0c6e624f1d48b133",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-run/SKILL.md",
+      "source_sha256": "e5bc8a73f641b5584032044ccca01fa96c4e46ab6b1a101d0c6e624f1d48b133"
+    },
+    {
+      "name": "dual-review-plan",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-review-plan/SKILL.md",
+      "sha256": "a560d0a6eabab1784a1bdd5c3b9a55ee7dd876fe2928af87e4f91733b7cf3962",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-review-plan/SKILL.md",
+      "source_sha256": "a560d0a6eabab1784a1bdd5c3b9a55ee7dd876fe2928af87e4f91733b7cf3962"
+    },
+    {
+      "name": "dual-review-code",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-review-code/SKILL.md",
+      "sha256": "a30822d990b72f8149805dec44a9f1ef1ebac483e04ae9d1703a45b702e77b75",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-review-code/SKILL.md",
+      "source_sha256": "a30822d990b72f8149805dec44a9f1ef1ebac483e04ae9d1703a45b702e77b75"
+    },
+    {
+      "name": "dual-review-bug",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-review-bug/SKILL.md",
+      "sha256": "b198b2a2b7c9cc42af7e7901665137d47f3c6741690074390222003e033c5723",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-review-bug/SKILL.md",
+      "source_sha256": "b198b2a2b7c9cc42af7e7901665137d47f3c6741690074390222003e033c5723"
+    },
+    {
+      "name": "dual-approve",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-approve/SKILL.md",
+      "sha256": "6ba56b9ff11a4c989a1b7ab0978e891d79fc2b075428f3f367f87301f3c3a2b7",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-approve/SKILL.md",
+      "source_sha256": "6ba56b9ff11a4c989a1b7ab0978e891d79fc2b075428f3f367f87301f3c3a2b7"
+    },
+    {
+      "name": "dual-status",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-status/SKILL.md",
+      "sha256": "828778d1b762a70f9821019efda232cc2a22af1a90067ce36594227aa4993630",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-status/SKILL.md",
+      "source_sha256": "828778d1b762a70f9821019efda232cc2a22af1a90067ce36594227aa4993630"
+    },
+    {
+      "name": "dual-abandon",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-abandon/SKILL.md",
+      "sha256": "eaf2c4d3eecc78f3c9189d608522ad6c41e553471b8c9332c0c9f7e58d27ba44",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-abandon/SKILL.md",
+      "source_sha256": "eaf2c4d3eecc78f3c9189d608522ad6c41e553471b8c9332c0c9f7e58d27ba44"
+    }
+  ],
+  "discovery": "Discovered Agent Skills:\n\ndual-abandon [Enabled]\n  Description: 放弃未关闭的双审闸门，解除业务写锁；已有工件全部保留（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-abandon/SKILL.md\n\ndual-approve [Enabled]\n  Description: 人工审批双审闸门：通过或拒绝。两种结论均解除业务写锁，工件一律保留（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-approve/SKILL.md\n\ndual-review-bug [Enabled]\n  Description: 对已有 Bug 根因定位材料做背靠背双审，并产出修订后的根因结论（命令 D）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-review-bug/SKILL.md\n\ndual-review-code [Enabled]\n  Description: 对已有代码变更做背靠背双审，并产出逐条应答与修改方案（命令 C）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-review-code/SKILL.md\n\ndual-review-plan [Enabled]\n  Description: 对已有计划做背靠背双审，并产出逐条裁决的修订计划（命令 B）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-review-plan/SKILL.md\n\ndual-run [Enabled]\n  Description: 全流程双审：出方案 → 多轮双审与修订 → 编码 → 多轮双审、应答与改码 → 真实执行编译测试（命令 A）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-run/SKILL.md\n\ndual-status [Enabled]\n  Description: 查询双审流水线状态：未关闭闸门、运行次数、降级记录与争议项（辅助命令）\n  Location:    /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills/dual-status/SKILL.md\n\n",
+  "native_result": {
+    "code": 0,
+    "signal": null,
+    "stdout": "{\"type\":\"system\",\"subtype\":\"hook_started\",\"hook_id\":\"54a783b4-932c-453b-bac4-8c0871b2bab6\",\"hook_name\":\"Initializing Qoder Security\",\"hook_event\":\"SessionStart\",\"uuid\":\"343fd9df-6353-4104-99cd-95fbb7329ea3\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"none\",\"qodercli_version\":\"1.1.80\",\"protocol_version\":\"1.5.0\",\"cwd\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/中文 空格项目\",\"tools\":[\"Bash\",\"Read\",\"Skill\"],\"mcp_servers\":[],\"model\":\"Auto\",\"permissionMode\":\"dontAsk\",\"slash_commands\":[\"about\",\"agents\",\"btw\",\"branch\",\"subtask\",\"clear\",\"new\",\"commands\",\"compact\",\"copy\",\"corgi\",\"docs\",\"editor\",\"effort\",\"fast\",\"export\",\"help\",\"shortcuts\",\"hooks\",\"diff\",\"review\",\"insights\",\"kanban\",\"init\",\"mcp\",\"memory\",\"marketplace\",\"plugins\",\"plan\",\"goal\",\"permissions\",\"crontab\",\"profile\",\"quit\",\"rewind\",\"continue\",\"rename\",\"resume\",\"add-dir\",\"context\",\"context-window\",\"theme\",\"tools\",\"output-style\",\"skills\",\"statusline\",\"tasks\",\"workflows\",\"vim\",\"upgrade\",\"feedback\",\"usage\",\"status\",\"settings\",\"privacy\",\"release-notes\",\"model\",\"login\",\"logout\",\"remote-control\",\"remote-env\",\"simplify\",\"debug\",\"quest\",\"batch\",\"mcp-config\",\"loop\",\"run\",\"verify\",\"run-skill-generator\",\"workflow-authoring\",\"agent-creator\",\"hook-config\",\"sdk\",\"skill-creator\",\"security-scan\",\"imagegen\",\"sites:sites-build-agent-app\",\"sites:sites-building\",\"sites:sites-hosting\",\"sites:sites-management\",\"dual-status\",\"dual-approve\",\"dual-review-code\",\"dual-review-plan\",\"dual-abandon\",\"dual-run\",\"dual-review-bug\",\"deep-research\"],\"output_style\":\"default\",\"agents\":[\"general-purpose\",\"statusline-setup\",\"Explore\",\"Plan\",\"qoder-guide\"],\"skills\":[\"simplify\",\"debug\",\"quest\",\"batch\",\"mcp-config\",\"loop\",\"run\",\"verify\",\"run-skill-generator\",\"workflow-authoring\",\"agent-creator\",\"hook-config\",\"sdk\",\"skill-creator\",\"security-scan\",\"imagegen\",\"sites:sites-build-agent-app\",\"sites:sites-building\",\"sites:sites-hosting\",\"sites:sites-management\",\"deep-research\",\"dual-status\",\"dual-approve\",\"dual-review-code\",\"dual-review-plan\",\"dual-abandon\",\"dual-run\",\"dual-review-bug\"],\"plugins\":[],\"capabilities\":[\"interrupt_receipt_v1\",\"interrupt_cancel_queued_v1\",\"msg_lifecycle_v1\",\"session_rewind_v1\",\"background_tasks_v1\",\"side_question_v1\",\"custom_context_v1\",\"goal_v1\",\"goal_max_turns_v1\",\"goal_resume_v1\",\"skill_evolution_v1\",\"plan_mode_v1\",\"session_store_fork_barrier_v1\",\"host_action\",\"byok_config_management_v1\",\"commands_changed_v1\",\"reload_skills_v1\",\"selected_skills_v1\"],\"fast_mode_state\":\"off\",\"uuid\":\"d79ee487-4cf9-426c-8d65-140d630d05a7\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"system\",\"subtype\":\"artifacts_update\",\"artifacts\":[],\"uuid\":\"ff8b964d-eadd-401c-8bf9-ede1c62fb0eb\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"system\",\"subtype\":\"hook_diagnostics\",\"read_status\":\"complete\",\"checked_at\":\"2026-10-28T13:17:11.841Z\",\"diagnostics\":[],\"uuid\":\"8490ab50-305c-42dc-a8e7-023c8821f51f\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"system\",\"subtype\":\"hook_response\",\"hook_id\":\"54a783b4-932c-453b-bac4-8c0871b2bab6\",\"hook_name\":\"Initializing Qoder Security\",\"hook_event\":\"SessionStart\",\"output\":\"\",\"stdout\":\"\",\"stderr\":\"\",\"exit_code\":0,\"duration_ms\":37,\"outcome\":\"success\",\"uuid\":\"d836fed9-fa69-4836-a27b-fc06db1c813a\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-22ae7c10-7f9b-931e-8335-6c9f067c3c95\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":null,\"stop_sequence\":null,\"content\":[{\"type\":\"thinking\",\"thinking\":\"The user is invoking the `/dual-status` command with specific arguments. Let me follow the instructions carefully.\\n\\nThe arguments are: `--topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json`\\n\\nWait, let me re-read. The user's message contains:\\n- The command name: `/dual-status`\\n- The command args: `--topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json`\\n\\nAccording to the parameter transcription rules:\\n- The user's full text after the command is the parameters\\n- I need to transcribe them verbatim\\n\\n\\n- The `'\\\\''` is the shell idiom for embedding a single quote within single-quoted strings, so the actual topic value is `中文 空格 O'Bob $HOME `literal` --尾`\\n- When I pass this to the shell command, I need to use the same quoting mechanism to preserve the literal single quote and prevent shell expansion of the backticks and `$HOME`\\n- The skill instructions say to transcribe the parameters exactly as given, so I should use the user's original argument string directly in the command\\n- The `'\\\\''` syntax is already the correct shell escaping for embedding a single quote within a single-quoted string, so when I construct the bash command, I need to preserve this exact quoting to properly handle the topic value with its special characters and spaces\",\"signature\":\"\"}],\"container\":null,\"context_management\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"}},\"parent_tool_use_id\":null,\"uuid\":\"aab8298c-17db-43f9-85ac-97df0370f1b2\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-22ae7c10-7f9b-931e-8335-6c9f067c3c95\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":null,\"stop_sequence\":null,\"content\":[{\"type\":\"text\",\"text\":\"Running the status command with the provided arguments.\\n\\n\",\"citations\":null}],\"container\":null,\"context_management\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"}},\"parent_tool_use_id\":null,\"uuid\":\"0a7f6561-238c-4b9b-9a02-c34ca50b35f4\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-22ae7c10-7f9b-931e-8335-6c9f067c3c95\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":\"tool_use\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"credits\":0.53792398,\"original_credits\":0.53792398,\"billable\":true,\"request_id\":\"1ac01eae-0c67-4865-a9a6-7611094c13e5\",\"context_usage_ratio\":0.04228},\"content\":[{\"type\":\"tool_use\",\"id\":\"call_079ff0d7f17d4be5b1013b1a\",\"name\":\"Bash\",\"input\":{\"command\":\".trivium/bin/trivium status --topic '中文 空格 O'\\\\''Bob $HOME `literal` --尾' --json\",\"description\":\"Run trivium status with the exact user-provided arguments\"}}],\"container\":null,\"context_management\":null},\"parent_tool_use_id\":null,\"uuid\":\"5494178c-53b7-440f-901a-dff8a579d19b\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"call_079ff0d7f17d4be5b1013b1a\",\"content\":\"Exit code 69\\n✗ 当前目录不是 git 仓库。TriviumCode 依赖 git 做快照与漂移检测，并要求工件纳入版本管理。\",\"is_error\":true}]},\"parent_tool_use_id\":null,\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\",\"uuid\":\"8a58846f-17b6-4bdb-9c45-cd0d59b917b1\",\"timestamp\":\"2026-10-28T13:17:19.790Z\",\"isSynthetic\":false,\"tool_use_result\":{\"kind\":\"completed\",\"telemetryExecutionId\":\"d222561f-89f4-4b66-9ee4-3f67cbe71128\",\"stdout\":\"✗ 当前目录不是 git 仓库。TriviumCode 依赖 git 做快照与漂移检测，并要求工件纳入版本管理。\",\"stderr\":\"\",\"exitCode\":69,\"signal\":null,\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false,\"isError\":true,\"processStarted\":true}}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-c3575c52-1863-9f82-893d-6f2f7d8961a5\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":null,\"stop_sequence\":null,\"content\":[{\"type\":\"thinking\",\"thinking\":\"The command returned exit code 69 with an error message saying the current directory is not a git repository. TriviumCode depends on git for snapshots and drift detection, and requires artifacts to be version-controlled.\\n\\nThe context also says \\\"Is a git repository: false\\\", which confirms this.\\n\\nI should relay this error to the user as-is, per the instructions (\\\"把输出原样转述给用户\\\").\\n\",\"signature\":\"\"}],\"container\":null,\"context_management\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"}},\"parent_tool_use_id\":null,\"uuid\":\"b1b90a5c-d2d8-4bdf-ae77-837a5c446c1f\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"assistant\",\"message\":{\"id\":\"chatcmpl-c3575c52-1863-9f82-893d-6f2f7d8961a5\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"Auto\",\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"credits\":0.08728016,\"original_credits\":0.08728016,\"billable\":true,\"request_id\":\"62c2d250-8ef7-4686-b6a4-a773d6c023d5\",\"context_usage_ratio\":0.04446},\"content\":[{\"type\":\"text\",\"text\":\"当前目录不是 git 仓库。TriviumCode 依赖 git 做快照与漂移检测，并要求工件纳入版本管理。\\n\\n需要先在项目目录中初始化 git 仓库（`git init` 并完成首次提交），之后再运行 `/dual-status`。\",\"citations\":null}],\"container\":null,\"context_management\":null},\"parent_tool_use_id\":null,\"uuid\":\"898ae5ed-281d-4ac3-b3bb-da0dbd1d8853\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n{\"type\":\"result\",\"subtype\":\"success\",\"duration_ms\":10515,\"duration_api_ms\":10092,\"is_error\":false,\"num_turns\":2,\"result\":\"当前目录不是 git 仓库。TriviumCode 依赖 git 做快照与漂移检测，并要求工件纳入版本管理。\\n\\n需要先在项目目录中初始化 git 仓库（`git init` 并完成首次提交），之后再运行 `/dual-status`。\",\"stop_reason\":\"end_turn\",\"total_cost_usd\":0,\"total_credits\":0.6252041399999999,\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\",\"request_id\":\"62c2d250-8ef7-4686-b6a4-a773d6c023d5\",\"context_usage_ratio\":0.04446},\"modelUsage\":{\"auto\":{\"inputTokens\":0,\"outputTokens\":0,\"cacheReadInputTokens\":0,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0,\"contextWindow\":0,\"maxOutputTokens\":0,\"credits\":0.6252041399999999}},\"permission_denials\":[],\"fast_mode_state\":\"off\",\"uuid\":\"ad1c5cb0-3778-4c7c-a4cf-692cef897ac4\",\"session_id\":\"62eed9dc-5632-4017-a8ba-e3309bc9ec56\"}\n",
+    "stderr": "[stdout-guard] Skill **dual-status** activated.\n",
+    "durationMs": 12588,
+    "timedOut": false,
+    "earlyStopped": false,
+    "truncated": false,
+    "commandLine": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/native --cwd '/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/中文 空格项目' --setting-sources user --strict-mcp-config --mcp-config '{\"mcpServers\":{}}' --tools 'Bash,Read,Skill' --allowed-tools Bash --permission-mode dont_ask --no-session-persistence --output-format stream-json -p '/dual-status --topic '\\''中文 空格 O'\\''\\'\\'''\\''Bob $HOME `literal` --尾'\\'' --json'",
+    "spawned": true
+  },
+  "skill_root": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO/.qoder-cn/skills",
+  "ledger": [
+    {
+      "argv": [
+        "status",
+        "--topic",
+        "中文 空格 O'Bob $HOME `literal` --尾",
+        "--json"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX/中文 空格项目",
+      "allowed": true
+    }
+  ],
+  "global_unchanged": true,
+  "cleanup": [
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-UKOitX",
+      "absent": true
+    },
+    {
+      "path": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-r3UlFO",
+      "absent": true
+    }
+  ]
+}

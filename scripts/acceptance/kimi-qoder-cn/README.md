@@ -1,5 +1,22 @@
 # Kimi/Qoder 取证工具
 
+2026-10-28新增独立Driver工作（不启动审查、不审批、不改生产开关）：
+
+```sh
+node scripts/acceptance/kimi-qoder-cn/driver-cli.mjs --agent kimi --case status
+node scripts/acceptance/kimi-qoder-cn/driver-cli.mjs --agent qoder-cn --case discover
+node scripts/acceptance/kimi-qoder-cn/driver-cli.mjs --agent qoder-cn --case status
+node scripts/acceptance/kimi-qoder-cn/driver-cli.mjs --agent kimi --case collision
+node scripts/acceptance/kimi-qoder-cn/driver-cli.mjs --agent qoder-cn --case collision
+node scripts/acceptance/kimi-qoder-cn/driver-cli.mjs --agent kimi --case local --keep-fixture yes
+node scripts/acceptance/kimi-qoder-cn/driver-cli.mjs --agent qoder-cn --case local --keep-fixture yes
+node --test scripts/acceptance/kimi-qoder-cn/driver-cli.test.mjs
+```
+
+仅macOS。两家均可显式选discover/status/collision/local；--bin固定指定CLI，--output指定新原件目录。Qoder status消耗一次官方默认路线真实配额并临时复制最小认证，其它Qoder case不调用模型；Kimi native case只使用无真实凭据loopback，不是模型准入。local仅临时构建候选开关、真实本地CLI进程认领/继承，不启动审查worker。默认删除根；--keep-fixture yes仅允许local，留无凭据夹具与fixture.json、拒绝review的wrapper，不安装candidate。每批上限16次派生，每次90秒；完整逃逸后代/监督进程被杀回收未测。
+
+七项须从原生目录核数量与来源；status还须核native工具、argv/cwd及账本exit_code=0。第一批假.git装置失败与旧缺exit_code原件保留，不得引用其中旧checks宣称status成功。Kimi -p保留斜杠原文，原生Skill追加参数尾段；模型转抄与原生加载分别登记。正式A/B/C/D、审批、恢复/放弃和Windows未测，具体待验文本见[Driver报告](../../../doc/05_testing/REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md)。
+
 2026-10-28直接整改（Bob授权暂不双审）：execution采集器与生产准入共用适配层qoder-cn-execution判据，原件新增文件前态与proof目标，精确核对Write内容、Edit替换和Bash命令。成功观测须保留完整派生/信号/超时/早停/截断事实；原件明确real-model来源，loopback或缺来源不能生成准入。源声明不是独立底层身份认证。旧原件不补字段，历史Write可观察性仍保留，不能移作新判据通过。工具未调用不改变提示重试；本批未新增厂商模型调用。新增准入反例由默认unit测试收录。
 
 20:30左右的续调查见两份报告末节：隔离下载官方Kimi 2.4.0并校验发布digest，final五臂仍复现规则未阻止执行；没有替换本机2.3.3。Qoder 1.1.80本地合成模型响应实验在鉴权/目录能力层失败，localhost请求0，不能补成Edit/Bash分发拒绝证据。该临时原型只以脱敏文本留存于evidence，不新增受支持的生产入口。

@@ -3,11 +3,12 @@ name: dual-review-code
 description: 对已有代码变更做背靠背双审，并产出逐条应答与修改方案（命令 C）
 ---
 
-参数：本载体**不替换**参数占位符。参数就是用户随本命令给出的全部文本（跟在命令名后面，或被载体标成「User request」的那一段）；
-下文命令里写 `<参数>` 的地方，按下面的转抄规约把它拼进去。参数写法：`<审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-claude <名>] [--native-claude] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--base <ref>] [--max-rounds <n>] [--critics <id,…>] [--only claude|codex|gemini|glm] [--allow-single]`
+参数：原生技能加载器在这份无参数占位符的正文末尾追加 `ARGUMENTS: <用户参数原文>`。
+从该尾段取得本次参数；下文 `<参数>` 按转抄规约拼入命令。参数写法：`<审查焦点提示语> [--goal <任务目标>] [--topic <主题>] [--context <路径,…>] [--profile <名称>] [--model-claude <模型>] [--model-codex <模型>] [--model-gemini <模型>] [--model-glm <模型>] [--tier-claude <档>] [--tier-codex <档>] [--tier-gemini <档>] [--tier-glm <档>] [--effort-claude <值>] [--effort-codex <值>] [--effort-gemini <值>] [--effort-glm <值>] [--profile-claude <名>] [--native-claude] [--profile-codex <名>] [--native-codex] [--driver-model <模型>] [--driver-provider <供应商>] [--base <ref>] [--max-rounds <n>] [--critics <id,…>] [--only claude|codex|gemini|glm] [--allow-single]`
 
-**只在用户显式调用本命令时执行。** 本载体没有「禁止模型自行调用」的开关：你若是自己读到这份说明、
-而用户并没有调用本命令，不要执行其中任何一步。
+**只在用户显式调用本命令时执行。** 用户没有调用本命令时，不执行其中任何一步。
+CLI 的 `-p` 模式把 `/skill:名字 …` 原样交给模型，由原生 `Skill` 工具加载；
+原生加载和模型转抄是两步，不能把转抄结果当作客户端自动执行。
 
 #### 参数转抄规约
 

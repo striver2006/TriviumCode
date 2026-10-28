@@ -2,6 +2,8 @@
 
 日期：2026-10-27。责任人：Codex（Driver）；Windows 实机执行：Bob。
 
+2026-10-28 Driver独立续批（Bob明确授权暂不双审）：P1/P5已补macOS官方CLI七技能发现、来源/唯一数量、同名与共享读取控制；Qoder官方真实模型status参数/cwd通过，Kimi受控原生Skill/参数尾段/status通过但真实模型认证前置阻塞。P1隔离候选构建的阶段认领、原稿归属及第二进程继承通过；七份Kimi入口统一render为native-tail说明。生产开关未动，完整A/B/C/D及审查worker交接未测；桌面/插件在CLI后继续，Windows未测。详细改动、装置失败原件、无凭据保留夹具和待显式正式入口见[独立Driver报告](../05_testing/REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md)。以下历史状态保留，不能把P3审核阻塞当作本轮P1/P5零进展。
+
 2026-10-28 追加：Kimi macOS 独立根因主题的计划三审已完成、17 条意见全部接受；实验与生产准入分开。现状与复跑命令见 [规则报告](../05_testing/REPORT_2026-10-28_KimiCode_macOS规则根因与只读准入.md)。本文件以下历史基线/既定范围保留，新主题固定审核集合为 gemini、glm、claude。
 
 ## 1. 基线与执行边界

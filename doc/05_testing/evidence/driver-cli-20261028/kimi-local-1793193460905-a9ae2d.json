@@ -1,0 +1,221 @@
+{
+  "schema": "trivium.driver-cli-experiment.v1",
+  "at": "2026-10-28T13:17:39.913Z",
+  "agent": "kimi",
+  "case": "local",
+  "platform": "darwin",
+  "arch": "arm64",
+  "admission": false,
+  "production_driver_enabled": false,
+  "review_started": false,
+  "approval_started": false,
+  "windows": "未测",
+  "commands": [
+    {
+      "bin": "git",
+      "args": [
+        "-c",
+        "core.quotePath=false",
+        "init"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目",
+      "code": 0,
+      "signal": null,
+      "stdout": "Initialized empty Git repository in /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目/.git/\n",
+      "stderr": "",
+      "durationMs": 60,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "git -c core.quotePath=false init",
+      "spawned": true
+    },
+    {
+      "bin": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "args": [
+        "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
+        "topic",
+        "claim",
+        "--topic",
+        "中文 空格 O'Bob $HOME `literal` --尾",
+        "--stage",
+        "plan",
+        "--driver",
+        "kimi",
+        "--session-id",
+        "driver-local-test",
+        "--json"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目",
+      "code": 64,
+      "signal": null,
+      "stdout": "",
+      "stderr": "✗ Driver「kimi」已登记但尚未启用为 Driver。\n  可用作 Driver：claude | codex | gemini | glm\n",
+      "durationMs": 115,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "/opt/homebrew/Cellar/node/25.2.1/bin/node /Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs topic claim --topic '中文 空格 O'\\''Bob $HOME `literal` --尾' --stage plan --driver kimi --session-id driver-local-test --json",
+      "spawned": true
+    },
+    {
+      "bin": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目/.trivium/bin/trivium",
+      "args": [
+        "topic",
+        "claim",
+        "--topic",
+        "中文 空格 O'Bob $HOME `literal` --尾",
+        "--stage",
+        "plan",
+        "--driver",
+        "kimi",
+        "--session-id",
+        "driver-local-test",
+        "--json"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"中文-空格-O'Bob-$HOME-`literal`---尾\",\n  \"stage\": \"plan\",\n  \"driver\": \"kimi\",\n  \"outcome\": \"claimed\",\n  \"claimed_at\": \"2026-10-28T13:17:40.570Z\",\n  \"claimed_by\": \"driver-local-test\",\n  \"history_len\": 0\n}\n",
+      "stderr": "",
+      "durationMs": 425,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目/.trivium/bin/trivium' topic claim --topic '中文 空格 O'\\''Bob $HOME `literal` --尾' --stage plan --driver kimi --session-id driver-local-test --json",
+      "spawned": true
+    },
+    {
+      "bin": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目/.trivium/bin/trivium",
+      "args": [
+        "topic",
+        "resolve",
+        "--entry",
+        "B",
+        "--stage",
+        "plan",
+        "--topic",
+        "中文 空格 O'Bob $HOME `literal` --尾",
+        "--focus",
+        "焦点 $原样 --中文",
+        "--json"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目",
+      "code": 64,
+      "signal": null,
+      "stdout": "",
+      "stderr": "✗ topic resolve 需要 -- 之后的原始参数。推荐写法：\n  trivium topic resolve --stage plan -- '<正文>' --topic <主题> [其余旗标]\n  正文整段放进一个单引号参数，旗标放在引号之外。\n",
+      "durationMs": 158,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目/.trivium/bin/trivium' topic resolve --entry B --stage plan --topic '中文 空格 O'\\''Bob $HOME `literal` --尾' --focus '焦点 $原样 --中文' --json",
+      "spawned": true
+    },
+    {
+      "bin": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目/.trivium/bin/trivium",
+      "args": [
+        "topic",
+        "claim",
+        "--topic",
+        "中文 空格 O'Bob $HOME `literal` --尾",
+        "--stage",
+        "plan",
+        "--driver",
+        "kimi",
+        "--session-id",
+        "driver-local-test",
+        "--json"
+      ],
+      "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目",
+      "code": 0,
+      "signal": null,
+      "stdout": "{\n  \"ok\": true,\n  \"topic\": \"中文-空格-O'Bob-$HOME-`literal`---尾\",\n  \"stage\": \"plan\",\n  \"driver\": \"kimi\",\n  \"outcome\": \"noop\",\n  \"claimed_at\": \"2026-10-28T13:17:40.570Z\",\n  \"claimed_by\": \"driver-local-test\",\n  \"history_len\": 0\n}\n",
+      "stderr": "",
+      "durationMs": 171,
+      "timedOut": false,
+      "earlyStopped": false,
+      "truncated": false,
+      "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目/.trivium/bin/trivium' topic claim --topic '中文 空格 O'\\''Bob $HOME `literal` --尾' --stage plan --driver kimi --session-id driver-local-test --json",
+      "spawned": true
+    }
+  ],
+  "requests": [],
+  "global_before": {
+    "~/.kimi-code/config.toml": "e489b2f94e6c76db67a7f62a04a1cac8bb0fadbbca5319c16787d04fa55aeeee",
+    "~/.kimi-code/credentials/kimi-code.json": "6c91fa08353ce37d4ad8b1919c43f80c3817e74760d783e9f1e7d2fdd2178335"
+  },
+  "global_after": {
+    "~/.kimi-code/config.toml": "e489b2f94e6c76db67a7f62a04a1cac8bb0fadbbca5319c16787d04fa55aeeee",
+    "~/.kimi-code/credentials/kimi-code.json": "6c91fa08353ce37d4ad8b1919c43f80c3817e74760d783e9f1e7d2fdd2178335"
+  },
+  "roots": [
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z"
+  ],
+  "checks": {
+    "production_rejects_disabled": true,
+    "claim": true,
+    "second_process_inherits": false,
+    "claim_idempotent": true,
+    "registry_unchanged": true,
+    "global_unchanged": true,
+    "cleanup": true
+  },
+  "script_sha256": "e32617bc5254b6e70885f38ad60390b92bda23484134f9443060330eac647b18",
+  "production_bundle_sha256": "ee7dc10d8d6d4ef28d29b6b9cb0533b8ffc0f623da9cf42e7ea539adbe5278b6",
+  "expected": {
+    "topic": "中文 空格 O'Bob $HOME `literal` --尾",
+    "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z/中文 空格项目",
+    "status_argv": [
+      "status",
+      "--topic",
+      "中文 空格 O'Bob $HOME `literal` --尾",
+      "--json"
+    ]
+  },
+  "source_kind": "isolated-build-local-processes",
+  "real_model": false,
+  "registry": {
+    "source_sha256": "e1c9701fcebbe35e40b07a5f4b654171f3aad11a66e8d8951328c7208a199b9d",
+    "transformed_sha256": "70ffbde792587aa5145815140890c963cf6598736c9a7e568709917d9232972c",
+    "only_driver_enabled_ids": [
+      "kimi",
+      "qoder-cn"
+    ],
+    "source_unchanged": true
+  },
+  "candidate_bundle_sha256": "8a56d30af9ff715e62e8872f305dea4063e0d7fe8edc0db84d0b31fbf1ef3b43",
+  "task": {
+    "schema": "trivium.task.v1",
+    "topic": "中文-空格-O'Bob-$HOME-`literal`---尾",
+    "goal": null,
+    "created_at": "2026-10-28T13:17:40.570Z",
+    "updated_at": "2026-10-28T13:17:40.570Z",
+    "runs": [],
+    "gate": {
+      "stage": null,
+      "state": "idle",
+      "since": null,
+      "run_id": null
+    },
+    "approvals": [],
+    "degradations": [],
+    "disputed": false,
+    "disputes": [],
+    "drivers": {
+      "plan": {
+        "driver": "kimi",
+        "claimed_at": "2026-10-28T13:17:40.570Z",
+        "claimed_by": "driver-local-test"
+      }
+    }
+  },
+  "review_worker_handoff": "未测；本批只验CLI进程间认领继承",
+  "global_unchanged": true,
+  "cleanup": [
+    {
+      "path": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-driver-cli-Ubep5Z",
+      "absent": true
+    }
+  ]
+}
