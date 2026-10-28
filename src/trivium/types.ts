@@ -272,6 +272,8 @@ export interface VersionProbe {
  * 盘上旧结论由 `migrateProbeSection` 在读盘时搬到新名，一次性完成。
  */
 export interface CommonProbe {
+  /** 原生官方模型事实；独立于只读准入，只有探针能准备。 */
+  native_default?: NativeModelFacts;
   /** CLI 可执行入口的绝对路径。null = 未探到（该侧不可用） */
   entrypoint: string | null;
   /** CLI 自报版本。`preflight` 据此判漂移 */
@@ -1002,7 +1004,47 @@ export type TierName = 'low' | 'medium' | 'high';
  * M11 第 6 步从 `adapters/base.ts` 上移到这里（计划三审 AGY-01）：`CriticRequest` / `CriticRunMeta` 要引用它，
  * 留在适配器层会让本文件反向依赖 `adapters/`。`base.ts` 原样再导出，旧导入点不必改。
  */
-export type TierSource = 'cli' | 'profile' | 'agent_default' | 'legacy' | 'override';
+export type TierSource = 'cli' | 'profile' | 'agent_default' | 'legacy' | 'override' | 'probe_default';
+
+/** 仅非敏感事实；原始用户设置、认证绝不进入请求。 */
+export interface NativeModelFacts {
+  model: string;
+  source: 'catalog-default' | 'config';
+  observed_user_model: string | null;
+  models: string[];
+  route_labels: string[];
+  catalog_sha256: string;
+  catalog_raw_sha256: string;
+  configuration_sha256: string | null;
+  entrypoint: string;
+  cli_sha256: string;
+  cli_version: string;
+  platform: string;
+  prepared_at: string;
+  default_verified: boolean;
+  /** 本次受测隔离调用的参数片段，由探针原样提供。 */
+  invocation_args: string[];
+}
+
+export interface NativeModelRequest {
+  facts: NativeModelFacts;
+  requested: string;
+  override: string | null;
+  origin: string;
+}
+
+export interface NativeModelResult {
+  request: NativeModelRequest;
+  labels: string[];
+  /** result.modelUsage 是计费命名空间，无法映射到官方目录的键保持未知。 */
+  usage_labels: string[];
+  failure: string | null;
+  execution_failure: string | null;
+  verification_failure: string | null;
+  stop_observation: { channel: 'stdout' | 'stderr' | 'final'; after_result: boolean; elapsed_ms: number } | null;
+  raw_exit_code: number | null;
+  raw_signal: string | null;
+}
 
 /**
  * 思考等级生效值的来源（设计 6.7.1 `effort_effective_source`，与 `model_effective_source` 同构）：
@@ -1412,6 +1454,7 @@ export interface AccessMeta {
 }
 
 export interface CriticRunMeta {
+  native_model?: NativeModelResult;
   access?: AccessMeta;
   vendor: Vendor;
   cli_version: string | null;
@@ -1781,6 +1824,7 @@ export interface RunMeta {
   critics: Partial<Record<CriticId, CriticRunMeta>>;
   /** v3 启动前恒写请求快照，提前取消或 worker 启动失败也保留；历史件缺席。 */
   requested_routes?: Partial<Record<CriticId, {
+    native_model?: NativeModelRequest;
     model: string | null; effort: string | null; tier: TierName | null; tier_source: TierSource | null; access: AccessMeta;
   }>>;
   deny_paths: string[];
@@ -1982,6 +2026,7 @@ export interface RunMeta {
 // ─────────────────── 适配层契约（设计 §11.1） ───────────────────
 
 export interface CriticRequest {
+  native_model?: NativeModelRequest;
   access?: AccessMeta;
   run_id: string;
   topic: string;
@@ -2076,6 +2121,7 @@ export interface ScrubOutcome {
 export type ModelUnenforcedCause = 'source_missing' | 'qualify_failed';
 
 export interface CriticResult {
+  native_model?: NativeModelResult;
   /** 运行期启动证据；不从请求命令行推断。 */
   process_started?: boolean;
   access?: AccessMeta;

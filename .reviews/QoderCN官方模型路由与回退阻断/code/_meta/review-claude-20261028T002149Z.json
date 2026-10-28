@@ -1,0 +1,64 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass",
+  "summary": "I checked my 4 second-round findings against the repo and all are fixed. CLAUDE-01: qoder-cn now implements normalizeModelForCatalog, so preflight and the direct adapter call use the same case normalization, and a unit test covers it through checkModelSlugs. CLAUDE-02: a failure in the preparation stage now produces a RunResult for a process that never spawned, with execution_failure set to \"准备失败\" and native_model kept. CLAUDE-03: verifyQoderBinding runs --version inside withQoderHome. CLAUDE-04: the probe checks spawn, timeout, exit and final result before calling finish; the null-request message is now a dedicated wording; resultError is gated by !monitor.failure.\nThe main path holds. The probe's default comes only from the first init label, cross-checked against the catalog. source=config is produced only for a config value that is in the catalog. NativeModelRequest and NativeModelResult keep request, declaration, envelope labels and billing keys separate, and match the run.v3 schema field by field, including the final value in the stop_observation channel enum. Exit code 0 with a fallback still fails. Before running, the adapter rebuilds the request and deep-compares it to the frozen snapshot.\nTwo nits remain. On the adapter's pre-execution failure path, execution_failure takes the raw Error.message instead of going through qoderFailureMessage. And one integration test, now that verify also copies credentials, actually exercises the verify failure rather than the invokeQoderModel preparation branch. Neither blocks implementation.",
+  "findings": [
+    {
+      "id": "CLAUDE-01",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/adapters/qoder-cn.ts:89-101",
+      "problem": "Pre-execution failures in adapter.run (snapshot mismatch, binding drift, or verifyQoderBinding throwing because withQoderHome is missing credentials) go through fail((e as Error).message). invokeQoderModel uses qoderFailureMessage for the same kind of error, which expands AggregateError and calls redactSecrets; this path does neither. When withQoderHome's cleanup also fails, the execution_failure written here is only the generic 'Qoder CN 临时环境清理失败', with the primary cause lost. The ENOENT absolute path also goes in without redaction. That falls short of the r2 commitment that cleanup errors keep their classification detail.",
+      "evidence": "In qoder-cn.ts:101, catch(e){return fail((e as Error).message);}. qoder-cn.ts:17-20, qoderFailureMessage expands AggregateError and redacts. qoder-cn-native.ts:80 wraps cleanup failures in AggregateError with the fixed message 'Qoder CN 临时环境清理失败'. qoder-cn-native.ts:86 shows that verifyQoderBinding now also copies credentials via withQoderHome, so a missing credential source is caught here first. r2-response-codex.md, GLM-04 disposition: 安全展开AggregateError子消息.",
+      "suggestion": "Have the adapter's pre-execution catch reuse qoderFailureMessage too, so both failure paths share one message format and redaction.",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-02",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "test/integration/qoder-cn-routing.test.ts:89-93",
+      "problem": "The test '准备阶段认证缺失保留native请求' asserts on adapter.run in its second half. But verifyQoderBinding now runs before invokeQoderModel and also copies credentials, so a missing credential source makes adapter.run return early from the verify catch. The adapter's invokeQoderModel preparation-failure branch ('准备失败' plus unstartedOutcome, with the stdout/stderr/trace files written) is covered only by direct calls; on the adapter path it is reachable only via TOCTOU, for example credentials removed between verify and invoke. The test name and assertions are true but mixed together, and a later reader could assume the adapter path's out_dir artifacts are covered as well.",
+      "evidence": "In qoder-cn.ts:100-102, verifyQoderBinding runs before invokeQoderModel. qoder-cn-native.ts:86 shows verify running inside withQoderHome, and qoder-cn-native.ts:61-65 shows that withQoderHome throws when the credential source is missing. Test line 93 only asserts process_started=false, native_model present and raw_exit_code=null; it does not distinguish the source of execution_failure or check whether the trace was written.",
+      "suggestion": "In the adapter-path assertion, state which branch it is expected to hit, for example by asserting that execution_failure does not contain '准备失败'. Or inject a credential failure after verify to cover the adapter-side preparation branch.",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "The 4 second-round findings are all fixed and verified in the repo. qoder-cn.ts:75 normalizeModelForCatalog returns the catalog's canonical name, and preflight.ts:768 uses it. qoder-cn.ts:42-46 folds a preparation failure into a RunResult for a process that never spawned. qoder-cn-native.ts:86 runs the version check in an isolated HOME. probes/qoder-cn.ts:27-32 checks execution results before calling finish. qoder-cn-model.ts:127 has the dedicated message for the default-probe case. qoder-cn.ts:60 gates resultError with !monitor.failure.",
+    "Request, declaration and readback are kept separate: facts.model (declared default), requested (canonical name), override (raw value, null for probe_default) and origin are each stored. review.ts:1256-1267 sets req.model to nativeModel.requested, and schemas.ts:285 checks that requested_routes.native_model.requested equals model.",
+    "In run.v3.json, the required fields of nativeResult and the stop_observation enum (stdout/stderr/final) match NativeModelResult in types.ts:1041-1046 field by field.",
+    "Exit 0 is still a failure: in completeQoderModelRun, ok requires code===0, no early stop, failure/verification_failure/execution_failure all empty, a result seen, and that result not an error. The adapter writes raw_response_text only when ok is true.",
+    "Early stop for stderr/stdout fallback warnings: the regex accepts the trailing sentence seen on the real device. stop_observation records the channel, after_result and elapsed time. The integration tests cover chunked delivery on both channels, a missing final newline, and the warning arriving after the result.",
+    "For the probe default, only the first init label is taken and cross-checked against the catalog. Only an in-catalog config value is run explicitly with --model to produce source=config, and validateQoderFacts verifies that this declaration matches observed_user_model.",
+    "The report honestly records the first formal verify failure, intermediate failed evidence, and that Windows is untested, and does not claim the process is closed out."
+  ],
+  "not_covered": [
+    "I did not run any test, build or real-device command; the reachability of the code paths is reasoned from reading the code",
+    "The Kimi-side scripts, evidence and the docs reporting on them (all of kimi-macos-20261028 and scripts/acceptance/kimi-qoder-cn/kimi-*)",
+    "I did not read the full text of the latest real-device evidence adapter-2026-10-28T00-16-37-108Z; the second formal verify run was not checked",
+    "Changes to render.ts and report.ts on how native_model is presented, and the integration with parse.ts and scrub.ts",
+    "The Windows path, and checkQoderBinding hashing the entrypoint file synchronously on every availability call (performance)",
+    "The stopEarly and killTree implementation in util/exec.ts",
+    "Whether the 4130 total tests mentioned in the report have been run again"
+  ],
+  "consulted": [
+    ".reviews/QoderCN官方模型路由与回退阻断/code/2026-10-28-QoderCN官方模型路由与回退阻断-r2-claude.md",
+    ".reviews/QoderCN官方模型路由与回退阻断/code/2026-10-28-QoderCN官方模型路由与回退阻断-r2-response-codex.md",
+    "src/trivium/adapters/qoder-cn.ts",
+    "src/trivium/adapters/qoder-cn-native.ts",
+    "src/trivium/adapters/qoder-cn-model.ts",
+    "src/trivium/probes/qoder-cn.ts",
+    "src/trivium/model-routing.ts",
+    "src/trivium/review.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/types.ts",
+    "skills/dual-critic/schema/run.v3.json",
+    "test/integration/qoder-cn-routing.test.ts",
+    "test/unit/qoder-cn-model.test.ts",
+    "doc/05_testing/REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md"
+  ]
+}

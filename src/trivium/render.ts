@@ -187,6 +187,7 @@ export function renderFrontMatter(input: RenderInput): string {
     // 回读值，不采信 Agent 自述（AC-13）
     model_effective: ['requested', 'unverified'].includes(input.result.model_effective_source) ? null : input.result.model_effective,
     model_effective_source: input.result.model_effective_source === 'requested' ? 'unverified' : input.result.model_effective_source,
+    ...(input.result.native_model ? { native_model: input.result.native_model } : {}),
     ...(input.effort ? { effort: input.effort } : {}),
     // 档位与思考等级一组（M11 第 6 步）：恒写；生效值只取回读（`effortReadback`），codex / claude 恒 null + unverified
     effort_requested: input.effortRequested,

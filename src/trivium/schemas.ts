@@ -281,6 +281,8 @@ function checkAgentIdentities(data: unknown): string[] {
   for (const id of Object.keys(m.requested_routes ?? {})) {
     if (!isAgentId(id) || !agentById(id)?.criticEnabled) problems.push(`requested_routes 含未登记审核者：${id}`);
     if (!Array.isArray(m.critics_selected) || !m.critics_selected.includes(id)) problems.push(`requested_routes.${id} 不在入选集合`);
+    const route = m.requested_routes?.[id] as { model?: unknown; native_model?: { requested?: unknown } } | undefined;
+    if (route?.native_model && route.native_model.requested !== route.model) problems.push(`requested_routes.${id} 原生模型快照与请求不一致`);
   }
 
   const participants = new Set([m.driver, ...(Array.isArray(m.critics_selected) ? m.critics_selected : [])]);

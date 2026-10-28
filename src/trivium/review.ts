@@ -20,12 +20,12 @@ import type {
 import { CRITIC_PREFIX, CRITIC_VENDOR, VOIDING_DENY_CATEGORIES } from './types.js';
 import { DEFAULT_DRIVER, agentById, type AgentId } from './agents/registry.js';
 import {
-  resolveTier,
   type AdapterContext,
   type AdapterTable,
   type EffortReadback,
   type TierResolution,
 } from './adapters/base.js';
+import { resolveConfiguredTier as resolveTier, requestRouteSnapshot } from './model-routing.js';
 import { resolveAdapters } from './adapters/stub.js';
 import { realAdapters } from './adapters/index.js';
 import { freeze } from './freeze.js';
@@ -1216,7 +1216,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
     if (!routed.model) {
       throw envError(
         `${critic} 侧没有可用模型：profile「${cfg.active_profile}」未定义 ${stage} 阶段的模型，` +
-          `且未通过命令行指定。`,
+          `且未通过命令行指定。` + (routed.nativeDefaultMissing ? `原生默认：${routed.nativeDefaultMissing}` : ''),
       );
     }
 
@@ -1253,7 +1253,10 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
     const briefAbs = path.join(metaDir(ref.layout, stage), briefFile);
     pendingBriefs.push({ fileName: briefFile, text: briefText });
 
+    const nativeModel = adapters[critic]!.nativeModelFor?.(cfg, routed.model,
+      routed.tierSource === 'probe_default' ? 'probe_default' : routed.origin.model ?? 'cell');
     requests[critic] = {
+      ...(nativeModel ? { native_model: nativeModel } : {}),
       run_id: runId, topic: ref.topic, stage, critic,
       project_root: ctx.projectRoot,
       subject_path: subjectPath,
@@ -1261,7 +1264,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
       out_dir: path.join(runDirBase, critic, 'out'),
       brief_path: briefAbs,
       brief_text: briefText,
-      model: routed.model,
+      model: nativeModel?.requested ?? routed.model,
       /*
        * 思考等级请求值（M11 第 6 步）：档位条目 / 档位表格子 / `--effort-<id>`，或裸 slug 格子回落的阶段级 effort。
        * 没有就不带这一键（形状同第 6 步之前：可选字段）。
@@ -1439,10 +1442,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
       build: embeddedBuildStamp(),
       driftPolicy: cfg.review.on_drift,
     });
-    meta.requested_routes = Object.fromEntries(sides.map(c => [c, {
-      model: requests[c]!.model, effort: requests[c]!.effort ?? null,
-      tier: requests[c]!.tier, tier_source: requests[c]!.tier_source, access: requests[c]!.access!,
-    }]));
+    meta.requested_routes = Object.fromEntries(sides.map(c => [c, requestRouteSnapshot(requests[c]!)]));
     meta.artifacts = [...metaArtifacts];
 
     // FR-23：跳过也要留痕，且必须写明命中的规则供人复核（§6.4）
@@ -2129,6 +2129,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       vendor: CRITIC_VENDOR[c],
       cli_version: r.cli_version,
       model_requested: requests[c]!.model,
+      ...(r.native_model ? { native_model: r.native_model } : {}),
       model_effective: r.model_effective_source === 'requested' || r.model_effective_source === 'unverified' ? null : r.model_effective,
       model_effective_source: r.model_effective_source === 'requested' ? 'unverified' : r.model_effective_source,
       /*

@@ -172,6 +172,7 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
 
 - 当前审查新写 `trivium.run.v3`，保留 v1/v2 原 schema 的只读校验；verify 契约不变。
 - v3 在执行前保存 `requested_routes` 请求快照；worker 必须与交接逐项比对。取消或启动失败不得丢失请求路线，历史件不补写该字段。
+  原生默认来源 `probe_default` 与可选 `native_model` 请求/结果证据仅扩展当前 v3：声明、请求、信封标签与计费键分别记录；worker 不重新选默认，未知底层为 null/unverified。候选模型路由接线不等于严格只读准入。
   接入能力从注册表派生；请求、配置声明与运行回读分开记录。Driver 模型仅来自本轮声明，
   模型族逐对三态比较；同族与未知告警继续，不作为闸门条件。真实路线准入之前不得恢复三审或宣称完成。
 

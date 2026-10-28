@@ -27,9 +27,8 @@ import {
 } from './config.js';
 import { WORKER_HEARTBEAT_MS, staleThresholdWithinHeartbeat } from './status.js';
 import { ALL_CLI_NAMES, DEFAULT_DRIVER, agentById, agentByCliName, type AgentId } from './agents/registry.js';
-import { realAdapters } from './adapters/index.js';
+import { realAdapters, wiredAdapter } from './adapters/index.js';
 import {
-  resolveTier,
   type AdapterContext,
   type AdapterTable,
   type AuthProbe,
@@ -38,6 +37,7 @@ import {
   type ReasoningLevels,
   type TierResolution,
 } from './adapters/base.js';
+import { resolveConfiguredTier as resolveTier } from './model-routing.js';
 import { mergeCliOverrides, vendorProfileAgents, type TierFlagValues } from './tier-flags.js';
 import { DOCTOR_RERUN_ENTRY, doctorSectionConsumesOverrides } from './doctor.js';
 import { displayHomePath, exists, tildeHome } from './util/fsx.js';
@@ -555,7 +555,8 @@ export function checkModelSlugs(
           `${critic}/${stage}: profile「${cfg.active_profile}」未定义模型且无覆盖` +
             (routed.emptySlug
               ? '（档位表该阶段写的是空串；空串按无模型处理，不回落 default_tier）'
-              : `（档位表未给该阶段模型，agents.${critic}.default_tier 也未给出）`),
+              : `（档位表未给该阶段模型，agents.${critic}.default_tier 也未给出）`) +
+            (routed.nativeDefaultMissing ? `；原生默认：${routed.nativeDefaultMissing}` : ''),
         );
         continue;
       }
@@ -745,7 +746,7 @@ function checkModelAgainstCatalog(
    *
    * 钩子缺席即回落 `probe.models`，既有两家行为逐字不变。
    */
-  const scoped = realAdapters()[critic]?.catalogModelsFor?.(cfg, vendorProfile) ?? null;
+  const scoped = wiredAdapter(critic)?.catalogModelsFor?.(cfg, vendorProfile) ?? null;
   if (scoped?.kind === 'unverifiable') {
     return { kind: 'unverifiable', why: `${label}：${scoped.why}` };
   }
@@ -764,7 +765,7 @@ function checkModelAgainstCatalog(
     };
   }
 
-  const normalized = realAdapters()[critic]?.normalizeModelForCatalog?.(cfg, model) ?? model;
+  const normalized = wiredAdapter(critic)?.normalizeModelForCatalog?.(cfg, model) ?? model;
   const short = normalized.includes('/') ? (normalized.split('/').pop() ?? normalized) : normalized;
 
   const where = scoped?.kind === 'catalog' ? scoped.source : `${label} 模型目录`;

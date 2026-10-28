@@ -1,0 +1,216 @@
+---
+schema: trivium.review.v2
+topic: QoderCN官方模型路由与回退阻断
+stage: code
+role: claude
+vendor: anthropic
+agent_cli: claude/2.1.310
+model_requested: opus
+model_effective: claude-opus-5-5
+model_effective_source: envelope
+effort: high
+effort_requested: high
+effort_effective: null
+effort_effective_source: unverified
+tier: null
+tier_source: profile
+run_id: 20261027T235110Z
+rerun_index: 2
+snapshot_hash: sha256:d780bd232f999b20cba54a9938564b9ee2844e3c095d379b61650e2ee207b113
+blind: true
+started_at: 2026-10-27T23:51:19.919Z
+finished_at: 2026-10-28T00:01:22.769Z
+duration_s: 305
+tool_calls:
+  read: 18
+  grep: 17
+  glob: 2
+  run_command: 0
+  project_reads: 20
+evidence_ok: true
+verdict: pass-after-changes
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 3
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: true
+drift: false
+readonly_verification: unavailable
+heterogeneous: unknown
+access:
+  requested_mode: native
+  profile: null
+  launcher_requested: /Users/chenzhenbo/.local/bin/claude
+  launcher_effective: /Users/chenzhenbo/.local/bin/claude
+  wrapper_sha256: null
+  configuration_sha256: null
+  provider_declared: null
+  provider_declared_source: null
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: claude
+    status: unknown
+    left_model: null
+    right_model: claude-opus-5-5
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: gemini
+    right: claude
+    status: different-family
+    left_model: gemini-3.8-flash-high
+    right_model: claude-opus-5-5
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：gemini / claude
+  - left: glm
+    right: claude
+    status: different-family
+    left_model: bigmodel-coding-plan/GLM-5.3
+    right_model: claude-opus-5-5
+    left_source: trace
+    right_source: envelope
+    reason: 模型族不同：glm / claude
+override_reason: 左侧模型信息缺失
+session_id: b68a719c-2ae7-43f5-aa04-6c524e2c4ef2
+---
+
+# 代码审查：QoderCN官方模型路由与回退阻断
+
+> Critic-D · Anthropic Claude Code ｜ 回读模型 `claude-opus-5-5` ｜ 请求模型 `opus`
+> ｜ 运行 `20261027T235110Z` ｜ 第 2 轮
+> ｜ 本轮审核者 gemini、glm、claude
+
+> ⚠️ **只读核验不可用**：本侧被拒的写操作不进轨迹，「未检出写事件」不足以排除失守。只读保障从三重降到两重（指纹比对仍有效）。
+>
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+上轮我提的 4 条 major 都已修复，而且在仓库里核实过。1）文本告警正则已接受真机尾句；新真机证据 adapter-…-49-02-198Z 中 stop_observation 为 channel=stderr、after_result=false，说明这次是在 result 之前被阻断。2）探针改为只取首个 init 作为默认。3）source=config 已有真实产出方，validateQoderFacts 也会校验这项声明。4）execution_failure、verification_failure 已与 failure 分开记录。
+剩余问题都是小契约缺口，按意见改完即可，不需要再审一轮。最值得改的一条：预检用精确比对校验目录，而 qoderModelRequest 与适配器按大小写不敏感归一，同一个 qwen3.8-flash 请求在预检会被 64 拒掉，在直调适配器时却合法。
+其次：withQoderHome 在拉起进程前失败（例如认证源缺失）时，invokeQoderModel 会直接抛错，native_model 证据随之丢失，失败形态也与“退出 0 判失败”那条路径不一致。
+另外三点：执行前的 --version 校验没在隔离 HOME 下跑；探针在执行失败时报“未核实 请求 null”；resultError 会盖过回退首因。都是小问题。
+退出 0 仍判失败、不计票、worker 深比较对账、无效模型不派生进程、resolveTier 的 probe_default 落位，这些主干都成立。
+
+**结论**：修改后通过（`pass-after-changes`）
+
+## 审查意见（共 4 条：次要 3 ｜ 吹毛求疵 1）
+
+### CLAUDE-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/preflight.ts:773; src/trivium/adapters/qoder-cn-model.ts:63` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：显式模型的大小写有两套判据。预检 checkModelAgainstCatalog 用 m === model 精确比对，qoder-cn 也没有提供 normalizeModelForCatalog。而 qoderModelRequest 按 labelKey 小写比对，并取目录的规范名，集成测试也专门锁定了“大小写归一后直接适配器不误拒合法请求”。结果是 --model-qoder-cn qwen3.8-flash 在生产入口被预检以 64 拒绝，而同一个请求直调适配器是合法的。同一件事出现两个答案，后来的人无法判断哪一边才是契约。
+
+**依据**：preflight.ts:768-786：normalized 取自 realAdapters()[critic]?.normalizeModelForCatalog，比对时用严格相等。qoder-cn.ts 的适配器对象只有 defaultModelFor、nativeModelFor、catalogModelsFor、availability、run，没有 normalizeModelForCatalog。qoder-cn-model.ts:63 用 labelKey 小写比对。test/integration/qoder-cn-routing.test.ts 中“显式模型大小写归一后仍保留原始override”一例只覆盖适配器直调，没有走预检。
+
+**建议**：二选一并统一。要么给 qoder-cn 实现 normalizeModelForCatalog，返回目录规范名，让预检与 qoderModelRequest 同口径；要么让 qoderModelRequest 也只接受精确值，并删掉那条大小写用例。补一个经预检入口的大小写用例来锁定结论。
+
+### CLAUDE-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/qoder-cn.ts:24-34` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：withQoderHome 在拉起模型进程之前就可能失败，例如认证源 lstat 报 ENOENT（用户在探针后登出）、源不是普通文件、Windows 分支等。这时 observedOutcome 仍为 null，invokeQoderModel 直接 rethrow，adapter.run 也不捕获，异常会冒到 runner，记成“适配器异常：…”。这条路径既不产出 native_model 运行证据（request、labels、execution_failure），也不是适配器惯用的 failedResult 形态。计划要求启动失败沿用原有失败语义、请求事实不丢失，这里与同文件里 spawned=false 的那条路径（会写出 execution_failure='Qoder CN 启动失败'）不一致。
+
+**依据**：qoder-cn.ts:33 写的是 catch(e){if(!observedOutcome)throw e;…}；qoder-cn-native.ts:61-65 在复制认证时可能 throw；runner.ts:189-210 把 adapter.run 抛出的异常统一记为“适配器异常”并 rethrow，结果中没有 native_model。
+
+**建议**：在 invokeQoderModel 里把“准备阶段失败”也收敛进 evidence：raw_exit_code=null，execution_failure 写准备失败原因。adapter.run 据此返回 failedResult（processStarted=false），保持和启动失败同一形态。补一个“认证源缺失”的可执行用例。
+
+### CLAUDE-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/adapters/qoder-cn-native.ts:83-87` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | low |
+
+**问题**：执行前的 verifyQoderBinding 会运行 facts.entrypoint --version，但用的是 worker 的原始环境：用户 HOME，QODER*/QODERCN_CONFIG_DIR 等变量都未清理。而探针取得 cli_version 是在 withQoderHome 的隔离 HOME 下，用最小 settings（enableAutoUpdate:false）跑的同一条命令。两次版本读数来自不同环境，一致性比较的前提不同；如果厂商 CLI 在启动时会读用户 settings 或触发自动更新检查，这条调用就落在用户真实配置上，与“隔离、不修改用户配置”的口径不符。这是我对 CLI 行为的推断，没有实际运行确认。
+
+**依据**：qoder-cn-native.ts:85 是 run(facts.entrypoint,['--version'],{timeoutMs:15000,killTree:true})，没有传 env 和 cwd。probes/qoder-cn.ts:16-17 的版本探测在 withQoderHome 里进行，env 为隔离环境。qoder-cn-native.ts:67-70 的隔离 env 会清除 QODER 前缀变量，并写入 enableAutoUpdate:false。
+
+**建议**：把执行前的版本校验也放进与探针相同的隔离环境里跑（复用 withQoderHome 或同一份 env 构造），或者在注释和报告里写明这条调用有意使用用户环境及其理由。
+
+### CLAUDE-04 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/probes/qoder-cn.ts:27-29; src/trivium/adapters/qoder-cn.ts:42-43` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：失败首因有两处被遮蔽。一是探针在检查 result.code、timedOut、spawned 之前就调用 monitor.finish()：模型调用超时或启动失败时，抛出的是“未核实模型：请求 null，没有原生回读”，requested 为 null 时文案还会直接印出 null，真实的执行原因丢了。二是 invokeQoderModel 的 executionFailure 链中 monitor.resultError 不受 !monitor.failure 约束，而 fail_reason 先取 execution_failure，于是回退加上 result is_error 时，fail_reason 显示“原生结果失败”，不是回退首因。证据字段虽然分列了，但 fail_reason 是用户最先看到的那一句。
+
+**依据**：probes/qoder-cn.ts:27 先调 monitor.finish()，:29 才判断 code、timedOut；qoder-cn-model.ts:127 的文案拼接了 this.requested。qoder-cn.ts:43 中 monitor.resultError 分支前面没有 !monitor.failure；:85 的 reason 取值顺序是 execution_failure ?? failure ?? verification_failure。
+
+**建议**：探针先判执行层结果，再调 finish，并在 requested 为 null 时换一句文案（如“默认探测”）。resultError 分支同样加上 !monitor.failure 前置，或者让 fail_reason 在 failure 非空时优先取 failure。
+
+## 认为正确的部分
+
+- 文本回退检测已经修好。qoder-cn-model.ts:93 的正则接受真机尾句 Use /model to choose another model.，单测直接读取真机失败样本的 stderr 原文，并带一例“stdout 标签与请求相同”的反例。新证据 adapter-2026-10-27T23-49-02-198Z-dd6083.json 的 failure 首因是“原生模型回退：…”，stop_observation 为 channel=stderr、after_result=false、elapsed_ms=1050，说明这次早停确实发生在 result 之前。
+- 报告第 19 行已更正：首轮旧证据是在 result 之后才停的，不能宣称阻止了模型调用；新证据也不推断服务端是否已经收到请求。口径如实。
+- 探针默认来源：QoderModelMonitor 单独维护 initLabel，探针的 defaultLabel 只取首个 init 标签并与目录交叉核对；requested=null 时，assistant 披露具体模型不会触发失败，也不会固化成默认。单测覆盖了 Auto 和 Fast 两种情况。
+- source=config 有了真实产出方：只有目录内的原生配置值才会显式 --model 执行验证；目录外的 Custom 只记入 observed_user_model，不会被继承。validateQoderFacts 会校验 config 声明与 observed_user_model 一致，run.v3 schema 的 nativeFacts 对 source 的枚举与此同口径。
+- 请求、声明、回读三者分开：NativeModelRequest 的 facts.model（声明默认）、requested（规范名实际请求）、override（原始值）、origin 分别保存；NativeModelResult 的 labels、usage_labels、failure、execution_failure、verification_failure、stop_observation、raw_exit_code 也各自独立，与 run.v3.json 中 nativeResult 的 required 字段逐项一致。
+- 退出 0 仍判失败：invokeQoderModel 的 ok 要求 code===0、没有早停、无 failure、无 verification_failure、无 execution_failure、看到了 result 且不是 error。适配器只在 ok 时把结果置为 ok 并写入 raw_response_text。runner 的 isTransientFailure 因原因含“模型”而判为永久失败，不会重试，所以回退不会重复消耗配额。
+- worker 对账：run-protocol.ts:323-328 先用 sameRequestedRoute（isDeepStrictEqual）比对交接与 requested_routes，适配器再按 override??model 与 origin 重建请求，并做整份深比较，对 override、origin 篡改都有覆盖。
+- resolveConfiguredTier 被 review.ts 和 preflight.ts 以 resolveTier 别名导入，确实把 defaultModelFor 接进了生产路径。nativeDefaultMissing 只在没有模型、没有缺档、没有显式空值时才附带，文案能传到 review.ts:1219 和 preflight.ts:559。
+- 清理路径：stopQoderHomeHelpers 读取 alive().sameProcess，不再用返回对象的真值判断存活；进程已自然退出则跳过，身份不明则不杀；finally 先删认证再清理辅助进程和根目录，清理失败与执行事实分开保存。
+
+## 未覆盖范围（本侧盲区）
+
+- 没有运行任何测试、构建或真机命令；CLAUDE-03 中关于 CLI 在 --version 时是否读用户 settings 或触发自动更新的部分，纯属推断
+- scripts/acceptance/kimi-qoder-cn/qoder-model.mjs、qoder-directory.mjs 等取证脚本本身，以及 Kimi 相关的全部改动和证据
+- adapter-2026-10-27T23-47-50-060Z 和 23-49-02-198Z 两份证据，只检索了失败、停止相关字段，没有通读全文（含 config 来源臂与项目配置反向对照的原始字段）
+- render.ts 和 report.ts 中 native_model 的 Markdown/JSON 实际呈现形态；report.ts 只确认了 sides[].nativeModel 有赋值
+- util/exec.ts 中 stopEarly、killTree 在本轮是否有变更，以及 Windows 下的语义
+- stopQoderHomeHelpers 在 macOS /private/var 与 /var 路径归一之外的平台差异
+- doctor.ts 中探针结果写回 config.local.yaml 的合并与持久化细节
+
+## 实际查阅的项目文件
+
+- `.reviews/QoderCN官方模型路由与回退阻断/code/2026-10-28-QoderCN官方模型路由与回退阻断-claude.md`
+- `.reviews/QoderCN官方模型路由与回退阻断/code/2026-10-28-QoderCN官方模型路由与回退阻断-response-codex.md`
+- `src/trivium/adapters/qoder-cn-model.ts`
+- `src/trivium/adapters/qoder-cn.ts`
+- `src/trivium/adapters/qoder-cn-native.ts`
+- `src/trivium/probes/qoder-cn.ts`
+- `src/trivium/model-routing.ts`
+- `src/trivium/adapters/base.ts`
+- `src/trivium/adapters/index.ts`
+- `src/trivium/review.ts`
+- `src/trivium/preflight.ts`
+- `src/trivium/runner.ts`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/config.ts`
+- `src/trivium/doctor.ts`
+- `src/trivium/report.ts`
+- `src/trivium/render.ts`
+- `src/trivium/schemas.ts`
+- `src/trivium/parse.ts`
+- `skills/dual-critic/schema/run.v3.json`
+- `test/unit/qoder-cn-model.test.ts`
+- `test/integration/qoder-cn-routing.test.ts`
+- `doc/05_testing/REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md`
+- `doc/05_testing/evidence/qoder-cn-model-20261028/adapter-2026-10-27T23-47-50-060Z-86b8f9.json`
+- `doc/05_testing/evidence/qoder-cn-model-20261028/adapter-2026-10-27T23-49-02-198Z-dd6083.json`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":18,"grep":17,"glob":2,"run_command":0,"project_reads":20}
+
+---
+
+*本文档由 TriviumCode 编排器从 `claude` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

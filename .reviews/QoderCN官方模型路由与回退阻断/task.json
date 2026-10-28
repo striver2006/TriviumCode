@@ -1,0 +1,117 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "QoderCN官方模型路由与回退阻断",
+  "goal": "基于官方 Qoder CN 目录或原生配置，完成 default、flash、pro 的实际默认值解析、有效显式覆盖、无效模型启动失败和运行期回退中止。请求值、配置声明、生效回读必须独立记录；Auto 只能作为路由标签，无法取得底层模型时保持 null/unknown。将真实逻辑接入适配器和 worker requested_routes 校验，CLI 退出 0 但发生回退时必须判失败，不修改用户…",
+  "created_at": "2026-10-27T23:03:11.714Z",
+  "updated_at": "2026-10-28T00:40:52.662Z",
+  "runs": [
+    {
+      "run_id": "20261027T230515Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-27T23:05:23.748Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261027T233105Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-27T23:31:13.442Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261027T235110Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-27T23:51:19.724Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261028T000656Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "full",
+      "started_at": "2026-10-28T00:12:29.345Z"
+    },
+    {
+      "run_id": "20261028T002149Z",
+      "stage": "code",
+      "rerun_index": 3,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T00:21:58.520Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261028T003504Z",
+      "stage": "verify",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-28T00:40:52.662Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "codex",
+      "claimed_at": "2026-10-27T23:03:11.714Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "codex",
+      "claimed_at": "2026-10-27T23:15:17.067Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261027T230515Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-27T23:15:00.534Z"
+    },
+    {
+      "run_id": "20261027T233105Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-27T23:50:59.543Z"
+    },
+    {
+      "run_id": "20261027T235110Z",
+      "stage": "code",
+      "rerun_index": 2,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-28T00:06:33.323Z"
+    },
+    {
+      "run_id": "20261028T002149Z",
+      "stage": "code",
+      "rerun_index": 3,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-10-28T00:34:56.679Z"
+    }
+  ]
+}

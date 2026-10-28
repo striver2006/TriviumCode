@@ -798,12 +798,16 @@
               "agent_default",
               "legacy",
               "override",
-              null
+              null,
+              "probe_default"
             ],
             "description": "基础组合的来源（设计 11.5）：cli（--tier-<id>）/ profile（档位表格子，{tier} 或 {model, effort} 形态）/ agent_default（default_tier）/ legacy（档位表格子是裸 slug）/ override（基础组合提供的字段被精确值全部覆盖，或第一段无命中、模型完全来自 --model-<id>）。写侧恒写；字段缺席＝M11 第 6 步之前的旧留痕。【已实现 · M11 第 6 步】"
           },
           "access": {
             "$ref": "#/$defs/access"
+          },
+          "native_model": {
+            "$ref": "#/$defs/nativeRequest"
           }
         }
       }
@@ -983,7 +987,8 @@
             "agent_default",
             "legacy",
             "override",
-            null
+            null,
+            "probe_default"
           ],
           "description": "基础组合的来源（设计 11.5）：cli（--tier-<id>）/ profile（档位表格子，{tier} 或 {model, effort} 形态）/ agent_default（default_tier）/ legacy（档位表格子是裸 slug）/ override（基础组合提供的字段被精确值全部覆盖，或第一段无命中、模型完全来自 --model-<id>）。写侧恒写；字段缺席＝M11 第 6 步之前的旧留痕。【已实现 · M11 第 6 步】"
         },
@@ -1136,55 +1141,151 @@
           "description": "该侧这一轮的逐次尝试（2026-10-17 新增，BACKLOG EV-225，设计 10.1.1「作废侧重跑」）。【已实现 · M12 批次 3】**只在该侧发生过作废重跑时写**，内容是该侧全部尝试（含瞬时重试）；没发生过不写——不泄漏的运行逐字不变。缺席的两种来源（旧记录、这一侧没有作废过）处置相同：只有一次有效尝试。分层记法：条目的 status / fail_reason 恒记适配器层结果（二次命中那一条是 ok），voided 记这一条的泄漏判定；因泄漏判该侧失败只发生在侧级（status: failed、fail_reason 以 peer_leak 起头）。闸门与 status 不读本字段：作废侧只看最终尝试，最终尝试写在 guard.peer_leak_via_*。voided 与两通道明细的一致性（voided ⟺ 明细含作废类）由单测核，不进 schema",
           "items": {
             "type": "object",
-            "required": ["n", "started_at", "duration_s", "status", "voided", "fail_reason"],
+            "required": [
+              "n",
+              "started_at",
+              "duration_s",
+              "status",
+              "voided",
+              "fail_reason"
+            ],
             "additionalProperties": false,
             "properties": {
-              "n": { "type": "integer", "minimum": 1, "description": "第几次尝试，从 1 起（含瞬时重试）" },
-              "started_at": { "type": "string", "minLength": 1 },
-              "duration_s": { "type": "number", "minimum": 0 },
-              "status": { "enum": ["ok", "failed", "timeout"], "description": "适配器层结果，不是侧级改判" },
-              "voided": { "type": ["boolean", "null"], "description": "这一条的泄漏判定；status 非 ok 时为 null（没判）" },
+              "n": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "第几次尝试，从 1 起（含瞬时重试）"
+              },
+              "started_at": {
+                "type": "string",
+                "minLength": 1
+              },
+              "duration_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "failed",
+                  "timeout"
+                ],
+                "description": "适配器层结果，不是侧级改判"
+              },
+              "voided": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "这一条的泄漏判定；status 非 ok 时为 null（没判）"
+              },
               "peer_leak_via_path": {
                 "type": "object",
-                "required": ["hit", "hits"],
+                "required": [
+                  "hit",
+                  "hits"
+                ],
                 "additionalProperties": false,
                 "description": "与 guard.peer_leak_via_path 的单侧值同形；只在判过时写",
                 "properties": {
-                  "hit": { "type": "boolean" },
+                  "hit": {
+                    "type": "boolean"
+                  },
                   "hits": {
                     "type": "array",
                     "items": {
                       "type": "object",
-                      "required": ["path", "category"],
+                      "required": [
+                        "path",
+                        "category"
+                      ],
                       "additionalProperties": false,
-                      "properties": { "path": { "type": "string" }, "category": { "enum": ["peer-artifact", "peer-run-output", "own-run-material", "orchestrator-state", "sensitive"] } }
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "enum": [
+                            "peer-artifact",
+                            "peer-run-output",
+                            "own-run-material",
+                            "orchestrator-state",
+                            "sensitive"
+                          ]
+                        }
+                      }
                     }
                   }
                 }
               },
               "peer_leak_via_command": {
                 "type": "object",
-                "required": ["hit", "commands", "hits"],
+                "required": [
+                  "hit",
+                  "commands",
+                  "hits"
+                ],
                 "additionalProperties": false,
                 "description": "与 guard.peer_leak_via_command 的单侧值同形；只在判过时写",
                 "properties": {
-                  "hit": { "type": "boolean" },
-                  "commands": { "type": "array", "items": { "type": "string" } },
+                  "hit": {
+                    "type": "boolean"
+                  },
+                  "commands": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
                   "hits": {
                     "type": "array",
                     "items": {
                       "type": "object",
-                      "required": ["command", "path", "category"],
+                      "required": [
+                        "command",
+                        "path",
+                        "category"
+                      ],
                       "additionalProperties": false,
-                      "properties": { "command": { "type": "string" }, "path": { "type": "string" }, "category": { "enum": ["peer-artifact", "peer-run-output", "own-run-material", "orchestrator-state", "sensitive"] } }
+                      "properties": {
+                        "command": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "enum": [
+                            "peer-artifact",
+                            "peer-run-output",
+                            "own-run-material",
+                            "orchestrator-state",
+                            "sensitive"
+                          ]
+                        }
+                      }
                     }
                   }
                 }
               },
-              "output_dir": { "type": ["string", "null"], "description": "被作废、挪出该侧子树的原始输出位置（运行目录相对，形如 voided/〈侧〉/attempt-〈n〉）；只在挪过的那次写，挪失败为 null。只在运行目录里，不进归档" },
-              "fail_reason": { "type": ["string", "null"] }
+              "output_dir": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "被作废、挪出该侧子树的原始输出位置（运行目录相对，形如 voided/〈侧〉/attempt-〈n〉）；只在挪过的那次写，挪失败为 null。只在运行目录里，不进归档"
+              },
+              "fail_reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
             }
           }
+        },
+        "native_model": {
+          "$ref": "#/$defs/nativeResult"
         }
       }
     },
@@ -1330,6 +1431,235 @@
           "minLength": 1
         }
       }
+    },
+    "nativeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "enum": [
+            "catalog-default",
+            "config"
+          ]
+        },
+        "observed_user_model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "models": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "route_labels": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "catalog_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "catalog_raw_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "configuration_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entrypoint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cli_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "cli_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prepared_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default_verified": {
+          "const": true
+        },
+        "invocation_args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "model",
+        "source",
+        "observed_user_model",
+        "models",
+        "route_labels",
+        "catalog_sha256",
+        "catalog_raw_sha256",
+        "configuration_sha256",
+        "entrypoint",
+        "cli_sha256",
+        "cli_version",
+        "platform",
+        "prepared_at",
+        "default_verified",
+        "invocation_args"
+      ]
+    },
+    "nativeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "facts": {
+          "$ref": "#/$defs/nativeFacts"
+        },
+        "requested": {
+          "type": "string",
+          "minLength": 1
+        },
+        "override": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "facts",
+        "requested",
+        "override",
+        "origin"
+      ]
+    },
+    "nativeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/nativeRequest"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "failure": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "raw_exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "raw_signal": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usage_labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "execution_failure": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "verification_failure": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stop_observation": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "channel",
+                "after_result",
+                "elapsed_ms"
+              ],
+              "properties": {
+                "channel": {
+                  "enum": [
+                    "stdout",
+                    "stderr",
+                    "final"
+                  ]
+                },
+                "after_result": {
+                  "type": "boolean"
+                },
+                "elapsed_ms": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "request",
+        "labels",
+        "failure",
+        "raw_exit_code",
+        "raw_signal",
+        "usage_labels",
+        "execution_failure",
+        "verification_failure",
+        "stop_observation"
+      ]
     }
   }
 }

@@ -281,8 +281,8 @@ export async function applyOverlay(dest: string): Promise<string[]> {
     );
     s = anchor(
       s,
-      '  glm: zcodeAdapter,\n};',
-      `  glm: zcodeAdapter,\n  ${STUB_ID}: stubAgentAdapter,\n};`,
+      '  glm: zcodeAdapter,',
+      `  glm: zcodeAdapter,\n  ${STUB_ID}: stubAgentAdapter,`,
       'WIRED 接线表',
     );
     return s;

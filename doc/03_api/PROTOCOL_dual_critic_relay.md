@@ -519,3 +519,12 @@ Codex版本引用的profile上下文须与能力臂完整指纹一致；同一CL
 ## 第24B获批集中取证边界（2026-10-12）
 
 局部controlled-mechanism.v1、auth-timestamp-applicability.v1、criteria-approval.v1及criteria-revocation.v1属于独立任务证据契约，不改产品run/review/verify Schema。身份形状使用字符串、语义由注册表核验；mixed原件全局2N权限配对不可裁切伪装单臂。批准/撤销来源、范围、版本及全部hash不齐则不消费。 完整规范见[设计v1.3.156](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-controlled-contract)；执行结果以恢复报告和r17证据为准，不能由剧本或计划宣称已测。
+
+
+## Qoder CN 原生模型请求契约（2026-10-28，P2）
+
+原生默认由异步探针取得并绑定当前入口、版本、平台、目录及配置指纹；同步 defaultModelFor 只消费已加载事实。resolveTier 的最末层来源为 probe_default，显式空值/无效档位不得回落。run.v3.requested_routes 可带 native_model（facts、requested、override、origin），worker 确定性逐项比对，不重新选默认；当前单侧结果可带 native_model（request、labels、usage_labels、failure、raw_exit_code、raw_signal）。仅扩展当前 v3，历史 v1/v2 不补写。
+
+Auto/Fast 为路由标签，未知底层 model_effective=null、source=unverified；具体模型只读原生信封。modelUsage 的未知计费键独立保留，不推断别名。双通道明确回退或精确请求不一致立即中止，退出0仍判失败且审查结论不计票。Qoder 生产审核准入继续关闭，P2 无工具路线不等于 P3 能力验收；Windows ACL 未测时不复制认证。
+
+P2 首轮代码审修订：native_model 运行证据新增 execution_failure、verification_failure、stop_observation（channel/after_result/elapsed_ms），模型回退与执行失败/未核实分列。source=config 由目录内原生配置的真实显式验证产出；无配置默认只取首个 init。完整真机告警尾句纳入识别，停止时是否已见 result 必须如实记录。

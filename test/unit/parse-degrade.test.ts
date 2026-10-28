@@ -174,6 +174,8 @@ test('P9 回显清单 = 全开分支 renderFrontMatter 的键集 − 审查契�
     tool_calls: { read: 1 }, read_paths: [], search_hit_paths: null, write_events: [], command_texts: [],
     evidence_ok: true, fail_reason: null, session_id: 's', cli_version: '1', peer_deny_applied: false,
     deny_skipped: 0, deny_rule_count: 0, deny_bytes: 0, command_line: 'x',
+    // P9 仅核可渲染键集合，字段形状由 run.v3 专属契约用例核验。
+    native_model: {} as NonNullable<CriticResult['native_model']>,
   };
   const base: RenderInput = {
     critic: 'glm', stage: 'plan', topic: 'T', runId: 'R', rerunIndex: 1,

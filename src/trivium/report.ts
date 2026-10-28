@@ -83,6 +83,7 @@ export interface RoundReport {
     modelEffective: string | null;
     modelRequested: string | null;
     access?: AccessMeta;
+    nativeModel?: import('./types.js').NativeModelResult;
     familyStatus?: string;
     modelSource?: string;
     durationS: number;
@@ -471,6 +472,7 @@ async function buildRound(
       modelEffective: m.model_effective,
       modelRequested: m.model_requested,
       ...(m.access ? { access: m.access } : {}),
+      ...(m.native_model ? { nativeModel: m.native_model } : {}),
       familyStatus: typeof m.heterogeneous === 'boolean' ? `旧版名义族判定：${m.heterogeneous ? '异族' : '同族'}` : m.heterogeneous,
       modelSource: m.model_effective_source,
       durationS: m.duration_s,

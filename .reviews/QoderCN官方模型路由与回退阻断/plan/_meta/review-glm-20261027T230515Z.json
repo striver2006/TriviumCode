@@ -1,0 +1,71 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass",
+  "summary": "该计划忠实覆盖任务目标原文的全部要点（默认解析、显式覆盖、启动前拒绝、运行期回退中止判失败、请求/声明/回读三分离、Auto 仅作标签、真实适配器与 worker requested_routes 接线、不动用户全局配置），且与上游 P2 决策（doc/08_project/KimiCode与QoderCN双角色接入实施计划.md:56-58）逐条对得上。我亲自核实了仓库现状：计划 §2 的现状陈述准确（qoder-cn-model.ts 确实只消费人工 catalog、旧逻辑只扫 stderr、测试样本为合成三档不同值；run-protocol.ts:322-330 的 worker 五字段 frozen 比对与 registry.ts/config.ts 中 qoder-cn 的 L2 候选登记、开关关闭均属实）；§5 的 stdout/stderr 按行增量监听、发现违例立即 stopEarly、结束后含无换行尾部的全量复核，在 util/exec.ts:27,34,53,636-637,676 有现成机制支撑，机制依赖真实可行；退出 0 仍判失败有真实反例（证据文件 exit_code=0 且 stderr 含回退告警）。发现三条 minor 口径缺口：官方默认的两个来源如何合成单一 catalog 未写裁决规则；官方 Default 仅 Auto 的现实下 P2 完成态定义在 §6 与 §7/上游之间存在张力；身份未核实结论的计票地位未定义且与现有代码的缺回读即失败语义有分歧。三者均为实施时需澄清的口径，不构成返工级风险，故判通过。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "被审计划 §3.3–§3.4",
+      "problem": "「官方默认路由」（--list-models 的默认标记）与「已验证原生配置」（隔离根下实测的默认）是两个独立来源，计划要求三档绑定同一份已核实的官方原生默认，但没有写明两者都可得且不一致时如何裁决：取目录、取配置、还是冲突即阻断。现有 QoderNativeModelCatalog 的 source 是单选枚举、defaults 是单一表，实现时必须回答两份解析结果如何合成一份 catalog，这是留给实现的自由裁量。",
+      "evidence": "src/trivium/adapters/qoder-cn-model.ts:11-16（source 单选枚举、defaults 单表，无合成规则）；被审计划 §3.3/§3.4 的两处来源表述；doc/05_testing/evidence/kimi-qoder-cn-20261027-failure/qoder-cn-failure-2026-10-27T15-54-24-268Z-23e4a1e1.json 的 init 与 assistant 事件 model 字段实测为 Auto（隔离路线默认即 Auto 标签的实例）。",
+      "suggestion": "在 §3.4 补一句裁决规则，例如：两来源同时可得时以隔离原生路线实测为准、目录标记仅作旁证，或两者不一致即按「默认不明」阻断，避免实现各自解释。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "被审计划 §6（macOS 真 CLI 判据）与 §3.4、§7",
+      "problem": "计划 §2 自引的官方文档说 CN 版 Default 仅 Auto；若取证结论确是官方默认只有 Auto 路由标签、无具体模型，按 §3.4「配置缺失且不能证明官方内置默认时失败」，三档默认解析将结构性不可得。§6 完成判据写「取得账号目录和默认正对照」，隐含正对照必须存在；而上游 P2（08_project 计划第 56 行「缺失时明确报配置缺失」）与 §7 把负结论加阻塞报告视为合法交付形态。官方仅 Auto 情形下 P2 的完成态是「必须取得具体默认」还是「机制交付加负结论取证即完成」两种读法并存，验收口径不唯一。",
+      "evidence": "被审计划 §2、§3.4、§6、§7 的相关表述；doc/08_project/KimiCode与QoderCN双角色接入实施计划.md:56-57；历史证据文件 default_source 段 model 为 auto 且 production_default_verified 为 false。",
+      "suggestion": "在 §6 明确：若取证证实官方原生默认仅为 Auto 标签，完成判据是「回退阻断与显式覆盖机制交付，默认解析以负结论如实报告」还是保持该项阻塞待官方提供具体默认，二选一写死。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "被审计划 §4.3 与 §5.3–§5.4",
+      "problem": "「身份未核实」（缺底层回读，保持 null/unknown）的审查结论在闸门计票中的地位未定义。§5.4 只规定失败审查内容不得进入有效结果与计票；§5.3 把缺回读定位为标注而非失败；而现状代码把缺回读也抛 QoderModelFallbackError 即判失败。P2 期间 criticEnabled 关闭使该路径在生产不可达，但 §4.3 已把证据对象接进 run.v3.requested_routes 与结果结构，未核实票算有效票、无效票还是告警需要在准入前有定义，宜在本计划一并写明，避免实现后再改判定语义。",
+      "evidence": "src/trivium/adapters/qoder-cn-model.ts:169-171（缺回读即抛 QoderModelFallbackError）；被审计划 §5.3「按身份未核实标注」、§5.4「失败审查内容不得进入有效结果/计票」、§4.3 证据对象接线。",
+      "suggestion": "在 §5 补一行：身份未核实的运行结论按告警或无效票处理（或明确推迟到 P3 准入时定义并注明当前生产不可达），并与现有缺回读即失败的旧语义划清边界。",
+      "confidence": "medium"
+    }
+  ],
+  "agreed": [
+    "§2 现状陈述经代码核实准确：qoder-cn-model.ts 只消费人工提供的 catalog，测试用 cn-default/cn-flash/cn-pro 合成样本，旧逻辑确实只扫 stderr（qoder-cn-model.ts:160），run-protocol.ts:325-326 的五字段 frozen 比对与计划陈述一致。",
+    "§3.4 三档绑定同一份官方原生默认忠实于上游 P2 决策（08_project 计划第 57 行原文「default/flash/pro 使用同一已解析默认值」），且 §6 已列「默认三档同源」单元测试，与现有三档不同值的合成样本将一并修正。",
+    "§5 的 stdout/stderr 按行增量监听、发现违例立即 stopEarly 杀进程树、结束后含无换行尾部的全量复核，在 util/exec.ts 已有 onStdoutLine/onStderrLine/stopEarly/killTree 与残留行 flush 的现成机制支撑，方案可行且与既有超时/取消纪律一致。",
+    "§5.1 告警只从厂商信封/状态读取、不扫 assistant 正文的边界正确——现有测试中正文含「consider using path.join instead」的干扰样例正是这一误杀面，计划予以规避。",
+    "§4.4 的 Schema 同步清单与 AGENTS.md 改动同步清单一致，run.v1/v2 只读契约不补写的处理正确。",
+    "§5.4 厂商退出码与编排结论分离、exit 0 且违例仍判失败，有真实反例支撑（证据文件 exit_code 为 0 且 stderr 含 Model ... using ... instead 告警）。",
+    "隔离执行形态（--config-dir 隔离根加 --setting-sources user 加 --no-session-persistence）在历史证据 argv 中已被实测使用，计划沿用而非新造。",
+    "范围纪律清晰：不提前开放生产准入、保留既有 Kimi 工件与历史反例、未授权不提交推送。"
+  ],
+  "not_covered": [
+    "本侧只读，未实测任何 CLI：qoderclicn 1.1.80 的 --list-models 输出形态、隔离根下的默认行为、1.1.80 回退文案是否与 1.1.79 反例一致均未验证，相关判断是基于计划陈述与历史证据的推理；计划声称的当前版本 1.1.80 也无法核实。",
+    "未通读主设计 §11 全文与 PROTOCOL 协议全文，schema 扩展涉及的契约面细节未逐条核对，仅核对了同步清单与仓库改动同步清单的一致性。",
+    "未读 adapters/ 目录其余适配器实现与 hooks.ts，§4.1 统一 wiredAdapter 表接线的可行性按 registry.ts 与 config.ts 现状推断。",
+    "Windows 侧清理与 ACL 机制未核实，按计划声明列为未测。"
+  ],
+  "consulted": [
+    ".reviews/QoderCN官方模型路由与回退阻断/plan/2026-10-28-QoderCN官方模型路由与回退阻断-codex.md",
+    "src/trivium/adapters/qoder-cn-model.ts",
+    "test/unit/qoder-cn-model.test.ts",
+    "doc/05_testing/evidence/kimi-qoder-cn-20261027-failure/qoder-cn-failure-2026-10-27T15-54-24-268Z-23e4a1e1.json",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/review.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/types.ts",
+    "src/trivium/agents/registry.ts",
+    "doc/08_project/KimiCode与QoderCN双角色接入实施计划.md",
+    "CLAUDE.md",
+    "doc/02_design/README.md",
+    "src/trivium/config.ts"
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "reject",
+  "summary": "最危险的一条是层次归属。计划把 default/flash/pro 当成 Qoder 适配器内部的一张档位表来解析（§3.4、§4.2），沿用 qoder-cn-model.ts 自带的 QoderModelTier。但在仓库里，default/flash 是 config.profiles 下现有的档位表名，并没有内置的 pro 表。r2 计划规定 native_default 作为 resolveTier 的最末一层，优先级是 cli.tier → profile 格子 → agent.default_tier → native_default。照现稿实施，适配器里会长出一条与 resolveTier/tier_source 平行的路由。\n第二，隔离执行路线下“配置声明”指的是什么、是否总是显式传 --model Auto，计划没有定。这直接决定 requested_routes 里冻结什么、worker 拿什么逐项比对。\n第三，schemas.ts 只允许 criticEnabled 的侧出现在 requested_routes；在保持 criticEnabled 关闭的前提下，计划没有给出可行的测试接缝。\n其余是告警通道分类、目录指纹稳定性、1.1.80 真机运行期回退正对照，以及 Auto 语义反转涉及的副本同步。\n官方目录、--list-models 取证、请求/声明/回读三者分离、退出 0 判失败等主体方向是对的。但上述三条是契约级决策，改完需要再审一轮。",
+  "findings": [
+    {
+      "id": "CLAUDE-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §3.4、§3.5、§4.2",
+      "problem": "计划把 default/flash/pro 当成 Qoder 适配器私有的档位表：三档绑同一官方默认、显式 override 优先，只说与 low/medium/high 分开，没说与现有路由层怎么衔接。仓库里 default/flash 是 config.profiles 的档位表名（没有内置 pro 表），选取走 resolveTier，结果进 CriticRequest.tier/tier_source 与 requested_routes。r2 已定 native_default 作为 resolveTier 的最末一层（cli.tier → profile 格子 → agent.default_tier → native_default，cli.model 最高）。计划没写用户在 profiles.<表>.qoder-cn.<阶段> 配了值时怎么处理，没写显式覆盖是否走现有 --model-<id>/modelOverrides 通路，也没写 tier_source 取什么值（TierSource 现无 native 类取值）。照现稿做，适配器内会出现一条与 resolveTier 平行、不被 preflight/doctor 共享的路由，以后回收要返工。",
+      "evidence": "qoder-cn-model.ts:9 自定义 QoderModelTier 并在 resolveQoderModelRequest 内部解析；config.ts:354-410 profiles 只有 default、flash 两张表，active_profile='default'；types.ts:997 TierName=low/medium/high，types.ts:1005 TierSource 无 native 取值；base.ts:2009 resolveTier 被 review.ts:906、preflight.ts 多处共用；r2 计划第 169 行规定 native_default 作为 resolveTier 最末层。",
+      "suggestion": "在计划中明确：Qoder 原生默认作为 resolveTier 的 native_default 层接入（由适配器钩子提供），说明它与 profiles 格子、--model-qoder-cn 的优先级，tier_source 新增或复用的取值，以及 pro 不是内置档位表这一事实；适配器只负责提供与校验原生事实，不自持档位选择。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "plan §3.3、§3.4、§3.5、§4.3",
+      "problem": "隔离执行路线下，“配置声明”和“请求标签”的语义没有定。§3.3 规定执行时只用隔离 settings，不继承用户配置（用户的 model.name 是 bailian/... 自定义项）；§3.4 又要求“配置缺失且不能证明官方内置默认时失败”。而隔离路线的配置在设计上就是缺失的，默认值来自 CLI 内置。计划有几处没决定：是总显式传 --model Auto，还是省略 --model 依赖内置默认；declared 记用户原声明、隔离声明（空）还是官方目录的默认路由项；CriticRequest.model 是非空字符串，默认路线下填什么。这些直接决定 requested_routes 冻结哪些值、worker 逐项比对什么，不定下来，“三者独立记录”无法一致实现。",
+      "evidence": "types.ts:1997 CriticRequest.model 为 string（非空）；run-protocol.ts:324-328 用 JSON.stringify 比对 model/effort/tier/tier_source/access；失败证据 argv 含 --config-dir 隔离目录与 --setting-sources user，default_source.kind=explicit-probe-selection、production_default_verified=false；计划 §2 说明用户 settings 的 model.name 为 bailian/qwen3.8-flash-tp。",
+      "suggestion": "为隔离路线写一张小决策表，列出 requested（实际 argv 中的 --model 值或明确的“省略”）、declared（来源枚举：官方目录默认路由项 / 隔离 settings / 用户声明仅作留痕），以及哪一项进入冻结与 worker 比对。同时说明省略 --model 时如何证明内置默认就是 Auto。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §1、§4.1、§6 跨进程 worker 条",
+      "problem": "计划要求 requested_routes 接线和跨进程 worker 逐项比对有真实测试，同时规定保持 criticEnabled 关闭、不改注册表开关，只在“隔离夹具启用候选侧”。但 run.v3 的身份校验会拒绝 requested_routes 里任何非 criticEnabled 的侧；CRITIC_AGENT_IDS 在模块加载时由静态字面量派生，仓库里没有现成的注入点。计划没说夹具怎样启用，可能的做法各有代价：模块 mock 测不到真实的两进程，加运行期开关又可能流入生产。结果要么跨进程测试做不出来，要么得临时设计开关、改动契约。",
+      "evidence": "schemas.ts:281-283 对 requested_routes 每个 id 要求 agentById(id)?.criticEnabled；registry.ts:429 qoder-cn criticEnabled:false，registry.ts:470 CRITIC_AGENT_IDS 由 AGENTS 静态过滤；run-protocol.ts:319-328 worker 只接受 run.v3 并比对 requested_routes。",
+      "suggestion": "在计划中明确测试接缝：例如只在测试构建可达的注册表覆盖点，并配一条证明生产路径不可达的守卫测试。或者如实写明 qoder-cn 的 requested_routes 跨进程链路要到 P3 开启后才能端到端验证，本阶段只验证到哪一层。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §5.1、§5.2",
+      "problem": "§5.1 说“告警只从厂商信封/状态读取”，但已观察到的回退告警是 stderr 上的纯文本，不在任何信封里。stdout 上同样会出现厂商纯文本行（技能改名提示）。计划没有给出通道分类规则：哪些行算厂商文本，哪些 JSON 事件类型（assistant/user/tool_result）算正文要排除，哪些（system/init、result）算状态。另外，result 事件的 modelUsage 按模型键记账（样本里是 auto），这是能发现中途换模的回读面，计划没列。",
+      "evidence": "失败证据 stderr 为 'Model \"trivium-invalid-model\" is not available right now; using \"auto\" instead'；stdout 夹有非 JSON 行 'Skill command '/docs' was renamed...'；init 事件 model:'Auto'；result 事件 modelUsage 键为 auto。现有 assertQoderModelDidNotFallback 只扫 stderr 并用宽泛的 \\bfallback\\b（qoder-cn-model.ts:160-162）。",
+      "suggestion": "在 §5 写明逐行分类规则：两路非 JSON 行按厂商文本处理，JSON 事件按 type/subtype 分成状态与正文。把 init.model、各 assistant.message.model、result.modelUsage 的键都列为回读面，并对它们做一致性检查。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CLAUDE-05",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.1、§4.3",
+      "problem": "计划把 --list-models 原始输出的 hash 当作目录指纹，执行前核验，变化即失效。如果输出里带“当前可用”状态、额度或排序这类易变内容，指纹会无故漂移，导致 worker 端频繁假失败。告警文案 'not available right now' 本身就说明可用性是随时间变化的。",
+      "evidence": "失败证据 stderr 'is not available right now'；计划 §3.1 记录“目录输出 hash”，§4.3 “目录或配置变化失效后要求重新准备”。",
+      "suggestion": "原始输出 hash 留作取证，冻结与比对改用规范化后的解析结果（官方项集合 + 默认路由项）。同时说明 worker 端是重新执行 --list-models，还是只核验 CLI 指纹和隔离配置。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CLAUDE-06",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §6 macOS 真 CLI 条",
+      "problem": "新逻辑会在启动前拒绝无效模型，真机上就再也触发不到运行期回退。计划只打算用 1.1.79 的历史样本做重放或受控故障测试，这证明的是夹具上的行为，不是 1.1.80 真 CLI 的运行期中止。计划既没安排可控地绕过启动前校验去取一份 1.1.80 真机运行期回退正对照，也没把这一项标成阻塞。",
+      "evidence": "失败证据 cli_version=1.1.79、exit_code=0；计划 §2 记当前版本为 1.1.80；§6 写“保留历史退出 0 反例并通过真实适配器重放/受控故障测试证明编排失败”。",
+      "suggestion": "增加一个受控验收臂：只在取证脚本里跳过目录预检，用真实 1.1.80 请求无效模型，验证真实适配器会 stopEarly 并判失败。做不到就把“真机运行期中止”单列为阻塞，不要用重放顶替。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CLAUDE-07",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §2 第 4 条、§6 文档同步条",
+      "problem": "本计划把官方默认 Auto 作为三档的合法请求标签，等于反转了现有逻辑与测试里“Auto 不能做默认”的断言。计划只笼统说“旧逻辑不能满足”，没有列出需要同步的副本：qoder-cn-model.ts 模块头注释与 validate/resolve 里对 Auto 的拒绝、单测里的对应断言、实施计划 P2.1 的措辞、交付物表“纯逻辑已实现”的状态。漏改一处，就会留下与新契约相反的说法。另外 model_effective_source 现有取值是 envelope/trace/requested/unverified，计划用的 'unknown' 在 CriticResult 中没有对应取值。",
+      "evidence": "qoder-cn-model.ts:82-84、108 拒绝 Auto；qoder-cn-model.ts:35 source 用 'unknown'，types.ts:2091 model_effective_source 无 unknown；实施计划第 56 行“不能把本轮实验用的 auto 自动填成产品默认”、第 104 行“纯逻辑已实现”；test/unit/qoder-cn-model.test.ts:51 起的 Auto 相关断言。",
+      "suggestion": "在 §6 同步清单里点名上述副本，并说明 Auto 标签写入哪个字段（例如独立的 label 字段，model_effective 保持 null、source 取 'unverified'），不新增与现有枚举并行的 unknown。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CLAUDE-08",
+      "severity": "nit",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3.3、§6 单元条",
+      "problem": "计划断言 --setting-sources user 不会合并项目 .qoder/settings.json 与 settings.local.json，但审核时 cwd 是项目根，项目里配的 model.name 可能改写路由。验证项里没有对应的反向对照。",
+      "evidence": "失败证据 argv 使用 --setting-sources user 且 cwd 为夹具目录；计划 §2 引用官方配置顺序含项目与本地层。",
+      "suggestion": "在真 CLI 验证里加一个夹具：cwd 下放带 model.name 的项目 settings，确认生效回读不受它影响。",
+      "confidence": "low"
+    }
+  ],
+  "agreed": [
+    "计划坚持从实际的 --list-models 与官方文档取证，不硬编码模型名、不从名字推断官方性，目录失败时不回退到手写清单。这与 r2 第 72、167 行的约束一致。",
+    "计划承认用户 settings 的 model.name（bailian/...）是自定义项，不能冒充官方默认，执行路线与用户声明分开记录。",
+    "请求、声明、回读三者独立；Auto 只作标签，底层 effective 为 null；中途换模后又恢复仍判失败；不只取最后一个模型值。这些都对准了失败样本里 init 和 assistant 事件反复出现 Auto 的情况。",
+    "厂商退出码与编排结论分离，code=0 加回退照样判失败，提前杀进程产生的 signal 不覆盖回退原因。",
+    "复用 exec.run、killTree、stopEarly，不拼 shell 命令；临时认证文件 0600/目录 0700，finally 清理；Windows 没实测就不宣称通过。",
+    "保留历史失败样本不覆盖；run.v1/v2 只读，不补写新字段；生产准入开关继续关闭。"
+  ],
+  "not_covered": [
+    "没有读设计文档 §11 和协议文档，无法核对计划列出的同步清单与设计现行条款是否一致",
+    "没有读 review.ts 写 requested_routes 的完整上下文（1270-1450、1870、2130、2169 附近），只读了 run-protocol.ts 的比对段",
+    "没有读 exec.run、killTree、stopEarly 的实现，无法确认分块拼接和无换行尾部的现有行为",
+    "无法执行 qoderclicn --list-models 或访问 docs.qoder.cn，计划 §2 对官方文档和 1.1.80 help 的引述都没有核实",
+    "没有读 CLAUDE.md、AGENTS.md、README 等必读文档全文，只依靠代码与计划文件判断",
+    "没有读 Windows ACL 相关机制，也没有读 meta/report/parse/gate 对新字段的具体影响面"
+  ],
+  "consulted": [
+    "src/trivium/adapters/qoder-cn-model.ts",
+    "doc/05_testing/evidence/kimi-qoder-cn-20261027-failure/qoder-cn-failure-2026-10-27T15-54-24-268Z-23e4a1e1.json",
+    "doc/08_project/KimiCode与QoderCN双角色接入实施计划.md",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/types.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/config.ts",
+    "test/unit/qoder-cn-model.test.ts",
+    ".reviews/KimiCode与QoderCN双角色接入/plan/2026-10-27-KimiCode与QoderCN双角色接入-r2-codex.md"
+  ]
+}

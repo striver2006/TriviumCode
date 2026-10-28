@@ -1,0 +1,118 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "被审补丁把 Qoder CN 官方目录探针、probe_default 路由层、native_model 冻结快照、worker 确定性比对与真实适配器执行边界接成完整链路，焦点七项（官方目录来源、原生配置来源、默认值证据、请求/声明/回读分离、stderr/stdout 双通道回退告警、退出0失败判定、真实适配器接线）均与计划 r2 一致，且有单测、真实可执行夹具与隔离复制树两进程集成测试锚定；registry 双开关保持关闭。发现一条应修的清理竞态：withQoderHome 收尾段把「辅助进程在枚举与身份核对之间自然退出」当成身份不可核实抛错，因抛出位于 finally，会把一次已成功完成的真实执行（含探针）整侧改判失败且证据不落盘——这与本主题「退出0仍失败须有真实回退依据」的判定纪律背道而驰，方向是误伤而非漏放。另有绑定校验无测试锚、探针默认标签取末值等次级问题。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "major",
+      "layer": "code",
+      "kind": "concurrency",
+      "location": "src/trivium/adapters/qoder-cn-native.ts:50-52",
+      "problem": "withQoderHome 的 finally 清理段先以 ps 快照枚举临时 HOME 下的辅助进程，再逐个调 processStartTime 取 lstart；被枚举到的短命辅助进程若在两次 ps 之间自然退出，processStartTime 返回 null（util/exec.ts:899-908 对 ps 失败一律返回 null，不区分「已退出」与「取不到」），代码将其与「身份不可核实」混为一谈直接抛错。抛出发生在 finally，会丢弃 fn 的正常返回值：invokeQoderModel 已取得的完整 outcome 作废，qoder-cn.ts run() 里位于 invoke 之后的 stdout/trace 落盘不再执行，经 runner 按适配器异常收口，一次配额已烧、输出完整、模型核验通过的真实执行被整侧改判失败；probeQoderCn 同路径整段失败。代码注释自述「原生安全初始化进程会在 CLI 退出后短暂写日志」——短命恰是这类进程的常态，竞态窗口真实存在，测试报告也记录了清理环节两次被安全组件干扰。",
+      "evidence": "src/trivium/adapters/qoder-cn-native.ts:44-56（ps 快照→逐 pid 取 lstart→!started 即抛）；src/trivium/util/exec.ts:899-908（processStartTime 对已退出进程返回 null）；src/trivium/adapters/qoder-cn.ts:60-65（invoke 在 try/catch 之外，异常时证据写盘不执行）；src/trivium/runner.ts:187-211（适配器异常出口）；doc/05_testing/REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md 第24行（清理段曾受安全组件干扰的如实记录）。",
+      "suggestion": "对 lstart 取不到的 pid 先用 process.kill(pid,0)（或 processAlive）判存活：ESRCH 视为已自行退出、跳过该条；仅存活却取不到 lstart 时才抛「身份不可核实」。并补一条「辅助进程在枚举与核对之间退出不导致整侧失败」的回归用例。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-02",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "test-gap",
+      "location": "src/trivium/adapters/qoder-cn-native.ts:64-70",
+      "problem": "verifyQoderBinding 是计划 r2 第4节「来源变更拒绝执行」承诺的唯一执行点，含四类拒绝路径：configuredBin 与冻结入口不一致、平台不符或入口文件 hash 变化、原生配置 hash 变化、CLI 版本漂移。对 test/ 全目录检索无任何用例覆盖这四条路径；集成测试只覆盖了缺快照、目录外模型与交接篡改（sameRequestedRoute）三类拒绝。CLI 二进制升级或被替换后（cli_sha256、cli_version 与冻结事实不符）必须拒绝的行为没有回归锚，将来改动（例如放宽比对项）不会红。",
+      "evidence": "test/ 目录按 verifyQoderBinding、入口指纹变化、版本变化或不可读取、原生配置来源指纹 等关键词 grep 零命中；test/integration/qoder-cn-routing.test.ts（本次新增，见 diff 尾部）断言面为缺快照/目录外模型/交接篡改/生产注册表未回写。",
+      "suggestion": "在真实可执行夹具上追加参数化负例：篡改 facts.cli_sha256 一位、替换 entrypoint 文件内容、改动 settings.json、伪造 cli_version，各自断言 process_started 为 false 且 fail_reason 指向重探文案。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-03",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/probes/qoder-cn.ts:27",
+      "problem": "探针用 monitor.finish() 的 readback().label（labels 末项）与目录互证得出默认声明，而代码注释与协议口径是「省略 --model 的 init 标签与目录项相互验证」。当前 1.1.80 上 init 与 assistant 恒回读 Auto（报告表格佐证），两种取法一致；但计划第5节明确允许 Auto 路由在后续信封披露具体底层模型且不算回退——届时 labels 末项变为具体模型，facts.model 会以 source=catalog-default 记下一个具体模型，「默认=省略 --model 的路由标签」的证据语义发生漂移，后续默认运行也随之变成显式 --model 具体值，偏离受测路线。",
+      "evidence": "src/trivium/probes/qoder-cn.ts:23-33（observed.label 取 readback 末项作为 defaultLabel）；src/trivium/adapters/qoder-cn-model.ts:106-110（label 取 labels.at(-1)）；doc/05_testing/REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md 表格「省略 --model｜init 和 assistant 回读 Auto」。",
+      "suggestion": "默认声明改用首个 system/init 事件标签；当路由标签之后的中途信封披露具体模型时，保持默认声明为路由标签、底层身份按 unverified 处理，并为该形态补探针层单测。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-04",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "correctness",
+      "location": "src/trivium/adapters/qoder-cn.ts:55-59",
+      "problem": "run() 对冻结快照的复核只比较重算出的 requested 与快照 requested，不复核 override 与 origin 两个字段；紧邻注释宣称「对直接调用也执行目录检查，不能只依赖主进程预检」，但绕过 worker 的直接调用路径（取证脚本即如此用 invoke 边界）上篡改 override/origin 不会被发现——快照一致性这道防线在直接调用路径只做了一半。worker 路径有 sameRequestedRoute 全字段深比对兜底，风险被限制在直接调用场景。",
+      "evidence": "src/trivium/adapters/qoder-cn.ts:56-57（仅断言 expected.requested 不一致）；src/trivium/adapters/qoder-cn-model.ts:58-63（qoderModelRequest 同时产出 override/origin 但未被比较）。",
+      "suggestion": "追加断言 expected.override 与 expected.origin 分别等于 req.native_model.override、req.native_model.origin。",
+      "confidence": "high"
+    },
+    {
+      "id": "GLM-05",
+      "severity": "minor",
+      "layer": "code",
+      "kind": "contract",
+      "location": "src/trivium/types.ts:1012",
+      "problem": "计划 r2 第3节路线表承诺「显式已验证原生配置→source=config」作为可覆盖目录内置默认的第二来源，types 与 run.v3 schema 的 nativeFacts.source 均预留 config 枚举，但实现中没有任何生产者（探针恒写 catalog-default），validateQoderFacts 对 source 取值也不做区分，手工构造 source=config 的事实同样通过校验。机读契约宣告了一个不存在的产出点，与本仓 run.v2 deny_skipped 的前科同形；本轮因用户声明为 Custom 不启用该路线可以成立，但不显式登记的话，后人按枚举名补实现时容易遗漏计划中「配置值必须验证在同一官方目录」的约束。",
+      "evidence": "src/trivium/types.ts:1010-1012（source 联合类型含 config）；skills/dual-critic/schema/run.v3.json nativeFacts.source 枚举含 config；src/trivium/probes/qoder-cn.ts:30（唯一生产者恒写 catalog-default）；src/trivium/adapters/qoder-cn-model.ts:49-56（validateQoderFacts 不校验 source）。",
+      "suggestion": "在 types/schema 注释与设计文档中把 config 显式标注为预留未实现，或在本轮交付文档将其列为阻塞项，待实现时一并补「配置值在官方目录内」的验证与测试。",
+      "confidence": "medium"
+    },
+    {
+      "id": "GLM-06",
+      "severity": "nit",
+      "layer": "code",
+      "kind": "maintainability",
+      "location": "src/trivium/adapters/qoder-cn-model.ts:36-38",
+      "problem": "parseQoderSettings 对注释/字符串未闭合抛带上下文的 QoderModelConfigurationError，但其余非法 JSON（如尾逗号）直接透传 JSON.parse 的原始 SyntaxError，文案不含文件路径与 Qoder CN 字样；探针与 verifyQoderBinding 的失败提示会退化为一条裸 JSON 语法错误，排查时定位不到 settings.json。单测对两类输入都只断言 throws，未锁错误类型。",
+      "evidence": "src/trivium/adapters/qoder-cn-model.ts:36-38（JSON.parse 未包裹）；test/unit/qoder-cn-model.test.ts:25-29（仅 assert.throws）。",
+      "suggestion": "将 JSON.parse 包进 try/catch 转为 QoderModelConfigurationError 并附配置文件路径；单测补错误类型断言。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "冻结请求快照与 worker 确定性逐字段比对成立：requestRouteSnapshot 键序无关、native_model.facts 全量进深比对，叠加 schemas.ts 的 native_model.requested 与 model 跨字段校验，篡改在模型派生前拦截，并有隔离复制树两进程集成测试（篡改即拒、正对照保留 raw_exit_code）实证。",
+    "resolveTier 的 probe_default 严格落在 CLI tier、profile 格子、agent 默认之后的最末层，显式空串与坏档不回落，default/flash/pro 三表同源共用原生默认，单测逐格钉值。",
+    "退出 0 伴回退判 failed、原始退出码与信号独立保留、结论不计票；缺精确回读时如实记「未核实」并失败，不伪称检测到回退；真机无效模型经取证臂验证 earlyStopped 后编排失败。",
+    "Auto/Fast 按路由标签处理、底层 null/unverified；具体模型走 envelope 回读；modelUsage 未知计费键单列保存、不推别名，仅目录已知键作一致性佐证且有正反单测。",
+    "临时认证副本目录 0700、文件 0600、源为符号链接即拒；Windows ACL 未实测即拒绝复制而非降级；子进程 env 清洗（QODER/ANTHROPIC/OPENAI/CODEX/TRIVIUM/NODE_OPTIONS）与一次性 HOME 隔离完整。",
+    "registry 的 criticEnabled/driverEnabled 均保持关闭，集成测试反向断言生产注册表未回写；测试报告如实保留失败试验与中间证据，未把失败改写为通过。",
+    "不扫描 assistant/user/tool 正文与嵌入 JSON 的回退词（整行锚定正则）并有正文反例单测，与计划第5节的分层口径一致。"
+  ],
+  "not_covered": [
+    "只读审查：未运行任何命令，npm run check 与定向测试 46/46、集成 4/4 的通过声明取自测试报告自述，未独立复跑。",
+    "探针依赖的 1.1.80 输出形态（MODEL 单列目录、init 标签、qfmodel 计费键）按既有证据采信，未做真机验证。",
+    "evidence/qoder-cn-model-20261028 仅抽查 adapter-b0b109 一份与报告引用链，directory 与其余 adapter 证据、全部 kimi-macos 证据文件未逐份核对内容与 hash。",
+    "doctor.ts、preflight.ts、report.ts、registry-parity 的 diff 未逐行审读，仅沿模型路由调用链读了被用到的段落。",
+    "README.md、doc/README.md、doc/01_requirements/README.md、doc/02_design/README.md 为通用导读，本轮未逐字读。",
+    "withQoderHome 清理竞态（GLM-01）的触发频率为代码推理，未做实测统计；Windows 分支（IS_WIN 拒绝复制）无实测依据。",
+    "scripts/acceptance/kimi-qoder-cn 下各取证脚本本体未逐一审读，仅经报告与集成测试交叉印证其行为。"
+  ],
+  "consulted": [
+    ".reviews/QoderCN官方模型路由与回退阻断/code/_meta/changes-20261027T233105Z.diff",
+    "src/trivium/adapters/qoder-cn-model.ts",
+    "src/trivium/adapters/qoder-cn.ts",
+    "src/trivium/adapters/qoder-cn-native.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/model-routing.ts",
+    "src/trivium/probes/qoder-cn.ts",
+    "src/trivium/config.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/review.ts",
+    "src/trivium/render.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/types.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/util/exec.ts",
+    "src/trivium/doctor.ts",
+    "skills/dual-critic/schema/run.v3.json",
+    "test/unit/qoder-cn-model.test.ts",
+    "test/integration/qoder-cn-routing.test.ts",
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".reviews/QoderCN官方模型路由与回退阻断/plan/2026-10-28-QoderCN官方模型路由与回退阻断-r2-codex.md",
+    "doc/05_testing/REPORT_2026-10-28_QoderCN官方模型路由与回退阻断.md",
+    "doc/05_testing/evidence/qoder-cn-model-20261028/adapter-2026-10-27T23-27-51-812Z-b0b109.json"
+  ]
+}

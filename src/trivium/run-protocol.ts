@@ -14,6 +14,7 @@ import { promises as fs } from 'node:fs';
 import type { Config, CriticId, CriticRequest, Ctx, Stage, CommandEntry, ReviewLoop, RoundVerdict } from './types.js';
 import { EXIT, TriviumError, envError, exitCodeOf, missingArtifact } from './exit-codes.js';
 import { runRoot } from './config.js';
+import { sameRequestedRoute } from './model-routing.js';
 import { RUN_DIR_FILES } from './run-files.js';
 import {
   acquireLock, inspectLock, lockPathFor, reclaimStaleLock, workerLockContent, type LockHandle, type ReclaimedLock,
@@ -322,9 +323,7 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
   for (const c of h.sides) {
     const request = h.requests[c];
     const frozen = meta.requested_routes?.[c];
-    const current = request ? { model: request.model, effort: request.effort ?? null,
-      tier: request.tier, tier_source: request.tier_source, access: request.access } : null;
-    if (!frozen || JSON.stringify(current) !== JSON.stringify(frozen) || request?.profile_requested !== frozen.access.profile) {
+    if (!sameRequestedRoute(request, frozen)) {
       throw envError(`${c} 的执行交接与运行记录请求路线不一致，拒绝重新解析或替换组合`);
     }
   }

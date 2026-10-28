@@ -3205,6 +3205,16 @@ profiles:
 
 ---
 
+#### Qoder CN 原生默认与回退阻断（2026-10-28 契约，P2 已验证）
+
+详见 `.reviews/QoderCN官方模型路由与回退阻断/plan/2026-10-28-QoderCN官方模型路由与回退阻断-r2-codex.md`。异步探针取官方 CN 目录、默认证据及配置/入口指纹；同步适配钩子只消费已加载事实。`resolveTier` 在 CLI tier、profile 格子、Agent 默认之后才取原生默认，来源为 `probe_default`，精确模型覆盖仍最高；default/flash/pro 表无该侧显式值时共用原生默认，显式空值不回落。
+
+当前 run.v3 的请求与交接可携带可选 `native_model` 非敏感证据，包含请求原值、实际请求、默认声明、目录/配置/入口绑定；worker 确定性逐字段比对，禁止重新选默认。运行证据独立保存标签、原始退出码和回退首因。Auto 是路由标签，底层模型未知记 null/unverified；具体模型信封回读为 envelope。双通道原生回退告警或精确模型不一致立即中止，CLI 退出 0 仍失败且结论不计票；缺精确回读是未核实失败，不伪称检测到了回退。候选审核者准入继续关闭；历史 run.v1/v2 不改。
+
+1.1.80 真机发现 result.modelUsage 使用 `qfmodel`，init/assistant 使用 `Qwen3.8-Flash`。官方成本用量文档将 modelUsage 定义为会话累计用量；未提供两者身份映射，因此原始计费键独立保存在 usage_labels，不推断别名/底层身份。仅当计费键本身属于已取得的官方目录时才作为一致性佐证，不拿不明计费键伪造模型回退。
+
+原生配置值属于隔离官方目录时，探针以该值显式执行验证，默认 source=config；目录外 Custom 声明只留观察，不继承。无配置默认只取省略 --model 的首个 init 标签，后续具体身份披露不改默认声明。运行证据 failure 只收模型回退/不一致，execution_failure 与 verification_failure 分别收执行错误与缺回读；stop_observation 保存通道、到达耗时与停止时是否已见 result。预检校本地入口/配置 hash，实际版本由既有预检和执行前异步校验。清理对短命进程和PID复用分开处理，不以返回对象的真值判断存活。
+
 ### 11.6 接入方式与模型族判定（M11 第12步前置 · 契约已定，实施验收中）
 
 **v1.3.148 · 当前规范引用**：目录事实与敏感扫描边界统一见[§3.5规范](#agent-access-directory-contract)，进展见[恢复报告](../05_testing/REPORT_2026-10-11_agent_access_recovery.md)。本节不复制计划时点的实施状态。
