@@ -2,6 +2,8 @@
 
 日期：2026-10-27。责任人：Codex（Driver）；Windows 实机执行：Bob。
 
+2026-10-28 main/0048e086 Qoder CN命令B续批：Bob仅授权专用隔离夹具真实B，未授权本仓主题审查或Kimi/A/C/D/审批/放弃。旧有效夹具及候选hash已核，新B专用无凭据夹具与拒绝/归档装置已准备，生产开关/版本/安装不变。前置核验发现既定gemini,glm的path_deny=false、覆盖/形状null及历史同行读取反例；组合认证缓存指纹匹配但TTL过期。生产availability可用不等于本轮要求的严格只读准入，故未启动真实客户端/审查worker、未编造requested_routes或裁决，未到人工停点。下一依赖是取得两条路线的严格隔离/执行拒绝证据及新账号核验；不减少集合、不降级、不重新跑已通过身份项。完整矩阵和待验原文见[报告第8节](../05_testing/REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#8-main--0048e086-qoder-cn命令b前置2026-10-28)。本次装置回归和文档是独立进展，不宣称正式命令B接入完成。
+
 2026-10-28 main/892c4767再续批（Codex开发Driver、暂不双审）：两家plan/code/bug跨进程继承/并发noop/异身份拒绝契约已测，新增真实Git HEAD、材料与独立run_root夹具及正式入口待验文本。Bob完成Kimi私有官方login后，真实原生status及两个真实CLI会话的三阶段身份项通过；Qoder补齐入口参考加载和同样身份项。Qoder有一次验收wrapper参数错误后纠正，单项证据通过与整场passed=false分别保留。未启动正式A/B/C/D、审核者或审批/放弃，生产三个开关仍false，桌面/插件/Windows未测。详见[报告第7节](../05_testing/REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#7-main--892c4767-独立身份续验2026-10-28)；下文旧阻塞为历史采样，不覆盖本次新事实。
 
 2026-10-28 Driver独立续批（Bob明确授权暂不双审）：P1/P5已补macOS官方CLI七技能发现、来源/唯一数量、同名与共享读取控制；Qoder官方真实模型status参数/cwd通过，Kimi受控原生Skill/参数尾段/status通过但真实模型认证前置阻塞。P1隔离候选构建的阶段认领、原稿归属及第二进程继承通过；七份Kimi入口统一render为native-tail说明。生产开关未动，完整A/B/C/D及审查worker交接未测；桌面/插件在CLI后继续，Windows未测。详细改动、装置失败原件、无凭据保留夹具和待显式正式入口见[独立Driver报告](../05_testing/REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md)。以下历史状态保留，不能把P3审核阻塞当作本轮P1/P5零进展。

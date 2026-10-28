@@ -1,5 +1,18 @@
 # Kimi/Qoder 取证工具
 
+2026-10-28 main/0048e086专用Qoder CN命令B前置：
+
+```sh
+node scripts/acceptance/kimi-qoder-cn/qoder-plan.mjs
+node --test scripts/acceptance/kimi-qoder-cn/qoder-plan.test.mjs
+```
+
+本工具只准备无凭据Git夹具、隔离候选、B专用传输/归档装置和阻塞原件，不安装任何候选，不隐式启动真实客户端或审核者。旧有效夹具核验后原样保留，新夹具另根记录清理责任。仅临时构建把qoder-cn的Driver开关转换为true，生产三个开关不动。正文归档通道消费客户端暂存文件并调用archive，不用固定正文冒充真实裁决。
+
+本批严格前置失败：gemini/glm的既有探针均有path_deny.supported=false及同行读取反例，coverage_complete/file_shape_verified为null；两个认证组合缓存指纹仍匹配，但已过TTL。安装只读Agent一致、availability返回可用都不能替代严格准入。没有为凑绿重探、探活或改少审核者。B wrapper的review --start固定退69，不能改一个布尔值解锁；approve/abandon/其它阶段退64。它是**启动前备料与拒绝装置，正式审查能力未验**，不能用新wrapper名称把旧本地能力升级为通过。解除阻塞需要合格的真实严格隔离/拒绝证据及账号核验，再修订专用装置；本批不提供绕过开关。
+
+当前没有真实命令B会话、run_id、worker、requested_routes、裁决、gate或人工审批入口。具体原件、逐环节矩阵与待验文本见[报告第8节](../../../doc/05_testing/REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#8-main--0048e086-qoder-cn命令b前置2026-10-28)。只允许本轮指定的Qoder B；Kimi模型、其它入口、桌面/插件/Windows未测。
+
 2026-10-28 main/892c4767新增三阶段独立身份工具（不运行正式审查，不安装候选）：
 
 ```sh

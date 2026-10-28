@@ -1,0 +1,5 @@
+2026-10-28：新增B wrapper跨进程回归首跑4通过/1失败，退出1。
+失败断言：rows.every(r => r.exit_code === 64 && r.cwd === root)，false !== true。
+三次实际拒绝码均为64，未启动candidate；测试root为/var临时目录别名，子进程cwd为/private/var规范路径。
+修正：测试创建根后先fs.realpath，与生产prepare的根规范化口径一致；不放宽wrapper路径/退出码判据。
+此文件是失败摘要，不冒充完整原始测试stdout。后续通过不覆盖本失败。

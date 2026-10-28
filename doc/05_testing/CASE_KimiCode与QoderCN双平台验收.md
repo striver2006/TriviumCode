@@ -2,6 +2,23 @@
 
 日期：2026-10-27。负责人：Bob / Codex。状态：待执行，双角色接入尚未交付。
 
+2026-10-28 main/0048e086本轮最新状态见[报告第8节](REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#8-main--0048e086-qoder-cn命令b前置2026-10-28)：仅解除专用隔离夹具的Qoder CN命令B限制。既定gemini,glm的严格前置不足，未启动真实B；下面第7节及更早事实保留，不重复已通过项。
+
+| 本轮Qoder CN命令B环节 | 状态 | 证据与边界 |
+| --- | --- | --- |
+| 旧夹具有效HEAD、原稿、candidate hash | 通过 | 离线回读；旧夹具不改 |
+| 新独立Git夹具、run_root、候选构建、清理责任 | 通过 | 无凭据，仅候选Driver开关变换；不安装 |
+| B专用wrapper/归档通道 | 自动化通过；正式能力未测 | 拒绝其它入口/身份/集合和审批，启动前置失败退69 |
+| 固定两审路线声明及来源指纹 | 通过 | gemini-3.8-flash-high/high、GLM-5.3/null；实际模型回读未测 |
+| 当前账号真实可调用 | 阻塞/未测 | 历史认证缓存指纹匹配但已过TTL；没有重探凑绿 |
+| gemini/glm严格只读与禁读覆盖 | 阻塞 | 既有path_deny=false及同行读取反例，覆盖/形状null，不是本批新反例 |
+| 真实Qoder斜杠入口、工具ID、argv/cwd与退出码 | 未测 | 严格前置失败，未启动客户端；本地备料账本不代替 |
+| 原稿认领/后缀 | 备料通过；真实客户端未测 | 装置认领，claimed_by=unknown-session，qoder-cn原稿；固定正文不算真实撰写 |
+| run.driver、handoff、worker身份、requested_routes冻结核对 | 未测 | 无run，不补写 |
+| 两家真实审查、修订计划、逐条裁决、gate | 未测 | 不伪造审核意见或裁决 |
+| 人工审批停点/确切审批入口 | 未到达/null | 没有可供approve的run；下一入口仍是原Qoder命令B |
+| 生产Driver、审核者、默认选侧 | 关闭/阻塞 | Kimi与Qoder六开关false，候选不等于正式产品 |
+
 2026-10-28 main/892c4767续验以[报告第7节](REPORT_2026-10-28_KimiCode与QoderCN独立Driver验收.md#7-main--892c4767-独立身份续验2026-10-28)为最新事实：Bob完成Kimi私有官方登录后，两家均取得真实模型的plan/code/bug认领、归属材料、第二官方CLI会话继承、noop及异身份退64；实际安装入口经Read加载为参考，正式四条斜杠入口未执行。Qoder一次fixture-draft参数错误被拒后纠正，独立身份项通过，但原件整场总检查仍失败，不能抹除。以下早期“认证阻塞”保留为历史时点。
 
 | 本批macOS独立项 | Kimi | Qoder CN | 边界 |

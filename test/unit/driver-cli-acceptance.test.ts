@@ -4,3 +4,4 @@ import {pathToFileURL} from 'node:url';
 import {REPO_ROOT} from '../helpers/fixture.js';
 await import(pathToFileURL(path.join(REPO_ROOT,'scripts/acceptance/kimi-qoder-cn/driver-cli.test.mjs')).href);
 await import(pathToFileURL(path.join(REPO_ROOT,'scripts/acceptance/kimi-qoder-cn/driver-identity.test.mjs')).href);
+await import(pathToFileURL(path.join(REPO_ROOT,'scripts/acceptance/kimi-qoder-cn/qoder-plan.test.mjs')).href);

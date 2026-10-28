@@ -1,0 +1,42 @@
+✔ 模型名补全：已是全限定形态时原样返回 (0.244ms)
+✔ 模型名补全：探针没给出前缀时原样传，不瞎猜 (0.087916ms)
+✔ 模型名补全：providerId 含斜杠时只切最后一段 (0.088833ms)
+✔ 模型名补全：null 模型返回 null (0.196583ms)
+ℹ tests 4186
+ℹ suites 0
+ℹ pass 4176
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 9
+ℹ todo 0
+ℹ duration_ms 349984.438042
+
+✖ failing tests:
+
+test at dist/test/test/integration/release-package.test.js:15:1
+✖ 发布包真解压：白名单与哈希、全部已登记载体入口、隔离安装升级、14步桩自检与卸载 (4264.410208ms)
+  Error: Command failed: /opt/homebrew/Cellar/node/25.2.1/bin/node scripts/package-release.mjs --candidate --out /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-release-jCnagU/out
+  file:///Users/chenzhenbo/Work/TriviumCode/scripts/package-release.mjs:79
+    if (!stamp || !bundleText.includes(stamp.inputs_sha256)) throw new Error('编排器构建指纹过期或缺失，请重新 npm run build。');
+                                                                   ^
+  
+  Error: 编排器构建指纹过期或缺失，请重新 npm run build。
+      at file:///Users/chenzhenbo/Work/TriviumCode/scripts/package-release.mjs:79:66
+  
+  Node.js v25.2.1
+  
+      at genericNodeError (node:internal/errors:998:15)
+      at wrappedFn (node:internal/errors:543:14)
+      at ChildProcess.exithandler (node:child_process:417:12)
+      at ChildProcess.emit (node:events:508:28)
+      at maybeClose (node:internal/child_process:1085:16)
+      at Socket.<anonymous> (node:internal/child_process:456:11)
+      at Socket.emit (node:events:508:28)
+      at Pipe.<anonymous> (node:net:346:12) {
+    code: 1,
+    killed: false,
+    signal: null,
+    cmd: '/opt/homebrew/Cellar/node/25.2.1/bin/node scripts/package-release.mjs --candidate --out /var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-release-jCnagU/out',
+    stdout: '',
+    stderr: "file:///Users/chenzhenbo/Work/TriviumCode/scripts/package-release.mjs:79\n  if (!stamp || !bundleText.includes(stamp.inputs_sha256)) throw new Error('编排器构建指纹过期或缺失，请重新 npm run build。');\n                                                                 ^\n\nError: 编排器构建指纹过期或缺失，请重新 npm run build。\n    at file:///Users/chenzhenbo/Work/TriviumCode/scripts/package-release.mjs:79:66\n\nNode.js v25.2.1\n"
+  }
