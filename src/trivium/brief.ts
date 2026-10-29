@@ -56,10 +56,18 @@ export const TASK_GOAL_APPENDIX_MAX = 16000;
  * 全是缺字段（缺 `confidence` 97 条）与表外值（`medium` / `docs` / `risk` 一类），而旧文案只写了
  * 「七个字段必填，另需 layer 与 kind」，一个枚举值都没列。抄一份的话 schema 改了这里不会跟。
  *
+ * **本节自足，不引用工作区外的 schema 文件路径**（2026-10-29 Windows 真机验收 four-agent-win-20261029-211334，
+ * ISSUE-01）：旧文案在此处给出资产根下的 schema 绝对路径，而审查员的权限边界是**项目根**——
+ * agy 1.4.10 headless 对工作区外的读取直接拒绝（`permission check failed for read_file`），
+ * 模型按指引尝试读取被拒后不再输出任何 JSON、整侧以软拒绝形态（issue #548）失败。
+ * schema 的完整约束面（必填、枚举、类型）本就从 schema 文件实时读取并列在本节，
+ * 路径引用没有任何信息增量，删去后三侧（claude / codex / zcode）同样自足。
+ * run.json 的 `schema_path` 留痕字段不受影响（那是给审计者看的，不是给审查员读的）。
+ *
  * zcode 侧末尾固定加「不要调用 ExitPlanMode」（EV-113：以该工具收尾时回合结束、结论没有输出）。
  * 按厂商判而不按侧名：ExitPlanMode 是该 CLI 的工具。
  */
-function renderOutputContract(schemaPath: string, prefix: string, critic: CriticId): string {
+function renderOutputContract(prefix: string, critic: CriticId): string {
   type Prop = { enum?: readonly string[]; const?: string; type?: string; items?: { type?: string } };
   const root = reviewSchema as unknown as {
     required: readonly string[];
@@ -91,10 +99,10 @@ function renderOutputContract(schemaPath: string, prefix: string, critic: Critic
       : '';
   return `## 6. 输出契约
 
-严格输出符合 \`${REVIEW_SCHEMA_ID}\` 的 JSON，schema 在：\`${schemaPath}\`
+严格输出符合 \`${REVIEW_SCHEMA_ID}\` 的 JSON——完整契约（字段、必填与枚举取值）已全部列在本节内，无需读任何别的文件。
 
 - **结论是一个裸 JSON 对象**：最终回复只输出这个对象本身，不要代码围栏、不要前后说明文字；
-- 根字段 ${code(root.required)} 必填（\`schema\` 固定为 \`${root.properties['schema']?.const ?? REVIEW_SCHEMA_ID}\`，\`verdict\` 取 ${code(root.properties['verdict']?.enum ?? [])} 之一）；
+- 根字段 ${code(root.required)} 必填（\`schema\` 固定为 \`${root.properties['schema']?.const ?? REVIEW_SCHEMA_ID}\`，\`verdict\` 取 ${code(root.properties['verdict']?.enum ?? [])} 之一）；字符串根字段不可为空串。
   \`verdict\` 是你对被审对象的整体结论，三档按下面的判法选：
 ${REVIEW_VERDICTS.map((v) => `  - \`${v}\`（${VERDICT_LABEL[v]}）：${VERDICT_MEANING[v]}`).join('\n')}
   编排器按侧计票：不通过的侧占半数及以上，本轮判不通过、修改后自动重审——有必须改完再看一遍的问题才给 \`reject\`；
@@ -199,8 +207,6 @@ export interface BriefInput {
   suggestedRead: string[];
   /** 己方历史产出与 Driver 裁决件（让审查员知道上一轮自己说过什么） */
   ownHistory: string[];
-  /** JSON Schema 的绝对路径 */
-  schemaPath: string;
   lenses: Lenses;
   /** 任务目标与约束 */
   taskGoal: string | null;
@@ -318,7 +324,7 @@ export function renderBrief(input: BriefInput): string {
   const {
     cfg, critic, stage, topic, runId, projectRoot, snapshot,
     promptHint, subjectExcerpt, mustRead, suggestedRead, ownHistory,
-    schemaPath, lenses, taskGoal, taskGoalAppendix, minToolCalls, minProjectReads, stagePrompt, commandExecution, mcpExecPrefixes,
+    lenses, taskGoal, taskGoalAppendix, minToolCalls, minProjectReads, stagePrompt, commandExecution, mcpExecPrefixes,
   } = input;
 
   const prefix = CRITIC_PREFIX[critic];
@@ -402,7 +408,7 @@ ${lens.trim()}
 另一位审查员看的是**不同的**角度。你不需要覆盖他的角度，但也不要因此放过你视野内的任何问题。`);
 
   // ── 6. 输出契约 ──
-  parts.push(renderOutputContract(schemaPath, prefix, critic));
+  parts.push(renderOutputContract(prefix, critic));
 
   /*
    * ── 7. 反谄媚约束 ──

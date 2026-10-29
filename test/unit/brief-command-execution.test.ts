@@ -26,7 +26,7 @@ function brief(adapter: CriticAdapter): string {
   const input: BriefInput = {
     cfg: defaultConfig(), critic: adapter.critic, stage: 'plan', topic: 'T', runId: 'R', projectRoot: '/proj', snapshot: SNAP,
     promptHint: '请独立复测那条退出码断言', subjectExcerpt: '# 计划', mustRead: ['CLAUDE.md'], suggestedRead: [], ownHistory: [],
-    schemaPath: '/s/review.v1.json', lenses: {}, taskGoal: null, taskGoalAppendix: null, minToolCalls: 5, minProjectReads: 3,
+    lenses: {}, taskGoal: null, taskGoalAppendix: null, minToolCalls: 5, minProjectReads: 3,
     commandExecution: adapter.commandExecution,
     // 本文件只管证据性质那一条；执行型 MCP 点名那一条由 brief-mcp-exec.test.ts 守（EV-191）
     mcpExecPrefixes: [],

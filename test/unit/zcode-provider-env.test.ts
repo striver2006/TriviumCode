@@ -127,6 +127,12 @@ if (env.FAKE_ZCODE_ECHO_ENV) {
   }, null, 2) + '\\n');
   process.exit(0);
 }
+if (env.FAKE_ZCODE_SELECT_MODEL) {
+  // 0.17.0 停点（2026-10-29 Windows 真机验收实测）：只给内置、空 HOME 时模型选择层前置，
+  // 合法候选（未进上面 Unknown 拒绝表的）参数解析已过、停在这一行——属「接受」的正向证据
+  process.stderr.write('Error: Select a model before sending a message (traceId: fake)\\n');
+  process.exit(1);
+}
 process.stderr.write('Error: Model creation failed (traceId: fake)\\n');
 process.exit(1);
 `;
@@ -429,6 +435,33 @@ test('P-29：provider 配置定位失败时七个候选全部 indeterminate，�
     assert.deepEqual(r.rejected, []);
     assert.equal(r.indeterminate.length, 7);
   } finally {
+    await L.cleanup();
+  }
+});
+
+test('0.17.0 停点：Select a model 是「参数已解析」的正向证据，五个合法候选判接受而非 indeterminate（2026-10-29 Windows 真机验收）', async () => {
+  /*
+   * 0.17.0 把无凭据停点从 `Model creation failed` 换成模型选择前置（Select a model）。
+   * 实测该停点仍在参数解析之后：同环境 `--bogus-flag` 照报 Unknown option——
+   * 与 P-29 的「provider 定位先于参数解析」不同族。不补进 ZCODE_ARGV_PARSED_RE 时，
+   * 真机上三个候选全部 indeterminate、readonly_flags 判不出，glm 侧被 fail-closed 拒入。
+   */
+  const L = await layout({ withBuiltin: true, withPersonal: false });
+  process.env['FAKE_ZCODE_SELECT_MODEL'] = '1';
+  try {
+    const r = await probeReadonlyFlags(L.entry, process.execPath, L.cwd);
+    assert.deepEqual(r.accepted, [
+      '--mode plan',
+      '--mode yolo',
+      '--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash',
+      '--allowed-tools Read,Grep,Glob',
+      '--permission-mode plan',
+    ]);
+    // 假入口硬编码的两个拒绝候选不受开关影响：Unknown option 先于一切停点
+    assert.deepEqual(r.rejected, ['--max-turns 40', '--settings /nonexistent-probe-settings.json']);
+    assert.deepEqual(r.indeterminate, [], '0.17.0 停点被误判 indeterminate 会让 glm 侧整侧不可准入');
+  } finally {
+    delete process.env['FAKE_ZCODE_SELECT_MODEL'];
     await L.cleanup();
   }
 });

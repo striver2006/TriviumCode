@@ -1234,7 +1234,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
       promptHint: opts.promptHint,
       subjectExcerpt: excerpt,
       mustRead: sideMustRead, suggestedRead: sideSuggested, ownHistory,
-      schemaPath, lenses, stagePrompt,
+      lenses, stagePrompt,
       taskGoal,
       taskGoalAppendix: goalAppendix,
       minToolCalls: cfg.review.min_tool_calls[stage],

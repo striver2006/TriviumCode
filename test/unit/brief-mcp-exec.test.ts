@@ -30,7 +30,7 @@ function brief(adapter: CriticAdapter, prefixes: readonly string[] = adapter.mcp
   const input: BriefInput = {
     cfg: defaultConfig(), critic: adapter.critic, stage, topic: 'T', runId: 'R', projectRoot: '/proj', snapshot: SNAP,
     promptHint: '请调用 mcp__node_repl__js 计算 17 乘 23', subjectExcerpt: '# 计划', mustRead: ['CLAUDE.md'], suggestedRead: [], ownHistory: [],
-    schemaPath: '/s/review.v1.json', lenses: {}, taskGoal: null, taskGoalAppendix: null, minToolCalls: 5, minProjectReads: 3,
+    lenses: {}, taskGoal: null, taskGoalAppendix: null, minToolCalls: 5, minProjectReads: 3,
     commandExecution: adapter.commandExecution,
     mcpExecPrefixes: prefixes,
   };

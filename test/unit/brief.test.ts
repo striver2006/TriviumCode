@@ -45,7 +45,6 @@ function input(over: Partial<BriefInput> = {}): BriefInput {
     mustRead: ['CLAUDE.md', 'doc/01_requirements/PRD_x.md'],
     suggestedRead: ['src/auth/oidc.ts'],
     ownHistory: [],
-    schemaPath: '/home/u/.claude/skills/dual-critic/schema/review.v1.json',
     lenses: LENSES,
     taskGoal: '把登录改造为 OIDC',
     taskGoalAppendix: null,

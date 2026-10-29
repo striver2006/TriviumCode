@@ -203,9 +203,16 @@ export const ZCODE_PROVIDER_CONFIG_UNRESOLVED_RE = /Built-in Provider Config/;
  * 这条列表**必然是不完备的**（停点文案随版本变），所以判据的设计是：命不中就记
  * `indeterminate`、保留旧结论并告警，而不是回落成接受。漏判的代价是有人去看一眼，
  * 误放的代价是一份看起来正常的失真结论。
+ *
+ * `Select a model`（0.17.0，2026-10-29 Windows 真机验收 four-agent-win-20261029-211334 实测补入）：
+ * 0.17.0 把「无凭据停点」从 `Model creation failed` 换成了模型选择前置——只给内置 provider、
+ * 空 HOME 时停在 `Error: Select a model before sending a message`（退 1）。实测该停点仍在参数解析
+ * **之后**：同环境加 `--bogus-flag` 照报 `Unknown option`、合法旗标组合才走到这条报错——
+ * 与 P-29 的「provider 定位先于参数解析」不同族，属本列表要的「参数已吃完」证据。
+ * 不补它时 0.17.0 上三个候选全部 `indeterminate`、`readonly_flags` 判不出，glm 侧被 fail-closed 拒入。
  */
 export const ZCODE_ARGV_PARSED_RE =
-  /Model creation failed|Model config is missing|provider is missing an API key|provider_not_configured|Provider authentication failed/i;
+  /Model creation failed|Model config is missing|provider is missing an API key|provider_not_configured|Provider authentication failed|Select a model/i;
 
 /**
  * 内置 provider 配置定位不到时的说法，**四处同源**（r2 AGY-04 立常量，r3 AGY-03 补齐第四处）：

@@ -86,7 +86,7 @@ function brief(taskGoalAppendixText: string | null, taskGoal: string | null = '�
   const input: BriefInput = {
     cfg: defaultConfig(), critic: 'gemini', stage: 'plan', topic: 'T', runId: 'R', projectRoot: '/proj', snapshot: SNAP,
     promptHint: null, subjectExcerpt: '# 计划', mustRead: ['CLAUDE.md'], suggestedRead: [], ownHistory: [],
-    schemaPath: '/s/review.v1.json', lenses: {}, taskGoal, taskGoalAppendix: taskGoalAppendixText,
+    lenses: {}, taskGoal, taskGoalAppendix: taskGoalAppendixText,
     minToolCalls: 5, minProjectReads: 3, commandExecution: 'none', mcpExecPrefixes: [],
   };
   return renderBrief(input);
