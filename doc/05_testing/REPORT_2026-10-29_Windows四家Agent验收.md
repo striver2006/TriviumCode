@@ -60,7 +60,9 @@
 | B3r（Antigravity 审 glm） | Win四家B3r | 20261029T145743Z | zcode/0.17.0，**read 7 / grep 1 / glob 1**，回读 bigmodel-plan/GLM-5.3（请求 GLM-5.3，trace），blind，209s | 裁决件 + r2 计划 + **人工停点**（joint 降级告警如实披露） |
 | B1r（Codex 审 claude） | Win四家B1r | 20261029T151222Z | claude/2.1.302 经网关，**read 9 / glob 1 / project_reads 9**，回读 qwen3.8-flash = 请求（envelope），blind，253s，4 条意见 | 裁决件 + r2 计划 + **人工停点** |
 
-三格 run 元数据（driver / entry B / round 1/1 来源 flag / requested_routes）与预检一致、无候选 Agent 残留；三个夹具业务文件零改动；三主题现停审批停点**等待 Bob 决定**（`dual-approve` / `dual-abandon`，未自动审批）。
+三格 run 元数据（driver / entry B / round 1/1 来源 flag / requested_routes）与预检一致、无候选 Agent 残留；三个夹具业务文件零改动。
+
+**审批环节实测（补记，覆盖 W5「审批」一行）**：三主题随后由 Bob 经 `dual-approve` 逐一批准（plan 阶段，附言「Windows验收复测：链路验证达成，批准放行」）——操作前后状态可读回、工作树改动摘要打印、业务写锁解除、全部工件保留，审批记录（时间、结论、理由）写入各夹具 task.json 的 `approvals` 段供事后对账。夹具为验收专用样本，不继续下一阶段实施。
 
 首轮 B4（ZCode 审 codex）未复测：本机 codex 无官方凭据、第三方路线沙箱实测失守，属账号/环境侧，产品拦截正确（ISSUE-03 维持）。
 
@@ -80,11 +82,11 @@
 
 - Windows 10、WSL、虚拟机、IDE 插件形态、ZCode CLI 命令行形态（本机未装）：未测。
 - claude 侧结论仅覆盖第三方网关路线（qwen3.8-flash）；**Anthropic 官方模型未测**（无官方凭据）。codex 同理（OpenAI 官方未测）。
-- W4-01 三审组合、W4-02 取消、W4-S3/S4/S5 Hook 负向、W5 全部入口（A/C/D/审批后续）：未测——复测后三侧已准入，具备独立新批次的准入条件。
+- W4-01 三审组合、W4-02 取消、W4-S3/S4/S5 Hook 负向、W5 的 A/C/D 入口与审批**拒绝/放弃**分支：未测——复测后三侧已准入，具备独立新批次的准入条件。W5 的**审批通过**环节已实测（§5 补记，三例）。
 - 本报告不宣称任何客户端「A/B/C/D 全流程通过」；B 入口在三格上的完整链路（含人工停点）已实测。
 
 ## 8. 建议
 
 1. ISSUE-05（Windows worker 稳定性）排期定位——两个独立场景同形态，非单次偶发。
 2. 部署手册补「第三方网关机器」配置段：`settings_env_source: user_settings` + 显式网关模型名（本报告 §4.3 的两个配置项）。
-3. 三个复测主题的审批停点待 Bob 决定（`dual-approve` / `dual-abandon`）。
+3. ~~三个复测主题的审批停点待 Bob 决定~~ 已批准（§5 补记）。
