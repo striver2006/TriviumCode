@@ -29,6 +29,7 @@
 - [Kimi Code 与 Qoder CN 双平台验收清单](./CASE_KimiCode与QoderCN双平台验收.md)：能力前置复跑、五客户端七技能、Windows 界面与脱敏证据回传；当前接入未交付。
 
 - [`CASE_manual_acceptance.md`](./CASE_manual_acceptance.md)：人工验收剧本（PRD 场景 S1～S5 / 设计 §17.3）。自动化测试与 `doctor --selftest` 覆盖不到的部分——需要人在 Claude Code 窗口里操作，或必须真实消耗两侧厂商配额。
+- [Windows 四家 Agent 真机与客户端验收任务](./PLAN_Windows四家Agent真机与客户端验收任务.md)：固定四家收口提交，分层覆盖 Windows 自动化、真实模型路线、原生客户端入口、取消与护栏、全流程扩展，附命令、预算、证据与失败停点；任务待执行。
 - [`REPORT_2026-09-11_m0_probe.md`](./REPORT_2026-09-11_m0_probe.md)：M0 探针本机实测报告，M0 当时的里程碑快照，不再更新；含 12 条与厂商文档记载不符之处 C-01～C-12（§8）。其 §7 原是跨里程碑追加的 `P-xx` 本机坑清单（P-01～P-31），M11 第 10 步（BACKLOG **EV-13**）整节搬到 [`doc/04_development/GUIDE_local_pitfalls.md`](../04_development/GUIDE_local_pitfalls.md)，§7 只留指针。
 - [`REPORT_2026-09-11_manual_acceptance.md`](./REPORT_2026-09-11_manual_acceptance.md)：人工验收执行结果。剧本 2/4/5 通过，1/3 的 skill 层留给使用者；记录本次真实运行逮到的 6 个缺陷与一次真实代码双审的结果。
 - [`REPORT_2026-09-14_m6_claude_probe.md`](./REPORT_2026-09-14_m6_claude_probe.md)：M6 第 3 步 · Claude Code headless 探针实测（`claude 2.1.270`）。`--strict-mcp-config` 是硬前置（不传则 MCP 写工具进入工具面、成本 ×24）；路径级 deny **对 `Read` 可用、对 `Grep` 不可用**，故第 ③ 道屏蔽不能单靠 CLI 层。**设计 3.7 的数据来源。**
