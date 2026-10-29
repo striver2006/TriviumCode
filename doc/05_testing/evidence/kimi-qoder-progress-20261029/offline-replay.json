@@ -1,0 +1,57 @@
+{
+  "at": "2026-10-29T00:50:26.631Z",
+  "baseline": "9a50bb8449150f11be3359d51da7cd97a6e75010",
+  "source_kind": "offline-replay-and-synthetic-counterexamples",
+  "real_model_calls": 0,
+  "reviewer_calls": 0,
+  "command_authorization": {
+    "exact": "test -f .trivium/bin/trivium && echo \"EXISTS\" || echo \"MISSING\"",
+    "commands": [
+      "test -f .trivium/bin/trivium && echo \"EXISTS\" || echo \"MISSING\"",
+      ".trivium/bin/trivium:*"
+    ],
+    "native_verified": false
+  },
+  "cases": [
+    {
+      "command": ".trivium/bin/trivium gate --check",
+      "source": "synthetic",
+      "before_matched": true,
+      "after_matched": true
+    },
+    {
+      "command": "echo .trivium/bin/trivium gate --check",
+      "source": "synthetic",
+      "before_matched": true,
+      "after_matched": false
+    },
+    {
+      "command": ".trivium/bin/trivium gate --check-artifacts",
+      "source": "synthetic",
+      "before_matched": true,
+      "after_matched": false
+    },
+    {
+      "command": ".trivium/bin/trivium --check gate",
+      "source": "synthetic",
+      "before_matched": true,
+      "after_matched": false
+    }
+  ],
+  "historical": {
+    "file": "doc/05_testing/evidence/qoder-plan-B-20261029-retest/native-B-1793230605158.json",
+    "sha256": "f423b83e816bb36b0f8d833ef633df64e43844aa7605efa4d96be80f87337135",
+    "old_stop_reason": {
+      "reason": "wrapper工具失败",
+      "id": "call_f7fe08dd418d436fb6619a41"
+    },
+    "replayed_stop_reason": {
+      "reason": "原生Bash失败（未关联直接wrapper调用）",
+      "id": "call_f7fe08dd418d436fb6619a41"
+    }
+  },
+  "notes": [
+    "首次临时取证命令从错误模块导入linkRows，导入阶段失败且未写文件；改正导入后生成本件。",
+    "旧原件不改写，离线回放不等于新原生会话。"
+  ]
+}

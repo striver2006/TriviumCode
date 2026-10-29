@@ -15,7 +15,6 @@ import { agyAdapter } from './agy.js';
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
 import { zcodeAdapter } from './zcode.js';
-import { qoderCnAdapter } from './qoder-cn.js';
 import type { AdapterTable, CriticAdapter } from './base.js';
 import { CRITIC_AGENT_IDS, agentById } from '../agents/registry.js';
 
@@ -38,7 +37,6 @@ const WIRED: AdapterTable = {
   codex: codexAdapter,
   gemini: agyAdapter,
   glm: zcodeAdapter,
-  'qoder-cn': qoderCnAdapter,
 };
 
 /**

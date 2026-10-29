@@ -2235,7 +2235,6 @@ async function cmdScrub(args: ParsedArgs): Promise<number> {
       scrubbed: r.scrubbed,
       run_dir_redacted: r.runDirRedacted,
       scrub_failed: r.scrubFailed,
-      ...(r.externalCredentials?.length?{external_credentials:r.externalCredentials}:{}),
       unknown: r.unknown,
       deferred: r.deferred,
       deferred_cli: r.deferredCli,
@@ -2295,7 +2294,6 @@ async function cmdScrub(args: ParsedArgs): Promise<number> {
     // 整桶没进论域＝其中未抹的副本不出现在任何一格，而命令照常报 ok（CODEX-01）
     say(`  · 项目桶读不了，整棵未清扫：${b.bucket}——${b.reason}`);
   }
-  for(const external of r.externalCredentials??[])say(`  · ${external.agent} 已回收 ${external.deleted} 个无运行侧私有凭据根`);
   for (const f of r.scrubFailed) say(`  · 抹除失败：${f.dir}——${f.reason}`);
   return EXIT.OK;
 }

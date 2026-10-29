@@ -1,0 +1,25 @@
+> triviumcode@1.3.2 check
+> npm run typecheck && npm run build && npm test
+> triviumcode@1.3.2 typecheck
+> tsc --noEmit
+> triviumcode@1.3.2 build
+> node scripts/build.mjs
+构建标识：9a50bb8（作用面内有未提交改动），inputs 04aafdef2c3a
+> triviumcode@1.3.2 pretest
+> node scripts/build.mjs --with-tests
+构建标识：9a50bb8（作用面内有未提交改动），inputs 04aafdef2c3a
+> triviumcode@1.3.2 test
+> node scripts/run-tests.mjs "dist/test/**/*.test.js"
+✔ 直接wrapper按字面argv关联；路径提及、命令拼接和展开不能冒充执行 (1.3825ms)
+✔ 历史存在性检查拒绝保持失败，不再误标wrapper已执行，也不改旧原件 (5.333708ms)
+✔ 具名检查真实Shell只判断文件存在，不执行wrapper或修改项目 (47.433ms)
+✔ 零运行/空账本也能在新输出目录离线审计，不伪造任务或停点 (329.459541ms)
+✔ 回显gate文本不能制造正常停点，非wrapper等待错误不享受73例外 (0.362625ms)
+ℹ tests 4199
+ℹ suites 0
+ℹ pass 4190
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 9
+ℹ todo 0
+ℹ duration_ms 386891.531292

@@ -167,15 +167,6 @@ export function defaultProbe(): ProbeSection {
   };
 }
 
-/** 原生默认必须与同一份探针绑定；读旧事实不得把缺字段补成成功。 */
-export function nativeDefaultIsFresh(probe: CommonProbe | undefined, ttlDays: number): boolean {
-  const f = probe?.native_default;
-  if (!probe || !f || probe.entrypoint !== f.entrypoint || probe.version !== f.cli_version ||
-    probe.probed_at !== f.prepared_at || !f.default_verified || f.platform !== process.platform) return false;
-  const age = Date.now() - Date.parse(f.prepared_at);
-  return Number.isFinite(age) && age >= 0 && age <= ttlDays * 86400000;
-}
-
 /**
  * 旧探针段（`probe.agy` / `probe.zcode` 平铺、入口字段名为 `bin` / `entry`）
  * → 新形状（`probe.cli.<cliName>`、入口统一为 `entrypoint`）的**内存迁移**。
@@ -354,9 +345,6 @@ export function defaultConfig(): Config {
        * 当作统一前置条件，缺段则退 64。
        */
       claude: { vendor: 'anthropic' },
-      // Kimi/Qoder CN 先登记为 L2 候选入口，Driver 与审核者开关保持关闭；真实能力证据完成后再单独开放。
-      kimi: { vendor: 'moonshot', bin: null },
-      'qoder-cn': { vendor: 'qoder-cn', bin: null },
     },
     // 两档的差异只在 GLM 侧用不用 Flash——gemini 侧两档相同。
     // 不写 Agent 级 effort：该字段从未被读取，已废弃（EV-227，见 DEPRECATED_CONFIG_KEYS）；思考等级写在阶段格子 {model, effort} 里。

@@ -1,0 +1,187 @@
+{
+  "schema": "trivium.qoder-plan-followup-verdict.v1",
+  "at": "2026-10-29T02:55:28.487254+00:00",
+  "baseline": "9a50bb8449150f11be3359d51da7cd97a6e75010",
+  "status": "failed-stopped-no-retry",
+  "formal_B_passed": false,
+  "first_failure": {
+    "tool_id": "call_d8de1c808a424fb9afd9a4a5",
+    "command": "topic resolve",
+    "exit_code": 65,
+    "reason": "missing-original-after-claim"
+  },
+  "cli_exit": {
+    "code": 143,
+    "signal": null,
+    "earlyStopped": true,
+    "timedOut": false,
+    "truncated": false,
+    "durationMs": 17077
+  },
+  "calls": [
+    {
+      "tool_id": "call_fe8fbfe279894a85a6135d42",
+      "name": "Bash",
+      "command": "ls -la .trivium/bin/trivium",
+      "result_error": false,
+      "permission": {
+        "decision": "allow",
+        "point": "shell.readonly.allow"
+      }
+    },
+    {
+      "tool_id": "call_c3625554eff34cf698aa32d8",
+      "name": "Bash",
+      "command": "ls -la .reviews/ 2>/dev/null || echo \"No .reviews directory yet\"",
+      "result_error": false,
+      "permission": {
+        "decision": "allow",
+        "point": "shell.readonly.allow"
+      }
+    },
+    {
+      "tool_id": "call_da7f454930a74628aa549bef",
+      "name": "Bash",
+      "command": ".trivium/bin/trivium topic claim --topic DriverCLI-qoder-cn-B --stage plan --driver qoder-cn --json",
+      "result_error": false,
+      "permission": {
+        "decision": "allow",
+        "point": "shell.rule_prefix.allow"
+      }
+    },
+    {
+      "tool_id": "call_d8de1c808a424fb9afd9a4a5",
+      "name": "Bash",
+      "command": ".trivium/bin/trivium topic resolve --stage plan --json -- '检查sum修复计划及测试边界' --topic DriverCLI-qoder-cn-B --driver qoder-cn --critics gemini,glm",
+      "result_error": true,
+      "permission": {
+        "decision": "allow",
+        "point": "shell.rule_prefix.allow"
+      }
+    },
+    {
+      "tool_id": "call_105b6c866f9142d28e7f6051",
+      "name": "Bash",
+      "command": "find .reviews -type f 2>/dev/null; find .trivium -name \"task.json\" -type f 2>/dev/null",
+      "result_error": true,
+      "permission": {
+        "decision": "allow",
+        "point": "shell.readonly.allow"
+      }
+    }
+  ],
+  "reads": 0,
+  "writes": 0,
+  "wrapper_matches": {
+    "matched": 2,
+    "total": 2
+  },
+  "model": {
+    "session_id": "cf88cb20-052f-4abf-9df2-4437d33cf841",
+    "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-Jm28E9/中文 空格项目",
+    "route_label": "Auto",
+    "underlying_model": null,
+    "skills": [
+      "simplify",
+      "debug",
+      "quest",
+      "batch",
+      "mcp-config",
+      "loop",
+      "run",
+      "verify",
+      "run-skill-generator",
+      "workflow-authoring",
+      "agent-creator",
+      "hook-config",
+      "sdk",
+      "skill-creator",
+      "security-scan",
+      "imagegen",
+      "sites:sites-build-agent-app",
+      "sites:sites-building",
+      "sites:sites-hosting",
+      "sites:sites-management",
+      "deep-research",
+      "dual-review-plan"
+    ],
+    "skill_calls": [],
+    "billing_keys": [
+      "auto"
+    ],
+    "credits": 1.1721516619999999
+  },
+  "entry_files": [
+    {
+      "name": "dual-review-plan",
+      "source": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-review-plan/SKILL.md",
+      "installed": "/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-cn-route-vRwcR2/.qoder-cn/skills/dual-review-plan/SKILL.md",
+      "source_sha256": "8f01bfc04376361f9cd06891094cc9a41dd7597f5e937548f40407f26e76d586",
+      "sha256": "8f01bfc04376361f9cd06891094cc9a41dd7597f5e937548f40407f26e76d586"
+    }
+  ],
+  "entry_runtime_body_readback": null,
+  "project_instructions_readback": null,
+  "extra_native_actions": {
+    "ls_commands": 2,
+    "ls_permission_point": "shell.readonly.allow",
+    "find_parallel_to_resolve": true,
+    "find_shell_started": true,
+    "find_aborted": true,
+    "find_error_is_permission_denial": false
+  },
+  "budget_actual": {
+    "auth": {
+      "gemini": 1,
+      "glm": 1
+    },
+    "preflight_wall_ms": 40099,
+    "qoder_sessions": 1,
+    "formal_reviews": {
+      "gemini": 0,
+      "glm": 0
+    }
+  },
+  "new_run_ids": [],
+  "new_task_gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "new_state": null,
+  "run_root_exists": false,
+  "drafts": [],
+  "fixture_head_matches": true,
+  "pin_mismatches": [],
+  "frozen_source_changes": [],
+  "global_unchanged": true,
+  "main_state_unchanged": true,
+  "main_open_gates": [],
+  "old_gate_changes": [],
+  "production_flags": [
+    {
+      "id": "kimi",
+      "driverEnabled": false,
+      "criticEnabled": false,
+      "defaultSelected": false
+    },
+    {
+      "id": "qoder-cn",
+      "driverEnabled": false,
+      "criticEnabled": false,
+      "defaultSelected": false
+    }
+  ],
+  "admission_exists": false,
+  "installed_bundle_sha256": "22fce4561d43e6cc6b9d97f4fd3e2b19f0875ec769c209285a69be6587f8c604",
+  "installed_bundle_unchanged": true,
+  "private_home_absent": true,
+  "matching_process_identities": [],
+  "approval_executed": false,
+  "restore_or_abandon_executed": false,
+  "candidate_installed": false,
+  "committed": false,
+  "pushed": false,
+  "offline_audit_note": "Initial verdict script had a stdin encoding SyntaxError before execution; corrected without native rerun or source changes."
+}

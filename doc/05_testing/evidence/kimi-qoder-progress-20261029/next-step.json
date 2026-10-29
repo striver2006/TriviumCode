@@ -1,0 +1,38 @@
+{
+  "at": "2026-10-29T00:56:56.197Z",
+  "status": "pending-explicit-entry",
+  "client_driver": "qoder-cn",
+  "request": "/dual-review-plan 检查sum修复计划及测试边界 --topic DriverCLI-qoder-cn-B --critics gemini,glm",
+  "spec_file": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/fixture-B.json",
+  "output": "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/kimi-qoder-progress-20261029",
+  "commands": [
+    [
+      "node",
+      "scripts/acceptance/kimi-qoder-cn/qoder-plan-live.mjs",
+      "production-preflight",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/fixture-B.json",
+      "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/kimi-qoder-progress-20261029"
+    ],
+    [
+      "node",
+      "scripts/acceptance/kimi-qoder-cn/qoder-plan-live.mjs",
+      "native-B",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/fixture-B.json",
+      "/Users/chenzhenbo/Work/TriviumCode/doc/05_testing/evidence/kimi-qoder-progress-20261029"
+    ]
+  ],
+  "critics": [
+    "gemini",
+    "glm"
+  ],
+  "budget": {
+    "auth_calls_per_critic": 1,
+    "native_sessions": 1,
+    "max_review_rounds": 3,
+    "timeout_ms": 1500000,
+    "max_turns": 120,
+    "max_model_request_retries": 0
+  },
+  "stop": "首次拒绝或关键失败立即停止；awaiting_approval立即停止，不代审批；新原件新文件，旧停点不改",
+  "cleanup_owner": "Codex负责凭据即时清理；无凭据候选/夹具由Bob确认使用完毕后删除独立根；未代为approve/abandon"
+}

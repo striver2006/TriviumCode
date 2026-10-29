@@ -172,11 +172,10 @@ node --test "dist/test/test/unit/<name>.test.js"   # 构建后跑单个测试文
 
 - 当前审查新写 `trivium.run.v3`，保留 v1/v2 原 schema 的只读校验；verify 契约不变。
 - v3 在执行前保存 `requested_routes` 请求快照；worker 必须与交接逐项比对。取消或启动失败不得丢失请求路线，历史件不补写该字段。
-  原生默认来源 `probe_default` 与可选 `native_model` 请求/结果证据仅扩展当前 v3：声明、请求、信封标签与计费键分别记录；worker 不重新选默认，未知底层为 null/unverified。候选模型路由接线不等于严格只读准入。
   接入能力从注册表派生；请求、配置声明与运行回读分开记录。Driver 模型仅来自本轮声明，
   模型族逐对三态比较；同族与未知告警继续，不作为闸门条件。真实路线准入之前不得恢复三审或宣称完成。
 
-- 当前 v3 可选 `native_model.facts.binding_version=2/route_kind/route_descriptor` 与 `route_verified` 分离声明/一致性/底层身份；`probe.cli.*.native_routes` 各自过期。审核参数独立为已实测 `review_invocation_args`，不复用无工具可调用参数。组合台账 `admission.v1` 含禁读覆盖 `deny_paths`（请求扩集拒绝），形状后按注册表校身份，项目本地 `.trivium/admission.local.json` 不进 Git，必需项由 registry 派生。`requested_routes.admission` 冻结记录 id/hash，worker 不重选，缺项/过期/证据变化拒绝。Qoder 生产开关须完整真实准入后才启用，当前无合格组合。
+- 当前仅登记 Codex、Claude Code、GLM、Gemini 四家 Agent。Kimi Code / Qoder CN 接入已于 2026-10-29 终止；不保留候选入口、专用探针、适配器或准入台账运行逻辑。`run.v3` 的 `native_model` / `requested_routes.admission` 可选形状仅保留历史读取与冻结一致性校验，当前四家不生产这些字段；历史 v1/v2 与审查原件不改写。
 
 - **契约层守跨文件对账**：改了 `hooks.json` / SKILL.md 的 `argument-hint` / CLI 旗标，
   必须同步另一侧，否则 `test/contract/` 红。

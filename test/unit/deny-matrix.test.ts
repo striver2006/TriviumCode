@@ -200,13 +200,13 @@ test('正例：_meta 下的结构化意见原文同样进 deny 集合（措施 a
   }
 });
 
-test('正例：带连字符且含多段后缀的 `_meta` 角色仍按注册表 owner 禁读', async () => {
+test('正例：含多段运行后缀的 `_meta` 文件仍按注册表 owner 禁读', async () => {
   const f = await makeFixture({
-    '某主题/plan/_meta/review-qoder-cn-a-b.json': '{"findings":[]}',
+    '某主题/plan/_meta/review-glm-a-b.json': '{"findings":[]}',
   });
   try {
     const paths = await deny(f, 'gemini', 'claude', '某主题');
-    assert.ok(paths.some((p) => p.endsWith('review-qoder-cn-a-b.json')));
+    assert.ok(paths.some((p) => p.endsWith('review-glm-a-b.json')));
   } finally {
     await f.cleanup();
   }

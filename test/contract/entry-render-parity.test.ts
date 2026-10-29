@@ -169,21 +169,6 @@ test('参数写法：substitute 载体用 $ARGUMENTS；transcribe 载体一处�
   assert.ok(transcribeSeen >= 21, `只检查了 ${transcribeSeen} 份 transcribe 产物，论域塌了`);
 });
 
-test('native-tail载体保留原生参数尾段说明、显式调用边界和转抄规约', () => {
-  const carriers = src.carriers.filter((c) => c.arguments === 'native-tail');
-  assert.ok(carriers.length > 0, 'native-tail论域不得为空');
-  for (const c of carriers) {
-    const entries = rendered.filter((r) => r.agent === c.agent);
-    assert.equal(entries.length, src.contracts.length);
-    for (const r of entries) {
-      assert.match(r.content, /ARGUMENTS: <用户参数原文>/);
-      assert.match(r.content, /只在用户显式调用本命令时执行/);
-      assert.match(r.content, /原生加载和模型转抄是两步/);
-      assert.doesNotMatch(r.content, /本载体\*\*不替换\*\*参数占位符/);
-      assert.ok(r.content.includes(partial('args/rule-empty')));
-    }
-  }
-});
 
 /**
  * 每条命令应注入 `--driver` 的调用数（计划 r5 §5.1 ③ / §5.3）。
@@ -237,6 +222,26 @@ test('认领步骤：plan / bug / run 在「写原稿」之前；run 在 S5 之�
   }
 });
 
+test('文件审查入口先认领、准备并回读原稿，再解析；显式原稿不能被替换', () => {
+  for (const r of rendered) {
+    const mark = '### 0.5. 准备并回读被审原稿';
+    if (!['review-plan', 'review-bug'].includes(r.command)) {
+      assert.ok(!r.content.includes(mark), `${r.relPath}：文件原稿前置不得侵入其它入口`);
+      continue;
+    }
+    const ready = r.content.indexOf(mark);
+    const resolve = r.content.indexOf('### 1. 解析主题与被审对象');
+    assert.ok(r.content.indexOf('topic claim') < ready && ready < resolve, r.relPath);
+    const precondition = r.content.slice(ready, resolve);
+    assert.ok(precondition.includes(contractOf(r.command).vars['SUBJECT_FLAG']!), r.relPath);
+    assert.match(precondition, /显式指定的路径继续透传，不另写替代件/);
+    assert.match(precondition, /用 Read 回读最终被审原稿/);
+    assert.match(precondition, /只有取得成功读取结果才能继续/);
+    assert.match(precondition, /写入\/归档\/回读失败/);
+    assert.match(precondition, /不能把暂存成功当成被审原稿已就绪/);
+  }
+});
+
 test('命令 A 先解析、后预检，预检带上 resolve 解析出的入选集合（EV-125 D2）', () => {
   /*
    * 预检要查的是本轮实际入选的那几家：用户用 `--critics` 加进来的一家若缺 code 阶段 slug 或没登录，
@@ -280,7 +285,6 @@ test('护栏注入段与 r10 §3.1.3 的表一致', () => {
   const table = Object.fromEntries(AGENTS.map((a) => [a.id, guardProfileOf(a)]));
   assert.deepEqual(table, {
     claude: 'l1-hook', codex: 'l2-none', gemini: 'l2-none', glm: 'l2-hook',
-    kimi: 'l2-none', 'qoder-cn': 'l2-none',
   });
 
   const heads = {

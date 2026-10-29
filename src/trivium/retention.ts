@@ -24,7 +24,6 @@ import { processMatchesRecord } from './util/exec.js';
 import { RUN_DIR_FILES } from './run-files.js';
 import { scrubDidWork, scrubRunDir, sideLayerPending, type AdapterLookup } from './scrub.js';
 import { tryRemoveTempDir } from './util/fsx.js';
-import {ALL_AGENT_IDS} from './agents/registry.js';
 
 /** 读运行目录那一层的 `worker.pid`：`status.json` 缺失或没记 pid 时的同源兜底 */
 async function readWorkerPid(dir: string): Promise<number | null> {
@@ -47,7 +46,6 @@ async function readWorkerPid(dir: string): Promise<number | null> {
  * 而 `starting` 类可能已经写下了凭据副本）。
  */
 export interface ScrubTally {
-  externalCredentials?:{agent:string;deleted:number}[];
   /** 本次真抹了**凭据**的运行目录：载体整删、扫描命中删除、或该侧日志就地脱敏 */
   scrubbed: string[];
   /**
@@ -104,15 +102,6 @@ export interface PruneResult extends ScrubTally {
 const emptyTally = (): ScrubTally => ({
   scrubbed: [], runDirRedacted: [], scrubFailed: [], unknown: [], deferred: [], deferredCli: [], incomplete: [],
 });
-
-/** 即使还没有任何review运行目录，probe孤儿租约也必须进入回收论域。 */
-async function scrubUnscoped(adapters:AdapterLookup|undefined,dryRun:boolean|undefined,out:ScrubTally):Promise<void>{
-  if(!adapters||dryRun)return;
-  for(const id of ALL_AGENT_IDS){const adapter=adapters(id);if(!adapter?.scrubUnscoped)continue;
-    try{const r=await adapter.scrubUnscoped();if(r.deleted.length)(out.externalCredentials??=[]).push({agent:id,deleted:r.deleted.length});for(const reason of r.errors)out.scrubFailed.push({dir:`外部凭据租约(${id})`,reason});}
-    catch(e){out.scrubFailed.push({dir:`外部凭据租约(${id})`,reason:(e as Error).message});}
-  }
-}
 
 /**
  * 一个运行目录的 worker 现势还在不在：非终态且 pid 确实是同一进程才算活着。
@@ -214,7 +203,6 @@ export async function pruneRunDirs(
 ): Promise<PruneResult> {
   const days = cfg.retention.run_dir_days;
   const out: PruneResult = { removed: [], removeFailed: [], kept: 0, ...emptyTally() };
-  await scrubUnscoped(opts.adapters,opts.dryRun,out);
   const bucket = path.join(runRoot(cfg), repoId(projectRoot));
   let entries: string[];
   try {
@@ -345,7 +333,6 @@ export async function scrubAllRunRoot(
   const out: SweepResult = {
     buckets: [], visited: 0, alive: 0, eligible: [], settled: 0, unreadableBuckets: [], ...emptyTally(),
   };
-  await scrubUnscoped(opts.adapters,opts.dryRun,out);
   const root = runRoot(cfg);
   let buckets: string[];
   try {

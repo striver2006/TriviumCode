@@ -1682,7 +1682,6 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
   let pruned = 0;
   let removeFailed: { dir: string; code: string }[] = [];
   let scrubbed = 0;
-  let externalCredentials=0;
   let runDirRedacted = 0;
   let scrubFailed: { dir: string; reason: string }[] = [];
   let unknown = 0;
@@ -1699,7 +1698,6 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
     pruned = r.removed.length;
     removeFailed = r.removeFailed;
     scrubbed = r.scrubbed.length;
-    externalCredentials=(r.externalCredentials??[]).reduce((n,x)=>n+x.deleted,0);
     runDirRedacted = r.runDirRedacted.length;
     scrubFailed = r.scrubFailed;
     unknown = r.unknown.length;
@@ -1718,12 +1716,11 @@ export async function hookSessionStart(ctx: Ctx): Promise<HookOutput> {
   const reportable = open.filter((g) => g.state !== 'running');
   if (
     reportable.length === 0 && running.length === 0 && swept.length === 0 &&
-    pruned === 0 && removeFailed.length === 0 && scrubbed === 0 && externalCredentials===0 && runDirRedacted === 0 && scrubFailed.length === 0 &&
+    pruned === 0 && removeFailed.length === 0 && scrubbed === 0 && runDirRedacted === 0 && scrubFailed.length === 0 &&
     unknown === 0 && deferred.length === 0 && incomplete.length === 0 && retentionError === null
   ) return ALLOW;
 
   const lines: string[] = ['TriviumCode 待办：'];
-  if(externalCredentials)lines.push(`  · 已回收 ${externalCredentials} 个无运行侧私有凭据根`);
   if (pruned > 0) {
     lines.push(`  · 已清理 ${pruned} 个超过 ${ctx.config.retention.run_dir_days} 天的运行目录（retention.run_dir_days）`);
   }

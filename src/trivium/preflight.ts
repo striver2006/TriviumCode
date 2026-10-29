@@ -555,8 +555,7 @@ export function checkModelSlugs(
           `${critic}/${stage}: profile「${cfg.active_profile}」未定义模型且无覆盖` +
             (routed.emptySlug
               ? '（档位表该阶段写的是空串；空串按无模型处理，不回落 default_tier）'
-              : `（档位表未给该阶段模型，agents.${critic}.default_tier 也未给出）`) +
-            (routed.nativeDefaultMissing ? `；原生默认：${routed.nativeDefaultMissing}` : ''),
+              : `（档位表未给该阶段模型，agents.${critic}.default_tier 也未给出）`),
         );
         continue;
       }
@@ -839,15 +838,7 @@ function checkReadonlyCapability(
       .map((r) => r.vendorProfile);
     const v = a.availability(actx, { vendorProfiles });
     if (v.ok) {
-      try {
-        if(a.admissionFor)for(const stage of scopeStages(scope)){
-          const routed=resolveTier(ctx.config,id,stage,cli[id]??{});
-          if(routed.missingTier||!routed.model)throw new Error('准入缺少明确模型路线');
-          const native=a.nativeModelFor?.(ctx.config,routed.model,routed.tierSource==='probe_default'?'probe_default':routed.origin.model??'cell');
-          a.admissionFor(actx,{critic:id,project_root:ctx.projectRoot,model:native?.requested??routed.model,...(native?{native_model:native}:{})});
-        }
-        oks.push((agentById(id)?.display ?? id) + (v.note ? `（${v.note}）` : ''));
-      }catch(e){problems.push(`${agentById(id)?.display??id}：${(e as Error).message}`);unfixable=true;}
+      oks.push((agentById(id)?.display ?? id) + (v.note ? `（${v.note}）` : ''));
     }
     else {
       problems.push(`${agentById(id)?.display ?? id}：${v.reason ?? '不可用（未给出原因）'}`);

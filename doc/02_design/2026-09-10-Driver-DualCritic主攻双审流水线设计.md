@@ -5,7 +5,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.182
+> - **当前版本**：v1.3.183
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -1473,6 +1473,14 @@ v1 → 内存 v2 的映射：`dual → full`、`single → partial`、`driver` �
 > **M10b 第 2 步的变化**：认领步骤已进入 `dual-run`、`dual-review-plan`、`dual-review-bug` 三份入口资产（四个载体各一份）：写原稿之前跑 `topic claim --driver <本载体>`，原稿已写好也补跑一次（同一声明幂等）；
 > 上一句「入口只有手工 CLI」自此只描述 M10a 时点。命令 C 无原稿，不认领。M10b 第 4 步 3-5 里 glm 会话的认领即经此路径，`claimed_by` 记为 `unknown-session`——ZCode 不向 shell 工具注入会话标识（M10b 第 1 步报告 §3.4）。
 >
+> 2026-10-29 W2 失败后的入口措辞补强：B/D 在认领与解析之间独立列出第 0.5 步。已有被审原稿读取并保留；缺原稿先读材料、自行撰写，最终被审路径回读成功后才进入解析。认领不生成原稿，resolve 不起草；项目若明确采用暂存后归档，暂存成功不等于被审原稿就绪。本项明确既有先有原稿再解析的顺序，不新增 CLI/schema 或更改退出码，不将提示词当执行层保证。验收夹具的 artifact 仍是附加传输，不成为生产 CLI；各载体真实遵循情况分别实测，版本字段由 Bob 控制。
+>
+> 2026-10-29 分段验收装置：P1仅显式读取正式技能/项目说明/材料/实现，自行认领、撰稿并经附加artifact传输后回读。模型之外按同ID、完整正文与hash、作者、顺序、权限及清理核验；通过后P2另起会话，以本批成功归档的实际路径调用正式B。技能发现、激活、Read正文分别记录；正文返回不证明理解或slash展开等价。P1不能调用评审，P2固定两家、一次预检与最多三轮；首次失败停止。原生安全只读可能允许其它Bash，流式监督是事后措施，不能描述为执行前隔离。本装置不改变正式技能或生产角色开关，不赋予单会话/完整Driver准入。
+>
+> 2026-10-29 人工CLI交接补充：原生交互模式由Bob启动并提交P1任务，使用新隔离项目与私有配置。正式技能另有冻结的无凭据副本供显式Read；副本存在不计加载。会话JSONL的同会话、同ID Write成功结果在artifact执行时读取，避免仅靠后台轮询的竞争窗口；无法读取或正文hash不符即失败。有限具名pwd/ls探查单独留痕，不再仅因此连带停止认领；这只改变事后观测分类，不放宽写权限、不建立通用Bash白名单。预算与首次失败规则保持，P2不随启动器自动启动。交互CLI原件形状及原生预算执行尚待实测，合成跨进程测试只能证明装置逻辑。
+>
+> 2026-10-29 人工CLI第二批（R2）：OU4vuq再次被只读复合探查截断后，替换有限命令样例分类。额外Bash不按文本推断安全；等待同ID原生权限决策，仅唯一`allow`且来源`shell.readonly.allow`作为附加只读观察，pending不提前判失败，有结果却缺证、其它允许来源、拒绝或工具错误立即停止。直接wrapper仍严格使用P1参数集合，不能借原生只读分类进入P2。该判据是原生政策的事后证据，不是完备Shell安全或执行前隔离。启动显式固定`--model Auto`，记录runtime-config并检测/model或非空路线偏移；别名仅按大小写归一，底层身份不从信封标签推断。旧失败不重判、不恢复，新增合成/历史回放通过后新批独立冻结与预算。
+>
 > **【已实现 · M11 第 5 步，v1.3.132】档位旗标**（v1.3.129 按 **16.2 纪律 6b** 开工前并入；路由语义见 11.5）。
 > 三类旗标的收集、键校验、取值校验与合并只此一份（`src/trivium/tier-flags.ts`），`review` / `preflight` / `topic resolve` 共用；`topic resolve` 输出 `tiers` / `efforts` / `vendor_profiles` 三字段（逐入选侧、恒存在），命令 A 照抄进 S0.6 与 S2、S6 的 `--start`。
 > **第 6 步起（v1.3.133）三类旗标的值随请求下传**：`--effort-<id>` 经各家通路下传（codex 的 `-c model_reasoning_effort=`、claude 的 `--effort`、agy 的 `--effort`——gemini 的 slug 已编码档位时不传、只告警），`--profile-<id>` 成为 codex 的 `-p`；用 `--tier-<id>` 发起的运行，`tier` / `tier_source` 记入 run.json。第 5 步时这两类被预检的过渡闸拦下退 64、`--tier-<id>` 发起时念「留痕空窗」告警，均随第 6 步拆除（11.5「过渡闸（已拆除）」）。下表「校验与出口」列的永久判据不变。
@@ -1637,7 +1645,7 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
 
 2026-10-28 Driver 独立验收约束（Bob 授权暂不双审）：审核准入阻塞不阻止 CLI 的发现、状态调用和本地阶段认领验证。生产 `driverEnabled` 不为验收临时放开；验收工具只在私有目录构建带候选 Driver 的独立产物，记录变换、源与 bundle hash，禁止安装该产物。正式客户端、受控模型响应、隔离构建自动化分别列证，均不等于正式 A/B/C/D 审查通过。无审查的夹具 wrapper 仅允许 status/topic claim/topic resolve，拒绝 review/preflight/approve/abandon 等其它命令。跨进程先验证认领及解析继承；实际审查 worker 交接仍须用户显式调用正式入口后验收。Windows 不继承 macOS 结果。客户端事实以新报告逐项回填，版本号仍由 Bob 手动控制。
 
-同批CLI实测修订：Kimi 2.3.3 `-p` 不预展开斜杠，原生 `Skill` 工具会在无参数占位符正文后追加 `ARGUMENTS:`。入口载体新增 `arguments: native-tail`：正文不引入原生占位符，明确尾段来源并保留模型转抄规约、空参拒绝和显式调用边界，不再声称该客户端没有替换能力。七份产物仍统一render。Qoder CN 1.1.80原生状态调用已验证，现有转抄资产不变。两家私有用户根及共享哨兵均被发现；所测项目 `.agents/skills/dual-status` 在Kimi胜出，在Qoder CN未覆盖自家用户项。此优先级只覆盖这组实际根，不推广成所有项目路径/GUI的优先级。
+【历史，2026-10-29 专用入口已移除，native-tail 不再支持】同批CLI实测修订：Kimi 2.3.3 `-p` 不预展开斜杠，原生 `Skill` 工具会在无参数占位符正文后追加 `ARGUMENTS:`。入口载体新增 `arguments: native-tail`：正文不引入原生占位符，明确尾段来源并保留模型转抄规约、空参拒绝和显式调用边界，不再声称该客户端没有替换能力。七份产物仍统一render。Qoder CN 1.1.80原生状态调用已验证，现有转抄资产不变。两家私有用户根及共享哨兵均被发现；所测项目 `.agents/skills/dual-status` 在Kimi胜出，在Qoder CN未覆盖自家用户项。此优先级只覆盖这组实际根，不推广成所有项目路径/GUI的优先级。
 
 上面的示例是 **claude 目标**那一份（`description` 原写死「Antigravity + ZCode」，v1.3.45 已去实名，与命令 C / D 同口径，EV-131；渲染断言「命令描述与一级标题不含已登记 Agent 的产品名」守着它）。M10b 起四家各有一份，由同一份源渲染：
 
@@ -1651,8 +1659,6 @@ allowed-tools: Bash(.trivium/bin/trivium:*), Read, Write, Edit, Glob, Grep
   | codex | `$CODEX_HOME/skills/dual-*/`（未设则 `~/.codex/skills`） | `$dual-review-plan <参数>`（提示词里的显式提及） | 第 1 步 `exec` 实测；交互会话 M10b 第 4 步 3-4；`/名字` 写法只做过零配额渲染 |
   | gemini | `~/.gemini/config/skills/dual-*/`（全局根；工作区根在 print 模式下不读） | `/dual-review-plan <参数>` | 第 1 步 print 模式斜杠展开；交互模式未测；真载体未跑 |
   | glm | `~/.zcode/skills/dual-*/` | 桌面端 `/dual-review-plan <参数>`（命令行 `--prompt` 下为 `/skill <名字>`） | 第 2 步薄冒烟与第 4 步 3-5（J4） |
-  | kimi | `$KIMI_CODE_HOME/skills/dual-*/`（缺省 `~/.kimi-code/skills`） | `/skill:dual-review-plan <参数>` | 候选值，CLI / 桌面端 / VS Code Extension Host 未验收，Driver 开关关闭 |
-  | qoder-cn | `~/.qoder-cn/skills/dual-*/` | `/dual-review-plan <参数>` | 候选值，CN CLI / 桌面端未验收，Driver 开关关闭 |
 
 - **`entry/` 不进运行时根**：claude 目标的运行时根 `~/.claude/skills/dual-critic/` 同步时排除 `entry/` 子树。codex 会递归枚举 skill 根下的 `SKILL.md`（第 1 步报告 §5），嵌套落点会让别家入口出现在 codex 的列表里、还能被调起。
 - **`~/.agents/skills` 禁装**：codex 与 zcode 都读它。同名时 codex 的显式调用直接失效且无告警，zcode 由 `~/.zcode/skills` 胜出、同样不告警（第 1 步报告 §2.3、§3.6）。
@@ -3213,7 +3219,11 @@ profiles:
 
 ---
 
-#### Qoder CN 原生默认与回退阻断（2026-10-28 契约，P2 已验证）
+#### 已撤销的候选接入（2026-10-29）
+
+Bob 已决定移除 Kimi Code 与 Qoder CN 产品接入，当前仅支持 Codex、Claude Code、ZCode（GLM）、Antigravity（Gemini）。注册表、配置、安装入口、适配器、探针及专用验收代码随之移除；以下原生路线与组合准入设计仅为历史记录，不再是当前实现要求。历史审查及失败证据保留，不改变其验收结论。既有四家通用修复与供应商 profile 能力继续保留。当前 v3 可选 native_model、admission 引用与 probe_default 枚举仅保留历史形状及冻结一致性校验，不再生产或执行；移除 admission.v1 台账消费者、凭据租约及无运行侧清扫接口。
+
+#### Qoder CN 原生默认与回退阻断（历史契约，已撤销）
 
 详见 `.reviews/QoderCN官方模型路由与回退阻断/plan/2026-10-28-QoderCN官方模型路由与回退阻断-r2-codex.md`。异步探针取官方 CN 目录、默认证据及配置/入口指纹；同步适配钩子只消费已加载事实。`resolveTier` 在 CLI tier、profile 格子、Agent 默认之后才取原生默认，来源为 `probe_default`，精确模型覆盖仍最高；default/flash/pro 表无该侧显式值时共用原生默认，显式空值不回落。
 
@@ -3223,7 +3233,7 @@ profiles:
 
 原生配置值属于隔离官方目录时，探针以该值显式执行验证，默认 source=config；目录外 Custom 声明只留观察，不继承。无配置默认只取省略 --model 的首个 init 标签，后续具体身份披露不改默认声明。运行证据 failure 只收模型回退/不一致，execution_failure 与 verification_failure 分别收执行错误与缺回读；stop_observation 保存通道、到达耗时与停止时是否已见 result。预检校本地入口/配置 hash，实际版本由既有预检和执行前异步校验。清理对短命进程和PID复用分开处理，不以返回对象的真值判断存活。
 
-#### Qoder CN Custom 与审核准入（2026-10-28，候选实现已接线，准入仍阻塞）
+#### Qoder CN Custom 与审核准入（历史契约，已撤销）
 
 2026-10-28直接整改契约（Bob明确授权暂不双审）：Write/Edit/Bash无害对照的实际参数、目标、文件前后内容由厂商适配层同一判据核验，采集器与生产准入不得各存一套宽窄不同的逻辑。候选argv须逐项等于冻结review_invocation_args；正对照仅扩展所测工具。缺文件前态、错误目标/内容、未配对或名称不符的工具分发错误、任一其它危险工具成功均不得通过。正常原生观测须明确无超时/信号/早停/截断且实际派生；受控响应/loopback诊断不能充作真实模型证据。旧原件不补写，缺字段即重验；不改变两家开关或既有准入必需项。
 
@@ -3259,7 +3269,7 @@ GLM续裁契约：共享执行器的树身份查询须脱离探针段作用域�
 
 ### 11.6 接入方式与模型族判定（M11 第12步前置 · 契约已定，实施验收中）
 
-> 2026-10-28 Qoder续实施契约（r4计划三审已通过，以下为拟交付，验收后回填）：执行器新增显式merge/replace，默认merge兼容，Qoder统一派生包装器强制replace并保留旧删除补丁兜底；厂商提取codec仅在私有HOME/tmp的短命子进程执行，不在编排器内import。Custom规范选择与官方分开，binding_version=2按声明语义/加密凭据源/codec/配方绑定，旧无version事实保持原规则不回写。标签仅作每次一致性，路线验证还需绑定正负控制，底层身份未知保持null。项目级admission.v1的证据相对项目根，跨仓缺记录拒绝；持锁原子替换、record id/hash冻结交接，worker不得另选。只有完整真实组合通过后才持久开启criticEnabled，仍逐组合校验，不自动启用Driver或默认选侧。复制凭据前登记持久租约，取消与失联监督方按身份核验回收，不能靠被杀进程finally保证。所有持久化出口先逐值脱敏、命中失败；原始退出码/信号与清理错误分列。详见本主题plan r4；当前是否已实现/准入以报告及代码为准。
+> 【历史，2026-10-29 已撤销】2026-10-28 Qoder续实施契约（r4计划三审已通过，以下为拟交付，验收后回填）：执行器新增显式merge/replace，默认merge兼容，Qoder统一派生包装器强制replace并保留旧删除补丁兜底；厂商提取codec仅在私有HOME/tmp的短命子进程执行，不在编排器内import。Custom规范选择与官方分开，binding_version=2按声明语义/加密凭据源/codec/配方绑定，旧无version事实保持原规则不回写。标签仅作每次一致性，路线验证还需绑定正负控制，底层身份未知保持null。项目级admission.v1的证据相对项目根，跨仓缺记录拒绝；持锁原子替换、record id/hash冻结交接，worker不得另选。只有完整真实组合通过后才持久开启criticEnabled，仍逐组合校验，不自动启用Driver或默认选侧。复制凭据前登记持久租约，取消与失联监督方按身份核验回收，不能靠被杀进程finally保证。所有持久化出口先逐值脱敏、命中失败；原始退出码/信号与清理错误分列。详见本主题plan r4；当前是否已实现/准入以报告及代码为准。
 
 **v1.3.148 · 当前规范引用**：目录事实与敏感扫描边界统一见[§3.5规范](#agent-access-directory-contract)，进展见[恢复报告](../05_testing/REPORT_2026-10-11_agent_access_recovery.md)。本节不复制计划时点的实施状态。
 
@@ -4160,6 +4170,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.183** | 2026-10-29 | **支持范围收口。** 按 Bob 决定终止 Kimi Code 与 Qoder CN 接入，移除专用注册、配置、入口、探针、适配器、验收脚本及台账/租约运行链；仅保留四家 Agent。候选 v3 可选形状仅作历史兼容，通用入口原稿准备与请求快照校验保留。产品版本不变，验证见四家 Agent 支持范围收口报告。 |
 | **v1.3.182** | 2026-10-27 | **原子写的 win32 有界重试（EV-260，主题 `Windows原子写重试`，`/dual-run` 全流程）。** 1.3.2 Windows 发版全量里 `--start` 偶发「内部错误：EPERM … rename …status.json.tmp-… -> …status.json」退出（`not ok 357`，EV-160 I2，同文件单跑过；成因是 win32 rename 覆盖目标时目标被并发写者或杀毒/索引短暂占用，POSIX rename 无此面）。`util/fsx.ts` 拆出 `renameOverwriting` 原语：win32 上对 `EPERM`/`EACCES`/`EBUSY` 按 `[25,50,100,200,400]` ms 指数退避有界重试，6 次尝试、总睡眠 ≤775 ms，耗尽清 tmp 后抛**最后一次原始错误**（引用不换）；`onExhausted` 异常在原语内吞掉不顶替原错误；非三码与 POSIX 单次直通、tmp 不清，行为与原先逐字相同（缺省平台判定引 `IS_WIN`，注入平台仅供测试）。预算：775 ms 占 Hook 15 s 的 5%、占 `withGlobalLock` 等待侧 40×100 ms ≈ 4 s 的 19%；耗尽路径墙钟最坏 ~1.1 s（含 `fs.rm` 重试）。全仓直连 rename 恰 4 处逐个处置：`lock.ts:289` 回收改名**不加重试**（仲裁语义：rename 失败=别人先动手的合法结局，fail-closed，上游取锁自带预算）；`review.ts` `stashVoidedOutput` 同口径换原语（耗尽落回既有 warn+整删+重跑兜底）；`doctor-deadline.ts` 台账改调 `writeAtomic`（消灭旧 `.tmp` 残件面）。如实登记：win32 新增「延迟写者以较旧快照后落」交错（窗口 ≤775 ms，仅 status.json 类无锁并发写可见，心跳回退 <1 s 不影响 30 s/120 s 判定；POSIX 自始有此交错）；EBUSY 前瞻纳入无实测样本；AV 持有超上界仍以原错误失败。计划三审第 1/3 轮修改后通过（12 条：等待侧锁预算数值、延迟写者逐文件分析、实测 READY 握手与时序断言、POSIX 零变化辖域、onExhausted 防护进原语、三码参数化、P-35 补登、run-files-parity 首匹配点名；CODEX-02 的内容级防护子建议驳回）；代码三审第 1/3 轮 3 通过（7 条全接受：T6 毫秒隔离、最坏墙钟口径、缺省表导出钉值 T10、变异机理订正、IS_WIN 判定、`lastErr!`）。回归锚 `fsx-write-atomic-retry.test.ts` 9 例（平台参数化，macOS 可跑 win32 分支、删重试必红）；Windows 零配额实测（PowerShell `FileShare.None` 按柄 + READY 握手）：按住 400 ms→826 ms 重试成功，按住 5 s→824 ms 抛原始 EPERM 且 tmp 已清。S10 verify 六次全量红格（5/5/4/3/1/3）全部归因既有底噪族（红格逐轮轮换、单跑全绿、原 EPERM 形态零出现），判读见报告 §4。报告 `doc/05_testing/REPORT_2026-10-27_windows_atomic_write_retry.md`，证据 `doc/05_testing/evidence/windows-atomic-write-retry-2026-10-27/`。 |
 | **v1.3.181** | 2026-10-26 | **网关模型名后缀大小写（EV-258 第二轮，主题 `网关模型名后缀大小写`，`/dual-run` 全流程）。** v1.3.180 的上下文窗口后缀片段只认小写单位，而 CC Switch 写进 5 个生效模型名键的后缀是大写 `[1M]`（2026-10-26 Windows 验收第 1 步、码点实测），守卫 ④ 仍判不像模型名、回读照旧被吞。v1.3.180「只认小写」的依据是 EV-257 判读里从形状还原出的 `[1m]`，从未逐字核过。片段单位改为显式字符类 `[kKmM]`（不用 `i` 旗标：整行加 `i` 会连 profile 键名一起放宽，`iu` 会把开尔文符号折成 k）；数字位数、末尾恰好一个、剥后其余判据、守卫 ②③ 看完整值、凭据类键逐值替换均不变；`claudeProfileMetadata` 与 `claudeModelConsistency` 共用片段、同批生效。见 §3245 段「模型名的上下文窗口后缀与 AC-20 回读口径」末尾。计划三审第 1/3 轮修改后通过（4 条全接受，含 Windows 码点诊断只对白名单形态打印码点，CODEX-01）。单测追加 S15、S16，S11 与 S14 里锁成反例的 `[1M]` 改为正例并补其它单位字母等反例；profile 大写格；集成 E12；变异 29 条全部咬住（第一轮 20 条重生成、M5a 放宽后等价删除；新增去掉大写放行 3、丢了小写 1、单位任意字母 2、多个字母 1、Unicode 折叠 1、键名随之放宽 1）；本机零配额新旧构建对拍 47 项通过（基线 `1f8e8e87`，未开启五情形与开启不带大写后缀四情形归一化输出逐项相同）。Windows 验收清单改为第 1 步直接打印后缀码点、期望值以第 1 步逐字读数为准；2026-10-27 用户在 Windows 真实网关上验收四步全部通过（判读 `evidence/gateway-model-suffix-case-20261026/windows-readout.md`）。报告 `REPORT_2026-10-26_gateway_model_suffix_case.md`。 |
 | **v1.3.180** | 2026-10-26 | **网关模型名上下文后缀（EV-258，主题 `网关模型名上下文后缀`，`/dual-run` 全流程）。** EV-257 的守卫 ④ 字符集不含方括号，CC Switch 写进生效模型名键的 `qwen3.8-max[1m]` 一类上下文窗口后缀形态被判为不像模型名、留在替换集，同值的几个键守卫 ③ 连带不过，`init.model` 照旧被吞、回读记 null 与 `unverified`（2026-10-26 Windows 实测，Qwen 网关）。改为：守卫 ④ 先剥末尾恰好一个后缀（`\[[1-9][0-9]{0,3}[km]\]`，无锚片段，各使用点自定锚定），剥后部分照旧判字符集、长度、UUID、最长段；守卫 ②③ 看完整值；`gatewayScrubPlan` 不改，同值模型名键一并豁免。`claudeProfileMetadata` 同一缺口同批修（三种引号形态都收同一后缀）。定 AC-20 回读口径：`model_effective` 仍取 `init.model`（CLI 解析出的配置值），服务端回报的 `message.model` 收进 `ClaudeTrace.reportedModels`，与 `claudeModelConsistency` 的比对结果只进 `trace.json` 的 `modelReadback`。订正 v1.3.179 等处「`init.model` 是网关回报」的措辞。见 §3245 段「模型名的上下文窗口后缀与 AC-20 回读口径」。计划三审第 1/3 轮修改后通过（8 条全接受）。单测 S10～S14、profile 后缀格、集成 E11、目录臂适配器 `modelReadback` 断言（S1～S9、E1～E10 断言未动、保持全绿）；变异 21 条全部咬住（去掉后缀放行 4、后缀放行过宽 5、剥后跳过或看原值 2、profile 元数据两向 2、AC-20 留痕 8）；本机零配额新旧构建对拍 38 项通过（未开启四情形与开启不带后缀三情形归一化输出逐项相同）。Windows 真实网关验收清单已备、待用户执行。报告 `REPORT_2026-10-26_gateway_model_suffix.md`。 |

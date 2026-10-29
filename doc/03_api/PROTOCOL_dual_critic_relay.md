@@ -521,44 +521,10 @@ Codex版本引用的profile上下文须与能力臂完整指纹一致；同一CL
 局部controlled-mechanism.v1、auth-timestamp-applicability.v1、criteria-approval.v1及criteria-revocation.v1属于独立任务证据契约，不改产品run/review/verify Schema。身份形状使用字符串、语义由注册表核验；mixed原件全局2N权限配对不可裁切伪装单臂。批准/撤销来源、范围、版本及全部hash不齐则不消费。 完整规范见[设计v1.3.156](../02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-controlled-contract)；执行结果以恢复报告和r17证据为准，不能由剧本或计划宣称已测。
 
 
-## Qoder CN 原生模型请求契约（2026-10-28，P2）
+## 2026-10-29：四家 Agent 支持范围收口
 
-原生默认由异步探针取得并绑定当前入口、版本、平台、目录及配置指纹；同步 defaultModelFor 只消费已加载事实。resolveTier 的最末层来源为 probe_default，显式空值/无效档位不得回落。run.v3.requested_routes 可带 native_model（facts、requested、override、origin），worker 确定性逐项比对，不重新选默认；当前单侧结果可带 native_model（request、labels、usage_labels、failure、raw_exit_code、raw_signal）。仅扩展当前 v3，历史 v1/v2 不补写。
+仅支持 Codex、Claude Code、ZCode（GLM）、Antigravity（Gemini）。Kimi Code 与 Qoder CN 的注册项、vendor 配置分支、探针、适配器、入口和专用验收脚本已删除；选择这些身份或旧 vendor 配置会按既有参数/配置校验拒绝。
 
-Auto/Fast 为路由标签，未知底层 model_effective=null、source=unverified；具体模型只读原生信封。modelUsage 的未知计费键独立保留，不推断别名。双通道明确回退或精确请求不一致立即中止，退出0仍判失败且审查结论不计票。Qoder 生产审核准入继续关闭，P2 无工具路线不等于 P3 能力验收；Windows ACL 未测时不复制认证。
+专用原生默认、Custom 路线、组合准入台账、凭据租约及无运行侧清扫接口已移除，scrub 不再产出 external_credentials。原四家运行目录凭据清扫逻辑继续有效。
 
-P2 首轮代码审修订：native_model 运行证据新增 execution_failure、verification_failure、stop_observation（channel/after_result/elapsed_ms），模型回退与执行失败/未核实分列。source=config 由目录内原生配置的真实显式验证产出；无配置默认只取首个 init。完整真机告警尾句纳入识别，停止时是否已见 result 必须如实记录。
-
-历史04:48及以前隔离环境加固（以下未实施描述仅指当时）：withQoderHome 的子进程环境按显式系统/locale/无凭据代理白名单构造，临时目录归入私有 HOME；未知父环境与运行注入变量不继承，含认证/查询/非标准路径代理拒绝继承且诊断不回显值。Custom 原生最小加载仍是诊断取证，未新增生产 native_model 形状、档位/worker 路由或准入记录；必要回读/拒绝证据不足，生产继续拒绝。详见[本轮报告](../05_testing/REPORT_2026-10-28_QoderCN只读审核准入与Custom模型接入.md)。
-
-历史删除补丁曾要求符合公共run叠加语义：所有未允许的父键显式undefined，而非仅返回允许键。完整代码审首次发现早期实现漏掉删除补丁，旧批次不能作为隔离证据；已按真实run子进程回归修复，历史记录不回填。必要证书路径列入允许键。
-
-历史04:48及以前：当时删除补丁仅覆盖构造时已有父键，尚未实现替换式环境。续批现已由qoderRun强制replace覆盖后新增键，该历史前提不再描述当前实现。诊断索引区分system决策reason=mode与rule，按tool_use_id配对，分别记permission-mode/permission-rule，缺决策为unknown；单独的non_execution_kind不证明规则拒绝。路径证据须分辨/var与/private/var别名，诊断装置使用realpath并覆盖两种home路径；不将这些诊断字段扩充为未消费的run.v3生产形状。
-
-
-## 2026-10-28：候选原生路线与项目组合准入
-
-仅当前 run.v3 追加可选 `native_model.facts.binding_version=2`、`route_kind`、`route_descriptor`、`configuration_raw_sha256`，及结果 `route_verified`；历史 run.v1/v2 不改。descriptor 记录 selector/native_key/display_name、配置命名空间 provider_id、model_id、非敏感 source_ref、声明/加密凭据来源/认证/隔离配方指纹及 codec 指纹；严禁密钥或明文 key 的哈希。source 可为 native-config，probe 当前支持独立 prepared_at 的 native_routes。配置 Schema 的开放 probe 段仍由厂商事实校验器核实，不能凭配置存在当作验收。
-
-Qoder `official:<label>` 与 `custom:<provider>/<modelID>` 明确消歧；裸官方兼容，裸 provider/modelID 仅唯一已验证声明可匹配。目录按精确规范值校验，不使用通用短名回落。default/flash/pro 及 CLI 单次覆盖沿用既有优先级；用户全局 Custom 设置不成为通用默认。声明、请求、init/信封标签与 modelUsage 分开；Custom 标签/key 仅作运行一致性，底层 provider/model 未证实保持 null。route_verified 只在组合台账已验且当次回读/终态有效时成立。
-
-`requested_routes` 与 worker request 可带 `admission:{record_id,record_sha256}`。父进程冻结项目级 `.trivium/admission.local.json` 唯一组合；worker/adapter 逐项比对并复核原件 hash、有效期、当前绑定，不重选台账。台账 schema 为 trivium.admission.v1，Agent 身份仍由注册表校验；记录包括项目根、binding_sha256、tested_at/expires_at 与每个必需项的 state/evidence（项目相对路径、sha256、case_id）。未测即拒绝。安装副本不带本仓台账或证据，跨仓必须独立验收。
-
-Qoder 持久化输出在返回 worker 前统一逐值脱敏；命中仍失败并保留 raw_exit_code/raw_signal。租约在复制认证前落盘，正常、取消、失联与保留期回收复用 scrub 入口；回收方先确认所有者身份和进程组退出及私有标记，不杀身份未知进程。当前原生完整生命周期与执行拒绝矩阵仍未验收，生产接入关闭。
-
-
-续批代码审修订（run 20261028T063910Z）：`native_model.facts.review_invocation_args` 与无工具 `invocation_args` 分开。只有固定字节的原生Read/Grep/Glob正控制通过后才提供审核参数；审核派生与admission binding消费同一字段，缺失拒绝。旧可调用原件不可移植为审核配方证据。台账必含deny_paths覆盖集，其hash写入原件，worker/adapter拒绝本次禁读集超出已验覆盖；预检在尚未生成主题禁读矩阵时只检查已知路线，不能替代worker覆盖核验。record hash冻结覆盖集。
-
-隔离指纹包括实际权限模板、路径别名样本、环境键表及代理策略反例结果，不仅是手工版本标签。认证字节刷新或加密缓存中无关条目变化目前保守触发重探和完整重验；刷新频率未测，未为成本移除绑定。无运行侧null租约在新私有根准备前及retention/scrub入口核所有者已死后回收；活组/未知身份仍保留并报错。清扫成功的外部根计数与运行目录计数分列。
-
-无运行侧回收有真实成功结果时，scrub JSON可选追加external_credentials；无该结果时保持原15键输出，不把空字段加入旧调用。错误继续进scrub_failed，原始CLI退出码与ok分开解释。
-
-09:00续执行契约：最小工具面中缺少工具且没有实际调用，仍是未测；真实tool_use和同ID Tool not found才是tool-unavailable分发拒绝，与permission-rule、permission-mode分别记录。采集器两臂使用固定提示词，候选不扩大工具面；正控制只允许可丢弃目标动作。官方/Custom分别绑定CLI/模型/配方及非空覆盖，不把旧空覆盖四项控制合并成新组合的通过数。
-
-诊断execution原件包含两路线各自facts、binding、两臂实际argv/权限语义/轨迹/文件回读、非空生产枚举覆盖及总启动账本；scope明确为已销毁隔离项目的可观察性诊断，不新增生产run Schema，也不作为台账。组安全收尾与完整原生生命周期准入分开。生成器可显式--project-root指定manifest/证据/覆盖/输出根；--write必须给根且全部项通过，隔离项目不得误写本仓台账。精确覆盖由enumerateDenyPaths对账，含.trivium和隔离run_root，新工件扩集拒绝，不自动前缀放行。配置排除只接受已观测的完整原生有效源/执行入口回读加真实正控制，未取得格式继续拒绝。
-
-代码审契约勘误：上段“enumerateDenyPaths对账”指采集器实际枚举及生产消费端核请求覆盖；生成器只冻结manifest所给集合，不自行枚举。评估原件默认在manifest目录生成，不写台账也会写评估原件，不称纯只读。候选危险工具成功或假文件变化必须fail并停止派生；未调用/正控制不足为untested，实际调用但无合格拒绝为fail，mode不能算规则或分发拒绝。旧原件不回填。
-
-GLM续裁：新诊断原件记录实际配置根（生产加载root）、入口、script/护栏/辅助hash及monitor首因/通道、验证失败、saw_result/result_error。索引对旧件缺字段保持null并单列execution_binding_warnings；单件损坏或非字符串stdout记error_code、继续其它件并最终退出1。逐臂监督结果先落内存记录，remaining/reused拒绝下一派生；共享身份查询脱离探针段以防观察器递归。以上为诊断/内部执行变更，不扩充生产run Schema，不回填历史原件，不代表新增native准入。
-
-2026-10-28直接整改：内部验收原件明确source_kind=real-model（来源声明，不等于独立底层模型认证），受控响应诊断与缺来源字段的旧件不能消费。成功控制明确spawned=true、timed_out/early_stopped/truncated=false、raw_signal=null。Write/Edit/Bash两臂增加fixture_before；proof.target限定当前项目对应无害控制文件，两臂实际工具参数与固定内容逐项核对、文件前后态重算，candidate.argv与冻结review_invocation_args一致。采集器与生产共用qoder-cn-execution判据；拒绝文本中的工具名须等于实际调用工具，调用/结果角色与init顺序须合法。缺字段不补写历史件，重新取证前继续阻塞；产品run与admission Schema形状不变，两家开关保持关闭。本轮按Bob授权不双审。
+run.v3 / handoff 的可选 native_model、requested_routes.admission 和 probe_default 枚举保留为历史读取形状，旧请求仍按原值参与冻结一致性校验；当前四家不生产这些候选字段、不消费 admission 台账。历史 schema v1/v2、审查工件及失败原件不改写；形状兼容不表示恢复已移除身份的运行资格。

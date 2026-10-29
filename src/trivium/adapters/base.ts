@@ -113,11 +113,6 @@ export interface AuthProbe {
 export type AuthCombination = Pick<TierResolution, 'model' | 'effort' | 'vendorProfile'>;
 
 export interface CriticAdapter {
-  /** 同一准入记录冻结后只能复核，不得重选；缺钩子的既有侧行为不变。 */
-  admissionFor?(ctx:AdapterContext,request:Pick<import('../types.js').CriticRequest,'critic'|'project_root'|'model'|'native_model'>,frozen?:import('../types.js').AdmissionReference):import('../types.js').AdmissionReference;
-  /** 纯钩子：只消费已加载探针，不能读盘/启动 CLI。 */
-  defaultModelFor?(cfg: Config): { kind: 'resolved'; model: string } | { kind: 'missing'; reason: string };
-  nativeModelFor?(cfg: Config, model: string, origin: string): import('../types.js').NativeModelRequest;
   accessFor?(cfg: Config, profile: string | null): AccessMeta;
   /** 路线探针与版本入口由适配器提供，通用判定不按工具身份分叉。 */
   probeFor?(cfg: Config, profile: string | null): CommonProbe | undefined;
@@ -263,8 +258,6 @@ export interface CriticAdapter {
    * 编排器自写日志（`stdout.*` / `trace.json`）的脱敏不在这里做，由 `scrub.ts` 统一处理。
    */
   scrubRunDir?(sideDir: string, opts?: { sizeCap?: number }): Promise<CarrierScrub>;
-  /** 无运行侧的探针/doctor凭据租约；只能回收已确认所有者退出的根。 */
-  scrubUnscoped?():Promise<{deleted:string[];errors:string[]}>;
 }
 
 /** `scrubRunDir` 的返回：删了什么、扫了多少、扫到什么 */
@@ -1961,7 +1954,6 @@ export interface TierOverrides {
 }
 
 export interface TierResolution {
-  nativeDefaultMissing?: string;
   model: string | null;
   effort: string | null;
   /** 厂商 profile（codex 的 `-p`）；无此概念的族恒 null */
@@ -2019,7 +2011,6 @@ export function resolveTier(
   critic: CriticId,
   stage: Stage,
   cli: TierOverrides = {},
-  nativeDefault?: { kind: 'resolved'; model: string } | { kind: 'missing'; reason: string },
 ): TierResolution {
   const agent = (cfg.agents as Partial<Record<string, AgentConfig>>)[critic];
   const vendor = agentById(critic)?.vendor ?? null;
@@ -2057,8 +2048,6 @@ export function resolveTier(
     base = { kind: 'cell', source: 'profile', tier: null, fields: { model: cell.model, effort: cell.effort } };
   } else if (agent?.default_tier) {
     base = fromTier(agent.default_tier, 'agent_default');
-  } else if (cell === undefined && nativeDefault?.kind === 'resolved') {
-    base = { kind: 'cell', source: 'probe_default', tier: null, fields: { model: nativeDefault.model } };
   }
 
   const fieldOrigin: FieldOrigin | null = base ? (base.kind === 'tier' ? 'tier' : 'cell') : null;
@@ -2125,7 +2114,6 @@ export function resolveTier(
   }
 
   return {
-    ...(nativeDefault?.kind === 'missing' && model === null && !missingTier && !emptySlug ? { nativeDefaultMissing: nativeDefault.reason } : {}),
     model,
     effort,
     vendorProfile,

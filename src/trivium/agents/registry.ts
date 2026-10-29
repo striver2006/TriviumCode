@@ -31,7 +31,6 @@
  * ## M10a 第 3 步的变化
  *
  * codex / gemini / glm 的 `driverEnabled` 翻为 true，既有四家均可作为 Driver；
- * 后续 Kimi Code / Qoder CN 也按同一注册表字段登记为 L2 Driver-only。
  * 与此同时 `resolveDriver` 对 `driverEnabled: false` 由「放行 + 标注」收紧为退 64——
  * 该分支守的是**登记而未启用**的那一格
  * （M10 计划 r7 §4.2 / §9 A4）。收紧只作用于经 `resolveDriver` 的入口，
@@ -43,10 +42,10 @@
 import path from 'node:path';
 
 /** 已登记的 Agent。取值同时是归档后缀与配置键命名空间 */
-export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm' | 'kimi' | 'qoder-cn';
+export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm';
 
 /** 厂商标识。与 `AgentId` 分开：未来同一厂商可能有多个 Agent */
-export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode' | 'moonshot' | 'qoder-cn';
+export type AgentVendor = 'anthropic' | 'openai' | 'antigravity' | 'zcode';
 
 /**
  * 各厂商的**名义**模型族，按模型名判定（EV-62，M10a 第 4 步）。
@@ -65,9 +64,6 @@ export const VENDOR_MODEL_FAMILY: Readonly<Record<AgentVendor, RegExp>> = {
   openai: /gpt/i,
   antigravity: /gemini/i,
   zcode: /glm/i,
-  moonshot: /kimi/i,
-  // Qoder 的 Auto/自定义模型标签不能冒充可识别的底层模型族。
-  'qoder-cn': /(?!)/,
 };
 
 /** 模型标识族规则：短别名不解析，供应商与工具身份不参与判断。 */
@@ -139,8 +135,6 @@ export interface EntrySkillRootSpec {
 export type GuardProfile = 'l1-hook' | 'l2-hook' | 'l2-none';
 
 export interface AgentDescriptor {
-  /** 组合准入必需项；机器结论不在注册表。 */
-  admissionChecks?: readonly string[];
   id: AgentId;
   /** 人读名，进播报与报告 */
   display: string;
@@ -395,53 +389,6 @@ export const AGENTS: readonly AgentDescriptor[] = [
     entryInvocation: '/{name}',
     entrySkillExtraReadRoots: ['.agents/skills'],
   },
-  {
-    id: 'kimi',
-    display: 'Kimi Code',
-    label: 'Critic-E · Moonshot Kimi Code',
-    vendor: 'moonshot',
-    cliName: 'kimi',
-    suffix: 'kimi',
-    findingPrefix: 'KIMI',
-    // L2 入口套件先落地；macOS 规则诊断见 2026-10-28 报告。审核隔离仍阻塞，Driver 独立等待五入口验收。
-    criticEnabled: false,
-    defaultSelected: false,
-    driverEnabled: false,
-    guardLevel: 'L2',
-    hookConfigTarget: null,
-    instructionFiles: ['AGENTS.md'],
-    criticReadsInstructionFiles: false,
-    // macOS CLI 2.3.3 私有根发现已实测；桌面端与 VS Code Extension Host 仍未测。
-    entrySkillRoot: { homeEnv: 'KIMI_CODE_HOME', homeRel: '.kimi-code', skillsRel: 'skills' },
-    // 交互调用候选语法；2.3.3 -p原样传给模型，再由原生Skill加载，不预展开斜杠。
-    entryInvocation: '/skill:{name}',
-    // macOS CLI 已发现独立共享哨兵；同名被项目项覆盖。GUI/Windows仍未测。
-    entrySkillExtraReadRoots: ['.agents/skills'],
-  },
-  {
-    id: 'qoder-cn',
-    admissionChecks: ['model-positive','model-invalid','configuration-invalid','authentication-failed','runtime-fallback','read','grep','glob','write-denied','edit-denied','shell-denied','agent-denied','mcp-denied','network-denied','other-execution-denied','peer-paths','sensitive-paths','credential-paths','config-layers','shared-skills','hooks','plugins','trace','start-failure','timeout','cancel','force-kill','lost-worker','process-tree','credential-cleanup'],
-    display: 'Qoder CN',
-    label: 'Critic-F · Qoder CN',
-    vendor: 'qoder-cn',
-    // 本机实测可执行文件名；官方文档/原生命令名是 qodercn，二者保持分开留痕。
-    cliName: 'qoderclicn',
-    suffix: 'qoder-cn',
-    findingPrefix: 'QODER',
-    // CLI状态技能已实测；真实任务/worker及其它客户端未验完，Driver独立保持关闭。
-    criticEnabled: false,
-    defaultSelected: false,
-    driverEnabled: false,
-    guardLevel: 'L2',
-    hookConfigTarget: null,
-    instructionFiles: ['AGENTS.md'],
-    criticReadsInstructionFiles: false,
-    // macOS CN CLI 1.1.80 七入口发现/状态调用已实测；桌面端仍未测。
-    entrySkillRoot: { homeRel: '.qoder-cn', skillsRel: 'skills' },
-    entryInvocation: '/{name}',
-    // macOS CN CLI已发现独立共享哨兵；同名选择自家用户根。其它客户端仍未测。
-    entrySkillExtraReadRoots: ['.agents/skills'],
-  },
 ];
 
 const BY_ID = new Map<string, AgentDescriptor>(AGENTS.map((a) => [a.id, a]));
@@ -469,7 +416,7 @@ export function agentByCliName(cliName: string): AgentDescriptor | null {
   return AGENTS.find((a) => a.cliName === cliName) ?? null;
 }
 
-/** 当前可被选为审核者的 Agent（四家；Kimi/Qoder CN 保持 Driver-only） */
+/** 当前可被选为审核者的 Agent（四家） */
 export const CRITIC_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.criticEnabled).map(
   (a) => a.id,
 );
@@ -544,8 +491,7 @@ export function deriveDefaultCritics(
 }
 
 /**
- * 当前已启用为 Driver 的 Agent；Kimi Code / Qoder CN 已登记但仍保持
- * `driverEnabled: false`，登记全集见 `ALL_AGENT_IDS`。
+ * 当前已启用为 Driver 的 Agent，登记全集见 `ALL_AGENT_IDS`。
  */
 export const DRIVER_AGENT_IDS: readonly AgentId[] = AGENTS.filter((a) => a.driverEnabled).map(
   (a) => a.id,

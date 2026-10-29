@@ -20,7 +20,6 @@ import runV1Schema from '../../skills/dual-critic/schema/run.v1.json' with { typ
 import runV2Schema from '../../skills/dual-critic/schema/run.v2.json' with { type: 'json' };
 import runV3Schema from '../../skills/dual-critic/schema/run.v3.json' with { type: 'json' };
 import dispositionSchema from '../../skills/dual-critic/schema/disposition.v1.json' with { type: 'json' };
-import admissionSchema from '../../skills/dual-critic/schema/admission.v1.json' with { type: 'json' };
 import {
   ALL_AGENT_IDS,
   ALL_CLI_NAMES,
@@ -54,14 +53,6 @@ export function formatErrors(errors: readonly ErrorObject[] | null | undefined):
           : '';
     return `${at} ${e.message ?? '不合法'}${extra}`;
   });
-}
-
-/** 台账形状与注册表身份追加校验，不能把候选身份当成已准入。 */
-export function validateAdmission(data:unknown):string[]{
-  const v=compile('admission.v1',admissionSchema as object),problems=v(data)?[]:formatErrors(v.errors);
-  const records=(data as {records?:unknown}|null)?.records;
-  if(Array.isArray(records))for(const r of records)if(!isAgentId(r?.agent))problems.push('准入台账含未登记Agent身份');
-  return problems;
 }
 
 /**

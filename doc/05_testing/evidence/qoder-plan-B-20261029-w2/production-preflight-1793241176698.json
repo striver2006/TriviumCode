@@ -1,0 +1,190 @@
+{
+  "schema": "trivium.qoder-plan-live.v1",
+  "at": "2026-10-29T02:31:06.149Z",
+  "mode": "production-preflight",
+  "development_driver": "codex",
+  "client_driver": "qoder-cn",
+  "spec_file": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/fixture-B.json",
+  "fixture": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目",
+  "run_root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/runs",
+  "request": "/dual-review-plan 检查sum修复计划及测试边界 --topic DriverCLI-qoder-cn-B --critics gemini,glm",
+  "candidate_only": true,
+  "candidate_installed": false,
+  "underlying_model": null,
+  "global_before": {
+    "/Users/chenzhenbo/Work/TriviumCode/.trivium/config.yaml": "c68fbbc2912aeab6673d8d0db9645e006c4029f5cd6815da378225e3b420a152",
+    "/Users/chenzhenbo/Work/TriviumCode/.trivium/config.local.yaml": "205d55f5e9ef38ef10eb092b6acff23a705d2f18ae59d8961b5f48f7b35dd422",
+    "/Users/chenzhenbo/.qoder-cn/settings.json": "140672a4af3a98f0bc4be50a47ccf684ae6cb747bb699b0630ee178ed16e4a08",
+    "/Users/chenzhenbo/.qoder-cn/.auth/user": "4dfc895a87195ea566e0dabd9b862949dca4f7f6d09f14d69a72894e3040da46",
+    "/Users/chenzhenbo/.qoder-cn/.auth/machine_id": "861ef264875eade9081f8c19114ee3356b6681f20203203e884905939cf5072e",
+    "/Users/chenzhenbo/.kimi-code/config.toml": "e489b2f94e6c76db67a7f62a04a1cac8bb0fadbbca5319c16787d04fa55aeeee",
+    "/Users/chenzhenbo/.kimi-code/credentials/kimi-code.json": "6c91fa08353ce37d4ad8b1919c43f80c3817e74760d783e9f1e7d2fdd2178335",
+    "/Users/chenzhenbo/.codex/config.toml": "2b95879aec60735550dc4cfd97b000f32fdeb4c65562ccd2d89b18d733a4792a",
+    "/Users/chenzhenbo/.codex/auth.json": "a86a02dfc65dbe4305624ba36309e22a00f2a58ffd3d31d9d71fb21c36b380df",
+    "/Users/chenzhenbo/.gemini/config/agents/trivium-critic/agent.md": "5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4",
+    "/Users/chenzhenbo/.gemini/settings.json": "3200ed400db119b61b2ed0659ec4f96d9264ca5c764e76d0619ebec54bafe0de",
+    "/Users/chenzhenbo/.gemini/config/settings.json": null,
+    "/Users/chenzhenbo/.zcode/cli/config.json": "5cbbb8505c445a42a0e7a01c5d775ec372cf417396d22467e3d2077410eaab99",
+    "/Users/chenzhenbo/.zcode/v2/provider_config.json": "f7f64749b47b7c9d389994de267bdc0966cdf97eb0c4e81a3a2a30c3b0dbbfdd"
+  },
+  "wrapper_sha256": "f20c13c33ceb15a9089415f34d3f60532e0114733ba8aeb759f0a43692ea490b",
+  "baseline": "9a50bb8449150f11be3359d51da7cd97a6e75010",
+  "command": {
+    "bin": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/.trivium/bin/trivium",
+    "args": [
+      "preflight",
+      "--stage",
+      "plan",
+      "--driver",
+      "qoder-cn",
+      "--critics",
+      "gemini,glm",
+      "--json"
+    ],
+    "cwd": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目"
+  },
+  "result": {
+    "code": 0,
+    "signal": null,
+    "stdout": "{\n  \"ok\": true,\n  \"scope\": \"plan\",\n  \"checks\": [\n    {\n      \"name\": \"Driver 会话声明\",\n      \"ok\": true,\n      \"warn\": true,\n      \"detail\": \"Driver 模型未声明，相关模型族比较将为 unknown；告警继续\"\n    },\n    {\n      \"name\": \"模型 slug 合法\",\n      \"ok\": true,\n      \"detail\": \"已校验 1 个阶段 × 2 侧\"\n    },\n    {\n      \"name\": \"档位组合合法\",\n      \"ok\": true,\n      \"detail\": \"已校验 1 个阶段 × 2 侧\"\n    },\n    {\n      \"name\": \"当轮 Driver\",\n      \"ok\": true,\n      \"detail\": \"qoder-cn · 护栏 L2（该载体没有 Hook 机制，写入没有事前拦截；审查中的越界由跑后复算发现；闸门期改业务文件不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要；审查工件由审批前复核核本轮）\"\n    },\n    {\n      \"name\": \"探针结论新鲜\",\n      \"ok\": true,\n      \"detail\": \"过期或未探：claude、codex、kimi、qoderclicn（其余在 TTL 内；跑 doctor --only <名> 可单独补）\"\n    },\n    {\n      \"name\": \"Antigravity 可调用\",\n      \"ok\": true,\n      \"detail\": \"agy 1.4.9\"\n    },\n    {\n      \"name\": \"ZCode 可调用\",\n      \"ok\": true,\n      \"detail\": \"zcode 0.17.0\"\n    },\n    {\n      \"name\": \"只读能力可用\",\n      \"ok\": true,\n      \"detail\": \"Antigravity、ZCode 均报告可用\"\n    },\n    {\n      \"name\": \"归档与 git 可用\",\n      \"ok\": true,\n      \"detail\": \"归档根 /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/.reviews\"\n    },\n    {\n      \"name\": \"Antigravity 已认证\",\n      \"ok\": true,\n      \"detail\": \"探活通过（108s）\"\n    },\n    {\n      \"name\": \"ZCode 已认证\",\n      \"ok\": true,\n      \"detail\": \"探活通过（12s，模型 bigmodel-coding-plan/GLM-5.3）\"\n    }\n  ],\n  \"warnings\": [\n    {\n      \"name\": \"Driver 会话声明\",\n      \"detail\": \"Driver 模型未声明，相关模型族比较将为 unknown；告警继续\"\n    }\n  ],\n  \"exit_code\": 0\n}\n",
+    "stderr": "· [glm] 探活缓存不可用（缓存已超过 1h TTL），执行最小 headless 探活\n· [gemini] 探活缓存不可用（缓存已超过 1h TTL），执行最小 headless 探活\n",
+    "durationMs": 110534,
+    "timedOut": false,
+    "earlyStopped": false,
+    "truncated": false,
+    "commandLine": "'/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/.trivium/bin/trivium' preflight --stage plan --driver qoder-cn --critics 'gemini,glm' --json",
+    "spawned": true
+  },
+  "passed": true,
+  "global_after": {
+    "/Users/chenzhenbo/Work/TriviumCode/.trivium/config.yaml": "c68fbbc2912aeab6673d8d0db9645e006c4029f5cd6815da378225e3b420a152",
+    "/Users/chenzhenbo/Work/TriviumCode/.trivium/config.local.yaml": "205d55f5e9ef38ef10eb092b6acff23a705d2f18ae59d8961b5f48f7b35dd422",
+    "/Users/chenzhenbo/.qoder-cn/settings.json": "140672a4af3a98f0bc4be50a47ccf684ae6cb747bb699b0630ee178ed16e4a08",
+    "/Users/chenzhenbo/.qoder-cn/.auth/user": "4dfc895a87195ea566e0dabd9b862949dca4f7f6d09f14d69a72894e3040da46",
+    "/Users/chenzhenbo/.qoder-cn/.auth/machine_id": "861ef264875eade9081f8c19114ee3356b6681f20203203e884905939cf5072e",
+    "/Users/chenzhenbo/.kimi-code/config.toml": "e489b2f94e6c76db67a7f62a04a1cac8bb0fadbbca5319c16787d04fa55aeeee",
+    "/Users/chenzhenbo/.kimi-code/credentials/kimi-code.json": "6c91fa08353ce37d4ad8b1919c43f80c3817e74760d783e9f1e7d2fdd2178335",
+    "/Users/chenzhenbo/.codex/config.toml": "2b95879aec60735550dc4cfd97b000f32fdeb4c65562ccd2d89b18d733a4792a",
+    "/Users/chenzhenbo/.codex/auth.json": "a86a02dfc65dbe4305624ba36309e22a00f2a58ffd3d31d9d71fb21c36b380df",
+    "/Users/chenzhenbo/.gemini/config/agents/trivium-critic/agent.md": "5a1d0f8c2a7521b220c7bcd02e5ff62a002f1af230859a60877567d6a8443af4",
+    "/Users/chenzhenbo/.gemini/settings.json": "3200ed400db119b61b2ed0659ec4f96d9264ca5c764e76d0619ebec54bafe0de",
+    "/Users/chenzhenbo/.gemini/config/settings.json": null,
+    "/Users/chenzhenbo/.zcode/cli/config.json": "5cbbb8505c445a42a0e7a01c5d775ec372cf417396d22467e3d2077410eaab99",
+    "/Users/chenzhenbo/.zcode/v2/provider_config.json": "f7f64749b47b7c9d389994de267bdc0966cdf97eb0c4e81a3a2a30c3b0dbbfdd"
+  },
+  "global_unchanged": true,
+  "wrapper_ledger": "{\"at\":\"2026-10-29T02:31:07.863Z\",\"pid\":37639,\"ppid\":37615,\"argv\":[\"preflight\",\"--stage\",\"plan\",\"--driver\",\"qoder-cn\",\"--critics\",\"gemini,glm\",\"--json\"],\"cwd\":\"/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目\",\"allowed\":true,\"exit_code\":0,\"signal\":null,\"stdout\":\"{\\n  \\\"ok\\\": true,\\n  \\\"scope\\\": \\\"plan\\\",\\n  \\\"checks\\\": [\\n    {\\n      \\\"name\\\": \\\"Driver 会话声明\\\",\\n      \\\"ok\\\": true,\\n      \\\"warn\\\": true,\\n      \\\"detail\\\": \\\"Driver 模型未声明，相关模型族比较将为 unknown；告警继续\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"模型 slug 合法\\\",\\n      \\\"ok\\\": true,\\n      \\\"detail\\\": \\\"已校验 1 个阶段 × 2 侧\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"档位组合合法\\\",\\n      \\\"ok\\\": true,\\n      \\\"detail\\\": \\\"已校验 1 个阶段 × 2 侧\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"当轮 Driver\\\",\\n      \\\"ok\\\": true,\\n      \\\"detail\\\": \\\"qoder-cn · 护栏 L2（该载体没有 Hook 机制，写入没有事前拦截；审查中的越界由跑后复算发现；闸门期改业务文件不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要；审查工件由审批前复核核本轮）\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"探针结论新鲜\\\",\\n      \\\"ok\\\": true,\\n      \\\"detail\\\": \\\"过期或未探：claude、codex、kimi、qoderclicn（其余在 TTL 内；跑 doctor --only <名> 可单独补）\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"Antigravity 可调用\\\",\\n      \\\"ok\\\": true,\\n      \\\"detail\\\": \\\"agy 1.4.9\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"ZCode 可调用\\\",\\n      \\\"ok\\\": true,\\n      \\\"detail\\\": \\\"zcode 0.17.0\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"只读能力可用\\\",\\n      \\\"ok\\\": true,\\n      \\\"detail\\\": \\\"Antigravity、ZCode 均报告可用\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"归档与 git 可用\\\",\\n      \\\"ok\\\": true,\\n      \\\"detail\\\": \\\"归档根 /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/.reviews\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"Antigravity 已认证\\\",\\n      \\\"ok\\\": true,\\n      \\\"detail\\\": \\\"探活通过（108s）\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"ZCode 已认证\\\",\\n      \\\"ok\\\": true,\\n      \\\"detail\\\": \\\"探活通过（12s，模型 bigmodel-coding-plan/GLM-5.3）\\\"\\n    }\\n  ],\\n  \\\"warnings\\\": [\\n    {\\n      \\\"name\\\": \\\"Driver 会话声明\\\",\\n      \\\"detail\\\": \\\"Driver 模型未声明，相关模型族比较将为 unknown；告警继续\\\"\\n    }\\n  ],\\n  \\\"exit_code\\\": 0\\n}\\n\",\"stderr\":\"· [glm] 探活缓存不可用（缓存已超过 1h TTL），执行最小 headless 探活\\n· [gemini] 探活缓存不可用（缓存已超过 1h TTL），执行最小 headless 探活\\n\",\"timedOut\":false,\"truncated\":false}\n",
+  "fixture_spec": {
+    "root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目",
+    "home": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/home",
+    "candidate": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/candidate.cjs",
+    "topic": "DriverCLI-qoder-cn-B",
+    "agent": "qoder-cn",
+    "head": "0217308795ebf9b40ca09a4db1b53b85d5e2b54b",
+    "run_root": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/runs",
+    "review_allowed": "仅本主题命令B；完整生产预检成功后至多三轮",
+    "credential_copies": 0,
+    "cleanup_owner": "Codex负责凭据即时清理；无凭据候选/夹具由Bob确认使用完毕后删除独立根；未代为approve/abandon",
+    "candidate_sha256": "d9c3ff95555a65eecee74fcedb1ba7a40e5835812887e92582e986f56544d2fa",
+    "registry_source_sha256": "9ef26f6e318042251e7d86abb4acf833481823f92c1b70c025c176769f56c66f",
+    "registry_transformed_sha256": "facee0258fbb341cddc4ded45c62afb0cc8d2a1589a8ea3fb8e387cae7a60711",
+    "helper": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/plan-helper.cjs",
+    "assets": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic",
+    "reviewer_home": "/Users/chenzhenbo",
+    "ledger": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/formal-argv.jsonl",
+    "run_ids": [],
+    "fail_stop": true,
+    "native_receipts": "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/native-writes.jsonl",
+    "draft_names": [
+      "original.md",
+      "revised-1.md",
+      "revised-2.md",
+      "revised-3.md",
+      "plan-2.md",
+      "plan-3.md",
+      "plan-4.md"
+    ],
+    "pins": {
+      "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/qoder-plan.mjs": "298234c5d8006cbc776552cc962385192b468b1b180236d572b22d5ffee5614f",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/plan-helper.cjs": "9cd7ca8ba3491132098a73f192470e234fb5e91c28728c814c9a76b2941ee5f7",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/candidate.cjs": "d9c3ff95555a65eecee74fcedb1ba7a40e5835812887e92582e986f56544d2fa",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/.trivium/config.yaml": "aacee1a83027a19c396ccbecfc9fa8b1717f724e20f6047cb85caad2f0b3272b",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/.trivium/config.local.yaml": "1fe7b6d2db804f09880acf19d61fc3b14bfabbfbd48bd5ab14ba6c587bdcc283",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/.trivium/bin/trivium": "f20c13c33ceb15a9089415f34d3f60532e0114733ba8aeb759f0a43692ea490b",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/.trivium/bin/B-guard.cjs": "6320bdbb41dd9b807a431efce87a26d08902d7028590ff4162801320557689d3",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/AGENTS.md": "3c5d113e0bae428405bcb66056fc272ca078c8b705f59442004e13fcc3da7623",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/README.md": "b976dd70d3ce5b0c0ef5ec21168e0b2cd2a7f0357e69bc39483ff43d45165754",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/sum.cjs": "bb7c7db9f2b1a6343c401029371109b8665e996e92ca16c42b503765431a90dc",
+      "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/材料.md": "9cbe11b9200f3e6e5c9c50595b603ba3319091c06b78d8781128b4d8c53f0044",
+      "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/qoder-plan-live.mjs": "00658e794d3797e9caf1d36c861ef46097d9ca42a693ba57bbd332877a2582b4",
+      "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/qoder-plan-audit.mjs": "a93dcd235e2503e6a2ba5dd27c99df56c92c4044f6b1950be57e333106c6803d",
+      "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/qoder-secrets.mjs": "133cfad1318d612cfd16dbee0b84cb6a5fa67ba3b183422d95d828b8b301e9ea",
+      "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/driver-identity.mjs": "e89758c69e163429a458246f2e3de1b52da603448ee1a9c8586ff2ff692f9b30",
+      "/Users/chenzhenbo/Work/TriviumCode/scripts/acceptance/kimi-qoder-cn/driver-cli.mjs": "9d90a3f387f64d7a54e2ea188db71623f688eb6cd78e39a1e32a969f94b3fc4c",
+      "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/entry/qoder-cn/dual-review-plan/SKILL.md": "a560d0a6eabab1784a1bdd5c3b9a55ee7dd876fe2928af87e4f91733b7cf3962"
+    },
+    "preflight_receipt": {
+      "at": "2026-10-29T02:31:07.863Z",
+      "exit_code": 0,
+      "ok": true,
+      "checks": [
+        {
+          "name": "Driver 会话声明",
+          "ok": true,
+          "warn": true,
+          "detail": "Driver 模型未声明，相关模型族比较将为 unknown；告警继续"
+        },
+        {
+          "name": "模型 slug 合法",
+          "ok": true,
+          "detail": "已校验 1 个阶段 × 2 侧"
+        },
+        {
+          "name": "档位组合合法",
+          "ok": true,
+          "detail": "已校验 1 个阶段 × 2 侧"
+        },
+        {
+          "name": "当轮 Driver",
+          "ok": true,
+          "detail": "qoder-cn · 护栏 L2（该载体没有 Hook 机制，写入没有事前拦截；审查中的越界由跑后复算发现；闸门期改业务文件不会让审批失败，命令 B / C / D 审批时只打印工作树改动摘要；审查工件由审批前复核核本轮）"
+        },
+        {
+          "name": "探针结论新鲜",
+          "ok": true,
+          "detail": "过期或未探：claude、codex、kimi、qoderclicn（其余在 TTL 内；跑 doctor --only <名> 可单独补）"
+        },
+        {
+          "name": "Antigravity 可调用",
+          "ok": true,
+          "detail": "agy 1.4.9"
+        },
+        {
+          "name": "ZCode 可调用",
+          "ok": true,
+          "detail": "zcode 0.17.0"
+        },
+        {
+          "name": "只读能力可用",
+          "ok": true,
+          "detail": "Antigravity、ZCode 均报告可用"
+        },
+        {
+          "name": "归档与 git 可用",
+          "ok": true,
+          "detail": "归档根 /private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-qoder-plan-B-imKkfX/中文 空格项目/.reviews"
+        },
+        {
+          "name": "Antigravity 已认证",
+          "ok": true,
+          "detail": "探活通过（108s）"
+        },
+        {
+          "name": "ZCode 已认证",
+          "ok": true,
+          "detail": "探活通过（12s，模型 bigmodel-coding-plan/GLM-5.3）"
+        }
+      ]
+    }
+  }
+}

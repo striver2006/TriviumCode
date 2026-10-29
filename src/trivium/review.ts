@@ -1216,7 +1216,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
     if (!routed.model) {
       throw envError(
         `${critic} 侧没有可用模型：profile「${cfg.active_profile}」未定义 ${stage} 阶段的模型，` +
-          `且未通过命令行指定。` + (routed.nativeDefaultMissing ? `原生默认：${routed.nativeDefaultMissing}` : ''),
+          `且未通过命令行指定。`,
       );
     }
 
@@ -1253,10 +1253,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
     const briefAbs = path.join(metaDir(ref.layout, stage), briefFile);
     pendingBriefs.push({ fileName: briefFile, text: briefText });
 
-    const nativeModel = adapters[critic]!.nativeModelFor?.(cfg, routed.model,
-      routed.tierSource === 'probe_default' ? 'probe_default' : routed.origin.model ?? 'cell');
     requests[critic] = {
-      ...(nativeModel ? { native_model: nativeModel } : {}),
       run_id: runId, topic: ref.topic, stage, critic,
       project_root: ctx.projectRoot,
       subject_path: subjectPath,
@@ -1264,7 +1261,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
       out_dir: path.join(runDirBase, critic, 'out'),
       brief_path: briefAbs,
       brief_text: briefText,
-      model: nativeModel?.requested ?? routed.model,
+      model: routed.model,
       /*
        * 思考等级请求值（M11 第 6 步）：档位条目 / 档位表格子 / `--effort-<id>`，或裸 slug 格子回落的阶段级 effort。
        * 没有就不带这一键（形状同第 6 步之前：可选字段）。
@@ -1280,8 +1277,6 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
       tier: routed.tier,
       tier_source: routed.tierSource,
     };
-    const admission=adapters[critic]!.admissionFor?.(adapterCtx,requests[critic]!);
-    if(admission)requests[critic]!.admission=admission;
   }
 
   const primarySnap = snapshots[sides[0]!]!;

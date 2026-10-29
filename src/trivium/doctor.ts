@@ -17,7 +17,6 @@ import { probeVerifyCommands } from './probes/verify-commands.js';
 import { probeAgy } from './probes/agy.js';
 import { probeZcode, ZCODE_HEADLESS_UNREFRESHED, type ZcodeHeadlessUnrefreshed } from './probes/zcode.js';
 import { probeCodex } from './probes/codex.js';
-import { probeQoderCn } from './probes/qoder-cn.js';
 import { probeClaude, withClaudeProbeRoute, type StructuredArmCause } from './probes/claude.js';
 import { claudeProbeForRoute, claudeRouteKey, resolveClaudeRoute, type ClaudeRoute } from './adapters/claude-route.js';
 import { resolveTier, type TierOverrides } from './adapters/base.js';
@@ -1273,22 +1272,6 @@ async function runDoctorCore(opts: DoctorOptions, hooks: DoctorCoreHooks | null)
     }
   }
 
-  if (only === 'qoderclicn') {
-    const name = only;
-    const descriptor = agentByCliName(name)!;
-    const config = opts.config.agents[descriptor.id];
-    const selected=resolveTier(opts.config,descriptor.id,'code',overridesFor(descriptor.id));
-    const got = await inSection(name, async () => {
-      try {return await probeQoderCn(config && 'bin' in config ? config.bin ?? null : null, probe.cli[name] ?? defaultProbe().cli[name]!, opts.skipModelCalls ?? false,selected.model||null);}
-      catch(e) {blockers.push(`Qoder CN 路由探测失败：${(e as Error).message}`);return null;}
-    });
-    if (got !== ABORTED) markFinished(name);
-    if (got && got !== ABORTED) {
-      probe.cli[name] = got;
-      await checkpoint(name);
-      notes.push(`[${name}] 显式官方/Custom模型路由探测完成；可调用事实不等于严格只读审核准入`);
-    }
-  }
 
   /*
    * ── 已登记但尚无探针实现的 CLI ──

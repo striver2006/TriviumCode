@@ -74,7 +74,7 @@ export const SCRUB_SENTINEL = 'scrub.json';
  * 编排器自写、可能含模型输出原文的日志——就地脱敏而不删。
  * 适配器往 `req.out_dir` 写的每一份原始日志都必须在这里（契约测试对账）。
  */
-export const ORCHESTRATOR_LOG_FILES: readonly string[] = ['stdout.jsonl', 'stdout.json', 'trace.json', 'rollout.jsonl', 'stdout.ndjson', 'stderr.txt'];
+export const ORCHESTRATOR_LOG_FILES: readonly string[] = ['stdout.jsonl', 'stdout.json', 'trace.json', 'rollout.jsonl'];
 
 /** 单文件扫描上限：超过就记告警跳过，不把一份几十 MB 的文件整个读进内存 */
 export const SCAN_SIZE_CAP = 32 * 1024 * 1024;

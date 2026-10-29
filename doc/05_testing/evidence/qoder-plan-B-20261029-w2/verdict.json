@@ -1,0 +1,157 @@
+{
+  "schema": "trivium.qoder-plan-w2-verdict.v1",
+  "at": "2026-10-29T02:38:36.633398+00:00",
+  "baseline": "9a50bb8449150f11be3359d51da7cd97a6e75010",
+  "work_package": "W2",
+  "status": "failed-stopped-no-retry",
+  "formal_B_passed": false,
+  "authorization": "Bob: 执行 W2 正式入口",
+  "preflight": {
+    "ok": true,
+    "wall_ms": 110534,
+    "auth_calls": {
+      "gemini": 1,
+      "glm": 1
+    }
+  },
+  "native": {
+    "sessions": 1,
+    "duration_ms": 17730,
+    "session_id": "78ebf2de-7acc-404a-a714-9a871c6133be",
+    "route_label": "Auto",
+    "billing_key": "auto",
+    "credits": 1.159577364,
+    "underlying_model": null,
+    "read_calls": 0,
+    "write_calls": 0,
+    "permission_denials": 0,
+    "wrapper_pairs_matched": 2,
+    "wrapper_pairs_total": 2,
+    "business_failure_exit_code": 65,
+    "supervised_cli_exit_code": 143,
+    "earlyStopped": true
+  },
+  "root_cause": {
+    "observed_sequence": [
+      "wrapper-existence-check: EXISTS",
+      "topic claim: qoder-cn / claimed",
+      "topic resolve: missing original / 65"
+    ],
+    "classification": "客户端遗漏原稿前置步骤；没有观察到Write或artifact失败",
+    "contract": "Qoder正式技能第60行要求认领后缺原稿先Write，再进第1步；夹具要求Write到drafts后artifact归档",
+    "unknown": [
+      "运行时技能展开正文独立回读",
+      "夹具AGENTS完整加载回读",
+      "模型为何遗漏步骤"
+    ],
+    "no_retry": true
+  },
+  "formal_review_calls": {
+    "gemini": 0,
+    "glm": 0
+  },
+  "run_ids": [],
+  "drafts": [],
+  "new_gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "new_state": null,
+  "run_root_exists": false,
+  "fixture_head_matches": true,
+  "pin_mismatches": [],
+  "w1_source_changes": [],
+  "main_state_unchanged": true,
+  "main_open_gates": [],
+  "global_unchanged": true,
+  "production_flags": [
+    {
+      "id": "kimi",
+      "driverEnabled": false,
+      "criticEnabled": false,
+      "defaultSelected": false
+    },
+    {
+      "id": "qoder-cn",
+      "driverEnabled": false,
+      "criticEnabled": false,
+      "defaultSelected": false
+    }
+  ],
+  "admission_exists": false,
+  "installed_bundle_sha256": "22fce4561d43e6cc6b9d97f4fd3e2b19f0875ec769c209285a69be6587f8c604",
+  "private_home_absent": true,
+  "matching_process_identities": [],
+  "process_scan_limit": "按两个本批隔离根路径查进程；非完整逃逸后代证明",
+  "historical_indexes": [
+    {
+      "index": "doc/05_testing/evidence/qoder-plan-B-20261028-continuation/index.json",
+      "objects": 27,
+      "mismatches": []
+    },
+    {
+      "index": "doc/05_testing/evidence/qoder-write-20261028/index.json",
+      "objects": 16,
+      "mismatches": []
+    },
+    {
+      "index": "doc/05_testing/evidence/qoder-plan-B-20261029-retest/index.json",
+      "objects": 30,
+      "mismatches": []
+    },
+    {
+      "index": "doc/05_testing/evidence/kimi-qoder-progress-20261029/index.json",
+      "objects": 7,
+      "mismatches": []
+    }
+  ],
+  "old_readback": {
+    "state": {
+      "sha256": "baa9e179e0f89f22c01dfd29f7186a66f985ad24cf589275b02e597b085b6974",
+      "gates": {
+        "DriverCLI-qoder-cn-B/plan": {
+          "topic": "DriverCLI-qoder-cn-B",
+          "stage": "plan",
+          "state": "awaiting_approval",
+          "run_id": "20261028T151257Z",
+          "rerun_index": 1,
+          "since": "2026-10-28T15:20:51.582Z",
+          "session_id": null,
+          "driver": "qoder-cn"
+        }
+      }
+    },
+    "task": {
+      "sha256": "f6cc87582b0f4bd6c3cd326d9ab71673bc5322a090378c01180e800a54e981bf",
+      "gate": {
+        "stage": null,
+        "state": "idle",
+        "since": null,
+        "run_id": null
+      },
+      "open_gates": null,
+      "approvals": []
+    }
+  },
+  "approval_executed": false,
+  "restore_or_abandon_executed": false,
+  "candidate_installed": false,
+  "committed": false,
+  "pushed": false,
+  "next_recommendation": "先离线明确原稿必经步骤与传输规则，再决定新根新预算；不代写，不以分段验收冒充空根单会话通过",
+  "offline_audit_correction": "初次收尾核W1索引时误用相对索引目录拼接；其file实际是仓库相对路径，按索引原值复算7项均匹配。未改历史对象。",
+  "doc_contracts": {
+    "command": "node --test dist/test/test/contract/doc-archive-index.test.js dist/test/test/contract/entry-render-parity.test.js",
+    "exit_code": 0,
+    "raw_log": "/tmp/trivium-kimi-qoder-w2-doc-check-20261029.log",
+    "raw_log_sha256": "87913dd50318a744c66dfa1f64ff14f87db7832065c8a8637cc90f2b1ac213a7",
+    "tests": 49,
+    "pass": 49,
+    "fail": 0,
+    "skipped": 0,
+    "duration_ms": 185.92575
+  },
+  "git_diff_check_exit_code": 0
+}

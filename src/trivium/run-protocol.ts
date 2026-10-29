@@ -332,7 +332,6 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
     cfg: ctx.config,
     nodePath: ctx.config.runtime.node ?? process.execPath,
   };
-  for(const c of h.sides){const req=h.requests[c]!;const adapter=realAdapters()[c];if(adapter?.admissionFor){if(!req.admission)throw envError('执行交接缺少准入引用');adapter.admissionFor(adapterCtx,req,req.admission);}}
 
   // 新格式按引用还原各侧补丁、旧格式原样（EV-236 A2）；之后的逻辑看到的快照与去重前逐字段相同
   const snapshots = unpackSnapshots(h, runId);

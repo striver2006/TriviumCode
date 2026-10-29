@@ -1,0 +1,118 @@
+{
+  "schema": "trivium.qoder-segmented-verdict.v1",
+  "at": "2026-10-29T03:42:34.126Z",
+  "baseline": "9a50bb8449150f11be3359d51da7cd97a6e75010",
+  "stages": {
+    "P0": {
+      "status": "passed",
+      "targeted": {
+        "tests": 23,
+        "pass": 23
+      },
+      "full_check": {
+        "tests": 4205,
+        "pass": 4196,
+        "skip": 9,
+        "fail": 0,
+        "duration_ms": 355906
+      },
+      "frozen_sources": 563,
+      "freeze_reconciliation": "首次误把生成bundle纳入源码冻结；保留首轮检查与修正记录，最终冻结后重跑完整检查"
+    },
+    "P1": {
+      "status": "failed-stopped-no-retry",
+      "sessions": 1,
+      "duration_ms": 16346,
+      "num_turns": 2,
+      "full_reads": 5,
+      "discovery": true,
+      "activation_observed": false,
+      "reason": {
+        "reason": "P1出现段外Bash调用（事后监督）",
+        "id": "call_ab59edc13f7f44a9abf053e5"
+      },
+      "claim": {
+        "tool_id": "call_8ed7ef3b005b449388114808",
+        "permission": "allow",
+        "point": "shell.rule_exact.allow",
+        "shell_started": true,
+        "shell_exit": 143,
+        "shell_signal": 15,
+        "aborted": true,
+        "successful_claim": false
+      },
+      "extra_bash": {
+        "tool_id": "call_ab59edc13f7f44a9abf053e5",
+        "command": "ls -la \"drafts/\" 2>/dev/null || echo \"drafts directory does not exist\"",
+        "requested": true,
+        "enqueued": true,
+        "permission_decision": null,
+        "shell_started": null,
+        "result": "cancelled"
+      },
+      "writes": 0,
+      "artifacts": 0,
+      "cli_exit": {
+        "code": 143,
+        "signal": null,
+        "earlyStopped": true,
+        "timedOut": false,
+        "truncated": false
+      }
+    },
+    "interstage": {
+      "status": "failed",
+      "full_reads_verified": true,
+      "missing": [
+        "successful claim",
+        "native Write",
+        "archived original",
+        "final original Read"
+      ],
+      "original": null,
+      "report": "interstage.json"
+    },
+    "P2": {
+      "status": "not-started",
+      "reason": "P1与段间核验未通过",
+      "sessions": 0,
+      "authentication": {
+        "gemini": 0,
+        "glm": 0
+      },
+      "reviews": {
+        "gemini": 0,
+        "glm": 0
+      },
+      "worker": "未测",
+      "requested_routes": "未测",
+      "dispositions": "未测",
+      "next_plan": "未测",
+      "gate": "未测"
+    }
+  },
+  "model": {
+    "route_label": "Auto",
+    "billing_keys": [
+      "auto"
+    ],
+    "credits": 1.220495716,
+    "underlying_model": null,
+    "provider": null
+  },
+  "judgment": {
+    "body_delivery": "本批正式技能及四份项目正文均经同ID Read完整返回，hash相符",
+    "loading_unknown": [
+      "模型理解",
+      "slash自动展开内容等价"
+    ],
+    "failure_boundary": "严格P1监督策略对额外只读ls即停；同批claim被中止。证明动作范围未遵循，不能归因权限拒绝或断言无法撰稿；原稿链未测",
+    "supervision": "事后事件监督不是执行前拦截；本次ls缺权限和shell.started证据，不推断执行或原生拒绝",
+    "recommendation": "暂停Qoder自动Driver继续投入，暂限人工监督辅助撰稿。若未来恢复，先独立审定无副作用只读探查的验收范围，不能仅加强提示或挪用本批预算重跑",
+    "single_session_B_passed": false,
+    "segmented_passed": false,
+    "full_driver_admitted": false
+  },
+  "audit_label_limit": "interstage.checks.no_failure仅核wrapper退出/拒绝/运行锁，空账本时可为true；不是总体成功，native_success=false及passed=false是整体结论",
+  "closeout": "closeout.json"
+}

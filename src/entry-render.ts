@@ -43,7 +43,7 @@ export const ENTRY_SRC_DIR = 'skills-src';
 /** 另三家产物的仓库内落点（相对仓库根）；安装时拍平，不整树搬运（r9 §2.1） */
 export const ENTRY_OUT_DIR = 'skills/dual-critic/entry';
 
-export type ArgumentMode = 'substitute' | 'transcribe' | 'native-tail';
+export type ArgumentMode = 'substitute' | 'transcribe';
 
 export interface Carrier {
   agent: AgentId;
@@ -106,7 +106,7 @@ function parseCarrier(file: string, raw: string): Carrier {
     fail('frontmatter 至少要有 name 与 description（四家 skill 加载都靠这两个键）');
   }
   const args = doc!['arguments'];
-  if (args !== 'substitute' && args !== 'transcribe' && args !== 'native-tail') fail('arguments 只能是 substitute、transcribe 或 native-tail');
+  if (args !== 'substitute' && args !== 'transcribe') fail('arguments 只能是 substitute 或 transcribe');
   /*
    * 调用写法**不在载体 yaml 里登记**（M10b 第 3 步迁入注册表 `entryInvocation`）：CLI 生成的停点话术也要用它，
    * 而运行时读不到 `skills-src/`。yaml 里若还写着就当场报错——留着它，两处迟早各改各的。

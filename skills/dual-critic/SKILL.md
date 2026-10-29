@@ -72,17 +72,8 @@ GUI 进程不读 `~/.zshrc`，依赖 `PATH` 会在 VS Code 里失效（设计 §
 > result保持deny_pass/per_file_deny原字段，新增deny_evidence伴随事实；历史原false和原件不回算，summary判据不改。新目录文本Read回放及Grep模拟不是新模型能力，Grep仍须实际调用与完整配对。Codex冻结函数/原写标准、生产probe/adapter、Schema、版本/effort和全局配置保持。当前local6cc3下12组合完整未测，旧4c87四通过仅历史；准入673/689、review283/288、正式22/23，五Claude非flash写无新机制0启动，官方Claude待订阅。component/restricted判据替代未采用，仍须Bob独立明确批准；详见[设计契约](../../doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md#agent-access-directory-contract)，M11前置仍未完成。
 
 
-## Qoder CN 原生模型请求契约（2026-10-28，P2）
+## 当前 Agent 范围（2026-10-29）
 
-原生默认由异步探针取得并绑定当前入口、版本、平台、目录及配置指纹；同步 defaultModelFor 只消费已加载事实。resolveTier 的最末层来源为 probe_default，显式空值/无效档位不得回落。run.v3.requested_routes 可带 native_model（facts、requested、override、origin），worker 确定性逐项比对，不重新选默认；当前单侧结果可带 native_model（request、labels、usage_labels、failure、raw_exit_code、raw_signal）。仅扩展当前 v3，历史 v1/v2 不补写。
+仅支持 Codex、Claude Code、ZCode（GLM）、Antigravity（Gemini）。Kimi Code 与 Qoder CN 的候选接入、专用入口、探针、适配器和台账/租约运行逻辑已移除，旧任务与失败证据只作历史查阅。
 
-Auto/Fast 为路由标签，未知底层 model_effective=null、source=unverified；具体模型只读原生信封。modelUsage 的未知计费键独立保留，不推断别名。双通道明确回退或精确请求不一致立即中止，退出0仍判失败且审查结论不计票。Qoder 生产审核准入继续关闭，P2 无工具路线不等于 P3 能力验收；Windows ACL 未测时不复制认证。
-
-P2 首轮代码审修订：native_model 运行证据新增 execution_failure、verification_failure、stop_observation（channel/after_result/elapsed_ms），模型回退与执行失败/未核实分列。source=config 由目录内原生配置的真实显式验证产出；无配置默认只取首个 init。完整真机告警尾句纳入识别，停止时是否已见 result 必须如实记录。
-
-
-### 候选原生模型与组合准入（2026-10-28）
-
-当前 v3 可携带 binding_version=2/route_kind/route_descriptor、route_verified 和 requested_routes.admission(record_id/hash)，不回写 v1/v2。admission.v1 台账仅项目本地，形状校验后按 registry 校身份，缺证据或组合失配必须拒绝。Qoder 官方与 Custom 选择值严格区分，底层未知保持 null；可调用探针、代码审/verify 通过均不能代替安全准入。完整准入之前 registry 开关保持 false，不能临时开启跑三审再关闭。详见 PROTOCOL 当前组合准入段。
-
-候选审核facts必须单列已实测review_invocation_args，不能把无工具可调用参数用作审核；admission.v1必含deny_paths覆盖，原件hash绑定，扩集拒绝。无运行侧探针租约也有retention/scrub回收入口，活/未知身份仍不删除。
+当前 v3 的 native_model、requested_routes.admission 及 probe_default 枚举仅保留历史形状兼容与冻结一致性校验，四家不产生这些候选路线字段；没有原生默认回落或组合台账消费。v1/v2 原契约不改，身份仍由当前注册表校验；被移除身份不能发起新任务。

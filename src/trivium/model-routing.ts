@@ -1,11 +1,10 @@
-/** 统一同步路由：原生默认事实由厂商提供，通用层不识别厂商身份。 */
+/** 统一配置路由与冻结请求比对；历史可选字段仍按原值参与一致性校验。 */
 import type { Config, CriticId, CriticRequest, RunMeta, Stage } from './types.js';
 import { resolveTier, type TierOverrides } from './adapters/base.js';
-import { wiredAdapter } from './adapters/index.js';
 import { isDeepStrictEqual } from 'node:util';
 
 export function resolveConfiguredTier(cfg: Config, id: CriticId, stage: Stage, cli: TierOverrides = {}) {
-  return resolveTier(cfg, id, stage, cli, wiredAdapter(id)?.defaultModelFor?.(cfg));
+  return resolveTier(cfg, id, stage, cli);
 }
 
 export function requestRouteSnapshot(req: CriticRequest) {

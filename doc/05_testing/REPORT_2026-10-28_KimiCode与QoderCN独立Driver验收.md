@@ -1,5 +1,7 @@
 # Kimi Code 与 Qoder CN macOS 独立 Driver 验收
 
+2026-10-29 后续执行见 [分阶段工作计划](../08_project/工作计划_2026-10-29_Kimi与Qoder分阶段接入.md)。最新真实结果见第 13 节：入口明确原稿前置后，新根一次复验仍跳过撰稿、resolve 退 65；完整 B 未通过，停止同型重试，后续转向加载可观察性与分段验收。第 11、12 节旧失败原件保留。
+
 日期：2026-10-28。Driver：Codex。基线：`main / d4abd6f3d4e04276217b5e1f73a8ac02cb039e83`，开始时工作树干净。Bob授权继续独立Driver工作、暂不双审；本批没有启动真实A/B/C/D、审核者CLI或人工审批，没有提交、推送、发布或更改版本1.3.2。
 
 ## 1. 基线和隔离边界
@@ -438,3 +440,201 @@ test -f .trivium/bin/trivium && echo "EXISTS" || echo "MISSING"
 下一项最小操作是先离线审查存在性检查的精确授权与上游需确认分支，补充具名只读检查覆盖及定向回归；之后必须另行授权，才可在又一全新根重新做一次B。本批不再改配方或发起会话，不重跑已通过的写入正控制。原稿/裁决/下一版的真实Write→artifact→archive全链、真实双审/worker/请求冻结、gate和新审批停点仍未满足。Kimi模型、A/C/D、桌面/插件/Windows及审批后恢复/放弃均未测；没有启动本仓开发双审，没有提交、推送、安装或发布。
 
 本批后续Git交付：Bob明确授权“提交、推送”。交付前再次只读核对证据对象hash、最终冻结作用面、安装副本、全局所核hash及旧B归档/状态；本仓无开放开发闸门，当前main与origin/main基线一致。仅提交本批装置、回归、报告/矩阵和索引列出的证据；7份具名原始验证日志作为验收证据纳入，不收集其它运行日志或凭据。旧B的awaiting_approval和approvals=[]保持原样，不代为审批、恢复或放弃，也不启动新模型会话。上文及JSON中的未提交状态保留为验收收尾时点；实际提交号和远端结果以Git回读为准，Git交付不提升本次B或完整Driver准入结论。
+
+## 12. W2 正式入口执行：认领成功，缺原稿停止（2026-10-29）
+
+Bob 显式回复“执行 W2 正式入口”。在 main/9a50bb84 及 W1 已检查的候选上执行，未修改冻结脚本、产品源码或正式入口。新根为 `trivium-qoder-plan-B-imKkfX/中文 空格项目`，独立 run_root；执行前 pins 相符、drafts 为空、无认领及运行。完整路径和授权范围见[执行前冻结](evidence/qoder-plan-B-20261029-w2/authorization-and-freeze.json)。
+
+生产预检通过：Antigravity 1.4.9 与 ZCode 0.17.0 由编排器各探活一次，约 108 秒和 12 秒，总墙钟 110.534 秒；GLM 回报 `bigmodel-coding-plan/GLM-5.3`。未降低审核集合或新增 doctor。保留告警：“Driver 模型未声明，相关模型族比较将为 unknown；告警继续”。[预检原件](evidence/qoder-plan-B-20261029-w2/production-preflight-1793241176698.json)只证明认证与预检，不是评审完成。
+
+随后一次 Qoder CN 1.1.80 原生会话接收已授权的完整 `/dual-review-plan` 原文，CLI 字节仍为 `33050a4d…`，正式技能副本 sha256 为 `a560d0a6…`，与仓库相同。原生 stderr 报告技能激活、init 列出技能；未取得独立 Skill/Read 返回的展开正文，运行时正文完整性仍不能由 thinking 推断。init 模型为 Auto、计费键 auto、1.159577364 credits，底层模型/provider 为 null。实际会话墙钟 17.730 秒；不是 25 分钟超时。
+
+| 实际动作 | 同 ID 原生与账本证据 | 判定 |
+| --- | --- | --- |
+| wrapper 存在性检查 | `call_121591681f89489d8fc1f36c`；原样复合命令返回 EXISTS/exit 0，权限点 `shell.rule_exact.allow` | 上次具名权限缺口本次验证通过；这是 shell 检查，不是 wrapper 执行 |
+| plan 阶段认领 | `call_7a7a79f3a96443b0a980608f`；真实 wrapper exit 0、driver=qoder-cn、outcome=claimed；权限点 `shell.rule_prefix.allow` | 原生身份与认领命令关联成立；claimed_by=unknown-session，不声称该字段有独立会话认证 |
+| 主题解析 | `call_17b5c45e4cfd452ab40530c7`；真实 wrapper exit 65，权限允许 | 未先撰稿，找不到原稿；监督按首次失败停止 |
+| 阅读材料、原稿/裁决/下一版 Write、artifact | 无对应工具调用，drafts 仍空 | 本次未测，不拿旧 Write 正控制补齐 |
+| Gemini/GLM 正式双审、worker、请求路线、gate | run_ids=[]，无正式 run_root；task.gate=idle、state 不存在 | 正式评审各 0 次，未到人工停点；其余未测 |
+
+失败原文为：“在 .reviews/DriverCLI-qoder-cn-B/plan 下找不到原稿（形如 <日期>-DriverCLI-qoder-cn-B-qoder-cn.md）。该目录下现有：（空）”。监督终止后 CLI exit 143、signal=null、earlyStopped=true；未超时或截断。65 是实际业务前置条件失败，143 是随后监督终止，不能混为厂商崩溃。原生 permission_denials 为空，三个实际 Bash 的权限日志均 allow。证据：[原生会话](evidence/qoder-plan-B-20261029-w2/native-B-1793241251812.json)、[离线审计](evidence/qoder-plan-B-20261029-w2/audit/audit-1793241272318.json)。两个直接 wrapper 调用均完成精确 argv、输出、同 ID 结果的唯一关联（2/2）；W1 空运行审计本次直接成功。
+
+根因边界：仓库 Qoder 正式技能第 60 行明确要求“认领之后若原稿还没写，用 Write 落盘……再进第 1 步”；夹具 AGENTS 同样要求先读材料、Write 到 drafts/original.md，再 artifact plan 1 归档。实际工具序列是存在性检查→claim→resolve，缺少读取、撰写及传输。由此确认本次是原稿前置步骤被跳过，而非权限拒绝、认证失败、审核者故障或 archive 写入失败。夹具 AGENTS 是否完整进入模型上下文、技能运行期展开正文及模型遗漏的内部原因未获独立回读；不将单个样本泛化为 Qoder 永远不能执行技能。
+
+可行性判断：CLI 入口、权限规则和认领可接通；完整 B 的可靠执行尚未验收。建议先离线审查入口的步骤表达和夹具补充规则：把“原稿不存在则撰写并确认归档”设成清晰的必经检查点，核对产品默认写法与验收附加传输是否容易混淆，再验证相关源资产/渲染契约。若另做“已有原稿”的命令 B，应先由真实 Qoder 独立生成并留证，分别报告撰稿与 B 两段，不能宣称空根单会话通过；不得由 Codex 代写来规避失败。新真实运行须新根、新预算，本轮不重试、不修源后续跑、不预置正文。本结果不提升任一家审核者准入。
+
+收尾：私有 Qoder HOME 已清理并回读不存在，两个具名隔离根的进程路径扫描无残留；这是本次正常监督清理结果，不是完整逃逸生命周期证明。全局所核 hash 不变、冻结 pins 全符、业务 HEAD 不变，两家六个生产开关仍 false，已安装 bundle 未变、未安装候选。新根只保留认领及 idle task；新旧归档不删除、不审批、不放弃。W1 源码回归结果继续有效，本次仅追加文档/证据并复核文档契约；未提交、推送或发布。完整证据见[本批索引](evidence/qoder-plan-B-20261029-w2/index.json)与[结果及收尾](evidence/qoder-plan-B-20261029-w2/verdict.json)。
+
+## 13. 原稿前置补强后的新根复验仍失败（2026-10-29）
+
+Bob 要求“按你的建议执行后续工作”，本批执行离线修订、检查与新根一次正式 W2。基线仍为 main/9a50bb84，保留既有未提交变更；本仓无开放开发闸门，旧隔离 B 停点不操作。
+
+### 13.1 修订与验证
+
+仅调整入口源与验收说明：`review/claim.file.md` 增设独立第 0.5 步，已有原稿读取保留、缺原稿先读材料自行撰写、最终被审路径成功回读后才解析；显式文件不能被新稿替换。暂存后归档的项目约定与默认 Write 路径分开描述。B/D 共用该文件片段；共用职责说明不再遗漏准备被审对象。没有修改运行时 CLI、schema、guard/gate、权限规则、生产角色开关或版本字段。`npm run render` 重出 18 份受影响入口，未手改生成物；候选及新入口只供私有验收，不安装到用户全局目录。
+
+新夹具明确 Read 材料→Write drafts/original.md→artifact plan 1 返回 absPath→Read 最终原稿→resolve。保持同 ID Write 凭据与 hash、防覆盖、精确暂存路径、首次失败停点；不代领、不预写正文。增加跨载体原稿顺序契约和旧 W2 失败回放。定向 19/19；完整 `npm run check` 退出 0，4201 项、4192 通过、9 跳过、0 失败，358.738 秒。559 个源码及入口文件在检查、真实执行与收尾期间 hash 相符，88 个历史索引对象均匹配。证据：[自动化](evidence/qoder-plan-B-20261029-followup/automation.json)、[冻结](evidence/qoder-plan-B-20261029-followup/freeze-during-check.json)。自动化通过不证明模型遵循步骤。
+
+### 13.2 一次真实执行及首次失败
+
+新根 `trivium-qoder-plan-B-Jm28E9/中文 空格项目`，独立 runs，备料无原稿或认领。完整生产预检通过，认证 Gemini 约 38 秒、GLM 约 14 秒，各一次；总墙钟 40.099 秒。保留告警“Driver 模型未声明，相关模型族比较将为 unknown；告警继续”。Qoder CLI 仍为 1.1.80、二进制 sha256 `33050a4d…`；新正式技能源与私有副本均为 `8f01bfc04376361f9cd06891094cc9a41dd7597f5e937548f40407f26e76d586`，与旧 W2 的 `a560d0a6…` 不同。init 列出技能，stderr 报告激活；无独立 Skill/Read 展开正文回读，不能由安装字节或 thinking 推定模型完整读取了新指令。
+
+| 顺序 | 实际工具及结果 | 证据边界 |
+| --- | --- | --- |
+| 1 | `ls -la .trivium/bin/trivium`，成功 | 本次没有使用上次精确存在性命令；原生 `shell.readonly.allow` 自动放行 |
+| 2 | `ls -la .reviews/ 2>/dev/null || echo "No .reviews directory yet"`，返回目录尚无 | 同样为原生安全只读允许；不冒充 wrapper 调用 |
+| 3 | topic claim，driver=qoder-cn、claimed、exit 0 | 同 ID `call_da7f454930a74628aa549bef` 与 wrapper 账本关联 |
+| 4 | topic resolve，缺原稿、exit 65 | 同 ID `call_d8de1c808a424fb9afd9a4a5`；权限允许，首次业务失败 |
+| 同批排队 | `find .reviews …; find .trivium -name "task.json" …` | 与 resolve 同批请求；原生权限允许且 shell 已启动，监督停止时 aborted=true，不算成功完成 |
+
+全程无 Read/Write/artifact，drafts 仍空；正式评审各 0 次，run_ids=[]，无 worker/请求路线或裁决证据。监督在首次 resolve 失败后终止，未发第二会话或纠错提示。CLI exit 143、signal=null、earlyStopped=true、17.077 秒，未超时或截断；最终为 error_during_execution，Auto/auto、1.172151662 credits，底层模型/provider 未知。新 task.gate=idle、state 不存在，未到人工停点。
+
+额外 find 的工具结果含“The user doesn't want to proceed…”通用拒绝文案，但同 ID 日志明确 permission allowed=true、shell.started、shell.finished aborted=true。这是监督中止关联的工具终止，不能写成 Bob 人工拒绝或原生权限拒绝。监督收到结果才停止，不能阻止同批已排队工具开始；因此不宣称失败后绝无其它执行。显式 Bash allow 也不是其它命令的绝对 deny，客户端安全只读分支本次真实允许了 ls/find。没有放宽配置，也不把这些调用说成满足夹具“仅直接 wrapper/具名检查”的指令约束。
+
+证据：[备料](evidence/qoder-plan-B-20261029-followup/preparation-1793242318499.json)、[预检](evidence/qoder-plan-B-20261029-followup/production-preflight-1793242368161.json)、[原生会话](evidence/qoder-plan-B-20261029-followup/native-B-1793242400240.json)、[离线审计](evidence/qoder-plan-B-20261029-followup/audit/audit-1793242448132.json)。两个直接 wrapper 调用唯一关联 2/2；其余 Bash 不混入 wrapper 成功数。
+
+### 13.3 判断、下一路线与收尾
+
+本次修订没有在真实客户端上消除跳步，不能标记修复成功。事实支持“当前空根单会话 B 不能可靠交付”；仍未证明两类原因中哪一类成立：新技能/项目说明未完整加载，或加载后未遵循。两次同型失败后停止继续改措辞、反复消耗模型配额；保留 Qoder CLI 接线可行、完整自动主攻未准入的分项判断。
+
+下一路线具体拆为：先用原生工具显式读取当轮技能与项目说明，保留正文/路径/hash 关联，区分发现、激活、正文读取；再由真实 Qoder 单独完成材料读取、认领和原稿 Write→artifact→Read；独立离线核验通过后，另起正式 B 审查已有原稿。编排器在每段之间检查真实文件与凭据，缺件即停，不能由 Codex 补正文。各段单列结果，不能包装为空根单会话通过；显式 Read 能证明工具将正文提供给模型，仍不能证明模型内部理解或原始 slash 展开完全一致。本批不再启动这些新会话，所需新预算列入工作计划。
+
+全局所核 hash 不变、源 pins 相符，业务 HEAD 不变、六生产开关仍 false、无准入台账；已安装 bundle 仍 `22fce456…`，未安装候选。旧 B state/task hash 不变，仍 awaiting_approval / approvals=[]；新夹具无新审批停点。私有 Qoder HOME 已删除回读，具名根进程扫描无残留，正常监督清理不等于完整逃逸后代或监督者强杀验收。收尾 JSON 的首次生成脚本有 stdin 编码错误，发生于执行前；修正离线脚本后完成，不改源码/原生原件、不追加模型调用。结果见[判定与收尾](evidence/qoder-plan-B-20261029-followup/verdict.json)和[完整索引](evidence/qoder-plan-B-20261029-followup/index.json)。未提交、推送、发布；Kimi、其它入口及客户端均未新增真实测试。
+
+## 14. 加载证据与分段主攻（2026-10-29）
+
+Bob明确授权工作计划第10节的装置修正、P1及有条件P2。基线仍为main/9a50bb84，保留既有未提交变更、失败样本及旧待审批工件；本仓无开放开发闸门。新根为`trivium-qoder-plan-B-PLotcM/中文 空格项目`，独立run_root。预算P1/P2各一次25分钟、120交互、模型请求重试0；P2固定gemini/glm、认证各至多一次、正式评审至多三轮，不互借预算。
+
+### 14.1 P0 装置与检查：通过
+
+新增`qoder-segmented.mjs`及零模型回归，复用生产archive、同ID Write凭据、防覆盖与失败锁止。P1 wrapper只允许认领、原稿传输和artifact帮助；写权限只有original.md的精确Edit路径，P2才开放剩余六个具名暂存文件。全文Read须同ID、连续行号还原及hash匹配，不能只靠文件存在、技能发现或副本hash。模型之外的段间核验通过后，P2路径只能取本批成功artifact。没有修改正式技能正文、运行时CLI、生产开关或版本。
+
+原生安全只读规则仍可能允许其它Bash；监督收到事件后才停止，不能声称执行前拦截，也不能保证同批排队工具未开始。P0没有代领、预置原稿或调用审核者。
+
+首次冻结误含构建会重写的生成bundle；保留首轮check（4195通过/9跳过/0失败）及[修正记录](evidence/qoder-segmented-20261029/freeze-revision.json)，不作为放行证据。排除生成物、保持实际隔离candidate独立pin后，最终定向23/23；最终`npm run check`退出0，4205项、4196通过、9跳过、0失败，355.906秒。563个源码/入口文件及20项pins相符，新drafts为空、无task/run。[P0放行](evidence/qoder-segmented-20261029/P0-ready.json)、[完整检查](evidence/qoder-segmented-20261029/full-check-final.json)只证明准备与自动化，不是原生验收。
+
+### 14.2 P1：全文返回已证，额外探查触发停止
+
+唯一Qoder CN 1.1.80会话于本地11:39启动，CLI仍`33050a4d…`，正式技能`8f01bfc0…`与第13节相同。墙钟16.346秒、2次交互；Auto/auto、1.220495716 credits，底层模型/provider为null。[原生P1](evidence/qoder-segmented-20261029/native-P1-1793245196019.json)保留全部工具调用、同ID结果与权限日志。
+
+| 观测 | 证据 | 判定 |
+| --- | --- | --- |
+| 技能发现 | init.skills含dual-review-plan | 已证发现，不代表正文展开 |
+| 技能激活 | 无Skill调用、stderr无激活事件；本段只作契约参考 | 未观察到激活，不把Read冒称slash激活 |
+| 正式技能全文Read | `call_aeedbb64b5c847d4abd41fb4`同ID成功；还原hash为`8f01bfc04376361f9cd06891094cc9a41dd7597f5e937548f40407f26e76d586` | 全文与当轮技能逐字一致 |
+| 项目正文Read | AGENTS、README、材料、sum四份均完整返回并与冻结hash相符 | 关键输入5/5，权限均`fs_read.working_dir.allow` |
+| 认领请求 | `call_8ed7ef3b005b449388114808`；`shell.rule_exact.allow`、shell.started，随后exit143/signal15/aborted=true | 已允许并开始，但无成功认领；wrapper账本为空，task不存在 |
+| 同批额外Bash | `call_ab59edc13f7f44a9abf053e5`请求检查drafts目录的ls复合命令 | 已请求/排队；严格分段监督因段外Bash立停。无该ID权限决策或shell.started证据，不推断已执行或原生拒绝 |
+| Write→artifact→Read原稿 | 无调用，drafts仍空 | 原稿链未测，不用旧正控制补齐 |
+
+额外命令原文为`ls -la "drafts/" 2>/dev/null || echo "drafts directory does not exist"`。两个Bash同批排队，监督终止连带中断已开始的认领。工具返回的通用“用户不想继续/用户取消”文案来自监督终止；原生日志为`denied_by_permission=false`，不能归因Bob人工拒绝或原生权限拒绝。CLI退出143、signal=null、earlyStopped=true，未超时/截断。没有第二会话、纠错提示、改写命令或换通道补稿。
+
+### 14.3 段间核验、P2 与判断边界
+
+[段间核验](evidence/qoder-segmented-20261029/interstage.json)确认五份Read全文及hash，但成功认领、真实Write、归档原稿和最终回读均缺失，整体passed=false；没有代写或修补。工具返回的五份正文另存于`loaded-bodies/`，工具ID和来源见核验JSON。审计中`checks.no_failure=true`仅表示没有wrapper非零账本/原生权限拒绝，空账本下可为true，不是会话成功；`native_success=false`与整体失败结论不变。
+
+P2未启动：Qoder会话0、认证两家各0、正式评审各0、run_ids=[]。worker交接、请求路线、意见全文、逐条裁决、下一版计划及gate均未测；无新人工停点，没有approve/abandon或恢复旧运行。
+
+本批排除了“没有任何可核实技能正文返回”的证据缺口；仍不能证明模型理解或slash自动展开等价。失败直接来自**严格装置策略对额外只读探查立停**，支持“动作范围没有按本批约定遵循”。由于监督在撰稿前终止，不能断言Qoder不能撰稿，不能归因写权限失败、archive故障或模型永久缺陷。分段可行性尚未通过。
+
+建议暂停Qoder自动Driver继续投入，暂限人工监督辅助撰稿。若未来恢复，先独立审定无副作用只读探查与关键失败的边界，再决定新批预算；不继续只改提示词，不用P2额度重跑P1。分段、空根单会话B、完整Driver准入均不宣称通过。
+
+### 14.4 收尾
+
+[收尾回读](evidence/qoder-segmented-20261029/closeout.json)确认私有HOME不存在、具名项目根/私有HOME的PID与lstart路径扫描无残留；不外推为逃逸后代或监督者强杀验收。全局所核账号/模型/provider/权限文件hash不变，冻结无差异，HEAD及1.3.2版本未变，已安装bundle未变。历史101个索引对象和旧待审批state/task hash相符，六生产开关仍false、无准入台账。没有安装候选、升级CLI、提交、推送、发布、审批、放弃或恢复。完整结果与文件hash见[判定](evidence/qoder-segmented-20261029/verdict.json)、[证据索引](evidence/qoder-segmented-20261029/index.json)。
+
+
+## 15. 人工监督 CLI 交接准备（2026-10-29）
+
+Bob要求自动完成准备，再交给本人操作，并明确选择Qoder CN CLI。本节是新交接批，不覆盖第12—14节原件。CLI仍冻结1.1.80对应的`33050a4d2ac134e2f8d0a5293cba3df009d7bdbe0f3ae478c73057f113050a02`；新项目根为OU4vuq，独立run_root、原稿目录为空、无task、无run。会话UUID预分配为`766c0baf-0bfa-4ad1-8618-6e059c130def`，只是预备标识，不证明会话已创建。
+
+### 15.1 装置修正与自动化
+
+`qoder-manual.mjs`准备一次性终端启动器、冻结的正式入口副本和P1任务说明。实际启动前必须有通过的ready且全部源码/pins相符、从未使用且需要TTY。由Bob在原生CLI提交任务；不预置原稿，不代认领。正式技能发现、激活、显式Read仍须分别从真实原件判定，副本hash不充当加载证据。交互会话路径依据[官方文档](https://docs.qoder.cn/en/cli/sessions)，实际结构尚待本批验证。
+
+有限具名pwd/ls探查只改变事后观测分类，不改变原生权限；历史14.2额外ls之前的事件回放不再触发停止，包含后续真实取消的完整历史仍判失败。其它未知Bash、关键工具失败立即停止，不改命令或切通道。Write只授权具名original.md；artifact同步读取本批私有JSONL，要求同会话、同ID结果及Write正文hash，再由archive唯一出口防覆盖落盘。坏行、会话串用、冲突结果或缺凭据拒绝，原件不足不补造。
+
+零模型定向27/27通过，包含4个新增人工交接测试；合成会话明确标识为合成，不能冒充原生作者。Node继承TTY的单独机械验证确认stdin/stdout为TTY且能收到输入、exit0，不是Qoder测试。源码冻结566项与pins26项；完整检查4209项、4200通过、9跳过、0失败（测试351.191秒）；文档索引27/27及git diff --check通过。完整检查与最终放行见[完整检查](evidence/qoder-manual-20261029/full-check.json)、[manual-ready](evidence/qoder-manual-20261029/manual-ready.json)。完整检查期间不修改源码冻结面。
+
+### 15.2 四段状态及判断边界
+
+| 段 | 本批结果 | 失败原因或未测边界 |
+| --- | --- | --- |
+| P0 | 通过，已交接待执行 | 定向27/27、完整检查4200通过/9跳过/0失败；冻结与保留核验通过后写入manual-ready |
+| P1 | 未启动 | 真实会话0；等待Bob执行一次启动器；原生交互参数生效、工具原件形状、加载与撰稿未测 |
+| 段间核验 | 待P1 | 无真实作者/正文/归档/最终Read，不能用合成测试补齐 |
+| P2 | 未启动且锁定 | Qoder会话、认证和正式评审各0；真实双审、worker、路线、意见全文、裁决、下一版与gate均未测 |
+
+启动预算25分钟包含等待输入，传入120次和模型请求重试0，另以120条助手记录保守监督；参数被交互客户端如何消费须实测，不把传参当成功。原生安全只读仍可能允许其它Bash；监督属于事后观察，不是执行前拦截。完成或失败后Bob用`/quit`退出，启动器保存原件和权限决策、核清理及全局hash。正常收尾代码已接通，但本批真实清理与监督进程遭强杀均未测。
+
+本批未复制认证，未调用真实模型/审核者，未调整全局账号/模型/provider/权限，未安装候选、升级CLI、改版本、提交、推送、发布、审批或恢复。历史127个索引对象及旧待审批state/task hash一致，主仓无开放闸门。最初保存的preservation-before对progress索引误按目录相对路径解析，保留该诊断；preservation-verified按该索引实际仓库相对路径核对全部一致，不更改旧原件。
+
+Bob的具体动作见[操作单](evidence/qoder-manual-20261029/HANDOFF.md)。结束后由Codex离线核验，原稿不得代写或修补；显式Read不证明理解或slash展开等价。通过分段也不代表空根单会话B或完整Driver准入；当前仍限定为人工监督辅助撰稿。完整文件hash见[本批索引](evidence/qoder-manual-20261029/index.json)。
+
+最终环境回读有一项例外：Codex自身`~/.codex/auth.json`在完整检查期间hash变化（mtime为2026-10-29 12:30:17 +08:00），修改原因unknown；本轮未执行写入该文件。初次全局一致性核验因此未生成ready，差异原样记录于environment-change.json。该文件不复制、不参与本批Qoder P1；按P1实际依赖核对，其余全局受检文件、Qoder认证/权限及冻结面均未变，故交接放行，但`global_unchanged=false`如实保留，不宣称全局全部未变。实际P1仍从启动时重新记录全局前后态，段间不得忽略新变化。
+
+
+### 15.3 Bob执行P1后的核验：只读探查被监督终止，P2不启动
+
+本节更新15.2准备时点的未测项，不改写旧原件。实际会话`766c0baf-0bfa-4ad1-8618-6e059c130def`于2026-10-29 13:09:36 +08:00开始，墙钟88.342秒（含等待输入），11条assistant记录不能直接等同模型交互数；共6次Read和1次Bash，7/7同ID结果与allow权限配对。完整JSONL已保存在[原件](evidence/qoder-manual-20261029/manual-session.json)，hash为`c150305fbe1553265b6d2c6ecd35be2e04bdf036853b4926ce4658ea2b84201d`，与清理记录绑定一致。原生交互记录的这7次工具可读取已实测；Write记录、artifact同步消费及120次/25分钟边界未触发，仍未测；模型请求重试0只记录传参，不由短会话证明完整预算机制。
+
+| 项目 | 核验结果 |
+| --- | --- |
+| P0 | 离线准备通过；566项源码/26项pins无变化，但只读探查范围和/model变化观测存在限制 |
+| 技能发现/激活 | 没有独立发现事件；未观察Skill激活，本段正式技能仅作契约参考，不把Read当slash激活 |
+| 显式读取 | 正式技能、AGENTS、README、材料、sum五份全文均同ID返回并还原hash匹配；技能Read ID为`call_95470d97bdf94f5cb516f234`，正文hash仍`8f01bfc04376361f9cd06891094cc9a41dd7597f5e937548f40407f26e76d586` |
+| P1停止 | `call_4f53eb78752b404381bcd408`请求`git diff sum.cjs; ls drafts 2>/dev/null || echo "no drafts dir"`。原生`dontAsk`在`shell.readonly.allow`处允许，shell于13:11:04.528启动、13:11:04.575以exit0结束，aborted=false；同ID成功结果返回158字符diff |
+| 监督结果 | 原件stop_reason为段外Bash，发送SIGTERM、gone=true、未升级SIGKILL；CLI退出143。监督未阻止该Bash执行，是执行后的停止 |
+| 认领与原稿链 | 无认领调用、无Write、无artifact、无最终原稿Read；wrapper/write receipt均空，task不存在、drafts与run_root均空 |
+| 段间核验 | 不通过；作者/正文/归档/最终回读缺失，原稿路径null，Codex未补稿 |
+| P2 | 未启动，gemini/glm认证及评审各0；worker交接、请求路线、意见全文、逐条裁决、下一版及gate未测 |
+
+模型之外重算的[段间核验](evidence/qoder-manual-20261029/P1-interstage.json)保留原始工具ID、权限、读取hash和各项布尔值；实际返回的五份正文另存`P1-loaded-bodies/`。本次不存在“未取得正式技能正文”的证据缺口；但理解和slash展开等价仍unknown。直接失败原因是装置未将这项正常只读复合探查纳入观测范围，并在撰稿前结束会话。不能将其说成原生拒绝、作者能力失败或归档失败。上轮仅增加有限pwd/ls分类，尚不足以让这类真实会话走到撰稿。
+
+另行记录路线偏差：原件含13:10:07的`/model`和13:10:40的“Model set to Qwen3.8-Flash (persisted)”，随后runtime-config与assistant信封为`qfmodel`，用户任务记录businessModelKey同值。可核实的是本批原生选择/标签，不是底层模型身份；provider和underlying_model仍null。该选择不符合交接的不切模型条件，也不能把本批视作此前Auto路线的原样复验。监督没有即时检测此变化，属于装置观察缺口；本轮只记录，不放宽后补通过、不修改配置、不再起会话。全局前后hash一致，因此不推断全局模型配置变化。
+
+[最终收尾](evidence/qoder-manual-20261029/P1-closeout.json)：私有HOME不存在，按本批路径的PID/lstart扫描无残留（不外推逃逸后代），会话前后及本次回查全局hash一致；主仓state与旧待审批state/task未变，历史127个对象、17个准备索引对象均一致。没有新评审/审批、恢复/放弃、安装、CLI升级、版本修改或Git交付。本轮只补证据和文档，文档索引与diff检查另录；沿用准备时完整检查，不冒充本轮重跑。
+
+结论：P1与段间核验不通过，P2不启动；分段、空根单会话B、完整Driver均未获准入。保持暂停自动Driver、限定人工监督辅助撰稿。若以后恢复实验，应先解决装置只读观测范围与路线冻结，而非逐条添加命令样例或增强提示词。本批已停止，Bob无需再执行命令。增量文件索引见[index-P1.json](evidence/qoder-manual-20261029/index-P1.json)，旧index.json原样保留。
+
+
+### 15.4 用户授权重测：人工CLI R2（准备时点）
+
+Bob明确要求重测且不擅自改动后，建立新批R2/W0xlfE，保留15.3全部原件及旧停点。会话预留ID`c1034437-b4f1-4bea-befb-79d26eed7389`，真实会话尚未启动。policy_version=2替换有限命令样例分类：额外Bash仅按唯一同ID原生`allow / shell.readonly.allow`观察；等待决策时不提前判失败，有工具结果却缺决策、错ID、其它allow、拒绝或错误均停止。精确wrapper参数、Write路径、同ID正文hash、防覆盖和失败停止不变，未知动作不能据文本猜安全，也不能宣称执行前隔离。
+
+启动显式固定`--model Auto`，检测/model或runtime-config非空路线偏移。只在私有配置中生效，不修改用户全局模型；底层身份保持unknown。R2用只读`--help`确认参数存在，无认证复制、无模型请求；实际Auto交互回读和新增监督行为仍须本批实测。新增3项零模型回归覆盖缺权限/错ID/其它allow/deny/工具失败/越段命令、路线变化及OU4vuq历史回放；定向合计30/30通过。回放中移除路线事件的派生样本明确标为合成，不改判旧失败。
+
+| 段 | 准备时点状态 |
+| --- | --- |
+| P0 | 通过：定向30/30、完整4212项中4203通过/9跳过/0失败（测试365.167秒）；566源码/26pins及全局配置一致，旧闸门和157个历史对象未变；无原稿/认领/run，未复制认证 |
+| P1 | 未启动，Bob仅执行新启动器与指定P1指令；一次会话25分钟/120次/零请求重试 |
+| 段间核验 | 待实际工具及正文证据，不代写修补 |
+| P2 | 未启动且锁定，两家认证/评审0次；原稿链不通过不得进入 |
+
+此前157个索引对象复核一致，含OU4vuq的30个增量索引对象；主仓和旧待审批闸门按原hash保留。完整检查、最终冻结与操作说明分别见[R2检查](evidence/qoder-manual-r2-20261029/full-check.json)、[R2放行](evidence/qoder-manual-r2-20261029/manual-ready.json)、[R2操作单](evidence/qoder-manual-r2-20261029/HANDOFF.md)。正式技能未改，生产开关不启用，候选不安装、版本不改、无Git交付或审批。P0通过不能替代P1/分段/完整Driver准入。
+
+
+### 15.5 R2 P1核验：真实权限拒绝，段间不通过，P2未启动
+
+本节更新15.4准备时点。Bob按新启动器执行后报告结束，Codex未再起模型会话。原件[manual-session](evidence/qoder-manual-r2-20261029/manual-session.json)的SHA256为`677820d359bb4e87ae66eaa5dde0d4624581b76fb64260bff99ca8fa37349aac`，与清理记录一致。唯一会话`c1034437-b4f1-4bea-befb-79d26eed7389`共29.875秒，42条事件、11条assistant记录，不直接当作交互次数；共5次Read和1次Bash，6/6有同ID结果。
+
+| 检查 | 结果与证据 |
+| --- | --- |
+| P0准备 | 定向30/30、完整4203通过/9跳过/0失败仍成立；566源码/26pins未变。本次暴露存在性探查未被P1精确Bash规则覆盖，离线通过不等于权限配方完备 |
+| 模型路线 | --model Auto请求与两条runtime-config的Auto一致，原件无/model；底层模型/provider仍null。没有用户切模型证据 |
+| 正式技能 | `call_37352618c68b4854a3b80ee0`同ID全文Read成功；还原hash`8f01bfc04376361f9cd06891094cc9a41dd7597f5e937548f40407f26e76d586`，与冻结技能一致 |
+| 其它必需Read | README、材料、sum全文成功；AGENTS显式Read为0，所以必需项4/5。不把P1任务文件的额外Read计成AGENTS |
+| AGENTS自动附带 | 原生attachment.files内正文与冻结AGENTS逐字相同，hash`73f8ec952a1f5fc1475115d4e39bde205cf97f65ecc917bbf903caad3b87d9f2`；独立记自动附带，不能替代显式工具读取 |
+| 原生拒绝 | `call_8e9ba3c918d7403f86387158`，命令`test -f ".trivium/bin/trivium" && echo "EXISTS" || echo "MISSING"`；13:29:27.895 +08:00原生`mode.dont_ask.deny`，allowed=false；同ID结果is_error=true，tool.execution.finished为denied、denied_by_permission=true，无shell.started记录 |
+| 监督/退出 | 监督在原生拒绝后发SIGTERM，CLI退出143；不是将成功工具误标成原生拒绝，也不能把事后监督说成执行前拦截 |
+| P1原稿链 | 未调用认领/Write/artifact/最终原稿Read；两份账本为空，task不存在，drafts/run_root为空 |
+| 段间核验 | 不通过：显式Read缺项，作者/正文/归档/回读缺失，原稿路径null；未由Codex补写 |
+| P2 | 未启动；Qoder会话、gemini/glm认证与正式评审均0；worker/路线/意见全文/裁决/下一版/gate未测 |
+
+权限证据与失败链见[段间核验](evidence/qoder-manual-r2-20261029/P1-interstage.json)。返回正文另存`P1-loaded-bodies/`，其中AGENTS-auto-attachment.md明确不是Read凭据。未取得独立技能发现或激活事件；显式技能正文可核实，理解与slash展开等价unknown。固定Auto与原生拒绝监督已取得本批实证，写入/归档、只读额外探查allow分支和预算上限本批仍未触发，不能扩为通过。
+
+直接阻塞是原生权限配方不接受存在性探查：P1原生allow仅列claim、artifact plan、artifact help，未列该test复合命令；项目说明保留了无引号的存在性检查，而本次模型给路径加引号。未做对照，不能归因引号本身，也不能声称去掉引号即可通过。原生错误建议切模式不构成用户授权，未照做。本轮不改写命令、切通道、改权限、重启或进入P2。阶段在认领前终止，不证明模型无法撰稿，亦不应归因技能正文未加载；显式AGENTS读取缺失则作为独立流程证据缺项保留。
+
+[最终收尾](evidence/qoder-manual-r2-20261029/P1-closeout.json)确认私有HOME不存在、本批路径/PID/lstart扫描无残留（不扩展到逃逸后代），会话前后及本次回查全局hash一致；主仓state和旧待审批state/task未变，历史157个索引对象、17个R2准备对象无差异，版本仍1.3.2、已安装bundle与HEAD未变。本轮仅补证据/文档，未修改装置源码或权限，未安装候选、升级CLI、提交/推送/发布、approve/abandon或恢复。文档索引及diff检查记录在本批增量证据；不重跑完整源码检查冒充新实现验证。
+
+维持暂停自动Driver、限定人工监督辅助撰稿的建议。下一步先离线统一入口约定、原生权限配方及读取验收边界，不再追加提示或原样重跑；本批到此停止，Bob无需执行其它命令。分段、空根单会话B和完整Driver均未通过。增量索引见[index-P1.json](evidence/qoder-manual-r2-20261029/index-P1.json)，准备index.json原样保留。

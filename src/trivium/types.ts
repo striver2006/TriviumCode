@@ -272,9 +272,9 @@ export interface VersionProbe {
  * 盘上旧结论由 `migrateProbeSection` 在读盘时搬到新名，一次性完成。
  */
 export interface CommonProbe {
-  /** 原生官方模型事实；独立于只读准入，只有探针能准备。 */
+  /** 历史原生官方模型事实的只读兼容字段，当前探针不再生成。 */
   native_default?: NativeModelFacts;
-  /** 逐路线可调用事实；不代表只读审核准入。 */
+  /** 历史逐路线事实的只读兼容字段，不代表当前支持或审核准入。 */
   native_routes?: NativeModelFacts[];
   /** CLI 可执行入口的绝对路径。null = 未探到（该侧不可用） */
   entrypoint: string | null;
@@ -1008,7 +1008,7 @@ export type TierName = 'low' | 'medium' | 'high';
  */
 export type TierSource = 'cli' | 'profile' | 'agent_default' | 'legacy' | 'override' | 'probe_default';
 
-/** 仅非敏感事实；原始用户设置、认证绝不进入请求。 */
+/** 历史 v3 原生路线的只读兼容形状；当前四家不生产此字段。仅保存非敏感事实。 */
 export interface NativeModelFacts {
   binding_version?: 2;
   route_kind?: 'official' | 'custom';
@@ -1058,13 +1058,6 @@ export interface NativeModelRequest {
 }
 
 export interface AdmissionReference { record_id:string; record_sha256:string; }
-export interface AdmissionEvidenceRef { path:string; sha256:string; case_id:string; }
-export interface AdmissionRecord {
-  record_id:string; agent:string; project_root:string; binding_sha256:string;
-  tested_at:string; expires_at:string;
-  deny_paths:string[];
-  checks:Record<string,{state:'pass'|'fail'|'untested';evidence:AdmissionEvidenceRef[]}>;
-}
 
 export interface NativeModelResult {
   /** 路线一致性+绑定对照证明；不提升底层身份。未准入诊断为false。 */
@@ -1179,21 +1172,6 @@ export interface ClaudeCriticConfig extends TierFields {
   settings_env_source?: 'user_settings' | null;
 }
 
-/** Kimi Code 原生路线配置。当前仅登记为 Driver；审核者准入仍由真实能力证据控制。 */
-export interface KimiCriticConfig extends TierFields {
-  vendor: 'moonshot';
-  bin?: string | null;
-  /** 显式模型请求；未回读时不得写入 model_effective。 */
-  model?: string | null;
-}
-
-/** Qoder CN 原生路线配置。Auto 标签不是底层模型身份，生效模型必须单独回读。 */
-export interface QoderCnCriticConfig extends TierFields {
-  vendor: 'qoder-cn';
-  bin?: string | null;
-  model?: string | null;
-}
-
 /**
  * 单个 Agent 的配置段（`config.v2` 的 `agents.<id>`）。
  *
@@ -1201,8 +1179,7 @@ export interface QoderCnCriticConfig extends TierFields {
  * （antigravity 要 `agent` 与 `effort`，zcode 只要 `entry`），
  * 硬压成同一个形状只会得到一堆互相不适用的可选字段，校验也就形同虚设。
  *
- * **既有四家形状自 M9 第 4 步起全部就位**；Kimi/Qoder CN 的原生配置形状随后加入，
- * 但两家当前仍为 Driver-only，不因此获得审核者准入。
+ * **四家形状自 M9 第 4 步起全部就位**。
  * 此前配置里写 `agents.claude` 会被 schema 拒，那不是缺陷而是「形状尚未定义」
  * 的如实反映——设计 13.1.1 允许 Driver 段存在，但没说它长什么样，
  * 凭空放行等于承诺一个不存在的契约。
@@ -1216,9 +1193,7 @@ export type AgentConfig =
   | GeminiCriticConfig
   | GlmCriticConfig
   | CodexCriticConfig
-  | ClaudeCriticConfig
-  | KimiCriticConfig
-  | QoderCnCriticConfig;
+  | ClaudeCriticConfig;
 
 /**
  * 一条判不实的写入线索（`CriticResult.suspected_write_events` 的元素）。

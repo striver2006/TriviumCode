@@ -11,7 +11,7 @@
 >
 > **⚠️ 本手册描述的是当前可用的系统**：缺省由 Claude Code 主攻，缺省三侧（Antigravity / ZCode / Codex）背靠背审查。
 >
-> 三审加严已随 M8 第 3 步可用（默认即三侧，D4-4）；第四家 Claude Code 作审核者已随 M9 接入，入选前提是由另一家当 Driver。Kimi Code 与 Qoder CN 当前仅生成候选 L2 入口，客户端验收未完成、Driver 开关关闭，不计入审核者集合。
+> 三审加严已随 M8 第 3 步可用（默认即三侧，D4-4）；第四家 Claude Code 作审核者已随 M9 接入，入选前提是由另一家当 Driver。当前仅支持这四家 Agent。
 > **换一家 Agent 在自己的会话里主攻已可用（M10b，2026-09-26）**：各载体的入口、调用写法与护栏等级（L1 / L2）见
 > [QUICKSTART §5.2](./QUICKSTART.md)，本手册 §八开头给出 L2 时哪几道护栏还在。逐审核者档位、模型/思考等级与厂商 profile 透传已实现（M11）；请求与生效回读分列，能力边界见使用手册。
 > 本手册正文的示例以 Claude Code 主攻为主；Codex 侧的 provider 配置由 `doctor` 探测并给样例（v1.0.3 起不再写「随 M10b 补写」）。
@@ -44,7 +44,7 @@
 
 | 角色 | 是谁 | 能做什么 |
 | :--- | :--- | :--- |
-| **Driver**（执笔者） | 缺省 Claude Code；Kimi Code、Qoder CN 当前为未验收的候选 L2 入口 | 当轮唯一能改业务代码的人。写方案、写代码、读审查意见、逐条裁决 |
+| **Driver**（执笔者） | 缺省 Claude Code；也可选择 Codex、Antigravity 或 ZCode | 当轮唯一能改业务代码的人。写方案、写代码、读审查意见、逐条裁决 |
 | **Critic-A** | Google Antigravity（`agy`） | **只读**。独立审查，意见编号前缀 `AGY-` |
 | **Critic-B** | 智谱 ZCode（`zcode.cjs`） | **只读**。独立审查，意见编号前缀 `GLM-` |
 | **Critic-C** | OpenAI Codex CLI（多模型，经你配好的 provider 接入） | **只读**。独立审查，意见编号前缀 `CODEX-` |
