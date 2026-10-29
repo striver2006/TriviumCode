@@ -74,7 +74,7 @@
 | ISSUE-02 | P1 适配缺口 | **已修复（1.3.3）+ 复测通过** | ZCode 0.17.0 停点（P-32；§4.2） |
 | ISSUE-03 | P1 环境 | 维持阻塞 | 本机 codex 第三方路线 read-only 沙箱失守 + 默认模型不在目录；待官方凭据或沙箱有效路线后另批复测 |
 | ISSUE-04 | P1 配置 | **配置解决 + 复测通过** | `settings_env_source` + 网关模型名（§4.3）；建议部署手册补第三方网关指引 |
-| ISSUE-05 | P2 → P1 待定位 | **真实性升级** | Windows worker 间歇性失联（pid_gone）：首跑全量 3 失败 + 修复后全量另外 3 失败（全为跨进程/锁/worker 类、两批不同文件、具名复跑全过）+ **B3r 首次真实审查 worker 15 秒静默消失**（同组旗标重跑成功）。三场景同形态，非单次偶发；建议在 Windows CI 观察复现率并定位 worker 进程稳定性 |
+| ISSUE-05 | P1 | **已定位并修复（1.3.4）：双根因**（详见 §9 补记） | ① 05a：run_root 在项目工作树内时，工作树哈希 `add -A` 读 worker 心跳正原子替换的 status.json，Windows 报 `short read` 退非零、worker 异常退出；② 05b：`--wait` 判 `pid_gone` 的读 status/查 pid 两步竞态，worker「写终态→退出」落在两步之间时被误判失联、success 被覆盖收尾成 failed——即集成测试并发下随机红（三批全量各红不同文件、具名复跑全过）与 B3r 首跑失败的形态 |
 | ISSUE-06 | P2 流程偏差 | 已记录 | 安装前未备份旧版即覆盖 |
 | ISSUE-07 | P3 | 已记录 | 环境适配（D 盘路径 / MSYS2 布局 pin / PS5.1 BOM / cmd `//c` 转义） |
 
@@ -90,3 +90,23 @@
 1. ISSUE-05（Windows worker 稳定性）排期定位——两个独立场景同形态，非单次偶发。
 2. 部署手册补「第三方网关机器」配置段：`settings_env_source: user_settings` + 显式网关模型名（本报告 §4.3 的两个配置项）。
 3. ~~三个复测主题的审批停点待 Bob 决定~~ 已批准（§5 补记）。
+
+## 9. ISSUE-05 定位与修复补记（2026-10-29 深夜，验收同日续做）
+
+按 Bob 指示继续定位。**双根因**，均有现场实锤与修复前后对照：
+
+**05a（worker 真死，git 快照竞态）**：受控冲击实验（stub 审查、真实 worker 派生、8 并发）在
+run_root 指进项目内的夹具上 24 例复现 5 例 worker 死，现场 status 收尾带 git 原文
+`short read while indexing runs/…/status.json`——工作树哈希的临时索引 `add -A` 读到 worker
+心跳正原子替换的文件。run_root 挪出项目外后 0/24。修复（1.3.4）：`diffExcludePrefixes`
+增可选运行根排除（冻结与漂移复算传入）+ `isShortReadIndexError` 并入暂态重试判据。
+
+**05b（worker 误判死，wait 竞态）**：修复 05a 后的巩固轮仍出 1/40 pid_gone，现场解剖实锤——
+worker.log 完整跑完并落盘报告，status 的 `lost.at` 与最后心跳同一毫秒：`interpretStatus`
+先读 status（旧的非终态心跳）、后查 pid（worker 恰已正常退出）→ 误判失联并把 success
+覆盖成 failed。秒级运行窗口命中率最高，正是三批全量随机红（各 1~3 个不同文件）的形态，
+B3r 首跑失败与此同族。修复（1.3.4）：判 `pid_gone` 前重读一次 status.json，读到终态按终态处理。
+
+**验证**：判据/排除单测（纯函数用例移出 win32 平台门双平台跑）；冲击实验修复前
+19/24 → 修复后 24/24、40 例 1 例（即 05b 现场）→ 重读修复后 64/64；集成并发 2 轮复跑（修复后产物）。
+坑清单登 **P-33/P-34**；设计文档 EV-221 详段、§7.5 wait 判定约束与版本表（v1.3.3/v1.3.4）同批修订。
