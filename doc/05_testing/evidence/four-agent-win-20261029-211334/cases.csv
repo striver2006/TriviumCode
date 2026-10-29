@@ -1,0 +1,27 @@
+case_id,baseline,os,client,surface,driver,critics,run_id,requested_model,effective_model,status,exit_code,evidence,issue_id
+W1-01-automation,4bd1d0d5,win11-26300,orchestrator,repo,,,"",,npm run check (3136 tests: 3089 pass / 3 fail / 44 skip / 0 cancel, 563s),,失败后具名复跑通过,1,11-check.log + 16-diag-rerun.log,ISSUE-05
+W1-01-render,4bd1d0d5,win11-26300,orchestrator,repo,,,,,render zero drift,通过,0,12-render.log + 13-render-diff.log,
+W1-01-scope,4bd1d0d5,win11-26300,orchestrator,repo,,,,,four-agent-scope 3/3,通过,0,14-four-agent-scope.log,
+W1-01-selftest,4bd1d0d5,win11-26300,orchestrator,repo,,,,,selftest 14/14 steps,通过,0,15-selftest.log,
+W1-02-install,4bd1d0d5,win11-26300,four carriers,user skills,,,,,52 files / 4x7 entries / runtime root,通过,0,16-install.log + 16a/17 + source-bundle-hashes.json,ISSUE-06
+W1-03-zh-space,4bd1d0d5,win11-26300,wrapper,fixture with CJK+space path,,,,,init/status/doctor-offline + cmd & bash wrapper,通过,0,20-init-zh + 21/22/23b logs,
+W1-04-atomic,4bd1d0d5,win11-26300,node+ps,rewired harness on this batch fsx.ts,,,,,A: 422ms updated-A / B: 832ms EPERM final=initial,通过,0,18/19-atomic logs + atomic-hashes.json,
+W1-05-proctree,4bd1d0d5,win11-26300,orchestrator,sampling during npm test,,,,,15 samples avg 113 max 125 stable no storm,通过,0,proc-samples.json,
+W1-07-cleanup,4bd1d0d5,win11-26300,orchestrator,post-batch,,,,,temp dirs + process check,通过,0,acceptance.md §cleanup,
+W2-doctor-codex,4bd1d0d5,win11-26300,Codex CLI 0.163.0,third-party ccswitch→api.kimi.com,,,"",,kimi-for-coding family,失败,69,30-doctor-codex.log,ISSUE-03
+W2-doctor-claude,4bd1d0d5,win11-26300,Claude Code 2.1.302,third-party gateway token-plan.cn-beijing.maas.aliyuncs.com,,,"",,qwen3.8-flash[1m] observed,通过(含缺口),0,31+31b-doctor-claude.log,ISSUE-04
+W2-doctor-zcode,4bd1d0d5,win11-26300,ZCode CLI 0.17.0 (desktop bundle),GLM-5.3,,,"",,GLM-5.3 effective readback,通过,0,32-doctor-zcode.log,
+W2-doctor-agy,4bd1d0d5,win11-26300,Antigravity 1.4.10,gemini-3.8-flash-high,,,"",,gemini-3.8-flash-high,通过,0,33-doctor-agy.log,
+W2-B1,4bd1d0d5,win11-26300,Codex CLI (headless exec),fixture W2-B1,codex,claude,none-started,default (claude native),unknown,阻塞,69,43/47 doctor + 46-B1-codex-driver.log,ISSUE-04
+W2-B2,4bd1d0d5,win11-26300,Claude Code (headless -p),fixture W2-B2,claude,gemini,20261029T135042Z,gemini-3.8-flash-high (default tier),gemini-3.8-flash-high (empty response),失败,1,40 doctor + 41-B2-claude-driver.log + run 20261029T135042Z,ISSUE-01
+W2-B3,4bd1d0d5,win11-26300,Antigravity (headless -p),fixture W2-B3,gemini,glm,none-started,default (GLM-5.3),unknown,阻塞,69,42 doctor + 45-B3-agy-driver.log,ISSUE-02
+W2-B4,4bd1d0d5,win11-26300,ZCode desktop (this session),fixture W2-B4,glm,codex,none-started,ccswitch+kimi-for-coding (machine route),unknown,阻塞,69,44 doctor + B4 preflight evidence,ISSUE-03
+W3-carrier-loading,4bd1d0d5,win11-26300,claude -p / codex exec / agy -p / ZCode desktop,skill entry per carrier,each,none,partial,,,,W2 driver logs (skills loaded + executed per contract),见各格
+W3-approval-stop,4bd1d0d5,win11-26300,four carriers,gate await-approval,,,,,,,未测,,no critic admission -> no approval stop reached,
+W4-01-multi,4bd1d0d5,win11-26300,,requires all four single-side admissions,,,,,,,阻塞,,W2 admissions all blocked,
+W4-02-cancel,4bd1d0d5,win11-26300,,requires one real review started,,,,,,,阻塞,,no critic process could start,
+W4-S1-readonly-evidence,4bd1d0d5,win11-26300,four carriers,doctor readonly sections,,,,,codex negative-control FAIL detected / zcode path_deny negative / agy sentinel positive / claude incomplete,部分完成,0,30-33 doctor logs,ISSUE-03
+W5,4bd1d0d5,win11-26300,,,,,,,all A/C/D + approve,,,,未测,,W2-W4 prerequisites not met,
+W2r-B2,4bd1d0d5+fix1.3.3,win11-26300,Claude Code headless,fixture W2-B2 (topic Win四家B2r),claude,gemini,20261029T144920Z,gemini-3.8-flash-high (default),gemini-3.8-flash-high (envelope),通过,0,54-B2r-claude-driver.log + retest/topic-Win四家B2r,ISSUE-01-fixed
+W2r-B3,4bd1d0d5+fix1.3.3,win11-26300,Antigravity headless,fixture W2-B3 (topic Win四家B3r),gemini,glm,20261029T145743Z,GLM-5.3,bigmodel-plan/GLM-5.3 (trace),通过,0,55/56-B3r logs + retest/topic-Win四家B3r,ISSUE-02-fixed
+W2r-B1,4bd1d0d5+fix1.3.3,win11-26300,Codex CLI headless,fixture W2-B1 (topic Win四家B1r),codex,claude,20261029T151222Z,qwen3.8-flash (gateway route),qwen3.8-flash (envelope),通过,0,57/58-B1r logs + retest/topic-Win四家B1r,ISSUE-04-config

@@ -1,0 +1,219 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "codex",
+      "right": "claude",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "qwen3.8-flash",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    }
+  ],
+  "run_id": "20261029T151222Z",
+  "topic": "Win四家B1r",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "检查有限数值输入校验计划的正确性与测试覆盖",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "codex",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "review_loop": {
+    "round": 1,
+    "max_rounds": 1,
+    "max_rounds_source": "flag"
+  },
+  "profile": "default",
+  "critics_selected": [
+    "claude"
+  ],
+  "snapshot": {
+    "git_head": "986c0aa82b768b7054c90b08429b6b20fbe53650",
+    "tree_hash": "da7dbc51d6b53f881235f54105d3a350180d9204",
+    "dirty": true,
+    "subject_sha256": "aa33fb5d0566f175a5235d27155b2fd589890d290f16a18ad0439697a262d2a7",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "4bd1d0d50d15d9641156598487bea7fcae5f751f",
+      "dirty": true,
+      "inputs_sha256": "27910ee11aaf90c2858b59b9332e534b7f9fa5fcd44584709faf7d2bd7da0092",
+      "built_at": "2026-10-29T14:28:33.675Z"
+    },
+    "after_tree_hash": "da7dbc51d6b53f881235f54105d3a350180d9204"
+  },
+  "started_at": "2026-10-29T15:12:23.252Z",
+  "finished_at": "2026-10-29T15:16:37.440Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "claude": {
+      "vendor": "anthropic",
+      "cli_version": "2.1.302",
+      "model_requested": "qwen3.8-flash",
+      "model_effective": "qwen3.8-flash",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": "unverified",
+      "tier": null,
+      "tier_source": "override",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 252.93,
+      "tool_calls": {
+        "read": 9,
+        "grep": 0,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 9
+      },
+      "evidence_ok": true,
+      "usage": {
+        "cost_usd": 0.5688770000000001
+      },
+      "access": {
+        "requested_mode": "native",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+        "launcher_effective": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "f87471ea-dc03-43b9-951a-9adb0978f15d",
+      "peer_deny_applied": true,
+      "deny_skipped": 0,
+      "deny_rule_count": 12,
+      "deny_bytes": 710
+    }
+  },
+  "requested_routes": {
+    "claude": {
+      "model": "qwen3.8-flash",
+      "effort": null,
+      "tier": null,
+      "tier_source": "override",
+      "access": {
+        "requested_mode": "native",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\.local\\bin\\claude.exe",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "D:/Work/TriviumCode-fixtures/four-agent-win-20261029-211334/runs/W2-B1-codex-claude"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "claude": true
+    },
+    "deny_skipped": {
+      "claude": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "claude": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "claude": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1
+    },
+    "verification_degraded": {
+      "claude": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "Win四家B1r/plan/_meta/brief-claude-20261029T151222Z.md",
+      "sha256": "ffd989ebeafb4b51a3363c14f447e699cfb388527a6b430c1a1662f4677a7df6"
+    },
+    {
+      "path": "Win四家B1r/plan/_meta/review-claude-20261029T151222Z.json",
+      "sha256": "c5cd7273c2aea5e2093aedc83782e9e68ce238d0062bb9424945d2890e5ce8b2"
+    },
+    {
+      "path": "Win四家B1r/plan/2026-10-29-Win四家B1r-claude.md",
+      "sha256": "0ca6e19c857db6f84de5017bc3d7bbb3421514682a74caaaeb353cf71aa24e5b"
+    },
+    {
+      "path": "Win四家B1r/plan/2026-10-29-Win四家B1r-codex.md",
+      "sha256": "aa33fb5d0566f175a5235d27155b2fd589890d290f16a18ad0439697a262d2a7"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success",
+  "round_verdict": {
+    "sides": {
+      "claude": "pass-after-changes"
+    },
+    "excluded": {},
+    "counts": {
+      "pass": 0,
+      "pass-after-changes": 1,
+      "reject": 0
+    },
+    "outcome": "pass-after-changes",
+    "next_action": "proceed"
+  }
+}

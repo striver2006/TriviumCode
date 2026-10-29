@@ -1,0 +1,39 @@
+{
+  "batch": "four-agent-win-20261029-211334",
+  "baseline": {
+    "commit": "4bd1d0d50d15d9641156598487bea7fcae5f751f",
+    "verified_by": "01-checkout + 02-baseline evidence (git clone --branch main from origin, checkout --detach, rev-parse HEAD match, clean tree)",
+    "origin_url": "https://gitcode.com/czb99/TriviumCode.git",
+    "credential_in_url": false
+  },
+  "plan": "doc/05_testing/PLAN_Windows四家Agent真机与客户端验收任务.md @ a806117aeb069611f576d7bba5326f6cfb1efd84 (main HEAD at batch start)",
+  "machine": {
+    "os": "Microsoft Windows 11 Pro 10.0.26300 Build 26300 64-bit (physical, Lenovo REN7000K-28IMB, i9-10900, 32GB RAM)",
+    "is_virtual_machine": false,
+    "timezone": "China Standard Time (UTC+8)",
+    "antivirus": ["Lenovo Anti-Virus powered by Huorong Security", "Windows Defender"],
+    "work_drive": "D: NTFS fixed, 3815GB total / ~3171GB free"
+  },
+  "paths": {
+    "repo": "D:\\Work\\TriviumCode-four-agent-win-20261029-211334",
+    "evidence": "D:\\Work\\TriviumCode-evidence\\four-agent-win-20261029-211334",
+    "fixture_base": "D:\\Work\\TriviumCode-fixtures\\four-agent-win-20261029-211334"
+  },
+  "tools": {
+    "node": "v24.19.0 (C:\\Program Files\\nodejs\\node.exe)",
+    "npm": "11.17.0 (C:\\Program Files\\nodejs\\npm.cmd)",
+    "git_for_windows": "2.56.0.windows.3 (D:\\Program Files\\Git\\cmd\\git.exe)",
+    "sh": "bash 5.3.15 (D:\\Program Files\\Git\\usr\\bin\\sh.exe)",
+    "powershell": "5.1.26100.9711 (5.1 primary per plan; pwsh 7 also installed at C:\\Program Files\\PowerShell\\7)"
+  },
+  "adaptations": [
+    "Plan default paths use C:\\Work; this machine keeps origin repo and Git on D: with 3.1TB free (C: only 82GB). Batch uses D:\\Work\\... prefixes instead. Recorded as environment adaptation, not a product deviation.",
+    "PATH in shells resolves git/sh to MSYS2 ucrt64 layout dirs (D:\\Program Files\\Git\\ucrt64\\bin). Pinned canonical Git for Windows entries (cmd\\git.exe, usr\\bin\\sh.exe, version 2.56.0.windows.3) per plan 3.3; global PATH untouched.",
+    "Harness .ps1 files are ASCII-only: PS 5.1 decodes BOM-less UTF-8 .ps1 as ANSI, which would corrupt Chinese comments. Command output logs are still written as UTF-8.",
+    "Harness scripts live under <evidence>\\harness\\ and dot-source common.ps1 (plan 3.1 recording conventions implemented verbatim in Invoke-Logged / Invoke-LoggedRaw)."
+  ],
+  "started_at": "2026-10-29T21:13:34+08:00",
+  "ended_at": "2026-10-29T22:10:00+08:00 (approx, final deliverables)",
+  "executor": "ZCode desktop session (GLM) acting as entrusted Driver/executor for Bob",
+  "outcome_summary": "W0/W1 offline acceptance PASSED; W2 four single-side B: 1 failed (product defect ISSUE-01), 3 blocked by correct fail-closed admission (ISSUE-02/03/04); Driver-side chains verified normal on all four carriers; see acceptance.md"
+}

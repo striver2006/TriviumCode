@@ -1,0 +1,75 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "计划方向正确：§1 的需求复述与 requirements.md 逐条对得上（含 -Infinity、先校验后相加），核心判据 typeof x !== 'number' || !Number.isFinite(x) 成立，回退与范围纪律合理。最薄弱的是测试矩阵按字面实施会出问题：非法值从未要求覆盖第二个参数位（只有 a 位的冒烟），若实现漏掉 b 分支仍全绿；同时 test/sum.test.cjs 用的是 node:assert/strict（assert.equal 即 Object.is 语义），对「负数零」用例直接 assert.equal(sum(-0,-0), 0) 会假失败，而 §4 的容差策略只救了 0.1+0.2。另有 ${String(a)} 插值对畸形对象可先抛出非预期 TypeError、README:7 的状态陈述落地后失实。均属小改即可实施、无需再审。",
+  "findings": [
+    {
+      "id": "CLAUDE-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3.2 非法类型/非有限值用例 与 §3.3 冒烟",
+      "problem": "测试矩阵只笼统列「字符串/undefined/null/对象/布尔/NaN/±Infinity → 断言抛出 TypeError」，全文没有任何一处要求把非法值放进**第二个参数位**；§3.1 对 b 的处理写成「（b 同理）」的省略式，§3.3 冒烟也只有 sum('1', 2)。若实现只校验 a、或 b 分支写错（例如条件复制成 a），按现计划写出的测试依然全绿，形成假通过。",
+      "evidence": "读了 .reviews/Win四家B1r/plan/2026-10-29-Win四家B1r-codex.md 第 23 行（「b 同理」）、第 27–31 行（矩阵）、第 35 行（冒烟仅 sum('1', 2)）；对照 src/sum.cjs 第 3–5 行 sum(a, b) 双参签名与 requirements.md 第 3 行「两个入参都必须是 number」。焦点即「测试覆盖」，而 b 位非法值是需求的显式分支却在矩阵中无落点。",
+      "suggestion": "在计划中明确矩阵维度为「非法值 × 参数位」：至少每类非法值各有一条 sum(非法, 合法) 与 sum(合法, 非法) 的断言，或说明采用参数位循环生成用例的写法。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-02",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "plan §3.2「零与负数零」与 §4 浮点断言策略",
+      "problem": "测试文件用 require('node:assert/strict')，其 assert.equal 即 strictEqual，按 Object.is 语义比较，Object.is(-0, 0) 为 false。若按 §3.2 把「负数零」写成断言数值结果（如 assert.equal(sum(-0, -0), 0)），会出现「实现正确、测试假失败」的返工；§4 的容差规避只覆盖 0.1+0.2 一类小数，未覆盖带符号零。此为推理结论，本侧无法执行验证。",
+      "evidence": "test/sum.test.cjs 第 3 行 const assert = require('node:assert/strict'); 证明该套件在严格等值语义下运行；计划稿第 28 行列出「零与负数零」、第 41 行容差策略仅针对浮点、第 46 行风险段也只自认「浮点用例」风险。IEEE-754 下 -0 + -0 = -0、0 + -0 = +0，与 Object.is 组合即产生上述断言歧义。",
+      "suggestion": "计划里写死带符号零用例的断言形式：只断「不抛异常且结果为 number」，若要断结果符号则显式用 Object.is / 说明等价于 +0 的期望，避免把 assert.equal 直接用于 ±0。",
+      "confidence": "high"
+    },
+    {
+      "id": "CLAUDE-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "plan §3.1 第 24 行 消息模板 `收到 ${String(a)}`",
+      "problem": "校验失败消息把**原始入参**插值进模板。对无法安全 ToString 的对象（如 Object.create(null)，无 valueOf/toString；或 toString 自定义抛错者），模板求值会先抛一个来自类型转换的 TypeError，而非「带说明的校验 TypeError」。若测试矩阵的「对象」用例恰好取到这类值，assert.throws(fn, TypeError) 与「消息非空」仍全部通过——错误来源被掩盖，且违反 requirements.md「抛出带说明的 TypeError」的意图。",
+      "evidence": "计划稿第 24 行给出消息样例含 ${String(a)}；第 29 行要求「对象」列入非法用例但未限定用何种对象；第 31 行的断言只有 instanceof TypeError + 消息非空，区分不了「校验消息」与「ToString 异常消息」；requirements.md 第 4 行要求「带说明的 TypeError」。此为由 JS ToString 规范推理，本侧未运行验证。",
+      "suggestion": "计划应规定消息不插值原始值（只报 typeof 与参数位），或明确说明取值方式对 null 原型/自定义 toString 对象也安全；顺带在矩阵里指定「对象」用例采用普通字面量对象。",
+      "confidence": "medium"
+    },
+    {
+      "id": "CLAUDE-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "maintainability",
+      "location": "plan §1 第 12 行 / §6 第 54 行 范围声明 vs README.md",
+      "problem": "同一「校验状态」说法在仓库有两份：README.md 第 7 行「输入校验尚未实现，等待计划审查驱动」与 src/sum.cjs 第 2 行注释「输入校验需求见 requirements.md，由后续计划审查驱动实施」。后者随 src/sum.cjs 在范围内会自然更新；前者不在范围（§1 明写「不改其他文件」、§6 只把 README.md 列为「参考」）。计划照此落地后 README.md 变成唯一失实副本，而计划全文未承认这一后果。",
+      "evidence": "README.md 第 7 行原文即状态陈述；src/sum.cjs 第 2 行为同义的第二副本且在修改范围内；计划稿第 12 行「范围仅限 src/sum.cjs … 不改其他文件」与第 54 行把 README.md 仅列为参考。属「条款副本面」核查：只改实现不动 README 即留下失实表述。",
+      "suggestion": "要么把 README.md 第 7 行的状态句纳入本次修改范围，要么在计划 §1/§5 明确记录「有意不改 README、由后续提交更新」的决策，避免裁决阶段被当成疏漏反复。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§1 对 requirements.md 的四条复述逐条核对忠实，未丢 -Infinity，也未把「校验失败不得返回数值结果」曲解为返回值判断——§3.1 先校验后相加的解读正确（现状 sum('1',2) 返回字符串 '12' 更说明必须先抛）。",
+    "核心判据 typeof x !== 'number' || !Number.isFinite(x) 正确（Number.isFinite 本身不做强制转换，typeof 前置冗余但无害）；§3.1 保持 'use strict' 与 CommonJS 导出 { sum } 的约束与 src/sum.cjs 现状一致。",
+    "§2 现状分析与仓库实际相符：src/sum.cjs 仅 return a + b；test/sum.test.cjs 仅两条正常用例；node --test test/sum.test.cjs 与 README.md 第 6 行一致。",
+    "§4 用 assert.throws(fn, TypeError) 断异常类型、只断「消息非空」不断具体文案，是对 §5「消息格式变更影响断言」风险的正确规避；0.1+0.2 容差写法（或 toFixed 比较）在 assert/strict 下均成立。",
+    "§5 回退 git checkout -- src/sum.cjs test/sum.test.cjs 与声明范围自洽，无多余文件。"
+  ],
+  "not_covered": [
+    "本侧无执行能力：焦点虽名为「正确性与测试覆盖」，但计划未实施、无代码可运行，所有断言层结论（-0 的 Object.is 语义、Object.create(null) 的 ToString 抛错、assert/strict 行为）均为按 JS/Node 规范推理，未实测；若 Node 版本极旧，assert.strictEqual 语义需再确认。",
+    "未审代码实现（尚不存在），仅审计划文本与现存两枚文件的现状吻合度。",
+    "未读取 .reviews/Win四家B1/ 旧主题归档与 runs 运行目录（后者在禁读清单），故本主题与 B1 原稿的差异未比对。",
+    "GEMINI.md 与 .claude/.zcode 配置、.gitignore 与流程无关项未展开审查。",
+    "计划对「参数名/参数位写入消息」的可读性细节与 i18n 未置评（非返工级）。"
+  ],
+  "consulted": [
+    "src/sum.cjs",
+    "test/sum.test.cjs",
+    "requirements.md",
+    "task.md",
+    "README.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".reviews/Win四家B1r/plan/2026-10-29-Win四家B1r-codex.md"
+  ]
+}

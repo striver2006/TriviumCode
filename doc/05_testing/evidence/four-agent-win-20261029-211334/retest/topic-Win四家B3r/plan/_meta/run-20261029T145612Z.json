@@ -1,0 +1,100 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [],
+  "run_id": "20261029T145612Z",
+  "topic": "Win四家B3r",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "检查有限数值输入校验计划的正确性与测试覆盖",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "gemini",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "review_loop": {
+    "round": 1,
+    "max_rounds": 1,
+    "max_rounds_source": "flag"
+  },
+  "profile": "default",
+  "critics_selected": [
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "a18eb76d080c7f291b14e232e5b3d488ad8e0ef3",
+    "tree_hash": "da7dbc51d6b53f881235f54105d3a350180d9204",
+    "dirty": true,
+    "subject_sha256": "9255249b4a68fc146b5f6e2557861c27e6da176fbe2acf576d3181e575372578",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "4bd1d0d50d15d9641156598487bea7fcae5f751f",
+      "dirty": true,
+      "inputs_sha256": "27910ee11aaf90c2858b59b9332e534b7f9fa5fcd44584709faf7d2bd7da0092",
+      "built_at": "2026-10-29T14:28:33.675Z"
+    }
+  },
+  "started_at": "2026-10-29T14:56:12.781Z",
+  "finished_at": "2026-10-29T14:56:29.167Z",
+  "review_mode": "partial",
+  "degraded_reason": "运行异常收尾，入选审核者未全部完成",
+  "critics": {},
+  "requested_routes": {
+    "glm": {
+      "model": "GLM-5.3",
+      "effort": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "D:/Program Files/ZCode/resources/glm/zcode.cjs",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "D:/Work/TriviumCode-fixtures/four-agent-win-20261029-211334/runs/W2-B3-agy-glm"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {},
+    "forged_role_file": false
+  },
+  "artifacts": [
+    {
+      "path": "Win四家B3r/plan/_meta/brief-glm-20261029T145612Z.md",
+      "sha256": "b2a1637ca77bd8ccb9802026da39bd98fc30b205276b024f5cd424beed595eb9"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed",
+  "termination": {
+    "by": "worker_lost",
+    "reason": "pid_gone"
+  }
+}

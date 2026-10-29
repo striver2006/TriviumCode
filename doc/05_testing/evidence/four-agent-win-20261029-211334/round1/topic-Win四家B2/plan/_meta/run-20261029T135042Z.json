@@ -1,0 +1,170 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "claude",
+      "right": "gemini",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": null,
+      "left_source": null,
+      "right_source": null,
+      "reason": "左侧模型信息缺失"
+    }
+  ],
+  "run_id": "20261029T135042Z",
+  "topic": "Win四家B2",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "检查有限数值输入校验计划的正确性与测试覆盖",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "review_loop": {
+    "round": 1,
+    "max_rounds": 1,
+    "max_rounds_source": "flag"
+  },
+  "profile": "default",
+  "critics_selected": [
+    "gemini"
+  ],
+  "snapshot": {
+    "git_head": "a31fe7b950a7f7b65ec194638d0be04f39a6abc3",
+    "tree_hash": "da7dbc51d6b53f881235f54105d3a350180d9204",
+    "dirty": true,
+    "subject_sha256": "d44ea5a6cfaa7b38b10cc963280ae2082dbfa670d0277236602687f1e6c74277",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "4bd1d0d50d15d9641156598487bea7fcae5f751f",
+      "dirty": false,
+      "inputs_sha256": "04706f91672b65fac02d440d487daacad4127f215db74034541d77afbf69e58e",
+      "built_at": "2026-10-29T13:18:07.564Z"
+    },
+    "after_tree_hash": "da7dbc51d6b53f881235f54105d3a350180d9204"
+  },
+  "started_at": "2026-10-29T13:50:43.506Z",
+  "finished_at": "2026-10-29T13:52:14.239Z",
+  "review_mode": "partial",
+  "degraded_reason": "gemini: failed（工具被 headless 软拒绝且无任何输出：read_file（issue #548）。检查只读 Agent 的 tools 白名单是否包含了需要审批的工具。）",
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.4.10",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": null,
+      "model_effective_source": "unverified",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": null,
+      "effort_effective_source": "unverified",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "failed",
+      "exit_code": 0,
+      "duration_s": 90.316,
+      "tool_calls": {
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "launcher_effective": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": "工具被 headless 软拒绝且无任何输出：read_file（issue #548）。检查只读 Agent 的 tools 白名单是否包含了需要审批的工具。",
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": "07e2f950-20c4-4537-9586-67505f703a95",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "requested_routes": {
+    "gemini": {
+      "model": "gemini-3.8-flash-high",
+      "effort": "high",
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "D:/Work/TriviumCode-fixtures/four-agent-win-20261029-211334/runs/W2-B2-claude-gemini"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false
+    },
+    "deny_skipped": {
+      "gemini": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {},
+    "peer_leak_via_path": {},
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 0
+    },
+    "verification_degraded": {}
+  },
+  "artifacts": [
+    {
+      "path": "Win四家B2/plan/_meta/brief-gemini-20261029T135042Z.md",
+      "sha256": "b9ea642e2f3bfece3ea95ceb679cc1b8c56779ec2f4813a8c3df2489d512dfa9"
+    },
+    {
+      "path": "Win四家B2/plan/_meta/review-gemini-20261029T135042Z.failed.json",
+      "sha256": "b80b7c15a683f40d6a1f34856b80c9b73ccec4a2c8e671c5313d6aa11456480e"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed"
+}

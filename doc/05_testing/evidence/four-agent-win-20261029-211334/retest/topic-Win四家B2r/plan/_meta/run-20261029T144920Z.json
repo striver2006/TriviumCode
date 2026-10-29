@@ -1,0 +1,224 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "claude",
+      "right": "gemini",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "gemini-3.8-flash-high",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    }
+  ],
+  "run_id": "20261029T144920Z",
+  "topic": "Win四家B2r",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": "检查有限数值输入校验计划的正确性与测试覆盖。为本夹具的 sum 输入校验需求编写实施计划并进行计划审查。读取 requirements.md、README.md、src/sum.cjs 和测试文件；先认领 plan 阶段，再按入口准备步骤生成并回读原稿；只审计划，不修改业务实现。只选指定的一家审核者，plan 最大一轮。逐条裁决；到人工审批停点后停止，等待 Bob 决定。",
+  "task_goal": null,
+  "entry": "B",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "review_loop": {
+    "round": 1,
+    "max_rounds": 1,
+    "max_rounds_source": "flag"
+  },
+  "profile": "default",
+  "critics_selected": [
+    "gemini"
+  ],
+  "snapshot": {
+    "git_head": "a31fe7b950a7f7b65ec194638d0be04f39a6abc3",
+    "tree_hash": "da7dbc51d6b53f881235f54105d3a350180d9204",
+    "dirty": true,
+    "subject_sha256": "aca2d0c76074d910e0975e54abb20b59912248fdd36604f8f9dc66877e950249",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "4bd1d0d50d15d9641156598487bea7fcae5f751f",
+      "dirty": true,
+      "inputs_sha256": "27910ee11aaf90c2858b59b9332e534b7f9fa5fcd44584709faf7d2bd7da0092",
+      "built_at": "2026-10-29T14:28:33.675Z"
+    },
+    "after_tree_hash": "da7dbc51d6b53f881235f54105d3a350180d9204"
+  },
+  "started_at": "2026-10-29T14:49:21.043Z",
+  "finished_at": "2026-10-29T14:51:39.139Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.4.10",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 137.685,
+      "tool_calls": {
+        "read": 8,
+        "grep": 0,
+        "glob": 1,
+        "run_command": 0,
+        "project_reads": 8
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 44705,
+        "output_tokens": 9751,
+        "thinking_tokens": 8679,
+        "cache_read_tokens": 224606,
+        "total_tokens": 54456
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "launcher_effective": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": true,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "d4364cb4-caee-4b7b-84fb-0d18e1fc2c22",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "requested_routes": {
+    "gemini": {
+      "model": "gemini-3.8-flash-high",
+      "effort": "high",
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "D:/Work/TriviumCode-fixtures/four-agent-win-20261029-211334/runs/W2-B2-claude-gemini"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false
+    },
+    "deny_skipped": {
+      "gemini": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 1
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "Win四家B2r/plan/_meta/brief-gemini-20261029T144920Z.md",
+      "sha256": "2c8bd4995dc41bf75a82fecd2117d2a85d5365b0777311cae4558079b05ac702"
+    },
+    {
+      "path": "Win四家B2r/plan/_meta/review-gemini-20261029T144920Z.json",
+      "sha256": "9fd4e8b3ad45ccd0bc2ce2e1f25b776263274b2e11292c18ef8daf0b22634d6d"
+    },
+    {
+      "path": "Win四家B2r/plan/2026-10-29-Win四家B2r-gemini.md",
+      "sha256": "040d63aaab7cf7f1c5634bcabdf97fcc3d005126b8ded9312e158bffd55e434a"
+    },
+    {
+      "path": "Win四家B2r/plan/2026-10-29-Win四家B2r-claude.md",
+      "sha256": "aca2d0c76074d910e0975e54abb20b59912248fdd36604f8f9dc66877e950249"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success",
+  "round_verdict": {
+    "sides": {
+      "gemini": "pass"
+    },
+    "excluded": {},
+    "counts": {
+      "pass": 1,
+      "pass-after-changes": 0,
+      "reject": 0
+    },
+    "outcome": "pass",
+    "next_action": "proceed"
+  }
+}
