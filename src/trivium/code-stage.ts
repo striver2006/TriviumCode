@@ -103,10 +103,23 @@ const stripPrefix = (p: string, prefix: string): string =>
  *
  * EV-221 起工作树哈希（送审冻结、跑后复算、审批摘要、构建标识）也传这一份，`workTreeHash` 的 `exclude`。
  */
-export function diffExcludePrefixes(archiveRootRel: string): string[] {
+export function diffExcludePrefixes(archiveRootRel: string, runRootRel?: string): string[] {
   const out = new Set<string>(['.trivium', '.git']);
   const rel = archiveRootRel.replace(/^\.\//, '').replace(/\/+$/, '');
   if (rel && !rel.startsWith('..')) out.add(rel);
+  /*
+   * 运行根（可选第二参）：缺省在项目外（`~/.trivium/runs`），不产生条目、行为与从前逐字相同。
+   * 用户把它指进项目工作树内时（验收/集成夹具的常见形态），worker 心跳正在原子替换的
+   * `status.json` 等文件会被工作树哈希的临时索引 `add -A` 收进去——Windows 上读到替换中的文件
+   * 报 `short read while indexing` 退非零，送审冻结/漂移复算随之抛错、worker 异常退出
+   * （2026-10-29 Windows 真机验收 ISSUE-05a：run_root 在项目内时冲击实验 5/24 复现、
+   * 挪出项目外后 0/24）。与归档根同一理由排除：它是编排器自己的写入面，不该进被审快照。
+   * `..` 上溯与 `.`（等于整棵树都不算）同归档根口径丢弃。
+   */
+  if (runRootRel !== undefined) {
+    const rr = runRootRel.replace(/^\.\//, '').replace(/\/+$/, '');
+    if (rr && !rr.startsWith('..') && rr !== '.') out.add(rr);
+  }
   return [...out];
 }
 

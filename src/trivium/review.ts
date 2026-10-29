@@ -1611,8 +1611,13 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   const finishedAt = new Date().toISOString();
 
   // ── 复算快照，判漂移 ──
-  // 与送审冻结同一份排除（EV-221）：归档根、.trivium/、.git 不进 tree；code 阶段重取补丁也用它
-  const ownExcludes = diffExcludePrefixes(path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root);
+  // 与送审冻结同一份排除（EV-221）：归档根、.trivium/、.git 不进 tree；code 阶段重取补丁也用它。
+  // 运行根一并排除（ISSUE-05a）：run_root 指进项目内时 worker 心跳的原子替换文件在
+  // Windows 上会让 `add -A` 报「short read」——排除 + `workTreeHash` 的暂态重试双保险
+  const ownExcludes = diffExcludePrefixes(
+    path.relative(ctx.projectRoot, ctx.archiveRoot) || cfg.archive_root,
+    path.relative(ctx.projectRoot, runRoot(cfg)),
+  );
   const afterTreeHash = await workTreeHash(ctx.projectRoot, { exclude: ownExcludes });
   /*
    * 被审对象的复算必须**重新取一次**，不能重读冻结文件。

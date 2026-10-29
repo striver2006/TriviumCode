@@ -19,7 +19,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import ts from 'typescript';
 import {
-  ADD_VANISHED_RETRIES, initFixtureRepo, isVanishedFileError, workTreeHash,
+  ADD_VANISHED_RETRIES, initFixtureRepo, isShortReadIndexError, isVanishedFileError, workTreeHash,
 } from '../../src/trivium/util/git.js';
 import { judgeDrift, type Snapshot } from '../../src/trivium/freeze.js';
 import { diffExcludePrefixes } from '../../src/trivium/code-stage.js';
@@ -30,6 +30,40 @@ import { run } from '../../src/trivium/util/exec.js';
 import { scratchDir } from '../helpers/scratch.js';
 import { FAKE_GIT_STDERR, writeFakeGit } from '../helpers/fake-git.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
+
+// ── 判据与排除前缀的纯函数用例：双平台都跑（判据认的是 git 英文原文，与平台无关）──
+
+test('EV-221 R4：「文件中途消失」判据只认 unable to stat 且 No such file or directory 的英文原文', () => {
+  assert.equal(isVanishedFileError("fatal: unable to stat '.reviews/t/plan/_meta/run-x.json.tmp-1-2': No such file or directory\n"), true);
+  assert.equal(isVanishedFileError("fatal: unable to stat 'src/a': Permission denied"), false, '不是消失');
+  assert.equal(isVanishedFileError("fatal: Unable to create '/x/index.lock': No such file or directory"), false, '不是 stat');
+  assert.equal(isVanishedFileError("error: external filter 'sh x' failed 1"), false);
+  assert.equal(isVanishedFileError('致命错误：不能对 src/a 调用 stat：没有那个文件或目录'), false, '翻译过的报错不重试，退回改前的行为');
+  assert.equal(isVanishedFileError(''), false);
+});
+
+test('ISSUE-05a：「short read」判据只认 short read while indexing 的英文原文（Windows 心跳并发面）', () => {
+  const sample = [
+    'error: short read while indexing runs/x/20261029T160254Z/status.json',
+    'error: runs/x/20261029T160254Z/status.json: failed to insert into database',
+    "error: unable to index file 'runs/x/20261029T160254Z/status.json'",
+    'fatal: adding files failed',
+  ].join('\n');
+  assert.equal(isShortReadIndexError(sample), true, 'Windows 实测原文（2026-10-29 冲击实验现场）');
+  assert.equal(isShortReadIndexError('fatal: unable to stat x: No such file or directory'), false, '消失形态不经本判据（另有 isVanishedFileError）');
+  assert.equal(isShortReadIndexError("error: mmap failed 'x.pack': Invalid argument"), false, '其它读错误不重试');
+  assert.equal(isShortReadIndexError(''), false);
+});
+
+test('ISSUE-05a：diffExcludePrefixes 的可选运行根——项目内收进排除、项目外/上溯/整树不产生条目', () => {
+  const base = diffExcludePrefixes('.reviews');
+  assert.deepEqual(diffExcludePrefixes('.reviews', undefined), base, '不传第二参与从前逐字相同');
+  assert.ok(diffExcludePrefixes('.reviews', 'runs').includes('runs'), '项目内运行根进排除');
+  assert.deepEqual(diffExcludePrefixes('.reviews', '../runs'), base, '项目外（上溯）不产生条目——缺省形态零影响');
+  assert.deepEqual(diffExcludePrefixes('.reviews', '.'), base, '整树（.）丢弃：排除它等于漂移再也判不出来');
+  assert.ok(diffExcludePrefixes('.reviews', './runs/').includes('runs'), '规范化同归档根口径（./x/ 同 x、末尾斜杠剥掉）');
+  assert.ok(diffExcludePrefixes('.reviews', 'runs/').includes('runs'));
+});
 
 // WIN_FILE_SKIP（Windows 移植）：依赖 POSIX 专属机制（shebang 假 CLI / PATH 垫片 / ps 故障注入）
 // macOS/Linux 行为零变化；Windows 侧等价语义见 test/unit/platform-win.test.ts 与取消标记相关用例。
@@ -297,15 +331,6 @@ test('EV-221 R3：其它报错不重试——假 git 让临时索引的 add 失�
       else process.env[k] = saved[k];
     }
   }
-});
-
-test('EV-221 R4：「文件中途消失」判据只认 unable to stat 且 No such file or directory 的英文原文', () => {
-  assert.equal(isVanishedFileError("fatal: unable to stat '.reviews/t/plan/_meta/run-x.json.tmp-1-2': No such file or directory\n"), true);
-  assert.equal(isVanishedFileError("fatal: unable to stat 'src/a': Permission denied"), false, '不是消失');
-  assert.equal(isVanishedFileError("fatal: Unable to create '/x/index.lock': No such file or directory"), false, '不是 stat');
-  assert.equal(isVanishedFileError("error: external filter 'sh x' failed 1"), false);
-  assert.equal(isVanishedFileError("致命错误：不能对 'src/a' 调用 stat：没有那个文件或目录"), false, '翻译过的报错不重试，退回改前的行为');
-  assert.equal(isVanishedFileError(''), false);
 });
 
 // ─────────────────────────── S：审批摘要接线 ───────────────────────────

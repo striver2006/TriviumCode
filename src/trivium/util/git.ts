@@ -100,7 +100,7 @@ export const PATHSPEC_ENV_DEFAULTS: Readonly<Record<string, string>> = {
 };
 
 /**
- * `add -A` 遇「文件在列目录与 stat 之间消失」时的重试次数（EV-221）：至多再跑 2 次，共 3 次。
+ * `git add` 遇暂态竞态错误时的重试次数（EV-221）：至多再跑 2 次，共 3 次。
  * 兜住排除面之外的原子写（编辑器保存、构建产物）；其它报错与超时不重试。
  */
 export const ADD_VANISHED_RETRIES = 2;
@@ -114,6 +114,20 @@ export const ADD_VANISHED_RETRIES = 2;
  */
 export function isVanishedFileError(stderr: string): boolean {
   return stderr.includes('unable to stat') && stderr.includes('No such file or directory');
+}
+
+/**
+ * `git add` 的报错是不是「索引时读到替换中的文件」（ISSUE-05a，2026-10-29 Windows 实机实测）：
+ * Windows 上另一进程正对某文件做「写临时文件 + rename 替换」的原子写时，`add -A` 读它
+ * 会得到半截内容，报 `error: short read while indexing <路径>` + `failed to insert into database`
+ * 退非零。与「文件中途消失」同族——都是 git 列目录与建索引之间文件状态已变的暂态竞态，重跑即过。
+ *
+ * 实测出处：run_root 指进项目工作树内的夹具，worker 心跳原子替换 `status.json` 与
+ * 送审冻结/漂移复算的临时索引 `add -A` 相撞，8 并发 24 例复现 4 例、重跑即成功；
+ * macOS 无此形态（POSIX rename 后新旧 inode 各自完整可读）。
+ */
+export function isShortReadIndexError(stderr: string): boolean {
+  return stderr.includes('short read while indexing');
 }
 
 /**
@@ -166,7 +180,8 @@ export async function gitVersion(): Promise<string | null> {
  * 没有 notes 通道，往 stderr 提示一行，同一进程只提示一次（{@link indexResidueText}）。
  *
  * `opts.exclude`（EV-221）：这些前缀不收进哈希，见 {@link WorkTreeHashOptions.exclude}。不传时 `add` 的参数与环境与改前相同。
- * `add` 报「文件中途消失」（{@link isVanishedFileError}）时重跑，至多 {@link ADD_VANISHED_RETRIES} 次；
+ * `add` 报暂态竞态（「文件中途消失」{@link isVanishedFileError} / Windows「short read」{@link isShortReadIndexError}）
+ * 时重跑，至多 {@link ADD_VANISHED_RETRIES} 次；
  * 失败的 `add` 不写临时索引（git 回滚锁文件），重跑仍从 `read-tree HEAD` 的状态开始。用尽时抛最后一次的原文。
  */
 export async function workTreeHash(cwd: string, opts: WorkTreeHashOptions = {}): Promise<string> {
@@ -186,7 +201,12 @@ export async function workTreeHash(cwd: string, opts: WorkTreeHashOptions = {}):
     // EV-222 起四个 pathspec 变量一并钉回缺省（ICASE=1 会让排除不分大小写）
     const addEnv = excludes.length > 0 ? { ...env, ...PATHSPEC_ENV_DEFAULTS } : env;
     let add = await git(cwd, addArgs, addEnv, t);
-    for (let n = 0; n < ADD_VANISHED_RETRIES && add.code !== 0 && !add.timedOut && isVanishedFileError(add.stderr); n++) {
+    /*
+     * 暂态竞态重跑（EV-221「文件中途消失」+ ISSUE-05a「short read」）：两者都是
+     * git 列目录与建索引之间文件状态已变，重跑即过；其它报错与超时不重试。
+     */
+    for (let n = 0; n < ADD_VANISHED_RETRIES && add.code !== 0 && !add.timedOut
+      && (isVanishedFileError(add.stderr) || isShortReadIndexError(add.stderr)); n++) {
       add = await git(cwd, addArgs, addEnv, t);
     }
     if (timed && add.timedOut) throw new GitTimeoutError('add');

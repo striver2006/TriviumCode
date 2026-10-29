@@ -555,8 +555,17 @@ export async function interpretStatus(
     /*
      * 进程没了（或已不是同一进程）却没留终态 → 失联（无论心跳是否还新鲜）。
      * 活着而取不到启动时刻是判不了（EV-175）：不判 pid_gone，交给下面的心跳判据——新鲜仍算运行中、过期判 heartbeat_stale。
+     *
+     * 判失联前**重读一次 status**（ISSUE-05b，2026-10-29 冲击实验 s29 现场实测）：
+     * 「读 status → 查 pid」两步不原子，worker 在两步之间完成「写终态 → 退出」时，
+     * 手上这份是替换前的旧心跳（非终态）而 pid 已消失——正常收尾被误判成 pid_gone，
+     * `--wait` 随即把 success 覆盖收尾成 failed（stub/快速审查的秒级运行里窗口命中率最高，
+     * 集成测试并发下的随机红即此形态）。worker 的终态写在退出之前必然落盘，重读一次即见；
+     * 重读仍是非终态才是真失联（没写终态就没了）。
      */
     if (live.identity !== 'unverifiable' && (!live.alive || !live.sameProcess)) {
+      const again = await readStatus(runDir);
+      if (again !== null && isTerminal(again.phase)) return { kind: 'terminal', status: again };
       return { kind: 'worker_lost', reason: 'pid_gone' };
     }
   }

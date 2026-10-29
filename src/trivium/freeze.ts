@@ -28,6 +28,7 @@ import {
 } from './util/git.js';
 import { expandHome, matchesAnyGlob, sha256, sha256File } from './util/fsx.js';
 import { diffExcludePrefixes } from './code-stage.js';
+import { runRoot } from './config.js';
 import { normalizeAbs, isUnder } from './adapters/base.js';
 import { isRunDirFile } from './run-files.js';
 
@@ -499,8 +500,10 @@ export async function freeze(input: FreezeInput): Promise<Snapshot> {
   /*
    * 归档根、.trivium/、.git 不进 tree_hash（EV-221），与 code 阶段补丁同一份排除：漂移判定本就剔除这几处，
    * 而另一个主题的工作进程正往归档根或 .trivium/ 原子写的临时文件会让临时索引的 `add -A` 报「unable to stat」。
+   * 运行根一并排除（ISSUE-05a）：run_root 指进项目内时 worker 心跳正在原子替换的文件
+   * 在 Windows 上会让 `add -A` 报「short read」——排除 + `workTreeHash` 的暂态重试双保险。
    */
-  const ownExcludes = diffExcludePrefixes(path.relative(projectRoot, archiveRoot));
+  const ownExcludes = diffExcludePrefixes(path.relative(projectRoot, archiveRoot), path.relative(projectRoot, runRoot(cfg)));
   const treeHash = await workTreeHash(projectRoot, { exclude: ownExcludes });
   const status = await statusPorcelain(projectRoot);
   const dirty = status.length > 0;
