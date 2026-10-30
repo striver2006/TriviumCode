@@ -1,0 +1,42 @@
+{
+  "batch": "w4s3-retest-20261030-221253",
+  "purpose": "ISSUE-09 环境侧①②解决后的 W4-S3（L1 负向）复测",
+  "machine": "win11-26300",
+  "versions": {
+    "trivium_installed": "1.3.5",
+    "repo_head": "87ef1ab7",
+    "claude_code": "2.1.302（与 2026-10-29 验收批次同版，未自更新）",
+    "agy": "1.4.11（批次时 1.4.10，本次 doctor 重新校准）",
+    "gemini_model": "gemini-3.8-flash-high（effort high，经 agy 真实审查）"
+  },
+  "environment_route": {
+    "issue09_2": "进程级注入 CLAUDE_CODE_GIT_BASH_PATH=D:\\Program Files\\Git\\bin\\bash.exe（候选一，零系统改动；联接与重装未启用）",
+    "issue09_1": "复核为误诊：claude 2.1.302 的 stream-json 不存在 hook_started 事件类型，10-29 的「项目级 hooks 未注册」判据不可观测；判别探针（08 号，伪造审查文件）被 hook 实弹拦截，注册与阻断语义成立",
+    "side_findings": [
+      "--restricted 按官方语义忽略用户 settings 的 env 段：网关凭据（ANTHROPIC_BASE_URL/AUTH_TOKEN）须进程级注入（01 号对照；证实设计 §7.1「第三方网关」段的既有机制，编排器 settings_env_source 即此补偿，本驱动器复刻同路）",
+      "~/.claude/settings.json permissions.defaultMode=plan 对 headless 会话同样生效：不显式 --permission-mode acceptEdits 时模型自称 plan 模式、业务写入被改道（06 号），影响的是到达 hook 之前的客户端行为",
+      "shell 多层转义会把路径中的 \\b 变成退格符：03/04 号探针因注入路径损坏而假阴性，05 号改用 path.join 构造后生效——凡经 shell 传 Windows 路径给 node 的探针都要防这一层"
+    ]
+  },
+  "gate": {
+    "topic": "WinW4S3",
+    "stage": "plan",
+    "entry": "B",
+    "driver": "glm（名义，夹具沿用上批口径）",
+    "critics": "gemini（单侧，配置意图非降级）",
+    "run_id": "20261030T144811Z",
+    "review_duration_s": 267,
+    "verdict": "pass-after-changes（AGY-01 minor / AGY-02 nit，逐条裁决均接受）",
+    "disposal": "abandon（2026-10-30，与上批处置一致）"
+  },
+  "canary": {
+    "target": "src/canary-w4s3.md（夹具内无价值业务文件，三次尝试内容分别为 canary-v1/v2/v3）",
+    "attempts": [
+      { "log": "09-canary-attempt1.jsonl", "tool_use_id": "toolu_93511af94b00482fa7ea249c" },
+      { "log": "10-canary-attempt2.jsonl", "tool_use_id": "toolu_37b5bc495e7a48aaaabd81cf" },
+      { "log": "11-canary-attempt3.jsonl", "tool_use_id": "toolu_46b51ee56fd0483387845f48" }
+    ],
+    "result": "三次全部被 PreToolUse Hook 拦截：拒因原文（含闸门主题/阶段与 dual-approve 指引）+ permission_denials 同 tool_use_id + 文件未创建，三证齐全"
+  },
+  "harness": "harness-headless-claude.js（claude.exe --print --output-format stream-json --verbose --permission-mode acceptEdits，cwd=夹具，网关 env 与 CLAUDE_CODE_GIT_BASH_PATH 均进程级注入）"
+}

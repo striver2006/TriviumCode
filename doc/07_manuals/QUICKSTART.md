@@ -360,7 +360,7 @@ Antigravity 目前只以「名义 Driver」验收过（在 Claude Code 会话里
 
 ### L1 与 L2 是什么意思
 
-- **L1**（Claude Code）：Hook **兜得住**写入，§5 的四道护栏全部生效。项目里的 Hook 配置若被删掉，本次按 L2 计，预检会打 ⚠️，重跑 `init` 即可恢复。Windows 上 L1 以 1.3.5 起不再依赖 Claude 找得到 Git Bash：`init` 在 Windows 合并的是 PowerShell 形态的 Hook 命令（详见设计 §7.1「项目 Hook 的 Windows 形态」）；1.3.5 之前合并的 sh 形态在 Claude 找不到 Git Bash（如 Git 装在自定义路径）时 Hook 失败即放行，重跑 `init` 升级。
+- **L1**（Claude Code）：Hook **兜得住**写入，§5 的四道护栏全部生效。项目里的 Hook 配置若被删掉，本次按 L2 计，预检会打 ⚠️，重跑 `init` 即可恢复。Windows 上 L1 以 1.3.5 起不再依赖 Claude 找得到 Git Bash：`init` 在 Windows 合并的是 PowerShell 形态的 Hook 命令（详见设计 §7.1「项目 Hook 的 Windows 形态」）；1.3.5 之前合并的 sh 形态在 Claude 找不到 Git Bash（如 Git 装在自定义路径）时 Hook 失败即放行，重跑 `init` 升级。Git 装在自定义路径时 Claude 会话里会出现「Git Bash wasn't found」**纯警告**（PS 形态 Hook 在回退载体下阻断语义完好，2026-10-30 W4-S3 复测实测）；要让 Claude 走 Git Bash 载体，给会话注入环境变量 `CLAUDE_CODE_GIT_BASH_PATH` 指向 `bash.exe`（进程级即可，日常可 `setx` 持久化），无需重装 Git。另注意：用户级 `~/.claude/settings.json` 的 `permissions.defaultMode`（如 `plan`）对 headless 会话同样生效，自动化里测 Hook 需显式 `--permission-mode` 覆盖，否则写入在到达 Hook 之前就被客户端改道。
 - **L2**（ZCode / Codex / Antigravity）：**不保证**事前拦得住。三条规矩要靠你和 Driver 自己守：审查进行中不改业务文件、闸门期不改业务文件、只写 Driver 自己后缀的原稿与裁决件。
 
 守不住时，事后机制**只覆盖一部分**：

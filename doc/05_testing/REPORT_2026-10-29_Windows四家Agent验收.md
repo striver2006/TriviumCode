@@ -78,7 +78,7 @@
 | ISSUE-06 | P2 流程偏差 | 已记录 | 安装前未备份旧版即覆盖 |
 | ISSUE-07 | P3 | 已记录 | 环境适配（D 盘路径 / MSYS2 布局 pin / PS5.1 BOM / cmd `//c` 转义） |
 | ISSUE-08 | P1 产品缺陷 | **已修复（1.3.5）+ 实测回归** | Windows 上 agy 会话派生的 detached worker 随工具通道收杀 Job 结束被杀（本报告 §10）；1.3.5 起 `--start` 在 Windows 经 WMI 中继逃 Job 派生、`--wait` 判 worker 确认已死时按记录清理本 run 的 CLI 子树（次生孤儿），设计 §7.1「逃 Job 派生通道」「失联收尾清理 CLI 子树」；回归：`win-job-escape.test.ts`（P/Invoke 夹具复刻收杀 Job：对照组直拉必死、实验组中继必活）+ worker-detach 三例 + run-protocol 两例，见[修复报告](REPORT_2026-10-30_ISSUE-08-09修复.md) |
-| ISSUE-09 | P1 环境/适配 | **产品侧已修复（1.3.5）：③ hook 命令去 sh 依赖** | ①项目 hooks 未注册、②Git 装在 D 盘致 Claude 探测不到 Git Bash 属环境侧（Git 装回默认路径可复测①②）；③（产品缺口）`sh -c` 形态在 PowerShell 回退载体下解析不到 sh、失败即放行——1.3.5 起 Windows 合并渲染为 `powershell -NoProfile -EncodedCommand` 形态（守卫三支语义逐一对应、不依赖 Claude 占位符替换、退出码经 `exit $LASTEXITCODE` 尾句透传），Git Bash 在场与缺席两载体实跑四分支全对（`hook-guard.test.ts` ISSUE-09③ 用例），设计 §7.1「项目 Hook 的 Windows 形态」；W4-S3 复测待环境侧①②解决 |
+| ISSUE-09 | P1 环境/适配 | **已收口（③产品侧 1.3.5；①②复测收口 2026-10-30）** | ③（产品缺口）`sh -c` 形态在 PowerShell 回退载体下解析不到 sh、失败即放行——1.3.5 起 Windows 合并渲染为 `powershell -NoProfile -EncodedCommand` 形态（守卫三支语义逐一对应、不依赖 Claude 占位符替换、退出码经 `exit $LASTEXITCODE` 尾句透传），Git Bash 在场与缺席两载体实跑四分支全对（`hook-guard.test.ts` ISSUE-09③ 用例），设计 §7.1「项目 Hook 的 Windows 形态」。②环境侧：进程级注入 `CLAUDE_CODE_GIT_BASH_PATH` 指向 D 盘 bash.exe 即生效（零系统改动，重装/联接未启用）；①复核为**幻影判据误诊**（stream-json 本无 hook_started 事件类型，判别探针被 hook 实弹拦截证伪）——W4-S3 复测达成，见[复测报告](REPORT_2026-10-30_W4-S3复测.md) |
 
 ## 7. 未测边界（不外推）
 
@@ -121,7 +121,7 @@ B3r 首跑失败与此同族。修复（1.3.4）：判 `pid_gone` 前重读一�
 | :-- | :-- | :-- | :-- |
 | W4-02 取消 | codex（名义）／glm | **通过** | 审核者进程确认启动后 `--cancel`：phase=cancelled、取消留痕、请求快照（GLM-5.3）与工件保留、worker/CLI 进程收口、只点名本 run PID |
 | W4-01 三审组合 | codex／claude+gemini+glm | **通过** | 三侧各自真实审查（read 9/8/6、回读一致、blind、三份 brief），裁决覆盖三侧，人工停点待批。注：首跑预检三侧同败系与探针任务并发竞争，串行重试即过 |
-| W4-S3 Hook 负向 | （停点夹具审查：gemini） | **未达成（ISSUE-09）** | 审查与停点正常；canary 写入**未被拦**：事件流无 PreToolUse hook_started（项目 hooks 未注册）、claude 探测不到 D 盘 Git（「Git Bash wasn't found」，PATH 注入无效）、hook 失败形态为放行。L1 在本机实测不成立 |
+| W4-S3 Hook 负向 | （停点夹具审查：gemini） | **未达成（ISSUE-09）→ 复测达成（2026-10-30）** | 首轮：审查与停点正常；canary 写入**未被拦**：事件流无 PreToolUse hook_started（后复核为幻影判据，stream-json 本无此事件类型）、claude 探测不到 D 盘 Git（「Git Bash wasn't found」，PATH 注入无效）、hook 失败形态为放行。**复测**（[W4-S3复测报告](REPORT_2026-10-30_W4-S3复测.md)）：②经进程级 `CLAUDE_CODE_GIT_BASH_PATH` 注入解决、夹具 hooks 升级 1.3.5 PS 形态后，同口径闸门停点期三次 canary 写全部被 PreToolUse Hook 事前拦截（拒因原文 + 同 ID permission_denials + 文件未创建三证齐全） |
 | W5-D bug 入口 | codex／claude | **通过** | 可复现现场（b 位漏检）→ 认领 bug → 根因稿 → 审查（网关路线）→ 裁决 → bug 停点。首次以 agy Driver 发起时 worker 12 秒静默死（ISSUE-08），改 codex 后全通 |
 | W5-C code 入口 | codex／gemini | **通过** | 冻结 diff 与预置改动**逐字一致**；gemini 3 意见逐条裁决并完成改码、`node --test` 自查 3/3；停点。途中 agy 探活连续失败系 ISSUE-08 的孤儿 agy 进程持日志锁（已核对身份后结束） |
 | W5-A dual-run | claude／gemini+glm | **通过（至第一停点）** | verify 命令按任务书 §8 配置后，S0～S3.5 完整：计划原稿 → 两侧真实审查（5 意见）→ 裁决全接受 → r2 定稿 → 计划审批停点；批准后从 S4.5（实施→代码双审→verify）继续 |
