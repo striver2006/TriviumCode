@@ -188,7 +188,11 @@ test('合并 Hook 保留用户自己的 hooks，并按事件名追加', async ()
 
   const cmds = s.hooks['PreToolUse']!.flatMap((e) => e.hooks.map((h) => h.command));
   assert.ok(cmds.includes('echo mine'), '用户原有 hook 必须保留');
-  assert.ok(cmds.some((c) => c.includes('hook-pre-write')), 'trivium 的 hook 应被追加');
+  // Trivium 条目按 gate 身份认（hookNamesOf）：Windows 形态的 gate 名在 EncodedCommand 体内、明文不含
+  assert.ok(
+    s.hooks['PreToolUse']!.some((e) => hookNamesOf(e).has('pre-write')),
+    'trivium 的 hook 应被追加',
+  );
   assert.equal(s.otherSetting, 42, '其它设置不得丢失');
   assert.ok(s.hooks['Stop'], '新事件应被创建');
   // 必须备份
@@ -229,9 +233,14 @@ test('升级路径：旧版 TriviumCode Hook 被替换，不叠加也不残留',
   const s = JSON.parse(await fs.readFile(path.join(ctx.projectRoot, '.claude/settings.json'), 'utf8')) as {
     hooks: Record<string, { hooks: { command: string }[] }[]>;
   };
-  const preWrite = s.hooks['PreToolUse']!.filter((e) => e.hooks.some((h) => h.command.includes('hook-pre-write')));
+  const preWrite = s.hooks['PreToolUse']!.filter((e) => hookNamesOf(e).has('pre-write'));
   assert.equal(preWrite.length, 1, `旧版应被替换而非叠加，实际 ${preWrite.length} 条`);
-  assert.match(preWrite[0]!.hooks[0]!.command, /test -x/, '应是新版命令文本');
+  // 新版命令文本：POSIX 是带存在性守卫的 sh 形态；Windows 是 PS 形态（ISSUE-09③，源仍是 sh、合并时重渲染）
+  if (process.platform === 'win32') {
+    assert.match(preWrite[0]!.hooks[0]!.command, /^powershell -NoProfile -EncodedCommand "[A-Za-z0-9+/=]+"; exit \$LASTEXITCODE$/, 'Windows 上应是 PS 形态命令文本');
+  } else {
+    assert.match(preWrite[0]!.hooks[0]!.command, /test -x/, '应是新版命令文本');
+  }
   assert.ok(s.hooks['PreToolUse']!.some((e) => e.hooks.some((h) => h.command === 'echo mine')), '用户自己的 hook 不动');
   assert.ok(report.notes.some((n) => n.includes('替换')));
 });

@@ -4,7 +4,8 @@
  * **单一来源**：两家的 Hook 都由运行时根里的 `hooks/hooks.json`（Claude Code 形态）派生。
  * 注册表的 `hookConfigTarget` 登记每家落在哪个文件、是什么形态；本模块按形态渲染：
  *
- *   claude-settings  原样合并进 `.claude/settings.json` 的 `hooks.<事件>[]`
+ *   claude-settings  原样合并进 `.claude/settings.json` 的 `hooks.<事件>[]`；
+ *                    **Windows 上另做 PS 形态渲染**（ISSUE-09③，见下方专节）——源仍是 sh 形态，合并时重渲染
  *   zcode-config     合并进 `.zcode/config.json` 的 `hooks.events.<事件>[]`：
  *                    matcher 只留 ZCode 工具注册表里有的名字（`NotebookEdit` 不在其中）；
  *                    超时 `timeout`（秒）换成 `timeoutMs`（毫秒）；护栏失效提示里的配置文件名换成本家的
@@ -21,6 +22,7 @@ import {
   type AgentDescriptor, type GuardLevel, type GuardProfile, type HookConfigFormat, guardProfileOf,
 } from './agents/registry.js';
 import { ensureDir, exists, writeAtomic } from './util/fsx.js';
+import { IS_WIN } from './util/platform.js';
 import { warn } from './util/log.js';
 import { run } from './util/exec.js';
 
@@ -42,10 +44,26 @@ export interface HookMergeReport {
   notes: string[];
 }
 
-/** 一条 hooks 条目里调用了哪些 `gate hook-<name>`（TriviumCode 的 Hook 身份） */
+/**
+ * 一条 hooks 条目里调用了哪些 `gate hook-<name>`（TriviumCode 的 Hook 身份）。
+ *
+ * Windows 形态（ISSUE-09③）的 gate 子命令名藏在 `-EncodedCommand` 的 base64 体内、表面上不可见——
+ * 身份判定（合并去重、`hookConfigPresent` 的在场判定）不能只见明文，故对条目里每段 EncodedCommand
+ * 解码后再认一遍；解不出的段按表面文本算（fail-safe：识别不出即不在场，不会把没拦的说成拦）。
+ */
 export function hookNamesOf(entry: unknown): Set<string> {
+  const raw = JSON.stringify(entry) ?? '';
   const out = new Set<string>();
-  for (const m of JSON.stringify(entry).matchAll(/gate hook-([a-z-]+)/g)) out.add(m[1]!);
+  for (const m of raw.matchAll(/gate hook-([a-z-]+)/g)) out.add(m[1]!);
+  // 引号在 JSON.stringify 里是 \"——正则两边都放行裸引号与转义引号（本函数只吃 stringify 产物，恒为后者）
+  for (const m of raw.matchAll(/-EncodedCommand \\?"([A-Za-z0-9+/=]+)\\?"/g)) {
+    try {
+      const script = Buffer.from(m[1]!, 'base64').toString('utf16le');
+      for (const g of script.matchAll(/gate hook-([a-z-]+)/g)) out.add(g[1]!);
+    } catch {
+      /* 非法 base64：只按表面文本识别 */
+    }
+  }
   return out;
 }
 
@@ -68,6 +86,92 @@ const ZCODE_HOOK_TOOLS: ReadonlySet<string> = new Set(['Write', 'Edit', 'Bash'])
 
 /** 护栏失效提示里点名的配置文件：渲染到别家时要换成别家的，否则提示把人指到一个不起作用的文件 */
 const CLAUDE_SETTINGS_MENTION = '.claude/settings.json 中的 TriviumCode Hook';
+
+// ─────────────── Windows 形态渲染（ISSUE-09③，去 sh 依赖） ───────────────
+
+/**
+ * Windows 上 Claude Code 执行 shell 形态 hook 的载体是 **Git Bash，找不到时回退 PowerShell**（官方
+ * Hooks 文档；验收 four-agent-win 实测：Git 装在自定义路径时 Claude 探测不到，`sh -c` 在 PowerShell
+ * 里解析不到 sh——hook 失败即放行，L1 形同虚设，ISSUE-09）。`cmd /d /c` 形态在 Git Bash 下会被 MSYS
+ * 把 `/c` 转成路径（坑清单 P-xx / ISSUE-07 已记），也不能用；`powershell.exe` 在两种载体下都解析得到
+ * （System32 恒在 PATH，`-NoProfile` 等连字符旗标不触发 MSYS 路径转换）。
+ *
+ * 因此 Windows 合并时把命令重渲染为 `powershell -NoProfile -EncodedCommand "<b64>"; exit $LASTEXITCODE`：
+ *   - Base64 是单 token，无引号 / 无 cmd 元字符，bash 与 PowerShell 两层解析都动不了它；
+ *   - 守卫三支语义与 sh 形态逐一对应（wrapper 在→执行；无 config→静默 0；config 在而 wrapper 失→stderr 提示+2），
+ *     全部落在 PS 脚本体内，读 `$env:CLAUDE_PROJECT_DIR`——**不依赖** Claude 的 `${…}` 占位符替换；
+ *   - 尾句 `exit $LASTEXITCODE`：外层若是 `powershell -Command`（Claude 的 PowerShell 回退可能如此），
+ *     它会把内层原生命令的非零退出码重映射为 1（本机实测），显式 `exit` 才能把阻断用的 2 传出去；
+ *     该串在 bash 里则空参展开、退化为 `exit $?`，同样透传。本机 2026-10-30 实测：bash 与双层 PowerShell
+ *     下四支（0 / 2 / 护栏失效 2 / 协作者静默 0）退出码全部正确。
+ * Hook 身份不变：两种形态都含 `gate hook-<name>`，`hookNamesOf` 与合并去重照常工作（重跑 init 即原位升级）。
+ * POSIX 合并逐字保持 sh 形态；ZCode 形态不渲染（其 hook 执行机制不经 sh，未见同型缺口）。
+ */
+const WINDOWS_WRAPPER_REL = String.raw`bin\trivium.cmd`;
+const WINDOWS_CONFIG_REL = 'config.yaml';
+
+/** 护栏失效提示（对应 sh 形态的同义句；wrapper 路径形态换成 .cmd 入口） */
+function windowsGuardBrokenMessage(settingsMention: string): string {
+  return (
+    `TriviumCode 护栏失效：.trivium\\${WINDOWS_WRAPPER_REL} 缺失或不可执行，但本项目已初始化。` +
+    `闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 ${settingsMention}。`
+  );
+}
+
+/**
+ * Windows 形态的守卫脚本（进 `-EncodedCommand` 的本体）。`gateName` 是 `hook-` 后的那一段
+ * （`pre-write` 等）；`sessionStart` 一支非阻断——wrapper 缺席一律静默 0（与 sh 形态同语义）。
+ * 纯函数：同一输入恒出同一串（合并幂等与快照测试都依赖这一点）。
+ */
+export function windowsGuardScript(gateName: string, settingsMention: string, o: { sessionStart?: boolean } = {}): string {
+  const lines = [
+    "$ProgressPreference = 'SilentlyContinue'",
+    "$d = Join-Path $env:CLAUDE_PROJECT_DIR '.trivium'",
+    `$w = Join-Path $d '${WINDOWS_WRAPPER_REL}'`,
+    'if (Test-Path -LiteralPath $w) { & $w gate ' + `hook-${gateName}` + '; exit $LASTEXITCODE }',
+  ];
+  if (o.sessionStart) {
+    lines.push('exit 0');
+  } else {
+    lines.push(
+      `if (-not (Test-Path -LiteralPath (Join-Path $d '${WINDOWS_CONFIG_REL}'))) { exit 0 }`,
+      `[Console]::Error.WriteLine('${windowsGuardBrokenMessage(settingsMention).replaceAll("'", "''")}')`,
+      'exit 2',
+    );
+  }
+  return lines.join('\n');
+}
+
+/** 完整命令串：脚本体 UTF-16LE→Base64，尾句透传退出码（见本节文档块） */
+export function encodePowerShellHook(script: string): string {
+  return `powershell -NoProfile -EncodedCommand "${Buffer.from(script, 'utf16le').toString('base64')}"; exit $LASTEXITCODE`;
+}
+
+/** 一条 hooks 条目里调用的 `gate hook-<name>` 应当恰有一个；Windows 渲染按它重建命令 */
+function singleGateNameOf(entry: HookEntry): string {
+  const names = [...hookNamesOf(entry)];
+  if (names.length !== 1) {
+    throw new Error(
+      `hooks.json 的一条 Hook 调用了 ${names.length} 个 gate 子命令（${names.join('、')||'无'}），Windows 渲染要求每条恰一个——` +
+        '核对 skills/dual-critic/hooks/hooks.json 的条目切分',
+    );
+  }
+  return names[0]!;
+}
+
+/** claude-settings 形态在 Windows 上的条目渲染：命令换 PS 形态，matcher 与超时原样保留 */
+function toWindowsEntry(entry: HookEntry, targetPath: string): HookEntry {
+  const gate = singleGateNameOf(entry);
+  const script = windowsGuardScript(gate, `${targetPath} 中的 TriviumCode Hook`, { sessionStart: gate === 'session-start' });
+  return {
+    ...(entry.matcher !== undefined ? { matcher: entry.matcher } : {}),
+    hooks: entry.hooks.map((h) => {
+      const { command, ...rest } = h;
+      void command;
+      return { ...rest, command: encodePowerShellHook(script) } as HookEntry['hooks'][number];
+    }),
+  };
+}
 
 function toZcodeEntry(entry: HookEntry, targetPath: string): HookEntry {
   let matcher: string | undefined;
@@ -106,13 +210,23 @@ const ZCODE_HOOK_EVENTS: ReadonlySet<string> = new Set([
   'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'PostToolUseFailure', 'Stop',
 ]);
 
-/** 按形态渲染出「事件 → 条目列表」。ZCode 事件名与 Claude Code 同名，但只认 {@link ZCODE_HOOK_EVENTS} 里的 */
+/**
+ * 按形态渲染出「事件 → 条目列表」。ZCode 事件名与 Claude Code 同名，但只认 {@link ZCODE_HOOK_EVENTS} 里的；
+ * claude-settings 形态在 Windows 上另做 ISSUE-09③ 的 PS 形态渲染（POSIX 逐字原样）。
+ */
 export function renderHookEvents(
   format: HookConfigFormat,
   source: HookSource,
   targetPath: string,
 ): Record<string, HookEntry[]> {
-  if (format === 'claude-settings') return source.hooks;
+  if (format === 'claude-settings') {
+    if (!IS_WIN) return source.hooks;
+    const out: Record<string, HookEntry[]> = {};
+    for (const [event, entries] of Object.entries(source.hooks)) {
+      out[event] = entries.map((e) => toWindowsEntry(e, targetPath));
+    }
+    return out;
+  }
   const out: Record<string, HookEntry[]> = {};
   for (const [event, entries] of Object.entries(source.hooks)) {
     if (!ZCODE_HOOK_EVENTS.has(event)) {

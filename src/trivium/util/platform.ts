@@ -258,6 +258,81 @@ export function winTaskkillTree(pid: number, force: boolean): boolean {
   return r.status === 0 || r.status === 1;
 }
 
+/**
+ * 经 WMI `Win32_Process.Create` 创建进程（ISSUE-08 逃 Job 派生通道的承载）。
+ *
+ * 为什么是 WMI：Node `spawn` 的 `detached` 在 Windows 只是 DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP，
+ * **逃不出调用方所在的 Job**——本机实测（2026-10-30，win32 26300）：detached worker 落在父进程的
+ * KILL_ON_JOB_CLOSE Job 里，通道结束即被整树收杀（ISSUE-08 复现）；而经 WMI 创建的进程由
+ * WmiPrvSE.exe 承载（不在调用方 Job 内），其派生的后代同样不在——Job 关闭后存活。`cmd /c start`
+ * 一类中间 shell 不带 CREATE_BREAKAWAY，逃不掉；`Invoke-CimMethod` 带 `-ClientOnly` 的
+ * Win32_ProcessStartup 实例参数在本机报 0x80041002「找不到」（实测），故用 `([wmiclass]'…')`
+ * COM 三参形态，`ShowWindow=0`（SW_HIDE）对应 `windowsHide`。
+ *
+ * 与 `enumerateWinProcesses` 同理不走向 exec 的 `run()`：exec 依赖本模块，反向依赖成环。
+ */
+export interface WinWmiCreate {
+  ok: boolean;
+  pid: number | null;
+  /** 失败成因（人读，写进 worker.log，不进归档） */
+  error: string | null;
+}
+
+/** PS 单引号字面量转义：内部单引号翻倍 */
+function psQuote(s: string): string {
+  return `'${s.replaceAll("'", "''")}'`;
+}
+
+export async function winCreateProcessViaWmi(
+  commandLine: string,
+  cwd: string,
+  o: { timeoutMs?: number } = {},
+): Promise<WinWmiCreate> {
+  const script =
+    "$ErrorActionPreference='Stop';" +
+    '$s = ([wmiclass]"Win32_ProcessStartup").CreateInstance(); ' +
+    '$s.ShowWindow = 0; ' +
+    '$r = ([wmiclass]"Win32_Process").Create(' + psQuote(commandLine) + ', ' + psQuote(cwd) + ', $s); ' +
+    'if ($r.ReturnValue -ne 0) { Write-Output ("TRIVIUM_WMI_RET=" + $r.ReturnValue); exit 0 }; ' +
+    'Write-Output ("TRIVIUM_WMI_PID=" + $r.ProcessId)';
+  return await new Promise<WinWmiCreate>((resolve) => {
+    const child = spawn('powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    let out = '';
+    const finish = (r: WinWmiCreate): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(r);
+    };
+    let settled = false;
+    const timer = setTimeout(() => {
+      child.kill();
+      finish({ ok: false, pid: null, error: `WMI 创建超时（${o.timeoutMs ?? 20_000} ms）` });
+    }, o.timeoutMs ?? 20_000);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (c: string) => { out += c; });
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (c: string) => { out += c; });
+    child.on('error', (err) => finish({ ok: false, pid: null, error: `powershell 拉不起：${(err as Error).message}` }));
+    child.on('close', () => {
+      const pid = /TRIVIUM_WMI_PID=(\d+)/.exec(out);
+      if (pid) {
+        const n = Number(pid[1]);
+        finish(n > 0 ? { ok: true, pid: n, error: null } : { ok: false, pid: null, error: `WMI 返回的 pid 不成形：${pid[1]}` });
+        return;
+      }
+      const ret = /TRIVIUM_WMI_RET=(\d+)/.exec(out);
+      finish({
+        ok: false,
+        pid: null,
+        error: `WMI Create 返回 ${ret ? ret[1] : '未知'}${out.trim().length > 0 ? `：${out.trim().split('\n').slice(0, 3).join(' | ')}` : ''}`,
+      });
+    });
+  });
+}
+
 let posixShellCache: string | null | undefined;
 
 function firstExistingSh(candidates: string[]): string | null {

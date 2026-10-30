@@ -77,6 +77,8 @@
 | ISSUE-05 | P1 | **已定位并修复（1.3.4）：双根因**（详见 §9 补记） | ① 05a：run_root 在项目工作树内时，工作树哈希 `add -A` 读 worker 心跳正原子替换的 status.json，Windows 报 `short read` 退非零、worker 异常退出；② 05b：`--wait` 判 `pid_gone` 的读 status/查 pid 两步竞态，worker「写终态→退出」落在两步之间时被误判失联、success 被覆盖收尾成 failed——即集成测试并发下随机红（三批全量各红不同文件、具名复跑全过）与 B3r 首跑失败的形态 |
 | ISSUE-06 | P2 流程偏差 | 已记录 | 安装前未备份旧版即覆盖 |
 | ISSUE-07 | P3 | 已记录 | 环境适配（D 盘路径 / MSYS2 布局 pin / PS5.1 BOM / cmd `//c` 转义） |
+| ISSUE-08 | P1 产品缺陷 | **已修复（1.3.5）+ 实测回归** | Windows 上 agy 会话派生的 detached worker 随工具通道收杀 Job 结束被杀（本报告 §10）；1.3.5 起 `--start` 在 Windows 经 WMI 中继逃 Job 派生、`--wait` 判 worker 确认已死时按记录清理本 run 的 CLI 子树（次生孤儿），设计 §7.1「逃 Job 派生通道」「失联收尾清理 CLI 子树」；回归：`win-job-escape.test.ts`（P/Invoke 夹具复刻收杀 Job：对照组直拉必死、实验组中继必活）+ worker-detach 三例 + run-protocol 两例，见[修复报告](REPORT_2026-10-30_ISSUE-08-09修复.md) |
+| ISSUE-09 | P1 环境/适配 | **产品侧已修复（1.3.5）：③ hook 命令去 sh 依赖** | ①项目 hooks 未注册、②Git 装在 D 盘致 Claude 探测不到 Git Bash 属环境侧（Git 装回默认路径可复测①②）；③（产品缺口）`sh -c` 形态在 PowerShell 回退载体下解析不到 sh、失败即放行——1.3.5 起 Windows 合并渲染为 `powershell -NoProfile -EncodedCommand` 形态（守卫三支语义逐一对应、不依赖 Claude 占位符替换、退出码经 `exit $LASTEXITCODE` 尾句透传），Git Bash 在场与缺席两载体实跑四分支全对（`hook-guard.test.ts` ISSUE-09③ 用例），设计 §7.1「项目 Hook 的 Windows 形态」；W4-S3 复测待环境侧①②解决 |
 
 ## 7. 未测边界（不外推）
 

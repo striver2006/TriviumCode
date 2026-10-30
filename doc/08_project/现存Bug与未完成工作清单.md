@@ -158,6 +158,9 @@ M11 第 12 步已有用户具名的组合证据达成边界；M12 已完成计�
     - **EV-262，测试时限**：`release-package` 用例的两个时限在负载下偏紧，两次全量各以不同形态超时。
 
     发布包不受影响：包从干净的 `bd5c0635` 打出，解压后一键安装真实跑 14 步自检，14/14 通过。判读见[《发布检查报告》](../05_testing/发布检查报告.md) 1.3.2 一节。
+18. **验收批次 four-agent-win 的 ISSUE-08/09（P1，2026-10-30 收口，随 1.3.5；验收原单与判读见[报告](../05_testing/REPORT_2026-10-29_Windows四家Agent验收.md) §6/§10 与[修复报告](../05_testing/REPORT_2026-10-30_ISSUE-08-09修复.md)）**：
+    - **ISSUE-08（产品，已修）**：Windows 上 agy 会话派生的 detached worker 随工具通道结束被杀——`detached`（DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP）逃不出调用方的 KILL_ON_JOB_CLOSE Job（实测复现：worker 12~15 s 静默死）；次生：worker 被杀时它拉起的审查 CLI 成孤儿、持厂商日志锁致后续探活连锁失败。修复两件：① `--start` 在 Windows 经 **WMI 中继**逃 Job 派生（`spawnDetached` 的 `winRelay` 通道：规格（含 env 快照）落运行目录 0600、中继由 WmiPrvSE 承载、pid 经结果文件交回、规格读完即删；WMI 不可用回退直拉并在 worker.log 留痕）；② `--wait` 判 `worker_lost` 且 worker 确认已死（`goneForArchive`）时就地按记录结束本 run 的 CLI 子树（与 `--cancel` 终态早退分支同一实现），`heartbeat_stale` 而 worker 仍活的那格不发信号。EV-157「--wait 不结束任何进程」收窄为「worker 仍活时不结束」。设计 §7.1 两段同批修订。回归：`win-job-escape.test.ts`（P/Invoke 夹具，对照组直拉必死/实验组中继必活）+ worker-detach（relay/回退/逃逸三例）+ run-protocol（失联清理正反两例）。
+    - **ISSUE-09③（产品适配，已修；①②环境侧维持）**：Claude L1 Hook 在「Claude 找不到 Git Bash（如 Git 装在自定义路径）回退 PowerShell」的 Windows 机器上三层失效，其中③是产品缺口——`sh -c '…'` 在 PowerShell 载体下解析不到 sh、hook 失败即放行。修复：`hooks` 合并在 Windows 上把命令重渲染为 `powershell -NoProfile -EncodedCommand "<b64>"; exit $LASTEXITCODE`（守卫三支语义在 PS 脚本体内逐一对应、读 `$env:CLAUDE_PROJECT_DIR` 不依赖占位符替换；尾句纠正外层 `powershell -Command` 把内层非零退出码重映射为 1 的行为；gate 身份在 b64 体内由 `hookNamesOf` 解码识别，合并去重与 L1 在场判定两形态通用；POSIX 逐字不变；ZCode 形态不渲染）。实跑契约：`hook-guard.test.ts` ISSUE-09③ 用例（Git Bash 与 PowerShell 回退两载体 × wrapper 0/2、护栏破坏 2、协作者静默 0 四分支）。跨平台共享的 `.claude/settings.json` 两平台各自 init 渲染各自形态、按身份原位替换；环境侧①（项目 hooks 未注册）②（Git 装回默认路径）解决后复测 W4-S3。
 
 ## 4. 已接受的结构性限制
 

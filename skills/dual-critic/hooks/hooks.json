@@ -28,6 +28,12 @@
     "改为不设 if、由 hooks.ts 的 `looksLikeCommit` 在进程内过滤（它还要判提交打在哪个仓库上，",
     "前缀规则本来也表达不了这件事）。代价是每次 Bash 调用多起一个短命进程，换的是这条路真的堵上。",
     "",
+    "Windows 上的形态（ISSUE-09③）：Claude Code 在 Windows 执行 shell 形态 hook 用 Git Bash，",
+    "找不到时回退 PowerShell——`sh -c` 在 PowerShell 里解析不到 sh，hook 失败即放行。因此",
+    "`trivium init` 在 Windows 合并时会把命令重渲染为 `powershell -NoProfile -EncodedCommand",
+    "<b64>; exit $LASTEXITCODE`（守卫三支语义逐一对应，本文件里的 sh 形态是源、POSIX 原样用）。",
+    "渲染实现见 src/trivium/hook-config.ts 的 Windows 形态渲染一节。",
+    "",
     "退出码约定见 src/trivium/hooks.ts 的三档语义：",
     "  0 = 放行或判定不了；2 = 明确判定拦截；1 = 程序缺陷（非阻断）。"
   ],

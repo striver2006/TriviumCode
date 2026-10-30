@@ -10,7 +10,7 @@ import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { dirname } from 'node:path';
 import {
-  IS_WIN, enumerateWinProcesses, winProcessCreation, winSectionSnapshotFrom, winTaskkillTree, winTreeMemberCount,
+  IS_WIN, enumerateWinProcesses, winCreateProcessViaWmi, winProcessCreation, winSectionSnapshotFrom, winTaskkillTree, winTreeMemberCount,
 } from './platform.js';
 
 export interface RunOptions {
@@ -722,6 +722,15 @@ export interface SpawnDetachedOptions {
   /** 日志文件路径。stdout/stderr 都重定向到它 */
   logFile: string;
   /**
+   * Windows 逃 Job 派生通道（ISSUE-08）的中继入口：`review --spawn-relay` 的承载命令
+   * （`node` + 编排器 bundle 的 argv 前缀；spec 路径由本模块追加为最后一个参数）。
+   *
+   * **缺省不逃逸（直接 spawn）**：逃逸只在编排器自己的 `--start` 路径开启——直连调用方
+   * （测试、调试脚本）的 `process.argv[1]` 不是 bundle，凭它自定中继入口会重执行调用方自身。
+   * 机制与实测结论见 `spawnDetachedViaWmi` 的文档块。
+   */
+  winRelay?: { bin: string; args: readonly string[] };
+  /**
    * 子进程**已诞生**（拿到 pid）时同步回调一次，在函数返回与 `finally` 关日志句柄之前（EV-145，事后收尾余项计划 r2 §3.3）。
    *
    * 调用方据此区分「失败时子进程有没有起来」：建日志目录、开日志文件、`spawn` 没拿到 pid 这三处失败都在子进程诞生之前，
@@ -730,6 +739,7 @@ export interface SpawnDetachedOptions {
    *
    * 第二个参数是子进程句柄的退出观察（EV-150，派生后失败的孤儿worker计划 r2 §3.2）：调用方在本函数抛错之后
    * 仍能据它确认子进程是否已退出——`handle.close()` 那一格拿不到返回值，只有这里交得出去。
+   * WMI 逃逸路径的 worker 不是本进程子进程，交给回调的是轮询近似（`detachedWatchByPolling`）。
    */
   onSpawned?: (pid: number, watch: DetachedChildWatch) => void;
 }
@@ -753,6 +763,196 @@ export interface DetachedChildWatch {
 export interface SpawnDetachedResult {
   pid: number;
   commandLine: string;
+  /**
+   * 仅 Windows（ISSUE-08）：本次派生实际走的通道。`wmi-escape` = 经 WMI 中继逃出调用方 Job；
+   * `direct` = 直接 spawn（WMI 不可用时的回退）。POSIX 恒为 `direct`。
+   */
+  channel: 'wmi-escape' | 'direct';
+}
+
+// ─────────────────── Windows 逃 Job 派生通道（ISSUE-08） ───────────────────
+
+/**
+ * WMI 中继的派生规格：`--start` 写下它，中继进程照它拉起真正的 worker。
+ *
+ * env 是**完整快照**：中继由 WmiPrvSE 承载，继承的是 WMI 提供进程的环境而非 `--start` 的——
+ * PATH、TRIVIUM_*、网关键都必须经这份文件过桥。可能含凭据形态，0600 落盘、中继读完即删。
+ */
+interface SpawnRelaySpec {
+  bin: string;
+  args: string[];
+  cwd?: string;
+  logFile: string;
+  env: Record<string, string>;
+}
+
+/** 中继结果文件（`<spec>.result`）的形状：要么 pid，要么 error */
+interface SpawnRelayOutcome {
+  pid?: number | null;
+  error?: string;
+}
+
+/** 等中继交回 pid 的预算：链路 = powershell（冷启可达 2~3 s）+ node 中继 + spawn，宽放 15 s */
+const RELAY_RESULT_TIMEOUT_MS = 15_000;
+
+/**
+ * `review --spawn-relay <spec>` 的实现：WMI 中继进程的入口（ISSUE-08）。
+ *
+ * 由 `([wmiclass]'Win32_Process').Create` 拉起（WmiPrvSE 承载、不在调用方 Job 内），
+ * 读规格 → 删规格（含 env 快照）→ 按**普通 spawn**（继承中继的逃逸地位）拉起 worker、
+ * stdio 重定向到 logFile → 把 pid 写进结果文件 → 退出。`--start` 轮询结果文件拿 pid。
+ * 失败也写结果文件（error 字段），让 `--start` 能如实回退直拉而不是干等超时。
+ * 退出码只进 worker.log 诊断，不参与任何判定。
+ */
+export async function runSpawnRelay(specPath: string): Promise<number> {
+  const { promises: fsp } = await import('node:fs');
+  let raw: string;
+  try {
+    raw = await fsp.readFile(specPath, 'utf8');
+    await fsp.unlink(specPath).catch(() => undefined);
+  } catch {
+    return 3;
+  }
+  let spec: SpawnRelaySpec;
+  try {
+    spec = JSON.parse(raw) as SpawnRelaySpec;
+  } catch {
+    return 3;
+  }
+  try {
+    await fsp.mkdir(pathDirname(spec.logFile), { recursive: true });
+    const handle = await fsp.open(spec.logFile, 'a');
+    try {
+      const child = spawn(spec.bin, spec.args, {
+        cwd: spec.cwd,
+        env: spec.env,
+        detached: true,
+        stdio: ['ignore', handle.fd, handle.fd],
+        windowsHide: true,
+      });
+      child.unref();
+      const pid = child.pid ?? null;
+      await fsp.writeFile(`${specPath}.result`, `${JSON.stringify({ pid } as SpawnRelayOutcome)}\n`);
+    } finally {
+      await handle.close();
+    }
+    return 0;
+  } catch (e) {
+    const error = String((e as Error)?.message ?? e);
+    await fsp.writeFile(`${specPath}.result`, `${JSON.stringify({ error } as SpawnRelayOutcome)}\n`).catch(() => undefined);
+    return 4;
+  }
+}
+
+/**
+ * WMI 逃逸通道（ISSUE-08）：`spawnDetached` 在 Windows 上的首选路径。
+ *
+ * 机制与本机实测结论见 `winCreateProcessViaWmi` 的文档块——`detached` 直拉逃不出调用方的
+ * KILL_ON_JOB_CLOSE Job（agy 会话派生的 worker 12~15 s 静默死即此因），WMI 创建的中继及其
+ * 后代不在 Job 内。**不探测「自己在不在 Job」**：探测同样要 P/Invoke，而通道成本（一次
+ * powershell + 一次 node 启动，秒级）摊在分钟级的审查运行上可忽略——统一走一条路径，
+ * 终端 / codex / claude 会话（本就没有收杀 Job）与 agy 会话行为一致。
+ *
+ * 任一环节失败都返回 `{ fail }`，由调用方回退直拉：WMI 被策略禁用的机器上直拉依旧成立
+ * （那里没有收杀 Job），带收杀 Job 的会话里直拉会死——但那不比修复前更糟，且日志留痕。
+ */
+async function spawnDetachedViaWmi(
+  bin: string,
+  args: readonly string[],
+  opts: SpawnDetachedOptions,
+): Promise<{ result: SpawnDetachedResult } | { fail: string }> {
+  const relay = opts.winRelay;
+  if (!relay) return { fail: '未提供中继入口（winRelay）' };
+  const { promises: fsp } = await import('node:fs');
+  const specPath = `${opts.logFile}.spawn-spec.json`;
+  const resultPath = `${specPath}.result`;
+  const cleanup = async (): Promise<void> => {
+    await fsp.unlink(specPath).catch(() => undefined);
+    await fsp.unlink(resultPath).catch(() => undefined);
+  };
+  const childEnv: Record<string, string> = {};
+  for (const [k, v] of Object.entries({ ...process.env, ...opts.env })) {
+    if (v !== undefined) childEnv[k] = v;
+  }
+  const spec: SpawnRelaySpec = { bin, args: [...args], cwd: opts.cwd, logFile: opts.logFile, env: childEnv };
+  try {
+    await fsp.mkdir(pathDirname(opts.logFile), { recursive: true });
+    await fsp.writeFile(specPath, JSON.stringify(spec), { mode: 0o600 });
+  } catch (e) {
+    return { fail: `规格文件写不成：${(e as Error).message}` };
+  }
+  // 上一轮失败可能残留结果文件：先清再等，避免读到旧 pid
+  await fsp.unlink(resultPath).catch(() => undefined);
+  const relayCmd = [
+    `"${relay.bin}"`,
+    ...relay.args.map((a) => (a.includes(' ') ? `"${a}"` : a)),
+    `"${specPath}"`,
+  ].join(' ');
+  const created = await winCreateProcessViaWmi(relayCmd, opts.cwd ?? process.cwd());
+  if (!created.ok || created.pid === null) {
+    await cleanup();
+    return { fail: created.error ?? 'WMI 创建未返回 pid' };
+  }
+  const deadline = Date.now() + RELAY_RESULT_TIMEOUT_MS;
+  for (;;) {
+    let text: string | null = null;
+    try {
+      text = await fsp.readFile(resultPath, 'utf8');
+    } catch {
+      /* 结果文件还没落：继续等 */
+    }
+    if (text !== null) {
+      await cleanup();
+      let outcome: SpawnRelayOutcome;
+      try {
+        outcome = JSON.parse(text) as SpawnRelayOutcome;
+      } catch {
+        return { fail: `中继结果文件解析失败：${text.trim().slice(0, 120)}` };
+      }
+      if (typeof outcome.pid === 'number' && outcome.pid > 0) {
+        return { result: { pid: outcome.pid, commandLine: formatCommand(bin, args), channel: 'wmi-escape' } };
+      }
+      return { fail: `中继派生失败：${outcome.error ?? '未返回 pid'}` };
+    }
+    if (Date.now() >= deadline) {
+      await cleanup();
+      return { fail: `等待中继结果超时（${RELAY_RESULT_TIMEOUT_MS / 1000} s，中继 pid ${created.pid}）` };
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+/**
+ * 逃逸通道的 `DetachedChildWatch` 近似（ISSUE-08）：WMI 路径的 worker 不是本进程子进程，
+ * 拿不到退出句柄。`hasExited` 退化为 `kill(pid, 0)` 存在性检查（同步，PID 复用的残余与
+ * `processAlive` 缺省分支同口径）；`exited` 由 250 ms 轮询兑现，120 s 后放弃（计时器
+ * 全部 unref，不拖住 `--start` 退出）。消费面只有 `--start` 派生后失败的收尾确认。
+ */
+function detachedWatchByPolling(pid: number): DetachedChildWatch {
+  const gone = (): boolean => {
+    try {
+      process.kill(pid, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolveExit) => {
+    const iv = setInterval(() => {
+      if (gone()) {
+        clearInterval(iv);
+        clearTimeout(stop);
+        resolveExit({ code: 0, signal: null });
+      }
+    }, 250);
+    const stop = setTimeout(() => {
+      clearInterval(iv);
+      resolveExit({ code: null, signal: null });
+    }, 120_000);
+    iv.unref();
+    stop.unref();
+  });
+  return { hasExited: gone, exited };
 }
 
 /**
@@ -766,12 +966,34 @@ export interface SpawnDetachedResult {
  *   - 继承父进程管道时，父进程退出后管道破裂，worker 死于 SIGPIPE（AGY-01）；
  *   - 管道 EOF 不闭合会让派生方的调用一直挂到 worker 退出，
  *     违反「`--start` 立即返回」的契约（GLM-03）。
+ *
+ * **Windows（ISSUE-08）**：`detached` 逃不出调用方 Job，先走 WMI 中继逃逸
+ * （`spawnDetachedViaWmi`），失败回退直拉并在日志留痕。
  */
 export async function spawnDetached(
   bin: string,
   args: readonly string[],
   opts: SpawnDetachedOptions,
 ): Promise<SpawnDetachedResult> {
+  if (IS_WIN && opts.winRelay) {
+    const via = await spawnDetachedViaWmi(bin, args, opts);
+    if ('result' in via) {
+      try {
+        opts.onSpawned?.(via.result.pid, detachedWatchByPolling(via.result.pid));
+      } catch {
+        /* 回调出错不改变「子进程已诞生」这一事实，也不连累返回值（与直拉同口径） */
+      }
+      return via.result;
+    }
+    const { promises: fsp } = await import('node:fs');
+    await fsp
+      .appendFile(
+        opts.logFile,
+        `[spawnDetached ${new Date().toISOString()}] WMI 逃逸通道不可用（${via.fail}），回退直接派生——` +
+          '若本进程处于带收杀的 Job（如 agy 工具通道），worker 可能随通道结束被杀（ISSUE-08）\n',
+      )
+      .catch(() => undefined);
+  }
   const { promises: fsp } = await import('node:fs');
   await fsp.mkdir(pathDirname(opts.logFile), { recursive: true });
   // 'a' 而非 'w'：重试或多次派生时不覆盖既有日志
@@ -834,7 +1056,7 @@ export async function spawnDetached(
     }
     // 父进程不等它，也不因它而延迟退出
     child.unref();
-    return { pid: child.pid, commandLine: formatCommand(bin, args) };
+    return { pid: child.pid, commandLine: formatCommand(bin, args), channel: 'direct' };
   } finally {
     // fd 已交给子进程，父进程这一份可以关掉
     await handle.close();

@@ -10,9 +10,10 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import {
-  describeGuard, effectiveGuardLevel, gateHoldNotice, hookConfigPresent, hookNamesOf, loadHookSource, mergeAgentHooks,
-  renderHookEvents, type HookEntry, type HookMergeReport, type HookSource,
+  describeGuard, effectiveGuardLevel, encodePowerShellHook, gateHoldNotice, hookConfigPresent, hookNamesOf, loadHookSource, mergeAgentHooks,
+  renderHookEvents, windowsGuardScript, type HookEntry, type HookMergeReport, type HookSource,
 } from '../../src/trivium/hook-config.js';
+import { IS_WIN } from '../../src/trivium/util/platform.js';
 import { AGENTS, DEFAULT_DRIVER, entryCommandOf, type AgentDescriptor } from '../../src/trivium/agents/registry.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
 import { initFixtureRepo } from '../../src/trivium/util/git.js';
@@ -51,9 +52,55 @@ const allNames = (events: Record<string, HookEntry[]>): string[] =>
 
 // ─────────────────────────── 渲染 ───────────────────────────
 
-test('渲染：claude-settings 形态原样返回源（与改动前的合并逐字相同）', async () => {
+/** Windows 渲染命令串的形状（ISSUE-09③）：base64 单 token + 退出码透传尾句，bash 与 PowerShell 两层都解析不动它 */
+const WIN_COMMAND_RE = /^powershell -NoProfile -EncodedCommand "[A-Za-z0-9+/=]+"; exit \$LASTEXITCODE$/;
+
+test('渲染：claude-settings 形态——POSIX 原样返回源；Windows 全量换 PS 形态（ISSUE-09③）', async () => {
   const s = await source();
-  assert.equal(renderHookEvents('claude-settings', s, '.claude/settings.json'), s.hooks);
+  const out = renderHookEvents('claude-settings', s, '.claude/settings.json');
+  if (!IS_WIN) {
+    assert.equal(out, s.hooks);
+    return;
+  }
+  // Windows：事件与 gate 名与源一一对应；matcher/timeout 原样保留；命令全部是 PS 形态、不再依赖 sh
+  assert.deepEqual(Object.keys(out).sort(), Object.keys(s.hooks).sort());
+  assert.deepEqual(allNames(out), allNames(s.hooks));
+  for (const e of Object.values(out).flat()) {
+    for (const h of e.hooks) {
+      assert.match(h.command, WIN_COMMAND_RE, 'Windows 合并的命令必须是 powershell -EncodedCommand 形态');
+      assert.ok(!h.command.includes('sh -c'), 'Windows 形态不得再含 sh -c（PowerShell 回退下解析不到 sh，ISSUE-09）');
+    }
+  }
+  const srcPreWrite = s.hooks['PreToolUse']!.find((e) => hookNamesOf(e).has('pre-write'))!;
+  const preWrite = out['PreToolUse']!.find((e) => hookNamesOf(e).has('pre-write'))!;
+  assert.deepEqual(preWrite.matcher, srcPreWrite.matcher, 'matcher 原样保留');
+  assert.equal(preWrite.hooks[0]!.timeout, srcPreWrite.hooks[0]!.timeout, '超时原样保留（秒）');
+  // 脚本体内指向 .cmd 入口（Windows init 双写形态之一）、提示点名本家配置文件、尾支是保守拦截
+  const b64 = /EncodedCommand "([^"]+)"/.exec(preWrite.hooks[0]!.command)![1]!;
+  const script = Buffer.from(b64, 'base64').toString('utf16le');
+  assert.match(script, /bin\\trivium\.cmd/, '守卫检查的是 .cmd 入口（Windows init 双写的 cmd 形态）');
+  assert.match(script, /gate hook-pre-write/, '执行的是同一条 gate 子命令');
+  assert.match(script, /\.claude\/settings\.json 中的 TriviumCode Hook/, '护栏失效提示点名本家配置文件');
+  assert.match(script, /exit 2/, 'config 在而 wrapper 失——保守拦截（exit 2）');
+  assert.match(script, /exit 0/, '无 config（协作者常态）——静默放行（exit 0）');
+  const sessionStart = out['SessionStart']!.find((e) => hookNamesOf(e).has('session-start'))!;
+  const ssB64 = /EncodedCommand "([^"]+)"/.exec(sessionStart.hooks[0]!.command)![1]!;
+  const ssScript = Buffer.from(ssB64, 'base64').toString('utf16le');
+  assert.doesNotMatch(ssScript, /exit 2/, 'SessionStart 非阻断——wrapper 缺席一律静默 0（与 sh 形态同语义）');
+});
+
+test('渲染：Windows 形态是纯函数——同一输入恒出同一串（合并幂等依赖这一点）', () => {
+  assert.equal(windowsGuardScript('pre-write', '.claude/settings.json 中的 TriviumCode Hook'),
+    windowsGuardScript('pre-write', '.claude/settings.json 中的 TriviumCode Hook'));
+  assert.equal(encodePowerShellHook('$a = 1'), encodePowerShellHook('$a = 1'));
+  // 尾句透传：外层 powershell -Command 会把内层非零退出码重映射为 1（本机实测），显式 exit 才传得出 2
+  assert.match(encodePowerShellHook('exit 2'), /; exit \$LASTEXITCODE$/);
+});
+
+test('渲染（Windows）：一条 Hook 调用多个 gate 子命令 ⇒ 当场抛（渲染按单名重建命令）', () => {
+  const s: HookSource = { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'a gate hook-pre-write && b gate hook-pre-bash' }] }] } };
+  if (!IS_WIN) return;
+  assert.throws(() => renderHookEvents('claude-settings', s, '.claude/settings.json'), /恰一个/);
 });
 
 test('渲染：zcode-config 形态——matcher 只留 ZCode 有的工具名、timeout 换成 timeoutMs、提示点名本家配置文件', async () => {
@@ -83,8 +130,10 @@ test('渲染：zcode-config 形态——matcher 只留 ZCode 有的工具名、t
 test('渲染：事件名不在 ZCode 的事件枚举里 ⇒ 当场抛（与工具名同一条理由，代码双审 r3 GLM-04）', () => {
   const s: HookSource = { hooks: { SubagentStop: [{ hooks: [{ type: 'command', command: 'x gate hook-stop' }] }] } };
   assert.throws(() => renderHookEvents('zcode-config', s, '.zcode/config.json'), /不在 ZCode 的事件枚举里/);
-  // Claude 形态原样返回，不受 ZCode 枚举约束
-  assert.equal(renderHookEvents('claude-settings', s, '.claude/settings.json'), s.hooks);
+  // Claude 形态不受 ZCode 枚举约束：POSIX 原样；Windows 照样换 PS 形态（事件集不变）
+  const out = renderHookEvents('claude-settings', s, '.claude/settings.json');
+  if (!IS_WIN) assert.equal(out, s.hooks);
+  else assert.deepEqual(allNames(out), ['stop']);
 });
 
 test('渲染：matcher 在 ZCode 上一个工具名都不剩 ⇒ 当场抛（静默丢掉整条就是「装上了却不拦」）', () => {

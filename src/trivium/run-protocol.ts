@@ -653,6 +653,15 @@ export async function startRun(opts: ReviewOptions): Promise<StartOutcome> {
       {
         cwd: ctx.projectRoot,
         logFile: workerLogPath(rc.runDirBase),
+        /*
+         * Windows（ISSUE-08）：`detached` 逃不出调用方 Job——agy 会话的工具通道带 KILL_ON_JOB_CLOSE 时
+         * worker 随通道结束被整树收杀（验收 four-agent-win 实测 12~15 s 静默死）。经 WMI 中继派生
+         * 逃逸（WmiPrvSE 承载，不在 Job 内），失败回退直拉并留痕——直连调用方（终端等）本就无 Job，直拉照常成立。
+         * POSIX 忽略该选项。
+         */
+        winRelay: IS_WIN
+          ? { bin: ctx.config.runtime.node ?? process.execPath, args: [selfScript, 'review', '--spawn-relay'] }
+          : undefined,
         onSpawned: (pid, watch) => {
           childBorn = true;
           spawnState.born = { pid, watch };
@@ -1643,6 +1652,24 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
       const meta0 = await readStatus(runDir);
       await releaseRunningGate(ctx, runId, meta0?.topic ?? last?.topic, meta0?.stage ?? last?.stage);
       /*
+       * worker 确认已不在时，按记录结束它名下的审查员 CLI（ISSUE-08 次生现象的收口，2026-10-30）：
+       * worker 被整树收杀（agy 工具通道的 Job、SIGKILL、崩溃）后它拉起的 CLI 成孤儿——继续烧配额、
+       * 持厂商日志锁（验收批次 four-agent-win 实测：孤儿 agy 进程持日志锁致后续探活连锁失败）。
+       * 判据与 `--cancel` 终态早退分支同一处（EV-154 D3）：worker 确认已不在（`goneForArchive`）才动手；
+       * `heartbeat_stale` 而 worker 仍在的那一格**不发信号**（它可能只是慢，走上面的 --cancel 提示）。
+       * 排在凭据抹除准入之前：终止后准入重新读进程表，活组已清即可放行抹除，不必等会话启动清扫。
+       * 结果按事实播报（一条记录都没有时静默）。此后 EV-157「本命令不结束任何进程」的边界收窄为
+       * 「worker 仍活时不结束任何进程」——判不了身份的记录照旧一个信号都不发。
+       */
+      let cliNote = '';
+      if (goneForArchive) {
+        const cliOut = await terminateRecordedCliGroups(meta0 ?? (await readStatus(runDir)));
+        if (cliOut.groups.length > 0 || cliOut.malformed.length > 0) {
+          reportRecordedCliGroups(cliOut, true, runDir);
+          cliNote = '\n  已按记录结束工作进程遗留的审查员 CLI（worker 确认已退出；判不了身份的组未发信号，见上）';
+        }
+      }
+      /*
        * 凭据抹除的挂载点 ②（EV-20，计划双审 AGY-02）：worker 没了，runner 的 finally 也就没跑，
        * 副本会一直躺到下次会话启动的清扫。这里是同会话内唯一知道「它死了」的时刻。
        *
@@ -1650,7 +1677,8 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
        * 「进程活着但心跳过期」——它可能只是被同步段堵住了，codex/zcode 子进程还在用那份副本，
        * 此刻整删载体会让该侧以莫名的鉴权错误失败。不可逆动作的准入判据与 ④ 清扫同一个函数（`scrubAdmission`）：
        * pid 现势不活（或已非同一进程），且 status.json 记录里的审查员 CLI 进程组没有仍在、判不了或读不懂的才抹
-       * （EV-157：worker 被强杀之后它拉起的 CLI 常常还活着，本命令不结束任何进程）；否则只记一句，留给会话启动清扫——
+       * （EV-157 原先「本命令不结束任何进程」；ISSUE-08 收口后 worker 确认已不在的组已在上面按记录结束——
+       * 这里的「仍在」只剩 worker 也活着（heartbeat_stale）与判不了身份两种形态）；否则只记一句，留给会话启动清扫——
        * 挡住准入的记录原样留在 status.json 里（下面那次 patchStatus 不动 cli），会话启动清扫据它重判。
        * 失败不改变本分支的结论（本来就是失联），只在报错里附一句。
        */
@@ -1664,11 +1692,11 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
          * 记录里仍在的 CLI 只有 `--cancel` 能按记录结束——终态早退分支对「工作进程确认已不在且有记录」逐组结束
          * （EV-154 D3），组长已退出但组号下还有非僵尸成员的组（`orphaned`）同样按组结束（EV-165）。只对判「仍在」
          * 或「组长已退、组员仍在」的组成立：判不了、读不懂的 `--cancel` 同样不发信号，那两种时不给这句。
-         * 本命令仍不结束任何进程。
+         * worker 仍活（heartbeat_stale）时本命令依旧不结束任何进程；确认已死的情形上面已经结束过了。
          */
         if (adm.cli?.blockers.some((b) => b.kind === 'alive' || b.kind === 'orphaned')) {
           scrubNote +=
-            `\n  其中仍在的审查员 CLI 可用 trivium review --cancel ${runId} 按记录结束（本命令不结束任何进程）；` +
+            `\n  其中仍在的审查员 CLI 可用 trivium review --cancel ${runId} 按记录结束；` +
             '结束之后下一次会话启动清扫会重判，放行即抹副本';
         }
       } else {
@@ -1682,7 +1710,7 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
       throw new TriviumError(
         EXIT.FAIL,
         `运行 ${runId} 的工作进程失联（${reading.reason}）。` +
-          `\n  日志：${workerLogPath(runDir)}` + archiveNote + cancelHint + scrubNote,
+          `\n  日志：${workerLogPath(runDir)}` + archiveNote + cancelHint + cliNote + scrubNote,
       );
     }
     if (reading.kind === 'running') last = reading.status;

@@ -22,6 +22,7 @@ import {
 } from './doctor.js';
 import { selftestCommand } from './selftest.js';
 import { runReview } from './review.js';
+import { runSpawnRelay } from './util/exec.js';
 import { collectCommands, runVerify, summarizeVerify } from './verify.js';
 import { buildTopicReport, renderTopicReport } from './report.js';
 import {
@@ -59,7 +60,7 @@ import {
   type RenderOptions, type WorkTreeSummary,
 } from './worktree-summary.js';
 
-const VERSION = '1.3.4';
+const VERSION = '1.3.5';
 
 interface ParsedArgs {
   command: string;
@@ -524,6 +525,11 @@ async function roundFields(ctx: Ctx, runId: string, exitCode: number): Promise<{
 }
 
 async function cmdReview(args: ParsedArgs): Promise<number> {
+  // ── WMI 派生中继（ISSUE-08）：`--start` 的内部通道，由 WmiPrvSE 承载的独立进程运行——
+  //    不需要项目上下文，抢在 loadCtx 之前短路（同 `--worker` 的「不应由人直接调用」性质）
+  const relaySpec = flagString(args, 'spawn-relay');
+  if (relaySpec) return runSpawnRelay(relaySpec);
+
   const ctx = await loadCtx();
 
   // ── 工作进程模式：不应由人直接调用 ──

@@ -5,7 +5,7 @@ import { promises as fs } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { groupsWithMark, killGroup } from '../helpers/proc.js';
 import {
-  killProcessTree, spawnDetached, processAlive, run, terminateProcessGroup, type DetachedChildWatch,
+  killProcessTree, runSpawnRelay, spawnDetached, processAlive, run, terminateProcessGroup, type DetachedChildWatch,
 } from '../../src/trivium/util/exec.js';
 import { scratchDir } from '../helpers/scratch.js';
 
@@ -111,6 +111,88 @@ test('R-A 断言②：派生调用秒级返回，不等 worker 结束', async ()
   assert.ok(r.pid > 0);
 
   // 收尾：别把 worker 留到测试进程之后
+  try {
+    process.kill(r.pid, 'SIGKILL');
+  } catch {
+    /* 已退出 */
+  }
+});
+
+// ─────────────── Windows 逃 Job 派生通道（ISSUE-08）的中继与回退 ───────────────
+
+test('runSpawnRelay：照规格拉起 worker、pid 落结果文件、规格（含 env 快照）读完即删', { skip: process.platform !== 'win32' && 'win32 专属：WMI 中继入口只在 Windows 的派生链上使用' }, async () => {
+  const dir = await tmpDir();
+  const workerScript = path.join(dir, 'relay-worker.mjs');
+  await fs.writeFile(
+    workerScript,
+    `import { appendFileSync } from 'node:fs';
+     appendFileSync(${JSON.stringify(path.join(dir, 'relay-ran.txt'))}, process.env.TRIVIUM_RELAY_PROOF ?? 'NO-ENV' + '\\n');
+     setTimeout(() => process.exit(0), 3000);`,
+    'utf8',
+  );
+  const specPath = path.join(dir, 'spec.json');
+  await fs.writeFile(specPath, JSON.stringify({
+    bin: process.execPath,
+    args: [workerScript],
+    cwd: dir,
+    logFile: path.join(dir, 'relay-worker.log'),
+    // env 快照必须过桥：中继自身继承的是 WmiPrvSE 的环境，worker 的 env 只能来自规格
+    env: { ...process.env, TRIVIUM_RELAY_PROOF: 'env-crossed' } as Record<string, string>,
+  }), 'utf8');
+
+  const code = await runSpawnRelay(specPath);
+  assert.equal(code, 0);
+  await assert.rejects(fs.access(specPath), '规格文件必须被中继删除（内含完整 env 快照，可能带凭据形态）');
+  const outcome = JSON.parse(await fs.readFile(`${specPath}.result`, 'utf8')) as { pid: number | null };
+  assert.ok(typeof outcome.pid === 'number' && outcome.pid! > 0, `结果文件应记下 worker pid：${JSON.stringify(outcome)}`);
+  await waitFor(() => fs.access(path.join(dir, 'relay-ran.txt')).then(() => true, () => false), 10_000);
+  const ran = await fs.readFile(path.join(dir, 'relay-ran.txt'), 'utf8');
+  assert.match(ran, /env-crossed/, 'worker 的环境必须来自规格快照，而不是 WMI 提供进程的环境');
+  try {
+    process.kill(outcome.pid!, 'SIGKILL');
+  } catch {
+    /* 已退出 */
+  }
+});
+
+test('ISSUE-08 回退：WMI 逃逸通道失败时回退直接派生（channel=direct），日志留痕不比修复前更糟', { skip: process.platform !== 'win32' && 'win32 专属：WMI 逃逸通道只在 Windows 尝试' }, async () => {
+  const dir = await tmpDir();
+  const workerScript = path.join(dir, 'w.mjs');
+  await fs.writeFile(workerScript, 'setTimeout(() => process.exit(0), 5000);', 'utf8');
+
+  // 中继入口指向不存在的二进制：WMI Create 必失败（ReturnValue≠0）→ 走回退
+  const r = await spawnDetached(process.execPath, [workerScript], {
+    cwd: dir,
+    logFile: path.join(dir, 'w.log'),
+    winRelay: { bin: path.join(dir, 'no-such-relay-binary.exe'), args: ['review', '--spawn-relay'] },
+  });
+  assert.equal(r.channel, 'direct', '逃逸失败必须回退直拉，而不是拒绝派生');
+  const log = await fs.readFile(path.join(dir, 'w.log'), 'utf8');
+  assert.match(log, /WMI 逃逸通道不可用.*回退直接派生/, '回退必须在 worker.log 留痕（带收杀 Job 的会话里直拉会死，原因要可见）');
+  try {
+    process.kill(r.pid, 'SIGKILL');
+  } catch {
+    /* 已退出 */
+  }
+});
+
+test('ISSUE-08 逃逸：winRelay 指向真实入口时 worker 经 WMI 中继派生（channel=wmi-escape）、规格与结果文件都清干净', { skip: process.platform !== 'win32' && 'win32 专属：WMI 逃逸通道只在 Windows 尝试（Job 收杀语境见 win-job-escape.test.ts）' }, async () => {
+  const { BUNDLE } = await import('../helpers/fixture.js');
+  const dir = await tmpDir();
+  const workerScript = path.join(dir, 'w.mjs');
+  await fs.writeFile(workerScript, 'setTimeout(() => process.exit(0), 5000);', 'utf8');
+
+  const logFile = path.join(dir, 'w.log');
+  const r = await spawnDetached(process.execPath, [workerScript], {
+    cwd: dir,
+    logFile,
+    winRelay: { bin: process.execPath, args: [BUNDLE, 'review', '--spawn-relay'] },
+  });
+  assert.equal(r.channel, 'wmi-escape', '真实入口下必须走逃逸通道（这里失败说明 WMI 不可用或中继异常，需人工核对）');
+  await assert.rejects(fs.access(`${logFile}.spawn-spec.json`), '规格文件在成败两条路上都必须清理');
+  await assert.rejects(fs.access(`${logFile}.spawn-spec.json.result`), '结果文件同样不留');
+  const alive = await processAlive(r.pid);
+  assert.equal(alive.alive, true, '逃逸派生的 worker 应正常存活');
   try {
     process.kill(r.pid, 'SIGKILL');
   } catch {

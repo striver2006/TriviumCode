@@ -500,6 +500,71 @@ test('EV-142 L5：status.json 读不到、worker.pid 指向的进程已死（pid
   assert.doesNotMatch(message, /未确认退出/, '失联原因是 pid_gone，却又说未确认退出——两句互相矛盾（r1 GLM-01）');
 });
 
+/*
+ * ── ISSUE-08 次生现象的收口（2026-10-30）：--wait 判 worker 确认已死时按记录结束遗留的审查员 CLI ──
+ *
+ * worker 被整树收杀（agy 工具通道的 Job、SIGKILL、崩溃）后它拉起的 CLI 成孤儿——继续烧配额、
+ * 持厂商日志锁（验收 four-agent-win：孤儿 agy 进程持日志锁致后续探活连锁失败）。此前 --wait 只在
+ * 报错里推荐 --cancel（EV-154 D3 / EV-157「本命令不结束任何进程」）；现在 worker 确认已不在
+ * （`goneForArchive`）的失联判定就地按记录结束，worker 仍活（heartbeat_stale）的一格保持不发信号。
+ */
+async function seedOrphanCli(ctx: Ctx, runId: string): Promise<{ runDir: string; workerPid: number; cliPid: number; cliStarted: string }> {
+  const { runDir, pid } = await seedRun(ctx, runId);
+  // 假审查员 CLI：与 worker 无父子关系的长睡进程（worker 的 killTree 子进程自成一组，同此形态）
+  const cliScript = path.join(runDir, 'fake-cli.mjs');
+  await fs.writeFile(cliScript, 'setTimeout(() => process.exit(0), 60000);', 'utf8');
+  const cli = await spawnDetached(process.execPath, [cliScript], {
+    cwd: ctx.projectRoot,
+    logFile: path.join(runDir, 'cli.log'),
+  });
+  let started: string | null = null;
+  for (let i = 0; i < 40 && !started; i++) {
+    started = await processStartTime(cli.pid, { canonical: true });
+    if (!started) await new Promise((res) => setTimeout(res, 50));
+  }
+  assert.ok(started, '取不到假 CLI 的规范化启动时刻——记录会被判 unverifiable，测不出「仍在」那一格');
+  const s = await readStatus(runDir);
+  assert.ok(s);
+  s.sides.gemini!.cli = { pgid: cli.pid, started_at: started };
+  await writeStatus(runDir, s);
+  return { runDir, workerPid: pid, cliPid: cli.pid, cliStarted: started };
+}
+
+test('ISSUE-08：worker 判 pid_gone（确认已死）⇒ --wait 就地按记录结束遗留的审查员 CLI，报错注明', async () => {
+  const ctx = await fakeCtx();
+  const { runDir, workerPid, cliPid } = await seedOrphanCli(ctx, 'R-LOST-CLI');
+  killQuietly(workerPid);
+  await new Promise((r) => setTimeout(r, 300));
+
+  const message = await lostMessage(ctx, 'R-LOST-CLI');
+  assert.match(message, /已按记录结束工作进程遗留的审查员 CLI/);
+  // CLI 真的被结束（不再存活）；判据等宽限链走完
+  let alive: boolean | undefined;
+  for (let i = 0; i < 60; i++) {
+    alive = (await processAlive(cliPid)).alive;
+    if (!alive) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  assert.notEqual(alive, true, '遗留的审查员 CLI 应被 --wait 结束，而不是只推荐 --cancel');
+  assert.equal((await readStatus(runDir))?.phase, 'failed');
+});
+
+test('ISSUE-08 对照：heartbeat_stale 而 worker 仍在 ⇒ --wait 不结束任何 CLI（可能只是慢），报错仍推荐 --cancel', async () => {
+  const ctx = await fakeCtx();
+  const { cliPid } = await seedOrphanCli(ctx, 'R-STALE-CLI');
+  try {
+    const runDir = runDirFor(ctx.config, ctx.projectRoot, 'R-STALE-CLI');
+    await staleHeartbeat(runDir);
+    const message = await lostMessage(ctx, 'R-STALE-CLI');
+    assert.match(message, /heartbeat_stale/);
+    assert.doesNotMatch(message, /已按记录结束工作进程遗留的审查员 CLI/, 'worker 没确认死，不得结束它名下的 CLI');
+    assert.match(message, /trivium review --cancel R-STALE-CLI/);
+    assert.equal((await processAlive(cliPid)).alive, true, 'CLI 必须原样活着——结束与否是 --cancel（用户）的决定');
+  } finally {
+    killQuietly(cliPid);
+  }
+});
+
 test('--cancel 对已退出的工作进程也能清理状态与锁', async () => {
   const ctx = await fakeCtx();
   const { pid } = await seedRun(ctx, 'R-DEADCANCEL', 100);

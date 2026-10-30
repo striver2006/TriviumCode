@@ -72,7 +72,10 @@ test('init：两家的 Hook 配置一起合并（r5 §6.1「trivium init 同时�
   assert.equal(r.code, EXIT.OK, r.stdout + r.stderr);
   for (const a of AGENTS.filter((x) => x.hookConfigTarget)) {
     const p = path.join(root, a.hookConfigTarget!.path);
-    const text = await fs.readFile(p, 'utf8');
-    assert.match(text, /gate hook-pre-write/, `${a.id} 的 ${a.hookConfigTarget!.path} 没有合并进 Hook`);
+    // Trivium 条目按 gate 身份认（hookNamesOf，对整份配置的 JSON 全文）：Windows 形态的 gate 名在
+    // EncodedCommand 体内、明文不含；claude 形态挂在 hooks.<事件>[]、zcode 形态挂在 hooks.events.<事件>[]
+    const merged = JSON.parse(await fs.readFile(p, 'utf8')) as unknown;
+    const names = hookNamesOf(merged);
+    assert.ok(names.has('pre-write'), `${a.id} 的 ${a.hookConfigTarget!.path} 没有合并进 Hook（识别到的 gate：${[...names].join('、') || '无'}）`);
   }
 });
