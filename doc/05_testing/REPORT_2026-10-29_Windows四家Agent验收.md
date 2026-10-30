@@ -126,4 +126,4 @@ B3r 首跑失败与此同族。修复（1.3.4）：判 `pid_gone` 前重读一�
 
 **新登问题单**：ISSUE-08（P1，产品）：Windows 上 **agy 会话派生的 detached worker 随工具通道结束被杀**（Job 继承逃不出；B3r 首跑与 W5-D 首跑均 12~15 秒静默死、worker.log 止于尝试行，而 codex/claude 会话与终端直接派生均存活）——agy 载体在 Windows 上的审查链路实际不可用，产品需 Windows 专用派生通道；次生现象为 worker 被杀时审查 CLI 成孤儿并持日志锁，令后续 agy 探活连锁失败。ISSUE-09（P1，环境/适配）：本机 Claude L1 Hook 三层失效（见 W4-S3 行），QUICKSTART「L1 以实测成立为条件」在本机不成立，待 Git 装回默认路径或产品改 hook 命令形态（去 sh 依赖）后复测。
 
-**待 Bob 审批的停点（5 个主题）**：WinW4-01（plan，三审）／WinW4S3（plan，Hook 实验夹具，可批可弃）／WinW5-Db（bug）／WinW5-C（code）／WinW5-A（plan，**批准后可继续全流程 S4.5+**）。
+**停点处置（按 Bob「按建议执行」，2026-10-30）**：WinW4-01／WinW5-Db／WinW5-C **批准**（各阶段 approve 首例，工件全保留）；WinW4S3 **放弃**（abandon 分支实测：闸门解除、写锁释放、工件保留、流水线不自动继续）；WinW5-A **批准后跑完 A 入口全流程**——S4.5 认领与实施（自查 8/8）→ S6 代码双审（gemini 通过 0 意见 + glm 4 条改进）→ S7/S8 应答全接受并改码（自查 9/9）→ S9 gate 通过 → **S10 verify 真实执行通过**（`node --check` ✓、`node --test` 9 用例全绿，留痕 `verify/2026-10-30-WinW5-A-verify.md`）→ code 批准 → 实施提交（夹具 `8e64e8a`）。审批矩阵本轮覆盖 **approve×5 + abandon×1**，仅「拒绝」分支未测。

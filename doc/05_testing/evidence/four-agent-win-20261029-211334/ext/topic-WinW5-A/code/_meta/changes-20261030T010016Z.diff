@@ -1,0 +1,412 @@
+# trivium changes.diff
+# run_id: 20261030T010016Z
+# base: HEAD
+# head: 8e9fc2cce9a936f9a371a0a6d127e1b0a4bb848e
+# files: 8
+#   .claude/settings.json
+#   .gitignore
+#   .zcode/config.json
+#   AGENTS.md
+#   CLAUDE.md
+#   GEMINI.md
+#   src/sum.cjs
+#   test/sum.test.cjs
+diff --git a/src/sum.cjs b/src/sum.cjs
+index 308dbb8..141ed67 100644
+--- a/src/sum.cjs
++++ b/src/sum.cjs
+@@ -1,6 +1,22 @@
+ 'use strict';
+-// 初始实现：仅做加法。输入校验需求见 requirements.md。
++// 输入校验需求见 requirements.md：两个入参必须是有限 number，否则抛带说明的 TypeError。
++function describeValue(v) {
++  if (typeof v === 'number' || typeof v === 'bigint') return String(v);
++  try {
++    const s = JSON.stringify(v);
++    return `${typeof v}: ${s ?? String(v)}`;
++  } catch {
++    // 循环引用等无法序列化的值：回退到不可抛的形态描述
++    return `${typeof v}: ${Object.prototype.toString.call(v)}`;
++  }
++}
+ function sum(a, b) {
++  if (!Number.isFinite(a)) {
++    throw new TypeError(`sum: 参数 a 必须是有限 number，实际为 ${describeValue(a)}`);
++  }
++  if (!Number.isFinite(b)) {
++    throw new TypeError(`sum: 参数 b 必须是有限 number，实际为 ${describeValue(b)}`);
++  }
+   return a + b;
+ }
+ module.exports = { sum };
+diff --git a/test/sum.test.cjs b/test/sum.test.cjs
+index 2da9ba5..2adf762 100644
+--- a/test/sum.test.cjs
++++ b/test/sum.test.cjs
+@@ -2,7 +2,46 @@
+ const { test } = require('node:test');
+ const assert = require('node:assert/strict');
+ const { sum } = require('../src/sum.cjs');
++
++// 拒绝类用例统一断言：异常类型为 TypeError 且 message 带「sum: 参数」说明（需求第 2 条「带说明」）。
++const rejectsTypeError = { name: 'TypeError', message: /^sum: 参数/ };
++
+ test('两个正常数相加', () => {
+   assert.equal(sum(1, 2), 3);
+   assert.equal(sum(10, 32), 42);
+ });
++
++test('拒绝字符串', () => {
++  assert.throws(() => sum('1', 2), rejectsTypeError);
++  assert.throws(() => sum(1, '2'), rejectsTypeError);
++});
++
++test('拒绝 NaN', () => {
++  assert.throws(() => sum(NaN, 1), rejectsTypeError);
++  assert.throws(() => sum(1, NaN), rejectsTypeError);
++});
++
++test('拒绝 ±Infinity', () => {
++  assert.throws(() => sum(Infinity, 1), rejectsTypeError);
++  assert.throws(() => sum(1, -Infinity), rejectsTypeError);
++});
++
++test('拒绝非 number 类型（两位置对称覆盖）', () => {
++  assert.throws(() => sum(null, 1), rejectsTypeError);
++  assert.throws(() => sum(1, undefined), rejectsTypeError);
++  assert.throws(() => sum({}, 1), rejectsTypeError);
++  assert.throws(() => sum(1, null), rejectsTypeError);
++  assert.throws(() => sum(1, {}), rejectsTypeError);
++});
++
++test('拒绝 bigint：拿到带说明的 TypeError 而非引擎序列化报错', () => {
++  assert.throws(() => sum(10n, 1), rejectsTypeError);
++});
++
++test('允许负数', () => {
++  assert.equal(sum(-1, -2), -3);
++});
++
++test('允许小数（容差断言，避免浮点误差假失败）', () => {
++  assert.ok(Math.abs(sum(0.1, 0.2) - 0.3) < 1e-12);
++});
+diff --git a/.claude/settings.json b/.claude/settings.json
+new file mode 100644
+index 0000000..f787dfc
+--- /dev/null
++++ b/.claude/settings.json
+@@ -0,0 +1,58 @@
++{
++  "hooks": {
++    "PreToolUse": [
++      {
++        "matcher": "Edit|Write|NotebookEdit",
++        "hooks": [
++          {
++            "type": "command",
++            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-write; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
++            "timeout": 15
++          }
++        ]
++      },
++      {
++        "matcher": "Bash",
++        "hooks": [
++          {
++            "type": "command",
++            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-bash; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
++            "timeout": 15
++          }
++        ]
++      },
++      {
++        "matcher": "Bash",
++        "hooks": [
++          {
++            "type": "command",
++            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-commit; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
++            "timeout": 15
++          }
++        ]
++      }
++    ],
++    "Stop": [
++      {
++        "hooks": [
++          {
++            "type": "command",
++            "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-stop; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .claude/settings.json 中的 TriviumCode Hook。\" >&2; exit 2'",
++            "timeout": 30
++          }
++        ]
++      }
++    ],
++    "SessionStart": [
++      {
++        "hooks": [
++          {
++            "type": "command",
++            "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-session-start'",
++            "timeout": 15
++          }
++        ]
++      }
++    ]
++  }
++}
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..84d8471
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,18 @@
++
++
++# ------------------------------------------------------------------------------
++# TriviumCode 编排器运行时目录 (.trivium/)
++# config.yaml 为团队共享策略，进 Git；其余为本机状态与探针结论，不进 Git
++# 由 `trivium init` 幂等写入
++# ------------------------------------------------------------------------------
++.trivium/bin/
++.trivium/logs/
++.trivium/lock/
++.trivium/state.json
++.trivium/config.local.yaml
++.trivium/admission.local.json
++# 版本迁移时 init 留下的原文备份（含本机注释，属一次性产物，不进 Git）
++.trivium/*.trivium-backup
++# 合并 Hook 前 init / trivium hooks 留下的原文备份（同上，不进 Git）
++.claude/settings.json.trivium-backup
++.zcode/config.json.trivium-backup
+diff --git a/.zcode/config.json b/.zcode/config.json
+new file mode 100644
+index 0000000..1378f0c
+--- /dev/null
++++ b/.zcode/config.json
+@@ -0,0 +1,61 @@
++{
++  "hooks": {
++    "events": {
++      "PreToolUse": [
++        {
++          "matcher": "Edit|Write",
++          "hooks": [
++            {
++              "type": "command",
++              "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-write; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .zcode/config.json 中的 TriviumCode Hook。\" >&2; exit 2'",
++              "timeoutMs": 15000
++            }
++          ]
++        },
++        {
++          "matcher": "Bash",
++          "hooks": [
++            {
++              "type": "command",
++              "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-bash; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .zcode/config.json 中的 TriviumCode Hook。\" >&2; exit 2'",
++              "timeoutMs": 15000
++            }
++          ]
++        },
++        {
++          "matcher": "Bash",
++          "hooks": [
++            {
++              "type": "command",
++              "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-pre-commit; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .zcode/config.json 中的 TriviumCode Hook。\" >&2; exit 2'",
++              "timeoutMs": 15000
++            }
++          ]
++        }
++      ],
++      "Stop": [
++        {
++          "hooks": [
++            {
++              "type": "command",
++              "command": "sh -c 'D=\"${CLAUDE_PROJECT_DIR}/.trivium\"; W=\"$D/bin/trivium\"; test -x \"$W\" && exec \"$W\" gate hook-stop; test -f \"$D/config.yaml\" || exit 0; echo \"TriviumCode 护栏失效：$W 缺失或不可执行，但本项目已初始化。闸门无法判定，已保守拦截。修复：trivium init；确要停用：删除 .trivium/ 或移除 .zcode/config.json 中的 TriviumCode Hook。\" >&2; exit 2'",
++              "timeoutMs": 30000
++            }
++          ]
++        }
++      ],
++      "SessionStart": [
++        {
++          "hooks": [
++            {
++              "type": "command",
++              "command": "sh -c 'W=\"${CLAUDE_PROJECT_DIR}/.trivium/bin/trivium\"; test -x \"$W\" || exit 0; exec \"$W\" gate hook-session-start'",
++              "timeoutMs": 15000
++            }
++          ]
++        }
++      ]
++    },
++    "enabled": true
++  }
++}
+diff --git a/AGENTS.md b/AGENTS.md
+new file mode 100644
+index 0000000..a8d75d4
+--- /dev/null
++++ b/AGENTS.md
+@@ -0,0 +1,52 @@
++
++<!-- BEGIN TriviumCode -->
++## 审查员身份说明（TriviumCode）
++
++若你是通过 TriviumCode 编排器以**审查员**身份被启动的（提示词首段会明确声明角色），
++则以**提示词首段的角色与禁令为准**，忽略本文件中面向执笔者的任务指令——
++那些是给主攻方（Driver）的，不是给你的。
++
++作为审查员你只读不写：不得修改任何文件、不得执行写命令、不得读取任务书中
++禁读清单列出的文件。你的结论由编排器落盘，不要自行写文件到仓库。
++
++## TriviumCode 双审流水线协议（Driver）
++
++本项目启用了 TriviumCode「主攻 + 多审」流水线。作为 Driver（执笔者）你需要知道：
++
++- **当轮 Driver 是唯一有权改业务代码的角色。** 其余入选的审核者只做只读审查，
++  它们的结论由编排器落盘，不经你转述。
++- 四条入口命令是唯一入口：`dual-run`（全流程）、`dual-review-plan`、`dual-review-code`、`dual-review-bug`。
++  调用写法因载体而异（Claude Code、Antigravity 与 ZCode 桌面端用 `/名字`，Codex 用 `$名字`；ZCode 命令行模式下是 `/skill 名字`）。
++  **不要自行调用任何一家审核者的 CLI**——并行、超时、指纹核验、防覆盖命名都在编排器内，绕过它会失去全部保障。
++- **禁止在归档根内产出带审查员角色后缀的文件。** 受保护的后缀是
++  **除当轮 Driver 之外的全部已登记角色**——权威判据是 `hooks.ts` 的
++  `criticRoleSuffixes()`，**不要在这里枚举**（枚举过一次，M8 接入 codex 后就漏了）。
++  **你的产出后缀是当轮 Driver 自己的 Agent id**，不是固定的某一家：
++  原稿、裁决件都按它命名，裁决件的 front-matter `role` 也填同一个值。
++  plan / bug 阶段的原稿写在双审之前：**写原稿之前先认领本阶段**（入口命令里有这一步）。
++- 审查意见必须**逐条**裁决（接受 / 驳回 / 暂缓 + 理由，接受要写落点）。禁止静默忽略。
++- 闸门期（等待人工审批）不得修改业务文件。想继续请让用户走 `dual-approve`。
++- **审批的发起权在用户手里，不在你手里。** 只在用户明确要求时才跑 `trivium approve`。
++  技术上你自己跑得通——`approve` 不校验调用来源，正因如此这条才写在这里：
++  它靠的是你守规矩，而审批记录会留下时间与会话来源供事后对账。
++- 审查进行中也不要改业务文件：审查员正在读真实工作树，你的改动会造成快照漂移，
++  可能让整次审查作废。
++- **护栏因载体而异**（入口命令的「护栏」段写着你所在载体的等级）：
++  L1 载体装有 TriviumCode Hook，越界写入、裁决未齐备就收工都会被事前拦下；
++  L2 载体**不宣称** Hook 兜得住——没有 Hook，或只有尽力拦截的 Hook——这些都**靠你自觉**：
++  审查进行中的越界由跑后漂移复算发现（被 .gitignore 忽略的文件除外），闸门期改业务文件不会让审批失败（命令 B / C / D 审批时只打印工作树改动摘要），
++  审批之后删改审查工件只有带 Hook 的载体在提交时核对（详见 QUICKSTART §5.2）。
++- 装有 Hook 时，它对结构化写工具（Write / Edit）精确拦截；对 Bash 只按写命令形态做**启发式**拦截，
++  不是完备的——别去绕它，绕过去的改动同样会被跑后复算判成漂移。
++  Bash 侧有**已知误拦**，判据是：命令**像**写命令（写动词字面、重定向等，词边界字面匹配、不看上下文），
++  且命令文本提到任一角色后缀（含你自己的）、`_meta`、`task.json`、`state.json`、`.trivium`，
++  两条同时成立即拦——**不区分「写它」与「说它」**，包括 commit message 与审查焦点。
++  **出口是改用结构化写工具落文件，提交说明写进文件再 `git commit -F <文件>`**（精确判定，不看字面）；
++  焦点里有写动词字面时先问用户改措辞；恢复被误改的受保护文件请用户在终端执行。
++  换一种写法让判据认不出来属于绕过，不是出口；这个误拦是刻意接受的取舍，不要当成 bug 去「修」。
++- **不要再试图给 `git commit` 开豁免。** 2026-09-12 开过一次（RV-B1），双审打穿后撤回：
++  豁免把 fail-closed 的判定变成需要穷举危险形态的 fail-open，而 shell 的攻击面穷举不完。
++
++留痕全部在 `.reviews/<主题>/{plan,code,bug,verify}/`，命名为
++`<日期>-<主题>[-r<N>][-revised|-response]-<角色>.md`。
++<!-- END TriviumCode -->
+diff --git a/CLAUDE.md b/CLAUDE.md
+new file mode 100644
+index 0000000..ea14d88
+--- /dev/null
++++ b/CLAUDE.md
+@@ -0,0 +1,43 @@
++
++<!-- BEGIN TriviumCode -->
++## TriviumCode 双审流水线协议（Driver）
++
++本项目启用了 TriviumCode「主攻 + 多审」流水线。作为 Driver（执笔者）你需要知道：
++
++- **当轮 Driver 是唯一有权改业务代码的角色。** 其余入选的审核者只做只读审查，
++  它们的结论由编排器落盘，不经你转述。
++- 四条入口命令是唯一入口：`dual-run`（全流程）、`dual-review-plan`、`dual-review-code`、`dual-review-bug`。
++  调用写法因载体而异（Claude Code、Antigravity 与 ZCode 桌面端用 `/名字`，Codex 用 `$名字`；ZCode 命令行模式下是 `/skill 名字`）。
++  **不要自行调用任何一家审核者的 CLI**——并行、超时、指纹核验、防覆盖命名都在编排器内，绕过它会失去全部保障。
++- **禁止在归档根内产出带审查员角色后缀的文件。** 受保护的后缀是
++  **除当轮 Driver 之外的全部已登记角色**——权威判据是 `hooks.ts` 的
++  `criticRoleSuffixes()`，**不要在这里枚举**（枚举过一次，M8 接入 codex 后就漏了）。
++  **你的产出后缀是当轮 Driver 自己的 Agent id**，不是固定的某一家：
++  原稿、裁决件都按它命名，裁决件的 front-matter `role` 也填同一个值。
++  plan / bug 阶段的原稿写在双审之前：**写原稿之前先认领本阶段**（入口命令里有这一步）。
++- 审查意见必须**逐条**裁决（接受 / 驳回 / 暂缓 + 理由，接受要写落点）。禁止静默忽略。
++- 闸门期（等待人工审批）不得修改业务文件。想继续请让用户走 `dual-approve`。
++- **审批的发起权在用户手里，不在你手里。** 只在用户明确要求时才跑 `trivium approve`。
++  技术上你自己跑得通——`approve` 不校验调用来源，正因如此这条才写在这里：
++  它靠的是你守规矩，而审批记录会留下时间与会话来源供事后对账。
++- 审查进行中也不要改业务文件：审查员正在读真实工作树，你的改动会造成快照漂移，
++  可能让整次审查作废。
++- **护栏因载体而异**（入口命令的「护栏」段写着你所在载体的等级）：
++  L1 载体装有 TriviumCode Hook，越界写入、裁决未齐备就收工都会被事前拦下；
++  L2 载体**不宣称** Hook 兜得住——没有 Hook，或只有尽力拦截的 Hook——这些都**靠你自觉**：
++  审查进行中的越界由跑后漂移复算发现（被 .gitignore 忽略的文件除外），闸门期改业务文件不会让审批失败（命令 B / C / D 审批时只打印工作树改动摘要），
++  审批之后删改审查工件只有带 Hook 的载体在提交时核对（详见 QUICKSTART §5.2）。
++- 装有 Hook 时，它对结构化写工具（Write / Edit）精确拦截；对 Bash 只按写命令形态做**启发式**拦截，
++  不是完备的——别去绕它，绕过去的改动同样会被跑后复算判成漂移。
++  Bash 侧有**已知误拦**，判据是：命令**像**写命令（写动词字面、重定向等，词边界字面匹配、不看上下文），
++  且命令文本提到任一角色后缀（含你自己的）、`_meta`、`task.json`、`state.json`、`.trivium`，
++  两条同时成立即拦——**不区分「写它」与「说它」**，包括 commit message 与审查焦点。
++  **出口是改用结构化写工具落文件，提交说明写进文件再 `git commit -F <文件>`**（精确判定，不看字面）；
++  焦点里有写动词字面时先问用户改措辞；恢复被误改的受保护文件请用户在终端执行。
++  换一种写法让判据认不出来属于绕过，不是出口；这个误拦是刻意接受的取舍，不要当成 bug 去「修」。
++- **不要再试图给 `git commit` 开豁免。** 2026-09-12 开过一次（RV-B1），双审打穿后撤回：
++  豁免把 fail-closed 的判定变成需要穷举危险形态的 fail-open，而 shell 的攻击面穷举不完。
++
++留痕全部在 `.reviews/<主题>/{plan,code,bug,verify}/`，命名为
++`<日期>-<主题>[-r<N>][-revised|-response]-<角色>.md`。
++<!-- END TriviumCode -->
+diff --git a/GEMINI.md b/GEMINI.md
+new file mode 100644
+index 0000000..a8d75d4
+--- /dev/null
++++ b/GEMINI.md
+@@ -0,0 +1,52 @@
++
++<!-- BEGIN TriviumCode -->
++## 审查员身份说明（TriviumCode）
++
++若你是通过 TriviumCode 编排器以**审查员**身份被启动的（提示词首段会明确声明角色），
++则以**提示词首段的角色与禁令为准**，忽略本文件中面向执笔者的任务指令——
++那些是给主攻方（Driver）的，不是给你的。
++
++作为审查员你只读不写：不得修改任何文件、不得执行写命令、不得读取任务书中
++禁读清单列出的文件。你的结论由编排器落盘，不要自行写文件到仓库。
++
++## TriviumCode 双审流水线协议（Driver）
++
++本项目启用了 TriviumCode「主攻 + 多审」流水线。作为 Driver（执笔者）你需要知道：
++
++- **当轮 Driver 是唯一有权改业务代码的角色。** 其余入选的审核者只做只读审查，
++  它们的结论由编排器落盘，不经你转述。
++- 四条入口命令是唯一入口：`dual-run`（全流程）、`dual-review-plan`、`dual-review-code`、`dual-review-bug`。
++  调用写法因载体而异（Claude Code、Antigravity 与 ZCode 桌面端用 `/名字`，Codex 用 `$名字`；ZCode 命令行模式下是 `/skill 名字`）。
++  **不要自行调用任何一家审核者的 CLI**——并行、超时、指纹核验、防覆盖命名都在编排器内，绕过它会失去全部保障。
++- **禁止在归档根内产出带审查员角色后缀的文件。** 受保护的后缀是
++  **除当轮 Driver 之外的全部已登记角色**——权威判据是 `hooks.ts` 的
++  `criticRoleSuffixes()`，**不要在这里枚举**（枚举过一次，M8 接入 codex 后就漏了）。
++  **你的产出后缀是当轮 Driver 自己的 Agent id**，不是固定的某一家：
++  原稿、裁决件都按它命名，裁决件的 front-matter `role` 也填同一个值。
++  plan / bug 阶段的原稿写在双审之前：**写原稿之前先认领本阶段**（入口命令里有这一步）。
++- 审查意见必须**逐条**裁决（接受 / 驳回 / 暂缓 + 理由，接受要写落点）。禁止静默忽略。
++- 闸门期（等待人工审批）不得修改业务文件。想继续请让用户走 `dual-approve`。
++- **审批的发起权在用户手里，不在你手里。** 只在用户明确要求时才跑 `trivium approve`。
++  技术上你自己跑得通——`approve` 不校验调用来源，正因如此这条才写在这里：
++  它靠的是你守规矩，而审批记录会留下时间与会话来源供事后对账。
++- 审查进行中也不要改业务文件：审查员正在读真实工作树，你的改动会造成快照漂移，
++  可能让整次审查作废。
++- **护栏因载体而异**（入口命令的「护栏」段写着你所在载体的等级）：
++  L1 载体装有 TriviumCode Hook，越界写入、裁决未齐备就收工都会被事前拦下；
++  L2 载体**不宣称** Hook 兜得住——没有 Hook，或只有尽力拦截的 Hook——这些都**靠你自觉**：
++  审查进行中的越界由跑后漂移复算发现（被 .gitignore 忽略的文件除外），闸门期改业务文件不会让审批失败（命令 B / C / D 审批时只打印工作树改动摘要），
++  审批之后删改审查工件只有带 Hook 的载体在提交时核对（详见 QUICKSTART §5.2）。
++- 装有 Hook 时，它对结构化写工具（Write / Edit）精确拦截；对 Bash 只按写命令形态做**启发式**拦截，
++  不是完备的——别去绕它，绕过去的改动同样会被跑后复算判成漂移。
++  Bash 侧有**已知误拦**，判据是：命令**像**写命令（写动词字面、重定向等，词边界字面匹配、不看上下文），
++  且命令文本提到任一角色后缀（含你自己的）、`_meta`、`task.json`、`state.json`、`.trivium`，
++  两条同时成立即拦——**不区分「写它」与「说它」**，包括 commit message 与审查焦点。
++  **出口是改用结构化写工具落文件，提交说明写进文件再 `git commit -F <文件>`**（精确判定，不看字面）；
++  焦点里有写动词字面时先问用户改措辞；恢复被误改的受保护文件请用户在终端执行。
++  换一种写法让判据认不出来属于绕过，不是出口；这个误拦是刻意接受的取舍，不要当成 bug 去「修」。
++- **不要再试图给 `git commit` 开豁免。** 2026-09-12 开过一次（RV-B1），双审打穿后撤回：
++  豁免把 fail-closed 的判定变成需要穷举危险形态的 fail-open，而 shell 的攻击面穷举不完。
++
++留痕全部在 `.reviews/<主题>/{plan,code,bug,verify}/`，命名为
++`<日期>-<主题>[-r<N>][-revised|-response]-<角色>.md`。
++<!-- END TriviumCode -->

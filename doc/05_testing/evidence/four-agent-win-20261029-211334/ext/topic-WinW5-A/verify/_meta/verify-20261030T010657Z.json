@@ -1,0 +1,32 @@
+{
+  "schema": "trivium.verify.v1",
+  "run_id": "20261030T010657Z",
+  "topic": "WinW5-A",
+  "started_at": "2026-10-30T01:06:57.955Z",
+  "finished_at": "2026-10-30T01:06:58.555Z",
+  "project_root": "D:/Work/TriviumCode-fixtures/four-agent-win-20261029-211334/W5-A-run",
+  "commands": [
+    {
+      "cmd": "node --check src/sum.cjs",
+      "cmd_sha256": "67312499d37f1d59b096b821125ce2b4dfecc7bf0067cb54fc0fd0cce8f83dfc",
+      "group": "build",
+      "exit_code": 0,
+      "duration_s": 0.4,
+      "timed_out": false,
+      "stdout_tail": "",
+      "stderr_tail": ""
+    },
+    {
+      "cmd": "node --test test/sum.test.cjs",
+      "cmd_sha256": "df314f839ee449809af835f45392e0d190b849042537bf4c2080bcd06eff9892",
+      "group": "test",
+      "exit_code": 0,
+      "duration_s": 0.2,
+      "timed_out": false,
+      "stdout_tail": "✔ 两个正常数相加 (0.8787ms)\n✔ 拒绝字符串 (0.6826ms)\n✔ 拒绝 NaN（断言实际值回显，GLM-04） (0.2013ms)\n✔ 拒绝 ±Infinity（断言实际值回显，GLM-04） (0.1931ms)\n✔ 拒绝非 number 类型（两位置对称覆盖） (0.7785ms)\n✔ 拒绝 bigint：拿到带类型标记说明的 TypeError 而非引擎序列化报错 (0.1689ms)\n✔ 拒绝循环引用对象：消息构造路径不可抛（锁定 try/catch 回退分支，GLM-03） (0.1737ms)\n✔ 允许负数 (0.103ms)\n✔ 允许小数（容差断言，避免浮点误差假失败） (0.1887ms)\nℹ tests 9\nℹ suites 0\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 97.987",
+      "stderr_tail": ""
+    }
+  ],
+  "status": "success",
+  "unconfigured": false
+}

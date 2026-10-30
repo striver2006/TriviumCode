@@ -3,7 +3,7 @@
   "topic": "WinW5-A",
   "goal": "为 sum 输入校验需求完成从计划到验证的全流程。从本夹具的 sum 输入校验需求开始全流程：读取 requirements.md、README.md、src/sum.cjs 和测试文件；先认领 plan 阶段，生成并回读计划原稿；计划双审（gemini,glm 两侧，最大一轮）；逐条裁决后到人工审批停点停止，等待 Bob 决定——批准后才会继续实施与代码审查。",
   "created_at": "2026-10-30T00:34:14.030Z",
-  "updated_at": "2026-10-30T00:42:38.824Z",
+  "updated_at": "2026-10-30T01:07:54.102Z",
   "runs": [
     {
       "run_id": "20261030T003619Z",
@@ -13,15 +13,49 @@
       "review_mode": "full",
       "started_at": "2026-10-30T00:36:21.011Z",
       "driver": "claude"
+    },
+    {
+      "run_id": "20261030T010016Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-30T01:00:18.037Z",
+      "driver": "claude"
+    },
+    {
+      "run_id": "20261030T010657Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-10-30T01:06:59.350Z"
     }
   ],
   "gate": {
-    "stage": null,
-    "state": "idle",
-    "since": null,
-    "run_id": null
+    "stage": "code",
+    "state": "approved",
+    "since": "2026-10-30T01:07:53.227Z",
+    "run_id": "20261030T010016Z"
   },
-  "approvals": [],
+  "approvals": [
+    {
+      "at": "2026-10-30T00:59:24.710Z",
+      "stage": "plan",
+      "run_id": "20261030T003619Z",
+      "decision": "approved",
+      "reason": "扩展批次：批准定稿，继续 S4.5 全流程（实施→代码双审→verify）",
+      "session_id": null
+    },
+    {
+      "at": "2026-10-30T01:07:53.227Z",
+      "stage": "code",
+      "run_id": "20261030T010016Z",
+      "decision": "approved",
+      "reason": "扩展批次：A 入口全流程验证达成（verify 通过），批准并提交收尾",
+      "session_id": null
+    }
+  ],
   "degradations": [],
   "disputed": false,
   "disputes": [],
@@ -29,6 +63,11 @@
     "plan": {
       "driver": "claude",
       "claimed_at": "2026-10-30T00:34:14.031Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "claude",
+      "claimed_at": "2026-10-30T00:59:42.929Z",
       "claimed_by": "unknown-session"
     }
   },
@@ -40,6 +79,14 @@
       "state": "checked-none",
       "effective_sides": 2,
       "at": "2026-10-30T00:42:38.824Z"
+    },
+    {
+      "run_id": "20261030T010016Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 2,
+      "at": "2026-10-30T01:06:52.948Z"
     }
   ]
 }
