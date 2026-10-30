@@ -1660,12 +1660,14 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
        * 排在凭据抹除准入之前：终止后准入重新读进程表，活组已清即可放行抹除，不必等会话启动清扫。
        * 结果按事实播报（一条记录都没有时静默）。此后 EV-157「本命令不结束任何进程」的边界收窄为
        * 「worker 仍活时不结束任何进程」——判不了身份的记录照旧一个信号都不发。
+       * 报错正文那一句只在**真发过信号**时给（macOS 回归，2026-10-31）：记录里的组早已自己结束（`gone`）、
+       * 被复用、判不了或读不懂时一个信号都没发，写「已按记录结束」与事实不符；那几种的说明由逐组播报与下面的准入一句给出。
        */
       let cliNote = '';
       if (goneForArchive) {
         const cliOut = await terminateRecordedCliGroups(meta0 ?? (await readStatus(runDir)));
-        if (cliOut.groups.length > 0 || cliOut.malformed.length > 0) {
-          reportRecordedCliGroups(cliOut, true, runDir);
+        reportRecordedCliGroups(cliOut, true, runDir);
+        if (cliOut.groups.some((g) => g.signals.length > 0)) {
           cliNote = '\n  已按记录结束工作进程遗留的审查员 CLI（worker 确认已退出；判不了身份的组未发信号，见上）';
         }
       }
