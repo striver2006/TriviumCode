@@ -3593,7 +3593,7 @@ test('EV-158 I6（C7 / C8）：--wait 在 W 下判 heartbeat_stale，--cancel �
   }
 });
 
-test('EV-158 I7（d 格回归）：删掉 status.json 里的规范化字段（模拟旧版写下；--wait 不读锁）⇒ R 下 --wait 仍判失联 pid_gone，与今天相同', { skip: bundleMissing && bundleSkipReason }, async () => {
+test('EV-158 I7（d 格回归）：删掉 status.json 里的规范化字段（模拟旧版写下；--wait 不读锁）⇒ R 下 --wait 仍判失联 pid_gone，与今天相同；旧记录有环境歧义，不按记录结束 CLI', { skip: bundleMissing && bundleSkipReason }, async () => {
   const r = await startWithRecordedClis(HANG2, undefined, ENV_W);
   try {
     assertRecorded(r);
@@ -3608,19 +3608,25 @@ test('EV-158 I7（d 格回归）：删掉 status.json 里的规范化字段（�
       if (!('worker_started_at_canonical' in (JSON.parse(await fs.readFile(sp, 'utf8')) as object))) break;
     }
     assert.ok(!('worker_started_at_canonical' in (JSON.parse(await fs.readFile(sp, 'utf8')) as object)), '前提：新字段已删');
+    const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '3'], null, 60_000, ENV_R);
+    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
+    const out = w.stdout + w.stderr;
+    assert.match(out, /失联（pid_gone）/, 'd 格：旧记录在异环境下仍判失联（EV-158 的残余，升级窗口）');
     /*
-     * 同一份旧记录在 W 下就判得对：只是按缺省环境比较。必须在 --wait **之前**核：ISSUE-08（1.3.5）起 --wait 判
-     * pid_gone 即按记录结束 CLI，本格的 worker 其实还活着（误判），CLI 被结束后它自己收尾退出，之后就取不到启动时刻了。
+     * ISSUE-08（1.3.5）起 --wait 判 worker 已不在即按记录结束 CLI；按旧版记录比出的不符有环境歧义，这一格不发信号
+     * （lostWorkerReapHold，2026-10-31）——否则误判已死的 worker 名下的 CLI 会被结束、一轮仍在推进的审查被掐断。
+     * 也不给 --cancel 出口：同一环境下的 --cancel 会按同一份旧记录照样结束它们。
      */
+    assert.doesNotMatch(out, /按记录结束审查员 CLI/, out);
+    assert.match(out, new RegExp(`工作进程 ${r.js.worker_pid} 上仍有活进程，只是启动时刻与 status\\.json 的旧版记录不符`), out);
+    assert.match(out, /BACKLOG EV-158）——未结束它名下的审查员 CLI，请用 ps 核对/, out);
+    assert.doesNotMatch(out, /review --cancel/, out);
+    for (const g of r.groups) assert.equal(groupMemberCount(g), 2, `组 ${g} 应仍活着`);
+    // 同一份旧记录在 W 下就判得对：只是按缺省环境比较（worker 没被波及，仍活着）
     assert.equal(
       await withEnv(ENV_W, () => processStartTime(r.js.worker_pid)),
       (JSON.parse(await fs.readFile(sp, 'utf8')) as { worker_started_at: string }).worker_started_at,
     );
-    const w = await cli(r.fx.root, ['review', '--wait', r.js.run_id, '--timeout', '3'], null, 60_000, ENV_R);
-    assert.equal(w.code, EXIT.FAIL, `${w.stdout}${w.stderr}`);
-    assert.match(w.stdout + w.stderr, /失联（pid_gone）/, 'd 格：旧记录在异环境下仍判失联（EV-158 的残余，升级窗口）');
-    // 残余随 ISSUE-08 扩大：误判已死的 worker 名下的 CLI 也被结束（CLI 身份按规范化启动时刻比，不受 R 环境影响）
-    assert.equal((w.stderr.match(/按记录结束审查员 CLI/g) ?? []).length, 2, w.stderr);
   } finally {
     try {
       process.kill(-r.js.worker_pid, 'SIGKILL');

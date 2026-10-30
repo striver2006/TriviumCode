@@ -720,8 +720,8 @@ test('EV-157 U5′：--cancel 两侧都挡住（判不了 + 读不懂）⇒ 一�
 /*
  * ISSUE-08（1.3.5）起 --wait 判 worker 确认已死时按记录结束 CLI：A 格（组仍在且身份相符）由「不抹、给 --cancel 出口、
  * 不结束进程」改为「按记录结束、照抹」；Br（组号被复用）、C（判不了）、D（读不懂）一个信号都不发，组照旧活着。
- * 「其中仍在的审查员 CLI 可用 --cancel」那句出口现在只剩按记录结束之后仍未确认退出的组能触发，零配额造不出
- * （--wait 没有 terminateCli 注入点），这里不再钉它的逐字文案。
+ * 「其中仍在的审查员 CLI 可用 --cancel」那句出口现在只剩按记录结束之后仍未确认退出的组能触发，真实进程造不出，
+ * 由下面的 U6‴ 经 waitRun 的 terminateCli 注入逐字钉住。
  */
 test('EV-157 U6：--wait 判失联（pid_gone）六格——A 按记录结束后照抹；C / D 不抹、正文逐侧说明、不发信号、记录留存；B / Br / E 照抹；归档都收尾为 failed', async () => {
   const tmp = await uniq();
@@ -765,6 +765,47 @@ test('EV-157 U6：--wait 判失联（pid_gone）六格——A 按记录结束后
       } else if (r.group) assert.ok(groupMemberCount(r.pgid!) > 0, `格 ${cell}：身份不符或判不了，不发信号`);
       assert.equal((await readRunJson(x.runJson)).status, 'failed', `格 ${cell}：run.json`);
     }
+  } finally {
+    await t.cleanup(tmp);
+  }
+});
+
+test('U6‴（2026-10-31 macOS 回归补覆盖）：--wait 按记录结束之后组仍未确认退出 ⇒ 不抹、注明已按记录结束、逐字给出 --cancel 出口', async () => {
+  const tmp = await uniq();
+  const t = tracker();
+  try {
+    const ctx = await fakeCtx();
+    const a = t.add(await recordFor('A', `${tmp}:u6a3`));
+    const runId = 'R-WAIT-A-STUCK';
+    const x = await seedDeadRun(ctx, runId, { glm: a.cli });
+    // 仿 U5 A 格：注入「发了信号而未确认退出」，实际一个信号都不发——准入随后读真实进程表，组仍活着
+    const o = {
+      terminateCli: async (): Promise<RecordedCliOutcome> => ({
+        groups: [{ side: 'glm', pgid: a.pgid!, verdict: 'alive', signals: ['SIGTERM', 'SIGKILL'], gone: false, membersLeft: null }],
+        malformed: [], malformedRaw: {},
+      }),
+    };
+    let message = '';
+    const { err } = await captureStderr(() =>
+      assert.rejects(waitRun(ctx, runId, 10, o), (e: { code?: number; message: string }) => {
+        assert.equal(e.code, EXIT.FAIL);
+        message = e.message;
+        return true;
+      }),
+    );
+    assert.ok(err.includes(`glm 侧审查员 CLI 进程组 ${a.pgid} 未能确认退出——请用 ps 核对`), err);
+    assert.match(message, /已按记录结束工作进程遗留的审查员 CLI/);
+    assert.ok(await exists(x.carrier), '组仍活：不抹');
+    const lines = message.split('\n');
+    assert.equal(
+      lines.find((l) => l.includes('凭据副本未抹')),
+      `  凭据副本未抹：工作进程 ${x.dead.pid} 已不存在，但审查员 CLI 未确认结束——glm 侧审查员 CLI 进程组 ${a.pgid} 仍在（pid_gone），留给会话启动清扫`,
+    );
+    assert.equal(
+      lines.find((l) => l.includes('review --cancel')),
+      `  其中仍在的审查员 CLI 可用 trivium review --cancel ${runId} 按记录结束；结束之后下一次会话启动清扫会重判，放行即抹副本`,
+    );
+    assert.deepEqual(await glmCli(x.runDir), a.cli, '被挡侧记录应留存');
   } finally {
     await t.cleanup(tmp);
   }

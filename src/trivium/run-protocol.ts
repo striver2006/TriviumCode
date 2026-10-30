@@ -1528,7 +1528,33 @@ export function budgetFor(cfg: Config, stage: Stage, waitTimeoutSOverride?: numb
  *
  * 返回 `73`（仍在运行）不是失败——skill 应打印进度后继续下一次 `--wait`。
  */
-export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promise<WaitOutcome> {
+export interface WaitOptions {
+  /**
+   * 失联分支按记录结束 CLI 的实现，缺省 `terminateRecordedCliGroups`（与 `CancelOptions.terminateCli` 同形）。只为单测造
+   * 「发了信号而未确认退出、组仍活着」——真实进程在 SIGKILL 之下必死，零配额造不出（2026-10-31 macOS 回归补覆盖）。
+   */
+  terminateCli?: (s: RunStatus | null) => Promise<RecordedCliOutcome>;
+}
+
+/**
+ * `--wait` 判失联之后能否按记录结束 CLI 的附加准入（EV-158 d 格，2026-10-31）。`goneForArchive` 把「pid 上有活进程而
+ * 启动时刻不符」也算已不在；按规范化启动时刻比出的不符只可能是 PID 复用（环境差异已不可能是成因），worker 确实不在；
+ * 按旧版记录（缺规范化字段）在缺省环境比出的不符还可能是本命令的 TZ / 区域设置与 `--start` 不同——worker 其实活着，
+ * 结束它名下的 CLI 等于掐断一轮仍在推进的审查。后一种不发信号，与 `--cancel` 的 mismatch 格（两种依据都不发）同向、
+ * 但只收窄到有歧义的那一种。返回 null 表示可以结束；否则是如实播报的那一句。
+ */
+async function lostWorkerReapHold(s: RunStatus | null, fallbackPid: number | null): Promise<string | null> {
+  const pid = s?.worker_pid ?? fallbackPid;
+  if (s === null || pid === null || pid === undefined) return null;
+  const live = await processMatchesRecord(pid, workerStartOf(s));
+  if (!live.alive || live.basis === 'canonical') return null;
+  return (
+    `工作进程 ${pid} 上仍有活进程，只是启动时刻与 status.json 的旧版记录不符：可能是 PID 已被复用，` +
+    '也可能是本命令的 TZ / 区域设置与 --start 不同（BACKLOG EV-158）——未结束它名下的审查员 CLI，请用 ps 核对'
+  );
+}
+
+export async function waitRun(ctx: Ctx, runId: string, timeoutS: number, o: WaitOptions = {}): Promise<WaitOutcome> {
   const cfg = ctx.config;
   const runDir = runDirFor(cfg, ctx.projectRoot, runId);
   if (!(await exists(runDir))) {
@@ -1664,8 +1690,10 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
        * 被复用、判不了或读不懂时一个信号都没发，写「已按记录结束」与事实不符；那几种的说明由逐组播报与下面的准入一句给出。
        */
       let cliNote = '';
-      if (goneForArchive) {
-        const cliOut = await terminateRecordedCliGroups(meta0 ?? (await readStatus(runDir)));
+      const reapHold = goneForArchive ? await lostWorkerReapHold(pre, fallbackPid) : null;
+      if (reapHold !== null) cliNote = `\n  ${reapHold}`;
+      else if (goneForArchive) {
+        const cliOut = await (o.terminateCli ?? terminateRecordedCliGroups)(meta0 ?? (await readStatus(runDir)));
         reportRecordedCliGroups(cliOut, true, runDir);
         if (cliOut.groups.some((g) => g.signals.length > 0)) {
           cliNote = '\n  已按记录结束工作进程遗留的审查员 CLI（worker 确认已退出；判不了身份的组未发信号，见上）';
@@ -1695,8 +1723,10 @@ export async function waitRun(ctx: Ctx, runId: string, timeoutS: number): Promis
          * （EV-154 D3），组长已退出但组号下还有非僵尸成员的组（`orphaned`）同样按组结束（EV-165）。只对判「仍在」
          * 或「组长已退、组员仍在」的组成立：判不了、读不懂的 `--cancel` 同样不发信号，那两种时不给这句。
          * worker 仍活（heartbeat_stale）时本命令依旧不结束任何进程；确认已死的情形上面已经结束过了。
+         * 上面因 EV-158 歧义没动手（`reapHold`）时不给：同一环境下的 `--cancel` 会按同一份旧记录判 worker 已不在、照样结束，
+         * 正是刚说了不该在没核清之前做的事。
          */
-        if (adm.cli?.blockers.some((b) => b.kind === 'alive' || b.kind === 'orphaned')) {
+        if (reapHold === null && adm.cli?.blockers.some((b) => b.kind === 'alive' || b.kind === 'orphaned')) {
           scrubNote +=
             `\n  其中仍在的审查员 CLI 可用 trivium review --cancel ${runId} 按记录结束；` +
             '结束之后下一次会话启动清扫会重判，放行即抹副本';
