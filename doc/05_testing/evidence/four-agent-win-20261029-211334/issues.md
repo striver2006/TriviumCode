@@ -80,3 +80,23 @@
 3. PS 5.1 无 BOM UTF-8 脚本按 ANSI 解码：含中文字面量的脚本报错/路径乱码（W1-03 首次失败实锤），harness 改为
    ASCII-only + 通配符定位中文目录，符合计划 §3.1 的 BOM 要求精神。
 4. cmd.exe 经 Git Bash 调用时 `/c` 被 MSYS 转成路径，需 `//c` 转义——wrapper 本身无问题。
+
+---
+
+## ISSUE-08（P1 · 产品缺陷）Windows 上 agy 会话派生的 detached worker 随工具通道结束被杀
+
+- 用例：W5-D 首跑（agy Driver）+ B3r 首跑（同形态回看）｜ 现场：ext-runs 下 run 目录完整保留
+- 现象：agy `--dangerously-skip-permissions -p` 会话内 `review --start` 派生的 worker 在 12~15 秒内静默消失
+  （worker.log 止于「第 1 次尝试」、无终态、`worker_lost(pid_gone)`），codex/claude 会话与终端直接派生均存活。
+- 定性：Windows Job 继承——detached spawn 逃不出 agy 工具通道的 Job，通道结束即整树收杀。次生：worker 被杀时
+  审查 CLI 成孤儿（本批实测：PID 56496 持 agy 日志锁，致后续 agy 探活连锁失败；核对命令行属本批后已结束）。
+- 建议：Windows 专用派生通道（逃 Job：CREATE_BREAKAWAY / 中间 shell / WMI），并在 worker 失联收尾时清理本 run 的 CLI 子树。
+
+## ISSUE-09（P1 · 环境与产品适配）本机 Claude L1 Hook 三层失效（W4-S3 未达成）
+
+- 现象：闸门停点期 claude 会话 Write 业务 canary **未被拦**（三次实验，事件流佐证 75/76/77 号日志）。
+- 三层成因：① 事件流无 PreToolUse hook_started——项目级 hooks 未注册（含手工加信任条目后仍未注册）；
+  ② claude 2.1.302 报「Git Bash wasn't found」——其探测清单不含 D:\Program Files\Git 的自定义安装，PATH 注入无效；
+  ③ hook 命令为 `sh -c` 形态，sh 解析不到时失败即放行（非阻断）。
+- 定性：L1 以「原生 Hook 安装和实测成立为条件」（QUICKSTART §5.2）——本机实测不成立。Git 装回默认路径可验证①②；
+  ③属产品 Windows 适配缺口（hook 命令去 sh 依赖），建议另起变更。

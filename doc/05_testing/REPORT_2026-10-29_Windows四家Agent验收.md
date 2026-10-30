@@ -110,3 +110,20 @@ B3r 首跑失败与此同族。修复（1.3.4）：判 `pid_gone` 前重读一�
 **验证**：判据/排除单测（纯函数用例移出 win32 平台门双平台跑）；冲击实验修复前
 19/24 → 修复后 24/24、40 例 1 例（即 05b 现场）→ 重读修复后 64/64；集成并发 2 轮复跑（修复后产物）。
 坑清单登 **P-33/P-34**；设计文档 EV-221 详段、§7.5 wait 判定约束与版本表（v1.3.3/v1.3.4）同批修订。
+
+## 10. 扩展批次（2026-10-30，按 Bob「全部执行」指示）
+
+前置：重装 1.3.4；六个扩展夹具（run_root 一律项目外，P-33 教训）；各侧真实探针 10 例全过。
+
+| 用例 | Driver／审核者 | 结果 | 要点 |
+| :-- | :-- | :-- | :-- |
+| W4-02 取消 | codex（名义）／glm | **通过** | 审核者进程确认启动后 `--cancel`：phase=cancelled、取消留痕、请求快照（GLM-5.3）与工件保留、worker/CLI 进程收口、只点名本 run PID |
+| W4-01 三审组合 | codex／claude+gemini+glm | **通过** | 三侧各自真实审查（read 9/8/6、回读一致、blind、三份 brief），裁决覆盖三侧，人工停点待批。注：首跑预检三侧同败系与探针任务并发竞争，串行重试即过 |
+| W4-S3 Hook 负向 | （停点夹具审查：gemini） | **未达成（ISSUE-09）** | 审查与停点正常；canary 写入**未被拦**：事件流无 PreToolUse hook_started（项目 hooks 未注册）、claude 探测不到 D 盘 Git（「Git Bash wasn't found」，PATH 注入无效）、hook 失败形态为放行。L1 在本机实测不成立 |
+| W5-D bug 入口 | codex／claude | **通过** | 可复现现场（b 位漏检）→ 认领 bug → 根因稿 → 审查（网关路线）→ 裁决 → bug 停点。首次以 agy Driver 发起时 worker 12 秒静默死（ISSUE-08），改 codex 后全通 |
+| W5-C code 入口 | codex／gemini | **通过** | 冻结 diff 与预置改动**逐字一致**；gemini 3 意见逐条裁决并完成改码、`node --test` 自查 3/3；停点。途中 agy 探活连续失败系 ISSUE-08 的孤儿 agy 进程持日志锁（已核对身份后结束） |
+| W5-A dual-run | claude／gemini+glm | **通过（至第一停点）** | verify 命令按任务书 §8 配置后，S0～S3.5 完整：计划原稿 → 两侧真实审查（5 意见）→ 裁决全接受 → r2 定稿 → 计划审批停点；批准后从 S4.5（实施→代码双审→verify）继续 |
+
+**新登问题单**：ISSUE-08（P1，产品）：Windows 上 **agy 会话派生的 detached worker 随工具通道结束被杀**（Job 继承逃不出；B3r 首跑与 W5-D 首跑均 12~15 秒静默死、worker.log 止于尝试行，而 codex/claude 会话与终端直接派生均存活）——agy 载体在 Windows 上的审查链路实际不可用，产品需 Windows 专用派生通道；次生现象为 worker 被杀时审查 CLI 成孤儿并持日志锁，令后续 agy 探活连锁失败。ISSUE-09（P1，环境/适配）：本机 Claude L1 Hook 三层失效（见 W4-S3 行），QUICKSTART「L1 以实测成立为条件」在本机不成立，待 Git 装回默认路径或产品改 hook 命令形态（去 sh 依赖）后复测。
+
+**待 Bob 审批的停点（5 个主题）**：WinW4-01（plan，三审）／WinW4S3（plan，Hook 实验夹具，可批可弃）／WinW5-Db（bug）／WinW5-C（code）／WinW5-A（plan，**批准后可继续全流程 S4.5+**）。

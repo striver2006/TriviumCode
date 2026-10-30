@@ -1,0 +1,362 @@
+{
+  "schema": "trivium.run.v3",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "claude",
+      "right": "gemini",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "gemini-3.8-flash-high",
+      "left_source": null,
+      "right_source": "envelope",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "claude",
+      "right": "glm",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": "bigmodel-plan/GLM-5.3",
+      "left_source": null,
+      "right_source": "trace",
+      "reason": "左侧模型信息缺失"
+    },
+    {
+      "left": "gemini",
+      "right": "glm",
+      "status": "different-family",
+      "left_model": "gemini-3.8-flash-high",
+      "right_model": "bigmodel-plan/GLM-5.3",
+      "left_source": "envelope",
+      "right_source": "trace",
+      "reason": "模型族不同：gemini / glm"
+    }
+  ],
+  "run_id": "20261030T003619Z",
+  "topic": "WinW5-A",
+  "stage": "plan",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage plan",
+  "prompt_hint": null,
+  "task_goal": "为 sum 输入校验需求完成从计划到验证的全流程。从本夹具的 sum 输入校验需求开始全流程：读取 requirements.md、README.md、src/sum.cjs 和测试文件；先认领 plan 阶段，生成并回读计划原稿；计划双审（gemini,glm 两侧，最大一轮）；逐条裁决后到人工审批停点停止，等待 Bob 决定——批准后才会继续实施与代码审查。",
+  "entry": "A",
+  "driver": "claude",
+  "driver_enabled": true,
+  "driver_guard_level": "L1",
+  "plan_final_check": {
+    "subject_rerun_index": 1
+  },
+  "review_loop": {
+    "round": 1,
+    "max_rounds": 1,
+    "max_rounds_source": "flag"
+  },
+  "profile": "default",
+  "critics_selected": [
+    "gemini",
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "8e9fc2cce9a936f9a371a0a6d127e1b0a4bb848e",
+    "tree_hash": "7859c6ce6bcd102d6b7bd49ae95301f030eee02d",
+    "dirty": true,
+    "subject_sha256": "a7b155f2d14b8f073383f620fb514deacc849f000e72ffbd8e9f02da4f383c85",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "065330f7e9ee773dedfae96f2aa1af1c3c4847c0",
+      "dirty": true,
+      "inputs_sha256": "5a2d1060ebe79475010a1111c278755e6c71c467ed0e5c26bf59ec86a53f8bb6",
+      "built_at": "2026-10-29T16:44:25.868Z"
+    },
+    "after_tree_hash": "7859c6ce6bcd102d6b7bd49ae95301f030eee02d"
+  },
+  "started_at": "2026-10-30T00:36:21.011Z",
+  "finished_at": "2026-10-30T00:41:28.004Z",
+  "review_mode": "full",
+  "degraded_reason": null,
+  "critics": {
+    "gemini": {
+      "vendor": "antigravity",
+      "cli_version": "1.4.10",
+      "model_requested": "gemini-3.8-flash-high",
+      "model_effective": "gemini-3.8-flash-high",
+      "model_effective_source": "envelope",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort": "high",
+      "effort_requested": "high",
+      "effort_effective": "high",
+      "effort_effective_source": "envelope",
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 143.101,
+      "tool_calls": {
+        "read": 7,
+        "grep": 0,
+        "glob": 0,
+        "run_command": 0,
+        "project_reads": 6
+      },
+      "evidence_ok": true,
+      "usage": {
+        "input_tokens": 41675,
+        "output_tokens": 10574,
+        "thinking_tokens": 9147,
+        "cache_read_tokens": 155408,
+        "total_tokens": 52249
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "launcher_effective": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "6e04bae4-583f-433b-8ab0-a4fb7ff4209c",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    },
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.17.0",
+      "model_requested": "GLM-5.3",
+      "model_effective": "bigmodel-plan/GLM-5.3",
+      "model_effective_source": "trace",
+      "profile_requested": null,
+      "model_provider": null,
+      "model_route": "config_copy",
+      "model_override_applied": true,
+      "carriers_landed": {
+        "log": true,
+        "rollout": true
+      },
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "ok",
+      "exit_code": 0,
+      "duration_s": 306.425,
+      "tool_calls": {
+        "read": 8,
+        "grep": 0,
+        "glob": 3,
+        "run_command": 0,
+        "project_reads": 7
+      },
+      "evidence_ok": true,
+      "usage": {
+        "source": "provider",
+        "modelRequestCount": 3,
+        "inputTokens": 115624,
+        "outputTokens": 17455,
+        "totalTokens": 133079,
+        "cacheReadTokens": 74752,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "webFetchRequests": 0,
+        "webSearchRequests": 0
+      },
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "D:/Program Files/ZCode/resources/glm/zcode.cjs",
+        "launcher_effective": "D:/Program Files/ZCode/resources/glm/zcode.cjs",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": null,
+      "empty_review": false,
+      "parse_fallback": false,
+      "findings_degraded": [],
+      "parse_repairs": {
+        "stripped_fields": [],
+        "unescaped_backslashes": 0
+      },
+      "session_id": "sess_a8ce3007-218b-4cb9-b8aa-a9c978d59cff",
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "requested_routes": {
+    "gemini": {
+      "model": "gemini-3.8-flash-high",
+      "effort": "high",
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "C:\\Users\\k_bo\\AppData\\Local\\agy\\bin\\agy.exe",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    },
+    "glm": {
+      "model": "GLM-5.3",
+      "effort": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "D:/Program Files/ZCode/resources/glm/zcode.cjs",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "D:/Work/TriviumCode-fixtures/four-agent-win-20261029-211334/ext-runs/W5-A-run"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "gemini": false,
+      "glm": false
+    },
+    "deny_skipped": {
+      "gemini": 0,
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {
+      "gemini": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "commands": [],
+        "hits": []
+      }
+    },
+    "peer_leak_via_path": {
+      "gemini": {
+        "hit": false,
+        "hits": []
+      },
+      "glm": {
+        "hit": false,
+        "hits": []
+      }
+    },
+    "joint_check": {
+      "state": "pending",
+      "effective_sides": 2
+    },
+    "verification_degraded": {
+      "gemini": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      },
+      "glm": {
+        "readonly": "ok",
+        "path": "ok",
+        "evidence_threshold": 3
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "WinW5-A/plan/_meta/brief-gemini-20261030T003619Z.md",
+      "sha256": "307488fb4ca521e5f3d85fdfa698122298b574d147cd587ea2fb773525137205"
+    },
+    {
+      "path": "WinW5-A/plan/_meta/brief-glm-20261030T003619Z.md",
+      "sha256": "4ec608c299e32d98756679d38dd45523406d90891eecac922358c6ba0e8fbbea"
+    },
+    {
+      "path": "WinW5-A/plan/_meta/review-gemini-20261030T003619Z.json",
+      "sha256": "1ed3e13ac67610a12e8a563891a36323fe10a0d844ed63f256a1d99438a3d9de"
+    },
+    {
+      "path": "WinW5-A/plan/_meta/review-glm-20261030T003619Z.json",
+      "sha256": "eefc3755b6c2ae9119962de41cf9540a586410038e28f832365698668b0f3f01"
+    },
+    {
+      "path": "WinW5-A/plan/2026-10-30-WinW5-A-gemini.md",
+      "sha256": "6ad88209fdf2a05529b9c7b2931cda9ef1186f6199d91020703d5f6341948321"
+    },
+    {
+      "path": "WinW5-A/plan/2026-10-30-WinW5-A-glm.md",
+      "sha256": "2c63e96cfc5ee2000685e65932373a6296459a0d6b0b4750f5457b78b4ecd4e6"
+    },
+    {
+      "path": "WinW5-A/plan/2026-10-30-WinW5-A-claude.md",
+      "sha256": "a7b155f2d14b8f073383f620fb514deacc849f000e72ffbd8e9f02da4f383c85"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "review_done_awaiting_disposition"
+  },
+  "status": "success",
+  "round_verdict": {
+    "sides": {
+      "gemini": "pass-after-changes",
+      "glm": "pass-after-changes"
+    },
+    "excluded": {},
+    "counts": {
+      "pass": 0,
+      "pass-after-changes": 2,
+      "reject": 0
+    },
+    "outcome": "pass-after-changes",
+    "next_action": "proceed"
+  }
+}
