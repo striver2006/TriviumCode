@@ -1,0 +1,103 @@
+{
+  "agreed": [
+    "架构分层清晰，extension/ 目录保持独立 npm 包设计，不污染主仓构建产物",
+    "严谨遵循纯前端/只读原则，所有 CLI 交互一律走 wrapper（.trivium/bin/trivium），不硬编码 PATH 与全局 CLI 调用",
+    "D1 从渲染产物推导调用前缀（$ vs /）与旗标语法的思路，避免了在扩展中二次硬编码 Agent 语法的重复事实",
+    "测试分层设计完备，包含单元测试（node:test）、Webview 协议消息单测与基于 @vscode/test-electron 的真实宿主集成测试",
+    "健康检查面板基于探针结果驱动，并在未探测或缺少 Agent 时给出清晰的语义引导与置灰处理"
+  ],
+  "consulted": [
+    ".reviews/VSCode插件Phase0-1/plan/2026-11-06-VSCode插件Phase0-1-glm.md",
+    "doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md",
+    "doc/08_project/README.md",
+    "CLAUDE.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "skills/dual-run/SKILL.md",
+    "skills/dual-review-plan/SKILL.md",
+    "skills/dual-critic/entry/codex/dual-run/SKILL.md",
+    "skills/dual-critic/entry/glm/dual-run/SKILL.md",
+    "skills/dual-critic/entry/gemini/dual-run/SKILL.md",
+    "src/trivium/cli.ts",
+    "src/trivium/topic.ts",
+    "src/trivium/topic-args.ts",
+    "src/trivium/run-files.ts",
+    "src/trivium/state.ts",
+    "src/trivium/probes/env.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/probes/zcode.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/parse.ts",
+    "src/trivium/types.ts",
+    "test/unit/parse.test.ts",
+    "test/unit/topic-args.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §三 D1 步骤 ④ 规定「组装 <prefix><命令> [旗标] -- <正文>」；核对 skills/dual-run/SKILL.md、skills/dual-critic/entry/codex/dual-run/SKILL.md、skills/dual-critic/entry/glm/dual-run/SKILL.md 与 skills/dual-critic/entry/gemini/dual-run/SKILL.md，所有入口命令契约的参数形态均为「<任务目标> [旗标]」或「<审查焦点> [旗标]」，未定义 '--' 分隔符。核对 src/trivium/topic-args.ts:121-131 的 splitArguments 逻辑，当传入裸 '--' 时并不作为旗标识别，而会被推入 restParts；导致 TV topic resolve 解析出的 task_goal / prompt_hint 永久带有 '-- ' 前缀，污染后续各阶段 BRIEF。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §三 D1 第 ④ 步",
+      "problem": "D1 命令组装在命令旗标与正文之间插入了 '--' 分隔符（组装形如「<prefix><命令> [旗标] -- <正文>」），与各载体入口 skill 契约冲突，会导致任务目标和提示词正文被注入多余的 '-- ' 前缀。",
+      "severity": "blocker",
+      "suggestion": "去掉组装逻辑中的 '--' 分隔符。对于包含空格或特殊字符的正文，由 util/shellQuote.ts 整体单引号转义后直接追加在命令与旗标之后（形如 <prefix><命令> [旗标] '<正文>' 或 <prefix><命令> '<正文>' [旗标]），与 skill 契约保持一致。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §三 D2 步骤 ① 指定「vscode.window.createTerminal({ name, shellPath: probe.cli[cliKey].entrypoint, cwd: workspaceRoot })」；查阅 src/trivium/probes/zcode.ts:68-81，ZCode 的 entrypoint 为 Node 脚本（如 /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs），无独立 shell 可执行权限，作为 shellPath 传入 VS Code 终端将抛出 ENOEXEC/EACCES 错误；在 Windows 上，各家 CLI entrypoint 亦可能为 .cmd / .ps1 包装脚本。",
+      "id": "AGY-02",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §三 D2 第 ① 步",
+      "problem": "D2 终端直启直接将 probe.cli[cliKey].entrypoint 传给 vscode.window.createTerminal 的 shellPath，在 ZCode 等非原生可执行二进制的载体上会直接拉起失败。",
+      "severity": "blocker",
+      "suggestion": "不宜将 entrypoint 直接作为 shellPath。对于有环境依赖或解释型脚本的 CLI，应以系统缺省 Shell 拉起终端后，在终端初始化时通过命令行（如 node <entrypoint> 或包装脚本路径）激活交互会话；或在 carriers.ts 声明各载体在终端中的正规启动方式。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §三 D6 提议「向根 .trivium/config.yaml 追加 verify.test: npm install --prefix extension && npm run check --prefix extension」；比对需求基线 doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md §6.0（「不并入主仓 npm run check」）与 §9（「工程位置：extension/ 独立包，不并入主仓闸门」），主仓与扩展明确解耦；且 extension check 包含 @vscode/test-electron 集成测试，放入主仓 config.yaml 会导致所有日常 verify 耗时剧增且依赖 GUI/网络环境。",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §三 D6 及 §五 交付物列表",
+      "problem": "D6 计划向主仓根目录 .trivium/config.yaml 的 verify.test 追加 extension 测试命令，违背了需求文档中插件独立隔离、不并入主仓闸门的架构约束，且严重拖慢非插件任务的验证速度。",
+      "severity": "major",
+      "suggestion": "撤销修改工作区根 .trivium/config.yaml 的计划。保持 extension/ 作为完全独立的 npm package，扩展的编译与测试仅在其自身 npm 脚本及未来独立的 CI 流程中执行，主仓 verify 保持原状。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §三 D4 步骤 ①：「stateWatch 变更时取 gates 中 state ≠ idle 的条目（含 running / review_done_awaiting_disposition / awaiting_approval），提取 {topic, stage, run_id}」；查阅 src/trivium/state.ts 与计划自身§一.4事实基线，gates 中条目不会在审批完成后被自动删除，存在大量 approved、rejected、abandoned 残留。state !== 'idle' 会将这些历史终态条目全部判为活跃 run 并触发无谓的 run 目录扫描与监视。",
+      "id": "AGY-04",
+      "kind": "concurrency",
+      "layer": "plan",
+      "location": "plan §三 D4 第 ① 步",
+      "problem": "D4 监视器状态变更时以「state ≠ idle」作为活跃 run 发现条件，会错误匹配历史残留的 approved、rejected、abandoned 等终态锁。",
+      "severity": "major",
+      "suggestion": "收紧活跃运行的判定条件，明确使用白名单判断：仅当 gate.state 属于 running、review_done_awaiting_disposition、awaiting_approval 等非终态状态时才提取并触发 runDiscovery 与状态监控。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "查阅 plan §二 模块划分与 §三 D4，statusWatch 与 logTail 负责监听运行目录下的 status.json 与 worker.log；但计划未明确在监视到终态（success/failed/cancelled）、用户显式取消、或驾驶舱切换监控主题时，如何清理和注销已注册的 fs.FSWatcher 或 VS Code FileSystemWatcher。",
+      "id": "AGY-05",
+      "kind": "maintainability",
+      "layer": "plan",
+      "location": "plan §二 架构设计及 §三 D4",
+      "problem": "实施计划缺少 statusWatch 和 logTail 文件监视器在运行结束或主题切换时的资源释放（dispose）生命周期设计，可能在长时间会话中造成文件句柄泄漏。",
+      "severity": "minor",
+      "suggestion": "在 monitor 模块中为 statusWatch 和 logTail 补充完整的 Disposable 契约。当收到终态通知或切换监控目标时，显式调用 dispose 释放文件监视器并清理节流定时器。"
+    }
+  ],
+  "not_covered": [
+    "Webview 驾驶舱在 Windows 平台上的路径兼容性与换行符渲染表现",
+    "VS Code 插件各主题颜色变量在深浅色高对比度主题下的视觉可访问性",
+    "Phase 2 及后续规划中裁决台（FR-8）与行内批注（FR-6）的详细交互原型"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "最危险的一条：D1 命令组装在旗标与正文间硬塞 '--'，违反 skill 调用契约，导致各阶段 brief 与任务目标被永久污染注入 '-- ' 前缀；\n其次：D2 终端直启使用 probe entrypoint，在 ZCode（.cjs 脚本）下无法直接执行报错；\nD6 擅自向主仓 .trivium/config.yaml 注入扩展校验命令，违背需求隔离约定并拖慢所有非扩展任务；\nD4 状态过滤包含历史终态锁，会导致监视器误触发与幽灵状态。\n总体架构方向良好，修改上述缺陷后即可直接进入实施阶段。",
+  "verdict": "pass-after-changes"
+}
