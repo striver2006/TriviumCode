@@ -1,0 +1,156 @@
+{
+  "name": "trivium-cockpit",
+  "displayName": "TriviumCode 驾驶舱",
+  "description": "TriviumCode 双审流水线的 VS Code 前端：环境健康、装配点火（终端协同）、运行监控。集成面仅 CLI（--json + 退出码）与只读文件 watcher。",
+  "version": "0.1.0",
+  "publisher": "triviumcode",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:triviumHealth",
+    "onCommand:trivium.openCockpit"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "trivium",
+          "title": "Trivium",
+          "icon": "media/trivium.svg"
+        }
+      ]
+    },
+    "views": {
+      "trivium": [
+        {
+          "id": "triviumHealth",
+          "name": "环境健康"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "triviumHealth",
+        "contents": "本工作区尚未初始化 TriviumCode（未找到 .trivium/）。\n先在 TriviumCode 仓库完成安装与 init，再回到这里查看环境健康。\n[打开部署手册](command:trivium.openDeployManual)\n[打开使用手册](command:trivium.openManual)\n要了解双审流水线状态，也可以打开[驾驶舱](command:trivium.openCockpit)只读围观。"
+      }
+    ],
+    "commands": [
+      {
+        "command": "trivium.openCockpit",
+        "title": "打开 Trivium 驾驶舱"
+      },
+      {
+        "command": "trivium.refreshHealth",
+        "title": "刷新环境健康",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "trivium.openManual",
+        "title": "打开使用手册（doc/07_manuals/使用手册.md）"
+      },
+      {
+        "command": "trivium.openDeployManual",
+        "title": "打开部署手册（doc/06_deployment/部署手册.md）"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "trivium.refreshHealth",
+          "when": "view == triviumHealth",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Trivium 驾驶舱",
+      "properties": {
+        "trivium.launch.readyDelayMs": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 0,
+          "description": "终端拉起后等待 CLI 就绪的延迟（毫秒），随后注入入口命令。就绪探测无事件驱动，此值为经验值；注入不理想时用驾驶舱的「重新注入」按钮。"
+        },
+        "trivium.launch.sendMode": {
+          "type": "string",
+          "enum": [
+            "execute",
+            "split",
+            "manual"
+          ],
+          "default": "execute",
+          "enumDescriptions": [
+            "sendText 携带回车一次提交",
+            "先发文本、再单独发回车（部分 TUI 需要）",
+            "只粘贴不回车，由用户手动按回车"
+          ],
+          "description": "入口命令注入终端的回车语义。"
+        },
+        "trivium.launch.segmentBytes": {
+          "type": "number",
+          "default": 512,
+          "minimum": 64,
+          "description": "长正文分段注入的段长（字节），段间停 80ms。"
+        },
+        "trivium.launch.carrierOverrides": {
+          "type": "object",
+          "default": {},
+          "description": "按载体覆盖注入参数（键为 agent id：claude/codex/gemini/glm），如 {\"claude\":{\"readyDelayMs\":5000,\"sendMode\":\"split\"}}。注入矩阵实测结论可写入此处。"
+        },
+        "trivium.monitor.heartbeatIntervalS": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "description": "心跳失联重估周期（秒）。独立于文件事件：worker 停止写 status.json 时靠它发现失联。"
+        },
+        "trivium.monitor.logTailBytes": {
+          "type": "number",
+          "default": 65536,
+          "minimum": 1024,
+          "description": "worker.log 尾随窗口（字节）。"
+        },
+        "trivium.monitor.runDirRetry": {
+          "type": "object",
+          "default": {
+            "intervalMs": 5000,
+            "rounds": 12
+          },
+          "description": "闸门已 running 而运行目录 status.json 尚未出现时的重试参数（间隔 × 轮数，覆盖编排器先写闸门后建目录的窗口）。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "compile": "node esbuild.mjs",
+    "build-tests": "tsc -p tsconfig.test.json",
+    "test:unit": "npm run build-tests && node --test \"out-test/test/unit/*.test.js\"",
+    "test:integration": "npm run build-tests && node scripts/runIntegration.mjs",
+    "test": "npm run test:unit && npm run test:integration",
+    "check": "npm run typecheck && npm run compile && npm run test",
+    "e2e": "npm run build-tests && node scripts/runE2E.mjs",
+    "real": "npm run build-tests && node scripts/runReal.mjs",
+    "package": "vsce package --allow-missing-repository --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.1.0",
+    "esbuild": "^0.24.0",
+    "mocha": "^10.7.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "yaml": "^2.6.0"
+  }
+}

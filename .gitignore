@@ -154,3 +154,16 @@ temp/
 # 其中一份还是修 /private 归一之前的**缺陷版**实现——入仓会让读者看到两份实现、其一已知是错的。
 *.mutbak
 .mutation-check-running
+
+# ------------------------------------------------------------------------------
+# VS Code 插件（extension/ 独立包，VSCode插件Phase0-1 起）
+# node_modules/ 与 dist/ 由上方既有规则覆盖；.vscode-test 是 vscode-tests 下载的
+# VS Code 测试运行时缓存（百余 MB，仅本机）；*.vsix 是 vsce 打包产物，不入库；
+# out-test 是 tsconfig.test.json 的编译产物，不入库。
+# 注意：上方无锚定的 `env/` 规则会吞掉 extension/src/env/ 源码目录（代码审
+# CLAUDE-01/CODEX-01），故先反忽略该目录本体，其子文件才可被跟踪。
+# ------------------------------------------------------------------------------
+!extension/src/env/
+extension/.vscode-test/
+extension/*.vsix
+extension/out-test/
