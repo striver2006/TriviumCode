@@ -17,7 +17,7 @@ isolation:
   context_max_docs: 12
 review:
   # 本仓开发会话由 Codex 主攻；它不参与自己的审查。产品内置默认集合保持不变。
-  default_critics: [claude, gemini, glm]
+  default_critics: [claude, gemini, codex]
   failure_policy: strict
   timeout_s:
     # plan 2700：codex 侧曾三次撞满 plan 预算致整轮作废（台账第 4、9、18 行）。成因是核查面随稿子
@@ -25,9 +25,9 @@ review:
     # **再撞先收窄 --context 与焦点，别再往上加**——1500→1800 那次只调数字，一个主题后就被打穿。
     # code 3600（由 7200 砍半）是明知的取舍：qwen 侧曾有一轮代码双审跑到 118m53s。
     # 现役 qwen 家族撞满就调这里。
-    plan: 2700
+    plan: 3600
     code: 3600
-    bug: 1800
+    bug: 3600
   wait_timeout_s: 180
   heartbeat_stale_s: 120
   retry:
