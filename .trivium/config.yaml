@@ -80,11 +80,11 @@ profiles:
       plan: { model: gpt-6.1-sol, effort: high }
       code: { model: gpt-6.1-sol, effort: high }
       bug: { model: gpt-6.1-sol, effort: high }
-    # Claude 默认档走官方 Opus，显式请求 medium；实际模型与 effort 以运行回读为准。
+    # Claude 默认档走 Kimi 的 Opus 映射 k3.1-pro；实际模型与 effort 以运行回读为准。
     claude:
-      plan: { model: opus, effort: high }
-      code: { model: opus, effort: high }
-      bug: { model: opus, effort: high }
+      plan: { model: k3.1-pro, effort: high }
+      code: { model: k3.1-pro, effort: high }
+      bug: { model: k3.1-pro, effort: high }
   flash:
     # medium 档以模型名后缀承载强度，不继承 Agent 的旧 high 补全值。
     gemini:
@@ -95,25 +95,25 @@ profiles:
       plan: GLM-5.3-Flash
       code: GLM-5.3-Flash
       bug: GLM-5.3-Flash
-    # Codex flash 使用官方 Luna，显式请求 medium。
+    # Codex flash 使用官方 Terra，显式请求 medium。
     codex:
-      plan: { model: gpt-6-luna, effort: medium }
-      code: { model: gpt-6-luna, effort: medium }
-      bug: { model: gpt-6-luna, effort: medium }
-    # Claude flash 档走官方 Sonnet，显式请求 medium。
+      plan: { model: gpt-6.1-terra, effort: high }
+      code: { model: gpt-6.1-terra, effort: high }
+      bug: { model: gpt-6.1-terra, effort: high }
+    # Claude flash 档走 Kimi 的 Sonnet 映射 kimi-for-coding，显式请求 medium。
     claude:
-      plan: { model: sonnet, effort: medium }
-      code: { model: sonnet, effort: medium }
-      bug: { model: sonnet, effort: medium }
+      plan: { model: kimi-for-coding, effort: high }
+      code: { model: kimi-for-coding, effort: high }
+      bug: { model: kimi-for-coding, effort: high }
   # pro 档：按需 `--profile pro` 单次切档，按侧选择更高档模型或 effort。
   # Gemini pro 使用已核实目录和实际探活的 Argon high；完整审查验收另行记录。
   # GLM pro 保持当前已配置的 GLM-5.3；Codex pro 使用官方 Astra high。
-  # Claude high 使用官方 Opus，显式请求 high，与 default 的 medium 区分。
+  # Claude high 使用 Kimi k3.1-pro，显式请求 high；当前与 default 同值。
   pro:
     gemini:
-      plan: { tier: high }
-      code: { tier: high }
-      bug: { tier: high }
+      plan: gemini-3.8-flash-high
+      code: gemini-3.8-flash-high
+      bug: gemini-3.8-flash-high
     glm:
       plan: GLM-5.3
       code: GLM-5.3
@@ -123,7 +123,7 @@ profiles:
       code: { model: gpt-6-astra, effort: high }
       bug: { model: gpt-6-astra, effort: high }
     claude:
-      # high 显式绑定官方 native，与 Agent 默认接入保持一致。
+      # high 显式绑定 kimi profile，与 Agent 默认接入保持一致。
       plan: { tier: high }
       code: { tier: high }
       bug: { tier: high }
@@ -170,9 +170,9 @@ agents:
     # 显式 null 选择官方 native，覆盖内置供应商默认；第三方须单次显式选择 profile 和匹配模型。
     profile: null
     # 各档 effort 在 profiles 中显式请求，生效值仍须独立回读。
-  # Claude 默认走官方 native；模型别名与实际模型、供应商回读分别记录。
+  # Claude 经已有 cld kimi profile 接入第三方；模型请求与实际供应商回读分别记录。
   claude:
     vendor: anthropic
-    profile: null
+    profile: kimi
     tiers:
-      high: { model: opus, effort: high, profile: null }
+      high: { model: k3.1-pro, effort: max, profile: kimi }

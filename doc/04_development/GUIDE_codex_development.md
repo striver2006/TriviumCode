@@ -73,6 +73,21 @@ pro 保留 `{ tier: high }`，high 显式配置 `{ model: opus, effort: high, pr
 Sonnet medium（flash）也已通过全阶段预检及新的组合探活。这只证明请求组合可调用，
 不证明服务端实际采用了指定 effort。三个档位的真实审查验收均未测。
 
+2026-11-05 按用户当前 Claude 配置，共享配置改用已有 `kimi` 厂商 profile：
+`agents.claude.profile: kimi`，default 各阶段显式请求 `k3.1-pro` / `high`，
+flash 各阶段显式请求 `kimi-for-coding` / `medium`；pro 继续引用 high 档，
+high 改为 `{ model: k3.1-pro, effort: high, profile: kimi }`，当前与 default 同值。
+模型名取自本机 Claude 用户配置与 `~/.claude/profiles/kimi.env` 的一致映射，保留修改前的 effort 请求值。
+调用仍由 Claude Code 承载；此处配置的是第三方供应商，不新增 Kimi Code Agent。
+合并配置的 Schema 校验、三个档位 × 三个阶段的九组路由 / 模型 / effort 解析断言、
+本机 profile 模型声明与可执行入口检查均通过；这些检查未调用模型。
+本次只更新共享路由和模型声明，不修改用户全局配置或历史探针。新路线的 doctor、组合探活、
+真实审查及实际模型 / effort 回读均未测，旧路线证据不能当作本次配置的验收结果。
+
+2026-11-05 按用户要求，Codex flash 档的 plan/code/bug 从 `gpt-6-luna` 改为
+`gpt-6.1-terra`，保留 `effort: medium` 与官方 native 路线。合并配置的 Schema 校验及
+三个阶段的模型 / effort / 路线解析检查通过；本次模型调用与实际模型 / effort 回读未测。
+
 旧主题的 Driver 由该阶段已有运行留痕优先判定，不能用修改配置来迁移历史作者。
 已有他家工件的阶段不强行重新认领；新工作使用新主题或尚未被使用的阶段。
 
