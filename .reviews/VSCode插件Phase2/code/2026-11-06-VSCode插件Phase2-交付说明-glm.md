@@ -60,15 +60,22 @@ extension 侧（`npm run check --prefix extension`，0.2.0）：
 
 ### F5 GUI 走查（装配→点火→看板至终态→审查正文，含 Phase 2 新路径）
 
-F5 启动开发宿主（extension/.vscode/launch.json）→ 在本仓工作区走查：
+> **⑤⑥⑦ 已于 2026-11-07 由 Driver 以 computer-use 自动走查完成（VS Code 真机实装
+> trivium-cockpit-0.2.0.vsix，零配额路径用本仓真实归档），逐项取证记录如下；①~④（装配→点火链）
+> 与注入矩阵仍为用户执行项。**
 
+- [x] **⑤ P2 路径** ✅（computer-use 走查，2026-11-07）：
+  - 意见列表分组/徽标：回放卡「3 侧 · 13 条：阻断 0 重要 6 次要 7 微瑕 0」，claude·修改后通过·共 6 / codex·不通过·共 5 / gemini·修改后通过·共 2，与真实工件逐值一致；
+  - location 跳转：点击 `historyProvider.ts:125` → 打开文件并定位 L125（状态栏「行 125，列 1」）；
+  - Comments 面板：多侧分层线程完整（同位置 claude 线程含「来自 codex 的最新回复」；diffParse.ts 上 codex/gemini 两线程互不覆盖）；批注正文含问题/建议/证据/置信度与「**其余位置**：次级位置 L445-456」；
+  - Problems：状态栏「错误 6 警告 7」= severity 映射精确（6 major→Error + 7 minor→Warning）；
+  - Diff 按钮：点击生效，通知「Trivium Diff：本轮新增文件，无基线版本，直接打开」——本主题被审文件相对基线 HEAD 全为新增，**新增降级路径真机验证正确**（CLAUDE-02/AGY-06）。**已知边界**：「冻结基线 vs 当前文件」正常路径无真实数据可触发（两批真实意见引用的都是新增文件），其机器验证只到集成测试伪 git API 层，待未来修改存量代码的审查轮自然覆盖；
+- [x] **⑥ P2 路径** ✅：运行历史树两级正确（Phase2 展开 8 节点、Phase0-1 展开 6 节点，逐轮统计与 verdict 精确）；点击 Phase0-1 code r2 → 状态栏整体切换「VSCode插件Phase0-1/code · 20261105T185028Z · 13 线程/13 诊断」、Comments/诊断/webview 意见列表全量切换无残留（走查中曾疑似 webview 数据滞留，经事实核对为两轮三家分布恰好相同的巧合 + AX 增量缓存假象，实际渲染已正确切换）；
+- [x] **⑦ 逐家开关** ✅（控件层）/△（点击层）：分组头 checkbox 控件存在且带说明（AX 可见）；开关的过滤语义（关侧不列条目、全清=全部）由集成测试「逐家开关过滤列表（CLAUDE-05）」在真实宿主断言通过——computer-use 对 webview 内控件与 QuickPick 的点击自动化未成功（VS Code webview/QuickPick 的 AX 可达性限制，非产品缺陷证据）；
 - [ ] ① 装配：驾驶舱表单选 Driver/审查者/入口/轮次，「执行前置链」三步绿、主题回显；
 - [ ] ② 点火：终端拉起、命令注入、看板出现该 run 卡；
 - [ ] ③ 看板至终态：侧状态卡推进 → 终态复核；
 - [ ] ④ 打开审查正文：run 卡工件链接可开；
-- [ ] ⑤ **P2 路径**：意见列表分组/徽标渲染正确；点击 location 跳转到行（区间选中）；「Diff」按钮打开冻结基线对比（右侧当前文件、定位行）；Problems 面板按 severity 聚合、点击跳转一致；Comments 面板见多侧分层线程；
-- [ ] ⑥ **P2 路径**：「Trivium」容器「运行历史」树：主题→运行两级、description 统计正确；点击历史 run 回放（批注/诊断切换、状态栏更新）；
-- [ ] ⑦ 逐家开关（命令面板 `Trivium: 选择要展示的审查者`）与状态栏切轮（点击状态栏 → QuickPick）生效。
 
 ### 真机注入矩阵补齐（就绪延迟标定 + sendText 定档）
 
