@@ -1,0 +1,4475 @@
+# trivium changes.diff
+# run_id: 20261106T010601Z
+# base: HEAD
+# head: 2be1ca88c944d31b2be6d6b6682072f42cda077d
+# files: 30
+#   extension/README.md
+#   extension/package.json
+#   extension/src/env/versionCheck.ts
+#   extension/src/extension.ts
+#   extension/src/history/historyProvider.ts
+#   extension/src/history/runHistory.ts
+#   extension/src/reviews/annotationHub.ts
+#   extension/src/reviews/annotationModel.ts
+#   extension/src/reviews/diffParse.ts
+#   extension/src/reviews/diffView.ts
+#   extension/src/reviews/locationResolve.ts
+#   extension/src/reviews/metaWatch.ts
+#   extension/src/reviews/reviewParse.ts
+#   extension/src/services.ts
+#   extension/src/ui/cockpit.ts
+#   extension/src/ui/cockpitHtml.ts
+#   extension/test/integration/annotations.test.ts
+#   extension/test/integration/cockpitFindings.test.ts
+#   extension/test/integration/cockpitLifecycle.test.ts
+#   extension/test/integration/diffView.test.ts
+#   extension/test/integration/fixtureLib.ts
+#   extension/test/integration/health.test.ts
+#   extension/test/integration/history.test.ts
+#   extension/test/integration/suite.ts
+#   extension/test/unit/annotationModel.test.ts
+#   extension/test/unit/diffParse.test.ts
+#   extension/test/unit/locationResolve.test.ts
+#   extension/test/unit/reviewParse.test.ts
+#   extension/test/unit/runHistory.test.ts
+#   extension/test/unit/versionCheck.test.ts
+diff --git a/extension/README.md b/extension/README.md
+index fea3649d..e5d7b346 100644
+--- a/extension/README.md
++++ b/extension/README.md
+@@ -5,7 +5,7 @@ TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面
+ 编排器业务逻辑，阶段循环始终由终端里的 Driver 会话（入口 skill）驱动，插件只做
+ 装配、注入、旁观渲染与中止。
+ 
+-## 功能（第一批：Phase 0 + Phase 1）
++## 功能（第二批：Phase 0 + Phase 1 + Phase 2）
+ 
+ - **环境健康面板**（Activity Bar「Trivium」）：读取 `.trivium/config.local.yaml`
+   探针结论展示四家 Agent 可用性 / 版本 / 入口；未 init 的工作区给出引导。
+@@ -19,10 +19,22 @@ TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面
+ - **运行监控**：`state.json` 白名单发现 run → 运行目录 `status.json` watcher
+   （阶段条、逐侧状态卡、30s 周期心跳失联重估）+ `worker.log` 尾随 +
+   `--cancel` 中止按钮；侧完成即在 `.reviews/` 归档中列出审查正文入口。
++- **审查意见结构化展示**（Phase 2，FR-6）：消费 `_meta/review-*.json`
++  （review.v2，逐文件降级）→ 意见列表（按审查者分组、severity 分级、侧完成实时
++  刷新）→ 行内批注（VS Code Comments；location 归一含逗号多区间、行号 fuzzy、
++  快照一致性两层判据，漂移一律显式标注）→ Problems 面板（blocker/major→Error、
++  minor→Warning、nit→Information）→ Diff 视图（**该轮冻结基线**对比当前文件；
++  新增/删除/对象缺失降级明示）；同一文件多家意见分层合并、可逐家开关。
++- **运行历史**（Phase 2，FR-7）：Activity Bar「运行历史」树——主题 → 运行两级
++  （时间倒序、逐轮意见数与严重度分布、verdict）；完结运行以 `_meta/` 归档为
++  第一事实源（不依赖可被轮转清理的 run_root）；点击任意运行回放该轮全部意见
++  （批注/诊断/意见列表聚焦），状态栏可快捷切换回放轮次。
++
++> 第一批（Phase 0+1，2026-11-06 交付）不含后两项；上方清单为当前累计能力。
+ 
+ ## 平台边界
+ 
+-第一批的开发、测试与验收均在 **macOS**；Windows 适配为后续批次待办。
++第一批与第二批的开发、测试与验收均在 **macOS**；Windows 适配为后续批次待办。
+ 
+ ## 开发
+ 
+diff --git a/extension/package.json b/extension/package.json
+index 022706d3..240fbf0a 100644
+--- a/extension/package.json
++++ b/extension/package.json
+@@ -1,8 +1,8 @@
+ {
+   "name": "trivium-cockpit",
+   "displayName": "TriviumCode 驾驶舱",
+-  "description": "TriviumCode 双审流水线的 VS Code 前端：环境健康、装配点火（终端协同）、运行监控。集成面仅 CLI（--json + 退出码）与只读文件 watcher。",
+-  "version": "0.1.0",
++  "description": "TriviumCode 双审流水线的 VS Code 前端：环境健康、装配点火（终端协同）、运行监控、审查意见行内批注（Comments/Problems/Diff）与运行历史回放。集成面仅 CLI（--json + 退出码）与只读文件 watcher。",
++  "version": "0.2.0",
+   "publisher": "triviumcode",
+   "private": true,
+   "license": "SEE LICENSE IN LICENSE",
+@@ -15,6 +15,7 @@
+   ],
+   "activationEvents": [
+     "onView:triviumHealth",
++    "onView:triviumHistory",
+     "onCommand:trivium.openCockpit"
+   ],
+   "main": "./dist/extension.js",
+@@ -33,6 +34,10 @@
+         {
+           "id": "triviumHealth",
+           "name": "环境健康"
++        },
++        {
++          "id": "triviumHistory",
++          "name": "运行历史"
+         }
+       ]
+     },
+@@ -59,6 +64,22 @@
+       {
+         "command": "trivium.openDeployManual",
+         "title": "打开部署手册（doc/06_deployment/部署手册.md）"
++      },
++      {
++        "command": "trivium.history.refresh",
++        "title": "刷新运行历史"
++      },
++      {
++        "command": "trivium.reviews.focus",
++        "title": "切换批注回放的运行轮次"
++      },
++      {
++        "command": "trivium.critics.filter",
++        "title": "选择要展示的审查者"
++      },
++      {
++        "command": "trivium.openDiff",
++        "title": "在 Diff 视图查看该意见关联的变更"
+       }
+     ],
+     "menus": {
+@@ -67,6 +88,11 @@
+           "command": "trivium.refreshHealth",
+           "when": "view == triviumHealth",
+           "group": "navigation"
++        },
++        {
++          "command": "trivium.history.refresh",
++          "when": "view == triviumHistory",
++          "group": "navigation"
+         }
+       ]
+     },
+@@ -124,6 +150,18 @@
+             "rounds": 12
+           },
+           "description": "闸门已 running 而运行目录 status.json 尚未出现时的重试参数（间隔 × 轮数，覆盖编排器先写闸门后建目录的窗口）。"
++        },
++        "trivium.reviews.maxThreadsPerFile": {
++          "type": "number",
++          "default": 200,
++          "minimum": 10,
++          "description": "单文件行内批注线程上限：超出部分仅进 Problems 面板（量级控制）。"
++        },
++        "trivium.reviews.maxTotalFindings": {
++          "type": "number",
++          "default": 2000,
++          "minimum": 100,
++          "description": "单轮回放的意见总量上限：超出时不建行内批注，仅 Problems 聚合并提示。"
+         }
+       }
+     }
+diff --git a/extension/src/env/versionCheck.ts b/extension/src/env/versionCheck.ts
+index 5ab446a4..7980ef67 100644
+--- a/extension/src/env/versionCheck.ts
++++ b/extension/src/env/versionCheck.ts
+@@ -10,11 +10,17 @@ export type SchemaVerdict =
+   | { kind: 'incompatible'; reason: string }
+   | { kind: 'unknown'; reason: string };
+ 
+-/** 插件消费的文件类型 → 支持的 schema 串（唯一事实源：本表） */
++/**
++ * 插件消费的文件类型 → 支持的 schema 串（唯一事实源：本表）。
++ *
++ * `review`（Phase 2）与前三类不同：审查工件逐文件降级（旧版/坏件只影响该文件，
++ * 不进 worstVerdict 的全局禁点火判定）——消费点在 reviewParse，语义见 r2 计划 D1′。
++ */
+ export const SUPPORTED_SCHEMAS = {
+   config: 'trivium.config.v2',
+   state: 'trivium.state.v1',
+   status: 'trivium.status.v1',
++  review: 'trivium.review.v2',
+ } as const;
+ 
+ export type SchemaFileKind = keyof typeof SUPPORTED_SCHEMAS;
+diff --git a/extension/src/extension.ts b/extension/src/extension.ts
+index ea3e88bf..6b7f1bcd 100644
+--- a/extension/src/extension.ts
++++ b/extension/src/extension.ts
+@@ -2,11 +2,14 @@
+  * 插件激活入口。
+  *
+  * 注册命令、视图与配置；全部 Disposable 进 context.subscriptions 统一释放。
++ * Phase 2 新增：批注宿主（服务级，见 services）、运行历史树、批注状态栏。
+  */
+ import * as vscode from 'vscode';
+ import { createServices, type TriviumServices } from './services';
+ import { HealthProvider } from './ui/healthTree';
+ import { Cockpit } from './ui/cockpit';
++import { HistoryProvider } from './history/historyProvider';
++import { openDiffFor } from './reviews/diffView';
+ 
+ export async function activate(context: vscode.ExtensionContext): Promise<void> {
+   const services = await createServices(context);
+@@ -22,11 +25,38 @@ function registerAll(context: vscode.ExtensionContext, services: TriviumServices
+   const health = new HealthProvider(services);
+   // Cockpit 单例（AGY-02/CLAUDE-07）：重复命令 reveal 既有面板，不重复建实例与监听
+   const cockpit = new Cockpit(services);
++  const history = new HistoryProvider(services, nodeFsApi(), () => services.env.loadConfig().then((c) => c.runRoot ?? ''));
+   context.subscriptions.push(cockpit);
++
++  // 批注状态栏（FR-6b/D4′：当前批注来源；点击 QuickPick 切换 run）
++  const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
++  status.command = 'trivium.reviews.focus';
++  context.subscriptions.push(
++    status,
++    services.annotationHub.onScopeChange((state) => {
++      if (!state.topic) {
++        status.text = 'Trivium 批注：（无）';
++        status.tooltip = '暂无批注：运行结束后自动挂载，或在运行历史树点击回放';
++      } else {
++        status.text = `Trivium 批注：${state.topic}/${state.stage} · ${state.runId ?? '—'} · ${state.threads} 线程/${state.diagnostics} 诊断`;
++        status.tooltip = '点击切换要回放的运行轮次';
++      }
++      status.show();
++    }),
++  );
++
+   context.subscriptions.push(
+     vscode.window.registerTreeDataProvider('triviumHealth', health),
++    vscode.window.createTreeView('triviumHistory', { treeDataProvider: history }),
+     vscode.commands.registerCommand('trivium.refreshHealth', () => void health.refresh()),
++    vscode.commands.registerCommand('trivium.history.refresh', () => history.refresh()),
+     vscode.commands.registerCommand('trivium.openCockpit', () => void cockpit.open()),
++    // 运行历史：点击 run → 回放该轮全部意见（FR-7；驾驶舱经 Hub 订阅自动刷新）
++    vscode.commands.registerCommand('trivium.history.replay', (node: unknown) => {
++      const n = node as { topic?: string; run?: { runId: string; stage: string } } | undefined;
++      if (n?.topic && n?.run) void history.replayRun(n.topic, n.run);
++    }),
++    // 打开该轮某审查者的正文（md 工件）
+     vscode.commands.registerCommand('trivium.openManual', () => void openRepoDoc(services.root, [
+       'doc/07_manuals/使用手册.md',
+     ])),
+@@ -34,7 +64,73 @@ function registerAll(context: vscode.ExtensionContext, services: TriviumServices
+       'doc/06_deployment/部署手册.md',
+       'doc/07_manuals/部署手册.md', // 兜底：文档目录可能重排
+     ])),
++    // 状态栏：QuickPick 切换焦点 run（D4′）
++    vscode.commands.registerCommand('trivium.reviews.focus', () => void focusRunPicker(services)),
++    // 逐家开关（D3′：QuickPick 多选；空选 = 全部启用）
++    vscode.commands.registerCommand('trivium.critics.filter', () => void criticsFilterPicker(services)),
++    // Diff 视图（FR-6d）：意见列表/命令调用
++    vscode.commands.registerCommand('trivium.openDiff', (args: { runId?: string | null; relPath?: string; startLine?: number; endLine?: number }) => {
++      void (async () => {
++        if (!args?.relPath) return;
++        const diff = services.annotationHub.diffOf(args.runId ?? null);
++        const reveal = args.startLine !== undefined ? { startLine: args.startLine, endLine: args.endLine ?? args.startLine } : undefined;
++        const outcome = await openDiffFor(services.root, diff, args.relPath, reveal);
++        vscode.window.showInformationMessage(`Trivium Diff：${outcome.note}`);
++      })();
++    }),
+   );
++  status.show();
++}
++
++/** QuickPick：切换焦点 run（scope 内全部 run 可选，最新在前） */
++async function focusRunPicker(services: TriviumServices): Promise<void> {
++  const hub = services.annotationHub;
++  const scope = hub.currentScope;
++  if (!scope) {
++    vscode.window.showInformationMessage('暂无批注 scope：先在运行历史树点击一个运行节点回放。');
++    return;
++  }
++  const runs = hub.runIds();
++  if (runs.length === 0) {
++    vscode.window.showInformationMessage(`主题 ${scope.topic}/${scope.stage} 暂无审查工件。`);
++    return;
++  }
++  const items = runs.map((runId) => ({
++    label: runId === hub.currentRunId ? `$(check) ${runId}` : runId,
++    description: runId === hub.currentRunId ? '当前回放' : '',
++    runId,
++  }));
++  const picked = await vscode.window.showQuickPick(items, { placeHolder: `选择要回放的运行（${scope.topic}/${scope.stage}）` });
++  if (picked) await hub.setActiveRun(picked.runId);
++}
++
++/** QuickPick：逐家开关（canPickMany；空选 = 全部启用） */
++async function criticsFilterPicker(services: TriviumServices): Promise<void> {
++  const hub = services.annotationHub;
++  const critics = hub.criticsInScope();
++  if (critics.length === 0) {
++    vscode.window.showInformationMessage('当前 scope 暂无审查者工件。');
++    return;
++  }
++  const current = hub.getEnabledCritics();
++  const picked = await vscode.window.showQuickPick(
++    critics.map((c) => ({ label: c, picked: current.size === 0 || current.has(c) })),
++    { canPickMany: true, placeHolder: '选择要展示的审查者（全不选 = 全部展示）' },
++  );
++  if (picked !== undefined) await hub.setEnabledCritics(new Set(picked.map((p) => p.label)));
++}
++
++function nodeFsApi() {
++  return {
++    async readdir(p: string): Promise<string[]> {
++      const { promises: fs } = await import('node:fs');
++      return fs.readdir(p);
++    },
++    async readFile(p: string): Promise<string> {
++      const { promises: fs } = await import('node:fs');
++      return fs.readFile(p, 'utf8');
++    },
++  };
+ }
+ 
+ function registerWithNoWorkspace(context: vscode.ExtensionContext): void {
+@@ -42,6 +138,7 @@ function registerWithNoWorkspace(context: vscode.ExtensionContext): void {
+   context.subscriptions.push(
+     vscode.commands.registerCommand('trivium.openCockpit', hint),
+     vscode.commands.registerCommand('trivium.refreshHealth', hint),
++    vscode.commands.registerCommand('trivium.history.refresh', hint),
+     vscode.commands.registerCommand('trivium.openManual', hint),
+     vscode.commands.registerCommand('trivium.openDeployManual', hint),
+   );
+@@ -50,9 +147,9 @@ function registerWithNoWorkspace(context: vscode.ExtensionContext): void {
+ /** 打开工作区内文档；都不存在则如实提示（CLAUDE-10：链接必须真实存在） */
+ async function openRepoDoc(root: string, candidates: string[]): Promise<void> {
+   const { promises: fs } = await import('node:fs');
+-  const path = await import('node:path');
++  const pathMod = await import('node:path');
+   for (const c of candidates) {
+-    const abs = path.join(root, c);
++    const abs = pathMod.join(root, c);
+     try {
+       await fs.access(abs);
+       await vscode.window.showTextDocument(vscode.Uri.file(abs), { preview: true });
+@@ -63,7 +160,3 @@ async function openRepoDoc(root: string, candidates: string[]): Promise<void> {
+   }
+   vscode.window.showWarningMessage(`未找到文档（已尝试：${candidates.join('、')}）。请在 TriviumCode 仓库中打开本工作区。`);
+ }
+-
+-export function deactivate(): void {
+-  /* 订阅已由 context.subscriptions 统一释放 */
+-}
+diff --git a/extension/src/services.ts b/extension/src/services.ts
+index f74be9bf..f9172cc6 100644
+--- a/extension/src/services.ts
++++ b/extension/src/services.ts
+@@ -7,6 +7,7 @@ import { TriviumCommands } from './cli/commands';
+ import { TriviumEnv } from './env/config';
+ import { TerminalRelay } from './launch/terminalRelay';
+ import { StateWatch } from './monitor/stateWatch';
++import { AnnotationHub } from './reviews/annotationHub';
+ 
+ export interface TriviumServices {
+   root: string;
+@@ -15,6 +16,8 @@ export interface TriviumServices {
+   cmds: TriviumCommands;
+   relay: TerminalRelay;
+   stateWatch: StateWatch;
++  /** 批注宿主（Phase 2 FR-6：服务级，独立于驾驶舱面板生命周期） */
++  annotationHub: AnnotationHub;
+   /** TriviumCode 仓根（工作区即本仓时才有值——渲染产物兜底用） */
+   repoRoot: string | null;
+   readonly disposables: { push(d: vscode.Disposable): void };
+@@ -32,7 +35,8 @@ export async function createServices(context: vscode.ExtensionContext): Promise<
+   const cli = new TriviumCli(root);
+   const relay = new TerminalRelay();
+   const stateWatch = new StateWatch(root);
+-  context.subscriptions.push(relay, stateWatch);
++  const annotationHub = new AnnotationHub(root);
++  context.subscriptions.push(relay, stateWatch, annotationHub);
+   // 渲染产物兜底候选恒为工作区根（工作区即 TriviumCode 仓时命中 skills/ 产品）
+   return {
+     root,
+@@ -41,6 +45,7 @@ export async function createServices(context: vscode.ExtensionContext): Promise<
+     cmds: new TriviumCommands(cli),
+     relay,
+     stateWatch,
++    annotationHub,
+     repoRoot: root,
+     disposables: context.subscriptions,
+   };
+diff --git a/extension/src/ui/cockpit.ts b/extension/src/ui/cockpit.ts
+index 470ef997..86514c32 100644
+--- a/extension/src/ui/cockpit.ts
++++ b/extension/src/ui/cockpit.ts
+@@ -23,6 +23,10 @@ import type { StatusRender } from '../monitor/statusModel';
+ import { phaseLabel, sideStateLabel } from '../monitor/statusModel';
+ import { buildHealth } from '../env/health';
+ import { worstVerdict, type SchemaVerdict } from '../env/versionCheck';
++import type { ScopeState } from '../reviews/annotationHub';
++import { openDiffFor } from '../reviews/diffView';
++import { diffMember } from '../reviews/diffParse';
++import { verdictLabel } from '../reviews/reviewParse';
+ 
+ interface FormState {
+   driver: string;
+@@ -52,6 +56,18 @@ interface RunCard {
+   artifacts: string[];
+   reviewFiles: { name: string; absPath: string; role: string | null }[];
+   logTail: string | null;
++  /** FR-6a：批注宿主的逐侧意见摘要（仅该 run 为焦点回放时有值） */
++  findingsSummary: Array<{ critic: string; verdictLabel: string; counts: Record<string, number>; state: string; notice: string | null }> | null;
++  /** FR-6a：焦点 run 的逐条意见（含漂移/降级标注与解析级别；relPath 供 Diff/跳转，CLAUDE-01） */
++  findings: Array<{
++    critic: string; id: string; severity: string; location: string; problem: string;
++    level: string; label: string | null; consistency: string;
++    relPath: string | null; file: string | null; startLine: number | null; endLine: number | null; inChangeset: boolean;
++  }> | null;
++  /** 一致性未校验提示（plan 阶段/git 不可用，D2′：列表侧注明） */
++  consistencyNote: string | null;
++  /** 装配超限提示（CLAUDE-11） */
++  buildNotice: string | null;
+ }
+ 
+ interface RunEntry {
+@@ -83,6 +99,8 @@ export class Cockpit implements vscode.Disposable {
+   private frozenForm: FormState | null = null;
+   private frozenTopic: string | null = null;
+   private readonly serviceDisposables: vscode.Disposable[] = [];
++  /** FR-6a：批注宿主 scope 状态（订阅刷新；面板关闭不影响 Hub 本身，D4′） */
++  private hubState: ScopeState | null = null;
+   private disposed = false;
+ 
+   constructor(private readonly services: TriviumServices) {
+@@ -98,6 +116,12 @@ export class Cockpit implements vscode.Disposable {
+           this.post({ type: 'banner', kind: 'info', text: '协同终端已关闭：驾驶舱降级为 M3 纯监控（流水线不受影响，循环由 Driver 会话持有）。' });
+         }
+       }),
++      // FR-6a：Hub scope 变化 → 重推 run 卡（意见列表实时刷新；服务级监听，
++      // 面板关闭期间侧完成落盘照样推进 Hub，重开面板即见）
++      services.annotationHub.onScopeChange((state) => {
++        this.hubState = state;
++        void this.pushRuns();
++      }),
+     );
+   }
+ 
+@@ -156,6 +180,11 @@ export class Cockpit implements vscode.Disposable {
+     this.panel?.dispose();
+   }
+ 
++  /** 测试可观测面：run 卡片快照（FR-6a 意见列表数据断言用） */
++  async cardsForTest(): Promise<RunCard[]> {
++    return this.runCards();
++  }
++
+   // ── 初始化与消息 ─────────────────────────────────────────────────────────
+ 
+   private async sendInit(): Promise<void> {
+@@ -228,6 +257,60 @@ export class Cockpit implements vscode.Disposable {
+           vscode.window.showErrorMessage(`打不开文件：${String(m['path'])}`);
+         }
+         break;
++      case 'open-finding': {
++        // FR-6a/6b：点击意见 → 跳转到解析后的行区间（与批注同源）
++        const file = String(m['file'] ?? '');
++        const start = Number(m['startLine'] ?? 1);
++        const end = Number(m['endLine'] ?? start);
++        if (!file) break;
++        try {
++          const editor = await vscode.window.showTextDocument(vscode.Uri.file(file), { preview: true });
++          const s = Math.max(0, Math.min(start - 1, editor.document.lineCount - 1));
++          const e = Math.max(s, Math.min(end - 1, editor.document.lineCount - 1));
++          editor.revealRange(new vscode.Range(s, 0, e, 0), vscode.TextEditorRevealType.InCenter);
++          editor.selection = new vscode.Selection(s, 0, e, 0);
++        } catch {
++          vscode.window.showErrorMessage(`打不开文件：${file}`);
++        }
++        break;
++      }
++      case 'open-diff': {
++        // FR-6d：意见关联变更的 Diff 视图（冻结基线；降级明示）
++        const relPath = String(m['relPath'] ?? '');
++        const runId = m['runId'] ? String(m['runId']) : null;
++        const start = m['startLine'] !== undefined ? Number(m['startLine']) : undefined;
++        const end = m['endLine'] !== undefined ? Number(m['endLine']) : undefined;
++        if (!relPath) break;
++        const diff = this.services.annotationHub.diffOf(runId);
++        const outcome = await openDiffFor(this.services.root, diff, relPath, start !== undefined ? { startLine: start, endLine: end ?? start } : undefined);
++        this.post({ type: 'banner', kind: 'info', text: `Trivium Diff：${outcome.note}` });
++        break;
++      }
++      case 'toggle-critic': {
++        // FR-6b：逐家开关（切换即全量重建，幂等）
++        const critic = String(m['critic'] ?? '');
++        if (!critic) break;
++        const current = this.services.annotationHub.getEnabledCritics();
++        if (current.size === 0) {
++          // 首次关闭：全集合减去该家（inScope 为准）
++          const all = new Set(this.services.annotationHub.criticsInScope());
++          all.delete(critic);
++          await this.services.annotationHub.setEnabledCritics(all);
++        } else if (current.has(critic)) {
++          current.delete(critic);
++          await this.services.annotationHub.setEnabledCritics(current);
++        } else {
++          current.add(critic);
++          await this.services.annotationHub.setEnabledCritics(current);
++        }
++        break;
++      }
++      case 'focus-run': {
++        // FR-6a：卡片上切换回放轮次（与状态栏同一入口）
++        const runId = String(m['runId'] ?? '');
++        if (runId) await this.services.annotationHub.setActiveRun(runId);
++        break;
++      }
+       case 'refresh-health':
+         await this.refreshHealth(false);
+         break;
+@@ -581,6 +664,10 @@ export class Cockpit implements vscode.Disposable {
+       void this.pushRuns();
+     });
+     this.runs.set(runId, entry);
++    // FR-6/7：活跃 run → 批注 scope 跟随（新 run 自动成为焦点回放；D4′）
++    void this.services.annotationHub.setScope(topic, stage || 'plan').then(() =>
++      this.services.annotationHub.setActiveRun(runId),
++    );
+     await this.pushRuns();
+   }
+ 
+@@ -596,10 +683,43 @@ export class Cockpit implements vscode.Disposable {
+ 
+   private async runCards(): Promise<RunCard[]> {
+     const cards: RunCard[] = [];
++    const hub = this.services.annotationHub;
++    const buildFocusData = (): Pick<RunCard, 'findingsSummary' | 'findings' | 'consistencyNote' | 'buildNotice'> => {
++      const diff = hub.diffOf(null);
++      return {
++        findingsSummary: hub.focusSummaries().map((s) => ({
++          critic: s.critic,
++          verdictLabel: verdictLabel(s.verdict as never),
++          counts: s.counts as Record<string, number>,
++          state: s.state,
++          notice: s.notice,
++        })),
++        findings: hub.findingsOfFocusRun().map((f) => ({
++          critic: f.critic,
++          id: f.id,
++          severity: f.severity,
++          location: f.location,
++          problem: f.problem.length > 200 ? `${f.problem.slice(0, 200)}…` : f.problem,
++          level: f.level,
++          label: f.label,
++          consistency: f.consistency,
++          relPath: f.relPath, // CLAUDE-01：Diff 按钮与位置显示的真实相对路径
++          file: f.relPath !== null ? path.join(this.services.root, f.relPath) : null,
++          startLine: f.startLine,
++          endLine: f.endLine,
++          inChangeset: f.relPath !== null && diff !== null && diffMember(diff, f.relPath) !== null,
++        })),
++        consistencyNote: hub.consistencyAllUnknown() ? '行号一致性未校验（plan 阶段或 git 不可用）：界内行号直接采信' : null,
++        buildNotice: this.hubState?.notice ?? null,
++      };
++    };
+     for (const [runId, e] of this.runs) {
+       const r = e.render;
+       const ended = e.ended;
+       const phase = r?.phase ?? 'unknown';
++      // FR-6a：该 run 是焦点回放时附逐侧摘要与逐条意见
++      const isFocus = this.hubState !== null && this.hubState.runId === runId;
++      const focusData = isFocus ? buildFocusData() : { findingsSummary: null, findings: null, consistencyNote: null, buildNotice: null };
+       cards.push({
+         runId,
+         topic: r?.topic ?? null,
+@@ -621,6 +741,30 @@ export class Cockpit implements vscode.Disposable {
+         artifacts: r?.artifacts ?? [],
+         reviewFiles: e.reviewFiles.map((f) => ({ name: f.name, absPath: f.absPath, role: f.role })),
+         logTail: e.logTail,
++        ...focusData,
++      });
++    }
++    // CLAUDE-04/CODEX-07：历史回放卡——焦点 run 不在活跃看板（扩展重启后回放归档）
++    // 时由 Hub 数据生成一张回放卡，意见列表/降级标注照常可见
++    const focusRunId = this.hubState?.runId ?? null;
++    if (focusRunId !== null && this.hubState?.topic && !this.runs.has(focusRunId)) {
++      const summary = this.hubState.summaries.find((s) => s.runId === focusRunId);
++      cards.push({
++        runId: focusRunId,
++        topic: this.hubState.topic,
++        stage: this.hubState.stage,
++        phase: 'replay',
++        phaseLabel: '历史回放',
++        ended: true,
++        terminal: true,
++        sides: [],
++        stale: false,
++        note: summary ? `回放归档运行（${summary.sides.length} 侧工件）` : '回放归档运行',
++        message: null,
++        artifacts: [],
++        reviewFiles: [],
++        logTail: null,
++        ...buildFocusData(),
+       });
+     }
+     return cards;
+diff --git a/extension/src/ui/cockpitHtml.ts b/extension/src/ui/cockpitHtml.ts
+index 4ee05226..322aa05b 100644
+--- a/extension/src/ui/cockpitHtml.ts
++++ b/extension/src/ui/cockpitHtml.ts
+@@ -54,6 +54,16 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
+   .side .st-ok { color: var(--vscode-charts-green, #3fb950); }
+   .side .st-failed, .side .st-timeout { color: var(--vscode-charts-red, #f85149); }
+   .side .st-running { color: var(--vscode-charts-blue, #4493f8); }
++  .sev { display: inline-block; min-width: 34px; text-align: center; border-radius: 8px; font-size: 11px; padding: 0 6px; }
++  .sev.blocker { background: rgba(248,81,73,.35); color: var(--vscode-charts-red, #f85149); }
++  .sev.major { background: rgba(255,123,114,.22); color: var(--vscode-charts-orange, #d29922); }
++  .sev.minor { background: rgba(187,128,9,.22); color: var(--vscode-charts-yellow, #e3b341); }
++  .sev.nit { background: rgba(139,148,158,.25); color: var(--vscode-descriptionForeground, #8b949e); }
++  .finding { display: flex; gap: 6px; align-items: baseline; padding: 1px 0; }
++  .finding .loc { color: var(--vscode-textLink-foreground); cursor: pointer; }
++  .finding .warn { color: var(--vscode-charts-yellow, #e3b341); font-size: 11px; }
++  .finding button { padding: 0 8px; font-size: 11px; }
++  .grp-head { cursor: pointer; user-select: none; }
+   .files a { color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: none; display: block; }
+   details { margin: 4px 0; }
+   pre.log { background: var(--vscode-textCodeBlock-background); padding: 6px; border-radius: 4px;
+@@ -276,6 +286,7 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
+         files.appendChild(a);
+       }
+       card.appendChild(files);
++      if (r.findingsSummary && r.findingsSummary.length > 0) card.appendChild(renderFindings(r));
+       if (r.logTail) {
+         const det = document.createElement('details');
+         det.innerHTML = '<summary>worker.log 尾部</summary><pre class="log">' + escapeHtml(r.logTail) + '</pre>';
+@@ -284,6 +295,74 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
+       box.appendChild(card);
+     }
+   }
++  function renderFindings(r) {
++    const wrap = document.createElement('details');
++    wrap.open = true;
++    const sum = document.createElement('summary');
++    const counts = { blocker: 0, major: 0, minor: 0, nit: 0 };
++    for (const s of r.findingsSummary) for (const k of Object.keys(counts)) counts[k] += (s.counts[k] || 0);
++    sum.innerHTML = '审查意见（' + r.findingsSummary.length + ' 侧 · ' +
++      (counts.blocker + counts.major + counts.minor + counts.nit) + ' 条：' +
++      '<span class="sev blocker">阻断 ' + counts.blocker + '</span> <span class="sev major">重要 ' + counts.major + '</span>' +
++      ' <span class="sev minor">次要 ' + counts.minor + '</span> <span class="sev nit">微瑕 ' + counts.nit + '</span>）';
++    wrap.appendChild(sum);
++    if (r.consistencyNote) {
++      const cn = document.createElement('div'); cn.className = 'hint'; cn.textContent = 'ⓘ ' + r.consistencyNote;
++      wrap.appendChild(cn);
++    }
++    if (r.buildNotice) {
++      const bn = document.createElement('div'); bn.className = 'banner warn'; bn.textContent = '⚠ ' + r.buildNotice;
++      wrap.appendChild(bn);
++    }
++    // 按审查者分组（组头带 verdict 徽标与分层开关，FR-6a/6b）
++    const byCritic = {};
++    for (const f of (r.findings || [])) (byCritic[f.critic] = byCritic[f.critic] || []).push(f);
++    for (const s of r.findingsSummary) {
++      const critic = s.critic;
++      const list = byCritic[critic] || [];
++      const grp = document.createElement('details');
++      grp.open = true;
++      const head = document.createElement('summary');
++      head.className = 'grp-head';
++      head.innerHTML = '<b>' + escapeHtml(critic) + '</b> · ' + escapeHtml(s.verdictLabel) +
++        (s.state !== 'ok' ? ' <span class="warn">（' + escapeHtml(s.notice || s.state) + '）</span>' : '') +
++        ' · ' + list.length + ' 条';
++      grp.appendChild(head);
++      for (const f of list) {
++        const row = document.createElement('div'); row.className = 'finding';
++        const sev = document.createElement('span'); sev.className = 'sev ' + f.severity; sev.textContent = { blocker: '阻断', major: '重要', minor: '次要', nit: '微瑕' }[f.severity] || f.severity;
++        row.appendChild(sev);
++        const id = document.createElement('span'); id.textContent = f.id; row.appendChild(id);
++        const problem = document.createElement('span'); problem.textContent = f.problem.split('\\n')[0]; problem.style.flex = '1';
++        row.appendChild(problem);
++        if (f.label) { const w = document.createElement('span'); w.className = 'warn'; w.textContent = '⚠ ' + f.label; row.appendChild(w); }
++        if (f.consistency === 'mismatch' || f.consistency === 'edited') {
++          const w = document.createElement('span'); w.className = 'warn';
++          w.textContent = f.consistency === 'mismatch' ? '⚠ 与送审版本不一致' : '⚠ 文件已编辑';
++          row.appendChild(w);
++        }
++        if (f.level === 'line' && f.file) {
++          const loc = document.createElement('span'); loc.className = 'loc';
++          loc.textContent = (f.relPath || '') + ':' + f.startLine + (f.endLine !== f.startLine ? '-' + f.endLine : '');
++          loc.title = '点击跳转';
++          loc.onclick = () => vscode.postMessage({ type: 'open-finding', file: f.file, startLine: f.startLine, endLine: f.endLine });
++          row.appendChild(loc);
++          if (f.inChangeset) {
++            const btn = document.createElement('button'); btn.className = 'secondary'; btn.textContent = 'Diff';
++            btn.title = '冻结基线对比当前文件';
++            btn.onclick = () => vscode.postMessage({ type: 'open-diff', runId: r.runId, relPath: f.relPath, startLine: f.startLine, endLine: f.endLine });
++            row.appendChild(btn);
++          }
++        } else {
++          const loc = document.createElement('span'); loc.className = 'hint'; loc.textContent = f.location;
++          row.appendChild(loc);
++        }
++        grp.appendChild(row);
++      }
++      wrap.appendChild(grp);
++    }
++    return wrap;
++  }
+   function escapeHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+ 
+   // ── 事件 ──
+diff --git a/extension/test/integration/cockpitLifecycle.test.ts b/extension/test/integration/cockpitLifecycle.test.ts
+index 0182fdd5..b40d1ef7 100644
+--- a/extension/test/integration/cockpitLifecycle.test.ts
++++ b/extension/test/integration/cockpitLifecycle.test.ts
+@@ -9,6 +9,7 @@ import { TriviumCli } from '../../src/cli/triviumCli';
+ import { TriviumCommands } from '../../src/cli/commands';
+ import { TerminalRelay } from '../../src/launch/terminalRelay';
+ import { StateWatch } from '../../src/monitor/stateWatch';
++import { AnnotationHub } from '../../src/reviews/annotationHub';
+ import { Cockpit } from '../../src/ui/cockpit';
+ import type { TriviumServices } from '../../src/services';
+ import { waitFor, fxPaths, RUN_ID } from './testHelper';
+@@ -18,6 +19,7 @@ function buildServices(root: string): TriviumServices {
+   const cli = new TriviumCli(root);
+   const relay = new TerminalRelay();
+   const stateWatch = new StateWatch(root);
++  const annotationHub = new AnnotationHub(root);
+   return {
+     root,
+     env,
+@@ -25,6 +27,7 @@ function buildServices(root: string): TriviumServices {
+     cmds: new TriviumCommands(cli),
+     relay,
+     stateWatch,
++    annotationHub,
+     repoRoot: root,
+     disposables: { push: () => {} },
+   };
+diff --git a/extension/test/integration/fixtureLib.ts b/extension/test/integration/fixtureLib.ts
+index 91d5662f..c4bd31ff 100644
+--- a/extension/test/integration/fixtureLib.ts
++++ b/extension/test/integration/fixtureLib.ts
+@@ -234,3 +234,232 @@ export async function waitFor(pred: () => boolean | Promise<boolean>, timeoutMs
+     await new Promise((r) => setTimeout(r, everyMs));
+   }
+ }
++
++// ═══════════════════════ Phase 2（FR-6/FR-7）夹具 ═══════════════════════
++
++/** Phase 2 夹具：源文件 + _meta 审查工件 + changes.diff（git 冻结基线）+ task.json + run_root */
++export interface Phase2Fixture {
++  root: string;
++  runRoot: string;
++  /** 基线提交 sha（changes.diff 的 # head） */
++  gitSha: string;
++  /** 主 run（_meta 归档齐全） */
++  run2Id: string;
++  /** 辅 run（无 _meta 归档，探测 run_root 定位） */
++  run1Id: string;
++  /** 归档缺失 run 的目录（run_root 下） */
++  run1Dir: string;
++  metaDir: string;
++  /** 第二主题（纯归档、无活跃闸门）：历史回放卡/竞态用例（CLAUDE-04/CODEX-02/07） */
++  archiveTopic: string;
++  archiveTopicMetaDir: string;
++  archiveTopicRunId: string;
++  /** 原子写 _meta 下文件（模拟编排器落盘；触发 metaWatch） */
++  writeMeta(name: string, text: string): Promise<void>;
++}
++
++const SAMPLE_TS = [
++  'function sample() {',
++  '  const pool = [1, 2];',
++  '  const size = pool.length === 1 ? 1 : 2;',
++  '  return size;',
++  '}',
++  '// marker line 6',
++  'export const a = 7;',
++  'export const b = 8;',
++  'export const c = 9;',
++  'export const d = 10;',
++  'export const e = 11;',
++  'export const f = 12;',
++  'export const g = 13;',
++  'export const h = 14;',
++  'export const i = 15;',
++  'export const j = 16;',
++  'export const k = 17;',
++  'export const l = 18;',
++  'export const m = 19;',
++  'export {};',
++].join('\n');
++
++function reviewDoc(critic: string, verdict: string, findings: Array<Record<string, string>>): string {
++  return JSON.stringify({ schema: 'trivium.review.v2', verdict, summary: `${critic} 总判断`, findings }, null, 2);
++}
++
++function findingOf(id: string, severity: string, location: string, problem: string, evidence: string): Record<string, string> {
++  return { id, severity, layer: 'code', kind: 'correctness', location, problem, evidence, suggestion: '修一下', confidence: 'high' };
++}
++
++export async function buildPhase2Fixture(): Promise<Phase2Fixture> {
++  const { execSync } = await import('node:child_process');
++  const root = await fs.mkdtemp(path.join(tmpdir(), 'trivium-p2-fx-'));
++  const runRoot = await fs.mkdtemp(path.join(tmpdir(), 'trivium-p2-runs-'));
++  const bucket = `${path.basename(root)}-ab12cd34`;
++  const run2Id = '20261106T000005Z';
++  const run1Id = '20261106T000001Z';
++  const run1Dir = path.join(runRoot, bucket, run1Id);
++
++  // 源文件（B0 基线版）：sample.ts / gone.ts / drifting.ts / stale.ts
++  await fs.mkdir(path.join(root, 'src'), { recursive: true });
++  await fs.writeFile(path.join(root, 'src', 'sample.ts'), SAMPLE_TS + '\n');
++  await fs.writeFile(path.join(root, 'src', 'gone.ts'), 'gone line1\ngone line2\n');
++  await fs.writeFile(path.join(root, 'src', 'drifting.ts'), 'drift base\nline2\n');
++  await fs.writeFile(path.join(root, 'src', 'stale.ts'), 'stale base\n');
++
++  // git 基线提交（B0）：被审 base 的冻结身份来源；同时留 .baseline 快照
++  // 供测试伪 git API（toGitUri → `${fsPath}.baseline`）读取
++  const git = (args: string): string => execSync(`git ${args}`, { cwd: root, encoding: 'utf8' }).trim();
++  git('init -q');
++  git("config user.email t@t");
++  git("config user.name t");
++  git('add src/sample.ts src/gone.ts src/drifting.ts src/stale.ts');
++  git('commit -q -m baseline');
++  const gitSha = git('rev-parse HEAD');
++  for (const f of ['sample.ts', 'drifting.ts', 'stale.ts', 'gone.ts']) {
++    await fs.copyFile(path.join(root, 'src', f), path.join(root, 'src', `${f}.baseline`));
++  }
++
++  // 工作区（送审时点 B1）：sample 第 6 行真实改动（第 3 行锚文本保留）、
++  // drifting 改内容、stale 改内容（B1''）、gone 删除、added 新增
++  await fs.writeFile(path.join(root, 'src', 'sample.ts'), SAMPLE_TS.replace('// marker line 6', '// marker line 6 (sent)') + '\n');
++  await fs.writeFile(path.join(root, 'src', 'drifting.ts'), 'drift sent\nline2\n');
++  await fs.writeFile(path.join(root, 'src', 'stale.ts'), 'stale sent\n');
++  await fs.rm(path.join(root, 'src', 'gone.ts'));
++  await fs.writeFile(path.join(root, 'src', 'added.ts'), 'added content\n');
++  git('add -N src/added.ts'); // intent-to-add：让 git diff 包含新增文件
++
++  // .reviews/<主题>/<阶段>/_meta 归档
++  const metaDir = path.join(root, '.reviews', 'DemoTopic', 'code', '_meta');
++  await fs.mkdir(metaDir, { recursive: true });
++  await fs.writeFile(
++    path.join(metaDir, `review-claude-${run2Id}.json`),
++    reviewDoc('claude', 'pass-after-changes', [
++      findingOf('C-01', 'blocker', 'src/sample.ts:2-4', '区间问题', '证据一'),
++      findingOf('C-02', 'major', 'src/sample.ts:3', '同行问题', '证据二'),
++      findingOf('C-03', 'minor', 'src/sample.ts:999', '越界无锚问题', '证据三'),  // 无反引号锚 → out-of-range
++      findingOf('C-04', 'nit', 'plan §2.1', '文档引用', '证据四'),               // doc → listOnly
++    ]),
++  );
++  await fs.writeFile(
++    path.join(metaDir, `review-gemini-${run2Id}.json`),
++    reviewDoc('gemini', 'pass', [
++      findingOf('G-01', 'minor', 'src/sample.ts:3', '同层问题', '证据五'),
++      findingOf('G-02', 'major', 'src/sample.ts:9999', '越界有锚问题', '确认 `pool.length === 1` 的分支'), // nearby
++    ]),
++  );
++  await fs.writeFile(
++    path.join(metaDir, `review-codex-${run2Id}.json`),
++    reviewDoc('codex', 'reject', [
++      findingOf('X-01', 'nit', 'src/sample.ts:2-3,5-6', '逗号多区间', '证据六'),
++      findingOf('X-02', 'minor', 'src/gone-missing.ts:1', '文件缺失', '证据七'),
++      findingOf('X-03', 'minor', '../outside.ts:1', '路径越界', '证据八'),
++      findingOf('X-04', 'major', 'src/stale.ts:1', '送审后漂移演示', '证据九'),
++      findingOf('X-05', 'major', 'src/drifting.ts:1', '送审一致演示', '证据十'),
++    ]),
++  );
++  await fs.writeFile(
++    path.join(metaDir, `run-${run2Id}.json`),
++    JSON.stringify({ schema: 'trivium.run.v3', run_id: run2Id, topic: 'DemoTopic', stage: 'code', rerun_index: 1, driver: 'glm', critics_selected: ['claude', 'gemini', 'codex'], started_at: '2026-11-06T00:00:05.000Z', finished_at: '2026-11-06T00:10:00.000Z' }, null, 2),
++  );
++  // changes.diff：**真实 git diff**（B0 → 工作区 B1）生成——hunks 与基线/工作区
++  // 自洽（CLAUDE-02 送审内容重建的前提）；stale.ts 段在生成后使工作区再改（B2''）
++  const realDiff = execSync('git diff', { cwd: root, encoding: 'utf8' });
++  const diffFileCount = (realDiff.match(/^diff --git /gm) ?? []).length;
++  await fs.writeFile(
++    path.join(metaDir, `changes-${run2Id}.diff`),
++    [
++      '# trivium changes.diff',
++      `# run_id: ${run2Id}`,
++      '# base: HEAD',
++      `# head: ${gitSha}`,
++      `# files: ${diffFileCount}`,
++      ...realDiff.split('\n').map((l) => (l.startsWith('#') ? `#${l}` : l)),
++      '',
++    ].join('\n'),
++  );
++  // 送审后工作区再改 stale.ts → 回放时静态一致性 mismatch（CLAUDE-02/03 用例）
++  await fs.writeFile(path.join(root, 'src', 'stale.ts'), 'stale now (edited after send)\n');
++
++  // task.json：run2（归档齐全）+ run1（归档缺失 → 探测 run_root）
++  await fs.writeFile(
++    path.join(root, '.reviews', 'DemoTopic', 'task.json'),
++    JSON.stringify({
++      schema: 'trivium.task.v1',
++      topic: 'DemoTopic',
++      created_at: '2026-11-06T00:00:01.000Z',
++      updated_at: '2026-11-06T00:10:00.000Z',
++      runs: [
++        { run_id: run1Id, stage: 'plan', rerun_index: 1, status: 'success', review_mode: 'full', started_at: '2026-11-06T00:00:01.000Z', driver: 'glm' },
++        { run_id: run2Id, stage: 'code', rerun_index: 1, status: 'success', review_mode: 'full', started_at: '2026-11-06T00:00:05.000Z', driver: 'glm' },
++      ],
++      gate: { stage: null, state: 'idle', since: null, run_id: null },
++      approvals: [], degradations: [], disputed: false, disputes: [], drivers: { plan: { driver: 'glm' }, code: { driver: 'glm' } },
++    }, null, 2),
++  );
++
++  // run_root：本仓桶 run1 目录（归档缺失场景的探测目标）+ 他仓撞号桶
++  await fs.mkdir(run1Dir, { recursive: true });
++  await fs.writeFile(path.join(run1Dir, 'status.json'), JSON.stringify({
++    schema: 'trivium.status.v1', run_id: run1Id, topic: 'DemoTopic', stage: 'plan', phase: 'success',
++    heartbeat_at: '2026-11-06T00:01:00.000Z', sides: {}, artifacts: [], exit_code: 0, message: null,
++  }, null, 2));
++  const alienBucket = path.join(runRoot, `OtherRepo-${'zz99'}`);
++  await fs.mkdir(path.join(alienBucket, run1Id), { recursive: true });
++  await fs.writeFile(path.join(alienBucket, run1Id, 'status.json'), JSON.stringify({ run_id: run1Id, topic: 'OtherTopic' }, null, 2));
++  const run2Dir = path.join(runRoot, bucket, run2Id);
++  await fs.mkdir(run2Dir, { recursive: true });
++  await fs.writeFile(path.join(run2Dir, 'status.json'), JSON.stringify({
++    schema: 'trivium.status.v1', run_id: run2Id, topic: 'DemoTopic', stage: 'code', phase: 'success',
++    heartbeat_at: '2026-11-06T00:10:00.000Z',
++    sides: { claude: { state: 'ok', model: 'stub-m', attempt: 1, elapsed_s: 10, cli: null } },
++    artifacts: [], exit_code: 0, message: null,
++  }, null, 2));
++
++  // .trivium：驾驶舱发现链最小面（config.run_root + state.json 活跃闸门 + 空桩 wrapper）
++  await fs.mkdir(path.join(root, '.trivium', 'bin'), { recursive: true });
++  await fs.writeFile(path.join(root, '.trivium', 'config.yaml'), [
++    'schema: trivium.config.v2',
++    'archive_root: .reviews',
++    'runtime:',
++    `  run_root: ${runRoot}`,
++    '',
++  ].join('\n'));
++  await fs.writeFile(path.join(root, '.trivium', 'bin', 'trivium'), '#!/bin/sh\nexit 64\n', { mode: 0o755 });
++  await atomicWrite(path.join(root, '.trivium', 'state.json'), JSON.stringify({
++    schema: 'trivium.state.v1',
++    updated_at: '2026-11-06T00:10:00.000Z',
++    gates: { 'DemoTopic/code': { topic: 'DemoTopic', stage: 'code', state: 'running', run_id: run2Id, since: '2026-11-06T00:00:05.000Z', session_id: null } },
++  }, null, 2));
++
++  // 第二主题 ArchiveTopic：纯归档（code 阶段工件齐全、无活跃闸门、run_root 无目录）
++  // ——历史回放卡（CLAUDE-04/CODEX-07）与摄取竞态（CODEX-02）用例
++  const archiveTopic = 'ArchiveTopic';
++  const archiveRunId = '20261106T000003Z';
++  const archiveMetaDir = path.join(root, '.reviews', archiveTopic, 'code', '_meta');
++  await fs.mkdir(archiveMetaDir, { recursive: true });
++  await fs.writeFile(
++    path.join(root, '.reviews', archiveTopic, 'task.json'),
++    JSON.stringify({
++      schema: 'trivium.task.v1', topic: archiveTopic,
++      created_at: '2026-11-06T00:00:03.000Z', updated_at: '2026-11-06T00:09:00.000Z',
++      runs: [{ run_id: archiveRunId, stage: 'code', rerun_index: 1, status: 'success', review_mode: 'full', started_at: '2026-11-06T00:00:03.000Z', driver: 'claude' }],
++      gate: { stage: null, state: 'idle', since: null, run_id: null }, approvals: [], degradations: [], disputed: false, disputes: [], drivers: { code: { driver: 'claude' } },
++    }, null, 2),
++  );
++  await fs.writeFile(
++    path.join(archiveMetaDir, `run-${archiveRunId}.json`),
++    JSON.stringify({ schema: 'trivium.run.v3', run_id: archiveRunId, topic: archiveTopic, stage: 'code', rerun_index: 1, driver: 'claude', critics_selected: ['gemini'], started_at: '2026-11-06T00:00:03.000Z' }, null, 2),
++  );
++  await fs.writeFile(
++    path.join(archiveMetaDir, `review-gemini-${archiveRunId}.json`),
++    reviewDoc('gemini', 'pass', [findingOf('AG2-01', 'minor', 'src/sample.ts:7', '归档主题意见', '归档证据')]),
++  );
++  await fs.writeFile(
++    path.join(archiveMetaDir, `changes-${archiveRunId}.diff`),
++    ['', '# trivium changes.diff', `# run_id: ${archiveRunId}`, '# base: HEAD', `# head: ${gitSha}`, '# files: 1', '#   src/sample.ts', ''].join('\n'),
++  );
++
++  const writeMeta = async (name: string, text: string): Promise<void> => {
++    await atomicWrite(path.join(metaDir, name), text);
++  };
++  return { root, runRoot, gitSha, run2Id, run1Id, run1Dir, metaDir, archiveTopic, archiveTopicMetaDir: archiveMetaDir, archiveTopicRunId: archiveRunId, writeMeta };
++}
+diff --git a/extension/test/integration/health.test.ts b/extension/test/integration/health.test.ts
+index b6b0c9a5..d0ad8c13 100644
+--- a/extension/test/integration/health.test.ts
++++ b/extension/test/integration/health.test.ts
+@@ -52,6 +52,7 @@ suite('环境健康（FR-1）', function () {
+       cmds: new TriviumCommands(cli),
+       relay: null as never,
+       stateWatch: null as never,
++      annotationHub: null as never,
+       repoRoot: root,
+       disposables: { push: () => {} },
+     };
+diff --git a/extension/test/integration/suite.ts b/extension/test/integration/suite.ts
+index 1208f99a..2474005d 100644
+--- a/extension/test/integration/suite.ts
++++ b/extension/test/integration/suite.ts
+@@ -10,8 +10,8 @@ export async function run(): Promise<void> {
+   const Mocha = (await import('mocha')).default;
+   const mocha = new Mocha({ ui: 'tdd', timeout: 60_000, color: true });
+   const here = __dirname;
+-  // 逐个登记（排除夹具库与 e2e）
+-  const files = ['activate.test.js', 'health.test.js', 'prechain.test.js', 'monitor.test.js', 'terminalRelay.test.js', 'disposable.test.js', 'cockpitLifecycle.test.js'];
++  // 逐个登记（排除夹具库与 e2e；Phase 2 四件自带独立夹具）
++  const files = ['activate.test.js', 'health.test.js', 'prechain.test.js', 'monitor.test.js', 'terminalRelay.test.js', 'disposable.test.js', 'cockpitLifecycle.test.js', 'annotations.test.js', 'diffView.test.js', 'history.test.js', 'cockpitFindings.test.js'];
+   for (const f of files) mocha.addFile(path.join(here, f));
+   await new Promise<void>((resolve, reject) => {
+     mocha.run((failures) => (failures > 0 ? reject(new Error(`集成测试 ${failures} 个失败`)) : resolve()));
+diff --git a/extension/test/unit/versionCheck.test.ts b/extension/test/unit/versionCheck.test.ts
+index 299f7829..92cf4551 100644
+--- a/extension/test/unit/versionCheck.test.ts
++++ b/extension/test/unit/versionCheck.test.ts
+@@ -7,6 +7,8 @@ test('支持集声明', () => {
+   assert.equal(SUPPORTED_SCHEMAS.status, 'trivium.status.v1');
+   assert.equal(SUPPORTED_SCHEMAS.state, 'trivium.state.v1');
+   assert.equal(SUPPORTED_SCHEMAS.config, 'trivium.config.v2');
++  // Phase 2（r2 计划 D1′）：review 走逐文件降级，不进全局 worstVerdict
++  assert.equal(SUPPORTED_SCHEMAS.review, 'trivium.review.v2');
+ });
+ 
+ test('同版本 → ok', () => {
+@@ -29,3 +31,12 @@ test('worstVerdict：incompatible 优先于 unknown 优先于 ok', () => {
+   assert.equal(worstVerdict([{ kind: 'ok' }, { kind: 'unknown', reason: 'x' }]).kind, 'unknown');
+   assert.equal(worstVerdict([{ kind: 'ok' }]).kind, 'ok');
+ });
++
++test('review：v2 ok / v1 旧件 incompatible（逐文件降级语义）/ 未知串 unknown', () => {
++  assert.equal(checkSchema('trivium.review.v2', 'review').kind, 'ok');
++  const v1 = checkSchema('trivium.review.v1', 'review');
++  assert.equal(v1.kind, 'incompatible');
++  assert.match(v1.reason, /review/);
++  assert.equal(checkSchema('trivium.review.v3', 'review').kind, 'incompatible');
++  assert.equal(checkSchema(null, 'review').kind, 'unknown');
++});
+diff --git a/extension/src/history/historyProvider.ts b/extension/src/history/historyProvider.ts
+new file mode 100644
+index 00000000..624a5af4
+--- /dev/null
++++ b/extension/src/history/historyProvider.ts
+@@ -0,0 +1,133 @@
++/**
++ * 运行历史树（FR-7，r2 计划 D6′）。
++ *
++ * TreeView `triviumHistory`（Trivium 容器内第二视图）：主题（折叠）→ 运行
++ * （时间倒序）。节点 description 呈现时间线摘要与逐轮意见数/严重度分布；
++ * ReviewFileStatus 降级件在节点标注（CLAUDE-06）。点击 run → 回放（setScope +
++ * setActiveRun → 行内批注/Problems/意见列表聚焦）。扫描惰性（树可见/刷新时，
++ * D8′），不做常驻 watcher。
++ */
++import * as vscode from 'vscode';
++import path from 'node:path';
++import { listTopics, listRuns, makeRunRootProber, type TopicSummary, type RunSummary } from './runHistory';
++import type { AnnotationHub } from '../reviews/annotationHub';
++
++type FsApi = { readdir(p: string): Promise<string[]>; readFile(p: string): Promise<string> };
++
++class TopicNode extends vscode.TreeItem {
++  constructor(readonly summary: TopicSummary) {
++    super(summary.topic, vscode.TreeItemCollapsibleState.Collapsed);
++    this.description = describeTopic(summary);
++    this.contextValue = 'triviumTopic';
++    this.iconPath = new vscode.ThemeIcon('folder-library');
++  }
++}
++
++class RunNode extends vscode.TreeItem {
++  constructor(readonly topic: string, readonly run: RunSummary) {
++    super(labelOf(run), vscode.TreeItemCollapsibleState.None);
++    this.description = describeRun(run);
++    this.contextValue = 'triviumRun';
++    this.iconPath = new vscode.ThemeIcon(iconOf(run));
++    this.tooltip = tooltipOf(this);
++    // 点击 run 节点 → 回放（FR-7；命令在 extension.ts 注册）
++    this.command = { command: 'trivium.history.replay', title: '回放该轮意见', arguments: [this] };
++  }
++}
++
++function labelOf(run: RunSummary): string {
++  const r = run.rerunIndex !== null ? `r${run.rerunIndex}` : '';
++  return `${stageLabel(run.stage)} ${r} · ${run.runId}`.trim();
++}
++
++function stageLabel(stage: string): string {
++  return { plan: '计划审', code: '代码审', bug: '根因审', verify: '编译测试' }[stage] ?? stage;
++}
++
++function describeTopic(t: TopicSummary): string {
++  const when = t.updatedAt ? t.updatedAt.slice(0, 10) : '';
++  return `${t.runCount} 次运行 · ${t.lastStatus ?? '未知末态'}${when ? ` · ${when}` : ''}${t.drivers.length > 0 ? ` · Driver: ${t.drivers.join('/')}` : ''}`;
++}
++
++function describeRun(run: RunSummary): string {
++  const total = run.sides.reduce((acc, s) => acc + s.counts.blocker + s.counts.major + s.counts.minor + s.counts.nit, 0);
++  const blocker = run.sides.reduce((acc, s) => acc + s.counts.blocker, 0);
++  const major = run.sides.reduce((acc, s) => acc + s.counts.major, 0);
++  const verdicts = run.sides.map((s) => s.verdict).filter(Boolean);
++  const parts: string[] = [`${run.sides.length} 侧`];
++  if (total > 0) parts.push(`${total} 条（${blocker} blocker ｜ ${major} major）`);
++  else parts.push('无意见');
++  if (verdicts.length > 0) parts.push([...new Set(verdicts)].join('/'));
++  const degraded = run.sides.filter((s) => s.state !== 'ok').map((s) => `${s.critic} 侧${s.state === 'unsupported-schema' ? '工件不支持' : s.state === 'parse-error' ? '工件损坏' : '部分跳过'}`);
++  if (!run.metaLocated) parts.push('run 目录未定位');
++  return parts.join(' · ') + (degraded.length > 0 ? ` ｜ ${degraded.join('；')}` : '');
++}
++
++function iconOf(run: RunSummary): string {
++  if (run.status === 'success') return 'pass-filled';
++  if (run.status === 'failed') return 'error';
++  return 'circle-filled';
++}
++
++function tooltipOf(node: RunNode): vscode.MarkdownString {
++  const run = node.run;
++  const lines: string[] = [`**${node.topic} · ${stageLabel(run.stage)} ${run.runId}**`];
++  if (run.driver) lines.push(`Driver：${run.driver}`);
++  if (run.startedAt) lines.push(`开始：${run.startedAt}`);
++  if (run.finishedAt) lines.push(`结束：${run.finishedAt}`);
++  for (const s of run.sides) {
++    const c = s.counts;
++    lines.push(`- ${s.critic}：${s.verdict ?? '未知'} · blocker ${c.blocker} / major ${c.major} / minor ${c.minor} / nit ${c.nit}${s.notice ? `（${s.notice}）` : ''}`);
++  }
++  return new vscode.MarkdownString(lines.join('\n\n'));
++}
++
++export class HistoryProvider implements vscode.TreeDataProvider<TopicNode | RunNode> {
++  private readonly emitter = new vscode.EventEmitter<TopicNode | RunNode | undefined | null>();
++  readonly onDidChangeTreeData = this.event;
++  private cache = new Map<string, RunSummary[]>();
++
++  constructor(
++    private readonly services: { root: string; annotationHub: AnnotationHub },
++    private readonly fs: FsApi,
++    private readonly loadRunRoot: () => Promise<string>,
++  ) {}
++
++  get event(): vscode.Event<TopicNode | RunNode | undefined | null> {
++    return this.emitter.event;
++  }
++
++  refresh(): void {
++    this.cache.clear();
++    this.emitter.fire(undefined);
++  }
++
++  getTreeItem(element: TopicNode | RunNode): vscode.TreeItem {
++    return element;
++  }
++
++  async getChildren(element?: TopicNode | RunNode): Promise<Array<TopicNode | RunNode>> {
++    if (!element) {
++      const reviewsRoot = path.join(this.services.root, '.reviews');
++      const topics = await listTopics(this.fs, reviewsRoot);
++      return topics.map((t) => new TopicNode(t));
++    }
++    if (element instanceof TopicNode) {
++      const runRoot = await this.loadRunRoot();
++      const runs = await listRuns(this.fs, path.join(this.services.root, '.reviews'), element.summary.topic, makeRunRootProber(runRoot, path.basename(this.services.root), element.summary.topic));
++      this.cache.set(element.summary.topic, runs);
++      return runs.map((r) => new RunNode(element.summary.topic, r));
++    }
++    return [];
++  }
++
++  /** 点击 run 节点：回放该轮全部意见（FR-7） */
++  async replayRun(topic: string, run: { runId: string; stage: string }): Promise<void> {
++    await this.services.annotationHub.setScope(topic, run.stage);
++    await this.services.annotationHub.setActiveRun(run.runId);
++  }
++
++  runOf(topic: string, runId: string): RunSummary | null {
++    return this.cache.get(topic)?.find((r) => r.runId === runId) ?? null;
++  }
++}
+diff --git a/extension/src/history/runHistory.ts b/extension/src/history/runHistory.ts
+new file mode 100644
+index 00000000..26e5bc3a
+--- /dev/null
++++ b/extension/src/history/runHistory.ts
+@@ -0,0 +1,250 @@
++/**
++ * 运行历史数据面（FR-7，r2 计划 D6′：第一事实源版）。
++ *
++ * 完结运行以 `.reviews/<主题>/<阶段>/_meta/run-<runId>.json` 为第一事实源
++ * （AGY-05：run_root 是 30 天轮转清理的临时区，多机克隆必缺）；task.json 提供
++ * 时间线主轴（run_id/stage/rerun_index/status/driver/started_at）；review-*.json
++ * 提供逐侧 verdict + severity 统计与逐文件降级状态。run_root 仅在活跃运行或
++ * 归档缺失时探测（复用 runDiscovery 归属纪律：桶前缀过滤 + topic 比对，
++ * 不唯一不接管）。
++ *
++ * IO 全部注入（fsApi），可单测。
++ */
++import type { ParsedReview, FindingSeverity } from '../reviews/reviewParse';
++import { parseReviewFile } from '../reviews/reviewParse';
++import { locateRunDir } from '../monitor/runDiscovery';
++
++export interface FsApi {
++  readdir(p: string): Promise<string[]>;
++  readFile(p: string): Promise<string>;
++}
++
++export interface TopicSummary {
++  topic: string;
++  createdAt: string | null;
++  updatedAt: string | null;
++  runCount: number;
++  lastStatus: string | null;
++  drivers: string[];
++}
++
++export interface RunSideStat {
++  critic: string;
++  verdict: string | null;
++  counts: Record<FindingSeverity, number>;
++  state: string;
++  notice: string | null;
++}
++
++export interface RunSummary {
++  runId: string;
++  stage: string;
++  rerunIndex: number | null;
++  status: string | null;
++  driver: string | null;
++  startedAt: string | null;
++  /** run.v3 归档元数据读到时补充 */
++  finishedAt: string | null;
++  criticsSelected: string[];
++  /** 归档是否齐全（run-*.json 在 _meta）：齐全则不探 run_root（AGY-05） */
++  metaLocated: boolean;
++  sides: RunSideStat[];
++}
++
++interface TaskRun {
++  run_id?: string;
++  stage?: string;
++  rerun_index?: number;
++  status?: string;
++  review_mode?: string;
++  started_at?: string;
++  driver?: string;
++}
++
++interface TaskJson {
++  topic?: string;
++  created_at?: string;
++  updated_at?: string;
++  runs?: TaskRun[];
++  drivers?: Record<string, { driver?: string }>;
++}
++
++interface RunMetaJson {
++  run_id?: string;
++  stage?: string;
++  rerun_index?: number;
++  driver?: string;
++  critics_selected?: string[];
++  started_at?: string;
++  finished_at?: string;
++}
++
++async function readJson(fs: FsApi, p: string): Promise<Record<string, unknown> | null> {
++  try {
++    return JSON.parse(await fs.readFile(p)) as Record<string, unknown>;
++  } catch {
++    return null;
++  }
++}
++
++/** 扫 `.reviews/` 下有 task.json 的主题目录 → 主题摘要列表 */
++export async function listTopics(fs: FsApi, reviewsRoot: string): Promise<TopicSummary[]> {
++  let entries: string[];
++  try {
++    entries = await fs.readdir(reviewsRoot);
++  } catch {
++    return [];
++  }
++  const out: TopicSummary[] = [];
++  for (const topic of entries) {
++    const task = (await readJson(fs, `${reviewsRoot}/${topic}/task.json`)) as TaskJson | null;
++    if (!task || typeof task.topic !== 'string') continue;
++    const runs = Array.isArray(task.runs) ? task.runs : [];
++    const drivers = new Map<string, boolean>();
++    for (const [, d] of Object.entries(task.drivers ?? {})) {
++      if (typeof d?.driver === 'string') drivers.set(d.driver, true);
++    }
++    out.push({
++      topic: task.topic,
++      createdAt: task.created_at ?? null,
++      updatedAt: task.updated_at ?? null,
++      runCount: runs.length,
++      lastStatus: runs.length > 0 ? (runs[runs.length - 1]?.status ?? null) : null,
++      drivers: [...drivers.keys()],
++    });
++  }
++  out.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
++  return out;
++}
++
++/**
++ * 一个主题的运行列表：task.json 时间线 + 逐 run 归档元数据/意见统计合并。
++ *
++ * `probeRunRoot`：归档缺失（metaLocated=false）时用于探测 run 目录的回调
++ * （注入 locateRunDir 的包装；探测失败保持 metaLocated=false，不接管——跨仓
++ * 撞号纪律，见 runDiscovery.ts）。
++ */
++export async function listRuns(
++  fs: FsApi,
++  reviewsRoot: string,
++  topic: string,
++  probeRunDir: (runId: string) => Promise<string | null>,
++): Promise<RunSummary[]> {
++  const task = (await readJson(fs, `${reviewsRoot}/${topic}/task.json`)) as TaskJson | null;
++  const runsFromTask = Array.isArray(task?.runs) ? task!.runs : [];
++
++  // 各阶段目录的 _meta 归档（第一事实源）
++  const stages = await listStages(fs, reviewsRoot, topic);
++  const runMetas = new Map<string, { stage: string; meta: RunMetaJson }>();
++  const runReviews = new Map<string, Map<string, ParsedReview>>();
++  for (const stage of stages) {
++    const metaDir = `${reviewsRoot}/${topic}/${stage}/_meta`;
++    let names: string[];
++    try {
++      names = await fs.readdir(metaDir);
++    } catch {
++      continue;
++    }
++    for (const n of names) {
++      const rm = /^run-(\d{8}T\d{6}Z)\.json$/.exec(n);
++      if (rm) {
++        const meta = (await readJson(fs, `${metaDir}/${n}`)) as RunMetaJson | null;
++        if (meta) runMetas.set(rm[1]!, { stage, meta });
++      }
++      const rv = /^review-.+-(\d{8}T\d{6}Z)\.json$/.exec(n);
++      if (rv) {
++        let byCritic = runReviews.get(rv[1]!);
++        if (!byCritic) {
++          byCritic = new Map();
++          runReviews.set(rv[1]!, byCritic);
++        }
++        try {
++          const parsed = parseReviewFile(n, await fs.readFile(`${metaDir}/${n}`));
++          if (parsed.status.state !== 'unrecognized') byCritic.set(parsed.status.critic, parsed);
++        } catch {
++          /* 单件坏文件：该侧统计缺失，不阻断列表 */
++        }
++      }
++    }
++  }
++
++  // 时间线合并：task.json 的 runs 为主轴；仅有归档而无 task 记录的 run 追加（防御）
++  const seen = new Set<string>();
++  const out: RunSummary[] = [];
++  for (const r of runsFromTask) {
++    const runId = typeof r.run_id === 'string' ? r.run_id : '';
++    if (!runId || seen.has(runId)) continue;
++    seen.add(runId);
++    out.push(await buildRunSummary(fs, runId, r, runMetas, runReviews, probeRunDir));
++  }
++  for (const runId of runMetas.keys()) {
++    if (seen.has(runId)) continue;
++    seen.add(runId);
++    out.push(await buildRunSummary(fs, runId, null, runMetas, runReviews, probeRunDir));
++  }
++  out.sort((a, b) => (b.startedAt ?? b.runId).localeCompare(a.startedAt ?? a.runId));
++  return out;
++}
++
++async function listStages(fs: FsApi, reviewsRoot: string, topic: string): Promise<string[]> {
++  try {
++    const entries = await fs.readdir(`${reviewsRoot}/${topic}`);
++    return entries.filter((e) => ['plan', 'code', 'bug', 'verify'].includes(e));
++  } catch {
++    return [];
++  }
++}
++
++async function buildRunSummary(
++  fs: FsApi,
++  runId: string,
++  taskRun: TaskRun | null,
++  runMetas: Map<string, { stage: string; meta: RunMetaJson }>,
++  runReviews: Map<string, Map<string, ParsedReview>>,
++  probeRunDir: (runId: string) => Promise<string | null>,
++): Promise<RunSummary> {
++  const archived = runMetas.get(runId) ?? null;
++  const reviews = runReviews.get(runId) ?? new Map<string, ParsedReview>();
++  const sides: RunSideStat[] = [...reviews.values()].map((r) => ({
++    critic: r.status.critic,
++    verdict: r.verdict,
++    counts: {
++      blocker: r.findings.filter((f) => f.severity === 'blocker').length,
++      major: r.findings.filter((f) => f.severity === 'major').length,
++      minor: r.findings.filter((f) => f.severity === 'minor').length,
++      nit: r.findings.filter((f) => f.severity === 'nit').length,
++    },
++    state: r.status.state,
++    notice: r.status.notice,
++  }));
++  sides.sort((a, b) => a.critic.localeCompare(b.critic));
++
++  const summary: RunSummary = {
++    runId,
++    stage: (typeof taskRun?.stage === 'string' ? taskRun.stage : null) ?? archived?.stage ?? 'plan',
++    rerunIndex: typeof taskRun?.rerun_index === 'number' ? taskRun.rerun_index : archived?.meta.rerun_index ?? null,
++    status: typeof taskRun?.status === 'string' ? taskRun.status : null,
++    driver: (typeof taskRun?.driver === 'string' ? taskRun.driver : null) ?? archived?.meta.driver ?? null,
++    startedAt: (typeof taskRun?.started_at === 'string' ? taskRun.started_at : null) ?? archived?.meta.started_at ?? null,
++    finishedAt: archived?.meta.finished_at ?? null,
++    criticsSelected: archived?.meta.critics_selected ?? [],
++    metaLocated: archived !== null,
++    sides,
++  };
++
++  // 归档缺失 → 探测 run_root（AGY-05：仅此场景探测；失败不接管）
++  if (!summary.metaLocated) {
++    const dir = await probeRunDir(runId);
++    if (dir) {
++      const status = await readJson(fs, `${dir}/status.json`);
++      summary.status = summary.status ?? (typeof status?.['phase'] === 'string' ? (status['phase'] as string) : null);
++      summary.metaLocated = status !== null; // 探到目录且有 status.json 才算定位成功
++    }
++  }
++  return summary;
++}
++
++/** 便捷工厂：run_root 探测回调（归属纪律：桶前缀过滤 + topic 比对） */
++export function makeRunRootProber(runRoot: string, workspaceName: string, topic: string): (runId: string) => Promise<string | null> {
++  return (runId) => locateRunDir(runRoot, runId, { repoHint: workspaceName, expectTopic: topic });
++}
+diff --git a/extension/src/reviews/annotationHub.ts b/extension/src/reviews/annotationHub.ts
+new file mode 100644
+index 00000000..50dd45cd
+--- /dev/null
++++ b/extension/src/reviews/annotationHub.ts
+@@ -0,0 +1,525 @@
++/**
++ * 批注宿主（FR-6b/6c 的装配层，r2 计划 D3′/D4′）。
++ *
++ * 服务级单例（services 持有，activate 建、deactivate 释放）：
++ * - scope = {topic, stage}，scope 内单一焦点 run（活跃 run 最新者；新 run 出现
++ *   自动切换；历史树点击回放任意 run）；
++ * - metaWatch 随 scope 启停（CODEX-03/AGY-01：独立于驾驶舱面板——面板关闭或
++ *   M3 从未打开，侧完成落盘照样进批注）；
++ * - 切换呈现 = 全清重建（线程逐 dispose + diagnostics.clear()）——无残影无孤儿；
++ * - 快照一致性两层判据（CLAUDE-01/CODEX-02）：挂载前静态 git blob 比对
++ *   （code 阶段 + 冻结 head sha，文本归一化比对）+ 挂载后动态 hash 重校验
++ *   （onDidChange/Save 命中挂载文件 → 重算 → 失配触发重锚或显式标注）；
++ * - 文件关闭不主动清理（CODEX-06/CLAUDE-03 语义：Comments 线程随 VS Code 文档
++ *   生命周期管理，Diagnostics 按 Problems 语义常驻——归属为 scope 非孤儿）；
++ *   主动清理只在 scope/run 切换与 dispose。
++ */
++import * as vscode from 'vscode';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { createHash } from 'node:crypto';
++import { parseReviewFile, type ParsedReview } from './reviewParse';
++import { extractAnchorTexts, normalizeLocation, resolveLocation, type FileConsistency } from './locationResolve';
++import { buildAnnotationModels, findingsSummary, type ResolvedFinding, type DiagnosticModel, type DiagLevel } from './annotationModel';
++import { parseChangesDiff, diffMember, resolveBaseRef, applyHunks, type ParsedChangesDiff } from './diffParse';
++import { MetaWatch } from './metaWatch';
++
++export interface ScopeState {
++  topic: string;
++  stage: string;
++  /** 焦点 run（null = scope 空闲） */
++  runId: string | null;
++  /** 各 run 的逐侧摘要（驾驶舱 run 卡与历史树消费） */
++  summaries: Array<{ runId: string; sides: ReturnType<typeof findingsSummary> }>;
++  threads: number;
++  diagnostics: number;
++  /** 超限提示（CLAUDE-11）：总量折叠 / 单文件溢出（用户可见） */
++  notice: string | null;
++}
++
++/** 内置 git 扩展最小 API（软依赖；diffView 同款判定，见 D5′） */
++interface GitApi {
++  toGitUri(uri: vscode.Uri, ref: string): vscode.Uri;
++}
++
++export class AnnotationHub implements vscode.Disposable {
++  readonly controller: vscode.CommentController;
++  private readonly diagnostics: vscode.DiagnosticCollection;
++
++  private scope: { topic: string; stage: string } | null = null;
++  /** scope 代次（CODEX-02：setScope 递增；在途摄取捕获后代次不符即整次丢弃） */
++  private scopeSeq = 0;
++  private focusRunId: string | null = null;
++  /** 装配超限提示（CLAUDE-11） */
++  private buildNotice: string | null = null;
++  /** scope 内全部解析件：runId → critic → ParsedReview */
++  private readonly reviewsByRun = new Map<string, Map<string, ParsedReview>>();
++  /** scope 内 changes.diff：runId → 解析结果 */
++  private readonly diffsByRun = new Map<string, ParsedChangesDiff>();
++  private metaWatch: MetaWatch | null = null;
++  private metaDir = '';
++  /** 逐家开关（空集合 = 全部启用） */
++  private enabledCritics = new Set<string>();
++  /** 挂载文件 hash（relPath → sha1(挂载时内容)）——动态重校验基线 */
++  private mountedHashes = new Map<string, string>();
++  /** 静态一致性结论（relPath → FileConsistency；scope 切换清空） */
++  private consistency = new Map<string, FileConsistency>();
++  private checkedFiles = new Set<string>();
++  /** 已建线程句柄（重建时逐个 dispose） */
++  private threads: vscode.CommentThread[] = [];
++  private rebuildSeq = 0;
++  private disposed = false;
++  private readonly listeners = new Set<(state: ScopeState) => void>();
++  private readonly docListeners: vscode.Disposable[] = [];
++
++  constructor(
++    private readonly workspaceRoot: string,
++    private readonly archiveRoot = '.reviews',
++  ) {
++    this.controller = vscode.comments.createCommentController('trivium.reviews', 'TriviumCode 审查意见');
++    this.controller.options = { placeHolder: 'TriviumCode 审查意见（只读回放）' };
++    this.diagnostics = vscode.languages.createDiagnosticCollection('trivium.reviews');
++    this.docListeners.push(
++      vscode.workspace.onDidChangeTextDocument((e) => void this.onDocChanged(e.document)),
++      vscode.workspace.onDidSaveTextDocument((doc) => void this.onDocChanged(doc)),
++    );
++  }
++
++  dispose(): void {
++    if (this.disposed) return;
++    this.disposed = true;
++    // CODEX-03：使在途代次全部失效——停用后尚未返回的读取不得再触碰
++    // 已释放的 CommentController / DiagnosticCollection
++    this.rebuildSeq++;
++    this.scopeSeq++;
++    this.docListeners.forEach((d) => d.dispose());
++    this.docListeners.length = 0;
++    this.metaWatch?.dispose();
++    this.metaWatch = null;
++    for (const t of this.threads) t.dispose();
++    this.threads = [];
++    this.diagnostics.dispose();
++    this.controller.dispose();
++    this.listeners.clear();
++  }
++
++  /** 订阅 scope 状态变化（驾驶舱刷新；面板开关不影响监听本身）。返回退订句柄 */
++  onScopeChange(listener: (state: ScopeState) => void): vscode.Disposable {
++    this.listeners.add(listener);
++    return new vscode.Disposable(() => this.listeners.delete(listener));
++  }
++
++  // ── scope 与 run 管理 ────────────────────────────────────────────────────
++
++  /** 设置 scope：全清旧批注 → 挂 metaWatch → 初始 ingest → 焦点取最新 run */
++  async setScope(topic: string, stage: string): Promise<void> {
++    if (this.disposed) return;
++    if (this.scope?.topic === topic && this.scope.stage === stage) return;
++    this.scopeSeq++; // CODEX-02：旧 scope 的在途摄取整次作废
++    this.rebuildSeq++; // 在途装配同样作废
++    this.scope = { topic, stage };
++    this.reviewsByRun.clear();
++    this.diffsByRun.clear();
++    this.mountedHashes.clear();
++    this.consistency.clear();
++    this.checkedFiles.clear();
++    this.focusRunId = null;
++    // 切换即清展示快照：新 rebuild 完成前 findingsOfFocusRun 不得残留旧 scope 数据
++    this.lastResolved = [];
++    this.lastDiagnostics = [];
++    this.buildNotice = null;
++    this.metaWatch?.dispose();
++    this.metaDir = path.join(this.workspaceRoot, this.archiveRoot, topic, stage, '_meta');
++    this.metaWatch = new MetaWatch(this.metaDir);
++    this.metaWatch.onChange(() => void this.ingestMetaDir());
++    await this.ingestMetaDir();
++  }
++
++  /** 活跃 run 告知（驾驶舱 attachRun / 历史树点击共用）：更新焦点并广播 */
++  async setActiveRun(runId: string): Promise<void> {
++    if (this.disposed || !this.scope) return;
++    if (!this.reviewsByRun.has(runId) && !this.diffsByRun.has(runId)) {
++      await this.ingestMetaDir(); // 目录可能已有该 run 工件
++    }
++    if (this.focusRunId === runId) return;
++    this.focusRunId = runId;
++    await this.rebuild();
++  }
++
++  get currentRunId(): string | null {
++    return this.focusRunId;
++  }
++
++  get currentScope(): { topic: string; stage: string } | null {
++    return this.scope ? { ...this.scope } : null;
++  }
++
++  /** scope 内 run 清单（runId 降序 = 最新在前） */
++  runIds(): string[] {
++    return [...this.reviewsByRun.keys(), ...this.diffsByRun.keys()].filter((v, i, a) => a.indexOf(v) === i).sort().reverse();
++  }
++
++  /** 逐家开关（空集合 = 全部） */
++  async setEnabledCritics(critics: Set<string>): Promise<void> {
++    this.enabledCritics = new Set(critics);
++    await this.rebuild();
++  }
++
++  getEnabledCritics(): Set<string> {
++    return new Set(this.enabledCritics);
++  }
++
++  /** scope 内出现过的审查者（QuickPick 用） */
++  criticsInScope(): string[] {
++    const out = new Set<string>();
++    for (const by of this.reviewsByRun.values()) for (const r of by.values()) out.add(r.status.critic);
++    return [...out].sort();
++  }
++
++  /** changes.diff 获取（Diff 视图命令用） */
++  diffOf(runId: string | null): ParsedChangesDiff | null {
++    if (runId) return this.diffsByRun.get(runId) ?? null;
++    return this.diffsByRun.get(this.focusRunId ?? '') ?? null;
++  }
++
++  /** 焦点 run 的解析件（驾驶舱意见列表用） */
++  reviewsOfFocusRun(): Map<string, ParsedReview> {
++    return this.reviewsByRun.get(this.focusRunId ?? '') ?? new Map();
++  }
++
++  /** 焦点 run 的 findings 摘要（驾驶舱 run 卡） */
++  focusSummaries(): ReturnType<typeof findingsSummary> {
++    return findingsSummary([...this.reviewsOfFocusRun().values()]);
++  }
++
++  /** 焦点 run 的逐条意见（驾驶舱列表；解析级别/漂移标注/一致性） */
++  findingsOfFocusRun(): Array<{
++    critic: string; id: string; severity: string; location: string; problem: string;
++    level: string; label: string | null; consistency: string;
++    relPath: string | null; startLine: number | null; endLine: number | null;
++  }> {
++    return this.lastResolved.map((rf) => {
++      const a = rf.resolution.anchors[0] ?? null;
++      return {
++        critic: rf.critic,
++        id: rf.finding.id,
++        severity: rf.finding.severity,
++        location: rf.finding.location,
++        problem: rf.finding.problem,
++        level: a ? a.level : rf.resolution.kind === 'missing-file' ? 'missing' : rf.resolution.kind,
++        label: a?.label ?? (rf.resolution.kind === 'missing-file' ? `文件缺失：${rf.resolution.missingRelPath}` : rf.resolution.kind === 'outside' ? '路径越界（工作区外）' : rf.resolution.kind === 'doc' ? '非文件位置' : null),
++        consistency: rf.resolution.consistency.state,
++        relPath: a?.relPath ?? rf.resolution.missingRelPath,
++        startLine: a?.level === 'line' ? a.line?.start ?? null : null,
++        endLine: a?.level === 'line' ? a.line?.end ?? null : null,
++      };
++    });
++  }
++
++  /** 焦点 run 一致性是否全部未校验（列表侧「一致性未校验」提示，D2′） */
++  consistencyAllUnknown(): boolean {
++    return this.lastResolved.length > 0 && this.lastResolved.every((rf) => rf.resolution.consistency.state === 'unknown');
++  }
++
++  /** 可观测面：线程快照（集成测试断言；VS Code 无公开枚举 API，事实 20） */
++  threadsSnapshot(): Array<{ file: string; relPath: string; startLine: number; endLine: number; label: string; comments: Array<{ critic: string; severity: string }>; driftNotes: string[] }> {
++    return this.threads.map((t) => ({
++      file: t.uri.fsPath,
++      relPath: path.relative(this.workspaceRoot, t.uri.fsPath),
++      startLine: (t.range?.start.line ?? 0) + 1,
++      endLine: (t.range?.end.line ?? 0) + 1,
++      label: (t.label ?? '') as string,
++      comments: [...t.comments].map((c) => ({ critic: c.author.name, severity: String(c.contextValue ?? '') })),
++      driftNotes: (t.contextValue ?? '').split('|').filter(Boolean),
++    }));
++  }
++
++  /** 诊断可观测面（languages.getDiagnostics 亦可查，此处给模型级视图） */
++  diagnosticsSnapshot(): DiagnosticModel[] {
++    return this.lastDiagnostics;
++  }
++
++  private lastDiagnostics: DiagnosticModel[] = [];
++  /** 焦点 run 的逐条解析结果（驾驶舱意见列表消费；纯数据不含 VS Code 对象） */
++  private lastResolved: ResolvedFinding[] = [];
++
++  // ── 数据摄取 ─────────────────────────────────────────────────────────────
++
++  /** 全量读 `_meta/`：review-*.json 与 changes-*.diff（代次守卫：CODEX-02） */
++  async ingestMetaDir(): Promise<void> {
++    if (this.disposed || !this.scope) return;
++    const seqAtStart = this.scopeSeq;
++    const dirAtStart = this.metaDir;
++    const stale = (): boolean => this.disposed || seqAtStart !== this.scopeSeq || dirAtStart !== this.metaDir;
++    let names: string[];
++    try {
++      names = await fs.readdir(dirAtStart);
++    } catch {
++      if (!stale()) await this.rebuild();
++      return;
++    }
++    const before = new Set([...this.reviewsByRun.keys(), ...this.diffsByRun.keys()]);
++    for (const name of names) {
++      const text = await fs.readFile(path.join(dirAtStart, name), 'utf8').catch(() => null);
++      if (stale()) return; // 摄取期间 scope 已切换：整次丢弃，不污染新 scope 缓存
++      if (text === null) continue;
++      if (/^review-.+\.json$/.test(name)) {
++        const parsed = parseReviewFile(name, text);
++        if (parsed.status.state === 'unrecognized') continue;
++        let by = this.reviewsByRun.get(parsed.status.runId);
++        if (!by) {
++          by = new Map();
++          this.reviewsByRun.set(parsed.status.runId, by);
++        }
++        by.set(parsed.status.critic, parsed);
++      } else if (/^changes-.*\.diff$/.test(name)) {
++        const parsed = parseChangesDiff(text);
++        const runId = parsed.runId;
++        if (runId) this.diffsByRun.set(runId, parsed);
++      }
++    }
++    // 焦点规则（D4′）：focus 为空/无效 → 取最新；**出现更新的 run**（重审新轮，
++    // 活跃场景）→ 自动切新；旧 run 迟到的侧文件不弹走已选焦点（历史回放保护）
++    const all = this.runIds(); // 降序
++    const newlySeen = all.filter((r) => !before.has(r));
++    if (this.focusRunId === null || !before.has(this.focusRunId) && !all.includes(this.focusRunId)) {
++      this.focusRunId = all[0] ?? null;
++    } else {
++      const newer = newlySeen.find((r) => r > (this.focusRunId ?? ''));
++      if (newer) this.focusRunId = newer;
++    }
++    if (!stale()) await this.rebuild();
++  }
++
++  // ── 装配（全清重建，幂等） ───────────────────────────────────────────────
++
++  private async rebuild(): Promise<void> {
++    if (this.disposed || !this.scope) return;
++    const seq = ++this.rebuildSeq;
++    const scopeSeqAtStart = this.scopeSeq;
++    const focus = this.focusRunId;
++    const by = focus !== null ? this.reviewsByRun.get(focus) : undefined;
++    const reviews = [...(by?.values() ?? [])];
++    const stale = (): boolean => this.disposed || seq !== this.rebuildSeq || scopeSeqAtStart !== this.scopeSeq;
++
++    // ① 收集涉及文件（纯函数归一，无 IO）——静态校验的前置
++    const files = new Set<string>();
++    for (const review of reviews) {
++      for (const f of review.findings) {
++        const norm = normalizeLocation(f.location, this.workspaceRoot);
++        if (norm.kind === 'file') for (const a of norm.anchors) files.add(a.relPath);
++      }
++    }
++
++    // ② 静态一致性（CLAUDE-03/CODEX-04：**先校验后解析**，首次挂载即见结论；
++    //    CODEX-05：per-file 进度，无 diff/无文件不标记，迟到侧新文件可补检）
++    await this.ensureConsistencyChecked(focus, files);
++    if (stale()) return;
++
++    // ③ 逐 finding 解析锚点（consistency 缓存已热）
++    const resolved: ResolvedFinding[] = [];
++    const readFile = async (relPath: string): Promise<string | null> => {
++      try {
++        return await fs.readFile(path.join(this.workspaceRoot, relPath), 'utf8');
++      } catch {
++        return null;
++      }
++    };
++    for (const review of reviews) {
++      for (const f of review.findings) {
++        const resolution = await resolveLocation(f.location, this.workspaceRoot, {
++          readFile,
++          consistency: (rel) => this.consistency.get(`${focus}:${rel}`) ?? { state: 'unknown', note: null },
++          anchorTexts: extractAnchorTexts(f.problem, f.evidence),
++        });
++        resolved.push({ critic: review.status.critic, runId: review.status.runId, finding: f, resolution });
++      }
++    }
++    if (stale()) return; // 竞态：scope/run/dispose 又变了，丢弃本次装配
++
++    // ④ 装配（CLAUDE-07：maxTotalFindings 读配置；CLAUDE-11：超限提示进 ScopeState）
++    const built = buildAnnotationModels(resolved, {
++      enabledCritics: this.enabledCritics.size > 0 ? this.enabledCritics : null,
++      maxThreadsPerFile: maxThreadsPerFile(),
++      maxTotalFindings: maxTotalFindings(),
++    });
++    if (stale()) return;
++    this.lastResolved = resolved;
++    this.buildNotice = built.totalSuppressed
++      ? `意见总量超过上限（trivium.reviews.maxTotalFindings=${maxTotalFindings()}），行内批注已折叠为仅 Problems`
++      : built.overflow.length > 0
++        ? `线程超上限仅进 Problems：${built.overflow.map((o) => `${o.file} 溢出 ${o.count} 条`).join('；')}`
++        : null;
++
++    // 全清旧线程与诊断（切换呈现策略：无残影）
++    for (const t of this.threads) t.dispose();
++    this.threads = [];
++    this.diagnostics.clear();
++    this.lastDiagnostics = built.diagnostics;
++
++    // 记录挂载文件 hash（动态重校验基线）——仅建了对象的文件
++    const mountedFiles = new Set<string>([...built.threads.map((t) => t.file), ...built.diagnostics.map((d) => d.file)]);
++    for (const rel of mountedFiles) {
++      const content = await readFile(rel);
++      if (content !== null) this.mountedHashes.set(rel, sha1(content));
++    }
++    if (stale()) return;
++
++    // 装配线程（同一文件的线程一次建好）
++    for (const tm of built.threads) {
++      const uri = vscode.Uri.file(path.join(this.workspaceRoot, tm.file));
++      const range = new vscode.Range(Math.max(0, tm.startLine - 1), 0, Math.max(0, tm.endLine - 1), 0);
++      const comments = tm.comments.map((c) => ({
++        body: new vscode.MarkdownString(c.body),
++        author: { name: c.critic },
++        mode: vscode.CommentMode.Preview,
++        contextValue: c.severity,
++      }));
++      const thread = this.controller.createCommentThread(uri, range, comments);
++      thread.label = tm.label;
++      thread.contextValue = tm.driftNotes.join('|');
++      thread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
++      this.threads.push(thread);
++    }
++
++    // 装配诊断（per file 聚合）
++    const byFile = new Map<string, vscode.Diagnostic[]>();
++    for (const dm of built.diagnostics) {
++      let list = byFile.get(dm.file);
++      if (!list) {
++        list = [];
++        byFile.set(dm.file, list);
++      }
++      const range = new vscode.Range(Math.max(0, dm.startLine - 1), 0, Math.max(0, dm.endLine - 1), 0);
++      const diag = new vscode.Diagnostic(range, dm.message, diagLevelOf(dm.level));
++      diag.source = 'TriviumCode 审查';
++      diag.code = dm.code;
++      list.push(diag);
++    }
++    for (const [file, list] of byFile) {
++      this.diagnostics.set(vscode.Uri.file(path.join(this.workspaceRoot, file)), list);
++    }
++
++    this.emitState();
++  }
++
++  /**
++   * 静态一致性比对（CLAUDE-02 修正语义 / CODEX-05 per-file 进度 / CODEX-06 缓存含 runId）：
++   * 重建**送审工作树内容**比对——base blob（base 字面 HEAD 时即冻结 head sha）应用该文件
++   * 补丁段 → 送审内容，与工作区文本归一化比较。变更集外/新增/无补丁段文件无送审快照，
++   * 诚实 unknown；plan 阶段（无 diff）整体 unknown（列表侧注明「未校验」）。
++   */
++  private async ensureConsistencyChecked(runId: string | null, files: Set<string>): Promise<void> {
++    if (!this.scope || runId === null || files.size === 0) return; // 不做任何整轮标记（CODEX-05）
++    const diff = this.diffsByRun.get(runId) ?? null;
++    const baseRef = diff ? resolveBaseRef(diff) : null;
++    if (!diff || !baseRef) return; // 无 diff / base 无法冻结（自定义 ref 字面量）→ 全部保持待检
++    const api = await gitApi();
++    if (!api) return;
++
++    for (const rel of files) {
++      const key = `${runId}:${rel}`; // CODEX-06：缓存身份含 run——切轮回放不串用
++      if (this.checkedFiles.has(key)) continue;
++      const member = diffMember(diff, rel);
++      const fileUri = vscode.Uri.file(path.join(this.workspaceRoot, rel));
++      try {
++        if (!member || member.added || member.deleted || member.hunks.length === 0) {
++          this.consistency.set(key, { state: 'unknown', note: member?.added ? '本轮新增文件，无送审前快照' : '不在变更集（无送审快照），未校验' });
++        } else {
++          const wsText = normalizeText(Buffer.from(await vscode.workspace.fs.readFile(fileUri)).toString('utf8'));
++          const baseText = normalizeText(Buffer.from(await vscode.workspace.fs.readFile(api.toGitUri(fileUri, baseRef))).toString('utf8'));
++          const sentText = normalizeText(applyHunks(baseText, member.hunks));
++          this.consistency.set(key, wsText === sentText
++            ? { state: 'consistent', note: null }
++            : { state: 'mismatch', note: `工作区文件与送审版本（${baseRef.slice(0, 8)} + 补丁）不一致` });
++        }
++      } catch {
++        this.consistency.set(key, { state: 'unknown', note: '基线对象不可读，未校验' });
++      }
++      this.checkedFiles.add(key); // 仅实际完成检查的文件记录（CODEX-05：迟到侧新文件可补检）
++    }
++  }
++
++  // ── 动态重校验（挂载后编辑） ─────────────────────────────────────────────
++
++  private async onDocChanged(doc: vscode.TextDocument): Promise<void> {
++    if (this.disposed || !this.scope) return;
++    const rel = path.relative(this.workspaceRoot, doc.uri.fsPath);
++    const mounted = this.mountedHashes.get(rel);
++    if (mounted === undefined) return;
++    const current = sha1(doc.getText());
++    if (current === mounted) return;
++    // 文件已编辑（CLAUDE-01/CODEX-02 动态判据）：edited 结论限定到当前回放轮（CODEX-06）
++    const runId = this.focusRunId;
++    if (runId !== null) this.consistency.set(`${runId}:${rel}`, { state: 'edited', note: '文件已在批注挂载后被编辑' });
++    this.mountedHashes.delete(rel); // 旧基线失效（rebuild 会以新内容重建基线）
++    await this.rebuild();
++  }
++
++  private emitState(): void {
++    const state: ScopeState = {
++      topic: this.scope?.topic ?? '',
++      stage: this.scope?.stage ?? '',
++      runId: this.focusRunId,
++      summaries: this.runIds().map((runId) => ({ runId, sides: findingsSummary([...(this.reviewsByRun.get(runId)?.values() ?? [])]) })),
++      threads: this.threads.length,
++      diagnostics: this.lastDiagnostics.length,
++      /** 超限提示（CLAUDE-11：总量折叠 / 单文件溢出，用户可见） */
++      notice: this.buildNotice,
++    };
++    for (const l of this.listeners) l(state);
++  }
++}
++
++// ── 工具 ───────────────────────────────────────────────────────────────────
++
++function sha1(text: string): string {
++  return createHash('sha1').update(text).digest('hex');
++}
++
++/** 文本归一化（换行差异不算不一致：autocrlf 场景） */
++function normalizeText(s: string): string {
++  return s.replace(/\r\n/g, '\n');
++}
++
++function diagLevelOf(level: DiagLevel): vscode.DiagnosticSeverity {
++  if (level === 'error') return vscode.DiagnosticSeverity.Error;
++  if (level === 'warning') return vscode.DiagnosticSeverity.Warning;
++  return vscode.DiagnosticSeverity.Information;
++}
++
++function maxThreadsPerFile(): number {
++  return vscode.workspace.getConfiguration('trivium.reviews').get<number>('maxThreadsPerFile', 200);
++}
++
++/** CLAUDE-07：总量上限同样读配置（package.json 已声明，缺省 2000） */
++function maxTotalFindings(): number {
++  return vscode.workspace.getConfiguration('trivium.reviews').get<number>('maxTotalFindings', 2000);
++}
++
++/** git 扩展软依赖（与 diffView 同源判定；此处独立缓存，测试各自复位） */
++let gitApiCache: GitApi | null | undefined;
++/** 测试注入口（测试环境 --disable-extensions 连内置 git 扩展一并禁用） */
++let gitApiOverride: GitApi | null | undefined;
++async function gitApi(): Promise<GitApi | null> {
++  if (gitApiOverride !== undefined) return gitApiOverride;
++  if (gitApiCache !== undefined) return gitApiCache;
++  try {
++    const ext = vscode.extensions.getExtension('vscode.git');
++    if (!ext) {
++      gitApiCache = null;
++      return null;
++    }
++    const exports = (await ext.activate()) as { getAPI?: (v: number) => GitApi };
++    gitApiCache = typeof exports.getAPI === 'function' ? exports.getAPI(1) : null;
++  } catch {
++    gitApiCache = null;
++  }
++  return gitApiCache;
++}
++
++/** 测试复位/注入（override 非 undefined 时恒定返回该值） */
++export function resetHubGitApiCacheForTest(override?: GitApi | null): void {
++  gitApiCache = undefined;
++  gitApiOverride = override;
++}
+diff --git a/extension/src/reviews/annotationModel.ts b/extension/src/reviews/annotationModel.ts
+new file mode 100644
+index 00000000..40a5e78c
+--- /dev/null
++++ b/extension/src/reviews/annotationModel.ts
+@@ -0,0 +1,226 @@
++/**
++ * 批注装配模型（FR-6b/6c 的纯函数层，r2 计划 D3′）。
++ *
++ * 输入已解析锚点的 findings，输出线程/诊断描述模型——VS Code 对象
++ * （CommentThread/Diagnostic/Range）由 AnnotationHub 装配，保证 thread.range
++ * 与 diagnostic.range **同源**（CLAUDE-05：[start,end] 区间贯通，多行 location
++ * 不折叠）。漂移/降级统一「⚠」标签；severity 映射 blocker/major→Error、
++ * minor→Warning、nit→Information（FR-6c）。
++ *
++ * 纯函数模块：不 import vscode。
++ */
++import type { ParsedReview, ReviewFinding, FindingSeverity } from './reviewParse';
++import type { LocationResolution } from './locationResolve';
++
++/** severity → 诊断档位（FR-6c 映射；thread label 复用同一映射来源） */
++export type DiagLevel = 'error' | 'warning' | 'information';
++
++export function severityToDiagLevel(s: FindingSeverity): DiagLevel {
++  if (s === 'blocker' || s === 'major') return 'error';
++  if (s === 'minor') return 'warning';
++  return 'information';
++}
++
++/** 单条意见的解析结果（Hub 逐 finding 解析后进入本层） */
++export interface ResolvedFinding {
++  critic: string;
++  runId: string;
++  finding: ReviewFinding;
++  resolution: LocationResolution;
++}
++
++export interface CommentModel {
++  critic: string;
++  findingId: string;
++  severity: FindingSeverity;
++  /** markdown 正文（problem + 建议 + 证据截断 + 漂移标注） */
++  body: string;
++}
++
++export interface ThreadModel {
++  /** 工作区相对路径 */
++  file: string;
++  /** 主锚点区间（1 起始） */
++  startLine: number;
++  endLine: number;
++  label: string;
++  comments: CommentModel[];
++  /** 漂移/一致性标注（线程级聚合） */
++  driftNotes: string[];
++}
++
++export interface DiagnosticModel {
++  file: string;
++  startLine: number;
++  endLine: number;
++  level: DiagLevel;
++  message: string;
++  code: string;
++}
++
++export interface BuildResult {
++  threads: ThreadModel[];
++  diagnostics: DiagnosticModel[];
++  /** 单文件线程超限溢出（仅诊断，CLAUDE-04/D8′ 量级控制） */
++  overflow: Array<{ file: string; count: number }>;
++  /** 总量超限 → 线程整体折叠为仅诊断（CLAUDE-11：用户可见提示的依据） */
++  totalSuppressed: boolean;
++  /** 只进意见列表、不建 thread/诊断的 finding（doc/outside/missing-file） */
++  listOnly: Array<{ critic: string; findingId: string; reason: string }>;
++}
++
++export interface BuildOptions {
++  /** 逐家开关：null/空集合 = 全部启用 */
++  enabledCritics: Set<string> | null;
++  /** 单文件线程上限（缺省 200） */
++  maxThreadsPerFile: number;
++  /** scope 总量上限：超过则全部仅诊断（缺省 2000） */
++  maxTotalFindings: number;
++}
++
++const EVIDENCE_TRUNCATE = 500;
++
++/** finding 的漂移/一致性标注（列表、线程、诊断三处统一） */
++export function driftNotesOf(rf: ResolvedFinding): string[] {
++  const notes: string[] = [];
++  const primary = rf.resolution.anchors[0];
++  if (primary?.label) notes.push(primary.label);
++  if (primary?.drift) notes.push(`漂移：${primary.drift}`);
++  const c = rf.resolution.consistency;
++  if (c.state === 'mismatch') notes.push('⚠ 与送审版本不一致');
++  if (c.state === 'edited') notes.push('⚠ 文件已在批注挂载后被编辑');
++  return notes;
++}
++
++function commentBody(rf: ResolvedFinding, notes: string[]): string {
++  const f = rf.finding;
++  const parts: string[] = [];
++  if (notes.length > 0) parts.push(notes.join(' ｜ '));
++  parts.push(f.problem);
++  parts.push(`**建议**：${f.suggestion}`);
++  if (f.evidence.length > EVIDENCE_TRUNCATE) {
++    parts.push(`**证据**：${f.evidence.slice(0, EVIDENCE_TRUNCATE)}…（截断）`);
++  } else {
++    parts.push(`**证据**：${f.evidence}`);
++  }
++  parts.push(`（置信度 ${f.confidence}）`);
++  return parts.join('\n\n');
++}
++
++/**
++ * 装配线程与诊断模型。
++ *
++ * - thread 粒度 (file, 主锚点起始行)：同行多 finding → 同 thread 多 comment（分层）；
++ * - 文件级/漂移 → 线程挂文件首行、诊断 range 首行，均带 ⚠ 标注；
++ * - doc/outside/missing-file → listOnly（意见列表展示，不建 VS Code 对象）。
++ */
++export function buildAnnotationModels(findings: ResolvedFinding[], opts: BuildOptions): BuildResult {
++  const enabled = (critic: string): boolean => !opts.enabledCritics || opts.enabledCritics.size === 0 || opts.enabledCritics.has(critic);
++
++  const total = findings.filter((rf) => enabled(rf.critic));
++  const threadsOnlyDiagnostics = total.length > opts.maxTotalFindings;
++
++  // 按 (file, 起始行) 分组；文件级归到起始行 1
++  const byThread = new Map<string, { file: string; start: number; end: number; comments: CommentModel[]; notes: string[]; hasLine: boolean }>();
++  const diagnostics: DiagnosticModel[] = [];
++  const listOnly: BuildResult['listOnly'] = [];
++
++  for (const rf of total) {
++    const f = rf.finding;
++    const notes = driftNotesOf(rf);
++    const primary = rf.resolution.anchors[0];
++
++    if (rf.resolution.kind !== 'file' || !primary) {
++      const reason = rf.resolution.kind === 'doc' ? '非文件位置（文档引用）' : rf.resolution.kind === 'outside' ? '路径越界（工作区外）' : `文件缺失：${rf.resolution.missingRelPath}`;
++      listOnly.push({ critic: rf.critic, findingId: f.id, reason });
++      continue;
++    }
++
++    const line = primary.level === 'line' && primary.line ? primary.line : null;
++    const start = line ? line.start : 1;
++    const end = line ? line.end : 1;
++    const key = `${primary.relPath}#${start}`;
++    let slot = byThread.get(key);
++    if (!slot) {
++      slot = { file: primary.relPath, start, end, comments: [], notes: [], hasLine: line !== null };
++      byThread.set(key, slot);
++    }
++    slot.comments.push({ critic: rf.critic, findingId: f.id, severity: f.severity, body: commentBody(rf, notes) });
++    for (const n of notes) if (!slot.notes.includes(n)) slot.notes.push(n);
++    if (line && end > slot.end) slot.end = end;
++
++    // 诊断逐 finding 一条（与 thread 同源区间；文件级 range 首行）
++    const prefix = notes.length > 0 ? `${notes.join(' ｜ ')} ｜ ` : '';
++    diagnostics.push({
++      file: primary.relPath,
++      startLine: start,
++      endLine: end,
++      level: severityToDiagLevel(f.severity),
++      message: `${prefix}${f.id} · ${firstLine(f.problem)}`,
++      code: f.id,
++    });
++  }
++
++  // 单文件线程上限：超出部分仅诊断
++  const perFileCount = new Map<string, number>();
++  const threads: ThreadModel[] = [];
++  const overflow: BuildResult['overflow'] = [];
++  for (const slot of byThread.values()) {
++    const count = (perFileCount.get(slot.file) ?? 0) + 1;
++    perFileCount.set(slot.file, count);
++    if (count > opts.maxThreadsPerFile) {
++      const of = overflow.find((o) => o.file === slot.file);
++      if (of) of.count++;
++      else overflow.push({ file: slot.file, count: 1 });
++      continue;
++    }
++    threads.push(threadModelOf(slot));
++  }
++
++  return {
++    threads: threadsOnlyDiagnostics ? [] : threads,
++    diagnostics,
++    overflow,
++    totalSuppressed: threadsOnlyDiagnostics,
++    listOnly,
++  };
++}
++
++function threadModelOf(slot: { file: string; start: number; end: number; comments: CommentModel[]; notes: string[]; hasLine: boolean }): ThreadModel {
++  const sevCounts = new Map<string, number>();
++  for (const c of slot.comments) sevCounts.set(c.severity, (sevCounts.get(c.severity) ?? 0) + 1);
++  const sevPart = [...sevCounts.entries()].map(([s, n]) => `${s}×${n}`).join(' ');
++  const criticCounts = new Map<string, number>();
++  for (const c of slot.comments) criticCounts.set(c.critic, (criticCounts.get(c.critic) ?? 0) + 1);
++  const criticPart = [...criticCounts.entries()].map(([c, n]) => `${c} ${n} 条`).join(' ｜ ');
++  const label = `${slot.hasLine ? '' : '⚠ 文件级 ｜ '}[${sevPart}] ${criticPart}`;
++  return {
++    file: slot.file,
++    startLine: slot.start,
++    endLine: slot.end,
++    label,
++    comments: slot.comments,
++    driftNotes: slot.notes,
++  };
++}
++
++function firstLine(text: string): string {
++  const line = text.split('\n').find((l) => l.trim().length > 0) ?? '';
++  return line.length > 160 ? `${line.slice(0, 160)}…` : line;
++}
++
++/** 一组解析件的逐侧摘要（findingsSummary：驾驶舱 run 卡与历史树共用） */
++export function findingsSummary(reviews: ParsedReview[]): Array<{ critic: string; verdict: string | null; counts: Record<FindingSeverity, number>; state: string; notice: string | null }> {
++  return reviews.map((r) => ({
++    critic: r.status.critic,
++    verdict: r.verdict,
++    counts: {
++      blocker: r.findings.filter((f) => f.severity === 'blocker').length,
++      major: r.findings.filter((f) => f.severity === 'major').length,
++      minor: r.findings.filter((f) => f.severity === 'minor').length,
++      nit: r.findings.filter((f) => f.severity === 'nit').length,
++    },
++    state: r.status.state,
++    notice: r.status.notice,
++  }));
++}
+diff --git a/extension/src/reviews/diffParse.ts b/extension/src/reviews/diffParse.ts
+new file mode 100644
+index 00000000..1f0de5a4
+--- /dev/null
++++ b/extension/src/reviews/diffParse.ts
+@@ -0,0 +1,182 @@
++/**
++ * changes-<runId>.diff 解析（FR-6d，r2 计划 D5′；纯函数，不 import vscode）。
++ *
++ * 流式行状态机：`#` 头部（run_id/base/head——**冻结身份在此**，CODEX-01/
++ * CLAUDE-02）、`diff --git a/… b/…`（及 `+++ b/…` 兜底）文件分界（AGY-04）、
++ * `@@ -a,b +c,d @@` hunk 归属与**正文行收集**（CLAUDE-02：静态一致性比对需要
++ * 「base blob + 补丁段 → 送审工作树内容」重建，正文行是必要输入）、
++ * `/dev/null` 判新增/删除（AGY-06；无 --git 头的简化 patch 用 pendingAdded，
++ * AGY-03）。
++ * 内存面：只保留文件分界与 hunk 头+正文（不建全仓全文模型，D8′）。
++ */
++
++/** changes.diff 解析结果 */
++export interface DiffHunk {
++  oldStart: number;
++  oldLines: number;
++  newStart: number;
++  newLines: number;
++  /** hunk 正文行（原样含前导 +/-/空格；`\` 行剔除） */
++  lines: string[];
++}
++
++export interface DiffFileInfo {
++  relPath: string;
++  /** `--- /dev/null` → 本轮新增（无基线） */
++  added: boolean;
++  /** `+++ /dev/null` → 本轮删除 */
++  deleted: boolean;
++  hunks: DiffHunk[];
++}
++
++export interface ParsedChangesDiff {
++  runId: string | null;
++  /** 字面 HEAD 或自定义 ref/sha（`resolveBaseRef` 消费，CLAUDE-05） */
++  base: string | null;
++  /** 补丁生成时的 HEAD 提交 sha（base 为字面 HEAD 时即被审 base 的冻结身份） */
++  head: string | null;
++  files: DiffFileInfo[];
++}
++
++/**
++ * 解析 changes.diff 全文。坏输入尽力返回已解析部分（不抛异常）。
++ */
++export function parseChangesDiff(text: string): ParsedChangesDiff {
++  const lines = text.split('\n');
++  const result: ParsedChangesDiff = { runId: null, base: null, head: null, files: [] };
++
++  // 头部字段（连续 # 注释段的 `# key: value` 形态）
++  for (const raw of lines) {
++    if (!raw.startsWith('#')) break;
++    const m = /^#\s*(\w+):\s*(.+)$/.exec(raw);
++    if (!m) continue;
++    const [, key, value] = m;
++    if (key === 'run_id') result.runId = value!.trim();
++    else if (key === 'base') result.base = value!.trim();
++    else if (key === 'head') result.head = value!.trim();
++  }
++
++  const byPath = new Map<string, DiffFileInfo>();
++  let current: DiffFileInfo | null = null;
++  let pendingAdded = false; // AGY-03：无 --git 头的简化 patch，--- /dev/null 先于 +++ 出现
++  let hunk: DiffHunk | null = null;
++  let oldCnt = 0;
++  let newCnt = 0;
++
++  for (const raw of lines) {
++    if (hunk !== null) {
++      // hunk 正文收集：按行首字符计数，两侧行数收满即结束
++      if ((raw.startsWith(' ') || raw.startsWith('+') || raw.startsWith('-')) && !(oldCnt >= hunk.oldLines && newCnt >= hunk.newLines)) {
++        if (raw.startsWith('\\')) continue; // `\ No newline at end of file`
++        hunk.lines.push(raw);
++        if (!raw.startsWith('+')) oldCnt++;
++        if (!raw.startsWith('-')) newCnt++;
++        continue;
++      }
++      hunk = null; // 收满或遇标记行：结束当前 hunk，继续按标记处理本行
++    }
++    // 文件分界（AGY-04）：diff --git a/x b/x 是权威分界；+++ b/x 兜底
++    let m = /^diff --git a\/(.+?) b\/(.+)$/.exec(raw);
++    if (m) {
++      current = ensureFile(byPath, result, m[2]!);
++      pendingAdded = false;
++      continue;
++    }
++    if (/^--- \/dev\/null/.test(raw)) {
++      if (current) current.added = true;
++      else pendingAdded = true; // AGY-03：简化 patch 的下一 +++ 行建文件时赋予
++      continue;
++    }
++    m = /^\+\+\+ (?:b\/)?(.+)$/.exec(raw);
++    if (m && m[1] !== '/dev/null') {
++      const relPath = m[1]!.replace(/\t.*$/, '');
++      current = byPath.get(relPath) ?? ensureFile(byPath, result, relPath);
++      if (pendingAdded) {
++        current.added = true;
++        pendingAdded = false;
++      }
++      continue;
++    }
++    if (/^\+\+\+ \/dev\/null/.test(raw) && current) {
++      current.deleted = true;
++      continue;
++    }
++    // hunk 头：@@ -a[,b] +c[,d] @@ —— 归属当前文件
++    const h = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(raw);
++    if (h && current) {
++      hunk = {
++        oldStart: Number(h[1]),
++        oldLines: h[2] === undefined ? 1 : Number(h[2]),
++        newStart: Number(h[3]),
++        newLines: h[4] === undefined ? 1 : Number(h[4]),
++        lines: [],
++      };
++      oldCnt = 0;
++      newCnt = 0;
++      current.hunks.push(hunk);
++    }
++  }
++  return result;
++}
++
++function ensureFile(byPath: Map<string, DiffFileInfo>, result: ParsedChangesDiff, relPath: string): DiffFileInfo {
++  let f = byPath.get(relPath);
++  if (!f) {
++    f = { relPath, added: false, deleted: false, hunks: [] };
++    byPath.set(relPath, f);
++    result.files.push(f);
++  }
++  return f;
++}
++
++/** 变更集成员判定：relPath 是否在该轮变更集内 */
++export function diffMember(diff: ParsedChangesDiff, relPath: string): DiffFileInfo | null {
++  return diff.files.find((f) => f.relPath === relPath) ?? null;
++}
++
++/**
++ * 被审 base 的**冻结提交身份**（CLAUDE-05）：
++ * - `base === 'HEAD'`（缺省）→ 补丁生成时的 HEAD 即被审 base，用冻结 head sha；
++ * - base 为 40 位 sha → 直接用；
++ * - 其它 ref 字面量（分支名等）→ 无法冻结（回放时 ref 可能已移动）→ null（降级明示）。
++ */
++export function resolveBaseRef(diff: ParsedChangesDiff): string | null {
++  if (!diff.base || !diff.head) return null;
++  if (diff.base === 'HEAD') return diff.head;
++  if (/^[0-9a-f]{40}$/.test(diff.base)) return diff.base;
++  return null;
++}
++
++/** 意见行是否位于被审变更的 head 侧区间内（辅助提示用，宽松判定） */
++export function lineInHunks(info: DiffFileInfo, startLine: number): boolean {
++  return info.hunks.some((h) => startLine >= h.newStart && startLine <= h.newStart + Math.max(h.newLines - 1, 0));
++}
++
++/**
++ * 把补丁段应用到 base 内容，重建**送审工作树内容**（CLAUDE-02：静态一致性
++ * 的正确基线是送审工作树，不是 base 提交也不是 head 提交）。
++ * hunks 须按文件内顺序（解析顺序即如此）；行尾统一 \n。
++ */
++export function applyHunks(baseContent: string, hunks: DiffHunk[]): string {
++  const base = baseContent.replace(/\r\n/g, '\n').split('\n');
++  const out: string[] = [];
++  let cursor = 0; // base 侧行游标（0 起）
++  for (const h of hunks) {
++    const startIdx = Math.max(0, h.oldStart - 1);
++    if (startIdx > cursor) out.push(...base.slice(cursor, startIdx));
++    cursor = startIdx;
++    for (const line of h.lines) {
++      if (line.startsWith('+')) {
++        out.push(line.slice(1));
++        // '+' 行不消耗 base 游标
++      } else if (line.startsWith('-')) {
++        cursor++; // '-' 行消耗一行 base，不产出
++      } else {
++        out.push(line.slice(1)); // context 行
++        cursor++;
++      }
++    }
++  }
++  if (cursor < base.length) out.push(...base.slice(cursor));
++  return out.join('\n');
++}
+diff --git a/extension/src/reviews/diffView.ts b/extension/src/reviews/diffView.ts
+new file mode 100644
+index 00000000..886db576
+--- /dev/null
++++ b/extension/src/reviews/diffView.ts
+@@ -0,0 +1,136 @@
++/**
++ * Diff 视图打开（FR-6d 的 VS Code 侧，r2 计划 D5′：冻结基线版）。
++ *
++ * 解析在 diffParse.ts（纯函数）；本模块负责打开与降级：左侧 = 该 run 冻结
++ * head sha（CODEX-01/CLAUDE-02），右侧 = 当前工作区文件并在标题明示；新增 →
++ * 打开文件 + 提示（AGY-06）；删除 → 打开 sha 侧只读基线；head 对象缺失或
++ * git 扩展不可用 → 降级打开文件 + 明示原因（不静默）。
++ */
++import * as vscode from 'vscode';
++import path from 'node:path';
++import type { ParsedChangesDiff } from './diffParse';
++import { diffMember, resolveBaseRef } from './diffParse';
++
++/** 内置 git 扩展公开 API 的最小形态（vscode.git@1；缺省可用，禁用/缺失则降级） */
++export interface GitApiShape {
++  toGitUri(uri: vscode.Uri, ref: string): vscode.Uri;
++}
++
++let gitApiCache: GitApiShape | null | undefined;
++/** 测试注入口：设置后恒定返回该值（真实扩展探测被绕过；undefined = 恢复真实探测） */
++let gitApiOverride: GitApiShape | null | undefined;
++
++async function getGitApi(): Promise<GitApiShape | null> {
++  if (gitApiOverride !== undefined) return gitApiOverride;
++  if (gitApiCache !== undefined) return gitApiCache;
++  try {
++    const ext = vscode.extensions.getExtension('vscode.git');
++    if (!ext) {
++      gitApiCache = null;
++      return null;
++    }
++    const exports = (await ext.activate()) as { getAPI?: (v: number) => GitApiShape };
++    gitApiCache = typeof exports.getAPI === 'function' ? exports.getAPI(1) : null;
++  } catch {
++    gitApiCache = null;
++  }
++  return gitApiCache;
++}
++
++export interface OpenDiffOutcome {
++  opened: 'diff' | 'file';
++  note: string;
++}
++
++/**
++ * 打开意见关联变更的 Diff（冻结基线）。降级路径全部明示原因。
++ */
++export async function openDiffFor(
++  workspaceRoot: string,
++  diff: ParsedChangesDiff | null,
++  relPath: string,
++  reveal?: { startLine: number; endLine: number },
++): Promise<OpenDiffOutcome> {
++  const abs = path.join(workspaceRoot, relPath);
++  const fileUri = vscode.Uri.file(abs);
++  const member = diff ? diffMember(diff, relPath) : null;
++  if (!diff || !member) {
++    await showFile(fileUri, reveal);
++    return { opened: 'file', note: diff ? '该文件不在本轮变更集，直接打开' : '该轮无 changes.diff（plan 阶段或工件缺失），直接打开' };
++  }
++  if (member.added) {
++    await showFile(fileUri, reveal);
++    return { opened: 'file', note: '本轮新增文件，无基线版本，直接打开' };
++  }
++  // CLAUDE-05：被审 base 的冻结提交身份——base 字面 HEAD → 用 head sha；
++  // 40 位 sha → 直接用；其它 ref 字面量无法冻结 → 降级明示
++  const baseRef = resolveBaseRef(diff);
++  const api = await getGitApi();
++  if (!api || !baseRef) {
++    const reason = !api
++      ? '内置 git 扩展不可用，无法对比基线'
++      : diff.base !== 'HEAD' && !/^[0-9a-f]{40}$/.test(diff.base ?? '')
++        ? `自定义 base「${diff.base}」未能冻结为提交身份，无法对比基线`
++        : 'changes.diff 无冻结 head，无法对比基线';
++    if (member.deleted) {
++      // CLAUDE-06：删除文件无工作区路径可打开——仅明示，不 showFile
++      vscode.window.showWarningMessage(`Trivium Diff：本轮已删除 ${relPath}；${reason}`);
++      return { opened: 'file', note: `本轮已删除该文件；${reason}` };
++    }
++    await showFile(fileUri, reveal);
++    return { opened: 'file', note: `${reason}，直接打开` };
++  }
++  const gitUri = api.toGitUri(fileUri, baseRef);
++  // base 对象存在性探测（GC/浅克隆缺失 → 降级）
++  let baseReadable = true;
++  try {
++    await vscode.workspace.fs.readFile(gitUri);
++  } catch {
++    baseReadable = false;
++  }
++  if (member.deleted) {
++    // CLAUDE-06：删除分支独立处理——只读基线可开则开，否则仅明示（绝不打开工作区路径）
++    if (baseReadable) {
++      await vscode.window.showTextDocument(gitUri, { preview: true });
++      return { opened: 'file', note: `本轮已删除该文件，打开被审基线 ${baseRef.slice(0, 8)}（只读）` };
++    }
++    vscode.window.showWarningMessage(`Trivium Diff：本轮已删除 ${relPath}；被审基线 ${baseRef.slice(0, 8)} 对象不可读（可能已被 GC）`);
++    return { opened: 'file', note: '本轮已删除该文件，被审基线对象不可读' };
++  }
++  if (!baseReadable) {
++    await showFile(fileUri, reveal);
++    return { opened: 'file', note: `被审基线 ${baseRef.slice(0, 8)} 对象不可读（可能已被 GC），直接打开` };
++  }
++  const title = `${path.basename(relPath)}（Trivium 审查 · ${diff.runId ?? ''} · 右侧为当前文件）`;
++  await vscode.commands.executeCommand('vscode.diff', gitUri, fileUri, title, { preview: true });
++  if (reveal) {
++    // diff 布局就绪是异步的：轮询等右侧（工作区文件）成为活动编辑器再定位
++    for (let i = 0; i < 20; i++) {
++      const editor = vscode.window.activeTextEditor;
++      if (editor && editor.document.uri.toString() === fileUri.toString()) {
++        revealRange(editor, reveal);
++        break;
++      }
++      await new Promise((r) => setTimeout(r, 100));
++    }
++  }
++  return { opened: 'diff', note: `被审基线 ${baseRef.slice(0, 8)} 对比当前文件` };
++}
++
++function revealRange(editor: vscode.TextEditor, reveal: { startLine: number; endLine: number }): void {
++  const line = Math.max(0, Math.min(reveal.startLine - 1, editor.document.lineCount - 1));
++  const endLine = Math.max(line, Math.min(reveal.endLine - 1, editor.document.lineCount - 1));
++  editor.revealRange(new vscode.Range(line, 0, endLine, 0), vscode.TextEditorRevealType.InCenter);
++  editor.selection = new vscode.Selection(line, 0, endLine, 0);
++}
++
++async function showFile(uri: vscode.Uri, reveal?: { startLine: number; endLine: number }): Promise<void> {
++  const editor = await vscode.window.showTextDocument(uri, { preview: true });
++  if (reveal) revealRange(editor, reveal);
++}
++
++/** 测试复位：git 扩展 API 缓存与注入 */
++export function resetGitApiCacheForTest(override?: GitApiShape | null): void {
++  gitApiCache = undefined;
++  gitApiOverride = override;
++}
+diff --git a/extension/src/reviews/locationResolve.ts b/extension/src/reviews/locationResolve.ts
+new file mode 100644
+index 00000000..e81c2a21
+--- /dev/null
++++ b/extension/src/reviews/locationResolve.ts
+@@ -0,0 +1,278 @@
++/**
++ * location 归一与行号校验（FR-6b 前置，r2 计划 D2′）。
++ *
++ * 归一：分号多文件位置拆分；单位置行号部分支持逗号多区间（真实工件实测
++ * `cockpit.ts:418-424,524-530,533-546`，AGY-02）；剥引号/`./` 前缀；绝对路径
++ * 截取工作区相对段；统一 path.resolve 后 containment 判定防 `..` 逃逸（CLAUDE-07）。
++ *
++ * 行号校验：行号有效性由**文件一致性判据**承担（静态 git blob 比对在 Hub 层、
++ * 动态 hash 重校验在 Hub 层，此处只接收结果）；锚文本（反引号片段）仅在
++ * **确认失配**（越界/文件已变）后作重定位启发式，比对空白归一化（AGY-03）；
++ * 多处命中判歧义降文件级（CLAUDE-08）；无行号/非法行号 → 文件级「未给行号」。
++ *
++ * 纯函数模块：不 import vscode，readFile 由调用方注入。
++ */
++import path from 'node:path';
++
++/** 单文件的逗号多区间（1 起始，含端点） */
++export interface LineRange {
++  start: number;
++  end: number;
++}
++
++/** 归一后的单个文件位置 */
++export interface FileAnchor {
++  relPath: string;
++  /** 主锚点在前；无行号为空数组 */
++  ranges: LineRange[];
++}
++
++export type NormalizedLocation =
++  | { kind: 'file'; anchors: FileAnchor[] }
++  | { kind: 'doc'; text: string }
++  | { kind: 'outside'; text: string };
++
++/** 文件级一致性结论（静态/动态判据的输出，resolveAnchor 的输入） */
++export interface FileConsistency {
++  state: 'unknown' | 'consistent' | 'mismatch' | 'edited';
++  note: string | null;
++}
++
++export const CONSISTENCY_UNKNOWN: FileConsistency = { state: 'unknown', note: null };
++
++/** 单个锚点的解析结果 */
++export interface AnchorResolution {
++  relPath: string;
++  /** 原始行号（无则 null） */
++  raw: LineRange | null;
++  level: 'line' | 'file';
++  /** 最终采用的行区间（level=file 时为 null） */
++  line: LineRange | null;
++  drift: 'nearby' | 'out-of-range' | 'line-lost' | 'multi-hit' | null;
++  /** UI 标注（如「未给行号」） */
++  label: string | null;
++}
++
++/** 一个 finding 的全部锚点解析结果（主锚点在前） */
++export interface LocationResolution {
++  kind: 'file' | 'doc' | 'outside' | 'missing-file';
++  /** kind=file：文件存在时的锚点；kind=missing-file：未解析的 relPath */
++  anchors: AnchorResolution[];
++  /** missing-file 时指向未能打开的相对路径 */
++  missingRelPath: string | null;
++  consistency: FileConsistency;
++}
++
++// ── 归一 ───────────────────────────────────────────────────────────────────
++
++/** 行号部分：`88` / `23-29` / `418-424,524-530,533` → 区间列表；不匹配/含 0 或负数返回 null（CLAUDE-09/AGY-02） */
++export function parseRanges(part: string): LineRange[] | null {
++  if (!/^[1-9]\d*(?:-[1-9]\d*)?(?:,[1-9]\d*(?:-[1-9]\d*)?)*$/.test(part)) return null;
++  const out: LineRange[] = [];
++  for (const seg of part.split(',')) {
++    const [a, b] = seg.split('-');
++    const start = Number(a);
++    const end = b === undefined ? start : Number(b);
++    out.push({ start: Math.min(start, end), end: Math.max(start, end) });
++  }
++  return out;
++}
++
++function stripQuotes(s: string): string {
++  const t = s.trim();
++  if (t.length >= 2 && ((t.startsWith("'") && t.endsWith("'")) || (t.startsWith('"') && t.endsWith('"')))) {
++    return t.slice(1, -1);
++  }
++  return t;
++}
++
++/**
++ * 单段位置 → {relPath, ranges} 或 null（非文件形态）。
++ * relPath 已过 containment 判定；越界由调用方标 outside。
++ */
++function normalizeSegment(seg: string, workspaceRoot: string): { relPath: string | null; ranges: LineRange[] | null; doc: boolean } {
++  let s = stripQuotes(seg.trim());
++  if (s.length === 0) return { relPath: null, ranges: null, doc: true };
++  while (s.startsWith('./')) s = s.slice(2);
++
++  // 拆 path:lines（找最后一个冒号，其后是合法行号形态才算）
++  let relPath = s;
++  let ranges: LineRange[] | null = null;
++  const colon = s.lastIndexOf(':');
++  if (colon > 0) {
++    const parsed = parseRanges(s.slice(colon + 1).trim());
++    if (parsed !== null) {
++      relPath = s.slice(0, colon);
++      ranges = parsed;
++    } else if (/^:\S*$/.test(s.slice(colon)) && /[-\d]/.test(s.slice(colon + 1))) {
++      // 非法行号尾巴（如 `:-1`、`:0`）：剥离后按无行号处理（CLAUDE-09/AGY-02）
++      relPath = s.slice(0, colon);
++    }
++  }
++  relPath = stripQuotes(relPath.trim());
++
++  // 绝对路径 → 工作区相对段（不含工作区则越界）
++  if (path.isAbsolute(relPath)) {
++    const norm = path.resolve(relPath);
++    const root = path.resolve(workspaceRoot) + path.sep;
++    if (!(norm + path.sep).startsWith(root)) {
++      return { relPath: null, ranges: null, doc: false }; // 调用方按 outside 处理
++    }
++    relPath = norm.slice(root.length);
++  } else {
++    // 相对路径统一 resolve 后 containment（防 ../ 逃逸，CLAUDE-07；符号链接不解析——登记边界）
++    const resolved = path.resolve(workspaceRoot, relPath);
++    const root = path.resolve(workspaceRoot) + path.sep;
++    if (!(resolved + path.sep).startsWith(root)) {
++      return { relPath: null, ranges: null, doc: false };
++    }
++    relPath = resolved.slice(root.length);
++  }
++
++  // 非文件形态判定（如 plan §3.2、设计 §16.2）：含空格 → doc；扩展名须字母开头
++  // （排除 §3.2 的 .2 这类数字尾）；裸词（无斜杠无点，如 README）试文件——
++  // missing-file 兜底标注比「文档引用」更有信息量
++  if (/\s/.test(relPath) && ranges === null) {
++    return { relPath: null, ranges: null, doc: true };
++  }
++  const hasSlash = relPath.includes('/');
++  const letterExt = /\.[A-Za-z][A-Za-z0-9_-]*$/.test(relPath);
++  const noDot = !relPath.includes('.');
++  if (!hasSlash && !letterExt && !noDot && ranges === null) {
++    return { relPath: null, ranges: null, doc: true }; // 如 v1.2（版本号引用）
++  }
++  return { relPath, ranges, doc: false };
++}
++
++/** location 归一入口：分号（中英文）拆多文件位置 */
++export function normalizeLocation(loc: string, workspaceRoot: string): NormalizedLocation {
++  const segs = loc.split(/[；;]/).map((s) => s.trim()).filter((s) => s.length > 0);
++  if (segs.length === 0) return { kind: 'doc', text: loc };
++  const anchors: FileAnchor[] = [];
++  for (const seg of segs) {
++    const r = normalizeSegment(seg, workspaceRoot);
++    if (r.doc) return { kind: 'doc', text: loc };
++    if (r.relPath === null) return { kind: 'outside', text: loc };
++    anchors.push({ relPath: r.relPath, ranges: r.ranges ?? [] });
++  }
++  return { kind: 'file', anchors };
++}
++
++// ── 锚文本提取（AGY-03：仅失配后的重定位启发式） ──────────────────────────
++
++const ANCHOR_MIN_LEN = 8;
++
++/** 反引号片段 ≥8 字符；排除路径形态（含 / 或以 . 开头的配置串）与纯数字 */
++export function extractAnchorTexts(problem: string, evidence: string): string[] {
++  const out: string[] = [];
++  for (const src of [problem, evidence]) {
++    for (const m of src.matchAll(/`([^`\n]{8,})`/g)) {
++      const t = m[1]!.trim();
++      if (t.length < ANCHOR_MIN_LEN) continue;
++      if (t.includes('/') || /^\d+([.\-_]\d+)*$/.test(t)) continue;
++      if (!out.includes(t)) out.push(t);
++    }
++  }
++  return out.slice(0, 4);
++}
++
++/** 空白归一化（`pool.length===1` 与 `pool.length === 1` 视为同一串，AGY-03） */
++function squash(s: string): string {
++  return s.replace(/\s+/g, '');
++}
++
++/** 在窗口内找唯一包含任一锚文本（空白归一化）的行；返回行号或 null（多命中 → -1） */
++function findUniqueAnchorLine(lines: string[], from: number, to: number, anchors: string[]): number | -1 | null {
++  if (anchors.length === 0) return null;
++  let hit: number | null = null;
++  for (let i = from; i <= to && i < lines.length; i++) {
++    const squashed = squash(lines[i] ?? '');
++    if (squashed.length === 0) continue;
++    if (anchors.some((a) => squashed.includes(squash(a)))) {
++      if (hit !== null) return -1; // 多处命中：歧义（CLAUDE-08）
++      hit = i;
++    }
++  }
++  return hit;
++}
++
++// ── 行号校验 ───────────────────────────────────────────────────────────────
++
++export interface ResolveOptions {
++  /** 读文件内容（默认按 fs 注入；测试可传内存映射或编辑器缓冲区） */
++  readFile: (relPath: string) => Promise<string | null>;
++  /** 文件一致性结论（静态 git blob 比对 / 动态 hash 重校验的输出；缺省 unknown） */
++  consistency?: (relPath: string) => FileConsistency;
++  /** 失配重定位用的锚文本（调用方从 finding 语境提取；缺省无锚可用） */
++  anchorTexts?: string[];
++}
++
++const NEARBY_WINDOW = 20;
++
++/**
++ * 解析一个 finding 的全部锚点。
++ * 规则（r2 计划 D2′）：
++ * - 文件读不到 → missing-file（只进意见列表，不建 thread/诊断）；
++ * - 无行号/非法 → 文件级「未给行号」（区别于漂移）；
++ * - 行号界内 → 行级（一致性标注由 consistency 携带，不在此判漂移）；
++ * - 行号越界 → 锚文本邻近搜索：唯一命中 → 行级 nearby；多命中 → 文件级 multi-hit；
++ *   无锚/未命中 → 文件级 out-of-range（找不到锚时）/line-lost（有锚没搜到）。
++ */
++export async function resolveLocation(loc: string, workspaceRoot: string, opts: ResolveOptions): Promise<LocationResolution> {
++  const norm = normalizeLocation(loc, workspaceRoot);
++  if (norm.kind !== 'file') {
++    return { kind: norm.kind, anchors: [], missingRelPath: null, consistency: CONSISTENCY_UNKNOWN };
++  }
++  // 以主锚点文件为一致性载体；读不到主文件 → missing-file
++  const primary = norm.anchors[0]!;
++  const primaryText = await opts.readFile(primary.relPath);
++  if (primaryText === null) {
++    return { kind: 'missing-file', anchors: [], missingRelPath: primary.relPath, consistency: CONSISTENCY_UNKNOWN };
++  }
++  const consistency = opts.consistency?.(primary.relPath) ?? CONSISTENCY_UNKNOWN;
++  const lines = primaryText.split('\n');
++  const lineCount = lines.length;
++
++  const anchors: AnchorResolution[] = [];
++  for (let i = 0; i < norm.anchors.length; i++) {
++    const a = norm.anchors[i]!;
++    const raw = a.ranges.length > 0 ? a.ranges[0]! : null;
++    if (i > 0) {
++      // 次级锚点：只保留归一结果（正文可引用），不做行号校验（不套用主文件行数）
++      anchors.push({ relPath: a.relPath, raw, level: 'file', line: null, drift: null, label: `次级位置${raw ? ` L${raw.start}${raw.end !== raw.start ? `-${raw.end}` : ''}` : ''}` });
++      continue;
++    }
++    if (raw === null || raw.start < 1) {
++      anchors.push({ relPath: a.relPath, raw: null, level: 'file', line: null, drift: null, label: '未给行号' });
++      continue;
++    }
++    // 同文件逗号多区间的次级区间（AGY-02/CLAUDE-08）：界内 → 行级标注；越界 → 文件级标注
++    for (const extra of a.ranges.slice(1)) {
++      if (extra.start >= 1 && extra.start <= lineCount) {
++        anchors.push({ relPath: a.relPath, raw: extra, level: 'line', line: { start: extra.start, end: Math.min(extra.end, lineCount) }, drift: null, label: `次级区间 L${extra.start}${extra.end !== extra.start ? `-${extra.end}` : ''}` });
++      } else {
++        anchors.push({ relPath: a.relPath, raw: extra, level: 'file', line: null, drift: null, label: `次级区间 L${extra.start} 越界，未挂行` });
++      }
++    }
++    if (raw.start > lineCount) {
++      // 越界：邻近搜索（失配重定位，AGY-03 启发式）
++      const anchorTexts = opts.anchorTexts ?? [];
++      const from = Math.max(0, Math.min(raw.start - 1, lineCount - 1) - NEARBY_WINDOW);
++      const to = Math.min(lineCount - 1, raw.end - 1 + NEARBY_WINDOW);
++      const hit = findUniqueAnchorLine(lines, from, to, anchorTexts);
++      if (hit === null || hit === -1) {
++        anchors.push({
++          relPath: a.relPath, raw, level: 'file', line: null,
++          drift: hit === -1 ? 'multi-hit' : anchorTexts.length > 0 ? 'line-lost' : 'out-of-range',
++          label: hit === -1 ? '多处命中，降为文件级' : anchorTexts.length > 0 ? '行号越界且锚文本未命中，降为文件级' : '行号越界（超出文件行数），降为文件级',
++        });
++      } else {
++        anchors.push({ relPath: a.relPath, raw, level: 'line', line: { start: hit + 1, end: hit + 1 }, drift: 'nearby', label: `原 L${raw.start}，按锚文本邻近命中 L${hit + 1}` });
++      }
++      continue;
++    }
++    // 界内：信任行号（有效性由一致性判据承担）
++    anchors.push({ relPath: a.relPath, raw, level: 'line', line: { start: raw.start, end: Math.min(raw.end, lineCount) }, drift: null, label: null });
++  }
++  return { kind: 'file', anchors, missingRelPath: null, consistency };
++}
+diff --git a/extension/src/reviews/metaWatch.ts b/extension/src/reviews/metaWatch.ts
+new file mode 100644
+index 00000000..9467e067
+--- /dev/null
++++ b/extension/src/reviews/metaWatch.ts
+@@ -0,0 +1,77 @@
++/**
++ * `_meta/` 目录监视（r2 计划 D4′/D7′：CODEX-03/AGY-01 服务级持有）。
++ *
++ * 监听 `.reviews/<主题>/<阶段>/_meta/` 下 review-*.json 与 changes-*.diff 的
++ * 落盘/变更（侧完成即归档，CLAUDE-06 第一批），事件触发全量 rescan（幂等）。
++ *
++ * 用 node `fs.watch`（目录级，吃原子替换 tmp+rename）而非 vscode FileSystemWatcher：
++ * 归档根可能不在 VS Code workspace 内（多根/子目录场景），workspace 外路径的
++ * vscode watcher 事件不可靠——第一批 RunWatch 已实测踩坑（交付说明平台事实 3）。
++ * 生命周期归 AnnotationHub（随 scope 启停）——独立于驾驶舱面板。
++ */
++import * as vscode from 'vscode';
++import path from 'node:path';
++import { watch, type FSWatcher } from 'node:fs';
++
++export interface MetaFile {
++  absPath: string;
++  name: string;
++}
++
++export class MetaWatch implements vscode.Disposable {
++  private watcher: FSWatcher | null = null;
++  private readonly listeners = new Set<(files: MetaFile[]) => void>();
++  private disposed = false;
++
++  constructor(
++    private readonly metaDir: string,
++    private readonly listDir: (p: string) => Promise<string[]> = defaultListDir,
++  ) {
++    this.mount();
++    void this.rescan();
++  }
++
++  /** 目录级监听；目录被重建（原子替换整目录的场景）时重挂 */
++  private mount(): void {
++    try {
++      this.watcher = watch(this.metaDir, { persistent: false }, () => void this.rescan());
++    } catch {
++      // 目录尚不存在：AnnotationsHub 在 scope 建立时会先 ingest（读到空），
++      // 目录由编排器创建后无事件——由 Hub 的 setActiveRun/ingest 补扫兜底
++      this.watcher = null;
++    }
++  }
++
++  async rescan(): Promise<void> {
++    if (this.disposed) return;
++    let names: string[];
++    try {
++      names = await this.listDir(this.metaDir);
++    } catch {
++      return;
++    }
++    // 挂载失败的目录此刻可能已建：补挂
++    if (!this.watcher) this.mount();
++    const files = names
++      .filter((n) => /^review-.+\.json$/.test(n) || /^changes-.*\.diff$/.test(n))
++      .sort()
++      .map((name) => ({ absPath: path.join(this.metaDir, name), name }));
++    for (const l of this.listeners) l(files);
++  }
++
++  onChange(listener: (files: MetaFile[]) => void): void {
++    this.listeners.add(listener);
++  }
++
++  dispose(): void {
++    this.disposed = true;
++    this.watcher?.close();
++    this.watcher = null;
++    this.listeners.clear();
++  }
++}
++
++async function defaultListDir(p: string): Promise<string[]> {
++  const { promises: fs } = await import('node:fs');
++  return fs.readdir(p);
++}
+diff --git a/extension/src/reviews/reviewParse.ts b/extension/src/reviews/reviewParse.ts
+new file mode 100644
+index 00000000..9c55b4b5
+--- /dev/null
++++ b/extension/src/reviews/reviewParse.ts
+@@ -0,0 +1,168 @@
++/**
++ * review.v2 审查正本解析（FR-6a 数据面，r2 计划 D1′）。
++ *
++ * 消费 `.reviews/<主题>/<阶段>/_meta/review-<critic>-<runId>.json`：
++ * - 文件名解析出 critic/runId（不匹配命名模式 → unrecognized，不出意见）；
++ * - 逐文件降级：JSON 坏 → parse-error；schema 非 v2 → unsupported-schema（携带实际串）；
++ * - finding 级容错：单条缺必填字段/枚举外值 → 跳过并计数（不整份丢弃）；
++ * - 全部状态进 ReviewFileStatus，供驾驶舱与历史树共同消费（CLAUDE-06）。
++ *
++ * 纯函数模块：不 import vscode，readFile 由调用方注入。
++ */
++import { checkSchema } from '../env/versionCheck';
++
++/** review.v2 契约的 severity 四档 */
++export type FindingSeverity = 'blocker' | 'major' | 'minor' | 'nit';
++/** review.v2 契约的 verdict 三档 */
++export type ReviewVerdict = 'pass' | 'pass-after-changes' | 'reject';
++
++export interface ReviewFinding {
++  id: string;
++  severity: FindingSeverity;
++  layer: string;
++  kind: string;
++  location: string;
++  problem: string;
++  evidence: string;
++  suggestion: string;
++  confidence: string;
++}
++
++/** 逐文件状态（CLAUDE-06：贯穿驾驶舱与历史树的降级可见性） */
++export interface ReviewFileStatus {
++  critic: string;
++  runId: string;
++  state: 'ok' | 'partial-skipped' | 'parse-error' | 'unsupported-schema' | 'unrecognized';
++  /** 实际读到的 schema 串（parse-error 时为 null） */
++  actualSchema: string | null;
++  /** 被跳过的 finding 条数（仅 partial-skipped） */
++  skippedCount: number;
++  /** 可读的降级原因（UI 直接展示） */
++  notice: string | null;
++}
++
++export interface ParsedReview {
++  status: ReviewFileStatus;
++  verdict: ReviewVerdict | null;
++  summary: string | null;
++  findings: ReviewFinding[];
++  agreed: string[];
++  notCovered: string[];
++  consulted: string[];
++}
++
++const SEVERITIES: readonly string[] = ['blocker', 'major', 'minor', 'nit'];
++/** review.v2 契约的 layer/kind/confidence 枚举（CLAUDE-10：表外值同样计入跳过） */
++const LAYERS: readonly string[] = ['requirement', 'plan', 'code', 'rca'];
++const KINDS: readonly string[] = ['correctness', 'security', 'concurrency', 'contract', 'test-gap', 'maintainability', 'scope-drift', 'performance'];
++const CONFIDENCES: readonly string[] = ['high', 'medium', 'low'];
++const VERDICTS: readonly string[] = ['pass', 'pass-after-changes', 'reject'];
++
++/** `review-<critic>-<runId>.json` 文件名解析；不匹配返回 null */
++export function parseReviewFileName(name: string): { critic: string; runId: string } | null {
++  const m = /^review-([A-Za-z0-9_]+)-(\d{8}T\d{6}Z)\.json$/.exec(name);
++  return m ? { critic: m[1]!, runId: m[2]! } : null;
++}
++
++function isNonEmptyString(v: unknown): v is string {
++  return typeof v === 'string' && v.length > 0;
++}
++
++function statusOf(critic: string, runId: string, state: ReviewFileStatus['state'], actualSchema: string | null, skippedCount: number, notice: string | null): ParsedReview {
++  return { status: { critic, runId, state, actualSchema, skippedCount, notice }, verdict: null, summary: null, findings: [], agreed: [], notCovered: [], consulted: [] };
++}
++
++/**
++ * 解析一份审查正本。任何降级路径都不抛异常：坏输入返回带状态的空意见。
++ */
++export function parseReviewFile(fileName: string, text: string): ParsedReview {
++  const ident = parseReviewFileName(fileName);
++  if (!ident) {
++    return statusOf('', '', 'unrecognized', null, 0, `文件名不匹配 review-<审查者>-<runId>.json：${fileName}`);
++  }
++  const { critic, runId } = ident;
++
++  let obj: unknown;
++  try {
++    obj = JSON.parse(text) as unknown;
++  } catch (e) {
++    return statusOf(critic, runId, 'parse-error', null, 0, `JSON 解析失败：${e instanceof Error ? e.message : String(e)}`);
++  }
++  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
++    return statusOf(critic, runId, 'parse-error', null, 0, '根元素不是对象');
++  }
++  const root = obj as Record<string, unknown>;
++  const actualSchema = isNonEmptyString(root['schema']) ? root['schema'] : null;
++
++  const verdict = checkSchema(actualSchema, 'review');
++  if (verdict.kind !== 'ok') {
++    return statusOf(critic, runId, 'unsupported-schema', actualSchema, 0, `该侧工件版本不支持（${verdict.reason}），未展示意见`);
++  }
++
++  const findingsRaw = Array.isArray(root['findings']) ? root['findings'] : [];
++  const findings: ReviewFinding[] = [];
++  let skipped = 0;
++  for (const item of findingsRaw) {
++    if (typeof item !== 'object' || item === null) {
++      skipped++;
++      continue;
++    }
++    const f = item as Record<string, unknown>;
++    const required: Array<keyof ReviewFinding> = ['id', 'severity', 'layer', 'kind', 'location', 'problem', 'evidence', 'suggestion', 'confidence'];
++    const missing = required.filter((k) => !isNonEmptyString(f[k]));
++    if (missing.length > 0) {
++      skipped++;
++      continue;
++    }
++    // 枚举校验：severity/layer/kind/confidence 表外值跳过（review.v2 契约，CLAUDE-10）
++    if (
++      !SEVERITIES.includes(f['severity'] as string) ||
++      !LAYERS.includes(f['layer'] as string) ||
++      !KINDS.includes(f['kind'] as string) ||
++      !CONFIDENCES.includes(f['confidence'] as string)
++    ) {
++      skipped++;
++      continue;
++    }
++    findings.push({
++      id: f['id'] as string,
++      severity: f['severity'] as FindingSeverity,
++      layer: f['layer'] as string,
++      kind: f['kind'] as string,
++      location: f['location'] as string,
++      problem: f['problem'] as string,
++      evidence: f['evidence'] as string,
++      suggestion: f['suggestion'] as string,
++      confidence: String(f['confidence']),
++    });
++  }
++
++  const out = statusOf(critic, runId, skipped > 0 ? 'partial-skipped' : 'ok', actualSchema, skipped, skipped > 0 ? `${skipped} 条意见缺必填字段或枚举外值，已跳过` : null);
++  out.findings = findings;
++  out.verdict = VERDICTS.includes(root['verdict'] as string) ? (root['verdict'] as ReviewVerdict) : null;
++  out.summary = isNonEmptyString(root['summary']) ? root['summary'] : null;
++  out.agreed = Array.isArray(root['agreed']) ? root['agreed'].filter(isNonEmptyString) : [];
++  out.notCovered = Array.isArray(root['not_covered']) ? root['not_covered'].filter(isNonEmptyString) : [];
++  out.consulted = Array.isArray(root['consulted']) ? root['consulted'].filter(isNonEmptyString) : [];
++  return out;
++}
++
++/** severity → 中文标签（UI 徽标用） */
++export function severityLabel(s: FindingSeverity): string {
++  return { blocker: '阻断', major: '重要', minor: '次要', nit: '微瑕' }[s];
++}
++
++/** verdict → 中文标签 */
++export function verdictLabel(v: ReviewVerdict | null): string {
++  if (v === 'pass') return '通过';
++  if (v === 'pass-after-changes') return '修改后通过';
++  if (v === 'reject') return '不通过';
++  return '未知';
++}
++
++/** 一组解析件的 severity 计数（findingsSummary / 历史树统计用） */
++export function countSeverities(reviews: ParsedReview[]): Record<FindingSeverity, number> {
++  const out: Record<FindingSeverity, number> = { blocker: 0, major: 0, minor: 0, nit: 0 };
++  for (const r of reviews) for (const f of r.findings) out[f.severity]++;
++  return out;
++}
+diff --git a/extension/test/integration/annotations.test.ts b/extension/test/integration/annotations.test.ts
+new file mode 100644
+index 00000000..f77b3d5e
+--- /dev/null
++++ b/extension/test/integration/annotations.test.ts
+@@ -0,0 +1,239 @@
++/**
++ * 批注宿主集成测试（r2 计划 D9′：FR-6b/6c 核心断言）。
++ *
++ * 真实 VS Code 宿主 + Phase 2 夹具（源文件 + _meta 三侧 review JSON +
++ * changes.diff + git 冻结基线）。Comments 断言走 threadsSnapshot 可观测面
++ * （VS Code 无公开枚举 API，事实 20）；诊断走 languages.getDiagnostics。
++ */
++import * as assert from 'node:assert/strict';
++import * as vscode from 'vscode';
++import path from 'node:path';
++import { AnnotationHub, resetHubGitApiCacheForTest } from '../../src/reviews/annotationHub';
++import { buildPhase2Fixture, waitFor, type Phase2Fixture } from './fixtureLib';
++
++/**
++ * 伪 git API（测试环境 --disable-extensions 禁用内置 git 扩展）：
++ * toGitUri → `${fsPath}.baseline`（夹具留有基线快照文件，内容 = git 基线提交版）。
++ */
++const fakeGitApi = (): { toGitUri: (uri: vscode.Uri) => vscode.Uri } => ({
++  toGitUri: (uri) => vscode.Uri.file(`${uri.fsPath}.baseline`),
++});
++
++function reviewOf(critic: string, findings: Array<Record<string, string>>): string {
++  return JSON.stringify({ schema: 'trivium.review.v2', verdict: 'pass', summary: 's', findings: findings.map((f, i) => ({
++    id: f.id ?? `${critic}-${i}`, severity: f.severity, layer: 'code', kind: 'correctness',
++    location: f.location, problem: f.problem, evidence: f.evidence, suggestion: 's', confidence: 'high',
++  })) }, null, 2);
++}
++
++suite('批注宿主（FR-6b/6c）', function () {
++  this.timeout(60_000);
++  let fx: Phase2Fixture;
++  let hub: AnnotationHub;
++
++  suiteSetup(async () => {
++    fx = await buildPhase2Fixture();
++  });
++  setup(async () => {
++    resetHubGitApiCacheForTest(fakeGitApi());
++    hub = new AnnotationHub(fx.root);
++    await hub.setScope('DemoTopic', 'code');
++    await waitFor(() => hub.threadsSnapshot().length > 0);
++  });
++  teardown(() => {
++    hub.dispose();
++    resetHubGitApiCacheForTest(null);
++  });
++
++  test('装配：三侧同层线程 + 分层不覆盖 + 区间贯通（CLAUDE-05）', () => {
++    const threads = hub.threadsSnapshot();
++    // sample.ts: C-01(2-4) C-02(3) G-01(3) G-02(nearby→3) X-01(2-3) → 行 2 与行 3 两线程
++    const sampleThreads = threads.filter((t) => t.relPath === 'src/sample.ts');
++    assert.ok(sampleThreads.length >= 2, `sample.ts 线程数：${sampleThreads.length}`);
++    const line3 = sampleThreads.find((t) => t.startLine === 3 && t.endLine === 3);
++    assert.ok(line3, '行 3 线程存在（C-02/G-01/G-02-nearby 合并）');
++    const critics = line3!.comments.map((c) => c.critic).sort();
++    assert.deepEqual(critics, ['claude', 'gemini', 'gemini'], '同 thread 多侧多 comment 分层');
++    const line2 = sampleThreads.find((t) => t.startLine === 2);
++    assert.ok(line2, '行 2 线程存在（C-01 区间与 X-01 主锚点）');
++    assert.equal(line2!.endLine, 4, 'C-01 的 2-4 区间贯通到线程 range');
++    assert.match(line2!.label, /claude|codex/);
++  });
++
++  test('诊断：severity 四档映射 + range 与线程同源（FR-6c）', () => {
++    const uri = vscode.Uri.file(path.join(fx.root, 'src', 'sample.ts'));
++    const diags = vscode.languages.getDiagnostics(uri);
++    const byCode = new Map(diags.map((d) => [String(d.code), d]));
++    // 六条建对象意见：C-01/02/03、G-01/02、X-01（C-04/X-02/X-03 走 listOnly）
++    for (const id of ['C-01', 'C-02', 'C-03', 'G-01', 'G-02', 'X-01']) {
++      assert.ok(byCode.get(id), `诊断 ${id} 存在`);
++    }
++    assert.equal(byCode.get('C-01')!.severity, vscode.DiagnosticSeverity.Error, 'blocker→Error');
++    assert.equal(byCode.get('C-02')!.severity, vscode.DiagnosticSeverity.Error, 'major→Error');
++    assert.equal(byCode.get('G-01')!.severity, vscode.DiagnosticSeverity.Warning, 'minor→Warning');
++    assert.equal(byCode.get('X-01')!.severity, vscode.DiagnosticSeverity.Information, 'nit→Information');
++    // range 同源：C-01 诊断区间 = 2-4
++    assert.equal(byCode.get('C-01')!.range.start.line, 1);
++    assert.equal(byCode.get('C-01')!.range.end.line, 3);
++    assert.equal(byCode.get('C-01')!.source, 'TriviumCode 审查');
++  });
++
++  test('漂移显式：越界无锚→文件级 out-of-range；越界有锚→nearby（AGY-03/CLAUDE-08）', () => {
++    const threads = hub.threadsSnapshot();
++    const fileLevel = threads.find((t) => t.relPath === 'src/sample.ts' && t.startLine === 1 && t.label.includes('文件级'));
++    assert.ok(fileLevel, 'C-03 越界无锚 → 文件级线程（首行）');
++    assert.match(fileLevel!.label, /文件级/);
++    const uri = vscode.Uri.file(path.join(fx.root, 'src', 'sample.ts'));
++    const diags = vscode.languages.getDiagnostics(uri);
++    const c03 = diags.find((d) => d.code === 'C-03');
++    assert.ok(c03, 'C-03 诊断存在');
++    assert.match(c03!.message, /行号越界/, '诊断显式标注漂移');
++    // G-02 越界有锚 → nearby 重定位到行 3
++    const g02 = diags.find((d) => d.code === 'G-02');
++    assert.ok(g02);
++    assert.equal(g02!.range.start.line, 2, 'G-02 nearby 重定位到 L3');
++    assert.match(g02!.message, /邻近|原 L9999|漂移/);
++  });
++
++  test('listOnly：doc / missing-file / outside 不建线程与诊断（CLAUDE-06 展示面在列表）', () => {
++    const threads = hub.threadsSnapshot();
++    assert.ok(!threads.some((t) => t.relPath.includes('gone-missing')));
++    assert.ok(!threads.some((t) => t.relPath === 'outside.ts'));
++    const findings = hub.findingsOfFocusRun();
++    assert.ok(findings.some((f) => f.id === 'C-04' && f.level === 'doc'));
++    assert.ok(findings.some((f) => f.id === 'X-02' && f.level === 'missing'));
++    assert.ok(findings.some((f) => f.id === 'X-03' && f.level === 'outside'));
++    // 八条建对象意见（C-01/02/03、G-01/02、X-01、X-04 stale、X-05 drifting），三条 listOnly 不进诊断
++    assert.equal(hub.diagnosticsSnapshot().length, 8);
++  });
++
++  test('逐家开关：切换即全量重建（D3′）', async () => {
++    await hub.setEnabledCritics(new Set(['claude']));
++    await waitFor(() => hub.threadsSnapshot().every((t) => t.comments.every((c) => c.critic === 'claude')));
++    const threads = hub.threadsSnapshot();
++    assert.ok(threads.length > 0);
++    for (const t of threads) for (const c of t.comments) assert.equal(c.critic, 'claude');
++    // 空集合 = 全部
++    await hub.setEnabledCritics(new Set());
++    await waitFor(() => hub.threadsSnapshot().some((t) => t.comments.some((c) => c.critic === 'gemini')));
++  });
++
++  test('切换 scope 全清：无孤儿诊断（D4′）', async () => {
++    const uri = vscode.Uri.file(path.join(fx.root, 'src', 'sample.ts'));
++    assert.ok(vscode.languages.getDiagnostics(uri).length > 0, '切换前有诊断');
++    await hub.setScope('DemoTopic', 'plan'); // 无 plan 归档 → 空装配
++    await waitFor(() => hub.threadsSnapshot().length === 0);
++    assert.equal(vscode.languages.getDiagnostics(uri).length, 0, '切换后诊断全清（无孤儿）');
++    // 回切 code 恢复
++    await hub.setScope('DemoTopic', 'code');
++    await waitFor(() => hub.threadsSnapshot().length > 0);
++  });
++
++  test('服务级 metaWatch：无面板也可消费侧完成落盘（CODEX-03/AGY-01）', async () => {
++    // 本测试从不创建驾驶舱面板——Hub 独立消费 _meta 落盘
++    const before = hub.threadsSnapshot().length;
++    await fx.writeMeta('review-claude-20261106T000009Z.json', JSON.stringify({
++      schema: 'trivium.review.v2', verdict: 'pass', summary: '新轮',
++      findings: [{ id: 'C2-01', severity: 'major', layer: 'code', kind: 'correctness', location: 'src/sample.ts:7', problem: '新意见', evidence: 'e', suggestion: 's', confidence: 'high' }],
++    }));
++    // 新 run 落盘 → 焦点自动切到最新 run（runId 字典序 20261106T000009Z > 000005Z）
++    await waitFor(() => hub.currentRunId === '20261106T000009Z');
++    await waitFor(() => hub.threadsSnapshot().some((t) => t.relPath === 'src/sample.ts' && t.startLine === 7));
++    assert.ok(before >= 0);
++  });
++
++  test('文件关闭→重开：线程恢复不重复（CLAUDE-03/CODEX-06 语义）', async () => {
++    const uri = vscode.Uri.file(path.join(fx.root, 'src', 'sample.ts'));
++    const count = hub.threadsSnapshot().length;
++    const doc = await vscode.workspace.openTextDocument(uri);
++    await vscode.window.showTextDocument(doc, { preview: true });
++    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++    await new Promise((r) => setTimeout(r, 300));
++    await vscode.window.showTextDocument(doc, { preview: true });
++    await new Promise((r) => setTimeout(r, 300));
++    assert.equal(hub.threadsSnapshot().length, count, '关闭重开线程数恒定（VS Code 线程随文档管理）');
++    assert.equal(vscode.languages.getDiagnostics(uri).length > 0, true, '诊断仍准确');
++    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++  });
++
++  test('挂载后编辑 → 一致性重校验显式标注（CLAU-01/CODEX-02 动态判据）', async () => {
++    // 「服务级 metaWatch」用例已写入新轮工件——显式回放主 run 再校验
++    await hub.setActiveRun(fx.run2Id);
++    await waitFor(() => hub.findingsOfFocusRun().some((x) => x.id === 'C-01'));
++    const uri = vscode.Uri.file(path.join(fx.root, 'src', 'sample.ts'));
++    const doc = await vscode.workspace.openTextDocument(uri);
++    const editor = await vscode.window.showTextDocument(doc, { preview: false });
++    // 编辑行 3 内容（行数不变——「无锚+整体改写+行数够」回归由 consistency 兜住）
++    await editor.edit((b) => {
++      const line = doc.lineAt(2);
++      b.replace(line.range, '  const size = 42;');
++    });
++    try {
++      await waitFor(() => {
++        const f = hub.findingsOfFocusRun().find((x) => x.id === 'C-01');
++        return f?.consistency === 'edited';
++      }, 20_000);
++      const diags = vscode.languages.getDiagnostics(uri);
++      assert.match(diags.find((d) => d.code === 'C-01')!.message, /文件已在批注挂载后被编辑|已编辑/, '诊断显式标注不静默');
++    } finally {
++      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++    }
++  });
++
++  test('静态一致性（送审内容重建，CLAUDE-02）：首次挂载即见 consistent/mismatch（CLAUDE-03/CODEX-04）', async () => {
++    // 「服务级 metaWatch」用例已写入新轮工件——显式回放主 run（首次挂载语义）
++    await hub.setActiveRun(fx.run2Id);
++    await waitFor(() => hub.findingsOfFocusRun().some((x) => x.id === 'X-04'));
++    const findings = hub.findingsOfFocusRun();
++    // sample.ts：工作区 == 基线+补丁（送审时点内容）→ consistent
++    const c01 = findings.find((x) => x.id === 'C-01');
++    assert.equal(c01!.consistency, 'consistent', 'sample.ts 与送审版本一致');
++    // drifting.ts：同为送审时点内容 → consistent
++    const x05 = findings.find((x) => x.id === 'X-05');
++    assert.equal(x05!.consistency, 'consistent', 'drifting.ts 与送审版本一致');
++    // stale.ts：送审后工作区又改 → mismatch（诊断显式标注，不静默）
++    const x04 = findings.find((x) => x.id === 'X-04');
++    assert.equal(x04!.consistency, 'mismatch', 'stale.ts 送审后被编辑 → mismatch');
++    const uri = vscode.Uri.file(path.join(fx.root, 'src', 'stale.ts'));
++    const diag = vscode.languages.getDiagnostics(uri).find((d) => d.code === 'X-04');
++    assert.ok(diag, 'stale.ts 诊断存在');
++    assert.match(diag!.message, /与送审版本不一致/, '首次挂载诊断即带 mismatch 标注');
++  });
++
++  test('一致性缓存按 run 隔离（CODEX-06）：切轮回放不串用', async () => {
++    // 主 run：stale → mismatch；archive run（不同冻结内容）重新判定
++    await hub.setScope(fx.archiveTopic, 'code');
++    await waitFor(() => hub.findingsOfFocusRun().length > 0);
++    const ag = hub.findingsOfFocusRun().find((x) => x.id === 'AG2-01');
++    // ArchiveTopic 的 changes.diff 无 hunks（只有头部）→ sample.ts 无送审快照 → unknown（不是沿用主 run 结论）
++    assert.equal(ag!.consistency, 'unknown');
++    // 切回主 run：mismatch 结论仍正确（显式回放 run2——前序用例写入了更新的轮次）
++    await hub.setScope('DemoTopic', 'code');
++    await hub.setActiveRun(fx.run2Id);
++    await waitFor(() => hub.findingsOfFocusRun().some((x) => x.id === 'X-04'));
++    assert.equal(hub.findingsOfFocusRun().find((x) => x.id === 'X-04')!.consistency, 'mismatch');
++  });
++
++  test('摄取竞态（CODEX-02）：切换 scope 后旧摄取整次丢弃，不污染新 scope', async () => {
++    // 触发 DemoTopic 摄取（写新侧文件），不等完成立即切 ArchiveTopic
++    const p = fx.writeMeta('review-claude-20261106T000011Z.json', reviewOf('claude', [
++      { id: 'C3-01', severity: 'major', location: 'src/sample.ts:9', problem: '竞态意见', evidence: 'e', suggestion: 's', confidence: 'high' },
++    ]));
++    await hub.setScope(fx.archiveTopic, 'code'); // 同步段先完成（代次 +1），旧摄取恢复后即丢弃
++    await p;
++    await waitFor(() => hub.findingsOfFocusRun().length > 0, 20_000);
++    // ArchiveTopic 只有自己的 AG2-01（src/sample.ts:7），没有 DemoTopic 的 C3-01
++    const ids = hub.findingsOfFocusRun().map((f) => f.id);
++    assert.ok(!ids.includes('C3-01'), `旧 scope 意见未污染新 scope（实际：${ids.join(',')}）`);
++    assert.ok(ids.includes('AG2-01'));
++  });
++
++  test('dispose 失效在途装配（CODEX-03）：停用后不再创建任何对象', async () => {
++    const h2 = new AnnotationHub(fx.root);
++    const scopePromise = h2.setScope('DemoTopic', 'code'); // rebuild 在途
++    h2.dispose(); // 立即停用：在途代次全部失效
++    await scopePromise.catch(() => {});
++    await new Promise((r) => setTimeout(r, 300));
++    assert.equal(h2.threadsSnapshot().length, 0, '停用后无线程被创建');
++  });
++});
+diff --git a/extension/test/integration/cockpitFindings.test.ts b/extension/test/integration/cockpitFindings.test.ts
+new file mode 100644
+index 00000000..49fe4e28
+--- /dev/null
++++ b/extension/test/integration/cockpitFindings.test.ts
+@@ -0,0 +1,125 @@
++/**
++ * 驾驶舱意见列表集成测试（r2 计划 D9′：FR-6a 数据面——run 卡逐侧摘要、
++ * 逐条意见含漂移/降级标注、Hub 订阅刷新）。
++ */
++import * as assert from 'node:assert/strict';
++import * as vscode from 'vscode';
++import { TriviumEnv } from '../../src/env/config';
++import { TriviumCli } from '../../src/cli/triviumCli';
++import { TriviumCommands } from '../../src/cli/commands';
++import { TerminalRelay } from '../../src/launch/terminalRelay';
++import { StateWatch } from '../../src/monitor/stateWatch';
++import { AnnotationHub, resetHubGitApiCacheForTest } from '../../src/reviews/annotationHub';
++import { Cockpit } from '../../src/ui/cockpit';
++import type { TriviumServices } from '../../src/services';
++import { buildPhase2Fixture, waitFor, type Phase2Fixture } from './fixtureLib';
++
++suite('驾驶舱意见列表（FR-6a）', function () {
++  this.timeout(90_000);
++  let fx: Phase2Fixture;
++
++  suiteSetup(async () => {
++    fx = await buildPhase2Fixture();
++  });
++
++  test('活跃 run 发现 → 焦点回放 → run 卡携带逐侧摘要与逐条意见', async () => {
++    resetHubGitApiCacheForTest({ toGitUri: (uri) => vscode.Uri.file(`${uri.fsPath}.baseline`) });
++    const env = new TriviumEnv(fx.root);
++    const cli = new TriviumCli(fx.root);
++    const services: TriviumServices = {
++      root: fx.root,
++      env,
++      cli,
++      cmds: new TriviumCommands(cli),
++      relay: new TerminalRelay(),
++      stateWatch: new StateWatch(fx.root),
++      annotationHub: new AnnotationHub(fx.root),
++      repoRoot: fx.root,
++      disposables: { push: () => {} },
++    };
++    const cockpit = new Cockpit(services);
++    try {
++      await cockpit.open();
++      // 发现链：state.json 活跃闸门 → attachRun（run_root 定位 + 归属校验）
++      await waitFor(() => cockpit.runStates().some((r) => r.runId === fx.run2Id), 30_000);
++      // attachRun 已把 scope 指到 DemoTopic/code、焦点 run2 → 卡片带意见数据
++      await waitFor(async () => {
++        const card = (await cockpit.cardsForTest()).find((c) => c.runId === fx.run2Id);
++        return (card?.findings?.length ?? 0) > 0;
++      }, 30_000);
++      const card = (await cockpit.cardsForTest()).find((c) => c.runId === fx.run2Id)!;
++
++      // 逐侧摘要（三家 + verdict 中文标签）
++      assert.equal(card.findingsSummary!.length, 3);
++      const claude = card.findingsSummary!.find((s) => s.critic === 'claude')!;
++      assert.equal(claude.verdictLabel, '修改后通过');
++      assert.equal(claude.counts['blocker'], 1);
++      const codex = card.findingsSummary!.find((s) => s.critic === 'codex')!;
++      assert.equal(codex.verdictLabel, '不通过');
++
++      // 逐条意见：解析级别与漂移/降级标注（CLAUDE-06 贯通）+ relPath 契约（CLAUDE-01）
++      assert.equal(card.findings!.length, 11, '三家共 11 条（4+2+5）');
++      const withPath = card.findings!.find((f) => f.id === 'C-01')!;
++      assert.equal(withPath.relPath, 'src/sample.ts', '卡片携带 relPath（Diff 按钮/位置显示的契约字段）');
++      assert.equal(withPath.file!.endsWith('src/sample.ts'), true);
++      const x04 = card.findings!.find((f) => f.id === 'X-04')!;
++      assert.equal(x04.consistency, 'mismatch', 'stale.ts 送审后漂移在卡片可见');
++      const c03 = card.findings!.find((f) => f.id === 'C-03')!;
++      assert.equal(c03.level, 'file');
++      assert.match(c03.label ?? '', /行号越界/);
++      const c04 = card.findings!.find((f) => f.id === 'C-04')!;
++      assert.equal(c04.level, 'doc', '文档引用进列表不建批注');
++      const x02 = card.findings!.find((f) => f.id === 'X-02')!;
++      assert.equal(x02.level, 'missing', '文件缺失标注');
++      const g02 = card.findings!.find((f) => f.id === 'G-02')!;
++      assert.equal(g02.level, 'line');
++      assert.equal(g02.startLine, 3, 'nearby 重定位');
++      // 变更集成员判定（Diff 按钮数据面）
++      const c01 = card.findings!.find((f) => f.id === 'C-01')!;
++      assert.equal(c01.inChangeset, true, 'sample.ts 在变更集 → Diff 可用');
++      const x03 = card.findings!.find((f) => f.id === 'X-03')!;
++      assert.equal(x03.inChangeset, false);
++    } finally {
++      cockpit.dispose();
++      services.stateWatch.dispose();
++      services.relay.dispose();
++      services.annotationHub.dispose();
++      resetHubGitApiCacheForTest(null);
++    }
++  });
++
++  test('历史回放卡（CLAUDE-04/CODEX-07）：无活跃 run 时回放归档 → 卡片携带意见列表', async () => {
++    const env = new TriviumEnv(fx.root);
++    const cli = new TriviumCli(fx.root);
++    const services: TriviumServices = {
++      root: fx.root, env, cli, cmds: new TriviumCommands(cli),
++      relay: new TerminalRelay(), stateWatch: new StateWatch(fx.root),
++      annotationHub: new AnnotationHub(fx.root), repoRoot: fx.root,
++      disposables: { push: () => {} },
++    };
++    const cockpit = new Cockpit(services);
++    try {
++      await cockpit.open();
++      await waitFor(() => cockpit.runStates().some((r) => r.runId === fx.run2Id), 30_000);
++      // 回放纯归档主题（无活跃闸门、驾驶舱从未 attach 过它的 run）
++      await services.annotationHub.setScope(fx.archiveTopic, 'code');
++      await services.annotationHub.setActiveRun(fx.archiveTopicRunId);
++      await waitFor(async () => {
++        const card = (await cockpit.cardsForTest()).find((c) => c.runId === fx.archiveTopicRunId);
++        return (card?.findings?.length ?? 0) > 0;
++      }, 30_000);
++      const card = (await cockpit.cardsForTest()).find((c) => c.runId === fx.archiveTopicRunId)!;
++      assert.equal(card.phase, 'replay', '回放卡（非活跃 run）');
++      assert.equal(card.phaseLabel, '历史回放');
++      assert.equal(card.terminal, true, '回放卡不提供中止');
++      assert.equal(card.findings!.length, 1);
++      assert.equal(card.findings![0]!.id, 'AG2-01');
++      assert.equal(card.findings![0]!.relPath, 'src/sample.ts');
++    } finally {
++      cockpit.dispose();
++      services.stateWatch.dispose();
++      services.relay.dispose();
++      services.annotationHub.dispose();
++    }
++  });
++});
+diff --git a/extension/test/integration/diffView.test.ts b/extension/test/integration/diffView.test.ts
+new file mode 100644
+index 00000000..238a18e8
+--- /dev/null
++++ b/extension/test/integration/diffView.test.ts
+@@ -0,0 +1,127 @@
++/**
++ * Diff 视图集成测试（r2 计划 D9′：CLAUDE-04 落实——git 可用 + 三路降级 + 冻结基线）。
++ */
++import * as assert from 'node:assert/strict';
++import * as vscode from 'vscode';
++import { execSync } from 'node:child_process';
++import fs from 'node:fs';
++import { openDiffFor, resetGitApiCacheForTest, type GitApiShape } from '../../src/reviews/diffView';
++import { parseChangesDiff } from '../../src/reviews/diffParse';
++import { buildPhase2Fixture, waitFor, type Phase2Fixture } from './fixtureLib';
++
++/**
++ * 测试环境 `--disable-extensions` 连内置 git 扩展一并禁用——真实 git: scheme
++ * 读取天然覆盖「降级」路径；「git 可用」路径用注入伪 API 测编排逻辑
++ * （探测 → vscode.diff → 定位），真实 git 语义由 F5 走查与真实使用验证。
++ */
++const fakeGitApi = (): GitApiShape => ({
++  toGitUri: (uri) => vscode.Uri.file(uri.fsPath + '.baseline'), // 夹具基线快照文件
++});
++
++suite('Diff 视图（FR-6d 冻结基线）', function () {
++  this.timeout(60_000);
++  let fx: Phase2Fixture;
++  let diff: ReturnType<typeof parseChangesDiff>;
++
++  suiteSetup(async () => {
++    fx = await buildPhase2Fixture();
++    diff = parseChangesDiff(fs.readFileSync(`${fx.metaDir}/changes-${fx.run2Id}.diff`, 'utf8'));
++  });
++  setup(() => resetGitApiCacheForTest(null));
++
++  test('成员判定：真实 git diff（5 文件：改 3 + 增 1 + 删 1）（AGY-04/AGY-06）', () => {
++    assert.equal(diff.head, fx.gitSha, '解析出冻结 head sha');
++    assert.equal(diff.files.length, 5);
++    assert.ok(diff.files.find((f) => f.relPath === 'src/sample.ts' && !f.added && !f.deleted));
++    assert.ok(diff.files.find((f) => f.relPath === 'src/drifting.ts' && !f.added && !f.deleted));
++    assert.ok(diff.files.find((f) => f.relPath === 'src/stale.ts' && !f.added && !f.deleted));
++    assert.ok(diff.files.find((f) => f.relPath === 'src/added.ts' && f.added));
++    assert.ok(diff.files.find((f) => f.relPath === 'src/gone.ts' && f.deleted));
++    // hunk 正文与基线/工作区自洽（CLAUDE-02 送审内容重建的前提）
++    const sample = diff.files.find((f) => f.relPath === 'src/sample.ts')!;
++    assert.ok(sample.hunks.length > 0 && sample.hunks.every((h) => h.lines.length > 0));
++  });
++
++  test('git 可用：被审基线 diff 打开 + 定位（CODEX-01/CLAUDE-02/05）', async () => {
++    resetGitApiCacheForTest(fakeGitApi());
++    const out = await openDiffFor(fx.root, diff, 'src/sample.ts', { startLine: 3, endLine: 3 });
++    assert.equal(out.opened, 'diff');
++    assert.match(out.note, new RegExp(fx.gitSha.slice(0, 8)));
++    // diff 打开后活动编辑器是右侧工作区文件，且已定位（diff 布局就绪是异步的）
++    await waitFor(() => {
++      const editor = vscode.window.activeTextEditor;
++      return editor !== undefined && editor.document.uri.fsPath.endsWith('src/sample.ts');
++    });
++    assert.equal(vscode.window.activeTextEditor!.selection.start.line, 2, '定位到 L3');
++    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++  });
++
++  test('HEAD 前进后回放同一 run：基线仍是冻结 sha', async () => {
++    fs.writeFileSync(`${fx.root}/later.txt`, 'later\n');
++    execSync('git add later.txt && git commit -q -m later', { cwd: fx.root });
++    resetGitApiCacheForTest(fakeGitApi()); // 左侧 = 冻结 sha（.baseline 不随 HEAD 前进变化）
++    const out = await openDiffFor(fx.root, diff, 'src/sample.ts', { startLine: 2, endLine: 2 });
++    assert.equal(out.opened, 'diff', 'HEAD 前进后仍可打开（基线 = 冻结 sha 而非当前 HEAD）');
++    assert.match(out.note, new RegExp(fx.gitSha.slice(0, 8)));
++    await waitFor(() => {
++      const editor = vscode.window.activeTextEditor;
++      return editor !== undefined && editor.document.uri.fsPath.endsWith('src/sample.ts');
++    });
++    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++  });
++
++  test('新增文件：降级打开文件 + 明示（AGY-06）', async () => {
++    const out = await openDiffFor(fx.root, diff, 'src/added.ts');
++    assert.equal(out.opened, 'file');
++    assert.match(out.note, /新增/);
++    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++  });
++
++  test('删除文件（真删，CLAUDE-06）：git 可用 → 打开被审基线只读；git 不可用 → 仅明示不抛', async () => {
++    assert.equal(fs.existsSync(`${fx.root}/src/gone.ts`), false, '夹具工作区已删除 gone.ts');
++    resetGitApiCacheForTest(fakeGitApi());
++    const out1 = await openDiffFor(fx.root, diff, 'src/gone.ts');
++    assert.equal(out1.opened, 'file');
++    assert.match(out1.note, /已删除.*基线|基线.*只读/);
++    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++    resetGitApiCacheForTest(null); // git 不可用：不尝试打开已不存在的工作区路径
++    const out2 = await openDiffFor(fx.root, diff, 'src/gone.ts');
++    assert.equal(out2.opened, 'file');
++    assert.match(out2.note, /已删除/);
++  });
++
++  test('非变更集成员 / 无 diff：直接打开 + 明示（降级不静默）', async () => {
++    // 用磁盘上存在但不在变更集的文件（.trivium/config.yaml 夹具自带）
++    const out1 = await openDiffFor(fx.root, diff, '.trivium/config.yaml');
++    assert.equal(out1.opened, 'file');
++    assert.match(out1.note, /不在本轮变更集/);
++    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++    const out2 = await openDiffFor(fx.root, null, 'src/sample.ts');
++    assert.equal(out2.opened, 'file');
++    assert.match(out2.note, /无 changes.diff/);
++    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++  });
++
++  test('自定义 base（CLAUDE-05）：40 位 sha → 用该 sha；ref 字面量 → 无法冻结降级明示', async () => {
++    resetGitApiCacheForTest(fakeGitApi());
++    const shaDiff = { ...diff, base: 'fedcba9876543210fedcba9876543210fedcba98' };
++    const out1 = await openDiffFor(fx.root, shaDiff, 'src/sample.ts', { startLine: 1, endLine: 1 });
++    assert.equal(out1.opened, 'diff', 'base 为 sha 时直接用该 sha 作基线');
++    assert.match(out1.note, /fedcba98/);
++    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++    const refDiff = { ...diff, base: 'main' };
++    const out2 = await openDiffFor(fx.root, refDiff, 'src/sample.ts');
++    assert.equal(out2.opened, 'file');
++    assert.match(out2.note, /自定义 base「main」未能冻结/);
++    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++  });
++
++  test('git 扩展不可用（或对象缺失）：降级打开文件 + 明示原因', async () => {
++    // 伪 diff：head 指向不存在对象（模拟 GC/浅克隆）
++    const fakeDiff = { ...diff, head: '0123456789012345678901234567890123456789' };
++    const out = await openDiffFor(fx.root, fakeDiff, 'src/sample.ts');
++    assert.equal(out.opened, 'file');
++    assert.match(out.note, /不可读|不可用|无冻结/);
++    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
++  });
++});
+diff --git a/extension/test/integration/history.test.ts b/extension/test/integration/history.test.ts
+new file mode 100644
+index 00000000..660d0def
+--- /dev/null
++++ b/extension/test/integration/history.test.ts
+@@ -0,0 +1,120 @@
++/**
++ * 运行历史集成测试（r2 计划 D9′：FR-7 树数据 + 回放 + AGY-05 第一事实源）。
++ */
++import * as assert from 'node:assert/strict';
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { AnnotationHub } from '../../src/reviews/annotationHub';
++import { HistoryProvider } from '../../src/history/historyProvider';
++import { listTopics, listRuns, makeRunRootProber } from '../../src/history/runHistory';
++import { buildPhase2Fixture, waitFor, type Phase2Fixture } from './fixtureLib';
++
++function nodeFs() {
++  return {
++    readdir: (p: string) => fs.readdir(p),
++    readFile: (p: string) => fs.readFile(p, 'utf8'),
++  };
++}
++
++suite('运行历史（FR-7）', function () {
++  this.timeout(60_000);
++  let fx: Phase2Fixture;
++
++  suiteSetup(async () => {
++    fx = await buildPhase2Fixture();
++  });
++
++  test('listTopics：主题摘要', async () => {
++    const topics = await listTopics(nodeFs(), path.join(fx.root, '.reviews'));
++    const demo = topics.find((t) => t.topic === 'DemoTopic');
++    assert.ok(demo, 'DemoTopic 在列表');
++    assert.equal(demo!.runCount, 2);
++    assert.equal(demo!.lastStatus, 'success');
++    assert.deepEqual(demo!.drivers, ['glm']);
++  });
++
++  test('listRuns：归档齐全用 _meta 第一事实源（AGY-05，不探 run_root）', async () => {
++    let probed = 0;
++    const runs = await listRuns(nodeFs(), path.join(fx.root, '.reviews'), 'DemoTopic', async (runId) => {
++      probed++;
++      return runId === fx.run1Id ? fx.run1Dir : null; // 仅 run1 归档缺失 → 探测且命中本仓桶
++    });
++    assert.equal(runs.length, 2);
++    const run2 = runs.find((r) => r.runId === fx.run2Id)!;
++    assert.ok(run2, 'run2 在列表');
++    assert.equal(run2.stage, 'code');
++    assert.equal(run2.metaLocated, true);
++    assert.equal(run2.sides.length, 3, '三侧统计来自 review 工件');
++    const claude = run2.sides.find((s) => s.critic === 'claude')!;
++    assert.equal(claude.verdict, 'pass-after-changes');
++    assert.equal(claude.counts.blocker, 1);
++    const codex = run2.sides.find((s) => s.critic === 'codex')!;
++    assert.equal(codex.verdict, 'reject');
++    // run2 归档齐全：不探测；run1 归档缺失：探测一次且命中本仓桶（他仓撞号桶 topic 不同）
++    assert.equal(probed, 1, '仅 run1 触发 run_root 探测');
++    const run1 = runs.find((r) => r.runId === fx.run1Id)!;
++    assert.equal(run1.metaLocated, true, 'run1 经本仓桶定位（他仓撞号不接管）');
++    assert.equal(run1.stage, 'plan');
++  });
++
++  test('归属纪律：他仓桶撞号不接管（runDiscovery 同款）', async () => {
++    // 一个既不在本仓桶、也不在归档的 run：只有他仓桶命中 → 不接管
++    const runs = await listRuns(
++      nodeFs(),
++      path.join(fx.root, '.reviews'),
++      'DemoTopic',
++      async (runId) => {
++        // 模拟 locateRunDir：他仓桶 topic 不匹配 → null
++        void runId;
++        return null;
++      },
++    );
++    const run1 = runs.find((r) => r.runId === fx.run1Id)!;
++    assert.equal(run1.metaLocated, false, '探测失败 → 未定位（不接管他仓）');
++  });
++
++  test('HistoryProvider：主题→运行两级 + 回放挂载批注', async () => {
++    const hub = new AnnotationHub(fx.root);
++    const provider = new HistoryProvider(
++      { root: fx.root, annotationHub: hub },
++      nodeFs(),
++      async () => fx.runRoot,
++    );
++    try {
++      const topics = await provider.getChildren();
++      const demoNode = topics.find((t) => t.label === 'DemoTopic');
++      assert.ok(demoNode, '主题节点');
++      const runs = await provider.getChildren(demoNode as never);
++      assert.equal(runs.length, 2);
++      // 时间倒序：run2 在前
++      assert.equal((runs[0] as never as { run: { runId: string } }).run.runId, fx.run2Id);
++      // 回放：点击 run2 → scope + 焦点 + 批注挂载
++      await provider.replayRun('DemoTopic', { runId: fx.run2Id, stage: 'code' });
++      await waitFor(() => hub.threadsSnapshot().length > 0);
++      assert.equal(hub.currentRunId, fx.run2Id);
++      assert.equal(hub.currentScope?.topic, 'DemoTopic');
++      const uri = path.join(fx.root, 'src', 'sample.ts');
++      void uri;
++    } finally {
++      hub.dispose();
++    }
++  });
++
++  test('降级侧在节点 description 标注（CLAUDE-06）', async () => {
++    // 追加一份 v1 旧件（新 run：review 件 + run 件）→ 历史统计标注「工件不支持」
++    await fs.writeFile(
++      path.join(fx.metaDir, `review-gemini-20261106T000007Z.json`),
++      JSON.stringify({ schema: 'trivium.review.v1', verdict: 'pass', findings: [] }),
++    );
++    await fs.writeFile(
++      path.join(fx.metaDir, `run-20261106T000007Z.json`),
++      JSON.stringify({ schema: 'trivium.run.v3', run_id: '20261106T000007Z', topic: 'DemoTopic', stage: 'code', rerun_index: 2, driver: 'glm', critics_selected: ['gemini'], started_at: '2026-11-06T00:00:07.000Z' }, null, 2),
++    );
++    const runs = await listRuns(nodeFs(), path.join(fx.root, '.reviews'), 'DemoTopic', makeRunRootProber(fx.runRoot, path.basename(fx.root), 'DemoTopic'));
++    const run7 = runs.find((r) => r.runId === '20261106T000007Z');
++    assert.ok(run7, 'v1 旧件 run 也进列表（_meta/run 兜底追加）');
++    const gemini = run7!.sides.find((s) => s.critic === 'gemini')!;
++    assert.equal(gemini.state, 'unsupported-schema');
++    assert.match(gemini.notice ?? '', /不支持/);
++  });
++});
+diff --git a/extension/test/unit/annotationModel.test.ts b/extension/test/unit/annotationModel.test.ts
+new file mode 100644
+index 00000000..a70678ae
+--- /dev/null
++++ b/extension/test/unit/annotationModel.test.ts
+@@ -0,0 +1,157 @@
++/** annotationModel 单测（r2 计划 D3′/D9′） */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { buildAnnotationModels, severityToDiagLevel, driftNotesOf, findingsSummary, type ResolvedFinding } from '../../src/reviews/annotationModel';
++import type { ReviewFinding, ParsedReview } from '../../src/reviews/reviewParse';
++import { parseReviewFile } from '../../src/reviews/reviewParse';
++import { CONSISTENCY_UNKNOWN, type LocationResolution } from '../../src/reviews/locationResolve';
++
++function finding(id: string, severity: ReviewFinding['severity'], loc = 'src/a.ts:3'): ReviewFinding {
++  return { id, severity, layer: 'code', kind: 'correctness', location: loc, problem: `问题 ${id}`, evidence: '证据', suggestion: '建议', confidence: 'high' };
++}
++
++function reso(relPath: string, start: number, end: number, extra?: Partial<LocationResolution>): LocationResolution {
++  return {
++    kind: 'file',
++    anchors: [{ relPath, raw: { start, end }, level: start > 0 ? 'line' : 'file', line: start > 0 ? { start, end } : null, drift: null, label: null }],
++    missingRelPath: null,
++    consistency: CONSISTENCY_UNKNOWN,
++    ...extra,
++  };
++}
++
++function rf(critic: string, f: ReviewFinding, resolution: LocationResolution): ResolvedFinding {
++  return { critic, runId: '20260101T000000Z', finding: f, resolution };
++}
++
++const OPTS = { enabledCritics: null, maxThreadsPerFile: 200, maxTotalFindings: 2000 };
++
++test('severity 映射四档（FR-6c）', () => {
++  assert.equal(severityToDiagLevel('blocker'), 'error');
++  assert.equal(severityToDiagLevel('major'), 'error');
++  assert.equal(severityToDiagLevel('minor'), 'warning');
++  assert.equal(severityToDiagLevel('nit'), 'information');
++});
++
++test('同行多侧多 finding → 同 thread 多 comment（分层不覆盖）', () => {
++  const out = buildAnnotationModels(
++    [
++      rf('claude', finding('C-01', 'major'), reso('src/a.ts', 3, 3)),
++      rf('claude', finding('C-02', 'nit'), reso('src/a.ts', 3, 3)),
++      rf('gemini', finding('G-01', 'blocker'), reso('src/a.ts', 3, 3)),
++    ],
++    OPTS,
++  );
++  assert.equal(out.threads.length, 1);
++  const t = out.threads[0]!;
++  assert.equal(t.comments.length, 3);
++  assert.deepEqual(t.comments.map((c) => c.critic), ['claude', 'claude', 'gemini']);
++  assert.match(t.label, /claude 2 条/);
++  assert.match(t.label, /gemini 1 条/);
++  // 诊断逐 finding 一条，与线程同区间
++  assert.equal(out.diagnostics.length, 3);
++  for (const d of out.diagnostics) {
++    assert.equal(d.startLine, 3);
++    assert.equal(d.endLine, 3);
++  }
++});
++
++test('区间贯通：多行 location 的 thread/诊断同源（CLAUDE-05）', () => {
++  const out = buildAnnotationModels([rf('claude', finding('C-01', 'major'), reso('src/a.ts', 23, 29))], OPTS);
++  assert.equal(out.threads[0]!.startLine, 23);
++  assert.equal(out.threads[0]!.endLine, 29);
++  assert.equal(out.diagnostics[0]!.startLine, 23);
++  assert.equal(out.diagnostics[0]!.endLine, 29);
++});
++
++test('文件级（无行号/漂移）→ 首行区间 + ⚠ 标注', () => {
++  const r: LocationResolution = {
++    kind: 'file',
++    anchors: [{ relPath: 'src/a.ts', raw: null, level: 'file', line: null, drift: 'out-of-range', label: '行号越界，降为文件级' }],
++    missingRelPath: null,
++    consistency: CONSISTENCY_UNKNOWN,
++  };
++  const out = buildAnnotationModels([rf('claude', finding('C-01', 'major'), r)], OPTS);
++  assert.equal(out.threads[0]!.startLine, 1);
++  assert.match(out.threads[0]!.label, /文件级/);
++  assert.match(out.diagnostics[0]!.message, /行号越界/);
++});
++
++test('一致性标注进线程与诊断（CLAUDE-01/CODEX-02）', () => {
++  const r: LocationResolution = { ...reso('src/a.ts', 3, 3), consistency: { state: 'mismatch', note: null } };
++  const rf1 = rf('claude', finding('C-01', 'major'), r);
++  const notes = driftNotesOf(rf1);
++  assert.ok(notes.some((n) => n.includes('与送审版本不一致')));
++  const out = buildAnnotationModels([rf1], OPTS);
++  assert.match(out.diagnostics[0]!.message, /与送审版本不一致/);
++  const r2: LocationResolution = { ...reso('src/a.ts', 3, 3), consistency: { state: 'edited', note: null } };
++  assert.ok(driftNotesOf(rf('claude', finding('C-02', 'minor'), r2)).some((n) => n.includes('文件已在批注挂载后被编辑')));
++});
++
++test('doc/outside/missing → listOnly（不建 VS Code 对象）', () => {
++  const doc: LocationResolution = { kind: 'doc', anchors: [], missingRelPath: null, consistency: CONSISTENCY_UNKNOWN };
++  const outside: LocationResolution = { kind: 'outside', anchors: [], missingRelPath: null, consistency: CONSISTENCY_UNKNOWN };
++  const missing: LocationResolution = { kind: 'missing-file', anchors: [], missingRelPath: 'src/gone.ts', consistency: CONSISTENCY_UNKNOWN };
++  const out = buildAnnotationModels(
++    [rf('claude', finding('C-01', 'major', 'plan §3.2'), doc), rf('claude', finding('C-02', 'major', '../x.ts:1'), outside), rf('claude', finding('C-03', 'minor', 'src/gone.ts:9'), missing)],
++    OPTS,
++  );
++  assert.equal(out.threads.length, 0);
++  assert.equal(out.diagnostics.length, 0);
++  assert.equal(out.listOnly.length, 3);
++  assert.match(out.listOnly[2]!.reason, /src\/gone\.ts/);
++});
++
++test('逐家开关：过滤后重建（enabledCritics）', () => {
++  const data = [rf('claude', finding('C-01', 'major'), reso('src/a.ts', 3, 3)), rf('gemini', finding('G-01', 'minor'), reso('src/a.ts', 4, 4))];
++  const off = buildAnnotationModels(data, { ...OPTS, enabledCritics: new Set(['claude']) });
++  assert.equal(off.diagnostics.length, 1);
++  assert.equal(off.diagnostics[0]!.code, 'C-01');
++  const all = buildAnnotationModels(data, { ...OPTS, enabledCritics: new Set() }); // 空集合 = 全部
++  assert.equal(all.diagnostics.length, 2);
++});
++
++test('量级控制：单文件线程上限溢出（D8′）', () => {
++  const data: ResolvedFinding[] = [];
++  for (let i = 1; i <= 5; i++) data.push(rf('claude', finding(`C-${String(i).padStart(2, '0')}`, 'minor', `src/a.ts:${i}`), reso('src/a.ts', i, i)));
++  const out = buildAnnotationModels(data, { ...OPTS, maxThreadsPerFile: 3 });
++  assert.equal(out.threads.length, 3);
++  assert.equal(out.diagnostics.length, 5); // 诊断仍全量
++  assert.deepEqual(out.overflow, [{ file: 'src/a.ts', count: 2 }]);
++});
++
++test('量级控制：scope 总量超限 → 仅诊断（D8′）', () => {
++  const data: ResolvedFinding[] = [];
++  for (let i = 1; i <= 5; i++) data.push(rf('claude', finding(`C-${String(i).padStart(2, '0')}`, 'minor', `src/a.ts:${i}`), reso('src/a.ts', i, i)));
++  const out = buildAnnotationModels(data, { ...OPTS, maxTotalFindings: 4 });
++  assert.equal(out.threads.length, 0);
++  assert.equal(out.diagnostics.length, 5);
++});
++
++test('findingsSummary：逐侧摘要（驾驶舱/历史树共用）', () => {
++  const mk = (name: string, text: string): ParsedReview => parseReviewFile(name, text);
++  const c = mk('review-claude-20260101T000000Z.json', JSON.stringify({
++    schema: 'trivium.review.v2', verdict: 'pass-after-changes', summary: 's',
++    findings: [finding('C-01', 'blocker'), finding('C-02', 'nit')],
++  }));
++  const g = mk('review-gemini-20260101T000000Z.json', JSON.stringify({
++    schema: 'trivium.review.v1', verdict: 'pass', summary: 's', findings: [finding('G-01', 'minor')],
++  }));
++  const out = findingsSummary([c, g]);
++  assert.equal(out[0]!.critic, 'claude');
++  assert.equal(out[0]!.counts.blocker, 1);
++  assert.equal(out[0]!.counts.nit, 1);
++  assert.equal(out[0]!.state, 'ok');
++  assert.equal(out[1]!.state, 'unsupported-schema'); // 降级态贯通（CLAUDE-06）
++  assert.ok(out[1]!.notice);
++});
++
++test('totalSuppressed：总量超限标志（CLAUDE-11 提示依据）', () => {
++  const data: ResolvedFinding[] = [];
++  for (let i = 1; i <= 5; i++) data.push(rf('claude', finding(`C-${String(i).padStart(2, '0')}`, 'minor', `src/a.ts:${i}`), reso('src/a.ts', i, i)));
++  const out = buildAnnotationModels(data, { ...OPTS, maxTotalFindings: 4 });
++  assert.equal(out.totalSuppressed, true);
++  assert.equal(out.threads.length, 0);
++  const ok = buildAnnotationModels(data, OPTS);
++  assert.equal(ok.totalSuppressed, false);
++});
+diff --git a/extension/test/unit/diffParse.test.ts b/extension/test/unit/diffParse.test.ts
+new file mode 100644
+index 00000000..46683871
+--- /dev/null
++++ b/extension/test/unit/diffParse.test.ts
+@@ -0,0 +1,145 @@
++/** diffParse 单测（r2 计划 D9′：头部/分界/hunk/新增删除判定） */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import { parseChangesDiff, diffMember, lineInHunks } from '../../src/reviews/diffParse';
++
++const SAMPLE = `# trivium changes.diff
++# run_id: 20261105T185028Z
++# base: HEAD
++# head: 7bae810026539e4382bdd6e22c90c3f0ec216c1f
++# files: 3
++#   src/a.ts
++#   src/new.ts
++#   src/gone.ts
++diff --git a/src/a.ts b/src/a.ts
++index 111..222 100644
++--- a/src/a.ts
+++++ b/src/a.ts
++@@ -10,3 +10,4 @@
++ context
++-old
+++new
+++added
++diff --git a/src/new.ts b/src/new.ts
++new file mode 100644
++index 000..333
++--- /dev/null
+++++ b/src/new.ts
++@@ -0,0 +1,2 @@
+++line1
+++line2
++diff --git a/src/gone.ts b/src/gone.ts
++deleted file mode 100644
++index 444..000
++--- a/src/gone.ts
+++++ /dev/null
++@@ -1,1 +0,0 @@
++-gone
++`;
++
++test('头部字段：run_id/base/head（冻结基线 sha）', () => {
++  const d = parseChangesDiff(SAMPLE);
++  assert.equal(d.runId, '20261105T185028Z');
++  assert.equal(d.base, 'HEAD');
++  assert.equal(d.head, '7bae810026539e4382bdd6e22c90c3f0ec216c1f');
++});
++
++test('diff --git 分界 + hunk 归属到文件（AGY-04）', () => {
++  const d = parseChangesDiff(SAMPLE);
++  assert.equal(d.files.length, 3);
++  const a = diffMember(d, 'src/a.ts');
++  assert.ok(a);
++  assert.equal(a!.hunks.length, 1);
++  const { lines: _l, ...hunkHead } = a!.hunks[0]!;
++  assert.deepEqual(hunkHead, { oldStart: 10, oldLines: 3, newStart: 10, newLines: 4 });
++  assert.equal(a!.added, false);
++  assert.equal(a!.deleted, false);
++});
++
++test('新增/删除文件判定（AGY-06：/dev/null）', () => {
++  const d = parseChangesDiff(SAMPLE);
++  const added = diffMember(d, 'src/new.ts');
++  assert.ok(added?.added);
++  assert.equal(added!.deleted, false);
++  const gone = diffMember(d, 'src/gone.ts');
++  assert.ok(gone?.deleted);
++});
++
++test('成员判定与 hunk 区间', () => {
++  const d = parseChangesDiff(SAMPLE);
++  assert.equal(diffMember(d, 'src/other.ts'), null);
++  const a = diffMember(d, 'src/a.ts')!;
++  assert.ok(lineInHunks(a, 10));
++  assert.ok(lineInHunks(a, 13));
++  assert.ok(!lineInHunks(a, 14));
++  assert.ok(!lineInHunks(a, 5));
++});
++
++test('精简 diff（无 diff --git 行）→ +++ b/ 兜底分界', () => {
++  const d = parseChangesDiff('--- a/src/x.ts\n+++ b/src/x.ts\n@@ -1,1 +1,1 @@\n-a\n+b\n');
++  assert.equal(d.files.length, 1);
++  assert.equal(d.files[0]!.relPath, 'src/x.ts');
++  assert.equal(d.files[0]!.hunks.length, 1);
++});
++
++test('空/坏输入：尽力返回，不抛异常', () => {
++  assert.deepEqual(parseChangesDiff(''), { runId: null, base: null, head: null, files: [] });
++  const d = parseChangesDiff('random text\nno headers');
++  assert.equal(d.files.length, 0);
++});
++
++test('主仓真实工件（存在即测）：头部与文件数', async () => {
++  const p = path.join(process.cwd(), '..', '.reviews', 'VSCode插件Phase0-1', 'code', '_meta', 'changes-20261105T185028Z.diff');
++  let text: string;
++  try {
++    text = await fs.readFile(p, 'utf8');
++  } catch {
++    return; // 独立分发环境跳过
++  }
++  const d = parseChangesDiff(text);
++  assert.equal(d.head, '7bae810026539e4382bdd6e22c90c3f0ec216c1f');
++  assert.ok(d.files.length >= 60);
++  const readme = diffMember(d, 'extension/README.md');
++  assert.ok(readme, 'README 在变更集内');
++  assert.ok(d.files.some((f) => f.added), '首轮变更含新增文件');
++});
++
++// ── S8 修订（CLAUDE-02/05、AGY-03）：hunk 正文 / applyHunks / resolveBaseRef / pendingAdded ──
++import { applyHunks, resolveBaseRef } from '../../src/reviews/diffParse';
++
++test('hunk 正文行收集（CLAUDE-02：送审内容重建的输入）', () => {
++  const d = parseChangesDiff(SAMPLE);
++  const a = diffMember(d, 'src/a.ts')!;
++  assert.deepEqual(a.hunks[0]!.lines, [' context', '-old', '+new', '+added']);
++});
++
++test('applyHunks：base + 补丁段 → 送审工作树内容（CLAUDE-02 核心语义）', () => {
++  const base = ['l1', 'l2', 'old', 'l4', 'l5'].join('\n');
++  const d = parseChangesDiff('diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -2,3 +2,4 @@\n l2\n-old\n+new\n+added\n l4\n');
++  const sent = applyHunks(base, d.files[0]!.hunks);
++  assert.equal(sent, ['l1', 'l2', 'new', 'added', 'l4', 'l5'].join('\n'));
++  // 多 hunk 顺序应用
++  const base2 = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].join('\n');
++  const d2 = parseChangesDiff('diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,1 +1,1 @@\n-a\n+A\n@@ -5,2 +5,2 @@\n-e\n+E\n f\n');
++  assert.equal(applyHunks(base2, d2.files[0]!.hunks), ['A', 'b', 'c', 'd', 'E', 'f', 'g'].join('\n'));
++  // 应用后 == 工作区 → consistent 判据成立；此处验证 CRLF 归一
++  assert.equal(applyHunks(base.replace(/\n/g, '\r\n'), d.files[0]!.hunks), ['l1', 'l2', 'new', 'added', 'l4', 'l5'].join('\n'));
++});
++
++test('resolveBaseRef：base 字面 HEAD → head sha；40 位 sha → 自身；其它 ref → null（CLAUDE-05）', () => {
++  assert.equal(resolveBaseRef({ runId: null, base: 'HEAD', head: 'abc123', files: [] }), 'abc123');
++  const sha = '0123456789012345678901234567890123456789';
++  assert.equal(resolveBaseRef({ runId: null, base: sha, head: 'def456', files: [] }), sha);
++  assert.equal(resolveBaseRef({ runId: null, base: 'main', head: 'abc', files: [] }), null);
++  assert.equal(resolveBaseRef({ runId: null, base: null, head: 'abc', files: [] }), null);
++});
++
++test('简化 patch（无 --git 头）新增文件：pendingAdded 兜底（AGY-03）', () => {
++  const d = parseChangesDiff('--- /dev/null\n+++ b/src/new2.ts\n@@ -0,0 +1,1 @@\n+hello\n');
++  const f = d.files[0]!;
++  assert.equal(f.relPath, 'src/new2.ts');
++  assert.ok(f.added, '无 --git 头时 --- /dev/null 也判新增');
++  assert.deepEqual(f.hunks[0]!.lines, ['+hello']);
++});
+diff --git a/extension/test/unit/locationResolve.test.ts b/extension/test/unit/locationResolve.test.ts
+new file mode 100644
+index 00000000..71b6011f
+--- /dev/null
++++ b/extension/test/unit/locationResolve.test.ts
+@@ -0,0 +1,194 @@
++/** locationResolve 单测（r2 计划 D2′：归一 + 行号校验全分支） */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import {
++  normalizeLocation,
++  parseRanges,
++  extractAnchorTexts,
++  resolveLocation,
++  CONSISTENCY_UNKNOWN,
++} from '../../src/reviews/locationResolve';
++
++const ROOT = '/ws/proj';
++
++/** 内存文件映射 */
++function files(map: Record<string, string>): (rel: string) => Promise<string | null> {
++  return async (rel) => map[rel] ?? null;
++}
++
++test('parseRanges：单行 / 区间 / 逗号多区间（AGY-02 真实形态）', () => {
++  assert.deepEqual(parseRanges('88'), [{ start: 88, end: 88 }]);
++  assert.deepEqual(parseRanges('23-29'), [{ start: 23, end: 29 }]);
++  assert.deepEqual(parseRanges('418-424,524-530,533'), [
++    { start: 418, end: 424 },
++    { start: 524, end: 530 },
++    { start: 533, end: 533 },
++  ]);
++  assert.equal(parseRanges('a-b'), null);
++  assert.equal(parseRanges(''), null);
++});
++
++test('归一：项目相对路径 / 带引号 / ./ 前缀', () => {
++  assert.deepEqual(normalizeLocation('src/a.ts:88', ROOT), { kind: 'file', anchors: [{ relPath: 'src/a.ts', ranges: [{ start: 88, end: 88 }] }] });
++  const q = normalizeLocation("'src/a.ts':88", ROOT);
++  assert.equal(q.kind, 'file');
++  if (q.kind === 'file') assert.equal(q.anchors[0]?.relPath, 'src/a.ts');
++  const dot = normalizeLocation('./src/a.ts:1-2', ROOT);
++  assert.equal(dot.kind, 'file');
++  if (dot.kind === 'file') assert.equal(dot.anchors[0]?.relPath, 'src/a.ts');
++});
++
++test('归一：绝对路径截取工作区相对段（workdir 前缀剥离）', () => {
++  const r = normalizeLocation(`${ROOT}/src/ui/cockpit.ts:104-131`, ROOT);
++  assert.equal(r.kind, 'file');
++  if (r.kind === 'file') {
++    assert.equal(r.anchors[0]?.relPath, 'src/ui/cockpit.ts');
++    assert.deepEqual(r.anchors[0]?.ranges, [{ start: 104, end: 131 }]);
++  }
++});
++
++test('归一：workspace 外绝对路径与 ../ 上溯 → outside（CLAUDE-07）', () => {
++  assert.equal(normalizeLocation('/other/repo/src/a.ts:5', ROOT).kind, 'outside');
++  assert.equal(normalizeLocation('../outside/a.ts:5', ROOT).kind, 'outside');
++  assert.equal(normalizeLocation('src/../../escape.ts:5', ROOT).kind, 'outside');
++  // 伪装前缀目录：前缀相同但实为兄弟目录（路径里带 /ws/proj-evil）
++  assert.equal(normalizeLocation(`${ROOT}-evil/a.ts:1`, ROOT).kind, 'outside');
++});
++
++test('归一：中文分号多文件位置（真实形态）', () => {
++  const r = normalizeLocation('extension/src/extension.ts:23-29；extension/src/ui/cockpit.ts:104-131', ROOT);
++  assert.equal(r.kind, 'file');
++  if (r.kind === 'file') {
++    assert.equal(r.anchors.length, 2);
++    assert.equal(r.anchors[0]?.relPath, 'extension/src/extension.ts');
++    assert.equal(r.anchors[1]?.relPath, 'extension/src/ui/cockpit.ts');
++  }
++});
++
++test('归一：非文件形态 → doc', () => {
++  assert.deepEqual(normalizeLocation('plan §3.2', ROOT), { kind: 'doc', text: 'plan §3.2' });
++  assert.deepEqual(normalizeLocation('设计 §16.2 纪律 7', ROOT), { kind: 'doc', text: '设计 §16.2 纪律 7' });
++});
++
++test('锚文本提取：反引号 ≥8 字符，排除路径与纯数字（AGY-03）', () => {
++  const out = extractAnchorTexts('问题在 `pool.length===1` 分支', '读了 `src/runDiscovery.ts` 与 `1.2.3`');
++  assert.deepEqual(out, ['pool.length===1']);
++  assert.deepEqual(extractAnchorTexts('无反引号', '内容'), []);
++});
++
++const SAMPLE = ['l1', 'l2', 'const x = pool.length === 1;', 'l4', 'l5', 'l6', 'l7', 'l8', 'l9', 'l10'].join('\n');
++
++test('resolveLocation：命中 → 行级（界内信任行号）', async () => {
++  const r = await resolveLocation('src/a.ts:3', ROOT, { readFile: files({ 'src/a.ts': SAMPLE }) });
++  assert.equal(r.kind, 'file');
++  const a = r.anchors[0]!;
++  assert.equal(a.level, 'line');
++  assert.deepEqual(a.line, { start: 3, end: 3 });
++  assert.equal(a.drift, null);
++});
++
++test('resolveLocation：区间贯通（CLAUDE-05）', async () => {
++  const r = await resolveLocation('src/a.ts:2-4', ROOT, { readFile: files({ 'src/a.ts': SAMPLE }) });
++  const a = r.anchors[0]!;
++  assert.deepEqual(a.line, { start: 2, end: 4 });
++});
++
++test('resolveLocation：文件不存在 → missing-file', async () => {
++  const r = await resolveLocation('src/gone.ts:5', ROOT, { readFile: files({}) });
++  assert.equal(r.kind, 'missing-file');
++  assert.equal(r.missingRelPath, 'src/gone.ts');
++});
++
++test('resolveLocation：无行号 → 文件级「未给行号」（区别于漂移，CLAUDE-08）', async () => {
++  const r = await resolveLocation('src/a.ts', ROOT, { readFile: files({ 'src/a.ts': SAMPLE }) });
++  const a = r.anchors[0]!;
++  assert.equal(a.level, 'file');
++  assert.equal(a.label, '未给行号');
++  assert.equal(a.drift, null);
++});
++
++test('resolveLocation：越界 + 锚文本唯一命中（空白归一化）→ nearby（AGY-03）', async () => {
++  const r = await resolveLocation('src/a.ts:999', ROOT, {
++    readFile: files({ 'src/a.ts': SAMPLE }),
++    anchorTexts: ['pool.length === 1'], // 空格形态 vs 源码无空格（真实形态是 `pool.length===1`）
++  });
++  const a = r.anchors[0]!;
++  assert.equal(a.level, 'line');
++  assert.equal(a.drift, 'nearby');
++  assert.equal(a.line?.start, 3);
++  assert.match(a.label ?? '', /原 L999/);
++});
++
++test('resolveLocation：越界 + 锚文本多命中 → multi-hit 歧义降文件级（CLAUDE-08）', async () => {
++  const dup = ['const x = pool.length===1;', 'b', 'const y = pool.length===1;'].join('\n');
++  const r = await resolveLocation('src/a.ts:99', ROOT, {
++    readFile: files({ 'src/a.ts': dup }),
++    anchorTexts: ['pool.length===1'],
++  });
++  const a = r.anchors[0]!;
++  assert.equal(a.level, 'file');
++  assert.equal(a.drift, 'multi-hit');
++});
++
++test('resolveLocation：越界 + 有锚未命中 → line-lost；无锚 → out-of-range', async () => {
++  const r1 = await resolveLocation('src/a.ts:99', ROOT, { readFile: files({ 'src/a.ts': 'only\nlines\nhere\n' }), anchorTexts: ['nothing-matches-this'] });
++  assert.equal(r1.anchors[0]!.drift, 'line-lost');
++  assert.equal(r1.anchors[0]!.level, 'file');
++  const r2 = await resolveLocation('src/a.ts:99', ROOT, { readFile: files({ 'src/a.ts': 'x\ny\n' }) });
++  assert.equal(r2.anchors[0]!.drift, 'out-of-range');
++  assert.equal(r2.anchors[0]!.level, 'file');
++});
++
++test('resolveLocation：一致性结论透传（静态/动态判据输出）', async () => {
++  const r = await resolveLocation('src/a.ts:1', ROOT, {
++    readFile: files({ 'src/a.ts': 'x\n' }),
++    consistency: () => ({ state: 'mismatch', note: 'git blob 不一致' }),
++  });
++  assert.equal(r.consistency.state, 'mismatch');
++  assert.equal(CONSISTENCY_UNKNOWN.state, 'unknown');
++});
++
++test('resolveLocation：次级锚点不做行号校验（不套用主文件行数）', async () => {
++  const r = await resolveLocation('src/a.ts:1；src/b.ts:500-600', ROOT, {
++    readFile: files({ 'src/a.ts': 'x\ny\n', 'src/b.ts': 'one\n' }),
++  });
++  assert.equal(r.kind, 'file');
++  assert.equal(r.anchors[1]!.level, 'file');
++  assert.match(r.anchors[1]!.label ?? '', /次级位置/);
++});
++
++// ── S8 修订（CLAUDE-09/AGY-02、CLAUDE-08）：行号边界与次级区间 ──
++
++test('行号 0 / 负数 → 文件级「未给行号」（CLAUDE-09/AGY-02）', async () => {
++  const zero = await resolveLocation('src/a.ts:0', ROOT, { readFile: files({ 'src/a.ts': SAMPLE }) });
++  assert.equal(zero.anchors[0]!.level, 'file');
++  assert.equal(zero.anchors[0]!.label, '未给行号');
++  const neg = await resolveLocation('src/a.ts:-1', ROOT, { readFile: files({ 'src/a.ts': SAMPLE }) });
++  assert.equal(neg.kind, 'file');
++  assert.equal(neg.anchors[0]!.level, 'file');
++  assert.equal(neg.anchors[0]!.label, '未给行号');
++  // 负数尾巴剥离后仍是有效文件（不误报 missing-file）
++  assert.equal(neg.anchors[0]!.relPath, 'src/a.ts');
++});
++
++test('parseRanges 拒绝 0 与负数形态', () => {
++  assert.equal(parseRanges('0'), null);
++  assert.equal(parseRanges('0-3'), null);
++  assert.equal(parseRanges('-1'), null);
++  assert.equal(parseRanges('3,-2'), null);
++});
++
++test('逗号多区间的次级区间展开（CLAUDE-08：2-3,5-6 不只剩 2-3）', async () => {
++  const r = await resolveLocation('src/a.ts:2-3,5-6', ROOT, { readFile: files({ 'src/a.ts': SAMPLE }) });
++  const lineAnchors = r.anchors.filter((a) => a.level === 'line');
++  assert.ok(lineAnchors.some((a) => a.line?.start === 2 && a.line?.end === 3), '主锚点 2-3');
++  const secondary = r.anchors.find((a) => a.label?.includes('次级区间'));
++  assert.ok(secondary, '次级区间存在');
++  assert.equal(secondary!.line?.start, 5);
++  assert.equal(secondary!.line?.end, 6);
++  // 次级区间越界 → 文件级标注
++  const r2 = await resolveLocation('src/a.ts:2,999-1000', ROOT, { readFile: files({ 'src/a.ts': SAMPLE }) });
++  const over = r2.anchors.find((a) => a.label?.includes('越界'));
++  assert.ok(over, '越界次级区间标注存在');
++  assert.equal(over!.level, 'file');
++});
+diff --git a/extension/test/unit/reviewParse.test.ts b/extension/test/unit/reviewParse.test.ts
+new file mode 100644
+index 00000000..c64c069a
+--- /dev/null
++++ b/extension/test/unit/reviewParse.test.ts
+@@ -0,0 +1,150 @@
++/** reviewParse 单测（r2 计划 D9′：优先主仓真实工件，缺则内联回退） */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { promises as fs } from 'node:fs';
++import path from 'node:path';
++import {
++  parseReviewFile,
++  parseReviewFileName,
++  severityLabel,
++  verdictLabel,
++  countSeverities,
++  type ParsedReview,
++} from '../../src/reviews/reviewParse';
++
++/**
++ * 主仓真实工件夹具（D1′/D9′）：存在即读、缺则回退内联样例（独立分发兼容）。
++ * 覆盖：三家 verdict 全档（Phase0-1 code r2）与 blocker/major/minor/nit 全档
++ * （Agent双模式接入真实准入收口 code 历史件）。
++ */
++async function loadRealFixture(rel: string): Promise<{ name: string; text: string } | null> {
++  const p = path.join(process.cwd(), '..', '.reviews', rel);
++  try {
++    return { name: path.basename(rel), text: await fs.readFile(p, 'utf8') };
++  } catch {
++    return null;
++  }
++}
++
++test('文件名解析：标准形态 / 不识别', () => {
++  assert.deepEqual(parseReviewFileName('review-claude-20261105T185028Z.json'), { critic: 'claude', runId: '20261105T185028Z' });
++  assert.deepEqual(parseReviewFileName('review-gemini-20261105T182415Z.json'), { critic: 'gemini', runId: '20261105T182415Z' });
++  assert.equal(parseReviewFileName('changes-20261105T185028Z.diff'), null);
++  assert.equal(parseReviewFileName('run-20261105T185028Z.json'), null);
++  assert.equal(parseReviewFileName('review-claude-notimestamp.json'), null);
++});
++
++test('真实工件（claude r2）：全档 severity 解析 + verdict', async () => {
++  const fx = await loadRealFixture('VSCode插件Phase0-1/code/_meta/review-claude-20261105T185028Z.json');
++  if (!fx) return; // 独立分发环境：内联回退见下述构造用例
++  const parsed = parseReviewFile(fx.name, fx.text);
++  assert.equal(parsed.status.state, 'ok');
++  assert.equal(parsed.status.critic, 'claude');
++  assert.equal(parsed.verdict, 'pass-after-changes');
++  assert.ok(parsed.findings.length > 0);
++  const sevs = new Set(parsed.findings.map((f) => f.severity));
++  assert.ok(sevs.has('major'));
++  for (const f of parsed.findings) {
++    assert.ok(f.id.length > 0 && f.problem.length > 0 && f.location.length > 0);
++  }
++});
++
++test('真实工件（含 nit/minor 的 v2 历史件）：全档覆盖', async () => {
++  const fx = await loadRealFixture('KimiCode-macOS规则根因与只读准入修复/code/_meta/review-glm-20261027T180347Z.json');
++  if (!fx) return;
++  const parsed = parseReviewFile(fx.name, fx.text);
++  assert.equal(parsed.status.state, 'ok');
++  const sevs = new Set(parsed.findings.map((f) => f.severity));
++  assert.ok(sevs.has('minor'));
++  assert.ok(sevs.has('nit'));
++});
++
++test('真实工件（review.v1 旧归档件）：逐文件降级且明示（2026-10 早期件为 v1 契约）', async () => {
++  const fx = await loadRealFixture('Agent双模式接入真实准入收口/code/_meta/review-claude-20261010T170416Z.json');
++  if (!fx) return;
++  const parsed = parseReviewFile(fx.name, fx.text);
++  assert.equal(parsed.status.state, 'unsupported-schema');
++  assert.equal(parsed.status.actualSchema, 'trivium.review.v1');
++  assert.equal(parsed.findings.length, 0);
++  assert.match(parsed.status.notice ?? '', /未展示/);
++});
++
++function baseFinding(): Record<string, string> {
++  return {
++    id: 'TEST-01', severity: 'major', layer: 'code', kind: 'correctness',
++    location: 'src/a.ts:10', problem: 'p', evidence: 'e', suggestion: 's', confidence: 'high',
++  };
++}
++
++function reviewJson(findings: unknown[], schema = 'trivium.review.v2', verdict = 'pass'): string {
++  return JSON.stringify({ schema, verdict, summary: 'ok', findings });
++}
++
++test('ok：正常解析', () => {
++  const p = parseReviewFile('review-claude-20260101T000000Z.json', reviewJson([baseFinding()]));
++  assert.equal(p.status.state, 'ok');
++  assert.equal(p.findings[0]?.id, 'TEST-01');
++  assert.equal(p.verdict, 'pass');
++  assert.deepEqual(p.agreed, []);
++});
++
++test('partial-skipped：单条缺字段/枚举外值 → 跳过计数（不整份丢弃）', () => {
++  const bad1 = { ...baseFinding() } as Record<string, unknown>;
++  delete bad1['problem'];
++  const bad2 = { ...baseFinding(), severity: 'huge' };
++  const good = { ...baseFinding(), id: 'TEST-02' };
++  const p = parseReviewFile('review-claude-20260101T000000Z.json', reviewJson([bad1, bad2, good]));
++  assert.equal(p.status.state, 'partial-skipped');
++  assert.equal(p.status.skippedCount, 2);
++  assert.equal(p.findings.length, 1);
++  assert.match(p.status.notice ?? '', /2 条/);
++});
++
++test('parse-error：坏 JSON / 非对象根', () => {
++  const p1 = parseReviewFile('review-claude-20260101T000000Z.json', '{oops');
++  assert.equal(p1.status.state, 'parse-error');
++  assert.match(p1.status.notice ?? '', /JSON/);
++  const p2 = parseReviewFile('review-claude-20260101T000000Z.json', '[1,2]');
++  assert.equal(p2.status.state, 'parse-error');
++});
++
++test('unsupported-schema：v1 旧件 → 逐文件降级且携带实际串（CLAUDE-06/D1′）', () => {
++  const p = parseReviewFile('review-claude-20260101T000000Z.json', reviewJson([baseFinding()], 'trivium.review.v1'));
++  assert.equal(p.status.state, 'unsupported-schema');
++  assert.equal(p.status.actualSchema, 'trivium.review.v1');
++  assert.equal(p.findings.length, 0);
++  assert.match(p.status.notice ?? '', /不支持/);
++  const p2 = parseReviewFile('review-claude-20260101T000000Z.json', reviewJson([baseFinding()], 'trivium.review.v3'));
++  assert.equal(p2.status.state, 'unsupported-schema');
++});
++
++test('unrecognized：命名不匹配', () => {
++  const p = parseReviewFile('whatever.json', reviewJson([baseFinding()]));
++  assert.equal(p.status.state, 'unrecognized');
++});
++
++test('标签与计数工具', () => {
++  assert.equal(severityLabel('blocker'), '阻断');
++  assert.equal(verdictLabel('pass-after-changes'), '修改后通过');
++  assert.equal(verdictLabel(null), '未知');
++  const reviews: ParsedReview[] = [
++    parseReviewFile('review-a-20260101T000000Z.json', reviewJson([baseFinding(), { ...baseFinding(), severity: 'nit' }])),
++    parseReviewFile('review-b-20260101T000000Z.json', reviewJson([{ ...baseFinding(), severity: 'minor' }])),
++  ];
++  const c = countSeverities(reviews);
++  assert.equal(c.major, 1);
++  assert.equal(c.nit, 1);
++  assert.equal(c.minor, 1);
++  assert.equal(c.blocker, 0);
++});
++
++test('枚举表外值（layer/kind/confidence）→ 跳过计数（CLAUDE-10）', () => {
++  const bad1 = { ...baseFinding(), layer: '架构' };
++  const bad2 = { ...baseFinding(), kind: 'style' };
++  const bad3 = { ...baseFinding(), confidence: 'certain' };
++  const good = { ...baseFinding(), id: 'TEST-09' };
++  const p = parseReviewFile('review-claude-20260101T000000Z.json', reviewJson([bad1, bad2, bad3, good]));
++  assert.equal(p.status.state, 'partial-skipped');
++  assert.equal(p.status.skippedCount, 3);
++  assert.equal(p.findings.length, 1);
++});
+diff --git a/extension/test/unit/runHistory.test.ts b/extension/test/unit/runHistory.test.ts
+new file mode 100644
+index 00000000..4dda0b45
+--- /dev/null
++++ b/extension/test/unit/runHistory.test.ts
+@@ -0,0 +1,116 @@
++/** runHistory 单测（r2 计划 D9′：第一事实源 + run_root 探测纪律） */
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { listTopics, listRuns } from '../../src/history/runHistory';
++
++/** 内存文件系统 */
++function fsOf(map: Record<string, string>) {
++  const fsApi = {
++    async readdir(p: string): Promise<string[]> {
++      const dir = p.replace(/\/$/, '');
++      const prefix = `${dir}/`;
++      const out = new Set<string>();
++      for (const k of Object.keys(map)) {
++        if (k.startsWith(prefix)) {
++          const rest = k.slice(prefix.length);
++          if (rest.length > 0) out.add(rest.split('/')[0]!);
++        }
++      }
++      return [...out];
++    },
++    async readFile(p: string): Promise<string> {
++      const v = map[p];
++      if (v === undefined) throw new Error(`ENOENT ${p}`);
++      return v;
++    },
++  };
++  return fsApi;
++}
++
++function reviewJson(critic: string, verdict: string, sevs: string[]): string {
++  const findings = sevs.map((s, i) => ({
++    id: `${critic.toUpperCase()}-${String(i + 1).padStart(2, '0')}`, severity: s, layer: 'code', kind: 'correctness',
++    location: 'src/a.ts:1', problem: 'p', evidence: 'e', suggestion: 's', confidence: 'high',
++  }));
++  return JSON.stringify({ schema: 'trivium.review.v2', verdict, summary: 's', findings });
++}
++
++const ROOT = '/ws/.reviews';
++
++test('listTopics：扫 task.json 主题目录，按更新时间倒序', async () => {
++  const fs = fsOf({
++    [`${ROOT}/主题A/task.json`]: JSON.stringify({ topic: '主题A', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-02T00:00:00Z', runs: [{ run_id: 'r1', status: 'success' }], drivers: { plan: { driver: 'glm' } } }),
++    [`${ROOT}/主题B/task.json`]: JSON.stringify({ topic: '主题B', updated_at: '2026-01-05T00:00:00Z', runs: [] }),
++    [`${ROOT}/无task目录/其他.md`]: '# 无 task.json',
++  });
++  const out = await listTopics(fs, ROOT);
++  assert.equal(out.length, 2);
++  assert.equal(out[0]!.topic, '主题B'); // 更新时间倒序
++  assert.equal(out[1]!.runCount, 1);
++  assert.deepEqual(out[1]!.drivers, ['glm']);
++});
++
++test('listRuns：_meta/run-*.json 第一事实源 + review 统计（AGY-05）', async () => {
++  const runId = '20260101T000000Z';
++  const map: Record<string, string> = {
++    [`${ROOT}/主题A/task.json`]: JSON.stringify({
++      topic: '主题A',
++      runs: [{ run_id: runId, stage: 'code', rerun_index: 1, status: 'success', driver: 'glm', started_at: '2026-01-01T00:01:00Z' }],
++    }),
++    [`${ROOT}/主题A/code/_meta/run-${runId}.json`]: JSON.stringify({ run_id: runId, stage: 'code', rerun_index: 1, driver: 'glm', critics_selected: ['claude', 'gemini'], started_at: '2026-01-01T00:01:00Z', finished_at: '2026-01-01T00:10:00Z' }),
++    [`${ROOT}/主题A/code/_meta/review-claude-${runId}.json`]: reviewJson('claude', 'pass-after-changes', ['blocker', 'major']),
++    [`${ROOT}/主题A/code/_meta/review-gemini-${runId}.json`]: reviewJson('gemini', 'reject', ['minor']),
++  };
++  let probed = 0;
++  const out = await listRuns(fsOf(map), ROOT, '主题A', async () => {
++    probed++;
++    return null;
++  });
++  assert.equal(out.length, 1);
++  const run = out[0]!;
++  assert.equal(run.runId, runId);
++  assert.equal(run.stage, 'code');
++  assert.equal(run.status, 'success');
++  assert.equal(run.driver, 'glm');
++  assert.equal(run.metaLocated, true);
++  assert.deepEqual(run.criticsSelected, ['claude', 'gemini']);
++  assert.equal(run.sides.length, 2);
++  const claude = run.sides.find((s) => s.critic === 'claude')!;
++  assert.equal(claude.verdict, 'pass-after-changes');
++  assert.equal(claude.counts.blocker, 1);
++  assert.equal(claude.counts.major, 1);
++  // 归档齐全 → 不探 run_root（AGY-05：探测次数为 0）
++  assert.equal(probed, 0);
++});
++
++test('listRuns：归档缺失 → 探 run_root；探测失败不接管', async () => {
++  const map: Record<string, string> = {
++    [`${ROOT}/主题B/task.json`]: JSON.stringify({
++      topic: '主题B',
++      runs: [{ run_id: '20260102T000000Z', stage: 'plan', rerun_index: 1, status: 'success', started_at: '2026-01-02T00:00:00Z' }],
++    }),
++    // 无 _meta/run-*.json（归档缺失）
++  };
++  const fs = fsOf(map);
++  // 探测失败（run_root 无该目录）
++  const out1 = await listRuns(fs, ROOT, '主题B', async () => null);
++  assert.equal(out1[0]!.metaLocated, false);
++  // 探测成功：status.json 可读 → 定位并补 phase
++  const withStatus = fsOf({ ...map, '/runs/bucket-1/20260102T000000Z/status.json': JSON.stringify({ phase: 'success', topic: '主题B' }) });
++  const out2 = await listRuns(withStatus, ROOT, '主题B', async (runId) => `/runs/bucket-1/${runId}`);
++  assert.equal(out2[0]!.metaLocated, true);
++  assert.equal(out2[0]!.status, 'success'); // task.json 优先
++});
++
++test('listRuns：仅有归档无 task 记录的 run 追加（防御）；降级侧统计贯通', async () => {
++  const runId = '20260103T000000Z';
++  const map: Record<string, string> = {
++    [`${ROOT}/主题C/plan/_meta/run-${runId}.json`]: JSON.stringify({ run_id: runId, stage: 'plan', driver: 'claude', started_at: '2026-01-03T00:00:00Z' }),
++    [`${ROOT}/主题C/plan/_meta/review-claude-${runId}.json`]: JSON.stringify({ schema: 'trivium.review.v1', verdict: 'pass', findings: [] }),
++  };
++  const out = await listRuns(fsOf(map), ROOT, '主题C', async () => null);
++  assert.equal(out.length, 1);
++  assert.equal(out[0]!.stage, 'plan');
++  assert.equal(out[0]!.sides[0]!.state, 'unsupported-schema');
++  assert.ok(out[0]!.sides[0]!.notice);
++});
