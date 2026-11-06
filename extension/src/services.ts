@@ -7,6 +7,7 @@ import { TriviumCommands } from './cli/commands';
 import { TriviumEnv } from './env/config';
 import { TerminalRelay } from './launch/terminalRelay';
 import { StateWatch } from './monitor/stateWatch';
+import { AnnotationHub } from './reviews/annotationHub';
 
 export interface TriviumServices {
   root: string;
@@ -15,6 +16,8 @@ export interface TriviumServices {
   cmds: TriviumCommands;
   relay: TerminalRelay;
   stateWatch: StateWatch;
+  /** 批注宿主（Phase 2 FR-6：服务级，独立于驾驶舱面板生命周期） */
+  annotationHub: AnnotationHub;
   /** TriviumCode 仓根（工作区即本仓时才有值——渲染产物兜底用） */
   repoRoot: string | null;
   readonly disposables: { push(d: vscode.Disposable): void };
@@ -32,7 +35,8 @@ export async function createServices(context: vscode.ExtensionContext): Promise<
   const cli = new TriviumCli(root);
   const relay = new TerminalRelay();
   const stateWatch = new StateWatch(root);
-  context.subscriptions.push(relay, stateWatch);
+  const annotationHub = new AnnotationHub(root);
+  context.subscriptions.push(relay, stateWatch, annotationHub);
   // 渲染产物兜底候选恒为工作区根（工作区即 TriviumCode 仓时命中 skills/ 产品）
   return {
     root,
@@ -41,6 +45,7 @@ export async function createServices(context: vscode.ExtensionContext): Promise<
     cmds: new TriviumCommands(cli),
     relay,
     stateWatch,
+    annotationHub,
     repoRoot: root,
     disposables: context.subscriptions,
   };

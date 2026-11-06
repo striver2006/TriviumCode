@@ -234,3 +234,233 @@ export async function waitFor(pred: () => boolean | Promise<boolean>, timeoutMs 
     await new Promise((r) => setTimeout(r, everyMs));
   }
 }
+
+// ═══════════════════════ Phase 2（FR-6/FR-7）夹具 ═══════════════════════
+
+/** Phase 2 夹具：源文件 + _meta 审查工件 + changes.diff（git 冻结基线）+ task.json + run_root */
+export interface Phase2Fixture {
+  root: string;
+  runRoot: string;
+  /** 基线提交 sha（changes.diff 的 # head） */
+  gitSha: string;
+  /** 主 run（_meta 归档齐全） */
+  run2Id: string;
+  /** 辅 run（无 _meta 归档，探测 run_root 定位） */
+  run1Id: string;
+  /** 归档缺失 run 的目录（run_root 下） */
+  run1Dir: string;
+  metaDir: string;
+  /** 第二主题（纯归档、无活跃闸门）：历史回放卡/竞态用例（CLAUDE-04/CODEX-02/07） */
+  archiveTopic: string;
+  archiveTopicMetaDir: string;
+  archiveTopicRunId: string;
+  /** 原子写 _meta 下文件（模拟编排器落盘；触发 metaWatch） */
+  writeMeta(name: string, text: string): Promise<void>;
+}
+
+const SAMPLE_TS = [
+  'function sample() {',
+  '  const pool = [1, 2];',
+  '  const size = pool.length === 1 ? 1 : 2;',
+  '  return size;',
+  '}',
+  '// marker line 6',
+  'export const a = 7;',
+  'export const b = 8;',
+  'export const c = 9;',
+  'export const d = 10;',
+  'export const e = 11;',
+  'export const f = 12;',
+  'export const g = 13;',
+  'export const h = 14;',
+  'export const i = 15;',
+  'export const j = 16;',
+  'export const k = 17;',
+  'export const l = 18;',
+  'export const m = 19;',
+  'export {};',
+].join('\n');
+
+function reviewDoc(critic: string, verdict: string, findings: Array<Record<string, string>>): string {
+  return JSON.stringify({ schema: 'trivium.review.v2', verdict, summary: `${critic} 总判断`, findings }, null, 2);
+}
+
+function findingOf(id: string, severity: string, location: string, problem: string, evidence: string): Record<string, string> {
+  return { id, severity, layer: 'code', kind: 'correctness', location, problem, evidence, suggestion: '修一下', confidence: 'high' };
+}
+
+export async function buildPhase2Fixture(): Promise<Phase2Fixture> {
+  const { execSync } = await import('node:child_process');
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'trivium-p2-fx-'));
+  const runRoot = await fs.mkdtemp(path.join(tmpdir(), 'trivium-p2-runs-'));
+  const bucket = `${path.basename(root)}-ab12cd34`;
+  const run2Id = '20261106T000005Z';
+  const run1Id = '20261106T000001Z';
+  const run1Dir = path.join(runRoot, bucket, run1Id);
+
+  // 源文件（B0 基线版）：sample.ts / gone.ts / drifting.ts / stale.ts
+  await fs.mkdir(path.join(root, 'src'), { recursive: true });
+  await fs.writeFile(path.join(root, 'src', 'sample.ts'), SAMPLE_TS + '\n');
+  await fs.writeFile(path.join(root, 'src', 'gone.ts'), 'gone line1\ngone line2\n');
+  await fs.writeFile(path.join(root, 'src', 'drifting.ts'), 'drift base\nline2\n');
+  await fs.writeFile(path.join(root, 'src', 'stale.ts'), 'stale base\n');
+
+  // git 基线提交（B0）：被审 base 的冻结身份来源；同时留 .baseline 快照
+  // 供测试伪 git API（toGitUri → `${fsPath}.baseline`）读取
+  const git = (args: string): string => execSync(`git ${args}`, { cwd: root, encoding: 'utf8' }).trim();
+  git('init -q');
+  git("config user.email t@t");
+  git("config user.name t");
+  git('add src/sample.ts src/gone.ts src/drifting.ts src/stale.ts');
+  git('commit -q -m baseline');
+  const gitSha = git('rev-parse HEAD');
+  for (const f of ['sample.ts', 'drifting.ts', 'stale.ts', 'gone.ts']) {
+    await fs.copyFile(path.join(root, 'src', f), path.join(root, 'src', `${f}.baseline`));
+  }
+
+  // 工作区（送审时点 B1）：sample 第 6 行真实改动（第 3 行锚文本保留）、
+  // drifting 改内容、stale 改内容（B1''）、gone 删除、added 新增
+  await fs.writeFile(path.join(root, 'src', 'sample.ts'), SAMPLE_TS.replace('// marker line 6', '// marker line 6 (sent)') + '\n');
+  await fs.writeFile(path.join(root, 'src', 'drifting.ts'), 'drift sent\nline2\n');
+  await fs.writeFile(path.join(root, 'src', 'stale.ts'), 'stale sent\n');
+  await fs.rm(path.join(root, 'src', 'gone.ts'));
+  await fs.writeFile(path.join(root, 'src', 'added.ts'), 'added content\n');
+  git('add -N src/added.ts'); // intent-to-add：让 git diff 包含新增文件
+
+  // .reviews/<主题>/<阶段>/_meta 归档
+  const metaDir = path.join(root, '.reviews', 'DemoTopic', 'code', '_meta');
+  await fs.mkdir(metaDir, { recursive: true });
+  await fs.writeFile(
+    path.join(metaDir, `review-claude-${run2Id}.json`),
+    reviewDoc('claude', 'pass-after-changes', [
+      findingOf('C-01', 'blocker', 'src/sample.ts:2-4', '区间问题', '证据一'),
+      findingOf('C-02', 'major', 'src/sample.ts:3', '同行问题', '证据二'),
+      findingOf('C-03', 'minor', 'src/sample.ts:999', '越界无锚问题', '证据三'),  // 无反引号锚 → out-of-range
+      findingOf('C-04', 'nit', 'plan §2.1', '文档引用', '证据四'),               // doc → listOnly
+    ]),
+  );
+  await fs.writeFile(
+    path.join(metaDir, `review-gemini-${run2Id}.json`),
+    reviewDoc('gemini', 'pass', [
+      findingOf('G-01', 'minor', 'src/sample.ts:3', '同层问题', '证据五'),
+      findingOf('G-02', 'major', 'src/sample.ts:9999', '越界有锚问题', '确认 `pool.length === 1` 的分支'), // nearby
+    ]),
+  );
+  await fs.writeFile(
+    path.join(metaDir, `review-codex-${run2Id}.json`),
+    reviewDoc('codex', 'reject', [
+      findingOf('X-01', 'nit', 'src/sample.ts:2-3,5-6', '逗号多区间', '证据六'),
+      findingOf('X-02', 'minor', 'src/gone-missing.ts:1', '文件缺失', '证据七'),
+      findingOf('X-03', 'minor', '../outside.ts:1', '路径越界', '证据八'),
+      findingOf('X-04', 'major', 'src/stale.ts:1', '送审后漂移演示', '证据九'),
+      findingOf('X-05', 'major', 'src/drifting.ts:1', '送审一致演示', '证据十'),
+      findingOf('X-06', 'major', 'src/gone.ts:1', '删除文件 Diff 入口演示', '证据十一'),
+    ]),
+  );
+  await fs.writeFile(
+    path.join(metaDir, `run-${run2Id}.json`),
+    JSON.stringify({ schema: 'trivium.run.v3', run_id: run2Id, topic: 'DemoTopic', stage: 'code', rerun_index: 1, driver: 'glm', critics_selected: ['claude', 'gemini', 'codex'], started_at: '2026-11-06T00:00:05.000Z', finished_at: '2026-11-06T00:10:00.000Z' }, null, 2),
+  );
+  // changes.diff：**真实 git diff**（B0 → 工作区 B1）生成——hunks 与基线/工作区
+  // 自洽（CLAUDE-02 送审内容重建的前提）；stale.ts 段在生成后使工作区再改（B2''）
+  const realDiff = execSync('git diff', { cwd: root, encoding: 'utf8' });
+  const diffFileCount = (realDiff.match(/^diff --git /gm) ?? []).length;
+  await fs.writeFile(
+    path.join(metaDir, `changes-${run2Id}.diff`),
+    [
+      '# trivium changes.diff',
+      `# run_id: ${run2Id}`,
+      '# base: HEAD',
+      `# head: ${gitSha}`,
+      `# files: ${diffFileCount}`,
+      ...realDiff.split('\n').map((l) => (l.startsWith('#') ? `#${l}` : l)),
+      '',
+    ].join('\n'),
+  );
+  // 送审后工作区再改 stale.ts → 回放时静态一致性 mismatch（CLAUDE-02/03 用例）
+  await fs.writeFile(path.join(root, 'src', 'stale.ts'), 'stale now (edited after send)\n');
+
+  // task.json：run2（归档齐全）+ run1（归档缺失 → 探测 run_root）
+  await fs.writeFile(
+    path.join(root, '.reviews', 'DemoTopic', 'task.json'),
+    JSON.stringify({
+      schema: 'trivium.task.v1',
+      topic: 'DemoTopic',
+      created_at: '2026-11-06T00:00:01.000Z',
+      updated_at: '2026-11-06T00:10:00.000Z',
+      runs: [
+        { run_id: run1Id, stage: 'plan', rerun_index: 1, status: 'success', review_mode: 'full', started_at: '2026-11-06T00:00:01.000Z', driver: 'glm' },
+        { run_id: run2Id, stage: 'code', rerun_index: 1, status: 'success', review_mode: 'full', started_at: '2026-11-06T00:00:05.000Z', driver: 'glm' },
+      ],
+      gate: { stage: null, state: 'idle', since: null, run_id: null },
+      approvals: [], degradations: [], disputed: false, disputes: [], drivers: { plan: { driver: 'glm' }, code: { driver: 'glm' } },
+    }, null, 2),
+  );
+
+  // run_root：本仓桶 run1 目录（归档缺失场景的探测目标）+ 他仓撞号桶
+  await fs.mkdir(run1Dir, { recursive: true });
+  await fs.writeFile(path.join(run1Dir, 'status.json'), JSON.stringify({
+    schema: 'trivium.status.v1', run_id: run1Id, topic: 'DemoTopic', stage: 'plan', phase: 'success',
+    heartbeat_at: '2026-11-06T00:01:00.000Z', sides: {}, artifacts: [], exit_code: 0, message: null,
+  }, null, 2));
+  const alienBucket = path.join(runRoot, `OtherRepo-${'zz99'}`);
+  await fs.mkdir(path.join(alienBucket, run1Id), { recursive: true });
+  await fs.writeFile(path.join(alienBucket, run1Id, 'status.json'), JSON.stringify({ run_id: run1Id, topic: 'OtherTopic' }, null, 2));
+  const run2Dir = path.join(runRoot, bucket, run2Id);
+  await fs.mkdir(run2Dir, { recursive: true });
+  await fs.writeFile(path.join(run2Dir, 'status.json'), JSON.stringify({
+    schema: 'trivium.status.v1', run_id: run2Id, topic: 'DemoTopic', stage: 'code', phase: 'success',
+    heartbeat_at: '2026-11-06T00:10:00.000Z',
+    sides: { claude: { state: 'ok', model: 'stub-m', attempt: 1, elapsed_s: 10, cli: null } },
+    artifacts: [], exit_code: 0, message: null,
+  }, null, 2));
+
+  // .trivium：驾驶舱发现链最小面（config.run_root + state.json 活跃闸门 + 空桩 wrapper）
+  await fs.mkdir(path.join(root, '.trivium', 'bin'), { recursive: true });
+  await fs.writeFile(path.join(root, '.trivium', 'config.yaml'), [
+    'schema: trivium.config.v2',
+    'archive_root: .reviews',
+    'runtime:',
+    `  run_root: ${runRoot}`,
+    '',
+  ].join('\n'));
+  await fs.writeFile(path.join(root, '.trivium', 'bin', 'trivium'), '#!/bin/sh\nexit 64\n', { mode: 0o755 });
+  await atomicWrite(path.join(root, '.trivium', 'state.json'), JSON.stringify({
+    schema: 'trivium.state.v1',
+    updated_at: '2026-11-06T00:10:00.000Z',
+    gates: { 'DemoTopic/code': { topic: 'DemoTopic', stage: 'code', state: 'running', run_id: run2Id, since: '2026-11-06T00:00:05.000Z', session_id: null } },
+  }, null, 2));
+
+  // 第二主题 ArchiveTopic：纯归档（code 阶段工件齐全、无活跃闸门、run_root 无目录）
+  // ——历史回放卡（CLAUDE-04/CODEX-07）与摄取竞态（CODEX-02）用例
+  const archiveTopic = 'ArchiveTopic';
+  const archiveRunId = '20261106T000003Z';
+  const archiveMetaDir = path.join(root, '.reviews', archiveTopic, 'code', '_meta');
+  await fs.mkdir(archiveMetaDir, { recursive: true });
+  await fs.writeFile(
+    path.join(root, '.reviews', archiveTopic, 'task.json'),
+    JSON.stringify({
+      schema: 'trivium.task.v1', topic: archiveTopic,
+      created_at: '2026-11-06T00:00:03.000Z', updated_at: '2026-11-06T00:09:00.000Z',
+      runs: [{ run_id: archiveRunId, stage: 'code', rerun_index: 1, status: 'success', review_mode: 'full', started_at: '2026-11-06T00:00:03.000Z', driver: 'claude' }],
+      gate: { stage: null, state: 'idle', since: null, run_id: null }, approvals: [], degradations: [], disputed: false, disputes: [], drivers: { code: { driver: 'claude' } },
+    }, null, 2),
+  );
+  await fs.writeFile(
+    path.join(archiveMetaDir, `run-${archiveRunId}.json`),
+    JSON.stringify({ schema: 'trivium.run.v3', run_id: archiveRunId, topic: archiveTopic, stage: 'code', rerun_index: 1, driver: 'claude', critics_selected: ['gemini'], started_at: '2026-11-06T00:00:03.000Z' }, null, 2),
+  );
+  await fs.writeFile(
+    path.join(archiveMetaDir, `review-gemini-${archiveRunId}.json`),
+    reviewDoc('gemini', 'pass', [findingOf('AG2-01', 'minor', 'src/sample.ts:7', '归档主题意见', '归档证据')]),
+  );
+  await fs.writeFile(
+    path.join(archiveMetaDir, `changes-${archiveRunId}.diff`),
+    ['', '# trivium changes.diff', `# run_id: ${archiveRunId}`, '# base: HEAD', `# head: ${gitSha}`, '# files: 1', '#   src/sample.ts', ''].join('\n'),
+  );
+
+  const writeMeta = async (name: string, text: string): Promise<void> => {
+    await atomicWrite(path.join(metaDir, name), text);
+  };
+  return { root, runRoot, gitSha, run2Id, run1Id, run1Dir, metaDir, archiveTopic, archiveTopicMetaDir: archiveMetaDir, archiveTopicRunId: archiveRunId, writeMeta };
+}

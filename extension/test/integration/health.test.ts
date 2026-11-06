@@ -52,6 +52,7 @@ suite('环境健康（FR-1）', function () {
       cmds: new TriviumCommands(cli),
       relay: null as never,
       stateWatch: null as never,
+      annotationHub: null as never,
       repoRoot: root,
       disposables: { push: () => {} },
     };

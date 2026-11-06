@@ -10,11 +10,17 @@ export type SchemaVerdict =
   | { kind: 'incompatible'; reason: string }
   | { kind: 'unknown'; reason: string };
 
-/** 插件消费的文件类型 → 支持的 schema 串（唯一事实源：本表） */
+/**
+ * 插件消费的文件类型 → 支持的 schema 串（唯一事实源：本表）。
+ *
+ * `review`（Phase 2）与前三类不同：审查工件逐文件降级（旧版/坏件只影响该文件，
+ * 不进 worstVerdict 的全局禁点火判定）——消费点在 reviewParse，语义见 r2 计划 D1′。
+ */
 export const SUPPORTED_SCHEMAS = {
   config: 'trivium.config.v2',
   state: 'trivium.state.v1',
   status: 'trivium.status.v1',
+  review: 'trivium.review.v2',
 } as const;
 
 export type SchemaFileKind = keyof typeof SUPPORTED_SCHEMAS;

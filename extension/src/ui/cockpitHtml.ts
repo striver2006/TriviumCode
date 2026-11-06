@@ -54,6 +54,16 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
   .side .st-ok { color: var(--vscode-charts-green, #3fb950); }
   .side .st-failed, .side .st-timeout { color: var(--vscode-charts-red, #f85149); }
   .side .st-running { color: var(--vscode-charts-blue, #4493f8); }
+  .sev { display: inline-block; min-width: 34px; text-align: center; border-radius: 8px; font-size: 11px; padding: 0 6px; }
+  .sev.blocker { background: rgba(248,81,73,.35); color: var(--vscode-charts-red, #f85149); }
+  .sev.major { background: rgba(255,123,114,.22); color: var(--vscode-charts-orange, #d29922); }
+  .sev.minor { background: rgba(187,128,9,.22); color: var(--vscode-charts-yellow, #e3b341); }
+  .sev.nit { background: rgba(139,148,158,.25); color: var(--vscode-descriptionForeground, #8b949e); }
+  .finding { display: flex; gap: 6px; align-items: baseline; padding: 1px 0; }
+  .finding .loc { color: var(--vscode-textLink-foreground); cursor: pointer; }
+  .finding .warn { color: var(--vscode-charts-yellow, #e3b341); font-size: 11px; }
+  .finding button { padding: 0 8px; font-size: 11px; }
+  .grp-head { cursor: pointer; user-select: none; }
   .files a { color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: none; display: block; }
   details { margin: 4px 0; }
   pre.log { background: var(--vscode-textCodeBlock-background); padding: 6px; border-radius: 4px;
@@ -276,6 +286,7 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
         files.appendChild(a);
       }
       card.appendChild(files);
+      if (r.findingsSummary && r.findingsSummary.length > 0) card.appendChild(renderFindings(r));
       if (r.logTail) {
         const det = document.createElement('details');
         det.innerHTML = '<summary>worker.log 尾部</summary><pre class="log">' + escapeHtml(r.logTail) + '</pre>';
@@ -283,6 +294,87 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
       }
       box.appendChild(card);
     }
+  }
+  function renderFindings(r) {
+    const wrap = document.createElement('details');
+    wrap.open = true;
+    const sum = document.createElement('summary');
+    const counts = { blocker: 0, major: 0, minor: 0, nit: 0 };
+    for (const s of r.findingsSummary) for (const k of Object.keys(counts)) counts[k] += (s.counts[k] || 0);
+    sum.innerHTML = '审查意见（' + r.findingsSummary.length + ' 侧 · ' +
+      (counts.blocker + counts.major + counts.minor + counts.nit) + ' 条：' +
+      '<span class="sev blocker">阻断 ' + counts.blocker + '</span> <span class="sev major">重要 ' + counts.major + '</span>' +
+      ' <span class="sev minor">次要 ' + counts.minor + '</span> <span class="sev nit">微瑕 ' + counts.nit + '</span>）';
+    wrap.appendChild(sum);
+    if (r.consistencyNote) {
+      const cn = document.createElement('div'); cn.className = 'hint'; cn.textContent = 'ⓘ ' + r.consistencyNote;
+      wrap.appendChild(cn);
+    }
+    if (r.buildNotice) {
+      const bn = document.createElement('div'); bn.className = 'banner warn'; bn.textContent = '⚠ ' + r.buildNotice;
+      wrap.appendChild(bn);
+    }
+    // 按审查者分组（组头带 verdict 徽标与分层开关，FR-6a/6b）
+    const byCritic = {};
+    for (const f of (r.findings || [])) (byCritic[f.critic] = byCritic[f.critic] || []).push(f);
+    const enabled = r.enabledCritics; // null = 全部启用（CLAUDE-05）
+    for (const s of r.findingsSummary) {
+      const critic = s.critic;
+      const list = byCritic[critic] || [];
+      const grp = document.createElement('details');
+      grp.open = true;
+      const head = document.createElement('summary');
+      head.className = 'grp-head';
+      const on = enabled === null || enabled.indexOf(critic) >= 0;
+      head.innerHTML = '<input type="checkbox"' + (on ? ' checked' : '') + ' title="开关该审查者的批注与列表（Problems 同步）"/> ' +
+        '<b>' + escapeHtml(critic) + '</b> · ' + escapeHtml(s.verdictLabel) +
+        (s.state !== 'ok' ? ' <span class="warn">（' + escapeHtml(s.notice || s.state) + '）</span>' : '') +
+        ' · 共 ' + (s.counts.blocker + s.counts.major + s.counts.minor + s.counts.nit) + ' 条（列出 ' + list.length + ' 条）';
+      head.querySelector('input').onclick = (e) => {
+        e.preventDefault();
+        vscode.postMessage({ type: 'toggle-critic', critic: critic });
+      };
+      grp.appendChild(head);
+      for (const f of list) {
+        const row = document.createElement('div'); row.className = 'finding';
+        const sev = document.createElement('span'); sev.className = 'sev ' + f.severity; sev.textContent = { blocker: '阻断', major: '重要', minor: '次要', nit: '微瑕' }[f.severity] || f.severity;
+        row.appendChild(sev);
+        const id = document.createElement('span'); id.textContent = f.id; row.appendChild(id);
+        const problem = document.createElement('span'); problem.textContent = f.problem.split('\\n')[0]; problem.style.flex = '1';
+        row.appendChild(problem);
+        if (f.label) { const w = document.createElement('span'); w.className = 'warn'; w.textContent = '⚠ ' + f.label; row.appendChild(w); }
+        if (f.consistency === 'mismatch' || f.consistency === 'edited') {
+          const w = document.createElement('span'); w.className = 'warn';
+          w.textContent = f.consistency === 'mismatch' ? '⚠ 与送审版本不一致' : '⚠ 文件已编辑';
+          row.appendChild(w);
+        }
+        if (f.level === 'line' && f.file) {
+          const loc = document.createElement('span'); loc.className = 'loc';
+          loc.textContent = (f.relPath || '') + ':' + f.startLine + (f.endLine !== f.startLine ? '-' + f.endLine : '');
+          loc.title = '点击跳转';
+          loc.onclick = () => vscode.postMessage({ type: 'open-finding', file: f.file, startLine: f.startLine, endLine: f.endLine });
+          row.appendChild(loc);
+        } else {
+          const loc = document.createElement('span'); loc.className = 'hint'; loc.textContent = f.location;
+          row.appendChild(loc);
+        }
+        if (f.secondary && f.secondary.length) {
+          const sec = document.createElement('span'); sec.className = 'hint'; sec.textContent = '↳ ' + f.secondary.join('；');
+          row.appendChild(sec);
+        }
+        // CLAUDE-02：Diff 入口按变更集成员判定（与跳转解耦）——missing-file（如本轮删除的文件）
+        // 也能打开只读基线
+        if (f.relPath && f.inChangeset) {
+          const btn = document.createElement('button'); btn.className = 'secondary'; btn.textContent = 'Diff';
+          btn.title = '被审基线对比当前文件（删除文件打开只读基线）';
+          btn.onclick = () => vscode.postMessage({ type: 'open-diff', runId: r.runId, relPath: f.relPath, startLine: f.startLine, endLine: f.endLine });
+          row.appendChild(btn);
+        }
+        grp.appendChild(row);
+      }
+      wrap.appendChild(grp);
+    }
+    return wrap;
   }
   function escapeHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 

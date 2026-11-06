@@ -9,6 +9,7 @@ import { TriviumCli } from '../../src/cli/triviumCli';
 import { TriviumCommands } from '../../src/cli/commands';
 import { TerminalRelay } from '../../src/launch/terminalRelay';
 import { StateWatch } from '../../src/monitor/stateWatch';
+import { AnnotationHub } from '../../src/reviews/annotationHub';
 import { Cockpit } from '../../src/ui/cockpit';
 import type { TriviumServices } from '../../src/services';
 import { waitFor, fxPaths, RUN_ID } from './testHelper';
@@ -18,6 +19,7 @@ function buildServices(root: string): TriviumServices {
   const cli = new TriviumCli(root);
   const relay = new TerminalRelay();
   const stateWatch = new StateWatch(root);
+  const annotationHub = new AnnotationHub(root);
   return {
     root,
     env,
@@ -25,6 +27,7 @@ function buildServices(root: string): TriviumServices {
     cmds: new TriviumCommands(cli),
     relay,
     stateWatch,
+    annotationHub,
     repoRoot: root,
     disposables: { push: () => {} },
   };

@@ -23,6 +23,10 @@ import type { StatusRender } from '../monitor/statusModel';
 import { phaseLabel, sideStateLabel } from '../monitor/statusModel';
 import { buildHealth } from '../env/health';
 import { worstVerdict, type SchemaVerdict } from '../env/versionCheck';
+import type { ScopeState } from '../reviews/annotationHub';
+import { openDiffFor } from '../reviews/diffView';
+import { diffMember } from '../reviews/diffParse';
+import { verdictLabel } from '../reviews/reviewParse';
 
 interface FormState {
   driver: string;
@@ -52,6 +56,22 @@ interface RunCard {
   artifacts: string[];
   reviewFiles: { name: string; absPath: string; role: string | null }[];
   logTail: string | null;
+  /** FR-6a：批注宿主的逐侧意见摘要（仅该 run 为焦点回放时有值） */
+  findingsSummary: Array<{ critic: string; verdictLabel: string; counts: Record<string, number>; state: string; notice: string | null }> | null;
+  /** FR-6a：焦点 run 的逐条意见（含漂移/降级标注与解析级别；relPath 供 Diff/跳转，CLAUDE-01）。
+   *  CLAUDE-05：已按逐家开关过滤（组头计数仍为全量）；secondary 为次级位置文本（CLAUDE-03） */
+  findings: Array<{
+    critic: string; id: string; severity: string; location: string; problem: string;
+    level: string; label: string | null; consistency: string;
+    relPath: string | null; file: string | null; startLine: number | null; endLine: number | null; inChangeset: boolean;
+    secondary: string[];
+  }> | null;
+  /** 当前逐家开关状态（空数组 = 全部启用；驱动 Webview 分组头 checkbox，CLAUDE-05） */
+  enabledCritics: string[] | null;
+  /** 一致性未校验提示（plan 阶段/git 不可用，D2′：列表侧注明） */
+  consistencyNote: string | null;
+  /** 装配超限提示（CLAUDE-11） */
+  buildNotice: string | null;
 }
 
 interface RunEntry {
@@ -83,6 +103,8 @@ export class Cockpit implements vscode.Disposable {
   private frozenForm: FormState | null = null;
   private frozenTopic: string | null = null;
   private readonly serviceDisposables: vscode.Disposable[] = [];
+  /** FR-6a：批注宿主 scope 状态（订阅刷新；面板关闭不影响 Hub 本身，D4′） */
+  private hubState: ScopeState | null = null;
   private disposed = false;
 
   constructor(private readonly services: TriviumServices) {
@@ -97,6 +119,12 @@ export class Cockpit implements vscode.Disposable {
           this.setMode('M3');
           this.post({ type: 'banner', kind: 'info', text: '协同终端已关闭：驾驶舱降级为 M3 纯监控（流水线不受影响，循环由 Driver 会话持有）。' });
         }
+      }),
+      // FR-6a：Hub scope 变化 → 重推 run 卡（意见列表实时刷新；服务级监听，
+      // 面板关闭期间侧完成落盘照样推进 Hub，重开面板即见）
+      services.annotationHub.onScopeChange((state) => {
+        this.hubState = state;
+        void this.pushRuns();
       }),
     );
   }
@@ -154,6 +182,11 @@ export class Cockpit implements vscode.Disposable {
   /** 测试通道：显式关闭面板（触发 onDidDispose 的面板级清理路径） */
   closePanelForTest(): void {
     this.panel?.dispose();
+  }
+
+  /** 测试可观测面：run 卡片快照（FR-6a 意见列表数据断言用） */
+  async cardsForTest(): Promise<RunCard[]> {
+    return this.runCards();
   }
 
   // ── 初始化与消息 ─────────────────────────────────────────────────────────
@@ -228,6 +261,60 @@ export class Cockpit implements vscode.Disposable {
           vscode.window.showErrorMessage(`打不开文件：${String(m['path'])}`);
         }
         break;
+      case 'open-finding': {
+        // FR-6a/6b：点击意见 → 跳转到解析后的行区间（与批注同源）
+        const file = String(m['file'] ?? '');
+        const start = Number(m['startLine'] ?? 1);
+        const end = Number(m['endLine'] ?? start);
+        if (!file) break;
+        try {
+          const editor = await vscode.window.showTextDocument(vscode.Uri.file(file), { preview: true });
+          const s = Math.max(0, Math.min(start - 1, editor.document.lineCount - 1));
+          const e = Math.max(s, Math.min(end - 1, editor.document.lineCount - 1));
+          editor.revealRange(new vscode.Range(s, 0, e, 0), vscode.TextEditorRevealType.InCenter);
+          editor.selection = new vscode.Selection(s, 0, e, 0);
+        } catch {
+          vscode.window.showErrorMessage(`打不开文件：${file}`);
+        }
+        break;
+      }
+      case 'open-diff': {
+        // FR-6d：意见关联变更的 Diff 视图（冻结基线；降级明示）
+        const relPath = String(m['relPath'] ?? '');
+        const runId = m['runId'] ? String(m['runId']) : null;
+        const start = m['startLine'] !== undefined ? Number(m['startLine']) : undefined;
+        const end = m['endLine'] !== undefined ? Number(m['endLine']) : undefined;
+        if (!relPath) break;
+        const diff = this.services.annotationHub.diffOf(runId);
+        const outcome = await openDiffFor(this.services.root, diff, relPath, start !== undefined ? { startLine: start, endLine: end ?? start } : undefined);
+        this.post({ type: 'banner', kind: 'info', text: `Trivium Diff：${outcome.note}` });
+        break;
+      }
+      case 'toggle-critic': {
+        // FR-6b：逐家开关（切换即全量重建，幂等）
+        const critic = String(m['critic'] ?? '');
+        if (!critic) break;
+        const current = this.services.annotationHub.getEnabledCritics();
+        if (current.size === 0) {
+          // 首次关闭：全集合减去该家（inScope 为准）
+          const all = new Set(this.services.annotationHub.criticsInScope());
+          all.delete(critic);
+          await this.services.annotationHub.setEnabledCritics(all);
+        } else if (current.has(critic)) {
+          current.delete(critic);
+          await this.services.annotationHub.setEnabledCritics(current);
+        } else {
+          current.add(critic);
+          await this.services.annotationHub.setEnabledCritics(current);
+        }
+        break;
+      }
+      case 'focus-run': {
+        // FR-6a：卡片上切换回放轮次（与状态栏同一入口）
+        const runId = String(m['runId'] ?? '');
+        if (runId) await this.services.annotationHub.setActiveRun(runId);
+        break;
+      }
       case 'refresh-health':
         await this.refreshHealth(false);
         break;
@@ -581,6 +668,10 @@ export class Cockpit implements vscode.Disposable {
       void this.pushRuns();
     });
     this.runs.set(runId, entry);
+    // FR-6/7：活跃 run → 批注 scope 跟随（新 run 自动成为焦点回放；D4′）
+    void this.services.annotationHub.setScope(topic, stage || 'plan').then(() =>
+      this.services.annotationHub.setActiveRun(runId),
+    );
     await this.pushRuns();
   }
 
@@ -596,10 +687,48 @@ export class Cockpit implements vscode.Disposable {
 
   private async runCards(): Promise<RunCard[]> {
     const cards: RunCard[] = [];
+    const hub = this.services.annotationHub;
+    const buildFocusData = (): Pick<RunCard, 'findingsSummary' | 'findings' | 'consistencyNote' | 'buildNotice' | 'enabledCritics'> => {
+      const diff = hub.diffOf(null);
+      const enabled = hub.getEnabledCritics();
+      const isEnabled = (critic: string): boolean => enabled.size === 0 || enabled.has(critic);
+      return {
+        findingsSummary: hub.focusSummaries().map((s) => ({
+          critic: s.critic,
+          verdictLabel: verdictLabel(s.verdict as never),
+          counts: s.counts as Record<string, number>,
+          state: s.state,
+          notice: s.notice,
+        })),
+        // CLAUDE-05：列表与批注同口径过滤（关掉的侧不列条目；组头计数仍全量，可再点开）
+        findings: hub.findingsOfFocusRun().filter((f) => isEnabled(f.critic)).map((f) => ({
+          critic: f.critic,
+          id: f.id,
+          severity: f.severity,
+          location: f.location,
+          problem: f.problem.length > 200 ? `${f.problem.slice(0, 200)}…` : f.problem,
+          level: f.level,
+          label: f.label,
+          consistency: f.consistency,
+          relPath: f.relPath, // CLAUDE-01：Diff 按钮与位置显示的真实相对路径
+          file: f.relPath !== null ? path.join(this.services.root, f.relPath) : null,
+          startLine: f.startLine,
+          endLine: f.endLine,
+          inChangeset: f.relPath !== null && diff !== null && diffMember(diff, f.relPath) !== null,
+          secondary: f.secondary, // CLAUDE-03：次级位置文本
+        })),
+        consistencyNote: hub.consistencyAllUnknown() ? '行号一致性未校验（plan 阶段或 git 不可用）：界内行号直接采信' : null,
+        buildNotice: this.hubState?.notice ?? null,
+        enabledCritics: enabled.size === 0 ? null : [...enabled],
+      };
+    };
     for (const [runId, e] of this.runs) {
       const r = e.render;
       const ended = e.ended;
       const phase = r?.phase ?? 'unknown';
+      // FR-6a：该 run 是焦点回放时附逐侧摘要与逐条意见
+      const isFocus = this.hubState !== null && this.hubState.runId === runId;
+      const focusData = isFocus ? buildFocusData() : { findingsSummary: null, findings: null, consistencyNote: null, buildNotice: null, enabledCritics: null };
       cards.push({
         runId,
         topic: r?.topic ?? null,
@@ -621,6 +750,30 @@ export class Cockpit implements vscode.Disposable {
         artifacts: r?.artifacts ?? [],
         reviewFiles: e.reviewFiles.map((f) => ({ name: f.name, absPath: f.absPath, role: f.role })),
         logTail: e.logTail,
+        ...focusData,
+      });
+    }
+    // CLAUDE-04/CODEX-07：历史回放卡——焦点 run 不在活跃看板（扩展重启后回放归档）
+    // 时由 Hub 数据生成一张回放卡，意见列表/降级标注照常可见
+    const focusRunId = this.hubState?.runId ?? null;
+    if (focusRunId !== null && this.hubState?.topic && !this.runs.has(focusRunId)) {
+      const summary = this.hubState.summaries.find((s) => s.runId === focusRunId);
+      cards.push({
+        runId: focusRunId,
+        topic: this.hubState.topic,
+        stage: this.hubState.stage,
+        phase: 'replay',
+        phaseLabel: '历史回放',
+        ended: true,
+        terminal: true,
+        sides: [],
+        stale: false,
+        note: summary ? `回放归档运行（${summary.sides.length} 侧工件）` : '回放归档运行',
+        message: null,
+        artifacts: [],
+        reviewFiles: [],
+        logTail: null,
+        ...buildFocusData(),
       });
     }
     return cards;

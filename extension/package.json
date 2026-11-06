@@ -1,8 +1,8 @@
 {
   "name": "trivium-cockpit",
   "displayName": "TriviumCode 驾驶舱",
-  "description": "TriviumCode 双审流水线的 VS Code 前端：环境健康、装配点火（终端协同）、运行监控。集成面仅 CLI（--json + 退出码）与只读文件 watcher。",
-  "version": "0.1.0",
+  "description": "TriviumCode 双审流水线的 VS Code 前端：环境健康、装配点火（终端协同）、运行监控、审查意见行内批注（Comments/Problems/Diff）与运行历史回放。集成面仅 CLI（--json + 退出码）与只读文件 watcher。",
+  "version": "0.2.0",
   "publisher": "triviumcode",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
@@ -15,6 +15,7 @@
   ],
   "activationEvents": [
     "onView:triviumHealth",
+    "onView:triviumHistory",
     "onCommand:trivium.openCockpit"
   ],
   "main": "./dist/extension.js",
@@ -33,6 +34,10 @@
         {
           "id": "triviumHealth",
           "name": "环境健康"
+        },
+        {
+          "id": "triviumHistory",
+          "name": "运行历史"
         }
       ]
     },
@@ -59,6 +64,22 @@
       {
         "command": "trivium.openDeployManual",
         "title": "打开部署手册（doc/06_deployment/部署手册.md）"
+      },
+      {
+        "command": "trivium.history.refresh",
+        "title": "刷新运行历史"
+      },
+      {
+        "command": "trivium.reviews.focus",
+        "title": "切换批注回放的运行轮次"
+      },
+      {
+        "command": "trivium.critics.filter",
+        "title": "选择要展示的审查者"
+      },
+      {
+        "command": "trivium.openDiff",
+        "title": "在 Diff 视图查看该意见关联的变更"
       }
     ],
     "menus": {
@@ -66,6 +87,11 @@
         {
           "command": "trivium.refreshHealth",
           "when": "view == triviumHealth",
+          "group": "navigation"
+        },
+        {
+          "command": "trivium.history.refresh",
+          "when": "view == triviumHistory",
           "group": "navigation"
         }
       ]
@@ -124,6 +150,18 @@
             "rounds": 12
           },
           "description": "闸门已 running 而运行目录 status.json 尚未出现时的重试参数（间隔 × 轮数，覆盖编排器先写闸门后建目录的窗口）。"
+        },
+        "trivium.reviews.maxThreadsPerFile": {
+          "type": "number",
+          "default": 200,
+          "minimum": 10,
+          "description": "单文件行内批注线程上限：超出部分仅进 Problems 面板（量级控制）。"
+        },
+        "trivium.reviews.maxTotalFindings": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 100,
+          "description": "单轮回放的意见总量上限：超出时不建行内批注，仅 Problems 聚合并提示。"
         }
       }
     }
