@@ -61,6 +61,80 @@ export interface VersionOutput {
   version: string;
 }
 
+// ── Phase 3（FR-8/FR-9）：gate 与审批输出形状 ─────────────────────────────
+
+/** gate --check --json 的 failures/warnings 单条形态（契约见 src/trivium/gate.ts） */
+export interface GateFailureItem {
+  code: string;
+  message: string;
+  ids?: string[];
+  line?: number;
+}
+
+export interface GateWarningItem {
+  code: string;
+  message: string;
+  ids?: string[];
+}
+
+export interface RoundVerdict {
+  sides: Record<string, string>;
+  excluded: Record<string, string> | null;
+  counts: { pass: number; 'pass-after-changes': number; reject: number };
+  outcome: string;
+  next_action: string;
+}
+
+/** gate --check --json 顶层（cli.ts cmdGate 的 --check 分支）。无 topic 字段——那是调用方传的 --topic */
+export interface GateCheckOutput {
+  ok: boolean;
+  stage: string;
+  rerun_index: number;
+  run_id: string;
+  failures: GateFailureItem[];
+  warnings: GateWarningItem[];
+  structured_ids: string[];
+  fallback_ids: string[];
+  degraded_ids: string[];
+  disposition: string | null;
+  review_loop: { round: number; max_rounds: number } | null;
+  round_verdict: RoundVerdict | null;
+  next_action: string | null;
+  round_line: string | null;
+}
+
+/** approve --json 输出里的权威工作树摘要（worktree-summary.ts 同形状；仅 approved 时携带） */
+export interface WorkTreeSummary {
+  available: boolean;
+  reason: string | null;
+  run_id: string;
+  baseline: string;
+  baseline_tree: string | null;
+  current_tree: string | null;
+  total: number;
+  truncated: boolean;
+  files: Array<{ status: string; path: string }>;
+  excluded_prefixes: string[];
+  budget_ms: number;
+  budget_overridden: boolean;
+}
+
+export interface ApproveOutput {
+  ok: boolean;
+  topic: string;
+  stages: string[];
+  decision: string;
+  worktree_summary?: Record<string, WorkTreeSummary>;
+}
+
+export interface AbandonOutput {
+  ok: boolean;
+  topic: string;
+  stages?: string[];
+  decision?: string;
+  message?: string;
+}
+
 // ── 命令封装 ──────────────────────────────────────────────────────────────
 
 export class TriviumCommands {
@@ -143,5 +217,46 @@ export class TriviumCommands {
   async doctorStatic(): Promise<{ code: number | null; out: DoctorOutput | null }> {
     const r = await this.cli.runJson<DoctorOutput>(['doctor', '--json', '--no-model-calls'], 300_000);
     return { code: r.code, out: r.json };
+  }
+
+  /**
+   * FR-8：裁决完整性校验。退出码 0=通过 / 2=未通过（failures 非空）——两者都返回输出，
+   * 缺口模型按 failures 消费；读不出 JSON（如 task_unreadable 时也可能有 JSON）返回 null。
+   */
+  async gateCheck(topic: string, stage: string): Promise<{ code: number | null; out: GateCheckOutput | null; stderr: string }> {
+    const r = await this.cli.runJson<GateCheckOutput>(['gate', '--stage', stage, '--topic', topic, '--check', '--json'], 120_000);
+    return { code: r.code, out: r.json, stderr: r.stderr };
+  }
+
+  /**
+   * FR-9：人工审批。批准不带 --reject；拒绝必须 --reject --reason（理由必填由调用方
+   * 在 UI 层先行拦截，CLI 侧 64 是兜底）。点击动作经宿主直发，不经过任何模型上下文。
+   */
+  async approve(args: {
+    topic: string;
+    stage: string;
+    /** 批准时的附言（可选） */
+    reason?: string;
+    /** 拒绝（必填理由） */
+    reject?: boolean;
+    rejectReason?: string;
+  }): Promise<{ code: number | null; out: ApproveOutput | null; stderr: string; stdout: string }> {
+    const argv = ['approve', '--topic', args.topic, '--stage', args.stage];
+    if (args.reject) {
+      argv.push('--reject', '--reason', args.rejectReason ?? '');
+    } else if (args.reason) {
+      argv.push('--reason', args.reason);
+    }
+    argv.push('--json');
+    const r = await this.cli.runJson<ApproveOutput>(argv, 120_000);
+    return { code: r.code, out: r.json, stderr: r.stderr, stdout: r.stdout };
+  }
+
+  /**
+   * FR-9：放弃闸门。显式传 --stage——省略会批量放弃该主题全部开放闸门（非单卡本意）。
+   */
+  async abandon(topic: string, stage: string): Promise<{ code: number | null; out: AbandonOutput | null; stderr: string; stdout: string }> {
+    const r = await this.cli.runJson<AbandonOutput>(['abandon', '--topic', topic, '--stage', stage, '--json'], 120_000);
+    return { code: r.code, out: r.json, stderr: r.stderr, stdout: r.stdout };
   }
 }

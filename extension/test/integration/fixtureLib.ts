@@ -54,6 +54,9 @@ else if (r.stdout) process.stdout.write(r.stdout);
 process.exit(r.code === undefined ? 0 : r.code);
 `;
 
+/** Phase 3：可编程桩源码导出（gateApproval/dispositionDesk 替换 Phase2 夹具的占位 wrapper 用） */
+export const STUB_CLI_SRC = STUB_CLI;
+
 const FAKE_TUI_SH = (outPath: string) => String.raw`#!/bin/sh
 # 假 TUI（direct 模式）：把收到的每一行追加到输出文件
 while IFS= read -r line; do

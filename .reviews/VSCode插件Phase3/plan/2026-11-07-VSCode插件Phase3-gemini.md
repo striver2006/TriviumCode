@@ -1,0 +1,238 @@
+---
+schema: trivium.review.v2
+topic: VSCode插件Phase3
+stage: plan
+role: gemini
+vendor: antigravity
+agent_cli: agy/1.5.2
+model_requested: gemini-3.8-flash-high
+model_effective: gemini-3.8-flash-high
+model_effective_source: envelope
+effort: high
+effort_requested: high
+effort_effective: high
+effort_effective_source: envelope
+tier: null
+tier_source: legacy
+run_id: 20261107T001957Z
+rerun_index: 1
+snapshot_hash: sha256:47a7538dbfd4cfea11fe07d297b6f1a67b3346c286863a11f88f18cea9f64b41
+blind: true
+started_at: 2026-11-07T00:20:07.138Z
+finished_at: 2026-11-07T00:33:07.068Z
+duration_s: 566
+tool_calls:
+  read: 73
+  grep: 0
+  glob: 0
+  run_command: 0
+  project_reads: 28
+evidence_ok: true
+verdict: pass-after-changes
+findings_count:
+  blocker: 0
+  major: 3
+  minor: 3
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: different-family
+access:
+  requested_mode: standard
+  profile: null
+  launcher_requested: /Users/chenzhenbo/.local/bin/agy
+  launcher_effective: /Users/chenzhenbo/.local/bin/agy
+  wrapper_sha256: null
+  configuration_sha256: null
+  provider_declared: null
+  provider_declared_source: null
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: glm
+    right: gemini
+    status: different-family
+    left_model: glm-5.3
+    right_model: gemini-3.8-flash-high
+    left_source: declared
+    right_source: envelope
+    reason: 模型族不同：glm / gemini
+  - left: claude
+    right: gemini
+    status: different-family
+    left_model: k3.1-pro
+    right_model: gemini-3.8-flash-high
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：kimi / gemini
+  - left: gemini
+    right: codex
+    status: different-family
+    left_model: gemini-3.8-flash-high
+    right_model: gpt-6.1-sol
+    left_source: envelope
+    right_source: trace
+    reason: 模型族不同：gemini / gpt
+override_reason: 模型族不同：glm / gemini
+session_id: 4e96b7cd-ce65-4de4-9ec3-76ba08f6358c
+---
+
+# 计划审查：VSCode插件Phase3
+
+> Critic-A · Google Antigravity ｜ 回读模型 `gemini-3.8-flash-high` ｜ 请求模型 `gemini-3.8-flash-high`
+> ｜ 运行 `20261107T001957Z`
+> ｜ 本轮审核者 claude、gemini、codex
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+
+## 总判断
+
+最危险问题是 FR-10 保存拦截机制在用户选「取消」时通过全量 TextEdit 还原旧磁盘内容并继续落盘，导致未保存修改被从编辑器缓冲区清除且标记为洁净，存在严重的数据丢失风险，且未过滤自动保存。
+其次，FR-8 裁决台落盘采用独占创建（O_EXCL/wx）且在 EEXIST 时直接拒绝，与支持修复 empty_reason 等既有草稿缺口的需求冲突，且草稿生成缺少已有裁决行的保留合并；
+当轮 Driver 定位链将 gates[...].driver 置为首位违背 EV-68 事实源纪律，可能引入旧轮 Driver；
+addresses 推断弃用 run.json.artifacts[] 转而走 glob 猜测增加了脆弱性；
+提示性工作树摘要需过滤 .reviews/ 与 .trivium/ 避免虚警；
+预设体系需剥离 topic/body 等会话级瞬态字段并防御全局跨仓路径。
+
+**结论**：修改后通过（`pass-after-changes`）
+
+## 审查意见（共 6 条：重要 3 ｜ 次要 3）
+
+### AGY-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 D4 (lines 125-136)` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：FR-10 保存拦截机制在用户选择「取消」时采用全量 TextEdit.replace 将编辑器缓冲区回退为磁盘旧内容并继续保存，会导致用户的未保存修改在编辑器中被清空、文件状态变洁净，带来严重的数据丢失风险；且未区分 TextDocumentSaveReason（如 AfterDelay / FocusOut），自动保存开启时会导致模态弹窗频繁打断输入。
+
+**依据**：读了 .reviews/VSCode插件Phase3/plan/2026-11-07-VSCode插件Phase3-glm.md 第 125-136 行。D4 规定在 waitUntil 中弹模态弹窗，用户选「取消」时返回全量 replace 的 TextEdit（将挂起时刻从磁盘读到的旧内容写回），随后 VS Code 会将旧内容落盘并清除 dirty 状态。用户的认知中「取消保存」应是保留缓冲区未保存修改、阻止写入磁盘，而非强制将工作区缓冲区还原为磁盘状态（revert）。此外，VS Code API 中 TextDocumentWillSaveEvent.reason 包含 Manual(1)、AfterDelay(2)、FocusOut(3)；若用户配置了 files.autoSave: "afterDelay"（常见配置），每次输入停顿后均会触发 onWillSaveTextDocument 拦截弹窗，导致 IDE 完全无法正常输入。
+
+**建议**：① 移除用 TextEdit 覆盖/回滚用户编辑缓冲区的逻辑；若需阻止保存，应利用 Promise 拒绝或抛出取消异常中断保存流，保持文档处于 dirty 状态且编辑内容完好；② 在事件处理入口显式检查 e.reason，非 Manual 手动保存触发的保存（如自动保存、焦点切换）不应弹出模态阻塞弹窗；③ 明确模态弹窗被 ESC 取消或失焦关闭（返回 undefined）时的安全出口。
+
+### AGY-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 D1 (lines 88-101)` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：裁决台落盘采用 fs.open(path, 'wx')（独占创建且遇 EEXIST 直接报错退出），与 gateGapModel 计划支持的缺口类型（empty_reason、missing_action、defer_not_allowed 等既有裁决件错误修复场景）产生致命互斥；且草稿生成逻辑未考虑已有裁决行的保留与合并，导致既有草稿存在时无法通过裁决台保存修复。
+
+**依据**：读了 .reviews/VSCode插件Phase3/plan/2026-11-07-VSCode插件Phase3-glm.md 第 88-101 行及 src/trivium/gate.ts:634-660。D1 中一方面声明 gateGapModel 将 empty_reason、defer_not_allowed、missing_action、unknown_findings 列为表单主体（这些 code 仅在磁盘上已存在裁决件时才会由 gate --check 产出）；另一方面却在落盘策略中写死「fs.open(path, 'wx') 独占创建，EEXIST 不抬升直接报错请用户手工编辑或删除」。这意味着只要既有裁决件已存在，用户在裁决台修改理由或补齐落点后点击落盘将 100% 触发 EEXIST 报错被拒。此外，D1 说明「已裁决编号只读展示，不进表单」，而在草稿生成时若仅将表单输入的缺口生成为表格，原文件中已裁决的行若未合并将被整批丢失，反向导致下一轮 gate --check 报原编号 missing_findings。
+
+**建议**：① 区分全新草稿创建（missing_disposition）与既有草稿增量修复（empty_reason / missing_findings 等）两种场景：对已存在同名草稿的情况，在预览确认后允许原子覆盖更新（或保留备份）；② 在模型与草稿生成层增加既有裁决件解析与行合并逻辑，确保既有已裁决行与本次在表单中修补的行完整输出到新草稿中。
+
+### AGY-03 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 D6 (lines 154-157)` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：当轮 Driver id 定位链将 gates[...].driver 置于第一优先级（①），违背了编排器在 EV-68 中确立的事实源纪律与 state.ts 的实际行为，会导致同槽位重跑换 Driver 时读取到上一轮旧 Driver，引发 bad_front_matter 阻断。
+
+**依据**：读了 .reviews/VSCode插件Phase3/plan/2026-11-07-VSCode插件Phase3-glm.md 第 154-157 行与 src/trivium/state.ts:62-79。state.ts 源码注释明确记载：review.ts 的四处 setGateChecked 均不传 driver，唯一写 gates[...].driver 的是 awaiting_approval（必须在裁决件已落盘之后发生）；在 review_done_awaiting_disposition（Driver 起草裁决件的阶段）该字段未写入，且 upsert 会沿用前一运行的值，若同槽位重跑更换了 Driver，gates[...].driver 会残留旧 Driver 的 Agent id。编排器 Hook 权威来源已在 EV-68 修正为 run.json.driver（_meta/run-<runId>.json）。
+
+**建议**：调整 Driver 定位链的优先级：将该轮次的运行元数据 _meta/run-<runId>.json 的 driver（或 task.json 中对应 run_id 的记录）作为第一事实源，而将 gates[...].driver 降级为辅助参考或剔除出权威链。
+
+### AGY-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 D1 (lines 96-98)` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：裁决草稿的 addresses 字段采用从 _meta/review-*.json 与阶段目录推断中缀及 glob 校验的脆弱猜测逻辑，与编排器 gate.ts 的官方判据 expectedReviewDocs 脱节，增加了推导失败和跨零点/抬升轮次撞名的风险。
+
+**依据**：读了 .reviews/VSCode插件Phase3/plan/2026-11-07-VSCode插件Phase3-glm.md 第 96 行及 src/trivium/gate.ts:1210-1240。gate.ts 中的 expectedReviewDocs 明确记载：「文件名取自 run.json.artifacts[]，不按日期现拼：审查文档的日期取落盘时的本地日期、会跨零点，轮次撞名时实际落在抬升后的名字上；artifacts[] 登记的正是实际落盘名」。而计划 D1 放弃直接读取 _meta/run-<runId>.json 的 artifacts，自行设计了「从 rerun_index 推 rN 中缀 + 阶段目录 glob 校验」，导致其在第六节中不得不登记「addresses 推导在异常留痕下推不出」的中度风险。
+
+**建议**：对齐 gate.ts 的 expectedReviewDocs 判据，直接读取 _meta/run-<runId>.json 的 artifacts[] 数组，筛选属于本阶段且属于有效审核者（status 为 ok 或 parse_fallback）的审查件文件名，彻底消除启发式 glob 推断带来的歧义与失败。
+
+### AGY-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 D3 (lines 116-124)` |
+| 类别 | scope-drift ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：点击审批前基于 git status --porcelain=v1 -z 生成的提示性工作树摘要未排除 .reviews/ 与 .trivium/ 目录，导致审查产出的未跟踪/新落盘审计工件被误报为工作树业务改动。
+
+**依据**：读了 .reviews/VSCode插件Phase3/plan/2026-11-07-VSCode插件Phase3-glm.md 第 116-124 行及 src/trivium/worktree-summary.ts:26-28、src/trivium/code-stage.ts:106-124。编排器官方的 workTreeSummaryFor 必须通过 diffExcludePrefixes 严格排除 .reviews、.trivium、.git。每一轮双审落盘后，.reviews/<topic>/ 目录下都会新增审查 markdown、_meta/review-*.json 等文件。如果插件直接执行全量 git status 且不加前缀过滤，审批弹窗前的工作树摘要将充斥着大量审查工件变更，产生严重误报。
+
+**建议**：在 worktreeSummary.ts 解析 git status 输出时，按 diffExcludePrefixes 规则显式过滤掉 .reviews/、.trivium/、.git/ 等编排器系统保留路径，确保提示性摘要只呈现真正的业务代码改动。
+
+### AGY-06 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §三 D5 (lines 145-153)` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：Preset 预设对象直接全量打包 FormState，包含了工作区强绑定的 ctxPaths 以及任务会话瞬态的 topic 和 body，跨工作区加载全局预设时会导致路径失效，加载常用配置时会意外冲刷当前输入。
+
+**依据**：读了 .reviews/VSCode插件Phase3/plan/2026-11-07-VSCode插件Phase3-glm.md 第 145-153 行及 extension/src/ui/cockpit.ts:31-41。FormState 定义包含 topic（主题名）、body（提示词/任务目标）和 ctxPaths（上下文路径数组）。globalState 作用域跨工作区共享，当在 Workspace B 加载 Workspace A 保存的全局预设时，ctxPaths 必然失效。此外，用户使用预设通常是为了复用 Driver、Reviewer、Profile、maxRounds 等装配参数，若回填时全量覆盖 topic 与 body，会抹除用户正在起草的新任务信息。
+
+**建议**：在 presetModel 中将预设模型与完整的 FormState 做合理分层：抽离通用装配参数（driver、critics、entry、profile、maxRounds、extraFlags）作为预设核心字段；对 topic、body 默认不覆盖或提供单独勾选；对 globalState 存储的全局预设，禁用或在跨仓加载时清理相对路径/特定仓库的 ctxPaths。
+
+## 认为正确的部分
+
+- 总体模块划分清晰，纯函数层与 VS Code 宿主 IO 隔离规范，单测与集成测试用例覆盖全面。
+- 坚持以 M1 终端协同为交付目标，避免了无头托管引入的写权限与提示词组装风险。
+- D3 论证否定 Candidate C（避免 gate --await-approval 产生写副作用）严密准确，采纳双层摘要策略方向务实。
+- 裁决台缺口联动批注复用既有 AnnotationHub 数据面，未增加冗余存储与解析逻辑。
+- 预设体系坚持不写 .trivium/ YAML，符合统一配置收敛纪律。
+
+## 未覆盖范围（本侧盲区）
+
+- 因无执行命令权限，未对真实 VS Code 环境下 onWillSaveTextDocument 的 waitUntil 在不同操作系统上的行为进行端到端实测验证。
+- 未在 VS Code 真实运行环境下测试大量批注与状态栏三色灯连续流转的渲染性能表现。
+- 未覆盖多根工作区（Multi-root Workspaces）环境下预设与状态监控的隔离表现。
+
+## 实际查阅的项目文件
+
+- `.reviews/VSCode插件Phase3/plan/2026-11-07-VSCode插件Phase3-glm.md`
+- `CLAUDE.md`
+- `README.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md`
+- `extension/package.json`
+- `extension/src/extension.ts`
+- `extension/src/services.ts`
+- `extension/src/cli/commands.ts`
+- `extension/src/history/runHistory.ts`
+- `extension/src/monitor/stateModel.ts`
+- `extension/src/ui/cockpit.ts`
+- `extension/src/reviews/annotationHub.ts`
+- `extension/scripts/runIntegration.mjs`
+- `extension/test/integration/fixtureLib.ts`
+- `skills/dual-critic/schema/disposition.v1.json`
+- `skills/dual-critic/schema/run.v3.json`
+- `src/trivium/gate.ts`
+- `src/trivium/archive.ts`
+- `src/trivium/review.ts`
+- `src/trivium/cli.ts`
+- `src/trivium/naming.ts`
+- `src/trivium/state.ts`
+- `src/trivium/worktree-summary.ts`
+- `src/trivium/code-stage.ts`
+- `src/trivium/approval.ts`
+- `src/trivium/disposition.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":73,"grep":0,"glob":0,"run_command":0,"project_reads":28}
+
+---
+
+*本文档由 TriviumCode 编排器从 `gemini` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

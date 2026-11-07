@@ -1,0 +1,92 @@
+{
+  "agreed": [
+    "SaveGuard 严格落实了 e.waitUntil 挂起写盘、原始字节 Buffer 与 mode 权限快照，以及通过 workbench.action.files.revert 消除 dirty 避免 autoSave 死循环保存，机制严谨且覆盖了完善的集成测试",
+    "裁决台针对 unknown_findings 实现了 removeable 标识、删除行豁免必填校验，并在 renderRepaired 原文手术中精准剔除被删行，彻底解决了修复死循环问题",
+    "驾驶舱 gateCheckCache 缓存以 topic/stage/runId 为键并在状态迁移时主动失效，有效防止了不同轮次间的计票与缺口数据交叉污染",
+    "预设体系严格遵守分层约束，topic 与 body 等会话瞬态字段不进存储，跨工作区加载 context 路径失效检查严谨，双作用域存储隔离清晰",
+    "人工审批的三按钮参数封装与编排器 CLI 契约完全吻合，严格要求拒绝附带非空理由，且放弃显式指定阶段避免批量误伤"
+  ],
+  "consulted": [
+    "CLAUDE.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    ".reviews/VSCode插件Phase3/plan/2026-11-07-VSCode插件Phase3-r2-glm.md",
+    ".reviews/VSCode插件Phase3/code/2026-11-07-VSCode插件Phase3-gemini.md",
+    ".reviews/VSCode插件Phase3/code/_meta/changes-20261107T021820Z.diff",
+    "extension/src/guard/saveGuard.ts",
+    "extension/src/disposition/gateGapModel.ts",
+    "extension/src/disposition/dispositionDraft.ts",
+    "extension/src/disposition/runMeta.ts",
+    "extension/src/approval/gateAreaModel.ts",
+    "extension/src/approval/lampModel.ts",
+    "extension/src/approval/worktreeSummary.ts",
+    "extension/src/presets/presetModel.ts",
+    "extension/src/presets/presetStore.ts",
+    "extension/src/ui/cockpit.ts",
+    "extension/src/ui/cockpitHtml.ts",
+    "extension/src/extension.ts",
+    "extension/src/services.ts",
+    "extension/test/integration/dispositionDesk.test.ts",
+    "extension/test/integration/presets.test.ts",
+    "extension/test/integration/gateApproval.test.ts",
+    "extension/test/integration/saveGuard.test.ts",
+    "extension/test/real/dispositionGate.test.ts",
+    "src/trivium/cli.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "在 extension/src/ui/cockpitHtml.ts 第 540-591 行的 for (const item of m.items) 循环体内，第 551-557 行声明了 const tdR 与 const tdA，随后第 582-588 行再次声明了 const tdR 与 const tdA。在同一个块级作用域中重复 const 声明同一标识符在 ES6/V8 中触发不可捕获的 SyntaxError: Identifier 'tdR' has already been declared，导致包含全部前端事件监听与消息中继的 <script> 整体无法执行；且第 572 与 576 行绑定的 cb.onchange 闭包操作的是未上树的孤儿 tdR/tdA",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "code",
+      "location": "extension/src/ui/cockpitHtml.ts:551-588",
+      "problem": "renderDesk 循环体内部重复使用 const 声明 tdR 与 tdA，构成 JavaScript 静态语法错误（SyntaxError），导致 Webview 脚本解析阶段直接崩溃瘫痪",
+      "severity": "blocker",
+      "suggestion": "消除重复声明，在循环体中统一声明一套 tdR/tdA 元素与 textarea，并在创建裁决单元格 tdV 之后依次将 tdV、tdR、tdA 作为子节点 appendChild 到 tr"
+    },
+    {
+      "confidence": "high",
+      "evidence": "extension/src/ui/cockpitHtml.ts 第 728-737 行中，$('btnPresetSave').onclick 与 $('btnPresetSaveG').onclick 调用了 window.prompt 获取预设名称。VS Code Webview 基于 iframe 沙箱运行，浏览器模态对话框 API（prompt/alert/confirm）默认被静默拦截并返回 null，导致紧随其后的 if (name === null) return 提前退出，无法向 Extension Host 发送 preset-save 消息",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "code",
+      "location": "extension/src/ui/cockpitHtml.ts:728-737",
+      "problem": "预设另存按钮使用 window.prompt 获取用户输入，在 VS Code Webview 沙箱环境下失效，导致预设另存功能静默不可用",
+      "severity": "major",
+      "suggestion": "改用与其它交互一致的通道：Webview 发送请求消息由宿主调用 vscode.window.showInputBox 获取输入后再持久化，或者在 Webview 内置 input 输入框"
+    },
+    {
+      "confidence": "high",
+      "evidence": "extension/src/approval/worktreeSummary.ts:49-56 中已针对 AGY-05 处理了未暂存修改首字符为空格时取 y 位的逻辑（statusText(' M') === '修改'），但在 extension/src/ui/cockpitHtml.ts:414-415 中单独实现的前端 statusText 函数只取 xy[0]（STATUS_TEXT[xy[0]] || xy），当文件为未暂存修改（' M'）时 STATUS_TEXT[' '] 为 undefined，界面直接展示为未翻译的原始码 '[ M]'",
+      "id": "AGY-03",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "extension/src/ui/cockpitHtml.ts:414-415",
+      "problem": "前端 statusText 状态码映射未对齐 worktreeSummary.ts，未暂存修改（' M'）退化为原始状态码",
+      "severity": "minor",
+      "suggestion": "前端 statusText 对齐 worktreeSummary.ts，在首字符为空格时检查 xy[1]，使未暂存修改正确展示为 '[修改]'"
+    },
+    {
+      "confidence": "medium",
+      "evidence": "extension/src/presets/presetModel.ts:116 写作 const abs = p.startsWith('/') ? p : `${workspaceRoot}/${p}`。在 Windows 平台下带有盘符或反斜杠的绝对路径无法被 startsWith('/') 正确识别",
+      "id": "AGY-04",
+      "kind": "maintainability",
+      "layer": "code",
+      "location": "extension/src/presets/presetModel.ts:116",
+      "problem": "filterStaleCtxPaths 绝对路径检查仅判定 startsWith('/')，拼接使用裸斜杠，跨平台移植性欠佳",
+      "severity": "nit",
+      "suggestion": "引入 path 模块，改用 path.isAbsolute(p) ? p : path.resolve(workspaceRoot, p)"
+    }
+  ],
+  "not_covered": [
+    "本侧无真实子进程执行与界面交互能力，未能实测 Webview 在实际 VS Code 运行时的 Chromium 控制台日志及真实 DOM 渲染效果",
+    "Windows 平台的路径解析与 VS Code 扩展运行表现未覆盖（依据项目说明暂以 macOS 为准）",
+    "模型生成或外部异常导致极大规模工件（如数万条批注）时的 Webview 渲染性能压力未做基准测试"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "发现 1 项严重阻塞（Blocker）与 1 项重要（Major）交互缺陷，整体判定为 reject。\n最严重问题（Blocker）：extension/src/ui/cockpitHtml.ts 的 renderDesk 函数在同一个循环块作用域内重复使用 const 声明 tdR 与 tdA，构成静态语法错误（SyntaxError），导致 Webview 加载 <script> 时整体解析失败，整个驾驶舱前端交互脚本完全瘫痪。\n此外，预设另存使用沙箱不支持的 window.prompt 导致另存功能失效，前端 statusText 亦未对齐未暂存修改判定。需修改后重新评审。",
+  "verdict": "reject"
+}

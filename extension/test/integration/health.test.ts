@@ -5,6 +5,7 @@ import { buildHealth } from '../../src/env/health';
 import { TriviumCli } from '../../src/cli/triviumCli';
 import { TriviumCommands } from '../../src/cli/commands';
 import { fxRoot } from './testHelper';
+import { memoryPresetStore } from './fakePresets';
 import type { TriviumServices } from '../../src/services';
 
 suite('环境健康（FR-1）', function () {
@@ -53,6 +54,8 @@ suite('环境健康（FR-1）', function () {
       relay: null as never,
       stateWatch: null as never,
       annotationHub: null as never,
+      saveGuard: null,
+      presets: memoryPresetStore(),
       repoRoot: root,
       disposables: { push: () => {} },
     };

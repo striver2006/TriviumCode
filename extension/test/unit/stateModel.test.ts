@@ -47,3 +47,11 @@ test('仍在活跃 → 无回落事件', () => {
   const next = parseGates(STATE({ 'T/plan': { topic: 'T', stage: 'plan', state: 'review_done_awaiting_disposition', run_id: 'r1' } }));
   assert.equal(diffRunEnded(prev, next).length, 0);
 });
+
+test('代码审 r1 CLAUDE-09：JSON 根为 null/标量/数组 → unreadable（不静默、不抛异常）', () => {
+  for (const bad of ['null', '123', '"x"', '[]']) {
+    const snap = parseGates(bad);
+    assert.equal(snap.unreadable, true, `根 ${bad} 应按不可读处理`);
+    assert.equal(snap.gates.length, 0);
+  }
+});

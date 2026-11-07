@@ -12,6 +12,7 @@ import { StateWatch } from '../../src/monitor/stateWatch';
 import { AnnotationHub, resetHubGitApiCacheForTest } from '../../src/reviews/annotationHub';
 import { Cockpit } from '../../src/ui/cockpit';
 import type { TriviumServices } from '../../src/services';
+import { memoryPresetStore } from './fakePresets';
 import { buildPhase2Fixture, waitFor, type Phase2Fixture } from './fixtureLib';
 
 suite('驾驶舱意见列表（FR-6a）', function () {
@@ -34,6 +35,8 @@ suite('驾驶舱意见列表（FR-6a）', function () {
       relay: new TerminalRelay(),
       stateWatch: new StateWatch(fx.root),
       annotationHub: new AnnotationHub(fx.root),
+      saveGuard: null,
+      presets: memoryPresetStore(),
       repoRoot: fx.root,
       disposables: { push: () => {} },
     };
@@ -98,7 +101,8 @@ suite('驾驶舱意见列表（FR-6a）', function () {
     const services: TriviumServices = {
       root: fx.root, env, cli, cmds: new TriviumCommands(cli),
       relay: new TerminalRelay(), stateWatch: new StateWatch(fx.root),
-      annotationHub: new AnnotationHub(fx.root), repoRoot: fx.root,
+      annotationHub: new AnnotationHub(fx.root), saveGuard: null, presets: memoryPresetStore(),
+      repoRoot: fx.root,
       disposables: { push: () => {} },
     };
     const cockpit = new Cockpit(services);

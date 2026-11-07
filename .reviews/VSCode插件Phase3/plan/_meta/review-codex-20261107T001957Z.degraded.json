@@ -1,0 +1,28 @@
+{
+  "critic": "codex",
+  "run_id": "20261107T001957Z",
+  "findings": [
+    {
+      "index": 5,
+      "id": "CODEX-06",
+      "problems": [
+        {
+          "field": "kind",
+          "kind": "invalid",
+          "message": "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+        }
+      ],
+      "raw": {
+        "id": "CODEX-06",
+        "severity": "major",
+        "layer": "plan",
+        "kind": "requirement",
+        "location": ".reviews/VSCode插件Phase3/plan/2026-11-07-VSCode插件Phase3-glm.md:100、178-183（D1 落盘与 D9 验收）",
+        "problem": "计划承诺校验不通过即可回裁决台修改，但唯一保存路径是 wx 新建；同一轮已有文件后只能报 EEXIST，要求用户手工编辑或删除。已有部分裁决件补行、首次草稿校验失败及插件重开后的修正均无法在 UI 内完成，与“无手工编辑任何工件”的验收要求冲突。修正还必须保留已有合法裁决，不能只把缺口行另存为完整裁决件。",
+        "evidence": "被审计划:100 明确将 EEXIST 的恢复交给手工编辑或删除；doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md §6.3 要求入口 B 从审查结束到批准无需手工编辑工件。src/trivium/gate.ts:346-385 按本轮定位并读取完整裁决件，614-629 按整张表检查缺裁和多余编号，单独保存补丁行不能替代完整件。",
+        "suggestion": "明确已有裁决件和首次落盘失败后的 UI 修正、预览确认及并发冲突处理规则，兼顾防覆盖与合法行保留。增加“生成后 gate 失败→UI 修正→再次校验通过”和“已有部分裁决件→补齐”的完整测试。",
+        "confidence": "high"
+      }
+    }
+  ]
+}

@@ -5,6 +5,7 @@ export async function run(): Promise<void> {
   const Mocha = (await import('mocha')).default;
   const mocha = new Mocha({ ui: 'tdd', timeout: 120_000 });
   mocha.addFile(path.join(__dirname, 'launch.test.js'));
+  mocha.addFile(path.join(__dirname, 'dispositionGate.test.js')); // Phase 3：真实 gate 输出契约对拍
   await new Promise<void>((resolve, reject) => {
     mocha.run((f) => (f > 0 ? reject(new Error(`真机冒烟 ${f} 个失败`)) : resolve()));
   });

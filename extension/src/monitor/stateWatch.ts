@@ -34,12 +34,27 @@ export class StateWatch implements vscode.Disposable {
   async rescan(): Promise<void> {
     if (this.disposed) return;
     let text: string;
+    let missing = false;
+    let readFailed = false;
     try {
       text = await this.readFile(this.statePath);
-    } catch {
-      return;
+    } catch (e) {
+      // 三态分流（代码审 r1 CLAUDE-09/CODEX-04）：
+      // 文件不存在 = 正常（还没跑过，空快照）；其它读失败（EACCES 等）= unreadable——
+      // 保守锁闭并保留上次 gates 供展示，绝不当「无闸门」静默绿灯。
+      const code = (e as { code?: string })?.code ?? '';
+      if (code === 'FileNotFound' || code === 'ENOENT' || code === 'NoSuchFile') missing = true;
+      else readFailed = true;
     }
-    const snap = parseGates(text);
+    let snap: StateSnapshot;
+    if (missing) {
+      snap = { gates: [], active: [], schemaReason: null, unreadable: false };
+    } else if (readFailed) {
+      // 读失败：保留上一帧 gates（展示不闪空），unreadable 置位驱动灯与防护保守化
+      snap = { gates: this.last?.gates ?? [], active: [], schemaReason: null, unreadable: true };
+    } else {
+      snap = parseGates(text!);
+    }
     const ended = diffRunEnded(this.last, snap);
     this.last = snap;
     for (const l of this.listeners) l(snap, ended);

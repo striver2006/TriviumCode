@@ -10,8 +10,8 @@ export async function run(): Promise<void> {
   const Mocha = (await import('mocha')).default;
   const mocha = new Mocha({ ui: 'tdd', timeout: 60_000, color: true });
   const here = __dirname;
-  // 逐个登记（排除夹具库与 e2e；Phase 2 四件自带独立夹具）
-  const files = ['activate.test.js', 'health.test.js', 'prechain.test.js', 'monitor.test.js', 'terminalRelay.test.js', 'disposable.test.js', 'cockpitLifecycle.test.js', 'annotations.test.js', 'diffView.test.js', 'history.test.js', 'cockpitFindings.test.js'];
+  // 逐个登记（排除夹具库与 e2e；Phase 2 四件自带独立夹具；Phase 3 四件）
+  const files = ['activate.test.js', 'health.test.js', 'prechain.test.js', 'monitor.test.js', 'terminalRelay.test.js', 'disposable.test.js', 'cockpitLifecycle.test.js', 'annotations.test.js', 'diffView.test.js', 'history.test.js', 'cockpitFindings.test.js', 'gateApproval.test.js', 'dispositionDesk.test.js', 'saveGuard.test.js', 'presets.test.js'];
   for (const f of files) mocha.addFile(path.join(here, f));
   await new Promise<void>((resolve, reject) => {
     mocha.run((failures) => (failures > 0 ? reject(new Error(`集成测试 ${failures} 个失败`)) : resolve()));

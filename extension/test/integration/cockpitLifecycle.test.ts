@@ -13,6 +13,7 @@ import { AnnotationHub } from '../../src/reviews/annotationHub';
 import { Cockpit } from '../../src/ui/cockpit';
 import type { TriviumServices } from '../../src/services';
 import { waitFor, fxPaths, RUN_ID } from './testHelper';
+import { memoryPresetStore } from './fakePresets';
 
 function buildServices(root: string): TriviumServices {
   const env = new TriviumEnv(root);
@@ -28,6 +29,8 @@ function buildServices(root: string): TriviumServices {
     relay,
     stateWatch,
     annotationHub,
+    saveGuard: null,
+    presets: memoryPresetStore(),
     repoRoot: root,
     disposables: { push: () => {} },
   };

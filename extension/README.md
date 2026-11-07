@@ -1,11 +1,15 @@
 # TriviumCode 驾驶舱（VS Code 插件）
 
-TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面只有两条**：CLI
-（`.trivium/bin/trivium --json` + 退出码协议）与文件面（只读 watcher）；不复制
-编排器业务逻辑，阶段循环始终由终端里的 Driver 会话（入口 skill）驱动，插件只做
-装配、注入、旁观渲染与中止。
+TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面两条 + 一个写例外 + 一个只读查询**：
 
-## 功能（第二批：Phase 0 + Phase 1 + Phase 2）
+- **CLI**：`.trivium/bin/trivium --json` + 退出码协议（含 FR-9 的 approve/abandon 审批动作——点击经宿主直发，不经过任何模型上下文）；
+- **文件面**：只读 watcher（state.json / status.json / `.reviews/**`）；
+- **唯一写例外（FR-8）**：裁决件经**预览确认后**的新建与写回（`.reviews/<主题>/<阶段>/` 下 `trivium.disposition.v1` 契约件；防覆盖与正确性由编排器 `gate --check` 兜底）；
+- **只读 git 查询（FR-9 提示性摘要）**：`git status --porcelain -z`（纯只读；权威口径以 approve 输出的 worktree_summary 为准）。
+
+不复制编排器业务逻辑，阶段循环始终由终端里的 Driver 会话（入口 skill）驱动。
+
+## 功能（第三批：Phase 0 + Phase 1 + Phase 2 + Phase 3）
 
 - **环境健康面板**（Activity Bar「Trivium」）：读取 `.trivium/config.local.yaml`
   探针结论展示四家 Agent 可用性 / 版本 / 入口；未 init 的工作区给出引导。
@@ -31,6 +35,31 @@ TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面�
   （批注/诊断/意见列表聚焦），状态栏可快捷切换回放轮次。
 
 > 第一批（Phase 0+1，2026-11-06 交付）不含后两项；上方清单为当前累计能力。
+
+- **裁决台**（Phase 3，FR-8）：消费 `gate --check --json` 缺口清单 → 驾驶舱逐条
+  「接受/驳回/暂缓 + 理由 + 落点」表单（首写/修复两形态：missing_disposition 首写
+  建表含 fallback 期望集；既有件的 empty_reason/missing_action/缺裁编号进修复模式，
+  合法行保留原文）→ 生成 `trivium.disposition.v1` 契约草稿（front-matter 七字段、
+  addresses 派生自 `run-<runId>.json`.artifacts[]、role 取当轮 Driver 的 run 权威源）
+  → **预览确认后落盘**（本插件对 `.reviews/` 的唯一写入；起草独占创建，修复原子
+  替换 + 载入 hash 防并发覆盖）→ 落盘即自动重跑 gate 校验，不过即回修复模式闭环。
+  三种裁决理由均须人工非空输入；缺口里的意见编号可点击定位到行内批注。
+- **人工审批**（Phase 3，FR-9）：`state.json` 感知 `awaiting_approval` → 驾驶舱
+  浮出闸门区：计票（gate 输出的 round_verdict 原样展示，与历史树 verdict 同源）+
+  warnings 一等展示 + 工作树摘要（点击前为相对 HEAD 的提示性口径并明示盲区；
+  批准后展示编排器权威 worktree_summary）+ 批准 / 拒绝（理由必填人工输入）/
+  放弃（二次确认）三按钮。点击动作经宿主直发 CLI，不经过任何模型上下文；
+  不自动审批、不倒计时。
+- **保存防护与三色灯**（Phase 3，FR-10）：状态栏 🟢 自由编辑 / 🟡 闸门等待 /
+  🔴 审查中锁闭。**API 边界如实声明**：VS Code 没有取消保存的 API（will-save
+  挂起共享 1.5 秒预算），本插件承诺「事前预警（编辑期 modal）+ 事中警示（保存
+  瞬间快照与 toast）+ 事后一键恢复（原子写回保存前内容，修改可 Ctrl+Z 找回）」，
+  不承诺阻止写盘；`state.json` 不可读时按锁闭保守处理。`.reviews/`、`.trivium/`、
+  `.vscode/` 不拦。
+- **装配预设**（Phase 3，FR-11）：装配参数（Driver/审查者/入口/轮次/高级项）存为
+  命名预设，双作用域（工作区级 workspaceState / 用户级 globalState，均不落仓库
+  文件）；加载只回填装配参数，不覆盖正在输入的主题与正文；不写 `.trivium/` 任何
+  yaml。
 
 ## 平台边界
 
