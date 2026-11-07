@@ -5,7 +5,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.183
+> - **当前版本**：v1.3.184
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -350,7 +350,7 @@ v10正式启动测量只作用于code，导入与hash固定`formal-start-prechec
 | :--- | :--- | :--- |
 | `agy.bin` | 绝对路径可执行 + `agy --version` | 预检失败 |
 | `agy.models` | `agy models` 输出可解析，配置中的 slug 在列表内 | 模型配置报错 |
-| `agy.headless_read_ok` | 在临时目录跑一次「读取指定文件并回显首行」的最小任务，检查 `stream-json` 中是否出现读文件工具事件 | 判定 issue #548 是否影响本机；若不通过则记录 `agy.needs_pty=true` 或转 `--add-dir` 预授权方案，仍不通过则该侧不可用 |
+| `agy.headless_read_ok` | 在临时目录跑一次「读取指定文件并回显首行」的最小任务，检查 `stream-json` 中是否出现读文件工具事件（agy适配1.5.2，2026-11-07 改准：读文件工具事件按 `view_file` 与 `read_file` 双名判定——1.5.2 起改名 `read_file`，只认旧名会把「读取成功」误判为零读取；提示词不点工具名，用「文件读取工具」表述） | 判定 issue #548 是否影响本机；若不通过则记录 `agy.needs_pty=true` 或转 `--add-dir` 预授权方案，仍不通过则该侧不可用 |
 | `agy.json_schema_ok` | `--json-schema` 强制输出可解析为目标 schema | 降级为提示词约定 + 宽松解析 |
 | `agy.pty_required` | 管道下 stdout 是否为空但 exit 0；是则启用 `script -q /dev/null` 伪终端包装重试 | 记录到 probe |
 | `agy.path_deny` | 实测 `permissions.deny`（独立 settings 路径或环境变量注入）能否以**路径级**规则拒绝读取指定文件（如 `.reviews/**/*-glm.md`）：在临时目录放一个被 deny 的文件，headless 要求读取，检查是否被拒且轨迹中无读取事件。记录 `agy.path_deny: {supported: bool, rule_syntax: "…"}` | 不支持则第 ③ 道屏蔽只剩 BRIEF 禁读清单 + 轨迹核验（10.1），`run.json.guard.peer_deny_applied=false` |
@@ -2645,7 +2645,7 @@ flowchart LR
 
 | 层 | Antigravity 侧 | ZCode 侧 |
 | :--- | :--- | :--- |
-| **工具层** | 自定义 Agent `trivium-critic` 的 `tools:` 白名单只含五个只读工具（`view_file` 查看文件、`grep_search` 检索、`find_by_name` 按名查找、`list_dir` 列目录、`finish` 交结论），**没有任何命令工具**——审查员不跑命令（测试/构建命令同样不跑，取舍见 18.1 #11）；`run_command` 一旦出现在轨迹里即判 `readonly_breach`（`adapters/agy-events.ts`）。（v1.3.72 改准：原写「只读命令白名单 `readonly_commands`」「`commandExecutionPolicy` 设为沙箱/受限」「配合 `permissions.deny` 兜底写类工具」，三句都不是现状——`readonly_commands` 从未接线、已删除，EV-15） | `--mode plan` + `--disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash,…"`（以 `probe.zcode.readonly_flags` 实测组合为准；ZCode 侧若无法做命令级白名单，则整个 `Bash` 禁用，`run_command` 计数恒为 0）。**MCP 工具面不在 denylist 的论域**（经插件缓存带进副本 HOME，如 `mcp__node_repl__js`）：v1.3.75 起只检测、未关通道——执行型（`mcp__node_repl__` 开头）一被调用即判 `readonly_breach`，名单外的 MCP 调用记证据不可信（EV-188，见 11.1） |
+| **工具层** | 自定义 Agent `trivium-critic` 的 `tools:` 白名单只含五个只读工具（`read_file` 查看文件、`grep_search` 检索、`find_by_name` 按名查找、`list_dir` 列目录、`finish` 交结论），**没有任何命令工具**——审查员不跑命令（测试/构建命令同样不跑，取舍见 18.1 #11）；`run_command` 一旦出现在轨迹里即判 `readonly_breach`（`adapters/agy-events.ts`）。（v1.3.72 改准：原写「只读命令白名单 `readonly_commands`」「`commandExecutionPolicy` 设为沙箱/受限」「配合 `permissions.deny` 兜底写类工具」，三句都不是现状——`readonly_commands` 从未接线、已删除，EV-15）（agy适配1.5.2，2026-11-07 实测改准：agy 1.5.2 起文件读取工具由 `view_file` 改名 `read_file`，两者为同义名——白名单同时列入会让 executor 报 `tool name conflict` 硬错（判据实验臂 B 证据），故白名单只放当前版本真名 `read_file`（仅经 1.5.2 验证，1.5.1 未验证不承诺）；轨迹解析与 `countTools` 双名并计保历史留痕回放不失实。`write_to_file` 的调用级工具层拒绝证据未取得——两级诱导下模型均自觉拒绝调用、未发起工具调用，工具层状态按「未定」处理；白名单确被 agy 解析执行（臂 B 冲突错误反证），现行防线 = 白名单解析执行 + 提示词自觉 + 事后核验层） | `--mode plan` + `--disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash,…"`（以 `probe.zcode.readonly_flags` 实测组合为准；ZCode 侧若无法做命令级白名单，则整个 `Bash` 禁用，`run_command` 计数恒为 0）。**MCP 工具面不在 denylist 的论域**（经插件缓存带进副本 HOME，如 `mcp__node_repl__js`）：v1.3.75 起只检测、未关通道——执行型（`mcp__node_repl__` 开头）一被调用即判 `readonly_breach`，名单外的 MCP 调用记证据不可信（EV-188，见 11.1） |
 | **文件系统层** | **无**。就地模式不能把项目根整树 `chmod a-w`（会阻断 Driver 与开发者）；`.git` 在场，因此 `git commit/checkout/reset/stash` 等写命令必须在工具层就够不着：本侧没有命令工具，根本跑不了命令（v1.3.72 改准：原写「只读命令白名单之外一律拒绝」，那份白名单从未存在） | 同左（本侧整个 `Bash` 禁用） |
 | **事后核验层** | 跑前/跑后比对 `tree_hash` + `git status --porcelain -uall` 指纹（排除 `probe.*.scratch_paths` 白名单）+ 工具轨迹中的写工具/写命令事件扫描；**工具轨迹的写事件**命中即 `readonly_breach: true`，指纹变化只进 `snapshot.drift`、不置这一位（v1.3.127 更正：原写「任一命中即 `readonly_breach: true`」，与实现不符——`guard.ts` 的失守只由写事件判定）；与开发者手改的区分见 9.2 第 4 步 | 同左；另（v1.3.75，EV-188）：rollout 的 `response.toolCalls` 与会话日志的 `tool.call.*` 里的 MCP 调用按调用 id 合并计数（`tool_calls.mcp`），执行型调用以 `MCP:` 前缀进写事件 |
 
@@ -2660,6 +2660,13 @@ flowchart LR
 - 审查员输出由 `archive` 落盘，审查员本身没有写仓库的能力（PRD 第 7 章第 5 条）。
 
 ### 10.5 安全与密钥
+
+2026-11-06 误报修订：通用长串赋值规则不能把源码声明中裸标识符的无参方法调用
+当作凭据（例如录音会话的编号分配调用）。仅在 `final/const/let/var` 声明、无引号
+右值、合法标识符和完整 `.method();` 形态同时成立时排除此通用匹配；不按类名或
+项目放行。带引号字面值、普通配置赋值、专用凭据规则及相邻凭据照常检测。
+扫描与脱敏共用含匹配位置和原文的确认判据，补丁新增行扫描及禁读范围不变。
+这是当前版本的本地修复，按本次用户约束不变更版本号，不表示已正式发布。
 
 | 项 | 措施 |
 | :--- | :--- |
@@ -4170,6 +4177,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.184** | 2026-11-07 | **agy 1.5.2 读取工具改名适配（主题 `agy适配1.5.2`，`/dual-run` 全流程，claude+codex 双审——被修侧 gemini 客观不能参与）。** agy 1.5.2 把文件读取工具由 `view_file` 改名 `read_file`（判据实验实证两者同义：白名单双列触发 executor `tool name conflict` 硬错），探针/适配器旧口径把「读取成功」误判为零读取（哨兵复述成功而计数为零）。修复：trivium-critic 资产白名单单名 `read_file`（仅经 1.5.2 验证，1.5.1 未验证不承诺）；`AGY_READ_TOOLS`/`AGY_MUST_HAVE_PATH`/`countTools` 双名并计保历史留痕回放；探针三处提示词不点工具名；parity 表登记 read_file；§3.5 headless 判定改准双名。init.tools 恒为完整注册表不可作白名单证据（M0 重申，P-39 登记）。write_to_file 调用级工具层拒绝证据未取得（两级诱导模型均自觉拒绝），工具层状态「未定」如实登记于 §10.3。产品版本不变（分轨约定），验证：npm test 全量 4035/0、doctor --only agy 全绿（headless_read_ok=true、json_schema_ok=true）、三侧预检通过。 |
 | **v1.3.4** | 2026-10-29 | **Windows worker 失联双根因修复（ISSUE-05a/05b，Windows 真机验收定位，未走双审：验收执行中定位、修复后以冲击实验与集成复跑验证）。** ①（ISSUE-05a）`run_root` 指进项目工作树内时，工作树哈希的临时索引 `add -A` 会读 worker 心跳正原子替换的 `status.json`，Windows 报 `short read while indexing` 退非零、worker 异常退出：`diffExcludePrefixes` 增可选运行根参数（送审冻结与跑后复算传入；项目外/上溯/整树不产生条目，缺省逐字不变），暂态重试判据扩含 `isShortReadIndexError`。②（ISSUE-05b）`interpretStatus` 判 `pid_gone` 前重读一次 status.json：读 status 与查 pid 之间 worker 完成「写终态 → 退出」时，旧心跳 + 空 pid 会把正常收尾误判失联、`--wait` 把 success 覆盖收尾成 failed（stub 秒级运行命中率最高，即集成测试并发下的随机红）。验证：判据/排除单测（纯函数用例移出 win32 平台门）、冲击实验（修复前 24 例 5 失败 → 修复后 24+40+64 例 0 worker 死亡）。坑清单登 P-33/P-34。 |
 | **v1.3.3** | 2026-10-29 | **任务书第 6 节自足化与 ZCode 0.17.0 停点收录（Windows 真机验收 ISSUE-01/02 修复，未走双审：验收批次内修复复测）。** BRIEF 第 6 节不再引用资产根下 schema 绝对路径（审查员权限边界是项目根，agy headless 越界读被拒后零输出、软拒绝 #548 形态），字段/必填/枚举本就从 schema 实时内联；`ZCODE_ARGV_PARSED_RE` 补 0.17.0 实测停点 `Select a model`（实测在参数解析之后，属「参数已吃完」正向证据），0.17.0 上只读旗标不再全体 indeterminate。修复后 B1r/B2r/B3r 三个单侧 B 真机复测全部走通。验收报告 `REPORT_2026-10-29_Windows四家Agent验收.md`。 |
 | **v1.3.183** | 2026-10-29 | **支持范围收口。** 按 Bob 决定终止 Kimi Code 与 Qoder CN 接入，移除专用注册、配置、入口、探针、适配器、验收脚本及台账/租约运行链；仅保留四家 Agent。候选 v3 可选形状仅作历史兼容，通用入口原稿准备与请求快照校验保留。产品版本不变，验证见四家 Agent 支持范围收口报告。 |

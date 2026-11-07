@@ -145,12 +145,16 @@ export async function invokeAgy(opts: AgyInvokeOptions): Promise<AgyInvokeOutcom
   };
 }
 
-/** 统计工具调用分类计数 */
-function countTools(parsed: AgyStreamResult): CriticResult['tool_calls'] {
+/**
+ * 统计工具调用分类计数。
+ * 导出供单测直触（agy适配1.5.2 CLAUDE-05：双名计数必须有直断言，解析夹具不能替代）。
+ */
+export function countTools(parsed: AgyStreamResult): CriticResult['tool_calls'] {
   const counts: CriticResult['tool_calls'] = { read: 0, grep: 0, glob: 0, run_command: 0 };
   for (const t of successfulToolCalls(parsed)) {
     switch (t.toolName) {
       case 'view_file':
+      case 'read_file': // agy 1.5.2 起的文件读取工具名（与 view_file 同义，双名并计）
         counts.read = (counts.read ?? 0) + 1;
         break;
       case 'grep_search':

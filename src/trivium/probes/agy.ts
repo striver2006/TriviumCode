@@ -100,7 +100,7 @@ export async function probeHeadlessRead(
   agent: string | null,
 ): Promise<HeadlessReadResult> {
   const prompt =
-    `项目根目录是 ${fx.root} 。请用 view_file 读取绝对路径 ${fx.openFile} ，` +
+    `项目根目录是 ${fx.root} 。请用文件读取工具读取绝对路径 ${fx.openFile} ，` +
     `并原样回显它的第一行内容。只做这一件事，读完立即给出答案。`;
 
   const attempt = async (pty: boolean): Promise<{ out: AgyInvokeOutcome; paths: string[]; sentinel: boolean; ok: boolean }> => {
@@ -176,7 +176,7 @@ export async function probeJsonSchema(bin: string, fx: Fixture, agent: string | 
       model: PROBE_MODEL,
       timeoutMs: PROBE_TIMEOUT_MS,
       prompt:
-        `请用 view_file 读取绝对路径 ${fx.openFile} ，把它的第一行放进 first_line 字段，` +
+        `请用文件读取工具读取绝对路径 ${fx.openFile} ，把它的第一行放进 first_line 字段，` +
         `read_ok 置为 true。严格按给定 schema 输出。`,
     });
     const body = out.parsed.response.trim();
@@ -224,7 +224,7 @@ export async function probePathDeny(
     agent,
     model: PROBE_MODEL,
     timeoutMs: PROBE_TIMEOUT_MS,
-    prompt: `请用 view_file 读取绝对路径 ${fx.peerFile} ，并原样回显它的第一行内容。只做这一件事。`,
+    prompt: `请用文件读取工具读取绝对路径 ${fx.peerFile} ，并原样回显它的第一行内容。只做这一件事。`,
   });
   const leaked = out.parsed.response.includes(SENTINEL_PEER) || readPaths(out.parsed).includes(fx.peerFile);
 

@@ -5,6 +5,7 @@ import {
   readPaths,
   writeEvents,
   successfulToolCalls,
+  pathCoverage,
 } from '../../src/trivium/adapters/agy-events.js';
 
 /** 取自 M0 实测的真实 agy 1.2.0 stream-json 形状（路径已改写为夹具路径） */
@@ -121,4 +122,54 @@ test('坏行被计数而非抛异常', () => {
   const r = parseAgyStream(SAMPLE + '\n{不是合法 JSON\n\n');
   assert.equal(r.malformedLines, 1);
   assert.equal(r.status, 'SUCCESS', '坏行不影响其余解析');
+});
+
+// ── agy适配1.5.2：read_file 改名（2026-11-07 本机实测事件流，agy 1.5.2）──
+// 采集自判据实验臂 A（独立 probe Agent）：tool_name=read_file、参数键 Path、哨兵复述成功
+import { countTools } from '../../src/trivium/adapters/agy.js';
+
+const ARM_A_READ_LINE = '{"event":"step_update","step_update":{"conversation_id":"x","step_index":2,"state":"DONE","step_type":"tool","tool_name":"read_file","duration_seconds":0.19,"tool_info":{"name":"read_file","parameters":{"Path":"/tmp/agy-probe/probe.txt"},"output":"1 lines, 14 bytes"}}}';
+
+test('agy 1.5.2 实测事件流：read_file 解析进读取口径与 readPaths（真实夹具）', () => {
+  const parsed = parseAgyStream(ARM_A_READ_LINE);
+  assert.equal(parsed.toolCalls.length, 1);
+  assert.equal(parsed.toolCalls[0]!.toolName, 'read_file');
+  assert.equal(readPaths(parsed)[0], '/tmp/agy-probe/probe.txt');
+});
+
+test('双名并计：view_file 与 read_file 各计一次 read（CLAUDE-05 直触 countTools）', () => {
+  const stream = [
+    '{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"tool","tool_name":"view_file","tool_info":{"name":"view_file","parameters":{"Path":"/a.ts"}}}}',
+    '{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"tool","tool_name":"read_file","tool_info":{"name":"read_file","parameters":{"Path":"/b.ts"}}}}',
+  ].join('\n');
+  const parsed = parseAgyStream(stream);
+  const counts = countTools(parsed);
+  assert.equal(counts.read, 2, 'view_file 与 read_file 都必须进 tool_calls.read');
+  assert.deepEqual(readPaths(parsed), ['/a.ts', '/b.ts']);
+});
+
+test('路径键存量回归：Path 与 AbsolutePath 两代形态都提取（agy适配1.5.2 D2 锁定）', () => {
+  const stream = [
+    '{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"tool","tool_name":"read_file","tool_info":{"name":"read_file","parameters":{"Path":"/new.ts"}}}}',
+    '{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"tool","tool_name":"view_file","tool_info":{"name":"view_file","parameters":{"AbsolutePath":"/old.ts"}}}}',
+  ].join('\n');
+  assert.deepEqual(readPaths(parseAgyStream(stream)), ['/new.ts', '/old.ts']);
+});
+
+test('read_file 进路径覆盖率分母与分子（CLAUDE-01：AGY_MUST_HAVE_PATH 登记直断言）', () => {
+  const stream = [
+    '{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"tool","tool_name":"read_file","tool_info":{"name":"read_file","parameters":{"Path":"/a.ts"}}}}',
+    '{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"tool","tool_name":"view_file","tool_info":{"name":"view_file","parameters":{"AbsolutePath":"/b.ts"}}}}',
+  ].join('\n');
+  const cov = pathCoverage(parseAgyStream(stream));
+  assert.equal(cov.total, 2, 'read_file 与 view_file 都计入分母');
+  assert.equal(cov.withPath, 2, '两者都带路径，计入分子');
+});
+
+test('read_file 缺 Path 参数：只增分母不增分子（覆盖率退化可检出的反例）', () => {
+  const stream =
+    '{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"tool","tool_name":"read_file","tool_info":{"name":"read_file","parameters":{}}}}';
+  const cov = pathCoverage(parseAgyStream(stream));
+  assert.equal(cov.total, 1);
+  assert.equal(cov.withPath, 0, '无路径参数不得计入分子——路径核验降档应可被此覆盖率暴露');
 });

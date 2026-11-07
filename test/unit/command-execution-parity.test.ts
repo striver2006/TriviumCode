@@ -30,7 +30,7 @@ type ToolTable = Readonly<Record<string, boolean>>;
 
 const CLAUDE_TOOLS: ToolTable = { Read: false, Grep: false, Glob: false, Bash: true };
 const AGY_TOOLS: ToolTable = {
-  view_file: false, grep_search: false, find_by_name: false, list_dir: false, finish: false,
+  view_file: false, read_file: false, grep_search: false, find_by_name: false, list_dir: false, finish: false,
   run_command: true,
 };
 
