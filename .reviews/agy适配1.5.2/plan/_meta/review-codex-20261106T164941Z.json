@@ -1,0 +1,90 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "读取计数、路径回归与提示词解耦方案符合现有实现，两轨验收也忠实于任务目标。实施前需收紧工具层有效的证据标准、限定旧版兼容声明，并修正预检参数与设计回补位置。本轮仅做只读静态核对，原件哈希与任务书一致。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "security",
+      "location": "D1 臂A结局②、D5轨道二",
+      "problem": "“工具报错、文件未变”被直接判为工具层有效，判据过宽。参数错误、目标路径错误或工具内部异常同样可能产生该结果，即使写工具已可执行也会误判通过，绕过计划设置的用户决策分支。",
+      "evidence": "被审计划 D1 明确接受“denied_actions 或工具报错”。src/trivium/adapters/agy-events.ts 的 parseAgyStream 将 tool_info.error.message 原样提取，并不判定是否为权限拒绝；test/unit/agy-events.test.ts 的 DENIED_SAMPLE 则同时保留 permission check failed 原文与 denied_actions。以上为静态推理，未复测 agy。",
+      "suggestion": "只有能归因到工具禁用或权限策略的明确拒绝证据，且与实际请求工具、目标对应时，才判有效；普通工具错误、超时及无法归因的失败归入未定，保留原始事件和文件对照。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "D1 臂B与fallback、资产支持面声明",
+      "problem": "臂B仅在1.5.2上验证未知旧名 view_file，却据此选择“兼容旧安装面”的双名资产。它不能证明旧版同样容忍未知新名 read_file。即使臂B成功，旧版支持仍缺证据；当前仅在臂B失败时收窄支持面的分支没有覆盖这一情况。",
+      "evidence": "被审计划 D1 的两臂均针对1.5.2，臂B成功即采双名兼容旧安装面。skills/dual-critic/agents/trivium-critic.md 是静态工具列表；src/install.ts:415-422 直接复制这一份资产；src/trivium/probes/agy.ts:319起要求已安装Agent，并无按版本选择资产的机制。此为静态推理。",
+      "suggestion": "区分“双名资产在1.5.2验证通过”与“旧版兼容已验证”。旧版无法实测时，无论臂B结果如何，都将旧版标为未验证或明确收窄支持面；若承诺旧版兼容，则补对应版本的读取及写限制验证。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "correctness",
+      "location": "D5轨道一、实施步骤7、验收清单中的preflight命令",
+      "problem": "三侧预检命令缺少 --driver glm，按现有CLI会取缺省Driver claude，而显式审核者集合又包含claude，因自己审自己直接退64，无法达到所列验收结果。",
+      "evidence": "src/trivium/cli.ts:975-981 在preflight入口直接解析 --driver 并传给 resolveCriticSelection；src/trivium/critics.ts:235 在未传时取 DEFAULT_DRIVER，:356-362 拒绝显式集合包含Driver；src/trivium/agents/registry.ts:506 的缺省值为claude。以上为静态核对，未执行preflight。",
+      "suggestion": "在验收命令中显式指定与实际执笔身份一致的 --driver glm，并同步所有重复出现的命令。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-04",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "§二文档改动面、实施步骤8、文档验收项",
+      "problem": "计划反复指定回补“§16.2工具层行”，但实际工具层保障表位于§10.3。仅按列出的章节回补，会留下该表中固定五工具及工具层禁写有效的现行声明，与最终双名资产或失效、未定结论冲突。",
+      "evidence": "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:2644-2649 的§10.3包含工具层表，明确五个工具及无命令工具；:3885起的§16.2是实施纪律，不含该表。被审计划仅列§16.2/§3.5作为对应回补与验收落点。",
+      "suggestion": "将§10.3工具层表纳入必改及验收清单，按最终资产和实验结论同步实际保障与限制；§16.2仅在纪律本身变化时修改。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "撤回由init.tools全集推断白名单失效的结论正确，现有解析器明确该字段是完整注册表。",
+    "AGY_READ_TOOLS、AGY_MUST_HAVE_PATH及countTools统一双名，能够同时修复读取证据和路径覆盖率口径。",
+    "Path与AbsolutePath确为存量能力，补回归测试而不预先扩展参数键合理。",
+    "要求直接断言tool_calls.read，并将探针提示词与工具名解耦，能覆盖此前测试触达缺口。",
+    "读取恢复与写防线实证分开验收，失效或未定时交用户决定是否恢复三审，符合本轮任务目标。"
+  ],
+  "not_covered": [
+    "未执行agy真机实验，未独立确认1.5.2工具改名、白名单行为或旧版兼容性。",
+    "未执行构建、测试、安装、doctor或preflight，避免写入文件及消耗模型配额。",
+    "未核验Windows真机、账号模型可得性、实际调用费用及安装回退操作。",
+    "未审查并行密钥扫描修复、extension实现或任何禁读材料。"
+  ],
+  "consulted": [
+    ".reviews/agy适配1.5.2/plan/2026-11-06-agy适配1.5.2-r2-glm.md",
+    ".reviews/agy适配1.5.2/plan/2026-11-07-agy适配1.5.2-codex.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/04_development/GUIDE_env_setup.md",
+    "doc/04_development/GUIDE_local_pitfalls.md",
+    "doc/05_testing/README.md",
+    "doc/06_deployment/部署手册.md",
+    "skills/dual-critic/agents/trivium-critic.md",
+    "src/install.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/critics.ts",
+    "src/trivium/agents/registry.ts",
+    "src/trivium/doctor.ts",
+    "src/trivium/preflight.ts",
+    "test/unit/agy-events.test.ts"
+  ]
+}

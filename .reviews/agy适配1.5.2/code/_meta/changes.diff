@@ -1,0 +1,366 @@
+# trivium changes.diff
+# run_id: 20261106T172504Z
+# base: HEAD
+# head: e1c7881683e52dfd0be4f7627ad78177fe1612b9
+# files: 12
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/04_development/GUIDE_local_pitfalls.md
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-11-06_密钥扫描源码调用误报.md
+#   skills/dual-critic/agents/trivium-critic.md
+#   src/trivium/adapters/agy-events.ts
+#   src/trivium/adapters/agy.ts
+#   src/trivium/probes/agy.ts
+#   src/trivium/secrets.ts
+#   test/unit/agy-events.test.ts
+#   test/unit/command-execution-parity.test.ts
+#   test/unit/secrets.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 4fbc6220..15620647 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -350,7 +350,7 @@ v10正式启动测量只作用于code，导入与hash固定`formal-start-prechec
+ | :--- | :--- | :--- |
+ | `agy.bin` | 绝对路径可执行 + `agy --version` | 预检失败 |
+ | `agy.models` | `agy models` 输出可解析，配置中的 slug 在列表内 | 模型配置报错 |
+-| `agy.headless_read_ok` | 在临时目录跑一次「读取指定文件并回显首行」的最小任务，检查 `stream-json` 中是否出现读文件工具事件 | 判定 issue #548 是否影响本机；若不通过则记录 `agy.needs_pty=true` 或转 `--add-dir` 预授权方案，仍不通过则该侧不可用 |
++| `agy.headless_read_ok` | 在临时目录跑一次「读取指定文件并回显首行」的最小任务，检查 `stream-json` 中是否出现读文件工具事件（agy适配1.5.2，2026-11-07 改准：读文件工具事件按 `view_file` 与 `read_file` 双名判定——1.5.2 起改名 `read_file`，只认旧名会把「读取成功」误判为零读取；提示词不点工具名，用「文件读取工具」表述） | 判定 issue #548 是否影响本机；若不通过则记录 `agy.needs_pty=true` 或转 `--add-dir` 预授权方案，仍不通过则该侧不可用 |
+ | `agy.json_schema_ok` | `--json-schema` 强制输出可解析为目标 schema | 降级为提示词约定 + 宽松解析 |
+ | `agy.pty_required` | 管道下 stdout 是否为空但 exit 0；是则启用 `script -q /dev/null` 伪终端包装重试 | 记录到 probe |
+ | `agy.path_deny` | 实测 `permissions.deny`（独立 settings 路径或环境变量注入）能否以**路径级**规则拒绝读取指定文件（如 `.reviews/**/*-glm.md`）：在临时目录放一个被 deny 的文件，headless 要求读取，检查是否被拒且轨迹中无读取事件。记录 `agy.path_deny: {supported: bool, rule_syntax: "…"}` | 不支持则第 ③ 道屏蔽只剩 BRIEF 禁读清单 + 轨迹核验（10.1），`run.json.guard.peer_deny_applied=false` |
+@@ -2645,7 +2645,7 @@ flowchart LR
+ 
+ | 层 | Antigravity 侧 | ZCode 侧 |
+ | :--- | :--- | :--- |
+-| **工具层** | 自定义 Agent `trivium-critic` 的 `tools:` 白名单只含五个只读工具（`view_file` 查看文件、`grep_search` 检索、`find_by_name` 按名查找、`list_dir` 列目录、`finish` 交结论），**没有任何命令工具**——审查员不跑命令（测试/构建命令同样不跑，取舍见 18.1 #11）；`run_command` 一旦出现在轨迹里即判 `readonly_breach`（`adapters/agy-events.ts`）。（v1.3.72 改准：原写「只读命令白名单 `readonly_commands`」「`commandExecutionPolicy` 设为沙箱/受限」「配合 `permissions.deny` 兜底写类工具」，三句都不是现状——`readonly_commands` 从未接线、已删除，EV-15） | `--mode plan` + `--disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash,…"`（以 `probe.zcode.readonly_flags` 实测组合为准；ZCode 侧若无法做命令级白名单，则整个 `Bash` 禁用，`run_command` 计数恒为 0）。**MCP 工具面不在 denylist 的论域**（经插件缓存带进副本 HOME，如 `mcp__node_repl__js`）：v1.3.75 起只检测、未关通道——执行型（`mcp__node_repl__` 开头）一被调用即判 `readonly_breach`，名单外的 MCP 调用记证据不可信（EV-188，见 11.1） |
++| **工具层** | 自定义 Agent `trivium-critic` 的 `tools:` 白名单只含五个只读工具（`read_file` 查看文件、`grep_search` 检索、`find_by_name` 按名查找、`list_dir` 列目录、`finish` 交结论），**没有任何命令工具**——审查员不跑命令（测试/构建命令同样不跑，取舍见 18.1 #11）；`run_command` 一旦出现在轨迹里即判 `readonly_breach`（`adapters/agy-events.ts`）。（v1.3.72 改准：原写「只读命令白名单 `readonly_commands`」「`commandExecutionPolicy` 设为沙箱/受限」「配合 `permissions.deny` 兜底写类工具」，三句都不是现状——`readonly_commands` 从未接线、已删除，EV-15）（agy适配1.5.2，2026-11-07 实测改准：agy 1.5.2 起文件读取工具由 `view_file` 改名 `read_file`，两者为同义名——白名单同时列入会让 executor 报 `tool name conflict` 硬错（判据实验臂 B 证据），故白名单只放当前版本真名 `read_file`（仅经 1.5.2 验证，1.5.1 未验证不承诺）；轨迹解析与 `countTools` 双名并计保历史留痕回放不失实。`write_to_file` 的调用级工具层拒绝证据未取得——两级诱导下模型均自觉拒绝调用、未发起工具调用，工具层状态按「未定」处理；白名单确被 agy 解析执行（臂 B 冲突错误反证），现行防线 = 白名单解析执行 + 提示词自觉 + 事后核验层） | `--mode plan` + `--disallowed-tools "Write,Edit,MultiEdit,ApplyPatch,Bash,…"`（以 `probe.zcode.readonly_flags` 实测组合为准；ZCode 侧若无法做命令级白名单，则整个 `Bash` 禁用，`run_command` 计数恒为 0）。**MCP 工具面不在 denylist 的论域**（经插件缓存带进副本 HOME，如 `mcp__node_repl__js`）：v1.3.75 起只检测、未关通道——执行型（`mcp__node_repl__` 开头）一被调用即判 `readonly_breach`，名单外的 MCP 调用记证据不可信（EV-188，见 11.1） |
+ | **文件系统层** | **无**。就地模式不能把项目根整树 `chmod a-w`（会阻断 Driver 与开发者）；`.git` 在场，因此 `git commit/checkout/reset/stash` 等写命令必须在工具层就够不着：本侧没有命令工具，根本跑不了命令（v1.3.72 改准：原写「只读命令白名单之外一律拒绝」，那份白名单从未存在） | 同左（本侧整个 `Bash` 禁用） |
+ | **事后核验层** | 跑前/跑后比对 `tree_hash` + `git status --porcelain -uall` 指纹（排除 `probe.*.scratch_paths` 白名单）+ 工具轨迹中的写工具/写命令事件扫描；**工具轨迹的写事件**命中即 `readonly_breach: true`，指纹变化只进 `snapshot.drift`、不置这一位（v1.3.127 更正：原写「任一命中即 `readonly_breach: true`」，与实现不符——`guard.ts` 的失守只由写事件判定）；与开发者手改的区分见 9.2 第 4 步 | 同左；另（v1.3.75，EV-188）：rollout 的 `response.toolCalls` 与会话日志的 `tool.call.*` 里的 MCP 调用按调用 id 合并计数（`tool_calls.mcp`），执行型调用以 `MCP:` 前缀进写事件 |
+ 
+@@ -2661,6 +2661,13 @@ flowchart LR
+ 
+ ### 10.5 安全与密钥
+ 
++2026-11-06 误报修订：通用长串赋值规则不能把源码声明中裸标识符的无参方法调用
++当作凭据（例如录音会话的编号分配调用）。仅在 `final/const/let/var` 声明、无引号
++右值、合法标识符和完整 `.method();` 形态同时成立时排除此通用匹配；不按类名或
++项目放行。带引号字面值、普通配置赋值、专用凭据规则及相邻凭据照常检测。
++扫描与脱敏共用含匹配位置和原文的确认判据，补丁新增行扫描及禁读范围不变。
++这是当前版本的本地修复，按本次用户约束不变更版本号，不表示已正式发布。
++
+ | 项 | 措施 |
+ | :--- | :--- |
+ | 凭据 | 一律走各 CLI 自身登录态或环境变量注入子进程；**禁止**写入 `.reviews/`、`_meta/`、`run.json`（NFR-04）。`ZCODE_API_KEY` 等从 `.env`/Keychain 读取，`.env` 已在 `.gitignore`。**运行目录里的凭据副本**（codex 为隔离拷进 `<侧>/codexhome/` 的三份 toml/json、zcode 为模型覆盖拷进 `<侧>/home/.zcode/cli/config.json` 的那份）**随该侧运行结束整份删除**（`runner` 每次尝试的 `finally`，含超时、无最终回复、准备中途失败、重试的每一轮），`worker_lost`、`review --cancel`、会话启动清扫三处兜底；「哪一侧放了什么载体」由该侧适配器的 `scrubRunDir` 回答，agy 侧无副本。**认证探活的临时副本**（codex 在 `trivium-codex-auth-*/codexhome/` 下的 `auth.json` 与两份 toml，zcode 在 `trivium-zcode-auth-*/home/.zcode/cli/config.json`）探完即删、只删 mkdtemp 的返回值；删不掉不抛、不改探活结论，残留提示（删除失败后现场查凭据副本还在不在，查不了按在说）接在详情末尾（v1.3.79 EV-197、v1.3.81 EV-200）。抹除失败不判该侧失败，但进 `status.json` 侧 note、`--wait` 的终态 message 与会话启动待办（EV-20）。**告警与错误分档**：超过 32 MB 的文件跳过、读目录失败只记告警（不影响 `ok`），载体删不掉、命中却处理不了才是错误（`ok:false`、清扫重试）——第一次真跑就撞上 codex 的 21 MB 插件目录缓存，记成失败会让一条假失败在待办里挂 30 天。**不可逆动作的准入判据只有一处** `workerConfirmedGone`，`waitRun` 的 `worker_lost`、`review --cancel`、会话启动清扫三处共用（v1.3.53 起会话启动清扫与 `trivium scrub` 另问审查员 CLI 进程组记录：CLI 组仍活着、判不了或记录读不懂 ⇒ 不抹、计入 `deferred`，EV-38；v1.3.58 起 `waitRun` / `--cancel` 两处同样核 CLI——三处经同一函数 `scrubAdmission`，被 CLI 挡住时不抹、按事实告警、留给会话启动清扫，到期整删对记录里仍在的 CLI 同样保留，EV-157；v1.3.60 起「组长已退出、组员仍在」同样挡住，EV-165；见 7.5「审查员 CLI 进程组记录」）：`starting` 不抹；有 pid 就按进程判（**终态也要判**——`waitRun` 判 `heartbeat_stale` 时正是把活着的进程写成 `failed`）；拿不到 pid 时只有终态才敢下「已经不在」的结论；`status.json` 读不到一律不抹并计数。另分档可见性：`ok`（有没有出错）、`complete`（扫完了没有——**论域内**的二进制已改整删，故成因只剩超大文件与回读面下的二进制，清扫据此不判「已处理」）、`unknown`（状态读不到）、`deferred`（准入未过而状态读得到：`starting`／拿不到 pid／终态但进程仍活；v1.3.53 起另有第四格——worker 已不在而记录里的审查员 CLI 进程组仍活着、判不了或记录读不懂，这一格同时进 `deferredCli` 并逐条带成因，人读输出单列一行，因为「记录读不懂」不自愈）。**分档必须闭合**：看过的每个目录都要落进恰好一格，否则人读输出自称全景却漏掉一类，而 `starting` 类可能已经写下了副本（代码双审 GLM-04）。各档在会话启动待办里各占一行。`incomplete` 还要按成因带出取证路径：侧层翻该侧哨兵，运行目录层**没有哨兵可翻**，必须把告警原文随计数一起带出（CODEX-04 ≡ AGY-02 ≡ GLM-03）。**清扫有两个入口，作用域不同而判据同源**：会话启动清扫只覆盖本项目桶（它是 pull 式时机，把整台机器卷进来会让「开个会话」变成全盘遍历；到期整删同样只在这里跑——不再回到某个仓库，它的桶就不会有任何自动清理，v1.3.61，EV-166）；显式子命令 `trivium scrub [--dry-run]` 遍历整个 `run_root` 的全部项目桶、**只抹凭据不删任何目录**（整删是 `run_dir_days` 的职责且按项目划界，跨仓删别人的目录是越权）——EV-33 据此收口。`complete` 的判据是 `=== true` 而不是 `!== false`：哨兵不过校验，该字段加进来之前的旧哨兵对它取 `undefined`，按后者写会把「不知道扫没扫完」当成「扫完了」而永不复查（EV-35 实测 2 个目录中招）。**`--dry-run` 只预测侧层**：运行目录那一层没有哨兵、每轮都复查，有没有活取决于正文是否命中密钥，不读正文答不了，而预览不该为此整份读它们——这条边界写进字段文档与人读文案，不靠「真跑会跳过」这种含糊说法带过（CODEX-03 ≡ AGY-01）。真跑那一层的实际动作由 `runDirRedacted` 单列一格如实记账，不并进「已抹除凭据副本」——那一格一份载体都没抹，并进去就是话比事实强（GLM-06）。桶级 `readdir` 失败同样要记账：整棵没进论域而命令报 ok，是同一形状的缺口高了一层（CODEX-01）。**到期整删删不掉不中止整轮**（v1.3.84，EV-204）：经 `tryRemoveTempDir` 删（重试三次、失败不抛），删不掉的记进 `removeFailed`、落回未到期那条路照走凭据准入与抹除（递归删除删到一半才失败，载体可能正好在没删掉的那部分里），循环继续处理后面的目录；会话启动待办单列一行（最多列三个目录与错误码）。此前一个目录删不掉就抛出整个 `pruneRunDirs`，排在后面的既不整删也不抹凭据，每次会话都卡在同一处。删掉一部分会刷新目录 mtime，下次会话判为未到期，要再过一个保留期才重试整删，提示不承诺「下次会再试」；若 `status.json` 已被删掉，期间凭据抹除按 `unknown` 处置、由「状态读不到」那一行提醒 |
+diff --git a/doc/04_development/GUIDE_local_pitfalls.md b/doc/04_development/GUIDE_local_pitfalls.md
+index 103d996d..5102044f 100644
+--- a/doc/04_development/GUIDE_local_pitfalls.md
++++ b/doc/04_development/GUIDE_local_pitfalls.md
+@@ -153,3 +153,5 @@ P-36 【历史，2026-10-29 接入已终止】Qoder CN 1.1.80（2026-10-28）：
+ P-37 Windows Job 与 PowerShell 逃逸/封送四坑（2026-10-30，ISSUE-08/09 修复期实测，报告 ../05_testing/REPORT_2026-10-30_ISSUE-08-09修复.md）：① Node spawn 的 detached（DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP）逃不出 KILL_ON_JOB_CLOSE 的 Job——收杀语境派生一律经 WMI（([wmiclass]'Win32_Process').Create 三参、ShowWindow=0 藏窗）由 WmiPrvSE 承载逃逸；② Invoke-CimMethod 带 -ClientOnly 的 Win32_ProcessStartup 实例参数报 0x80041002「找不到 Win32_Process」——WMI 建进程用 wmiclass COM 三参形态；③ PowerShell 直接封送 ref struct 调 SetInformationJobObject 返回 True 但标志静默丢失（回读 0x0、Job 不收杀、对照组假绿）——P/Invoke 夹具必须整段 C# 内联（win-job-escape.test.ts 夹具即此形态，且全文 ASCII-only，同 P-35）；④ 外层 powershell -Command 会把内层原生命令的非零退出码重映射为 1（2→1，阻断语义丢失）——跨层退出码透传须以 exit $LASTEXITCODE 尾句显式交出（bash 下空参展开退化为 exit $?，两载体都对）。另：cmd /d /s /c 形态在 Git Bash 下被 MSYS 把 /d /s /c 转成路径（ISSUE-07 同族），不能当跨壳命令载体。
+ 
+ P-38 Windows 全量绿不代表共享路径的行为改动已回归（2026-10-31，macOS 回归 ISSUE-08 收口实测，报告 ../05_testing/REPORT_2026-10-30_ISSUE-08-09修复.md §5）：Windows 全量约 3150 例、macOS 约 4045 例，差额主要是 POSIX 进程组 / 信号 / ps 启动时刻一类用例（win32 上跳过）。ISSUE-08 改了 `--wait` 失联分支（两平台共用）的「结束不结束进程」边界，Windows 全量绿，Mac 上 6 格断言旧边界的用例确定性红。改 run-protocol / status / exec 里两平台共用、而断言集中在 POSIX 进程组用例上的行为时，提交前先在 macOS 跑全量，或至少 grep 断言旧文案 / 旧边界的用例（如「不结束进程」「用户决策 5」）一并改写。
++
++P-39 agy 升级改工具名即静默炸探针（2026-11-07，agy适配1.5.2 主题判据实验实测，证据见该主题留痕）：agy 1.5.2 把文件读取工具由 `view_file` 改名 `read_file`（两者同义名——白名单双列会让 executor 报 `tool name conflict` 硬错）——探针/适配器只认旧名时，headless 探针记「SUCCESS 但读取数=0」，把「读取成功」误判为不通（本机实测哨兵复述成功而计数为零）；且 init 事件的 `tools` 恒为完整注册表、不能当白名单证据（M0 老坑重申）。对策：轨迹判定/计数一律双名并计（资产白名单只放当前版本真名）、探针提示词不点工具名（用「文件读取工具」表述）、CLI 升级后必跑 `doctor --only <名>` 重探。
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index c1c89fa2..a937a266 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -178,6 +178,8 @@
+ - [`REPORT_2026-10-30_ISSUE-08-09修复.md`](./REPORT_2026-10-30_ISSUE-08-09修复.md)：**验收遗留两单收口（1.3.5）**。修复前先实测钉死机制：P/Invoke 夹具复现 detached worker 随 KILL_ON_JOB_CLOSE Job 收杀（ISSUE-08 逐字复现）并验证 WMI 中继逃逸成立；hook 命令形态三候选双载体（Git Bash / PowerShell 回退）逐一实测后采用 `powershell -NoProfile -EncodedCommand`（ISSUE-09③，含外层 -Command 退出码重映射为 1 的实测与尾句纠正）。修复：Windows 逃 Job 派生通道（winRelay + spawn-relay 中继 + 回退直拉）、--wait 失联（worker 确认已死）就地清理本 run CLI 子树、Windows 合并渲染 PS 形态 hook 命令（gate 身份经 b64 解码识别）。回归含 win-job-escape（对照组必死/实验组必活）与 hook-guard 双载体四分支实跑契约；设计 §7.1 三段、Bug 清单第 18 条同批。
+ - [`REPORT_2026-10-30_W4-S3复测.md`](./REPORT_2026-10-30_W4-S3复测.md)：**ISSUE-09 环境侧①②收口 + W4-S3（L1 负向）达成**。②以零系统改动的进程级 `CLAUDE_CODE_GIT_BASH_PATH` 注入解决（重装 Git 与目录联接均未启用）；①复核为幻影判据误诊（claude 2.1.302 的 stream-json 不存在 hook_started 事件类型，判别探针被 hook 实弹拦截证伪）；闸门停点期三次 canary 写全部被拦（拒因原文 + 同 ID permission_denials + 文件未创建三证齐全），abandon 收尾。顺带证实/实测两条 headless 会话事实：`--restricted` 忽略用户 settings env 段致网关凭据须进程级注入（与设计 §7.1 一致）、`defaultMode=plan` 对 headless 同样生效（测 Hook 须显式 --permission-mode）。证据 `evidence/w4s3-retest-20261030-221253/`。
+ 
++- [密钥扫描源码调用误报修复](./REPORT_2026-11-06_密钥扫描源码调用误报.md)：普通变量初始化调用被长凭据规则截断误报；收窄到完整声明调用形态，保留字面值与专用凭据检测，记录红绿对照与安装核验。
++
+ 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
+ 
+ 20C前本地检查已完成：两遍3163通过/3跳过/0失败、定向49/49、源/安装桩14/14、四目标28入口相等；新写合同机制实际准入未测，正式20C尚待运行。
+diff --git a/skills/dual-critic/agents/trivium-critic.md b/skills/dual-critic/agents/trivium-critic.md
+index 4bde0c32..13aaa3de 100644
+--- a/skills/dual-critic/agents/trivium-critic.md
++++ b/skills/dual-critic/agents/trivium-critic.md
+@@ -5,7 +5,7 @@ mainAgent: true
+ subagent: false
+ hidden: true
+ tools:
+-  - view_file
++  - read_file
+   - grep_search
+   - find_by_name
+   - list_dir
+diff --git a/src/trivium/adapters/agy-events.ts b/src/trivium/adapters/agy-events.ts
+index 406da93f..e362058f 100644
+--- a/src/trivium/adapters/agy-events.ts
++++ b/src/trivium/adapters/agy-events.ts
+@@ -81,13 +81,19 @@ const PATH_KEYS = [
+  * 本侧四个读工具的目录参数**都是必填的**，所以它们同时也构成
+  * `AGY_MUST_HAVE_PATH`（设计 10.1.1 第②层的覆盖率分母）。
+  */
+-export const AGY_READ_TOOLS = new Set(['view_file', 'grep_search', 'find_by_name', 'list_dir']);
++/**
++ * 读取类工具集（出现在轨迹里表示「读了东西」）。agy 1.5.2 起文件读取工具由
++ * view_file 改名 read_file（2026-11-07 实测：两者为同义名，agent 白名单同时列入
++ * 会让 executor 报 tool name conflict 硬错——判据实验臂 B 证据）。这里双名并计：
++ * 资产白名单只能放当前版本的真名，但轨迹解析要同时认两代名字（历史留痕回放不失实）。
++ */
++export const AGY_READ_TOOLS = new Set(['view_file', 'read_file', 'grep_search', 'find_by_name', 'list_dir']);
+ 
+ /**
+  * 读类工具里**必然带路径**的那一档：提不出路径就是提取器坏了，不是合法形态。
+  *
+- * **四个都在**（r1 三侧独立指出）。初版只放了 `view_file`，理由是「搜索类允许
+- * 无路径」——那个理由对**搜索词**成立，对**搜索目录**不成立：
++ * 读取/检索/列目录全家都在（r1 三侧独立指出）。初版只放了文件读取工具，理由是
++ * 「搜索类允许无路径」——那个理由对**搜索词**成立，对**搜索目录**不成立：
+  * `grep_search` 有 `SearchPath`、`find_by_name` 有 `SearchDirectory`、
+  * `list_dir` 有 `DirectoryPath`，三者都是必填的目录参数。
+  *
+@@ -97,6 +103,7 @@ export const AGY_READ_TOOLS = new Set(['view_file', 'grep_search', 'find_by_name
+  */
+ export const AGY_MUST_HAVE_PATH = new Set([
+   'view_file',
++  'read_file',
+   'grep_search',
+   'find_by_name',
+   'list_dir',
+diff --git a/src/trivium/adapters/agy.ts b/src/trivium/adapters/agy.ts
+index 173976b4..92d2c7a4 100644
+--- a/src/trivium/adapters/agy.ts
++++ b/src/trivium/adapters/agy.ts
+@@ -145,12 +145,16 @@ export async function invokeAgy(opts: AgyInvokeOptions): Promise<AgyInvokeOutcom
+   };
+ }
+ 
+-/** 统计工具调用分类计数 */
+-function countTools(parsed: AgyStreamResult): CriticResult['tool_calls'] {
++/**
++ * 统计工具调用分类计数。
++ * 导出供单测直触（agy适配1.5.2 CLAUDE-05：双名计数必须有直断言，解析夹具不能替代）。
++ */
++export function countTools(parsed: AgyStreamResult): CriticResult['tool_calls'] {
+   const counts: CriticResult['tool_calls'] = { read: 0, grep: 0, glob: 0, run_command: 0 };
+   for (const t of successfulToolCalls(parsed)) {
+     switch (t.toolName) {
+       case 'view_file':
++      case 'read_file': // agy 1.5.2 起的文件读取工具名（与 view_file 同义，双名并计）
+         counts.read = (counts.read ?? 0) + 1;
+         break;
+       case 'grep_search':
+diff --git a/src/trivium/probes/agy.ts b/src/trivium/probes/agy.ts
+index bb3b567f..29d8de61 100644
+--- a/src/trivium/probes/agy.ts
++++ b/src/trivium/probes/agy.ts
+@@ -100,7 +100,7 @@ export async function probeHeadlessRead(
+   agent: string | null,
+ ): Promise<HeadlessReadResult> {
+   const prompt =
+-    `项目根目录是 ${fx.root} 。请用 view_file 读取绝对路径 ${fx.openFile} ，` +
++    `项目根目录是 ${fx.root} 。请用文件读取工具读取绝对路径 ${fx.openFile} ，` +
+     `并原样回显它的第一行内容。只做这一件事，读完立即给出答案。`;
+ 
+   const attempt = async (pty: boolean): Promise<{ out: AgyInvokeOutcome; paths: string[]; sentinel: boolean; ok: boolean }> => {
+@@ -176,7 +176,7 @@ export async function probeJsonSchema(bin: string, fx: Fixture, agent: string |
+       model: PROBE_MODEL,
+       timeoutMs: PROBE_TIMEOUT_MS,
+       prompt:
+-        `请用 view_file 读取绝对路径 ${fx.openFile} ，把它的第一行放进 first_line 字段，` +
++        `请用文件读取工具读取绝对路径 ${fx.openFile} ，把它的第一行放进 first_line 字段，` +
+         `read_ok 置为 true。严格按给定 schema 输出。`,
+     });
+     const body = out.parsed.response.trim();
+@@ -224,7 +224,7 @@ export async function probePathDeny(
+     agent,
+     model: PROBE_MODEL,
+     timeoutMs: PROBE_TIMEOUT_MS,
+-    prompt: `请用 view_file 读取绝对路径 ${fx.peerFile} ，并原样回显它的第一行内容。只做这一件事。`,
++    prompt: `请用文件读取工具读取绝对路径 ${fx.peerFile} ，并原样回显它的第一行内容。只做这一件事。`,
+   });
+   const leaked = out.parsed.response.includes(SENTINEL_PEER) || readPaths(out.parsed).includes(fx.peerFile);
+ 
+diff --git a/src/trivium/secrets.ts b/src/trivium/secrets.ts
+index 7aaf4d93..221dc350 100644
+--- a/src/trivium/secrets.ts
++++ b/src/trivium/secrets.ts
+@@ -139,6 +139,20 @@ function looksReal(token: string): boolean {
+   return shannonEntropy(token) >= 3.0;
+ }
+ 
++/**
++ * 源码声明的裸方法调用不是凭据字面值。仅确认「声明 + 裸标识符 + 无参方法调用」
++ * 这一完整形态；不按项目/类名放行，不豁免带引号的值、普通配置或专用凭据规则。
++ * 通用规则只吃到点号前的长标识符，必须结合两侧文本才能避免把类名当随机串。
++ */
++function isDeclaredMethodCall(m: RegExpExecArray): boolean {
++  if (m.input === undefined || m.index === undefined) return false;
++  if (!/(?:^|[\s;{}])(?:final|const|let|var)[ \t]+$/.test(m.input.slice(0, m.index))) return false;
++  if (!/^[A-Za-z_]\w*[ \t]*=[ \t]*[A-Za-z_$]\w*$/.test(m[0])) return false;
++  return /^[ \t]*\.[ \t]*[A-Za-z_$]\w*[ \t]*\([ \t]*\)[ \t]*;/.test(
++    m.input.slice(m.index + m[0].length),
++  );
++}
++
+ const RULES: Rule[] = [
+   {
+     // ZCode 凭据：<apiKeyId>.<apiKeySecret>，中间有且仅有一个句点（设计 §3.3）
+@@ -217,7 +231,7 @@ const RULES: Rule[] = [
+       `${KEY('api[_-]?key|secret|token|password|passwd|credential')}([A-Za-z0-9_\\-+/]{20,})${Q}`,
+       'gi',
+     ),
+-    confirm: (m) => looksReal(m[1] ?? ''),
++    confirm: (m) => looksReal(m[1] ?? '') && !isDeclaredMethodCall(m),
+     secretGroup: 1,
+   },
+ ];
+@@ -302,6 +316,8 @@ export function redactSecrets(content: string): { content: string; count: number
+       const whole = args[0] as string;
+       // replace 回调的参数形态与 exec 结果不同，按 exec 的形态重建一次（末两项是 offset 与全文）
+       const m = [whole, ...(args.slice(1, -2) as string[])] as unknown as RegExpExecArray;
++      m.index = args[args.length - 2] as number;
++      m.input = args[args.length - 1] as string;
+       if (rule.confirm && !rule.confirm(m)) return whole;
+       count++;
+       // 赋值形态只换值、留键名与引号：日志还得能读；其余规则整个匹配就是凭据
+diff --git a/test/unit/agy-events.test.ts b/test/unit/agy-events.test.ts
+index cf874714..4178f6b8 100644
+--- a/test/unit/agy-events.test.ts
++++ b/test/unit/agy-events.test.ts
+@@ -122,3 +122,35 @@ test('坏行被计数而非抛异常', () => {
+   assert.equal(r.malformedLines, 1);
+   assert.equal(r.status, 'SUCCESS', '坏行不影响其余解析');
+ });
++
++// ── agy适配1.5.2：read_file 改名（2026-11-07 本机实测事件流，agy 1.5.2）──
++// 采集自判据实验臂 A（独立 probe Agent）：tool_name=read_file、参数键 Path、哨兵复述成功
++import { countTools } from '../../src/trivium/adapters/agy.js';
++
++const ARM_A_READ_LINE = '{"event":"step_update","step_update":{"conversation_id":"x","step_index":2,"state":"DONE","step_type":"tool","tool_name":"read_file","duration_seconds":0.19,"tool_info":{"name":"read_file","parameters":{"Path":"/tmp/agy-probe/probe.txt"},"output":"1 lines, 14 bytes"}}}';
++
++test('agy 1.5.2 实测事件流：read_file 解析进读取口径与 readPaths（真实夹具）', () => {
++  const parsed = parseAgyStream(ARM_A_READ_LINE);
++  assert.equal(parsed.toolCalls.length, 1);
++  assert.equal(parsed.toolCalls[0]!.toolName, 'read_file');
++  assert.equal(readPaths(parsed)[0], '/tmp/agy-probe/probe.txt');
++});
++
++test('双名并计：view_file 与 read_file 各计一次 read（CLAUDE-05 直触 countTools）', () => {
++  const stream = [
++    '{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"tool","tool_name":"view_file","tool_info":{"name":"view_file","parameters":{"Path":"/a.ts"}}}}',
++    '{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"tool","tool_name":"read_file","tool_info":{"name":"read_file","parameters":{"Path":"/b.ts"}}}}',
++  ].join('\n');
++  const parsed = parseAgyStream(stream);
++  const counts = countTools(parsed);
++  assert.equal(counts.read, 2, 'view_file 与 read_file 都必须进 tool_calls.read');
++  assert.deepEqual(readPaths(parsed), ['/a.ts', '/b.ts']);
++});
++
++test('路径键存量回归：Path 与 AbsolutePath 两代形态都提取（agy适配1.5.2 D2 锁定）', () => {
++  const stream = [
++    '{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"tool","tool_name":"read_file","tool_info":{"name":"read_file","parameters":{"Path":"/new.ts"}}}}',
++    '{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"tool","tool_name":"view_file","tool_info":{"name":"view_file","parameters":{"AbsolutePath":"/old.ts"}}}}',
++  ].join('\n');
++  assert.deepEqual(readPaths(parseAgyStream(stream)), ['/new.ts', '/old.ts']);
++});
+diff --git a/test/unit/command-execution-parity.test.ts b/test/unit/command-execution-parity.test.ts
+index 23592134..497f389d 100644
+--- a/test/unit/command-execution-parity.test.ts
++++ b/test/unit/command-execution-parity.test.ts
+@@ -30,7 +30,7 @@ type ToolTable = Readonly<Record<string, boolean>>;
+ 
+ const CLAUDE_TOOLS: ToolTable = { Read: false, Grep: false, Glob: false, Bash: true };
+ const AGY_TOOLS: ToolTable = {
+-  view_file: false, grep_search: false, find_by_name: false, list_dir: false, finish: false,
++  view_file: false, read_file: false, grep_search: false, find_by_name: false, list_dir: false, finish: false,
+   run_command: true,
+ };
+ 
+diff --git a/test/unit/secrets.test.ts b/test/unit/secrets.test.ts
+index 59e0ec49..19082f66 100644
+--- a/test/unit/secrets.test.ts
++++ b/test/unit/secrets.test.ts
+@@ -37,6 +37,38 @@ test('干净文本不误报', () => {
+   assert.deepEqual(scanSecrets(clean), []);
+ });
+ 
++test('普通变量初始化的方法调用不是长凭据，扫描与脱敏保持一致', () => {
++  for (const declaration of ['final', 'const', 'let', 'var']) {
++    const code = `${declaration} token = ${seg('RecordingSession', 'Guard')}.acquire();`;
++    assert.deepEqual(scanSecrets(code), []);
++    assert.deepEqual(redactSecrets(code), { content: code, count: 0 });
++    assert.deepEqual(scanDiffSecrets(`diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -0,0 +1 @@\n+${code}`), []);
++  }
++  const other = `final secret = ${seg('ApplicationSession', 'Registry')}.current();`;
++  assert.deepEqual(scanSecrets(other), [], '不按某个业务类名白名单放行');
++});
++
++test('方法调用误报修复不豁免同形字面值、裸配置或相邻真实凭据', () => {
++  const value = seg('AbCdEfGhIj', 'KlMnOpQrSt', 'UvWxYz0123');
++  for (const line of [
++    `final token = "${value}";`,
++    `final token = '${value}.acquire()';`,
++    `final token = "${seg('RecordingSession', 'Guard')}.acquire()";`,
++    `token=${value}`,
++    `token=${value}.acquire()`,
++    `const token = ${value};`,
++    `{"token":"${value}"}`,
++    JSON.stringify({ text: `const token = "${value}";` }),
++    `final token = ${seg('RecordingSession', 'Guard')}.acquire(); password = "${value}";`,
++  ]) {
++    assert.ok(scanSecrets(line).some((h) => h.rule === 'generic-secret-assignment'));
++    assert.ok(redactSecrets(line).count > 0);
++    assert.throws(() => assertNoSecrets(line, 'fixture'));
++  }
++  const vendor = `final token = ${FAKE.github}.acquire();`;
++  assert.ok(scanSecrets(vendor).some((h) => h.rule === 'github-token'), '专用凭据规则不被源码表达式豁免');
++});
++
+ test('识别 ZCode <id>.<secret> 形态凭据', () => {
+   // 构造的假凭据：32 位 hex + 16 位随机串，形态与真实一致，值是编造的
+   const line = `"apiKey": "${FAKE.zcodeId}.${FAKE.zcodeSecret}"`;
+diff --git a/doc/05_testing/REPORT_2026-11-06_密钥扫描源码调用误报.md b/doc/05_testing/REPORT_2026-11-06_密钥扫描源码调用误报.md
+new file mode 100644
+index 00000000..0661b492
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-11-06_密钥扫描源码调用误报.md
+@@ -0,0 +1,43 @@
++# 密钥扫描源码调用误报修复（2026-11-06）
++
++## 来源与授权
++
++课程仓库主题“交互题重听补播可选项介绍”在 20261106T053857Z 的 code 重审启动时，新增补丁第 8748、8788 行被 generic-secret-assignment 拒绝归档，退出 1；尚未启动三侧审核者。原失败与既有归档保留。用户随后授权“做任何有利于推进三审的事情”，本次按已提出的独立修复方案修正扫描器误报，不改变课程源码来避开检测。
++
++## 根因与修改范围
++
++新增测试的局部变量 token 由 RecordingSessionGuard 的 acquire 方法返回，实际为递增整数身份。通用赋值规则在点号前截取长类名，误当作高熵凭据。之前审查的补丁没有这两条新增行，不能由之前未拦推断当前规则未生效。
++
++src/trivium/secrets.ts 仅对“final/const/let/var 声明、无引号标识符、无参成员调用、分号结束”完整形态免除通用赋值命中。带引号字面值、无声明配置、非调用赋值及独立厂商凭据规则继续检测。脱敏回调补足匹配位置与原文，与扫描共享同一判定。无项目路径、类名或审核者白名单；未修改 sensitive_globs、Hook、权限、凭据或模型路由。
++
++test/unit/secrets.test.ts 增加正反两组回归；夹具按仓库既有规则运行时拼接，运行时断言不变。设计主文档 §10.5 同步说明边界。遵循本次用户不改版本号的要求，仅做本机修订，不发布版本、不提交或推送。
++
++## 验证记录
++
++- 修复前新用例实测：25 项中 24 通过、1 失败，退出 1；/tmp/trivium-secret-red.log 保留。
++- 修复后初次定向：61 项通过，退出 0；/tmp/trivium-secret-targeted.log。
++- 全量首次执行发现新增夹具含静态同形字符串，凭据夹具契约失败；中间修订仍有三处命中，/tmp/trivium-secret-targeted-final.log 保留，不记通过。
++- 全部改为运行时拼接后：扫描、脱敏、归档与静态夹具契约共 62 项通过，退出 0；/tmp/trivium-secret-targeted-corrected.log。
++- 类型检查通过，退出 0；/tmp/trivium-secret-typecheck.log。安装冲突检查通过。
++- 对课程实际修订补丁 /tmp/replay-r8-revision-business.diff 使用构建后的同一扫描函数核验，命中数为 0；不能替代后续正式冻结包扫描。
++- 全量首次执行结束：4048 项，4031 通过、1 失败、16 跳过、0 取消，退出 1，421.9 秒；唯一失败为上述静态夹具契约。修正后用 62 项定向复测确认，不把首轮全量写成全绿。以上不宣称 Windows 或真实审核者验收通过。
++
++## 安装前基线
++
++TriviumCode HEAD 为 2be1ca88c944d31b2be6d6b6682072f42cda077d。安装前运行时构建来源 029f712abfefbb55784cdaac489a39cf892029cf；与当前仓库 CLI 源码、skills、package.json 的差异在修复前为空。仓库既有 VSCode 扩展修改与历史归档状态未动。正常构建和安装替换运行时，禁止手改 bundle。课程 r5 与配置哈希仍与原指定值一致，无未关闭闸门。
++
++## 部署与日志指纹
++
++安装副本经项目 wrapper 运行 doctor --selftest，14/14 步通过、退出 0，临时夹具已清理。这只覆盖桩流水线，不覆盖真实三家认证、模型质量或厂商路径隔离。
++
++正常构建退出 0，随后取消安装子进程的 TRIVIUM_ASSET_ROOT 环境覆盖并执行正常安装器，退出 0。安装器同步运行时、四家入口与 Gemini 审核 agent 文件，共 52 个文件；未调用 init，不改各项目配置、wrapper 或 Hook。构建源码身份为上述 HEAD 加 dirty，inputs 前缀 1268b20d5bc0；这是本机未提交修复，不是已发布版本。
++
++| 证据 | SHA-256 |
++| --- | --- |
++| 安装前运行时备份 /tmp/trivium-runtime-before-secret-fix-20261106.cjs | 9554fd1dae8efb076b6f351872285f2b543b5ef8f24bde105009cb70429c84e1 |
++| 新构建与安装运行时，逐字节哈希相同 | 280039854fd33ca0248fb9bc1b072b9eb2aee4fc820dd365cb0b6e35a4f65d3a |
++| /tmp/trivium-secret-red.log | d9ead4f8545e8562c00a5aff0559902e386eeaa4f9de26edad686d35378f7f60 |
++| /tmp/trivium-secret-all.log | 3dbf97607b12925c7fbc158d2b88f6f18d38dbcdd7e7cafa5e3c486a40466d20 |
++| /tmp/trivium-secret-targeted-corrected.log | 405862b50b77f092cadadeef5d7d85ef4959f6f4ac692b6144463d5afb69b5a6 |
++| /tmp/trivium-secret-typecheck.log | b284def51399d1de5286161fcbfbbce4bf5608a4392fffc71291beeba552a01f |
++| /tmp/trivium-secret-doc-index.log | 0d1a787401341ccba265a1537a1f5eb3811520e5289c6be7ea2fd3d501fbd802 |

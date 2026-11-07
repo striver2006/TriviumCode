@@ -1,0 +1,74 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "reject",
+  "summary": "读取计数双名兼容与探针提示词解耦方向正确，但白名单实验采用了仓库明确禁止的判据，旧版兼容的后备方案缺少实现落点，且验收允许工具层防线未恢复仍宣告完成。这些问题涉及方案选择和安全边界，需修订后重新评审。本轮仅做只读核对，未调用真实模型。",
+  "findings": [
+    {
+      "id": "CODEX-01",
+      "severity": "major",
+      "layer": "rca",
+      "kind": "correctness",
+      "location": "计划 §一第3项、D1、S5第1步",
+      "problem": "以 init.tools 为全集推断白名单失效，并以列表收敛作为修复判据，与现有仓库事实冲突。即使工具白名单有效，该列表也可能保持全集，因而当前实验无法决定双名或单名方案。另外，第一臂明确为“旧五名+read_file”，已经包含 view_file；第二臂再补 view_file，没有形成不同的工具集合。",
+      "evidence": "src/trivium/adapters/agy-events.ts:37 明确注明 init 上报完整工具注册表而非 Agent 白名单，不得用于证明只读；test/unit/agy-events.test.ts:10-17 的历史真实样本同时包含 view_file、run_command、write_to_file；被审计划:52 则以 init.tools 收敛及上述两臂决定最终方案。此结论来自静态核对，未复测 agy。",
+      "suggestion": "撤回由 init.tools 全集直接推出白名单失效的结论，明确互不相同的单名、双名实验输入，并采用能够区分工具层拒绝与模型自觉拒绝的证据。重新核算必要调用次数，按实验结果选择方案。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-02",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "contract",
+      "location": "计划 §二安装器零改动、D1、§六旧版兼容风险",
+      "problem": "“无法实测1.5.1则单名+版本判别”没有可执行的实现路径。当前分发的是一份静态 agent.md，安装器直接复制；项目探针里的版本值不会自动改变用户级 Agent 文件。仅验证1.5.2容忍未知名称，也不能证明1.5.1同样容忍。按现有交付清单实施，旧版兼容承诺仍无法成立，触发后备分支时必然扩展改动面。",
+      "evidence": "skills/dual-critic/agents/trivium-critic.md:7-12 是固定 tools 列表；src/install.ts:415-422 直接把该文件复制到用户级目标，没有版本选择；src/trivium/probes/agy.ts:293-295 才读取并记录 CLI 版本，:319-327 又要求 Agent 预先安装。被审计划:97 指定版本判别后备方案，但 §二及交付清单未安排对应机制。",
+      "suggestion": "明确旧版支持所需证据，以及后备方案由哪个环节选择和生成 Agent 资产；覆盖首次安装无探针、CLI升级或回退后的重新选择与验证。若本批无法提供旧版支持，应明确收窄支持范围，不能继续承诺双版本兼容。",
+      "confidence": "high"
+    },
+    {
+      "id": "CODEX-03",
+      "severity": "major",
+      "layer": "plan",
+      "kind": "security",
+      "location": "计划 D4、§五第3项、§六写防线风险",
+      "problem": "验收允许白名单实际失效时，仅登记提示词拒写和指纹结果便完成交付、恢复三审。现有 doctor 和 preflight 并不验证工具层禁写，因此它们通过不能补足这项证据。一次模型拒绝写请求也不足以证明工具不可调用，这会把原先的工具层约束降为模型自觉，并遗漏指纹检测已有的盲区。",
+      "evidence": "src/trivium/probes/agy.ts:106-113 的 headless 判据只有读取路径和哨兵；src/trivium/adapters/agy.ts:323-354 的 availability 检查探针、入口、读取能力和 Agent 名称；主设计 doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md §10.3 要求工具层禁写，并明确项目外、被忽略文件、改后恢复等指纹盲区。被审计划:86 允许白名单未恢复时登记后验收。",
+      "suggestion": "将工具层限制是否有效与读取能力恢复分开验收。若确证工具层失效，应保留未完成或阻塞状态，并明确后续处置；改变既有防线承诺需要独立决策，不能以 doctor/preflight 通过替代。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "为 read_file 和 view_file 同步补齐读取集合、路径覆盖率分母及适配器计数，能够针对读取证据失效形成一致修复。",
+    "探针提示词与具体读取工具名解耦、使用真实事件流夹具、重装后再验收，方向合理。",
+    "path_deny 不支持可以是有效探针结论，不应将其 supported=false 本身认作本批失败。",
+    "现有 PATH_KEYS 已支持大写 Path；双态兼容应保留该行为并补齐小写 path。"
+  ],
+  "not_covered": [
+    "未执行 agy 1.5.1/1.5.2 真机实验，未独立确认工具改名、白名单实际执行行为或厂商版本边界。",
+    "未运行构建、安装、doctor、preflight 或测试，避免写入文件及消耗真实模型配额。",
+    "未验证 Windows 环境、实际账号模型可用性、调用费用及已安装资产的回退操作。",
+    "未审查并行密钥扫描修复和 extension/ 的实现。"
+  ],
+  "consulted": [
+    ".reviews/agy适配1.5.2/plan/2026-11-06-agy适配1.5.2-glm.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    "README.md",
+    "doc/README.md",
+    "doc/01_requirements/README.md",
+    "doc/02_design/README.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/04_development/GUIDE_env_setup.md",
+    "doc/04_development/GUIDE_local_pitfalls.md",
+    "doc/05_testing/README.md",
+    "doc/06_deployment/部署手册.md",
+    "skills/dual-critic/agents/trivium-critic.md",
+    "src/install.ts",
+    "src/trivium/adapters/agy-events.ts",
+    "src/trivium/adapters/agy.ts",
+    "src/trivium/probes/agy.ts",
+    "src/trivium/preflight.ts",
+    "src/trivium/doctor.ts",
+    "test/unit/agy-events.test.ts"
+  ]
+}
