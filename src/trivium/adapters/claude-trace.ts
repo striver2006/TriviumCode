@@ -74,6 +74,16 @@ export interface ClaudeTrace {
   toolResults: Map<string, string>;
   /** `result` 事件里的权限拒绝记录（路径级 deny 走这条路） */
   permissionDenials: { tool_name: string; tool_input: Record<string, unknown> }[];
+  /**
+   * CLI 合成的 assistant 消息（`message.model === '<synthetic>'`）承载的错误文本。
+   *
+   * **实测依据（2026-11-07，VSCode插件Phase3 code r5，claude 2.1.318）**：API 调用
+   * 被服务端拒绝（Kimi 5 小时配额 429）并重试 10 次全败后，CLI 以一条合成 assistant
+   * 消息承载 `API Error: Request rejected (429) · …`，紧跟一个 `is_error: true` 的
+   * result 收尾。正常路径两处文本相同；进程在两者之间崩溃时只剩合成消息这一份。
+   * 它进失败取因（`claudeFailureWhy`），不进成功判定面。
+   */
+  syntheticErrors: string[];
   finalText: string | null;
   sessionId: string | null;
   costUsd: number | null;
@@ -110,11 +120,18 @@ export interface ClaudeTrace {
  *
  * 坏行跳过而不是抛：真实输出里混过非 JSON 的提示行。
  */
+
+/**
+ * CLI 在 API 调用失败时合成 assistant 消息所用的 `message.model` 标记。
+ * 与真实模型名（服务端回报）互斥——见 `ClaudeTrace.syntheticErrors` 的实测依据。
+ */
+const SYNTHETIC_MODEL = '<synthetic>';
 export function parseClaudeEvents(jsonl: string): ClaudeTrace {
   let init: ClaudeTrace['init'] = null;
   const reportedModels: string[] = [];
   const toolUses: ClaudeTrace['toolUses'] = [];
   const toolErrors: string[] = [];
+  const syntheticErrors: string[] = [];
   const erroredToolUseIds = new Set<string>();
   const toolResults = new Map<string, string>();
   let permissionDenials: ClaudeTrace['permissionDenials'] = [];
@@ -150,6 +167,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
       const m = message?.model;
       // 空串不收（计划三审 AGY-02）：它会让一致性判定误记 false
       if (typeof m === 'string' && m.length > 0 && !reportedModels.includes(m)) reportedModels.push(m);
+      if (m === SYNTHETIC_MODEL) syntheticErrors.push(resultText(message?.content).trim());
     }
     const content = message?.content;
     if (Array.isArray(content)) {
@@ -192,6 +210,7 @@ export function parseClaudeEvents(jsonl: string): ClaudeTrace {
     reportedModels,
     toolUses,
     toolErrors,
+    syntheticErrors,
     erroredToolUseIds,
     toolResults,
     permissionDenials,
@@ -449,6 +468,37 @@ export function countTools(trace: ClaudeTrace): { read: number; grep: number; gl
  */
 export function finalReviewText(trace: ClaudeTrace): string | null {
   return trace.finalText;
+}
+
+/**
+ * 失败出口取因——「claude 未产出最终回复：」冒号后面那一段。四档从先到后：
+ *
+ * 1. **错误形态 `result` 的 `result` 文本**：CLI 的终局结论（配额 429、
+ *    服务端 overloaded 一类）。本函数只在 `completed === false` 的出口被消费；
+ *    此时非空的 `finalText` 必然来自错误形态的 result（`is_error` 为真、或
+ *    subtype 非 success）——成功意见不走这条路。max_turns 一类的半成品文本
+ *    也从这档过，截 300 字与第 4 档同量级。
+ * 2. `<synthetic>` 合成消息的文本：正常它会跟着 result（第 1 档），进程在
+ *    两者之间崩溃时只剩这一份。
+ * 3. `toolErrors` 前 2 条：会话中途的工具级错误。
+ * 4. stderr 头 300 字：**最弱的一档**。第三方网关配置下 stderr 头部常年躺着
+ *    两条固有噪音——API key 覆盖 claude.ai 登录的警告、非官方模型的
+ *    unrecognized_model 遥测，它们每轮都在、与失败无关。把 stderr 排在
+ *    result 文本之前，会让所有配额类失败被误报成认证问题（2026-11-07
+ *    VSCode插件Phase3 code r5 实账：Kimi 5 小时配额 429 被 stderr 噪音
+ *    顶替，降级记录误诊为「认证源抖动」）。
+ *
+ * 与 codex 侧同方向（`codex.ts` 的失败出口先取事件流 `trace.errors` 再落
+ * stderr）；那边的「Model not found」先例正是事件流错误优先的实证。
+ */
+export function claudeFailureWhy(trace: ClaudeTrace, stderr: string): string {
+  const fromResult = trace.finalText?.trim() ?? '';
+  if (fromResult !== '') return fromResult.slice(0, 300);
+  const synthetic = trace.syntheticErrors.find((t) => t !== '');
+  if (synthetic !== undefined) return synthetic.slice(0, 300);
+  const tools = trace.toolErrors.slice(0, 2).join('；');
+  if (tools !== '') return tools;
+  return stderr.slice(0, 300);
 }
 
 /**

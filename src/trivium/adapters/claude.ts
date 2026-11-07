@@ -42,6 +42,7 @@ import { redactSecrets } from '../secrets.js';
 import { ensureDir } from '../util/fsx.js';
 import {
   CLAUDE_OUTPUT_TOOLS,
+  claudeFailureWhy,
   claudeModelConsistency,
   claudeModelReadback,
   countTools,
@@ -1213,8 +1214,12 @@ async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: C
       /*
        * 没有 result 事件、或它是错误形态，即视为没跑成。
        * 退出码不足以判定——错误路径的 result（预算掐断、max_turns）也可能退 0。
+       *
+       * 取因优先级在 `claudeFailureWhy`：错误形态 result 的文本先于 stderr——
+       * 第三方网关的 stderr 头部是固有噪音（API key 覆盖警告、unrecognized_model
+       * 遥测），排在前面会把配额类失败误报成认证问题。
        */
-      const why = trace.toolErrors.slice(0, 2).join('；') || out.stderr.slice(0, 300);
+      const why = claudeFailureWhy(trace, out.stderr);
       return failedResult('claude', {
         status: 'failed',
         reason: `claude 未产出最终回复：${why || '(无错误消息)'}`,

@@ -17,6 +17,7 @@ import {
   CLAUDE_MUST_HAVE_PATH,
   CLAUDE_PATH_KEYS,
   CLAUDE_READ_TOOLS,
+  claudeFailureWhy,
   countTools,
   extractClaudePath,
   finalReviewText,
@@ -195,4 +196,74 @@ test('契约：夹具样本里呈路径形态的参数键，必须都在 CLAUDE_
     (await fs.readdir(FIXTURES)).filter((f) => f.endsWith('.jsonl')).length >= 3,
     '夹具样本少于 3 份——扫描范围写错了会让本条永绿',
   );
+});
+
+// ───────────────────── 失败取因优先级（claudeFailureWhy） ─────────────────────
+
+/*
+ * 事件形态抄自 2026-11-07 VSCode插件Phase3 code r5 的真实失败现场
+ * （claude 2.1.318 经 Kimi 网关跑 k3.1-pro）：API 被服务端 429 拒绝并
+ * 重试 10 次全败后，CLI 以一条 `model: '<synthetic>'` 的合成 assistant
+ * 消息承载错误文本，再以 `is_error: true` 的 result 收尾——而 stderr
+ * 头部躺着两条与失败无关的固有噪音。旧取因只看 toolErrors/stderr，
+ * 把这类失败误报成了认证问题。
+ */
+const QUOTA_429_TEXT = "API Error: Request rejected (429) · You've reached your 5-hour usage limit.";
+const GATEWAY_STDERR_NOISE =
+  '⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set\n' +
+  '[claude-code:unrecognized_model] {"model":"k3.1-pro","query_source":"sdk"}';
+
+const ev = (o: Record<string, unknown>): string => JSON.stringify(o);
+
+test('失败取因：错误形态 result 的文本胜出——429 配额失败不得被 stderr 噪音顶替', () => {
+  const jsonl = [
+    ev({ type: 'system', subtype: 'init', model: 'k3.1-pro', tools: ['Read'] }),
+    ev({ type: 'assistant', message: { model: 'k3.1-pro', content: [{ type: 'text', text: '正在读代码' }] } }),
+    ev({ type: 'assistant', message: { model: '<synthetic>', content: [{ type: 'text', text: QUOTA_429_TEXT }] } }),
+    ev({ type: 'result', subtype: 'success', is_error: true, result: QUOTA_429_TEXT }),
+  ].join('\n');
+
+  const t = parseClaudeEvents(jsonl);
+  assert.equal(t.completed, false, 'is_error 的 result 不算跑完');
+  assert.deepEqual(t.syntheticErrors, [QUOTA_429_TEXT], '合成消息文本要被收进 syntheticErrors');
+
+  const why = claudeFailureWhy(t, GATEWAY_STDERR_NOISE);
+  assert.equal(why, QUOTA_429_TEXT.slice(0, 300));
+  assert.ok(!why.includes('connectors') && !why.includes('unrecognized_model'), '固有噪音不得进 why');
+});
+
+test('失败取因：进程在 result 前崩溃时落到 synthetic 一档，仍先于 stderr', () => {
+  const jsonl = [
+    ev({ type: 'assistant', message: { model: '<synthetic>', content: [{ type: 'text', text: QUOTA_429_TEXT }] } }),
+    // 无 result 事件：CLI 在收尾前死掉
+  ].join('\n');
+
+  const t = parseClaudeEvents(jsonl);
+  assert.equal(t.completed, false);
+  assert.equal(t.finalText, null);
+  assert.equal(claudeFailureWhy(t, GATEWAY_STDERR_NOISE), QUOTA_429_TEXT);
+});
+
+test('失败取因：无 result 无 synthetic 时保持旧序——toolErrors 先于 stderr', () => {
+  const jsonl = [
+    ev({
+      type: 'user',
+      message: {
+        content: [
+          { type: 'tool_result', tool_use_id: 't1', is_error: true, content: 'No such tool available: Write' },
+        ],
+      },
+    }),
+  ].join('\n');
+
+  const t = parseClaudeEvents(jsonl);
+  assert.equal(claudeFailureWhy(t, GATEWAY_STDERR_NOISE), 'No such tool available: Write');
+});
+
+test('失败取因：三档全空才落 stderr 头 300 字；超长的 result 文本截到同一量级', () => {
+  assert.equal(claudeFailureWhy(parseClaudeEvents(''), GATEWAY_STDERR_NOISE), GATEWAY_STDERR_NOISE.slice(0, 300));
+
+  const longResult = 'x'.repeat(500);
+  const t = parseClaudeEvents(ev({ type: 'result', subtype: 'error_during_execution', is_error: true, result: longResult }));
+  assert.equal(claudeFailureWhy(t, ''), longResult.slice(0, 300));
 });
