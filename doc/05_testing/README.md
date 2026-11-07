@@ -178,6 +178,8 @@
 - [`REPORT_2026-10-30_ISSUE-08-09修复.md`](./REPORT_2026-10-30_ISSUE-08-09修复.md)：**验收遗留两单收口（1.3.5）**。修复前先实测钉死机制：P/Invoke 夹具复现 detached worker 随 KILL_ON_JOB_CLOSE Job 收杀（ISSUE-08 逐字复现）并验证 WMI 中继逃逸成立；hook 命令形态三候选双载体（Git Bash / PowerShell 回退）逐一实测后采用 `powershell -NoProfile -EncodedCommand`（ISSUE-09③，含外层 -Command 退出码重映射为 1 的实测与尾句纠正）。修复：Windows 逃 Job 派生通道（winRelay + spawn-relay 中继 + 回退直拉）、--wait 失联（worker 确认已死）就地清理本 run CLI 子树、Windows 合并渲染 PS 形态 hook 命令（gate 身份经 b64 解码识别）。回归含 win-job-escape（对照组必死/实验组必活）与 hook-guard 双载体四分支实跑契约；设计 §7.1 三段、Bug 清单第 18 条同批。
 - [`REPORT_2026-10-30_W4-S3复测.md`](./REPORT_2026-10-30_W4-S3复测.md)：**ISSUE-09 环境侧①②收口 + W4-S3（L1 负向）达成**。②以零系统改动的进程级 `CLAUDE_CODE_GIT_BASH_PATH` 注入解决（重装 Git 与目录联接均未启用）；①复核为幻影判据误诊（claude 2.1.302 的 stream-json 不存在 hook_started 事件类型，判别探针被 hook 实弹拦截证伪）；闸门停点期三次 canary 写全部被拦（拒因原文 + 同 ID permission_denials + 文件未创建三证齐全），abandon 收尾。顺带证实/实测两条 headless 会话事实：`--restricted` 忽略用户 settings env 段致网关凭据须进程级注入（与设计 §7.1 一致）、`defaultMode=plan` 对 headless 同样生效（测 Hook 须显式 --permission-mode）。证据 `evidence/w4s3-retest-20261030-221253/`。
 
+- [密钥扫描源码调用误报修复](./REPORT_2026-11-06_密钥扫描源码调用误报.md)：普通变量初始化调用被长凭据规则截断误报；收窄到完整声明调用形态，保留字面值与专用凭据检测，记录红绿对照与安装核验。
+
 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
 
 20C前本地检查已完成：两遍3163通过/3跳过/0失败、定向49/49、源/安装桩14/14、四目标28入口相等；新写合同机制实际准入未测，正式20C尚待运行。

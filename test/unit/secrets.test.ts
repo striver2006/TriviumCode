@@ -37,6 +37,38 @@ test('干净文本不误报', () => {
   assert.deepEqual(scanSecrets(clean), []);
 });
 
+test('普通变量初始化的方法调用不是长凭据，扫描与脱敏保持一致', () => {
+  for (const declaration of ['final', 'const', 'let', 'var']) {
+    const code = `${declaration} token = ${seg('RecordingSession', 'Guard')}.acquire();`;
+    assert.deepEqual(scanSecrets(code), []);
+    assert.deepEqual(redactSecrets(code), { content: code, count: 0 });
+    assert.deepEqual(scanDiffSecrets(`diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -0,0 +1 @@\n+${code}`), []);
+  }
+  const other = `final secret = ${seg('ApplicationSession', 'Registry')}.current();`;
+  assert.deepEqual(scanSecrets(other), [], '不按某个业务类名白名单放行');
+});
+
+test('方法调用误报修复不豁免同形字面值、裸配置或相邻真实凭据', () => {
+  const value = seg('AbCdEfGhIj', 'KlMnOpQrSt', 'UvWxYz0123');
+  for (const line of [
+    `final token = "${value}";`,
+    `final token = '${value}.acquire()';`,
+    `final token = "${seg('RecordingSession', 'Guard')}.acquire()";`,
+    `token=${value}`,
+    `token=${value}.acquire()`,
+    `const token = ${value};`,
+    `{"token":"${value}"}`,
+    JSON.stringify({ text: `const token = "${value}";` }),
+    `final token = ${seg('RecordingSession', 'Guard')}.acquire(); password = "${value}";`,
+  ]) {
+    assert.ok(scanSecrets(line).some((h) => h.rule === 'generic-secret-assignment'));
+    assert.ok(redactSecrets(line).count > 0);
+    assert.throws(() => assertNoSecrets(line, 'fixture'));
+  }
+  const vendor = `final token = ${FAKE.github}.acquire();`;
+  assert.ok(scanSecrets(vendor).some((h) => h.rule === 'github-token'), '专用凭据规则不被源码表达式豁免');
+});
+
 test('识别 ZCode <id>.<secret> 形态凭据', () => {
   // 构造的假凭据：32 位 hex + 16 位随机串，形态与真实一致，值是编造的
   const line = `"apiKey": "${FAKE.zcodeId}.${FAKE.zcodeSecret}"`;

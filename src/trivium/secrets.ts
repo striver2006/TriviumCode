@@ -139,6 +139,20 @@ function looksReal(token: string): boolean {
   return shannonEntropy(token) >= 3.0;
 }
 
+/**
+ * 源码声明的裸方法调用不是凭据字面值。仅确认「声明 + 裸标识符 + 无参方法调用」
+ * 这一完整形态；不按项目/类名放行，不豁免带引号的值、普通配置或专用凭据规则。
+ * 通用规则只吃到点号前的长标识符，必须结合两侧文本才能避免把类名当随机串。
+ */
+function isDeclaredMethodCall(m: RegExpExecArray): boolean {
+  if (m.input === undefined || m.index === undefined) return false;
+  if (!/(?:^|[\s;{}])(?:final|const|let|var)[ \t]+$/.test(m.input.slice(0, m.index))) return false;
+  if (!/^[A-Za-z_]\w*[ \t]*=[ \t]*[A-Za-z_$]\w*$/.test(m[0])) return false;
+  return /^[ \t]*\.[ \t]*[A-Za-z_$]\w*[ \t]*\([ \t]*\)[ \t]*;/.test(
+    m.input.slice(m.index + m[0].length),
+  );
+}
+
 const RULES: Rule[] = [
   {
     // ZCode 凭据：<apiKeyId>.<apiKeySecret>，中间有且仅有一个句点（设计 §3.3）
@@ -217,7 +231,7 @@ const RULES: Rule[] = [
       `${KEY('api[_-]?key|secret|token|password|passwd|credential')}([A-Za-z0-9_\\-+/]{20,})${Q}`,
       'gi',
     ),
-    confirm: (m) => looksReal(m[1] ?? ''),
+    confirm: (m) => looksReal(m[1] ?? '') && !isDeclaredMethodCall(m),
     secretGroup: 1,
   },
 ];
@@ -302,6 +316,8 @@ export function redactSecrets(content: string): { content: string; count: number
       const whole = args[0] as string;
       // replace 回调的参数形态与 exec 结果不同，按 exec 的形态重建一次（末两项是 offset 与全文）
       const m = [whole, ...(args.slice(1, -2) as string[])] as unknown as RegExpExecArray;
+      m.index = args[args.length - 2] as number;
+      m.input = args[args.length - 1] as string;
       if (rule.confirm && !rule.confirm(m)) return whole;
       count++;
       // 赋值形态只换值、留键名与引号：日志还得能读；其余规则整个匹配就是凭据
