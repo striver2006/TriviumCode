@@ -88,3 +88,22 @@ test('EV-238：其他档——未超时、无原话、status 非 SUCCESS ⇒ 原
   assert.match(t, /交互运行一次 `agy`/);
   assert.match(t, /stderr: boom/);
 });
+
+// ── v1.3.6：认证探活降档（downgradeForAlive）──
+
+test('降档：high/medium 尾缀降为同系 low，且降档形态在模型清单中才生效', async () => {
+  const { downgradeForAlive } = await import('../../src/trivium/adapters/agy.js');
+  const models = ['gemini-3.8-flash-high', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-low', 'gemini-4-argon-medium', 'gemini-4-argon-low'];
+  assert.equal(downgradeForAlive('gemini-3.8-flash-high', models), 'gemini-3.8-flash-low');
+  assert.equal(downgradeForAlive('gemini-3.8-flash-medium', models), 'gemini-3.8-flash-low');
+  assert.equal(downgradeForAlive('gemini-4-argon-medium', models), 'gemini-4-argon-low');
+});
+
+test('降档防御：清单缺 low 形态保持原模型；已是 low / 无档位后缀 / null 原样返回', async () => {
+  const { downgradeForAlive } = await import('../../src/trivium/adapters/agy.js');
+  assert.equal(downgradeForAlive('gemini-x-high', ['gemini-x-high']), 'gemini-x-high', '清单没有 low 形态：不猜不存在的 slug');
+  assert.equal(downgradeForAlive('gemini-3.8-flash-low', ['gemini-3.8-flash-low']), 'gemini-3.8-flash-low');
+  assert.equal(downgradeForAlive('claude-sonnet-4-6', ['claude-sonnet-4-6']), 'claude-sonnet-4-6', '不带档位后缀不动');
+  assert.equal(downgradeForAlive(null, []), null);
+  assert.equal(downgradeForAlive('gemini-3.8-flash-high', []), 'gemini-3.8-flash-high', '空清单无法核实降档形态：保持原模型');
+});

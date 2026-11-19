@@ -76,6 +76,27 @@ export function modelEncodesEffort(model: string | null): boolean {
 }
 
 /**
+ * 认证探活的降档模型（v1.3.6，2026-11-08 用户决策直改，未走双审）：
+ * slug 尾部档位（与 {@link modelEncodesEffort} 同一后缀集）降为 `-low`；
+ * 降档形态不在模型清单时**保持原模型**（不猜不存在的 slug）；已是 low、
+ * 不带档位后缀或 null 一律原样返回。
+ *
+ * 依据（本机实测，VSCode插件Phase3 验收链排障）：探活带 trivium-critic agent
+ * 上下文（约 6.9 万 input tokens、内部 9 步），flash-high 低峰 48s、服务端
+ * 高峰 >100s，贴着内层 print-timeout（外层−20s）走。「已认证」探活验的是
+ * 认证与 CLI 通畅，不需要审查档位的推理深度；模型 slug 合法性由预检另一项
+ * 按审查档位独立校验。降档后 slug 自带档位，buildAgyArgs 不再传 --effort，
+ * 与 P-16 的冲突规则自然兼容。
+ */
+export function downgradeForAlive(model: string | null, models: readonly string[]): string | null {
+  if (model === null) return null;
+  const m = /^(.+)-(low|medium|high)$/.exec(model);
+  if (!m || m[2] === 'low') return model;
+  const down = `${m[1]!}-low`;
+  return models.includes(down) ? down : model;
+}
+
+/**
  * 思考等级生效值的回读（M11 第 6 步，设计 11.1 gemini 一行）。纯函数，只看回读结果。
  *
  * **只认回执**：`model_effective_source === 'envelope'`（agy 的 init 事件带回的 `model`）且该 slug 带档位后缀，
@@ -303,22 +324,28 @@ export const agyAdapter: CriticAdapter = {
         if (!bin) return { ok: false, detail: 'agy 路径未记录' };
         // 失败文案要点名探活所用的模型：与调用共用这一个取值，不各写一份取值链
         const model = combination?.model ?? cfg.probe.cli.agy?.models[0] ?? null;
+        // 探活降档（v1.3.6）：认证探活用同系 low 档——不消耗审查档位的推理深度，
+        // 高峰期不再贴超时线；模型 slug 合法性由预检另一项按审查档位独立校验
+        const aliveModel = downgradeForAlive(model, cfg.probe.cli.agy?.models ?? []);
         const out = await invokeAgy({
           bin,
           cwd: projectRoot,
           prompt: '只回复 OK 两个字母，不要调用任何工具。',
-          model,
+          model: aliveModel,
           effort: combination?.effort ?? null,
           agent: agentConfigOf(cfg, 'gemini', 'antigravity').agent,
-          timeoutMs: 120_000,
+          // 探活预算 120s → 240s（v1.3.6）：内层 print-timeout 随之 = 外层−20s = 220s，
+          // 对降档后的实际耗时（~15s 量级）余量 15 倍，服务端高峰免疫
+          timeoutMs: 240_000,
           pty: cfg.probe.cli.agy?.pty_required === true,
         });
         const ok = out.parsed.status === 'SUCCESS' && !out.timedOut;
+        const tierNote = aliveModel !== model && model !== null ? `（认证探活降档 ${model} → ${aliveModel}）` : '';
         return {
           ok,
           detail: ok
-            ? `探活通过（${Math.round(out.durationMs / 1000)}s）`
-            : describeAgyAuthFailure(out, model),
+            ? `探活通过（${Math.round(out.durationMs / 1000)}s）${tierNote}`
+            : `${describeAgyAuthFailure(out, aliveModel)}${tierNote}`,
         };
       },
     };
