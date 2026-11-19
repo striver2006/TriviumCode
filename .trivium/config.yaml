@@ -80,11 +80,11 @@ profiles:
       plan: { model: gpt-6.1-sol, effort: high }
       code: { model: gpt-6.1-sol, effort: high }
       bug: { model: gpt-6.1-sol, effort: high }
-    # Claude 默认档走 Kimi 的 Opus 映射 k3.1-pro；实际模型与 effort 以运行回读为准。
+    # Claude 默认档经 Qwen 接入，使用 qwen4-max 并请求 high。
     claude:
-      plan: { model: k3.1-pro, effort: high }
-      code: { model: k3.1-pro, effort: high }
-      bug: { model: k3.1-pro, effort: high }
+      plan: { model: qwen4-max, effort: high }
+      code: { model: qwen4-max, effort: high }
+      bug: { model: qwen4-max, effort: high }
   flash:
     gemini:
       plan: { tier: low }
@@ -99,15 +99,15 @@ profiles:
       plan: { model: gpt-6.1-terra, effort: high }
       code: { model: gpt-6.1-terra, effort: high }
       bug: { model: gpt-6.1-terra, effort: high }
-    # Claude flash 档走 Kimi 的 Sonnet 映射 kimi-for-coding，显式请求 medium。
+    # Claude flash 档使用 qwen3.8-flash。
     claude:
-      plan: { model: kimi-for-coding, effort: high }
-      code: { model: kimi-for-coding, effort: high }
-      bug: { model: kimi-for-coding, effort: high }
+      plan: qwen3.8-flash
+      code: qwen3.8-flash
+      bug: qwen3.8-flash
   # pro 档：按需 `--profile pro` 单次切档，按侧选择更高档模型或 effort。
   # Gemini pro 通过 high 档选择 Gemini 4 Carbon。
   # GLM pro 保持当前已配置的 GLM-5.3；Codex pro 使用官方 Astra high。
-  # Claude high 使用 Kimi k3.1-pro，显式请求 high；当前与 default 同值。
+  # Claude pro 使用 qwen4-max 并请求 xhigh。
   pro:
     gemini:
       plan: { tier: high }
@@ -122,7 +122,7 @@ profiles:
       code: { model: gpt-6-astra, effort: high }
       bug: { model: gpt-6-astra, effort: high }
     claude:
-      # high 显式绑定 kimi profile，与 Agent 默认接入保持一致。
+      # high 显式绑定 qwen profile，与 Agent 默认接入保持一致。
       plan: { tier: high }
       code: { tier: high }
       bug: { tier: high }
@@ -171,9 +171,9 @@ agents:
     # 显式 null 选择官方 native，覆盖内置供应商默认；第三方须单次显式选择 profile 和匹配模型。
     profile: null
     # 各档 effort 在 profiles 中显式请求，生效值仍须独立回读。
-  # Claude 经已有 cld kimi profile 接入第三方；模型请求与实际供应商回读分别记录。
+  # Claude 经已有 cld qwen profile 接入；模型请求与实际供应商回读分别记录。
   claude:
     vendor: anthropic
-    profile: kimi
+    profile: qwen
     tiers:
-      high: { model: k3.1-pro, effort: max, profile: kimi }
+      high: { model: qwen4-max, effort: xhigh, profile: qwen }

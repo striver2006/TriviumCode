@@ -88,6 +88,12 @@ high 改为 `{ model: k3.1-pro, effort: high, profile: kimi }`，当前与 defau
 `gpt-6.1-terra`，保留 `effort: medium` 与官方 native 路线。合并配置的 Schema 校验及
 三个阶段的模型 / effort / 路线解析检查通过；本次模型调用与实际模型 / effort 回读未测。
 
+2026-11-19，共享配置将 Claude 审核路线切换到 `qwen` 厂商 profile。plan、code、bug
+三个阶段的默认档请求 `qwen4-max` 与 `high`，flash 档请求 `qwen3.8-flash`，未声明阶段
+effort，pro 档引用 high，实际配置请求 `qwen4-max` 与 `xhigh`。已在隔离目录核对共享配置
+的 Schema 和九个档位与阶段组合。默认档计划审 `20261119T131531Z` 回读 `qwen4-max`，
+生效 effort 与供应商回读均为空。flash、pro 的真实审查未测。
+
 旧主题的 Driver 由该阶段已有运行留痕优先判定，不能用修改配置来迁移历史作者。
 已有他家工件的阶段不强行重新认领；新工作使用新主题或尚未被使用的阶段。
 
