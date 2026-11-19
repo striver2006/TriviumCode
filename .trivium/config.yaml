@@ -68,9 +68,9 @@ review:
 profiles:
   default:
     gemini:
-      plan: gemini-3.8-flash-high
-      code: gemini-3.8-flash-high
-      bug: gemini-3.8-flash-high
+      plan: { tier: medium }
+      code: { tier: medium }
+      bug: { tier: medium }
     glm:
       plan: GLM-5.3
       code: GLM-5.3
@@ -86,11 +86,10 @@ profiles:
       code: { model: k3.1-pro, effort: high }
       bug: { model: k3.1-pro, effort: high }
   flash:
-    # medium 档以模型名后缀承载强度，不继承 Agent 的旧 high 补全值。
     gemini:
-      plan: { tier: medium }
-      code: { tier: medium }
-      bug: { tier: medium }
+      plan: { tier: low }
+      code: { tier: low }
+      bug: { tier: low }
     glm:
       plan: GLM-5.3-Flash
       code: GLM-5.3-Flash
@@ -106,14 +105,14 @@ profiles:
       code: { model: kimi-for-coding, effort: high }
       bug: { model: kimi-for-coding, effort: high }
   # pro 档：按需 `--profile pro` 单次切档，按侧选择更高档模型或 effort。
-  # Gemini pro 使用已核实目录和实际探活的 Argon high；完整审查验收另行记录。
+  # Gemini pro 通过 high 档选择 Gemini 4 Carbon。
   # GLM pro 保持当前已配置的 GLM-5.3；Codex pro 使用官方 Astra high。
   # Claude high 使用 Kimi k3.1-pro，显式请求 high；当前与 default 同值。
   pro:
     gemini:
-      plan: gemini-3.8-flash-high
-      code: gemini-3.8-flash-high
-      bug: gemini-3.8-flash-high
+      plan: { tier: high }
+      code: { tier: high }
+      bug: { tier: high }
     glm:
       plan: GLM-5.3
       code: GLM-5.3
@@ -153,9 +152,11 @@ agents:
     vendor: antigravity
     bin: null
     agent: trivium-critic
+    # 快速核对、常规审查、复杂推理各用一档。Antigravity 通过模型名后缀指定推理强度。
     tiers:
-      medium: { model: gemini-3.8-flash-medium }
-      high: { model: gemini-4-argon-high }
+      low: { model: gemini-4-hydrogen-high }
+      medium: { model: gemini-4-neon-high }
+      high: { model: gemini-4-carbon-high }
     effort:
       plan: high
       code: high
