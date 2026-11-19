@@ -1,0 +1,105 @@
+{
+  "agreed": [
+    "根因定位与四处漏接链路（guard 尝试级投影、runner 正常 ok 出口、decideMode、计票/共同阻断）均与当前源码逐行吻合，抓住了 P0 缺陷的真实闭环。",
+    "§三决策表清晰区分了 strict 中止（failed/partial、退 75、无 round_verdict）与允许降级下的有效票不足（success/partial、undetermined/human_review）及 parse_fallback 保留执行完成资格（L11 语义）的边界。",
+    "§四.1/§四.2 提出保留适配器原始结果与退出码、避免过早把结果改写为 failed 导致 judgeRun 跳过而丢失项目读取数和写事件/漂移归因，以及保持 critics.*.attempts 仅用于作废重跑以防 report.ts 误报作废，均体现了对既有契约的准确把握。",
+    "§五的翻票反例（B、1/3 轮、降级下 Gemini reject + Claude pass + Codex 两次 no_tools pass）能有效证明旧计法 pass/proceed 与新计法 reject/rerun 的结论反转，并明确要求核对归档正本与独立 gate 进程。"
+  ],
+  "consulted": [
+    "doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md",
+    "doc/01_requirements/PRD_driver_dual_critic.md",
+    "doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md",
+    "doc/03_api/PROTOCOL_dual_critic_relay.md",
+    "skills/dual-critic/schema/run.v3.json",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/archive.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/hooks.ts",
+    "src/trivium/meta.ts",
+    "src/trivium/report.ts",
+    "src/trivium/review.ts",
+    "src/trivium/round-verdict.ts",
+    "src/trivium/run-protocol.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/schemas.ts",
+    "src/trivium/status.ts",
+    "src/trivium/types.ts",
+    "test/integration/fault-injection.test.ts",
+    "test/integration/review-loop.test.ts",
+    "test/unit/gate-degrade.test.ts",
+    "test/unit/registry-parity.test.ts",
+    "test/unit/round-verdict.test.ts",
+    "test/unit/run-meta-strict.test.ts",
+    "test/unit/runner.test.ts",
+    "test/unit/void-rerun.test.ts"
+  ],
+  "findings": [
+    {
+      "confidence": "high",
+      "evidence": "已读 doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md:51-52、src/trivium/review.ts:1651-1734,1849-1857,2190-2201,2354、src/trivium/runner.ts:223-305、src/trivium/types.ts:1533-1535 与 skills/dual-critic/schema/run.v3.json:1095-1102。review.ts 在 1655-1717 行先执行 parseReview 并在 1713-1714 行就地把 r.status 改为 parse_fallback、覆写 r.fail_reason，且提前填充 reviews[c]/degradedFindings[c]/parseRepairs[c]；直到 1720 行才调用 judgeRun。下游 2190-2201 行仅按 reviews[c] 在场性写入 empty_review/findings_degraded/parse_repairs，2354 行直接把 reviews 传入 measureAllPairs。同时 runner.ts:296-301 对保持 raw ok 的侧会按 sideStateOf(last) 向 status.json 汇报 state: 'ok'。",
+      "id": "AGY-01",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §四.2、§四.3（doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md:51-52）",
+      "problem": "计划要求保留适配器原始结果送进 judgeRun、终判后再定侧资格，但当前 executeRun 的解析阶段排在 judgeRun 之前且就地改写 CriticResult 与 reviews 表，直接实施会触发三类冲突：（1）“同时缺证据又解析失败”时，r.status/r.fail_reason 已被先改写为 parse_fallback 与解析报错，可能覆盖证据失败原因或误产回退件；（2）解析成功但证据不足的侧已填充 reviews[c]/degradedFindings[c]/parseRepairs[c]，导致 meta.critics[c] 违反 run.v3.json“失败侧不写 findings_degraded/parse_repairs”的契约，并污染 measureAllPairs 多审分歧指标；（3）runner 若在证据重试耗尽后仍以原始 status: 'ok' 走 emitProgress，等待期 status.json 会短暂谎报该侧已完成。",
+      "severity": "major",
+      "suggestion": "在 §四.2/§四.3 明确调整 executeRun 顺序或隔离数据流：先完成 judgeRun 与统一侧资格判定，仅对执行与证据合格的侧执行解析或采纳 reviews/degradedFindings/parseRepairs，确保证据失败侧不落回退件、不写 findings_degraded/parse_repairs/empty_review/parse_fallback_cause、也不进入 measureAllPairs 与 sideStatuses 的 ok 分支；同时明确 runner 在证据重试耗尽收口时向 onSideProgress 汇报 state: 'failed' 与证据原因，但仍把原始 CriticResult 与证据结果交回 executeRun 供 judgeRun 核验。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "已读 doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md:53,59、src/trivium/gate.ts:715-732,1123-1163,1420-1435,1673-1723、src/trivium/cli.ts:1515-1534,1626-1773、src/trivium/meta.ts:220-229 与 src/trivium/archive.ts:365-395。gate.ts:1137 与 meta.ts:226 将 jointCheckState.reason 及 task.json.joint_checks[].reason 限定为 'voided' | 'no-structured-review' | 'both'，且 whyInsufficient（gate.ts:1154-1163）仅遍历 Object.keys(reviews)；而 loadRoundReviews（gate.ts:1427）会跳过 failed/timeout 侧，使其不出现在 reviews 键集中（例如三审中一侧作废、一侧证据失败、一侧有效时，whyInsufficient 只看到作废侧而漏掉证据失败）。此外 cli.ts:1718-1743 在检查 result.ok 之前无条件把 result.jointCheck 写入 task.json.joint_checks，且 cli.ts 与 verifyRoundForApproval 当前完全不校验 runMeta.status === 'success'。",
+      "id": "AGY-02",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §四.4（doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md:53）",
+      "problem": "gate 侧有两处持久数据契约与拦截顺序未定案：（1）§四.4 要求共同阻断少于两家时写“未执行及具体排除原因”，但现有 task.json.joint_checks[].reason 只有三值枚举，且 whyInsufficient 仅扫描 Object.keys(reviews) 会漏看只留 .failed.json 的证据失败侧；计划未决定是扩展 task.json 的 reason 枚举（涉及 meta.ts/gate.ts/report.ts/既有测试的不可逆持久格式）还是保持原枚举并在告警文本给出具体原因。（2）cli.ts 的 cmdGate 在判定 result.ok 前就会向 task.json 写 joint_checks，若在 checkAdjudication 里拒绝 strict 中止轮却仍返回 jointCheck，会把中止轮写进 task.json；同时 §四.4 只点名“新规则下因证据失败中止的 run”拒绝推进，未明确非证据原因的 failed/cancelled/running 轮、新失败码（GateFailureCode）及 gate --check-artifacts（archive.ts:373 遍历 critics_selected）在降级轮的口径。",
+      "severity": "major",
+      "suggestion": "在 §四.4 补齐三项契约决策：（1）让 jointCheckState / whyInsufficient 接收全量入选侧的统一资格结果而非 Object.keys(reviews)，并明确 task.json.joint_checks[].reason 是否扩枚举（若扩展须同步说明历史读取与回滚兼容，若不扩展则明确映射规则与告警字段）；（2）在 --check、--await-approval、approve 共用的门禁处先拦截非 success 运行（以及新规则下 round_verdict 与侧资格矛盾的记录），拦截时直接返回退 2 且不向 task.json 写 joint_checks/disputes；（3）点名新增的 GateFailureCode，并核对 --check-artifacts 对 partial 降级轮的预期行为。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "已读 doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md:53-54,59,61,88、skills/dual-critic/schema/run.v3.json:29,160-168、src/trivium/types.ts:1687-1690,1726-1727、src/trivium/meta.ts:390-470,880-950 与 test/unit/run-meta-strict.test.ts:46-76,140-209。run.v3.json 第 29 行顶层实际为 \"additionalProperties\": true（并非 false），只有 160-168 行的 round_verdict.excluded 限定了 enum。同时 finalizeFailedRunMeta（meta.ts）收尾异常/取消/失联骨架时不会经过 executeRun 终态写出口；而 run-meta-strict.test.ts 当前仅扫描 v2 记录并只校验 run.v2.json 的枚举，未覆盖 run.v3.json 或 VerdictExclusion。",
+      "id": "AGY-03",
+      "kind": "contract",
+      "layer": "plan",
+      "location": "plan §四.4、§四.5、§五（doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md:53-54, 88）",
+      "problem": "run.v3 兼容与代际识别设计存在三处漏洞：（1）§五称旧 v3 二进制受“additionalProperties: false”限制而无法验证新增字段，与 run.v3.json 顶层实际为 additionalProperties: true 不符；真正会令旧版拒读的是 round_verdict.excluded 新增的 insufficient_evidence 枚举值，误判会掩盖正确的回滚策略（按 types.ts:1688-1690 惯例，回滚须保留新 schema 枚举与读侧，仅退行为代码）。（2）将可选的 effective_failure_policy 同时当作“策略事实”和“新资格语义开关”，但骨架、异常（worker_exception/prepare_exception/post_spawn_exception）、worker_lost、cancelled 路径经 finalizeFailedRunMeta 收尾时不会写该字段；若 gate 把“中止轮拒推”也绑在 effective_failure_policy 是否存在上，新版本崩溃/取消的 failed 轮会退回旧分支。（3）test/unit/run-meta-strict.test.ts 现行只锁 v2，计划虽列出该文件，却未明确要新增 v3 契约与 VerdictExclusion 常量↔run.v3.json 的对账测试。",
+      "severity": "major",
+      "suggestion": "修正 §五对 run.v3.json 兼容面的描述并补明回滚原则（保留 schema 新增枚举与读侧）；将 gate 规则拆清——“拒绝非 success 运行推进”不依赖 effective_failure_policy，仅“对 success 轮做新资格一致性严查”以 effective_failure_policy 区分新旧 v3（或在 prepareRun 骨架阶段即记录生效策略并在 executeRun 落定）；在 types.ts 为 VerdictExclusion 建唯一常量数组并在 run-meta-strict.test.ts 新增 run.v3.json 枚举对账及 v3 历史样本回归锁。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "已读 doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md:50,52,71,73、src/trivium/runner.ts:175-305、src/trivium/review.ts:2497-2522、src/trivium/guard.ts:709-729、src/trivium/types.ts:1575-1590 与 skills/dual-critic/schema/run.v3.json:1188-1202。runner.ts:291 调用 onRetryBrief(critic, last) 仅传 CriticResult，review.ts:2497 的 buildRetryHint 按 prev.fail_reason 分支，而原始 ok 证据不足结果的 fail_reason 为 null，无法得到观测计数与下限；runner.ts:233-238 对 judgeLeak 抛错静默吞成 null；在 voidReruns > 0 且叠加证据重试（如“作废重跑 → 缺证据 → 恢复”）时，runner.ts:304 会输出全量 attemptLog，而 AttemptRecord（run.v3.json:1188-1202 含 additionalProperties: false）的 fail_reason 取自原始 last.fail_reason（null），导致第 2 次尝试在 attempts 中显示为 ok/voided:false/fail_reason:null，无法解释为何触发第 3 次尝试。此外 §四.1 规定 transient_max > 1 时证据专属触发仍至多一次，但 §五未列 transient_max=2 的验证用例。",
+      "id": "AGY-04",
+      "kind": "correctness",
+      "layer": "plan",
+      "location": "plan §四.1、§四.3、§五（doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md:50, 52, 73）",
+      "problem": "证据重试循环与预算边界仍有四处实现陷阱未说清：（1）复用现有 onRetryBrief / buildRetryHint 时，原始 ok 结果的 fail_reason 为 null，不扩展回调入参就拿不到证据原因、观测项目读取数与生效下限；（2）transient_max > 1 时需用两个计数（transientUsed < maxTransientRetries 且 evidenceRetryUsed < 1，触发时两者同增）才能确保“总重试不超 transient_max 且证据专属至多一次”，且 §五缺少 transient_max=2 连续缺证据仍只重试一次的用例；（3）“作废重跑 → 缺证据 → 恢复”组合会触发写出 critics.*.attempts，但 AttemptRecord 顶层 additionalProperties: false 且只抄原始 fail_reason，第 2 次证据不足尝试会落成与正常成功无异的记录；（4）runner.ts 当前 try/catch 会静默吞掉 judgeLeak 异常，扩展为 judgeAttempt 后若继续静默放行，会让异常场景静默绕过证据核验。",
+      "severity": "major",
+      "suggestion": "在 §四.1 明确：（1）扩展 onRetryBrief / buildRetryHint 签名传入结构化证据失败上下文（原因、观测计数、生效下限）；（2）写明双计数判定条件并在 §五补一条 transient_max=2 连续缺证据仅额外调用 1 次的单测或集成用例；（3）明确“作废重跑 + 证据重试”组合下 AttemptRecord 的记录口径（在不改 voided:false 的前提下，是否把证据重试原因写入该条 fail_reason 或仅在 .retry.md 留痕并注明理由）；（4）规定 judgeAttempt 异常不得静默视为证据通过。"
+    },
+    {
+      "confidence": "high",
+      "evidence": "已读 doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md:61,69-74、test/integration/fault-injection.test.ts:368-381、src/trivium/review.ts:299-343 与 test/integration/review-loop.test.ts。fault-injection.test.ts:368-381 的两条既有集成测试（no_tools 与 no_project_reads）在默认 strict 配置下运行，原仅断言 evidence_ok === false，修复后其退出码将从 0 变为 75（EXIT.STRICT_ABORT）、触发 1 次重试并产出 failed/partial。另 review.ts:299-343 的 previousRoundFacts 会跳过无 round_verdict 的失败轮（不消耗轮次），而 undetermined/human_review 轮会挡住下一次 review --start 直到人工表态。",
+      "id": "AGY-05",
+      "kind": "test-gap",
+      "layer": "plan",
+      "location": "plan §四实施落点表、§五验收清单（doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md:61, 69-74）",
+      "problem": "测试回归与轮次链验收存在两处遗漏：（1）test/integration/fault-injection.test.ts:368-381 两条既有证据不足用例在默认 strict 配置下将改变运行终态与重试次数，因原测试未断言 exitCode===0/status==='success'，不显式更新断言会掩盖语义变化；（2）§五在区分“strict 中止”与“有效票不足转人工（undetermined/human_review）”时，为 1/3 降级轮验证了“自动续轮拒绝”，但未为 strict 中止轮验证下一次 review --start 的轮次链行为——即失败轮不消耗轮次（previousRoundFacts 跳过无 round_verdict 的 failed 轮，续跑仍为第 1/3 轮），这是两条路径在编排器循环上的关键业务差异。",
+      "severity": "minor",
+      "suggestion": "在 §四测试落点中明确同步更新 fault-injection.test.ts:368-381 的断言（锁住退出码 75、重试次数与 failed/partial）；在 §五的 strict 中止用例补充验证：中止后再次发起 review --start 允许执行且不消耗轮次（仍为第 1/3 轮），与 1/3 降级 undetermined/human_review 拦截续轮形成完整对照。"
+    }
+  ],
+  "not_covered": [
+    "未执行任何命令、构建或测试（只读审查员无 shell 执行工具），所有结论均基于源码与 schema 静态核对。",
+    "严格遵守背靠背隔离禁读清单，未读取 .reviews/Windows原子写重试/ 下的两份历史运行正本、审查件与 task.json，因此计划 §一 的历史数值与 SHA-256 校验和未做独立复核。",
+    "未逐一审查四家真实厂商适配器（antigravity/claude/codex/zcode）的轨迹采集细节，仅核对了 adapters/base.ts 与 adapters/stub.ts（计划已声明工具门槛与采集覆盖不在修改面内）。",
+    "未核对 skills-src/ 入口命令模板文案与 doc/02_design/ 主设计文档全文的其他章节（仅核对了主设计 §11.4-§12 及 PROTOCOL 文档与核心代码）。"
+  ],
+  "schema": "trivium.review.v2",
+  "summary": "最危险的问题在于计划 §四.2/§四.3 与当前 executeRun 的执行序冲突：review.ts 在 judgeRun 之前就执行 parseReview 并就地改写 r.status/r.fail_reason 及填充 reviews/degradedFindings/parseRepairs，若不先调序或隔离，证据不足侧会污染 meta 契约、多审分歧指标，并在“既缺证据又解析失败”时发生状态覆写；此外 gate 侧的 jointCheckState.reason 持久契约（whyInsufficient 漏计缺失键）及 cmdGate 先写 task.json.joint_checks 后判 ok 的顺序也未闭环。\n计划的根因分析、§三决策表与单次证据重试方向整体扎实，但 §五对 run.v3.json 顶层 additionalProperties 的判断有误、effective_failure_policy 兼任代际标记对异常/取消骨架存在缺口，且 onRetryBrief/AttemptRecord/既有 fault-injection 用例与 strict 续轮对照需补清。\n按上述 5 条意见修订计划并定案持久契约后即可进入实施，无需再审。",
+  "verdict": "pass-after-changes"
+}

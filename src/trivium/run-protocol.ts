@@ -114,6 +114,7 @@ async function requestWorkerCancel(runDir: string): Promise<void> {
  */
 interface Handoff {
   schema: 'trivium.handoff.v1';
+  effective_failure_policy: 'strict' | 'degrade';
   run_id: string;
   rerun_index: number;
   topic: string;
@@ -236,8 +237,11 @@ export function unpackSnapshots(
 
 async function writeHandoff(rc: RunContext): Promise<void> {
   const packed = packSnapshots(rc.snapshots);
+  const policy = rc.meta.effective_failure_policy;
+  if (!policy) throw envError('运行记录缺少已冻结的失败策略');
   const h: Handoff = {
     schema: 'trivium.handoff.v1',
+    effective_failure_policy: policy,
     run_id: rc.runId,
     rerun_index: rc.rerunIndex,
     topic: rc.ref.topic,
@@ -319,6 +323,9 @@ async function rebuildContext(ctx: Ctx, runId: string): Promise<RunContext> {
   if (!meta) throw missingArtifact(`找不到运行 ${runId} 的 run.json`);
   if (meta.schema !== 'trivium.run.v3') {
     throw envError('旧版运行交接不能由v3 worker重新执行；历史读取与取消仍支持，请用原版本收尾后新开一轮');
+  }
+  if (!meta.effective_failure_policy || h.effective_failure_policy !== meta.effective_failure_policy) {
+    throw envError('执行交接与运行记录的失败策略缺失或不一致，请用原版本收尾旧运行后重试');
   }
   for (const c of h.sides) {
     const request = h.requests[c];

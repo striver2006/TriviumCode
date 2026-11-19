@@ -48,6 +48,7 @@ export const NEXT_ACTION_LABEL: Record<NextAction, string> = {
 
 export const EXCLUSION_LABEL: Record<VerdictExclusion, string> = {
   failed: '本轮失败或超时，没有结论',
+  insufficient_evidence: '执行证据不足，没有合格结论',
   parse_fallback: '结论无法结构化解析（整份回退）',
   voided: '读到对端产物，本轮作废',
   legacy_schema: '结论是旧契约 trivium.review.v1，不计票',

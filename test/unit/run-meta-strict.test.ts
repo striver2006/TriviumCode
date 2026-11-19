@@ -21,11 +21,35 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import { validateRunMeta } from '../../src/trivium/schemas.js';
 import { newRunMeta } from '../../src/trivium/meta.js';
 import { WORKER_LOST_REASONS } from '../../src/trivium/status.js';
-import { DRIFT_UNKNOWN_CAUSES, EXCEPTION_TERMINATION_BY } from '../../src/trivium/types.js';
+import { DRIFT_UNKNOWN_CAUSES, EVIDENCE_FAILURE_REASONS, EXCEPTION_TERMINATION_BY, VERDICT_EXCLUSIONS, type RunMeta } from '../../src/trivium/types.js';
 import { REPO_ROOT } from '../helpers/fixture.js';
+
+test('v3 策略和证据排除值域对账，旧 v3 只拒绝新增排除枚举', async () => {
+  const schema = JSON.parse(await fs.readFile(path.join(REPO_ROOT, 'skills/dual-critic/schema/run.v3.json'), 'utf8'));
+  const exclusions = schema.properties.round_verdict.properties.excluded.additionalProperties;
+  assert.deepEqual(exclusions.enum, [...VERDICT_EXCLUSIONS]);
+  assert.deepEqual(schema.$defs.critic.properties.evidence_failure_reason.enum, [...EVIDENCE_FAILURE_REASONS]);
+  assert.deepEqual(schema.properties.effective_failure_policy.enum, ['strict', 'degrade']);
+  const sample = JSON.parse(await fs.readFile(path.join(REPO_ROOT, '.reviews/Windows原子写重试/plan/_meta/run-20261027T091039Z.json'), 'utf8')) as RunMeta;
+  assert.deepEqual(validateRunMeta(sample), []);
+  delete schema.properties.effective_failure_policy;
+  delete schema.$defs.critic.properties.evidence_failure_reason;
+  exclusions.enum = exclusions.enum.filter((r: string) => r !== 'insufficient_evidence');
+  const oldValidate = new Ajv2020({ strict: false }).compile(schema);
+  assert.equal(oldValidate({ ...sample, effective_failure_policy: 'strict' }), true);
+  const modern = { ...sample, effective_failure_policy: 'degrade' as const };
+  modern.critics.codex = { ...modern.critics.codex!, status: 'failed', evidence_failure_reason: 'no_project_context' };
+  const outcome = modern.round_verdict!;
+  delete outcome.sides.codex;
+  outcome.excluded.codex = 'insufficient_evidence';
+  outcome.counts['pass-after-changes']--;
+  assert.equal(oldValidate(modern), false);
+  assert.deepEqual(validateRunMeta(modern), []);
+});
 
 /** 递归找出归档里的全部运行记录 */
 async function collectRunMetas(dir: string, out: string[] = []): Promise<string[]> {

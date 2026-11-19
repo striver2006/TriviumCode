@@ -6,7 +6,7 @@
  */
 import nodePath from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { Config, CriticId, CriticRequest, CriticResult, DegradedFinding, DenyCategory, EvidenceUntrusted, Review,
+import type { AttemptRecord, Config, CriticId, CriticRequest, CriticResult, DegradedFinding, DenyCategory, EvidenceFailureReason, EvidenceUntrusted, Review,
   SuspectedWrite,
 } from './types.js';
 import { describeDriftUnknown, EVIDENCE_UNTRUSTED_CAUSE_TEXT } from './types.js';
@@ -18,6 +18,7 @@ import {
   MCP_WRITE_EVENT_PREFIX,
   toProjectRelative,
   TOOL_TRACE_CAPABILITY,
+  type EvidenceCheck,
   type TraceCapability,
 } from './adapters/base.js';
 import { checkReviewIntegrity } from './parse.js';
@@ -35,11 +36,44 @@ import {
 import { ALL_CLI_NAMES } from './agents/registry.js';
 import { expandHome, matchesAnyGlob } from './util/fsx.js';
 import { TRIVIUM_DIR } from './config.js';
+import { ballotOf, type SideBallot } from './round-verdict.js';
+
+export interface SideQualification {
+  canProceed: boolean;
+  ballot: SideBallot;
+  independent: boolean;
+}
+
+/** 新审查轮的逐侧资格。worker 与归档读取只负责适配各自的事实。 */
+export function qualifyReviewSide(
+  status: CriticResult['status'] | undefined,
+  evidenceFailure: EvidenceFailureReason | undefined,
+  voided: boolean,
+  review: Review | null | undefined,
+  lastAttempt?: Pick<AttemptRecord, 'voided'>,
+): SideQualification {
+  if (voided || (status === 'failed' && lastAttempt?.voided === true)) {
+    return { canProceed: false, ballot: { excluded: 'voided' }, independent: false };
+  }
+  if (evidenceFailure) return { canProceed: false, ballot: { excluded: 'insufficient_evidence' }, independent: false };
+  if (status === 'parse_fallback') return { canProceed: true, ballot: { excluded: 'parse_fallback' }, independent: false };
+  if (status !== 'ok') return { canProceed: false, ballot: { excluded: status ? 'failed' : 'missing' }, independent: false };
+  const ballot = ballotOf(review ?? undefined, false);
+  return { canProceed: true, ballot, independent: 'verdict' in ballot };
+}
+
+export type RoundQualifications = Readonly<Partial<Record<CriticId, SideQualification>>>;
+
+export function jointCheckPending(qualifications: RoundQualifications): { state: 'pending' | 'skipped-insufficient-sides'; effective_sides: number } {
+  const effective_sides = Object.values(qualifications).filter((side) => side?.independent).length;
+  return { state: effective_sides < 2 ? 'skipped-insufficient-sides' : 'pending', effective_sides };
+}
 
 export interface SideVerdict {
   critic: CriticId;
   evidenceOk: boolean;
   evidenceReasons: string[];
+  evidence: EvidenceCheck;
   projectReads: number;
   /** 轨迹中出现写事件 → 审查员失守（比指纹变化更确定） */
   readonlyBreach: boolean;
@@ -476,6 +510,7 @@ export function judgeSide(
     critic,
     evidenceOk: ev.ok,
     evidenceReasons: ev.reasons,
+    evidence: ev,
     projectReads: ev.projectReads,
     readonlyBreach,
     breachEvidence: result.write_events,
@@ -632,6 +667,8 @@ export interface JudgeRunInput {
   afterSubjectSha256: string;
   relatedPaths: string[];
   results: Partial<Record<CriticId, CriticResult>>;
+  /** 证据重试之前已经观测到的正向写事件，继续用于漂移归因。 */
+  priorWriteEvents?: readonly string[];
   reviews: Partial<Record<CriticId, Review | null>>;
   /**
    * 逐侧逐条降级的意见（设计 §6.5）。**必填**，理由同 `judgeSide` 的同名字段；
@@ -694,6 +731,7 @@ async function sideJudgeOptions(
  */
 export interface SideLeakVerdict {
   voided: boolean;
+  evidence?: EvidenceCheck;
   path: { hit: boolean; hits: { path: string; category: DenyCategory }[] };
   command: { hit: boolean; commands: string[]; hits: { command: string; path: string; category: DenyCategory }[] };
 }
@@ -714,7 +752,7 @@ export async function makeSideLeakJudge(
     if (!req) return null;
     if (result.status === 'timeout' || result.status === 'failed') return null;
     const v = judgeSide(input.cfg, critic, result, null, req, { ...sideOpts(critic), degraded: [] });
-    return sideLeakOf(v);
+    return { ...sideLeakOf(v), evidence: v.evidence };
   };
 }
 
@@ -783,7 +821,7 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
     sides[c] = judgeSide(cfg, c, r, reviews[c] ?? null, q, { ...sideOpts(c), degraded: input.degraded[c] ?? [] });
   }
 
-  const breachedFiles = Object.values(sides).flatMap((s) => s?.breachEvidence ?? []);
+  const breachedFiles = [...(input.priorWriteEvents ?? []), ...Object.values(sides).flatMap((s) => s?.breachEvidence ?? [])];
   const fingerprintChangedFiles =
     drift.kind === 'related' || drift.kind === 'unrelated' ? drift.files : [];
   const changed = fingerprintChangedFiles.filter((f) => !matchesAnyGlob(f, scratchGlobs));
@@ -817,7 +855,7 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
    * 这两种是**运行期事实**，只能取判过的侧（`sides`）；失败 / 超时的侧轨迹没解析、调没调过无从得知，与既有「失败侧不评判证据」同口径。
    */
   const anyEvidenceUntrusted = Object.values(sides).some((s) => s?.verification.untrusted !== undefined);
-  const anyMcpExec = Object.values(sides).some((s) => s?.breachEvidence.some((e) => e.startsWith(MCP_WRITE_EVENT_PREFIX)));
+  const anyMcpExec = breachedFiles.some((e) => e.startsWith(MCP_WRITE_EVENT_PREFIX));
   const unattributedCauses: NonNullable<RunVerdict['unattributedCauses']> = [
     ...(anyReadonlyUnavailable ? (['readonly-unavailable'] as const) : []),
     ...(anyEvidenceUntrusted ? (['evidence-untrusted'] as const) : []),
@@ -874,7 +912,7 @@ export async function judgeRun(input: JudgeRunInput): Promise<RunVerdict> {
     fingerprintChangedFiles: cannotAttribute ? [] : changed,
     unattributedDriftFiles: unattributed,
     ...(unattributed.length > 0 ? { unattributedCauses } : {}),
-    readonlyBreach: Object.values(sides).some((s) => s?.readonlyBreach === true),
+    readonlyBreach: breachedFiles.length > 0,
     breachedFiles: [...new Set(breachedFiles)],
     peerArtifactRead: Object.values(sides).some((s) => s?.peerArtifactRead === true),
   };

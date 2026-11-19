@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isTransientFailure, decideMode, runBothSides } from '../../src/trivium/runner.js';
+import { isTransientFailure, decideMode as decideQualifiedMode, runBothSides } from '../../src/trivium/runner.js';
+import { qualifyReviewSide } from '../../src/trivium/guard.js';
 import {
   failedResult,
   TOOL_TRACE_CAPABILITY,
@@ -9,6 +10,13 @@ import {
 } from '../../src/trivium/adapters/base.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import type { CriticId, CriticRequest, CriticResult } from '../../src/trivium/types.js';
+
+function decideMode(...[results, policy, selected]: [
+  Parameters<typeof decideQualifiedMode>[0], Parameters<typeof decideQualifiedMode>[1], readonly CriticId[],
+]) {
+  const qualifications = Object.fromEntries(selected.map((c) => [c, qualifyReviewSide(results[c]?.status, undefined, false, undefined)]));
+  return decideQualifiedMode(results, policy, selected, qualifications);
+}
 
 function okResult(critic: CriticId, over: Partial<CriticResult> = {}): CriticResult {
   return {

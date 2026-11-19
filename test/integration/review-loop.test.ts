@@ -12,10 +12,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { bundleMissing, bundleSkipReason, cli, makeFixture, today, type Fixture } from '../helpers/fixture.js';
+import { bundleMissing, bundleSkipReason, cli, makeFixture, REPO_ROOT, today, type Fixture } from '../helpers/fixture.js';
 import { EXIT } from '../../src/trivium/exit-codes.js';
 import { extractJsonCandidate } from '../../src/trivium/parse.js';
 import type { StubConfig } from '../../src/trivium/adapters/stub.js';
+import type { JointCheckResult, RoundVerdict, RunMeta } from '../../src/trivium/types.js';
+import { sha256File } from '../../src/trivium/util/fsx.js';
 
 const skip = bundleMissing && bundleSkipReason;
 const REJECT: StubConfig = { gemini: { mode: 'ok', verdict: 'reject' }, glm: { mode: 'ok', verdict: 'reject' } };
@@ -23,8 +25,10 @@ const PASS: StubConfig = { gemini: { mode: 'ok', verdict: 'pass' }, glm: { mode:
 const DRIVER = 'claude';
 
 type Stage = 'plan' | 'code';
-type WaitJson = { run_id: string; next_action: string | null; round_line: string | null; review_loop: unknown };
-type CheckJson = { ok: boolean; next_action: string | null; round_line: string | null; failures: { code: string }[] };
+type WaitJson = { run_id: string; next_action: string | null; round_line: string | null; review_loop: unknown;
+  round_verdict: RoundVerdict | null; sides: Record<string, { attempt: number }> };
+type CheckJson = { ok: boolean; next_action: string | null; round_line: string | null; failures: { code: string }[];
+  joint_check?: JointCheckResult };
 
 const join = (...parts: string[]) => parts.join('-');
 const stageDirOf = (fx: Fixture, stage: Stage) => path.join(fx.archiveRoot, fx.topic, stage);
@@ -34,7 +38,7 @@ async function runMeta(fx: Fixture, stage: Stage, runId: string): Promise<Record
 }
 
 /** 起一轮并等到收尾，返回最后一次 `--wait` 的 JSON（含计票透出） */
-async function runRound(fx: Fixture, stage: Stage, entry: 'A' | 'B' | 'C', stub: StubConfig, extra: string[] = []): Promise<WaitJson> {
+async function runRound(fx: Fixture, stage: Stage, entry: 'A' | 'B' | 'C', stub: StubConfig, extra: string[] = [], expectedExit: number = EXIT.OK): Promise<WaitJson> {
   const started = await cli(
     fx.root,
     ['review', '--start', '--stage', stage, '--topic', fx.topic, '--focus', 'x', '--entry', entry, ...extra, '--json'],
@@ -47,9 +51,9 @@ async function runRound(fx: Fixture, stage: Stage, entry: 'A' | 'B' | 'C', stub:
     const w = await cli(fx.root, ['review', '--wait', js.run_id, '--timeout', '20', '--json'], stub, 60_000);
     last = { code: w.code ?? EXIT.FAIL, stdout: w.stdout };
   }
-  assert.equal(last.code, EXIT.OK, `运行 ${js.run_id} 没有成功收尾：${last.stdout}`);
+  assert.equal(last.code, expectedExit, `运行 ${js.run_id} 退出码不符：${last.stdout}`);
   const out = JSON.parse(extractJsonCandidate(last.stdout)!.json) as WaitJson;
-  assert.deepEqual(out.review_loop, js.review_loop, '--start 与 --wait 给出的轮次链位置一致');
+  if (expectedExit === EXIT.OK) assert.deepEqual(out.review_loop, js.review_loop, '--start 与 --wait 给出的轮次链位置一致');
   return out;
 }
 
@@ -100,6 +104,251 @@ async function gateState(fx: Fixture, stage: Stage): Promise<string | undefined>
 async function runIds(fx: Fixture, stage: Stage): Promise<string[]> {
   return (await fs.readdir(path.join(stageDirOf(fx, stage), '_meta'))).filter((f) => /^run-.+\.json$/.test(f)).sort();
 }
+
+const EVIDENCE_DRIVER = 'glm';
+const THREE_CRITICS = ['--driver', EVIDENCE_DRIVER, '--critics', 'gemini,claude,codex'];
+const FLIP: StubConfig = {
+  gemini: { mode: 'ok', verdict: 'reject' }, claude: { mode: 'ok', verdict: 'pass' }, codex: { mode: 'no_tools', verdict: 'pass' },
+};
+
+async function evidenceFixture(topic: string, extraReview: string[] = []): Promise<Fixture> {
+  const fx = await makeFixture({ topic, draft: false, extraReview });
+  await fs.mkdir(fx.stageDir, { recursive: true });
+  await fs.writeFile(path.join(fx.stageDir, join(today(), topic, EVIDENCE_DRIVER) + '.md'), '# 计划\n');
+  return fx;
+}
+
+async function writeEvidenceDisposition(fx: Fixture, run: RunMeta, ids: string[], verdict = '接受'): Promise<void> {
+  const docs = run.artifacts.map((a) => a.path.split('/'))
+    .filter((p) => p.length === 3 && p[2]?.endsWith('.md') && !p[2].endsWith(`-${EVIDENCE_DRIVER}.md`))
+    .map((p) => p[2]);
+  const tag = run.rerun_index > 1 ? `r${run.rerun_index}-` : '';
+  await fs.writeFile(path.join(fx.stageDir, join(today(), fx.topic, `${tag}revised`, EVIDENCE_DRIVER) + '.md'), [
+    '---', 'schema: trivium.disposition.v1', `topic: ${fx.topic}`, 'stage: plan', `role: ${EVIDENCE_DRIVER}`,
+    'kind: revised', `run_id: ${run.run_id}`, 'addresses:', ...docs.map((doc) => `  - ${doc}`), '---', '',
+    '| 意见编号 | 来源 | 严重度 | 裁决 | 理由 | 落点 |', '| --- | --- | --- | --- | --- | --- |',
+    ...ids.map((id) => `| ${id} | 审核者 | blocker | ${verdict} | 已核对计划行为和测试输入 | src/a.ts |`), '',
+  ].join('\n'));
+  await fs.writeFile(path.join(fx.stageDir, join(today(), fx.topic, `r${run.rerun_index + 1}`, EVIDENCE_DRIVER) + '.md'),
+    `# 完整修订计划\n\n${ids.join('\n')}\n`);
+}
+
+async function assertQualificationBlocked(fx: Fixture, runId: string, failure: string): Promise<void> {
+  const statePath = path.join(fx.root, '.trivium', 'state.json');
+  const taskPath = path.join(fx.archiveRoot, fx.topic, 'task.json');
+  const beforeTask = await fs.readFile(taskPath, 'utf8');
+  const beforeState = await fs.readFile(statePath, 'utf8');
+  for (const flag of ['--check', '--await-approval']) {
+    const gated = await cli(fx.root, ['gate', flag, '--stage', 'plan', '--topic', fx.topic, '--run-id', runId, '--json']);
+    assert.equal(gated.code, EXIT.GATE_BLOCK, gated.stdout + gated.stderr);
+    const parsed = JSON.parse(extractJsonCandidate(gated.stdout)!.json) as CheckJson;
+    assert.ok(parsed.failures.some((f) => f.code === failure), gated.stdout + gated.stderr);
+    assert.ok(parsed.next_action == null);
+  }
+  assert.equal(await fs.readFile(statePath, 'utf8'), beforeState);
+  // 即使人为构造出旧本机停点，实际 approve 子进程也必须以同一份运行正本拒绝。
+  const injected = JSON.parse(beforeState) as { gates: Record<string, { state: string; run_id: string }> };
+  const slot = injected.gates[`${fx.topic}/plan`]!;
+  assert.equal(slot.run_id, runId);
+  slot.state = 'awaiting_approval';
+  await fs.writeFile(statePath, JSON.stringify(injected));
+  const pinnedState = await fs.readFile(statePath, 'utf8');
+  const approve = await cli(fx.root, ['approve', '--stage', 'plan', '--topic', fx.topic, '--json']);
+  assert.equal(approve.code, EXIT.GATE_BLOCK, approve.stdout + approve.stderr);
+  assert.equal((JSON.parse(extractJsonCandidate(approve.stdout)!.json) as CheckJson).failures[0]?.code, failure);
+  assert.equal(await fs.readFile(statePath, 'utf8'), pinnedState);
+  assert.equal(await fs.readFile(taskPath, 'utf8'), beforeTask);
+  await fs.writeFile(statePath, beforeState);
+}
+
+test('证据排票使降级轮翻为 reject/rerun 且可继续第 2 轮', { skip }, async () => {
+  const fx = await evidenceFixture('evidence-flip');
+  const w = await runRound(fx, 'plan', 'B', FLIP, [...THREE_CRITICS, '--allow-single']);
+  const meta = await runMeta(fx, 'plan', w.run_id) as unknown as RunMeta;
+  assert.equal(meta.status, 'success');
+  assert.equal(meta.effective_failure_policy, 'degrade');
+  assert.equal(meta.review_mode, 'partial');
+  assert.equal(meta.critics.codex?.evidence_failure_reason, 'insufficient_evidence');
+  for (const side of meta.critics_selected) assert.equal(meta.critics[side]?.cli_version, 'stub/0.0.0');
+  assert.equal(w.sides.codex?.attempt, 2);
+  assert.equal(w.sides.gemini?.attempt, 1);
+  assert.equal(w.sides.claude?.attempt, 1);
+  assert.deepEqual(w.round_verdict, {
+    sides: { gemini: 'reject', claude: 'pass' }, excluded: { codex: 'insufficient_evidence' },
+    counts: { pass: 1, 'pass-after-changes': 0, reject: 1 }, outcome: 'reject', next_action: 'rerun',
+  });
+  assert.deepEqual(meta.round_verdict, w.round_verdict);
+  await writeEvidenceDisposition(fx, meta, ['AGY-01', 'CLAUDE-01']);
+  const checked = await check(fx, 'plan');
+  assert.equal(checked.next_action, 'rerun');
+  assert.deepEqual(checked.joint_check, { state: 'checked-none', effective_sides: 2 });
+  assert.equal(await gateState(fx, 'plan'), 'idle');
+  await writeEvidenceDisposition(fx, meta, ['AGY-01', 'CLAUDE-01'], '驳回');
+  assert.deepEqual((await check(fx, 'plan')).joint_check, { state: 'checked-found', effective_sides: 2 });
+  await writeEvidenceDisposition(fx, meta, ['AGY-01']);
+  const missing = await cli(fx.root, ['gate', '--check', '--stage', 'plan', '--topic', fx.topic, '--json']);
+  assert.equal(missing.code, EXIT.GATE_BLOCK);
+  assert.match(missing.stdout, /missing_findings[\s\S]+CLAUDE-01/);
+  await writeEvidenceDisposition(fx, meta, ['AGY-01', 'CLAUDE-01']);
+  const artifacts = ['gate', '--check-artifacts', '--stage', 'plan', '--topic', fx.topic, '--json'];
+  assert.equal((await cli(fx.root, artifacts)).code, EXIT.OK);
+  const failedPath = path.join(fx.stageDir, '_meta', `review-codex-${w.run_id}.failed.json`);
+  const failedBytes = await fs.readFile(failedPath);
+  await fs.appendFile(failedPath, '\n');
+  const tampered = await cli(fx.root, artifacts);
+  assert.equal(tampered.code, EXIT.MISSING_ARTIFACT);
+  assert.match(tampered.stdout, /登记工件哈希不符/);
+  await fs.writeFile(failedPath, failedBytes);
+  const unregistered = path.join(fx.stageDir, join(today(), fx.topic, 'r9', 'codex') + '.md');
+  await fs.writeFile(unregistered, '# 未登记工件');
+  const unexpected = await cli(fx.root, artifacts);
+  assert.equal(unexpected.code, EXIT.MISSING_ARTIFACT);
+  assert.match(unexpected.stdout, /未登记的审查件/);
+  await fs.rm(unregistered);
+
+  const metaPath = path.join(fx.stageDir, '_meta', `run-${w.run_id}.json`);
+  const raw = await fs.readFile(metaPath, 'utf8');
+  for (const tamper of [
+    (m: RunMeta) => {
+      m.round_verdict!.sides.codex = 'pass';
+      delete m.round_verdict!.excluded.codex;
+      m.round_verdict!.counts.pass = 2;
+      m.round_verdict!.outcome = 'pass';
+      m.round_verdict!.next_action = 'proceed';
+    },
+    (m: RunMeta) => { m.round_verdict!.sides = { codex: 'pass', gemini: 'reject' }; m.round_verdict!.excluded = { claude: 'failed' }; },
+    (m: RunMeta) => { m.round_verdict!.next_action = 'proceed'; },
+    (m: RunMeta) => { m.guard.joint_check!.effective_sides = 3; },
+  ]) {
+    const forged = JSON.parse(raw) as RunMeta;
+    tamper(forged);
+    await fs.writeFile(metaPath, JSON.stringify(forged));
+    await assertQualificationBlocked(fx, w.run_id, 'round_qualification_mismatch');
+  }
+  await fs.writeFile(metaPath, raw);
+  const next = await runRound(fx, 'plan', 'B', FLIP, [...THREE_CRITICS, '--allow-single']);
+  assert.deepEqual(next.review_loop, { round: 2, max_rounds: 3, max_rounds_source: 'default' });
+});
+
+test('strict 证据不足与非证据失败均拒绝三个 gate 入口，失败轮不消耗轮次', { skip }, async () => {
+  for (const { name, stub, flags, config, ids } of [
+    { name: 'strict', stub: FLIP, flags: [], config: [], ids: ['AGY-01', 'CLAUDE-01'] },
+    { name: 'override-off', stub: FLIP, flags: ['--allow-single'], config: ['allow_partial_flag: false'], ids: ['AGY-01', 'CLAUDE-01'] },
+    { name: 'mixed', stub: { ...FLIP, gemini: { mode: 'timeout' } } as StubConfig, flags: [], config: [], ids: ['CLAUDE-01'] },
+    { name: 'timeout', stub: { ...FLIP, codex: { mode: 'timeout' } } as StubConfig, flags: [], config: [], ids: ['AGY-01', 'CLAUDE-01'] },
+  ]) {
+    const fx = await evidenceFixture(`evidence-${name}`, config);
+    const w = await runRound(fx, 'plan', 'B', stub, [...THREE_CRITICS, ...flags], EXIT.STRICT_ABORT);
+    const meta = await runMeta(fx, 'plan', w.run_id) as unknown as RunMeta;
+    assert.equal(meta.status, 'failed');
+    assert.equal(meta.review_mode, 'partial');
+    assert.equal(meta.effective_failure_policy, 'strict');
+    assert.equal(w.next_action, null);
+    assert.equal(meta.round_verdict, undefined);
+    assert.equal(meta.critics.codex?.cli_version, 'stub/0.0.0');
+    assert.equal(w.sides.codex?.attempt, name === 'timeout' ? 1 : 2);
+    assert.equal(meta.critics.codex?.evidence_failure_reason, name === 'timeout' ? undefined : 'insufficient_evidence');
+    assert.equal(meta.gate.state, 'failed');
+    assert.equal(await gateState(fx, 'plan'), 'idle');
+    await writeEvidenceDisposition(fx, meta, ids);
+    await assertQualificationBlocked(fx, w.run_id, 'run_not_successful');
+    if (name === 'strict') {
+      const metaPath = path.join(fx.stageDir, '_meta', `run-${w.run_id}.json`);
+      const original = await fs.readFile(metaPath, 'utf8');
+      for (const status of ['running', 'cancelled', 'failed'] as const) {
+        const stopped = { ...meta, status, ...(status === 'failed' ? { termination: { by: 'worker_exception', exit_code: 1 } } : {}) };
+        await fs.writeFile(metaPath, JSON.stringify(stopped));
+        await assertQualificationBlocked(fx, w.run_id, 'run_not_successful');
+      }
+      await fs.writeFile(metaPath, original);
+      const next = await runRound(fx, 'plan', 'B', { ...FLIP, codex: { mode: 'ok' } }, THREE_CRITICS);
+      assert.deepEqual(next.review_loop, { round: 1, max_rounds: 3, max_rounds_source: 'default' });
+    }
+  }
+});
+
+test('允许降级后有效票只剩 1/3，命令 A 必须转人工并挡住续跑', { skip }, async () => {
+  const fx = await evidenceFixture('evidence-human', ['failure_policy: degrade']);
+  const stub: StubConfig = { ...FLIP, gemini: { mode: 'no_project_reads' } };
+  const w = await runRound(fx, 'plan', 'A', stub, THREE_CRITICS);
+  const meta = await runMeta(fx, 'plan', w.run_id) as unknown as RunMeta;
+  for (const side of meta.critics_selected) assert.equal(meta.critics[side]?.cli_version, 'stub/0.0.0');
+  assert.equal(meta.status, 'success');
+  assert.equal(meta.review_mode, 'partial');
+  assert.equal(w.round_verdict?.outcome, 'undetermined');
+  assert.deepEqual(w.round_verdict?.excluded, { codex: 'insufficient_evidence', gemini: 'insufficient_evidence' });
+  assert.deepEqual(w.round_verdict?.counts, { pass: 1, 'pass-after-changes': 0, reject: 0 });
+  assert.equal(w.next_action, 'human_review');
+  await writeEvidenceDisposition(fx, meta, ['CLAUDE-01'], '驳回');
+  const result = await check(fx, 'plan');
+  assert.equal(result.next_action, 'human_review');
+  assert.deepEqual(result.joint_check, { state: 'skipped-insufficient-sides', effective_sides: 1,
+    reason: 'insufficient-evidence', excluded_sides: { codex: 'insufficient_evidence', gemini: 'insufficient_evidence' } });
+  const task = JSON.parse(await fs.readFile(path.join(fx.archiveRoot, fx.topic, 'task.json'), 'utf8')) as {
+    joint_checks: Array<JointCheckResult & { run_id: string }>;
+  };
+  const audited = task.joint_checks.find((jc) => jc.run_id === w.run_id);
+  assert.equal(audited?.effective_sides, 1);
+  assert.equal(audited?.reason, 'insufficient-evidence');
+  assert.deepEqual(audited?.excluded_sides, result.joint_check?.excluded_sides);
+  assert.equal(await gateState(fx, 'plan'), 'awaiting_approval');
+  await fs.rm(path.join(fx.root, '.trivium', 'state.json'));
+  const next = await cli(fx.root, ['review', '--start', '--stage', 'plan', '--entry', 'A', '--topic', fx.topic, '--focus', 'x', ...THREE_CRITICS], stub);
+  assert.equal(next.code, EXIT.USAGE, next.stdout + next.stderr);
+  assert.match(next.stderr, /已停在人工审核/);
+});
+
+test('证据不足与终次作废并存，共同阻断逐侧保留两种原因', { skip }, async () => {
+  const fx = await evidenceFixture('evidence-mixed-exclusions');
+  const stub: StubConfig = { ...FLIP, gemini: { mode: 'run_material_leak', note: 'peer:claude' } };
+  const w = await runRound(fx, 'plan', 'B', stub, [...THREE_CRITICS, '--allow-single']);
+  const meta = await runMeta(fx, 'plan', w.run_id) as unknown as RunMeta;
+  for (const side of meta.critics_selected) assert.equal(meta.critics[side]?.cli_version, 'stub/0.0.0');
+  assert.equal(w.sides.gemini?.attempt, 2);
+  assert.equal(w.sides.codex?.attempt, 2);
+  assert.match(meta.critics.gemini?.fail_reason ?? '', /^peer_leak/);
+  assert.equal(w.next_action, 'human_review');
+  await writeEvidenceDisposition(fx, meta, ['CLAUDE-01'], '驳回');
+  const result = await check(fx, 'plan');
+  assert.deepEqual(result.joint_check, {
+    state: 'skipped-insufficient-sides', effective_sides: 1, reason: 'insufficient-evidence',
+    excluded_sides: { gemini: 'voided', codex: 'insufficient_evidence' },
+  });
+  assert.deepEqual(w.round_verdict?.excluded, result.joint_check?.excluded_sides);
+});
+
+test('旧 v3 的 Windows 计票、独立来源、原件和报告保持原口径', { skip }, async () => {
+  const fx = await makeFixture({ topic: 'Windows原子写重试', draft: false });
+  const source = path.join(REPO_ROOT, '.reviews', fx.topic);
+  await fs.mkdir(fx.archiveRoot, { recursive: true });
+  await fs.cp(source, path.join(fx.archiveRoot, fx.topic), { recursive: true });
+  const taskPath = path.join(fx.archiveRoot, fx.topic, 'task.json');
+  const readTask = async () => JSON.parse(await fs.readFile(taskPath, 'utf8')) as { approvals: unknown[]; joint_checks: (JointCheckResult & { run_id: string })[] };
+  const originalApprovals = (await readTask()).approvals;
+  for (const { stage, id, outcome, sha } of [
+    { stage: 'plan', id: '20261027T091039Z', outcome: 'pass-after-changes', sha: '64a9f868013239966ff538bfd9bdd1972e88e33bda5f9821b959ac7f1f83f070' },
+    { stage: 'code', id: '20261027T093854Z', outcome: 'pass', sha: '752842da0fbb079afb32518cfc625d8417b6ca23dd1b35abac6cdd0794981ed1' },
+  ] as const) {
+    const file = path.join(source, stage, '_meta', `run-${id}.json`);
+    assert.equal(await sha256File(file), sha);
+    const meta = await runMeta(fx, stage, id) as unknown as RunMeta;
+    assert.equal(meta.effective_failure_policy, undefined);
+    assert.equal(meta.critics.codex?.evidence_ok, false);
+    assert.equal(meta.round_verdict?.outcome, outcome);
+    const gated = await cli(fx.root, ['gate', '--check', '--run-id', id, '--stage', stage, '--topic', fx.topic, '--json']);
+    const read = JSON.parse(extractJsonCandidate(gated.stdout)!.json) as CheckJson & { round_verdict: RoundVerdict };
+    assert.equal(gated.code, EXIT.OK, gated.stdout + gated.stderr);
+    assert.equal(read.next_action, 'proceed');
+    assert.deepEqual(read.round_verdict, meta.round_verdict);
+    assert.equal((await readTask()).joint_checks.find((r) => r.run_id === id)?.effective_sides, 3);
+    assert.equal(await sha256File(file), sha);
+  }
+  const report = await cli(fx.root, ['report', '--topic', fx.topic]);
+  assert.equal(report.code, EXIT.OK, report.stdout + report.stderr);
+  assert.match(report.stdout, /20261027T091039Z[^\n]+success[^\n]+full/);
+  assert.match(report.stdout, /20261027T093854Z[^\n]+success[^\n]+full/);
+  assert.deepEqual((await readTask()).approvals, originalApprovals);
+});
 
 test('L1 · 命令 B 计划审：不通过 ⇒ rerun、闸门回 idle、续链第 2 轮；到上限仍不通过 ⇒ 人工停点', { skip }, async () => {
   const fx = await makeFixture({ topic: 'loop-l1' });

@@ -83,6 +83,8 @@
 且**不施加审查元数据契约校验**：那是按写入时的规范解读留痕，改错会让归档中的历史记录
 被判不可读，进而永久拦死每一次提交。
 
+新审查轮记录骨架处冻结的 `effective_failure_policy`。证据不足的成功执行至多消耗一次共享瞬时重试预算。终判仍不足的侧仅留失败件，记录 `evidence_failure_reason` 与原始退出码。降级成功轮在 `round_verdict.excluded` 使用 `insufficient_evidence`。新轮的 `gate --check`、`--await-approval` 与审批复核先判断运行资格，`run_not_successful` 或 `round_qualification_mismatch` 退 2。未标记的历史轮按原规则读取。旧 v3 读取器容忍新增顶层字段，但会拒读新增的排除枚举，worker 与 gate 应同版。
+
 `run.v2` / `run.v3` 的 Agent id 与 vendor **不在 schema 里枚举**：唯一来源是 `agents/registry.ts`
 （设计 §16.2 纪律 7），身份校验由 `schemas.ts` 在 ajv 之后按注册表补做。
 

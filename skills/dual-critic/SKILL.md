@@ -18,7 +18,7 @@ disable-model-invocation: true
 | `scripts/trivium.cjs` | 编排器本体（esbuild 单文件产物，不进 Git） |
 | `schema/` | 当前写契约 `review.v2` / `disposition.v1` / `run.v3` / `config.v2`；只读保留 `review.v1` / `run.v1` / `run.v2` / `config.v1` 历史契约。运行期先校形状，再按注册表校身份 |
 
-run.v3 的 requested_routes 在执行前按入选侧记录 model、effort、tier、tier_source、access。取消与 worker 启动失败不丢请求；worker 与交接逐项比对后执行，报告保留无结果侧的请求注记。历史 v1/v2 不补写。
+run.v3 的 requested_routes 在执行前按入选侧记录 model、effort、tier、tier_source、access。取消与 worker 启动失败不丢请求；worker 与交接逐项比对后执行，报告保留无结果侧的请求注记。历史 v1/v2 不补写。新审查骨架冻结 `effective_failure_policy`。证据不足仅重试本侧，消耗共享瞬时额度且至多一次。终判仍不足时只留失败件，计票记 `insufficient_evidence`，gate 用同一资格复核新轮。
 | `prompts/` | 各阶段的审查提示词模板 |
 | `lenses.yaml` | 两侧差异化审查镜头（§9.3），避免双审退化成同审 |
 | `agents/trivium-critic.md` | Antigravity 只读审查 Agent 定义 → 安装到 `~/.gemini/config/agents/` |

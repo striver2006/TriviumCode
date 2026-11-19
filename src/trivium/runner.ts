@@ -5,9 +5,9 @@
  * ——那是 `guard` 的职责。
  */
 import path from 'node:path';
-import type { AdapterTable, AdapterContext } from './adapters/base.js';
-import type { AttemptRecord, CriticId, CriticRequest, CriticResult, ReviewMode, ScrubOutcome } from './types.js';
-import type { SideLeakVerdict } from './guard.js';
+import type { AdapterTable, AdapterContext, EvidenceCheck } from './adapters/base.js';
+import type { AttemptRecord, CriticId, CriticRequest, CriticResult, FailurePolicy, ReviewMode, ScrubOutcome } from './types.js';
+import type { RoundQualifications, SideLeakVerdict } from './guard.js';
 import { clearScrubSentinel, describeScrubFailure, scrubSideDir } from './scrub.js';
 import { step, warn } from './util/log.js';
 import { withTreeTag } from './util/exec.js';
@@ -76,7 +76,7 @@ export interface RunnerInput {
   adapters: AdapterTable;
   requests: Partial<Record<CriticId, CriticRequest>>;
   /** 重试前对 BRIEF 追加提示（如 schema 错误清单、「你未读取任何项目文件」） */
-  onRetryBrief?: (critic: CriticId, previous: CriticResult) => string | null;
+  onRetryBrief?: (critic: CriticId, previous: CriticResult, evidence: EvidenceCheck | undefined, nextAttempt: number) => string | null;
   /**
    * 单侧进展回调，供工作进程把状态刷进 `status.json`。
    * **回调不得影响审查本身**：抛异常一律吞掉（见 emitProgress）。
@@ -99,6 +99,8 @@ export interface RunnerInput {
 
 export interface RunnerOutput {
   results: Partial<Record<CriticId, CriticResult>>;
+  evidence: Partial<Record<CriticId, EvidenceCheck>>;
+  priorWriteEvents: string[];
   /** 每侧实际尝试次数，写进元数据便于审计 */
   attempts: Partial<Record<CriticId, number>>;
   /**
@@ -134,7 +136,7 @@ async function runOneSide(
   input: RunnerInput,
   critic: CriticId,
   req: CriticRequest,
-): Promise<{ result: CriticResult; attempts: number; attemptLog: AttemptRecord[] | null; rerunBanner: string | null }> {
+) {
   const adapter = input.adapters[critic];
   // 查表可缺（见 AdapterTable 的说明）。缺了就在这里说清是谁缺，
   // 而不是让 `adapter.run` 崩出一条与原因无关的 TypeError。
@@ -149,13 +151,16 @@ async function runOneSide(
    * 等待预算（`computeMaxWaits` 的基础值 + 一份重跑）正是按这条链算的。
    */
   let transientUsed = 0;
+  let evidenceRetryUsed = 0;
   let voidReruns = 0;
+  const priorWriteEvents: string[] = [];
   /** 逐次尝试记录；只在发生过作废重跑时交出去 */
   const log: AttemptRecord[] = [];
   let rerunBanner: string | null = null;
   /** 发生过作废重跑之后，终态事件要显式带 note，否则「作废重跑中」会一直挂在 status.json 上（计划双审 AGY-02） */
-  const finalNote = (n: string | null): { note?: string | null } => (voidReruns > 0 ? { note: n } : {});
-  const out = (r: CriticResult) => ({ result: r, attempts, attemptLog: voidReruns > 0 ? log : null, rerunBanner });
+  const finalNote = (n: string | null): { note?: string | null } => (voidReruns > 0 || transientUsed > 0 ? { note: n } : {});
+  const out = (r: CriticResult, evidence?: EvidenceCheck) =>
+    ({ result: r, evidence, priorWriteEvents, attempts, attemptLog: voidReruns > 0 ? log : null, rerunBanner });
 
   /*
    * 凭据抹除的挂载点 ①（BACKLOG EV-20，`scrub.ts` 文件头）。
@@ -207,7 +212,7 @@ async function runOneSide(
       if (voidReruns > 0) {
         log.push({ n: attempts, started_at: attemptStartedAt, duration_s: elapsed(), status: 'failed', voided: null, fail_reason: `适配器异常：${err.message}` });
       }
-      throw Object.assign(err, { scrub, attemptLog: voidReruns > 0 ? log : null, rerunBanner });
+      throw Object.assign(err, { scrub, attempts, priorWriteEvents, attemptLog: voidReruns > 0 ? log : null, rerunBanner });
     }
     last = attemptResult!;
     last.scrub = scrub;
@@ -222,6 +227,7 @@ async function runOneSide(
     };
     log.push(rec);
 
+    let evidence: EvidenceCheck | undefined;
     if (last.status === 'ok') {
       /*
        * ── 作废判定（EV-225）：该侧刚跑完、还没解析就判 ──
@@ -231,10 +237,12 @@ async function runOneSide(
        * 闸门照样把它排出共同阻断，且这条告警会跟着 worker 日志走。
        */
       let leak: SideLeakVerdict | null = null;
+      let judgmentFailed = false;
       try {
         leak = input.judgeLeak?.(critic, last) ?? null;
       } catch (e) {
-        warn(`[${critic}] 作废判定抛出，本次不重跑（终判照常）：${(e as Error).message}`);
+        judgmentFailed = true;
+        warn(`[${critic}] 尝试判定抛出，交由终判核验：${(e as Error).message}`);
       }
       if (leak) {
         rec.voided = leak.voided;
@@ -268,25 +276,37 @@ async function runOneSide(
         emitProgress(input, critic, { state: 'failed', attempt: attempts, elapsed_s: elapsed(), note: last.fail_reason });
         return out(last);
       }
-      // 本侧收口：另一侧还在跑时，这一刻的「已完成」正是用户最想看到的变化
-      emitProgress(input, critic, { state: 'ok', attempt: attempts, elapsed_s: elapsed(), ...finalNote(null) });
-      return out(last);
-    }
-    if (transientUsed >= input.maxTransientRetries) break;
-    if (!isTransientFailure(last)) {
-      step(`[${critic}] 失败原因判定为业务性，不重试：${last.fail_reason}`);
-      break;
+      evidence = leak?.evidence;
+      if (!evidence || evidence.ok) {
+        if (!judgmentFailed) emitProgress(input, critic, { state: 'ok', attempt: attempts, elapsed_s: elapsed(), ...finalNote(null) });
+        return out(last, evidence);
+      }
+      rec.fail_reason = evidence.reasons.join('；');
+      if (transientUsed >= input.maxTransientRetries || evidenceRetryUsed > 0) {
+        emitProgress(input, critic, { state: 'failed', attempt: attempts, elapsed_s: elapsed(), note: rec.fail_reason });
+        return out(last, evidence);
+      }
+      evidenceRetryUsed++;
+      priorWriteEvents.push(...last.write_events);
+    } else {
+      if (transientUsed >= input.maxTransientRetries) break;
+      if (!isTransientFailure(last)) {
+        step(`[${critic}] 失败原因判定为业务性，不重试：${last.fail_reason}`);
+        break;
+      }
     }
     transientUsed++;
 
-    warn(`[${critic}] 瞬时故障，重试一次：${last.fail_reason}`);
+    const retryReason = evidence ? '执行证据不足' : '瞬时故障';
+    warn(`[${critic}] ${retryReason}，重试一次：${rec.fail_reason}`);
+    step(`[${critic}] 共享瞬时重试预算：已用 ${transientUsed}/${input.maxTransientRetries}`);
     emitProgress(input, critic, {
       state: 'running',
       attempt: attempts,
       elapsed_s: elapsed(),
-      note: '瞬时故障，重试中',
+      note: `${retryReason}，重试中`,
     });
-    const extra = input.onRetryBrief?.(critic, last);
+    const extra = input.onRetryBrief?.(critic, last, evidence, attempts + 1);
     if (extra) {
       // 把失败原因追加进 BRIEF，让模型知道上一次哪里不对
       req = { ...req, brief_text: `${req.brief_text}\n\n---\n\n${extra}` };
@@ -316,6 +336,8 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
   );
 
   const results: Partial<Record<CriticId, CriticResult>> = {};
+  const evidence: RunnerOutput['evidence'] = {};
+  const priorWriteEvents: string[] = [];
   const attempts: Partial<Record<CriticId, number>> = {};
   const attemptLog: Partial<Record<CriticId, AttemptRecord[]>> = {};
   const rerunBanners: Partial<Record<CriticId, string>> = {};
@@ -324,6 +346,8 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
     const critic = sides[i]!;
     if (s.status === 'fulfilled') {
       results[critic] = s.value.result;
+      if (s.value.evidence) evidence[critic] = s.value.evidence;
+      priorWriteEvents.push(...s.value.priorWriteEvents);
       attempts[critic] = s.value.attempts;
       if (s.value.attemptLog) attemptLog[critic] = s.value.attemptLog;
       if (s.value.rerunBanner) rerunBanners[critic] = s.value.rerunBanner;
@@ -368,18 +392,18 @@ export async function runBothSides(input: RunnerInput): Promise<RunnerOutput> {
         // runOneSide 把本次尝试的抹除结果挂在异常上带出来（GLM-04）
         ...((s.reason as { scrub?: ScrubOutcome } | null)?.scrub ? { scrub: (s.reason as { scrub: ScrubOutcome }).scrub } : {}),
       };
-      attempts[critic] = 1;
       // 作废重跑之后才抛的：逐次记录与点名段照样交回（与 fulfilled 分支同口径，只在发生过重跑时有键）
-      const carried = s.reason as { attemptLog?: AttemptRecord[] | null; rerunBanner?: string | null } | null;
+      const carried = s.reason as { attempts?: number; priorWriteEvents?: string[]; attemptLog?: AttemptRecord[] | null; rerunBanner?: string | null } | null;
+      attempts[critic] = carried?.attempts ?? 1;
+      if (carried?.priorWriteEvents) priorWriteEvents.push(...carried.priorWriteEvents);
       if (carried?.attemptLog) {
         attemptLog[critic] = carried.attemptLog;
-        attempts[critic] = carried.attemptLog.length;
       }
       if (carried?.rerunBanner) rerunBanners[critic] = carried.rerunBanner;
     }
   });
 
-  return { results, attempts, attemptLog, rerunBanners };
+  return { results, evidence, priorWriteEvents, attempts, attemptLog, rerunBanners };
 }
 
 export interface ModeDecision {
@@ -433,9 +457,10 @@ export interface ModeDecision {
  * 为它炸掉一次本可继续的运行不划算。
  */
 export function decideMode(
-  results: Partial<Record<CriticId, CriticResult>>,
-  failurePolicy: 'strict' | 'degrade',
+  results: Partial<Record<CriticId, { status: CriticResult['status']; fail_reason?: string | null }>>,
+  failurePolicy: FailurePolicy,
   selected: readonly CriticId[],
+  qualifications: RoundQualifications,
 ): ModeDecision {
   const selectedSides = [...selected];
   /*
@@ -450,9 +475,7 @@ export function decideMode(
    */
   const ran = (Object.keys(results) as CriticId[]).filter((c) => selectedSides.includes(c));
 
-  const okSides = ran.filter(
-    (c) => results[c]?.status === 'ok' || results[c]?.status === 'parse_fallback',
-  );
+  const okSides = ran.filter((c) => qualifications[c]?.canProceed);
   /*
    * 入选却没有结果条目的一侧，此前从判定里整个消失：`Object.keys(results)` 见不到它，
    * 于是「少跑了一侧」与「全成功」不可区分。并进 failedSides 才能让它显形。

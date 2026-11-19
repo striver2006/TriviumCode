@@ -243,7 +243,7 @@ async function seedArchive(ctx: Ctx, runId: string): Promise<{ layout: ArchiveLa
   const meta = newRunMeta({
     runId, topic: TOPIC, stage: 'plan', rerunIndex: 1, command: 'test', promptHint: '焦点', taskGoal: null,
     criticsSelected: ['gemini', 'glm'], treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S',
-    denyPaths: [], driftPolicy: 'warn',
+    denyPaths: [], driftPolicy: 'warn', effectiveFailurePolicy: 'degrade',
   });
   meta.artifacts = [{ path: `${TOPIC}/plan/_meta/brief-glm-${runId}.md`, sha256: 'a'.repeat(64) }];
   await writeRunMeta(layout, 'plan', meta);
@@ -278,6 +278,7 @@ test('EV-128 E1：--cancel 把归档 run.json 与 task.json 登记收尾为 canc
 
   const after = JSON.parse(await fs.readFile(a.runJson, 'utf8')) as RunMeta;
   assert.equal(after.status, 'cancelled');
+  assert.equal(after.effective_failure_policy, 'degrade');
   assert.equal(after.gate.state, 'cancelled');
   assert.ok(after.finished_at, 'finished_at 应已写入');
   assert.deepEqual(after.artifacts, a.meta.artifacts, 'artifacts[] 必须原样（提交锚只放行不删改登记的收尾）');

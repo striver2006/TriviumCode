@@ -366,18 +366,115 @@ test('两侧返回非 JSON → 双双 parse_fallback，仍落盘', { skip: bundl
 });
 
 test('exit 0 但零工具调用 → 证据不足', { skip: bundleMissing && bundleSkipReason }, async () => {
-  const { meta } = await runInjected({ gemini: { mode: 'no_tools' }, glm: { mode: 'ok' } });
+  const r = await runInjected({ gemini: { mode: 'no_tools' }, glm: { mode: 'ok' } });
+  const { meta } = r;
   assert.equal(meta.critics.gemini?.evidence_ok, false, '零工具调用不能算有效审查');
   assert.equal(meta.critics.glm?.evidence_ok, true);
+  assert.equal(meta.critics.gemini?.exit_code, 0);
+  assert.equal(meta.critics.gemini?.evidence_failure_reason, 'insufficient_evidence');
+  assert.equal(meta.critics.gemini?.status, 'failed');
+  assert.equal(meta.critics.gemini?.cli_version, 'stub/0.0.0');
+  assert.equal(meta.status, 'failed');
+  assert.equal(meta.review_mode, 'partial');
+  assert.equal(r.exitCode, EXIT.STRICT_ABORT);
+  const status = await statusOf(r);
+  assert.equal(status.sides.gemini?.attempt, 2);
+  assert.equal(status.sides.glm?.attempt, 1);
 });
 
 test('只读了送审材料自己 → 判 no_project_context', { skip: bundleMissing && bundleSkipReason }, async () => {
-  const { meta } = await runInjected({ gemini: { mode: 'no_project_reads' }, glm: { mode: 'ok' } });
+  const r = await runInjected({ gemini: { mode: 'no_project_reads' }, glm: { mode: 'ok' } });
+  const { meta } = r;
   assert.equal(
     meta.critics.gemini?.evidence_ok,
     false,
     '把 BRIEF 与被审对象反复读 N 遍不构成项目上下文',
   );
+  assert.equal(meta.critics.gemini?.evidence_failure_reason, 'no_project_context');
+  assert.equal(meta.critics.gemini?.cli_version, 'stub/0.0.0');
+  assert.equal(meta.status, 'failed');
+  assert.equal(meta.review_mode, 'partial');
+  assert.equal(r.exitCode, EXIT.STRICT_ABORT);
+  assert.equal((await statusOf(r)).sides.gemini?.attempt, 2);
+});
+
+test('证据重试共享瞬时额度并且每侧至多触发一次', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const noEvidence: StubSpec = { mode: 'no_tools' };
+  const rateLimit: StubSpec = { mode: 'fail', note: 'HTTP 429 rate limit' };
+  for (const { transientMax, script, calls, exit, reason } of [
+    { transientMax: 0, script: [noEvidence], calls: 1, exit: 0, reason: 'insufficient_evidence' },
+    { transientMax: 2, script: [noEvidence, noEvidence], calls: 2, exit: 0, reason: 'insufficient_evidence' },
+    { transientMax: 1, script: [rateLimit, noEvidence], calls: 2, exit: 0, reason: 'insufficient_evidence' },
+    { transientMax: 1, script: [noEvidence, rateLimit], calls: 2, exit: 0, reason: undefined },
+    { transientMax: 1, script: [{ mode: 'no_project_reads', verdict: 'reject' } as StubSpec, { mode: 'ok', verdict: 'pass' } as StubSpec],
+      calls: 2, exit: 0, reason: undefined },
+  ]) {
+    const r = await runInjected({ gemini: { ...script.at(-1)!, attempts: script }, glm: { mode: 'ok', verdict: 'pass' } },
+      ['--entry', 'B', '--allow-single'], ['retry:', `  transient_max: ${transientMax}`]);
+    assert.equal(r.exitCode, exit);
+    assert.equal(r.meta.effective_failure_policy, 'degrade');
+    assert.equal(r.meta.critics.gemini?.cli_version, 'stub/0.0.0');
+    assert.equal(r.meta.critics.gemini?.evidence_failure_reason, reason);
+    assert.equal(r.meta.critics.gemini?.attempts, undefined, '没有作废重跑，不生成逐次作废日志');
+    const status = await statusOf(r);
+    assert.equal(status.sides.gemini?.attempt, calls);
+    assert.equal(status.sides.glm?.attempt, 1);
+    if (script.at(-1) === rateLimit) {
+      assert.equal(r.meta.round_verdict?.excluded.gemini, 'failed');
+      assert.match(r.meta.degraded_reason ?? '', /429/);
+    } else if (script.at(-1)?.mode === 'ok') {
+      assert.equal(r.meta.review_mode, 'full');
+      assert.equal(r.meta.round_verdict?.sides.gemini, 'pass');
+    } else {
+      assert.equal(r.meta.round_verdict?.excluded.gemini, 'insufficient_evidence');
+    }
+  }
+});
+
+test('执行证据不足与解析失败并存时只登记失败件，保留已观测的写事件', { skip: bundleMissing && bundleSkipReason }, async () => {
+  const r = await runInjected({
+    gemini: { mode: 'dirty_output', noToolEvidence: true, attempts: [{ mode: 'write_breach', noToolEvidence: true }] },
+    glm: { mode: 'ok' },
+  }, ['--allow-single', '--entry', 'B']);
+  assert.equal(r.exitCode, EXIT.OK);
+  const { meta } = r;
+  const side = meta.critics.gemini!;
+  assert.equal(side.cli_version, 'stub/0.0.0');
+  assert.equal((await statusOf(r)).sides.gemini?.attempt, 2);
+  assert.equal(side.status, 'failed');
+  assert.equal(side.exit_code, 0);
+  assert.equal(side.tool_calls.project_reads, 4);
+  assert.equal(side.parse_fallback, false);
+  assert.equal(side.parse_fallback_cause, undefined);
+  assert.equal(side.findings_degraded, undefined);
+  assert.equal(side.parse_repairs, undefined);
+  assert.equal(side.empty_review, undefined);
+  assert.equal(meta.guard.readonly_breach, true);
+  assert.ok(meta.guard.breached_files?.some((f) => f.includes('injected.ts')));
+  const files = await listFiles(r.stageDir);
+  assert.ok(files.includes(`_meta/review-gemini-${meta.run_id}.failed.json`));
+  assert.ok(!files.some((f) => /-gemini\.md$|gemini.*\.fallback-items\.md$/.test(f)));
+});
+
+test('作废与证据不足同次命中先作废，重跑后仍可使用一次证据预算', { skip: bundleMissing && bundleSkipReason }, async () => {
+  for (const composite of [false, true]) {
+    const r = await runInjected({
+      gemini: {
+        mode: 'peer_leak',
+        rerun: { mode: 'fail', note: '按序号配置应优先于本项' },
+        attempts: [{ mode: 'peer_leak', noToolEvidence: composite }, { mode: 'no_tools' }, { mode: 'ok' }],
+      },
+      glm: { mode: 'ok' },
+    }, ['--entry', 'B'], [], (root) => seedPriorRound(root, ['glm']));
+    await assertStrictRunUnaffected(r, ['gemini', 'glm'], []);
+    const side = r.meta.critics.gemini!;
+    assert.equal((await statusOf(r)).sides.gemini?.attempt, 3);
+    assert.deepEqual(side.attempts?.map(({ voided }) => voided), [true, false, false]);
+    assert.match(side.attempts?.[1]?.fail_reason ?? '', /insufficient_evidence/);
+    assert.equal(side.attempts?.[2]?.fail_reason, null);
+    const retry = await fs.readFile(path.join(r.stageDir, '_meta', `brief-gemini-${r.meta.run_id}.retry.md`), 'utf8');
+    assert.match(retry, /共 1 次[\s\S]+第 3 次尝试追加（共享瞬时重试 1\/1）/);
+  }
 });
 
 // ── 跑后复算的漂移判定（设计 §9.2 第 3 步）──

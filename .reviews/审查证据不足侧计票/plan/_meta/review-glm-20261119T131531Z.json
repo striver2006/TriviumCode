@@ -1,0 +1,50 @@
+{
+  "schema": "trivium.review.v2",
+  "verdict": "pass-after-changes",
+  "summary": "计划的事实底座经逐点静态核实全部成立：§二四条漏接链路（isTransientFailure 对 ok 恒假、runOneSide 的 ok 出口、decideMode 只认 ok/parse_fallback、计票与两处共同阻断不消费证据、gate 按正本 next_action 推进）与源码一致；§一历史计票与排除后票型同 decideOutcome/nextAction 现行语义逐项吻合，EXIT.STRICT_ABORT=75 属实；§三决策表与现行 tallyRound 算法（分母含被排除侧、2n<N 判 undetermined、半数判定序、双审剩一票可定论）自洽，strict 中止（wait 75、无 round_verdict）与降级 undeterminate 转 human_review 的区分清晰可测；§四的预算上界 1+transient_max+1 与现有 transientUsed/MAX_VOID_RERUNS 机制吻合且「只消耗一次、先漏后证、多项不足只扣一次」口径封闭；run.v3 兼容论断与 schema 实际形状（round_verdict 节点 additionalProperties:false、excluded 枚举缺新值）相符。唯一实质缺口在验收可行性：组合用例「同次既作废又不足」在计划的桩能力承诺下没有可注入形态，且新按尝试切换机制与既有 spec.rerun 的触发优先级未定义，按原文实施会让该验收行空转——补齐桩口径后即可实施，无需重审。本侧只读，未执行任何命令；焦点中的实测项无法复跑，已按静态核验与推演处理并在 not_covered 如实列出。",
+  "findings": [
+    {
+      "id": "GLM-01",
+      "severity": "minor",
+      "layer": "plan",
+      "kind": "test-gap",
+      "location": "doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md §四实施落点表桩能力行、§五「解析、作废及配额」用例行",
+      "problem": "验收表把「同次既作废又不足」「作废重跑 → 缺证据 → 恢复」列为必测组合并要求比对实际调用数，但计划的桩能力承诺只有一句「仅为『首次证据不足、下一次达标』增加按尝试切换的桩能力」。核实 stub.ts：三个泄漏形态（peer_leak / run_material_leak / peer_leak_via_command）全部基于 baseResult 构造，其 tool_calls（read:6+grep:2+glob:1）与 4 条项目内读取恒过证据下限，「单次尝试同时命中泄漏与证据不足」没有任何可注入形态；同时既有 spec.rerun 以任务书是否以作废点名段标题开头触发，与新引入的按尝试切换（按尝试序号）是两套触发维度，共存时的优先级计划未定。按计划原文实施到该验收行时这两条组合用例无法注入，恰是本仓反复设防的「用例声称覆盖、实际为空」形态（stub.ts 自己的注释就以故障注入夹具不再注入它声称的故障为前车之鉴）。",
+      "evidence": "src/trivium/adapters/stub.ts：baseResult 的 tool_calls 与 read_paths（注释「4 条项目内读取：min_project_reads 默认下限是 3」）、LEAK_MODES 三个 case 均展开 baseResult；spec.rerun 触发判据 (req.brief_text ?? '').startsWith(VOID_RERUN_BANNER_HEADING)；被审计划 §四实施落点表「仅为『首次证据不足、下一次达标』增加按尝试切换的桩能力」与 §五「解析、作废及配额」行的组合用例清单。",
+      "suggestion": "在桩能力一行补三条口径：一是切换维度按尝试序号，并写明与 spec.rerun（按作废点名段触发）同时命中时的优先级；二是增加可同时产出泄漏与证据不足的复合形态（例如泄漏形态叠加清零 tool_calls 与项目内 read_paths 的参数）；三是给出「作废 → 缺证据 → 恢复」三次尝试各自的注入序列示例，确保 §五该行用例可落地、断言可执行。",
+      "confidence": "high"
+    }
+  ],
+  "agreed": [
+    "§二四条漏接的定位逐点与源码核实一致：isTransientFailure 对 status='ok' 恒假（runner.ts 瞬时表虽含 insufficient_evidence/no_project_context/no_trace 但被 ok 短路）；runOneSide 的 ok 出口在泄漏判定后立即返回（runner.ts）；decideMode 只认 ok/parse_fallback、不接收证据判定（runner.ts okSides 过滤）；计票入口（review.ts L2261-2271）把证据不足侧的 v2 票计入分子与分母；jointCheckRunState（review.ts L131）与 gate 的 jointCheckState（gate.ts L1123）只排作废与无结构化件；cli.ts 停点路由按正本 next_action 分流。",
+    "§一历史计票与「仅排除 Codex」后的票型经按 decideOutcome/nextAction 现行语义独立静态推演全部吻合，含「两档各半先判修改后通过」「2 通过/1 不通过 → pass/proceed」「1/0/1 → reject/rerun」；EXIT.STRICT_ABORT=75 与 exit-codes.ts 一致。",
+    "§三决策表与现行 tallyRound 算法一致：selected 分母含被排除侧、n=0 或 2n<N 判 undetermined、reject→修改后通过→通过的半数判定序与缺省修改后通过均同 round-verdict.ts；undetermined 边界（双审剩一票可定论、三审剩一票不可）与现行注释口径一致；human_review 连 A 也立 awaiting_approval 的描述与 cli.ts 现行分流一致；strict 中止与降级转人工的区分（75/无 round_verdict vs 0/undetermined+human_review）在验收表中可测且翻票反例要求人为恢复错误计时必须失败，防回归设计到位。",
+    "§四.1预算口径自洽：证据重试复用 transientUsed、单侧证据触发至多一次、泄漏独占一次作废重跑且不重置瞬时额度、总调用上界 1+transient_max+1，与现有 EV-225 独立计数机制吻合；「预算为 0 或已耗尽直接收口」「瞬时故障先耗尽额度 → 缺证据」等边界已在正文与验收表覆盖，回应了焦点中「只消耗一次重试预算」。",
+    "§四.4/§五兼容论断与 run.v3.json 实际形状相符：round_verdict 节点 additionalProperties:false 且 excluded 枚举不含 insufficient_evidence，旧二进制确实无法验证新记录；顶层新增 effective_failure_policy 对旧校验器是不可见字段而非拒因；「历史按写入时规则读、不重算不补写、『排除后』只用于对比」与 Bob 确认的第三条口径一致，回应了焦点中的历史兼容。",
+    "对 spec.rerun 不能当作证据重试成功证明的判断正确（其触发条件绑定作废点名段标题，而证据重试的提示追加在任务书末尾），为验收新增按尝试切换桩能力的方向必要且克制；no_tools、no_project_reads、dirty_output 等既有桩形态与验收引用一一对应。",
+    "另核实 extension/src/approval/gateAreaModel.ts 与 extension/src/cli/commands.ts 对 round_verdict 的消费为原样透传：excluded 类型是开放的 Record<string,string>、闸门区不渲染 excluded、未知取值回退原文，新增排除值不会破坏插件解析，计划未列插件同步项在当前消费面下不构成缺口。"
+  ],
+  "not_covered": [
+    "本侧只读、未执行任何命令：对计划 §一声称的 esbuild 内存回放、两份历史正本 SHA-256 与六份结构化票无法独立复现，仅静态核对了其计票语义与源码一致；焦点中要求实测的部分已按此限制处理。",
+    "未读 .reviews/Windows原子写重试/ 的 run 正本与任务正本原文，历史件的 evidence_ok、exit_code 等字段值以计划自述为准。",
+    "未读主设计 §6.7/§11.4/§12.1-12.4 与 PRD AC-05/AC-11/AC-25 原文，计划引用设计条款的上下文完整性未核。",
+    "未读 meta.ts、types.ts、schemas.ts 与 test/unit 各文件：实施落点表中 unit 测试文件现状、task.json joint_checks.reason 的 schema 枚举是否需为证据类排除原因扩展、round-verdict 测试对新 excluded 值的落点均未核实。",
+    "doctor --selftest（桩适配器 14 步）是否需要为证据重试路径补步骤，计划未提、本侧未核。"
+  ],
+  "consulted": [
+    "doc/08_project/2026-11-19-审查证据不足侧计票修复计划.md",
+    "src/trivium/round-verdict.ts",
+    "src/trivium/runner.ts",
+    "src/trivium/review.ts",
+    "src/trivium/guard.ts",
+    "src/trivium/gate.ts",
+    "src/trivium/cli.ts",
+    "src/trivium/adapters/base.ts",
+    "src/trivium/adapters/stub.ts",
+    "src/trivium/exit-codes.ts",
+    "skills/dual-critic/schema/run.v3.json",
+    "test/integration/fault-injection.test.ts",
+    "extension/src/approval/gateAreaModel.ts",
+    "extension/src/cli/commands.ts"
+  ]
+}

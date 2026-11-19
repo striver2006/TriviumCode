@@ -8,7 +8,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type {
-  AgentId, CriticId, LegacyReviewMode, PlanFinalCheck, ReviewLoop, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
+  AgentId, CriticId, JointCheckResult, LegacyReviewMode, PlanFinalCheck, ReviewLoop, RunMeta, RunTermination, Stage, StageOrVerify, CommandEntry,
 } from './types.js';
 import { describeDriftUnknown } from './types.js';
 // gate.ts 的静态依赖闭包不含本文件（EV-224 编码时核过），不成环
@@ -217,16 +217,12 @@ export interface TaskMeta {
    *
    * 每轮一条，按 `run_id` 覆盖：`--check` 可以反复跑，同一轮的结论以最后一次为准。
    */
-  joint_checks?: {
+  joint_checks?: (JointCheckResult & {
     run_id: string;
     stage: Stage;
     rerun_index: number;
-    state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
-    effective_sides: number;
-    /** 有效侧不足时的成因（作废排除 / 无结构化结论 / 两者） */
-    reason?: 'voided' | 'no-structured-review' | 'both';
     at: string;
-  }[];
+  })[];
   /**
    * **按阶段**的 Driver 声明（M10a 第 1 步，EV-72）。**可选**：缺该字段 = 「未声明」。
    *
@@ -452,6 +448,7 @@ export async function updateTaskAsync(
 // ─────────────────────────── run.json ───────────────────────────
 
 export interface NewRunMetaInput {
+  effectiveFailurePolicy?: NonNullable<RunMeta['effective_failure_policy']>;
   driverModel?: string | null;
   driverProvider?: string | null;
   runId: string;
@@ -514,6 +511,7 @@ export interface NewRunMetaInput {
 export function newRunMeta(i: NewRunMetaInput): RunMeta {
   return {
     schema: 'trivium.run.v3',
+    ...(i.effectiveFailurePolicy ? { effective_failure_policy: i.effectiveFailurePolicy } : {}),
     driver_declaration: { model: i.driverModel ?? null, provider: i.driverProvider ?? null,
       source: i.driverModel || i.driverProvider ? 'declared' : null },
     family_comparisons: [],

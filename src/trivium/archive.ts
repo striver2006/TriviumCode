@@ -15,7 +15,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { DEFAULT_DRIVER, type AgentId } from './agents/registry.js';
-import { DEFAULT_CRITICS, isReviewSchemaId, type CriticId, type Stage, type StageOrVerify } from './types.js';
+import { DEFAULT_CRITICS, isReviewSchemaId, type CriticId, type RunMeta, type Stage, type StageOrVerify } from './types.js';
 import {
   buildArtifactName,
   buildVerifyName,
@@ -348,9 +348,11 @@ export async function checkStageArtifacts(
    * 给了就核对「阶段目录里有没有没登记的审核者工件」；`null` 跳过该项。
    */
   recordedPaths: ReadonlySet<string> | null = null,
+  run?: RunMeta,
 ): Promise<ArtifactCheck> {
   const all = await listStageArtifacts(layout, stage);
   const thisRound = all.filter((i) => i.parsed.rerunIndex === rerunIndex);
+  const qualifiedRun = run?.schema === 'trivium.run.v3' && run.effective_failure_policy ? run : undefined;
 
   const hasThisRound = (role: Role, kind: DispositionKind | null) =>
     thisRound.some((i) => i.parsed.role === role && i.parsed.kind === kind);
@@ -371,7 +373,13 @@ export async function checkStageArtifacts(
     required.push({ label: `原稿 …-${driver}.md（任一轮次）`, ok: hasAnyRound(driver, null) });
   }
   for (const c of critics) {
-    required.push({ label: `审查 …-${c}.md`, ok: hasThisRound(c, null) });
+    const status = qualifiedRun?.critics[c]?.status;
+    if (qualifiedRun && (status === 'failed' || status === 'timeout')) {
+      const failedPath = `${layout.topic}/${stage}/_meta/review-${c}-${qualifiedRun.run_id}.failed.json`;
+      required.push({ label: `失败件 ${failedPath}`, ok: qualifiedRun.artifacts.some((item) => item.path === failedPath) });
+    } else {
+      required.push({ label: `审查 …-${c}.md`, ok: hasThisRound(c, null) });
+    }
   }
   const kind: DispositionKind = stage === 'code' ? 'response' : 'revised';
   required.push({ label: `裁决件 …-${kind}-${driver}.md`, ok: hasThisRound(driver, kind) });
@@ -402,6 +410,11 @@ export async function checkStageArtifacts(
   }
   for (const f of unregistered) {
     required.push({ label: `未登记的审查件 ${f}（不在任何 run.json 的 artifacts 内）`, ok: false });
+  }
+  if (qualifiedRun) {
+    for (const a of await checkRecordedArtifacts(layout, [{ ...qualifiedRun, stage }])) {
+      required.push({ label: `登记工件${a.kind === 'modified' ? '哈希不符' : '缺失'} ${a.relPath}`, ok: false });
+    }
   }
 
   return {

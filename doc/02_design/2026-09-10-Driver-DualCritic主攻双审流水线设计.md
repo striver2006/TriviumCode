@@ -1307,6 +1307,8 @@ v1.3.88 前本句写「任务目标原文」，与实现不符，EV-210）。`go
 `topic claim` 没有前置落盘，由写入口锁内判；worker 收尾时才坏的竞态走既有异常收尾（闸门回收、正本坏件原样，提交时由锚 ② 拦）。
 出口文案共用 `taskUnreadableExit`：点名绝对路径、给出 Git 找回的命令，并写明恢复由用户在终端执行。
 
+新审查 run.v3 骨架与 worker 交接冻结 `effective_failure_policy: strict | degrade`，正常及事后收尾保留。终次执行成功但证据未达标的侧记 `status: failed`、原始退出码及 `evidence_failure_reason: no_trace | insufficient_evidence | no_project_context`，完整观测进 `fail_reason`。历史 v1/v2 与缺策略字段的旧 v3 按原口径读取。纯文档跳过和 verify 沿用各自契约。
+
 ### 6.7.1 运行元数据 v2 增量（`trivium.run.v2`）—— 【已实现 · M7b 第 3 步】
 
 > **本节是增量规格，不替换 6.7。** `trivium.run.v2` 自 M7b 第 3 步起是**当前代码唯一写出的形状**；
@@ -1888,11 +1890,11 @@ stateDiagram-v2
 
 计划审与代码审各是一个循环，三条命令（A / B / C）同一套规则；bug 审不进循环。
 
-- **三档结论与计票**（`round-verdict.ts`，纯函数）：每个审核者在 review.v2 里给 `pass` / `pass-after-changes` / `reject`（6.5）。分母只收给出了有效结构化结论且未作废的侧（失败 / 超时、整份回退、作废、旧契约 v1、读不到都列进 `excluded`）。整数比较 `2k ≥ n`：不通过 ≥ 50% ⇒ 不通过；否则修改后通过 ≥ 50% ⇒ 修改后通过；否则通过 ≥ 50% ⇒ 通过；三档都不到半数（如三家各投一档）⇒ 修改后通过；**有效票 × 2 < 入选侧数**（含一票都没有）⇒ `undetermined`，即「有效结论不足」，先于上面四条判（计划 r2 D-5，用户 2026-10-22 确认：双审剩一票仍可定论，三审及以上剩一票不行）。`round_verdict` 两组键由 `schemas.ts checkAgentIdentities` 按注册表与入选集合校验，同一侧不得同时计票又列为不计票。计票只看结构化结论，不看 Driver 的裁决：裁决决定改什么，结论决定还要不要再审。
+- **三档结论与计票**（`round-verdict.ts`，纯函数）：每个审核者在 review.v2 里给 `pass` / `pass-after-changes` / `reject`（6.5）。分母只收给出了有效结构化结论且未作废的侧（失败 / 超时、证据不足（`insufficient_evidence`）、整份回退、作废、旧契约 v1、读不到都列进 `excluded`）。整数比较 `2k ≥ n`：不通过 ≥ 50% ⇒ 不通过；否则修改后通过 ≥ 50% ⇒ 修改后通过；否则通过 ≥ 50% ⇒ 通过；三档都不到半数（如三家各投一档）⇒ 修改后通过；**有效票 × 2 < 入选侧数**（含一票都没有）⇒ `undetermined`，即「有效结论不足」，先于上面四条判（计划 r2 D-5，用户 2026-10-22 确认：双审剩一票仍可定论，三审及以上剩一票不行）。`round_verdict` 两组键由 `schemas.ts checkAgentIdentities` 按注册表与入选集合校验，同一侧不得同时计票又列为不计票。计票只看结构化结论，不看 Driver 的裁决：裁决决定改什么，结论决定还要不要再审。
 - **下一步**：不通过且本轮 < 上限 ⇒ `rerun`；不通过且已到上限、或 `undetermined` ⇒ `human_review`；通过两档 ⇒ `proceed`。
 - **轮次链与上限**：`review --start --max-rounds <n>`（1～10，缺省 3）。v1.3.175 起新起一链时上限按「本次旗标 → 配置 `review.plan_rounds` / `review.code_rounds`（可选键，1～10）→ 内置缺省 3」取（`newChainMaxRounds`），来源记进 `review_loop.max_rounds_source`；续链不读配置，上限与来源沿用链首。本阶段最近一次**算数**的运行判了 `rerun` 且没被人工表态 / 作废（`humanDecidedThisRound`，含 abandoned）即续链：轮次 +1、上限沿用链首（「算数」= 从新到旧跳过带轮次链、没有计票、也没被表态的运行——失败、超时、取消的那次不消耗轮次，重试仍是同一轮；纯文档跳过轮（`skipped: true`）同样跳过、不打断链，`previousRoundFacts`）；续链时显式给了不同的上限退 64。上一轮判 `human_review` 且未表态 ⇒ 退 64，不新起一链——「停下人工审核」由归档正本把守，不只靠本机闸门状态的比较-交换（槽位缺失时它放行）。往旧处走时遇到读不出的运行留痕 ⇒ `EXIT.GATE_BLOCK` 拒跑，不折成「没有上一轮」（入口的 Driver 判定只挡得住比最新可读份更新的坏件）。本阶段已有运行而审批正本 `task.json` 读不出 ⇒ 同样 `EXIT.GATE_BLOCK` 拒跑：`humanDecidedThisRound` 读不出时判「已表态」是闸门推进语境的 fail-closed，搬到轮次链里每一轮都成了已表态，失败轮不再被跳过、`human_review` 的拒绝不再触发，结果是静默新起一链；所以 `previousRoundFacts` 自己读一次正本、读不出就拒跑，再用 `decidedInTask` 逐轮判（代码双审 r2 GLM-01）。其余情形新起一链（第 1 轮）。以上拒绝都在分配 run_id 之前，零工件。bug 阶段给 `--max-rounds` 退 64。`topic resolve` 输出 `max_rounds: { plan, code }`：命令 A 收 `--max-rounds-plan` / `--max-rounds-code` 分别指定、`--max-rounds` 同时作用（专属的优先）；B / C 只认 `--max-rounds`，写了阶段专属旗标退 64。v1.3.175 起另给 `max_rounds_effective: { plan, code }`（同一个 `newChainMaxRounds` 算出的生效值），只供命令 A 开场播报「最多几轮」；透传仍只按 `max_rounds`（null 不传，起链时由编排器读配置，来源才记得准）。
 - **留痕与透出**：骨架写 `review_loop`，收尾写 `round_verdict`（6.7.1）；`--start` 返回 `review_loop`，`--wait` / `--status` 成功收尾时与 `gate --check --json` 一样给 `review_loop` / `round_verdict` / `next_action` / `round_line`（一行播报）。
-- **闸门去向**（`gate --check` 通过后，盖过 entry 的分流）：`rerun` ⇒ 一律回 idle（B / C 中间轮也不立人工停点，否则续轮被 `review --start` 的比较-交换拦下）；`human_review` ⇒ 一律立 `awaiting_approval`（命令 A 的唯一停点），`--await-approval` 的停点话术注明「需人工审核」；`proceed` ⇒ 照旧按 entry（A 回 idle、B / C 立停点）。没有计票的运行完全按旧规则。
+- **闸门去向**（`gate --check` 通过后，盖过 entry 的分流）：`rerun` ⇒ 一律回 idle（B / C 中间轮也不立人工停点，否则续轮被 `review --start` 的比较-交换拦下）；`human_review` ⇒ 一律立 `awaiting_approval`（命令 A 的唯一停点），`--await-approval` 的停点话术注明「需人工审核」；`proceed` ⇒ 照旧按 entry（A 回 idle、B / C 立停点）。带策略标记的新审查轮先核运行状态；非成功轮拒绝推进，成功轮若有轮次链则核对正本计票与逐侧资格。旧记录及纯文档跳过仍走既有路径。
 - **每轮产出**：计划审每轮写裁决件 + 新一轮完整计划（6.6 规则 9），重审的被审对象自动取轮次最大的那份；代码审每轮只写裁决件，然后**在校验之前**按接受项改码（命令 C 最后一轮也是先改码再立审批停点，用户 2026-10-22 定）。
 
 ### 8.3 命令 B / C / D 流程
@@ -3150,13 +3152,13 @@ HOME="<run_home>" "<runtime.node>" "<entry>" \
 
 | 检查 | 判定 | 不通过后果 |
 | :--- | :--- | :--- |
-| 工具调用轨迹存在 | `trace_path` 可解析且非空 | 该侧标 `failed(no_trace)` |
-| 读文件次数下限 | `read + grep + glob ≥ min_tool_calls`（默认 5；`code` 阶段若补丁为空可豁免） | 该侧标 `failed(insufficient_evidence)`，重试一次 |
-| **项目文件读取下限**（UR-01 / AC-11） | 读取路径**不在** `.reviews/` 且不是 brief/subject 的次数 `project_reads ≥ min_project_reads`（默认 3）——防止「把 BRIEF 与被审文档反复读 5 遍」通过上一条 | 该侧标 `failed(no_project_context)`，重试一次（brief 中追加「你未读取任何项目文件」提示） |
-| `consulted` 与轨迹交叉核对 | `review.consulted` 中的路径至少 80% 出现在轨迹读取集合中（防止编造）。**轨迹读取集合**（2026-09-19 起）= 读工具入参路径（含命令通道回填）∪ 搜索工具 `content` 输出命中的文件（`search_hit_paths`：claude 侧已解析；agy / zcode 的流无工具输出；codex 的输出在轨迹里但未采集——两种 `null` 的分野只在 §10.1 定义一次）；两边经同一份归一化（`toProjectRelative`：realpath 别名、`./`、绝对/相对写法）后比对。M9 第 6 步第 2 跑按旧口径 10/15、新口径 15/15（`test/unit/grep-hits.test.ts` T7 回放） | 标 `evidence_ok: false`，文档头注明 `consulted_unverified` |
-| 会话标识可核对 | Antigravity 的 `conversation_id` / ZCode 的 `sessionId` 写入元数据 | 缺失则标 `evidence_ok: false` |
+| 工具调用轨迹存在 | `trace_path` 可解析且非空 | 按 §12.3 重试，仍不足则标 `failed(no_trace)` |
+| 读文件次数下限 | `read + grep + glob ≥ min_tool_calls`（默认 5；`code` 阶段若补丁为空可豁免） | 按 §12.3 重试，仍不足则标 `failed(insufficient_evidence)` |
+| **项目文件读取下限**（UR-01 / AC-11） | 读取路径**不在** `.reviews/` 且不是 brief/subject 的次数 `project_reads ≥ min_project_reads`（默认 3）——防止「把 BRIEF 与被审文档反复读 5 遍」通过上一条 | 按 §12.3 重试并补充实际读取数与下限，仍不足则标 `failed(no_project_context)` |
+| `consulted` 与轨迹交叉核对 | `review.consulted` 中的路径至少 80% 出现在轨迹读取集合中（防止编造）。**轨迹读取集合**（2026-09-19 起）= 读工具入参路径（含命令通道回填）∪ 搜索工具 `content` 输出命中的文件（`search_hit_paths`：claude 侧已解析；agy / zcode 的流无工具输出；codex 的输出在轨迹里但未采集——两种 `null` 的分野只在 §10.1 定义一次）；两边经同一份归一化（`toProjectRelative`：realpath 别名、`./`、绝对/相对写法）后比对。M9 第 6 步第 2 跑按旧口径 10/15、新口径 15/15（`test/unit/grep-hits.test.ts` T7 回放） | 文档头注明 `consulted_unverified`，用于诊断 |
+| 会话标识可核对 | Antigravity 的 `conversation_id` / ZCode 的 `sessionId` 写入元数据 | 缺失按现有回读契约记录，用于诊断 |
 
-**任一侧 `evidence_ok=false` 时，该侧不得计为合格双审的一半**；按失败策略走严格中止或单审降级。
+前三项执行证据检查共同确定 `evidence_ok`。重试后证据仍不足的侧仅留失败件，按本轮失败策略处置，并从选票和共同阻断来源排除。
 
 ### 11.5 模型路由与异构默认（FR-06 / FR-17 / NFR-06）
 
@@ -3325,6 +3327,8 @@ v1/v2先按原Schema严格校验再转统一内存接口，原工件与Schema不
 
 ### 12.1 异常矩阵（对齐 PRD 第 10 章）
 
+证据重试与整份解析回退独立。解析回退只在本地处理，执行证据合格的回退侧可裁决。新轮共同阻断有效来源少于两侧时记未执行，gate 的 `joint_checks` 记有效数、逐侧排除原因，存在证据不足侧时记 `reason: insufficient-evidence`。
+
 | 异常 | 编排器行为 | 归档表现 | 需求 |
 | :--- | :--- | :--- | :--- |
 | 一侧/两侧未安装或不可调用 | 预检失败，明确报错并中止，退出 69 | **零工件**、零双审标记 | FR-18 / AC-16 |
@@ -3381,17 +3385,17 @@ v1/v2先按原Schema严格校验再转统一内存接口，原工件与Schema不
 
 ### 12.3 重试策略（NFR-02）
 
-仅对**瞬时故障**重试一次：空输出、非 TTY 丢 stdout、429/网络抖动、schema 校验失败、工具证据不足。业务性失败（认证失败、模型非法、只读失守）不重试。读到对方产出走另一条通道：第一次命中作废类即在同一次运行内重跑一次、二次命中判 `failed(peer_leak)`（10.1.1，v1.3.164）；瞬时重试额度在整侧内共用，不因作废重跑而重置。结果缓存键为 `(snapshot_hash, brief_hash, critic, model, effort)`，其中 `brief_hash` 为渲染后 `BRIEF.md` 全文的 sha256（含提示语、镜头、输出契约），因此**换提示语必定重审**（AC-09）；全部相同才复用既有结果并在命令输出与 `run.json` 记 `cache_hit: true` 与来源 `run_id`，重跑加 `--force` 穿透。缓存默认关闭（`review.cache: false`），属 NFR-06 的可选优化。
+空输出、非 TTY 丢 stdout、429/网络抖动等瞬时故障按 `review.retry.transient_max` 重试（默认 1）。适配器执行成功且未作废时，证据不足可消耗同一额度，每侧至多触发一次，同次多项不足只扣一次。作废重跑优先，独占自己的额度。业务性失败（认证失败、模型非法、只读失守）不重试。读到对方产出走另一条通道：第一次命中作废类即在同一次运行内重跑一次、二次命中判 `failed(peer_leak)`（10.1.1，v1.3.164）；瞬时重试额度在整侧内共用，不因作废重跑而重置。结果缓存键为 `(snapshot_hash, brief_hash, critic, model, effort)`，其中 `brief_hash` 为渲染后 `BRIEF.md` 全文的 sha256（含提示语、镜头、输出契约），因此**换提示语必定重审**（AC-09）；全部相同才复用既有结果并在命令输出与 `run.json` 记 `cache_hit: true` 与来源 `run_id`，重跑加 `--force` 穿透。缓存默认关闭（`review.cache: false`），属 NFR-06 的可选优化。
 
 ### 12.4 失败策略配置
 
 ```yaml
 review:
   failure_policy: strict      # strict（默认，AD-09）| degrade
-  allow_single_flag: true     # 允许运行时用 --allow-single 临时降级
+  allow_partial_flag: true    # 允许运行时用 --allow-single 临时降级
 ```
 
-降级必须留痕：`run.json.degraded_reason`、`task.json.degradations[]`、幸存侧文档 front-matter `degraded: true`，以及命令输出中的显著提示（AC-06）。
+strict 有任一失败侧即中止，degrade 至少有一侧可处置才能继续。中止退 75，无轮次结论。允许完成后，带轮次链的运行按有效票和全部入选侧数分流，票不足可转人工。降级必须留痕：`run.json.degraded_reason`、`task.json.degradations[]`、幸存侧文档 front-matter `degraded: true`，以及命令输出中的显著提示（AC-06）。
 
 ### 12.5 重跑与幂等（FR-25）
 

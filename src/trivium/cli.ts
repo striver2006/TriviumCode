@@ -31,7 +31,7 @@ import {
 } from './run-protocol.js';
 import { DEADLINE_MAX_S, DEADLINE_MIN_S } from './doctor-deadline.js';
 import {
-  approveForkRecovery, awaitApprovalRecovery, checkAdjudication, formatJointGroups, loadRoundReviews, renderGateResult,
+  approveForkRecovery, awaitApprovalRecovery, checkRunAdjudication, formatJointGroups, renderGateResult,
   renderTamperedArtifacts, verifyRoundForApproval,
 } from './gate.js';
 import { checkStageArtifacts, listRecordedRuns, resolveRerunIndex } from './archive.js';
@@ -60,7 +60,7 @@ import {
   type RenderOptions, type WorkTreeSummary,
 } from './worktree-summary.js';
 
-const VERSION = '1.3.6';
+const VERSION = '1.3.7';
 
 interface ParsedArgs {
   command: string;
@@ -345,6 +345,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
 
   trivium gate --stage <s> --topic <主题> --check [--run-id <id>] [--json]
       裁决完整性硬校验（§8.6）。返回 2 表示未通过，stdout 给出缺口清单供直接修补。
+      新审查轮先复核运行状态、侧资格和计票。非成功或留痕不一致均退 2，闸门保持原状态。
       --check-artifacts [--run-id <id>]
                           改为校验该阶段最低工件集（§6.3）。审核者集合取自该轮
                           run.json 的实际登记，单侧轮次不会被误报缺件
@@ -362,7 +363,7 @@ const USAGE = `trivium ${VERSION} — Driver-DualCritic 主攻双审流水线编
   trivium approve --topic <主题> --stage <s> [--reason <附言>] [--reject --reason <理由>]
   trivium abandon --topic <主题> [--stage <s>] [--reason <理由>]
       人工审批 / 放弃闸门。三种结论均解除业务写锁，工件一律保留。
-      通过（approve 不带 --reject）前复核本轮：裁决齐备 + 本轮 run.json 登记工件的 sha256。
+      通过（approve 不带 --reject）前复核本轮：运行资格、裁决齐备及登记工件的 sha256。
       不通过退 2；推断不出 run_id 或运行元数据读不出退 65。拒绝与放弃不复核。
       通过时先打印自审查收尾以来的工作树改动摘要（被 .gitignore 忽略的看不见），只告知、不影响审批结论。
       复核保的是「裁决齐备、本轮工件未被改」，不保「审批来自人」。
@@ -1469,7 +1470,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     const artifactMeta = latest;
     const roundCritics = artifactMeta ? artifactMeta.critics_selected : undefined;
     // driver 位补上：它决定去找谁的原稿与谁的裁决件（此前空着，非缺省 Driver 下必判缺件）
-    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, roundCritics, gateDriver, recorded);
+    const c = await checkStageArtifacts(ref.layout, stage, rerunIndex, roundCritics, gateDriver, recorded, artifactMeta ?? undefined);
     if (isJsonMode()) {
       emitJson({ ok: c.ok, stage, rerun_index: rerunIndex, present: c.present, missing: c.missing });
     } else if (c.ok) {
@@ -1522,6 +1523,11 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
     });
     const runId = v.runId;
     if (!v.ok) {
+      if (v.qualificationFailure) {
+        if (isJsonMode()) emitJson({ ok: false, state: 'unchanged', stage, run_id: runId, failures: v.result.failures });
+        else fail(`${v.qualificationFailure.code}：${v.qualificationFailure.message}`);
+        return EXIT.GATE_BLOCK;
+      }
       if (!v.result.ok) say(renderGateResult(v.result));
       if (v.tampered.length > 0) say(renderTamperedArtifacts(v.tampered, gateDriver));
       fail(
@@ -1596,7 +1602,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
      * 此前写死 `/dual-approve` 与「（Hook 会拦下）」，对 L2 载体后半句不成立。
      */
     const approveCmd = entryCommandOf(gateDriver, 'dual-approve');
-    const holdLoop = roundFactsOfMeta(await readRunMeta(ref.layout, stage, runId));
+    const holdLoop = roundFactsOfMeta(v.runMeta);
     const msg =
       `已置为等待人工审批：${topic} / ${stage}（第 ${rerunIndex} 轮）\n` +
       (holdLoop.round_line ? `  ${holdLoop.round_line}\n` : '') +
@@ -1623,23 +1629,14 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
   // ── --check（默认）──
   // 直读留痕：这条路径最常用，也正是「裁决件尚未写出」的那一格——
   // 按后缀反推时第一趟恒为 null，整条命令会以「请先跑一次双审」硬失败
-  const runId = latest?.run_id ?? null;
-  if (!runId) {
+  if (!latest) {
     throw missingArtifactError(
       `找不到 ${stage} 阶段的运行元数据。请先跑一次双审，或用 --run-id 指定。`,
     );
   }
-  const { reviews, notes, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs, planFinal } =
-    await loadRoundReviews(ref.layout, stage, runId);
+  const runId = latest.run_id;
+  const { result, notes, qualificationFailure } = await checkRunAdjudication(ctx.config, ref.layout, stage, latest, Boolean(pinnedId));
   for (const n of notes) step(n);
-
-  const result = await checkAdjudication({
-    cfg: ctx.config, layout: ref.layout, stage, rerunIndex, reviews,
-    driver: gateDriver,
-    runIdPinned: Boolean(pinnedId),
-    degraded, voidedSides, readonlyBreach, runWarnings,
-    expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs, planFinal,
-  });
 
   /*
    * ── 正本读不出：先判、不写、不推进（EV-248）──
@@ -1669,8 +1666,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    * 轮次链与计票（EV-247）：随校验结果一起给，skill 据 `next_action` 决定重审、进入下一阶段还是停下。
    * 只在校验通过时有意义——裁决没齐，哪一步都不该走——但键恒在，未通过时照样给出，方便播报。
    */
-  const roundMeta = await readRunMeta(ref.layout, stage, runId);
-  const loop = roundFactsOfMeta(roundMeta);
+  const loop = roundFactsOfMeta(qualificationFailure ? null : latest);
   if (isJsonMode()) {
     emitJson({
       ok: result.ok,
@@ -1681,13 +1677,14 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
       fallback_ids: result.fallbackIds,
       degraded_ids: result.degradedIds,
       disposition: result.dispositionPath,
+      ...(latest.effective_failure_policy && result.jointCheck ? { joint_check: result.jointCheck } : {}),
       ...loop,
     });
   } else {
     say(renderGateResult(result));
     if (loop.round_line) say(`· ${loop.round_line}`);
   }
-  if (taskUnreadable) return EXIT.GATE_BLOCK;
+  if (taskUnreadable || qualificationFailure) return EXIT.GATE_BLOCK;
 
   /*
    * 共同阻断三态落持久面（r2 代码双审 GLM-02 ≡ CODEX-04）。
@@ -1721,9 +1718,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
         run_id: runId,
         stage,
         rerun_index: rerunIndex,
-        state: jc.state,
-        effective_sides: jc.effective_sides,
-        ...(jc.reason ? { reason: jc.reason } : {}),
+        ...jc,
         at: new Date().toISOString(),
       };
       // 同一轮重跑 --check 覆盖，不堆积
@@ -1758,7 +1753,7 @@ async function cmdGate(args: ParsedArgs): Promise<number> {
    *   · 读不到 entry（旧 run.json、或手工调用）→ 同样回 idle，保持向后兼容：
    *     这条路径上没人声称过有停点，不能凭空造一个出来拦住用户。
    */
-  const entry = result.ok ? roundMeta?.entry ?? null : null;
+  const entry = result.ok ? latest.entry ?? null : null;
   /*
    * 带轮次链的运行（EV-247）按计票的下一步分流，盖过 entry：
    *   · `rerun`：中间轮，闸门回 idle——B/C 也不立人工停点，否则 `review --start` 的比较-交换会拦下重审；
@@ -2000,6 +1995,11 @@ async function cmdApproval(
         }),
       });
       if (!v.ok) {
+        if (v.qualificationFailure) {
+          if (isJsonMode()) emitJson({ ok: false, state: 'unchanged', stage, run_id: v.runId, failures: v.result.failures });
+          else fail(`${v.qualificationFailure.code}：${v.qualificationFailure.message}`);
+          return EXIT.GATE_BLOCK;
+        }
         if (!v.result.ok) say(renderGateResult(v.result));
         if (v.tampered.length > 0) say(renderTamperedArtifacts(v.tampered, gate.driver));
         fail(

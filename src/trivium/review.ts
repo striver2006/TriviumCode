@@ -15,7 +15,7 @@ import { requestedAccess, effectiveAccess } from './access.js';
 import { promises as fs } from 'node:fs';
 import type {
   Config, CriticId, CriticRequest, CriticResult, Ctx, DenyCategory, Review, Stage, CommandEntry,
-  DegradedFinding, FallbackCause, ParseRepairs, ReviewLoop,
+  DegradedFinding, EvidenceFailureReason, FallbackCause, ParseRepairs, ReviewLoop,
 } from './types.js';
 import { CRITIC_PREFIX, CRITIC_VENDOR, VOIDING_DENY_CATEGORIES } from './types.js';
 import { DEFAULT_DRIVER, agentById, type AgentId } from './agents/registry.js';
@@ -23,6 +23,7 @@ import {
   type AdapterContext,
   type AdapterTable,
   type EffortReadback,
+  type EvidenceCheck,
   type TierResolution,
 } from './adapters/base.js';
 import { resolveConfiguredTier as resolveTier, requestRouteSnapshot } from './model-routing.js';
@@ -50,10 +51,10 @@ import {
   type SideConflicts,
 } from './brief.js';
 import { parseReview, checkReviewIntegrity, enumerateFallbackFindings } from './parse.js';
-import { ballotOf, deriveReviewLoop, renderRoundLine, tallyRound, type PrevRoundFacts } from './round-verdict.js';
+import { deriveReviewLoop, renderRoundLine, tallyRound, type PrevRoundFacts } from './round-verdict.js';
 import { decideMode, runBothSides, type SideProgress } from './runner.js';
 import { VOIDED_ATTEMPTS_DIR } from './run-files.js';
-import { judgeRun, makeSideLeakJudge, renderGuardWarnings, type SideVerdict } from './guard.js';
+import { jointCheckPending, judgeRun, makeSideLeakJudge, qualifyReviewSide, renderGuardWarnings, type SideQualification, type SideVerdict } from './guard.js';
 import { FALLBACK_CAUSE_LABEL, renderReviewDoc, type RenderInput } from './render.js';
 import { resolveTopicReadOnly, locateSubject } from './topic.js';
 import { parseArtifactName, shellQuoteArg } from './naming.js';
@@ -107,54 +108,6 @@ import { effectiveGuardLevel } from './hook-config.js';
  *     又列了编排器目录），处置按最重档走，而 front-matter 的 `paths` 仍逐条带类；
  *   - **作废与否**：只有对端产物那两类会让该侧结论作废。
  */
-/**
- * 共同阻断这一档的**运行期事实**（设计 §6.6 规则 7 / §12.1）。
- *
- * ## 运行期只到 `pending`
- *
- * 这一档的判据是「两侧同时提出的 blocker 被 Driver 驳回」——而裁决表要到运行
- * 结束之后才写。运行期知道的只有一件事：排除作废侧与无结构化结论的侧之后，
- * **还够不够两家**。
- *
- * 上一版在够两家时落 `checked-none`（「查过、没有共同项」），那是一句运行期给不出
- * 的断言：这一档当时根本还没查。三态里最要紧的那一态被一句伪阴性顶掉了——
- * 正是本主题一路在修的形态，而这次它出现在**本主题自己的交付物**里。
- *
- * 最终三态由 `gate --check` 判、落 `task.json.joint_checks`。
- *
- * ## 为什么独立成函数
- *
- * `run.json` 与单侧审查文档的 front-matter 都要用它。上一版只有前者，
- * 补 front-matter 时若各算各的，两处的分母会漂——而这个数正是「还剩几层防线」，
- * 两份留痕给出不同的数，对账时无从判断哪个算数。
- */
-function jointCheckRunState(
-  sides: readonly CriticId[],
-  verdict: { sides: Partial<Record<CriticId, SideVerdict>> },
-  reviews: Partial<Record<CriticId, Review | null>>,
-): { state: 'pending' | 'skipped-insufficient-sides'; effective_sides: number } {
-  const effective = sides.filter(
-    (c) =>
-      verdict.sides[c] !== undefined &&
-      !verdict.sides[c]!.peerArtifactRead &&
-      /*
-       * 分母与 `jointCheckState` **对齐**：那边数的是「未作废且有结构化结论」的侧，
-       * 判据是 `reviews[c]` 非空——`gate` 拿到的正是这张表。
-       *
-       * 上一版这里只排作废，于是同一个 `effective_sides` 在 run.json 与告警文案里
-       * 可以是两个数。起草这次对齐时我先用了 `results[c].review_json`：
-       * 那个字段在运行期恒为 null（`CriticResult` 的注释就写着「由 parse 填充」，
-       * 而填的是 `reviews`，不是回写结果对象），于是两侧全被排除、
-       * 这一档恒记「有效侧不足」——把要修的三态塌缩换了个方向再犯一次。
-       * 是新补的那条端到端用例当场逮住的。
-       */
-      reviews[c] != null,
-  ).length;
-  return effective < 2
-    ? { state: 'skipped-insufficient-sides', effective_sides: effective }
-    : { state: 'pending', effective_sides: effective };
-}
-
 function peerLeakOf(side: SideVerdict): NonNullable<RenderInput['peerLeak']> | undefined {
   const viaPath = side.peerHits.length > 0;
   const viaCmd = side.peerCommandHits.length > 0;
@@ -939,6 +892,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
         '这是配置意图而非降级，留痕里不会有降级标记——参与者事实见审查文档抬头与 run 元数据的 critics_selected。',
     );
   }
+  const effectiveFailurePolicy = opts.allowSingle && cfg.review.allow_partial_flag ? 'degrade' : cfg.review.failure_policy;
   if (opts.allowSingle) {
     if (cfg.review.allow_partial_flag) {
       warn(
@@ -948,7 +902,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
     } else {
       warn(
         '配置 review.allow_partial_flag（旧名 allow_single_flag）为 false，' +
-          '忽略 --allow-single，仍按 strict 执行。' +
+          `忽略 --allow-single，仍按 ${effectiveFailurePolicy} 执行。` +
           '这是刻意的：配置层关掉的东西，命令行不该能开回来。',
       );
     }
@@ -1399,6 +1353,7 @@ async function prepareRunClaimed(opts: ReviewOptions, claim: RunDirClaim): Promi
 
     // ── run.json 骨架（status: running），崩溃后也能取证 ──
     const meta = newRunMeta({
+      ...(!skipVerdict?.skipped ? { effectiveFailurePolicy } : {}),
       runId, topic: ref.topic, stage, rerunIndex,
       command: opts.command,
       promptHint: opts.promptHint,
@@ -1556,6 +1511,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       sideStatuses: {},
     };
   }
+  const effectivePolicy = meta.effective_failure_policy;
+  if (!effectivePolicy) throw envError('运行记录缺少已冻结的失败策略');
   // ── 并行拉起两侧 ──
   const startedAt = new Date().toISOString();
   say(`开始双审：${sides.map((c) => `${c}(${requests[c]!.model})`).join(' ‖ ')}，单侧上限 ${cfg.review.timeout_s[stage]}s`);
@@ -1586,15 +1543,15 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   const stashWarnings: string[] = [];
 
   /** 重试时追加进 BRIEF 的提示。归档里的 brief-* 是第一次那份，追加内容也要留痕，否则审计材料与实际送审不符 */
-  const retryHints: Partial<Record<CriticId, string[]>> = {};
-  const { results, attempts, attemptLog, rerunBanners } = await runBothSides({
+  const retryHints: Partial<Record<CriticId, { hint: string; nextAttempt: number }[]>> = {};
+  const { results, evidence, priorWriteEvents, attempts, attemptLog, rerunBanners } = await runBothSides({
     ctx: adapterCtx,
     adapters,
     requests,
     maxTransientRetries: cfg.review.retry.transient_max,
-    onRetryBrief: (critic, prev) => {
-      const hint = buildRetryHint(critic, prev);
-      (retryHints[critic] ??= []).push(hint);
+    onRetryBrief: (critic, prev, observed, nextAttempt) => {
+      const hint = buildRetryHint(critic, prev, observed);
+      (retryHints[critic] ??= []).push({ hint, nextAttempt });
       return hint;
     },
     // 等待期的逐侧进展回写。只有工作进程会传它；同步路径不传，行为不变（AGY-01）
@@ -1648,14 +1605,15 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
   const repairs: Partial<Record<CriticId, ParseRepairs>> = {};
   /** 整份回退的成因。只在 parse_fallback 侧有键 */
   const fallbackCause: Partial<Record<CriticId, FallbackCause>> = {};
+  const fallbackReason: Partial<Record<CriticId, string>> = {};
   for (const c of sides) {
     const r = results[c];
-    if (!r || r.status !== 'ok' || !r.raw_response_text) {
+    if (!r || r.status !== 'ok') {
       reviews[c] = null;
       continue;
     }
     // 新产出只认现行契约（EV-247）：v1 形态的结论没有可计票的三档结论，按根不合走重试与回退
-    const p = parseReview(r.raw_response_text, { accept: 'current' });
+    const p = parseReview(r.raw_response_text ?? '', { accept: 'current' });
     /*
      * 形状过了之后**立刻**验编号前缀归属，不合即按解析失败处置（审查意见 AGY-01 ≡ GLM-02）。
      *
@@ -1696,23 +1654,15 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       reviews[c] = p.review;
       degraded[c] = p.degraded;
       repairs[c] = p.repairs;
-      if (p.degraded.length > 0) {
-        warn(
-          `${c} 侧有 ${p.degraded.length} 条意见不合 trivium.review.v2，逐条降级（仍须逐条裁决，不参与阻断）：` +
-            p.degraded.map((d) => `${d.id}[${d.problems.map((x) => `${x.field}:${x.kind}`).join(',')}]`).join('、'),
-        );
-      }
     } else {
       const cause: FallbackCause = p.ok ? 'foreign_prefix' : p.cause;
       const reason = p.ok
         ? `编号前缀不属于本侧（应为 ${CRITIC_PREFIX[c]}-）：${integrity!.badIds.join(', ')}`
         : `${p.reason}${p.errors.length > 0 ? `：${p.errors.slice(0, 5).join('; ')}` : ''}`;
       reviews[c] = null;
-      fallbackText[c] = r.raw_response_text;
+      fallbackText[c] = r.raw_response_text ?? '';
       fallbackCause[c] = cause;
-      r.status = 'parse_fallback';
-      r.fail_reason = `[${cause}] ${reason}`;
-      warn(`${c} 侧输出未能结构化解析，转 parse_fallback（${FALLBACK_CAUSE_LABEL[cause]}）：${reason}`);
+      fallbackReason[c] = reason;
     }
   }
 
@@ -1728,24 +1678,65 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
     afterSubjectSha256: afterSubjectSha,
     // 「相关」= --context 指明的路径 **与 diff 涉及文件**（设计 §9.2 第 3.c 步，freeze.ts 注释同）
     relatedPaths: [...opts.contextPaths, ...diffFiles],
-    results, reviews, requests,
+    results, reviews, requests, priorWriteEvents,
     degraded: Object.fromEntries(sides.map((c) => [c, degraded[c] ?? []])),
     capabilities,
   });
 
-  /*
-   * 失败策略：配置给默认值，`--allow-single` 只在 allow_partial_flag 允许时才能覆盖。
-   * 若配置关掉了开关而命令行仍传了它，照 strict 执行——已在 prepareRun 里告警过。
-   */
-  const effectivePolicy: 'strict' | 'degrade' =
-    opts.allowSingle && cfg.review.allow_partial_flag ? 'degrade' : cfg.review.failure_policy;
-  const mode = decideMode(results, effectivePolicy, sides);
+  const qualifications: Partial<Record<CriticId, SideQualification>> = {};
+  const evidenceFailures: Partial<Record<CriticId, EvidenceFailureReason>> = {};
+  const evidenceWarnings: string[] = [];
+  for (const c of sides) {
+    const r = results[c];
+    const finalSide = verdict.sides[c];
+    const attempted = evidence[c];
+    if (attempted && finalSide && (
+      attempted.failureReason !== finalSide.evidence.failureReason ||
+      attempted.projectReads !== finalSide.evidence.projectReads ||
+      attempted.toolCalls !== finalSide.evidence.toolCalls
+    )) {
+      evidenceWarnings.push(`${c} 侧尝试与终判证据不一致：${JSON.stringify(attempted)} → ${JSON.stringify(finalSide.evidence)}，按终判处理`);
+    }
+    if (r?.status === 'ok' && !finalSide) throw new Error(`${c} 侧终判缺少执行证据`);
+    const voided = finalSide?.peerArtifactRead ?? false;
+    const evidenceFailure = !voided ? finalSide?.evidence.failureReason ?? undefined : undefined;
+    const cause = fallbackCause[c];
+    if (r?.status === 'ok') {
+      if (voided) {
+        results[c] = { ...r, status: 'failed', fail_reason: 'peer_leak：终判读到对端产物' };
+      } else if (evidenceFailure && finalSide) {
+        evidenceFailures[c] = evidenceFailure;
+        results[c] = { ...r, status: 'failed', fail_reason: finalSide.evidenceReasons.join('；') };
+      } else if (cause) {
+        results[c] = { ...r, status: 'parse_fallback', fail_reason: `[${cause}] ${fallbackReason[c]}` };
+        warn(`${c} 侧输出未能结构化解析，转 parse_fallback（${FALLBACK_CAUSE_LABEL[cause]}）：${fallbackReason[c]}`);
+      }
+    }
+    const qualification = qualifyReviewSide(results[c]?.status, evidenceFailure, voided, reviews[c], attemptLog[c]?.at(-1));
+    qualifications[c] = qualification;
+    if (!qualification.canProceed) {
+      delete reviews[c];
+      delete degraded[c];
+      delete repairs[c];
+      delete fallbackText[c];
+      delete fallbackCause[c];
+      continue;
+    }
+    const findings = degraded[c];
+    if (findings?.length) {
+      warn(
+        `${c} 侧有 ${findings.length} 条意见不合 trivium.review.v2，逐条降级（仍须逐条裁决，不参与阻断）：` +
+          findings.map((d) => `${d.id}[${d.problems.map((x) => `${x.field}:${x.kind}`).join(',')}]`).join('、'),
+      );
+    }
+  }
+  const mode = decideMode(results, effectivePolicy, sides, qualifications);
   /*
    * 准备阶段的必读剔除告警排在 guard 告警之前（EV-02，计划双审 r1 AGY-01）：同步路径的人读输出
    * 只靠本函数末尾的 `warn` 循环，CLI 人读模式不打印 `ReviewOutcome.warnings`——并入晚了就没人看见。
    * 工作进程重建的上下文里它是 `[]`（已随 `--start` 返回），这里不会重复。
    */
-  const warnings = [...rc.mustReadPruned.map((w) => plainWarningText(w.detail)), ...renderGuardWarnings(verdict)];
+  const warnings = [...rc.mustReadPruned.map((w) => plainWarningText(w.detail)), ...renderGuardWarnings(verdict), ...evidenceWarnings];
   /*
    * 作废重跑的告警（EV-225）。`peer_artifact_read` 按最终尝试写，一轮「首次泄漏、重跑干净」的运行在它上面是假——
    * 这两句与 report / 运行摘要的「作废重跑」旗标一起，让「这一轮发生过泄漏」照样看得见。
@@ -1806,7 +1797,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
    * 共同阻断这一档的**运行期事实**，渲染与 `run.json` 共用同一份计算
    * （分成两处算过一次，两边的分母就漂了——见下面落盘处的说明）。
    */
-  const jointCheckRun = jointCheckRunState(sides, verdict, reviews);
+  const jointCheckRun = jointCheckPending(qualifications);
   /*
    * 思考等级生效值（M11 第 6 步，设计 11.1）：逐侧从**回读结果**派生一次，front-matter 与下方 run.json 共用。
    * 钩子入参只有 `CriticResult`——结构上拿不到请求值。失败结果（含 runner 兜底构造的）同样经它，不另写分支。
@@ -1826,7 +1817,8 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       const w = await writeMeta(
         ref.layout, stage, `brief-${c}-${runId}.retry.md`,
         `# ${c} 侧重试时追加进 BRIEF 的内容（共 ${hints.length} 次）\n\n` +
-          hints.map((h, i) => `## 第 ${i + 2} 次尝试追加\n\n${h}\n`).join('\n'),
+          hints.map(({ hint, nextAttempt }, i) =>
+            `## 第 ${nextAttempt} 次尝试追加（共享瞬时重试 ${i + 1}/${cfg.review.retry.transient_max}）\n\n${hint}\n`).join('\n'),
       );
       metaPaths.push(w.absPath);
       protectedMeta.push({ path: w.relPath, sha256: w.sha256 });
@@ -2175,6 +2167,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
       duration_s: r.duration_s,
       tool_calls: { ...r.tool_calls, project_reads: side?.projectReads ?? 0 },
       evidence_ok: side?.evidenceOk ?? false,
+      ...(evidenceFailures[c] ? { evidence_failure_reason: evidenceFailures[c] } : {}),
       ...(r.usage ? { usage: r.usage } : {}),
       access: effectiveAccess(requests[c]!.access!, r),
       heterogeneous: driverComparison(c).status,
@@ -2186,7 +2179,9 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
        * 「合格 0 条**且**降级 0 条」才是空结论（解析回退逐条降级计划 r2 §3.3）：只数合格意见的话，
        * 全部意见都降级的一侧会被记成 `empty_review: true`，而它明明交了意见。
        */
-      empty_review: reviews[c] ? reviews[c]!.findings.length === 0 && (degraded[c] ?? []).length === 0 : false,
+      ...(!evidenceFailures[c] ? {
+        empty_review: reviews[c] ? reviews[c]!.findings.length === 0 && (degraded[c] ?? []).length === 0 : false,
+      } : {}),
       parse_fallback: r.status === 'parse_fallback',
       /*
        * 三格的三态落在结构上（计划 r2 §3.3）：解析成功的侧恒写前两格（零值 = 解析过、没有），
@@ -2259,15 +2254,7 @@ export async function executeRun(rc: RunContext): Promise<ReviewOutcome> {
    * 回退件的结论是猜的（render 已不再给它补 verdict），失败侧根本没有结论。
    */
   if (meta.review_loop && meta.status === 'success') {
-    const ballots = Object.fromEntries(
-      sides.map((c) => {
-        const st = results[c]?.status;
-        if (verdict.sides[c]?.peerArtifactRead) return [c, { excluded: 'voided' as const }];
-        if (st === 'parse_fallback') return [c, { excluded: 'parse_fallback' as const }];
-        if (st !== 'ok') return [c, { excluded: 'failed' as const }];
-        return [c, ballotOf(reviews[c], false)];
-      }),
-    );
+    const ballots = Object.fromEntries(sides.map((c) => [c, qualifications[c]!.ballot]));
     meta.round_verdict = tallyRound(ballots, meta.review_loop);
     say(`· ${renderRoundLine(meta.review_loop, meta.round_verdict)}`);
   }
@@ -2494,7 +2481,14 @@ async function listOwnHistory(
  * 解析与 `parse_fallback` 的判定发生在全部重试结束之后（本文件「解析」一段），不经这里——
  * 回退成因的标记到不了本函数（解析回退逐条降级计划双审 r1 AGY-03 驳回时核实）。
  */
-function buildRetryHint(critic: CriticId, prev: CriticResult): string {
+function buildRetryHint(critic: CriticId, prev: CriticResult, evidence?: EvidenceCheck): string {
+  if (evidence) {
+    return '## 上一次尝试的执行证据不足\n\n' +
+      `${evidence.reasons.join('；')}\n\n` +
+      `实际工具调用 ${evidence.toolCalls} 次（下限 ${evidence.minToolCalls}），` +
+      `项目读取 ${evidence.projectReads} 次（下限 ${evidence.minProjectReads}）。\n` +
+      '请按第 4 节的必读清单实际查阅项目文件，再提交结论。';
+  }
   const reason = prev.fail_reason ?? '未记录原因';
   if (/no_project_context/.test(reason)) {
     return (

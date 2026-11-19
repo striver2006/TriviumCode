@@ -28,6 +28,10 @@
   ],
   "additionalProperties": true,
   "properties": {
+    "effective_failure_policy": {
+      "enum": ["strict", "degrade"],
+      "description": "新审查轮在骨架冻结的生效失败策略。旧轮及纯文档跳过缺席。"
+    },
     "schema": {
       "const": "trivium.run.v3"
     },
@@ -163,7 +167,8 @@
               "parse_fallback",
               "voided",
               "legacy_schema",
-              "missing"
+              "missing",
+              "insufficient_evidence"
             ]
           },
           "propertyNames": {
@@ -1084,6 +1089,10 @@
             "string",
             "null"
           ]
+        },
+        "evidence_failure_reason": {
+          "enum": ["no_trace", "insufficient_evidence", "no_project_context"],
+          "description": "终次原始执行成功而最终证据不达标时的主原因。"
         },
         "empty_review": {
           "type": "boolean"

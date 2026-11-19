@@ -41,7 +41,7 @@ async function seed(env: Env, over: (m: RunMeta) => void = () => {}): Promise<Ru
   const m = newRunMeta({
     runId: RUN, topic: TOPIC, stage: 'plan', rerunIndex: 1, command: 'test', promptHint: '焦点', taskGoal: null,
     criticsSelected: ['gemini', 'glm'], treeHash: 'T', gitHead: 'HEAD', dirty: false, subjectSha256: 'S',
-    denyPaths: [], driftPolicy: 'warn',
+    denyPaths: [], driftPolicy: 'warn', effectiveFailurePolicy: 'strict',
   });
   m.artifacts = [{ path: `${TOPIC}/plan/_meta/brief-glm-${RUN}.md`, sha256: 'a'.repeat(64) }];
   await writeRunMeta(env.layout, 'plan', m); // 先落骨架、再登记，与 prepareRun 同序
@@ -66,6 +66,7 @@ test('F1：v3 骨架 ⇒ 两步都写；failed 带 termination 与 partial 原�
   const after = await readRun(env);
   assert.deepEqual(validateRunMeta(after), []);
   assert.equal(after.status, 'failed');
+  assert.equal(after.effective_failure_policy, 'strict');
   assert.equal(after.gate.state, 'failed');
   assert.equal(after.review_mode, 'partial');
   assert.match(after.degraded_reason!, /运行异常收尾/);

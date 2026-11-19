@@ -169,6 +169,10 @@ export type StubMode =
 
 export interface StubSpec {
   mode: StubMode;
+  /** 本侧第几次实际调用的规格，优先于作废点名段触发的 rerun。 */
+  attempts?: StubSpec[];
+  /** 在保留读取路径和禁读命中的同时让工具调用计数不足。 */
+  noToolEvidence?: boolean;
   /** `ok` / `no_project_reads` 等模式下要产出的意见数 */
   findings?: number;
   /**
@@ -420,7 +424,8 @@ function baseResult(critic: CriticId, req: CriticRequest, spec: StubSpec): Criti
 
 /** 造一个按 spec 行事的桩适配器 */
 export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter {
-  return {
+  let attempt = 0;
+  const adapter: CriticAdapter = {
     critic,
     /*
      * 桩的能力**随注入形态变化**，这与「capability 是该侧固有能力」不矛盾：
@@ -450,7 +455,6 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
     async run(_ctx: AdapterContext, req: CriticRequest): Promise<CriticResult> {
       // 单测会只给部分字段的请求（如 prune_objects 只给 project_root），缺任务书按非重跑
       const isRerun = (req.brief_text ?? '').startsWith(VOID_RERUN_BANNER_HEADING);
-      if (spec.rerun && isRerun) return makeStubAdapter(critic, spec.rerun).run(_ctx, req);
       if (spec.rerun || isRerun || LEAK_MODES.includes(spec.mode)) {
         await fsp.mkdir(req.out_dir, { recursive: true });
         await fsp.writeFile(path.join(req.out_dir, 'result.json'), JSON.stringify({ critic, mode: spec.mode, rerun: isRerun }) + '\n', 'utf8');
@@ -689,7 +693,6 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
             return {
               ...baseResult(critic, req, spec),
               tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 1 },
-              read_paths: [],
               command_texts: [`cat ${path.join(req.out_dir, 'result.json')}`],
             };
           }
@@ -703,7 +706,6 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
             return {
               ...baseResult(critic, req, spec),
               tool_calls: { ...baseResult(critic, req, spec).tool_calls, run_command: 2 },
-              read_paths: [],
               command_texts: [
                 `find . -name "*.js" -not -path "./.git/*" -not -path "./${TRIVIUM_DIR}/*" -not -path "./node_modules/*"`,
                 `grep -rn "capacity" src --exclude-dir=${TRIVIUM_DIR}`,
@@ -809,6 +811,17 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
         default:
           return baseResult(critic, req, spec);
       }
+    },
+  };
+  return {
+    ...adapter,
+    async run(ctx, req) {
+      const index = attempt++;
+      const isRerun = (req.brief_text ?? '').startsWith(VOID_RERUN_BANNER_HEADING);
+      const selected = spec.attempts?.[index] ?? (isRerun ? spec.rerun : undefined);
+      if (selected) return makeStubAdapter(critic, selected).run(ctx, req);
+      const result = await adapter.run(ctx, req);
+      return { ...result, cli_version: 'stub/0.0.0', ...(spec.noToolEvidence ? { tool_calls: {} } : {}) };
     },
   };
 }

@@ -14,7 +14,7 @@ import nodePath from 'node:path';
 import os from 'node:os';
 import type {
   AccessMeta, AgentConfig, Config, CriticId, CriticRequest, CriticResult, EffortEffectiveSource, Stage, SuspectedWrite, TierName,
-  TierSource, CommonProbe,
+  TierSource, CommonProbe, EvidenceFailureReason,
 } from '../types.js';
 import { VENDOR_MODEL_FAMILY, agentById, type AgentVendor } from '../agents/registry.js';
 
@@ -449,6 +449,9 @@ export function failedResult(
 export interface EvidenceCheck {
   ok: boolean;
   reasons: string[];
+  failureReason: EvidenceFailureReason | null;
+  toolCalls: number;
+  minToolCalls: number;
   /** 被审对象与送审包之外的项目文件读取次数（AC-11） */
   projectReads: number;
   /**
@@ -467,6 +470,11 @@ export function checkEvidence(
   opts: { archiveRootAbs: string; capability?: TraceCapability },
 ): EvidenceCheck {
   const reasons: string[] = [];
+  let failureReason: EvidenceFailureReason | null = null;
+  const addReason = (code: EvidenceFailureReason, detail: string): void => {
+    failureReason ??= code;
+    reasons.push(`${code}：${detail}`);
+  };
   const cap = opts.capability ?? TOOL_TRACE_CAPABILITY;
   const commandTrace = cap.traceShape === 'command-trace';
 
@@ -488,12 +496,12 @@ export function checkEvidence(
 
   // ① 轨迹存在
   if (result.trace_path === null && effective.length === 0 && toolTotal === 0) {
-    reasons.push('no_trace：拿不到任何工具调用轨迹');
+    addReason('no_trace', '拿不到任何工具调用轨迹');
   }
 
   // ② 读文件次数下限
   if (toolTotal < req.min_tool_calls) {
-    reasons.push(`insufficient_evidence：工具调用 ${toolTotal} 次 < 下限 ${req.min_tool_calls}`);
+    addReason('insufficient_evidence', `工具调用 ${toolTotal} 次 < 下限 ${req.min_tool_calls}`);
   }
 
   /*
@@ -519,12 +527,12 @@ export function checkEvidence(
   }).length;
 
   if (projectReads < minProjectReads) {
-    reasons.push(
-      `no_project_context：被审对象与送审包之外的项目文件读取 ${projectReads} 次 < 下限 ${minProjectReads}`,
+    addReason('no_project_context',
+      `被审对象与送审包之外的项目文件读取 ${projectReads} 次 < 下限 ${minProjectReads}`,
     );
   }
 
-  return { ok: reasons.length === 0, reasons, projectReads, minProjectReads };
+  return { ok: failureReason === null, failureReason, reasons, toolCalls: toolTotal, minToolCalls: req.min_tool_calls, projectReads, minProjectReads };
 }
 
 /**

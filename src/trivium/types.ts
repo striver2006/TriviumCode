@@ -954,7 +954,7 @@ export interface IsolationConfig {
 
 export interface ReviewConfig {
   // parallel 已删除（EV-30 ②）：见 config.ts 的 DEPRECATED_CONFIG_KEYS
-  failure_policy: 'strict' | 'degrade';
+  failure_policy: FailurePolicy;
   /**
    * 允许部分入选审核者失败后降级续跑（`--allow-single` 的配置开关）。
    *
@@ -1513,6 +1513,7 @@ export interface CriticRunMeta {
   duration_s: number;
   tool_calls: ToolCallCounts;
   evidence_ok: boolean;
+  evidence_failure_reason?: EvidenceFailureReason;
   usage?: Record<string, number>;
   heterogeneous: boolean | FamilyStatus;
   /**
@@ -1560,7 +1561,7 @@ export interface CriticRunMeta {
    *
    * **只在该侧发生过作废重跑时写**，内容是该侧全部尝试（含瞬时重试）；没发生过就不写——
    * 不泄漏的运行 run.json 逐字不变。缺席的两种来源（旧记录、这一侧没有作废过）对读者处置相同：
-   * 只有一次有效尝试。闸门、status 都不读它：作废侧只看最终尝试，而最终尝试写在 `guard.peer_leak_via_*`。
+   * 只有一次有效尝试。新轮资格可用末次条目识别二次作废，终判能核验的命中仍写在 `guard.peer_leak_via_*`。
    */
   attempts?: AttemptRecord[];
 }
@@ -1568,8 +1569,9 @@ export interface CriticRunMeta {
 /**
  * `critics.<侧>.attempts` 的一条（EV-225）。
  *
- * **分层记法**（计划双审 GLM-04）：`status` / `fail_reason` 恒记适配器层结果——二次命中那一条是 `status: ok`；
- * `voided` 记这一条的泄漏判定。「因泄漏判该侧失败」只发生在侧级（`critics.<侧>.status: failed`、
+ * **分层记法**（计划双审 GLM-04）：`status` 记适配器层结果，二次命中那一条仍是 `status: ok`。
+ * `fail_reason` 也记录一次成功执行后的证据不足原因。`voided` 记这一条的泄漏判定。
+ * 「因泄漏判该侧失败」只发生在侧级（`critics.<侧>.status: failed`、
  * `fail_reason` 以 `peer_leak` 起头），两层各看各的。
  */
 export interface AttemptRecord {
@@ -1723,8 +1725,21 @@ export type RoundOutcome = ReviewVerdict | 'undetermined';
  */
 export type NextAction = 'rerun' | 'proceed' | 'human_review';
 
+export type FailurePolicy = 'strict' | 'degrade';
+
+export const EVIDENCE_FAILURE_REASONS = ['no_trace', 'insufficient_evidence', 'no_project_context'] as const;
+export type EvidenceFailureReason = (typeof EVIDENCE_FAILURE_REASONS)[number];
+
 /** 不计票的原因 */
-export type VerdictExclusion = 'failed' | 'parse_fallback' | 'voided' | 'legacy_schema' | 'missing';
+export const VERDICT_EXCLUSIONS = ['failed', 'parse_fallback', 'voided', 'legacy_schema', 'missing', 'insufficient_evidence'] as const;
+export type VerdictExclusion = (typeof VERDICT_EXCLUSIONS)[number];
+
+export interface JointCheckResult {
+  state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
+  effective_sides: number;
+  reason?: 'voided' | 'no-structured-review' | 'both' | 'insufficient-evidence';
+  excluded_sides?: Partial<Record<CriticId, VerdictExclusion>>;
+}
 
 /** run.json `round_verdict`：本轮按侧计票的结果（EV-247，计算见 `round-verdict.ts`） */
 export interface RoundVerdict {
@@ -1745,6 +1760,8 @@ export interface PlanFinalCheck {
 
 export interface RunMeta {
   schema: 'trivium.run.v2' | 'trivium.run.v3';
+  /** 真正执行审查的新 v3 在骨架冻结；旧轮和纯文档跳过无此字段。 */
+  effective_failure_policy?: FailurePolicy;
   driver_declaration?: DriverDeclaration;
   family_comparisons?: FamilyComparison[];
   run_id: string;

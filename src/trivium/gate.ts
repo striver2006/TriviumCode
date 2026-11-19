@@ -6,10 +6,14 @@
  * 否则那些合法的 `<前缀>-F<n>` 会被判成「多余 id」；并显式支持 `findings: []`。
  */
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { promises as fs } from 'node:fs';
 import { agentById, DEFAULT_DRIVER, entryCommandOf, findingPrefixAlternation, type AgentId } from './agents/registry.js';
 import { leakRecordVoids } from './freeze.js';
-import { DEFAULT_CRITICS, describeDriftUnknown, type Config, type CriticId, type Disposal, type DispositionRow, type Review, type RunMeta, type SnapshotMeta, type Stage } from './types.js';
+import { DEFAULT_CRITICS, describeDriftUnknown, type Config, type CriticId, type Disposal, type DispositionRow, type JointCheckResult, type Review, type RunMeta, type SnapshotMeta, type Stage, type VerdictExclusion } from './types.js';
+import { jointCheckPending, qualifyReviewSide, type RoundQualifications, type SideQualification } from './guard.js';
+import { decideMode } from './runner.js';
+import { tallyRound } from './round-verdict.js';
 import { isFallbackId, parseDisposition, type ParsedDisposition } from './disposition.js';
 import { checkRecordedArtifacts, isReviewArtifact, listStageArtifacts, metaDir, stageDir, type ArchiveLayout, type TamperedArtifact } from './archive.js';
 import { EXIT, TriviumError } from './exit-codes.js';
@@ -131,7 +135,9 @@ export type GateFailureCode =
   /** 新一轮计划在，但有被接受的编号没有整词逐字出现（EV-214，§6.6 规则 9） */
   | 'next_plan_missing_ids'
   /** 审批正本 task.json 读不出：不是裁决缺口，`gate --check` 据此不写、不推进、退 2（EV-248） */
-  | 'task_unreadable';
+  | 'task_unreadable'
+  | 'run_not_successful'
+  | 'round_qualification_mismatch';
 
 export interface GateFailure {
   code: GateFailureCode;
@@ -208,11 +214,7 @@ export interface GateCheckResult {
    * **可缺席**：裁决件都还没有时这一档无从谈起，三个取值一个都对不上，
    * 那就不给——调用方据此也不往 `task.json` 里写。
    */
-  jointCheck?: {
-    state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
-    effective_sides: number;
-    reason?: 'voided' | 'no-structured-review' | 'both';
-  };
+  jointCheck?: JointCheckResult;
 }
 
 /** 空洞理由词表（§6.6 规则 5）。命中且无其它内容才算空洞 */
@@ -330,6 +332,7 @@ export interface GateCheckInput {
    * 只在 `stage === 'plan'` 时消费；其余阶段传了也不看。
    */
   planFinal: PlanFinalInput | null;
+  qualifications?: RoundQualifications;
 }
 
 export async function checkAdjudication(input: GateCheckInput): Promise<GateCheckResult> {
@@ -684,7 +687,10 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
    * 「双方」这个措辞随 N 审泛化为「两家」——阈值 2 的语义是「两个独立来源」，
    * 与入选总数无关（设计 §6.6 规则 7）。被判作废的侧不计入独立来源。
    */
-  const joint = findJointRejectedBlockers(reviews, structuredRows, voidedSides);
+  const jointReviews = input.qualifications
+    ? Object.fromEntries(Object.entries(reviews).filter(([c]) => input.qualifications?.[c as CriticId]?.independent))
+    : reviews;
+  const joint = findJointRejectedBlockers(jointReviews, structuredRows, voidedSides);
   let disputedJointBlockers: GateCheckResult['disputedJointBlockers'];
   if (joint.length > 0) {
     const msg = '下列 blocker 被**两家**同时提出却被驳回：' + formatJointGroups(joint);
@@ -712,19 +718,22 @@ export async function checkAdjudication(input: GateCheckInput): Promise<GateChec
    * 这里要表达的是「本轮不再享有共同阻断这一档的保护」，
    * 让裁决者知道自己少了一层防线（设计 §12.1 的过渡处置）。
    */
-  const jc = jointCheckState(reviews, joint, voidedSides);
+  const jc = jointCheckState(reviews, joint, voidedSides, input.qualifications);
   if (jc.state === 'skipped-insufficient-sides') {
     warnings.push({
       code: 'joint_check_degraded',
       message:
         `共同阻断这一档**未执行**：有效侧只剩 ${jc.effective_sides} 家（需要 2 家）` +
         `——${
-          jc.reason === 'voided'
+          jc.reason === 'insufficient-evidence'
+            ? '有侧执行证据不足'
+            : jc.reason === 'voided'
             ? '有侧因禁读命中被判作废'
             : jc.reason === 'both'
               ? '既有侧被判作废，也有侧未产出结构化结论'
               : '有侧未产出结构化结论（解析降级或失败）'
         }。` +
+        (jc.excluded_sides ? `排除侧：${Object.entries(jc.excluded_sides).map(([c, reason]) => `${c}（${reason}）`).join('、')}。` : '') +
         '本轮不享有「两家同时提出的 blocker 被驳回即报」这层保护——' +
         '这不是「查过、没发现」，是「没查」。',
       ids: [],
@@ -1014,7 +1023,8 @@ export async function recheckPlanFinal(layout: ArchiveLayout, finalFileName: str
       const mark = m.plan_final_check;
       if (!mark) return { kind: 'skipped' };
 
-      const round = await loadRoundReviews(layout, 'plan', id);
+      const round = await loadRoundReviews(layout, 'plan', id, m);
+      if (round.qualificationFailure) return { kind: 'unverifiable', reason: round.qualificationFailure.message };
       const md = await fs.readFile(path.join(stageDir(layout, 'plan'), disp.fileName), 'utf8');
       // 与 checkAdjudication 第 6 步同一个函数、同一组输入（都来自 loadRoundReviews）
       const acceptedIds = acceptedIdsForNextPlan({
@@ -1124,18 +1134,23 @@ export function jointCheckState(
   reviews: Partial<Record<CriticId, Review | null>>,
   joint: readonly { location: string; ids: string[] }[],
   voidedSides: readonly CriticId[] = [],
-): {
-  state: 'checked-none' | 'checked-found' | 'skipped-insufficient-sides';
-  effective_sides: number;
-  /**
-   * 有效侧不足时**为什么**不足（r1 AGY-06）。
-   *
-   * 初版的告警文案一律写「排除作废侧后…」，而有效侧也可能是因为某侧
-   * `parse_fallback`（没有结构化结论）而不足——把「违反独立性被作废」
-   * 与「解析降级」混为一谈，审计时会指向错误的根因。
-   */
-  reason?: 'voided' | 'no-structured-review' | 'both';
-} {
+  qualifications?: RoundQualifications,
+): JointCheckResult {
+  if (qualifications) {
+    const pending = jointCheckPending(qualifications);
+    if (pending.state === 'pending') {
+      return { state: joint.length > 0 ? 'checked-found' : 'checked-none', effective_sides: pending.effective_sides };
+    }
+    const excluded_sides: Partial<Record<CriticId, VerdictExclusion>> = {};
+    for (const [critic, side] of Object.entries(qualifications)) {
+      if (side && 'excluded' in side.ballot) excluded_sides[critic as CriticId] = side.ballot.excluded;
+    }
+    const reasons = Object.values(excluded_sides);
+    const reason = reasons.includes('insufficient_evidence') ? 'insufficient-evidence'
+      : reasons.includes('voided') ? (reasons.every((r) => r === 'voided') ? 'voided' : 'both')
+      : 'no-structured-review';
+    return { ...pending, state: 'skipped-insufficient-sides', reason, excluded_sides };
+  }
   const voided = new Set(voidedSides);
   const effective = (Object.keys(reviews) as CriticId[]).filter(
     (c) => !voided.has(c) && reviews[c] !== undefined && reviews[c] !== null,
@@ -1225,7 +1240,11 @@ export function expectedReviewDocs(layout: ArchiveLayout, stage: Stage, runMeta:
     const s = runMeta.critics[c]?.status;
     return s === 'ok' || s === 'parse_fallback';
   });
-  const roles = new Set<string>(effective.map((c) => agentById(c)?.suffix ?? c));
+  return registeredReviewDocs(layout, stage, runMeta, effective);
+}
+
+function registeredReviewDocs(layout: ArchiveLayout, stage: Stage, runMeta: RunMeta, sides: readonly CriticId[]): string[] {
+  const roles = new Set<string>(sides.map((c) => agentById(c)?.suffix ?? c));
   const stageRel = `${layout.topic}/${stage}`;
   const out: string[] = [];
   for (const a of runMeta.artifacts) {
@@ -1307,6 +1326,7 @@ export async function loadRoundReviews(
   layout: ArchiveLayout,
   stage: Stage,
   runId: string,
+  knownMeta?: RunMeta | null,
 ): Promise<{
   reviews: Partial<Record<CriticId, Review | null>>;
   notes: string[];
@@ -1354,6 +1374,8 @@ export async function loadRoundReviews(
    * 在这里派生而不是让调用方读——理由同 `voidedSides`：三个调用点各自去读就会各自漏。
    */
   planFinal: PlanFinalInput | null;
+  qualifications?: RoundQualifications;
+  qualificationFailure?: GateFailure;
 }> {
   const reviews: Partial<Record<CriticId, Review | null>> = {};
   const notes: string[] = [];
@@ -1362,7 +1384,11 @@ export async function loadRoundReviews(
   const missingSides: CriticId[] = [];
   const dir = metaDir(layout, stage);
   const { readRunMeta } = await import('./meta.js');
-  const runMeta = await readRunMeta(layout, stage, runId);
+  const runMeta = knownMeta === undefined ? await readRunMeta(layout, stage, runId) : knownMeta;
+  const newRound = runMeta?.schema === 'trivium.run.v3' && runMeta.effective_failure_policy !== undefined;
+  const artifactProblems: string[] = [];
+  const recorded = new Set(runMeta?.artifacts.map((item) => item.path));
+  const hasRecorded = (file: string): boolean => recorded.has(path.relative(layout.archiveRoot, file).split(path.sep).join('/'));
 
   /*
    * 遍历范围取自本轮实际入选的审核者，而非字面两家（计划 §2.1 / B-5）。
@@ -1373,13 +1399,35 @@ export async function loadRoundReviews(
    *
    * `criticsOf` 优先读 run.json 的记录，缺失时回落到当前启用集合（历史工件兼容）。
    */
-  for (const c of criticsOf(runMeta)) {
+  for (const c of newRound && runMeta?.status !== 'success' ? [] : criticsOf(runMeta)) {
     const p = path.join(dir, `review-${c}-${runId}.json`);
+    const side = runMeta?.critics[c];
+    if (newRound && side && (side.status === 'failed' || side.status === 'timeout')) {
+      const file = path.join(dir, `review-${c}-${runId}.failed.json`);
+      try {
+        const failure = JSON.parse(await fs.readFile(file, 'utf8')) as {
+          critic?: string; status?: string; fail_reason?: string | null; attempts?: number;
+        };
+        if (!hasRecorded(file) || hasRecorded(p) || failure.critic !== c || failure.status !== side.status ||
+            failure.fail_reason !== side.fail_reason || !Number.isInteger(failure.attempts) || failure.attempts! < 1) {
+          artifactProblems.push(`${c} 的失败件与本轮侧状态或登记不符`);
+        }
+      } catch {
+        artifactProblems.push(`${c} 的失败件缺失或不可读`);
+      }
+      notes.push(`${c} 侧本轮失败，未产出结论（${side.fail_reason ?? side.status}）`);
+      continue;
+    }
     try {
       const raw = JSON.parse(await fs.readFile(p, 'utf8')) as
         | Review
         | { parse_fallback: true; raw: string | null };
-      if ('parse_fallback' in raw && raw.parse_fallback) {
+      const fallback = 'parse_fallback' in raw && raw.parse_fallback;
+      if (newRound && (!hasRecorded(p) || (fallback ? side?.status !== 'parse_fallback' : side?.status !== 'ok'))) {
+        artifactProblems.push(`${c} 的审查件形态或登记与本轮侧状态不符`);
+        continue;
+      }
+      if (fallback) {
         // 归档重读两版都认（缺省口径）：旧轮当时按 v1 产出，口径不因契约升级而变（EV-247）
         const retry = raw.raw ? parseReview(raw.raw) : null;
         /*
@@ -1408,7 +1456,16 @@ export async function loadRoundReviews(
           );
         }
       } else {
-        reviews[c] = raw as Review;
+        if (newRound) {
+          const checked = parseReview(JSON.stringify(raw), { accept: 'current' });
+          if (!checked.ok || checked.degraded.length || !checkReviewIntegrity(checked.review, c, []).prefixOk) {
+            artifactProblems.push(`${c} 的结构化审查件不合当前契约`);
+            continue;
+          }
+          reviews[c] = checked.review;
+        } else {
+          reviews[c] = raw as Review;
+        }
         /*
          * 逐条降级的编号（设计 §6.5）：以 run.json 的 `findings_degraded` 为准（只写一次、在提交锚保护下）；
          * run.json 读不出时退而读旁路文件（尽力；那一格已由 missingSides 与审批路径的「留痕读不出即拒」兜底）。
@@ -1421,6 +1478,11 @@ export async function loadRoundReviews(
         }
       }
     } catch {
+      if (newRound) {
+        artifactProblems.push(`${c} 的结构化审查件缺失或不可读`);
+        if (side?.status === 'ok' || side?.status === 'parse_fallback') missingSides.push(c);
+        continue;
+      }
       const failed = path.join(dir, `review-${c}-${runId}.failed.json`);
       if (await fileExists(failed)) {
         notes.push(`${c} 侧本轮失败，未产出结论（单审降级）`);
@@ -1490,6 +1552,10 @@ export async function loadRoundReviews(
 
   const runWarnings = [...(runMeta?.gate?.warnings ?? [])];
   const reviewDocs = runMeta ? expectedReviewDocs(layout, stage, runMeta) : null;
+  const qualification = newRound
+    ? validateRoundQualification(runMeta, reviews, voidedSides,
+      registeredReviewDocs(layout, stage, runMeta, runMeta.critics_selected), artifactProblems)
+    : {};
 
   const planCheck = stage === 'plan' ? runMeta?.plan_final_check : undefined;
   const planFinal: PlanFinalInput | null = planCheck
@@ -1504,7 +1570,78 @@ export async function loadRoundReviews(
   return {
     reviews, notes, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs,
     planFinal,
+    ...qualification,
   };
+}
+
+/** 读取侧和写入侧只适配事实，资格、模式及计票调用同一判定。 */
+function validateRoundQualification(
+  meta: RunMeta,
+  reviews: Partial<Record<CriticId, Review | null>>,
+  voidedSides: readonly CriticId[],
+  reviewDocs: readonly string[],
+  problems: string[],
+): { qualifications?: RoundQualifications; qualificationFailure?: GateFailure } {
+  if (meta.status !== 'success') {
+    return { qualificationFailure: {
+      code: 'run_not_successful', message: `run ${meta.run_id} 状态为 ${meta.status}，本轮没有可推进的审查结论`,
+    } };
+  }
+  const qualifications: Partial<Record<CriticId, SideQualification>> = {};
+  for (const c of meta.critics_selected) {
+    const side = meta.critics[c];
+    const q = qualifyReviewSide(side?.status, side?.evidence_failure_reason, voidedSides.includes(c), reviews[c], side?.attempts?.at(-1));
+    qualifications[c] = q;
+    const docCount = reviewDocs.filter((name) => parseArtifactName(name)?.role === agentById(c)?.suffix).length;
+    const exclusion = 'excluded' in q.ballot ? q.ballot.excluded : undefined;
+    if (!side || (!voidedSides.includes(c) && side.evidence_ok !== q.canProceed) || docCount !== Number(q.canProceed) ||
+        (side.evidence_failure_reason && (side.status !== 'failed' || exclusion !== 'insufficient_evidence')) ||
+        (side.status === 'ok' && !q.independent)) {
+      problems.push(`${c} 的侧状态、执行证据与正式工件不一致`);
+    }
+  }
+  const mode = decideMode(meta.critics, meta.effective_failure_policy!, meta.critics_selected, qualifications);
+  if (mode.abort || mode.mode !== meta.review_mode || mode.degraded !== (meta.degraded_reason != null)) {
+    problems.push(`失败策略、运行完成度与侧资格不一致（失败侧：${mode.failedSides.join('、') || '无'}）`);
+  }
+  if (!isDeepStrictEqual(jointCheckPending(qualifications), meta.guard.joint_check)) {
+    problems.push('guard.joint_check 状态或有效侧数与独立来源不一致');
+  }
+  if (meta.review_loop) {
+    const ballots = Object.fromEntries(meta.critics_selected.map((c) => [c, qualifications[c]!.ballot]));
+    const expected = tallyRound(ballots, meta.review_loop);
+    const recorded = meta.round_verdict;
+    if (!isDeepStrictEqual(expected, recorded)) {
+      const sides = meta.critics_selected.filter((c) => expected.sides[c] !== recorded?.sides[c] || expected.excluded[c] !== recorded?.excluded[c]);
+      problems.push(`round_verdict 与重建的选票或轮次动作不一致${sides.length ? `（涉及 ${sides.join('、')}）` : ''}`);
+    }
+  } else if (meta.round_verdict) {
+    problems.push('无轮次链却有 round_verdict');
+  }
+  return problems.length ? { qualificationFailure: {
+    code: 'round_qualification_mismatch', message: `run ${meta.run_id} 的运行资格不一致：${problems.join('；')}`,
+  } } : { qualifications };
+}
+
+/** gate 与审批共用同一次载入的正本，资格失败时没有裁决、共同阻断或争议副产物。 */
+export async function checkRunAdjudication(
+  cfg: Config, layout: ArchiveLayout, stage: Stage, meta: RunMeta, runIdPinned: boolean,
+): Promise<{ result: GateCheckResult; notes: string[]; qualificationFailure?: GateFailure }> {
+  const { notes, qualificationFailure, ...round } = await loadRoundReviews(layout, stage, meta.run_id, meta);
+  if (qualificationFailure) {
+    const failures = [qualificationFailure];
+    if (round.missingSides.length) {
+      failures.push({ code: 'missing_review_json', message: `读不到本轮结构化结论：${round.missingSides.join('、')}` });
+    }
+    return { notes, qualificationFailure, result: {
+      ok: false, failures, warnings: [], structuredIds: [], fallbackIds: [],
+      degradedIds: [], dispositionPath: null, rows: [],
+    } };
+  }
+  const result = await checkAdjudication({
+    ...round, cfg, layout, stage, rerunIndex: meta.rerun_index, driver: meta.driver, runId: meta.run_id, runIdPinned,
+  });
+  return { result, notes };
 }
 
 /**
@@ -1650,6 +1787,8 @@ export interface ApprovalCheckResult {
   rerunIndex: number;
   result: GateCheckResult;
   tampered: TamperedArtifact[];
+  qualificationFailure?: GateFailure;
+  runMeta: RunMeta;
 }
 
 /**
@@ -1707,19 +1846,14 @@ export async function verifyRoundForApproval(i: ApprovalCheckInput): Promise<App
   }
   const runMeta = read.meta;
 
-  const { reviews, expectedFallbackIds, expectedDegradedIds, missingSides, degraded, voidedSides, readonlyBreach, runWarnings, reviewDocs, planFinal } =
-    await loadRoundReviews(layout, stage, runId);
-  const result = await checkAdjudication({
-    cfg, layout, stage, rerunIndex: runMeta.rerun_index, reviews,
-    driver: runMeta.driver,
-    runIdPinned: i.runIdPinned,
-    degraded, voidedSides, readonlyBreach, runWarnings,
-    expectedFallbackIds, expectedDegradedIds, missingSides, runId, reviewDocs, planFinal,
-  });
+  const { result, qualificationFailure } = await checkRunAdjudication(cfg, layout, stage, runMeta, i.runIdPinned);
+  if (qualificationFailure) {
+    return { ok: false, runId, rerunIndex: runMeta.rerun_index, result, tampered: [], qualificationFailure, runMeta };
+  }
   const tampered = await checkRecordedArtifacts(layout, [
     { run_id: runId, stage, artifacts: runMeta.artifacts },
   ]);
-  return { ok: result.ok && tampered.length === 0, runId, rerunIndex: runMeta.rerun_index, result, tampered };
+  return { ok: result.ok && tampered.length === 0, runId, rerunIndex: runMeta.rerun_index, result, tampered, runMeta };
 }
 
 /**

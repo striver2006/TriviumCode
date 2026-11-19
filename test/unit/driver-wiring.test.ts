@@ -370,7 +370,7 @@ test('闸门区：driver 与轮次一律直读留痕，不从工件后缀反推'
    * `gate --check` 以「请先跑一次双审」硬失败，而双审明明跑完了。
    *
    * 修法是根本不反推。所以本条钉两件事：**闸门区不再调那个反推函数**，
-   * 且两处 `checkAdjudication` 都把 driver 传下去（此前空着，非缺省 Driver 下
+   * 且各入口经共用校验把留痕中的 driver 传下去（此前空着，非缺省 Driver 下
    * 必报 missing_disposition——那正是阻断的表现面）。
    */
   const src = await stripped('src/trivium/cli.ts');
@@ -385,43 +385,23 @@ test('闸门区：driver 与轮次一律直读留痕，不从工件后缀反推'
     'cli.ts 没有直读留痕：driver 与 rerun_index 的权威来源是运行元数据，不是后缀',
   );
 
-  /*
-   * M10a 第 3 步：`--await-approval` 那一处 `checkAdjudication` 随抽取搬进
-   * `gate.verifyRoundForApproval`（与 approve 共用），cli.ts 只剩 `--check` 一处。
-   * 判据不变——driver 一律直读留痕——落点变了，所以下面两处分开钉：
-   * cli.ts 的取 `gateDriver`，复核函数里的取本轮留痕 `runMeta.driver`。
-   */
-  const calls = [...src.matchAll(/await\s+checkAdjudication\(\{/g)];
-  assert.equal(calls.length, 1, `cmdGate 里应当只剩 1 处 checkAdjudication（--check），实得 ${calls.length} 处`);
+  // --check 直用选中的正本，另两个入口先经 verifyRoundForApproval 读取正本。
+  const calls = [...src.matchAll(/await\s+checkRunAdjudication\(/g)];
+  assert.equal(calls.length, 1, 'cmdGate 只经统一资格入口检查裁决');
+  assert.match(requireArgBlock(src, calls[0]!.index!, 'checkRunAdjudication'), /\blatest\b/);
   const verifyCalls = [...src.matchAll(/await\s+verifyRoundForApproval\(\{/g)];
-  assert.equal(
-    verifyCalls.length, 2,
-    `cli.ts 应当有 2 处 verifyRoundForApproval（--await-approval 与 approve），实得 ${verifyCalls.length} 处`,
-  );
+  assert.equal(verifyCalls.length, 2, '--await-approval 与 approve 共用审批复核');
   const gateSrc = await stripped('src/trivium/gate.ts');
   const inVerify = gateSrc.slice(gateSrc.indexOf('export async function verifyRoundForApproval'));
-  const vcall = inVerify.search(/await\s+checkAdjudication\(\{/);
-  assert.ok(vcall >= 0, 'verifyRoundForApproval 里没有 checkAdjudication：审批前复核丢了裁决齐备这一半');
-  assert.ok(
-    /driver:\s*runMeta\.driver\b/.test(requireArgBlock(inVerify, vcall, 'checkAdjudication')),
-    'verifyRoundForApproval 的 checkAdjudication 没有取本轮留痕的 driver：按缺省找裁决件，非缺省 Driver 下必报 missing_disposition',
-  );
-  for (const c of calls) {
-    const block = requireArgBlock(src, c.index!, "checkAdjudication");
-    /*
-     * **判据是「取值来自 gateDriver」，不是「出现了 driver 这个词」**
-     * （代码双审 CODEX-05）。上一版判的是 `hasProperty(block, 'driver')`，
-     * 于是 `driver: DEFAULT_DRIVER`——形对值错、正是要防的那一格——**照样绿**。
-     * 而计划 §10 变异表写的恰恰是「把 checkAdjudication 的 driver 改回缺省 → 必须红」，
-     * 我当时是靠**删掉**属性验的，那条变异从没真正验到。
-     */
-    assert.ok(
-      /driver:\s*gateDriver\b/.test(block),
-      'checkAdjudication 的 driver 取值不是 gateDriver：裁决件是 `-revised-<当轮 Driver>.md`，' +
-        '按缺省找会在非缺省 Driver 下必报 missing_disposition（计划双审 r2 判阻断）。\n' +
-        `  实参块：${block.slice(0, 240)}`,
-    );
-  }
+  assert.match(inVerify, /readRunMetaDetailed\(layout, stage, runId\)/);
+  assert.match(inVerify, /await\s+checkRunAdjudication\(cfg, layout, stage, runMeta,/);
+  const checker = gateSrc.slice(gateSrc.indexOf('export async function checkRunAdjudication'),
+    gateSrc.indexOf('export async function verifyRoundForApproval'));
+  const checkCall = checker.search(/await\s+checkAdjudication\(\{/);
+  assert.ok(checkCall >= 0, '统一入口必须检查裁决齐备');
+  const block = requireArgBlock(checker, checkCall, 'checkAdjudication');
+  assert.match(block, /\bdriver:\s*meta\.driver\b/, '裁决件必须按正本记载的 Driver 查找');
+  assert.match(block, /\brerunIndex:\s*meta\.rerun_index\b/, '裁决件必须按正本记载的轮次查找');
 
   const artifacts = [...src.matchAll(/await\s+checkStageArtifacts\(/g)];
   assert.equal(artifacts.length, 1, `cmdGate 里应当有 1 处 checkStageArtifacts，实得 ${artifacts.length} 处`);
