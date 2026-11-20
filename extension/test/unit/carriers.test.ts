@@ -105,6 +105,10 @@ test('zcode 为脚本类拉起模式（AGY-02）', () => {
   assert.equal(CARRIERS.gemini.launchMode, 'direct');
 });
 
+test('auto 对 ZCode、Codex、Claude 分开发送回车，Antigravity 一次提交', () => {
+  assert.deepEqual(AGENT_IDS.filter(id => CARRIERS[id].separateEnter), ['claude', 'codex', 'glm']);
+});
+
 test('解析 wrapper 内嵌 node 绝对路径', () => {
   const wrapper = '#!/bin/sh\nexec "/opt/homebrew/opt/node/bin/node" "/Users/x/.claude/skills/dual-critic/scripts/trivium.cjs" "$@"\n';
   assert.equal(parseWrapperNodePath(wrapper), '/opt/homebrew/opt/node/bin/node');

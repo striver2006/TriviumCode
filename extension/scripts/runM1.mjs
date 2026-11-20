@@ -1,5 +1,6 @@
 // 在真实交互 CLI 中发送入口 B 和一条续话。只记录独立回读，保留授权界面给用户处理。
 import * as fs from 'node:fs/promises';
+import { relayQuestion, verifyGlmReplies } from '../test/e2e/glmReplies.mjs';
 import path from 'node:path';
 import YAML from 'yaml';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
@@ -18,9 +19,17 @@ const ids = { codex: 'codex', claude: 'claude', glm: 'zcode', gemini: 'agy' };
 const summary = [];
 const sendMode = process.env.TRIVIUM_M1_SEND_MODE;
 const waitForEntryReply = process.env.TRIVIUM_M1_WAIT_FOR_ENTRY_REPLY === '1';
+const timing = process.argv.find(arg => arg.startsWith('--glm-timing='))?.split('=')[1];
+if (timing !== undefined && (!['busy', 'idle'].includes(timing) || !vsix ||
+    sendMode !== undefined || delaySetting !== undefined || process.env.TRIVIUM_M1_WAIT_FOR_ENTRY_REPLY !== undefined ||
+    process.argv.slice(2).filter(arg => !arg.startsWith('--glm-timing=')).join() !== 'glm')) {
+  throw new Error('默认续话验收须指定最终 VSIX、glm 和 --glm-timing=busy 或 idle，并取消发送和等待覆盖变量');
+}
 if (sendMode && !['execute', 'split'].includes(sendMode)) throw new Error('显式模式仅支持 execute 或 split');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const textOf = w => w.page.locator('.xterm-accessibility-tree').allTextContents().then(a => a.join('\n'));
+const busyHint = text => text.match(/Type to queue input|输入内容会排队|esc to interrupt/i)?.[0] ?? null;
+const idleHint = text => text.match(/Type a prompt|输入提示词/i)?.[0] ?? null;
 function promptOf(text) {
   const prompts = [/trust (?:the |this |these |files in this )?(?:folder|directory|project|workspace|files)/i,
     /do you trust/i, /信任此|是否信任/, /sign in to|log in to|please (?:log|sign) in/i,
@@ -50,9 +59,19 @@ async function run(id, probe, r) {
     r.topic = fx.topic;
     r.sendMode = sendMode || 'manifest-default';
     r.readyDelayMs = readyDelayMs ?? 'manifest-default';
-    r.waitForEntryReply = waitForEntryReply;
+    r.waitForEntryReply = timing === 'idle' || waitForEntryReply;
     r.vsix = vsix ? path.resolve(vsix) : null;
     const w = await openWorkspace(fx, { base, code, children, terminalAccess: true, sendMode, readyDelayMs, vsix });
+    if (timing) {
+      r.timing = timing;
+      r.profile = w.profile;
+      r.extensions = path.join(base, 'extensions');
+      for (const file of [path.join(w.profile, 'User/settings.json'), path.join(w.root, '.vscode/settings.json')]) {
+        const settings = await fs.readFile(file, 'utf8').catch(e => { if (e.code === 'ENOENT') return ''; throw e; });
+        if (/trivium\.launch\.(sendMode|carrierOverrides|readyDelayMs)/.test(settings)) throw new Error('验收设置存在覆盖：' + file);
+      }
+      console.log('默认安装采样', timing, w.topic, w.profile);
+    }
     const f = w.frame;
     await f.locator('#driver').selectOption(id);
     await f.locator('#entry').selectOption('B');
@@ -93,21 +112,40 @@ async function run(id, probe, r) {
       r.runId ||= await state();
       r.entryReplySeen ||= /P4ACK[^\d]{0,40}(?:437[^\d]+38[^\d]+)?475(?!\d)/.test(text);
       r.entryAck ||= r.entryReplySeen || Boolean(r.runId);
-      if (r.runId && (!waitForEntryReply || r.entryReplySeen)) break;
+      if (r.runId && (!r.waitForEntryReply || r.entryReplySeen) &&
+          (timing !== 'busy' || (!r.entryReplySeen && busyHint(text))) &&
+          (timing !== 'idle' || (idleHint(text) && !busyHint(text)))) break;
       if (await f.locator('#banner').innerText().then(t => t.includes('协同终端已关闭'))) {
         r.terminalExitedBeforeAck = true;
         break;
       }
       await delay(300);
     }
-    if (r.entrySent && !r.permissionPrompt && (!waitForEntryReply || r.entryReplySeen)) {
-      await f.locator('#relayInput').fill('请回复 P4NEXT 后紧接 63 乘 17 的结果，不加空格。');
+    if (r.entrySent && !r.permissionPrompt && (!r.waitForEntryReply || r.entryReplySeen)) {
+      await f.locator('#relayInput').fill(relayQuestion);
+      if (timing) {
+        const t = await textOf(w);
+        r.beforeClick = { at: new Date().toISOString(), runId: await state(),
+          busyHint: busyHint(t), idleHint: idleHint(t),
+          entryReplySeen: Boolean(r.entryReplySeen || t.includes('P4ACK475')) };
+        if (!r.beforeClick.runId || (timing === 'busy'
+          ? !r.beforeClick.busyHint || r.beforeClick.entryReplySeen
+          : !r.beforeClick.entryReplySeen || !r.beforeClick.idleHint || r.beforeClick.busyHint)) {
+          throw new Error('发送时机不符');
+        }
+      }
       await f.locator('#btnRelay').click();
+      r.clickedAt = new Date().toISOString();
       r.relayAttempts = 1;
       const deadline = Date.now() + (r.entryAck ? 150000 : 35000);
       while (Date.now() < deadline) {
         const t = await textOf(w);
         r.relayAck ||= t.includes('P4NEXT1071');
+        if (timing) {
+          if (t.includes('P4ACK475')) r.entryReplySeen = true;
+          if (!r.queueSeenAt && /Queue\s*\(1\)/.test(t)) r.queueSeenAt = new Date().toISOString();
+          if (r.relayAck) r.relayReply = { at: new Date().toISOString(), text: 'P4NEXT1071' };
+        }
         r.runId ||= await state();
         if (r.relayAck || promptOf(t)) break;
         await delay(350);
@@ -115,7 +153,7 @@ async function run(id, probe, r) {
     }
     r.runId ||= await state();
     r.m1BeforeClose = await f.locator('#modeBadge.m1').count() === 1;
-    const hasRun = async () => Boolean(r.runId) && (await f.locator('#runs .card').allTextContents()).some(t => t.includes(r.runId));
+    const hasRun = async () => Boolean(r.runId) && (await f.locator('#runs .card').allTextContents()).some(t => t.includes(r.runId) && t.includes(w.topic));
     if (r.runId) await until('原运行卡', hasRun, 30);
     r.cardBeforeClose = await hasRun();
     if (r.m1BeforeClose) {
@@ -132,6 +170,15 @@ async function run(id, probe, r) {
         return m && ['success', 'failed', 'cancelled'].includes(m.status) && m;
       });
       r.fingerprints = Object.fromEntries(Object.entries(meta.critics).map(([key, c]) => [key, c.cli_version]));
+      if (timing) {
+        r.archive = metaPath;
+        r.topicRunFiles = (await fs.readdir(path.dirname(metaPath))).filter(n => /^run-.*\.json$/.test(n));
+        if (meta.topic !== w.topic || r.topicRunFiles.length !== 1 || await state() !== r.runId) {
+          throw new Error('主题或运行连续性不符');
+        }
+        const snap = JSON.parse(await fs.readFile(path.join(w.root, '.trivium/state.json'), 'utf8'));
+        if (r.relayAck) r.nativeReplies = await verifyGlmReplies(r, snap.gates[w.topic + '/plan']);
+      }
       if (meta.driver !== id || meta.run_id !== r.runId || meta.status !== 'success' ||
           Object.keys(r.fingerprints).sort().join(',') !== critics.split(',').sort().join(',') ||
           !Object.values(r.fingerprints).every(v => v === 'stub/0.0.0')) {

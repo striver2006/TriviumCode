@@ -66,6 +66,7 @@ export const CARRIERS: Readonly<Record<AgentId, CarrierDescriptor>> = {
     agentId: 'glm',
     cliKey: 'zcode',
     display: 'ZCode',
+    separateEnter: true,
     invocation: '/skill {name}',
     launchMode: 'shellCommand',
   },

@@ -1,0 +1,165 @@
+{
+  "id": "glm",
+  "ignitions": 1,
+  "entrySent": true,
+  "entryAck": true,
+  "relayAttempts": 1,
+  "relayAck": true,
+  "runId": "20261120T022431Z",
+  "closed": true,
+  "m3AfterClose": true,
+  "cardAfterClose": true,
+  "version": "0.17.1",
+  "entrypoint": "/private/tmp/trivium-zcode.kURY6A/runtime/zcode/bin/zcode.mjs",
+  "root": "/private/tmp/trivium-m1-rSWtkl/glm",
+  "topic": "终端验收glm-rpU0ap",
+  "sendMode": "manifest-default",
+  "readyDelayMs": "manifest-default",
+  "waitForEntryReply": false,
+  "vsix": "/Users/chenzhenbo/Work/TriviumCode/extension/.vscode-test/glm-default-20261120/trivium-cockpit-0.3.0.vsix",
+  "timing": "busy",
+  "profile": "/tmp/trivium-m1-rpU0ap/glm-profile",
+  "extensions": "/tmp/trivium-m1-rpU0ap/extensions",
+  "terminalRowsObserved": true,
+  "permissionPrompt": null,
+  "entryReplySeen": true,
+  "beforeClick": {
+    "at": "2026-11-20T02:24:32.249Z",
+    "runId": "20261120T022431Z",
+    "busyHint": "Type to queue input",
+    "entryReplySeen": false
+  },
+  "clickedAt": "2026-11-20T02:24:32.420Z",
+  "relayReply": {
+    "at": "2026-11-20T02:24:45.823Z",
+    "text": "P4NEXT1071"
+  },
+  "m1BeforeClose": true,
+  "cardBeforeClose": true,
+  "fingerprints": {
+    "gemini": "stub/0.0.0"
+  },
+  "archive": "/private/tmp/trivium-m1-rSWtkl/glm/.reviews/终端验收glm-rpU0ap/plan/_meta/run-20261120T022431Z.json",
+  "topicRunFiles": [
+    "run-20261120T022431Z.json"
+  ],
+  "nativeReplies": {
+    "sessionId": "sess_ce9a4123-a546-4e0c-97f5-87cc8ec89b67",
+    "file": "/Users/chenzhenbo/.zcode/cli/rollout/model-io-sess_ce9a4123-a546-4e0c-97f5-87cc8ec89b67.jsonl",
+    "model": "GLM-5.3",
+    "entryTurn": "turn_b3b097b0-460c-4513-ad58-283986b86350",
+    "entryCompleted": "2026-11-20T02:24:40.742Z",
+    "relayTurn": "turn_35e30da3-d15d-42ec-bc29-a25f2ffe4001",
+    "relayStarted": "2026-11-20T02:24:41.128Z",
+    "relayCompleted": "2026-11-20T02:24:44.830Z",
+    "exactBody": "请回复 P4NEXT 后紧接 63 乘 17 的结果，不加空格。"
+  },
+  "expectedRelayBody": "请回复 P4NEXT 后紧接 63 乘 17 的结果，不加空格。",
+  "modelIO": [
+    {
+      "session": "sess_ce9a4123-a546-4e0c-97f5-87cc8ec89b67",
+      "turn": "turn_b3b097b0-460c-4513-ad58-283986b86350",
+      "model": "GLM-5.3",
+      "started": "2026-11-20T02:24:31.495Z",
+      "completed": "2026-11-20T02:24:40.742Z",
+      "relayInputCount": 0,
+      "exactRelayBody": false,
+      "inputIncludesSkill": false,
+      "answerMarkers": [
+        "P4ACK475"
+      ]
+    },
+    {
+      "session": "sess_ce9a4123-a546-4e0c-97f5-87cc8ec89b67",
+      "turn": "turn_35e30da3-d15d-42ec-bc29-a25f2ffe4001",
+      "model": "GLM-5.3",
+      "started": "2026-11-20T02:24:41.128Z",
+      "completed": "2026-11-20T02:24:44.830Z",
+      "relayInputCount": 1,
+      "exactRelayBody": true,
+      "inputIncludesSkill": false,
+      "answerMarkers": [
+        "P4NEXT1071"
+      ]
+    }
+  ],
+  "nativePermissions": [
+    {
+      "at": "2026-11-20T02:23:51.297Z",
+      "topic": "终端验收glm-rpU0ap",
+      "command": ".trivium/bin/trivium topic claim --topic 终端验收glm-rpU0ap --stage plan --driver glm --json",
+      "decision": "Allow once"
+    },
+    {
+      "at": "2026-11-20T02:24:05.488Z",
+      "topic": "终端验收glm-rpU0ap",
+      "command": ".trivium/bin/trivium topic resolve --stage plan --json -- '核对 README 计划。原稿已认领：.reviews/终端验收glm-rpU0ap/plan/2026-11-20-终端验收glm-rpU0ap-glm.md。请用本夹具 .trivium/bin/trivium 按表单参数启动计划审查，审核者均为桩。收到运行号后回复 P4ACK 后紧接 437 加 38 的结果，等待续话。勿审批。' --driver glm --critics gemini --topic 终端验收glm-rpU0ap --context README.md",
+      "decision": "Allow once"
+    },
+    {
+      "at": "2026-11-20T02:24:13.998Z",
+      "topic": "终端验收glm-rpU0ap",
+      "command": ".trivium/bin/trivium preflight --stage plan --driver glm --critics gemini --json",
+      "decision": "Allow once"
+    },
+    {
+      "at": "2026-11-20T02:24:31.224Z",
+      "topic": "终端验收glm-rpU0ap",
+      "command": ".trivium/bin/trivium review --start --entry B --stage plan --topic 终端验收glm-rpU0ap --driver glm --focus '核对 README 计划。原稿已认领：.reviews/终端验收glm-rpU0ap/plan/2026-11-20-终端验收glm-rpU0ap-glm.md。请用本夹具 .trivium/bin/trivium 按表单参数启动计划审查，审核者均为桩。收到运行号后回复 P4ACK 后紧接 437 加 38 的结果，等待续话。勿审批。' --plan-file /private/tmp/trivium-m1-rSWtkl/glm/.reviews/终端验收glm-rpU0ap/plan/2026-11-20-终端验收glm-rpU0ap-glm.md --context README.md --critics gemini --json",
+      "decision": "Allow once"
+    }
+  ],
+  "testedPackage": {
+    "retainedPath": "extension/.vscode-test/glm-default-20261120/trivium-cockpit-0.3.0.vsix",
+    "sha256": "202ea8b9e044289d5a2616c1e3c6f353bdfad9098adc37c079237e83555b7c32"
+  },
+  "rawMatrix": "/tmp/trivium-m1-rpU0ap/matrix.json",
+  "launchSettings": {
+    "/private/tmp/trivium-m1-rSWtkl/glm/.vscode/settings.json": {
+      "fileExists": false,
+      "explicitLaunchSettings": {}
+    },
+    "/tmp/trivium-m1-rpU0ap/glm-profile/User/settings.json": {
+      "fileExists": true,
+      "explicitLaunchSettings": {}
+    }
+  },
+  "modelRollout": "/Users/chenzhenbo/.zcode/cli/rollout/model-io-sess_ce9a4123-a546-4e0c-97f5-87cc8ec89b67.jsonl",
+  "turnEvents": [
+    {
+      "turnId": "turn_b3b097b0-460c-4513-ad58-283986b86350",
+      "event": "turn.started",
+      "timestamp": "2026-11-20T02:22:17.769Z"
+    },
+    {
+      "turnId": "turn_b3b097b0-460c-4513-ad58-283986b86350",
+      "event": "turn.completed",
+      "timestamp": "2026-11-20T02:24:40.751Z"
+    },
+    {
+      "turnId": "turn_35e30da3-d15d-42ec-bc29-a25f2ffe4001",
+      "event": "turn.started",
+      "timestamp": "2026-11-20T02:24:41.116Z"
+    },
+    {
+      "turnId": "turn_35e30da3-d15d-42ec-bc29-a25f2ffe4001",
+      "event": "turn.completed",
+      "timestamp": "2026-11-20T02:24:44.835Z"
+    }
+  ],
+  "nativeLogFiles": [
+    "/tmp/trivium-m1-rpU0ap/glm-profile/logs/20261120T102211/window1/exthost/triviumcode.trivium-cockpit/zcode-6Kg9N2/zcode-2026-11-20.jsonl"
+  ],
+  "verifiedNativeReplies": {
+    "sessionId": "sess_ce9a4123-a546-4e0c-97f5-87cc8ec89b67",
+    "file": "/Users/chenzhenbo/.zcode/cli/rollout/model-io-sess_ce9a4123-a546-4e0c-97f5-87cc8ec89b67.jsonl",
+    "model": "GLM-5.3",
+    "entryTurn": "turn_b3b097b0-460c-4513-ad58-283986b86350",
+    "entryCompleted": "2026-11-20T02:24:40.742Z",
+    "entryAnswer": "P4ACK475",
+    "relayTurn": "turn_35e30da3-d15d-42ec-bc29-a25f2ffe4001",
+    "relayStarted": "2026-11-20T02:24:41.128Z",
+    "relayCompleted": "2026-11-20T02:24:44.830Z",
+    "exactBody": "请回复 P4NEXT 后紧接 63 乘 17 的结果，不加空格。"
+  }
+}

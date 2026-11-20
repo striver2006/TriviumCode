@@ -39,7 +39,7 @@ export async function createServices(context: vscode.ExtensionContext): Promise<
   if (!root) return null;
   const env = new TriviumEnv(root);
   const cli = new TriviumCli(root);
-  const relay = new TerminalRelay();
+  const relay = new TerminalRelay(context.logUri.fsPath);
   const stateWatch = new StateWatch(root);
   const annotationHub = new AnnotationHub(root);
   context.subscriptions.push(relay, stateWatch, annotationHub);

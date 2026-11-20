@@ -1,5 +1,45 @@
 # VS Code 驾驶舱 Phase 4 本地验收
 
+## 11 月 20 日 GLM 默认续话修复复验
+
+本节对应 `feat/vscode-extension` 在 `54974efd` 之上的本地修改，版本沿用 0.3.0。实测 ZCode 启动器版本为 3.18.2，内置交互式 Agent 为 0.17.1，解释器为 Node 24.14.0，模型为 GLM-5.3。VS Code 为 1.147.0 arm64。每次从修复包新装，在原信任夹具中新建主题。测试未设置用户级或工作区级发送模式、按载体覆盖和就绪延迟。入口 B 在该夹具使用 Gemini 桩审核者。
+
+**定位与对照实验。** 载体覆盖优先于全局发送模式。`auto` 从插件载体表取值。原包的 GLM 没有分开发送标记，入口注入和续话中继都走一次提交。第一版修复仅给 GLM 增加分开发送标记。忙时在运行 `20261120T020316Z` 点击一次，原生终端显示 `esc to interrupt`，队列内容已是单独的续话。入口轮结束后 GLM 回答 `P4ACK475`，150 秒内没有续话回答。该次只点火一次，关闭后 M3 仍显示原运行。[仅分开发送的失败样本](evidence/vscode-glm-default-20261120/终端验收glm-xeEIgm.json)
+
+**最终实现。** GLM 的默认入口和续话复用现有分开发送机制。驾驶舱为该 ZCode 终端指定独立的原生日志目录，读取主会话的 `turn.started`、`turn.completed` 和 `turn.failed`。点击时若该轮仍活跃，消息留在宿主内存，轮末后向同一终端提交一次。显式选择发送模式仍按原有设置处理。[包内中文手册](../../extension/README.md)
+
+**安装包。** [修复包 0.3.0](../../extension/trivium-cockpit-0.3.0-glm-relay.vsix) 为 104,321 字节，SHA-256 为 `202ea8b9e044289d5a2616c1e3c6f353bdfad9098adc37c079237e83555b7c32`。留存副本与真机安装所用 VSIX 逐字节一致。[Phase 4 原包](../../extension/trivium-cockpit-0.3.0.vsix) 为 103,307 字节，SHA-256 为 `50f5929c2028ecf2ae465996bc778fe3f2c0f30aa2fabfbc2c7549f09eccbe06`。两次默认失败和一次显式 split 成功的原始记录见下文。[本次安装目录与文件校验](evidence/vscode-glm-default-20261120/packages.json) · [历史三次回读](evidence/vscode-phase4-20261120/glm-after-model.json)
+
+**宿主与桩回归。** 在 `extension/` 执行 `npm run check`，184 项单元测试、83 项 Extension Host 集成测试通过。`npm run package` 成功。对同一包执行 `npm run e2e`，桩 Driver 驱动两个独立仓库通过入口 B。甲、乙各有一个同秒编号 `20261120T021711Z`，各自核对本仓闸门和两位审核者的桩指纹。第三仓在 `20261120T021722Z` 仍为 running 时关闭终端，M3 收到预置故障的 failed 终态。[安装态 e2e](evidence/vscode-glm-default-20261120/installed-e2e.json) · [插件检查](../../extension/.vscode-test/glm-default-20261120/check-final.log) · [打包](../../extension/.vscode-test/glm-default-20261120/package-final.log)
+
+根目录 `npm run check` 退出 0，共 4,068 项，4,052 通过、16 跳过、0 失败。[根仓完整检查](../../extension/.vscode-test/glm-default-20261120/root-final.log)
+
+**真实 GLM 结果。** 最终包忙时目标 2 次尝试、2 次通过；空闲目标 3 次尝试、2 次满足时机并通过。五次点击均在原生会话得到了 `P4NEXT1071`。每个样本各有一个新主题、一份运行归档、一个 ZCode 会话和两个不同的模型轮次。续话轮的用户正文逐字等于乘法题，未夹带入口。每次均只点火一次、发送一次；点击后的终端操作只有收到回答后关闭终端。M3 显示原主题和同一编号，归档中唯一入选的 Gemini 指纹均为 `stub/0.0.0`。原生权限按 Bob 授权逐条选择 Allow once，均发生在续话前。新采样仅涉及 macOS。
+
+| 最终包采样顺序 | 运行号与逐次证据 | 点击发送 UTC | 入口轮结束 UTC | 终端读回续话答案 UTC |
+|---|---|---|---|---|
+| 忙时通过 | [`20261120T021813Z`](evidence/vscode-glm-default-20261120/终端验收glm-sAwfEY.json) | 02:18:13.415 | 02:18:20.397 | 02:18:24.037 |
+| 拟测空闲，仍在输出 | [`20261120T022143Z`](evidence/vscode-glm-default-20261120/终端验收glm-jmURnF.json) | 02:21:59.457 | 02:22:03.359 | 02:22:10.054 |
+| 忙时通过 | [`20261120T022431Z`](evidence/vscode-glm-default-20261120/终端验收glm-rpU0ap.json) | 02:24:32.420 | 02:24:40.751 | 02:24:45.823 |
+| 空闲通过 | [`20261120T022615Z`](evidence/vscode-glm-default-20261120/终端验收glm-PYZo1R.json) | 02:26:29.432 | 02:26:28.220 | 02:26:32.992 |
+| 空闲通过 | [`20261120T022905Z`](evidence/vscode-glm-default-20261120/终端验收glm-5br118.json) | 02:29:20.421 | 02:29:18.876 | 02:29:30.732 |
+
+第三列为按钮点击返回时间；逐次记录还包含点击前的终端状态和时间。两次忙时样本都在入口回答之前读到 `Type to queue input`；两次空闲样本都已读到入口回答及 `Type a prompt`。原定空闲的 `20261120T022143Z` 在入口答案标记出现后立即点击，轮末记录晚了约 4 秒，因此单列。最后一个样本的入口实际回答为 `P4ACK 475`，首版证据读取器因空格报错。修正入口标记匹配后，在同一原生会话文件上重验通过；续话答案和正文仍按原值精确匹配。该样本的原错误、复核结果和两轮生命周期均保存在逐次证据中。
+
+每个样本 JSON 保存了脱敏的模型响应标记、续话正文匹配结果、会话号、轮次号、点击时机、M3 和归档回读。ZCode 自行轮换原始模型日志，首个最终包忙时样本的原始模型文件在本轮稍后已轮换，取证时保存的摘录与终端轮次日志仍可复核。仅分开发送的对照包和本次最终包分别校验。[对照包校验](evidence/vscode-glm-default-20261120/split-only-package.json)
+
+在 `extension/` 中指定已安装的 VS Code 可执行路径、修复包和已信任的夹具目录后，依次运行以下两条命令。每次调用都会建立新的 profile、扩展目录和主题。模型输入和答案用不同算式区分，终端关闭后再核对主题、归档数量、运行号和桩指纹。
+
+```sh
+export VSCODE_EXECUTABLE_PATH='/Applications/Visual Studio Code.app/Contents/MacOS/Code'
+export TRIVIUM_TEST_VSIX="$PWD/.vscode-test/glm-default-20261120/trivium-cockpit-0.3.0.vsix"
+export TRIVIUM_M1_FIXTURES=/private/tmp/trivium-m1-rSWtkl
+npm run real:m1 -- glm --glm-timing=idle
+npm run real:m1 -- glm --glm-timing=busy
+```
+
+## Phase 4 原包与历史记录
+
 **截至 11 月 20 日，Phase 4 验收通过。GLM 续话须使用下文实测配置。** 当前 0.3.0 安装包 SHA-256 为 `50f5929c2028ecf2ae465996bc778fe3f2c0f30aa2fabfbc2c7549f09eccbe06`。Codex、Claude Code、Gemini、GLM 均已在真实 M1 会话中验证入口、续话和关闭后监控。GLM 的续话在 `split` 模式通过，默认模式两次未获回答。独立 Mac mini 已完成首次隔离安装、入口 B 与人工审批，甲窗批准前后的记录和画面均已回收。新包和旧包的审批按机器、运行编号和主题分别记录。
 
 ## 11 月 20 日当前交付

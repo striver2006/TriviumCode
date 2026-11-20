@@ -10,6 +10,9 @@
  * - 关闭：onDidCloseTerminal → 通知驾驶舱降级 M3。
  */
 import * as vscode from 'vscode';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { ZcodeTurns } from './zcodeTurns';
 import type { AgentId } from './carriers';
 
 export type SendMode = 'execute' | 'split' | 'manual';
@@ -26,12 +29,14 @@ export interface LaunchOptions {
   /** shellCommand 模式的解释器绝对路径（探针 runner 或 wrapper 内嵌 node） */
   nodePath?: string | null;
   scriptEnv?: Record<string, string>;
+  waitForZcodeTurn?: boolean;
 }
 
 export interface LaunchSettings {
   readyDelayMs: number;
   sendMode: SendMode;
   segmentBytes: number;
+  waitForZcodeTurn?: boolean;
 }
 
 interface Session {
@@ -39,6 +44,8 @@ interface Session {
   terminal: vscode.Terminal;
   /** 注入进行中（供 UI 提示，不做硬锁） */
   injecting: boolean;
+  turns?: ZcodeTurns;
+  pending?: Promise<void>;
 }
 
 export const terminalKey = (agentId: string, topic: string, entry: string): string =>
@@ -51,7 +58,7 @@ export class TerminalRelay implements vscode.Disposable {
   private readonly closeListener: vscode.Disposable;
   private readonly closeHandlers = new Set<(key: string) => void>();
 
-  constructor() {
+  constructor(private readonly logRoot?: string) {
     this.closeListener = vscode.window.onDidCloseTerminal((t) => {
       for (const [key, s] of this.sessions) {
         if (s.terminal === t) {
@@ -87,15 +94,21 @@ export class TerminalRelay implements vscode.Disposable {
     }
     const name = `Trivium · ${opts.display} · ${opts.topic}`;
     let terminal: vscode.Terminal;
+    let turns: ZcodeTurns | undefined;
     if (opts.launchMode === 'direct') {
       terminal = vscode.window.createTerminal({ name, shellPath: opts.entrypoint, cwd: opts.cwd });
     } else {
       // 让终端生命周期绑定到解释器。TUI 退出后不会退回可继续接收续话的 shell。
       if (!opts.nodePath) throw new Error('脚本入口需要 Node 解释器路径');
-      terminal = vscode.window.createTerminal({ name, shellPath: opts.nodePath, shellArgs: [opts.entrypoint], cwd: opts.cwd, env: opts.scriptEnv });
+      if (opts.waitForZcodeTurn && this.logRoot) {
+        mkdirSync(this.logRoot, { recursive: true });
+        turns = new ZcodeTurns(mkdtempSync(join(this.logRoot, 'zcode-')));
+      }
+      const env = turns ? { ...opts.scriptEnv, ZCODE_LOG_DIR: turns.dir } : opts.scriptEnv;
+      terminal = vscode.window.createTerminal({ name, shellPath: opts.nodePath, shellArgs: [opts.entrypoint], cwd: opts.cwd, env });
     }
     terminal.show();
-    const session: Session = { key, terminal, injecting: false };
+    const session: Session = { key, terminal, injecting: false, turns };
     this.sessions.set(key, session);
     return session;
   }
@@ -116,6 +129,10 @@ export class TerminalRelay implements vscode.Disposable {
       if (this.sessions.get(session.key) !== session || session.terminal.exitStatus !== undefined) {
         return false;
       }
+      if (session.turns) {
+        await session.turns.refresh();
+        session.turns.submitted();
+      }
       await this.sendWithMode(session.terminal, text, settings);
       return this.sessions.get(session.key) === session && session.terminal.exitStatus === undefined;
     } finally {
@@ -125,9 +142,27 @@ export class TerminalRelay implements vscode.Disposable {
 
   /** 续话中继：整段 + 回车（尽力而为；TUI 兼容性差的载体由用户改在终端直输） */
   async relay(session: Session, text: string, settings: LaunchSettings): Promise<void> {
-    await this.sendWithMode(session.terminal, text, {
+    const send = () => this.sendWithMode(session.terminal, text, {
       ...settings, sendMode: settings.sendMode === 'manual' ? 'execute' : settings.sendMode,
     });
+    const turns = session.turns;
+    if (!turns || !settings.waitForZcodeTurn) return send();
+    const deliver = async () => {
+      const started = Date.now();
+      while (this.sessions.get(session.key) === session && session.terminal.exitStatus === undefined) {
+        await turns.refresh();
+        if (turns.ready) {
+          turns.submitted();
+          await send();
+          return;
+        }
+        if (!turns.busy && Date.now() - started > 30000) throw new Error('未读到 ZCode 的轮次事件，请查看原生终端。');
+        await sleep(250);
+      }
+      throw new Error('原协同终端已关闭。');
+    };
+    session.pending = (session.pending ?? Promise.resolve()).then(deliver, deliver);
+    await session.pending;
   }
 
   private async sendWithMode(terminal: vscode.Terminal, text: string, s: LaunchSettings): Promise<void> {

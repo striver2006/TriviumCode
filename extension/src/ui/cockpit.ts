@@ -608,6 +608,7 @@ export class Cockpit implements vscode.Disposable {
       launchMode: carrier.launchMode,
       cwd: this.services.root,
       nodePath,
+      waitForZcodeTurn: settings.waitForZcodeTurn,
       scriptEnv: carrier.launchMode === 'shellCommand' ? scriptProviderEnv(cli?.['provider_config']) : undefined,
     });
     if (this.disposed) return; // CODEX-05：停用后不再注入
@@ -653,7 +654,13 @@ export class Cockpit implements vscode.Disposable {
       return;
     }
     const settings = launchSettingsFor(this.currentSessionKey.split('|')[0]!);
-    await this.services.relay.relay(session, text, settings);
+    try {
+      if (settings.waitForZcodeTurn) this.post({ type: 'banner', kind: 'info', text: '续话待发送，ZCode 当前轮结束后自动提交。' });
+      await this.services.relay.relay(session, text, settings);
+    } catch (error) {
+      this.post({ type: 'relay-result', ok: false, note: '续话未提交：' + (error instanceof Error ? error.message : String(error)) });
+      return;
+    }
     this.post({ type: 'relay-result', ok: true, note: '已中继到协同终端（尽力而为；TUI 兼容差时请在终端直输）。' });
   }
 
@@ -1573,7 +1580,7 @@ export class Cockpit implements vscode.Disposable {
 
 // ── 配置读取与工具 ──────────────────────────────────────────────────────────
 
-function launchSettingsFor(agentId: string): { readyDelayMs: number; sendMode: 'execute' | 'split' | 'manual'; segmentBytes: number } {
+function launchSettingsFor(agentId: string): { readyDelayMs: number; sendMode: 'execute' | 'split' | 'manual'; segmentBytes: number; waitForZcodeTurn: boolean } {
   const cfg = vscode.workspace.getConfiguration('trivium.launch');
   const overrides = cfg.get<Record<string, { readyDelayMs?: number; sendMode?: string; segmentBytes?: number }>>('carrierOverrides') ?? {};
   const ov = overrides[agentId] ?? {};
@@ -1583,6 +1590,7 @@ function launchSettingsFor(agentId: string): { readyDelayMs: number; sendMode: '
   return {
     readyDelayMs: ov.readyDelayMs ?? cfg.get<number>('readyDelayMs', 3000),
     sendMode,
+    waitForZcodeTurn: agentId === 'glm' && selected === 'auto',
     segmentBytes: ov.segmentBytes ?? cfg.get<number>('segmentBytes', 512),
   };
 }
