@@ -6,7 +6,7 @@
 
 1. **安装驾驶舱。** 在 VS Code 1.85 或更高版本打开左侧「扩展」，搜索 `@id:triviumcode.trivium-cockpit`，选择「TriviumCode 驾驶舱」并点「安装」。离线安装时，在「扩展」视图右上角点「… → 从 VSIX 安装…」，选择收到的 `.vsix` 文件。
 2. **准备项目。** 在本机安装 TriviumCode 核心，进入要审查的 Git 仓库执行 `init`，再按实际选用的 CLI 运行 `doctor` 探测。如果这台机器已经为该项目完成初始化和探测，可直接打开项目。安装命令和各平台的探测示例见[《TriviumCode 部署手册》第 2–4 节](https://gitcode.com/czb99/TriviumCode/blob/f156027b8adb5f1ef81f491dd2c86f7e16c2fb05/doc/06_deployment/部署手册.md)。
-3. **打开驾驶舱。** 在独立的 VS Code 窗口中打开项目根目录，点左侧「Trivium → 环境健康」核对所选 CLI。按 `F1` 运行「打开 Trivium 驾驶舱」，即可选择主攻助手（Driver）、审核者和任务入口。需要离线查阅本文时，按 `F1` 运行「打开 Trivium 驾驶舱使用手册」。
+3. **打开驾驶舱。** 在独立的 VS Code 窗口中打开项目根目录，点左侧「Trivium → 环境健康」核对所选 CLI。从菜单「查看 → 命令面板」打开命令面板（macOS 快捷键 `⌘⇧P`，Windows 和 Linux 快捷键 `Ctrl+Shift+P`），运行「打开 Trivium 驾驶舱」，即可选择主攻助手（Driver）、审核者和任务入口。需要离线查阅本文时，在命令面板运行「打开 Trivium 驾驶舱使用手册」。
 
 ## 走通一次入口 B
 
@@ -125,7 +125,7 @@ npm run package      # vsce 打包 .vsix
 ```
 
 开发前在仓库根目录和 `extension/` 分别安装依赖。可用 `VSCODE_EXECUTABLE_PATH` 指定本机 VS Code 主程序；缺省下载测试运行时。包安装回归可用
-`TRIVIUM_TEST_VSIX="$PWD/trivium-cockpit-0.3.0.vsix" TRIVIUM_KEEP_WINDOW=1 npm run e2e`。
+`TRIVIUM_TEST_VSIX="$PWD/trivium-cockpit-0.3.1.vsix" TRIVIUM_KEEP_WINDOW=1 npm run e2e`。
 脚本打印临时仓、隔离 profile、审批前回读与截图的位置。保留的「入口B验收甲」窗口用于人工审批。
 
 入口 A 真机专项在扩展目录运行。先完成核心构建，指定 VSCODE_EXECUTABLE_PATH 和 TRIVIUM_TEST_VSIX，保留本机已登记的 GLM 后台探针。命令为 `npm run real:glm-entry -- /绝对路径/zcode`，脚本模式为 `npm run real:glm-entry -- /发行目录/bin/zcode.mjs /绝对路径/node`。登录、选模和原生工具确认由操作者完成。
