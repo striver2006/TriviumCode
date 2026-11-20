@@ -27,7 +27,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import type { CriticRequest, CriticResult, ModelUnenforcedCause } from '../types.js';
-import { run } from '../util/exec.js';
+import { runReviewProcess, type StdoutTarget } from '../live-stdout.js';
 import { ensureDir, exists, sha256File, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
 import { IS_WIN } from '../util/platform.js';
 import {
@@ -405,6 +405,7 @@ export function zcodeStorageRedirectEnv(root: string): Record<string, string> {
 export const ZCODE_CREDENTIAL_ENV_KEYS: readonly string[] = ['ZCODE_API_KEY', 'ZCODE_BASE_URL'];
 
 export interface ZcodeInvokeOptions {
+  stdoutTarget?: StdoutTarget;
   entry: string;
   node: string;
   cwd: string;
@@ -519,7 +520,7 @@ export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvoke
     }
   }
 
-  const r = await run(opts.node, args, { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, killTree: true });
+  const r = await runReviewProcess(opts.stdoutTarget, opts.node, args, { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, killTree: true });
 
   /*
    * 「无法定位 Built-in Provider Config」是**布局/环境**问题而非模型问题：它要先于
@@ -1373,6 +1374,7 @@ export const zcodeAdapter: CriticAdapter = {
     let out: ZcodeInvokeOutcome;
     try {
       out = await invokeZcode({
+        stdoutTarget: { path: stdoutPath, attempt: ctx.attempt ?? 1 },
         entry,
         node: ctx.nodePath,
         cwd: req.project_root,
@@ -1387,7 +1389,6 @@ export const zcodeAdapter: CriticAdapter = {
       return failedResult('glm', { status: 'failed', reason: `拉起 zcode 失败：${(e as Error).message}` });
     }
 
-    await fs.writeFile(stdoutPath, out.stdout, 'utf8');
 
     if (out.timedOut) {
       return failedResult('glm', {

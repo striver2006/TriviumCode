@@ -1,0 +1,75 @@
+[
+  {
+    "command": "npm run check",
+    "exit": 1,
+    "localLog": "/tmp/e1-f-root.log",
+    "logSha256": "a9a473714c4c8250aa8d4d8b9d9f7e505afd41fc59e435a00448d6dcefd037ee",
+    "tests": 4077,
+    "pass": 4060,
+    "fail": 1,
+    "skipped": 16,
+    "cause": "新增测试直接调用 mkdtemp，与仓库统一临时目录契约不符"
+  },
+  {
+    "command": "scratchDir 前缀和写入器定向用例",
+    "exit": 1,
+    "localLog": "/tmp/e1-f-unit-fix.log",
+    "logSha256": "113a9abf2b2f4038baaf8b107420234b201b82ea39493e617ad2decf00d7630f",
+    "tests": 10,
+    "pass": 6,
+    "fail": 4,
+    "skipped": 0,
+    "cause": "首次迁移的前缀未以 trivium- 开头"
+  },
+  {
+    "command": "临时目录契约、写入器和脱敏清单定向用例",
+    "exit": 0,
+    "localLog": "/tmp/e1-f-focused.log",
+    "logSha256": "df7e3f7437fc362b63698732860991b9eeb71816f1ae9f07421f4e0de01def54",
+    "tests": 10,
+    "pass": 10,
+    "fail": 0,
+    "skipped": 0
+  },
+  {
+    "command": "npm run check",
+    "exit": 0,
+    "localLog": "/tmp/e1-f-root2.log",
+    "logSha256": "4a338ba9b32699eefaee3ed0a82c058c33bfc0aedccdc63b03b59d57879134b2",
+    "tests": 4077,
+    "pass": 4061,
+    "fail": 0,
+    "skipped": 16
+  },
+  {
+    "command": "cd extension && npm run check",
+    "exit": 0,
+    "localLog": "/tmp/e1-f-ext.log",
+    "logSha256": "f4af6584772bfc5906ee6da63fa70bef203a54e0a976da8126b1882b277c9812",
+    "tests": 185,
+    "pass": 185,
+    "fail": 0,
+    "skipped": 0,
+    "extensionHostPassed": 83
+  },
+  {
+    "command": "cd extension && npm run package -- --out trivium-cockpit-0.3.0-e1.vsix",
+    "exit": 0,
+    "localLog": "/tmp/e1-s8-package.log",
+    "logSha256": "d16d00393c3f3383f9f35e8c582ceb40e307067f8a2db1651df0fe6fcbdd5dd7"
+  },
+  {
+    "command": "cd extension && npm run e2e",
+    "exit": 0,
+    "localLog": "/tmp/e1-f-e2e.log",
+    "logSha256": "3d7e06e815e4cbdd53230562ec1fb18d8a5c4ee08b42c8bb22ae971e9f9ecd65"
+  },
+  {
+    "command": "trivium verify --topic E1-审查员stdout实时输出",
+    "runId": "20261120T051557Z",
+    "exit": 0,
+    "record": ".reviews/E1-审查员stdout实时输出/verify/_meta/verify-20261120T051557Z.json",
+    "localLog": "/tmp/e1-f-verify.log",
+    "logSha256": "e262c6dd5aaa843b0fa3d06c32f62079fe2835cbee9821c449a7ee34e8dae346"
+  }
+]

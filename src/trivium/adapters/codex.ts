@@ -16,7 +16,7 @@ import { promises as fs } from 'node:fs';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import type { CriticRequest, CriticResult, CodexCriticConfig } from '../types.js';
-import { run } from '../util/exec.js';
+import { runReviewProcess, type StdoutTarget } from '../live-stdout.js';
 import { ensureDir, exists, sha256File, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
 import { IS_WIN } from '../util/platform.js';
 import { agentConfigOf } from '../config.js';
@@ -42,6 +42,7 @@ import {
 } from './base.js';
 
 export interface CodexInvokeOptions {
+  stdoutTarget?: StdoutTarget;
   bin: string;
   cwd: string;
   /** 送审包全文。走 stdin，不进 argv */
@@ -140,7 +141,7 @@ export async function invokeCodex(opts: CodexInvokeOptions): Promise<CodexInvoke
     isolationEnv['HOMEDRIVE'] = undefined;
     isolationEnv['HOMEPATH'] = undefined;
   }
-  const r = await run(opts.bin, args, {
+  const r = await runReviewProcess(opts.stdoutTarget, opts.bin, args, {
     cwd: opts.cwd,
     env: isolationEnv,
     /*
@@ -763,6 +764,7 @@ export const codexAdapter: CriticAdapter = {
     let out: CodexInvokeOutcome;
     try {
       out = await invokeCodex({
+        stdoutTarget: { path: stdoutPath, attempt: ctx.attempt ?? 1 },
         bin,
         cwd: req.project_root,
         prompt: req.brief_text,
@@ -782,7 +784,6 @@ export const codexAdapter: CriticAdapter = {
       });
     }
 
-    await fs.writeFile(stdoutPath, out.stdout, 'utf8');
     const trace = parseCodexEvents(out.stdout);
 
     if (out.timedOut) {

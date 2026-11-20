@@ -1,3 +1,4 @@
+import { interruptStdout } from './live-stdout.js';
 /**
  * 长时调用协议：`--start` / `--wait` / `--status` / `--cancel`
  * （设计 §7.5 / AD-03，按修订版 M2 计划 §2.1 实现四件套而非两件套）。
@@ -1212,6 +1213,7 @@ function makeWorkerShutdownController(o: { detach: () => void }): { began(): boo
       void (async () => {
         try {
           const r = await shutdownTrackedTrees({ graceMs: WORKER_TREE_GRACE_MS, killWaitMs: WORKER_TREE_KILL_WAIT_MS });
+          await interruptStdout();
           if (r.groups.length === 0) {
             process.stderr.write(`[worker] 收到 ${trigger}：没有在跑的审查员 CLI\n`);
           } else {
@@ -1329,6 +1331,7 @@ export function installForegroundInterruptForwarding(): () => void {
     void (async () => {
       try {
         const r = await shutdownTrackedTrees({ graceMs: WORKER_TREE_GRACE_MS, killWaitMs: WORKER_TREE_KILL_WAIT_MS });
+        await interruptStdout();
         if (r.remaining.length > 0) process.stderr.write(`未能确认退出的进程组：${r.remaining.join('，')}\n`);
       } catch (e) {
         process.stderr.write(`结束审查员 CLI 时出错：${(e as Error)?.message ?? String(e)}\n`);

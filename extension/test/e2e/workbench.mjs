@@ -32,7 +32,7 @@ export async function installVsix({ code, base, vsix }) {
   assert.equal(installed.trim(), manifest.publisher + '.' + manifest.name + '@' + manifest.version);
   console.log(installed.trim());
 }
-export async function openWorkspace(fx, { base, code, vsix, children, terminalAccess = false, sendMode, readyDelayMs }) {
+export async function openWorkspace(fx, { base, code, vsix, children, terminalAccess = false, sendMode, readyDelayMs, inspectExtensions }) {
   const profile = path.join(base, path.basename(fx.root) + '-profile');
   const extensions = path.join(base, 'extensions');
   const profileArgs = ['--user-data-dir', profile, '--extensions-dir', extensions];
@@ -46,6 +46,7 @@ export async function openWorkspace(fx, { base, code, vsix, children, terminalAc
   }));
   const args = [...profileArgs, '--new-window', '--skip-welcome', '--skip-release-notes', '--disable-updates',
     '--disable-workspace-trust', '--locale=en', '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1',
+    ...(inspectExtensions ? ['--inspect-extensions=' + inspectExtensions] : []),
     ...(vsix ? [] : ['--extensionDevelopmentPath=' + extensionRoot]), fx.root];
   const log = await fs.open(path.join(profile, 'launch.log'), 'w');
   const child = spawn(code, args, { stdio: ['ignore', log.fd, log.fd], detached: true });

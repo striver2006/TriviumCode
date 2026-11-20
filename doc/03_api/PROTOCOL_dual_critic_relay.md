@@ -436,6 +436,8 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一�
 ~/.trivium/runs/<repo_id>/<run_id>/<critic>/{out,trace}/
 ```
 
+E1 在 `<runDir>/<critic>/out/stdout-live.json` 发布只读展示记录。它包含 `schema=trivium.stdout.v1`、正整数 `attempt`、`file`（stdout.jsonl 或 stdout.json）、本次 UUID `identity`、设备号与 inode 字符串 `dev/ino`、已确认的字节数 `bytes`、`state` 与 `reason`。streaming 表示正在捕获，deferred 表示暂缓，complete 表示已确认，recovered 表示在收尾时恢复，incomplete 表示完整性未确认。状态以同目录原子替换发布，消费者须核对文件身份。普通重试的旧文件移到 out/attempt-N，作废尝试随整个 out 搬入 voided/<critic>/attempt-N。无该记录的运行只提供既有日志和归档。展示记录不参加投票、证据核验或归档。首次打开失败时，核心在 EOF 再试一次独占创建。标准名已被占用时，实际文件和描述放到 out/attempt-N，raw_stdout_path 指向实际文件。事后清扫若额外改写，核心发布新身份、实际字节数及 incomplete/scrub_rewritten，驾驶舱提示实时内容一致性未通过。完整输出入口还须核对终态长度。
+
 这是隔离机制的一部分：审查进行中，对方**本次**结论在项目树内物理不存在
 （§10.1 第 ② 道「延迟落盘」）。原始日志可能含仓库片段，默认保留 30 天。
 

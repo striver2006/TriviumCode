@@ -1,0 +1,253 @@
+---
+schema: trivium.review.v2
+topic: E1-审查员stdout实时输出
+stage: code
+role: claude
+vendor: anthropic
+agent_cli: claude/2.1.328
+model_requested: qwen4-max
+model_effective: qwen4-max
+model_effective_source: envelope
+effort: high
+effort_requested: high
+effort_effective: null
+effort_effective_source: unverified
+tier: null
+tier_source: profile
+run_id: 20261120T041914Z
+rerun_index: 1
+snapshot_hash: sha256:feb88031d88894a03f91a57468a49e40f0b62816a6b8d28fa8dd61170089e2e4
+blind: true
+started_at: 2026-11-20T04:19:22.890Z
+finished_at: 2026-11-20T04:46:33.116Z
+duration_s: 1630
+tool_calls:
+  read: 42
+  grep: 22
+  glob: 1
+  run_command: 0
+  project_reads: 41
+evidence_ok: true
+verdict: pass-after-changes
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 6
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: true
+drift: false
+heterogeneous: unknown
+access:
+  requested_mode: profile
+  profile: qwen
+  launcher_requested: /Users/chenzhenbo/.local/bin/cld
+  launcher_effective: /Users/chenzhenbo/.local/bin/cld
+  wrapper_sha256: bc21f5228f4214c85678385c6288898b6daaebcba6f485c1a1ce2de7f02f28bf
+  configuration_sha256: 5b1c4230c0db1a84419d63ecf7301992ce7a1ac777bed23db945462b78eb6dc8
+  provider_declared: qwen
+  provider_declared_source: profile
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: claude
+    status: unknown
+    left_model: null
+    right_model: qwen4-max
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: glm
+    right: claude
+    status: different-family
+    left_model: bigmodel-coding-plan/GLM-5.3
+    right_model: qwen4-max
+    left_source: trace
+    right_source: envelope
+    reason: 模型族不同：glm / qwen
+  - left: gemini
+    right: claude
+    status: different-family
+    left_model: gemini-4-neon-high
+    right_model: qwen4-max
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：gemini / qwen
+override_reason: 左侧模型信息缺失
+session_id: eb38c012-3944-4e30-845a-0271d7067b74
+---
+
+# 代码审查：E1-审查员stdout实时输出
+
+> Critic-D · Anthropic Claude Code ｜ 回读模型 `qwen4-max` ｜ 请求模型 `qwen4-max`
+> ｜ 运行 `20261120T041914Z`
+> ｜ 本轮审核者 glm、gemini、claude
+
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+未发现 blocker/major；实现与已批准计划、PROTOCOL、手册高度同口径，性能证据自洽且达冻结阈值。最值得关注：核心写侧状态机（攒批/轮转/恢复/seal/interrupt/截断）在 npm run check 内零覆盖，故障矩阵只在手动安装态 e2e，且 timeout 场景并未真正走到核心 result.timedOut 分支（CLAUDE-03）。其次：completePath 漏查 voided 树内嵌套 attempt 目录，作废重跑后旧尝试「查看完整 stdout」误报已清理（CLAUDE-01）；ENOENT 提示一律归因「旧核心不提供」，对 TRIVIUM_LIVE_STDOUT=0 与打开失败场景失实（CLAUDE-02）。报告复跑入口缺 lifecycle/vendors 命令与 perf 基线包依赖（CLAUDE-04）；故障/隐藏证据缺 VSIX 与扩展 bundle 哈希、所用核心均为中间构建而非交付核心（CLAUDE-05）；parity 测试「写入点在适配器」前提随写入点外移而漂移（CLAUDE-06）。均为 minor，按意见修改后即可实施，无需再审。
+
+**结论**：修改后通过（`pass-after-changes`）
+
+## 审查意见（共 6 条：次要 6）
+
+### CLAUDE-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/src/monitor/stdoutTail.ts:220` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：completePath 只查 out/、out/attempt-N/、voided/<critic>/attempt-N/ 三处。作废重跑把整个 out（含此前普通重试留下的 attempt-M 子目录）搬入 voided/<critic>/attempt-N/ 后，第 M 次尝试（M<N）的完整 stdout 实际位于 voided/<critic>/attempt-N/attempt-M/，不在搜索列表内。Webview 按 attempt 保留旧视图且 canOpen 停留在 true，用户点击旧尝试的「查看完整 stdout」会落入「该次完整 stdout 已清理或无法核实文件身份」告警，而文件其实存在。
+
+**依据**：读了 extension/src/monitor/stdoutTail.ts:215-231（三处搜索列表）；src/trivium/review.ts:2520-2539 确认 stashVoidedOutput 将整个 out 搬为 voided/<侧>/attempt-<n>/；src/trivium/live-stdout.ts:92-103 确认 preservePrevious 在 out/ 下建 attempt-M 并随整目录搬迁；extension/src/ui/cockpitHtml.ts:385-411 确认旧 attempt 视图按 slotId 持续挂回卡片、宿主 cursor 按侧而非按 attempt 推进，旧视图不再收到补丁故 canOpen 不更新；extension/src/ui/cockpit.ts:307-309 为告警出口。
+
+**建议**：在 completePath 增加对 voided/<critic>/attempt-*/attempt-<attempt> 的有界枚举搜索（readdir 过滤 attempt-N 目录后逐一核对身份）；或至少把告警措辞改为不断言「已清理」。
+
+### CLAUDE-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/src/monitor/stdoutTail.ts:193` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：ENOENT 被一律标注「此尝试尚无实时输出记录（旧核心不提供）」，但同一分支还覆盖三种新核心情形：TRIVIUM_LIVE_STDOUT=0 关闭开关（只发布内容文件、从不写记录）、start() 打开/轮转失败（ownsOutput=false 使 state() 空转，无任何记录发布）、适配器在 invoke 之前失败（如路线探活失败，LiveStdout 根本未创建）。计划冻结的措辞是中性的「此运行未提供实时 stdout」，实现却断言了一个可能错误的具体原因，误导排障。
+
+**依据**：读了 extension/src/monitor/stdoutTail.ts:190-201（catch 分支 ENOENT 措辞）；src/trivium/live-stdout.ts:301-308（=0 路径只 publish 内容）、136-155（start 失败 defer open_failed 且 state 因 ownsOutput=false 不发布）；extension/README.md「查看审核者的实时输出」节明文记载 =0 开关；计划稿 .reviews/E1-审查员stdout实时输出/plan/2026-11-20-E1-审查员stdout实时输出-r2-codex.md §插件3 的中性措辞要求。
+
+**建议**：改用计划的中性措辞（如「此尝试未提供实时 stdout 记录」），或在记录/worker.log 层面区分关闭、打开失败与旧核心三种成因后再给提示。
+
+### CLAUDE-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/live-stdout.ts:112` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：LiveStdout 写侧状态机（32KiB/100ms 攒批、preservePrevious 轮转、deferred/recovered/incomplete、seal 身份复核、interruptStdout、capture_limit/pipe_open 截断）在 npm run check 论域内没有任何测试驱动：test/unit/live-stdout.test.ts 只测 StdoutRedactor，test/ 全目录 grep 不到 LiveStdout/runReviewProcess/stdout-live/trivium.stdout.v1。故障矩阵全部落在手动安装态 runStdoutLifecycle.mjs（需 VSIX/VS Code 环境，不在闸门内）；且其 timeout 场景由桩伪造侧级 timeout 而 producer 正常跑完——归档证据里三侧 state 均为 complete、reason null——核心 result.timedOut→incomplete/timeout 分支从未被真正执行。计划「单测慢盘须审查正常完成、侧结果与无慢盘一致」实际以 e2e 而非单测兑现，属应显式裁决的层级偏离。另外 trivium.stdout.v1 形状在写端、读端校验、单测夹具三处独立硬编码，无共享常量或闸门内写读对账，漂移只有手动 e2e 能抓。
+
+**依据**：读了 test/unit/live-stdout.test.ts 全文（仅 StdoutRedactor 三用例）；对 test/ 目录 grep LiveStdout|runReviewProcess|stdout-live|trivium.stdout.v1 零命中；extension/scripts/runStdoutLifecycle.mjs:33-37（timeout 桩规格）；doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json:102-142（timeout 场景三侧 complete/reason null、phase failed）；src/trivium/live-stdout.ts:138-139、279-283 与 extension/src/monitor/stdoutTail.ts:37-40、extension/test/unit/stdoutTail.test.ts:29-30 三处形状硬编码；计划稿 §实施契约「单测慢盘」句。
+
+**建议**：补一个闸门内测试（单测注入 fs 故障或集成真子进程）驱动 runReviewProcess 经历短写/慢写/永久失败/超时/收集上限，断言 state/reason/seal 与侧结果不变；并让该测试用写端真实产物喂读端 infoAt 校验（或共享形状常量），把写读对账收进 npm test。
+
+### CLAUDE-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/05_testing/REPORT_2026-11-20_VSCode审查员实时输出验收.md:52-54` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：「复跑入口」只给了 npm run check/package/e2e 与 runStdoutPerf.mjs，缺两个已归档场景脚本的复跑命令：runStdoutLifecycle.mjs 需要场景 argv（legacy/fault/retry/timeout/cancel/hidden/idle-baseline）且 legacy/idle-baseline 依赖 TRIVIUM_BASELINE_ASSETS 环境变量；runStdoutVendors.mjs 需要 driver argv 且会临时拷贝本仓 config.local.yaml。runStdoutPerf.mjs 还硬依赖 extension/trivium-cockpit-0.3.0-glm-relay.vsix 存在与 TRIVIUM_TEST_VSIX，这些前置未在该节写明。计划交付节要求「归档每种场景……可复跑命令」，当前报告不满足逐场景可复跑。
+
+**依据**：读了 doc/05_testing/REPORT_2026-11-20_VSCode审查员实时输出验收.md:52-54（复跑入口全文）；extension/scripts/runStdoutLifecycle.mjs:20-23（TRIVIUM_BASELINE_ASSETS）与末尾 argv 场景循环；extension/scripts/runStdoutVendors.mjs:85-91（argv driver、config.local.yaml 拷贝与删除）；extension/scripts/runStdoutPerf.mjs:19-22（glm-relay vsix 硬编码与 TRIVIUM_TEST_VSIX）；计划稿 §交付「可复跑命令」要求。
+
+**建议**：在复跑入口补齐 lifecycle 的场景 argv 与 TRIVIUM_BASELINE_ASSETS 获取方式、vendors 的 argv 与凭据临时拷贝说明、perf 的基线 VSIX 前置，做到每种归档场景照抄即可复跑。
+
+### CLAUDE-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json:1` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：故障/重试/超时/取消证据是裸场景数组，未记录 VSIX 路径与哈希、包内实际安装的 extension bundle 哈希；隐藏/空闲证据只记 vsix 路径无哈希。计划验收节要求桩性能/故障运行「记录加载的 runtime bundle 绝对路径及 SHA-256、VSIX 与包内实际安装的 extension bundle 哈希」——核心侧 core/coreSha 记了，扩展侧溯源缺失。且这些场景的 coreSha（af4f363b、56bfc9b3、d386e0b5）互不相同、均非交付复验核心 e440fdd1，即故障矩阵归档于多个中间构建；报告以「初验」如实标注，但交付 bundle 上未复跑归档该矩阵，证据与交付件之间差一段可核对的链接。
+
+**依据**：读了 doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json:1-20（数组头、无 vsix 字段）与 102-149（timeout/cancel 的 coreSha）；隐藏及空闲初验.json:1-10（vsix 路径无哈希、coreSha d386e0b5）；安装包四路径复验.json:1-12（交付核心复验 vsixSha 06596f19，报告正文记交付核心 e440fdd1）；extension/scripts/runStdoutLifecycle.mjs 的 report 结构（base/vsix/scenarios，归档时仅取 scenarios）；计划稿 §验收与证据第三条的哈希记录要求。
+
+**建议**：归档时保留脚本 report 的 vsix/vsixSha 并补记安装态 extension.js 哈希；对交付核心与交付 VSIX 复跑一次故障/隐藏矩阵并归档，或在报告中显式说明中间构建与交付件的差异范围及为何可外推。
+
+### CLAUDE-06 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/contract/orchestrator-logs-parity.test.ts:16` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：parity 测试的前提「写入点在各适配器里」已随 E1 漂移：stdout.jsonl/stdout.json 的实际写入点移到 src/trivium/live-stdout.ts（adapters/ 之外），适配器只剩 path.join(req.out_dir, 'stdout.jsonl') 的路径构造。死条目检查今天仍绿是因为正则恰好匹配到路径构造字面量，属间接幸存：日后把路径构造挪进助手函数会误报死条目，而在 live-stdout.ts 新增一种 out/ 日志写入则完全退出该对账论域（正则只扫 adapters/*.ts），改一漏二不报错——正是该测试 docblock 自述要防的形态。
+
+**依据**：读了 test/contract/orchestrator-logs-parity.test.ts:8-40、69-78（WRITE_TO_OUT_DIR 正则与 ADAPTERS 扫描范围、docblock 前提）；grep 确认四适配器仍构造 path.join(req.out_dir, 'stdout.jsonl'/'stdout.json')（agy.ts:403、claude.ts:1032、codex.ts:746、zcode.ts:1343）；src/trivium/live-stdout.ts:148、268、304 为实际写入点；diff 中四适配器的 fs.writeFile(stdoutPath, ...) 均已删除。
+
+**建议**：把对账论域显式扩到 live-stdout.ts 的写入目标（或断言各适配器 stdoutTarget.path 的 basename 属于 ORCHESTRATOR_LOG_FILES），并同步修订 docblock 的写入点描述，使机器 guard 与真实写入拓扑一致。
+
+## 认为正确的部分
+
+- 写前脱敏架构正确：safeBoundary 以 redactSecrets 自身为 oracle、不抄规则表；逐值替换→模式脱敏与 scrubGatewayEnv 组合逐字同口径（claude.ts:564-568 对 live-stdout.ts:38-41）；单测对五种凭据形态做每字节切点穷举锁前缀一致性；PEM 与多行网关值保守走有界暂缓＋收尾整段恢复，方向是 fail-closed。
+- exec.ts 的 settled 时序改动正确：PTY flush 仍被接受、兑现后孙进程迟到输出同时退出解析与实时文件；capture_limit 与 pipe_open 有独立可观测 reason，且 pipe_open 只在 exit 后 2 秒未 close 时触发。
+- 写路径不改票：E1 I/O 故障只降级展示（deferred/incomplete），侧结果仍取适配器内存结果；seal 在 scrub 后复核 dev/ino/size 并披露 verification_failed；恢复走原子换 inode，使未返回的旧写入只作用于旧文件；interruptStdout 有 worker watchdog 兜底退出。
+- 轮转与脱敏对账完整：preservePrevious、attemptLogs、redactVoidedAttempts 覆盖普通重试与作废两棵树；新 parity 测试用注册表派生 id（纪律 7）；redactLogs 对缺失文件不计 skipped，attempt 目录里缺 trace/rollout 不会误伤 complete 判定。
+- 读端安全边界扎实：realpath 信任锚、O_NOFOLLOW|O_NONBLOCK、普通文件＋dev/ino 身份核验、2KiB 记录上限、固定文件名与枚举校验；open-stdout 不接受任意路径，宿主重做真实路径/父目录/普通文件/尝试身份核对后才打开。
+- 隐藏/空闲生命周期与手册承诺一致：visibility 门控 pushRuns 与 tick、watch＋轮询混合、按侧去抖与 400ms 元数据缓存、终态 closeWatches、recentRuns 只留路径索引；inspector 证据中 timers/opens/live 计数非空转（7→7、11→11），恢复 51ms 有原始时间戳。
+- 性能证据自洽且达编码前冻结阈值：CSV 与报告表格中位数算术吻合，dense P95 41–47ms、sparse 125–135ms，stdout 实写恰等于预期脱敏字节（25,165,824 / 46,080），元数据约 1.2KB 远小于 16KiB，540 个计划标记零缺失，基线缺失保留在分母。
+- 文档同步到位：PROTOCOL §8 的字段/状态/轮转/豁免描述与实现一致，三份设计文档、extension/README、11 月 5 日计划链接与 doc/05_testing/README 索引同批更新，符合改动同步清单；版本沿用 1.3.7/0.3.0 与任务要求一致。
+
+## 未覆盖范围（本侧盲区）
+
+- 本侧无执行命令能力：npm run check、npm run e2e、runStdout* 脚本均未实际运行，所有运行期行为判断为代码推理＋归档证据交叉核对。
+- Windows 路径（rename 重试、NTFS ACL、O_NOFOLLOW 缺失、\r\n 在 stdout 视图按 \n 切分的显示效果）未验证；报告亦明示 Windows 安装态未测。
+- 两份 .json.gz 原始证据（性能逐轮、优化前后诊断轮）未解压核对，仅复核 CSV/JSON 摘要与报告表格的中位数、P95、写量与阈值算术。
+- 真实厂商 CLI 的计时行为（GLM 收尾整批、Gemini 两次调用）采信报告与实际CLI计时.json，未重新观测。
+- 未审计完整归档/闸门/证据核验链，仅核对 E1 触点：runner 的 scrub→seal→stash 顺序、两层 scrub 枚举、raw_stdout_path 无判定消费方。
+- hostCounters 的 inspector 注入与 macOS rusage 采样脚本仅阅读未执行，其计量可信度由归档证据中非零且冻结的计数间接佐证。
+- 根 README 产品版本行（1.3.2）与 package.json（1.3.7）不一致属补丁外既有状态，未作为 E1 变更评估。
+
+## 实际查阅的项目文件
+
+- `.reviews/E1-审查员stdout实时输出/code/_meta/changes-20261120T041914Z.diff`
+- `.reviews/E1-审查员stdout实时输出/plan/2026-11-20-E1-审查员stdout实时输出-r2-codex.md`
+- `CLAUDE.md`
+- `AGENTS.md`
+- `README.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `package.json`
+- `src/trivium/live-stdout.ts`
+- `src/trivium/secrets.ts`
+- `src/trivium/runner.ts`
+- `src/trivium/scrub.ts`
+- `src/trivium/util/exec.ts`
+- `src/trivium/util/fsx.ts`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/review.ts`
+- `src/trivium/types.ts`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/adapters/stub.ts`
+- `src/trivium/adapters/stub-stdout.ts`
+- `src/trivium/adapters/agy.ts`
+- `src/trivium/adapters/codex.ts`
+- `src/trivium/adapters/zcode.ts`
+- `extension/src/monitor/stdoutTail.ts`
+- `extension/src/monitor/statusWatch.ts`
+- `extension/src/monitor/statusModel.ts`
+- `extension/src/ui/cockpit.ts`
+- `extension/src/ui/cockpitHtml.ts`
+- `extension/test/unit/stdoutTail.test.ts`
+- `extension/package.json`
+- `extension/esbuild.mjs`
+- `extension/scripts/runStdoutPerf.mjs`
+- `extension/scripts/runStdoutLifecycle.mjs`
+- `extension/scripts/runStdoutVendors.mjs`
+- `test/unit/live-stdout.test.ts`
+- `test/contract/orchestrator-logs-parity.test.ts`
+- `doc/05_testing/REPORT_2026-11-20_VSCode审查员实时输出验收.md`
+- `doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json`
+- `doc/05_testing/evidence/vscode-stdout-e1-20261120/隐藏及空闲初验.json`
+- `doc/05_testing/evidence/vscode-stdout-e1-20261120/安装包四路径复验.json`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":42,"grep":22,"glob":1,"run_command":0,"project_reads":41}
+
+---
+
+*本文档由 TriviumCode 编排器从 `claude` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

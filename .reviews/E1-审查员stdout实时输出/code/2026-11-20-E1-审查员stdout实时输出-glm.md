@@ -1,0 +1,195 @@
+---
+schema: trivium.review.v2
+topic: E1-审查员stdout实时输出
+stage: code
+role: glm
+vendor: zcode
+agent_cli: zcode/0.17.3
+model_requested: GLM-5.3
+model_effective: bigmodel-coding-plan/GLM-5.3
+model_effective_source: trace
+effort_requested: null
+effort_effective: null
+effort_effective_source: null
+tier: null
+tier_source: legacy
+model_route: config_copy
+run_id: 20261120T041914Z
+rerun_index: 1
+snapshot_hash: sha256:feb88031d88894a03f91a57468a49e40f0b62816a6b8d28fa8dd61170089e2e4
+blind: true
+started_at: 2026-11-20T04:19:22.890Z
+finished_at: 2026-11-20T04:46:33.116Z
+duration_s: 769
+tool_calls:
+  read: 11
+  grep: 11
+  glob: 0
+  run_command: 0
+  project_reads: 12
+evidence_ok: true
+verdict: pass-after-changes
+findings_count:
+  blocker: 0
+  major: 1
+  minor: 2
+  nit: 1
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: unknown
+access:
+  requested_mode: standard
+  profile: null
+  launcher_requested: /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs
+  launcher_effective: /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs
+  wrapper_sha256: null
+  configuration_sha256: null
+  provider_declared: null
+  provider_declared_source: null
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: glm
+    status: unknown
+    left_model: null
+    right_model: bigmodel-coding-plan/GLM-5.3
+    left_source: null
+    right_source: trace
+    reason: 左侧模型信息缺失
+  - left: glm
+    right: gemini
+    status: different-family
+    left_model: bigmodel-coding-plan/GLM-5.3
+    right_model: gemini-4-neon-high
+    left_source: trace
+    right_source: envelope
+    reason: 模型族不同：glm / gemini
+  - left: glm
+    right: claude
+    status: different-family
+    left_model: bigmodel-coding-plan/GLM-5.3
+    right_model: qwen4-max
+    left_source: trace
+    right_source: envelope
+    reason: 模型族不同：glm / qwen
+override_reason: 左侧模型信息缺失
+session_id: sess_c63d78ae-48f5-4a64-9df5-20644d5e83aa
+---
+
+# 代码审查：E1-审查员stdout实时输出
+
+> Critic-B · 智谱 ZCode ｜ 回读模型 `bigmodel-coding-plan/GLM-5.3` ｜ 请求模型 `GLM-5.3`
+> ｜ 运行 `20261120T041914Z`
+> ｜ 本轮审核者 glm、gemini、claude
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+按安全、并发/错误处理、空值越界与测试缺口四个镜头审查了 E1 补丁及其在真实调用链中的落点。核心结论：脱敏先行的设计成立——StdoutRedactor 只发布已通过 safeBoundary 判定的整段 sanitize 结果，test/unit/live-stdout.test.ts 以逐字节切点穷举断言「已发布内容 ⊆ 最终脱敏前缀」，exec.ts 的 setEncoding('utf8') 保证了 chunk 与该契约一致；扩展侧 stdoutTail.ts 的路径校验（critic 名正则、O_NOFOLLOW、dev/ino 双核对、realpath 锚定、info 2048 字节上限、completePath 的三位置身份复核）对穿越与符号链接的防御扎实；scrub 对 attempt-N/voided 历史目录的枚举统一并配了会真失败的契约测试。发现一个 major：LiveStdout 打开/轮转失败时 finish() 在 !ownsOutput 处提前返回，而四个适配器的旧『结束后整份 writeFile』已删除，该次尝试将完全没有最终 stdout 文件（EEXIST 子场景下还会把上一次尝试的旧文件留在原地、被本次的 raw_stdout_path 指认），相比基线是证据链退化。另有 LiveStdout 状态机无自动化单测、confirmed 计数与晚到写完成的竞态、safeBoundary 快路径与 secrets 规则字符集的隐式耦合三条次要意见。
+
+**结论**：修改后通过（`pass-after-changes`）
+
+## 审查意见（共 4 条：重要 1 ｜ 次要 2 ｜ 吹毛求疵 1）
+
+### GLM-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/live-stdout.ts:238（finish 的 `if (!this.ownsOutput) return;`），配合 src/trivium/adapters/claude.ts:1147、agy.ts:425、codex.ts:784、zcode.ts:1389 处已删除的 `fs.writeFile(stdoutPath, out.stdout)`` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：start() 里 preservePrevious 抛错（info 损坏/unexpected_attempt/mkdir EEXIST）或 'wx' 打开失败（EMFILE、ENOSPC、EACCES、路径上残留旧文件）都会走 defer('open_failed')，此时 ownsOutput=false。此后 push 全部丢弃、finish() 在 `if (!this.ownsOutput) return` 提前返回——本次尝试不再有任何最终 stdout 落盘。而四个生产适配器原有的结束后整份 writeFile 已被删除，raw_stdout_path/rawStdoutPath 仍照常指向该路径。两种后果：一、瞬时打开故障（如派生高峰期的 EMFILE）导致整次尝试永久丢失原始 stdout，基线路径在收尾时 writeFile 大概率仍能成功；二、若 'wx' 因残留旧文件失败（上一次尝试 info 发布失败后重试即是此形态），旧文件留在原地，事实字段把它标成新尝试的原始输出，误导事后排查。注释只考虑了『不得覆盖先前尝试的文件』，却没给出不覆盖时的替代落盘或事实校正。
+
+**依据**：src/trivium/live-stdout.ts:145-155 start() 的 catch 把所有打开/轮转错误并入 defer('open_failed')；145 行前 push 以 `if (this.reason || this.ended) return` 丢块；finish() 221-238 行在 reason 分支之前先 `if (!this.ownsOutput) return`。补丁中 claude.ts/agy.ts/codex.ts/zcode.ts 四处 `await fs.writeFile(stdoutPath, out.stdout, 'utf8')` 均被删除，claude.ts:721 与 1206/1230 的 raw_stdout_path/rawStdoutPath 仍记录该路径。验收证据（doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json）只覆盖了 start 成功后的 write_failed/slow_disk 恢复，未覆盖 open_failed 分支。
+
+**建议**：在 !ownsOutput 的收尾路径恢复兜底落盘：路径空闲（不存在旧文件）时按旧路径整份 publish 脱敏后的全文；路径被旧文件占用时要么不动文件但把事实口径改为指向上一次尝试或缺失，要么以不与标准名冲突的明确名字落盘。至少要让 raw_stdout_path 与磁盘实况一致，避免把别的尝试的字节当成本次原始输出。
+
+### GLM-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/live-stdout.ts（LiveStdout 类整体）与 test/unit/live-stdout.test.ts` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：E1 风险最高的并发状态机——flush 的短写循环与 1 秒 slow_disk 计时、enqueue 队满降级、write_failed/pending_limit 两条恢复路径（含 pending_limit 的同 inode 前缀核对补写）、interrupt、seal 的收尾复核——没有任何自动化测试。npm run check 覆盖面里只有 StdoutRedactor（test/unit/live-stdout.test.ts 仅 46 行、三个用例）和 scrub 的 attempt 枚举契约（orchestrator-logs-parity.test.ts 新增用例）。这些故障路径目前只由手动脚本 runStdoutLifecycle.mjs 注入、以一次性 JSON 证据留痕，后续任何人改动 flush/defer 顺序时闸门不会拦回归。
+
+**依据**：补丁文件清单中核心侧新增测试仅 test/unit/live-stdout.test.ts（只测 StdoutRedactor 的切点穷举、半行 JSON 与未决上限）与 test/contract/orchestrator-logs-parity.test.ts 的新增契约用例；对照 extension/test/unit/stdoutTail.test.ts 对 StdoutTail 的 UTF-8 续读、隐藏补尾、轮转与身份核对都有自动化断言，核心侧 LiveStdout 是明显的不对称。
+
+**建议**：为 LiveStdout 补注入式单测：用可控的假 FileHandle 模拟挂起写（>1s 触发 slow_disk）、短写、写异常与 stat 身份漂移，断言各 reason 下的最终状态、恢复文件内容与 audit.seal 行为；把『审查结果不受 E1 I/O 故障影响』（计划 §4 的禁改票要求）也落成断言。
+
+### GLM-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/live-stdout.ts:48-54（safeBoundary 快路径）与 src/trivium/secrets.ts:156-237（RULES）` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：快路径 `/[}\]);!.0-9]\s*$/` 命中即免探测直接发布，其安全性依赖一条只存在于两处代码之间、没有任何机制互指的不变量：secrets.ts 所有规则的命中药方（值字符集）都不含 `}`、`;`、换行（跨行赋值靠探测、PEM 靠 BEGIN 前缀拦截）。我核对了现有全部规则——zcode-api-key、jwt、sk-/AIza/ghp/AKIA/xox 族、toml-bearer-token、generic-secret-assignment 的值类 `[A-Za-z0-9_\-+/]` 确实都不含边界字符，当前是安全的。但将来任何人给 RULES 加一条值里允许 `}`、`;` 或换行的规则，快路径会静默把半个密钥发布进实时文件，逐字节切点单测的 5 个样本也未必覆盖新形态。
+
+**依据**：secrets.ts:221 toml 值类 `[A-Za-z0-9_\-+/.]{16,}`、231 generic 值类 `[A-Za-z0-9_\-+/]{20,}`，均无边界字符；live-stdout.ts:49-51 对含 BEGIN 或多行 replace 原串的记录整体拒绝、其余走快路径免探测；live-stdout.test.ts 的样本集未与新规则建立任何联动。
+
+**建议**：把这条不变量显式化：在 secrets.ts 导出各规则值字符集并在测试里断言其与 safeBoundary 边界字符不相交，或至少在 RULES 与 safeBoundary 两处加互指注释，令新增规则时必然被提醒补样本。
+
+### GLM-03 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/live-stdout.ts:195-209（flush 写循环的 `this.confirmed += offset`）与 221-273（finish 的恢复分支）` |
+| 类别 | concurrency ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：defer('slow_disk') 触发后原批次写仍会在后台完成并执行 `this.confirmed += offset`；finish() 对非 pending_limit 的 reason 在未 await closing 的情况下直接 publish 换 inode 并重置 `this.confirmed = Buffer.byteLength(content)`。晚到的完成若落在这个重置之后，confirmed 会被再次抬升，随后 seal 的 `Number(stat.size) !== this.confirmed` 判红，把本已恢复完整的数据标成 verification_failed/incomplete。方向保守（宁可标未确认），但制造了难以解释的偶发终态，且 bytes 字段可能与磁盘不符。
+
+**依据**：live-stdout.ts:203 写闭包成功分支无条件 `this.confirmed += offset`，不检查 this.reason；finish() 235 行对 reason 情形仅 `void closing.catch(...)` 不等待，268 行随即 publish，272 行重置 confirmed，287-294 行 seal 再以 confirmed 比对 stat.size。pending_limit 分支（245-267）倒是先 `await closing` 并逐字节核对，说明作者意识到该竞态，只是其余 reason 未覆盖。
+
+**建议**：让 confirmed 的累加也受 reason 保护（defer 后丢弃晚到批次的计数），或在恢复路径统一先 await closing 再定终值，与 pending_limit 分支对齐。
+
+## 认为正确的部分
+
+- 脱敏先行的不变量设计正确且有强测试：StdoutRedactor 只在换行/右花括号/分号整段边界且 safeBoundary 通过后发布 sanitize 结果，test/unit/live-stdout.test.ts 对每个 UTF-8 字节切点穷举断言已发布文本是最终脱敏结果的前缀，网关原串存在时禁用 }/; 边界、多行原串整体拒绝，逻辑闭环。
+- 扩展侧文件身份核验做得扎实：stdoutTail.ts 的 regular() 用 lstat+O_NOFOLLOW+fstat 三重核对 dev/ino 与目录 realpath，infoAt 限制 schema/文件名/状态枚举与 2048 字节，tick 对 critic 名走 `^[a-z][a-z0-9_-]{0,63}$`，completePath 只认白名单位置并复核 size==bytes，未见路径穿越或符号链接逃逸面。
+- scrub 侧把 attempt-N 历史目录的发现统一为单点 attemptLogs 并同时接入侧层与 voided 层，orchestrator-logs-parity.test.ts 的新用例真造目录、真断言计数与文件内容去标记，回归会被拦下。
+- 取消/超时/截断的终态诚实：interruptStdout 挂进 worker 关停链，exec 的 exit+2s 宽限到期显式标 pipe_open，info 状态与展示 label 的枚举在 PROTOCOL、核心与扩展三处一致，缺封口一律显示未确认而非假装完整。
+- 性能对照的阈值、采样分母与负载在编码前冻结于计划，E1 与基线同机交替各五轮，报告如实登记了首轮目录事件漏报与修复后复跑，未达标不宣称可用。
+
+## 未覆盖范围（本侧盲区）
+
+- 本侧为只读审查，未运行 npm run check、extension e2e、性能或生命周期脚本；性能数字、闩锁与故障注入结论均取自验收报告与 evidence 目录中的留痕文件，未独立复测。
+- src/trivium/util/exec.ts 只读了 diff 与关键行（setEncoding、appendOut、finish、exitTimer），超时/kill 树与 PTY 规整的既有分支未通读。
+- Windows 路径（NTFS ACL、O_NOFOLLOW 缺省为 0、renameOverwriting 语义）只核了代码形态，未验证行为，验收报告也自认未测。
+- extension/scripts 下 runStdoutE2E/Lifecycle/Perf/Vendors 与 controlledCritic/Disk、hostCounters、vendorTimings、workerMetrics、stdoutWorkspace 等新脚本仅读片段，未逐行审计其断言强度。
+- stub.ts 嵌套 attempts 与 spec.stdout 共用同一 audit.redacted 键导致的覆盖语义（测试专用路径）未深究。
+- ag adapters 的 PTY 规整输出与 onStdoutChunk 的交互仅依据计划陈述与代码结构推断，未实测。
+
+## 实际查阅的项目文件
+
+- `.reviews/E1-审查员stdout实时输出/code/_meta/changes-20261120T041914Z.diff`
+- `src/trivium/live-stdout.ts`
+- `extension/src/monitor/stdoutTail.ts`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/adapters/stub-stdout.ts`
+- `src/trivium/runner.ts`
+- `src/trivium/scrub.ts`
+- `src/trivium/secrets.ts`
+- `src/trivium/util/exec.ts`
+- `extension/src/ui/cockpitHtml.ts`
+- `extension/test/unit/stdoutTail.test.ts`
+- `test/contract/orchestrator-logs-parity.test.ts`
+- `.reviews/E1-审查员stdout实时输出/plan/2026-11-20-E1-审查员stdout实时输出-r2-codex.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":11,"grep":11,"glob":0,"run_command":0,"project_reads":12}
+
+---
+
+*本文档由 TriviumCode 编排器从 `glm` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

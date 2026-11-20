@@ -35,7 +35,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
 import type { ClaudeProbe, CriticRequest, CriticResult } from '../types.js';
-import { run } from '../util/exec.js';
+import { runReviewProcess, type StdoutTarget } from '../live-stdout.js';
 import { claudeInvocationEnv, claudeProbeForRoute, claudeProfileNames, executableFile, isModelNameKey, looksLikeModelName,
   resolveClaudeRoute, type ClaudeRoute } from './claude-route.js';
 import { redactSecrets } from '../secrets.js';
@@ -65,6 +65,7 @@ import {
 } from './base.js';
 
 export interface ClaudeInvokeOptions {
+  stdoutTarget?: StdoutTarget;
   route?: ClaudeRoute;
   bin: string;
   cwd: string;
@@ -574,7 +575,7 @@ export function scrubGatewayEnv(text: string, env: Record<string, string> | unde
  */
 export async function invokeClaude(opts: ClaudeInvokeOptions): Promise<ClaudeInvokeOutcome> {
   const args = [...(opts.route?.prefix ?? []), ...buildClaudeArgs(opts)];
-  const r = await run(opts.route?.bin ?? opts.bin, args, {
+  const r = await runReviewProcess(opts.stdoutTarget, opts.route?.bin ?? opts.bin, args, {
     // 先清父进程路线变量、后注网关键（EV-256）；无 route 时不给补丁，与修复前相同
     env: opts.route ? claudeInvocationEnv(opts.route) : undefined,
     cwd: opts.cwd,
@@ -1118,6 +1119,7 @@ async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: C
     let out: ClaudeInvokeOutcome;
     try {
       out = await invokeClaude({
+        stdoutTarget: { path: stdoutPath, attempt: ctx.attempt ?? 1, replace: gatewayScrubPlan(route.settingsEnv).replace },
         bin,
         route,
         cwd: req.project_root,
@@ -1142,7 +1144,6 @@ async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: C
       });
     }
 
-    await fs.writeFile(stdoutPath, out.stdout, 'utf8');
     const trace = parseClaudeEvents(out.stdout);
 
     await fs.writeFile(

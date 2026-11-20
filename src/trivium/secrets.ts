@@ -153,6 +153,16 @@ function isDeclaredMethodCall(m: RegExpExecArray): boolean {
   );
 }
 
+/** E1 仅在真实换行后调用。放入一行可识别的合成材料，检查 PEM 脱敏是否仍能向后延伸。 */
+export function pemContinuesAfter(record: string): boolean {
+  if (!record.includes('-----BEGIN')) return false;
+  if (!record.endsWith('\n')) return true;
+  const probe = record + 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo0123456789';
+  return [...probe.matchAll(new RegExp(PEM_REDACT.source, 'g'))].some(m => m.index + m[0].length === probe.length);
+}
+
+// E1 的 safeBoundary 在换行、右花括号和分号处尝试切分。扩展规则的跨记录上下文时，
+// 同步更新 live-stdout.test.ts 的全切点样本，以整段 redactSecrets 的结果核对已发布前缀。
 const RULES: Rule[] = [
   {
     // ZCode 凭据：<apiKeyId>.<apiKeySecret>，中间有且仅有一个句点（设计 §3.3）

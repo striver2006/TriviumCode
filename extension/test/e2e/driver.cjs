@@ -3,8 +3,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const rl = require('node:readline').createInterface({ input: process.stdin });
-const { topic, focus } = JSON.parse(fs.readFileSync('.trivium/scenario.json'));
-const command = '/dual-review-plan ' + focus + ' --driver claude --critics gemini,glm --topic ' + topic;
+const { topic, focus, driver = 'claude', critics = 'gemini,glm' } = JSON.parse(fs.readFileSync('.trivium/scenario.json'));
+const command = (driver === 'codex' ? '$' : '/') + 'dual-review-plan ' + focus + ' --driver ' + driver + ' --critics ' + critics + ' --topic ' + topic;
 const wrapper = path.resolve('.trivium/bin/trivium');
 let started = false;
 let runId;
@@ -12,7 +12,7 @@ rl.on('line', async line => {
   if (line === command && !started) {
     started = true;
     const output = execFileSync(wrapper, ['review', '--start', '--entry', 'B', '--stage', 'plan',
-      '--topic', topic, '--driver', 'claude', '--critics', 'gemini,glm', '--focus', focus, '--json'], { encoding: 'utf8' });
+      '--topic', topic, '--driver', driver, '--critics', critics, '--focus', focus, '--json'], { encoding: 'utf8' });
     runId = JSON.parse(output).run_id;
     fs.writeFileSync('.trivium/start.json', output);
   } else if (line === '核对续话 ' + topic && started) {

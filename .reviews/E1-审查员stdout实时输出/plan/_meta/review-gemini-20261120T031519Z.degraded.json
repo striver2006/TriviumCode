@@ -1,0 +1,28 @@
+{
+  "critic": "gemini",
+  "run_id": "20261120T031519Z",
+  "findings": [
+    {
+      "index": 7,
+      "id": "AGY-08",
+      "problems": [
+        {
+          "field": "kind",
+          "kind": "invalid",
+          "message": "/kind must be equal to one of the allowed values {\"allowedValues\":[\"correctness\",\"security\",\"concurrency\",\"contract\",\"test-gap\",\"maintainability\",\"scope-drift\",\"performance\"]}"
+        }
+      ],
+      "raw": {
+        "id": "AGY-08",
+        "severity": "minor",
+        "layer": "plan",
+        "kind": "requirement",
+        "location": "## 插件 第 1、2 条；## 交付与边界",
+        "problem": "两项应在编码前收口的容量与同步清单细节尚未明确：(1) 插件侧每侧 stdout 的“显示窗口 / 有限尾部快照”具体容量上限（字节数或行数，以及是否沿用 extension/package.json 中 trivium.monitor.logTailBytes 的配置模式或独立设置/固定常量）未冻结，而性能与验收条款明确依赖该窗口统计“缺失/被尾窗淘汰数量”及控制 RSS 增量；(2) 交付段仅笼统写“设计文档对应行为”，未按本仓改动同步清单列出具体须同步的协议文档（doc/03_api/PROTOCOL_dual_critic_relay.md）与 doc/02_design/ 下的目标设计文档名，存在收尾漏同步风险。",
+        "evidence": "extension/package.json（contributes.configuration 已有 trivium.monitor.logTailBytes，默认 65536）；extension/src/ui/cockpit.ts（logTailBytes() 读取配置）；CLAUDE.md / AGENTS.md 改动同步清单（新增/变更契约须同步 doc/03_api/PROTOCOL_dual_critic_relay.md 与 doc/02_design/ 设计文档）。",
+        "suggestion": "在计划中冻结插件每侧 stdout 显示尾窗的明确容量上限及是否配置化，并在交付同步清单中显式列出 doc/03_api/PROTOCOL_dual_critic_relay.md 与 doc/02_design/ 下需回补的具体设计文档名。",
+        "confidence": "high"
+      }
+    }
+  ]
+}

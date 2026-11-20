@@ -18,6 +18,7 @@ import { cockpitHtml } from './cockpitHtml';
 import { assembleEntryCommand, findSkillDoc, type EntryKind } from '../launch/entryCommand';
 import { claimAfterConfirm, runResolveAndPreflight, type PrechainReport, type PrechainFlags } from '../launch/prechain';
 import { scriptProviderEnv, carrierOf, parseWrapperNodePath } from '../launch/carriers';
+import { StdoutTail } from '../monitor/stdoutTail';
 import { RunWatch } from '../monitor/statusWatch';
 import { ReviewWatch, type ReviewFile } from '../monitor/reviewWatch';
 import { locateRunDir, locateRunDirWithRetry } from '../monitor/runDiscovery';
@@ -87,6 +88,7 @@ interface RunCard {
 }
 
 interface RunEntry {
+  stdout: StdoutTail;
   watch: RunWatch;
   reviewWatch: ReviewWatch | null;
   render: StatusRender | null;
@@ -101,6 +103,8 @@ interface RunEntry {
 export class Cockpit implements vscode.Disposable {
   private panel: vscode.WebviewPanel | null = null;
   private readonly runs = new Map<string, RunEntry>();
+  /** 重开面板时补读刚看过的运行，只留路径索引，不保留句柄或输出正文。 */
+  private readonly recentRuns = new Map<string, { dir: string; topic: string; stage: string }>();
   /** 发现中的 run（CODEX-06：并发事件去重） */
   private readonly discovering = new Set<string>();
   /** 重试耗尽后的低频重发现（CLAUDE-04） */
@@ -205,6 +209,10 @@ export class Cockpit implements vscode.Disposable {
     // 面板关闭 ≠ 实例销毁（CLAUDE-01/AGY-r2-01/CODEX-01）：只做面板级清理，
     // 实例与服务订阅保留，再次 open 重建面板与监控（订阅回放带回活跃 run）
     this.panel.webview.onDidReceiveMessage((m) => void this.onMessage(m));
+    this.panel.onDidChangeViewState(({ webviewPanel }) => {
+      for (const run of this.runs.values()) run.stdout.show(webviewPanel.visible);
+      if (webviewPanel.visible) void this.pushRuns();
+    });
     this.panel.onDidDispose(() => {
       this.panel = null;
       this.disposeRuns();
@@ -213,6 +221,11 @@ export class Cockpit implements vscode.Disposable {
     // 保证活跃 run 一定能进看板（回放 + 重扫双保险）
     await this.services.stateWatch.rescan();
     await this.sendInit();
+    for (const [id, ref] of this.recentRuns) {
+      const status = await fs.stat(path.join(ref.dir, 'status.json')).catch(() => null);
+      if (!status?.isFile()) this.recentRuns.delete(id);
+      else if (!this.runs.has(id) && !this.discovering.has(id)) await this.attachRun(ref.dir, id, ref.topic, ref.stage, false);
+    }
   }
 
   /** 扩展停用时的最终销毁（面板关闭走 disposeRuns，见 open()） */
@@ -287,7 +300,17 @@ export class Cockpit implements vscode.Disposable {
     if (this.disposed) return;
     switch (m['type']) {
       case 'ready':
+        for (const run of this.runs.values()) run.stdout.show(this.panel?.visible === true, true);
         break;
+      case 'stdout-resync':
+        this.runs.get(String(m['runId']))?.stdout.show(this.panel?.visible === true, true);
+        break;
+      case 'open-stdout': {
+        const file = await this.runs.get(String(m['runId']))?.stdout.completePath(String(m['critic']), Number(m['attempt']));
+        if (file) await vscode.window.showTextDocument(vscode.Uri.file(file), { preview: true });
+        else vscode.window.showWarningMessage('该次完整 stdout 已清理或无法核实文件身份');
+        break;
+      }
       case 'prechain':
         await this.handlePrechain(m['form'] as unknown as FormState);
         break;
@@ -1346,6 +1369,7 @@ export class Cockpit implements vscode.Disposable {
         ? `${reason}；终态复核调用失败：以最后快照展示。`
         : `${reason}；终态以 --status 复核为准。`;
     }
+    entry.stdout.update(entry.render?.sides ?? [], finalPhase ?? 'unknown', true);
     entry.watch.dispose();
     entry.reviewWatch?.dispose();
     await this.pushRuns();
@@ -1383,11 +1407,18 @@ export class Cockpit implements vscode.Disposable {
     }
   }
 
-  private async attachRun(runDir: string, runId: string, topic: string, stage: string): Promise<void> {
+  private async attachRun(runDir: string, runId: string, topic: string, stage: string, focus = true): Promise<void> {
     if (this.disposed || this.runs.has(runId)) return;
     const cfg = await this.services.env.loadConfig();
     if (this.disposed || this.runs.has(runId)) return; // await 后复查（CODEX-05）
+    const limit = Math.max(1024, Math.min(256 * 1024, logTailBytes() || 65536));
+    const stdout = new StdoutTail(runDir, limit, patch => {
+      if (!this.panel?.visible) return Promise.resolve(false);
+      return this.panel.webview.postMessage({ type: 'stdout', runId, topic, limit, ...patch });
+    });
+    stdout.show(this.panel?.visible === true);
     const entry: RunEntry = {
+      stdout,
       watch: null as never,
       reviewWatch: null,
       render: null,
@@ -1419,6 +1450,7 @@ export class Cockpit implements vscode.Disposable {
       {
         onRender: (render, extra) => {
           entry.render = render;
+          stdout.update(render.sides, render.phase, entry.ended || render.terminal);
           entry.stale = extra.stale;
           entry.note = extra.note ?? null; // CLAUDE-06：瞬态提示全量替换（恢复后清除旧警示）
           void this.pushRuns();
@@ -1427,6 +1459,8 @@ export class Cockpit implements vscode.Disposable {
           entry.render = render;
           entry.endNote = note;
           entry.ended = true;
+          stdout.update(render.sides, render.phase, true);
+          entry.reviewWatch?.dispose();
           void this.pushRuns();
         },
         onSchemaIssue: (reason) => this.reportSchemaIssue(reason), // CODEX-07
@@ -1443,8 +1477,21 @@ export class Cockpit implements vscode.Disposable {
       void this.pushRuns();
     });
     this.runs.set(runId, entry);
+    this.recentRuns.set(runId, { dir: runDir, topic, stage });
+    while (this.recentRuns.size > 8) {
+      const oldest = this.recentRuns.keys().next().value;
+      if (oldest === undefined) break;
+      this.recentRuns.delete(oldest);
+      const previous = this.runs.get(oldest);
+      if (previous?.ended) {
+        previous.stdout.dispose();
+        previous.watch.dispose();
+        previous.reviewWatch?.dispose();
+        this.runs.delete(oldest);
+      }
+    }
     // FR-6/7：活跃 run → 批注 scope 跟随（新 run 自动成为焦点回放；D4′）
-    void this.services.annotationHub.setScope(topic, stage || 'plan').then(() =>
+    if (focus) void this.services.annotationHub.setScope(topic, stage || 'plan').then(() =>
       this.services.annotationHub.setActiveRun(runId),
     );
     await this.pushRuns();
@@ -1543,7 +1590,7 @@ export class Cockpit implements vscode.Disposable {
         terminal: true,
         sides: [],
         stale: false,
-        note: summary ? `回放归档运行（${summary.sides.length} 侧工件）` : '回放归档运行',
+        note: (summary ? `回放归档运行（${summary.sides.length} 侧工件）` : '回放归档运行') + ' · 此归档未附实时 stdout',
         message: null,
         artifacts: [],
         reviewFiles: [],
@@ -1555,8 +1602,9 @@ export class Cockpit implements vscode.Disposable {
   }
 
   private async pushRuns(): Promise<void> {
-    if (this.disposed || !this.panel) return; // AGY-r2-02：面板未开不跑检索不广播
-    this.post({ type: 'runs', runs: await this.runCards() });
+    if (this.disposed || !this.panel?.visible) return; // AGY-r2-02：面板未开不跑检索不广播
+    const runs = await this.runCards();
+    if (this.panel?.visible) this.post({ type: 'runs', runs });
   }
 
   private setMode(mode: 'M1' | 'M3'): void {
@@ -1570,6 +1618,7 @@ export class Cockpit implements vscode.Disposable {
 
   private disposeRuns(): void {
     for (const e of this.runs.values()) {
+      e.stdout.dispose();
       e.watch.dispose();
       e.reviewWatch?.dispose();
     }

@@ -1,0 +1,301 @@
+---
+schema: trivium.review.v2
+topic: E1-审查员stdout实时输出
+stage: code
+role: gemini
+vendor: antigravity
+agent_cli: agy/1.5.13
+model_requested: gemini-4-neon-high
+model_effective: gemini-4-neon-high
+model_effective_source: envelope
+effort_requested: null
+effort_effective: high
+effort_effective_source: envelope
+tier: medium
+tier_source: profile
+run_id: 20261120T041914Z
+rerun_index: 1
+snapshot_hash: sha256:feb88031d88894a03f91a57468a49e40f0b62816a6b8d28fa8dd61170089e2e4
+blind: true
+started_at: 2026-11-20T04:19:22.890Z
+finished_at: 2026-11-20T04:46:33.116Z
+duration_s: 452
+tool_calls:
+  read: 61
+  grep: 0
+  glob: 0
+  run_command: 0
+  project_reads: 38
+evidence_ok: true
+verdict: reject
+findings_count:
+  blocker: 0
+  major: 6
+  minor: 4
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: false
+drift: false
+heterogeneous: unknown
+access:
+  requested_mode: standard
+  profile: null
+  launcher_requested: /Users/chenzhenbo/.local/bin/agy
+  launcher_effective: /Users/chenzhenbo/.local/bin/agy
+  wrapper_sha256: null
+  configuration_sha256: null
+  provider_declared: null
+  provider_declared_source: null
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: gemini
+    status: unknown
+    left_model: null
+    right_model: gemini-4-neon-high
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: glm
+    right: gemini
+    status: different-family
+    left_model: bigmodel-coding-plan/GLM-5.3
+    right_model: gemini-4-neon-high
+    left_source: trace
+    right_source: envelope
+    reason: 模型族不同：glm / gemini
+  - left: gemini
+    right: claude
+    status: different-family
+    left_model: gemini-4-neon-high
+    right_model: qwen4-max
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：gemini / qwen
+override_reason: 左侧模型信息缺失
+session_id: 9d25f906-90b1-4f6f-b121-c08d9d43735c
+---
+
+# 代码审查：E1-审查员stdout实时输出
+
+> Critic-A · Google Antigravity ｜ 回读模型 `gemini-4-neon-high` ｜ 请求模型 `gemini-4-neon-high`
+> ｜ 运行 `20261120T041914Z`
+> ｜ 本轮审核者 glm、gemini、claude
+
+> ⚠️ **路径级 deny 未生效**：本机该侧 CLI 不支持路径级读取拒绝，对方历史产出的屏蔽仅依赖任务书禁读清单与事后轨迹核验。
+>
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+静态审查了 E1「审查员 stdout 实时输出」的 48 项变更文件及其上游/下游调用链，对照已批准计划（2026-11-20-E1-审查员stdout实时输出-r2-codex.md）与项目契约。整体架构边界清晰（旁路只读展示契约、不改投票与解析输入、保留 TRIVIUM_LIVE_STDOUT=0 退路、四家适配器统一接线且零 Agent 字面量泄漏），但发现 5 项重要缺陷（多侧并发时快侧事件取消兜底轮询导致其余侧饥饿、StdoutRedactor 遇到任意 '-----BEGIN' 子串后永久锁死实时输出、事后 scrub 改写文件后 audit.seal 留存旧 inode 偏离计划 CLAUDE-04、LiveStdout.interrupt() 缺超时保护可能阻塞关停封口、计划要求的跨进程契约测试/parity 豁免及 timeout 与空闲基线证据缺口）和 4 项次要问题，建议修改并补齐测试与证据后再审一轮。
+
+**结论**：不通过（`reject`）
+
+## 审查意见（共 10 条：重要 6 ｜ 次要 4）
+
+### AGY-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/src/monitor/stdoutTail.ts:107-151, 209-210` |
+| 类别 | concurrency ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：多侧并发时，单个高频输出侧会持续取消兜底轮询定时器，导致其他未挂载监听或仅更新 stdout-live.json 状态的侧被永久饥饿。watchSide() 收到单侧文件事件时只把该侧加入 this.changed 并调用 schedule(12)；schedule() 发现现有定时器（400ms 或 120ms 全侧兜底轮询）的 this.due 更晚时会直接 clearTimeout 并替换成 12ms 定时器；tick() 执行时因 changed 非空而执行 `if (!terminal && changed.size && !changed.has(side.critic)) return;` 跳过其余侧。只要任一侧（如真实 Claude 平均约 72ms 一块）持续以低于 120ms/400ms 的间隔产出，尚未建立 watcher 的侧（如后启动的 GLM 或发生 rename/error 重建中的侧）或仅变化了 stdout-live.json（deferred/incomplete/complete 无新字节写入）的侧将一直得不到轮询，直到快侧停顿或整轮结束。
+
+**依据**：extension/src/monitor/stdoutTail.ts:110-115 的 schedule() 取消更晚的定时器；125-133 的 watchSide() 仅添加单个 critic 到 this.changed 并调用 schedule(12)；146-151 的 tick() 在 changed.size > 0 时跳过非 changed 侧；210 在无 pending 时通过同一个 this.timer 调度 120ms/400ms 兜底轮询。
+
+**建议**：把「单侧文件事件去抖」与「全侧定期兜底巡检」解耦：要么记录上次全侧巡检时间戳并在超过 120ms/400ms 时忽略 changed 过滤强制全扫，要么为未挂载 watcher 或超过元数据缓存周期（400ms）的侧保底纳入本次 tick() 扫描集。
+
+### AGY-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/live-stdout.ts:48-50, 74-76` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：StdoutRedactor 的 safeBoundary() 对任意包含 '-----BEGIN' 的记录一律返回 false，且 push() 在返回 false 时不消费 this.pending，导致 stdout 一旦出现过一次 '-----BEGIN' 字面串，后续实时流式输出永久停摆直至触发 256 KiB pending_limit 暂缓。无论是已闭合的完整 PEM 块（-----BEGIN ... -----END ...-----），还是审查代码/文档时的普通引用（例如审查本仓 src/trivium/secrets.ts、src/trivium/live-stdout.ts 或测试文件），'-----BEGIN' 都会永远滞留在 this.pending 首部，使之后每一块都在 line 49 命中 record.includes('-----BEGIN') 而返回 ''，既破坏实时可见性，又在长输出中必然触发不必要的高水位回退。
+
+**依据**：src/trivium/live-stdout.ts:49 无条件执行 `if (record.includes('-----BEGIN') || ...) return false;`；74-76 在 safeBoundary 返回 false 时直接 `return ''` 不推进 this.pending。test/unit/live-stdout.test.ts:15 的 PEM 样本总长不足 200 字节且只在 finish() 后校验全文，未覆盖闭合 PEM 或普通提及后的持续增量输出。
+
+**建议**：只把仍可能与后续字节凑出 PEM_REDACT 匹配的未决尾段留在 pending：例如区分最后一个 '-----BEGIN' 之后是否已闭合（含 END 标记）或已出现无法匹配 PEM_GAP/PEM_BODY 的终结行（借用 secrets.ts 的检测/脱敏规则判定安全边界），允许已闭合或非 PEM 的前缀正常脱敏并发布，并在 test/unit/live-stdout.test.ts 增加闭合 PEM 与普通引用 '-----BEGIN' 后续增量输出的用例。
+
+### AGY-03 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/live-stdout.ts:287-294; src/trivium/runner.ts:202-203` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：事后清扫（scrubSideDir）如果确实对 out/stdout.jsonl 或 out/stdout.json 进行了额外脱敏改写，audit.seal 的处理偏离已批准计划（CLAUDE-04），并会把已失效的旧 dev/ino/bytes 写进终态 stdout-live.json。scrub.ts 的 redactLogs() 命中时会通过 writeAtomicPreservingMode() 原子替换文件（产生新 inode 和新字节数）；随后 audit.seal 检测到 stat.ino !== this.ino 后只将 state 置为 incomplete、reason 置为 verification_failed，却未把 stat 的新 dev/ino/size 更新或披露，仍把旧 inode 写入 stdout-live.json。这导致插件侧 StdoutTail 打开文件核对 dev/ino 时恒定失败，报「实时输出记录不可读，完整性未确认」，且该次尝试归档到 attempt-N/ 后元数据与正文永久失配。
+
+**依据**：计划 .reviews/E1-审查员stdout实时输出/plan/2026-11-20-E1-审查员stdout实时输出-r2-codex.md:23,75 要求「事后清扫如额外改写，则重新验证实际文件，披露身份更换与字节计数并将本次脱敏一致性验收判失败」；src/trivium/scrub.ts:334-337 命中时调用 writeAtomicPreservingMode 替换文件；src/trivium/live-stdout.ts:287-294 仅比对 stat 与旧 this.ino/this.dev/this.confirmed，未更新字段也未记录改写信息；extension/src/monitor/stdoutTail.ts:171 遇到 dev/ino 不符直接抛错。
+
+**建议**：当 scrubSideDir 实际改写了当前 stdout 文件且 scrubOk 为真、文件存在时，按已批准计划重新核实当前文件 stat，更新 stdout-live.json 中的 dev/ino/bytes（并显式记录改写/身份更换原因与日志告警），同时保持 state 为 incomplete（或约定的校验失败原因码）以便 UI 仍能安全回读脱敏后文件并明确提示一致性异常，再补充对应单测覆盖该分支。
+
+### AGY-04 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `src/trivium/live-stdout.ts:211-219` |
+| 类别 | concurrency ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：LiveStdout.interrupt() 等待在途写操作时缺少超时保护，在慢盘或写调用挂死场景下会阻塞取消收尾，导致 stdout-live.json 无法落盘 incomplete 状态。finish()（225-232 行）对 this.writing 做了 1050ms 的 Promise.race 限时，避免挂死的内核写扣住收尾；但 interrupt()（215 行）直接写 `while (this.writing && !this.reason) await this.writing;`。一旦写操作永不返回，即便 1000ms 的 slow 定时器将 this.reason 置为 slow_disk，await this.writing 仍不会解除，直到 run-protocol.ts 的看门狗超时强杀进程，217 行的 `await this.state('incomplete')` 永远执行不到；且当 this.reason 在进入 interrupt() 前已置位而 this.writing 仍在途时，218 行会直接对在途句柄调用 close()。
+
+**依据**：src/trivium/live-stdout.ts:211-219 的 interrupt() 与 225-236 的 finish() 对比；src/trivium/run-protocol.ts:1212-1216 和 1327-1334 在看门狗时限内调用 await interruptStdout()。
+
+**建议**：给 interrupt() 的在途写等待加上与 finish() 一致的有界超时（并保留短于 worker 看门狗的余量），超时或已进入 deferred 时立即放弃等待并在不等待挂死写回调的前提下调用 `await this.state('incomplete')`，handle.close() 改为挂载在 this.writing 之后异步关闭。
+
+### AGY-05 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/contract/orchestrator-logs-parity.test.ts:19-48; src/trivium/live-stdout.ts:23,133` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：orchestrator-logs-parity 契约测试未按已批准计划把 stdout-live.json 登记进豁免表，也未把实际执行 out/ 写入的新模块 src/trivium/live-stdout.ts 纳入写入点对账范围。当前四个适配器已不再直接调用 fs.writeFile(stdoutPath, ...)，而是统一由 live-stdout.ts 向 <critic>/out/ 写 stdout.jsonl / stdout.json 与 stdout-live.json；但 orchestrator-logs-parity.test.ts 仍只扫描 src/trivium/adapters/*.ts 中的 `path.join(req.out_dir, ...)`，EXEMPT 也只登记了 result.json。结果是 live-stdout.ts 写入 out/ 的文件名（包括 stdout-live.json 以及后续可能新增的文件）完全脱离机器对账。
+
+**依据**：计划 .reviews/E1-审查员stdout实时输出/plan/2026-11-20-E1-审查员stdout实时输出-r2-codex.md:75 明确约定「stdout-live.json 只含受限枚举、标识和计数，按具体用途登记豁免……更新 orchestrator-logs-parity，并验证没有死条目或未对账写点」；test/contract/orchestrator-logs-parity.test.ts:19-48 仅扫描 ADAPTERS 目录下的 req.out_dir 字面量，EXEMPT 仅含 result.json。
+
+**建议**：在 test/contract/orchestrator-logs-parity.test.ts 中将 src/trivium/live-stdout.ts 纳入 out/ 写入点对账，在 EXEMPT 中按具体用途具名登记 stdout-live.json（受限枚举、标识和计数，不含模型输出原文），并验证 live-stdout.ts 产出的文件名与 ORCHESTRATOR_LOG_FILES/EXEMPT 无未对账写点。
+
+### AGY-06 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `test/unit/live-stdout.test.ts; extension/test/unit/stdoutTail.test.ts; src/trivium/adapters/stub.ts:825-830; doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json:101-142; doc/05_testing/evidence/vscode-stdout-e1-20261120/隐藏及空闲初验.json` |
+| 类别 | test-gap ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：计划要求的核心-插件双端契约测试、核心 LiveStdout 状态机单测，以及 timeout / 作废搬迁 / 隐藏与空闲基线对照证据存在明显缺口：(1) 计划要求为 trivium.stdout.v1 旁路格式建立「双方实际写读的跨进程/契约测试」，目前 test/unit/live-stdout.test.ts 仅覆盖 StdoutRedactor 三个单测，未覆盖 LiveStdout、runReviewProcess、pending_limit 原地补尾、slow_disk/write_failed/open_failed、interruptStdout、audit.seal 与 TRIVIUM_LIVE_STDOUT=0；extension/test/unit/stdoutTail.test.ts 则手工拼装 mock JSON，并未消费核心实际写出的文件。(2) src/trivium/adapters/stub.ts:825-830 先跑完 stubStdout（子进程以 code=0 正常退出）再调用 adapter.run 返回 timeout，导致 故障与兼容初验.json:101-142 的 timeout 场景中 claude 的 stdout-live.json 实际是 `state: "complete", reason: null`，根本未测到 LiveStdout.finish() 的 `result.timedOut -> state: "incomplete", reason: "timeout"` 分支。(3) 隐藏及空闲初验.json 产出于旧构建（coreSha d386e0b5...），缺少后来加入脚本的 hiddenMessages、hiddenPaints、osReadBytes/osWrittenBytes 以及计划要求与基线各五轮对照的 idle-baseline 证据；且 runStdoutLifecycle.mjs 未包含作废搬迁（voided/）场景。
+
+**依据**：计划 .reviews/E1-审查员stdout实时输出/plan/2026-11-20-E1-审查员stdout实时输出-r2-codex.md:9,61,70,74；test/unit/live-stdout.test.ts:1-46；extension/test/unit/stdoutTail.test.ts:1-61；src/trivium/adapters/stub.ts:825-830；doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json:108-118；doc/05_testing/evidence/vscode-stdout-e1-20261120/隐藏及空闲初验.json:1-232。
+
+**建议**：1) 补齐核心 LiveStdout / runReviewProcess 单测与核心实际写出→StdoutTail 实际读取的契约测试（进 npm run check）；2) 修复桩超时场景使其真正触发子进程超时或补独立测试覆盖 LiveStdout.finish() 的 timeout/capture_limit/pipe_open/not_started 分支；3) 按当前最终构建补跑并归档包含作废搬迁、hiddenMessages/hiddenPaints 计数与 idle-baseline 五轮对照的证据，或若刻意收窄范围则在验收报告中显式说明偏离。
+
+### AGY-07 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/src/monitor/stdoutTail.ts:188, 215-230; extension/src/ui/cockpit.ts:211, 306-310` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：StdoutTail.completePath() 未对 `await this.root` 做异常兜底，且 tick() 放开 canOpen 时未校验 `info.bytes === size`。若某次运行目录已被清理后重开面板（recentRuns 重新 attachRun），构造函数中 `this.root = fs.realpath(runDir)` 会处于 rejected 状态；用户点击「查看完整 stdout」时，completePath() 第 218 行在 try 之外 `await this.root` 会直接抛出未捕获 Promise 拒绝（cockpit.ts:211 为 `void this.onMessage(m)`），而非返回 undefined 并弹出既有告警。此外，tick() 第 188 行仅按 `info.state === 'complete' || info.state === 'recovered'` 设置 canOpen，未像 label()（48-49 行）与 completePath()（226 行）那样检查 `info.bytes === size`，文件字节数与元数据不一致时面板会一边提示「输出完整性未确认」、一边仍展示可点击但必失败的「查看完整 stdout」按钮。
+
+**依据**：extension/src/monitor/stdoutTail.ts:81-82, 188, 218, 226；extension/src/ui/cockpit.ts:211, 224-226, 306-310。
+
+**建议**：在 completePath() 顶部用 try/catch 包裹 `await this.root`（失败返回 undefined），并将 tick() 中 canOpen 条件收严为 `(info.state === 'complete' || info.state === 'recovered') && info.bytes === size`。
+
+### AGY-08 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/src/ui/cockpit.ts:224-226, 1408-1495; extension/src/monitor/statusWatch.ts:65, 89-99` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：关闭并重开驾驶舱面板时，open() 无条件对 recentRuns 中的历史运行调用 attachRun()，若对应 runDir 已被清理或 status.json 不存在，会持续泄漏 RunWatch 的 2s 挂载重试定时器、30s 心跳定时器以及 ReviewWatch。因为这些运行已不在 state.json 活跃闸门列表中，syncRuns 不会再触发 finalizeEndedRun，RunWatch 找不到目录后会一直按 2s 周期重试挂载直到再次关闭面板；对仍然存在但已结束的运行，每次重开面板也会对全部最多 8 条历史运行逐一创建 ReviewWatch 并额外调用一次 review --status。
+
+**依据**：extension/src/ui/cockpit.ts:224-226 对 this.recentRuns 逐条调用 attachRun(..., false)；1430-1476 创建 RunWatch 和 ReviewWatch；extension/src/monitor/statusWatch.ts:65, 89-99 在目录不存在时持续运行 2s mountTimer 和 30s heartbeatTimer。
+
+**建议**：重开面板恢复 recentRuns 前先校验运行目录与 status.json 是否仍存在（不存在则从 recentRuns 剔除），或对已确认终态的历史运行采用只读快照恢复路径，避免为不存在或已结束目录启动轮询挂载与 ReviewWatch。
+
+### AGY-09 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/src/monitor/stdoutTail.ts:152-155; extension/src/ui/cockpitHtml.ts:325, 408-411` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：某侧发生重试（attempt 从 1 升至 2）时，Webview 中第 1 次尝试的 stdout 视图不会收到最终封口更新，也未被收拢或清理，会永久停留在「正在接收输出」并堆叠在第 2 次尝试上方。StdoutTail 按 side.critic 存游标且每次只读当前最新的 side.attempt，当 attempt 在两次轮询间切到 2 时，attempt 1 的最后一段输出与 complete/incomplete 终态被跳过；而 cockpitHtml.ts 按 `[runId, critic, attempt]` 缓存 stdoutViews 并在 renderRuns 时把同 slotId 的所有视图都挂进卡片，且在 hide/show 或 stdout-resync 时也不会刷新或移除旧 attempt 的过时视图。
+
+**依据**：extension/src/monitor/stdoutTail.ts:152-155 仅读取 `Math.max(1, side.attempt ?? 1)`；extension/src/ui/cockpitHtml.ts:325 以 `[m.runId, m.critic, m.attempt]` 为键，411 将所有同 slotId 视图全部 attach 到 slot。
+
+**建议**：在 attempt 切换时由 StdoutTail 对刚轮转到 attempt-N 的前一次尝试做一次终态收尾读（或在 Webview 中对已被新 attempt 取代且未封口的旧视图标注已切换/默认折叠并在 resync 时按需清理），避免界面长期残留「正在接收输出」的陈旧视图。
+
+### AGY-10 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/package.json:147-152; doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:8, 4691-4693` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：两处文档/元数据同步未完全落实：(1) extension/package.json:151 仍将配置项 `trivium.monitor.logTailBytes` 描述为「worker.log 尾随窗口（字节）。」，未同步说明其现已同时控制各审核者实时 stdout 的尾随窗口及 256 KiB 硬上限（见 cockpit.ts:1412 与 extension/README.md:32）；(2) 按 AGENTS.md 改动同步清单，修订唯一实现依据 `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md` 时应升文档头补丁版本（当前仍为 v1.3.184），且已批准计划第 80 行约定回补到 9 月 10 日设计 §13 而非追加在文末 10-28 勘误之后。
+
+**依据**：extension/package.json:147-152；extension/src/ui/cockpit.ts:1412；extension/README.md:32；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md:8, 4691-4693；计划 .reviews/E1-审查员stdout实时输出/plan/2026-11-20-E1-审查员stdout实时输出-r2-codex.md:80。
+
+**建议**：同步更新 extension/package.json 中 `trivium.monitor.logTailBytes` 的中文描述（补上逐侧 stdout 尾部窗口及 256 KiB 上限说明），并按 AGENTS.md 同步清单升主设计文档头的补丁版本且将 E1 说明归位至对应章节（或显式说明放置位置）。
+
+## 认为正确的部分
+
+- 核心将 E1 严格收敛为只读展示旁路（stdout-live.json，trivium.stdout.v1），不参与投票、证据核验、归档与既有解析器输入边界，且保留 TRIVIUM_LIVE_STDOUT=0 退路。
+- 四家生产适配器（agy/claude/codex/zcode）统一经 runReviewProcess 接线并透传调用期 attempt，Claude 侧继续复用 gatewayScrubPlan 的替换表顺序，live-stdout.ts 零具体 Agent 字面量，符合注册表单一事实源纪律。
+- util/exec.ts 将 onStdoutChunk 与原有 maxBufferBytes 截断边界对齐，在 finish() 中先 flush BSD PTY 再置 settled=true，并屏蔽已兑现后的孙进程迟到数据。
+- scrub.ts 将 attempt-N 子目录扫描同时接入侧层 scrubSideDir 与运行层 redactVoidedAttempts，并把实时预脱敏计数合并进 logs_redacted。
+- StdoutTail 在打开与查看完整文件时逐次核对 realpath、lstat、O_NOFOLLOW、dev/ino 与 attempt，不接受 Webview 传入任意路径；从性能对照.csv 看，稀疏与持续两组在核心/宿主 CPU、峰值 RSS、总耗时、写字节与零标记缺失上均落在计划冻结阈值之内。
+
+## 未覆盖范围（本侧盲区）
+
+- 本审查员为只读角色，未执行任何命令（未运行根目录或 extension 目录的 npm run check、单测、集成测试、runStdoutE2E.mjs、runStdoutLifecycle.mjs 或 runStdoutPerf.mjs），全部行为与并发结论均基于静态代码阅读与归档证据文件推理。
+- 未解压查看两个二进制压缩证据文件（doc/05_testing/evidence/vscode-stdout-e1-20261120/优化前后诊断轮.json.gz、性能逐轮原始记录.json.gz）以及已打包的 VSIX / trivium.cjs 二进制内容。
+- 未覆盖 Windows 运行态行为（NTFS ACL、win32 文件句柄占用与重命名重试交互），验收报告亦已明确将其列为未测项。
+
+## 实际查阅的项目文件
+
+- `CLAUDE.md`
+- `AGENTS.md`
+- `README.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `.reviews/E1-审查员stdout实时输出/plan/2026-11-20-E1-审查员stdout实时输出-r2-codex.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `doc/05_testing/README.md`
+- `doc/05_testing/REPORT_2026-11-20_VSCode审查员实时输出验收.md`
+- `doc/05_testing/evidence/vscode-stdout-e1-20261120/性能对照.csv`
+- `doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json`
+- `doc/05_testing/evidence/vscode-stdout-e1-20261120/隐藏及空闲初验.json`
+- `src/trivium/live-stdout.ts`
+- `src/trivium/secrets.ts`
+- `src/trivium/runner.ts`
+- `src/trivium/review.ts`
+- `src/trivium/scrub.ts`
+- `src/trivium/run-files.ts`
+- `src/trivium/run-protocol.ts`
+- `src/trivium/util/exec.ts`
+- `src/trivium/util/fsx.ts`
+- `src/trivium/adapters/agy.ts`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/adapters/codex.ts`
+- `src/trivium/adapters/zcode.ts`
+- `src/trivium/adapters/stub.ts`
+- `src/trivium/adapters/stub-stdout.ts`
+- `test/unit/live-stdout.test.ts`
+- `test/unit/registry-parity.test.ts`
+- `test/contract/orchestrator-logs-parity.test.ts`
+- `extension/package.json`
+- `extension/scripts/runE2E.mjs`
+- `extension/src/monitor/stdoutTail.ts`
+- `extension/src/monitor/statusModel.ts`
+- `extension/src/monitor/statusWatch.ts`
+- `extension/src/ui/cockpit.ts`
+- `extension/src/ui/cockpitHtml.ts`
+- `extension/test/unit/stdoutTail.test.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":61,"grep":0,"glob":0,"run_command":0,"project_reads":38}
+
+---
+
+*本文档由 TriviumCode 编排器从 `gemini` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*

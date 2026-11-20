@@ -172,3 +172,6 @@ try {
   // 保留安装包验收的首窗口，供 Bob 亲自点击；其余都只关闭本轮创建的进程。
   for (const child of children.slice(handoff ? 1 : 0)) child.kill();
 }
+
+// E1 独立安装包还要经过四家可控 CLI 的退出闩锁验收。
+if (vsix && path.basename(vsix).endsWith('-e1.vsix')) await import('./runStdoutE2E.mjs');

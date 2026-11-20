@@ -25,6 +25,9 @@ export interface RunOptions {
   killGraceMs?: number;
   /** 写入子进程 stdin 后关闭 */
   stdin?: string;
+  /** 收到与最终 stdout 同一收集边界内的 UTF-8 文本，含空行和分隔符。 */
+  onStdoutChunk?: (chunk: string) => void;
+  onStdoutTruncated?: (reason: 'capture_limit' | 'pipe_open') => void;
   /** 每读到一行 stdout 调用一次（用于 stream-json 增量解析） */
   onStdoutLine?: (line: string) => void;
   /**
@@ -594,12 +597,16 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
     let exitTimer: NodeJS.Timeout | undefined;
 
     const appendOut = (chunk: string) => {
+      // 已兑现后的孙进程迟到输出不进入解析或实时文件。
+      if (settled) return;
+      let accepted = chunk;
       if (stdout.length + chunk.length > maxBufferBytes) {
-        stdout += chunk.slice(0, Math.max(0, maxBufferBytes - stdout.length));
+        accepted = chunk.slice(0, Math.max(0, maxBufferBytes - stdout.length));
         truncated = true;
-      } else {
-        stdout += chunk;
+        opts.onStdoutTruncated?.('capture_limit');
       }
+      stdout += accepted;
+      if (accepted) opts.onStdoutChunk?.(accepted);
       if (!onStdoutLine) return;
       lineBuf += chunk;
       let nl: number;
@@ -629,13 +636,13 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
 
     const finish = (code: number | null, signal: NodeJS.Signals | null) => {
       if (settled) return;
-      settled = true;
       if (softTimer) clearTimeout(softTimer);
       if (hardTimer) clearTimeout(hardTimer);
       if (exitTimer) clearTimeout(exitTimer);
       // 终止中不兑现：兑现了调用方就会往下走（抹副本、重试、写归档终态），取消就不再由 cancelRun 收尾（EV-152）
-      if (treeShutdown) return;
+      if (treeShutdown) { settled = true; return; }
       if (ptyOut) appendOut(ptyOut.flush());
+      settled = true;
       if (lineBuf.length > 0 && onStdoutLine) onStdoutLine(lineBuf);
       if (errLineBuf.length > 0 && onStderrLine) onStderrLine(errLineBuf);
       resolve({
@@ -664,7 +671,10 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
      * 已退出的进程不会再产出输出，两秒后没等到 close 就按已收到的输出收尾。
      */
     child.on('exit', (code, signal) => {
-      exitTimer = setTimeout(() => finish(code, signal), 2_000);
+      exitTimer = setTimeout(() => {
+        opts.onStdoutTruncated?.('pipe_open');
+        finish(code, signal);
+      }, 2_000);
     });
 
     const signalChild = (sig: NodeJS.Signals) => {

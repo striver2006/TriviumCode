@@ -279,8 +279,8 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
   }
   // 每个运行保留独立视口。心跳和状态更新重绘卡片时恢复展开状态与滚动位置。
   const logs = new Map();
-  function logView(id, text) {
-    let view = logs.get(id);
+  function logView(id, text, cache = logs) {
+    let view = cache.get(id);
     if (!view) {
       const details = document.createElement('details');
       details.innerHTML = '<summary>worker.log 尾部</summary><div class="log" tabindex="0" aria-label="运行日志"><div class="log-space"><pre class="log-lines"></pre></div></div>';
@@ -298,7 +298,7 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
       view.paint = paint;
       port.addEventListener('scroll', paint);
       details.addEventListener('toggle', paint);
-      logs.set(id, view);
+      cache.set(id, view);
     }
     if (text !== view.text) {
       view.text = text;
@@ -307,12 +307,91 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
     }
     return view;
   }
+  // stdout 只把新字节送入既有虚拟视口。心跳重画卡片时移动原节点。
+  const stdoutViews = new Map();
+  const stdoutSlots = new Map();
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  function stdoutSlot(runId, critic) { return JSON.stringify([runId, critic]); }
+  function attachStdout(slot, view) {
+    if (view.details.parentNode !== slot) slot.appendChild(view.details);
+    if (view.details.open) {
+      view.port.scrollTop = view.follow ? view.port.scrollHeight : view.top;
+      view.paint();
+    }
+  }
+  function updateStdout(m) {
+    const slotId = stdoutSlot(m.runId, m.critic);
+    const id = JSON.stringify([m.runId, m.critic, m.attempt]);
+    let v = stdoutViews.get(id);
+    if (!v) {
+      for (const previous of stdoutViews.values()) {
+        if (previous.slotId !== slotId || Number(previous.details.dataset.attempt) >= m.attempt) continue;
+        previous.details.open = false;
+        previous.details.querySelector('summary').textContent = m.critic + ' stdout · 第 ' + previous.details.dataset.attempt + ' 次 · 已切换到后续尝试';
+        previous.openFile.textContent = '核实并打开该次 stdout';
+        previous.openFile.hidden = false;
+      }
+      v = logView(id, '', stdoutViews);
+      v.runId = m.runId; v.slotId = slotId; v.parts = []; v.bytes = 0; v.end = 0; v.follow = true;
+      v.details.className = 'critic-stdout'; v.details.dataset.critic = m.critic;
+      v.details.dataset.attempt = String(m.attempt);
+      v.details.open = true;
+      v.port.setAttribute('aria-label', m.critic + ' 标准输出');
+      v.openFile = document.createElement('button');
+      v.openFile.className = 'secondary'; v.openFile.textContent = '查看完整 stdout';
+      v.openFile.onclick = () => vscode.postMessage({ type: 'open-stdout', runId: m.runId, critic: m.critic, attempt: m.attempt });
+      v.details.appendChild(v.openFile);
+      v.port.addEventListener('scroll', () => {
+        if (!v.port.isConnected) return;
+        v.top = v.port.scrollTop;
+        v.follow = v.top + v.port.clientHeight >= v.port.scrollHeight - 18;
+      });
+    }
+    if (m.reset) {
+      v.lines = ['']; v.parts = []; v.bytes = 0; v.clipped = m.clipped; v.identity = m.identity;
+    } else if (v.identity !== m.identity || v.end !== m.start) {
+      vscode.postMessage({ type: 'stdout-resync', runId: m.runId });
+      return;
+    }
+    v.end = m.end;
+    if (m.text) {
+      const bytes = encoder.encode(m.text);
+      v.parts.push(bytes); v.bytes += bytes.length;
+      let removedLines = 0, removedChars = 0;
+      while (v.bytes > m.limit) {
+        const first = v.parts[0];
+        let cut = Math.min(v.bytes - m.limit, first.length);
+        while (cut < first.length && (first[cut] & 192) === 128) cut++;
+        const prefix = decoder.decode(first.subarray(0, cut));
+        const rows = prefix.split('\\n');
+        removedLines += rows.length - 1;
+        removedChars = rows.length > 1 ? rows[rows.length - 1].length : removedChars + prefix.length;
+        if (cut === first.length) v.parts.shift();
+        else v.parts[0] = first.slice(cut);
+        v.bytes -= cut; v.clipped = true;
+      }
+      const add = m.text.split('\\n');
+      v.lines[v.lines.length - 1] += add[0];
+      for (let i = 1; i < add.length; i++) v.lines.push(add[i]);
+      if (removedLines) v.lines.splice(0, removedLines);
+      if (removedChars) v.lines[0] = v.lines[0].slice(removedChars);
+    }
+    v.details.querySelector('summary').textContent = m.critic + ' stdout · 第 ' + m.attempt + ' 次 · ' + m.note + (v.clipped ? ' · 最近输出' : '');
+    v.openFile.hidden = !m.canOpen;
+    v.space.style.height = (v.lines.length * 18) + 'px';
+    const slot = stdoutSlots.get(slotId);
+    if (slot) attachStdout(slot, v);
+  }
   function renderRuns(runs) {
     const visible = new Set(runs.filter(r => r.logTail).map(r => r.runId));
     for (const [id, view] of logs) {
       if (!visible.has(id)) logs.delete(id);
       else if (view.details.open) { view.top = view.port.scrollTop; view.left = view.port.scrollLeft; }
     }
+    const runIds = new Set(runs.map(r => r.runId));
+    for (const [id, view] of stdoutViews) if (!runIds.has(view.runId)) stdoutViews.delete(id);
+    stdoutSlots.clear();
     const box = $('runs'); box.innerHTML = '';
     if (!runs.length) { box.innerHTML = '<span class="hint">（暂无活跃运行）</span>'; return; }
     for (const r of runs) {
@@ -333,6 +412,10 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
         sp.innerHTML = '<b>' + escapeHtml(s.critic) + '</b> <span class="st-' + s.state + '">' + escapeHtml(s.stateLabel) + '</span>' +
           (s.model ? ' · ' + escapeHtml(s.model) : '') + (s.elapsedS != null ? ' · ' + s.elapsedS + 's' : '');
         sides.appendChild(sp);
+        const slot = document.createElement('div');
+        const slotId = stdoutSlot(r.runId, s.critic);
+        stdoutSlots.set(slotId, slot); sides.appendChild(slot);
+        for (const view of stdoutViews.values()) if (view.slotId === slotId) attachStdout(slot, view);
       }
       card.appendChild(sides);
       if (r.note) {
@@ -356,6 +439,10 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
       card.appendChild(files);
       if (r.findingsSummary && r.findingsSummary.length > 0) card.appendChild(renderFindings(r));
       box.appendChild(card);
+      for (const slot of sides.querySelectorAll('.critic-stdout')) {
+        const v = stdoutViews.get(JSON.stringify([r.runId, slot.dataset.critic, Number(slot.dataset.attempt)]));
+        if (v) attachStdout(slot.parentNode, v);
+      }
       if (r.logTail) {
         const view = logView(r.runId, r.logTail);
         card.appendChild(view.details);
@@ -825,6 +912,7 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
         setMode(m.ok ? 'M1' : 'M3');
         break;
       case 'runs': renderRuns(m.runs); break;
+      case 'stdout': updateStdout(m); break;
       case 'relay-result': banner(m.ok ? 'info' : 'warn', m.note); break;
       case 'cancel-result': banner(m.ok ? 'info' : 'warn', m.note); break;
       case 'mode': setMode(m.mode); break;

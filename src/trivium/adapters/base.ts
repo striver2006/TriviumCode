@@ -19,6 +19,8 @@ import type {
 import { VENDOR_MODEL_FAMILY, agentById, type AgentVendor } from '../agents/registry.js';
 
 export interface AdapterContext {
+  /** 当前 worker 内的尝试号，不写入请求快照。 */
+  attempt?: number;
   cfg: Config;
   /** node 绝对路径（GUI 进程不读 .zshrc，§10.5） */
   nodePath: string;

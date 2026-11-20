@@ -1,0 +1,3663 @@
+# trivium changes.diff
+# run_id: 20261120T041914Z
+# base: HEAD
+# head: 589525fd4a6ee5034c29a680a3c52252adfefe32
+# files: 48
+#   doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+#   doc/02_design/LLD_orchestrator.md
+#   doc/02_design/系统设计说明书.md
+#   doc/03_api/PROTOCOL_dual_critic_relay.md
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-11-20_VSCode审查员实时输出验收.md
+#   doc/05_testing/evidence/vscode-stdout-e1-20261120/优化前后诊断轮.json.gz
+#   doc/05_testing/evidence/vscode-stdout-e1-20261120/四路径安装态初验.json
+#   doc/05_testing/evidence/vscode-stdout-e1-20261120/安装包四路径复验.json
+#   doc/05_testing/evidence/vscode-stdout-e1-20261120/实际CLI计时.json
+#   doc/05_testing/evidence/vscode-stdout-e1-20261120/性能对照.csv
+#   doc/05_testing/evidence/vscode-stdout-e1-20261120/性能逐轮原始记录.json.gz
+#   doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json
+#   doc/05_testing/evidence/vscode-stdout-e1-20261120/隐藏及空闲初验.json
+#   doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md
+#   extension/README.md
+#   extension/scripts/runE2E.mjs
+#   extension/scripts/runStdoutE2E.mjs
+#   extension/scripts/runStdoutLifecycle.mjs
+#   extension/scripts/runStdoutPerf.mjs
+#   extension/scripts/runStdoutVendors.mjs
+#   extension/src/monitor/stdoutTail.ts
+#   extension/src/ui/cockpit.ts
+#   extension/src/ui/cockpitHtml.ts
+#   extension/test/e2e/controlledCritic.cjs
+#   extension/test/e2e/controlledDisk.cjs
+#   extension/test/e2e/driver.cjs
+#   extension/test/e2e/hostCounters.mjs
+#   extension/test/e2e/perfBaseline.mjs
+#   extension/test/e2e/stdoutWorkspace.mjs
+#   extension/test/e2e/vendorTimings.cjs
+#   extension/test/e2e/workbench.mjs
+#   extension/test/e2e/workerMetrics.cjs
+#   extension/test/unit/stdoutTail.test.ts
+#   src/trivium/adapters/agy.ts
+#   src/trivium/adapters/base.ts
+#   src/trivium/adapters/claude.ts
+#   src/trivium/adapters/codex.ts
+#   src/trivium/adapters/stub-stdout.ts
+#   src/trivium/adapters/stub.ts
+#   src/trivium/adapters/zcode.ts
+#   src/trivium/live-stdout.ts
+#   src/trivium/run-protocol.ts
+#   src/trivium/runner.ts
+#   src/trivium/scrub.ts
+#   src/trivium/util/exec.ts
+#   test/contract/orchestrator-logs-parity.test.ts
+#   test/unit/live-stdout.test.ts
+diff --git a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+index 8fc3f37a..b558bdfd 100644
+--- a/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
++++ b/doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md
+@@ -4687,3 +4687,7 @@ Read/Grep各覆盖生产枚举完整目标集，复用claudeDenyEvidence的已
+ 2026-10-28续批代码审契约勘误（CLAUDE-01/02/03/04/05/06/07、GLM-01至05）：审核参数单列facts.review_invocation_args，来自固定CLI字节的真实最小读取探针，不复用无工具callability argv；生产invoke和准入binding必须消费同一审核参数。无字段的旧事实只能诊断，不能审核。台账deny_paths为已验覆盖集，原件携其hash，本次请求扩集即拒绝；具体临时HOME由同一已验模板保护，不把随机路径放入静态指纹。权限生成模板/别名样本/环境允许键/代理反例结果实际入recipe hash，不能仅靠手工版本串。Custom key大小写精确，官方旧归一保持。
+ 
+ 探针在私有HOME固定一次CLI字节，codec/version/catalog/两类正控制均用该副本，末尾确认源未变。Custom深比解密仅在invoke固定副本内做一次，不跨run保留明文。null作用域租约在下一次private HOME准备与无运行目录也会执行的retention/scrub适配钩子回收；所有者活着时跳过，所有者死但CLI组活/身份未知时明确阻塞，不自动杀未知进程。认证或整个加密缓存源变化目前会保守使30项准入失效；刷新频率未测，成本边界明确，不为复用降低凭据绑定。
++
++### E1 审查员标准输出（2026-11-20）
++
++四个审查适配器在接收子进程 stdout 时，把已确认脱敏的片段分批追加到各自既有的 out/stdout 文件。核心保留原始解析路径，按侧、按尝试发布独立的展示状态。VS Code 驾驶舱通过运行目录增量读出可见尾部，M1 切至 M3 时继续跟踪同一个运行。字段及终态见 [运行目录协议](../03_api/PROTOCOL_dual_critic_relay.md)。
+diff --git a/doc/02_design/LLD_orchestrator.md b/doc/02_design/LLD_orchestrator.md
+index fb8afe34..d1744073 100644
+--- a/doc/02_design/LLD_orchestrator.md
++++ b/doc/02_design/LLD_orchestrator.md
+@@ -725,3 +725,7 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需
+ - [GUIDE_local_pitfalls.md](../04_development/GUIDE_local_pitfalls.md)：各家 CLI 与本机环境的实测坑（`P-xx`）；M0 当时与厂商文档不符的 12 条见 [REPORT_2026-09-11_m0_probe.md](../05_testing/REPORT_2026-09-11_m0_probe.md) §8
+ - [BACKLOG.md](../08_project/BACKLOG.md)：技术债唯一事实源
+ - [MANUAL_user.md](../07_manuals/MANUAL_user.md)：使用手册
++
++### E1 审查员标准输出（2026-11-20）
++
++四个审查适配器在接收子进程 stdout 时，把已确认脱敏的片段分批追加到各自既有的 out/stdout 文件。核心保留原始解析路径，按侧、按尝试发布独立的展示状态。VS Code 驾驶舱通过运行目录增量读出可见尾部，M1 切至 M3 时继续跟踪同一个运行。字段及终态见 [运行目录协议](../03_api/PROTOCOL_dual_critic_relay.md)。
+diff --git a/doc/02_design/系统设计说明书.md b/doc/02_design/系统设计说明书.md
+index 078d7b00..488151f8 100644
+--- a/doc/02_design/系统设计说明书.md
++++ b/doc/02_design/系统设计说明书.md
+@@ -133,3 +133,7 @@
+ `scripts/package-release.mjs` 从白名单按构建主机平台生成分发包（macOS 为 tar.gz + `.command` 快捷入口，Windows 为 zip + `.cmd` 快捷入口，Linux 拒绝）：运行时、四家入口、安装器必读的 `skills-src/carriers`、安装前检查、许可和文档。包内 `文件校验.json` 及包外 `.sha256` 可验证传输。发布元数据另存 CLI 哈希、`platform` 和打包时的 `source_snapshot`；`computed_at` 是来源复算时刻，二进制自身仍嵌入实际构建标识。正式包要求干净工作树并校验 CLI 版本与构建输入指纹；未提交内容只允许生成明确标注 candidate 的包。包不含 `.trivium`、`.reviews`、测试原始证据、源码、账号目录或 node_modules。产品本身不自更新。
+ 
+ 测试与已知残余见[发布检查报告](../05_testing/发布检查报告.md)和[Bug 清单](../08_project/现存Bug与未完成工作清单.md)。
++
++### E1 审查员标准输出（2026-11-20）
++
++四个审查适配器在接收子进程 stdout 时，把已确认脱敏的片段分批追加到各自既有的 out/stdout 文件。核心保留原始解析路径，按侧、按尝试发布独立的展示状态。VS Code 驾驶舱通过运行目录增量读出可见尾部，M1 切至 M3 时继续跟踪同一个运行。字段及终态见 [运行目录协议](../03_api/PROTOCOL_dual_critic_relay.md)。
+diff --git a/doc/03_api/PROTOCOL_dual_critic_relay.md b/doc/03_api/PROTOCOL_dual_critic_relay.md
+index 240219b9..36e55ebc 100644
+--- a/doc/03_api/PROTOCOL_dual_critic_relay.md
++++ b/doc/03_api/PROTOCOL_dual_critic_relay.md
+@@ -436,6 +436,8 @@ init」是必然常态，那种情况必须静默 exit 0。但守卫**不能一
+ ~/.trivium/runs/<repo_id>/<run_id>/<critic>/{out,trace}/
+ ```
+ 
++E1 在 `<runDir>/<critic>/out/stdout-live.json` 发布只读展示记录。它包含 `schema=trivium.stdout.v1`、正整数 `attempt`、`file`（stdout.jsonl 或 stdout.json）、本次 UUID `identity`、设备号与 inode 字符串 `dev/ino`、已确认的字节数 `bytes`、`state` 与 `reason`。streaming 表示正在捕获，deferred 表示暂缓，complete 表示已确认，recovered 表示在收尾时恢复，incomplete 表示完整性未确认。状态以同目录原子替换发布，消费者须核对文件身份。普通重试的旧文件移到 out/attempt-N，作废尝试随整个 out 搬入 voided/<critic>/attempt-N。无该记录的运行只提供既有日志和归档。展示记录不参加投票、证据核验或归档。
++
+ 这是隔离机制的一部分：审查进行中，对方**本次**结论在项目树内物理不存在
+ （§10.1 第 ② 道「延迟落盘」）。原始日志可能含仓库片段，默认保留 30 天。
+ 
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index a5a27626..82a54463 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -180,6 +180,7 @@
+ 
+ - [密钥扫描源码调用误报修复](./REPORT_2026-11-06_密钥扫描源码调用误报.md)：普通变量初始化调用被长凭据规则截断误报；收窄到完整声明调用形态，保留字面值与专用凭据检测，记录红绿对照与安装核验。
+ - [VS Code 插件 Phase 4 本地验收](./REPORT_2026-11-19_VSCode插件Phase4验收.md)：安装包、双窗桩链、四家真实 M1 矩阵、日志虚拟滚动及独立 Mac mini 安装与人工审批回读。
++- [VS Code 驾驶舱 E1 审查员 stdout 验收](./REPORT_2026-11-20_VSCode审查员实时输出验收.md)：四路径退出前可见、双工作区 M3、跨块脱敏及相同负载的性能对照。
+ 
+ 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
+ 
+diff --git a/doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md b/doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md
+index 2fadd04f..846057d0 100644
+--- a/doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md
++++ b/doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md
+@@ -230,7 +230,7 @@ flowchart TD
+ 
+ - **交付**：`vsce` 打包 `.vsix` + 中文使用手册（FR-13）；四家 Agent × M1 真机会话回归矩阵（注入成功率、续话中继、终端生命周期降级）；stub 端到端测试固化（`TRIVIUM_STUB_CRITIC` 驱动 UI 全流程）；多窗口/多仓库回归；长输出窗口性能（虚拟滚动）。
+ - **可选核心增强（各自走正式双审，不阻塞插件发布）**：
+-  - E1 审查员 stdout 增量 tee 至 `<runDir>/<critic>/out/`（真流式，缓解 G3）；
++  - E1 审查员 stdout 增量 tee 至 `<runDir>/<critic>/out/`（真流式，缓解 G3）。11 月 20 日的实现和实测边界见 [E1 验收报告](../05_testing/REPORT_2026-11-20_VSCode审查员实时输出验收.md)；
+   - E2 `approve` 一次性确认码（§4.4）；
+   - E3 `trivium runs list` CLI（插件已可自扫，低优先）。
+ - **验收**：干净机器装 `.vsix` 后，入口 B 全流程（点火→双审→裁决台→审批）除终端权限弹窗外零终端操作；中途关闭协同终端，驾驶舱正确降级 M3 且监控不中断。
+diff --git a/extension/README.md b/extension/README.md
+index 30e7d8c8..988e324c 100644
+--- a/extension/README.md
++++ b/extension/README.md
+@@ -2,7 +2,7 @@
+ 
+ ## 安装与首次使用
+ 
+-1. 在 VS Code 1.85 或更高版本打开「扩展」视图，在右上角「…」菜单选择「从 VSIX 安装…」（Install from VSIX…），选中 `trivium-cockpit-0.3.0.vsix`。按提示重新加载窗口。
++1. 在 VS Code 1.85 或更高版本打开「扩展」视图，在右上角「…」菜单选择「从 VSIX 安装…」（Install from VSIX…），使用 E1 时选中 `trivium-cockpit-0.3.0-e1.vsix`。按提示重新加载窗口。
+ 2. 每个仓库单独打开一个 VS Code 窗口。驾驶舱读取当前窗口第一个工作区文件夹。目标仓库需要先按 TriviumCode 部署手册完成安装、初始化和 CLI 探测。在左侧「Trivium → 环境健康」检查要使用的 Driver 和审查者。
+ 3. 在命令面板运行「打开 Trivium 驾驶舱」。本手册也可通过「打开 Trivium 驾驶舱使用手册」离线查看。
+ 
+@@ -11,20 +11,28 @@
+ 1. 在「装配」选择 Driver，点选参与的审查者，选择「B · 计划双审」。输入审查焦点，可填写显式主题。入口 B 审查已有计划，请选择已由该 Driver 认领并归档计划原稿的主题。
+ 2. 点击「① 执行前置链（resolve → preflight）」。检查解析主题和逐步结果；失败时先处理该步显示的原因。确认后点击「② 确认主题并点火」。Driver 会话在命名终端中打开；如 CLI 询问工作区权限，请在该终端确认。
+ 3. 在终端核对入口和焦点已被 CLI 接收。续话时在驾驶舱底部输入第二条消息，点一次「发送 ▸」。ZCode 默认分开发送文字和回车。若入口仍在处理中，驾驶舱暂存续话，等原会话的轮次结束后自动提交。可从终端查看 GLM 对第二条消息的回答。驾驶舱将该终端的 ZCode 运行日志放在 VS Code 本次扩展宿主的日志目录中，用于识别轮次。首次使用若遇到原生工具权限弹窗，请先核对夹具或项目路径及具体命令。Codex、Claude Code 的默认提交方式也为分开发送，Antigravity 一次提交。若显式配置了 `trivium.launch.sendMode`，驾驶舱使用所选模式；`trivium.launch.carrierOverrides` 中的同名设置优先。
+-4. 在「运行监控」核对主题、阶段、运行编号和各侧状态。展开「worker.log 尾部」滚动查看日志窗口；其输入大小由 `trivium.monitor.logTailBytes` 控制。点击审查正文或意见位置查看结果。「运行历史」可回放归档轮次。
+-5. 需要关闭协同终端时，先确认运行卡已出现并记下编号，再点终端的垃圾桶。驾驶舱切换到「M3 外部驾驶舱（纯监控）」，可用原编号继续看进度和归档。隐藏终端面板会保留会话。M3 中需要续话时，须回到可用的 Driver 会话。
++4. 在「运行监控」核对主题、阶段、运行编号和各侧状态。在各审核者名下查看本次尝试的 stdout。展开「worker.log 尾部」滚动查看日志窗口；其输入大小由 `trivium.monitor.logTailBytes` 控制。点击审查正文或意见位置查看结果。「运行历史」可回放归档轮次。
++5. 需要关闭协同终端时，先确认运行卡已出现并记下编号，再点终端的垃圾桶。驾驶舱切换到「M3 外部驾驶舱（纯监控）」，可用原编号继续看各侧新增的 stdout、进度和归档。隐藏终端面板会保留会话。M3 中需要续话时，须回到可用的 Driver 会话。
+ 6. 闸门显示「裁决未齐」时点「进入裁决台（FR-8）」。逐项选择接受、驳回或暂缓，填写理由，为接受项填写落实位置。点击「生成预览」，核对内容、作者和文件名，再点「预览确认后落盘」。入口 B 每轮还需要 Driver 独立输出下一版完整计划。若报 `missing_next_plan`，回到 Driver 会话完成定稿，然后在驾驶舱「刷新」复核。若终端已关闭，需先恢复该 Driver 会话。
+ 7. 当闸门显示「等待人工审批」，由 Bob 核对主题、轮次、计票、警告和工作树摘要，再亲自点击「批准」，或填写理由后拒绝。点击后查看动作结果和工作树摘要。「放弃…」需要二次确认。审查中和等待审批期间保留业务文件原状。
+ 
+ TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面两条 + 一个写例外 + 一个只读查询**：
+ 
+ - **CLI**：`.trivium/bin/trivium --json` + 退出码协议（含 FR-9 的 approve/abandon 审批动作——点击经宿主直发，不经过任何模型上下文）；
+-- **文件面**：只读 watcher（state.json / status.json / `.reviews/**`）；
++- **文件面**：只读 watcher（state.json / status.json / worker.log / 逐侧 stdout / `.reviews/**`）；
+ - **唯一写例外（FR-8）**：裁决件经**预览确认后**的新建与写回（`.reviews/<主题>/<阶段>/` 下 `trivium.disposition.v1` 契约件；防覆盖与正确性由编排器 `gate --check` 兜底）；
+ - **只读 git 查询（FR-9 提示性摘要）**：`git status --porcelain -z`（纯只读；权威口径以 approve 输出的 worktree_summary 为准）。
+ 
+ 不复制编排器业务逻辑，阶段循环始终由终端里的 Driver 会话（入口 skill）驱动。
+ 
++## 查看审核者的实时输出
++
++运行卡按主题、运行编号、审核者和尝试号显示已脱敏的标准输出。厂商 CLI 可能集中在收尾时才写出数据。「等待该侧输出」表示核心已经建立输出文件。旧核心或旧运行缺少实时记录时，卡片会注明，仍可查看 worker.log 和归档结论。审核者的输出（包括 JSON 事件）和最终审查意见分别显示。
++
++面板跟随文件尾部，使用 `trivium.monitor.logTailBytes` 配置窗口，默认每侧 64 KiB，上限 256 KiB。「最近输出」表明较早的字节已退出显示窗口。切回驾驶舱时会补读尾部。正常封口后可以点击「查看完整 stdout」。遇到暂缓、超时、中止或输出截断时请留意该侧提示；写入恢复与完整性未确认会分别显示。文件与本次运行一起保存在运行目录，清理运行目录后仍可通过「运行历史」查看归档意见。
++
++需要按旧方式运行时，可在本次 worker 继承的环境中设置 `TRIVIUM_LIVE_STDOUT=0`。新文件在 POSIX 系统按 0600 创建；Windows 文件访问权限取决于运行目录的 NTFS ACL，本轮 Windows 安装态未测。
++
+ ## 功能
+ 
+ - **环境健康面板**（Activity Bar「Trivium」）：读取 `.trivium/config.local.yaml`
+diff --git a/extension/scripts/runE2E.mjs b/extension/scripts/runE2E.mjs
+index b06f9a5e..8a406cba 100644
+--- a/extension/scripts/runE2E.mjs
++++ b/extension/scripts/runE2E.mjs
+@@ -172,3 +172,6 @@ try {
+   // 保留安装包验收的首窗口，供 Bob 亲自点击；其余都只关闭本轮创建的进程。
+   for (const child of children.slice(handoff ? 1 : 0)) child.kill();
+ }
++
++// E1 独立安装包还要经过四家可控 CLI 的退出闩锁验收。
++if (vsix && path.basename(vsix).endsWith('-e1.vsix')) await import('./runStdoutE2E.mjs');
+diff --git a/extension/src/ui/cockpit.ts b/extension/src/ui/cockpit.ts
+index 01d34e31..9a58c893 100644
+--- a/extension/src/ui/cockpit.ts
++++ b/extension/src/ui/cockpit.ts
+@@ -18,6 +18,7 @@ import { cockpitHtml } from './cockpitHtml';
+ import { assembleEntryCommand, findSkillDoc, type EntryKind } from '../launch/entryCommand';
+ import { claimAfterConfirm, runResolveAndPreflight, type PrechainReport, type PrechainFlags } from '../launch/prechain';
+ import { scriptProviderEnv, carrierOf, parseWrapperNodePath } from '../launch/carriers';
++import { StdoutTail } from '../monitor/stdoutTail';
+ import { RunWatch } from '../monitor/statusWatch';
+ import { ReviewWatch, type ReviewFile } from '../monitor/reviewWatch';
+ import { locateRunDir, locateRunDirWithRetry } from '../monitor/runDiscovery';
+@@ -87,6 +88,7 @@ interface RunCard {
+ }
+ 
+ interface RunEntry {
++  stdout: StdoutTail;
+   watch: RunWatch;
+   reviewWatch: ReviewWatch | null;
+   render: StatusRender | null;
+@@ -101,6 +103,8 @@ interface RunEntry {
+ export class Cockpit implements vscode.Disposable {
+   private panel: vscode.WebviewPanel | null = null;
+   private readonly runs = new Map<string, RunEntry>();
++  /** 重开面板时补读刚看过的运行，只留路径索引，不保留句柄或输出正文。 */
++  private readonly recentRuns = new Map<string, { dir: string; topic: string; stage: string }>();
+   /** 发现中的 run（CODEX-06：并发事件去重） */
+   private readonly discovering = new Set<string>();
+   /** 重试耗尽后的低频重发现（CLAUDE-04） */
+@@ -205,6 +209,10 @@ export class Cockpit implements vscode.Disposable {
+     // 面板关闭 ≠ 实例销毁（CLAUDE-01/AGY-r2-01/CODEX-01）：只做面板级清理，
+     // 实例与服务订阅保留，再次 open 重建面板与监控（订阅回放带回活跃 run）
+     this.panel.webview.onDidReceiveMessage((m) => void this.onMessage(m));
++    this.panel.onDidChangeViewState(({ webviewPanel }) => {
++      for (const run of this.runs.values()) run.stdout.show(webviewPanel.visible);
++      if (webviewPanel.visible) void this.pushRuns();
++    });
+     this.panel.onDidDispose(() => {
+       this.panel = null;
+       this.disposeRuns();
+@@ -213,6 +221,9 @@ export class Cockpit implements vscode.Disposable {
+     // 保证活跃 run 一定能进看板（回放 + 重扫双保险）
+     await this.services.stateWatch.rescan();
+     await this.sendInit();
++    for (const [id, ref] of this.recentRuns) {
++      if (!this.runs.has(id) && !this.discovering.has(id)) await this.attachRun(ref.dir, id, ref.topic, ref.stage, false);
++    }
+   }
+ 
+   /** 扩展停用时的最终销毁（面板关闭走 disposeRuns，见 open()） */
+@@ -287,7 +298,17 @@ export class Cockpit implements vscode.Disposable {
+     if (this.disposed) return;
+     switch (m['type']) {
+       case 'ready':
++        for (const run of this.runs.values()) run.stdout.show(this.panel?.visible === true, true);
++        break;
++      case 'stdout-resync':
++        this.runs.get(String(m['runId']))?.stdout.show(this.panel?.visible === true, true);
++        break;
++      case 'open-stdout': {
++        const file = await this.runs.get(String(m['runId']))?.stdout.completePath(String(m['critic']), Number(m['attempt']));
++        if (file) await vscode.window.showTextDocument(vscode.Uri.file(file), { preview: true });
++        else vscode.window.showWarningMessage('该次完整 stdout 已清理或无法核实文件身份');
+         break;
++      }
+       case 'prechain':
+         await this.handlePrechain(m['form'] as unknown as FormState);
+         break;
+@@ -1346,6 +1367,7 @@ export class Cockpit implements vscode.Disposable {
+         ? `${reason}；终态复核调用失败：以最后快照展示。`
+         : `${reason}；终态以 --status 复核为准。`;
+     }
++    entry.stdout.update(entry.render?.sides ?? [], finalPhase ?? 'unknown', true);
+     entry.watch.dispose();
+     entry.reviewWatch?.dispose();
+     await this.pushRuns();
+@@ -1383,11 +1405,18 @@ export class Cockpit implements vscode.Disposable {
+     }
+   }
+ 
+-  private async attachRun(runDir: string, runId: string, topic: string, stage: string): Promise<void> {
++  private async attachRun(runDir: string, runId: string, topic: string, stage: string, focus = true): Promise<void> {
+     if (this.disposed || this.runs.has(runId)) return;
+     const cfg = await this.services.env.loadConfig();
+     if (this.disposed || this.runs.has(runId)) return; // await 后复查（CODEX-05）
++    const limit = Math.max(1024, Math.min(256 * 1024, logTailBytes() || 65536));
++    const stdout = new StdoutTail(runDir, limit, patch => {
++      if (!this.panel?.visible) return Promise.resolve(false);
++      return this.panel.webview.postMessage({ type: 'stdout', runId, topic, limit, ...patch });
++    });
++    stdout.show(this.panel?.visible === true);
+     const entry: RunEntry = {
++      stdout,
+       watch: null as never,
+       reviewWatch: null,
+       render: null,
+@@ -1419,6 +1448,7 @@ export class Cockpit implements vscode.Disposable {
+       {
+         onRender: (render, extra) => {
+           entry.render = render;
++          stdout.update(render.sides, render.phase, entry.ended || render.terminal);
+           entry.stale = extra.stale;
+           entry.note = extra.note ?? null; // CLAUDE-06：瞬态提示全量替换（恢复后清除旧警示）
+           void this.pushRuns();
+@@ -1427,6 +1457,8 @@ export class Cockpit implements vscode.Disposable {
+           entry.render = render;
+           entry.endNote = note;
+           entry.ended = true;
++          stdout.update(render.sides, render.phase, true);
++          entry.reviewWatch?.dispose();
+           void this.pushRuns();
+         },
+         onSchemaIssue: (reason) => this.reportSchemaIssue(reason), // CODEX-07
+@@ -1443,8 +1475,21 @@ export class Cockpit implements vscode.Disposable {
+       void this.pushRuns();
+     });
+     this.runs.set(runId, entry);
++    this.recentRuns.set(runId, { dir: runDir, topic, stage });
++    while (this.recentRuns.size > 8) {
++      const oldest = this.recentRuns.keys().next().value;
++      if (oldest === undefined) break;
++      this.recentRuns.delete(oldest);
++      const previous = this.runs.get(oldest);
++      if (previous?.ended) {
++        previous.stdout.dispose();
++        previous.watch.dispose();
++        previous.reviewWatch?.dispose();
++        this.runs.delete(oldest);
++      }
++    }
+     // FR-6/7：活跃 run → 批注 scope 跟随（新 run 自动成为焦点回放；D4′）
+-    void this.services.annotationHub.setScope(topic, stage || 'plan').then(() =>
++    if (focus) void this.services.annotationHub.setScope(topic, stage || 'plan').then(() =>
+       this.services.annotationHub.setActiveRun(runId),
+     );
+     await this.pushRuns();
+@@ -1543,7 +1588,7 @@ export class Cockpit implements vscode.Disposable {
+         terminal: true,
+         sides: [],
+         stale: false,
+-        note: summary ? `回放归档运行（${summary.sides.length} 侧工件）` : '回放归档运行',
++        note: (summary ? `回放归档运行（${summary.sides.length} 侧工件）` : '回放归档运行') + ' · 此归档未附实时 stdout',
+         message: null,
+         artifacts: [],
+         reviewFiles: [],
+@@ -1555,8 +1600,9 @@ export class Cockpit implements vscode.Disposable {
+   }
+ 
+   private async pushRuns(): Promise<void> {
+-    if (this.disposed || !this.panel) return; // AGY-r2-02：面板未开不跑检索不广播
+-    this.post({ type: 'runs', runs: await this.runCards() });
++    if (this.disposed || !this.panel?.visible) return; // AGY-r2-02：面板未开不跑检索不广播
++    const runs = await this.runCards();
++    if (this.panel?.visible) this.post({ type: 'runs', runs });
+   }
+ 
+   private setMode(mode: 'M1' | 'M3'): void {
+@@ -1570,6 +1616,7 @@ export class Cockpit implements vscode.Disposable {
+ 
+   private disposeRuns(): void {
+     for (const e of this.runs.values()) {
++      e.stdout.dispose();
+       e.watch.dispose();
+       e.reviewWatch?.dispose();
+     }
+diff --git a/extension/src/ui/cockpitHtml.ts b/extension/src/ui/cockpitHtml.ts
+index 10111420..68c92709 100644
+--- a/extension/src/ui/cockpitHtml.ts
++++ b/extension/src/ui/cockpitHtml.ts
+@@ -279,8 +279,8 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
+   }
+   // 每个运行保留独立视口。心跳和状态更新重绘卡片时恢复展开状态与滚动位置。
+   const logs = new Map();
+-  function logView(id, text) {
+-    let view = logs.get(id);
++  function logView(id, text, cache = logs) {
++    let view = cache.get(id);
+     if (!view) {
+       const details = document.createElement('details');
+       details.innerHTML = '<summary>worker.log 尾部</summary><div class="log" tabindex="0" aria-label="运行日志"><div class="log-space"><pre class="log-lines"></pre></div></div>';
+@@ -298,7 +298,7 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
+       view.paint = paint;
+       port.addEventListener('scroll', paint);
+       details.addEventListener('toggle', paint);
+-      logs.set(id, view);
++      cache.set(id, view);
+     }
+     if (text !== view.text) {
+       view.text = text;
+@@ -307,12 +307,84 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
+     }
+     return view;
+   }
++  // stdout 只把新字节送入既有虚拟视口。心跳重画卡片时移动原节点。
++  const stdoutViews = new Map();
++  const stdoutSlots = new Map();
++  const encoder = new TextEncoder();
++  const decoder = new TextDecoder();
++  function stdoutSlot(runId, critic) { return JSON.stringify([runId, critic]); }
++  function attachStdout(slot, view) {
++    if (view.details.parentNode !== slot) slot.appendChild(view.details);
++    if (view.details.open) {
++      view.port.scrollTop = view.follow ? view.port.scrollHeight : view.top;
++      view.paint();
++    }
++  }
++  function updateStdout(m) {
++    const slotId = stdoutSlot(m.runId, m.critic);
++    const id = JSON.stringify([m.runId, m.critic, m.attempt]);
++    let v = stdoutViews.get(id);
++    if (!v) {
++      v = logView(id, '', stdoutViews);
++      v.runId = m.runId; v.slotId = slotId; v.parts = []; v.bytes = 0; v.end = 0; v.follow = true;
++      v.details.className = 'critic-stdout'; v.details.dataset.critic = m.critic;
++      v.details.dataset.attempt = String(m.attempt);
++      v.details.open = true;
++      v.port.setAttribute('aria-label', m.critic + ' 标准输出');
++      v.openFile = document.createElement('button');
++      v.openFile.className = 'secondary'; v.openFile.textContent = '查看完整 stdout';
++      v.openFile.onclick = () => vscode.postMessage({ type: 'open-stdout', runId: m.runId, critic: m.critic, attempt: m.attempt });
++      v.details.appendChild(v.openFile);
++      v.port.addEventListener('scroll', () => {
++        if (!v.port.isConnected) return;
++        v.top = v.port.scrollTop;
++        v.follow = v.top + v.port.clientHeight >= v.port.scrollHeight - 18;
++      });
++    }
++    if (m.reset) {
++      v.lines = ['']; v.parts = []; v.bytes = 0; v.clipped = m.clipped; v.identity = m.identity;
++    } else if (v.identity !== m.identity || v.end !== m.start) {
++      vscode.postMessage({ type: 'stdout-resync', runId: m.runId });
++      return;
++    }
++    v.end = m.end;
++    if (m.text) {
++      const bytes = encoder.encode(m.text);
++      v.parts.push(bytes); v.bytes += bytes.length;
++      let removedLines = 0, removedChars = 0;
++      while (v.bytes > m.limit) {
++        const first = v.parts[0];
++        let cut = Math.min(v.bytes - m.limit, first.length);
++        while (cut < first.length && (first[cut] & 192) === 128) cut++;
++        const prefix = decoder.decode(first.subarray(0, cut));
++        const rows = prefix.split('\\n');
++        removedLines += rows.length - 1;
++        removedChars = rows.length > 1 ? rows[rows.length - 1].length : removedChars + prefix.length;
++        if (cut === first.length) v.parts.shift();
++        else v.parts[0] = first.slice(cut);
++        v.bytes -= cut; v.clipped = true;
++      }
++      const add = m.text.split('\\n');
++      v.lines[v.lines.length - 1] += add[0];
++      for (let i = 1; i < add.length; i++) v.lines.push(add[i]);
++      if (removedLines) v.lines.splice(0, removedLines);
++      if (removedChars) v.lines[0] = v.lines[0].slice(removedChars);
++    }
++    v.details.querySelector('summary').textContent = m.critic + ' stdout · 第 ' + m.attempt + ' 次 · ' + m.note + (v.clipped ? ' · 最近输出' : '');
++    v.openFile.hidden = !m.canOpen;
++    v.space.style.height = (v.lines.length * 18) + 'px';
++    const slot = stdoutSlots.get(slotId);
++    if (slot) attachStdout(slot, v);
++  }
+   function renderRuns(runs) {
+     const visible = new Set(runs.filter(r => r.logTail).map(r => r.runId));
+     for (const [id, view] of logs) {
+       if (!visible.has(id)) logs.delete(id);
+       else if (view.details.open) { view.top = view.port.scrollTop; view.left = view.port.scrollLeft; }
+     }
++    const runIds = new Set(runs.map(r => r.runId));
++    for (const [id, view] of stdoutViews) if (!runIds.has(view.runId)) stdoutViews.delete(id);
++    stdoutSlots.clear();
+     const box = $('runs'); box.innerHTML = '';
+     if (!runs.length) { box.innerHTML = '<span class="hint">（暂无活跃运行）</span>'; return; }
+     for (const r of runs) {
+@@ -333,6 +405,10 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
+         sp.innerHTML = '<b>' + escapeHtml(s.critic) + '</b> <span class="st-' + s.state + '">' + escapeHtml(s.stateLabel) + '</span>' +
+           (s.model ? ' · ' + escapeHtml(s.model) : '') + (s.elapsedS != null ? ' · ' + s.elapsedS + 's' : '');
+         sides.appendChild(sp);
++        const slot = document.createElement('div');
++        const slotId = stdoutSlot(r.runId, s.critic);
++        stdoutSlots.set(slotId, slot); sides.appendChild(slot);
++        for (const view of stdoutViews.values()) if (view.slotId === slotId) attachStdout(slot, view);
+       }
+       card.appendChild(sides);
+       if (r.note) {
+@@ -356,6 +432,10 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
+       card.appendChild(files);
+       if (r.findingsSummary && r.findingsSummary.length > 0) card.appendChild(renderFindings(r));
+       box.appendChild(card);
++      for (const slot of sides.querySelectorAll('.critic-stdout')) {
++        const v = stdoutViews.get(JSON.stringify([r.runId, slot.dataset.critic, Number(slot.dataset.attempt)]));
++        if (v) attachStdout(slot.parentNode, v);
++      }
+       if (r.logTail) {
+         const view = logView(r.runId, r.logTail);
+         card.appendChild(view.details);
+@@ -825,6 +905,7 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
+         setMode(m.ok ? 'M1' : 'M3');
+         break;
+       case 'runs': renderRuns(m.runs); break;
++      case 'stdout': updateStdout(m); break;
+       case 'relay-result': banner(m.ok ? 'info' : 'warn', m.note); break;
+       case 'cancel-result': banner(m.ok ? 'info' : 'warn', m.note); break;
+       case 'mode': setMode(m.mode); break;
+diff --git a/extension/test/e2e/driver.cjs b/extension/test/e2e/driver.cjs
+index 099fb985..1db176c4 100644
+--- a/extension/test/e2e/driver.cjs
++++ b/extension/test/e2e/driver.cjs
+@@ -3,8 +3,8 @@ const fs = require('node:fs');
+ const path = require('node:path');
+ const { execFileSync } = require('node:child_process');
+ const rl = require('node:readline').createInterface({ input: process.stdin });
+-const { topic, focus } = JSON.parse(fs.readFileSync('.trivium/scenario.json'));
+-const command = '/dual-review-plan ' + focus + ' --driver claude --critics gemini,glm --topic ' + topic;
++const { topic, focus, driver = 'claude', critics = 'gemini,glm' } = JSON.parse(fs.readFileSync('.trivium/scenario.json'));
++const command = (driver === 'codex' ? '$' : '/') + 'dual-review-plan ' + focus + ' --driver ' + driver + ' --critics ' + critics + ' --topic ' + topic;
+ const wrapper = path.resolve('.trivium/bin/trivium');
+ let started = false;
+ let runId;
+@@ -12,7 +12,7 @@ rl.on('line', async line => {
+   if (line === command && !started) {
+     started = true;
+     const output = execFileSync(wrapper, ['review', '--start', '--entry', 'B', '--stage', 'plan',
+-      '--topic', topic, '--driver', 'claude', '--critics', 'gemini,glm', '--focus', focus, '--json'], { encoding: 'utf8' });
++      '--topic', topic, '--driver', driver, '--critics', critics, '--focus', focus, '--json'], { encoding: 'utf8' });
+     runId = JSON.parse(output).run_id;
+     fs.writeFileSync('.trivium/start.json', output);
+   } else if (line === '核对续话 ' + topic && started) {
+diff --git a/extension/test/e2e/workbench.mjs b/extension/test/e2e/workbench.mjs
+index adf10177..2bee40c4 100644
+--- a/extension/test/e2e/workbench.mjs
++++ b/extension/test/e2e/workbench.mjs
+@@ -32,7 +32,7 @@ export async function installVsix({ code, base, vsix }) {
+   assert.equal(installed.trim(), manifest.publisher + '.' + manifest.name + '@' + manifest.version);
+   console.log(installed.trim());
+ }
+-export async function openWorkspace(fx, { base, code, vsix, children, terminalAccess = false, sendMode, readyDelayMs }) {
++export async function openWorkspace(fx, { base, code, vsix, children, terminalAccess = false, sendMode, readyDelayMs, inspectExtensions }) {
+   const profile = path.join(base, path.basename(fx.root) + '-profile');
+   const extensions = path.join(base, 'extensions');
+   const profileArgs = ['--user-data-dir', profile, '--extensions-dir', extensions];
+@@ -46,6 +46,7 @@ export async function openWorkspace(fx, { base, code, vsix, children, terminalAc
+   }));
+   const args = [...profileArgs, '--new-window', '--skip-welcome', '--skip-release-notes', '--disable-updates',
+     '--disable-workspace-trust', '--locale=en', '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1',
++    ...(inspectExtensions ? ['--inspect-extensions=' + inspectExtensions] : []),
+     ...(vsix ? [] : ['--extensionDevelopmentPath=' + extensionRoot]), fx.root];
+   const log = await fs.open(path.join(profile, 'launch.log'), 'w');
+   const child = spawn(code, args, { stdio: ['ignore', log.fd, log.fd], detached: true });
+diff --git a/src/trivium/adapters/agy.ts b/src/trivium/adapters/agy.ts
+index c1b5bb9d..334bd2f5 100644
+--- a/src/trivium/adapters/agy.ts
++++ b/src/trivium/adapters/agy.ts
+@@ -18,7 +18,7 @@ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import type { CriticRequest, CriticResult } from '../types.js';
+-import { run } from '../util/exec.js';
++import { runReviewProcess, type StdoutTarget } from '../live-stdout.js';
+ import { ensureDir, exists, sha256File } from '../util/fsx.js';
+ import {
+   parseAgyStream,
+@@ -40,6 +40,7 @@ import {
+ import { agentConfigOf } from '../config.js';
+ 
+ export interface AgyInvokeOptions {
++  stdoutTarget?: StdoutTarget;
+   bin: string;
+   cwd: string;
+   prompt: string;
+@@ -145,7 +146,7 @@ export function buildAgyArgs(opts: Omit<AgyInvokeOptions, 'bin' | 'cwd' | 'pty'
+ export async function invokeAgy(opts: AgyInvokeOptions): Promise<AgyInvokeOutcome> {
+   const args = buildAgyArgs(opts);
+ 
+-  const r = await run(opts.bin, args, {
++  const r = await runReviewProcess(opts.stdoutTarget, opts.bin, args, {
+     cwd: opts.cwd,
+     timeoutMs: opts.timeoutMs,
+     killTree: true,
+@@ -405,6 +406,7 @@ export const agyAdapter: CriticAdapter = {
+     let out: AgyInvokeOutcome;
+     try {
+       out = await invokeAgy({
++        stdoutTarget: { path: stdoutPath, attempt: ctx.attempt ?? 1 },
+         bin,
+         cwd: req.project_root,
+         prompt: req.brief_text,
+@@ -423,7 +425,6 @@ export const agyAdapter: CriticAdapter = {
+     }
+ 
+     // 原始输出与轨迹落在项目**外**的运行目录（§10.1 第 ② 道）
+-    await fs.writeFile(stdoutPath, out.stdout, 'utf8');
+     await fs.writeFile(tracePath, JSON.stringify(out.parsed.toolCalls, null, 2), 'utf8');
+ 
+     // 超时判定不能只看退出码：1.1.28 起 --print-timeout 到期会 exit 0（坑 P-07）
+diff --git a/src/trivium/adapters/base.ts b/src/trivium/adapters/base.ts
+index f4f25fb3..752558db 100644
+--- a/src/trivium/adapters/base.ts
++++ b/src/trivium/adapters/base.ts
+@@ -19,6 +19,8 @@ import type {
+ import { VENDOR_MODEL_FAMILY, agentById, type AgentVendor } from '../agents/registry.js';
+ 
+ export interface AdapterContext {
++  /** 当前 worker 内的尝试号，不写入请求快照。 */
++  attempt?: number;
+   cfg: Config;
+   /** node 绝对路径（GUI 进程不读 .zshrc，§10.5） */
+   nodePath: string;
+diff --git a/src/trivium/adapters/claude.ts b/src/trivium/adapters/claude.ts
+index 11aa412c..e343e8dc 100644
+--- a/src/trivium/adapters/claude.ts
++++ b/src/trivium/adapters/claude.ts
+@@ -35,7 +35,7 @@ import path from 'node:path';
+ import os from 'node:os';
+ import { createHash } from 'node:crypto';
+ import type { ClaudeProbe, CriticRequest, CriticResult } from '../types.js';
+-import { run } from '../util/exec.js';
++import { runReviewProcess, type StdoutTarget } from '../live-stdout.js';
+ import { claudeInvocationEnv, claudeProbeForRoute, claudeProfileNames, executableFile, isModelNameKey, looksLikeModelName,
+   resolveClaudeRoute, type ClaudeRoute } from './claude-route.js';
+ import { redactSecrets } from '../secrets.js';
+@@ -65,6 +65,7 @@ import {
+ } from './base.js';
+ 
+ export interface ClaudeInvokeOptions {
++  stdoutTarget?: StdoutTarget;
+   route?: ClaudeRoute;
+   bin: string;
+   cwd: string;
+@@ -574,7 +575,7 @@ export function scrubGatewayEnv(text: string, env: Record<string, string> | unde
+  */
+ export async function invokeClaude(opts: ClaudeInvokeOptions): Promise<ClaudeInvokeOutcome> {
+   const args = [...(opts.route?.prefix ?? []), ...buildClaudeArgs(opts)];
+-  const r = await run(opts.route?.bin ?? opts.bin, args, {
++  const r = await runReviewProcess(opts.stdoutTarget, opts.route?.bin ?? opts.bin, args, {
+     // 先清父进程路线变量、后注网关键（EV-256）；无 route 时不给补丁，与修复前相同
+     env: opts.route ? claudeInvocationEnv(opts.route) : undefined,
+     cwd: opts.cwd,
+@@ -1118,6 +1119,7 @@ async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: C
+     let out: ClaudeInvokeOutcome;
+     try {
+       out = await invokeClaude({
++        stdoutTarget: { path: stdoutPath, attempt: ctx.attempt ?? 1, replace: gatewayScrubPlan(route.settingsEnv).replace },
+         bin,
+         route,
+         cwd: req.project_root,
+@@ -1142,7 +1144,6 @@ async function runClaudeReview(ctx: AdapterContext, req: CriticRequest, route: C
+       });
+     }
+ 
+-    await fs.writeFile(stdoutPath, out.stdout, 'utf8');
+     const trace = parseClaudeEvents(out.stdout);
+ 
+     await fs.writeFile(
+diff --git a/src/trivium/adapters/codex.ts b/src/trivium/adapters/codex.ts
+index e4210db7..699e4fec 100644
+--- a/src/trivium/adapters/codex.ts
++++ b/src/trivium/adapters/codex.ts
+@@ -16,7 +16,7 @@ import { promises as fs } from 'node:fs';
+ import { readFileSync, readdirSync } from 'node:fs';
+ import { createHash } from 'node:crypto';
+ import type { CriticRequest, CriticResult, CodexCriticConfig } from '../types.js';
+-import { run } from '../util/exec.js';
++import { runReviewProcess, type StdoutTarget } from '../live-stdout.js';
+ import { ensureDir, exists, sha256File, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
+ import { IS_WIN } from '../util/platform.js';
+ import { agentConfigOf } from '../config.js';
+@@ -42,6 +42,7 @@ import {
+ } from './base.js';
+ 
+ export interface CodexInvokeOptions {
++  stdoutTarget?: StdoutTarget;
+   bin: string;
+   cwd: string;
+   /** 送审包全文。走 stdin，不进 argv */
+@@ -140,7 +141,7 @@ export async function invokeCodex(opts: CodexInvokeOptions): Promise<CodexInvoke
+     isolationEnv['HOMEDRIVE'] = undefined;
+     isolationEnv['HOMEPATH'] = undefined;
+   }
+-  const r = await run(opts.bin, args, {
++  const r = await runReviewProcess(opts.stdoutTarget, opts.bin, args, {
+     cwd: opts.cwd,
+     env: isolationEnv,
+     /*
+@@ -763,6 +764,7 @@ export const codexAdapter: CriticAdapter = {
+     let out: CodexInvokeOutcome;
+     try {
+       out = await invokeCodex({
++        stdoutTarget: { path: stdoutPath, attempt: ctx.attempt ?? 1 },
+         bin,
+         cwd: req.project_root,
+         prompt: req.brief_text,
+@@ -782,7 +784,6 @@ export const codexAdapter: CriticAdapter = {
+       });
+     }
+ 
+-    await fs.writeFile(stdoutPath, out.stdout, 'utf8');
+     const trace = parseCodexEvents(out.stdout);
+ 
+     if (out.timedOut) {
+diff --git a/src/trivium/adapters/stub.ts b/src/trivium/adapters/stub.ts
+index 66aeaada..77701dd6 100644
+--- a/src/trivium/adapters/stub.ts
++++ b/src/trivium/adapters/stub.ts
+@@ -20,6 +20,7 @@
+  * 生产路径若检测到这个变量会打**醒目告警**——它能伪造「审查通过」，
+  * 绝不能在真实审查里生效而无人知晓。
+  */
++import { stubStdout, type StubStdout } from './stub-stdout.js';
+ import os from 'node:os';
+ import path from 'node:path';
+ import { promises as fsp } from 'node:fs';
+@@ -169,6 +170,7 @@ export type StubMode =
+ 
+ export interface StubSpec {
+   mode: StubMode;
++  stdout?: StubStdout;
+   /** 本侧第几次实际调用的规格，优先于作废点名段触发的 rerun。 */
+   attempts?: StubSpec[];
+   /** 在保留读取路径和禁读命中的同时让工具调用计数不足。 */
+@@ -820,7 +822,12 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
+       const isRerun = (req.brief_text ?? '').startsWith(VOID_RERUN_BANNER_HEADING);
+       const selected = spec.attempts?.[index] ?? (isRerun ? spec.rerun : undefined);
+       if (selected) return makeStubAdapter(critic, selected).run(ctx, req);
++      let stdoutPath: string | undefined;
++      if (spec.stdout) {
++        stdoutPath = await stubStdout(req.out_dir, req.run_id + '-' + critic, ctx.attempt ?? 1, spec.stdout);
++      }
+       const result = await adapter.run(ctx, req);
++      if (stdoutPath) result.raw_stdout_path = stdoutPath;
+       return { ...result, cli_version: 'stub/0.0.0', ...(spec.noToolEvidence ? { tool_calls: {} } : {}) };
+     },
+   };
+diff --git a/src/trivium/adapters/zcode.ts b/src/trivium/adapters/zcode.ts
+index 97b0fbf9..1ce67fe0 100644
+--- a/src/trivium/adapters/zcode.ts
++++ b/src/trivium/adapters/zcode.ts
+@@ -27,7 +27,7 @@ import path from 'node:path';
+ import os from 'node:os';
+ import { promises as fs } from 'node:fs';
+ import type { CriticRequest, CriticResult, ModelUnenforcedCause } from '../types.js';
+-import { run } from '../util/exec.js';
++import { runReviewProcess, type StdoutTarget } from '../live-stdout.js';
+ import { ensureDir, exists, sha256File, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
+ import { IS_WIN } from '../util/platform.js';
+ import {
+@@ -405,6 +405,7 @@ export function zcodeStorageRedirectEnv(root: string): Record<string, string> {
+ export const ZCODE_CREDENTIAL_ENV_KEYS: readonly string[] = ['ZCODE_API_KEY', 'ZCODE_BASE_URL'];
+ 
+ export interface ZcodeInvokeOptions {
++  stdoutTarget?: StdoutTarget;
+   entry: string;
+   node: string;
+   cwd: string;
+@@ -519,7 +520,7 @@ export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvoke
+     }
+   }
+ 
+-  const r = await run(opts.node, args, { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, killTree: true });
++  const r = await runReviewProcess(opts.stdoutTarget, opts.node, args, { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, killTree: true });
+ 
+   /*
+    * 「无法定位 Built-in Provider Config」是**布局/环境**问题而非模型问题：它要先于
+@@ -1373,6 +1374,7 @@ export const zcodeAdapter: CriticAdapter = {
+     let out: ZcodeInvokeOutcome;
+     try {
+       out = await invokeZcode({
++        stdoutTarget: { path: stdoutPath, attempt: ctx.attempt ?? 1 },
+         entry,
+         node: ctx.nodePath,
+         cwd: req.project_root,
+@@ -1387,7 +1389,6 @@ export const zcodeAdapter: CriticAdapter = {
+       return failedResult('glm', { status: 'failed', reason: `拉起 zcode 失败：${(e as Error).message}` });
+     }
+ 
+-    await fs.writeFile(stdoutPath, out.stdout, 'utf8');
+ 
+     if (out.timedOut) {
+       return failedResult('glm', {
+diff --git a/src/trivium/run-protocol.ts b/src/trivium/run-protocol.ts
+index 8dfa8b4f..880db9c7 100644
+--- a/src/trivium/run-protocol.ts
++++ b/src/trivium/run-protocol.ts
+@@ -1,3 +1,4 @@
++import { interruptStdout } from './live-stdout.js';
+ /**
+  * 长时调用协议：`--start` / `--wait` / `--status` / `--cancel`
+  * （设计 §7.5 / AD-03，按修订版 M2 计划 §2.1 实现四件套而非两件套）。
+@@ -1212,6 +1213,7 @@ function makeWorkerShutdownController(o: { detach: () => void }): { began(): boo
+       void (async () => {
+         try {
+           const r = await shutdownTrackedTrees({ graceMs: WORKER_TREE_GRACE_MS, killWaitMs: WORKER_TREE_KILL_WAIT_MS });
++          await interruptStdout();
+           if (r.groups.length === 0) {
+             process.stderr.write(`[worker] 收到 ${trigger}：没有在跑的审查员 CLI\n`);
+           } else {
+@@ -1329,6 +1331,7 @@ export function installForegroundInterruptForwarding(): () => void {
+     void (async () => {
+       try {
+         const r = await shutdownTrackedTrees({ graceMs: WORKER_TREE_GRACE_MS, killWaitMs: WORKER_TREE_KILL_WAIT_MS });
++        await interruptStdout();
+         if (r.remaining.length > 0) process.stderr.write(`未能确认退出的进程组：${r.remaining.join('，')}\n`);
+       } catch (e) {
+         process.stderr.write(`结束审查员 CLI 时出错：${(e as Error)?.message ?? String(e)}\n`);
+diff --git a/src/trivium/runner.ts b/src/trivium/runner.ts
+index 2eb51ed9..4a9c230e 100644
+--- a/src/trivium/runner.ts
++++ b/src/trivium/runner.ts
+@@ -1,3 +1,4 @@
++import { stdoutAudit, type StdoutAudit } from './live-stdout.js';
+ /**
+  * `runner`：两侧真并行、超时、瞬时故障重试一次（设计 §5.1 / §12.2 / §12.3 / NFR-02）。
+  *
+@@ -189,14 +190,17 @@ async function runOneSide(
+     let hasThrown = false;
+     let attemptResult: CriticResult | undefined;
+     const attemptStartedAt = new Date().toISOString();
++    const audit: StdoutAudit = { redacted: {} };
+     try {
+       // 侧归属（EV-154）：适配器在这里面以 killTree 拉起的 CLI 带上侧名，worker 据此写 status.json 的 sides[c].cli
+-      attemptResult = await withTreeTag(critic, () => adapter.run(input.ctx, req));
++      attemptResult = await stdoutAudit.run(audit, () =>
++        withTreeTag(critic, () => adapter.run({ ...input.ctx, attempt: attempts }, req)));
+     } catch (e) {
+       thrown = e;
+       hasThrown = true;
+     }
+-    const scrub: ScrubOutcome = await scrubSideDir(adapter, sideDir, { force: true });
++    const scrub: ScrubOutcome = await scrubSideDir(adapter, sideDir, { force: true, preRedacted: audit.redacted });
++    await audit.seal?.(scrub.ok && scrub.complete === true);
+     const failure = describeScrubFailure(scrub);
+     if (failure) {
+       warn(`[${critic}] ${failure}`);
+diff --git a/src/trivium/scrub.ts b/src/trivium/scrub.ts
+index eb59dce1..82a96020 100644
+--- a/src/trivium/scrub.ts
++++ b/src/trivium/scrub.ts
+@@ -364,7 +364,7 @@ async function writeAtomicPreservingMode(p: string, content: string, mode: numbe
+ export async function scrubSideDir(
+   adapter: CriticAdapter | undefined,
+   sideDir: string,
+-  opts: { force?: boolean; sizeCap?: number } = {},
++  opts: { force?: boolean; sizeCap?: number; preRedacted?: Record<string, number> } = {},
+ ): Promise<ScrubOutcome> {
+   const hasScrubber = typeof adapter?.scrubRunDir === 'function';
+   if (!(await exists(sideDir))) return { ...emptyOutcome(hasScrubber), skipped: 'no-side-dir' };
+@@ -392,10 +392,13 @@ export async function scrubSideDir(
+   }
+   const logs = await redactLogs(
+     sideDir,
+-    ORCHESTRATOR_LOG_FILES.flatMap((n) => [n, path.join('out', n)]),
++    [...ORCHESTRATOR_LOG_FILES.flatMap((n) => [n, path.join('out', n)]),
++      ...(await attemptLogs(path.join(sideDir, 'out'), out.errors)).map(n => path.join('out', n))],
+     opts.sizeCap ?? SCAN_SIZE_CAP,
+   );
+   Object.assign(out.logs_redacted, logs.redacted);
++  for (const [name, count] of Object.entries(opts.preRedacted ?? {}))
++    out.logs_redacted[name] = (out.logs_redacted[name] ?? 0) + count;
+   out.warnings.push(...logs.warnings);
+   out.errors.push(...logs.errors);
+   skipped += logs.skipped;
+@@ -502,6 +505,19 @@ export async function scrubRunDir(
+  * 那就是该次尝试原来的 `out/`，挪之前已经过那次尝试的强制抹除；这里补一遍只为覆盖「那次抹除失败」的情形。
+  * 只脱敏、不删，结果并进运行目录层的上报（不写哨兵：本模块不往运行目录那一层写任何文件）。
+  */
++/** E1 保留的历次尝试沿用标准日志名，仅枚举真实目录。 */
++async function attemptLogs(dir: string, errors: string[]): Promise<string[]> {
++  let entries;
++  try { entries = await fs.readdir(dir, { withFileTypes: true }); }
++  catch (e) {
++    const code = (e as NodeJS.ErrnoException).code;
++    if (code !== 'ENOENT') errors.push('读取历史尝试目录失败：' + (code ?? 'io'));
++    return [];
++  }
++  return entries.filter(e => e.isDirectory() && /^attempt-[1-9]\d*$/.test(e.name))
++    .flatMap(e => ORCHESTRATOR_LOG_FILES.map(name => path.join(e.name, name)));
++}
++
+ async function redactVoidedAttempts(runDirAbs: string, layer: RunDirLayerScrub, cap: number): Promise<void> {
+   const root = path.join(runDirAbs, VOIDED_ATTEMPTS_DIR);
+   let sideNames: string[];
+@@ -519,7 +535,8 @@ async function redactVoidedAttempts(runDirAbs: string, layer: RunDirLayerScrub,
+     }
+     for (const a of attempts) {
+       const rel = path.join(VOIDED_ATTEMPTS_DIR, side, a);
+-      const r = await redactLogs(path.join(runDirAbs, rel), ORCHESTRATOR_LOG_FILES, cap);
++      const dir = path.join(runDirAbs, rel);
++      const r = await redactLogs(dir, [...ORCHESTRATOR_LOG_FILES, ...await attemptLogs(dir, layer.errors)], cap);
+       for (const [k, v] of Object.entries(r.redacted)) layer.redacted[path.join(rel, k)] = v;
+       layer.warnings.push(...r.warnings.map((w) => `${rel}：${w}`));
+       layer.errors.push(...r.errors.map((e) => `${rel}：${e}`));
+diff --git a/src/trivium/util/exec.ts b/src/trivium/util/exec.ts
+index 5cd7871b..026c32ac 100644
+--- a/src/trivium/util/exec.ts
++++ b/src/trivium/util/exec.ts
+@@ -25,6 +25,9 @@ export interface RunOptions {
+   killGraceMs?: number;
+   /** 写入子进程 stdin 后关闭 */
+   stdin?: string;
++  /** 收到与最终 stdout 同一收集边界内的 UTF-8 文本，含空行和分隔符。 */
++  onStdoutChunk?: (chunk: string) => void;
++  onStdoutTruncated?: (reason: 'capture_limit' | 'pipe_open') => void;
+   /** 每读到一行 stdout 调用一次（用于 stream-json 增量解析） */
+   onStdoutLine?: (line: string) => void;
+   /**
+@@ -594,12 +597,16 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
+     let exitTimer: NodeJS.Timeout | undefined;
+ 
+     const appendOut = (chunk: string) => {
++      // 已兑现后的孙进程迟到输出不进入解析或实时文件。
++      if (settled) return;
++      let accepted = chunk;
+       if (stdout.length + chunk.length > maxBufferBytes) {
+-        stdout += chunk.slice(0, Math.max(0, maxBufferBytes - stdout.length));
++        accepted = chunk.slice(0, Math.max(0, maxBufferBytes - stdout.length));
+         truncated = true;
+-      } else {
+-        stdout += chunk;
++        opts.onStdoutTruncated?.('capture_limit');
+       }
++      stdout += accepted;
++      if (accepted) opts.onStdoutChunk?.(accepted);
+       if (!onStdoutLine) return;
+       lineBuf += chunk;
+       let nl: number;
+@@ -629,13 +636,13 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
+ 
+     const finish = (code: number | null, signal: NodeJS.Signals | null) => {
+       if (settled) return;
+-      settled = true;
+       if (softTimer) clearTimeout(softTimer);
+       if (hardTimer) clearTimeout(hardTimer);
+       if (exitTimer) clearTimeout(exitTimer);
+       // 终止中不兑现：兑现了调用方就会往下走（抹副本、重试、写归档终态），取消就不再由 cancelRun 收尾（EV-152）
+-      if (treeShutdown) return;
++      if (treeShutdown) { settled = true; return; }
+       if (ptyOut) appendOut(ptyOut.flush());
++      settled = true;
+       if (lineBuf.length > 0 && onStdoutLine) onStdoutLine(lineBuf);
+       if (errLineBuf.length > 0 && onStderrLine) onStderrLine(errLineBuf);
+       resolve({
+@@ -664,7 +671,10 @@ export function run(bin: string, args: readonly string[], opts: RunOptions = {})
+      * 已退出的进程不会再产出输出，两秒后没等到 close 就按已收到的输出收尾。
+      */
+     child.on('exit', (code, signal) => {
+-      exitTimer = setTimeout(() => finish(code, signal), 2_000);
++      exitTimer = setTimeout(() => {
++        opts.onStdoutTruncated?.('pipe_open');
++        finish(code, signal);
++      }, 2_000);
+     });
+ 
+     const signalChild = (sig: NodeJS.Signals) => {
+diff --git a/test/contract/orchestrator-logs-parity.test.ts b/test/contract/orchestrator-logs-parity.test.ts
+index 75a8ee52..86060ae7 100644
+--- a/test/contract/orchestrator-logs-parity.test.ts
++++ b/test/contract/orchestrator-logs-parity.test.ts
+@@ -76,3 +76,23 @@ test('清单里没有死条目：每一项都有适配器在写', async () => {
+   const dead = ORCHESTRATOR_LOG_FILES.filter((n) => !written.has(n));
+   assert.deepEqual(dead, [], `清单登记了却没人写：${dead.join('、')}`);
+ });
++
++test('E1 普通重试及作废重跑的历史 stdout 都进入侧层或运行层脱敏计数', async t => {
++  const { tmpdir } = await import('node:os');
++  const { ALL_AGENT_IDS } = await import('../../src/trivium/agents/registry.js');
++  const { scrubRunDir } = await import('../../src/trivium/scrub.js');
++  const dir = await fs.mkdtemp(path.join(tmpdir(), 'e1-scrub-'));
++  t.after(() => fs.rm(dir, { force:true, recursive:true }));
++  const id = ALL_AGENT_IDS[0]!;
++  const normal = path.join(id, 'out','attempt-1','stdout.jsonl');
++  const moved = path.join('voided', id, 'attempt-2','attempt-1','stdout.jsonl');
++  const marker = ['sk-', 'SyntheticMarkerOnly', 'abcdefg'].join('');
++  for (const rel of [normal, moved]) {
++    await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive:true });
++    await fs.writeFile(path.join(dir, rel), marker);
++  }
++  const result = await scrubRunDir(dir, () => undefined);
++  assert.equal(result.sides[id]?.logs_redacted[path.relative(id, normal)], 1);
++  assert.equal(result.runDir.redacted[moved], 1);
++  for (const rel of [normal,moved]) assert.equal((await fs.readFile(path.join(dir,rel),'utf8')).includes(marker), false);
++});
+diff --git a/doc/05_testing/REPORT_2026-11-20_VSCode审查员实时输出验收.md b/doc/05_testing/REPORT_2026-11-20_VSCode审查员实时输出验收.md
+new file mode 100644
+index 00000000..5f3063c4
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-11-20_VSCode审查员实时输出验收.md
+@@ -0,0 +1,54 @@
++# VS Code 驾驶舱 E1 审查员 stdout 验收
++
++分支 `feat/vscode-extension`，基线 `589525fd`，核心 1.3.7，插件 0.3.0。测试机为 macOS arm64、Apple M5、Node 25.2.1、VS Code 1.147.0。计划审第一次因 Gemini 连接失败而终止，第二次运行 `20261120T031519Z` 完成逐条裁决。性能阈值与采样分母见[编码前定稿](../../.reviews/E1-审查员stdout实时输出/plan/2026-11-20-E1-审查员stdout实时输出-r2-codex.md)。
++
++## 安装态与厂商路径
++
++从独立的用户目录和扩展目录安装 E1 VSIX，两个工作区共享运行根。以工件区的 worker PID 和进程参数核实加载仓库 `skills/dual-critic/scripts/trivium.cjs`。两个窗口的实际插件代码均与 VSIX 的 extension.js 哈希一致。终端 Driver 和厂商程序由可控子进程担任。夹具免账号探活，并将工具调用和工程文件读取的最低次数设为 0；正式核心的证据核验、重试、计票和归档按实际项目配置执行。
++
++| 安装态初验 | 观测 |
++|---|---|
++| 两个工作区、每仓三侧 | 两个工作区同秒取得运行号 20261120T041523Z，分别以工作区、主题、runDir 和运行号定位 |
++| Claude / Codex / Gemini / GLM | 六个子进程均在首个标记落盘、其卡片可见、M3 新标记可见三个停点保持运行，随后才收到退出放行 |
++| 最终文件 | 分块中文字节、空行、分块凭据和无末尾换行均逐字节对照预期 SHA-256；每次写后读回文件，每次 Webview 消息和 DOM 更新检查合成标记 |
++| 归档 | 两份运行归档均为 success。worker.log、各侧 stdout 及最终结论分别展示 |
++
++每个子进程的发送、磁盘可见、界面可见、M3 可见与退出时间以 Unix 毫秒记录，另存 PID、绝对路径、字节数、哈希、归档路径及两端泄露检查。[四路径安装态初验](evidence/vscode-stdout-e1-20261120/四路径安装态初验.json)
++
++11 月 20 日复验的核心为 `skills/dual-critic/scripts/trivium.cjs`，SHA-256 为 `e440fdd1f6357a36453bd19f94aabe40a894a35baa69cbd10526efef4cd6d87d`。E1 包 `extension/trivium-cockpit-0.3.0-e1.vsix` 为 `06596f19cd107cee71b61ef39ca7a2dd58df8a1e94066b85c8943ce4d9720bab`。安装态 npm run e2e 完成原 Phase 4 链和两窗六侧退出闩锁，运行号 `20261120T041813Z`。历史 Phase 4 包和 GLM 续话包仍分别为 `50f5929c2028ecf2ae465996bc778fe3f2c0f30aa2fabfbc2c7549f09eccbe06`、`202ea8b9e044289d5a2616c1e3c6f353bdfad9098adc37c079237e83555b7c32`。[安装包四路径复验](evidence/vscode-stdout-e1-20261120/安装包四路径复验.json)
++
++### 故障、兼容与生命周期
++
++新插件配基线核心时，显示缺少实时记录。E1 在短写时持续补写，慢写时标为暂缓并恢复最终文件，永久写失败时标为完整性未确认。三种磁盘条件在同一三侧桩运行中注入，归档为 success。重试保留第一次尝试的描述和 stdout。超时的桩按原策略终止本侧，严格模式整轮 failed。取消后 worker 作中断封口。以上桩均以 `cli_version=stub/0.0.0` 单独记账。[故障与兼容记录](evidence/vscode-stdout-e1-20261120/故障与兼容初验.json)
++
++隐藏期间产出第二段，重新点击驾驶舱标签后 51 ms 恢复最新尾部。终态后连续五个 60 秒区间均无 E1 文件读取、定时器调度及存活文件监听。[隐藏及空闲初验](evidence/vscode-stdout-e1-20261120/隐藏及空闲初验.json)
++
++### 真实厂商 CLI
++
++通过实际审查 worker 观察厂商 stdout 管道的数据事件，保存时间和字节数。Codex 0.169.0 在 `20261120T041318Z` 共输出 25 块、7,994 字节，派生后 1,928 ms 收到第一块，最后一块比 exit 早 3,614 ms。此项记录厂商行为，驾驶舱退出前可见的验证由安装态闩锁用例完成。[厂商计时原始记录](evidence/vscode-stdout-e1-20261120/实际CLI计时.json)
++
++| 实际 CLI | 运行号 | 各次收到的块数 | 首块距派生 ms | 末块距退出 ms |
++|---|---|---:|---:|---:|
++| GLM 0.17.3 | 20261120T041136Z | 1 | 161,080 | 304 |
++| Gemini 1.5.13 | 20261120T041136Z | 220 / 275 | 4,843 / 4,086 | 746 / 1,269 |
++| Claude 2.1.328 | 20261120T041136Z | 4,484 | 426 | 283 |
++| Codex 0.169.0 | 20261120T041318Z | 25 | 1,928 | 3,614 |
++
++GLM 的 JSON 在这一轮直到退出前约 0.3 秒才整批到达，运行中的 161 秒没有可展示的 stdout。Gemini 发生两次实际调用。四家归档均成功。采样前两次三侧夹具的 Git 排除规则使冻结失败；Codex 单侧前两次因路线探针过期停在预检，第三次探针通过后遇到同一 Git 夹具问题，修正后两组均从正常编排入口执行。
++
++## 性能对照
++
++同机、三侧、相同桩和输出节奏，稀疏组每侧 60 × 256 B、250 ms 一批，持续组每侧 512 × 16 KiB、20 ms 一批。基线由 `git archive 589525fd` 构建，仅接入同一测试桩，在进程退出后按旧路径整份写入，安装 GLM 续话修复 VSIX。E1 安装包从文件按偏移读取。每个组合预热一次，然后交替顺序各跑五轮。worker 的 CPU 和峰值 RSS 取退出时的 resourceUsage；真实 Extension Host 由其日志核实 PID，以约 100 ms 周期采 ps 的 CPU 与 RSS。写入字节统计成功的内容文件和元数据写调用。消息接收与实际可见分别计时，DOM 标记须与各侧视口相交。每侧每轮稀疏预定 15 个标记、持续预定 21 个，缺失保留在分母中。
++
++| 负载与版本 | 总耗时中位 ms | 核心 CPU 秒 | 核心峰值 KiB | 宿主 CPU 秒 | 宿主采样峰值 KiB |
++|---|---:|---:|---:|---:|---:|
++| 稀疏基线 | 15,757 | 0.265 | 109,216 | 0.07 | 198,368 |
++| 稀疏 E1 | 15,763 | 0.320 | 110,560 | 0.24 | 200,480 |
++| 持续基线 | 11,816 | 0.562 | 197,248 | 0.07 | 201,648 |
++| 持续 E1 | 11,941 | 0.872 | 176,160 | 0.48 | 211,392 |
++
++首轮目录事件漏报，稀疏组 P95 超过 1 秒，持续组每侧漏 19/21 个标记。按写、收件和 DOM 三段时间定位到宿主等待读取；改成监听已核实的内容文件、按侧去抖和短时缓存元数据，同负载复跑。五轮正式 E1 样本共 540 个标记，缺失为零。基线没有 stdout 运行卡，可见延迟无数值。所有轮次的 P95、成功写量和元数据开销见 CSV，完整的每个标记、写调用和 CPU/RSS 样本保存在压缩 JSON。[性能对照](evidence/vscode-stdout-e1-20261120/性能对照.csv) · [逐轮原始数据](evidence/vscode-stdout-e1-20261120/性能逐轮原始记录.json.gz) · [优化前后诊断轮](evidence/vscode-stdout-e1-20261120/优化前后诊断轮.json.gz)
++
++## 复跑入口
++
++根目录运行 `npm run check`。在 extension 运行 `npm run check`、`npm run package -- --out trivium-cockpit-0.3.0-e1.vsix`。设置 `TRIVIUM_TEST_VSIX` 为该包绝对路径，`VSCODE_EXECUTABLE_PATH` 为 VS Code 的 Code 可执行文件，再运行 `npm run e2e`。E1 包会另外启动四路径闩锁验收。性能运行 `node scripts/runStdoutPerf.mjs`，第 0 轮为预热。Windows 安装态、Windows NTFS ACL 和跨机性能未测。
+diff --git a/doc/05_testing/evidence/vscode-stdout-e1-20261120/优化前后诊断轮.json.gz b/doc/05_testing/evidence/vscode-stdout-e1-20261120/优化前后诊断轮.json.gz
+new file mode 100644
+index 00000000..c9e17792
+Binary files /dev/null and b/doc/05_testing/evidence/vscode-stdout-e1-20261120/优化前后诊断轮.json.gz differ
+diff --git a/doc/05_testing/evidence/vscode-stdout-e1-20261120/四路径安装态初验.json b/doc/05_testing/evidence/vscode-stdout-e1-20261120/四路径安装态初验.json
+new file mode 100644
+index 00000000..c5b6cf4c
+--- /dev/null
++++ b/doc/05_testing/evidence/vscode-stdout-e1-20261120/四路径安装态初验.json
+@@ -0,0 +1,197 @@
++{
++  "base": "/private/tmp/trivium-e1-host-ynbWCL",
++  "code": "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
++  "vsix": "/Users/chenzhenbo/Work/TriviumCode/extension/trivium-cockpit-0.3.0-e1.vsix",
++  "vsixSha": "f256917a485302997e28d5937124e3d4fc7328df01bbd02e58a9788f82f321c9",
++  "windows": [
++    {
++      "root": "/private/tmp/trivium-e1-host-ynbWCL/workspace-codex",
++      "topic": "输出验收workspace-codex",
++      "runId": "20261120T041523Z",
++      "runDir": "/private/tmp/trivium-e1-host-ynbWCL/runs/workspace-codex-e34d8f64/20261120T041523Z",
++      "profile": "/private/tmp/trivium-e1-host-ynbWCL/codex/workspace-codex-profile",
++      "installedJs": "/private/tmp/trivium-e1-host-ynbWCL/codex/extensions/triviumcode.trivium-cockpit-0.3.0/dist/extension.js",
++      "core": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++      "coreSha": "fe7974b2831c0423761e94a4e1f4d3506f93be4f0692ad4c6eb5da230588e697",
++      "sides": {
++        "claude": {
++          "marker": "E1-claude-b846a6df-25fa-4fcf-8552-0a669cd01beb",
++          "pid": 62138,
++          "sent": 1795148124019,
++          "stdout": "/private/tmp/trivium-e1-host-ynbWCL/runs/workspace-codex-e34d8f64/20261120T041523Z/claude/out/stdout.jsonl",
++          "diskAt": 1795148124265,
++          "domAt": 1795148124271,
++          "attempt": 1,
++          "m3At": 1795148124571,
++          "exitAt": 1795148124576,
++          "bytes": 381,
++          "sha256": "39e372bce7e2d19388a1bcb8d2b4c5d0f8307fa752d118e3efbae16aac974fae",
++          "expected": {
++            "code": 0,
++            "at": 1795148124576,
++            "bytes": 381,
++            "sha256": "39e372bce7e2d19388a1bcb8d2b4c5d0f8307fa752d118e3efbae16aac974fae"
++          }
++        },
++        "gemini": {
++          "marker": "E1-gemini-f12a91b6-2d1b-4016-93be-9b8a7cb6f8db",
++          "pid": 62135,
++          "sent": 1795148124014,
++          "stdout": "/private/tmp/trivium-e1-host-ynbWCL/runs/workspace-codex-e34d8f64/20261120T041523Z/gemini/out/stdout.jsonl",
++          "diskAt": 1795148124276,
++          "domAt": 1795148124295,
++          "attempt": 1,
++          "m3At": 1795148124572,
++          "exitAt": 1795148124597,
++          "bytes": 394,
++          "sha256": "35fd2fdeac23f9476e5ef14594796978fa2279e85a2836ce054bc42f5c2e36ed",
++          "expected": {
++            "code": 0,
++            "at": 1795148124597,
++            "bytes": 394,
++            "sha256": "35fd2fdeac23f9476e5ef14594796978fa2279e85a2836ce054bc42f5c2e36ed"
++          }
++        },
++        "glm": {
++          "marker": "E1-glm-f2dd9776-9d8c-4b3e-aa32-4aa2a523fc85",
++          "pid": 62140,
++          "sent": 1795148124014,
++          "stdout": "/private/tmp/trivium-e1-host-ynbWCL/runs/workspace-codex-e34d8f64/20261120T041523Z/glm/out/stdout.json",
++          "diskAt": 1795148124301,
++          "domAt": 1795148124317,
++          "attempt": 1,
++          "m3At": 1795148124574,
++          "exitAt": 1795148124578,
++          "bytes": 356,
++          "sha256": "888b18c4ea3411ee3101a64552851753051119fa9fcf1f7280c1e0bf0dcbca4e",
++          "expected": {
++            "code": 0,
++            "at": 1795148124578,
++            "bytes": 356,
++            "sha256": "888b18c4ea3411ee3101a64552851753051119fa9fcf1f7280c1e0bf0dcbca4e"
++          }
++        }
++      },
++      "worker": {
++        "pid": 61997,
++        "command": "/opt/homebrew/Cellar/node/25.2.1/bin/node /Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs review --worker 20261120T041523Z"
++      },
++      "diskAudit": {
++        "claude": {
++          "writes": 3,
++          "leaked": false
++        },
++        "gemini": {
++          "writes": 3,
++          "leaked": false
++        },
++        "glm": {
++          "writes": 3,
++          "leaked": false
++        }
++      },
++      "archive": "/private/tmp/trivium-e1-host-ynbWCL/workspace-codex/.reviews/输出验收workspace-codex/plan/_meta/run-20261120T041523Z.json",
++      "status": "success",
++      "audit": {
++        "leaked": false,
++        "messages": 15
++      }
++    },
++    {
++      "root": "/private/tmp/trivium-e1-host-ynbWCL/workspace-claude",
++      "topic": "输出验收workspace-claude",
++      "runId": "20261120T041523Z",
++      "runDir": "/private/tmp/trivium-e1-host-ynbWCL/runs/workspace-claude-36e108ea/20261120T041523Z",
++      "profile": "/private/tmp/trivium-e1-host-ynbWCL/claude/workspace-claude-profile",
++      "installedJs": "/private/tmp/trivium-e1-host-ynbWCL/claude/extensions/triviumcode.trivium-cockpit-0.3.0/dist/extension.js",
++      "core": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++      "coreSha": "fe7974b2831c0423761e94a4e1f4d3506f93be4f0692ad4c6eb5da230588e697",
++      "sides": {
++        "codex": {
++          "marker": "E1-codex-aefe47b2-3262-411a-a901-a4f8a2be32af",
++          "pid": 62134,
++          "sent": 1795148124015,
++          "stdout": "/private/tmp/trivium-e1-host-ynbWCL/runs/workspace-claude-36e108ea/20261120T041523Z/codex/out/stdout.jsonl",
++          "diskAt": 1795148124264,
++          "domAt": 1795148124274,
++          "attempt": 1,
++          "m3At": 1795148124589,
++          "exitAt": 1795148124618,
++          "bytes": 397,
++          "sha256": "1ee7aaf6d40a9f627744c870917df27727fb163ef8427d006126206b7b869b81",
++          "expected": {
++            "code": 0,
++            "at": 1795148124618,
++            "bytes": 397,
++            "sha256": "1ee7aaf6d40a9f627744c870917df27727fb163ef8427d006126206b7b869b81"
++          }
++        },
++        "gemini": {
++          "marker": "E1-gemini-182fce13-fa44-4352-bc25-776bcca5f0fa",
++          "pid": 62130,
++          "sent": 1795148124009,
++          "stdout": "/private/tmp/trivium-e1-host-ynbWCL/runs/workspace-claude-36e108ea/20261120T041523Z/gemini/out/stdout.jsonl",
++          "diskAt": 1795148124277,
++          "domAt": 1795148124298,
++          "attempt": 1,
++          "m3At": 1795148124590,
++          "exitAt": 1795148124597,
++          "bytes": 394,
++          "sha256": "1479c3043ae8364e6b38ec399b77e12935db611e3d5f33f18c8248d8da88b2e5",
++          "expected": {
++            "code": 0,
++            "at": 1795148124597,
++            "bytes": 394,
++            "sha256": "1479c3043ae8364e6b38ec399b77e12935db611e3d5f33f18c8248d8da88b2e5"
++          }
++        },
++        "glm": {
++          "marker": "E1-glm-71bfb3e4-31dc-4213-a543-05da613b5185",
++          "pid": 62132,
++          "sent": 1795148124010,
++          "stdout": "/private/tmp/trivium-e1-host-ynbWCL/runs/workspace-claude-36e108ea/20261120T041523Z/glm/out/stdout.json",
++          "diskAt": 1795148124301,
++          "domAt": 1795148124320,
++          "attempt": 1,
++          "m3At": 1795148124592,
++          "exitAt": 1795148124618,
++          "bytes": 356,
++          "sha256": "a2b801cd98ad2a31273cbdb63b916e4223c476b470cdea905ff886ede69a1585",
++          "expected": {
++            "code": 0,
++            "at": 1795148124618,
++            "bytes": 356,
++            "sha256": "a2b801cd98ad2a31273cbdb63b916e4223c476b470cdea905ff886ede69a1585"
++          }
++        }
++      },
++      "worker": {
++        "pid": 61998,
++        "command": "/opt/homebrew/Cellar/node/25.2.1/bin/node /Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs review --worker 20261120T041523Z"
++      },
++      "diskAudit": {
++        "gemini": {
++          "writes": 3,
++          "leaked": false
++        },
++        "glm": {
++          "writes": 3,
++          "leaked": false
++        },
++        "codex": {
++          "writes": 3,
++          "leaked": false
++        }
++      },
++      "archive": "/private/tmp/trivium-e1-host-ynbWCL/workspace-claude/.reviews/输出验收workspace-claude/plan/_meta/run-20261120T041523Z.json",
++      "status": "success",
++      "audit": {
++        "leaked": false,
++        "messages": 15
++      }
++    }
++  ],
++  "packedJsSha": "f8eb96b61a45086a0cf8ed64c5f635e31d107a9caced886ff30cbd57497da2fc",
++  "extensionVersion": "0.3.0",
++  "passed": true
++}
+\ No newline at end of file
+diff --git a/doc/05_testing/evidence/vscode-stdout-e1-20261120/安装包四路径复验.json b/doc/05_testing/evidence/vscode-stdout-e1-20261120/安装包四路径复验.json
+new file mode 100644
+index 00000000..f2858f81
+--- /dev/null
++++ b/doc/05_testing/evidence/vscode-stdout-e1-20261120/安装包四路径复验.json
+@@ -0,0 +1,197 @@
++{
++  "base": "/private/tmp/trivium-e1-host-zXgvx4",
++  "code": "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
++  "vsix": "/Users/chenzhenbo/Work/TriviumCode/extension/trivium-cockpit-0.3.0-e1.vsix",
++  "vsixSha": "06596f19cd107cee71b61ef39ca7a2dd58df8a1e94066b85c8943ce4d9720bab",
++  "windows": [
++    {
++      "root": "/private/tmp/trivium-e1-host-zXgvx4/workspace-codex",
++      "topic": "输出验收workspace-codex",
++      "runId": "20261120T041813Z",
++      "runDir": "/private/tmp/trivium-e1-host-zXgvx4/runs/workspace-codex-540e4fad/20261120T041813Z",
++      "profile": "/private/tmp/trivium-e1-host-zXgvx4/codex/workspace-codex-profile",
++      "installedJs": "/private/tmp/trivium-e1-host-zXgvx4/codex/extensions/triviumcode.trivium-cockpit-0.3.0/dist/extension.js",
++      "core": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++      "coreSha": "e440fdd1f6357a36453bd19f94aabe40a894a35baa69cbd10526efef4cd6d87d",
++      "sides": {
++        "claude": {
++          "marker": "E1-claude-4842a100-8d09-45d1-82ed-674447663bdc",
++          "pid": 88066,
++          "sent": 1795148294081,
++          "stdout": "/private/tmp/trivium-e1-host-zXgvx4/runs/workspace-codex-540e4fad/20261120T041813Z/claude/out/stdout.jsonl",
++          "diskAt": 1795148294339,
++          "domAt": 1795148294350,
++          "attempt": 1,
++          "m3At": 1795148294687,
++          "exitAt": 1795148294715,
++          "bytes": 381,
++          "sha256": "6277bb6fe23f44ba9e1c6c2186b1fa12deb20ae59f7171ab038e47fcf513d70d",
++          "expected": {
++            "code": 0,
++            "at": 1795148294715,
++            "bytes": 381,
++            "sha256": "6277bb6fe23f44ba9e1c6c2186b1fa12deb20ae59f7171ab038e47fcf513d70d"
++          }
++        },
++        "gemini": {
++          "marker": "E1-gemini-d93d4316-abc4-4065-bf78-3f586a7a3f0c",
++          "pid": 88063,
++          "sent": 1795148294080,
++          "stdout": "/private/tmp/trivium-e1-host-zXgvx4/runs/workspace-codex-540e4fad/20261120T041813Z/gemini/out/stdout.jsonl",
++          "diskAt": 1795148294354,
++          "domAt": 1795148294372,
++          "attempt": 1,
++          "m3At": 1795148294688,
++          "exitAt": 1795148294711,
++          "bytes": 394,
++          "sha256": "44c80ad8440626a36c462a0f7ff4c6282a954c7040df732b056a2a76a3312335",
++          "expected": {
++            "code": 0,
++            "at": 1795148294711,
++            "bytes": 394,
++            "sha256": "44c80ad8440626a36c462a0f7ff4c6282a954c7040df732b056a2a76a3312335"
++          }
++        },
++        "glm": {
++          "marker": "E1-glm-4e7bc03d-f17c-47d1-9800-64ede2cc9491",
++          "pid": 88070,
++          "sent": 1795148294081,
++          "stdout": "/private/tmp/trivium-e1-host-zXgvx4/runs/workspace-codex-540e4fad/20261120T041813Z/glm/out/stdout.json",
++          "diskAt": 1795148294375,
++          "domAt": 1795148294394,
++          "attempt": 1,
++          "m3At": 1795148294690,
++          "exitAt": 1795148294713,
++          "bytes": 356,
++          "sha256": "0d0769b5766b153ca5b0506c7f918e71288816631765ad924983aca1c5092545",
++          "expected": {
++            "code": 0,
++            "at": 1795148294713,
++            "bytes": 356,
++            "sha256": "0d0769b5766b153ca5b0506c7f918e71288816631765ad924983aca1c5092545"
++          }
++        }
++      },
++      "worker": {
++        "pid": 87942,
++        "command": "/opt/homebrew/Cellar/node/25.2.1/bin/node /Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs review --worker 20261120T041813Z"
++      },
++      "diskAudit": {
++        "gemini": {
++          "writes": 3,
++          "leaked": false
++        },
++        "claude": {
++          "writes": 3,
++          "leaked": false
++        },
++        "glm": {
++          "writes": 3,
++          "leaked": false
++        }
++      },
++      "archive": "/private/tmp/trivium-e1-host-zXgvx4/workspace-codex/.reviews/输出验收workspace-codex/plan/_meta/run-20261120T041813Z.json",
++      "status": "success",
++      "audit": {
++        "leaked": false,
++        "messages": 12
++      }
++    },
++    {
++      "root": "/private/tmp/trivium-e1-host-zXgvx4/workspace-claude",
++      "topic": "输出验收workspace-claude",
++      "runId": "20261120T041813Z",
++      "runDir": "/private/tmp/trivium-e1-host-zXgvx4/runs/workspace-claude-839026ff/20261120T041813Z",
++      "profile": "/private/tmp/trivium-e1-host-zXgvx4/claude/workspace-claude-profile",
++      "installedJs": "/private/tmp/trivium-e1-host-zXgvx4/claude/extensions/triviumcode.trivium-cockpit-0.3.0/dist/extension.js",
++      "core": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++      "coreSha": "e440fdd1f6357a36453bd19f94aabe40a894a35baa69cbd10526efef4cd6d87d",
++      "sides": {
++        "codex": {
++          "marker": "E1-codex-05dc5c8c-52e1-4ed6-95df-864567bc6237",
++          "pid": 88072,
++          "sent": 1795148294088,
++          "stdout": "/private/tmp/trivium-e1-host-zXgvx4/runs/workspace-claude-839026ff/20261120T041813Z/codex/out/stdout.jsonl",
++          "diskAt": 1795148294340,
++          "domAt": 1795148294357,
++          "attempt": 1,
++          "m3At": 1795148294661,
++          "exitAt": 1795148294676,
++          "bytes": 397,
++          "sha256": "15ce6316122b8d4cd2bddfa36e7b5e99fb6ef4d89c2f89aefdb8cb3d99b381a8",
++          "expected": {
++            "code": 0,
++            "at": 1795148294676,
++            "bytes": 397,
++            "sha256": "15ce6316122b8d4cd2bddfa36e7b5e99fb6ef4d89c2f89aefdb8cb3d99b381a8"
++          }
++        },
++        "gemini": {
++          "marker": "E1-gemini-c1e9601e-f621-4aa5-83cb-8ccf700e296b",
++          "pid": 88062,
++          "sent": 1795148294078,
++          "stdout": "/private/tmp/trivium-e1-host-zXgvx4/runs/workspace-claude-839026ff/20261120T041813Z/gemini/out/stdout.jsonl",
++          "diskAt": 1795148294361,
++          "domAt": 1795148294378,
++          "attempt": 1,
++          "m3At": 1795148294663,
++          "exitAt": 1795148294687,
++          "bytes": 394,
++          "sha256": "e05d381654c26a48ecfe5f1d9dc5d26bab593cdb60c6c1d8280b88043d099e72",
++          "expected": {
++            "code": 0,
++            "at": 1795148294687,
++            "bytes": 394,
++            "sha256": "e05d381654c26a48ecfe5f1d9dc5d26bab593cdb60c6c1d8280b88043d099e72"
++          }
++        },
++        "glm": {
++          "marker": "E1-glm-b85c9a92-ea8a-4037-a13c-52b79e133dc6",
++          "pid": 88067,
++          "sent": 1795148294082,
++          "stdout": "/private/tmp/trivium-e1-host-zXgvx4/runs/workspace-claude-839026ff/20261120T041813Z/glm/out/stdout.json",
++          "diskAt": 1795148294381,
++          "domAt": 1795148294388,
++          "attempt": 1,
++          "m3At": 1795148294664,
++          "exitAt": 1795148294691,
++          "bytes": 356,
++          "sha256": "95afd3083f1fd2f72d10e111a57bb9a6300dc2c72662135cefc6a0f43d37d418",
++          "expected": {
++            "code": 0,
++            "at": 1795148294691,
++            "bytes": 356,
++            "sha256": "95afd3083f1fd2f72d10e111a57bb9a6300dc2c72662135cefc6a0f43d37d418"
++          }
++        }
++      },
++      "worker": {
++        "pid": 87944,
++        "command": "/opt/homebrew/Cellar/node/25.2.1/bin/node /Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs review --worker 20261120T041813Z"
++      },
++      "diskAudit": {
++        "gemini": {
++          "writes": 3,
++          "leaked": false
++        },
++        "glm": {
++          "writes": 3,
++          "leaked": false
++        },
++        "codex": {
++          "writes": 3,
++          "leaked": false
++        }
++      },
++      "archive": "/private/tmp/trivium-e1-host-zXgvx4/workspace-claude/.reviews/输出验收workspace-claude/plan/_meta/run-20261120T041813Z.json",
++      "status": "success",
++      "audit": {
++        "leaked": false,
++        "messages": 13
++      }
++    }
++  ],
++  "packedJsSha": "edefb006e1fdbae211c6c563fc9ac31a473e85bfa2899421a57a684640a312e1",
++  "extensionVersion": "0.3.0",
++  "passed": true
++}
+\ No newline at end of file
+diff --git a/doc/05_testing/evidence/vscode-stdout-e1-20261120/实际CLI计时.json b/doc/05_testing/evidence/vscode-stdout-e1-20261120/实际CLI计时.json
+new file mode 100644
+index 00000000..9ebce49f
+--- /dev/null
++++ b/doc/05_testing/evidence/vscode-stdout-e1-20261120/实际CLI计时.json
+@@ -0,0 +1,115 @@
++[
++  {
++    "driver": "codex",
++    "critics": [
++      "glm",
++      "gemini",
++      "claude"
++    ],
++    "core": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++    "topic": "只读输出计时",
++    "samples": {
++      "glm": [
++        {
++          "pid": 86336,
++          "bin": "node",
++          "started": 1795147896606,
++          "first": 1795148057686,
++          "last": 1795148057686,
++          "chunks": 1,
++          "bytes": 7069,
++          "exitAt": 1795148057990,
++          "closedAt": 1795148057990,
++          "code": 0,
++          "signal": null
++        }
++      ],
++      "gemini": [
++        {
++          "pid": 86333,
++          "bin": "agy",
++          "started": 1795147896600,
++          "first": 1795147901443,
++          "last": 1795148010942,
++          "chunks": 220,
++          "bytes": 64044,
++          "exitAt": 1795148011688,
++          "closedAt": 1795148011688,
++          "code": 0,
++          "signal": null
++        },
++        {
++          "pid": 15208,
++          "bin": "agy",
++          "started": 1795148011695,
++          "first": 1795148015781,
++          "last": 1795148161025,
++          "chunks": 275,
++          "bytes": 86620,
++          "exitAt": 1795148162294,
++          "closedAt": 1795148162294,
++          "code": 0,
++          "signal": null
++        }
++      ],
++      "claude": [
++        {
++          "pid": 87252,
++          "bin": "cld",
++          "started": 1795147896921,
++          "first": 1795147897347,
++          "last": 1795148219203,
++          "chunks": 4484,
++          "bytes": 1025683,
++          "exitAt": 1795148219486,
++          "closedAt": 1795148219486,
++          "code": 0,
++          "signal": null
++        }
++      ]
++    },
++    "attempts": 1,
++    "preflight": true,
++    "runId": "20261120T041136Z",
++    "runDir": "/private/tmp/tv-e1-vendor-4KGVxt/runs/codex-a0853388/20261120T041136Z",
++    "phase": "success",
++    "versions": {
++      "glm": "0.17.3",
++      "gemini": "1.5.13",
++      "claude": "2.1.328"
++    }
++  },
++  {
++    "driver": "claude",
++    "critics": [
++      "codex"
++    ],
++    "core": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++    "topic": "只读输出计时",
++    "samples": {
++      "codex": [
++        {
++          "pid": 9254,
++          "bin": "codex",
++          "started": 1795147998996,
++          "first": 1795148000924,
++          "last": 1795148037169,
++          "chunks": 25,
++          "bytes": 7994,
++          "exitAt": 1795148040783,
++          "closedAt": 1795148040783,
++          "code": 0,
++          "signal": null
++        }
++      ]
++    },
++    "attempts": 1,
++    "preflight": true,
++    "runId": "20261120T041318Z",
++    "runDir": "/private/tmp/tv-e1-vendor-S0nfeX/runs/claude-867b76cd/20261120T041318Z",
++    "phase": "success",
++    "versions": {
++      "codex": "0.169.0"
++    }
++  }
++]
+diff --git a/doc/05_testing/evidence/vscode-stdout-e1-20261120/性能对照.csv b/doc/05_testing/evidence/vscode-stdout-e1-20261120/性能对照.csv
+new file mode 100644
+index 00000000..29829592
+--- /dev/null
++++ b/doc/05_testing/evidence/vscode-stdout-e1-20261120/性能对照.csv
+@@ -0,0 +1,25 @@
++版本,负载,轮次,运行号,耗时ms,核心CPU秒,核心峰值KiB,宿主CPU秒,宿主采样峰值KiB,stdout写入字节,元数据写入字节,Claude缺失,Gemini缺失,GLM缺失,Claude可见P95ms,Gemini可见P95ms,GLM可见P95ms
++base,dense,0,20261120T040136Z,11976,0.602342,224320,0.07,200384,25165824,0,21,21,21,不可见,不可见,不可见
++base,dense,1,20261120T040255Z,11811,0.559873,207168,0.11,200400,25165824,0,21,21,21,不可见,不可见,不可见
++base,dense,2,20261120T040345Z,11816,0.559088,188784,0.07,202464,25165824,0,21,21,21,不可见,不可见,不可见
++base,dense,3,20261120T040503Z,11812,0.562061,197552,0.07,201648,25165824,0,21,21,21,不可见,不可见,不可见
++base,dense,4,20261120T040553Z,11964,0.598563,197248,0.06,192304,25165824,0,21,21,21,不可见,不可见,不可见
++base,dense,5,20261120T040713Z,12045,0.592476,190640,0.06,202768,25165824,0,21,21,21,不可见,不可见,不可见
++base,sparse,0,20261120T040100Z,15760,0.267468,109168,0.07,195472,46080,0,15,15,15,不可见,不可见,不可见
++base,sparse,1,20261120T040222Z,15748,0.26654,109056,0.12,198368,46080,0,15,15,15,不可见,不可见,不可见
++base,sparse,2,20261120T040309Z,15783,0.264196,109264,0.05,192560,46080,0,15,15,15,不可见,不可见,不可见
++base,sparse,3,20261120T040431Z,15753,0.254709,109056,0.07,203392,46080,0,15,15,15,不可见,不可见,不可见
++base,sparse,4,20261120T040517Z,15757,0.264638,109216,0.06,197840,46080,0,15,15,15,不可见,不可见,不可见
++base,sparse,5,20261120T040640Z,15764,0.264613,109392,0.07,201680,46080,0,15,15,15,不可见,不可见,不可见
++e1,dense,0,20261120T040150Z,11815,0.86337,164608,0.49,212016,25165824,1173,0,0,0,44,41,42
++e1,dense,1,20261120T040240Z,11973,0.866053,176160,0.42,214128,25165824,1173,0,0,0,45,41,42
++e1,dense,2,20261120T040359Z,11810,0.857419,159776,0.49,210800,25165824,1173,0,0,0,47,43,44
++e1,dense,3,20261120T040449Z,11941,0.871571,185888,0.48,211392,25165824,1173,0,0,0,42,45,41
++e1,dense,4,20261120T040607Z,11930,0.905952,164848,0.48,212512,25165824,1173,0,0,0,42,47,44
++e1,dense,5,20261120T040658Z,11944,0.89486,177424,0.51,209488,25165824,1173,0,0,0,41,42,41
++e1,sparse,0,20261120T040118Z,15772,0.316248,110880,0.29,205136,46080,1167,0,0,0,129,130,130
++e1,sparse,1,20261120T040204Z,15754,0.307047,110560,0.24,203392,46080,1167,0,0,0,129,129,129
++e1,sparse,2,20261120T040327Z,15824,0.320423,110848,0.24,198736,46080,1167,0,0,0,129,129,127
++e1,sparse,3,20261120T040413Z,15764,0.323288,110496,0.25,200480,46080,1167,0,0,0,129,127,130
++e1,sparse,4,20261120T040535Z,15763,0.288909,110512,0.16,200432,46080,1167,0,0,0,127,135,135
++e1,sparse,5,20261120T040621Z,15750,0.329051,111008,0.25,202096,46080,1167,0,0,0,129,125,129
+diff --git a/doc/05_testing/evidence/vscode-stdout-e1-20261120/性能逐轮原始记录.json.gz b/doc/05_testing/evidence/vscode-stdout-e1-20261120/性能逐轮原始记录.json.gz
+new file mode 100644
+index 00000000..42d8592d
+Binary files /dev/null and b/doc/05_testing/evidence/vscode-stdout-e1-20261120/性能逐轮原始记录.json.gz differ
+diff --git a/doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json b/doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json
+new file mode 100644
+index 00000000..a3b4ffef
+--- /dev/null
++++ b/doc/05_testing/evidence/vscode-stdout-e1-20261120/故障与兼容初验.json
+@@ -0,0 +1,187 @@
++[
++  {
++    "kind": "legacy",
++    "runId": "20261120T040539Z",
++    "runDir": "/private/tmp/tv-e1-life-RLdxqQ/runs/legacy-5add63fc/20261120T040539Z",
++    "core": "/private/tmp/tv-e1p-thGCLB/baseline/skills/dual-critic/scripts/trivium.cjs",
++    "coreSha": "b94a0c024ee56bc9fec99a89300981f8fce21d67edf9025764454288aeeeca44",
++    "sides": {
++      "claude": null,
++      "gemini": null,
++      "glm": null
++    },
++    "phase": "success"
++  },
++  {
++    "kind": "fault",
++    "runId": "20261120T040542Z",
++    "runDir": "/private/tmp/tv-e1-life-RLdxqQ/runs/fault-69d3d86f/20261120T040542Z",
++    "core": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++    "coreSha": "af4f363b8be00b9e51c86d46a04b612eb6068d82047830ffcc2d34f406225665",
++    "sides": {
++      "claude": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 1,
++        "file": "stdout.jsonl",
++        "identity": "f937073a-93cf-4c8f-a354-0e7f52bf7f30",
++        "dev": "16777229",
++        "ino": "222051624",
++        "state": "complete",
++        "reason": null,
++        "bytes": 512
++      },
++      "gemini": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 1,
++        "file": "stdout.jsonl",
++        "identity": "d9ceecbd-d0d0-4412-aec9-4b32c7ab653b",
++        "dev": "16777229",
++        "ino": "222051622",
++        "state": "incomplete",
++        "reason": "write_failed",
++        "bytes": 0
++      },
++      "glm": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 1,
++        "file": "stdout.jsonl",
++        "identity": "7082b7c7-9315-48b8-8548-970226c14765",
++        "dev": "16777229",
++        "ino": "222051661",
++        "state": "recovered",
++        "reason": "slow_disk",
++        "bytes": 512
++      }
++    },
++    "phase": "success"
++  },
++  {
++    "kind": "retry",
++    "runId": "20261120T040718Z",
++    "runDir": "/private/tmp/tv-e1-life-4Xl3pw/runs/retry-22a67854/20261120T040718Z",
++    "core": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++    "coreSha": "af4f363b8be00b9e51c86d46a04b612eb6068d82047830ffcc2d34f406225665",
++    "sides": {
++      "claude": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 2,
++        "file": "stdout.jsonl",
++        "identity": "fb25209e-3e60-4a43-8f87-81c7fa8175ea",
++        "dev": "16777229",
++        "ino": "222055472",
++        "state": "complete",
++        "reason": null,
++        "bytes": 512
++      },
++      "gemini": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 1,
++        "file": "stdout.jsonl",
++        "identity": "893064e8-6728-43b5-9c8f-56d85f9d5ea0",
++        "dev": "16777229",
++        "ino": "222055438",
++        "state": "complete",
++        "reason": null,
++        "bytes": 512
++      },
++      "glm": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 1,
++        "file": "stdout.jsonl",
++        "identity": "00ab3e69-b712-4393-b358-d7eaf1d6fc0f",
++        "dev": "16777229",
++        "ino": "222055439",
++        "state": "complete",
++        "reason": null,
++        "bytes": 512
++      }
++    },
++    "phase": "success"
++  },
++  {
++    "kind": "timeout",
++    "runId": "20261120T040722Z",
++    "runDir": "/private/tmp/tv-e1-life-4Xl3pw/runs/timeout-6867734d/20261120T040722Z",
++    "core": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++    "coreSha": "af4f363b8be00b9e51c86d46a04b612eb6068d82047830ffcc2d34f406225665",
++    "sides": {
++      "claude": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 1,
++        "file": "stdout.jsonl",
++        "identity": "2f33df35-7916-4ead-9564-0cf4191479b0",
++        "dev": "16777229",
++        "ino": "222055899",
++        "state": "complete",
++        "reason": null,
++        "bytes": 512
++      },
++      "gemini": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 1,
++        "file": "stdout.jsonl",
++        "identity": "36453207-dcb2-4b22-add1-992685793829",
++        "dev": "16777229",
++        "ino": "222055901",
++        "state": "complete",
++        "reason": null,
++        "bytes": 512
++      },
++      "glm": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 1,
++        "file": "stdout.jsonl",
++        "identity": "105d847b-04d8-4564-ab84-262b4a62a209",
++        "dev": "16777229",
++        "ino": "222055900",
++        "state": "complete",
++        "reason": null,
++        "bytes": 512
++      }
++    },
++    "phase": "failed"
++  },
++  {
++    "kind": "cancel",
++    "runId": "20261120T040806Z",
++    "runDir": "/private/tmp/tv-e1-life-itADkb/runs/cancel-e6695e62/20261120T040806Z",
++    "core": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++    "coreSha": "56bfc9b311437cb728ab62f696374651a39967ac26408c7b1f8c2c53a8f28ab2",
++    "sides": {
++      "claude": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 1,
++        "file": "stdout.jsonl",
++        "identity": "8d8f75cc-a051-45f8-9b98-f949c8d1e246",
++        "dev": "16777229",
++        "ino": "222059357",
++        "state": "incomplete",
++        "reason": "interrupted",
++        "bytes": 256
++      },
++      "gemini": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 1,
++        "file": "stdout.jsonl",
++        "identity": "f11cf386-2c1b-4f88-8205-6bba4c5a9bff",
++        "dev": "16777229",
++        "ino": "222059358",
++        "state": "incomplete",
++        "reason": "interrupted",
++        "bytes": 256
++      },
++      "glm": {
++        "schema": "trivium.stdout.v1",
++        "attempt": 1,
++        "file": "stdout.jsonl",
++        "identity": "6be47d25-3378-4dee-a5c5-d31a84baa841",
++        "dev": "16777229",
++        "ino": "222059359",
++        "state": "incomplete",
++        "reason": "interrupted",
++        "bytes": 256
++      }
++    },
++    "phase": "cancelled"
++  }
++]
+diff --git a/doc/05_testing/evidence/vscode-stdout-e1-20261120/隐藏及空闲初验.json b/doc/05_testing/evidence/vscode-stdout-e1-20261120/隐藏及空闲初验.json
+new file mode 100644
+index 00000000..1c359f1d
+--- /dev/null
++++ b/doc/05_testing/evidence/vscode-stdout-e1-20261120/隐藏及空闲初验.json
+@@ -0,0 +1,232 @@
++{
++  "base": "/private/tmp/tv-e1-life-dX6jGh",
++  "vsix": "/Users/chenzhenbo/Work/TriviumCode/extension/trivium-cockpit-0.3.0-e1.vsix",
++  "scenarios": [
++    {
++      "kind": "hidden",
++      "runId": "20261120T041228Z",
++      "runDir": "/private/tmp/tv-e1-life-dX6jGh/runs/hidden-cf2ddba5/20261120T041228Z",
++      "core": "/Users/chenzhenbo/Work/TriviumCode/skills/dual-critic/scripts/trivium.cjs",
++      "coreSha": "d386e0b567765c928cd18c476f0faa3f35a8cfb515de8355c20de15bdc7b389f",
++      "sides": {
++        "claude": {
++          "schema": "trivium.stdout.v1",
++          "attempt": 1,
++          "file": "stdout.jsonl",
++          "identity": "cf0cf42b-cd11-43a9-8074-51d1d3aa7c97",
++          "dev": "16777229",
++          "ino": "222199166",
++          "state": "complete",
++          "reason": null,
++          "bytes": 512
++        },
++        "gemini": {
++          "schema": "trivium.stdout.v1",
++          "attempt": 1,
++          "file": "stdout.jsonl",
++          "identity": "bb422941-0ba3-47a2-8a7a-76626b426c33",
++          "dev": "16777229",
++          "ino": "222199167",
++          "state": "complete",
++          "reason": null,
++          "bytes": 512
++        },
++        "glm": {
++          "schema": "trivium.stdout.v1",
++          "attempt": 1,
++          "file": "stdout.jsonl",
++          "identity": "8e778241-1f76-4e41-893b-6089bdbcf2d3",
++          "dev": "16777229",
++          "ino": "222199168",
++          "state": "complete",
++          "reason": null,
++          "bytes": 512
++        }
++      },
++      "beforeHide": {
++        "opens": 15,
++        "watches": 3,
++        "live": 3,
++        "timers": 7,
++        "pid": 56950,
++        "at": 1795147949365,
++        "cpu": {
++          "user": 380285,
++          "system": 93957
++        },
++        "rss": 196018176
++      },
++      "hiddenStart": {
++        "opens": 15,
++        "watches": 3,
++        "live": 0,
++        "timers": 7,
++        "pid": 56950,
++        "at": 1795147950481,
++        "cpu": {
++          "user": 513716,
++          "system": 115900
++        },
++        "rss": 227901440
++      },
++      "hiddenEnd": {
++        "opens": 15,
++        "watches": 3,
++        "live": 0,
++        "timers": 7,
++        "pid": 56950,
++        "at": 1795147951982,
++        "cpu": {
++          "user": 516557,
++          "system": 116941
++        },
++        "rss": 227950592
++      },
++      "reopenedAt": 1795147951983,
++      "restoredAt": 1795147952034,
++      "phase": "success",
++      "idle": [
++        {
++          "before": {
++            "opens": 33,
++            "watches": 6,
++            "live": 0,
++            "timers": 11,
++            "pid": 56950,
++            "at": 1795147953839,
++            "cpu": {
++              "user": 531772,
++              "system": 129222
++            },
++            "rss": 229654528
++          },
++          "after": {
++            "opens": 33,
++            "watches": 6,
++            "live": 0,
++            "timers": 11,
++            "pid": 56950,
++            "at": 1795148013841,
++            "cpu": {
++              "user": 642606,
++              "system": 140553
++            },
++            "rss": 147324928
++          }
++        },
++        {
++          "before": {
++            "opens": 33,
++            "watches": 6,
++            "live": 0,
++            "timers": 11,
++            "pid": 56950,
++            "at": 1795148013841,
++            "cpu": {
++              "user": 642680,
++              "system": 140597
++            },
++            "rss": 147357696
++          },
++          "after": {
++            "opens": 33,
++            "watches": 6,
++            "live": 0,
++            "timers": 11,
++            "pid": 56950,
++            "at": 1795148073843,
++            "cpu": {
++              "user": 644546,
++              "system": 142653
++            },
++            "rss": 76857344
++          }
++        },
++        {
++          "before": {
++            "opens": 33,
++            "watches": 6,
++            "live": 0,
++            "timers": 11,
++            "pid": 56950,
++            "at": 1795148073843,
++            "cpu": {
++              "user": 644616,
++              "system": 142738
++            },
++            "rss": 77053952
++          },
++          "after": {
++            "opens": 33,
++            "watches": 6,
++            "live": 0,
++            "timers": 11,
++            "pid": 56950,
++            "at": 1795148133848,
++            "cpu": {
++              "user": 645972,
++              "system": 145118
++            },
++            "rss": 66420736
++          }
++        },
++        {
++          "before": {
++            "opens": 33,
++            "watches": 6,
++            "live": 0,
++            "timers": 11,
++            "pid": 56950,
++            "at": 1795148133849,
++            "cpu": {
++              "user": 646037,
++              "system": 145210
++            },
++            "rss": 66600960
++          },
++          "after": {
++            "opens": 33,
++            "watches": 6,
++            "live": 0,
++            "timers": 11,
++            "pid": 56950,
++            "at": 1795148193855,
++            "cpu": {
++              "user": 647805,
++              "system": 145973
++            },
++            "rss": 67420160
++          }
++        },
++        {
++          "before": {
++            "opens": 33,
++            "watches": 6,
++            "live": 0,
++            "timers": 11,
++            "pid": 56950,
++            "at": 1795148193856,
++            "cpu": {
++              "user": 647934,
++              "system": 146033
++            },
++            "rss": 67420160
++          },
++          "after": {
++            "opens": 33,
++            "watches": 6,
++            "live": 0,
++            "timers": 11,
++            "pid": 56950,
++            "at": 1795148253857,
++            "cpu": {
++              "user": 651704,
++              "system": 148266
++            },
++            "rss": 67403776
++          }
++        }
++      ]
++    }
++  ]
++}
+\ No newline at end of file
+diff --git a/extension/scripts/runStdoutE2E.mjs b/extension/scripts/runStdoutE2E.mjs
+new file mode 100644
+index 00000000..871fa0cf
+--- /dev/null
++++ b/extension/scripts/runStdoutE2E.mjs
+@@ -0,0 +1,136 @@
++// 安装态 E1 时序。子进程必须等到文件、Webview、M3 三处回读才会退出。
++import assert from 'node:assert/strict';
++import { execFileSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import * as fs from 'node:fs/promises';
++import os from 'node:os';
++import path from 'node:path';
++import { stdoutWorkspace } from '../test/e2e/stdoutWorkspace.mjs';
++import { until, installVsix, command, openWorkspace } from '../test/e2e/workbench.mjs';
++
++const json = async p => JSON.parse(await fs.readFile(p, 'utf8'));
++const hash = b => createHash('sha256').update(b).digest('hex');
++const base = await fs.realpath(await fs.mkdtemp(path.join(process.platform === 'darwin' ? '/tmp' : os.tmpdir(), 'trivium-e1-host-')));
++const vsix = process.env.TRIVIUM_TEST_VSIX;
++assert.ok(vsix, '请指定 TRIVIUM_TEST_VSIX');
++const code = process.env.VSCODE_EXECUTABLE_PATH;
++assert.ok(code, '请指定 VSCODE_EXECUTABLE_PATH');
++const children = [];
++const report = { base, code, vsix: path.resolve(vsix), vsixSha: hash(await fs.readFile(vsix)), windows: [] };
++console.log(base);
++async function prepare(w) {
++  const f = w.frame;
++  await f.locator('#entry').selectOption('B');
++  await f.locator('#driver').selectOption(w.driver);
++  await f.locator('#topic').fill(w.topic);
++  await f.locator('#body').fill(w.focus);
++  await f.locator('#btnPrechain').click();
++  await until('前置链', async () => {
++    const error = await f.locator('#steps .fail').allTextContents();
++    if (error.length) throw new Error(error.join(' '));
++    return f.locator('#btnIgnite').isEnabled();
++  });
++  await f.evaluate(() => {
++    window.e1Audit = { leaked: false, messages: 0 };
++    const marker = ['sk-', 'unitFixture0123456789', 'abcdefghijk'].join('');
++    window.addEventListener('message', e => {
++      if (e.data.type === 'stdout') window.e1Audit.messages++;
++      if (JSON.stringify(e.data).includes(marker)) window.e1Audit.leaked = true;
++    });
++    new MutationObserver(() => {
++      if (document.querySelector('#runs').textContent.includes(marker)) window.e1Audit.leaked = true;
++    }).observe(document.querySelector('#runs'), { childList: true, subtree: true, characterData: true });
++  });
++}
++async function observe(w) {
++  const f = w.frame;
++  const start = await until('点火返回 ' + w.root, () => json(path.join(w.root, '.trivium/start.json')).catch(() => null));
++  const { run_id: runId, run_dir: runDir } = start;
++  const card = f.locator('#runs .card').filter({ hasText: runId });
++  const result = { root: w.root, topic: w.topic, runId, runDir, profile: w.profile, installedJs: w.installedJs, core: w.core, coreSha: w.coreSha, sides: {} };
++  report.windows.push(result);
++  const status = () => json(path.join(runDir, 'status.json'));
++  const state = await until('工作进程登记', async () => { const s = await status(); return s.worker_pid && s; });
++  const cmd = execFileSync('ps', ['-p', String(state.worker_pid), '-o', 'command='], { encoding: 'utf8' }).trim();
++  assert.ok(cmd.includes(w.core), cmd);
++  result.worker = { pid: state.worker_pid, command: cmd };
++  const sides = w.critics.map(id => ({
++    id, out: path.join(runDir, id, 'out'), file: name => path.join(w.control, id + '-' + name),
++    view: card.locator('.critic-stdout[data-critic="' + id + '"] .log-lines'),
++  }));
++  for (const s of sides) {
++    const p = await until('审核者启动 ' + s.id, () => json(s.file('producer.json')).catch(() => null));
++    const meta = await json(path.join(s.out, 'stdout-live.json'));
++    const stdout = path.join(s.out, meta.file);
++    await until(s.id + ' 磁盘标记', async () => (await fs.readFile(stdout, 'utf8')).includes(p.marker));
++    const diskAt = Date.now();
++    await s.view.filter({ hasText: p.marker }).waitFor();
++    await s.view.scrollIntoViewIfNeeded();
++    assert.ok(await s.view.isVisible());
++    const domAt = Date.now();
++    assert.equal(await fs.stat(s.file('exit.json')).catch(() => null), null);
++    assert.match(execFileSync('ps', ['-p', String(p.pid), '-o', 'command='], { encoding: 'utf8' }), /fixture-|controlledCritic/);
++    result.sides[s.id] = { ...p, stdout, diskAt, domAt, attempt: meta.attempt };
++  }
++  await command(w.page, 'Terminal: Kill the Active Terminal Instance');
++  await f.locator('#modeBadge.m3').waitFor();
++  assert.equal((await status()).phase, 'running');
++  for (const s of sides) await fs.writeFile(s.file('release-first'), '');
++  for (const s of sides) {
++    const r = result.sides[s.id];
++    await s.view.filter({ hasText: 'M3-' + r.marker }).waitFor();
++    assert.ok((await card.innerText()).includes(w.topic));
++    r.m3At = Date.now();
++  }
++  for (const s of sides) await fs.writeFile(s.file('release-last'), '');
++  for (const s of sides) {
++    const r = result.sides[s.id];
++    const e = await until('退出回执', () => json(s.file('exit.json')).catch(() => null));
++    assert.ok(r.sent <= r.diskAt && r.diskAt <= r.domAt && r.domAt <= r.m3At && r.m3At <= e.at);
++    const bytes = await until('最终 stdout', async () => {
++      const i = await json(path.join(s.out, 'stdout-live.json'));
++      return i.state === 'complete' && fs.readFile(r.stdout);
++    });
++    Object.assign(r, { exitAt: e.at, bytes: bytes.length, sha256: hash(bytes), expected: e });
++    assert.equal(r.sha256, e.sha256, s.id);
++    assert.equal(bytes.length, e.bytes);
++  }
++  const archive = path.join(w.root, '.reviews', w.topic, 'plan/_meta', 'run-' + runId + '.json');
++  const a = await until('终态归档', async () => {
++    const m = await json(archive);
++    return ['failed', 'success'].includes(m.status) && m;
++  });
++  result.diskAudit = await until('逐次写入的磁盘回读', () => json(path.join(w.control, 'disk-audit.json')).catch(() => null));
++  for (const id of w.critics) {
++    assert.ok(result.diskAudit[id].writes >= 2);
++    assert.equal(result.diskAudit[id].leaked, false);
++  }
++  result.archive = archive;
++  result.status = a.status;
++  result.audit = await f.evaluate(() => window.e1Audit);
++  assert.equal(result.audit.leaked, false);
++  assert.ok(result.audit.messages > 0);
++  assert.equal(a.status, 'success', archive);
++}
++try {
++  report.packedJsSha = hash(execFileSync('unzip', ['-p', vsix, 'extension/dist/extension.js']));
++  report.extensionVersion = JSON.parse(execFileSync('unzip', ['-p', vsix, 'extension/package.json'])).version;
++  const windows = [];
++  for (const driver of ['claude', 'codex']) {
++    const fx = await stdoutWorkspace(base, 'workspace-' + driver, driver, 'controlled');
++    const windowBase = path.join(base, driver);
++    await fs.mkdir(windowBase);
++    await installVsix({ base: windowBase, code, vsix });
++    const w = await openWorkspace(fx, { base: windowBase, code, vsix, children });
++    w.installedJs = path.join(windowBase, 'extensions', 'triviumcode.trivium-cockpit-' + report.extensionVersion, 'dist/extension.js');
++    assert.equal(hash(await fs.readFile(w.installedJs)), report.packedJsSha);
++    await prepare(w);
++    windows.push(w);
++  }
++  await Promise.all(windows.map(w => w.frame.locator('#btnIgnite').click()));
++  await Promise.all(windows.map(observe));
++  report.passed = true;
++} finally {
++  await fs.writeFile(path.join(base, 'report.json'), JSON.stringify(report, null, 2));
++  for (const child of children) child.kill();
++}
+diff --git a/extension/scripts/runStdoutLifecycle.mjs b/extension/scripts/runStdoutLifecycle.mjs
+new file mode 100644
+index 00000000..8aaa2ecf
+--- /dev/null
++++ b/extension/scripts/runStdoutLifecycle.mjs
+@@ -0,0 +1,148 @@
++// 真实安装态覆盖旧核心、隐藏/恢复、取消、重试和磁盘故障，并独立计量空闲期。
++import assert from 'node:assert/strict';
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++import * as fs from 'node:fs/promises';
++import path from 'node:path';
++import { setTimeout as sleep } from 'node:timers/promises';
++import { resolveCliPathFromVSCodeExecutablePath } from '@vscode/test-electron';
++import { installVsix, openWorkspace, until } from '../test/e2e/workbench.mjs';
++import { stdoutWorkspace } from '../test/e2e/stdoutWorkspace.mjs';
++import { portForHost, hostCounters } from '../test/e2e/hostCounters.mjs';
++const exec = promisify(execFile);
++const base = await fs.realpath(await fs.mkdtemp('/tmp/tv-e1-life-'));
++const vsix = process.env.TRIVIUM_TEST_VSIX;
++const code = process.env.VSCODE_EXECUTABLE_PATH;
++const children = [];
++const report = { base, vsix, scenarios: [] };
++const json = async f => JSON.parse(await fs.readFile(f, 'utf8'));
++console.log(base);
++async function scenario(kind) {
++  const baseline = kind === 'idle-baseline';
++  const legacy = kind === 'legacy' || baseline;
++  const fx = await stdoutWorkspace(base, kind, 'codex', 'latch', legacy ? process.env.TRIVIUM_BASELINE_ASSETS : undefined);
++  const port = await portForHost();
++  const w = await openWorkspace(fx, { base, code, vsix, children, inspectExtensions: port });
++  const measure = await hostCounters(port);
++  try {
++    const tv = async (...args) => {
++      const { stdout } = await exec(path.join(w.root, '.trivium/bin/trivium'), [...args, '--json'], { cwd: w.root });
++      return stdout.trim() ? JSON.parse(stdout) : null;
++    };
++    if (kind === 'fault') await fs.writeFile(path.join(w.control, 'fault.json'), JSON.stringify({ claude: 'short', gemini: 'permanent', glm: 'slow' }));
++    if (kind === 'retry' || kind === 'timeout') {
++      const wrapper = path.join(w.root, '.trivium/bin/trivium');
++      const specs = Object.fromEntries(w.critics.map(id => [id, { stdout:'latch', mode:'ok', findings:0 }]));
++      specs.claude.attempts = kind === 'retry' ? [{ stdout:'latch', mode:'fail', note:'ECONNRESET' }, { stdout:'latch', mode:'ok', findings:0 }] : [{ stdout:'latch', mode:'timeout' }];
++      await fs.writeFile(wrapper, (await fs.readFile(wrapper,'utf8')).replace(/^export TRIVIUM_STUB_CRITIC=.*$/m, "export TRIVIUM_STUB_CRITIC='" + JSON.stringify(specs) + "'"));
++    }
++    const start = await tv('review','--start','--entry','B','--stage','plan','--topic',w.topic,'--driver',w.driver,
++      '--critics',w.critics.join(','),'--focus',w.focus);
++    const card = w.frame.locator('#runs .card').filter({hasText:start.run_id});
++    const r = { kind, runId: start.run_id, runDir: start.run_dir, core: w.core, coreSha: w.coreSha, sides:{} };
++    report.scenarios.push(r);
++    const dir = id => path.join(start.run_dir, id, 'out');
++    const read = (id, name) => json(path.join(dir(id), name));
++    await until('实际管道发出首批', () => Promise.all(w.critics.map(id => read(id,'producer.json'))).catch(() => null));
++    const release = n => Promise.all(w.critics.map(id => fs.writeFile(path.join(dir(id),'release-' + n), '')));
++    if (baseline) await card.locator('.phase.running').waitFor();
++    else if (legacy) {
++      await card.getByText(/旧核心不提供/).first().waitFor();
++      assert.equal(await card.locator('.critic-stdout .log-lines').allTextContents().then(a => a.join('')), '');
++    } else if (kind === 'fault') {
++      await card.getByText(/实时写入暂缓/).first().waitFor();
++    } else {
++      await card.locator('.critic-stdout .log-lines').filter({hasText:'E1-'}).first().waitFor();
++    }
++    if (kind === 'hidden' || baseline) {
++      const draws = [], messages = [];
++      await w.page.exposeFunction('e1Observed', (type, at) => (type === 'paint' ? draws : messages).push(at));
++      await w.frame.evaluate(() => {
++        new MutationObserver(mutations => {
++          if (mutations.some(m => m.target.parentElement?.closest('.critic-stdout'))) window.e1Observed('paint', Date.now());
++        }).observe(document.getElementById('runs'), { subtree: true, characterData: true, childList: true });
++        window.addEventListener('message', e => { if (e.data.type === 'stdout') window.e1Observed('message', Date.now()); });
++      });
++      r.beforeHide = await measure.sample();
++      if (!baseline) assert.ok(r.beforeHide.live > 0 && r.beforeHide.opens > 0, '已验证监视器能观察到活动');
++      await exec(resolveCliPathFromVSCodeExecutablePath(code), ['--user-data-dir', w.profile, '--extensions-dir', path.join(base,'extensions'), '--reuse-window', path.join(w.root,'README.md')]);
++      await w.page.locator('.tab.active').filter({hasText:'README.md'}).waitFor();
++      await until('隐藏后释放文件监听', async () => (await measure.sample()).live === 0);
++      r.hiddenStart = await measure.sample();
++      await release(0);
++      await sleep(1500);
++      r.hiddenEnd = await measure.sample();
++      assert.equal(r.hiddenStart.opens, r.hiddenEnd.opens);
++      assert.equal(r.hiddenStart.timers, r.hiddenEnd.timers);
++      r.reopenedAt = Date.now();
++      await w.page.locator('.tab').filter({hasText:'Trivium 驾驶舱'}).first().click();
++      const activeFrame = await until('恢复驾驶舱上下文', async () => {
++        for (const f of w.page.frames()) if (await f.locator('#runs .card').count()) return f;
++      });
++      if (!baseline) await Promise.all(w.critics.map(id => activeFrame.locator('.critic-stdout .log-lines').filter({hasText:'E1-' + start.run_id + '-' + id + '-1'}).waitFor()));
++      r.restoredAt = Date.now();
++      r.hiddenMessages = messages.filter(t => t >= r.hiddenStart.at && t <= r.hiddenEnd.at).length;
++      r.hiddenPaints = draws.filter(t => t >= r.hiddenStart.at && t <= r.hiddenEnd.at).length;
++      assert.equal(r.hiddenMessages, 0);
++      assert.equal(r.hiddenPaints, 0);
++      if (!baseline) assert.ok(r.restoredAt-r.reopenedAt <= 1000, '恢复尾部超过一秒');
++    } else if (kind !== 'cancel') await release(0);
++    if (kind === 'cancel') await tv('review','--cancel', start.run_id);
++    else await release(1);
++    const ended = await until('运行已结束', async () => {
++      const s = await json(path.join(start.run_dir, 'status.json'));
++      return ['failed','cancelled','success'].includes(s.phase) && s;
++    }, 90);
++    r.phase = ended.phase;
++    assert.equal(r.phase, kind === 'cancel' ? 'cancelled' : kind === 'timeout' ? 'failed' : 'success');
++    for (const id of w.critics) {
++      const i = await read(id, 'stdout-live.json').catch(() => null);
++      r.sides[id] = i;
++      if (legacy) assert.equal(i, null);
++      else if (kind === 'cancel') assert.equal(i.state,'incomplete');
++      else if (kind === 'fault') {
++        assert.equal(i.state, {claude:'complete', gemini:'incomplete', glm:'recovered'}[id]);
++        const summary = card.locator('.critic-stdout[data-critic="' + id + '"] summary');
++        await summary.filter({ hasText: {claude:'完整记录',gemini:'完整性未确认',glm:'已恢复'}[id] }).waitFor();
++        const content = await fs.readFile(path.join(dir(id),i.file),'utf8');
++        const expected = [0,1].map(n => ('E1-' + start.run_id + '-' + id + '-' + n).padEnd(255,'.') + '\n').join('');
++        assert.equal(content, id === 'gemini' ? '' : expected);
++      }
++      else assert.equal(i.state,'complete');
++      if (kind === 'retry' && id === 'claude') {
++        assert.equal(i.attempt, 2);
++        assert.equal((await read(id,'attempt-1/stdout-live.json')).attempt, 1);
++      }
++    }
++    if (kind === 'timeout') await card.locator('.critic-stdout[data-critic="claude"] summary').filter({ hasText:'超时' }).waitFor();
++    if (kind !== 'cancel') {
++      const meta = await json(path.join(w.root,'.reviews',w.topic,'plan/_meta','run-' + start.run_id + '.json'));
++      assert.ok(Object.values(meta.critics).every(c => c.cli_version === 'stub/0.0.0'));
++    }
++    await until('终态释放全部 stdout 监听', async () => (await measure.sample()).live === 0);
++    if (kind === 'hidden' || baseline) {
++      r.idle = [];
++      await sleep(1500);
++      for (let i=0; i<5; i++) {
++        const before = await measure.sample();
++        await sleep(60000);
++        const after = await measure.sample();
++        r.idle.push({ before, after });
++        assert.equal(after.opens, before.opens);
++        assert.equal(after.timers, before.timers);
++        assert.equal(after.live, 0);
++      }
++    }
++    console.log(kind, r.runId, r.phase);
++  } finally {
++    measure.close();
++    w.child.kill();
++  }
++}
++try {
++  await installVsix({ base, code, vsix });
++  for (const kind of process.argv.slice(2)) await scenario(kind);
++} finally {
++  await fs.writeFile(path.join(base,'report.json'),JSON.stringify(report,null,2));
++  for (const child of children) if (!child.killed) child.kill();
++}
+diff --git a/extension/scripts/runStdoutPerf.mjs b/extension/scripts/runStdoutPerf.mjs
+new file mode 100644
+index 00000000..d6c290c3
+--- /dev/null
++++ b/extension/scripts/runStdoutPerf.mjs
+@@ -0,0 +1,153 @@
++// 在同一台 Mac 上交替运行基线和 E1。每轮单独启动安装态工作台和三侧 worker。
++import assert from 'node:assert/strict';
++import { execFile, execFileSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import * as fs from 'node:fs/promises';
++import path from 'node:path';
++import { promisify } from 'node:util';
++import { setTimeout as sleep } from 'node:timers/promises';
++import { stdoutWorkspace } from '../test/e2e/stdoutWorkspace.mjs';
++import { baseline } from '../test/e2e/perfBaseline.mjs';
++import { openWorkspace, installVsix, until } from '../test/e2e/workbench.mjs';
++import { extensionRoot } from '../test/e2e/workspace.mjs';
++const exec = promisify(execFile);
++const json = async file => JSON.parse(await fs.readFile(file, 'utf8'));
++const base = await fs.realpath(await fs.mkdtemp('/tmp/tv-e1p-'));
++console.log(base);
++const code = process.env.VSCODE_EXECUTABLE_PATH;
++assert.ok(code);
++const variants = [
++  { id: 'base', assets: await baseline(base), vsix: path.join(extensionRoot, 'trivium-cockpit-0.3.0-glm-relay.vsix') },
++  { id: 'e1', assets: path.resolve(extensionRoot, '../skills/dual-critic'), vsix: process.env.TRIVIUM_TEST_VSIX },
++];
++for (const v of variants) {
++  v.base = path.join(base, v.id);
++  await fs.mkdir(v.base);
++  await installVsix({ ...v, code });
++  v.vsixSha = createHash('sha256').update(await fs.readFile(v.vsix)).digest('hex');
++}
++const children = [];
++async function hostPid(profile) {
++  let entries = [];
++  for await (const file of fs.glob('logs/*/window*/exthost/exthost.log', { cwd: profile })) entries.push(file);
++  const m = /Extension host with pid (\d+) started/.exec(await fs.readFile(path.join(profile, entries.sort().at(-1)), 'utf8'));
++  return Number(m[1]);
++}
++async function sample(pid) {
++  const { stdout } = await exec('ps', ['-p', String(pid), '-o', 'time=,rss=']);
++  const [time, rss] = stdout.trim().split(/\s+/);
++  return { at: Date.now(), cpu: time.split(':').reduce((t, n) => t * 60 + Number(n), 0), rssKiB: Number(rss) };
++}
++async function observe(frame, every) {
++  await frame.evaluate(every => {
++    window.perfSample = { received: {}, visible: {} };
++    const box = document.getElementById('runs');
++    const marks = /E1-[A-Za-z0-9-]+-(\d+)\./g;
++    let drawing = false;
++    function draw() {
++      drawing = false;
++      const cards = box.querySelectorAll('.critic-stdout');
++      if (cards.length) cards[Math.floor(cards.length / 2)].scrollIntoView({ block: 'center' });
++      for (const details of cards) {
++        const port = details.querySelector('.log').getBoundingClientRect();
++        const node = details.querySelector('pre').firstChild;
++        if (!node || !details.open) continue;
++        for (const m of node.textContent.matchAll(marks)) {
++          if (Number(m[1]) % every) continue;
++          const key = m[0].slice(0, -1);
++          if (window.perfSample.visible[key]) continue;
++          const range = new Range();
++          range.setStart(node, m.index);
++          range.setEnd(node, m.index + key.length);
++          const r = range.getBoundingClientRect();
++          if (r.top + r.height / 2 >= Math.max(port.top, 0) && r.bottom - r.height / 2 <= Math.min(port.bottom, innerHeight)
++              && r.left >= Math.max(port.left, 0) - 1 && r.right <= Math.min(port.right, innerWidth) + 1) {
++            window.perfSample.visible[key] = Date.now();
++          }
++        }
++      }
++    }
++    new MutationObserver(() => {
++      if (!drawing) { drawing = true; requestAnimationFrame(draw); }
++    }).observe(box, { childList: true, characterData: true, subtree: true });
++    window.addEventListener('message', e => {
++      if (e.data.type !== 'stdout') return;
++      for (const m of e.data.text.matchAll(marks)) {
++        if (!(Number(m[1]) % every)) window.perfSample.received[m[0].slice(0, -1)] ??= Date.now();
++      }
++    });
++  }, every);
++}
++async function trial(v, mode, round) {
++  const count = mode === 'dense' ? 512 : 60;
++  const size = mode === 'dense' ? 16384 : 256;
++  const every = mode === 'dense' ? 25 : 4;
++  const fx = await stdoutWorkspace(v.base, mode + round, 'codex', mode, v.assets);
++  const w = await openWorkspace(fx, { ...v, code, children });
++  await w.page.bringToFront();
++  // 三侧视口须同时落在桌面，缩放与运行负载无关，两版一致。
++  for (let i = 0; i < 3; i++) await w.page.keyboard.press('Meta+-');
++  await observe(w.frame, every);
++  const extPid = await hostPid(w.profile);
++  const host = [await sample(extPid)];
++  let stop = false;
++  const meter = (async () => {
++    while (!stop) { await sleep(100); host.push(await sample(extPid)); }
++  })();
++  let result;
++  try {
++    const started = Date.now();
++    const start = JSON.parse(execFileSync(path.join(w.root, '.trivium/bin/trivium'), ['review','--start','--entry','B',
++      '--stage','plan','--topic',w.topic,'--driver',w.driver,'--critics',w.critics.join(','),'--focus',w.focus,'--json'],
++    { cwd: w.root, encoding: 'utf8' }));
++    const status = path.join(start.run_dir, 'status.json');
++    const ended = await until('审查终态', async () => {
++      const s = await json(status);
++      return ['success','failed','cancelled'].includes(s.phase) && s;
++    }, 90);
++    const end = Date.now();
++    stop = true;
++    await meter;
++    assert.equal(ended.phase, 'success');
++    const worker = await until('退出计量', () => json(path.join(w.control, 'worker-' + ended.worker_pid + '.json')).catch(() => null));
++    assert.equal(worker.core, w.core);
++    const ui = await w.frame.evaluate(() => window.perfSample);
++    const archive = await json(path.join(w.root, '.reviews', w.topic, 'plan/_meta', 'run-' + start.run_id + '.json'));
++    result = { variant: v.id, round, mode, start, started, end, elapsedMs: end - started, worker, host, extPid,
++      hostCpu: host.at(-1).cpu - host[0].cpu, hostPeakKiB: Math.max(...host.map(x => x.rssKiB)),
++      coreCpu: (worker.usage.userCPUTime + worker.usage.systemCPUTime)/1e6, corePeakKiB: worker.usage.maxRSS,
++      coreSha: w.coreSha, vsix: v.vsix, vsixSha: v.vsixSha, sides: {} };
++    for (const id of w.critics) {
++      assert.equal(archive.critics[id].cli_version, 'stub/0.0.0');
++      const out = path.join(start.run_dir, id, 'out');
++      const producer = await json(path.join(out, 'producer.json'));
++      const stat = await fs.stat(path.join(out, 'stdout.jsonl'));
++      assert.equal(stat.size, count * size);
++      const samples = producer.samples.filter((_, i) => i % every === 0).map(s => ({
++        ...s, received: ui.received[s.mark] ?? null, visible: ui.visible[s.mark] ?? null,
++      }));
++      const delays = samples.filter(s => s.visible).map(s => s.visible-s.sent).sort((a,b) => a-b);
++      const writes = worker.writes.filter(x => path.dirname(x.file) === out);
++      const bytes = writes.filter(x => path.basename(x.file) === 'stdout.jsonl').reduce((a,x) => a+x.bytes, 0);
++      const metadata = writes.filter(x => path.basename(x.file).startsWith('stdout-live.')).reduce((a,x) => a+x.bytes,0);
++      result.sides[id] = { samples, bytes, expectedBytes: stat.size, metadata, fingerprint: archive.critics[id].cli_version,
++        missing: samples.length-delays.length, p95Ms: delays[Math.ceil(delays.length*.95)-1] ?? null };
++    }
++    return result;
++  } finally {
++    stop = true;
++    await meter;
++    w.child.kill();
++  }
++}
++try {
++  for (let round = 0; round <= Number(process.env.TRIVIUM_PERF_ROUNDS ?? 5); round++) {
++    for (const mode of ['sparse','dense']) for (const v of (round % 2 ? [...variants].reverse() : variants)) {
++      if (process.env.TRIVIUM_PERF_VARIANT && v.id !== process.env.TRIVIUM_PERF_VARIANT) continue;
++      const r = await trial(v, mode, round);
++      const file = path.join(base, v.id + '-' + mode + '-' + round + '.json');
++      await fs.writeFile(file, JSON.stringify(r));
++      console.log(file, r.elapsedMs, Object.values(r.sides).map(s => [s.missing, s.p95Ms, s.bytes]));
++    }
++  }
++} finally { for (const p of children) if (!p.killed) p.kill(); }
+diff --git a/extension/scripts/runStdoutVendors.mjs b/extension/scripts/runStdoutVendors.mjs
+new file mode 100644
+index 00000000..0a4bbff9
+--- /dev/null
++++ b/extension/scripts/runStdoutVendors.mjs
+@@ -0,0 +1,91 @@
++// 隔离仓内的厂商管道采样。用本地正式配置与只读适配器，原仓的状态、审批和配置均不写。
++import { execFile, execFileSync } from 'node:child_process';
++import { promisify } from 'node:util';
++import * as fs from 'node:fs/promises';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { setTimeout as sleep } from 'node:timers/promises';
++import YAML from 'yaml';
++const root = fileURLToPath(new URL('../../', import.meta.url));
++const base = await fs.realpath(await fs.mkdtemp('/tmp/tv-e1-vendor-'));
++const core = path.join(root, 'skills/dual-critic/scripts/trivium.cjs');
++const preload = fileURLToPath(new URL('../test/e2e/vendorTimings.cjs', import.meta.url));
++const exec = promisify(execFile);
++const json = async p => JSON.parse(await fs.readFile(p,'utf8'));
++console.log(base);
++async function sample(driver, critics) {
++  const dir = path.join(base, driver);
++  const topic = '只读输出计时';
++  const timing = path.join(dir, 'timing');
++  const dot = path.join(dir, '.trivium');
++  await fs.mkdir(dot, {recursive:true,mode:0o700});
++  await fs.mkdir(timing,{ mode:0o700 });
++  const env = { ...process.env, TRIVIUM_ASSET_ROOT:path.join(root,'skills/dual-critic'),
++    TRIVIUM_E1_TIMING_DIR:timing, NODE_OPTIONS:'--require=' + JSON.stringify(preload) };
++  delete env.TRIVIUM_STUB_CRITIC;
++  const local = path.join(dot,'config.local.yaml');
++  const cmd = async (...args) => {
++    const r = await exec(process.execPath, [core,...args,'--json'],{cwd:dir,env,maxBuffer:2**20});
++    return JSON.parse(r.stdout);
++  };
++  let step = '准备';
++  const report = { driver, critics, core, topic, samples:{}, attempts:0 };
++  try {
++    await fs.copyFile(path.join(root,'.trivium/config.local.yaml'),local);
++    await fs.chmod(local,0o600);
++    const config = YAML.parse(await fs.readFile(path.join(root,'.trivium/config.yaml'),'utf8'));
++    config.runtime.run_root = path.join(base,'runs');
++    await fs.writeFile(path.join(dot,'config.yaml'),YAML.stringify(config));
++    await fs.writeFile(path.join(dir,'.gitignore'), '.trivium/config.local.yaml\n.trivium/state.json\n.trivium/lock/\ntiming/\n');
++    await fs.writeFile(path.join(dot,'state.json'),JSON.stringify({ schema:'trivium.state.v1', gates:{} }));
++    await fs.writeFile(path.join(dir,'README.md'), '# 输出时序夹具\n\n命令以 UTF-8 输出应用状态。空输入显示等待提示。\n');
++    const git = (...a) => execFileSync('git',a,{cwd:dir,stdio:'ignore'});
++    git('init','-q'); git('add','--','.gitignore','README.md');
++    git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','隔离夹具');
++    await cmd('topic','claim','--stage','plan','--topic',topic,'--driver',driver);
++    const plan = path.join(dir,'.reviews',topic,'plan');
++    await fs.mkdir(plan,{recursive:true});
++    await fs.writeFile(path.join(plan,'2026-11-20-'+topic+'-'+driver+'.md'),'# 读取说明文件\n\n本夹具拟在终端显示 README 约定的状态，并核对空输入提示和 UTF-8。仅审查本计划与 README.md。\n');
++    if (critics.includes('codex')) {
++      step = 'doctor';
++      await cmd('doctor','--only','codex','--native-codex','--driver',driver,'--deadline-s','360');
++    }
++    step = 'preflight';
++    report.preflight = (await cmd('preflight','--stage','plan','--driver',driver,'--critics',critics.join(','))).ok;
++    step = 'review --start';
++    const start = await cmd('review','--start','--entry','B','--stage','plan','--topic',topic,'--driver',driver,
++      '--critics',critics.join(','),'--focus','核对说明文件中约定的输出行为','--context','README.md');
++    report.runId = start.run_id; report.attempts++; report.runDir = start.run_dir;
++    let phase;
++    do {
++      const s = await json(path.join(start.run_dir,'status.json'));
++      phase = s.phase;
++      for (const [id, side] of Object.entries(s.sides ?? {})) {
++        if (!side.cli?.pgid) continue;
++        const list = report.samples[id] ??= [];
++        if (!list.includes(side.cli.pgid)) list.push(side.cli.pgid);
++      }
++      if (!['success','failed','cancelled'].includes(phase)) await sleep(250);
++    } while (!['success','failed','cancelled'].includes(phase));
++    report.phase = phase;
++    const meta = await json(path.join(plan,'_meta','run-'+start.run_id+'.json'));
++    report.versions = Object.fromEntries(Object.entries(meta.critics).map(([id,c]) => [id,c.cli_version]));
++    for (const [id,pids] of Object.entries(report.samples)) report.samples[id] = await Promise.all(pids.map(pid => json(path.join(timing,pid+'.json')).catch(() => ({pid, timing:'未测'}))));
++  } catch (e) {
++    report.exit = e.code ?? null;
++    // 仅输出错误类别，不回显配置、账号和厂商响应。
++    report.step = step;
++    let out;
++    try { out = JSON.parse(e.stdout); } catch { /* 无结构化输出 */ }
++    const problems = out?.problems ?? out?.errors ?? out?.error ?? out?.checks?.filter(x => !x.ok) ?? [];
++    report.detail = (Array.isArray(problems) ? problems : [problems]).map(p =>
++      String(p?.message ?? p?.detail ?? p?.reason ?? p).slice(0,220));
++    report.stderr = String(e.stderr ?? '').split('\n').filter(x => /^✗|失败|拒绝|找不到|没有|不能|必须|不可|初始|状态|不存在/.test(x)).map(x => x.slice(0,180)).slice(-4);
++  } finally {
++    await fs.rm(local,{force:true});
++    await fs.writeFile(path.join(dir,'report.json'),JSON.stringify(report,null,2));
++    console.log(driver,report.phase ?? '未完成',report.runId ?? '',report.exit ?? '');
++  }
++}
++for (const driver of (process.argv.slice(2).length ? process.argv.slice(2) : ['codex','claude']))
++  await sample(driver,driver === 'codex' ? ['glm','gemini','claude'] : ['codex']);
+diff --git a/extension/src/monitor/stdoutTail.ts b/extension/src/monitor/stdoutTail.ts
+new file mode 100644
+index 00000000..43dc542a
+--- /dev/null
++++ b/extension/src/monitor/stdoutTail.ts
+@@ -0,0 +1,234 @@
++/** 每个运行独立读取核心已经脱敏的 stdout。文件不存在时绝不猜测旧版输出的安全状态。 */
++import { constants, promises as fs, watch, type FSWatcher } from 'node:fs';
++import path from 'node:path';
++import { StringDecoder } from 'node:string_decoder';
++import type { SideRender } from './statusModel';
++
++interface Cursor {
++  attempt: number; identity: string; offset: number; decoder: StringDecoder; note: string;
++}
++export interface StdoutPatch {
++  critic: string; attempt: number; identity: string; reset: boolean;
++  start: number; end: number; text: string; note: string; clipped: boolean; canOpen: boolean;
++}
++interface Info {
++  schema: string; attempt: number; file: string; identity: string; dev: string; ino: string;
++  state: string; reason: string | null; bytes: number;
++}
++
++async function regular(dir: string, name: string) {
++  if (await fs.realpath(dir) !== dir) throw new Error('目录已改变');
++  const file = path.join(dir, name);
++  const st = await fs.lstat(file, { bigint: true });
++  if (!st.isFile()) throw new Error('仅支持普通文件');
++  const fh = await fs.open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
++  try {
++    const actual = await fh.stat({ bigint: true });
++    if (actual.ino !== st.ino || actual.dev !== st.dev || !actual.isFile() || await fs.realpath(dir) !== dir)
++      throw new Error('文件身份已改变');
++    return { fh, stat: actual };
++  } catch (e) { await fh.close(); throw e; }
++}
++async function infoAt(dir: string, attempt: number): Promise<Info> {
++  const { fh, stat } = await regular(dir, 'stdout-live.json');
++  try {
++    if (stat.size > 2048n) throw new Error('实时输出记录超出大小限制');
++    const info = JSON.parse(await fh.readFile('utf8')) as Info;
++    if (info.schema !== 'trivium.stdout.v1' || info.attempt !== attempt ||
++        !['stdout.jsonl', 'stdout.json'].includes(info.file) || !/^[0-9a-f-]{36}$/.test(info.identity) ||
++        !['streaming', 'deferred', 'complete', 'recovered', 'incomplete'].includes(info.state) ||
++        !Number.isSafeInteger(info.bytes) || info.bytes < 0) throw new Error('实时输出记录不可用');
++    return info;
++  } finally { await fh.close(); }
++}
++
++function label(info: Info, terminal: boolean, sideState: string, size: number): string {
++  if (info.reason === 'timeout' || sideState === 'timeout') return '进程超时，显示已记录的输出';
++  if (sideState === 'cancelled') return '进程已取消，显示已记录的输出';
++  if (info.state === 'complete' && info.bytes === size) return size ? '输出已完整记录' : '进程已结束，无 stdout';
++  if (info.state === 'recovered' && info.bytes === size) return '实时输出曾暂缓，最终文件已恢复';
++  if (info.reason === 'interrupted') return '进程中断，显示已记录的输出';
++  if (info.reason === 'capture_limit') return '超过核心收集上限，输出已截断';
++  if (info.reason === 'not_started') return '进程未启动，无可确认的 stdout';
++  if (info.reason === 'pipe_open') return '子进程已退出，输出管道未在宽限期内关闭';
++  if (info.state === 'deferred' && info.reason === 'pending_limit') return '等待安全脱敏边界，收尾时核对';
++  if (info.state === 'deferred') return '实时写入暂缓，等待核对最终文件';
++  if (terminal || info.state === 'incomplete' || info.state === 'complete' || info.state === 'recovered')
++    return '输出完整性未确认';
++  return size ? '正在接收输出' : '等待该侧输出';
++}
++
++export class StdoutTail {
++  private readonly cursors = new Map<string, Cursor>();
++  private readonly infos = new Map<string, { info: Info; checked: number }>();
++  private readonly changed = new Set<string>();
++  private visible = false;
++  private sides: SideRender[] = [];
++  private phase = '';
++  private terminal = false;
++  private generation = 0;
++  private disposed = false;
++  private timer?: NodeJS.Timeout;
++  private due = 0;
++  private readonly watches = new Map<string, FSWatcher>();
++  private busy = false;
++  private pending = false;
++  private readonly root: Promise<string>;
++
++  constructor(runDir: string, private readonly limit: number,
++    private readonly send: (patch: StdoutPatch) => PromiseLike<boolean>) {
++    // 允许 /tmp 与 /private/tmp 的系统别名，只把已确认的运行根作为信任锚。
++    this.root = fs.realpath(runDir);
++    void this.root.catch(() => undefined);
++  }
++
++  update(sides: SideRender[], phase: string, terminal: boolean): void {
++    this.changed.clear();
++    this.infos.clear();
++    this.sides = sides;
++    this.phase = phase;
++    this.terminal = terminal;
++    this.schedule(0);
++  }
++
++  show(visible: boolean, reset = false): void {
++    if (visible === this.visible && !reset) return;
++    this.visible = visible;
++    this.generation++;
++    this.cursors.clear();
++    this.changed.clear();
++    this.infos.clear();
++    this.closeWatches();
++    clearTimeout(this.timer);
++    this.timer = undefined;
++    this.schedule(0);
++  }
++
++  private schedule(ms: number): void {
++    if (!this.visible || this.disposed || !this.sides.length) return;
++    if (this.busy) { this.pending = true; return; }
++    if (this.timer) {
++      if (this.due <= Date.now() + ms) return;
++      clearTimeout(this.timer);
++    }
++    this.due = Date.now() + ms;
++    this.timer = setTimeout(() => { this.timer = undefined; void this.tick(); }, ms);
++  }
++
++  private closeWatches(): void {
++    for (const watcher of this.watches.values()) watcher.close();
++    this.watches.clear();
++  }
++
++  private watchSide(file: string, critic: string): void {
++    if (this.terminal || this.watches.has(critic) || !this.visible || this.disposed) return;
++    const watcher = watch(file, { persistent: false }, event => {
++      this.changed.add(critic);
++      if (event === 'rename') {
++        this.infos.delete(critic);
++        watcher.close();
++        this.watches.delete(critic);
++      }
++      this.schedule(12);
++    });
++    watcher.on('error', () => {
++      watcher.close();
++      this.watches.delete(critic);
++      this.schedule(200);
++    });
++    this.watches.set(critic, watcher);
++  }
++
++  private async tick(): Promise<void> {
++    this.busy = true;
++    const generation = this.generation;
++    const terminal = this.terminal;
++    const changed = new Set(this.changed);
++    this.changed.clear();
++    try {
++      await Promise.all(this.sides.map(async side => {
++        if (!/^[a-z][a-z0-9_-]{0,63}$/.test(side.critic)) return;
++        if (!terminal && changed.size && !changed.has(side.critic)) return;
++        const attempt = Math.max(1, side.attempt ?? 1);
++        const key = side.critic;
++        const previous = this.cursors.get(key);
++        const old = previous?.attempt === attempt ? previous : undefined;
++        let delta: StdoutPatch;
++        let cursor: Cursor;
++        try {
++          const dir = path.join(await this.root, key, 'out');
++          if (generation !== this.generation) return;
++          const cached = this.infos.get(key);
++          const reuse = !terminal && cached?.info.attempt === attempt && Date.now() - cached.checked < 400;
++          const info = reuse ? cached.info : await infoAt(dir, attempt);
++          if (generation !== this.generation) return;
++          if (!reuse) this.infos.set(key, { info, checked: Date.now() });
++          // 元数据读取时已验证父目录。每一次都对打开的内容句柄再次核对设备与 inode。
++          const fh = await fs.open(path.join(dir, info.file), constants.O_RDONLY |
++            (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
++          try {
++            const stat = await fh.stat({ bigint: true });
++            if (!stat.isFile() || String(stat.dev) !== info.dev || String(stat.ino) !== info.ino) throw new Error('输出文件身份待复核');
++            if (generation !== this.generation) return;
++            this.watchSide(path.join(dir, info.file), key);
++            const size = Number(stat.size);
++            const identity = info.identity + '/' + info.ino;
++            const reset = !old || old.identity !== identity || size < old.offset || size - old.offset > this.limit;
++            const start = reset ? Math.max(0, size - this.limit) : old.offset;
++            const note = label(info, terminal, this.phase === 'cancelled' ? this.phase : side.state, size);
++            if (!reset && start === size && old.note === note) return;
++            const buf = Buffer.alloc(size - start);
++            const { bytesRead } = buf.length ? await fh.read(buf, 0, buf.length, start) : { bytesRead: 0 };
++            const decoder = reset ? new StringDecoder('utf8') : old.decoder;
++            let first = 0;
++            if (reset && start > 0) while (first < bytesRead && (buf[first]! & 0xc0) === 0x80) first++;
++            cursor = { attempt, identity, offset: start + bytesRead, decoder, note };
++            delta = { critic: key, attempt, identity, reset, start, end: cursor.offset,
++              text: decoder.write(buf.subarray(first, bytesRead)), note, clipped: start > 0 && reset,
++              canOpen: info.state === 'complete' || info.state === 'recovered' };
++          } finally { await fh.close(); }
++        } catch (e) {
++          this.infos.delete(key);
++          let note = '实时输出记录不可读，完整性未确认';
++          if ((e as NodeJS.ErrnoException).code === 'ENOENT') note = '此尝试尚无实时输出记录（旧核心不提供）';
++          if (this.phase === 'cancelled') note += ' · 运行已取消';
++          else if (side.state === 'timeout') note += ' · 本侧超时';
++          else if (terminal || side.state === 'failed') note += ' · 本侧已结束';
++          const identity = old?.identity ?? '';
++          if (old?.note === note && !this.pending) return;
++          cursor = { attempt, identity, note, offset: old?.offset ?? 0, decoder: old?.decoder ?? new StringDecoder('utf8') };
++          delta = { critic: key, attempt, identity, reset: !old, start: cursor.offset, end: cursor.offset,
++            text: '', note, clipped: false, canOpen: false };
++        }
++        if (this.disposed || generation !== this.generation) return;
++        if (await this.send(delta) && generation === this.generation) this.cursors.set(key, cursor);
++        else if (generation === this.generation) this.cursors.delete(key);
++      }));
++    } finally {
++      this.busy = false;
++      if (this.pending) { this.pending = false; this.schedule(0); }
++      else if (!this.terminal) this.schedule(this.watches.size === this.sides.length ? 400 : 120);
++      if (this.terminal) this.closeWatches();
++    }
++  }
++
++  async completePath(critic: string, attempt: number): Promise<string | undefined> {
++    if (!this.sides.some(s => s.critic === critic) || !/^[a-z][a-z0-9_-]{0,63}$/.test(critic) ||
++        !Number.isSafeInteger(attempt) || attempt < 1) return;
++    const base = await this.root;
++    const out = path.join(base, critic, 'out');
++    for (const dir of [out, path.join(out, 'attempt-' + attempt), path.join(base, 'voided', critic, 'attempt-' + attempt)]) {
++      try {
++        const info = await infoAt(dir, attempt);
++        if (info.state !== 'complete' && info.state !== 'recovered') continue;
++        const { fh, stat } = await regular(dir, info.file);
++        await fh.close();
++        if (String(stat.ino) === info.ino && String(stat.dev) === info.dev && Number(stat.size) === info.bytes)
++          return path.join(dir, info.file);
++      } catch { /* 已轮转或清理，继续查本次尝试的归档位置。 */ }
++    }
++    return;
++  }
++
++  dispose(): void { this.disposed = true; this.show(false); }
++}
+diff --git a/extension/test/e2e/controlledCritic.cjs b/extension/test/e2e/controlledCritic.cjs
+new file mode 100644
+index 00000000..fe411f99
+--- /dev/null
++++ b/extension/test/e2e/controlledCritic.cjs
+@@ -0,0 +1,47 @@
++// 四个厂商进程的可控替身。每一阶段仅由安装态读端确认后才继续。
++const fs = require('node:fs');
++const path = require('node:path');
++const crypto = require('node:crypto');
++const { setTimeout: delay } = require('node:timers/promises');
++const id = process.argv[2];
++const dir = process.env.TRIVIUM_E1_FIXTURE;
++const info = file => path.join(dir, id + '-' + file);
++const versionOnly = process.argv.slice(3).some(x => x === '--version' || x === 'version');
++if (versionOnly) { console.log('9.9.9'); return; }
++
++const marker = 'E1-' + id + '-' + crypto.randomUUID();
++const secret = ['sk-', 'unitFixture0123456789', 'abcdefghijk'].join('');
++const review = JSON.stringify({ schema: 'trivium.review.v2', summary: '可控替身返回的审查正文', verdict: 'pass',
++  findings: [], agreed: [], not_covered: ['仅用于分批输出验收'], consulted: ['README.md'] });
++const body = {
++  codex: { type: 'item.completed', item: { type: 'agent_message', text: review } },
++  claude: { type: 'result', subtype: 'success', result: review },
++  gemini: { event: 'result', result: { status: 'SUCCESS', response: review } },
++  glm: { response: review, eventCount: 1 },
++};
++async function latch(stage) {
++  const deadline = Date.now() + 90000;
++  while (!fs.existsSync(info('release-' + stage))) {
++    if (Date.now() > deadline) throw new Error('未收到退出闩锁 ' + stage);
++    await delay(25);
++  }
++}
++async function write(bytes) { await new Promise(done => process.stdout.write(bytes, done)); }
++async function main() {
++  const sent = Date.now();
++  const metadata = { marker, pid: process.pid, sent };
++  fs.writeFileSync(info('producer.json'), JSON.stringify(metadata));
++  // 拆在 UTF-8 中文字符内部、凭据中部；保留空行和最后的无换行 JSON。
++  const prefix = Buffer.from('中文 ' + marker + '\n\n');
++  await write(prefix.subarray(0, 1)); await delay(20);
++  await write(Buffer.concat([prefix.subarray(1), Buffer.from(secret.slice(0, 11))]));
++  await latch('first');
++  await write(secret.slice(11) + '\nM3-' + marker + '\n');
++  await latch('last');
++  const tail = JSON.stringify(body[id]);
++  await write(tail);
++  const clean = prefix.toString() + secret.slice(0, 4) + '…' + secret.slice(-4) + '\nM3-' + marker + '\n' + tail;
++  process.once('exit', code => fs.writeFileSync(info('exit.json'), JSON.stringify({ code, at: Date.now(),
++    bytes: Buffer.byteLength(clean), sha256: crypto.createHash('sha256').update(clean).digest('hex') })));
++}
++main().catch(e => { console.error(e.message); process.exitCode = 1; });
+diff --git a/extension/test/e2e/controlledDisk.cjs b/extension/test/e2e/controlledDisk.cjs
+new file mode 100644
+index 00000000..cf76d271
+--- /dev/null
++++ b/extension/test/e2e/controlledDisk.cjs
+@@ -0,0 +1,24 @@
++// 可控厂商子进程的工作进程探针。每次写完就读回文件，仅保存是否命中和次数。
++if (process.argv.includes('--worker') && process.env.TRIVIUM_E1_FIXTURE) {
++  const fs = require('node:fs');
++  const path = require('node:path');
++  const secret = ['sk-', 'unitFixture0123456789', 'abcdefghijk'].join('');
++  const audit = {};
++  const open = fs.promises.open.bind(fs.promises);
++  fs.promises.open = async (p, ...args) => {
++    const fh = await open(p, ...args);
++    if (args[0] !== 'wx' || !/[/\\]out[/\\]stdout\.jsonl?$/.test(String(p))) return fh;
++    const side = path.basename(path.dirname(path.dirname(p)));
++    const rec = audit[side] = { writes: 0, leaked: false };
++    const write = fh.write.bind(fh);
++    fh.write = async (...args) => {
++      const result = await write(...args);
++      const data = await fs.promises.readFile(p, 'utf8');
++      rec.leaked ||= data.includes(secret);
++      rec.writes++;
++      return result;
++    };
++    return fh;
++  };
++  process.on('exit', () => fs.writeFileSync(path.join(process.env.TRIVIUM_E1_FIXTURE, 'disk-audit.json'), JSON.stringify(audit)));
++}
+diff --git a/extension/test/e2e/hostCounters.mjs b/extension/test/e2e/hostCounters.mjs
+new file mode 100644
+index 00000000..0f077701
+--- /dev/null
++++ b/extension/test/e2e/hostCounters.mjs
+@@ -0,0 +1,77 @@
++// 仅在本轮隔离 Extension Host 的本地 Inspector 观察 E1 的文件、监听和定时器活动。
++import net from 'node:net';
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++const exec = promisify(execFile);
++// macOS SDK sys/resource.h：rusage_info_v2 最后的两个 uint64 保存物理 I/O 字节。
++const disk = `import ctypes, struct, sys
++b=ctypes.create_string_buffer(16+18*8)
++rc=ctypes.CDLL('/usr/lib/libproc.dylib').proc_pid_rusage(int(sys.argv[1]),2,ctypes.byref(b))
++if rc: raise OSError(rc)
++print(*struct.unpack_from('=QQ',b,16+16*8))`;
++import { once } from 'node:events';
++import { until } from './workbench.mjs';
++export async function portForHost() {
++  const server = net.createServer().listen(0, '127.0.0.1');
++  await once(server, 'listening');
++  const port = server.address().port;
++  await new Promise(ok => server.close(ok));
++  return port;
++}
++export async function hostCounters(port) {
++  const target = await until('本轮扩展宿主计量接口', async () => {
++    try { return (await (await fetch('http://127.0.0.1:' + port + '/json/list')).json())[0]; }
++    catch { return null; }
++  });
++  const ws = new WebSocket(target.webSocketDebuggerUrl);
++  await new Promise((ok, fail) => { ws.onopen = ok; ws.onerror = fail; });
++  let seq = 0;
++  const waiting = new Map();
++  ws.onmessage = ({ data }) => {
++    const reply = JSON.parse(data);
++    if (reply.id) { waiting.get(reply.id)?.(reply); waiting.delete(reply.id); }
++  };
++  const evaluate = async expression => {
++    const id = ++seq;
++    const reply = new Promise(ok => waiting.set(id, ok));
++    ws.send(JSON.stringify({ id, method: 'Runtime.evaluate', params: { expression, returnByValue: true } }));
++    const { result } = await reply;
++    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
++    return result.result.value;
++  };
++  await evaluate('(' + function install() {
++    const fs = process.getBuiltinModule('fs');
++    const counter = globalThis.e1Activity = { opens: 0, watches: 0, live: 0, timers: 0 };
++    const isOutput = p => /[/\\]out[/\\]stdout(?:[-.]live)?\.jsonl?$/.test(String(p));
++    const open = fs.promises.open;
++    fs.promises.open = function(p, ...args) {
++      if (isOutput(p)) counter.opens++;
++      return open.call(this, p, ...args);
++    };
++    const watch = fs.watch;
++    fs.watch = function(p, ...args) {
++      const w = watch.call(this, p, ...args);
++      if (isOutput(p)) {
++        counter.watches++;
++        counter.live++;
++        w.once('close', () => counter.live--);
++      }
++      return w;
++    };
++    const timer = globalThis.setTimeout;
++    globalThis.setTimeout = function(fn, ms, ...args) {
++      // 只检查 E1 已知的调度间隔，排除宿主其它插件的定时器。
++      if ([0,12,120,200,400].includes(ms) && /\.schedule \(|StdoutTail/.test(new Error().stack)) counter.timers++;
++      return timer.call(this, fn, ms, ...args);
++    };
++  }.toString() + ')()');
++  return {
++    sample: async () => {
++      const r = await evaluate('({ ...e1Activity, pid: process.pid, at: Date.now(), cpu: process.cpuUsage(), rss: process.memoryUsage.rss() })');
++      const { stdout } = await exec('python3', ['-c', disk, String(r.pid)]);
++      [r.osReadBytes, r.osWrittenBytes] = stdout.trim().split(/\s+/).map(Number);
++      return r;
++    },
++    close: () => ws.close(),
++  };
++}
+diff --git a/extension/test/e2e/perfBaseline.mjs b/extension/test/e2e/perfBaseline.mjs
+new file mode 100644
+index 00000000..9ec2e489
+--- /dev/null
++++ b/extension/test/e2e/perfBaseline.mjs
+@@ -0,0 +1,24 @@
++// 检出已冻结的基线树，仅接上同一分批输出桩。原核心与插件业务文件不作修改。
++import { execFileSync } from 'node:child_process';
++import * as fs from 'node:fs/promises';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++const root = fileURLToPath(new URL('../../../', import.meta.url));
++export async function baseline(base) {
++  const out = path.join(base, 'baseline');
++  await fs.mkdir(out);
++  const archive = path.join(base, 'baseline.tar');
++  execFileSync('git', ['archive', '--output', archive, '589525fd'], { cwd: root });
++  execFileSync('tar', ['xf', archive, '-C', out]);
++  await fs.symlink(path.join(root, 'node_modules'), path.join(out, 'node_modules'), 'dir');
++  const rel = 'src/trivium/adapters/';
++  const stub = await fs.readFile(path.join(root, rel, 'stub.ts'), 'utf8');
++  await fs.writeFile(path.join(out, rel, 'stub.ts'), stub.replace('ctx.attempt ?? 1', '1'));
++  const src = await fs.readFile(path.join(root, rel, 'stub-stdout.ts'), 'utf8');
++  await fs.writeFile(path.join(out, rel, 'stub-stdout.ts'), src
++    .replace("import { runReviewProcess } from '../live-stdout.js';", "import { run } from '../util/exec.js';")
++    .replace('runReviewProcess({ path: file, attempt }, ', 'run(')
++    .replace('  return file;', "  await fs.writeFile(file, r.stdout, 'utf8');\n  return file;"));
++  execFileSync(process.execPath, ['scripts/build.mjs'], { cwd: out, stdio: 'pipe' });
++  return path.join(out, 'skills/dual-critic');
++}
+diff --git a/extension/test/e2e/stdoutWorkspace.mjs b/extension/test/e2e/stdoutWorkspace.mjs
+new file mode 100644
+index 00000000..9693ab4c
+--- /dev/null
++++ b/extension/test/e2e/stdoutWorkspace.mjs
+@@ -0,0 +1,69 @@
++// E1 全部变更只在 makeWorkspace 新建的临时仓内。清洁 HOME 避免替身读取真实凭据。
++import path from 'node:path';
++import * as fs from 'node:fs/promises';
++import { execFileSync } from 'node:child_process';
++import { createHash } from 'node:crypto';
++import { fileURLToPath } from 'node:url';
++import YAML from 'yaml';
++import { extensionRoot, makeWorkspace, preparePlan } from './workspace.mjs';
++import { seedFakeProbes } from '../../../dist/test/test/helpers/fixture.js';
++import { READONLY_INVARIANTS } from '../../../dist/test/src/trivium/probes/claude.js';
++
++const q = x => "'" + x.replaceAll("'", "'\\''") + "'";
++export async function stdoutWorkspace(base, name, driver, mode, assets = path.join(extensionRoot, '../skills/dual-critic')) {
++  const w = await makeWorkspace(base, name, '准备' + name);
++  w.topic = '输出验收' + name; w.driver = driver;
++  w.critics = ['claude', 'codex', 'gemini', 'glm'].filter(id => id !== driver);
++  w.control = path.join(base, name + '-control');
++  await fs.mkdir(w.control);
++  const dot = path.join(w.root, '.trivium');
++  await seedFakeProbes(w.root);
++  const localFile = path.join(dot, 'config.local.yaml');
++  const local = YAML.parse(await fs.readFile(localFile, 'utf8'));
++  const probes = local.probe.cli;
++  const driverBin = path.join(dot, 'bin/test-driver');
++  const script = fileURLToPath(new URL('./controlledCritic.cjs', import.meta.url));
++  const files = {};
++  for (const [id, key] of Object.entries({ gemini: 'agy', glm: 'zcode', codex: 'codex', claude: 'claude' })) {
++    const file = id === driver ? driverBin : path.join(dot, 'bin', 'fixture-' + key + (id === 'glm' ? '.cjs' : ''));
++    if (id !== driver) {
++      const code = id === 'glm' ? "process.argv.splice(2, 0, 'glm'); require(" + JSON.stringify(script) + ");\n"
++        : '#!/bin/sh\nexec ' + q(process.execPath) + ' ' + q(script) + ' ' + q(id) + ' "$@"\n';
++      await fs.writeFile(file, code, { mode: 0o700 });
++    }
++    files[id] = file;
++    probes[key] = { ...probes[key], entrypoint: file, version: '9.9.9', probed_at: new Date().toISOString() };
++  }
++  Object.assign(probes.claude, { version_probe: { runner: null, args: ['--version'], extract: null },
++    readonly_flags: READONLY_INVARIANTS, strict_mcp_config_applied: true, headless_read_ok: true,
++    tool_surface_checked: true, path_deny: { supported: false, rule_syntax: null }, json_schema_ok: false });
++  local.profiles.default.claude = { plan: 'fixture-model' };
++  await fs.writeFile(localFile, YAML.stringify(local));
++  const stage = { plan: 0, code: 0, bug: 0 };
++  const config = { schema: 'trivium.config.v2', runtime: { run_root: path.join(base, 'runs') },
++    review: { default_critics: w.critics, min_tool_calls: stage, min_project_reads: stage },
++    agents: { codex: { profile: null, bin: files.codex }, claude: { profile: null, bin: files.claude } } };
++  await fs.writeFile(path.join(dot, 'config.yaml'), YAML.stringify(config));
++  const home = path.join(base, name + '-home');
++  await fs.mkdir(path.join(home, '.codex'), { recursive: true });
++  await fs.writeFile(path.join(home, '.codex/config.toml'), '');
++  w.core = await fs.realpath(path.join(assets, 'scripts/trivium.cjs'));
++  const coreSha = createHash('sha256').update(await fs.readFile(w.core)).digest('hex');
++  const stub = Object.fromEntries(w.critics.map(id => [id, { mode: 'ok', stdout: mode, findings: 0 }]));
++  await fs.writeFile(path.join(dot, 'bin/trivium'), [
++    '#!/bin/sh', 'export HOME=' + q(home), 'export CODEX_HOME=' + q(path.join(home, '.codex')),
++    'export TRIVIUM_ASSET_ROOT=' + q(assets), 'export TRIVIUM_ENTRY_SCAN_HOME=' + q(home),
++    'export TRIVIUM_E1_FIXTURE=' + q(w.control),
++    ...(mode === 'controlled' ? ['export NODE_OPTIONS=' + q('--require=' + JSON.stringify(fileURLToPath(new URL('./controlledDisk.cjs', import.meta.url))))] : ['export TRIVIUM_E1_METRICS=' + q(w.control),
++      'export NODE_OPTIONS=' + q('--require=' + JSON.stringify(fileURLToPath(new URL('./workerMetrics.cjs', import.meta.url))))]),
++    mode === 'controlled' ? 'unset TRIVIUM_STUB_CRITIC' : 'export TRIVIUM_STUB_CRITIC=' + q(JSON.stringify(stub)),
++    'if [ "$1" = preflight ]; then set -- "$@" --skip-auth-check; fi',
++    'exec ' + q(process.execPath) + ' ' + q(w.core) + ' "$@"', '',
++  ].join('\n'), { mode: 0o700 });
++  await fs.writeFile(path.join(dot, 'scenario.json'), JSON.stringify({ ...w, critics: w.critics.join(',') }));
++  await preparePlan(w.root, w.topic, driver);
++  const git = (...args) => execFileSync('git', args, { cwd: w.root });
++  git('add', '--', '.trivium/config.yaml');
++  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'E1 fixture');
++  return { ...w, coreSha };
++}
+diff --git a/extension/test/e2e/vendorTimings.cjs b/extension/test/e2e/vendorTimings.cjs
+new file mode 100644
+index 00000000..f6667392
+--- /dev/null
++++ b/extension/test/e2e/vendorTimings.cjs
+@@ -0,0 +1,27 @@
++// 真正的审查子进程 stdout 计时，仅保存字节数、时间和进程号，不保存参数或内容。
++if (process.argv.includes('--worker') && process.env.TRIVIUM_E1_TIMING_DIR) {
++  const cp = require('node:child_process');
++  const path = require('node:path');
++  const fs = require('node:fs');
++  const spawn = cp.spawn;
++  cp.spawn = function(bin, args, options) {
++    const child = spawn.apply(this, arguments);
++    if (options?.detached && child.stdout && child.pid) {
++      const f = path.join(process.env.TRIVIUM_E1_TIMING_DIR, child.pid + '.json');
++      const s = { pid: child.pid, bin: path.basename(bin), started: Date.now(), first: null, last: null,
++        chunks: 0, bytes: 0, exitAt: null, closedAt: null };
++      const emit = child.stdout.emit;
++      child.stdout.emit = function(name, chunk) {
++        if (name === 'data') {
++          s.first ??= Date.now();
++          s.last = Date.now(); s.chunks++; s.bytes += Buffer.byteLength(chunk);
++        }
++        return emit.apply(this, arguments);
++      };
++      child.once('spawn', () => fs.writeFileSync(f, JSON.stringify(s)));
++      child.once('exit', (code, signal) => { s.exitAt = Date.now(); s.code = code; s.signal = signal; });
++      child.once('close', () => { s.closedAt = Date.now(); fs.writeFileSync(f, JSON.stringify(s)); });
++    }
++    return child;
++  };
++}
+diff --git a/extension/test/e2e/workerMetrics.cjs b/extension/test/e2e/workerMetrics.cjs
+new file mode 100644
+index 00000000..567d70df
+--- /dev/null
++++ b/extension/test/e2e/workerMetrics.cjs
+@@ -0,0 +1,39 @@
++// 只附加到隔离桩的 worker。把 stdout 文件系统调用的成功字节数与封口时间记在进程外。
++if (process.argv.includes('--worker') && process.env.TRIVIUM_STUB_CRITIC && process.env.TRIVIUM_E1_METRICS) {
++  const fs = require('node:fs');
++  const path = require('node:path');
++  const dir = process.env.TRIVIUM_E1_METRICS;
++  const writes = [];
++  const fault = fs.existsSync(path.join(dir, 'fault.json')) ? JSON.parse(fs.readFileSync(path.join(dir, 'fault.json'))) : {};
++  const side = p => fault[path.basename(path.dirname(path.dirname(String(p))))];
++  const diskError = () => Object.assign(new Error('夹具模拟磁盘写入失败'), { code: 'ENOSPC' });
++  const record = (p, bytes) => writes.push({ at: Date.now(), file: String(p), bytes });
++  const matches = p => /[/\\]out[/\\]stdout(?:\.jsonl?|[-]live\.json)(?:\.tmp-.*)?$/.test(String(p));
++  const io = fs.promises;
++  const open = io.open.bind(io);
++  io.open = async (p, ...args) => {
++    const fh = await open(p, ...args);
++    if (matches(p)) {
++      const write = fh.write.bind(fh);
++      fh.write = async (...a) => {
++        const mode = side(p);
++        if (mode === 'permanent') throw diskError();
++        if (mode === 'slow') await new Promise(resolve => setTimeout(resolve, 1150));
++        if (mode === 'short') a[2] = Math.min(a[2], 63);
++        const r = await write(...a);
++        record(p, r.bytesWritten);
++        return r;
++      };
++    }
++    return fh;
++  };
++  const writeFile = io.writeFile.bind(io);
++  io.writeFile = async (p, bytes, ...args) => {
++    if (side(p) === 'permanent' && path.basename(String(p)).startsWith('stdout.jsonl.tmp-')) throw diskError();
++    const r = await writeFile(p, bytes, ...args);
++    if (matches(p)) record(p, Buffer.byteLength(bytes));
++    return r;
++  };
++  process.on('exit', () => fs.writeFileSync(path.join(dir, 'worker-' + process.pid + '.json'),
++    JSON.stringify({ core: fs.realpathSync(process.argv[1]), usage: process.resourceUsage(), writes })));
++}
+diff --git a/extension/test/unit/stdoutTail.test.ts b/extension/test/unit/stdoutTail.test.ts
+new file mode 100644
+index 00000000..c6b5719a
+--- /dev/null
++++ b/extension/test/unit/stdoutTail.test.ts
+@@ -0,0 +1,61 @@
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import { randomUUID } from 'node:crypto';
++import { promises as fs } from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { setTimeout as delay } from 'node:timers/promises';
++import { StdoutTail, type StdoutPatch } from '../../src/monitor/stdoutTail';
++
++test('按实际 UTF-8 字节续读，隐藏后补尾，尝试轮转及终态打开均核对文件身份', async t => {
++  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'e1-tail-')));
++  t.after(() => fs.rm(root,{ force:true, recursive:true }));
++  const dir = path.join(root, 'example', 'out');
++  await fs.mkdir(dir,{ recursive:true });
++  const file = path.join(dir,'stdout.jsonl');
++  const meta = path.join(dir,'stdout-live.json');
++  const patches: StdoutPatch[] = [];
++  const tail = new StdoutTail(root, 12, async m => { patches.push(m); return true; });
++  t.after(() => tail.dispose());
++  const side = { critic:'example', state:'running', model:null, attempt:1, elapsedS:0 };
++  const sync = (terminal = false) => tail.update([side], terminal ? 'success' : 'running', terminal);
++  async function wait(f: () => boolean) {
++    for (let i = 0; i < 300; i++) { if (f()) return; await delay(10); }
++    assert.fail('实时尾部等待超时');
++  }
++  const identity = randomUUID();
++  async function info(state: string, ino?: string) {
++    const stat = await fs.stat(file,{ bigint:true });
++    await fs.writeFile(meta, JSON.stringify({ schema:'trivium.stdout.v1',file:'stdout.jsonl',identity,
++      attempt:side.attempt,dev:String(stat.dev),ino:ino ?? String(stat.ino),state,reason:null,bytes:Number(stat.size) }));
++  }
++  tail.show(true); sync();
++  await wait(() => patches.some(p => p.note.includes('旧核心')));
++  await fs.writeFile(file,Buffer.from('文').subarray(0,1));
++  await info('streaming'); sync();
++  await wait(() => patches.at(-1)?.end === 1);
++  await fs.appendFile(file,Buffer.from('文').subarray(1));
++  await wait(() => patches.at(-1)?.text === '文');
++  tail.show(false);
++  const before = patches.length;
++  await fs.appendFile(file,'1234567890中文');
++  await delay(160);
++  assert.equal(patches.length,before);
++  tail.show(true);
++  await wait(() => patches.at(-1)?.clipped === true);
++  assert.equal(patches.at(-1)?.text,'567890中文');
++  const previous = path.join(dir,'attempt-1');
++  await info('complete');
++  await fs.mkdir(previous);
++  await fs.rename(meta,path.join(previous,'stdout-live.json'));
++  await fs.rename(file,path.join(previous,'stdout.jsonl'));
++  side.attempt = 2; sync();
++  await wait(() => patches.at(-1)?.attempt === 2 && patches.at(-1)?.reset === true);
++  assert.equal(await tail.completePath('example',1),path.join(previous,'stdout.jsonl'));
++  await fs.writeFile(file,'最后一行'); await info('complete','0'); sync(true);
++  await wait(() => patches.at(-1)?.note.includes('不可读') === true);
++  assert.equal(await tail.completePath('example',2),undefined);
++  await info('complete'); sync(true);
++  await wait(() => patches.at(-1)?.canOpen === true);
++  assert.equal(await tail.completePath('example',2),file);
++});
+diff --git a/src/trivium/adapters/stub-stdout.ts b/src/trivium/adapters/stub-stdout.ts
+new file mode 100644
+index 00000000..3be0eb2a
+--- /dev/null
++++ b/src/trivium/adapters/stub-stdout.ts
+@@ -0,0 +1,47 @@
++/** 仅由 TRIVIUM_STUB_CRITIC 启用。两个构建可用同一子进程负载对照最终文件与 UI。 */
++import path from 'node:path';
++import { promises as fs } from 'node:fs';
++import { runReviewProcess } from '../live-stdout.js';
++
++export type StubStdout = 'latch' | 'sparse' | 'dense';
++
++/** 固定脚本仅写本次桩的 out 目录，不执行夹具传入的命令。 */
++const producer = String.raw`
++const fs = require('node:fs');
++const path = require('node:path');
++const [dir, id, mode] = process.argv.slice(1);
++const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
++const write = bytes => new Promise(resolve => process.stdout.write(bytes, resolve));
++const record = (file, value) => fs.writeFileSync(path.join(dir, file), JSON.stringify(value));
++async function main() {
++  const samples = [];
++  const count = mode === 'dense' ? 512 : mode === 'sparse' ? 60 : 2;
++  const size = mode === 'dense' ? 16384 : 256;
++  const interval = mode === 'dense' ? 20 : 250;
++  for (let i = 0; i < count; i++) {
++    const mark = 'E1-' + id + '-' + i;
++    const bytes = Buffer.from(mark.padEnd(size - 1, '.') + '\n');
++    samples.push({ mark, sent: Date.now(), bytes: bytes.length });
++    await write(bytes);
++    if (mode === 'latch') {
++      record('producer.json', { pid: process.pid, samples });
++      const limit = Date.now() + 60000;
++      while (!fs.existsSync(path.join(dir, 'release-' + i))) {
++        if (Date.now() > limit) throw Error('latch_timeout');
++        await pause(25);
++      }
++    } else await pause(interval);
++  }
++  record('producer.json', { pid: process.pid, samples });
++}
++main().catch(() => { process.exitCode = 1; });
++`;
++
++export async function stubStdout(dir: string, id: string, attempt: number, mode: StubStdout): Promise<string> {
++  await fs.mkdir(dir, { recursive: true });
++  const file = path.join(dir, 'stdout.jsonl');
++  const r = await runReviewProcess({ path: file, attempt }, process.execPath,
++    ['-e', producer, dir, id, mode], { killTree: true, timeoutMs: 130_000 });
++  if (r.code !== 0) throw new Error('分批输出桩失败');
++  return file;
++}
+diff --git a/src/trivium/live-stdout.ts b/src/trivium/live-stdout.ts
+new file mode 100644
+index 00000000..76792974
+--- /dev/null
++++ b/src/trivium/live-stdout.ts
+@@ -0,0 +1,320 @@
++/** 审查 stdout 的展示副本。判定仍消费 run 返回的原有内存缓冲。 */
++import { AsyncLocalStorage } from 'node:async_hooks';
++import { randomUUID } from 'node:crypto';
++import { promises as fs } from 'node:fs';
++import type { FileHandle } from 'node:fs/promises';
++import path from 'node:path';
++import { redactSecrets } from './secrets.js';
++import { run, type RunOptions, type RunResult } from './util/exec.js';
++import { renameOverwriting } from './util/fsx.js';
++import { warn } from './util/log.js';
++
++export interface StdoutTarget {
++  path: string;
++  attempt: number;
++  /** 适配器已经按凭据优先、最长优先筛出的原串。 */
++  replace?: readonly string[];
++}
++export interface StdoutAudit {
++  redacted: Record<string, number>;
++  seal?: (scrubOk: boolean) => Promise<void>;
++}
++export const stdoutAudit = new AsyncLocalStorage<StdoutAudit>();
++export const STDOUT_INFO = 'stdout-live.json';
++const LIMIT = 256 * 1024;
++const BATCH = 32 * 1024;
++type State = 'streaming' | 'deferred' | 'complete' | 'recovered' | 'incomplete';
++
++async function publish(file: string, data: string): Promise<void> {
++  const tmp = file + '.tmp-' + randomUUID();
++  try {
++    await fs.writeFile(tmp, data, { mode: 0o600, flag: 'wx' });
++    await renameOverwriting(tmp, file);
++  } finally {
++    await fs.rm(tmp, { force: true });
++  }
++}
++
++function sanitize(raw: string, target: StdoutTarget) {
++  for (const value of target.replace ?? []) raw = raw.split(value).join('<redacted-env>');
++  return redactSecrets(raw);
++}
++
++/**
++ * 真换行使单个 token 终止。仍可能跨行的只有逐值替换、赋值键与 PEM。
++ * 未决的 PEM 或多行原串走有界暂缓；跨行赋值用现有规则自身检查两种延续，
++ * 不在这里抄键名。普通 JSON 记录以右大括号收束，直接走快路径。
++ */
++function safeBoundary(record: string, target: StdoutTarget): boolean {
++  if (record.includes('-----BEGIN') || target.replace?.some(s => /[\r\n]/.test(s))) return false;
++  if (/[}\]);!.0-9]\s*$/.test(record)) return true;
++  const probe = 'CanaryForBoundaryProbe0123456789';
++  return [' = ', ''].every(prefix =>
++    redactSecrets(record + prefix + probe).content.endsWith(probe));
++}
++
++/** 返回值 null 表示该侧超过安全尾段上限，须由原结果收尾。 */
++export class StdoutRedactor {
++  redactions = 0;
++  private pending = '';
++  private pendingBytes = 0;
++  constructor(private readonly target: StdoutTarget) {}
++
++  push(chunk: string): string | null {
++    this.pendingBytes += Buffer.byteLength(chunk);
++    if (this.pendingBytes > LIMIT) { this.pending = ''; return null; }
++    this.pending += chunk;
++    // 右花括号和分号同时终止凭据与声明上下文，允许没有换行的 JSON 逐段显示。
++    // 网关字面原串可以含这些字符，该侧只在真实换行处切分。
++    let last = this.pending.lastIndexOf('\n');
++    if (!this.target.replace?.length)
++      last = Math.max(last, this.pending.lastIndexOf('}'), this.pending.lastIndexOf(';'));
++    if (last < 0) return '';
++    const end = last + 1;
++    const records = this.pending.slice(0, end);
++    if (!safeBoundary(records, this.target)) return '';
++    this.pending = this.pending.slice(end);
++    this.pendingBytes = Buffer.byteLength(this.pending);
++    const result = sanitize(records, this.target);
++    this.redactions += result.count;
++    return result.content;
++  }
++
++  finish(): string {
++    const last = sanitize(this.pending, this.target);
++    this.redactions += last.count;
++    this.pending = '';
++    this.pendingBytes = 0;
++    return last.content;
++  }
++}
++
++async function preservePrevious(target: StdoutTarget, info: string): Promise<void> {
++  if (target.attempt === 1) return;
++  let previous: { attempt?: number; file?: string };
++  try { previous = JSON.parse(await fs.readFile(info, 'utf8')); }
++  catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return; throw e; }
++  if (!Number.isSafeInteger(previous.attempt) || previous.attempt! < 1 || previous.attempt! >= target.attempt ||
++      previous.file !== path.basename(target.path)) throw new Error('unexpected_attempt');
++  const dir = path.join(path.dirname(info), 'attempt-' + previous.attempt);
++  await fs.mkdir(dir, { mode: 0o700 });
++  await renameOverwriting(info, path.join(dir, STDOUT_INFO));
++  await renameOverwriting(target.path, path.join(dir, previous.file));
++}
++
++const active = new Set<LiveStdout>();
++
++/** worker 按组结束子进程以后，只刷新已经过安全边界的输出，保留未确认状态。 */
++export async function interruptStdout(): Promise<void> {
++  await Promise.all([...active].map(stream => stream.interrupt()));
++}
++
++class LiveStdout {
++  private readonly info: string;
++  private readonly identity = randomUUID();
++  private handle?: FileHandle;
++  private readonly redactor: StdoutRedactor;
++  private queue = '';
++  private queuedBytes = 0;
++  private writingBytes = 0;
++  private writing?: Promise<void>;
++  private batchTimer?: NodeJS.Timeout;
++  private reason: string | null = null;
++  private ownsOutput = false;
++  private ended = false;
++  private confirmed = 0;
++  private ino = '';
++  private dev = '';
++  private notes = Promise.resolve();
++  private truncation?: 'capture_limit' | 'pipe_open';
++
++  constructor(private readonly target: StdoutTarget) {
++    this.redactor = new StdoutRedactor(target);
++    this.info = path.join(path.dirname(target.path), STDOUT_INFO);
++  }
++
++  private state(state: State): Promise<void> {
++    if (!this.ownsOutput) return Promise.resolve();
++    const data = JSON.stringify({ schema: 'trivium.stdout.v1', attempt: this.target.attempt,
++      file: path.basename(this.target.path), identity: this.identity, dev: this.dev, ino: this.ino, state, reason: this.reason, bytes: this.confirmed });
++    this.notes = this.notes.then(() => publish(this.info, data)).catch(e =>
++      warn('实时 stdout 状态写入失败：' + ((e as NodeJS.ErrnoException).code ?? 'io')));
++    return this.notes;
++  }
++
++  async start(): Promise<void> {
++    try {
++      await preservePrevious(this.target, this.info);
++      this.handle = await fs.open(this.target.path, 'wx', 0o600);
++      this.ownsOutput = true;
++      const stat = await this.handle.stat({ bigint: true });
++      this.dev = String(stat.dev);
++      this.ino = String(stat.ino);
++      await this.state('streaming');
++    } catch { this.defer('open_failed'); }
++  }
++
++  private defer(reason: string): void {
++    if (this.reason) return;
++    this.reason = reason;
++    this.queue = '';
++    this.queuedBytes = 0;
++    clearTimeout(this.batchTimer);
++    warn('实时 stdout 暂缓：' + reason);
++    void this.state('deferred');
++  }
++
++  markTruncated(reason: 'capture_limit' | 'pipe_open'): void { this.truncation ??= reason; }
++
++  push = (chunk: string): void => {
++    if (this.reason || this.ended) return;
++    const safe = this.redactor.push(chunk);
++    if (safe === null) this.defer('pending_limit');
++    else this.enqueue(safe);
++  };
++
++  private enqueue(s: string): void {
++    if (!s || this.reason) return;
++    this.queuedBytes += Buffer.byteLength(s);
++    if (this.queuedBytes + this.writingBytes > LIMIT) { this.defer('slow_disk'); return; }
++    this.queue += s;
++    if (this.queuedBytes >= BATCH) this.flush();
++    else if (!this.batchTimer) this.batchTimer = setTimeout(() => this.flush(), 100);
++  }
++
++  private flush(): void {
++    clearTimeout(this.batchTimer);
++    this.batchTimer = undefined;
++    if (!this.handle || this.writing || !this.queue || this.reason) return;
++    const handle = this.handle;
++    const bytes = Buffer.from(this.queue);
++    this.queue = '';
++    this.queuedBytes = 0;
++    this.writingBytes = bytes.length;
++    const slow = setTimeout(() => this.defer('slow_disk'), 1000);
++    this.writing = (async () => {
++      let offset = 0;
++      while (offset < bytes.length) {
++        const { bytesWritten } = await handle.write(bytes, offset, bytes.length - offset, null);
++        if (!bytesWritten) throw new Error('short_write');
++        offset += bytesWritten;
++      }
++      this.confirmed += offset;
++    })().catch(() => this.defer('write_failed')).finally(() => {
++      clearTimeout(slow);
++      this.writingBytes = 0;
++      this.writing = undefined;
++      if (!this.reason && this.queue) this.flush();
++    });
++  }
++
++  async interrupt(): Promise<void> {
++    if (this.ended) return;
++    this.ended = true;
++    this.flush();
++    while (this.writing && !this.reason) await this.writing;
++    this.reason = 'interrupted';
++    await this.state('incomplete');
++    await this.handle?.close().catch(() => undefined);
++  }
++
++  async finish(raw: string, result: RunResult | null): Promise<void> {
++    this.ended = true;
++    if (!this.reason) this.enqueue(this.redactor.finish());
++    this.flush();
++    while (this.writing && !this.reason) {
++      // 不能让迟迟未返回的内核写操作扣住审查收尾。
++      let timeout: NodeJS.Timeout | undefined;
++      await Promise.race([this.writing, new Promise<void>(resolve => {
++        timeout = setTimeout(() => { this.defer('slow_disk'); resolve(); }, 1050);
++      })]);
++      clearTimeout(timeout);
++    }
++    const handle = this.handle;
++    const closing = (this.writing ?? Promise.resolve()).then(() => handle?.close());
++    if (this.reason) void closing.catch(() => undefined);
++    else await closing.catch(() => this.defer('close_failed'));
++    let state: State = 'complete';
++    if (!this.ownsOutput) return; // 打开或轮转失败，不得覆盖先前尝试的文件。
++    if (this.reason) {
++      try {
++        // 写盘故障时原子换 inode，使未返回的旧写入始终只作用于旧文件。
++        const recovered = sanitize(raw, this.target);
++        this.redactor.redactions = recovered.count;
++        const content = recovered.content;
++        if (this.reason === 'pending_limit' && !this.writing) {
++          // 安全后缀超限不代表磁盘故障。核对既有字节，只把未发布的尾段补到同一 inode。
++          await closing;
++          const bytes = Buffer.from(content);
++          const fh = await fs.open(this.target.path, 'r+');
++          try {
++            const st = await fh.stat({ bigint: true });
++            if (String(st.dev) !== this.dev || String(st.ino) !== this.ino || Number(st.size) !== this.confirmed)
++              throw new Error('identity_changed');
++            const chunk = Buffer.alloc(Math.min(this.confirmed, BATCH));
++            for (let off = 0; off < this.confirmed;) {
++              const n = Math.min(chunk.length, this.confirmed - off);
++              const { bytesRead } = await fh.read(chunk, 0, n, off);
++              if (!bytesRead || !chunk.subarray(0, bytesRead).equals(bytes.subarray(off, off + bytesRead)))
++                throw new Error('prefix_mismatch');
++              off += bytesRead;
++            }
++            for (let off = this.confirmed; off < bytes.length;) {
++              const { bytesWritten } = await fh.write(bytes, off, Math.min(BATCH, bytes.length - off), off);
++              if (!bytesWritten) throw new Error('short_write');
++              off += bytesWritten;
++            }
++          } finally { await fh.close(); }
++        } else await publish(this.target.path, content);
++        const stat = await fs.stat(this.target.path, { bigint: true });
++        this.dev = String(stat.dev);
++        this.ino = String(stat.ino);
++        this.confirmed = Buffer.byteLength(content);
++        state = 'recovered';
++      } catch {
++        state = 'incomplete';
++        warn('实时 stdout 最终文件恢复失败');
++      }
++    }
++    if (this.truncation || !result?.spawned || result.timedOut || result.signal || result.earlyStopped) {
++      this.reason = this.truncation ?? (result?.timedOut ? 'timeout' :
++        result?.signal || result?.earlyStopped ? 'interrupted' : 'not_started');
++      state = 'incomplete';
++    }
++    const audit = stdoutAudit.getStore();
++    if (!audit) { await this.state(state); return; }
++    if (this.redactor.redactions) audit.redacted[path.join('out', path.basename(this.target.path))] = this.redactor.redactions;
++    audit.seal = async scrubOk => {
++      const stat = await fs.stat(this.target.path, { bigint: true }).catch(() => null);
++      if (!scrubOk || !stat || String(stat.ino) !== this.ino || String(stat.dev) !== this.dev || Number(stat.size) !== this.confirmed) {
++        this.reason ??= 'verification_failed';
++        state = 'incomplete';
++      }
++      await this.state(state);
++    };
++  }
++}
++
++export async function runReviewProcess(target: StdoutTarget | undefined, bin: string, args: readonly string[],
++  opts: RunOptions): Promise<RunResult> {
++  if (!target) return run(bin, args, opts);
++  if (process.env.TRIVIUM_LIVE_STDOUT === '0') {
++    const result = await run(bin, args, opts);
++    const cleaned = sanitize(result.stdout, target);
++    await publish(target.path, cleaned.content);
++    const audit = stdoutAudit.getStore();
++    if (audit && cleaned.count) audit.redacted[path.join('out', path.basename(target.path))] = cleaned.count;
++    return result;
++  }
++  const stream = new LiveStdout(target);
++  await stream.start();
++  let result: RunResult | null = null;
++  active.add(stream);
++  try {
++    result = await run(bin, args, { ...opts, onStdoutChunk: stream.push, onStdoutTruncated: reason => stream.markTruncated(reason) });
++    return result;
++  } finally {
++    try { await stream.finish(result?.stdout ?? '', result); }
++    finally { active.delete(stream); }
++  }
++}
+diff --git a/test/unit/live-stdout.test.ts b/test/unit/live-stdout.test.ts
+new file mode 100644
+index 00000000..429e2b2a
+--- /dev/null
++++ b/test/unit/live-stdout.test.ts
+@@ -0,0 +1,46 @@
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import { StringDecoder } from 'node:string_decoder';
++import { StdoutRedactor } from '../../src/trivium/live-stdout.js';
++import { redactSecrets } from '../../src/trivium/secrets.js';
++
++test('每个 UTF-8 字节切点的已发布前缀与最终脱敏结果一致', () => {
++  const key = ['sk-', 'abcdefghij', 'ABCDEFGHIJKLMNOPQRST'].join('');
++  const gateway = '临时网关' + 'Marker-123456789';
++  const material = Buffer.from('a synthetic string only for the redaction boundary fixture!').toString('base64');
++  for (const sample of [
++    '行一\n\n{"消息":"中文' + key + '"}\n结束',
++    'token\n  =\n  "' + material + '"\n尾行',
++    'const token = ' + 'SomeRandomIdentifierNumber123.method();\n下一行',
++    '-----BEGIN PRIVATE KEY-----\n' + material + '\n-----END PRIVATE KEY-----\nend',
++    '第一行 ' + gateway + '\n第二行\r\n',
++  ]) {
++    const bytes = Buffer.from(sample);
++    const expected = redactSecrets(sample.split(gateway).join('<redacted-env>')).content;
++    for (let split = 0; split <= bytes.length; split++) {
++      const decoder = new StringDecoder('utf8');
++      const stream = new StdoutRedactor({ path: '', attempt: 1, replace: [gateway] });
++      let text = '';
++      for (const part of [bytes.subarray(0, split), bytes.subarray(split)]) {
++        text += stream.push(decoder.write(part));
++        assert.ok(expected.startsWith(text), '不能发布未经确定的前缀，切点 ' + split);
++      }
++      text += stream.push(decoder.end()) + stream.finish();
++      assert.equal(text, expected);
++    }
++  }
++});
++
++test('半行 JSON 在可证明安全的边界即可追加，未闭合键值等到结束', () => {
++  const redactor = new StdoutRedactor({ path: '', attempt: 1 });
++  const text = '{"事件":"中"}';
++  assert.equal(redactor.push(text + '{"下一事件":'), text);
++  assert.equal(redactor.push('"文"'), '');
++  assert.equal(redactor.finish(), '{"下一事件":"文"');
++});
++
++test('超出未决后缀上限时明确暂缓', () => {
++  const redactor = new StdoutRedactor({ path: '', attempt: 1 });
++  assert.equal(redactor.push('甲'.repeat(65536)), '');
++  assert.equal(redactor.push('乙'.repeat(65536)), null);
++});

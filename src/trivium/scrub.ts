@@ -364,7 +364,7 @@ async function writeAtomicPreservingMode(p: string, content: string, mode: numbe
 export async function scrubSideDir(
   adapter: CriticAdapter | undefined,
   sideDir: string,
-  opts: { force?: boolean; sizeCap?: number } = {},
+  opts: { force?: boolean; sizeCap?: number; preRedacted?: Record<string, number> } = {},
 ): Promise<ScrubOutcome> {
   const hasScrubber = typeof adapter?.scrubRunDir === 'function';
   if (!(await exists(sideDir))) return { ...emptyOutcome(hasScrubber), skipped: 'no-side-dir' };
@@ -392,10 +392,13 @@ export async function scrubSideDir(
   }
   const logs = await redactLogs(
     sideDir,
-    ORCHESTRATOR_LOG_FILES.flatMap((n) => [n, path.join('out', n)]),
+    [...ORCHESTRATOR_LOG_FILES.flatMap((n) => [n, path.join('out', n)]),
+      ...(await attemptLogs(path.join(sideDir, 'out'), out.errors)).map(n => path.join('out', n))],
     opts.sizeCap ?? SCAN_SIZE_CAP,
   );
   Object.assign(out.logs_redacted, logs.redacted);
+  for (const [name, count] of Object.entries(opts.preRedacted ?? {}))
+    out.logs_redacted[name] = (out.logs_redacted[name] ?? 0) + count;
   out.warnings.push(...logs.warnings);
   out.errors.push(...logs.errors);
   skipped += logs.skipped;
@@ -502,6 +505,19 @@ export async function scrubRunDir(
  * 那就是该次尝试原来的 `out/`，挪之前已经过那次尝试的强制抹除；这里补一遍只为覆盖「那次抹除失败」的情形。
  * 只脱敏、不删，结果并进运行目录层的上报（不写哨兵：本模块不往运行目录那一层写任何文件）。
  */
+/** E1 保留的历次尝试沿用标准日志名，仅枚举真实目录。 */
+async function attemptLogs(dir: string, errors: string[]): Promise<string[]> {
+  let entries;
+  try { entries = await fs.readdir(dir, { withFileTypes: true }); }
+  catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') errors.push('读取历史尝试目录失败：' + (code ?? 'io'));
+    return [];
+  }
+  return entries.filter(e => e.isDirectory() && /^attempt-[1-9]\d*$/.test(e.name))
+    .flatMap(e => ORCHESTRATOR_LOG_FILES.map(name => path.join(e.name, name)));
+}
+
 async function redactVoidedAttempts(runDirAbs: string, layer: RunDirLayerScrub, cap: number): Promise<void> {
   const root = path.join(runDirAbs, VOIDED_ATTEMPTS_DIR);
   let sideNames: string[];
@@ -519,7 +535,8 @@ async function redactVoidedAttempts(runDirAbs: string, layer: RunDirLayerScrub, 
     }
     for (const a of attempts) {
       const rel = path.join(VOIDED_ATTEMPTS_DIR, side, a);
-      const r = await redactLogs(path.join(runDirAbs, rel), ORCHESTRATOR_LOG_FILES, cap);
+      const dir = path.join(runDirAbs, rel);
+      const r = await redactLogs(dir, [...ORCHESTRATOR_LOG_FILES, ...await attemptLogs(dir, layer.errors)], cap);
       for (const [k, v] of Object.entries(r.redacted)) layer.redacted[path.join(rel, k)] = v;
       layer.warnings.push(...r.warnings.map((w) => `${rel}：${w}`));
       layer.errors.push(...r.errors.map((e) => `${rel}：${e}`));

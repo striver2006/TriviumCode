@@ -1,3 +1,4 @@
+import { stdoutAudit, type StdoutAudit } from './live-stdout.js';
 /**
  * `runner`：两侧真并行、超时、瞬时故障重试一次（设计 §5.1 / §12.2 / §12.3 / NFR-02）。
  *
@@ -189,14 +190,22 @@ async function runOneSide(
     let hasThrown = false;
     let attemptResult: CriticResult | undefined;
     const attemptStartedAt = new Date().toISOString();
+    const audit: StdoutAudit = { redacted: {} };
     try {
       // 侧归属（EV-154）：适配器在这里面以 killTree 拉起的 CLI 带上侧名，worker 据此写 status.json 的 sides[c].cli
-      attemptResult = await withTreeTag(critic, () => adapter.run(input.ctx, req));
+      attemptResult = await stdoutAudit.run(audit, () =>
+        withTreeTag(critic, () => adapter.run({ ...input.ctx, attempt: attempts }, req)));
     } catch (e) {
       thrown = e;
       hasThrown = true;
     }
-    const scrub: ScrubOutcome = await scrubSideDir(adapter, sideDir, { force: true });
+    const scrub: ScrubOutcome = await scrubSideDir(adapter, sideDir, { force: true, preRedacted: audit.redacted });
+    if (attemptResult && audit.actualPath !== undefined) attemptResult.raw_stdout_path = audit.actualPath;
+    if (audit.seal && audit.actualPath) {
+      const key = path.relative(sideDir, audit.actualPath);
+      const rewritten = (scrub.logs_redacted[key] ?? 0) > (audit.redacted[key] ?? 0);
+      await audit.seal(scrub.ok && scrub.complete === true, rewritten);
+    }
     const failure = describeScrubFailure(scrub);
     if (failure) {
       warn(`[${critic}] ${failure}`);

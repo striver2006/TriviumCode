@@ -1,0 +1,91 @@
+{
+  "schema": "trivium.task.v1",
+  "topic": "E1-审查员stdout实时输出",
+  "goal": "在 TriviumCode 的 feat/vscode-extension 分支实现 E1「审查员 stdout 实时输出」。用户打开 VS Code 驾驶舱后，可以在每个入选审核者的运行卡中看到该侧持续产生的输出。关闭协同终端切到 M3 后，仍能按原主题和 run_id 继续查看。版本沿用当前值，已知起点为 589525fd，以实际工作树为准。范围仅限 E1。\\ \\ 一、先核对现状，再定方案\\ …",
+  "created_at": "2026-11-20T02:53:48.488Z",
+  "updated_at": "2026-11-20T05:22:47.764Z",
+  "runs": [
+    {
+      "run_id": "20261120T025550Z",
+      "stage": "plan",
+      "rerun_index": 1,
+      "status": "failed",
+      "review_mode": "partial",
+      "started_at": "2026-11-20T02:56:00.322Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261120T031519Z",
+      "stage": "plan",
+      "rerun_index": 2,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-11-20T03:15:28.164Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261120T041914Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-11-20T04:19:22.657Z",
+      "driver": "codex"
+    },
+    {
+      "run_id": "20261120T051557Z",
+      "stage": "verify",
+      "rerun_index": 1,
+      "status": "success",
+      "review_mode": "full",
+      "started_at": "2026-11-20T05:22:47.764Z"
+    }
+  ],
+  "gate": {
+    "stage": null,
+    "state": "idle",
+    "since": null,
+    "run_id": null
+  },
+  "approvals": [],
+  "degradations": [
+    {
+      "run_id": "20261120T025550Z",
+      "stage": "plan",
+      "reason": "gemini: failed（agy 非零退出（1）：error: Eligibility check failed: Get \"https://www.googleapis.com/oauth2/v2/userinfo\": EOF\n）",
+      "at": "2026-11-20T03:14:00.637Z"
+    }
+  ],
+  "disputed": false,
+  "disputes": [],
+  "drivers": {
+    "plan": {
+      "driver": "codex",
+      "claimed_at": "2026-11-20T02:53:48.488Z",
+      "claimed_by": "unknown-session"
+    },
+    "code": {
+      "driver": "codex",
+      "claimed_at": "2026-11-20T03:37:16.214Z",
+      "claimed_by": "unknown-session"
+    }
+  },
+  "joint_checks": [
+    {
+      "run_id": "20261120T031519Z",
+      "stage": "plan",
+      "rerun_index": 2,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-11-20T03:37:06.182Z"
+    },
+    {
+      "run_id": "20261120T041914Z",
+      "stage": "code",
+      "rerun_index": 1,
+      "state": "checked-none",
+      "effective_sides": 3,
+      "at": "2026-11-20T04:58:48.871Z"
+    }
+  ]
+}

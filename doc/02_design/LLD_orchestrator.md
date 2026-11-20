@@ -725,3 +725,7 @@ RV-B1 是完整案例：给 `git commit` 开豁免，把 fail-closed 变成需�
 - [GUIDE_local_pitfalls.md](../04_development/GUIDE_local_pitfalls.md)：各家 CLI 与本机环境的实测坑（`P-xx`）；M0 当时与厂商文档不符的 12 条见 [REPORT_2026-09-11_m0_probe.md](../05_testing/REPORT_2026-09-11_m0_probe.md) §8
 - [BACKLOG.md](../08_project/BACKLOG.md)：技术债唯一事实源
 - [MANUAL_user.md](../07_manuals/MANUAL_user.md)：使用手册
+
+### E1 审查员标准输出（2026-11-20）
+
+四个审查适配器在接收子进程 stdout 时，把已确认脱敏的片段分批追加到各自既有的 out/stdout 文件。核心保留原始解析路径，按侧、按尝试发布独立的展示状态。VS Code 驾驶舱通过运行目录增量读出可见尾部，M1 切至 M3 时继续跟踪同一个运行。字段及终态见 [运行目录协议](../03_api/PROTOCOL_dual_critic_relay.md)。

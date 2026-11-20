@@ -20,6 +20,7 @@
  * 生产路径若检测到这个变量会打**醒目告警**——它能伪造「审查通过」，
  * 绝不能在真实审查里生效而无人知晓。
  */
+import { stubStdout, type StubStdout } from './stub-stdout.js';
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
@@ -169,6 +170,7 @@ export type StubMode =
 
 export interface StubSpec {
   mode: StubMode;
+  stdout?: StubStdout;
   /** 本侧第几次实际调用的规格，优先于作废点名段触发的 rerun。 */
   attempts?: StubSpec[];
   /** 在保留读取路径和禁读命中的同时让工具调用计数不足。 */
@@ -820,7 +822,12 @@ export function makeStubAdapter(critic: CriticId, spec: StubSpec): CriticAdapter
       const isRerun = (req.brief_text ?? '').startsWith(VOID_RERUN_BANNER_HEADING);
       const selected = spec.attempts?.[index] ?? (isRerun ? spec.rerun : undefined);
       if (selected) return makeStubAdapter(critic, selected).run(ctx, req);
+      let stdoutPath: string | undefined;
+      if (spec.stdout) {
+        stdoutPath = await stubStdout(req.out_dir, req.run_id + '-' + critic, ctx.attempt ?? 1, spec.stdout);
+      }
       const result = await adapter.run(ctx, req);
+      if (stdoutPath) result.raw_stdout_path = stdoutPath;
       return { ...result, cli_version: 'stub/0.0.0', ...(spec.noToolEvidence ? { tool_calls: {} } : {}) };
     },
   };

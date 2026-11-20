@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { REPO_ROOT } from '../helpers/fixture.js';
+import { STDOUT_FILES, STDOUT_INFO } from '../../src/trivium/live-stdout.js';
 import { ORCHESTRATOR_LOG_FILES } from '../../src/trivium/scrub.js';
 
 /**
@@ -20,6 +21,7 @@ const ADAPTERS = path.join(REPO_ROOT, 'src/trivium/adapters');
 
 /** 不是原始日志、刻意不进脱敏清单的写入物，逐条写理由 */
 const EXEMPT: Record<string, string> = {
+  [STDOUT_INFO]: '仅含身份、计数和受限状态字段，不含厂商正文',
   'result.json': '桩适配器的测试产物，只在 selftest / 集成夹具里出现',
 };
 
@@ -75,4 +77,32 @@ test('清单里没有死条目：每一项都有适配器在写', async () => {
   }
   const dead = ORCHESTRATOR_LOG_FILES.filter((n) => !written.has(n));
   assert.deepEqual(dead, [], `清单登记了却没人写：${dead.join('、')}`);
+});
+
+test('独立写入器的 stdout 文件名与适配器、脱敏清单对账', async () => {
+  const src = await fs.readFile(path.join(ADAPTERS, '../live-stdout.ts'), 'utf8');
+  const names = [...src.matchAll(/['"`]([a-z0-9.-]+\.jsonl?)['"`]/g)].map(m => m[1]!);
+  assert.deepEqual([...new Set(names)].sort(), [...STDOUT_FILES, STDOUT_INFO].sort());
+  assert.deepEqual(ORCHESTRATOR_LOG_FILES.filter(f => f.startsWith('stdout.')).sort(), [...STDOUT_FILES].sort());
+  assert.ok(EXEMPT[STDOUT_INFO]);
+});
+
+test('E1 普通重试及作废重跑的历史 stdout 都进入侧层或运行层脱敏计数', async t => {
+  const { scratchDir } = await import('../helpers/scratch.js');
+  const { ALL_AGENT_IDS } = await import('../../src/trivium/agents/registry.js');
+  const { scrubRunDir } = await import('../../src/trivium/scrub.js');
+  const dir = await scratchDir('trivium-e1-scrub-');
+  t.after(() => fs.rm(dir, { force:true, recursive:true }));
+  const id = ALL_AGENT_IDS[0]!;
+  const normal = path.join(id, 'out','attempt-1','stdout.jsonl');
+  const moved = path.join('voided', id, 'attempt-2','attempt-1','stdout.jsonl');
+  const marker = ['sk-', 'SyntheticMarkerOnly', 'abcdefg'].join('');
+  for (const rel of [normal, moved]) {
+    await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive:true });
+    await fs.writeFile(path.join(dir, rel), marker);
+  }
+  const result = await scrubRunDir(dir, () => undefined);
+  assert.equal(result.sides[id]?.logs_redacted[path.relative(id, normal)], 1);
+  assert.equal(result.runDir.redacted[moved], 1);
+  for (const rel of [normal,moved]) assert.equal((await fs.readFile(path.join(dir,rel),'utf8')).includes(marker), false);
 });

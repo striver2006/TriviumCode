@@ -18,7 +18,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import type { CriticRequest, CriticResult } from '../types.js';
-import { run } from '../util/exec.js';
+import { runReviewProcess, type StdoutTarget } from '../live-stdout.js';
 import { ensureDir, exists, sha256File } from '../util/fsx.js';
 import {
   parseAgyStream,
@@ -40,6 +40,7 @@ import {
 import { agentConfigOf } from '../config.js';
 
 export interface AgyInvokeOptions {
+  stdoutTarget?: StdoutTarget;
   bin: string;
   cwd: string;
   prompt: string;
@@ -145,7 +146,7 @@ export function buildAgyArgs(opts: Omit<AgyInvokeOptions, 'bin' | 'cwd' | 'pty' 
 export async function invokeAgy(opts: AgyInvokeOptions): Promise<AgyInvokeOutcome> {
   const args = buildAgyArgs(opts);
 
-  const r = await run(opts.bin, args, {
+  const r = await runReviewProcess(opts.stdoutTarget, opts.bin, args, {
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
     killTree: true,
@@ -405,6 +406,7 @@ export const agyAdapter: CriticAdapter = {
     let out: AgyInvokeOutcome;
     try {
       out = await invokeAgy({
+        stdoutTarget: { path: stdoutPath, attempt: ctx.attempt ?? 1 },
         bin,
         cwd: req.project_root,
         prompt: req.brief_text,
@@ -423,7 +425,6 @@ export const agyAdapter: CriticAdapter = {
     }
 
     // 原始输出与轨迹落在项目**外**的运行目录（§10.1 第 ② 道）
-    await fs.writeFile(stdoutPath, out.stdout, 'utf8');
     await fs.writeFile(tracePath, JSON.stringify(out.parsed.toolCalls, null, 2), 'utf8');
 
     // 超时判定不能只看退出码：1.1.28 起 --print-timeout 到期会 exit 0（坑 P-07）

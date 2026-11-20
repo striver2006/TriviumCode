@@ -1,0 +1,290 @@
+---
+schema: trivium.review.v2
+topic: E1-审查员stdout实时输出
+stage: plan
+role: claude
+vendor: anthropic
+agent_cli: claude/2.1.328
+model_requested: qwen4-max
+model_effective: qwen4-max
+model_effective_source: envelope
+effort: high
+effort_requested: high
+effort_effective: null
+effort_effective_source: unverified
+tier: null
+tier_source: profile
+run_id: 20261120T031519Z
+rerun_index: 2
+snapshot_hash: sha256:a088b439ae58f09317a7474872e5885e757ab80abcdf0137ea61b55099b9fb8b
+blind: true
+started_at: 2026-11-20T03:15:28.381Z
+finished_at: 2026-11-20T03:35:06.826Z
+duration_s: 1178
+tool_calls:
+  read: 25
+  grep: 26
+  glob: 5
+  run_command: 0
+  project_reads: 36
+evidence_ok: true
+verdict: pass-after-changes
+findings_count:
+  blocker: 0
+  major: 5
+  minor: 4
+  nit: 0
+degraded: false
+parse_fallback: false
+peer_deny: true
+drift: false
+heterogeneous: unknown
+access:
+  requested_mode: profile
+  profile: qwen
+  launcher_requested: /Users/chenzhenbo/.local/bin/cld
+  launcher_effective: /Users/chenzhenbo/.local/bin/cld
+  wrapper_sha256: bc21f5228f4214c85678385c6288898b6daaebcba6f485c1a1ce2de7f02f28bf
+  configuration_sha256: 5b1c4230c0db1a84419d63ecf7301992ce7a1ac777bed23db945462b78eb6dc8
+  provider_declared: qwen
+  provider_declared_source: profile
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: claude
+    status: unknown
+    left_model: null
+    right_model: qwen4-max
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: glm
+    right: claude
+    status: different-family
+    left_model: bigmodel-coding-plan/GLM-5.3
+    right_model: qwen4-max
+    left_source: trace
+    right_source: envelope
+    reason: 模型族不同：glm / qwen
+  - left: gemini
+    right: claude
+    status: different-family
+    left_model: gemini-4-neon-high
+    right_model: qwen4-max
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：gemini / qwen
+override_reason: 左侧模型信息缺失
+session_id: 1e7fb9ca-4130-48ee-9580-77ed8ee17e5f
+---
+
+# 计划审查：E1-审查员stdout实时输出
+
+> Critic-D · Anthropic Claude Code ｜ 回读模型 `qwen4-max` ｜ 请求模型 `qwen4-max`
+> ｜ 运行 `20261120T031519Z` ｜ 第 2 轮
+> ｜ 本轮审核者 glm、gemini、claude
+
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+计划与上一降级轮字节相同（sha256 一致），目录内无裁决件；本轮对上一轮意见逐条重新核码后重提，并按本侧镜头新增两条。最危险：E1 的改名 attempt 文件、能力/状态记录与共用写入器落在 ORCHESTRATOR_LOG_FILES 与 orchestrator-logs-parity 论域之外——把 stdout 写入点移出 adapters/ 还会触发该契约「清单里没有死条目」断言打红；计划只写「审计计数需回归核对」，论域、落点与对账 reshape 均未决策（CLAUDE-01）。新增：scrubSideDir(force) 在封口之后仍可能原子重写同一份 stdout，与「只顺序写一次」、终态哈希核对、「写入恰等于预期脱敏字节数」三条冲突，例外须就地写明（CLAUDE-04）。其余四条重要意见维持：背压可饿死解析器并把 CLI 堵到超时、违反「禁止改票」；写失败回退契约未决；「截断或暂缓」未决且 32 MiB 后缀上限与 RSS+32 MiB 冻结预算矛盾。次要四条：exit 宽限迟到数据的封口边界、未派生/早失败终态缺失、Windows 边界未声明、交付同步清单漏具名副本（G3 现状句、README 集成面枚举）。按意见补上这些决策后即可实施。
+
+**结论**：修改后通过（`pass-after-changes`）
+
+## 审查意见（共 9 条：重要 5 ｜ 次要 4）
+
+### CLAUDE-01 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §核心 3（重试改名、能力/状态记录、共用写入器）与 §交付` |
+| 类别 | security ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：E1 引入的新盘上面没有决定进哪套既有契约面：① 重试前按 attempt 改名保留的旧 stdout 仍含模型输出，但名字不在 ORCHESTRATOR_LOG_FILES 固定四名里，redactLogs 与 redactVoidedAttempts 都只认清单名——事后脱敏兜底不再覆盖它们（含被搬进 voided/ 之后的补扫）；② 能力/状态记录的落点未定（侧层还是运行目录层），落点决定它要不要进 RUN_DIR_FILES/run-files-parity 与禁读分类，还是进 scrub 清单或具名豁免；③ 共用写入器大概率不在 adapters/ 内，orchestrator-logs-parity 的写入点扫描够不到它，而且该契约还有第二条断言「清单里没有死条目：每一项都有适配器在写」——一旦 stdout 写入点从适配器字面量挪进共用写入器，stdout.jsonl/stdout.json 会变死条目、测试直接打红。计划只写「scrub 审计计数需回归核对」，没有决定论域归属、豁免理由与机器对账的 reshape。设计文档第 2676 行是同一契约的设计面副本（四文件清单＋parity 对账＋「out/ 里的审查结果一个不碰」），须同批修订。这正是 EV-20「手抄清单第一次就漏了 rollout」与纪律 11「靠记性的纪律要换成不依赖记性的机制」登记过的失效形态。
+
+**依据**：读 src/trivium/scrub.ts:77（固定四名清单）、393-397（redactLogs 只扫清单名，侧根与 out/ 各一遍）、505-529（redactVoidedAttempts 同样只认清单名）；test/contract/orchestrator-logs-parity.test.ts:30-47（论域仅 adapters/*.ts 的 path.join(req.out_dir, 字面量)）、69-78（死条目断言要求每个清单名都有适配器字面量写入点）；src/trivium/run-files.ts:25-42 与文件头（运行目录层文件必须进 RUN_DIR_FILES，freeze 禁读分类与 run-files-parity 消费它）；doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md 第 2676 行（scrub 条款的设计面副本）；被审计划 §核心 3 只写改名保留与审计计数回归核对，能力记录落点全文未指定。
+
+**建议**：在计划里明确决定：能力/状态记录的落点，并按落点派生契约面归属（侧层→scrub 清单或照 EXEMPT 形态具名豁免并写理由；运行目录层→RUN_DIR_FILES 与 run-files-parity、禁读分类）；改名 attempt 文件进 scrub 论域；共用写入器文件名与 ORCHESTRATOR_LOG_FILES 建立单一来源或机器对账，并 reshape orchestrator-logs-parity 两条断言的论域（写入点扫描范围与死条目判据），把该契约列入交付回归面；设计 §13 对应条款同批回补。
+
+### CLAUDE-02 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §核心 4（256 KiB 暂停 child.stdout、「禁止以 E1 I/O 故障改票」）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：「禁止以 E1 I/O 故障改票」写成无例外断言，但计划自己的机制能违反它：E1 写队列满时暂停 child.stdout，而 appendOut（解析器输入）与 E1 接收器共用同一条流的 data 监听——暂停同时饿死解析器输入并对 CLI 形成管道背压。磁盘阻塞（不是错误；计划对「永久错误」有停用排空规则，对「阻塞」没有）时队列永不降水位，CLI 被堵到 timeoutMs 触发 SIGTERM→SIGKILL，该侧判 timeout；runner 明确超时不判瞬时、不重试，侧结果直接改变，strict 策略下整轮受影响。计划把「磁盘阻塞」列进须有可观测结果的故障枚举，却没给暂停上限或阻塞降级决策——慢盘用例实测出的很可能正是「E1 I/O 故障改了票」。
+
+**依据**：读 src/trivium/util/exec.ts:596-615（appendOut 挂在 child.stdout 的 data 监听上，E1 接收器只能同流取数）、686-692（超时链）；src/trivium/runner.ts:21-23（timeout 不重试）；被审计划 §核心 4 同时写了「256 KiB 高水位时暂停 child.stdout，降到 64 KiB 恢复」「磁盘阻塞……须有不同可观测结果」「禁止以 E1 I/O 故障改票」，但无暂停上限或慢盘降级规则。背压致 CLI 停写是管道语义的结构推理，未实测。
+
+**建议**：为暂停补一条有界决策：例如暂停超过某阈值即停用该次 E1 展示、resume 并排空管道让原审查按原节奏跑完；或明确慢盘检测判据与降级动作。把「禁止改票」的成立条件（含降级路径）就地写明，并让慢盘用例断言侧结果不受 E1 影响。
+
+### CLAUDE-03 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §核心 3/4（「输出只顺序写一次」「run 结束时不重写全量」「写失败停用该次展示」）与 §插件 3` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | high |
+
+**问题**：写失败后的最终文件契约未决策，条款互相打架：流式写入中途永久失败、「停用该次展示、排空管道让原审查继续」之后，适配器手里的完整 out.stdout 还写不写？今天四侧都在 run 返回后无条件一次性写全量（超时/失败分支同样写并带 raw_stdout_path），raw_stdout_path 是 CriticResult 必填字段，任务书把「最终内容与原归档语义一致」列为完成条件。不写，则 raw_stdout_path 指向半截文件、完成条件被破坏；写，则与「只顺序写一次」「不重写全量」冲突，除非把这两条就地限定为 E1 成功路径。计划还需说明回退时封口标记与状态记录如何表达「本次展示失败但归档完整」，否则插件「缺少成功封口一律显示未确认完整」会把一份完整归档误报成不完整。
+
+**依据**：读 src/trivium/adapters/codex.ts:785、zcode.ts:1390、agy.ts:426、claude.ts:1145（四侧均在 invoke 返回后无条件写全量 stdout，失败/超时分支同样带 rawStdoutPath）；src/trivium/types.ts:2161（raw_stdout_path 必填）；任务目标原文第五节「最终内容与原归档语义一致」；被审计划 §核心 3/4 三条原文与 §插件 3 的封口文案规则。
+
+**建议**：在计划里明确写失败回退契约：例如把「只写一次/不重写全量」限定为 E1 成功路径，写失败时回退既有的一次性全量落盘并把状态记录更新为「展示失败、归档完整」，同时规定该格的文件身份/封口语义与插件文案；或选别的方案，但必须把各条款的适用范围调和写明。
+
+### CLAUDE-04 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §核心 3（「输出只顺序写一次……run 结束时不重写全量」）、§验收（终态哈希核对）、§性能（成功轮写入字节数）` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：计划保留了事后 scrub 防御层（§现状自己写了「必要的原子替换」），却没有决定它与 E1 封口的交互：runner 在 adapter.run 返回后（即 E1 封口之后）对侧目录跑 scrubSideDir(force)，redactLogs 一旦 redactSecrets 命中就对同一份 stdout.jsonl/stdout.json 做 writeAtomic（tmp+rename）——内容与 inode 都变。流式脱敏与整段结果分叉时（截断路径、规则漏判、网关值形态）这必然发生：封口哈希不再匹配文件、插件的文件身份被判轮转、验收的「完整字节、顺序和哈希核对」与性能的「成功轮 stdout 写入恰等于预期脱敏字节数」（重写又是一次全量写）都被打破。「输出只顺序写一次」这条断言存在未写明的例外。占位符虽按幂等设计（正常等价时 scrub 零命中不重写），但计划把 scrub 当纵深防御保留，就必须为「防御层真的出手了」这一格定义语义，而不是假设它永不触发。
+
+**依据**：读 src/trivium/runner.ts:194-199（scrubSideDir(force) 在 adapter.run 返回之后）；src/trivium/scrub.ts:334-338（命中即 writeAtomicPreservingMode 就地重写）、353-358（writeAtomic=writeFile+rename，inode 变化）；src/trivium/secrets.ts:116-119（占位符刻意不二次命中——重写只在流式与整段分叉时触发）；被审计划 §现状「必要的原子替换」、§核心 3「只顺序写一次/不重写全量」、§验收「终态以预期脱敏数据的完整字节、顺序和哈希核对」、§性能「成功轮 stdout 写入恰等于预期脱敏字节数」。触发频率依赖分叉概率，未实测。
+
+**建议**：在计划里二选一并写明：① 宣布 E1 成功封口的文件豁免 redactLogs（附理由），把「scrub 在 E1 文件上命中」定义为 E1 脱敏 bug 的可观测告警，等价性由分割点穷举测试守；或 ② 接受重写，定义重写后的再封口/文件身份/哈希语义，并把 scrub 重写字节从 E1 写入对账中单列。无论哪种，把「只顺序写一次」的例外就地写明。
+
+### CLAUDE-05 · 重要（major）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §核心 2（「安全后缀积累达到既有收集上限时记截断或暂缓」）与 §性能目标（峰值 RSS ≤ 基线 + 32 MiB）` |
+| 类别 | performance ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：两处未决/矛盾：其一，「记截断或暂缓」是二选一未决策——截断意味着展示/文件与整段脱敏结果分叉（分割点穷举等价测试的前提被破坏，并连带触发 CLAUDE-04 的封口重写格），暂缓意味着继续持有、内存无上界；插件 §3 又要求「UI 截尾与文件截断分别标注」，两种选择的界面语义不同，必须先定。其二，「既有收集上限」是 exec.ts 的 DEFAULT_MAX_BUFFER=32 MiB（按 JS 字符串长度计），四侧审查适配器均未传 maxBufferBytes；三侧并发各自最坏持有 32 MiB 安全后缀即 +96 MiB，直接击穿同一份计划冻结的「峰值 RSS ≤ 基线 + 32 MiB」。性能负载（每侧约 8 MiB）走不到这格，冻结预算与允许的行为不一致；「内存预算再计一次 Node 管道块和安全后缀」也没给具体口径。
+
+**依据**：读 src/trivium/util/exec.ts:103（DEFAULT_MAX_BUFFER=32*1024*1024）、597-599（按 stdout.length 字符串长度比较）；grep maxBufferBytes 确认审查适配器均用缺省（仅 src/trivium/verify.ts:136 传 4 MiB）；被审计划 §核心 2、§核心 4、§性能目标第二条、§插件 3 原文对照。最坏后缀规模是结构推理（需要无安全切点的 pathological 输入），未实测。
+
+**建议**：先裁定「截断」还是「暂缓」及其界面/文件语义（并与 CLAUDE-04 的封口语义对齐）；再为安全后缀单独定一个与 RSS 预算相容的每侧上限，超限即按已裁定语义处置并提示，不要把解析器的收集上限直接复用为后缀上限；把该上限写进冻结的性能口径。
+
+### CLAUDE-06 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §现状（「close 或退出宽限到期才返回」）与 §核心 3/4（封口、故障枚举）` |
+| 类别 | correctness ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：run() 有一条 exit+2s 兜底收尾路径：子进程已退出但孙进程继承着 stdout 管道时 close 永不触发，finish 按已收到的输出提前兑现，而 data 监听仍挂着、迟到数据还会继续 appendOut。计划把「退出宽限到期」写进了现状，却没有决定 E1 在这条路径上的封口/停收时机：若在 run 兑现时封口，迟到数据要么丢（与解析器输入边界一致，可接受但要写明）要么继续写（违反「只顺序写一次」与封口哈希）；若当时 child.stdout 正处于 E1 暂停态，还要决定恢复/释放。这是「超时、中止、强杀」枚举之外漏掉的一格。
+
+**依据**：读 src/trivium/util/exec.ts:659-668（child.on('exit') 挂 2s exitTimer 兜底 finish，注释明说孙进程持管道时 close 永不触发）、596-615 与 630-653（finish 后 data 监听未移除，finish 时 flush ptyOut 与 lineBuf）；被审计划 §核心 4 的故障枚举未含此格。
+
+**建议**：在计划里补一句决策：E1 接收器以 run 兑现（含 exit 宽限兜底）为停收/封口边界，迟到数据不再进展示文件，与解析器输入同边界；并规定该路径上暂停态的恢复与监听释放。
+
+### CLAUDE-07 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §核心 3（派生前发布能力/状态记录）与 §插件 3（状态文案枚举）` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：状态机缺「未派生/早失败」终态。能力记录在派生前发布，但存在大量根本不派生的出口：run() 的终止中悬空、doctor 中止合成结果、启动预算耗尽、cmd 垫片元字符拒绝、Windows pty 拒绝，以及适配器在 run() 之前的失败（未探测、入口缺失、准备隔离副本失败）。这些格子之后该次尝试不会有 stdout，计划的界面状态枚举（等待输出/缺能力记录/状态不可读/写入中断/取消/超时）没有对应终态，插件可能永远停在「等待该侧输出」。
+
+**依据**：读 src/trivium/util/exec.ts:437（treeShutdown 时 run() 永不兑现）、440-446（aborted 合成结果）、450-452（LaunchBudgetExceeded）、497-510（cmd 垫片拒绝，spawned:false）、517-527（Windows pty 拒绝）；src/trivium/adapters/codex.ts:727-761（探测缺失/入口缺失/准备副本失败在 run() 之前返回）；src/trivium/runner.ts:361（失败侧合成结果 raw_stdout_path:''）；被审计划 §插件 3 的状态枚举。
+
+**建议**：给能力/状态记录的状态集补一个「本次尝试未产生输出（未派生/早失败）」终态，规定由谁在哪个出口写入（runner 的尝试收尾是自然落点），插件按该终态如实显示并保留失败原因入口。
+
+### CLAUDE-08 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §核心 3（权限 0600）与 §性能目标（同一台 Mac）` |
+| 类别 | contract ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：Windows 边界未声明。插件侧 macOS-only 有 extension/README.md 的明文边界，性能验收限定 Mac 与之相符；但 E1 的核心改动（流式写入器、暂停/恢复、0600、能力记录）随核心 bundle 在两个平台发布：0600 在 NTFS 上是空操作、agy 的 pty 在 Windows 被显式拒绝、cmd 垫片路径行为不同。本仓惯例是把平台差异与未测边界如实登记（README 的 Windows 支持边界句、Bug 清单大量同形态条目），计划对此一字未提，实施后容易把「Mac 验收通过」误读成两平台行为已验。
+
+**依据**：读 extension/README.md:78-80（「当前插件的运行与安装包验收环境为 macOS。Windows 真机未测」）；src/trivium/util/exec.ts:512-527（Windows 无 pty 等价物、显式拒绝）、483-510（cmd 垫片兼容层边界）；README.md:23（Windows 硬前置与未验收边界的登记形态）；被审计划全文无 Windows 字样。
+
+**建议**：在计划里加一句边界声明：E1 核心侧在 Windows 的行为口径（是否启用、0600 语义降级、未测项如实登记），验收报告按同一口径登记；不要求本次在 Windows 实测。
+
+### CLAUDE-09 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `plan §交付（同步清单）与 §开头（范围锚点）` |
+| 类别 | maintainability ｜ 层次 plan |
+| 置信度 | medium |
+
+**问题**：交付同步清单只有泛称（「中文包内手册、设计文档对应行为、验收报告与 doc/05_testing/README.md 同步」），没有点名 E1 落地后会失实的具体副本：① 11 月 5 日插件计划 G3 的「事实」列写着「各审查员原始 stdout 仅在 CLI 退出后一次性落盘」，§6.4 把 E1 列为「可选核心增强」——被审计划开头宣布范围采用该文档的 G3 与 §6.4，交付后这两句指向现在的描述即失实，计划未决定是标注已实施还是按 doc/README.md §4 的「指向现在/记当时」判据声明其为历史；② extension/README.md 的集成面枚举「文件面：只读 watcher（state.json / status.json / .reviews/**）」——E1 新增对 runDir/<critic>/out/ 能力记录与 stdout 的读取/监听面，该枚举失实；运行监控节（worker.log 尾部＋侧完成后正文入口）也需补运行期 stdout 卡。「包内手册同步」虽涵盖 README，但集成面枚举是契约式声明，漏改它正是本仓「改一漏二」纪律盯防的形态。
+
+**依据**：读 doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md:52（G3 事实列）、232-235（§6.4 可选增强）；extension/README.md:14、22、39-41（运行监控步骤与集成面枚举）；doc/README.md §4（版本引用「指向现在/记当时」判据）；AGENTS.md 改动同步清单；被审计划 §交付原文。另检索 doc/02_design/系统设计说明书.md 与 doc/07_manuals/使用手册.md，未发现 stdout/驾驶舱相关副本（这两处无需同步）。
+
+**建议**：在交付同步清单里具名：11 月 5 日计划 G3/§6.4 的状态标注方式（或声明为历史文档）、extension/README.md 的集成面枚举与运行监控节、设计 §13 scrub 条款（见 CLAUDE-01）；如 LLD 执行流描述同批改，一并列出。目标是交付后没有任何「指向现在」的副本与安装态行为矛盾。
+
+## 认为正确的部分
+
+- 现状陈述经本轮逐处重新核对属实：review.ts:1215 建 <run>/<critic>/out；runner.ts:185-314 的 attempt/强制 scrub/作废搬迁/重试顺序；exec.ts 的 setEncoding('utf8')、ptyOutputNormalizer(398)、appendOut 有限收集(596-611)、onStdoutLine 丢空行与换行(609)、close/exit+2s 宽限收尾(659-668)；四适配器落盘点与顺序（codex.ts:785、claude.ts:1145 且 scrubGatewayEnv 563-567 先行、zcode.ts:1390 写 stdout.json、agy.ts:426-427 写 stdout.jsonl+trace.json）；收集上限按 JS 字符串长度(597)、缺省 32 MiB(103)。
+- Claude 网关替换表只依赖 spawn 前已知的 env（gatewayScrubPlan，claude.ts:539-546），流式逐值替换在派生前即可取得替换表；模型名豁免四道守卫的描述与源码一致。
+- 「写前完成脱敏、只提交已确定安全的前缀、对照整段脱敏做分割点穷举、不复制规则表」方向与 secrets.ts 的规则形态相容（PEM 跨行 document 规则、JSON 转义引号容差 Q/KEY、占位符幂等设计 116-119）。
+- 能力记录携带「受支持的文件名」、插件从记录派生文件名而不硬编码第二份，符合单一事实源纪律；status.json 已带逐侧 attempt（runner emitProgress；extension statusModel.ts:16,64），attempt 发现有现成通道；按 attempt 的文件身份与 stashVoidedOutput 整目录搬迁（review.ts:2532-2551）的处理对得上实际行为。
+- 插件现状描述准确：statusWatch 目录级监听+去抖+末尾字节窗口重读 worker.log+终态 --status 复核后 dispose（statusWatch.ts:77-80,109-124,171-212,246-262）；cockpit onLog→pushRuns（cockpit.ts:1433-1435）、renderRuns 全量重建卡片（cockpitHtml.ts:310,827）；「逐批 stdout 不应触发全部卡片重建」是针对真实架构的正确约束。
+- 验收设计忠实于任务书：退出闩锁（磁盘可见+安装态 DOM 可见才放行退出）正是真流式判据；Phase 4 五万行样本确为直接向 Webview 注入且测量不含文件 I/O 与进程间传输（REPORT_2026-11-19 第 131 行），只作滚动对照的定位正确；桩/可控 CLI/真实厂商分账、真实 CLI 不作性能对照、未测如实登记均与仓库测试纪律一致。
+- 性能口径冻结质量高：两份测量构建用同一测试输出生成器、不以基线空载作分母、交替运行、五轮中位数、逐进程 CPU/RSS、隐藏与无活动零开销、失败轮保留与同负载复跑；交付保留 Phase 4 与 glm-relay 包（extension/ 下两者均在）、E1 包另名、doc/05_testing/README.md 索引同步（README:16 的 doc-archive-index 对账规则存在）、Bob 审批停点，均符合任务书与 AGENTS.md 同步清单。
+- 版本核对无误：package.json 1.3.7、extension/package.json 0.3.0，与任务书「版本沿用当前值」一致。
+
+## 未覆盖范围（本侧盲区）
+
+- 本侧无执行能力：背压致 CLI 停写→超时、流式脱敏与整段等价、短写处理、P95 延迟可达性、封口后 scrub 重写的实际触发频率，全部是结构推理，未做任何实测或复跑。
+- 四个适配器的 invoke/parse 实现只读了落盘点与脱敏出口；parseCodexEvents/parseClaudeEvents/parseAgyStream/envelope 括号配平解析器全文未读，计划适配器表格的解析细节只做抽查。
+- secrets.ts 只读了前 120 行与 redactSecrets/scanSecrets 签名附近；RULES 全集（熵阈值、confirm 回调全集）未逐条核对流式安全前缀的可行性。
+- 主设计文档只抽查了 scrub 条款（2676 行）、review 分段协议（1685-1704 行）与 EV-20 历史（4402 行）；LLD 只做关键词检索；设计/LLD/PROTOCOL 的 E1 影响面未逐句审计（PROTOCOL §8 运行目录布局已核，未发现失实副本；系统设计说明书与使用手册检索无相关副本）。
+- extension/test/e2e 与 scripts/runE2E.mjs 实现未读，夹具指定刚构建核心 bundle 的能力取自计划陈述；Phase 4 原包与 glm-relay 包只确认存在，哈希未计算。
+- freeze.ts 的 classifyDenyPath 实现未直接读，禁读分类行为取自 run-files.ts 与 review.ts 的注释；terminalRelay/zcodeTurns 内部未读，M3 断言只对照 extension/README.md 与 cockpit 检索。
+- Windows 侧行为完全未验证（本侧只在 macOS 工作树读码）；性能目标数值（750 ms / 1 s P95、+32 MiB RSS）的可达性只做结构判断。
+- 未读另一位审查员的产出与运行目录（背靠背独立性）；本轮计划哈希与上一轮相同，plan/ 目录内无 Driver 裁决件可参照，上一轮意见按未裁决处理、重新核码后重提。
+
+## 实际查阅的项目文件
+
+- `.reviews/E1-审查员stdout实时输出/plan/2026-11-20-E1-审查员stdout实时输出-codex.md`
+- `.reviews/E1-审查员stdout实时输出/plan/2026-11-20-E1-审查员stdout实时输出-claude.md`
+- `CLAUDE.md`
+- `AGENTS.md`
+- `README.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `src/trivium/scrub.ts`
+- `src/trivium/run-files.ts`
+- `src/trivium/runner.ts`
+- `src/trivium/review.ts`
+- `src/trivium/util/exec.ts`
+- `src/trivium/secrets.ts`
+- `src/trivium/types.ts`
+- `src/trivium/adapters/codex.ts`
+- `src/trivium/adapters/claude.ts`
+- `src/trivium/adapters/zcode.ts`
+- `src/trivium/adapters/agy.ts`
+- `test/contract/orchestrator-logs-parity.test.ts`
+- `extension/src/monitor/statusWatch.ts`
+- `extension/src/monitor/statusModel.ts`
+- `extension/src/ui/cockpit.ts`
+- `extension/src/ui/cockpitHtml.ts`
+- `extension/README.md`
+- `extension/.vscodeignore`
+- `extension/package.json`
+- `package.json`
+- `doc/03_api/PROTOCOL_dual_critic_relay.md`
+- `doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md`
+- `doc/02_design/2026-09-10-Driver-DualCritic主攻双审流水线设计.md`
+- `doc/02_design/LLD_orchestrator.md`
+- `doc/02_design/系统设计说明书.md`
+- `doc/05_testing/README.md`
+- `doc/05_testing/REPORT_2026-11-19_VSCode插件Phase4验收.md`
+- `doc/07_manuals/使用手册.md`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":25,"grep":26,"glob":5,"run_command":0,"project_reads":36}
+
+---
+
+*本文档由 TriviumCode 编排器从 `claude` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*
