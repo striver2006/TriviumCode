@@ -5,13 +5,14 @@
  *   .cjs 脚本：由 Node 解释器直接启动，AGY-02）；
  * - 身份：内部键 `agent|topic|entry`（CLAUDE-07），显示名只作展示；同键存活终端
  *   复用聚焦，不同键永不复用；
- * - 注入：就绪延迟（无事件驱动，D3′）→ 分段 sendText → 回车语义三模式；
+ * - 注入：已验证的 GLM 启动事件及就绪延迟→ 分段 sendText → 回车语义三模式；
  * - 失败兜底由驾驶舱的命令条承担（本模块不做「无变化=失败」推断）；
  * - 关闭：onDidCloseTerminal → 通知驾驶舱降级 M3。
  */
 import * as vscode from 'vscode';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
+import type { InteractiveProgram } from './glmInteractive';
 import { ZcodeTurns } from './zcodeTurns';
 import type { AgentId } from './carriers';
 
@@ -28,6 +29,9 @@ export interface LaunchOptions {
   cwd: string;
   /** shellCommand 模式的解释器绝对路径（探针 runner 或 wrapper 内嵌 node） */
   nodePath?: string | null;
+  source?: InteractiveProgram['source'];
+  waitForStartup?: boolean;
+  entryText?: string;
   scriptEnv?: Record<string, string>;
   waitForZcodeTurn?: boolean;
 }
@@ -42,7 +46,9 @@ export interface LaunchSettings {
 interface Session {
   key: string;
   terminal: vscode.Terminal;
-  /** 注入进行中（供 UI 提示，不做硬锁） */
+  launch: LaunchOptions;
+  /** 同一会话的点火、重发与续话通过这些状态协调 */
+  entrySent: boolean;
   injecting: boolean;
   turns?: ZcodeTurns;
   pending?: Promise<void>;
@@ -58,7 +64,7 @@ export class TerminalRelay implements vscode.Disposable {
   private readonly closeListener: vscode.Disposable;
   private readonly closeHandlers = new Set<(key: string) => void>();
 
-  constructor(private readonly logRoot?: string) {
+  constructor(private readonly logRoot?: string, private readonly startupTimeoutMs = 120_000) {
     this.closeListener = vscode.window.onDidCloseTerminal((t) => {
       for (const [key, s] of this.sessions) {
         if (s.terminal === t) {
@@ -93,38 +99,43 @@ export class TerminalRelay implements vscode.Disposable {
       }
     }
     const name = `Trivium · ${opts.display} · ${opts.topic}`;
-    let terminal: vscode.Terminal;
+    if (opts.launchMode === 'shellCommand' && !opts.nodePath) throw new Error('脚本入口需要 Node 解释器路径');
     let turns: ZcodeTurns | undefined;
-    if (opts.launchMode === 'direct') {
-      terminal = vscode.window.createTerminal({ name, shellPath: opts.entrypoint, cwd: opts.cwd });
-    } else {
-      // 让终端生命周期绑定到解释器。TUI 退出后不会退回可继续接收续话的 shell。
-      if (!opts.nodePath) throw new Error('脚本入口需要 Node 解释器路径');
-      if (opts.waitForZcodeTurn && this.logRoot) {
-        mkdirSync(this.logRoot, { recursive: true });
-        turns = new ZcodeTurns(mkdtempSync(join(this.logRoot, 'zcode-')));
-      }
-      const env = turns ? { ...opts.scriptEnv, ZCODE_LOG_DIR: turns.dir } : opts.scriptEnv;
-      terminal = vscode.window.createTerminal({ name, shellPath: opts.nodePath, shellArgs: [opts.entrypoint], cwd: opts.cwd, env });
+    if (opts.waitForZcodeTurn && this.logRoot) {
+      mkdirSync(this.logRoot, { recursive: true });
+      turns = new ZcodeTurns(mkdtempSync(join(this.logRoot, 'zcode-')));
     }
+    const env = turns ? { ...opts.scriptEnv, ZCODE_LOG_DIR: turns.dir } : opts.scriptEnv;
+    const program = opts.launchMode === 'direct' ? { shellPath: opts.entrypoint }
+      : { shellPath: opts.nodePath!, shellArgs: [opts.entrypoint] };
+    const terminal = vscode.window.createTerminal({ name, cwd: opts.cwd, ...program, env });
     terminal.show();
-    const session: Session = { key, terminal, injecting: false, turns };
+    const session: Session = { key, terminal, launch: opts, entrySent: false, injecting: false, turns };
     this.sessions.set(key, session);
     return session;
   }
 
-  /**
-   * 就绪延迟后注入文本。
-   * 返回注入所用设置（供 UI 展示）；延迟由调用方配置注入（此方法内不再等待）。
-   */
+  /** 等待已验证的启动信号和输入框挂载，送入文字后核对原终端仍存活。 */
   async injectText(
     session: Session,
     text: string,
     settings: LaunchSettings,
     readyDelayMs: number,
+    firstLaunch = false,
   ): Promise<boolean> {
     session.injecting = true;
     try {
+      // 独立 ZCode 冷启动时先绘制仅接受退出键的启动页。等到原生启动完成，再留出输入框挂载时间。
+      if (firstLaunch && session.turns && session.launch.waitForStartup) {
+        const deadline = Date.now() + this.startupTimeoutMs;
+        while (!session.turns.started) {
+          if (this.sessions.get(session.key) !== session || session.terminal.exitStatus !== undefined) return false;
+          await session.turns.refresh();
+          if (session.turns.started) break;
+          if (Date.now() >= deadline) throw new Error('等待 ZCode 启动完成超时，尚未送入入口。请在原生终端确认输入框已就绪，再点「重新注入」。');
+          await sleep(250);
+        }
+      }
       await sleep(Math.max(0, readyDelayMs));
       if (this.sessions.get(session.key) !== session || session.terminal.exitStatus !== undefined) {
         return false;
@@ -134,7 +145,8 @@ export class TerminalRelay implements vscode.Disposable {
         session.turns.submitted();
       }
       await this.sendWithMode(session.terminal, text, settings);
-      return this.sessions.get(session.key) === session && session.terminal.exitStatus === undefined;
+      session.entrySent = this.sessions.get(session.key) === session && session.terminal.exitStatus === undefined;
+      return session.entrySent;
     } finally {
       session.injecting = false;
     }

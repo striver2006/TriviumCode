@@ -179,12 +179,13 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
   // ── 渲染 ──
   function renderHealth(list) {
     state.health = list;
-    $('healthLine').textContent = list.map(h => h.display + (h.availability === 'available' ? '✓' : '✗')).join('  ');
+    $('healthLine').textContent = '后台审核探针：' + list.map(h => h.display + (h.availability === 'available' ? '✓' : '✗')).join('  ');
     const ds = $('driver'); ds.innerHTML = '';
     for (const h of list) {
       const o = document.createElement('option');
-      o.value = h.agentId; o.textContent = h.display + (h.availability === 'available' ? '' : '（不可用）');
-      o.disabled = h.availability !== 'available';
+      o.value = h.agentId;
+      o.disabled = h.agentId !== 'glm' && h.availability !== 'available';
+      o.textContent = h.display + (o.disabled ? '（不可用）' : '');
       ds.appendChild(o);
     }
     renderCritics();
@@ -906,7 +907,7 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
         if (m.degraded) { $('btnPrechain').disabled = true; $('btnIgnite').disabled = true; }
         break;
       case 'ignite-result':
-        if (m.ok) { banner('info', '已注入协同终端「' + m.terminalName + '」。提示语语义：任务目标/焦点作为首条消息进入会话。'); }
+        if (m.ok) { banner('info', m.message || '已注入协同终端「' + m.terminalName + '」。提示语语义：任务目标/焦点作为首条消息进入会话。'); }
         else { banner('warn', '点火未完成：' + m.message); }
         showCmd(m.cmdText || '');
         setMode(m.ok ? 'M1' : 'M3');

@@ -17,7 +17,9 @@ import type { TriviumServices } from '../services';
 import { cockpitHtml } from './cockpitHtml';
 import { assembleEntryCommand, findSkillDoc, type EntryKind } from '../launch/entryCommand';
 import { claimAfterConfirm, runResolveAndPreflight, type PrechainReport, type PrechainFlags } from '../launch/prechain';
-import { scriptProviderEnv, carrierOf, parseWrapperNodePath } from '../launch/carriers';
+import { carrierOf } from '../launch/carriers';
+import { resolveGlmInteractive, type InteractiveProgram } from '../launch/glmInteractive';
+import { terminalKey } from '../launch/terminalRelay';
 import { StdoutTail } from '../monitor/stdoutTail';
 import { RunWatch } from '../monitor/statusWatch';
 import { ReviewWatch, type ReviewFile } from '../monitor/reviewWatch';
@@ -111,6 +113,7 @@ export class Cockpit implements vscode.Disposable {
   private readonly pendingRuns = new Map<string, { topic: string; stage: string; timer: ReturnType<typeof setInterval> }>();
   private currentSessionKey: string | null = null;
   private lastCommandText: string | null = null;
+  private ignitingGlm = false;
   private mode: 'M1' | 'M3' = 'M3';
   /** 数据版本不兼容 → 只读降级（CODEX-07/AGY-04）：禁点火 */
   private degradedReason: string | null = null;
@@ -578,25 +581,74 @@ export class Cockpit implements vscode.Disposable {
       });
       return;
     }
-    const claim = await claimAfterConfirm(this.services.cmds, form.entry as EntryKind, topic, form.driver);
-    if (this.disposed) return; // CODEX-05：await 后复查生命周期（停用后不再建终端/注入）
-    if (claim.step === 'claim' && claim.state === 'failed') {
-      this.post({ type: 'ignite-result', ok: false, message: `认领失败（退出码 ${claim.code}）：${claim.message}`, cmdText: this.lastCommandText ?? '' });
+    if (form.driver === 'glm') {
+      if (this.ignitingGlm) {
+        this.post({ type:'banner', kind:'info', text:'GLM 正在点火，请等待入口注入完成。' });
+        return;
+      }
+      this.ignitingGlm = true;
+      try {
+        await this.startTerminal(form, topic);
+      } catch (error) {
+        this.setMode('M3');
+        this.post({ type: 'ignite-result', ok: false, cmdText: this.lastCommandText ?? '',
+          message: error instanceof Error ? error.message : String(error) });
+      } finally { this.ignitingGlm = false; }
       return;
     }
+    await this.startTerminal(form, topic);
+  }
+
+  private async startTerminal(form: FormState, topic: string): Promise<void> {
     const carrier = carrierOf(form.driver);
     if (!carrier) {
       this.post({ type: 'ignite-result', ok: false, message: `未知 Driver：${form.driver}`, cmdText: '' });
       return;
     }
-    const probe = await this.services.env.loadProbe();
-    if (this.disposed) return; // CODEX-05
-    const cli = probe?.cli[carrier.cliKey];
-    const entrypoint = (cli?.['entrypoint'] as string | undefined) ?? null;
-    if (!entrypoint) {
-      this.post({ type: 'ignite-result', ok: false, message: `探针无 ${carrier.display} 入口（先跑 doctor 探测）`, cmdText: this.lastCommandText ?? '' });
-      return;
+    const claimTopic = async () => {
+      const claim = await claimAfterConfirm(this.services.cmds, form.entry as EntryKind, topic, form.driver);
+      if (this.disposed) return false; // CODEX-05：await 后复查生命周期（停用后不再建终端/注入）
+      if (claim.step === 'claim' && claim.state === 'failed') {
+        this.post({ type: 'ignite-result', ok: false, message: `认领失败（退出码 ${claim.code}）：${claim.message}`, cmdText: this.lastCommandText ?? '' });
+        return false;
+      }
+      return true;
+    };
+    const glm = carrier.agentId === 'glm';
+    const resource = vscode.Uri.file(this.services.root);
+    if (!glm && !await claimTopic()) return;
+    let program: InteractiveProgram;
+    if (glm) {
+      if (!vscode.workspace.isTrusted) throw new Error('请先确认当前工作区可信，再启动 GLM 交互终端。');
+      const existing = this.services.relay.find(terminalKey(form.driver, topic, form.entry));
+      if (existing && existing.terminal.exitStatus === undefined) {
+        existing.terminal.show();
+        this.currentSessionKey = existing.key;
+        this.setMode(existing.entrySent ? 'M1' : 'M3');
+        this.lastCommandText = existing.launch.entryText ?? '';
+        this.post({ type: 'ignite-result', ok: existing.entrySent, cmdText: this.lastCommandText,
+          message: (existing.entrySent ? '已返回原 GLM 会话。更换程序请先关闭此终端。' :
+            '原终端已打开，尚未送入入口。确认输入框就绪后请点「重新注入」。') + launchDescription(existing.launch) });
+        return;
+      }
+      this.currentSessionKey = null;
+      const cfg = vscode.workspace.getConfiguration('trivium.launch', resource);
+      const probe = await this.services.env.loadProbe();
+      program = await resolveGlmInteractive({ trusted: vscode.workspace.isTrusted,
+        configuredPath: cfg.get<string>('glmInteractivePath'), configuredNode: cfg.get<string>('glmNodePath'),
+        cli: probe?.cli.zcode, wrapper: this.services.cli.wrapperPath() });
+      if (this.disposed) return;
+    } else {
+      const probe = await this.services.env.loadProbe();
+      if (this.disposed) return;
+      const entrypoint = probe?.cli[carrier.cliKey]?.['entrypoint'];
+      if (typeof entrypoint !== 'string' || !entrypoint) {
+        this.post({ type: 'ignite-result', ok: false, message: `探针无 ${carrier.display} 入口（先跑 doctor 探测）`, cmdText: this.lastCommandText ?? '' });
+        return;
+      }
+      program = { source: '探针', launchMode: carrier.launchMode, entrypoint };
     }
+    if (glm && !await claimTopic()) return;
     const cmd = assembleEntryCommand({
       agentId: carrier.agentId,
       entry: form.entry as EntryKind,
@@ -606,37 +658,16 @@ export class Cockpit implements vscode.Disposable {
     this.lastCommandText = cmd.text;
     for (const w of cmd.warnings) this.post({ type: 'banner', kind: 'warn', text: w });
 
-    const settings = launchSettingsFor(carrier.agentId);
-    // CLAUDE-02：解释器只认绝对路径（zcode 探针 runner 的 'node' 是能力标识不是路径）；
-    // 拿不到绝对路径就明示失败，不静默回落 PATH
-    let nodePath: string | null = null;
-    if (carrier.launchMode === 'shellCommand') {
-      nodePath = await resolveAbsoluteNode(cli, this.services.cli.wrapperPath());
-      if (!nodePath) {
-        this.post({
-          type: 'ignite-result',
-          ok: false,
-          message: `无法确定 ${carrier.display}（脚本类入口）的解释器绝对路径（探针 runner 非路径、wrapper 也解析不出 node）：请用下方命令条手动执行。`,
-          cmdText: cmd.text,
-        });
-        return;
-      }
-    }
+    const settings = launchSettingsFor(carrier.agentId, glm ? resource : undefined);
     const session = await this.services.relay.ensureSession({
-      agentId: carrier.agentId,
-      display: carrier.display,
-      topic,
-      entry: form.entry,
-      entrypoint,
-      launchMode: carrier.launchMode,
+      agentId: carrier.agentId, display: carrier.display, topic, entry: form.entry, ...program, entryText: cmd.text,
       cwd: this.services.root,
-      nodePath,
       waitForZcodeTurn: settings.waitForZcodeTurn,
-      scriptEnv: carrier.launchMode === 'shellCommand' ? scriptProviderEnv(cli?.['provider_config']) : undefined,
     });
     if (this.disposed) return; // CODEX-05：停用后不再注入
     this.currentSessionKey = session.key;
-    const sent = await this.services.relay.injectText(session, cmd.text, settings, settings.readyDelayMs);
+    if (glm) this.post({type:'banner', kind:'info', text:'GLM 终端已打开，正在等待入口注入。'});
+    const sent = await this.services.relay.injectText(session, cmd.text, settings, settings.readyDelayMs, glm);
     if (!sent) {
       this.setMode('M3');
       this.post({ type: 'ignite-result', ok: false, message: '协同终端已关闭，请核对 CLI 后重新点火。', cmdText: cmd.text });
@@ -646,6 +677,7 @@ export class Cockpit implements vscode.Disposable {
     this.post({
       type: 'ignite-result',
       ok: true,
+      message: glm ? '已向 GLM 终端送入入口文字。' + launchDescription(session.launch) : undefined,
       terminalName: `Trivium · ${carrier.display} · ${topic}`,
       cmdText: cmd.text,
     });
@@ -661,9 +693,21 @@ export class Cockpit implements vscode.Disposable {
       this.post({ type: 'banner', kind: 'warn', text: '协同终端已关闭：请重新点火（新开会话），或复制命令条手动执行。' });
       return;
     }
-    const settings = launchSettingsFor(this.currentSessionKey.split('|')[0]!);
-    const sent = await this.services.relay.injectText(session, this.lastCommandText, settings, 300);
-    this.post({ type: 'banner', kind: sent ? 'info' : 'warn', text: sent ? '已重新注入协同终端。' : '重发时协同终端已关闭。' });
+    const glm = session.launch.agentId === 'glm';
+    if (glm && (session.injecting || this.ignitingGlm)) {
+      this.post({type:'banner', kind:'info', text:'GLM 正在注入，请等待本次发送完成。'});
+      return;
+    }
+    const settings = launchSettingsFor(session.launch.agentId, glm ? vscode.Uri.file(this.services.root) : undefined);
+    try {
+      const text = glm ? session.launch.entryText : this.lastCommandText;
+      if (!text) return;
+      const sent = await this.services.relay.injectText(session, text, settings, 300);
+      if (sent && glm) this.setMode('M1');
+      this.post({ type:'banner', kind:sent ? 'info' : 'warn', text:sent ? '已重新注入协同终端。' : '重发时协同终端已关闭。' });
+    } catch (error) {
+      this.post({type:'banner', kind:'warn', text:'重新注入失败：' + (error instanceof Error ? error.message : String(error))});
+    }
   }
 
   private async handleRelay(text: string): Promise<void> {
@@ -676,7 +720,11 @@ export class Cockpit implements vscode.Disposable {
       this.post({ type: 'relay-result', ok: false, note: '协同终端已关闭：请在终端直接输入。' });
       return;
     }
-    const settings = launchSettingsFor(this.currentSessionKey.split('|')[0]!);
+    if (session.launch.agentId === 'glm' && (session.injecting || !session.entrySent)) {
+      this.post({type:'relay-result', ok:false, note:'GLM 入口尚未送入，请等待点火或重新注入完成。'});
+      return;
+    }
+    const settings = launchSettingsFor(this.currentSessionKey.split('|')[0]!, this.currentSessionKey.startsWith('glm|') ? vscode.Uri.file(this.services.root) : undefined);
     try {
       if (settings.waitForZcodeTurn) this.post({ type: 'banner', kind: 'info', text: '续话待发送，ZCode 当前轮结束后自动提交。' });
       await this.services.relay.relay(session, text, settings);
@@ -1629,8 +1677,12 @@ export class Cockpit implements vscode.Disposable {
 
 // ── 配置读取与工具 ──────────────────────────────────────────────────────────
 
-function launchSettingsFor(agentId: string): { readyDelayMs: number; sendMode: 'execute' | 'split' | 'manual'; segmentBytes: number; waitForZcodeTurn: boolean } {
-  const cfg = vscode.workspace.getConfiguration('trivium.launch');
+function launchDescription(program: { source?: string; entrypoint: string; nodePath?: string | null }): string {
+  return `来源：${program.source}；入口：${program.entrypoint}` + (program.nodePath ? '；Node：' + program.nodePath : '（直接启动）');
+}
+
+function launchSettingsFor(agentId: string, resource?: vscode.Uri): { readyDelayMs: number; sendMode: 'execute' | 'split' | 'manual'; segmentBytes: number; waitForZcodeTurn: boolean } {
+  const cfg = vscode.workspace.getConfiguration('trivium.launch', resource);
   const overrides = cfg.get<Record<string, { readyDelayMs?: number; sendMode?: string; segmentBytes?: number }>>('carrierOverrides') ?? {};
   const ov = overrides[agentId] ?? {};
   const selected = ov.sendMode ?? cfg.get<string>('sendMode', 'auto');
@@ -1695,23 +1747,6 @@ function formEquals(a: FormState, b: FormState): boolean {
     JSON.stringify(a.critics) === JSON.stringify(b.critics) &&
     JSON.stringify(a.ctxPaths) === JSON.stringify(b.ctxPaths)
   );
-}
-
-/** CLAUDE-02：解释器绝对路径——探针 runner 仅当其为绝对路径时采用，否则解析 wrapper */
-async function resolveAbsoluteNode(
-  cli: Record<string, unknown> | undefined,
-  wrapperPath: string,
-): Promise<string | null> {
-  const runner = cli?.['version_probe'] as Record<string, unknown> | undefined;
-  const runnerVal = typeof runner?.['runner'] === 'string' ? runner['runner'] : null;
-  const { isAbsolute } = await import('node:path');
-  if (runnerVal && isAbsolute(runnerVal)) return runnerVal;
-  try {
-    const { promises: fs } = await import('node:fs');
-    return parseWrapperNodePath(await fs.readFile(wrapperPath, 'utf8'));
-  } catch {
-    return null;
-  }
 }
 
 /** 只读 git runner（worktreeSummary.GitRunner 的宿主实现：spawn git、shell:false、超时收杀） */

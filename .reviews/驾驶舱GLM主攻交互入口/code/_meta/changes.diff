@@ -1,0 +1,908 @@
+# trivium changes.diff
+# run_id: 20261120T065315Z
+# base: HEAD
+# head: 456c2f0fdd1f795d273e5f4461cc6846a2aedb67
+# files: 15
+#   doc/05_testing/README.md
+#   doc/05_testing/REPORT_2026-11-20_VSCode驱动GLM交互入口.md
+#   doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md
+#   extension/README.md
+#   extension/package.json
+#   extension/scripts/runGlmEntry.mjs
+#   extension/src/launch/carriers.ts
+#   extension/src/launch/glmInteractive.ts
+#   extension/src/launch/terminalRelay.ts
+#   extension/src/launch/zcodeTurns.ts
+#   extension/src/ui/cockpit.ts
+#   extension/src/ui/cockpitHtml.ts
+#   extension/test/integration/terminalRelay.test.ts
+#   extension/test/unit/glmInteractive.test.ts
+#   extension/test/unit/zcodeTurns.test.ts
+diff --git a/doc/05_testing/README.md b/doc/05_testing/README.md
+index 82a54463..eb7ec16a 100644
+--- a/doc/05_testing/README.md
++++ b/doc/05_testing/README.md
+@@ -181,6 +181,7 @@
+ - [密钥扫描源码调用误报修复](./REPORT_2026-11-06_密钥扫描源码调用误报.md)：普通变量初始化调用被长凭据规则截断误报；收窄到完整声明调用形态，保留字面值与专用凭据检测，记录红绿对照与安装核验。
+ - [VS Code 插件 Phase 4 本地验收](./REPORT_2026-11-19_VSCode插件Phase4验收.md)：安装包、双窗桩链、四家真实 M1 矩阵、日志虚拟滚动及独立 Mac mini 安装与人工审批回读。
+ - [VS Code 驾驶舱 E1 审查员 stdout 验收](./REPORT_2026-11-20_VSCode审查员实时输出验收.md)：四路径退出前可见、双工作区 M3、跨块脱敏及相同负载的性能对照。
++- [驾驶舱 GLM 主攻交互入口验收](./REPORT_2026-11-20_VSCode驱动GLM交互入口.md)：独立启动器、输入轮次、安装回归和后台探针对照。
+ 
+ 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
+ 
+diff --git a/doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md b/doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md
+index 846057d0..50888863 100644
+--- a/doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md
++++ b/doc/08_project/2026-11-05-VSCode插件需求分析与开发计划-v2.md
+@@ -60,7 +60,7 @@ R3 + R4 合起来是一种**对话式驾驶舱**形态：用户在插件里发
+ 
+ | # | 原方案内容 | 裁决 | 理由 |
+ | :--- | :--- | :--- | :--- |
+-| C1 | §5.4「派生交互式登录 Shell 提取真实完整环境」 | **修正** | 与仓库既有机制相悖：项目设计明确「GUI 进程不读 ~/.zshrc」，既有解法是 wrapper 内嵌绝对 node 路径 + 探针实测 CLI 入口（§2.1 末行）。插件应**复用 `.trivium/bin/trivium` wrapper 与 `probe:` 段的 entrypoint**，登录 Shell 提取是重新发明已被否决的路径，还会引入 Shell 初始化副作用 |
++| C1 | §5.4「派生交互式登录 Shell 提取真实完整环境」 | **修正** | 与仓库既有机制相悖：项目设计明确「GUI 进程不读 ~/.zshrc」，既有解法是 wrapper 内嵌绝对 node 路径 + 探针实测 CLI 入口（§2.1 末行）。插件应**复用 `.trivium/bin/trivium` wrapper；后台入口取探针，GLM 主攻按 §4.1 单独选择**，登录 Shell 提取是重新发明已被否决的路径，还会引入 Shell 初始化副作用 |
+ | C2 | §4.2「S0~S10 状态机流转图」驱动 UI | **修正** | S0~S10 是入口 skill 的叙事阶段，不是机读状态。机器可见的是 `status.json` 的 `phase` + `sides` + 闸门 `state`。UI 数据层绑定机读状态，S 编号只允许作展示标签，避免「UI 显示的阶段」与「真实运行阶段」两套事实源 |
+ | C3 | §5.2「逆向解析 Markdown 审查表格定位行号」 | **修正** | 结构化正本 `_meta/review-*.json`（review.v2）已存在，`location` 字段直接可用。主路径消费 JSON 正本；Markdown 仅作兜底展示。保留「fuzzy 匹配校验行号漂移」（location 可能是相对路径、行号漂移真实存在），但输入是 JSON 字段不是表格解析 |
+ | C4 | Phase 1「生成启动指令并在 VS Code 内嵌终端拉起任务」 | **修正** | 原方案只把命令丢给用户手敲。插件应自己完成前置链（`topic resolve`/`claim`/`preflight` 经 wrapper 原生调用），再**自动**创建终端、注入入口命令与提示语（§4.1 M1），并把 `state.json`/`status.json` watcher 接上结构化进度 |
+@@ -87,7 +87,7 @@ R3 + R4 合起来是一种**对话式驾驶舱**形态：用户在插件里发
+ 
+ | 环节 | 设计 |
+ | :--- | :--- |
+-| 终端宿主 | 插件按所选 Driver，用探针 `entrypoint` 的可执行文件拉起**交互会话**（不带审查用的 headless 旗标），创建命名终端（如 `Trivium · codex`），同一主题复用不重复开 |
++| 终端宿主 | 插件按所选 Driver，用探针入口拉起**交互会话**（不带审查用的 headless 旗标），创建命名终端（如 `Trivium · codex`），同主题同载体同入口复用终端。GLM 主攻依次选择驾驶舱显式路径、宿主 PATH 及常用安装位置的独立 zcode、兼容的探针入口；JS 脚本由绝对 Node 路径解释。GLM 审核仍用探针 |
+ | 指令注入 | 前置链（`topic resolve` → `topic claim --driver <id>` → `preflight`）经 wrapper 校验通过后，插件把「入口命令 + 旗标 + 提示语」作为首条消息注入终端。**入口命令的载体差异（Codex `$dual-run`、Claude/ZCode `/dual-run` 等）从 skills 渲染产物读取，不在插件里硬编码第二份**（对齐仓库「只留一份事实源」纪律） |
+ | 注入可靠性 | 等待 CLI 就绪信号（可配置延迟 + 首次输出探测）后 `sendText`；失败回退为驾驶舱内「可复制命令条」（一键复制），不阻塞流程 |
+ | 输入框续话 | 底部输入框的后续消息尽力中继到该终端（`sendText` + 回车）；对 TUI 兼容性差的载体自动降级为提示「请在终端直接输入」 |
+@@ -185,7 +185,7 @@ flowchart TD
+     Form --> Launcher
+     Launcher -->|resolve/claim/preflight| Wrapper
+     Launcher --> TermRelay
+-    TermRelay -->|探针 entrypoint 拉起| DriverTerm
++    TermRelay -->|按 Driver 交互入口拉起| DriverTerm
+     DriverTerm -.会话内自调 review --start/--wait.-> Wrapper
+     Watcher --> Files
+     Watcher --> Output
+@@ -273,7 +273,7 @@ P1→P2 与 P2→P3 之间可并行部分工作（watcher 与解析器解耦）
+ 
+ | 维度 | v1.0.0（Antigravity） | v2.1（本文档） |
+ | :--- | :--- | :--- |
+-| 环境解析 | 登录 Shell 提取（C1） | wrapper + 探针 entrypoint 复用 |
++| 环境解析 | 登录 Shell 提取（C1） | wrapper + 探针，GLM 主攻可独立选入口 |
+ | 进度数据源 | 未指明（Phase 1 拼命令进终端） | `state.json`/`status.json` 双层 watcher + `--json` 契约 |
+ | 状态模型 | S0~S10 叙事 | `status.json` phase/sides + 闸门 state 机读绑定 |
+ | 审查数据源 | 逆向解析 Markdown 表格 | review.v2 JSON 正本，Markdown 兜底 |
+diff --git a/extension/README.md b/extension/README.md
+index 988e324c..133158ed 100644
+--- a/extension/README.md
++++ b/extension/README.md
+@@ -2,7 +2,7 @@
+ 
+ ## 安装与首次使用
+ 
+-1. 在 VS Code 1.85 或更高版本打开「扩展」视图，在右上角「…」菜单选择「从 VSIX 安装…」（Install from VSIX…），使用 E1 时选中 `trivium-cockpit-0.3.0-e1.vsix`。按提示重新加载窗口。
++1. 在 VS Code 1.85 或更高版本打开「扩展」视图，在右上角「…」菜单选择「从 VSIX 安装…」（Install from VSIX…），本次 GLM 入口包为 `trivium-cockpit-0.3.0-glm-entry-e1.vsix`。单独复测历史 E1 时选中 `trivium-cockpit-0.3.0-e1.vsix`。按提示重新加载窗口。
+ 2. 每个仓库单独打开一个 VS Code 窗口。驾驶舱读取当前窗口第一个工作区文件夹。目标仓库需要先按 TriviumCode 部署手册完成安装、初始化和 CLI 探测。在左侧「Trivium → 环境健康」检查要使用的 Driver 和审查者。
+ 3. 在命令面板运行「打开 Trivium 驾驶舱」。本手册也可通过「打开 Trivium 驾驶舱使用手册」离线查看。
+ 
+@@ -41,7 +41,7 @@ TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面
+   入口 A/B/C/D、`--max-rounds`、模型档位高级折叠、context 路径选择。
+ - **前置链**：`topic resolve → preflight → 主题确认 → topic claim`（入口 A/B），
+   全部经 wrapper 调用；退出码 64/65/69/70 语义化展示。
+-- **M1 终端协同**：按探针 entrypoint 拉起交互会话（命名终端、按
++- **M1 终端协同**：GLM 使用下文的主攻交互入口，其余 Driver 按探针入口拉起交互会话（命名终端、按
+   `agent|topic|entry` 身份键复用），就绪延迟后注入入口命令；失败回退可复制命令条；
+   输入框续话尽力中继；终端关闭自动降级为 M3 纯监控。
+ - **运行监控**：`state.json` 白名单发现 run → 运行目录 `status.json` watcher
+@@ -87,7 +87,29 @@ TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面
+ 
+ 当前插件的运行与安装包验收环境为 macOS。Windows 真机未测。
+ 
+-若真实终端显示工作区信任提示，请先核对路径并由操作者确认，再查看入口是否已送达，必要时点「重新注入」。若 ZCode 的终端立即退出，请用探针登记的入口检查能否进入交互界面。本机桌面包内的 `zcode.cjs` 在补齐 provider 路径后仍报缺少 `@zcode/tui`，该环境下可使用 M3 监控。
++### 选择 GLM 主攻交互入口
++
++在受信任的工作区打开「设置 (JSON)」。已安装官方独立命令时，在登录终端执行 `command -v zcode`，将输出的绝对路径填入设置。例如：
++
++```json
++{ "trivium.launch.glmInteractivePath": "/Users/bob/.local/bin/zcode" }
++```
++
++如果使用解压的发行包，在终端执行 `command -v node`，把实际 Node 和脚本的绝对路径分别填入。例如：
++
++```json
++{
++  "trivium.launch.glmInteractivePath": "/Users/bob/Tools/ZCode CLI/bin/zcode.mjs",
++  "trivium.launch.glmNodePath": "/Users/bob/.local/share/mise/installs/node/24.14.0/bin/node"
++}
++```
++
++路径各占一个字段，可含空格。留空交互路径时依次在扩展宿主 PATH、`~/.local/bin`、`/opt/homebrew/bin`、`/usr/local/bin` 查找 zcode，最后尝试工作区的原探针。脚本解释器留空时先试探针登记的绝对 Node，再读工作区 wrapper。直接执行的官方 shell 启动器自行查找 node；GUI 终端提示找不到 node 时使用第二种配置。显式错误会在点火时指出设置名。
++
++选择 ZCode 主攻，完成前置链并点火。驾驶舱显示实际选择的入口及脚本解释器。默认发送模式下，独立入口首次发送会等待 ZCode 的启动完成日志，再按就绪延迟送入文字。若 120 秒内未读到事件，核对原生终端就绪后可点「重新注入」。在原生终端核对主题和 `/skill dual-run`，待运行卡出现后核对运行号。同主题、同入口的活会话会继续使用之前的程序，更改设置后先关闭旧终端再点火。后台健康行和审核者可用性来自核心探针。续话默认等待该会话的轮次结束，关终端后仍可在 M3 查看原运行。
++
++若提示桌面脚本缺少 `@zcode/tui`，安装独立命令行发行版或将上述设置指向已解压的独立包。若出现目录信任、登录、模型选择或工具权限提示，请在原生界面核对并操作，输入未送达时再用「重新注入」。在 macOS arm64 的 3.18.2 源码发行包上，首次登录报告系统凭据存储不可用时，检查独立包的 `agent/node_modules` 是否含与 JS 包同版本的 keyring 原生绑定。该版本的实测与本机补件见仓库中的 `doc/05_testing/REPORT_2026-11-19_VSCode插件Phase4验收.md`。
++
+ 
+ ## 开发
+ 
+diff --git a/extension/package.json b/extension/package.json
+index f963c51c..7f68bade 100644
+--- a/extension/package.json
++++ b/extension/package.json
+@@ -104,6 +104,18 @@
+     "configuration": {
+       "title": "Trivium 驾驶舱",
+       "properties": {
++        "trivium.launch.glmInteractivePath": {
++          "type": "string",
++          "scope": "machine-overridable",
++          "default": "",
++          "description": "GLM 主攻的独立 zcode 可执行文件或发行包 bin/zcode.mjs 的绝对路径。留空自动查找，再尝试原探针入口。"
++        },
++        "trivium.launch.glmNodePath": {
++          "type": "string",
++          "scope": "machine-overridable",
++          "default": "",
++          "description": "GLM 主攻脚本使用的 Node 可执行文件绝对路径。留空使用探针解释器或工作区 wrapper 的 Node。"
++        },
+         "trivium.launch.readyDelayMs": {
+           "type": "number",
+           "default": 3000,
+diff --git a/extension/src/launch/carriers.ts b/extension/src/launch/carriers.ts
+index bd3d63c6..9f92bb47 100644
+--- a/extension/src/launch/carriers.ts
++++ b/extension/src/launch/carriers.ts
+@@ -30,8 +30,8 @@ export interface CarrierDescriptor {
+    */
+   readonly invocation: string;
+   /**
+-   * 拉起模式（AGY-02）：direct = entrypoint 为可执行文件，可作 shellPath；
+-   * shellCommand = entrypoint 为脚本（.cjs），须在默认 shell 里用解释器启动。
++   * 探针的传统拉起模式（GLM 点火时按实际交互入口重新判定）：direct = entrypoint 为可执行文件，可作 shellPath；
++   * shellCommand = entrypoint 为脚本（.cjs），由 Node 直接解释。
+    */
+   readonly launchMode: 'direct' | 'shellCommand';
+   /** 本机原生 TUI 实测需要将回车和粘贴分开发送。 */
+diff --git a/extension/src/launch/terminalRelay.ts b/extension/src/launch/terminalRelay.ts
+index 1e2a2cf4..294b37d7 100644
+--- a/extension/src/launch/terminalRelay.ts
++++ b/extension/src/launch/terminalRelay.ts
+@@ -12,6 +12,7 @@
+ import * as vscode from 'vscode';
+ import { mkdirSync, mkdtempSync } from 'node:fs';
+ import { join } from 'node:path';
++import type { InteractiveProgram } from './glmInteractive';
+ import { ZcodeTurns } from './zcodeTurns';
+ import type { AgentId } from './carriers';
+ 
+@@ -28,6 +29,7 @@ export interface LaunchOptions {
+   cwd: string;
+   /** shellCommand 模式的解释器绝对路径（探针 runner 或 wrapper 内嵌 node） */
+   nodePath?: string | null;
++  source?: InteractiveProgram['source'];
+   scriptEnv?: Record<string, string>;
+   waitForZcodeTurn?: boolean;
+ }
+@@ -42,6 +44,7 @@ export interface LaunchSettings {
+ interface Session {
+   key: string;
+   terminal: vscode.Terminal;
++  launch: LaunchOptions;
+   /** 注入进行中（供 UI 提示，不做硬锁） */
+   injecting: boolean;
+   turns?: ZcodeTurns;
+@@ -93,22 +96,18 @@ export class TerminalRelay implements vscode.Disposable {
+       }
+     }
+     const name = `Trivium · ${opts.display} · ${opts.topic}`;
+-    let terminal: vscode.Terminal;
+     let turns: ZcodeTurns | undefined;
+-    if (opts.launchMode === 'direct') {
+-      terminal = vscode.window.createTerminal({ name, shellPath: opts.entrypoint, cwd: opts.cwd });
+-    } else {
+-      // 让终端生命周期绑定到解释器。TUI 退出后不会退回可继续接收续话的 shell。
+-      if (!opts.nodePath) throw new Error('脚本入口需要 Node 解释器路径');
+-      if (opts.waitForZcodeTurn && this.logRoot) {
+-        mkdirSync(this.logRoot, { recursive: true });
+-        turns = new ZcodeTurns(mkdtempSync(join(this.logRoot, 'zcode-')));
+-      }
+-      const env = turns ? { ...opts.scriptEnv, ZCODE_LOG_DIR: turns.dir } : opts.scriptEnv;
+-      terminal = vscode.window.createTerminal({ name, shellPath: opts.nodePath, shellArgs: [opts.entrypoint], cwd: opts.cwd, env });
++    if (opts.waitForZcodeTurn && this.logRoot) {
++      mkdirSync(this.logRoot, { recursive: true });
++      turns = new ZcodeTurns(mkdtempSync(join(this.logRoot, 'zcode-')));
+     }
++    const env = turns ? { ...opts.scriptEnv, ZCODE_LOG_DIR: turns.dir } : opts.scriptEnv;
++    if (opts.launchMode === 'shellCommand' && !opts.nodePath) throw new Error('脚本入口需要 Node 解释器路径');
++    const program = opts.launchMode === 'direct' ? { shellPath: opts.entrypoint }
++      : { shellPath: opts.nodePath!, shellArgs: [opts.entrypoint] };
++    const terminal = vscode.window.createTerminal({ name, cwd: opts.cwd, ...program, env });
+     terminal.show();
+-    const session: Session = { key, terminal, injecting: false, turns };
++    const session: Session = { key, terminal, launch: opts, injecting: false, turns };
+     this.sessions.set(key, session);
+     return session;
+   }
+@@ -122,9 +121,21 @@ export class TerminalRelay implements vscode.Disposable {
+     text: string,
+     settings: LaunchSettings,
+     readyDelayMs: number,
++    firstLaunch = false,
+   ): Promise<boolean> {
+     session.injecting = true;
+     try {
++      // 独立 ZCode 冷启动时先绘制仅接受退出键的启动页。等到原生启动完成，再留出输入框挂载时间。
++      if (firstLaunch && session.turns && session.launch.source !== '探针') {
++        const deadline = Date.now() + 120_000;
++        while (!session.turns.started) {
++          if (this.sessions.get(session.key) !== session || session.terminal.exitStatus !== undefined) return false;
++          await session.turns.refresh();
++          if (session.turns.started) break;
++          if (Date.now() >= deadline) throw new Error('等待 ZCode 启动完成超时，尚未送入入口。请在原生终端确认输入框已就绪，再点「重新注入」。');
++          await sleep(250);
++        }
++      }
+       await sleep(Math.max(0, readyDelayMs));
+       if (this.sessions.get(session.key) !== session || session.terminal.exitStatus !== undefined) {
+         return false;
+diff --git a/extension/src/launch/zcodeTurns.ts b/extension/src/launch/zcodeTurns.ts
+index 3088a218..ada4feac 100644
+--- a/extension/src/launch/zcodeTurns.ts
++++ b/extension/src/launch/zcodeTurns.ts
+@@ -6,6 +6,8 @@ import { join } from 'node:path';
+ 
+ export class ZcodeTurns {
+   private readonly offsets = new Map<string, number>();
++  private startupComplete = false;
++  get started(): boolean { return this.startupComplete; }
+   private sessionId?: string;
+   private activeTurn?: string;
+   private lastFinished?: string;
+@@ -36,6 +38,11 @@ export class ZcodeTurns {
+   }
+ 
+   private observe(line: string): void {
++    if (line.includes('"bootstrap.app.startup.completed"')) {
++      const event = JSON.parse(line);
++      if (event.module === 'bootstrap' && event.event === 'bootstrap.app.startup.completed') this.startupComplete = true;
++      return;
++    }
+     if (!/"event":"turn\.(started|completed|failed)"/.test(line)) return;
+     const e = JSON.parse(line);
+     if (e.module !== 'core.runtime' || typeof e.sessionId !== 'string' || typeof e.turnId !== 'string') return;
+diff --git a/extension/src/ui/cockpit.ts b/extension/src/ui/cockpit.ts
+index 9751195b..ba969252 100644
+--- a/extension/src/ui/cockpit.ts
++++ b/extension/src/ui/cockpit.ts
+@@ -17,7 +17,9 @@ import type { TriviumServices } from '../services';
+ import { cockpitHtml } from './cockpitHtml';
+ import { assembleEntryCommand, findSkillDoc, type EntryKind } from '../launch/entryCommand';
+ import { claimAfterConfirm, runResolveAndPreflight, type PrechainReport, type PrechainFlags } from '../launch/prechain';
+-import { scriptProviderEnv, carrierOf, parseWrapperNodePath } from '../launch/carriers';
++import { carrierOf } from '../launch/carriers';
++import { resolveGlmInteractive, type InteractiveProgram } from '../launch/glmInteractive';
++import { terminalKey } from '../launch/terminalRelay';
+ import { StdoutTail } from '../monitor/stdoutTail';
+ import { RunWatch } from '../monitor/statusWatch';
+ import { ReviewWatch, type ReviewFile } from '../monitor/reviewWatch';
+@@ -111,6 +113,7 @@ export class Cockpit implements vscode.Disposable {
+   private readonly pendingRuns = new Map<string, { topic: string; stage: string; timer: ReturnType<typeof setInterval> }>();
+   private currentSessionKey: string | null = null;
+   private lastCommandText: string | null = null;
++  private ignitingGlm = false;
+   private mode: 'M1' | 'M3' = 'M3';
+   /** 数据版本不兼容 → 只读降级（CODEX-07/AGY-04）：禁点火 */
+   private degradedReason: string | null = null;
+@@ -578,25 +581,68 @@ export class Cockpit implements vscode.Disposable {
+       });
+       return;
+     }
+-    const claim = await claimAfterConfirm(this.services.cmds, form.entry as EntryKind, topic, form.driver);
+-    if (this.disposed) return; // CODEX-05：await 后复查生命周期（停用后不再建终端/注入）
+-    if (claim.step === 'claim' && claim.state === 'failed') {
+-      this.post({ type: 'ignite-result', ok: false, message: `认领失败（退出码 ${claim.code}）：${claim.message}`, cmdText: this.lastCommandText ?? '' });
++    if (form.driver === 'glm') {
++      if (this.ignitingGlm) return;
++      this.ignitingGlm = true;
++      try {
++        await this.startTerminal(form, topic);
++      } catch (error) {
++        this.setMode('M3');
++        this.post({ type: 'ignite-result', ok: false, cmdText: this.lastCommandText ?? '',
++          message: error instanceof Error ? error.message : String(error) });
++      } finally { this.ignitingGlm = false; }
+       return;
+     }
++    await this.startTerminal(form, topic);
++  }
++
++  private async startTerminal(form: FormState, topic: string): Promise<void> {
+     const carrier = carrierOf(form.driver);
+     if (!carrier) {
+       this.post({ type: 'ignite-result', ok: false, message: `未知 Driver：${form.driver}`, cmdText: '' });
+       return;
+     }
+-    const probe = await this.services.env.loadProbe();
+-    if (this.disposed) return; // CODEX-05
+-    const cli = probe?.cli[carrier.cliKey];
+-    const entrypoint = (cli?.['entrypoint'] as string | undefined) ?? null;
+-    if (!entrypoint) {
+-      this.post({ type: 'ignite-result', ok: false, message: `探针无 ${carrier.display} 入口（先跑 doctor 探测）`, cmdText: this.lastCommandText ?? '' });
+-      return;
++    const claimTopic = async () => {
++      const claim = await claimAfterConfirm(this.services.cmds, form.entry as EntryKind, topic, form.driver);
++      if (this.disposed) return false; // CODEX-05：await 后复查生命周期（停用后不再建终端/注入）
++      if (claim.step === 'claim' && claim.state === 'failed') {
++        this.post({ type: 'ignite-result', ok: false, message: `认领失败（退出码 ${claim.code}）：${claim.message}`, cmdText: this.lastCommandText ?? '' });
++        return false;
++      }
++      return true;
++    };
++    const glm = carrier.agentId === 'glm';
++    const resource = vscode.Uri.file(this.services.root);
++    if (!glm && !await claimTopic()) return;
++    let program: InteractiveProgram;
++    if (glm) {
++      if (!vscode.workspace.isTrusted) throw new Error('请先确认当前工作区可信，再启动 GLM 交互终端。');
++      const existing = this.services.relay.find(terminalKey(form.driver, topic, form.entry));
++      if (existing && existing.terminal.exitStatus === undefined) {
++        existing.terminal.show();
++        this.currentSessionKey = existing.key;
++        this.setMode('M1');
++        this.post({ type: 'ignite-result', ok: true, cmdText: this.lastCommandText ?? '',
++          message: '已返回原 GLM 会话。更换程序请先关闭此终端。' + launchDescription(existing.launch) });
++        return;
++      }
++      const cfg = vscode.workspace.getConfiguration('trivium.launch', resource);
++      const probe = await this.services.env.loadProbe();
++      program = await resolveGlmInteractive({ trusted: vscode.workspace.isTrusted,
++        configuredPath: cfg.get<string>('glmInteractivePath'), configuredNode: cfg.get<string>('glmNodePath'),
++        cli: probe?.cli.zcode, wrapper: this.services.cli.wrapperPath() });
++      if (this.disposed) return;
++    } else {
++      const probe = await this.services.env.loadProbe();
++      if (this.disposed) return;
++      const entrypoint = probe?.cli[carrier.cliKey]?.['entrypoint'];
++      if (typeof entrypoint !== 'string' || !entrypoint) {
++        this.post({ type: 'ignite-result', ok: false, message: `探针无 ${carrier.display} 入口（先跑 doctor 探测）`, cmdText: this.lastCommandText ?? '' });
++        return;
++      }
++      program = { source: '探针', launchMode: carrier.launchMode, entrypoint };
+     }
++    if (glm && !await claimTopic()) return;
+     const cmd = assembleEntryCommand({
+       agentId: carrier.agentId,
+       entry: form.entry as EntryKind,
+@@ -606,37 +652,15 @@ export class Cockpit implements vscode.Disposable {
+     this.lastCommandText = cmd.text;
+     for (const w of cmd.warnings) this.post({ type: 'banner', kind: 'warn', text: w });
+ 
+-    const settings = launchSettingsFor(carrier.agentId);
+-    // CLAUDE-02：解释器只认绝对路径（zcode 探针 runner 的 'node' 是能力标识不是路径）；
+-    // 拿不到绝对路径就明示失败，不静默回落 PATH
+-    let nodePath: string | null = null;
+-    if (carrier.launchMode === 'shellCommand') {
+-      nodePath = await resolveAbsoluteNode(cli, this.services.cli.wrapperPath());
+-      if (!nodePath) {
+-        this.post({
+-          type: 'ignite-result',
+-          ok: false,
+-          message: `无法确定 ${carrier.display}（脚本类入口）的解释器绝对路径（探针 runner 非路径、wrapper 也解析不出 node）：请用下方命令条手动执行。`,
+-          cmdText: cmd.text,
+-        });
+-        return;
+-      }
+-    }
++    const settings = launchSettingsFor(carrier.agentId, glm ? resource : undefined);
+     const session = await this.services.relay.ensureSession({
+-      agentId: carrier.agentId,
+-      display: carrier.display,
+-      topic,
+-      entry: form.entry,
+-      entrypoint,
+-      launchMode: carrier.launchMode,
++      agentId: carrier.agentId, display: carrier.display, topic, entry: form.entry, ...program,
+       cwd: this.services.root,
+-      nodePath,
+       waitForZcodeTurn: settings.waitForZcodeTurn,
+-      scriptEnv: carrier.launchMode === 'shellCommand' ? scriptProviderEnv(cli?.['provider_config']) : undefined,
+     });
+     if (this.disposed) return; // CODEX-05：停用后不再注入
+     this.currentSessionKey = session.key;
+-    const sent = await this.services.relay.injectText(session, cmd.text, settings, settings.readyDelayMs);
++    const sent = await this.services.relay.injectText(session, cmd.text, settings, settings.readyDelayMs, glm);
+     if (!sent) {
+       this.setMode('M3');
+       this.post({ type: 'ignite-result', ok: false, message: '协同终端已关闭，请核对 CLI 后重新点火。', cmdText: cmd.text });
+@@ -646,6 +670,7 @@ export class Cockpit implements vscode.Disposable {
+     this.post({
+       type: 'ignite-result',
+       ok: true,
++      message: glm ? '已向 GLM 终端送入入口文字。' + launchDescription(session.launch) : undefined,
+       terminalName: `Trivium · ${carrier.display} · ${topic}`,
+       cmdText: cmd.text,
+     });
+@@ -661,7 +686,7 @@ export class Cockpit implements vscode.Disposable {
+       this.post({ type: 'banner', kind: 'warn', text: '协同终端已关闭：请重新点火（新开会话），或复制命令条手动执行。' });
+       return;
+     }
+-    const settings = launchSettingsFor(this.currentSessionKey.split('|')[0]!);
++    const settings = launchSettingsFor(this.currentSessionKey.split('|')[0]!, this.currentSessionKey.startsWith('glm|') ? vscode.Uri.file(this.services.root) : undefined);
+     const sent = await this.services.relay.injectText(session, this.lastCommandText, settings, 300);
+     this.post({ type: 'banner', kind: sent ? 'info' : 'warn', text: sent ? '已重新注入协同终端。' : '重发时协同终端已关闭。' });
+   }
+@@ -676,7 +701,7 @@ export class Cockpit implements vscode.Disposable {
+       this.post({ type: 'relay-result', ok: false, note: '协同终端已关闭：请在终端直接输入。' });
+       return;
+     }
+-    const settings = launchSettingsFor(this.currentSessionKey.split('|')[0]!);
++    const settings = launchSettingsFor(this.currentSessionKey.split('|')[0]!, this.currentSessionKey.startsWith('glm|') ? vscode.Uri.file(this.services.root) : undefined);
+     try {
+       if (settings.waitForZcodeTurn) this.post({ type: 'banner', kind: 'info', text: '续话待发送，ZCode 当前轮结束后自动提交。' });
+       await this.services.relay.relay(session, text, settings);
+@@ -1629,8 +1654,12 @@ export class Cockpit implements vscode.Disposable {
+ 
+ // ── 配置读取与工具 ──────────────────────────────────────────────────────────
+ 
+-function launchSettingsFor(agentId: string): { readyDelayMs: number; sendMode: 'execute' | 'split' | 'manual'; segmentBytes: number; waitForZcodeTurn: boolean } {
+-  const cfg = vscode.workspace.getConfiguration('trivium.launch');
++function launchDescription(program: { source?: string; entrypoint: string; nodePath?: string | null }): string {
++  return `来源：${program.source}；入口：${program.entrypoint}` + (program.nodePath ? '；Node：' + program.nodePath : '（直接启动）');
++}
++
++function launchSettingsFor(agentId: string, resource?: vscode.Uri): { readyDelayMs: number; sendMode: 'execute' | 'split' | 'manual'; segmentBytes: number; waitForZcodeTurn: boolean } {
++  const cfg = vscode.workspace.getConfiguration('trivium.launch', resource);
+   const overrides = cfg.get<Record<string, { readyDelayMs?: number; sendMode?: string; segmentBytes?: number }>>('carrierOverrides') ?? {};
+   const ov = overrides[agentId] ?? {};
+   const selected = ov.sendMode ?? cfg.get<string>('sendMode', 'auto');
+@@ -1697,23 +1726,6 @@ function formEquals(a: FormState, b: FormState): boolean {
+   );
+ }
+ 
+-/** CLAUDE-02：解释器绝对路径——探针 runner 仅当其为绝对路径时采用，否则解析 wrapper */
+-async function resolveAbsoluteNode(
+-  cli: Record<string, unknown> | undefined,
+-  wrapperPath: string,
+-): Promise<string | null> {
+-  const runner = cli?.['version_probe'] as Record<string, unknown> | undefined;
+-  const runnerVal = typeof runner?.['runner'] === 'string' ? runner['runner'] : null;
+-  const { isAbsolute } = await import('node:path');
+-  if (runnerVal && isAbsolute(runnerVal)) return runnerVal;
+-  try {
+-    const { promises: fs } = await import('node:fs');
+-    return parseWrapperNodePath(await fs.readFile(wrapperPath, 'utf8'));
+-  } catch {
+-    return null;
+-  }
+-}
+-
+ /** 只读 git runner（worktreeSummary.GitRunner 的宿主实现：spawn git、shell:false、超时收杀） */
+ function gitRunnerOf(cwd: string): GitRunner {
+   return (args, timeoutMs) =>
+diff --git a/extension/src/ui/cockpitHtml.ts b/extension/src/ui/cockpitHtml.ts
+index 59190274..93816764 100644
+--- a/extension/src/ui/cockpitHtml.ts
++++ b/extension/src/ui/cockpitHtml.ts
+@@ -179,12 +179,13 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
+   // ── 渲染 ──
+   function renderHealth(list) {
+     state.health = list;
+-    $('healthLine').textContent = list.map(h => h.display + (h.availability === 'available' ? '✓' : '✗')).join('  ');
++    $('healthLine').textContent = '后台审核探针：' + list.map(h => h.display + (h.availability === 'available' ? '✓' : '✗')).join('  ');
+     const ds = $('driver'); ds.innerHTML = '';
+     for (const h of list) {
+       const o = document.createElement('option');
+-      o.value = h.agentId; o.textContent = h.display + (h.availability === 'available' ? '' : '（不可用）');
+-      o.disabled = h.availability !== 'available';
++      o.value = h.agentId;
++      o.disabled = h.agentId !== 'glm' && h.availability !== 'available';
++      o.textContent = h.display + (o.disabled ? '（不可用）' : '');
+       ds.appendChild(o);
+     }
+     renderCritics();
+@@ -906,7 +907,7 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
+         if (m.degraded) { $('btnPrechain').disabled = true; $('btnIgnite').disabled = true; }
+         break;
+       case 'ignite-result':
+-        if (m.ok) { banner('info', '已注入协同终端「' + m.terminalName + '」。提示语语义：任务目标/焦点作为首条消息进入会话。'); }
++        if (m.ok) { banner('info', m.message || '已注入协同终端「' + m.terminalName + '」。提示语语义：任务目标/焦点作为首条消息进入会话。'); }
+         else { banner('warn', '点火未完成：' + m.message); }
+         showCmd(m.cmdText || '');
+         setMode(m.ok ? 'M1' : 'M3');
+diff --git a/extension/test/integration/terminalRelay.test.ts b/extension/test/integration/terminalRelay.test.ts
+index 7f94c215..f5256d87 100644
+--- a/extension/test/integration/terminalRelay.test.ts
++++ b/extension/test/integration/terminalRelay.test.ts
+@@ -4,7 +4,7 @@
+  */
+ import * as assert from 'node:assert/strict';
+ import { promises as fs } from 'node:fs';
+-import { TerminalRelay, terminalKey } from '../../src/launch/terminalRelay';
++import { TerminalRelay, terminalKey, type LaunchOptions } from '../../src/launch/terminalRelay';
+ import { waitFor, fxPaths } from './testHelper';
+ 
+ async function outFileText(p: string): Promise<string> {
+@@ -65,6 +65,40 @@ suite('终端协同（FR-5）', function () {
+     }
+   });
+ 
++  test('GLM 两种入口在含空格路径收到相同日志环境、工作目录和独立参数', async () => {
++    const { root } = await fxPaths();
++    const dir = await fs.mkdtemp(pathJoin(root, 'glm tui '));
++    const node = await realNodePath();
++    assert.ok(node);
++    const script = pathJoin(dir, 'test tui.cjs');
++    const direct = pathJoin(dir, 'zcode');
++    await fs.writeFile(script, 'require("node:fs").writeFileSync(process.env.ZCODE_LOG_DIR + "/seen.json", JSON.stringify({argv:process.argv.slice(1),cwd:process.cwd(),node:process.execPath})); setInterval(()=>{}, 5000)');
++    const quote = (s: string) => "'" + s.replaceAll("'", "'\\''") + "'";
++    await fs.writeFile(direct, '#!/bin/sh\nexec ' + quote(node) + ' ' + quote(script) + ' "$@"', {mode:0o755});
++    const relay = new TerminalRelay(dir);
++    const logs = new Set<string>();
++    try {
++      for (const mode of ['direct','shellCommand'] as const) {
++        const opts: LaunchOptions = {agentId:'glm', display:'ZCode', topic:mode, entry:'A', cwd:root,
++          launchMode:mode, entrypoint:mode === 'direct' ? direct : script, nodePath:node, waitForZcodeTurn:true};
++        const s = await relay.ensureSession(opts);
++        try {
++          const log = s.turns!.dir;
++          logs.add(log);
++          const out = pathJoin(log, 'seen.json');
++          await waitFor(async () => (await outFileText(out)).length > 0, 20_000);
++          const seen = JSON.parse(await fs.readFile(out,'utf8'));
++          assert.deepEqual(seen.argv, [script]);
++          assert.equal(await fs.realpath(seen.node), await fs.realpath(node));
++          assert.equal(await fs.realpath(seen.cwd), await fs.realpath(root));
++          const reused = await relay.ensureSession({...opts, entrypoint:'改动后的配置'});
++          assert.equal(reused.launch.entrypoint, opts.entrypoint);
++        } finally { s.terminal.dispose(); }
++      }
++      assert.equal(logs.size, 2);
++    } finally { relay.dispose(); }
++  });
++
+   test('身份键：同键复用、异键不串', async () => {
+     const p = await fxPaths();
+     const relay = new TerminalRelay();
+diff --git a/extension/test/unit/zcodeTurns.test.ts b/extension/test/unit/zcodeTurns.test.ts
+index a4c20f76..d6e41c01 100644
+--- a/extension/test/unit/zcodeTurns.test.ts
++++ b/extension/test/unit/zcodeTurns.test.ts
+@@ -12,8 +12,11 @@ test('ZCode 续话须等同一主会话轮末，跨日及半行写入只消费
+     const file = (day: number) => join(dir, 'zcode-2026-11-' + day + '.jsonl');
+     const event = (turnId: string, kind: string, sessionId = 'main') =>
+       JSON.stringify({ module: 'core.runtime', sessionId, turnId, event: 'turn.' + kind }) + '\n';
++    assert.equal(turns.started, false);
++    await appendFile(file(19), JSON.stringify({module:'bootstrap', event:'bootstrap.app.startup.completed'}) + '\n');
+     await appendFile(file(19), event('1', 'started') + event('sub', 'started', 'child') + event('sub', 'completed', 'child'));
+     await turns.refresh();
++    assert.ok(turns.started);
+     assert.ok(turns.busy);
+     assert.equal(turns.ready, false);
+     const end = event('1', 'completed');
+diff --git a/doc/05_testing/REPORT_2026-11-20_VSCode驱动GLM交互入口.md b/doc/05_testing/REPORT_2026-11-20_VSCode驱动GLM交互入口.md
+new file mode 100644
+index 00000000..a76e3e23
+--- /dev/null
++++ b/doc/05_testing/REPORT_2026-11-20_VSCode驱动GLM交互入口.md
+@@ -0,0 +1,21 @@
++# 驾驶舱 GLM 主攻交互入口验收
++
++环境为 macOS arm64、VS Code 1.147.0、核心 1.3.7、驾驶舱 0.3.0。基线 456c2f0f。正式审查使用仓库 wrapper 安装副本（构建来源 b0ade00 dirty），隔离后台对照使用工作树构建的核心。
++
++## 启动路径与包指纹
++
++从 Phase 4 留存的官方源码发行物 3.18.2，在临时前缀运行该发行物的 install.sh。原压缩包 SHA-256 为 `97e3766ac38aed7ce9a9fc0224af8e170053cd940d932327b6e24860b23c362b`。验收解压目录补入 Phase 4 实测的 2.1.2 arm64 keyring，二进制摘要为 `1bc4c418c70021050fc052a1f5f60e0da1526ff0b952840f25e691624a4c483e`。全新原包的首次登录未测。
++
++| 真实直启链 | SHA-256 |
++|---|---|
++| 官方安装器生成的 /tmp/trivium-glm-accept.fIgUlo/bin/zcode | 6750581f37e2332c7df712262f98cb1ba9444f811965e28ce14acebc2e083af0 |
++| 同一安装前缀 distribution/current/bin/zcode.mjs（3.18.2） | 191db90c74ea13c71e225774fde85db3c662f36a0a79d5a6bf3011590d35b904 |
++| distribution/current/agent/zcode.cjs（Phase 4 同版 0.17.1） | 052b1bc504b7e47da297cdb0d13f1899baa804b675247d757f26b0560a97b540 |
++| 运行进程映射的 /opt/homebrew/Cellar/node/25.2.1/bin/node | 87989003817c5347d6bad48e46897e1b6509328bb7e8295d83cb6b40af836b9c |
++
++## 真实 GLM 与夹具
++
++- 初包 `66a1f2a18a3e4af910c5183c31fc5b705eddf4d3abead19d8fb6397cf04c97e5` 安装在新 profile 后正常启动 TUI，冷启动页忽略了默认延迟后的首条输入，原生日志无 turn.started，无 run_id。保留失败样本。
++- 等待原生日志中 bootstrap.app.startup.completed 后再注入的包 `63e9587643372c25e97696daab6b4470e299366b74d0a4de097d983cb6bb9978` 已在另一全新 profile 实际点火。主题「入口实测dqqnqy」，ZCode 会话 `sess_e69e82cc-a2d7-4d72-b139-35ea1d04a842`。日志先后出现启动完成、首轮开始。运行号、两次回答、M3 与最终交付包须按终态回填。
++- 独立临时仓「后台入口对照」工作区设置指向上表直启命令。Codex 主攻的真实核心计划审 `20261120T064750Z` 仅选 GLM。归档回读 `launcher_effective=/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`，CLI 0.17.3，实际模型 `bigmodel-coding-plan/GLM-5.3`，已读项目文件计数 3，evidence_ok 为 true，运行成功。原探针的只读规则仍由核心构造。此运行与主攻验收中的桩审核者独立。
++- 扩展首次 check 通过 186 项单测与 84 项 Extension Host 集成测试。夹具覆盖新路径选择、旧探针与 provider 环境、直接及脚本入口的真实子进程 argv/cwd/日志目录。Windows 真机未测。
+diff --git a/extension/scripts/runGlmEntry.mjs b/extension/scripts/runGlmEntry.mjs
+new file mode 100644
+index 00000000..181a8568
+--- /dev/null
++++ b/extension/scripts/runGlmEntry.mjs
+@@ -0,0 +1,140 @@
++// 安装态入口 A。真实 GLM 主攻，临时仓内的计划审核使用桩。原生确认由操作者完成。
++import assert from 'node:assert/strict';
++import { createHash } from 'node:crypto';
++import * as fs from 'node:fs/promises';
++import { homedir, tmpdir } from 'node:os';
++import path from 'node:path';
++import YAML from 'yaml';
++import { makeWorkspace, extensionRoot } from '../test/e2e/workspace.mjs';
++import { command, installVsix, openWorkspace, until } from '../test/e2e/workbench.mjs';
++
++const [program, node] = process.argv.slice(2);
++const code = process.env.VSCODE_EXECUTABLE_PATH;
++const vsix = process.env.TRIVIUM_TEST_VSIX;
++assert.ok(code && vsix && path.isAbsolute(program), '需要 VS Code、最终 VSIX 和绝对交互入口');
++const base = await fs.mkdtemp(path.join(tmpdir(), 'trivium-glm-entry-'));
++const children = [];
++const topic = '入口实测' + path.basename(base).slice(-6);
++const marker = path.basename(base).slice(-6).toUpperCase();
++const initial = '本次为隔离工作区的入口 A 点火验收。使用已认领的现有计划和本工作区的 .trivium/bin/trivium 发起入口 A 的计划审查，审核者是桩。得到本次运行号后请回复 ' + marker + 'A 后紧接 31 乘 17 的结果。本次采样到这里等待续话，勿审批。';
++const questions = [
++  { mode:'busy', text:'请只回复 ' + marker + 'B 后紧接 47 乘 13 的结果。', answer:marker + 'B611' },
++  { mode:'idle', text:'请只回复 ' + marker + 'C 后紧接 29 乘 19 的结果。', answer:marker + 'C551' },
++];
++const digest = async file => createHash('sha256').update(await fs.readFile(file)).digest('hex');
++const summary = {base, topic, program, node, vsix, vsixSha256:await digest(vsix), programSha256:await digest(program), sends:[]};
++const save = async () => fs.writeFile(path.join(base,'result.json'), JSON.stringify(summary,null,2));
++const rows = file => fs.readFile(file, 'utf8').then(t => t.split('\n').flatMap(l => {
++  try { return [JSON.parse(l)]; } catch { return []; }
++}), () => []);
++async function logFile(root) {
++  const items = await fs.readdir(root, {recursive:true});
++  const files = items.filter(f => /[/\\]zcode-[^/\\]+[/\\]zcode-\d{4}-\d\d-\d\d\.jsonl$/.test(f));
++  assert.ok(files.length <= 1, '此新窗口应只有一个 GLM 协同终端');
++  return files[0] && path.join(root,files[0]);
++}
++try {
++  await installVsix({code,base,vsix});
++  const local = YAML.parse(await fs.readFile(path.resolve(extensionRoot,'../.trivium/config.local.yaml'),'utf8'));
++  const {entrypoint, version, version_probe, probed_at} = local.probe.cli.zcode;
++  const fx = await makeWorkspace(base,'repo',topic,{id:'glm',probe:{entrypoint,version,version_probe,probed_at}});
++  const settings = { 'trivium.launch.glmInteractivePath':program };
++  if (node) settings['trivium.launch.glmNodePath'] = node;
++  await fs.mkdir(path.join(fx.root,'.vscode'),{recursive:true});
++  await fs.writeFile(path.join(fx.root,'.vscode/settings.json'), JSON.stringify(settings));
++  const config = path.join(fx.root,'.trivium/config.yaml');
++  const cfg = YAML.parse(await fs.readFile(config,'utf8'));
++  cfg.verify = {build:['node --version'],test:['git status --short']};
++  await fs.writeFile(config,YAML.stringify(cfg));
++  const shared = path.join(fx.root,'.trivium/config.local.yaml');
++  const before = await digest(shared);
++  const w = await openWorkspace(fx,{base,code,vsix,children,terminalAccess:true});
++  Object.assign(summary,{workspace:fx.root, profile:w.profile, extensions:path.join(base,'extensions'), probeEntrypoint:entrypoint});
++  await save();
++  const f = w.frame;
++  await f.locator('#driver').selectOption('glm');
++  await f.locator('#entry').selectOption('A');
++  const others = f.locator('#critics .chip.on').filter({hasNotText:'Antigravity'});
++  while (await others.count()) await others.first().click();
++  await f.locator('#topic').fill(topic);
++  await f.locator('#body').fill(initial);
++  await f.locator('#btnPrechain').click();
++  await until('前置链',async () => {
++    const errors = await f.locator('#steps .fail').allTextContents();
++    assert.equal(errors.length,0,errors.join(' '));
++    return f.locator('#btnIgnite').isEnabled();
++  });
++  await f.locator('#btnIgnite').click();
++  console.log('真实 GLM 窗口：',fx.root,'；若原生客户端请求信任、选模或权限，须由 Bob 在此窗口确认。',base);
++  const logs = path.join(w.profile,'logs');
++  const file = await until('独占 ZCode 日志',() => logFile(logs),300);
++  const started = await until('主会话开始',async () => (await rows(file)).find(r => r.module === 'core.runtime' && r.event === 'turn.started'),1200);
++  summary.sessionId = started.sessionId;
++  summary.logFile = file;
++  const modelFile = path.join(homedir(),'.zcode/cli/rollout','model-io-' + started.sessionId + '.jsonl');
++  const readModel = async () => (await rows(modelFile)).filter(r => r.sessionId === started.sessionId && r.querySource === 'main_turn');
++  const terminalText = async () => (await w.page.locator('.xterm-accessibility-tree').allTextContents()).join('\n');
++  summary.banner = await f.locator('#banner').innerText();
++  for (const q of questions) {
++    if (q.mode === 'idle') await until('原生空闲输入提示',async () => {
++      const s = await terminalText();
++      return /Type a prompt|输入提示词/i.test(s) && !/esc to interrupt/i.test(s);
++    },120);
++    await f.locator('#relayInput').fill(q.text);
++    const clicked = Date.now();
++    await f.locator('#btnRelay').click();
++    summary.sends.push({mode:q.mode,clicked,exactInput:q.text});
++    await save();
++    const reply = await until('真实 GLM ' + q.mode + ' 回答', async () =>
++      (await readModel()).find(r => r.response?.text?.includes(q.answer)),1800);
++    const inputs = reply.request.messages.filter(m => m.role === 'user' && m.content === q.text);
++    assert.equal(inputs.length,1);
++    Object.assign(summary.sends.at(-1),{turnId:reply.turnId, answer:q.answer, startedAt:reply.startedAt, completedAt:reply.completedAt});
++    await until('主轮次结束', async () => (await rows(file)).some(r => r.sessionId === started.sessionId &&
++      r.turnId === reply.turnId && r.event === 'turn.completed'),60);
++    await save();
++  }
++  const model = await readModel();
++  const opening = model.find(r => r.response?.text?.includes(marker + 'A527'));
++  assert.ok(opening);
++  const entryTurn = model.filter(r => r.turnId === opening.turnId);
++  assert.ok(entryTurn.some(r => r.request.messages.some(m => m.role === 'user' && JSON.stringify(m.content).includes(topic))));
++  assert.ok((await terminalText()).includes('/skill dual-run') || entryTurn.some(r =>
++    r.request.messages.some(m => m.role === 'user' && JSON.stringify(m.content).includes('/skill dual-run'))));
++  assert.ok(summary.sends[0].clicked < Date.parse(opening.completedAt));
++  assert.ok(summary.sends[1].clicked >= Date.parse(summary.sends[0].completedAt));
++  assert.equal(new Set([opening.turnId,...summary.sends.map(s=>s.turnId)]).size,3);
++  for (const q of questions) {
++    const turns = model.filter(r => {
++      const users = r.request.messages.filter(m=>m.role === 'user');
++      return users.at(-1)?.content === q.text;
++    });
++    assert.equal(new Set(turns.map(r=>r.turnId)).size,1);
++  }
++  const state = JSON.parse(await fs.readFile(path.join(fx.root,'.trivium/state.json'),'utf8'));
++  const gate = state.gates[topic + '/plan'];
++  assert.equal(gate.session_id,started.sessionId);
++  const run = JSON.parse(await fs.readFile(path.join(fx.root,'.reviews',topic,'plan/_meta','run-'+gate.run_id+'.json'),'utf8'));
++  assert.equal(run.driver,'glm');
++  assert.equal(run.topic,topic);
++  assert.equal(run.entry,'A');
++  assert.deepEqual(Object.keys(run.critics),['gemini']);
++  assert.equal(run.critics.gemini.cli_version,'stub/0.0.0');
++  const card = f.locator('#runs .card').filter({hasText:topic}).filter({hasText:gate.run_id});
++  await card.first().waitFor();
++  Object.assign(summary,{runId:gate.run_id,entry:run.entry,entryTurn:opening.turnId,model:opening.model.modelId,
++    entryAnswer:marker+'A527', critic:run.critics.gemini.cli_version, sharedProbeUnchanged:before === await digest(shared)});
++  assert.ok(summary.sharedProbeUnchanged);
++  await command(w.page,'Terminal: Kill the Active Terminal Instance');
++  await f.locator('#modeBadge.m3').waitFor();
++  assert.ok(await card.count());
++  summary.m3 = true;
++  console.log('安装态入口 A、续话与 M3 通过', summary.runId);
++} catch (e) {
++  summary.error = e.message;
++  process.exitCode = 1;
++  console.error(summary.error);
++} finally {
++  await save();
++  for (const child of children) child.kill();
++}
+diff --git a/extension/src/launch/glmInteractive.ts b/extension/src/launch/glmInteractive.ts
+new file mode 100644
+index 00000000..f0b3643a
+--- /dev/null
++++ b/extension/src/launch/glmInteractive.ts
+@@ -0,0 +1,88 @@
++// 仅供驾驶舱 M1 使用。核心审核者始终从自己的探针取入口。
++import { constants } from 'node:fs';
++import { access, readFile, realpath, stat } from 'node:fs/promises';
++import { homedir } from 'node:os';
++import path from 'node:path';
++import { parseWrapperNodePath, scriptProviderEnv } from './carriers';
++
++export interface InteractiveProgram {
++  entrypoint: string;
++  launchMode: 'direct' | 'shellCommand';
++  source: '设置' | '自动发现' | '探针';
++  nodePath?: string;
++  scriptEnv?: Record<string, string>;
++}
++
++interface Options {
++  trusted: boolean;
++  configuredPath?: string;
++  configuredNode?: string;
++  cli?: Record<string, unknown>;
++  wrapper: string;
++  searchDirs?: string[];
++}
++
++async function accessibleFile(file: string, mode: number): Promise<boolean> {
++  try {
++    if (!path.isAbsolute(file) || !(await stat(file)).isFile()) return false;
++    await access(file, mode);
++    return true;
++  } catch { return false; }
++}
++
++async function desktopWithoutTui(file: string): Promise<boolean> {
++  if (!file.endsWith('/ZCode.app/Contents/Resources/glm/zcode.cjs')) return false;
++  // 已实测的桌面脚本在普通 Node 下动态导入外部 TUI。允许将来内置该模块的版本。
++  if (!/import\(\s*['"]@zcode\/tui['"]\s*\)/.test(await readFile(file, 'utf8'))) return false;
++  let dir = path.dirname(file);
++  for (;;) {
++    if (await stat(path.join(dir, 'node_modules/@zcode/tui')).then(s => s.isDirectory(), () => false)) return false;
++    const parent = path.dirname(dir);
++    if (parent === dir) return true;
++    dir = parent;
++  }
++}
++
++async function interpreter(o: Options): Promise<string> {
++  if (o.configuredNode) {
++    if (await accessibleFile(o.configuredNode, constants.X_OK)) return o.configuredNode;
++    throw new Error('请修正 trivium.launch.glmNodePath，须填写可执行 Node 的绝对路径：' + o.configuredNode);
++  }
++  const runner = (o.cli?.version_probe as {runner?: unknown} | undefined)?.runner;
++  if (typeof runner === 'string' && await accessibleFile(runner, constants.X_OK)) return runner;
++  const wrapper = await readFile(o.wrapper, 'utf8').catch(() => '');
++  const node = parseWrapperNodePath(wrapper);
++  if (node && await accessibleFile(node, constants.X_OK)) return node;
++  throw new Error('请在终端运行 command -v node，将绝对路径填入 trivium.launch.glmNodePath。');
++}
++
++export async function resolveGlmInteractive(o: Options): Promise<InteractiveProgram> {
++  if (!o.trusted) throw new Error('请先确认当前工作区可信，再启动 GLM 交互终端。');
++  const dirs = o.searchDirs ?? [...(process.env.PATH ?? '').split(path.delimiter),
++    path.join(homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin'];
++  const candidates: [string, InteractiveProgram['source']][] = [];
++  if (o.configuredPath) candidates.push([o.configuredPath, '设置']);
++  else {
++    for (const dir of new Set(dirs.filter(p => path.isAbsolute(p)))) candidates.push([path.join(dir, 'zcode'), '自动发现']);
++    if (typeof o.cli?.entrypoint === 'string') candidates.push([o.cli.entrypoint, '探针']);
++  }
++  let reason = '';
++  const fix = '请在终端运行 command -v zcode，将绝对路径填入 trivium.launch.glmInteractivePath，或填写独立发行目录的 bin/zcode.mjs。';
++  for (const [candidate, source] of candidates) {
++    const file = path.isAbsolute(candidate) ? await realpath(candidate).catch(() => '') : '';
++    const script = /\.[cm]?js$/i.test(file);
++    if (!file || !await accessibleFile(file, script ? constants.R_OK : constants.X_OK)) {
++      if (source === '设置') throw new Error('GLM 交互入口无效：' + candidate + '。' + fix);
++      continue;
++    }
++    if (await desktopWithoutTui(file)) {
++      reason = '桌面脚本 ' + file + ' 缺少 @zcode/tui。';
++      if (source === '设置') break;
++      continue;
++    }
++    if (!script) return { source, launchMode: 'direct', entrypoint: candidate };
++    return { source, launchMode: 'shellCommand', entrypoint: file, nodePath: await interpreter(o),
++      scriptEnv: source === '探针' ? scriptProviderEnv(o.cli?.provider_config) : undefined };
++  }
++  throw new Error((reason || '未找到可用的 GLM 交互入口。') + fix);
++}
+diff --git a/extension/test/unit/glmInteractive.test.ts b/extension/test/unit/glmInteractive.test.ts
+new file mode 100644
+index 00000000..ee6977a7
+--- /dev/null
++++ b/extension/test/unit/glmInteractive.test.ts
+@@ -0,0 +1,56 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
++import { tmpdir } from 'node:os';
++import path from 'node:path';
++import { resolveGlmInteractive } from '../../src/launch/glmInteractive';
++
++test('GLM 主攻入口优先级、独立解释器、兼容探针与错误提示', async t => {
++  const root = await mkdtemp(path.join(tmpdir(), 'GLM paths '));
++  t.after(() => rm(root, { recursive: true, force: true }));
++  const script = path.join(root, 'real package.mjs');
++  const wrapper = path.join(root, 'trivium');
++  const direct = path.join(root, 'official zcode');
++  const shim = path.join(root, 'zcode');
++  await writeFile(script, '');
++  await writeFile(direct, '#!/bin/sh\n', { mode: 0o755 });
++  await writeFile(wrapper, 'exec "' + process.execPath + '" "/a/trivium.cjs" "$@"');
++  const provider = {builtin_file: '/builtin', personal_file: '/personal'};
++  const cli = {entrypoint: script, version_probe: {runner: 'node'}, provider_config: provider};
++  const o = {trusted: true, wrapper, searchDirs: [root], cli};
++  const original = JSON.stringify(cli);
++  const legacy = await resolveGlmInteractive(o);
++  assert.equal(legacy.source, '探针');
++  assert.equal(legacy.nodePath, process.execPath);
++  assert.equal(legacy.scriptEnv?.ZCODE_PERSONAL_PROVIDER_CONFIG_FILE, '/personal');
++  await symlink(script, shim);
++  const found = await resolveGlmInteractive(o);
++  assert.equal(found.source, '自动发现');
++  assert.ok(found.entrypoint.endsWith('real package.mjs'));
++  assert.equal(found.scriptEnv, undefined);
++  assert.deepEqual(await resolveGlmInteractive({...o, configuredPath: direct, configuredNode: '脚本专用'}),
++    {source:'设置', entrypoint:direct, launchMode:'direct'});
++  const explicit = await resolveGlmInteractive({...o, configuredPath:script, configuredNode:process.execPath});
++  assert.equal(explicit.nodePath, process.execPath);
++  assert.equal(explicit.source, '设置');
++  assert.equal(explicit.scriptEnv, undefined);
++  for (const bad of ['zcode', root, path.join(root, 'missing')]) {
++    await assert.rejects(resolveGlmInteractive({...o, configuredPath:bad}), /glmInteractivePath/);
++  }
++  await chmod(direct, 0o644);
++  await assert.rejects(resolveGlmInteractive({...o, configuredPath:direct}), /glmInteractivePath/);
++  await assert.rejects(resolveGlmInteractive({...o, configuredNode:root}), /glmNodePath/);
++  await assert.rejects(resolveGlmInteractive({...o, trusted:false}), /可信/);
++  assert.equal(JSON.stringify(cli), original, '驾驶舱解析只读共享探针');
++
++  const desktop = path.join(root, 'ZCode.app/Contents/Resources/glm/zcode.cjs');
++  await mkdir(path.dirname(desktop), {recursive:true});
++  await writeFile(desktop, 'import("@zcode/tui")');
++  await rm(shim);
++  await symlink(desktop, shim);
++  assert.equal((await resolveGlmInteractive(o)).source, '探针');
++  await assert.rejects(resolveGlmInteractive({...o, cli:undefined}), /缺少 @zcode\/tui/);
++  await assert.rejects(resolveGlmInteractive({...o, configuredPath:desktop}), /缺少 @zcode\/tui/);
++  await mkdir(path.join(path.dirname(desktop), 'node_modules/@zcode/tui'), {recursive:true});
++  assert.equal((await resolveGlmInteractive(o)).source, '自动发现');
++});

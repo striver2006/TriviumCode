@@ -6,6 +6,8 @@ import { join } from 'node:path';
 
 export class ZcodeTurns {
   private readonly offsets = new Map<string, number>();
+  private startupComplete = false;
+  get started(): boolean { return this.startupComplete; }
   private sessionId?: string;
   private activeTurn?: string;
   private lastFinished?: string;
@@ -36,13 +38,19 @@ export class ZcodeTurns {
   }
 
   private observe(line: string): void {
-    if (!/"event":"turn\.(started|completed|failed)"/.test(line)) return;
-    const e = JSON.parse(line);
+    if (!/"event"\s*:\s*"(?:bootstrap\.app\.startup\.completed|turn\.(?:started|completed|failed))"/.test(line)) return;
+    let e;
+    try { e = JSON.parse(line); } catch { return; }
+    if (!e || typeof e !== 'object') return;
+    if (e.module === 'bootstrap' && e.event === 'bootstrap.app.startup.completed') {
+      this.startupComplete = true;
+      return;
+    }
     if (e.module !== 'core.runtime' || typeof e.sessionId !== 'string' || typeof e.turnId !== 'string') return;
     if (e.event === 'turn.started') this.sessionId ??= e.sessionId;
     if (e.sessionId !== this.sessionId) return;
     if (e.event === 'turn.started') this.activeTurn = e.turnId;
-    else if (e.turnId === this.activeTurn) {
+    else if ((e.event === 'turn.completed' || e.event === 'turn.failed') && e.turnId === this.activeTurn) {
       this.activeTurn = undefined;
       this.lastFinished = e.turnId;
     }

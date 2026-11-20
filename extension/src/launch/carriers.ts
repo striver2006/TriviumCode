@@ -30,8 +30,8 @@ export interface CarrierDescriptor {
    */
   readonly invocation: string;
   /**
-   * 拉起模式（AGY-02）：direct = entrypoint 为可执行文件，可作 shellPath；
-   * shellCommand = entrypoint 为脚本（.cjs），须在默认 shell 里用解释器启动。
+   * 探针的传统拉起模式（GLM 点火时按实际交互入口重新判定）：direct = entrypoint 为可执行文件，可作 shellPath；
+   * shellCommand = entrypoint 为脚本（.cjs），由 Node 直接解释。
    */
   readonly launchMode: 'direct' | 'shellCommand';
   /** 本机原生 TUI 实测需要将回车和粘贴分开发送。 */

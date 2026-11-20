@@ -4,7 +4,7 @@
  */
 import * as assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
-import { TerminalRelay, terminalKey } from '../../src/launch/terminalRelay';
+import { TerminalRelay, terminalKey, type LaunchOptions } from '../../src/launch/terminalRelay';
 import { waitFor, fxPaths } from './testHelper';
 
 async function outFileText(p: string): Promise<string> {
@@ -63,6 +63,77 @@ suite('终端协同（FR-5）', function () {
     } finally {
       relay.dispose();
     }
+  });
+
+  test('GLM 两种入口在含空格路径收到相同日志环境、工作目录和独立参数', async () => {
+    const { root } = await fxPaths();
+    const dir = await fs.mkdtemp(pathJoin(root, 'glm tui '));
+    const node = await realNodePath();
+    assert.ok(node);
+    const script = pathJoin(dir, 'test tui.cjs');
+    const direct = pathJoin(dir, 'zcode');
+    await fs.writeFile(script, 'require("node:fs").writeFileSync(process.env.ZCODE_LOG_DIR + "/seen.json", JSON.stringify({argv:process.argv.slice(1),cwd:process.cwd(),node:process.execPath})); setInterval(()=>{}, 5000)');
+    const quote = (s: string) => "'" + s.replaceAll("'", "'\\''") + "'";
+    await fs.writeFile(direct, '#!/bin/sh\nexec ' + quote(node) + ' ' + quote(script) + ' "$@"', {mode:0o755});
+    const relay = new TerminalRelay(dir);
+    const logs = new Set<string>();
+    try {
+      for (const mode of ['direct','shellCommand'] as const) {
+        const opts: LaunchOptions = {agentId:'glm', display:'ZCode', topic:mode, entry:'A', cwd:root,
+          launchMode:mode, entrypoint:mode === 'direct' ? direct : script, nodePath:node, waitForZcodeTurn:true};
+        const s = await relay.ensureSession(opts);
+        try {
+          const log = s.turns!.dir;
+          logs.add(log);
+          const out = pathJoin(log, 'seen.json');
+          await waitFor(async () => (await outFileText(out)).length > 0, 20_000);
+          const seen = JSON.parse(await fs.readFile(out,'utf8'));
+          assert.deepEqual(seen.argv, [script]);
+          assert.equal(await fs.realpath(seen.node), await fs.realpath(node));
+          assert.equal(await fs.realpath(seen.cwd), await fs.realpath(root));
+          const reused = await relay.ensureSession({...opts, entrypoint:'改动后的配置'});
+          assert.equal(reused.launch.entrypoint, opts.entrypoint);
+        } finally { s.terminal.dispose(); }
+      }
+      assert.equal(logs.size, 2);
+    } finally { relay.dispose(); }
+  });
+
+  test('首条输入等独立启动事件，超时与关闭不注入，普通入口沿用延迟', async () => {
+    const { root, tuiScriptOut } = await fxPaths();
+    const nodePath = await realNodePath();
+    assert.ok(nodePath);
+    const logRoot = await fs.mkdtemp(pathJoin(root, 'startup '));
+    const relay = new TerminalRelay(logRoot, 800);
+    const opts: LaunchOptions = {agentId:'glm', display:'ZCode', topic:'首启', entry:'A',
+      entrypoint:pathJoin(root,'fake-bin','fake-cli.cjs'), cwd:root, nodePath,
+      launchMode:'shellCommand', waitForStartup:true, waitForZcodeTurn:true};
+    const settings = {readyDelayMs:0,sendMode:'execute' as const,segmentBytes:512};
+    try {
+      const s = await relay.ensureSession(opts);
+      const sent = relay.injectText(s,'启动标记文本',settings,0,true);
+      assert.ok(s.injecting);
+      await new Promise(r=>setTimeout(r,300));
+      assert.equal((await outFileText(tuiScriptOut)).includes('启动标记文本'),false);
+      await fs.writeFile(pathJoin(s.turns!.dir,'zcode-2026-11-20.jsonl'),
+        '{"module":"bootstrap","event":"bootstrap.app.startup.completed"}\n');
+      assert.ok(await sent);
+      await waitFor(async ()=>(await outFileText(tuiScriptOut)).includes('启动标记文本'),8000);
+      assert.ok(s.entrySent);
+      const cold = await relay.ensureSession({...opts,topic:'超时'});
+      await assert.rejects(relay.injectText(cold,'错误重发',settings,0,true),/重新注入/);
+      assert.equal(cold.entrySent,false);
+      assert.equal(cold.injecting,false);
+      const closed = relay.injectText(cold,'关闭前',settings,0,true);
+      cold.terminal.dispose();
+      assert.equal(await closed,false);
+      const ordinary = await relay.ensureSession({...opts, topic:'旧脚本',source:'探针',waitForStartup:false});
+      assert.ok(await relay.injectText(ordinary,'旧脚本入口',settings,250,true));
+      const other = await relay.ensureSession({...opts, agentId:'claude',topic:'其他主攻',waitForZcodeTurn:false});
+      assert.equal(other.turns,undefined);
+      assert.equal((other.terminal.creationOptions as import('vscode').TerminalOptions).env?.ZCODE_LOG_DIR,undefined);
+      for (const done of [s,ordinary,other]) done.terminal.dispose();
+    } finally { relay.dispose(); }
   });
 
   test('身份键：同键复用、异键不串', async () => {

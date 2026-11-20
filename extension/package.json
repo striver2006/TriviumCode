@@ -104,11 +104,23 @@
     "configuration": {
       "title": "Trivium 驾驶舱",
       "properties": {
+        "trivium.launch.glmInteractivePath": {
+          "type": "string",
+          "scope": "machine-overridable",
+          "default": "",
+          "description": "GLM 主攻的独立 zcode 可执行文件或发行包 bin/zcode.mjs 的绝对路径。留空自动查找，再尝试原探针入口。"
+        },
+        "trivium.launch.glmNodePath": {
+          "type": "string",
+          "scope": "machine-overridable",
+          "default": "",
+          "description": "GLM 主攻脚本使用的 Node 可执行文件绝对路径。留空使用探针解释器或工作区 wrapper 的 Node。"
+        },
         "trivium.launch.readyDelayMs": {
           "type": "number",
           "default": 3000,
           "minimum": 0,
-          "description": "终端拉起后等待 CLI 就绪的延迟（毫秒），随后注入入口命令。就绪探测无事件驱动，此值为经验值；注入不理想时用驾驶舱的「重新注入」按钮。"
+          "description": "终端拉起后等待 CLI 就绪的延迟（毫秒），随后注入入口命令。实测独立 ZCode 3.18.2 在默认模式先等启动事件，此值用于输入框挂载；注入不理想时用驾驶舱的「重新注入」按钮。"
         },
         "trivium.launch.sendMode": {
           "type": "string",
@@ -187,6 +199,7 @@
     "test": "npm run test:unit && npm run test:integration",
     "check": "npm run typecheck && npm run compile && npm run test",
     "pree2e": "npm --prefix .. run pretest && npm run compile",
+    "real:glm-entry": "node scripts/runGlmEntry.mjs",
     "e2e": "node scripts/runE2E.mjs",
     "real": "npm run build-tests && node scripts/runReal.mjs",
     "real:m1": "node scripts/runM1.mjs",

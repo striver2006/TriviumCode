@@ -2,7 +2,7 @@
 
 ## 安装与首次使用
 
-1. 在 VS Code 1.85 或更高版本打开「扩展」视图，在右上角「…」菜单选择「从 VSIX 安装…」（Install from VSIX…），使用 E1 时选中 `trivium-cockpit-0.3.0-e1.vsix`。按提示重新加载窗口。
+1. 在 VS Code 1.85 或更高版本打开「扩展」视图，在右上角「…」菜单选择「从 VSIX 安装…」（Install from VSIX…），本次 GLM 入口包为 `trivium-cockpit-0.3.0-glm-entry-e1.vsix`。单独复测历史 E1 时选中 `trivium-cockpit-0.3.0-e1.vsix`。按提示重新加载窗口。
 2. 每个仓库单独打开一个 VS Code 窗口。驾驶舱读取当前窗口第一个工作区文件夹。目标仓库需要先按 TriviumCode 部署手册完成安装、初始化和 CLI 探测。在左侧「Trivium → 环境健康」检查要使用的 Driver 和审查者。
 3. 在命令面板运行「打开 Trivium 驾驶舱」。本手册也可通过「打开 Trivium 驾驶舱使用手册」离线查看。
 
@@ -41,7 +41,7 @@ TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面�
   入口 A/B/C/D、`--max-rounds`、模型档位高级折叠、context 路径选择。
 - **前置链**：`topic resolve → preflight → 主题确认 → topic claim`（入口 A/B），
   全部经 wrapper 调用；退出码 64/65/69/70 语义化展示。
-- **M1 终端协同**：按探针 entrypoint 拉起交互会话（命名终端、按
+- **M1 终端协同**：GLM 使用下文的主攻交互入口，其余 Driver 按探针入口拉起交互会话（命名终端、按
   `agent|topic|entry` 身份键复用），就绪延迟后注入入口命令；失败回退可复制命令条；
   输入框续话尽力中继；终端关闭自动降级为 M3 纯监控。
 - **运行监控**：`state.json` 白名单发现 run → 运行目录 `status.json` watcher
@@ -87,7 +87,29 @@ TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面�
 
 当前插件的运行与安装包验收环境为 macOS。Windows 真机未测。
 
-若真实终端显示工作区信任提示，请先核对路径并由操作者确认，再查看入口是否已送达，必要时点「重新注入」。若 ZCode 的终端立即退出，请用探针登记的入口检查能否进入交互界面。本机桌面包内的 `zcode.cjs` 在补齐 provider 路径后仍报缺少 `@zcode/tui`，该环境下可使用 M3 监控。
+### 选择 GLM 主攻交互入口
+
+在受信任的工作区打开「设置 (JSON)」。已安装官方独立命令时，在登录终端执行 `command -v zcode`，将输出的绝对路径填入设置。例如：
+
+```json
+{ "trivium.launch.glmInteractivePath": "/Users/bob/.local/bin/zcode" }
+```
+
+如果使用解压的发行包，在终端执行 `command -v node`，把实际 Node 和脚本的绝对路径分别填入。例如：
+
+```json
+{
+  "trivium.launch.glmInteractivePath": "/Users/bob/Tools/ZCode CLI/bin/zcode.mjs",
+  "trivium.launch.glmNodePath": "/Users/bob/.local/share/mise/installs/node/24.14.0/bin/node"
+}
+```
+
+路径各占一个字段，可含空格。留空交互路径时依次在扩展宿主 PATH、`~/.local/bin`、`/opt/homebrew/bin`、`/usr/local/bin` 查找 zcode，最后尝试工作区的原探针。脚本解释器留空时先试探针登记的绝对 Node，再读工作区 wrapper。直接执行的官方 shell 启动器自行查找 node；GUI 终端提示找不到 node 时使用第二种配置。显式错误会在点火时指出设置名。
+
+选择 ZCode 主攻，完成前置链并点火。驾驶舱显示实际选择的入口及脚本解释器。默认发送模式下，已识别的 3.18.2 发行脚本及其官方包装命令首次发送会等待 ZCode 的启动完成日志，再按就绪延迟送入文字。其余版本和自定义包装器使用设置的就绪延迟。若 120 秒内未读到事件，核对原生终端就绪后可点「重新注入」。在原生终端核对主题和 `/skill dual-run`，待运行卡出现后核对运行号。同主题、同入口的活会话会继续使用之前的程序，更改设置后先关闭旧终端再点火。后台健康行和审核者可用性来自核心探针。续话默认等待该会话的轮次结束，关终端后仍可在 M3 查看原运行。
+
+若提示桌面脚本缺少 `@zcode/tui`，安装独立命令行发行版或将上述设置指向已解压的独立包。若出现目录信任、登录、模型选择或工具权限提示，请在原生界面核对并操作，输入未送达时再用「重新注入」。在 macOS arm64 的 3.18.2 源码发行包上，首次登录报告系统凭据存储不可用时，检查独立包的 `agent/node_modules` 是否含与 JS 包同版本的 keyring 原生绑定。该版本的实测与本机补件见仓库中的 `doc/05_testing/REPORT_2026-11-19_VSCode插件Phase4验收.md`。
+
 
 ## 开发
 
@@ -103,3 +125,5 @@ npm run package      # vsce 打包 .vsix
 开发前在仓库根目录和 `extension/` 分别安装依赖。可用 `VSCODE_EXECUTABLE_PATH` 指定本机 VS Code 主程序；缺省下载测试运行时。包安装回归可用
 `TRIVIUM_TEST_VSIX="$PWD/trivium-cockpit-0.3.0.vsix" TRIVIUM_KEEP_WINDOW=1 npm run e2e`。
 脚本打印临时仓、隔离 profile、审批前回读与截图的位置。保留的「入口B验收甲」窗口用于人工审批。
+
+入口 A 真机专项在扩展目录运行。先完成核心构建，指定 VSCODE_EXECUTABLE_PATH 和 TRIVIUM_TEST_VSIX，保留本机已登记的 GLM 后台探针。命令为 `npm run real:glm-entry -- /绝对路径/zcode`，脚本模式为 `npm run real:glm-entry -- /发行目录/bin/zcode.mjs /绝对路径/node`。登录、选模和原生工具确认由操作者完成。

@@ -12,8 +12,15 @@ test('ZCode 续话须等同一主会话轮末，跨日及半行写入只消费�
     const file = (day: number) => join(dir, 'zcode-2026-11-' + day + '.jsonl');
     const event = (turnId: string, kind: string, sessionId = 'main') =>
       JSON.stringify({ module: 'core.runtime', sessionId, turnId, event: 'turn.' + kind }) + '\n';
+    assert.equal(turns.started, false);
+    await appendFile(file(19), 'broken {"event":"bootstrap.app.startup.completed"\n' +
+      'broken {"event":"turn.completed"\n' + '{"module":"unrelated","message":"bootstrap.app.startup.completed"}\n');
+    await turns.refresh();
+    assert.equal(turns.started, false);
+    await appendFile(file(19), JSON.stringify({module:'bootstrap', event:'bootstrap.app.startup.completed'}) + '\n');
     await appendFile(file(19), event('1', 'started') + event('sub', 'started', 'child') + event('sub', 'completed', 'child'));
     await turns.refresh();
+    assert.ok(turns.started);
     assert.ok(turns.busy);
     assert.equal(turns.ready, false);
     const end = event('1', 'completed');

@@ -1,0 +1,243 @@
+---
+schema: trivium.review.v2
+topic: 驾驶舱GLM主攻交互入口
+stage: code
+role: claude
+vendor: anthropic
+agent_cli: claude/2.1.328
+model_requested: qwen4-max
+model_effective: qwen4-max
+model_effective_source: envelope
+effort: high
+effort_requested: high
+effort_effective: null
+effort_effective_source: unverified
+tier: null
+tier_source: profile
+run_id: 20261120T065315Z
+rerun_index: 1
+snapshot_hash: sha256:eba138bff0d653b8eca2ec2bec9ba591d4f3a402088404fa915d472fdb548c9f
+blind: true
+started_at: 2026-11-20T06:53:23.074Z
+finished_at: 2026-11-20T07:02:17.639Z
+duration_s: 480
+tool_calls:
+  read: 21
+  grep: 4
+  glob: 1
+  run_command: 0
+  project_reads: 20
+evidence_ok: true
+verdict: pass-after-changes
+findings_count:
+  blocker: 0
+  major: 0
+  minor: 5
+  nit: 2
+degraded: false
+parse_fallback: false
+peer_deny: true
+drift: false
+heterogeneous: unknown
+access:
+  requested_mode: profile
+  profile: qwen
+  launcher_requested: /Users/chenzhenbo/.local/bin/cld
+  launcher_effective: /Users/chenzhenbo/.local/bin/cld
+  wrapper_sha256: bc21f5228f4214c85678385c6288898b6daaebcba6f485c1a1ce2de7f02f28bf
+  configuration_sha256: 5b1c4230c0db1a84419d63ecf7301992ce7a1ac777bed23db945462b78eb6dc8
+  provider_declared: qwen
+  provider_declared_source: profile
+  provider_effective: null
+  provider_effective_source: null
+family_comparisons:
+  - left: codex
+    right: claude
+    status: unknown
+    left_model: null
+    right_model: qwen4-max
+    left_source: null
+    right_source: envelope
+    reason: 左侧模型信息缺失
+  - left: glm
+    right: claude
+    status: different-family
+    left_model: bigmodel-coding-plan/GLM-5.3
+    right_model: qwen4-max
+    left_source: trace
+    right_source: envelope
+    reason: 模型族不同：glm / qwen
+  - left: gemini
+    right: claude
+    status: different-family
+    left_model: gemini-4-neon-high
+    right_model: qwen4-max
+    left_source: envelope
+    right_source: envelope
+    reason: 模型族不同：gemini / qwen
+override_reason: 左侧模型信息缺失
+session_id: fc05f89d-f83d-412a-92ef-0eae034c1d04
+---
+
+# 代码审查：驾驶舱GLM主攻交互入口
+
+> Critic-D · Anthropic Claude Code ｜ 回读模型 `qwen4-max` ｜ 请求模型 `qwen4-max`
+> ｜ 运行 `20261120T065315Z`
+> ｜ 本轮审核者 glm、gemini、claude
+
+> ⚠️ **模型族 unknown**：左侧模型信息缺失；告警继续。
+
+## 总判断
+
+最危险的一条：启动等待以 source!=='探针' 为闸，探针回落到独立启动器（README 与计划都承认的路线）时冷启动页吞输入的原故障会复现。其次 zcodeTurns 新增 bootstrap 分支对含子串的行无防护 JSON.parse 且无条件 return，坏行会让点火/续话以 SyntaxError 中断；120 秒等待窗口内「重新注入/续话」不受 injecting 约束（该字段只写不读）。三处「就绪无事件驱动」的说明书文字未随新事件驱动等待同步。验收报告自述运行号/两次回答/M3/最终包待终态回填，而手册已指向最终包名，按报告自身口径交付闭环未完成。主干解析链、日志环境双形态、点火顺序与文档同步做得扎实，无阻断级问题，按意见修改后可实施。
+
+**结论**：修改后通过（`pass-after-changes`）
+
+## 审查意见（共 7 条：次要 5 ｜ 吹毛求疵 2）
+
+### CLAUDE-01 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/src/launch/terminalRelay.ts:129` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：启动完成等待的闸门是 firstLaunch && session.turns && session.launch.source !== '探针'，把「独立入口」等同于「非探针来源」。但 README 明示留空时最后回落工作区原探针，计划点火规则 2 也写明探针回落包括独立脚本；若用户 doctor 探测的就是独立发行版（probe.cli.zcode.entrypoint 指向 bin/zcode.mjs），该入口同样有只接受退出键的冷启动页，却因 source='探针' 跳过等待，首条输入仍可能丢失——正是本次要修的故障（报告初包 66a1f2a1 失败样本）。反向地，桌面旧脚本是否发 bootstrap 事件未实测，按来源一刀切两边都可能判错。
+
+**依据**：读 extension/src/launch/terminalRelay.ts:129-138 的等待条件；extension/src/launch/glmInteractive.ts:67 探针候选与 :84-85 返回 source='探针'；extension/README.md:107『最后尝试工作区的原探针』；计划稿点火规则 2/4（.reviews/驾驶舱GLM主攻交互入口/plan/2026-11-20-驾驶舱GLM主攻交互入口-r2-codex.md）；报告初包失败样本见 changes-20261120T065315Z.diff 中 REPORT 段。未运行验证，属调用链推理。
+
+**建议**：把等待条件改为按实际入口形态/能力判定（例如脚本形态的独立发行布局即等待，或给探针结果记录是否独立启动器），至少在 README 探针回落段明示该路线不享受启动等待及其后果，让 Driver 裁决是改判定还是补文档。
+
+### CLAUDE-02 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/src/launch/zcodeTurns.ts:41` |
+| 类别 | correctness ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：新增 bootstrap 分支用 line.includes('"bootstrap.app.startup.completed"') 宽匹配后直接 JSON.parse，无 try/catch：专用日志目录里任何含该子串的非 JSON 行（如混入的错误输出）都会让 refresh() 抛 SyntaxError，沿 injectText 的等待循环或 relay 的 deliver 上抛，点火/续话以原始解析错误中断。且该分支命中后无条件 return，任何载荷里提到该事件名的其它事件行会被跳过轮次处理。旧 turn 分支虽同样裸 parse，但前置正则更窄；新分支扩大了暴露面。
+
+**依据**：读 extension/src/launch/zcodeTurns.ts:40-56（observe 两分支与 refresh 的调用关系）、extension/src/launch/terminalRelay.ts:133/164（refresh 在注入等待与续话循环中被 await，异常直接上抛）、extension/src/ui/cockpit.ts:589-593/708-710（异常被捕获后以 error.message 展示）。日志是否真会出现此类行未实测，属推理。
+
+**建议**：解析包一层 try/catch（坏行跳过），或先 JSON.parse 再按 module/event 分派、仅在确属 bootstrap 事件时 return，避免宽子串匹配吞掉其它行。
+
+### CLAUDE-03 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/src/ui/cockpit.ts:689` |
+| 类别 | concurrency ｜ 层次 code |
+| 置信度 | medium |
+
+**问题**：GLM 首次注入现在可阻塞至 120 秒等启动事件，但 handleResend/handleRelay 不受 ignitingGlm 或 session.injecting 约束：等待期内点「重新注入」会以 firstLaunch=false、300ms 延迟把入口文字送进尚在冷启动页的终端（丢失），并回报『已重新注入』；随后首次注入完成又送一次。Session.injecting 注释称『供 UI 提示』，但全 src 内只写不读，是未接线的字段。长等待窗口把这个既有竞态放大成可复现路径。
+
+**依据**：读 extension/src/ui/cockpit.ts:679-713（resend/relay 无 injecting 检查）、extension/src/launch/terminalRelay.ts:49/126/150（injecting 赋值点）；对 extension/src 全量检索 injecting 仅 4 处均为定义/赋值，无消费方；等待循环见 terminalRelay.ts:129-138。交错时序为推理，未运行复现。
+
+**建议**：启动等待进行中让 resend/relay 复用同一启动闸门（等 started 后再送）或明确拒绝并提示『正在等待 ZCode 启动』；顺带决定 injecting 字段要么接 UI 要么删注释承诺。
+
+### CLAUDE-04 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/src/launch/terminalRelay.ts:115` |
+| 类别 | contract ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：实现与自身说明书不同口径：模块头（:8）仍写『注入：就绪延迟（无事件驱动，D3′）』；injectText 文档块（:115-118）写『返回注入所用设置（供 UI 展示）；延迟由调用方配置注入（此方法内不再等待）』，实际返回 boolean 且方法内等待 readyDelay 外加最长 120 秒启动事件；package.json 的 readyDelayMs 描述（:123）仍向用户宣称『就绪探测无事件驱动，此值为经验值』。本补丁引入了事件驱动等待却未同步这三处，设置界面会误导 GLM 用户。
+
+**依据**：读 extension/src/launch/terminalRelay.ts:8/115-152 与 extension/package.json:119-124；对照 extension/README.md:109 已正确描述新等待行为，说明漂移只在代码注释与设置描述侧。
+
+**建议**：同步模块头与 injectText 文档块（返回布尔、内部含启动事件等待+就绪延迟），并在 readyDelayMs 描述补一句 GLM 独立入口先等启动完成事件、该延迟只覆盖输入框挂载。
+
+### CLAUDE-05 · 次要（minor）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `doc/05_testing/REPORT_2026-11-20_VSCode驱动GLM交互入口.md` |
+| 类别 | contract ｜ 层次 requirement |
+| 置信度 | high |
+
+**问题**：验收报告自述『运行号、两次回答、M3 与最终交付包须按终态回填』『全新原包的首次登录未测』，即按计划 Goal 完成条件（安装态、续话、M3、后台对照齐备）尚未闭环；而 extension/README.md 安装段已把用户指向最终包 trivium-cockpit-0.3.0-glm-entry-e1.vsix。手册先行承诺了一个报告尚未确认存在的交付物，后来的人无法从留痕判断该包是否已按终态验收。
+
+**依据**：读 changes-20261120T065315Z.diff 中新增 REPORT 全文（第 604/592 行附近的待回填句）与 extension/README.md:3 的包名指引；计划稿『回归与交付』节的 Goal 完成条件。本侧无法执行命令，未核实该 VSIX 是否已生成。
+
+**建议**：终态回填报告（运行号、两次续话答案、M3 结果、最终包哈希）后再视为交付完成；若包已生成，把包指纹与回填同批落报告，保持手册与报告同口径。
+
+### CLAUDE-06 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/src/launch/terminalRelay.ts:100` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：ensureSession 重构后先 mkdtemp 分配独占日志目录，再做 shellCommand 缺 nodePath 的抛错校验；校验失败时留下一个空的 zcode-* 孤儿目录。旧代码是先校验后分配。当前 GLM 路径在 cockpit 侧已先解析出解释器，此抛错罕发，但顺序回退会在日志根积灰。
+
+**依据**：读 extension/src/launch/terminalRelay.ts:99-108 与 diff 中旧实现对照（旧分支先 throw 再 mkdtemp）；extension/src/ui/cockpit.ts:631-633 显示 GLM 脚本入口的解释器在 ensureSession 前已由 resolveGlmInteractive 解析。
+
+**建议**：把 nodePath 校验挪回分配日志目录之前，或抛错前清理刚建的临时目录。
+
+### CLAUDE-07 · 吹毛求疵（nit）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 位置 | `extension/scripts/runGlmEntry.mjs:1` |
+| 类别 | maintainability ｜ 层次 code |
+| 置信度 | high |
+
+**问题**：新增的入口 A 采样脚本没有任何接线：package.json scripts 无别名（对照 runM1.mjs 有 real:m1），runE2E.mjs 与验收报告均未引用它；运行契约（argv 传 program/node、环境变量 VSCODE_EXECUTABLE_PATH 与 TRIVIUM_TEST_VSIX、依赖仓内 .trivium/config.local.yaml 的 zcode 探针）只能靠读源码发现。下次复测的人找不到入口。
+
+**依据**：读 changes-20261120T065315Z.diff 中 runGlmEntry.mjs 全文（argv/env 断言在开头）；extension/package.json:193-207 scripts 清单；extension/scripts/runE2E.mjs 全文（仅 -e1.vsix 后缀触发 runStdoutE2E，无 runGlmEntry 引用）；对 extension 全量检索 runGlmEntry 无命中。
+
+**建议**：加一个 npm script 别名（如 real:glm-entry）或在报告/README 开发段记录完整调用示例与环境前提。
+
+## 认为正确的部分
+
+- glmInteractive.ts 的解析链与计划点火规则 1-3 及 AGY-04 同口径：显式路径无效即报错并带设置名、自动候选跳过不可用、realpath 后按 .js/.cjs/.mjs 判脚本/直启、仅探针回落的脚本才传两项 provider 环境、桌面包缺 @zcode/tui 的拦截按祖先目录查依赖且允许未来内置版本；单测覆盖符号链接、含空格路径、权限、相对路径与探针只读性。
+- ZCODE_LOG_DIR 分配移到启动形态分支之前，direct 与 shellCommand 两形态都拿到独占日志目录与 env；集成测试用真实子进程断言两形态的 argv/cwd/解释器/日志目录一致，且复用会话不被新配置改写（reused.launch.entrypoint 断言）。
+- GLM 点火顺序符合 AGY-02/03/05：信任检查与活会话复用先于认领，解析成功后才 claim，ignitingGlm 防重入，异常捕获后降级 M3 并回报错误；复用分支展示原会话实际启动信息、不重注原任务。
+- launchSettingsFor 增加 resource 参数后三处调用点（点火/重发/续话）都按 glm 键传当前根 URI，与 machine-overridable 设置作用域匹配；cockpitHtml 健康行加『后台审核探针』前缀、GLM 主攻可选而审核者仍按探针可用性禁用，符合 AGY-01。
+- 文档同步到位：doc/08 v2 的 C1/M1/架构图/对照表更新且保留不执行登录 shell 的边界；新报告登记进 doc/05_testing/README；报告如实区分真实与夹具、标注未测项；最终包名以 -e1.vsix 结尾，保留了 runE2E.mjs:177 既有安装态 E1 回归触发。
+- interpreter() 延续 CLAUDE-02 的绝对路径纪律：探针 runner 仅在为绝对可执行路径时采用，否则解析 wrapper，显式配置错误不回落。
+
+## 未覆盖范围（本侧盲区）
+
+- 本侧无执行能力：未运行 typecheck/单测/集成/e2e，报告所称 186 项单测与 84 项集成测试、各 SHA-256 指纹、最终 VSIX 是否已生成均未核实。
+- ZCode 原生日志的真实行形态未验证：是否会出现含 bootstrap 事件名子串的非 JSON 行或其它事件行（CLAUDE-02）、桌面 0.17.3 与独立 3.18.2 的启动事件时序差异（CLAUDE-01）均为推理。
+- 冷启动页对 sendText 的实际吞输入行为、120 秒窗口与真实启动耗时的关系未真机验证；Windows 行为未测（文档已声明）。
+- cockpit.ts 仅读了点火/重发/续话/配置读取相关段，cockpitHtml.ts 仅读了 diff 涉及段；闸门、裁决台、监控 watcher 等未改动区域未逐行复核。
+- runGlmEntry.mjs 依赖的 workbench.mjs 仅读了 until/command/installVsix/openWorkspace 签名段，未通读全部辅助逻辑；e2e 采样脚本的断言时序（busy 窗口竞态）未运行验证。
+- 另一位审查员的结论未读、未引用（背靠背独立）。
+
+## 实际查阅的项目文件
+
+- `.reviews/驾驶舱GLM主攻交互入口/code/_meta/changes-20261120T065315Z.diff`
+- `.reviews/驾驶舱GLM主攻交互入口/plan/2026-11-20-驾驶舱GLM主攻交互入口-r2-codex.md`
+- `CLAUDE.md`
+- `AGENTS.md`
+- `README.md`
+- `doc/README.md`
+- `doc/01_requirements/README.md`
+- `doc/02_design/README.md`
+- `extension/src/launch/terminalRelay.ts`
+- `extension/src/launch/zcodeTurns.ts`
+- `extension/src/launch/carriers.ts`
+- `extension/src/launch/glmInteractive.ts`
+- `extension/src/ui/cockpit.ts`
+- `extension/package.json`
+- `extension/README.md`
+- `extension/test/integration/terminalRelay.test.ts`
+- `extension/test/unit/zcodeTurns.test.ts`
+- `extension/test/e2e/workspace.mjs`
+- `extension/test/e2e/workbench.mjs`
+- `extension/scripts/runE2E.mjs`
+- `extension/src/services.ts`
+
+> 编排器从工具轨迹中记录到的读取次数：{"read":21,"grep":4,"glob":1,"run_command":0,"project_reads":20}
+
+---
+
+*本文档由 TriviumCode 编排器从 `claude` 侧的结构化输出渲染而成。
+审查员无写仓库权限，全部落盘由编排器完成。*
