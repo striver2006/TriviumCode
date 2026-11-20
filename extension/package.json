@@ -50,6 +50,10 @@
     ],
     "commands": [
       {
+        "command": "trivium.openCockpitManual",
+        "title": "打开 Trivium 驾驶舱使用手册"
+      },
+      {
         "command": "trivium.openCockpit",
         "title": "打开 Trivium 驾驶舱"
       },
@@ -109,17 +113,19 @@
         "trivium.launch.sendMode": {
           "type": "string",
           "enum": [
+            "auto",
             "execute",
             "split",
             "manual"
           ],
-          "default": "execute",
+          "default": "auto",
           "enumDescriptions": [
+            "按载体选择：Codex、Claude Code 分开发送文本与回车",
             "sendText 携带回车一次提交",
             "先发文本、再单独发回车（部分 TUI 需要）",
             "只粘贴不回车，由用户手动按回车"
           ],
-          "description": "入口命令注入终端的回车语义。"
+          "description": "入口命令及续话的提交方式。manual 只对入口生效，续话仍由发送按钮提交。"
         },
         "trivium.launch.segmentBytes": {
           "type": "number",
@@ -180,8 +186,11 @@
     "test:integration": "npm run build-tests && node scripts/runIntegration.mjs",
     "test": "npm run test:unit && npm run test:integration",
     "check": "npm run typecheck && npm run compile && npm run test",
-    "e2e": "npm run build-tests && node scripts/runE2E.mjs",
+    "pree2e": "npm --prefix .. run pretest && npm run compile",
+    "e2e": "node scripts/runE2E.mjs",
     "real": "npm run build-tests && node scripts/runReal.mjs",
+    "real:m1": "node scripts/runM1.mjs",
+    "vscode:prepublish": "node esbuild.mjs --production",
     "package": "vsce package --allow-missing-repository --no-dependencies"
   },
   "devDependencies": {
@@ -192,6 +201,7 @@
     "@vscode/vsce": "^3.1.0",
     "esbuild": "^0.24.0",
     "mocha": "^10.7.0",
+    "playwright-core": "^1.56.1",
     "typescript": "^5.6.0"
   },
   "dependencies": {

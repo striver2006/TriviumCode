@@ -17,7 +17,7 @@ import type { TriviumServices } from '../services';
 import { cockpitHtml } from './cockpitHtml';
 import { assembleEntryCommand, findSkillDoc, type EntryKind } from '../launch/entryCommand';
 import { claimAfterConfirm, runResolveAndPreflight, type PrechainReport, type PrechainFlags } from '../launch/prechain';
-import { carrierOf, parseWrapperNodePath } from '../launch/carriers';
+import { scriptProviderEnv, carrierOf, parseWrapperNodePath } from '../launch/carriers';
 import { RunWatch } from '../monitor/statusWatch';
 import { ReviewWatch, type ReviewFile } from '../monitor/reviewWatch';
 import { locateRunDir, locateRunDirWithRetry } from '../monitor/runDiscovery';
@@ -159,21 +159,25 @@ export class Cockpit implements vscode.Disposable {
         }));
         // 状态或 runId 迁移 → 失效对应闸门卡缓存（不展示上一轮的计票/缺口；
         // r3 AGY-02：runId 轮转时连旧 runId 的缓存条目一并清理）
+        let gatesChanged = prevActive.size !== this.lastGateSnapshot.length;
         for (const g of this.lastGateSnapshot) {
           const prev = prevActive.get(`${g.topic}/${g.stage}`);
           if (!prev || prev.runId !== g.runId || prev.state !== g.state) {
+            gatesChanged = true;
             this.gateCheckCache.delete(`${g.topic}/${g.stage}/${g.runId}`);
             if (prev && prev.runId !== g.runId) this.gateCheckCache.delete(`${g.topic}/${g.stage}/${prev.runId}`);
           }
         }
         void this.syncRuns(snap.active.map((g) => ({ runId: g.runId, topic: g.topic, stage: g.stage })));
         for (const e of ended) this.markEnded(e.runId, e.endState);
-        void this.pushGateArea(snap); // FR-9：闸门区随状态快照更新
+        // gate --check 可能原子重写同一状态。只在卡片身份或状态改变时重取，
+        // 否则自身的文件事件会不断废弃在途结果，使批准按钮迟迟不能显示。
+        if (gatesChanged) void this.pushGateArea(snap);
       }),
       services.relay.onSessionClosed((key) => {
         if (key === this.currentSessionKey) {
           this.setMode('M3');
-          this.post({ type: 'banner', kind: 'info', text: '协同终端已关闭：驾驶舱降级为 M3 纯监控（流水线不受影响，循环由 Driver 会话持有）。' });
+          this.post({ type: 'banner', kind: 'info', text: '协同终端已关闭：驾驶舱切换为 M3，继续监控已启动的运行。后续轮次或计划定稿需要恢复 Driver 会话。' });
         }
       }),
       // FR-6a：Hub scope 变化 → 重推 run 卡（意见列表实时刷新；服务级监听，
@@ -604,10 +608,16 @@ export class Cockpit implements vscode.Disposable {
       launchMode: carrier.launchMode,
       cwd: this.services.root,
       nodePath,
+      scriptEnv: carrier.launchMode === 'shellCommand' ? scriptProviderEnv(cli?.['provider_config']) : undefined,
     });
     if (this.disposed) return; // CODEX-05：停用后不再注入
     this.currentSessionKey = session.key;
-    await this.services.relay.injectText(session, cmd.text, settings, settings.readyDelayMs);
+    const sent = await this.services.relay.injectText(session, cmd.text, settings, settings.readyDelayMs);
+    if (!sent) {
+      this.setMode('M3');
+      this.post({ type: 'ignite-result', ok: false, message: '协同终端已关闭，请核对 CLI 后重新点火。', cmdText: cmd.text });
+      return;
+    }
     this.setMode('M1');
     this.post({
       type: 'ignite-result',
@@ -628,8 +638,8 @@ export class Cockpit implements vscode.Disposable {
       return;
     }
     const settings = launchSettingsFor(this.currentSessionKey.split('|')[0]!);
-    await this.services.relay.injectText(session, this.lastCommandText, settings, 300);
-    this.post({ type: 'banner', kind: 'info', text: '已重新注入协同终端。' });
+    const sent = await this.services.relay.injectText(session, this.lastCommandText, settings, 300);
+    this.post({ type: 'banner', kind: sent ? 'info' : 'warn', text: sent ? '已重新注入协同终端。' : '重发时协同终端已关闭。' });
   }
 
   private async handleRelay(text: string): Promise<void> {
@@ -642,7 +652,8 @@ export class Cockpit implements vscode.Disposable {
       this.post({ type: 'relay-result', ok: false, note: '协同终端已关闭：请在终端直接输入。' });
       return;
     }
-    await this.services.relay.relay(session, text);
+    const settings = launchSettingsFor(this.currentSessionKey.split('|')[0]!);
+    await this.services.relay.relay(session, text, settings);
     this.post({ type: 'relay-result', ok: true, note: '已中继到协同终端（尽力而为；TUI 兼容差时请在终端直输）。' });
   }
 
@@ -1566,9 +1577,12 @@ function launchSettingsFor(agentId: string): { readyDelayMs: number; sendMode: '
   const cfg = vscode.workspace.getConfiguration('trivium.launch');
   const overrides = cfg.get<Record<string, { readyDelayMs?: number; sendMode?: string; segmentBytes?: number }>>('carrierOverrides') ?? {};
   const ov = overrides[agentId] ?? {};
+  const selected = ov.sendMode ?? cfg.get<string>('sendMode', 'auto');
+  const sendMode = selected === 'execute' || selected === 'split' || selected === 'manual'
+    ? selected : carrierOf(agentId)?.separateEnter ? 'split' : 'execute';
   return {
     readyDelayMs: ov.readyDelayMs ?? cfg.get<number>('readyDelayMs', 3000),
-    sendMode: (ov.sendMode as 'execute' | 'split' | 'manual') ?? (cfg.get<string>('sendMode', 'execute') as 'execute'),
+    sendMode,
     segmentBytes: ov.segmentBytes ?? cfg.get<number>('segmentBytes', 512),
   };
 }

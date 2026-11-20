@@ -11,6 +11,8 @@
  * `/skill <名字>`，不是桌面端的 `/名字`；插件拉起的恒为终端 CLI）。
  */
 
+import { isAbsolute } from 'node:path';
+
 export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm';
 /** 探针 probe.cli 的键（CLI 名，与 Agent id 不同名：gemini→agy、glm→zcode） */
 export type CliKey = 'claude' | 'codex' | 'agy' | 'zcode';
@@ -32,6 +34,8 @@ export interface CarrierDescriptor {
    * shellCommand = entrypoint 为脚本（.cjs），须在默认 shell 里用解释器启动。
    */
   readonly launchMode: 'direct' | 'shellCommand';
+  /** 本机原生 TUI 实测需要将回车和粘贴分开发送。 */
+  readonly separateEnter?: boolean;
 }
 
 export const CARRIERS: Readonly<Record<AgentId, CarrierDescriptor>> = {
@@ -39,6 +43,7 @@ export const CARRIERS: Readonly<Record<AgentId, CarrierDescriptor>> = {
     agentId: 'claude',
     cliKey: 'claude',
     display: 'Claude Code',
+    separateEnter: true,
     invocation: '/{name}',
     launchMode: 'direct',
   },
@@ -46,6 +51,7 @@ export const CARRIERS: Readonly<Record<AgentId, CarrierDescriptor>> = {
     agentId: 'codex',
     cliKey: 'codex',
     display: 'Codex',
+    separateEnter: true,
     invocation: '${name}',
     launchMode: 'direct',
   },
@@ -69,6 +75,14 @@ export function carrierOf(agentId: string): CarrierDescriptor | undefined {
   return (AGENT_IDS as readonly string[]).includes(agentId)
     ? CARRIERS[agentId as AgentId]
     : undefined;
+}
+
+/** 仅向脚本载体传探针已定位的路径；不读 provider 文件内容。 */
+export function scriptProviderEnv(probe: unknown): Record<string, string> | undefined {
+  const cfg = probe as { builtin_file?: unknown; personal_file?: unknown } | null;
+  if (typeof cfg?.builtin_file !== 'string' || !isAbsolute(cfg.builtin_file) ||
+      typeof cfg.personal_file !== 'string' || !isAbsolute(cfg.personal_file)) return undefined;
+  return { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: cfg.builtin_file, ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: cfg.personal_file };
 }
 
 /** 代入命令名得到完整调用（如 glm+`dual-run` → `/skill dual-run`） */

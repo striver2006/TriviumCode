@@ -12,7 +12,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { TerminalRelay } from '../../src/launch/terminalRelay';
-import { parseWrapperNodePath } from '../../src/launch/carriers';
+import { parseWrapperNodePath, scriptProviderEnv } from '../../src/launch/carriers';
 import { fxPaths } from '../integration/testHelper';
 
 /** 从本仓真实 wrapper 解析 node 绝对路径 */
@@ -46,11 +46,13 @@ suite('真机启动冒烟（四家，零模型调用）', function () {
       // 从本机真实 probe 段取 entrypoint（夹具 probe 是假的，真机冒烟读真文件）
       const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
       const YAML = (await import('yaml')).default;
-      const local = YAML.parse(readFileSync(path.join(repoRoot, '.trivium', 'config.local.yaml'), 'utf8')) as {
-        probe?: { cli?: Record<string, { entrypoint?: string }> };
+      const probeFile = process.env['TRIVIUM_REAL_PROBE_FILE'] ?? path.join(repoRoot, '.trivium', 'config.local.yaml');
+      const local = YAML.parse(readFileSync(probeFile, 'utf8')) as {
+        probe?: { cli?: Record<string, { entrypoint?: string; provider_config?: unknown; version_probe?: { runner?: string | null } }> };
       };
       const cliKey = c.agent === 'gemini' ? 'agy' : c.agent === 'glm' ? 'zcode' : c.agent;
-      const entrypoint = local.probe?.cli?.[cliKey]?.entrypoint;
+      const cli = local.probe?.cli?.[cliKey];
+      const entrypoint = cli?.entrypoint;
       if (!entrypoint) {
         this.skip();
         return;
@@ -66,7 +68,8 @@ suite('真机启动冒烟（四家，零模型调用）', function () {
           entrypoint,
           launchMode: c.mode,
           cwd: p.root,
-          nodePath: realNode(),
+          nodePath: cli.version_probe?.runner && path.isAbsolute(cli.version_probe.runner) ? cli.version_probe.runner : realNode(),
+          scriptEnv: scriptProviderEnv(cli.provider_config),
         });
         assert.ok(await aliveAfter(6_000, session.terminal), `${c.agent} 会话 6s 内即退出（拉起或启动命令失败）`);
       } finally {

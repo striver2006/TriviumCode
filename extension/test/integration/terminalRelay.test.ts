@@ -89,6 +89,25 @@ suite('终端协同（FR-5）', function () {
     }
   });
 
+  test('脚本进程退出时释放原终端，等待就绪的注入报告未送达', async () => {
+    const p = await fxPaths();
+    const script = pathJoin(p.root, 'fake-bin', 'exit.cjs');
+    await fs.writeFile(script, 'process.exit(0)');
+    const relay = new TerminalRelay();
+    try {
+      const session = await relay.ensureSession({
+        agentId: 'glm', display: 'ZCode', topic: '启动即退出', entry: 'B',
+        entrypoint: script, launchMode: 'shellCommand', cwd: p.root, nodePath: await realNodePath() ?? 'node',
+      });
+      await waitFor(() => !relay.find(session.key), 20_000);
+      assert.equal(await relay.injectText(session, '测试输入', {
+        readyDelayMs: 0, sendMode: 'execute', segmentBytes: 512,
+      }, 0), false);
+    } finally {
+      relay.dispose();
+    }
+  });
+
   test('续话中继：第二段文本送达同一 TUI', async () => {
     const p = await fxPaths();
     const relay = new TerminalRelay();
@@ -97,7 +116,7 @@ suite('终端协同（FR-5）', function () {
         agentId: 'claude', display: 'C', topic: '续话', entry: 'A',
         entrypoint: pathJoin(p.root, 'fake-bin', 'fake-tui.sh'), launchMode: 'direct', cwd: p.root,
       });
-      await relay.relay(session, '第二段：请继续');
+      await relay.relay(session, '第二段：请继续', { readyDelayMs: 0, sendMode: 'split', segmentBytes: 512 });
       await waitFor(async () => (await outFileText(p.tuiDirectOut)).includes('第二段：请继续'), 20_000);
     } finally {
       relay.dispose();

@@ -12,6 +12,9 @@ import { HistoryProvider } from './history/historyProvider';
 import { openDiffFor } from './reviews/diffView';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  context.subscriptions.push(vscode.commands.registerCommand('trivium.openCockpitManual', () =>
+    vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.joinPath(context.extensionUri, context.extensionMode === vscode.ExtensionMode.Production ? 'readme.md' : 'README.md')),
+  ));
   const services = await createServices(context);
   if (!services) {
     // 无工作区文件夹：命令保留但全部提示（不做任何事）

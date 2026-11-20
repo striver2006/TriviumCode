@@ -12,6 +12,7 @@ async function main() {
   console.log(`夹具工作区：${fx.root}`);
   try {
     await runTests({
+      vscodeExecutablePath: process.env.VSCODE_EXECUTABLE_PATH,
       extensionDevelopmentPath: extRoot,
       extensionTestsPath: path.join(extRoot, 'out-test', 'test', 'integration', 'suite.js'),
       launchArgs: [fx.root, '--disable-extensions', '--disable-gpu'],

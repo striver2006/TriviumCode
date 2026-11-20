@@ -2,7 +2,7 @@
  * M1 终端协同（FR-5，r2 计划 D2′/D3′）。
  *
  * - 拉起：direct（entrypoint 为可执行，作 shellPath）或 shellCommand（zcode 的
- *   .cjs 脚本：默认 shell 终端 + `"<node>" "<entrypoint>"` 启动，AGY-02）；
+ *   .cjs 脚本：由 Node 解释器直接启动，AGY-02）；
  * - 身份：内部键 `agent|topic|entry`（CLAUDE-07），显示名只作展示；同键存活终端
  *   复用聚焦，不同键永不复用；
  * - 注入：就绪延迟（无事件驱动，D3′）→ 分段 sendText → 回车语义三模式；
@@ -10,7 +10,6 @@
  * - 关闭：onDidCloseTerminal → 通知驾驶舱降级 M3。
  */
 import * as vscode from 'vscode';
-import { existsSync } from 'node:fs';
 import type { AgentId } from './carriers';
 
 export type SendMode = 'execute' | 'split' | 'manual';
@@ -26,6 +25,7 @@ export interface LaunchOptions {
   cwd: string;
   /** shellCommand 模式的解释器绝对路径（探针 runner 或 wrapper 内嵌 node） */
   nodePath?: string | null;
+  scriptEnv?: Record<string, string>;
 }
 
 export interface LaunchSettings {
@@ -90,11 +90,9 @@ export class TerminalRelay implements vscode.Disposable {
     if (opts.launchMode === 'direct') {
       terminal = vscode.window.createTerminal({ name, shellPath: opts.entrypoint, cwd: opts.cwd });
     } else {
-      // 脚本类 entrypoint：显式 shell（不依赖宿主默认 profile），注入解释器启动命令
-      terminal = vscode.window.createTerminal({ name, shellPath: detectShell(), cwd: opts.cwd });
-      await sleep(600);
-      terminal.show();
-      terminal.sendText(nodeLaunchCommand(opts.entrypoint, opts.nodePath), true);
+      // 让终端生命周期绑定到解释器。TUI 退出后不会退回可继续接收续话的 shell。
+      if (!opts.nodePath) throw new Error('脚本入口需要 Node 解释器路径');
+      terminal = vscode.window.createTerminal({ name, shellPath: opts.nodePath, shellArgs: [opts.entrypoint], cwd: opts.cwd, env: opts.scriptEnv });
     }
     terminal.show();
     const session: Session = { key, terminal, injecting: false };
@@ -111,19 +109,25 @@ export class TerminalRelay implements vscode.Disposable {
     text: string,
     settings: LaunchSettings,
     readyDelayMs: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     session.injecting = true;
     try {
       await sleep(Math.max(0, readyDelayMs));
+      if (this.sessions.get(session.key) !== session || session.terminal.exitStatus !== undefined) {
+        return false;
+      }
       await this.sendWithMode(session.terminal, text, settings);
+      return this.sessions.get(session.key) === session && session.terminal.exitStatus === undefined;
     } finally {
       session.injecting = false;
     }
   }
 
   /** 续话中继：整段 + 回车（尽力而为；TUI 兼容性差的载体由用户改在终端直输） */
-  async relay(session: Session, text: string): Promise<void> {
-    await this.sendWithMode(session.terminal, text, { readyDelayMs: 0, sendMode: 'execute', segmentBytes: 512 });
+  async relay(session: Session, text: string, settings: LaunchSettings): Promise<void> {
+    await this.sendWithMode(session.terminal, text, {
+      ...settings, sendMode: settings.sendMode === 'manual' ? 'execute' : settings.sendMode,
+    });
   }
 
   private async sendWithMode(terminal: vscode.Terminal, text: string, s: LaunchSettings): Promise<void> {
@@ -181,20 +185,4 @@ export function splitUtf8(text: string, maxBytes: number): string[] {
   }
   if (buf !== '') out.push(buf);
   return out;
-}
-
-/** shellCommand 模式的启动命令（加引号防空格路径） */
-export function nodeLaunchCommand(entrypoint: string, nodePath: string | null | undefined): string {
-  const node = nodePath && nodePath.length > 0 ? nodePath : 'node';
-  return `"${node}" "${entrypoint}"`;
-}
-
-/** 宿主 shell 探测：SHELL 环境变量优先，兜底常见路径（不读登录 Shell 配置内容） */
-export function detectShell(): string {
-  const fromEnv = process.env['SHELL'];
-  if (fromEnv && fromEnv.length > 0) return fromEnv;
-  for (const candidate of ['/bin/zsh', '/bin/bash', '/bin/sh']) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return '/bin/sh';
 }

@@ -179,6 +179,7 @@
 - [`REPORT_2026-10-30_W4-S3复测.md`](./REPORT_2026-10-30_W4-S3复测.md)：**ISSUE-09 环境侧①②收口 + W4-S3（L1 负向）达成**。②以零系统改动的进程级 `CLAUDE_CODE_GIT_BASH_PATH` 注入解决（重装 Git 与目录联接均未启用）；①复核为幻影判据误诊（claude 2.1.302 的 stream-json 不存在 hook_started 事件类型，判别探针被 hook 实弹拦截证伪）；闸门停点期三次 canary 写全部被拦（拒因原文 + 同 ID permission_denials + 文件未创建三证齐全），abandon 收尾。顺带证实/实测两条 headless 会话事实：`--restricted` 忽略用户 settings env 段致网关凭据须进程级注入（与设计 §7.1 一致）、`defaultMode=plan` 对 headless 同样生效（测 Hook 须显式 --permission-mode）。证据 `evidence/w4s3-retest-20261030-221253/`。
 
 - [密钥扫描源码调用误报修复](./REPORT_2026-11-06_密钥扫描源码调用误报.md)：普通变量初始化调用被长凭据规则截断误报；收窄到完整声明调用形态，保留字面值与专用凭据检测，记录红绿对照与安装核验。
+- [VS Code 插件 Phase 4 本地验收](./REPORT_2026-11-19_VSCode插件Phase4验收.md)：安装包、双窗桩链、四家真实 M1 矩阵、日志虚拟滚动及独立 Mac mini 安装与人工审批回读。
 
 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
 

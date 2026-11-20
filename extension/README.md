@@ -1,5 +1,21 @@
 # TriviumCode 驾驶舱（VS Code 插件）
 
+## 安装与首次使用
+
+1. 在 VS Code 1.85 或更高版本打开「扩展」视图，在右上角「…」菜单选择「从 VSIX 安装…」（Install from VSIX…），选中 `trivium-cockpit-0.3.0.vsix`。按提示重新加载窗口。
+2. 每个仓库单独打开一个 VS Code 窗口。驾驶舱读取当前窗口第一个工作区文件夹。目标仓库需要先按 TriviumCode 部署手册完成安装、初始化和 CLI 探测。在左侧「Trivium → 环境健康」检查要使用的 Driver 和审查者。
+3. 在命令面板运行「打开 Trivium 驾驶舱」。本手册也可通过「打开 Trivium 驾驶舱使用手册」离线查看。
+
+## 走通一次入口 B
+
+1. 在「装配」选择 Driver，点选参与的审查者，选择「B · 计划双审」。输入审查焦点，可填写显式主题。入口 B 审查已有计划，请选择已由该 Driver 认领并归档计划原稿的主题。
+2. 点击「① 执行前置链（resolve → preflight）」。检查解析主题和逐步结果；失败时先处理该步显示的原因。确认后点击「② 确认主题并点火」。Driver 会话在命名终端中打开；如 CLI 询问工作区权限，请在该终端确认。
+3. 在终端核对入口和焦点已被 CLI 接收。若输入停在编辑框，手动回车。若命令尚未送达，等 CLI 就绪后点「重新注入」。若已开始审查，请避免重复提交。底部输入框和「发送 ▸」可在同一终端续话。默认回车方式 `auto` 会为 Codex、Claude Code 分开发送文本和回车，入口与续话均生效。可用 `trivium.launch.carrierOverrides` 单独调整某一载体。
+4. 在「运行监控」核对主题、阶段、运行编号和各侧状态。展开「worker.log 尾部」滚动查看日志窗口；其输入大小由 `trivium.monitor.logTailBytes` 控制。点击审查正文或意见位置查看结果。「运行历史」可回放归档轮次。
+5. 需要关闭协同终端时，先确认运行卡已出现并记下编号，再点终端的垃圾桶。驾驶舱切换到「M3 外部驾驶舱（纯监控）」，可用原编号继续看进度和归档。隐藏终端面板会保留会话。M3 中需要续话时，须回到可用的 Driver 会话。
+6. 闸门显示「裁决未齐」时点「进入裁决台（FR-8）」。逐项选择接受、驳回或暂缓，填写理由，为接受项填写落实位置。点击「生成预览」，核对内容、作者和文件名，再点「预览确认后落盘」。入口 B 每轮还需要 Driver 独立输出下一版完整计划。若报 `missing_next_plan`，回到 Driver 会话完成定稿，然后在驾驶舱「刷新」复核。若终端已关闭，需先恢复该 Driver 会话。
+7. 当闸门显示「等待人工审批」，由 Bob 核对主题、轮次、计票、警告和工作树摘要，再亲自点击「批准」，或填写理由后拒绝。点击后查看动作结果和工作树摘要。「放弃…」需要二次确认。审查中和等待审批期间保留业务文件原状。
+
 TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面两条 + 一个写例外 + 一个只读查询**：
 
 - **CLI**：`.trivium/bin/trivium --json` + 退出码协议（含 FR-9 的 approve/abandon 审批动作——点击经宿主直发，不经过任何模型上下文）；
@@ -9,7 +25,7 @@ TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面�
 
 不复制编排器业务逻辑，阶段循环始终由终端里的 Driver 会话（入口 skill）驱动。
 
-## 功能（第三批：Phase 0 + Phase 1 + Phase 2 + Phase 3）
+## 功能
 
 - **环境健康面板**（Activity Bar「Trivium」）：读取 `.trivium/config.local.yaml`
   探针结论展示四家 Agent 可用性 / 版本 / 入口；未 init 的工作区给出引导。
@@ -33,8 +49,6 @@ TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面�
   （时间倒序、逐轮意见数与严重度分布、verdict）；完结运行以 `_meta/` 归档为
   第一事实源（不依赖可被轮转清理的 run_root）；点击任意运行回放该轮全部意见
   （批注/诊断/意见列表聚焦），状态栏可快捷切换回放轮次。
-
-> 第一批（Phase 0+1，2026-11-06 交付）不含后两项；上方清单为当前累计能力。
 
 - **裁决台**（Phase 3，FR-8）：消费 `gate --check --json` 缺口清单 → 驾驶舱逐条
   「接受/驳回/暂缓 + 理由 + 落点」表单（首写/修复两形态：missing_disposition 首写
@@ -63,14 +77,21 @@ TriviumCode「主攻 + 多审」双审流水线的 VS Code 前端。**集成面�
 
 ## 平台边界
 
-第一批与第二批的开发、测试与验收均在 **macOS**；Windows 适配为后续批次待办。
+当前插件的运行与安装包验收环境为 macOS。Windows 真机未测。
+
+若真实终端显示工作区信任提示，请先核对路径并由操作者确认，再查看入口是否已送达，必要时点「重新注入」。若 ZCode 的终端立即退出，请用探针登记的入口检查能否进入交互界面。本机桌面包内的 `zcode.cjs` 在补齐 provider 路径后仍报缺少 `@zcode/tui`，该环境下可使用 M3 监控。
 
 ## 开发
 
 ```bash
 npm install          # 安装依赖
 npm run check        # typecheck + 打包 + 单测 + 集成测试（vscode-tests 起真实 extension host）
+npm run e2e          # 构建核心测试夹具及插件，两个隔离窗口执行入口 B，停在批准前
+TRIVIUM_REAL=1 npm run real  # 四家启动存活与真实 gate 契约、临时仓裁决闭环
+npm run real:m1      # 使用本机已探测的交互 CLI；须先完成根目录构建和 npm run e2e
 npm run package      # vsce 打包 .vsix
 ```
 
-集成测试首次运行会下载 VS Code 测试运行时（缓存于 `.vscode-test/`，已 gitignore）。
+开发前在仓库根目录和 `extension/` 分别安装依赖。可用 `VSCODE_EXECUTABLE_PATH` 指定本机 VS Code 主程序；缺省下载测试运行时。包安装回归可用
+`TRIVIUM_TEST_VSIX="$PWD/trivium-cockpit-0.3.0.vsix" TRIVIUM_KEEP_WINDOW=1 npm run e2e`。
+脚本打印临时仓、隔离 profile、审批前回读与截图的位置。保留的「入口B验收甲」窗口用于人工审批。

@@ -17,6 +17,7 @@ async function main() {
   const fx = await buildFixture();
   try {
     await runTests({
+      vscodeExecutablePath: process.env.VSCODE_EXECUTABLE_PATH,
       extensionDevelopmentPath: extRoot,
       extensionTestsPath: path.join(extRoot, 'out-test', 'test', 'real', 'suite.js'),
       launchArgs: [fx.root, '--disable-extensions', '--disable-gpu'],

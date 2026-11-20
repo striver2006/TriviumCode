@@ -66,8 +66,10 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
   .grp-head { cursor: pointer; user-select: none; }
   .files a { color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: none; display: block; }
   details { margin: 4px 0; }
-  pre.log { background: var(--vscode-textCodeBlock-background); padding: 6px; border-radius: 4px;
-            font-size: 11px; max-height: 180px; overflow: auto; white-space: pre-wrap; }
+  .log { background: var(--vscode-textCodeBlock-background); max-height: 180px; overflow: auto;
+         font: 11px/18px var(--vscode-editor-font-family, monospace); }
+  .log-space { position: relative; }
+  .log-lines { position: absolute; margin: 0; font: inherit; white-space: pre; }
   .bottom { position: fixed; bottom: 0; left: 0; right: 0; display: flex; gap: 8px; padding: 8px 12px;
             background: var(--vscode-editor-background); border-top: 1px solid var(--vscode-panel-border, #444); }
   .bottom input { flex: 1; }
@@ -275,7 +277,42 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
     if (mode === 'M1') { badge.textContent = 'M1 终端协同'; badge.className = 'mode m1'; }
     else { badge.textContent = 'M3 外部驾驶舱（纯监控）'; badge.className = 'mode m3'; }
   }
+  // 每个运行保留独立视口。心跳和状态更新重绘卡片时恢复展开状态与滚动位置。
+  const logs = new Map();
+  function logView(id, text) {
+    let view = logs.get(id);
+    if (!view) {
+      const details = document.createElement('details');
+      details.innerHTML = '<summary>worker.log 尾部</summary><div class="log" tabindex="0" aria-label="运行日志"><div class="log-space"><pre class="log-lines"></pre></div></div>';
+      const port = details.querySelector('.log');
+      const space = port.firstElementChild;
+      const rows = space.firstElementChild;
+      view = { details, port, space, rows, lines: [], text: null, top: 0, left: 0 };
+      const paint = () => {
+        if (!details.open) return;
+        const first = Math.max(0, Math.floor(port.scrollTop / 18) - 4);
+        const end = first + Math.ceil(port.clientHeight / 18) + 8;
+        rows.style.top = (first * 18) + 'px';
+        rows.textContent = view.lines.slice(first, end).join('\\n');
+      };
+      view.paint = paint;
+      port.addEventListener('scroll', paint);
+      details.addEventListener('toggle', paint);
+      logs.set(id, view);
+    }
+    if (text !== view.text) {
+      view.text = text;
+      view.lines = text.split(/\\r?\\n/);
+      view.space.style.height = (view.lines.length * 18) + 'px';
+    }
+    return view;
+  }
   function renderRuns(runs) {
+    const visible = new Set(runs.filter(r => r.logTail).map(r => r.runId));
+    for (const [id, view] of logs) {
+      if (!visible.has(id)) logs.delete(id);
+      else if (view.details.open) { view.top = view.port.scrollTop; view.left = view.port.scrollLeft; }
+    }
     const box = $('runs'); box.innerHTML = '';
     if (!runs.length) { box.innerHTML = '<span class="hint">（暂无活跃运行）</span>'; return; }
     for (const r of runs) {
@@ -318,12 +355,16 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
       }
       card.appendChild(files);
       if (r.findingsSummary && r.findingsSummary.length > 0) card.appendChild(renderFindings(r));
-      if (r.logTail) {
-        const det = document.createElement('details');
-        det.innerHTML = '<summary>worker.log 尾部</summary><pre class="log">' + escapeHtml(r.logTail) + '</pre>';
-        card.appendChild(det);
-      }
       box.appendChild(card);
+      if (r.logTail) {
+        const view = logView(r.runId, r.logTail);
+        card.appendChild(view.details);
+        if (view.details.open) {
+          view.port.scrollTop = view.top;
+          view.paint();
+          view.port.scrollLeft = view.left;
+        }
+      }
     }
   }
   function renderFindings(r) {

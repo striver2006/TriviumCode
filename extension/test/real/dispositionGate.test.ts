@@ -11,14 +11,21 @@ import { TriviumCli } from '../../src/cli/triviumCli';
 import type { GateCheckOutput } from '../../src/cli/commands';
 import path from 'node:path';
 
-const REPO = process.env['TRIVIUM_REAL_REPO'] ?? '/Users/chenzhenbo/Work/TriviumCode';
+const REPO = process.env['TRIVIUM_REAL_REPO'] ?? path.resolve(__dirname, '../../../..');
 const TOPIC = process.env['TRIVIUM_REAL_TOPIC'] ?? 'VSCode插件Phase3';
 
 suite('真实 gate --check 输出契约对拍', function () {
   this.timeout(120_000);
+  let root: string;
+  suiteSetup(async () => {
+    // gate --check 会更新 task.json 的共同阻断记录，必须在隔离仓执行。
+    ({ root } = await buildTmpRepo());
+    await fsp.cp(path.join(REPO, '.reviews', TOPIC), path.join(root, '.reviews', TOPIC), { recursive: true });
+  });
+  suiteTeardown(async () => { await fsp.rm(root, { recursive: true, force: true }); });
 
   test('plan 阶段：输出字段与 GateCheckOutput 逐项对齐（含 loop 四字段）', async () => {
-    const cli = new TriviumCli(REPO);
+    const cli = new TriviumCli(root);
     assert.ok(await cli.wrapperExists(), `未找到 ${REPO}/.trivium/bin/trivium（应在 TriviumCode 仓内运行）`);
     const r = await cli.runJson<GateCheckOutput>(['gate', '--stage', 'plan', '--topic', TOPIC, '--check', '--json'], 120_000);
     assert.ok(r.json, `读不到 JSON 输出（退出码 ${r.code}）`);
@@ -51,10 +58,11 @@ suite('真实 gate --check 输出契约对拍', function () {
   });
 
   test('失败码字段形态：failures[].code/message/ids 与插件消费对齐', async () => {
-    const cli = new TriviumCli(REPO);
-    // 造一个必然缺件的主题（不存在的阶段目录）：missing_disposition 形态
-    const r = await cli.runJson<GateCheckOutput>(['gate', '--stage', 'code', '--topic', TOPIC, '--check', '--json'], 120_000);
-    if (!r.json) return; // 旧编排器或异常输出：跳过（不作为失败）
+    const cli = new TriviumCli(root);
+    const r = await cli.runJson<GateCheckOutput>(['gate', '--stage', 'code', '--topic', 'RealGate闭环', '--check', '--json'], 120_000);
+    assert.equal(r.code, 2);
+    assert.ok(r.json?.failures.some(f => f.code === 'missing_disposition'));
+    assert.ok(r.json);
     for (const f of r.json.failures ?? []) {
       assert.equal(typeof f.code, 'string');
       assert.equal(typeof f.message, 'string');
