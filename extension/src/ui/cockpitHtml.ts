@@ -111,7 +111,12 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
 
   <h3>装配（FR-2）</h3>
   <div class="row">
-    <label>Driver：</label><select id="driver"></select>
+    <label for="driver">Driver：</label><select id="driver"></select>
+    <label for="driverModel">模型：</label><select id="driverModel"><option value="">沿用 CLI 默认</option></select>
+    <label for="driverEffort">思考强度：</label><select id="driverEffort"><option value="">沿用 CLI 默认</option></select>
+    <span class="hint" id="driverNote" role="status"></span>
+  </div>
+  <div class="row">
     <label>审查者：</label><span id="critics"></span>
     <label>入口：</label>
     <select id="entry">
@@ -176,11 +181,38 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
   const $ = (id) => document.getElementById(id);
   let state = { health: [], topic: null, inferDone: false, ctxPaths: [], frozen: null };
 
+  let catalogRequest = 0, formRevision = 0, pendingPrechain = false, degraded = false;
+  let catalog = { models: [], defaultEfforts: [], note: '' };
+  function choices(id, entries, wanted) {
+    const sel = $(id);
+    sel.replaceChildren(new Option('沿用 CLI 默认', ''));
+    for (const e of entries) sel.add(new Option(e.label, e.id));
+    if (wanted && !entries.some(e => e.id === wanted)) sel.add(new Option(wanted + '（当前不可用）', wanted));
+    sel.value = wanted || '';
+    sel.disabled = !entries.length && !wanted;
+  }
+  function renderEfforts(wanted) {
+    const model = $('driverModel').value;
+    const options = model ? catalog.models.find(m => m.id === model)?.efforts || [] : catalog.defaultEfforts;
+    choices('driverEffort', options.map(id => ({ id, label: id })), wanted);
+    $('driverNote').textContent = (wanted && !options.includes(wanted)) || (model && !catalog.models.some(m => m.id === model))
+      ? '预设的模型或强度已不可用，请重新选择。' : catalog.note ||
+        (!options.length && model ? '该模型的思考强度由 CLI 决定。' :
+          !options.length && catalog.models.length ? '先选模型即可查看该模型支持的强度。' : '');
+  }
+  function loadCatalog(model, effort) {
+    catalog = { models: [], defaultEfforts: [], note: '' };
+    choices('driverModel', [], model);
+    choices('driverEffort', [], effort);
+    $('driverModel').disabled = $('driverEffort').disabled = true;
+    $('driverNote').textContent = '正在读取交互入口的模型目录…';
+    vscode.postMessage({ type: 'driver-catalog', driver: $('driver').value, request: ++catalogRequest });
+  }
   // ── 渲染 ──
   function renderHealth(list) {
     state.health = list;
     $('healthLine').textContent = '后台审核探针：' + list.map(h => h.display + (h.availability === 'available' ? '✓' : '✗')).join('  ');
-    const ds = $('driver'); ds.innerHTML = '';
+    const ds = $('driver'), previous = ds.value; ds.innerHTML = '';
     for (const h of list) {
       const o = document.createElement('option');
       o.value = h.agentId;
@@ -188,7 +220,11 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
       o.textContent = h.display + (o.disabled ? '（不可用）' : '');
       ds.appendChild(o);
     }
+    const previousOption = [...ds.options].find(o => o.value === previous && !o.disabled);
+    if (previousOption) ds.value = previous;
+    loadCatalog(ds.value === previous && $('driverModel').value, ds.value === previous && $('driverEffort').value);
     renderCritics();
+    checkFrozen();
   }
   function renderCritics() {
     const box = $('critics'); box.innerHTML = '';
@@ -200,7 +236,7 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
       const chip = document.createElement('span');
       chip.className = 'chip ' + (on ? 'on' : 'off');
       chip.textContent = (on ? '✓' : '') + h.display + (excluded ? '（Driver）' : '');
-      if (!disabled) chip.onclick = () => { chip.classList.toggle('on'); };
+      if (!disabled) chip.onclick = () => { chip.classList.toggle('on'); checkFrozen(); };
       else chip.onclick = null;
       box.appendChild(chip);
     }
@@ -256,8 +292,11 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
     }
   }
   function checkFrozen() {
-    if (!state.frozen) return;
-    if (JSON.stringify(collect()) !== JSON.stringify(state.frozen)) {
+    formRevision++;
+    $('launchConflict')?.remove();
+    if (pendingPrechain || state.frozen) {
+      pendingPrechain = false;
+      vscode.postMessage({ type: 'form-changed' });
       state.frozen = null;
       $('btnIgnite').disabled = true;
       const box = $('confirmBox');
@@ -267,7 +306,10 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
     }
   }
   function label(step) { return { resolve: '解析（topic resolve）', preflight: '预检（preflight）', claim: '认领（topic claim）' }[step] || step; }
-  function showCmd(text) { $('cmdbar').style.display = 'flex'; $('cmdText').textContent = text; }
+  function showCmd(text, bound) {
+    $('cmdbar').style.display = 'flex'; $('cmdText').textContent = text;
+    $('btnResend').disabled = !bound;
+  }
   function banner(kind, text) {
     const b = $('banner'); b.innerHTML = '';
     if (!text) return;
@@ -818,6 +860,7 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
     const f = msg.fields;
     if (!f) return;
     $('driver').value = f.driver;
+    loadCatalog(f.driverModel, f.driverEffort);
     renderCritics();
     const chips = $('critics').children;
     const want = new Set(f.critics || []);
@@ -838,12 +881,19 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
   }
 
   // ── 事件 ──
-  $('driver').onchange = () => { renderCritics(); checkFrozen(); };
+  $('driver').onchange = () => { loadCatalog(); renderCritics(); checkFrozen(); };
+  $('driverModel').onchange = () => { renderEfforts(); checkFrozen(); };
+  $('driverEffort').onchange = checkFrozen;
   $('entry').onchange = () => { entryChanged(); checkFrozen(); };
   for (const id of ['body', 'topic', 'maxRounds', 'profile', 'extraFlags']) {
     $(id).oninput = checkFrozen;
   }
-  $('btnPrechain').onclick = () => vscode.postMessage({ type: 'prechain', form: collect() });
+  $('btnPrechain').onclick = () => {
+    pendingPrechain = true;
+    state.frozen = null;
+    $('btnIgnite').disabled = true;
+    vscode.postMessage({ type: 'prechain', request: ++formRevision, form: collect() });
+  };
   $('btnIgnite').onclick = () => vscode.postMessage({ type: 'ignite', form: collect(), topic: state.topic });
   $('btnCopy').onclick = () => vscode.postMessage({ type: 'copy', text: $('cmdText').textContent });
   $('btnResend').onclick = () => vscode.postMessage({ type: 'resend' });
@@ -872,6 +922,8 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
   function collect() {
     return {
       driver: $('driver').value,
+      driverModel: $('driverModel').value || undefined,
+      driverEffort: $('driverEffort').value || undefined,
       critics: selectedCritics(),
       entry: $('entry').value,
       body: $('body').value,
@@ -898,18 +950,42 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
         renderRuns(m.runs || []);
         break;
       case 'health': renderHealth(m.health); break;
+      case 'driver-catalog':
+        if (m.request !== catalogRequest || m.driver !== $('driver').value) break;
+        catalog = m.catalog;
+        choices('driverModel', catalog.models, $('driverModel').value);
+        renderEfforts($('driverEffort').value);
+        break;
       case 'prechain-result':
+        if (m.request !== formRevision || degraded) break;
+        pendingPrechain = false;
         renderSteps(m.report);
-        if (m.cmdText) showCmd(m.cmdText);
+        if (m.cmdText) showCmd(m.cmdText, false);
         if (m.report && m.report.failed) state.frozen = null;
         break;
       case 'degraded':
-        if (m.degraded) { $('btnPrechain').disabled = true; $('btnIgnite').disabled = true; }
+        if (m.degraded) { degraded = true; $('btnPrechain').disabled = true; $('btnIgnite').disabled = true; }
+        break;
+      case 'launch-conflict': {
+        banner('warn', '同主题终端的启动配置不同，尚未认领或注入本次任务。');
+        const box = document.createElement('div'); box.id = 'launchConflict';
+        for (const line of ['原会话：' + m.before, '本次：' + m.after]) {
+          const p = document.createElement('div'); p.textContent = line; box.appendChild(p);
+        }
+        const keep = document.createElement('button'); keep.className = 'secondary'; keep.textContent = '保留原会话';
+        keep.onclick = () => { vscode.postMessage({ type: 'keep-terminal', id: m.id }); banner('info', '已保留原终端。'); };
+        const start = document.createElement('button'); start.textContent = '保留原终端并另开会话';
+        start.onclick = () => { box.remove(); vscode.postMessage({ type: 'ignite', form: collect(), topic: state.topic, conflictId: m.id }); };
+        box.append(keep, start); $('banner').firstElementChild.appendChild(box);
+        break;
+      }
+      case 'session-command':
+        showCmd(m.cmdText || '', Boolean(m.cmdText));
         break;
       case 'ignite-result':
         if (m.ok) { banner('info', m.message || '已注入协同终端「' + m.terminalName + '」。提示语语义：任务目标/焦点作为首条消息进入会话。'); }
         else { banner('warn', '点火未完成：' + m.message); }
-        showCmd(m.cmdText || '');
+        showCmd(m.cmdText || '', Boolean(m.cmdText));
         setMode(m.ok ? 'M1' : 'M3');
         break;
       case 'runs': renderRuns(m.runs); break;
@@ -918,7 +994,7 @@ export function cockpitHtml(nonce: string, cspSource: string): string {
       case 'cancel-result': banner(m.ok ? 'info' : 'warn', m.note); break;
       case 'mode': setMode(m.mode); break;
       case 'banner': banner(m.kind, m.text); break;
-      case 'ctx-picked': state.ctxPaths = m.paths; $('ctxList').textContent = m.paths.join('，') || '（未选）'; break;
+      case 'ctx-picked': state.ctxPaths = m.paths; $('ctxList').textContent = m.paths.join('，') || '（未选）'; checkFrozen(); break;
       case 'arg-hint': $('argHint').textContent = m.text ? '可用旗标（来自入口产物）：' + m.text : ''; break;
       // ── Phase 3 ──
       case 'gate-area': renderGateArea(m); break;

@@ -7,7 +7,9 @@
  * 存储双作用域：globalState（用户级）/ workspaceState（工作区级 memento，不落
  * `.vscode/settings.json`——那会进编排器审查快照，与保存防护自相矛盾，CLAUDE-03）。
  */
-export interface LaunchPreset {
+import type { DriverChoice } from '../launch/driverModels';
+
+export interface LaunchPreset extends DriverChoice {
   /** 模型版本（将来演进留迁移点） */
   v: 1;
   name: string;
@@ -43,6 +45,8 @@ export function sanitizePreset(raw: unknown, scope: LaunchPreset['scope']): Laun
     entry: r['entry'],
     extraFlags: typeof r['extraFlags'] === 'string' ? r['extraFlags'] : '',
   };
+  if (typeof r.driverModel === 'string' && r.driverModel) out.driverModel = r.driverModel;
+  if (typeof r.driverEffort === 'string' && r.driverEffort) out.driverEffort = r.driverEffort;
   if (typeof r['maxRounds'] === 'number' && Number.isFinite(r['maxRounds'])) out.maxRounds = r['maxRounds'];
   if (typeof r['profile'] === 'string' && r['profile'] !== '') out.profile = r['profile'];
   if (Array.isArray(r['ctxPaths']) && r['ctxPaths'].every((p) => typeof p === 'string')) out.ctxPaths = r['ctxPaths'] as string[];
@@ -50,7 +54,7 @@ export function sanitizePreset(raw: unknown, scope: LaunchPreset['scope']): Laun
 }
 
 /** 装配参数（cockpit FormState 的子集）→ preset */
-export function presetFromAssembly(name: string, scope: LaunchPreset['scope'], a: {
+export function presetFromAssembly(name: string, scope: LaunchPreset['scope'], a: DriverChoice & {
   driver: string;
   critics: string[];
   entry: string;
@@ -67,7 +71,7 @@ export function presetFromAssembly(name: string, scope: LaunchPreset['scope'], a
     scope,
     createdAt: now,
     updatedAt: now,
-    driver: a.driver,
+    driver: a.driver, driverModel: a.driverModel, driverEffort: a.driverEffort,
     critics: [...a.critics],
     entry: a.entry,
     maxRounds: a.maxRounds,
@@ -81,7 +85,7 @@ export function presetFromAssembly(name: string, scope: LaunchPreset['scope'], a
  * preset → 表单回填字段（装配参数集；**不含** topic/body——UI 只把本对象写进对应
  * 表单控件，正文与主题输入框保持用户现状）。
  */
-export interface AssemblyFields {
+export interface AssemblyFields extends DriverChoice {
   driver: string;
   critics: string[];
   entry: string;
@@ -93,7 +97,7 @@ export interface AssemblyFields {
 
 export function assemblyOf(p: LaunchPreset): AssemblyFields {
   return {
-    driver: p.driver,
+    driver: p.driver, driverModel: p.driverModel, driverEffort: p.driverEffort,
     critics: [...p.critics],
     entry: p.entry,
     maxRounds: p.maxRounds,

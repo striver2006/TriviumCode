@@ -14,6 +14,13 @@ export interface InteractiveProgram {
   scriptEnv?: Record<string, string>;
 }
 
+/** 能力查询与终端点火使用同一可执行文件、解释器和参数边界。 */
+export function nativeCommand(program: Pick<InteractiveProgram, 'entrypoint' | 'launchMode'> & { nodePath?: string | null }, args: readonly string[]) {
+  if (program.launchMode === 'direct') return { shellPath: program.entrypoint, shellArgs: [...args] };
+  if (!program.nodePath) throw new Error('脚本入口需要 Node 解释器路径');
+  return { shellPath: program.nodePath, shellArgs: [program.entrypoint, ...args] };
+}
+
 interface Options {
   trusted: boolean;
   configuredPath?: string;

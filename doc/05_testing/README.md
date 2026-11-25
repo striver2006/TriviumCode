@@ -182,6 +182,7 @@
 - [VS Code 插件 Phase 4 本地验收](./REPORT_2026-11-19_VSCode插件Phase4验收.md)：安装包、双窗桩链、四家真实 M1 矩阵、日志虚拟滚动及独立 Mac mini 安装与人工审批回读。
 - [VS Code 驾驶舱 E1 审查员 stdout 验收](./REPORT_2026-11-20_VSCode审查员实时输出验收.md)：四路径退出前可见、双工作区 M3、跨块脱敏及相同负载的性能对照。
 - [驾驶舱 GLM 主攻交互入口验收](./REPORT_2026-11-20_VSCode驱动GLM交互入口.md)：独立启动器、输入轮次、安装回归和后台探针对照。
+- [VS Code 驾驶舱 Driver 模型与思考强度验收](./REPORT_2026-11-25_VSCode驾驶舱Driver模型与思考强度.md)记录四家原生首轮、同主题冲突以及审核者档位和 M3 回归。
 
 第19B计划已按委托批准，r22写合同实施与20C证据在[evidence/agent-access-20261011-closeout-r11](evidence/agent-access-20261011-closeout-r11/)；原准入判据不变，当前全指纹12组合完整准入未测，目标未完成。
 

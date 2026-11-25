@@ -7,7 +7,7 @@ import { memoryKV, memoryPresetStore } from '../integration/fakePresets';
 
 test('装配参数 → preset：不含 topic/body（AGY-06 分层）', () => {
   const p = presetFromAssembly('三审严格档', 'global', {
-    driver: 'codex',
+    driver: 'codex', driverModel: 'alpha', driverEffort: 'high',
     critics: ['claude', 'gemini', 'glm'],
     entry: 'A',
     maxRounds: 5,
@@ -22,6 +22,10 @@ test('装配参数 → preset：不含 topic/body（AGY-06 分层）', () => {
   assert.ok(!('topic' in p) && !('body' in p), '会话瞬态不入 preset');
   const a = assemblyOf(p);
   assert.equal(a.driver, 'codex');
+  assert.equal(a.driverModel, 'alpha');
+  assert.equal(a.driverEffort, 'high');
+  const stored = sanitizePreset(JSON.parse(JSON.stringify(p)), 'global')!;
+  assert.deepEqual(assemblyOf(stored), a);
   assert.deepEqual(a.critics, ['claude', 'gemini', 'glm']);
   assert.deepEqual(a.ctxPaths, ['doc/x.md']);
 });
@@ -32,6 +36,8 @@ test('sanitize：未知字段剔除、坏条目 null、entry 枚举校验', () =
   assert.equal(sanitizePreset(null, 'global'), null);
   const ok = sanitizePreset({ name: 'n', driver: 'glm', critics: [], entry: 'A', extraFlags: '', hack: '注入字段' }, 'workspace');
   assert.ok(ok);
+  assert.equal(assemblyOf(ok).driverModel, undefined);
+  assert.equal(assemblyOf(ok).driverEffort, undefined);
   assert.ok(!('hack' in (ok as object)), '未知字段被剔除');
 });
 

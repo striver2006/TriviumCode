@@ -12,13 +12,14 @@
 import * as vscode from 'vscode';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
-import type { InteractiveProgram } from './glmInteractive';
+import { nativeCommand, type InteractiveProgram } from './glmInteractive';
+import type { DriverChoice } from './driverModels';
 import { ZcodeTurns } from './zcodeTurns';
 import type { AgentId } from './carriers';
 
 export type SendMode = 'execute' | 'split' | 'manual';
 
-export interface LaunchOptions {
+export interface LaunchOptions extends DriverChoice {
   agentId: AgentId;
   display: string;
   /** resolve 后的主题（含推导值）；点火前必须已 resolve（否则传 '?' 占位并禁止复用命中） */
@@ -34,6 +35,8 @@ export interface LaunchOptions {
   entryText?: string;
   scriptEnv?: Record<string, string>;
   waitForZcodeTurn?: boolean;
+  nativeArgs?: string[];
+  programIdentity?: string;
 }
 
 export interface LaunchSettings {
@@ -57,22 +60,26 @@ interface Session {
 export const terminalKey = (agentId: string, topic: string, entry: string): string =>
   `${agentId}|${topic}|${entry}`;
 
+export function launchSignature(o: Pick<LaunchOptions, 'entrypoint' | 'launchMode' | 'nodePath' | 'programIdentity' | 'nativeArgs' | 'scriptEnv'>): string {
+  return JSON.stringify([o.entrypoint, o.launchMode, o.nodePath ?? null, o.programIdentity,
+    Object.entries(o.scriptEnv ?? {}).sort(([a], [b]) => a.localeCompare(b)), o.nativeArgs ?? []]);
+}
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export class TerminalRelay implements vscode.Disposable {
   private readonly sessions = new Map<string, Session>();
+  private readonly live = new Map<vscode.Terminal, Session>();
   private readonly closeListener: vscode.Disposable;
   private readonly closeHandlers = new Set<(key: string) => void>();
 
   constructor(private readonly logRoot?: string, private readonly startupTimeoutMs = 120_000) {
     this.closeListener = vscode.window.onDidCloseTerminal((t) => {
-      for (const [key, s] of this.sessions) {
-        if (s.terminal === t) {
-          this.sessions.delete(key);
-          for (const h of this.closeHandlers) h(key);
-          return;
-        }
-      }
+      const session = this.live.get(t);
+      this.live.delete(t);
+      if (!session || this.sessions.get(session.key) !== session) return;
+      this.sessions.delete(session.key);
+      for (const h of this.closeHandlers) h(session.key);
     });
   }
 
@@ -86,31 +93,31 @@ export class TerminalRelay implements vscode.Disposable {
   }
 
   /** 取同键存活会话（复用）或创建新终端 */
-  async ensureSession(opts: LaunchOptions): Promise<Session> {
+  async ensureSession(opts: LaunchOptions, openNewBeside?: vscode.Terminal): Promise<Session> {
     const key = terminalKey(opts.agentId, opts.topic, opts.entry);
     const existing = this.sessions.get(key);
     if (existing) {
       if (existing.terminal.exitStatus !== undefined) {
         // 终端进程已退出（AGY-03）：旧记录失效，移除后新建
         this.sessions.delete(key);
-      } else {
+      } else if (existing.terminal !== openNewBeside) {
+        if (launchSignature(existing.launch) !== launchSignature(opts)) throw new Error('原终端启动配置不同，请重新确认点火。');
         existing.terminal.show();
         return existing;
       }
     }
-    const name = `Trivium · ${opts.display} · ${opts.topic}`;
-    if (opts.launchMode === 'shellCommand' && !opts.nodePath) throw new Error('脚本入口需要 Node 解释器路径');
+    const name = `Trivium · ${opts.display} · ${opts.topic}` + (openNewBeside ? '（新会话）' : '');
+    const program = nativeCommand(opts, opts.nativeArgs ?? []);
     let turns: ZcodeTurns | undefined;
     if (opts.waitForZcodeTurn && this.logRoot) {
       mkdirSync(this.logRoot, { recursive: true });
       turns = new ZcodeTurns(mkdtempSync(join(this.logRoot, 'zcode-')));
     }
     const env = turns ? { ...opts.scriptEnv, ZCODE_LOG_DIR: turns.dir } : opts.scriptEnv;
-    const program = opts.launchMode === 'direct' ? { shellPath: opts.entrypoint }
-      : { shellPath: opts.nodePath!, shellArgs: [opts.entrypoint] };
     const terminal = vscode.window.createTerminal({ name, cwd: opts.cwd, ...program, env });
     terminal.show();
     const session: Session = { key, terminal, launch: opts, entrySent: false, injecting: false, turns };
+    this.live.set(terminal, session);
     this.sessions.set(key, session);
     return session;
   }
@@ -129,7 +136,7 @@ export class TerminalRelay implements vscode.Disposable {
       if (firstLaunch && session.turns && session.launch.waitForStartup) {
         const deadline = Date.now() + this.startupTimeoutMs;
         while (!session.turns.started) {
-          if (this.sessions.get(session.key) !== session || session.terminal.exitStatus !== undefined) return false;
+          if (!this.live.has(session.terminal) || session.terminal.exitStatus !== undefined) return false;
           await session.turns.refresh();
           if (session.turns.started) break;
           if (Date.now() >= deadline) throw new Error('等待 ZCode 启动完成超时，尚未送入入口。请在原生终端确认输入框已就绪，再点「重新注入」。');
@@ -137,7 +144,7 @@ export class TerminalRelay implements vscode.Disposable {
         }
       }
       await sleep(Math.max(0, readyDelayMs));
-      if (this.sessions.get(session.key) !== session || session.terminal.exitStatus !== undefined) {
+      if (!this.live.has(session.terminal) || session.terminal.exitStatus !== undefined) {
         return false;
       }
       if (session.turns) {
@@ -145,7 +152,7 @@ export class TerminalRelay implements vscode.Disposable {
         session.turns.submitted();
       }
       await this.sendWithMode(session.terminal, text, settings);
-      session.entrySent = this.sessions.get(session.key) === session && session.terminal.exitStatus === undefined;
+      session.entrySent = this.live.has(session.terminal) && session.terminal.exitStatus === undefined;
       return session.entrySent;
     } finally {
       session.injecting = false;
@@ -161,7 +168,7 @@ export class TerminalRelay implements vscode.Disposable {
     if (!turns || !settings.waitForZcodeTurn) return send();
     const deliver = async () => {
       const started = Date.now();
-      while (this.sessions.get(session.key) === session && session.terminal.exitStatus === undefined) {
+      while (this.live.has(session.terminal) && session.terminal.exitStatus === undefined) {
         await turns.refresh();
         if (turns.ready) {
           turns.submitted();
@@ -211,6 +218,7 @@ export class TerminalRelay implements vscode.Disposable {
 
   dispose(): void {
     this.closeListener.dispose();
+    this.live.clear();
     this.sessions.clear();
   }
 }

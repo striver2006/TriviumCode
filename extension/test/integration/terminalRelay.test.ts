@@ -80,7 +80,8 @@ suite('终端协同（FR-5）', function () {
     try {
       for (const mode of ['direct','shellCommand'] as const) {
         const opts: LaunchOptions = {agentId:'glm', display:'ZCode', topic:mode, entry:'A', cwd:root,
-          launchMode:mode, entrypoint:mode === 'direct' ? direct : script, nodePath:node, waitForZcodeTurn:true};
+          launchMode:mode, entrypoint:mode === 'direct' ? direct : script, nodePath:node, waitForZcodeTurn:true,
+          nativeArgs:['--model', '模型 with spaces', '--effort', 'low']};
         const s = await relay.ensureSession(opts);
         try {
           const log = s.turns!.dir;
@@ -88,11 +89,21 @@ suite('终端协同（FR-5）', function () {
           const out = pathJoin(log, 'seen.json');
           await waitFor(async () => (await outFileText(out)).length > 0, 20_000);
           const seen = JSON.parse(await fs.readFile(out,'utf8'));
-          assert.deepEqual(seen.argv, [script]);
+          assert.deepEqual(seen.argv, [script, ...opts.nativeArgs!]);
           assert.equal(await fs.realpath(seen.node), await fs.realpath(node));
           assert.equal(await fs.realpath(seen.cwd), await fs.realpath(root));
-          const reused = await relay.ensureSession({...opts, entrypoint:'改动后的配置'});
-          assert.equal(reused.launch.entrypoint, opts.entrypoint);
+          assert.equal(await relay.ensureSession(opts), s);
+          await assert.rejects(relay.ensureSession({...opts, entrypoint:'改动后的配置'}), /启动配置不同/);
+          const changed = { ...opts, nativeArgs: ['--model', '模型 with spaces', '--effort', 'high'] };
+          await assert.rejects(relay.ensureSession(changed), /启动配置不同/);
+          assert.equal(relay.find(s.key), s);
+          const fresh = await relay.ensureSession(changed, s.terminal);
+          assert.notEqual(fresh, s);
+          assert.equal(s.terminal.exitStatus, undefined);
+          s.terminal.dispose();
+          await waitFor(() => s.terminal.exitStatus !== undefined, 8000);
+          assert.equal(relay.find(s.key), fresh);
+          fresh.terminal.dispose();
         } finally { s.terminal.dispose(); }
       }
       assert.equal(logs.size, 2);

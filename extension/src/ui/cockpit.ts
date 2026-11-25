@@ -12,14 +12,17 @@
 import * as vscode from 'vscode';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 import { promises as fs } from 'node:fs';
 import type { TriviumServices } from '../services';
 import { cockpitHtml } from './cockpitHtml';
 import { assembleEntryCommand, findSkillDoc, type EntryKind } from '../launch/entryCommand';
 import { claimAfterConfirm, runResolveAndPreflight, type PrechainReport, type PrechainFlags } from '../launch/prechain';
-import { carrierOf } from '../launch/carriers';
+import { carrierOf, type CarrierDescriptor } from '../launch/carriers';
 import { resolveGlmInteractive, type InteractiveProgram } from '../launch/glmInteractive';
-import { terminalKey } from '../launch/terminalRelay';
+import { readDriverCatalog, driverArgs, emptyCatalog, type DriverChoice } from '../launch/driverModels';
+import { launchSignature, terminalKey, type LaunchOptions } from '../launch/terminalRelay';
 import { StdoutTail } from '../monitor/stdoutTail';
 import { RunWatch } from '../monitor/statusWatch';
 import { ReviewWatch, type ReviewFile } from '../monitor/reviewWatch';
@@ -43,7 +46,7 @@ import {
 } from '../disposition/dispositionDraft';
 import { assemblyOf, presetFromAssembly } from '../presets/presetModel';
 
-interface FormState {
+interface FormState extends DriverChoice {
   driver: string;
   critics: string[];
   entry: string;
@@ -112,8 +115,11 @@ export class Cockpit implements vscode.Disposable {
   /** 重试耗尽后的低频重发现（CLAUDE-04） */
   private readonly pendingRuns = new Map<string, { topic: string; stage: string; timer: ReturnType<typeof setInterval> }>();
   private currentSessionKey: string | null = null;
-  private lastCommandText: string | null = null;
-  private ignitingGlm = false;
+  private igniting = false;
+  private prechainRevision = 0;
+  private conflictId = 0;
+  private conflict: { id: number; key: string; terminal: vscode.Terminal; signature: string } | null = null;
+  private frozenLaunch: string | null = null;
   private mode: 'M1' | 'M3' = 'M3';
   /** 数据版本不兼容 → 只读降级（CODEX-07/AGY-04）：禁点火 */
   private degradedReason: string | null = null;
@@ -218,6 +224,9 @@ export class Cockpit implements vscode.Disposable {
     });
     this.panel.onDidDispose(() => {
       this.panel = null;
+      this.conflict = null;
+      this.prechainRevision++;
+      this.frozenForm = null;
       this.disposeRuns();
     });
     // 订阅可能晚于 StateWatch 初始扫描（构造竞态）：打开面板时显式重扫一次，
@@ -314,11 +323,41 @@ export class Cockpit implements vscode.Disposable {
         else vscode.window.showWarningMessage('该次完整 stdout 已清理或无法核实文件身份');
         break;
       }
+      case 'driver-catalog': {
+        const carrier = carrierOf(String(m.driver));
+        if (!carrier) break;
+        const panel = this.panel;
+        let catalog;
+        try {
+          const program = await this.interactiveProgram(carrier);
+          catalog = await readDriverCatalog(carrier.agentId, program, this.services.root, this.terminalEnv());
+        } catch (error) { catalog = emptyCatalog(error instanceof Error ? error.message : String(error)); }
+        if (this.panel === panel) this.post({ type: 'driver-catalog', driver: carrier.agentId, request: m.request, catalog });
+        break;
+      }
+      case 'keep-terminal': {
+        const conflict = this.conflict;
+        if (!conflict || m.id !== conflict.id) break;
+        this.conflict = null;
+        const session = this.services.relay.find(conflict.key);
+        if (session && session.terminal === conflict.terminal && session.terminal.exitStatus === undefined) {
+          session.terminal.show(true);
+          this.currentSessionKey = session.key;
+          this.setMode(session.entrySent ? 'M1' : 'M3');
+          this.post({ type: 'session-command', cmdText: session.launch.entryText });
+        }
+        break;
+      }
+      case 'form-changed':
+        this.conflict = null;
+        this.prechainRevision++;
+        this.frozenForm = null;
+        break;
       case 'prechain':
-        await this.handlePrechain(m['form'] as unknown as FormState);
+        await this.handlePrechain(m['form'] as unknown as FormState, m.request);
         break;
       case 'ignite':
-        await this.handleIgnite(m['form'] as unknown as FormState, String(m['topic'] ?? ''));
+        await this.handleIgnite(m['form'] as unknown as FormState, String(m['topic'] ?? ''), m.conflictId);
         break;
       case 'resend':
         await this.handleResend();
@@ -533,158 +572,151 @@ export class Cockpit implements vscode.Disposable {
 
   // ── 前置链与点火 ──────────────────────────────────────────────────────────
 
-  private async handlePrechain(form: FormState): Promise<void> {
-    this.frozenForm = null; // 重新前置链即解除旧冻结
-    this.frozenTopic = null;
-    if (this.degradedReason) {
-      this.post({ type: 'prechain-result', report: failedReport('resolve', null, this.degradedReason), frozen: false });
-      return;
+  private async interactiveProgram(carrier: CarrierDescriptor): Promise<InteractiveProgram> {
+    if (!vscode.workspace.isTrusted) throw new Error('请先确认当前工作区可信，再查询或启动 Driver。');
+    const probe = await this.services.env.loadProbe();
+    if (carrier.agentId === 'glm') {
+      const cfg = vscode.workspace.getConfiguration('trivium.launch', vscode.Uri.file(this.services.root));
+      return resolveGlmInteractive({ trusted: vscode.workspace.isTrusted, configuredPath: cfg.get<string>('glmInteractivePath'),
+        configuredNode: cfg.get<string>('glmNodePath'), cli: probe?.cli.zcode, wrapper: this.services.cli.wrapperPath() });
     }
-    if (!(await this.services.cli.wrapperExists())) {
-      this.post({ type: 'prechain-result', report: failedReport('resolve', null, '未找到 .trivium/bin/trivium wrapper：本工作区尚未初始化 TriviumCode。'), frozen: false });
-      return;
-    }
-    const report = await runResolveAndPreflight(this.services.cmds, {
-      entry: form.entry as EntryKind,
-      body: form.body,
-      flags: prechainFlagsOf(form),
-    });
-    const cmd = assembleEntryCommand({
-      agentId: form.driver as never,
-      entry: form.entry as EntryKind,
-      body: form.body,
-      flags: cliFlagsForCommand(form),
-    });
-    this.post({ type: 'prechain-result', report: report as PrechainReport, cmdText: cmd.text });
-    if (!report.failed) {
-      // CLAUDE-08：冻结表单快照与解析主题，点火只接受与快照一致的表单
-      this.frozenForm = form;
-      this.frozenTopic = report.topic;
-      this.lastCommandText = cmd.text;
-      const doc = await findSkillDoc(form.driver as never, form.entry as EntryKind, this.services.repoRoot);
-      this.post({ type: 'arg-hint', text: doc?.argHint ?? null });
-    }
+    const entrypoint = probe?.cli[carrier.cliKey]?.entrypoint;
+    if (typeof entrypoint !== 'string' || !path.isAbsolute(entrypoint)) throw new Error(`探针无 ${carrier.display} 绝对入口，请先运行 doctor。`);
+    return { source: '探针', launchMode: carrier.launchMode, entrypoint };
   }
 
-  private async handleIgnite(form: FormState, topic: string): Promise<void> {
-    // CLAUDE-08：表单与前置链快照不一致 → 拒绝点火（防「认领 A 主题、注入 B」）
-    if (!this.frozenForm || !this.frozenTopic) {
-      this.post({ type: 'ignite-result', ok: false, message: '尚未完成前置链：先执行步骤 ①。', cmdText: this.lastCommandText ?? '' });
-      return;
+  private terminalEnv(): NodeJS.ProcessEnv {
+    const root = this.services.root;
+    const platform = process.platform === 'darwin' ? 'osx' : process.platform === 'win32' ? 'windows' : 'linux';
+    const overrides = vscode.workspace.getConfiguration('terminal.integrated', vscode.Uri.file(root))
+      .get<Record<string, string | null>>('env.' + platform);
+    const env = { ...process.env };
+    for (const [name, value] of Object.entries(overrides ?? {})) {
+      if (value === null) delete env[name];
+      else env[name] = value.replace(/\$\{(workspaceFolder|userHome|env:([^}]+))\}/g, (_, variable, key) =>
+        variable === 'workspaceFolder' ? root : variable === 'userHome' ? homedir() : process.env[key] ?? '');
     }
-    if (topic !== this.frozenTopic || !formEquals(form, this.frozenForm)) {
-      this.post({
-        type: 'ignite-result',
-        ok: false,
-        message: '表单在确认后已变更（主题/正文/旗标等）：请重新执行前置链再点火。',
-        cmdText: this.lastCommandText ?? '',
-      });
-      return;
-    }
-    if (form.driver === 'glm') {
-      if (this.ignitingGlm) {
-        this.post({ type:'banner', kind:'info', text:'GLM 正在点火，请等待入口注入完成。' });
-        return;
-      }
-      this.ignitingGlm = true;
-      try {
-        await this.startTerminal(form, topic);
-      } catch (error) {
-        this.setMode('M3');
-        this.post({ type: 'ignite-result', ok: false, cmdText: this.lastCommandText ?? '',
-          message: error instanceof Error ? error.message : String(error) });
-      } finally { this.ignitingGlm = false; }
-      return;
-    }
-    await this.startTerminal(form, topic);
+    return env;
   }
 
-  private async startTerminal(form: FormState, topic: string): Promise<void> {
+  private async prepareLaunch(form: FormState) {
     const carrier = carrierOf(form.driver);
-    if (!carrier) {
-      this.post({ type: 'ignite-result', ok: false, message: `未知 Driver：${form.driver}`, cmdText: '' });
-      return;
-    }
-    const claimTopic = async () => {
-      const claim = await claimAfterConfirm(this.services.cmds, form.entry as EntryKind, topic, form.driver);
-      if (this.disposed) return false; // CODEX-05：await 后复查生命周期（停用后不再建终端/注入）
-      if (claim.step === 'claim' && claim.state === 'failed') {
-        this.post({ type: 'ignite-result', ok: false, message: `认领失败（退出码 ${claim.code}）：${claim.message}`, cmdText: this.lastCommandText ?? '' });
-        return false;
-      }
-      return true;
-    };
-    const glm = carrier.agentId === 'glm';
-    const resource = vscode.Uri.file(this.services.root);
-    if (!glm && !await claimTopic()) return;
-    let program: InteractiveProgram;
-    if (glm) {
-      if (!vscode.workspace.isTrusted) throw new Error('请先确认当前工作区可信，再启动 GLM 交互终端。');
-      const existing = this.services.relay.find(terminalKey(form.driver, topic, form.entry));
-      if (existing && existing.terminal.exitStatus === undefined) {
-        existing.terminal.show();
-        this.currentSessionKey = existing.key;
-        this.setMode(existing.entrySent ? 'M1' : 'M3');
-        this.lastCommandText = existing.launch.entryText ?? '';
-        this.post({ type: 'ignite-result', ok: existing.entrySent, cmdText: this.lastCommandText,
-          message: (existing.entrySent ? '已返回原 GLM 会话。更换程序请先关闭此终端。' :
-            '原终端已打开，尚未送入入口。确认输入框就绪后请点「重新注入」。') + launchDescription(existing.launch) });
-        return;
-      }
-      this.currentSessionKey = null;
-      const cfg = vscode.workspace.getConfiguration('trivium.launch', resource);
-      const probe = await this.services.env.loadProbe();
-      program = await resolveGlmInteractive({ trusted: vscode.workspace.isTrusted,
-        configuredPath: cfg.get<string>('glmInteractivePath'), configuredNode: cfg.get<string>('glmNodePath'),
-        cli: probe?.cli.zcode, wrapper: this.services.cli.wrapperPath() });
-      if (this.disposed) return;
-    } else {
-      const probe = await this.services.env.loadProbe();
-      if (this.disposed) return;
-      const entrypoint = probe?.cli[carrier.cliKey]?.['entrypoint'];
-      if (typeof entrypoint !== 'string' || !entrypoint) {
-        this.post({ type: 'ignite-result', ok: false, message: `探针无 ${carrier.display} 入口（先跑 doctor 探测）`, cmdText: this.lastCommandText ?? '' });
-        return;
-      }
-      program = { source: '探针', launchMode: carrier.launchMode, entrypoint };
-    }
-    if (glm && !await claimTopic()) return;
-    const cmd = assembleEntryCommand({
-      agentId: carrier.agentId,
-      entry: form.entry as EntryKind,
-      body: form.body,
-      flags: cliFlagsForCommand(form),
-    });
-    this.lastCommandText = cmd.text;
-    for (const w of cmd.warnings) this.post({ type: 'banner', kind: 'warn', text: w });
+    if (!carrier) throw new Error('未知 Driver。');
+    const program = await this.interactiveProgram(carrier);
+    const files = await Promise.all([program.entrypoint, ...(program.nodePath ? [program.nodePath] : [])].map(async file => {
+      const real = await fs.realpath(file);
+      const stat = await fs.stat(real);
+      if (!stat.isFile()) throw new Error('Driver 入口不是文件。');
+      await fs.access(real, program.launchMode === 'shellCommand' && file === program.entrypoint ? fs.constants.R_OK : fs.constants.X_OK);
+      return [real, stat.size, stat.mtimeMs];
+    }));
+    const env = this.terminalEnv();
+    // 两项默认时没有待验证的覆盖，也无需等供应商的在线目录。
+    const catalog = form.driverModel === undefined && form.driverEffort === undefined
+      ? emptyCatalog('') : await readDriverCatalog(carrier.agentId, program, this.services.root, env);
+    const nativeArgs = driverArgs(carrier.agentId, catalog, form);
+    const model = catalog.models.find(m => m.id === form.driverModel);
+    const routes = Object.entries(env).filter(([name]) => /^(HOME$|CODEX_HOME$|CLAUDE_CONFIG_DIR$|ANTHROPIC_|GEMINI_|ANTIGRAVITY_|JETSKI_|ZCODE_)/.test(name)).sort();
+    // 会话只存摘要；供应商环境可能包含凭据，不发送到 Webview 或日志。
+    const programIdentity = createHash('sha256').update(JSON.stringify([files, routes, catalog.provider,
+      model?.label ?? catalog.defaultModel, form.driverEffort ?? catalog.defaultEffort])).digest('hex');
+    return { carrier, program: { ...program, nativeArgs, programIdentity } };
+  }
 
-    const settings = launchSettingsFor(carrier.agentId, glm ? resource : undefined);
-    const session = await this.services.relay.ensureSession({
-      agentId: carrier.agentId, display: carrier.display, topic, entry: form.entry, ...program, entryText: cmd.text,
-      cwd: this.services.root,
-      waitForZcodeTurn: settings.waitForZcodeTurn,
-    });
-    if (this.disposed) return; // CODEX-05：停用后不再注入
-    this.currentSessionKey = session.key;
-    if (glm) this.post({type:'banner', kind:'info', text:'GLM 终端已打开，正在等待入口注入。'});
-    const sent = await this.services.relay.injectText(session, cmd.text, settings, settings.readyDelayMs, glm);
-    if (!sent) {
-      this.setMode('M3');
-      this.post({ type: 'ignite-result', ok: false, message: '协同终端已关闭，请核对 CLI 后重新点火。', cmdText: cmd.text });
+  private async handlePrechain(form: FormState, request: unknown): Promise<void> {
+    const revision = ++this.prechainRevision;
+    this.conflict = null;
+    this.frozenForm = null;
+    this.frozenTopic = null;
+    this.frozenLaunch = null;
+    try {
+      if (this.degradedReason) throw new Error(this.degradedReason);
+      if (!(await this.services.cli.wrapperExists())) throw new Error('未找到 .trivium/bin/trivium wrapper，请先初始化工作区。');
+      const flags = prechainFlagsOf(form);
+      const { program } = await this.prepareLaunch(form);
+      const report = await runResolveAndPreflight(this.services.cmds, { entry: form.entry as EntryKind, body: form.body, flags });
+      if (this.disposed || revision !== this.prechainRevision) return;
+      const cmd = assembleEntryCommand({ agentId: form.driver as never, entry: form.entry as EntryKind,
+        body: form.body, flags: cliFlagsForCommand(form) });
+      if (!report.failed) {
+        this.frozenForm = form;
+        this.frozenTopic = report.topic;
+        this.frozenLaunch = launchSignature(program);
+      }
+      this.post({ type: 'prechain-result', request, report, cmdText: cmd.text });
+      if (!report.failed) await this.pushArgHint(form.entry);
+    } catch (error) {
+      if (revision === this.prechainRevision) this.post({ type: 'prechain-result', request,
+        report: failedReport('preflight', null, error instanceof Error ? error.message : String(error)) });
+    }
+  }
+
+  private async handleIgnite(form: FormState, topic: string, conflictId: unknown): Promise<void> {
+    if (this.igniting) return;
+    const frozen = this.frozenForm;
+    const valid = () => !this.disposed && frozen && frozen === this.frozenForm && this.frozenTopic === topic && formEquals(frozen, form);
+    if (!valid()) {
+      this.post({ type: 'banner', kind: 'warn', text: '请先按当前装配重新执行前置链，再点火。' });
       return;
     }
-    this.setMode('M1');
-    this.post({
-      type: 'ignite-result',
-      ok: true,
-      message: glm ? '已向 GLM 终端送入入口文字。' + launchDescription(session.launch) : undefined,
-      terminalName: `Trivium · ${carrier.display} · ${topic}`,
-      cmdText: cmd.text,
-    });
+    this.igniting = true;
+    try {
+      const { carrier, program } = await this.prepareLaunch(form);
+      const signature = launchSignature(program);
+      if (signature !== this.frozenLaunch) throw new Error('交互入口或参数在预检后发生变化，请重新执行前置链。');
+      if (!valid()) return;
+      const key = terminalKey(form.driver, topic, form.entry);
+      const existing = this.services.relay.find(key);
+      const glm = carrier.agentId === 'glm';
+      let openNewBeside: vscode.Terminal | undefined;
+      if (existing && existing.terminal.exitStatus === undefined) {
+        if (launchSignature(existing.launch) !== signature) {
+          if (!this.conflict || this.conflict.id !== conflictId || this.conflict.terminal !== existing.terminal ||
+              this.conflict.signature !== signature) {
+            this.conflict = { id: ++this.conflictId, key, terminal: existing.terminal, signature };
+            this.post({ type: 'launch-conflict', id: this.conflict.id, before: choiceDescription(existing.launch),
+              after: choiceDescription({ ...program, ...form }) });
+            return;
+          }
+          this.conflict = null;
+          openNewBeside = existing.terminal;
+        } else if (glm) {
+          existing.terminal.show();
+          this.currentSessionKey = key;
+          this.setMode(existing.entrySent ? 'M1' : 'M3');
+          this.post({ type: 'ignite-result', ok: existing.entrySent, cmdText: existing.launch.entryText,
+            message: (existing.entrySent ? '已返回原 GLM 会话。' : '原终端尚未收到入口，请确认就绪后重新注入。') + launchDescription(existing.launch) });
+          return;
+        }
+      }
+      const claim = await claimAfterConfirm(this.services.cmds, form.entry as EntryKind, topic, form.driver);
+      if (!valid()) return;
+      if (claim.step === 'claim' && claim.state === 'failed') throw new Error(`认领失败（退出码 ${claim.code}）：${claim.message}`);
+      const cmd = assembleEntryCommand({ agentId: carrier.agentId, entry: form.entry as EntryKind,
+        body: form.body, flags: cliFlagsForCommand(form) });
+      for (const w of cmd.warnings) this.post({ type: 'banner', kind: 'warn', text: w });
+      const settings = launchSettingsFor(carrier.agentId, glm ? vscode.Uri.file(this.services.root) : undefined);
+      const session = await this.services.relay.ensureSession({
+        agentId: carrier.agentId, display: carrier.display, topic, entry: form.entry, ...program, entryText: cmd.text,
+        driverModel: form.driverModel, driverEffort: form.driverEffort, cwd: this.services.root, waitForZcodeTurn: settings.waitForZcodeTurn,
+      }, openNewBeside);
+      if (this.disposed) return;
+      this.currentSessionKey = session.key;
+      session.launch.entryText = cmd.text;
+      this.post({ type: 'session-command', cmdText: cmd.text });
+      if (glm) this.post({ type: 'banner', kind: 'info', text: 'GLM 终端已打开，正在等待入口注入。' });
+      const sent = await this.services.relay.injectText(session, cmd.text, settings, settings.readyDelayMs, glm);
+      this.setMode(sent ? 'M1' : 'M3');
+      this.post({ type: 'ignite-result', ok: sent, cmdText: cmd.text, terminalName: session.terminal.name,
+        message: sent ? '已向终端送入入口。' + choiceDescription(session.launch) : '协同终端已关闭，请重新点火。' });
+    } catch (error) {
+      this.post({ type: 'banner', kind: 'warn', text: '点火未完成：' + (error instanceof Error ? error.message : String(error)) });
+    } finally { this.igniting = false; }
   }
 
   private async handleResend(): Promise<void> {
-    if (!this.lastCommandText || !this.currentSessionKey) {
+    if (this.conflict) return;
+    if (!this.currentSessionKey) {
       this.post({ type: 'banner', kind: 'warn', text: '尚无可重发的注入：先完成点火。' });
       return;
     }
@@ -694,13 +726,13 @@ export class Cockpit implements vscode.Disposable {
       return;
     }
     const glm = session.launch.agentId === 'glm';
-    if (glm && (session.injecting || this.ignitingGlm)) {
-      this.post({type:'banner', kind:'info', text:'GLM 正在注入，请等待本次发送完成。'});
+    if (session.injecting || this.igniting) {
+      this.post({type:'banner', kind:'info', text:'正在注入，请等待本次发送完成。'});
       return;
     }
     const settings = launchSettingsFor(session.launch.agentId, glm ? vscode.Uri.file(this.services.root) : undefined);
     try {
-      const text = glm ? session.launch.entryText : this.lastCommandText;
+      const text = session.launch.entryText;
       if (!text) return;
       const sent = await this.services.relay.injectText(session, text, settings, 300);
       if (sent && glm) this.setMode('M1');
@@ -1255,7 +1287,7 @@ export class Cockpit implements vscode.Disposable {
       return;
     }
     const preset = presetFromAssembly(trimmed, scope === 'global' ? 'global' : 'workspace', {
-      driver: form.driver,
+      driver: form.driver, driverModel: form.driverModel, driverEffort: form.driverEffort,
       critics: form.critics,
       entry: form.entry,
       maxRounds: form.maxRounds,
@@ -1681,6 +1713,10 @@ function launchDescription(program: { source?: string; entrypoint: string; nodeP
   return `来源：${program.source}；入口：${program.entrypoint}` + (program.nodePath ? '；Node：' + program.nodePath : '（直接启动）');
 }
 
+function choiceDescription(o: Pick<LaunchOptions, 'driverModel' | 'driverEffort' | 'source' | 'entrypoint' | 'nodePath'>): string {
+  return `模型 ${o.driverModel ?? '沿用 CLI 默认'}，思考强度 ${o.driverEffort ?? '沿用 CLI 默认'}。 ` + launchDescription(o);
+}
+
 function launchSettingsFor(agentId: string, resource?: vscode.Uri): { readyDelayMs: number; sendMode: 'execute' | 'split' | 'manual'; segmentBytes: number; waitForZcodeTurn: boolean } {
   const cfg = vscode.workspace.getConfiguration('trivium.launch', resource);
   const overrides = cfg.get<Record<string, { readyDelayMs?: number; sendMode?: string; segmentBytes?: number }>>('carrierOverrides') ?? {};
@@ -1731,13 +1767,20 @@ function extraFlagList(form: FormState): string[] {
   if (form.extraFlags) {
     for (const tok of form.extraFlags.split(/\s+/).filter(Boolean)) out.push(tok);
   }
+  if (form.driverModel) {
+    const declared = out.includes('--driver-model');
+    if (out.some((token, i) => token.startsWith('--driver-model=') || (token === '--driver-model' && out[i + 1] !== form.driverModel))) {
+      throw new Error('额外旗标中的 --driver-model 与所选 Driver 模型冲突，请移除重复声明。');
+    }
+    if (!declared) out.push('--driver-model', form.driverModel);
+  }
   return out;
 }
 
 /** 表单一致性（CLAUDE-08）：用于点火校验的逐字段比较 */
 function formEquals(a: FormState, b: FormState): boolean {
   return (
-    a.driver === b.driver &&
+    a.driver === b.driver && a.driverModel === b.driverModel && a.driverEffort === b.driverEffort &&
     a.entry === b.entry &&
     a.body === b.body &&
     a.topic === b.topic &&
