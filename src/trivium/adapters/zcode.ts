@@ -25,7 +25,10 @@
  */
 import path from 'node:path';
 import os from 'node:os';
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
+import { isZcodeScript, reviewEntry, standalonePackage } from '../../../extension/src/launch/zcodeInstallation.js';
+import { agentConfigOf } from '../config.js';
+export { isZcodeScript, reviewEntry, type ZcodeSearch } from '../../../extension/src/launch/zcodeInstallation.js';
 import type { CriticRequest, CriticResult, ModelUnenforcedCause } from '../types.js';
 import { runReviewProcess, type StdoutTarget } from '../live-stdout.js';
 import { ensureDir, exists, sha256File, tildeHome, tryRemoveTempDir } from '../util/fsx.js';
@@ -228,10 +231,7 @@ export const ZCODE_ARGV_PARSED_RE =
  * 这条新语义，登记 BACKLOG **EV-85**，触发条件：下一次改动布局支，或 ZCode 跨版本升级。
  */
 export const ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT =
-  `CLI 未定位到内置 provider 配置（坑 P-28）：0.16.9 起 CLI 按入口目录推算 zcode-builtin.json，` +
-  `应用包布局下推算不到；编排器按 ${ZCODE_BUILTIN_PROVIDER_ENV} 注入 ` +
-  `<入口目录>/../config/provider/zcode-builtin.json，本机该文件不存在或 ZCode 安装布局已变。` +
-  `这是**安装布局**问题而非凭据问题，请核对 ZCode 安装布局`;
+  'CLI 未定位到所选安装的内置 provider 配置（P-28）。请核对独立包的 agent/provider/zcode-builtin.json 或桌面包的 config/provider/zcode-builtin.json。';
 
 /**
  * ZCode headless 未跑通时的说法，`availability()` 与 `doctor` 同源（r2 AGY-04）。
@@ -269,9 +269,36 @@ export async function zcodeProviderConfigPaths(
     real = abs;
   }
   return {
-    builtin: path.resolve(path.dirname(real), '../config/provider/zcode-builtin.json'),
+    builtin: builtinForEntry(real),
     personal: path.join(userHome, '.zcode/v2/provider_config.json'),
   };
+}
+
+function builtinForEntry(real: string): string {
+  const pkg = existsSync(real) ? standalonePackage(real) : undefined;
+  if (pkg) return path.join(pkg.root, 'agent/provider/zcode-builtin.json');
+  return path.resolve(path.dirname(real), '../config/provider/zcode-builtin.json');
+}
+
+/** 在预检和 worker 入口处复核，避免同版本的另一份安装沿用旧结论。 */
+function entryProblem(cfg: AdapterContext['cfg']): string | undefined {
+  const probe = cfg.probe.cli.zcode;
+  try {
+    const selected = reviewEntry(agentConfigOf(cfg, 'glm', 'zcode').entry);
+    if (!probe?.entrypoint) return '探针未找到 ZCode 入口。当前选择 ' + (selected ?? '未找到') + '，请运行 trivium doctor --only zcode。';
+    if (!selected || selected !== probe.entrypoint) {
+      return '当前 ZCode 审核入口 ' + (selected ?? '未找到') + '，探针记录 ' + (probe?.entrypoint ?? '无') + '。请运行 trivium doctor --only zcode。';
+    }
+    const measured = probe.provider_config?.builtin_file;
+    if (measured && (builtinForEntry(selected) !== measured || !existsSync(measured))) {
+      return 'ZCode 入口 ' + selected + ' 的内置 provider 布局已变化，请运行 trivium doctor --only zcode。';
+    }
+  } catch (e) { return (e as Error).message; }
+}
+
+/** JS 脚本由配置的 Node 解释，原生程序及 shell 启动器自行处理参数。 */
+export function zcodeInvocation(node: string, [entry, ...args]: [string, ...string[]]): [string, string[]] {
+  return isZcodeScript(entry) ? [node, [entry, ...args]] : [entry, args];
 }
 
 /**
@@ -404,6 +431,11 @@ export function zcodeStorageRedirectEnv(root: string): Record<string, string> {
  */
 export const ZCODE_CREDENTIAL_ENV_KEYS: readonly string[] = ['ZCODE_API_KEY', 'ZCODE_BASE_URL'];
 
+export function zcodeVersionEnv(): Record<string, undefined> {
+  return Object.fromEntries([ZCODE_BUILTIN_PROVIDER_ENV, ZCODE_PERSONAL_PROVIDER_ENV,
+    ...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS].map(k => [k, undefined]));
+}
+
 export interface ZcodeInvokeOptions {
   stdoutTarget?: StdoutTarget;
   entry: string;
@@ -455,7 +487,7 @@ export interface ZcodeInvokeOutcome {
 }
 
 /** zcode 的 argv 拼装。纯函数，与执行分离，让 M0 调用配方有回归测试 */
-export function buildZcodeArgs(opts: Pick<ZcodeInvokeOptions, 'entry' | 'prompt' | 'cwd' | 'readonlyArgs'>): string[] {
+export function buildZcodeArgs(opts: Pick<ZcodeInvokeOptions, 'entry' | 'prompt' | 'cwd' | 'readonlyArgs'>): [string, ...string[]] {
   return [
     opts.entry,
     '--prompt', opts.prompt,
@@ -520,7 +552,7 @@ export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvoke
     }
   }
 
-  const r = await runReviewProcess(opts.stdoutTarget, opts.node, args, { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, killTree: true });
+  const r = await runReviewProcess(opts.stdoutTarget, ...zcodeInvocation(opts.node, args), { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, killTree: true });
 
   /*
    * 「无法定位 Built-in Provider Config」是**布局/环境**问题而非模型问题：它要先于
@@ -1085,6 +1117,9 @@ export async function prepareZcodeHome(
 
 export const zcodeAdapter: CriticAdapter = {
   critic: 'glm',
+  versionInvocationFor(cfg) {
+    return { bin: cfg.probe.cli.zcode?.entrypoint ?? null, prefix: [], env: zcodeVersionEnv(), problem: entryProblem(cfg) };
+  },
   /*
    * 专用读工具带独立路径字段，被拒操作留痕。本侧 `Bash` 全禁，`command_texts`
    * 恒空（见本文件 §96 的说明），`command-trace` 的回填路径对它是空操作——
@@ -1165,22 +1200,15 @@ export const zcodeAdapter: CriticAdapter = {
     return {
       async fingerprint() {
         const f = zcodeOverrideSourcePath();
-        if (!(await exists(f))) return null;
-        /*
-         * 读不了就当「没有可用指纹」（代码双审 r1 CODEX-01）：缓存判失效、交给 probe() 报一条可读的失败，
-         * 而不是让异常穿过无兜底的 `probeAuth` 把整个预检崩成「内部错误」。
-         * EV-202 起 `probeAuth` 自己兜住指纹抛错（不查也不写缓存）；这里的 catch 按该题决策保留、输出逐字不变。
-         * 折成 null 留下一个窄格：档位无模型时读不了也能探活通过、写入 null 缓存，之后 null 等于 null 命中（EV-203）。
-         */
-        try {
-          return `${await sha256File(f)}|model=${model ?? ''}`;
-        } catch {
-          return null;
-        }
+        const probe = cfg.probe.cli.zcode;
+        // 不可读时由预检报告并跳过缓存。缺少 legacy 配置时仍区分安装与模型。
+        const hash = await exists(f) ? await sha256File(f) : null;
+        return JSON.stringify([hash, model, probe?.entrypoint, probe?.provider_config?.builtin_file]);
       },
       async probe() {
         const entry = cfg.probe.cli.zcode?.entrypoint ?? null;
-        if (!entry) return { ok: false, detail: 'zcode 入口未记录' };
+        const problem = entryProblem(ctx.cfg);
+        if (!entry || problem) return { ok: false, detail: problem ?? 'zcode 入口未记录' };
         /*
          * 临时运行目录：副本 HOME 与 CLI 产物都落在它下面，副本里有凭据，用完即删。
          * 删除只认 mkdtemp 的返回值（2026-09-20 事故后的规矩），不拼路径、不走别的变量。
@@ -1272,7 +1300,8 @@ export const zcodeAdapter: CriticAdapter = {
       return { ok: false, reason: 'zcode 尚未探测，请先运行 trivium doctor --only zcode', fix: 'doctor' };
     }
     // 入口可能挪了；真卸载了 doctor 会给出「未找到入口」的明确结论（EV-251 计划 r2 D1）
-    if (!p.entrypoint) return { ok: false, reason: '探针未找到 zcode.cjs 入口，请先运行 trivium doctor', fix: 'doctor' };
+    const problem = entryProblem(ctx.cfg);
+    if (problem) return { ok: false, reason: problem, fix: 'doctor' };
     /*
      * 布局判据要**先于**旗标判空（r2 CODEX-02 ≡ AGY-04）：内置 provider 配置定位不到时，
      * 参数解析根本没发生（P-29），`readonly_flags` 为空是布局失败的**后果**而不是独立结论。
@@ -1282,7 +1311,7 @@ export const zcodeAdapter: CriticAdapter = {
      * 那是「未探过」，不该在这里拦人——`probed_at` 那一支已经管住它了。
      */
     if (p.provider_config?.builtin_file === null) {
-      return { ok: false, reason: ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT };
+      return { ok: false, reason: p.entrypoint + '：' + ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT };
     }
     if (p.readonly_flags.length === 0) {
       return {
@@ -1295,7 +1324,7 @@ export const zcodeAdapter: CriticAdapter = {
          * 旧文案只说「升级 ZCode」，而这一格为空最常见的原因恰恰是布局问题导致本轮没判成。
          */
         reason:
-          '探针未实测到任何可用的只读参数组合，无法保障审查员只读，该侧不可用。' +
+          p.entrypoint + '：探针未实测到任何可用的只读参数组合，无法保障审查员只读，该侧不可用。' +
           '若 doctor notes 里记了「本轮未判定」（provider 配置定位失败，参数解析根本没发生），' +
           '先重跑 trivium doctor --only zcode 并核对 ZCode 安装布局，而不是升级 ZCode',
       };
@@ -1310,14 +1339,14 @@ export const zcodeAdapter: CriticAdapter = {
       return {
         ok: false,
         reason:
-          '探针未实测到 --disallowed-tools 被接受：仅靠 --mode plan 挡不住 Bash 写入（M0 实测），' +
+          p.entrypoint + '：探针未实测到 --disallowed-tools 被接受：仅靠 --mode plan 挡不住 Bash 写入（M0 实测），' +
           '无法保障审查员只读，该侧不可用。请重跑 trivium doctor 或升级 ZCode',
       };
     }
     if (p.response_field === null) {
-      return { ok: false, reason: ZCODE_HEADLESS_NOT_OK_HINT };
+      return { ok: false, reason: p.entrypoint + '：' + ZCODE_HEADLESS_NOT_OK_HINT };
     }
-    return { ok: true };
+    return { ok: true, note: p.entrypoint ?? undefined };
   },
 
   /** 凭据载体在 `<侧>/home/.zcode/cli/config.json`，由 `prepareZcodeHome` 写入；抹除见 `scrubZcodeHome` */
@@ -1337,6 +1366,8 @@ export const zcodeAdapter: CriticAdapter = {
     if (!probe.entrypoint) {
       return failedResult('glm', { status: 'failed', reason: 'zcode 入口未探测到' });
     }
+    const problem = entryProblem(ctx.cfg);
+    if (problem) return failedResult('glm', { status: 'failed', reason: problem });
     const entry = probe.entrypoint;
 
     await ensureDir(req.out_dir);

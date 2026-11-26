@@ -45,6 +45,7 @@ function freshProbe(cfg: Config): void {
     models: ['gemini-3.1-pro-high', 'gemini-3.8-flash-high', 'gemini-3.8-flash-low'],
     headless_read_ok: true, agent: 'trivium-critic',
   });
+  cfg.agents.glm = { vendor: 'zcode', entry: process.execPath };
   const zcode = cfg.probe.cli.zcode!;
   Object.assign(zcode, {
     entrypoint: process.execPath, version: '0.16.5', probed_at: now,

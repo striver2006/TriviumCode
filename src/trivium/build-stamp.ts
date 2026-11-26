@@ -32,6 +32,7 @@ import { diffExcludePrefixes } from './code-stage.js';
  */
 export const INSTALL_INPUT_PATHS: readonly string[] = [
   'src',
+  'extension/src/launch/zcodeInstallation.ts',
   'scripts',
   'skills',
   'package.json',

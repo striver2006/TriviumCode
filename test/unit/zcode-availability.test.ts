@@ -8,7 +8,8 @@ function ctxWith(flags: string[]) {
   // probed_at 必填：适配器以它区分「没探过」与「探过但没找到入口」（AGY-01）。
   // 不设的话下面每条用例拿到的都会是「尚未探测」，测不到只读参数那一层。
   cfg.probe.cli.zcode!.probed_at = new Date().toISOString();
-  cfg.probe.cli.zcode!.entrypoint = '/x/zcode.cjs';
+  cfg.agents.glm = { vendor: 'zcode', entry: process.execPath };
+  cfg.probe.cli.zcode!.entrypoint = process.execPath;
   cfg.probe.cli.zcode!.readonly_flags = flags;
   cfg.probe.cli.zcode!.response_field = 'response';
   return { cfg, nodePath: process.execPath };
@@ -41,7 +42,7 @@ test('探过但入口丢失时答「未找到入口」，而不是「尚未探�
   cfg.probe.cli.zcode!.entrypoint = null; // 探过了，但那次没找到
   const a = zcodeAdapter.availability({ cfg, nodePath: process.execPath });
   assert.equal(a.ok, false);
-  assert.match(a.reason ?? '', /未找到/);
+  assert.match(a.reason ?? '', /未找到|探针记录 无/);
   assert.doesNotMatch(
     a.reason ?? '', /尚未探测/,
     '探过了就别再说「尚未探测」——重跑 doctor 也不会变，真实原因是这台机器上没装',
@@ -76,7 +77,7 @@ test('内置 provider 配置探过但没找到 → 报安装布局，不报旗�
   ctx.cfg.probe.cli.zcode!.provider_config = { builtin_file: null, personal_file: '/u/.zcode/v2/provider_config.json' };
   const a = zcodeAdapter.availability(ctx);
   assert.equal(a.ok, false);
-  assert.equal(a.reason, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT);
+  assert.ok(a.reason?.includes(ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT));
 });
 
 test('布局失败与旗标为空同时成立时，布局提示优先（顺序守卫）', () => {
@@ -84,7 +85,7 @@ test('布局失败与旗标为空同时成立时，布局提示优先（顺序�
   ctx.cfg.probe.cli.zcode!.provider_config = { builtin_file: null, personal_file: null };
   const a = zcodeAdapter.availability(ctx);
   assert.equal(a.ok, false);
-  assert.equal(a.reason, ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT);
+  assert.ok(a.reason?.includes(ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT));
   assert.doesNotMatch(
     a.reason ?? '', /升级 ZCode/,
     '两支换序就会退回「请升级 ZCode」——那正是这条判据要消灭的误导',

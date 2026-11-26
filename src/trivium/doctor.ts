@@ -1078,7 +1078,7 @@ async function runDoctorCore(opts: DoctorOptions, hooks: DoctorCoreHooks | null)
 
   // ── ZCode ───────────────────────────────────────────────────────────
   if (only === null || only === 'zcode') {
-    step('探测 ZCode（zcode.cjs）…');
+    step('探测 ZCode 审核入口…');
     const got = await inSection('zcode', () => guard('zcode', () =>
       probeZcode(agentConfigOf(opts.config, 'glm', 'zcode').entry, env.nodePath ?? process.execPath, {
         skipModelCalls: opts.skipModelCalls ?? false,
@@ -1094,7 +1094,7 @@ async function runDoctorCore(opts: DoctorOptions, hooks: DoctorCoreHooks | null)
       probe.cli.zcode = r.probe;
       notes.push(...r.notes.map((n) => `[zcode] ${n}`));
       await checkpoint('zcode');
-      if (!r.probe.entrypoint) blockers.push('未找到 zcode.cjs 入口');
+      if (!r.probe.entrypoint || !r.probe.version) blockers.push(r.notes.at(-1) ?? 'ZCode 审核入口不可用');
       else {
         /*
          * 布局与旗标两条 blocker **不借道 `response_field`**（r2 CODEX-06 ≡ AGY-05）。
@@ -1104,12 +1104,12 @@ async function runDoctorCore(opts: DoctorOptions, hooks: DoctorCoreHooks | null)
          *    建议用这条命令排障——内置文件缺失 + 旗标全未判定时，它 0 blocker 通过。
          * 这两件事都与模型调用无关，判据也就不该挂在模型调用的结论上。
          */
-        if (r.probe.provider_config?.builtin_file === null) blockers.push(ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT);
+        if (r.probe.provider_config?.builtin_file === null) blockers.push(r.probe.entrypoint + '：' + ZCODE_PROVIDER_CONFIG_UNRESOLVED_HINT);
         // 只在**判定完成**时才拦：本轮未判定（P-29）时 readonly_flags 是保留的旧值，
         // 它为空只说明「没探出来过」，拦它给的是误导性结论（见 probes/zcode.ts 的第三态注释）
-        if (r.flagsIndeterminate.length === 0 && r.probe.readonly_flags.length === 0) {
+        if (r.flagsIndeterminate.length === 0 && !r.probe.readonly_flags.some(flag => flag.startsWith('--disallowed-tools'))) {
           blockers.push(
-            '探针未实测到任何可用的只读参数组合，无法保障审查员只读——请重跑 trivium doctor 或升级 ZCode',
+            r.probe.entrypoint + '：探针未实测到可用的 --disallowed-tools，无法保障审查员只读。',
           );
         }
         if (r.flagsZeroExit.length > 0) {
@@ -1135,7 +1135,7 @@ async function runDoctorCore(opts: DoctorOptions, hooks: DoctorCoreHooks | null)
         // 本轮进了真实调用段却没刷新 response_field（EV-196）：与旗标未判定同档，出 warning、不拦。
         // 不与下面那条 blocker 互斥——blocker 说「没跑通」，这条说「哪一支、根因在哪、哪几项是旧的」
         if (r.headlessUnrefreshed) warnings.push(zcodeHeadlessUnrefreshedWarning(r.headlessUnrefreshed));
-        if (r.probe.response_field === null && !opts.skipModelCalls) blockers.push(ZCODE_HEADLESS_NOT_OK_HINT);
+        if (r.probe.response_field === null && !opts.skipModelCalls) blockers.push(r.probe.entrypoint + '：' + ZCODE_HEADLESS_NOT_OK_HINT);
       }
     }
   }

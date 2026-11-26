@@ -612,7 +612,7 @@ export class Cockpit implements vscode.Disposable {
     }));
     const env = this.terminalEnv();
     // 两项默认时没有待验证的覆盖，也无需等供应商的在线目录。
-    const catalog = form.driverModel === undefined && form.driverEffort === undefined
+    const catalog = form.driver !== 'glm' && form.driverModel === undefined && form.driverEffort === undefined
       ? emptyCatalog('') : await readDriverCatalog(carrier.agentId, program, this.services.root, env);
     const nativeArgs = driverArgs(carrier.agentId, catalog, form);
     const model = catalog.models.find(m => m.id === form.driverModel);

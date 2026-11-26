@@ -164,7 +164,7 @@ const ELEVEN_CLEARED: Record<string, undefined> = {
  * 是兄弟目录。`withBuiltin=false` 时不放内置文件，模拟布局变了 / 文件丢了。
  */
 async function layout(opts: { withBuiltin: boolean; withPersonal: boolean }) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-zprov-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-zprov-')));
   const entry = path.join(root, 'Resources/glm/zcode.cjs');
   await fs.mkdir(path.dirname(entry), { recursive: true });
   await fs.writeFile(entry, FAKE_ENTRY_SOURCE, 'utf8');
@@ -776,6 +776,7 @@ async function probeZcodeWithStubArm(armResult: ModelOverrideProbe, existingOver
   const received: Parameters<typeof probeZcode>[2] extends infer _ ? { readonlyArgs?: readonly string[]; cliConfigPath?: string }[] : never = [];
   const existing = {
     entrypoint: L.entry, version: '0.16.9', version_probe: null, probed_at: new Date().toISOString(),
+    provider_config: { builtin_file: L.builtin, personal_file: null },
     readonly_flags: [], model_override: existingOverride,
     trace_source: null, trace_args_source: null, response_field: 'response',
     path_deny: { supported: false, rule_syntax: null, method: 'tested', attempts: [], coverage_complete: null, file_shape_verified: null },
@@ -843,6 +844,7 @@ async function probeZcodeWithTwoArms(
   await fs.writeFile(cliConfig, '{"provider":{},"model":{}}', 'utf8');
   const existing = {
     entrypoint: L.entry, version: '0.16.9', version_probe: null, probed_at: new Date().toISOString(),
+    provider_config: { builtin_file: L.builtin, personal_file: null },
     readonly_flags: [], model_override: 'env' as const,
     ...(existingFullCopy ? { model_override_full_copy: existingFullCopy } : {}),
     ...(runtime.existingRuntimeSelection ? { runtime_selection: runtime.existingRuntimeSelection } : {}),

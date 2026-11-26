@@ -91,5 +91,7 @@ test('旧 Codex 的可见目录、Antigravity 变体及独立 ZCode 的两个开
       assert.deepEqual(zcode.defaultEfforts, []);
       assert.match(zcode.note, help.startsWith('Usage') ? /原生供应商/ : /启动参数有变化/);
     }
+    await assert.rejects(catalog('glm', ''), error =>
+      error instanceof Error && error.message.includes(entrypoint) && error.message.includes('--help'));
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

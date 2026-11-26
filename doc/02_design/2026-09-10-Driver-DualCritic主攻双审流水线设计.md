@@ -5,7 +5,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.184
+> - **当前版本**：v1.3.186
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -277,6 +277,8 @@ ZCode 官方文档站以桌面端 Agent 功能为主，未提供完整 CLI 参�
 | `--dangerously-skip-permissions` 图省事 | 等于给审查员开写权限，直接违反 FR-15；且社区反馈该 flag 自身有工具调用失败问题 |
 
 ### 3.5 探针必测清单（`trivium doctor` 的输出契约）
+
+ZCode 的能力结论绑定后台入口的真实路径、Agent 版本及该发行包的内置 provider。切换安装或版本须重新采样。静态探测可以确认入口、布局和参数，模型响应、模型回读及路径限制从未测状态起步。预检和后台执行都核对当前选择与探针的入口。
 
 2026-10-28 Qoder候选扩展：显式Custom选择经doctor形成native_routes独立事实，必须真实正调用；--no-model-calls不能生成default_verified。目录声明、每次init/modelUsage和可信底层身份分开；来源/认证/加密缓存/CLI/codec/Node/配方漂移须重探。官方native_default兼容保留，Custom不改默认。每路线TTL独立，不以新Custom探测刷新旧官方时间。完整组合台账由验收生成器另验30项，不是doctor的可调用结论。坑清单P-36及续批报告记录未测边界。
 
@@ -3110,6 +3112,8 @@ agy -p "$(cat <brief_path>)" \
 
 ### 11.3 ZCode 适配（ZcodeAdapter）
 
+驾驶舱与核心采用同一独立安装发现顺序。优先定位用户安装启动器和当前发行包，再查 PATH 与常用 bin 目录。驾驶舱运行该包的交互启动器，审核端取同包的 `agent/zcode.cjs` 和 `agent/provider/zcode-builtin.json`。只有桌面安装时，审核沿用 `Resources/glm/zcode.cjs` 与 `Resources/config/provider/zcode-builtin.json`。显式入口只作用于相应角色。启动器直接执行，JS 脚本经 Node 运行。选中的入口无法执行或能力不足时报告该路径及原因。
+
 调用模板（同样以 `probe` 为准）：
 
 ```bash
@@ -3117,7 +3121,7 @@ agy -p "$(cat <brief_path>)" \
 # 模型覆盖改由独立 HOME 下的 config 副本承载（C-08）
 # v1.3.31（0.16.9，P-28）：两个 provider 配置变量按入口 / 真实用户目录派生，文件在才注入；
 #   缺内置那份 CLI 会在参数解析之前报「无法定位 CLI ZCode Built-in Provider Config」
-ZCODE_BUILTIN_PROVIDER_CONFIG_FILE="<entry 目录>/../config/provider/zcode-builtin.json" \
+ZCODE_BUILTIN_PROVIDER_CONFIG_FILE="<所选发行包的内置 provider 文件，见上文>" \
 ZCODE_PERSONAL_PROVIDER_CONFIG_FILE="<真实 HOME>/.zcode/v2/provider_config.json" \
 HOME="<run_home>" "<runtime.node>" "<entry>" \
     --prompt "$(cat <brief_path>)" \
@@ -4185,6 +4189,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.186** | 2026-11-26 | ZCode 交互与后台按同一独立发行包选择入口，后台能力随安装切换重新探测，保留桌面版审核。见 §3.5、§11.3。 |
 | **v1.3.185** | 2026-11-08 | **agy 认证探活降档与预算放宽（用户决策直改，未走双审；VSCode插件Phase3 验收链排障引出）。** 本机实测：探活带 `trivium-critic` agent 上下文（约 6.9 万 input tokens、内部 9 步），`gemini-3.8-flash-high` 低峰 48s、服务端高峰 >100s，贴着内层 print-timeout（外层−20s）连续两轮把「模型侧慢」误报成预检失败项「Antigravity 已认证」，而 `doctor` 探针（不带审查 agent）全绿——两个探测形态的负载差异即「doctor 绿、preflight 挂」的成因。修法两条组合（详见 §5 预检项表该行）：① 探活模型降档——审查档位 slug 尾部 `-high/-medium` 替换为同系 `-low`（`downgradeForAlive`，降档形态不在该侧模型清单时保持原模型，不猜）；② 外层预算 120s → 240s（内层 print-timeout 随之 220s）。降档后探活 ~15s 量级、余量 15 倍，高峰免疫；模型 slug 合法性由预检独立项按审查档位校验，「已认证」的语义纯度反而更高。降档生效时探活详情附「认证探活降档 X → Y」注记。配回归单测（降档命中/清单缺失防御/low 与无后缀原样）。 |
 | **v1.3.184** | 2026-11-07 | **agy 1.5.2 读取工具改名适配（主题 `agy适配1.5.2`，`/dual-run` 全流程，claude+codex 双审——被修侧 gemini 客观不能参与）。** agy 1.5.2 把文件读取工具由 `view_file` 改名 `read_file`（判据实验实证两者同义：白名单双列触发 executor `tool name conflict` 硬错），探针/适配器旧口径把「读取成功」误判为零读取（哨兵复述成功而计数为零）。修复：trivium-critic 资产白名单单名 `read_file`（仅经 1.5.2 验证，1.5.1 未验证不承诺）；`AGY_READ_TOOLS`/`AGY_MUST_HAVE_PATH`/`countTools` 双名并计保历史留痕回放；探针三处提示词不点工具名；parity 表登记 read_file；§3.5 headless 判定改准双名。init.tools 恒为完整注册表不可作白名单证据（M0 重申，P-39 登记）。write_to_file 调用级工具层拒绝证据未取得（两级诱导模型均自觉拒绝），工具层状态「未定」如实登记于 §10.3。产品版本不变（分轨约定），验证：npm test 全量 4035/0、doctor --only agy 全绿（headless_read_ok=true、json_schema_ok=true）、三侧预检通过。 |
 | **v1.3.4** | 2026-10-29 | **Windows worker 失联双根因修复（ISSUE-05a/05b，Windows 真机验收定位，未走双审：验收执行中定位、修复后以冲击实验与集成复跑验证）。** ①（ISSUE-05a）`run_root` 指进项目工作树内时，工作树哈希的临时索引 `add -A` 会读 worker 心跳正原子替换的 `status.json`，Windows 报 `short read while indexing` 退非零、worker 异常退出：`diffExcludePrefixes` 增可选运行根参数（送审冻结与跑后复算传入；项目外/上溯/整树不产生条目，缺省逐字不变），暂态重试判据扩含 `isShortReadIndexError`。②（ISSUE-05b）`interpretStatus` 判 `pid_gone` 前重读一次 status.json：读 status 与查 pid 之间 worker 完成「写终态 → 退出」时，旧心跳 + 空 pid 会把正常收尾误判失联、`--wait` 把 success 覆盖收尾成 failed（stub 秒级运行命中率最高，即集成测试并发下的随机红）。验证：判据/排除单测（纯函数用例移出 win32 平台门）、冲击实验（修复前 24 例 5 失败 → 修复后 24+40+64 例 0 worker 死亡）。坑清单登 P-33/P-34。 |

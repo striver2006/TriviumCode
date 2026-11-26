@@ -49,7 +49,8 @@ test('唯一出处·世界 A（HOME 下不摆副本源）：三处都指向同�
     const runDir = await scratchDir('trivium-ovr-run-');
     const prep = await prepareZcodeHome(runDir, 'GLM-5.3');
     assert.equal(prep.cause, 'source_missing', '不传 srcConfig 时缺省值就是这个路径');
-    assert.equal(await zcodeAdapter.authProbe!(adapterCtx(), runDir).fingerprint(), null);
+    const fingerprint = await zcodeAdapter.authProbe!(adapterCtx(), runDir).fingerprint();
+    assert.equal(JSON.parse(fingerprint!)[0], null, '副本源缺失时没有文件摘要');
   });
 });
 
@@ -60,7 +61,8 @@ test('唯一出处·世界 B（HOME 下摆着副本源）：缺省值与指纹�
     const prep = await prepareZcodeHome(runDir, null);
     assert.notEqual(prep.cause, 'source_missing', '副本源在却判缺失 ⇒ 缺省值没走唯一出处');
     assert.equal(prep.cause, 'no_model');
-    assert.notEqual(await zcodeAdapter.authProbe!(adapterCtx(), runDir).fingerprint(), null);
+    const fingerprint = await zcodeAdapter.authProbe!(adapterCtx(), runDir).fingerprint();
+    assert.match(JSON.parse(fingerprint!)[0], /^[0-9a-f]{64}$/, '指纹含实际副本源的摘要');
   });
 });
 

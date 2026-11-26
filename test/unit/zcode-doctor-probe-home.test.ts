@@ -92,6 +92,7 @@ const LOG_MODEL = 'stub-provider/STUB-MODEL';
 function existingProbe(entry: string, responseField: 'response' | null = null): ZcodeProbe {
   return {
     entrypoint: entry, version: '0.16.9', version_probe: null, probed_at: '2026-01-01T00:00:00.000Z',
+    provider_config: { builtin_file: path.resolve(path.dirname(entry), '../config/provider/zcode-builtin.json'), personal_file: null },
     readonly_flags: [], model_override: 'config_copy',
     trace_source: null, trace_args_source: null, response_field: responseField,
     path_deny: { supported: false, rule_syntax: null, method: 'old-method', attempts: [], coverage_complete: null, file_shape_verified: null },
@@ -100,7 +101,7 @@ function existingProbe(entry: string, responseField: 'response' | null = null): 
 }
 
 async function world(opts: { cliConfigRaw?: string | null } = {}) {
-  const base = await fs.mkdtemp(path.join(SYSTEM_TMP, 'trivium-dprobe-'));
+  const base = await fs.realpath(await fs.mkdtemp(path.join(SYSTEM_TMP, 'trivium-dprobe-')));
   const privTmp = path.join(base, 'tmp');
   await fs.mkdir(privTmp);
   const entry = path.join(base, 'app/Resources/glm/zcode.cjs');
@@ -731,7 +732,7 @@ test('D15 doctor 层：headless 失败只多一条 warning，blockers 与成功�
     assert.equal(mine[0], zcodeHeadlessUnrefreshedWarning({ branch: 'headless_failed', carried: FOUR }));
     // 不拦：blockers 与成功轮逐项相同，doctor 的退出码只由 blockers 决定
     assert.deepEqual(bad.blockers, good.blockers);
-    assert.ok(!bad.blockers.includes(ZCODE_HEADLESS_NOT_OK_HINT), '旧值 response 让既有 blocker 照旧不触发（出路二未取）');
+    assert.ok(!bad.blockers.some(b => b.includes(ZCODE_HEADLESS_NOT_OK_HINT)), '旧值 response 让既有 blocker 照旧不触发（出路二未取）');
     assert.equal(bad.probe.cli.zcode?.response_field, 'response', '结论照旧沿用、不置空');
   } finally {
     await cleanup(w);
@@ -757,7 +758,7 @@ test('D16 doctor 层三支逐一：warning 点名该支，且它指向的 note �
         rep.notes.some((n) => n.startsWith('[zcode] ') && n.includes(t.noteKey)),
         `${c.branch}：warning 指向「${t.noteKey}」，该轮 note 里却没有\n${rep.notes.join('\n')}`,
       );
-      assert.ok(!rep.blockers.includes(ZCODE_HEADLESS_NOT_OK_HINT), c.branch);
+      assert.ok(!rep.blockers.some(b => b.includes(ZCODE_HEADLESS_NOT_OK_HINT)), c.branch);
     } finally {
       await cleanup(w);
     }
@@ -780,7 +781,7 @@ test('D17 既有结论 response_field 为 null 时 blocker 照出、warning 也�
         zcodeProbe: { cliConfigPath: w.cliConfigPath, ...ARM_STUBS, invoke: stubInvoke([], { fail: true }) },
       }),
     );
-    assert.ok(rep.blockers.includes(ZCODE_HEADLESS_NOT_OK_HINT), rep.blockers.join('\n'));
+    assert.ok(rep.blockers.some(b => b.includes(rep.probe.cli.zcode!.entrypoint!) && b.includes(ZCODE_HEADLESS_NOT_OK_HINT)), rep.blockers.join('\n'));
     assert.equal(rep.warnings.filter(isOurs).length, 1, rep.warnings.join('\n'));
   } finally {
     await cleanup(w);

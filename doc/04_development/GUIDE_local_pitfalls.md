@@ -155,3 +155,5 @@ P-37 Windows Job 与 PowerShell 逃逸/封送四坑（2026-10-30，ISSUE-08/09 �
 P-38 Windows 全量绿不代表共享路径的行为改动已回归（2026-10-31，macOS 回归 ISSUE-08 收口实测，报告 ../05_testing/REPORT_2026-10-30_ISSUE-08-09修复.md §5）：Windows 全量约 3150 例、macOS 约 4045 例，差额主要是 POSIX 进程组 / 信号 / ps 启动时刻一类用例（win32 上跳过）。ISSUE-08 改了 `--wait` 失联分支（两平台共用）的「结束不结束进程」边界，Windows 全量绿，Mac 上 6 格断言旧边界的用例确定性红。改 run-protocol / status / exec 里两平台共用、而断言集中在 POSIX 进程组用例上的行为时，提交前先在 macOS 跑全量，或至少 grep 断言旧文案 / 旧边界的用例（如「不结束进程」「用户决策 5」）一并改写。
 
 P-39 agy 升级改工具名即静默炸探针（2026-11-07，agy适配1.5.2 主题判据实验实测，证据见该主题留痕）：agy 1.5.2 把文件读取工具由 `view_file` 改名 `read_file`（两者同义名——白名单双列会让 executor 报 `tool name conflict` 硬错）——探针/适配器只认旧名时，headless 探针记「SUCCESS 但读取数=0」，把「读取成功」误判为不通（本机实测哨兵复述成功而计数为零）；且 init 事件的 `tools` 恒为完整注册表、不能当白名单证据（M0 老坑重申）。对策：轨迹判定/计数一律双名并计（资产白名单只放当前版本真名）、探针提示词不点工具名（用「文件读取工具」表述）、CLI 升级后必跑 `doctor --only <名>` 重探。
+
+P-40 两份 ZCode 安装可报告同一 Agent 版本。升级或切换后，核对 doctor 的审核入口与内置 provider 的真实路径。静态探测后模型响应和路径限制未测时，执行 `.trivium/bin/trivium doctor --only zcode`；执行层写入拒绝另用隔离夹具取证。

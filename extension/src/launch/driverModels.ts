@@ -59,7 +59,7 @@ function queryProgram(program: InteractiveProgram, cwd: string, env: NodeJS.Proc
     const child = execFile(shellPath, shellArgs, { cwd, env, signal, maxBuffer: 4 * 1024 * 1024, windowsHide: true },
     (err, stdout, stderr) => {
       // 部分 CLI 将帮助打印到 stderr。错误输出可能含有账号信息，不交给 Webview。
-      if (err) reject(new Error('交互入口的能力查询失败或超时。'));
+      if (err) reject(new Error('能力查询 ' + args[0] + ' 失败（' + (signal.aborted ? '超时' : (err.code ?? err.signal ?? '启动失败')) + '）'));
       else resolve(args.includes('--help') ? stdout + '\n' + stderr : stdout);
     });
     killAfterGrace(child, signal);
@@ -190,13 +190,15 @@ export async function readDriverCatalog(agent: AgentId, program: InteractiveProg
       return catalog;
     }
     return await zcodeCatalog(query);
-  } catch {
+  } catch (error) {
+    if (agent === 'glm') throw new Error('ZCode 交互入口 ' + program.entrypoint + '：' + (error as Error).message);
     return emptyCatalog('当前交互入口未返回可用的模型目录，可沿用 CLI 默认。');
   }
 }
 
 async function zcodeCatalog(query: Query): Promise<DriverCatalog> {
   const help = await query(['--help']);
+  if (!help.trim()) throw new Error('--help 没有返回帮助文本');
   const modelFlag = /^\s*(?:-m,\s*)?--model(?:\s|=|$)/m.test(help);
   const effortFlag = /^\s*--(?:effort|reasoning-effort)(?:\s|=|$)/m.test(help);
   if (modelFlag || effortFlag) return emptyCatalog('此 ZCode 入口的启动参数有变化，尚无与其供应商匹配的选项目录。');

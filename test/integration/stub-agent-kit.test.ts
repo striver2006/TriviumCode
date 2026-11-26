@@ -453,6 +453,9 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
       '    bug: 120',
       '  wait_timeout_s: 30',
       'agents:',
+      '  glm:',
+      '    vendor: zcode',
+      `    entry: ${fakeZcode}`,
       // 接入套件第 ⑦ 件的配置面：形状由 overlay 加进 config.v2.json 的 oneOf
       `  ${STUB_ID}:`,
       `    vendor: ${STUB_ID}`,

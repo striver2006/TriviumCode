@@ -1,0 +1,137 @@
+{
+  "driver": {
+    "sessionId": "sess_8da359d6-7d09-4cf5-9ab6-cadbe5c17f70",
+    "firstTurn": "turn_865e0556-ee06-4141-97bc-b249a2545a9e",
+    "firstAnswer": "ZCFIRST481",
+    "model": "GLM-5.3",
+    "secondTurn": "turn_3c1e16d4-d66b-4475-8689-45b82738bac6",
+    "secondAnswer": "ZCNEXT731",
+    "secondModel": "GLM-5.3",
+    "ptyhost_executable": "/Users/chenzhenbo/.local/bin/zcode"
+  },
+  "desktop": {
+    "entrypoint": "/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs",
+    "agent_version": "0.18.0",
+    "builtin": "/Applications/ZCode.app/Contents/Resources/config/provider/zcode-builtin.json",
+    "readonly_flags": [
+      "--mode plan",
+      "--mode yolo",
+      "--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash"
+    ],
+    "response_field": "response",
+    "model_id_form": "bigmodel-coding-plan/GLM-5.3",
+    "path_deny_supported": false
+  },
+  "after_switch_static": {
+    "entrypoint": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/zcode.cjs",
+    "agent_version": "0.18.0",
+    "builtin": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/provider/zcode-builtin.json",
+    "readonly_flags": [
+      "--mode plan",
+      "--mode yolo",
+      "--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash"
+    ],
+    "response_field": null,
+    "model_id_form": null,
+    "path_deny_supported": null
+  },
+  "standalone": {
+    "entrypoint": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/zcode.cjs",
+    "agent_version": "0.18.0",
+    "builtin": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/provider/zcode-builtin.json",
+    "readonly_flags": [
+      "--mode plan",
+      "--mode yolo",
+      "--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash"
+    ],
+    "response_field": "response",
+    "model_id_form": "bigmodel-coding-plan/GLM-5.3",
+    "path_deny_supported": false
+  },
+  "desktop_preflight": [
+    {
+      "name": "ZCode 可调用",
+      "ok": true,
+      "detail": "zcode 0.18.0"
+    },
+    {
+      "name": "只读能力可用",
+      "ok": true,
+      "detail": "ZCode（/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs） 均报告可用"
+    },
+    {
+      "name": "ZCode 已认证",
+      "ok": true,
+      "detail": "探活通过（10s，模型 bigmodel-coding-plan/GLM-5.3）"
+    }
+  ],
+  "standalone_preflight": [
+    {
+      "name": "ZCode 可调用",
+      "ok": true,
+      "detail": "zcode 0.18.0"
+    },
+    {
+      "name": "只读能力可用",
+      "ok": true,
+      "detail": "ZCode（/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/zcode.cjs） 均报告可用"
+    },
+    {
+      "name": "ZCode 已认证",
+      "ok": true,
+      "detail": "探活通过（9s，模型 bigmodel-coding-plan/GLM-5.3）"
+    }
+  ],
+  "standalone_worker": {
+    "pid": 76470,
+    "worker": 76455,
+    "run_id": "20261126T075619Z",
+    "os_executable": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+    "agent_in_argv": null,
+    "provider_in_env": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/provider/zcode-builtin.json",
+    "argc": 12,
+    "argv_after_title_change": "zcode-cli"
+  },
+  "write_control": {
+    "entry": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/zcode.cjs",
+    "version": "0.18.0",
+    "id": "toolu_trivium_zcode_write_negative",
+    "offeredWrite": false,
+    "offeredRead": true,
+    "results": [
+      {
+        "id": "toolu_trivium_zcode_write_negative",
+        "error": true,
+        "result": "<tool_use_error>Error: No such tool available: Write. Write is not among the tools available here. Continue with the tools you have.</tool_use_error>"
+      }
+    ],
+    "before": "original",
+    "after": "original"
+  },
+  "preflight_exec_observation": [
+    {
+      "pid": 73206,
+      "parent": 73177,
+      "script": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/zcode.cjs",
+      "node": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "builtin": null,
+      "headless": false,
+      "disallowed_tools": null
+    },
+    {
+      "pid": 73213,
+      "parent": 73177,
+      "script": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/zcode.cjs",
+      "node": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "builtin": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/provider/zcode-builtin.json",
+      "headless": true,
+      "disallowed_tools": "Write,Edit,MultiEdit,ApplyPatch,NotebookEdit,Bash,WebFetch,WebSearch"
+    }
+  ],
+  "timed_out_review_native_readback": {
+    "run_id": "20261126T075619Z",
+    "session_id": "sess_bdc9d13e-dc8e-4ca6-8c50-8a8cc05351ea",
+    "model": "GLM-5.3",
+    "provider": "bigmodel-coding-plan"
+  }
+}

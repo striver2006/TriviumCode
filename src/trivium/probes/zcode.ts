@@ -20,6 +20,11 @@ import { run } from '../util/exec.js';
 // 命令行只在适配层构造（设计 §5.1）
 import {
   invokeZcode,
+  zcodeInvocation,
+  zcodeVersionEnv,
+  isZcodeScript,
+  reviewEntry,
+  type ZcodeSearch,
   legacyProviderMembers,
   prepareZcodeHome,
   qualifyAgainstCliConfig,
@@ -48,7 +53,6 @@ import {
   type ZcodeTempDirCopyKind,
 } from '../adapters/zcode.js';
 import { exists, makeTempDir } from '../util/fsx.js';
-import { IS_WIN } from '../util/platform.js';
 // CLI 原话进 note 之前过一遍脱敏（r5 CODEX-06）
 import { redactSecrets } from '../secrets.js';
 import { workTreeHash, statusPorcelain, diffTrees } from '../util/git.js';
@@ -63,22 +67,7 @@ import {
   type ZcodeRollout,
 } from '../adapters/zcode-trace.js';
 import type { ZcodeProbe } from '../types.js';
-import { emptyPathDeny } from '../config.js';
-
-const ENTRY_CANDIDATES = IS_WIN
-  ? // Windows 布局（2026-10-18 实测）：<安装根>\ZCode\resources\glm\zcode.cjs，安装根可在任意盘（本机 D:\Program Files）。
-    // 用整段正斜杠路径（Windows 的 fs/spawn 都接受）：拆段 path.join 会把与 Agent id 撞名的 'glm' 段
-    // 写成独立带引号字面量，被 registry-parity 的 Agent 字面量对账判红（纪律 10）。
-    // 环境变量给的是 %ProgramFiles% 一族（C:）；非 C 盘装法经 config.local.yaml 显式指路。
-    [
-      `${process.env['ProgramFiles'] ?? 'C:\\Program Files'}/ZCode/resources/glm/zcode.cjs`,
-      `${process.env['ProgramW6432'] ?? process.env['ProgramFiles'] ?? 'C:\\Program Files'}/ZCode/resources/glm/zcode.cjs`,
-      `${process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)'}/ZCode/resources/glm/zcode.cjs`,
-    ]
-  : [
-      '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs',
-      path.join(os.homedir(), 'Applications/ZCode.app/Contents/Resources/glm/zcode.cjs'),
-    ];
+import { defaultProbe } from '../config.js';
 
 /** 探针用超时：探的是能力不是质量，不必给足生产上限 */
 const PROBE_TIMEOUT_MS = 300_000;
@@ -90,16 +79,12 @@ export const ZCODE_CLI_CONFIG = path.join(ZCODE_CLI_DIR, 'config.json');
 export async function probeZcodeEntry(
   configured: string | null,
   node: string,
-): Promise<{ entry: string | null; version: string | null }> {
-  const candidates = [configured, ...ENTRY_CANDIDATES].filter((c): c is string => Boolean(c));
-  let entry: string | null = null;
-  for (const c of candidates) {
-    if (await exists(c)) {
-      entry = c;
-      break;
-    }
-  }
-  if (!entry) return { entry: null, version: null };
+  search?: ZcodeSearch,
+): Promise<{ entry: string | null; version: string | null; error?: string }> {
+  let entry: string | undefined;
+  try { entry = reviewEntry(configured, search); }
+  catch (e) { return { entry: null, version: null, error: (e as Error).message }; }
+  if (!entry) return { entry: null, version: null, error: '未找到 ZCode 独立 CLI 或桌面内置入口' };
   /*
    * 两个 provider 变量在这条路径上也要**清底色**（r3 CODEX-F01-01）。
    *
@@ -112,24 +97,20 @@ export async function probeZcodeEntry(
    * **只清不给**：不调 `zcodeProviderEnv`。这里是逐候选路径试探，派生要多做存在性判断，
    * 而 version 本就不需要这两个变量——给它反而多一条要维护的假设。
    */
-  const r = await run(node, [entry, 'version'], {
+  const r = await run(...zcodeInvocation(node, [entry, 'version']), {
     timeoutMs: 60_000,
     // 目录 / 路径键、落点开关键（EV-112 起共十一个）与两个凭据键同样清底色（代码双审 r1 codex 子项 06）：口径是「全部探针路径」，不是「两条主路径」
-    env: {
-      [ZCODE_BUILTIN_PROVIDER_ENV]: undefined,
-      [ZCODE_PERSONAL_PROVIDER_ENV]: undefined,
-      ...Object.fromEntries(
-        [...ZCODE_DIR_ENV_KEYS, ...ZCODE_LANDING_SWITCH_ENV_KEYS, ...ZCODE_CREDENTIAL_ENV_KEYS].map((k) => [k, undefined]),
-      ),
-    },
+    env: zcodeVersionEnv(),
     // 与其余五处拉起厂商 CLI 的口径一致（r5 CODEX-04）：此前这里是全仓唯一没开的一处。
     // `version` 现在不起子进程，但 P-29 已经证明这个 CLI 的演化方向是把活儿往前挪——
     // 真挪过来时，超时只杀直接子进程会留下孤儿继续跑
     killTree: true,
   });
-  if (r.code !== 0) return { entry, version: null };
-  const m = /(\d+\.\d+\.\d+)/.exec(r.stdout);
-  return { entry, version: m?.[1] ?? r.stdout.trim() };
+  const version = r.code === 0 ? /(\d+\.\d+\.\d+)/.exec(r.stdout)?.[1] : undefined;
+  if (version) return { entry, version };
+  const why = r.timedOut ? '超时' : r.code === 0 ? '未返回 Agent 版本号' :
+    '退出码 ' + r.code + '，' + redactSecrets(r.stderr.trim().split('\n')[0]?.slice(0, 180) ?? '').content;
+  return { entry, version: null, error: 'ZCode 入口 ' + entry + ' 的 version 核验失败：' + why };
 }
 
 /**
@@ -209,8 +190,7 @@ export async function probeReadonlyFlags(
   try {
     for (const flag of candidates) {
       const r = await run(
-        node,
-        [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...flag],
+        ...zcodeInvocation(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...flag]),
         // `killTree`：P-30 实测该 CLI 能在一个 turn 里 3 分钟不退。第三态的前提（只给内置那份
         // 就停在无凭据）一旦被某次升版打破，这七次就是七次真实调用——超时杀父进程而遗弃孙进程，
         // 它们会继续烧配额（r3 CODEX-F01-04；`exec.ts` 要求拉起厂商 CLI 一律打开）。
@@ -631,7 +611,7 @@ export async function probeModelOverride(
       ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
       HOME: home,
     };
-    const r = await run(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])], {
+    const r = await run(...zcodeInvocation(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])]), {
       cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
     });
 
@@ -1051,7 +1031,7 @@ export async function probeModelOverrideFullCopy(
       ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
       HOME: prep.homeDir,
     };
-    const r = await run(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])], {
+    const r = await run(...zcodeInvocation(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])]), {
       cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
     });
 
@@ -1304,28 +1284,14 @@ export async function probeZcode(
    * 前两支（副本源失败、headless 失败）当场返回；第三支（有拉起、无 envelope）不返回、path_deny 照跑，记在这里到末尾带出。
    */
   let unrefreshed: ZcodeHeadlessUnrefreshed | null = null;
-  // 同 probeAgy：以既有结论为起点，跳过的探针保留原值——否则
-  // `doctor --no-model-calls` 会把上一次真实探到的 response_field / path_deny /
-  // scratch_paths / model_override 覆盖成 null，preflight 随即判该侧不可用。
-  const probe: ZcodeProbe = opts.existing
-    ? structuredClone(opts.existing)
-    : {
-        entrypoint: null,
-        version: null,
-        version_probe: null,
-        probed_at: null,
-        readonly_flags: [],
-        model_override: null,
-        trace_source: null,
-        response_field: null,
-        path_deny: emptyPathDeny(),
-        scratch_paths: [],
-        isolation: 'shared',
-        model_id_form: null,
-        models: [],
-      };
-
-  const { entry, version } = await probeZcodeEntry(configuredEntry, node);
+  const { entry, version, error } = await probeZcodeEntry(configuredEntry, node);
+  const providerPaths = entry ? await zcodeProviderConfigPaths(entry) : null;
+  const builtin = providerPaths && await exists(providerPaths.builtin) ? providerPaths.builtin : null;
+  const previous = opts.existing;
+  const same = !!entry && !!version && previous?.entrypoint === entry && previous.version === version &&
+    (previous.provider_config?.builtin_file ?? null) === builtin;
+  const probe = same ? structuredClone(previous) : defaultProbe().cli.zcode!;
+  if (!same && previous?.probed_at) notes.push('ZCode 安装或版本已变化，重新采样该入口的能力。');
   probe.entrypoint = entry;
   probe.version = version;
   probe.probed_at = new Date().toISOString();
@@ -1336,14 +1302,15 @@ export async function probeZcode(
    * 这个事实——具体哪个 node 由运行时的 runtime.node 决定，落盘会立刻过期。
    */
   probe.version_probe = {
-    runner: 'node',
+    runner: entry && !isZcodeScript(entry) ? null : 'node',
     args: ['version'],
     extract: String.raw`(\d+\.\d+\.\d+)`,
   };
-  if (!entry) {
-    notes.push('未找到 zcode.cjs 入口，ZCode 侧不可用');
+  if (!entry || !version || !providerPaths) {
+    notes.push(error ?? '未找到 ZCode 审核入口');
     return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: null };
   }
+  notes.push('审核入口=' + entry + '，Agent ' + version);
   // 入口路径命中包内 beta 改写的 argv 判据（EV-112 计划 r3 §8 R7）：只报命中与否，不报路径全文
   if (ZCODE_BETA_ARGV_RE.test(entry)) {
     notes.push(
@@ -1383,9 +1350,8 @@ export async function probeZcode(
   }
 
   // provider 配置文件的存在性（P-28）。只记有无、不读内容；适配层拉起时自己重算，这格是给人看的
-  const providerPaths = await zcodeProviderConfigPaths(entry);
   probe.provider_config = {
-    builtin_file: (await exists(providerPaths.builtin)) ? providerPaths.builtin : null,
+    builtin_file: builtin,
     personal_file: (await exists(providerPaths.personal)) ? providerPaths.personal : null,
   };
   notes.push(
@@ -1573,7 +1539,7 @@ export async function probeZcode(
     if (opts.skipModelCalls || !cliConfigured) {
       notes.push(
         '跳过需要真实模型调用的 ZCode 探针（配置缺失或已显式跳过）——' +
-          'response_field / path_deny / scratch_paths 保留上一次的结论',
+          (same ? 'response_field / path_deny / scratch_paths 保留同一入口的结论' : '当前入口的模型响应、路径限制和临时文件未测；请运行 trivium doctor --only zcode'),
       );
       // 没进真实调用段，不算「没刷新」（决策一）
       return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: null };
@@ -1583,9 +1549,11 @@ export async function probeZcode(
     // 取的是 `probe.readonly_flags`（本轮结论，未判定时是保留下来的旧值）而不是 `flags.accepted`：
     // 两者在正常路径上相同，而在「本轮未判定」那一支上，后者是空数组——拿它去跑真实模型调用，
     // 等于在没有任何只读参数的情况下拉起 CLI。
-    const readonly = probe.readonly_flags
-      .filter((f) => f.startsWith('--mode plan') || f.startsWith('--disallowed-tools'))
-      .flatMap((f) => f.split(' '));
+    const readonly = readonlyArgsFromProbe(probe.readonly_flags);
+    if (!readonly.includes('--disallowed-tools')) {
+      notes.push('审核入口 ' + entry + ' 缺少已核验的 --disallowed-tools，已停止真实模型探测。');
+      return { probe, notes, flagsIndeterminate, flagsZeroExit, headlessUnrefreshed: null };
+    }
 
     /*
      * 两次真实调用走审查运行那条选模路径（EV-194，与 `authProbe` 的 EV-136 同一形态）。

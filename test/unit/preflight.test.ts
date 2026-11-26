@@ -454,7 +454,7 @@ test('回归：--no-model-calls 保留上一次探到的 zcode 结论', async ()
    * 再把探针臂换成恒返回「未判定」的桩：这条用例测的就只剩「未判定 ⇒ 保留」这一件事。
    */
   const existing = {
-    entrypoint: '/x/zcode.cjs', version: '0.16.5',
+    entrypoint: '', version: '0.16.9',
     version_probe: null, probed_at: new Date().toISOString(),
     readonly_flags: ['--mode plan'], model_override: 'env' as const,
     trace_source: '/log/{date}.jsonl', trace_args_source: '/rollout/{sessionId}.jsonl',
@@ -479,6 +479,7 @@ test('回归：--no-model-calls 保留上一次探到的 zcode 结论', async ()
   ].join('\n') + '\n');
   const cliConfigPath = path.join(dir, 'cli-config.json');
   await fs.writeFile(cliConfigPath, '{}\n');
+  existing.entrypoint = await fs.realpath(entry);
   const armCalls = { whitelist: 0, fullCopy: 0 };
   const { probe } = await probeZcode(entry, process.execPath, {
     skipModelCalls: true,
@@ -494,7 +495,7 @@ test('回归：--no-model-calls 保留上一次探到的 zcode 结论', async ()
       return { override: null, requested: null, observed: null, why: '桩：本轮未判定', replacedPaths: [], hostCredentialEnv: [] };
     },
   });
-  assert.equal(probe.entrypoint, entry, '入口应是合成入口，不得回落到本机安装的 ZCode.app');
+  assert.equal(probe.entrypoint, existing.entrypoint, '入口应是合成入口，不得回落到本机安装的 ZCode.app');
   assert.equal(probe.version, '0.16.9', '版本取自合成入口');
   assert.ok(armCalls.whitelist === 1 && armCalls.fullCopy >= 1, `两个探针臂都应走到（${JSON.stringify(armCalls)}）`);
   assert.equal(probe.response_field, 'response', '不得被覆盖成 null');

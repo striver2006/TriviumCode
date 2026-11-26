@@ -67,7 +67,7 @@ test('GLM 主攻入口优先级、独立解释器、兼容探针与错误提示'
   await writeFile(desktop, 'import("@zcode/tui")');
   await rm(shim);
   await symlink(desktop, shim);
-  assert.equal((await resolveGlmInteractive(o)).source, '探针');
+  await assert.rejects(resolveGlmInteractive(o), /缺少 @zcode\/tui/);
   await assert.rejects(resolveGlmInteractive({...o, cli:undefined}), /缺少 @zcode\/tui/);
   await assert.rejects(resolveGlmInteractive({...o, configuredPath:desktop}), /缺少 @zcode\/tui/);
   await mkdir(path.join(path.dirname(desktop), 'node_modules/@zcode/tui'), {recursive:true});

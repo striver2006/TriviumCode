@@ -95,6 +95,7 @@ const PIECES = path.join(REPO_ROOT, 'test/fixtures/stub-agent-kit/pieces');
  */
 const COPY_SPEC: readonly string[] = [
   'src',
+  'extension/src/launch/zcodeInstallation.ts',
   'scripts/build.mjs',
   'skills/dual-critic',
   'package.json',

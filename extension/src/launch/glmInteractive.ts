@@ -1,7 +1,7 @@
-// 仅供驾驶舱 M1 使用。核心审核者始终从自己的探针取入口。
+// 驾驶舱使用所选发行包的交互入口。
 import { constants } from 'node:fs';
-import { access, open, readFile, realpath, stat } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { access, readFile, stat } from 'node:fs/promises';
+import { checkedZcodeFile, isZcodeScript, standaloneCommand, standalonePackage, type ZcodeSearch } from './zcodeInstallation';
 import path from 'node:path';
 import { parseWrapperNodePath, scriptProviderEnv } from './carriers';
 
@@ -21,13 +21,12 @@ export function nativeCommand(program: Pick<InteractiveProgram, 'entrypoint' | '
   return { shellPath: program.nodePath, shellArgs: [program.entrypoint, ...args] };
 }
 
-interface Options {
+interface Options extends ZcodeSearch {
   trusted: boolean;
   configuredPath?: string;
   configuredNode?: string;
   cli?: Record<string, unknown>;
   wrapper: string;
-  searchDirs?: string[];
 }
 
 async function accessibleFile(file: string, mode: number): Promise<boolean> {
@@ -39,7 +38,7 @@ async function accessibleFile(file: string, mode: number): Promise<boolean> {
 }
 
 async function desktopWithoutTui(file: string): Promise<boolean> {
-  if (!file.endsWith('/ZCode.app/Contents/Resources/glm/zcode.cjs')) return false;
+  if (!/[\\/]resources[\\/]glm[\\/]zcode\.cjs$/i.test(file)) return false;
   // 已实测的桌面脚本在普通 Node 下动态导入外部 TUI。允许将来内置该模块的版本。
   if (!/import\(\s*['"]@zcode\/tui['"]\s*\)/.test(await readFile(file, 'utf8'))) return false;
   let dir = path.dirname(file);
@@ -49,28 +48,6 @@ async function desktopWithoutTui(file: string): Promise<boolean> {
     if (parent === dir) return true;
     dir = parent;
   }
-}
-
-/** 3.18.2 的启动页会忽略提交。只对实测发行脚本及其官方安装器生成的命令等待启动事件。 */
-async function hasStartupEvent(file: string, script: boolean): Promise<boolean> {
-  let launcher = file;
-  if (!script) {
-    // 只读包装命令的首段。二进制或其它包装方式继续使用载体就绪延迟。
-    const handle = await open(file, 'r').catch(() => null);
-    if (!handle) return false;
-    try {
-      const prefix = Buffer.alloc(4096);
-      const { bytesRead } = await handle.read(prefix, 0, prefix.length, 0);
-      const match = /^#![^\n]*\nexec node "([^"\n]+\/bin\/zcode\.mjs)" "\$@"\s*$/.exec(prefix.toString('utf8', 0, bytesRead));
-      if (!match || !path.isAbsolute(match[1]!)) return false;
-      launcher = match[1]!;
-    } finally { await handle.close(); }
-  }
-  if (!launcher.endsWith('/bin/zcode.mjs')) return false;
-  try {
-    const pkg = JSON.parse(await readFile(path.resolve(path.dirname(launcher), '../package.json'), 'utf8'));
-    return pkg?.name === 'zcode-runtime' && pkg.version === '3.18.2';
-  } catch { return false; }
 }
 
 async function interpreter(o: Options): Promise<string> {
@@ -88,32 +65,21 @@ async function interpreter(o: Options): Promise<string> {
 
 export async function resolveGlmInteractive(o: Options): Promise<InteractiveProgram> {
   if (!o.trusted) throw new Error('请先确认当前工作区可信，再启动 GLM 交互终端。');
-  const dirs = o.searchDirs ?? [...(process.env.PATH ?? '').split(path.delimiter),
-    path.join(homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin'];
-  const candidates: [string, InteractiveProgram['source']][] = [];
-  if (o.configuredPath) candidates.push([o.configuredPath, '设置']);
-  else {
-    for (const dir of new Set(dirs.filter(p => path.isAbsolute(p)))) candidates.push([path.join(dir, 'zcode'), '自动发现']);
-    if (typeof o.cli?.entrypoint === 'string') candidates.push([o.cli.entrypoint, '探针']);
-  }
-  let reason = '';
-  const fix = '请在终端运行 command -v zcode，将绝对路径填入 trivium.launch.glmInteractivePath，或填写独立发行目录的 bin/zcode.mjs。';
-  for (const [candidate, source] of candidates) {
-    const file = path.isAbsolute(candidate) ? await realpath(candidate).catch(() => '') : '';
-    const script = /\.[cm]?js$/i.test(file);
-    if (!file || !await accessibleFile(file, script ? constants.R_OK : constants.X_OK)) {
-      if (source === '设置') throw new Error('GLM 交互入口无效：' + candidate + '。' + fix);
-      continue;
-    }
-    if (await desktopWithoutTui(file)) {
-      reason = '桌面脚本 ' + file + ' 缺少 @zcode/tui。';
-      if (source === '设置') break;
-      continue;
-    }
-    const waitForStartup = await hasStartupEvent(file, script);
-    if (!script) return { source, launchMode: 'direct', entrypoint: candidate, waitForStartup };
+  const found = o.configuredPath ? undefined : standaloneCommand(o);
+  const candidate = o.configuredPath || found || o.cli?.entrypoint;
+  const source = o.configuredPath ? '设置' : found ? '自动发现' : '探针';
+  const fix = '请安装独立 ZCode CLI，或将可执行启动器或 bin/zcode.mjs 的绝对路径填入 trivium.launch.glmInteractivePath。';
+  if (typeof candidate !== 'string' || !candidate) throw new Error('未找到可用的 GLM 交互入口。' + fix);
+  if (!path.isAbsolute(candidate)) throw new Error('GLM 交互入口需要绝对路径：' + candidate + '。' + fix);
+  try {
+    let file = checkedZcodeFile(candidate);
+    const pkg = standalonePackage(file);
+    // 后台探针登记的是 Agent。交互终端使用该发行包自己的启动脚本。
+    if (source === '探针' && pkg) file = checkedZcodeFile(path.join(pkg.root, 'bin/zcode.mjs'));
+    if (await desktopWithoutTui(file)) throw new Error('桌面脚本 ' + file + ' 缺少 @zcode/tui。');
+    const waitForStartup = !!pkg;
+    if (!isZcodeScript(file)) return { source, launchMode: 'direct', entrypoint: candidate, waitForStartup };
     return { source, launchMode: 'shellCommand', entrypoint: file, waitForStartup, nodePath: await interpreter(o),
-      scriptEnv: source === '探针' ? scriptProviderEnv(o.cli?.provider_config) : undefined };
-  }
-  throw new Error((reason || '未找到可用的 GLM 交互入口。') + fix);
+      scriptEnv: source === '探针' && !pkg ? scriptProviderEnv(o.cli?.provider_config) : undefined };
+  } catch (e) { throw new Error('GLM 交互入口 ' + candidate + '：' + (e as Error).message + ' ' + fix); }
 }

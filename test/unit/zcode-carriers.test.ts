@@ -122,7 +122,8 @@ async function runReview(opts: {
 
   const cfg = defaultConfig();
   cfg.probe.cli.zcode!.probed_at = new Date().toISOString();
-  cfg.probe.cli.zcode!.entrypoint = entry;
+  cfg.agents.glm = { vendor: 'zcode', entry };
+  cfg.probe.cli.zcode!.entrypoint = await fs.realpath(entry);
   cfg.probe.cli.zcode!.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit,Bash'];
   cfg.probe.cli.zcode!.response_field = 'response';
   const runDir = await tmp();

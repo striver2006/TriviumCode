@@ -119,7 +119,7 @@ export interface CriticAdapter {
   /** 路线探针与版本入口由适配器提供，通用判定不按工具身份分叉。 */
   probeFor?(cfg: Config, profile: string | null): CommonProbe | undefined;
   versionInvocationFor?(cfg: Config, profile: string | null): {
-    bin: string | null; prefix: string[]; env: Record<string, string | undefined>;
+    bin: string | null; prefix: string[]; env: Record<string, string | undefined>; problem?: string;
   };
   capabilityFor?(cfg: Config, profile: string | null): TraceCapability;
   readonly critic: CriticId;

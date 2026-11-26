@@ -117,6 +117,7 @@ async function buildTests() {
   }
   const entryPoints = [
     ...(await collectTs(path.join(ROOT, 'src'))),
+    path.join(ROOT, 'extension/src/launch/zcodeInstallation.ts'),
     ...(await collectTs(path.join(ROOT, 'test'))),
   ];
   if (entryPoints.length === 0) return;

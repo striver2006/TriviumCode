@@ -60,7 +60,7 @@ export async function openWorkspace(fx, { base, code, vsix, children, terminalAc
     if (!port) return null;
     return chromium.connectOverCDP('http://127.0.0.1:' + port).catch(() => null);
   });
-  const page = await until('工作台窗口', () => browser.contexts()[0].pages().find(p => p.url().includes('workbench')));
+  const page = await until('工作台窗口', () => browser.contexts().flatMap(context => context.pages()).find(p => p.url().includes('workbench')));
   await page.locator('.monaco-workbench').waitFor();
   await command(page, '打开 Trivium 驾驶舱');
   const frame = await until('驾驶舱 Webview', async () => {

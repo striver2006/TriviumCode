@@ -315,7 +315,8 @@ test('run()：副本 HOME 下拉起时个人键被删（即使真实用户目录
 
   const cfg = defaultConfig();
   cfg.probe.cli.zcode!.probed_at = new Date().toISOString();
-  cfg.probe.cli.zcode!.entrypoint = entry;
+  cfg.agents.glm = { vendor: 'zcode', entry };
+  cfg.probe.cli.zcode!.entrypoint = await fs.realpath(entry);
   cfg.probe.cli.zcode!.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit,Bash'];
   cfg.probe.cli.zcode!.response_field = 'response';
 
@@ -388,7 +389,8 @@ async function runWithFakeEntry(
   const { home: userHome } = await userHomeWithCliConfig();
   const cfg = defaultConfig();
   cfg.probe.cli.zcode!.probed_at = new Date().toISOString();
-  cfg.probe.cli.zcode!.entrypoint = entry;
+  cfg.agents.glm = { vendor: 'zcode', entry };
+  cfg.probe.cli.zcode!.entrypoint = await fs.realpath(entry);
   cfg.probe.cli.zcode!.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit,Bash'];
   cfg.probe.cli.zcode!.response_field = 'response';
   if (opts.legacyGlm) Object.assign(cfg.agents.glm as unknown as Record<string, unknown>, opts.legacyGlm);

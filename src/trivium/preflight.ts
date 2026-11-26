@@ -460,6 +460,10 @@ async function checkCliVersions(
         ? { name, ok: false, exitCode: EXIT.ENV, detail, ...(recalibrate ? { recalibrate } : {}) }
         : { name, ok: true, detail: `${detail}（本次未选用该侧，仅提示）` };
 
+    if (invocation?.problem) {
+      out.push(fail(`${label} 可调用`, invocation.problem, recal()));
+      continue;
+    }
     const entry = invocation ? invocation.bin : probe.entrypoint;
     if (!entry || !(await exists(entry))) {
       // 入口可能挪了；真卸载了 doctor 会给出「未找到可执行文件」的明确结论，下一轮预检照样失败、停下
@@ -477,7 +481,7 @@ async function checkCliVersions(
     }
     const v = res.version;
     if (v === null) {
-      out.push(fail(`${label} 可调用`, `${cliName} 取版本失败。请重新运行 doctor。`));
+      out.push(fail(`${label} 可调用`, `${cliName} 取版本失败（${entry}）。请重新运行 doctor。`));
     } else if (v !== probe.version) {
       out.push(
         fail(
@@ -1084,7 +1088,7 @@ function thrownText(e: unknown): string {
  * - `fingerprint()` 抛出 ⇒ **不折成 null**：null 是契约里的「无从计算」（`AuthProbe.fingerprint`），
  *   上次指纹为 null 时 null 等于 null 会命中缓存、跳过探活。读不了就不查缓存、照常探活、通过也不写缓存，
  *   原因接在详情末尾。代价：读不了期间每次预检该侧都会重探一次，修好文件才止。
- *   zcode 的指纹自己吞掉了读盘异常（返回 null），不经这一支（EV-203）。
+ *   ZCode 的指纹含所选安装与请求模型。
  */
 export async function probeAuth(
   ctx: Ctx,

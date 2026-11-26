@@ -1,0 +1,171 @@
+{
+  "schema": "trivium.run.v3",
+  "effective_failure_policy": "strict",
+  "driver_declaration": {
+    "model": null,
+    "provider": null,
+    "source": null
+  },
+  "family_comparisons": [
+    {
+      "left": "codex",
+      "right": "glm",
+      "status": "unknown",
+      "left_model": null,
+      "right_model": null,
+      "left_source": null,
+      "right_source": null,
+      "reason": "左侧模型信息缺失"
+    }
+  ],
+  "run_id": "20261126T075619Z",
+  "topic": "ZCode独立安装验收",
+  "stage": "code",
+  "rerun_index": 1,
+  "command": "trivium review --start --stage code",
+  "prompt_hint": "核对独立 ZCode 的实际入口、模型回读和执行层只读证据",
+  "task_goal": null,
+  "entry": "C",
+  "driver": "codex",
+  "driver_enabled": true,
+  "driver_guard_level": "L2",
+  "review_loop": {
+    "round": 1,
+    "max_rounds": 1,
+    "max_rounds_source": "flag"
+  },
+  "profile": "default",
+  "critics_selected": [
+    "glm"
+  ],
+  "snapshot": {
+    "git_head": "a74dc55f2ba38de4c45962c5686703a0d1e0ef0a",
+    "tree_hash": "8db24ec4784572c01fdf0d615fec8920c8593677",
+    "dirty": true,
+    "subject_sha256": "20ce89b55084a2fd1f5e7ce4d81919d8eb044c2b089b61e70cc0d8e7a21678b8",
+    "drift": {
+      "changed": false,
+      "files": [],
+      "policy": "warn"
+    },
+    "build": {
+      "repo_root_commit": "8a5406aeeefe62fb882353c84cc51656667469e7",
+      "git_head": "6692f3706d54ffe1119864468733d2ed4cfafbbc",
+      "dirty": true,
+      "inputs_sha256": "68fa00bb70a38ddac759e8a1e0dca3ffa3adce239fa759df4d1c30f112010b6b",
+      "built_at": "2026-11-26T07:50:24.280Z"
+    },
+    "after_tree_hash": "8db24ec4784572c01fdf0d615fec8920c8593677"
+  },
+  "started_at": "2026-11-26T07:56:19.282Z",
+  "finished_at": "2026-11-26T08:16:19.673Z",
+  "review_mode": "partial",
+  "degraded_reason": "glm: timeout（脚本级超时（1200s））",
+  "critics": {
+    "glm": {
+      "vendor": "zcode",
+      "cli_version": "0.18.0",
+      "model_requested": "GLM-5.3",
+      "model_effective": null,
+      "model_effective_source": "unverified",
+      "profile_requested": null,
+      "model_provider": null,
+      "effort_requested": null,
+      "effort_effective": null,
+      "effort_effective_source": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "status": "timeout",
+      "exit_code": 143,
+      "duration_s": 1200.052,
+      "tool_calls": {
+        "project_reads": 0
+      },
+      "evidence_ok": false,
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/zcode.cjs",
+        "launcher_effective": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/zcode.cjs",
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      },
+      "heterogeneous": "unknown",
+      "override_reason": "左侧模型信息缺失",
+      "fail_reason": "脚本级超时（1200s）",
+      "empty_review": false,
+      "parse_fallback": false,
+      "session_id": null,
+      "peer_deny_applied": false,
+      "deny_skipped": 0,
+      "deny_rule_count": 0,
+      "deny_bytes": 0
+    }
+  },
+  "requested_routes": {
+    "glm": {
+      "model": "GLM-5.3",
+      "effort": null,
+      "tier": null,
+      "tier_source": "legacy",
+      "access": {
+        "requested_mode": "standard",
+        "profile": null,
+        "launcher_requested": "/Users/chenzhenbo/.zcode/runtime/releases/4.0.0/agent/zcode.cjs",
+        "launcher_effective": null,
+        "wrapper_sha256": null,
+        "configuration_sha256": null,
+        "provider_declared": null,
+        "provider_declared_source": null,
+        "provider_effective": null,
+        "provider_effective_source": null
+      }
+    }
+  },
+  "deny_paths": [
+    ".trivium",
+    "/private/var/folders/b_/9c_2y9gx4bx9hg3chvdwmdl00000gn/T/trivium-zcode-acceptance.96lGqBLic8/review-runs"
+  ],
+  "guard": {
+    "readonly_breach": false,
+    "peer_artifact_read": false,
+    "peer_deny_applied": {
+      "glm": false
+    },
+    "deny_skipped": {
+      "glm": 0
+    },
+    "forged_role_file": false,
+    "breached_files": [],
+    "peer_leak_via_command": {},
+    "peer_leak_via_path": {},
+    "joint_check": {
+      "state": "skipped-insufficient-sides",
+      "effective_sides": 0
+    },
+    "verification_degraded": {}
+  },
+  "artifacts": [
+    {
+      "path": "ZCode独立安装验收/code/_meta/changes-20261126T075619Z.diff",
+      "sha256": "20ce89b55084a2fd1f5e7ce4d81919d8eb044c2b089b61e70cc0d8e7a21678b8"
+    },
+    {
+      "path": "ZCode独立安装验收/code/_meta/brief-glm-20261126T075619Z.md",
+      "sha256": "cebbc598b108894cf0b6a71fd4a2567140a5f6e72bb7c4b58907856a93b42d76"
+    },
+    {
+      "path": "ZCode独立安装验收/code/_meta/review-glm-20261126T075619Z.failed.json",
+      "sha256": "a936f592c63376229941d251c1a140347fc1435fd6aa4d8d9e7a0d1fff320e1a"
+    }
+  ],
+  "gate": {
+    "adjudication_complete": false,
+    "state": "failed"
+  },
+  "status": "failed"
+}

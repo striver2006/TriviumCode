@@ -98,7 +98,8 @@ async function world(opts: {
 
   const cfg = defaultConfig();
   cfg.probe.cli.zcode!.probed_at = new Date().toISOString();
-  cfg.probe.cli.zcode!.entrypoint = entry;
+  cfg.agents.glm = { vendor: 'zcode', entry };
+  cfg.probe.cli.zcode!.entrypoint = await fs.realpath(entry);
   cfg.probe.cli.zcode!.readonly_flags = ['--mode plan'];
   if (opts.glmPlanModel === null) delete cfg.profiles[cfg.active_profile]!.glm!.plan;
   else if (opts.glmPlanModel) cfg.profiles[cfg.active_profile]!.glm!.plan = opts.glmPlanModel;
@@ -178,13 +179,12 @@ test('副本源不是合法 JSON：落成一条可读的失败，不抛（CODEX-
   assert.equal(await fs.stat(w.observe).then(() => true, () => false), false, '副本没备好就不该拉起 CLI');
 });
 
-test('副本源读不了：指纹返回 null 而不是抛，交给探活报失败（CODEX-01）', { skip: process.getuid?.() === 0 }, async () => {
+test('副本源读不了：指纹读取失败使预检跳过缓存，探活报失败（CODEX-01）', { skip: process.getuid?.() === 0 }, async () => {
   const w = await world({ cliConfig: true });
   const src = path.join(w.home, '.zcode/cli/config.json');
   await fs.chmod(src, 0o000);
   try {
-    const fp = await withEnv(w.home, w.observe, () => zcodeAdapter.authProbe!(ctxOf(w.cfg), w.root).fingerprint());
-    assert.equal(fp, null);
+    await assert.rejects(withEnv(w.home, w.observe, () => zcodeAdapter.authProbe!(ctxOf(w.cfg), w.root).fingerprint()), /EACCES/);
     const r = await withEnv(w.home, w.observe, () => zcodeAdapter.authProbe!(ctxOf(w.cfg), w.root).probe());
     assert.equal(r.ok, false);
     assert.match(r.detail, /读取或解析失败/);

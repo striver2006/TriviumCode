@@ -259,6 +259,7 @@ export async function seedFakeProbes(root: string, over: Record<string, unknown>
   const p = path.join(root, '.trivium', 'config.local.yaml');
   const raw = await fs.readFile(p, 'utf8').catch(() => '');
   const doc = (YAML.parse(raw) ?? {}) as Record<string, any>;
+  doc['agents'] = { ...doc['agents'], glm: { vendor: 'zcode', entry: fakeZcode } };
   doc['probe'] = {
     generated_at: now,
     cli: {
@@ -270,7 +271,7 @@ export async function seedFakeProbes(root: string, over: Record<string, unknown>
         agent: 'trivium-critic',
       },
       zcode: {
-        ...common(fakeZcode),
+        ...common(await fs.realpath(fakeZcode)),
         version_probe: { runner: 'node', args: ['version'], extract: String.raw`(\d+\.\d+\.\d+)` },
         models: ['GLM-5.3'],
         readonly_flags: ['--mode plan', '--disallowed-tools Write,Edit'],
