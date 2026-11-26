@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { scratchDir } from '../helpers/scratch.js';
 import { defaultConfig } from '../../src/trivium/config.js';
-import { probeZcode, probeZcodeEntry } from '../../src/trivium/probes/zcode.js';
-import { zcodeAdapter, zcodeProviderConfigPaths } from '../../src/trivium/adapters/zcode.js';
+import { probeReadonlyFlags, probeZcode, probeZcodeEntry } from '../../src/trivium/probes/zcode.js';
+import { zcodeAdapter, zcodeHomeEnv, zcodeProviderConfigPaths } from '../../src/trivium/adapters/zcode.js';
 import { reviewEntry, standaloneCommand, standalonePackage } from '../../extension/src/launch/zcodeInstallation.js';
 
 const version = '0.18.0';
@@ -114,4 +115,44 @@ test('含 $HOME / %USERPROFILE% 的包装器在 standalonePackage 与 reviewEntr
   assert.deepEqual(standalonePackage(shShim, root), { root: runtimeRoot, version: '4.0.0' });
   assert.deepEqual(standalonePackage(cmdShim, root), { root: runtimeRoot, version: '4.0.0' });
   assert.equal(reviewEntry(null, { home: root, searchDirs: [], desktopEntries: [] }), cjs);
+});
+
+test('zcodeHomeEnv 与 probeReadonlyFlags 在 win32 下同步隔离 USERPROFILE 并保持零配额停点', async () => {
+  const iso = zcodeHomeEnv('/tmp/ziso');
+  assert.equal(iso.HOME, '/tmp/ziso');
+  if (process.platform === 'win32') {
+    assert.equal(iso.USERPROFILE, '/tmp/ziso');
+    assert.equal('HOMEDRIVE' in iso && iso.HOMEDRIVE, undefined);
+    assert.equal('HOMEPATH' in iso && iso.HOMEPATH, undefined);
+  }
+
+  const root = await fs.realpath(await scratchDir('trivium-zhome-iso-'));
+  const fakeEntry = path.join(root, 'fake-zcode.cjs');
+  const realHome = os.homedir();
+  await fs.writeFile(
+    fakeEntry,
+    [
+      'const os = require("node:os");',
+      'const env = process.env;',
+      'const argv = process.argv.slice(2);',
+      `const realHome = ${JSON.stringify(realHome)};`,
+      'if (!env.HOME || env.HOME === realHome) { process.stderr.write("HOME not isolated\\n"); process.exit(2); }',
+      'if (process.platform === "win32" && (env.USERPROFILE !== env.HOME || env.USERPROFILE === realHome || os.homedir() !== env.HOME)) {',
+      '  process.stderr.write("USERPROFILE not isolated\\n"); process.exit(2);',
+      '}',
+      'for (const f of ["--max-turns", "--settings"]) {',
+      '  if (argv.includes(f)) { process.stderr.write("Unknown option \'" + f + "\'.\\n"); process.exit(1); }',
+      '}',
+      'process.stderr.write("Error: Select a model before sending a message (traceId: fake)\\n");',
+      'process.exit(1);',
+    ].join('\n'),
+  );
+
+  const res = await probeReadonlyFlags(fakeEntry, process.execPath, root);
+  assert.deepEqual(res.zeroExit, []);
+  assert.deepEqual(res.indeterminate, []);
+  assert.ok(res.accepted.includes('--mode plan'));
+  assert.ok(res.accepted.includes('--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash'));
+  assert.ok(res.rejected.includes('--max-turns 40'));
+  assert.ok(res.rejected.includes('--settings /nonexistent-probe-settings.json'));
 });

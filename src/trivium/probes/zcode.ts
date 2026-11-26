@@ -46,6 +46,7 @@ import {
   tildeHome,
   zcodeCliCopyPath,
   zcodeHomeUnder,
+  zcodeHomeEnv,
   zcodeStorageRedirectEnv,
   type VariantOutcome,
   type ZcodeHomePrep,
@@ -194,7 +195,7 @@ export async function probeReadonlyFlags(
         // `killTree`：P-30 实测该 CLI 能在一个 turn 里 3 分钟不退。第三态的前提（只给内置那份
         // 就停在无凭据）一旦被某次升版打破，这七次就是七次真实调用——超时杀父进程而遗弃孙进程，
         // 它们会继续烧配额（r3 CODEX-F01-04；`exec.ts` 要求拉起厂商 CLI 一律打开）。
-        { cwd, timeoutMs: 30_000, env: { ...providerEnv, HOME: emptyHome }, killTree: true },
+        { cwd, timeoutMs: 30_000, env: { ...providerEnv, ...zcodeHomeEnv(emptyHome) }, killTree: true },
       );
       /*
        * 判定链是**三分**，且「接受」要正向证据（r4 CODEX-01）。
@@ -609,7 +610,7 @@ export async function probeModelOverride(
     const env: Record<string, string | undefined> = {
       ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
       ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
-      HOME: home,
+      ...zcodeHomeEnv(home),
     };
     const r = await run(...zcodeInvocation(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])]), {
       cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,
@@ -1029,7 +1030,7 @@ export async function probeModelOverrideFullCopy(
     const env: Record<string, string | undefined> = {
       ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
       ...Object.fromEntries(ZCODE_CREDENTIAL_ENV_KEYS.map((k) => [k, undefined])),
-      HOME: prep.homeDir,
+      ...zcodeHomeEnv(prep.homeDir),
     };
     const r = await run(...zcodeInvocation(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...(opts.readonlyArgs ?? [])]), {
       cwd, timeoutMs: opts.timeoutMs ?? 30_000, env, killTree: true,

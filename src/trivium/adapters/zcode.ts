@@ -528,6 +528,13 @@ export function bashStillDenied(readonlyFlags: readonly string[]): boolean {
   return readonlyFlags.some((f) => /(^|[\s,"'=])Bash([\s,"']|$)/.test(f));
 }
 
+/** 子进程家目录隔离补丁：Windows 上 `os.homedir()` 认 `USERPROFILE` / `HOMEDRIVE+HOMEPATH`，只改 `HOME` 隔离不住（设计 §7.1） */
+export function zcodeHomeEnv(homeDir: string): Record<string, string | undefined> {
+  return IS_WIN
+    ? { HOME: homeDir, USERPROFILE: homeDir, HOMEDRIVE: undefined, HOMEPATH: undefined }
+    : { HOME: homeDir };
+}
+
 /** **唯一**执行 zcode 的地方 */
 export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvokeOutcome> {
   const args = buildZcodeArgs(opts);
@@ -543,13 +550,7 @@ export async function invokeZcode(opts: ZcodeInvokeOptions): Promise<ZcodeInvoke
   // 顺序反过来，编排器的值会被清掉、子进程退回 HOME 缺省（变异 M2）
   if (opts.storageRedirectRoot) Object.assign(env, zcodeStorageRedirectEnv(opts.storageRedirectRoot));
   if (opts.homeDir) {
-    env['HOME'] = opts.homeDir;
-    // Windows：CLI 若按 USERPROFILE / HOMEDRIVE+HOMEPATH 定家目录，只改 HOME 隔离不住（设计 §7.1）——三者并设
-    if (IS_WIN) {
-      env['USERPROFILE'] = opts.homeDir;
-      env['HOMEDRIVE'] = undefined;
-      env['HOMEPATH'] = undefined;
-    }
+    Object.assign(env, zcodeHomeEnv(opts.homeDir));
   }
 
   const r = await runReviewProcess(opts.stdoutTarget, ...zcodeInvocation(opts.node, args), { cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, killTree: true });
