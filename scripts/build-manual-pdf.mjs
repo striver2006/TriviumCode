@@ -5,7 +5,7 @@
  * ③命令与配置详参（MANUAL_user 字段参考）④1.2.x 增补篇（scripts/manual-supplement.md，
  * 事实口径与 Bug 清单 §3 同源，发版时随批更新）。
  *
- * 渲染：marked 转 HTML + Edge 无头 `--print-to-pdf`（1.2.7/1.2.8 的临时管线同一路数）。
+ * 渲染：marked 转 HTML，由本机 Edge 或 Chrome 无头打印。
  * 依赖 marked（devDependencies，仅本脚本用，不进产品与发布包）。
  *
  * 用法：node scripts/build-manual-pdf.mjs [--out <pdf路径>]
@@ -30,14 +30,18 @@ if (!out) out = path.join(root, 'releases', `TriviumCode-${pkg.version}-完整�
 try { await fs.lstat(out); throw new Error(`不覆盖已有发布物：${out}`); }
 catch (e) { if (e.code !== 'ENOENT') throw e; }
 
-// Edge 标准安装路径（先 x86 后 x64）；找不到时给明确指引
-const edgeCandidates = [
+const browserCandidates = process.platform === 'darwin' ? [
+  '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+] : [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
 ];
-let edge = null;
-for (const c of edgeCandidates) { try { await fs.access(c); edge = c; break; } catch { /* 下一个 */ } }
-if (!edge) throw new Error('找不到 Microsoft Edge（msedge.exe）。本脚本用其无头模式渲染 PDF，请在标准路径安装 Edge 或改造本脚本指路。');
+let browser = null;
+for (const candidate of browserCandidates) {
+  try { await fs.access(candidate); browser = candidate; break; } catch { /* 下一个 */ }
+}
+if (!browser) throw new Error('生成手册需要在标准路径安装 Microsoft Edge，macOS 也可使用 Google Chrome。');
 
 const parts = [
   { title: '第一部分 · 安装部署', file: 'doc/06_deployment/部署手册.md' },
@@ -55,6 +59,7 @@ const css = `
   h2 { font-size: 13pt; margin: 1.6em 0 .5em; padding-bottom: .2em; border-bottom: 1px solid #d0d7de; page-break-after: avoid; }
   h3 { font-size: 11.5pt; margin: 1.2em 0 .4em; page-break-after: avoid; }
   p { margin: .5em 0; }
+  img { max-width: 100%; max-height: 220mm; height: auto; object-fit: contain; }
   table { border-collapse: collapse; width: 100%; margin: .8em 0; font-size: 9.5pt; page-break-inside: auto; }
   th, td { border: 1px solid #c8cdd4; padding: 5px 8px; text-align: left; vertical-align: top; }
   th { background: #f2f4f7; }
@@ -84,25 +89,33 @@ const cover = `<div class="cover">
 </div>`;
 const bodyParts = [];
 for (const p of parts) {
-  const md = await fs.readFile(path.join(root, p.file), 'utf8');
-  bodyParts.push(`<section class="part"><div class="part-title">${p.title}</div>${marked.parse(md)}</section>`);
+  const filename = path.join(root, p.file);
+  const md = await fs.readFile(filename, 'utf8');
+  const partHtml = marked.parse(md, {
+    walkTokens(token) {
+      if (token.type === 'image') token.href = new URL(token.href, pathToFileURL(filename)).href;
+    },
+  });
+  bodyParts.push(`<section class="part"><div class="part-title">${p.title}</div>${partHtml}</section>`);
 }
 const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <title>TriviumCode ${pkg.version} 完整手册</title><style>${css}</style></head>
 <body>${cover}${bodyParts.join('\n')}</body></html>`;
 
-const tmpHtml = path.join(os.tmpdir(), `trivium-manual-${pkg.version}.html`);
-await fs.writeFile(tmpHtml, html, 'utf8');
+const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'trivium-manual-'));
+const tmpHtml = path.join(tempDir, 'manual.html');
 try {
-  execFileSync(edge, [
+  await fs.writeFile(tmpHtml, html, 'utf8');
+  await fs.mkdir(path.dirname(out), { recursive: true });
+  execFileSync(browser, [
+    `--user-data-dir=${path.join(tempDir, 'profile')}`,
     '--headless=new', '--disable-gpu', '--no-pdf-header-footer',
     `--print-to-pdf=${out}`, pathToFileURL(tmpHtml).href,
   ], { stdio: 'pipe', timeout: 120_000 });
   const pdf = await fs.readFile(out);
   // 页数：统计未压缩页对象（/Type /Page 且非 /Pages）；统计失败不阻塞，仅少报一个字段
   const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page(?!s)/g) ?? []).length || null;
-  await fs.mkdir(path.dirname(out), { recursive: true });
   console.log(JSON.stringify({ file: out, bytes: pdf.length, pages, version: pkg.version }, null, 2));
 } finally {
-  await fs.rm(tmpHtml, { force: true });
+  await fs.rm(tempDir, { recursive: true, force: true, maxRetries: 3 });
 }

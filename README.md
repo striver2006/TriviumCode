@@ -1,6 +1,6 @@
 # TriviumCode（三方智鉴）
 
-面向 macOS 与 Windows 的「主攻 + 多方独立审查」编程 Agent 流水线。当前产品版本 **1.3.2**（1.1.0 新增 Windows 原生支持；1.3.0 起 macOS 与 Windows 为同一套代码），支持 Claude Code、Codex、Antigravity、ZCode 四家 Agent 担任 Driver 或审核者；每轮选择 1～3 家审核者，Driver 不审自己的变更。
+面向 macOS 与 Windows 的「主攻 + 多方独立审查」编程 Agent 流水线。当前产品版本 **1.3.8**（1.1.0 新增 Windows 原生支持；1.3.0 起 macOS 与 Windows 为同一套代码），支持 Claude Code、Codex、Antigravity、ZCode 四家 Agent 担任 Driver 或审核者；每轮选择 1～3 家审核者，Driver 不审自己的变更。VS Code 驾驶舱扩展（`trivium-cockpit`）经 Marketplace 独立分发，不在安装包内。
 
 Driver 负责起草、代码和逐条裁决；本地 Node 编排器负责预检、后台调度、证据核验、归档、闸门和真实编译测试。审查在工作树中进行，采用检测与留痕机制；护栏按载体分为 L1/L2，具体边界见使用手册。
 

@@ -140,7 +140,7 @@ npm run package      # vsce 打包 .vsix
 ```
 
 开发前在仓库根目录和 `extension/` 分别安装依赖。可用 `VSCODE_EXECUTABLE_PATH` 指定本机 VS Code 主程序；缺省下载测试运行时。包安装回归可用
-`TRIVIUM_TEST_VSIX="$PWD/trivium-cockpit-0.3.2.vsix" TRIVIUM_KEEP_WINDOW=1 npm run e2e`。
+`TRIVIUM_TEST_VSIX="$PWD/trivium-cockpit-0.3.3.vsix" TRIVIUM_KEEP_WINDOW=1 npm run e2e`。
 脚本打印临时仓、隔离 profile、审批前回读与截图的位置。保留的「入口B验收甲」窗口用于人工审批。
 
 入口 A 真机专项在扩展目录运行。先完成核心构建，指定 VSCODE_EXECUTABLE_PATH 和 TRIVIUM_TEST_VSIX，保留本机已登记的 GLM 后台探针。命令为 `npm run real:glm-entry -- /绝对路径/zcode`，脚本模式为 `npm run real:glm-entry -- /发行目录/bin/zcode.mjs /绝对路径/node`。登录、选模和原生工具确认由操作者完成。
