@@ -1049,12 +1049,110 @@ export function describeZcodeProbedPath(prep: ZcodeHomePrep): string {
  * 限定失败（模型不在副本源里）时**仍建副本、不改 `model`**，`route: global` 并给理由：
  * 隔离照做，只是不覆盖。
  */
+const ZCODE_BUILTIN_CACHE_FILES = new Set(['zcode-builtin.json', 'zcode-builtin-refresh.json']);
+
+/**
+ * 将 `<srcHomeDir>/.zcode/v2/runtime/provider` 下已缓存的 CDN 内置规则与刷新记录白名单同步到临时隔离 HOME。
+ *
+ * 原因：随包 `zcode-builtin.json` 可能滞后于 CDN 修订（如 4.0.0 随包 rev 44 中 GLM-5.4 落入 `['disabled','enabled']`，
+ * 而 CDN rev 48 改为 `['low','high','max']`）；若隔离 HOME 缺失该缓存，CLI 启动先按旧修订选定 `reasoningLevel: "enabled"`，
+ * 随即后台 CDN 热替换为新修订，导致 `modelFactory` 报 `Reasoning effort "enabled" is not supported`。
+ * 仅复制白名单普通文件（不含凭据、跳过符号链接），不复制 `v2/provider_config.json` 或 `v2/credentials.json`。
+ */
+export async function seedZcodeBuiltinCache(
+  targetHomeDir: string,
+  srcHomeDir: string = os.homedir(),
+): Promise<void> {
+  const srcRoot = path.join(srcHomeDir, ZCODE_V2_SUBDIR, 'runtime/provider');
+  const dstRoot = path.join(targetHomeDir, ZCODE_V2_SUBDIR, 'runtime/provider');
+  async function copyDir(srcDir: string, dstDir: string): Promise<void> {
+    let entries;
+    try {
+      entries = await fs.readdir(srcDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      const srcPath = path.join(srcDir, entry.name);
+      const dstPath = path.join(dstDir, entry.name);
+      if (entry.isDirectory()) {
+        await copyDir(srcPath, dstPath);
+      } else if (entry.isFile() && ZCODE_BUILTIN_CACHE_FILES.has(entry.name)) {
+        try {
+          await ensureDir(dstDir);
+          await fs.copyFile(srcPath, dstPath);
+        } catch {
+          /* 缓存预置属最佳努力，单文件失败不阻断运行 */
+        }
+      }
+    }
+  }
+  try {
+    const st = await fs.lstat(srcRoot);
+    if (!st.isDirectory() || st.isSymbolicLink()) return;
+  } catch {
+    return;
+  }
+  await copyDir(srcRoot, dstRoot);
+
+  // `agent/zcode.cjs` 的编译期 ZCODE_VERSION 常为 `0.0.0-dev`，而交互端 `bin/zcode.mjs` 为发行版号（如 `4.0.0`）；
+  // 若宿主机仅由交互端缓存过 `<platform>/<release>/endpoint-*/`，为 `0.0.0-dev` 补齐最高 revision 的同 endpoint 缓存。
+  let platforms: string[] = [];
+  try {
+    platforms = (await fs.readdir(dstRoot, { withFileTypes: true }))
+      .filter((e) => e.isDirectory() && !e.isSymbolicLink())
+      .map((e) => e.name);
+  } catch {
+    return;
+  }
+  for (const plat of platforms) {
+    const platDir = path.join(dstRoot, plat);
+    const devDir = path.join(platDir, '0.0.0-dev');
+    if (await exists(devDir)) continue;
+    let bestByEndpoint = new Map<string, { rev: number; dir: string }>();
+    let versions;
+    try {
+      versions = await fs.readdir(platDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const v of versions) {
+      if (!v.isDirectory() || v.name === '0.0.0-dev') continue;
+      const verDir = path.join(platDir, v.name);
+      let endpoints;
+      try {
+        endpoints = await fs.readdir(verDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const ep of endpoints) {
+        if (!ep.isDirectory()) continue;
+        const epDir = path.join(verDir, ep.name);
+        try {
+          const raw = JSON.parse(await fs.readFile(path.join(epDir, 'zcode-builtin.json'), 'utf8')) as { revision?: unknown };
+          const rev = typeof raw.revision === 'number' ? raw.revision : -1;
+          const prev = bestByEndpoint.get(ep.name);
+          if (!prev || rev > prev.rev) bestByEndpoint.set(ep.name, { rev, dir: epDir });
+        } catch {
+          /* 忽略损坏或缺失条目 */
+        }
+      }
+    }
+    for (const [epName, { dir }] of bestByEndpoint) {
+      await copyDir(dir, path.join(devDir, epName));
+    }
+  }
+}
+
 export async function prepareZcodeHome(
   runDir: string,
   model: string | null,
   opts: {
     // `srcConfig` 只为可测性：不开这个口子，用例只能吃真实的 `~/.zcode/cli/config.json`（含凭据）
     srcConfig?: string;
+    /** 可选指定内置规则缓存源 HOME；未传时仅在默认真实 `srcConfig` 路径下取 `os.homedir()` */
+    srcHome?: string | null;
     /**
      * 在**写盘之前**改写副本对象（EV-82 小主题第一段 r2 §3.1）。只给同形探针臂用：
      * 它要把凭据换成哨兵，写盘前换才没有「先写真实凭据、再覆写」的窗口（AGY-03）。
@@ -1102,6 +1200,11 @@ export async function prepareZcodeHome(
   await fs.writeFile(copyPath, JSON.stringify(toWrite, null, 2), 'utf8');
   // 配置副本含凭据，权限收紧
   await fs.chmod(copyPath, 0o600);
+  const defaultSrc = zcodeOverrideSourcePath();
+  const srcHome = opts.srcHome !== undefined
+    ? opts.srcHome
+    : (path.resolve(srcConfig) === path.resolve(defaultSrc) ? os.homedir() : null);
+  if (srcHome) await seedZcodeBuiltinCache(homeDir, srcHome);
 
   if (q.qualified === null) {
     return {

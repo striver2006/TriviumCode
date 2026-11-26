@@ -6,7 +6,7 @@ import { promises as fs } from 'node:fs';
 import { scratchDir } from '../helpers/scratch.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { probeReadonlyFlags, probeZcode, probeZcodeEntry } from '../../src/trivium/probes/zcode.js';
-import { zcodeAdapter, zcodeHomeEnv, zcodeProviderConfigPaths } from '../../src/trivium/adapters/zcode.js';
+import { prepareZcodeHome, scrubZcodeHome, seedZcodeBuiltinCache, zcodeAdapter, zcodeHomeEnv, zcodeProviderConfigPaths } from '../../src/trivium/adapters/zcode.js';
 import { reviewEntry, standaloneCommand, standalonePackage } from '../../extension/src/launch/zcodeInstallation.js';
 
 const version = '0.18.0';
@@ -155,4 +155,54 @@ test('zcodeHomeEnv 与 probeReadonlyFlags 在 win32 下同步隔离 USERPROFILE 
   assert.ok(res.accepted.includes('--disallowed-tools Write,Edit,MultiEdit,ApplyPatch,Bash'));
   assert.ok(res.rejected.includes('--max-turns 40'));
   assert.ok(res.rejected.includes('--settings /nonexistent-probe-settings.json'));
+});
+
+test('seedZcodeBuiltinCache 与 prepareZcodeHome 白名单同步内置规则缓存且不泄露个人文件', async () => {
+  const srcHome = await fs.realpath(await scratchDir('trivium-zseed-src-'));
+  const endpointDir = path.join(srcHome, '.zcode/v2/runtime/provider/windows-x86_64/4.0.0/endpoint-abcd');
+  await fs.mkdir(endpointDir, { recursive: true });
+  await fs.writeFile(path.join(endpointDir, 'zcode-builtin.json'), JSON.stringify({ schemaVersion: 1, revision: 48, config: {} }));
+  await fs.writeFile(path.join(endpointDir, 'zcode-builtin-refresh.json'), JSON.stringify({ schemaVersion: 1, nextEligibleAt: 9999999999999 }));
+  await fs.writeFile(path.join(endpointDir, 'unexpected.json'), '{"secret":"nope"}');
+  await fs.writeFile(path.join(srcHome, '.zcode/v2/provider_config.json'), '{"defaultModelSelection":{"modelId":"GLM-5.4"}}');
+  await fs.writeFile(path.join(srcHome, '.zcode/v2/credentials.json'), '{"token":"secret"}');
+
+  const srcCli = path.join(srcHome, '.zcode/cli/config.json');
+  await fs.mkdir(path.dirname(srcCli), { recursive: true });
+  await fs.writeFile(srcCli, JSON.stringify({
+    provider: { 'bigmodel-plan': { kind: 'anthropic', source: 'custom', options: { apiKey: 'dummy' }, models: { 'GLM-5.4': {} } } },
+    model: { main: 'bigmodel-plan/GLM-5.4' },
+  }));
+
+  const runDir = await fs.realpath(await scratchDir('trivium-zseed-run-'));
+  const prep = await prepareZcodeHome(runDir, 'GLM-5.4', { srcConfig: srcCli, srcHome });
+  assert.equal(prep.route, 'config_copy');
+  assert.equal(prep.qualified, 'bigmodel-plan/GLM-5.4');
+  assert.ok(prep.homeDir);
+
+  const dstEndpoint = path.join(prep.homeDir, '.zcode/v2/runtime/provider/windows-x86_64/4.0.0/endpoint-abcd');
+  const copiedBuiltin = JSON.parse(await fs.readFile(path.join(dstEndpoint, 'zcode-builtin.json'), 'utf8'));
+  assert.equal(copiedBuiltin.revision, 48);
+  const devEndpoint = path.join(prep.homeDir, '.zcode/v2/runtime/provider/windows-x86_64/0.0.0-dev/endpoint-abcd');
+  const devBuiltin = JSON.parse(await fs.readFile(path.join(devEndpoint, 'zcode-builtin.json'), 'utf8'));
+  assert.equal(devBuiltin.revision, 48);
+  await fs.access(path.join(dstEndpoint, 'zcode-builtin-refresh.json'));
+  await assert.rejects(fs.access(path.join(dstEndpoint, 'unexpected.json')));
+  await assert.rejects(fs.access(path.join(prep.homeDir, '.zcode/v2/provider_config.json')));
+  await assert.rejects(fs.access(path.join(prep.homeDir, '.zcode/v2/credentials.json')));
+
+  const scrub = await scrubZcodeHome(prep.homeDir);
+  assert.deepEqual(scrub.errors, []);
+  assert.deepEqual(scrub.warnings, []);
+  assert.deepEqual(scrub.removedOnHit, []);
+
+  // 合成夹具仅传 srcConfig 且未传 srcHome 时不复制宿主机缓存
+  const isolatedRun = await fs.realpath(await scratchDir('trivium-zseed-iso-'));
+  const isolatedPrep = await prepareZcodeHome(isolatedRun, 'GLM-5.4', { srcConfig: srcCli });
+  await assert.rejects(fs.access(path.join(isolatedPrep.homeDir!, '.zcode/v2/runtime/provider')));
+
+  // 空源目录调用 seedZcodeBuiltinCache 安全跳过
+  const emptyHome = await fs.realpath(await scratchDir('trivium-zseed-empty-'));
+  await seedZcodeBuiltinCache(emptyHome, path.join(srcHome, 'missing'));
+  await assert.rejects(fs.access(path.join(emptyHome, '.zcode')));
 });

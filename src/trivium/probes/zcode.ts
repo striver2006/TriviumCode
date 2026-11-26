@@ -27,6 +27,7 @@ import {
   type ZcodeSearch,
   legacyProviderMembers,
   prepareZcodeHome,
+  seedZcodeBuiltinCache,
   qualifyAgainstCliConfig,
   readonlyArgsFromProbe,
   reorderRequestedFirst,
@@ -189,6 +190,7 @@ export async function probeReadonlyFlags(
   const emptyHome = await makeTempDir('trivium-flagprobe');
   let tempDirResidue: string | null = null;
   try {
+    await seedZcodeBuiltinCache(emptyHome);
     for (const flag of candidates) {
       const r = await run(
         ...zcodeInvocation(node, [entry, '--prompt', 'ok', '--cwd', cwd, '--json', '--no-color', ...flag]),
@@ -606,6 +608,7 @@ export async function probeModelOverride(
     const copy = buildProbeCliConfig(cfg, qualified);
     await fs.mkdir(path.dirname(copyPath), { recursive: true });
     await fs.writeFile(copyPath, JSON.stringify(copy, null, 2), { encoding: 'utf8', mode: 0o600 });
+    if (!opts.cliConfigPath) await seedZcodeBuiltinCache(home);
 
     const env: Record<string, string | undefined> = {
       ...(await zcodeProviderEnv(entry, undefined, { omitPersonal: true })),
