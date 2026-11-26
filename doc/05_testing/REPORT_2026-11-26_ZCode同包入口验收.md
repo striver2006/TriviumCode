@@ -51,4 +51,17 @@
 | 扩展 `npm --prefix extension run check` | 使用本机 VS Code 1.147.0，191 项单元测试、86 项集成测试通过 |
 | 安装选择回归 | 覆盖独立版与桌面版并存、仅独立版、仅桌面版、显式脚本或启动器、入口缺失或核验失败，以及同 Agent 版本换装 |
 
-Windows 真机未测。桌面版测至完整 doctor 与真实预检，未另启动桌面版正式审核。本次本机验收使用隔离工作区，日常使用的全局核心和扩展未部署。
+Windows 真机未测。桌面版测至完整 doctor 与真实预检，未另启动桌面版正式审核。上面的角色验收使用隔离工作区。
+
+## 正式发布与日常环境部署
+
+2026-11-26，核心 1.3.8 与驾驶舱 0.3.3 的发布源码为 `adeaa72c569b3af41b5299916c7af5ae5a70f80a`。合入上一版发布记录并更新正式版本号后，重新运行了核心与扩展的完整检查，结果与上表一致。
+
+| 交付物 | 回读结果 |
+| --- | --- |
+| GitCode 核心 `v1.3.8` | macOS 包的 `release_state=stable`、`source_dirty=false`。解压后 264 个文件逐项通过校验。公开下载的安装包、校验文件和 52 页 PDF 与本地归档字节一致。 |
+| macOS 安装包 | SHA-256 为 `4fda36791ed8ec61b10ddea65ad3045798de16caf4451c462bc3242f5bf97366`。从解压目录执行安装前检查与安装，项目 wrapper 回报 `1.3.8`，已安装核心与包内 CLI 散列一致。 |
+| Marketplace 驾驶舱 `0.3.3` | 公开下载 VSIX 的 SHA-256 为 `27380c624f27fab0d5ec19bbe5407860dadee59752ffd255bf944c02323b8694`，与上传件一致。VS Code 本机安装目录的七个载荷文件均与 VSIX 相符，比较 manifest 时剔除了安装器加入的 `__metadata`。 |
+| 项目 wrapper 装后验证 | `doctor --selftest` 14/14。完整 ZCode doctor 选中独立版 `releases/4.0.0/agent/zcode.cjs`；Codex 主攻、GLM 审核的代码预检加 `--refresh-auth` 退出 0，5 秒真实探活回读 `bigmodel-coding-plan/GLM-5.3`。 |
+
+[GitCode macOS 安装包](https://gitcode.com/czb99/TriviumCode/releases/download/v1.3.8/TriviumCode-1.3.8-macos.tar.gz) · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=triviumcode.trivium-cockpit)
