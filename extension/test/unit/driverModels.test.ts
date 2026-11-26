@@ -54,7 +54,7 @@ test('Codex 原生分页目录过滤隐藏项，默认强度跟随工作区模�
     const cap = await readDriverCatalog('codex', program, cwd);
     assert.deepEqual(cap.models.map(m => m.id), ['alpha','beta']);
     assert.deepEqual(cap.defaultEfforts, ['max']);
-  } finally { await rm(cwd, { recursive: true, force: true }); }
+  } finally { await rm(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }
 });
 
 test('直接程序和 Node 脚本保留每个参数的字面边界', () => {
@@ -93,5 +93,5 @@ test('旧 Codex 的可见目录、Antigravity 变体及独立 ZCode 的两个开
     }
     await assert.rejects(catalog('glm', ''), error =>
       error instanceof Error && error.message.includes(entrypoint) && error.message.includes('--help'));
-  } finally { await rm(cwd, { recursive: true, force: true }); }
+  } finally { await rm(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }
 });

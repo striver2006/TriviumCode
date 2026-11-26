@@ -11,6 +11,7 @@
  * `/skill <名字>`，不是桌面端的 `/名字`；插件拉起的恒为终端 CLI）。
  */
 
+import { homedir } from 'node:os';
 import { isAbsolute } from 'node:path';
 
 export type AgentId = 'claude' | 'codex' | 'gemini' | 'glm';
@@ -99,7 +100,7 @@ export function invocationFor(agentId: AgentId, commandName: string): string {
  * ~/.zcode/skills）与 layout（claude 为 top：仓内产物在 skills/，其余 entry/）。
  */
 export function skillRootCandidates(agentId: AgentId, repoRoot: string | null): string[] {
-  const home = process.env['HOME'] ?? '';
+  const home = process.env['HOME'] || homedir();
   const roots: string[] = [];
   switch (agentId) {
     case 'claude':
@@ -133,6 +134,7 @@ function joinHome(...parts: string[]): string {
  * AGY-02 兜底来源）。wrapper 形如：exec "/path/to/node" "/path/to/trivium.cjs" "$@"
  */
 export function parseWrapperNodePath(wrapperContent: string): string | null {
-  const m = /exec\s+"([^"]+)"\s+"[^"]*trivium/.exec(wrapperContent);
+  const m = /exec\s+"([^"]+)"\s+"[^"]*trivium/.exec(wrapperContent)
+    ?? /^\s*"([^"]+)"\s+"[^"]*trivium/m.exec(wrapperContent);
   return m?.[1] ?? null;
 }

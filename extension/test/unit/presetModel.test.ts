@@ -72,7 +72,7 @@ test('PresetStore：坏条目读取容错剔除不阻断', async () => {
 
 test('跨仓 ctxPaths 存在性过滤：失效标注跳过', async () => {
   const { keep, stale } = await filterStaleCtxPaths(
-    async (p) => p === '/root/exists.md',
+    async (p) => p.replace(/\\/g, '/') === '/root/exists.md',
     ['exists.md', 'gone.md'],
     '/root',
   );

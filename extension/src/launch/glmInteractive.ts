@@ -1,7 +1,7 @@
 // 驾驶舱使用所选发行包的交互入口。
 import { constants } from 'node:fs';
 import { access, readFile, stat } from 'node:fs/promises';
-import { checkedZcodeFile, isZcodeScript, standaloneCommand, standalonePackage, type ZcodeSearch } from './zcodeInstallation';
+import { checkedZcodeFile, isZcodeScript, standaloneCommand, standalonePackage, wrappedLauncher, type ZcodeSearch } from './zcodeInstallation';
 import path from 'node:path';
 import { parseWrapperNodePath, scriptProviderEnv } from './carriers';
 
@@ -52,14 +52,14 @@ async function desktopWithoutTui(file: string): Promise<boolean> {
 
 async function interpreter(o: Options): Promise<string> {
   if (o.configuredNode) {
-    if (await accessibleFile(o.configuredNode, constants.X_OK)) return o.configuredNode;
+    if (!isZcodeScript(o.configuredNode) && await accessibleFile(o.configuredNode, constants.X_OK)) return o.configuredNode;
     throw new Error('请修正 trivium.launch.glmNodePath，须填写可执行 Node 的绝对路径：' + o.configuredNode);
   }
   const runner = (o.cli?.version_probe as {runner?: unknown} | undefined)?.runner;
-  if (typeof runner === 'string' && await accessibleFile(runner, constants.X_OK)) return runner;
+  if (typeof runner === 'string' && !isZcodeScript(runner) && await accessibleFile(runner, constants.X_OK)) return runner;
   const wrapper = await readFile(o.wrapper, 'utf8').catch(() => '');
   const node = parseWrapperNodePath(wrapper);
-  if (node && await accessibleFile(node, constants.X_OK)) return node;
+  if (node && !isZcodeScript(node) && await accessibleFile(node, constants.X_OK)) return node;
   throw new Error('请在终端运行 command -v node，将绝对路径填入 trivium.launch.glmNodePath。');
 }
 
@@ -73,9 +73,13 @@ export async function resolveGlmInteractive(o: Options): Promise<InteractiveProg
   if (!path.isAbsolute(candidate)) throw new Error('GLM 交互入口需要绝对路径：' + candidate + '。' + fix);
   try {
     let file = checkedZcodeFile(candidate);
-    const pkg = standalonePackage(file);
+    const pkg = standalonePackage(file, o.home);
     // 后台探针登记的是 Agent。交互终端使用该发行包自己的启动脚本。
     if (source === '探针' && pkg) file = checkedZcodeFile(path.join(pkg.root, 'bin/zcode.mjs'));
+    if (process.platform === 'win32' && !isZcodeScript(file)) {
+      const unwrapped = wrappedLauncher(file, o.home);
+      if (unwrapped) file = checkedZcodeFile(unwrapped);
+    }
     if (await desktopWithoutTui(file)) throw new Error('桌面脚本 ' + file + ' 缺少 @zcode/tui。');
     const waitForStartup = !!pkg;
     if (!isZcodeScript(file)) return { source, launchMode: 'direct', entrypoint: candidate, waitForStartup };

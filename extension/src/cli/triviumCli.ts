@@ -9,6 +9,43 @@ import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
+/** 解析 wrapper 脚本内嵌的 node 与 trivium.cjs 绝对路径（兼容 POSIX sh 与 Windows .cmd） */
+export function parseWrapperCommand(content: string): { nodePath: string; cliPath: string } | null {
+  const m = /^\s*exec\s+"([^"]+)"\s+"([^"]+)"/m.exec(content)
+    ?? /^\s*"([^"]+)"\s+"([^"]+)"\s+%\*\s*$/m.exec(content);
+  if (!m?.[1] || !m[2]) return null;
+  return { nodePath: m[1], cliPath: m[2] };
+}
+
+/**
+ * 解析最终 spawn 的可执行文件与参数：
+ * - 非 Windows 直接执行 wrapperPath；
+ * - Windows 无法直接 spawn 无后缀 POSIX sh 脚本，也应避免 `shell: false` 调 `.cmd`（Node 24 EINVAL），
+ *   故解析 wrapper / `.cmd` 内嵌的 node 与 cli 脚本路径（或识别 `#!/usr/bin/env node`），改由 node 直接拉起。
+ */
+export async function resolveWrapperSpawn(
+  wrapperPath: string,
+  args: string[],
+  readText: (p: string) => Promise<string | null>,
+  platform: NodeJS.Platform = process.platform,
+  execPath: string = process.execPath,
+): Promise<{ command: string; args: string[] }> {
+  if (platform !== 'win32') return { command: wrapperPath, args };
+  for (const candidate of [wrapperPath, `${wrapperPath}.cmd`]) {
+    const text = await readText(candidate);
+    if (text === null) continue;
+    const parsed = parseWrapperCommand(text);
+    if (parsed) return { command: parsed.nodePath, args: [parsed.cliPath, ...args] };
+    if (candidate === wrapperPath) {
+      const firstLine = text.split(/\r?\n/, 1)[0] ?? '';
+      if (/^#!.*(?:\/env\s+node|\bnode(?:\.exe)?)\b/.test(firstLine)) {
+        return { command: execPath, args: [wrapperPath, ...args] };
+      }
+    }
+  }
+  return { command: wrapperPath, args };
+}
+
 export interface CliResult {
   /** 进程退出码；被超时杀死时为 null */
   code: number | null;
@@ -31,6 +68,14 @@ export class TriviumCli {
       await fs.access(this.wrapperPath());
       return true;
     } catch {
+      if (process.platform === 'win32') {
+        try {
+          await fs.access(`${this.wrapperPath()}.cmd`);
+          return true;
+        } catch {
+          return false;
+        }
+      }
       return false;
     }
   }
@@ -38,11 +83,17 @@ export class TriviumCli {
   /** 执行 wrapper 子命令。参数数组逐个透传，不做任何 shell 拼接。 */
   async run(args: string[], timeoutMs = 60_000): Promise<CliResult> {
     const wrapper = this.wrapperPath();
+    const { command, args: spawnArgs } = await resolveWrapperSpawn(
+      wrapper,
+      args,
+      (p) => fs.readFile(p, 'utf8').catch(() => null),
+    );
     return new Promise<CliResult>((resolve) => {
-      const child = spawn(wrapper, args, {
+      const child = spawn(command, spawnArgs, {
         shell: false,
         cwd: this.workspaceRoot,
         env: process.env,
+        windowsHide: true,
       });
       // 分块收集 Buffer、收尾整体解码（CODEX-08）：逐块 toString 会把跨块的多字节
       // 中文字符拆成替换符，topic 之类字段会悄悄变字

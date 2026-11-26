@@ -6,7 +6,7 @@ import { readRunMeta, expectedAddresses, readFallbackIds, allFallbackIds, resolv
 function fsOf(files: Record<string, string>): RunMetaFs {
   return {
     async readFile(p) {
-      const v = files[p];
+      const v = files[p] ?? files[p.replace(/\\/g, '/')];
       if (v === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
       return v;
     },

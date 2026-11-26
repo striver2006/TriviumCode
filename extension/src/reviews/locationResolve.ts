@@ -119,7 +119,7 @@ function normalizeSegment(seg: string, workspaceRoot: string): { relPath: string
     if (!(norm + path.sep).startsWith(root)) {
       return { relPath: null, ranges: null, doc: false }; // 调用方按 outside 处理
     }
-    relPath = norm.slice(root.length);
+    relPath = norm.slice(root.length).split(path.sep).join('/');
   } else {
     // 相对路径统一 resolve 后 containment（防 ../ 逃逸，CLAUDE-07；符号链接不解析——登记边界）
     const resolved = path.resolve(workspaceRoot, relPath);
@@ -127,7 +127,7 @@ function normalizeSegment(seg: string, workspaceRoot: string): { relPath: string
     if (!(resolved + path.sep).startsWith(root)) {
       return { relPath: null, ranges: null, doc: false };
     }
-    relPath = resolved.slice(root.length);
+    relPath = resolved.slice(root.length).split(path.sep).join('/');
   }
 
   // 非文件形态判定（如 plan §3.2、设计 §16.2）：含空格 → doc；扩展名须字母开头

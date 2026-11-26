@@ -6,7 +6,7 @@ import { scratchDir } from '../helpers/scratch.js';
 import { defaultConfig } from '../../src/trivium/config.js';
 import { probeZcode, probeZcodeEntry } from '../../src/trivium/probes/zcode.js';
 import { zcodeAdapter, zcodeProviderConfigPaths } from '../../src/trivium/adapters/zcode.js';
-import { reviewEntry, standaloneCommand } from '../../extension/src/launch/zcodeInstallation.js';
+import { reviewEntry, standaloneCommand, standalonePackage } from '../../extension/src/launch/zcodeInstallation.js';
 
 const version = '0.18.0';
 const agent = "if(process.argv[2]==='version') console.log('Agent 0.18.0'); else {console.error('无法判定能力'); process.exitCode=2;}";
@@ -91,4 +91,27 @@ test('显式可执行启动器直接执行并定位包装目标的 provider', { 
   const result = await probeZcodeEntry(exe, '/missing-node');
   assert.deepEqual(result, { entry: exe, version });
   assert.equal((await zcodeProviderConfigPaths(exe)).builtin, path.join(root, 'agent/provider/zcode-builtin.json'));
+});
+
+test('含 $HOME / %USERPROFILE% 的包装器在 standalonePackage 与 reviewEntry 中可定位 runtime 包', async () => {
+  const root = await fs.realpath(await scratchDir('trivium-zwrap-core-'));
+  const localBin = path.join(root, '.local/bin');
+  const runtimeRoot = path.join(root, '.zcode/runtime/current');
+  const mjs = path.join(runtimeRoot, 'bin/zcode.mjs');
+  const cjs = path.join(runtimeRoot, 'agent/zcode.cjs');
+  await fs.mkdir(localBin, { recursive: true });
+  await fs.mkdir(path.dirname(mjs), { recursive: true });
+  await fs.mkdir(path.dirname(cjs), { recursive: true });
+  await fs.writeFile(path.join(runtimeRoot, 'package.json'), JSON.stringify({ name: 'zcode-runtime', version: '4.0.0' }));
+  await fs.writeFile(mjs, '');
+  await fs.writeFile(cjs, agent);
+
+  const shShim = path.join(localBin, 'zcode');
+  const cmdShim = path.join(localBin, 'zcode.cmd');
+  await fs.writeFile(shShim, '#!/usr/bin/env sh\nexec node "$HOME/.zcode/runtime/current/bin/zcode.mjs" "$@"\n', { mode: 0o755 });
+  await fs.writeFile(cmdShim, '@echo off\r\nnode "%USERPROFILE%\\.zcode\\runtime\\current\\bin\\zcode.mjs" %*\r\n');
+
+  assert.deepEqual(standalonePackage(shShim, root), { root: runtimeRoot, version: '4.0.0' });
+  assert.deepEqual(standalonePackage(cmdShim, root), { root: runtimeRoot, version: '4.0.0' });
+  assert.equal(reviewEntry(null, { home: root, searchDirs: [], desktopEntries: [] }), cjs);
 });

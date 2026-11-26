@@ -21,10 +21,15 @@ function present(file: string): boolean {
 export function standaloneCommand(search: ZcodeSearch = {}): string | undefined {
   const home = search.home ?? homedir();
   const dirs = search.searchDirs ?? [...(process.env.PATH ?? '').split(path.delimiter), '/opt/homebrew/bin', '/usr/local/bin'];
-  const commands = (dir: string) => (process.platform === 'win32' ? ['zcode.exe', 'zcode'] : ['zcode']).map(n => path.join(dir, n));
-  const candidates = search.searchDirs === undefined || search.home !== undefined
-    ? [...commands(path.join(home, '.local/bin')), path.join(home, '.zcode/runtime/current/bin/zcode.mjs')]
-    : [];
+  const commands = (dir: string) => (process.platform === 'win32' ? ['zcode.exe', 'zcode.cmd', 'zcode'] : ['zcode']).map(n => path.join(dir, n));
+  let candidates: string[] = [];
+  if (search.searchDirs === undefined || search.home !== undefined) {
+    const localBin = path.join(home, '.local/bin');
+    const runtimeEntry = path.join(home, '.zcode/runtime/current/bin/zcode.mjs');
+    candidates = process.platform === 'win32'
+      ? [path.join(localBin, 'zcode.exe'), runtimeEntry, path.join(localBin, 'zcode.cmd'), path.join(localBin, 'zcode')]
+      : [...commands(localBin), runtimeEntry];
+  }
   for (const dir of new Set(dirs.filter(p => path.isAbsolute(p)))) candidates.push(...commands(dir));
   return candidates.find(present);
 }
@@ -46,21 +51,41 @@ export function checkedZcodeFile(candidate: string): string {
   } catch (e) { throw new Error('ZCode 入口 ' + candidate + ' 不可用：' + (e as Error).message); }
 }
 
-/** 官方 sh 包装器只读首段，识别裸 node 或带空格的绝对 Node 路径。其它程序保持直接执行。 */
-function wrappedLauncher(file: string): string | undefined {
+function expandLauncherHome(raw: string, home: string): string {
+  if (/^(?:\$\{HOME\}|\$HOME)[/\\]/.test(raw)) {
+    return path.join(home, raw.replace(/^(?:\$\{HOME\}|\$HOME)[/\\]/, ''));
+  }
+  if (/^%USERPROFILE%[/\\]/i.test(raw)) {
+    return path.join(home, raw.replace(/^%USERPROFILE%[/\\]/i, ''));
+  }
+  return path.normalize(raw);
+}
+
+/** 官方 sh / cmd 包装器只读首段，识别裸 node 或绝对 Node 路径并展开 $HOME / %USERPROFILE%。 */
+export function wrappedLauncher(file: string, home = homedir()): string | undefined {
   const fd = openSync(file, 'r');
   try {
     const buf = Buffer.alloc(4096);
     const size = readSync(fd, buf, 0, buf.length, 0);
-    const match = /^#![^\n]*\nexec (?:node|"[^"\n]+[/\\]node(?:\.exe)?") "([^"\n]+\/bin\/zcode\.mjs)" "\$@"\s*$/.exec(buf.toString('utf8', 0, size));
-    return match && path.isAbsolute(match[1]!) ? match[1] : undefined;
+    const text = buf.toString('utf8', 0, size);
+    const shMatch = /^#![^\n]*\r?\nexec (?:node|"[^"\r\n]+[/\\]node(?:\.exe)?") "([^"\r\n]+[/\\]bin[/\\]zcode\.mjs)" "\$@"\s*$/.exec(text);
+    if (shMatch?.[1]) {
+      const target = expandLauncherHome(shMatch[1], home);
+      return path.isAbsolute(target) ? target : undefined;
+    }
+    const cmdMatch = /(?:^|\r?\n)\s*(?:node|"[^"\r\n]+[/\\]node(?:\.exe)?")\s+"([^"\r\n]+[/\\]bin[/\\]zcode\.mjs)"\s+%\*(?:\r?\n|$)/i.exec(text);
+    if (cmdMatch?.[1]) {
+      const target = expandLauncherHome(cmdMatch[1], home);
+      return path.isAbsolute(target) ? target : undefined;
+    }
+    return undefined;
   } finally { closeSync(fd); }
 }
 
-export function standalonePackage(file: string): { root: string; version: string } | undefined {
+export function standalonePackage(file: string, home?: string): { root: string; version: string } | undefined {
   let script = file;
   if (!isZcodeScript(file)) {
-    const target = wrappedLauncher(file);
+    const target = wrappedLauncher(file, home);
     if (!target) return undefined;
     script = checkedZcodeFile(target);
   }
@@ -78,6 +103,11 @@ export function reviewEntry(configured: string | null, search: ZcodeSearch = {})
   if (!candidate) return undefined;
   const file = checkedZcodeFile(candidate);
   if (configured !== null) return file;
-  const pkg = standalonePackage(file);
-  return pkg ? checkedZcodeFile(path.join(pkg.root, 'agent/zcode.cjs')) : file;
+  const pkg = standalonePackage(file, search.home);
+  if (pkg) return checkedZcodeFile(path.join(pkg.root, 'agent/zcode.cjs'));
+  if (process.platform === 'win32' && !isZcodeScript(file)) {
+    const target = wrappedLauncher(file, search.home);
+    if (target) return checkedZcodeFile(target);
+  }
+  return file;
 }

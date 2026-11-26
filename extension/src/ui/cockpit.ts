@@ -553,10 +553,11 @@ export class Cockpit implements vscode.Disposable {
   private async refreshHealth(doctor: boolean): Promise<void> {
     if (doctor) {
       const r = await this.services.cmds.doctorStatic();
+      const doctorCmd = process.platform === 'win32' ? '.\\.trivium\\bin\\trivium.cmd doctor' : './.trivium/bin/trivium doctor';
       this.post({
         type: 'banner',
         kind: r.out?.ok ? 'info' : 'warn',
-        text: r.out?.ok ? '静态重探完成（--no-model-calls，零配额）。' : `静态重探失败（退出码 ${r.code}）；探针缓存可能已过期，可在终端跑 trivium doctor。`,
+        text: r.out?.ok ? '静态重探完成（--no-model-calls，零配额）。' : `静态重探失败（退出码 ${r.code}）；探针缓存可能已过期，可在终端跑 ${doctorCmd}。`,
       });
     }
     const probe = await this.services.env.loadProbe();

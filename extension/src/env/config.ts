@@ -5,6 +5,7 @@
  * 并做覆盖合并（local 的 probe 段是 doctor 回填的探针结论，含 YAML 锚点别名）。
  */
 import path from 'node:path';
+import { homedir } from 'node:os';
 import { promises as fs } from 'node:fs';
 import { deepGet, deepMerge, loadYamlFile } from '../util/yamlLoad';
 
@@ -30,9 +31,9 @@ export interface ProbeSection {
   auth: Record<string, Record<string, unknown>>;
 }
 
-export function expandHome(p: string, home = process.env['HOME'] ?? ''): string {
+export function expandHome(p: string, home = process.env['HOME'] || homedir()): string {
   if (p === '~') return home;
-  if (p.startsWith('~/')) return path.join(home, p.slice(2));
+  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(home, p.slice(2));
   return p;
 }
 
@@ -70,7 +71,7 @@ export class TriviumEnv {
       runRoot:
         typeof runRootRaw === 'string' && runRootRaw.length > 0
           ? expandHome(runRootRaw)
-          : path.join(process.env['HOME'] ?? '', '.trivium', 'runs'),
+          : path.join(process.env['HOME'] || homedir(), '.trivium', 'runs'),
       defaultCritics: Array.isArray(defaultCritics) ? (defaultCritics as string[]) : [],
       heartbeatStaleS: typeof heartbeat === 'number' ? heartbeat : 120,
       profileNames: profiles && typeof profiles === 'object' ? Object.keys(profiles as Record<string, unknown>) : [],

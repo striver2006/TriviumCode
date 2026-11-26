@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { TriviumCli, extractJson } from '../../src/cli/triviumCli';
+import { TriviumCli, extractJson, parseWrapperCommand, resolveWrapperSpawn } from '../../src/cli/triviumCli';
 
 /** 逐字节输出 UTF-8 多字节字符的脚本（模拟最细粒度分块） */
 const SLOW_ECHO = `
@@ -47,4 +47,42 @@ test('extractJson 对混合前缀文本取 JSON', () => {
   assert.deepEqual(extractJson('进度行\n{"ok":true}'), { ok: true });
   assert.equal(extractJson('不是 json'), null);
   assert.equal(extractJson(''), null);
+});
+
+test('parseWrapperCommand 与 resolveWrapperSpawn 兼容 sh、.cmd 与 node shebang', async () => {
+  assert.deepEqual(
+    parseWrapperCommand('#!/bin/sh\nexec "/opt/node" "/a/trivium.cjs" "$@"\n'),
+    { nodePath: '/opt/node', cliPath: '/a/trivium.cjs' },
+  );
+  assert.deepEqual(
+    parseWrapperCommand('@echo off\r\n"C:\\Program Files\\nodejs\\node.exe" "C:\\u\\trivium.cjs" %*\r\n'),
+    { nodePath: 'C:\\Program Files\\nodejs\\node.exe', cliPath: 'C:\\u\\trivium.cjs' },
+  );
+  assert.equal(parseWrapperCommand('#!/bin/sh\necho hi\n'), null);
+
+  assert.deepEqual(
+    await resolveWrapperSpawn('D:\\repo\\.trivium\\bin\\trivium', ['doctor', '--json'], async (p) =>
+      p.endsWith('trivium') ? '#!/bin/sh\nexec "C:\\node.exe" "C:\\trivium.cjs" "$@"\n' : null,
+    'win32', 'C:\\fallback.exe'),
+    { command: 'C:\\node.exe', args: ['C:\\trivium.cjs', 'doctor', '--json'] },
+  );
+
+  assert.deepEqual(
+    await resolveWrapperSpawn('D:\\repo\\.trivium\\bin\\trivium', ['doctor'], async (p) =>
+      p.endsWith('.cmd') ? '@echo off\r\n"C:\\node.exe" "C:\\trivium.cjs" %*\r\n' : null,
+    'win32', 'C:\\fallback.exe'),
+    { command: 'C:\\node.exe', args: ['C:\\trivium.cjs', 'doctor'] },
+  );
+
+  assert.deepEqual(
+    await resolveWrapperSpawn('D:\\repo\\.trivium\\bin\\trivium', ['--version'], async () =>
+      '#!/usr/bin/env node\nconsole.log(1);\n',
+    'win32', 'C:\\node.exe'),
+    { command: 'C:\\node.exe', args: ['D:\\repo\\.trivium\\bin\\trivium', '--version'] },
+  );
+
+  assert.deepEqual(
+    await resolveWrapperSpawn('/repo/.trivium/bin/trivium', ['doctor'], async () => null, 'linux'),
+    { command: '/repo/.trivium/bin/trivium', args: ['doctor'] },
+  );
 });
