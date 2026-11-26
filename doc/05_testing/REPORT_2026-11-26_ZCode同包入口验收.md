@@ -41,7 +41,7 @@
 
 隔离仓按入口 C 发起「ZCode独立安装验收」第 1/1 轮，运行号 `20261126T075619Z`。冻结请求为 `GLM-5.3`，原生主轮日志回读 provider `bigmodel-coding-plan` 和模型 `GLM-5.3`。运行中的审核子进程使用独立包的内置 provider。另一次真实预检在 Node 入口采集到后台脚本路径和参数，工具禁用表包含 `Write,Edit,MultiEdit,ApplyPatch,NotebookEdit,Bash,WebFetch,WebSearch`。[本机观测字段](evidence/zcode-installation-20261126/macos.json)
 
-该次送审补丁含 19 个文件。审核者用完 1200 秒预算，编排器退出 75。失败正本中 `model_effective=null`，有效票 0，未生成审核意见或裁决件。隔离主题回到 `idle`，未进入人工审批。成功审核归档仍待复测。[运行元数据](evidence/zcode-installation-20261126/run-20261126T075619Z.json) · [超时记录](evidence/zcode-installation-20261126/review-glm-20261126T075619Z.failed.json)
+该次送审补丁含 19 个文件。审核者用完 1200 秒预算，编排器退出 75。失败正本中 `model_effective=null`，有效票 0，未生成审核意见或裁决件。隔离主题回到 `idle`，未进入人工审批。下文列有发布后两文件复测的独立运行记录。[运行元数据](evidence/zcode-installation-20261126/run-20261126T075619Z.json) · [超时记录](evidence/zcode-installation-20261126/review-glm-20261126T075619Z.failed.json)
 
 ## 自动化与未测项
 
@@ -65,3 +65,11 @@ Windows 真机未测。桌面版测至完整 doctor 与真实预检，未另启�
 | 项目 wrapper 装后验证 | `doctor --selftest` 14/14。完整 ZCode doctor 选中独立版 `releases/4.0.0/agent/zcode.cjs`；Codex 主攻、GLM 审核的代码预检加 `--refresh-auth` 退出 0，5 秒真实探活回读 `bigmodel-coding-plan/GLM-5.3`。 |
 
 [GitCode macOS 安装包](https://gitcode.com/czb99/TriviumCode/releases/download/v1.3.8/TriviumCode-1.3.8-macos.tar.gz) · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=triviumcode.trivium-cockpit)
+
+## 发布后复测：独立 ZCode 完成正式审核
+
+2026-11-26，本机已部署的核心 1.3.8 通过入口 C 运行 `20261126T092635Z`。Codex 主攻，GLM 单审。隔离 Git 仓的补丁包含 `observed.json` 和 `verify.cjs` 两个文件（3.5 KB），另提供原始观测作为核对依据。沿用 1200 秒预算，整轮耗时 3 分 55 秒，退出 0。原 19 文件补丁未重审。
+
+- **实际入口和模型。** 审核者使用 `~/.zcode/runtime/releases/4.0.0/agent/zcode.cjs`，Agent 0.18.0，请求 `GLM-5.3`，轨迹回读 `bigmodel-coding-plan/GLM-5.3`。编排器记录 6 次 Read、1 次 Grep、4 次 Glob、3 次项目读取，`evidence_ok=true`。[运行正本](evidence/zcode-installation-20261126/20261126T092635Z/run-20261126T092635Z.json)
+- **审核结论。** GLM 投通过票，提出 4 条次要意见。Codex 逐条接受并补强夹具，裁决校验通过。修订后正向用例通过，10 个反例均被拒绝，涵盖启动器目标、模型、续话、进程、只读证据及空预检。单侧运行仅产生一票，人工审批另行处理。[GLM 审核原件](evidence/zcode-installation-20261126/20261126T092635Z/2026-11-26-ZCode独立安装验收-glm.md) · [Codex 裁决件](evidence/zcode-installation-20261126/20261126T092635Z/2026-11-26-ZCode独立安装验收-response-codex.md)
+- **执行层写入拒绝。** 另以本地受控 provider 向真实独立 CLI 返回指定调用号的 Write 请求。根据回环连接的客户端 PID 与进程实参核对，该后台进程经 Node 运行同一脚本，采用 `--mode plan` 并显式禁用八项工具。请求工具表含 Read、无 Write；匹配调用号的工具结果返回错误 `No such tool available: Write`，目标文件前后均为 `original`。路径级禁读仍为 `false`。Windows 真机未测。[写入对照与实际参数](evidence/zcode-installation-20261126/20261126T092635Z/fresh-write-proof.json)
